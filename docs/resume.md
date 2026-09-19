@@ -12,21 +12,26 @@
 
 - 기준일: 2026-09-19
 - 작업 브랜치: `codex/transport-collection-openapi`, Draft PR #30.
+  현재 검증하는 런타임 코드는 `50c9cd42d2f7a071f216d815e9bbce94546383ca`다.
   n150 배포 기준은 `aa2486bc7c84582f40fe38680cea399e0cca7167`이며 수집을 활성화했다.
   형제 provider 수정 PR은 KREX #16(`adda287`), OPINET #18(`1601ef3`)이며 두 독립
   reviewer의 코드 승인을 받았다. 통합 의존성도 이 SHA로 고정했다. 통합 최종 리뷰의
   추가 P1을 `af26362`/`02545fe`에서 보완했으며, 소스별 DB transaction 격리를 추가해
   재검증 중이다. 기존 candidate의 WSL 백엔드 전체 125개가 통과했고 격리 보완 후에는
-  실제 PostgreSQL NOT NULL 오류를 이용한 집중 테스트 4개가 통과했다.
+  실제 PostgreSQL NOT NULL 오류를 이용한 집중 테스트 4개 및 최종 전체 128개가 통과했다.
   고속도로 소통/돌발의 독립 성공·backoff, skip 기록의 실패 은폐 방지, 유효 가격 없는
   OPINET 실패 처리, RFC7807 500 및 JSON 프록시 body timeout을 보강한다.
-  수정 프론트 WSL 전체 80개/타입 검사/build 통과. James는 `02545fe`의 코드상 P0/P1
-  없음으로 승인했고 Popper 재리뷰는 진행 중이다. 통합 PR은 아직 머지되지 않았다.
+  수정 프론트 WSL 전체 80개/타입 검사/build와 Docker 80개 통과. 두 reviewer가
+  `50c9cd4` 코드의 P0/P1 없음으로 판정했다. James는 코드 승인, Popper는 전국 유가
+  운영 게이트 미완료로 최종 승인을 보류했다. Docker 백엔드 128개도 통과했으며
+  해당 런타임의 최종 n150 배포·전국 유가 E2E가 남아 있다. PR은 미머지다.
+  n150 실제 첫 KREX 성공은 소통 8,370건·돌발 80건이고, 다음 주기 수집과 공개 통계까지
+  확인했다. 이는 전국 OPINET 성공 증적과 별개다.
   OPINET 전국 수집의 기존 다음 예약은 `2026-09-20 02:26:49 KST`이며, 예외 1회 재시도는
   사용자 확인 전 실행하지 않는다. 강남구 제한 smoke와 격리 DB의 KREX 성공은 전국 유가
   운영 적재 증적을 대체하지 않는다.
-- 다음 한 작업: 최종 리뷰 보완본의 WSL/Docker 전체 검증 및 새 candidate 커밋 후,
-  server14에 배포하고 James/Popper 재리뷰와
+- 다음 한 작업: WSL/Docker 검증한 최종 런타임을 server14에 배포하고,
+  전국 유가의 실제 저장 확인 후 두 리뷰어의 운영 게이트와
   live E2E를 통과시켜 PR #30을 `kor-travel-transport`에 머지한다. 그 다음에만 KRIC
   provider 구현과 교통정보 확장 조사 문서를 시작한다.
 - `digitie/kor-travel-airport`(구 `digitie/parking-radar`) PR #2~#28 모두 **MERGED**
