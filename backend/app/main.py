@@ -246,6 +246,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             media_type="application/problem+json",
         )
 
+    @app.exception_handler(Exception)
+    async def problem_json_internal_exception_handler(
+        request: Request, exc: Exception
+    ) -> JSONResponse:
+        # 예외 원문에는 SQL·DB 접속정보·인증키가 포함될 수 있으므로 응답에 사용하지 않는다.
+        return JSONResponse(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            content={
+                "type": "about:blank",
+                "title": HTTPStatus.INTERNAL_SERVER_ERROR.phrase,
+                "status": int(HTTPStatus.INTERNAL_SERVER_ERROR),
+                "detail": "서버 내부 오류가 발생했습니다.",
+                "instance": request.url.path,
+            },
+            media_type="application/problem+json",
+        )
+
     if resolved_settings.trusted_hosts:
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=resolved_settings.trusted_hosts)
     app.add_middleware(
@@ -313,6 +330,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     continue
                 codes = [code for code in operation["responses"] if str(code).startswith(("4", "5"))]
                 codes.extend(str(code) for code in documented_errors.get((path, method), ()))
+                codes.append("500")
                 for code in codes:
                     operation["responses"][code] = {
                         "description": "요청 검증 오류" if code == "422" else "애플리케이션 오류",

@@ -2,6 +2,19 @@
 
 ## 2026-09-19
 
+- 통합 최종 James/Popper 리뷰의 P1을 후속 보완한다. 회귀 테스트에서 incident 실패 시
+  성공한 traffic 폐기, quota 대기 중 skip의 `last_run` 은폐, 가격 없는 station-only 유가
+  성공을 각각 재현했다(3개 실패 확인 후 수정하여 3개 통과). 소스별 due·timeout·성공/오류를
+  분리하고 실제 backoff 전체를 기다린다. `last_run`은 skipped 실행을 제외한다.
+- JSON 프록시 body timeout을 worker가 재현하고 16 MiB 제한 버퍼링으로 504/502를 반환하게
+  했다. 비JSON 백업은 스트리밍 계약을 유지한다. 프론트 전체 WSL 80개, 타입 검사/build
+  통과. live E2E는 running을 성공으로 인정하지 않고 완료 시각과 최근 유가 저장 시각을
+  검사한다. 최종 운영 적재/E2E 및 통합 재리뷰는 아직 완료하지 않았다.
+- 일반 예외와 transport DB 오류의 RFC7807 500·비밀/SQL 비노출 회귀를 worker가
+  수정 전 실패로 확인하고 보완했다. WSL API 테스트 35개 및 PostgreSQL을 포함한
+  transport 테스트 23개가 통과했고, 양방향 소스 timeout 테스트를 더해 전체 검증 중이다.
+- 기존 Next.js·sharp 의존성에서 `npm audit --omit=dev` critical/high 경고를 발견해
+  별도 보안 후속으로 기록했다. 이 교통정보 PR에 임의의 의존성 갱신은 섞지 않았다.
 - 후속 실검증: 사용자가 지정한 로컬 `python-krex-api` 환경 파일에서 키를 확인하고
   비밀값을 출력하지 않은 채 n150 환경을 보호 백업 후 활성화했다. 기존 통합 실행은
   KREX 폐기 URL 및 OPINET 자동 탐색 응답 본문 오류로 실패했다. 실패 기록을 유지하며

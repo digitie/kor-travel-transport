@@ -195,6 +195,7 @@ test.describe("live parking-radar dashboard", () => {
   test("exposes the integrated transport API through the frontend proxy", async ({
     page,
   }) => {
+    test.setTimeout(180_000);
     await page.goto("/", { waitUntil: "domcontentloaded" });
     for (const path of [
       "/api/backend/v1/transport/highways/traffic?days=1&limit=1",
@@ -214,27 +215,41 @@ test.describe("live parking-radar dashboard", () => {
           expect(payload.items.length).toBeGreaterThan(0);
           expect(payload.items[0].source).toBe("opinet_browser");
           expect(payload.items[0].prices.length).toBeGreaterThan(0);
+          expect(payload.items[0].prices.some((price: { price: number | null; collected_at: string }) =>
+            price.price !== null && price.price > 0 &&
+            Date.parse(price.collected_at) >= Date.now() - 13 * 3_600_000 &&
+            Date.parse(price.collected_at) <= Date.now() + 60_000,
+          )).toBe(true);
         } else if (path.includes("/statistics")) {
           expect(payload.traffic.length).toBeGreaterThan(0);
           expect(payload.fuel_prices.length).toBeGreaterThan(0);
         }
     }
 
-    const statusResponse = await getJsonWithTransientRetry(
+    let statusResponse = await getJsonWithTransientRetry(
       page.request,
       "/api/backend/v1/transport/collector-status",
     );
     expect(statusResponse.status()).toBe(200);
-    const statusPayload = await statusResponse.json();
+    let statusPayload = await statusResponse.json();
+    // 진행 중 실행을 승인하지 않고 실제 종료를 기다린다. 실패 상태는 즉시 거절한다.
+    await expect(async () => {
+      if (statusPayload.last_run?.status === "running") {
+        statusResponse = await getJsonWithTransientRetry(page.request, "/api/backend/v1/transport/collector-status");
+        expect(statusResponse.status()).toBe(200);
+        statusPayload = await statusResponse.json();
+      }
+      expect(statusPayload.last_run?.status).not.toBe("running");
+    }).toPass({ timeout: 120_000, intervals: [2_000, 5_000] });
       expect(statusPayload.collection_enabled).toBe(true);
       expect(Array.isArray(statusPayload.sources)).toBe(true);
       // 각 소스의 저장 성공을 확인한다. 비활성/샘플/빈 결과는 운영 승인 대상이 아니다.
       expect(statusPayload.scheduler_enabled).toBe(true);
       expect(statusPayload.client_mode).toBe("live");
       expect(statusPayload.last_run?.trigger).toMatch(/^transport_(highway|fuel)_scheduler$/);
-      expect(["success", "skipped", "running"]).toContain(statusPayload.last_run?.status);
+      expect(statusPayload.last_run?.status).toBe("success");
       expect(statusPayload.last_run?.error ?? null).toBeNull();
-      const runAt = Date.parse(statusPayload.last_run?.finished_at ?? statusPayload.last_run?.started_at);
+      const runAt = Date.parse(statusPayload.last_run?.finished_at);
       expect(Number.isFinite(runAt)).toBe(true);
       expect(Date.now() - runAt).toBeLessThanOrEqual(900_000);
       for (const name of ["krex_traffic_flow", "krex_traffic_incident", "opinet_browser"]) {

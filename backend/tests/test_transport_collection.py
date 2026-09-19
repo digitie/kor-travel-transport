@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -43,7 +44,7 @@ class FakeTransportProvider:
         self.observed_at = now_utc()
         self.incident_process_status = "처리중"
 
-    async def collect_highway(self) -> HighwayPayload:
+    async def collect_highway(self, *, sources=(TRAFFIC_SOURCE, INCIDENT_SOURCE)) -> HighwayPayload:
         return HighwayPayload(
             traffic=(
                 TrafficFlow(
@@ -447,7 +448,7 @@ def test_krex_quota_failure_persists_backoff(tmp_path: Path) -> None:
     settings.transport_quota_backoff_seconds = 3600
 
     class QuotaProvider(FakeTransportProvider):
-        async def collect_highway(self) -> HighwayPayload:
+        async def collect_highway(self, *, sources=(TRAFFIC_SOURCE, INCIDENT_SOURCE)) -> HighwayPayload:
             raise KrexQuotaExceededError("quota exceeded")
 
     async def run() -> tuple[dict, list[TransportCollectionState]]:
@@ -467,6 +468,124 @@ def test_krex_quota_failure_persists_backoff(tmp_path: Path) -> None:
     highway_state = next(state for state in states if state.source == TRAFFIC_SOURCE)
     assert highway_state.next_due_at is not None
     assert highway_state.last_error == "quota exceeded"
+
+
+def test_highway_source_failure_preserves_other_source_and_backoff(tmp_path: Path) -> None:
+    settings = build_settings(tmp_path)
+    settings.transport_quota_backoff_seconds = 3600
+
+    async def run() -> None:
+        engine, factory = create_engine_and_session_factory(settings.database_url)
+        await init_database(engine)
+        payload = await FakeTransportProvider().collect_highway()
+        provider = LiveTransportProvider(settings)
+        await provider.krex.aclose()
+        flow = AsyncMock(return_value=SimpleNamespace(items=payload.traffic))
+        incident = AsyncMock(side_effect=KrexQuotaExceededError("quota exceeded"))
+        provider.krex = SimpleNamespace(
+            traffic=SimpleNamespace(flow_all=flow, incident=incident), aclose=AsyncMock()
+        )
+        service = TransportCollectionService(settings, provider)
+        try:
+            async with factory() as session:
+                result = await service.collect(session, scope="highway")
+                assert result["status"] == "partial_success"
+                assert result["traffic_snapshot_count"] == 1
+                states = {s.source: s for s in (await session.scalars(select(TransportCollectionState))).all()}
+                assert states[TRAFFIC_SOURCE].last_error is None
+                assert states[INCIDENT_SOURCE].last_error == "quota exceeded"
+                states[TRAFFIC_SOURCE].next_due_at = now_utc() - timedelta(seconds=1)
+                await session.commit()
+                await service.collect(session, scope="highway")
+                assert flow.await_count == 2
+                assert incident.await_count == 1
+        finally:
+            await service.close()
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_highway_backoff_wait_and_status_ignore_skipped_attempt(tmp_path: Path) -> None:
+    settings = build_settings(tmp_path)
+    provider = FakeTransportProvider()
+    provider.collect_highway = AsyncMock(side_effect=KrexQuotaExceededError("quota exceeded"))
+
+    async def run() -> None:
+        engine, factory = create_engine_and_session_factory(settings.database_url)
+        await init_database(engine)
+        service = TransportCollectionService(settings, provider)
+        async with factory() as session:
+            failed = await service.collect(session, scope="highway")
+            assert failed["status"] == "failed"
+            assert await service.next_collection_delay(session, "highway") > 3500
+            skipped = await service.collect(session, scope="highway")
+            assert skipped["status"] == "skipped"
+            assert (await service.status(session))["last_run"]["id"] == failed["collection_run_id"]
+        await service.close()
+        await engine.dispose()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("slow_source", [TRAFFIC_SOURCE, INCIDENT_SOURCE])
+def test_live_highway_timeout_keeps_the_other_source(tmp_path: Path, monkeypatch, slow_source: str) -> None:
+    monkeypatch.setattr("app.services.transport_collection.HIGHWAY_FETCH_TIMEOUT_SECONDS", 0.05)
+
+    async def run() -> None:
+        payload = await FakeTransportProvider().collect_highway()
+        provider = LiveTransportProvider(build_settings(tmp_path))
+        await provider.krex.aclose()
+
+        async def stall(*args, **kwargs):
+            await asyncio.Event().wait()
+
+        provider.krex = SimpleNamespace(
+            traffic=SimpleNamespace(
+                flow_all=AsyncMock(side_effect=stall) if slow_source == TRAFFIC_SOURCE else AsyncMock(
+                    return_value=SimpleNamespace(items=payload.traffic)),
+                incident=AsyncMock(side_effect=stall) if slow_source == INCIDENT_SOURCE else AsyncMock(
+                    return_value=SimpleNamespace(items=payload.incidents, total_count=1, num_of_rows=1000)),
+            ), aclose=AsyncMock(),
+        )
+        try:
+            result = await provider.collect_highway()
+            if slow_source == TRAFFIC_SOURCE:
+                assert isinstance(result.traffic, TimeoutError)
+                assert result.incidents == payload.incidents
+            else:
+                assert result.traffic == payload.traffic
+                assert isinstance(result.incidents, TimeoutError)
+        finally:
+            await provider.aclose()
+
+    asyncio.run(run())
+
+
+def test_station_only_opinet_snapshot_is_not_a_fuel_success(tmp_path: Path) -> None:
+    settings = build_settings(tmp_path)
+    provider = FakeTransportProvider()
+
+    async def run() -> None:
+        snapshot = await provider.collect_fuel()
+        provider.collect_fuel = AsyncMock(return_value=replace(
+            snapshot, stations=tuple(replace(station, prices=()) for station in snapshot.stations)
+        ))
+        engine, factory = create_engine_and_session_factory(settings.database_url)
+        await init_database(engine)
+        service = TransportCollectionService(settings, provider)
+        async with factory() as session:
+            result = await service.collect(session, scope="fuel")
+            assert result["status"] == "failed"
+            state = await session.scalar(select(TransportCollectionState).where(
+                TransportCollectionState.source == OPINET_SOURCE
+            ))
+            assert state.last_success_at is None
+            assert state.last_error is not None
+        await service.close()
+        await engine.dispose()
+
+    asyncio.run(run())
 
 
 def test_empty_opinet_snapshot_does_not_mark_fuel_success(tmp_path: Path) -> None:

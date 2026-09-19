@@ -8,15 +8,22 @@
 - 현재 T-040 브랜치에서 `python-krex-api` 고속도로 소통·돌발과 최신
   `python-opinet-api` Playwright 주유소·유가 수집/저장/API/통계를 구현했다. WSL2
   백엔드 전체 테스트는 통과했다. 최신 보강에서는 DB 실패 실행의 durable 상태,
-  RFC7807 OpenAPI 계약, transport live E2E의 활성/비활성 명시 검증을 추가했다.
+  RFC7807 OpenAPI 계약, 활성 live 소스의 실제 저장·최신성 E2E 검증을 추가했다.
 
 - 기준일: 2026-09-19
 - 작업 브랜치: `codex/transport-collection-openapi`, Draft PR #30.
   n150 배포 기준은 `8a366c946f257f3bb2bc3ed2d58611f26a3754b8`이며 수집을 활성화했다.
-  실제 호출에서 KREX의 폐기된 URL과 OPINET 자동 탐색 응답 본문 폐기 오류를 확인해
-  형제 provider 저장소에서 수정 중이다. 현행 코드에는 작업별 scheduler 분리도 진행 중이다.
-- 다음 한 작업: provider 수정 검증/PR 반영 후 transport 의존성을 갱신하고,
-  server14에 배포한 뒤 James/Popper 재리뷰와
+  형제 provider 수정 PR은 KREX #16(`adda287`), OPINET #18(`1601ef3`)이며 두 독립
+  reviewer의 코드 승인을 받았다. 통합 의존성도 이 SHA로 고정했다. `aa2486b` 배포 중
+  통합 최종 리뷰에서 추가 P1이 나와 현재 working tree에서 보완·재검증 중이다.
+  고속도로 소통/돌발의 독립 성공·backoff, skip 기록의 실패 은폐 방지, 유효 가격 없는
+  OPINET 실패 처리, RFC7807 500 및 JSON 프록시 body timeout을 보강한다.
+  수정 프론트 WSL 전체 80개/타입 검사/build 통과. 통합 PR은 아직 승인·머지되지 않았다.
+  OPINET 전국 수집의 기존 다음 예약은 `2026-09-20 02:26:49 KST`이며, 예외 1회 재시도는
+  사용자 확인 전 실행하지 않는다. 강남구 제한 smoke와 격리 DB의 KREX 성공은 전국 유가
+  운영 적재 증적을 대체하지 않는다.
+- 다음 한 작업: 최종 리뷰 보완본의 WSL/Docker 전체 검증 및 새 candidate 커밋 후,
+  server14에 배포하고 James/Popper 재리뷰와
   live E2E를 통과시켜 PR #30을 `kor-travel-transport`에 머지한다. 그 다음에만 KRIC
   provider 구현과 교통정보 확장 조사 문서를 시작한다.
 - `digitie/kor-travel-airport`(구 `digitie/parking-radar`) PR #2~#28 모두 **MERGED**

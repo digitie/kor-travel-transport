@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 
 from app.core.config import Settings
 from app.core.time_utils import now_utc
@@ -20,7 +21,7 @@ def assert_is_utc_iso(value: str | None) -> None:
     assert value.endswith("Z") or value.endswith("+00:00")
 
 
-def build_client(tmp_path: Path, **overrides) -> TestClient:
+def build_client(tmp_path: Path, *, raise_server_exceptions: bool = True, **overrides) -> TestClient:
     settings = Settings(
         **{
             "database_url": f"sqlite+aiosqlite:///{tmp_path / 'test.sqlite3'}",
@@ -37,7 +38,7 @@ def build_client(tmp_path: Path, **overrides) -> TestClient:
         }
     )
     app = create_app(settings)
-    return TestClient(app)
+    return TestClient(app, raise_server_exceptions=raise_server_exceptions)
 
 
 async def insert_collection_run(
@@ -154,6 +155,73 @@ def test_openapi_declares_rfc7807_validation_errors(tmp_path: Path) -> None:
         assert collect_responses[code]["content"]["application/problem+json"]["schema"] == {
             "$ref": "#/components/schemas/ProblemDetails"
         }
+
+
+def test_unhandled_exception_returns_sanitized_problem_json(tmp_path: Path) -> None:
+    test_client = build_client(tmp_path, raise_server_exceptions=False)
+
+    @test_client.app.get("/v1/test-unhandled-error")
+    async def unhandled_error() -> None:
+        raise RuntimeError("synthetic-secret exception-body SELECT private_column FROM private_table")
+
+    with test_client as client:
+        response = client.get("/v1/test-unhandled-error?key=synthetic-query-secret")
+
+    assert response.status_code == 500
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json() == {
+        "type": "about:blank",
+        "title": "Internal Server Error",
+        "status": 500,
+        "detail": "서버 내부 오류가 발생했습니다.",
+        "instance": "/v1/test-unhandled-error",
+    }
+    for private_value in ("synthetic-secret", "synthetic-query-secret", "exception-body", "SELECT"):
+        assert private_value not in response.text
+
+
+def test_transport_database_error_returns_sanitized_problem_json(tmp_path: Path) -> None:
+    error = OperationalError(
+        "SELECT private_column FROM highway_traffic_snapshots WHERE api_key = :key",
+        {"key": "synthetic-db-secret"},
+        RuntimeError("synthetic-driver-error postgresql://private-user:private-password@private-host"),
+    )
+    with build_client(tmp_path, raise_server_exceptions=False) as client:
+        with patch("app.main.AsyncSession.execute", new=AsyncMock(side_effect=error)) as execute:
+            response = client.get("/v1/transport/highways/traffic?route_no=0010")
+            execute.assert_awaited_once()
+        assert client.get("/v1/transport/highways/traffic").status_code == 200
+
+    assert response.status_code == 500
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json() == {
+        "type": "about:blank",
+        "title": "Internal Server Error",
+        "status": 500,
+        "detail": "서버 내부 오류가 발생했습니다.",
+        "instance": "/v1/transport/highways/traffic",
+    }
+    for private_value in (
+        "SELECT", "private_column", "highway_traffic_snapshots", "synthetic-db-secret",
+        "synthetic-driver-error", "private-password", "OperationalError", "RuntimeError",
+    ):
+        assert private_value not in response.text
+
+
+def test_openapi_declares_rfc7807_internal_server_errors(tmp_path: Path) -> None:
+    with build_client(tmp_path, enable_api_docs=True) as client:
+        schema = client.get("/openapi.json").json()
+
+    for path_item in schema["paths"].values():
+        for operation in path_item.values():
+            if not isinstance(operation, dict) or "responses" not in operation:
+                continue
+            error_response = operation["responses"]["500"]
+            assert error_response["content"] == {
+                "application/problem+json": {
+                    "schema": {"$ref": "#/components/schemas/ProblemDetails"}
+                }
+            }
 
 
 def test_trusted_host_rejects_unexpected_hosts(tmp_path: Path) -> None:
