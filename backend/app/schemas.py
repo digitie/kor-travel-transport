@@ -117,6 +117,8 @@ class FuelPriceItem(BaseModel):
 
 
 class FuelStationItem(BaseModel):
+    """유가 기준정보. 지역 필드는 검색 문맥이며 실제 위치는 주소·좌표를 확인한다."""
+
     source: str
     identity_key: str
     source_station_id: str | None = None

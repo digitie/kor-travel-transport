@@ -76,6 +76,12 @@ SQLite dialect를 허용한다.
 - 유종별 가격과 provider 갱신 시각은 `fuel_price_snapshots`에 저장
 - 가격은 금액 의미를 보존하기 위해 PostgreSQL `NUMERIC(10,2)`를 사용하고 음수를 막음
 - 주유소 identity와 `(station, source, product_code, observed_at)` unique로 upsert/중복 방지
+- provider는 서로 다른 검색지역의 동일 UID를 전역 병합한 뒤 저장 계층에 전달한다.
+  빈 가격이 유효 가격을 지우지 않으며 가격·갱신 시각은 같은 입력의 쌍으로 선택한다.
+  `sido_*`/`sigungu_*`/`dong_*`와 API 지역 필터는 검색 문맥이며 실제 소재지 분류가 아니다.
+  새 provider는 최초 검색 문맥을 유지한다. 이 수정 이전 run 13556 자료는 후행 문맥이
+  남아 있을 수 있으며, 전체 입력이 없어 이전 덮어쓰기 유무·손실량의 확정 또는 복구를
+  주장하지 않는다. 실제 위치는 주소·좌표를 사용한다.
 
 ### `transport_collection_states`
 

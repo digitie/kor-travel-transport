@@ -494,8 +494,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @router.get("/transport/fuel/stations", response_model=FuelStationResponse)
     async def transport_fuel_stations(
-        sido_value: str | None = Query(default=None),
-        sigungu_value: str | None = Query(default=None),
+        sido_value: str | None = Query(default=None, description="저장된 화면 검색 시도 문맥. 실제 소재지 필터가 아닙니다."),
+        sigungu_value: str | None = Query(default=None, description="저장된 화면 검색 시군구 문맥. 실제 소재지 필터가 아닙니다."),
         product_code: str | None = Query(default=None),
         days: int = Query(default=2, ge=1, le=30),
         limit: int = Query(default=200, ge=1, le=1000),

@@ -15,7 +15,9 @@ from opinet.experimental import (
     BrowserFuelPrice,
     BrowserRegion,
     BrowserStation,
+    OpinetBrowserCollector,
     OpinetBrowserSnapshot,
+    parse_browser_response,
 )
 from sqlalchemy import func, select, text
 
@@ -560,6 +562,100 @@ def test_live_highway_timeout_keeps_the_other_source(tmp_path: Path, monkeypatch
             await provider.aclose()
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("lpg_first", [False, True], ids=["gasoline-first", "lpg-first"])
+def test_opinet_cross_region_uid_merge_preserves_stored_prices_and_sources(client, monkeypatch, lpg_first) -> None:
+    """실제 provider 병합 결과가 전역 UID 저장에서도 가격·출처를 보존해야 한다."""
+    first_region = BrowserRegion(
+        sido_value="11", sido_name="서울", sigungu_value="R1", sigungu_name="첫검색지역"
+    )
+    later_region = replace(first_region, sigungu_value="R2", sigungu_name="다음검색지역")
+    gasoline_updated = "2026-09-19 10:00:00"
+    lpg_updated = "2026-09-19 11:00:00"
+    first_row = {
+        "UNI_ID": "S-CROSS-REGION",
+        "OS_NM": "지역경계주유소",
+        "B034_P": "99999",
+        "B027_P": "1700",
+        "D047_P": "99999",
+        "C004_P": "99999",
+        "K015_P": "99999",
+        "B027_DT": gasoline_updated,
+        "LPG_YN": "N",
+    }
+    later_row = {
+        **first_row,
+        "B027_P": "99999",
+        "K015_P": "1100",
+        "K015_DT": lpg_updated,
+        "LPG_YN": "Y",
+    }
+    if lpg_first:
+        first_row, later_row = later_row, first_row
+    first_stations = parse_browser_response(
+        {"list": [first_row]}, region=first_region, station_kind="station", query_level="sigungu"
+    )
+    later_stations = parse_browser_response(
+        {"list": [later_row]}, region=later_region, station_kind="lpg", query_level="sigungu"
+    )
+    expected_prices = {
+        "B027": (1700, (later_stations if lpg_first else first_stations)[0]
+                 .price_by_product[ProductCode.GASOLINE].updated_at),
+        "K015": (1100, (first_stations if lpg_first else later_stations)[0]
+                 .price_by_product[ProductCode.LPG].updated_at),
+    }
+    collector = OpinetBrowserCollector()
+    page = object()
+    discover = AsyncMock(return_value=[first_region, later_region])
+    activate = AsyncMock()
+    search = AsyncMock(side_effect=[first_stations, (), (), later_stations])
+    # 네트워크/브라우저 경계만 대체하고 collect_page의 UID 병합은 실제 구현을 사용한다.
+    monkeypatch.setattr(collector, "_discover_regions", discover)
+    monkeypatch.setattr(collector, "_activate_tab", activate)
+    monkeypatch.setattr(collector, "_search_region", search)
+    provider = FakeTransportProvider()
+    provider.enabled_sources = (OPINET_SOURCE,)
+    service = client.app.state.transport_collection_service
+    service.provider = provider
+
+    async def collect_and_verify() -> None:
+        snapshot = await collector.collect_page(page)
+        provider.collect_fuel = AsyncMock(return_value=snapshot)
+        async with client.app.state.session_factory() as session:
+            result = await service.collect(session, scope="fuel", trigger="test")
+        assert result["status"] == "success"
+        assert result["fuel_station_count"] == 1
+        # 새 세션에서 commit된 저장값을 검사한다. provider 병합을 backend에서 재구현하지 않는다.
+        async with client.app.state.session_factory() as session:
+            stations = (await session.scalars(select(FuelStation))).all()
+            assert len(stations) == 1
+            station = stations[0]
+            prices = (await session.scalars(select(FuelPriceSnapshot).where(
+                FuelPriceSnapshot.fuel_station_id == station.id
+            ))).all()
+            for product_code, (expected_price, expected_updated_at) in expected_prices.items():
+                product_prices = [price for price in prices if price.product_code == product_code]
+                assert len(product_prices) == 1
+                price = product_prices[0]
+                assert price.price == expected_price
+                assert serialize_utc(price.provider_updated_at) == serialize_utc(expected_updated_at)
+                assert serialize_utc(price.observed_at) == serialize_utc(expected_updated_at)
+            assert station.source_station_id == "S-CROSS-REGION"
+            assert station.source_kinds == ["station", "lpg"]
+            assert station.station_type == StationType.BOTH.value
+            # region은 실제 소재지가 아니라 최초 검색지역이라는 provider 계약이다.
+            assert (station.sido_value, station.sigungu_value) == ("11", "R1")
+            assert station.sigungu_name == first_region.sigungu_name
+        assert len(snapshot.stations) == 1
+        provider.collect_fuel.assert_awaited_once_with()
+        discover.assert_awaited_once_with(page)
+        assert [(call.args[1], call.kwargs["station_kind"]) for call in search.await_args_list] == [
+            (first_region, "station"), (later_region, "station"),
+            (first_region, "lpg"), (later_region, "lpg"),
+        ]
+
+    client.portal.call(collect_and_verify)
 
 
 def test_station_only_opinet_snapshot_is_not_a_fuel_success(tmp_path: Path) -> None:

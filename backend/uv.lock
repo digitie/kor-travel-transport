@@ -443,7 +443,7 @@ requires-dist = [
     { name = "python-krairport-api", git = "https://github.com/digitie/python-krairport-api?rev=cbe4d1380dc0388c078e8ae4622d3e580717064b" },
     { name = "python-krex-api", git = "https://github.com/digitie/python-krex-api?rev=adda2879f8bc1f0896867d28eee5583594ecda01" },
     { name = "python-multipart", specifier = ">=0.0.32,<1.0" },
-    { name = "python-opinet-api", extras = ["browser"], git = "https://github.com/digitie/python-opinet-api?rev=1601ef360300b35cba09942d8ededf806ac86f2d" },
+    { name = "python-opinet-api", extras = ["browser"], git = "https://github.com/digitie/python-opinet-api?rev=39e7acc3f863e66958964b8f137bba221bc7de08" },
     { name = "sqlalchemy", specifier = ">=2.0.52,<3.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.52,<1.0" },
 ]
@@ -843,7 +843,7 @@ wheels = [
 [[package]]
 name = "python-opinet-api"
 version = "0.2.0"
-source = { git = "https://github.com/digitie/python-opinet-api?rev=1601ef360300b35cba09942d8ededf806ac86f2d#1601ef360300b35cba09942d8ededf806ac86f2d" }
+source = { git = "https://github.com/digitie/python-opinet-api?rev=39e7acc3f863e66958964b8f137bba221bc7de08#39e7acc3f863e66958964b8f137bba221bc7de08" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },

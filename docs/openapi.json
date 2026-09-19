@@ -854,6 +854,7 @@
         "type": "object"
       },
       "FuelStationItem": {
+        "description": "유가 기준정보. 지역 필드는 검색 문맥이며 실제 위치는 주소·좌표를 확인한다.",
         "properties": {
           "address": {
             "anyOf": [
@@ -4786,6 +4787,7 @@
         "operationId": "transport_fuel_stations_v1_transport_fuel_stations_get",
         "parameters": [
           {
+            "description": "저장된 화면 검색 시도 문맥. 실제 소재지 필터가 아닙니다.",
             "in": "query",
             "name": "sido_value",
             "required": false,
@@ -4798,10 +4800,12 @@
                   "type": "null"
                 }
               ],
+              "description": "저장된 화면 검색 시도 문맥. 실제 소재지 필터가 아닙니다.",
               "title": "Sido Value"
             }
           },
           {
+            "description": "저장된 화면 검색 시군구 문맥. 실제 소재지 필터가 아닙니다.",
             "in": "query",
             "name": "sigungu_value",
             "required": false,
@@ -4814,6 +4818,7 @@
                   "type": "null"
                 }
               ],
+              "description": "저장된 화면 검색 시군구 문맥. 실제 소재지 필터가 아닙니다.",
               "title": "Sigungu Value"
             }
           },
