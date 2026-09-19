@@ -317,6 +317,7 @@ class TransportCollectionService:
         # 다른 프로세스는 짧은 claim transaction에서 next_due_at 예약을 보고 건너뛴다.
         highway_result: HighwayPayload | Exception | None = None
         fuel_result: OpinetBrowserSnapshot | Exception | None = None
+        persisted_sources: set[str] = set()
         try:
             if highway_due:
                 try:
@@ -339,27 +340,46 @@ class TransportCollectionService:
                     if source not in highway_sources:
                         continue
                     result = highway_result if isinstance(highway_result, Exception) else getattr(highway_result, field, None)
-                    items = await self._collect_highway_source(session, run_id, errors, source, result)
+                    try:
+                        items = await self._collect_highway_source(session, run_id, errors, source, result)
+                        count = await store(session, run_id, items) if items is not None else 0
+                        await session.commit()
+                    except Exception as exc:
+                        # 해당 소스만 되돌린다. 앞선 소스의 데이터·성공 상태는 이미 확정됐다.
+                        await session.rollback()
+                        await self._collect_highway_source(session, run_id, errors, source, exc)
+                        await session.commit()
+                        items = None
+                    persisted_sources.add(source)
                     if items is not None:
                         collected_source = True
                         raw_count += 1
-                        count = await store(session, run.id, items)
                         if source == TRAFFIC_SOURCE:
                             traffic_count += count
                         else:
                             incident_count += count
 
             if fuel_due:
-                snapshot = await self._collect_fuel(session, run_id, errors, fuel_result)
+                try:
+                    snapshot = await self._collect_fuel(session, run_id, errors, fuel_result)
+                    if snapshot is not None:
+                        fuel_station_count, fuel_price_count = await self._store_fuel_snapshot(
+                            session, run_id, snapshot,
+                        )
+                        await self._mark_fuel_success(session, snapshot.collected_at)
+                    await session.commit()
+                except Exception as exc:
+                    await session.rollback()
+                    await self._collect_fuel(session, run_id, errors, exc)
+                    await session.commit()
+                    snapshot = None
+                    fuel_station_count = fuel_price_count = 0
+                persisted_sources.add(OPINET_SOURCE)
                 if snapshot is not None:
                     collected_source = True
                     raw_count += 1
-                    fuel_station_count, fuel_price_count = await self._store_fuel_snapshot(
-                        session,
-                        run.id,
-                        snapshot,
-                    )
-                    await self._mark_fuel_success(session, snapshot.collected_at)
+            # rollback은 ORM 객체를 만료시키므로 async get으로 명시적으로 다시 읽는다.
+            run = await session.get(CollectionRun, run_id)
             if not errors and not collected_source and raw_count == 0:
                 run.status = "skipped"
             elif not errors:
@@ -379,6 +399,8 @@ class TransportCollectionService:
             message = "collection cancelled" if isinstance(exc, asyncio.CancelledError) else _safe_error(exc, self.settings)
             failed_run.error_message = message
             for source in claimed_sources:
+                if source in persisted_sources:
+                    continue
                 state = await self._get_or_create_state(session, source)
                 state.last_error = message
                 state.updated_at = now_utc()
@@ -462,18 +484,6 @@ class TransportCollectionService:
             if not any(price.price is not None and price.price > 0
                        for station in snapshot.stations for price in station.prices):
                 raise ValueError("python-opinet-api returned no usable fuel prices")
-            await self._store_raw_response(
-                session,
-                collection_run_id=collection_run_id,
-                source=OPINET_SOURCE,
-                endpoint=snapshot.source_url,
-                body={
-                    "collected_at": serialize_utc(snapshot.collected_at).isoformat(),
-                    "region_count": len(snapshot.regions),
-                    "station_count": len(snapshot.stations),
-                },
-            )
-            return snapshot
         except Exception as exc:
             message = _safe_error(exc, self.settings)
             errors.append(message)
@@ -486,6 +496,18 @@ class TransportCollectionService:
                 message=message,
             )
             return None
+
+        # DB 예외는 provider 오류 처리와 구분해 소스 transaction 복구 단계로 전달한다.
+        await self._store_raw_response(
+            session, collection_run_id=collection_run_id, source=OPINET_SOURCE,
+            endpoint=snapshot.source_url,
+            body={
+                "collected_at": serialize_utc(snapshot.collected_at).isoformat(),
+                "region_count": len(snapshot.regions),
+                "station_count": len(snapshot.stations),
+            },
+        )
+        return snapshot
 
     async def _store_raw_response(
         self,

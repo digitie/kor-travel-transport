@@ -17,13 +17,13 @@ from opinet.experimental import (
     BrowserStation,
     OpinetBrowserSnapshot,
 )
-from sqlalchemy import select
+from sqlalchemy import func, select, text
 
 from app.core.config import Settings
 from app.core.time_utils import now_utc, serialize_utc
 from app.db.session import create_engine_and_session_factory, init_database
 from app.main import create_app
-from app.models import FuelPriceSnapshot, FuelStation, HighwayIncidentSnapshot, TransportCollectionState
+from app.models import FuelPriceSnapshot, FuelStation, HighwayIncidentSnapshot, HighwayTrafficSnapshot, TransportCollectionState
 from app.services.transport_collection import (
     HighwayPayload,
     INCIDENT_SOURCE,
@@ -728,13 +728,14 @@ def test_transport_status_exposes_a_durable_failed_run(client) -> None:
     service = client.app.state.transport_collection_service
     service.provider = FakeTransportProvider()
     service._store_traffic = AsyncMock(side_effect=RuntimeError("database flush failed"))
+    service._store_incidents = AsyncMock(side_effect=RuntimeError("database flush failed"))
+    service._store_fuel_snapshot = AsyncMock(side_effect=RuntimeError("database flush failed"))
 
     async def collect() -> None:
         async with client.app.state.session_factory() as session:
             await service.collect(session, trigger="test")
 
-    with pytest.raises(RuntimeError, match="database flush failed"):
-        asyncio.run(collect())
+    asyncio.run(collect())
 
     status = client.get("/v1/transport/collector-status")
 
@@ -742,6 +743,54 @@ def test_transport_status_exposes_a_durable_failed_run(client) -> None:
     assert status.json()["last_run"]["status"] == "failed"
     assert status.json()["last_run"]["trigger"] == "transport_test"
     assert status.json()["last_run"]["error"] == "collection_failed"
+
+
+@pytest.mark.parametrize("failed_source", [INCIDENT_SOURCE, OPINET_SOURCE])
+def test_source_database_constraint_failure_keeps_committed_traffic(client, failed_source: str) -> None:
+    service = client.app.state.transport_collection_service
+    service.provider = FakeTransportProvider()
+
+    async def fail_constraint(session, *args):
+        await session.execute(text(
+            "INSERT INTO transport_collection_states (source, updated_at) VALUES (NULL, CURRENT_TIMESTAMP)"
+        ))
+
+    setattr(service, "_store_incidents" if failed_source == INCIDENT_SOURCE else "_store_fuel_snapshot",
+            AsyncMock(side_effect=fail_constraint))
+
+    async def run() -> None:
+        async with client.app.state.session_factory() as session:
+            result = await service.collect(session, trigger="test")
+            assert result["status"] == "partial_success"
+            assert result["traffic_snapshot_count"] == 1
+        async with client.app.state.session_factory() as session:
+            assert await session.scalar(select(func.count()).select_from(HighwayTrafficSnapshot)) == 1
+            states = {state.source: state for state in (await session.scalars(select(TransportCollectionState))).all()}
+            assert states[TRAFFIC_SOURCE].last_success_at is not None
+            assert states[TRAFFIC_SOURCE].last_error is None
+            assert states[failed_source].last_success_at is None
+            assert states[failed_source].last_error is not None
+
+    client.portal.call(run)
+
+
+def test_cancel_during_incident_storage_preserves_committed_traffic(client) -> None:
+    service = client.app.state.transport_collection_service
+    service.provider = FakeTransportProvider()
+    service._store_incidents = AsyncMock(side_effect=asyncio.CancelledError())
+
+    async def run() -> None:
+        async with client.app.state.session_factory() as session:
+            with pytest.raises(asyncio.CancelledError):
+                await service.collect(session, scope="highway")
+        async with client.app.state.session_factory() as session:
+            assert await session.scalar(select(func.count()).select_from(HighwayTrafficSnapshot)) == 1
+            states = {state.source: state for state in (await session.scalars(select(TransportCollectionState))).all()}
+            assert states[TRAFFIC_SOURCE].last_success_at is not None
+            assert states[TRAFFIC_SOURCE].last_error is None
+            assert states[INCIDENT_SOURCE].last_error == "collection cancelled"
+
+    client.portal.call(run)
 
 
 def test_transport_status_redacts_collection_errors(tmp_path: Path) -> None:

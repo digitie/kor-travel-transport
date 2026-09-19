@@ -2,6 +2,18 @@
 
 ## 2026-09-19
 
+- `aa2486b` n150 배포를 완료하고 공개 `/health`의 SHA 일치를 확인했다. 서버 I/O
+  대기로 이미지 export/unpack과 컨테이너 교체가 지연되어 일시 503이 발생했다. 생성된
+  대상 backend만 먼저 기동해 API를 복구했고, 이어 기존 배포 절차가 frontend 기동까지
+  완료했다. 다른 프로젝트 컨테이너와 DB lifecycle은 변경하지 않았다.
+- `af26362` 런타임의 WSL 백엔드 전체는 125개 통과했다. Popper의 후속 P1인 DB 저장
+  격리 부족은 실제 PostgreSQL NOT NULL 오류로 두 실패를 재현한 뒤 소스별 commit으로
+  보완했다. source별 raw/state/snapshot은 함께 확정하고 후속 소스 실패/취소가 앞선
+  성공을 롤백하거나 오류로 덮지 않는다. 집중 4개 통과, 전체 재검증 중이다.
+- James는 `02545fe`의 코드 리뷰를 P0/P1 없음으로 승인했다. 실제 전국 유가 저장과
+  enabled live E2E는 여전히 별도 미완료 게이트다. 일반 500 traceback은 Starlette가
+  custom handler 뒤 예외를 다시 전파해 ASGI 서버 로그가 남으므로 중복 로그를 추가하지
+  않았다. 정상 돌발 0건/중복 생략은 소스 완료 시각 검증으로 확인한다.
 - 통합 최종 James/Popper 리뷰의 P1을 후속 보완한다. 회귀 테스트에서 incident 실패 시
   성공한 traffic 폐기, quota 대기 중 skip의 `last_run` 은폐, 가격 없는 station-only 유가
   성공을 각각 재현했다(3개 실패 확인 후 수정하여 3개 통과). 소스별 due·timeout·성공/오류를

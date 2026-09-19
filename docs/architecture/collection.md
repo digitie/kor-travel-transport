@@ -26,12 +26,14 @@
 `collector-status.last_run`은 이 durable 실행 결과와 안정적인 `collection_failed`
 오류 코드만 외부에 노출해, 이전 성공 상태를 현재 성공으로 오인하지 않게 한다.
 
-운영 live E2E는 두 설정 상태를 모두 명시적으로 검증한다. `TRANSPORT_COLLECTION_ENABLED=true`
-이면 최근 scheduler 실행이 `success` 또는 `partial_success`이고 적어도 한 source에
-최근 성공 시각이 있어야 한다. KREX/OPINET 승인 키가 아직 없는 server14 환경에서는
-기능을 임의로 sample 성공으로 위장하지 않고 `client_mode=disabled`와 실행 없음이
-명시되는지 검증한다. 실제 KREX·Playwright 수집 성공 gate는 두 provider 자격증명을
-운영 secret에 등록한 뒤 같은 live E2E를 다시 실행해야 한다.
+운영 live E2E는 수집·scheduler 활성화와 `client_mode=live`, 세 소스 모두의 최근 완료를
+요구한다. `last_success_at >= last_started_at`과 오류 없음으로 각 소스의 최신 시작이
+실제 저장 성공으로 끝났는지 확인한 뒤 API·통계를 새로 읽는다. 소통은 15분, 유가는
+13시간 이내 성공이어야 하며 소통 행·유효 유가·통계가 비어 있으면 통과하지 않는다.
+비활성/샘플/부분 성공은 운영 승인으로 취급하지 않는다. 정상 돌발 0건과 변하지 않은
+돌발의 중복 저장 생략은 가능하므로 돌발은 행 수 대신 소스별 최근 저장 완료를 검사한다.
+결과 저장은 소스별 transaction으로 분리해, 뒤의 돌발/유가 저장 실패가 먼저 성공한
+소통정보를 rollback하지 않도록 한다.
 
 ## 목적
 
