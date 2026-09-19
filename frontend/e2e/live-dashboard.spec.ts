@@ -1,4 +1,9 @@
-import { expect, test, type Locator } from "@playwright/test";
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type Locator,
+} from "@playwright/test";
 
 const ROUTES = ["/", "/analytics", "/history", "/fees", "/backup"] as const;
 
@@ -17,6 +22,22 @@ async function clickUntilEffective(
     await trigger.click();
     await check();
   }).toPass({ timeout: 15_000 });
+}
+
+async function getJsonWithTransientRetry(
+  request: APIRequestContext,
+  path: string,
+) {
+  let response = await request.get(path);
+  for (
+    let attempt = 0;
+    attempt < 3 && [502, 503, 504].includes(response.status());
+    attempt += 1
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    response = await request.get(path);
+  }
+  return response;
 }
 
 test.describe("live parking-radar dashboard", () => {
@@ -181,13 +202,14 @@ test.describe("live parking-radar dashboard", () => {
       "/api/backend/v1/transport/fuel/stations?days=1&limit=1",
       "/api/backend/v1/transport/statistics?days=1",
     ]) {
-      const response = await page.request.get(path);
+      const response = await getJsonWithTransientRetry(page.request, path);
       expect(response.status(), path).toBe(200);
       const payload = await response.json();
       expect(payload.generated_at, path).toBeTruthy();
     }
 
-    const statusResponse = await page.request.get(
+    const statusResponse = await getJsonWithTransientRetry(
+      page.request,
       "/api/backend/v1/transport/collector-status",
     );
     expect(statusResponse.status()).toBe(200);
