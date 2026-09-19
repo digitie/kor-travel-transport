@@ -24,8 +24,13 @@
 - 통합 검증: WSL 실제 PostgreSQL 전체 테스트는 중간 수정본 `113 passed`, 최신
   provider pin·예약/취소·VDS 저장·OpenAPI 집중 테스트는 `20 passed`다. 프론트는
   Windows 마운트 위 worker 시작 timeout을 겪어 동일 소스를 WSL `/tmp`에 복사했고
-  전체 `67 passed`, TypeScript 검사 통과. Docker 프론트도 `67 passed`이며 백엔드
-  전체 Docker 검증은 진행 중이다. PostgreSQL `alembic check`는 변경 없음으로 통과했다.
+  전체 `67 passed`, TypeScript 검사 통과. Docker 프론트 `67 passed`, 백엔드 전체
+  `116 passed`, 최종 OpenAPI·두 scheduler 종료 순서 추가 검증 `2 passed`다.
+  PostgreSQL `alembic check`는 변경 없음으로 통과했다.
+- 실제 KREX 단일 전체 조회를 별도의 검증용 PostgreSQL DB에 저장해 VDS 8,370행과
+  돌발 92행을 확인했다. API 조회 1,000행과 노선·방향별 통계 138개 그룹/관측 8,370건도
+  확인했다. 이는 격리 DB 증적이며 n150 운영 적재 검증과 구분한다. GitHub Projects 조회는
+  `totalCount=0`으로 이전 이름의 남은 프로젝트가 없었다.
 - 고속도로/유가를 별도 task·DB 트랜잭션·advisory lock으로 분리하고, DB 예정 시각 기준
   대기로 5분 tick이 미세한 시각 차이 때문에 10분으로 늘어나는 문제를 보완한다.
   공개 E2E는 모든 소스의 최근 성공·오류 없음·비어 있지 않은 실제 저장 데이터와 통계를

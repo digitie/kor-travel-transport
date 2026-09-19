@@ -156,6 +156,38 @@ def build_settings(tmp_path: Path) -> Settings:
     )
 
 
+def test_lifespan_cancels_both_transport_tasks_before_closing_provider(tmp_path: Path, monkeypatch) -> None:
+    settings = build_settings(tmp_path)
+    settings.enable_scheduler = True
+    started: set[str] = set()
+    cancelled: set[str] = set()
+    ready = asyncio.Event()
+    original_close = TransportCollectionService.close
+
+    async def parking_scheduler(app):
+        await asyncio.Event().wait()
+
+    async def transport_scheduler(app, scope):
+        started.add(scope)
+        if started == {"highway", "fuel"}:
+            ready.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.add(scope)
+
+    async def close(service):
+        assert cancelled == {"highway", "fuel"}
+        await original_close(service)
+
+    monkeypatch.setattr("app.main._run_scheduler", parking_scheduler)
+    monkeypatch.setattr("app.main._run_transport_scheduler", transport_scheduler)
+    monkeypatch.setattr(TransportCollectionService, "close", close)
+    with TestClient(create_app(settings)) as client:
+        client.portal.call(asyncio.wait_for, ready.wait(), 5)
+    assert cancelled == started == {"highway", "fuel"}
+
+
 def test_transport_collection_stores_and_deduplicates_snapshots(tmp_path: Path) -> None:
     settings = build_settings(tmp_path)
     engine, session_factory = create_engine_and_session_factory(settings.database_url)
