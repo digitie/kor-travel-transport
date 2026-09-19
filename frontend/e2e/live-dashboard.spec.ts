@@ -4,6 +4,7 @@ import {
   type APIRequestContext,
   type Locator,
 } from "@playwright/test";
+import { isFreshHighwayObservation } from "./transport-freshness";
 
 const ROUTES = ["/", "/analytics", "/history", "/fees", "/backup"] as const;
 
@@ -243,7 +244,7 @@ test.describe("live parking-radar dashboard", () => {
         if (path.includes("/highways/traffic")) {
           expect(payload.items.length).toBeGreaterThan(0);
           expect(payload.items[0].source).toBe("krex_traffic_flow");
-          expect(Date.parse(payload.items[0].collected_at)).toBeGreaterThan(Date.now() - 900_000);
+          expect(isFreshHighwayObservation(payload.items[0]), "소통 관측·저장 시각의 최신성").toBe(true);
         } else if (path.includes("/fuel/stations")) {
           expect(payload.items.length).toBeGreaterThan(0);
           expect(payload.items[0].source).toBe("opinet_browser");
