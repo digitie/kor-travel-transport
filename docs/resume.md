@@ -7,13 +7,14 @@
   저장 자료를 외부 OpenAPI와 내부 통계로 즉시 제공한다.
 - 현재 T-040 브랜치에서 `python-krex-api` 고속도로 소통·돌발과 최신
   `python-opinet-api` Playwright 주유소·유가 수집/저장/API/통계를 구현했다. WSL2
-  백엔드 전체 테스트는 통과했고, PR/CI·두 명의 적대적 리뷰·live E2E가 남아 있다.
+  백엔드 전체 테스트는 통과했다. 최신 보강에서는 DB 실패 실행의 durable 상태,
+  RFC7807 OpenAPI 계약, transport live E2E의 활성/비활성 명시 검증을 추가했다.
 
 - 기준일: 2026-09-19
 - 작업 브랜치: `codex/transport-collection-openapi` (T-040 변경 미커밋).
-- 다음 한 작업: 프론트 검증과 PR/CI를 완료한 뒤 James/Popper 리뷰와 E2E를 통과시키고
-  `kor-travel-transport`에 머지한다. 그 다음 KRIC provider 구현과 교통정보 확장 조사
-  문서를 시작한다.
+- 다음 한 작업: 최신 보강을 push하고 server14에 배포한 뒤 James/Popper 재리뷰와
+  live E2E를 통과시켜 PR #30을 `kor-travel-transport`에 머지한다. 그 다음에만 KRIC
+  provider 구현과 교통정보 확장 조사 문서를 시작한다.
 - `digitie/kor-travel-airport`(구 `digitie/parking-radar`) PR #2~#28 모두 **MERGED**
   상태다. 이 세션에서 다룬 마지막 코드/운영 PR은
   [#28](https://github.com/digitie/kor-travel-airport/pull/28)(UI 밀도 개선,

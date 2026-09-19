@@ -171,6 +171,15 @@ class FuelStationResponse(BaseModel):
     items: list[FuelStationItem]
 
 
+class TransportCollectionRunStatus(BaseModel):
+    id: int
+    started_at: datetime
+    finished_at: datetime | None = None
+    status: str
+    trigger: str
+    error: str | None = None
+
+
 class TransportCollectorStatus(BaseModel):
     scheduler_enabled: bool
     collection_enabled: bool
@@ -180,6 +189,7 @@ class TransportCollectorStatus(BaseModel):
     last_fuel_success_at: datetime | None = None
     next_fuel_due_at: datetime | None = None
     last_fuel_error: str | None = None
+    last_run: TransportCollectionRunStatus | None = None
     sources: list["TransportSourceStatus"] = Field(default_factory=list)
 
 

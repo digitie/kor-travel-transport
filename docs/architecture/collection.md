@@ -15,12 +15,23 @@
 - `/v1/transport/highways/traffic`, `/v1/transport/highways/incidents`,
   `/v1/transport/fuel/stations`: PostgreSQL 최신/기간 데이터 조회
 - `/v1/transport/statistics`: 저장 데이터에서 평균 속도, 돌발 건수, 유종별 가격 통계 계산
-- `/v1/transport/collector-status`: 소스별 수집 상태와 마지막 오류 확인
+- `/v1/transport/collector-status`: 소스별 수집 상태와 마지막 실행 결과/오류 확인
 
 통합 수집 실행은 기존 주차 수집과 별도 `CollectionRun.trigger=transport_scheduler`를
 사용한다. 따라서 기존 주차 dashboard의 최근 실행/신선도 집계에 섞이지 않는다. 소스별
 실행 상태는 `transport_collection_states`로 기록하며 실패 시 원본 오류도
 `raw_api_responses`에 남긴다. API는 외부 원본을 매 요청마다 호출하지 않는다.
+실행 transaction이 DB flush 단계에서 rollback되더라도 실패한
+`CollectionRun(trigger LIKE 'transport_%')`을 별도 transaction으로 보존한다.
+`collector-status.last_run`은 이 durable 실행 결과와 안정적인 `collection_failed`
+오류 코드만 외부에 노출해, 이전 성공 상태를 현재 성공으로 오인하지 않게 한다.
+
+운영 live E2E는 두 설정 상태를 모두 명시적으로 검증한다. `TRANSPORT_COLLECTION_ENABLED=true`
+이면 최근 scheduler 실행이 `success` 또는 `partial_success`이고 적어도 한 source에
+최근 성공 시각이 있어야 한다. KREX/OPINET 승인 키가 아직 없는 server14 환경에서는
+기능을 임의로 sample 성공으로 위장하지 않고 `client_mode=disabled`와 실행 없음이
+명시되는지 검증한다. 실제 KREX·Playwright 수집 성공 gate는 두 provider 자격증명을
+운영 secret에 등록한 뒤 같은 live E2E를 다시 실행해야 한다.
 
 ## 목적
 

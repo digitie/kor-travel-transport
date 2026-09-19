@@ -16,6 +16,13 @@
   회귀 테스트를 추가했다. WSL2 백엔드 전체 `105 passed`, 프론트 단일 worker에서
   기존 52개와 누락 worker 재실행 9개를 합쳐 `61 passed`,
   TypeScript 검사와 production build도 통과했다.
+- 적대적 재리뷰에서 발견된 P1을 보완했다. transport DB flush 실패 실행을
+  `CollectionRun`에 durable하게 남기고 `collector-status.last_run`으로 안정적인 오류
+  코드만 공개했으며, RFC7807 422 응답과 커밋된 OpenAPI 문서를 일치시켰다. transport
+  live E2E는 수집 활성화 시 최근 scheduler 적재를, 자격증명이 없는 server14에서는
+  명시적인 disabled 상태를 검증하도록 강화했다. 추가 회귀를 포함해 백엔드 `107 passed`,
+  프론트 단일 thread `55 passed`와 worker 재실행 `6 passed`, TypeScript/build가
+  통과했다(WSL worker 시작 timeout은 단일 파일 재실행으로 확인).
 
 ## 2026-09-07
 

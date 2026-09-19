@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Query, Req
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import func, select
@@ -259,6 +260,55 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if forwarded_proto == "https":
             response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         return response
+
+    def custom_openapi() -> dict:
+        """Keep the committed schema aligned with the RFC 7807 error handlers."""
+        if app.openapi_schema:
+            return app.openapi_schema
+        schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            description=app.description,
+            routes=app.routes,
+        )
+        components = schema.setdefault("components", {}).setdefault("schemas", {})
+        components["ProblemDetails"] = {
+            "type": "object",
+            "required": ["type", "title", "status", "detail", "instance"],
+            "properties": {
+                "type": {"type": "string", "format": "uri-reference"},
+                "title": {"type": "string"},
+                "status": {"type": "integer"},
+                "detail": {
+                    "description": "문제의 세부 내용 또는 검증 오류 목록",
+                    "oneOf": [
+                        {"type": "string"},
+                        {"type": "array", "items": {}},
+                        {"type": "object", "additionalProperties": True},
+                    ],
+                },
+                "instance": {"type": "string"},
+            },
+        }
+        for path_item in schema.get("paths", {}).values():
+            for operation in path_item.values():
+                if not isinstance(operation, dict) or "responses" not in operation:
+                    continue
+                response = operation["responses"].get("422")
+                if response is None:
+                    continue
+                operation["responses"]["422"] = {
+                    "description": "요청 검증 오류",
+                    "content": {
+                        "application/problem+json": {
+                            "schema": {"$ref": "#/components/schemas/ProblemDetails"}
+                        }
+                    },
+                }
+        app.openapi_schema = schema
+        return schema
+
+    app.openapi = custom_openapi
 
     def get_session_factory(request: Request) -> async_sessionmaker[AsyncSession]:
         return request.app.state.session_factory
@@ -556,6 +606,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     item[key] = serialize_utc(item[key])
             if item["last_error"] is not None:
                 item["last_error"] = "collection_failed"
+        if status["last_run"] is not None:
+            for key in ("started_at", "finished_at"):
+                if status["last_run"][key] is not None:
+                    status["last_run"][key] = serialize_utc(status["last_run"][key])
         if status["last_fuel_error"] is not None:
             status["last_fuel_error"] = "collection_failed"
         return TransportCollectorStatus(**status)

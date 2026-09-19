@@ -137,6 +137,20 @@ def test_api_docs_can_be_disabled(tmp_path: Path) -> None:
         assert client.get("/openapi.json").status_code == 404
 
 
+def test_openapi_declares_rfc7807_validation_errors(tmp_path: Path) -> None:
+    with build_client(tmp_path, enable_api_docs=True) as client:
+        schema = client.get("/openapi.json").json()
+        response = client.get("/v1/transport/highways/traffic", params={"days": 0})
+
+    validation_response = schema["paths"]["/v1/transport/highways/traffic"]["get"]["responses"]["422"]
+    assert validation_response["content"]["application/problem+json"]["schema"] == {
+        "$ref": "#/components/schemas/ProblemDetails"
+    }
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["status"] == 422
+
+
 def test_trusted_host_rejects_unexpected_hosts(tmp_path: Path) -> None:
     with build_client(tmp_path, trusted_hosts_csv="parking.local") as client:
         rejected = client.get("/health", headers={"host": "unexpected.local"})

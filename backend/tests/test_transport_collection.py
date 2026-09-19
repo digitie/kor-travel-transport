@@ -4,7 +4,9 @@ import asyncio
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
+import pytest
 from fastapi.testclient import TestClient
 from krex import CongestionLevel, Direction, Incident, KrexQuotaExceededError, TrafficFlow
 from opinet import ProductCode, StationType
@@ -336,6 +338,28 @@ def test_transport_openapi_returns_stored_data_and_statistics(tmp_path: Path) ->
         INCIDENT_SOURCE,
         OPINET_SOURCE,
     }
+    assert status.json()["last_run"]["status"] == "success"
+    assert status.json()["last_run"]["trigger"] == "transport_test"
+
+
+def test_transport_status_exposes_a_durable_failed_run(client) -> None:
+    service = client.app.state.transport_collection_service
+    service.provider = FakeTransportProvider()
+    service._store_traffic = AsyncMock(side_effect=RuntimeError("database flush failed"))
+
+    async def collect() -> None:
+        async with client.app.state.session_factory() as session:
+            await service.collect(session, trigger="test")
+
+    with pytest.raises(RuntimeError, match="database flush failed"):
+        asyncio.run(collect())
+
+    status = client.get("/v1/transport/collector-status")
+
+    assert status.status_code == 200
+    assert status.json()["last_run"]["status"] == "failed"
+    assert status.json()["last_run"]["trigger"] == "transport_test"
+    assert status.json()["last_run"]["error"] == "collection_failed"
 
 
 def test_transport_status_redacts_collection_errors(tmp_path: Path) -> None:

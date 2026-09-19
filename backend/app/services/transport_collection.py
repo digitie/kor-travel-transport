@@ -44,6 +44,7 @@ KREX_PAGE_SIZE = 1000
 KREX_MAX_PAGES = 100
 KREX_MAX_FILTER_VALUES = 20
 TRANSPORT_COLLECTION_ADVISORY_LOCK_KEY = 420040
+TRANSPORT_TRIGGER_PREFIX = "transport_"
 
 T = TypeVar("T")
 
@@ -239,7 +240,10 @@ class TransportCollectionService:
     async def collect(self, session: AsyncSession, trigger: str = "transport_scheduler") -> dict[str, Any]:
         async with self.operation_lock:
             await self._acquire_database_lock(session)
-            return await self._collect_unlocked(session, trigger)
+            normalized_trigger = (
+                trigger if trigger.startswith(TRANSPORT_TRIGGER_PREFIX) else f"{TRANSPORT_TRIGGER_PREFIX}{trigger}"
+            )
+            return await self._collect_unlocked(session, normalized_trigger)
 
     @staticmethod
     async def _acquire_database_lock(session: AsyncSession) -> None:
@@ -785,6 +789,12 @@ class TransportCollectionService:
             )
         ).scalars().all()
         fuel_state = next((item for item in states if item.source == OPINET_SOURCE), None)
+        last_run = await session.scalar(
+            select(CollectionRun)
+            .where(CollectionRun.trigger.like(f"{TRANSPORT_TRIGGER_PREFIX}%"))
+            .order_by(CollectionRun.started_at.desc(), CollectionRun.id.desc())
+            .limit(1)
+        )
         return {
             "scheduler_enabled": self.settings.enable_scheduler and self.enabled,
             "collection_enabled": self.enabled,
@@ -794,6 +804,19 @@ class TransportCollectionService:
             "last_fuel_success_at": fuel_state.last_success_at if fuel_state is not None else None,
             "next_fuel_due_at": fuel_state.next_due_at if fuel_state is not None else None,
             "last_fuel_error": fuel_state.last_error if fuel_state is not None else None,
+            "last_run": (
+                {
+                    "id": last_run.id,
+                    "started_at": last_run.started_at,
+                    "finished_at": last_run.finished_at,
+                    "status": last_run.status,
+                    "trigger": last_run.trigger,
+                    # The public endpoint deliberately exposes only a stable error marker.
+                    "error": "collection_failed" if last_run.error_message else None,
+                }
+                if last_run is not None
+                else None
+            ),
             "sources": [
                 {
                     "source": item.source,
