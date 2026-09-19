@@ -1,5 +1,13 @@
 # 아키텍처
 
+## 통합 교통정보 목표
+
+`kor-travel-transport`는 국내 여행에 필요한 교통정보를 provider 라이브러리로 주기적으로
+수집하고 PostgreSQL에 원본과 정규화 스냅샷으로 보존한 뒤, 외부 OpenAPI와 저장 데이터
+기반 내부 통계로 즉시 제공하는 통합 라이브러리/API다. 공항 주차는 기존 사용자 화면을
+제공하는 한 영역일 뿐이며, 고속도로·철도·도시철도·여객항구·배편을 같은 수집/저장/조회
+경계에 단계적으로 추가한다.
+
 ## 구성
 
 ### 백엔드
@@ -8,7 +16,7 @@
 - SQLAlchemy 2 기반 비동기 데이터 접근
 - PostgreSQL 16 저장, Alembic migration
 - SQLite는 legacy import와 빠른 단위 테스트에만 사용
-- 수집, 분석, 요금 계산, 비행편 마커 API 제공
+- 수집, 분석, 요금 계산, 비행편 마커, 통합 교통정보 API 제공
 
 ### 프론트엔드
 
@@ -34,6 +42,20 @@
 3. 파싱 결과는 `airports`, `parking_lots`, `parking_snapshots`에 반영한다.
 4. 분석 API는 `parking_snapshots`를 기반으로 계산한다.
 
+통합 교통정보 흐름은 별도 `TransportCollectionService`가 담당한다.
+
+1. `python-krex-api`로 고속도로 소통(`traffic.flow`)과 돌발(`traffic.incident`)을
+   조회한다.
+2. 최신 `python-opinet-api`의 `OpinetBrowserCollector`로 지역별 주유소/유가 화면을
+   수집한다. Playwright가 수집한 지역·주유소·유종·편의정보와 행 단위 원본 필드를 PostgreSQL에
+   저장한다.
+3. 실행 단위는 `collection_runs`에 `transport_highway_scheduler` 또는
+   `transport_fuel_scheduler`로 기록하고, 원본 요약은
+   `raw_api_responses`, 정규화 결과는 `highway_*_snapshots`, `fuel_*` 테이블에 저장한다.
+4. 소스별 시작/성공/다음 예정/오류 상태는 `transport_collection_states`에 남긴다.
+5. 조회 API는 저장된 스냅샷만 읽으며 `/v1/transport/statistics`는 같은 원본 스냅샷에서
+   기간별 속도·돌발·유가 통계를 계산한다.
+
 수집 소스는 기관별로 분리한다.
 
 - `kac_parking`: 한국공항공사 `15056803`
@@ -51,6 +73,20 @@
 - 스케줄러는 시작하자마자 1회 수집하고, 이후 `COLLECT_INTERVAL_SECONDS`마다 반복된다.
 - 기본 개발 간격은 `300초`, 즉 5분이다.
 - n150 운영 간격은 `300초`, 즉 5분이다.
+
+통합 교통정보 scheduler도 `ENABLE_SCHEDULER=true`일 때 고속도로와 유가별 task로
+시작한다. 주차 수집과 같은 프로세스에 있지만 lock·실행 기록·API 상태를 분리한다.
+고속도로와 유가도 별도 세션/트랜잭션과 PostgreSQL advisory lock(420040/420041)을
+사용하므로 전국 브라우저 탐색이 고속도로 저장을 막지 않는다. 잠금은 짧은 예약 트랜잭션에만
+사용하며 다음 예정 시각과 실행 시작을 확정한 뒤 해제한다. 외부 조회 중에는 DB 연결과
+트랜잭션을 점유하지 않는다. 전체 수동 실행은 두 잠금을 같은 순서로 잡는다.
+고속도로 조회는 소스별 최대 120초(전체 안전 상한 240초), 전국 유가 조회는 최대 2시간 후 취소한다. 예약 기간은 조회
+제한보다 길게 두며, 취소·재시작에도 유가의 최소 8시간 예약을 유지한다. 고속도로 다음
+예정 시각은 성공 시 시작 시각에 설정 주기를 더해 계산하고,
+scheduler는 DB의 남은 대기 시간을 사용해 미세한 tick 차이로 한 주기를 건너뛰지 않는다.
+오피넷 브라우저 수집은 pin된 provider의 기본 8시간
+throttle(허용 범위 8~12시간, 24시간 내 최대 3회)을 추가로 적용한다.
+유가 scheduler는 다음 예정 시각까지 기다리므로 5분마다 불필요한 skipped 실행을 만들지 않는다.
 
 주의:
 
@@ -152,6 +188,16 @@
   - 백업 다운로드와 확인 후 복원
 - `GET /v1/flights/status`
   - 선택 공항의 당일 출도착 비행편 마커
+- `GET /v1/transport/highways/traffic`
+  - PostgreSQL에 저장된 고속도로 소통 스냅샷
+- `GET /v1/transport/highways/incidents`
+  - PostgreSQL에 저장된 고속도로 돌발 스냅샷
+- `GET /v1/transport/fuel/stations`
+  - 최신 Playwright 오피넷 주유소·유가·편의정보
+- `GET /v1/transport/statistics`
+  - 저장 데이터 기반 고속도로 속도/돌발/유가 통계
+- `GET /v1/transport/collector-status`
+  - 통합 교통정보 scheduler와 소스별 수집 상태
 
 ## 프론트 화면 구조
 
@@ -193,6 +239,9 @@ legacy 병렬 요청 경로:
 - 프론트는 `NEXT_PUBLIC_API_BASE_URL`이 설정되어 있으면 그 값을 사용한다.
 - 값이 비어 있으면 같은 origin의 `/api/backend`를 호출한다.
 - Next.js 서버는 `/api/backend/*` 라우트에서 허용된 백엔드 경로만 `BACKEND_INTERNAL_URL`로 프록시한다.
+- JSON 응답은 최대 16 MiB와 본문 수신 기한 내에서 버퍼링한다. 본문 timeout은 RFC7807
+  504, 크기 초과·수신 오류는 502로 반환한다. 백업 파일 등 비JSON 응답은 스트리밍하며,
+  전송 시작 후 timeout은 상태 코드를 504로 바꾸지 않고 본문 읽기 실패로 처리한다.
 - Docker/n150 기본값은 `BACKEND_INTERNAL_URL=http://backend:8000`이다.
 - 이 방식은 LAN IP와 `https://pr.digitie.mywire.org/` 외부 도메인을 같은 빌드로 처리하고, 외부 HTTPS 페이지가 HTTP API 포트를 직접 호출하는 문제를 피하기 위한 기본값이다.
 

@@ -4,7 +4,27 @@
 세부 기능 문서가 흩어져 있을 때 먼저 이 문서를 읽고, 필요하면 링크된 개별 문서로 내려가는 것을 권장한다.
 
 최종 확인 기준일:
-- `2026-08-22`
+- `2026-09-19`
+
+## 0. 통합 교통정보 목적과 현재 구현
+
+`kor-travel-transport`는 국내 여행을 위한 통합 교통정보 라이브러리/API다. 필요한
+교통 데이터를 provider에서 주기적으로 얻어 PostgreSQL에 원본/정규화 스냅샷으로
+저장하고, 저장 자료를 외부 OpenAPI로 즉시 제공하며, 스냅샷 기반 내부 통계를 부가
+정보로 제공한다. 공항 주차 대시보드는 기존 기능이며 통합 플랫폼의 한 소비 화면이다.
+
+이번 작업에서 구현한 범위:
+
+- `python-krex-api` `traffic.flow`/`traffic.incident`를 transport scheduler에 연결
+- 최신 `python-opinet-api` Playwright collector를 사용해 지역·주유소·유종 가격·편의
+  정보를 PostgreSQL에 저장
+- `highway_traffic_snapshots`, `highway_incident_snapshots`, `fuel_stations`,
+  `fuel_price_snapshots`, `transport_collection_states`와 Alembic `0004`/`0005` 추가
+- `/v1/transport/highways/traffic`, `/v1/transport/highways/incidents`,
+  `/v1/transport/fuel/stations`, `/v1/transport/statistics`,
+  `/v1/transport/collector-status` 제공
+- KREX 전체 페이지 수집·쿼터 backoff·PostgreSQL advisory lock, OPINET 빈 결과 보호,
+  고속도로/돌발/유가의 중복 저장 방지, 소스별 수집 상태와 공개 오류 마스킹 제공
 
 ## 1. 현재 구현 범위
 

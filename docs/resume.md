@@ -2,8 +2,57 @@
 
 ## 현재 상태
 
-- 기준일: 2026-09-07
-- 작업 브랜치: `main` (로컬/원격 모두 `e39f05b`).
+- 이 작업의 목표는 `kor-travel-transport`를 국내 여행용 통합 교통정보 라이브러리/API로
+  운영하는 것이다. provider에서 데이터를 주기적으로 수집해 PostgreSQL에 저장하고,
+  저장 자료를 외부 OpenAPI와 내부 통계로 즉시 제공한다.
+- 현재 T-040 브랜치에서 `python-krex-api` 고속도로 소통·돌발과 최신
+  `python-opinet-api` Playwright 주유소·유가 수집/저장/API/통계를 구현했다. WSL2
+  백엔드 전체 테스트는 통과했다. 최신 보강에서는 DB 실패 실행의 durable 상태,
+  RFC7807 OpenAPI 계약, 활성 live 소스의 실제 저장·최신성 E2E 검증을 추가했다.
+
+- 기준일: 2026-09-20
+- 최신 검증: 런타임 `f7987b2d8858e83b2a602ac70cdcd5b5a4902d6b`의 WSL/Docker
+  PostgreSQL 백엔드 각각 130개, 프론트 각각 85개와 타입/build가 통과했다. n150 배포와
+  공개 health SHA 일치, 설치 OPINET `39e7acc`의 초기 탐색/종료(지역 조회 0회)를 확인했다.
+  유가 59,035건과 다음 07:05:20 KST 예약은 보존됐다. 배포 직후 WSL E2E 첫 주차 표시의
+  timeout 실패(15개 통과/1개 실패)를 보존했으며, 이후 동일 SHA GitHub push/PR CI의
+  backend/frontend/live-e2e는 모두 통과했다. 아래는 이 최종 검증에 이른 진행 이력이다.
+- 작업 브랜치: `codex/transport-collection-openapi`, Draft PR #30.
+  기존 검증 런타임은 `50c9cd42d2f7a071f216d815e9bbce94546383ca`이며 현재 후보는
+  후속 OPINET `39e7acc` pin과 검색 문맥 API 설명·통합 회귀를 추가한 상태다.
+  n150 최종 배포는 `15d46a9a223827c7732d984f73822fbe7e15712e`이며 공개 `/health`의
+  SHA 일치와 DB 정상 상태를 확인했다. 이 배포의 런타임은 위 `50c9cd4`와 동일하다.
+  형제 provider 수정 PR은 KREX #16(`adda287`), OPINET #18(`39e7acc`)이다. 앞선
+  `1601ef3`의 실제 수집 후 최종 리뷰에서 지역 간 동일 UID 가격 소실 경로를 재현해
+  provider의 전역 병합으로 보완했고 통합 의존성을 새 SHA로 고정했다. 통합 최종 리뷰의
+  추가 P1을 `af26362`/`02545fe`에서 보완했으며, 소스별 DB transaction 격리를 추가해
+  검증을 완료했다. 기존 candidate의 WSL 백엔드 전체 125개가 통과했고 격리 보완 후에는
+  실제 PostgreSQL NOT NULL 오류를 이용한 집중 테스트 4개 및 최종 전체 128개가 통과했다.
+  고속도로 소통/돌발의 독립 성공·backoff, skip 기록의 실패 은폐 방지, 유효 가격 없는
+  OPINET 실패 처리, RFC7807 500 및 JSON 프록시 body timeout을 보강한다.
+  수정 프론트 WSL 전체 80개/타입 검사/build와 Docker 80개 통과. 두 reviewer가
+  `50c9cd4` 코드의 P0/P1 없음으로 판정했다. James는 코드 승인, Popper는 전국 유가
+  운영 게이트 미완료로 최종 승인을 보류했다. Docker 백엔드 128개도 통과했으며
+  해당 런타임의 최종 n150 배포도 완료했다. 배포 SHA를 고정한 WSL 공개 live E2E는
+  15개 통과/1개 실패했다. 실패는 `opinet_browser.last_error=collection_failed`로,
+  소스 준비 상태 검증에서 멈춰 후속 교통/유가 조회·통계 검증에는 도달하지 않았다.
+  이후 승인된 복구 실행과 강화 E2E는 아래와 같이 성공했다. 최종 후보 배포/CI 검증 전으로
+  PR은 아직 미머지다.
+  n150 실제 첫 KREX 성공은 소통 8,370건·돌발 80건이고, 다음 주기 수집과 공개 통계까지
+  확인했다. 이는 전국 OPINET 성공 증적과 별개다.
+  사용자 승인으로 22:23:21 KST에 예외 OPINET 전국 수집 run 13556을 1회 시작했다.
+  기존 상태는 보호 receipt로 백업했고 기존 오류를 삭제하지 않았다. run 13556은
+  23:12:02 KST에 success 완료, DB 기준정보 11,807곳/가격 59,035건/양수 29,426건을
+  새 세션에서 확인했다. 다음 예정은 9월 20일 07:05:20 KST로 확정됐다.
+  강화 E2E `308b278`을 배포 SHA `15d46a9`에 고정한 실행도 16개 모두 통과했다.
+  별도 최신성 점검에서 20:31 KST 공개 소통 API의 최신 관측은 19:52 KST로 남아 있었다.
+  새 공급자 연결에서도 같은 응답 시각을 확인했다. 수집 성공만으로 실시간 자료가
+  갱신됐다고 간주하지 않는다. 22:25 KST에는 관측이 22:20 KST로 갱신됨을 확인했다.
+  추가 E2E 보강은 관측/저장 시각 모두 15분 이내·미래 60초 이내를 요구한다. 회귀를
+  포함한 프론트 WSL/Docker 85개, 타입/build와 두 코드 재리뷰를 통과했다.
+- 다음 한 작업: 두 리뷰어의 최종 운영 확인을 마치고 증적 문서 후보의 배포 SHA와 CI를
+  정렬한 뒤 provider PR #16/#18 및 PR #30을 `kor-travel-transport`에 머지한다. 그 다음에만 KRIC
+  provider 구현과 교통정보 확장 조사 문서를 시작한다.
 - `digitie/kor-travel-airport`(구 `digitie/parking-radar`) PR #2~#28 모두 **MERGED**
   상태다. 이 세션에서 다룬 마지막 코드/운영 PR은
   [#28](https://github.com/digitie/kor-travel-airport/pull/28)(UI 밀도 개선,
@@ -14,8 +63,7 @@
   T-033(shadcn 기반 도입)·T-034(button/card/table/alert/confirm-dialog 치환)·
   T-035(라우트 기반 앱 셸)·T-036(과거 자료 조회 기능)·T-037(Hallmark audit)·
   T-038(Hallmark redesign)·T-039(UI 밀도 개선) 전부 완료·배포·live E2E 검증까지
-  끝났다. 현재 `docs/tasks.md`에 진행 중/예정 task가 없다 — 다음 작업은 사용자
-  요청을 기다린다.
+  끝났다. 현재 진행 중인 작업은 `docs/tasks.md`의 T-040이다.
   - **T-039에서 새로 배운 것**: (1) "레이아웃이 비효율적"처럼 모호한 사용자
     피드백은 코드만 읽어서는 특정하기 어렵다 — 브라우저 확장이 연결 안 될 때는
     Playwright를 라이브 사이트에 직접 붙여 스크린샷으로 확인하는 게 코드
@@ -165,10 +213,9 @@
 
 ## 다음 한 작업
 
-`docs/tasks.md`에 진행 중/예정 task가 없다. `T-033`~`T-039`(shadcn/ui 전환 + 과거
-자료 조회 + Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료됐다. 다음 작업은
-사용자 요청을 기다린다 — 후보로 남겨둔 미해결 항목은 `docs/tasks.md`의 "진행 중인
-작업 인덱스" 절 하단(T-035/T-036/T-038/T-039가 남긴 후속 항목)을 참고.
+T-040의 provider 오류 수정 → 독립 리뷰 2명 → WSL/Docker 테스트 → n150 실제
+수집·DB·공개 API·E2E 검증 → PR #30 머지 순서로 진행한다. 비활성/샘플 데이터는
+최종 운영 승인으로 인정하지 않는다. 머지 후 KRIC provider와 교통정보 확장 조사를 진행한다.
 
 ## 확인된 사실
 
@@ -176,12 +223,12 @@
 - 13번은 Docker를 조작하지 않고 `http://192.168.1.13:3000/api/backend` HTTP GET만 사용했다.
 - 13번 수집기는 10분 주기, n150 scheduler는 configured 300초/effective 180초로 운영 중이며
   최신 strict 검증에서는 run `86`, `2026-08-22T07:21:03Z` 관측까지 성공했다.
-- n150 PostgreSQL은 Alembic `0003_legacy_source_identity (head)`이고 n150은 Docker Compose로
-  API `14000`, web `14001`을 제공한다. configured scheduler는 300초, effective tick은
+- n150 PostgreSQL은 Alembic `0005_transport_query_indexes (head)`이고 n150은 Docker Compose로
+  API `14001`, web `14002`를 제공한다. 주차 configured scheduler는 300초, effective tick은
   180초 tick과 120초 safety buffer다.
 - HTTP fallback migration은 snapshots 38,946건/lot 44개 관측, reference lot 53개/legacy ID
   53개 상태로 운영되고, duplicate legacy ID는 0개다.
-- 현재 n150 runtime은 배포 Git full SHA와 `/health`의 release SHA가 일치하며 API/web 포트 계약
+- 이전 T-039 검증 당시 n150 runtime은 배포 Git full SHA와 `/health`의 release SHA가 일치하며 API/web 포트 계약
   (`14001`/`14002`)을 지킨다. 2026-09-07 기준 `release_sha=e39f05b52e56d363eccf4a146c6271a4ad800cad`
   (=`main` HEAD, PR #28 squash-merge 커밋, T-039)이고, 외부 게이트웨이(`pr-api`/`pr.digitie.mywire.org`)
   양쪽에서 이 값과 정상 응답을 재확인했다(live E2E `15/15 PASS`, 새로 추가한

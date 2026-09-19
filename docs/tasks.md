@@ -10,9 +10,30 @@
 
 ## 진행 중인 작업 인덱스
 
-현재 진행 중/예정 task가 없다. `T-033`~`T-039`(shadcn/ui 전환 + 과거 자료 조회 +
+현재 진행 중 task는 `T-040`이다. `T-033`~`T-039`(shadcn/ui 전환 + 과거 자료 조회 +
 Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks-done.md`로
 이동했다.
+
+### T-040 통합 교통정보 수집·OpenAPI
+
+- [x] `python-krex-api` 고속도로 소통·돌발과 `python-opinet-api` Playwright 유가
+      collector를 PostgreSQL 주기 수집에 연결
+- [x] 저장 스냅샷 조회·내부 통계 OpenAPI와 Alembic migration 추가
+- [ ] WSL/Docker 테스트, James/Popper 적대적 리뷰, n150 live E2E 후 PR 머지
+- [ ] 현재 PR 머지 후 KRIC provider와 교통정보 확장 조사 문서 작업을 이어간다.
+- [ ] 후속 P2: KREX 공통 코드 조회의 `FlowDirection` 노출, 대량 저장 데이터의 보관 기간과
+      외부 목록 API 커서 페이지 정책을 정의한다. 현재 목록 조회는 최대 1,000건으로 제한한다.
+      2026-09-19 운영 측정은 소통 16,740행/16,228,352바이트(인덱스 포함)다. 매 5분
+      8,370개 신규 관측을 저장한다고 가정하면 소통 테이블만 약 2.18 GiB/일이다.
+      실제 중복 관측은 저장하지 않으며 원본·백업 용량은 별도다. 보관 기간 결정 전
+      데이터를 임의 삭제하지 않는다.
+- [ ] 별도 보안 후속: `npm audit --omit=dev`가 보고한 Next.js/AVIF·sharp 취약점의 영향
+      검토와 의존성 패치, WSL/Docker/live E2E 검증을 수행한다.
+- [ ] 후속 P2: provider 인증/영구 파싱 오류의 장기 backoff·fail-stop 정책을 정의한다.
+      현재 quota는 별도 backoff, 그 밖의 고속도로 오류는 기본 5분 주기로 재시도한다.
+- [ ] 후속 P2: 통계 API의 운영 지연과 proxy timeout 여유를 측정하고 보완한다.
+      9월 19일 공개 proxy에서 간헐 504 후 재조회 성공을 확인했다. 전국 데이터 증가 시
+      쿼리 계획/응답량/호스트 I/O를 분리해 확인하며 단순 timeout 완화로 숨기지 않는다.
 
 `T-034`에서는 `<select>`/`ResponsiveSection`의 `<details>`/
 daily-flight-overlay-chart의 토글·체크박스는 테스트 호환성 위험 때문에 의도적으로

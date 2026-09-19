@@ -1,11 +1,20 @@
-# kor-travel-airport
+# kor-travel-transport
 
-이 저장소는 `parking-radar`라는 웹앱 하나를 담고 있다 — 저장소/패키지 이름은
-`kor-travel-airport`(kor-travel-* 생태계 명명 규칙 정렬)이지만, 배포되는 웹앱의 브랜드/화면
-표시 이름은 계속 `parking-radar`다.
+이 저장소는 국내 여행을 위한 통합 교통정보 라이브러리/API와 이를 검증하는
+`parking-radar` 웹앱을 함께 담는다. 저장소/패키지 식별자는 `kor-travel-transport`이며,
+웹앱의 사용자 노출 브랜드/화면 표시 이름은 호환성을 위해 계속 `parking-radar`다.
 
-`parking-radar`는 국내 공항 주차장의 현재 잔여 주차면과 과거 패턴을 빠르게 확인하기 위한 반응형 웹앱이다.  
-공항 전체 기준과 세부 주차장 기준을 같은 화면에서 오가며, 여행 출발 전에 “지금 어디가 얼마나 남았는지”와 “보통 언제 빠르게 줄어드는지”를 함께 볼 수 있게 만드는 것이 목표다.
+`kor-travel-transport`의 목표는 공항·열차·고속도로·도시철도·여객항구·배편 등 여행에
+필요한 데이터를 provider 라이브러리로 수집하고, 주기적으로 PostgreSQL에 원본/정규화
+스냅샷을 저장한 뒤, 외부 OpenAPI와 저장 데이터 기반 내부 통계 API로 즉시 제공하는
+것이다. 현재 이 PR은 `python-krex-api`의 고속도로 소통·돌발 정보와
+`python-opinet-api` 최신 Playwright 지역별 화면 수집기의 주유소·유가 데이터를 이
+흐름에 연결한다.
+
+`parking-radar` 화면은 이 통합 데이터 플랫폼 중 기존 공항 주차 기능을 검증하는
+반응형 웹앱이다. 공항 전체 기준과 세부 주차장 기준을 같은 화면에서 오가며 여행
+출발 전에 “지금 어디가 얼마나 남았는지”와 “보통 언제 빠르게 줄어드는지”를 함께 볼 수
+있게 만든다.
 
 ## 핵심 기능
 
@@ -36,6 +45,11 @@
 - 웹페이지 자동 갱신
 - 주차 요금 계산
   - 한국공항공사 요금과 인천공항공사 요금 API를 분리해 사용
+- 통합 교통정보 수집 기반
+  - 고속도로 실시간 소통·돌발 정보의 주기적 PostgreSQL 적재
+  - 오피넷 Playwright 지역별 주유소·유종별 가격·편의 플래그의 주기적 적재
+  - 적재 원본, 정규화 스냅샷, 소스별 수집 상태와 중복 방지
+  - 저장 데이터 기반 고속도로 속도·돌발·유가 통계
 
 ## 기술 스택
 
@@ -64,6 +78,12 @@
   [https://www.data.go.kr/data/15112968/openapi.do](https://www.data.go.kr/data/15112968/openapi.do)
 - 한국천문연구원 특일 정보
   [https://www.data.go.kr/data/15012690/openapi.do](https://www.data.go.kr/data/15012690/openapi.do)
+
+고속도로 소통·돌발은 `python-krex-api`의 `traffic.flow`/`traffic.incident`를 사용하고,
+오피넷 지역별 공개 화면은 `python-opinet-api`의 `OpinetBrowserCollector`를 사용한다.
+Playwright 수집은 공식 Open API 대체가 아니라 공개 화면의 실험적 수집이며, 현재 pin된
+provider의 기본 전체 실행 간격은 8시간이다. provider 정책상 허용 범위는 8~12시간이고
+24시간 내 최대 3회다.
 
 현재 실시간 기본 수집원은 `15056803`이며, 인천 주차/요금 API는 별도 플래그로 분리되어 있다.
 비행편 정보는 주차 현황 수집과 분리된 조회용 API이며, 하루 흐름 오버레이 차트의 마커 표시 용도로만 사용한다.
@@ -167,6 +187,16 @@ ENABLE_INCHEON_COLLECTION=true
 ENABLE_INCHEON_FEE_COLLECTION=true
 AIRPORT_CODES_CSV=CJJ,CJU,GMP,HIN,ICN,KUV,KWJ,MWX,PUS,RSU,TAE,USN,WJU,YNY
 DATA_GO_KR_SERVICE_KEY=...
+
+# 통합 교통정보 수집
+KEX_EX_API_KEY=...
+TRANSPORT_COLLECTION_ENABLED=true
+TRANSPORT_COLLECT_INTERVAL_SECONDS=300
+TRANSPORT_ROUTE_NOS_CSV=001,050
+TRANSPORT_CONZONE_IDS_CSV=
+OPINET_BROWSER_ENABLED=true
+OPINET_QUERY_LEVEL=sigungu
+OPINET_BROWSER_TIMEOUT_MS=30000
 ```
 
 - `client_mode=live`로 운영할 때는 `SEED_SAMPLE_DATA=false`를 유지한다.
@@ -182,6 +212,14 @@ DATA_GO_KR_SERVICE_KEY=...
 - 빠른 검증용 live 스택을 잠깐 띄웠다면 검증 직후 반드시 내려야 한다.
 - 수집기가 한도 초과를 감지하면 `UPSTREAM_RATE_LIMIT_BACKOFF_SECONDS` 동안 API 호출을 잠시 건너뛰고, `collector-status`에 `upstream_rate_limited=true`와 `upstream_rate_limited_until`을 남긴다.
 - `15056803` 공식 문서상 개발계정 트래픽은 `5,000/일`이지만, 실제 운영에서는 더 이르게 `LIMITED NUMBER OF SERVICE REQUESTS EXCEEDS ERROR.`가 발생할 수 있으므로 하루 단위 정지 대신 짧은 backoff 후 재시도한다.
+- 통합 교통정보 수집은 `TRANSPORT_COLLECTION_ENABLED=true`이고 `ENABLE_SCHEDULER=true`일
+  때 같은 backend 안에서 별도 scheduler로 실행된다. 주차 수집 실행 기록과 섞이지 않도록
+  `collection_runs.trigger=transport_scheduler`로 분리한다.
+- 고속도로 소통·돌발은 기본 5분 주기(`TRANSPORT_COLLECT_INTERVAL_SECONDS`)로 저장한다.
+  소통 행과 돌발 행은 각각 `(source, identity_key, observed_at)` unique로 중복을 막는다.
+- 오피넷 Playwright 수집은 pin된 provider의 기본 8시간 throttle(허용 범위 8~12시간,
+  24시간 내 최대 3회)을 따른다. 화면 자동화가 실패하면 오류를 숨기지 않고
+  `transport_collection_states`와 `raw_api_responses`에 남긴다.
 
 동작 방식:
 
@@ -216,6 +254,20 @@ curl http://localhost:8000/v1/admin/collector-status
 - `enabled_sources`에 `kac_parking`, `incheon_parking`, `incheon_fee`가 의도대로 포함되는지 확인
 - `data_go_kr_service_key_configured=true`
 - `upstream_rate_limited=false`
+
+통합 교통정보 API 확인:
+
+```bash
+curl 'http://localhost:8000/v1/transport/highways/traffic?route_no=001'
+curl 'http://localhost:8000/v1/transport/highways/incidents?days=1'
+curl 'http://localhost:8000/v1/transport/fuel/stations?sido_value=11&product_code=B027'
+curl 'http://localhost:8000/v1/transport/statistics?days=7&route_no=001'
+curl http://localhost:8000/v1/transport/collector-status
+```
+
+위 API는 외부 원본을 매 요청에 재호출하지 않고 PostgreSQL에 저장된 스냅샷을 응답한다.
+`/v1/transport/statistics`는 저장 데이터에서 평균/최소/최대 속도, 돌발 건수, 유종별
+평균·최소·최대 가격을 계산한다. 전체 API 계약은 `docs/openapi.json`에 기록한다.
 
 ## 분석 화면 기준
 

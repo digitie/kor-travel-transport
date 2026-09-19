@@ -31,8 +31,10 @@ def test_settings(tmp_path: Path) -> Settings:
             async with engine.begin() as connection:
                 await connection.execute(
                     text(
-                        "TRUNCATE TABLE raw_api_responses, parking_snapshots, parking_fee_rules, "
-                        "analytics_caches, collection_runs, parking_lots, airports RESTART IDENTITY CASCADE"
+                        "TRUNCATE TABLE fuel_price_snapshots, highway_incident_snapshots, "
+                        "highway_traffic_snapshots, transport_collection_states, raw_api_responses, "
+                        "parking_snapshots, parking_fee_rules, analytics_caches, collection_runs, "
+                        "fuel_stations, parking_lots, airports RESTART IDENTITY CASCADE"
                     )
                 )
             await engine.dispose()

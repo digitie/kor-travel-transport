@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Query, Req
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import func, select
@@ -22,7 +23,18 @@ from sqlalchemy.orm import selectinload
 from app.core.config import Settings, get_settings
 from app.core.time_utils import now_utc, serialize_utc, to_seoul
 from app.db.session import create_engine_and_session_factory, init_database
-from app.models import Airport, CollectionRun, ParkingFeeRule, ParkingLot, ParkingSnapshot, RawApiResponse
+from app.models import (
+    Airport,
+    CollectionRun,
+    FuelPriceSnapshot,
+    FuelStation,
+    HighwayIncidentSnapshot,
+    HighwayTrafficSnapshot,
+    ParkingFeeRule,
+    ParkingLot,
+    ParkingSnapshot,
+    RawApiResponse,
+)
 from app.schemas import (
     AirportSummary,
     BackupFile,
@@ -36,7 +48,17 @@ from app.schemas import (
     FeeCalculationRequest,
     FeeCalculationResponse,
     FlightStatusResponse,
+    FuelPriceItem,
+    FuelPriceStatistics,
+    FuelStationItem,
+    FuelStationResponse,
     HealthResponse,
+    HighwayIncidentItem,
+    HighwayIncidentResponse,
+    HighwayIncidentStatistics,
+    HighwayTrafficItem,
+    HighwayTrafficResponse,
+    HighwayTrafficStatistics,
     HolidayItemSummary,
     HolidayPatternItem,
     HolidayPatternResponse,
@@ -52,6 +74,8 @@ from app.schemas import (
     ThresholdDateHistoryItem,
     ThresholdWeekdayTime,
     TimeSeriesPoint,
+    TransportCollectorStatus,
+    TransportStatisticsResponse,
     WeekdayBucket,
     WeekdayHourlyPattern,
 )
@@ -102,6 +126,7 @@ from app.services.holidays import (
     format_holiday_sentence,
 )
 from app.services.sample_data import seed_sample_database
+from app.services.transport_collection import CollectionScope, OPINET_SOURCE, TRANSPORT_TRIGGER_PREFIX, TransportCollectionService
 
 logger = logging.getLogger(__name__)
 
@@ -126,9 +151,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.session_factory = session_factory
         app.state.settings = resolved_settings
         app.state.collection_service = CollectionService(resolved_settings)
+        app.state.transport_collection_service = TransportCollectionService(resolved_settings)
         app.state.flight_status_service = FlightStatusService(resolved_settings)
         app.state.holiday_service = HolidayService(resolved_settings)
         app.state.scheduler_task = None
+        app.state.transport_scheduler_task = None
+        app.state.fuel_scheduler_task = None
 
         if resolved_settings.seed_sample_data and app.state.collection_service.client_mode == "sample":
             async with session_factory() as session:
@@ -148,6 +176,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ",".join(resolved_settings.supported_airport_codes),
             )
             app.state.scheduler_task = asyncio.create_task(_run_scheduler(app))
+            if app.state.transport_collection_service.enabled:
+                app.state.transport_scheduler_task = asyncio.create_task(_run_transport_scheduler(app, "highway"))
+                if OPINET_SOURCE in app.state.transport_collection_service.enabled_sources:
+                    app.state.fuel_scheduler_task = asyncio.create_task(_run_transport_scheduler(app, "fuel"))
 
         try:
             yield
@@ -157,6 +189,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 scheduler_task.cancel()
                 with suppress(asyncio.CancelledError):
                     await scheduler_task
+            transport_tasks = (app.state.transport_scheduler_task, app.state.fuel_scheduler_task)
+            for task in transport_tasks:
+                if task is not None:
+                    task.cancel()
+            for task in transport_tasks:
+                if task is None:
+                    continue
+                with suppress(asyncio.CancelledError):
+                    await task
+            await app.state.transport_collection_service.close()
             await engine.dispose()
 
     app = FastAPI(
@@ -204,6 +246,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             media_type="application/problem+json",
         )
 
+    @app.exception_handler(Exception)
+    async def problem_json_internal_exception_handler(
+        request: Request, exc: Exception
+    ) -> JSONResponse:
+        # 예외 원문에는 SQL·DB 접속정보·인증키가 포함될 수 있으므로 응답에 사용하지 않는다.
+        return JSONResponse(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            content={
+                "type": "about:blank",
+                "title": HTTPStatus.INTERNAL_SERVER_ERROR.phrase,
+                "status": int(HTTPStatus.INTERNAL_SERVER_ERROR),
+                "detail": "서버 내부 오류가 발생했습니다.",
+                "instance": request.url.path,
+            },
+            media_type="application/problem+json",
+        )
+
     if resolved_settings.trusted_hosts:
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=resolved_settings.trusted_hosts)
     app.add_middleware(
@@ -226,6 +285,66 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         return response
 
+    def custom_openapi() -> dict:
+        """Keep the committed schema aligned with the RFC 7807 error handlers."""
+        if app.openapi_schema:
+            return app.openapi_schema
+        schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            description=app.description,
+            routes=app.routes,
+        )
+        components = schema.setdefault("components", {}).setdefault("schemas", {})
+        components["ProblemDetails"] = {
+            "type": "object",
+            "required": ["type", "title", "status", "detail", "instance"],
+            "properties": {
+                "type": {"type": "string", "format": "uri-reference"},
+                "title": {"type": "string"},
+                "status": {"type": "integer"},
+                "detail": {
+                    "description": "문제의 세부 내용 또는 검증 오류 목록",
+                    "oneOf": [
+                        {"type": "string"},
+                        {"type": "array", "items": {}},
+                        {"type": "object", "additionalProperties": True},
+                    ],
+                },
+                "instance": {"type": "string"},
+            },
+        }
+        documented_errors = {
+            ("/v1/parking/analytics/timeseries", "get"): (400,),
+            ("/v1/holidays/summary", "get"): (400,),
+            ("/v1/flights/status", "get"): (400,),
+            ("/v1/fees/calculate", "post"): (404,),
+            ("/v1/admin/collect", "post"): (404, 409, 429, 502),
+            ("/v1/admin/backups", "post"): (503,),
+            ("/v1/admin/backups/{filename}", "get"): (400, 404),
+            ("/v1/admin/backups/restore", "post"): (400, 404, 409, 503),
+        }
+        for path, path_item in schema.get("paths", {}).items():
+            for method, operation in path_item.items():
+                if not isinstance(operation, dict) or "responses" not in operation:
+                    continue
+                codes = [code for code in operation["responses"] if str(code).startswith(("4", "5"))]
+                codes.extend(str(code) for code in documented_errors.get((path, method), ()))
+                codes.append("500")
+                for code in codes:
+                    operation["responses"][code] = {
+                        "description": "요청 검증 오류" if code == "422" else "애플리케이션 오류",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {"$ref": "#/components/schemas/ProblemDetails"}
+                            }
+                        },
+                    }
+        app.openapi_schema = schema
+        return schema
+
+    app.openapi = custom_openapi
+
     def get_session_factory(request: Request) -> async_sessionmaker[AsyncSession]:
         return request.app.state.session_factory
 
@@ -243,6 +362,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     def get_holiday_service(request: Request) -> HolidayService:
         return request.app.state.holiday_service
+
+    def get_transport_collection_service(request: Request) -> TransportCollectionService:
+        return request.app.state.transport_collection_service
 
     @app.get("/health", response_model=HealthResponse)
     async def health(session: AsyncSession = Depends(get_db)) -> HealthResponse:
@@ -286,6 +408,373 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             )
         return payload
+
+    @router.get("/transport/highways/traffic", response_model=HighwayTrafficResponse)
+    async def transport_highway_traffic(
+        route_no: str | None = Query(default=None),
+        days: int = Query(default=1, ge=1, le=30),
+        limit: int = Query(default=200, ge=1, le=1000),
+        session: AsyncSession = Depends(get_db),
+    ) -> HighwayTrafficResponse:
+        cutoff = now_utc() - timedelta(days=days)
+        query = select(HighwayTrafficSnapshot).where(HighwayTrafficSnapshot.observed_at >= cutoff)
+        if route_no:
+            query = query.where(HighwayTrafficSnapshot.route_no == route_no.strip())
+        query = query.order_by(
+            HighwayTrafficSnapshot.observed_at.desc(), HighwayTrafficSnapshot.id.desc()
+        ).limit(limit)
+        rows = (await session.execute(query)).scalars().all()
+        return HighwayTrafficResponse(
+            generated_at=now_utc(),
+            days=days,
+            route_no=route_no.strip() if route_no else None,
+            items=[
+                HighwayTrafficItem(
+                    source=row.source,
+                    identity_key=row.identity_key,
+                    observed_at=serialize_utc(row.observed_at),
+                    collected_at=serialize_utc(row.collected_at),
+                    route_no=row.route_no,
+                    route_name=row.route_name,
+                    conzone_id=row.conzone_id,
+                    conzone_name=row.conzone_name,
+                    direction=row.direction,
+                    speed=row.speed,
+                    free_flow_speed=row.free_flow_speed,
+                    congestion_level=row.congestion_level,
+                )
+                for row in rows
+            ],
+        )
+
+    @router.get("/transport/highways/incidents", response_model=HighwayIncidentResponse)
+    async def transport_highway_incidents(
+        route_no: str | None = Query(default=None),
+        days: int = Query(default=1, ge=1, le=30),
+        limit: int = Query(default=200, ge=1, le=1000),
+        session: AsyncSession = Depends(get_db),
+    ) -> HighwayIncidentResponse:
+        cutoff = now_utc() - timedelta(days=days)
+        query = select(HighwayIncidentSnapshot).where(HighwayIncidentSnapshot.observed_at >= cutoff)
+        if route_no:
+            query = query.where(HighwayIncidentSnapshot.route_no == route_no.strip())
+        query = query.order_by(
+            HighwayIncidentSnapshot.observed_at.desc(), HighwayIncidentSnapshot.id.desc()
+        ).limit(limit)
+        rows = (await session.execute(query)).scalars().all()
+        return HighwayIncidentResponse(
+            generated_at=now_utc(),
+            days=days,
+            route_no=route_no.strip() if route_no else None,
+            items=[
+                HighwayIncidentItem(
+                    source=row.source,
+                    identity_key=row.identity_key,
+                    observed_at=serialize_utc(row.observed_at),
+                    collected_at=serialize_utc(row.collected_at),
+                    occurred_date=row.occurred_date,
+                    occurred_time=row.occurred_time,
+                    incident_type=row.incident_type,
+                    incident_type_code=row.incident_type_code,
+                    direction=row.direction,
+                    message=row.message,
+                    point_name=row.point_name,
+                    route_no=row.route_no,
+                    route_name=row.route_name,
+                    process_status=row.process_status,
+                    process_status_code=row.process_status_code,
+                    latitude=row.latitude,
+                    longitude=row.longitude,
+                    congestion_length=row.congestion_length,
+                    series_no=row.series_no,
+                )
+                for row in rows
+            ],
+        )
+
+    @router.get("/transport/fuel/stations", response_model=FuelStationResponse)
+    async def transport_fuel_stations(
+        sido_value: str | None = Query(default=None, description="저장된 화면 검색 시도 문맥. 실제 소재지 필터가 아닙니다."),
+        sigungu_value: str | None = Query(default=None, description="저장된 화면 검색 시군구 문맥. 실제 소재지 필터가 아닙니다."),
+        product_code: str | None = Query(default=None),
+        days: int = Query(default=2, ge=1, le=30),
+        limit: int = Query(default=200, ge=1, le=1000),
+        session: AsyncSession = Depends(get_db),
+    ) -> FuelStationResponse:
+        cutoff = now_utc() - timedelta(days=days)
+        query = select(FuelStation).where(FuelStation.last_seen_at >= cutoff)
+        if sido_value:
+            query = query.where(FuelStation.sido_value == sido_value.strip())
+        if sigungu_value:
+            query = query.where(FuelStation.sigungu_value == sigungu_value.strip())
+        query = query.order_by(FuelStation.last_seen_at.desc(), FuelStation.id.desc()).limit(limit)
+        stations = (await session.execute(query)).scalars().all()
+        station_ids = [station.id for station in stations]
+        price_rows: list[FuelPriceSnapshot] = []
+        if station_ids:
+            # Keep the response bounded by one row per station/product.  A
+            # plain period query would load every historical observation for
+            # all selected stations before Python discarded all but the latest
+            # row, which grows with retention rather than with this request.
+            ranked_prices = (
+                select(
+                    FuelPriceSnapshot.id.label("price_id"),
+                    func.row_number()
+                    .over(
+                        partition_by=(
+                            FuelPriceSnapshot.fuel_station_id,
+                            FuelPriceSnapshot.product_code,
+                        ),
+                        order_by=(
+                            FuelPriceSnapshot.collected_at.desc(),
+                            FuelPriceSnapshot.id.desc(),
+                        ),
+                    )
+                    .label("row_number"),
+                )
+                .where(
+                    FuelPriceSnapshot.fuel_station_id.in_(station_ids),
+                    FuelPriceSnapshot.collected_at >= cutoff,
+                )
+            )
+            if product_code:
+                ranked_prices = ranked_prices.where(
+                    FuelPriceSnapshot.product_code == product_code.strip()
+                )
+            ranked_prices_subquery = ranked_prices.subquery()
+            price_query = (
+                select(FuelPriceSnapshot)
+                .join(
+                    ranked_prices_subquery,
+                    FuelPriceSnapshot.id == ranked_prices_subquery.c.price_id,
+                )
+                .where(ranked_prices_subquery.c.row_number == 1)
+                .order_by(FuelPriceSnapshot.fuel_station_id, FuelPriceSnapshot.product_code)
+            )
+            price_rows = (await session.execute(price_query)).scalars().all()
+
+        latest_prices: dict[tuple[int, str], FuelPriceSnapshot] = {}
+        for row in price_rows:
+            latest_prices.setdefault((row.fuel_station_id, row.product_code), row)
+
+        items: list[FuelStationItem] = []
+        for station in stations:
+            prices = [
+                FuelPriceItem(
+                    product_code=row.product_code,
+                    price=float(row.price) if row.price is not None else None,
+                    provider_updated_at=(serialize_utc(row.provider_updated_at) if row.provider_updated_at else None),
+                    observed_at=serialize_utc(row.observed_at),
+                    collected_at=serialize_utc(row.collected_at),
+                )
+                for (station_id, _product), row in sorted(latest_prices.items())
+                if station_id == station.id
+            ]
+            items.append(
+                FuelStationItem(
+                    source=station.source,
+                    identity_key=station.identity_key,
+                    source_station_id=station.source_station_id,
+                    name=station.name,
+                    brand_code=station.brand_code,
+                    brand_name=station.brand_name,
+                    phone=station.phone,
+                    address=station.address,
+                    business_number=station.business_number,
+                    cb_code=station.cb_code,
+                    station_type=station.station_type,
+                    query_level=station.query_level,
+                    sido_value=station.sido_value,
+                    sido_name=station.sido_name,
+                    sigungu_value=station.sigungu_value,
+                    sigungu_name=station.sigungu_name,
+                    dong_value=station.dong_value,
+                    dong_name=station.dong_name,
+                    katec_x=station.katec_x,
+                    katec_y=station.katec_y,
+                    longitude=station.longitude,
+                    latitude=station.latitude,
+                    source_kinds=station.source_kinds or [],
+                    is_illegal=station.is_illegal,
+                    is_self=station.is_self,
+                    is_24h=station.is_24h,
+                    is_kpetro=station.is_kpetro,
+                    is_electronic=station.is_electronic,
+                    is_good=station.is_good,
+                    is_good_strong=station.is_good_strong,
+                    is_region_franchise=station.is_region_franchise,
+                    has_carwash=station.has_carwash,
+                    has_maintenance=station.has_maintenance,
+                    has_cvs=station.has_cvs,
+                    cs_yn=station.cs_yn,
+                    discount_info=station.discount_info,
+                    save_event_info=station.save_event_info,
+                    representative_event_info=station.representative_event_info,
+                    on_event_info=station.on_event_info,
+                    other_business_info=station.other_business_info,
+                    first_seen_at=serialize_utc(station.first_seen_at),
+                    last_seen_at=serialize_utc(station.last_seen_at),
+                    prices=prices,
+                )
+            )
+        return FuelStationResponse(
+            generated_at=now_utc(),
+            days=days,
+            sido_value=sido_value.strip() if sido_value else None,
+            sigungu_value=sigungu_value.strip() if sigungu_value else None,
+            product_code=product_code.strip() if product_code else None,
+            items=items,
+        )
+
+    @router.get("/transport/collector-status", response_model=TransportCollectorStatus)
+    async def transport_collector_status(
+        session: AsyncSession = Depends(get_db),
+        service: TransportCollectionService = Depends(get_transport_collection_service),
+    ) -> TransportCollectorStatus:
+        status = await service.status(session)
+        for key in ("last_fuel_success_at", "next_fuel_due_at"):
+            if status[key] is not None:
+                status[key] = serialize_utc(status[key])
+        for item in status["sources"]:
+            for key in ("last_started_at", "last_success_at", "next_due_at"):
+                if item[key] is not None:
+                    item[key] = serialize_utc(item[key])
+            if item["last_error"] is not None:
+                item["last_error"] = "collection_failed"
+        if status["last_run"] is not None:
+            for key in ("started_at", "finished_at"):
+                if status["last_run"][key] is not None:
+                    status["last_run"][key] = serialize_utc(status["last_run"][key])
+        if status["last_fuel_error"] is not None:
+            status["last_fuel_error"] = "collection_failed"
+        return TransportCollectorStatus(**status)
+
+    @router.get("/transport/statistics", response_model=TransportStatisticsResponse)
+    async def transport_statistics(
+        route_no: str | None = Query(default=None),
+        days: int = Query(default=7, ge=1, le=90),
+        session: AsyncSession = Depends(get_db),
+    ) -> TransportStatisticsResponse:
+        cutoff = now_utc() - timedelta(days=days)
+        normalized_route_no = route_no.strip() if route_no else None
+
+        traffic_query = (
+            select(
+                HighwayTrafficSnapshot.route_no,
+                HighwayTrafficSnapshot.direction,
+                func.count(HighwayTrafficSnapshot.id).label("observations"),
+                func.avg(HighwayTrafficSnapshot.speed).label("average_speed"),
+                func.min(HighwayTrafficSnapshot.speed).label("minimum_speed"),
+                func.max(HighwayTrafficSnapshot.speed).label("maximum_speed"),
+                func.avg(HighwayTrafficSnapshot.free_flow_speed).label("average_free_flow_speed"),
+                func.max(HighwayTrafficSnapshot.observed_at).label("latest_observed_at"),
+            )
+            .where(HighwayTrafficSnapshot.observed_at >= cutoff)
+        )
+        if normalized_route_no:
+            traffic_query = traffic_query.where(HighwayTrafficSnapshot.route_no == normalized_route_no)
+        traffic_rows = (
+            await session.execute(
+                traffic_query.group_by(
+                    HighwayTrafficSnapshot.route_no,
+                    HighwayTrafficSnapshot.direction,
+                ).order_by(
+                    HighwayTrafficSnapshot.route_no,
+                    HighwayTrafficSnapshot.direction,
+                )
+            )
+        ).all()
+
+        incidents_query = (
+            select(
+                HighwayIncidentSnapshot.route_no,
+                func.count(HighwayIncidentSnapshot.id).label("incidents"),
+                func.max(HighwayIncidentSnapshot.observed_at).label("latest_observed_at"),
+            )
+            .where(HighwayIncidentSnapshot.observed_at >= cutoff)
+        )
+        if normalized_route_no:
+            incidents_query = incidents_query.where(HighwayIncidentSnapshot.route_no == normalized_route_no)
+        incident_rows = (
+            await session.execute(
+                incidents_query.group_by(HighwayIncidentSnapshot.route_no).order_by(
+                    HighwayIncidentSnapshot.route_no
+                )
+            )
+        ).all()
+
+        fuel_rows = (
+            await session.execute(
+                select(
+                    FuelPriceSnapshot.product_code,
+                    func.count(func.distinct(FuelPriceSnapshot.fuel_station_id)).label("stations"),
+                    func.count(FuelPriceSnapshot.id).label("observations"),
+                    func.avg(FuelPriceSnapshot.price).label("average_price"),
+                    func.min(FuelPriceSnapshot.price).label("minimum_price"),
+                    func.max(FuelPriceSnapshot.price).label("maximum_price"),
+                    func.max(FuelPriceSnapshot.observed_at).label("latest_observed_at"),
+                    func.max(FuelPriceSnapshot.collected_at).label("latest_collected_at"),
+                )
+                .where(
+                    FuelPriceSnapshot.collected_at >= cutoff,
+                    FuelPriceSnapshot.price.is_not(None),
+                )
+                .group_by(FuelPriceSnapshot.product_code)
+                .order_by(FuelPriceSnapshot.product_code)
+            )
+        ).all()
+
+        return TransportStatisticsResponse(
+            generated_at=now_utc(),
+            days=days,
+            route_no=normalized_route_no,
+            traffic=[
+                HighwayTrafficStatistics(
+                    route_no=row.route_no,
+                    direction=row.direction,
+                    observations=int(row.observations),
+                    average_speed=float(row.average_speed) if row.average_speed is not None else None,
+                    minimum_speed=float(row.minimum_speed) if row.minimum_speed is not None else None,
+                    maximum_speed=float(row.maximum_speed) if row.maximum_speed is not None else None,
+                    average_free_flow_speed=(
+                        float(row.average_free_flow_speed)
+                        if row.average_free_flow_speed is not None
+                        else None
+                    ),
+                    latest_observed_at=(
+                        serialize_utc(row.latest_observed_at) if row.latest_observed_at else None
+                    ),
+                )
+                for row in traffic_rows
+            ],
+            incidents=[
+                HighwayIncidentStatistics(
+                    route_no=row.route_no,
+                    incidents=int(row.incidents),
+                    latest_observed_at=(
+                        serialize_utc(row.latest_observed_at) if row.latest_observed_at else None
+                    ),
+                )
+                for row in incident_rows
+            ],
+            fuel_prices=[
+                FuelPriceStatistics(
+                    product_code=row.product_code,
+                    stations=int(row.stations),
+                    observations=int(row.observations),
+                    average_price=float(row.average_price) if row.average_price is not None else None,
+                    minimum_price=float(row.minimum_price) if row.minimum_price is not None else None,
+                    maximum_price=float(row.maximum_price) if row.maximum_price is not None else None,
+                    latest_observed_at=(
+                        serialize_utc(row.latest_observed_at) if row.latest_observed_at else None
+                    ),
+                    latest_collected_at=(
+                        serialize_utc(row.latest_collected_at) if row.latest_collected_at else None
+                    ),
+                )
+                for row in fuel_rows
+            ],
+        )
 
     @router.get("/parking/current", response_model=ParkingCurrentResponse)
     async def parking_current(
@@ -1164,13 +1653,43 @@ async def _run_scheduler(app: FastAPI) -> None:
         await asyncio.sleep(delay)
 
 
+async def _run_transport_scheduler(app: FastAPI, scope: CollectionScope = "highway") -> None:
+    session_factory: async_sessionmaker[AsyncSession] = app.state.session_factory
+    service: TransportCollectionService = app.state.transport_collection_service
+    settings: Settings = app.state.settings
+
+    while True:
+        delay = float(settings.transport_collect_interval_seconds)
+        async with session_factory() as session:
+            try:
+                summary = await service.collect(session, trigger=f"transport_{scope}_scheduler", scope=scope)
+                logger.info(
+                    "transport scheduler tick completed run_id=%s status=%s mode=%s traffic=%s incidents=%s stations=%s prices=%s",
+                    summary["collection_run_id"],
+                    summary["status"],
+                    summary["client_mode"],
+                    summary["traffic_snapshot_count"],
+                    summary["incident_snapshot_count"],
+                    summary["fuel_station_count"],
+                    summary["fuel_price_count"],
+                )
+                delay = await service.next_collection_delay(session, scope)
+            except Exception:
+                await session.rollback()
+                logger.exception("transport scheduler tick failed")
+        await asyncio.sleep(delay)
+
+
 async def _load_collection_run_statuses(
     session: AsyncSession,
     limit: int = 5,
 ) -> list[CollectionRunStatus]:
     runs = (
         await session.execute(
-            select(CollectionRun).order_by(CollectionRun.started_at.desc(), CollectionRun.id.desc()).limit(limit)
+            select(CollectionRun)
+            .where(~CollectionRun.trigger.startswith(TRANSPORT_TRIGGER_PREFIX, autoescape=True))
+            .order_by(CollectionRun.started_at.desc(), CollectionRun.id.desc())
+            .limit(limit)
         )
     ).scalars().all()
     if not runs:

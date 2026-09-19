@@ -1,5 +1,170 @@
 # journal.md — 작업 일지
 
+## 2026-09-20
+
+- 최종 런타임 `f7987b2d8858e83b2a602ac70cdcd5b5a4902d6b`를 n150에 배포했다.
+  WSL PostgreSQL 백엔드 130개(606.24초), Docker 별도 PostgreSQL 130개(542.54초),
+  Alembic upgrade/check, 프론트 WSL/Docker 각각 85개와 타입/build가 통과했다.
+  빈 Docker 검증 DB에 migration 없이 시작한 첫 실행은 중단하고 명시적 migration 후
+  전체 재실행했다. 검증용 로컬 PostgreSQL만 중지했고 데이터는 보존했다.
+- 공개 health SHA 일치와 실제 설치된 OPINET `39e7acc`/KREX `adda287`을 확인했다.
+  설치된 OPINET의 초기 화면 탐색·브라우저 종료 smoke가 통과했다(지역 조회 0회).
+  새 읽기 전용 DB 세션에서 run 13556 성공과 유가 59,035건, 다음 예정
+  9월 20일 07:05:20 KST 보존을 확인했다. 전국 수집을 추가 실행하지 않았다.
+- 배포 중 서버 I/O 대기는 60~66%였고 프론트 이미지 레이어 내보내기에 733.9초가
+  소요됐다. 생성된 새 backend만 먼저 시작해 교체 공백을 줄였으며 DB와 타 프로젝트는
+  조작하지 않았다. 배포 직후 WSL live E2E는 15개 통과/1개 실패였다. 첫 주차 표시가
+  backend timeout으로 실패한 추적 자료를 보존했고 조건을 완화하지 않았다.
+  이후 동일 SHA의 GitHub push/PR CI 두 실행(`35448899603`, `35448900946`)에서
+  backend/frontend/live-e2e가 모두 통과했다. 두 독립 리뷰어의 최종 운영 확인 후
+  provider PR #16/#18과 통합 PR #30을 머지한다. 이 기록 시점에는 아직 미머지다.
+
+## 2026-09-19
+
+- 최종 Popper 리뷰에서 검색지역별 동일 UID가 전역 저장 시 유효 가격·출처를 잃는 P1을
+  재현했다. OPINET `39e7acc`에서 지역 간 전역 UID 병합, 빈 가격 보호, 가격·시각의 동일
+  입력 쌍 선택과 출처 합집합을 구현했다. 최초 검색 문맥을 대표 지역으로 유지하며 실제
+  소재지로 해석하지 않는다. provider 회귀 9개 중 기존 조건 5개 실패를 확인한 뒤,
+  WSL 전체 247개 통과/4개 live skip, 커버리지 93.34%, mypy/compileall 통과.
+  실제 provider 정규화→DB 저장 통합 회귀도 기존 설치본의 정순·역순 실패를 재현했고
+  수정 provider로 두 경우 모두 통과했다. 새 pin/lock·API 지역 설명을 반영해 전체
+  WSL PostgreSQL 및 Docker 검증 중이다. 기존 run 13556의 과거 덮어쓰기 유무나 손실량은
+  전체 입력이 없어 확정하지 못하며 복구됐다고 주장하지 않는다. 추가 전국 호출은 없다.
+- 승인된 전국 모드 OPINET run 13556은 23:12:02 KST에 `success`로 완료됐다. 새 읽기 전용
+  DB 세션에서 기준정보 11,807곳, 가격 이력 59,035건(양수 29,426건), source 오류 해제를
+  확인했다. provider 수집 시각은 23:05:20 KST, 다음 예정은 9월 20일 07:05:20 KST다.
+  원본 요약의 지역 항목은 7,905개, 주유소 항목은 13,730개다. DB 시도 그룹은 공급자
+  원문 기준 16개이며 `전남광주통합특별시`가 포함된다. 이는 화면의 원문 관측이며 행정
+  개편의 법적 검증이나 전국 모든 시설의 완전성 보증으로 해석하지 않는다.
+- 강화된 `308b278` E2E를 운영 `15d46a9` SHA에 고정해 실행한 결과 16개 모두 통과했다
+  (12.4초). 통합 교통정보 proxy 1.0초, 이전 주차 초기 표시 실패 항목 2.8초로 통과했다.
+  James도 공개 API/proxy를 독립 조회해 기능·데이터 운영 게이트를 승인했다. 최종 후보
+  SHA 정렬 배포와 CI 재검증은 별도로 진행한다. 원본 항목 수와 DB identity 중복 제거
+  건수 차이도 운영 리뷰에서 확인한다.
+- 복구 Python/Chromium이 종료됐고 DB 성공이 확정된 뒤에도 로컬 WSL/SSH 연결이
+  종료되지 않아 명령·부모 PID가 일치하는 해당 로컬 연결만 정리했다. 이 연결의 exit 1은
+  운영 수집 실패가 아니다. 수집 재실행이나 DB 상태 변경은 하지 않았다.
+- 사용자의 `진행`을 예외 전국 OPINET 1회 재시도 승인으로 확인하고 22:23:21 KST에
+  `transport_fuel_manual_recovery` run 13556을 시작했다. fuel advisory lock과 행 잠금 아래
+  이전 예정/시작 시각, 실패 상태, 빈 유가 DB, 중복 실행 없음을 확인한 뒤 상태를
+  0600·배타적 생성·파일/디렉터리 fsync receipt로 백업했다. 같은 transaction에서
+  예정 시각만 앞당겨 기존 service가 새 8시간 예약을 확정하도록 했다. 기존 실패 기록은
+  삭제하지 않았으며 중복 재시도·진행 중 배포/재시작을 하지 않는다.
+- James 후속 P1인 E2E 관측 시각 검증 누락을 재현했다. 기존 저장 시각만 검사하는
+  조건으로 회귀 5개 중 3개 실패를 확인한 뒤, 관측/저장 시각 모두 유효하고 15분 이내,
+  미래 60초 이내를 요구하도록 보완했다. WSL 프론트 85개·타입 검사/build와 Docker
+  85개 통과. James/Popper 모두 코드 P0/P1 없음으로 승인했으며 운영 게이트는 대기한다.
+  최신 한 행 E2E를 전국 모든 VDS의 최신성 보장으로 해석하지 않는다. 통계 proxy 504가
+  한 차례 재관측돼 응답 지연 여유 점검을 P2 후속으로 남긴다.
+- 22:23~22:25 KST 공개 조회에서 KREX 관측이 22:20 KST로 갱신됐다. 앞선 19:52 정체는
+  해당 시점 해소됐으나 지속 최신성을 보장하는 근거로 확대 해석하지 않는다.
+- 최종 n150 배포 `15d46a9`(런타임 `50c9cd4`)를 완료했다. 공개 health의 SHA/DB 정상,
+  웹 200과 provider pin을 확인했다. 이 SHA를 고정한 WSL 공개 live E2E는 15개 통과/
+  1개 실패했다. 실패는 `opinet_browser.last_error=collection_failed`로 소스 준비 확인에서
+  발생했으며 후속 교통·유가 조회/통계 검증은 실행되지 않았다. 전국 유가 0건과 기존
+  예약을 유지하며 PR #30 및 provider PR #16/#18은 머지하지 않았다.
+  20:31 KST 재확인에도 공개 소통 최신 관측은 19:52 KST였다. 실제 E2E 실패 원인과
+  별도 공급자 최신성 문제를 구분한다. 검증용 로컬 PostgreSQL 컨테이너만 중지했으며
+  데이터는 보존했다. 후속 증적 문서는 런타임 변경 없이 기록한다.
+- KREX 최신성 추가 점검: 운영 raw 응답 수신 시각 20:16:48 KST에도 최신 공급자 관측은
+  19:52였다. 20:22:54 KST에 로컬에서 새 `KrexClient`로 단 한 번 조회해도 8,370행/19:52로
+  동일했다. 현재 HTTP·수집 성공과 관측 최신성은 별개다. 실제 live E2E 전까지 이를
+  정상 실시간 갱신으로 간주하지 않으며, 전국 OPINET 미수집과 함께 운영 미완료 사유로
+  기록한다. 키를 출력하거나 수집 예약을 초기화하지 않았다.
+- 최종 런타임 `50c9cd4`: WSL 백엔드 전체 128개 통과(607.96초), WSL 프론트 80개와
+  타입 검사/build 통과, Docker 프론트 80개·백엔드 128개(500.30초) 통과.
+  James는 코드 APPROVE, Popper도 코드 P0/P1 없음으로 판정했으나 전국 OPINET 운영
+  수집·E2E 미완료를 이유로 최종 verdict는 REQUEST CHANGES로 유지했다. 코드 결함
+  해소와 머지 게이트 통과를 구분한다. commit 반환 직전 취소의 결과 불확실성과 내부
+  DB 오류 문자열 보관은 비차단 후속 위험으로 기록한다.
+- n150 `aa2486b`의 자연 주기 run 13461은 소통 8,370행·돌발 80행을 실제 DB에 저장했다.
+  다음 주기에도 수집이 이어져 공개 통계에서 138그룹/관측 16,740건을 확인했다. 서버 I/O
+  부하 중 최초 통계 요청은 15초 timeout이었고 재조회는 819ms로 성공했다. 유가 저장은
+  0건이며 기존 예정 시각 `2026-09-20 02:26:49 KST`는 초기화하지 않았다.
+- `aa2486b` n150 배포를 완료하고 공개 `/health`의 SHA 일치를 확인했다. 서버 I/O
+  대기로 이미지 export/unpack과 컨테이너 교체가 지연되어 일시 503이 발생했다. 생성된
+  대상 backend만 먼저 기동해 API를 복구했고, 이어 기존 배포 절차가 frontend 기동까지
+  완료했다. 다른 프로젝트 컨테이너와 DB lifecycle은 변경하지 않았다.
+- `af26362` 런타임의 WSL 백엔드 전체는 125개 통과했다. Popper의 후속 P1인 DB 저장
+  격리 부족은 실제 PostgreSQL NOT NULL 오류로 두 실패를 재현한 뒤 소스별 commit으로
+  보완했다. source별 raw/state/snapshot은 함께 확정하고 후속 소스 실패/취소가 앞선
+  성공을 롤백하거나 오류로 덮지 않는다. 집중 4개 통과, 전체 재검증 중이다.
+- James는 `02545fe`의 코드 리뷰를 P0/P1 없음으로 승인했다. 실제 전국 유가 저장과
+  enabled live E2E는 여전히 별도 미완료 게이트다. 일반 500 traceback은 Starlette가
+  custom handler 뒤 예외를 다시 전파해 ASGI 서버 로그가 남으므로 중복 로그를 추가하지
+  않았다. 정상 돌발 0건/중복 생략은 소스 완료 시각 검증으로 확인한다.
+- 통합 최종 James/Popper 리뷰의 P1을 후속 보완한다. 회귀 테스트에서 incident 실패 시
+  성공한 traffic 폐기, quota 대기 중 skip의 `last_run` 은폐, 가격 없는 station-only 유가
+  성공을 각각 재현했다(3개 실패 확인 후 수정하여 3개 통과). 소스별 due·timeout·성공/오류를
+  분리하고 실제 backoff 전체를 기다린다. `last_run`은 skipped 실행을 제외한다.
+- JSON 프록시 body timeout을 worker가 재현하고 16 MiB 제한 버퍼링으로 504/502를 반환하게
+  했다. 비JSON 백업은 스트리밍 계약을 유지한다. 프론트 전체 WSL 80개, 타입 검사/build
+  통과. live E2E는 running을 성공으로 인정하지 않고 완료 시각과 최근 유가 저장 시각을
+  검사한다. 최종 운영 적재/E2E 및 통합 재리뷰는 아직 완료하지 않았다.
+- 일반 예외와 transport DB 오류의 RFC7807 500·비밀/SQL 비노출 회귀를 worker가
+  수정 전 실패로 확인하고 보완했다. WSL API 테스트 35개 및 PostgreSQL을 포함한
+  transport 테스트 23개가 통과했고, 양방향 소스 timeout 테스트를 더해 전체 검증 중이다.
+- James 재리뷰에서 aggregate 실행의 성공이 다른 소스의 진행 중 실행을 가릴 수 있음을
+  지적했다. E2E는 모든 소스의 `last_success_at >= last_started_at`을 요구한다. 시작 예약과
+  결과 저장은 별도 commit이므로 이 조건은 마지막 시작이 실제 저장 성공으로 끝났는지
+  구분한다. 소스 상태를 확인한 뒤 조회·통계 API를 다시 읽도록 순서도 변경했다.
+- 기존 Next.js·sharp 의존성에서 `npm audit --omit=dev` critical/high 경고를 발견해
+  별도 보안 후속으로 기록했다. 이 교통정보 PR에 임의의 의존성 갱신은 섞지 않았다.
+- 후속 실검증: 사용자가 지정한 로컬 `python-krex-api` 환경 파일에서 키를 확인하고
+  비밀값을 출력하지 않은 채 n150 환경을 보호 백업 후 활성화했다. 기존 통합 실행은
+  KREX 폐기 URL 및 OPINET 자동 탐색 응답 본문 오류로 실패했다. 실패 기록을 유지하며
+  형제 provider에서 회귀 테스트와 수정 PR을 진행한다.
+- OPINET 수정본 WSL 테스트 `238 passed, 4 skipped`, 커버리지 93.15%, mypy/compileall
+  통과. n150 제한 live 조회에서 서울 강남구 주유소·충전소 32곳/가격 85건을 파싱했다.
+  이는 전국 수집 또는 PostgreSQL 적재 성공 증적이 아니다. PR은 `python-opinet-api#18`.
+- OPINET 후속 `1601ef3`은 동일 경로·쿼리 및 timeout 검증을 추가했다. 별도 초기 탐색만
+  실행한 n150 검증에서 `OPINET_NAVIGATION_AND_CLEANUP_OK`를 확인했다. 두 reviewer가
+  지적한 예외 signature 문자열 매칭의 P2는 Playwright를 선택 의존성으로 유지하면서
+  확인된 Chromium 오류만 처리하기 위한 판단으로 기록한다. 일반 네트워크 오류는 전파한다.
+- KREX 수정 `adda287`/PR #16은 실제 8,370행·69개 노선을 파싱하고, `flow_all()`로
+  전체 조회 한 번과 `vds_id` 보존을 지원한다. WSL `224 passed, 8 skipped`,
+  mypy/ruff/compileall 통과. 기존 `flow()`의 로컬 페이지는 각 호출마다 전체 응답을 읽으므로
+  전국 수집에는 사용하지 않도록 문서화하고 통합 코드는 `flow_all()`로 변경했다.
+- 독립 적대적 리뷰: Popper(Volta), James(Tesla)가 OPINET `1601ef3`와 KREX `adda287`
+  각각 P0/P1 없음으로 승인했다. KREX `reference.common_codes()`의 `FlowDirection` 누락은
+  직접 enum import와 `codes.md`로 사용 가능한 P2 후속 항목이다. provider 승인과 통합
+  PR의 실제 DB·E2E 승인은 별개이며, PR #30 최종 게이트는 아직 완료하지 않았다.
+- 통합 검증: WSL 실제 PostgreSQL 전체 테스트는 중간 수정본 `113 passed`, 최신
+  provider pin·예약/취소·VDS 저장·OpenAPI 집중 테스트는 `20 passed`다. 프론트는
+  Windows 마운트 위 worker 시작 timeout을 겪어 동일 소스를 WSL `/tmp`에 복사했고
+  전체 `67 passed`, TypeScript 검사 통과. Docker 프론트 `67 passed`, 백엔드 전체
+  `116 passed`, 최종 OpenAPI·두 scheduler 종료 순서 추가 검증 `2 passed`다.
+  PostgreSQL `alembic check`는 변경 없음으로 통과했다.
+- 실제 KREX 단일 전체 조회를 별도의 검증용 PostgreSQL DB에 저장해 VDS 8,370행과
+  돌발 92행을 확인했다. API 조회 1,000행과 노선·방향별 통계 138개 그룹/관측 8,370건도
+  확인했다. 이는 격리 DB 증적이며 n150 운영 적재 검증과 구분한다. GitHub Projects 조회는
+  `totalCount=0`으로 이전 이름의 남은 프로젝트가 없었다.
+- 고속도로/유가를 별도 task·DB 트랜잭션·advisory lock으로 분리하고, DB 예정 시각 기준
+  대기로 5분 tick이 미세한 시각 차이 때문에 10분으로 늘어나는 문제를 보완한다.
+  공개 E2E는 모든 소스의 최근 성공·오류 없음·비어 있지 않은 실제 저장 데이터와 통계를
+  요구하도록 변경 중이다. 이전 disabled 허용 검증은 최종 승인으로 사용하지 않는다.
+- 사용자 요청으로 저장소의 목적을 국내 여행용 통합 교통정보 라이브러리/API로 명시했다.
+  provider 데이터를 주기적으로 PostgreSQL에 저장하고, 저장 자료를 외부 OpenAPI와 내부
+  통계로 즉시 제공하는 방향을 공통 문서와 현재 구현에 반영했다.
+- T-040 구현에서 `python-krex-api`의 고속도로 소통·돌발, 최신 `python-opinet-api`
+  Playwright 지역별 collector의 주유소·유가·편의정보를 연결했다. Alembic `0004`/`0005`와
+  소스별 수집 상태, 중복 방지, 조회/통계 API, 테스트 fixture를 추가했다.
+- 오피넷 collector는 공식 Open API 대체가 아닌 공개 화면 기반 실험 기능이므로 pin된
+  provider의 기본 8시간 throttle(허용 범위 8~12시간)을 존중하고, 원본/오류와 화면 변경
+  위험을 문서화했다.
+- 유가 OpenAPI는 보관 기간의 모든 가격 이력을 메모리에 올리지 않고 DB window query로
+  주유소·유종별 최신 1건만 반환하도록 보강했으며, 과거 가격이 최신값으로 덮이지 않는
+  회귀 테스트를 추가했다. WSL2 백엔드 전체 `105 passed`, 프론트 단일 worker에서
+  기존 52개와 누락 worker 재실행 9개를 합쳐 `61 passed`,
+  TypeScript 검사와 production build도 통과했다.
+- 적대적 재리뷰에서 발견된 P1을 보완했다. transport DB flush 실패 실행을
+  `CollectionRun`에 durable하게 남기고 `collector-status.last_run`으로 안정적인 오류
+  코드만 공개했으며, RFC7807 422 응답과 커밋된 OpenAPI 문서를 일치시켰다. transport
+  live E2E는 수집 활성화 시 최근 scheduler 적재를, 자격증명이 없는 server14에서는
+  명시적인 disabled 상태를 검증하도록 강화했다. 추가 회귀를 포함해 백엔드 `107 passed`,
+  프론트 단일 thread `55 passed`와 worker 재실행 `6 passed`, TypeScript/build가
+  통과했다(WSL worker 시작 timeout은 단일 파일 재실행으로 확인).
+
 ## 2026-09-07
 
 - `T-039`: 사용자가 "전체적으로 UI를 컴팩트하게 — 공항/주차장 선택 + 새로고침을

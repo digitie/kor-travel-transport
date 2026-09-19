@@ -18,6 +18,8 @@ const BACKUP_PROXY_BODY_TIMEOUT_MS = Math.max(
   1_000,
   Number(process.env.BACKUP_PROXY_BODY_TIMEOUT_MS ?? BACKUP_PROXY_TIMEOUT_MS) || BACKUP_PROXY_TIMEOUT_MS
 );
+// JSON 버퍼가 요청별로 무제한 증가하지 않도록 실제 수신 바이트를 제한한다.
+const MAX_JSON_BODY_BYTES = 16 * 1024 * 1024;
 const FORWARDED_REQUEST_HEADERS = new Set(["accept", "content-type"]);
 const FORWARDED_RESPONSE_HEADERS = new Set([
   "cache-control",
@@ -49,6 +51,9 @@ function isAllowedBackendRequest(path: string, method: string): boolean {
     return true;
   }
   if (versioned.startsWith("holidays/") && method === "GET") {
+    return true;
+  }
+  if (versioned.startsWith("transport/") && method === "GET") {
     return true;
   }
   if (versioned === "flights/status" && method === "GET") {
@@ -102,14 +107,78 @@ function buildResponseHeaders(upstreamResponse: Response): Headers {
   return headers;
 }
 
-function buildProxyErrorResponse(status: 502 | 504, detail: string): Response {
+function buildProxyErrorResponse(request: NextRequest, status: 404 | 502 | 504, detail: string): Response {
+  const titles = { 404: "Not Found", 502: "Bad Gateway", 504: "Gateway Timeout" };
+
+  // ADR-005의 오류 계약을 따르되 기존 클라이언트의 detail/code 호환성을 유지한다.
   return Response.json(
-    { detail, code: status === 504 ? "backend_timeout" : "backend_unavailable" },
+    {
+      type: "about:blank",
+      title: titles[status],
+      status,
+      detail,
+      instance: request.nextUrl.pathname,
+      ...(status === 404 ? {} : { code: status === 504 ? "backend_timeout" : "backend_unavailable" }),
+    },
     {
       status,
-      headers: { "cache-control": "no-store, max-age=0, must-revalidate" },
+      headers: {
+        "content-type": "application/problem+json",
+        "cache-control": "no-store, max-age=0, must-revalidate",
+      },
     }
   );
+}
+
+async function bufferJsonBody(
+  body: ReadableStream<Uint8Array> | null,
+  timeoutMs: number,
+): Promise<Uint8Array<ArrayBuffer> | null> {
+  if (!body) {
+    return null;
+  }
+
+  const reader = body.getReader();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      (async () => {
+        const chunks: Uint8Array[] = [];
+        let size = 0;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          size += value.byteLength;
+          if (size > MAX_JSON_BODY_BYTES) {
+            throw new Error("backend JSON response body exceeds size limit");
+          }
+          chunks.push(value);
+        }
+        const bytes = new Uint8Array(size);
+        let offset = 0;
+        for (const chunk of chunks) {
+          bytes.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+        return bytes;
+      })(),
+      new Promise<never>((_resolve, reject) => {
+        // 청크가 조금씩 계속 도착해도 전체 본문 수신 기한은 연장하지 않는다.
+        timeoutId = setTimeout(() => {
+          reject(new DOMException("backend response body timeout", "TimeoutError"));
+        }, timeoutMs);
+      }),
+    ]);
+  } catch (error) {
+    // 취소 처리가 멈춰도 클라이언트 오류 응답은 즉시 반환한다.
+    void reader.cancel(error).catch(() => undefined);
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+    reader.releaseLock();
+  }
 }
 
 function streamWithReadTimeout(
@@ -183,7 +252,7 @@ async function proxyToBackend(request: NextRequest, context: RouteContext): Prom
   const method = request.method.toUpperCase();
 
   if (!isAllowedBackendRequest(backendPath, method)) {
-    return Response.json({ detail: "Not found" }, { status: 404 });
+    return buildProxyErrorResponse(request, 404, "Not found");
   }
 
   // Backend routes live under `/v1` (ADR-005) except `/health`, which stays
@@ -208,17 +277,26 @@ async function proxyToBackend(request: NextRequest, context: RouteContext): Prom
       signal: controller.signal,
       ...(requestBody ? { duplex: "half" as const } : {}),
     });
+    clearTimeout(timeoutId);
 
-    return new Response(streamWithReadTimeout(upstreamResponse.body, bodyTimeoutMs), {
+    const mediaType = upstreamResponse.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() ?? "";
+    const isJson = mediaType === "application/json" || mediaType.endsWith("+json");
+    // JSON은 완료 전까지 헤더를 보내지 않아 본문 timeout도 RFC7807 504로 반환한다.
+    // 백업 바이너리 등 스트리밍 응답은 전송 시작 후 오류를 504로 바꿀 수 없으며 읽기가 실패한다.
+    const responseBody = isJson
+      ? await bufferJsonBody(upstreamResponse.body, bodyTimeoutMs)
+      : streamWithReadTimeout(upstreamResponse.body, bodyTimeoutMs);
+
+    return new Response(responseBody, {
       status: upstreamResponse.status,
       statusText: upstreamResponse.statusText,
       headers: buildResponseHeaders(upstreamResponse),
     });
   } catch (caughtError) {
-    if (caughtError instanceof DOMException && caughtError.name === "AbortError") {
-      return buildProxyErrorResponse(504, "백엔드 응답 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.");
+    if (caughtError instanceof DOMException && (caughtError.name === "AbortError" || caughtError.name === "TimeoutError")) {
+      return buildProxyErrorResponse(request, 504, "백엔드 응답 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.");
     }
-    return buildProxyErrorResponse(502, "백엔드에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    return buildProxyErrorResponse(request, 502, "백엔드에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.");
   } finally {
     clearTimeout(timeoutId);
   }
