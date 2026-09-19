@@ -10,7 +10,13 @@
   백엔드 전체 테스트는 통과했다. 최신 보강에서는 DB 실패 실행의 durable 상태,
   RFC7807 OpenAPI 계약, 활성 live 소스의 실제 저장·최신성 E2E 검증을 추가했다.
 
-- 기준일: 2026-09-19
+- 기준일: 2026-09-20
+- 최신 검증: 런타임 `f7987b2d8858e83b2a602ac70cdcd5b5a4902d6b`의 WSL/Docker
+  PostgreSQL 백엔드 각각 130개, 프론트 각각 85개와 타입/build가 통과했다. n150 배포와
+  공개 health SHA 일치, 설치 OPINET `39e7acc`의 초기 탐색/종료(지역 조회 0회)를 확인했다.
+  유가 59,035건과 다음 07:05:20 KST 예약은 보존됐다. 배포 직후 WSL E2E 첫 주차 표시의
+  timeout 실패(15개 통과/1개 실패)를 보존했으며, 이후 동일 SHA GitHub push/PR CI의
+  backend/frontend/live-e2e는 모두 통과했다. 아래는 이 최종 검증에 이른 진행 이력이다.
 - 작업 브랜치: `codex/transport-collection-openapi`, Draft PR #30.
   기존 검증 런타임은 `50c9cd42d2f7a071f216d815e9bbce94546383ca`이며 현재 후보는
   후속 OPINET `39e7acc` pin과 검색 문맥 API 설명·통합 회귀를 추가한 상태다.
@@ -44,9 +50,8 @@
   갱신됐다고 간주하지 않는다. 22:25 KST에는 관측이 22:20 KST로 갱신됨을 확인했다.
   추가 E2E 보강은 관측/저장 시각 모두 15분 이내·미래 60초 이내를 요구한다. 회귀를
   포함한 프론트 WSL/Docker 85개, 타입/build와 두 코드 재리뷰를 통과했다.
-- 다음 한 작업: 동일 UID 병합 수정의 전체 WSL/Docker 검증과 두 리뷰어의 승인을 마친 뒤,
-  새 provider pin 후보를 배포하고 최종 CI 및
-  live E2E를 통과시켜 PR #30을 `kor-travel-transport`에 머지한다. 그 다음에만 KRIC
+- 다음 한 작업: 두 리뷰어의 최종 운영 확인을 마치고 증적 문서 후보의 배포 SHA와 CI를
+  정렬한 뒤 provider PR #16/#18 및 PR #30을 `kor-travel-transport`에 머지한다. 그 다음에만 KRIC
   provider 구현과 교통정보 확장 조사 문서를 시작한다.
 - `digitie/kor-travel-airport`(구 `digitie/parking-radar`) PR #2~#28 모두 **MERGED**
   상태다. 이 세션에서 다룬 마지막 코드/운영 PR은

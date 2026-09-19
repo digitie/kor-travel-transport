@@ -1,5 +1,24 @@
 # journal.md — 작업 일지
 
+## 2026-09-20
+
+- 최종 런타임 `f7987b2d8858e83b2a602ac70cdcd5b5a4902d6b`를 n150에 배포했다.
+  WSL PostgreSQL 백엔드 130개(606.24초), Docker 별도 PostgreSQL 130개(542.54초),
+  Alembic upgrade/check, 프론트 WSL/Docker 각각 85개와 타입/build가 통과했다.
+  빈 Docker 검증 DB에 migration 없이 시작한 첫 실행은 중단하고 명시적 migration 후
+  전체 재실행했다. 검증용 로컬 PostgreSQL만 중지했고 데이터는 보존했다.
+- 공개 health SHA 일치와 실제 설치된 OPINET `39e7acc`/KREX `adda287`을 확인했다.
+  설치된 OPINET의 초기 화면 탐색·브라우저 종료 smoke가 통과했다(지역 조회 0회).
+  새 읽기 전용 DB 세션에서 run 13556 성공과 유가 59,035건, 다음 예정
+  9월 20일 07:05:20 KST 보존을 확인했다. 전국 수집을 추가 실행하지 않았다.
+- 배포 중 서버 I/O 대기는 60~66%였고 프론트 이미지 레이어 내보내기에 733.9초가
+  소요됐다. 생성된 새 backend만 먼저 시작해 교체 공백을 줄였으며 DB와 타 프로젝트는
+  조작하지 않았다. 배포 직후 WSL live E2E는 15개 통과/1개 실패였다. 첫 주차 표시가
+  backend timeout으로 실패한 추적 자료를 보존했고 조건을 완화하지 않았다.
+  이후 동일 SHA의 GitHub push/PR CI 두 실행(`35448899603`, `35448900946`)에서
+  backend/frontend/live-e2e가 모두 통과했다. 두 독립 리뷰어의 최종 운영 확인 후
+  provider PR #16/#18과 통합 PR #30을 머지한다. 이 기록 시점에는 아직 미머지다.
+
 ## 2026-09-19
 
 - 최종 Popper 리뷰에서 검색지역별 동일 UID가 전역 저장 시 유효 가격·출처를 잃는 P1을
