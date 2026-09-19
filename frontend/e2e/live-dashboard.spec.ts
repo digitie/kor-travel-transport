@@ -106,6 +106,27 @@ test.describe("live parking-radar dashboard", () => {
     );
   });
 
+  test("exposes the integrated transport API through the frontend proxy", async ({ page }) => {
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    for (const path of [
+      "/api/backend/v1/transport/highways/traffic?days=1&limit=1",
+      "/api/backend/v1/transport/highways/incidents?days=1&limit=1",
+      "/api/backend/v1/transport/fuel/stations?days=1&limit=1",
+      "/api/backend/v1/transport/statistics?days=1",
+    ]) {
+      const response = await page.request.get(path);
+      expect(response.status(), path).toBe(200);
+      const payload = await response.json();
+      expect(payload.generated_at, path).toBeTruthy();
+    }
+
+    const statusResponse = await page.request.get("/api/backend/v1/transport/collector-status");
+    expect(statusResponse.status()).toBe(200);
+    const statusPayload = await statusResponse.json();
+    expect(typeof statusPayload.collection_enabled).toBe("boolean");
+    expect(Array.isArray(statusPayload.sources)).toBe(true);
+  });
+
   test("mobile bottom tabbar navigates routes and tucks 백업 behind 더보기", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/", { waitUntil: "domcontentloaded" });

@@ -441,7 +441,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             FuelPriceSnapshot.product_code,
                         ),
                         order_by=(
-                            FuelPriceSnapshot.observed_at.desc(),
+                            FuelPriceSnapshot.collected_at.desc(),
                             FuelPriceSnapshot.id.desc(),
                         ),
                     )
@@ -449,7 +449,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
                 .where(
                     FuelPriceSnapshot.fuel_station_id.in_(station_ids),
-                    FuelPriceSnapshot.observed_at >= cutoff,
+                    FuelPriceSnapshot.collected_at >= cutoff,
                 )
             )
             if product_code:
@@ -495,6 +495,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     brand_name=station.brand_name,
                     phone=station.phone,
                     address=station.address,
+                    business_number=station.business_number,
+                    cb_code=station.cb_code,
                     station_type=station.station_type,
                     query_level=station.query_level,
                     sido_value=station.sido_value,
@@ -520,6 +522,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     has_maintenance=station.has_maintenance,
                     has_cvs=station.has_cvs,
                     cs_yn=station.cs_yn,
+                    discount_info=station.discount_info,
+                    save_event_info=station.save_event_info,
+                    representative_event_info=station.representative_event_info,
+                    on_event_info=station.on_event_info,
+                    other_business_info=station.other_business_info,
                     first_seen_at=serialize_utc(station.first_seen_at),
                     last_seen_at=serialize_utc(station.last_seen_at),
                     prices=prices,
@@ -547,6 +554,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             for key in ("last_started_at", "last_success_at", "next_due_at"):
                 if item[key] is not None:
                     item[key] = serialize_utc(item[key])
+            if item["last_error"] is not None:
+                item["last_error"] = "collection_failed"
+        if status["last_fuel_error"] is not None:
+            status["last_fuel_error"] = "collection_failed"
         return TransportCollectorStatus(**status)
 
     @router.get("/transport/statistics", response_model=TransportStatisticsResponse)
@@ -613,9 +624,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     func.min(FuelPriceSnapshot.price).label("minimum_price"),
                     func.max(FuelPriceSnapshot.price).label("maximum_price"),
                     func.max(FuelPriceSnapshot.observed_at).label("latest_observed_at"),
+                    func.max(FuelPriceSnapshot.collected_at).label("latest_collected_at"),
                 )
                 .where(
-                    FuelPriceSnapshot.observed_at >= cutoff,
+                    FuelPriceSnapshot.collected_at >= cutoff,
                     FuelPriceSnapshot.price.is_not(None),
                 )
                 .group_by(FuelPriceSnapshot.product_code)
@@ -666,6 +678,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     maximum_price=float(row.maximum_price) if row.maximum_price is not None else None,
                     latest_observed_at=(
                         serialize_utc(row.latest_observed_at) if row.latest_observed_at else None
+                    ),
+                    latest_collected_at=(
+                        serialize_utc(row.latest_collected_at) if row.latest_collected_at else None
                     ),
                 )
                 for row in fuel_rows

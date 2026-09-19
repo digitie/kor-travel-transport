@@ -786,6 +786,18 @@
             ],
             "title": "Average Price"
           },
+          "latest_collected_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Collected At"
+          },
           "latest_observed_at": {
             "anyOf": [
               {
@@ -876,6 +888,28 @@
             ],
             "title": "Brand Name"
           },
+          "business_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Business Number"
+          },
+          "cb_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cb Code"
+          },
           "cs_yn": {
             "anyOf": [
               {
@@ -886,6 +920,17 @@
               }
             ],
             "title": "Cs Yn"
+          },
+          "discount_info": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discount Info"
           },
           "dong_name": {
             "anyOf": [
@@ -1092,6 +1137,28 @@
             "title": "Name",
             "type": "string"
           },
+          "on_event_info": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "On Event Info"
+          },
+          "other_business_info": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Other Business Info"
+          },
           "phone": {
             "anyOf": [
               {
@@ -1113,6 +1180,28 @@
           "query_level": {
             "title": "Query Level",
             "type": "string"
+          },
+          "representative_event_info": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Representative Event Info"
+          },
+          "save_event_info": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Save Event Info"
           },
           "sido_name": {
             "title": "Sido Name",

@@ -45,7 +45,7 @@ SQLite dialect를 허용한다.
 
 ### `raw_api_responses`
 
-- 외부 API 원본 응답 기록
+- 외부 API 응답의 수집 실행별 요약/오류 기록
 - 파싱 오류 추적과 운영 디버깅에 사용
 
 ## 통합 교통정보 테이블
@@ -62,7 +62,8 @@ SQLite dialect를 허용한다.
 ### `highway_incident_snapshots`
 
 - `python-krex-api` `traffic.incident`의 돌발·사고·처리상태·위치·정체길이
-- 제공기관 발생 시각을 `observed_at`으로 정규화하고 원본 날짜/시각도 보존
+- provider의 발생 날짜/시각은 `occurred_date`/`occurred_time`으로 보존하고,
+  처리상태 변경을 시계열로 남길 수 있도록 현재 수집 시각을 `observed_at`으로 사용
 - 소통 스냅샷과 분리해 분석·장애 추적 시 역할을 섞지 않음
 
 ### `fuel_stations` / `fuel_price_snapshots`
@@ -77,7 +78,7 @@ SQLite dialect를 허용한다.
 
 - `krex_traffic_flow`, `krex_traffic_incident`, `opinet_browser`별 수집 시작/성공/다음
   예정/마지막 오류를 저장
-- 브라우저 수집의 10~12시간 재실행 정책과 고속도로 scheduler 상태를 운영 API에서
+- 브라우저 수집의 기본 8시간(허용 8~12시간, 24시간 내 최대 3회) 재실행 정책과 고속도로 scheduler 상태를 운영 API에서
   구분해 확인하는 기준 테이블
 
 ## 분석 데이터 처리 원칙

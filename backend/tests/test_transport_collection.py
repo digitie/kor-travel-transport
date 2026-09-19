@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 from datetime import timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
-from krex import CongestionLevel, Direction, Incident, TrafficFlow
+from krex import CongestionLevel, Direction, Incident, KrexQuotaExceededError, TrafficFlow
 from opinet import ProductCode, StationType
 from opinet.experimental import (
     BrowserFuelPrice,
@@ -19,13 +20,14 @@ from app.core.config import Settings
 from app.core.time_utils import now_utc
 from app.db.session import create_engine_and_session_factory, init_database
 from app.main import create_app
-from app.models import FuelPriceSnapshot, FuelStation
+from app.models import FuelPriceSnapshot, FuelStation, HighwayIncidentSnapshot, TransportCollectionState
 from app.services.transport_collection import (
     HighwayPayload,
     INCIDENT_SOURCE,
     OPINET_SOURCE,
     TRAFFIC_SOURCE,
     TransportCollectionService,
+    _collect_krex_pages,
 )
 
 
@@ -35,6 +37,7 @@ class FakeTransportProvider:
 
     def __init__(self) -> None:
         self.observed_at = now_utc()
+        self.incident_process_status = "처리중"
 
     async def collect_highway(self) -> HighwayPayload:
         return HighwayPayload(
@@ -63,7 +66,7 @@ class FakeTransportProvider:
                     point_name="테스트 IC",
                     route_no="001",
                     route_name="테스트고속도로",
-                    process_status="처리중",
+                    process_status=self.incident_process_status,
                     process_status_code="01",
                     latitude=37.4,
                     longitude=127.1,
@@ -178,6 +181,127 @@ def test_transport_collection_stores_and_deduplicates_snapshots(tmp_path: Path) 
     assert second["fuel_price_count"] == 0
 
 
+def test_krex_pagination_reads_all_pages_and_validates_total_count() -> None:
+    pages = {
+        1: SimpleNamespace(items=("a", "b"), num_of_rows=2, total_count=3),
+        2: SimpleNamespace(items=("c",), num_of_rows=2, total_count=3),
+    }
+    requested_pages: list[int] = []
+
+    async def fetch(page_no: int) -> SimpleNamespace:
+        requested_pages.append(page_no)
+        return pages[page_no]
+
+    items = asyncio.run(_collect_krex_pages(fetch, "traffic.flow"))
+
+    assert items == ("a", "b", "c")
+    assert requested_pages == [1, 2]
+
+
+def test_krex_quota_failure_persists_backoff(tmp_path: Path) -> None:
+    settings = build_settings(tmp_path)
+    settings.transport_quota_backoff_seconds = 3600
+
+    class QuotaProvider(FakeTransportProvider):
+        async def collect_highway(self) -> HighwayPayload:
+            raise KrexQuotaExceededError("quota exceeded")
+
+    async def run() -> tuple[dict, list[TransportCollectionState]]:
+        engine, session_factory = create_engine_and_session_factory(settings.database_url)
+        await init_database(engine)
+        service = TransportCollectionService(settings, QuotaProvider())
+        async with session_factory() as session:
+            summary = await service.collect(session, trigger="test")
+            states = list((await session.execute(select(TransportCollectionState))).scalars().all())
+        await service.close()
+        await engine.dispose()
+        return summary, states
+
+    summary, states = asyncio.run(run())
+
+    assert summary["status"] == "partial_success"
+    highway_state = next(state for state in states if state.source == TRAFFIC_SOURCE)
+    assert highway_state.next_due_at is not None
+    assert highway_state.last_error == "quota exceeded"
+
+
+def test_empty_opinet_snapshot_does_not_mark_fuel_success(tmp_path: Path) -> None:
+    settings = build_settings(tmp_path)
+
+    class EmptyFuelProvider(FakeTransportProvider):
+        async def collect_fuel(self) -> OpinetBrowserSnapshot:
+            return OpinetBrowserSnapshot(
+                collected_at=self.observed_at,
+                source_url="https://www.opinet.co.kr/searRgSelect.do",
+                regions=(),
+                stations=(),
+            )
+
+    async def run() -> tuple[dict, TransportCollectionState | None]:
+        engine, session_factory = create_engine_and_session_factory(settings.database_url)
+        await init_database(engine)
+        service = TransportCollectionService(settings, EmptyFuelProvider())
+        async with session_factory() as session:
+            summary = await service.collect(session, trigger="test")
+            fuel_state = await session.scalar(
+                select(TransportCollectionState).where(TransportCollectionState.source == OPINET_SOURCE)
+            )
+        await service.close()
+        await engine.dispose()
+        return summary, fuel_state
+
+    summary, fuel_state = asyncio.run(run())
+
+    assert summary["status"] == "partial_success"
+    assert fuel_state is not None
+    assert fuel_state.last_success_at is None
+    assert fuel_state.last_error is not None
+
+
+def test_incident_status_change_is_stored_as_a_new_snapshot(tmp_path: Path) -> None:
+    settings = build_settings(tmp_path)
+    provider = FakeTransportProvider()
+
+    async def run() -> list[HighwayIncidentSnapshot]:
+        engine, session_factory = create_engine_and_session_factory(settings.database_url)
+        await init_database(engine)
+        service = TransportCollectionService(settings, provider)
+        async with session_factory() as session:
+            await service.collect(session, trigger="test")
+            provider.incident_process_status = "처리완료"
+            states = list((await session.execute(select(TransportCollectionState))).scalars().all())
+            for state in states:
+                if state.source in {TRAFFIC_SOURCE, INCIDENT_SOURCE}:
+                    state.next_due_at = now_utc() - timedelta(seconds=1)
+            await session.commit()
+            await service.collect(session, trigger="test")
+            incidents = list((await session.execute(select(HighwayIncidentSnapshot))).scalars().all())
+        await service.close()
+        await engine.dispose()
+        return incidents
+
+    incidents = asyncio.run(run())
+
+    assert [item.process_status for item in incidents] == ["처리중", "처리완료"]
+
+
+def test_transport_collection_dml_runs_against_application_database(client) -> None:
+    """CI supplies PostgreSQL through TEST_DATABASE_URL; local runs use SQLite fallback."""
+    service = client.app.state.transport_collection_service
+    service.provider = FakeTransportProvider()
+
+    async def collect() -> None:
+        async with client.app.state.session_factory() as session:
+            await service.collect(session, trigger="test")
+
+    asyncio.run(collect())
+
+    response = client.get("/v1/transport/highways/traffic", params={"route_no": "001"})
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["route_no"] == "001"
+
+
 def test_transport_openapi_returns_stored_data_and_statistics(tmp_path: Path) -> None:
     settings = build_settings(tmp_path)
     with TestClient(create_app(settings)) as client:
@@ -214,6 +338,28 @@ def test_transport_openapi_returns_stored_data_and_statistics(tmp_path: Path) ->
     }
 
 
+def test_transport_status_redacts_collection_errors(tmp_path: Path) -> None:
+    settings = build_settings(tmp_path)
+    with TestClient(create_app(settings)) as client:
+        async def set_error() -> None:
+            async with client.app.state.session_factory() as session:
+                state = TransportCollectionState(
+                    source=OPINET_SOURCE,
+                    last_error="secret-key=do-not-return",
+                    updated_at=now_utc(),
+                )
+                session.add(state)
+                await session.commit()
+
+        asyncio.run(set_error())
+        status = client.get("/v1/transport/collector-status")
+
+    assert status.status_code == 200
+    assert status.json()["last_fuel_error"] == "collection_failed"
+    opinet_status = next(item for item in status.json()["sources"] if item["source"] == OPINET_SOURCE)
+    assert opinet_status["last_error"] == "collection_failed"
+
+
 def test_fuel_openapi_returns_only_the_latest_price_per_product(tmp_path: Path) -> None:
     settings = build_settings(tmp_path)
     with TestClient(create_app(settings)) as client:
@@ -242,9 +388,9 @@ def test_fuel_openapi_returns_only_the_latest_price_per_product(tmp_path: Path) 
                             source=OPINET_SOURCE,
                             product_code="B027",
                             price=1800,
-                            provider_updated_at=provider.observed_at + timedelta(minutes=1),
-                            observed_at=provider.observed_at + timedelta(minutes=1),
-                            collected_at=provider.observed_at,
+                            provider_updated_at=provider.observed_at - timedelta(days=10),
+                            observed_at=provider.observed_at - timedelta(days=10),
+                            collected_at=provider.observed_at + timedelta(minutes=1),
                         ),
                     ]
                 )
@@ -258,12 +404,12 @@ def test_fuel_openapi_returns_only_the_latest_price_per_product(tmp_path: Path) 
         {
             "product_code": "B027",
             "price": 1800.0,
-            "provider_updated_at": (provider.observed_at + timedelta(minutes=1)).isoformat().replace(
+            "provider_updated_at": (provider.observed_at - timedelta(days=10)).isoformat().replace(
                 "+00:00", "Z"
             ),
-            "observed_at": (provider.observed_at + timedelta(minutes=1)).isoformat().replace(
+            "observed_at": (provider.observed_at - timedelta(days=10)).isoformat().replace(
                 "+00:00", "Z"
             ),
-            "collected_at": provider.observed_at.isoformat().replace("+00:00", "Z"),
+            "collected_at": (provider.observed_at + timedelta(minutes=1)).isoformat().replace("+00:00", "Z"),
         }
     ]

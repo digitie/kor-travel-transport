@@ -47,7 +47,7 @@
 1. `python-krex-api`로 고속도로 소통(`traffic.flow`)과 돌발(`traffic.incident`)을
    조회한다.
 2. 최신 `python-opinet-api`의 `OpinetBrowserCollector`로 지역별 주유소/유가 화면을
-   수집한다. Playwright가 수집한 지역·주유소·유종·편의정보와 원본 필드를 PostgreSQL에
+   수집한다. Playwright가 수집한 지역·주유소·유종·편의정보와 행 단위 원본 필드를 PostgreSQL에
    저장한다.
 3. 실행 단위는 `collection_runs`에 `transport_scheduler`로 기록하고, 원본 요약은
    `raw_api_responses`, 정규화 결과는 `highway_*_snapshots`, `fuel_*` 테이블에 저장한다.
@@ -75,8 +75,8 @@
 
 통합 교통정보 scheduler도 `ENABLE_SCHEDULER=true`일 때 별도 task로 시작한다. 주차
 수집과 같은 프로세스에 있지만 lock·실행 기록·API 상태를 분리한다. 고속도로는 설정한
-transport 주기를 사용하고, 오피넷 브라우저 수집은 provider가 보장하는 10~12시간
-throttle을 추가로 적용한다.
+transport 주기를 사용하고, 오피넷 브라우저 수집은 pin된 provider의 기본 8시간
+throttle(허용 범위 8~12시간, 24시간 내 최대 3회)을 추가로 적용한다.
 
 주의:
 

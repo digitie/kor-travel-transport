@@ -6,13 +6,15 @@
   provider 데이터를 주기적으로 PostgreSQL에 저장하고, 저장 자료를 외부 OpenAPI와 내부
   통계로 즉시 제공하는 방향을 공통 문서와 현재 구현에 반영했다.
 - T-040 구현에서 `python-krex-api`의 고속도로 소통·돌발, 최신 `python-opinet-api`
-  Playwright 지역별 collector의 주유소·유가·편의정보를 연결했다. Alembic `0004`와
+  Playwright 지역별 collector의 주유소·유가·편의정보를 연결했다. Alembic `0004`/`0005`와
   소스별 수집 상태, 중복 방지, 조회/통계 API, 테스트 fixture를 추가했다.
-- 오피넷 collector는 공식 Open API 대체가 아닌 공개 화면 기반 실험 기능이므로 provider의
-  10~12시간 throttle을 존중하고, 원본/오류와 화면 변경 위험을 문서화했다.
+- 오피넷 collector는 공식 Open API 대체가 아닌 공개 화면 기반 실험 기능이므로 pin된
+  provider의 기본 8시간 throttle(허용 범위 8~12시간)을 존중하고, 원본/오류와 화면 변경
+  위험을 문서화했다.
 - 유가 OpenAPI는 보관 기간의 모든 가격 이력을 메모리에 올리지 않고 DB window query로
   주유소·유종별 최신 1건만 반환하도록 보강했으며, 과거 가격이 최신값으로 덮이지 않는
-  회귀 테스트를 추가했다. WSL2 백엔드 전체 `99 passed`, 프론트 단일 worker `61 passed`,
+  회귀 테스트를 추가했다. WSL2 백엔드 전체 `105 passed`, 프론트 단일 worker에서
+  기존 52개와 누락 worker 재실행 9개를 합쳐 `61 passed`,
   TypeScript 검사와 production build도 통과했다.
 
 ## 2026-09-07

@@ -251,6 +251,8 @@ class FuelPriceSnapshot(Base):
         CheckConstraint("price IS NULL OR price >= 0", name="ck_fuel_price_nonnegative"),
         Index("ix_fuel_prices_station_observed", "fuel_station_id", "observed_at"),
         Index("ix_fuel_prices_product_observed", "product_code", "observed_at"),
+        Index("ix_fuel_prices_station_collected", "fuel_station_id", "collected_at"),
+        Index("ix_fuel_prices_product_collected", "product_code", "collected_at"),
         Index("ix_fuel_prices_collection_run_id", "collection_run_id"),
     )
 

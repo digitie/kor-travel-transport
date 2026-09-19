@@ -125,6 +125,8 @@ class FuelStationItem(BaseModel):
     brand_name: str | None = None
     phone: str | None = None
     address: str | None = None
+    business_number: str | None = None
+    cb_code: str | None = None
     station_type: str | None = None
     query_level: str
     sido_value: str
@@ -150,6 +152,11 @@ class FuelStationItem(BaseModel):
     has_maintenance: bool | None = None
     has_cvs: bool | None = None
     cs_yn: bool | None = None
+    discount_info: str | None = None
+    save_event_info: str | None = None
+    representative_event_info: str | None = None
+    on_event_info: str | None = None
+    other_business_info: str | None = None
     first_seen_at: datetime
     last_seen_at: datetime
     prices: list[FuelPriceItem]
@@ -209,6 +216,7 @@ class FuelPriceStatistics(BaseModel):
     minimum_price: float | None = None
     maximum_price: float | None = None
     latest_observed_at: datetime | None = None
+    latest_collected_at: datetime | None = None
 
 
 class TransportStatisticsResponse(BaseModel):

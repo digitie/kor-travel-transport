@@ -10,8 +10,8 @@
 
 - `python-krex-api`: 고속도로 실시간 소통과 돌발을 transport scheduler 기본 주기로 저장
 - `python-opinet-api`: 최신 Playwright 지역별 화면 수집기로 주유소/유종 가격/편의정보를
-  저장. 전체 실행은 provider의 10~12시간 throttle을 따르며 매 scheduler tick마다
-  재실행하지 않는다.
+  저장. 현재 pin된 provider의 기본 전체 실행은 8시간이며 허용 범위는 8~12시간,
+  24시간 내 최대 3회다. 매 scheduler tick마다 재실행하지 않는다.
 - `/v1/transport/highways/traffic`, `/v1/transport/highways/incidents`,
   `/v1/transport/fuel/stations`: PostgreSQL 최신/기간 데이터 조회
 - `/v1/transport/statistics`: 저장 데이터에서 평균 속도, 돌발 건수, 유종별 가격 통계 계산
@@ -36,9 +36,13 @@ cutover 동안 HTTP read-only source로 유지하며 Docker를 조작하지 않�
 - scheduler는 collection duration을 포함해 다음 시작 시각을 monotonic deadline으로 계산한다. 수집이 5분을 넘으면 지연을 숨기지 않고 즉시 다음 tick을 시작하며, 운영 verifier가 freshness를 별도로 gate한다.
 - 외부 API가 같은 `observed_at`을 반복하면 unique key에 의해 새 snapshot이 생기지
   않을 수 있다. 따라서 row 수와 함께 `observed_at`, `collected_at`, `last_run`을 확인한다.
-- 고속도로 소통/돌발도 provider가 준 관측 시각과 `identity_key`를 이용해 같은 규칙으로
+- 고속도로 소통은 provider가 준 관측 시각과 `identity_key`를 이용해 같은 규칙으로
   중복을 막는다. 유가는 provider 갱신 시각을 우선 관측 시각으로 쓰고, 갱신 시각이 없으면
-  collector 실행 시각을 사용한다.
+  collector 실행 시각을 사용한다. 유가 API의 기간 필터와 최신 판정은 실제 응답을 받은
+  `collected_at`을 기준으로 하므로 provider 갱신 시각이 오래되어도 최신 수집 결과를
+  숨기지 않는다.
+- 돌발은 provider 발생시각이 아니라 수집시각을 `observed_at`으로 사용한다. 같은
+  `series_no`의 처리상태 변경을 새 스냅샷으로 보존하기 위해서다.
 - Playwright 수집기는 공개 화면 자동화가 공식 API가 아니라는 위험이 있으므로, 화면
   구조가 바뀌거나 자동화 차단이 발생하면 실패를 기록하고 임의의 빈 성공 데이터로
   덮어쓰지 않는다.

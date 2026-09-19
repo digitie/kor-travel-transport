@@ -19,11 +19,12 @@
 - 최신 `python-opinet-api` Playwright collector를 사용해 지역·주유소·유종 가격·편의
   정보를 PostgreSQL에 저장
 - `highway_traffic_snapshots`, `highway_incident_snapshots`, `fuel_stations`,
-  `fuel_price_snapshots`, `transport_collection_states`와 Alembic `0004` 추가
+  `fuel_price_snapshots`, `transport_collection_states`와 Alembic `0004`/`0005` 추가
 - `/v1/transport/highways/traffic`, `/v1/transport/highways/incidents`,
   `/v1/transport/fuel/stations`, `/v1/transport/statistics`,
   `/v1/transport/collector-status` 제공
-- 고속도로/돌발/유가의 중복 저장 방지, 소스별 수집 상태, 원본 오류 기록
+- KREX 전체 페이지 수집·쿼터 backoff·PostgreSQL advisory lock, OPINET 빈 결과 보호,
+  고속도로/돌발/유가의 중복 저장 방지, 소스별 수집 상태와 공개 오류 마스킹 제공
 
 ## 1. 현재 구현 범위
 

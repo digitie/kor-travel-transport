@@ -51,6 +51,9 @@ function isAllowedBackendRequest(path: string, method: string): boolean {
   if (versioned.startsWith("holidays/") && method === "GET") {
     return true;
   }
+  if (versioned.startsWith("transport/") && method === "GET") {
+    return true;
+  }
   if (versioned === "flights/status" && method === "GET") {
     return true;
   }

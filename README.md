@@ -81,8 +81,9 @@
 
 고속도로 소통·돌발은 `python-krex-api`의 `traffic.flow`/`traffic.incident`를 사용하고,
 오피넷 지역별 공개 화면은 `python-opinet-api`의 `OpinetBrowserCollector`를 사용한다.
-Playwright 수집은 공식 Open API 대체가 아니라 공개 화면의 실험적 수집이며, 기본 전체
-실행 간격은 제공자 정책에 따라 10~12시간 무작위로 둔다.
+Playwright 수집은 공식 Open API 대체가 아니라 공개 화면의 실험적 수집이며, 현재 pin된
+provider의 기본 전체 실행 간격은 8시간이다. provider 정책상 허용 범위는 8~12시간이고
+24시간 내 최대 3회다.
 
 현재 실시간 기본 수집원은 `15056803`이며, 인천 주차/요금 API는 별도 플래그로 분리되어 있다.
 비행편 정보는 주차 현황 수집과 분리된 조회용 API이며, 하루 흐름 오버레이 차트의 마커 표시 용도로만 사용한다.
@@ -216,8 +217,9 @@ OPINET_BROWSER_TIMEOUT_MS=30000
   `collection_runs.trigger=transport_scheduler`로 분리한다.
 - 고속도로 소통·돌발은 기본 5분 주기(`TRANSPORT_COLLECT_INTERVAL_SECONDS`)로 저장한다.
   소통 행과 돌발 행은 각각 `(source, identity_key, observed_at)` unique로 중복을 막는다.
-- 오피넷 Playwright 수집은 소스 자체의 10~12시간 throttle을 따른다. 화면 자동화가
-  실패하면 오류를 숨기지 않고 `transport_collection_states`와 `raw_api_responses`에 남긴다.
+- 오피넷 Playwright 수집은 pin된 provider의 기본 8시간 throttle(허용 범위 8~12시간,
+  24시간 내 최대 3회)을 따른다. 화면 자동화가 실패하면 오류를 숨기지 않고
+  `transport_collection_states`와 `raw_api_responses`에 남긴다.
 
 동작 방식:
 

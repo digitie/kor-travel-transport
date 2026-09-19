@@ -28,7 +28,8 @@ class Settings(BaseSettings):
     data_go_kr_service_key: str | None = None
     kex_ex_api_key: str | None = None
     transport_collection_enabled: bool = False
-    transport_collect_interval_seconds: int = Field(default=300, gt=0)
+    transport_collect_interval_seconds: int = Field(default=300, ge=300)
+    transport_quota_backoff_seconds: int = Field(default=3600, ge=300)
     transport_route_nos_csv: str = ""
     transport_conzone_ids_csv: str = ""
     opinet_browser_enabled: bool = True
