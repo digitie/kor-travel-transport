@@ -49,7 +49,8 @@
 2. 최신 `python-opinet-api`의 `OpinetBrowserCollector`로 지역별 주유소/유가 화면을
    수집한다. Playwright가 수집한 지역·주유소·유종·편의정보와 행 단위 원본 필드를 PostgreSQL에
    저장한다.
-3. 실행 단위는 `collection_runs`에 `transport_scheduler`로 기록하고, 원본 요약은
+3. 실행 단위는 `collection_runs`에 `transport_highway_scheduler` 또는
+   `transport_fuel_scheduler`로 기록하고, 원본 요약은
    `raw_api_responses`, 정규화 결과는 `highway_*_snapshots`, `fuel_*` 테이블에 저장한다.
 4. 소스별 시작/성공/다음 예정/오류 상태는 `transport_collection_states`에 남긴다.
 5. 조회 API는 저장된 스냅샷만 읽으며 `/v1/transport/statistics`는 같은 원본 스냅샷에서
@@ -73,10 +74,19 @@
 - 기본 개발 간격은 `300초`, 즉 5분이다.
 - n150 운영 간격은 `300초`, 즉 5분이다.
 
-통합 교통정보 scheduler도 `ENABLE_SCHEDULER=true`일 때 별도 task로 시작한다. 주차
-수집과 같은 프로세스에 있지만 lock·실행 기록·API 상태를 분리한다. 고속도로는 설정한
-transport 주기를 사용하고, 오피넷 브라우저 수집은 pin된 provider의 기본 8시간
+통합 교통정보 scheduler도 `ENABLE_SCHEDULER=true`일 때 고속도로와 유가별 task로
+시작한다. 주차 수집과 같은 프로세스에 있지만 lock·실행 기록·API 상태를 분리한다.
+고속도로와 유가도 별도 세션/트랜잭션과 PostgreSQL advisory lock(420040/420041)을
+사용하므로 전국 브라우저 탐색이 고속도로 저장을 막지 않는다. 잠금은 짧은 예약 트랜잭션에만
+사용하며 다음 예정 시각과 실행 시작을 확정한 뒤 해제한다. 외부 조회 중에는 DB 연결과
+트랜잭션을 점유하지 않는다. 전체 수동 실행은 두 잠금을 같은 순서로 잡는다.
+고속도로 조회는 최대 120초, 전국 유가 조회는 최대 2시간 후 취소한다. 예약 기간은 조회
+제한보다 길게 두며, 취소·재시작에도 유가의 최소 8시간 예약을 유지한다. 고속도로 다음
+예정 시각은 성공 시 시작 시각에 설정 주기를 더해 계산하고,
+scheduler는 DB의 남은 대기 시간을 사용해 미세한 tick 차이로 한 주기를 건너뛰지 않는다.
+오피넷 브라우저 수집은 pin된 provider의 기본 8시간
 throttle(허용 범위 8~12시간, 24시간 내 최대 3회)을 추가로 적용한다.
+유가 scheduler는 다음 예정 시각까지 기다리므로 5분마다 불필요한 skipped 실행을 만들지 않는다.
 
 주의:
 

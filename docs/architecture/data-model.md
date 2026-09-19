@@ -55,8 +55,11 @@ SQLite dialect를 허용한다.
 
 ### `highway_traffic_snapshots`
 
-- `python-krex-api` `traffic.flow`의 고속도로 구간별 속도 스냅샷
+- `python-krex-api` `traffic.flow_all`의 고속도로 VDS별 속도 스냅샷
 - 노선/콘존/방향/현재속도/자유속도/혼잡도를 저장
+- VDS ID가 있으면 `identity_key=vds:<ID>:<방향>`으로 같은 콘존의 여러 검지기를
+  보존한다. 없는 provider 표본은 콘존 기반 identity를 사용한다. `S`/`E`는 남/동쪽이
+  아니라 기점/종점 방향이다. 속도 결측은 0으로 바꾸지 않고 `NULL`로 보존한다.
 - `(source, identity_key, observed_at)` unique로 반복 수집 중복을 방지
 
 ### `highway_incident_snapshots`

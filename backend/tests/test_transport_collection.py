@@ -19,7 +19,7 @@ from opinet.experimental import (
 from sqlalchemy import select
 
 from app.core.config import Settings
-from app.core.time_utils import now_utc
+from app.core.time_utils import now_utc, serialize_utc
 from app.db.session import create_engine_and_session_factory, init_database
 from app.main import create_app
 from app.models import FuelPriceSnapshot, FuelStation, HighwayIncidentSnapshot, TransportCollectionState
@@ -28,8 +28,10 @@ from app.services.transport_collection import (
     INCIDENT_SOURCE,
     OPINET_SOURCE,
     TRAFFIC_SOURCE,
+    LiveTransportProvider,
     TransportCollectionService,
     _collect_krex_pages,
+    _traffic_identity,
 )
 
 
@@ -183,6 +185,184 @@ def test_transport_collection_stores_and_deduplicates_snapshots(tmp_path: Path) 
     assert second["fuel_price_count"] == 0
 
 
+def test_transport_scopes_store_independently(tmp_path: Path) -> None:
+    settings = build_settings(tmp_path)
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+    provider = FakeTransportProvider()
+    provider.collect_fuel = AsyncMock(wraps=provider.collect_fuel)
+    provider.collect_highway = AsyncMock(wraps=provider.collect_highway)
+
+    async def run() -> None:
+        await init_database(engine)
+        service = TransportCollectionService(settings, provider)
+        async with factory() as session:
+            highway = await service.collect(session, scope="highway")
+        assert highway["traffic_snapshot_count"] == 1
+        assert highway["fuel_station_count"] == 0
+        provider.collect_fuel.assert_not_awaited()
+        async with factory() as session:
+            fuel = await service.collect(session, scope="fuel")
+        assert fuel["traffic_snapshot_count"] == 0
+        assert fuel["fuel_price_count"] == 1
+        provider.collect_highway.assert_awaited_once()
+        provider.collect_fuel.assert_awaited_once()
+        await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_slow_fuel_does_not_hold_highway_operation_lock(tmp_path: Path) -> None:
+    async def run() -> None:
+        service = TransportCollectionService(build_settings(tmp_path), FakeTransportProvider())
+        fuel_started = asyncio.Event()
+        release_fuel = asyncio.Event()
+
+        async def collect_unlocked(session, trigger, scope):
+            if scope == "fuel":
+                fuel_started.set()
+                await release_fuel.wait()
+            return {"scope": scope}
+
+        service._collect_unlocked = collect_unlocked
+        service._acquire_database_lock = AsyncMock()
+        fuel = asyncio.create_task(service.collect(AsyncMock(), scope="fuel"))
+        try:
+            await asyncio.wait_for(fuel_started.wait(), 1)
+            result = await asyncio.wait_for(service.collect(AsyncMock(), scope="highway"), 1)
+            assert result == {"scope": "highway"}
+        finally:
+            release_fuel.set()
+            await fuel
+
+    asyncio.run(run())
+
+
+def test_transport_database_locks_are_scoped() -> None:
+    async def run() -> None:
+        session = SimpleNamespace(
+            get_bind=lambda: SimpleNamespace(dialect=SimpleNamespace(name="postgresql")),
+            execute=AsyncMock(),
+        )
+        await TransportCollectionService._acquire_database_lock(session, "highway")
+        await TransportCollectionService._acquire_database_lock(session, "fuel")
+        assert [call.args[1]["lock_key"] for call in session.execute.await_args_list] == [420040, 420041]
+
+    asyncio.run(run())
+
+
+def test_postgres_slow_fuel_releases_transaction_and_reservation_excludes_duplicate(client) -> None:
+    if client.app.state.engine.dialect.name != "postgresql":
+        pytest.skip("실제 PostgreSQL advisory lock 검증")
+
+    async def run() -> None:
+        provider = FakeTransportProvider()
+        fuel_started = asyncio.Event()
+        release_fuel = asyncio.Event()
+        original_collect_fuel = provider.collect_fuel
+
+        async def slow_fuel():
+            fuel_started.set()
+            await release_fuel.wait()
+            return await original_collect_fuel()
+
+        provider.collect_fuel = AsyncMock(side_effect=slow_fuel)
+        first = TransportCollectionService(client.app.state.settings, provider)
+        second = TransportCollectionService(client.app.state.settings, provider)
+
+        async def collect(service, scope):
+            async with client.app.state.session_factory() as session:
+                return await service.collect(session, scope=scope)
+
+        fuel = asyncio.create_task(collect(first, "fuel"))
+        try:
+            await asyncio.wait_for(fuel_started.wait(), 5)
+            highway = await asyncio.wait_for(collect(second, "highway"), 5)
+            assert highway["traffic_snapshot_count"] == 1
+            duplicate = await asyncio.wait_for(collect(second, "fuel"), 5)
+            assert duplicate["status"] == "skipped"
+            async with client.app.state.session_factory() as session:
+                state = await session.scalar(select(TransportCollectionState).where(TransportCollectionState.source == OPINET_SOURCE))
+                assert state.last_started_at is not None
+                assert serialize_utc(state.next_due_at) > now_utc() + timedelta(hours=7)
+        finally:
+            release_fuel.set()
+            await fuel
+        provider.collect_fuel.assert_awaited_once()
+
+    client.portal.call(run)
+
+
+def test_cancelled_fuel_keeps_durable_reservation_and_has_no_open_transaction(tmp_path: Path) -> None:
+    settings = build_settings(tmp_path)
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> None:
+        await init_database(engine)
+        started = asyncio.Event()
+        provider = FakeTransportProvider()
+        async with factory() as session:
+            async def collect_fuel():
+                assert not session.in_transaction()
+                started.set()
+                await asyncio.Event().wait()
+
+            provider.collect_fuel = AsyncMock(side_effect=collect_fuel)
+            service = TransportCollectionService(settings, provider)
+            task = asyncio.create_task(service.collect(session, scope="fuel"))
+            await asyncio.wait_for(started.wait(), 5)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        async with factory() as session:
+            replacement = TransportCollectionService(settings, provider)
+            result = await replacement.collect(session, scope="fuel")
+            assert result["status"] == "skipped"
+            assert await replacement.next_collection_delay(session, "fuel") > 7 * 3600
+            state = await session.scalar(select(TransportCollectionState).where(TransportCollectionState.source == OPINET_SOURCE))
+            assert state.last_error == "collection cancelled"
+        provider.collect_fuel.assert_awaited_once()
+        await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_highway_next_due_is_anchored_to_start_and_scheduler_uses_remaining_delay(tmp_path: Path) -> None:
+    settings = build_settings(tmp_path)
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> None:
+        await init_database(engine)
+        service = TransportCollectionService(settings, FakeTransportProvider())
+        started = now_utc() - timedelta(seconds=20)
+        async with factory() as session:
+            for source in (TRAFFIC_SOURCE, INCIDENT_SOURCE):
+                state = await service._get_or_create_state(session, source)
+                state.last_started_at = started
+                await service._mark_source_success(session, source, now_utc())
+                assert serialize_utc(state.next_due_at) == started + timedelta(seconds=300)
+            await session.commit()
+            delay = await service.next_collection_delay(session, "highway")
+            assert 275 < delay <= 280
+        await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_parking_status_excludes_every_transport_trigger(client) -> None:
+    from app.main import _load_collection_run_statuses
+    from app.models import CollectionRun
+
+    async def run() -> None:
+        async with client.app.state.session_factory() as session:
+            for trigger in ("transport_scheduler", "transport_highway_scheduler", "transport_fuel_scheduler", "transport_test"):
+                session.add(CollectionRun(started_at=now_utc(), finished_at=now_utc(), status="success", trigger=trigger))
+            await session.commit()
+            statuses = await _load_collection_run_statuses(session)
+            assert all(not item.trigger.startswith("transport_") for item in statuses)
+
+    client.portal.call(run)
+
+
 def test_krex_pagination_reads_all_pages_and_validates_total_count() -> None:
     pages = {
         1: SimpleNamespace(items=("a", "b"), num_of_rows=2, total_count=3),
@@ -198,6 +378,36 @@ def test_krex_pagination_reads_all_pages_and_validates_total_count() -> None:
 
     assert items == ("a", "b", "c")
     assert requested_pages == [1, 2]
+
+
+def test_live_highway_reads_flow_once_and_applies_both_filters(tmp_path: Path) -> None:
+    settings = build_settings(tmp_path)
+    settings.transport_route_nos_csv = "001"
+    settings.transport_conzone_ids_csv = "1001"
+
+    async def run() -> None:
+        payload = await FakeTransportProvider().collect_highway()
+        first = payload.traffic[0].model_copy(update={"vds_id": "000001"})
+        second = first.model_copy(update={"vds_id": "000002"})
+        excluded = first.model_copy(update={"conzone_id": "9999"})
+        provider = LiveTransportProvider(settings)
+        await provider.krex.aclose()
+        provider.krex = SimpleNamespace(
+            traffic=SimpleNamespace(
+                flow_all=AsyncMock(return_value=SimpleNamespace(items=(first, second, excluded))),
+                incident=AsyncMock(return_value=SimpleNamespace(items=(), total_count=0)),
+            ),
+            aclose=AsyncMock(),
+        )
+        try:
+            result = await provider.collect_highway()
+            provider.krex.traffic.flow_all.assert_awaited_once_with()
+            assert result.traffic == (first, second)
+            assert _traffic_identity(first, "S") != _traffic_identity(second, "S")
+        finally:
+            await provider.aclose()
+
+    asyncio.run(run())
 
 
 def test_krex_quota_failure_persists_backoff(tmp_path: Path) -> None:
@@ -302,6 +512,27 @@ def test_transport_collection_dml_runs_against_application_database(client) -> N
 
     assert response.status_code == 200
     assert response.json()["items"][0]["route_no"] == "001"
+
+
+def test_same_conzone_vds_rows_survive_database_and_public_api(client) -> None:
+    service = client.app.state.transport_collection_service
+    provider = FakeTransportProvider()
+
+    async def collect() -> None:
+        base = await provider.collect_highway()
+        provider.collect_highway = AsyncMock(return_value=HighwayPayload(
+            traffic=tuple(base.traffic[0].model_copy(update={"vds_id": value}) for value in ("0001", "0002")),
+            incidents=(),
+        ))
+        service.provider = provider
+        async with client.app.state.session_factory() as session:
+            summary = await service.collect(session, scope="highway")
+            assert summary["traffic_snapshot_count"] == 2
+
+    client.portal.call(collect)
+    response = client.get("/v1/transport/highways/traffic", params={"route_no": "001"})
+    assert response.status_code == 200
+    assert {item["identity_key"] for item in response.json()["items"]} == {"vds:0001:E", "vds:0002:E"}
 
 
 def test_transport_openapi_returns_stored_data_and_statistics(tmp_path: Path) -> None:

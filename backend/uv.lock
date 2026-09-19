@@ -441,9 +441,9 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=7.1,<8.0" },
     { name = "python-kasi-api", git = "https://github.com/digitie/python-kasi-api?rev=51c39c1b0dd5b169b748552e81b9b9a55e86b9a1" },
     { name = "python-krairport-api", git = "https://github.com/digitie/python-krairport-api?rev=cbe4d1380dc0388c078e8ae4622d3e580717064b" },
-    { name = "python-krex-api", git = "https://github.com/digitie/python-krex-api?rev=d153f3cdd87c9cfacceeb94310bbe6067a1bbfa8" },
+    { name = "python-krex-api", git = "https://github.com/digitie/python-krex-api?rev=adda2879f8bc1f0896867d28eee5583594ecda01" },
     { name = "python-multipart", specifier = ">=0.0.32,<1.0" },
-    { name = "python-opinet-api", extras = ["browser"], git = "https://github.com/digitie/python-opinet-api?rev=1aa2c577058d4a56256adaebb0682058c406747c" },
+    { name = "python-opinet-api", extras = ["browser"], git = "https://github.com/digitie/python-opinet-api?rev=1601ef360300b35cba09942d8ededf806ac86f2d" },
     { name = "sqlalchemy", specifier = ">=2.0.52,<3.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.52,<1.0" },
 ]
@@ -825,7 +825,7 @@ dependencies = [
 [[package]]
 name = "python-krex-api"
 version = "0.1.0"
-source = { git = "https://github.com/digitie/python-krex-api?rev=d153f3cdd87c9cfacceeb94310bbe6067a1bbfa8#d153f3cdd87c9cfacceeb94310bbe6067a1bbfa8" }
+source = { git = "https://github.com/digitie/python-krex-api?rev=adda2879f8bc1f0896867d28eee5583594ecda01#adda2879f8bc1f0896867d28eee5583594ecda01" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
@@ -843,7 +843,7 @@ wheels = [
 [[package]]
 name = "python-opinet-api"
 version = "0.2.0"
-source = { git = "https://github.com/digitie/python-opinet-api?rev=1aa2c577058d4a56256adaebb0682058c406747c#1aa2c577058d4a56256adaebb0682058c406747c" }
+source = { git = "https://github.com/digitie/python-opinet-api?rev=1601ef360300b35cba09942d8ededf806ac86f2d#1601ef360300b35cba09942d8ededf806ac86f2d" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },

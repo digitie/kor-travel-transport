@@ -105,12 +105,25 @@ function buildResponseHeaders(upstreamResponse: Response): Headers {
   return headers;
 }
 
-function buildProxyErrorResponse(status: 502 | 504, detail: string): Response {
+function buildProxyErrorResponse(request: NextRequest, status: 404 | 502 | 504, detail: string): Response {
+  const titles = { 404: "Not Found", 502: "Bad Gateway", 504: "Gateway Timeout" };
+
+  // ADR-005의 오류 계약을 따르되 기존 클라이언트의 detail/code 호환성을 유지한다.
   return Response.json(
-    { detail, code: status === 504 ? "backend_timeout" : "backend_unavailable" },
+    {
+      type: "about:blank",
+      title: titles[status],
+      status,
+      detail,
+      instance: request.nextUrl.pathname,
+      ...(status === 404 ? {} : { code: status === 504 ? "backend_timeout" : "backend_unavailable" }),
+    },
     {
       status,
-      headers: { "cache-control": "no-store, max-age=0, must-revalidate" },
+      headers: {
+        "content-type": "application/problem+json",
+        "cache-control": "no-store, max-age=0, must-revalidate",
+      },
     }
   );
 }
@@ -186,7 +199,7 @@ async function proxyToBackend(request: NextRequest, context: RouteContext): Prom
   const method = request.method.toUpperCase();
 
   if (!isAllowedBackendRequest(backendPath, method)) {
-    return Response.json({ detail: "Not found" }, { status: 404 });
+    return buildProxyErrorResponse(request, 404, "Not found");
   }
 
   // Backend routes live under `/v1` (ADR-005) except `/health`, which stays
@@ -219,9 +232,9 @@ async function proxyToBackend(request: NextRequest, context: RouteContext): Prom
     });
   } catch (caughtError) {
     if (caughtError instanceof DOMException && caughtError.name === "AbortError") {
-      return buildProxyErrorResponse(504, "백엔드 응답 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.");
+      return buildProxyErrorResponse(request, 504, "백엔드 응답 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.");
     }
-    return buildProxyErrorResponse(502, "백엔드에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    return buildProxyErrorResponse(request, 502, "백엔드에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.");
   } finally {
     clearTimeout(timeoutId);
   }

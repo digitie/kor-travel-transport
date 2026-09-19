@@ -204,8 +204,20 @@ test.describe("live parking-radar dashboard", () => {
     ]) {
       const response = await getJsonWithTransientRetry(page.request, path);
       expect(response.status(), path).toBe(200);
-      const payload = await response.json();
-      expect(payload.generated_at, path).toBeTruthy();
+        const payload = await response.json();
+        expect(payload.generated_at, path).toBeTruthy();
+        if (path.includes("/highways/traffic")) {
+          expect(payload.items.length).toBeGreaterThan(0);
+          expect(payload.items[0].source).toBe("krex_traffic_flow");
+          expect(Date.parse(payload.items[0].collected_at)).toBeGreaterThan(Date.now() - 900_000);
+        } else if (path.includes("/fuel/stations")) {
+          expect(payload.items.length).toBeGreaterThan(0);
+          expect(payload.items[0].source).toBe("opinet_browser");
+          expect(payload.items[0].prices.length).toBeGreaterThan(0);
+        } else if (path.includes("/statistics")) {
+          expect(payload.traffic.length).toBeGreaterThan(0);
+          expect(payload.fuel_prices.length).toBeGreaterThan(0);
+        }
     }
 
     const statusResponse = await getJsonWithTransientRetry(
@@ -214,34 +226,28 @@ test.describe("live parking-radar dashboard", () => {
     );
     expect(statusResponse.status()).toBe(200);
     const statusPayload = await statusResponse.json();
-    expect(typeof statusPayload.collection_enabled).toBe("boolean");
-    expect(Array.isArray(statusPayload.sources)).toBe(true);
-    if (statusPayload.collection_enabled) {
-      // An enabled transport collector must prove that the scheduler has completed
-      // a durable run. The status API deliberately exposes only a stable error code.
+      expect(statusPayload.collection_enabled).toBe(true);
+      expect(Array.isArray(statusPayload.sources)).toBe(true);
+      // 각 소스의 저장 성공을 확인한다. 비활성/샘플/빈 결과는 운영 승인 대상이 아니다.
       expect(statusPayload.scheduler_enabled).toBe(true);
-      expect(statusPayload.last_run?.trigger).toBe("transport_scheduler");
-      expect(["success", "partial_success"]).toContain(
-        statusPayload.last_run?.status,
-      );
+      expect(statusPayload.client_mode).toBe("live");
+      expect(statusPayload.last_run?.trigger).toMatch(/^transport_(highway|fuel)_scheduler$/);
+      expect(["success", "skipped", "running"]).toContain(statusPayload.last_run?.status);
       expect(statusPayload.last_run?.error ?? null).toBeNull();
-      const finishedAt = Date.parse(statusPayload.last_run?.finished_at);
-      expect(Number.isFinite(finishedAt)).toBe(true);
-      expect(Date.now() - finishedAt).toBeLessThanOrEqual(900_000);
-      expect(
-        statusPayload.sources.some(
-          (source: { last_success_at: string | null }) =>
-            source.last_success_at,
-        ),
-      ).toBe(true);
-    } else {
-      // The server14 deployment intentionally keeps this opt-in until KREX/OPINET
-      // credentials are provisioned. Disabled must be explicit, never a false
-      // successful collection with empty data.
-      expect(statusPayload.client_mode).toBe("disabled");
-      expect(statusPayload.scheduler_enabled).toBe(false);
-      expect(statusPayload.last_run).toBeNull();
-    }
+      const runAt = Date.parse(statusPayload.last_run?.finished_at ?? statusPayload.last_run?.started_at);
+      expect(Number.isFinite(runAt)).toBe(true);
+      expect(Date.now() - runAt).toBeLessThanOrEqual(900_000);
+      for (const name of ["krex_traffic_flow", "krex_traffic_incident", "opinet_browser"]) {
+        expect(statusPayload.enabled_sources).toContain(name);
+        const source = statusPayload.sources.find((item: { source: string }) => item.source === name);
+        expect(source, name).toBeTruthy();
+        expect(source.last_error, name).toBeNull();
+        const succeededAt = Date.parse(source.last_success_at);
+        expect(Number.isFinite(succeededAt), name).toBe(true);
+        const maxAge = name === "opinet_browser" ? 13 * 3_600_000 : 900_000;
+        expect(Date.now() - succeededAt, name).toBeGreaterThanOrEqual(-60_000);
+        expect(Date.now() - succeededAt, name).toBeLessThanOrEqual(maxAge);
+      }
   });
 
   test("mobile bottom tabbar navigates routes and tucks 백업 behind 더보기", async ({

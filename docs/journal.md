@@ -2,6 +2,34 @@
 
 ## 2026-09-19
 
+- 후속 실검증: 사용자가 지정한 로컬 `python-krex-api` 환경 파일에서 키를 확인하고
+  비밀값을 출력하지 않은 채 n150 환경을 보호 백업 후 활성화했다. 기존 통합 실행은
+  KREX 폐기 URL 및 OPINET 자동 탐색 응답 본문 오류로 실패했다. 실패 기록을 유지하며
+  형제 provider에서 회귀 테스트와 수정 PR을 진행한다.
+- OPINET 수정본 WSL 테스트 `238 passed, 4 skipped`, 커버리지 93.15%, mypy/compileall
+  통과. n150 제한 live 조회에서 서울 강남구 주유소·충전소 32곳/가격 85건을 파싱했다.
+  이는 전국 수집 또는 PostgreSQL 적재 성공 증적이 아니다. PR은 `python-opinet-api#18`.
+- OPINET 후속 `1601ef3`은 동일 경로·쿼리 및 timeout 검증을 추가했다. 별도 초기 탐색만
+  실행한 n150 검증에서 `OPINET_NAVIGATION_AND_CLEANUP_OK`를 확인했다. 두 reviewer가
+  지적한 예외 signature 문자열 매칭의 P2는 Playwright를 선택 의존성으로 유지하면서
+  확인된 Chromium 오류만 처리하기 위한 판단으로 기록한다. 일반 네트워크 오류는 전파한다.
+- KREX 수정 `adda287`/PR #16은 실제 8,370행·69개 노선을 파싱하고, `flow_all()`로
+  전체 조회 한 번과 `vds_id` 보존을 지원한다. WSL `224 passed, 8 skipped`,
+  mypy/ruff/compileall 통과. 기존 `flow()`의 로컬 페이지는 각 호출마다 전체 응답을 읽으므로
+  전국 수집에는 사용하지 않도록 문서화하고 통합 코드는 `flow_all()`로 변경했다.
+- 독립 적대적 리뷰: Popper(Volta), James(Tesla)가 OPINET `1601ef3`와 KREX `adda287`
+  각각 P0/P1 없음으로 승인했다. KREX `reference.common_codes()`의 `FlowDirection` 누락은
+  직접 enum import와 `codes.md`로 사용 가능한 P2 후속 항목이다. provider 승인과 통합
+  PR의 실제 DB·E2E 승인은 별개이며, PR #30 최종 게이트는 아직 완료하지 않았다.
+- 통합 검증: WSL 실제 PostgreSQL 전체 테스트는 중간 수정본 `113 passed`, 최신
+  provider pin·예약/취소·VDS 저장·OpenAPI 집중 테스트는 `20 passed`다. 프론트는
+  Windows 마운트 위 worker 시작 timeout을 겪어 동일 소스를 WSL `/tmp`에 복사했고
+  전체 `67 passed`, TypeScript 검사 통과. Docker 프론트도 `67 passed`이며 백엔드
+  전체 Docker 검증은 진행 중이다. PostgreSQL `alembic check`는 변경 없음으로 통과했다.
+- 고속도로/유가를 별도 task·DB 트랜잭션·advisory lock으로 분리하고, DB 예정 시각 기준
+  대기로 5분 tick이 미세한 시각 차이 때문에 10분으로 늘어나는 문제를 보완한다.
+  공개 E2E는 모든 소스의 최근 성공·오류 없음·비어 있지 않은 실제 저장 데이터와 통계를
+  요구하도록 변경 중이다. 이전 disabled 허용 검증은 최종 승인으로 사용하지 않는다.
 - 사용자 요청으로 저장소의 목적을 국내 여행용 통합 교통정보 라이브러리/API로 명시했다.
   provider 데이터를 주기적으로 PostgreSQL에 저장하고, 저장 자료를 외부 OpenAPI와 내부
   통계로 즉시 제공하는 방향을 공통 문서와 현재 구현에 반영했다.

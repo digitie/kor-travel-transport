@@ -149,6 +149,11 @@ def test_openapi_declares_rfc7807_validation_errors(tmp_path: Path) -> None:
     assert response.status_code == 422
     assert response.headers["content-type"].startswith("application/problem+json")
     assert response.json()["status"] == 422
+    collect_responses = schema["paths"]["/v1/admin/collect"]["post"]["responses"]
+    for code in ("404", "409", "429", "502"):
+        assert collect_responses[code]["content"]["application/problem+json"]["schema"] == {
+            "$ref": "#/components/schemas/ProblemDetails"
+        }
 
 
 def test_trusted_host_rejects_unexpected_hosts(tmp_path: Path) -> None:

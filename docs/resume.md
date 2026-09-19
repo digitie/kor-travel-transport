@@ -11,8 +11,12 @@
   RFC7807 OpenAPI 계약, transport live E2E의 활성/비활성 명시 검증을 추가했다.
 
 - 기준일: 2026-09-19
-- 작업 브랜치: `codex/transport-collection-openapi` (T-040 변경 미커밋).
-- 다음 한 작업: 최신 보강을 push하고 server14에 배포한 뒤 James/Popper 재리뷰와
+- 작업 브랜치: `codex/transport-collection-openapi`, Draft PR #30.
+  n150 배포 기준은 `8a366c946f257f3bb2bc3ed2d58611f26a3754b8`이며 수집을 활성화했다.
+  실제 호출에서 KREX의 폐기된 URL과 OPINET 자동 탐색 응답 본문 폐기 오류를 확인해
+  형제 provider 저장소에서 수정 중이다. 현행 코드에는 작업별 scheduler 분리도 진행 중이다.
+- 다음 한 작업: provider 수정 검증/PR 반영 후 transport 의존성을 갱신하고,
+  server14에 배포한 뒤 James/Popper 재리뷰와
   live E2E를 통과시켜 PR #30을 `kor-travel-transport`에 머지한다. 그 다음에만 KRIC
   provider 구현과 교통정보 확장 조사 문서를 시작한다.
 - `digitie/kor-travel-airport`(구 `digitie/parking-radar`) PR #2~#28 모두 **MERGED**
@@ -175,10 +179,9 @@
 
 ## 다음 한 작업
 
-`docs/tasks.md`에 진행 중/예정 task가 없다. `T-033`~`T-039`(shadcn/ui 전환 + 과거
-자료 조회 + Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료됐다. 다음 작업은
-사용자 요청을 기다린다 — 후보로 남겨둔 미해결 항목은 `docs/tasks.md`의 "진행 중인
-작업 인덱스" 절 하단(T-035/T-036/T-038/T-039가 남긴 후속 항목)을 참고.
+T-040의 provider 오류 수정 → 독립 리뷰 2명 → WSL/Docker 테스트 → n150 실제
+수집·DB·공개 API·E2E 검증 → PR #30 머지 순서로 진행한다. 비활성/샘플 데이터는
+최종 운영 승인으로 인정하지 않는다. 머지 후 KRIC provider와 교통정보 확장 조사를 진행한다.
 
 ## 확인된 사실
 
@@ -186,12 +189,12 @@
 - 13번은 Docker를 조작하지 않고 `http://192.168.1.13:3000/api/backend` HTTP GET만 사용했다.
 - 13번 수집기는 10분 주기, n150 scheduler는 configured 300초/effective 180초로 운영 중이며
   최신 strict 검증에서는 run `86`, `2026-08-22T07:21:03Z` 관측까지 성공했다.
-- n150 PostgreSQL은 Alembic `0003_legacy_source_identity (head)`이고 n150은 Docker Compose로
-  API `14000`, web `14001`을 제공한다. configured scheduler는 300초, effective tick은
+- n150 PostgreSQL은 Alembic `0005_transport_query_indexes (head)`이고 n150은 Docker Compose로
+  API `14001`, web `14002`를 제공한다. 주차 configured scheduler는 300초, effective tick은
   180초 tick과 120초 safety buffer다.
 - HTTP fallback migration은 snapshots 38,946건/lot 44개 관측, reference lot 53개/legacy ID
   53개 상태로 운영되고, duplicate legacy ID는 0개다.
-- 현재 n150 runtime은 배포 Git full SHA와 `/health`의 release SHA가 일치하며 API/web 포트 계약
+- 이전 T-039 검증 당시 n150 runtime은 배포 Git full SHA와 `/health`의 release SHA가 일치하며 API/web 포트 계약
   (`14001`/`14002`)을 지킨다. 2026-09-07 기준 `release_sha=e39f05b52e56d363eccf4a146c6271a4ad800cad`
   (=`main` HEAD, PR #28 squash-merge 커밋, T-039)이고, 외부 게이트웨이(`pr-api`/`pr.digitie.mywire.org`)
   양쪽에서 이 값과 정상 응답을 재확인했다(live E2E `15/15 PASS`, 새로 추가한

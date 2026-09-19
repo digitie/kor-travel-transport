@@ -126,7 +126,7 @@ from app.services.holidays import (
     format_holiday_sentence,
 )
 from app.services.sample_data import seed_sample_database
-from app.services.transport_collection import TransportCollectionService
+from app.services.transport_collection import CollectionScope, OPINET_SOURCE, TRANSPORT_TRIGGER_PREFIX, TransportCollectionService
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +156,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.holiday_service = HolidayService(resolved_settings)
         app.state.scheduler_task = None
         app.state.transport_scheduler_task = None
+        app.state.fuel_scheduler_task = None
 
         if resolved_settings.seed_sample_data and app.state.collection_service.client_mode == "sample":
             async with session_factory() as session:
@@ -176,7 +177,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             app.state.scheduler_task = asyncio.create_task(_run_scheduler(app))
             if app.state.transport_collection_service.enabled:
-                app.state.transport_scheduler_task = asyncio.create_task(_run_transport_scheduler(app))
+                app.state.transport_scheduler_task = asyncio.create_task(_run_transport_scheduler(app, "highway"))
+                if OPINET_SOURCE in app.state.transport_collection_service.enabled_sources:
+                    app.state.fuel_scheduler_task = asyncio.create_task(_run_transport_scheduler(app, "fuel"))
 
         try:
             yield
@@ -186,11 +189,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 scheduler_task.cancel()
                 with suppress(asyncio.CancelledError):
                     await scheduler_task
-            transport_scheduler_task = app.state.transport_scheduler_task
-            if transport_scheduler_task is not None:
-                transport_scheduler_task.cancel()
+            transport_tasks = (app.state.transport_scheduler_task, app.state.fuel_scheduler_task)
+            for task in transport_tasks:
+                if task is not None:
+                    task.cancel()
+            for task in transport_tasks:
+                if task is None:
+                    continue
                 with suppress(asyncio.CancelledError):
-                    await transport_scheduler_task
+                    await task
             await app.state.transport_collection_service.close()
             await engine.dispose()
 
@@ -290,21 +297,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "instance": {"type": "string"},
             },
         }
-        for path_item in schema.get("paths", {}).values():
-            for operation in path_item.values():
+        documented_errors = {
+            ("/v1/parking/analytics/timeseries", "get"): (400,),
+            ("/v1/holidays/summary", "get"): (400,),
+            ("/v1/flights/status", "get"): (400,),
+            ("/v1/fees/calculate", "post"): (404,),
+            ("/v1/admin/collect", "post"): (404, 409, 429, 502),
+            ("/v1/admin/backups", "post"): (503,),
+            ("/v1/admin/backups/{filename}", "get"): (400, 404),
+            ("/v1/admin/backups/restore", "post"): (400, 404, 409, 503),
+        }
+        for path, path_item in schema.get("paths", {}).items():
+            for method, operation in path_item.items():
                 if not isinstance(operation, dict) or "responses" not in operation:
                     continue
-                response = operation["responses"].get("422")
-                if response is None:
-                    continue
-                operation["responses"]["422"] = {
-                    "description": "요청 검증 오류",
-                    "content": {
-                        "application/problem+json": {
-                            "schema": {"$ref": "#/components/schemas/ProblemDetails"}
-                        }
-                    },
-                }
+                codes = [code for code in operation["responses"] if str(code).startswith(("4", "5"))]
+                codes.extend(str(code) for code in documented_errors.get((path, method), ()))
+                for code in codes:
+                    operation["responses"][code] = {
+                        "description": "요청 검증 오류" if code == "422" else "애플리케이션 오류",
+                        "content": {
+                            "application/problem+json": {
+                                "schema": {"$ref": "#/components/schemas/ProblemDetails"}
+                            }
+                        },
+                    }
         app.openapi_schema = schema
         return schema
 
@@ -1618,17 +1635,16 @@ async def _run_scheduler(app: FastAPI) -> None:
         await asyncio.sleep(delay)
 
 
-async def _run_transport_scheduler(app: FastAPI) -> None:
+async def _run_transport_scheduler(app: FastAPI, scope: CollectionScope = "highway") -> None:
     session_factory: async_sessionmaker[AsyncSession] = app.state.session_factory
     service: TransportCollectionService = app.state.transport_collection_service
     settings: Settings = app.state.settings
 
-    loop = asyncio.get_running_loop()
-    next_deadline = loop.time()
     while True:
+        delay = float(settings.transport_collect_interval_seconds)
         async with session_factory() as session:
             try:
-                summary = await service.collect(session, trigger="transport_scheduler")
+                summary = await service.collect(session, trigger=f"transport_{scope}_scheduler", scope=scope)
                 logger.info(
                     "transport scheduler tick completed run_id=%s status=%s mode=%s traffic=%s incidents=%s stations=%s prices=%s",
                     summary["collection_run_id"],
@@ -1639,18 +1655,10 @@ async def _run_transport_scheduler(app: FastAPI) -> None:
                     summary["fuel_station_count"],
                     summary["fuel_price_count"],
                 )
+                delay = await service.next_collection_delay(session, scope)
             except Exception:
                 await session.rollback()
                 logger.exception("transport scheduler tick failed")
-        next_deadline += settings.transport_collect_interval_seconds
-        delay = next_deadline - loop.time()
-        if delay < 0:
-            logger.warning(
-                "transport scheduler collection overran interval by %.1f seconds; starting next tick immediately",
-                -delay,
-            )
-            next_deadline = loop.time()
-            delay = 0
         await asyncio.sleep(delay)
 
 
@@ -1661,7 +1669,7 @@ async def _load_collection_run_statuses(
     runs = (
         await session.execute(
             select(CollectionRun)
-            .where(CollectionRun.trigger != "transport_scheduler")
+            .where(~CollectionRun.trigger.startswith(TRANSPORT_TRIGGER_PREFIX, autoescape=True))
             .order_by(CollectionRun.started_at.desc(), CollectionRun.id.desc())
             .limit(limit)
         )

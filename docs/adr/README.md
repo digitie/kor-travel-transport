@@ -17,8 +17,9 @@
 | [ADR-006](</F:/dev/kor-travel-airport/docs/adr/006-kasi-provider-library.md>) | 공휴일 데이터는 `python-kasi-api`를 provider 라이브러리로 사용 | accepted |
 | [ADR-007](</F:/dev/kor-travel-airport/docs/adr/007-repo-rename-kor-travel-airport.md>) | 저장소/패키지/n150 식별자를 `kor-travel-airport`로 개명, 웹앱 브랜드는 `parking-radar` 유지 | accepted |
 | [ADR-008](008-repo-rename-kor-travel-transport.md) | 통합 교통정보 저장소를 `kor-travel-transport`로 개명하고 운영 리소스는 호환 유지 | accepted |
+| [ADR-009](009-durable-transport-collection-reservations.md) | 교통정보 수집의 짧은 DB 예약과 외부 조회·저장 분리 | accepted |
 
-**다음 번호 = ADR-009.**
+**다음 번호 = ADR-010.**
 
 ## 새 ADR 작성 규약
 
