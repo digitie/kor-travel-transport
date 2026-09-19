@@ -13,6 +13,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -105,6 +106,183 @@ class RawApiResponse(Base):
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     parse_status: Mapped[str] = mapped_column(String(30))
     parse_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class HighwayTrafficSnapshot(Base):
+    __tablename__ = "highway_traffic_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "source",
+            "identity_key",
+            "observed_at",
+            name="uq_highway_traffic_snapshot",
+        ),
+        Index("ix_highway_traffic_observed", "observed_at"),
+        Index("ix_highway_traffic_route_observed", "route_no", "observed_at"),
+        Index("ix_highway_traffic_conzone_observed", "conzone_id", "observed_at"),
+        Index("ix_highway_traffic_collection_run_id", "collection_run_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    collection_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("collection_runs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    source: Mapped[str] = mapped_column(String(40))
+    identity_key: Mapped[str] = mapped_column(String(240))
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    route_no: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    route_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    conzone_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    conzone_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    direction: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    speed: Mapped[float | None] = mapped_column(Float, nullable=True)
+    free_flow_speed: Mapped[float | None] = mapped_column(Float, nullable=True)
+    congestion_level: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
+
+
+class HighwayIncidentSnapshot(Base):
+    __tablename__ = "highway_incident_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "source",
+            "identity_key",
+            "observed_at",
+            name="uq_highway_incident_snapshot",
+        ),
+        Index("ix_highway_incidents_observed", "observed_at"),
+        Index("ix_highway_incidents_route_observed", "route_no", "observed_at"),
+        Index("ix_highway_incidents_collection_run_id", "collection_run_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    collection_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("collection_runs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    source: Mapped[str] = mapped_column(String(40))
+    identity_key: Mapped[str] = mapped_column(String(240))
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    occurred_date: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    occurred_time: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    incident_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    incident_type_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    direction: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    point_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    route_no: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    route_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    process_status: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    process_status_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    congestion_length: Mapped[float | None] = mapped_column(Float, nullable=True)
+    series_no: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
+
+
+class FuelStation(Base):
+    __tablename__ = "fuel_stations"
+    __table_args__ = (
+        UniqueConstraint("source", "identity_key", name="uq_fuel_station_identity"),
+        Index("ix_fuel_stations_last_seen", "last_seen_at"),
+        Index("ix_fuel_stations_region", "sido_value", "sigungu_value"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(40))
+    identity_key: Mapped[str] = mapped_column(String(300))
+    source_station_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    name: Mapped[str] = mapped_column(String(200))
+    brand_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    brand_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    address: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    business_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    cb_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    station_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    query_level: Mapped[str] = mapped_column(String(20))
+    sido_value: Mapped[str] = mapped_column(String(40))
+    sido_name: Mapped[str] = mapped_column(String(80))
+    sigungu_value: Mapped[str] = mapped_column(String(80))
+    sigungu_name: Mapped[str] = mapped_column(String(120))
+    dong_value: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    dong_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    katec_x: Mapped[float | None] = mapped_column(Float, nullable=True)
+    katec_y: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    source_kinds: Mapped[list[str]] = mapped_column(JSON_TYPE)
+    is_illegal: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    is_self: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    is_24h: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    is_kpetro: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    is_electronic: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    is_good: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    is_good_strong: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    is_region_franchise: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    has_carwash: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    has_maintenance: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    has_cvs: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    cs_yn: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    discount_info: Mapped[str | None] = mapped_column(Text, nullable=True)
+    save_event_info: Mapped[str | None] = mapped_column(Text, nullable=True)
+    representative_event_info: Mapped[str | None] = mapped_column(Text, nullable=True)
+    on_event_info: Mapped[str | None] = mapped_column(Text, nullable=True)
+    other_business_info: Mapped[str | None] = mapped_column(Text, nullable=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
+
+
+class FuelPriceSnapshot(Base):
+    __tablename__ = "fuel_price_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "fuel_station_id",
+            "source",
+            "product_code",
+            "observed_at",
+            name="uq_fuel_price_snapshot",
+        ),
+        CheckConstraint("price IS NULL OR price >= 0", name="ck_fuel_price_nonnegative"),
+        Index("ix_fuel_prices_station_observed", "fuel_station_id", "observed_at"),
+        Index("ix_fuel_prices_product_observed", "product_code", "observed_at"),
+        Index("ix_fuel_prices_collection_run_id", "collection_run_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    collection_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("collection_runs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    fuel_station_id: Mapped[int] = mapped_column(ForeignKey("fuel_stations.id", ondelete="CASCADE"))
+    source: Mapped[str] = mapped_column(String(40))
+    product_code: Mapped[str] = mapped_column(String(20))
+    price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    provider_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
+
+
+class TransportCollectionState(Base):
+    __tablename__ = "transport_collection_states"
+    __table_args__ = (
+        UniqueConstraint("source", name="uq_transport_collection_state_source"),
+        Index("ix_transport_collection_states_next_due", "next_due_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(40))
+    last_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class ParkingSnapshot(Base):

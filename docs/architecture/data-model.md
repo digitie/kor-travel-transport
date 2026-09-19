@@ -48,6 +48,38 @@ SQLite dialect를 허용한다.
 - 외부 API 원본 응답 기록
 - 파싱 오류 추적과 운영 디버깅에 사용
 
+## 통합 교통정보 테이블
+
+통합 교통정보도 원본과 정규화 데이터를 분리한다. 모든 event time은 UTC
+`TIMESTAMPTZ`이고, `raw_item_json`은 provider가 전달한 선택 필드를 보존하는 JSONB다.
+
+### `highway_traffic_snapshots`
+
+- `python-krex-api` `traffic.flow`의 고속도로 구간별 속도 스냅샷
+- 노선/콘존/방향/현재속도/자유속도/혼잡도를 저장
+- `(source, identity_key, observed_at)` unique로 반복 수집 중복을 방지
+
+### `highway_incident_snapshots`
+
+- `python-krex-api` `traffic.incident`의 돌발·사고·처리상태·위치·정체길이
+- 제공기관 발생 시각을 `observed_at`으로 정규화하고 원본 날짜/시각도 보존
+- 소통 스냅샷과 분리해 분석·장애 추적 시 역할을 섞지 않음
+
+### `fuel_stations` / `fuel_price_snapshots`
+
+- 최신 `python-opinet-api` Playwright collector의 지역, 주유소 식별자, 주소/좌표,
+  브랜드, 셀프/24시간/품질인증/세차/정비/편의점/이벤트 플래그를 `fuel_stations`에 저장
+- 유종별 가격과 provider 갱신 시각은 `fuel_price_snapshots`에 저장
+- 가격은 금액 의미를 보존하기 위해 PostgreSQL `NUMERIC(10,2)`를 사용하고 음수를 막음
+- 주유소 identity와 `(station, source, product_code, observed_at)` unique로 upsert/중복 방지
+
+### `transport_collection_states`
+
+- `krex_traffic_flow`, `krex_traffic_incident`, `opinet_browser`별 수집 시작/성공/다음
+  예정/마지막 오류를 저장
+- 브라우저 수집의 10~12시간 재실행 정책과 고속도로 scheduler 상태를 운영 API에서
+  구분해 확인하는 기준 테이블
+
 ## 분석 데이터 처리 원칙
 
 - 시계열 차트용 집계 결과는 현재 별도 테이블에 저장하지 않는다.
@@ -63,6 +95,13 @@ Alembic migration이 PostgreSQL 인덱스를 생성한다. SQLite 테스트에�
 - `parking_snapshots (airport_id, parking_lot_id, observed_at DESC, id DESC)` supports latest snapshot ranking for `/v1/parking/current`.
 - `parking_snapshots (collected_at)` supports collector status metadata.
 - `parking_snapshots (collection_run_id)` and `raw_api_responses (collection_run_id)` support recent collector run summaries.
+
+통합 교통정보 조회를 위해 다음 인덱스를 함께 둔다.
+
+- `highway_traffic_snapshots (route_no, observed_at)` 및 `(conzone_id, observed_at)`
+- `highway_incident_snapshots (route_no, observed_at)`
+- `fuel_stations (sido_value, sigungu_value)` 및 `last_seen_at`
+- `fuel_price_snapshots (fuel_station_id, observed_at)` 및 `(product_code, observed_at)`
 
 ## Migration and backup contract
 

@@ -725,6 +725,522 @@
         "title": "FlightStatusResponse",
         "type": "object"
       },
+      "FuelPriceItem": {
+        "properties": {
+          "collected_at": {
+            "format": "date-time",
+            "title": "Collected At",
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "product_code": {
+            "title": "Product Code",
+            "type": "string"
+          },
+          "provider_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Updated At"
+          }
+        },
+        "required": [
+          "product_code",
+          "observed_at",
+          "collected_at"
+        ],
+        "title": "FuelPriceItem",
+        "type": "object"
+      },
+      "FuelPriceStatistics": {
+        "properties": {
+          "average_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Price"
+          },
+          "latest_observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Observed At"
+          },
+          "maximum_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximum Price"
+          },
+          "minimum_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Price"
+          },
+          "observations": {
+            "title": "Observations",
+            "type": "integer"
+          },
+          "product_code": {
+            "title": "Product Code",
+            "type": "string"
+          },
+          "stations": {
+            "title": "Stations",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "product_code",
+          "stations",
+          "observations"
+        ],
+        "title": "FuelPriceStatistics",
+        "type": "object"
+      },
+      "FuelStationItem": {
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "brand_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Code"
+          },
+          "brand_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Name"
+          },
+          "cs_yn": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cs Yn"
+          },
+          "dong_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dong Name"
+          },
+          "dong_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dong Value"
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "title": "First Seen At",
+            "type": "string"
+          },
+          "has_carwash": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Has Carwash"
+          },
+          "has_cvs": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Has Cvs"
+          },
+          "has_maintenance": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Has Maintenance"
+          },
+          "identity_key": {
+            "title": "Identity Key",
+            "type": "string"
+          },
+          "is_24h": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is 24H"
+          },
+          "is_electronic": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Electronic"
+          },
+          "is_good": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Good"
+          },
+          "is_good_strong": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Good Strong"
+          },
+          "is_illegal": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Illegal"
+          },
+          "is_kpetro": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Kpetro"
+          },
+          "is_region_franchise": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Region Franchise"
+          },
+          "is_self": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Self"
+          },
+          "katec_x": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Katec X"
+          },
+          "katec_y": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Katec Y"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "prices": {
+            "items": {
+              "$ref": "#/components/schemas/FuelPriceItem"
+            },
+            "title": "Prices",
+            "type": "array"
+          },
+          "query_level": {
+            "title": "Query Level",
+            "type": "string"
+          },
+          "sido_name": {
+            "title": "Sido Name",
+            "type": "string"
+          },
+          "sido_value": {
+            "title": "Sido Value",
+            "type": "string"
+          },
+          "sigungu_name": {
+            "title": "Sigungu Name",
+            "type": "string"
+          },
+          "sigungu_value": {
+            "title": "Sigungu Value",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "source_kinds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Kinds",
+            "type": "array"
+          },
+          "source_station_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Station Id"
+          },
+          "station_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Station Type"
+          }
+        },
+        "required": [
+          "source",
+          "identity_key",
+          "name",
+          "query_level",
+          "sido_value",
+          "sido_name",
+          "sigungu_value",
+          "sigungu_name",
+          "source_kinds",
+          "first_seen_at",
+          "last_seen_at",
+          "prices"
+        ],
+        "title": "FuelStationItem",
+        "type": "object"
+      },
+      "FuelStationResponse": {
+        "properties": {
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FuelStationItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "product_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Code"
+          },
+          "sido_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sido Value"
+          },
+          "sigungu_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sigungu Value"
+          }
+        },
+        "required": [
+          "generated_at",
+          "days",
+          "items"
+        ],
+        "title": "FuelStationResponse",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -764,6 +1280,522 @@
           "release_sha"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "HighwayIncidentItem": {
+        "properties": {
+          "collected_at": {
+            "format": "date-time",
+            "title": "Collected At",
+            "type": "string"
+          },
+          "congestion_length": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Congestion Length"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "identity_key": {
+            "title": "Identity Key",
+            "type": "string"
+          },
+          "incident_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incident Type"
+          },
+          "incident_type_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incident Type Code"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "occurred_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurred Date"
+          },
+          "occurred_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurred Time"
+          },
+          "point_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Point Name"
+          },
+          "process_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Process Status"
+          },
+          "process_status_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Process Status Code"
+          },
+          "route_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Name"
+          },
+          "route_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route No"
+          },
+          "series_no": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series No"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "identity_key",
+          "observed_at",
+          "collected_at"
+        ],
+        "title": "HighwayIncidentItem",
+        "type": "object"
+      },
+      "HighwayIncidentResponse": {
+        "properties": {
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/HighwayIncidentItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "route_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route No"
+          }
+        },
+        "required": [
+          "generated_at",
+          "days",
+          "items"
+        ],
+        "title": "HighwayIncidentResponse",
+        "type": "object"
+      },
+      "HighwayIncidentStatistics": {
+        "properties": {
+          "incidents": {
+            "title": "Incidents",
+            "type": "integer"
+          },
+          "latest_observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Observed At"
+          },
+          "route_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route No"
+          }
+        },
+        "required": [
+          "incidents"
+        ],
+        "title": "HighwayIncidentStatistics",
+        "type": "object"
+      },
+      "HighwayTrafficItem": {
+        "properties": {
+          "collected_at": {
+            "format": "date-time",
+            "title": "Collected At",
+            "type": "string"
+          },
+          "congestion_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Congestion Level"
+          },
+          "conzone_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conzone Id"
+          },
+          "conzone_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conzone Name"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "free_flow_speed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Free Flow Speed"
+          },
+          "identity_key": {
+            "title": "Identity Key",
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "route_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Name"
+          },
+          "route_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route No"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "speed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed"
+          }
+        },
+        "required": [
+          "source",
+          "identity_key",
+          "observed_at",
+          "collected_at"
+        ],
+        "title": "HighwayTrafficItem",
+        "type": "object"
+      },
+      "HighwayTrafficResponse": {
+        "properties": {
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/HighwayTrafficItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "route_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route No"
+          }
+        },
+        "required": [
+          "generated_at",
+          "days",
+          "items"
+        ],
+        "title": "HighwayTrafficResponse",
+        "type": "object"
+      },
+      "HighwayTrafficStatistics": {
+        "properties": {
+          "average_free_flow_speed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Free Flow Speed"
+          },
+          "average_speed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Speed"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "latest_observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Observed At"
+          },
+          "maximum_speed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximum Speed"
+          },
+          "minimum_speed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Speed"
+          },
+          "observations": {
+            "title": "Observations",
+            "type": "integer"
+          },
+          "route_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route No"
+          }
+        },
+        "required": [
+          "observations"
+        ],
+        "title": "HighwayTrafficStatistics",
         "type": "object"
       },
       "HistoryPoint": {
@@ -1578,6 +2610,198 @@
           "lot_observations"
         ],
         "title": "TimeSeriesPoint",
+        "type": "object"
+      },
+      "TransportCollectorStatus": {
+        "properties": {
+          "client_mode": {
+            "title": "Client Mode",
+            "type": "string"
+          },
+          "collect_interval_seconds": {
+            "title": "Collect Interval Seconds",
+            "type": "integer"
+          },
+          "collection_enabled": {
+            "title": "Collection Enabled",
+            "type": "boolean"
+          },
+          "enabled_sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Enabled Sources",
+            "type": "array"
+          },
+          "last_fuel_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Fuel Error"
+          },
+          "last_fuel_success_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Fuel Success At"
+          },
+          "next_fuel_due_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Fuel Due At"
+          },
+          "scheduler_enabled": {
+            "title": "Scheduler Enabled",
+            "type": "boolean"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/TransportSourceStatus"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scheduler_enabled",
+          "collection_enabled",
+          "collect_interval_seconds",
+          "client_mode",
+          "enabled_sources"
+        ],
+        "title": "TransportCollectorStatus",
+        "type": "object"
+      },
+      "TransportSourceStatus": {
+        "properties": {
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "last_started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Started At"
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success At"
+          },
+          "next_due_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Due At"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "TransportSourceStatus",
+        "type": "object"
+      },
+      "TransportStatisticsResponse": {
+        "properties": {
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "fuel_prices": {
+            "items": {
+              "$ref": "#/components/schemas/FuelPriceStatistics"
+            },
+            "title": "Fuel Prices",
+            "type": "array"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "incidents": {
+            "items": {
+              "$ref": "#/components/schemas/HighwayIncidentStatistics"
+            },
+            "title": "Incidents",
+            "type": "array"
+          },
+          "route_no": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route No"
+          },
+          "traffic": {
+            "items": {
+              "$ref": "#/components/schemas/HighwayTrafficStatistics"
+            },
+            "title": "Traffic",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generated_at",
+          "days",
+          "traffic",
+          "incidents",
+          "fuel_prices"
+        ],
+        "title": "TransportStatisticsResponse",
         "type": "object"
       },
       "ValidationError": {
@@ -2965,6 +4189,324 @@
           }
         },
         "summary": "Parking History"
+      }
+    },
+    "/v1/transport/collector-status": {
+      "get": {
+        "operationId": "transport_collector_status_v1_transport_collector_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransportCollectorStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Transport Collector Status"
+      }
+    },
+    "/v1/transport/fuel/stations": {
+      "get": {
+        "operationId": "transport_fuel_stations_v1_transport_fuel_stations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sido_value",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sido Value"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sigungu_value",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sigungu Value"
+            }
+          },
+          {
+            "in": "query",
+            "name": "product_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Product Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 2,
+              "maximum": 30,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FuelStationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transport Fuel Stations"
+      }
+    },
+    "/v1/transport/highways/incidents": {
+      "get": {
+        "operationId": "transport_highway_incidents_v1_transport_highways_incidents_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "route_no",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Route No"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 30,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HighwayIncidentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transport Highway Incidents"
+      }
+    },
+    "/v1/transport/highways/traffic": {
+      "get": {
+        "operationId": "transport_highway_traffic_v1_transport_highways_traffic_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "route_no",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Route No"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 30,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HighwayTrafficResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transport Highway Traffic"
+      }
+    },
+    "/v1/transport/statistics": {
+      "get": {
+        "operationId": "transport_statistics_v1_transport_statistics_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "route_no",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Route No"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 7,
+              "maximum": 90,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransportStatisticsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transport Statistics"
       }
     }
   }

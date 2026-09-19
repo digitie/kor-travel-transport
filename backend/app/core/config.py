@@ -26,6 +26,15 @@ class Settings(BaseSettings):
     upstream_rate_limit_backoff_seconds: int = Field(default=3600, ge=0)
     api_timeout_seconds: int = Field(default=15, gt=0)
     data_go_kr_service_key: str | None = None
+    kex_ex_api_key: str | None = None
+    transport_collection_enabled: bool = False
+    transport_collect_interval_seconds: int = Field(default=300, gt=0)
+    transport_route_nos_csv: str = ""
+    transport_conzone_ids_csv: str = ""
+    opinet_browser_enabled: bool = True
+    opinet_query_level: str = "sigungu"
+    opinet_browser_channel: str | None = None
+    opinet_browser_timeout_ms: int = Field(default=30_000, gt=0)
     enable_flight_status_markers: bool = True
     flight_status_cache_seconds: int = 300
     holiday_cache_seconds: int = 86400
@@ -56,6 +65,14 @@ class Settings(BaseSettings):
     @property
     def trusted_hosts(self) -> list[str]:
         return [host.strip() for host in self.trusted_hosts_csv.split(",") if host.strip()]
+
+    @property
+    def transport_route_nos(self) -> list[str]:
+        return [value.strip() for value in self.transport_route_nos_csv.split(",") if value.strip()]
+
+    @property
+    def transport_conzone_ids(self) -> list[str]:
+        return [value.strip() for value in self.transport_conzone_ids_csv.split(",") if value.strip()]
 
     @property
     def effective_collect_interval_seconds(self) -> int:

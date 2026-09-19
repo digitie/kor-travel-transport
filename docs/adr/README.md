@@ -16,8 +16,9 @@
 | [ADR-005](</F:/dev/kor-travel-airport/docs/adr/005-versioned-rest-api-contract.md>) | 백엔드 REST API를 `/v1` 버저닝 + RFC7807 에러로 정식 계약화 | accepted |
 | [ADR-006](</F:/dev/kor-travel-airport/docs/adr/006-kasi-provider-library.md>) | 공휴일 데이터는 `python-kasi-api`를 provider 라이브러리로 사용 | accepted |
 | [ADR-007](</F:/dev/kor-travel-airport/docs/adr/007-repo-rename-kor-travel-airport.md>) | 저장소/패키지/n150 식별자를 `kor-travel-airport`로 개명, 웹앱 브랜드는 `parking-radar` 유지 | accepted |
+| [ADR-008](008-repo-rename-kor-travel-transport.md) | 통합 교통정보 저장소를 `kor-travel-transport`로 개명하고 운영 리소스는 호환 유지 | accepted |
 
-**다음 번호 = ADR-008.**
+**다음 번호 = ADR-009.**
 
 ## 새 ADR 작성 규약
 

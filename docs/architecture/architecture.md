@@ -1,5 +1,13 @@
 # 아키텍처
 
+## 통합 교통정보 목표
+
+`kor-travel-transport`는 국내 여행에 필요한 교통정보를 provider 라이브러리로 주기적으로
+수집하고 PostgreSQL에 원본과 정규화 스냅샷으로 보존한 뒤, 외부 OpenAPI와 저장 데이터
+기반 내부 통계로 즉시 제공하는 통합 라이브러리/API다. 공항 주차는 기존 사용자 화면을
+제공하는 한 영역일 뿐이며, 고속도로·철도·도시철도·여객항구·배편을 같은 수집/저장/조회
+경계에 단계적으로 추가한다.
+
 ## 구성
 
 ### 백엔드
@@ -8,7 +16,7 @@
 - SQLAlchemy 2 기반 비동기 데이터 접근
 - PostgreSQL 16 저장, Alembic migration
 - SQLite는 legacy import와 빠른 단위 테스트에만 사용
-- 수집, 분석, 요금 계산, 비행편 마커 API 제공
+- 수집, 분석, 요금 계산, 비행편 마커, 통합 교통정보 API 제공
 
 ### 프론트엔드
 
@@ -34,6 +42,19 @@
 3. 파싱 결과는 `airports`, `parking_lots`, `parking_snapshots`에 반영한다.
 4. 분석 API는 `parking_snapshots`를 기반으로 계산한다.
 
+통합 교통정보 흐름은 별도 `TransportCollectionService`가 담당한다.
+
+1. `python-krex-api`로 고속도로 소통(`traffic.flow`)과 돌발(`traffic.incident`)을
+   조회한다.
+2. 최신 `python-opinet-api`의 `OpinetBrowserCollector`로 지역별 주유소/유가 화면을
+   수집한다. Playwright가 수집한 지역·주유소·유종·편의정보와 원본 필드를 PostgreSQL에
+   저장한다.
+3. 실행 단위는 `collection_runs`에 `transport_scheduler`로 기록하고, 원본 요약은
+   `raw_api_responses`, 정규화 결과는 `highway_*_snapshots`, `fuel_*` 테이블에 저장한다.
+4. 소스별 시작/성공/다음 예정/오류 상태는 `transport_collection_states`에 남긴다.
+5. 조회 API는 저장된 스냅샷만 읽으며 `/v1/transport/statistics`는 같은 원본 스냅샷에서
+   기간별 속도·돌발·유가 통계를 계산한다.
+
 수집 소스는 기관별로 분리한다.
 
 - `kac_parking`: 한국공항공사 `15056803`
@@ -51,6 +72,11 @@
 - 스케줄러는 시작하자마자 1회 수집하고, 이후 `COLLECT_INTERVAL_SECONDS`마다 반복된다.
 - 기본 개발 간격은 `300초`, 즉 5분이다.
 - n150 운영 간격은 `300초`, 즉 5분이다.
+
+통합 교통정보 scheduler도 `ENABLE_SCHEDULER=true`일 때 별도 task로 시작한다. 주차
+수집과 같은 프로세스에 있지만 lock·실행 기록·API 상태를 분리한다. 고속도로는 설정한
+transport 주기를 사용하고, 오피넷 브라우저 수집은 provider가 보장하는 10~12시간
+throttle을 추가로 적용한다.
 
 주의:
 
@@ -152,6 +178,16 @@
   - 백업 다운로드와 확인 후 복원
 - `GET /v1/flights/status`
   - 선택 공항의 당일 출도착 비행편 마커
+- `GET /v1/transport/highways/traffic`
+  - PostgreSQL에 저장된 고속도로 소통 스냅샷
+- `GET /v1/transport/highways/incidents`
+  - PostgreSQL에 저장된 고속도로 돌발 스냅샷
+- `GET /v1/transport/fuel/stations`
+  - 최신 Playwright 오피넷 주유소·유가·편의정보
+- `GET /v1/transport/statistics`
+  - 저장 데이터 기반 고속도로 속도/돌발/유가 통계
+- `GET /v1/transport/collector-status`
+  - 통합 교통정보 scheduler와 소스별 수집 상태
 
 ## 프론트 화면 구조
 

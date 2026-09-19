@@ -3,9 +3,9 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "kor-travel-airport-backend"
+name = "kor-travel-transport-backend"
 version = "0.1.0"
-description = "Backend for parking-radar"
+description = "Integrated domestic travel transport data API for parking-radar"
 requires-python = ">=3.12"
 dependencies = [
   "aiosqlite>=0.22,<1.0",
@@ -15,6 +15,8 @@ dependencies = [
   "httpx>=0.28,<1.0",
   "python-kasi-api @ git+https://github.com/digitie/python-kasi-api@51c39c1b0dd5b169b748552e81b9b9a55e86b9a1",
   "python-krairport-api @ git+https://github.com/digitie/python-krairport-api@cbe4d1380dc0388c078e8ae4622d3e580717064b",
+  "python-krex-api @ git+https://github.com/digitie/python-krex-api@d153f3cdd87c9cfacceeb94310bbe6067a1bbfa8",
+  "python-opinet-api[browser] @ git+https://github.com/digitie/python-opinet-api@1aa2c577058d4a56256adaebb0682058c406747c",
   "python-multipart>=0.0.32,<1.0",
   "pydantic-settings>=2.15,<3.0",
   "sqlalchemy>=2.0.52,<3.0",

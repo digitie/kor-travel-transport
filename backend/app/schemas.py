@@ -57,6 +57,181 @@ class ParkingHistoryResponse(BaseModel):
     items: list[HistoryPoint]
 
 
+class HighwayTrafficItem(BaseModel):
+    source: str
+    identity_key: str
+    observed_at: datetime
+    collected_at: datetime
+    route_no: str | None = None
+    route_name: str | None = None
+    conzone_id: str | None = None
+    conzone_name: str | None = None
+    direction: str | None = None
+    speed: float | None = None
+    free_flow_speed: float | None = None
+    congestion_level: str | None = None
+
+
+class HighwayTrafficResponse(BaseModel):
+    generated_at: datetime
+    days: int
+    route_no: str | None = None
+    items: list[HighwayTrafficItem]
+
+
+class HighwayIncidentItem(BaseModel):
+    source: str
+    identity_key: str
+    observed_at: datetime
+    collected_at: datetime
+    occurred_date: str | None = None
+    occurred_time: str | None = None
+    incident_type: str | None = None
+    incident_type_code: str | None = None
+    direction: str | None = None
+    message: str | None = None
+    point_name: str | None = None
+    route_no: str | None = None
+    route_name: str | None = None
+    process_status: str | None = None
+    process_status_code: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    congestion_length: float | None = None
+    series_no: int | None = None
+
+
+class HighwayIncidentResponse(BaseModel):
+    generated_at: datetime
+    days: int
+    route_no: str | None = None
+    items: list[HighwayIncidentItem]
+
+
+class FuelPriceItem(BaseModel):
+    product_code: str
+    price: float | None = None
+    provider_updated_at: datetime | None = None
+    observed_at: datetime
+    collected_at: datetime
+
+
+class FuelStationItem(BaseModel):
+    source: str
+    identity_key: str
+    source_station_id: str | None = None
+    name: str
+    brand_code: str | None = None
+    brand_name: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    station_type: str | None = None
+    query_level: str
+    sido_value: str
+    sido_name: str
+    sigungu_value: str
+    sigungu_name: str
+    dong_value: str | None = None
+    dong_name: str | None = None
+    katec_x: float | None = None
+    katec_y: float | None = None
+    longitude: float | None = None
+    latitude: float | None = None
+    source_kinds: list[str]
+    is_illegal: bool | None = None
+    is_self: bool | None = None
+    is_24h: bool | None = None
+    is_kpetro: bool | None = None
+    is_electronic: bool | None = None
+    is_good: bool | None = None
+    is_good_strong: bool | None = None
+    is_region_franchise: bool | None = None
+    has_carwash: bool | None = None
+    has_maintenance: bool | None = None
+    has_cvs: bool | None = None
+    cs_yn: bool | None = None
+    first_seen_at: datetime
+    last_seen_at: datetime
+    prices: list[FuelPriceItem]
+
+
+class FuelStationResponse(BaseModel):
+    generated_at: datetime
+    days: int
+    sido_value: str | None = None
+    sigungu_value: str | None = None
+    product_code: str | None = None
+    items: list[FuelStationItem]
+
+
+class TransportCollectorStatus(BaseModel):
+    scheduler_enabled: bool
+    collection_enabled: bool
+    collect_interval_seconds: int
+    client_mode: str
+    enabled_sources: list[str]
+    last_fuel_success_at: datetime | None = None
+    next_fuel_due_at: datetime | None = None
+    last_fuel_error: str | None = None
+    sources: list["TransportSourceStatus"] = Field(default_factory=list)
+
+
+class TransportSourceStatus(BaseModel):
+    source: str
+    last_started_at: datetime | None = None
+    last_success_at: datetime | None = None
+    next_due_at: datetime | None = None
+    last_error: str | None = None
+
+
+class HighwayTrafficStatistics(BaseModel):
+    route_no: str | None = None
+    direction: str | None = None
+    observations: int
+    average_speed: float | None = None
+    minimum_speed: float | None = None
+    maximum_speed: float | None = None
+    average_free_flow_speed: float | None = None
+    latest_observed_at: datetime | None = None
+
+
+class HighwayIncidentStatistics(BaseModel):
+    route_no: str | None = None
+    incidents: int
+    latest_observed_at: datetime | None = None
+
+
+class FuelPriceStatistics(BaseModel):
+    product_code: str
+    stations: int
+    observations: int
+    average_price: float | None = None
+    minimum_price: float | None = None
+    maximum_price: float | None = None
+    latest_observed_at: datetime | None = None
+
+
+class TransportStatisticsResponse(BaseModel):
+    generated_at: datetime
+    days: int
+    route_no: str | None = None
+    traffic: list[HighwayTrafficStatistics]
+    incidents: list[HighwayIncidentStatistics]
+    fuel_prices: list[FuelPriceStatistics]
+
+
+class TransportCollectionSummary(BaseModel):
+    collection_run_id: int
+    status: str
+    client_mode: str
+    raw_response_count: int
+    traffic_snapshot_count: int
+    incident_snapshot_count: int
+    fuel_station_count: int
+    fuel_price_count: int
+    errors: list[str]
+
+
 class TimeSeriesPoint(BaseModel):
     bucket_at: datetime
     available_spaces: int

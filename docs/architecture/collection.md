@@ -1,5 +1,27 @@
 # 시각과 수집기 기준
 
+## 통합 교통정보 수집
+
+이 저장소의 목적은 공항 주차만 보여주는 데 있지 않다. 국내 여행 중 필요한 고속도로,
+유가, 이후 추가될 열차·도시철도·항구·배편 데이터를 주기적으로 수집해 PostgreSQL에
+보존하고, 저장된 값은 외부 OpenAPI와 내부 통계 API가 즉시 읽도록 하는 것이다.
+
+현재 구현 범위:
+
+- `python-krex-api`: 고속도로 실시간 소통과 돌발을 transport scheduler 기본 주기로 저장
+- `python-opinet-api`: 최신 Playwright 지역별 화면 수집기로 주유소/유종 가격/편의정보를
+  저장. 전체 실행은 provider의 10~12시간 throttle을 따르며 매 scheduler tick마다
+  재실행하지 않는다.
+- `/v1/transport/highways/traffic`, `/v1/transport/highways/incidents`,
+  `/v1/transport/fuel/stations`: PostgreSQL 최신/기간 데이터 조회
+- `/v1/transport/statistics`: 저장 데이터에서 평균 속도, 돌발 건수, 유종별 가격 통계 계산
+- `/v1/transport/collector-status`: 소스별 수집 상태와 마지막 오류 확인
+
+통합 수집 실행은 기존 주차 수집과 별도 `CollectionRun.trigger=transport_scheduler`를
+사용한다. 따라서 기존 주차 dashboard의 최근 실행/신선도 집계에 섞이지 않는다. 소스별
+실행 상태는 `transport_collection_states`로 기록하며 실패 시 원본 오류도
+`raw_api_responses`에 남긴다. API는 외부 원본을 매 요청마다 호출하지 않는다.
+
 ## 목적
 
 `parking-radar`에서 보이는 시각이 왜 다른지, 어떤 시각이 무엇을 뜻하는지, 웹 UI의 강제 수집 버튼이 어떤 규칙으로 동작하는지 정리한다.
@@ -14,6 +36,12 @@ cutover 동안 HTTP read-only source로 유지하며 Docker를 조작하지 않�
 - scheduler는 collection duration을 포함해 다음 시작 시각을 monotonic deadline으로 계산한다. 수집이 5분을 넘으면 지연을 숨기지 않고 즉시 다음 tick을 시작하며, 운영 verifier가 freshness를 별도로 gate한다.
 - 외부 API가 같은 `observed_at`을 반복하면 unique key에 의해 새 snapshot이 생기지
   않을 수 있다. 따라서 row 수와 함께 `observed_at`, `collected_at`, `last_run`을 확인한다.
+- 고속도로 소통/돌발도 provider가 준 관측 시각과 `identity_key`를 이용해 같은 규칙으로
+  중복을 막는다. 유가는 provider 갱신 시각을 우선 관측 시각으로 쓰고, 갱신 시각이 없으면
+  collector 실행 시각을 사용한다.
+- Playwright 수집기는 공개 화면 자동화가 공식 API가 아니라는 위험이 있으므로, 화면
+  구조가 바뀌거나 자동화 차단이 발생하면 실패를 기록하고 임의의 빈 성공 데이터로
+  덮어쓰지 않는다.
 
 ## 시각 기준
 

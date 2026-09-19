@@ -11,7 +11,7 @@ from sqlalchemy.pool import NullPool
 
 from app.models import Base
 
-ALEMBIC_HEAD = "0003_legacy_source_identity"
+ALEMBIC_HEAD = "0004_transport_data"
 
 
 def create_engine_and_session_factory(database_url: str) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:

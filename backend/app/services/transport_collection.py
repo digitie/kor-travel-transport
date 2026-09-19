@@ -1,0 +1,873 @@
+"""고속도로와 오피넷 교통·유가 데이터의 수집 및 PostgreSQL 저장."""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import json
+import logging
+import re
+from collections.abc import Mapping
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
+from decimal import Decimal, InvalidOperation
+from typing import Any, Protocol
+from zoneinfo import ZoneInfo
+
+from krex import Incident, KrexClient, TrafficFlow
+from opinet.experimental import (
+    BrowserStation,
+    OpinetBrowserCollector,
+    OpinetBrowserSnapshot,
+)
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import Settings
+from app.core.time_utils import now_utc, serialize_utc
+from app.models import (
+    CollectionRun,
+    FuelPriceSnapshot,
+    FuelStation,
+    HighwayIncidentSnapshot,
+    HighwayTrafficSnapshot,
+    RawApiResponse,
+    TransportCollectionState,
+)
+
+logger = logging.getLogger(__name__)
+
+TRAFFIC_SOURCE = "krex_traffic_flow"
+INCIDENT_SOURCE = "krex_traffic_incident"
+OPINET_SOURCE = "opinet_browser"
+
+
+@dataclass(frozen=True, slots=True)
+class HighwayPayload:
+    traffic: tuple[TrafficFlow, ...]
+    incidents: tuple[Incident, ...]
+
+
+class TransportProvider(Protocol):
+    mode: str
+    enabled_sources: tuple[str, ...]
+
+    async def collect_highway(self) -> HighwayPayload:
+        """고속도로 소통·돌발 정보를 조회한다."""
+
+    async def collect_fuel(self) -> OpinetBrowserSnapshot | None:
+        """오피넷 공개 화면을 조회한다."""
+
+    def next_fuel_interval(self) -> timedelta:
+        """다음 오피넷 브라우저 수집까지의 지연을 반환한다."""
+
+    async def aclose(self) -> None:
+        """내부 HTTP/브라우저 자원을 닫는다."""
+
+
+class DisabledTransportProvider:
+    mode = "disabled"
+    enabled_sources: tuple[str, ...] = ()
+
+    async def collect_highway(self) -> HighwayPayload:
+        return HighwayPayload(traffic=(), incidents=())
+
+    async def collect_fuel(self) -> OpinetBrowserSnapshot | None:
+        return None
+
+    def next_fuel_interval(self) -> timedelta:
+        return timedelta(hours=12)
+
+    async def aclose(self) -> None:
+        return None
+
+
+class FixtureTransportProvider:
+    """네트워크 키가 없는 로컬 테스트용 provider."""
+
+    mode = "sample"
+    enabled_sources: tuple[str, ...] = (TRAFFIC_SOURCE, INCIDENT_SOURCE, OPINET_SOURCE)
+
+    async def collect_highway(self) -> HighwayPayload:
+        return HighwayPayload(traffic=(), incidents=())
+
+    async def collect_fuel(self) -> OpinetBrowserSnapshot | None:
+        return None
+
+    def next_fuel_interval(self) -> timedelta:
+        return timedelta(hours=10)
+
+    async def aclose(self) -> None:
+        return None
+
+
+class LiveTransportProvider:
+    """`python-krex-api`와 최신 `python-opinet-api`를 이용하는 provider."""
+
+    mode = "live"
+
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+        self.krex = KrexClient(
+            ex_api_key=settings.kex_ex_api_key,
+            go_api_key=settings.data_go_kr_service_key,
+            timeout=settings.api_timeout_seconds,
+        )
+        self.opinet = (
+            OpinetBrowserCollector(
+                query_level=settings.opinet_query_level,
+                browser_channel=settings.opinet_browser_channel or None,
+                timeout_ms=settings.opinet_browser_timeout_ms,
+            )
+            if settings.opinet_browser_enabled
+            else None
+        )
+        sources: list[str] = [TRAFFIC_SOURCE, INCIDENT_SOURCE]
+        if self.opinet is not None:
+            sources.append(OPINET_SOURCE)
+        self.enabled_sources = tuple(sources)
+
+    async def collect_highway(self) -> HighwayPayload:
+        traffic: list[TrafficFlow] = []
+        route_nos = self.settings.transport_route_nos
+        conzone_ids = self.settings.transport_conzone_ids
+
+        if route_nos:
+            for route_no in route_nos:
+                page = await self.krex.traffic.flow(route_no=route_no)
+                traffic.extend(page.items)
+        elif conzone_ids:
+            for conzone_id in conzone_ids:
+                page = await self.krex.traffic.flow(conzone_id=conzone_id)
+                traffic.extend(page.items)
+        else:
+            page = await self.krex.traffic.flow()
+            traffic.extend(page.items)
+
+        incident_page = await self.krex.traffic.incident()
+        return HighwayPayload(traffic=tuple(traffic), incidents=tuple(incident_page.items))
+
+    async def collect_fuel(self) -> OpinetBrowserSnapshot | None:
+        if self.opinet is None:
+            return None
+        return await self.opinet.collect_once()
+
+    def next_fuel_interval(self) -> timedelta:
+        if self.opinet is None:
+            return timedelta(hours=12)
+        return self.opinet.throttle.sample_run_interval(self.opinet.rng)
+
+    async def aclose(self) -> None:
+        await self.krex.aclose()
+
+
+def build_transport_provider(settings: Settings) -> TransportProvider:
+    if not settings.transport_collection_enabled:
+        return DisabledTransportProvider()
+    if (
+        settings.use_sample_client_when_no_key
+        and not settings.kex_ex_api_key
+        and not settings.data_go_kr_service_key
+    ):
+        return FixtureTransportProvider()
+    return LiveTransportProvider(settings)
+
+
+class TransportCollectionService:
+    """수집 실행을 직렬화하고 provider 결과를 정규화해 저장한다."""
+
+    def __init__(self, settings: Settings, provider: TransportProvider | None = None) -> None:
+        self.settings = settings
+        self.provider = provider or build_transport_provider(settings)
+        self.operation_lock = asyncio.Lock()
+
+    @property
+    def client_mode(self) -> str:
+        return self.provider.mode
+
+    @property
+    def enabled_sources(self) -> list[str]:
+        return list(self.provider.enabled_sources)
+
+    @property
+    def enabled(self) -> bool:
+        return self.provider.mode != "disabled"
+
+    async def close(self) -> None:
+        await self.provider.aclose()
+
+    async def collect(self, session: AsyncSession, trigger: str = "transport_scheduler") -> dict[str, Any]:
+        async with self.operation_lock:
+            return await self._collect_unlocked(session, trigger)
+
+    async def _collect_unlocked(self, session: AsyncSession, trigger: str) -> dict[str, Any]:
+        started_at = now_utc()
+        run = CollectionRun(
+            started_at=started_at,
+            finished_at=None,
+            status="running",
+            trigger=trigger,
+            error_message=None,
+        )
+        session.add(run)
+        await session.flush()
+
+        errors: list[str] = []
+        raw_count = 0
+        traffic_count = 0
+        incident_count = 0
+        fuel_station_count = 0
+        fuel_price_count = 0
+
+        if not self.enabled:
+            run.status = "skipped"
+            run.finished_at = now_utc()
+            await session.commit()
+            return self._summary(
+                run,
+                client_mode=self.client_mode,
+                raw_count=0,
+                traffic_count=0,
+                incident_count=0,
+                fuel_station_count=0,
+                fuel_price_count=0,
+                errors=[],
+            )
+
+        try:
+            await self._mark_source_started(session, TRAFFIC_SOURCE)
+            await self._mark_source_started(session, INCIDENT_SOURCE)
+            highway = await self._collect_highway(session, run.id, errors)
+            if highway is not None:
+                raw_count += 2
+                traffic_count += await self._store_traffic(session, run.id, highway.traffic)
+                incident_count += await self._store_incidents(session, run.id, highway.incidents)
+
+            if OPINET_SOURCE in self.provider.enabled_sources and await self._fuel_is_due(session):
+                await self._mark_source_started(session, OPINET_SOURCE)
+                snapshot = await self._collect_fuel(session, run.id, errors)
+                if snapshot is not None:
+                    raw_count += 1
+                    fuel_station_count, fuel_price_count = await self._store_fuel_snapshot(
+                        session,
+                        run.id,
+                        snapshot,
+                    )
+                    await self._mark_fuel_success(session, snapshot.collected_at)
+        except Exception as exc:  # pragma: no cover - final safety boundary
+            await session.rollback()
+            failed_at = now_utc()
+            session.add(
+                CollectionRun(
+                    started_at=started_at,
+                    finished_at=failed_at,
+                    status="failed",
+                    trigger=trigger,
+                    error_message=_safe_error(exc, self.settings),
+                )
+            )
+            await session.commit()
+            raise
+
+        if not errors:
+            run.status = "success"
+        elif raw_count == 0 and traffic_count == 0 and incident_count == 0 and fuel_station_count == 0:
+            run.status = "failed"
+        else:
+            run.status = "partial_success"
+        run.finished_at = now_utc()
+        run.error_message = "\n".join(errors) if errors else None
+        await session.commit()
+
+        logger.info(
+            "transport collection finished run_id=%s status=%s mode=%s traffic=%s incidents=%s stations=%s prices=%s errors=%s",
+            run.id,
+            run.status,
+            self.client_mode,
+            traffic_count,
+            incident_count,
+            fuel_station_count,
+            fuel_price_count,
+            len(errors),
+        )
+        return self._summary(
+            run,
+            client_mode=self.client_mode,
+            raw_count=raw_count,
+            traffic_count=traffic_count,
+            incident_count=incident_count,
+            fuel_station_count=fuel_station_count,
+            fuel_price_count=fuel_price_count,
+            errors=errors,
+        )
+
+    async def _collect_highway(
+        self,
+        session: AsyncSession,
+        collection_run_id: int,
+        errors: list[str],
+    ) -> HighwayPayload | None:
+        try:
+            payload = await self.provider.collect_highway()
+            await self._store_raw_response(
+                session,
+                collection_run_id=collection_run_id,
+                source=TRAFFIC_SOURCE,
+                endpoint="python-krex-api:traffic.flow",
+                body={"items": [_provider_json(item) for item in payload.traffic]},
+            )
+            await self._store_raw_response(
+                session,
+                collection_run_id=collection_run_id,
+                source=INCIDENT_SOURCE,
+                endpoint="python-krex-api:traffic.incident",
+                body={"items": [_provider_json(item) for item in payload.incidents]},
+            )
+            completed_at = now_utc()
+            await self._mark_source_success(session, TRAFFIC_SOURCE, completed_at)
+            await self._mark_source_success(session, INCIDENT_SOURCE, completed_at)
+            return payload
+        except Exception as exc:
+            message = _safe_error(exc, self.settings)
+            errors.append(message)
+            await self._store_error_response(
+                session,
+                collection_run_id=collection_run_id,
+                source=TRAFFIC_SOURCE,
+                endpoint="python-krex-api:traffic",
+                message=message,
+            )
+            await self._mark_source_failure(session, TRAFFIC_SOURCE, message)
+            await self._mark_source_failure(session, INCIDENT_SOURCE, message)
+            return None
+
+    async def _collect_fuel(
+        self,
+        session: AsyncSession,
+        collection_run_id: int,
+        errors: list[str],
+    ) -> OpinetBrowserSnapshot | None:
+        try:
+            snapshot = await self.provider.collect_fuel()
+            if snapshot is None:
+                return None
+            await self._store_raw_response(
+                session,
+                collection_run_id=collection_run_id,
+                source=OPINET_SOURCE,
+                endpoint=snapshot.source_url,
+                body={
+                    "collected_at": serialize_utc(snapshot.collected_at).isoformat(),
+                    "region_count": len(snapshot.regions),
+                    "station_count": len(snapshot.stations),
+                },
+            )
+            return snapshot
+        except Exception as exc:
+            message = _safe_error(exc, self.settings)
+            errors.append(message)
+            await self._mark_fuel_failure(session, message)
+            await self._store_error_response(
+                session,
+                collection_run_id=collection_run_id,
+                source=OPINET_SOURCE,
+                endpoint="python-opinet-api:OpinetBrowserCollector",
+                message=message,
+            )
+            return None
+
+    async def _store_raw_response(
+        self,
+        session: AsyncSession,
+        *,
+        collection_run_id: int,
+        source: str,
+        endpoint: str,
+        body: Mapping[str, Any],
+    ) -> None:
+        session.add(
+            RawApiResponse(
+                collection_run_id=collection_run_id,
+                source=source,
+                endpoint=endpoint,
+                request_params_json=None,
+                status_code=200,
+                body_text=json.dumps(body, ensure_ascii=False, default=str),
+                received_at=now_utc(),
+                parse_status="received",
+                parse_error=None,
+            )
+        )
+        await session.flush()
+
+    async def _store_error_response(
+        self,
+        session: AsyncSession,
+        *,
+        collection_run_id: int,
+        source: str,
+        endpoint: str,
+        message: str,
+    ) -> None:
+        session.add(
+            RawApiResponse(
+                collection_run_id=collection_run_id,
+                source=source,
+                endpoint=endpoint,
+                request_params_json=None,
+                status_code=0,
+                body_text="",
+                received_at=now_utc(),
+                parse_status="failed",
+                parse_error=message,
+            )
+        )
+        await session.flush()
+
+    async def _store_traffic(
+        self,
+        session: AsyncSession,
+        collection_run_id: int,
+        items: tuple[TrafficFlow, ...],
+    ) -> int:
+        stored = 0
+        collected_at = now_utc()
+        for item in items:
+            direction = _enum_value(item.direction)
+            observed_at = _parse_provider_datetime(item.updated_at, self.settings.app_timezone) or collected_at
+            identity_key = _traffic_identity(item, direction)
+            existing = await session.scalar(
+                select(HighwayTrafficSnapshot).where(
+                    HighwayTrafficSnapshot.source == TRAFFIC_SOURCE,
+                    HighwayTrafficSnapshot.identity_key == identity_key,
+                    HighwayTrafficSnapshot.observed_at == observed_at,
+                )
+            )
+            if existing is not None:
+                continue
+            session.add(
+                HighwayTrafficSnapshot(
+                    collection_run_id=collection_run_id,
+                    source=TRAFFIC_SOURCE,
+                    identity_key=identity_key,
+                    observed_at=observed_at,
+                    collected_at=collected_at,
+                    route_no=item.route_no,
+                    route_name=item.route_name,
+                    conzone_id=item.conzone_id,
+                    conzone_name=item.conzone_name,
+                    direction=direction,
+                    speed=item.speed,
+                    free_flow_speed=item.free_flow_speed,
+                    congestion_level=_enum_value(item.congestion_level),
+                    raw_item_json=_provider_json(item),
+                )
+            )
+            stored += 1
+        await session.flush()
+        return stored
+
+    async def _store_incidents(
+        self,
+        session: AsyncSession,
+        collection_run_id: int,
+        items: tuple[Incident, ...],
+    ) -> int:
+        stored = 0
+        collected_at = now_utc()
+        for item in items:
+            observed_at = _parse_incident_datetime(item, self.settings.app_timezone) or collected_at
+            identity_key = _incident_identity(item)
+            existing = await session.scalar(
+                select(HighwayIncidentSnapshot).where(
+                    HighwayIncidentSnapshot.source == INCIDENT_SOURCE,
+                    HighwayIncidentSnapshot.identity_key == identity_key,
+                    HighwayIncidentSnapshot.observed_at == observed_at,
+                )
+            )
+            if existing is not None:
+                continue
+            session.add(
+                HighwayIncidentSnapshot(
+                    collection_run_id=collection_run_id,
+                    source=INCIDENT_SOURCE,
+                    identity_key=identity_key,
+                    observed_at=observed_at,
+                    collected_at=collected_at,
+                    occurred_date=item.occurred_date,
+                    occurred_time=item.occurred_time,
+                    incident_type=item.incident_type,
+                    incident_type_code=item.incident_type_code,
+                    direction=item.direction,
+                    message=item.message,
+                    point_name=item.point_name,
+                    route_no=item.route_no,
+                    route_name=item.route_name,
+                    process_status=item.process_status,
+                    process_status_code=item.process_status_code,
+                    latitude=item.latitude,
+                    longitude=item.longitude,
+                    congestion_length=item.congestion_length,
+                    series_no=item.series_no,
+                    raw_item_json=_provider_json(item),
+                )
+            )
+            stored += 1
+        await session.flush()
+        return stored
+
+    async def _store_fuel_snapshot(
+        self,
+        session: AsyncSession,
+        collection_run_id: int,
+        snapshot: OpinetBrowserSnapshot,
+    ) -> tuple[int, int]:
+        station_count = 0
+        price_count = 0
+        collected_at = serialize_utc(snapshot.collected_at, self.settings.app_timezone)
+        for item in snapshot.stations:
+            identity_key = _station_identity(item)
+            station = await session.scalar(
+                select(FuelStation).where(
+                    FuelStation.source == OPINET_SOURCE,
+                    FuelStation.identity_key == identity_key,
+                )
+            )
+            values = _station_values(item, collected_at)
+            if station is None:
+                station = FuelStation(
+                    source=OPINET_SOURCE,
+                    identity_key=identity_key,
+                    first_seen_at=collected_at,
+                    **values,
+                )
+                session.add(station)
+                station_count += 1
+                await session.flush()
+            else:
+                for key, value in values.items():
+                    setattr(station, key, value)
+                station.last_seen_at = collected_at
+
+            for price in item.prices:
+                provider_updated_at = (
+                    serialize_utc(price.updated_at, self.settings.app_timezone)
+                    if price.updated_at is not None
+                    else None
+                )
+                observed_at = provider_updated_at or collected_at
+                product_code = _enum_value(price.product_code) or "unknown"
+                existing = await session.scalar(
+                    select(FuelPriceSnapshot).where(
+                        FuelPriceSnapshot.fuel_station_id == station.id,
+                        FuelPriceSnapshot.source == OPINET_SOURCE,
+                        FuelPriceSnapshot.product_code == product_code,
+                        FuelPriceSnapshot.observed_at == observed_at,
+                    )
+                )
+                price_value = _decimal_or_none(price.price)
+                raw_item = _plain_json(item.raw)
+                if existing is None:
+                    session.add(
+                        FuelPriceSnapshot(
+                            collection_run_id=collection_run_id,
+                            fuel_station_id=station.id,
+                            source=OPINET_SOURCE,
+                            product_code=product_code,
+                            price=price_value,
+                            provider_updated_at=provider_updated_at,
+                            observed_at=observed_at,
+                            collected_at=collected_at,
+                            raw_item_json=raw_item,
+                        )
+                    )
+                    price_count += 1
+                else:
+                    existing.price = price_value
+                    existing.provider_updated_at = provider_updated_at
+                    existing.collected_at = collected_at
+                    existing.raw_item_json = raw_item
+        await session.flush()
+        return station_count, price_count
+
+    async def _fuel_is_due(self, session: AsyncSession) -> bool:
+        state = await session.scalar(
+            select(TransportCollectionState).where(TransportCollectionState.source == OPINET_SOURCE)
+        )
+        if state is None or state.next_due_at is None:
+            return True
+        next_due_at = state.next_due_at
+        return now_utc() >= serialize_utc(next_due_at)
+
+    async def _mark_fuel_success(self, session: AsyncSession, collected_at: datetime) -> None:
+        state = await self._get_or_create_state(session, OPINET_SOURCE)
+        state.last_success_at = collected_at
+        state.next_due_at = collected_at + self.provider.next_fuel_interval()
+        state.last_error = None
+        state.updated_at = now_utc()
+        await session.flush()
+
+    async def _mark_fuel_failure(self, session: AsyncSession, message: str) -> None:
+        state = await self._get_or_create_state(session, OPINET_SOURCE)
+        state.next_due_at = now_utc() + self.provider.next_fuel_interval()
+        state.last_error = message
+        state.updated_at = now_utc()
+        await session.flush()
+
+    async def _mark_source_started(self, session: AsyncSession, source: str) -> None:
+        state = await self._get_or_create_state(session, source)
+        state.last_started_at = now_utc()
+        state.updated_at = now_utc()
+        await session.flush()
+
+    async def _mark_source_success(
+        self,
+        session: AsyncSession,
+        source: str,
+        completed_at: datetime,
+    ) -> None:
+        state = await self._get_or_create_state(session, source)
+        state.last_success_at = completed_at
+        state.next_due_at = completed_at + timedelta(seconds=self.settings.transport_collect_interval_seconds)
+        state.last_error = None
+        state.updated_at = now_utc()
+        await session.flush()
+
+    async def _mark_source_failure(
+        self,
+        session: AsyncSession,
+        source: str,
+        message: str,
+    ) -> None:
+        state = await self._get_or_create_state(session, source)
+        state.next_due_at = now_utc() + timedelta(seconds=self.settings.transport_collect_interval_seconds)
+        state.last_error = message
+        state.updated_at = now_utc()
+        await session.flush()
+
+    async def _get_or_create_state(self, session: AsyncSession, source: str) -> TransportCollectionState:
+        state = await session.scalar(
+            select(TransportCollectionState).where(TransportCollectionState.source == source)
+        )
+        if state is None:
+            state = TransportCollectionState(source=source, updated_at=now_utc())
+            session.add(state)
+            await session.flush()
+        return state
+
+    async def status(self, session: AsyncSession) -> dict[str, Any]:
+        states = (
+            await session.execute(
+                select(TransportCollectionState).order_by(TransportCollectionState.source)
+            )
+        ).scalars().all()
+        fuel_state = next((item for item in states if item.source == OPINET_SOURCE), None)
+        return {
+            "scheduler_enabled": self.settings.enable_scheduler and self.enabled,
+            "collection_enabled": self.enabled,
+            "collect_interval_seconds": self.settings.transport_collect_interval_seconds,
+            "client_mode": self.client_mode,
+            "enabled_sources": self.enabled_sources,
+            "last_fuel_success_at": fuel_state.last_success_at if fuel_state is not None else None,
+            "next_fuel_due_at": fuel_state.next_due_at if fuel_state is not None else None,
+            "last_fuel_error": fuel_state.last_error if fuel_state is not None else None,
+            "sources": [
+                {
+                    "source": item.source,
+                    "last_started_at": item.last_started_at,
+                    "last_success_at": item.last_success_at,
+                    "next_due_at": item.next_due_at,
+                    "last_error": item.last_error,
+                }
+                for item in states
+            ],
+        }
+
+    @staticmethod
+    def _summary(
+        run: CollectionRun,
+        *,
+        client_mode: str,
+        raw_count: int,
+        traffic_count: int,
+        incident_count: int,
+        fuel_station_count: int,
+        fuel_price_count: int,
+        errors: list[str],
+    ) -> dict[str, Any]:
+        return {
+            "collection_run_id": run.id,
+            "status": run.status,
+            "client_mode": client_mode,
+            "raw_response_count": raw_count,
+            "traffic_snapshot_count": traffic_count,
+            "incident_snapshot_count": incident_count,
+            "fuel_station_count": fuel_station_count,
+            "fuel_price_count": fuel_price_count,
+            "errors": errors,
+        }
+
+
+def _station_identity(item: BrowserStation) -> str:
+    if item.station_id:
+        return f"station:{item.station_id}"
+    fallback = "|".join(
+        (
+            item.region.sido_value,
+            item.region.sigungu_value,
+            item.name,
+            str(item.katec_x),
+            str(item.katec_y),
+        )
+    )
+    return f"fallback:{hashlib.sha256(fallback.encode('utf-8')).hexdigest()}"
+
+
+def _station_values(item: BrowserStation, seen_at: datetime) -> dict[str, Any]:
+    return {
+        "source_station_id": item.station_id,
+        "name": item.name,
+        "brand_code": item.brand_code,
+        "brand_name": item.brand_name,
+        "phone": item.phone,
+        "address": item.address,
+        "business_number": item.business_number,
+        "cb_code": item.cb_code,
+        "station_type": _enum_value(item.station_type),
+        "query_level": item.query_level,
+        "sido_value": item.region.sido_value,
+        "sido_name": item.region.sido_name,
+        "sigungu_value": item.region.sigungu_value,
+        "sigungu_name": item.region.sigungu_name,
+        "dong_value": item.region.dong_value,
+        "dong_name": item.region.dong_name,
+        "katec_x": item.katec_x,
+        "katec_y": item.katec_y,
+        "longitude": item.lon,
+        "latitude": item.lat,
+        "source_kinds": list(item.source_kinds),
+        "is_illegal": item.is_illegal,
+        "is_self": item.is_self,
+        "is_24h": item.is_24h,
+        "is_kpetro": item.is_kpetro,
+        "is_electronic": item.is_electronic,
+        "is_good": item.is_good,
+        "is_good_strong": item.is_good_strong,
+        "is_region_franchise": item.is_region_franchise,
+        "has_carwash": item.has_carwash,
+        "has_maintenance": item.has_maintenance,
+        "has_cvs": item.has_cvs,
+        "cs_yn": item.cs_yn,
+        "discount_info": item.discount_info,
+        "save_event_info": item.save_event_info,
+        "representative_event_info": item.representative_event_info,
+        "on_event_info": item.on_event_info,
+        "other_business_info": item.other_business_info,
+        "last_seen_at": seen_at,
+        "raw_item_json": _plain_json(item.raw),
+    }
+
+
+def _traffic_identity(item: TrafficFlow, direction: str | None) -> str:
+    if item.conzone_id:
+        return f"conzone:{item.conzone_id}:{direction or ''}"
+    key = "|".join((item.route_no or "", item.route_name or "", item.conzone_name or "", direction or ""))
+    return f"flow:{hashlib.sha256(key.encode('utf-8')).hexdigest()}"
+
+
+def _incident_identity(item: Incident) -> str:
+    if item.series_no is not None:
+        return f"series:{item.series_no}"
+    key = "|".join(
+        (
+            item.occurred_date or "",
+            item.occurred_time or "",
+            item.route_no or "",
+            item.point_name or "",
+            item.message or "",
+        )
+    )
+    return f"incident:{hashlib.sha256(key.encode('utf-8')).hexdigest()}"
+
+
+def _parse_provider_datetime(value: str | None, timezone_name: str) -> datetime | None:
+    if not value:
+        return None
+    text = str(value).strip()
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        digits = re.sub(r"\D", "", text)
+        parsed = None
+        for length, fmt in ((14, "%Y%m%d%H%M%S"), (12, "%Y%m%d%H%M"), (8, "%Y%m%d")):
+            if len(digits) >= length:
+                try:
+                    parsed = datetime.strptime(digits[:length], fmt)
+                    break
+                except ValueError:
+                    continue
+        if parsed is None:
+            return None
+    return serialize_utc(parsed, timezone_name)
+
+
+def _parse_incident_datetime(item: Incident, timezone_name: str) -> datetime | None:
+    date_text = re.sub(r"\D", "", item.occurred_date or "")
+    time_text = re.sub(r"\D", "", item.occurred_time or "")
+    if len(date_text) < 8 or len(time_text) < 4:
+        return None
+    if len(time_text) >= 6:
+        normalized_time = time_text[-6:]
+    else:
+        normalized_time = time_text[:4] + "00"
+    value = date_text[:8] + normalized_time
+    try:
+        parsed = datetime.strptime(value, "%Y%m%d%H%M%S")
+    except ValueError:
+        return None
+    return serialize_utc(parsed, timezone_name)
+
+
+def _enum_value(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(getattr(value, "value", value))
+
+
+def _decimal_or_none(value: float | None) -> Decimal | None:
+    if value is None:
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _provider_json(value: Any) -> dict[str, Any]:
+    if hasattr(value, "model_dump"):
+        return _plain_json(value.model_dump(mode="json"))
+    if isinstance(value, Mapping):
+        return _plain_json(value)
+    return _plain_json(vars(value))
+
+
+def _plain_json(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _plain_json(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_plain_json(item) for item in value]
+    if isinstance(value, datetime):
+        return serialize_utc(value).isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return str(value)
+    return getattr(value, "value", value)
+
+
+def _safe_error(error: Exception, settings: Settings) -> str:
+    message = str(error).strip() or error.__class__.__name__
+    for secret in (settings.kex_ex_api_key, settings.data_go_kr_service_key):
+        if secret:
+            message = message.replace(secret, "<redacted>")
+    return " ".join(message.split())

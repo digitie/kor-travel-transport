@@ -73,4 +73,9 @@ def test_database_startup_creates_query_indexes(tmp_path: Path) -> None:
         "ix_parking_snapshots_collected_at",
         "ix_parking_snapshots_collection_run_id",
         "ix_raw_api_responses_collection_run_id",
+        "ix_highway_traffic_observed",
+        "ix_highway_incidents_observed",
+        "ix_fuel_stations_region",
+        "ix_fuel_prices_product_observed",
+        "ix_transport_collection_states_next_due",
     } <= index_names

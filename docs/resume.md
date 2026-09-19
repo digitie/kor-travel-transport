@@ -2,8 +2,18 @@
 
 ## 현재 상태
 
-- 기준일: 2026-09-07
-- 작업 브랜치: `main` (로컬/원격 모두 `e39f05b`).
+- 이 작업의 목표는 `kor-travel-transport`를 국내 여행용 통합 교통정보 라이브러리/API로
+  운영하는 것이다. provider에서 데이터를 주기적으로 수집해 PostgreSQL에 저장하고,
+  저장 자료를 외부 OpenAPI와 내부 통계로 즉시 제공한다.
+- 현재 T-040 브랜치에서 `python-krex-api` 고속도로 소통·돌발과 최신
+  `python-opinet-api` Playwright 주유소·유가 수집/저장/API/통계를 구현했다. WSL2
+  백엔드 전체 테스트는 통과했고, PR/CI·두 명의 적대적 리뷰·live E2E가 남아 있다.
+
+- 기준일: 2026-09-19
+- 작업 브랜치: `codex/transport-collection-openapi` (T-040 변경 미커밋).
+- 다음 한 작업: 프론트 검증과 PR/CI를 완료한 뒤 James/Popper 리뷰와 E2E를 통과시키고
+  `kor-travel-transport`에 머지한다. 그 다음 KRIC provider 구현과 교통정보 확장 조사
+  문서를 시작한다.
 - `digitie/kor-travel-airport`(구 `digitie/parking-radar`) PR #2~#28 모두 **MERGED**
   상태다. 이 세션에서 다룬 마지막 코드/운영 PR은
   [#28](https://github.com/digitie/kor-travel-airport/pull/28)(UI 밀도 개선,
@@ -14,8 +24,7 @@
   T-033(shadcn 기반 도입)·T-034(button/card/table/alert/confirm-dialog 치환)·
   T-035(라우트 기반 앱 셸)·T-036(과거 자료 조회 기능)·T-037(Hallmark audit)·
   T-038(Hallmark redesign)·T-039(UI 밀도 개선) 전부 완료·배포·live E2E 검증까지
-  끝났다. 현재 `docs/tasks.md`에 진행 중/예정 task가 없다 — 다음 작업은 사용자
-  요청을 기다린다.
+  끝났다. 현재 진행 중인 작업은 `docs/tasks.md`의 T-040이다.
   - **T-039에서 새로 배운 것**: (1) "레이아웃이 비효율적"처럼 모호한 사용자
     피드백은 코드만 읽어서는 특정하기 어렵다 — 브라우저 확장이 연결 안 될 때는
     Playwright를 라이브 사이트에 직접 붙여 스크린샷으로 확인하는 게 코드

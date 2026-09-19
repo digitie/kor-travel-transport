@@ -10,9 +10,17 @@
 
 ## 진행 중인 작업 인덱스
 
-현재 진행 중/예정 task가 없다. `T-033`~`T-039`(shadcn/ui 전환 + 과거 자료 조회 +
+현재 진행 중 task는 `T-040`이다. `T-033`~`T-039`(shadcn/ui 전환 + 과거 자료 조회 +
 Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks-done.md`로
 이동했다.
+
+### T-040 통합 교통정보 수집·OpenAPI
+
+- [x] `python-krex-api` 고속도로 소통·돌발과 `python-opinet-api` Playwright 유가
+      collector를 PostgreSQL 주기 수집에 연결
+- [x] 저장 스냅샷 조회·내부 통계 OpenAPI와 Alembic migration 추가
+- [ ] WSL/Docker 테스트, James/Popper 적대적 리뷰, n150 live E2E 후 PR 머지
+- [ ] 현재 PR 머지 후 KRIC provider와 교통정보 확장 조사 문서 작업을 이어간다.
 
 `T-034`에서는 `<select>`/`ResponsiveSection`의 `<details>`/
 daily-flight-overlay-chart의 토글·체크박스는 테스트 호환성 위험 때문에 의도적으로

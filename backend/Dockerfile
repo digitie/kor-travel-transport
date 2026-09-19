@@ -15,6 +15,10 @@ COPY scripts /app/scripts
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -e ".[dev]"
 
+# Opinet의 실험적 지역별 화면 수집기가 사용하는 Chromium과 Linux 런타임을
+# 이미지에 포함한다. 수집기는 ENABLE_TRANSPORT_COLLECTION=true일 때만 실행된다.
+RUN playwright install --with-deps chromium
+
 COPY backend/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh && mkdir -p /app/backups
 
