@@ -13,6 +13,10 @@
 - 일반 예외와 transport DB 오류의 RFC7807 500·비밀/SQL 비노출 회귀를 worker가
   수정 전 실패로 확인하고 보완했다. WSL API 테스트 35개 및 PostgreSQL을 포함한
   transport 테스트 23개가 통과했고, 양방향 소스 timeout 테스트를 더해 전체 검증 중이다.
+- James 재리뷰에서 aggregate 실행의 성공이 다른 소스의 진행 중 실행을 가릴 수 있음을
+  지적했다. E2E는 모든 소스의 `last_success_at >= last_started_at`을 요구한다. 시작 예약과
+  결과 저장은 별도 commit이므로 이 조건은 마지막 시작이 실제 저장 성공으로 끝났는지
+  구분한다. 소스 상태를 확인한 뒤 조회·통계 API를 다시 읽도록 순서도 변경했다.
 - 기존 Next.js·sharp 의존성에서 `npm audit --omit=dev` critical/high 경고를 발견해
   별도 보안 후속으로 기록했다. 이 교통정보 PR에 임의의 의존성 갱신은 섞지 않았다.
 - 후속 실검증: 사용자가 지정한 로컬 `python-krex-api` 환경 파일에서 키를 확인하고

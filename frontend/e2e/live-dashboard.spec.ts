@@ -197,6 +197,39 @@ test.describe("live parking-radar dashboard", () => {
   }) => {
     test.setTimeout(180_000);
     await page.goto("/", { waitUntil: "domcontentloaded" });
+    // 다른 소스의 후속 성공이 아직 진행 중인 fuel 실행을 가리지 못하게 한다.
+    // last_started는 조회 전, last_success는 데이터 저장 transaction과 함께 확정된다.
+    await expect(async () => {
+      const response = await getJsonWithTransientRetry(page.request, "/api/backend/v1/transport/collector-status");
+      expect(response.status()).toBe(200);
+      const status = await response.json();
+      expect(status.collection_enabled).toBe(true);
+      expect(status.scheduler_enabled).toBe(true);
+      expect(status.client_mode).toBe("live");
+      expect(status.last_run?.trigger).toMatch(/^transport_(highway|fuel)_scheduler$/);
+      expect(status.last_run?.status).toBe("success");
+      expect(status.last_run?.error ?? null).toBeNull();
+      const finishedAt = Date.parse(status.last_run?.finished_at);
+      expect(Number.isFinite(finishedAt)).toBe(true);
+      expect(Date.now() - finishedAt).toBeLessThanOrEqual(900_000);
+      expect(Array.isArray(status.sources)).toBe(true);
+      for (const name of ["krex_traffic_flow", "krex_traffic_incident", "opinet_browser"]) {
+        expect(status.enabled_sources).toContain(name);
+        const source = status.sources.find((item: { source: string }) => item.source === name);
+        expect(source, name).toBeTruthy();
+        expect(source.last_error, name).toBeNull();
+        const startedAt = Date.parse(source.last_started_at);
+        const succeededAt = Date.parse(source.last_success_at);
+        expect(Number.isFinite(startedAt), name).toBe(true);
+        expect(Number.isFinite(succeededAt), name).toBe(true);
+        expect(succeededAt, `${name}: 최신 실행 완료`).toBeGreaterThanOrEqual(startedAt);
+        const maxAge = name === "opinet_browser" ? 13 * 3_600_000 : 900_000;
+        expect(Date.now() - succeededAt, name).toBeGreaterThanOrEqual(-60_000);
+        expect(Date.now() - succeededAt, name).toBeLessThanOrEqual(maxAge);
+      }
+    }).toPass({ timeout: 120_000, intervals: [2_000, 5_000] });
+
+    // 모든 소스의 저장 완료를 확인한 뒤 API를 새로 조회한다.
     for (const path of [
       "/api/backend/v1/transport/highways/traffic?days=1&limit=1",
       "/api/backend/v1/transport/highways/incidents?days=1&limit=1",
@@ -226,43 +259,6 @@ test.describe("live parking-radar dashboard", () => {
         }
     }
 
-    let statusResponse = await getJsonWithTransientRetry(
-      page.request,
-      "/api/backend/v1/transport/collector-status",
-    );
-    expect(statusResponse.status()).toBe(200);
-    let statusPayload = await statusResponse.json();
-    // 진행 중 실행을 승인하지 않고 실제 종료를 기다린다. 실패 상태는 즉시 거절한다.
-    await expect(async () => {
-      if (statusPayload.last_run?.status === "running") {
-        statusResponse = await getJsonWithTransientRetry(page.request, "/api/backend/v1/transport/collector-status");
-        expect(statusResponse.status()).toBe(200);
-        statusPayload = await statusResponse.json();
-      }
-      expect(statusPayload.last_run?.status).not.toBe("running");
-    }).toPass({ timeout: 120_000, intervals: [2_000, 5_000] });
-      expect(statusPayload.collection_enabled).toBe(true);
-      expect(Array.isArray(statusPayload.sources)).toBe(true);
-      // 각 소스의 저장 성공을 확인한다. 비활성/샘플/빈 결과는 운영 승인 대상이 아니다.
-      expect(statusPayload.scheduler_enabled).toBe(true);
-      expect(statusPayload.client_mode).toBe("live");
-      expect(statusPayload.last_run?.trigger).toMatch(/^transport_(highway|fuel)_scheduler$/);
-      expect(statusPayload.last_run?.status).toBe("success");
-      expect(statusPayload.last_run?.error ?? null).toBeNull();
-      const runAt = Date.parse(statusPayload.last_run?.finished_at);
-      expect(Number.isFinite(runAt)).toBe(true);
-      expect(Date.now() - runAt).toBeLessThanOrEqual(900_000);
-      for (const name of ["krex_traffic_flow", "krex_traffic_incident", "opinet_browser"]) {
-        expect(statusPayload.enabled_sources).toContain(name);
-        const source = statusPayload.sources.find((item: { source: string }) => item.source === name);
-        expect(source, name).toBeTruthy();
-        expect(source.last_error, name).toBeNull();
-        const succeededAt = Date.parse(source.last_success_at);
-        expect(Number.isFinite(succeededAt), name).toBe(true);
-        const maxAge = name === "opinet_browser" ? 13 * 3_600_000 : 900_000;
-        expect(Date.now() - succeededAt, name).toBeGreaterThanOrEqual(-60_000);
-        expect(Date.now() - succeededAt, name).toBeLessThanOrEqual(maxAge);
-      }
   });
 
   test("mobile bottom tabbar navigates routes and tucks 백업 behind 더보기", async ({
