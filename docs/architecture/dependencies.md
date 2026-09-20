@@ -5,8 +5,8 @@
 - Frontend: Next.js 16.3.2, React/React DOM 19.2.8, TypeScript 7.0.2, Vitest 4.1.11, Playwright 1.62.1
 - Backend: FastAPI 0.141.1, SQLAlchemy 2.0.52, Alembic 1.19.x, asyncpg 0.31.x, Uvicorn 0.52.x
 - Provider: `python-krex-api`는 `adda2879f8bc1f0896867d28eee5583594ecda01`,
-  `python-opinet-api`는 `1601ef360300b35cba09942d8ededf806ac86f2d`로 고정한다.
-  각각 전체 VDS 조회와 Chromium 자동 탐색 응답 본문 복구를 포함한 수정 PR 기준이다.
+  `python-opinet-api`는 `d7bf57e33e8e530763e9855abfe0dc85085d7b07`로 고정한다.
+  각각 전체 VDS 조회와 Chromium 화면 응답 기본 대기 60초를 포함한 수정 PR 기준이다.
   provider PR과 통합 PR의 운영 검증·머지 게이트는 별도로 관리한다.
 - Test: pytest 9.1.1, pytest-asyncio 1.4.0, pytest-cov 7.1.0, AnyIO 4.14.2
 

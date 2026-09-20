@@ -5,12 +5,19 @@
 - 이 작업의 목표는 `kor-travel-transport`를 국내 여행용 통합 교통정보 라이브러리/API로
   운영하는 것이다. provider에서 데이터를 주기적으로 수집해 PostgreSQL에 저장하고,
   저장 자료를 외부 OpenAPI와 내부 통계로 즉시 제공한다.
-- 현재 T-040 브랜치에서 `python-krex-api` 고속도로 소통·돌발과 최신
+- T-040에서 `python-krex-api` 고속도로 소통·돌발과 최신
   `python-opinet-api` Playwright 주유소·유가 수집/저장/API/통계를 구현했다. WSL2
   백엔드 전체 테스트는 통과했다. 최신 보강에서는 DB 실패 실행의 durable 상태,
   RFC7807 OpenAPI 계약, 활성 live 소스의 실제 저장·최신성 E2E 검증을 추가했다.
 
 - 기준일: 2026-09-20
+- PR #30은 `7d1ad37460acd04e1f4efdc48d53e3b0021f6120`으로 머지·배포됐다.
+  OPINET #18/KREX #16도 머지 완료. 구현·머지 완료 항목은 T-040으로 보관하고
+  KRIC/확장 조사(T-041), 운영 후속(T-042)을 분리했다. 아래 미머지 표현은 과거 이력이다.
+  머지 SHA 승격 배포 시 소통 run13623이 `collection cancelled`로 종료돼, 19분 안전
+  예약(00:30:36 KST)을 보존한 자연 회복 확인이 남았다. 이 상태의 E2E는15개통과/1개실패다.
+  KRIC 공식 목록·상세 명세와 신청 보고서/확장 조사 초안을 작성했다. KRIC 로컬 clone은
+  끝났지만 라이브러리는 아직 미구현이며 승인 키 실검증도 하지 않았다.
 - 최신 검증: 런타임 `f7987b2d8858e83b2a602ac70cdcd5b5a4902d6b`의 WSL/Docker
   PostgreSQL 백엔드 각각 130개, 프론트 각각 85개와 타입/build가 통과했다. n150 배포와
   공개 health SHA 일치, 설치 OPINET `39e7acc`의 초기 탐색/종료(지역 조회 0회)를 확인했다.
@@ -50,9 +57,8 @@
   갱신됐다고 간주하지 않는다. 22:25 KST에는 관측이 22:20 KST로 갱신됨을 확인했다.
   추가 E2E 보강은 관측/저장 시각 모두 15분 이내·미래 60초 이내를 요구한다. 회귀를
   포함한 프론트 WSL/Docker 85개, 타입/build와 두 코드 재리뷰를 통과했다.
-- 다음 한 작업: 두 리뷰어의 최종 운영 확인을 마치고 증적 문서 후보의 배포 SHA와 CI를
-  정렬한 뒤 provider PR #16/#18 및 PR #30을 `kor-travel-transport`에 머지한다. 그 다음에만 KRIC
-  provider 구현과 교통정보 확장 조사 문서를 시작한다.
+- 다음 한 작업: main 배포 후 소통 수집의 자연 회복과 최종 E2E/CI를 확인한다.
+  이후 KRIC provider 구현과 확장 조사 문서 리뷰를 이어간다.
 - `digitie/kor-travel-airport`(구 `digitie/parking-radar`) PR #2~#28 모두 **MERGED**
   상태다. 이 세션에서 다룬 마지막 코드/운영 PR은
   [#28](https://github.com/digitie/kor-travel-airport/pull/28)(UI 밀도 개선,
@@ -63,7 +69,7 @@
   T-033(shadcn 기반 도입)·T-034(button/card/table/alert/confirm-dialog 치환)·
   T-035(라우트 기반 앱 셸)·T-036(과거 자료 조회 기능)·T-037(Hallmark audit)·
   T-038(Hallmark redesign)·T-039(UI 밀도 개선) 전부 완료·배포·live E2E 검증까지
-  끝났다. 현재 진행 중인 작업은 `docs/tasks.md`의 T-040이다.
+  끝났다. 현재 진행 중인 작업은 `docs/tasks.md`의 T-041/T-042다.
   - **T-039에서 새로 배운 것**: (1) "레이아웃이 비효율적"처럼 모호한 사용자
     피드백은 코드만 읽어서는 특정하기 어렵다 — 브라우저 확장이 연결 안 될 때는
     Playwright를 라이브 사이트에 직접 붙여 스크린샷으로 확인하는 게 코드
@@ -213,9 +219,9 @@
 
 ## 다음 한 작업
 
-T-040의 provider 오류 수정 → 독립 리뷰 2명 → WSL/Docker 테스트 → n150 실제
-수집·DB·공개 API·E2E 검증 → PR #30 머지 순서로 진행한다. 비활성/샘플 데이터는
-최종 운영 승인으로 인정하지 않는다. 머지 후 KRIC provider와 교통정보 확장 조사를 진행한다.
+T-040/PR #30의 머지는 끝났다. main 승격 배포로 취소된 소통 수집의 자연 회복과
+E2E/CI를 확인한 뒤, T-041 KRIC provider 구현 및 확장 조사 반영을 이어간다.
+비활성/샘플 데이터는 최종 운영 승인으로 인정하지 않는다.
 
 ## 확인된 사실
 

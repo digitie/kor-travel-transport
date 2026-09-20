@@ -4,7 +4,7 @@
 세부 기능 문서가 흩어져 있을 때 먼저 이 문서를 읽고, 필요하면 링크된 개별 문서로 내려가는 것을 권장한다.
 
 최종 확인 기준일:
-- `2026-09-19`
+- `2026-09-20`
 
 ## 0. 통합 교통정보 목적과 현재 구현
 
@@ -13,7 +13,7 @@
 저장하고, 저장 자료를 외부 OpenAPI로 즉시 제공하며, 스냅샷 기반 내부 통계를 부가
 정보로 제공한다. 공항 주차 대시보드는 기존 기능이며 통합 플랫폼의 한 소비 화면이다.
 
-이번 작업에서 구현한 범위:
+PR #30에서 구현·머지한 범위:
 
 - `python-krex-api` `traffic.flow`/`traffic.incident`를 transport scheduler에 연결
 - 최신 `python-opinet-api` Playwright collector를 사용해 지역·주유소·유종 가격·편의
@@ -25,6 +25,11 @@
   `/v1/transport/collector-status` 제공
 - KREX 전체 페이지 수집·쿼터 backoff·PostgreSQL advisory lock, OPINET 빈 결과 보호,
   고속도로/돌발/유가의 중복 저장 방지, 소스별 수집 상태와 공개 오류 마스킹 제공
+
+다음 범위는 [KRIC 신청 목록/계획](research/kric-api-applications.md)과
+[교통정보 확장 조사](research/transport-data-gaps.md)에 정리했다. KRIC 라이브러리와
+철도/선박 수집·DB 연결은 아직 완료되지 않았다. 운영 검증의 최신 상태와 배포 중 취소
+후 회복 여부는 `docs/resume.md`를 따른다.
 
 ## 1. 현재 구현 범위
 

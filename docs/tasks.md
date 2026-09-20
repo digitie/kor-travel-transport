@@ -10,17 +10,23 @@
 
 ## 진행 중인 작업 인덱스
 
-현재 진행 중 task는 `T-040`이다. `T-033`~`T-039`(shadcn/ui 전환 + 과거 자료 조회 +
+현재 진행 중 task는 `T-041`과 `T-042`다. `T-033`~`T-039`(shadcn/ui 전환 + 과거 자료 조회 +
 Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks-done.md`로
 이동했다.
 
-### T-040 통합 교통정보 수집·OpenAPI
+### T-041 KRIC provider와 교통정보 확장 조사
 
-- [x] `python-krex-api` 고속도로 소통·돌발과 `python-opinet-api` Playwright 유가
-      collector를 PostgreSQL 주기 수집에 연결
-- [x] 저장 스냅샷 조회·내부 통계 OpenAPI와 Alembic migration 추가
-- [ ] WSL/Docker 테스트, James/Popper 적대적 리뷰, n150 live E2E 후 PR 머지
-- [ ] 현재 PR 머지 후 KRIC provider와 교통정보 확장 조사 문서 작업을 이어간다.
+- [ ] [KRIC 신청 목록·구현 계획](research/kric-api-applications.md) 및
+      [교통정보 확장 조사](research/transport-data-gaps.md)를 리뷰하고 반영한다.
+- [ ] `F:/dev/python-kric-api`에 작업 문서·패키지 구조, 파일/API 파서, 테스트를 구현한다.
+      현재 GitHub 저장소를 clone했으며 원래 내용은 README/LICENSE뿐이다.
+- [ ] 사용자의 KRIC 신청 후 키를 안전하게 설정하고 최소 live 검증을 수행한다.
+- [ ] `python-seoulgokr-api`의 현재 기능·quota와 통합 앱 저장 연결 범위를 확인한다.
+
+### T-042 수집·조회 운영 후속
+
+- [ ] 머지 커밋 재배포 중 취소된 KREX run13623의 자연 회복을 확인한다. 00:30:36 KST
+      예약을 보존하며 강제 재시도하지 않는다. 배포 전 수집 drain 절차를 보완한다.
 - [ ] 후속 P2: KREX 공통 코드 조회의 `FlowDirection` 노출, 대량 저장 데이터의 보관 기간과
       외부 목록 API 커서 페이지 정책을 정의한다. 현재 목록 조회는 최대 1,000건으로 제한한다.
       2026-09-19 운영 측정은 소통 16,740행/16,228,352바이트(인덱스 포함)다. 매 5분
@@ -34,6 +40,8 @@ Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks
 - [ ] 후속 P2: 통계 API의 운영 지연과 proxy timeout 여유를 측정하고 보완한다.
       9월 19일 공개 proxy에서 간헐 504 후 재조회 성공을 확인했다. 전국 데이터 증가 시
       쿼리 계획/응답량/호스트 I/O를 분리해 확인하며 단순 timeout 완화로 숨기지 않는다.
+- [ ] 초기 dashboard bootstrap의 간헐 504를 계측한다. 9월 20일 배포 직후 trace에서
+      10.232초 timeout을 확인했지만 DB/공휴일/호스트 중 근본 지연 원인은 미확정이다.
 
 `T-034`에서는 `<select>`/`ResponsiveSection`의 `<details>`/
 daily-flight-overlay-chart의 토글·체크박스는 테스트 호환성 위험 때문에 의도적으로

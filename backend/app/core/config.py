@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     opinet_browser_enabled: bool = True
     opinet_query_level: str = "sigungu"
     opinet_browser_channel: str | None = None
-    opinet_browser_timeout_ms: int = Field(default=30_000, gt=0)
+    opinet_browser_timeout_ms: int = Field(default=60_000, gt=0)
     enable_flight_status_markers: bool = True
     flight_status_cache_seconds: int = 300
     holiday_cache_seconds: int = 86400
