@@ -2,6 +2,14 @@
 
 ## 현재 상태
 
+- 현재 브랜치는 `codex/shared-db-dagster`다. 운영 scheduler 분리, 3일 주기 철도·여객항구
+  기준정보 Dagster job, RustFS 원본 참조, shared PostgreSQL compose overlay를 구현했다.
+  `python-kric-api#3`은 CI와 두 적대적 리뷰를 통과해 `6ed5ace`로 병합됐고 transport가 그
+  commit을 고정한다. 항구 시간표는 DB·raw response에 저장하지 않는 실시간 조회 계약이다.
+- 최신 검증은 WSL backend 135개 통과/1개 live skip, Docker backend 87개 통과다. shared overlay
+  `docker compose config`는 통과했다. 다음 작업은 Manager의 transport app/Dagster 전용 role·DB와
+  RustFS bucket bootstrap PR, 이어서 feature REST와 항구 실시간 시간표 endpoint 구현이다.
+
 - 이 작업의 목표는 `kor-travel-transport`를 국내 여행용 통합 교통정보 라이브러리/API로
   운영하는 것이다. provider에서 데이터를 주기적으로 수집해 PostgreSQL에 저장하고,
   저장 자료를 외부 OpenAPI와 내부 통계로 즉시 제공한다.

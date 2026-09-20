@@ -1,0 +1,85 @@
+# 공용 DB와 Dagster 운영 경계
+
+## 목적
+
+`kor-travel-transport`는 국내 여행 교통정보를 주기 수집해 자체 PostgreSQL에 저장하고,
+저장 데이터·통계·외부 OpenAPI를 즉시 제공한다. 운영 수집은 FastAPI web process의
+background task가 아니라 Dagster가 맡는다. 이 경계는 고속도로·유가처럼 짧은 주기의
+데이터와 열차·여객선처럼 변동이 적은 기준정보를 같은 운영 기준으로 다루기 위한 것이다.
+
+## 프로세스 분리
+
+운영은 `docker-compose.yml`과 `docker-compose.shared.yml`을 함께 사용한다. 후자는
+`kor-travel-weather`와 같은 역할 분리를 따른다.
+
+| 서비스 | 책임 | 사용자 코드 import |
+| --- | --- | --- |
+| `backend` | 읽기 API, 주차/교통 조회, 즉시 통계 | 하지 않음 (`SCHEDULER_MODE=dagster`) |
+| `migrate` | 애플리케이션 Alembic migration 1회 실행 | Alembic만 |
+| `dagster-code-server` | job 코드와 run worker 실행 | 함 |
+| `dagster-webserver` | Dagster UI/GraphQL | 하지 않음, gRPC workspace만 연결 |
+| `dagster-daemon` | schedule, queue, run monitoring | 하지 않음, gRPC workspace만 연결 |
+| `dagster-gateway` | Basic Auth와 same-origin POST 검증 뒤 UI 공개 | 하지 않음 |
+
+`dagster dev`는 운영에서 사용하지 않는다. code-server는 독립 컨테이너라 실제 crash/OOM이면
+`restart: unless-stopped`로 재기동하고, webserver/daemon은 child-process heartbeat를 관리하지
+않는다. `dagster.yaml`의 `run_monitoring`은 사라진 worker가 STARTED 상태로 남아 queue를
+막는 경우를 5분 시작 제한과 4시간 실행 상한으로 회수한다.
+
+## 공용 PostgreSQL 계약
+
+`kor-travel-docker-manager`가 host-network로 관리하는 `kor-travel-shared-postgres`와
+RustFS를 소비한다. 이 저장소의 compose는 PostgreSQL superuser 권한을 받거나 DB/role을
+생성하지 않는다. bridge 컨테이너에서는 Docker의 `host-gateway` 별칭인
+`host.docker.internal:11000`으로 DB에, `host.docker.internal:12101`으로 RustFS에 접근한다.
+Manager 소유 bootstrap이 아래 두 DB와 각각 전용 role을 먼저 준비해야 한다.
+
+| 용도 | DB | 환경변수 |
+| --- | --- | --- |
+| 애플리케이션 데이터·Alembic | `kor_travel_transport` | `DATABASE_URL` |
+| Dagster run/event/schedule metadata | `kor_travel_transport_dagster` | `DAGSTER_POSTGRES_URL` |
+
+두 DB를 합치면 양쪽 Alembic이 `alembic_version` 테이블을 서로 덮어쓰므로 절대 합치지 않는다.
+운영 DSN은 `host.docker.internal:11000`을 사용하며, 비밀번호·service key·RustFS key는
+n150의 비추적 환경 파일에만 둔다.
+
+## 수집 일정과 저장 경계
+
+| job | KST schedule | 저장 대상 | 호출량 경계 |
+| --- | --- | --- | --- |
+| `airport_collection_job` | 5분 | 공항 주차·요금 | 기존 rate-limit/backoff |
+| `highway_collection_job` | 5분 | 소통·돌발 snapshot | KREX quota/backoff |
+| `fuel_collection_job` | 8시간 | 주유소·유가 snapshot | Playwright provider throttle |
+| `rail_reference_collection_job` | 매월 1·4·7…일 03:00 | KRIC 공개 XLSX 역사 기준정보 | 무인증 file dataset 1294 1회 |
+| `maritime_reference_collection_job` | 매월 1·4·7…일 03:00 | 항구·터미널·선박종류 기준정보 | data.go.kr 요청 세 건을 순차 실행 |
+
+cron의 `*/3`은 월 경계에서 72시간 정확 간격이 아니라 달력상 3일 간격이다. 기준정보의
+갱신 성격상 이를 의도적으로 사용하며, 매일 또는 전국 항구별 운항계획을 무차별 호출하지
+않는다.
+
+항구 운항시간표는 저장하지 않는다. `GET /v1/transport/ports/{port_id}/timetable`가 요청한
+항구와 날짜만 provider에 비동기로 전달해 실시간 응답으로 반환하는 것이 후속 API 계약이다.
+따라서 시간표는 오래된 DB snapshot으로 오인되지 않으며, caller별 rate limit과 cache 정책은
+endpoint 구현 시 별도로 강제한다.
+
+## 운영 실행
+
+Manager가 공용 DB/네트워크와 전용 role을 provision한 뒤 n150에서 다음처럼 실행한다.
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.shared.yml up -d --build
+```
+
+운영 값은 최소한 `DATABASE_URL`, `DAGSTER_POSTGRES_URL`, `DAGSTER_UI_PASSWORD`를 요구한다.
+KRIC 파일 수집은 `RAIL_REFERENCE_COLLECTION_ENABLED=true`와 RustFS endpoint·bucket·접근키가,
+여객항구 기준정보는 `MARITIME_REFERENCE_COLLECTION_ENABLED=true`와
+`DATA_GO_KR_SERVICE_KEY`가 모두 있을 때만 실행한다. Manager의 RustFS 초기화는
+`kor-travel-transport-raw` bucket도 idempotent하게 준비한다. 비활성 상태는 실패가 아니라
+명시적인 `skipped` run으로 남긴다.
+
+provider는 HTTPS RustFS endpoint를 기본 요구한다. 현재 Manager RustFS는 host loopback의
+사설 연결만 제공하므로 `RUSTFS_ALLOW_INSECURE_HTTP=true`는 그 host-gateway 경로에만
+명시한다. 공용 인터넷 endpoint에는 이 값을 사용하지 않는다.
+
+기존 `docker-compose.db.yml`은 기존 n150 데이터의 rollback과 local 개발 격리용이다.
+공용 DB cutover가 완료되기 전에는 기존 DB volume을 삭제하거나 그 compose를 내리지 않는다.

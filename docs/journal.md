@@ -1,5 +1,23 @@
 # journal.md — 작업 일지
 
+## 2026-09-21
+
+- 운영 수집을 `dagster dev`에서 분리했다. shared overlay는 migration one-shot,
+  code-server, webserver, daemon, gateway를 각각 독립 컨테이너로 두고 FastAPI의
+  in-process scheduler는 `SCHEDULER_MODE=dagster`일 때 시작하지 않는다.
+- KRIC 역사 기준정보와 여객항구·터미널·선박종류 기준정보를 3일 주기 Dagster job으로
+  추가했다. 항구 운항시간표는 저장하지 않으며 항구 상세 요청 시 provider에서 실시간으로
+  조회하는 후속 API로 유지한다.
+- 병합된 `python-kric-api` RustFS provider commit `6ed5ace`를 고정했다. rail job은 검증한
+  XLSX를 공용 RustFS에 저장하고 DB에는 bucket·object key·SHA-256 참조만 남긴다.
+  host-network Manager RustFS의 평문 경로는 explicit `RUSTFS_ALLOW_INSECURE_HTTP=true`일 때만
+  사용한다.
+- 깨끗한 WSL 임시 환경에서 backend 135개 통과/1개 live skip(427.67초), Docker backend 87개
+  통과(182.65초), 집중 Dagster·rail/maritime 6개 통과를 확인했다. SQLite Alembic은 기존
+  PostgreSQL `JSONB` migration 때문에 최초 migration부터 지원되지 않아 PostgreSQL 전용 계약을
+  재확인했다. Compose shared overlay는 `host.docker.internal` gateway와 분리 Dagster 서비스로
+  정상 해석됐다.
+
 ## 2026-09-20
 
 - 최종 런타임 `f7987b2d8858e83b2a602ac70cdcd5b5a4902d6b`를 n150에 배포했다.

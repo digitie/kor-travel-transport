@@ -1,0 +1,143 @@
+# kor-travel-docker-manager가 만든 공용 PostgreSQL/RustFS 네트워크를 소비하는 운영 overlay.
+# 로컬의 기존 `docker-compose.yml` + `docker-compose.db.yml` 흐름은 빠른 개발·legacy
+# data rollback 전용으로 남긴다. 운영에서는 이 파일을 base compose와 함께 사용한다.
+
+x-dagster-environment: &dagster-environment
+  DAGSTER_HOME: /app/dagster_home
+  DAGSTER_POSTGRES_URL: "${DAGSTER_POSTGRES_URL:?set the dedicated Dagster metadata DSN}"
+  DATABASE_URL: "${DATABASE_URL:?set the application database DSN}"
+  SCHEDULER_MODE: dagster
+  ENABLE_SCHEDULER: "true"
+  SEED_SAMPLE_DATA: "false"
+  USE_SAMPLE_CLIENT_WHEN_NO_KEY: "false"
+  DATA_GO_KR_SERVICE_KEY: "${DATA_GO_KR_SERVICE_KEY:-}"
+  KEX_EX_API_KEY: "${KEX_EX_API_KEY:-}"
+  TRANSPORT_COLLECTION_ENABLED: "${TRANSPORT_COLLECTION_ENABLED:-false}"
+  RAIL_REFERENCE_COLLECTION_ENABLED: "${RAIL_REFERENCE_COLLECTION_ENABLED:-false}"
+  MARITIME_REFERENCE_COLLECTION_ENABLED: "${MARITIME_REFERENCE_COLLECTION_ENABLED:-false}"
+  RUSTFS_ENDPOINT_URL: "${RUSTFS_ENDPOINT_URL:-}"
+  RUSTFS_BUCKET: "${RUSTFS_BUCKET:-kor-travel-transport-raw}"
+  RUSTFS_ACCESS_KEY_ID: "${RUSTFS_ACCESS_KEY_ID:-}"
+  RUSTFS_SECRET_ACCESS_KEY: "${RUSTFS_SECRET_ACCESS_KEY:-}"
+  RUSTFS_ALLOW_INSECURE_HTTP: "${RUSTFS_ALLOW_INSECURE_HTTP:-false}"
+
+services:
+  backend:
+    environment:
+      DATABASE_URL: "${DATABASE_URL:?set the application database DSN}"
+      RUN_DB_MIGRATIONS: "false"
+      SCHEDULER_MODE: dagster
+      ENABLE_SCHEDULER: "true"
+      RAIL_REFERENCE_COLLECTION_ENABLED: "${RAIL_REFERENCE_COLLECTION_ENABLED:-false}"
+      MARITIME_REFERENCE_COLLECTION_ENABLED: "${MARITIME_REFERENCE_COLLECTION_ENABLED:-false}"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - kor-travel-airport-net
+      - default
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  migrate:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: "${DATABASE_URL:?set the application database DSN}"
+      RUN_DB_MIGRATIONS: "false"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # 이 컨테이너만 job 모듈을 import하고 run worker를 실행한다. webserver/daemon은
+  # workspace gRPC를 통해서만 연결하므로 `dagster dev`의 child heartbeat에 의존하지 않는다.
+  dagster-code-server:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *dagster-environment
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    expose:
+      - "4000"
+    command: ["dagster", "api", "grpc", "-h", "0.0.0.0", "-p", "4000", "-m", "app.dagster.definitions", "--inject-env-vars-from-instance"]
+    healthcheck:
+      test: ["CMD", "dagster", "api", "grpc-health-check", "-h", "127.0.0.1", "-p", "4000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  dagster-webserver:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      dagster-code-server:
+        condition: service_healthy
+    environment:
+      <<: *dagster-environment
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    expose:
+      - "14004"
+    command: ["dagster-webserver", "-h", "0.0.0.0", "-p", "14004", "-w", "/app/dagster_home/workspace.yaml"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json, urllib.request as u; q=json.dumps({'query':'{repositoriesOrError{__typename}}'}).encode(); r=u.urlopen(u.Request('http://127.0.0.1:14004/graphql', data=q, headers={'Content-Type':'application/json'}), timeout=5); raise SystemExit(0 if json.load(r).get('data', {}).get('repositoriesOrError', {}).get('__typename') == 'RepositoryConnection' else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+
+  dagster-daemon:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      dagster-code-server:
+        condition: service_healthy
+    environment:
+      <<: *dagster-environment
+      DAGSTER_DAEMON_HEARTBEAT_TOLERANCE: "300"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["dagster-daemon", "run", "-w", "/app/dagster_home/workspace.yaml"]
+    healthcheck:
+      test: ["CMD", "dagster-daemon", "liveness-check"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  dagster-gateway:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.dagster-gateway
+    restart: unless-stopped
+    depends_on:
+      dagster-webserver:
+        condition: service_healthy
+    environment:
+      DAGSTER_UI_USER: "${DAGSTER_UI_USER:-admin}"
+      DAGSTER_UI_PASSWORD: "${DAGSTER_UI_PASSWORD:?set the Dagster gateway password}"
+    networks:
+      - default
+    ports:
+      - "127.0.0.1:${DAGSTER_GATEWAY_PORT:-14003}:14003"
+
+networks:
+  kor-travel-airport-net:
+    external: true

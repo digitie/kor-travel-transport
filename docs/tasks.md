@@ -10,7 +10,7 @@
 
 ## 진행 중인 작업 인덱스
 
-현재 진행 중 task는 `T-040`이다. `T-033`~`T-039`(shadcn/ui 전환 + 과거 자료 조회 +
+현재 진행 중 task는 `T-041`이다. `T-033`~`T-039`(shadcn/ui 전환 + 과거 자료 조회 +
 Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks-done.md`로
 이동했다.
 
@@ -34,6 +34,15 @@ Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks
 - [ ] 후속 P2: 통계 API의 운영 지연과 proxy timeout 여유를 측정하고 보완한다.
       9월 19일 공개 proxy에서 간헐 504 후 재조회 성공을 확인했다. 전국 데이터 증가 시
       쿼리 계획/응답량/호스트 I/O를 분리해 확인하며 단순 timeout 완화로 숨기지 않는다.
+
+### T-041 공용 DB·Dagster와 철도·여객항구 기준정보
+
+- [ ] `kor-travel-docker-manager` 공용 PostgreSQL의 app/Dagster metadata 전용 DB·role provision
+- [ ] FastAPI의 in-process scheduler를 운영에서 끄고 code-server/webserver/daemon/gateway 분리
+- [ ] KRIC XLSX 철도 역사 및 여객항구 기준정보를 매 3일 Dagster job으로 저장
+- [ ] 공개 파일을 공용 RustFS에 저장하는 async provider 계약을 `python-*-api`에 추가
+- [ ] Map/PinVi `place`·`notice`·`price` contract REST와 항구 실시간 시간표 API 구현
+- [ ] WSL/Docker, 적대적 리뷰 2명, n150 live E2E와 shared DB cutover 검증 후 PR 머지
 
 `T-034`에서는 `<select>`/`ResponsiveSection`의 `<details>`/
 daily-flight-overlay-chart의 토글·체크박스는 테스트 호환성 위험 때문에 의도적으로
