@@ -2,6 +2,29 @@
 
 완료한 task의 식별자, 핵심 변경, 검증 명령과 시각을 역시간순으로 보관한다.
 
+## 2026-09-20 (T-040)
+
+### `T-040` — 통합 교통정보 수집·OpenAPI
+
+- 통합 교통정보 서비스 목적을 명시하고 KREX 소통·돌발, 최신 OPINET Playwright 유가의
+  주기 수집·PostgreSQL 저장·조회/통계 API를 구현했다. 공급자 파싱은 형제 라이브러리가 맡는다.
+- 런타임 `f7987b2`: WSL/Docker PostgreSQL 백엔드 각각130개, 프론트 각각85개 및
+  타입/build, Alembic upgrade/check 통과. OPINET provider247개/4개 live skip,
+  coverage93.34%, mypy/compileall 통과.
+- James/Popper 두 독립 리뷰에서 소스별 transaction 격리, 상태·오류 계약, 최신성 E2E,
+  지역 간 동일 UID 가격/출처 소실 등의 지적을 재현·보완했고 최종 코드·운영 승인을 받았다.
+- 문서 후보 `1c1be22`의 SHA 고정 WSL live E2E16/16(17.8초), GitHub push/PR 두CI의
+  backend/frontend/live-e2e 전부 통과 후 머지했다. 실패했던 이전 실행도 journal과 PR에 남겼다.
+- [OPINET #18](https://github.com/digitie/python-opinet-api/pull/18)
+  (`1e883f7`), [KREX #16](https://github.com/digitie/python-krex-api/pull/16)
+  (`541737e`), [통합 #30](https://github.com/digitie/kor-travel-transport/pull/30)
+  (`7d1ad37460acd04e1f4efdc48d53e3b0021f6120`) 모두 MERGED.
+- 승인된 전국 유가 run13556은 주유소11,807곳·가격59,035건을 저장했다. 새 병합이 과거
+  데이터까지 소급 복구한 것은 아니다. 다음 수집 예약은 9월20일07:05:20 KST다.
+- KRIC 및 확장 조사는 T-041, 보관/페이지/지연/배포 취소 후 회복은 T-042로 분리했다.
+  머지 후 동일 코드의 SHA 승격 배포 중 취소된 run13623은 별도 운영 사건이며,
+  이전 머지 게이트 통과와 이후 회복 검증을 구분한다.
+
 ## 2026-09-07 (T-039)
 
 ### `T-039` — UI 밀도 개선(컴팩트화)
