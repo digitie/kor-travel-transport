@@ -136,11 +136,11 @@ if (
     raise SystemExit("Refusing cutover: host client DSNs must be complete PostgreSQL URIs.")
 username = unquote(parts.username)
 password = unquote(parts.password)
-if any("\\n" in value or "\\r" in value for value in (parts.hostname, database, username, password)):
+if any("\n" in value or "\r" in value for value in (parts.hostname, database, username, password)):
     raise SystemExit("Refusing cutover: host client DSNs cannot contain line breaks.")
 escape = lambda value: value.replace("\\", "\\\\").replace(":", "\\:")
 with passfile.open("a", encoding="utf-8") as handle:
-    handle.write(":".join(escape(value) for value in (parts.hostname, str(parts.port), database, username, password)) + "\\n")
+    handle.write(":".join(escape(value) for value in (parts.hostname, str(parts.port), database, username, password)) + "\n")
 print(f"postgresql://{quote(username, safe=chr(39))}@{parts.hostname}:{parts.port}/{quote(database, safe=chr(39))}")
 ' "${PGPASS_FILE}"
 }
