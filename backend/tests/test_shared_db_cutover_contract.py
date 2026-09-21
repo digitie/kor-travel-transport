@@ -28,7 +28,20 @@ def test_empty_target_rejects_all_user_schema_objects_and_migration_rows() -> No
     assert "pg_namespace" in script
     assert "pg_proc" in script
     assert "pg_type" in script
+    assert "pg_operator" in script
+    assert "pg_collation" in script
+    assert "pg_conversion" in script
+    assert "pg_extension" in script
     assert "SELECT count(*) FROM public.alembic_version" in script
+
+
+def test_legacy_dagster_metadata_is_quiesced_before_the_final_dump() -> None:
+    script = (_ROOT / "scripts" / "cutover-shared-db-server14.sh").read_text(encoding="utf-8")
+
+    assert "legacy_dagster_services=()" in script
+    assert "dagster-code-server dagster-webserver dagster-daemon dagster-gateway" in script
+    assert "legacy-dagster-metadata-final.dump" in script
+    assert "migrated-after-writer-quiescence" in script
 
 
 def test_deploy_receipt_binds_both_shared_database_names() -> None:

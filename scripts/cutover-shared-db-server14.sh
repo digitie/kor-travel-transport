@@ -17,7 +17,9 @@ TARGET_ENV_FILE="${TARGET_ENV_FILE:-.env.server14}"
 CONFIRMATION="MOVE_KOR_TRAVEL_TRANSPORT_HISTORY_TO_SHARED_DB"
 METADATA_RESET_CONFIRMATION="START_FRESH_DAGSTER_METADATA_WITH_NO_LEGACY_STORE"
 legacy_backend_quiesced=false
+legacy_dagster_quiesced=false
 cutover_accepted=false
+legacy_dagster_services=()
 
 if [[ "${REMOTE_HOST}" != "192.168.1.14" ]]; then
   echo "Refusing cutover outside 192.168.1.14." >&2
@@ -73,6 +75,10 @@ restart_legacy_backend_on_failure() {
       stop backend dagster-code-server dagster-webserver dagster-daemon dagster-gateway 2>/dev/null || true
     docker compose --project-name "${LEGACY_PROJECT_NAME}" --env-file "${LEGACY_ENV_FILE}" \
       -f docker-compose.yml up -d backend || true
+    if [[ "${legacy_dagster_quiesced}" == "true" && "${#legacy_dagster_services[@]}" -gt 0 ]]; then
+      docker compose --project-name "${LEGACY_PROJECT_NAME}" --env-file "${LEGACY_ENV_FILE}" \
+        -f docker-compose.yml -f docker-compose.shared.yml up -d "${legacy_dagster_services[@]}" || true
+    fi
   fi
   exit "${status}"
 }
@@ -120,17 +126,18 @@ assert_ready target-dagster "${TARGET_DAGSTER_DATABASE_URL}"
 assert_empty_bootstrap_only() {
   local label="$1"
   local dsn="$2"
-  local user_schema_count relation_count routine_count type_count migration_count
+  local user_schema_count relation_count routine_count type_count other_object_count migration_count
   user_schema_count="$(psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT count(*) FROM pg_namespace WHERE nspname !~ '^pg_' AND nspname <> 'information_schema' AND nspname <> 'public'")"
   relation_count="$(psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f') AND c.relname <> 'alembic_version'")"
   routine_count="$(psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public'")"
   type_count="$(psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT count(*) FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname = 'public' AND t.typrelid = 0 AND t.typelem = 0")"
+  other_object_count="$(psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT (SELECT count(*) FROM pg_operator o JOIN pg_namespace n ON n.oid = o.oprnamespace WHERE n.nspname = 'public') + (SELECT count(*) FROM pg_collation c JOIN pg_namespace n ON n.oid = c.collnamespace WHERE n.nspname = 'public') + (SELECT count(*) FROM pg_conversion c JOIN pg_namespace n ON n.oid = c.connamespace WHERE n.nspname = 'public') + (SELECT count(*) FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace WHERE n.nspname = 'public') + (SELECT count(*) FROM pg_ts_config t JOIN pg_namespace n ON n.oid = t.cfgnamespace WHERE n.nspname = 'public') + (SELECT count(*) FROM pg_ts_dict t JOIN pg_namespace n ON n.oid = t.dictnamespace WHERE n.nspname = 'public') + (SELECT count(*) FROM pg_ts_template t JOIN pg_namespace n ON n.oid = t.tmplnamespace WHERE n.nspname = 'public')")"
   if psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT to_regclass('public.alembic_version')" | grep -qx 'alembic_version'; then
     migration_count="$(psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c 'SELECT count(*) FROM public.alembic_version')"
   else
     migration_count=0
   fi
-  if [[ "${user_schema_count}" != "0" || "${relation_count}" != "0" || "${routine_count}" != "0" || "${type_count}" != "0" || "${migration_count}" != "0" ]]; then
+  if [[ "${user_schema_count}" != "0" || "${relation_count}" != "0" || "${routine_count}" != "0" || "${type_count}" != "0" || "${other_object_count}" != "0" || "${migration_count}" != "0" ]]; then
     echo "Refusing cutover: ${label} DB is not an empty/bootstrap-only database." >&2
     exit 2
   fi
@@ -138,21 +145,6 @@ assert_empty_bootstrap_only() {
 
 assert_empty_bootstrap_only target "${TARGET_DATABASE_URL}"
 assert_empty_bootstrap_only target-dagster "${TARGET_DAGSTER_DATABASE_URL}"
-
-if [[ -n "${LEGACY_DAGSTER_DATABASE_URL}" ]]; then
-  assert_ready legacy-dagster "${LEGACY_DAGSTER_DATABASE_URL}"
-  LEGACY_DAGSTER_DUMP="${CUTOVER_WORK_DIR}/legacy-dagster-metadata.dump"
-  echo "Archiving and restoring legacy Dagster metadata."
-  pg_dump --format=custom --no-owner --no-privileges --file "${LEGACY_DAGSTER_DUMP}" "${LEGACY_DAGSTER_DATABASE_URL}"
-  pg_restore --no-owner --no-privileges --exit-on-error --dbname "${TARGET_DAGSTER_DATABASE_URL}" "${LEGACY_DAGSTER_DUMP}"
-  legacy_dagster_metadata=migrated
-else
-  if [[ "${DAGSTER_METADATA_RESET_CONFIRM}" != "${METADATA_RESET_CONFIRMATION}" ]]; then
-    echo "Refusing cutover: set DAGSTER_METADATA_RESET_CONFIRM=${METADATA_RESET_CONFIRMATION} only when no legacy Dagster metadata store exists." >&2
-    exit 2
-  fi
-  legacy_dagster_metadata=reset-confirmed-no-legacy-store
-fi
 
 echo "Creating recoverable base dump at ${BASE_DUMP}"
 pg_dump --format=custom --no-owner --no-privileges --file "${BASE_DUMP}" "${LEGACY_DATABASE_URL}"
@@ -162,9 +154,35 @@ echo "Quiescing the legacy backend writer; old DB and its volume remain intact f
 docker compose --project-name "${LEGACY_PROJECT_NAME}" --env-file "${LEGACY_ENV_FILE}" -f docker-compose.yml stop backend
 legacy_backend_quiesced=true
 
+if [[ -n "${LEGACY_DAGSTER_DATABASE_URL}" ]]; then
+  assert_ready legacy-dagster "${LEGACY_DAGSTER_DATABASE_URL}"
+  for service in dagster-code-server dagster-webserver dagster-daemon dagster-gateway; do
+    if docker compose --project-name "${LEGACY_PROJECT_NAME}" --env-file "${LEGACY_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml ps -q "${service}" | grep -q .; then
+      legacy_dagster_services+=("${service}")
+    fi
+  done
+  if [[ "${#legacy_dagster_services[@]}" -gt 0 ]]; then
+    docker compose --project-name "${LEGACY_PROJECT_NAME}" --env-file "${LEGACY_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml stop "${legacy_dagster_services[@]}"
+    legacy_dagster_quiesced=true
+  fi
+fi
+
 echo "Creating final quiesced snapshot and replacing target contents."
 pg_dump --format=custom --no-owner --no-privileges --file "${FINAL_DUMP}" "${LEGACY_DATABASE_URL}"
 pg_restore --clean --if-exists --no-owner --no-privileges --exit-on-error --dbname "${TARGET_DATABASE_URL}" "${FINAL_DUMP}"
+
+if [[ -n "${LEGACY_DAGSTER_DATABASE_URL}" ]]; then
+  LEGACY_DAGSTER_DUMP="${CUTOVER_WORK_DIR}/legacy-dagster-metadata-final.dump"
+  pg_dump --format=custom --no-owner --no-privileges --file "${LEGACY_DAGSTER_DUMP}" "${LEGACY_DAGSTER_DATABASE_URL}"
+  pg_restore --no-owner --no-privileges --exit-on-error --dbname "${TARGET_DAGSTER_DATABASE_URL}" "${LEGACY_DAGSTER_DUMP}"
+  legacy_dagster_metadata=migrated-after-writer-quiescence
+else
+  if [[ "${DAGSTER_METADATA_RESET_CONFIRM}" != "${METADATA_RESET_CONFIRMATION}" ]]; then
+    echo "Refusing cutover: set DAGSTER_METADATA_RESET_CONFIRM=${METADATA_RESET_CONFIRMATION} only when no legacy Dagster metadata store exists." >&2
+    exit 2
+  fi
+  legacy_dagster_metadata=reset-confirmed-no-legacy-store
+fi
 
 legacy_counts="${CUTOVER_WORK_DIR}/legacy-counts.txt"
 target_counts="${CUTOVER_WORK_DIR}/target-counts.txt"
