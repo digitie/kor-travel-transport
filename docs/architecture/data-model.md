@@ -90,6 +90,20 @@ SQLite dialect를 허용한다.
 - 브라우저 수집의 기본 8시간(허용 8~12시간, 24시간 내 최대 3회) 재실행 정책과 고속도로 scheduler 상태를 운영 API에서
   구분해 확인하는 기준 테이블
 
+### `rail_station_references`
+
+- KRIC 공개 XLSX dataset 1294의 도시·광역철도 역사 기준정보
+- `(source, identity_key)`로 운영기관·노선·역번호·역명을 조합한 자연키를 고정
+- 좌표, 주소, 전화, 파일의 `data_reference_date`, 최초/최종 확인 시각과 원본 필드를 보존
+- 공개 파일 원문 자체는 RustFS object로 보관하며 DB에는 정규화 행과 원본 필드만 둔다
+
+### `ferry_ports` / `ferry_terminal_references` / `ferry_ship_type_references`
+
+- 공공데이터포털 국내선박운항정보의 항구, 여객선 터미널, 선박종류 기준정보
+- 원천 ID와 source의 조합으로 중복을 막고 최초/최종 확인 시각을 기록
+- 운항시간표·운항계획은 이 DB에 저장하지 않는다. 시간에 민감한 자료는 항구 API 요청마다
+  실시간 provider 응답으로 반환한다.
+
 ## 분석 데이터 처리 원칙
 
 - 시계열 차트용 집계 결과는 현재 별도 테이블에 저장하지 않는다.

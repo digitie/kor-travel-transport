@@ -31,7 +31,9 @@ def test_settings(tmp_path: Path) -> Settings:
             async with engine.begin() as connection:
                 await connection.execute(
                     text(
-                        "TRUNCATE TABLE fuel_price_snapshots, highway_incident_snapshots, "
+                        "TRUNCATE TABLE ferry_ship_type_references, ferry_terminal_references, "
+                        "ferry_ports, rail_station_references, "
+                        "fuel_price_snapshots, highway_incident_snapshots, "
                         "highway_traffic_snapshots, transport_collection_states, raw_api_responses, "
                         "parking_snapshots, parking_fee_rules, analytics_caches, collection_runs, "
                         "fuel_stations, parking_lots, airports RESTART IDENTITY CASCADE"

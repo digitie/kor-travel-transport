@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -18,6 +19,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://parking_radar:parking_radar@postgres:5432/parking_radar"
     app_timezone: str = "Asia/Seoul"
     enable_scheduler: bool = False
+    scheduler_mode: Literal["in_process", "dagster"] = "in_process"
     seed_sample_data: bool = True
     collect_interval_seconds: int = Field(default=300, gt=0)
     scheduler_safety_buffer_seconds: int = Field(default=60, ge=0)
@@ -36,6 +38,15 @@ class Settings(BaseSettings):
     opinet_query_level: str = "sigungu"
     opinet_browser_channel: str | None = None
     opinet_browser_timeout_ms: int = Field(default=30_000, gt=0)
+    rail_reference_collection_enabled: bool = False
+    maritime_reference_collection_enabled: bool = False
+    rustfs_endpoint_url: str | None = None
+    rustfs_bucket: str = "kor-travel-transport-raw"
+    rustfs_access_key_id: str | None = None
+    rustfs_secret_access_key: str | None = None
+    rustfs_region_name: str = "us-east-1"
+    rustfs_raw_prefix: str = "provider-raw"
+    rustfs_allow_insecure_http: bool = False
     enable_flight_status_markers: bool = True
     flight_status_cache_seconds: int = 300
     holiday_cache_seconds: int = 86400
@@ -74,6 +85,15 @@ class Settings(BaseSettings):
     @property
     def transport_conzone_ids(self) -> list[str]:
         return [value.strip() for value in self.transport_conzone_ids_csv.split(",") if value.strip()]
+
+    @property
+    def rustfs_is_configured(self) -> bool:
+        return bool(
+            self.rustfs_endpoint_url
+            and self.rustfs_bucket
+            and self.rustfs_access_key_id
+            and self.rustfs_secret_access_key
+        )
 
     @property
     def effective_collect_interval_seconds(self) -> int:

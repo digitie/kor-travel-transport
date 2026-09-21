@@ -287,6 +287,80 @@ class TransportCollectionState(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class RailStationReference(Base):
+    """KRIC 공개 파일에서 주기적으로 동기화하는 도시·광역철도 역사 기준정보."""
+
+    __tablename__ = "rail_station_references"
+    __table_args__ = (
+        UniqueConstraint("source", "identity_key", name="uq_rail_station_reference_identity"),
+        Index("ix_rail_station_reference_operator_line", "rail_operator_name", "operating_line_name"),
+        Index("ix_rail_station_reference_last_seen", "last_seen_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(40))
+    identity_key: Mapped[str] = mapped_column(String(400))
+    rail_operator_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    operating_line_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    station_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    station_number: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    station_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    english_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    lot_address: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    road_address: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    station_phone_number: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    data_reference_date: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
+
+
+class FerryPort(Base):
+    __tablename__ = "ferry_ports"
+    __table_args__ = (
+        UniqueConstraint("source", "port_id", name="uq_ferry_port_source_id"),
+        Index("ix_ferry_ports_last_seen", "last_seen_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(40))
+    port_id: Mapped[str] = mapped_column(String(120))
+    port_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
+
+
+class FerryTerminalReference(Base):
+    __tablename__ = "ferry_terminal_references"
+    __table_args__ = (UniqueConstraint("source", "terminal_id", name="uq_ferry_terminal_source_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(40))
+    terminal_id: Mapped[str] = mapped_column(String(120))
+    terminal_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    address: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    telephone: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
+
+
+class FerryShipTypeReference(Base):
+    __tablename__ = "ferry_ship_type_references"
+    __table_args__ = (UniqueConstraint("source", "ship_type_id", name="uq_ferry_ship_type_source_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(40))
+    ship_type_id: Mapped[str] = mapped_column(String(120))
+    ship_type_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
+
+
 class ParkingSnapshot(Base):
     __tablename__ = "parking_snapshots"
     __table_args__ = (

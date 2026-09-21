@@ -582,6 +582,20 @@ class TransportCollectionService:
                 )
             )
             if existing is not None:
+                # KREX가 동일한 관측 시각을 반복할 수 있다. 행을 하나 더 만들지는
+                # 않되, 이번 조회로 확인한 원본 값과 수집 시각은 갱신해야 공개 API가
+                # 실제 최신 확인 상태를 정확하게 표현한다.
+                existing.collection_run_id = collection_run_id
+                existing.collected_at = collected_at
+                existing.route_no = item.route_no
+                existing.route_name = item.route_name
+                existing.conzone_id = item.conzone_id
+                existing.conzone_name = item.conzone_name
+                existing.direction = direction
+                existing.speed = item.speed
+                existing.free_flow_speed = item.free_flow_speed
+                existing.congestion_level = _enum_value(item.congestion_level)
+                existing.raw_item_json = _provider_json(item)
                 continue
             session.add(
                 HighwayTrafficSnapshot(

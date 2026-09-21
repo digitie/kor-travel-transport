@@ -2,6 +2,38 @@
 
 ## 현재 상태
 
+- 2026-09-22 현재 `codex/shared-db-dagster`의 PR #32는 최신 후보를 n150에 배포한 상태다.
+  외부 live E2E가 KREX 동일 관측 시각의 행에서 과거 `collected_at`을 읽는 정합성 문제를
+  발견했다. 수집 성공 때 동일 행의 수집 run·원본 값·수집 시각을 갱신하도록 보완하고,
+  WSL 회귀 검증을 통과했다. 이 후속 커밋의 CI, James/Popper 재리뷰, live E2E를 모두
+  통과한 뒤에만 PR을 머지한다.
+
+- 현재 후보는 `e8ad95f` 이후 적대적 리뷰 P0/P1을 보완하는 후속 커밋이다. Manager bootstrap PR #381이 병합·n150 재설치됐고,
+  transport application/Dagster 전용 shared DB와 RustFS raw bucket이 준비됐다. legacy
+  history의 final dump/restore·count/watermark 검증도 끝났으며 receipt가 배포 전제조건으로
+  남아 있다. runtime은 Manager Weather 정본과 동일한 host-network로
+  `127.0.0.1:11000` PostgreSQL과 `127.0.0.1:12101` RustFS에 접근한다.
+- n150에 `e8ad95f`을 배포해 application/Dagster metadata migration, backend, code-server,
+  webserver, daemon, gateway, frontend가 모두 정상 기동한 것을 확인했다. `/health`의
+  release SHA가 후보와 일치하고, code-server/webserver는 loopback 전용, gateway는
+  무인증 요청에 401을 반환한다. 이번 보완은 cutover candidate staging/n150 direct deploy,
+  legacy rollback env 보존, gateway loopback bind, 공항 수집 advisory lock의 전용 connection
+  소유권을 추가한다. 다음 한 작업은 이 후보를 배포한 뒤 CI·두 적대적 리뷰·live E2E를
+  통과시켜 PR #32를 머지하는 것이다.
+- 현재 브랜치는 `codex/shared-db-dagster`다. 운영 scheduler 분리, 3일 주기 철도·여객항구
+  기준정보 Dagster job, RustFS 원본 참조, shared PostgreSQL compose overlay를 구현했다.
+  `python-kric-api#3`은 CI와 두 적대적 리뷰를 통과해 `6ed5ace`로 병합됐고, pagination 보강 PR #4의
+  `cd01fbc`를 transport가 고정한다. 그
+  commit을 고정한다. 항구 시간표는 DB·raw response에 저장하지 않는 실시간 조회 계약이다.
+  `python-kric-api#4`의 bounded pagination 병합 SHA `cd01fbc`를 고정했다. 여객항구 기준정보 job은
+  Manager RustFS/DB bootstrap이 준비된 뒤에만 활성화할 수 있다.
+- 최신 검증은 새 `python-kric-api@cd01fbc` 환경의 WSL backend 138개 통과/1개 live skip, 새 image와
+  `0006` migration을 적용한 Docker backend 139개 통과다. shared overlay `docker compose config`와
+  shell syntax 검사는 통과했다. 공용 DB 전환은 검증 없는 기동을
+  금지하며, legacy history final dump/restore·count/watermark 검증과 Dagster metadata migration
+  one-shot을 요구한다. 다음 작업은 provider PR #4 병합·pin 갱신, Manager의 transport app/Dagster
+  전용 role·DB와 RustFS bucket bootstrap PR, 이어서 feature REST와 항구 실시간 시간표 endpoint 구현이다.
+
 - 이 작업의 목표는 `kor-travel-transport`를 국내 여행용 통합 교통정보 라이브러리/API로
   운영하는 것이다. provider에서 데이터를 주기적으로 수집해 PostgreSQL에 저장하고,
   저장 자료를 외부 OpenAPI와 내부 통계로 즉시 제공한다.

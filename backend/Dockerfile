@@ -11,6 +11,9 @@ RUN apt-get update \
 
 COPY backend /app
 COPY scripts /app/scripts
+# Backend regression container also verifies the committed shared Dagster environment contract.
+# This file contains no credentials; runtime secrets stay in the host-only env file.
+COPY docker-compose.shared.yml /app/compose-contract/docker-compose.shared.yml
 
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -e ".[dev]"

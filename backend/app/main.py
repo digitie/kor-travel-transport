@@ -166,7 +166,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         elif resolved_settings.seed_sample_data:
             logger.info("sample seeding skipped because client_mode=%s", app.state.collection_service.client_mode)
 
-        if resolved_settings.enable_scheduler:
+        if resolved_settings.enable_scheduler and resolved_settings.scheduler_mode == "in_process":
             logger.info(
                 "scheduler enabled effective_interval_seconds=%s configured_interval_seconds=%s client_mode=%s sources=%s airports=%s",
                 resolved_settings.effective_collect_interval_seconds,
@@ -180,6 +180,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 app.state.transport_scheduler_task = asyncio.create_task(_run_transport_scheduler(app, "highway"))
                 if OPINET_SOURCE in app.state.transport_collection_service.enabled_sources:
                     app.state.fuel_scheduler_task = asyncio.create_task(_run_transport_scheduler(app, "fuel"))
+        elif resolved_settings.enable_scheduler:
+            logger.info("in-process scheduler disabled; Dagster owns collection execution")
 
         try:
             yield

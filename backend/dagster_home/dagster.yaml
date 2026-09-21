@@ -1,0 +1,55 @@
+run_storage:
+  module: dagster_postgres.run_storage
+  class: PostgresRunStorage
+  config:
+    postgres_url:
+      env: DAGSTER_POSTGRES_URL
+event_log_storage:
+  module: dagster_postgres.event_log
+  class: PostgresEventLogStorage
+  config:
+    postgres_url:
+      env: DAGSTER_POSTGRES_URL
+schedule_storage:
+  module: dagster_postgres.schedule_storage
+  class: PostgresScheduleStorage
+  config:
+    postgres_url:
+      env: DAGSTER_POSTGRES_URL
+scheduler:
+  module: dagster.core.scheduler
+  class: DagsterDaemonScheduler
+
+# code-server container 교체로 process가 사라진 run이 영구 STARTED로 남지 않게
+# 한다. 장시간 Playwright 유가 수집의 정상 상한(2시간)보다 여유 있게 둔다.
+run_monitoring:
+  enabled: true
+  start_timeout_seconds: 300
+  max_resume_run_attempts: 0
+  poll_interval_seconds: 60
+  max_runtime_seconds: 14400
+
+run_coordinator:
+  module: dagster._core.run_coordinator
+  class: QueuedRunCoordinator
+  config:
+    max_concurrent_runs: 3
+    tag_concurrency_limits:
+      - key: kortraveltransport/run_group
+        value: fuel
+        limit: 1
+      - key: kortraveltransport/run_group
+        value: parking
+        limit: 1
+      - key: kortraveltransport/run_group
+        value: highway
+        limit: 1
+      - key: kortraveltransport/run_group
+        value: reference
+        limit: 1
+
+retention:
+  schedule:
+    purge_after_days: 14
+  sensor:
+    purge_after_days: 14

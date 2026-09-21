@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import asyncio
 from datetime import datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
@@ -51,6 +53,42 @@ def test_build_public_data_client_uses_fixture_without_key() -> None:
     client = build_public_data_client(settings)
 
     assert isinstance(client, FixturePublicDataClient)
+
+
+def test_postgres_collection_lease_keeps_lock_on_dedicated_connection() -> None:
+    class LockConnection:
+        def __init__(self) -> None:
+            self.statements: list[str] = []
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+        async def scalar(self, statement):
+            self.statements.append(str(statement))
+            return True
+
+    async def run() -> None:
+        connection = LockConnection()
+        engine = SimpleNamespace(
+            dialect=SimpleNamespace(name="postgresql"),
+            connect=lambda: connection,
+        )
+        session = SimpleNamespace(bind=engine)
+        service = CollectionService(Settings(use_sample_client_when_no_key=True), client=FixturePublicDataClient())
+
+        async with service._postgres_collection_lease(session) as acquired:
+            assert acquired is True
+            # 수집 세션이 commit해도 lock owner인 connection은 context exit까지 유지된다.
+            assert len(connection.statements) == 1
+
+        assert len(connection.statements) == 2
+        assert "pg_try_advisory_lock" in connection.statements[0]
+        assert "pg_advisory_unlock" in connection.statements[1]
+
+    asyncio.run(run())
 
 
 def test_build_public_data_client_requires_key_when_sample_disabled() -> None:

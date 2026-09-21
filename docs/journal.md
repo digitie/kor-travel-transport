@@ -1,5 +1,115 @@
 # journal.md — 작업 일지
 
+## 2026-09-21
+
+- KREX가 동일한 `updated_at` 관측을 재전달했을 때 기존 고속도로 소통 행을 건너뛰어
+  `collected_at`이 과거에 고정되는 문제를 보완했다. 같은 자연키 행은 중복 생성하지 않되,
+  이번 수집 run·원본 값·수집 시각을 갱신한다. 공개 API와 live E2E는 실제 원본 확인 시각을
+  정확히 노출하며, 관측 시각 자체의 신선도 검증은 계속 유지한다.
+
+- OPINET live E2E freshness 상한을 13시간에서 17시간으로 조정했다. 기본 8시간 throttle 뒤
+  배포 중 취소된 실행이 다음 8시간 예약을 정당하게 보존하는 경우를 반영한 것이며, 16시간
+  최대 정상 공백에만 관측 여유를 더한다. provider 호출 quota는 그대로다.
+- 적대적 리뷰 James/Popper의 cutover P0를 보완했다. reviewed artifact를 먼저 n150에
+  `DEPLOY_STAGE_ONLY=true`로 staging하고 SHA manifest와 함께 보존한 뒤, cutover는 n150의
+  staged `deploy-server14-remote.sh`를 직접 호출한다. 따라서 n150에 `.git`이 없어도
+  legacy writer quiesce 뒤 target deploy가 가능하다. `rsync --delete`는
+  `.env.server14.legacy`를 명시 보존하고, rollback 재기동 실패를 더 이상 `|| true`로 숨기지
+  않는다.
+- 적대적 리뷰의 gateway P1/P2를 반영했다. Dagster gateway는 `127.0.0.1:14003`에만
+  bind하고 dead `DAGSTER_GATEWAY_PORT` 운영 설정을 없앴다. 외부 공개는 Manager TLS proxy가
+  loopback upstream을 쓸 때만 허용한다.
+- Popper가 확인한 공항 수집 PostgreSQL advisory lock 누수 가능성을 고쳤다. 수집 세션의
+  `commit()`과 분리된 전용 connection이 lock을 소유하고 같은 connection에서 unlock하도록
+  바꿔 pool 재사용으로 unlock 대상이 달라지는 경로를 제거했다. 전용 connection 회귀 테스트도
+  추가했다.
+- James 재리뷰의 추가 P1을 반영했다. cutover는 `.env.server14`을 writer quiescence 전에
+  명시 load해 runbook 명령 그대로 shared DB DSN 검증을 수행한다. 또한 기존 backend container를
+  target 기동 직전에 별도 이름으로 보존하고, 실패 시 후보 compose/image를 재사용하지 않고
+  그 원본 container를 재시작한 뒤 `127.0.0.1:14001/health`를 확인한다.
+- 최종 재리뷰에서 Compose가 같은 project/service label을 가진 이름 변경 container를 recreate할 수
+  있다는 P0를 확인했다. rollback은 이제 이름 변경 container를 쓰지 않고 기존 backend를
+  immutable image로 `docker commit`하고, private env·backup mount를 보존한 standalone
+  `docker run` container로만 복원한다. 후보 Compose가 rollback artifact를 관리·제거할 수 없으며,
+  실패 시 health 확인은 그대로 fail-closed다.
+- 같은 rollback 원칙을 frontend에도 적용했다. candidate backend만 실패했을 때 후보 frontend가
+  남아 API와 정적 web release가 어긋나는 일을 막기 위해, 이전 frontend도 독립 image·env artifact로
+  보존하고 API(`14001`)와 web(`14002`) health가 모두 복구돼야 rollback을 성공으로 기록한다.
+- rollback artifact는 legacy runtime의 network mode도 검사한다. 새 운영의 host-network는 그대로
+  유지하되, 과거 bridge runtime이면 기존 network와 host publish를 복원해 PostgreSQL/backend DNS와
+  외부 `14001`/`14002` 계약이 바뀌지 않도록 했다. 허용하지 않은 network mode는 writer 정지 전에
+  fail-close한다.
+- legacy bridge rollback에서는 stopped candidate backend endpoint가 `backend` DNS를 계속 차지하지
+  않도록 제거하고, standalone backend에 같은 alias를 부여한다. frontend root만으로는 proxy 경로를
+  증명하지 못하므로 rollback 완료 검증은 `14002/api/backend/health`까지 성공해야 한다.
+- Compose의 명시적 `--env-file`이 셸에서 export한 `RELEASE_SHA`를 덮어 배포 health가
+  `unknown`으로 표시되는 문제를 수정했다. 배포마다 기존 운영 env를 값 변경 없이 복사한
+  임시 runtime env에 후보 SHA만 주입하고, 배포 종료 시 즉시 삭제한다.
+- live E2E는 분리된 Dagster의 trigger 명명(`dagster_airport`,
+  `transport_dagster_*`)을 정본으로 삼고, Playwright 수집이 취소된 뒤 quota 보호를
+  위해 남긴 다음 실행 예약은 마지막 저장 성공의 최신성이 보장되는 한 실패로 보지 않도록
+  계약을 조정했다.
+- 고속도로 목록 API는 최신순 정렬을 약속하지 않으므로 live E2E는 첫 행이 아니라 응답 내
+  하나 이상의 관측·저장 시각이 최신인지를 검증한다.
+- KREX 실응답은 수집 시점보다 관측 시각이 지연될 수 있어, live E2E는 저장 시각 15분 이내와
+  관측 시각 2시간 이내를 분리해 확인한다. 이 상한을 넘는 upstream 지연은 수집 실패와
+  구분해 운영 알림 대상이다.
+- 배포 중단 전 `STARTED`로 남은 Dagster run 하나가 동시 실행 한도를 점유해 이후 schedule
+  run이 `QUEUED`로 쌓인 것을 확인했다. 해당 stale run만 Dagster 즉시 취소 정책으로
+  `CANCELED` 처리했고, daemon이 대기 run을 다시 launch하는 것을 확인했다.
+- 공용 DB 연결은 임시 bridge relay를 쓰지 않고 Manager의 Weather 정본과 같은
+  host-network 구조로 바로잡았다. runtime은 `127.0.0.1:11000` PostgreSQL과
+  `127.0.0.1:12101` RustFS를 직접 사용하며, FastAPI/Web은 각각 `14001`/`14002`를
+  직접 수신한다. 인증 없는 Dagster code-server(`14005`)와 webserver(`14004`)는
+  loopback으로만 열고 gateway(`14003`)만 Basic Auth 경계로 남겼다.
+- 동일한 Playwright backend 이미지를 migrate/code-server/webserver/daemon이 재사용하도록
+  Compose를 정리했다. 배포 중 `dagster-webserver` 실행 파일 누락을 발견해 명시 의존성과
+  lockfile을 보완했다. 후보 `9a93743`은 n150에서 application/Dagster migration,
+  backend, code-server, webserver, daemon, gateway, frontend 모두 healthy로 기동했고,
+  `/health`의 release SHA도 일치했다. gateway 무인증 요청은 401로 확인했다.
+- n150 실서버 사전점검으로 shared DB는 loopback `127.0.0.1:11000`, legacy PostgreSQL은
+  `127.0.0.1:14000`에서만 접근 가능하고 host에는 PostgreSQL CLI가 없음을 확인했다.
+  cutover는 runtime의 `host.docker.internal` DSN 계약을 유지하되, host-network의 일회성
+  `postgres:16-alpine` client로 dump/restore·검증을 수행하도록 보완했다. legacy DB에는
+  명시적인 `LEGACY_HOST_DATABASE_URL`을 요구한다. focused contract 5개와 shell syntax는
+  통과했다. Windows Python 환경은 신규 Dagster/KRIC 의존성을 아직 설치하지 않아 전체
+  backend collection에는 사용할 수 없으며 Docker 재빌드를 진행 중이다.
+- `kor-travel-docker-manager#381`을 머지하고 n150에 신뢰된 offline wheelhouse 릴리스로
+  재설치했다. transport application/Dagster 전용 DB·role bootstrap과
+  `kor-travel-transport-raw` RustFS bucket 초기화가 성공했다. Compose의 기존 비밀값
+  interpolation 경고는 별도 후속 문제로 남기되, 새 transport 비밀번호 두 개에는 `$`가
+  없음을 값 비노출 검사로 확인했다.
+- 운영 수집을 `dagster dev`에서 분리했다. shared overlay는 migration one-shot,
+  code-server, webserver, daemon, gateway를 각각 독립 컨테이너로 두고 FastAPI의
+  in-process scheduler는 `SCHEDULER_MODE=dagster`일 때 시작하지 않는다.
+- KRIC 역사 기준정보와 여객항구·터미널·선박종류 기준정보를 3일 주기 Dagster job으로
+  추가했다. 항구 운항시간표는 저장하지 않으며 항구 상세 요청 시 provider에서 실시간으로
+  조회하는 후속 API로 유지한다.
+- 병합된 `python-kric-api` RustFS provider commit `cd01fbc`를 고정했다. rail job은 검증한
+  XLSX를 공용 RustFS에 저장하고 DB에는 bucket·object key·SHA-256 참조만 남긴다.
+  host-network Manager RustFS의 평문 경로는 explicit `RUSTFS_ALLOW_INSECURE_HTTP=true`일 때만
+  사용한다.
+- 깨끗한 WSL 임시 환경에서 backend 135개 통과/1개 live skip(427.67초), Docker backend 87개
+  통과(182.65초), 집중 Dagster·rail/maritime 6개 통과를 확인했다. SQLite Alembic은 기존
+  PostgreSQL `JSONB` migration 때문에 최초 migration부터 지원되지 않아 PostgreSQL 전용 계약을
+  재확인했다. Compose shared overlay는 `host.docker.internal` gateway와 분리 Dagster 서비스로
+  정상 해석됐다.
+- 적대적 리뷰 P0/P1을 보완했다. 공용 DB 전환은 legacy writer 정지 뒤 final logical dump를
+  복원하고 모든 public table count·최신 주차 관측 watermark를 비교하는 fail-closed one-shot으로
+  문서화했다. Dagster metadata migration은 `dagster-migrate` one-shot으로 분리했고 장기 실행
+  서비스의 Alembic을 금지했다. code-server만 provider/application/RustFS secret을 받고,
+  webserver·daemon은 metadata DB만 받는다.
+- Dagster schedule은 기본 실행 상태로, parking/highway/fuel/reference는 각각 한 run으로
+  제한했다. 주차 수집은 PostgreSQL session advisory lease와 snapshot savepoint conflict 처리로
+  Dagster/HTTP process 간 중복 provider 호출을 막는다. 취소된 rail/maritime run도 실패 상태를
+  남긴다. `python-kric-api#4`의 bounded async pagination이 `cd01fbc`로 병합됐으며, 여객선
+  기준정보 job은 이 pin과 Manager RustFS/DB bootstrap이 준비된 뒤에만 enable한다. 운항 시간표는
+  여전히 저장하지 않는다.
+- 최종 새 환경 검증에서 `python-kric-api@cd01fbc`를 실제 설치해 WSL backend `138 passed,
+  1 skipped`(431.91초)를 확인했다. 새 backend image를 재생성한 뒤 기존 local Docker 검증 DB에
+  `0006_rail_maritime_reference`를 적용하고 Docker backend `139 passed`(451.29초)를 확인했다.
+  이 local 검증 DB 외의 컨테이너·운영 DB는 변경하지 않았다.
+
 ## 2026-09-20
 
 - 최종 런타임 `f7987b2d8858e83b2a602ac70cdcd5b5a4902d6b`를 n150에 배포했다.

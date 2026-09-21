@@ -16,6 +16,12 @@
 4. [migration.md](migration.md)의 prewarm → final delta → 180초 scheduler와 300초 이내 cutover 검증을
    완료한다.
 
+공용 DB 최초 cutover는 일반 배포와 다르다. 먼저 WSL checkout에서
+`DEPLOY_STAGE_ONLY=true ./scripts/deploy-server14.sh`로 reviewed artifact만 n150에 올린 뒤,
+n150에서 `scripts/cutover-shared-db-server14.sh`를 실행한다. cutover는 staged artifact의
+receipt-gated remote deploy를 호출하므로 n150에 `.git`이 없어도 된다. `.env.server14.legacy`는
+동기화 삭제 대상이 아니며 live E2E 수용 전까지 보존한다.
+
 > **롤백 시 주의(T-035 이후)**: frontend만 이전 이미지로 되돌리고 PostgreSQL 상태는
 > 그대로 유지하는 롤백을 하면, T-035 이후 추가된 `/analytics`·`/history`·`/fees`·`/backup`
 > 라우트는 롤백된(라우트 분리 이전) 빌드에서 404가 된다. 그 사이 공유되거나 북마크된 딥링크는
