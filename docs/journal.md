@@ -14,6 +14,9 @@
 - KREX 실응답은 수집 시점보다 관측 시각이 지연될 수 있어, live E2E는 저장 시각 15분 이내와
   관측 시각 2시간 이내를 분리해 확인한다. 이 상한을 넘는 upstream 지연은 수집 실패와
   구분해 운영 알림 대상이다.
+- 배포 중단 전 `STARTED`로 남은 Dagster run 하나가 동시 실행 한도를 점유해 이후 schedule
+  run이 `QUEUED`로 쌓인 것을 확인했다. 해당 stale run만 Dagster 즉시 취소 정책으로
+  `CANCELED` 처리했고, daemon이 대기 run을 다시 launch하는 것을 확인했다.
 - 공용 DB 연결은 임시 bridge relay를 쓰지 않고 Manager의 Weather 정본과 같은
   host-network 구조로 바로잡았다. runtime은 `127.0.0.1:11000` PostgreSQL과
   `127.0.0.1:12101` RustFS를 직접 사용하며, FastAPI/Web은 각각 `14001`/`14002`를
