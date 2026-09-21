@@ -96,9 +96,10 @@ Manager가 공용 DB/네트워크와 전용 role·RustFS bucket을 provision한 
    `DAGSTER_METADATA_RESET_CONFIRM=START_FRESH_DAGSTER_METADATA_WITH_NO_LEGACY_STORE`를
    명시해 fresh metadata 시작을 승인한다. 검증 결과는 mode `0600`의 receipt로 남고, 같은
    script가 그 receipt를 staged target deploy에 전달한다. writer를 멈추기 직전 기존 backend의
-   image와 환경·backup mount를 mode `0600` rollback artifact로 보존한다. 이 artifact는 Compose
-   label을 갖지 않는 standalone container로만 재기동하므로 candidate Compose의 recreate 대상이
-   아니다. deploy 또는 health 검증이 실패하면 그 artifact를 재기동하고 health까지 확인한다.
+   image와 환경·backup mount, frontend image·환경을 mode `0600` rollback artifact로 보존한다.
+   artifact는 Compose label을 갖지 않는 standalone container로만 재기동하므로 candidate Compose의
+   recreate 대상이 아니다. deploy 또는 health 검증이 실패하면 기존 API와 web을 함께 재기동하고
+   두 health를 확인한다.
    rollback 실패는 성공으로 숨기지 않고 fatal로 남긴다.
 4. `scripts/deploy-server14.sh`는 target DB identity와 receipt를 함께 검증하므로, 빈 공용 DB를
    가리키는 환경 파일만으로는 기동하지 않는다. `migrate`와 `dagster-migrate`가 각각

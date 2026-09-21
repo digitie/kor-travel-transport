@@ -24,6 +24,9 @@
   immutable image로 `docker commit`하고, private env·backup mount를 보존한 standalone
   `docker run` container로만 복원한다. 후보 Compose가 rollback artifact를 관리·제거할 수 없으며,
   실패 시 health 확인은 그대로 fail-closed다.
+- 같은 rollback 원칙을 frontend에도 적용했다. candidate backend만 실패했을 때 후보 frontend가
+  남아 API와 정적 web release가 어긋나는 일을 막기 위해, 이전 frontend도 독립 image·env artifact로
+  보존하고 API(`14001`)와 web(`14002`) health가 모두 복구돼야 rollback을 성공으로 기록한다.
 - Compose의 명시적 `--env-file`이 셸에서 export한 `RELEASE_SHA`를 덮어 배포 health가
   `unknown`으로 표시되는 문제를 수정했다. 배포마다 기존 운영 env를 값 변경 없이 복사한
   임시 runtime env에 후보 SHA만 주입하고, 배포 종료 시 즉시 삭제한다.

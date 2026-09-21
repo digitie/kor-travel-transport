@@ -91,6 +91,9 @@ def test_cutover_uses_staged_n150_deployment_and_does_not_hide_rollback_failures
     assert 'source "${TARGET_ENV_FILE}"' in script
     assert 'docker commit --pause=false "${LEGACY_BACKEND_CONTAINER}" "${LEGACY_BACKEND_ROLLBACK_IMAGE}"' in script
     assert 'docker run -d --name "${LEGACY_BACKEND_ROLLBACK_CONTAINER}" --network host --restart no' in script
+    assert 'docker run -d --name "${LEGACY_FRONTEND_ROLLBACK_CONTAINER}" --network host --restart no' in script
+    assert "preserved legacy frontend did not become healthy after rollback" in script
+    assert "stop backend frontend dagster-code-server" in script
     assert 'docker compose --project-name "${LEGACY_PROJECT_NAME}" --env-file "${LEGACY_ENV_FILE}" -f docker-compose.yml stop backend' in script
     assert "docker rename" not in script
     assert "preserved legacy backend did not become healthy after rollback" in script
