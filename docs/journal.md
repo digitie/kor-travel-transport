@@ -2,6 +2,9 @@
 
 ## 2026-09-21
 
+- Compose의 명시적 `--env-file`이 셸에서 export한 `RELEASE_SHA`를 덮어 배포 health가
+  `unknown`으로 표시되는 문제를 수정했다. 배포마다 기존 운영 env를 값 변경 없이 복사한
+  임시 runtime env에 후보 SHA만 주입하고, 배포 종료 시 즉시 삭제한다.
 - 공용 DB 연결은 임시 bridge relay를 쓰지 않고 Manager의 Weather 정본과 같은
   host-network 구조로 바로잡았다. runtime은 `127.0.0.1:11000` PostgreSQL과
   `127.0.0.1:12101` RustFS를 직접 사용하며, FastAPI/Web은 각각 `14001`/`14002`를

@@ -60,8 +60,9 @@ if [[ ! -f "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" ]]; then
 fi
 
 REMOTE_STAGE="$(mktemp -d /tmp/kor-travel-airport-release.XXXXXX)"
+RUNTIME_ENV_FILE="$(mktemp "${REMOTE_APP_DIR}/.env.server14.runtime.XXXXXX")"
 cleanup_remote() {
-  rm -rf -- "${REMOTE_STAGE}" "${REMOTE_ARCHIVE}"
+  rm -rf -- "${REMOTE_STAGE}" "${REMOTE_ARCHIVE}" "${RUNTIME_ENV_FILE}"
 }
 trap cleanup_remote EXIT
 tar -xzf "${REMOTE_ARCHIVE}" -C "${REMOTE_STAGE}"
@@ -129,11 +130,18 @@ if ! grep -qx 'format=kor-travel-transport-shared-db-cutover-v1' "${CUTOVER_RECE
   exit 2
 fi
 export RELEASE_SHA="${CANDIDATE_SHA}"
+# Docker Compose gives an explicit --env-file precedence over the exported shell
+# environment.  Build a short-lived copy so the immutable server environment can
+# retain its safe `RELEASE_SHA=unknown` default while the running release always
+# reports the actual candidate SHA.
+awk '!/^RELEASE_SHA=/' "${REMOTE_ENV_FILE}" > "${RUNTIME_ENV_FILE}"
+printf 'RELEASE_SHA=%s\n' "${CANDIDATE_SHA}" >> "${RUNTIME_ENV_FILE}"
+chmod 600 "${RUNTIME_ENV_FILE}"
 # The Manager bootstrap/cutover receipt is intentionally a prerequisite: this deployment never
 # creates roles, DBs, buckets, or schema by privileged side effect.
-docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${REMOTE_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml config -q
-docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${REMOTE_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml up -d --build
-docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${REMOTE_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml ps
+docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${RUNTIME_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml config -q
+docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${RUNTIME_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml up -d --build
+docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${RUNTIME_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml ps
 health_payload=""
 for attempt in $(seq 1 30); do
   if health_payload="$(curl -fsS "http://127.0.0.1:${PUBLIC_API_PORT:-14001}/health" 2>/dev/null)"; then

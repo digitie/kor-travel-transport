@@ -2,7 +2,7 @@
 
 ## 현재 상태
 
-- 현재 후보는 `9a93743`이다. Manager bootstrap PR #381이 병합·n150 재설치됐고,
+- 현재 후보는 `b0eadaa` 이후 release SHA 주입 보완을 포함한 후속 커밋이다. Manager bootstrap PR #381이 병합·n150 재설치됐고,
   transport application/Dagster 전용 shared DB와 RustFS raw bucket이 준비됐다. legacy
   history의 final dump/restore·count/watermark 검증도 끝났으며 receipt가 배포 전제조건으로
   남아 있다. runtime은 Manager Weather 정본과 동일한 host-network로
