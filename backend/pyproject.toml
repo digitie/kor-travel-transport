@@ -13,6 +13,7 @@ dependencies = [
   "asyncpg>=0.31,<1.0",
   "dagster>=1.9,<2",
   "dagster-postgres>=0.25,<2",
+  "dagster-webserver>=1.9,<2",
   "fastapi>=0.141,<1.0",
   "httpx>=0.28,<1.0",
   "python-kasi-api @ git+https://github.com/digitie/python-kasi-api@51c39c1b0dd5b169b748552e81b9b9a55e86b9a1",
