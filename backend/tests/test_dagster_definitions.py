@@ -51,6 +51,7 @@ def test_dagster_definitions_enable_every_schedule_and_serialize_overlapping_gro
     assert 'RUSTFS_REGION_NAME: "${RUSTFS_REGION_NAME:-us-east-1}"' in shared_compose
     assert 'RUSTFS_RAW_PREFIX: "${RUSTFS_RAW_PREFIX:-provider-raw}"' in shared_compose
     assert 'RUN_DB_MIGRATIONS: "false"' in shared_compose
+    assert 'image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-airport-backend:latest}"' in shared_compose
 
 
 def test_transport_provider_lifecycle_stays_in_one_event_loop(monkeypatch) -> None:
