@@ -75,7 +75,9 @@ restart_legacy_backend_on_failure() {
       stop backend dagster-code-server dagster-webserver dagster-daemon dagster-gateway 2>/dev/null || true
     docker compose --project-name "${LEGACY_PROJECT_NAME}" --env-file "${LEGACY_ENV_FILE}" \
       -f docker-compose.yml up -d backend || true
-    if [[ "${legacy_dagster_quiesced}" == "true" && "${#legacy_dagster_services[@]}" -gt 0 ]]; then
+    # multi-service stop이 중간에 실패해도 앞쪽 service는 이미 멈췄을 수 있다.
+    # 성공 플래그가 아니라 사전에 확인한 service 목록을 rollback 근거로 쓴다.
+    if [[ "${#legacy_dagster_services[@]}" -gt 0 ]]; then
       docker compose --project-name "${LEGACY_PROJECT_NAME}" --env-file "${LEGACY_ENV_FILE}" \
         -f docker-compose.yml -f docker-compose.shared.yml up -d "${legacy_dagster_services[@]}" || true
     fi
