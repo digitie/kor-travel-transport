@@ -2,6 +2,16 @@
 
 ## 2026-09-21
 
+- 공용 DB 연결은 임시 bridge relay를 쓰지 않고 Manager의 Weather 정본과 같은
+  host-network 구조로 바로잡았다. runtime은 `127.0.0.1:11000` PostgreSQL과
+  `127.0.0.1:12101` RustFS를 직접 사용하며, FastAPI/Web은 각각 `14001`/`14002`를
+  직접 수신한다. 인증 없는 Dagster code-server(`14005`)와 webserver(`14004`)는
+  loopback으로만 열고 gateway(`14003`)만 Basic Auth 경계로 남겼다.
+- 동일한 Playwright backend 이미지를 migrate/code-server/webserver/daemon이 재사용하도록
+  Compose를 정리했다. 배포 중 `dagster-webserver` 실행 파일 누락을 발견해 명시 의존성과
+  lockfile을 보완했다. 후보 `9a93743`은 n150에서 application/Dagster migration,
+  backend, code-server, webserver, daemon, gateway, frontend 모두 healthy로 기동했고,
+  `/health`의 release SHA도 일치했다. gateway 무인증 요청은 401로 확인했다.
 - n150 실서버 사전점검으로 shared DB는 loopback `127.0.0.1:11000`, legacy PostgreSQL은
   `127.0.0.1:14000`에서만 접근 가능하고 host에는 PostgreSQL CLI가 없음을 확인했다.
   cutover는 runtime의 `host.docker.internal` DSN 계약을 유지하되, host-network의 일회성
