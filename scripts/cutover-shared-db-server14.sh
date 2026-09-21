@@ -6,6 +6,7 @@ set -euo pipefail
 REMOTE_HOST="${REMOTE_HOST:-192.168.1.14}"
 LEGACY_DATABASE_URL="${LEGACY_DATABASE_URL:?set the current legacy application DB DSN}"
 TARGET_DATABASE_URL="${DATABASE_URL:?set the new shared application DB DSN}"
+TARGET_DAGSTER_DATABASE_URL="${DAGSTER_POSTGRES_URL:?set the new shared Dagster metadata DB DSN}"
 LEGACY_ENV_FILE="${LEGACY_ENV_FILE:-.env.server14.legacy}"
 LEGACY_PROJECT_NAME="${LEGACY_PROJECT_NAME:-kor-travel-airport}"
 CUTOVER_WORK_DIR="${CUTOVER_WORK_DIR:-/var/tmp/kor-travel-transport-cutover}"
@@ -29,6 +30,10 @@ if [[ "${CUTOVER_CONFIRM:-}" != "${CONFIRMATION}" ]]; then
 fi
 if [[ "${LEGACY_DATABASE_URL}" == "${TARGET_DATABASE_URL}" ]]; then
   echo "Refusing cutover: legacy and target DSNs must differ." >&2
+  exit 2
+fi
+if [[ "${TARGET_DATABASE_URL}" == "${TARGET_DAGSTER_DATABASE_URL}" ]]; then
+  echo "Refusing cutover: application and Dagster metadata DSNs must differ." >&2
   exit 2
 fi
 for command in docker psql pg_dump pg_restore; do
@@ -99,11 +104,21 @@ database_name() {
 
 assert_ready legacy "${LEGACY_DATABASE_URL}"
 assert_ready target "${TARGET_DATABASE_URL}"
-target_nonbootstrap_tables="$(psql "${TARGET_DATABASE_URL}" -v ON_ERROR_STOP=1 -qAt -c "SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname = 'public' AND tablename <> 'alembic_version'")"
-if [[ "${target_nonbootstrap_tables}" != "0" ]]; then
-  echo "Refusing cutover: target DB is not an empty/bootstrap-only database." >&2
-  exit 2
-fi
+assert_ready target-dagster "${TARGET_DAGSTER_DATABASE_URL}"
+
+assert_empty_bootstrap_only() {
+  local label="$1"
+  local dsn="$2"
+  local table_count
+  table_count="$(psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname = 'public' AND tablename <> 'alembic_version'")"
+  if [[ "${table_count}" != "0" ]]; then
+    echo "Refusing cutover: ${label} DB is not an empty/bootstrap-only database." >&2
+    exit 2
+  fi
+}
+
+assert_empty_bootstrap_only target "${TARGET_DATABASE_URL}"
+assert_empty_bootstrap_only target-dagster "${TARGET_DAGSTER_DATABASE_URL}"
 
 echo "Creating recoverable base dump at ${BASE_DUMP}"
 pg_dump --format=custom --no-owner --no-privileges --file "${BASE_DUMP}" "${LEGACY_DATABASE_URL}"
@@ -134,6 +149,7 @@ target_watermark="$(snapshot_watermark "${TARGET_DATABASE_URL}")"
   printf 'verified=true\n'
   printf 'legacy_database=%s\n' "$(database_name "${LEGACY_DATABASE_URL}")"
   printf 'target_database=%s\n' "$(database_name "${TARGET_DATABASE_URL}")"
+  printf 'target_dagster_database=%s\n' "$(database_name "${TARGET_DAGSTER_DATABASE_URL}")"
   printf 'legacy_watermark=%s\n' "${legacy_watermark}"
   printf 'target_watermark=%s\n' "${target_watermark}"
   while IFS= read -r count; do printf 'legacy_count=%s\n' "${count}"; done < "${legacy_counts}"

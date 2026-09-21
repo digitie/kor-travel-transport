@@ -123,8 +123,9 @@ if [[ "${receipt_mode}" != "600" && "${receipt_mode}" != "400" ]]; then
 fi
 if ! grep -qx 'format=kor-travel-transport-shared-db-cutover-v1' "${CUTOVER_RECEIPT_PATH}" \
   || ! grep -qx 'verified=true' "${CUTOVER_RECEIPT_PATH}" \
-  || ! grep -qx 'target_database=kor_travel_transport' "${CUTOVER_RECEIPT_PATH}"; then
-  echo "Refusing server14 deployment: cutover receipt does not verify the shared application DB." >&2
+  || ! grep -qx 'target_database=kor_travel_transport' "${CUTOVER_RECEIPT_PATH}" \
+  || ! grep -qx 'target_dagster_database=kor_travel_transport_dagster' "${CUTOVER_RECEIPT_PATH}"; then
+  echo "Refusing server14 deployment: cutover receipt does not verify both shared databases." >&2
   exit 2
 fi
 export RELEASE_SHA="${CANDIDATE_SHA}"
