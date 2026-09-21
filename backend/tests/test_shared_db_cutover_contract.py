@@ -13,13 +13,25 @@ def test_cutover_requires_a_separate_empty_dagster_database() -> None:
     assert 'if [[ "${TARGET_DATABASE_URL}" == "${TARGET_DAGSTER_DATABASE_URL}" ]]' in script
     assert "host\\.docker\\.internal:11000/kor_travel_transport$" in script
     assert "host\\.docker\\.internal:11000/kor_travel_transport_dagster$" in script
-    assert 'assert_ready target-dagster "${TARGET_DAGSTER_DATABASE_URL}"' in script
-    assert 'assert_empty_bootstrap_only target "${TARGET_DATABASE_URL}"' in script
-    assert 'assert_empty_bootstrap_only target-dagster "${TARGET_DAGSTER_DATABASE_URL}"' in script
+    assert 'LEGACY_HOST_DATABASE_URL="${LEGACY_HOST_DATABASE_URL:?' in script
+    assert 'TARGET_HOST_DATABASE_URL="${TARGET_DATABASE_URL/postgresql+asyncpg:/postgresql:}"' in script
+    assert 'TARGET_HOST_DATABASE_URL="${TARGET_HOST_DATABASE_URL/host.docker.internal:11000/127.0.0.1:11000}"' in script
+    assert 'assert_ready target-dagster "${TARGET_DAGSTER_HOST_DATABASE_URL}"' in script
+    assert 'assert_empty_bootstrap_only target "${TARGET_HOST_DATABASE_URL}"' in script
+    assert 'assert_empty_bootstrap_only target-dagster "${TARGET_DAGSTER_HOST_DATABASE_URL}"' in script
     assert "target_dagster_database=%s" in script
     assert "LEGACY_DAGSTER_DATABASE_URL" in script
     assert "DAGSTER_METADATA_RESET_CONFIRM" in script
     assert "START_FRESH_DAGSTER_METADATA_WITH_NO_LEGACY_STORE" in script
+
+
+def test_cutover_uses_disposable_postgres_clients_on_the_server_host_network() -> None:
+    script = (_ROOT / "scripts" / "cutover-shared-db-server14.sh").read_text(encoding="utf-8")
+
+    assert 'PG_CLIENT_IMAGE="${PG_CLIENT_IMAGE:-postgres:16-alpine}"' in script
+    assert 'docker run --rm --network host -v "${CUTOVER_WORK_DIR}:/cutover"' in script
+    assert 'pg_dump_client' in script
+    assert 'pg_restore_client' in script
 
 
 def test_empty_target_rejects_all_user_schema_objects_and_migration_rows() -> None:

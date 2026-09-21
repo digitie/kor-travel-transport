@@ -7,6 +7,7 @@ REMOTE_HOST="${REMOTE_HOST:-192.168.1.14}"
 LEGACY_DATABASE_URL="${LEGACY_DATABASE_URL:?set the current legacy application DB DSN}"
 TARGET_DATABASE_URL="${DATABASE_URL:?set the new shared application DB DSN}"
 TARGET_DAGSTER_DATABASE_URL="${DAGSTER_POSTGRES_URL:?set the new shared Dagster metadata DB DSN}"
+LEGACY_HOST_DATABASE_URL="${LEGACY_HOST_DATABASE_URL:?set the legacy DB DSN reachable from the n150 host network}"
 LEGACY_DAGSTER_DATABASE_URL="${LEGACY_DAGSTER_DATABASE_URL:-}"
 DAGSTER_METADATA_RESET_CONFIRM="${DAGSTER_METADATA_RESET_CONFIRM:-}"
 LEGACY_ENV_FILE="${LEGACY_ENV_FILE:-.env.server14.legacy}"
@@ -20,6 +21,14 @@ legacy_backend_quiesced=false
 legacy_dagster_quiesced=false
 cutover_accepted=false
 legacy_dagster_services=()
+
+# Runtime containers use host.docker.internal while this script runs on n150 itself.
+# PostgreSQL clients are deliberately run in a disposable host-network container: n150 does
+# not install psql/pg_dump locally, and this keeps the operating-system package set untouched.
+PG_CLIENT_IMAGE="${PG_CLIENT_IMAGE:-postgres:16-alpine}"
+TARGET_HOST_DATABASE_URL="${TARGET_DATABASE_URL/postgresql+asyncpg:/postgresql:}"
+TARGET_HOST_DATABASE_URL="${TARGET_HOST_DATABASE_URL/host.docker.internal:11000/127.0.0.1:11000}"
+TARGET_DAGSTER_HOST_DATABASE_URL="${TARGET_DAGSTER_DATABASE_URL/host.docker.internal:11000/127.0.0.1:11000}"
 
 if [[ "${REMOTE_HOST}" != "192.168.1.14" ]]; then
   echo "Refusing cutover outside 192.168.1.14." >&2
@@ -49,7 +58,11 @@ if [[ ! "${TARGET_DAGSTER_DATABASE_URL}" =~ ^postgresql://[^@]+@host\.docker\.in
   echo "Refusing cutover: Dagster target must be the exact dedicated shared metadata database." >&2
   exit 2
 fi
-for command in docker psql pg_dump pg_restore; do
+if [[ ! "${LEGACY_HOST_DATABASE_URL}" =~ ^postgresql://[^@]+@127\.0\.0\.1:14000/[^/]+$ ]]; then
+  echo "Refusing cutover: legacy host DB DSN must use the approved n150 loopback PostgreSQL port." >&2
+  exit 2
+fi
+for command in docker; do
   command -v "${command}" >/dev/null || { echo "Missing required command: ${command}" >&2; exit 2; }
 done
 if [[ ! -f "${LEGACY_ENV_FILE}" ]]; then
@@ -86,10 +99,26 @@ restart_legacy_backend_on_failure() {
 }
 trap restart_legacy_backend_on_failure EXIT
 
+postgres_client() {
+  docker run --rm --network host -v "${CUTOVER_WORK_DIR}:/cutover" "${PG_CLIENT_IMAGE}" "$@"
+}
+
+psql_client() {
+  postgres_client psql "$@"
+}
+
+pg_dump_client() {
+  postgres_client pg_dump "$@"
+}
+
+pg_restore_client() {
+  postgres_client pg_restore "$@"
+}
+
 assert_ready() {
   local label="$1"
   local dsn="$2"
-  psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c 'SELECT 1' >/dev/null || {
+  psql_client "${dsn}" -v ON_ERROR_STOP=1 -qAt -c 'SELECT 1' >/dev/null || {
     echo "${label} database is not reachable." >&2
     exit 1
   }
@@ -99,7 +128,8 @@ table_counts() {
   local dsn="$1"
   # Relation names come from PostgreSQL catalog identifiers and are quoted with %I;
   # no operator-provided SQL is interpolated.
-  psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "
+  local relation_queries
+  relation_queries="$(psql_client "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "
     SELECT format(
       'SELECT %L || ''|'' || count(*)::text FROM %I.%I',
       n.nspname || '.' || c.relname,
@@ -109,33 +139,37 @@ table_counts() {
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'public' AND c.relkind = 'r'
-    ORDER BY n.nspname, c.relname;" | psql "${dsn}" -v ON_ERROR_STOP=1 -qAt | sort
+    ORDER BY n.nspname, c.relname;")"
+  while IFS= read -r query; do
+    [[ -n "${query}" ]] || continue
+    psql_client "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "${query}"
+  done <<< "${relation_queries}" | sort
 }
 
 snapshot_watermark() {
   local dsn="$1"
-  psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT coalesce(max(observed_at)::text, '') FROM public.parking_snapshots"
+  psql_client "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT coalesce(max(observed_at)::text, '') FROM public.parking_snapshots"
 }
 
 database_name() {
-  psql "$1" -v ON_ERROR_STOP=1 -qAt -c 'SELECT current_database()'
+  psql_client "$1" -v ON_ERROR_STOP=1 -qAt -c 'SELECT current_database()'
 }
 
-assert_ready legacy "${LEGACY_DATABASE_URL}"
-assert_ready target "${TARGET_DATABASE_URL}"
-assert_ready target-dagster "${TARGET_DAGSTER_DATABASE_URL}"
+assert_ready legacy "${LEGACY_HOST_DATABASE_URL}"
+assert_ready target "${TARGET_HOST_DATABASE_URL}"
+assert_ready target-dagster "${TARGET_DAGSTER_HOST_DATABASE_URL}"
 
 assert_empty_bootstrap_only() {
   local label="$1"
   local dsn="$2"
   local user_schema_count relation_count routine_count type_count other_object_count migration_count
-  user_schema_count="$(psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT count(*) FROM pg_namespace WHERE nspname !~ '^pg_' AND nspname <> 'information_schema' AND nspname <> 'public'")"
-  relation_count="$(psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f') AND c.relname <> 'alembic_version'")"
-  routine_count="$(psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public'")"
-  type_count="$(psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT count(*) FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname = 'public' AND t.typrelid = 0 AND t.typelem = 0")"
-  other_object_count="$(psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT (SELECT count(*) FROM pg_operator o JOIN pg_namespace n ON n.oid = o.oprnamespace WHERE n.nspname = 'public') + (SELECT count(*) FROM pg_collation c JOIN pg_namespace n ON n.oid = c.collnamespace WHERE n.nspname = 'public') + (SELECT count(*) FROM pg_conversion c JOIN pg_namespace n ON n.oid = c.connamespace WHERE n.nspname = 'public') + (SELECT count(*) FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace WHERE n.nspname = 'public') + (SELECT count(*) FROM pg_ts_config t JOIN pg_namespace n ON n.oid = t.cfgnamespace WHERE n.nspname = 'public') + (SELECT count(*) FROM pg_ts_dict t JOIN pg_namespace n ON n.oid = t.dictnamespace WHERE n.nspname = 'public') + (SELECT count(*) FROM pg_ts_template t JOIN pg_namespace n ON n.oid = t.tmplnamespace WHERE n.nspname = 'public')")"
-  if psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT to_regclass('public.alembic_version')" | grep -qx 'alembic_version'; then
-    migration_count="$(psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c 'SELECT count(*) FROM public.alembic_version')"
+  user_schema_count="$(psql_client "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT count(*) FROM pg_namespace WHERE nspname !~ '^pg_' AND nspname <> 'information_schema' AND nspname <> 'public'")"
+  relation_count="$(psql_client "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f') AND c.relname <> 'alembic_version'")"
+  routine_count="$(psql_client "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public'")"
+  type_count="$(psql_client "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT count(*) FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname = 'public' AND t.typrelid = 0 AND t.typelem = 0")"
+  other_object_count="$(psql_client "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT (SELECT count(*) FROM pg_operator o JOIN pg_namespace n ON n.oid = o.oprnamespace WHERE n.nspname = 'public') + (SELECT count(*) FROM pg_collation c JOIN pg_namespace n ON n.oid = c.collnamespace WHERE n.nspname = 'public') + (SELECT count(*) FROM pg_conversion c JOIN pg_namespace n ON n.oid = c.connamespace WHERE n.nspname = 'public') + (SELECT count(*) FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace WHERE n.nspname = 'public') + (SELECT count(*) FROM pg_ts_config t JOIN pg_namespace n ON n.oid = t.cfgnamespace WHERE n.nspname = 'public') + (SELECT count(*) FROM pg_ts_dict t JOIN pg_namespace n ON n.oid = t.dictnamespace WHERE n.nspname = 'public') + (SELECT count(*) FROM pg_ts_template t JOIN pg_namespace n ON n.oid = t.tmplnamespace WHERE n.nspname = 'public')")"
+  if psql_client "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT to_regclass('public.alembic_version')" | grep -qx 'alembic_version'; then
+    migration_count="$(psql_client "${dsn}" -v ON_ERROR_STOP=1 -qAt -c 'SELECT count(*) FROM public.alembic_version')"
   else
     migration_count=0
   fi
@@ -145,12 +179,12 @@ assert_empty_bootstrap_only() {
   fi
 }
 
-assert_empty_bootstrap_only target "${TARGET_DATABASE_URL}"
-assert_empty_bootstrap_only target-dagster "${TARGET_DAGSTER_DATABASE_URL}"
+assert_empty_bootstrap_only target "${TARGET_HOST_DATABASE_URL}"
+assert_empty_bootstrap_only target-dagster "${TARGET_DAGSTER_HOST_DATABASE_URL}"
 
 echo "Creating recoverable base dump at ${BASE_DUMP}"
-pg_dump --format=custom --no-owner --no-privileges --file "${BASE_DUMP}" "${LEGACY_DATABASE_URL}"
-pg_restore --clean --if-exists --no-owner --no-privileges --exit-on-error --dbname "${TARGET_DATABASE_URL}" "${BASE_DUMP}"
+pg_dump_client --format=custom --no-owner --no-privileges --file "/cutover/$(basename "${BASE_DUMP}")" "${LEGACY_HOST_DATABASE_URL}"
+pg_restore_client --clean --if-exists --no-owner --no-privileges --exit-on-error --dbname "${TARGET_HOST_DATABASE_URL}" "/cutover/$(basename "${BASE_DUMP}")"
 
 echo "Quiescing the legacy backend writer; old DB and its volume remain intact for rollback."
 docker compose --project-name "${LEGACY_PROJECT_NAME}" --env-file "${LEGACY_ENV_FILE}" -f docker-compose.yml stop backend
@@ -170,13 +204,13 @@ if [[ -n "${LEGACY_DAGSTER_DATABASE_URL}" ]]; then
 fi
 
 echo "Creating final quiesced snapshot and replacing target contents."
-pg_dump --format=custom --no-owner --no-privileges --file "${FINAL_DUMP}" "${LEGACY_DATABASE_URL}"
-pg_restore --clean --if-exists --no-owner --no-privileges --exit-on-error --dbname "${TARGET_DATABASE_URL}" "${FINAL_DUMP}"
+pg_dump_client --format=custom --no-owner --no-privileges --file "/cutover/$(basename "${FINAL_DUMP}")" "${LEGACY_HOST_DATABASE_URL}"
+pg_restore_client --clean --if-exists --no-owner --no-privileges --exit-on-error --dbname "${TARGET_HOST_DATABASE_URL}" "/cutover/$(basename "${FINAL_DUMP}")"
 
 if [[ -n "${LEGACY_DAGSTER_DATABASE_URL}" ]]; then
   LEGACY_DAGSTER_DUMP="${CUTOVER_WORK_DIR}/legacy-dagster-metadata-final.dump"
-  pg_dump --format=custom --no-owner --no-privileges --file "${LEGACY_DAGSTER_DUMP}" "${LEGACY_DAGSTER_DATABASE_URL}"
-  pg_restore --no-owner --no-privileges --exit-on-error --dbname "${TARGET_DAGSTER_DATABASE_URL}" "${LEGACY_DAGSTER_DUMP}"
+  pg_dump_client --format=custom --no-owner --no-privileges --file "/cutover/$(basename "${LEGACY_DAGSTER_DUMP}")" "${LEGACY_DAGSTER_DATABASE_URL}"
+  pg_restore_client --no-owner --no-privileges --exit-on-error --dbname "${TARGET_DAGSTER_HOST_DATABASE_URL}" "/cutover/$(basename "${LEGACY_DAGSTER_DUMP}")"
   legacy_dagster_metadata=migrated-after-writer-quiescence
 else
   if [[ "${DAGSTER_METADATA_RESET_CONFIRM}" != "${METADATA_RESET_CONFIRMATION}" ]]; then
@@ -188,11 +222,11 @@ fi
 
 legacy_counts="${CUTOVER_WORK_DIR}/legacy-counts.txt"
 target_counts="${CUTOVER_WORK_DIR}/target-counts.txt"
-table_counts "${LEGACY_DATABASE_URL}" > "${legacy_counts}"
-table_counts "${TARGET_DATABASE_URL}" > "${target_counts}"
+table_counts "${LEGACY_HOST_DATABASE_URL}" > "${legacy_counts}"
+table_counts "${TARGET_HOST_DATABASE_URL}" > "${target_counts}"
 diff -u "${legacy_counts}" "${target_counts}"
-legacy_watermark="$(snapshot_watermark "${LEGACY_DATABASE_URL}")"
-target_watermark="$(snapshot_watermark "${TARGET_DATABASE_URL}")"
+legacy_watermark="$(snapshot_watermark "${LEGACY_HOST_DATABASE_URL}")"
+target_watermark="$(snapshot_watermark "${TARGET_HOST_DATABASE_URL}")"
 [[ "${legacy_watermark}" == "${target_watermark}" ]] || {
   echo "Refusing cutover: latest parking snapshot watermark differs." >&2
   exit 1
@@ -201,9 +235,9 @@ target_watermark="$(snapshot_watermark "${TARGET_DATABASE_URL}")"
 {
   printf 'format=kor-travel-transport-shared-db-cutover-v1\n'
   printf 'verified=true\n'
-  printf 'legacy_database=%s\n' "$(database_name "${LEGACY_DATABASE_URL}")"
-  printf 'target_database=%s\n' "$(database_name "${TARGET_DATABASE_URL}")"
-  printf 'target_dagster_database=%s\n' "$(database_name "${TARGET_DAGSTER_DATABASE_URL}")"
+  printf 'legacy_database=%s\n' "$(database_name "${LEGACY_HOST_DATABASE_URL}")"
+  printf 'target_database=%s\n' "$(database_name "${TARGET_HOST_DATABASE_URL}")"
+  printf 'target_dagster_database=%s\n' "$(database_name "${TARGET_DAGSTER_HOST_DATABASE_URL}")"
   printf 'legacy_dagster_metadata=%s\n' "${legacy_dagster_metadata}"
   printf 'legacy_watermark=%s\n' "${legacy_watermark}"
   printf 'target_watermark=%s\n' "${target_watermark}"
