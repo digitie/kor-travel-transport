@@ -116,7 +116,7 @@ prepare_client_dsn() {
   local dsn="$1"
   # The Manager-generated credentials are URL-safe. Requiring the same restricted form
   # here avoids lossy URL decoding while keeping passwords out of docker inspect/argv.
-  if [[ ! "${dsn}" =~ ^postgresql://([^:@/]+):([A-Za-z0-9_-]+)@([A-Za-z0-9.]+):([0-9]+)/([A-Za-z0-9_-]+)$ ]]; then
+  if [[ ! "${dsn}" =~ ^postgresql://([^:@/]+):([A-Za-z0-9_-]+=*)@([A-Za-z0-9.]+):([0-9]+)/([A-Za-z0-9_-]+)$ ]]; then
     echo "Refusing cutover: host client DSNs must be passworded, URL-safe PostgreSQL URIs." >&2
     exit 2
   fi
