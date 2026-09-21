@@ -1,5 +1,18 @@
 # journal.md — 작업 일지
 
+## 2026-09-22
+
+- `parking-radar`를 변경하지 않는 별도 `kor-travel-transport-admin` Compose project와
+  `packages/kor-travel-transport-admin/frontend`를 추가했다. weather admin의 로그인,
+  HttpOnly 서명 세션, server-side API proxy, Dagster GraphQL proxy 구조를 transport
+  경계로 옮겼다.
+- UI가 provider/DB/RustFS 비밀을 받지 않고, 저장된 transport read API 다섯 개만
+  허용하도록 했다. 로그인 rate limit, local redirect, API allowlist, upstream URL,
+  세션 검증, route-level 인증 회귀 테스트와 Compose 보안 계약 테스트를 추가했다.
+- 사용자 지정 공개 listener는 API `12301`, Dagster `12302`, UI `12305`로 정리했다.
+  Manager ADR-48의 cAdvisor `12103`·Prometheus `12102`·Grafana `12104` 재배치를
+  실제 n150에 적용한 뒤 transport stack을 배포하고 live E2E를 실행한다.
+
 ## 2026-09-21
 
 - KREX가 동일한 `updated_at` 관측을 재전달했을 때 기존 고속도로 소통 행을 건너뛰어

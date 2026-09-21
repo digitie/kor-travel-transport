@@ -55,6 +55,23 @@ jobs:
       - run: npx tsc -p tsconfig.test.json --noEmit
       - run: npm run build
 
+  transport-admin:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/kor-travel-transport-admin/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: packages/kor-travel-transport-admin/frontend/package-lock.json
+      - run: npm ci
+      - run: npm run test
+      - run: npm run type-check
+      - run: npm run build
+
   live-e2e:
     runs-on: ubuntu-latest
     defaults:

@@ -8,3 +8,4 @@
 - `performance.md` — 초기 로딩·쿼리·캐시 성능 기준
 - `backup-restore.md` — 백업·복원 계약과 운영 주의사항
 - `dependencies.md` — 확인한 최신 의존성 기준과 lock 파일
+- `transport-admin.md` — 별도 transport 운영 UI와 API/Dagster gateway 경계
