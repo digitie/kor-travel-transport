@@ -2,6 +2,12 @@
 
 ## 현재 상태
 
+- 2026-09-22 현재 `codex/shared-db-dagster`의 PR #32는 최신 후보를 n150에 배포한 상태다.
+  외부 live E2E가 KREX 동일 관측 시각의 행에서 과거 `collected_at`을 읽는 정합성 문제를
+  발견했다. 수집 성공 때 동일 행의 수집 run·원본 값·수집 시각을 갱신하도록 보완하고,
+  WSL 회귀 검증을 통과했다. 이 후속 커밋의 CI, James/Popper 재리뷰, live E2E를 모두
+  통과한 뒤에만 PR을 머지한다.
+
 - 현재 후보는 `e8ad95f` 이후 적대적 리뷰 P0/P1을 보완하는 후속 커밋이다. Manager bootstrap PR #381이 병합·n150 재설치됐고,
   transport application/Dagster 전용 shared DB와 RustFS raw bucket이 준비됐다. legacy
   history의 final dump/restore·count/watermark 검증도 끝났으며 receipt가 배포 전제조건으로

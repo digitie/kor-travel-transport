@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -196,18 +196,35 @@ def test_transport_collection_stores_and_deduplicates_snapshots(tmp_path: Path) 
     engine, session_factory = create_engine_and_session_factory(settings.database_url)
     provider = FakeTransportProvider()
 
-    async def run() -> tuple[dict, dict]:
+    async def run() -> tuple[dict, dict, tuple[int | None, datetime], tuple[int | None, datetime]]:
         await init_database(engine)
         service = TransportCollectionService(settings, provider)
         async with session_factory() as session:
             first = await service.collect(session, trigger="test")
         async with session_factory() as session:
-            second = await service.collect(session, trigger="test")
+            snapshot = await session.scalar(select(HighwayTrafficSnapshot))
+            assert snapshot is not None
+            first_snapshot = (snapshot.collection_run_id, snapshot.collected_at)
+        # 중복 행 처리도 실제 provider 재호출 뒤에만 일어난다. 연속 실행 보호를
+        # 우회하는 것이 아니라, 테스트에서 고속도로 소스의 다음 실행 시각만 지난
+        # 시각으로 옮겨 두 번째 수집을 의도적으로 수행한다.
+        async with session_factory() as session:
+            states = (await session.scalars(select(TransportCollectionState))).all()
+            for state in states:
+                if state.source in {TRAFFIC_SOURCE, INCIDENT_SOURCE}:
+                    state.next_due_at = now_utc() - timedelta(seconds=1)
+            await session.commit()
+        async with session_factory() as session:
+            second = await service.collect(session, scope="highway", trigger="test")
+        async with session_factory() as session:
+            snapshot = await session.scalar(select(HighwayTrafficSnapshot))
+            assert snapshot is not None
+            second_snapshot = (snapshot.collection_run_id, snapshot.collected_at)
         await service.close()
         await engine.dispose()
-        return first, second
+        return first, second, first_snapshot, second_snapshot
 
-    first, second = asyncio.run(run())
+    first, second, first_snapshot, second_snapshot = asyncio.run(run())
 
     assert first["status"] == "success"
     assert first["traffic_snapshot_count"] == 1
@@ -218,6 +235,8 @@ def test_transport_collection_stores_and_deduplicates_snapshots(tmp_path: Path) 
     assert second["incident_snapshot_count"] == 0
     assert second["fuel_station_count"] == 0
     assert second["fuel_price_count"] == 0
+    assert second_snapshot[0] != first_snapshot[0]
+    assert second_snapshot[1] > first_snapshot[1]
 
 
 def test_transport_scopes_store_independently(tmp_path: Path) -> None:
