@@ -75,8 +75,13 @@ Manager가 공용 DB/네트워크와 전용 role·RustFS bucket을 provision한 
 3. n150 maintenance window에서 `CUTOVER_CONFIRM=MOVE_KOR_TRAVEL_TRANSPORT_HISTORY_TO_SHARED_DB`
    와 함께 [`scripts/cutover-shared-db-server14.sh`](../../scripts/cutover-shared-db-server14.sh)를
    실행한다. 이 one-shot은 base dump → legacy writer quiesce → final dump/restore → public table
-   row count와 최신 주차 observation watermark 비교를 fail-closed로 수행한다. 검증 결과는 mode
-   `0600`의 receipt로 남고, 같은 script가 그 receipt를 전달해 target deploy까지 실행한다.
+   row count와 최신 주차 observation watermark 비교를 fail-closed로 수행한다. 복원 전에는 두
+   target DSN이 정확한 Manager host/port/DB를 가리키고 모든 비시스템 schema 객체와 Alembic
+   행이 비어 있는지도 확인한다. 과거 Dagster metadata DB가 있으면
+   `LEGACY_DAGSTER_DATABASE_URL`로 별도 dump/restore하고, 없을 때만
+   `DAGSTER_METADATA_RESET_CONFIRM=START_FRESH_DAGSTER_METADATA_WITH_NO_LEGACY_STORE`를
+   명시해 fresh metadata 시작을 승인한다. 검증 결과는 mode `0600`의 receipt로 남고, 같은
+   script가 그 receipt를 전달해 target deploy까지 실행한다.
 4. `scripts/deploy-server14.sh`는 target DB identity와 receipt를 함께 검증하므로, 빈 공용 DB를
    가리키는 환경 파일만으로는 기동하지 않는다. `migrate`와 `dagster-migrate`가 각각
    application/Dagster schema를 단독으로 처리하며, 장기 실행 컨테이너는 DDL을 실행하지 않는다.

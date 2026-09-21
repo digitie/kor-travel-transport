@@ -7,12 +7,15 @@ REMOTE_HOST="${REMOTE_HOST:-192.168.1.14}"
 LEGACY_DATABASE_URL="${LEGACY_DATABASE_URL:?set the current legacy application DB DSN}"
 TARGET_DATABASE_URL="${DATABASE_URL:?set the new shared application DB DSN}"
 TARGET_DAGSTER_DATABASE_URL="${DAGSTER_POSTGRES_URL:?set the new shared Dagster metadata DB DSN}"
+LEGACY_DAGSTER_DATABASE_URL="${LEGACY_DAGSTER_DATABASE_URL:-}"
+DAGSTER_METADATA_RESET_CONFIRM="${DAGSTER_METADATA_RESET_CONFIRM:-}"
 LEGACY_ENV_FILE="${LEGACY_ENV_FILE:-.env.server14.legacy}"
 LEGACY_PROJECT_NAME="${LEGACY_PROJECT_NAME:-kor-travel-airport}"
 CUTOVER_WORK_DIR="${CUTOVER_WORK_DIR:-/var/tmp/kor-travel-transport-cutover}"
 CUTOVER_RECEIPT_PATH="${CUTOVER_RECEIPT_PATH:-${CUTOVER_WORK_DIR}/shared-db-cutover.receipt}"
 TARGET_ENV_FILE="${TARGET_ENV_FILE:-.env.server14}"
 CONFIRMATION="MOVE_KOR_TRAVEL_TRANSPORT_HISTORY_TO_SHARED_DB"
+METADATA_RESET_CONFIRMATION="START_FRESH_DAGSTER_METADATA_WITH_NO_LEGACY_STORE"
 legacy_backend_quiesced=false
 cutover_accepted=false
 
@@ -34,6 +37,14 @@ if [[ "${LEGACY_DATABASE_URL}" == "${TARGET_DATABASE_URL}" ]]; then
 fi
 if [[ "${TARGET_DATABASE_URL}" == "${TARGET_DAGSTER_DATABASE_URL}" ]]; then
   echo "Refusing cutover: application and Dagster metadata DSNs must differ." >&2
+  exit 2
+fi
+if [[ ! "${TARGET_DATABASE_URL}" =~ ^postgresql\+asyncpg://[^@]+@host\.docker\.internal:11000/kor_travel_transport$ ]]; then
+  echo "Refusing cutover: application target must be the exact shared Manager database." >&2
+  exit 2
+fi
+if [[ ! "${TARGET_DAGSTER_DATABASE_URL}" =~ ^postgresql://[^@]+@host\.docker\.internal:11000/kor_travel_transport_dagster$ ]]; then
+  echo "Refusing cutover: Dagster target must be the exact dedicated shared metadata database." >&2
   exit 2
 fi
 for command in docker psql pg_dump pg_restore; do
@@ -109,9 +120,17 @@ assert_ready target-dagster "${TARGET_DAGSTER_DATABASE_URL}"
 assert_empty_bootstrap_only() {
   local label="$1"
   local dsn="$2"
-  local table_count
-  table_count="$(psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname = 'public' AND tablename <> 'alembic_version'")"
-  if [[ "${table_count}" != "0" ]]; then
+  local user_schema_count relation_count routine_count type_count migration_count
+  user_schema_count="$(psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT count(*) FROM pg_namespace WHERE nspname !~ '^pg_' AND nspname <> 'information_schema' AND nspname <> 'public'")"
+  relation_count="$(psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f') AND c.relname <> 'alembic_version'")"
+  routine_count="$(psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public'")"
+  type_count="$(psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT count(*) FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname = 'public' AND t.typrelid = 0 AND t.typelem = 0")"
+  if psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c "SELECT to_regclass('public.alembic_version')" | grep -qx 'alembic_version'; then
+    migration_count="$(psql "${dsn}" -v ON_ERROR_STOP=1 -qAt -c 'SELECT count(*) FROM public.alembic_version')"
+  else
+    migration_count=0
+  fi
+  if [[ "${user_schema_count}" != "0" || "${relation_count}" != "0" || "${routine_count}" != "0" || "${type_count}" != "0" || "${migration_count}" != "0" ]]; then
     echo "Refusing cutover: ${label} DB is not an empty/bootstrap-only database." >&2
     exit 2
   fi
@@ -119,6 +138,21 @@ assert_empty_bootstrap_only() {
 
 assert_empty_bootstrap_only target "${TARGET_DATABASE_URL}"
 assert_empty_bootstrap_only target-dagster "${TARGET_DAGSTER_DATABASE_URL}"
+
+if [[ -n "${LEGACY_DAGSTER_DATABASE_URL}" ]]; then
+  assert_ready legacy-dagster "${LEGACY_DAGSTER_DATABASE_URL}"
+  LEGACY_DAGSTER_DUMP="${CUTOVER_WORK_DIR}/legacy-dagster-metadata.dump"
+  echo "Archiving and restoring legacy Dagster metadata."
+  pg_dump --format=custom --no-owner --no-privileges --file "${LEGACY_DAGSTER_DUMP}" "${LEGACY_DAGSTER_DATABASE_URL}"
+  pg_restore --no-owner --no-privileges --exit-on-error --dbname "${TARGET_DAGSTER_DATABASE_URL}" "${LEGACY_DAGSTER_DUMP}"
+  legacy_dagster_metadata=migrated
+else
+  if [[ "${DAGSTER_METADATA_RESET_CONFIRM}" != "${METADATA_RESET_CONFIRMATION}" ]]; then
+    echo "Refusing cutover: set DAGSTER_METADATA_RESET_CONFIRM=${METADATA_RESET_CONFIRMATION} only when no legacy Dagster metadata store exists." >&2
+    exit 2
+  fi
+  legacy_dagster_metadata=reset-confirmed-no-legacy-store
+fi
 
 echo "Creating recoverable base dump at ${BASE_DUMP}"
 pg_dump --format=custom --no-owner --no-privileges --file "${BASE_DUMP}" "${LEGACY_DATABASE_URL}"
@@ -150,6 +184,7 @@ target_watermark="$(snapshot_watermark "${TARGET_DATABASE_URL}")"
   printf 'legacy_database=%s\n' "$(database_name "${LEGACY_DATABASE_URL}")"
   printf 'target_database=%s\n' "$(database_name "${TARGET_DATABASE_URL}")"
   printf 'target_dagster_database=%s\n' "$(database_name "${TARGET_DAGSTER_DATABASE_URL}")"
+  printf 'legacy_dagster_metadata=%s\n' "${legacy_dagster_metadata}"
   printf 'legacy_watermark=%s\n' "${legacy_watermark}"
   printf 'target_watermark=%s\n' "${target_watermark}"
   while IFS= read -r count; do printf 'legacy_count=%s\n' "${count}"; done < "${legacy_counts}"
