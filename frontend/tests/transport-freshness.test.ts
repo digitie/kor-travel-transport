@@ -8,17 +8,23 @@ describe("교통정보 운영 E2E 최신성", () => {
     expect(isFreshHighwayObservation({ observed_at: fresh, collected_at: fresh }, now)).toBe(true);
   });
 
-  test("방금 저장했더라도 오래된 관측은 거부한다", () => {
-    expect(isFreshHighwayObservation({ observed_at: "2026-09-19T12:45:00Z", collected_at: fresh }, now)).toBe(false);
+  test("방금 저장했더라도 2시간을 넘긴 관측은 거부한다", () => {
+    expect(isFreshHighwayObservation({ observed_at: "2026-09-19T11:29:59Z", collected_at: fresh }, now)).toBe(false);
   });
 
-  test.each(["observed_at", "collected_at"] as const)("%s의 누락·잘못된 값·미래·지연을 거부한다", (field) => {
-    for (const value of [undefined, null, "invalid", "2026-09-19T13:31:01Z", "2026-09-19T13:14:59Z"]) {
-      expect(isFreshHighwayObservation({ observed_at: fresh, collected_at: fresh, [field]: value }, now)).toBe(false);
+  test("관측·수집 시각의 누락·잘못된 값·미래를 거부한다", () => {
+    for (const field of ["observed_at", "collected_at"] as const) {
+      for (const value of [undefined, null, "invalid", "2026-09-19T13:31:01Z"]) {
+        expect(isFreshHighwayObservation({ observed_at: fresh, collected_at: fresh, [field]: value }, now)).toBe(false);
+      }
     }
   });
 
-  test("15분 지연과 60초 시계 오차의 경계를 인정한다", () => {
-    expect(isFreshHighwayObservation({ observed_at: "2026-09-19T13:15:00Z", collected_at: "2026-09-19T13:31:00Z" }, now)).toBe(true);
+  test("KREX 관측 2시간 및 저장 15분 지연 경계를 인정한다", () => {
+    expect(isFreshHighwayObservation({ observed_at: "2026-09-19T11:30:00Z", collected_at: "2026-09-19T13:15:00Z" }, now)).toBe(true);
+  });
+
+  test("15분을 넘긴 저장 지연을 거부한다", () => {
+    expect(isFreshHighwayObservation({ observed_at: fresh, collected_at: "2026-09-19T13:14:59Z" }, now)).toBe(false);
   });
 });
