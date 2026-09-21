@@ -67,9 +67,33 @@ def test_legacy_dagster_metadata_is_quiesced_before_the_final_dump() -> None:
 
 def test_deploy_receipt_binds_both_shared_database_names() -> None:
     script = (_ROOT / "scripts" / "deploy-server14.sh").read_text(encoding="utf-8")
+    remote_script = (_ROOT / "scripts" / "deploy-server14-remote.sh").read_text(encoding="utf-8")
 
-    assert "target_database=kor_travel_transport" in script
-    assert "target_dagster_database=kor_travel_transport_dagster" in script
-    assert "@127\\.0\\.0\\.1:11000/kor_travel_transport$" in script
-    assert "@127\\.0\\.0\\.1:11000/kor_travel_transport_dagster$" in script
-    assert "require_exact BACKEND_INTERNAL_URL http://127.0.0.1:14001" in script
+    assert "target_database=kor_travel_transport" in remote_script
+    assert "target_dagster_database=kor_travel_transport_dagster" in remote_script
+    assert "@127\\.0\\.0\\.1:11000/kor_travel_transport$" in remote_script
+    assert "@127\\.0\\.0\\.1:11000/kor_travel_transport_dagster$" in remote_script
+    assert "DEPLOY_STAGE_ONLY" in script
+    assert '--exclude=".env.server14.legacy"' in script
+    assert "Candidate ${CANDIDATE_SHA} staged on n150; no containers were changed." in script
+    assert "require_exact BACKEND_INTERNAL_URL http://127.0.0.1:14001" in remote_script
+    assert "git rev-parse" not in remote_script
+    assert "staged release manifest does not match candidate" in remote_script
+
+
+def test_cutover_uses_staged_n150_deployment_and_does_not_hide_rollback_failures() -> None:
+    script = (_ROOT / "scripts" / "cutover-shared-db-server14.sh").read_text(encoding="utf-8")
+
+    assert "stage the reviewed candidate on n150 before writer quiescence" in script
+    assert "deploy-server14-remote.sh" in script
+    assert 'CANDIDATE_SHA="${TARGET_CANDIDATE_SHA}" "${TARGET_DEPLOY_SCRIPT}"' in script
+    assert "automatic legacy writer rollback did not complete" in script
+    assert "up -d backend || true" not in script
+
+
+def test_dagster_gateway_is_loopback_only_and_has_no_dead_port_setting() -> None:
+    gateway = (_ROOT / "backend" / "nginx" / "dagster-gateway.conf").read_text(encoding="utf-8")
+    environment = (_ROOT / ".env.server14.example").read_text(encoding="utf-8")
+
+    assert "listen 127.0.0.1:14003;" in gateway
+    assert "DAGSTER_GATEWAY_PORT=" not in environment

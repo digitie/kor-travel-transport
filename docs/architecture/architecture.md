@@ -32,7 +32,8 @@
   - PostgreSQL은 `docker-compose.db.yml`로 앱과 분리된 독립 컨테이너에서 운영(T-032)
   - Manager 공용 PostgreSQL `127.0.0.1:11000`, RustFS `127.0.0.1:12101`
   - public web `14002`, public API `14001`; backend는 host-network에서 `14001`을 직접 수신
-  - Dagster code-server `127.0.0.1:14005`, Dagster webserver `127.0.0.1:14004`, Basic Auth gateway `14003`
+  - Dagster code-server `127.0.0.1:14005`, Dagster webserver `127.0.0.1:14004`, Basic Auth gateway `127.0.0.1:14003`
+    (외부 공개는 Manager TLS reverse proxy가 이 loopback endpoint만 upstream으로 연결할 때만 허용)
 - live E2E 기준 origin: `https://pr.digitie.mywire.org`
 - 외부 API 기준 origin: `https://pr-api.digitie.mywire.org`
 - `192.168.1.13`은 cutover 전까지 read-only source/rollback 기준으로 유지
@@ -51,8 +52,8 @@
 2. 최신 `python-opinet-api`의 `OpinetBrowserCollector`로 지역별 주유소/유가 화면을
    수집한다. Playwright가 수집한 지역·주유소·유종·편의정보와 행 단위 원본 필드를 PostgreSQL에
    저장한다.
-3. 실행 단위는 `collection_runs`에 `transport_highway_scheduler` 또는
-   `transport_fuel_scheduler`로 기록하고, 원본 요약은
+3. 실행 단위는 `collection_runs`에 `transport_dagster_highway` 또는
+   `transport_dagster_fuel`로 기록하고, 원본 요약은
    `raw_api_responses`, 정규화 결과는 `highway_*_snapshots`, `fuel_*` 테이블에 저장한다.
 4. 소스별 시작/성공/다음 예정/오류 상태는 `transport_collection_states`에 남긴다.
 5. 조회 API는 저장된 스냅샷만 읽으며 `/v1/transport/statistics`는 같은 원본 스냅샷에서
@@ -71,13 +72,15 @@
 
 ## 스케줄러
 
-- `ENABLE_SCHEDULER=true`면 백엔드 시작 직후 스케줄러가 생성된다.
-- 스케줄러는 시작하자마자 1회 수집하고, 이후 `COLLECT_INTERVAL_SECONDS`마다 반복된다.
-- 기본 개발 간격은 `300초`, 즉 5분이다.
-- n150 운영 간격은 `300초`, 즉 5분이다.
+- n150 운영에서 `SCHEDULER_MODE=dagster`와 `ENABLE_SCHEDULER=true`는 FastAPI 내부 task를
+  시작하지 않고 Dagster daemon의 schedule을 활성화한다.
+- `airport_collection_job`과 `highway_collection_job`은 5분마다, `fuel_collection_job`은
+  8시간마다 실행한다. `rail_reference_collection_job`과 `maritime_reference_collection_job`은
+  달력상 3일 주기로 실행한다.
+- FastAPI는 읽기 API만 제공하며 manual collection은 운영에서 비활성화한다.
 
-통합 교통정보 scheduler도 `ENABLE_SCHEDULER=true`일 때 고속도로와 유가별 task로
-시작한다. 주차 수집과 같은 프로세스에 있지만 lock·실행 기록·API 상태를 분리한다.
+통합 교통정보 수집은 Dagster code-server의 job으로 실행된다. 주차 수집과 같은 프로세스에
+있지 않으며 lock·실행 기록·API 상태를 분리한다.
 고속도로와 유가도 별도 세션/트랜잭션과 PostgreSQL advisory lock(420040/420041)을
 사용하므로 전국 브라우저 탐색이 고속도로 저장을 막지 않는다. 잠금은 짧은 예약 트랜잭션에만
 사용하며 다음 예정 시각과 실행 시작을 확정한 뒤 해제한다. 외부 조회 중에는 DB 연결과

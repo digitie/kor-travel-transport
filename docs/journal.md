@@ -2,6 +2,19 @@
 
 ## 2026-09-21
 
+- 적대적 리뷰 James/Popper의 cutover P0를 보완했다. reviewed artifact를 먼저 n150에
+  `DEPLOY_STAGE_ONLY=true`로 staging하고 SHA manifest와 함께 보존한 뒤, cutover는 n150의
+  staged `deploy-server14-remote.sh`를 직접 호출한다. 따라서 n150에 `.git`이 없어도
+  legacy writer quiesce 뒤 target deploy가 가능하다. `rsync --delete`는
+  `.env.server14.legacy`를 명시 보존하고, rollback 재기동 실패를 더 이상 `|| true`로 숨기지
+  않는다.
+- 적대적 리뷰의 gateway P1/P2를 반영했다. Dagster gateway는 `127.0.0.1:14003`에만
+  bind하고 dead `DAGSTER_GATEWAY_PORT` 운영 설정을 없앴다. 외부 공개는 Manager TLS proxy가
+  loopback upstream을 쓸 때만 허용한다.
+- Popper가 확인한 공항 수집 PostgreSQL advisory lock 누수 가능성을 고쳤다. 수집 세션의
+  `commit()`과 분리된 전용 connection이 lock을 소유하고 같은 connection에서 unlock하도록
+  바꿔 pool 재사용으로 unlock 대상이 달라지는 경로를 제거했다. 전용 connection 회귀 테스트도
+  추가했다.
 - Compose의 명시적 `--env-file`이 셸에서 export한 `RELEASE_SHA`를 덮어 배포 health가
   `unknown`으로 표시되는 문제를 수정했다. 배포마다 기존 운영 env를 값 변경 없이 복사한
   임시 runtime env에 후보 SHA만 주입하고, 배포 종료 시 즉시 삭제한다.

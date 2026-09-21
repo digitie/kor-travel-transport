@@ -16,6 +16,9 @@ LEGACY_PROJECT_NAME="${LEGACY_PROJECT_NAME:-kor-travel-airport}"
 CUTOVER_WORK_DIR="${CUTOVER_WORK_DIR:-/var/tmp/kor-travel-transport-cutover}"
 CUTOVER_RECEIPT_PATH="${CUTOVER_RECEIPT_PATH:-${CUTOVER_WORK_DIR}/shared-db-cutover.receipt}"
 TARGET_ENV_FILE="${TARGET_ENV_FILE:-.env.server14}"
+TARGET_APP_DIR="${TARGET_APP_DIR:-/home/digitie/apps/kor-travel-airport}"
+TARGET_DEPLOY_SCRIPT="${TARGET_DEPLOY_SCRIPT:-${TARGET_APP_DIR}/scripts/deploy-server14-remote.sh}"
+TARGET_RELEASE_MANIFEST="${TARGET_RELEASE_MANIFEST:-${TARGET_APP_DIR}/.release-sha}"
 CONFIRMATION="MOVE_KOR_TRAVEL_TRANSPORT_HISTORY_TO_SHARED_DB"
 METADATA_RESET_CONFIRMATION="START_FRESH_DAGSTER_METADATA_WITH_NO_LEGACY_STORE"
 legacy_backend_quiesced=false
@@ -79,6 +82,21 @@ if [[ ! -f "${LEGACY_ENV_FILE}" ]]; then
 fi
 if [[ ! -f "${TARGET_ENV_FILE}" ]]; then
   echo "Missing target environment file: ${TARGET_ENV_FILE}" >&2
+  exit 2
+fi
+if [[ "${TARGET_APP_DIR}" != "/home/digitie/apps/kor-travel-airport" ]] \
+  || [[ "${TARGET_DEPLOY_SCRIPT}" != "/home/digitie/apps/kor-travel-airport/scripts/deploy-server14-remote.sh" ]] \
+  || [[ "${TARGET_RELEASE_MANIFEST}" != "/home/digitie/apps/kor-travel-airport/.release-sha" ]]; then
+  echo "Refusing cutover: target deployment must use the approved staged n150 artifact." >&2
+  exit 2
+fi
+if [[ ! -x "${TARGET_DEPLOY_SCRIPT}" || ! -f "${TARGET_RELEASE_MANIFEST}" || -L "${TARGET_RELEASE_MANIFEST}" ]]; then
+  echo "Refusing cutover: stage the reviewed candidate on n150 before writer quiescence." >&2
+  exit 2
+fi
+TARGET_CANDIDATE_SHA="$(tr -d '\r\n' < "${TARGET_RELEASE_MANIFEST}")"
+if [[ ! "${TARGET_CANDIDATE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "Refusing cutover: staged candidate manifest must contain a full Git SHA." >&2
   exit 2
 fi
 
@@ -156,16 +174,21 @@ restart_legacy_backend_on_failure() {
   rm -f "${PGPASS_FILE}"
   if [[ "${status}" -ne 0 && "${legacy_backend_quiesced}" == "true" && "${cutover_accepted}" != "true" ]]; then
     echo "Cutover failed after legacy writer quiescence; restoring the legacy backend." >&2
+    rollback_failed=false
     docker compose --project-name "${LEGACY_PROJECT_NAME}" --env-file "${TARGET_ENV_FILE}" \
       -f docker-compose.yml -f docker-compose.shared.yml \
-      stop backend dagster-code-server dagster-webserver dagster-daemon dagster-gateway 2>/dev/null || true
+      stop backend dagster-code-server dagster-webserver dagster-daemon dagster-gateway 2>/dev/null || rollback_failed=true
     docker compose --project-name "${LEGACY_PROJECT_NAME}" --env-file "${LEGACY_ENV_FILE}" \
-      -f docker-compose.yml up -d backend || true
+      -f docker-compose.yml up -d backend || rollback_failed=true
     # multi-service stop이 중간에 실패해도 앞쪽 service는 이미 멈췄을 수 있다.
     # 성공 플래그가 아니라 사전에 확인한 service 목록을 rollback 근거로 쓴다.
     if [[ "${#legacy_dagster_services[@]}" -gt 0 ]]; then
       docker compose --project-name "${LEGACY_PROJECT_NAME}" --env-file "${LEGACY_ENV_FILE}" \
-        -f docker-compose.yml -f docker-compose.shared.yml up -d "${legacy_dagster_services[@]}" || true
+        -f docker-compose.yml -f docker-compose.shared.yml up -d "${legacy_dagster_services[@]}" || rollback_failed=true
+    fi
+    if [[ "${rollback_failed}" == "true" ]]; then
+      echo "CRITICAL: automatic legacy writer rollback did not complete; stop and restore it manually." >&2
+      status=1
     fi
   fi
   exit "${status}"
@@ -324,6 +347,10 @@ target_watermark="$(snapshot_watermark "${TARGET_HOST_DATABASE_PSQL_URL}")"
 chmod 600 "${CUTOVER_RECEIPT_PATH}"
 
 echo "Data copy verified; starting target through the receipt-gated deployment."
-CUTOVER_RECEIPT_PATH="${CUTOVER_RECEIPT_PATH}" ./scripts/deploy-server14.sh
+(
+  cd "${TARGET_APP_DIR}"
+  REMOTE_APP_DIR="${TARGET_APP_DIR}" CUTOVER_RECEIPT_PATH="${CUTOVER_RECEIPT_PATH}" \
+    CANDIDATE_SHA="${TARGET_CANDIDATE_SHA}" "${TARGET_DEPLOY_SCRIPT}"
+)
 cutover_accepted=true
 echo "Keep ${LEGACY_ENV_FILE}, ${BASE_DUMP}, ${FINAL_DUMP}, and the legacy DB volume until post-deploy E2E acceptance."

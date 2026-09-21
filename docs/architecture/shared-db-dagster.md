@@ -20,7 +20,7 @@ background task가 아니라 Dagster가 맡는다. 이 경계는 고속도로·�
 | `dagster-code-server` | job 코드와 run worker 실행 | 함 |
 | `dagster-webserver` | Dagster UI/GraphQL | 하지 않음, gRPC workspace만 연결 |
 | `dagster-daemon` | schedule, queue, run monitoring | 하지 않음, gRPC workspace만 연결 |
-| `dagster-gateway` | Basic Auth와 same-origin POST 검증 뒤 UI 공개 | 하지 않음 |
+| `dagster-gateway` | loopback Basic Auth와 same-origin POST 검증 뒤 Manager TLS proxy에만 UI 제공 | 하지 않음 |
 
 `dagster dev`는 운영에서 사용하지 않는다. code-server는 독립 컨테이너라 실제 crash/OOM이면
 `restart: unless-stopped`로 재기동하고, webserver/daemon은 child-process heartbeat를 관리하지
@@ -78,9 +78,13 @@ Manager가 공용 DB/네트워크와 전용 role·RustFS bucket을 provision한 
    `127.0.0.1:14000`에만 노출되므로 이 DSN은 `postgresql://` scheme와 그 port를 사용한다.
    과거 Dagster metadata DB가 있으면 같은 방식의 `LEGACY_DAGSTER_HOST_DATABASE_URL`도 준비한다.
    runtime/host DSN은 같은 database 이름을 가리켜야 한다. 네 값은 Git에 절대 저장하지 않는다.
-3. n150 maintenance window에서 `CUTOVER_CONFIRM=MOVE_KOR_TRAVEL_TRANSPORT_HISTORY_TO_SHARED_DB`
-   와 함께 [`scripts/cutover-shared-db-server14.sh`](../../scripts/cutover-shared-db-server14.sh)를
-   실행한다. 이 one-shot은 n150에 PostgreSQL client 패키지를 설치하지 않고, host network의
+3. cutover 전 WSL checkout에서 `DEPLOY_STAGE_ONLY=true ./scripts/deploy-server14.sh`를 실행해
+   reviewed candidate artifact와 full SHA manifest를 n150에 올린다. 이 단계는 컨테이너를
+   변경하지 않으며, `.env.server14.legacy`도 보존한다. 이어 n150 maintenance window에서
+   `CUTOVER_CONFIRM=MOVE_KOR_TRAVEL_TRANSPORT_HISTORY_TO_SHARED_DB`와 함께
+   [`scripts/cutover-shared-db-server14.sh`](../../scripts/cutover-shared-db-server14.sh)를 실행한다.
+   one-shot은 staged artifact의 `deploy-server14-remote.sh`를 직접 호출하므로 n150의 Git checkout을
+   요구하지 않는다. 또한 n150에 PostgreSQL client 패키지를 설치하지 않고, host network의
    일회성 `postgres:16-alpine` client container로 legacy loopback DB와 shared DB를 조회한다.
    DSN의 비밀번호는 URL percent-encoding을 유지한 채 Docker command/env가 아니라 cutover workdir의
    mode `0600` passfile로만 전달하고, client command에는 passwordless URI만 넘긴다.
@@ -91,7 +95,8 @@ Manager가 공용 DB/네트워크와 전용 role·RustFS bucket을 provision한 
    `LEGACY_DAGSTER_DATABASE_URL`로 별도 dump/restore하고, 없을 때만
    `DAGSTER_METADATA_RESET_CONFIRM=START_FRESH_DAGSTER_METADATA_WITH_NO_LEGACY_STORE`를
    명시해 fresh metadata 시작을 승인한다. 검증 결과는 mode `0600`의 receipt로 남고, 같은
-   script가 그 receipt를 전달해 target deploy까지 실행한다.
+   script가 그 receipt를 staged target deploy에 전달한다. deploy 또는 health 검증이 실패하면
+   legacy 환경 파일로 writer를 재기동하고, rollback 실패는 성공으로 숨기지 않고 fatal로 남긴다.
 4. `scripts/deploy-server14.sh`는 target DB identity와 receipt를 함께 검증하므로, 빈 공용 DB를
    가리키는 환경 파일만으로는 기동하지 않는다. `migrate`와 `dagster-migrate`가 각각
    application/Dagster schema를 단독으로 처리하며, 장기 실행 컨테이너는 DDL을 실행하지 않는다.
@@ -105,7 +110,9 @@ receipt-gated deployment script를 사용한다.
 docker compose -f docker-compose.yml -f docker-compose.shared.yml up -d --build
 ```
 
-운영 값은 최소한 `DATABASE_URL`, `DAGSTER_POSTGRES_URL`, `DAGSTER_UI_PASSWORD`를 요구한다.
+Dagster gateway는 `127.0.0.1:14003`에만 bind한다. 외부 UI가 필요하면 Manager가 TLS를 종단하고
+그 loopback endpoint만 upstream으로 지정해야 한다. 운영 값은 최소한 `DATABASE_URL`,
+`DAGSTER_POSTGRES_URL`, `DAGSTER_UI_PASSWORD`를 요구한다.
 KRIC 파일 수집은 `RAIL_REFERENCE_COLLECTION_ENABLED=true`와 RustFS endpoint·bucket·접근키가,
 여객항구 기준정보는 `MARITIME_REFERENCE_COLLECTION_ENABLED=true`와
 `DATA_GO_KR_SERVICE_KEY`가 모두 있을 때만 실행한다. Manager의 RustFS 초기화는

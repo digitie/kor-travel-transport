@@ -2,16 +2,18 @@
 
 ## 현재 상태
 
-- 현재 후보는 `b0eadaa` 이후 release SHA 주입 보완을 포함한 후속 커밋이다. Manager bootstrap PR #381이 병합·n150 재설치됐고,
+- 현재 후보는 `e8ad95f` 이후 적대적 리뷰 P0/P1을 보완하는 후속 커밋이다. Manager bootstrap PR #381이 병합·n150 재설치됐고,
   transport application/Dagster 전용 shared DB와 RustFS raw bucket이 준비됐다. legacy
   history의 final dump/restore·count/watermark 검증도 끝났으며 receipt가 배포 전제조건으로
   남아 있다. runtime은 Manager Weather 정본과 동일한 host-network로
   `127.0.0.1:11000` PostgreSQL과 `127.0.0.1:12101` RustFS에 접근한다.
-- n150에 `9a93743`을 배포해 application/Dagster metadata migration, backend, code-server,
+- n150에 `e8ad95f`을 배포해 application/Dagster metadata migration, backend, code-server,
   webserver, daemon, gateway, frontend가 모두 정상 기동한 것을 확인했다. `/health`의
   release SHA가 후보와 일치하고, code-server/webserver는 loopback 전용, gateway는
-  무인증 요청에 401을 반환한다. 다음 한 작업은 이 문서 후보를 배포한 뒤 CI·두 적대적
-  리뷰·live E2E를 통과시켜 PR #32를 머지하는 것이다.
+  무인증 요청에 401을 반환한다. 이번 보완은 cutover candidate staging/n150 direct deploy,
+  legacy rollback env 보존, gateway loopback bind, 공항 수집 advisory lock의 전용 connection
+  소유권을 추가한다. 다음 한 작업은 이 후보를 배포한 뒤 CI·두 적대적 리뷰·live E2E를
+  통과시켜 PR #32를 머지하는 것이다.
 - 현재 브랜치는 `codex/shared-db-dagster`다. 운영 scheduler 분리, 3일 주기 철도·여객항구
   기준정보 Dagster job, RustFS 원본 참조, shared PostgreSQL compose overlay를 구현했다.
   `python-kric-api#3`은 CI와 두 적대적 리뷰를 통과해 `6ed5ace`로 병합됐고, pagination 보강 PR #4의

@@ -402,22 +402,33 @@ class CollectionService:
     async def _postgres_collection_lease(self, session: AsyncSession) -> AsyncIterator[bool]:
         """동일 DB를 쓰는 Dagster/HTTP process 간 주차 수집을 하나로 직렬화한다.
 
-        PostgreSQL session advisory lock은 upstream 호출 전에 획득하고 connection 종료 시에도
-        자동 해제된다. SQLite 단위 테스트에는 기존 process-local lock만 적용한다.
+        PostgreSQL session advisory lock은 수집 세션과 분리한 전용 connection에서 잡는다.
+        수집 중 ``session.commit()``이 connection pool에 수집 세션 connection을 되돌려도
+        lock 소유 connection은 유지되며, 같은 connection에서만 unlock한다. SQLite 단위
+        테스트에는 기존 process-local lock만 적용한다.
         """
-        connection = await session.connection()
-        if connection.dialect.name != "postgresql":
+        engine = session.bind
+        if engine is None or engine.dialect.name != "postgresql":
             yield True
             return
 
-        acquired = bool(
-            await session.scalar(text("SELECT pg_try_advisory_lock(hashtext('kor_travel_transport:airport_collection'))"))
-        )
-        try:
-            yield acquired
-        finally:
-            if acquired:
-                await session.execute(text("SELECT pg_advisory_unlock(hashtext('kor_travel_transport:airport_collection'))"))
+        async with engine.connect() as lock_connection:
+            acquired = bool(
+                await lock_connection.scalar(
+                    text("SELECT pg_try_advisory_lock(hashtext('kor_travel_transport:airport_collection'))")
+                )
+            )
+            try:
+                yield acquired
+            finally:
+                if acquired:
+                    released = bool(
+                        await lock_connection.scalar(
+                            text("SELECT pg_advisory_unlock(hashtext('kor_travel_transport:airport_collection'))")
+                        )
+                    )
+                    if not released:
+                        raise RuntimeError("airport collection advisory lock was not released by its owner connection")
 
     async def _collect_unlocked(self, session: AsyncSession, trigger: str = "manual") -> dict[str, Any]:
         rate_limit_state = await self.get_upstream_rate_limit_state(session)
