@@ -98,17 +98,17 @@ if [[ "${SCHEDULER_SAFETY_BUFFER_SECONDS:-}" != "120" ]]; then
   exit 2
 fi
 require_exact MANUAL_COLLECT_MIN_INTERVAL_SECONDS 300
-require_exact BACKEND_INTERNAL_URL http://backend:8000
+require_exact BACKEND_INTERNAL_URL http://127.0.0.1:14001
 require_exact BACKUP_DIR /app/backups
 if [[ -n "${NEXT_PUBLIC_API_BASE_URL:-}" ]]; then
   echo "Refusing server14 deployment: NEXT_PUBLIC_API_BASE_URL must be empty for same-origin proxying." >&2
   exit 2
 fi
-if [[ ! "${DATABASE_URL:-}" =~ ^postgresql\+asyncpg://[^@]+@host\.docker\.internal:11000/kor_travel_transport$ ]]; then
+if [[ ! "${DATABASE_URL:-}" =~ ^postgresql\+asyncpg://[^@]+@127\.0\.0\.1:11000/kor_travel_transport$ ]]; then
   echo "Refusing server14 deployment: DATABASE_URL must target the Manager shared application DB." >&2
   exit 2
 fi
-if [[ ! "${DAGSTER_POSTGRES_URL:-}" =~ ^postgresql://[^@]+@host\.docker\.internal:11000/kor_travel_transport_dagster$ ]]; then
+if [[ ! "${DAGSTER_POSTGRES_URL:-}" =~ ^postgresql://[^@]+@127\.0\.0\.1:11000/kor_travel_transport_dagster$ ]]; then
   echo "Refusing server14 deployment: DAGSTER_POSTGRES_URL must target the dedicated Manager metadata DB." >&2
   exit 2
 fi

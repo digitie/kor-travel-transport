@@ -11,14 +11,14 @@ def test_cutover_requires_a_separate_empty_dagster_database() -> None:
 
     assert 'TARGET_DAGSTER_DATABASE_URL="${DAGSTER_POSTGRES_URL:?' in script
     assert 'if [[ "${TARGET_DATABASE_URL}" == "${TARGET_DAGSTER_DATABASE_URL}" ]]' in script
-    assert "host\\.docker\\.internal:11000/kor_travel_transport$" in script
-    assert "host\\.docker\\.internal:11000/kor_travel_transport_dagster$" in script
+    assert "127\\.0\\.0\\.1:11000/kor_travel_transport$" in script
+    assert "127\\.0\\.0\\.1:11000/kor_travel_transport_dagster$" in script
     assert 'LEGACY_HOST_DATABASE_URL="${LEGACY_HOST_DATABASE_URL:?' in script
     assert 'LEGACY_DAGSTER_HOST_DATABASE_URL="${LEGACY_DAGSTER_HOST_DATABASE_URL:-}"' in script
     assert 'legacy runtime and host DSNs must name the same database' in script
     assert 'legacy Dagster runtime and host DSNs must name the same database' in script
     assert 'TARGET_HOST_DATABASE_URL="${TARGET_DATABASE_URL/postgresql+asyncpg:/postgresql:}"' in script
-    assert 'TARGET_HOST_DATABASE_URL="${TARGET_HOST_DATABASE_URL/host.docker.internal:11000/127.0.0.1:11000}"' in script
+    assert 'TARGET_DAGSTER_HOST_DATABASE_URL="${TARGET_DAGSTER_DATABASE_URL}"' in script
     assert 'assert_ready target-dagster "${TARGET_DAGSTER_HOST_DATABASE_PSQL_URL}"' in script
     assert 'assert_empty_bootstrap_only target "${TARGET_HOST_DATABASE_PSQL_URL}"' in script
     assert 'assert_empty_bootstrap_only target-dagster "${TARGET_DAGSTER_HOST_DATABASE_PSQL_URL}"' in script
@@ -70,3 +70,6 @@ def test_deploy_receipt_binds_both_shared_database_names() -> None:
 
     assert "target_database=kor_travel_transport" in script
     assert "target_dagster_database=kor_travel_transport_dagster" in script
+    assert "@127\\.0\\.0\\.1:11000/kor_travel_transport$" in script
+    assert "@127\\.0\\.0\\.1:11000/kor_travel_transport_dagster$" in script
+    assert "require_exact BACKEND_INTERNAL_URL http://127.0.0.1:14001" in script

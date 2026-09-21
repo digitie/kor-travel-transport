@@ -23,13 +23,12 @@ legacy_dagster_quiesced=false
 cutover_accepted=false
 legacy_dagster_services=()
 
-# Runtime containers use host.docker.internal while this script runs on n150 itself.
-# PostgreSQL clients are deliberately run in a disposable host-network container: n150 does
+# Runtime containers and this script use n150 host-network loopback directly. PostgreSQL
+# clients are deliberately run in a disposable host-network container: n150 does
 # not install psql/pg_dump locally, and this keeps the operating-system package set untouched.
 PG_CLIENT_IMAGE="${PG_CLIENT_IMAGE:-postgres:16-alpine}"
 TARGET_HOST_DATABASE_URL="${TARGET_DATABASE_URL/postgresql+asyncpg:/postgresql:}"
-TARGET_HOST_DATABASE_URL="${TARGET_HOST_DATABASE_URL/host.docker.internal:11000/127.0.0.1:11000}"
-TARGET_DAGSTER_HOST_DATABASE_URL="${TARGET_DAGSTER_DATABASE_URL/host.docker.internal:11000/127.0.0.1:11000}"
+TARGET_DAGSTER_HOST_DATABASE_URL="${TARGET_DAGSTER_DATABASE_URL}"
 
 if [[ "${REMOTE_HOST}" != "192.168.1.14" ]]; then
   echo "Refusing cutover outside 192.168.1.14." >&2
@@ -51,11 +50,11 @@ if [[ "${TARGET_DATABASE_URL}" == "${TARGET_DAGSTER_DATABASE_URL}" ]]; then
   echo "Refusing cutover: application and Dagster metadata DSNs must differ." >&2
   exit 2
 fi
-if [[ ! "${TARGET_DATABASE_URL}" =~ ^postgresql\+asyncpg://[^@]+@host\.docker\.internal:11000/kor_travel_transport$ ]]; then
+if [[ ! "${TARGET_DATABASE_URL}" =~ ^postgresql\+asyncpg://[^@]+@127\.0\.0\.1:11000/kor_travel_transport$ ]]; then
   echo "Refusing cutover: application target must be the exact shared Manager database." >&2
   exit 2
 fi
-if [[ ! "${TARGET_DAGSTER_DATABASE_URL}" =~ ^postgresql://[^@]+@host\.docker\.internal:11000/kor_travel_transport_dagster$ ]]; then
+if [[ ! "${TARGET_DAGSTER_DATABASE_URL}" =~ ^postgresql://[^@]+@127\.0\.0\.1:11000/kor_travel_transport_dagster$ ]]; then
   echo "Refusing cutover: Dagster target must be the exact dedicated shared metadata database." >&2
   exit 2
 fi

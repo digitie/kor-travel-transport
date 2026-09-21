@@ -1,5 +1,5 @@
 load_from:
   - grpc_server:
-      host: dagster-code-server
-      port: 4000
+      host: 127.0.0.1
+      port: 14005
       location_name: kor-travel-transport

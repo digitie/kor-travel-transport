@@ -32,7 +32,9 @@ background task가 아니라 Dagster가 맡는다. 이 경계는 고속도로·�
 `kor-travel-docker-manager`가 host-network로 관리하는 `kor-travel-shared-postgres`와
 RustFS를 소비한다. 이 저장소의 compose는 PostgreSQL superuser 권한을 받거나 DB/role을
 생성하지 않는다. bridge 컨테이너에서는 Docker의 `host-gateway` 별칭인
-`host.docker.internal:11000`으로 DB에, `host.docker.internal:12101`으로 RustFS에 접근한다.
+Manager의 정식 Weather 운영 패턴과 같이 모든 runtime 컨테이너를 n150 host-network로
+실행한다. 따라서 공용 PostgreSQL은 `127.0.0.1:11000`, RustFS는
+`127.0.0.1:12101`로 접근한다. 일반 Compose bridge와 임시 TCP relay는 사용하지 않는다.
 Manager 소유 bootstrap이 아래 두 DB와 각각 전용 role을 먼저 준비해야 한다.
 
 | 용도 | DB | 환경변수 |
@@ -41,7 +43,7 @@ Manager 소유 bootstrap이 아래 두 DB와 각각 전용 role을 먼저 준비
 | Dagster run/event/schedule metadata | `kor_travel_transport_dagster` | `DAGSTER_POSTGRES_URL` |
 
 두 DB를 합치면 양쪽 Alembic이 `alembic_version` 테이블을 서로 덮어쓰므로 절대 합치지 않는다.
-운영 DSN은 `host.docker.internal:11000`을 사용하며, 비밀번호·service key·RustFS key는
+운영 DSN은 `127.0.0.1:11000`을 사용하며, 비밀번호·service key·RustFS key는
 n150의 비추적 환경 파일에만 둔다.
 
 ## 수집 일정과 저장 경계

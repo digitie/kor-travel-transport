@@ -30,7 +30,9 @@
 - 개발 검증: WSL2 + Docker
 - 운영: `digitie@192.168.1.14`에서만 Docker/PostgreSQL 실행
   - PostgreSQL은 `docker-compose.db.yml`로 앱과 분리된 독립 컨테이너에서 운영(T-032)
-  - public web `14002`, public API `14001`, DB `14000`(loopback 전용), container backend `8000`
+  - Manager 공용 PostgreSQL `127.0.0.1:11000`, RustFS `127.0.0.1:12101`
+  - public web `14002`, public API `14001`; backend는 host-network에서 `14001`을 직접 수신
+  - Dagster code-server `127.0.0.1:14005`, Dagster webserver `127.0.0.1:14004`, Basic Auth gateway `14003`
 - live E2E 기준 origin: `https://pr.digitie.mywire.org`
 - 외부 API 기준 origin: `https://pr-api.digitie.mywire.org`
 - `192.168.1.13`은 cutover 전까지 read-only source/rollback 기준으로 유지
@@ -242,7 +244,9 @@ legacy 병렬 요청 경로:
 - JSON 응답은 최대 16 MiB와 본문 수신 기한 내에서 버퍼링한다. 본문 timeout은 RFC7807
   504, 크기 초과·수신 오류는 502로 반환한다. 백업 파일 등 비JSON 응답은 스트리밍하며,
   전송 시작 후 timeout은 상태 코드를 504로 바꾸지 않고 본문 읽기 실패로 처리한다.
-- Docker/n150 기본값은 `BACKEND_INTERNAL_URL=http://backend:8000`이다.
+- Docker/n150 운영값은 `BACKEND_INTERNAL_URL=http://127.0.0.1:14001`이다. 이는
+  Manager의 Weather 정본과 동일한 host-network 계약이며, 개발의 bridge compose 기본값과
+  혼동하지 않는다.
 - 이 방식은 LAN IP와 `https://pr.digitie.mywire.org/` 외부 도메인을 같은 빌드로 처리하고, 외부 HTTPS 페이지가 HTTP API 포트를 직접 호출하는 문제를 피하기 위한 기본값이다.
 
 ## 운영상 주의할 점
