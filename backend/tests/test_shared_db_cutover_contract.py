@@ -36,6 +36,8 @@ def test_cutover_uses_disposable_postgres_clients_on_the_server_host_network() -
     assert '-v "${PGPASS_FILE}:/run/secrets/pgpass:ro"' in script
     assert '-e PGPASSFILE=/run/secrets/pgpass' in script
     assert 'prepare_client_dsn' in script
+    assert 'from urllib.parse import quote, unquote, urlsplit' in script
+    assert 'passwordless URI' in script
     assert 'pg_dump_client' in script
     assert 'pg_restore_client' in script
 

@@ -114,19 +114,35 @@ trap cleanup_pgpass EXIT
 
 prepare_client_dsn() {
   local dsn="$1"
-  # The Manager-generated credentials are URL-safe. Requiring the same restricted form
-  # here avoids lossy URL decoding while keeping passwords out of docker inspect/argv.
-  if [[ ! "${dsn}" =~ ^postgresql://([^:@/]+):([A-Za-z0-9_-]+=*)@([A-Za-z0-9.]+):([0-9]+)/([A-Za-z0-9_-]+)$ ]]; then
-    echo "Refusing cutover: host client DSNs must be passworded, URL-safe PostgreSQL URIs." >&2
-    exit 2
-  fi
-  local username="${BASH_REMATCH[1]}"
-  local password="${BASH_REMATCH[2]}"
-  local host="${BASH_REMATCH[3]}"
-  local port="${BASH_REMATCH[4]}"
-  local database="${BASH_REMATCH[5]}"
-  printf '%s:%s:%s:%s:%s\n' "${host}" "${port}" "${database}" "${username}" "${password}" >> "${PGPASS_FILE}"
-  printf 'postgresql://%s@%s:%s/%s' "${username}" "${host}" "${port}" "${database}"
+  # The application URL is percent-encoded. Decode it only while writing the private
+  # passfile; Docker receives the resulting passwordless URI, never the secret itself.
+  printf '%s' "${dsn}" | python3 -c '
+import sys
+from pathlib import Path
+from urllib.parse import quote, unquote, urlsplit
+
+passfile = Path(sys.argv[1])
+value = sys.stdin.read()
+parts = urlsplit(value)
+database = parts.path.removeprefix("/")
+if (
+    parts.scheme != "postgresql"
+    or not parts.hostname
+    or not parts.port
+    or not database
+    or parts.username is None
+    or parts.password is None
+):
+    raise SystemExit("Refusing cutover: host client DSNs must be complete PostgreSQL URIs.")
+username = unquote(parts.username)
+password = unquote(parts.password)
+if any("\\n" in value or "\\r" in value for value in (parts.hostname, database, username, password)):
+    raise SystemExit("Refusing cutover: host client DSNs cannot contain line breaks.")
+escape = lambda value: value.replace("\\", "\\\\").replace(":", "\\:")
+with passfile.open("a", encoding="utf-8") as handle:
+    handle.write(":".join(escape(value) for value in (parts.hostname, str(parts.port), database, username, password)) + "\\n")
+print(f"postgresql://{quote(username, safe=chr(39))}@{parts.hostname}:{parts.port}/{quote(database, safe=chr(39))}")
+' "${PGPASS_FILE}"
 }
 
 LEGACY_HOST_DATABASE_PSQL_URL="$(prepare_client_dsn "${LEGACY_HOST_DATABASE_URL}")"

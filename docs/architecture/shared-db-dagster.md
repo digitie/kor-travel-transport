@@ -80,8 +80,8 @@ Manager가 공용 DB/네트워크와 전용 role·RustFS bucket을 provision한 
    와 함께 [`scripts/cutover-shared-db-server14.sh`](../../scripts/cutover-shared-db-server14.sh)를
    실행한다. 이 one-shot은 n150에 PostgreSQL client 패키지를 설치하지 않고, host network의
    일회성 `postgres:16-alpine` client container로 legacy loopback DB와 shared DB를 조회한다.
-   DSN의 비밀번호는 Docker command/env가 아니라 cutover workdir의 mode `0600` passfile로만 전달하고,
-   client command에는 passwordless URI만 넘긴다.
+   DSN의 비밀번호는 URL percent-encoding을 유지한 채 Docker command/env가 아니라 cutover workdir의
+   mode `0600` passfile로만 전달하고, client command에는 passwordless URI만 넘긴다.
    base dump → legacy writer quiesce → final dump/restore → public table
    row count와 최신 주차 observation watermark 비교를 fail-closed로 수행한다. 복원 전에는 두
    target DSN이 정확한 Manager host/port/DB를 가리키고 모든 비시스템 schema 객체와 Alembic
