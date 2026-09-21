@@ -31,7 +31,7 @@ TARGET_RELEASE_MANIFEST="${TARGET_RELEASE_MANIFEST:-${TARGET_APP_DIR}/.release-s
 CONFIRMATION="MOVE_KOR_TRAVEL_TRANSPORT_HISTORY_TO_SHARED_DB"
 METADATA_RESET_CONFIRMATION="START_FRESH_DAGSTER_METADATA_WITH_NO_LEGACY_STORE"
 legacy_backend_quiesced=false
-legacy_backend_renamed=false
+legacy_backend_preserved=false
 legacy_dagster_quiesced=false
 cutover_accepted=false
 legacy_dagster_services=()
@@ -42,6 +42,7 @@ legacy_dagster_services=()
 PG_CLIENT_IMAGE="${PG_CLIENT_IMAGE:-postgres:16-alpine}"
 LEGACY_BACKEND_CONTAINER="${LEGACY_BACKEND_CONTAINER:-kor-travel-airport-backend-1}"
 LEGACY_BACKEND_ROLLBACK_CONTAINER="${LEGACY_BACKEND_ROLLBACK_CONTAINER:-kor-travel-airport-legacy-backend-cutover}"
+LEGACY_BACKEND_ROLLBACK_IMAGE="${LEGACY_BACKEND_ROLLBACK_IMAGE:-kor-travel-airport-legacy-backend:cutover}"
 TARGET_HOST_DATABASE_URL="${TARGET_DATABASE_URL/postgresql+asyncpg:/postgresql:}"
 TARGET_DAGSTER_HOST_DATABASE_URL="${TARGET_DAGSTER_DATABASE_URL}"
 
@@ -111,8 +112,9 @@ if ! docker inspect "${LEGACY_BACKEND_CONTAINER}" >/dev/null 2>&1; then
   echo "Refusing cutover: the live legacy backend container is not present." >&2
   exit 2
 fi
-if docker inspect "${LEGACY_BACKEND_ROLLBACK_CONTAINER}" >/dev/null 2>&1; then
-  echo "Refusing cutover: a preserved legacy backend container already exists." >&2
+if docker inspect "${LEGACY_BACKEND_ROLLBACK_CONTAINER}" >/dev/null 2>&1 \
+  || docker image inspect "${LEGACY_BACKEND_ROLLBACK_IMAGE}" >/dev/null 2>&1; then
+  echo "Refusing cutover: a standalone legacy rollback artifact already exists." >&2
   exit 2
 fi
 
@@ -121,6 +123,7 @@ chmod 700 "${CUTOVER_WORK_DIR}"
 BASE_DUMP="${CUTOVER_WORK_DIR}/legacy-base.dump"
 FINAL_DUMP="${CUTOVER_WORK_DIR}/legacy-final.dump"
 PGPASS_FILE="${CUTOVER_WORK_DIR}/.pgpass"
+LEGACY_BACKEND_ENV_FILE="${CUTOVER_WORK_DIR}/legacy-backend.env"
 
 database_identity() {
   local dsn="$1"
@@ -188,14 +191,16 @@ fi
 restart_legacy_backend_on_failure() {
   status=$?
   rm -f "${PGPASS_FILE}"
-  if [[ "${status}" -ne 0 && "${legacy_backend_renamed}" == "true" && "${cutover_accepted}" != "true" ]]; then
+  if [[ "${status}" -ne 0 && "${legacy_backend_quiesced}" == "true" && "${legacy_backend_preserved}" == "true" && "${cutover_accepted}" != "true" ]]; then
     echo "Cutover failed after legacy writer quiescence; restoring the legacy backend." >&2
     rollback_failed=false
     docker compose --project-name "${LEGACY_PROJECT_NAME}" --env-file "${TARGET_ENV_FILE}" \
       -f docker-compose.yml -f docker-compose.shared.yml \
       stop backend dagster-code-server dagster-webserver dagster-daemon dagster-gateway 2>/dev/null || rollback_failed=true
-    if ! docker start "${LEGACY_BACKEND_ROLLBACK_CONTAINER}" >/dev/null 2>&1 \
-      && [[ "$(docker inspect -f '{{.State.Running}}' "${LEGACY_BACKEND_ROLLBACK_CONTAINER}" 2>/dev/null || true)" != "true" ]]; then
+    if ! docker run -d --name "${LEGACY_BACKEND_ROLLBACK_CONTAINER}" --network host --restart no \
+      --env-file "${LEGACY_BACKEND_ENV_FILE}" \
+      -v "${LEGACY_BACKEND_BACKUP_SOURCE}:/app/backups" \
+      "${LEGACY_BACKEND_ROLLBACK_IMAGE}" >/dev/null; then
       rollback_failed=true
     fi
     if [[ "${rollback_failed}" == "false" ]]; then
@@ -315,10 +320,19 @@ echo "Creating recoverable base dump at ${BASE_DUMP}"
 pg_dump_client --format=custom --no-owner --no-privileges --file "/cutover/$(basename "${BASE_DUMP}")" "${LEGACY_HOST_DATABASE_PSQL_URL}"
 pg_restore_client --clean --if-exists --no-owner --no-privileges --exit-on-error --dbname "${TARGET_HOST_DATABASE_PSQL_URL}" "/cutover/$(basename "${BASE_DUMP}")"
 
-echo "Quiescing the legacy backend writer; old DB and its volume remain intact for rollback."
-docker rename "${LEGACY_BACKEND_CONTAINER}" "${LEGACY_BACKEND_ROLLBACK_CONTAINER}"
-legacy_backend_renamed=true
-docker stop "${LEGACY_BACKEND_ROLLBACK_CONTAINER}"
+echo "Preserving a standalone immutable legacy backend rollback artifact."
+LEGACY_BACKEND_BACKUP_SOURCE="$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/app/backups"}}{{.Source}}{{end}}{{end}}' "${LEGACY_BACKEND_CONTAINER}")"
+if [[ "${LEGACY_BACKEND_BACKUP_SOURCE}" != "${TARGET_APP_DIR}/backups" ]]; then
+  echo "Refusing cutover: legacy backend backup mount does not match the approved app path." >&2
+  exit 2
+fi
+docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "${LEGACY_BACKEND_CONTAINER}" > "${LEGACY_BACKEND_ENV_FILE}"
+chmod 600 "${LEGACY_BACKEND_ENV_FILE}"
+docker commit --pause=false "${LEGACY_BACKEND_CONTAINER}" "${LEGACY_BACKEND_ROLLBACK_IMAGE}" >/dev/null
+legacy_backend_preserved=true
+
+echo "Quiescing the legacy backend writer; old DB and its rollback artifact remain intact."
+docker compose --project-name "${LEGACY_PROJECT_NAME}" --env-file "${LEGACY_ENV_FILE}" -f docker-compose.yml stop backend
 legacy_backend_quiesced=true
 
 if [[ -n "${LEGACY_DAGSTER_DATABASE_URL}" ]]; then

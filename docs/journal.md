@@ -19,6 +19,11 @@
   명시 load해 runbook 명령 그대로 shared DB DSN 검증을 수행한다. 또한 기존 backend container를
   target 기동 직전에 별도 이름으로 보존하고, 실패 시 후보 compose/image를 재사용하지 않고
   그 원본 container를 재시작한 뒤 `127.0.0.1:14001/health`를 확인한다.
+- 최종 재리뷰에서 Compose가 같은 project/service label을 가진 이름 변경 container를 recreate할 수
+  있다는 P0를 확인했다. rollback은 이제 이름 변경 container를 쓰지 않고 기존 backend를
+  immutable image로 `docker commit`하고, private env·backup mount를 보존한 standalone
+  `docker run` container로만 복원한다. 후보 Compose가 rollback artifact를 관리·제거할 수 없으며,
+  실패 시 health 확인은 그대로 fail-closed다.
 - Compose의 명시적 `--env-file`이 셸에서 export한 `RELEASE_SHA`를 덮어 배포 health가
   `unknown`으로 표시되는 문제를 수정했다. 배포마다 기존 운영 env를 값 변경 없이 복사한
   임시 runtime env에 후보 SHA만 주입하고, 배포 종료 시 즉시 삭제한다.
