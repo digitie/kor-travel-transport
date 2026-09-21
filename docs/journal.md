@@ -31,6 +31,9 @@
   유지하되, 과거 bridge runtime이면 기존 network와 host publish를 복원해 PostgreSQL/backend DNS와
   외부 `14001`/`14002` 계약이 바뀌지 않도록 했다. 허용하지 않은 network mode는 writer 정지 전에
   fail-close한다.
+- legacy bridge rollback에서는 stopped candidate backend endpoint가 `backend` DNS를 계속 차지하지
+  않도록 제거하고, standalone backend에 같은 alias를 부여한다. frontend root만으로는 proxy 경로를
+  증명하지 못하므로 rollback 완료 검증은 `14002/api/backend/health`까지 성공해야 한다.
 - Compose의 명시적 `--env-file`이 셸에서 export한 `RELEASE_SHA`를 덮어 배포 health가
   `unknown`으로 표시되는 문제를 수정했다. 배포마다 기존 운영 env를 값 변경 없이 복사한
   임시 runtime env에 후보 SHA만 주입하고, 배포 종료 시 즉시 삭제한다.

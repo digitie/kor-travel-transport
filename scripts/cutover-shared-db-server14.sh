@@ -208,6 +208,9 @@ restart_legacy_backend_on_failure() {
     docker compose --project-name "${LEGACY_PROJECT_NAME}" --env-file "${TARGET_ENV_FILE}" \
       -f docker-compose.yml -f docker-compose.shared.yml \
       stop backend frontend dagster-code-server dagster-webserver dagster-daemon dagster-gateway 2>/dev/null || rollback_failed=true
+    if [[ "${rollback_failed}" == "false" ]]; then
+      docker rm -f "${LEGACY_BACKEND_CONTAINER}" >/dev/null 2>&1 || rollback_failed=true
+    fi
     if ! start_legacy_backend_rollback; then
       rollback_failed=true
     fi
@@ -230,7 +233,7 @@ restart_legacy_backend_on_failure() {
     if [[ "${rollback_failed}" == "false" ]]; then
       legacy_web_health=""
       for attempt in $(seq 1 30); do
-        if legacy_web_health="$(curl -fsS http://127.0.0.1:14002/ 2>/dev/null)"; then
+        if legacy_web_health="$(curl -fsS http://127.0.0.1:14002/api/backend/health 2>/dev/null)"; then
           break
         fi
         sleep 2
@@ -260,7 +263,7 @@ start_legacy_backend_rollback() {
   if [[ "${LEGACY_BACKEND_NETWORK_MODE}" == "host" ]]; then
     network_args=(--network host)
   else
-    network_args=(--network "${LEGACY_BACKEND_NETWORK_MODE}")
+    network_args=(--network "${LEGACY_BACKEND_NETWORK_MODE}" --network-alias backend)
     publish_args=(-p 14001:8000)
   fi
   docker run -d --name "${LEGACY_BACKEND_ROLLBACK_CONTAINER}" --restart no \
