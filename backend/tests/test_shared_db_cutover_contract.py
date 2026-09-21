@@ -90,8 +90,12 @@ def test_cutover_uses_staged_n150_deployment_and_does_not_hide_rollback_failures
     assert "automatic legacy writer rollback did not complete" in script
     assert 'source "${TARGET_ENV_FILE}"' in script
     assert 'docker commit --pause=false "${LEGACY_BACKEND_CONTAINER}" "${LEGACY_BACKEND_ROLLBACK_IMAGE}"' in script
-    assert 'docker run -d --name "${LEGACY_BACKEND_ROLLBACK_CONTAINER}" --network host --restart no' in script
-    assert 'docker run -d --name "${LEGACY_FRONTEND_ROLLBACK_CONTAINER}" --network host --restart no' in script
+    assert 'LEGACY_BACKEND_NETWORK_MODE="$(docker inspect -f' in script
+    assert 'LEGACY_FRONTEND_NETWORK_MODE="$(docker inspect -f' in script
+    assert 'network_args=(--network "${LEGACY_BACKEND_NETWORK_MODE}")' in script
+    assert 'network_args=(--network "${LEGACY_FRONTEND_NETWORK_MODE}")' in script
+    assert 'publish_args=(-p 14001:8000)' in script
+    assert 'publish_args=(-p 14002:3000)' in script
     assert "preserved legacy frontend did not become healthy after rollback" in script
     assert "stop backend frontend dagster-code-server" in script
     assert 'docker compose --project-name "${LEGACY_PROJECT_NAME}" --env-file "${LEGACY_ENV_FILE}" -f docker-compose.yml stop backend' in script

@@ -208,10 +208,7 @@ restart_legacy_backend_on_failure() {
     docker compose --project-name "${LEGACY_PROJECT_NAME}" --env-file "${TARGET_ENV_FILE}" \
       -f docker-compose.yml -f docker-compose.shared.yml \
       stop backend frontend dagster-code-server dagster-webserver dagster-daemon dagster-gateway 2>/dev/null || rollback_failed=true
-    if ! docker run -d --name "${LEGACY_BACKEND_ROLLBACK_CONTAINER}" --network host --restart no \
-      --env-file "${LEGACY_BACKEND_ENV_FILE}" \
-      -v "${LEGACY_BACKEND_BACKUP_SOURCE}:/app/backups" \
-      "${LEGACY_BACKEND_ROLLBACK_IMAGE}" >/dev/null; then
+    if ! start_legacy_backend_rollback; then
       rollback_failed=true
     fi
     if [[ "${rollback_failed}" == "false" ]]; then
@@ -227,8 +224,7 @@ restart_legacy_backend_on_failure() {
         rollback_failed=true
       fi
     fi
-    if [[ "${rollback_failed}" == "false" ]] && ! docker run -d --name "${LEGACY_FRONTEND_ROLLBACK_CONTAINER}" --network host --restart no \
-      --env-file "${LEGACY_FRONTEND_ENV_FILE}" "${LEGACY_FRONTEND_ROLLBACK_IMAGE}" >/dev/null; then
+    if [[ "${rollback_failed}" == "false" ]] && ! start_legacy_frontend_rollback; then
       rollback_failed=true
     fi
     if [[ "${rollback_failed}" == "false" ]]; then
@@ -258,6 +254,34 @@ restart_legacy_backend_on_failure() {
   exit "${status}"
 }
 trap restart_legacy_backend_on_failure EXIT
+
+start_legacy_backend_rollback() {
+  local network_args=() publish_args=()
+  if [[ "${LEGACY_BACKEND_NETWORK_MODE}" == "host" ]]; then
+    network_args=(--network host)
+  else
+    network_args=(--network "${LEGACY_BACKEND_NETWORK_MODE}")
+    publish_args=(-p 14001:8000)
+  fi
+  docker run -d --name "${LEGACY_BACKEND_ROLLBACK_CONTAINER}" --restart no \
+    "${network_args[@]}" "${publish_args[@]}" \
+    --env-file "${LEGACY_BACKEND_ENV_FILE}" \
+    -v "${LEGACY_BACKEND_BACKUP_SOURCE}:/app/backups" \
+    "${LEGACY_BACKEND_ROLLBACK_IMAGE}" >/dev/null
+}
+
+start_legacy_frontend_rollback() {
+  local network_args=() publish_args=()
+  if [[ "${LEGACY_FRONTEND_NETWORK_MODE}" == "host" ]]; then
+    network_args=(--network host)
+  else
+    network_args=(--network "${LEGACY_FRONTEND_NETWORK_MODE}")
+    publish_args=(-p 14002:3000)
+  fi
+  docker run -d --name "${LEGACY_FRONTEND_ROLLBACK_CONTAINER}" --restart no \
+    "${network_args[@]}" "${publish_args[@]}" \
+    --env-file "${LEGACY_FRONTEND_ENV_FILE}" "${LEGACY_FRONTEND_ROLLBACK_IMAGE}" >/dev/null
+}
 
 postgres_client() {
   docker run --rm --network host -v "${CUTOVER_WORK_DIR}:/cutover" \
@@ -349,6 +373,14 @@ pg_dump_client --format=custom --no-owner --no-privileges --file "/cutover/$(bas
 pg_restore_client --clean --if-exists --no-owner --no-privileges --exit-on-error --dbname "${TARGET_HOST_DATABASE_PSQL_URL}" "/cutover/$(basename "${BASE_DUMP}")"
 
 echo "Preserving a standalone immutable legacy backend rollback artifact."
+LEGACY_BACKEND_NETWORK_MODE="$(docker inspect -f '{{.HostConfig.NetworkMode}}' "${LEGACY_BACKEND_CONTAINER}")"
+LEGACY_FRONTEND_NETWORK_MODE="$(docker inspect -f '{{.HostConfig.NetworkMode}}' "${LEGACY_FRONTEND_CONTAINER}")"
+for network_mode in "${LEGACY_BACKEND_NETWORK_MODE}" "${LEGACY_FRONTEND_NETWORK_MODE}"; do
+  if [[ "${network_mode}" != "host" && "${network_mode}" != "kor-travel-airport-net" ]]; then
+    echo "Refusing cutover: legacy rollback network mode is not an approved host or legacy bridge mode." >&2
+    exit 2
+  fi
+done
 LEGACY_BACKEND_BACKUP_SOURCE="$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/app/backups"}}{{.Source}}{{end}}{{end}}' "${LEGACY_BACKEND_CONTAINER}")"
 if [[ "${LEGACY_BACKEND_BACKUP_SOURCE}" != "${TARGET_APP_DIR}/backups" ]]; then
   echo "Refusing cutover: legacy backend backup mount does not match the approved app path." >&2
