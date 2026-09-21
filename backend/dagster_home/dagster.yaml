@@ -39,6 +39,12 @@ run_coordinator:
         value: fuel
         limit: 1
       - key: kortraveltransport/run_group
+        value: parking
+        limit: 1
+      - key: kortraveltransport/run_group
+        value: highway
+        limit: 1
+      - key: kortraveltransport/run_group
         value: reference
         limit: 1
 

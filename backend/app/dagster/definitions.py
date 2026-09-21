@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from dagster import Definitions, ScheduleDefinition, job, op
+from dagster import DefaultScheduleStatus, Definitions, ScheduleDefinition, job, op
 
 from app.core.config import Settings, get_settings
 from app.db.session import create_engine_and_session_factory
@@ -44,13 +44,17 @@ def collect_airport_parking() -> dict[str, Any]:
     return asyncio.run(_run_with_session(settings, CollectionService(settings).collect, trigger="dagster_airport"))
 
 
-def _collect_transport(scope: CollectionScope) -> dict[str, Any]:
-    settings = _settings()
+async def _collect_transport_in_one_loop(settings: Settings, scope: CollectionScope) -> dict[str, Any]:
+    """HTTP client의 생성·수집·종료를 하나의 event loop에서 끝낸다."""
     service = TransportCollectionService(settings)
     try:
-        return asyncio.run(_run_with_session(settings, service.collect, trigger=f"dagster_{scope}", scope=scope))
+        return await _run_with_session(settings, service.collect, trigger=f"dagster_{scope}", scope=scope)
     finally:
-        asyncio.run(service.close())
+        await service.close()
+
+
+def _collect_transport(scope: CollectionScope) -> dict[str, Any]:
+    return asyncio.run(_collect_transport_in_one_loop(_settings(), scope))
 
 
 @op
@@ -114,10 +118,10 @@ definitions = Definitions(
         maritime_reference_collection_job,
     ],
     schedules=[
-        ScheduleDefinition(job=airport_collection_job, cron_schedule="*/5 * * * *", execution_timezone="Asia/Seoul"),
-        ScheduleDefinition(job=highway_collection_job, cron_schedule="*/5 * * * *", execution_timezone="Asia/Seoul"),
-        ScheduleDefinition(job=fuel_collection_job, cron_schedule="0 */8 * * *", execution_timezone="Asia/Seoul"),
-        ScheduleDefinition(job=rail_reference_collection_job, cron_schedule="0 3 */3 * *", execution_timezone="Asia/Seoul"),
-        ScheduleDefinition(job=maritime_reference_collection_job, cron_schedule="0 3 */3 * *", execution_timezone="Asia/Seoul"),
+        ScheduleDefinition(job=airport_collection_job, cron_schedule="*/5 * * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
+        ScheduleDefinition(job=highway_collection_job, cron_schedule="*/5 * * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
+        ScheduleDefinition(job=fuel_collection_job, cron_schedule="0 */8 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
+        ScheduleDefinition(job=rail_reference_collection_job, cron_schedule="0 3 */3 * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
+        ScheduleDefinition(job=maritime_reference_collection_job, cron_schedule="0 3 */3 * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
     ],
 )

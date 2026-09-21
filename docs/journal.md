@@ -8,7 +8,7 @@
 - KRIC 역사 기준정보와 여객항구·터미널·선박종류 기준정보를 3일 주기 Dagster job으로
   추가했다. 항구 운항시간표는 저장하지 않으며 항구 상세 요청 시 provider에서 실시간으로
   조회하는 후속 API로 유지한다.
-- 병합된 `python-kric-api` RustFS provider commit `6ed5ace`를 고정했다. rail job은 검증한
+- 병합된 `python-kric-api` RustFS provider commit `cd01fbc`를 고정했다. rail job은 검증한
   XLSX를 공용 RustFS에 저장하고 DB에는 bucket·object key·SHA-256 참조만 남긴다.
   host-network Manager RustFS의 평문 경로는 explicit `RUSTFS_ALLOW_INSECURE_HTTP=true`일 때만
   사용한다.
@@ -17,6 +17,21 @@
   PostgreSQL `JSONB` migration 때문에 최초 migration부터 지원되지 않아 PostgreSQL 전용 계약을
   재확인했다. Compose shared overlay는 `host.docker.internal` gateway와 분리 Dagster 서비스로
   정상 해석됐다.
+- 적대적 리뷰 P0/P1을 보완했다. 공용 DB 전환은 legacy writer 정지 뒤 final logical dump를
+  복원하고 모든 public table count·최신 주차 관측 watermark를 비교하는 fail-closed one-shot으로
+  문서화했다. Dagster metadata migration은 `dagster-migrate` one-shot으로 분리했고 장기 실행
+  서비스의 Alembic을 금지했다. code-server만 provider/application/RustFS secret을 받고,
+  webserver·daemon은 metadata DB만 받는다.
+- Dagster schedule은 기본 실행 상태로, parking/highway/fuel/reference는 각각 한 run으로
+  제한했다. 주차 수집은 PostgreSQL session advisory lease와 snapshot savepoint conflict 처리로
+  Dagster/HTTP process 간 중복 provider 호출을 막는다. 취소된 rail/maritime run도 실패 상태를
+  남긴다. `python-kric-api#4`의 bounded async pagination이 `cd01fbc`로 병합됐으며, 여객선
+  기준정보 job은 이 pin과 Manager RustFS/DB bootstrap이 준비된 뒤에만 enable한다. 운항 시간표는
+  여전히 저장하지 않는다.
+- 최종 새 환경 검증에서 `python-kric-api@cd01fbc`를 실제 설치해 WSL backend `138 passed,
+  1 skipped`(431.91초)를 확인했다. 새 backend image를 재생성한 뒤 기존 local Docker 검증 DB에
+  `0006_rail_maritime_reference`를 적용하고 Docker backend `139 passed`(451.29초)를 확인했다.
+  이 local 검증 DB 외의 컨테이너·운영 DB는 변경하지 않았다.
 
 ## 2026-09-20
 

@@ -842,7 +842,7 @@ requires-dist = [
     { name = "python-kasi-api", git = "https://github.com/digitie/python-kasi-api?rev=51c39c1b0dd5b169b748552e81b9b9a55e86b9a1" },
     { name = "python-krairport-api", git = "https://github.com/digitie/python-krairport-api?rev=cbe4d1380dc0388c078e8ae4622d3e580717064b" },
     { name = "python-krex-api", git = "https://github.com/digitie/python-krex-api?rev=adda2879f8bc1f0896867d28eee5583594ecda01" },
-    { name = "python-kric-api", git = "https://github.com/digitie/python-kric-api?rev=6ed5ace8ee977f54fc555476368db024f4b9d277" },
+    { name = "python-kric-api", git = "https://github.com/digitie/python-kric-api?rev=cd01fbc660444bc04cfa7a24e93e7989d7ee013e" },
     { name = "python-multipart", specifier = ">=0.0.32,<1.0" },
     { name = "python-opinet-api", extras = ["browser"], git = "https://github.com/digitie/python-opinet-api?rev=39e7acc3f863e66958964b8f137bba221bc7de08" },
     { name = "sqlalchemy", specifier = ">=2.0.52,<3.0" },
@@ -1388,7 +1388,7 @@ dependencies = [
 [[package]]
 name = "python-kric-api"
 version = "0.1.0"
-source = { git = "https://github.com/digitie/python-kric-api?rev=6ed5ace8ee977f54fc555476368db024f4b9d277#6ed5ace8ee977f54fc555476368db024f4b9d277" }
+source = { git = "https://github.com/digitie/python-kric-api?rev=cd01fbc660444bc04cfa7a24e93e7989d7ee013e#cd01fbc660444bc04cfa7a24e93e7989d7ee013e" }
 dependencies = [
     { name = "boto3" },
     { name = "httpx" },

@@ -16,6 +16,7 @@ background task가 아니라 Dagster가 맡는다. 이 경계는 고속도로·�
 | --- | --- | --- |
 | `backend` | 읽기 API, 주차/교통 조회, 즉시 통계 | 하지 않음 (`SCHEDULER_MODE=dagster`) |
 | `migrate` | 애플리케이션 Alembic migration 1회 실행 | Alembic만 |
+| `dagster-migrate` | Dagster run/event/schedule metadata schema 1회 초기화·업그레이드 | Dagster instance migration만 |
 | `dagster-code-server` | job 코드와 run worker 실행 | 함 |
 | `dagster-webserver` | Dagster UI/GraphQL | 하지 않음, gRPC workspace만 연결 |
 | `dagster-daemon` | schedule, queue, run monitoring | 하지 않음, gRPC workspace만 연결 |
@@ -64,7 +65,26 @@ endpoint 구현 시 별도로 강제한다.
 
 ## 운영 실행
 
-Manager가 공용 DB/네트워크와 전용 role을 provision한 뒤 n150에서 다음처럼 실행한다.
+Manager가 공용 DB/네트워크와 전용 role·RustFS bucket을 provision한 뒤에만 전환한다. 새 DB가
+비어 있다고 바로 `DATABASE_URL`을 바꾸면 기존 주차·요금·수집 이력이 사라진다. 따라서
+아래 순서를 모두 통과해야 한다.
+
+1. Manager bootstrap receipt로 두 DB/전용 role/RustFS bucket이 준비됐음을 확인한다.
+2. 현재 운영 `DATABASE_URL`을 `LEGACY_DATABASE_URL`로, 기존 환경 파일을
+   `.env.server14.legacy`로 보존한다. 두 값은 Git에 절대 저장하지 않는다.
+3. n150 maintenance window에서 `CUTOVER_CONFIRM=MOVE_KOR_TRAVEL_TRANSPORT_HISTORY_TO_SHARED_DB`
+   와 함께 [`scripts/cutover-shared-db-server14.sh`](../../scripts/cutover-shared-db-server14.sh)를
+   실행한다. 이 one-shot은 base dump → legacy writer quiesce → final dump/restore → public table
+   row count와 최신 주차 observation watermark 비교를 fail-closed로 수행한다. 검증 결과는 mode
+   `0600`의 receipt로 남고, 같은 script가 그 receipt를 전달해 target deploy까지 실행한다.
+4. `scripts/deploy-server14.sh`는 target DB identity와 receipt를 함께 검증하므로, 빈 공용 DB를
+   가리키는 환경 파일만으로는 기동하지 않는다. `migrate`와 `dagster-migrate`가 각각
+   application/Dagster schema를 단독으로 처리하며, 장기 실행 컨테이너는 DDL을 실행하지 않는다.
+5. health와 live E2E가 성공할 때까지 legacy DB volume, `.env.server14.legacy`, 두 dump를
+   보존한다. 실패 시 shared compose를 내리고 legacy 환경으로 backend만 재기동해 rollback한다.
+
+전환 검증을 건너뛰는 `docker compose up`은 금지한다. cutover가 아닌 이후의 검증된 배포만
+receipt-gated deployment script를 사용한다.
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.shared.yml up -d --build
@@ -82,4 +102,5 @@ provider는 HTTPS RustFS endpoint를 기본 요구한다. 현재 Manager RustFS�
 명시한다. 공용 인터넷 endpoint에는 이 값을 사용하지 않는다.
 
 기존 `docker-compose.db.yml`은 기존 n150 데이터의 rollback과 local 개발 격리용이다.
-공용 DB cutover가 완료되기 전에는 기존 DB volume을 삭제하거나 그 compose를 내리지 않는다.
+공용 DB cutover가 완료되고 live E2E가 수용될 때까지 기존 DB volume을 삭제하거나 그 compose를
+내리지 않는다.

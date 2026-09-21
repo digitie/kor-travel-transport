@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import Awaitable, Callable, Mapping
@@ -83,6 +84,9 @@ class RailMaritimeCollectionService:
             await self._finish_run(session, run.id, "success")
             logger.info("rail reference collection finished run_id=%s station_count=%s", run.id, stored)
             return {"status": "success", "run_id": run.id, "station_count": stored}
+        except asyncio.CancelledError as exc:
+            await self._fail_run(session, run.id, exc)
+            raise
         except Exception as exc:
             await self._fail_run(session, run.id, exc)
             raise
@@ -104,6 +108,9 @@ class RailMaritimeCollectionService:
             await self._finish_run(session, run.id, "success")
             logger.info("maritime reference collection finished run_id=%s summary=%s", run.id, summary)
             return {"status": "success", "run_id": run.id, **summary}
+        except asyncio.CancelledError as exc:
+            await self._fail_run(session, run.id, exc)
+            raise
         except Exception as exc:
             await self._fail_run(session, run.id, exc)
             raise
@@ -133,9 +140,11 @@ class RailMaritimeCollectionService:
         collected_at = now_utc()
         async with self._maritime_client_factory(key, timeout=self.settings.api_timeout_seconds) as client:
             # 공공데이터 호출량을 예측 가능하게 유지하려고 동시에 세 요청을 보내지 않는다.
-            ports = await client.search_ports()
-            terminals = await client.get_ferry_terminals()
-            ship_types = await client.get_ferry_ship_types()
+            # Provider iterator는 page budget을 넘기면 오류로 끝나므로 첫 페이지 하나만
+            # 성공으로 저장하는 일을 막는다. 실시간 운항시간표에는 사용하지 않는다.
+            ports = tuple([item async for item in client.iter_ports(page_size=100, max_pages=20)])
+            terminals = tuple([item async for item in client.iter_ferry_terminals(page_size=100, max_pages=20)])
+            ship_types = tuple([item async for item in client.iter_ferry_ship_types(page_size=100, max_pages=20)])
             for port in ports:
                 if port.port_id:
                     await self._upsert_port(session, port, collected_at)
@@ -171,7 +180,7 @@ class RailMaritimeCollectionService:
         run.finished_at = now_utc()
         await session.commit()
 
-    async def _fail_run(self, session: AsyncSession, run_id: int, exc: Exception) -> None:
+    async def _fail_run(self, session: AsyncSession, run_id: int, exc: BaseException) -> None:
         await session.rollback()
         run = await session.get(CollectionRun, run_id)
         if run is not None:
@@ -306,5 +315,5 @@ def _identity(*values: str | None) -> str:
     return "|".join((value or "").strip() for value in values)
 
 
-def _safe_error(exc: Exception) -> str:
+def _safe_error(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {str(exc)[:500]}"

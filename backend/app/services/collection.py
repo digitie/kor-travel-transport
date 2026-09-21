@@ -3,13 +3,16 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 from xml.etree import ElementTree
 
 from krairport import AsyncKrairportClient
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -382,7 +385,39 @@ class CollectionService:
 
     async def collect(self, session: AsyncSession, trigger: str = "manual") -> dict[str, Any]:
         async with self.operation_lock:
-            return await self._collect_unlocked(session, trigger)
+            async with self._postgres_collection_lease(session) as acquired:
+                if not acquired:
+                    logger.warning("collection skipped trigger=%s because another database lease is active", trigger)
+                    return {
+                        "status": "skipped",
+                        "reason": "another airport collection is active",
+                        "raw_response_count": 0,
+                        "snapshot_count": 0,
+                        "fee_rule_count": 0,
+                        "errors": [],
+                    }
+                return await self._collect_unlocked(session, trigger)
+
+    @asynccontextmanager
+    async def _postgres_collection_lease(self, session: AsyncSession) -> AsyncIterator[bool]:
+        """동일 DB를 쓰는 Dagster/HTTP process 간 주차 수집을 하나로 직렬화한다.
+
+        PostgreSQL session advisory lock은 upstream 호출 전에 획득하고 connection 종료 시에도
+        자동 해제된다. SQLite 단위 테스트에는 기존 process-local lock만 적용한다.
+        """
+        connection = await session.connection()
+        if connection.dialect.name != "postgresql":
+            yield True
+            return
+
+        acquired = bool(
+            await session.scalar(text("SELECT pg_try_advisory_lock(hashtext('kor_travel_transport:airport_collection'))"))
+        )
+        try:
+            yield acquired
+        finally:
+            if acquired:
+                await session.execute(text("SELECT pg_advisory_unlock(hashtext('kor_travel_transport:airport_collection'))"))
 
     async def _collect_unlocked(self, session: AsyncSession, trigger: str = "manual") -> dict[str, Any]:
         rate_limit_state = await self.get_upstream_rate_limit_state(session)
@@ -698,8 +733,7 @@ class CollectionService:
                 continue
 
             available_spaces = max(observation.total_spaces - observation.occupied_spaces, 0)
-            session.add(
-                ParkingSnapshot(
+            snapshot = ParkingSnapshot(
                     collection_run_id=collection_run_id,
                     airport_id=airport.id,
                     parking_lot_id=lot.id,
@@ -712,8 +746,15 @@ class CollectionService:
                     congestion_label=observation.congestion_label,
                     congestion_ratio=observation.congestion_ratio,
                     raw_item_json=observation.raw_item,
-                )
             )
+            # Advisory lock으로 정상 경로의 중복을 막고, 이전 process/수동 실행과의 경합은
+            # savepoint에서 unique constraint를 소비해 전체 수집 transaction을 망치지 않는다.
+            try:
+                async with session.begin_nested():
+                    session.add(snapshot)
+                    await session.flush()
+            except IntegrityError:
+                continue
             stored += 1
         await session.flush()
         return stored

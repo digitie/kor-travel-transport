@@ -82,22 +82,23 @@ class _MaritimeClient:
     async def __aexit__(self, *_: object) -> None:
         return None
 
-    async def search_ports(self) -> tuple[DomesticFerryPort, ...]:
-        return (DomesticFerryPort(port_id="P001", port_name="테스트항", raw={"nodeId": "P001"}),)
+    async def iter_ports(self, *, page_size: int, max_pages: int):
+        assert (page_size, max_pages) == (100, 20)
+        yield DomesticFerryPort(port_id="P001", port_name="테스트항", raw={"nodeId": "P001"})
 
-    async def get_ferry_terminals(self) -> tuple[FerryTerminal, ...]:
-        return (
-            FerryTerminal(
-                terminal_id="T001",
-                terminal_name="테스트터미널",
-                address="부산광역시 테스트구",
-                telephone="051-000-0000",
-                raw={"terminalId": "T001"},
-            ),
+    async def iter_ferry_terminals(self, *, page_size: int, max_pages: int):
+        assert (page_size, max_pages) == (100, 20)
+        yield FerryTerminal(
+            terminal_id="T001",
+            terminal_name="테스트터미널",
+            address="부산광역시 테스트구",
+            telephone="051-000-0000",
+            raw={"terminalId": "T001"},
         )
 
-    async def get_ferry_ship_types(self) -> tuple[FerryShipType, ...]:
-        return (FerryShipType(ship_type_id="S001", ship_type_name="카페리", raw={"shipKndId": "S001"}),)
+    async def iter_ferry_ship_types(self, *, page_size: int, max_pages: int):
+        assert (page_size, max_pages) == (100, 20)
+        yield FerryShipType(ship_type_id="S001", ship_type_name="카페리", raw={"shipKndId": "S001"})
 
 
 def test_maritime_reference_collection_stores_only_stable_reference_data(tmp_path: Path) -> None:
@@ -158,6 +159,30 @@ def test_enabled_rail_reference_collection_requires_rustfs_configuration(tmp_pat
         async with session_factory() as session:
             with pytest.raises(RuntimeError, match="RustFS configuration"):
                 await service.collect_rail_reference(session)
+        await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_cancelled_rail_collection_marks_its_durable_run_failed(tmp_path: Path) -> None:
+    settings = _settings(tmp_path, rail_reference_collection_enabled=True)
+    engine, session_factory = create_engine_and_session_factory(settings.database_url)
+
+    async def cancelled_fetch() -> tuple[FileStationInfo, ...]:
+        raise asyncio.CancelledError()
+
+    async def run() -> None:
+        await init_database(engine)
+        service = RailMaritimeCollectionService(settings, rail_fetcher=cancelled_fetch)
+        async with session_factory() as session:
+            with pytest.raises(asyncio.CancelledError):
+                await service.collect_rail_reference(session)
+        async with session_factory() as session:
+            persisted = await session.scalar(select(CollectionRun))
+        assert persisted is not None
+        assert persisted.status == "failed"
+        assert persisted.finished_at is not None
+        assert persisted.error_message == "CancelledError: "
         await engine.dispose()
 
     asyncio.run(run())
