@@ -74,11 +74,14 @@ Manager가 공용 DB/네트워크와 전용 role·RustFS bucket을 provision한 
    `.env.server14.legacy`로 보존한다. n150 host-network에서 legacy DB에 연결할
    `LEGACY_HOST_DATABASE_URL`도 별도로 준비한다. 현재 legacy PostgreSQL은 loopback
    `127.0.0.1:14000`에만 노출되므로 이 DSN은 `postgresql://` scheme와 그 port를 사용한다.
-   세 값은 Git에 절대 저장하지 않는다.
+   과거 Dagster metadata DB가 있으면 같은 방식의 `LEGACY_DAGSTER_HOST_DATABASE_URL`도 준비한다.
+   runtime/host DSN은 같은 database 이름을 가리켜야 한다. 네 값은 Git에 절대 저장하지 않는다.
 3. n150 maintenance window에서 `CUTOVER_CONFIRM=MOVE_KOR_TRAVEL_TRANSPORT_HISTORY_TO_SHARED_DB`
    와 함께 [`scripts/cutover-shared-db-server14.sh`](../../scripts/cutover-shared-db-server14.sh)를
    실행한다. 이 one-shot은 n150에 PostgreSQL client 패키지를 설치하지 않고, host network의
    일회성 `postgres:16-alpine` client container로 legacy loopback DB와 shared DB를 조회한다.
+   DSN의 비밀번호는 Docker command/env가 아니라 cutover workdir의 mode `0600` passfile로만 전달하고,
+   client command에는 passwordless URI만 넘긴다.
    base dump → legacy writer quiesce → final dump/restore → public table
    row count와 최신 주차 observation watermark 비교를 fail-closed로 수행한다. 복원 전에는 두
    target DSN이 정확한 Manager host/port/DB를 가리키고 모든 비시스템 schema 객체와 Alembic

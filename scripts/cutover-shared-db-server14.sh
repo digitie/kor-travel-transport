@@ -9,6 +9,7 @@ TARGET_DATABASE_URL="${DATABASE_URL:?set the new shared application DB DSN}"
 TARGET_DAGSTER_DATABASE_URL="${DAGSTER_POSTGRES_URL:?set the new shared Dagster metadata DB DSN}"
 LEGACY_HOST_DATABASE_URL="${LEGACY_HOST_DATABASE_URL:?set the legacy DB DSN reachable from the n150 host network}"
 LEGACY_DAGSTER_DATABASE_URL="${LEGACY_DAGSTER_DATABASE_URL:-}"
+LEGACY_DAGSTER_HOST_DATABASE_URL="${LEGACY_DAGSTER_HOST_DATABASE_URL:-}"
 DAGSTER_METADATA_RESET_CONFIRM="${DAGSTER_METADATA_RESET_CONFIRM:-}"
 LEGACY_ENV_FILE="${LEGACY_ENV_FILE:-.env.server14.legacy}"
 LEGACY_PROJECT_NAME="${LEGACY_PROJECT_NAME:-kor-travel-airport}"
@@ -62,6 +63,14 @@ if [[ ! "${LEGACY_HOST_DATABASE_URL}" =~ ^postgresql://[^@]+@127\.0\.0\.1:14000/
   echo "Refusing cutover: legacy host DB DSN must use the approved n150 loopback PostgreSQL port." >&2
   exit 2
 fi
+if [[ -n "${LEGACY_DAGSTER_DATABASE_URL}" && -z "${LEGACY_DAGSTER_HOST_DATABASE_URL}" ]]; then
+  echo "Refusing cutover: legacy Dagster metadata requires LEGACY_DAGSTER_HOST_DATABASE_URL." >&2
+  exit 2
+fi
+if [[ -n "${LEGACY_DAGSTER_HOST_DATABASE_URL}" && ! "${LEGACY_DAGSTER_HOST_DATABASE_URL}" =~ ^postgresql://[^@]+@127\.0\.0\.1:14000/[^/]+$ ]]; then
+  echo "Refusing cutover: legacy Dagster host DB DSN must use the approved n150 loopback PostgreSQL port." >&2
+  exit 2
+fi
 for command in docker; do
   command -v "${command}" >/dev/null || { echo "Missing required command: ${command}" >&2; exit 2; }
 done
@@ -78,9 +87,58 @@ mkdir -p "${CUTOVER_WORK_DIR}"
 chmod 700 "${CUTOVER_WORK_DIR}"
 BASE_DUMP="${CUTOVER_WORK_DIR}/legacy-base.dump"
 FINAL_DUMP="${CUTOVER_WORK_DIR}/legacy-final.dump"
+PGPASS_FILE="${CUTOVER_WORK_DIR}/.pgpass"
+
+database_identity() {
+  local dsn="$1"
+  local database="${dsn##*/}"
+  printf '%s' "${database%%\?*}"
+}
+
+if [[ "$(database_identity "${LEGACY_DATABASE_URL}")" != "$(database_identity "${LEGACY_HOST_DATABASE_URL}")" ]]; then
+  echo "Refusing cutover: legacy runtime and host DSNs must name the same database." >&2
+  exit 2
+fi
+if [[ -n "${LEGACY_DAGSTER_DATABASE_URL}" ]] && [[ "$(database_identity "${LEGACY_DAGSTER_DATABASE_URL}")" != "$(database_identity "${LEGACY_DAGSTER_HOST_DATABASE_URL}")" ]]; then
+  echo "Refusing cutover: legacy Dagster runtime and host DSNs must name the same database." >&2
+  exit 2
+fi
+
+umask 077
+: > "${PGPASS_FILE}"
+chmod 600 "${PGPASS_FILE}"
+cleanup_pgpass() {
+  rm -f "${PGPASS_FILE}"
+}
+trap cleanup_pgpass EXIT
+
+prepare_client_dsn() {
+  local dsn="$1"
+  # The Manager-generated credentials are URL-safe. Requiring the same restricted form
+  # here avoids lossy URL decoding while keeping passwords out of docker inspect/argv.
+  if [[ ! "${dsn}" =~ ^postgresql://([^:@/]+):([A-Za-z0-9_-]+)@([A-Za-z0-9.]+):([0-9]+)/([A-Za-z0-9_-]+)$ ]]; then
+    echo "Refusing cutover: host client DSNs must be passworded, URL-safe PostgreSQL URIs." >&2
+    exit 2
+  fi
+  local username="${BASH_REMATCH[1]}"
+  local password="${BASH_REMATCH[2]}"
+  local host="${BASH_REMATCH[3]}"
+  local port="${BASH_REMATCH[4]}"
+  local database="${BASH_REMATCH[5]}"
+  printf '%s:%s:%s:%s:%s\n' "${host}" "${port}" "${database}" "${username}" "${password}" >> "${PGPASS_FILE}"
+  printf 'postgresql://%s@%s:%s/%s' "${username}" "${host}" "${port}" "${database}"
+}
+
+LEGACY_HOST_DATABASE_PSQL_URL="$(prepare_client_dsn "${LEGACY_HOST_DATABASE_URL}")"
+TARGET_HOST_DATABASE_PSQL_URL="$(prepare_client_dsn "${TARGET_HOST_DATABASE_URL}")"
+TARGET_DAGSTER_HOST_DATABASE_PSQL_URL="$(prepare_client_dsn "${TARGET_DAGSTER_HOST_DATABASE_URL}")"
+if [[ -n "${LEGACY_DAGSTER_HOST_DATABASE_URL}" ]]; then
+  LEGACY_DAGSTER_HOST_DATABASE_PSQL_URL="$(prepare_client_dsn "${LEGACY_DAGSTER_HOST_DATABASE_URL}")"
+fi
 
 restart_legacy_backend_on_failure() {
   status=$?
+  rm -f "${PGPASS_FILE}"
   if [[ "${status}" -ne 0 && "${legacy_backend_quiesced}" == "true" && "${cutover_accepted}" != "true" ]]; then
     echo "Cutover failed after legacy writer quiescence; restoring the legacy backend." >&2
     docker compose --project-name "${LEGACY_PROJECT_NAME}" --env-file "${TARGET_ENV_FILE}" \
@@ -100,7 +158,9 @@ restart_legacy_backend_on_failure() {
 trap restart_legacy_backend_on_failure EXIT
 
 postgres_client() {
-  docker run --rm --network host -v "${CUTOVER_WORK_DIR}:/cutover" "${PG_CLIENT_IMAGE}" "$@"
+  docker run --rm --network host -v "${CUTOVER_WORK_DIR}:/cutover" \
+    -v "${PGPASS_FILE}:/run/secrets/pgpass:ro" -e PGPASSFILE=/run/secrets/pgpass \
+    "${PG_CLIENT_IMAGE}" "$@"
 }
 
 psql_client() {
@@ -155,9 +215,9 @@ database_name() {
   psql_client "$1" -v ON_ERROR_STOP=1 -qAt -c 'SELECT current_database()'
 }
 
-assert_ready legacy "${LEGACY_HOST_DATABASE_URL}"
-assert_ready target "${TARGET_HOST_DATABASE_URL}"
-assert_ready target-dagster "${TARGET_DAGSTER_HOST_DATABASE_URL}"
+assert_ready legacy "${LEGACY_HOST_DATABASE_PSQL_URL}"
+assert_ready target "${TARGET_HOST_DATABASE_PSQL_URL}"
+assert_ready target-dagster "${TARGET_DAGSTER_HOST_DATABASE_PSQL_URL}"
 
 assert_empty_bootstrap_only() {
   local label="$1"
@@ -179,19 +239,19 @@ assert_empty_bootstrap_only() {
   fi
 }
 
-assert_empty_bootstrap_only target "${TARGET_HOST_DATABASE_URL}"
-assert_empty_bootstrap_only target-dagster "${TARGET_DAGSTER_HOST_DATABASE_URL}"
+assert_empty_bootstrap_only target "${TARGET_HOST_DATABASE_PSQL_URL}"
+assert_empty_bootstrap_only target-dagster "${TARGET_DAGSTER_HOST_DATABASE_PSQL_URL}"
 
 echo "Creating recoverable base dump at ${BASE_DUMP}"
-pg_dump_client --format=custom --no-owner --no-privileges --file "/cutover/$(basename "${BASE_DUMP}")" "${LEGACY_HOST_DATABASE_URL}"
-pg_restore_client --clean --if-exists --no-owner --no-privileges --exit-on-error --dbname "${TARGET_HOST_DATABASE_URL}" "/cutover/$(basename "${BASE_DUMP}")"
+pg_dump_client --format=custom --no-owner --no-privileges --file "/cutover/$(basename "${BASE_DUMP}")" "${LEGACY_HOST_DATABASE_PSQL_URL}"
+pg_restore_client --clean --if-exists --no-owner --no-privileges --exit-on-error --dbname "${TARGET_HOST_DATABASE_PSQL_URL}" "/cutover/$(basename "${BASE_DUMP}")"
 
 echo "Quiescing the legacy backend writer; old DB and its volume remain intact for rollback."
 docker compose --project-name "${LEGACY_PROJECT_NAME}" --env-file "${LEGACY_ENV_FILE}" -f docker-compose.yml stop backend
 legacy_backend_quiesced=true
 
 if [[ -n "${LEGACY_DAGSTER_DATABASE_URL}" ]]; then
-  assert_ready legacy-dagster "${LEGACY_DAGSTER_DATABASE_URL}"
+  assert_ready legacy-dagster "${LEGACY_DAGSTER_HOST_DATABASE_PSQL_URL}"
   for service in dagster-code-server dagster-webserver dagster-daemon dagster-gateway; do
     if docker compose --project-name "${LEGACY_PROJECT_NAME}" --env-file "${LEGACY_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml ps -q "${service}" | grep -q .; then
       legacy_dagster_services+=("${service}")
@@ -204,13 +264,13 @@ if [[ -n "${LEGACY_DAGSTER_DATABASE_URL}" ]]; then
 fi
 
 echo "Creating final quiesced snapshot and replacing target contents."
-pg_dump_client --format=custom --no-owner --no-privileges --file "/cutover/$(basename "${FINAL_DUMP}")" "${LEGACY_HOST_DATABASE_URL}"
-pg_restore_client --clean --if-exists --no-owner --no-privileges --exit-on-error --dbname "${TARGET_HOST_DATABASE_URL}" "/cutover/$(basename "${FINAL_DUMP}")"
+pg_dump_client --format=custom --no-owner --no-privileges --file "/cutover/$(basename "${FINAL_DUMP}")" "${LEGACY_HOST_DATABASE_PSQL_URL}"
+pg_restore_client --clean --if-exists --no-owner --no-privileges --exit-on-error --dbname "${TARGET_HOST_DATABASE_PSQL_URL}" "/cutover/$(basename "${FINAL_DUMP}")"
 
 if [[ -n "${LEGACY_DAGSTER_DATABASE_URL}" ]]; then
   LEGACY_DAGSTER_DUMP="${CUTOVER_WORK_DIR}/legacy-dagster-metadata-final.dump"
-  pg_dump_client --format=custom --no-owner --no-privileges --file "/cutover/$(basename "${LEGACY_DAGSTER_DUMP}")" "${LEGACY_DAGSTER_DATABASE_URL}"
-  pg_restore_client --no-owner --no-privileges --exit-on-error --dbname "${TARGET_DAGSTER_HOST_DATABASE_URL}" "/cutover/$(basename "${LEGACY_DAGSTER_DUMP}")"
+  pg_dump_client --format=custom --no-owner --no-privileges --file "/cutover/$(basename "${LEGACY_DAGSTER_DUMP}")" "${LEGACY_DAGSTER_HOST_DATABASE_PSQL_URL}"
+  pg_restore_client --no-owner --no-privileges --exit-on-error --dbname "${TARGET_DAGSTER_HOST_DATABASE_PSQL_URL}" "/cutover/$(basename "${LEGACY_DAGSTER_DUMP}")"
   legacy_dagster_metadata=migrated-after-writer-quiescence
 else
   if [[ "${DAGSTER_METADATA_RESET_CONFIRM}" != "${METADATA_RESET_CONFIRMATION}" ]]; then
@@ -222,11 +282,11 @@ fi
 
 legacy_counts="${CUTOVER_WORK_DIR}/legacy-counts.txt"
 target_counts="${CUTOVER_WORK_DIR}/target-counts.txt"
-table_counts "${LEGACY_HOST_DATABASE_URL}" > "${legacy_counts}"
-table_counts "${TARGET_HOST_DATABASE_URL}" > "${target_counts}"
+table_counts "${LEGACY_HOST_DATABASE_PSQL_URL}" > "${legacy_counts}"
+table_counts "${TARGET_HOST_DATABASE_PSQL_URL}" > "${target_counts}"
 diff -u "${legacy_counts}" "${target_counts}"
-legacy_watermark="$(snapshot_watermark "${LEGACY_HOST_DATABASE_URL}")"
-target_watermark="$(snapshot_watermark "${TARGET_HOST_DATABASE_URL}")"
+legacy_watermark="$(snapshot_watermark "${LEGACY_HOST_DATABASE_PSQL_URL}")"
+target_watermark="$(snapshot_watermark "${TARGET_HOST_DATABASE_PSQL_URL}")"
 [[ "${legacy_watermark}" == "${target_watermark}" ]] || {
   echo "Refusing cutover: latest parking snapshot watermark differs." >&2
   exit 1
@@ -235,9 +295,9 @@ target_watermark="$(snapshot_watermark "${TARGET_HOST_DATABASE_URL}")"
 {
   printf 'format=kor-travel-transport-shared-db-cutover-v1\n'
   printf 'verified=true\n'
-  printf 'legacy_database=%s\n' "$(database_name "${LEGACY_HOST_DATABASE_URL}")"
-  printf 'target_database=%s\n' "$(database_name "${TARGET_HOST_DATABASE_URL}")"
-  printf 'target_dagster_database=%s\n' "$(database_name "${TARGET_DAGSTER_HOST_DATABASE_URL}")"
+  printf 'legacy_database=%s\n' "$(database_name "${LEGACY_HOST_DATABASE_PSQL_URL}")"
+  printf 'target_database=%s\n' "$(database_name "${TARGET_HOST_DATABASE_PSQL_URL}")"
+  printf 'target_dagster_database=%s\n' "$(database_name "${TARGET_DAGSTER_HOST_DATABASE_PSQL_URL}")"
   printf 'legacy_dagster_metadata=%s\n' "${legacy_dagster_metadata}"
   printf 'legacy_watermark=%s\n' "${legacy_watermark}"
   printf 'target_watermark=%s\n' "${target_watermark}"

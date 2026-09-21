@@ -14,11 +14,14 @@ def test_cutover_requires_a_separate_empty_dagster_database() -> None:
     assert "host\\.docker\\.internal:11000/kor_travel_transport$" in script
     assert "host\\.docker\\.internal:11000/kor_travel_transport_dagster$" in script
     assert 'LEGACY_HOST_DATABASE_URL="${LEGACY_HOST_DATABASE_URL:?' in script
+    assert 'LEGACY_DAGSTER_HOST_DATABASE_URL="${LEGACY_DAGSTER_HOST_DATABASE_URL:-}"' in script
+    assert 'legacy runtime and host DSNs must name the same database' in script
+    assert 'legacy Dagster runtime and host DSNs must name the same database' in script
     assert 'TARGET_HOST_DATABASE_URL="${TARGET_DATABASE_URL/postgresql+asyncpg:/postgresql:}"' in script
     assert 'TARGET_HOST_DATABASE_URL="${TARGET_HOST_DATABASE_URL/host.docker.internal:11000/127.0.0.1:11000}"' in script
-    assert 'assert_ready target-dagster "${TARGET_DAGSTER_HOST_DATABASE_URL}"' in script
-    assert 'assert_empty_bootstrap_only target "${TARGET_HOST_DATABASE_URL}"' in script
-    assert 'assert_empty_bootstrap_only target-dagster "${TARGET_DAGSTER_HOST_DATABASE_URL}"' in script
+    assert 'assert_ready target-dagster "${TARGET_DAGSTER_HOST_DATABASE_PSQL_URL}"' in script
+    assert 'assert_empty_bootstrap_only target "${TARGET_HOST_DATABASE_PSQL_URL}"' in script
+    assert 'assert_empty_bootstrap_only target-dagster "${TARGET_DAGSTER_HOST_DATABASE_PSQL_URL}"' in script
     assert "target_dagster_database=%s" in script
     assert "LEGACY_DAGSTER_DATABASE_URL" in script
     assert "DAGSTER_METADATA_RESET_CONFIRM" in script
@@ -30,6 +33,9 @@ def test_cutover_uses_disposable_postgres_clients_on_the_server_host_network() -
 
     assert 'PG_CLIENT_IMAGE="${PG_CLIENT_IMAGE:-postgres:16-alpine}"' in script
     assert 'docker run --rm --network host -v "${CUTOVER_WORK_DIR}:/cutover"' in script
+    assert '-v "${PGPASS_FILE}:/run/secrets/pgpass:ro"' in script
+    assert '-e PGPASSFILE=/run/secrets/pgpass' in script
+    assert 'prepare_client_dsn' in script
     assert 'pg_dump_client' in script
     assert 'pg_restore_client' in script
 
