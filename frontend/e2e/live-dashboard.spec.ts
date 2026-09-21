@@ -220,7 +220,10 @@ test.describe("live parking-radar dashboard", () => {
         expect(source, name).toBeTruthy();
         const succeededAt = Date.parse(source.last_success_at);
         expect(Number.isFinite(succeededAt), name).toBe(true);
-        const maxAge = name === "opinet_browser" ? 13 * 3_600_000 : 900_000;
+        // OPINET은 기본 8시간 throttle을 쓰며, 재시작 중 취소된 실행도 다음 8시간
+        // 예약을 보존한다. 정상 저장본은 한 예약을 건너뛴 최대 16시간과 작은 여유를
+        // 허용하되, provider quota를 우회해 재호출하지 않는다.
+        const maxAge = name === "opinet_browser" ? 17 * 3_600_000 : 900_000;
         expect(Date.now() - succeededAt, name).toBeGreaterThanOrEqual(-60_000);
         expect(Date.now() - succeededAt, name).toBeLessThanOrEqual(maxAge);
         // 배포·작업자 재시작 중 취소된 시도는 provider quota 보호를 위해 다음 실행을
@@ -258,7 +261,7 @@ test.describe("live parking-radar dashboard", () => {
           expect(payload.items[0].prices.length).toBeGreaterThan(0);
           expect(payload.items[0].prices.some((price: { price: number | null; collected_at: string }) =>
             price.price !== null && price.price > 0 &&
-            Date.parse(price.collected_at) >= Date.now() - 13 * 3_600_000 &&
+            Date.parse(price.collected_at) >= Date.now() - 17 * 3_600_000 &&
             Date.parse(price.collected_at) <= Date.now() + 60_000,
           )).toBe(true);
         } else if (path.includes("/statistics")) {

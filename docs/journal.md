@@ -2,6 +2,9 @@
 
 ## 2026-09-21
 
+- OPINET live E2E freshness 상한을 13시간에서 17시간으로 조정했다. 기본 8시간 throttle 뒤
+  배포 중 취소된 실행이 다음 8시간 예약을 정당하게 보존하는 경우를 반영한 것이며, 16시간
+  최대 정상 공백에만 관측 여유를 더한다. provider 호출 quota는 그대로다.
 - 적대적 리뷰 James/Popper의 cutover P0를 보완했다. reviewed artifact를 먼저 n150에
   `DEPLOY_STAGE_ONLY=true`로 staging하고 SHA manifest와 함께 보존한 뒤, cutover는 n150의
   staged `deploy-server14-remote.sh`를 직접 호출한다. 따라서 n150에 `.git`이 없어도
