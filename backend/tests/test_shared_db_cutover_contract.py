@@ -88,7 +88,11 @@ def test_cutover_uses_staged_n150_deployment_and_does_not_hide_rollback_failures
     assert "deploy-server14-remote.sh" in script
     assert 'CANDIDATE_SHA="${TARGET_CANDIDATE_SHA}" "${TARGET_DEPLOY_SCRIPT}"' in script
     assert "automatic legacy writer rollback did not complete" in script
-    assert "up -d backend || true" not in script
+    assert 'source "${TARGET_ENV_FILE}"' in script
+    assert 'docker rename "${LEGACY_BACKEND_CONTAINER}" "${LEGACY_BACKEND_ROLLBACK_CONTAINER}"' in script
+    assert 'docker start "${LEGACY_BACKEND_ROLLBACK_CONTAINER}"' in script
+    assert "preserved legacy backend did not become healthy after rollback" in script
+    assert "up -d backend" not in script
 
 
 def test_dagster_gateway_is_loopback_only_and_has_no_dead_port_setting() -> None:

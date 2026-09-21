@@ -4,6 +4,16 @@ set -euo pipefail
 # 공용 PostgreSQL 전환은 이력 보존을 우선한다. 이 스크립트는 n150에서만, 운영자가
 # 명시적으로 확인한 maintenance window 안에서 실행한다. 기본 실행은 절대 허용하지 않는다.
 REMOTE_HOST="${REMOTE_HOST:-192.168.1.14}"
+TARGET_ENV_FILE="${TARGET_ENV_FILE:-.env.server14}"
+if [[ ! -f "${TARGET_ENV_FILE}" || -L "${TARGET_ENV_FILE}" ]]; then
+  echo "Missing regular target environment file: ${TARGET_ENV_FILE}" >&2
+  exit 2
+fi
+# n150 one-shot은 staged artifact의 target DSN을 직접 load한다. 이 검증은 writer를
+# 멈추기 전에 실행되므로, runbook 명령만으로도 잘못된 환경을 fail-close한다.
+set -a
+source "${TARGET_ENV_FILE}"
+set +a
 LEGACY_DATABASE_URL="${LEGACY_DATABASE_URL:?set the current legacy application DB DSN}"
 TARGET_DATABASE_URL="${DATABASE_URL:?set the new shared application DB DSN}"
 TARGET_DAGSTER_DATABASE_URL="${DAGSTER_POSTGRES_URL:?set the new shared Dagster metadata DB DSN}"
@@ -15,13 +25,13 @@ LEGACY_ENV_FILE="${LEGACY_ENV_FILE:-.env.server14.legacy}"
 LEGACY_PROJECT_NAME="${LEGACY_PROJECT_NAME:-kor-travel-airport}"
 CUTOVER_WORK_DIR="${CUTOVER_WORK_DIR:-/var/tmp/kor-travel-transport-cutover}"
 CUTOVER_RECEIPT_PATH="${CUTOVER_RECEIPT_PATH:-${CUTOVER_WORK_DIR}/shared-db-cutover.receipt}"
-TARGET_ENV_FILE="${TARGET_ENV_FILE:-.env.server14}"
 TARGET_APP_DIR="${TARGET_APP_DIR:-/home/digitie/apps/kor-travel-airport}"
 TARGET_DEPLOY_SCRIPT="${TARGET_DEPLOY_SCRIPT:-${TARGET_APP_DIR}/scripts/deploy-server14-remote.sh}"
 TARGET_RELEASE_MANIFEST="${TARGET_RELEASE_MANIFEST:-${TARGET_APP_DIR}/.release-sha}"
 CONFIRMATION="MOVE_KOR_TRAVEL_TRANSPORT_HISTORY_TO_SHARED_DB"
 METADATA_RESET_CONFIRMATION="START_FRESH_DAGSTER_METADATA_WITH_NO_LEGACY_STORE"
 legacy_backend_quiesced=false
+legacy_backend_renamed=false
 legacy_dagster_quiesced=false
 cutover_accepted=false
 legacy_dagster_services=()
@@ -30,6 +40,8 @@ legacy_dagster_services=()
 # clients are deliberately run in a disposable host-network container: n150 does
 # not install psql/pg_dump locally, and this keeps the operating-system package set untouched.
 PG_CLIENT_IMAGE="${PG_CLIENT_IMAGE:-postgres:16-alpine}"
+LEGACY_BACKEND_CONTAINER="${LEGACY_BACKEND_CONTAINER:-kor-travel-airport-backend-1}"
+LEGACY_BACKEND_ROLLBACK_CONTAINER="${LEGACY_BACKEND_ROLLBACK_CONTAINER:-kor-travel-airport-legacy-backend-cutover}"
 TARGET_HOST_DATABASE_URL="${TARGET_DATABASE_URL/postgresql+asyncpg:/postgresql:}"
 TARGET_DAGSTER_HOST_DATABASE_URL="${TARGET_DAGSTER_DATABASE_URL}"
 
@@ -80,10 +92,6 @@ if [[ ! -f "${LEGACY_ENV_FILE}" ]]; then
   echo "Missing preserved legacy environment file: ${LEGACY_ENV_FILE}" >&2
   exit 2
 fi
-if [[ ! -f "${TARGET_ENV_FILE}" ]]; then
-  echo "Missing target environment file: ${TARGET_ENV_FILE}" >&2
-  exit 2
-fi
 if [[ "${TARGET_APP_DIR}" != "/home/digitie/apps/kor-travel-airport" ]] \
   || [[ "${TARGET_DEPLOY_SCRIPT}" != "/home/digitie/apps/kor-travel-airport/scripts/deploy-server14-remote.sh" ]] \
   || [[ "${TARGET_RELEASE_MANIFEST}" != "/home/digitie/apps/kor-travel-airport/.release-sha" ]]; then
@@ -97,6 +105,14 @@ fi
 TARGET_CANDIDATE_SHA="$(tr -d '\r\n' < "${TARGET_RELEASE_MANIFEST}")"
 if [[ ! "${TARGET_CANDIDATE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
   echo "Refusing cutover: staged candidate manifest must contain a full Git SHA." >&2
+  exit 2
+fi
+if ! docker inspect "${LEGACY_BACKEND_CONTAINER}" >/dev/null 2>&1; then
+  echo "Refusing cutover: the live legacy backend container is not present." >&2
+  exit 2
+fi
+if docker inspect "${LEGACY_BACKEND_ROLLBACK_CONTAINER}" >/dev/null 2>&1; then
+  echo "Refusing cutover: a preserved legacy backend container already exists." >&2
   exit 2
 fi
 
@@ -172,14 +188,29 @@ fi
 restart_legacy_backend_on_failure() {
   status=$?
   rm -f "${PGPASS_FILE}"
-  if [[ "${status}" -ne 0 && "${legacy_backend_quiesced}" == "true" && "${cutover_accepted}" != "true" ]]; then
+  if [[ "${status}" -ne 0 && "${legacy_backend_renamed}" == "true" && "${cutover_accepted}" != "true" ]]; then
     echo "Cutover failed after legacy writer quiescence; restoring the legacy backend." >&2
     rollback_failed=false
     docker compose --project-name "${LEGACY_PROJECT_NAME}" --env-file "${TARGET_ENV_FILE}" \
       -f docker-compose.yml -f docker-compose.shared.yml \
       stop backend dagster-code-server dagster-webserver dagster-daemon dagster-gateway 2>/dev/null || rollback_failed=true
-    docker compose --project-name "${LEGACY_PROJECT_NAME}" --env-file "${LEGACY_ENV_FILE}" \
-      -f docker-compose.yml up -d backend || rollback_failed=true
+    if ! docker start "${LEGACY_BACKEND_ROLLBACK_CONTAINER}" >/dev/null 2>&1 \
+      && [[ "$(docker inspect -f '{{.State.Running}}' "${LEGACY_BACKEND_ROLLBACK_CONTAINER}" 2>/dev/null || true)" != "true" ]]; then
+      rollback_failed=true
+    fi
+    if [[ "${rollback_failed}" == "false" ]]; then
+      legacy_health=""
+      for attempt in $(seq 1 30); do
+        if legacy_health="$(curl -fsS http://127.0.0.1:14001/health 2>/dev/null)"; then
+          break
+        fi
+        sleep 2
+      done
+      if [[ -z "${legacy_health}" ]]; then
+        echo "CRITICAL: preserved legacy backend did not become healthy after rollback." >&2
+        rollback_failed=true
+      fi
+    fi
     # multi-service stop이 중간에 실패해도 앞쪽 service는 이미 멈췄을 수 있다.
     # 성공 플래그가 아니라 사전에 확인한 service 목록을 rollback 근거로 쓴다.
     if [[ "${#legacy_dagster_services[@]}" -gt 0 ]]; then
@@ -285,7 +316,9 @@ pg_dump_client --format=custom --no-owner --no-privileges --file "/cutover/$(bas
 pg_restore_client --clean --if-exists --no-owner --no-privileges --exit-on-error --dbname "${TARGET_HOST_DATABASE_PSQL_URL}" "/cutover/$(basename "${BASE_DUMP}")"
 
 echo "Quiescing the legacy backend writer; old DB and its volume remain intact for rollback."
-docker compose --project-name "${LEGACY_PROJECT_NAME}" --env-file "${LEGACY_ENV_FILE}" -f docker-compose.yml stop backend
+docker rename "${LEGACY_BACKEND_CONTAINER}" "${LEGACY_BACKEND_ROLLBACK_CONTAINER}"
+legacy_backend_renamed=true
+docker stop "${LEGACY_BACKEND_ROLLBACK_CONTAINER}"
 legacy_backend_quiesced=true
 
 if [[ -n "${LEGACY_DAGSTER_DATABASE_URL}" ]]; then

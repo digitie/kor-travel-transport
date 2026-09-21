@@ -15,6 +15,10 @@
   `commit()`과 분리된 전용 connection이 lock을 소유하고 같은 connection에서 unlock하도록
   바꿔 pool 재사용으로 unlock 대상이 달라지는 경로를 제거했다. 전용 connection 회귀 테스트도
   추가했다.
+- James 재리뷰의 추가 P1을 반영했다. cutover는 `.env.server14`을 writer quiescence 전에
+  명시 load해 runbook 명령 그대로 shared DB DSN 검증을 수행한다. 또한 기존 backend container를
+  target 기동 직전에 별도 이름으로 보존하고, 실패 시 후보 compose/image를 재사용하지 않고
+  그 원본 container를 재시작한 뒤 `127.0.0.1:14001/health`를 확인한다.
 - Compose의 명시적 `--env-file`이 셸에서 export한 `RELEASE_SHA`를 덮어 배포 health가
   `unknown`으로 표시되는 문제를 수정했다. 배포마다 기존 운영 env를 값 변경 없이 복사한
   임시 runtime env에 후보 SHA만 주입하고, 배포 종료 시 즉시 삭제한다.
