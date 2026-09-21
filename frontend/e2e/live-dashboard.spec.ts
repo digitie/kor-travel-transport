@@ -248,7 +248,10 @@ test.describe("live parking-radar dashboard", () => {
         if (path.includes("/highways/traffic")) {
           expect(payload.items.length).toBeGreaterThan(0);
           expect(payload.items[0].source).toBe("krex_traffic_flow");
-          expect(isFreshHighwayObservation(payload.items[0]), "소통 관측·저장 시각의 최신성").toBe(true);
+          expect(
+            payload.items.some((item: Record<string, unknown>) => isFreshHighwayObservation(item)),
+            "소통 관측·저장 시각의 최신성",
+          ).toBe(true);
         } else if (path.includes("/fuel/stations")) {
           expect(payload.items.length).toBeGreaterThan(0);
           expect(payload.items[0].source).toBe("opinet_browser");

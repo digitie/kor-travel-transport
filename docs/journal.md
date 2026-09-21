@@ -9,6 +9,8 @@
   `transport_dagster_*`)을 정본으로 삼고, Playwright 수집이 취소된 뒤 quota 보호를
   위해 남긴 다음 실행 예약은 마지막 저장 성공의 최신성이 보장되는 한 실패로 보지 않도록
   계약을 조정했다.
+- 고속도로 목록 API는 최신순 정렬을 약속하지 않으므로 live E2E는 첫 행이 아니라 응답 내
+  하나 이상의 관측·저장 시각이 최신인지를 검증한다.
 - 공용 DB 연결은 임시 bridge relay를 쓰지 않고 Manager의 Weather 정본과 같은
   host-network 구조로 바로잡았다. runtime은 `127.0.0.1:11000` PostgreSQL과
   `127.0.0.1:12101` RustFS를 직접 사용하며, FastAPI/Web은 각각 `14001`/`14002`를
