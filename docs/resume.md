@@ -2,6 +2,12 @@
 
 ## 현재 상태
 
+- 현재 후보는 `bdf8e3f`이다. Manager bootstrap PR #381이 병합·n150 재설치됐고,
+  transport application/Dagster 전용 shared DB와 RustFS raw bucket이 준비됐다. n150 host에는
+  `host.docker.internal`과 PostgreSQL CLI가 없다는 실측에 맞춰, cutover는 runtime DSN을
+  바꾸지 않으면서 host-network의 일회성 PostgreSQL client를 사용하도록 보완했다.
+  legacy DB는 `127.0.0.1:14000`용 `LEGACY_HOST_DATABASE_URL`을 명시해야 한다. 다음 한 작업은
+  이 후보를 PR에 push하고 재리뷰·CI를 거친 뒤, n150 maintenance cutover와 live E2E를 실행하는 것이다.
 - 현재 브랜치는 `codex/shared-db-dagster`다. 운영 scheduler 분리, 3일 주기 철도·여객항구
   기준정보 Dagster job, RustFS 원본 참조, shared PostgreSQL compose overlay를 구현했다.
   `python-kric-api#3`은 CI와 두 적대적 리뷰를 통과해 `6ed5ace`로 병합됐고, pagination 보강 PR #4의

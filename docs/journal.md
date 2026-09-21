@@ -2,6 +2,18 @@
 
 ## 2026-09-21
 
+- n150 실서버 사전점검으로 shared DB는 loopback `127.0.0.1:11000`, legacy PostgreSQL은
+  `127.0.0.1:14000`에서만 접근 가능하고 host에는 PostgreSQL CLI가 없음을 확인했다.
+  cutover는 runtime의 `host.docker.internal` DSN 계약을 유지하되, host-network의 일회성
+  `postgres:16-alpine` client로 dump/restore·검증을 수행하도록 보완했다. legacy DB에는
+  명시적인 `LEGACY_HOST_DATABASE_URL`을 요구한다. focused contract 5개와 shell syntax는
+  통과했다. Windows Python 환경은 신규 Dagster/KRIC 의존성을 아직 설치하지 않아 전체
+  backend collection에는 사용할 수 없으며 Docker 재빌드를 진행 중이다.
+- `kor-travel-docker-manager#381`을 머지하고 n150에 신뢰된 offline wheelhouse 릴리스로
+  재설치했다. transport application/Dagster 전용 DB·role bootstrap과
+  `kor-travel-transport-raw` RustFS bucket 초기화가 성공했다. Compose의 기존 비밀값
+  interpolation 경고는 별도 후속 문제로 남기되, 새 transport 비밀번호 두 개에는 `$`가
+  없음을 값 비노출 검사로 확인했다.
 - 운영 수집을 `dagster dev`에서 분리했다. shared overlay는 migration one-shot,
   code-server, webserver, daemon, gateway를 각각 독립 컨테이너로 두고 FastAPI의
   in-process scheduler는 `SCHEDULER_MODE=dagster`일 때 시작하지 않는다.
