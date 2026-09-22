@@ -20,6 +20,8 @@ HttpOnly 서명 세션을 통과한 뒤에만 Next.js server route가 다음의 
 `/v1/transport/statistics`는 PostgreSQL에 저장된 스냅샷만 집계하고, 같은
 `route_no`·기간 조합은 기본 60초 동안 backend 메모리에 재사용한다. 이는 반복 대시보드
 조회가 집계를 중복 실행하지 않게 하는 성능 경계이며, 수집 원본을 다시 호출하지 않는다.
+서로 다른 cache miss도 기본 두 개까지만 동시에 집계해 public 요청이 공용 PostgreSQL을
+점유하지 못하게 한다.
 
 수집 실행, 백업, DB 변경, provider 키는 관리 UI의 허용 목록에 없다. 이 경계는
 `lib/transport.ts` 단위 테스트와 `backend/tests/test_transport_admin_contract.py`가

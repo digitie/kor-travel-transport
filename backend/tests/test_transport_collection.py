@@ -886,6 +886,7 @@ def test_transport_statistics_cache_coalesces_and_evicts_lru_entries() -> None:
         settings=SimpleNamespace(transport_statistics_cache_seconds=60),
         transport_statistics_cache=OrderedDict(),
         transport_statistics_locks={},
+        transport_statistics_miss_semaphore=asyncio.Semaphore(2),
     )
     request = SimpleNamespace(app=SimpleNamespace(state=state))
 
@@ -913,6 +914,34 @@ def test_transport_statistics_cache_coalesces_and_evicts_lru_entries() -> None:
     assert ("route-0", 7) not in state.transport_statistics_cache
     assert ("route-128", 7) in state.transport_statistics_cache
 
+
+def test_transport_statistics_cache_limits_distinct_cache_misses() -> None:
+    active = maximum_active = 0
+    state = SimpleNamespace(
+        settings=SimpleNamespace(transport_statistics_cache_seconds=60),
+        transport_statistics_cache=OrderedDict(),
+        transport_statistics_locks={},
+        transport_statistics_miss_semaphore=asyncio.Semaphore(2),
+    )
+    request = SimpleNamespace(app=SimpleNamespace(state=state))
+
+    async def handler(*, request, route_no, days, session):
+        nonlocal active, maximum_active
+        active += 1
+        maximum_active = max(maximum_active, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return {"route_no": route_no, "days": days}
+
+    cached_handler = cached_transport_statistics(handler)
+    async def exercise() -> None:
+        await asyncio.gather(
+            *(cached_handler(request=request, route_no=f"route-{index}", days=90, session=None) for index in range(4))
+        )
+
+    asyncio.run(exercise())
+
+    assert maximum_active == 2
 
 def test_transport_status_exposes_a_durable_failed_run(client) -> None:
     service = client.app.state.transport_collection_service

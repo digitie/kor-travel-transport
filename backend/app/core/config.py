@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     # 대시보드/공개 API 조회가 넓은 집계를 다시 실행하지 않게 하되, 새 수집 결과도
     # 빠르게 반영한다.
     transport_statistics_cache_seconds: int = Field(default=60, ge=0, le=3600)
+    transport_statistics_max_concurrent_misses: int = Field(default=2, ge=1, le=8)
     rustfs_endpoint_url: str | None = None
     rustfs_bucket: str = "kor-travel-transport-raw"
     rustfs_access_key_id: str | None = None

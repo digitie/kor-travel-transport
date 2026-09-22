@@ -184,7 +184,8 @@ def cached_transport_statistics(handler):
             async with lock:
                 if cached_response := get_cached():
                     return cached_response
-                response = await handler(request=request, route_no=route_no, days=days, session=session)
+                async with request.app.state.transport_statistics_miss_semaphore:
+                    response = await handler(request=request, route_no=route_no, days=days, session=session)
                 statistics_cache[cache_key] = (now_utc(), response)
                 statistics_cache.move_to_end(cache_key)
                 while len(statistics_cache) > MAX_TRANSPORT_STATISTICS_CACHE_ENTRIES:
@@ -218,6 +219,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             tuple[str | None, int], tuple[datetime, TransportStatisticsResponse]
         ] = OrderedDict()
         app.state.transport_statistics_locks: dict[tuple[str | None, int], asyncio.Lock] = {}
+        app.state.transport_statistics_miss_semaphore = asyncio.Semaphore(
+            resolved_settings.transport_statistics_max_concurrent_misses
+        )
         app.state.scheduler_task = None
         app.state.transport_scheduler_task = None
         app.state.fuel_scheduler_task = None

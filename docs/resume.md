@@ -5,7 +5,8 @@
 - 2026-09-22 `codex/transport-map-view`의 Draft PR #36은 최신 원격 후보를 기준으로
   n150 live E2E에서 발견한 공개 gateway 재생성·통계 cache 후속 보완 중이다. James/Popper
   적대 리뷰의 P1에 따라 cache miss를 키별 single-flight와 LRU 128개 상한으로 보완했고,
-  정적 OpenAPI도 재생성했다.
+  정적 OpenAPI도 재생성했다. 서로 다른 cache key의 90일 집계 병렬 폭주는 전역 semaphore
+  두 개로 제한했다.
   KRIC 철도 기준정보는 Dagster의 매일 03:00 KST due 평가와 마지막 성공 기준 48시간
   gate로 제한했고, 항구 시간표는 KST 날짜 범위·요청 병합·제공기관 429 음성 캐시를
   적용한 실시간 전용 조회로 유지한다. Docker 회귀 fixture는 운영 `DATABASE_URL`을

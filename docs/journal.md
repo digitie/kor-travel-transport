@@ -15,6 +15,10 @@
   계산되는지와 129개 키에서 LRU 상한이 지켜지는지 테스트한다. James가 지적한 정적
   OpenAPI 누락도 `scripts/export_openapi.py`로 재생성했고, 새 공개 장소·항구 시간표 경로의
   POST 차단은 live E2E 행렬에 추가했다.
+- Popper 재리뷰의 P1은 임의의 서로 다른 `route_no`가 키별 single-flight를 우회해 90일
+  유가 집계를 동시에 실행할 수 있다는 점이었다. cache miss 전역 semaphore를 기본 두 개로
+  제한하고, 서로 다른 네 키의 병렬 miss에서 handler 동시 실행이 두 개를 넘지 않는 회귀
+  테스트를 추가했다.
 - James의 P2인 `source + port_id` 항구 식별 경계는 현재 단일 `datagokr_maritime` 기준정보
   source만 수집하는 계약에서는 충돌하지 않는다. 다중 source 항만 ingest를 도입할 때
   `source`를 URL 또는 query 계약에 포함하는 별도 호환성 변경으로 처리한다. 지도 E2E의
