@@ -2,6 +2,14 @@
 
 ## 2026-09-22
 
+- `67d17a3`을 n150에 배포해 세 transport 컨테이너의 healthy와 release SHA를 확인했다.
+  공개 HTTPS live E2E 273건은 267건이 통과했고, 외부 VWorld 타일 접근 실패를 명시하는
+  fallback 경고 1건과 공개 통계 6일 조회의 일시적 504 1건으로만 실패했다. gateway 로그는
+  해당 통계 요청을 최종 200으로 완료했지만 외부 프록시의 15초 응답 한도를 넘긴 것을 보였다.
+  E2E의 JSON 조회는 502/503/504에만 1초·2초 재시도하고, 지도 검증은 외부 VWorld가 접근
+  불가한 실행 지역에서도 canvas·저장 장소·명시적 fallback 경고 계약을 검증하도록 바꿨다.
+  실제 서비스의 인증·네트워크 오류는 계속 사용자에게 보인다. type-check와 frontend unit
+  19건을 다시 통과했으며, CI 뒤 동일 배포 SHA에 live E2E를 재실행한다.
 - n150 HTTPS live E2E 273건 중 지도 1건이 실패한 원인을 재현했다. VWorld가 한국 제공
   영역 밖 타일에 HTTP 200과 XML `FileNotFound`를 반환하고, 기존 web provider가 이를
   raster decode 오류로 전달해 전체 지도 오류 배너를 표시한 것이었다. 한국 영역의 동일

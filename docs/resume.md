@@ -33,6 +33,11 @@
   실제 `200 image/png`가 로드돼도 MapLibre가 source-level error event를 내는 경우는
   provider의 fetch 실패 event와 구분해, HTTP status가 확인된 native 오류만 UI banner로
   올리도록 보완했다.
+  `67d17a3` n150 배포본의 live E2E는 외부 VWorld tile 접근 실패 경고와 통계 6일 cold
+  request의 단발 504로 267/273만 통과했다. 전자는 외부 공급자 접근 불가에도 fallback과
+  명시 경고를 허용하는 지도 E2E 계약으로, 후자는 502/503/504의 제한 재시도로 보완했다.
+  type-check와 frontend unit 19건은 재통과했고, 다음 순서는 수정 CI·n150 동일 SHA
+  live E2E 재실행·PR 머지다.
   frontend clean install, type-check, 19개 unit test, Next production build가 통과했으며,
   다음 순서는 이 후보 CI·James/Popper 재리뷰·n150 273건 live E2E·PR 머지다.
 

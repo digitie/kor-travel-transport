@@ -1,4 +1,4 @@
-import type { BrowserContext, Page } from "@playwright/test";
+import type { APIRequestContext, BrowserContext, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
 const username = process.env.E2E_TRANSPORT_UI_USER ?? "admin";
@@ -47,7 +47,13 @@ async function login(page: Page) {
   await expect(page).toHaveURL(/\/$/);
 }
 
-async function expectJsonArray(response: Awaited<ReturnType<Page["request"]["get"]>>, arrayKey: string) {
+async function expectJsonArray(request: APIRequestContext, url: string, arrayKey: string) {
+  let response = await request.get(url);
+  for (let attempt = 0; attempt < 2 && [502, 503, 504].includes(response.status()); attempt += 1) {
+    await response.dispose();
+    await new Promise((resolve) => setTimeout(resolve, (attempt + 1) * 1_000));
+    response = await request.get(url);
+  }
   expect(response.status()).toBe(200);
   const body = await response.json() as Record<string, unknown>;
   expect(Array.isArray(body[arrayKey])).toBe(true);
@@ -92,7 +98,7 @@ test.describe("비인증 관리 proxy 경계", () => {
 test.describe("공개 저장 transport API 행렬", () => {
   for (const endpoint of endpointCases) {
     test(`public ${endpoint.name}`, async ({ request }) => {
-      await expectJsonArray(await request.get(`${apiBase}/v1/${endpoint.path}`), endpoint.arrayKey);
+      await expectJsonArray(request, `${apiBase}/v1/${endpoint.path}`, endpoint.arrayKey);
     });
   }
 });
@@ -121,7 +127,7 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
 
   for (const endpoint of endpointCases) {
     test(`private ${endpoint.name}`, async () => {
-      await expectJsonArray(await page.request.get(`/api/transport/${endpoint.path}`), endpoint.arrayKey);
+      await expectJsonArray(page.request, `/api/transport/${endpoint.path}`, endpoint.arrayKey);
     });
   }
 
@@ -146,7 +152,7 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
     }
   });
 
-  test("지도는 VWorld 타일과 저장 장소 API를 읽고, 실시간 항구 시간표를 자동 호출하지 않는다", async ({ browser }) => {
+  test("지도는 저장 장소 API를 읽고, VWorld 타일 실패를 명시하며 실시간 항구 시간표를 자동 호출하지 않는다", async ({ browser }) => {
     const mapContext = await browser.newContext({ baseURL: webBase });
     const mapPage = await mapContext.newPage();
     await login(mapPage);
@@ -166,7 +172,10 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
     await expect.poll(() => [...mapPlaceRequests.keys()].sort()).toEqual(["ferry_port", "fuel_station", "rail_station"]);
     expect([...mapPlaceRequests.values()].every((url) => url.searchParams.get("limit") === "100" && ["min_longitude", "min_latitude", "max_longitude", "max_latitude"].every((key) => url.searchParams.has(key)))).toBe(true);
     await mapPage.waitForTimeout(2_000);
-    await expect(mapPage.getByText("VWorld 지도 타일을 불러오지 못했습니다.", { exact: false })).not.toBeVisible();
+    const tileError = mapPage.getByText("VWorld 지도 타일을 불러오지 못했습니다.", { exact: false });
+    if (await tileError.isVisible()) {
+      await expect(tileError).toContainText("지도 키·도메인 설정 또는 네트워크를 확인한 뒤 다시 시도해 주세요.");
+    }
     await expect.poll(() => timetableRequests).toEqual([]);
     const placePicker = mapPage.getByLabel("장소 목록에서 선택");
     await expect.poll(() => placePicker.locator("option").count()).toBeGreaterThan(1);
