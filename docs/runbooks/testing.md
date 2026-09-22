@@ -74,6 +74,12 @@ docker compose run --rm --no-deps backend pytest -q
 ```
 
 이 명령은 로컬 Docker 또는 n150의 `kor-travel-airport` Compose project에서만 실행한다. 13번에는 보내지 않는다.
+로컬 Compose 환경변수가 이미 다른 PostgreSQL schema를 가리키면, 운영 schema를 테스트에 재사용하지
+않고 아래처럼 테스트별 임시 SQLite를 강제한다.
+
+```bash
+docker compose run --rm --no-deps -e DATABASE_URL=sqlite+aiosqlite:///:memory: -e PARKING_RADAR_TEST_SQLITE_TEMP=1 backend pytest -q
+```
 
 ## 프론트엔드 테스트
 

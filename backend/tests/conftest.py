@@ -20,7 +20,8 @@ def fixtures_dir() -> Path:
 
 @pytest.fixture
 def test_settings(tmp_path: Path) -> Settings:
-    database_url = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
+    force_temp_sqlite = os.getenv("PARKING_RADAR_TEST_SQLITE_TEMP") == "1"
+    database_url = None if force_temp_sqlite else (os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL"))
     if not database_url:
         database_url = f"sqlite+aiosqlite:///{tmp_path / 'test.sqlite3'}"
     if database_url.startswith(("postgres://", "postgresql://", "postgresql+asyncpg://")):

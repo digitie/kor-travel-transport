@@ -11,6 +11,14 @@
   아니라 provider 429의 전역 음성 cache도 추가했다. 호출 제한은 `Retry-After`를 포함한 429로
   반환하고 설정된 upstream backoff 동안 외부 호출을 하지 않는다. 성공 반복 호출과 429 반복
   호출을 각각 검증하는 회귀 테스트를 추가했다.
+- Docker backend regression image가 repository 루트를 가정한 shared DB cutover 계약 테스트를
+  실행하지 못하던 경로 문제를 보완했다. 이미지의 `/app/scripts`·`/app/nginx`와 무비밀
+  `.env.server14.example` contract copy를 명시적으로 사용하며, 실제 `.env`와 인증키는
+  `.dockerignore`에서 계속 제외한다.
+- Docker `run --no-deps`가 호스트의 오래된 PostgreSQL DSN을 상속하지 않도록 테스트별 임시
+  SQLite 강제 플래그를 추가했고, transport admin Compose·gateway·frontend contract 파일도
+  검증 이미지에 무비밀 사본으로 포함했다. WSL/Docker 전체 backend regression은 각각
+  `153 passed, 1 skipped`로 확인했다.
 - KRIC가 전달한 인증 OpenAPI 사용 조건을 반영했다. 인증키는 비추적 환경 파일만 허용하고,
   공식 역사 코드 XLSX(2026-07-11)를 최소 호출 파라미터의 기준으로 보관한다. rail Dagster
   job은 공개 XLSX만 한 번 읽고 마지막 성공 뒤 실제 48시간을 보장한다. 인증 OpenAPI는 전국

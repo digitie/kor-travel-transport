@@ -2,7 +2,13 @@ import os
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
+_BACKEND_ROOT = Path(__file__).resolve().parents[1]
+# Docker regression image에는 계약 검증에 필요한 무비밀 admin 파일만 복사한다.
+ROOT = (
+    _BACKEND_ROOT / "compose-contract"
+    if (_BACKEND_ROOT / "compose-contract" / "docker-compose.transport-admin.yml").is_file()
+    else Path(__file__).resolve().parents[2]
+)
 
 
 def iter_typescript_sources(root: Path):
