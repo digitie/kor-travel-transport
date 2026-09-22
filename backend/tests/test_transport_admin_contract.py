@@ -1,7 +1,16 @@
+import os
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def iter_typescript_sources(root: Path):
+    for directory, directories, filenames in os.walk(root):
+        directories[:] = [name for name in directories if name not in {"node_modules", ".next"}]
+        for filename in filenames:
+            if filename.endswith(".ts"):
+                yield Path(directory) / filename
 
 
 def test_transport_admin_is_a_separate_host_network_stack() -> None:
@@ -19,10 +28,9 @@ def test_transport_admin_is_a_separate_host_network_stack() -> None:
 
 def test_transport_admin_does_not_receive_provider_or_database_credentials() -> None:
     compose = (ROOT / "docker-compose.transport-admin.yml").read_text(encoding="utf-8")
+    admin_root = ROOT / "packages/kor-travel-transport-admin/frontend"
     admin_sources = "\n".join(
-        source.read_text(encoding="utf-8")
-        for source in (ROOT / "packages/kor-travel-transport-admin/frontend").rglob("*.ts")
-        if "node_modules" not in source.parts and ".next" not in source.parts
+        source.read_text(encoding="utf-8") for source in iter_typescript_sources(admin_root)
     )
 
     assert "DATABASE_URL" not in compose
@@ -40,6 +48,11 @@ def test_transport_gateway_contract_has_bounded_upstreams_and_dagster_auth() -> 
     upstream = (ROOT / "packages/kor-travel-transport-admin/frontend/lib/upstream.ts").read_text(encoding="utf-8")
 
     assert "proxy_pass http://127.0.0.1:14001" in api_gateway
+    assert "location ~ ^/v1/transport/" in api_gateway
+    assert "limit_except GET" in api_gateway
+    assert "location / { return 404; }" in api_gateway
+    assert "/admin/backups" not in api_gateway
+    assert "proxy_set_header Host 127.0.0.1" in api_gateway
     assert "proxy_pass http://127.0.0.1:14004" in dagster_gateway
     assert "auth_basic" in dagster_gateway
     assert "transport_dagster_csrf_block" in dagster_gateway

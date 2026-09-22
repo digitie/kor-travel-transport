@@ -15,6 +15,31 @@ CANDIDATE_SHA="$(git rev-parse HEAD)"
 [[ "${REMOTE_ENV_FILE}" == ".env.server14" ]] || { echo "승인된 운영 환경 파일만 허용합니다." >&2; exit 2; }
 [[ "${COMPOSE_PROJECT_NAME}" == "kor-travel-transport-admin" ]] || { echo "전용 Compose project만 허용합니다." >&2; exit 2; }
 
+# 새 release를 복사하기 전에 환경과 port를 먼저 확인한다. listener 충돌 때문에
+# 실패한 배포가 공유 checkout의 비추적 파일을 삭제·교체하지 않도록 한다.
+ssh "${REMOTE_USER}@${REMOTE_HOST}" \
+  "REMOTE_APP_DIR='${REMOTE_APP_DIR}' REMOTE_ENV_FILE='${REMOTE_ENV_FILE}' bash -s" <<'PREFLIGHT'
+set -euo pipefail
+[[ -f "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" ]] || { echo "운영 환경 파일이 없습니다." >&2; exit 2; }
+for key in TRANSPORT_UI_PASSWORD TRANSPORT_UI_SESSION_SECRET TRANSPORT_UI_PUBLIC_ORIGIN TRANSPORT_DAGSTER_PUBLIC_ORIGIN TRANSPORT_DAGSTER_PASSWORD; do
+  grep -Eq "^${key}=.+" "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" || { echo "${key}가 설정되지 않았습니다." >&2; exit 2; }
+done
+port_from_env() {
+  local key="$1" fallback="$2" line value
+  line="$(grep -E "^${key}=" "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" || true)"
+  value="$(printf '%s\n' "${line}" | tail -n 1 | cut -d= -f2-)"
+  printf '%s' "${value:-${fallback}}"
+}
+running="$(docker compose --project-name kor-travel-transport-admin --env-file "${REMOTE_ENV_FILE}" -f "${REMOTE_APP_DIR}/docker-compose.transport-admin.yml" ps --services --status running || true)"
+for pair in "transport-api-gateway:$(port_from_env TRANSPORT_PUBLIC_API_PORT 12301)" "transport-dagster-gateway:$(port_from_env TRANSPORT_DAGSTER_PORT 12302)" "transport-admin-web:$(port_from_env TRANSPORT_PUBLIC_WEB_PORT 12305)"; do
+  service="${pair%%:*}"; port="${pair##*:}"
+  if ! grep -qx "${service}" <<<"${running}" && ss -lnt "( sport = :${port} )" | grep -q ":${port}"; then
+    echo "${port}가 이미 사용 중입니다. 기존 listener를 중단하지 않았습니다." >&2
+    exit 2
+  fi
+done
+PREFLIGHT
+
 archive="$(mktemp -p /tmp kor-travel-transport-admin.XXXXXX.tgz)"
 remote_archive="/tmp/$(basename "${archive}")"
 trap 'rm -f "${archive}"' EXIT
@@ -26,27 +51,13 @@ ssh "${REMOTE_USER}@${REMOTE_HOST}" \
   "REMOTE_APP_DIR='${REMOTE_APP_DIR}' REMOTE_ENV_FILE='${REMOTE_ENV_FILE}' REMOTE_ARCHIVE='${remote_archive}' CANDIDATE_SHA='${CANDIDATE_SHA}' bash -s" <<'REMOTE'
 set -euo pipefail
 [[ -f "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" ]] || { echo "운영 환경 파일이 없습니다." >&2; exit 2; }
-for key in TRANSPORT_UI_PASSWORD TRANSPORT_UI_SESSION_SECRET TRANSPORT_UI_PUBLIC_ORIGIN TRANSPORT_DAGSTER_PUBLIC_ORIGIN TRANSPORT_DAGSTER_PASSWORD; do
-  grep -Eq "^${key}=.+" "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" || { echo "${key}가 설정되지 않았습니다." >&2; exit 2; }
-done
-
 stage="$(mktemp -d /tmp/kor-travel-transport-admin-release.XXXXXX)"
 cleanup() { rm -rf -- "${stage}" "${REMOTE_ARCHIVE}"; }
 trap cleanup EXIT
 tar -xzf "${REMOTE_ARCHIVE}" -C "${stage}"
-rsync -a --delete --exclude="${REMOTE_ENV_FILE}" --exclude=".env.server14.legacy" --exclude="backups/" "${stage}/" "${REMOTE_APP_DIR}/"
+rsync -a --exclude="${REMOTE_ENV_FILE}" --exclude=".env.server14.legacy" --exclude="backups/" "${stage}/" "${REMOTE_APP_DIR}/"
 cd "${REMOTE_APP_DIR}"
 
-# 현재 전용 project가 이미 실행 중이면 compose가 안전하게 recreate한다. 실행 중이
-# 아닌 서비스의 port가 점유돼 있으면 기존 서비스(cAdvisor 등)를 절대 중단하지 않는다.
-running="$(docker compose --project-name kor-travel-transport-admin --env-file "${REMOTE_ENV_FILE}" -f docker-compose.transport-admin.yml ps --services --status running || true)"
-for pair in 'transport-api-gateway:12301' 'transport-dagster-gateway:12302' 'transport-admin-web:12305'; do
-  service="${pair%%:*}"; port="${pair##*:}"
-  if ! grep -qx "${service}" <<<"${running}" && ss -lnt "( sport = :${port} )" | grep -q ":${port}"; then
-    echo "${port}가 이미 사용 중입니다. 기존 listener를 중단하지 않았습니다." >&2
-    exit 2
-  fi
-done
 docker compose --project-name kor-travel-transport-admin --env-file "${REMOTE_ENV_FILE}" -f docker-compose.transport-admin.yml up -d --build
 for url in http://127.0.0.1:12301/health http://127.0.0.1:12302/health http://127.0.0.1:12305/login; do
   curl --fail --silent --show-error --max-time 15 "${url}" >/dev/null
