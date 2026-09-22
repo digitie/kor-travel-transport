@@ -5,16 +5,26 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { fuelProductLabel, placeKindLabel } from "@/lib/transport-presentation";
 
-type Place = { id: number; kind: "fuel_station" | "rail_station" | "ferry_port"; name: string; provider_id?: string | null; longitude: number; latitude: number; subtitle?: string | null; brand_name?: string | null; latest_price?: number | null; price_product_code?: string | null; line_names: string[]; address?: string | null; updated_at: string; location_source?: string | null; location_point_count?: number | null };
+type PlaceKind = "fuel_station" | "rail_station" | "ferry_port" | "rest_area";
+type Place = { id: number; kind: PlaceKind; name: string; provider_id?: string | null; longitude: number; latitude: number; subtitle?: string | null; brand_name?: string | null; latest_price?: number | null; price_product_code?: string | null; line_names: string[]; address?: string | null; updated_at: string; location_source?: string | null; location_point_count?: number | null };
 type MapPoint = { id: string; lngLat: [number, number]; place: Place };
 type PlaceResponse = { items: Place[]; total: number; truncated: boolean };
 type MapBounds = { getWest: () => number; getSouth: () => number; getEast: () => number; getNorth: () => number };
-const MAP_KINDS = ["fuel_station", "rail_station", "ferry_port"] as const;
+const MAP_KINDS: readonly PlaceKind[] = ["fuel_station", "rail_station", "ferry_port", "rest_area"];
 const MAP_KIND_LIMITS = {
-  overview: 100,
-  regional: 200,
-  detail: 300,
+  overview: 400,
+  regional: 750,
+  detail: 1_000,
 } as const;
+const PLACE_CACHE_TTL_MS = 60_000;
+const PLACE_CACHE_MAX_ENTRIES = 32;
+const MARKER_FUEL_LABELS: Record<string, string> = {
+  B027: "휘발유",
+  B034: "고급",
+  D047: "경유",
+  C004: "등유",
+  K015: "LPG",
+};
 
 function visiblePlaceLimit(zoom: number) {
   if (zoom < 8) return MAP_KIND_LIMITS.overview;
@@ -27,11 +37,24 @@ function timetableLine(item: { departure_port_name?: string; arrival_port_name?:
   return [route, item.vessel_name, item.fare ? `${item.fare}원` : undefined].filter(Boolean).join(" · ");
 }
 
+function PlaceMarkerIcon({ kind }: { kind: PlaceKind }) {
+  if (kind === "fuel_station") return <svg aria-hidden="true" className="map-marker-icon" viewBox="0 0 24 24"><path d="M5 21V4a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v17M5 12h8M8 5h3M16 8h1a2 2 0 0 1 2 2v11h-4v-7h2" /></svg>;
+  if (kind === "rail_station") return <svg aria-hidden="true" className="map-marker-icon" viewBox="0 0 24 24"><rect height="15" rx="2" width="12" x="6" y="3" /><path d="M8 18l-2 3m10-3 2 3M9 8h.01M15 8h.01M8 14h8" /></svg>;
+  if (kind === "ferry_port") return <svg aria-hidden="true" className="map-marker-icon" viewBox="0 0 24 24"><path d="M3 17h18l-2-7H5l-2 7Zm3-7V6h12v4M7 21l2-2 3 2 3-2 2 2" /></svg>;
+  return <svg aria-hidden="true" className="map-marker-icon" viewBox="0 0 24 24"><path d="M4 21V8l4-4h8l4 4v13M4 12h16M9 8h.01M15 8h.01M8 16h8" /></svg>;
+}
+
+function markerFuelLabel(productCode: string | null | undefined) {
+  return MARKER_FUEL_LABELS[productCode ?? ""] ?? fuelProductLabel(productCode);
+}
+
 function MapMarker({ point, onSelect, selected }: { point: MapPoint; onSelect: (place: Place) => void; selected: boolean }) {
   const { place } = point;
   const price = place.latest_price === null || place.latest_price === undefined ? null : `${place.latest_price.toLocaleString("ko-KR")}원`;
-  return <Marker ariaLabel={`${placeKindLabel(place.kind)} ${place.name} 상세 보기`} className={`transport-map-marker ${place.kind}`} interactionId={point.id} key={point.id} lngLat={point.lngLat} onClick={() => onSelect(place)} selected={selected}>
-    <span className={price ? "map-price-marker" : "map-place-marker"}>{price ?? placeKindLabel(place.kind)}</span>
+  const fuelLabel = markerFuelLabel(place.price_product_code);
+  const markerLabel = price ? `${fuelLabel} ${price}` : placeKindLabel(place.kind);
+  return <Marker ariaLabel={`${placeKindLabel(place.kind)} ${place.name}${price ? ` ${fuelLabel} ${price}` : ""} 상세 보기`} className={`transport-map-marker ${place.kind}`} interactionId={point.id} key={point.id} lngLat={point.lngLat} onClick={() => onSelect(place)} selected={selected}>
+    <span className={`map-place-marker map-place-marker-${place.kind}${price ? " has-price" : ""}`}><PlaceMarkerIcon kind={place.kind} /><span>{markerLabel}</span></span>
   </Marker>;
 }
 
@@ -40,6 +63,8 @@ export function TransportMap() {
   const timetableRequest = useRef(0);
   const placesController = useRef<AbortController | null>(null);
   const placesRequest = useRef(0);
+  const placeCache = useRef(new Map<string, { expiresAt: number; payload: PlaceResponse }>());
+  const lastViewportKey = useRef("");
   const moveTimer = useRef<number | null>(null);
   const [items, setItems] = useState<Place[]>([]);
   const [selected, setSelected] = useState<Place | null>(null);
@@ -61,12 +86,24 @@ export function TransportMap() {
       max_longitude: bounds.getEast().toFixed(4), max_latitude: bounds.getNorth().toFixed(4),
     };
     const perKindLimit = visiblePlaceLimit(zoom);
+    const viewportKey = `${perKindLimit}:${Object.values(viewport).join(":")}`;
+    if (viewportKey === lastViewportKey.current) return;
+    lastViewportKey.current = viewportKey;
     setMessage("지도의 현재 범위에서 저장된 교통정보를 읽는 중입니다…");
     Promise.allSettled(MAP_KINDS.map(async (kind) => {
       const search = new URLSearchParams({ kind, limit: String(perKindLimit), ...viewport });
+      const cacheKey = search.toString();
+      const cached = placeCache.current.get(cacheKey);
+      if (cached && cached.expiresAt > Date.now()) return { kind, payload: cached.payload };
       const response = await fetch(`/api/transport/transport/features/places?${search}`, { cache: "no-store", signal: controller.signal });
       if (!response.ok) throw new Error(`${placeKindLabel(kind)} 정보를 불러오지 못했습니다.`);
-      return { kind, payload: await response.json() as PlaceResponse };
+      const payload = await response.json() as PlaceResponse;
+      placeCache.current.set(cacheKey, { expiresAt: Date.now() + PLACE_CACHE_TTL_MS, payload });
+      if (placeCache.current.size > PLACE_CACHE_MAX_ENTRIES) {
+        const oldestKey = placeCache.current.keys().next().value;
+        if (oldestKey) placeCache.current.delete(oldestKey);
+      }
+      return { kind, payload };
     })).then((results) => {
       if (requestId !== placesRequest.current) return;
       const fulfilled = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
@@ -131,7 +168,7 @@ export function TransportMap() {
         </select>
       </label>
       {mapError ? <p className="error-message">{mapError}</p> : null}
-      {selected ? <><p className="eyebrow">{placeKindLabel(selected.kind)}</p><h2>{selected.name}</h2><p>{selected.line_names.length ? `운행 노선: ${selected.line_names.join(", ")}` : selected.address ?? "상세 정보는 지도 팝업에서 확인할 수 있습니다."}</p></> : <><h2>교통 장소</h2><p>{message || `현재 지도 범위의 주유소·역·항구 ${points.length.toLocaleString("ko-KR")}곳을 표시합니다. 지도 또는 목록을 선택하면 상세 정보를 봅니다.`}</p></>}
+      {selected ? <><p className="eyebrow">{placeKindLabel(selected.kind)}</p><h2>{selected.name}</h2><p>{selected.line_names.length ? `운행 노선: ${selected.line_names.join(", ")}` : selected.address ?? "상세 정보는 지도 팝업에서 확인할 수 있습니다."}</p></> : <><h2>교통 장소</h2><p>{message || `현재 지도 범위의 주유소·역·항구·휴게소 ${points.length.toLocaleString("ko-KR")}곳을 표시합니다. 지도 또는 목록을 선택하면 상세 정보를 봅니다.`}</p></>}
     </aside>
   </section>;
 }

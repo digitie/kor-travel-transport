@@ -2,6 +2,17 @@
 
 ## 현재 상태
 
+- 2026-09-23 `codex/map-marker-density`에서 운영 저장량 확인 뒤 지도 marker 밀도·표현과
+  휴게소 기준정보 수집을 보완 중이다. 운영 DB의 주유소는 11,829건(좌표 11,823건), 유가
+  스냅샷은 258,247건이나, 철도역·항구는 기준정보 수집 flag가 비활성이라 모두 0건이다.
+  휴게소도 기존에는 저장 table이 없었다. `rest_area_references` migration과
+  `rest_area_reference_collection_job`을 추가해 `python-krex-api` async 기준정보를 3일
+  간격으로 저장하며, 설정 flag를 켜기 전에는 provider 호출을 하지 않는다. 지도는
+  종류별 400/750/1,000곳, 60초 viewport cache, 중복 viewport request 차단으로 전환했고,
+  주유소에는 유종·가격 label, 네 장소 종류에는 개별 SVG marker를 제공한다. backend
+  계약·수집·Dagster WSL 테스트 7건은 통과했다. 다음 한 작업은 frontend type/build,
+  Docker 검증과 n150의 기준정보 flag·수집 상태 확인이다.
+
 - 2026-09-22 `codex/transport-experience`는 병합된 PR #36 (`46f29da`)에서 분기했다.
   교통·유가를 하나의 저장 통계 화면으로 통합하고, 고속도로·유가·수집 source 코드를
   사람이 읽는 명칭과 Apache ECharts 그래프로 바꿨다. 열차·도시철도와 배편을 독립 화면으로

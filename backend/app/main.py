@@ -41,6 +41,7 @@ from app.models import (
     ParkingSnapshot,
     RawApiResponse,
     RailStationReference,
+    RestAreaReference,
 )
 from app.schemas import (
     AirportSummary,
@@ -848,7 +849,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @router.get("/transport/features/places", response_model=TransportPlaceMapResponse)
     async def transport_place_features(
-        kind: str | None = Query(default=None, description="fuel_station, rail_station, ferry_port 중 하나"),
+        kind: str | None = Query(default=None, description="fuel_station, rail_station, ferry_port, rest_area 중 하나"),
         limit: int = Query(default=1000, ge=1, le=5000),
         min_longitude: float | None = Query(default=None, ge=-180, le=180),
         min_latitude: float | None = Query(default=None, ge=-90, le=90),
@@ -858,9 +859,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> TransportPlaceMapResponse:
         """저장된 장소만 지도 marker 계약으로 반환한다. provider 원문이나 비밀값은 노출하지 않는다."""
         selected_kind = kind.strip() if kind else None
-        supported = {"fuel_station", "rail_station", "ferry_port"}
+        supported = {"fuel_station", "rail_station", "ferry_port", "rest_area"}
         if selected_kind is not None and selected_kind not in supported:
-            raise HTTPException(status_code=422, detail="kind는 fuel_station, rail_station, ferry_port 중 하나여야 합니다.")
+            raise HTTPException(status_code=422, detail="kind는 fuel_station, rail_station, ferry_port, rest_area 중 하나여야 합니다.")
         bounds = (min_longitude, min_latitude, max_longitude, max_latitude)
         if any(value is not None for value in bounds) and any(value is None for value in bounds):
             raise HTTPException(status_code=422, detail="지도 범위는 최소·최대 경도와 위도를 모두 지정해야 합니다.")
@@ -873,7 +874,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         items: list[TransportPlaceMapItem] = []
         total = 0
 
-        def coordinate_conditions(model: type[FuelStation] | type[RailStationReference] | type[FerryPort]) -> list[Any]:
+        def coordinate_conditions(
+            model: type[FuelStation] | type[RailStationReference] | type[FerryPort] | type[RestAreaReference],
+        ) -> list[Any]:
             conditions: list[Any] = [model.latitude.is_not(None), model.longitude.is_not(None)]
             if min_longitude is not None:
                 conditions.extend((
@@ -937,6 +940,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     longitude=port.longitude, latitude=port.latitude, subtitle="항만가이드라인 위치",
                     updated_at=serialize_utc(port.last_seen_at), location_source=port.location_source,
                     location_point_count=port.location_point_count,
+                ))
+        if selected_kind in (None, "rest_area"):
+            conditions = coordinate_conditions(RestAreaReference)
+            total += int(await session.scalar(select(func.count()).select_from(RestAreaReference).where(*conditions)) or 0)
+            rows = (await session.execute(
+                select(RestAreaReference).where(*conditions)
+                .order_by(RestAreaReference.last_seen_at.desc(), RestAreaReference.id.desc()).limit(per_kind_limit)
+            )).scalars().all()
+            for rest_area in rows:
+                route = " · ".join(value for value in (rest_area.route_name, rest_area.direction) if value)
+                items.append(TransportPlaceMapItem(
+                    id=rest_area.id, kind="rest_area", source=rest_area.source, name=rest_area.name,
+                    longitude=rest_area.longitude, latitude=rest_area.latitude, subtitle=route or None,
+                    line_names=[rest_area.route_name] if rest_area.route_name else [],
+                    updated_at=serialize_utc(rest_area.last_seen_at),
                 ))
         visible_items = items[:limit]
         return TransportPlaceMapResponse(

@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     opinet_browser_timeout_ms: int = Field(default=30_000, gt=0)
     rail_reference_collection_enabled: bool = False
     maritime_reference_collection_enabled: bool = False
+    rest_area_reference_collection_enabled: bool = False
     port_guideline_collection_enabled: bool = True
     ferry_timetable_cache_seconds: int = Field(default=300, ge=30, le=3600)
     # 실시간 항구 시간표는 사용자 명시 요청만 허용하며, 서로 다른 항구 요청으로 provider

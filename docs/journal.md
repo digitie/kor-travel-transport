@@ -1,5 +1,19 @@
 # journal.md — 작업 일지
 
+## 2026-09-23
+
+- 운영 PostgreSQL을 직접 읽어 저장량을 확인했다. 주유소는 11,829건 중 좌표 보유
+  11,823건, 유가 스냅샷은 258,247건이었으며 마지막 성공은 2026-09-21 23:35:45 UTC다.
+  `opinet_browser`의 다음 실행은 Playwright response 30초 timeout으로 실패했다. 철도역과
+  항구는 각각 0건이고, 기존 기준정보 수집 flag가 기본 비활성이라 실행 이력이 없었다.
+  휴게소는 저장 table·수집 job이 없었다.
+- `codex/map-marker-density`에서 `python-krex-api`의 async 전국 휴게소 기준정보를
+  `rest_area_references`에 72시간 guard와 함께 저장하는 Dagster job을 추가했다. 지도
+  place API는 `rest_area`를 포함하고, 지도 기본 예산을 종류별 400/750/1,000곳으로 늘린
+  뒤 60초 viewport cache와 중복 viewport 요청 차단을 적용했다. 주유소 marker에는 유종과
+  가격을, 주유소·철도역·항구·휴게소에는 서로 다른 SVG 아이콘을 표시한다. backend 계약·수집·
+  Dagster 테스트 7건은 WSL에서 통과했다.
+
 ## 2026-09-22
 
 - `67d17a3`을 n150에 배포해 세 transport 컨테이너의 healthy와 release SHA를 확인했다.

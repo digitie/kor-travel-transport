@@ -12,6 +12,10 @@
 - `python-opinet-api`: 최신 Playwright 지역별 화면 수집기로 주유소/유종 가격/편의정보를
   저장. 현재 pin된 provider의 기본 전체 실행은 8시간이며 허용 범위는 8~12시간,
   24시간 내 최대 3회다. 매 scheduler tick마다 재실행하지 않는다.
+- `python-krex-api`: 전국 휴게소 기준정보를 `rest_area_reference_collection_job`으로
+  3일에 한 번만 저장한다. 기준정보는 OpenAPI가 아닌 저장 DB에서 지도·Map/PinVi place
+  조회에 사용하며, job은 `REST_AREA_REFERENCE_COLLECTION_ENABLED=true`일 때만 외부
+  provider를 호출한다.
 - `/v1/transport/highways/traffic`, `/v1/transport/highways/incidents`,
   `/v1/transport/fuel/stations`: PostgreSQL 최신/기간 데이터 조회
 - `/v1/transport/statistics`: 저장 데이터에서 평균 속도, 돌발 건수, 유종별 가격 통계 계산

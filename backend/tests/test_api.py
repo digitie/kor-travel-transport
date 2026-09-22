@@ -15,7 +15,7 @@ from app.core.config import Settings
 from app.core.time_utils import now_utc
 from app.main import create_app
 from kric import KricRateLimitError
-from app.models import AnalyticsCache, Airport, CollectionRun, FerryPort, FuelPriceSnapshot, FuelStation, ParkingLot, ParkingSnapshot, RailStationReference
+from app.models import AnalyticsCache, Airport, CollectionRun, FerryPort, FuelPriceSnapshot, FuelStation, ParkingLot, ParkingSnapshot, RailStationReference, RestAreaReference
 
 
 def assert_is_utc_iso(value: str | None) -> None:
@@ -135,6 +135,7 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
             session.add(FuelPriceSnapshot(fuel_station_id=fuel.id, source="opinet", product_code="B027", price=1700, provider_updated_at=now, observed_at=now, collected_at=now, raw_item_json=None, collection_run_id=None))
             session.add(RailStationReference(source="kric_public_file", identity_key="line|101|테스트역", rail_operator_name="테스트운영사", operating_line_name="테스트선", station_type=None, station_number="101", station_name="테스트역", english_name=None, longitude=127.2, latitude=37.6, lot_address=None, road_address="서울 테스트길", station_phone_number=None, data_reference_date=None, first_seen_at=now, last_seen_at=now, raw_item_json=None))
             session.add(FerryPort(source="data_go_kr_maritime", port_id="P1", port_name="테스트항", latitude=129.1, longitude=35.1, location_source="data_go_kr_port_guideline", location_point_count=2, first_seen_at=now, last_seen_at=now, raw_item_json=None))
+            session.add(RestAreaReference(source="data_go_kr_rest_area", identity_key="테스트휴게소|테스트고속도로|서울방향", name="테스트휴게소", route_name="테스트고속도로", direction="서울방향", latitude=37.4, longitude=127.3, has_gas_station=True, has_lpg_station=False, has_ev_charger=True, phone_number=None, data_reference_date=None, first_seen_at=now, last_seen_at=now, raw_item_json=None))
             await session.commit()
     asyncio.run(seed())
 
@@ -142,11 +143,12 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
     assert response.status_code == 200
     payload = response.json()
     by_kind = {item["kind"]: item for item in payload["items"]}
-    assert payload["total"] == 3
+    assert payload["total"] == 4
     assert payload["truncated"] is False
     assert by_kind["fuel_station"]["latest_price"] == 1700
     assert by_kind["rail_station"]["line_names"] == ["테스트선"]
     assert by_kind["ferry_port"]["location_point_count"] == 2
+    assert by_kind["rest_area"]["line_names"] == ["테스트고속도로"]
     bounded = client.get("/v1/transport/features/places?kind=fuel_station&min_longitude=127.0&min_latitude=37.4&max_longitude=127.15&max_latitude=37.55")
     assert bounded.status_code == 200
     assert bounded.json()["total"] == 1

@@ -11,13 +11,17 @@ from app.dagster.definitions import definitions
 def test_dagster_definitions_evaluates_kric_rail_due_daily_with_a_48_hour_guard() -> None:
     rail_schedule = definitions.get_schedule_def("rail_reference_collection_job_schedule")
     maritime_schedule = definitions.get_schedule_def("maritime_reference_collection_job_schedule")
+    rest_area_schedule = definitions.get_schedule_def("rest_area_reference_collection_job_schedule")
 
     assert rail_schedule.cron_schedule == "0 3 * * *"
     assert maritime_schedule.cron_schedule == "0 3 */3 * *"
+    assert rest_area_schedule.cron_schedule == "0 3 */3 * *"
     assert rail_schedule.execution_timezone == "Asia/Seoul"
     assert maritime_schedule.execution_timezone == "Asia/Seoul"
+    assert rest_area_schedule.execution_timezone == "Asia/Seoul"
     assert rail_schedule.default_status.name == "RUNNING"
     assert maritime_schedule.default_status.name == "RUNNING"
+    assert rest_area_schedule.default_status.name == "RUNNING"
 
 
 def test_dagster_definitions_register_every_collection_domain() -> None:
@@ -27,6 +31,7 @@ def test_dagster_definitions_register_every_collection_domain() -> None:
         "fuel_collection_job",
         "rail_reference_collection_job",
         "maritime_reference_collection_job",
+        "rest_area_reference_collection_job",
     }
     assert {definitions.get_job_def(name).name for name in job_names} == job_names
 
@@ -38,6 +43,7 @@ def test_dagster_definitions_enable_every_schedule_and_serialize_overlapping_gro
         "fuel_collection_job_schedule",
         "rail_reference_collection_job_schedule",
         "maritime_reference_collection_job_schedule",
+        "rest_area_reference_collection_job_schedule",
     }
     assert {definitions.get_schedule_def(name).default_status.name for name in schedule_names} == {"RUNNING"}
 

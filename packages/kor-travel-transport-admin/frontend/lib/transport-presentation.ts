@@ -24,6 +24,6 @@ export function collectionSourceLabel(source: string) {
   return source;
 }
 
-export function placeKindLabel(kind: "fuel_station" | "rail_station" | "ferry_port") {
-  return { fuel_station: "주유소", rail_station: "철도역", ferry_port: "항구" }[kind];
+export function placeKindLabel(kind: "fuel_station" | "rail_station" | "ferry_port" | "rest_area") {
+  return { fuel_station: "주유소", rail_station: "철도역", ferry_port: "항구", rest_area: "휴게소" }[kind];
 }

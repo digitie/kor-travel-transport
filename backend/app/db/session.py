@@ -11,7 +11,7 @@ from sqlalchemy.pool import NullPool
 
 from app.models import Base
 
-ALEMBIC_HEAD = "0010_transport_five_minute_stats"
+ALEMBIC_HEAD = "0011_rest_area_references"
 
 
 def create_engine_and_session_factory(database_url: str) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
