@@ -67,8 +67,9 @@ XLSX를 한 번만 읽고, 인증 OpenAPI를 전국 역·열차 단위로 순회
 항구 운항시간표는 저장하지 않는다. `GET /v1/transport/ports/{port_id}/timetable?date=YYYY-MM-DD`가
 요청한 항구와 날짜만 provider에 비동기로 전달해 실시간 응답으로 반환한다. 오늘부터 설정된
 미래 일수 안에서만 조회하고, 같은 `(항구, 날짜)`는 process cache와 async lock으로 묶어 cache
-TTL 동안 외부 API를 한 번만 호출한다. 따라서 시간표는 오래된 DB snapshot으로 오인되지 않으며,
-반복 클릭도 provider quota를 소모하지 않는다.
+TTL 동안 외부 API를 한 번만 호출한다. provider가 호출 제한을 돌려주면 전 항구 요청을
+`UPSTREAM_RATE_LIMIT_BACKOFF_SECONDS` 동안 429와 `Retry-After`로 차단한다. 따라서 시간표는
+오래된 DB snapshot으로 오인되지 않으며, 반복 클릭이나 오류 재시도도 provider quota를 소모하지 않는다.
 
 ## 운영 실행
 

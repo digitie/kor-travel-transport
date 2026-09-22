@@ -2,9 +2,18 @@
 
 ## 2026-09-22
 
+- KRIC 공개 XLSX rail job은 매일 03:00 KST에 due만 평가하고, `dagster_rail`의 마지막 성공이
+  48시간 이내면 provider 호출 없이 skip하도록 보완했다. 월말 31일→1일에 달력식 `*/2` cron이
+  24시간 만에 다시 실행되는 문제를 제거했다. 테스트 SQLite가 aware UTC offset을 보존하지 않는
+  차이는 수집 service에서 UTC 정규화해 PostgreSQL과 같은 판단을 하도록 처리했다. SQLite는
+  운영 DB가 아니라 빠른 단위 테스트 호환성에만 남아 있다.
+- 항구 실시간 시간표는 실제 앱 settings를 사용하도록 고치고, 성공 cache·async single-flight뿐
+  아니라 provider 429의 전역 음성 cache도 추가했다. 호출 제한은 `Retry-After`를 포함한 429로
+  반환하고 설정된 upstream backoff 동안 외부 호출을 하지 않는다. 성공 반복 호출과 429 반복
+  호출을 각각 검증하는 회귀 테스트를 추가했다.
 - KRIC가 전달한 인증 OpenAPI 사용 조건을 반영했다. 인증키는 비추적 환경 파일만 허용하고,
   공식 역사 코드 XLSX(2026-07-11)를 최소 호출 파라미터의 기준으로 보관한다. rail Dagster
-  job은 공개 XLSX만 한 번 읽는 달력상 2일 주기(03:00 KST)로 낮췄다. 인증 OpenAPI는 전국
+  job은 공개 XLSX만 한 번 읽고 마지막 성공 뒤 실제 48시간을 보장한다. 인증 OpenAPI는 전국
   역·열차 순회 batch에 넣지 않으며, 각 operation의 추가 live 재시도는 제공기관의 1일 1회
   권고에 따라 다음 허용 시점 이후에만 수행한다.
 - weather admin의 MapLibre/VWorld 구조를 transport admin에 적용해 `/map` 지도 화면을 추가했다.

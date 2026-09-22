@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
@@ -13,6 +14,7 @@ from sqlalchemy.exc import OperationalError
 from app.core.config import Settings
 from app.core.time_utils import now_utc
 from app.main import create_app
+from kric import KricRateLimitError
 from app.models import AnalyticsCache, Airport, CollectionRun, FerryPort, FuelPriceSnapshot, FuelStation, ParkingLot, ParkingSnapshot, RailStationReference
 
 
@@ -145,6 +147,89 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
     assert client.get("/v1/transport/features/places?kind=unknown").status_code == 422
     assert client.get("/v1/transport/ports/P1/timetable").status_code == 503
     assert client.get("/v1/transport/ports/P1/timetable?date=2000-01-01").status_code == 422
+
+
+def test_transport_port_timetable_caches_one_live_provider_call(tmp_path: Path) -> None:
+    class FakeMaritimeClient:
+        calls = 0
+
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args) -> None:
+            return None
+
+        async def get_domestic_ship_operations(self, *, departure_port_id: str, departure_date: date):
+            type(self).calls += 1
+            assert departure_port_id == "P1"
+            assert departure_date == now_utc().astimezone(ZoneInfo("Asia/Seoul")).date()
+            return (
+                SimpleNamespace(
+                    vessel_name="테스트호",
+                    departure_port_name="테스트항",
+                    arrival_port_name="도착항",
+                    departure_planned_time="09:00",
+                    arrival_planned_time="10:00",
+                    fare="10000",
+                ),
+            )
+
+    with build_client(tmp_path, data_go_kr_service_key="test-key") as client:
+        async def seed() -> None:
+            now = now_utc()
+            async with client.app.state.session_factory() as session:
+                session.add(FerryPort(source="data_go_kr_maritime", port_id="P1", port_name="테스트항", latitude=129.1, longitude=35.1, location_source="data_go_kr_port_guideline", location_point_count=1, first_seen_at=now, last_seen_at=now, raw_item_json=None))
+                await session.commit()
+
+        asyncio.run(seed())
+        with patch("app.main.DataGoKrMaritimeClient", FakeMaritimeClient):
+            first = client.get("/v1/transport/ports/P1/timetable")
+            second = client.get("/v1/transport/ports/P1/timetable")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json() == second.json()
+    assert first.json()["items"] == [{"vessel_name": "테스트호", "departure_port_name": "테스트항", "arrival_port_name": "도착항", "departure_planned_time": "09:00", "arrival_planned_time": "10:00", "fare": "10000"}]
+    assert FakeMaritimeClient.calls == 1
+
+
+def test_transport_port_timetable_rate_limit_uses_provider_wide_backoff(tmp_path: Path) -> None:
+    class RateLimitedMaritimeClient:
+        calls = 0
+
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args) -> None:
+            return None
+
+        async def get_domestic_ship_operations(self, **_kwargs):
+            type(self).calls += 1
+            raise KricRateLimitError("provider quota reached")
+
+    with build_client(tmp_path, data_go_kr_service_key="test-key", upstream_rate_limit_backoff_seconds=60) as client:
+        async def seed() -> None:
+            now = now_utc()
+            async with client.app.state.session_factory() as session:
+                session.add(FerryPort(source="data_go_kr_maritime", port_id="P1", port_name="테스트항", latitude=129.1, longitude=35.1, location_source="data_go_kr_port_guideline", location_point_count=1, first_seen_at=now, last_seen_at=now, raw_item_json=None))
+                await session.commit()
+
+        asyncio.run(seed())
+        with patch("app.main.DataGoKrMaritimeClient", RateLimitedMaritimeClient):
+            first = client.get("/v1/transport/ports/P1/timetable")
+            second = client.get("/v1/transport/ports/P1/timetable")
+
+    assert first.status_code == 429
+    assert second.status_code == 429
+    assert first.headers["retry-after"]
+    assert second.headers["retry-after"]
+    assert RateLimitedMaritimeClient.calls == 1
 
 
 def test_security_headers(client) -> None:

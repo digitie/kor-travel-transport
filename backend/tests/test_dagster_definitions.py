@@ -8,7 +8,7 @@ from app.dagster import definitions as dagster_definitions
 from app.dagster.definitions import definitions
 
 
-def test_dagster_definitions_limit_kric_rail_reference_to_every_two_calendar_days() -> None:
+def test_dagster_definitions_evaluates_kric_rail_due_daily_with_a_48_hour_guard() -> None:
     rail_schedule = definitions.get_schedule_def("rail_reference_collection_job_schedule")
     maritime_schedule = definitions.get_schedule_def("maritime_reference_collection_job_schedule")
 

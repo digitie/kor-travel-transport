@@ -3,7 +3,7 @@
 ## 현재 상태
 
 - 2026-09-22 KRIC 인증키를 수령했고, 제공기관 권고에 맞춰 rail reference Dagster schedule을
-  공개 XLSX 단일 읽기 기준 달력상 2일 주기(03:00 KST)로 변경 중이다. 인증 OpenAPI는
+  매일 03:00 KST due 평가와 마지막 성공 뒤 실제 48시간 gate로 변경 중이다. 인증 OpenAPI는
   전국 역·열차 반복 수집에 넣지 않는다. 공식 역사 코드 XLSX로 최소 파라미터를 확인했으며,
   오늘의 승인 operation 검증은 오류 envelope로 끝나 추가 재시도를 중단했다. 다음 허용
   시점에는 공식 sample 코드(`KR/1/135`, `01/A1`)로 operation별 한 번씩 재검증하고

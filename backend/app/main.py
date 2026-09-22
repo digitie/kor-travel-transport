@@ -19,7 +19,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
-from kric import DataGoKrMaritimeClient
+from kric import DataGoKrMaritimeClient, KricRateLimitError
 
 from app.core.config import Settings, get_settings
 from app.core.time_utils import now_utc, serialize_utc, to_seoul
@@ -163,6 +163,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.holiday_service = HolidayService(resolved_settings)
         app.state.ferry_timetable_cache: dict[tuple[str, date], tuple[datetime, FerryOperationResponse]] = {}
         app.state.ferry_timetable_lock = asyncio.Lock()
+        app.state.ferry_timetable_rate_limited_until: datetime | None = None
         app.state.scheduler_task = None
         app.state.transport_scheduler_task = None
         app.state.fuel_scheduler_task = None
@@ -709,9 +710,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         port_id: str,
         service_date: date = Query(default_factory=lambda: to_seoul(now_utc()).date(), alias="date"),
         session: AsyncSession = Depends(get_db),
-        settings: Settings = Depends(get_settings),
     ) -> FerryOperationResponse:
         """요청 항구·날짜 한 건만 provider에서 실시간 조회하며 DB/raw 응답에는 저장하지 않는다."""
+        settings: Settings = request.app.state.settings
         today = to_seoul(now_utc()).date()
         if service_date < today or service_date > today + timedelta(days=settings.ferry_timetable_max_days_ahead):
             raise HTTPException(status_code=422, detail="운항일은 오늘부터 허용된 미래 범위 안에서만 조회할 수 있습니다.")
@@ -721,15 +722,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not settings.data_go_kr_service_key:
             raise HTTPException(status_code=503, detail="여객선 실시간 provider가 설정되지 않았습니다.")
         cache_key = (port_id, service_date)
+        rate_limited_until: datetime | None = request.app.state.ferry_timetable_rate_limited_until
+        if rate_limited_until is not None and now_utc() < rate_limited_until:
+            retry_after_seconds = max(1, int((rate_limited_until - now_utc()).total_seconds()))
+            raise HTTPException(
+                status_code=429,
+                detail="여객선 실시간 provider의 호출 제한이 아직 해제되지 않았습니다.",
+                headers={"Retry-After": str(retry_after_seconds)},
+            )
         cached = request.app.state.ferry_timetable_cache.get(cache_key)
         if cached is not None and now_utc() - cached[0] < timedelta(seconds=settings.ferry_timetable_cache_seconds):
             return cached[1]
         async with request.app.state.ferry_timetable_lock:
+            rate_limited_until = request.app.state.ferry_timetable_rate_limited_until
+            if rate_limited_until is not None and now_utc() < rate_limited_until:
+                retry_after_seconds = max(1, int((rate_limited_until - now_utc()).total_seconds()))
+                raise HTTPException(
+                    status_code=429,
+                    detail="여객선 실시간 provider의 호출 제한이 아직 해제되지 않았습니다.",
+                    headers={"Retry-After": str(retry_after_seconds)},
+                )
             cached = request.app.state.ferry_timetable_cache.get(cache_key)
             if cached is not None and now_utc() - cached[0] < timedelta(seconds=settings.ferry_timetable_cache_seconds):
                 return cached[1]
-            async with DataGoKrMaritimeClient(settings.data_go_kr_service_key, timeout=settings.api_timeout_seconds) as maritime:
-                operations = await maritime.get_domestic_ship_operations(departure_port_id=port_id, departure_date=service_date)
+            try:
+                async with DataGoKrMaritimeClient(settings.data_go_kr_service_key, timeout=settings.api_timeout_seconds) as maritime:
+                    operations = await maritime.get_domestic_ship_operations(departure_port_id=port_id, departure_date=service_date)
+            except KricRateLimitError as exc:
+                blocked_until = now_utc() + timedelta(seconds=settings.upstream_rate_limit_backoff_seconds)
+                request.app.state.ferry_timetable_rate_limited_until = blocked_until
+                retry_after_seconds = max(1, int((blocked_until - now_utc()).total_seconds()))
+                raise HTTPException(
+                    status_code=429,
+                    detail="여객선 실시간 provider의 호출 제한에 도달했습니다.",
+                    headers={"Retry-After": str(retry_after_seconds)},
+                ) from exc
             response = FerryOperationResponse(
                 port_id=port_id, service_date=service_date, fetched_at=now_utc(),
                 items=[FerryOperationItem(vessel_name=item.vessel_name, departure_port_name=item.departure_port_name, arrival_port_name=item.arrival_port_name, departure_planned_time=item.departure_planned_time, arrival_planned_time=item.arrival_planned_time, fare=item.fare) for item in operations],
