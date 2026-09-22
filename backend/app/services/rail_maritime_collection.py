@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import UTC, timedelta
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
@@ -66,6 +67,21 @@ class RailMaritimeCollectionService:
     ) -> dict[str, Any]:
         if not self.settings.rail_reference_collection_enabled:
             return {"status": "skipped", "reason": "rail reference collection is disabled"}
+        latest_success = await session.scalar(
+            select(CollectionRun.finished_at)
+            .where(
+                CollectionRun.trigger == "dagster_rail",
+                CollectionRun.status == "success",
+                CollectionRun.finished_at.is_not(None),
+            )
+            .order_by(CollectionRun.finished_at.desc())
+            .limit(1)
+        )
+        if latest_success is not None:
+            if latest_success.tzinfo is None:
+                latest_success = latest_success.replace(tzinfo=UTC)
+            if now_utc() - latest_success < timedelta(days=2):
+                return {"status": "skipped", "reason": "KRIC rail reference is not due for 48 hours"}
         run = await self._start_run(session, trigger)
         try:
             stations, archive = await self._fetch_rail_stations()

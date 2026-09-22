@@ -67,9 +67,10 @@ def test_rail_reference_collection_upserts_public_file_rows(tmp_path: Path) -> N
             second = await service.collect_rail_reference(session)
         async with session_factory() as session:
             assert await session.scalar(select(func.count()).select_from(RailStationReference)) == 1
-            assert await session.scalar(select(func.count()).select_from(CollectionRun)) == 2
-        assert first["status"] == second["status"] == "success"
-        assert first["station_count"] == second["station_count"] == 1
+            assert await session.scalar(select(func.count()).select_from(CollectionRun)) == 1
+        assert first["status"] == "success"
+        assert first["station_count"] == 1
+        assert second == {"status": "skipped", "reason": "KRIC rail reference is not due for 48 hours"}
         await engine.dispose()
 
     asyncio.run(run())

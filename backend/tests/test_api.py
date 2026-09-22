@@ -144,6 +144,7 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
     assert by_kind["ferry_port"]["location_point_count"] == 2
     assert client.get("/v1/transport/features/places?kind=unknown").status_code == 422
     assert client.get("/v1/transport/ports/P1/timetable").status_code == 503
+    assert client.get("/v1/transport/ports/P1/timetable?date=2000-01-01").status_code == 422
 
 
 def test_security_headers(client) -> None:

@@ -76,7 +76,7 @@
   시작하지 않고 Dagster daemon의 schedule을 활성화한다.
 - `airport_collection_job`과 `highway_collection_job`은 5분마다, `fuel_collection_job`은
   8시간마다 실행한다. KRIC 공개 XLSX를 읽는 `rail_reference_collection_job`은 제공기관
-  요청에 맞춰 달력상 2일 주기, `maritime_reference_collection_job`은 달력상 3일 주기로
+  요청에 맞춰 마지막 성공 후 실제 48시간 간격, `maritime_reference_collection_job`은 달력상 3일 주기로
   실행한다.
 - FastAPI는 읽기 API만 제공하며 manual collection은 운영에서 비활성화한다.
 

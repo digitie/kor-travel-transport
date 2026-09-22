@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     rail_reference_collection_enabled: bool = False
     maritime_reference_collection_enabled: bool = False
     port_guideline_collection_enabled: bool = True
+    ferry_timetable_cache_seconds: int = Field(default=300, ge=30, le=3600)
+    ferry_timetable_max_days_ahead: int = Field(default=7, ge=0, le=31)
     rustfs_endpoint_url: str | None = None
     rustfs_bucket: str = "kor-travel-transport-raw"
     rustfs_access_key_id: str | None = None

@@ -161,6 +161,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.transport_collection_service = TransportCollectionService(resolved_settings)
         app.state.flight_status_service = FlightStatusService(resolved_settings)
         app.state.holiday_service = HolidayService(resolved_settings)
+        app.state.ferry_timetable_cache: dict[tuple[str, date], tuple[datetime, FerryOperationResponse]] = {}
+        app.state.ferry_timetable_lock = asyncio.Lock()
         app.state.scheduler_task = None
         app.state.transport_scheduler_task = None
         app.state.fuel_scheduler_task = None
@@ -703,23 +705,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @router.get("/transport/ports/{port_id}/timetable", response_model=FerryOperationResponse)
     async def transport_port_timetable(
+        request: Request,
         port_id: str,
-        service_date: date = Query(default_factory=date.today),
+        service_date: date = Query(default_factory=lambda: to_seoul(now_utc()).date(), alias="date"),
         session: AsyncSession = Depends(get_db),
         settings: Settings = Depends(get_settings),
     ) -> FerryOperationResponse:
         """요청 항구·날짜 한 건만 provider에서 실시간 조회하며 DB/raw 응답에는 저장하지 않는다."""
+        today = to_seoul(now_utc()).date()
+        if service_date < today or service_date > today + timedelta(days=settings.ferry_timetable_max_days_ahead):
+            raise HTTPException(status_code=422, detail="운항일은 오늘부터 허용된 미래 범위 안에서만 조회할 수 있습니다.")
         port = await session.scalar(select(FerryPort).where(FerryPort.port_id == port_id))
         if port is None:
             raise HTTPException(status_code=404, detail="저장된 항구를 찾을 수 없습니다.")
         if not settings.data_go_kr_service_key:
             raise HTTPException(status_code=503, detail="여객선 실시간 provider가 설정되지 않았습니다.")
-        async with DataGoKrMaritimeClient(settings.data_go_kr_service_key, timeout=settings.api_timeout_seconds) as maritime:
-            operations = await maritime.get_domestic_ship_operations(departure_port_id=port_id, departure_date=service_date)
-        return FerryOperationResponse(
-            port_id=port_id, service_date=service_date, fetched_at=now_utc(),
-            items=[FerryOperationItem(vessel_name=item.vessel_name, departure_port_name=item.departure_port_name, arrival_port_name=item.arrival_port_name, departure_planned_time=item.departure_planned_time, arrival_planned_time=item.arrival_planned_time, fare=item.fare) for item in operations],
-        )
+        cache_key = (port_id, service_date)
+        cached = request.app.state.ferry_timetable_cache.get(cache_key)
+        if cached is not None and now_utc() - cached[0] < timedelta(seconds=settings.ferry_timetable_cache_seconds):
+            return cached[1]
+        async with request.app.state.ferry_timetable_lock:
+            cached = request.app.state.ferry_timetable_cache.get(cache_key)
+            if cached is not None and now_utc() - cached[0] < timedelta(seconds=settings.ferry_timetable_cache_seconds):
+                return cached[1]
+            async with DataGoKrMaritimeClient(settings.data_go_kr_service_key, timeout=settings.api_timeout_seconds) as maritime:
+                operations = await maritime.get_domestic_ship_operations(departure_port_id=port_id, departure_date=service_date)
+            response = FerryOperationResponse(
+                port_id=port_id, service_date=service_date, fetched_at=now_utc(),
+                items=[FerryOperationItem(vessel_name=item.vessel_name, departure_port_name=item.departure_port_name, arrival_port_name=item.arrival_port_name, departure_planned_time=item.departure_planned_time, arrival_planned_time=item.arrival_planned_time, fare=item.fare) for item in operations],
+            )
+            request.app.state.ferry_timetable_cache[cache_key] = (now_utc(), response)
+            return response
 
     @router.get("/transport/collector-status", response_model=TransportCollectorStatus)
     async def transport_collector_status(

@@ -12,7 +12,7 @@ def test_dagster_definitions_limit_kric_rail_reference_to_every_two_calendar_day
     rail_schedule = definitions.get_schedule_def("rail_reference_collection_job_schedule")
     maritime_schedule = definitions.get_schedule_def("maritime_reference_collection_job_schedule")
 
-    assert rail_schedule.cron_schedule == "0 3 */2 * *"
+    assert rail_schedule.cron_schedule == "0 3 * * *"
     assert maritime_schedule.cron_schedule == "0 3 */3 * *"
     assert rail_schedule.execution_timezone == "Asia/Seoul"
     assert maritime_schedule.execution_timezone == "Asia/Seoul"
