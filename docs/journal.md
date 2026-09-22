@@ -4,7 +4,9 @@
 
 - post-merge n150 HTTPS UI E2E를 수백 개 행렬로 확장했다. 이 과정에서 관리 UI의
   server-side proxy가 공개 gateway보다 짧은 10초 timeout으로 정상 저장 통계를 `502`로
-  변환하는 경로를 재현했고, timeout을 gateway와 같은 30초로 맞췄다.
+  변환하는 경로를 재현했고, timeout을 gateway와 같은 30초로 맞췄다. 행렬에서 발견한
+  route-filter 통계의 gateway `504`는 `(route_no, observed_at, direction)` covering
+  index migration `0008`으로 wide JSON heap 재읽기를 줄이도록 보완했다.
 - n150에서 candidate `92cb128`을 배포해 backend health SHA 일치와 7일 transport
   statistics 응답 `2.50초`를 확인했다. HTTPS live E2E가 발견한 로그아웃의 내부 HTTP
   절대 redirect를 상대 `/login` redirect로 보완하고, Dagster cross-origin POST의

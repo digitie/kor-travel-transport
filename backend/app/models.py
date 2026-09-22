@@ -119,6 +119,13 @@ class HighwayTrafficSnapshot(Base):
         ),
         Index("ix_highway_traffic_observed", "observed_at"),
         Index("ix_highway_traffic_route_observed", "route_no", "observed_at"),
+        Index(
+            "ix_highway_traffic_statistics_route_observed",
+            "route_no",
+            "observed_at",
+            "direction",
+            postgresql_include=["speed", "free_flow_speed"],
+        ),
         Index("ix_highway_traffic_conzone_observed", "conzone_id", "observed_at"),
         Index(
             "ix_highway_traffic_statistics_observed",
