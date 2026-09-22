@@ -53,6 +53,11 @@
   때 오류 문구가 다음 map reload 전까지 남을 수 있는 점도 같은 후속으로 남긴다. 두 항목은
   데이터 요청 상한·오류의 가시성·배포 안전성을 훼손하지 않으며, 현재 P1 재현 경로는
   초기 범위 예산과 선택 상태 오류 표시 E2E로 보호된다.
+- n150 Docker build는 source archive에는 없는 과거 `middleware.ts`가 remote checkout에
+  남아 Next.js 16의 `proxy.ts`와 충돌하는 것을 발견해, image build 단계에서 안전하게
+  중단했다. 아직 Compose 재기동 전이라 기존 서비스는 바뀌지 않았다. deployment script는
+  archive가 해당 파일을 포함하지 않을 때에만 정확한 legacy path를 제거하도록 보완한다.
+  넓은 `rsync --delete`는 운영 checkout의 알려지지 않은 파일을 지울 위험 때문에 쓰지 않는다.
 
 - n150 공개 HTTPS 268건 E2E에서 전체 3일 고속도로 통계가 cold read 때 504가 되는 것을
   재현했다. 기존 covering index는 사용됐지만 3일 원본 약 500만 행을 읽어야 했고, 저자원

@@ -20,7 +20,10 @@
   clean Docker build가 통과했다. keyboard marker provider 변경은 병합된
   `maplibre-vworld-react` PR #27에 포함됐다. Popper P2인 numeric 좌표 bbox index와 legacy
   `kind` 없는 목록의 균등 반환은 별도 성능/API 계약 task로 남겼다. 다음 순서는 수정 CI·최종
-  재리뷰, n150 HTTPS live E2E, transport PR 머지다.
+  재리뷰, n150 HTTPS live E2E, transport PR 머지다. n150의 오래된 checkout에는 Next 16
+  `proxy.ts`와 충돌하는 legacy `middleware.ts`가 남아 있었고 첫 Docker build는 재기동 전
+  안전하게 중단했다. deploy script가 archive에 없는 정확한 stale path만 제거하도록 보완한
+  후보로 다시 CI·배포를 수행한다.
 
 - 2026-09-22 `codex/transport-map-view`의 Draft PR #36은 최신 원격 후보를 기준으로
   n150 live E2E에서 발견한 공개 gateway 재생성·통계 cache 후속 보완 중이다. 공개 268건
