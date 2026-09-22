@@ -51,6 +51,12 @@ ssh "${REMOTE_USER}@${REMOTE_HOST}" \
   "REMOTE_APP_DIR='${REMOTE_APP_DIR}' REMOTE_ENV_FILE='${REMOTE_ENV_FILE}' REMOTE_ARCHIVE='${remote_archive}' CANDIDATE_SHA='${CANDIDATE_SHA}' bash -s" <<'REMOTE'
 set -euo pipefail
 [[ -f "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" ]] || { echo "운영 환경 파일이 없습니다." >&2; exit 2; }
+port_from_env() {
+  local key="$1" fallback="$2" line value
+  line="$(grep -E "^${key}=" "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" || true)"
+  value="$(printf '%s\n' "${line}" | tail -n 1 | cut -d= -f2-)"
+  printf '%s' "${value:-${fallback}}"
+}
 stage="$(mktemp -d /tmp/kor-travel-transport-admin-release.XXXXXX)"
 cleanup() { rm -rf -- "${stage}" "${REMOTE_ARCHIVE}"; }
 trap cleanup EXIT
