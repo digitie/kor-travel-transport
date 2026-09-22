@@ -63,6 +63,19 @@ test("잘못된 자격증명은 세션을 만들지 않고 로그인 화면에 �
   expect((await request.get("/api/transport/transport/statistics?days=1")).status()).toBe(401);
 });
 
+test("느린 7일 통계가 수집 상태 화면을 가로막지 않는다", async ({ browser }) => {
+  const context = await browser.newContext({ baseURL: webBase });
+  const page = await context.newPage();
+  await page.route("**/api/transport/transport/statistics?days=7", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    await route.continue();
+  });
+  await login(page);
+  await expect(page.getByRole("heading", { name: "수집 소스" })).toBeVisible({ timeout: 1_000 });
+  await expect(page.getByText("저장된 7일 통계를 집계하는 중입니다…")).toBeVisible();
+  await context.close();
+});
+
 test.describe("비인증 관리 proxy 경계 (81개)", () => {
   for (const endpoint of endpointCases) {
     test(`unauthenticated ${endpoint.name}`, async ({ request }) => {

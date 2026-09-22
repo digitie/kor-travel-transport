@@ -2,6 +2,12 @@
 
 ## 현재 상태
 
+- 2026-09-22 `codex/transport-dashboard-performance`은 n150에서 7일 통계가 약 3.9초,
+  수집 상태가 30ms인 것을 측정했다. 대시보드는 빠른 저장 상태·돌발을 먼저 표시하고,
+  통계는 독립 패널로 늦게 반영하며 60초 session cache를 사용하도록 보완했다. 느린 통계가
+  수집 상태 화면을 가로막지 않는 Playwright 계약을 추가했다. Docker build와 n150 live
+  E2E, CI·적대 리뷰 뒤 별도 PR로 머지한다.
+
 - 2026-09-22 `codex/transport-admin-e2e-expansion`은 병합 뒤 n150 HTTPS UI E2E를
   260개 운영 행렬로 확장 중이다. 재현된 관리 proxy 10초 abort/`502`를 공개 gateway와
   같은 30초 timeout으로 보완했다. route-filter 통계의 public `504`에는 covering index
