@@ -23,7 +23,10 @@
   재리뷰, n150 HTTPS live E2E, transport PR 머지다. n150의 오래된 checkout에는 Next 16
   `proxy.ts`와 충돌하는 legacy `middleware.ts`가 남아 있었고 첫 Docker build는 재기동 전
   안전하게 중단했다. deploy script가 archive에 없는 정확한 stale path만 제거하도록 보완한
-  후보로 다시 CI·배포를 수행한다.
+  후보로 다시 CI·배포를 수행한다. 첫 live E2E는 Windows CRLF browser key의 trailing
+  carriage return로 VWorld custom protocol이 fallback을 사용한 것을 발견했다. n150 env의
+  line ending을 정규화해 WMTS HTTP 200을 확인했고, 느린 통계 E2E는 실사용 hydration을
+  고려한 상태 기반 계약으로 보완 중이다.
 
 - 2026-09-22 `codex/transport-map-view`의 Draft PR #36은 최신 원격 후보를 기준으로
   n150 live E2E에서 발견한 공개 gateway 재생성·통계 cache 후속 보완 중이다. 공개 268건

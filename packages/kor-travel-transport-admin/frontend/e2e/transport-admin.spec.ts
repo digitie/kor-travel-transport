@@ -67,12 +67,16 @@ test("잘못된 자격증명은 세션을 만들지 않고 로그인 화면에 �
 test("느린 7일 통계가 수집 상태 화면을 가로막지 않는다", async ({ browser }) => {
   const context = await browser.newContext({ baseURL: webBase });
   const page = await context.newPage();
+  let notifyStatisticsStarted: (() => void) | undefined;
+  const statisticsStarted = new Promise<void>((resolve) => { notifyStatisticsStarted = resolve; });
   await page.route("**/api/transport/transport/statistics?days=7", async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    notifyStatisticsStarted?.();
+    await new Promise((resolve) => setTimeout(resolve, 6_000));
     await route.continue();
   });
   await login(page);
-  await expect(page.getByRole("heading", { name: "수집 소스" })).toBeVisible({ timeout: 1_000 });
+  await statisticsStarted;
+  await expect(page.getByRole("heading", { name: "수집 소스 상태" })).toBeVisible({ timeout: 5_000 });
   await expect(page.getByText("저장된 7일 통계를 집계하는 중입니다…").first()).toBeVisible();
   await context.close();
 });

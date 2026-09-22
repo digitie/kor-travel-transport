@@ -65,6 +65,13 @@
   디렉터리라 즉시 위험은 없지만, 다음 배포 구조 개선에서 versioned release directory의
   atomic switch와 canonical path 검증을 검토한다. legacy middleware 제거 조건 테스트도 같은
   배포 runbook test task로 남긴다.
+- 첫 HTTPS live E2E는 273개 중 267개를 통과했고 두 실패를 재현했다. 수집 상태 검증은
+  외부 browser hydration/HTTP 왕복을 무시한 1초 단언이라, 실제로 7일 통계 요청이 시작한
+  뒤에도 수집 소스 상태가 5초 안에 보이는 계약으로 바꿨다. VWorld 성공 타일 검증은
+  Windows CRLF `.env`에서 전달된 browser key 끝의 carriage return 때문에 custom protocol이
+  malformed URL을 fallback으로 바꾼 것이 원인이었다. 값은 노출하지 않고 n150 환경 파일의
+  line ending만 정규화했고, 승인된 `transport.digitie.mywire.org` Referer로 실제 WMTS tile
+  HTTP 200을 확인했다.
 
 - n150 공개 HTTPS 268건 E2E에서 전체 3일 고속도로 통계가 cold read 때 504가 되는 것을
   재현했다. 기존 covering index는 사용됐지만 3일 원본 약 500만 행을 읽어야 했고, 저자원
