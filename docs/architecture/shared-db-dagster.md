@@ -53,12 +53,15 @@ n150의 비추적 환경 파일에만 둔다.
 | `airport_collection_job` | 5분 | 공항 주차·요금 | 기존 rate-limit/backoff |
 | `highway_collection_job` | 5분 | 소통·돌발 snapshot | KREX quota/backoff |
 | `fuel_collection_job` | 8시간 | 주유소·유가 snapshot | Playwright provider throttle |
-| `rail_reference_collection_job` | 매월 1·4·7…일 03:00 | KRIC 공개 XLSX 역사 기준정보 | 무인증 file dataset 1294 1회 |
+| `rail_reference_collection_job` | 매월 1·3·5…일 03:00 | KRIC 공개 XLSX 역사 기준정보 | 무인증 file dataset 1294 1회 |
 | `maritime_reference_collection_job` | 매월 1·4·7…일 03:00 | 항구·터미널·선박종류 기준정보 | data.go.kr 요청 세 건을 순차 실행 |
 
-cron의 `*/3`은 월 경계에서 72시간 정확 간격이 아니라 달력상 3일 간격이다. 기준정보의
-갱신 성격상 이를 의도적으로 사용하며, 매일 또는 전국 항구별 운항계획을 무차별 호출하지
-않는다.
+KRIC는 인증 OpenAPI도 과도한 GET 대신 하루 한 번 이하의 batch 호출을 요청한다. 철도
+기준정보 job은 `*/2`로 한정하며, 월 경계에서는 정확히 48시간이 아니라 달력상 2일 간격이다.
+한 run은 공개 XLSX를 한 번만 읽고, 인증 OpenAPI를 전국 역·열차 단위로 순회하지 않는다.
+인증 OpenAPI의 역 상세·시간표는 이용자 요청에 필요한 단건 조회로 분리하고, 별도 cache
+정책을 구현하기 전에는 Dagster batch에 포함하지 않는다. 여객선 기준정보도 매일 또는 전국
+항구별 운항계획을 무차별 호출하지 않는다.
 
 항구 운항시간표는 저장하지 않는다. `GET /v1/transport/ports/{port_id}/timetable`가 요청한
 항구와 날짜만 provider에 비동기로 전달해 실시간 응답으로 반환하는 것이 후속 API 계약이다.

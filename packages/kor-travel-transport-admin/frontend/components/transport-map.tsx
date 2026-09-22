@@ -24,7 +24,7 @@ export function TransportMap() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/transport/transport/features/places?limit=5000", { cache: "no-store" })
+    fetch("/api/transport/transport/features/places", { cache: "no-store" })
       .then(async (response) => response.ok ? response.json() : Promise.reject(new Error("장소 정보를 불러오지 못했습니다.")))
       .then((payload) => { if (!cancelled) { setItems(payload.items); setMessage(payload.items.length ? "" : "지도에 표시할 좌표가 아직 수집되지 않았습니다."); } })
       .catch((error: unknown) => { if (!cancelled) setMessage(error instanceof Error ? error.message : "장소 정보를 불러오지 못했습니다."); });

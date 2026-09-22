@@ -646,11 +646,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         supported = {"fuel_station", "rail_station", "ferry_port"}
         if selected_kind is not None and selected_kind not in supported:
             raise HTTPException(status_code=422, detail="kind는 fuel_station, rail_station, ferry_port 중 하나여야 합니다.")
+        requested_kinds = (selected_kind,) if selected_kind else tuple(sorted(supported))
+        # 전체 지도는 한 종류가 limit을 모두 소모하지 않도록 균등하게 읽는다. 프런트가
+        # 수천 개의 DOM marker를 만들지 않게 하는 API 경계이기도 하다.
+        per_kind_limit = (limit + len(requested_kinds) - 1) // len(requested_kinds)
         items: list[TransportPlaceMapItem] = []
         if selected_kind in (None, "fuel_station"):
             stations = (await session.execute(
                 select(FuelStation).where(FuelStation.latitude.is_not(None), FuelStation.longitude.is_not(None))
-                .order_by(FuelStation.last_seen_at.desc(), FuelStation.id.desc()).limit(limit)
+                .order_by(FuelStation.last_seen_at.desc(), FuelStation.id.desc()).limit(per_kind_limit)
             )).scalars().all()
             station_ids = [station.id for station in stations]
             latest: dict[int, FuelPriceSnapshot] = {}
@@ -673,7 +677,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if selected_kind in (None, "rail_station"):
             rows = (await session.execute(
                 select(RailStationReference).where(RailStationReference.latitude.is_not(None), RailStationReference.longitude.is_not(None))
-                .order_by(RailStationReference.last_seen_at.desc(), RailStationReference.id.desc()).limit(limit)
+                .order_by(RailStationReference.last_seen_at.desc(), RailStationReference.id.desc()).limit(per_kind_limit)
             )).scalars().all()
             for station in rows:
                 items.append(TransportPlaceMapItem(
@@ -685,7 +689,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if selected_kind in (None, "ferry_port"):
             rows = (await session.execute(
                 select(FerryPort).where(FerryPort.latitude.is_not(None), FerryPort.longitude.is_not(None))
-                .order_by(FerryPort.last_seen_at.desc(), FerryPort.id.desc()).limit(limit)
+                .order_by(FerryPort.last_seen_at.desc(), FerryPort.id.desc()).limit(per_kind_limit)
             )).scalars().all()
             for port in rows:
                 items.append(TransportPlaceMapItem(

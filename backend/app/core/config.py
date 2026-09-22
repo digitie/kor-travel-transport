@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     api_timeout_seconds: int = Field(default=15, gt=0)
     data_go_kr_service_key: str | None = None
     kex_ex_api_key: str | None = None
+    # KRIC 인증 OpenAPI는 요청 단위로만 사용한다. rail 기준정보 Dagster job은 키 없는 XLSX다.
+    kric_service_key: str | None = None
     transport_collection_enabled: bool = False
     transport_collect_interval_seconds: int = Field(default=300, ge=300)
     transport_quota_backoff_seconds: int = Field(default=3600, ge=300)

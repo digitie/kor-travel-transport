@@ -2,6 +2,13 @@
 
 ## 현재 상태
 
+- 2026-09-22 KRIC 인증키를 수령했고, 제공기관 권고에 맞춰 rail reference Dagster schedule을
+  공개 XLSX 단일 읽기 기준 달력상 2일 주기(03:00 KST)로 변경 중이다. 인증 OpenAPI는
+  전국 역·열차 반복 수집에 넣지 않는다. 공식 역사 코드 XLSX로 최소 파라미터를 확인했으며,
+  오늘의 승인 operation 검증은 오류 envelope로 끝나 추가 재시도를 중단했다. 다음 허용
+  시점에는 공식 sample 코드(`KR/1/135`, `01/A1`)로 operation별 한 번씩 재검증하고
+  provider 오류 분류를 보완한다.
+
 - 2026-09-22 `codex/transport-map-view`에서 주유소·역·항구 지도와 저장 장소 API를 구현 중이다.
   항구 좌표는 키 없는 해양수산부 항만가이드라인 CSV에서 RustFS 보관 후 연결하고, 시간표는
   실시간 요청만 허용한다. 다음 단계는 Docker/HTTPS UI 검증, 적대적 리뷰, provider와 transport

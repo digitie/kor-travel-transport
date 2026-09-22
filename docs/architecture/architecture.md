@@ -75,8 +75,9 @@
 - n150 운영에서 `SCHEDULER_MODE=dagster`와 `ENABLE_SCHEDULER=true`는 FastAPI 내부 task를
   시작하지 않고 Dagster daemon의 schedule을 활성화한다.
 - `airport_collection_job`과 `highway_collection_job`은 5분마다, `fuel_collection_job`은
-  8시간마다 실행한다. `rail_reference_collection_job`과 `maritime_reference_collection_job`은
-  달력상 3일 주기로 실행한다.
+  8시간마다 실행한다. KRIC 공개 XLSX를 읽는 `rail_reference_collection_job`은 제공기관
+  요청에 맞춰 달력상 2일 주기, `maritime_reference_collection_job`은 달력상 3일 주기로
+  실행한다.
 - FastAPI는 읽기 API만 제공하며 manual collection은 운영에서 비활성화한다.
 
 통합 교통정보 수집은 Dagster code-server의 job으로 실행된다. 주차 수집과 같은 프로세스에

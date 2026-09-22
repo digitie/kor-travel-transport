@@ -121,7 +121,9 @@ definitions = Definitions(
         ScheduleDefinition(job=airport_collection_job, cron_schedule="*/5 * * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         ScheduleDefinition(job=highway_collection_job, cron_schedule="*/5 * * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         ScheduleDefinition(job=fuel_collection_job, cron_schedule="0 */8 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
-        ScheduleDefinition(job=rail_reference_collection_job, cron_schedule="0 3 */3 * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
+        # KRIC가 권고한 저빈도 batch 정책을 지킨다. 월 경계에서는 정확히 48시간이 아니라
+        # 달력상 홀수 일자 03:00 KST에 실행되며, 한 run은 공개 XLSX를 한 번만 읽는다.
+        ScheduleDefinition(job=rail_reference_collection_job, cron_schedule="0 3 */2 * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         ScheduleDefinition(job=maritime_reference_collection_job, cron_schedule="0 3 */3 * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
     ],
 )
