@@ -53,6 +53,8 @@ Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks
 - [x] 교통·유가 통합 저장 통계 화면, Apache ECharts 비교 그래프, 열차·도시철도·배편 분리 화면 추가
 - [x] `digitie/maplibre-vworld-react` 고정 revision을 사용하는 VWorld React 지도와 항구 시간표 명시 호출 계약 추가
 - [x] bbox 기반 저장 장소 지도 요청·절단 안내, 실제 VWorld 타일·모바일 viewport live E2E 계약, vendor tarball provenance 기록
+- [x] VWorld 제공 영역 밖 `200/XML FileNotFound`를 공통 provider fallback으로 분리하고,
+      submodule·vendor tarball·SRI를 병합된 provider revision으로 동기화
 - [ ] 후속 P2: 수집량 증가 전 fuel/rail numeric 좌표 bbox 복합 index를 `EXPLAIN (ANALYZE,
       BUFFERS)` 측정으로 설계한다. 현재 지도는 zoom별 전체 최대 900개를 요청하므로 즉시
       PostGIS migration을 강제하지 않는다.

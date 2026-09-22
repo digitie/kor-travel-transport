@@ -2,6 +2,15 @@
 
 ## 2026-09-22
 
+- n150 HTTPS live E2E 273건 중 지도 1건이 실패한 원인을 재현했다. VWorld가 한국 제공
+  영역 밖 타일에 HTTP 200과 XML `FileNotFound`를 반환하고, 기존 web provider가 이를
+  raster decode 오류로 전달해 전체 지도 오류 배너를 표시한 것이었다. 한국 영역의 동일
+  요청은 PNG로 정상 응답함을 확인했다. `maplibre-vworld-react` PR #28을 병합해 해당
+  문서화된 coverage XML만 조용한 fallback tile로 처리하고, 인증·네트워크·예상 밖 XML은
+  기존 오류 경로로 남겼다. transport는 submodule `69abf9c`와 새 vendor tarball/SRI를
+  함께 고정했다. provider web 패키지 type-check/build, transport의 clean install,
+  type-check, 19개 unit test, Next production build를 통과했다. 이후 CI·두 적대 리뷰,
+  n150 재배포와 273건 live E2E를 다시 수행한다.
 - `codex/transport-experience`에서 관리 UI의 고속도로·유가를 하나의 저장 통계 화면으로
   통합했다. 유종·노선·source 코드는 사람이 읽는 한국어 용어로 표시하고, 비교값은 Apache
   ECharts 그래프로 바꿨다. 열차·도시철도와 배편은 별도 화면으로 분리했으며 배편 시간표는
