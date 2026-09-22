@@ -31,6 +31,7 @@ from app.models import (
     FuelPriceSnapshot,
     FuelStation,
     HighwayIncidentSnapshot,
+    HighwayTrafficFiveMinuteStatistic,
     HighwayTrafficSnapshot,
     RawApiResponse,
     TransportCollectionState,
@@ -343,6 +344,8 @@ class TransportCollectionService:
                     try:
                         items = await self._collect_highway_source(session, run_id, errors, source, result)
                         count = await store(session, run_id, items) if items is not None else 0
+                        if source == TRAFFIC_SOURCE and items is not None:
+                            await self._refresh_recent_traffic_statistics(session)
                         await session.commit()
                     except Exception as exc:
                         # 해당 소스만 되돌린다. 앞선 소스의 데이터·성공 상태는 이미 확정됐다.
@@ -618,6 +621,52 @@ class TransportCollectionService:
             stored += 1
         await session.flush()
         return stored
+
+    async def _refresh_recent_traffic_statistics(self, session: AsyncSession) -> None:
+        """최근 두 시간의 변경 가능한 원본을 5분 집계로 다시 만든다.
+
+        KREX가 같은 관측 시각을 정정해도 집계가 누적되지 않도록 upsert 대신 재구축한다.
+        SQLite 단위 테스트는 원본 집계 fallback을 사용하므로 PostgreSQL에서만 실행한다.
+        """
+        bind = session.get_bind()
+        if bind.dialect.name != "postgresql":
+            return
+        current = now_utc().replace(second=0, microsecond=0)
+        rebuild_from = current - timedelta(hours=2, minutes=current.minute % 5)
+        await session.execute(
+            text(
+                "DELETE FROM highway_traffic_five_minute_statistics "
+                "WHERE bucket_start >= :rebuild_from"
+            ),
+            {"rebuild_from": rebuild_from},
+        )
+        await session.execute(
+            text(
+                """
+                INSERT INTO highway_traffic_five_minute_statistics (
+                    bucket_start, route_no_key, direction_key, observations,
+                    speed_observations, speed_sum, minimum_speed, maximum_speed,
+                    free_flow_speed_observations, free_flow_speed_sum, latest_observed_at
+                )
+                SELECT
+                    date_bin(INTERVAL '5 minutes', observed_at, TIMESTAMPTZ '2000-01-01 00:00:00+00'),
+                    COALESCE(route_no, ''),
+                    COALESCE(direction, ''),
+                    COUNT(*),
+                    COUNT(speed),
+                    SUM(speed),
+                    MIN(speed),
+                    MAX(speed),
+                    COUNT(free_flow_speed),
+                    SUM(free_flow_speed),
+                    MAX(observed_at)
+                FROM highway_traffic_snapshots
+                WHERE observed_at >= :rebuild_from
+                GROUP BY 1, 2, 3
+                """
+            ),
+            {"rebuild_from": rebuild_from},
+        )
 
     async def _store_incidents(
         self,

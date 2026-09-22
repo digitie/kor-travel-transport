@@ -9,6 +9,7 @@ from contextlib import suppress
 from datetime import date, datetime, time, timedelta
 from functools import wraps
 from http import HTTPStatus
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
@@ -33,6 +34,7 @@ from app.models import (
     FuelStation,
     FerryPort,
     HighwayIncidentSnapshot,
+    HighwayTrafficFiveMinuteStatistic,
     HighwayTrafficSnapshot,
     ParkingFeeRule,
     ParkingLot,
@@ -208,6 +210,141 @@ def cached_transport_statistics(handler):
                 request.app.state.transport_statistics_locks.pop(cache_key, None)
 
     return wrapped
+
+
+async def _transport_traffic_statistics_rows(
+    session: AsyncSession,
+    *,
+    cutoff: datetime,
+    route_no: str | None,
+    raw_query,
+) -> list:
+    """5분 사전 집계와 시작 경계의 원본만 결합해 정확한 통계를 만든다.
+
+    사전 집계가 없는 SQLite 단위 테스트/첫 배포 직후에는 기존 원본 집계를 그대로
+    실행한다. 운영 PostgreSQL에서는 최대 5분의 원본 행만 읽는다.
+    """
+    bucket_start = cutoff.replace(second=0, microsecond=0) - timedelta(minutes=cutoff.minute % 5)
+    first_complete_bucket = bucket_start + timedelta(minutes=5)
+    aggregate_query = select(
+        HighwayTrafficFiveMinuteStatistic.route_no_key,
+        HighwayTrafficFiveMinuteStatistic.direction_key,
+        func.sum(HighwayTrafficFiveMinuteStatistic.observations).label("observations"),
+        func.sum(HighwayTrafficFiveMinuteStatistic.speed_observations).label("speed_observations"),
+        func.sum(HighwayTrafficFiveMinuteStatistic.speed_sum).label("speed_sum"),
+        func.min(HighwayTrafficFiveMinuteStatistic.minimum_speed).label("minimum_speed"),
+        func.max(HighwayTrafficFiveMinuteStatistic.maximum_speed).label("maximum_speed"),
+        func.sum(HighwayTrafficFiveMinuteStatistic.free_flow_speed_observations).label(
+            "free_flow_speed_observations"
+        ),
+        func.sum(HighwayTrafficFiveMinuteStatistic.free_flow_speed_sum).label("free_flow_speed_sum"),
+        func.max(HighwayTrafficFiveMinuteStatistic.latest_observed_at).label("latest_observed_at"),
+    ).where(HighwayTrafficFiveMinuteStatistic.bucket_start >= first_complete_bucket)
+    if route_no:
+        aggregate_query = aggregate_query.where(HighwayTrafficFiveMinuteStatistic.route_no_key == route_no)
+    aggregate_rows = (
+        await session.execute(
+            aggregate_query.group_by(
+                HighwayTrafficFiveMinuteStatistic.route_no_key,
+                HighwayTrafficFiveMinuteStatistic.direction_key,
+            )
+        )
+    ).all()
+    if not aggregate_rows:
+        return (
+            await session.execute(
+                raw_query.group_by(
+                    HighwayTrafficSnapshot.route_no,
+                    HighwayTrafficSnapshot.direction,
+                ).order_by(
+                    HighwayTrafficSnapshot.route_no,
+                    HighwayTrafficSnapshot.direction,
+                )
+            )
+        ).all()
+
+    boundary_query = select(
+        HighwayTrafficSnapshot.route_no,
+        HighwayTrafficSnapshot.direction,
+        func.count().label("observations"),
+        func.count(HighwayTrafficSnapshot.speed).label("speed_observations"),
+        func.sum(HighwayTrafficSnapshot.speed).label("speed_sum"),
+        func.min(HighwayTrafficSnapshot.speed).label("minimum_speed"),
+        func.max(HighwayTrafficSnapshot.speed).label("maximum_speed"),
+        func.count(HighwayTrafficSnapshot.free_flow_speed).label("free_flow_speed_observations"),
+        func.sum(HighwayTrafficSnapshot.free_flow_speed).label("free_flow_speed_sum"),
+        func.max(HighwayTrafficSnapshot.observed_at).label("latest_observed_at"),
+    ).where(
+        HighwayTrafficSnapshot.observed_at >= cutoff,
+        HighwayTrafficSnapshot.observed_at < first_complete_bucket,
+    )
+    if route_no:
+        boundary_query = boundary_query.where(HighwayTrafficSnapshot.route_no == route_no)
+    boundary_rows = (
+        await session.execute(
+            boundary_query.group_by(
+                HighwayTrafficSnapshot.route_no,
+                HighwayTrafficSnapshot.direction,
+            )
+        )
+    ).all()
+
+    totals: dict[tuple[str, str], dict[str, object]] = {}
+
+    def merge(row, *, route_key: str, direction_key: str) -> None:
+        values = totals.setdefault(
+            (route_key, direction_key),
+            {
+                "observations": 0,
+                "speed_observations": 0,
+                "speed_sum": 0.0,
+                "minimum_speed": None,
+                "maximum_speed": None,
+                "free_flow_speed_observations": 0,
+                "free_flow_speed_sum": 0.0,
+                "latest_observed_at": None,
+            },
+        )
+        for name in ("observations", "speed_observations", "free_flow_speed_observations"):
+            values[name] = int(values[name]) + int(getattr(row, name) or 0)
+        for name in ("speed_sum", "free_flow_speed_sum"):
+            values[name] = float(values[name]) + float(getattr(row, name) or 0.0)
+        for name, reducer in (("minimum_speed", min), ("maximum_speed", max)):
+            candidate = getattr(row, name)
+            current = values[name]
+            values[name] = candidate if current is None else current if candidate is None else reducer(current, candidate)
+        candidate_latest = getattr(row, "latest_observed_at")
+        current_latest = values["latest_observed_at"]
+        values["latest_observed_at"] = (
+            candidate_latest
+            if current_latest is None or (candidate_latest is not None and candidate_latest > current_latest)
+            else current_latest
+        )
+
+    for row in aggregate_rows:
+        merge(row, route_key=row.route_no_key, direction_key=row.direction_key)
+    for row in boundary_rows:
+        merge(row, route_key=row.route_no or "", direction_key=row.direction or "")
+
+    return [
+        SimpleNamespace(
+            route_no=route_key or None,
+            direction=direction_key or None,
+            observations=values["observations"],
+            average_speed=(
+                values["speed_sum"] / values["speed_observations"]
+                if values["speed_observations"] else None
+            ),
+            minimum_speed=values["minimum_speed"],
+            maximum_speed=values["maximum_speed"],
+            average_free_flow_speed=(
+                values["free_flow_speed_sum"] / values["free_flow_speed_observations"]
+                if values["free_flow_speed_observations"] else None
+            ),
+            latest_observed_at=values["latest_observed_at"],
+        )
+        for (route_key, direction_key), values in sorted(totals.items())
+    ]
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -883,17 +1020,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         if normalized_route_no:
             traffic_query = traffic_query.where(HighwayTrafficSnapshot.route_no == normalized_route_no)
-        traffic_rows = (
-            await session.execute(
-                traffic_query.group_by(
-                    HighwayTrafficSnapshot.route_no,
-                    HighwayTrafficSnapshot.direction,
-                ).order_by(
-                    HighwayTrafficSnapshot.route_no,
-                    HighwayTrafficSnapshot.direction,
-                )
-            )
-        ).all()
+        traffic_rows = await _transport_traffic_statistics_rows(
+            session,
+            cutoff=cutoff,
+            route_no=normalized_route_no,
+            raw_query=traffic_query,
+        )
 
         incidents_query = (
             select(

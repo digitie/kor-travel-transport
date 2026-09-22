@@ -2,6 +2,14 @@
 
 ## 2026-09-22
 
+- n150 공개 HTTPS 268건 E2E에서 전체 3일 고속도로 통계가 cold read 때 504가 되는 것을
+  재현했다. 기존 covering index는 사용됐지만 3일 원본 약 500만 행을 읽어야 했고, 저자원
+  `VACUUM (ANALYZE, PARALLEL 0)` 뒤에도 cold I/O가 약 21초였다. 원본 관측은 보존하면서
+  5분 사전 집계 테이블을 추가했다. 통계 API는 완전히 지난 bucket은 사전 집계에서 읽고,
+  시작 경계 최대 5분만 원본에서 다시 집계해 기간 경계를 정확히 유지한다. PostgreSQL
+  migration은 기존 데이터를 backfill하며, 이후 고속도로 수집은 최근 두 시간을 재구축해
+  KREX의 동일 관측시각 정정도 정확히 반영한다. SQLite 단위 테스트는 집계가 없을 때
+  기존 원본 집계 fallback을 사용한다.
 - n150 HTTPS live E2E 266건을 실행해 264건 통과, 두 회귀를 발견했다. 공개 API gateway는
   bind mount allowlist 파일 내용이 바뀌어도 기존 컨테이너를 재생성하지 않아
   `features/places`가 404로 남을 수 있었다. 전용 admin 배포는 세 서비스만

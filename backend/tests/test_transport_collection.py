@@ -27,7 +27,14 @@ from app.core.config import Settings
 from app.core.time_utils import now_utc, serialize_utc
 from app.db.session import create_engine_and_session_factory, init_database
 from app.main import cached_transport_statistics, create_app
-from app.models import FuelPriceSnapshot, FuelStation, HighwayIncidentSnapshot, HighwayTrafficSnapshot, TransportCollectionState
+from app.models import (
+    FuelPriceSnapshot,
+    FuelStation,
+    HighwayIncidentSnapshot,
+    HighwayTrafficFiveMinuteStatistic,
+    HighwayTrafficSnapshot,
+    TransportCollectionState,
+)
 from app.services.transport_collection import (
     HighwayPayload,
     INCIDENT_SOURCE,
@@ -851,6 +858,46 @@ def test_transport_openapi_returns_stored_data_and_statistics(tmp_path: Path) ->
     }
     assert status.json()["last_run"]["status"] == "success"
     assert status.json()["last_run"]["trigger"] == "transport_test"
+
+
+def test_transport_statistics_reads_preaggregated_traffic_when_available(tmp_path: Path) -> None:
+    settings = build_settings(tmp_path)
+    with TestClient(create_app(settings)) as client:
+        bucket = now_utc().replace(second=0, microsecond=0)
+
+        async def add_aggregate() -> None:
+            async with client.app.state.session_factory() as session:
+                session.add(
+                    HighwayTrafficFiveMinuteStatistic(
+                        bucket_start=bucket,
+                        route_no_key="001",
+                        direction_key="상행",
+                        observations=7,
+                        speed_observations=6,
+                        speed_sum=420.0,
+                        minimum_speed=55.0,
+                        maximum_speed=85.0,
+                        free_flow_speed_observations=6,
+                        free_flow_speed_sum=600.0,
+                        latest_observed_at=bucket,
+                    )
+                )
+                await session.commit()
+
+        asyncio.run(add_aggregate())
+        statistics = client.get("/v1/transport/statistics", params={"route_no": "001", "days": 1})
+
+    assert statistics.status_code == 200
+    assert statistics.json()["traffic"] == [{
+        "route_no": "001",
+        "direction": "상행",
+        "observations": 7,
+        "average_speed": 70.0,
+        "minimum_speed": 55.0,
+        "maximum_speed": 85.0,
+        "average_free_flow_speed": 100.0,
+        "latest_observed_at": serialize_utc(bucket).isoformat().replace("+00:00", "Z"),
+    }]
 
 
 def test_transport_statistics_uses_short_lived_response_cache(tmp_path: Path) -> None:

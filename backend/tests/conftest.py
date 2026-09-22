@@ -38,7 +38,8 @@ def test_settings(tmp_path: Path) -> Settings:
                         "TRUNCATE TABLE ferry_ship_type_references, ferry_terminal_references, "
                         "ferry_ports, rail_station_references, "
                         "fuel_price_snapshots, highway_incident_snapshots, "
-                        "highway_traffic_snapshots, transport_collection_states, raw_api_responses, "
+                        "highway_traffic_five_minute_statistics, highway_traffic_snapshots, "
+                        "transport_collection_states, raw_api_responses, "
                         "parking_snapshots, parking_fee_rules, analytics_caches, collection_runs, "
                         "fuel_stations, parking_lots, airports RESTART IDENTITY CASCADE"
                     )
