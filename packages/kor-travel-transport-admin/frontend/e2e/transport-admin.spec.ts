@@ -162,9 +162,13 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
     await expect(mapPage.getByLabel("장소 목록에서 선택")).toBeVisible();
     await expect(mapPage.locator("canvas.maplibregl-canvas")).toBeVisible({ timeout: 20_000 });
     await expect.poll(() => [...mapPlaceRequests.keys()].sort()).toEqual(["ferry_port", "fuel_station", "rail_station"]);
-    expect([...mapPlaceRequests.values()].every((url) => url.searchParams.get("limit") === "5000" && ["min_longitude", "min_latitude", "max_longitude", "max_latitude"].every((key) => url.searchParams.has(key)))).toBe(true);
+    expect([...mapPlaceRequests.values()].every((url) => url.searchParams.get("limit") === "100" && ["min_longitude", "min_latitude", "max_longitude", "max_latitude"].every((key) => url.searchParams.has(key)))).toBe(true);
     await expect.poll(() => successfulTileResponses, { timeout: 20_000 }).toBeGreaterThan(0);
     await expect.poll(() => timetableRequests).toEqual([]);
+    const placePicker = mapPage.getByLabel("장소 목록에서 선택");
+    await expect.poll(() => placePicker.locator("option").count()).toBeGreaterThan(1);
+    await placePicker.selectOption({ index: 1 });
+    await expect(mapPage.locator(".transport-map-detail h2")).not.toHaveText("교통 장소");
     await mapContext.close();
   });
 

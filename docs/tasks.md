@@ -53,6 +53,11 @@ Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks
 - [x] 교통·유가 통합 저장 통계 화면, Apache ECharts 비교 그래프, 열차·도시철도·배편 분리 화면 추가
 - [x] `digitie/maplibre-vworld-react` 고정 revision을 사용하는 VWorld React 지도와 항구 시간표 명시 호출 계약 추가
 - [x] bbox 기반 저장 장소 지도 요청·절단 안내, 실제 VWorld 타일·모바일 viewport live E2E 계약, vendor tarball provenance 기록
+- [ ] 후속 P2: 수집량 증가 전 fuel/rail numeric 좌표 bbox 복합 index를 `EXPLAIN (ANALYZE,
+      BUFFERS)` 측정으로 설계한다. 현재 지도는 zoom별 전체 최대 900개를 요청하므로 즉시
+      PostGIS migration을 강제하지 않는다.
+- [ ] 후속 P2: `kind` 없는 legacy 장소 목록의 작은 `limit`에서 세 종류가 공정하게
+      반환되도록 API 계약을 별도 버전으로 정리한다. 지도는 종류별 bbox 요청만 사용한다.
 - [ ] cAdvisor `12103`, Prometheus `12102`, Grafana `12104` 전환 후 n150에서 transport
       12301/12302/12305를 배포
 - [ ] 두 적대적 리뷰, CI, n150 live E2E 뒤 Draft PR을 머지

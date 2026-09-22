@@ -32,12 +32,21 @@
 - 모바일 UI 회귀는 320·375·414·768px viewport에서 교통·유가, 열차·도시철도, 배편,
   지도 네 핵심 화면의 heading과 가로 스크롤 부재를 live Playwright로 검증한다.
 - 최종 James/Popper 적대 리뷰의 P1을 반영했다. 지도 장소 API는 client 전체 목록 대신
-  현재 bbox를 받아 kind별 5,000건 이하만 반환하고 `total`·`truncated`를 명시한다. 범위가
-  넓어 잘리면 UI가 확대를 안내하며, VWorld 타일 오류는 빈 canvas로 숨기지 않고 설정·네트워크
-  확인 안내를 표시한다. 지도 E2E는 kind별 `limit=5000`과 bbox 파라미터도 확인한다.
+  현재 bbox를 받고 `total`·`truncated`를 명시한다. 그 뒤 James가 재현한 전국 초기 뷰의
+  최대 15,000개 client 렌더링 가능성도 해소했다. 지도는 zoom 7 미만에서 종류별 100개,
+  zoom 8~9에서 200개, zoom 10 이상에서 300개만 요청하므로, 주유소·역·항구를 합쳐도
+  브라우저에는 최대 900개만 전달한다. 잘린 경우에는 현재 예산과 확대 방법을 표시한다.
+  VWorld 타일 오류는 선택한 장소 상세가 열려도 항상 안내한다. 지도 E2E는 초기 종류별
+  `limit=100`, bbox 파라미터, 장소 목록 선택, 성공 타일과 시간표 자동 호출 금지를 확인한다.
   항구 실시간 시간표의 서로 다른 cache miss는 기본 30초 전역 보호 간격을 적용하고,
   관리 proxy가 upstream `Retry-After`를 보존한다. API 회귀 39건, 관리 경계 5건,
   frontend 단위 19건·lint·type-check·production build와 clean Docker build를 통과했다.
+- Popper의 P2 두 건은 후속 task로 남긴다. 현재 지도는 종류별 bbox 요청만 사용하므로
+  `kind` 없는 legacy 목록의 잘림 순서가 지도 결과를 왜곡하지 않으며, 해당 compatibility
+  경로를 바꾸는 것은 별도 API 계약 변경으로 다룬다. 좌표는 아직 numeric column이고 운영
+  데이터량에서 현재 지도 예산은 최대 900개여서 즉시 PostGIS migration을 넣지 않는다.
+  대신 수집량 증가 전 fuel/rail 좌표 bbox 복합 index와 `EXPLAIN (ANALYZE, BUFFERS)`
+  측정을 별도 성능 task에서 결정한다.
 
 - n150 공개 HTTPS 268건 E2E에서 전체 3일 고속도로 통계가 cold read 때 504가 되는 것을
   재현했다. 기존 covering index는 사용됐지만 3일 원본 약 500만 행을 읽어야 했고, 저자원

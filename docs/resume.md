@@ -11,14 +11,16 @@
   migration, WSL lint·19개 단위 테스트·production build, backend 관리 API 계약 5건,
   깨끗한 Docker image build를 통과했다. James/Popper 적대 리뷰의 P1(통계 loading E2E
   문구, 지도 키보드 marker, 전체 철도 검색, 항구 요청 경쟁 상태)을 보완했다. 마지막
-  Popper P1인 지도 기본 1,000건 공평 분배도 종류별 명시 5,000건 요청으로 제거했다.
-  최종 재리뷰가 지적한 넓은 범위의 5,000건 절단은 viewport bbox API와 `total`·`truncated`
-  안내로 보완했고, VWorld 타일 오류는 화면 오류 상태로 노출한다. 항구 시간표의 서로 다른
+  Popper P1인 지도 기본 1,000건 공평 분배도 종류별 명시 요청으로 제거했다. 최종 재리뷰가
+  지적한 넓은 범위의 대량 렌더링은 viewport bbox API와 `total`·`truncated` 안내, zoom별
+  종류당 100/200/300개 예산(전체 최대 900개)으로 보완했고, VWorld 타일 오류는 장소 선택
+  상태와 무관하게 화면 오류 상태로 노출한다. 항구 시간표의 서로 다른
   cache miss는 기본 30초 provider 보호 간격을 적용하며, 관리 proxy는 `Retry-After`를
   보존한다. API 39개, 관리 경계 5개, frontend 단위 19개, lint·type-check·production build,
   clean Docker build가 통과했다. keyboard marker provider 변경은 병합된
-  `maplibre-vworld-react` PR #27에 포함됐다. 다음 순서는 수정 CI·최종 재리뷰, n150 HTTPS
-  live E2E, transport PR 머지다.
+  `maplibre-vworld-react` PR #27에 포함됐다. Popper P2인 numeric 좌표 bbox index와 legacy
+  `kind` 없는 목록의 균등 반환은 별도 성능/API 계약 task로 남겼다. 다음 순서는 수정 CI·최종
+  재리뷰, n150 HTTPS live E2E, transport PR 머지다.
 
 - 2026-09-22 `codex/transport-map-view`의 Draft PR #36은 최신 원격 후보를 기준으로
   n150 live E2E에서 발견한 공개 gateway 재생성·통계 cache 후속 보완 중이다. 공개 268건
