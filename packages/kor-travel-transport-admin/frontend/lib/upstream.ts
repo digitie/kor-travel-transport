@@ -1,6 +1,8 @@
 import { isAllowedTransportPath } from "./transport";
 
-const TIMEOUT_MS = 10_000;
+// 공개 API gateway의 proxy_read_timeout(30초)과 일치시킨다. 저장된 7일 이상
+// 집계가 정상적으로 10초를 넘을 수 있으므로 관리 UI만 먼저 502로 바꾸면 안 된다.
+const TIMEOUT_MS = 30_000;
 
 export function transportUpstreamUrl(path: string[], search: URLSearchParams) {
   if (!isAllowedTransportPath(path)) return null;
