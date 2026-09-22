@@ -43,8 +43,8 @@ button, input { font: inherit; }
 .transport-map-canvas { min-height: 620px; }
 .transport-map-detail { border-left: 1px solid var(--line); padding: 22px; }
 .transport-map-detail h2 { margin: 4px 0 12px; }
-.transport-map-marker { border: 2px solid white; border-radius: 50%; box-shadow: 0 2px 8px #1f293766; cursor: pointer; font-size: 17px; height: 34px; width: 34px; }
-.transport-map-marker.fuel_station { background: #fbbf24; }.transport-map-marker.rail_station { background: #38bdf8; }.transport-map-marker.ferry_port { background: #a78bfa; }
-.transport-map-cluster { align-items: center; background: #1d4ed8; border: 2px solid white; border-radius: 50%; box-shadow: 0 2px 8px #1f293766; color: white; cursor: pointer; display: flex; font-weight: 700; height: 38px; justify-content: center; min-width: 38px; padding: 0 7px; }
+.transport-map-picker { display: grid; font-size: 13px; font-weight: 700; gap: 6px; margin-bottom: 20px; }
+.transport-map-picker select { background: white; border: 1px solid #b9c4bd; border-radius: 7px; min-height: 40px; padding: 8px; }
+.timetable-result { white-space: pre-wrap; }
 @media (max-width: 760px) { .transport-map-layout { grid-template-columns: 1fr; min-height: 0; } .transport-map-canvas { min-height: 440px; } .transport-map-detail { border-left: 0; border-top: 1px solid var(--line); } }
 @media (max-width: 760px) { .admin-layout { grid-template-columns: 1fr; } .rail { padding: 18px; } .brand { margin-bottom: 15px; } .nav { grid-template-columns: repeat(3, minmax(0, 1fr)); } .nav-label { display: none; } .sign-out { margin-top: 18px; } .main { padding: 28px 20px; } .grid { grid-template-columns: 1fr; } .wide { grid-column: span 1; } }
