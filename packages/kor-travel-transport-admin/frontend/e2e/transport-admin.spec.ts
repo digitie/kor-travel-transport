@@ -141,5 +141,8 @@ test.describe("공개 gateway 쓰기·비허용 경계 (8개)", () => {
 
 test("Dagster health는 공개하되 cross-origin GraphQL POST는 CSRF로 차단한다", async ({ request }) => {
   expect((await request.get(`${dagsterBase}/health`)).status()).toBe(204);
-  expect((await request.post(`${dagsterBase}/graphql`, { data: { query: "{ __typename }" } })).status()).toBe(403);
+  expect((await request.post(`${dagsterBase}/graphql`, {
+    data: { query: "{ __typename }" },
+    headers: { Origin: "https://evil.example" },
+  })).status()).toBe(403);
 });

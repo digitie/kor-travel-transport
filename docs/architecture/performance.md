@@ -14,8 +14,16 @@
 - `parking_snapshots (airport_id, parking_lot_id, observed_at)` — 기간 분석
 - `parking_snapshots (collected_at)` — 수집 신선도 확인
 - `parking_snapshots (collection_run_id)` — 실행과 원본 추적
+- `highway_traffic_snapshots (route_no, observed_at, direction) INCLUDE (speed, free_flow_speed)` —
+  노선 동일성·기간 범위로 좁혀진 고속도로 통계의 index-only 집계
 
 운영에서는 `EXPLAIN (ANALYZE, BUFFERS)`로 7일 시계열과 current query를 확인하고, 임의로 인덱스를 추가하지 말고 `docs/journal.md`에 근거를 기록한다.
+
+`0008_transport_route_stats`는 `CREATE INDEX CONCURRENTLY`를 사용한다. 배포가 DDL 수행 중
+중단되면 PostgreSQL은 같은 이름의 invalid index를 남길 수 있으며 `IF NOT EXISTS`가 이를
+재사용하지 못하게 막는다. 다음 배포 전 운영자가 `pg_index.indisvalid`를 확인하고, invalid이면
+해당 index만 `DROP INDEX CONCURRENTLY`한 뒤 migration을 재실행한다. 이 절차는 정상 index를
+무단 삭제하거나 전체 schema를 되돌리지 않는다.
 
 ## 수용 기준
 
