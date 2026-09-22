@@ -7,7 +7,7 @@ from alembic import op
 
 
 revision = "0009_ferry_port_map_locations"
-down_revision = "0008_transport_route_statistics_covering_index"
+down_revision = "0008_transport_route_stats"
 branch_labels = None
 depends_on = None
 
