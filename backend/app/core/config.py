@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     port_guideline_collection_enabled: bool = True
     ferry_timetable_cache_seconds: int = Field(default=300, ge=30, le=3600)
     ferry_timetable_max_days_ahead: int = Field(default=7, ge=0, le=31)
+    # 저장된 교통 통계는 수집 주기보다 훨씬 짧게만 메모리에 보관한다. 반복되는
+    # 대시보드/공개 API 조회가 넓은 집계를 다시 실행하지 않게 하되, 새 수집 결과도
+    # 빠르게 반영한다.
+    transport_statistics_cache_seconds: int = Field(default=60, ge=0, le=3600)
     rustfs_endpoint_url: str | None = None
     rustfs_bucket: str = "kor-travel-transport-raw"
     rustfs_access_key_id: str | None = None

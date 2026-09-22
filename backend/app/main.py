@@ -164,6 +164,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.ferry_timetable_cache: dict[tuple[str, date], tuple[datetime, FerryOperationResponse]] = {}
         app.state.ferry_timetable_lock = asyncio.Lock()
         app.state.ferry_timetable_rate_limited_until: datetime | None = None
+        app.state.transport_statistics_cache: dict[
+            tuple[str | None, int], tuple[datetime, TransportStatisticsResponse]
+        ] = {}
         app.state.scheduler_task = None
         app.state.transport_scheduler_task = None
         app.state.fuel_scheduler_task = None
@@ -789,12 +792,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @router.get("/transport/statistics", response_model=TransportStatisticsResponse)
     async def transport_statistics(
+        request: Request,
         route_no: str | None = Query(default=None),
         days: int = Query(default=7, ge=1, le=90),
         session: AsyncSession = Depends(get_db),
     ) -> TransportStatisticsResponse:
         cutoff = now_utc() - timedelta(days=days)
         normalized_route_no = route_no.strip() if route_no else None
+        cache_key = (normalized_route_no, days)
+        cached = request.app.state.transport_statistics_cache.get(cache_key)
+        if cached is not None:
+            cached_at, cached_response = cached
+            cache_age_seconds = (now_utc() - cached_at).total_seconds()
+            if (
+                request.app.state.settings.transport_statistics_cache_seconds > 0
+                and cache_age_seconds <= request.app.state.settings.transport_statistics_cache_seconds
+            ):
+                return cached_response
 
         traffic_query = (
             select(
@@ -862,7 +876,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         ).all()
 
-        return TransportStatisticsResponse(
+        response = TransportStatisticsResponse(
             generated_at=now_utc(),
             days=days,
             route_no=normalized_route_no,
@@ -913,6 +927,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 for row in fuel_rows
             ],
         )
+        if request.app.state.settings.transport_statistics_cache_seconds:
+            request.app.state.transport_statistics_cache[cache_key] = (now_utc(), response)
+        return response
 
     @router.get("/parking/current", response_model=ParkingCurrentResponse)
     async def parking_current(

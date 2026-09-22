@@ -15,6 +15,11 @@ HttpOnly 서명 세션을 통과한 뒤에만 Next.js server route가 다음의 
 - `GET /v1/transport/highways/traffic`
 - `GET /v1/transport/highways/incidents`
 - `GET /v1/transport/fuel/stations`
+- `GET /v1/transport/features/places`
+
+`/v1/transport/statistics`는 PostgreSQL에 저장된 스냅샷만 집계하고, 같은
+`route_no`·기간 조합은 기본 60초 동안 backend 메모리에 재사용한다. 이는 반복 대시보드
+조회가 집계를 중복 실행하지 않게 하는 성능 경계이며, 수집 원본을 다시 호출하지 않는다.
 
 수집 실행, 백업, DB 변경, provider 키는 관리 UI의 허용 목록에 없다. 이 경계는
 `lib/transport.ts` 단위 테스트와 `backend/tests/test_transport_admin_contract.py`가
@@ -61,6 +66,8 @@ Dagster 운영 UI ── TLS ── transport-dagster.digitie.mywire.org:12302
 운영 환경값은 n150의 추적하지 않는 `.env.server14`에 둔다. 배포는
 `scripts/deploy-transport-admin-server14.sh`만 사용하며, 서비스가 아직 실행 중이지
 않은 port에 listener가 있으면 기존 프로세스를 중단하지 않고 실패한다.
+공개 API gateway는 bind mount한 allowlist 설정을 쓰므로 배포 때 전용 세 서비스를
+강제 재생성하여 변경된 공개 경로가 즉시 적용되게 한다.
 
 포트 전환 같은 공용 인프라 작업은 `kor-travel-docker-manager`가 소유한다. 이 저장소가
 cAdvisor, Prometheus, Grafana의 lifecycle을 조작하지 않는다.

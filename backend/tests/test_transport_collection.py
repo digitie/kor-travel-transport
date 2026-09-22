@@ -851,6 +851,34 @@ def test_transport_openapi_returns_stored_data_and_statistics(tmp_path: Path) ->
     assert status.json()["last_run"]["trigger"] == "transport_test"
 
 
+def test_transport_statistics_uses_short_lived_response_cache(tmp_path: Path) -> None:
+    settings = build_settings(tmp_path)
+    with TestClient(create_app(settings)) as client:
+        service = client.app.state.transport_collection_service
+        service.provider = FakeTransportProvider()
+
+        async def collect() -> None:
+            async with client.app.state.session_factory() as session:
+                await service.collect(session, trigger="test")
+
+        asyncio.run(collect())
+        first = client.get("/v1/transport/statistics", params={"route_no": "001", "days": 7})
+
+        async def remove_snapshots() -> None:
+            async with client.app.state.session_factory() as session:
+                await session.execute(text("DELETE FROM fuel_price_snapshots"))
+                await session.execute(text("DELETE FROM highway_incident_snapshots"))
+                await session.execute(text("DELETE FROM highway_traffic_snapshots"))
+                await session.commit()
+
+        asyncio.run(remove_snapshots())
+        cached = client.get("/v1/transport/statistics", params={"route_no": "001", "days": 7})
+
+    assert first.status_code == 200
+    assert cached.status_code == 200
+    assert cached.json() == first.json()
+
+
 def test_transport_status_exposes_a_durable_failed_run(client) -> None:
     service = client.app.state.transport_collection_service
     service.provider = FakeTransportProvider()

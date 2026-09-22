@@ -2,6 +2,13 @@
 
 ## 2026-09-22
 
+- n150 HTTPS live E2E 266건을 실행해 264건 통과, 두 회귀를 발견했다. 공개 API gateway는
+  bind mount allowlist 파일 내용이 바뀌어도 기존 컨테이너를 재생성하지 않아
+  `features/places`가 404로 남을 수 있었다. 전용 admin 배포는 세 서비스만
+  `--force-recreate`하도록 보완했다. cold 통계 집계의 public 30초 gateway timeout도
+  재현되어 같은 기간·노선의 저장 통계 응답을 기본 60초 재사용하도록 추가했다. 운영 DB는
+  변경하지 않았고, cache 회귀는 첫 응답 뒤 원본 snapshot을 지워도 TTL 안에서는 같은
+  응답을 돌려주는 단위 테스트로 고정했다.
 - 최종 적대적 리뷰의 P1을 반영했다. 지도는 DOM marker pool 대신 MapLibre GeoJSON
   circle/symbol layer와 source cluster로 렌더링해 고확대에서도 marker DOM을 대량 생성하지
   않는다. 항구 선택은 이전 `AbortController`를 취소하고 요청 일련번호를 확인하므로 늦게

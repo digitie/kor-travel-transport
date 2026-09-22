@@ -64,7 +64,10 @@ tar -xzf "${REMOTE_ARCHIVE}" -C "${stage}"
 rsync -a --exclude="${REMOTE_ENV_FILE}" --exclude=".env.server14.legacy" --exclude="backups/" "${stage}/" "${REMOTE_APP_DIR}/"
 cd "${REMOTE_APP_DIR}"
 
-TRANSPORT_ADMIN_RELEASE_SHA="${CANDIDATE_SHA}" docker compose --project-name kor-travel-transport-admin --env-file "${REMOTE_ENV_FILE}" -f docker-compose.transport-admin.yml up -d --build
+# api-gateway는 설정 파일을 bind mount한다. image digest만으로는 파일 내용 변경을
+# 감지하지 못하므로, 이 전용 세 서비스를 명시적으로 재생성해 공개 allowlist가
+# 이전 설정에 머무르지 않게 한다.
+TRANSPORT_ADMIN_RELEASE_SHA="${CANDIDATE_SHA}" docker compose --project-name kor-travel-transport-admin --env-file "${REMOTE_ENV_FILE}" -f docker-compose.transport-admin.yml up -d --build --force-recreate transport-api-gateway transport-dagster-gateway transport-admin-web
 api_port="$(port_from_env TRANSPORT_PUBLIC_API_PORT 12301)"
 dagster_port="$(port_from_env TRANSPORT_DAGSTER_PORT 12302)"
 web_port="$(port_from_env TRANSPORT_PUBLIC_WEB_PORT 12305)"
