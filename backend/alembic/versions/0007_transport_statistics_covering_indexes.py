@@ -20,12 +20,14 @@ def upgrade() -> None:
             ["observed_at", "route_no", "direction"],
             postgresql_include=["speed", "free_flow_speed"],
             postgresql_concurrently=True,
+            if_not_exists=True,
         )
         op.create_index(
             "ix_highway_incidents_statistics_observed",
             "highway_incident_snapshots",
             ["observed_at", "route_no"],
             postgresql_concurrently=True,
+            if_not_exists=True,
         )
         op.create_index(
             "ix_fuel_prices_statistics_collected",
@@ -33,11 +35,12 @@ def upgrade() -> None:
             ["collected_at", "product_code", "fuel_station_id"],
             postgresql_include=["price", "observed_at"],
             postgresql_concurrently=True,
+            if_not_exists=True,
         )
 
 
 def downgrade() -> None:
     with op.get_context().autocommit_block():
-        op.drop_index("ix_fuel_prices_statistics_collected", table_name="fuel_price_snapshots", postgresql_concurrently=True)
-        op.drop_index("ix_highway_incidents_statistics_observed", table_name="highway_incident_snapshots", postgresql_concurrently=True)
-        op.drop_index("ix_highway_traffic_statistics_observed", table_name="highway_traffic_snapshots", postgresql_concurrently=True)
+        op.drop_index("ix_fuel_prices_statistics_collected", table_name="fuel_price_snapshots", postgresql_concurrently=True, if_exists=True)
+        op.drop_index("ix_highway_incidents_statistics_observed", table_name="highway_incident_snapshots", postgresql_concurrently=True, if_exists=True)
+        op.drop_index("ix_highway_traffic_statistics_observed", table_name="highway_traffic_snapshots", postgresql_concurrently=True, if_exists=True)
