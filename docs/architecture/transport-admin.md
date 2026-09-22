@@ -23,29 +23,27 @@ HttpOnly 서명 세션을 통과한 뒤에만 Next.js server route가 다음의 
 ## 운영 경로
 
 ```text
-브라우저 ── TLS ── transport.digitie.mywire.org:443
-                         │ Caddy ACME TLS 종단
+브라우저 ── TLS ── transport.digitie.mywire.org:12305
                          │ 서명 세션 + same-origin API
                          ▼
                  transport-admin-web
                   ├─ 127.0.0.1:14001/v1/transport/*
                   └─ 127.0.0.1:14004/graphql
 
-외부 OpenAPI ── TLS ── transport-api.digitie.mywire.org:443
+외부 OpenAPI ── TLS ── transport-api.digitie.mywire.org:12301
                          ▼
                    transport-api-gateway ── 127.0.0.1:14001
 
-Dagster 운영 UI ── TLS ── transport-dagster.digitie.mywire.org:443
+Dagster 운영 UI ── TLS ── transport-dagster.digitie.mywire.org:12302
                          ▼
                   transport-dagster-gateway (Basic Auth + Origin POST 차단)
                          ▼
                        127.0.0.1:14004
 ```
 
-세 upstream listener는 `127.0.0.1:12301`/`12302`/`12305`에만 bind하고, 별도
-`transport-tls-gateway` Caddy가 공용 80/443에서 세 hostname을 HTTPS로 종단한다.
-모두 `kor-travel-transport-admin` project에 속하며 기존 `kor-travel-airport`
-서비스의 port·network·lifecycle은 바꾸지 않는다.
+세 listener는 `docker-compose.transport-admin.yml`의 독립
+`kor-travel-transport-admin` project에 속한다. host network를 쓰지만 기존
+`kor-travel-airport` 서비스의 port·network·lifecycle은 바꾸지 않는다.
 
 ## 인증과 CSRF
 

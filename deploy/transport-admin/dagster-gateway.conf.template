@@ -11,7 +11,7 @@ map "$request_method:$transport_dagster_same_origin" $transport_dagster_csrf_blo
 }
 
 server {
-    listen 127.0.0.1:${TRANSPORT_DAGSTER_PORT};
+    listen 0.0.0.0:${TRANSPORT_DAGSTER_PORT};
     server_name _;
 
     location = /health {
