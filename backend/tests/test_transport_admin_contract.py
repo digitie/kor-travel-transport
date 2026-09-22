@@ -17,13 +17,16 @@ def test_transport_admin_is_a_separate_host_network_stack() -> None:
     compose = (ROOT / "docker-compose.transport-admin.yml").read_text(encoding="utf-8")
 
     assert "name: kor-travel-transport-admin" in compose
-    assert compose.count("network_mode: host") == 3
+    assert compose.count("network_mode: host") == 4
     assert "TRANSPORT_PUBLIC_API_PORT:-12301" in compose
     assert "TRANSPORT_DAGSTER_PORT:-12302" in compose
     assert "TRANSPORT_PUBLIC_WEB_PORT:-12305" in compose
     assert "http://127.0.0.1:14001" in compose
     assert "http://127.0.0.1:14004" in compose
     assert "parking-radar" in compose
+    assert "transport-tls-gateway" in compose
+    assert "caddy:2.8-alpine" in compose
+    assert 'TRANSPORT_UI_TRUST_PROXY: "true"' in compose
 
 
 def test_transport_admin_does_not_receive_provider_or_database_credentials() -> None:
@@ -53,6 +56,8 @@ def test_transport_gateway_contract_has_bounded_upstreams_and_dagster_auth() -> 
     assert "location / { return 404; }" in api_gateway
     assert "/admin/backups" not in api_gateway
     assert "proxy_set_header Host 127.0.0.1" in api_gateway
+    assert "listen 127.0.0.1:${TRANSPORT_PUBLIC_API_PORT}" in api_gateway
+    assert "listen 127.0.0.1:${TRANSPORT_DAGSTER_PORT}" in dagster_gateway
     assert "proxy_pass http://127.0.0.1:14004" in dagster_gateway
     assert "auth_basic" in dagster_gateway
     assert "transport_dagster_csrf_block" in dagster_gateway

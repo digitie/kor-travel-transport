@@ -3,6 +3,22 @@ name: kor-travel-transport-admin
 # 기존 parking-radar Compose와 독립된 host-network UI/gateway 스택이다. backend,
 # Dagster webserver를 재기동하거나 포트를 변경하지 않고 loopback upstream만 읽는다.
 services:
+  transport-tls-gateway:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./deploy/transport-admin/Caddyfile:/etc/caddy/Caddyfile:ro
+      - transport-caddy-data:/data
+      - transport-caddy-config:/config
+    depends_on:
+      transport-api-gateway:
+        condition: service_healthy
+      transport-dagster-gateway:
+        condition: service_healthy
+      transport-admin-web:
+        condition: service_healthy
+
   transport-api-gateway:
     image: nginx:1.27-alpine
     restart: unless-stopped
@@ -47,9 +63,11 @@ services:
       TRANSPORT_UI_PASSWORD: "${TRANSPORT_UI_PASSWORD:?set the transport admin password}"
       TRANSPORT_UI_SESSION_SECRET: "${TRANSPORT_UI_SESSION_SECRET:?set a 32+ character transport admin session secret}"
       TRANSPORT_UI_PUBLIC_ORIGIN: "${TRANSPORT_UI_PUBLIC_ORIGIN:?set the public transport admin origin}"
-      TRANSPORT_UI_TRUST_PROXY: "${TRANSPORT_UI_TRUST_PROXY:-false}"
+      # 외부 요청은 Caddy만 거치고 web listener는 loopback이므로 마지막 XFF hop을
+      # client key로 신뢰할 수 있다.
+      TRANSPORT_UI_TRUST_PROXY: "true"
       TRANSPORT_PUBLIC_WEB_PORT: "${TRANSPORT_PUBLIC_WEB_PORT:-12305}"
-    command: ["sh", "-c", "npm run start -- --hostname 0.0.0.0 --port ${TRANSPORT_PUBLIC_WEB_PORT:-12305}"]
+    command: ["sh", "-c", "npm run start -- --hostname 127.0.0.1 --port ${TRANSPORT_PUBLIC_WEB_PORT:-12305}"]
     depends_on:
       transport-api-gateway:
         condition: service_healthy
@@ -61,3 +79,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+
+volumes:
+  transport-caddy-data:
+  transport-caddy-config:

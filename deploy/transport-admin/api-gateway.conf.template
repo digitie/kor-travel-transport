@@ -1,5 +1,5 @@
 server {
-    listen 0.0.0.0:${TRANSPORT_PUBLIC_API_PORT};
+    listen 127.0.0.1:${TRANSPORT_PUBLIC_API_PORT};
     server_name _;
 
     location = /health {
