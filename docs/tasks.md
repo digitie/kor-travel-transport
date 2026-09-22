@@ -10,7 +10,7 @@
 
 ## 진행 중인 작업 인덱스
 
-현재 진행 중 task는 `T-041`이다. `T-033`~`T-039`(shadcn/ui 전환 + 과거 자료 조회 +
+현재 진행 중 task는 `T-042`이다. `T-033`~`T-039`(shadcn/ui 전환 + 과거 자료 조회 +
 Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks-done.md`로
 이동했다.
 
@@ -43,6 +43,16 @@ Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks
 - [ ] 공개 파일을 공용 RustFS에 저장하는 async provider 계약을 `python-*-api`에 추가
 - [ ] Map/PinVi `place`·`notice`·`price` contract REST와 항구 실시간 시간표 API 구현
 - [ ] WSL/Docker, 적대적 리뷰 2명, n150 live E2E와 shared DB cutover 검증 후 PR 머지
+
+### T-042 Transport 전용 운영 관리 UI
+
+- [x] weather admin의 인증·server-side proxy·Dagster GraphQL 경계를 transport 전용
+      Next.js 패키지로 복제
+- [x] 기존 `parking-radar`와 독립된 API/Dagster/UI gateway Compose project 추가
+- [x] 고속도로·유가 저장 스냅샷, 수집 상태, Dagster 상태, 허용 경로/세션/CSRF 단위·계약 테스트 추가
+- [ ] cAdvisor `12103`, Prometheus `12102`, Grafana `12104` 전환 후 n150에서 transport
+      12301/12302/12305를 배포
+- [ ] 두 적대적 리뷰, CI, n150 live E2E 뒤 Draft PR을 머지
 
 `T-034`에서는 `<select>`/`ResponsiveSection`의 `<details>`/
 daily-flight-overlay-chart의 토글·체크박스는 테스트 호환성 위험 때문에 의도적으로

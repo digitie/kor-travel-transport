@@ -1,0 +1,5 @@
+FROM nginx:1.27-alpine
+
+RUN apk add --no-cache openssl
+COPY deploy/transport-admin/dagster-gateway.conf.template /etc/nginx/templates/default.conf.template
+CMD ["/bin/sh", "-c", "printf '%s:%s\\n' \"$TRANSPORT_DAGSTER_USER\" \"$(openssl passwd -apr1 \"$TRANSPORT_DAGSTER_PASSWORD\")\" > /etc/nginx/.htpasswd && exec /docker-entrypoint.sh nginx -g 'daemon off;'"]

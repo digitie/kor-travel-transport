@@ -1,5 +1,25 @@
 # journal.md — 작업 일지
 
+## 2026-09-22
+
+- n150에서 candidate `92cb128`을 배포해 backend health SHA 일치와 7일 transport
+  statistics 응답 `2.50초`를 확인했다. HTTPS live E2E가 발견한 로그아웃의 내부 HTTP
+  절대 redirect를 상대 `/login` redirect로 보완하고, Dagster cross-origin POST의
+  실제 CSRF 차단 계약(`403`)을 E2E 기대값에 반영했다.
+- n150 live E2E에서 7일 transport 통계가 넓은 원본 시계열을 순차 읽어 공개 gateway
+  timeout을 넘는 것을 확인했다. 읽기 경로에 맞춘 covering index 세 개와 `count(*)`
+  집계를 추가해, JSON 원본 행을 재읽지 않고 저장된 교통·유가 통계를 제공하도록 보완했다.
+- `parking-radar`를 변경하지 않는 별도 `kor-travel-transport-admin` Compose project와
+  `packages/kor-travel-transport-admin/frontend`를 추가했다. weather admin의 로그인,
+  HttpOnly 서명 세션, server-side API proxy, Dagster GraphQL proxy 구조를 transport
+  경계로 옮겼다.
+- UI가 provider/DB/RustFS 비밀을 받지 않고, 저장된 transport read API 다섯 개만
+  허용하도록 했다. 로그인 rate limit, local redirect, API allowlist, upstream URL,
+  세션 검증, route-level 인증 회귀 테스트와 Compose 보안 계약 테스트를 추가했다.
+- 사용자 지정 공개 listener는 API `12301`, Dagster `12302`, UI `12305`로 정리했다.
+  Manager ADR-48의 cAdvisor `12103`·Prometheus `12102`·Grafana `12104` 재배치를
+  실제 n150에 적용한 뒤 transport stack을 배포하고 live E2E를 실행한다.
+
 ## 2026-09-21
 
 - KREX가 동일한 `updated_at` 관측을 재전달했을 때 기존 고속도로 소통 행을 건너뛰어

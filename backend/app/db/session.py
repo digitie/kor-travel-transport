@@ -11,7 +11,7 @@ from sqlalchemy.pool import NullPool
 
 from app.models import Base
 
-ALEMBIC_HEAD = "0006_rail_maritime_reference"
+ALEMBIC_HEAD = "0007_transport_stats_indexes"
 
 
 def create_engine_and_session_factory(database_url: str) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:

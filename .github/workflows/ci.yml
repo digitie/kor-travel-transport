@@ -4,6 +4,16 @@ on:
   push:
     branches: [main, "codex/**"]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      e2e_base_url:
+        description: "배포가 끝난 뒤 검증할 운영 URL"
+        required: true
+        type: string
+      expected_release_sha:
+        description: "운영 health endpoint가 반환해야 하는 배포 commit SHA"
+        required: true
+        type: string
 
 jobs:
   backend:
@@ -55,14 +65,32 @@ jobs:
       - run: npx tsc -p tsconfig.test.json --noEmit
       - run: npm run build
 
+  transport-admin:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/kor-travel-transport-admin/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: packages/kor-travel-transport-admin/frontend/package-lock.json
+      - run: npm ci
+      - run: npm run test
+      - run: npm run type-check
+      - run: npm run build
+
   live-e2e:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: frontend
     env:
-      E2E_BASE_URL: https://pr.digitie.mywire.org
-      EXPECTED_RELEASE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      E2E_BASE_URL: ${{ inputs.e2e_base_url }}
+      EXPECTED_RELEASE_SHA: ${{ inputs.expected_release_sha }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

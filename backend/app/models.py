@@ -120,6 +120,13 @@ class HighwayTrafficSnapshot(Base):
         Index("ix_highway_traffic_observed", "observed_at"),
         Index("ix_highway_traffic_route_observed", "route_no", "observed_at"),
         Index("ix_highway_traffic_conzone_observed", "conzone_id", "observed_at"),
+        Index(
+            "ix_highway_traffic_statistics_observed",
+            "observed_at",
+            "route_no",
+            "direction",
+            postgresql_include=["speed", "free_flow_speed"],
+        ),
         Index("ix_highway_traffic_collection_run_id", "collection_run_id"),
     )
 
@@ -154,6 +161,7 @@ class HighwayIncidentSnapshot(Base):
         ),
         Index("ix_highway_incidents_observed", "observed_at"),
         Index("ix_highway_incidents_route_observed", "route_no", "observed_at"),
+        Index("ix_highway_incidents_statistics_observed", "observed_at", "route_no"),
         Index("ix_highway_incidents_collection_run_id", "collection_run_id"),
     )
 
@@ -253,6 +261,13 @@ class FuelPriceSnapshot(Base):
         Index("ix_fuel_prices_product_observed", "product_code", "observed_at"),
         Index("ix_fuel_prices_station_collected", "fuel_station_id", "collected_at"),
         Index("ix_fuel_prices_product_collected", "product_code", "collected_at"),
+        Index(
+            "ix_fuel_prices_statistics_collected",
+            "collected_at",
+            "product_code",
+            "fuel_station_id",
+            postgresql_include=["price", "observed_at"],
+        ),
         Index("ix_fuel_prices_collection_run_id", "collection_run_id"),
     )
 

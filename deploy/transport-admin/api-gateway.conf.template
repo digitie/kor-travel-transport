@@ -1,0 +1,31 @@
+server {
+    listen 0.0.0.0:${TRANSPORT_PUBLIC_API_PORT};
+    server_name _;
+
+    location = /health {
+        proxy_pass http://127.0.0.1:14001;
+        proxy_http_version 1.1;
+        # backend TrustedHostMiddleware에는 public transport hostname을 추가하지
+        # 않는다. 내부 loopback host로 고정해 기존 parking-radar 설정을 보존한다.
+        proxy_set_header Host 127.0.0.1;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 30s;
+    }
+
+    # 공개 transport API는 저장된 교통정보 읽기 endpoint 다섯 개만 제공한다.
+    # parking-radar의 주차·관리·백업/복원 경로를 이 listener로 전달하지 않는다.
+    location ~ ^/v1/transport/(collector-status|statistics|highways/traffic|highways/incidents|fuel/stations)$ {
+        limit_except GET { deny all; }
+        proxy_pass http://127.0.0.1:14001;
+        proxy_http_version 1.1;
+        proxy_set_header Host 127.0.0.1;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 30s;
+    }
+
+    location / { return 404; }
+}

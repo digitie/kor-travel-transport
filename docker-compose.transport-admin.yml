@@ -1,0 +1,65 @@
+name: kor-travel-transport-admin
+
+# 기존 parking-radar Compose와 독립된 host-network UI/gateway 스택이다. backend,
+# Dagster webserver를 재기동하거나 포트를 변경하지 않고 loopback upstream만 읽는다.
+services:
+  transport-api-gateway:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TRANSPORT_PUBLIC_API_PORT: "${TRANSPORT_PUBLIC_API_PORT:-12301}"
+    volumes:
+      - ./deploy/transport-admin/api-gateway.conf.template:/etc/nginx/templates/default.conf.template:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${TRANSPORT_PUBLIC_API_PORT:-12301}/health >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  transport-dagster-gateway:
+    build:
+      context: .
+      dockerfile: deploy/transport-admin/Dockerfile.dagster-gateway
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TRANSPORT_DAGSTER_PORT: "${TRANSPORT_DAGSTER_PORT:-12302}"
+      TRANSPORT_DAGSTER_PUBLIC_ORIGIN: "${TRANSPORT_DAGSTER_PUBLIC_ORIGIN:?set the public Dagster origin}"
+      TRANSPORT_DAGSTER_USER: "${TRANSPORT_DAGSTER_USER:-admin}"
+      TRANSPORT_DAGSTER_PASSWORD: "${TRANSPORT_DAGSTER_PASSWORD:?set the transport Dagster password}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${TRANSPORT_DAGSTER_PORT:-12302}/health >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  transport-admin-web:
+    build:
+      context: .
+      dockerfile: packages/kor-travel-transport-admin/frontend/Dockerfile
+      args:
+        TRANSPORT_ADMIN_RELEASE_SHA: "${TRANSPORT_ADMIN_RELEASE_SHA:-unknown}"
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TRANSPORT_API_INTERNAL_URL: "${TRANSPORT_API_INTERNAL_URL:-http://127.0.0.1:14001}"
+      TRANSPORT_DAGSTER_INTERNAL_URL: "${TRANSPORT_DAGSTER_INTERNAL_URL:-http://127.0.0.1:14004}"
+      TRANSPORT_UI_USER: "${TRANSPORT_UI_USER:-admin}"
+      TRANSPORT_UI_PASSWORD: "${TRANSPORT_UI_PASSWORD:?set the transport admin password}"
+      TRANSPORT_UI_SESSION_SECRET: "${TRANSPORT_UI_SESSION_SECRET:?set a 32+ character transport admin session secret}"
+      TRANSPORT_UI_PUBLIC_ORIGIN: "${TRANSPORT_UI_PUBLIC_ORIGIN:?set the public transport admin origin}"
+      TRANSPORT_UI_TRUST_PROXY: "${TRANSPORT_UI_TRUST_PROXY:-false}"
+      TRANSPORT_PUBLIC_WEB_PORT: "${TRANSPORT_PUBLIC_WEB_PORT:-12305}"
+    command: ["sh", "-c", "npm run start -- --hostname 0.0.0.0 --port ${TRANSPORT_PUBLIC_WEB_PORT:-12305}"]
+    depends_on:
+      transport-api-gateway:
+        condition: service_healthy
+      transport-dagster-gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:${TRANSPORT_PUBLIC_WEB_PORT:-12305}/login').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s

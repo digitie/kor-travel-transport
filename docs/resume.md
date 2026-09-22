@@ -2,6 +2,19 @@
 
 ## 현재 상태
 
+- 2026-09-22 `codex/transport-admin` PR #33 후보 `92cb128`은 n150에 전용 API
+  `12301`, Dagster `12302`, UI `12305`로 배포됐다. backend health SHA 일치와
+  7일 통계 `2.50초`를 확인했다. HTTPS browser E2E가 발견한 로그아웃의 internal HTTP
+  redirect와 Dagster CSRF 기대값을 보완 중이므로, 이 후속 패치를 CI·두 적대적 리뷰·live
+  E2E에 다시 통과시킨 뒤에만 머지한다.
+
+- 2026-09-22 `codex/transport-admin`에서 weather admin과 같은 인증된 server-side proxy
+  구조의 transport 전용 운영 UI를 구현 중이다. 기존 `parking-radar` frontend/Compose는
+  변경하지 않는다. 새 독립 Compose project는 public API `12301`, Dagster `12302`, UI
+  `12305`를 사용한다. Manager ADR-48의 사전 정의된 monitoring 포트는 Prometheus
+  `12102`, cAdvisor `12103`, Grafana `12104`이며, 이 전환과 n150 live E2E가 다음
+  배포 게이트다.
+
 - 2026-09-22 현재 `codex/shared-db-dagster`의 PR #32는 최신 후보를 n150에 배포한 상태다.
   외부 live E2E가 KREX 동일 관측 시각의 행에서 과거 `collected_at`을 읽는 정합성 문제를
   발견했다. 수집 성공 때 동일 행의 수집 run·원본 값·수집 시각을 갱신하도록 보완하고,
