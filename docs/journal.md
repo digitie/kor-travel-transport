@@ -47,6 +47,12 @@
   데이터량에서 현재 지도 예산은 최대 900개여서 즉시 PostGIS migration을 넣지 않는다.
   대신 수집량 증가 전 fuel/rail 좌표 bbox 복합 index와 `EXPLAIN (ANALYZE, BUFFERS)`
   측정을 별도 성능 task에서 결정한다.
+- 재수정 뒤 James/Popper 재리뷰는 P0/P1 없음으로 끝났다. P2로 남은 zoom 8·10의
+  200/300개 예산은 현재 live E2E가 고정 초기 zoom 7의 100개 계약만 검증하므로, map event
+  test seam을 추가하는 후속 UX 테스트에서 경계별로 고정한다. VWorld 타일이 실패 뒤 회복할
+  때 오류 문구가 다음 map reload 전까지 남을 수 있는 점도 같은 후속으로 남긴다. 두 항목은
+  데이터 요청 상한·오류의 가시성·배포 안전성을 훼손하지 않으며, 현재 P1 재현 경로는
+  초기 범위 예산과 선택 상태 오류 표시 E2E로 보호된다.
 
 - n150 공개 HTTPS 268건 E2E에서 전체 3일 고속도로 통계가 cold read 때 504가 되는 것을
   재현했다. 기존 covering index는 사용됐지만 3일 원본 약 500만 행을 읽어야 했고, 저자원
