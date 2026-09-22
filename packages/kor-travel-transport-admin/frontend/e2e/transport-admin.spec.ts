@@ -128,13 +128,40 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
     });
   }
 
-  test("지도는 저장 장소 API를 읽고, 실시간 항구 시간표를 자동 호출하지 않는다", async () => {
+  test("핵심 교통 화면은 모바일 폭에서도 가로 스크롤 없이 읽힌다", async ({ browser }) => {
+    for (const width of [320, 375, 414, 768]) {
+      const mobileContext = await browser.newContext({ baseURL: webBase, viewport: { width, height: 900 } });
+      const mobilePage = await mobileContext.newPage();
+      await login(mobilePage);
+      for (const [path, heading] of [["/transport", "교통·유가 현황"], ["/rail", "열차·도시철도"], ["/ferry", "배편"], ["/map", "교통 지도"]] as const) {
+        await mobilePage.goto(path);
+        await expect(mobilePage.getByRole("heading", { name: heading })).toBeVisible();
+        expect(await mobilePage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      }
+      await mobileContext.close();
+    }
+  });
+
+  test("지도는 VWorld 타일과 저장 장소 API를 읽고, 실시간 항구 시간표를 자동 호출하지 않는다", async ({ browser }) => {
+    const mapContext = await browser.newContext({ baseURL: webBase });
+    const mapPage = await mapContext.newPage();
+    await login(mapPage);
     const timetableRequests: string[] = [];
-    page.on("request", (request) => { if (request.url().includes("/timetable")) timetableRequests.push(request.url()); });
-    await page.goto("/map");
-    await expect(page.getByLabel("교통 장소 지도")).toBeVisible();
-    await expect(page.getByLabel("장소 목록에서 선택")).toBeVisible();
+    const mapPlaceRequests = new Set<string>();
+    let successfulTileResponses = 0;
+    mapPage.on("request", (request) => {
+      if (request.url().includes("/timetable")) timetableRequests.push(request.url());
+      if (request.url().includes("/api/transport/transport/features/places?kind=")) mapPlaceRequests.add(request.url());
+    });
+    mapPage.on("response", (response) => { if (response.url().startsWith("https://api.vworld.kr/") && response.status() >= 200 && response.status() < 300) successfulTileResponses += 1; });
+    await mapPage.goto("/map");
+    await expect(mapPage.getByLabel("교통 장소 지도")).toBeVisible();
+    await expect(mapPage.getByLabel("장소 목록에서 선택")).toBeVisible();
+    await expect(mapPage.locator("canvas.maplibregl-canvas")).toBeVisible({ timeout: 20_000 });
+    await expect.poll(() => mapPlaceRequests.size).toBe(3);
+    await expect.poll(() => successfulTileResponses, { timeout: 20_000 }).toBeGreaterThan(0);
     await expect.poll(() => timetableRequests).toEqual([]);
+    await mapContext.close();
   });
 
   test("배편 탭은 항구 시간표를 자동 호출하지 않는다", async () => {

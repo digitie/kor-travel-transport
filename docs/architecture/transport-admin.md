@@ -40,7 +40,7 @@ HttpOnly 서명 세션을 통과한 뒤에만 Next.js server route가 다음의 
   [`digitie/maplibre-vworld-react`](https://github.com/digitie/maplibre-vworld-react) 의
   `VWorldMapView`, `ClusterLayer`, `Marker`, `Popup` 선언형 컴포넌트를 사용한다.
 - 위 provider는 Git submodule `third_party/maplibre-vworld-react`의 `cfdc64f` 고정 revision과
-  `frontend/vendor/`의 재현 가능한 tarball로 추적한다. Docker build는 tarball만 설치하므로
+  `frontend/vendor/README.md`의 SHA-256 매핑과 재현 가능한 tarball로 추적한다. Docker build는 tarball만 설치하므로
   checkout 경로에 의존하지 않는다. VWorld 키는 `NEXT_PUBLIC_VWORLD_API_KEY`로 Docker
   build 시점에 주입하며, 추적 파일에 넣지 않는다.
 

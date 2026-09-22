@@ -7,6 +7,8 @@ import { fuelProductLabel, placeKindLabel } from "@/lib/transport-presentation";
 
 type Place = { id: number; kind: "fuel_station" | "rail_station" | "ferry_port"; name: string; provider_id?: string | null; longitude: number; latitude: number; subtitle?: string | null; brand_name?: string | null; latest_price?: number | null; price_product_code?: string | null; line_names: string[]; address?: string | null; updated_at: string; location_source?: string | null; location_point_count?: number | null };
 type MapPoint = { id: string; lngLat: [number, number]; place: Place };
+const MAP_KINDS = ["fuel_station", "rail_station", "ferry_port"] as const;
+const MAP_KIND_LIMIT = 5_000;
 
 function timetableLine(item: { departure_port_name?: string; arrival_port_name?: string; departure_planned_time?: string; arrival_planned_time?: string; vessel_name?: string; fare?: string }, fallbackPortName: string) {
   const route = `${item.departure_planned_time ?? "—"} ${item.departure_port_name ?? fallbackPortName} → ${item.arrival_planned_time ?? "—"} ${item.arrival_port_name ?? "—"}`;
@@ -39,9 +41,12 @@ export function TransportMap() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/transport/transport/features/places", { cache: "no-store" })
-      .then(async (response) => response.ok ? response.json() : Promise.reject(new Error("장소 정보를 불러오지 못했습니다.")))
-      .then((payload: { items: Place[] }) => { if (!cancelled) { setItems(payload.items); setMessage(payload.items.length ? "" : "지도에 표시할 좌표가 아직 수집되지 않았습니다."); } })
+    Promise.all(MAP_KINDS.map(async (kind) => {
+      const response = await fetch(`/api/transport/transport/features/places?kind=${kind}&limit=${MAP_KIND_LIMIT}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("장소 정보를 불러오지 못했습니다.");
+      return (await response.json() as { items: Place[] }).items;
+    }))
+      .then((groups) => { const places = groups.flat(); if (!cancelled) { setItems(places); setMessage(places.length ? "" : "지도에 표시할 좌표가 아직 수집되지 않았습니다."); } })
       .catch((error: unknown) => { if (!cancelled) setMessage(error instanceof Error ? error.message : "장소 정보를 불러오지 못했습니다."); });
     return () => { cancelled = true; timetableController.current?.abort(); };
   }, []);

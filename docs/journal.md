@@ -22,6 +22,15 @@
   PR #27은 클릭 marker에 focus·Enter·Space 동작을, 기본 cluster에 접근 가능한 이름을
   추가한다. transport vendor tarball과 submodule은 해당 `cfdc64f` revision에서 다시
   생성하고 lockfile integrity를 새 artifact 값으로 갱신했다.
+- Popper 재리뷰가 지적한 지도 기본 `limit=1000` 공평 분배를 제거했다. 지도는 종류별로
+  API가 보장하는 최대 5,000건을 명시 요청하므로 주유소·역·항구 어느 한 종류가 다른
+  종류의 표시 수를 줄이지 않는다. 실제 live E2E는 세 종류 저장 장소 요청, MapLibre
+  canvas, `api.vworld.kr`의 성공 타일 응답과 시간표 자동 호출 금지를 함께 확인한다.
+  목록 화면은 최초 60개만 DOM에 그린 뒤 `더 보기`로 확장해 대량 철도·항구 기준정보의
+  첫 렌더링 비용을 제한했다. vendor tarball의 원본 revision·SHA-256·재생성 절차는
+  `frontend/vendor/README.md`에 남겼다.
+- 모바일 UI 회귀는 320·375·414·768px viewport에서 교통·유가, 열차·도시철도, 배편,
+  지도 네 핵심 화면의 heading과 가로 스크롤 부재를 live Playwright로 검증한다.
 
 - n150 공개 HTTPS 268건 E2E에서 전체 3일 고속도로 통계가 cold read 때 504가 되는 것을
   재현했다. 기존 covering index는 사용됐지만 3일 원본 약 500만 행을 읽어야 했고, 저자원

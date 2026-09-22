@@ -8,6 +8,7 @@ type PlaceKind = "rail_station" | "ferry_port";
 type Place = { id: number; kind: PlaceKind; provider_id: string | null; name: string; subtitle: string | null; line_names: string[]; address: string | null; updated_at: string; location_point_count: number | null };
 type FerryOperation = { vessel_name: string | null; departure_port_name: string | null; arrival_port_name: string | null; departure_planned_time: string | null; arrival_planned_time: string | null; fare: string | null };
 const REFERENCE_LIMIT = 5_000;
+const INITIAL_VISIBLE_COUNT = 60;
 
 function updatedAt(value: string) { return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Seoul" }).format(new Date(value)); }
 function operationText(item: FerryOperation, portName: string) { return `${item.departure_planned_time ?? "—"} ${item.departure_port_name ?? portName} → ${item.arrival_planned_time ?? "—"} ${item.arrival_port_name ?? "—"}${item.vessel_name ? ` · ${item.vessel_name}` : ""}${item.fare ? ` · ${item.fare}원` : ""}`; }
@@ -15,6 +16,7 @@ function operationText(item: FerryOperation, portName: string) { return `${item.
 export function TransportReferenceList({ kind }: { kind: PlaceKind }) {
   const [items, setItems] = useState<Place[]>([]);
   const [query, setQuery] = useState("");
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
   const [message, setMessage] = useState("저장된 기준정보를 읽는 중입니다…");
   const [selected, setSelected] = useState<Place | null>(null);
   const [operations, setOperations] = useState<string[]>([]);
@@ -35,6 +37,7 @@ export function TransportReferenceList({ kind }: { kind: PlaceKind }) {
     const needle = query.trim().toLocaleLowerCase("ko-KR");
     return needle ? items.filter((item) => [item.name, item.subtitle, item.address, ...item.line_names].filter(Boolean).join(" ").toLocaleLowerCase("ko-KR").includes(needle)) : items;
   }, [items, query]);
+  const visibleItems = filtered.slice(0, visibleCount);
 
   async function loadTimetable(port: Place) {
     if (!port.provider_id) return;
@@ -67,9 +70,9 @@ export function TransportReferenceList({ kind }: { kind: PlaceKind }) {
 
   const rail = kind === "rail_station";
   return <section className="reference-section">
-    <div className="reference-toolbar"><label htmlFor={`${kind}-query`}>{rail ? "역 또는 노선 검색" : "항구 검색"}<input id={`${kind}-query`} onChange={(event) => setQuery(event.target.value)} placeholder={rail ? "예: 서울역, 1호선" : "예: 목포, 제주"} value={query} /></label><p className="quiet">{query.trim() ? `검색 결과 ${filtered.length.toLocaleString("ko-KR")}곳 · ` : ""}저장된 {placeKindLabel(kind)} {items.length.toLocaleString("ko-KR")}곳</p></div>
+    <div className="reference-toolbar"><label htmlFor={`${kind}-query`}>{rail ? "역 또는 노선 검색" : "항구 검색"}<input id={`${kind}-query`} onChange={(event) => { setQuery(event.target.value); setVisibleCount(INITIAL_VISIBLE_COUNT); }} placeholder={rail ? "예: 서울역, 1호선" : "예: 목포, 제주"} value={query} /></label><p className="quiet">{query.trim() ? `검색 결과 ${filtered.length.toLocaleString("ko-KR")}곳 · ` : ""}저장된 {placeKindLabel(kind)} {items.length.toLocaleString("ko-KR")}곳</p></div>
     {message ? <p className="loading">{message}</p> : <div className="reference-list">
-      {filtered.map((item) => <article className="reference-card" key={item.id}>
+      {visibleItems.map((item) => <article className="reference-card" key={item.id}>
         <p className="eyebrow">{placeKindLabel(kind)}</p><h2>{item.name}</h2>
         {item.subtitle ? <p>{item.subtitle}</p> : null}
         {item.line_names.length ? <p className="reference-lines">운행 노선: {item.line_names.join(", ")}</p> : null}
@@ -78,6 +81,7 @@ export function TransportReferenceList({ kind }: { kind: PlaceKind }) {
         {kind === "ferry_port" ? <button className="button" disabled={loadingTimetable && selected?.id === item.id} onClick={() => void loadTimetable(item)} type="button">{loadingTimetable && selected?.id === item.id ? "운항 정보 확인 중…" : "오늘 운항 보기"}</button> : null}
       </article>)}
     </div>}
+    {!message && visibleItems.length < filtered.length ? <button className="button reference-more" onClick={() => setVisibleCount((count) => count + INITIAL_VISIBLE_COUNT)} type="button">{Math.min(INITIAL_VISIBLE_COUNT, filtered.length - visibleItems.length).toLocaleString("ko-KR")}곳 더 보기</button> : null}
     {selected ? <section aria-live="polite" className="panel ferry-operations"><h2>{selected.name} 오늘 운항</h2>{operations.length ? <ul className="row-list">{operations.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : loadingTimetable ? <p className="quiet">실시간 운항 정보를 확인하는 중입니다…</p> : <p className="quiet">오늘 등록된 운항 정보가 없습니다.</p>}</section> : null}
   </section>;
 }

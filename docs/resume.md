@@ -8,11 +8,14 @@
   분리했고 배편 시간표는 사용자가 항구를 선택할 때만 실시간으로 읽는다. 지도는
   `digitie/maplibre-vworld-react@cfdc64f`의 선언형 VWorld React 컴포넌트로 전환했으며,
   local tarball과 submodule revision을 함께 고정했다. Next.js 16.3.5/React 19.3.0
-  migration, WSL lint·19개 단위 테스트·production build, 깨끗한 Docker image build를
-  통과했다. James/Popper 적대 리뷰의 P1(통계 loading E2E 문구, 지도 키보드 marker,
-  전체 철도 검색, 항구 요청 경쟁 상태)을 보완 중이며, keyboard marker provider 변경은
-  `maplibre-vworld-react` PR #27에 분리했다. 다음 순서는 수정 CI·재리뷰, n150 HTTPS
-  live E2E, 머지다.
+  migration, WSL lint·19개 단위 테스트·production build, backend 관리 API 계약 5건,
+  깨끗한 Docker image build를 통과했다. James/Popper 적대 리뷰의 P1(통계 loading E2E
+  문구, 지도 키보드 marker, 전체 철도 검색, 항구 요청 경쟁 상태)을 보완했다. 마지막
+  Popper P1인 지도 기본 1,000건 공평 분배도 종류별 명시 5,000건 요청으로 제거하고,
+  실제 VWorld 타일 성공 응답·MapLibre canvas와 모바일 320/375/414/768px 가로 스크롤
+  없는 핵심 화면을 live E2E 계약에 추가했다. keyboard marker provider 변경은
+  `maplibre-vworld-react` PR #27에 분리했다. 다음 순서는 수정 CI·최종 재리뷰, n150 HTTPS
+  live E2E, provider PR과 transport PR 머지다.
 
 - 2026-09-22 `codex/transport-map-view`의 Draft PR #36은 최신 원격 후보를 기준으로
   n150 live E2E에서 발견한 공개 gateway 재생성·통계 cache 후속 보완 중이다. 공개 268건

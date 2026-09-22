@@ -47,6 +47,7 @@ button, input { font: inherit; }
 .reference-card p { margin: 0; }
 .reference-lines { color: var(--accent); font-size: 14px; }
 .ferry-operations { margin: 0; }
+.reference-more { justify-self: center; }
 .login-shell { align-items: center; display: flex; justify-content: center; min-height: 100vh; padding: 20px; }
 .login-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; max-width: 410px; padding: 32px; width: 100%; }
 .login-panel h1 { margin: 4px 0 26px; }
