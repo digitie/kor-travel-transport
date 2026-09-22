@@ -69,7 +69,15 @@ api_port="$(port_from_env TRANSPORT_PUBLIC_API_PORT 12301)"
 dagster_port="$(port_from_env TRANSPORT_DAGSTER_PORT 12302)"
 web_port="$(port_from_env TRANSPORT_PUBLIC_WEB_PORT 12305)"
 for url in "http://127.0.0.1:${api_port}/health" "http://127.0.0.1:${dagster_port}/health" "http://127.0.0.1:${web_port}/login"; do
-  curl --fail --silent --show-error --max-time 15 "${url}" >/dev/null
+  ready=false
+  for attempt in $(seq 1 20); do
+    if curl --fail --silent --show-error --max-time 5 "${url}" >/dev/null; then
+      ready=true
+      break
+    fi
+    sleep 3
+  done
+  "${ready}" || { echo "health check 시간 초과: ${url}" >&2; exit 1; }
 done
 printf '%s\n' "${CANDIDATE_SHA}" > .transport-admin-release-sha
 chmod 600 .transport-admin-release-sha
