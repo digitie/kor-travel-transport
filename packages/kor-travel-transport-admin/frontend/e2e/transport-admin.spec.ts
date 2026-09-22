@@ -72,7 +72,7 @@ test("느린 7일 통계가 수집 상태 화면을 가로막지 않는다", asy
   });
   await login(page);
   await expect(page.getByRole("heading", { name: "수집 소스" })).toBeVisible({ timeout: 1_000 });
-  await expect(page.getByText("저장된 7일 통계를 집계하는 중입니다…")).toBeVisible();
+  await expect(page.getByText("저장된 7일 통계를 집계하는 중입니다…").first()).toBeVisible();
   await context.close();
 });
 
