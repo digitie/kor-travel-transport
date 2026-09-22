@@ -7,6 +7,7 @@ import { placeKindLabel } from "@/lib/transport-presentation";
 type PlaceKind = "rail_station" | "ferry_port";
 type Place = { id: number; kind: PlaceKind; provider_id: string | null; name: string; subtitle: string | null; line_names: string[]; address: string | null; updated_at: string; location_point_count: number | null };
 type FerryOperation = { vessel_name: string | null; departure_port_name: string | null; arrival_port_name: string | null; departure_planned_time: string | null; arrival_planned_time: string | null; fare: string | null };
+const REFERENCE_LIMIT = 5_000;
 
 function updatedAt(value: string) { return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Seoul" }).format(new Date(value)); }
 function operationText(item: FerryOperation, portName: string) { return `${item.departure_planned_time ?? "—"} ${item.departure_port_name ?? portName} → ${item.arrival_planned_time ?? "—"} ${item.arrival_port_name ?? "—"}${item.vessel_name ? ` · ${item.vessel_name}` : ""}${item.fare ? ` · ${item.fare}원` : ""}`; }
@@ -19,14 +20,15 @@ export function TransportReferenceList({ kind }: { kind: PlaceKind }) {
   const [operations, setOperations] = useState<string[]>([]);
   const [loadingTimetable, setLoadingTimetable] = useState(false);
   const timetableController = useRef<AbortController | null>(null);
+  const timetableRequest = useRef(0);
 
   useEffect(() => {
     let active = true;
-    fetch(`/api/transport/transport/features/places?kind=${kind}&limit=500`, { cache: "no-store" })
+    fetch(`/api/transport/transport/features/places?kind=${kind}&limit=${REFERENCE_LIMIT}`, { cache: "no-store" })
       .then(async (response) => response.ok ? response.json() : Promise.reject(new Error("저장된 기준정보를 불러오지 못했습니다.")))
       .then((payload: { items: Place[] }) => { if (active) { setItems(payload.items); setMessage(payload.items.length ? "" : "아직 저장된 기준정보가 없습니다."); } })
       .catch((reason: unknown) => { if (active) setMessage(reason instanceof Error ? reason.message : "저장된 기준정보를 불러오지 못했습니다."); });
-    return () => { active = false; timetableController.current?.abort(); };
+    return () => { active = false; timetableRequest.current += 1; timetableController.current?.abort(); };
   }, [kind]);
 
   const filtered = useMemo(() => {
@@ -36,6 +38,7 @@ export function TransportReferenceList({ kind }: { kind: PlaceKind }) {
 
   async function loadTimetable(port: Place) {
     if (!port.provider_id) return;
+    const request = ++timetableRequest.current;
     timetableController.current?.abort();
     const controller = new AbortController();
     timetableController.current = controller;
@@ -46,21 +49,25 @@ export function TransportReferenceList({ kind }: { kind: PlaceKind }) {
       const response = await fetch(`/api/transport/transport/ports/${encodeURIComponent(port.provider_id)}/timetable`, { signal: controller.signal });
       if (!response.ok) {
         const body = await response.json().catch(() => null) as { detail?: string } | null;
+        if (response.status === 429) {
+          const retryAfter = response.headers.get("retry-after");
+          throw new Error(retryAfter ? `요청이 많습니다. ${retryAfter}초 뒤에 다시 확인해 주세요.` : "요청이 많습니다. 잠시 뒤에 다시 확인해 주세요.");
+        }
         throw new Error(body?.detail ?? "오늘 운항 정보를 불러오지 못했습니다.");
       }
       const payload = await response.json() as { items: FerryOperation[] };
-      setOperations(payload.items.map((item) => operationText(item, port.name)));
+      if (request === timetableRequest.current) setOperations(payload.items.map((item) => operationText(item, port.name)));
     } catch (reason: unknown) {
       if (reason instanceof DOMException && reason.name === "AbortError") return;
-      setOperations([reason instanceof Error ? reason.message : "오늘 운항 정보를 불러오지 못했습니다."]);
+      if (request === timetableRequest.current) setOperations([reason instanceof Error ? reason.message : "오늘 운항 정보를 불러오지 못했습니다."]);
     } finally {
-      if (!controller.signal.aborted) setLoadingTimetable(false);
+      if (request === timetableRequest.current) setLoadingTimetable(false);
     }
   }
 
   const rail = kind === "rail_station";
   return <section className="reference-section">
-    <div className="reference-toolbar"><label htmlFor={`${kind}-query`}>{rail ? "역 또는 노선 검색" : "항구 검색"}<input id={`${kind}-query`} onChange={(event) => setQuery(event.target.value)} placeholder={rail ? "예: 서울역, 1호선" : "예: 목포, 제주"} value={query} /></label><p className="quiet">저장된 {placeKindLabel(kind)} {filtered.length.toLocaleString("ko-KR")}곳</p></div>
+    <div className="reference-toolbar"><label htmlFor={`${kind}-query`}>{rail ? "역 또는 노선 검색" : "항구 검색"}<input id={`${kind}-query`} onChange={(event) => setQuery(event.target.value)} placeholder={rail ? "예: 서울역, 1호선" : "예: 목포, 제주"} value={query} /></label><p className="quiet">{query.trim() ? `검색 결과 ${filtered.length.toLocaleString("ko-KR")}곳 · ` : ""}저장된 {placeKindLabel(kind)} {items.length.toLocaleString("ko-KR")}곳</p></div>
     {message ? <p className="loading">{message}</p> : <div className="reference-list">
       {filtered.map((item) => <article className="reference-card" key={item.id}>
         <p className="eyebrow">{placeKindLabel(kind)}</p><h2>{item.name}</h2>

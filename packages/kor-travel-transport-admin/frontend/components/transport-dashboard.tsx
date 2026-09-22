@@ -47,7 +47,7 @@ export function TransportDashboard() {
   const routeNames = useMemo(() => new Map((traffic?.items ?? []).filter((item) => item.route_no).map((item) => [item.route_no as string, item.route_name])), [traffic]);
   if (statusError && !status) return <p className="error">{statusError}</p>;
   if (!status) return <p className="loading">저장된 교통정보 현황을 읽는 중입니다…</p>;
-  const statisticalMessage = statisticsError || "저장된 7일 통계를 읽는 중입니다…";
+  const statisticalMessage = statisticsError || "저장된 7일 통계를 집계하는 중입니다…";
   const trafficRows = statistics?.traffic.slice(0, 8) ?? [];
   const fuelRows = statistics?.fuel_prices ?? [];
   const speedChart = trafficRows.map((item) => ({ label: highwayRouteLabel(item.route_no, routeNames.get(item.route_no ?? "")), value: item.average_speed }));

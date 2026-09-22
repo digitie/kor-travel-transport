@@ -8,11 +8,20 @@
   목록·검색·탭 진입 때 provider를 호출하지 않고, 항구의 명시적 `오늘 운항 보기` 요청에서만
   실시간 조회한다. 이 호출 금지는 관리 UI Playwright 계약으로 고정했다.
 - 관리 지도는 직접 MapLibre 인스턴스·레이어를 구성하는 방식에서
-  `digitie/maplibre-vworld-react@ffa5523`의 `VWorldMapView`, `ClusterLayer`, `Marker`,
+  `digitie/maplibre-vworld-react@cfdc64f`의 `VWorldMapView`, `ClusterLayer`, `Marker`,
   `Popup` 선언형 컴포넌트를 소비하는 방식으로 바꿨다. upstream submodule revision과
   Docker에서 재현 가능한 local tarball을 함께 고정했다. VWorld 키는 공개 browser key로서
   Docker build argument로만 주입한다. Next.js 16.3.5/React 19.3.0 migration은 `proxy.ts` 전환까지 포함하며, WSL
   lint·unit test·production build와 clean Docker build를 통과했다.
+- 독립 적대 리뷰 James/Popper가 P0는 없고 P1 다섯 건을 지적했다. 지연 통계 화면의 E2E
+  문구를 실제 loading 상태와 맞췄고, 철도 검색은 API가 보장하는 최대 5,000건 전체로
+  넓혔다. 항구 시간표는 최신 request id만 상태를 반영해 빠른 항구 전환의 늦은 응답이
+  상세를 덮지 못하게 했으며, 429에는 `Retry-After` 안내를 표시한다. ECharts 수치를
+  스크린리더용 목록으로도 제공하고, 배편 E2E는 명시 클릭·늦은 응답·429까지 검증한다.
+- 지도 marker/cluster의 P1은 provider 구현 책임으로 분리했다. `maplibre-vworld-react`
+  PR #27은 클릭 marker에 focus·Enter·Space 동작을, 기본 cluster에 접근 가능한 이름을
+  추가한다. transport vendor tarball과 submodule은 해당 `cfdc64f` revision에서 다시
+  생성하고 lockfile integrity를 새 artifact 값으로 갱신했다.
 
 - n150 공개 HTTPS 268건 E2E에서 전체 3일 고속도로 통계가 cold read 때 504가 되는 것을
   재현했다. 기존 covering index는 사용됐지만 3일 원본 약 500만 행을 읽어야 했고, 저자원

@@ -2,6 +2,7 @@
 * { box-sizing: border-box; }
 html { background: var(--paper); color: var(--ink); overflow-x: clip; }
 body { margin: 0; font-family: Arial, "Noto Sans KR", sans-serif; overflow-x: clip; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 a { color: inherit; text-decoration: none; }
 button, input { font: inherit; }
 .admin-layout { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100vh; }

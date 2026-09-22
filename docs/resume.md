@@ -6,11 +6,13 @@
   교통·유가를 하나의 저장 통계 화면으로 통합하고, 고속도로·유가·수집 source 코드를
   사람이 읽는 명칭과 Apache ECharts 그래프로 바꿨다. 열차·도시철도와 배편을 독립 화면으로
   분리했고 배편 시간표는 사용자가 항구를 선택할 때만 실시간으로 읽는다. 지도는
-  `digitie/maplibre-vworld-react@ffa5523`의 선언형 VWorld React 컴포넌트로 전환했으며,
+  `digitie/maplibre-vworld-react@cfdc64f`의 선언형 VWorld React 컴포넌트로 전환했으며,
   local tarball과 submodule revision을 함께 고정했다. Next.js 16.3.5/React 19.3.0
   migration, WSL lint·19개 단위 테스트·production build, 깨끗한 Docker image build를
-  통과했다. 다음 순서는 Draft PR, CI, James/Popper 독립 적대 리뷰, n150 HTTPS live E2E,
-  머지다.
+  통과했다. James/Popper 적대 리뷰의 P1(통계 loading E2E 문구, 지도 키보드 marker,
+  전체 철도 검색, 항구 요청 경쟁 상태)을 보완 중이며, keyboard marker provider 변경은
+  `maplibre-vworld-react` PR #27에 분리했다. 다음 순서는 수정 CI·재리뷰, n150 HTTPS
+  live E2E, 머지다.
 
 - 2026-09-22 `codex/transport-map-view`의 Draft PR #36은 최신 원격 후보를 기준으로
   n150 live E2E에서 발견한 공개 gateway 재생성·통계 cache 후속 보완 중이다. 공개 268건
