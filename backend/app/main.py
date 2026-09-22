@@ -145,6 +145,7 @@ logger = logging.getLogger(__name__)
 # 일회성 히스토리 조회라 더 넓은 상한을 허용해도 상시 부하로 이어지지 않는다
 # (threshold_insights의 기존 90일 상한과 동일한 값).
 MAX_TIMESERIES_RANGE_DAYS = 90
+MAX_TRANSPORT_STATISTICS_CACHE_ENTRIES = 128
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -928,7 +929,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ],
         )
         if request.app.state.settings.transport_statistics_cache_seconds:
-            request.app.state.transport_statistics_cache[cache_key] = (now_utc(), response)
+            statistics_cache = request.app.state.transport_statistics_cache
+            if len(statistics_cache) >= MAX_TRANSPORT_STATISTICS_CACHE_ENTRIES:
+                statistics_cache.clear()
+            statistics_cache[cache_key] = (now_utc(), response)
         return response
 
     @router.get("/parking/current", response_model=ParkingCurrentResponse)
