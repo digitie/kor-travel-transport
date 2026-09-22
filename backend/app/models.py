@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy import (
     JSON,
     Boolean,
+    BigInteger,
     CheckConstraint,
     DateTime,
     Float,
@@ -155,6 +156,40 @@ class HighwayTrafficSnapshot(Base):
     free_flow_speed: Mapped[float | None] = mapped_column(Float, nullable=True)
     congestion_level: Mapped[str | None] = mapped_column(String(20), nullable=True)
     raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
+
+
+class HighwayTrafficFiveMinuteStatistic(Base):
+    """원본 교통 관측을 보존한 채 통계 API가 읽는 5분 사전 집계다."""
+
+    __tablename__ = "highway_traffic_five_minute_statistics"
+    __table_args__ = (
+        UniqueConstraint(
+            "bucket_start",
+            "route_no_key",
+            "direction_key",
+            name="uq_highway_traffic_five_minute_statistics",
+        ),
+        Index(
+            "ix_highway_traffic_five_minute_statistics_bucket_route",
+            "bucket_start",
+            "route_no_key",
+            "direction_key",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bucket_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # 원본의 NULL 그룹 키는 복합 unique key를 안정적으로 유지하기 위해 빈 문자열로 보관한다.
+    route_no_key: Mapped[str] = mapped_column(String(40), nullable=False, default="")
+    direction_key: Mapped[str] = mapped_column(String(20), nullable=False, default="")
+    observations: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    speed_observations: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    speed_sum: Mapped[float | None] = mapped_column(Float, nullable=True)
+    minimum_speed: Mapped[float | None] = mapped_column(Float, nullable=True)
+    maximum_speed: Mapped[float | None] = mapped_column(Float, nullable=True)
+    free_flow_speed_observations: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    free_flow_speed_sum: Mapped[float | None] = mapped_column(Float, nullable=True)
+    latest_observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class HighwayIncidentSnapshot(Base):
@@ -344,12 +379,17 @@ class FerryPort(Base):
     __table_args__ = (
         UniqueConstraint("source", "port_id", name="uq_ferry_port_source_id"),
         Index("ix_ferry_ports_last_seen", "last_seen_at"),
+        Index("ix_ferry_ports_coordinates", "latitude", "longitude"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     source: Mapped[str] = mapped_column(String(40))
     port_id: Mapped[str] = mapped_column(String(120))
     port_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    location_source: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    location_point_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)

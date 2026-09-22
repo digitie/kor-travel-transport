@@ -3,7 +3,20 @@
 from pathlib import Path
 
 
-_ROOT = Path(__file__).resolve().parents[2]
+_BACKEND_ROOT = Path(__file__).resolve().parents[1]
+# 로컬 체크아웃은 `<repo>/backend/tests`, Docker 이미지는 `/app/tests`에 있다.
+# 두 환경 모두에서 Dockerfile이 복사한 scripts/를 우선해 계약 테스트를 실행한다.
+_ROOT = _BACKEND_ROOT if (_BACKEND_ROOT / "scripts").is_dir() else _BACKEND_ROOT.parent
+_GATEWAY_CONFIG = (
+    _BACKEND_ROOT / "nginx" / "dagster-gateway.conf"
+    if (_BACKEND_ROOT / "nginx" / "dagster-gateway.conf").is_file()
+    else _ROOT / "backend" / "nginx" / "dagster-gateway.conf"
+)
+_SERVER_ENV_EXAMPLE = (
+    _BACKEND_ROOT / "compose-contract" / ".env.server14.example"
+    if (_BACKEND_ROOT / "compose-contract" / ".env.server14.example").is_file()
+    else _ROOT / ".env.server14.example"
+)
 
 
 def test_cutover_requires_a_separate_empty_dagster_database() -> None:
@@ -107,8 +120,8 @@ def test_cutover_uses_staged_n150_deployment_and_does_not_hide_rollback_failures
 
 
 def test_dagster_gateway_is_loopback_only_and_has_no_dead_port_setting() -> None:
-    gateway = (_ROOT / "backend" / "nginx" / "dagster-gateway.conf").read_text(encoding="utf-8")
-    environment = (_ROOT / ".env.server14.example").read_text(encoding="utf-8")
+    gateway = _GATEWAY_CONFIG.read_text(encoding="utf-8")
+    environment = _SERVER_ENV_EXAMPLE.read_text(encoding="utf-8")
 
     assert "listen 127.0.0.1:14003;" in gateway
     assert "DAGSTER_GATEWAY_PORT=" not in environment

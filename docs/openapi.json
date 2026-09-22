@@ -575,6 +575,111 @@
         "title": "FeeCalculationResponse",
         "type": "object"
       },
+      "FerryOperationItem": {
+        "properties": {
+          "arrival_planned_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arrival Planned Time"
+          },
+          "arrival_port_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arrival Port Name"
+          },
+          "departure_planned_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Departure Planned Time"
+          },
+          "departure_port_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Departure Port Name"
+          },
+          "fare": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fare"
+          },
+          "vessel_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vessel Name"
+          }
+        },
+        "title": "FerryOperationItem",
+        "type": "object"
+      },
+      "FerryOperationResponse": {
+        "properties": {
+          "fetched_at": {
+            "format": "date-time",
+            "title": "Fetched At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FerryOperationItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "port_id": {
+            "title": "Port Id",
+            "type": "string"
+          },
+          "service_date": {
+            "format": "date",
+            "title": "Service Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "port_id",
+          "service_date",
+          "fetched_at",
+          "items"
+        ],
+        "title": "FerryOperationResponse",
+        "type": "object"
+      },
       "FlightStatusItem": {
         "properties": {
           "airline": {
@@ -2883,6 +2988,184 @@
         "title": "TransportCollectorStatus",
         "type": "object"
       },
+      "TransportPlaceMapItem": {
+        "description": "kor-travel-map·PinVi가 지도 marker로 바로 소비할 저장 장소 요약.",
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "brand_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Name"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "fuel_station",
+              "rail_station",
+              "ferry_port"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "latest_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Price"
+          },
+          "latitude": {
+            "title": "Latitude",
+            "type": "number"
+          },
+          "line_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Line Names",
+            "type": "array"
+          },
+          "location_point_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Point Count"
+          },
+          "location_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Source"
+          },
+          "longitude": {
+            "title": "Longitude",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price_product_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Product Code"
+          },
+          "provider_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Id"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtitle"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "source",
+          "name",
+          "longitude",
+          "latitude",
+          "updated_at"
+        ],
+        "title": "TransportPlaceMapItem",
+        "type": "object"
+      },
+      "TransportPlaceMapResponse": {
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TransportPlaceMapItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          }
+        },
+        "required": [
+          "generated_at",
+          "items"
+        ],
+        "title": "TransportPlaceMapResponse",
+        "type": "object"
+      },
       "TransportSourceStatus": {
         "properties": {
           "last_error": {
@@ -4782,6 +5065,77 @@
         "summary": "Transport Collector Status"
       }
     },
+    "/v1/transport/features/places": {
+      "get": {
+        "description": "저장된 장소만 지도 marker 계약으로 반환한다. provider 원문이나 비밀값은 노출하지 않는다.",
+        "operationId": "transport_place_features_v1_transport_features_places_get",
+        "parameters": [
+          {
+            "description": "fuel_station, rail_station, ferry_port 중 하나",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "fuel_station, rail_station, ferry_port 중 하나",
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 1000,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransportPlaceMapResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Transport Place Features"
+      }
+    },
     "/v1/transport/fuel/stations": {
       "get": {
         "operationId": "transport_fuel_stations_v1_transport_fuel_stations_get",
@@ -5056,6 +5410,66 @@
           }
         },
         "summary": "Transport Highway Traffic"
+      }
+    },
+    "/v1/transport/ports/{port_id}/timetable": {
+      "get": {
+        "description": "요청 항구·날짜 한 건만 provider에서 실시간 조회하며 DB/raw 응답에는 저장하지 않는다.",
+        "operationId": "transport_port_timetable_v1_transport_ports__port_id__timetable_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "port_id",
+            "required": true,
+            "schema": {
+              "title": "Port Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "title": "Date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FerryOperationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Transport Port Timetable"
       }
     },
     "/v1/transport/statistics": {

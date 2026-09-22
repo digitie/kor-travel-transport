@@ -22,6 +22,12 @@ RUN pip install --no-cache-dir --upgrade pip \
 # 이미지에 포함한다. 수집기는 TRANSPORT_COLLECTION_ENABLED=true일 때만 실행된다.
 RUN playwright install --with-deps chromium
 
+COPY .env.server14.example /app/compose-contract/.env.server14.example
+COPY docker-compose.yml /app/compose-contract/docker-compose.yml
+COPY docker-compose.transport-admin.yml /app/compose-contract/docker-compose.transport-admin.yml
+COPY deploy/transport-admin /app/compose-contract/deploy/transport-admin
+COPY packages/kor-travel-transport-admin/frontend /app/compose-contract/packages/kor-travel-transport-admin/frontend
+
 COPY backend/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh && mkdir -p /app/backups
 

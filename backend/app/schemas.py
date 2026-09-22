@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -171,6 +171,49 @@ class FuelStationResponse(BaseModel):
     sigungu_value: str | None = None
     product_code: str | None = None
     items: list[FuelStationItem]
+
+
+class TransportPlaceMapItem(BaseModel):
+    """kor-travel-map·PinVi가 지도 marker로 바로 소비할 저장 장소 요약."""
+
+    id: int
+    kind: Literal["fuel_station", "rail_station", "ferry_port"]
+    source: str
+    provider_id: str | None = None
+    name: str
+    longitude: float
+    latitude: float
+    subtitle: str | None = None
+    brand_name: str | None = None
+    latest_price: float | None = None
+    price_product_code: str | None = None
+    line_names: list[str] = Field(default_factory=list)
+    address: str | None = None
+    updated_at: datetime
+    location_source: str | None = None
+    location_point_count: int | None = None
+
+
+class TransportPlaceMapResponse(BaseModel):
+    generated_at: datetime
+    kind: str | None = None
+    items: list[TransportPlaceMapItem]
+
+
+class FerryOperationItem(BaseModel):
+    vessel_name: str | None = None
+    departure_port_name: str | None = None
+    arrival_port_name: str | None = None
+    departure_planned_time: str | None = None
+    arrival_planned_time: str | None = None
+    fare: str | None = None
+
+
+class FerryOperationResponse(BaseModel):
+    port_id: str
+    service_date: date
+    fetched_at: datetime
+    items: list[FerryOperationItem]
 
 
 class TransportCollectionRunStatus(BaseModel):

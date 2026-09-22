@@ -38,10 +38,15 @@ cross-schema FK를 만드는 것은 금지한다.
 1. 저장 기준정보를 읽는 `/v1/transport/features/places`, `/notices`, `/prices`를 추가한다.
 2. 공항 주차 현황·주차요금은 place 상세에 저장된 최신 snapshot/규칙으로 포함한다.
 3. 항구 시간표는 `/v1/transport/ports/{port_id}/timetable?date=YYYY-MM-DD`에서만 실시간
-   provider 호출로 제공한다. DB와 `raw_api_responses`에 시간표 본문을 적재하지 않는다.
+   provider 호출로 제공한다. DB와 `raw_api_responses`에 시간표 본문을 적재하지 않는다. 같은
+   항구·날짜는 cache TTL 동안 한 번만 호출하고, provider 호출 제한은 `Retry-After`가 포함된 429로
+   변환해 backoff 동안 다시 호출하지 않는다.
 4. Map import는 이 REST 응답 또는 `kortravelmap.providers`의 async 변환을 사용한다. PinVi는
    Map API를 HTTP로만 호출하고 이 서비스의 DB에는 직접 의존하지 않는다.
 
-이 PR은 1단계에 필요한 수집·DB·Dagster 경계를 먼저 제공한다. 휴게소 기준정보/가격과
-feature REST 구현은 KREX 추가 데이터셋 접근 및 Map contract 통합 테스트를 포함하는 후속
-작업으로 분리한다.
+지도 marker는 `GET /v1/transport/features/places`로 제공한다. 전체 종류 조회는 요청 `limit`을
+세 종류에 균등 배분해 한 종류가 모든 marker 예산을 독점하지 않도록 한다. `fuel_station`에는 브랜드와 최신
+유가, `rail_station`에는 운영 노선, `ferry_port`에는 항만가이드라인 좌표 출처·원본 점 수를
+포함한다. 항만가이드라인 점은 터미널 중심점으로 추정하지 않으며 UI도 안내 지점임을 표시한다.
+항구의 당일 운항은 `GET /v1/transport/ports/{port_id}/timetable`에서 한 항구·한 날짜만 비동기로
+provider 호출하고 저장하지 않는다.

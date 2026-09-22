@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from kric import DomesticFerryPort, FerryShipType, FerryTerminal, FileStationInfo
+from kric import DomesticFerryPort, FerryShipType, FerryTerminal, FileStationInfo, PortGuidelineLocation
 import pytest
 from sqlalchemy import func, select
 
@@ -67,9 +67,10 @@ def test_rail_reference_collection_upserts_public_file_rows(tmp_path: Path) -> N
             second = await service.collect_rail_reference(session)
         async with session_factory() as session:
             assert await session.scalar(select(func.count()).select_from(RailStationReference)) == 1
-            assert await session.scalar(select(func.count()).select_from(CollectionRun)) == 2
-        assert first["status"] == second["status"] == "success"
-        assert first["station_count"] == second["station_count"] == 1
+            assert await session.scalar(select(func.count()).select_from(CollectionRun)) == 1
+        assert first["status"] == "success"
+        assert first["station_count"] == 1
+        assert second == {"status": "skipped", "reason": "KRIC rail reference is not due for 48 hours"}
         await engine.dispose()
 
     asyncio.run(run())
@@ -105,6 +106,7 @@ def test_maritime_reference_collection_stores_only_stable_reference_data(tmp_pat
     settings = _settings(
         tmp_path,
         maritime_reference_collection_enabled=True,
+        port_guideline_collection_enabled=False,
         data_go_kr_service_key="test-key",
     )
     engine, session_factory = create_engine_and_session_factory(settings.database_url)
@@ -128,7 +130,36 @@ def test_maritime_reference_collection_stores_only_stable_reference_data(tmp_pat
             "port_count": 1,
             "terminal_count": 1,
             "ship_type_count": 1,
+            "port_location_count": 0,
+            "port_guideline_object_stored": 0,
         }
+        await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_maritime_reference_links_port_to_keyless_guideline_location(tmp_path: Path) -> None:
+    settings = _settings(tmp_path, maritime_reference_collection_enabled=True, data_go_kr_service_key="test-key")
+    engine, session_factory = create_engine_and_session_factory(settings.database_url)
+
+    async def locations() -> tuple[PortGuidelineLocation, ...]:
+        return (
+            PortGuidelineLocation("t", "r", "2", "테스트항", 35.2, 129.1, None, None, {}),
+            PortGuidelineLocation("t", "r", "1", "테스트항", 35.1, 129.0, None, None, {}),
+        )
+
+    async def run() -> None:
+        await init_database(engine)
+        service = RailMaritimeCollectionService(
+            settings, maritime_client_factory=lambda _key, *, timeout: _MaritimeClient(), port_guideline_fetcher=locations,
+        )
+        async with session_factory() as session:
+            summary = await service.collect_maritime_reference(session)
+        async with session_factory() as session:
+            port = await session.scalar(select(FerryPort))
+        assert port is not None
+        assert (port.latitude, port.longitude, port.location_source, port.location_point_count) == (35.1, 129.0, "data_go_kr_port_guideline", 2)
+        assert summary["port_location_count"] == 1
         await engine.dispose()
 
     asyncio.run(run())

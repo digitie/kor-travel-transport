@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     api_timeout_seconds: int = Field(default=15, gt=0)
     data_go_kr_service_key: str | None = None
     kex_ex_api_key: str | None = None
+    # KRIC 인증 OpenAPI는 요청 단위로만 사용한다. rail 기준정보 Dagster job은 키 없는 XLSX다.
+    kric_service_key: str | None = None
     transport_collection_enabled: bool = False
     transport_collect_interval_seconds: int = Field(default=300, ge=300)
     transport_quota_backoff_seconds: int = Field(default=3600, ge=300)
@@ -40,6 +42,14 @@ class Settings(BaseSettings):
     opinet_browser_timeout_ms: int = Field(default=30_000, gt=0)
     rail_reference_collection_enabled: bool = False
     maritime_reference_collection_enabled: bool = False
+    port_guideline_collection_enabled: bool = True
+    ferry_timetable_cache_seconds: int = Field(default=300, ge=30, le=3600)
+    ferry_timetable_max_days_ahead: int = Field(default=7, ge=0, le=31)
+    # 저장된 교통 통계는 수집 주기보다 훨씬 짧게만 메모리에 보관한다. 반복되는
+    # 대시보드/공개 API 조회가 넓은 집계를 다시 실행하지 않게 하되, 새 수집 결과도
+    # 빠르게 반영한다.
+    transport_statistics_cache_seconds: int = Field(default=60, ge=0, le=3600)
+    transport_statistics_max_concurrent_misses: int = Field(default=2, ge=1, le=8)
     rustfs_endpoint_url: str | None = None
     rustfs_bucket: str = "kor-travel-transport-raw"
     rustfs_access_key_id: str | None = None

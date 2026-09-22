@@ -2,6 +2,81 @@
 
 ## 2026-09-22
 
+- n150 공개 HTTPS 268건 E2E에서 전체 3일 고속도로 통계가 cold read 때 504가 되는 것을
+  재현했다. 기존 covering index는 사용됐지만 3일 원본 약 500만 행을 읽어야 했고, 저자원
+  `VACUUM (ANALYZE, PARALLEL 0)` 뒤에도 cold I/O가 약 21초였다. 원본 관측은 보존하면서
+  5분 사전 집계 테이블을 추가했다. 통계 API는 완전히 지난 bucket은 사전 집계에서 읽고,
+  시작 경계 최대 5분만 원본에서 다시 집계해 기간 경계를 정확히 유지한다. PostgreSQL
+  migration은 기존 데이터를 backfill하며, 이후 고속도로 수집은 최근 두 시간을 재구축해
+  KREX의 동일 관측시각 정정도 정확히 반영한다. 최근 두 시간보다 오래된 정정은 해당
+  5분 bucket만 별도로 재구축한다. SQLite 단위 테스트는 집계가 없을 때
+  기존 원본 집계 fallback을 사용한다.
+- n150 HTTPS live E2E 266건을 실행해 264건 통과, 두 회귀를 발견했다. 공개 API gateway는
+  bind mount allowlist 파일 내용이 바뀌어도 기존 컨테이너를 재생성하지 않아
+  `features/places`가 404로 남을 수 있었다. 전용 admin 배포는 세 서비스만
+  `--force-recreate`하도록 보완했다. cold 통계 집계의 public 30초 gateway timeout도
+  재현되어 같은 기간·노선의 저장 통계 응답을 기본 60초 재사용하도록 추가했다. 운영 DB는
+  변경하지 않았고, cache 회귀는 첫 응답 뒤 원본 snapshot을 지워도 TTL 안에서는 같은
+  응답을 돌려주는 단위 테스트로 고정했다.
+- 독립 적대 리뷰 James/Popper가 공통으로 지적한 cache miss 동시 집계와 전체 cache clear
+  P1을 반영했다. 통계 cache는 키별 async single-flight로 같은 집계를 한 번만 실행하고,
+  `OrderedDict` LRU 128개 상한에서 가장 오래된 한 항목만 축출한다. 동시 8회 요청이 한 번만
+  계산되는지와 129개 키에서 LRU 상한이 지켜지는지 테스트한다. James가 지적한 정적
+  OpenAPI 누락도 `scripts/export_openapi.py`로 재생성했고, 새 공개 장소·항구 시간표 경로의
+  POST 차단은 live E2E 행렬에 추가했다.
+- Popper 재리뷰의 P1은 임의의 서로 다른 `route_no`가 키별 single-flight를 우회해 90일
+  유가 집계를 동시에 실행할 수 있다는 점이었다. cache miss 전역 semaphore를 기본 두 개로
+  제한하고, 서로 다른 네 키의 병렬 miss에서 handler 동시 실행이 두 개를 넘지 않는 회귀
+  테스트를 추가했다.
+- James의 P2인 `source + port_id` 항구 식별 경계는 현재 단일 `datagokr_maritime` 기준정보
+  source만 수집하는 계약에서는 충돌하지 않는다. 다중 source 항만 ingest를 도입할 때
+  `source`를 URL 또는 query 계약에 포함하는 별도 호환성 변경으로 처리한다. 지도 E2E의
+  선택 후 상세 상호작용도 저장된 장소 fixture를 보장하는 후속 UI 시나리오에서 확장한다.
+- 최종 적대적 리뷰의 P1을 반영했다. 지도는 DOM marker pool 대신 MapLibre GeoJSON
+  circle/symbol layer와 source cluster로 렌더링해 고확대에서도 marker DOM을 대량 생성하지
+  않는다. 항구 선택은 이전 `AbortController`를 취소하고 요청 일련번호를 확인하므로 늦게
+  도착한 이전 항구의 시간표가 현재 상세 화면을 덮어쓰지 않는다. 성공 cache는 전역 provider
+  429 backoff보다 먼저 반환하며, public transport gateway에는 저장 장소와 제한된 항구
+  시간표 GET endpoint를 추가했다.
+- 지도 GPU layer 전환 뒤 키보드·스크린리더 선택 경로가 사라진다는 후속 P1을 보완했다.
+  상세 패널에 종류·이름·노선명을 읽는 native `select` 목록을 두어 지도 포인터 없이도
+  장소를 선택·중심 이동할 수 있게 했고, leaf point 반지름도 11px로 키웠다. 지도 E2E는
+  이 접근 가능한 목록과 시간표 자동 호출 금지를 함께 확인한다.
+- Docker backend test fixture는 이제 `DATABASE_URL`을 전혀 상속하지 않는다. PostgreSQL
+  통합 검증은 `TEST_DATABASE_URL`과 `PARKING_RADAR_TEST_DATABASE=1`을 모두 줘야만
+  허용하고, 기본 Docker runbook은 테스트별 임시 SQLite를 강제한다. 운영 DB truncate 위험을
+  제거했다. 항만가이드라인 수집·시간표 TTL/날짜 범위 설정은 base/shared Compose와 Dagster
+  execution 환경으로 모두 전달하도록 보완했다.
+- KRIC 공개 XLSX rail job은 매일 03:00 KST에 due만 평가하고, `dagster_rail`의 마지막 성공이
+  48시간 이내면 provider 호출 없이 skip하도록 보완했다. 월말 31일→1일에 달력식 `*/2` cron이
+  24시간 만에 다시 실행되는 문제를 제거했다. 테스트 SQLite가 aware UTC offset을 보존하지 않는
+  차이는 수집 service에서 UTC 정규화해 PostgreSQL과 같은 판단을 하도록 처리했다. SQLite는
+  운영 DB가 아니라 빠른 단위 테스트 호환성에만 남아 있다.
+- 항구 실시간 시간표는 실제 앱 settings를 사용하도록 고치고, 성공 cache·async single-flight뿐
+  아니라 provider 429의 전역 음성 cache도 추가했다. 호출 제한은 `Retry-After`를 포함한 429로
+  반환하고 설정된 upstream backoff 동안 외부 호출을 하지 않는다. 성공 반복 호출과 429 반복
+  호출을 각각 검증하는 회귀 테스트를 추가했다.
+- Docker backend regression image가 repository 루트를 가정한 shared DB cutover 계약 테스트를
+  실행하지 못하던 경로 문제를 보완했다. 이미지의 `/app/scripts`·`/app/nginx`와 무비밀
+  `.env.server14.example` contract copy를 명시적으로 사용하며, 실제 `.env`와 인증키는
+  `.dockerignore`에서 계속 제외한다.
+- Docker `run --no-deps`가 호스트의 오래된 PostgreSQL DSN을 상속하지 않도록 테스트별 임시
+  SQLite 강제 플래그를 추가했고, transport admin Compose·gateway·frontend contract 파일도
+  검증 이미지에 무비밀 사본으로 포함했다. WSL/Docker 전체 backend regression은 각각
+  `153 passed, 1 skipped`로 확인했다.
+- KRIC가 전달한 인증 OpenAPI 사용 조건을 반영했다. 인증키는 비추적 환경 파일만 허용하고,
+  공식 역사 코드 XLSX(2026-07-11)를 최소 호출 파라미터의 기준으로 보관한다. rail Dagster
+  job은 공개 XLSX만 한 번 읽고 마지막 성공 뒤 실제 48시간을 보장한다. 인증 OpenAPI는 전국
+  역·열차 순회 batch에 넣지 않으며, 각 operation의 추가 live 재시도는 제공기관의 1일 1회
+  권고에 따라 다음 허용 시점 이후에만 수행한다.
+- weather admin의 MapLibre/VWorld 구조를 transport admin에 적용해 `/map` 지도 화면을 추가했다.
+  저장된 주유소는 브랜드·최신 유가, KRIC 역은 노선명, 항구는 해양수산부 항만가이드라인 위치
+  원본의 출처·점 수와 함께 marker로 제공한다. 항만가이드라인은 중심점 자료가 아니므로 첫
+  원시 순서 지점을 표시하고 그 사실을 상세 화면에 명시한다.
+- 무인증 해양수산부 `15121268` CSV를 RustFS에 보관하는 `python-kric-api` provider 변경을
+  고정했다. 항구 시간표는 `GET /v1/transport/ports/{port_id}/timetable`가 요청 한 건만
+  실시간 조회하며 DB와 raw response에 저장하지 않는다.
+
 - post-merge n150 HTTPS UI E2E를 수백 개 행렬로 확장했다. 이 과정에서 관리 UI의
   server-side proxy가 공개 gateway보다 짧은 10초 timeout으로 정상 저장 통계를 `502`로
   변환하는 경로를 재현했고, timeout을 gateway와 같은 30초로 맞췄다. 행렬에서 발견한

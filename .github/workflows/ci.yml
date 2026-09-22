@@ -19,7 +19,10 @@ jobs:
   backend:
     runs-on: ubuntu-latest
     env:
+      # Alembic은 Settings의 DATABASE_URL을 읽고, pytest fixture는 TEST_DATABASE_URL만 opt-in으로 쓴다.
       DATABASE_URL: postgresql+asyncpg://parking_radar:parking_radar@localhost:5432/parking_radar
+      TEST_DATABASE_URL: postgresql+asyncpg://parking_radar:parking_radar@localhost:5432/parking_radar
+      PARKING_RADAR_TEST_DATABASE: "1"
     services:
       postgres:
         image: postgres:16

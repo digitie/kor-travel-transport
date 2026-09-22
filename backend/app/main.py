@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import OrderedDict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from contextlib import suppress
 from datetime import date, datetime, time, timedelta
+from functools import wraps
 from http import HTTPStatus
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
@@ -19,6 +22,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
+from kric import DataGoKrMaritimeClient, KricRateLimitError
 
 from app.core.config import Settings, get_settings
 from app.core.time_utils import now_utc, serialize_utc, to_seoul
@@ -28,12 +32,15 @@ from app.models import (
     CollectionRun,
     FuelPriceSnapshot,
     FuelStation,
+    FerryPort,
     HighwayIncidentSnapshot,
+    HighwayTrafficFiveMinuteStatistic,
     HighwayTrafficSnapshot,
     ParkingFeeRule,
     ParkingLot,
     ParkingSnapshot,
     RawApiResponse,
+    RailStationReference,
 )
 from app.schemas import (
     AirportSummary,
@@ -47,6 +54,8 @@ from app.schemas import (
     DashboardBootstrapResponse,
     FeeCalculationRequest,
     FeeCalculationResponse,
+    FerryOperationItem,
+    FerryOperationResponse,
     FlightStatusResponse,
     FuelPriceItem,
     FuelPriceStatistics,
@@ -75,6 +84,8 @@ from app.schemas import (
     ThresholdWeekdayTime,
     TimeSeriesPoint,
     TransportCollectorStatus,
+    TransportPlaceMapItem,
+    TransportPlaceMapResponse,
     TransportStatisticsResponse,
     WeekdayBucket,
     WeekdayHourlyPattern,
@@ -138,6 +149,202 @@ logger = logging.getLogger(__name__)
 # 일회성 히스토리 조회라 더 넓은 상한을 허용해도 상시 부하로 이어지지 않는다
 # (threshold_insights의 기존 90일 상한과 동일한 값).
 MAX_TIMESERIES_RANGE_DAYS = 90
+MAX_TRANSPORT_STATISTICS_CACHE_ENTRIES = 128
+
+
+def cached_transport_statistics(handler):
+    @wraps(handler)
+    async def wrapped(
+        request: Request,
+        route_no: str | None = None,
+        days: int = 7,
+        session: AsyncSession | None = None,
+    ) -> TransportStatisticsResponse:
+        settings = request.app.state.settings
+        semaphore = request.app.state.transport_statistics_miss_semaphore
+
+        async def calculate() -> TransportStatisticsResponse:
+            # asyncio.Semaphore는 값이 남아 있을 때 acquire가 suspend하지 않는다.
+            # 따라서 이 admission check는 요청을 대기열에 쌓지 않고 포화 시 즉시 거절한다.
+            if semaphore.locked():
+                raise HTTPException(status_code=429, detail="교통 통계 집계가 혼잡합니다. 잠시 후 다시 시도하세요.")
+            await semaphore.acquire()
+            try:
+                return await handler(request=request, route_no=route_no, days=days, session=session)
+            finally:
+                semaphore.release()
+
+        if settings.transport_statistics_cache_seconds == 0:
+            return await calculate()
+
+        cache_key = (route_no.strip() if route_no else None, days)
+        statistics_cache = request.app.state.transport_statistics_cache
+
+        def get_cached() -> TransportStatisticsResponse | None:
+            cached = statistics_cache.get(cache_key)
+            if cached is None:
+                return None
+            cached_at, cached_response = cached
+            if (now_utc() - cached_at).total_seconds() > settings.transport_statistics_cache_seconds:
+                statistics_cache.pop(cache_key, None)
+                return None
+            statistics_cache.move_to_end(cache_key)
+            return cached_response
+
+        if cached_response := get_cached():
+            return cached_response
+
+        lock = request.app.state.transport_statistics_locks.setdefault(cache_key, asyncio.Lock())
+        try:
+            async with lock:
+                if cached_response := get_cached():
+                    return cached_response
+                response = await calculate()
+                statistics_cache[cache_key] = (now_utc(), response)
+                statistics_cache.move_to_end(cache_key)
+                while len(statistics_cache) > MAX_TRANSPORT_STATISTICS_CACHE_ENTRIES:
+                    statistics_cache.popitem(last=False)
+                return response
+        finally:
+            if not lock.locked():
+                request.app.state.transport_statistics_locks.pop(cache_key, None)
+
+    return wrapped
+
+
+async def _transport_traffic_statistics_rows(
+    session: AsyncSession,
+    *,
+    cutoff: datetime,
+    route_no: str | None,
+    raw_query,
+) -> list:
+    """5분 사전 집계와 시작 경계의 원본만 결합해 정확한 통계를 만든다.
+
+    사전 집계가 없는 SQLite 단위 테스트/첫 배포 직후에는 기존 원본 집계를 그대로
+    실행한다. 운영 PostgreSQL에서는 최대 5분의 원본 행만 읽는다.
+    """
+    bucket_start = cutoff.replace(second=0, microsecond=0) - timedelta(minutes=cutoff.minute % 5)
+    first_complete_bucket = bucket_start + timedelta(minutes=5)
+    aggregate_query = select(
+        HighwayTrafficFiveMinuteStatistic.route_no_key,
+        HighwayTrafficFiveMinuteStatistic.direction_key,
+        func.sum(HighwayTrafficFiveMinuteStatistic.observations).label("observations"),
+        func.sum(HighwayTrafficFiveMinuteStatistic.speed_observations).label("speed_observations"),
+        func.sum(HighwayTrafficFiveMinuteStatistic.speed_sum).label("speed_sum"),
+        func.min(HighwayTrafficFiveMinuteStatistic.minimum_speed).label("minimum_speed"),
+        func.max(HighwayTrafficFiveMinuteStatistic.maximum_speed).label("maximum_speed"),
+        func.sum(HighwayTrafficFiveMinuteStatistic.free_flow_speed_observations).label(
+            "free_flow_speed_observations"
+        ),
+        func.sum(HighwayTrafficFiveMinuteStatistic.free_flow_speed_sum).label("free_flow_speed_sum"),
+        func.max(HighwayTrafficFiveMinuteStatistic.latest_observed_at).label("latest_observed_at"),
+    ).where(HighwayTrafficFiveMinuteStatistic.bucket_start >= first_complete_bucket)
+    if route_no:
+        aggregate_query = aggregate_query.where(HighwayTrafficFiveMinuteStatistic.route_no_key == route_no)
+    aggregate_rows = (
+        await session.execute(
+            aggregate_query.group_by(
+                HighwayTrafficFiveMinuteStatistic.route_no_key,
+                HighwayTrafficFiveMinuteStatistic.direction_key,
+            )
+        )
+    ).all()
+    if not aggregate_rows:
+        return (
+            await session.execute(
+                raw_query.group_by(
+                    HighwayTrafficSnapshot.route_no,
+                    HighwayTrafficSnapshot.direction,
+                ).order_by(
+                    HighwayTrafficSnapshot.route_no,
+                    HighwayTrafficSnapshot.direction,
+                )
+            )
+        ).all()
+
+    boundary_query = select(
+        HighwayTrafficSnapshot.route_no,
+        HighwayTrafficSnapshot.direction,
+        func.count().label("observations"),
+        func.count(HighwayTrafficSnapshot.speed).label("speed_observations"),
+        func.sum(HighwayTrafficSnapshot.speed).label("speed_sum"),
+        func.min(HighwayTrafficSnapshot.speed).label("minimum_speed"),
+        func.max(HighwayTrafficSnapshot.speed).label("maximum_speed"),
+        func.count(HighwayTrafficSnapshot.free_flow_speed).label("free_flow_speed_observations"),
+        func.sum(HighwayTrafficSnapshot.free_flow_speed).label("free_flow_speed_sum"),
+        func.max(HighwayTrafficSnapshot.observed_at).label("latest_observed_at"),
+    ).where(
+        HighwayTrafficSnapshot.observed_at >= cutoff,
+        HighwayTrafficSnapshot.observed_at < first_complete_bucket,
+    )
+    if route_no:
+        boundary_query = boundary_query.where(HighwayTrafficSnapshot.route_no == route_no)
+    boundary_rows = (
+        await session.execute(
+            boundary_query.group_by(
+                HighwayTrafficSnapshot.route_no,
+                HighwayTrafficSnapshot.direction,
+            )
+        )
+    ).all()
+
+    totals: dict[tuple[str, str], dict[str, object]] = {}
+
+    def merge(row, *, route_key: str, direction_key: str) -> None:
+        values = totals.setdefault(
+            (route_key, direction_key),
+            {
+                "observations": 0,
+                "speed_observations": 0,
+                "speed_sum": 0.0,
+                "minimum_speed": None,
+                "maximum_speed": None,
+                "free_flow_speed_observations": 0,
+                "free_flow_speed_sum": 0.0,
+                "latest_observed_at": None,
+            },
+        )
+        for name in ("observations", "speed_observations", "free_flow_speed_observations"):
+            values[name] = int(values[name]) + int(getattr(row, name) or 0)
+        for name in ("speed_sum", "free_flow_speed_sum"):
+            values[name] = float(values[name]) + float(getattr(row, name) or 0.0)
+        for name, reducer in (("minimum_speed", min), ("maximum_speed", max)):
+            candidate = getattr(row, name)
+            current = values[name]
+            values[name] = candidate if current is None else current if candidate is None else reducer(current, candidate)
+        candidate_latest = getattr(row, "latest_observed_at")
+        current_latest = values["latest_observed_at"]
+        values["latest_observed_at"] = (
+            candidate_latest
+            if current_latest is None or (candidate_latest is not None and candidate_latest > current_latest)
+            else current_latest
+        )
+
+    for row in aggregate_rows:
+        merge(row, route_key=row.route_no_key, direction_key=row.direction_key)
+    for row in boundary_rows:
+        merge(row, route_key=row.route_no or "", direction_key=row.direction or "")
+
+    return [
+        SimpleNamespace(
+            route_no=route_key or None,
+            direction=direction_key or None,
+            observations=values["observations"],
+            average_speed=(
+                values["speed_sum"] / values["speed_observations"]
+                if values["speed_observations"] else None
+            ),
+            minimum_speed=values["minimum_speed"],
+            maximum_speed=values["maximum_speed"],
+            average_free_flow_speed=(
+                values["free_flow_speed_sum"] / values["free_flow_speed_observations"]
+                if values["free_flow_speed_observations"] else None
+            ),
+            latest_observed_at=values["latest_observed_at"],
+        )
+        for (route_key, direction_key), values in sorted(totals.items())
+    ]
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -154,6 +361,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.transport_collection_service = TransportCollectionService(resolved_settings)
         app.state.flight_status_service = FlightStatusService(resolved_settings)
         app.state.holiday_service = HolidayService(resolved_settings)
+        app.state.ferry_timetable_cache: dict[tuple[str, date], tuple[datetime, FerryOperationResponse]] = {}
+        app.state.ferry_timetable_lock = asyncio.Lock()
+        app.state.ferry_timetable_rate_limited_until: datetime | None = None
+        app.state.transport_statistics_cache: OrderedDict[
+            tuple[str | None, int], tuple[datetime, TransportStatisticsResponse]
+        ] = OrderedDict()
+        app.state.transport_statistics_locks: dict[tuple[str | None, int], asyncio.Lock] = {}
+        app.state.transport_statistics_miss_semaphore = asyncio.Semaphore(
+            resolved_settings.transport_statistics_max_concurrent_misses
+        )
         app.state.scheduler_task = None
         app.state.transport_scheduler_task = None
         app.state.fuel_scheduler_task = None
@@ -628,6 +845,132 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             items=items,
         )
 
+    @router.get("/transport/features/places", response_model=TransportPlaceMapResponse)
+    async def transport_place_features(
+        kind: str | None = Query(default=None, description="fuel_station, rail_station, ferry_port 중 하나"),
+        limit: int = Query(default=1000, ge=1, le=5000),
+        session: AsyncSession = Depends(get_db),
+    ) -> TransportPlaceMapResponse:
+        """저장된 장소만 지도 marker 계약으로 반환한다. provider 원문이나 비밀값은 노출하지 않는다."""
+        selected_kind = kind.strip() if kind else None
+        supported = {"fuel_station", "rail_station", "ferry_port"}
+        if selected_kind is not None and selected_kind not in supported:
+            raise HTTPException(status_code=422, detail="kind는 fuel_station, rail_station, ferry_port 중 하나여야 합니다.")
+        requested_kinds = (selected_kind,) if selected_kind else tuple(sorted(supported))
+        # 전체 지도는 한 종류가 limit을 모두 소모하지 않도록 균등하게 읽는다. 프런트가
+        # 수천 개의 DOM marker를 만들지 않게 하는 API 경계이기도 하다.
+        per_kind_limit = (limit + len(requested_kinds) - 1) // len(requested_kinds)
+        items: list[TransportPlaceMapItem] = []
+        if selected_kind in (None, "fuel_station"):
+            stations = (await session.execute(
+                select(FuelStation).where(FuelStation.latitude.is_not(None), FuelStation.longitude.is_not(None))
+                .order_by(FuelStation.last_seen_at.desc(), FuelStation.id.desc()).limit(per_kind_limit)
+            )).scalars().all()
+            station_ids = [station.id for station in stations]
+            latest: dict[int, FuelPriceSnapshot] = {}
+            if station_ids:
+                ranked = select(
+                    FuelPriceSnapshot.id.label("id"),
+                    func.row_number().over(partition_by=FuelPriceSnapshot.fuel_station_id, order_by=(FuelPriceSnapshot.collected_at.desc(), FuelPriceSnapshot.id.desc())).label("rank"),
+                ).where(FuelPriceSnapshot.fuel_station_id.in_(station_ids)).subquery()
+                rows = (await session.execute(select(FuelPriceSnapshot).join(ranked, FuelPriceSnapshot.id == ranked.c.id).where(ranked.c.rank == 1))).scalars().all()
+                latest = {row.fuel_station_id: row for row in rows}
+            for station in stations:
+                price = latest.get(station.id)
+                items.append(TransportPlaceMapItem(
+                    id=station.id, kind="fuel_station", source=station.source, name=station.name,
+                    longitude=station.longitude, latitude=station.latitude, subtitle=station.address,
+                    brand_name=station.brand_name, latest_price=float(price.price) if price and price.price is not None else None,
+                    price_product_code=price.product_code if price else None, address=station.address,
+                    updated_at=serialize_utc(station.last_seen_at),
+                ))
+        if selected_kind in (None, "rail_station"):
+            rows = (await session.execute(
+                select(RailStationReference).where(RailStationReference.latitude.is_not(None), RailStationReference.longitude.is_not(None))
+                .order_by(RailStationReference.last_seen_at.desc(), RailStationReference.id.desc()).limit(per_kind_limit)
+            )).scalars().all()
+            for station in rows:
+                items.append(TransportPlaceMapItem(
+                    id=station.id, kind="rail_station", source=station.source, name=station.station_name or "이름 없는 역",
+                    longitude=station.longitude, latitude=station.latitude, subtitle=station.rail_operator_name,
+                    line_names=[station.operating_line_name] if station.operating_line_name else [],
+                    address=station.road_address or station.lot_address, updated_at=serialize_utc(station.last_seen_at),
+                ))
+        if selected_kind in (None, "ferry_port"):
+            rows = (await session.execute(
+                select(FerryPort).where(FerryPort.latitude.is_not(None), FerryPort.longitude.is_not(None))
+                .order_by(FerryPort.last_seen_at.desc(), FerryPort.id.desc()).limit(per_kind_limit)
+            )).scalars().all()
+            for port in rows:
+                items.append(TransportPlaceMapItem(
+                    id=port.id, kind="ferry_port", source=port.source, name=port.port_name or port.port_id,
+                    provider_id=port.port_id,
+                    longitude=port.longitude, latitude=port.latitude, subtitle="항만가이드라인 위치",
+                    updated_at=serialize_utc(port.last_seen_at), location_source=port.location_source,
+                    location_point_count=port.location_point_count,
+                ))
+        return TransportPlaceMapResponse(generated_at=now_utc(), kind=selected_kind, items=items[:limit])
+
+    @router.get("/transport/ports/{port_id}/timetable", response_model=FerryOperationResponse)
+    async def transport_port_timetable(
+        request: Request,
+        port_id: str,
+        service_date: date = Query(default_factory=lambda: to_seoul(now_utc()).date(), alias="date"),
+        session: AsyncSession = Depends(get_db),
+    ) -> FerryOperationResponse:
+        """요청 항구·날짜 한 건만 provider에서 실시간 조회하며 DB/raw 응답에는 저장하지 않는다."""
+        settings: Settings = request.app.state.settings
+        today = to_seoul(now_utc()).date()
+        if service_date < today or service_date > today + timedelta(days=settings.ferry_timetable_max_days_ahead):
+            raise HTTPException(status_code=422, detail="운항일은 오늘부터 허용된 미래 범위 안에서만 조회할 수 있습니다.")
+        port = await session.scalar(select(FerryPort).where(FerryPort.port_id == port_id))
+        if port is None:
+            raise HTTPException(status_code=404, detail="저장된 항구를 찾을 수 없습니다.")
+        if not settings.data_go_kr_service_key:
+            raise HTTPException(status_code=503, detail="여객선 실시간 provider가 설정되지 않았습니다.")
+        cache_key = (port_id, service_date)
+        cached = request.app.state.ferry_timetable_cache.get(cache_key)
+        if cached is not None and now_utc() - cached[0] < timedelta(seconds=settings.ferry_timetable_cache_seconds):
+            return cached[1]
+        rate_limited_until: datetime | None = request.app.state.ferry_timetable_rate_limited_until
+        if rate_limited_until is not None and now_utc() < rate_limited_until:
+            retry_after_seconds = max(1, int((rate_limited_until - now_utc()).total_seconds()))
+            raise HTTPException(
+                status_code=429,
+                detail="여객선 실시간 provider의 호출 제한이 아직 해제되지 않았습니다.",
+                headers={"Retry-After": str(retry_after_seconds)},
+            )
+        async with request.app.state.ferry_timetable_lock:
+            cached = request.app.state.ferry_timetable_cache.get(cache_key)
+            if cached is not None and now_utc() - cached[0] < timedelta(seconds=settings.ferry_timetable_cache_seconds):
+                return cached[1]
+            rate_limited_until = request.app.state.ferry_timetable_rate_limited_until
+            if rate_limited_until is not None and now_utc() < rate_limited_until:
+                retry_after_seconds = max(1, int((rate_limited_until - now_utc()).total_seconds()))
+                raise HTTPException(
+                    status_code=429,
+                    detail="여객선 실시간 provider의 호출 제한이 아직 해제되지 않았습니다.",
+                    headers={"Retry-After": str(retry_after_seconds)},
+                )
+            try:
+                async with DataGoKrMaritimeClient(settings.data_go_kr_service_key, timeout=settings.api_timeout_seconds) as maritime:
+                    operations = await maritime.get_domestic_ship_operations(departure_port_id=port_id, departure_date=service_date)
+            except KricRateLimitError as exc:
+                blocked_until = now_utc() + timedelta(seconds=settings.upstream_rate_limit_backoff_seconds)
+                request.app.state.ferry_timetable_rate_limited_until = blocked_until
+                retry_after_seconds = max(1, int((blocked_until - now_utc()).total_seconds()))
+                raise HTTPException(
+                    status_code=429,
+                    detail="여객선 실시간 provider의 호출 제한에 도달했습니다.",
+                    headers={"Retry-After": str(retry_after_seconds)},
+                ) from exc
+            response = FerryOperationResponse(
+                port_id=port_id, service_date=service_date, fetched_at=now_utc(),
+                items=[FerryOperationItem(vessel_name=item.vessel_name, departure_port_name=item.departure_port_name, arrival_port_name=item.arrival_port_name, departure_planned_time=item.departure_planned_time, arrival_planned_time=item.arrival_planned_time, fare=item.fare) for item in operations],
+            )
+            request.app.state.ferry_timetable_cache[cache_key] = (now_utc(), response)
+            return response
+
     @router.get("/transport/collector-status", response_model=TransportCollectorStatus)
     async def transport_collector_status(
         session: AsyncSession = Depends(get_db),
@@ -652,7 +995,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return TransportCollectorStatus(**status)
 
     @router.get("/transport/statistics", response_model=TransportStatisticsResponse)
+    @cached_transport_statistics
     async def transport_statistics(
+        request: Request,
         route_no: str | None = Query(default=None),
         days: int = Query(default=7, ge=1, le=90),
         session: AsyncSession = Depends(get_db),
@@ -675,17 +1020,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         if normalized_route_no:
             traffic_query = traffic_query.where(HighwayTrafficSnapshot.route_no == normalized_route_no)
-        traffic_rows = (
-            await session.execute(
-                traffic_query.group_by(
-                    HighwayTrafficSnapshot.route_no,
-                    HighwayTrafficSnapshot.direction,
-                ).order_by(
-                    HighwayTrafficSnapshot.route_no,
-                    HighwayTrafficSnapshot.direction,
-                )
-            )
-        ).all()
+        traffic_rows = await _transport_traffic_statistics_rows(
+            session,
+            cutoff=cutoff,
+            route_no=normalized_route_no,
+            raw_query=traffic_query,
+        )
 
         incidents_query = (
             select(
@@ -726,7 +1066,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         ).all()
 
-        return TransportStatisticsResponse(
+        response = TransportStatisticsResponse(
             generated_at=now_utc(),
             days=days,
             route_no=normalized_route_no,
@@ -777,6 +1117,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 for row in fuel_rows
             ],
         )
+        return response
 
     @router.get("/parking/current", response_model=ParkingCurrentResponse)
     async def parking_current(

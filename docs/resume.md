@@ -2,6 +2,39 @@
 
 ## 현재 상태
 
+- 2026-09-22 `codex/transport-map-view`의 Draft PR #36은 최신 원격 후보를 기준으로
+  n150 live E2E에서 발견한 공개 gateway 재생성·통계 cache 후속 보완 중이다. 공개 268건
+  HTTPS E2E는 전체 3일 통계의 cold read 504와 순간 DNS 해석 실패 2건으로 265건만
+  통과했다. 원본 고속도로 관측을 5분 사전 집계로 읽고 시작 경계만 원본으로 정확히 보정하는
+  migration `0010_transport_five_minute_stats`를 추가했다. 고속도로 수집은 최근 두 시간
+  bucket과 이번 수집의 오래된 정정 bucket을 재구축하며 SQLite 테스트는 빈 집계에서 원본
+  fallback을 사용한다. James/Popper
+  적대 리뷰의 P1에 따라 cache miss를 키별 single-flight와 LRU 128개 상한으로 보완했고,
+  정적 OpenAPI도 재생성했다. 서로 다른 cache key의 90일 집계 병렬 폭주는 전역 semaphore
+  두 개로 제한했다.
+  KRIC 철도 기준정보는 Dagster의 매일 03:00 KST due 평가와 마지막 성공 기준 48시간
+  gate로 제한했고, 항구 시간표는 KST 날짜 범위·요청 병합·제공기관 429 음성 캐시를
+  적용한 실시간 전용 조회로 유지한다. Docker 회귀 fixture는 운영 `DATABASE_URL`을
+  읽지 않고, 명시적 `TEST_DATABASE_URL`과 안전 표지 없이는 PostgreSQL을 사용하지 않는다
+  (운영 경로는 PostgreSQL 전용). 지도는 MapLibre 레이어·클러스터만 사용해 대량 DOM
+  marker를 만들지 않으며, native 장소 목록으로 키보드·스크린리더 선택 경로도 제공한다.
+  항구 전환은 진행 중 시간표 요청을 취소한다. 공개 gateway는 bind mount allowlist 변경 때
+  전용 세 서비스만 강제 재생성하고, 저장 통계는 기본 60초 cache를 사용한다. 다음 순서는
+  최신 SHA의 CI와 James/Popper 독립 재리뷰 → n150 재배포·268건 HTTPS live E2E → PR
+  머지다.
+
+- 2026-09-22 KRIC 인증키를 수령했고, 제공기관 권고에 맞춰 rail reference Dagster schedule을
+  매일 03:00 KST due 평가와 마지막 성공 뒤 실제 48시간 gate로 변경 중이다. 인증 OpenAPI는
+  전국 역·열차 반복 수집에 넣지 않는다. 공식 역사 코드 XLSX로 최소 파라미터를 확인했으며,
+  오늘의 승인 operation 검증은 오류 envelope로 끝나 추가 재시도를 중단했다. 다음 허용
+  시점에는 공식 sample 코드(`KR/1/135`, `01/A1`)로 operation별 한 번씩 재검증하고
+  provider 오류 분류를 보완한다.
+
+- 2026-09-22 `codex/transport-map-view`에서 주유소·역·항구 지도와 저장 장소 API를 구현 중이다.
+  항구 좌표는 키 없는 해양수산부 항만가이드라인 CSV에서 RustFS 보관 후 연결하고, 시간표는
+  실시간 요청만 허용한다. 다음 단계는 Docker/HTTPS UI 검증, 적대적 리뷰, provider와 transport
+  PR의 CI·머지다.
+
 - 2026-09-22 `codex/transport-dashboard-performance`은 n150에서 7일 통계가 약 3.9초,
   수집 상태가 30ms인 것을 측정했다. 대시보드는 빠른 저장 상태·돌발을 먼저 표시하고,
   통계는 독립 패널로 늦게 반영하며 60초 session cache를 사용하도록 보완했다. 느린 통계가

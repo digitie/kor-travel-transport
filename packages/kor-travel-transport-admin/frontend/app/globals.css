@@ -39,4 +39,12 @@ button, input { font: inherit; }
 .button { background: var(--accent); border: 0; border-radius: 7px; color: white; cursor: pointer; padding: 11px 15px; }
 .login-error { color: var(--danger); min-height: 20px; }
 .api-result { background: #10201e; border-radius: 8px; color: #def0e9; max-height: 460px; overflow: auto; padding: 15px; white-space: pre-wrap; }
+.transport-map-layout { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; display: grid; grid-template-columns: minmax(0, 1fr) 310px; min-height: 620px; overflow: hidden; }
+.transport-map-canvas { min-height: 620px; }
+.transport-map-detail { border-left: 1px solid var(--line); padding: 22px; }
+.transport-map-detail h2 { margin: 4px 0 12px; }
+.transport-map-picker { display: grid; font-size: 13px; font-weight: 700; gap: 6px; margin-bottom: 20px; }
+.transport-map-picker select { background: white; border: 1px solid #b9c4bd; border-radius: 7px; min-height: 40px; padding: 8px; }
+.timetable-result { white-space: pre-wrap; }
+@media (max-width: 760px) { .transport-map-layout { grid-template-columns: 1fr; min-height: 0; } .transport-map-canvas { min-height: 440px; } .transport-map-detail { border-left: 0; border-top: 1px solid var(--line); } }
 @media (max-width: 760px) { .admin-layout { grid-template-columns: 1fr; } .rail { padding: 18px; } .brand { margin-bottom: 15px; } .nav { grid-template-columns: repeat(3, minmax(0, 1fr)); } .nav-label { display: none; } .sign-out { margin-top: 18px; } .main { padding: 28px 20px; } .grid { grid-template-columns: 1fr; } .wide { grid-column: span 1; } }

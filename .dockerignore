@@ -10,6 +10,7 @@
 **/*.egg-info
 **/.env
 **/.env.*
+!.env.server14.example
 **/.coverage
 **/test-results
 **/playwright-report

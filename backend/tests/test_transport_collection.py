@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import OrderedDict
 from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -8,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from krex import CongestionLevel, Direction, Incident, KrexQuotaExceededError, TrafficFlow
 from opinet import ProductCode, StationType
@@ -24,8 +26,15 @@ from sqlalchemy import func, select, text
 from app.core.config import Settings
 from app.core.time_utils import now_utc, serialize_utc
 from app.db.session import create_engine_and_session_factory, init_database
-from app.main import create_app
-from app.models import FuelPriceSnapshot, FuelStation, HighwayIncidentSnapshot, HighwayTrafficSnapshot, TransportCollectionState
+from app.main import cached_transport_statistics, create_app
+from app.models import (
+    FuelPriceSnapshot,
+    FuelStation,
+    HighwayIncidentSnapshot,
+    HighwayTrafficFiveMinuteStatistic,
+    HighwayTrafficSnapshot,
+    TransportCollectionState,
+)
 from app.services.transport_collection import (
     HighwayPayload,
     INCIDENT_SOURCE,
@@ -850,6 +859,139 @@ def test_transport_openapi_returns_stored_data_and_statistics(tmp_path: Path) ->
     assert status.json()["last_run"]["status"] == "success"
     assert status.json()["last_run"]["trigger"] == "transport_test"
 
+
+def test_transport_statistics_reads_preaggregated_traffic_when_available(tmp_path: Path) -> None:
+    settings = build_settings(tmp_path)
+    with TestClient(create_app(settings)) as client:
+        bucket = now_utc().replace(second=0, microsecond=0)
+
+        async def add_aggregate() -> None:
+            async with client.app.state.session_factory() as session:
+                session.add(
+                    HighwayTrafficFiveMinuteStatistic(
+                        bucket_start=bucket,
+                        route_no_key="001",
+                        direction_key="상행",
+                        observations=7,
+                        speed_observations=6,
+                        speed_sum=420.0,
+                        minimum_speed=55.0,
+                        maximum_speed=85.0,
+                        free_flow_speed_observations=6,
+                        free_flow_speed_sum=600.0,
+                        latest_observed_at=bucket,
+                    )
+                )
+                await session.commit()
+
+        asyncio.run(add_aggregate())
+        statistics = client.get("/v1/transport/statistics", params={"route_no": "001", "days": 1})
+
+    assert statistics.status_code == 200
+    assert statistics.json()["traffic"] == [{
+        "route_no": "001",
+        "direction": "상행",
+        "observations": 7,
+        "average_speed": 70.0,
+        "minimum_speed": 55.0,
+        "maximum_speed": 85.0,
+        "average_free_flow_speed": 100.0,
+        "latest_observed_at": serialize_utc(bucket).isoformat().replace("+00:00", "Z"),
+    }]
+
+
+def test_transport_statistics_uses_short_lived_response_cache(tmp_path: Path) -> None:
+    settings = build_settings(tmp_path)
+    with TestClient(create_app(settings)) as client:
+        service = client.app.state.transport_collection_service
+        service.provider = FakeTransportProvider()
+
+        async def collect() -> None:
+            async with client.app.state.session_factory() as session:
+                await service.collect(session, trigger="test")
+
+        asyncio.run(collect())
+        first = client.get("/v1/transport/statistics", params={"route_no": "001", "days": 7})
+
+        async def remove_snapshots() -> None:
+            async with client.app.state.session_factory() as session:
+                await session.execute(text("DELETE FROM fuel_price_snapshots"))
+                await session.execute(text("DELETE FROM highway_incident_snapshots"))
+                await session.execute(text("DELETE FROM highway_traffic_snapshots"))
+                await session.commit()
+
+        asyncio.run(remove_snapshots())
+        cached = client.get("/v1/transport/statistics", params={"route_no": "001", "days": 7})
+
+    assert first.status_code == 200
+    assert cached.status_code == 200
+    assert cached.json() == first.json()
+
+
+def test_transport_statistics_cache_coalesces_and_evicts_lru_entries() -> None:
+    calls = 0
+    state = SimpleNamespace(
+        settings=SimpleNamespace(transport_statistics_cache_seconds=60),
+        transport_statistics_cache=OrderedDict(),
+        transport_statistics_locks={},
+        transport_statistics_miss_semaphore=asyncio.Semaphore(2),
+    )
+    request = SimpleNamespace(app=SimpleNamespace(state=state))
+
+    async def handler(*, request, route_no, days, session):
+        nonlocal calls
+        calls += 1
+        await asyncio.sleep(0)
+        return {"route_no": route_no, "days": days}
+
+    cached_handler = cached_transport_statistics(handler)
+
+    async def exercise() -> list[dict[str, object]]:
+        simultaneous = await asyncio.gather(
+            *(cached_handler(request=request, route_no="001", days=7, session=None) for _ in range(8))
+        )
+        for index in range(129):
+            await cached_handler(request=request, route_no=f"route-{index}", days=7, session=None)
+        return simultaneous
+
+    simultaneous = asyncio.run(exercise())
+
+    assert calls == 130
+    assert simultaneous == [{"route_no": "001", "days": 7}] * 8
+    assert len(state.transport_statistics_cache) == 128
+    assert ("route-0", 7) not in state.transport_statistics_cache
+    assert ("route-128", 7) in state.transport_statistics_cache
+
+
+def test_transport_statistics_cache_limits_distinct_cache_misses() -> None:
+    active = maximum_active = 0
+    state = SimpleNamespace(
+        settings=SimpleNamespace(transport_statistics_cache_seconds=60),
+        transport_statistics_cache=OrderedDict(),
+        transport_statistics_locks={},
+        transport_statistics_miss_semaphore=asyncio.Semaphore(2),
+    )
+    request = SimpleNamespace(app=SimpleNamespace(state=state))
+
+    async def handler(*, request, route_no, days, session):
+        nonlocal active, maximum_active
+        active += 1
+        maximum_active = max(maximum_active, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return {"route_no": route_no, "days": days}
+
+    cached_handler = cached_transport_statistics(handler)
+    async def exercise() -> list[object]:
+        return await asyncio.gather(
+            *(cached_handler(request=request, route_no=f"route-{index}", days=90, session=None) for index in range(4)),
+            return_exceptions=True,
+        )
+
+    results = asyncio.run(exercise())
+
+    assert maximum_active == 2
+    assert sum(isinstance(result, HTTPException) and result.status_code == 429 for result in results) == 2
 
 def test_transport_status_exposes_a_durable_failed_run(client) -> None:
     service = client.app.state.transport_collection_service

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import UTC, timedelta
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
@@ -14,6 +15,8 @@ from kric import (
     FerryShipType,
     FerryTerminal,
     FileStationInfo,
+    PortGuidelineFileClient,
+    PortGuidelineLocation,
     KricFileClient,
     RustfsObjectStore,
     StoredObject,
@@ -36,6 +39,7 @@ logger = logging.getLogger(__name__)
 
 KRIC_FILE_SOURCE = "kric_public_file"
 MARITIME_SOURCE = "data_go_kr_maritime"
+PORT_GUIDELINE_SOURCE = "data_go_kr_port_guideline"
 
 
 class RailMaritimeCollectionService:
@@ -50,10 +54,12 @@ class RailMaritimeCollectionService:
         settings: Settings,
         *,
         rail_fetcher: Callable[[], Awaitable[tuple[FileStationInfo, ...]]] | None = None,
+        port_guideline_fetcher: Callable[[], Awaitable[tuple[PortGuidelineLocation, ...]]] | None = None,
         maritime_client_factory: Callable[..., DataGoKrMaritimeClient] = DataGoKrMaritimeClient,
     ) -> None:
         self.settings = settings
         self._rail_fetcher = rail_fetcher
+        self._port_guideline_fetcher = port_guideline_fetcher
         self._maritime_client_factory = maritime_client_factory
 
     async def collect_rail_reference(
@@ -61,6 +67,21 @@ class RailMaritimeCollectionService:
     ) -> dict[str, Any]:
         if not self.settings.rail_reference_collection_enabled:
             return {"status": "skipped", "reason": "rail reference collection is disabled"}
+        latest_success = await session.scalar(
+            select(CollectionRun.finished_at)
+            .where(
+                CollectionRun.trigger == "dagster_rail",
+                CollectionRun.status == "success",
+                CollectionRun.finished_at.is_not(None),
+            )
+            .order_by(CollectionRun.finished_at.desc())
+            .limit(1)
+        )
+        if latest_success is not None:
+            if latest_success.tzinfo is None:
+                latest_success = latest_success.replace(tzinfo=UTC)
+            if now_utc() - latest_success < timedelta(days=2):
+                return {"status": "skipped", "reason": "KRIC rail reference is not due for 48 hours"}
         run = await self._start_run(session, trigger)
         try:
             stations, archive = await self._fetch_rail_stations()
@@ -138,6 +159,8 @@ class RailMaritimeCollectionService:
         key = self.settings.data_go_kr_service_key
         assert key is not None
         collected_at = now_utc()
+        guidelines, archive = await self._fetch_port_guidelines()
+        locations = _representative_port_locations(guidelines)
         async with self._maritime_client_factory(key, timeout=self.settings.api_timeout_seconds) as client:
             # 공공데이터 호출량을 예측 가능하게 유지하려고 동시에 세 요청을 보내지 않는다.
             # Provider iterator는 page budget을 넘기면 오류로 끝나므로 첫 페이지 하나만
@@ -147,7 +170,7 @@ class RailMaritimeCollectionService:
             ship_types = tuple([item async for item in client.iter_ferry_ship_types(page_size=100, max_pages=20)])
             for port in ports:
                 if port.port_id:
-                    await self._upsert_port(session, port, collected_at)
+                    await self._upsert_port(session, port, collected_at, locations.get(_port_name_key(port.port_name)))
             for terminal in terminals:
                 if terminal.terminal_id:
                     await self._upsert_terminal(session, terminal, collected_at)
@@ -159,7 +182,30 @@ class RailMaritimeCollectionService:
             "port_count": len(ports),
             "terminal_count": len(terminals),
             "ship_type_count": len(ship_types),
+            "port_location_count": len(locations),
+            "port_guideline_object_stored": int(archive is not None),
         }
+
+    async def _fetch_port_guidelines(self) -> tuple[tuple[PortGuidelineLocation, ...], StoredObject | None]:
+        if not self.settings.port_guideline_collection_enabled:
+            return (), None
+        if self._port_guideline_fetcher is not None:
+            return await self._port_guideline_fetcher(), None
+        if not self.settings.rustfs_is_configured:
+            raise RuntimeError("RustFS configuration is required for enabled port guideline collection")
+        assert self.settings.rustfs_endpoint_url is not None
+        assert self.settings.rustfs_access_key_id is not None
+        assert self.settings.rustfs_secret_access_key is not None
+        async with RustfsObjectStore.from_s3_compatible_settings(
+            endpoint_url=self.settings.rustfs_endpoint_url,
+            bucket=self.settings.rustfs_bucket,
+            access_key_id=self.settings.rustfs_access_key_id,
+            secret_access_key=self.settings.rustfs_secret_access_key,
+            region_name=self.settings.rustfs_region_name,
+            prefix=self.settings.rustfs_raw_prefix,
+            allow_insecure_http=self.settings.rustfs_allow_insecure_http,
+        ) as store, PortGuidelineFileClient(timeout=self.settings.api_timeout_seconds) as client:
+            return await client.get_locations_to_rustfs(store)
 
     async def _start_run(self, session: AsyncSession, trigger: str) -> CollectionRun:
         run = CollectionRun(
@@ -237,24 +283,32 @@ class RailMaritimeCollectionService:
             for name, value in values.items():
                 setattr(row, name, value)
 
-    async def _upsert_port(self, session: AsyncSession, item: DomesticFerryPort, collected_at: Any) -> None:
+    async def _upsert_port(
+        self, session: AsyncSession, item: DomesticFerryPort, collected_at: Any,
+        location: tuple[float, float, int] | None,
+    ) -> None:
         assert item.port_id is not None
         row = await session.scalar(
             select(FerryPort).where(FerryPort.source == MARITIME_SOURCE, FerryPort.port_id == item.port_id)
         )
+        values = {
+            "port_name": item.port_name, "last_seen_at": collected_at, "raw_item_json": dict(item.raw),
+            "latitude": location[0] if location else None, "longitude": location[1] if location else None,
+            "location_source": PORT_GUIDELINE_SOURCE if location else None,
+            "location_point_count": location[2] if location else 0,
+        }
         if row is None:
             session.add(
                 FerryPort(
                     source=MARITIME_SOURCE,
                     port_id=item.port_id,
-                    port_name=item.port_name,
                     first_seen_at=collected_at,
-                    last_seen_at=collected_at,
-                    raw_item_json=dict(item.raw),
+                    **values,
                 )
             )
         else:
-            row.port_name, row.last_seen_at, row.raw_item_json = item.port_name, collected_at, dict(item.raw)
+            for name, value in values.items():
+                setattr(row, name, value)
 
     async def _upsert_terminal(self, session: AsyncSession, item: FerryTerminal, collected_at: Any) -> None:
         assert item.terminal_id is not None
@@ -317,3 +371,24 @@ def _identity(*values: str | None) -> str:
 
 def _safe_error(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {str(exc)[:500]}"
+
+
+def _port_name_key(value: str | None) -> str:
+    return "".join((value or "").split()).replace("항구", "").replace("항", "")
+
+
+def _representative_port_locations(
+    locations: tuple[PortGuidelineLocation, ...],
+) -> dict[str, tuple[float, float, int]]:
+    """원문 순서가 가장 이른 안내 지점을 marker로 선택하고 전체 점 수를 함께 남긴다."""
+    grouped: dict[str, list[PortGuidelineLocation]] = {}
+    for item in locations:
+        key = _port_name_key(item.port_name)
+        if key and item.latitude is not None and item.longitude is not None:
+            grouped.setdefault(key, []).append(item)
+    result: dict[str, tuple[float, float, int]] = {}
+    for key, items in grouped.items():
+        selected = min(items, key=lambda item: (int(item.position_order) if (item.position_order or "").isdigit() else 10**9, item.latitude or 0, item.longitude or 0))
+        assert selected.latitude is not None and selected.longitude is not None
+        result[key] = (selected.latitude, selected.longitude, len(items))
+    return result

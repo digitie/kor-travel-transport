@@ -70,10 +70,19 @@ npm run build
 2차 Docker 실행:
 
 ```bash
-docker compose run --rm --no-deps backend pytest -q
+docker compose run --rm --no-deps -e DATABASE_URL=sqlite+aiosqlite:///:memory: -e PARKING_RADAR_TEST_SQLITE_TEMP=1 backend pytest -q
 ```
 
 이 명령은 로컬 Docker 또는 n150의 `kor-travel-airport` Compose project에서만 실행한다. 13번에는 보내지 않는다.
+테스트 fixture는 운영 `DATABASE_URL`을 읽지 않으며, 위 명령은 테스트별 임시 SQLite를 강제한다.
+PostgreSQL 통합 검증이 꼭 필요할 때만 전용 DB DSN과 안전 표지를 모두 명시한다. 운영 DB DSN을
+`TEST_DATABASE_URL`에 넣는 행위는 금지한다.
+
+```bash
+TEST_DATABASE_URL=postgresql+asyncpg://.../kor_travel_transport_test \
+PARKING_RADAR_TEST_DATABASE=1 \
+docker compose run --rm --no-deps backend pytest -q
+```
 
 ## 프론트엔드 테스트
 
