@@ -2,6 +2,17 @@
 
 ## 2026-09-22
 
+- 최종 적대적 리뷰의 P1을 반영했다. 지도는 DOM marker pool 대신 MapLibre GeoJSON
+  circle/symbol layer와 source cluster로 렌더링해 고확대에서도 marker DOM을 대량 생성하지
+  않는다. 항구 선택은 이전 `AbortController`를 취소하고 요청 일련번호를 확인하므로 늦게
+  도착한 이전 항구의 시간표가 현재 상세 화면을 덮어쓰지 않는다. 성공 cache는 전역 provider
+  429 backoff보다 먼저 반환하며, public transport gateway에는 저장 장소와 제한된 항구
+  시간표 GET endpoint를 추가했다.
+- Docker backend test fixture는 이제 `DATABASE_URL`을 전혀 상속하지 않는다. PostgreSQL
+  통합 검증은 `TEST_DATABASE_URL`과 `PARKING_RADAR_TEST_DATABASE=1`을 모두 줘야만
+  허용하고, 기본 Docker runbook은 테스트별 임시 SQLite를 강제한다. 운영 DB truncate 위험을
+  제거했다. 항만가이드라인 수집·시간표 TTL/날짜 범위 설정은 base/shared Compose와 Dagster
+  execution 환경으로 모두 전달하도록 보완했다.
 - KRIC 공개 XLSX rail job은 매일 03:00 KST에 due만 평가하고, `dagster_rail`의 마지막 성공이
   48시간 이내면 provider 호출 없이 skip하도록 보완했다. 월말 31일→1일에 달력식 `*/2` cron이
   24시간 만에 다시 실행되는 문제를 제거했다. 테스트 SQLite가 aware UTC offset을 보존하지 않는

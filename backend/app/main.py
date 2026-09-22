@@ -722,6 +722,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not settings.data_go_kr_service_key:
             raise HTTPException(status_code=503, detail="여객선 실시간 provider가 설정되지 않았습니다.")
         cache_key = (port_id, service_date)
+        cached = request.app.state.ferry_timetable_cache.get(cache_key)
+        if cached is not None and now_utc() - cached[0] < timedelta(seconds=settings.ferry_timetable_cache_seconds):
+            return cached[1]
         rate_limited_until: datetime | None = request.app.state.ferry_timetable_rate_limited_until
         if rate_limited_until is not None and now_utc() < rate_limited_until:
             retry_after_seconds = max(1, int((rate_limited_until - now_utc()).total_seconds()))
@@ -730,10 +733,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 detail="여객선 실시간 provider의 호출 제한이 아직 해제되지 않았습니다.",
                 headers={"Retry-After": str(retry_after_seconds)},
             )
-        cached = request.app.state.ferry_timetable_cache.get(cache_key)
-        if cached is not None and now_utc() - cached[0] < timedelta(seconds=settings.ferry_timetable_cache_seconds):
-            return cached[1]
         async with request.app.state.ferry_timetable_lock:
+            cached = request.app.state.ferry_timetable_cache.get(cache_key)
+            if cached is not None and now_utc() - cached[0] < timedelta(seconds=settings.ferry_timetable_cache_seconds):
+                return cached[1]
             rate_limited_until = request.app.state.ferry_timetable_rate_limited_until
             if rate_limited_until is not None and now_utc() < rate_limited_until:
                 retry_after_seconds = max(1, int((rate_limited_until - now_utc()).total_seconds()))
@@ -742,9 +745,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     detail="여객선 실시간 provider의 호출 제한이 아직 해제되지 않았습니다.",
                     headers={"Retry-After": str(retry_after_seconds)},
                 )
-            cached = request.app.state.ferry_timetable_cache.get(cache_key)
-            if cached is not None and now_utc() - cached[0] < timedelta(seconds=settings.ferry_timetable_cache_seconds):
-                return cached[1]
             try:
                 async with DataGoKrMaritimeClient(settings.data_go_kr_service_key, timeout=settings.api_timeout_seconds) as maritime:
                     operations = await maritime.get_domestic_ship_operations(departure_port_id=port_id, departure_date=service_date)

@@ -14,9 +14,9 @@ server {
         proxy_read_timeout 30s;
     }
 
-    # 공개 transport API는 저장된 교통정보 읽기 endpoint 다섯 개만 제공한다.
+    # 공개 transport API는 저장 장소 조회와 제한된 항구 실시간 시간표를 포함한 읽기 endpoint만 제공한다.
     # parking-radar의 주차·관리·백업/복원 경로를 이 listener로 전달하지 않는다.
-    location ~ ^/v1/transport/(collector-status|statistics|highways/traffic|highways/incidents|fuel/stations)$ {
+    location ~ ^/v1/transport/(collector-status|statistics|highways/traffic|highways/incidents|fuel/stations|features/places|ports/[^/]+/timetable)$ {
         limit_except GET { deny all; }
         proxy_pass http://127.0.0.1:14001;
         proxy_http_version 1.1;

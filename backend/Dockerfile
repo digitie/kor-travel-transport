@@ -23,6 +23,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 RUN playwright install --with-deps chromium
 
 COPY .env.server14.example /app/compose-contract/.env.server14.example
+COPY docker-compose.yml /app/compose-contract/docker-compose.yml
 COPY docker-compose.transport-admin.yml /app/compose-contract/docker-compose.transport-admin.yml
 COPY deploy/transport-admin /app/compose-contract/deploy/transport-admin
 COPY packages/kor-travel-transport-admin/frontend /app/compose-contract/packages/kor-travel-transport-admin/frontend

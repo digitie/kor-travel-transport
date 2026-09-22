@@ -2,14 +2,16 @@
 
 ## 현재 상태
 
-- 2026-09-22 `codex/transport-map-view`의 Draft PR #36 최신 후보는 `6baad35`이다.
+- 2026-09-22 `codex/transport-map-view`의 Draft PR #36은 최신 원격 후보를 기준으로
+  최종 적대적 리뷰 보완 중이다.
   KRIC 철도 기준정보는 Dagster의 매일 03:00 KST due 평가와 마지막 성공 기준 48시간
   gate로 제한했고, 항구 시간표는 KST 날짜 범위·요청 병합·제공기관 429 음성 캐시를
-  적용한 실시간 전용 조회로 유지한다. Docker 회귀 테스트는 운영 PostgreSQL을 절대
-  사용하지 않도록 임시 SQLite 파일로 격리했다(운영 경로는 PostgreSQL 전용).
-  WSL backend `153 passed, 1 skipped`, Docker backend `153 passed, 1 skipped`,
-  admin frontend Docker type-check/Vitest `16 passed`를 확인했다. 다음 순서는 최신
-  SHA의 CI와 James/Popper 독립 재리뷰 → n150 배포·HTTPS live E2E → PR 머지다.
+  적용한 실시간 전용 조회로 유지한다. Docker 회귀 fixture는 운영 `DATABASE_URL`을
+  읽지 않고, 명시적 `TEST_DATABASE_URL`과 안전 표지 없이는 PostgreSQL을 사용하지 않는다
+  (운영 경로는 PostgreSQL 전용). 지도는 MapLibre 레이어·클러스터만 사용해 대량 DOM
+  marker를 만들지 않으며, 항구 전환은 진행 중 시간표 요청을 취소한다. 다음 순서는
+  WSL/Docker 회귀 → 최신 SHA의 CI와 James/Popper 독립 재리뷰 → n150 배포·HTTPS live
+  E2E → PR 머지다.
 
 - 2026-09-22 KRIC 인증키를 수령했고, 제공기관 권고에 맞춰 rail reference Dagster schedule을
   매일 03:00 KST due 평가와 마지막 성공 뒤 실제 48시간 gate로 변경 중이다. 인증 OpenAPI는

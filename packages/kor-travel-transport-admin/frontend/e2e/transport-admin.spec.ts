@@ -31,6 +31,7 @@ const fuelCases: EndpointCase[] = [1, 2, 3, 7].flatMap((days) => ["B027", "D047"
 })));
 const endpointCases: EndpointCase[] = [
   { name: "collector status", path: "transport/collector-status", arrayKey: "sources" },
+  { name: "saved map places", path: "transport/features/places?limit=10", arrayKey: "items" },
   ...statisticsCases,
   ...trafficCases,
   ...incidentCases,
@@ -76,7 +77,7 @@ test("느린 7일 통계가 수집 상태 화면을 가로막지 않는다", asy
   await context.close();
 });
 
-test.describe("비인증 관리 proxy 경계 (81개)", () => {
+test.describe("비인증 관리 proxy 경계", () => {
   for (const endpoint of endpointCases) {
     test(`unauthenticated ${endpoint.name}`, async ({ request }) => {
       expect((await request.get(`/api/transport/${endpoint.path}`)).status()).toBe(401);
@@ -84,7 +85,7 @@ test.describe("비인증 관리 proxy 경계 (81개)", () => {
   }
 });
 
-test.describe("공개 저장 transport API 행렬 (81개)", () => {
+test.describe("공개 저장 transport API 행렬", () => {
   for (const endpoint of endpointCases) {
     test(`public ${endpoint.name}`, async ({ request }) => {
       await expectJsonArray(await request.get(`${apiBase}/v1/${endpoint.path}`), endpoint.arrayKey);
@@ -92,7 +93,7 @@ test.describe("공개 저장 transport API 행렬 (81개)", () => {
   }
 });
 
-test.describe("인증된 관리 proxy 행렬과 UI (88개)", () => {
+test.describe("인증된 관리 proxy 행렬과 UI", () => {
   test.describe.configure({ mode: "serial" });
   let context: BrowserContext;
   let page: Page;
@@ -120,12 +121,20 @@ test.describe("인증된 관리 proxy 행렬과 UI (88개)", () => {
     });
   }
 
-  for (const [path, heading] of [["/transport", "교통 수집"], ["/fuel", "유가 수집"], ["/api-test", "API 점검"], ["/admin/dagster", "Dagster"]] as const) {
+  for (const [path, heading] of [["/transport", "교통 수집"], ["/fuel", "유가 수집"], ["/map", "교통 지도"], ["/api-test", "API 점검"], ["/admin/dagster", "Dagster"]] as const) {
     test(`navigation ${path}`, async () => {
       await page.goto(path);
       await expect(page.getByRole("heading", { name: heading })).toBeVisible();
     });
   }
+
+  test("지도는 저장 장소 API를 읽고, 실시간 항구 시간표를 자동 호출하지 않는다", async () => {
+    const timetableRequests: string[] = [];
+    page.on("request", (request) => { if (request.url().includes("/timetable")) timetableRequests.push(request.url()); });
+    await page.goto("/map");
+    await expect(page.getByLabel(/VWorld 교통 지도/)).toBeVisible();
+    await expect.poll(() => timetableRequests).toEqual([]);
+  });
 
   test("allowlist 밖의 관리 proxy 경로는 숨긴다", async () => {
     expect((await page.request.get("/api/transport/admin/backups")).status()).toBe(404);
@@ -139,7 +148,7 @@ test.describe("인증된 관리 proxy 행렬과 UI (88개)", () => {
   });
 });
 
-test.describe("공개 gateway 쓰기·비허용 경계 (8개)", () => {
+test.describe("공개 gateway 쓰기·비허용 경계", () => {
   for (const path of ["transport/collector-status", "transport/statistics?days=1", "transport/highways/traffic?days=1", "transport/highways/incidents?days=1", "transport/fuel/stations?days=1"]) {
     test(`public POST ${path} is denied`, async ({ request }) => {
       expect((await request.post(`${apiBase}/v1/${path}`)).status()).toBe(403);
