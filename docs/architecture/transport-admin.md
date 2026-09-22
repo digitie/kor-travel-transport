@@ -27,6 +27,24 @@ HttpOnly 서명 세션을 통과한 뒤에만 Next.js server route가 다음의 
 `lib/transport.ts` 단위 테스트와 `backend/tests/test_transport_admin_contract.py`가
 회귀를 막는다.
 
+## 화면과 지도 데이터 경계
+
+- `교통·유가`는 고속도로·유가를 한 화면에서 저장된 7일 통계와 함께 보여 준다. 유종·노선·수집
+  source 코드는 화면에서 사람이 이해할 수 있는 명칭으로 바꾸며, 비교가 필요한 값은 Apache
+  ECharts 막대 그래프로 제공한다.
+- `열차·도시철도`와 `배편`은 각각 저장한 장소 기준정보를 별도 탭에서 검색한다. 배편 탭은
+  목록을 열거나 검색할 때 시간표 provider를 호출하지 않는다. 사용자가 특정 항구의 `오늘 운항 보기`
+  를 선택한 경우에만 해당 항구의 실시간 시간표를 한 번 요청한다.
+- `/map`은 저장 장소 API만 읽는다. 주유소에는 최신 가격·브랜드, 역에는 노선, 항구에는 저장된
+  위치·노선을 표시한다. 지도 이동이 끝난 현재 bbox만 종류별로 조회하고, 범위에 한 종류가
+  5,000곳을 넘으면 잘린 사실과 확대 방법을 화면에 표시한다. 운영 앱은 지도 엔진을 직접 조작하지 않고
+  [`digitie/maplibre-vworld-react`](https://github.com/digitie/maplibre-vworld-react) 의
+  `VWorldMapView`, `ClusterLayer`, `Marker`, `Popup` 선언형 컴포넌트를 사용한다.
+- 위 provider는 Git submodule `third_party/maplibre-vworld-react`의 `cfdc64f` 고정 revision과
+  `frontend/vendor/README.md`의 SHA-256 매핑과 재현 가능한 tarball로 추적한다. Docker build는 tarball만 설치하므로
+  checkout 경로에 의존하지 않는다. VWorld 키는 `NEXT_PUBLIC_VWORLD_API_KEY`로 Docker
+  build 시점에 주입하며, 추적 파일에 넣지 않는다.
+
 ## 운영 경로
 
 ```text
@@ -56,6 +74,9 @@ Dagster 운영 UI ── TLS ── transport-dagster.digitie.mywire.org:12302
 
 - `TRANSPORT_UI_PASSWORD`와 32자 이상 `TRANSPORT_UI_SESSION_SECRET`이 없으면
   production 로그인은 fail-closed 한다.
+- Next.js transport proxy는 upstream `Retry-After`를 그대로 전달한다. 항구 시간표 cache
+  miss는 provider 전체에서 기본 30초의 보호 간격을 적용하며, 기간 중에는 `429`과 재시도
+  초를 반환한다. 따라서 항구 목록을 순회하는 호출도 provider quota를 소진하지 않는다.
 - 로그인·로그아웃과 Dagster GraphQL POST는 `TRANSPORT_UI_PUBLIC_ORIGIN`과 exact
   비교한다. reverse proxy가 client IP를 재작성하는 계약이 있을 때만
   `TRANSPORT_UI_TRUST_PROXY=true`를 허용한다.

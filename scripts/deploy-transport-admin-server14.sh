@@ -21,7 +21,7 @@ ssh "${REMOTE_USER}@${REMOTE_HOST}" \
   "REMOTE_APP_DIR='${REMOTE_APP_DIR}' REMOTE_ENV_FILE='${REMOTE_ENV_FILE}' bash -s" <<'PREFLIGHT'
 set -euo pipefail
 [[ -f "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" ]] || { echo "운영 환경 파일이 없습니다." >&2; exit 2; }
-for key in TRANSPORT_UI_PASSWORD TRANSPORT_UI_SESSION_SECRET TRANSPORT_UI_PUBLIC_ORIGIN TRANSPORT_DAGSTER_PUBLIC_ORIGIN TRANSPORT_DAGSTER_PASSWORD; do
+for key in TRANSPORT_UI_PASSWORD TRANSPORT_UI_SESSION_SECRET TRANSPORT_UI_PUBLIC_ORIGIN TRANSPORT_DAGSTER_PUBLIC_ORIGIN TRANSPORT_DAGSTER_PASSWORD NEXT_PUBLIC_VWORLD_API_KEY; do
   grep -Eq "^${key}=.+" "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" || { echo "${key}가 설정되지 않았습니다." >&2; exit 2; }
 done
 port_from_env() {
@@ -62,6 +62,13 @@ cleanup() { rm -rf -- "${stage}" "${REMOTE_ARCHIVE}"; }
 trap cleanup EXIT
 tar -xzf "${REMOTE_ARCHIVE}" -C "${stage}"
 rsync -a --exclude="${REMOTE_ENV_FILE}" --exclude=".env.server14.legacy" --exclude="backups/" "${stage}/" "${REMOTE_APP_DIR}/"
+# Next.js 16은 `proxy.ts`와 이전 `middleware.ts`가 함께 있으면 build를 중단한다.
+# archive에 없는, 과거 release에서만 남은 정확한 파일만 제거한다. `--delete`로 checkout의
+# 알려지지 않은 운영 파일을 넓게 지우지 않는다.
+legacy_middleware="packages/kor-travel-transport-admin/frontend/middleware.ts"
+if [[ ! -e "${stage}/${legacy_middleware}" && -e "${REMOTE_APP_DIR}/${legacy_middleware}" ]]; then
+  rm -f -- "${REMOTE_APP_DIR}/${legacy_middleware}"
+fi
 cd "${REMOTE_APP_DIR}"
 
 # api-gateway는 설정 파일을 bind mount한다. image digest만으로는 파일 내용 변경을

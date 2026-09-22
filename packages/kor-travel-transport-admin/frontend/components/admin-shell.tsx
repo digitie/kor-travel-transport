@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, ChartNoAxesCombined, Database, Fuel, LogOut, Map, Route } from "lucide-react";
+import { Activity, ChartNoAxesCombined, Database, LogOut, Map, Route, ShipWheel, TrainFront } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -8,8 +8,9 @@ import type { ReactNode } from "react";
 const items = [
   ["/", "현황", Activity],
   ["/map", "지도", Map],
-  ["/transport", "교통 수집", Route],
-  ["/fuel", "유가", Fuel],
+  ["/transport", "교통·유가", Route],
+  ["/rail", "열차·도시철도", TrainFront],
+  ["/ferry", "배편", ShipWheel],
   ["/admin/dagster", "Dagster", Database],
   ["/api-test", "API 점검", ChartNoAxesCombined],
 ] as const;

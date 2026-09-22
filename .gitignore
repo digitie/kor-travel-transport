@@ -21,4 +21,8 @@ backend/*.egg-info/
 frontend/*.tsbuildinfo
 frontend/test-results/
 frontend/playwright-report/
+packages/kor-travel-transport-admin/frontend/tsconfig.tsbuildinfo
+packages/kor-travel-transport-admin/frontend/test-results/
+packages/kor-travel-transport-admin/frontend/playwright-report/
+packages/kor-travel-transport-admin/frontend/public/maplibre/
 .playwright-mcp/

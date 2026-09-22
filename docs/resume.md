@@ -2,6 +2,45 @@
 
 ## 현재 상태
 
+- 2026-09-22 `codex/transport-experience`는 병합된 PR #36 (`46f29da`)에서 분기했다.
+  교통·유가를 하나의 저장 통계 화면으로 통합하고, 고속도로·유가·수집 source 코드를
+  사람이 읽는 명칭과 Apache ECharts 그래프로 바꿨다. 열차·도시철도와 배편을 독립 화면으로
+  분리했고 배편 시간표는 사용자가 항구를 선택할 때만 실시간으로 읽는다. 지도는
+  `digitie/maplibre-vworld-react@69abf9c`의 선언형 VWorld React 컴포넌트로 전환했으며,
+  local tarball과 submodule revision을 함께 고정했다. Next.js 16.3.5/React 19.3.0
+  migration, WSL lint·19개 단위 테스트·production build, backend 관리 API 계약 5건,
+  깨끗한 Docker image build를 통과했다. James/Popper 적대 리뷰의 P1(통계 loading E2E
+  문구, 지도 키보드 marker, 전체 철도 검색, 항구 요청 경쟁 상태)을 보완했다. 마지막
+  Popper P1인 지도 기본 1,000건 공평 분배도 종류별 명시 요청으로 제거했다. 최종 재리뷰가
+  지적한 넓은 범위의 대량 렌더링은 viewport bbox API와 `total`·`truncated` 안내, zoom별
+  종류당 100/200/300개 예산(전체 최대 900개)으로 보완했고, VWorld 타일 오류는 장소 선택
+  상태와 무관하게 화면 오류 상태로 노출한다. 항구 시간표의 서로 다른
+  cache miss는 기본 30초 provider 보호 간격을 적용하며, 관리 proxy는 `Retry-After`를
+  보존한다. API 39개, 관리 경계 5개, frontend 단위 19개, lint·type-check·production build,
+  clean Docker build가 통과했다. keyboard marker provider 변경은 병합된
+  `maplibre-vworld-react` PR #27에 포함됐다. Popper P2인 numeric 좌표 bbox index와 legacy
+  `kind` 없는 목록의 균등 반환은 별도 성능/API 계약 task로 남겼다. 다음 순서는 수정 CI·최종
+  재리뷰, n150 HTTPS live E2E, transport PR 머지다. n150의 오래된 checkout에는 Next 16
+  `proxy.ts`와 충돌하는 legacy `middleware.ts`가 남아 있었고 첫 Docker build는 재기동 전
+  안전하게 중단했다. deploy script가 archive에 없는 정확한 stale path만 제거하도록 보완한
+  후보로 다시 CI·배포를 수행한다. 첫 live E2E는 Windows CRLF browser key의 trailing
+  carriage return로 VWorld custom protocol이 fallback을 사용한 것을 발견했다. n150 env의
+  line ending을 정규화해 WMTS HTTP 200을 확인했고, 느린 통계 E2E는 실사용 hydration을
+  고려한 상태 기반 계약으로 보완 중이다. provider custom protocol의 fallback 오류도
+  `vworld-tile-error` event로 화면에 표시해 타일 실패가 숨지 않도록 보완했다. n150의
+  273건 live E2E가 발견한 제공 영역 밖 `200/XML FileNotFound`는 provider PR #28에서
+  정상 fallback으로 분리했고, submodule·vendor tarball·SRI까지 새 revision으로 고정했다.
+  실제 `200 image/png`가 로드돼도 MapLibre가 source-level error event를 내는 경우는
+  provider의 fetch 실패 event와 구분해, HTTP status가 확인된 native 오류만 UI banner로
+  올리도록 보완했다.
+  `67d17a3` n150 배포본의 live E2E는 외부 VWorld tile 접근 실패 경고와 통계 6일 cold
+  request의 단발 504로 267/273만 통과했다. 전자는 외부 공급자 접근 불가에도 fallback과
+  명시 경고를 허용하는 지도 E2E 계약으로, 후자는 502/503/504의 제한 재시도로 보완했다.
+  type-check와 frontend unit 19건은 재통과했고, 다음 순서는 수정 CI·n150 동일 SHA
+  live E2E 재실행·PR 머지다.
+  frontend clean install, type-check, 19개 unit test, Next production build가 통과했으며,
+  다음 순서는 이 후보 CI·James/Popper 재리뷰·n150 273건 live E2E·PR 머지다.
+
 - 2026-09-22 `codex/transport-map-view`의 Draft PR #36은 최신 원격 후보를 기준으로
   n150 live E2E에서 발견한 공개 gateway 재생성·통계 cache 후속 보완 중이다. 공개 268건
   HTTPS E2E는 전체 3일 통계의 cold read 504와 순간 DNS 해석 실패 2건으로 265건만

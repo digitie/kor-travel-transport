@@ -50,6 +50,25 @@ Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks
       Next.js 패키지로 복제
 - [x] 기존 `parking-radar`와 독립된 API/Dagster/UI gateway Compose project 추가
 - [x] 고속도로·유가 저장 스냅샷, 수집 상태, Dagster 상태, 허용 경로/세션/CSRF 단위·계약 테스트 추가
+- [x] 교통·유가 통합 저장 통계 화면, Apache ECharts 비교 그래프, 열차·도시철도·배편 분리 화면 추가
+- [x] `digitie/maplibre-vworld-react` 고정 revision을 사용하는 VWorld React 지도와 항구 시간표 명시 호출 계약 추가
+- [x] bbox 기반 저장 장소 지도 요청·절단 안내, 실제 VWorld 타일·모바일 viewport live E2E 계약, vendor tarball provenance 기록
+- [x] VWorld 제공 영역 밖 `200/XML FileNotFound`를 공통 provider fallback으로 분리하고,
+      submodule·vendor tarball·SRI를 병합된 provider revision으로 동기화
+- [ ] 후속 P2: 수집량 증가 전 fuel/rail numeric 좌표 bbox 복합 index를 `EXPLAIN (ANALYZE,
+      BUFFERS)` 측정으로 설계한다. 현재 지도는 zoom별 전체 최대 900개를 요청하므로 즉시
+      PostGIS migration을 강제하지 않는다.
+- [ ] 후속 P2: `kind` 없는 legacy 장소 목록의 작은 `limit`에서 세 종류가 공정하게
+      반환되도록 API 계약을 별도 버전으로 정리한다. 지도는 종류별 bbox 요청만 사용한다.
+- [ ] 후속 P2: 지도 map event test seam으로 zoom 8·10의 종류당 200/300개 예산과, 타일
+      오류 뒤 회복 시 안내 해제를 E2E로 고정한다. 현재 initial zoom 7의 종류당 100개,
+      선택 중 오류 가시성, 성공 타일은 live E2E가 확인한다.
+- [ ] 후속 P2: VWorld `vworld-tile-error`의 `mapId`를 transport 지도 identity와 대조하고,
+      fallback 오류·정상 회복 event를 자동 검증한다. 현재 단일 map instance의 listener
+      cleanup과 오류 배너 가시성은 확인됐다.
+- [ ] 후속 P2: transport deploy script의 stale middleware 보존/제거 조건을 mock으로
+      검증하고, versioned release directory의 atomic switch와 remote checkout canonical path
+      검증을 설계한다. 현재 build 실패는 `up --force-recreate` 전에 끝나 기존 서비스는 유지된다.
 - [ ] cAdvisor `12103`, Prometheus `12102`, Grafana `12104` 전환 후 n150에서 transport
       12301/12302/12305를 배포
 - [ ] 두 적대적 리뷰, CI, n150 live E2E 뒤 Draft PR을 머지
