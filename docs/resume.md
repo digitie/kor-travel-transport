@@ -30,6 +30,9 @@
   `vworld-tile-error` event로 화면에 표시해 타일 실패가 숨지 않도록 보완했다. n150의
   273건 live E2E가 발견한 제공 영역 밖 `200/XML FileNotFound`는 provider PR #28에서
   정상 fallback으로 분리했고, submodule·vendor tarball·SRI까지 새 revision으로 고정했다.
+  실제 `200 image/png`가 로드돼도 MapLibre가 source-level error event를 내는 경우는
+  provider의 fetch 실패 event와 구분해, HTTP status가 확인된 native 오류만 UI banner로
+  올리도록 보완했다.
   frontend clean install, type-check, 19개 unit test, Next production build가 통과했으며,
   다음 순서는 이 후보 CI·James/Popper 재리뷰·n150 273건 live E2E·PR 머지다.
 

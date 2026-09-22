@@ -11,6 +11,11 @@
   함께 고정했다. provider web 패키지 type-check/build, transport의 clean install,
   type-check, 19개 unit test, Next production build를 통과했다. 이후 CI·두 적대 리뷰,
   n150 재배포와 273건 live E2E를 다시 수행한다.
+- 재배포한 273건 live E2E에서 정상 `200 image/png` 타일이 로드되는 동안에도 MapLibre가
+  source-level error event를 한 번 발행할 수 있음을 browser fetch 계측으로 확인했다.
+  provider custom protocol의 실제 fetch 실패 event는 그대로 화면에 노출하되, transport의
+  raw MapLibre handler는 확인 가능한 HTTP `status >= 400`만 오류 배너로 승격하도록 좁혔다.
+  source id만으로 실패로 판단해 정상 지도를 경고하던 false positive를 제거한다.
 - `codex/transport-experience`에서 관리 UI의 고속도로·유가를 하나의 저장 통계 화면으로
   통합했다. 유종·노선·source 코드는 사람이 읽는 한국어 용어로 표시하고, 비교값은 Apache
   ECharts 그래프로 바꿨다. 열차·도시철도와 배편은 별도 화면으로 분리했으며 배편 시간표는
