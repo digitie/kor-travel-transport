@@ -34,7 +34,8 @@ export function TransportDashboard() {
   const [status, setStatus] = useState<Status | null>(null);
   const [incidents, setIncidents] = useState<Incidents | null>(null);
   const [statistics, setStatistics] = useState<Statistics | null>(null);
-  const [coreError, setCoreError] = useState("");
+  const [statusError, setStatusError] = useState("");
+  const [incidentsError, setIncidentsError] = useState("");
   const [statisticsError, setStatisticsError] = useState("");
   const refreshed = useRef({ status: false, incidents: false, statistics: false });
 
@@ -46,10 +47,14 @@ export function TransportDashboard() {
       setIncidents(cached.incidents);
       setStatistics(cached.statistics);
     }
-    void Promise.all([fetch("/api/transport/transport/collector-status"), fetch("/api/transport/transport/highways/incidents?days=1&limit=20")])
-      .then(async ([statusResponse, incidentResponse]) => [await json<Status>(statusResponse), await json<Incidents>(incidentResponse)] as const)
-      .then(([nextStatus, nextIncidents]) => { if (active) { refreshed.current.status = true; refreshed.current.incidents = true; setStatus(nextStatus); setIncidents(nextIncidents); setCoreError(""); } })
-      .catch((reason) => active && setCoreError(reason instanceof Error ? reason.message : "현황을 불러오지 못했습니다."));
+    void fetch("/api/transport/transport/collector-status")
+      .then(json<Status>)
+      .then((nextStatus) => { if (active) { refreshed.current.status = true; setStatus(nextStatus); setStatusError(""); } })
+      .catch((reason) => active && setStatusError(reason instanceof Error ? reason.message : "수집 상태를 불러오지 못했습니다."));
+    void fetch("/api/transport/transport/highways/incidents?days=1&limit=20")
+      .then(json<Incidents>)
+      .then((nextIncidents) => { if (active) { refreshed.current.incidents = true; setIncidents(nextIncidents); setIncidentsError(""); } })
+      .catch((reason) => active && setIncidentsError(reason instanceof Error ? reason.message : "돌발 정보를 불러오지 못했습니다."));
     void fetch("/api/transport/transport/statistics?days=7")
       .then(json<Statistics>)
       .then((nextStatistics) => { if (active) { refreshed.current.statistics = true; setStatistics(nextStatistics); setStatisticsError(""); } })
@@ -59,7 +64,8 @@ export function TransportDashboard() {
 
   useEffect(() => { if (status && statistics && incidents && refreshed.current.status && refreshed.current.incidents && refreshed.current.statistics) writeCache(status, statistics, incidents); }, [status, statistics, incidents]);
 
-  if (coreError && !status) return <p className="error">{coreError}</p>;
+  const coreError = statusError || incidentsError;
+  if (statusError && !status) return <p className="error">{statusError}</p>;
   if (!status) return <p className="loading">저장된 수집 상태를 읽는 중입니다…</p>;
 
   const statisticsMessage = statisticsError || "저장된 7일 통계를 집계하는 중입니다…";
