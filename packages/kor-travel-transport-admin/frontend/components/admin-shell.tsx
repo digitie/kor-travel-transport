@@ -15,8 +15,9 @@ const items = [
 
 export function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  function clearDashboardCache() { try { window.sessionStorage.removeItem("kor-travel-transport-dashboard-v1"); } catch { /* optional browser storage */ } }
   if (pathname === "/login") return <>{children}</>;
-  return <div className="admin-layout"><aside className="rail"><Link className="brand" href="/"><strong>Kor Travel Transport</strong><span>운영 관리 화면</span></Link><nav className="nav"><p className="nav-label">운영</p>{items.map(([href, label, Icon]) => <Link className={pathname === href ? "active" : ""} href={href} key={href}><Icon aria-hidden="true" size={16} /> {label}</Link>)}</nav><form action="/api/auth/logout" method="post"><button className="sign-out" type="submit"><LogOut aria-hidden="true" size={15} /> 로그아웃</button></form></aside><main className="main">{children}</main></div>;
+  return <div className="admin-layout"><aside className="rail"><Link className="brand" href="/"><strong>Kor Travel Transport</strong><span>운영 관리 화면</span></Link><nav className="nav"><p className="nav-label">운영</p>{items.map(([href, label, Icon]) => <Link className={pathname === href ? "active" : ""} href={href} key={href}><Icon aria-hidden="true" size={16} /> {label}</Link>)}</nav><form action="/api/auth/logout" method="post" onSubmit={clearDashboardCache}><button className="sign-out" type="submit"><LogOut aria-hidden="true" size={15} /> 로그아웃</button></form></aside><main className="main">{children}</main></div>;
 }
 
 export function PageHeader({ title, description }: { title: string; description: string }) {

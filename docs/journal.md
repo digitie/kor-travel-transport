@@ -7,6 +7,11 @@
   변환하는 경로를 재현했고, timeout을 gateway와 같은 30초로 맞췄다. 행렬에서 발견한
   route-filter 통계의 gateway `504`는 `(route_no, observed_at, direction)` covering
   index migration `0008`으로 wide JSON heap 재읽기를 줄이도록 보완했다.
+- transport 관리 대시보드가 수집 상태·돌발·7일 통계를 `Promise.all`로 묶어 통계 DB 집계가
+  끝날 때까지 전체 화면을 비우던 것을 수정했다. 빠른 저장 상태를 먼저 표시하고 통계 패널만
+  독립 갱신하며, 같은 브라우저 세션은 60초 동안 마지막 저장 화면을 즉시 표시한다. 캐시의
+  TTL은 세 network 응답이 모두 성공한 경우에만 연장하고, 갱신 실패 시 이전 저장값임을
+  화면에 표시한다.
 - `0008`을 n150 shared PostgreSQL에 적용하고 backend·분리된 Dagster·frontend를 재기동했다.
   안정화 후 HTTPS live E2E 260개가 2분 18초에 모두 통과했다. 공개/인증 저장 API,
   네 관리 UI 경로, logout origin, public write·비허용 path, 실제 공격 Origin Dagster CSRF
