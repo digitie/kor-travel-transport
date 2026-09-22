@@ -345,7 +345,7 @@ class TransportCollectionService:
                         items = await self._collect_highway_source(session, run_id, errors, source, result)
                         count = await store(session, run_id, items) if items is not None else 0
                         if source == TRAFFIC_SOURCE and items is not None:
-                            await self._refresh_recent_traffic_statistics(session)
+                            await self._refresh_recent_traffic_statistics(session, items)
                         await session.commit()
                     except Exception as exc:
                         # 해당 소스만 되돌린다. 앞선 소스의 데이터·성공 상태는 이미 확정됐다.
@@ -622,23 +622,50 @@ class TransportCollectionService:
         await session.flush()
         return stored
 
-    async def _refresh_recent_traffic_statistics(self, session: AsyncSession) -> None:
-        """최근 두 시간의 변경 가능한 원본을 5분 집계로 다시 만든다.
-
-        KREX가 같은 관측 시각을 정정해도 집계가 누적되지 않도록 upsert 대신 재구축한다.
-        SQLite 단위 테스트는 원본 집계 fallback을 사용하므로 PostgreSQL에서만 실행한다.
-        """
+    async def _refresh_recent_traffic_statistics(
+        self,
+        session: AsyncSession,
+        items: tuple[TrafficFlow, ...],
+    ) -> None:
+        """최근 두 시간과 이번 수집의 과거 정정 bucket을 5분 집계로 다시 만든다."""
         bind = session.get_bind()
         if bind.dialect.name != "postgresql":
             return
         current = now_utc().replace(second=0, microsecond=0)
         rebuild_from = current - timedelta(hours=2, minutes=current.minute % 5)
+        await self._rebuild_traffic_statistics_range(session, rebuild_from)
+
+        # KREX는 이미 저장한 과거 시각의 값을 정정할 수 있다. 최근 범위보다 오래된
+        # 이번 수집 bucket은 좁게 별도 재집계해 stale 통계를 남기지 않는다.
+        corrected_buckets: set[datetime] = set()
+        for item in items:
+            observed_at = _parse_provider_datetime(item.updated_at, self.settings.app_timezone)
+            if observed_at is None or observed_at >= rebuild_from:
+                continue
+            bucket = observed_at.replace(second=0, microsecond=0)
+            corrected_buckets.add(bucket - timedelta(minutes=bucket.minute % 5))
+        for bucket_start in sorted(corrected_buckets):
+            await self._rebuild_traffic_statistics_range(
+                session,
+                bucket_start,
+                bucket_start + timedelta(minutes=5),
+            )
+
+    @staticmethod
+    async def _rebuild_traffic_statistics_range(
+        session: AsyncSession,
+        rebuild_from: datetime,
+        rebuild_until: datetime | None = None,
+    ) -> None:
+        params = {"rebuild_from": rebuild_from, "rebuild_until": rebuild_until}
+        source_filter = "observed_at >= :rebuild_from"
+        bucket_filter = "bucket_start >= :rebuild_from"
+        if rebuild_until is not None:
+            source_filter += " AND observed_at < :rebuild_until"
+            bucket_filter += " AND bucket_start < :rebuild_until"
         await session.execute(
-            text(
-                "DELETE FROM highway_traffic_five_minute_statistics "
-                "WHERE bucket_start >= :rebuild_from"
-            ),
-            {"rebuild_from": rebuild_from},
+            text("DELETE FROM highway_traffic_five_minute_statistics WHERE " + bucket_filter),
+            params,
         )
         await session.execute(
             text(
@@ -650,22 +677,15 @@ class TransportCollectionService:
                 )
                 SELECT
                     date_bin(INTERVAL '5 minutes', observed_at, TIMESTAMPTZ '2000-01-01 00:00:00+00'),
-                    COALESCE(route_no, ''),
-                    COALESCE(direction, ''),
-                    COUNT(*),
-                    COUNT(speed),
-                    SUM(speed),
-                    MIN(speed),
-                    MAX(speed),
-                    COUNT(free_flow_speed),
-                    SUM(free_flow_speed),
-                    MAX(observed_at)
+                    COALESCE(route_no, ''), COALESCE(direction, ''), COUNT(*),
+                    COUNT(speed), SUM(speed), MIN(speed), MAX(speed),
+                    COUNT(free_flow_speed), SUM(free_flow_speed), MAX(observed_at)
                 FROM highway_traffic_snapshots
-                WHERE observed_at >= :rebuild_from
+                WHERE """ + source_filter + """
                 GROUP BY 1, 2, 3
                 """
             ),
-            {"rebuild_from": rebuild_from},
+            params,
         )
 
     async def _store_incidents(

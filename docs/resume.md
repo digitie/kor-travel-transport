@@ -7,7 +7,8 @@
   HTTPS E2E는 전체 3일 통계의 cold read 504와 순간 DNS 해석 실패 2건으로 265건만
   통과했다. 원본 고속도로 관측을 5분 사전 집계로 읽고 시작 경계만 원본으로 정확히 보정하는
   migration `0010_transport_five_minute_stats`를 추가했다. 고속도로 수집은 최근 두 시간
-  bucket을 재구축하며 SQLite 테스트는 빈 집계에서 원본 fallback을 사용한다. James/Popper
+  bucket과 이번 수집의 오래된 정정 bucket을 재구축하며 SQLite 테스트는 빈 집계에서 원본
+  fallback을 사용한다. James/Popper
   적대 리뷰의 P1에 따라 cache miss를 키별 single-flight와 LRU 128개 상한으로 보완했고,
   정적 OpenAPI도 재생성했다. 서로 다른 cache key의 90일 집계 병렬 폭주는 전역 semaphore
   두 개로 제한했다.
