@@ -2,6 +2,11 @@
 
 ## 현재 상태
 
+- 2026-09-22 `codex/transport-map-view`에서 주유소·역·항구 지도와 저장 장소 API를 구현 중이다.
+  항구 좌표는 키 없는 해양수산부 항만가이드라인 CSV에서 RustFS 보관 후 연결하고, 시간표는
+  실시간 요청만 허용한다. 다음 단계는 Docker/HTTPS UI 검증, 적대적 리뷰, provider와 transport
+  PR의 CI·머지다.
+
 - 2026-09-22 `codex/transport-dashboard-performance`은 n150에서 7일 통계가 약 3.9초,
   수집 상태가 30ms인 것을 측정했다. 대시보드는 빠른 저장 상태·돌발을 먼저 표시하고,
   통계는 독립 패널로 늦게 반영하며 60초 session cache를 사용하도록 보완했다. 느린 통계가

@@ -2,6 +2,14 @@
 
 ## 2026-09-22
 
+- weather admin의 MapLibre/VWorld 구조를 transport admin에 적용해 `/map` 지도 화면을 추가했다.
+  저장된 주유소는 브랜드·최신 유가, KRIC 역은 노선명, 항구는 해양수산부 항만가이드라인 위치
+  원본의 출처·점 수와 함께 marker로 제공한다. 항만가이드라인은 중심점 자료가 아니므로 첫
+  원시 순서 지점을 표시하고 그 사실을 상세 화면에 명시한다.
+- 무인증 해양수산부 `15121268` CSV를 RustFS에 보관하는 `python-kric-api` provider 변경을
+  고정했다. 항구 시간표는 `GET /v1/transport/ports/{port_id}/timetable`가 요청 한 건만
+  실시간 조회하며 DB와 raw response에 저장하지 않는다.
+
 - post-merge n150 HTTPS UI E2E를 수백 개 행렬로 확장했다. 이 과정에서 관리 UI의
   server-side proxy가 공개 gateway보다 짧은 10초 timeout으로 정상 저장 통계를 `502`로
   변환하는 경로를 재현했고, timeout을 gateway와 같은 30초로 맞췄다. 행렬에서 발견한
