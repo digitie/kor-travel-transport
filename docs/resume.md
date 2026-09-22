@@ -2,6 +2,12 @@
 
 ## 현재 상태
 
+- 2026-09-22 `codex/transport-admin` PR #33은 n150에 전용 API `12301`, Dagster
+  `12302`, UI `12305`를 배포했고 세 컨테이너의 health와 candidate SHA 일치를
+  확인했다. live E2E에서 발견한 7일 통계의 순차 스캔을 covering index migration
+  `0007`과 경량 `count(*)` 집계로 보완 중이다. migration 적용 뒤 공개 HTTPS
+  browser E2E와 CI를 다시 통과시키고 두 적대적 리뷰 게이트를 재확인한 뒤 머지한다.
+
 - 2026-09-22 `codex/transport-admin`에서 weather admin과 같은 인증된 server-side proxy
   구조의 transport 전용 운영 UI를 구현 중이다. 기존 `parking-radar` frontend/Compose는
   변경하지 않는다. 새 독립 Compose project는 public API `12301`, Dagster `12302`, UI

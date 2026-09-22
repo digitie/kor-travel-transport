@@ -664,7 +664,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             select(
                 HighwayTrafficSnapshot.route_no,
                 HighwayTrafficSnapshot.direction,
-                func.count(HighwayTrafficSnapshot.id).label("observations"),
+                func.count().label("observations"),
                 func.avg(HighwayTrafficSnapshot.speed).label("average_speed"),
                 func.min(HighwayTrafficSnapshot.speed).label("minimum_speed"),
                 func.max(HighwayTrafficSnapshot.speed).label("maximum_speed"),
@@ -690,7 +690,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         incidents_query = (
             select(
                 HighwayIncidentSnapshot.route_no,
-                func.count(HighwayIncidentSnapshot.id).label("incidents"),
+                func.count().label("incidents"),
                 func.max(HighwayIncidentSnapshot.observed_at).label("latest_observed_at"),
             )
             .where(HighwayIncidentSnapshot.observed_at >= cutoff)
@@ -710,7 +710,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 select(
                     FuelPriceSnapshot.product_code,
                     func.count(func.distinct(FuelPriceSnapshot.fuel_station_id)).label("stations"),
-                    func.count(FuelPriceSnapshot.id).label("observations"),
+                    func.count().label("observations"),
                     func.avg(FuelPriceSnapshot.price).label("average_price"),
                     func.min(FuelPriceSnapshot.price).label("minimum_price"),
                     func.max(FuelPriceSnapshot.price).label("maximum_price"),

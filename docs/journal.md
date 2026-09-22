@@ -2,6 +2,9 @@
 
 ## 2026-09-22
 
+- n150 live E2E에서 7일 transport 통계가 넓은 원본 시계열을 순차 읽어 공개 gateway
+  timeout을 넘는 것을 확인했다. 읽기 경로에 맞춘 covering index 세 개와 `count(*)`
+  집계를 추가해, JSON 원본 행을 재읽지 않고 저장된 교통·유가 통계를 제공하도록 보완했다.
 - `parking-radar`를 변경하지 않는 별도 `kor-travel-transport-admin` Compose project와
   `packages/kor-travel-transport-admin/frontend`를 추가했다. weather admin의 로그인,
   HttpOnly 서명 세션, server-side API proxy, Dagster GraphQL proxy 구조를 transport
