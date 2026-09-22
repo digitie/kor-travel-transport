@@ -88,6 +88,12 @@ export function TransportMap() {
     if (moveTimer.current !== null) window.clearTimeout(moveTimer.current);
   }, []);
 
+  useEffect(() => {
+    const handleVWorldTileError = () => setMapError("VWorld 지도 타일을 불러오지 못했습니다. 지도 키·도메인 설정 또는 네트워크를 확인한 뒤 다시 시도해 주세요.");
+    window.addEventListener("vworld-tile-error", handleVWorldTileError);
+    return () => window.removeEventListener("vworld-tile-error", handleVWorldTileError);
+  }, []);
+
   async function loadTimetable() {
     const providerId = selected?.provider_id;
     if (!selected || !providerId) return;

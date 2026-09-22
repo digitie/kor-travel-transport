@@ -72,6 +72,12 @@
   malformed URL을 fallback으로 바꾼 것이 원인이었다. 값은 노출하지 않고 n150 환경 파일의
   line ending만 정규화했고, 승인된 `transport.digitie.mywire.org` Referer로 실제 WMTS tile
   HTTP 200을 확인했다.
+- VWorld web provider는 MapLibre custom protocol에서 fallback tile을 반환해 원래의 map
+  `onError`가 호출되지 않을 수 있다. transport 지도는 provider가 발행하는
+  `vworld-tile-error` browser event도 수신해 같은 오류 안내를 표시하도록 보완했다. live
+  E2E는 canvas·bbox 요청 뒤 fallback 오류 안내가 보이지 않는 것을 확인하며, HTTP 응답은
+  provider custom protocol의 외부 fetch가 Playwright response event에 노출되지 않는 환경도
+  있어 승인된 Referer의 별도 WMTS HTTP 200 probe로 검증한다.
 
 - n150 공개 HTTPS 268건 E2E에서 전체 3일 고속도로 통계가 cold read 때 504가 되는 것을
   재현했다. 기존 covering index는 사용됐지만 3일 원본 약 500만 행을 읽어야 했고, 저자원

@@ -152,7 +152,6 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
     await login(mapPage);
     const timetableRequests: string[] = [];
     const mapPlaceRequests = new Map<string, URL>();
-    let successfulTileResponses = 0;
     mapPage.on("request", (request) => {
       if (request.url().includes("/timetable")) timetableRequests.push(request.url());
       if (request.url().includes("/api/transport/transport/features/places?kind=")) {
@@ -160,14 +159,14 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
         mapPlaceRequests.set(url.searchParams.get("kind") ?? "", url);
       }
     });
-    mapPage.on("response", (response) => { if (response.url().startsWith("https://api.vworld.kr/") && response.status() >= 200 && response.status() < 300) successfulTileResponses += 1; });
     await mapPage.goto("/map");
     await expect(mapPage.getByLabel("교통 장소 지도")).toBeVisible();
     await expect(mapPage.getByLabel("장소 목록에서 선택")).toBeVisible();
     await expect(mapPage.locator("canvas.maplibregl-canvas")).toBeVisible({ timeout: 20_000 });
     await expect.poll(() => [...mapPlaceRequests.keys()].sort()).toEqual(["ferry_port", "fuel_station", "rail_station"]);
     expect([...mapPlaceRequests.values()].every((url) => url.searchParams.get("limit") === "100" && ["min_longitude", "min_latitude", "max_longitude", "max_latitude"].every((key) => url.searchParams.has(key)))).toBe(true);
-    await expect.poll(() => successfulTileResponses, { timeout: 20_000 }).toBeGreaterThan(0);
+    await mapPage.waitForTimeout(2_000);
+    await expect(mapPage.getByText("VWorld 지도 타일을 불러오지 못했습니다.", { exact: false })).not.toBeVisible();
     await expect.poll(() => timetableRequests).toEqual([]);
     const placePicker = mapPage.getByLabel("장소 목록에서 선택");
     await expect.poll(() => placePicker.locator("option").count()).toBeGreaterThan(1);

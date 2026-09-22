@@ -26,7 +26,8 @@
   후보로 다시 CI·배포를 수행한다. 첫 live E2E는 Windows CRLF browser key의 trailing
   carriage return로 VWorld custom protocol이 fallback을 사용한 것을 발견했다. n150 env의
   line ending을 정규화해 WMTS HTTP 200을 확인했고, 느린 통계 E2E는 실사용 hydration을
-  고려한 상태 기반 계약으로 보완 중이다.
+  고려한 상태 기반 계약으로 보완 중이다. provider custom protocol의 fallback 오류도
+  `vworld-tile-error` event로 화면에 표시해 타일 실패가 숨지 않도록 보완했다.
 
 - 2026-09-22 `codex/transport-map-view`의 Draft PR #36은 최신 원격 후보를 기준으로
   n150 live E2E에서 발견한 공개 gateway 재생성·통계 cache 후속 보완 중이다. 공개 268건
