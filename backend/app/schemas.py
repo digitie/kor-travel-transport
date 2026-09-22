@@ -197,6 +197,8 @@ class TransportPlaceMapItem(BaseModel):
 class TransportPlaceMapResponse(BaseModel):
     generated_at: datetime
     kind: str | None = None
+    total: int = 0
+    truncated: bool = False
     items: list[TransportPlaceMapItem]
 
 

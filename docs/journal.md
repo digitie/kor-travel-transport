@@ -31,6 +31,13 @@
   `frontend/vendor/README.md`에 남겼다.
 - 모바일 UI 회귀는 320·375·414·768px viewport에서 교통·유가, 열차·도시철도, 배편,
   지도 네 핵심 화면의 heading과 가로 스크롤 부재를 live Playwright로 검증한다.
+- 최종 James/Popper 적대 리뷰의 P1을 반영했다. 지도 장소 API는 client 전체 목록 대신
+  현재 bbox를 받아 kind별 5,000건 이하만 반환하고 `total`·`truncated`를 명시한다. 범위가
+  넓어 잘리면 UI가 확대를 안내하며, VWorld 타일 오류는 빈 canvas로 숨기지 않고 설정·네트워크
+  확인 안내를 표시한다. 지도 E2E는 kind별 `limit=5000`과 bbox 파라미터도 확인한다.
+  항구 실시간 시간표의 서로 다른 cache miss는 기본 30초 전역 보호 간격을 적용하고,
+  관리 proxy가 upstream `Retry-After`를 보존한다. API 회귀 39건, 관리 경계 5건,
+  frontend 단위 19건·lint·type-check·production build와 clean Docker build를 통과했다.
 
 - n150 공개 HTTPS 268건 E2E에서 전체 3일 고속도로 통계가 cold read 때 504가 되는 것을
   재현했다. 기존 covering index는 사용됐지만 3일 원본 약 500만 행을 읽어야 했고, 저자원

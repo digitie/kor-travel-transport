@@ -52,7 +52,7 @@ Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks
 - [x] 고속도로·유가 저장 스냅샷, 수집 상태, Dagster 상태, 허용 경로/세션/CSRF 단위·계약 테스트 추가
 - [x] 교통·유가 통합 저장 통계 화면, Apache ECharts 비교 그래프, 열차·도시철도·배편 분리 화면 추가
 - [x] `digitie/maplibre-vworld-react` 고정 revision을 사용하는 VWorld React 지도와 항구 시간표 명시 호출 계약 추가
-- [x] 종류별 전체 저장 장소 지도 요청, 실제 VWorld 타일·모바일 viewport live E2E 계약, vendor tarball provenance 기록
+- [x] bbox 기반 저장 장소 지도 요청·절단 안내, 실제 VWorld 타일·모바일 viewport live E2E 계약, vendor tarball provenance 기록
 - [ ] cAdvisor `12103`, Prometheus `12102`, Grafana `12104` 전환 후 n150에서 transport
       12301/12302/12305를 배포
 - [ ] 두 적대적 리뷰, CI, n150 live E2E 뒤 Draft PR을 머지

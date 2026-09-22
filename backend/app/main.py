@@ -364,6 +364,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.ferry_timetable_cache: dict[tuple[str, date], tuple[datetime, FerryOperationResponse]] = {}
         app.state.ferry_timetable_lock = asyncio.Lock()
         app.state.ferry_timetable_rate_limited_until: datetime | None = None
+        app.state.ferry_timetable_last_provider_call_at: datetime | None = None
         app.state.transport_statistics_cache: OrderedDict[
             tuple[str | None, int], tuple[datetime, TransportStatisticsResponse]
         ] = OrderedDict()
@@ -849,6 +850,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def transport_place_features(
         kind: str | None = Query(default=None, description="fuel_station, rail_station, ferry_port 중 하나"),
         limit: int = Query(default=1000, ge=1, le=5000),
+        min_longitude: float | None = Query(default=None, ge=-180, le=180),
+        min_latitude: float | None = Query(default=None, ge=-90, le=90),
+        max_longitude: float | None = Query(default=None, ge=-180, le=180),
+        max_latitude: float | None = Query(default=None, ge=-90, le=90),
         session: AsyncSession = Depends(get_db),
     ) -> TransportPlaceMapResponse:
         """저장된 장소만 지도 marker 계약으로 반환한다. provider 원문이나 비밀값은 노출하지 않는다."""
@@ -856,14 +861,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         supported = {"fuel_station", "rail_station", "ferry_port"}
         if selected_kind is not None and selected_kind not in supported:
             raise HTTPException(status_code=422, detail="kind는 fuel_station, rail_station, ferry_port 중 하나여야 합니다.")
+        bounds = (min_longitude, min_latitude, max_longitude, max_latitude)
+        if any(value is not None for value in bounds) and any(value is None for value in bounds):
+            raise HTTPException(status_code=422, detail="지도 범위는 최소·최대 경도와 위도를 모두 지정해야 합니다.")
+        if min_longitude is not None and (min_longitude >= max_longitude or min_latitude >= max_latitude):
+            raise HTTPException(status_code=422, detail="지도 범위의 최소 좌표는 최대 좌표보다 작아야 합니다.")
         requested_kinds = (selected_kind,) if selected_kind else tuple(sorted(supported))
         # 전체 지도는 한 종류가 limit을 모두 소모하지 않도록 균등하게 읽는다. 프런트가
         # 수천 개의 DOM marker를 만들지 않게 하는 API 경계이기도 하다.
         per_kind_limit = (limit + len(requested_kinds) - 1) // len(requested_kinds)
         items: list[TransportPlaceMapItem] = []
+        total = 0
+
+        def coordinate_conditions(model: type[FuelStation] | type[RailStationReference] | type[FerryPort]) -> list[Any]:
+            conditions: list[Any] = [model.latitude.is_not(None), model.longitude.is_not(None)]
+            if min_longitude is not None:
+                conditions.extend((
+                    model.longitude >= min_longitude,
+                    model.longitude <= max_longitude,
+                    model.latitude >= min_latitude,
+                    model.latitude <= max_latitude,
+                ))
+            return conditions
+
         if selected_kind in (None, "fuel_station"):
+            conditions = coordinate_conditions(FuelStation)
+            total += int(await session.scalar(select(func.count()).select_from(FuelStation).where(*conditions)) or 0)
             stations = (await session.execute(
-                select(FuelStation).where(FuelStation.latitude.is_not(None), FuelStation.longitude.is_not(None))
+                select(FuelStation).where(*conditions)
                 .order_by(FuelStation.last_seen_at.desc(), FuelStation.id.desc()).limit(per_kind_limit)
             )).scalars().all()
             station_ids = [station.id for station in stations]
@@ -885,8 +910,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     updated_at=serialize_utc(station.last_seen_at),
                 ))
         if selected_kind in (None, "rail_station"):
+            conditions = coordinate_conditions(RailStationReference)
+            total += int(await session.scalar(select(func.count()).select_from(RailStationReference).where(*conditions)) or 0)
             rows = (await session.execute(
-                select(RailStationReference).where(RailStationReference.latitude.is_not(None), RailStationReference.longitude.is_not(None))
+                select(RailStationReference).where(*conditions)
                 .order_by(RailStationReference.last_seen_at.desc(), RailStationReference.id.desc()).limit(per_kind_limit)
             )).scalars().all()
             for station in rows:
@@ -897,8 +924,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     address=station.road_address or station.lot_address, updated_at=serialize_utc(station.last_seen_at),
                 ))
         if selected_kind in (None, "ferry_port"):
+            conditions = coordinate_conditions(FerryPort)
+            total += int(await session.scalar(select(func.count()).select_from(FerryPort).where(*conditions)) or 0)
             rows = (await session.execute(
-                select(FerryPort).where(FerryPort.latitude.is_not(None), FerryPort.longitude.is_not(None))
+                select(FerryPort).where(*conditions)
                 .order_by(FerryPort.last_seen_at.desc(), FerryPort.id.desc()).limit(per_kind_limit)
             )).scalars().all()
             for port in rows:
@@ -909,7 +938,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     updated_at=serialize_utc(port.last_seen_at), location_source=port.location_source,
                     location_point_count=port.location_point_count,
                 ))
-        return TransportPlaceMapResponse(generated_at=now_utc(), kind=selected_kind, items=items[:limit])
+        visible_items = items[:limit]
+        return TransportPlaceMapResponse(
+            generated_at=now_utc(), kind=selected_kind, total=total,
+            truncated=total > len(visible_items), items=visible_items,
+        )
 
     @router.get("/transport/ports/{port_id}/timetable", response_model=FerryOperationResponse)
     async def transport_port_timetable(
@@ -952,6 +985,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     detail="여객선 실시간 provider의 호출 제한이 아직 해제되지 않았습니다.",
                     headers={"Retry-After": str(retry_after_seconds)},
                 )
+            last_provider_call_at: datetime | None = request.app.state.ferry_timetable_last_provider_call_at
+            if last_provider_call_at is not None:
+                next_allowed_at = last_provider_call_at + timedelta(seconds=settings.ferry_timetable_min_interval_seconds)
+                if now_utc() < next_allowed_at:
+                    retry_after_seconds = max(1, int((next_allowed_at - now_utc()).total_seconds()))
+                    raise HTTPException(
+                        status_code=429,
+                        detail="여객선 실시간 provider 보호 간격이 적용 중입니다.",
+                        headers={"Retry-After": str(retry_after_seconds)},
+                    )
+            request.app.state.ferry_timetable_last_provider_call_at = now_utc()
             try:
                 async with DataGoKrMaritimeClient(settings.data_go_kr_service_key, timeout=settings.api_timeout_seconds) as maritime:
                     operations = await maritime.get_domestic_ship_operations(departure_port_id=port_id, departure_date=service_date)

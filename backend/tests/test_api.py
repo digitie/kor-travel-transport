@@ -140,11 +140,19 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
 
     response = client.get("/v1/transport/features/places")
     assert response.status_code == 200
-    by_kind = {item["kind"]: item for item in response.json()["items"]}
+    payload = response.json()
+    by_kind = {item["kind"]: item for item in payload["items"]}
+    assert payload["total"] == 3
+    assert payload["truncated"] is False
     assert by_kind["fuel_station"]["latest_price"] == 1700
     assert by_kind["rail_station"]["line_names"] == ["테스트선"]
     assert by_kind["ferry_port"]["location_point_count"] == 2
+    bounded = client.get("/v1/transport/features/places?kind=fuel_station&min_longitude=127.0&min_latitude=37.4&max_longitude=127.15&max_latitude=37.55")
+    assert bounded.status_code == 200
+    assert bounded.json()["total"] == 1
+    assert [item["name"] for item in bounded.json()["items"]] == ["테스트주유소"]
     assert client.get("/v1/transport/features/places?kind=unknown").status_code == 422
+    assert client.get("/v1/transport/features/places?kind=fuel_station&min_longitude=127.0").status_code == 422
     assert client.get("/v1/transport/ports/P1/timetable").status_code == 503
     assert client.get("/v1/transport/ports/P1/timetable?date=2000-01-01").status_code == 422
 
@@ -235,6 +243,7 @@ def test_transport_port_timetable_rate_limit_uses_provider_wide_backoff(tmp_path
         asyncio.run(seed())
         with patch("app.main.DataGoKrMaritimeClient", RateLimitedMaritimeClient):
             cached_before_limit = client.get("/v1/transport/ports/P1/timetable")
+            client.app.state.ferry_timetable_last_provider_call_at = now_utc() - timedelta(seconds=61)
             first = client.get("/v1/transport/ports/P2/timetable")
             second = client.get("/v1/transport/ports/P1/timetable")
 
@@ -243,6 +252,42 @@ def test_transport_port_timetable_rate_limit_uses_provider_wide_backoff(tmp_path
     assert second.status_code == 200
     assert first.headers["retry-after"]
     assert RateLimitedMaritimeClient.calls == ["P1", "P2"]
+
+
+def test_transport_port_timetable_applies_provider_wide_minimum_interval(tmp_path: Path) -> None:
+    class FakeMaritimeClient:
+        calls = 0
+
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args) -> None:
+            return None
+
+        async def get_domestic_ship_operations(self, **_kwargs):
+            type(self).calls += 1
+            return ()
+
+    with build_client(tmp_path, data_go_kr_service_key="test-key", ferry_timetable_min_interval_seconds=30) as client:
+        async def seed() -> None:
+            now = now_utc()
+            async with client.app.state.session_factory() as session:
+                for port_id in ("P1", "P2"):
+                    session.add(FerryPort(source="data_go_kr_maritime", port_id=port_id, port_name=port_id, latitude=35.1, longitude=129.1, location_source=None, location_point_count=1, first_seen_at=now, last_seen_at=now, raw_item_json=None))
+                await session.commit()
+
+        asyncio.run(seed())
+        with patch("app.main.DataGoKrMaritimeClient", FakeMaritimeClient):
+            first = client.get("/v1/transport/ports/P1/timetable")
+            second = client.get("/v1/transport/ports/P2/timetable")
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert int(second.headers["retry-after"]) >= 1
+    assert FakeMaritimeClient.calls == 1
 
 
 def test_security_headers(client) -> None:
