@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     opinet_browser_timeout_ms: int = Field(default=30_000, gt=0)
     rail_reference_collection_enabled: bool = False
     maritime_reference_collection_enabled: bool = False
+    port_guideline_collection_enabled: bool = True
     rustfs_endpoint_url: str | None = None
     rustfs_bucket: str = "kor-travel-transport-raw"
     rustfs_access_key_id: str | None = None

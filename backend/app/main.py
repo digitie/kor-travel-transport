@@ -19,6 +19,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
+from kric import DataGoKrMaritimeClient
 
 from app.core.config import Settings, get_settings
 from app.core.time_utils import now_utc, serialize_utc, to_seoul
@@ -28,12 +29,14 @@ from app.models import (
     CollectionRun,
     FuelPriceSnapshot,
     FuelStation,
+    FerryPort,
     HighwayIncidentSnapshot,
     HighwayTrafficSnapshot,
     ParkingFeeRule,
     ParkingLot,
     ParkingSnapshot,
     RawApiResponse,
+    RailStationReference,
 )
 from app.schemas import (
     AirportSummary,
@@ -47,6 +50,8 @@ from app.schemas import (
     DashboardBootstrapResponse,
     FeeCalculationRequest,
     FeeCalculationResponse,
+    FerryOperationItem,
+    FerryOperationResponse,
     FlightStatusResponse,
     FuelPriceItem,
     FuelPriceStatistics,
@@ -75,6 +80,8 @@ from app.schemas import (
     ThresholdWeekdayTime,
     TimeSeriesPoint,
     TransportCollectorStatus,
+    TransportPlaceMapItem,
+    TransportPlaceMapResponse,
     TransportStatisticsResponse,
     WeekdayBucket,
     WeekdayHourlyPattern,
@@ -626,6 +633,88 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             sigungu_value=sigungu_value.strip() if sigungu_value else None,
             product_code=product_code.strip() if product_code else None,
             items=items,
+        )
+
+    @router.get("/transport/features/places", response_model=TransportPlaceMapResponse)
+    async def transport_place_features(
+        kind: str | None = Query(default=None, description="fuel_station, rail_station, ferry_port 중 하나"),
+        limit: int = Query(default=1000, ge=1, le=5000),
+        session: AsyncSession = Depends(get_db),
+    ) -> TransportPlaceMapResponse:
+        """저장된 장소만 지도 marker 계약으로 반환한다. provider 원문이나 비밀값은 노출하지 않는다."""
+        selected_kind = kind.strip() if kind else None
+        supported = {"fuel_station", "rail_station", "ferry_port"}
+        if selected_kind is not None and selected_kind not in supported:
+            raise HTTPException(status_code=422, detail="kind는 fuel_station, rail_station, ferry_port 중 하나여야 합니다.")
+        items: list[TransportPlaceMapItem] = []
+        if selected_kind in (None, "fuel_station"):
+            stations = (await session.execute(
+                select(FuelStation).where(FuelStation.latitude.is_not(None), FuelStation.longitude.is_not(None))
+                .order_by(FuelStation.last_seen_at.desc(), FuelStation.id.desc()).limit(limit)
+            )).scalars().all()
+            station_ids = [station.id for station in stations]
+            latest: dict[int, FuelPriceSnapshot] = {}
+            if station_ids:
+                ranked = select(
+                    FuelPriceSnapshot.id.label("id"),
+                    func.row_number().over(partition_by=FuelPriceSnapshot.fuel_station_id, order_by=(FuelPriceSnapshot.collected_at.desc(), FuelPriceSnapshot.id.desc())).label("rank"),
+                ).where(FuelPriceSnapshot.fuel_station_id.in_(station_ids)).subquery()
+                rows = (await session.execute(select(FuelPriceSnapshot).join(ranked, FuelPriceSnapshot.id == ranked.c.id).where(ranked.c.rank == 1))).scalars().all()
+                latest = {row.fuel_station_id: row for row in rows}
+            for station in stations:
+                price = latest.get(station.id)
+                items.append(TransportPlaceMapItem(
+                    id=station.id, kind="fuel_station", source=station.source, name=station.name,
+                    longitude=station.longitude, latitude=station.latitude, subtitle=station.address,
+                    brand_name=station.brand_name, latest_price=float(price.price) if price and price.price is not None else None,
+                    price_product_code=price.product_code if price else None, address=station.address,
+                    updated_at=serialize_utc(station.last_seen_at),
+                ))
+        if selected_kind in (None, "rail_station"):
+            rows = (await session.execute(
+                select(RailStationReference).where(RailStationReference.latitude.is_not(None), RailStationReference.longitude.is_not(None))
+                .order_by(RailStationReference.last_seen_at.desc(), RailStationReference.id.desc()).limit(limit)
+            )).scalars().all()
+            for station in rows:
+                items.append(TransportPlaceMapItem(
+                    id=station.id, kind="rail_station", source=station.source, name=station.station_name or "이름 없는 역",
+                    longitude=station.longitude, latitude=station.latitude, subtitle=station.rail_operator_name,
+                    line_names=[station.operating_line_name] if station.operating_line_name else [],
+                    address=station.road_address or station.lot_address, updated_at=serialize_utc(station.last_seen_at),
+                ))
+        if selected_kind in (None, "ferry_port"):
+            rows = (await session.execute(
+                select(FerryPort).where(FerryPort.latitude.is_not(None), FerryPort.longitude.is_not(None))
+                .order_by(FerryPort.last_seen_at.desc(), FerryPort.id.desc()).limit(limit)
+            )).scalars().all()
+            for port in rows:
+                items.append(TransportPlaceMapItem(
+                    id=port.id, kind="ferry_port", source=port.source, name=port.port_name or port.port_id,
+                    provider_id=port.port_id,
+                    longitude=port.longitude, latitude=port.latitude, subtitle="항만가이드라인 위치",
+                    updated_at=serialize_utc(port.last_seen_at), location_source=port.location_source,
+                    location_point_count=port.location_point_count,
+                ))
+        return TransportPlaceMapResponse(generated_at=now_utc(), kind=selected_kind, items=items[:limit])
+
+    @router.get("/transport/ports/{port_id}/timetable", response_model=FerryOperationResponse)
+    async def transport_port_timetable(
+        port_id: str,
+        service_date: date = Query(default_factory=date.today),
+        session: AsyncSession = Depends(get_db),
+        settings: Settings = Depends(get_settings),
+    ) -> FerryOperationResponse:
+        """요청 항구·날짜 한 건만 provider에서 실시간 조회하며 DB/raw 응답에는 저장하지 않는다."""
+        port = await session.scalar(select(FerryPort).where(FerryPort.port_id == port_id))
+        if port is None:
+            raise HTTPException(status_code=404, detail="저장된 항구를 찾을 수 없습니다.")
+        if not settings.data_go_kr_service_key:
+            raise HTTPException(status_code=503, detail="여객선 실시간 provider가 설정되지 않았습니다.")
+        async with DataGoKrMaritimeClient(settings.data_go_kr_service_key, timeout=settings.api_timeout_seconds) as maritime:
+            operations = await maritime.get_domestic_ship_operations(departure_port_id=port_id, departure_date=service_date)
+        return FerryOperationResponse(
+            port_id=port_id, service_date=service_date, fetched_at=now_utc(),
+            items=[FerryOperationItem(vessel_name=item.vessel_name, departure_port_name=item.departure_port_name, arrival_port_name=item.arrival_port_name, departure_planned_time=item.departure_planned_time, arrival_planned_time=item.arrival_planned_time, fare=item.fare) for item in operations],
         )
 
     @router.get("/transport/collector-status", response_model=TransportCollectorStatus)

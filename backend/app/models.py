@@ -344,12 +344,17 @@ class FerryPort(Base):
     __table_args__ = (
         UniqueConstraint("source", "port_id", name="uq_ferry_port_source_id"),
         Index("ix_ferry_ports_last_seen", "last_seen_at"),
+        Index("ix_ferry_ports_coordinates", "latitude", "longitude"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     source: Mapped[str] = mapped_column(String(40))
     port_id: Mapped[str] = mapped_column(String(120))
     port_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    location_source: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    location_point_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)

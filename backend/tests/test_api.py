@@ -13,7 +13,7 @@ from sqlalchemy.exc import OperationalError
 from app.core.config import Settings
 from app.core.time_utils import now_utc
 from app.main import create_app
-from app.models import AnalyticsCache, Airport, CollectionRun, ParkingLot, ParkingSnapshot
+from app.models import AnalyticsCache, Airport, CollectionRun, FerryPort, FuelPriceSnapshot, FuelStation, ParkingLot, ParkingSnapshot, RailStationReference
 
 
 def assert_is_utc_iso(value: str | None) -> None:
@@ -121,6 +121,29 @@ def test_health(client) -> None:
     assert payload["status"] == "ok"
     assert payload["seeded"] is True
     assert payload["release_sha"] == "unknown"
+
+
+def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_kind(client) -> None:
+    async def seed() -> None:
+        now = now_utc()
+        async with client.app.state.session_factory() as session:
+            fuel = FuelStation(source="opinet", identity_key="station-1", source_station_id="S1", name="테스트주유소", brand_code="SK", brand_name="SK에너지", phone=None, address="서울 테스트로", business_number=None, cb_code=None, station_type="A", query_level="sigungu", sido_value="11", sido_name="서울", sigungu_value="110", sigungu_name="테스트", dong_value=None, dong_name=None, katec_x=None, katec_y=None, longitude=127.1, latitude=37.5, source_kinds=[], is_illegal=None, is_self=None, is_24h=None, is_kpetro=None, is_electronic=None, is_good=None, is_good_strong=None, is_region_franchise=None, has_carwash=None, has_maintenance=None, has_cvs=None, cs_yn=None, discount_info=None, save_event_info=None, representative_event_info=None, on_event_info=None, other_business_info=None, first_seen_at=now, last_seen_at=now, raw_item_json=None)
+            session.add(fuel)
+            await session.flush()
+            session.add(FuelPriceSnapshot(fuel_station_id=fuel.id, source="opinet", product_code="B027", price=1700, provider_updated_at=now, observed_at=now, collected_at=now, raw_item_json=None, collection_run_id=None))
+            session.add(RailStationReference(source="kric_public_file", identity_key="line|101|테스트역", rail_operator_name="테스트운영사", operating_line_name="테스트선", station_type=None, station_number="101", station_name="테스트역", english_name=None, longitude=127.2, latitude=37.6, lot_address=None, road_address="서울 테스트길", station_phone_number=None, data_reference_date=None, first_seen_at=now, last_seen_at=now, raw_item_json=None))
+            session.add(FerryPort(source="data_go_kr_maritime", port_id="P1", port_name="테스트항", latitude=129.1, longitude=35.1, location_source="data_go_kr_port_guideline", location_point_count=2, first_seen_at=now, last_seen_at=now, raw_item_json=None))
+            await session.commit()
+    asyncio.run(seed())
+
+    response = client.get("/v1/transport/features/places")
+    assert response.status_code == 200
+    by_kind = {item["kind"]: item for item in response.json()["items"]}
+    assert by_kind["fuel_station"]["latest_price"] == 1700
+    assert by_kind["rail_station"]["line_names"] == ["테스트선"]
+    assert by_kind["ferry_port"]["location_point_count"] == 2
+    assert client.get("/v1/transport/features/places?kind=unknown").status_code == 422
+    assert client.get("/v1/transport/ports/P1/timetable").status_code == 503
 
 
 def test_security_headers(client) -> None:
