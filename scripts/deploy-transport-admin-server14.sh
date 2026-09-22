@@ -30,7 +30,7 @@ port_from_env() {
   value="$(printf '%s\n' "${line}" | tail -n 1 | cut -d= -f2-)"
   printf '%s' "${value:-${fallback}}"
 }
-running="$(docker compose --project-name kor-travel-transport-admin --env-file "${REMOTE_ENV_FILE}" -f "${REMOTE_APP_DIR}/docker-compose.transport-admin.yml" ps --services --status running || true)"
+running="$(docker compose --project-name kor-travel-transport-admin --env-file "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" -f "${REMOTE_APP_DIR}/docker-compose.transport-admin.yml" ps --services --status running || true)"
 for pair in "transport-api-gateway:$(port_from_env TRANSPORT_PUBLIC_API_PORT 12301)" "transport-dagster-gateway:$(port_from_env TRANSPORT_DAGSTER_PORT 12302)" "transport-admin-web:$(port_from_env TRANSPORT_PUBLIC_WEB_PORT 12305)"; do
   service="${pair%%:*}"; port="${pair##*:}"
   if ! grep -qx "${service}" <<<"${running}" && ss -lnt "( sport = :${port} )" | grep -q ":${port}"; then
