@@ -59,7 +59,10 @@ rsync -a --exclude="${REMOTE_ENV_FILE}" --exclude=".env.server14.legacy" --exclu
 cd "${REMOTE_APP_DIR}"
 
 docker compose --project-name kor-travel-transport-admin --env-file "${REMOTE_ENV_FILE}" -f docker-compose.transport-admin.yml up -d --build
-for url in http://127.0.0.1:12301/health http://127.0.0.1:12302/health http://127.0.0.1:12305/login; do
+api_port="$(port_from_env TRANSPORT_PUBLIC_API_PORT 12301)"
+dagster_port="$(port_from_env TRANSPORT_DAGSTER_PORT 12302)"
+web_port="$(port_from_env TRANSPORT_PUBLIC_WEB_PORT 12305)"
+for url in "http://127.0.0.1:${api_port}/health" "http://127.0.0.1:${dagster_port}/health" "http://127.0.0.1:${web_port}/login"; do
   curl --fail --silent --show-error --max-time 15 "${url}" >/dev/null
 done
 printf '%s\n' "${CANDIDATE_SHA}" > .transport-admin-release-sha

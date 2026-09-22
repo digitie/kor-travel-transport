@@ -1,0 +1,43 @@
+name: Transport admin live E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      web_url:
+        description: "배포한 transport admin URL"
+        required: true
+        default: "https://transport.digitie.mywire.org"
+        type: string
+      api_url:
+        description: "배포한 transport API URL"
+        required: true
+        default: "https://transport-api.digitie.mywire.org"
+        type: string
+      dagster_url:
+        description: "배포한 transport Dagster URL"
+        required: true
+        default: "https://transport-dagster.digitie.mywire.org"
+        type: string
+
+jobs:
+  live-e2e:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/kor-travel-transport-admin/frontend
+    env:
+      E2E_BASE_URL: ${{ inputs.web_url }}
+      E2E_TRANSPORT_API_BASE_URL: ${{ inputs.api_url }}
+      E2E_TRANSPORT_DAGSTER_BASE_URL: ${{ inputs.dagster_url }}
+      # 사용자 지정 초기 자격증명. 운영값 변경 시 이 workflow도 함께 바꾼다.
+      E2E_TRANSPORT_UI_PASSWORD: ad.min
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: packages/kor-travel-transport-admin/frontend/package-lock.json
+      - run: npm ci
+      - run: npm run e2e:install
+      - run: npm run test:e2e
