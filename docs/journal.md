@@ -78,6 +78,12 @@
   E2E는 canvas·bbox 요청 뒤 fallback 오류 안내가 보이지 않는 것을 확인하며, HTTP 응답은
   provider custom protocol의 외부 fetch가 Playwright response event에 노출되지 않는 환경도
   있어 승인된 Referer의 별도 WMTS HTTP 200 probe로 검증한다.
+- 이 보완의 James/Popper 재리뷰은 P0/P1 없음으로 끝났다. P2는 현재 단일 지도 화면에서
+  전역 `vworld-tile-error` event의 `detail.mapId`를 필터링하지 않는 점, fallback 뒤 정상
+  타일 회복 안내, 이 두 경우의 event-level 자동 검증이다. provider가 현재 하나의 map
+  instance만 만들고 listener cleanup은 확인됐으므로 즉시 기능/보안 위험은 없지만, 다중 지도
+  도입 전 map identity를 transport props로 노출해 필터링하고 provider recovery event 계약을
+  추가한다.
 
 - n150 공개 HTTPS 268건 E2E에서 전체 3일 고속도로 통계가 cold read 때 504가 되는 것을
   재현했다. 기존 covering index는 사용됐지만 3일 원본 약 500만 행을 읽어야 했고, 저자원
