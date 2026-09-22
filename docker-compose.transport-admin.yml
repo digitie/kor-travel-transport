@@ -40,6 +40,7 @@ services:
       dockerfile: packages/kor-travel-transport-admin/frontend/Dockerfile
       args:
         TRANSPORT_ADMIN_RELEASE_SHA: "${TRANSPORT_ADMIN_RELEASE_SHA:-unknown}"
+        NEXT_PUBLIC_VWORLD_API_KEY: "${NEXT_PUBLIC_VWORLD_API_KEY:?set the VWorld browser key}"
     restart: unless-stopped
     network_mode: host
     environment:

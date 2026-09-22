@@ -121,7 +121,7 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
     });
   }
 
-  for (const [path, heading] of [["/transport", "교통 수집"], ["/fuel", "유가 수집"], ["/map", "교통 지도"], ["/api-test", "API 점검"], ["/admin/dagster", "Dagster"]] as const) {
+  for (const [path, heading] of [["/transport", "교통·유가 현황"], ["/fuel", "교통·유가 현황"], ["/rail", "열차·도시철도"], ["/ferry", "배편"], ["/map", "교통 지도"], ["/api-test", "API 점검"], ["/admin/dagster", "Dagster"]] as const) {
     test(`navigation ${path}`, async () => {
       await page.goto(path);
       await expect(page.getByRole("heading", { name: heading })).toBeVisible();
@@ -132,8 +132,16 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
     const timetableRequests: string[] = [];
     page.on("request", (request) => { if (request.url().includes("/timetable")) timetableRequests.push(request.url()); });
     await page.goto("/map");
-    await expect(page.getByLabel(/VWorld 교통 지도/)).toBeVisible();
+    await expect(page.getByLabel("교통 장소 지도")).toBeVisible();
     await expect(page.getByLabel("장소 목록에서 선택")).toBeVisible();
+    await expect.poll(() => timetableRequests).toEqual([]);
+  });
+
+  test("배편 탭은 항구 시간표를 자동 호출하지 않는다", async () => {
+    const timetableRequests: string[] = [];
+    page.on("request", (request) => { if (request.url().includes("/timetable")) timetableRequests.push(request.url()); });
+    await page.goto("/ferry");
+    await expect(page.getByLabel("항구 검색")).toBeVisible();
     await expect.poll(() => timetableRequests).toEqual([]);
   });
 

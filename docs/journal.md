@@ -2,6 +2,18 @@
 
 ## 2026-09-22
 
+- `codex/transport-experience`에서 관리 UI의 고속도로·유가를 하나의 저장 통계 화면으로
+  통합했다. 유종·노선·source 코드는 사람이 읽는 한국어 용어로 표시하고, 비교값은 Apache
+  ECharts 그래프로 바꿨다. 열차·도시철도와 배편은 별도 화면으로 분리했으며 배편 시간표는
+  목록·검색·탭 진입 때 provider를 호출하지 않고, 항구의 명시적 `오늘 운항 보기` 요청에서만
+  실시간 조회한다. 이 호출 금지는 관리 UI Playwright 계약으로 고정했다.
+- 관리 지도는 직접 MapLibre 인스턴스·레이어를 구성하는 방식에서
+  `digitie/maplibre-vworld-react@ffa5523`의 `VWorldMapView`, `ClusterLayer`, `Marker`,
+  `Popup` 선언형 컴포넌트를 소비하는 방식으로 바꿨다. upstream submodule revision과
+  Docker에서 재현 가능한 local tarball을 함께 고정했다. VWorld 키는 공개 browser key로서
+  Docker build argument로만 주입한다. Next.js 16.3.5/React 19.3.0 migration은 `proxy.ts` 전환까지 포함하며, WSL
+  lint·unit test·production build와 clean Docker build를 통과했다.
+
 - n150 공개 HTTPS 268건 E2E에서 전체 3일 고속도로 통계가 cold read 때 504가 되는 것을
   재현했다. 기존 covering index는 사용됐지만 3일 원본 약 500만 행을 읽어야 했고, 저자원
   `VACUUM (ANALYZE, PARALLEL 0)` 뒤에도 cold I/O가 약 21초였다. 원본 관측은 보존하면서

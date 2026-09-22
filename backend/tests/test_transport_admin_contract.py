@@ -47,6 +47,17 @@ def test_transport_admin_does_not_receive_provider_or_database_credentials() -> 
     assert "RUSTFS_SECRET_ACCESS_KEY" not in admin_sources
 
 
+def test_transport_admin_builds_the_vworld_browser_key_into_the_map_bundle() -> None:
+    compose = (ROOT / "docker-compose.transport-admin.yml").read_text(encoding="utf-8")
+    dockerfile = (ROOT / "packages/kor-travel-transport-admin/frontend/Dockerfile").read_text(encoding="utf-8")
+    package = (ROOT / "packages/kor-travel-transport-admin/frontend/package.json").read_text(encoding="utf-8")
+
+    assert "NEXT_PUBLIC_VWORLD_API_KEY" in compose
+    assert "ARG NEXT_PUBLIC_VWORLD_API_KEY" in dockerfile
+    assert "ENV NEXT_PUBLIC_VWORLD_API_KEY=${NEXT_PUBLIC_VWORLD_API_KEY}" in dockerfile
+    assert '"vworld-map-web"' in package
+
+
 def test_transport_gateway_contract_has_bounded_upstreams_and_dagster_auth() -> None:
     api_gateway = (ROOT / "deploy/transport-admin/api-gateway.conf.template").read_text(encoding="utf-8")
     dagster_gateway = (ROOT / "deploy/transport-admin/dagster-gateway.conf.template").read_text(encoding="utf-8")

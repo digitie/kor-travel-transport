@@ -4,7 +4,7 @@ import { SESSION_COOKIE } from "@/lib/session";
 
 const PUBLIC_PATHS = new Set(["/login"]);
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (pathname.startsWith("/api/") || pathname.startsWith("/_next/") || PUBLIC_PATHS.has(pathname)) {
     return NextResponse.next();

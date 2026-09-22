@@ -27,6 +27,23 @@ HttpOnly 서명 세션을 통과한 뒤에만 Next.js server route가 다음의 
 `lib/transport.ts` 단위 테스트와 `backend/tests/test_transport_admin_contract.py`가
 회귀를 막는다.
 
+## 화면과 지도 데이터 경계
+
+- `교통·유가`는 고속도로·유가를 한 화면에서 저장된 7일 통계와 함께 보여 준다. 유종·노선·수집
+  source 코드는 화면에서 사람이 이해할 수 있는 명칭으로 바꾸며, 비교가 필요한 값은 Apache
+  ECharts 막대 그래프로 제공한다.
+- `열차·도시철도`와 `배편`은 각각 저장한 장소 기준정보를 별도 탭에서 검색한다. 배편 탭은
+  목록을 열거나 검색할 때 시간표 provider를 호출하지 않는다. 사용자가 특정 항구의 `오늘 운항 보기`
+  를 선택한 경우에만 해당 항구의 실시간 시간표를 한 번 요청한다.
+- `/map`은 저장 장소 API만 읽는다. 주유소에는 최신 가격·브랜드, 역에는 노선, 항구에는 저장된
+  위치·노선을 표시한다. 운영 앱은 지도 엔진을 직접 조작하지 않고
+  [`digitie/maplibre-vworld-react`](https://github.com/digitie/maplibre-vworld-react) 의
+  `VWorldMapView`, `ClusterLayer`, `Marker`, `Popup` 선언형 컴포넌트를 사용한다.
+- 위 provider는 Git submodule `third_party/maplibre-vworld-react`의 고정 revision과
+  `frontend/vendor/`의 재현 가능한 tarball로 추적한다. Docker build는 tarball만 설치하므로
+  checkout 경로에 의존하지 않는다. VWorld 키는 `NEXT_PUBLIC_VWORLD_API_KEY`로 Docker
+  build 시점에 주입하며, 추적 파일에 넣지 않는다.
+
 ## 운영 경로
 
 ```text
