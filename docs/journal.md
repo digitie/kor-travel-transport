@@ -2,6 +2,18 @@
 
 ## 2026-09-22
 
+- post-merge n150 HTTPS UI E2E를 수백 개 행렬로 확장했다. 이 과정에서 관리 UI의
+  server-side proxy가 공개 gateway보다 짧은 10초 timeout으로 정상 저장 통계를 `502`로
+  변환하는 경로를 재현했고, timeout을 gateway와 같은 30초로 맞췄다. 행렬에서 발견한
+  route-filter 통계의 gateway `504`는 `(route_no, observed_at, direction)` covering
+  index migration `0008`으로 wide JSON heap 재읽기를 줄이도록 보완했다.
+- `0008`을 n150 shared PostgreSQL에 적용하고 backend·분리된 Dagster·frontend를 재기동했다.
+  안정화 후 HTTPS live E2E 260개가 2분 18초에 모두 통과했다. 공개/인증 저장 API,
+  네 관리 UI 경로, logout origin, public write·비허용 path, 실제 공격 Origin Dagster CSRF
+  경계를 같은 실행으로 확인했다.
+- 적대적 보안 리뷰 P2를 반영해 Dagster GraphQL CSRF 경계는 Origin이 없는 요청이 아니라
+  실제 공격 origin(`https://evil.example`)을 보낸 요청으로 검증한다. concurrent index DDL이
+  중단돼 invalid index가 남을 수 있는 복구 절차도 성능 문서에 기록했다.
 - n150에서 candidate `92cb128`을 배포해 backend health SHA 일치와 7일 transport
   statistics 응답 `2.50초`를 확인했다. HTTPS live E2E가 발견한 로그아웃의 내부 HTTP
   절대 redirect를 상대 `/login` redirect로 보완하고, Dagster cross-origin POST의

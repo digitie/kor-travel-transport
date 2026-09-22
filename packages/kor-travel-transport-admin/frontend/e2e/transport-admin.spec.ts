@@ -1,31 +1,148 @@
+import type { BrowserContext, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
 const username = process.env.E2E_TRANSPORT_UI_USER ?? "admin";
 const password = process.env.E2E_TRANSPORT_UI_PASSWORD;
 const expectedReleaseSha = process.env.E2E_TRANSPORT_RELEASE_SHA;
+const webBase = process.env.E2E_BASE_URL ?? "https://transport.digitie.mywire.org";
 const apiBase = process.env.E2E_TRANSPORT_API_BASE_URL ?? "https://transport-api.digitie.mywire.org";
 const dagsterBase = process.env.E2E_TRANSPORT_DAGSTER_BASE_URL ?? "https://transport-dagster.digitie.mywire.org";
 
+type EndpointCase = { name: string; path: string; arrayKey: string };
+
+const statisticsCases: EndpointCase[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].flatMap((days) => [
+  { name: `statistics all ${days}d`, path: `transport/statistics?days=${days}`, arrayKey: "traffic" },
+  { name: `statistics route 0010 ${days}d`, path: `transport/statistics?days=${days}&route_no=0010`, arrayKey: "traffic" },
+]);
+const trafficCases: EndpointCase[] = [1, 2, 3, 4, 5].flatMap((days) => [1, 10, 50, 200].map((limit, index) => ({
+  name: `traffic ${days}d limit ${limit}`,
+  path: `transport/highways/traffic?days=${days}&limit=${limit}${index % 2 ? "&route_no=0010" : ""}`,
+  arrayKey: "items",
+})));
+const incidentCases: EndpointCase[] = [1, 2, 3, 4, 5].flatMap((days) => [1, 10, 50, 200].map((limit, index) => ({
+  name: `incidents ${days}d limit ${limit}`,
+  path: `transport/highways/incidents?days=${days}&limit=${limit}${index % 2 ? "&route_no=0010" : ""}`,
+  arrayKey: "items",
+})));
+const fuelCases: EndpointCase[] = [1, 2, 3, 7].flatMap((days) => ["B027", "D047", "B034", "C004", "K015"].map((productCode, index) => ({
+  name: `fuel ${productCode} ${days}d`,
+  path: `transport/fuel/stations?days=${days}&limit=10&product_code=${productCode}&sido_value=${["11", "26", "27", "28", "41"][index]}`,
+  arrayKey: "items",
+})));
+const endpointCases: EndpointCase[] = [
+  { name: "collector status", path: "transport/collector-status", arrayKey: "sources" },
+  ...statisticsCases,
+  ...trafficCases,
+  ...incidentCases,
+  ...fuelCases,
+];
+
+async function login(page: Page) {
+  await page.goto("/");
+  await expect(page).toHaveURL(/\/login/);
+  await page.getByLabel("아이디").fill(username);
+  await page.getByLabel("비밀번호").fill(password!);
+  await page.getByRole("button", { name: "로그인" }).click();
+  await expect(page).toHaveURL(/\/$/);
+}
+
+async function expectJsonArray(response: Awaited<ReturnType<Page["request"]["get"]>>, arrayKey: string) {
+  expect(response.status()).toBe(200);
+  const body = await response.json() as Record<string, unknown>;
+  expect(Array.isArray(body[arrayKey])).toBe(true);
+}
+
 test.beforeEach(() => { test.skip(!password, "E2E_TRANSPORT_UI_PASSWORD가 필요합니다."); });
 
-test("관리 UI 인증·저장 스냅샷·로그아웃 경계를 검증한다", async ({ page, request }) => {
-  await page.goto("/"); await expect(page).toHaveURL(/\/login/);
-  expect((await request.get("/api/transport/transport/statistics")).status()).toBe(401);
-  await page.getByLabel("아이디").fill(username); await page.getByLabel("비밀번호").fill(password!); await page.getByRole("button", { name: "로그인" }).click();
-  await expect(page).toHaveURL(/\/$/); await expect(page.getByRole("heading", { name: "통합 교통정보 현황" })).toBeVisible();
-  if (expectedReleaseSha) {
-    const release = await page.request.get("/api/release");
-    expect(release.status()).toBe(200); expect((await release.json()).releaseSha).toBe(expectedReleaseSha);
-  }
-  await expect(page.getByText("수집 소스")).toBeVisible({ timeout: 20_000 });
-  const status = await page.request.get("/api/transport/transport/collector-status"); expect(status.status()).toBe(200); expect(Array.isArray((await status.json()).sources)).toBe(true);
-  await page.getByRole("button", { name: "로그아웃" }).click(); await expect(page).toHaveURL(/\/login/);
+test("잘못된 자격증명은 세션을 만들지 않고 로그인 화면에 오류를 남긴다", async ({ page, request }) => {
+  await page.goto("/");
+  await page.getByLabel("아이디").fill(username);
+  await page.getByLabel("비밀번호").fill("invalid-password");
+  await page.getByRole("button", { name: "로그인" }).click();
+  await expect(page.getByText("아이디 또는 비밀번호가 올바르지 않습니다.", { exact: true })).toBeVisible();
+  expect((await request.get("/api/transport/transport/statistics?days=1")).status()).toBe(401);
 });
 
-test("공개 API와 Dagster gateway의 분리된 경계를 검증한다", async ({ request }) => {
-  const health = await request.get(`${apiBase}/health`); expect(health.status()).toBe(200); expect((await health.json()).status).toBe("ok");
-  const statistics = await request.get(`${apiBase}/v1/transport/statistics?days=1`); expect(statistics.status()).toBe(200); expect(Array.isArray((await statistics.json()).traffic)).toBe(true);
+test.describe("비인증 관리 proxy 경계 (81개)", () => {
+  for (const endpoint of endpointCases) {
+    test(`unauthenticated ${endpoint.name}`, async ({ request }) => {
+      expect((await request.get(`/api/transport/${endpoint.path}`)).status()).toBe(401);
+    });
+  }
+});
+
+test.describe("공개 저장 transport API 행렬 (81개)", () => {
+  for (const endpoint of endpointCases) {
+    test(`public ${endpoint.name}`, async ({ request }) => {
+      await expectJsonArray(await request.get(`${apiBase}/v1/${endpoint.path}`), endpoint.arrayKey);
+    });
+  }
+});
+
+test.describe("인증된 관리 proxy 행렬과 UI (88개)", () => {
+  test.describe.configure({ mode: "serial" });
+  let context: BrowserContext;
+  let page: Page;
+
+  test.beforeAll(async ({ browser }) => {
+    if (!password) return;
+    context = await browser.newContext({ baseURL: webBase });
+    page = await context.newPage();
+    await login(page);
+  });
+  test.afterAll(async () => { await context?.close(); });
+
+  test("release SHA와 대시보드 저장 스냅샷을 표시한다", async () => {
+    if (expectedReleaseSha) {
+      const release = await page.request.get("/api/release");
+      expect(release.status()).toBe(200);
+      expect((await release.json()).releaseSha).toBe(expectedReleaseSha);
+    }
+    await expect(page.getByText("수집 소스")).toBeVisible({ timeout: 20_000 });
+  });
+
+  for (const endpoint of endpointCases) {
+    test(`private ${endpoint.name}`, async () => {
+      await expectJsonArray(await page.request.get(`/api/transport/${endpoint.path}`), endpoint.arrayKey);
+    });
+  }
+
+  for (const [path, heading] of [["/transport", "교통 수집"], ["/fuel", "유가 수집"], ["/api-test", "API 점검"], ["/admin/dagster", "Dagster"]] as const) {
+    test(`navigation ${path}`, async () => {
+      await page.goto(path);
+      await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    });
+  }
+
+  test("allowlist 밖의 관리 proxy 경로는 숨긴다", async () => {
+    expect((await page.request.get("/api/transport/admin/backups")).status()).toBe(404);
+    expect((await page.request.get("/api/transport/transport/unknown")).status()).toBe(404);
+  });
+
+  test("로그아웃 뒤에는 HTTPS origin을 유지한 로그인 화면으로 돌아간다", async () => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "로그아웃" }).click();
+    await expect(page).toHaveURL(/\/login/);
+  });
+});
+
+test.describe("공개 gateway 쓰기·비허용 경계 (8개)", () => {
+  for (const path of ["transport/collector-status", "transport/statistics?days=1", "transport/highways/traffic?days=1", "transport/highways/incidents?days=1", "transport/fuel/stations?days=1"]) {
+    test(`public POST ${path} is denied`, async ({ request }) => {
+      expect((await request.post(`${apiBase}/v1/${path}`)).status()).toBe(403);
+    });
+  }
+  for (const path of ["/v1/admin/backups", "/v1/transport/admin/collect", "/v1/parking/airports"]) {
+    test(`public GET ${path} is hidden`, async ({ request }) => {
+      expect((await request.get(`${apiBase}${path}`)).status()).toBe(404);
+    });
+  }
+});
+
+test("Dagster health는 공개하되 cross-origin GraphQL POST는 CSRF로 차단한다", async ({ request }) => {
   expect((await request.get(`${dagsterBase}/health`)).status()).toBe(204);
-  // gateway는 Basic Auth보다 앞에서 cross-origin POST를 CSRF 차단한다.
-  expect((await request.post(`${dagsterBase}/graphql`, { data: { query: "{ __typename }" } })).status()).toBe(403);
+  expect((await request.post(`${dagsterBase}/graphql`, {
+    data: { query: "{ __typename }" },
+    headers: { Origin: "https://evil.example" },
+  })).status()).toBe(403);
 });
