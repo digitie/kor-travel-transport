@@ -26,5 +26,6 @@ test("공개 API와 Dagster gateway의 분리된 경계를 검증한다", async 
   const health = await request.get(`${apiBase}/health`); expect(health.status()).toBe(200); expect((await health.json()).status).toBe("ok");
   const statistics = await request.get(`${apiBase}/v1/transport/statistics?days=1`); expect(statistics.status()).toBe(200); expect(Array.isArray((await statistics.json()).traffic)).toBe(true);
   expect((await request.get(`${dagsterBase}/health`)).status()).toBe(204);
-  expect((await request.post(`${dagsterBase}/graphql`, { data: { query: "{ __typename }" } })).status()).toBe(401);
+  // gateway는 Basic Auth보다 앞에서 cross-origin POST를 CSRF 차단한다.
+  expect((await request.post(`${dagsterBase}/graphql`, { data: { query: "{ __typename }" } })).status()).toBe(403);
 });

@@ -2,6 +2,10 @@
 
 ## 2026-09-22
 
+- n150에서 candidate `92cb128`을 배포해 backend health SHA 일치와 7일 transport
+  statistics 응답 `2.50초`를 확인했다. HTTPS live E2E가 발견한 로그아웃의 내부 HTTP
+  절대 redirect를 상대 `/login` redirect로 보완하고, Dagster cross-origin POST의
+  실제 CSRF 차단 계약(`403`)을 E2E 기대값에 반영했다.
 - n150 live E2E에서 7일 transport 통계가 넓은 원본 시계열을 순차 읽어 공개 gateway
   timeout을 넘는 것을 확인했다. 읽기 경로에 맞춘 covering index 세 개와 `count(*)`
   집계를 추가해, JSON 원본 행을 재읽지 않고 저장된 교통·유가 통계를 제공하도록 보완했다.
