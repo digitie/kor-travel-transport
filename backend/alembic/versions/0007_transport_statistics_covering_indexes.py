@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from alembic import op
 
-revision = "0007_transport_statistics_covering_indexes"
+revision = "0007_transport_stats_indexes"
 down_revision = "0006_rail_maritime_reference"
 branch_labels = None
 depends_on = None
