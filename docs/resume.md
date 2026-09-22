@@ -7,7 +7,8 @@
   같은 30초 timeout으로 보완했다. route-filter 통계의 public `504`에는 covering index
   migration `0008`을 추가했다. 두 적대 리뷰는 P0/P1 없음으로 결론냈고, P2로 받은
   공격 Origin CSRF 검증과 invalid concurrent index 복구 문서를 반영했다. n150 backend
-  migration 배포가 진행 중이며, 완료 뒤 행렬 전체와 CI를 확인해 별도 PR #34를 머지한다.
+  migration 배포와 260개 HTTPS live E2E(260/260, 2분 18초), backend/frontend/admin CI를
+  모두 통과했다. 별도 PR #34는 Draft 해제·squash merge만 남았다.
 
 - 2026-09-22 `codex/transport-admin` PR #33 후보 `92cb128`은 n150에 전용 API
   `12301`, Dagster `12302`, UI `12305`로 배포됐다. backend health SHA 일치와
