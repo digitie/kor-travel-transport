@@ -9,7 +9,8 @@
   적용한 실시간 전용 조회로 유지한다. Docker 회귀 fixture는 운영 `DATABASE_URL`을
   읽지 않고, 명시적 `TEST_DATABASE_URL`과 안전 표지 없이는 PostgreSQL을 사용하지 않는다
   (운영 경로는 PostgreSQL 전용). 지도는 MapLibre 레이어·클러스터만 사용해 대량 DOM
-  marker를 만들지 않으며, 항구 전환은 진행 중 시간표 요청을 취소한다. 다음 순서는
+  marker를 만들지 않으며, native 장소 목록으로 키보드·스크린리더 선택 경로도 제공한다.
+  항구 전환은 진행 중 시간표 요청을 취소한다. 다음 순서는
   WSL/Docker 회귀 → 최신 SHA의 CI와 James/Popper 독립 재리뷰 → n150 배포·HTTPS live
   E2E → PR 머지다.
 

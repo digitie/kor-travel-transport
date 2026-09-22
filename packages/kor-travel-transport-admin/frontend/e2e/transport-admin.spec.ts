@@ -133,6 +133,7 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
     page.on("request", (request) => { if (request.url().includes("/timetable")) timetableRequests.push(request.url()); });
     await page.goto("/map");
     await expect(page.getByLabel(/VWorld 교통 지도/)).toBeVisible();
+    await expect(page.getByLabel("장소 목록에서 선택")).toBeVisible();
     await expect.poll(() => timetableRequests).toEqual([]);
   });
 

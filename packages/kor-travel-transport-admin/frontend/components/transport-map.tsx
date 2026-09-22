@@ -49,6 +49,12 @@ export function TransportMap() {
     setOperations("");
   };
 
+  const selectPlaceAndCenter = (place: Place) => {
+    selectPlace(place);
+    const instance = map.current;
+    if (instance) instance.easeTo({ center: [place.longitude, place.latitude], zoom: Math.max(instance.getZoom(), 11), duration: 300 });
+  };
+
   useEffect(() => {
     let cancelled = false;
     fetch("/api/transport/transport/features/places", { cache: "no-store" })
@@ -74,7 +80,7 @@ export function TransportMap() {
       if (!instance.getSource(SOURCE_ID)) instance.addSource(SOURCE_ID, { type: "geojson", data: places, cluster: true, clusterRadius: 60, clusterMaxZoom: 14 });
       if (!instance.getLayer(CLUSTER_LAYER_ID)) instance.addLayer({ id: CLUSTER_LAYER_ID, type: "circle", source: SOURCE_ID, filter: ["has", "point_count"], paint: { "circle-color": "#075985", "circle-radius": ["step", ["get", "point_count"], 16, 20, 20, 100, 25], "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } });
       if (!instance.getLayer(CLUSTER_COUNT_LAYER_ID)) instance.addLayer({ id: CLUSTER_COUNT_LAYER_ID, type: "symbol", source: SOURCE_ID, filter: ["has", "point_count"], layout: { "text-field": ["get", "point_count_abbreviated"], "text-size": 12 }, paint: { "text-color": "#ffffff" } });
-      if (!instance.getLayer(POINT_LAYER_ID)) instance.addLayer({ id: POINT_LAYER_ID, type: "circle", source: SOURCE_ID, filter: ["!", ["has", "point_count"]], paint: { "circle-color": ["match", ["get", "kind"], "fuel_station", "#dc2626", "rail_station", "#7c3aed", "ferry_port", "#0891b2", "#475569"], "circle-radius": 7, "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } });
+      if (!instance.getLayer(POINT_LAYER_ID)) instance.addLayer({ id: POINT_LAYER_ID, type: "circle", source: SOURCE_ID, filter: ["!", ["has", "point_count"]], paint: { "circle-color": ["match", ["get", "kind"], "fuel_station", "#dc2626", "rail_station", "#7c3aed", "ferry_port", "#0891b2", "#475569"], "circle-radius": 11, "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } });
       return true;
     };
     const expandCluster = (event: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
@@ -141,6 +147,12 @@ export function TransportMap() {
   return <section className="transport-map-layout" aria-label="교통 장소 지도">
     <div className="transport-map-canvas" ref={node} role="application" aria-label="VWorld 교통 지도. 확대하면 장소 묶음을 세부 위치로 펼칩니다." />
     <aside className="transport-map-detail" aria-live="polite">
+      <label className="transport-map-picker" htmlFor="transport-map-place-picker">장소 목록에서 선택
+        <select id="transport-map-place-picker" value={selected ? `${selected.kind}:${selected.id}` : ""} onChange={(event) => { const place = placesById.current.get(event.target.value); if (place) selectPlaceAndCenter(place); }}>
+          <option value="">지도에서 장소를 선택하거나 목록을 사용하세요</option>
+          {items.map((place) => <option key={`${place.kind}:${place.id}`} value={`${place.kind}:${place.id}`}>{label[place.kind]} · {place.name}{place.line_names.length ? ` (${place.line_names.join(", ")})` : ""}</option>)}
+        </select>
+      </label>
       {selected ? <><p className="eyebrow">{label[selected.kind]}</p><h2>{selected.name}</h2>{selected.brand_name ? <p>{selected.brand_name}</p> : null}{selected.latest_price !== null && selected.latest_price !== undefined ? <strong>{selected.price_product_code ?? "유가"} {selected.latest_price.toLocaleString()}원/L</strong> : null}{selected.line_names.length ? <p>노선: {selected.line_names.join(", ")}</p> : null}{selected.address ? <p>{selected.address}</p> : null}{selected.kind === "ferry_port" ? <><p className="quiet">항만가이드라인 위치 {selected.location_point_count ?? 0}점 중 표시 지점입니다.</p><button className="button" type="button" onClick={loadTimetable}>오늘 운항 보기</button>{operations ? <p className="quiet timetable-result">{operations}</p> : null}</> : null}</> : <><h2>교통 장소</h2><p>{message || `주유소·역·항구 ${items.length.toLocaleString()}곳을 표시합니다. 지도에서 점 또는 묶음을 선택하면 상세 정보를 봅니다.`}</p></>}
     </aside>
   </section>;

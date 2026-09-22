@@ -8,6 +8,10 @@
   도착한 이전 항구의 시간표가 현재 상세 화면을 덮어쓰지 않는다. 성공 cache는 전역 provider
   429 backoff보다 먼저 반환하며, public transport gateway에는 저장 장소와 제한된 항구
   시간표 GET endpoint를 추가했다.
+- 지도 GPU layer 전환 뒤 키보드·스크린리더 선택 경로가 사라진다는 후속 P1을 보완했다.
+  상세 패널에 종류·이름·노선명을 읽는 native `select` 목록을 두어 지도 포인터 없이도
+  장소를 선택·중심 이동할 수 있게 했고, leaf point 반지름도 11px로 키웠다. 지도 E2E는
+  이 접근 가능한 목록과 시간표 자동 호출 금지를 함께 확인한다.
 - Docker backend test fixture는 이제 `DATABASE_URL`을 전혀 상속하지 않는다. PostgreSQL
   통합 검증은 `TEST_DATABASE_URL`과 `PARKING_RADAR_TEST_DATABASE=1`을 모두 줘야만
   허용하고, 기본 Docker runbook은 테스트별 임시 SQLite를 강제한다. 운영 DB truncate 위험을
