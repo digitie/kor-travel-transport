@@ -150,7 +150,7 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
 });
 
 test.describe("공개 gateway 쓰기·비허용 경계", () => {
-  for (const path of ["transport/collector-status", "transport/statistics?days=1", "transport/highways/traffic?days=1", "transport/highways/incidents?days=1", "transport/fuel/stations?days=1"]) {
+  for (const path of ["transport/collector-status", "transport/statistics?days=1", "transport/highways/traffic?days=1", "transport/highways/incidents?days=1", "transport/fuel/stations?days=1", "transport/features/places", "transport/ports/test-port/timetable"]) {
     test(`public POST ${path} is denied`, async ({ request }) => {
       expect((await request.post(`${apiBase}/v1/${path}`)).status()).toBe(403);
     });

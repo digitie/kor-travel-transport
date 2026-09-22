@@ -9,6 +9,16 @@
   재현되어 같은 기간·노선의 저장 통계 응답을 기본 60초 재사용하도록 추가했다. 운영 DB는
   변경하지 않았고, cache 회귀는 첫 응답 뒤 원본 snapshot을 지워도 TTL 안에서는 같은
   응답을 돌려주는 단위 테스트로 고정했다.
+- 독립 적대 리뷰 James/Popper가 공통으로 지적한 cache miss 동시 집계와 전체 cache clear
+  P1을 반영했다. 통계 cache는 키별 async single-flight로 같은 집계를 한 번만 실행하고,
+  `OrderedDict` LRU 128개 상한에서 가장 오래된 한 항목만 축출한다. 동시 8회 요청이 한 번만
+  계산되는지와 129개 키에서 LRU 상한이 지켜지는지 테스트한다. James가 지적한 정적
+  OpenAPI 누락도 `scripts/export_openapi.py`로 재생성했고, 새 공개 장소·항구 시간표 경로의
+  POST 차단은 live E2E 행렬에 추가했다.
+- James의 P2인 `source + port_id` 항구 식별 경계는 현재 단일 `datagokr_maritime` 기준정보
+  source만 수집하는 계약에서는 충돌하지 않는다. 다중 source 항만 ingest를 도입할 때
+  `source`를 URL 또는 query 계약에 포함하는 별도 호환성 변경으로 처리한다. 지도 E2E의
+  선택 후 상세 상호작용도 저장된 장소 fixture를 보장하는 후속 UI 시나리오에서 확장한다.
 - 최종 적대적 리뷰의 P1을 반영했다. 지도는 DOM marker pool 대신 MapLibre GeoJSON
   circle/symbol layer와 source cluster로 렌더링해 고확대에서도 marker DOM을 대량 생성하지
   않는다. 항구 선택은 이전 `AbortController`를 취소하고 요청 일련번호를 확인하므로 늦게

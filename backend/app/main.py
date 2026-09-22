@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import OrderedDict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from contextlib import suppress
 from datetime import date, datetime, time, timedelta
+from functools import wraps
 from http import HTTPStatus
 from zoneinfo import ZoneInfo
 
@@ -148,6 +150,53 @@ MAX_TIMESERIES_RANGE_DAYS = 90
 MAX_TRANSPORT_STATISTICS_CACHE_ENTRIES = 128
 
 
+def cached_transport_statistics(handler):
+    @wraps(handler)
+    async def wrapped(
+        request: Request,
+        route_no: str | None = None,
+        days: int = 7,
+        session: AsyncSession | None = None,
+    ) -> TransportStatisticsResponse:
+        settings = request.app.state.settings
+        if settings.transport_statistics_cache_seconds == 0:
+            return await handler(request=request, route_no=route_no, days=days, session=session)
+
+        cache_key = (route_no.strip() if route_no else None, days)
+        statistics_cache = request.app.state.transport_statistics_cache
+
+        def get_cached() -> TransportStatisticsResponse | None:
+            cached = statistics_cache.get(cache_key)
+            if cached is None:
+                return None
+            cached_at, cached_response = cached
+            if (now_utc() - cached_at).total_seconds() > settings.transport_statistics_cache_seconds:
+                statistics_cache.pop(cache_key, None)
+                return None
+            statistics_cache.move_to_end(cache_key)
+            return cached_response
+
+        if cached_response := get_cached():
+            return cached_response
+
+        lock = request.app.state.transport_statistics_locks.setdefault(cache_key, asyncio.Lock())
+        try:
+            async with lock:
+                if cached_response := get_cached():
+                    return cached_response
+                response = await handler(request=request, route_no=route_no, days=days, session=session)
+                statistics_cache[cache_key] = (now_utc(), response)
+                statistics_cache.move_to_end(cache_key)
+                while len(statistics_cache) > MAX_TRANSPORT_STATISTICS_CACHE_ENTRIES:
+                    statistics_cache.popitem(last=False)
+                return response
+        finally:
+            if not lock.locked():
+                request.app.state.transport_statistics_locks.pop(cache_key, None)
+
+    return wrapped
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved_settings = settings or get_settings()
     engine, session_factory = create_engine_and_session_factory(resolved_settings.database_url)
@@ -165,9 +214,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.ferry_timetable_cache: dict[tuple[str, date], tuple[datetime, FerryOperationResponse]] = {}
         app.state.ferry_timetable_lock = asyncio.Lock()
         app.state.ferry_timetable_rate_limited_until: datetime | None = None
-        app.state.transport_statistics_cache: dict[
+        app.state.transport_statistics_cache: OrderedDict[
             tuple[str | None, int], tuple[datetime, TransportStatisticsResponse]
-        ] = {}
+        ] = OrderedDict()
+        app.state.transport_statistics_locks: dict[tuple[str | None, int], asyncio.Lock] = {}
         app.state.scheduler_task = None
         app.state.transport_scheduler_task = None
         app.state.fuel_scheduler_task = None
@@ -792,6 +842,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return TransportCollectorStatus(**status)
 
     @router.get("/transport/statistics", response_model=TransportStatisticsResponse)
+    @cached_transport_statistics
     async def transport_statistics(
         request: Request,
         route_no: str | None = Query(default=None),
@@ -800,16 +851,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> TransportStatisticsResponse:
         cutoff = now_utc() - timedelta(days=days)
         normalized_route_no = route_no.strip() if route_no else None
-        cache_key = (normalized_route_no, days)
-        cached = request.app.state.transport_statistics_cache.get(cache_key)
-        if cached is not None:
-            cached_at, cached_response = cached
-            cache_age_seconds = (now_utc() - cached_at).total_seconds()
-            if (
-                request.app.state.settings.transport_statistics_cache_seconds > 0
-                and cache_age_seconds <= request.app.state.settings.transport_statistics_cache_seconds
-            ):
-                return cached_response
 
         traffic_query = (
             select(
@@ -928,11 +969,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 for row in fuel_rows
             ],
         )
-        if request.app.state.settings.transport_statistics_cache_seconds:
-            statistics_cache = request.app.state.transport_statistics_cache
-            if len(statistics_cache) >= MAX_TRANSPORT_STATISTICS_CACHE_ENTRIES:
-                statistics_cache.clear()
-            statistics_cache[cache_key] = (now_utc(), response)
         return response
 
     @router.get("/parking/current", response_model=ParkingCurrentResponse)

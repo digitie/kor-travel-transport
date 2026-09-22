@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import OrderedDict
 from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -24,7 +25,7 @@ from sqlalchemy import func, select, text
 from app.core.config import Settings
 from app.core.time_utils import now_utc, serialize_utc
 from app.db.session import create_engine_and_session_factory, init_database
-from app.main import create_app
+from app.main import cached_transport_statistics, create_app
 from app.models import FuelPriceSnapshot, FuelStation, HighwayIncidentSnapshot, HighwayTrafficSnapshot, TransportCollectionState
 from app.services.transport_collection import (
     HighwayPayload,
@@ -877,6 +878,40 @@ def test_transport_statistics_uses_short_lived_response_cache(tmp_path: Path) ->
     assert first.status_code == 200
     assert cached.status_code == 200
     assert cached.json() == first.json()
+
+
+def test_transport_statistics_cache_coalesces_and_evicts_lru_entries() -> None:
+    calls = 0
+    state = SimpleNamespace(
+        settings=SimpleNamespace(transport_statistics_cache_seconds=60),
+        transport_statistics_cache=OrderedDict(),
+        transport_statistics_locks={},
+    )
+    request = SimpleNamespace(app=SimpleNamespace(state=state))
+
+    async def handler(*, request, route_no, days, session):
+        nonlocal calls
+        calls += 1
+        await asyncio.sleep(0)
+        return {"route_no": route_no, "days": days}
+
+    cached_handler = cached_transport_statistics(handler)
+
+    async def exercise() -> list[dict[str, object]]:
+        simultaneous = await asyncio.gather(
+            *(cached_handler(request=request, route_no="001", days=7, session=None) for _ in range(8))
+        )
+        for index in range(129):
+            await cached_handler(request=request, route_no=f"route-{index}", days=7, session=None)
+        return simultaneous
+
+    simultaneous = asyncio.run(exercise())
+
+    assert calls == 130
+    assert simultaneous == [{"route_no": "001", "days": 7}] * 8
+    assert len(state.transport_statistics_cache) == 128
+    assert ("route-0", 7) not in state.transport_statistics_cache
+    assert ("route-128", 7) in state.transport_statistics_cache
 
 
 def test_transport_status_exposes_a_durable_failed_run(client) -> None:
