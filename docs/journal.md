@@ -58,6 +58,13 @@
   중단했다. 아직 Compose 재기동 전이라 기존 서비스는 바뀌지 않았다. deployment script는
   archive가 해당 파일을 포함하지 않을 때에만 정확한 legacy path를 제거하도록 보완한다.
   넓은 `rsync --delete`는 운영 checkout의 알려지지 않은 파일을 지울 위험 때문에 쓰지 않는다.
+- 이 배포 보완의 James/Popper 최종 리뷰는 P0/P1 없음으로 끝났다. P2는 두 가지다.
+  `rsync` 뒤 image build가 다시 실패하면 실행 중 컨테이너는 유지되지만 checkout은 새 archive
+  일부가 남는 점, 그리고 승인된 checkout 문자열이 symlink가 아닌지까지 확인하지 않는 점이다.
+  현재 retry가 전체 archive를 다시 반영하고 remote checkout은 운영 계정이 소유하는 일반
+  디렉터리라 즉시 위험은 없지만, 다음 배포 구조 개선에서 versioned release directory의
+  atomic switch와 canonical path 검증을 검토한다. legacy middleware 제거 조건 테스트도 같은
+  배포 runbook test task로 남긴다.
 
 - n150 공개 HTTPS 268건 E2E에서 전체 3일 고속도로 통계가 cold read 때 504가 되는 것을
   재현했다. 기존 covering index는 사용됐지만 3일 원본 약 500만 행을 읽어야 했고, 저자원

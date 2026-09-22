@@ -61,6 +61,9 @@ Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks
 - [ ] 후속 P2: 지도 map event test seam으로 zoom 8·10의 종류당 200/300개 예산과, 타일
       오류 뒤 회복 시 안내 해제를 E2E로 고정한다. 현재 initial zoom 7의 종류당 100개,
       선택 중 오류 가시성, 성공 타일은 live E2E가 확인한다.
+- [ ] 후속 P2: transport deploy script의 stale middleware 보존/제거 조건을 mock으로
+      검증하고, versioned release directory의 atomic switch와 remote checkout canonical path
+      검증을 설계한다. 현재 build 실패는 `up --force-recreate` 전에 끝나 기존 서비스는 유지된다.
 - [ ] cAdvisor `12103`, Prometheus `12102`, Grafana `12104` 전환 후 n150에서 transport
       12301/12302/12305를 배포
 - [ ] 두 적대적 리뷰, CI, n150 live E2E 뒤 Draft PR을 머지
