@@ -10,8 +10,10 @@ RUN npm run build
 
 FROM node:22-alpine AS runner
 WORKDIR /app
+ARG TRANSPORT_ADMIN_RELEASE_SHA=unknown
 ENV NODE_ENV=production \
-    NEXT_TELEMETRY_DISABLED=1
+    NEXT_TELEMETRY_DISABLED=1 \
+    TRANSPORT_ADMIN_RELEASE_SHA=${TRANSPORT_ADMIN_RELEASE_SHA}
 COPY --from=builder /app/package.json /app/package-lock.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next

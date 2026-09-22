@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 const username = process.env.E2E_TRANSPORT_UI_USER ?? "admin";
 const password = process.env.E2E_TRANSPORT_UI_PASSWORD;
+const expectedReleaseSha = process.env.E2E_TRANSPORT_RELEASE_SHA;
 const apiBase = process.env.E2E_TRANSPORT_API_BASE_URL ?? "https://transport-api.digitie.mywire.org";
 const dagsterBase = process.env.E2E_TRANSPORT_DAGSTER_BASE_URL ?? "https://transport-dagster.digitie.mywire.org";
 
@@ -12,6 +13,10 @@ test("관리 UI 인증·저장 스냅샷·로그아웃 경계를 검증한다", 
   expect((await request.get("/api/transport/transport/statistics")).status()).toBe(401);
   await page.getByLabel("아이디").fill(username); await page.getByLabel("비밀번호").fill(password!); await page.getByRole("button", { name: "로그인" }).click();
   await expect(page).toHaveURL(/\/$/); await expect(page.getByRole("heading", { name: "통합 교통정보 현황" })).toBeVisible();
+  if (expectedReleaseSha) {
+    const release = await page.request.get("/api/release");
+    expect(release.status()).toBe(200); expect((await release.json()).releaseSha).toBe(expectedReleaseSha);
+  }
   await expect(page.getByText("수집 소스")).toBeVisible({ timeout: 20_000 });
   const status = await page.request.get("/api/transport/transport/collector-status"); expect(status.status()).toBe(200); expect(Array.isArray((await status.json()).sources)).toBe(true);
   await page.getByRole("button", { name: "로그아웃" }).click(); await expect(page).toHaveURL(/\/login/);

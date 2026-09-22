@@ -64,7 +64,7 @@ tar -xzf "${REMOTE_ARCHIVE}" -C "${stage}"
 rsync -a --exclude="${REMOTE_ENV_FILE}" --exclude=".env.server14.legacy" --exclude="backups/" "${stage}/" "${REMOTE_APP_DIR}/"
 cd "${REMOTE_APP_DIR}"
 
-docker compose --project-name kor-travel-transport-admin --env-file "${REMOTE_ENV_FILE}" -f docker-compose.transport-admin.yml up -d --build
+TRANSPORT_ADMIN_RELEASE_SHA="${CANDIDATE_SHA}" docker compose --project-name kor-travel-transport-admin --env-file "${REMOTE_ENV_FILE}" -f docker-compose.transport-admin.yml up -d --build
 api_port="$(port_from_env TRANSPORT_PUBLIC_API_PORT 12301)"
 dagster_port="$(port_from_env TRANSPORT_DAGSTER_PORT 12302)"
 web_port="$(port_from_env TRANSPORT_PUBLIC_WEB_PORT 12305)"

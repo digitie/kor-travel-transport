@@ -18,6 +18,10 @@ on:
         required: true
         default: "https://transport-dagster.digitie.mywire.org"
         type: string
+      release_sha:
+        description: "배포 스크립트가 기록한 candidate Git SHA"
+        required: true
+        type: string
 
 jobs:
   live-e2e:
@@ -29,6 +33,7 @@ jobs:
       E2E_BASE_URL: ${{ inputs.web_url }}
       E2E_TRANSPORT_API_BASE_URL: ${{ inputs.api_url }}
       E2E_TRANSPORT_DAGSTER_BASE_URL: ${{ inputs.dagster_url }}
+      E2E_TRANSPORT_RELEASE_SHA: ${{ inputs.release_sha }}
       # 사용자 지정 초기 자격증명. 운영값 변경 시 이 workflow도 함께 바꾼다.
       E2E_TRANSPORT_UI_PASSWORD: ad.min
     steps:
