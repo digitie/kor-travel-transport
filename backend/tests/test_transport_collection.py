@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from krex import CongestionLevel, Direction, Incident, KrexQuotaExceededError, TrafficFlow
 from opinet import ProductCode, StationType
@@ -934,14 +935,16 @@ def test_transport_statistics_cache_limits_distinct_cache_misses() -> None:
         return {"route_no": route_no, "days": days}
 
     cached_handler = cached_transport_statistics(handler)
-    async def exercise() -> None:
-        await asyncio.gather(
-            *(cached_handler(request=request, route_no=f"route-{index}", days=90, session=None) for index in range(4))
+    async def exercise() -> list[object]:
+        return await asyncio.gather(
+            *(cached_handler(request=request, route_no=f"route-{index}", days=90, session=None) for index in range(4)),
+            return_exceptions=True,
         )
 
-    asyncio.run(exercise())
+    results = asyncio.run(exercise())
 
     assert maximum_active == 2
+    assert sum(isinstance(result, HTTPException) and result.status_code == 429 for result in results) == 2
 
 def test_transport_status_exposes_a_durable_failed_run(client) -> None:
     service = client.app.state.transport_collection_service

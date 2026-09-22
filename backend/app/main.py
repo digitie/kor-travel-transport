@@ -159,8 +159,21 @@ def cached_transport_statistics(handler):
         session: AsyncSession | None = None,
     ) -> TransportStatisticsResponse:
         settings = request.app.state.settings
+        semaphore = request.app.state.transport_statistics_miss_semaphore
+
+        async def calculate() -> TransportStatisticsResponse:
+            # asyncio.Semaphore는 값이 남아 있을 때 acquire가 suspend하지 않는다.
+            # 따라서 이 admission check는 요청을 대기열에 쌓지 않고 포화 시 즉시 거절한다.
+            if semaphore.locked():
+                raise HTTPException(status_code=429, detail="교통 통계 집계가 혼잡합니다. 잠시 후 다시 시도하세요.")
+            await semaphore.acquire()
+            try:
+                return await handler(request=request, route_no=route_no, days=days, session=session)
+            finally:
+                semaphore.release()
+
         if settings.transport_statistics_cache_seconds == 0:
-            return await handler(request=request, route_no=route_no, days=days, session=session)
+            return await calculate()
 
         cache_key = (route_no.strip() if route_no else None, days)
         statistics_cache = request.app.state.transport_statistics_cache
@@ -184,8 +197,7 @@ def cached_transport_statistics(handler):
             async with lock:
                 if cached_response := get_cached():
                     return cached_response
-                async with request.app.state.transport_statistics_miss_semaphore:
-                    response = await handler(request=request, route_no=route_no, days=days, session=session)
+                response = await calculate()
                 statistics_cache[cache_key] = (now_utc(), response)
                 statistics_cache.move_to_end(cache_key)
                 while len(statistics_cache) > MAX_TRANSPORT_STATISTICS_CACHE_ENTRIES:
