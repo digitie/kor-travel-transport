@@ -14,6 +14,11 @@
   n150 예제를 60초로 정렬하고 static contract test로 고정했다.
   지도 API key 없는 fallback에서 저장 장소 목록이 실제로 채워지지 않는 기존 P2는
   timeout 수정에 섞지 않고 T-042 후속으로 기록했다.
+- Popper 적대 리뷰는 기존 `deploy-server14-remote.sh`의 무서비스 지정 `up -d --build`가
+  parking-radar frontend까지 재생성할 수 있는 P1을 확인했다. transport 수집 수정 배포는
+  `deploy-transport-runtime-server14.sh`에서 stage-only 후 backend·Dagster code-server/
+  webserver/daemon 네 서비스만 `--no-deps`로 재생성하고 health release SHA를 확인하도록
+  분리했다. transport-admin UI는 기존 전용 배포 경로를 계속 사용한다.
 
 - 공항 지도 장소에는 공항 코드·도시뿐 아니라 저장된 최신 주차장 수, 가용면, 전체면과 관측시각을
   포함했다. 최신 snapshot만 집계하므로 과거 시계열을 중복 합산하지 않으며 지도 읽기 중 외부 API를

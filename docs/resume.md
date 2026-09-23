@@ -7,7 +7,9 @@
   스냅샷은 258,247건이다. 마지막 유가 수집 실패는 Playwright 응답 30초 timeout이었고,
   `python-opinet-api#19`의 60초 대기 provider pin 및 transport 기본/예제 설정으로 보완했다.
   shared Compose fallback도 60초로 고쳐 code default가 환경변수에 의해 다시 덮이지 않도록
-  contract test를 추가했다. 이 변경은 재시도·수집 빈도를 늘리지 않는다. 철도 기준정보 flag를 활성화하고 즉시 실행해 1,108건(좌표
+  contract test를 추가했다. Popper 리뷰 P1에 따라 n150 배포도 stage-only 뒤 backend·Dagster
+  네 서비스만 재생성하는 전용 경로로 분리해 parking-radar frontend를 건드리지 않는다.
+  이 변경은 재시도·수집 빈도를 늘리지 않는다. 철도 기준정보 flag를 활성화하고 즉시 실행해 1,108건(좌표
   1,107건)을 적재했다. 공항은 기존 5분 주기 수집이 14곳을 저장하고 있었지만 지도 좌표
   결합 경로가 없어 표시되지 않았으므로, `python-krairport-api`의 번들 WGS84 좌표와
   결합한 저장 장소 응답·전용 SVG marker를 추가했다. 공항 marker/popup은 최신 주차장 수,
