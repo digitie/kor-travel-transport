@@ -9,6 +9,9 @@
   `python-opinet-api#19`의 60초 대기를 덮어쓰던 것이 원인이다. provider를
   `d7bf57e`로 올리고 transport 기본/예제 설정도 60초로 맞췄다. 이는 단일 응답의
   대기 상한만 바꾸며 자동 재시도, 8시간 실행 간격, 24시간 최대 3회 제한은 바꾸지 않는다.
+  James 적대 리뷰가 base/shared Compose의 기존 `${OPINET_BROWSER_TIMEOUT_MS:-30000}`
+  fallback도 환경변수로 주입돼 코드 기본을 다시 덮는 P1을 확인했다. 두 Compose fallback과
+  n150 예제를 60초로 정렬하고 static contract test로 고정했다.
 
 - 공항 지도 장소에는 공항 코드·도시뿐 아니라 저장된 최신 주차장 수, 가용면, 전체면과 관측시각을
   포함했다. 최신 snapshot만 집계하므로 과거 시계열을 중복 합산하지 않으며 지도 읽기 중 외부 API를

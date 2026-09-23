@@ -50,12 +50,16 @@ def test_dagster_definitions_enable_every_schedule_and_serialize_overlapping_gro
     dagster_yaml = (Path(__file__).parents[1] / "dagster_home" / "dagster.yaml").read_text(encoding="utf-8")
     assert "value: parking\n        limit: 1" in dagster_yaml
     assert "value: highway\n        limit: 1" in dagster_yaml
+    base_compose_path = Path(__file__).parents[2] / "docker-compose.yml"
     shared_compose_path = Path(__file__).parents[2] / "docker-compose.shared.yml"
     if not shared_compose_path.exists():
         shared_compose_path = Path("/app/compose-contract/docker-compose.shared.yml")
+    base_compose = base_compose_path.read_text(encoding="utf-8")
     shared_compose = shared_compose_path.read_text(encoding="utf-8")
     assert 'RUSTFS_REGION_NAME: "${RUSTFS_REGION_NAME:-us-east-1}"' in shared_compose
     assert 'RUSTFS_RAW_PREFIX: "${RUSTFS_RAW_PREFIX:-provider-raw}"' in shared_compose
+    assert 'OPINET_BROWSER_TIMEOUT_MS: "${OPINET_BROWSER_TIMEOUT_MS:-60000}"' in shared_compose
+    assert 'OPINET_BROWSER_TIMEOUT_MS: "${OPINET_BROWSER_TIMEOUT_MS:-60000}"' in base_compose
     assert 'RUN_DB_MIGRATIONS: "false"' in shared_compose
     assert 'image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-airport-backend:latest}"' in shared_compose
 
