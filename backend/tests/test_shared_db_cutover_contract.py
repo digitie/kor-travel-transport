@@ -98,6 +98,9 @@ def test_transport_runtime_deploy_never_recreates_the_parking_frontend() -> None
     script = (_ROOT / "scripts" / "deploy-transport-runtime-server14.sh").read_text(encoding="utf-8")
 
     assert "DEPLOY_STAGE_ONLY=true" in script
+    assert 'run --rm --no-deps --build migrate' in script
+    assert 'run --rm --no-deps migrate alembic current' in script
+    assert 'grep -Fq "(head)"' in script
     assert "services=(backend dagster-code-server dagster-webserver dagster-daemon)" in script
     assert 'up -d --build --force-recreate --no-deps "${services[@]}"' in script
     assert 'ps --status running --services' in script

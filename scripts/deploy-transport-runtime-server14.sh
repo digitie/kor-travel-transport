@@ -37,8 +37,14 @@ printf 'RELEASE_SHA=%s\n' "${CANDIDATE_SHA}" >> "${runtime_env}"
 chmod 600 "${runtime_env}"
 
 compose=(docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${runtime_env}" -f docker-compose.yml -f docker-compose.shared.yml)
-services=(backend dagster-code-server dagster-webserver dagster-daemon)
 "${compose[@]}" config -q
+# application schema는 runtime보다 먼저 같은 candidate image로 one-shot migration을
+# 실행한다. revision이 head가 아니면 runtime 재생성 전에 fail-close한다.
+"${compose[@]}" run --rm --no-deps --build migrate
+current_revision="$("${compose[@]}" run --rm --no-deps migrate alembic current)"
+grep -Fq "(head)" <<<"${current_revision}" \
+  || { echo "application Alembic revision이 head가 아닙니다: ${current_revision}" >&2; exit 1; }
+services=(backend dagster-code-server dagster-webserver dagster-daemon)
 "${compose[@]}" up -d --build --force-recreate --no-deps "${services[@]}"
 
 for service in "${services[@]}"; do
