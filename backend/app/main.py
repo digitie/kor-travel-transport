@@ -23,6 +23,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 from kric import DataGoKrMaritimeClient, KricRateLimitError
+from krairport import get_airport_or_none
 
 from app.core.config import Settings, get_settings
 from app.core.time_utils import now_utc, serialize_utc, to_seoul
@@ -849,7 +850,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @router.get("/transport/features/places", response_model=TransportPlaceMapResponse)
     async def transport_place_features(
-        kind: str | None = Query(default=None, description="fuel_station, rail_station, ferry_port, rest_area 중 하나"),
+        kind: str | None = Query(default=None, description="airport, fuel_station, rail_station, ferry_port, rest_area 중 하나"),
         limit: int = Query(default=1000, ge=1, le=5000),
         min_longitude: float | None = Query(default=None, ge=-180, le=180),
         min_latitude: float | None = Query(default=None, ge=-90, le=90),
@@ -859,9 +860,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> TransportPlaceMapResponse:
         """저장된 장소만 지도 marker 계약으로 반환한다. provider 원문이나 비밀값은 노출하지 않는다."""
         selected_kind = kind.strip() if kind else None
-        supported = {"fuel_station", "rail_station", "ferry_port", "rest_area"}
+        supported = {"airport", "fuel_station", "rail_station", "ferry_port", "rest_area"}
         if selected_kind is not None and selected_kind not in supported:
-            raise HTTPException(status_code=422, detail="kind는 fuel_station, rail_station, ferry_port, rest_area 중 하나여야 합니다.")
+            raise HTTPException(status_code=422, detail="kind는 airport, fuel_station, rail_station, ferry_port, rest_area 중 하나여야 합니다.")
         bounds = (min_longitude, min_latitude, max_longitude, max_latitude)
         if any(value is not None for value in bounds) and any(value is None for value in bounds):
             raise HTTPException(status_code=422, detail="지도 범위는 최소·최대 경도와 위도를 모두 지정해야 합니다.")
@@ -886,6 +887,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     model.latitude <= max_latitude,
                 ))
             return conditions
+
+        def is_in_bounds(longitude: float, latitude: float) -> bool:
+            return min_longitude is None or (
+                min_longitude <= longitude <= max_longitude
+                and min_latitude <= latitude <= max_latitude
+            )
+
+        if selected_kind in (None, "airport"):
+            # 공항 좌표는 python-krairport-api가 관리하는 정적 기준정보다. 주차 수집이
+            # 저장한 공항만 대상으로 하므로, 지도 요청에서 provider/API를 재호출하지 않는다.
+            airport_items: list[TransportPlaceMapItem] = []
+            airports = (await session.execute(select(Airport).order_by(Airport.code))).scalars().all()
+            for airport in airports:
+                metadata = get_airport_or_none(airport.code)
+                coordinate = metadata.coordinate if metadata is not None else None
+                if coordinate is None or not is_in_bounds(coordinate.longitude, coordinate.latitude):
+                    continue
+                airport_items.append(TransportPlaceMapItem(
+                    id=airport.id,
+                    kind="airport",
+                    source=airport.source,
+                    provider_id=airport.code,
+                    name=airport.name_ko,
+                    longitude=coordinate.longitude,
+                    latitude=coordinate.latitude,
+                    subtitle=f"{airport.code} · {metadata.municipality}" if metadata.municipality else airport.code,
+                    address=metadata.municipality,
+                    updated_at=serialize_utc(airport.updated_at),
+                ))
+            total += len(airport_items)
+            items.extend(airport_items[:per_kind_limit])
 
         if selected_kind in (None, "fuel_station"):
             conditions = coordinate_conditions(FuelStation)

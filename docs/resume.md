@@ -4,7 +4,11 @@
 
 - 2026-09-23 `codex/map-marker-density`에서 운영 저장량 확인 뒤 지도 marker 밀도·표현과
   휴게소 기준정보 수집을 보완 중이다. 운영 DB의 주유소는 11,829건(좌표 11,823건), 유가
-  스냅샷은 258,247건이나, 철도역·항구는 기준정보 수집 flag가 비활성이라 모두 0건이다.
+  스냅샷은 258,247건이다. 철도 기준정보 flag를 활성화하고 즉시 실행해 1,108건(좌표
+  1,107건)을 적재했다. 공항은 기존 5분 주기 수집이 14곳을 저장하고 있었지만 지도 좌표
+  결합 경로가 없어 표시되지 않았으므로, `python-krairport-api`의 번들 WGS84 좌표와
+  결합한 저장 장소 응답·전용 SVG marker를 추가했다. 항구는 TAGO가 `totalCount` 없이
+  전량을 반환하는 정상 응답을 주므로 `python-kric-api` provider 보완을 pin 한 뒤 재수집한다.
   휴게소도 기존에는 저장 table이 없었다. `rest_area_references` migration과
   `rest_area_reference_collection_job`을 추가해 `python-krex-api` async 기준정보를 3일
   간격으로 저장하며, 설정 flag를 켜기 전에는 provider 호출을 하지 않는다. 지도는

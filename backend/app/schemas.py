@@ -177,7 +177,7 @@ class TransportPlaceMapItem(BaseModel):
     """kor-travel-map·PinVi가 지도 marker로 바로 소비할 저장 장소 요약."""
 
     id: int
-    kind: Literal["fuel_station", "rail_station", "ferry_port", "rest_area"]
+    kind: Literal["airport", "fuel_station", "rail_station", "ferry_port", "rest_area"]
     source: str
     provider_id: str | None = None
     name: str
