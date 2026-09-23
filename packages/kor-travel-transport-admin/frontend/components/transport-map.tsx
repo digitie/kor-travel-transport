@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { fuelProductLabel, placeKindLabel } from "@/lib/transport-presentation";
 
 type PlaceKind = "airport" | "fuel_station" | "rail_station" | "ferry_port" | "rest_area";
-type Place = { id: number; kind: PlaceKind; name: string; provider_id?: string | null; longitude: number; latitude: number; subtitle?: string | null; brand_name?: string | null; latest_price?: number | null; price_product_code?: string | null; line_names: string[]; address?: string | null; updated_at: string; location_source?: string | null; location_point_count?: number | null };
+type Place = { id: number; kind: PlaceKind; name: string; provider_id?: string | null; longitude: number; latitude: number; subtitle?: string | null; brand_name?: string | null; latest_price?: number | null; price_product_code?: string | null; line_names: string[]; address?: string | null; updated_at: string; location_source?: string | null; location_point_count?: number | null; parking_lot_count?: number | null; parking_available_spaces?: number | null; parking_total_spaces?: number | null; parking_observed_at?: string | null };
 type MapPoint = { id: string; lngLat: [number, number]; place: Place };
 type PlaceResponse = { items: Place[]; total: number; truncated: boolean };
 type MapBounds = { getWest: () => number; getSouth: () => number; getEast: () => number; getNorth: () => number };
@@ -49,12 +49,18 @@ function markerFuelLabel(productCode: string | null | undefined) {
   return MARKER_FUEL_LABELS[productCode ?? ""] ?? fuelProductLabel(productCode);
 }
 
+function airportParkingLabel(place: Place) {
+  if (place.parking_available_spaces === null || place.parking_available_spaces === undefined || place.parking_total_spaces === null || place.parking_total_spaces === undefined) return null;
+  return `주차 ${place.parking_available_spaces.toLocaleString("ko-KR")} / ${place.parking_total_spaces.toLocaleString("ko-KR")}면`;
+}
+
 function MapMarker({ point, onSelect, selected }: { point: MapPoint; onSelect: (place: Place) => void; selected: boolean }) {
   const { place } = point;
   const price = place.latest_price === null || place.latest_price === undefined ? null : `${place.latest_price.toLocaleString("ko-KR")}원`;
+  const parking = airportParkingLabel(place);
   const fuelLabel = markerFuelLabel(place.price_product_code);
-  const markerLabel = price ? `${fuelLabel} ${price}` : placeKindLabel(place.kind);
-  return <Marker ariaLabel={`${placeKindLabel(place.kind)} ${place.name}${price ? ` ${fuelLabel} ${price}` : ""} 상세 보기`} className={`transport-map-marker ${place.kind}`} interactionId={point.id} key={point.id} lngLat={point.lngLat} onClick={() => onSelect(place)} selected={selected}>
+  const markerLabel = price ? `${fuelLabel} ${price}` : parking ?? placeKindLabel(place.kind);
+  return <Marker ariaLabel={`${placeKindLabel(place.kind)} ${place.name}${price ? ` ${fuelLabel} ${price}` : parking ? ` ${parking}` : ""} 상세 보기`} className={`transport-map-marker ${place.kind}`} interactionId={point.id} key={point.id} lngLat={point.lngLat} onClick={() => onSelect(place)} selected={selected}>
     <span className={`map-place-marker map-place-marker-${place.kind}${price ? " has-price" : ""}`}><PlaceMarkerIcon kind={place.kind} /><span>{markerLabel}</span></span>
   </Marker>;
 }
@@ -159,7 +165,7 @@ export function TransportMap() {
   return <section className="transport-map-layout" aria-label="교통 장소 지도">
     <VWorldMapView apiKey={process.env.NEXT_PUBLIC_VWORLD_API_KEY ?? ""} cameraTarget={selected ? { center: [selected.longitude, selected.latitude], zoom: 11 } : undefined} center={[127.8, 36.2]} className="transport-map-canvas" fallback={() => <p className="loading">VWorld 지도 키가 설정되지 않아 지도 대신 저장된 장소 목록을 표시합니다.</p>} geolocate={false} layerType="Base" lazy loadingSkeleton={<p className="loading">지도를 준비하는 중입니다…</p>} minZoom={5} navigation onError={(event) => { const status = (event.error as { status?: unknown } | undefined)?.status; if (typeof status === "number" && status >= 400) setMapError("VWorld 지도 타일을 불러오지 못했습니다. 지도 키·도메인 설정 또는 네트워크를 확인한 뒤 다시 시도해 주세요."); }} onLoad={(map) => { setMapError(""); loadVisiblePlaces(map.getBounds(), map.getZoom()); }} onMoveEnd={(event) => { const map = event.target as { getBounds: () => MapBounds; getZoom: () => number }; if (moveTimer.current !== null) window.clearTimeout(moveTimer.current); moveTimer.current = window.setTimeout(() => loadVisiblePlaces(map.getBounds(), map.getZoom()), 250); }} scale semanticZoomThreshold={11} unsupportedTileFallback={{ label: "VWorld 지도 타일을 불러오지 못했습니다." }} zoom={7}>
       <ClusterLayer maxZoom={14} points={points} radius={60} renderMarker={(point) => <MapMarker onSelect={selectPlace} point={point as MapPoint} selected={selected?.id === (point as MapPoint).place.id && selected.kind === (point as MapPoint).place.kind} />} />
-      {selected ? <Popup className="transport-place-popup" interactionId={`${selected.kind}:${selected.id}`} lngLat={[selected.longitude, selected.latitude]} onClose={() => { setSelected(null); setOperations(""); }}><div className="map-popup"><p className="eyebrow">{placeKindLabel(selected.kind)}</p><h2>{selected.name}</h2>{selected.brand_name ? <p>{selected.brand_name}</p> : null}{selected.latest_price !== null && selected.latest_price !== undefined ? <strong>{fuelProductLabel(selected.price_product_code)} {selected.latest_price.toLocaleString("ko-KR")}원/L</strong> : null}{selected.line_names.length ? <p>운행 노선: {selected.line_names.join(", ")}</p> : null}{selected.address ? <p className="quiet">{selected.address}</p> : null}{selected.kind === "ferry_port" ? <><p className="quiet">항만가이드라인 위치 {selected.location_point_count ?? 0}점 기준</p><button className="button" onClick={() => void loadTimetable()} type="button">오늘 운항 보기</button>{operations ? <p className="quiet timetable-result">{operations}</p> : null}</> : null}</div></Popup> : null}
+      {selected ? <Popup className="transport-place-popup" interactionId={`${selected.kind}:${selected.id}`} lngLat={[selected.longitude, selected.latitude]} onClose={() => { setSelected(null); setOperations(""); }}><div className="map-popup"><p className="eyebrow">{placeKindLabel(selected.kind)}</p><h2>{selected.name}</h2>{selected.subtitle ? <p>{selected.subtitle}</p> : null}{selected.brand_name ? <p>{selected.brand_name}</p> : null}{selected.latest_price !== null && selected.latest_price !== undefined ? <strong>{fuelProductLabel(selected.price_product_code)} {selected.latest_price.toLocaleString("ko-KR")}원/L</strong> : null}{airportParkingLabel(selected) ? <><strong>{airportParkingLabel(selected)}</strong><p className="quiet">주차장 {selected.parking_lot_count ?? 0}곳의 최신 저장 현황</p></> : null}{selected.line_names.length ? <p>운행 노선: {selected.line_names.join(", ")}</p> : null}{selected.address ? <p className="quiet">{selected.address}</p> : null}{selected.kind === "ferry_port" ? <><p className="quiet">항만가이드라인 위치 {selected.location_point_count ?? 0}점 기준</p><button className="button" onClick={() => void loadTimetable()} type="button">오늘 운항 보기</button>{operations ? <p className="quiet timetable-result">{operations}</p> : null}</> : null}</div></Popup> : null}
     </VWorldMapView>
     <aside className="transport-map-detail" aria-live="polite">
       <label className="transport-map-picker" htmlFor="transport-map-place-picker">장소 목록에서 선택

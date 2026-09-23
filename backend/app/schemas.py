@@ -192,6 +192,10 @@ class TransportPlaceMapItem(BaseModel):
     updated_at: datetime
     location_source: str | None = None
     location_point_count: int | None = None
+    parking_lot_count: int | None = None
+    parking_available_spaces: int | None = None
+    parking_total_spaces: int | None = None
+    parking_observed_at: datetime | None = None
 
 
 class TransportPlaceMapResponse(BaseModel):

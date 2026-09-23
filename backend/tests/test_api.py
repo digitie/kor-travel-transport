@@ -151,6 +151,9 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
     assert by_kind["ferry_port"]["location_point_count"] == 2
     assert by_kind["rest_area"]["line_names"] == ["테스트고속도로"]
     assert {item["provider_id"] for item in airport_items} == {"CJU", "GMP", "ICN", "PUS"}
+    assert all(item["parking_lot_count"] > 0 for item in airport_items)
+    assert all(item["parking_available_spaces"] is not None for item in airport_items)
+    assert all(item["parking_total_spaces"] is not None for item in airport_items)
     bounded = client.get("/v1/transport/features/places?kind=fuel_station&min_longitude=127.0&min_latitude=37.4&max_longitude=127.15&max_latitude=37.55")
     assert bounded.status_code == 200
     assert bounded.json()["total"] == 1

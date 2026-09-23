@@ -46,8 +46,8 @@ cross-schema FK를 만드는 것은 금지한다.
 
 지도 marker는 `GET /v1/transport/features/places`로 제공한다. 전체 종류 조회는 요청 `limit`을
 다섯 종류에 균등 배분해 한 종류가 모든 marker 예산을 독점하지 않도록 한다. `airport`는 저장된 공항
-주차 수집 기준정보와 `python-krairport-api` 번들 WGS84 좌표를 결합하며, 지도 요청마다 외부 provider를
-호출하지 않는다. `fuel_station`에는 브랜드와 최신 유가, `rail_station`에는 운영 노선,
+주차 수집 기준정보와 `python-krairport-api` 번들 WGS84 좌표를 결합하며, 최신 관측별 주차장 수·가용면·
+전체면·관측시각을 함께 제공한다. 지도 요청마다 외부 provider를 호출하지 않는다. `fuel_station`에는 브랜드와 최신 유가, `rail_station`에는 운영 노선,
 `ferry_port`에는 항만가이드라인 좌표 출처·원본 점 수, `rest_area`에는 고속도로 노선·방향을 포함한다. 항만가이드라인 점은 터미널 중심점으로 추정하지 않으며 UI도
 안내 지점임을 표시한다.
 항구의 당일 운항은 `GET /v1/transport/ports/{port_id}/timetable`에서 한 항구·한 날짜만 비동기로

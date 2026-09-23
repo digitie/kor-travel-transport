@@ -899,11 +899,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # 저장한 공항만 대상으로 하므로, 지도 요청에서 provider/API를 재호출하지 않는다.
             airport_items: list[TransportPlaceMapItem] = []
             airports = (await session.execute(select(Airport).order_by(Airport.code))).scalars().all()
+            latest_snapshot = select(
+                ParkingSnapshot.id.label("snapshot_id"),
+                ParkingSnapshot.parking_lot_id.label("parking_lot_id"),
+                func.row_number().over(
+                    partition_by=ParkingSnapshot.parking_lot_id,
+                    order_by=(ParkingSnapshot.observed_at.desc(), ParkingSnapshot.id.desc()),
+                ).label("rank"),
+            ).subquery()
+            parking_rows = await session.execute(
+                select(
+                    ParkingLot.airport_id,
+                    func.count(ParkingLot.id).label("lot_count"),
+                    func.sum(ParkingSnapshot.available_spaces).label("available_spaces"),
+                    func.sum(ParkingSnapshot.total_spaces).label("total_spaces"),
+                    func.max(ParkingSnapshot.observed_at).label("observed_at"),
+                )
+                .join(latest_snapshot, latest_snapshot.c.parking_lot_id == ParkingLot.id)
+                .join(ParkingSnapshot, ParkingSnapshot.id == latest_snapshot.c.snapshot_id)
+                .where(latest_snapshot.c.rank == 1)
+                .group_by(ParkingLot.airport_id)
+            )
+            airport_parking = {
+                row.airport_id: row
+                for row in parking_rows
+            }
             for airport in airports:
                 metadata = get_airport_or_none(airport.code)
                 coordinate = metadata.coordinate if metadata is not None else None
                 if coordinate is None or not is_in_bounds(coordinate.longitude, coordinate.latitude):
                     continue
+                parking = airport_parking.get(airport.id)
                 airport_items.append(TransportPlaceMapItem(
                     id=airport.id,
                     kind="airport",
@@ -915,6 +941,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     subtitle=f"{airport.code} · {metadata.municipality}" if metadata.municipality else airport.code,
                     address=metadata.municipality,
                     updated_at=serialize_utc(airport.updated_at),
+                    parking_lot_count=int(parking.lot_count) if parking is not None else 0,
+                    parking_available_spaces=int(parking.available_spaces) if parking and parking.available_spaces is not None else None,
+                    parking_total_spaces=int(parking.total_spaces) if parking and parking.total_spaces is not None else None,
+                    parking_observed_at=serialize_utc(parking.observed_at) if parking and parking.observed_at is not None else None,
                 ))
             total += len(airport_items)
             items.extend(airport_items[:per_kind_limit])
