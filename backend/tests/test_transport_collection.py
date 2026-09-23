@@ -170,6 +170,18 @@ def build_settings(tmp_path: Path) -> Settings:
     )
 
 
+def test_live_provider_uses_the_safe_opinet_response_timeout_default(tmp_path: Path) -> None:
+    settings = build_settings(tmp_path)
+    settings.use_sample_client_when_no_key = False
+    provider = LiveTransportProvider(settings)
+    try:
+        assert settings.opinet_browser_timeout_ms == 60_000
+        assert provider.opinet is not None
+        assert provider.opinet.timeout_ms == 60_000
+    finally:
+        asyncio.run(provider.aclose())
+
+
 def test_lifespan_cancels_both_transport_tasks_before_closing_provider(tmp_path: Path, monkeypatch) -> None:
     settings = build_settings(tmp_path)
     settings.enable_scheduler = True

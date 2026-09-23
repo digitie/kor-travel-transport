@@ -2,6 +2,14 @@
 
 ## 2026-09-23
 
+- n150의 `opinet_browser` 실패를 원본 실행 이력·저장 상태로 확인했다. 2026-09-22
+  `transport_dagster_fuel` 실행이 `Timeout 30000ms exceeded while waiting for event
+  "response"`로 13분 뒤 실패했고, 마지막 정상 유가 적재는 2026-09-21 23:35:45 UTC였다.
+  transport가 구 provider pin과 30초 기본값을 명시 전달해 이미 병합된
+  `python-opinet-api#19`의 60초 대기를 덮어쓰던 것이 원인이다. provider를
+  `d7bf57e`로 올리고 transport 기본/예제 설정도 60초로 맞췄다. 이는 단일 응답의
+  대기 상한만 바꾸며 자동 재시도, 8시간 실행 간격, 24시간 최대 3회 제한은 바꾸지 않는다.
+
 - 공항 지도 장소에는 공항 코드·도시뿐 아니라 저장된 최신 주차장 수, 가용면, 전체면과 관측시각을
   포함했다. 최신 snapshot만 집계하므로 과거 시계열을 중복 합산하지 않으며 지도 읽기 중 외부 API를
   호출하지 않는다.
