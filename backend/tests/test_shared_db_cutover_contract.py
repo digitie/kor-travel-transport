@@ -94,6 +94,23 @@ def test_deploy_receipt_binds_both_shared_database_names() -> None:
     assert "staged release manifest does not match candidate" in remote_script
 
 
+def test_transport_runtime_deploy_never_recreates_the_parking_frontend() -> None:
+    script = (_ROOT / "scripts" / "deploy-transport-runtime-server14.sh").read_text(encoding="utf-8")
+
+    assert "DEPLOY_STAGE_ONLY=true" in script
+    assert 'run --rm --no-deps --build migrate' in script
+    assert 'run --rm --no-deps migrate alembic current' in script
+    assert 'grep -Fq "(head)"' in script
+    assert "services=(backend dagster-code-server dagster-webserver dagster-daemon)" in script
+    assert 'up -d --build --force-recreate --no-deps "${services[@]}"' in script
+    assert 'ps --status running --services' in script
+    assert 'for service in dagster-code-server dagster-webserver dagster-daemon' in script
+    assert 'docker inspect --format' in script
+    assert 'healthcheck가 실패한 transport 서비스' in script
+    assert 'healthcheck 확인 시간이 초과됐습니다' in script
+    assert "http://127.0.0.1:14001/health" in script
+
+
 def test_cutover_uses_staged_n150_deployment_and_does_not_hide_rollback_failures() -> None:
     script = (_ROOT / "scripts" / "cutover-shared-db-server14.sh").read_text(encoding="utf-8")
 

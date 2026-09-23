@@ -23,6 +23,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 from kric import DataGoKrMaritimeClient, KricRateLimitError
+from krairport import get_airport_or_none
 
 from app.core.config import Settings, get_settings
 from app.core.time_utils import now_utc, serialize_utc, to_seoul
@@ -41,6 +42,7 @@ from app.models import (
     ParkingSnapshot,
     RawApiResponse,
     RailStationReference,
+    RestAreaReference,
 )
 from app.schemas import (
     AirportSummary,
@@ -848,7 +850,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @router.get("/transport/features/places", response_model=TransportPlaceMapResponse)
     async def transport_place_features(
-        kind: str | None = Query(default=None, description="fuel_station, rail_station, ferry_port 중 하나"),
+        kind: str | None = Query(default=None, description="airport, fuel_station, rail_station, ferry_port, rest_area 중 하나"),
         limit: int = Query(default=1000, ge=1, le=5000),
         min_longitude: float | None = Query(default=None, ge=-180, le=180),
         min_latitude: float | None = Query(default=None, ge=-90, le=90),
@@ -858,9 +860,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> TransportPlaceMapResponse:
         """저장된 장소만 지도 marker 계약으로 반환한다. provider 원문이나 비밀값은 노출하지 않는다."""
         selected_kind = kind.strip() if kind else None
-        supported = {"fuel_station", "rail_station", "ferry_port"}
+        supported = {"airport", "fuel_station", "rail_station", "ferry_port", "rest_area"}
         if selected_kind is not None and selected_kind not in supported:
-            raise HTTPException(status_code=422, detail="kind는 fuel_station, rail_station, ferry_port 중 하나여야 합니다.")
+            raise HTTPException(status_code=422, detail="kind는 airport, fuel_station, rail_station, ferry_port, rest_area 중 하나여야 합니다.")
         bounds = (min_longitude, min_latitude, max_longitude, max_latitude)
         if any(value is not None for value in bounds) and any(value is None for value in bounds):
             raise HTTPException(status_code=422, detail="지도 범위는 최소·최대 경도와 위도를 모두 지정해야 합니다.")
@@ -873,7 +875,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         items: list[TransportPlaceMapItem] = []
         total = 0
 
-        def coordinate_conditions(model: type[FuelStation] | type[RailStationReference] | type[FerryPort]) -> list[Any]:
+        def coordinate_conditions(
+            model: type[FuelStation] | type[RailStationReference] | type[FerryPort] | type[RestAreaReference],
+        ) -> list[Any]:
             conditions: list[Any] = [model.latitude.is_not(None), model.longitude.is_not(None)]
             if min_longitude is not None:
                 conditions.extend((
@@ -883,6 +887,67 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     model.latitude <= max_latitude,
                 ))
             return conditions
+
+        def is_in_bounds(longitude: float, latitude: float) -> bool:
+            return min_longitude is None or (
+                min_longitude <= longitude <= max_longitude
+                and min_latitude <= latitude <= max_latitude
+            )
+
+        if selected_kind in (None, "airport"):
+            # 공항 좌표는 python-krairport-api가 관리하는 정적 기준정보다. 주차 수집이
+            # 저장한 공항만 대상으로 하므로, 지도 요청에서 provider/API를 재호출하지 않는다.
+            airport_items: list[TransportPlaceMapItem] = []
+            airports = (await session.execute(select(Airport).order_by(Airport.code))).scalars().all()
+            latest_snapshot = select(
+                ParkingSnapshot.id.label("snapshot_id"),
+                ParkingSnapshot.parking_lot_id.label("parking_lot_id"),
+                func.row_number().over(
+                    partition_by=ParkingSnapshot.parking_lot_id,
+                    order_by=(ParkingSnapshot.observed_at.desc(), ParkingSnapshot.id.desc()),
+                ).label("rank"),
+            ).subquery()
+            parking_rows = await session.execute(
+                select(
+                    ParkingLot.airport_id,
+                    func.count(ParkingLot.id).label("lot_count"),
+                    func.sum(ParkingSnapshot.available_spaces).label("available_spaces"),
+                    func.sum(ParkingSnapshot.total_spaces).label("total_spaces"),
+                    func.max(ParkingSnapshot.observed_at).label("observed_at"),
+                )
+                .join(latest_snapshot, latest_snapshot.c.parking_lot_id == ParkingLot.id)
+                .join(ParkingSnapshot, ParkingSnapshot.id == latest_snapshot.c.snapshot_id)
+                .where(latest_snapshot.c.rank == 1)
+                .group_by(ParkingLot.airport_id)
+            )
+            airport_parking = {
+                row.airport_id: row
+                for row in parking_rows
+            }
+            for airport in airports:
+                metadata = get_airport_or_none(airport.code)
+                coordinate = metadata.coordinate if metadata is not None else None
+                if coordinate is None or not is_in_bounds(coordinate.longitude, coordinate.latitude):
+                    continue
+                parking = airport_parking.get(airport.id)
+                airport_items.append(TransportPlaceMapItem(
+                    id=airport.id,
+                    kind="airport",
+                    source=airport.source,
+                    provider_id=airport.code,
+                    name=airport.name_ko,
+                    longitude=coordinate.longitude,
+                    latitude=coordinate.latitude,
+                    subtitle=f"{airport.code} · {metadata.municipality}" if metadata.municipality else airport.code,
+                    address=metadata.municipality,
+                    updated_at=serialize_utc(airport.updated_at),
+                    parking_lot_count=int(parking.lot_count) if parking is not None else 0,
+                    parking_available_spaces=int(parking.available_spaces) if parking and parking.available_spaces is not None else None,
+                    parking_total_spaces=int(parking.total_spaces) if parking and parking.total_spaces is not None else None,
+                    parking_observed_at=serialize_utc(parking.observed_at) if parking and parking.observed_at is not None else None,
+                ))
+            total += len(airport_items)
+            items.extend(airport_items[:per_kind_limit])
 
         if selected_kind in (None, "fuel_station"):
             conditions = coordinate_conditions(FuelStation)
@@ -937,6 +1002,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     longitude=port.longitude, latitude=port.latitude, subtitle="항만가이드라인 위치",
                     updated_at=serialize_utc(port.last_seen_at), location_source=port.location_source,
                     location_point_count=port.location_point_count,
+                ))
+        if selected_kind in (None, "rest_area"):
+            conditions = coordinate_conditions(RestAreaReference)
+            total += int(await session.scalar(select(func.count()).select_from(RestAreaReference).where(*conditions)) or 0)
+            rows = (await session.execute(
+                select(RestAreaReference).where(*conditions)
+                .order_by(RestAreaReference.last_seen_at.desc(), RestAreaReference.id.desc()).limit(per_kind_limit)
+            )).scalars().all()
+            for rest_area in rows:
+                route = " · ".join(value for value in (rest_area.route_name, rest_area.direction) if value)
+                items.append(TransportPlaceMapItem(
+                    id=rest_area.id, kind="rest_area", source=rest_area.source, name=rest_area.name,
+                    longitude=rest_area.longitude, latitude=rest_area.latitude, subtitle=route or None,
+                    line_names=[rest_area.route_name] if rest_area.route_name else [],
+                    updated_at=serialize_utc(rest_area.last_seen_at),
                 ))
         visible_items = items[:limit]
         return TransportPlaceMapResponse(

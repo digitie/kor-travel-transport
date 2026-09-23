@@ -127,7 +127,9 @@ Dagster gateway는 `127.0.0.1:14003`에만 bind한다. 외부 UI가 필요하면
 `DAGSTER_POSTGRES_URL`, `DAGSTER_UI_PASSWORD`를 요구한다.
 KRIC 파일 수집은 `RAIL_REFERENCE_COLLECTION_ENABLED=true`와 RustFS endpoint·bucket·접근키가,
 여객항구 기준정보는 `MARITIME_REFERENCE_COLLECTION_ENABLED=true`와
-`DATA_GO_KR_SERVICE_KEY`가 모두 있을 때만 실행한다. Manager의 RustFS 초기화는
+`DATA_GO_KR_SERVICE_KEY`가 모두 있을 때만 실행한다. 휴게소 기준정보는
+`REST_AREA_REFERENCE_COLLECTION_ENABLED=true`와 `DATA_GO_KR_SERVICE_KEY`가 있을 때만
+3일 주기 job이 실행한다. Manager의 RustFS 초기화는
 `kor-travel-transport-raw` bucket도 idempotent하게 준비한다. 비활성 상태는 실패가 아니라
 명시적인 `skipped` run으로 남긴다.
 

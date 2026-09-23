@@ -39,9 +39,12 @@ class Settings(BaseSettings):
     opinet_browser_enabled: bool = True
     opinet_query_level: str = "sigungu"
     opinet_browser_channel: str | None = None
-    opinet_browser_timeout_ms: int = Field(default=30_000, gt=0)
+    # 공개 화면 지역 검색은 일시적으로 30초를 넘길 수 있다. provider 기본값과 같은
+    # 60초를 사용해 transport 설정이 provider의 안전한 대기 상한을 덮어쓰지 않게 한다.
+    opinet_browser_timeout_ms: int = Field(default=60_000, gt=0)
     rail_reference_collection_enabled: bool = False
     maritime_reference_collection_enabled: bool = False
+    rest_area_reference_collection_enabled: bool = False
     port_guideline_collection_enabled: bool = True
     ferry_timetable_cache_seconds: int = Field(default=300, ge=30, le=3600)
     # 실시간 항구 시간표는 사용자 명시 요청만 허용하며, 서로 다른 항구 요청으로 provider

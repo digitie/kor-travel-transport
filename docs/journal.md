@@ -1,5 +1,51 @@
 # journal.md — 작업 일지
 
+## 2026-09-23
+
+- n150의 `opinet_browser` 실패를 원본 실행 이력·저장 상태로 확인했다. 2026-09-22
+  `transport_dagster_fuel` 실행이 `Timeout 30000ms exceeded while waiting for event
+  "response"`로 13분 뒤 실패했고, 마지막 정상 유가 적재는 2026-09-21 23:35:45 UTC였다.
+  transport가 구 provider pin과 30초 기본값을 명시 전달해 이미 병합된
+  `python-opinet-api#19`의 60초 대기를 덮어쓰던 것이 원인이다. provider를
+  `d7bf57e`로 올리고 transport 기본/예제 설정도 60초로 맞췄다. 이는 단일 응답의
+  대기 상한만 바꾸며 자동 재시도, 8시간 실행 간격, 24시간 최대 3회 제한은 바꾸지 않는다.
+  James 적대 리뷰가 base/shared Compose의 기존 `${OPINET_BROWSER_TIMEOUT_MS:-30000}`
+  fallback도 환경변수로 주입돼 코드 기본을 다시 덮는 P1을 확인했다. 두 Compose fallback과
+  n150 예제를 60초로 정렬하고 static contract test로 고정했다.
+  지도 API key 없는 fallback에서 저장 장소 목록이 실제로 채워지지 않는 기존 P2는
+  timeout 수정에 섞지 않고 T-042 후속으로 기록했다.
+- Popper 적대 리뷰는 기존 `deploy-server14-remote.sh`의 무서비스 지정 `up -d --build`가
+  parking-radar frontend까지 재생성할 수 있는 P1을 확인했다. transport 수집 수정 배포는
+  `deploy-transport-runtime-server14.sh`에서 stage-only 후 backend·Dagster code-server/
+  webserver/daemon 네 서비스만 `--no-deps`로 재생성하고 health release SHA를 확인하도록
+  분리했다. transport-admin UI는 기존 전용 배포 경로를 계속 사용한다. Popper 재리뷰가
+  `0011` Alembic migration이 포함된 후보에서 one-shot migration/head 확인이 빠진 P1을
+  추가로 확인해, 같은 candidate image로 `migrate`를 실행하고 `alembic current`가 head인지
+  확인한 뒤에만 runtime을 재생성하도록 fail-close를 추가했다.
+
+- 공항 지도 장소에는 공항 코드·도시뿐 아니라 저장된 최신 주차장 수, 가용면, 전체면과 관측시각을
+  포함했다. 최신 snapshot만 집계하므로 과거 시계열을 중복 합산하지 않으며 지도 읽기 중 외부 API를
+  호출하지 않는다.
+
+- n150에서 KRIC 철도 기준정보 수집을 즉시 실행해 1,108건(좌표 1,107건)을 적재했다.
+  항구 기준정보는 TAGO의 정상 응답이 `totalCount` 없이 전량을 반환하는 실제 계약을 만나
+  중단됐고, `python-kric-api`의 non-paginated 기준정보 처리 보완(`73ae99f`)을 pin 했다.
+- 공항 주차 수집으로 저장된 공항만 지도 `place`로 노출하도록 했다. 좌표는
+  `python-krairport-api`의 번들 WGS84 기준정보를 사용하며 지도 요청 중 외부 API를 호출하지
+  않는다. 공항 marker는 주유소·철도역·항구·휴게소와 구분되는 SVG 아이콘을 사용한다.
+
+- 운영 PostgreSQL을 직접 읽어 저장량을 확인했다. 주유소는 11,829건 중 좌표 보유
+  11,823건, 유가 스냅샷은 258,247건이었으며 마지막 성공은 2026-09-21 23:35:45 UTC다.
+  `opinet_browser`의 다음 실행은 Playwright response 30초 timeout으로 실패했다. 철도역과
+  항구는 각각 0건이고, 기존 기준정보 수집 flag가 기본 비활성이라 실행 이력이 없었다.
+  휴게소는 저장 table·수집 job이 없었다.
+- `codex/map-marker-density`에서 `python-krex-api`의 async 전국 휴게소 기준정보를
+  `rest_area_references`에 72시간 guard와 함께 저장하는 Dagster job을 추가했다. 지도
+  place API는 `rest_area`를 포함하고, 지도 기본 예산을 종류별 400/750/1,000곳으로 늘린
+  뒤 60초 viewport cache와 중복 viewport 요청 차단을 적용했다. 주유소 marker에는 유종과
+  가격을, 주유소·철도역·항구·휴게소에는 서로 다른 SVG 아이콘을 표시한다. backend 계약·수집·
+  Dagster 테스트 7건은 WSL에서 통과했다.
+
 ## 2026-09-22
 
 - `67d17a3`을 n150에 배포해 세 transport 컨테이너의 healthy와 release SHA를 확인했다.

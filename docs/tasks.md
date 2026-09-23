@@ -55,6 +55,8 @@ Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks
 - [x] bbox 기반 저장 장소 지도 요청·절단 안내, 실제 VWorld 타일·모바일 viewport live E2E 계약, vendor tarball provenance 기록
 - [x] VWorld 제공 영역 밖 `200/XML FileNotFound`를 공통 provider fallback으로 분리하고,
       submodule·vendor tarball·SRI를 병합된 provider revision으로 동기화
+- [ ] 휴게소 기준정보를 3일 Dagster job으로 적재하고 지도 marker의 장소별 아이콘·주유소
+      유종/가격 label·viewport cache를 n150에서 검증
 - [ ] 후속 P2: 수집량 증가 전 fuel/rail numeric 좌표 bbox 복합 index를 `EXPLAIN (ANALYZE,
       BUFFERS)` 측정으로 설계한다. 현재 지도는 zoom별 전체 최대 900개를 요청하므로 즉시
       PostGIS migration을 강제하지 않는다.
@@ -66,6 +68,9 @@ Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks
 - [ ] 후속 P2: VWorld `vworld-tile-error`의 `mapId`를 transport 지도 identity와 대조하고,
       fallback 오류·정상 회복 event를 자동 검증한다. 현재 단일 map instance의 listener
       cleanup과 오류 배너 가시성은 확인됐다.
+- [ ] 후속 P2: `NEXT_PUBLIC_VWORLD_API_KEY`가 없는 fallback에서도 저장된 장소 목록을
+      실제로 조회·표시하거나, 목록을 표시한다는 문구를 제거한다. 현재 provider fallback은
+      map `onLoad`와 children을 mount하지 않아 장소 조회가 시작되지 않는다.
 - [ ] 후속 P2: transport deploy script의 stale middleware 보존/제거 조건을 mock으로
       검증하고, versioned release directory의 atomic switch와 remote checkout canonical path
       검증을 설계한다. 현재 build 실패는 `up --force-recreate` 전에 끝나 기존 서비스는 유지된다.

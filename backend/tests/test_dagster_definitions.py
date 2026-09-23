@@ -11,13 +11,17 @@ from app.dagster.definitions import definitions
 def test_dagster_definitions_evaluates_kric_rail_due_daily_with_a_48_hour_guard() -> None:
     rail_schedule = definitions.get_schedule_def("rail_reference_collection_job_schedule")
     maritime_schedule = definitions.get_schedule_def("maritime_reference_collection_job_schedule")
+    rest_area_schedule = definitions.get_schedule_def("rest_area_reference_collection_job_schedule")
 
     assert rail_schedule.cron_schedule == "0 3 * * *"
     assert maritime_schedule.cron_schedule == "0 3 */3 * *"
+    assert rest_area_schedule.cron_schedule == "0 3 */3 * *"
     assert rail_schedule.execution_timezone == "Asia/Seoul"
     assert maritime_schedule.execution_timezone == "Asia/Seoul"
+    assert rest_area_schedule.execution_timezone == "Asia/Seoul"
     assert rail_schedule.default_status.name == "RUNNING"
     assert maritime_schedule.default_status.name == "RUNNING"
+    assert rest_area_schedule.default_status.name == "RUNNING"
 
 
 def test_dagster_definitions_register_every_collection_domain() -> None:
@@ -27,6 +31,7 @@ def test_dagster_definitions_register_every_collection_domain() -> None:
         "fuel_collection_job",
         "rail_reference_collection_job",
         "maritime_reference_collection_job",
+        "rest_area_reference_collection_job",
     }
     assert {definitions.get_job_def(name).name for name in job_names} == job_names
 
@@ -38,18 +43,23 @@ def test_dagster_definitions_enable_every_schedule_and_serialize_overlapping_gro
         "fuel_collection_job_schedule",
         "rail_reference_collection_job_schedule",
         "maritime_reference_collection_job_schedule",
+        "rest_area_reference_collection_job_schedule",
     }
     assert {definitions.get_schedule_def(name).default_status.name for name in schedule_names} == {"RUNNING"}
 
     dagster_yaml = (Path(__file__).parents[1] / "dagster_home" / "dagster.yaml").read_text(encoding="utf-8")
     assert "value: parking\n        limit: 1" in dagster_yaml
     assert "value: highway\n        limit: 1" in dagster_yaml
+    base_compose_path = Path(__file__).parents[2] / "docker-compose.yml"
     shared_compose_path = Path(__file__).parents[2] / "docker-compose.shared.yml"
     if not shared_compose_path.exists():
         shared_compose_path = Path("/app/compose-contract/docker-compose.shared.yml")
+    base_compose = base_compose_path.read_text(encoding="utf-8")
     shared_compose = shared_compose_path.read_text(encoding="utf-8")
     assert 'RUSTFS_REGION_NAME: "${RUSTFS_REGION_NAME:-us-east-1}"' in shared_compose
     assert 'RUSTFS_RAW_PREFIX: "${RUSTFS_RAW_PREFIX:-provider-raw}"' in shared_compose
+    assert 'OPINET_BROWSER_TIMEOUT_MS: "${OPINET_BROWSER_TIMEOUT_MS:-60000}"' in shared_compose
+    assert 'OPINET_BROWSER_TIMEOUT_MS: "${OPINET_BROWSER_TIMEOUT_MS:-60000}"' in base_compose
     assert 'RUN_DB_MIGRATIONS: "false"' in shared_compose
     assert 'image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-airport-backend:latest}"' in shared_compose
 

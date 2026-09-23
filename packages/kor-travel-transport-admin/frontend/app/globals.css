@@ -58,8 +58,9 @@ button, input { font: inherit; }
 .api-result { background: #10201e; border-radius: 8px; color: #def0e9; max-height: 460px; overflow: auto; padding: 15px; white-space: pre-wrap; }
 .transport-map-layout { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; display: grid; grid-template-columns: minmax(0, 1fr) 310px; min-height: 620px; overflow: hidden; }
 .transport-map-canvas { min-height: 620px; }
-.map-place-marker, .map-price-marker { background: var(--panel); border: 2px solid var(--accent); border-radius: 999px; box-shadow: var(--shadow-map); color: var(--ink); display: block; font-size: 12px; font-weight: 700; padding: 6px 9px; white-space: nowrap; }
-.map-price-marker { background: var(--accent); color: white; }
+.map-place-marker { align-items: center; background: var(--panel); border: 2px solid var(--accent); border-radius: 999px; box-shadow: var(--shadow-map); color: var(--ink); display: inline-flex; font-size: 12px; font-weight: 700; gap: 5px; padding: 6px 9px; white-space: nowrap; }
+.map-place-marker.has-price { background: var(--accent); color: white; }
+.map-marker-icon { fill: none; height: 15px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; width: 15px; }
 .map-popup { color: var(--ink); display: grid; gap: 8px; max-width: 280px; padding: 3px; }
 .map-popup h2, .map-popup p { margin: 0; }
 .transport-map-detail { border-left: 1px solid var(--line); padding: 22px; }
