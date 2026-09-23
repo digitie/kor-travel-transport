@@ -104,6 +104,10 @@ def test_transport_runtime_deploy_never_recreates_the_parking_frontend() -> None
     assert "services=(backend dagster-code-server dagster-webserver dagster-daemon)" in script
     assert 'up -d --build --force-recreate --no-deps "${services[@]}"' in script
     assert 'ps --status running --services' in script
+    assert 'for service in dagster-code-server dagster-webserver dagster-daemon' in script
+    assert 'docker inspect --format' in script
+    assert 'healthcheck가 실패한 transport 서비스' in script
+    assert 'healthcheck 확인 시간이 초과됐습니다' in script
     assert "http://127.0.0.1:14001/health" in script
 
 

@@ -51,6 +51,32 @@ for service in "${services[@]}"; do
   "${compose[@]}" ps --status running --services | grep -qx "${service}" \
     || { echo "실행 중이지 않은 transport 서비스: ${service}" >&2; exit 1; }
 done
+wait_for_healthy() {
+  local service="$1"
+  local container_id health_status
+  for attempt in $(seq 1 120); do
+    container_id="$("${compose[@]}" ps -q "${service}")"
+    if [[ -n "${container_id}" ]]; then
+      health_status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "${container_id}")"
+      case "${health_status}" in
+        healthy) return 0 ;;
+        unhealthy)
+          echo "healthcheck가 실패한 transport 서비스: ${service}" >&2
+          return 1
+          ;;
+      esac
+    fi
+    sleep 2
+  done
+  echo "transport 서비스 healthcheck 확인 시간이 초과됐습니다: ${service}" >&2
+  return 1
+}
+
+# Dagster는 backend와 별개로 수집 스케줄을 담당한다. 단순 running 상태가 아닌 각
+# service healthcheck까지 확인해야 code-server/daemon 장애를 배포 성공으로 기록하지 않는다.
+for service in dagster-code-server dagster-webserver dagster-daemon; do
+  wait_for_healthy "${service}"
+done
 for attempt in $(seq 1 30); do
   health="$(curl -fsS http://127.0.0.1:14001/health 2>/dev/null || true)"
   if grep -Fq "\"release_sha\":\"${CANDIDATE_SHA}\"" <<<"${health}"; then
