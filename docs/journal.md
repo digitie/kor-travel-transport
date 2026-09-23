@@ -12,6 +12,8 @@
   James 적대 리뷰가 base/shared Compose의 기존 `${OPINET_BROWSER_TIMEOUT_MS:-30000}`
   fallback도 환경변수로 주입돼 코드 기본을 다시 덮는 P1을 확인했다. 두 Compose fallback과
   n150 예제를 60초로 정렬하고 static contract test로 고정했다.
+  지도 API key 없는 fallback에서 저장 장소 목록이 실제로 채워지지 않는 기존 P2는
+  timeout 수정에 섞지 않고 T-042 후속으로 기록했다.
 
 - 공항 지도 장소에는 공항 코드·도시뿐 아니라 저장된 최신 주차장 수, 가용면, 전체면과 관측시각을
   포함했다. 최신 snapshot만 집계하므로 과거 시계열을 중복 합산하지 않으며 지도 읽기 중 외부 API를
