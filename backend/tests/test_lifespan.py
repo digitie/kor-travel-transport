@@ -4,9 +4,12 @@ import sqlite3
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
+from app.db.session import ALEMBIC_HEAD
 from app.main import create_app
 
 
@@ -83,3 +86,12 @@ def test_database_startup_creates_query_indexes(tmp_path: Path) -> None:
         "ix_fuel_prices_statistics_collected",
         "ix_transport_collection_states_next_due",
     } <= index_names
+
+
+def test_postgresql_schema_guard_tracks_alembic_head() -> None:
+    """새 migration이 runtime schema guard와 분리되지 않게 한다."""
+    backend_root = Path(__file__).resolve().parents[1]
+    config = Config(str(backend_root / "alembic.ini"))
+    config.set_main_option("script_location", str(backend_root / "alembic"))
+
+    assert ScriptDirectory.from_config(config).get_current_head() == ALEMBIC_HEAD
