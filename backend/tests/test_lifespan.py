@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.db.session import ALEMBIC_HEAD
 from app.main import create_app
+from app.models import Base
 
 
 def build_settings(tmp_path: Path, **overrides) -> Settings:
@@ -111,6 +112,7 @@ def test_alembic_history_keeps_the_deployed_rest_area_revision() -> None:
     assert deployed_revision is not None
     assert head_revision is not None
     assert head_revision.down_revision == deployed_revision.revision
+    assert "rest_area_references" in Base.metadata.tables
 
 
 def test_committed_openapi_schema_includes_bus_routes_and_runtime_errors() -> None:
