@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from datetime import UTC, timedelta
 from typing import Any
 
 from datagokr import DataGoKrClient, TagoBusTerminal
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -38,6 +39,45 @@ class BusReferenceCollectionService:
             return {"status": "skipped", "reason": "bus reference collection is disabled"}
         if not self.settings.data_go_kr_service_key:
             return {"status": "skipped", "reason": "DATA_GO_KR_SERVICE_KEY is required"}
+        async with self._postgres_collection_lease(session) as acquired:
+            if not acquired:
+                return {"status": "skipped", "reason": "another TAGO bus reference collection is active"}
+            return await self._collect_unlocked(session, trigger=trigger)
+
+    @asynccontextmanager
+    async def _postgres_collection_lease(self, session: AsyncSession) -> AsyncIterator[bool]:
+        """Dagster process가 겹쳐도 TAGO 기준정보 호출은 한 번만 수행한다.
+
+        PostgreSQL session advisory lock은 수집 transaction과 별도 connection으로 소유한다.
+        따라서 수집 중 ``session.commit()``해도 lock이 반납되지 않으며, SQLite 단위 테스트는
+        provider 호출 없이 기존 단일 process 동작을 유지한다.
+        """
+        engine = session.bind
+        if engine is None or engine.dialect.name != "postgresql":
+            yield True
+            return
+
+        async with engine.connect() as lock_connection:
+            acquired = bool(
+                await lock_connection.scalar(
+                    text("SELECT pg_try_advisory_lock(hashtext('kor_travel_transport:tagobus_reference'))")
+                )
+            )
+            try:
+                yield acquired
+            finally:
+                if acquired:
+                    released = bool(
+                        await lock_connection.scalar(
+                            text("SELECT pg_advisory_unlock(hashtext('kor_travel_transport:tagobus_reference'))")
+                        )
+                    )
+                    if not released:
+                        raise RuntimeError("TAGO bus reference advisory lock was not released by its owner connection")
+
+    async def _collect_unlocked(
+        self, session: AsyncSession, *, trigger: str
+    ) -> dict[str, Any]:
         latest_success = await session.scalar(
             select(CollectionRun.finished_at)
             .where(

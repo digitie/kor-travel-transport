@@ -89,6 +89,9 @@ def test_transport_runtime_forwards_port_guideline_and_timetable_limits() -> Non
         "FERRY_TIMETABLE_CACHE_SECONDS",
         "FERRY_TIMETABLE_CACHE_MAX_ENTRIES",
         "FERRY_TIMETABLE_MAX_DAYS_AHEAD",
+        "BUS_TIMETABLE_CACHE_SECONDS",
+        "BUS_TIMETABLE_CACHE_MAX_ENTRIES",
+        "BUS_TIMETABLE_MIN_INTERVAL_SECONDS",
     ):
         assert variable in base_compose
         assert variable in shared_compose

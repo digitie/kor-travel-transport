@@ -74,6 +74,39 @@ def test_bus_reference_collection_stores_terminal_reference_only(tmp_path: Path)
     asyncio.run(run())
 
 
+def test_postgres_bus_reference_lease_uses_dedicated_connection() -> None:
+    class LockConnection:
+        def __init__(self) -> None:
+            self.statements: list[str] = []
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+        async def scalar(self, statement):
+            self.statements.append(str(statement))
+            return True
+
+    async def run() -> None:
+        connection = LockConnection()
+        session = SimpleNamespace(
+            bind=SimpleNamespace(dialect=SimpleNamespace(name="postgresql"), connect=lambda: connection)
+        )
+        service = BusReferenceCollectionService(Settings())
+
+        async with service._postgres_collection_lease(session) as acquired:
+            assert acquired is True
+            assert len(connection.statements) == 1
+
+        assert len(connection.statements) == 2
+        assert "pg_try_advisory_lock" in connection.statements[0]
+        assert "pg_advisory_unlock" in connection.statements[1]
+
+    asyncio.run(run())
+
+
 class _FailingBusProvider:
     async def iter_terminals(self, **_kwargs: object):
         raise RuntimeError("TAGO unavailable")

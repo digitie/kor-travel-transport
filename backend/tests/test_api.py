@@ -267,7 +267,12 @@ def test_transport_bus_lists_saved_terminals_and_caches_live_timetable(tmp_path:
             fare = 38_000 if kwargs["bus_grade_id"] == "1" else 31_000
             return SimpleNamespace(items=(SimpleNamespace(route_id="R1", dep_place_name="서울", arr_place_name="부산", dep_planned_time="20260925060000", arr_planned_time="20260925094000", grade_name="우등", adult_charge=fare),))
 
-    with build_client(tmp_path, data_go_kr_service_key="test-key", bus_timetable_cache_max_entries=1) as client:
+    with build_client(
+        tmp_path,
+        data_go_kr_service_key="test-key",
+        bus_timetable_cache_max_entries=1,
+        bus_timetable_min_interval_seconds=30,
+    ) as client:
         async def seed() -> None:
             now = now_utc()
             async with client.app.state.session_factory() as session:
