@@ -61,11 +61,14 @@ def test_bus_reference_collection_stores_terminal_reference_only(tmp_path: Path)
         async with session_factory() as session:
             first = await service.collect(session)
         async with session_factory() as session:
+            second = await service.collect(session)
+        async with session_factory() as session:
             assert await session.scalar(select(func.count()).select_from(BusTerminalReference)) == 2
             assert await session.scalar(select(func.count()).select_from(CollectionRun)) == 1
         assert first["status"] == "success"
         assert first["express_terminal_count"] == 1
         assert first["intercity_terminal_count"] == 1
+        assert second == {"status": "skipped", "reason": "TAGO bus reference is not due for 72 hours"}
         await engine.dispose()
 
     asyncio.run(run())
