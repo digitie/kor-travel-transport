@@ -3,9 +3,11 @@
 ## 현재 상태
 
 - 2026-09-25 TAGO 고속·시외버스 provider(`python-datagokr-api` PR #18)는 두 독립 적대 리뷰의
-  P1/P2를 모두 해소한 뒤 `472c353`으로 병합됐다. transport 후보는 터미널 기준정보
-  `bus_terminal_references`, 3일 Dagster 수집, 저장하지 않는 실시간 시간표 API를 추가 중이다.
-  다음 게이트는 backend/Compose 검증, transport PR CI, James/Popper 재리뷰, n150 live E2E다.
+  P1/P2를 모두 해소한 뒤 `472c353`으로 병합됐다. transport PR #39는 터미널 기준정보
+  `bus_terminal_references`, 72시간 provider 호출 guard를 둔 Dagster 수집, 저장하지 않는
+  실시간 시간표 API를 추가했다. 공개 backend에도 `DATA_GO_KR_SERVICE_KEY`를 전달하고
+  여객선·버스 시간표 cache의 TTL/LRU 상한을 고정했다. 최신 James/Popper 재리뷰는 모두
+  `APPROVE`다. 다음 게이트는 최신 CI와 n150 live E2E, PR 머지다.
 
 - 2026-09-22 `codex/transport-experience`는 병합된 PR #36 (`46f29da`)에서 분기했다.
   교통·유가를 하나의 저장 통계 화면으로 통합하고, 고속도로·유가·수집 source 코드를
