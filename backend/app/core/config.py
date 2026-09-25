@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     ferry_timetable_min_interval_seconds: int = Field(default=30, ge=1, le=3600)
     ferry_timetable_max_days_ahead: int = Field(default=7, ge=0, le=31)
     bus_timetable_cache_seconds: int = Field(default=300, ge=30, le=3600)
+    bus_timetable_cache_max_entries: int = Field(default=500, ge=1, le=10_000)
     bus_timetable_min_interval_seconds: int = Field(default=15, ge=1, le=3600)
     # 저장된 교통 통계는 수집 주기보다 훨씬 짧게만 메모리에 보관한다. 반복되는
     # 대시보드/공개 API 조회가 넓은 집계를 다시 실행하지 않게 하되, 새 수집 결과도

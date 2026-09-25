@@ -373,7 +373,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.ferry_timetable_lock = asyncio.Lock()
         app.state.ferry_timetable_rate_limited_until: datetime | None = None
         app.state.ferry_timetable_last_provider_call_at: datetime | None = None
-        app.state.bus_timetable_cache: dict[tuple[str, str, str, date, str | None], tuple[datetime, BusTimetableResponse]] = {}
+        app.state.bus_timetable_cache: OrderedDict[
+            tuple[str, str, str, date, str | None], tuple[datetime, BusTimetableResponse]
+        ] = OrderedDict()
         app.state.bus_timetable_lock = asyncio.Lock()
         app.state.bus_timetable_rate_limited_until: datetime | None = None
         app.state.bus_timetable_last_provider_call_at: datetime | None = None
@@ -1110,9 +1112,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if service_type == "intercity" and bus_grade_id is not None:
             raise HTTPException(status_code=422, detail="시외버스 시간표는 등급 필터를 지원하지 않습니다.")
         cache_key = (service_type, departure_terminal_id, arrival_terminal_id, service_date, bus_grade_id)
-        cached = request.app.state.bus_timetable_cache.get(cache_key)
-        if cached is not None and now_utc() - cached[0] < timedelta(seconds=settings.bus_timetable_cache_seconds):
+        timetable_cache = request.app.state.bus_timetable_cache
+
+        def cached_response() -> BusTimetableResponse | None:
+            checked_at = now_utc()
+            expires_after = timedelta(seconds=settings.bus_timetable_cache_seconds)
+            for stale_key, (cached_at, _response) in list(timetable_cache.items()):
+                if checked_at - cached_at >= expires_after:
+                    timetable_cache.pop(stale_key, None)
+            cached = timetable_cache.get(cache_key)
+            if cached is None:
+                return None
+            timetable_cache.move_to_end(cache_key)
             return cached[1]
+
+        cached = cached_response()
+        if cached is not None:
+            return cached
         rate_limited_until: datetime | None = request.app.state.bus_timetable_rate_limited_until
         if rate_limited_until is not None and now_utc() < rate_limited_until:
             retry_after_seconds = max(1, int((rate_limited_until - now_utc()).total_seconds()))
@@ -1122,9 +1138,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 headers={"Retry-After": str(retry_after_seconds)},
             )
         async with request.app.state.bus_timetable_lock:
-            cached = request.app.state.bus_timetable_cache.get(cache_key)
-            if cached is not None and now_utc() - cached[0] < timedelta(seconds=settings.bus_timetable_cache_seconds):
-                return cached[1]
+            cached = cached_response()
+            if cached is not None:
+                return cached
             rate_limited_until = request.app.state.bus_timetable_rate_limited_until
             if rate_limited_until is not None and now_utc() < rate_limited_until:
                 retry_after_seconds = max(1, int((rate_limited_until - now_utc()).total_seconds()))
@@ -1184,7 +1200,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     for item in page.items
                 ],
             )
-            request.app.state.bus_timetable_cache[cache_key] = (now_utc(), response)
+            timetable_cache[cache_key] = (now_utc(), response)
+            timetable_cache.move_to_end(cache_key)
+            while len(timetable_cache) > settings.bus_timetable_cache_max_entries:
+                timetable_cache.popitem(last=False)
             return response
 
     @router.get("/transport/collector-status", response_model=TransportCollectorStatus)

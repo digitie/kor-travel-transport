@@ -67,6 +67,7 @@ def test_transport_gateway_contract_has_bounded_upstreams_and_dagster_auth() -> 
     assert "proxy_pass http://127.0.0.1:14001" in api_gateway
     assert "location ~ ^/v1/transport/" in api_gateway
     assert "features/places" in api_gateway
+    assert "bus/(terminals|timetable)" in api_gateway
     assert "ports/[^/]+/timetable" in api_gateway
     assert "limit_except GET" in api_gateway
     assert "location / { return 404; }" in api_gateway
@@ -86,3 +87,5 @@ def test_transport_runtime_forwards_port_guideline_and_timetable_limits() -> Non
     for variable in ("PORT_GUIDELINE_COLLECTION_ENABLED", "FERRY_TIMETABLE_CACHE_SECONDS", "FERRY_TIMETABLE_MAX_DAYS_AHEAD"):
         assert variable in base_compose
         assert variable in shared_compose
+
+    assert "BUS_REFERENCE_COLLECTION_ENABLED" in shared_compose

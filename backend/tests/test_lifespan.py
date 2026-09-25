@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -95,3 +96,11 @@ def test_postgresql_schema_guard_tracks_alembic_head() -> None:
     config.set_main_option("script_location", str(backend_root / "alembic"))
 
     assert ScriptDirectory.from_config(config).get_current_head() == ALEMBIC_HEAD
+
+
+def test_committed_openapi_schema_includes_bus_routes() -> None:
+    schema_path = Path(__file__).resolve().parents[2] / "docs" / "openapi.json"
+    paths = json.loads(schema_path.read_text(encoding="utf-8"))["paths"]
+
+    assert "/v1/transport/bus/terminals" in paths
+    assert "/v1/transport/bus/timetable" in paths

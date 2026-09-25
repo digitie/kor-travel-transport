@@ -204,6 +204,10 @@ throttle(허용 범위 8~12시간, 24시간 내 최대 3회)을 추가로 적용
   - 저장 데이터 기반 고속도로 속도/돌발/유가 통계
 - `GET /v1/transport/collector-status`
   - 통합 교통정보 scheduler와 소스별 수집 상태
+- `GET /v1/transport/bus/terminals`
+  - 3일 주기로 저장한 고속·시외버스 터미널 기준정보
+- `GET /v1/transport/bus/timetable`
+  - 저장하지 않는 실시간 TAGO 시간표. 제공자 호출 제한을 보호하며 시외버스는 한국 시간 당일만 제공
 
 ## 프론트 화면 구조
 
