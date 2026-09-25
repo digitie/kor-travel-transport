@@ -98,6 +98,21 @@ def test_postgresql_schema_guard_tracks_alembic_head() -> None:
     assert ScriptDirectory.from_config(config).get_current_head() == ALEMBIC_HEAD
 
 
+def test_alembic_history_keeps_the_deployed_rest_area_revision() -> None:
+    """운영 DB에 적용된 0011을 잃으면 다음 배포의 Alembic 시작 자체가 실패한다."""
+    backend_root = Path(__file__).resolve().parents[1]
+    config = Config(str(backend_root / "alembic.ini"))
+    config.set_main_option("script_location", str(backend_root / "alembic"))
+    script = ScriptDirectory.from_config(config)
+
+    deployed_revision = script.get_revision("0011_rest_area_references")
+    head_revision = script.get_revision(ALEMBIC_HEAD)
+
+    assert deployed_revision is not None
+    assert head_revision is not None
+    assert head_revision.down_revision == deployed_revision.revision
+
+
 def test_committed_openapi_schema_includes_bus_routes_and_runtime_errors() -> None:
     schema_path = Path(__file__).resolve().parents[2] / "docs" / "openapi.json"
     paths = json.loads(schema_path.read_text(encoding="utf-8"))["paths"]
