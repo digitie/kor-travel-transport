@@ -10,6 +10,7 @@ from datetime import date, datetime, time, timedelta
 from functools import wraps
 from http import HTTPStatus
 from types import SimpleNamespace
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
@@ -19,9 +20,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import load_only, selectinload
+from datagokr import DataGoKrClient
 from kric import DataGoKrMaritimeClient, KricRateLimitError
 
 from app.core.config import Settings, get_settings
@@ -29,6 +31,7 @@ from app.core.time_utils import now_utc, serialize_utc, to_seoul
 from app.db.session import create_engine_and_session_factory, init_database
 from app.models import (
     Airport,
+    BusTerminalReference,
     CollectionRun,
     FuelPriceSnapshot,
     FuelStation,
@@ -47,6 +50,10 @@ from app.schemas import (
     BackupFile,
     BackupListResponse,
     BackupRestoreResponse,
+    BusTerminalItem,
+    BusTerminalResponse,
+    BusTimetableItem,
+    BusTimetableResponse,
     CollectionSummary,
     CollectionRunStatus,
     CollectorStatusResponse,
@@ -365,6 +372,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.ferry_timetable_lock = asyncio.Lock()
         app.state.ferry_timetable_rate_limited_until: datetime | None = None
         app.state.ferry_timetable_last_provider_call_at: datetime | None = None
+        app.state.bus_timetable_cache: dict[tuple[str, str, str, date], tuple[datetime, BusTimetableResponse]] = {}
+        app.state.bus_timetable_lock = asyncio.Lock()
+        app.state.bus_timetable_last_provider_call_at: datetime | None = None
         app.state.transport_statistics_cache: OrderedDict[
             tuple[str | None, int], tuple[datetime, TransportStatisticsResponse]
         ] = OrderedDict()
@@ -1013,6 +1023,138 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 items=[FerryOperationItem(vessel_name=item.vessel_name, departure_port_name=item.departure_port_name, arrival_port_name=item.arrival_port_name, departure_planned_time=item.departure_planned_time, arrival_planned_time=item.arrival_planned_time, fare=item.fare) for item in operations],
             )
             request.app.state.ferry_timetable_cache[cache_key] = (now_utc(), response)
+            return response
+
+    @router.get("/transport/bus/terminals", response_model=BusTerminalResponse)
+    async def transport_bus_terminals(
+        service_type: Literal["express", "intercity"] = Query(alias="service_type"),
+        query: str | None = Query(default=None, max_length=100),
+        offset: int = Query(default=0, ge=0),
+        limit: int = Query(default=50, ge=1, le=100),
+        session: AsyncSession = Depends(get_db),
+    ) -> BusTerminalResponse:
+        """저장된 TAGO 터미널을 조회한다. 시간표 provider를 호출하지 않는다."""
+        conditions = [
+            BusTerminalReference.source == "data_go_kr_tago",
+            BusTerminalReference.service_type == service_type,
+        ]
+        normalized_query = query.strip() if query else None
+        if normalized_query:
+            pattern = f"%{normalized_query}%"
+            conditions.append(
+                or_(
+                    BusTerminalReference.terminal_name.ilike(pattern),
+                    BusTerminalReference.city_name.ilike(pattern),
+                    BusTerminalReference.terminal_id.ilike(pattern),
+                )
+            )
+        total = int(
+            await session.scalar(select(func.count()).select_from(BusTerminalReference).where(*conditions))
+            or 0
+        )
+        rows = (
+            await session.execute(
+                select(BusTerminalReference)
+                .where(*conditions)
+                .order_by(BusTerminalReference.terminal_name.asc(), BusTerminalReference.id.asc())
+                .offset(offset)
+                .limit(limit)
+            )
+        ).scalars().all()
+        next_offset = offset + len(rows) if total > offset + len(rows) else None
+        return BusTerminalResponse(
+            generated_at=now_utc(), service_type=service_type, query=normalized_query,
+            offset=offset, limit=limit, total=total, next_offset=next_offset,
+            items=[
+                BusTerminalItem(
+                    id=row.id, service_type=row.service_type, terminal_id=row.terminal_id,
+                    terminal_name=row.terminal_name, city_name=row.city_name,
+                    updated_at=row.last_seen_at,
+                )
+                for row in rows
+            ],
+        )
+
+    @router.get("/transport/bus/timetable", response_model=BusTimetableResponse)
+    async def transport_bus_timetable(
+        request: Request,
+        service_type: Literal["express", "intercity"] = Query(alias="service_type"),
+        departure_terminal_id: str = Query(min_length=1, max_length=120),
+        arrival_terminal_id: str = Query(min_length=1, max_length=120),
+        service_date: date = Query(default_factory=lambda: to_seoul(now_utc()).date(), alias="date"),
+        bus_grade_id: str | None = Query(default=None, max_length=40),
+        session: AsyncSession = Depends(get_db),
+    ) -> BusTimetableResponse:
+        """저장하지 않는 실시간 TAGO 시간표. 같은 요청은 짧게 cache한다."""
+        settings: Settings = request.app.state.settings
+        if departure_terminal_id == arrival_terminal_id:
+            raise HTTPException(status_code=422, detail="출발과 도착 터미널은 달라야 합니다.")
+        today = to_seoul(now_utc()).date()
+        if service_type == "intercity" and service_date != today:
+            raise HTTPException(status_code=422, detail="시외버스 시간표는 오늘(Asia/Seoul)만 제공합니다.")
+        if not settings.data_go_kr_service_key:
+            raise HTTPException(status_code=503, detail="TAGO 버스 provider가 설정되지 않았습니다.")
+        terminals = (
+            await session.execute(
+                select(BusTerminalReference.terminal_id).where(
+                    BusTerminalReference.source == "data_go_kr_tago",
+                    BusTerminalReference.service_type == service_type,
+                    BusTerminalReference.terminal_id.in_([departure_terminal_id, arrival_terminal_id]),
+                )
+            )
+        ).scalars().all()
+        if {departure_terminal_id, arrival_terminal_id} - set(terminals):
+            raise HTTPException(status_code=404, detail="저장된 해당 유형의 버스 터미널을 찾을 수 없습니다.")
+        if service_type == "intercity" and bus_grade_id is not None:
+            raise HTTPException(status_code=422, detail="시외버스 시간표는 등급 필터를 지원하지 않습니다.")
+        cache_key = (service_type, departure_terminal_id, arrival_terminal_id, service_date)
+        cached = request.app.state.bus_timetable_cache.get(cache_key)
+        if cached is not None and now_utc() - cached[0] < timedelta(seconds=settings.bus_timetable_cache_seconds):
+            return cached[1]
+        async with request.app.state.bus_timetable_lock:
+            cached = request.app.state.bus_timetable_cache.get(cache_key)
+            if cached is not None and now_utc() - cached[0] < timedelta(seconds=settings.bus_timetable_cache_seconds):
+                return cached[1]
+            last_call: datetime | None = request.app.state.bus_timetable_last_provider_call_at
+            if last_call is not None:
+                remaining = settings.bus_timetable_min_interval_seconds - (now_utc() - last_call).total_seconds()
+                if remaining > 0:
+                    raise HTTPException(
+                        status_code=429,
+                        detail="TAGO 시간표 provider 보호 간격이 적용 중입니다.",
+                        headers={"Retry-After": str(max(1, int(remaining)))},
+                    )
+            request.app.state.bus_timetable_last_provider_call_at = now_utc()
+            try:
+                async with DataGoKrClient(api_key=settings.data_go_kr_service_key, timeout=settings.api_timeout_seconds) as client:
+                    provider = client.express_bus if service_type == "express" else client.intercity_bus
+                    page = await provider.timetable_list(
+                        departure_terminal_id=departure_terminal_id,
+                        arrival_terminal_id=arrival_terminal_id,
+                        departure_date=service_date,
+                        bus_grade_id=bus_grade_id,
+                        num_of_rows=100,
+                    )
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            except Exception as exc:
+                logger.warning("TAGO timetable provider failed: %s", type(exc).__name__)
+                raise HTTPException(status_code=502, detail="TAGO 시간표 provider 조회에 실패했습니다.") from exc
+            response = BusTimetableResponse(
+                service_type=service_type, departure_terminal_id=departure_terminal_id,
+                arrival_terminal_id=arrival_terminal_id, service_date=service_date, fetched_at=now_utc(),
+                items=[
+                    BusTimetableItem(
+                        route_id=item.route_id, departure_terminal_name=item.dep_place_name,
+                        arrival_terminal_name=item.arr_place_name,
+                        departure_planned_time=item.dep_planned_time,
+                        arrival_planned_time=item.arr_planned_time, grade_name=item.grade_name,
+                        adult_fare=item.adult_charge,
+                    )
+                    for item in page.items
+                ],
+            )
+            request.app.state.bus_timetable_cache[cache_key] = (now_utc(), response)
             return response
 
     @router.get("/transport/collector-status", response_model=TransportCollectorStatus)

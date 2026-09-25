@@ -15,7 +15,7 @@ from app.core.config import Settings
 from app.core.time_utils import now_utc
 from app.main import create_app
 from kric import KricRateLimitError
-from app.models import AnalyticsCache, Airport, CollectionRun, FerryPort, FuelPriceSnapshot, FuelStation, ParkingLot, ParkingSnapshot, RailStationReference
+from app.models import AnalyticsCache, Airport, BusTerminalReference, CollectionRun, FerryPort, FuelPriceSnapshot, FuelStation, ParkingLot, ParkingSnapshot, RailStationReference
 
 
 def assert_is_utc_iso(value: str | None) -> None:
@@ -202,6 +202,49 @@ def test_transport_port_timetable_caches_one_live_provider_call(tmp_path: Path) 
     assert first.json() == second.json()
     assert first.json()["items"] == [{"vessel_name": "테스트호", "departure_port_name": "테스트항", "arrival_port_name": "도착항", "departure_planned_time": "09:00", "arrival_planned_time": "10:00", "fare": "10000"}]
     assert FakeMaritimeClient.calls == 1
+
+
+def test_transport_bus_lists_saved_terminals_and_caches_live_timetable(tmp_path: Path) -> None:
+    class FakeBusClient:
+        calls = 0
+
+        def __init__(self, *_args, **_kwargs) -> None:
+            self.express_bus = self
+            self.intercity_bus = self
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args) -> None:
+            return None
+
+        async def timetable_list(self, **kwargs):
+            type(self).calls += 1
+            assert kwargs["departure_terminal_id"] == "A"
+            assert kwargs["arrival_terminal_id"] == "B"
+            return SimpleNamespace(items=(SimpleNamespace(route_id="R1", dep_place_name="서울", arr_place_name="부산", dep_planned_time="20260925060000", arr_planned_time="20260925094000", grade_name="우등", adult_charge=38000),))
+
+    with build_client(tmp_path, data_go_kr_service_key="test-key") as client:
+        async def seed() -> None:
+            now = now_utc()
+            async with client.app.state.session_factory() as session:
+                for terminal_id, name in (("A", "서울터미널"), ("B", "부산터미널")):
+                    session.add(BusTerminalReference(source="data_go_kr_tago", service_type="express", terminal_id=terminal_id, terminal_name=name, city_name=None, first_seen_at=now, last_seen_at=now, raw_item_json=None))
+                await session.commit()
+
+        asyncio.run(seed())
+        listed = client.get("/v1/transport/bus/terminals", params={"service_type": "express", "query": "서울"})
+        with patch("app.main.DataGoKrClient", FakeBusClient):
+            first = client.get("/v1/transport/bus/timetable", params={"service_type": "express", "departure_terminal_id": "A", "arrival_terminal_id": "B", "date": "2026-09-25", "bus_grade_id": "1"})
+            second = client.get("/v1/transport/bus/timetable", params={"service_type": "express", "departure_terminal_id": "A", "arrival_terminal_id": "B", "date": "2026-09-25", "bus_grade_id": "1"})
+
+    assert listed.status_code == 200
+    assert listed.json()["total"] == 1
+    assert listed.json()["items"][0]["terminal_id"] == "A"
+    assert first.status_code == 200
+    assert first.json()["items"][0]["adult_fare"] == 38000
+    assert first.json() == second.json()
+    assert FakeBusClient.calls == 1
 
 
 def test_transport_port_timetable_rate_limit_uses_provider_wide_backoff(tmp_path: Path) -> None:

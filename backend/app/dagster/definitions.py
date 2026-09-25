@@ -11,6 +11,7 @@ from dagster import DefaultScheduleStatus, Definitions, ScheduleDefinition, job,
 from app.core.config import Settings, get_settings
 from app.db.session import create_engine_and_session_factory
 from app.services.collection import CollectionService
+from app.services.bus_collection import BusReferenceCollectionService
 from app.services.rail_maritime_collection import RailMaritimeCollectionService
 from app.services.transport_collection import CollectionScope, TransportCollectionService
 
@@ -74,6 +75,13 @@ def _collect_reference(kind: str) -> dict[str, Any]:
     return asyncio.run(_run_with_session(settings, action))
 
 
+def _collect_bus_reference() -> dict[str, Any]:
+    settings = _settings()
+    return asyncio.run(
+        _run_with_session(settings, BusReferenceCollectionService(settings).collect)
+    )
+
+
 @op
 def collect_rail_reference() -> dict[str, Any]:
     return _collect_reference("rail")
@@ -82,6 +90,11 @@ def collect_rail_reference() -> dict[str, Any]:
 @op
 def collect_maritime_reference() -> dict[str, Any]:
     return _collect_reference("maritime")
+
+
+@op
+def collect_bus_reference() -> dict[str, Any]:
+    return _collect_bus_reference()
 
 
 @job(tags={"kortraveltransport/run_group": "parking"})
@@ -109,6 +122,11 @@ def maritime_reference_collection_job() -> None:
     collect_maritime_reference()
 
 
+@job(tags={"kortraveltransport/run_group": "reference"})
+def bus_reference_collection_job() -> None:
+    collect_bus_reference()
+
+
 definitions = Definitions(
     jobs=[
         airport_collection_job,
@@ -116,6 +134,7 @@ definitions = Definitions(
         fuel_collection_job,
         rail_reference_collection_job,
         maritime_reference_collection_job,
+        bus_reference_collection_job,
     ],
     schedules=[
         ScheduleDefinition(job=airport_collection_job, cron_schedule="*/5 * * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
@@ -124,5 +143,6 @@ definitions = Definitions(
         # 매일 due를 평가하되 service가 마지막 성공 뒤 48시간 전에는 provider를 호출하지 않는다.
         ScheduleDefinition(job=rail_reference_collection_job, cron_schedule="0 3 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         ScheduleDefinition(job=maritime_reference_collection_job, cron_schedule="0 3 */3 * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
+        ScheduleDefinition(job=bus_reference_collection_job, cron_schedule="30 3 */3 * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
     ],
 )

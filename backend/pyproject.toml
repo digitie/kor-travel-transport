@@ -16,6 +16,7 @@ dependencies = [
   "dagster-webserver>=1.9,<2",
   "fastapi>=0.141,<1.0",
   "httpx>=0.28,<1.0",
+  "python-datagokr-api @ git+https://github.com/digitie/python-datagokr-api@472c353e2a3bfce5fd0571357a6652dc6000adf0",
   "python-kasi-api @ git+https://github.com/digitie/python-kasi-api@51c39c1b0dd5b169b748552e81b9b9a55e86b9a1",
   "python-krairport-api @ git+https://github.com/digitie/python-krairport-api@cbe4d1380dc0388c078e8ae4622d3e580717064b",
   "python-kric-api @ git+https://github.com/digitie/python-kric-api@e0ef18740840482b001f978722a3b67929d24c7f",

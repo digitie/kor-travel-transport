@@ -24,6 +24,10 @@
   provider custom protocol의 실제 fetch 실패 event는 그대로 화면에 노출하되, transport의
   raw MapLibre handler는 확인 가능한 HTTP `status >= 400`만 오류 배너로 승격하도록 좁혔다.
   source id만으로 실패로 판단해 정상 지도를 경고하던 false positive를 제거한다.
+- 2026-09-25 TAGO 고속버스(`15098522`)·시외버스(`15098541`)를 `python-datagokr-api` PR #18로
+  구현·적대 리뷰 후 병합했다. transport는 해당 merge SHA를 고정하고, 터미널 기준정보만 3일
+  Dagster 주기로 저장하며 시간표는 저장하지 않는 실시간 API로 제공한다. 시외 시간표는
+  `Asia/Seoul` 당일만 허용하고 cache miss의 전역 보호 간격을 둔다.
 - `codex/transport-experience`에서 관리 UI의 고속도로·유가를 하나의 저장 통계 화면으로
   통합했다. 유종·노선·source 코드는 사람이 읽는 한국어 용어로 표시하고, 비교값은 Apache
   ECharts 그래프로 바꿨다. 열차·도시철도와 배편은 별도 화면으로 분리했으며 배편 시간표는

@@ -423,6 +423,30 @@ class FerryShipTypeReference(Base):
     raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
 
 
+class BusTerminalReference(Base):
+    """TAGO 고속·시외버스의 저변동 터미널 기준정보.
+
+    운행 시간표는 당일성 provider 조회이므로 이 테이블에 저장하지 않는다.
+    """
+
+    __tablename__ = "bus_terminal_references"
+    __table_args__ = (
+        UniqueConstraint("source", "service_type", "terminal_id", name="uq_bus_terminal_reference"),
+        Index("ix_bus_terminal_reference_lookup", "service_type", "terminal_name"),
+        Index("ix_bus_terminal_reference_last_seen", "last_seen_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(40))
+    service_type: Mapped[str] = mapped_column(String(20))
+    terminal_id: Mapped[str] = mapped_column(String(120))
+    terminal_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    city_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
+
+
 class ParkingSnapshot(Base):
     __tablename__ = "parking_snapshots"
     __table_args__ = (
