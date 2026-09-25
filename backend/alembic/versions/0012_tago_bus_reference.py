@@ -1,7 +1,7 @@
 """TAGO 버스 터미널 기준정보를 저장한다.
 
 Revision ID: 0012_tago_bus_reference
-Revises: 0011_place_lookup_index
+Revises: 0010_transport_five_minute_stats
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "0012_tago_bus_reference"
-down_revision = "0011_place_lookup_index"
+down_revision = "0010_transport_five_minute_stats"
 branch_labels = None
 depends_on = None
 
