@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from datagokr import TagoBusTerminal
+from pydantic import ValidationError
 import pytest
 from sqlalchemy import func, select
 
@@ -105,6 +106,13 @@ def test_postgres_bus_reference_lease_uses_dedicated_connection() -> None:
         assert "pg_advisory_unlock" in connection.statements[1]
 
     asyncio.run(run())
+
+
+def test_bus_timetable_cache_covers_provider_protection_interval() -> None:
+    assert Settings().bus_timetable_cache_seconds == Settings().bus_timetable_min_interval_seconds == 900
+
+    with pytest.raises(ValidationError, match="BUS_TIMETABLE_CACHE_SECONDS"):
+        Settings(bus_timetable_cache_seconds=300, bus_timetable_min_interval_seconds=301)
 
 
 class _FailingBusProvider:
