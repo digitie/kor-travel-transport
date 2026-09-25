@@ -16,7 +16,8 @@
   `/v1/transport/fuel/stations`: PostgreSQL 최신/기간 데이터 조회
 - `/v1/transport/statistics`: 저장 데이터에서 평균 속도, 돌발 건수, 유종별 가격 통계 계산
 - `/v1/transport/collector-status`: 소스별 수집 상태와 마지막 실행 결과/오류 확인
-- TAGO 고속·시외버스 터미널은 3일 주기 Dagster job으로 저장하며,
+- TAGO 고속·시외버스 터미널은 Dagster가 매일 due를 평가하되 마지막 성공 뒤 72시간이 지난 경우에만
+  저장하며,
   `/v1/transport/bus/timetable`은 저장하지 않는 실시간 조회만 제공한다.
 
 통합 수집 실행은 기존 주차 수집과 별도 `CollectionRun.trigger=transport_scheduler`를
