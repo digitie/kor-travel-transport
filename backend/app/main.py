@@ -559,6 +559,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ("/v1/admin/backups", "post"): (503,),
             ("/v1/admin/backups/{filename}", "get"): (400, 404),
             ("/v1/admin/backups/restore", "post"): (400, 404, 409, 503),
+            # 실시간 TAGO 시간표는 설정·참조 데이터·상류 provider 상태를 함께 반영한다.
+            ("/v1/transport/bus/timetable", "get"): (404, 429, 502, 503),
         }
         for path, path_item in schema.get("paths", {}).items():
             for method, operation in path_item.items():

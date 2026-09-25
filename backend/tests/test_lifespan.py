@@ -98,9 +98,14 @@ def test_postgresql_schema_guard_tracks_alembic_head() -> None:
     assert ScriptDirectory.from_config(config).get_current_head() == ALEMBIC_HEAD
 
 
-def test_committed_openapi_schema_includes_bus_routes() -> None:
+def test_committed_openapi_schema_includes_bus_routes_and_runtime_errors() -> None:
     schema_path = Path(__file__).resolve().parents[2] / "docs" / "openapi.json"
     paths = json.loads(schema_path.read_text(encoding="utf-8"))["paths"]
 
     assert "/v1/transport/bus/terminals" in paths
     assert "/v1/transport/bus/timetable" in paths
+    responses = paths["/v1/transport/bus/timetable"]["get"]["responses"]
+    for code in ("404", "429", "502", "503"):
+        assert responses[code]["content"]["application/problem+json"]["schema"] == {
+            "$ref": "#/components/schemas/ProblemDetails"
+        }

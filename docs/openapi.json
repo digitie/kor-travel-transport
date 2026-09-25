@@ -5505,6 +5505,16 @@
             },
             "description": "Successful Response"
           },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
           "422": {
             "content": {
               "application/problem+json": {
@@ -5515,7 +5525,37 @@
             },
             "description": "요청 검증 오류"
           },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
           "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
+          "502": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
+          "503": {
             "content": {
               "application/problem+json": {
                 "schema": {
