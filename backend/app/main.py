@@ -369,7 +369,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.transport_collection_service = TransportCollectionService(resolved_settings)
         app.state.flight_status_service = FlightStatusService(resolved_settings)
         app.state.holiday_service = HolidayService(resolved_settings)
-        app.state.ferry_timetable_cache: dict[tuple[str, date], tuple[datetime, FerryOperationResponse]] = {}
+        app.state.ferry_timetable_cache: OrderedDict[
+            tuple[str, date], tuple[datetime, FerryOperationResponse]
+        ] = OrderedDict()
         app.state.ferry_timetable_lock = asyncio.Lock()
         app.state.ferry_timetable_rate_limited_until: datetime | None = None
         app.state.ferry_timetable_last_provider_call_at: datetime | None = None
@@ -976,9 +978,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not settings.data_go_kr_service_key:
             raise HTTPException(status_code=503, detail="여객선 실시간 provider가 설정되지 않았습니다.")
         cache_key = (port_id, service_date)
-        cached = request.app.state.ferry_timetable_cache.get(cache_key)
-        if cached is not None and now_utc() - cached[0] < timedelta(seconds=settings.ferry_timetable_cache_seconds):
+        timetable_cache = request.app.state.ferry_timetable_cache
+
+        def cached_response() -> FerryOperationResponse | None:
+            checked_at = now_utc()
+            expires_after = timedelta(seconds=settings.ferry_timetable_cache_seconds)
+            for stale_key, (cached_at, _response) in list(timetable_cache.items()):
+                if checked_at - cached_at >= expires_after:
+                    timetable_cache.pop(stale_key, None)
+            cached = timetable_cache.get(cache_key)
+            if cached is None:
+                return None
+            timetable_cache.move_to_end(cache_key)
             return cached[1]
+
+        cached = cached_response()
+        if cached is not None:
+            return cached
         rate_limited_until: datetime | None = request.app.state.ferry_timetable_rate_limited_until
         if rate_limited_until is not None and now_utc() < rate_limited_until:
             retry_after_seconds = max(1, int((rate_limited_until - now_utc()).total_seconds()))
@@ -988,9 +1004,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 headers={"Retry-After": str(retry_after_seconds)},
             )
         async with request.app.state.ferry_timetable_lock:
-            cached = request.app.state.ferry_timetable_cache.get(cache_key)
-            if cached is not None and now_utc() - cached[0] < timedelta(seconds=settings.ferry_timetable_cache_seconds):
-                return cached[1]
+            cached = cached_response()
+            if cached is not None:
+                return cached
             rate_limited_until = request.app.state.ferry_timetable_rate_limited_until
             if rate_limited_until is not None and now_utc() < rate_limited_until:
                 retry_after_seconds = max(1, int((rate_limited_until - now_utc()).total_seconds()))
@@ -1026,7 +1042,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 port_id=port_id, service_date=service_date, fetched_at=now_utc(),
                 items=[FerryOperationItem(vessel_name=item.vessel_name, departure_port_name=item.departure_port_name, arrival_port_name=item.arrival_port_name, departure_planned_time=item.departure_planned_time, arrival_planned_time=item.arrival_planned_time, fare=item.fare) for item in operations],
             )
-            request.app.state.ferry_timetable_cache[cache_key] = (now_utc(), response)
+            timetable_cache[cache_key] = (now_utc(), response)
+            timetable_cache.move_to_end(cache_key)
+            while len(timetable_cache) > settings.ferry_timetable_cache_max_entries:
+                timetable_cache.popitem(last=False)
             return response
 
     @router.get("/transport/bus/terminals", response_model=BusTerminalResponse)

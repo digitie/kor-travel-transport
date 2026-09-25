@@ -205,6 +205,47 @@ def test_transport_port_timetable_caches_one_live_provider_call(tmp_path: Path) 
     assert FakeMaritimeClient.calls == 1
 
 
+def test_transport_port_timetable_bounds_cached_ports(tmp_path: Path) -> None:
+    class FakeMaritimeClient:
+        calls: list[str] = []
+
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args) -> None:
+            return None
+
+        async def get_domestic_ship_operations(self, *, departure_port_id: str, **_kwargs):
+            type(self).calls.append(departure_port_id)
+            return ()
+
+    with build_client(
+        tmp_path,
+        data_go_kr_service_key="test-key",
+        ferry_timetable_cache_max_entries=1,
+    ) as client:
+        async def seed() -> None:
+            now = now_utc()
+            async with client.app.state.session_factory() as session:
+                for port_id in ("P1", "P2"):
+                    session.add(FerryPort(source="data_go_kr_maritime", port_id=port_id, port_name=port_id, latitude=129.1, longitude=35.1, location_source=None, location_point_count=1, first_seen_at=now, last_seen_at=now, raw_item_json=None))
+                await session.commit()
+
+        asyncio.run(seed())
+        with patch("app.main.DataGoKrMaritimeClient", FakeMaritimeClient):
+            first = client.get("/v1/transport/ports/P1/timetable")
+            client.app.state.ferry_timetable_last_provider_call_at = now_utc() - timedelta(seconds=61)
+            second = client.get("/v1/transport/ports/P2/timetable")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert FakeMaritimeClient.calls == ["P1", "P2"]
+    assert len(client.app.state.ferry_timetable_cache) == 1
+
+
 def test_transport_bus_lists_saved_terminals_and_caches_live_timetable(tmp_path: Path) -> None:
     class FakeBusClient:
         calls = 0

@@ -84,8 +84,14 @@ def test_transport_runtime_forwards_port_guideline_and_timetable_limits() -> Non
     base_compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
     shared_compose = (ROOT / "docker-compose.shared.yml").read_text(encoding="utf-8")
 
-    for variable in ("PORT_GUIDELINE_COLLECTION_ENABLED", "FERRY_TIMETABLE_CACHE_SECONDS", "FERRY_TIMETABLE_MAX_DAYS_AHEAD"):
+    for variable in (
+        "PORT_GUIDELINE_COLLECTION_ENABLED",
+        "FERRY_TIMETABLE_CACHE_SECONDS",
+        "FERRY_TIMETABLE_CACHE_MAX_ENTRIES",
+        "FERRY_TIMETABLE_MAX_DAYS_AHEAD",
+    ):
         assert variable in base_compose
         assert variable in shared_compose
 
     assert "BUS_REFERENCE_COLLECTION_ENABLED" in shared_compose
+    assert 'DATA_GO_KR_SERVICE_KEY: "${DATA_GO_KR_SERVICE_KEY:-}"' in shared_compose

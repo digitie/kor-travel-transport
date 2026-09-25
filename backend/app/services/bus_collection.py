@@ -149,5 +149,6 @@ class BusReferenceCollectionService:
         if stored_run is not None:
             stored_run.status = "failed"
             stored_run.finished_at = now_utc()
-            stored_run.error_message = f"{type(exc).__name__}: {str(exc)[:500]}"
+            # provider 예외 문자열에는 요청 URL·인증정보가 들어갈 수 있으므로 유형만 보존한다.
+            stored_run.error_message = type(exc).__name__
             await session.commit()

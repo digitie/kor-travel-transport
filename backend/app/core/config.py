@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     bus_reference_collection_enabled: bool = False
     port_guideline_collection_enabled: bool = True
     ferry_timetable_cache_seconds: int = Field(default=300, ge=30, le=3600)
+    ferry_timetable_cache_max_entries: int = Field(default=500, ge=1, le=10_000)
     # 실시간 항구 시간표는 사용자 명시 요청만 허용하며, 서로 다른 항구 요청으로 provider
     # quota를 소진하지 않도록 cache miss 사이에도 전역 간격을 둔다.
     ferry_timetable_min_interval_seconds: int = Field(default=30, ge=1, le=3600)

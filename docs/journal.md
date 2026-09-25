@@ -6,10 +6,12 @@
   저장하고, 시간표는 저장하지 않는다. 각 등급 필터를 독립 cache key로 구분하며 TAGO의
   일일 호출 제한 응답(`22`)은 전체 실시간 시간표 요청을 설정된 backoff 동안 `429`로 보호한다.
 - James/Popper 적대 리뷰의 P1을 반영했다. 공개·관리 gateway에는 정확한 버스 GET 경로만
-  allowlist로 열고, 시간표 cache는 만료 제거와 LRU 500건 상한을 둔다. Dagster code-server에
+  allowlist로 열고, 버스·여객선 시간표 cache는 만료 제거와 LRU 500건 상한을 둔다. backend에도
+  `DATA_GO_KR_SERVICE_KEY`를 전달해 공개 실시간 조회가 provider를 호출할 수 있게 했으며, Dagster code-server에
   `BUS_REFERENCE_COLLECTION_ENABLED`를 전달해 운영의 3일 수집을 실제 활성화할 수 있게 했고,
   OpenAPI 정본·gateway 계약·runtime Alembic head·로그아웃 cache 제거를 회귀 테스트로 고정했다.
-  버스 기준정보 수집 실패도 durable run의 `error_message`에 보존해 운영 상태에서 원인을 확인할 수 있다.
+  버스 기준정보 수집은 매일 due를 평가하고 마지막 성공 뒤 실제 72시간을 보장하며, 실패 run에는
+  인증정보를 포함하지 않는 오류 유형만 보존한다.
 
 ## 2026-09-22
 

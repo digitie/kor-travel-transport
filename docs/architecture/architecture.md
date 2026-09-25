@@ -76,8 +76,8 @@
   시작하지 않고 Dagster daemon의 schedule을 활성화한다.
 - `airport_collection_job`과 `highway_collection_job`은 5분마다, `fuel_collection_job`은
   8시간마다 실행한다. KRIC 공개 XLSX를 읽는 `rail_reference_collection_job`은 제공기관
-  요청에 맞춰 마지막 성공 후 실제 48시간 간격, `maritime_reference_collection_job`은 달력상 3일 주기로
-  실행한다.
+  요청에 맞춰 마지막 성공 후 실제 48시간 간격, `maritime_reference_collection_job`과
+  `bus_reference_collection_job`은 3일 주기로 실행한다.
 - FastAPI는 읽기 API만 제공하며 manual collection은 운영에서 비활성화한다.
 
 통합 교통정보 수집은 Dagster code-server의 job으로 실행된다. 주차 수집과 같은 프로세스에
@@ -208,6 +208,7 @@ throttle(허용 범위 8~12시간, 24시간 내 최대 3회)을 추가로 적용
   - 3일 주기로 저장한 고속·시외버스 터미널 기준정보
 - `GET /v1/transport/bus/timetable`
   - 저장하지 않는 실시간 TAGO 시간표. 제공자 호출 제한을 보호하며 시외버스는 한국 시간 당일만 제공
+  - 여객선과 함께 TTL·LRU 항목 상한을 둔 프로세스 cache를 사용해 장기 실행 중에도 무한히 쌓이지 않게 한다.
 
 ## 프론트 화면 구조
 
