@@ -9,6 +9,7 @@
   allowlist로 열고, 시간표 cache는 만료 제거와 LRU 500건 상한을 둔다. Dagster code-server에
   `BUS_REFERENCE_COLLECTION_ENABLED`를 전달해 운영의 3일 수집을 실제 활성화할 수 있게 했고,
   OpenAPI 정본·gateway 계약·runtime Alembic head·로그아웃 cache 제거를 회귀 테스트로 고정했다.
+  버스 기준정보 수집 실패도 durable run의 `error_message`에 보존해 운영 상태에서 원인을 확인할 수 있다.
 
 ## 2026-09-22
 

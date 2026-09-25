@@ -10,12 +10,14 @@ from sqlalchemy import func, select
 from app.core.config import Settings
 from app.db.session import create_engine_and_session_factory, init_database
 from app.models import (
+    BusTerminalReference,
     CollectionRun,
     FerryPort,
     FerryShipTypeReference,
     FerryTerminalReference,
     RailStationReference,
 )
+from app.services.bus_collection import BusReferenceCollectionService
 from app.services.rail_maritime_collection import RailMaritimeCollectionService
 
 
@@ -214,6 +216,75 @@ def test_cancelled_rail_collection_marks_its_durable_run_failed(tmp_path: Path) 
         assert persisted.status == "failed"
         assert persisted.finished_at is not None
         assert persisted.error_message == "CancelledError: "
+        await engine.dispose()
+
+    asyncio.run(run())
+
+
+class _BusClient:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.express_bus = self
+        self.intercity_bus = self
+        self.fail = fail
+
+    async def __aenter__(self) -> "_BusClient":
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        return None
+
+    async def iter_terminals(self, *, num_of_rows: int, max_pages: int):
+        assert (num_of_rows, max_pages) == (100, 100)
+        if self.fail:
+            raise RuntimeError("TAGO unavailable")
+        yield type("Terminal", (), {"terminal_id": "T001", "terminal_name": "테스트터미널", "city_name": "서울", "raw": {"terminalId": "T001"}})()
+
+    async def city_list(self):
+        return type("Page", (), {"items": (object(),)})()
+
+    async def class_list(self):
+        return type("Page", (), {"items": (object(),)})()
+
+
+def test_bus_reference_collection_stores_terminal_reference_only(tmp_path: Path) -> None:
+    settings = _settings(tmp_path, bus_reference_collection_enabled=True, data_go_kr_service_key="test-key")
+    engine, session_factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> None:
+        await init_database(engine)
+        service = BusReferenceCollectionService(settings, client_factory=lambda **_kwargs: _BusClient())
+        async with session_factory() as session:
+            summary = await service.collect(session)
+        async with session_factory() as session:
+            terminal = await session.scalar(select(BusTerminalReference))
+            assert await session.scalar(select(func.count()).select_from(CollectionRun)) == 1
+        assert summary == {
+            "status": "success", "run_id": 1,
+            "express_terminal_count": 1, "express_city_count": 1, "express_class_count": 1,
+            "intercity_terminal_count": 1, "intercity_city_count": 1, "intercity_class_count": 1,
+        }
+        assert terminal is not None
+        assert terminal.raw_item_json == {"terminalId": "T001"}
+        await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_failed_bus_reference_collection_preserves_failure_reason(tmp_path: Path) -> None:
+    settings = _settings(tmp_path, bus_reference_collection_enabled=True, data_go_kr_service_key="test-key")
+    engine, session_factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> None:
+        await init_database(engine)
+        service = BusReferenceCollectionService(settings, client_factory=lambda **_kwargs: _BusClient(fail=True))
+        async with session_factory() as session:
+            with pytest.raises(RuntimeError, match="TAGO unavailable"):
+                await service.collect(session)
+        async with session_factory() as session:
+            failed = await session.scalar(select(CollectionRun))
+        assert failed is not None
+        assert failed.status == "failed"
+        assert failed.error_message == "RuntimeError: TAGO unavailable"
         await engine.dispose()
 
     asyncio.run(run())

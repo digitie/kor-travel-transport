@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Callable
+from datetime import UTC, timedelta
 from typing import Any
 
 from datagokr import DataGoKrClient, TagoBusTerminal
@@ -37,6 +38,21 @@ class BusReferenceCollectionService:
             return {"status": "skipped", "reason": "bus reference collection is disabled"}
         if not self.settings.data_go_kr_service_key:
             return {"status": "skipped", "reason": "DATA_GO_KR_SERVICE_KEY is required"}
+        latest_success = await session.scalar(
+            select(CollectionRun.finished_at)
+            .where(
+                CollectionRun.trigger == trigger,
+                CollectionRun.status == "success",
+                CollectionRun.finished_at.is_not(None),
+            )
+            .order_by(CollectionRun.finished_at.desc())
+            .limit(1)
+        )
+        if latest_success is not None:
+            if latest_success.tzinfo is None:
+                latest_success = latest_success.replace(tzinfo=UTC)
+            if now_utc() - latest_success < timedelta(days=3):
+                return {"status": "skipped", "reason": "TAGO bus reference is not due for 72 hours"}
 
         run = CollectionRun(started_at=now_utc(), status="running", trigger=trigger)
         session.add(run)
@@ -60,11 +76,11 @@ class BusReferenceCollectionService:
             run.finished_at = now_utc()
             await session.commit()
             return {"status": "success", "run_id": run.id, **summary}
-        except asyncio.CancelledError:
-            await self._fail(session, run)
+        except asyncio.CancelledError as exc:
+            await self._fail(session, run, exc)
             raise
-        except Exception:
-            await self._fail(session, run)
+        except Exception as exc:
+            await self._fail(session, run, exc)
             raise
 
     async def _collect_references(self, session: AsyncSession) -> dict[str, int]:
@@ -127,10 +143,11 @@ class BusReferenceCollectionService:
             for name, value in values.items():
                 setattr(row, name, value)
 
-    async def _fail(self, session: AsyncSession, run: CollectionRun) -> None:
+    async def _fail(self, session: AsyncSession, run: CollectionRun, exc: BaseException) -> None:
         await session.rollback()
         stored_run = await session.get(CollectionRun, run.id)
         if stored_run is not None:
             stored_run.status = "failed"
             stored_run.finished_at = now_utc()
+            stored_run.error_message = f"{type(exc).__name__}: {str(exc)[:500]}"
             await session.commit()
