@@ -24,6 +24,7 @@ from sqlalchemy import func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import load_only, selectinload
 from datagokr import DataGoKrClient
+from datagokr.exceptions import ApiErrorResponse
 from kric import DataGoKrMaritimeClient, KricRateLimitError
 
 from app.core.config import Settings, get_settings
@@ -372,8 +373,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.ferry_timetable_lock = asyncio.Lock()
         app.state.ferry_timetable_rate_limited_until: datetime | None = None
         app.state.ferry_timetable_last_provider_call_at: datetime | None = None
-        app.state.bus_timetable_cache: dict[tuple[str, str, str, date], tuple[datetime, BusTimetableResponse]] = {}
+        app.state.bus_timetable_cache: dict[tuple[str, str, str, date, str | None], tuple[datetime, BusTimetableResponse]] = {}
         app.state.bus_timetable_lock = asyncio.Lock()
+        app.state.bus_timetable_rate_limited_until: datetime | None = None
         app.state.bus_timetable_last_provider_call_at: datetime | None = None
         app.state.transport_statistics_cache: OrderedDict[
             tuple[str | None, int], tuple[datetime, TransportStatisticsResponse]
@@ -1107,14 +1109,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="저장된 해당 유형의 버스 터미널을 찾을 수 없습니다.")
         if service_type == "intercity" and bus_grade_id is not None:
             raise HTTPException(status_code=422, detail="시외버스 시간표는 등급 필터를 지원하지 않습니다.")
-        cache_key = (service_type, departure_terminal_id, arrival_terminal_id, service_date)
+        cache_key = (service_type, departure_terminal_id, arrival_terminal_id, service_date, bus_grade_id)
         cached = request.app.state.bus_timetable_cache.get(cache_key)
         if cached is not None and now_utc() - cached[0] < timedelta(seconds=settings.bus_timetable_cache_seconds):
             return cached[1]
+        rate_limited_until: datetime | None = request.app.state.bus_timetable_rate_limited_until
+        if rate_limited_until is not None and now_utc() < rate_limited_until:
+            retry_after_seconds = max(1, int((rate_limited_until - now_utc()).total_seconds()))
+            raise HTTPException(
+                status_code=429,
+                detail="TAGO 시간표 provider의 호출 제한이 아직 해제되지 않았습니다.",
+                headers={"Retry-After": str(retry_after_seconds)},
+            )
         async with request.app.state.bus_timetable_lock:
             cached = request.app.state.bus_timetable_cache.get(cache_key)
             if cached is not None and now_utc() - cached[0] < timedelta(seconds=settings.bus_timetable_cache_seconds):
                 return cached[1]
+            rate_limited_until = request.app.state.bus_timetable_rate_limited_until
+            if rate_limited_until is not None and now_utc() < rate_limited_until:
+                retry_after_seconds = max(1, int((rate_limited_until - now_utc()).total_seconds()))
+                raise HTTPException(
+                    status_code=429,
+                    detail="TAGO 시간표 provider의 호출 제한이 아직 해제되지 않았습니다.",
+                    headers={"Retry-After": str(retry_after_seconds)},
+                )
             last_call: datetime | None = request.app.state.bus_timetable_last_provider_call_at
             if last_call is not None:
                 remaining = settings.bus_timetable_min_interval_seconds - (now_utc() - last_call).total_seconds()
@@ -1137,6 +1155,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     )
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
+            except ApiErrorResponse as exc:
+                if exc.code == "22":
+                    blocked_until = now_utc() + timedelta(seconds=settings.upstream_rate_limit_backoff_seconds)
+                    request.app.state.bus_timetable_rate_limited_until = blocked_until
+                    retry_after_seconds = max(1, int((blocked_until - now_utc()).total_seconds()))
+                    raise HTTPException(
+                        status_code=429,
+                        detail="TAGO 시간표 provider의 호출 제한에 도달했습니다.",
+                        headers={"Retry-After": str(retry_after_seconds)},
+                    ) from exc
+                logger.warning("TAGO timetable provider returned API error: %s", exc.code)
+                raise HTTPException(status_code=502, detail="TAGO 시간표 provider 조회에 실패했습니다.") from exc
             except Exception as exc:
                 logger.warning("TAGO timetable provider failed: %s", type(exc).__name__)
                 raise HTTPException(status_code=502, detail="TAGO 시간표 provider 조회에 실패했습니다.") from exc

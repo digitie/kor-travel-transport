@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision = "0012_tago_bus_reference"
 down_revision = "0011_place_lookup_index"
@@ -26,7 +27,7 @@ def upgrade() -> None:
         sa.Column("city_name", sa.String(length=120), nullable=True),
         sa.Column("first_seen_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("last_seen_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("raw_item_json", sa.JSON(), nullable=True),
+        sa.Column("raw_item_json", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("source", "service_type", "terminal_id", name="uq_bus_terminal_reference"),
     )
