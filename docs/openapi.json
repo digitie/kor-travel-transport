@@ -331,13 +331,6 @@
             "title": "Arrival Terminal Id",
             "type": "string"
           },
-          "available_sources": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Available Sources",
-            "type": "array"
-          },
           "departure_terminal_id": {
             "title": "Departure Terminal Id",
             "type": "string"
@@ -3655,6 +3648,13 @@
       },
       "TransportPlaceMapResponse": {
         "properties": {
+          "available_sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Available Sources",
+            "type": "array"
+          },
           "generated_at": {
             "format": "date-time",
             "title": "Generated At",

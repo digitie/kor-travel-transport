@@ -203,6 +203,7 @@ class TransportPlaceMapResponse(BaseModel):
     kind: str | None = None
     total: int = 0
     truncated: bool = False
+    available_sources: list[str] = Field(default_factory=list)
     items: list[TransportPlaceMapItem]
 
 
@@ -266,7 +267,6 @@ class BusTimetableResponse(BaseModel):
     fetched_at: datetime
     total: int | None = None
     truncated: bool = False
-    available_sources: list[str] = Field(default_factory=list)
     items: list[BusTimetableItem]
 
 

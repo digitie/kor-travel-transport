@@ -47,7 +47,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
   const perKindLimit = Math.min(300, Math.floor(900 / Math.max(1, kinds.length)));
   const sources = useMemo(() => [...new Set([...knownSources, ...(places ?? []).map((item) => item.source)])], [places, knownSources]);
   const all = useMemo(() => places ?? kinds.flatMap((kind) => loaded[kind]?.items ?? []), [places, kinds, loaded]);
-  const items = useMemo(() => all.filter((item) => (!source || item.source === source) && (!query || [item.name, item.brand_name, item.address, ...item.line_names].join(" ").toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) && (!product || item.kind !== "fuel_station" || item.prices?.some((row) => row.product_code === product))), [all, source, query, product]);
+  const items = useMemo(() => all.filter((item) => (!source || item.source === source) && (!embedded || !query || [item.name, item.brand_name, item.address, item.subtitle, item.provider_id, ...item.line_names].join(" ").toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) && (!product || item.kind !== "fuel_station" || item.prices?.some((row) => row.product_code === product))), [all, embedded, source, query, product]);
   const points = useMemo<MapPoint[]>(() => items.filter(hasCoordinates).map((place) => ({ id: keyOf(place), lngLat: [place.longitude, place.latitude], place })), [items]);
   const detail = useRef<HTMLElement | null>(null);
   const selectPlace = (place: Place) => {

@@ -43,7 +43,7 @@ test("버스는 명시 조회만 호출하고 429 이후 반복 버튼을 눌러
 
 test("버스 결과는 시각·등급·요금·부분 결과를 읽기 쉽게 표시하고 선택 변경 시 지운다", async ({ page }) => {
   await mockBus(page);
-  await page.route("**/transport/bus/timetable?**", (route) => route.fulfill({ json: { fetched_at: new Date().toISOString(), total: 120, truncated: true, items: [{ departure_planned_time: "202609270930", arrival_planned_time: "202609271400", grade_name: "우등", adult_fare: 35000 }] } }));
+  await page.route("**/transport/bus/timetable?**", (route) => route.fulfill({ json: { service_date: "2026-09-27", fetched_at: new Date().toISOString(), total: 120, truncated: true, items: [{ departure_planned_time: "202609270930", arrival_planned_time: "202609271400", grade_name: "우등", adult_fare: 35000 }] } }));
   await page.goto("/bus/intercity");
   await expect(page.getByLabel("출발일")).toBeDisabled();
   const searches = page.locator(".multi-search");
@@ -85,4 +85,45 @@ test("수집 화면은 Dagster 실패를 숨기지 않고 provider 목록을 계
   await expect(page.getByText("수집 이력 없음", { exact: true })).toBeVisible();
   await page.getByText("오피넷 주유소·유가", { exact: true }).click();
   await expect(page.getByText("8시간", { exact: true })).toBeVisible();
+});
+
+test("지도는 상한 밖 출처와 공항 코드·영문명 서버 검색 결과를 보존한다", async ({ page }) => {
+  const queries: string[] = [];
+  await page.route("**/transport/features/places?**", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    queries.push(params.get("query") ?? "");
+    const airport = params.get("kind") === "airport";
+    return route.fulfill({ json: { total: airport ? 1 : 0, truncated: false, available_sources: ["hidden-source"], items: airport ? [{ id: 1, provider_id: "GMP", kind: "airport", source: "airport", name: "김포공항", subtitle: "Gimpo", line_names: [], longitude: 126.8, latitude: 37.5, prices: [], facilities: [], updated_at: new Date().toISOString() }] : [] } });
+  });
+  await page.goto("/map");
+  await page.getByRole("button", { name: "목록", exact: true }).click();
+  await expect(page.getByLabel("데이터 출처").locator('option[value="hidden-source"]')).toHaveCount(1);
+  for (const query of ["GMP", "Gimpo"]) {
+    await page.getByLabel("장소 검색").fill(query);
+    await expect.poll(() => queries.includes(query)).toBe(true);
+    await expect(page.getByRole("button", { name: /김포공항/ })).toBeVisible();
+  }
+});
+
+for (const type of ["express", "intercity"]) test(`한국 자정 이후 ${type} 버스 날짜·운행 시각이 일치한다`, async ({ page }) => {
+  await page.clock.install({ time: new Date("2026-09-27T14:59:55Z") });
+  await mockBus(page);
+  const dates: string[] = [];
+  await page.route("**/transport/bus/timetable?**", (route) => {
+    const date = new URL(route.request().url()).searchParams.get("date")!; dates.push(date);
+    return route.fulfill({ json: { service_date: date, fetched_at: new Date().toISOString(), items: [{ departure_planned_time: date.replaceAll("-", "") + "0930", arrival_planned_time: date.replaceAll("-", "") + "1400", adult_fare: 35000 }] } });
+  });
+  await page.goto(`/bus/${type}`);
+  const searches = page.locator(".multi-search");
+  await searches.nth(0).getByRole("checkbox", { name: /서울/ }).check();
+  await searches.nth(1).getByRole("checkbox", { name: /부산/ }).check();
+  await page.getByRole("button", { name: "운행편 조회", exact: true }).click();
+  await expect(page.getByText("09:30", { exact: true })).toBeVisible();
+  await page.clock.runFor(31_000);
+  await expect(page.getByLabel("출발일")).toHaveValue("2026-09-28");
+  await expect(page.getByText("35,000원", { exact: true })).not.toBeVisible();
+  await page.getByRole("button", { name: "운행편 조회", exact: true }).click();
+  await expect.poll(() => dates.at(-1)).toBe("2026-09-28");
+  await expect(page.getByText("09:30", { exact: true })).toBeVisible();
+  await expect(page.getByText("익일 09:30", { exact: true })).not.toBeVisible();
 });

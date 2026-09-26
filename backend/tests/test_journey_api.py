@@ -79,3 +79,22 @@ def test_provider_status_does_not_confuse_enabled_or_shared_job_with_success(cli
     assert rows["krex_traffic_incident"]["status"] == "failed"
     assert "test-key" not in response.text
     assert "secret-provider-key" not in response.text
+
+
+def test_place_sources_survive_response_limit_and_empty_bounds(client):
+    async def seed():
+        now = now_utc()
+        async with client.app.state.session_factory() as session:
+            for number, source in enumerate(["source_one", "source_two"]):
+                session.add(FerryPort(source=source, port_id=f"S{number}", port_name=f"출처항{number}", longitude=127, latitude=37, first_seen_at=now, last_seen_at=now))
+            await session.commit()
+    asyncio.run(seed())
+    for extra in ["limit=1", "min_longitude=129&max_longitude=130&min_latitude=35&max_latitude=36"]:
+        response = client.get(f"/v1/transport/features/places?kind=ferry_port&{extra}")
+        assert response.status_code == 200
+        body = response.json()
+        assert set(body["available_sources"]) == {"source_one", "source_two"}
+        assert len(body["items"]) <= 1
+    airport = client.get("/v1/transport/features/places?kind=airport&query=GMP")
+    assert airport.status_code == 200
+    assert any(row["provider_id"] == "GMP" for row in airport.json()["items"])
