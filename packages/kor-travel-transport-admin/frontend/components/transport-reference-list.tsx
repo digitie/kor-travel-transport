@@ -13,6 +13,7 @@ const INITIAL_VISIBLE_COUNT = 60;
 function updatedAt(value: string) { return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Seoul" }).format(new Date(value)); }
 function operationText(item: FerryOperation, portName: string) { return `${item.departure_planned_time ?? "—"} ${item.departure_port_name ?? portName} → ${item.arrival_planned_time ?? "—"} ${item.arrival_port_name ?? "—"}${item.vessel_name ? ` · ${item.vessel_name}` : ""}${item.fare ? ` · ${item.fare}원` : ""}`; }
 function seoulDateValue(offsetDays = 0) { const date = new Date(Date.now() + (9 * 60 * 60 * 1000)); date.setUTCDate(date.getUTCDate() + offsetDays); return date.toISOString().slice(0, 10); }
+export function effectiveFerryServiceDate(serviceDate: string, today = seoulDateValue()) { return serviceDate < today ? today : serviceDate; }
 
 export function TransportReferenceList({ kind }: { kind: PlaceKind }) {
   const [items, setItems] = useState<Place[]>([]);
@@ -43,6 +44,10 @@ export function TransportReferenceList({ kind }: { kind: PlaceKind }) {
 
   async function loadTimetable(port: Place) {
     if (!port.provider_id) return;
+    // 화면을 자정 전에 연 뒤에도 API에는 항상 현재 KST 이후의 운항일만 보낸다.
+    const todayAtRequest = seoulDateValue();
+    const requestedServiceDate = effectiveFerryServiceDate(serviceDate, todayAtRequest);
+    if (requestedServiceDate !== serviceDate) setServiceDate(requestedServiceDate);
     const request = ++timetableRequest.current;
     timetableController.current?.abort();
     const controller = new AbortController();
@@ -51,7 +56,7 @@ export function TransportReferenceList({ kind }: { kind: PlaceKind }) {
     setOperations([]);
     setLoadingTimetable(true);
     try {
-      const response = await fetch(`/api/transport/transport/ports/${encodeURIComponent(port.provider_id)}/timetable?date=${encodeURIComponent(serviceDate)}`, { signal: controller.signal });
+      const response = await fetch(`/api/transport/transport/ports/${encodeURIComponent(port.provider_id)}/timetable?date=${encodeURIComponent(requestedServiceDate)}`, { signal: controller.signal });
       if (!response.ok) {
         const body = await response.json().catch(() => null) as { detail?: string } | null;
         if (response.status === 429) {

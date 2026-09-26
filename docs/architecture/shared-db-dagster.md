@@ -55,7 +55,7 @@ n150의 비추적 환경 파일에만 둔다.
 | `fuel_collection_job` | 8시간 | 주유소·유가 snapshot | Playwright provider throttle |
 | `rail_reference_collection_job` | 매일 03:00 due 평가 | KRIC 공개 XLSX 역사 기준정보 | 마지막 성공 뒤 48시간이 지난 경우만 1회 |
 | `maritime_reference_collection_job` | 매월 1·4·7…일 03:00 | 항구·터미널·선박종류 기준정보 | data.go.kr 요청 세 건을 순차 실행 |
-| `ferry_timetable_collection_job` | 4시간마다 45분 | 항구별 운항일 시간표 snapshot | run당 최대 400건, 30초 provider 간격, 다음 run 재개 |
+| `ferry_timetable_collection_job` | 4시간마다 45분 | 항구별 운항일 시간표 snapshot | run당 최대 280건, 30초 provider 간격, 다음 run 재개 |
 
 KRIC는 인증 OpenAPI도 과도한 GET 대신 하루 한 번 이하의 batch 호출을 요청한다. 철도
 기준정보 job은 매일 due만 평가하지만 마지막 성공 수집 뒤 **48시간**이 지나기 전에는
@@ -67,9 +67,10 @@ XLSX를 한 번만 읽고, 인증 OpenAPI를 전국 역·열차 단위로 순회
 
 항구 운항시간표는 `ferry_timetable_snapshots`에 오늘 포함 10일만 저장한다.
 `GET /v1/transport/ports/{port_id}/timetable?date=YYYY-MM-DD`는 DB를 먼저 반환하고, 누락된
-항구·날짜 한 건만 provider에 비동기로 요청해 저장한다. Dagster는 한 run에 최대 400건만
-보충하고 각 성공을 즉시 commit하므로 4시간 runtime 상한이나 일시 오류 뒤에도 다음 run이
-남은 범위를 재개한다. provider가 호출 제한을 돌려주면 전 항구 요청을
+항구·날짜 한 건만 provider에 비동기로 요청해 저장한다. Dagster는 한 run에 최대 280건만
+보충하고, 30초 보호 간격과 최대 15초 요청 timeout을 포함해 3시간 30분 예산 안에서 각 성공을
+즉시 commit하므로 4시간 runtime 상한이나 일시 오류 뒤에도 다음 run이 남은 범위를 재개한다.
+provider가 호출 제한을 돌려주면 전 항구 요청을
 `UPSTREAM_RATE_LIMIT_BACKOFF_SECONDS` 동안 429와 `Retry-After`로 차단한다.
 
 ## 운영 실행

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 from kric import DomesticFerryPort, FerryShipType, FerryTerminal, FileStationInfo, PortGuidelineLocation
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import func, select
 
 from app.core.config import Settings
@@ -336,6 +337,14 @@ def test_ferry_timetable_collection_resumes_after_provider_call_budget(tmp_path:
         await engine.dispose()
 
     asyncio.run(run())
+
+
+def test_ferry_timetable_default_budget_includes_interval_and_timeout() -> None:
+    settings = Settings()
+
+    assert settings.ferry_timetable_collection_max_provider_calls == 280
+    with pytest.raises(ValidationError, match="3.5-hour ferry collection runtime budget"):
+        Settings(ferry_timetable_collection_max_provider_calls=281)
 
 
 def test_enabled_rail_reference_collection_requires_rustfs_configuration(tmp_path: Path) -> None:
