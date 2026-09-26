@@ -10,6 +10,8 @@ kor-travel-map의 검색·필터·지도/목록·선택 상세 구조와 kor-tra
   최신 관측을 VWorld React `PriceMarker`에 표시한다. 단일 `latest_price`는 휘발유 우선이다.
 - `features/places?include_unlocated=true`는 좌표 없는 검색 목록용이다. bbox를 함께
   지정하면 좌표 없는 장소는 제외된다. `source`는 정확한 제공자 코드 필터다.
+  `query`와 `product_code`도 서버의 표시 상한보다 먼저 적용한다. `available_sources`는
+  표시 상한에 잘리지 않은 종류별 출처 목록이다.
 - 100px 축척 막대에 해당하는 지상 거리가 30km 이하이면 클러스터를 해제한다.
   종류별 최대 300곳/전체 최대 900곳이며 다섯 종류 기본 요청은 각각 180곳이다.
   잘린 결과와 묶음이 현재 로드한 수라는 사실을 표시한다. 지도 키가 없어도 목록은 읽는다.

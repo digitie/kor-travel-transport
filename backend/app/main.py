@@ -877,6 +877,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         limit: int = Query(default=1000, ge=1, le=5000),
         include_unlocated: bool = Query(default=False, description="좌표 없는 기준정보도 검색 목록에 포함"),
         source: str | None = Query(default=None, max_length=80),
+        query: str | None = Query(default=None, max_length=100),
+        product_code: str | None = Query(default=None, max_length=20),
         min_longitude: float | None = Query(default=None, ge=-180, le=180),
         min_latitude: float | None = Query(default=None, ge=-90, le=90),
         max_longitude: float | None = Query(default=None, ge=-180, le=180),
@@ -904,6 +906,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             conditions = [] if include_unlocated else [model.latitude.is_not(None), model.longitude.is_not(None)]
             if source:
                 conditions.append(model.source == source)
+            if query and query.strip():
+                fields = {
+                    FuelStation: [FuelStation.name, FuelStation.brand_name, FuelStation.address],
+                    RailStationReference: [RailStationReference.station_name, RailStationReference.operating_line_name, RailStationReference.road_address],
+                    FerryPort: [FerryPort.port_name, FerryPort.port_id],
+                    RestAreaReference: [RestAreaReference.name, RestAreaReference.route_name],
+                }[model]
+                conditions.append(or_(*(field.icontains(query.strip(), autoescape=True) for field in fields)))
+            if model is FuelStation and product_code:
+                conditions.append(select(FuelPriceSnapshot.id).where(FuelPriceSnapshot.fuel_station_id == FuelStation.id, FuelPriceSnapshot.product_code == product_code).exists())
             if min_longitude is not None:
                 conditions.extend((
                     model.longitude >= min_longitude,
@@ -927,7 +939,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     FuelPriceSnapshot.id.label("id"),
                     func.row_number().over(partition_by=(FuelPriceSnapshot.fuel_station_id, FuelPriceSnapshot.product_code), order_by=(FuelPriceSnapshot.collected_at.desc(), FuelPriceSnapshot.id.desc())).label("rank"),
                 ).where(FuelPriceSnapshot.fuel_station_id.in_(station_ids)).subquery()
-                rows = (await session.execute(select(FuelPriceSnapshot).join(ranked, FuelPriceSnapshot.id == ranked.c.id).where(ranked.c.rank == 1))).scalars().all()
+                rows = (await session.execute(select(FuelPriceSnapshot).options(load_only(
+                    FuelPriceSnapshot.id, FuelPriceSnapshot.fuel_station_id, FuelPriceSnapshot.product_code,
+                    FuelPriceSnapshot.price, FuelPriceSnapshot.provider_updated_at, FuelPriceSnapshot.observed_at,
+                    FuelPriceSnapshot.collected_at,
+                )).join(ranked, FuelPriceSnapshot.id == ranked.c.id).where(ranked.c.rank == 1))).scalars().all()
                 for row in rows:
                     latest.setdefault(row.fuel_station_id, []).append(row)
             for station in stations:
@@ -991,6 +1007,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 coordinate = metadata.coordinate if metadata else None
                 if source and airport.source != source:
                     continue
+                if query and query.strip().casefold() not in f"{airport.name_ko} {airport.name_en or ''} {airport.code}".casefold():
+                    continue
                 if coordinate is None and (not include_unlocated or min_longitude is not None):
                     continue
                 if min_longitude is not None and coordinate and not (min_longitude <= coordinate.lon <= max_longitude and min_latitude <= coordinate.lat <= max_latitude):
@@ -1002,9 +1020,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             total += len(airport_items)
             items.extend(airport_items[:per_kind_limit])
         visible_items = items[:limit]
+        source_models = {"fuel_station": FuelStation, "rail_station": RailStationReference, "ferry_port": FerryPort, "airport": Airport, "rest_area": RestAreaReference}
+        available_sources: set[str] = set()
+        for requested_kind in requested_kinds:
+            available_sources.update((await session.scalars(select(source_models[requested_kind].source).distinct())).all())
         return TransportPlaceMapResponse(
             generated_at=now_utc(), kind=selected_kind, total=total,
-            truncated=total > len(visible_items), items=visible_items,
+            truncated=total > len(visible_items), items=visible_items, available_sources=sorted(available_sources),
         )
 
     @router.get("/transport/ports/timetables", response_model=FerryStoredTimetableResponse)

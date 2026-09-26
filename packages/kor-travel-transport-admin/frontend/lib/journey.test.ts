@@ -11,6 +11,11 @@ describe("여행 정보 표시 계약", () => {
     expect(seoulDate(9, Date.parse("2026-12-28T00:00:00Z"))).toBe("2027-01-06");
     expect(dateTime("bad-date")).toBe("확인되지 않음");
   });
+  it("날짜를 포함하는 야간 도착에서 익일을 보존한다", () => {
+    expect(serviceTime("202609280130", "202609272330")).toBe("익일 01:30");
+    expect(serviceTime("202609290130", "2026-09-27")).toBe("2일 뒤 01:30");
+    expect(serviceTime("2405", "2026-09-27")).toBe("익일 00:05");
+  });
   it("30km 축척 이하에서 클러스터링을 해제한다", () => {
     const threshold = Math.log2(100 * 40075.016686 * Math.cos(37 * Math.PI / 180) / (512 * 30));
     expect(clusterAtScale(threshold - 0.01, 37)).toBe(true);

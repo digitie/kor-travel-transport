@@ -32,6 +32,15 @@ def test_transport_admin_is_a_separate_host_network_stack() -> None:
     assert "parking-radar" in compose
 
 
+def test_provider_status_and_worker_share_bus_collection_switch() -> None:
+    compose = (ROOT / "docker-compose.shared.yml").read_text(encoding="utf-8")
+    before_services, services = compose.split("\nservices:\n", 1)
+    backend = services.split("  backend:\n", 1)[1].split("  dagster-migrate:\n", 1)[0]
+    contract = 'BUS_REFERENCE_COLLECTION_ENABLED: "${BUS_REFERENCE_COLLECTION_ENABLED:-false}"'
+    assert contract in before_services
+    assert contract in backend
+
+
 def test_transport_admin_does_not_receive_provider_or_database_credentials() -> None:
     compose = (ROOT / "docker-compose.transport-admin.yml").read_text(encoding="utf-8")
     admin_root = ROOT / "packages/kor-travel-transport-admin/frontend"

@@ -156,6 +156,9 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
     bounded = client.get("/v1/transport/features/places?kind=fuel_station&min_longitude=127.0&min_latitude=37.4&max_longitude=127.15&max_latitude=37.55")
     assert bounded.status_code == 200
     assert bounded.json()["total"] == 1
+    assert client.get("/v1/transport/features/places?kind=fuel_station&source=opinet&query=테스트&product_code=D047&limit=1").json()["total"] == 1
+    assert client.get("/v1/transport/features/places?kind=fuel_station&query=%25").json()["total"] == 0
+    assert client.get("/v1/transport/features/places?kind=fuel_station&product_code=K015").json()["total"] == 0
     assert [item["name"] for item in bounded.json()["items"]] == ["테스트주유소"]
     assert client.get("/v1/transport/features/places?kind=unknown").status_code == 422
     assert client.get("/v1/transport/features/places?kind=fuel_station&min_longitude=127.0").status_code == 422

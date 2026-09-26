@@ -186,3 +186,6 @@ button:active:not(:disabled), .secondary:active { transform: translateY(1px); }
   .ops-grid .panel { padding: var(--space-md); }
 }
 @media (prefers-reduced-motion: reduce) { .map-workbench *, .journey-workbench * { animation: none !important; transition: none !important; } }
+.selection-chips button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.selection-chips button > svg { flex: 0 0 auto; }
+.page-header h1 { overflow-wrap: anywhere; min-width: 0; }

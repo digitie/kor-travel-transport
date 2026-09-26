@@ -266,11 +266,13 @@ class BusTimetableResponse(BaseModel):
     fetched_at: datetime
     total: int | None = None
     truncated: bool = False
+    available_sources: list[str] = Field(default_factory=list)
     items: list[BusTimetableItem]
 
 
 class ProviderCollectionStatus(BaseModel):
     source: str
+    job_status: str | None = None
     name: str
     job_name: str | None = None
     mode: Literal["scheduled", "on_demand", "unconnected"] = "scheduled"

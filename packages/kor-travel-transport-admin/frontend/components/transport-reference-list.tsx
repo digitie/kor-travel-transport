@@ -1,7 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSeoulToday } from "@/lib/journey-hooks";
 import { dateTime, hasCoordinates, seoulDate, transportGet, type Place, type StoredFerry } from "@/lib/journey";
 import { FerryDepartures, MultiSearch, PlaceDetails } from "./journey-controls";
 
@@ -22,13 +23,17 @@ export function TransportReferenceList({ kind }: { kind: "rail_station" | "ferry
   const [routeQuery, setRouteQuery] = useState("");
   const [line, setLine] = useState("");
   const rail = kind === "rail_station";
+  const restoredPort = useRef(false);
+  const today = useSeoulToday();
+  const effectiveDate = effectiveFerryServiceDate(serviceDate, today);
   useEffect(() => {
     const controller = new AbortController();
     transportGet<{ items: Place[] }>(`transport/features/places?kind=${kind}&include_unlocated=true&limit=5000`, controller.signal).then((payload) => {
       if (controller.signal.aborted) return;
       setError(""); setItems(payload.items); setMessage(payload.items.length ? "" : "아직 저장된 기준정보가 없습니다.");
       const port = new URLSearchParams(window.location.search).get("port");
-      if (port && payload.items.some((item) => item.provider_id === port)) setSelectedIds([port]);
+      if (!restoredPort.current && port && payload.items.some((item) => item.provider_id === port)) setSelectedIds([port]);
+      restoredPort.current = true;
     }).catch(() => { if (!controller.signal.aborted) { setMessage(""); setError("기준정보를 불러오지 못했습니다. 다시 조회해 주세요."); } });
     return () => controller.abort();
   }, [kind, reload]);
@@ -37,18 +42,22 @@ export function TransportReferenceList({ kind }: { kind: "rail_station" | "ferry
   const selected = items.filter((item) => selectedIds.includes(keyOf(item)));
   const selectedKey = selectedIds.join(",");
   useEffect(() => {
-    if (rail || !selectedKey) return;
+    if (rail || !selectedKey) {
+      // 취소된 요청의 finally는 실행 상태를 바꾸지 않으므로 빈 선택을 여기서 초기화한다.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLoading(false); setStored(null);
+      return;
+    }
     const controller = new AbortController();
-    const date = effectiveFerryServiceDate(serviceDate);
+    const date = effectiveDate;
     // 선택 조건별 비동기 조회가 시작될 때 이전 운항일의 결과를 숨긴다.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true); setError(""); setStored(null);
     transportGet<StoredFerry>(`transport/ports/timetables?${new URLSearchParams({ port_ids: selectedKey, date })}`, controller.signal)
       .then((payload) => { if (!controller.signal.aborted) setStored(payload); })
       .catch(() => { if (!controller.signal.aborted) setError("저장된 운항 정보를 불러오지 못했습니다. 다시 조회해 주세요."); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [rail, selectedKey, serviceDate, reload]);
+  }, [rail, selectedKey, effectiveDate, reload]);
 
   const lines = useMemo(() => [...new Set(items.flatMap((item) => item.line_names))].sort(), [items]);
   const filtered = useMemo(() => items.filter((item) => (!line || item.line_names.includes(line)) && query.trim().split(/\s+/).every((term) => [item.name, item.subtitle, item.address, ...item.line_names].join(" ").includes(term))), [items, query, line]);
@@ -57,10 +66,9 @@ export function TransportReferenceList({ kind }: { kind: "rail_station" | "ferry
     setActivePlace(selectedIds.includes(id) ? null : items.find((item) => keyOf(item) === id) ?? null);
   }
   const mapItems = (selected.length ? selected : filtered).filter(hasCoordinates);
-  const today = seoulDate();
   return <section className="journey-workbench">
     <div className="journey-toolbar">
-      {!rail ? <label htmlFor="ferry-service-date">운항일<input id="ferry-service-date" type="date" min={today} max={seoulDate(9)} value={effectiveFerryServiceDate(serviceDate)} onChange={(event) => { if (event.target.value) setServiceDate(event.target.value); }} /></label> : <label>노선<select value={line} onChange={(event) => setLine(event.target.value)}><option value="">모든 노선</option>{lines.map((name) => <option key={name}>{name}</option>)}</select></label>}
+      {!rail ? <label htmlFor="ferry-service-date">운항일<input id="ferry-service-date" type="date" min={today} max={seoulDate(9)} value={effectiveDate} onChange={(event) => { if (event.target.value) setServiceDate(event.target.value); }} /></label> : <label>노선<select value={line} onChange={(event) => setLine(event.target.value)}><option value="">모든 노선</option>{lines.map((name) => <option key={name}>{name}</option>)}</select></label>}
       <p className="quiet">저장된 {rail ? "역" : "항구"} {items.length.toLocaleString("ko-KR")}곳 · 지도 좌표 {items.filter(hasCoordinates).length}곳</p>
       <button className="secondary" type="button" disabled={loading} onClick={() => setReload((value) => value + 1)}>저장 정보 새로고침</button>
     </div>
@@ -75,10 +83,10 @@ export function TransportReferenceList({ kind }: { kind: "rail_station" | "ferry
       <div className="journey-inspector" aria-live="polite">
         {!selected.length ? <div className="empty-state"><h2>{rail ? "역·노선 비교" : "어디에서 출발하시나요?"}</h2><p>{rail ? "역을 선택하면 노선·주소·연락처를 비교할 수 있습니다." : "출발 항구를 최대 5곳 선택하세요. 선택 즉시 저장된 운항편을 비교합니다."}</p></div> : null}
         {!rail && selected.length ? <>
-          <div className="journey-toolbar"><h2>{serviceDate === today ? "오늘 운항" : `${serviceDate} 운항`} 비교</h2><label>도착항·선박 검색<input type="search" value={routeQuery} onChange={(event) => setRouteQuery(event.target.value)} placeholder="예: 제주, 퀸" /></label></div>
+          <div className="journey-toolbar"><h2>{effectiveDate === today ? "오늘 운항" : `${effectiveDate} 운항`} 비교</h2><label>도착항·선박 검색<input type="search" value={routeQuery} onChange={(event) => setRouteQuery(event.target.value)} placeholder="예: 제주, 퀸" /></label></div>
           {loading ? <p role="status">저장된 운항 정보를 확인하는 중입니다…</p> : null}
-          {stored?.items.map((table) => <FerryDepartures key={table.port_id} timetable={table} query={routeQuery} name={items.find((item) => item.provider_id === table.port_id)?.name ?? table.port_id} />)}
-          {stored?.missing_port_ids.map((id) => <section className="empty-state" key={id}><h3>{items.find((item) => item.provider_id === id)?.name ?? id}</h3><p>이 날짜는 아직 수집 중입니다. 운항편이 없다는 뜻은 아닙니다. 정기 수집 후 저장 정보 새로고침으로 확인해 주세요.</p></section>)}
+          {(stored?.service_date === effectiveDate ? stored.items : []).map((table) => <FerryDepartures key={table.port_id} timetable={table} query={routeQuery} name={items.find((item) => item.provider_id === table.port_id)?.name ?? table.port_id} />)}
+          {(stored?.service_date === effectiveDate ? stored.missing_port_ids : []).map((id) => <section className="empty-state" key={id}><h3>{items.find((item) => item.provider_id === id)?.name ?? id}</h3><p>이 날짜는 아직 수집 중입니다. 운항편이 없다는 뜻은 아닙니다. 정기 수집 후 저장 정보 새로고침으로 확인해 주세요.</p></section>)}
         </> : null}
         {rail ? selected.map((place) => <section className="reference-detail" key={place.id}><PlaceDetails place={place} /></section>) : null}
         {activePlace && !rail ? <details><summary>{activePlace.name} 항구 상세</summary><PlaceDetails place={activePlace} /></details> : null}

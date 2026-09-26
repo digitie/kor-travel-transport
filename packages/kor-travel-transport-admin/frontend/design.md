@@ -24,3 +24,31 @@ kor-travel-weather의 운영 화면을 기준으로 한다. 새 테마를 만들
 app/tokens.css는 기존 색상의 별칭과 간격·폰트·형태를 제공한다.
 포커스 표시, 선택 상태, 로딩, 빈 결과, 오류, 재시도, disabled 설명을 제공한다.
 320/375/414/768px와 데스크톱에서 검증한다. 장식 모션은 없으며 reduced-motion을 따른다.
+
+## 다른 프로젝트로 옮길 때의 토큰
+
+CSS 정본은 `app/tokens.css`이며 기존 transport 색상을 별칭으로 참조한다.
+다음은 선택적 복사 예시이며 현재 앱에 Tailwind나 shadcn을 설치하지 않는다.
+
+```css
+/* CSS 정본 역할의 별칭 */
+:root { --color-paper: var(--paper); --color-ink: var(--ink); --color-accent: var(--accent); }
+/* Tailwind v4를 사용하는 소비 앱 */
+@theme inline { --color-background: var(--color-paper); --color-foreground: var(--color-ink); --color-primary: var(--color-accent); --spacing-control: .75rem; }
+```
+
+```json
+{
+  "color": {
+    "paper": { "$type": "color", "$value": "#f7f7f2" },
+    "ink": { "$type": "color", "$value": "#182022" },
+    "accent": { "$type": "color", "$value": "#0f766e" }
+  },
+  "space": { "control": { "$type": "dimension", "$value": "0.75rem" } }
+}
+```
+
+```css
+/* 완전한 CSS 색상 값을 소비하는 shadcn 역할 매핑 */
+:root { --background: var(--color-paper); --foreground: var(--color-ink); --primary: var(--color-accent); --primary-foreground: var(--color-accent-ink); --ring: var(--color-focus); --radius: 6px; }
+```

@@ -22,7 +22,7 @@ export function MultiSearch({ label, query, onQuery, options, selected, onSelect
   const id = useId();
   return <section className="multi-search">
     <label htmlFor={id}>{label}<input id={id} type="search" value={query} onChange={(event) => onQuery(event.target.value)} placeholder="이름·지역으로 검색" autoComplete="off" /></label>
-    {selected.length ? <div className="selection-chips" aria-label="선택한 장소">{selected.map((item) => <button type="button" key={item.id} onClick={() => onSelect(item.id)} aria-label={`${item.name} 선택 해제`}>{item.name}<X size={14} aria-hidden="true" /></button>)}</div> : null}
+    {selected.length ? <div className="selection-chips" aria-label="선택한 장소">{selected.map((item) => <button type="button" key={item.id} onClick={() => onSelect(item.id)} aria-label={`${item.name} 선택 해제`}><span>{item.name}</span><X size={14} aria-hidden="true" /></button>)}</div> : null}
     <p className="quiet" role="status">{loading ? "검색 중…" : `${options.length}개 결과 · ${selected.length}/${max}곳 선택`}</p>
     <div className="search-options">{options.slice(0, 60).map((item) => <label key={item.id}><input type="checkbox" checked={selected.some((value) => value.id === item.id)} disabled={max > 1 && selected.length >= max && !selected.some((value) => value.id === item.id)} onChange={() => onSelect(item.id)} /><span><strong>{item.name}</strong>{item.description ? <small>{item.description}</small> : null}</span></label>)}</div>
     {!loading && !options.length ? <p className="empty-state">검색 결과가 없습니다. 다른 이름이나 지역을 입력해 주세요.</p> : null}
@@ -52,8 +52,8 @@ export function FerryDepartures({ timetable, name, query = "" }: { timetable: Fe
   return <section className="departures" aria-label={`${name} 운항 정보`}>
     <header><h3>{name} · {timetable.service_date}</h3><p className="quiet">저장본 확인 {dateTime(timetable.fetched_at)} · {rows.length}편</p></header>
     {rows.length ? rows.map((item, index) => <article className="departure-row" key={index}>
-      <div className="departure-time"><strong>{serviceTime(item.departure_planned_time)}</strong><span>{item.departure_port_name ?? name}</span></div>
-      <div className="departure-route"><span aria-hidden="true">→</span><strong>{item.arrival_port_name ?? "도착항 미제공"}</strong><small>도착 {serviceTime(item.arrival_planned_time)}</small></div>
+      <div className="departure-time"><strong>{serviceTime(item.departure_planned_time, timetable.service_date)}</strong><span>{item.departure_port_name ?? name}</span></div>
+      <div className="departure-route"><span aria-hidden="true">→</span><strong>{item.arrival_port_name ?? "도착항 미제공"}</strong><small>도착 {serviceTime(item.arrival_planned_time, timetable.service_date)}</small></div>
       <div className="departure-meta"><strong>{item.vessel_name ?? "선박명 미제공"}</strong><span>{money(item.fare)}</span></div>
     </article>) : <p className="empty-state">{query ? "조건에 맞는 운항편이 없습니다." : "제공기관의 마지막 저장 응답에 등록된 운항편이 없습니다. 결항을 의미하지는 않습니다."}</p>}
     <p className="quiet">예정 시간·요금은 변경될 수 있습니다. 승선 전 운항사에 확인해 주세요.</p>

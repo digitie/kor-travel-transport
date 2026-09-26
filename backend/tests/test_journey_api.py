@@ -4,7 +4,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from app.core.time_utils import now_utc, to_seoul
-from app.models import CollectionRun, FerryPort, FerryTimetableSnapshot
+from app.models import CollectionRun, FerryPort, FerryTimetableSnapshot, TransportCollectionState
 
 
 def test_stored_ferry_search_never_calls_provider_and_keeps_missing_distinct(client):
@@ -57,10 +57,15 @@ def test_provider_status_does_not_confuse_enabled_or_shared_job_with_success(cli
         async with client.app.state.session_factory() as session:
             session.add(CollectionRun(trigger="dagster_airport", status="success", started_at=now, finished_at=now))
             session.add(CollectionRun(trigger="dagster_rail", status="failed", started_at=now, finished_at=now, error_message="secret-provider-key"))
+            session.add(CollectionRun(trigger="transport_dagster_highway", status="partial_success", started_at=now, finished_at=now))
+            session.add(TransportCollectionState(source="krex_traffic_flow", last_started_at=now, last_success_at=now, updated_at=now))
+            session.add(TransportCollectionState(source="krex_traffic_incident", last_started_at=now, last_error="secret-failed", updated_at=now))
             await session.commit()
     asyncio.run(seed())
     client.app.state.settings.data_go_kr_service_key = "test-key"
     client.app.state.settings.rail_reference_collection_enabled = True
+    client.app.state.settings.kex_ex_api_key = "test-key"
+    client.app.state.settings.transport_collection_enabled = True
     response = client.get("/v1/transport/providers")
     assert response.status_code == 200
     rows = {row["source"]: row for row in response.json()["items"]}
@@ -69,5 +74,8 @@ def test_provider_status_does_not_confuse_enabled_or_shared_job_with_success(cli
     assert rows["kric_public_file"]["error_code"] == "collection_failed"
     assert rows["kric_timetable"]["mode"] == "unconnected"
     assert rows["bus_timetable"]["mode"] == "on_demand"
+    assert rows["krex_traffic_flow"]["status"] == "success"
+    assert rows["krex_traffic_flow"]["job_status"] == "partial_success"
+    assert rows["krex_traffic_incident"]["status"] == "failed"
     assert "test-key" not in response.text
     assert "secret-provider-key" not in response.text

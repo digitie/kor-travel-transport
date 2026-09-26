@@ -38,11 +38,12 @@ async def provider_status(session: AsyncSession, settings: Settings) -> Provider
         last_success = state.last_success_at if state else successes.get(trigger)
         last_started = state.last_started_at if state else run.started_at if run else None
         failed = bool(state.last_error) if state else bool(run and run.status in {"failed", "failure", "partial", "partial_success"})
-        status = "disabled" if not enabled else "failed" if failed else run.status if run else "not_collected"
+        source_status = "failed" if failed else "success" if state and state.last_success_at else "not_collected"
+        status = "disabled" if not enabled else source_status if state else run.status if run else "not_collected"
         # 공항은 같은 job을 공유한다. job 성공을 개별 provider 성공으로 단정하지 않는다.
         if source in {"kac_parking", "incheon_parking", "kac_fee", "incheon_fee"} and enabled:
             status = "shared_job_" + status
-        items.append(ProviderCollectionStatus(source=source, name=name, job_name=job, enabled=enabled,
+        items.append(ProviderCollectionStatus(source=source, name=name, job_name=job, job_status=run.status if run else None, enabled=enabled,
             status=status, interval_seconds=interval, last_started_at=serialize_utc(last_started) if last_started else None,
             last_success_at=serialize_utc(last_success) if last_success else None,
             next_due_at=serialize_utc(state.next_due_at) if state and state.next_due_at else None,

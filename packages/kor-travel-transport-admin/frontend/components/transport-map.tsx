@@ -10,7 +10,7 @@ import { PlaceDetails, PlaceIcon, ViewSwitch } from "./journey-controls";
 type MapPoint = { id: string; lngLat: [number, number]; place: Place };
 type Bounds = { getWest: () => number; getSouth: () => number; getEast: () => number; getNorth: () => number };
 type Viewport = { min_longitude: string; min_latitude: string; max_longitude: string; max_latitude: string };
-type PlaceResponse = { items: Place[]; total: number; truncated: boolean };
+type PlaceResponse = { items: Place[]; total: number; truncated: boolean; available_sources?: string[] };
 const KINDS: PlaceKind[] = ["fuel_station", "rail_station", "ferry_port", "airport", "rest_area"];
 const DEFAULT_VIEWPORT: Viewport = { min_longitude: "124", min_latitude: "32", max_longitude: "132", max_latitude: "39" };
 const keyOf = (place: Place) => `${place.kind}:${place.id}`;
@@ -28,8 +28,10 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
   const [loaded, setLoaded] = useState<Record<string, PlaceResponse>>({});
   const [kinds, setKinds] = useState<PlaceKind[]>(KINDS);
   const [source, setSource] = useState("");
+  const [knownSources, setKnownSources] = useState<string[]>([]);
   const [product, setProduct] = useState("");
   const [query, setQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [view, setView] = useState<"map" | "list">("map");
   const [selected, setSelected] = useState<Place | null>(null);
   const [viewport, setViewport] = useState(DEFAULT_VIEWPORT);
@@ -43,11 +45,20 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
   const current = selectedPlace === undefined ? selected : selectedPlace;
   const kindsKey = kinds.join(",");
   const perKindLimit = Math.min(300, Math.floor(900 / Math.max(1, kinds.length)));
-  const sources = useMemo(() => [...new Set((places ?? Object.values(loaded).flatMap((row) => row.items)).map((item) => item.source))], [places, loaded]);
+  const sources = useMemo(() => [...new Set([...knownSources, ...(places ?? []).map((item) => item.source)])], [places, knownSources]);
   const all = useMemo(() => places ?? kinds.flatMap((kind) => loaded[kind]?.items ?? []), [places, kinds, loaded]);
-  const items = useMemo(() => all.filter((item) => (!source || item.source === source) && (!query || [item.name, item.brand_name, item.address, ...item.line_names].join(" ").includes(query)) && (!product || item.kind !== "fuel_station" || item.prices?.some((row) => row.product_code === product))), [all, source, query, product]);
+  const items = useMemo(() => all.filter((item) => (!source || item.source === source) && (!query || [item.name, item.brand_name, item.address, ...item.line_names].join(" ").toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) && (!product || item.kind !== "fuel_station" || item.prices?.some((row) => row.product_code === product))), [all, source, query, product]);
   const points = useMemo<MapPoint[]>(() => items.filter(hasCoordinates).map((place) => ({ id: keyOf(place), lngLat: [place.longitude, place.latitude], place })), [items]);
-  const selectPlace = (place: Place) => { setSelected(place); onSelectPlace?.(place); };
+  const detail = useRef<HTMLElement | null>(null);
+  const selectPlace = (place: Place) => {
+    setSelected(place); onSelectPlace?.(place);
+    if (!embedded) requestAnimationFrame(() => detail.current?.focus({ preventScroll: true }));
+  };
+
+  useEffect(() => {
+    const debounce = setTimeout(() => setSearchQuery(query), 250);
+    return () => clearTimeout(debounce);
+  }, [query]);
 
   useEffect(() => {
     if (embedded) return;
@@ -55,17 +66,23 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
     const selectedKinds = kindsKey ? kindsKey.split(",") : [];
     // 외부 조회 조건이 바뀌면 이전 영역의 결과를 제거하고 요청 상태를 초기화한다.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPending(selectedKinds); setFailed([]); setLoaded({});
+    setPending(selectedKinds); setFailed([]);
     // 각 종류가 끝나는 즉시 표시한다. 느린 유가 조회가 역·항구를 가리지 않는다.
     selectedKinds.forEach((kind) => {
       const search = new URLSearchParams({ kind, limit: String(perKindLimit), ...viewport });
+      if (source) search.set("source", source);
+      if (searchQuery.trim()) search.set("query", searchQuery.trim());
+      if (product && kind === "fuel_station") search.set("product_code", product);
       transportGet<PlaceResponse>(`transport/features/places?${search}`, controller.signal).then((payload) => {
-        if (!controller.signal.aborted) setLoaded((value) => ({ ...value, [kind]: payload }));
+        if (!controller.signal.aborted) {
+          setLoaded((value) => ({ ...value, [kind]: payload }));
+          setKnownSources((value) => [...new Set([...value, ...(payload.available_sources ?? payload.items.map((item) => item.source))])]);
+        }
       }).catch(() => { if (!controller.signal.aborted) setFailed((value) => [...value, kind]); })
         .finally(() => { if (!controller.signal.aborted) setPending((value) => value.filter((entry) => entry !== kind)); });
     });
     return () => controller.abort();
-  }, [embedded, kindsKey, perKindLimit, viewport, reload]);
+  }, [embedded, kindsKey, perKindLimit, viewport, reload, source, searchQuery, product]);
 
   useEffect(() => {
     const handleError = () => setMapError("VWorld 지도 타일을 불러오지 못했습니다. 목록 보기에서 장소를 확인할 수 있습니다.");
@@ -89,9 +106,9 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
   return <section className="map-workbench" aria-label="교통 장소 지도">
     {!embedded ? <div className="map-filter-bar">
       <div className="kind-filters" role="group" aria-label="장소 종류">{KINDS.map((kind) => <button type="button" key={kind} aria-pressed={kinds.includes(kind)} onClick={() => { setKinds((value) => value.includes(kind) ? value.filter((entry) => entry !== kind) : [...value, kind]); setSelected(null); }}><PlaceIcon kind={kind} />{placeKindLabel(kind)}</button>)}</div>
-      <div className="journey-toolbar"><label>장소 검색<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="이름·브랜드·노선" /></label>
+      <div className="journey-toolbar"><label>장소 검색<input type="search" value={query} onChange={(event) => { setQuery(event.target.value); setSelected(null); }} placeholder="이름·브랜드·노선" /></label>
       <label>데이터 출처<select value={source} onChange={(event) => { setSource(event.target.value); setSelected(null); }}><option value="">모든 출처</option>{sources.map((value) => <option key={value} value={value}>{collectionSourceLabel(value)}</option>)}</select></label>
-      <label>표시 유종<select value={product} onChange={(event) => setProduct(event.target.value)}><option value="">전체 유종</option>{["B027", "D047", "B034", "K015", "C004"].map((code) => <option key={code} value={code}>{fuelProductLabel(code)}</option>)}</select></label>
+      <label>표시 유종<select value={product} onChange={(event) => { setProduct(event.target.value); setSelected(null); }}><option value="">전체 유종</option>{["B027", "D047", "B034", "K015", "C004"].map((code) => <option key={code} value={code}>{fuelProductLabel(code)}</option>)}</select></label>
       <ViewSwitch value={view} onChange={setView} /></div>
     </div> : <ViewSwitch value={view} onChange={setView} />}
     <div className="map-feedback" role="status">
@@ -111,7 +128,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
         unsupportedTileFallback={{ label: "지도를 불러오지 못했습니다." }} zoom={7}>
         {cluster ? <ClusterLayer points={points} radius={50} renderMarker={(point) => <MapMarker key={point.id} point={point as MapPoint} product={product} onSelect={selectPlace} selected={current ? keyOf(current) === point.id : false} />} /> : points.map((point) => <MapMarker key={point.id} point={point} product={product} onSelect={selectPlace} selected={current ? keyOf(current) === point.id : false} />)}
       </VWorldMapView> : <div className="map-place-list">{items.map((place) => <button type="button" className="place-row" key={keyOf(place)} aria-pressed={current ? keyOf(current) === keyOf(place) : false} onClick={() => selectPlace(place)}><PlaceIcon kind={place.kind} /><span><strong>{place.name}</strong><small>{place.line_names.join(" · ") || place.brand_name || place.subtitle || placeKindLabel(place.kind)}</small>{!hasCoordinates(place) ? <small>좌표 미등록</small> : null}</span></button>)}</div>}
-      {!embedded ? <aside className="transport-map-detail">
+      {!embedded ? <aside className="transport-map-detail" ref={detail} tabIndex={-1} aria-label="선택 장소 상세">
         <label className="transport-map-picker">장소 목록에서 선택<select value={current ? keyOf(current) : ""} onChange={(event) => { const place = items.find((item) => keyOf(item) === event.target.value); if (place) selectPlace(place); }}><option value="">장소 선택</option>{items.map((place) => <option key={keyOf(place)} value={keyOf(place)}>{placeKindLabel(place.kind)} · {place.name}</option>)}</select></label>
         {current ? <><PlaceDetails place={current} />{current.kind === "ferry_port" ? <Link className="button" href={`/ferry?port=${encodeURIComponent(current.provider_id ?? "")}`}>운항 시간표 비교</Link> : null}{current.kind === "airport" ? <Link className="button" href="/flights">출도착·주차 보기</Link> : null}</> : <p className="empty-state">지도나 목록에서 장소를 선택하면 가격·노선·편의정보를 확인할 수 있습니다.</p>}
       </aside> : null}
