@@ -46,6 +46,9 @@ Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks
 
 ### T-042 Transport 전용 운영 관리 UI
 
+- [ ] 배편 탭의 항구 목록을 지도용 좌표 필터와 분리한다. 2026-09-26 운영 DB에는
+      749개 항구가 있지만 `features/places?kind=ferry_port`는 좌표가 연결된 8개만 반환한다.
+      좌표 없는 항구도 검색·선택해 저장 시간표를 읽을 수 있는 목록 API 계약이 필요하다.
 - [x] weather admin의 인증·server-side proxy·Dagster GraphQL 경계를 transport 전용
       Next.js 패키지로 복제
 - [x] 기존 `parking-radar`와 독립된 API/Dagster/UI gateway Compose project 추가
