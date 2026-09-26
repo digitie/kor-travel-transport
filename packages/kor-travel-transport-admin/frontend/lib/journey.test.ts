@@ -27,6 +27,10 @@ describe("여행 정보 표시 계약", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: "제한" }), { status: 429, headers: { "retry-after": "30" } })));
     await expect(transportGet("transport/bus/timetable")).rejects.toMatchObject({ status: 429, retryAfter: 30 });
   });
+  it("영문/구조화된 서버 오류는 안내 문구로 바꾼다", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: [{ msg: "invalid" }] }), { status: 422 })));
+    await expect(transportGet("transport/providers")).rejects.toThrow("검색 조건을 다시 확인");
+  });
   it("조회 취소 signal을 전달한다", async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response("{}")); vi.stubGlobal("fetch", fetcher);
     const controller = new AbortController(); await transportGet("transport/providers", controller.signal);

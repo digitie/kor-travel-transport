@@ -46,9 +46,11 @@ export class TransportError extends Error {
 export async function transportGet<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`/api/transport/${path}`, { cache: "no-store", signal });
   if (!response.ok) {
-    const body = await response.json().catch(() => null) as { detail?: string } | null;
+    const body = await response.json().catch(() => null) as { detail?: unknown } | null;
     const seconds = Number(response.headers.get("retry-after") ?? "0");
-    throw new TransportError(body?.detail ?? "정보를 불러오지 못했습니다. 다시 확인해 주세요.", response.status, Number.isFinite(seconds) ? Math.max(0, seconds) : 0);
+    const fallback = response.status === 401 ? "로그인 상태를 다시 확인해 주세요." : response.status === 404 ? "요청한 정보를 찾을 수 없습니다." : response.status === 422 ? "검색 조건을 다시 확인해 주세요." : "정보를 불러오지 못했습니다. 다시 확인해 주세요.";
+    const message = typeof body?.detail === "string" && /[가-힣]/.test(body.detail) ? body.detail : fallback;
+    throw new TransportError(message, response.status, Number.isFinite(seconds) ? Math.max(0, seconds) : 0);
   }
   return response.json() as Promise<T>;
 }
