@@ -88,6 +88,21 @@ test("느린 7일 통계가 수집 상태 화면을 가로막지 않는다", asy
   await context.close();
 });
 
+test("로그아웃 처리 중 늦게 저장된 통계 캐시도 로그인 화면에서 제거한다", async ({ page }) => {
+  await login(page);
+  await expect(page.getByRole("heading", { name: "수집 소스 상태" })).toBeVisible();
+  await page.evaluate(() => {
+    // form의 React handler 뒤에 완료되는 이전 문서의 비동기 저장을 재현한다.
+    document.addEventListener("submit", () => queueMicrotask(() => {
+      window.sessionStorage.setItem("kor-travel-transport-dashboard-v1", "late-response");
+      window.sessionStorage.setItem("kor-travel-transport-dashboard-v2", "late-response");
+    }), { once: true });
+  });
+  await page.getByRole("button", { name: "로그아웃" }).click();
+  await expect(page).toHaveURL(/\/login/);
+  await expect.poll(() => page.evaluate(() => ["kor-travel-transport-dashboard-v1", "kor-travel-transport-dashboard-v2"].every((key) => window.sessionStorage.getItem(key) === null))).toBe(true);
+});
+
 test.describe("비인증 관리 proxy 경계", () => {
   for (const endpoint of endpointCases) {
     test(`unauthenticated ${endpoint.name}`, async ({ request }) => {
