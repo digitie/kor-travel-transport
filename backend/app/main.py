@@ -21,6 +21,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import func, or_, select, true
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import load_only, selectinload
 from datagokr import DataGoKrClient
@@ -989,18 +990,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 FerryTimetableSnapshot.service_date == service_date,
             )
         )
-        if snapshot is not None:
+        def snapshot_response(row: FerryTimetableSnapshot) -> FerryOperationResponse:
             collected_at = (
-                snapshot.collected_at.replace(tzinfo=UTC)
-                if snapshot.collected_at.tzinfo is None
-                else snapshot.collected_at
+                row.collected_at.replace(tzinfo=UTC)
+                if row.collected_at.tzinfo is None
+                else row.collected_at
             )
             return FerryOperationResponse(
                 port_id=port_id,
                 service_date=service_date,
                 fetched_at=collected_at,
-                items=[FerryOperationItem.model_validate(item) for item in snapshot.items_json],
+                items=[FerryOperationItem.model_validate(item) for item in row.items_json],
             )
+        if snapshot is not None:
+            return snapshot_response(snapshot)
         if not settings.data_go_kr_service_key:
             raise HTTPException(status_code=503, detail="저장된 운항시간표가 없고 여객선 provider도 설정되지 않았습니다.")
         cache_key = (port_id, service_date)
@@ -1068,16 +1071,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 port_id=port_id, service_date=service_date, fetched_at=now_utc(),
                 items=[FerryOperationItem(vessel_name=item.vessel_name, departure_port_name=item.departure_port_name, arrival_port_name=item.arrival_port_name, departure_planned_time=item.departure_planned_time, arrival_planned_time=item.arrival_planned_time, fare=item.fare) for item in operations],
             )
-            session.add(
-                FerryTimetableSnapshot(
-                    source=port.source,
-                    departure_port_id=port_id,
-                    service_date=service_date,
-                    collected_at=response.fetched_at,
-                    items_json=[item.model_dump(mode="json") for item in response.items],
+            try:
+                session.add(
+                    FerryTimetableSnapshot(
+                        source=port.source,
+                        departure_port_id=port_id,
+                        service_date=service_date,
+                        collected_at=response.fetched_at,
+                        items_json=[item.model_dump(mode="json") for item in response.items],
+                    )
                 )
-            )
-            await session.commit()
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                persisted = await session.scalar(
+                    select(FerryTimetableSnapshot).where(
+                        FerryTimetableSnapshot.source == port.source,
+                        FerryTimetableSnapshot.departure_port_id == port_id,
+                        FerryTimetableSnapshot.service_date == service_date,
+                    )
+                )
+                if persisted is None:
+                    raise
+                return snapshot_response(persisted)
             timetable_cache[cache_key] = (now_utc(), response)
             timetable_cache.move_to_end(cache_key)
             while len(timetable_cache) > settings.ferry_timetable_cache_max_entries:

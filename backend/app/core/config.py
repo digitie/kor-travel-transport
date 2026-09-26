@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     ferry_timetable_collection_enabled: bool = False
     # 오늘을 포함해 DB에 유지할 운항일 수다. 예: 10이면 오늘부터 9일 뒤까지다.
     ferry_timetable_storage_days: int = Field(default=10, ge=1, le=31)
+    # 기본 30초 provider 보호 간격에서 Dagster 4시간 runtime 상한을 넘지 않게 한다.
+    ferry_timetable_collection_max_provider_calls: int = Field(default=400, ge=1, le=1_000)
     ferry_timetable_cache_seconds: int = Field(default=300, ge=30, le=3600)
     ferry_timetable_cache_max_entries: int = Field(default=500, ge=1, le=10_000)
     # 실시간 항구 시간표는 사용자 명시 요청만 허용하며, 서로 다른 항구 요청으로 provider

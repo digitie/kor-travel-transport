@@ -22,6 +22,8 @@ from kric import (
     StoredObject,
 )
 from sqlalchemy import delete, or_, select
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -182,6 +184,8 @@ class RailMaritimeCollectionService:
                 )
             )
         )
+        # 최초 10일 backfill 도중 provider가 제한·timeout을 반환해도 범위 정리는 남긴다.
+        await session.commit()
         ports = tuple(
             (await session.execute(
                 select(FerryPort)
@@ -206,6 +210,7 @@ class RailMaritimeCollectionService:
         reused = 0
         operation_count = 0
         last_call_at = None
+        budget_exhausted = False
         async with self._maritime_client_factory(key, timeout=self.settings.api_timeout_seconds) as client:
             for port in ports:
                 for service_date in service_dates:
@@ -225,6 +230,9 @@ class RailMaritimeCollectionService:
                         reused += 1
                         operation_count += len(snapshot.items_json)
                         continue
+                    if provider_calls >= self.settings.ferry_timetable_collection_max_provider_calls:
+                        budget_exhausted = True
+                        break
                     if last_call_at is not None:
                         elapsed = (now_utc() - last_call_at).total_seconds()
                         wait_seconds = self.settings.ferry_timetable_min_interval_seconds - elapsed
@@ -238,25 +246,27 @@ class RailMaritimeCollectionService:
                     items = [_ferry_operation_payload(item) for item in operations]
                     operation_count += len(items)
                     provider_calls += 1
-                    if snapshot is None:
-                        snapshot = FerryTimetableSnapshot(
-                            source=port.source,
-                            departure_port_id=port.port_id,
-                            service_date=service_date,
-                            collected_at=collected_at,
-                            items_json=items,
-                        )
-                        session.add(snapshot)
-                        by_port_date[(port.source, port.port_id, service_date)] = snapshot
-                    else:
-                        snapshot.collected_at = collected_at
-                        snapshot.items_json = items
+                    await _upsert_ferry_timetable_snapshot(
+                        session,
+                        source=port.source,
+                        departure_port_id=port.port_id,
+                        service_date=service_date,
+                        collected_at=collected_at,
+                        items_json=items,
+                    )
+                    # 호출 하나의 성공 결과를 즉시 durable하게 만든다. 이후 호출이 실패해도
+                    # 이미 채운 항구·운항일은 API가 DB에서 반환할 수 있다.
+                    await session.commit()
+                if budget_exhausted:
+                    break
+        deferred_snapshot_count = len(ports) * len(service_dates) - reused - provider_calls
         return {
             "port_count": len(ports),
             "service_date_count": len(service_dates),
             "provider_calls": provider_calls,
             "reused_snapshot_count": reused,
             "operation_count": operation_count,
+            "deferred_snapshot_count": deferred_snapshot_count,
         }
 
     async def _fetch_rail_stations(self) -> tuple[tuple[FileStationInfo, ...], StoredObject | None]:
@@ -506,6 +516,40 @@ def _ferry_operation_payload(item: Any) -> dict[str, str | None]:
         "arrival_planned_time": item.arrival_planned_time,
         "fare": item.fare,
     }
+
+
+async def _upsert_ferry_timetable_snapshot(
+    session: AsyncSession,
+    *,
+    source: str,
+    departure_port_id: str,
+    service_date: Any,
+    collected_at: Any,
+    items_json: list[dict[str, str | None]],
+) -> None:
+    """API lazy fill과 Dagster가 경합해도 항구·운항일당 한 스냅샷만 남긴다."""
+    values = {
+        "source": source,
+        "departure_port_id": departure_port_id,
+        "service_date": service_date,
+        "collected_at": collected_at,
+        "items_json": items_json,
+    }
+    dialect_name = session.bind.dialect.name if session.bind is not None else ""
+    if dialect_name == "postgresql":
+        statement = postgresql_insert(FerryTimetableSnapshot).values(**values)
+    elif dialect_name == "sqlite":
+        statement = sqlite_insert(FerryTimetableSnapshot).values(**values)
+    else:
+        raise RuntimeError(f"unsupported ferry timetable database dialect: {dialect_name}")
+    statement = statement.on_conflict_do_update(
+        index_elements=["source", "departure_port_id", "service_date"],
+        set_={
+            "collected_at": statement.excluded.collected_at,
+            "items_json": statement.excluded.items_json,
+        },
+    )
+    await session.execute(statement)
 
 
 def _port_name_key(value: str | None) -> str:

@@ -246,6 +246,98 @@ def test_ferry_timetable_collection_stores_horizon_and_reuses_future_snapshots(t
     asyncio.run(run())
 
 
+def test_ferry_timetable_collection_keeps_completed_snapshots_when_later_call_fails(tmp_path: Path) -> None:
+    class PartiallyFailingClient:
+        calls = 0
+
+        async def __aenter__(self) -> "PartiallyFailingClient":
+            return self
+
+        async def __aexit__(self, *_: object) -> None:
+            return None
+
+        async def get_domestic_ship_operations(self, **_kwargs):
+            type(self).calls += 1
+            if type(self).calls == 2:
+                raise RuntimeError("provider timeout")
+            return ()
+
+    settings = _settings(
+        tmp_path,
+        ferry_timetable_collection_enabled=True,
+        ferry_timetable_storage_days=2,
+        ferry_timetable_min_interval_seconds=1,
+        data_go_kr_service_key="test-key",
+    )
+    engine, session_factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> None:
+        await init_database(engine)
+        now = now_utc()
+        async with session_factory() as session:
+            session.add(FerryPort(source="data_go_kr_maritime", port_id="P001", port_name="테스트항", latitude=None, longitude=None, location_source=None, location_point_count=0, first_seen_at=now, last_seen_at=now, raw_item_json=None))
+            await session.commit()
+        service = RailMaritimeCollectionService(settings, maritime_client_factory=lambda _key, *, timeout: PartiallyFailingClient())
+        async with session_factory() as session:
+            with pytest.raises(RuntimeError, match="provider timeout"):
+                await service.collect_ferry_timetables(session)
+        async with session_factory() as session:
+            assert await session.scalar(select(func.count()).select_from(FerryTimetableSnapshot)) == 1
+            run = await session.scalar(select(CollectionRun).order_by(CollectionRun.id.desc()))
+        assert run is not None
+        assert run.status == "failed"
+        await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_ferry_timetable_collection_resumes_after_provider_call_budget(tmp_path: Path) -> None:
+    class BudgetedClient:
+        calls = 0
+
+        async def __aenter__(self) -> "BudgetedClient":
+            return self
+
+        async def __aexit__(self, *_: object) -> None:
+            return None
+
+        async def get_domestic_ship_operations(self, **_kwargs):
+            type(self).calls += 1
+            return ()
+
+    settings = _settings(
+        tmp_path,
+        ferry_timetable_collection_enabled=True,
+        ferry_timetable_storage_days=2,
+        ferry_timetable_collection_max_provider_calls=1,
+        data_go_kr_service_key="test-key",
+    )
+    engine, session_factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> None:
+        await init_database(engine)
+        now = now_utc()
+        async with session_factory() as session:
+            session.add(FerryPort(source="data_go_kr_maritime", port_id="P001", port_name="테스트항", latitude=None, longitude=None, location_source=None, location_point_count=0, first_seen_at=now, last_seen_at=now, raw_item_json=None))
+            await session.commit()
+        service = RailMaritimeCollectionService(settings, maritime_client_factory=lambda _key, *, timeout: BudgetedClient())
+        async with session_factory() as session:
+            first = await service.collect_ferry_timetables(session)
+        async with session_factory() as session:
+            second = await service.collect_ferry_timetables(session)
+        async with session_factory() as session:
+            count = await session.scalar(select(func.count()).select_from(FerryTimetableSnapshot))
+        assert first["provider_calls"] == 1
+        assert first["deferred_snapshot_count"] == 1
+        assert second["provider_calls"] == 1
+        assert second["deferred_snapshot_count"] == 0
+        assert BudgetedClient.calls == 2
+        assert count == 2
+        await engine.dispose()
+
+    asyncio.run(run())
+
+
 def test_enabled_rail_reference_collection_requires_rustfs_configuration(tmp_path: Path) -> None:
     settings = _settings(tmp_path, rail_reference_collection_enabled=True)
     engine, session_factory = create_engine_and_session_factory(settings.database_url)

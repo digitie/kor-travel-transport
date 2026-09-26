@@ -16,7 +16,7 @@ def test_dagster_definitions_evaluates_kric_rail_due_daily_with_a_48_hour_guard(
 
     assert rail_schedule.cron_schedule == "0 3 * * *"
     assert maritime_schedule.cron_schedule == "0 3 */3 * *"
-    assert ferry_timetable_schedule.cron_schedule == "45 3 * * *"
+    assert ferry_timetable_schedule.cron_schedule == "45 */4 * * *"
     assert bus_schedule.cron_schedule == "30 3 * * *"
     assert rail_schedule.execution_timezone == "Asia/Seoul"
     assert maritime_schedule.execution_timezone == "Asia/Seoul"

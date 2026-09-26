@@ -194,16 +194,18 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
   });
 
   test("배편 탭은 선택한 항구만 조회하고 늦은 응답·429를 구분한다", async () => {
+    const requestedDates: string[] = [];
     await page.route(/\/api\/transport\/transport\/features\/places\?kind=ferry_port&limit=5000$/, (route) => route.fulfill({ json: { items: [
       { id: 1, kind: "ferry_port", provider_id: "alpha", name: "알파 항구", subtitle: null, line_names: [], address: null, updated_at: "2026-09-22T00:00:00Z", location_point_count: 1 },
       { id: 2, kind: "ferry_port", provider_id: "bravo", name: "브라보 항구", subtitle: null, line_names: [], address: null, updated_at: "2026-09-22T00:00:00Z", location_point_count: 1 },
       { id: 3, kind: "ferry_port", provider_id: "rate", name: "제한 항구", subtitle: null, line_names: [], address: null, updated_at: "2026-09-22T00:00:00Z", location_point_count: 1 },
     ] } }));
-    await page.route(/\/ports\/alpha\/timetable$/, async (route) => { await new Promise((resolve) => setTimeout(resolve, 300)); await route.fulfill({ json: { items: [{ vessel_name: "알파호", departure_port_name: "알파", arrival_port_name: "도착", departure_planned_time: "08:00", arrival_planned_time: "10:00", fare: "10000" }] } }); });
-    await page.route(/\/ports\/bravo\/timetable$/, (route) => route.fulfill({ json: { items: [{ vessel_name: "브라보호", departure_port_name: "브라보", arrival_port_name: "도착", departure_planned_time: "09:00", arrival_planned_time: "11:00", fare: "12000" }] } }));
-    await page.route(/\/ports\/rate\/timetable$/, (route) => route.fulfill({ status: 429, headers: { "retry-after": "30" }, json: { detail: "요청이 많습니다." } }));
+    await page.route(/\/ports\/alpha\/timetable(?:\?date=.*)?$/, async (route) => { requestedDates.push(new URL(route.request().url()).searchParams.get("date") ?? ""); await new Promise((resolve) => setTimeout(resolve, 300)); await route.fulfill({ json: { items: [{ vessel_name: "알파호", departure_port_name: "알파", arrival_port_name: "도착", departure_planned_time: "08:00", arrival_planned_time: "10:00", fare: "10000" }] } }); });
+    await page.route(/\/ports\/bravo\/timetable(?:\?date=.*)?$/, (route) => { requestedDates.push(new URL(route.request().url()).searchParams.get("date") ?? ""); return route.fulfill({ json: { items: [{ vessel_name: "브라보호", departure_port_name: "브라보", arrival_port_name: "도착", departure_planned_time: "09:00", arrival_planned_time: "11:00", fare: "12000" }] } }); });
+    await page.route(/\/ports\/rate\/timetable(?:\?date=.*)?$/, (route) => { requestedDates.push(new URL(route.request().url()).searchParams.get("date") ?? ""); return route.fulfill({ status: 429, headers: { "retry-after": "30" }, json: { detail: "요청이 많습니다." } }); });
 
     await page.goto("/ferry");
+    await expect(page.getByLabel("운항일")).toHaveAttribute("min", /^\d{4}-\d{2}-\d{2}$/);
     const card = (name: string) => page.locator("article.reference-card", { hasText: name });
     await card("알파 항구").getByRole("button", { name: "오늘 운항 보기" }).click();
     await card("브라보 항구").getByRole("button", { name: "오늘 운항 보기" }).click();
@@ -213,6 +215,14 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
     await expect(page.getByText("알파호")).not.toBeVisible();
     await card("제한 항구").getByRole("button", { name: "오늘 운항 보기" }).click();
     await expect(page.getByText("요청이 많습니다. 30초 뒤에 다시 확인해 주세요.")).toBeVisible();
+    const futureDate = await page.getByLabel("운항일").getAttribute("max");
+    expect(futureDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    await page.getByLabel("운항일").fill(futureDate!);
+    await card("브라보 항구").getByRole("button", { name: `${futureDate} 운항 보기` }).click();
+    await expect(page.getByRole("heading", { name: `브라보 항구 ${futureDate} 운항` })).toBeVisible();
+    expect(requestedDates).toHaveLength(4);
+    expect(requestedDates).toContain(futureDate);
+    expect(requestedDates.every((value) => /^\d{4}-\d{2}-\d{2}$/.test(value))).toBeTruthy();
   });
 
   test("allowlist 밖의 관리 proxy 경로는 숨긴다", async () => {

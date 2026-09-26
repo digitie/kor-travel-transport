@@ -12,6 +12,7 @@ const INITIAL_VISIBLE_COUNT = 60;
 
 function updatedAt(value: string) { return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Seoul" }).format(new Date(value)); }
 function operationText(item: FerryOperation, portName: string) { return `${item.departure_planned_time ?? "—"} ${item.departure_port_name ?? portName} → ${item.arrival_planned_time ?? "—"} ${item.arrival_port_name ?? "—"}${item.vessel_name ? ` · ${item.vessel_name}` : ""}${item.fare ? ` · ${item.fare}원` : ""}`; }
+function seoulDateValue(offsetDays = 0) { const date = new Date(Date.now() + (9 * 60 * 60 * 1000)); date.setUTCDate(date.getUTCDate() + offsetDays); return date.toISOString().slice(0, 10); }
 
 export function TransportReferenceList({ kind }: { kind: PlaceKind }) {
   const [items, setItems] = useState<Place[]>([]);
@@ -21,6 +22,7 @@ export function TransportReferenceList({ kind }: { kind: PlaceKind }) {
   const [selected, setSelected] = useState<Place | null>(null);
   const [operations, setOperations] = useState<string[]>([]);
   const [loadingTimetable, setLoadingTimetable] = useState(false);
+  const [serviceDate, setServiceDate] = useState(() => seoulDateValue());
   const timetableController = useRef<AbortController | null>(null);
   const timetableRequest = useRef(0);
 
@@ -49,28 +51,30 @@ export function TransportReferenceList({ kind }: { kind: PlaceKind }) {
     setOperations([]);
     setLoadingTimetable(true);
     try {
-      const response = await fetch(`/api/transport/transport/ports/${encodeURIComponent(port.provider_id)}/timetable`, { signal: controller.signal });
+      const response = await fetch(`/api/transport/transport/ports/${encodeURIComponent(port.provider_id)}/timetable?date=${encodeURIComponent(serviceDate)}`, { signal: controller.signal });
       if (!response.ok) {
         const body = await response.json().catch(() => null) as { detail?: string } | null;
         if (response.status === 429) {
           const retryAfter = response.headers.get("retry-after");
           throw new Error(retryAfter ? `요청이 많습니다. ${retryAfter}초 뒤에 다시 확인해 주세요.` : "요청이 많습니다. 잠시 뒤에 다시 확인해 주세요.");
         }
-        throw new Error(body?.detail ?? "오늘 운항 정보를 불러오지 못했습니다.");
+        throw new Error(body?.detail ?? "운항 정보를 불러오지 못했습니다.");
       }
       const payload = await response.json() as { items: FerryOperation[] };
       if (request === timetableRequest.current) setOperations(payload.items.map((item) => operationText(item, port.name)));
     } catch (reason: unknown) {
       if (reason instanceof DOMException && reason.name === "AbortError") return;
-      if (request === timetableRequest.current) setOperations([reason instanceof Error ? reason.message : "오늘 운항 정보를 불러오지 못했습니다."]);
+      if (request === timetableRequest.current) setOperations([reason instanceof Error ? reason.message : "운항 정보를 불러오지 못했습니다."]);
     } finally {
       if (request === timetableRequest.current) setLoadingTimetable(false);
     }
   }
 
   const rail = kind === "rail_station";
+  const today = seoulDateValue();
+  const timetableLabel = serviceDate === today ? "오늘 운항" : `${serviceDate} 운항`;
   return <section className="reference-section">
-    <div className="reference-toolbar"><label htmlFor={`${kind}-query`}>{rail ? "역 또는 노선 검색" : "항구 검색"}<input id={`${kind}-query`} onChange={(event) => { setQuery(event.target.value); setVisibleCount(INITIAL_VISIBLE_COUNT); }} placeholder={rail ? "예: 서울역, 1호선" : "예: 목포, 제주"} value={query} /></label><p className="quiet">{query.trim() ? `검색 결과 ${filtered.length.toLocaleString("ko-KR")}곳 · ` : ""}저장된 {placeKindLabel(kind)} {items.length.toLocaleString("ko-KR")}곳</p></div>
+    <div className="reference-toolbar"><label htmlFor={`${kind}-query`}>{rail ? "역 또는 노선 검색" : "항구 검색"}<input id={`${kind}-query`} onChange={(event) => { setQuery(event.target.value); setVisibleCount(INITIAL_VISIBLE_COUNT); }} placeholder={rail ? "예: 서울역, 1호선" : "예: 목포, 제주"} value={query} /></label>{!rail ? <label htmlFor="ferry-service-date">운항일<input id="ferry-service-date" max={seoulDateValue(9)} min={today} onChange={(event) => { setServiceDate(event.target.value); setSelected(null); setOperations([]); }} type="date" value={serviceDate} /></label> : null}<p className="quiet">{query.trim() ? `검색 결과 ${filtered.length.toLocaleString("ko-KR")}곳 · ` : ""}저장된 {placeKindLabel(kind)} {items.length.toLocaleString("ko-KR")}곳</p></div>
     {message ? <p className="loading">{message}</p> : <div className="reference-list">
       {visibleItems.map((item) => <article className="reference-card" key={item.id}>
         <p className="eyebrow">{placeKindLabel(kind)}</p><h2>{item.name}</h2>
@@ -78,10 +82,10 @@ export function TransportReferenceList({ kind }: { kind: PlaceKind }) {
         {item.line_names.length ? <p className="reference-lines">운행 노선: {item.line_names.join(", ")}</p> : null}
         {item.address ? <p className="quiet">{item.address}</p> : null}
         <p className="quiet">기준정보 반영: {updatedAt(item.updated_at)}</p>
-        {kind === "ferry_port" ? <button className="button" disabled={loadingTimetable && selected?.id === item.id} onClick={() => void loadTimetable(item)} type="button">{loadingTimetable && selected?.id === item.id ? "운항 정보 확인 중…" : "오늘 운항 보기"}</button> : null}
+        {kind === "ferry_port" ? <button className="button" disabled={loadingTimetable && selected?.id === item.id} onClick={() => void loadTimetable(item)} type="button">{loadingTimetable && selected?.id === item.id ? "운항 정보 확인 중…" : `${timetableLabel} 보기`}</button> : null}
       </article>)}
     </div>}
     {!message && visibleItems.length < filtered.length ? <button className="button reference-more" onClick={() => setVisibleCount((count) => count + INITIAL_VISIBLE_COUNT)} type="button">{Math.min(INITIAL_VISIBLE_COUNT, filtered.length - visibleItems.length).toLocaleString("ko-KR")}곳 더 보기</button> : null}
-    {selected ? <section aria-live="polite" className="panel ferry-operations"><h2>{selected.name} 오늘 운항</h2>{operations.length ? <ul className="row-list">{operations.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : loadingTimetable ? <p className="quiet">저장된 운항 정보를 확인하는 중입니다…</p> : <p className="quiet">오늘 등록된 운항 정보가 없습니다.</p>}</section> : null}
+    {selected ? <section aria-live="polite" className="panel ferry-operations"><h2>{selected.name} {timetableLabel}</h2>{operations.length ? <ul className="row-list">{operations.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : loadingTimetable ? <p className="quiet">저장된 운항 정보를 확인하는 중입니다…</p> : <p className="quiet">{timetableLabel}이 없습니다.</p>}</section> : null}
   </section>;
 }

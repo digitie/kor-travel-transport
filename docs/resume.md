@@ -3,7 +3,7 @@
 ## 현재 상태
 
 - 2026-09-26 여객선 운항시간표를 `ferry_timetable_snapshots`에 저장하도록 전환 중이다.
-  오늘 포함 10일을 DB에 유지하고, 매일 Dagster가 새 미래 운항일과 당일만 보충한다. 항구
+  오늘 포함 10일을 DB에 유지하고, 4시간마다 Dagster가 run당 최대 400건으로 새 미래 운항일과 당일을 보충한다. 항구
   API는 저장 스냅샷을 우선 반환하며 키가 있어도 DB 누락분만 provider에 요청한다. 다음
   작업은 migration·Docker 검증, CI·독립 적대 리뷰와 n150 live E2E 뒤 PR 머지다.
 
