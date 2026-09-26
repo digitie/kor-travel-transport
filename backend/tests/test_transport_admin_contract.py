@@ -86,6 +86,8 @@ def test_transport_runtime_forwards_port_guideline_and_timetable_limits() -> Non
 
     for variable in (
         "PORT_GUIDELINE_COLLECTION_ENABLED",
+        "FERRY_TIMETABLE_COLLECTION_ENABLED",
+        "FERRY_TIMETABLE_STORAGE_DAYS",
         "FERRY_TIMETABLE_CACHE_SECONDS",
         "FERRY_TIMETABLE_CACHE_MAX_ENTRIES",
         "FERRY_TIMETABLE_MAX_DAYS_AHEAD",

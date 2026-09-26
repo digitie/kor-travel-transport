@@ -1,5 +1,14 @@
 # journal.md — 작업 일지
 
+## 2026-09-26
+
+- 여객선 시간표 정책을 실시간 전용에서 PostgreSQL 저장 우선으로 변경했다. 새
+  `ferry_timetable_snapshots`는 항구·운항일·source별 공개 API 응답을 저장하며, 오늘 포함
+  10일만 유지한다. `ferry_timetable_collection_job`은 최초 누락 범위를 채운 뒤 당일과 새
+  미래 운항일만 갱신한다. 항구 API는 DB 스냅샷을 key 없이도 반환하고, 누락된 한 건만
+  provider에서 읽어 저장한다. 수집·API 재시작 회귀와 기간 정리, Dagster schedule 계약을
+  SQLite 단위 테스트로 고정했다.
+
 ## 2026-09-25
 
 - TAGO 고속·시외버스 수집 및 실시간 시간표 API를 추가했다. 터미널 기준정보만 3일 주기로

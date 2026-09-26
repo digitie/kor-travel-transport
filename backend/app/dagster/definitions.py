@@ -75,6 +75,12 @@ def _collect_reference(kind: str) -> dict[str, Any]:
     return asyncio.run(_run_with_session(settings, action))
 
 
+def _collect_ferry_timetable() -> dict[str, Any]:
+    settings = _settings()
+    service = RailMaritimeCollectionService(settings)
+    return asyncio.run(_run_with_session(settings, service.collect_ferry_timetables))
+
+
 def _collect_bus_reference() -> dict[str, Any]:
     settings = _settings()
     return asyncio.run(
@@ -90,6 +96,11 @@ def collect_rail_reference() -> dict[str, Any]:
 @op
 def collect_maritime_reference() -> dict[str, Any]:
     return _collect_reference("maritime")
+
+
+@op
+def collect_ferry_timetable() -> dict[str, Any]:
+    return _collect_ferry_timetable()
 
 
 @op
@@ -123,6 +134,11 @@ def maritime_reference_collection_job() -> None:
 
 
 @job(tags={"kortraveltransport/run_group": "reference"})
+def ferry_timetable_collection_job() -> None:
+    collect_ferry_timetable()
+
+
+@job(tags={"kortraveltransport/run_group": "reference"})
 def bus_reference_collection_job() -> None:
     collect_bus_reference()
 
@@ -134,6 +150,7 @@ definitions = Definitions(
         fuel_collection_job,
         rail_reference_collection_job,
         maritime_reference_collection_job,
+        ferry_timetable_collection_job,
         bus_reference_collection_job,
     ],
     schedules=[
@@ -143,6 +160,8 @@ definitions = Definitions(
         # 매일 due를 평가하되 service가 마지막 성공 뒤 48시간 전에는 provider를 호출하지 않는다.
         ScheduleDefinition(job=rail_reference_collection_job, cron_schedule="0 3 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         ScheduleDefinition(job=maritime_reference_collection_job, cron_schedule="0 3 */3 * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
+        # 전날까지의 DB 스냅샷을 정리하고, 오늘 포함 10일 범위에서 새 운항일만 보충한다.
+        ScheduleDefinition(job=ferry_timetable_collection_job, cron_schedule="45 3 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         # 매일 due를 평가하되 service가 마지막 성공 뒤 72시간 전에는 provider를 호출하지 않는다.
         ScheduleDefinition(job=bus_reference_collection_job, cron_schedule="30 3 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
     ],

@@ -102,19 +102,19 @@ export function TransportMap() {
     timetableController.current = controller;
     const requestId = ++timetableRequest.current;
     const port = selected;
-    setOperations("실시간 운항 정보를 읽는 중입니다…");
+    setOperations("저장된 운항 정보를 읽는 중입니다…");
     try {
       const response = await fetch(`/api/transport/transport/ports/${encodeURIComponent(providerId)}/timetable`, { signal: controller.signal });
       if (!response.ok) {
         const body = await response.json().catch(() => null) as { detail?: string } | null;
         const retryAfter = response.headers.get("retry-after");
-        throw new Error(response.status === 429 && retryAfter ? `${body?.detail ?? "실시간 운항 정보 요청이 제한되었습니다."} 약 ${retryAfter}초 뒤 다시 시도해 주세요.` : body?.detail ?? "실시간 운항 정보를 불러오지 못했습니다.");
+        throw new Error(response.status === 429 && retryAfter ? `${body?.detail ?? "운항 정보 보충 요청이 제한되었습니다."} 약 ${retryAfter}초 뒤 다시 시도해 주세요.` : body?.detail ?? "저장된 운항 정보를 불러오지 못했습니다.");
       }
       const payload = await response.json() as { items: Array<{ departure_port_name?: string; arrival_port_name?: string; departure_planned_time?: string; arrival_planned_time?: string; vessel_name?: string; fare?: string }> };
       if (timetableRequest.current === requestId) setOperations(payload.items.length ? payload.items.map((item) => timetableLine(item, port.name)).join("\n") : "오늘 등록된 운항 정보가 없습니다.");
     } catch (error: unknown) {
       if (error instanceof DOMException && error.name === "AbortError") return;
-      if (timetableRequest.current === requestId) setOperations(error instanceof Error ? error.message : "실시간 운항 정보를 불러오지 못했습니다.");
+      if (timetableRequest.current === requestId) setOperations(error instanceof Error ? error.message : "저장된 운항 정보를 불러오지 못했습니다.");
     }
   }
 

@@ -77,7 +77,9 @@
 - `airport_collection_job`과 `highway_collection_job`은 5분마다, `fuel_collection_job`은
   8시간마다 실행한다. KRIC 공개 XLSX를 읽는 `rail_reference_collection_job`은 제공기관
   요청에 맞춰 마지막 성공 후 실제 48시간 간격, `maritime_reference_collection_job`은 3일
-  주기로 실행한다. `bus_reference_collection_job`은 매일 실행을 평가하되 마지막 성공 뒤
+  주기로 실행한다. `ferry_timetable_collection_job`은 매일 03:45 KST에 오늘을 포함한
+  10일 운항일 DB 범위를 보충한다. 최초 누락 범위 외에는 당일과 새 미래 운항일만 provider에서
+  갱신한다. `bus_reference_collection_job`은 매일 실행을 평가하되 마지막 성공 뒤
   실제 72시간이 지나기 전에는 provider를 호출하지 않는다.
 - FastAPI는 읽기 API만 제공하며 manual collection은 운영에서 비활성화한다.
 

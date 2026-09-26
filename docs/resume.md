@@ -2,6 +2,11 @@
 
 ## 현재 상태
 
+- 2026-09-26 여객선 운항시간표를 `ferry_timetable_snapshots`에 저장하도록 전환 중이다.
+  오늘 포함 10일을 DB에 유지하고, 매일 Dagster가 새 미래 운항일과 당일만 보충한다. 항구
+  API는 저장 스냅샷을 우선 반환하며 키가 있어도 DB 누락분만 provider에 요청한다. 다음
+  작업은 migration·Docker 검증, CI·독립 적대 리뷰와 n150 live E2E 뒤 PR 머지다.
+
 - 2026-09-25 TAGO 고속·시외버스 provider(`python-datagokr-api` PR #18)는 두 독립 적대 리뷰의
   P1/P2를 모두 해소한 뒤 `472c353`으로 병합됐다. transport PR #39는 터미널 기준정보
   `bus_terminal_references`, 72시간 provider 호출 guard를 둔 Dagster 수집, 저장하지 않는

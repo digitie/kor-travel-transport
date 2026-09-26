@@ -44,12 +44,15 @@ class Settings(BaseSettings):
     maritime_reference_collection_enabled: bool = False
     bus_reference_collection_enabled: bool = False
     port_guideline_collection_enabled: bool = True
+    ferry_timetable_collection_enabled: bool = False
+    # 오늘을 포함해 DB에 유지할 운항일 수다. 예: 10이면 오늘부터 9일 뒤까지다.
+    ferry_timetable_storage_days: int = Field(default=10, ge=1, le=31)
     ferry_timetable_cache_seconds: int = Field(default=300, ge=30, le=3600)
     ferry_timetable_cache_max_entries: int = Field(default=500, ge=1, le=10_000)
     # 실시간 항구 시간표는 사용자 명시 요청만 허용하며, 서로 다른 항구 요청으로 provider
     # quota를 소진하지 않도록 cache miss 사이에도 전역 간격을 둔다.
     ferry_timetable_min_interval_seconds: int = Field(default=30, ge=1, le=3600)
-    ferry_timetable_max_days_ahead: int = Field(default=7, ge=0, le=31)
+    ferry_timetable_max_days_ahead: int = Field(default=9, ge=0, le=31)
     bus_timetable_cache_seconds: int = Field(default=900, ge=30, le=3600)
     bus_timetable_cache_max_entries: int = Field(default=500, ge=1, le=10_000)
     # 공개 TAGO 시간표는 인증되지 않은 호출도 받으므로 provider quota를 보호할 수 있게

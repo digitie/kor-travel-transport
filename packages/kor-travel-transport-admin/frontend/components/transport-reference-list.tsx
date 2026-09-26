@@ -82,6 +82,6 @@ export function TransportReferenceList({ kind }: { kind: PlaceKind }) {
       </article>)}
     </div>}
     {!message && visibleItems.length < filtered.length ? <button className="button reference-more" onClick={() => setVisibleCount((count) => count + INITIAL_VISIBLE_COUNT)} type="button">{Math.min(INITIAL_VISIBLE_COUNT, filtered.length - visibleItems.length).toLocaleString("ko-KR")}곳 더 보기</button> : null}
-    {selected ? <section aria-live="polite" className="panel ferry-operations"><h2>{selected.name} 오늘 운항</h2>{operations.length ? <ul className="row-list">{operations.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : loadingTimetable ? <p className="quiet">실시간 운항 정보를 확인하는 중입니다…</p> : <p className="quiet">오늘 등록된 운항 정보가 없습니다.</p>}</section> : null}
+    {selected ? <section aria-live="polite" className="panel ferry-operations"><h2>{selected.name} 오늘 운항</h2>{operations.length ? <ul className="row-list">{operations.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}</ul> : loadingTimetable ? <p className="quiet">저장된 운항 정보를 확인하는 중입니다…</p> : <p className="quiet">오늘 등록된 운항 정보가 없습니다.</p>}</section> : null}
   </section>;
 }
