@@ -14,8 +14,9 @@ from sqlalchemy.exc import OperationalError
 from app.core.config import Settings
 from app.core.time_utils import now_utc
 from app.main import create_app
+from datagokr.exceptions import ApiErrorResponse
 from kric import KricRateLimitError
-from app.models import AnalyticsCache, Airport, CollectionRun, FerryPort, FuelPriceSnapshot, FuelStation, ParkingLot, ParkingSnapshot, RailStationReference
+from app.models import AnalyticsCache, Airport, BusTerminalReference, CollectionRun, FerryPort, FuelPriceSnapshot, FuelStation, ParkingLot, ParkingSnapshot, RailStationReference
 
 
 def assert_is_utc_iso(value: str | None) -> None:
@@ -202,6 +203,136 @@ def test_transport_port_timetable_caches_one_live_provider_call(tmp_path: Path) 
     assert first.json() == second.json()
     assert first.json()["items"] == [{"vessel_name": "테스트호", "departure_port_name": "테스트항", "arrival_port_name": "도착항", "departure_planned_time": "09:00", "arrival_planned_time": "10:00", "fare": "10000"}]
     assert FakeMaritimeClient.calls == 1
+
+
+def test_transport_port_timetable_bounds_cached_ports(tmp_path: Path) -> None:
+    class FakeMaritimeClient:
+        calls: list[str] = []
+
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args) -> None:
+            return None
+
+        async def get_domestic_ship_operations(self, *, departure_port_id: str, **_kwargs):
+            type(self).calls.append(departure_port_id)
+            return ()
+
+    with build_client(
+        tmp_path,
+        data_go_kr_service_key="test-key",
+        ferry_timetable_cache_max_entries=1,
+    ) as client:
+        async def seed() -> None:
+            now = now_utc()
+            async with client.app.state.session_factory() as session:
+                for port_id in ("P1", "P2"):
+                    session.add(FerryPort(source="data_go_kr_maritime", port_id=port_id, port_name=port_id, latitude=129.1, longitude=35.1, location_source=None, location_point_count=1, first_seen_at=now, last_seen_at=now, raw_item_json=None))
+                await session.commit()
+
+        asyncio.run(seed())
+        with patch("app.main.DataGoKrMaritimeClient", FakeMaritimeClient):
+            first = client.get("/v1/transport/ports/P1/timetable")
+            client.app.state.ferry_timetable_last_provider_call_at = now_utc() - timedelta(seconds=61)
+            second = client.get("/v1/transport/ports/P2/timetable")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert FakeMaritimeClient.calls == ["P1", "P2"]
+    assert len(client.app.state.ferry_timetable_cache) == 1
+
+
+def test_transport_bus_lists_saved_terminals_and_caches_live_timetable(tmp_path: Path) -> None:
+    class FakeBusClient:
+        calls = 0
+
+        def __init__(self, *_args, **_kwargs) -> None:
+            self.express_bus = self
+            self.intercity_bus = self
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args) -> None:
+            return None
+
+        async def timetable_list(self, **kwargs):
+            type(self).calls += 1
+            assert kwargs["departure_terminal_id"] == "A"
+            assert kwargs["arrival_terminal_id"] == "B"
+            fare = 38_000 if kwargs["bus_grade_id"] == "1" else 31_000
+            return SimpleNamespace(items=(SimpleNamespace(route_id="R1", dep_place_name="서울", arr_place_name="부산", dep_planned_time="20260925060000", arr_planned_time="20260925094000", grade_name="우등", adult_charge=fare),))
+
+    with build_client(
+        tmp_path,
+        data_go_kr_service_key="test-key",
+        bus_timetable_cache_max_entries=1,
+        bus_timetable_min_interval_seconds=30,
+    ) as client:
+        async def seed() -> None:
+            now = now_utc()
+            async with client.app.state.session_factory() as session:
+                for terminal_id, name in (("A", "서울터미널"), ("B", "부산터미널")):
+                    session.add(BusTerminalReference(source="data_go_kr_tago", service_type="express", terminal_id=terminal_id, terminal_name=name, city_name=None, first_seen_at=now, last_seen_at=now, raw_item_json=None))
+                await session.commit()
+
+        asyncio.run(seed())
+        listed = client.get("/v1/transport/bus/terminals", params={"service_type": "express", "query": "서울"})
+        with patch("app.main.DataGoKrClient", FakeBusClient):
+            first = client.get("/v1/transport/bus/timetable", params={"service_type": "express", "departure_terminal_id": "A", "arrival_terminal_id": "B", "date": "2026-09-25", "bus_grade_id": "1"})
+            second = client.get("/v1/transport/bus/timetable", params={"service_type": "express", "departure_terminal_id": "A", "arrival_terminal_id": "B", "date": "2026-09-25", "bus_grade_id": "1"})
+            client.app.state.bus_timetable_last_provider_call_at = now_utc() - timedelta(seconds=30)
+            another_grade = client.get("/v1/transport/bus/timetable", params={"service_type": "express", "departure_terminal_id": "A", "arrival_terminal_id": "B", "date": "2026-09-25", "bus_grade_id": "2"})
+
+    assert listed.status_code == 200
+    assert listed.json()["total"] == 1
+    assert listed.json()["items"][0]["terminal_id"] == "A"
+    assert first.status_code == 200
+    assert first.json()["items"][0]["adult_fare"] == 38000
+    assert first.json() == second.json()
+    assert another_grade.status_code == 200
+    assert another_grade.json()["items"][0]["adult_fare"] == 31000
+    assert FakeBusClient.calls == 2
+    assert len(client.app.state.bus_timetable_cache) == 1
+
+
+def test_transport_bus_timetable_applies_provider_rate_limit_backoff(tmp_path: Path) -> None:
+    class RateLimitedBusClient:
+        def __init__(self, *_args, **_kwargs) -> None:
+            self.express_bus = self
+            self.intercity_bus = self
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args) -> None:
+            return None
+
+        async def timetable_list(self, **_kwargs):
+            raise ApiErrorResponse(code="22", message="LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR")
+
+    with build_client(tmp_path, data_go_kr_service_key="test-key", upstream_rate_limit_backoff_seconds=60) as client:
+        async def seed() -> None:
+            now = now_utc()
+            async with client.app.state.session_factory() as session:
+                for terminal_id in ("A", "B"):
+                    session.add(BusTerminalReference(source="data_go_kr_tago", service_type="express", terminal_id=terminal_id, terminal_name=terminal_id, city_name=None, first_seen_at=now, last_seen_at=now, raw_item_json=None))
+                await session.commit()
+
+        asyncio.run(seed())
+        params = {"service_type": "express", "departure_terminal_id": "A", "arrival_terminal_id": "B", "date": "2026-09-25"}
+        with patch("app.main.DataGoKrClient", RateLimitedBusClient):
+            limited = client.get("/v1/transport/bus/timetable", params=params)
+            blocked = client.get("/v1/transport/bus/timetable", params=params)
+
+    assert limited.status_code == 429
+    assert 1 <= int(limited.headers["retry-after"]) <= 60
+    assert blocked.status_code == 429
+    assert 1 <= int(blocked.headers["retry-after"]) <= 60
 
 
 def test_transport_port_timetable_rate_limit_uses_provider_wide_backoff(tmp_path: Path) -> None:

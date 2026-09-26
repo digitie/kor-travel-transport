@@ -3,7 +3,7 @@
 ## 통합 교통정보 수집
 
 이 저장소의 목적은 공항 주차만 보여주는 데 있지 않다. 국내 여행 중 필요한 고속도로,
-유가, 이후 추가될 열차·도시철도·항구·배편 데이터를 주기적으로 수집해 PostgreSQL에
+유가, 열차·도시철도·항구·배편·TAGO 버스 터미널 데이터를 주기적으로 수집해 PostgreSQL에
 보존하고, 저장된 값은 외부 OpenAPI와 내부 통계 API가 즉시 읽도록 하는 것이다.
 
 현재 구현 범위:
@@ -16,6 +16,9 @@
   `/v1/transport/fuel/stations`: PostgreSQL 최신/기간 데이터 조회
 - `/v1/transport/statistics`: 저장 데이터에서 평균 속도, 돌발 건수, 유종별 가격 통계 계산
 - `/v1/transport/collector-status`: 소스별 수집 상태와 마지막 실행 결과/오류 확인
+- TAGO 고속·시외버스 터미널은 Dagster가 매일 due를 평가하되 마지막 성공 뒤 72시간이 지난 경우에만
+  저장하며,
+  `/v1/transport/bus/timetable`은 저장하지 않는 실시간 조회만 제공한다.
 
 통합 수집 실행은 기존 주차 수집과 별도 `CollectionRun.trigger=transport_scheduler`를
 사용한다. 따라서 기존 주차 dashboard의 최근 실행/신선도 집계에 섞이지 않는다. 소스별

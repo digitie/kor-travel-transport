@@ -32,6 +32,7 @@ const fuelCases: EndpointCase[] = [1, 2, 3, 7].flatMap((days) => ["B027", "D047"
 const endpointCases: EndpointCase[] = [
   { name: "collector status", path: "transport/collector-status", arrayKey: "sources" },
   { name: "saved map places", path: "transport/features/places?limit=10", arrayKey: "items" },
+  { name: "saved bus terminals", path: "transport/bus/terminals?service_type=express&limit=10", arrayKey: "items" },
   ...statisticsCases,
   ...trafficCases,
   ...incidentCases,
@@ -221,13 +222,15 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
 
   test("로그아웃 뒤에는 HTTPS origin을 유지한 로그인 화면으로 돌아간다", async () => {
     await page.goto("/");
+    await page.evaluate(() => window.sessionStorage.setItem("kor-travel-transport-dashboard-v2", "stale"));
     await page.getByRole("button", { name: "로그아웃" }).click();
     await expect(page).toHaveURL(/\/login/);
+    await expect.poll(() => page.evaluate(() => window.sessionStorage.getItem("kor-travel-transport-dashboard-v2"))).toBeNull();
   });
 });
 
 test.describe("공개 gateway 쓰기·비허용 경계", () => {
-  for (const path of ["transport/collector-status", "transport/statistics?days=1", "transport/highways/traffic?days=1", "transport/highways/incidents?days=1", "transport/fuel/stations?days=1", "transport/features/places", "transport/ports/test-port/timetable"]) {
+  for (const path of ["transport/collector-status", "transport/statistics?days=1", "transport/highways/traffic?days=1", "transport/highways/incidents?days=1", "transport/fuel/stations?days=1", "transport/features/places", "transport/bus/terminals?service_type=express", "transport/bus/timetable", "transport/ports/test-port/timetable"]) {
     test(`public POST ${path} is denied`, async ({ request }) => {
       expect((await request.post(`${apiBase}/v1/${path}`)).status()).toBe(403);
     });

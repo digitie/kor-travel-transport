@@ -218,6 +218,45 @@ class FerryOperationResponse(BaseModel):
     items: list[FerryOperationItem]
 
 
+class BusTerminalItem(BaseModel):
+    id: int
+    service_type: Literal["express", "intercity"]
+    terminal_id: str
+    terminal_name: str | None = None
+    city_name: str | None = None
+    updated_at: datetime
+
+
+class BusTerminalResponse(BaseModel):
+    generated_at: datetime
+    service_type: Literal["express", "intercity"]
+    query: str | None = None
+    offset: int
+    limit: int
+    total: int
+    next_offset: int | None = None
+    items: list[BusTerminalItem]
+
+
+class BusTimetableItem(BaseModel):
+    route_id: str | None = None
+    departure_terminal_name: str | None = None
+    arrival_terminal_name: str | None = None
+    departure_planned_time: str | None = None
+    arrival_planned_time: str | None = None
+    grade_name: str | None = None
+    adult_fare: int | None = None
+
+
+class BusTimetableResponse(BaseModel):
+    service_type: Literal["express", "intercity"]
+    departure_terminal_id: str
+    arrival_terminal_id: str
+    service_date: date
+    fetched_at: datetime
+    items: list[BusTimetableItem]
+
+
 class TransportCollectionRunStatus(BaseModel):
     id: int
     started_at: datetime

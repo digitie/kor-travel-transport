@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -42,12 +42,19 @@ class Settings(BaseSettings):
     opinet_browser_timeout_ms: int = Field(default=30_000, gt=0)
     rail_reference_collection_enabled: bool = False
     maritime_reference_collection_enabled: bool = False
+    bus_reference_collection_enabled: bool = False
     port_guideline_collection_enabled: bool = True
     ferry_timetable_cache_seconds: int = Field(default=300, ge=30, le=3600)
+    ferry_timetable_cache_max_entries: int = Field(default=500, ge=1, le=10_000)
     # 실시간 항구 시간표는 사용자 명시 요청만 허용하며, 서로 다른 항구 요청으로 provider
     # quota를 소진하지 않도록 cache miss 사이에도 전역 간격을 둔다.
     ferry_timetable_min_interval_seconds: int = Field(default=30, ge=1, le=3600)
     ferry_timetable_max_days_ahead: int = Field(default=7, ge=0, le=31)
+    bus_timetable_cache_seconds: int = Field(default=900, ge=30, le=3600)
+    bus_timetable_cache_max_entries: int = Field(default=500, ge=1, le=10_000)
+    # 공개 TAGO 시간표는 인증되지 않은 호출도 받으므로 provider quota를 보호할 수 있게
+    # cache miss를 전역적으로 15분마다 한 번으로 제한한다(기본 최대 96회/일).
+    bus_timetable_min_interval_seconds: int = Field(default=900, ge=1, le=3600)
     # 저장된 교통 통계는 수집 주기보다 훨씬 짧게만 메모리에 보관한다. 반복되는
     # 대시보드/공개 API 조회가 넓은 집계를 다시 실행하지 않게 하되, 새 수집 결과도
     # 빠르게 반영한다.
@@ -78,6 +85,16 @@ class Settings(BaseSettings):
     backup_upload_timeout_seconds: int = Field(default=600, gt=0)
     backup_storage_limit_bytes: int = Field(default=8 * 1024 * 1024 * 1024, gt=0)
     release_sha: str = "unknown"
+
+    @model_validator(mode="after")
+    def validate_bus_timetable_cache_interval(self) -> "Settings":
+        """정상 요청도 provider 보호 간격 안에서는 cache hit로 처리한다."""
+        if self.bus_timetable_cache_seconds < self.bus_timetable_min_interval_seconds:
+            raise ValueError(
+                "BUS_TIMETABLE_CACHE_SECONDS must be greater than or equal to "
+                "BUS_TIMETABLE_MIN_INTERVAL_SECONDS"
+            )
+        return self
 
     @property
     def supported_airport_codes(self) -> list[str]:

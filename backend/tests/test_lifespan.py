@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
+from app.db.session import ALEMBIC_HEAD
 from app.main import create_app
+from app.models import Base
 
 
 def build_settings(tmp_path: Path, **overrides) -> Settings:
@@ -83,3 +88,41 @@ def test_database_startup_creates_query_indexes(tmp_path: Path) -> None:
         "ix_fuel_prices_statistics_collected",
         "ix_transport_collection_states_next_due",
     } <= index_names
+
+
+def test_postgresql_schema_guard_tracks_alembic_head() -> None:
+    """새 migration이 runtime schema guard와 분리되지 않게 한다."""
+    backend_root = Path(__file__).resolve().parents[1]
+    config = Config(str(backend_root / "alembic.ini"))
+    config.set_main_option("script_location", str(backend_root / "alembic"))
+
+    assert ScriptDirectory.from_config(config).get_current_head() == ALEMBIC_HEAD
+
+
+def test_alembic_history_keeps_the_deployed_rest_area_revision() -> None:
+    """운영 DB에 적용된 0011을 잃으면 다음 배포의 Alembic 시작 자체가 실패한다."""
+    backend_root = Path(__file__).resolve().parents[1]
+    config = Config(str(backend_root / "alembic.ini"))
+    config.set_main_option("script_location", str(backend_root / "alembic"))
+    script = ScriptDirectory.from_config(config)
+
+    deployed_revision = script.get_revision("0011_rest_area_references")
+    head_revision = script.get_revision(ALEMBIC_HEAD)
+
+    assert deployed_revision is not None
+    assert head_revision is not None
+    assert head_revision.down_revision == deployed_revision.revision
+    assert "rest_area_references" in Base.metadata.tables
+
+
+def test_committed_openapi_schema_includes_bus_routes_and_runtime_errors() -> None:
+    schema_path = Path(__file__).resolve().parents[2] / "docs" / "openapi.json"
+    paths = json.loads(schema_path.read_text(encoding="utf-8"))["paths"]
+
+    assert "/v1/transport/bus/terminals" in paths
+    assert "/v1/transport/bus/timetable" in paths
+    responses = paths["/v1/transport/bus/timetable"]["get"]["responses"]
+    for code in ("404", "429", "502", "503"):
+        assert responses[code]["content"]["application/problem+json"]["schema"] == {
+            "$ref": "#/components/schemas/ProblemDetails"
+        }

@@ -119,6 +119,259 @@
         "title": "Body_admin_restore_backup_v1_admin_backups_restore_post",
         "type": "object"
       },
+      "BusTerminalItem": {
+        "properties": {
+          "city_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City Name"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "service_type": {
+            "enum": [
+              "express",
+              "intercity"
+            ],
+            "title": "Service Type",
+            "type": "string"
+          },
+          "terminal_id": {
+            "title": "Terminal Id",
+            "type": "string"
+          },
+          "terminal_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminal Name"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "service_type",
+          "terminal_id",
+          "updated_at"
+        ],
+        "title": "BusTerminalItem",
+        "type": "object"
+      },
+      "BusTerminalResponse": {
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BusTerminalItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Offset"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query"
+          },
+          "service_type": {
+            "enum": [
+              "express",
+              "intercity"
+            ],
+            "title": "Service Type",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "generated_at",
+          "service_type",
+          "offset",
+          "limit",
+          "total",
+          "items"
+        ],
+        "title": "BusTerminalResponse",
+        "type": "object"
+      },
+      "BusTimetableItem": {
+        "properties": {
+          "adult_fare": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adult Fare"
+          },
+          "arrival_planned_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arrival Planned Time"
+          },
+          "arrival_terminal_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arrival Terminal Name"
+          },
+          "departure_planned_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Departure Planned Time"
+          },
+          "departure_terminal_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Departure Terminal Name"
+          },
+          "grade_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade Name"
+          },
+          "route_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Id"
+          }
+        },
+        "title": "BusTimetableItem",
+        "type": "object"
+      },
+      "BusTimetableResponse": {
+        "properties": {
+          "arrival_terminal_id": {
+            "title": "Arrival Terminal Id",
+            "type": "string"
+          },
+          "departure_terminal_id": {
+            "title": "Departure Terminal Id",
+            "type": "string"
+          },
+          "fetched_at": {
+            "format": "date-time",
+            "title": "Fetched At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BusTimetableItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "service_date": {
+            "format": "date",
+            "title": "Service Date",
+            "type": "string"
+          },
+          "service_type": {
+            "enum": [
+              "express",
+              "intercity"
+            ],
+            "title": "Service Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service_type",
+          "departure_terminal_id",
+          "arrival_terminal_id",
+          "service_date",
+          "fetched_at",
+          "items"
+        ],
+        "title": "BusTimetableResponse",
+        "type": "object"
+      },
       "CollectionRunStatus": {
         "properties": {
           "error_message": {
@@ -3157,10 +3410,52 @@
               }
             ],
             "title": "Kind"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Offset"
+          },
+          "offset": {
+            "default": 0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
           }
         },
         "required": [
           "generated_at",
+          "limit",
           "items"
         ],
         "title": "TransportPlaceMapResponse",
@@ -5037,6 +5332,243 @@
         "summary": "Parking History"
       }
     },
+    "/v1/transport/bus/terminals": {
+      "get": {
+        "description": "저장된 TAGO 터미널을 조회한다. 시간표 provider를 호출하지 않는다.",
+        "operationId": "transport_bus_terminals_v1_transport_bus_terminals_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "service_type",
+            "required": true,
+            "schema": {
+              "enum": [
+                "express",
+                "intercity"
+              ],
+              "title": "Service Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Query"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusTerminalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Transport Bus Terminals"
+      }
+    },
+    "/v1/transport/bus/timetable": {
+      "get": {
+        "description": "저장하지 않는 실시간 TAGO 시간표. 같은 요청은 짧게 cache한다.",
+        "operationId": "transport_bus_timetable_v1_transport_bus_timetable_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "service_type",
+            "required": true,
+            "schema": {
+              "enum": [
+                "express",
+                "intercity"
+              ],
+              "title": "Service Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "departure_terminal_id",
+            "required": true,
+            "schema": {
+              "maxLength": 120,
+              "minLength": 1,
+              "title": "Departure Terminal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "arrival_terminal_id",
+            "required": true,
+            "schema": {
+              "maxLength": 120,
+              "minLength": 1,
+              "title": "Arrival Terminal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "title": "Date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bus_grade_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bus Grade Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusTimetableResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
+          "502": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Transport Bus Timetable"
+      }
+    },
     "/v1/transport/collector-status": {
       "get": {
         "operationId": "transport_collector_status_v1_transport_collector_status_get",
@@ -5098,6 +5630,110 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "description": "종류별 목록 offset",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "종류별 목록 offset",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "역·노선 또는 항구 이름 검색어",
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "역·노선 또는 항구 이름 검색어",
+              "title": "Query"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_longitude",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 180,
+                  "minimum": -180,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Longitude"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_latitude",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 90,
+                  "minimum": -90,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Latitude"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_longitude",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 180,
+                  "minimum": -180,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Longitude"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_latitude",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 90,
+                  "minimum": -90,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Latitude"
             }
           }
         ],

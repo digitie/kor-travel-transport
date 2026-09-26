@@ -1,29 +1,20 @@
 # journal.md — 작업 일지
 
+## 2026-09-25
+
+- TAGO 고속·시외버스 수집 및 실시간 시간표 API를 추가했다. 터미널 기준정보만 3일 주기로
+  저장하고, 시간표는 저장하지 않는다. 각 등급 필터를 독립 cache key로 구분하며 TAGO의
+  일일 호출 제한 응답(`22`)은 전체 실시간 시간표 요청을 설정된 backoff 동안 `429`로 보호한다.
+- James/Popper 적대 리뷰의 P1을 반영했다. 공개·관리 gateway에는 정확한 버스 GET 경로만
+  allowlist로 열고, 버스·여객선 시간표 cache는 만료 제거와 LRU 500건 상한을 둔다. backend에도
+  `DATA_GO_KR_SERVICE_KEY`를 전달해 공개 실시간 조회가 provider를 호출할 수 있게 했으며, Dagster code-server에
+  `BUS_REFERENCE_COLLECTION_ENABLED`를 전달해 운영의 3일 수집을 실제 활성화할 수 있게 했고,
+  OpenAPI 정본·gateway 계약·runtime Alembic head·로그아웃 cache 제거를 회귀 테스트로 고정했다.
+  버스 기준정보 수집은 매일 due를 평가하고 마지막 성공 뒤 실제 72시간을 보장하며, 실패 run에는
+  인증정보를 포함하지 않는 오류 유형만 보존한다.
+
 ## 2026-09-22
 
-- `67d17a3`을 n150에 배포해 세 transport 컨테이너의 healthy와 release SHA를 확인했다.
-  공개 HTTPS live E2E 273건은 267건이 통과했고, 외부 VWorld 타일 접근 실패를 명시하는
-  fallback 경고 1건과 공개 통계 6일 조회의 일시적 504 1건으로만 실패했다. gateway 로그는
-  해당 통계 요청을 최종 200으로 완료했지만 외부 프록시의 15초 응답 한도를 넘긴 것을 보였다.
-  E2E의 JSON 조회는 502/503/504에만 1초·2초 재시도하고, 지도 검증은 외부 VWorld가 접근
-  불가한 실행 지역에서도 canvas·저장 장소·명시적 fallback 경고 계약을 검증하도록 바꿨다.
-  실제 서비스의 인증·네트워크 오류는 계속 사용자에게 보인다. type-check와 frontend unit
-  19건을 다시 통과했으며, CI 뒤 동일 배포 SHA에 live E2E를 재실행한다.
-- n150 HTTPS live E2E 273건 중 지도 1건이 실패한 원인을 재현했다. VWorld가 한국 제공
-  영역 밖 타일에 HTTP 200과 XML `FileNotFound`를 반환하고, 기존 web provider가 이를
-  raster decode 오류로 전달해 전체 지도 오류 배너를 표시한 것이었다. 한국 영역의 동일
-  요청은 PNG로 정상 응답함을 확인했다. `maplibre-vworld-react` PR #28을 병합해 해당
-  문서화된 coverage XML만 조용한 fallback tile로 처리하고, 인증·네트워크·예상 밖 XML은
-  기존 오류 경로로 남겼다. transport는 submodule `69abf9c`와 새 vendor tarball/SRI를
-  함께 고정했다. provider web 패키지 type-check/build, transport의 clean install,
-  type-check, 19개 unit test, Next production build를 통과했다. 이후 CI·두 적대 리뷰,
-  n150 재배포와 273건 live E2E를 다시 수행한다.
-- 재배포한 273건 live E2E에서 정상 `200 image/png` 타일이 로드되는 동안에도 MapLibre가
-  source-level error event를 한 번 발행할 수 있음을 browser fetch 계측으로 확인했다.
-  provider custom protocol의 실제 fetch 실패 event는 그대로 화면에 노출하되, transport의
-  raw MapLibre handler는 확인 가능한 HTTP `status >= 400`만 오류 배너로 승격하도록 좁혔다.
-  source id만으로 실패로 판단해 정상 지도를 경고하던 false positive를 제거한다.
 - `codex/transport-experience`에서 관리 UI의 고속도로·유가를 하나의 저장 통계 화면으로
   통합했다. 유종·노선·source 코드는 사람이 읽는 한국어 용어로 표시하고, 비교값은 Apache
   ECharts 그래프로 바꿨다. 열차·도시철도와 배편은 별도 화면으로 분리했으며 배편 시간표는

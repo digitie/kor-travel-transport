@@ -26,6 +26,7 @@ def test_cutover_requires_a_separate_empty_dagster_database() -> None:
     assert 'if [[ "${TARGET_DATABASE_URL}" == "${TARGET_DAGSTER_DATABASE_URL}" ]]' in script
     assert "127\\.0\\.0\\.1:11000/kor_travel_transport$" in script
     assert "127\\.0\\.0\\.1:11000/kor_travel_transport_dagster$" in script
+    assert "postgresql(\\+psycopg2)?://" in script
     assert 'LEGACY_HOST_DATABASE_URL="${LEGACY_HOST_DATABASE_URL:?' in script
     assert 'LEGACY_DAGSTER_HOST_DATABASE_URL="${LEGACY_DAGSTER_HOST_DATABASE_URL:-}"' in script
     assert 'legacy runtime and host DSNs must name the same database' in script
@@ -50,6 +51,7 @@ def test_cutover_uses_disposable_postgres_clients_on_the_server_host_network() -
     assert '-e PGPASSFILE=/run/secrets/pgpass' in script
     assert 'prepare_client_dsn' in script
     assert 'from urllib.parse import quote, unquote, urlsplit' in script
+    assert 'parts.scheme not in {"postgresql", "postgresql+psycopg2"}' in script
     assert 'passwordless URI' in script
     assert 'password)) + "\\n")' in script
     assert 'pg_dump_client' in script

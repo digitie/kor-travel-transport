@@ -374,6 +374,35 @@ class RailStationReference(Base):
     raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
 
 
+class RestAreaReference(Base):
+    """한국도로공사 공개 기준정보에서 동기화한 고속도로 휴게소."""
+
+    __tablename__ = "rest_area_references"
+    __table_args__ = (
+        UniqueConstraint("source", "identity_key", name="uq_rest_area_reference_identity"),
+        Index("ix_rest_area_reference_last_seen", "last_seen_at"),
+        Index("ix_rest_area_reference_route", "route_name", "direction"),
+        Index("ix_rest_area_reference_coordinates", "latitude", "longitude"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(40))
+    identity_key: Mapped[str] = mapped_column(String(400))
+    name: Mapped[str] = mapped_column(String(160))
+    route_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    direction: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    has_gas_station: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    has_lpg_station: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    has_ev_charger: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    phone_number: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    data_reference_date: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
+
+
 class FerryPort(Base):
     __tablename__ = "ferry_ports"
     __table_args__ = (
@@ -418,6 +447,30 @@ class FerryShipTypeReference(Base):
     source: Mapped[str] = mapped_column(String(40))
     ship_type_id: Mapped[str] = mapped_column(String(120))
     ship_type_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
+
+
+class BusTerminalReference(Base):
+    """TAGO 고속·시외버스의 저변동 터미널 기준정보.
+
+    운행 시간표는 당일성 provider 조회이므로 이 테이블에 저장하지 않는다.
+    """
+
+    __tablename__ = "bus_terminal_references"
+    __table_args__ = (
+        UniqueConstraint("source", "service_type", "terminal_id", name="uq_bus_terminal_reference"),
+        Index("ix_bus_terminal_reference_lookup", "service_type", "terminal_name"),
+        Index("ix_bus_terminal_reference_last_seen", "last_seen_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(40))
+    service_type: Mapped[str] = mapped_column(String(20))
+    terminal_id: Mapped[str] = mapped_column(String(120))
+    terminal_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    city_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)

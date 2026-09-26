@@ -74,7 +74,7 @@ if [[ ! "${TARGET_DATABASE_URL}" =~ ^postgresql\+asyncpg://[^@]+@127\.0\.0\.1:11
   echo "Refusing cutover: application target must be the exact shared Manager database." >&2
   exit 2
 fi
-if [[ ! "${TARGET_DAGSTER_DATABASE_URL}" =~ ^postgresql://[^@]+@127\.0\.0\.1:11000/kor_travel_transport_dagster$ ]]; then
+if [[ ! "${TARGET_DAGSTER_DATABASE_URL}" =~ ^postgresql(\+psycopg2)?://[^@]+@127\.0\.0\.1:11000/kor_travel_transport_dagster$ ]]; then
   echo "Refusing cutover: Dagster target must be the exact dedicated shared metadata database." >&2
   exit 2
 fi
@@ -173,7 +173,7 @@ value = sys.stdin.read()
 parts = urlsplit(value)
 database = parts.path.removeprefix("/")
 if (
-    parts.scheme != "postgresql"
+    parts.scheme not in {"postgresql", "postgresql+psycopg2"}
     or not parts.hostname
     or not parts.port
     or not database

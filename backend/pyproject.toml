@@ -16,6 +16,7 @@ dependencies = [
   "dagster-webserver>=1.9,<2",
   "fastapi>=0.141,<1.0",
   "httpx>=0.28,<1.0",
+  "python-datagokr-api @ git+https://github.com/digitie/python-datagokr-api@b885ad6b9cff39b9ce642e971944b4c3e4863c86",
   "python-kasi-api @ git+https://github.com/digitie/python-kasi-api@51c39c1b0dd5b169b748552e81b9b9a55e86b9a1",
   "python-krairport-api @ git+https://github.com/digitie/python-krairport-api@cbe4d1380dc0388c078e8ae4622d3e580717064b",
   "python-kric-api @ git+https://github.com/digitie/python-kric-api@e0ef18740840482b001f978722a3b67929d24c7f",
@@ -23,6 +24,7 @@ dependencies = [
   "python-opinet-api[browser] @ git+https://github.com/digitie/python-opinet-api@39e7acc3f863e66958964b8f137bba221bc7de08",
   "python-multipart>=0.0.32,<1.0",
   "pydantic-settings>=2.15,<3.0",
+  "psycopg2-binary>=2.9,<3.0",
   "sqlalchemy>=2.0.52,<3.0",
   "uvicorn[standard]>=0.52,<1.0",
 ]

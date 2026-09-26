@@ -5,6 +5,8 @@ export const TRANSPORT_ENDPOINTS = [
   "transport/highways/incidents",
   "transport/fuel/stations",
   "transport/features/places",
+  "transport/bus/terminals",
+  "transport/bus/timetable",
 ] as const;
 
 export function isAllowedTransportPath(path: string[]) {
