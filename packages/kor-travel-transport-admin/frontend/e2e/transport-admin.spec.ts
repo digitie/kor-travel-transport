@@ -33,6 +33,8 @@ const endpointCases: EndpointCase[] = [
   { name: "collector status", path: "transport/collector-status", arrayKey: "sources" },
   { name: "saved map places", path: "transport/features/places?limit=10", arrayKey: "items" },
   { name: "saved bus terminals", path: "transport/bus/terminals?service_type=express&limit=10", arrayKey: "items" },
+  { name: "all provider status", path: "transport/providers", arrayKey: "items" },
+  ...["airport", "rest_area", "ferry_port", "rail_station", "fuel_station"].map((kind) => ({ name: `map ${kind}`, path: `transport/features/places?kind=${kind}&include_unlocated=true&limit=10`, arrayKey: "items" })),
   ...statisticsCases,
   ...trafficCases,
   ...incidentCases,
@@ -83,14 +85,14 @@ test("느린 7일 통계가 수집 상태 화면을 가로막지 않는다", asy
   });
   await login(page);
   await statisticsStarted;
-  await expect(page.getByRole("heading", { name: "수집 소스 상태" })).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByRole("heading", { name: "교통정보 찾아보기" })).toBeVisible({ timeout: 5_000 });
   await expect(page.getByText("저장된 7일 통계를 집계하는 중입니다…").first()).toBeVisible();
   await context.close();
 });
 
 test("로그아웃 처리 중 늦게 저장된 통계 캐시도 로그인 화면에서 제거한다", async ({ page }) => {
   await login(page);
-  await expect(page.getByRole("heading", { name: "수집 소스 상태" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "교통정보 찾아보기" })).toBeVisible();
   await page.evaluate(() => {
     // form의 React handler 뒤에 완료되는 이전 문서의 비동기 저장을 재현한다.
     document.addEventListener("submit", () => queueMicrotask(() => {
@@ -138,7 +140,7 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
       expect(release.status()).toBe(200);
       expect((await release.json()).releaseSha).toBe(expectedReleaseSha);
     }
-    await expect(page.getByText("수집 소스")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("heading", { name: "교통정보 찾아보기" })).toBeVisible({ timeout: 20_000 });
   });
 
   for (const endpoint of endpointCases) {
@@ -185,12 +187,12 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
     await expect(mapPage.getByLabel("교통 장소 지도")).toBeVisible();
     await expect(mapPage.getByLabel("장소 목록에서 선택")).toBeVisible();
     await expect(mapPage.locator("canvas.maplibregl-canvas")).toBeVisible({ timeout: 20_000 });
-    await expect.poll(() => [...mapPlaceRequests.keys()].sort()).toEqual(["ferry_port", "fuel_station", "rail_station"]);
-    expect([...mapPlaceRequests.values()].every((url) => url.searchParams.get("limit") === "100" && ["min_longitude", "min_latitude", "max_longitude", "max_latitude"].every((key) => url.searchParams.has(key)))).toBe(true);
+    await expect.poll(() => [...mapPlaceRequests.keys()].sort()).toEqual(["airport", "ferry_port", "fuel_station", "rail_station", "rest_area"]);
+    expect([...mapPlaceRequests.values()].every((url) => url.searchParams.get("limit") === "180" && ["min_longitude", "min_latitude", "max_longitude", "max_latitude"].every((key) => url.searchParams.has(key)))).toBe(true);
     await mapPage.waitForTimeout(2_000);
     const tileError = mapPage.getByText("VWorld 지도 타일을 불러오지 못했습니다.", { exact: false });
     if (await tileError.isVisible()) {
-      await expect(tileError).toContainText("지도 키·도메인 설정 또는 네트워크를 확인한 뒤 다시 시도해 주세요.");
+      await expect(tileError).toContainText("목록 보기에서 장소를 확인할 수 있습니다.");
     }
     await expect.poll(() => timetableRequests).toEqual([]);
     const placePicker = mapPage.getByLabel("장소 목록에서 선택");
@@ -208,36 +210,37 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
     await expect.poll(() => timetableRequests).toEqual([]);
   });
 
-  test("배편 탭은 선택한 항구만 조회하고 늦은 응답·429를 구분한다", async () => {
+  test("배편은 다중 선택·운항일 변경 시 저장본만 읽고 늦은 응답을 버린다", async () => {
     const requestedDates: string[] = [];
-    await page.route(/\/api\/transport\/transport\/features\/places\?kind=ferry_port&limit=5000$/, (route) => route.fulfill({ json: { items: [
-      { id: 1, kind: "ferry_port", provider_id: "alpha", name: "알파 항구", subtitle: null, line_names: [], address: null, updated_at: "2026-09-22T00:00:00Z", location_point_count: 1 },
-      { id: 2, kind: "ferry_port", provider_id: "bravo", name: "브라보 항구", subtitle: null, line_names: [], address: null, updated_at: "2026-09-22T00:00:00Z", location_point_count: 1 },
-      { id: 3, kind: "ferry_port", provider_id: "rate", name: "제한 항구", subtitle: null, line_names: [], address: null, updated_at: "2026-09-22T00:00:00Z", location_point_count: 1 },
+    const providerRequests: string[] = [];
+    const listener = (request: { url: () => string }) => { if (/ports\/[^/?]+\/timetable\?/.test(request.url())) providerRequests.push(request.url()); };
+    page.on("request", listener);
+    await page.route("**/transport/features/places?kind=ferry_port**", (route) => route.fulfill({ json: { items: [
+      ...["alpha", "bravo", "missing"].map((provider_id, index) => ({ id: index + 1, kind: "ferry_port", provider_id, source: "data_go_kr_maritime", name: ["알파 항구", "브라보 항구", "누락 항구"][index], line_names: [], prices: [], facilities: [], latitude: null, longitude: null, updated_at: "2026-09-22T00:00:00Z" })),
     ] } }));
-    await page.route(/\/ports\/alpha\/timetable(?:\?date=.*)?$/, async (route) => { requestedDates.push(new URL(route.request().url()).searchParams.get("date") ?? ""); await new Promise((resolve) => setTimeout(resolve, 300)); await route.fulfill({ json: { items: [{ vessel_name: "알파호", departure_port_name: "알파", arrival_port_name: "도착", departure_planned_time: "08:00", arrival_planned_time: "10:00", fare: "10000" }] } }); });
-    await page.route(/\/ports\/bravo\/timetable(?:\?date=.*)?$/, (route) => { requestedDates.push(new URL(route.request().url()).searchParams.get("date") ?? ""); return route.fulfill({ json: { items: [{ vessel_name: "브라보호", departure_port_name: "브라보", arrival_port_name: "도착", departure_planned_time: "09:00", arrival_planned_time: "11:00", fare: "12000" }] } }); });
-    await page.route(/\/ports\/rate\/timetable(?:\?date=.*)?$/, (route) => { requestedDates.push(new URL(route.request().url()).searchParams.get("date") ?? ""); return route.fulfill({ status: 429, headers: { "retry-after": "30" }, json: { detail: "요청이 많습니다." } }); });
-
+    await page.route("**/transport/ports/timetables?**", async (route) => {
+      const params = new URL(route.request().url()).searchParams;
+      const date = params.get("date")!; requestedDates.push(date);
+      const ids = params.get("port_ids")!.split(",");
+      if (ids.length === 1 && ids[0] === "alpha") await new Promise((resolve) => setTimeout(resolve, 500));
+      await route.fulfill({ json: { service_date: date, missing_port_ids: ids.filter((id) => id === "missing"), items: ids.filter((id) => id !== "missing").map((id) => ({ port_id: id, service_date: date, fetched_at: "2026-09-27T00:00:00Z", items: [{ vessel_name: id === "alpha" ? "알파호" : "브라보호", departure_port_name: id, arrival_port_name: "제주", departure_planned_time: "0900", arrival_planned_time: "1100", fare: "12000" }] })) } });
+    });
     await page.goto("/ferry");
-    await expect(page.getByLabel("운항일")).toHaveAttribute("min", /^\d{4}-\d{2}-\d{2}$/);
-    const card = (name: string) => page.locator("article.reference-card", { hasText: name });
-    await card("알파 항구").getByRole("button", { name: "오늘 운항 보기" }).click();
-    await card("브라보 항구").getByRole("button", { name: "오늘 운항 보기" }).click();
-    await expect(page.getByRole("heading", { name: "브라보 항구 오늘 운항" })).toBeVisible();
-    await expect(page.getByText("브라보호")).toBeVisible();
-    await page.waitForTimeout(350);
-    await expect(page.getByText("알파호")).not.toBeVisible();
-    await card("제한 항구").getByRole("button", { name: "오늘 운항 보기" }).click();
-    await expect(page.getByText("요청이 많습니다. 30초 뒤에 다시 확인해 주세요.")).toBeVisible();
+    await page.getByRole("checkbox", { name: /알파 항구/ }).check();
+    await page.getByRole("checkbox", { name: /브라보 항구/ }).check();
+    await expect(page.getByText("브라보호", { exact: true })).toBeVisible();
+    await page.waitForTimeout(600);
+    await expect(page.getByText("브라보호", { exact: true })).toBeVisible();
+    await page.getByRole("checkbox", { name: /누락 항구/ }).check();
+    await expect(page.getByText("이 날짜는 아직 수집 중입니다.", { exact: false })).toBeVisible();
     const futureDate = await page.getByLabel("운항일").getAttribute("max");
-    expect(futureDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     await page.getByLabel("운항일").fill(futureDate!);
-    await card("브라보 항구").getByRole("button", { name: `${futureDate} 운항 보기` }).click();
-    await expect(page.getByRole("heading", { name: `브라보 항구 ${futureDate} 운항` })).toBeVisible();
-    expect(requestedDates).toHaveLength(4);
+    await expect(page.getByRole("heading", { name: `브라보 항구 · ${futureDate}` })).toBeVisible();
     expect(requestedDates).toContain(futureDate);
-    expect(requestedDates.every((value) => /^\d{4}-\d{2}-\d{2}$/.test(value))).toBeTruthy();
+    expect(providerRequests).toEqual([]);
+    await page.unroute("**/transport/features/places?kind=ferry_port**");
+    await page.unroute("**/transport/ports/timetables?**");
+    page.off("request", listener);
   });
 
   test("allowlist 밖의 관리 proxy 경로는 숨긴다", async () => {

@@ -69,3 +69,128 @@ button, input { font: inherit; }
 .timetable-result { white-space: pre-wrap; }
 @media (max-width: 760px) { .transport-map-layout { grid-template-columns: 1fr; min-height: 0; } .transport-map-canvas { min-height: 440px; } .transport-map-detail { border-left: 0; border-top: 1px solid var(--line); } }
 @media (max-width: 760px) { .admin-layout { grid-template-columns: 1fr; } .rail { padding: 18px; } .brand { margin-bottom: 15px; } .nav { grid-template-columns: repeat(3, minmax(0, 1fr)); } .nav-label { display: none; } .sign-out { margin-top: 18px; } .main { padding: 28px 20px; } .grid, .reference-list { grid-template-columns: 1fr; } .wide { grid-column: span 1; } .reference-toolbar { align-items: stretch; flex-direction: column; gap: 8px; } }
+
+/* Hallmark · genre: modern-minimal · macrostructure: Workbench · design-system: design.md · designed-as-app */
+.main { padding: var(--space-xl); }
+h1, h2, h3 { min-width: 0; overflow-wrap: anywhere; font-family: var(--font-display); font-style: normal; }
+button, input, select { font-family: var(--font-body); }
+button, .button, .secondary, .nav a, .transport-tabs a { white-space: nowrap; }
+button:disabled { opacity: .55; cursor: not-allowed; }
+button:active:not(:disabled), .secondary:active { transform: translateY(1px); }
+:where(button, a, input, select, summary):focus-visible { outline: 3px solid var(--color-focus); outline-offset: 3px; }
+.skip-link { position: fixed; top: var(--space-sm); left: var(--space-sm); transform: translateY(-200%); padding: var(--space-lg); background: var(--color-panel); color: var(--color-ink); z-index: 400; }
+.skip-link:focus { transform: none; }
+.nav a { display: flex; align-items: center; gap: var(--space-sm); min-height: 44px; }
+.journey-workbench, .map-workbench { display: grid; gap: var(--space-lg); min-width: 0; }
+.journey-toolbar, .map-filter-bar { display: flex; gap: var(--space-md); flex-wrap: wrap; align-items: end; }
+.map-filter-bar { flex-direction: column; align-items: stretch; }
+.journey-toolbar > label, .multi-search > label { display: grid; gap: var(--space-sm); font-size: var(--text-sm); font-weight: 700; min-width: 0; }
+.journey-toolbar input, .journey-toolbar select, .multi-search input[type=search] { background: var(--color-panel); color: var(--color-ink); border: 1px solid var(--color-muted); border-radius: var(--radius-control); min-height: 44px; padding: var(--space-sm) var(--space-md); max-width: 100%; font-size: var(--text-sm); }
+.secondary, .view-switch button, .kind-filters button, .selection-chips button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-sm); background: var(--color-panel); color: var(--color-ink); border: 1px solid var(--color-rule); border-radius: var(--radius-control); cursor: pointer; padding: var(--space-sm) var(--space-md); min-height: 44px; font-size: var(--text-sm); }
+.kind-filters, .view-switch, .selection-chips, .line-chips { display: flex; gap: var(--space-sm); flex-wrap: wrap; }
+[aria-pressed=true].place-row, .kind-filters [aria-pressed=true], .view-switch [aria-pressed=true], .transport-tabs a[aria-current=page] { background: var(--color-selected); color: var(--color-accent); border-color: var(--color-accent); }
+.transport-tabs a { padding: var(--space-md); border: 1px solid var(--color-rule); border-radius: var(--radius-control); }
+.journey-layout { display: grid; grid-template-columns: minmax(230px, .65fr) minmax(0, 1.7fr); gap: var(--space-xl); align-items: start; }
+.journey-search { grid-column: 1; grid-row: 1 / 3; min-width: 0; }
+.journey-inspector { grid-column: 2; grid-row: 1; min-width: 0; display: grid; gap: var(--space-xl); }
+.journey-map { grid-column: 2; grid-row: 2; min-width: 0; }
+.multi-search { display: grid; gap: var(--space-sm); }
+.multi-search > label input { width: 100%; }
+.search-options { display: grid; max-height: 440px; overflow-y: auto; border-block: 1px solid var(--color-rule); }
+.search-options > label { display: flex; align-items: center; gap: var(--space-md); padding: var(--space-md) var(--space-sm); min-height: 48px; border-bottom: 1px solid var(--color-rule); cursor: pointer; }
+.search-options input { width: 18px; height: 18px; accent-color: var(--color-accent); flex: 0 0 auto; }
+.search-options span { display: grid; gap: var(--space-xs); min-width: 0; }
+.search-options small, .place-row small { color: var(--color-muted); font-size: var(--text-xs); }
+.selection-chips button { background: var(--color-selected); color: var(--color-accent); max-width: 100%; }
+.empty-state { padding: var(--space-xl); color: var(--color-muted); background: var(--color-panel); border-block: 1px solid var(--color-rule); line-height: 1.6; }
+.empty-state h2, .empty-state h3 { color: var(--color-ink); margin-top: 0; }
+.departures { min-width: 0; border-top: 1px solid var(--color-rule); }
+.departures h3 { margin-block: var(--space-lg) var(--space-sm); }
+.departure-row { display: grid; grid-template-columns: minmax(90px, .7fr) minmax(0, 1.3fr) minmax(0, 1fr); align-items: center; gap: var(--space-lg); padding: var(--space-lg) 0; border-bottom: 1px solid var(--color-rule); font-variant-numeric: tabular-nums; }
+.departure-time, .departure-route, .departure-meta { display: grid; gap: var(--space-sm); min-width: 0; overflow-wrap: anywhere; }
+.departure-time > strong { font-size: var(--text-lg); color: var(--color-accent); }
+.departure-meta { text-align: right; }
+.departure-row small { color: var(--color-muted); }
+.place-details { display: grid; gap: var(--space-md); }
+.place-details h2, .place-details p { margin: 0; }
+.place-title { display: flex; align-items: center; gap: var(--space-sm); color: var(--color-accent); font-size: var(--text-sm); }
+.price-grid { display: grid; gap: var(--space-md); margin: 0; }
+.price-grid > div { padding-block: var(--space-md); border-block-end: 1px solid var(--color-rule); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-sm); }
+.price-grid dd { font-size: var(--text-lg); margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.price-grid small { grid-column: 1 / -1; color: var(--color-muted); }
+.line-chips span, .status-badge { padding: var(--space-xs) var(--space-sm); background: var(--color-selected); color: var(--color-accent); border-radius: var(--radius-control); font-size: var(--text-sm); }
+.data-caveat { color: var(--color-muted); border-left: 1px solid var(--color-rule); padding-left: var(--space-md); font-size: var(--text-sm); line-height: 1.6; }
+.reference-detail { padding-bottom: var(--space-lg); border-bottom: 1px solid var(--color-rule); }
+.transport-map-layout { grid-template-columns: minmax(0, 1fr) minmax(260px, 320px); min-height: 540px; }
+.transport-map-canvas { min-height: 540px; }
+.transport-map-detail { overflow-y: auto; max-height: 720px; padding: var(--space-xl); display: grid; align-content: start; gap: var(--space-xl); }
+.transport-map-picker { margin: 0; }
+.embedded-map { min-width: 0; border: 1px solid var(--color-rule); border-radius: var(--radius-panel); overflow: clip; }
+.embedded-map .transport-map-canvas { min-height: 360px; }
+.map-feedback { color: var(--color-muted); font-size: var(--text-sm); line-height: 1.5; }
+.map-feedback p { margin-block: var(--space-sm); }
+.map-place-list { display: grid; align-content: start; max-height: 600px; overflow-y: auto; }
+.place-row { display: flex; align-items: center; text-align: left; white-space: normal; gap: var(--space-md); background: var(--color-panel); color: var(--color-ink); border: 0; border-bottom: 1px solid var(--color-rule); padding: var(--space-lg); min-height: 56px; cursor: pointer; }
+.place-row > span { display: grid; gap: var(--space-xs); }
+.journey-marker { display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-sm) var(--space-md); background: var(--color-panel); color: var(--color-ink); border: 2px solid var(--color-accent); border-radius: var(--radius-panel); box-shadow: var(--shadow-map); max-width: 220px; font-family: var(--font-body); min-height: 44px; }
+.journey-marker > span { display: grid; gap: var(--space-xs); }
+.journey-marker strong { max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); }
+.journey-marker small { font-size: var(--text-xs); color: var(--color-muted); }
+.journey-marker.rail_station { border-color: var(--color-rail); }
+.journey-marker.ferry_port { border-color: var(--color-port); }
+.journey-marker.airport { border-color: var(--color-airport); }
+.journey-marker.rest_area { border-color: var(--color-rest); }
+.transport-map-marker.fuel_station { font-variant-numeric: tabular-nums; }
+.bus-search-grid { display: grid; gap: var(--space-xl); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.bus-search-grid .search-options { max-height: 220px; }
+.ops-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-lg); }
+.ops-grid .panel { display: grid; gap: var(--space-md); }
+.ops-grid strong { font-size: var(--text-lg); font-variant-numeric: tabular-nums; }
+.ops-grid span, .ops-grid small { color: var(--color-muted); }
+.provider-row { border-bottom: 1px solid var(--color-rule); padding: var(--space-lg) 0; }
+.provider-row summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-lg); min-height: 44px; cursor: pointer; }
+.provider-row summary strong { flex: 1; min-width: 140px; }
+.provider-row summary::before { content: "＋"; color: var(--color-muted); }
+.provider-row[open] summary::before { content: "−"; }
+.provider-detail { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-lg); }
+.provider-detail dt { font-size: var(--text-sm); color: var(--color-muted); }
+.provider-detail dd { margin: var(--space-sm) 0 0; }
+.status-badge.failed { color: var(--color-error); background: var(--color-panel); }
+.inline-link { text-decoration: underline; text-underline-offset: var(--space-xs); color: var(--color-accent); }
+@media (hover: hover) { .secondary:hover, .place-row:hover, .search-options > label:hover, .view-switch button:hover, .kind-filters button:hover { background: var(--color-selected); color: var(--color-accent); } }
+@media (max-width: 62rem) {
+  .admin-layout { grid-template-columns: minmax(0, 1fr); }
+  .rail { padding: var(--space-lg); }
+  .brand { margin: 0 0 var(--space-md); }
+  .nav { display: flex; overflow-x: auto; gap: var(--space-xs); }
+  .nav a { flex: 0 0 auto; }
+  .nav-label { display: none; }
+  .sign-out { margin: var(--space-md) 0 0; min-height: 44px; }
+  .main { padding: var(--space-lg); }
+  .transport-map-layout { grid-template-columns: minmax(0, 1fr); }
+  .transport-map-detail { grid-row: 1; max-height: none; border: 0; border-bottom: 1px solid var(--color-rule); }
+  .journey-layout { grid-template-columns: minmax(0, 1fr); gap: var(--space-lg); }
+  .journey-search { grid-column: 1; grid-row: 1; }
+  .journey-inspector { grid-column: 1; grid-row: 2; }
+  .journey-map { grid-column: 1; grid-row: 3; }
+  .search-options { max-height: 200px; }
+  .ops-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 40rem) {
+  .bus-search-grid, .provider-detail { grid-template-columns: minmax(0, 1fr); }
+  .departure-row { grid-template-columns: minmax(70px, .6fr) minmax(0, 1fr); gap: var(--space-md); }
+  .departure-meta { grid-column: 1 / -1; display: flex; justify-content: space-between; text-align: left; }
+  .journey-toolbar > label { width: 100%; }
+  .journey-toolbar input, .journey-toolbar select { width: 100%; }
+  .transport-map-canvas { min-height: 380px; }
+  .ops-grid .panel { padding: var(--space-md); }
+}
+@media (prefers-reduced-motion: reduce) { .map-workbench *, .journey-workbench * { animation: none !important; transition: none !important; } }
+.selection-chips button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.selection-chips button > svg { flex: 0 0 auto; }
+.page-header h1 { overflow-wrap: anywhere; min-width: 0; }
+/* 긴 실제 장소명이 select의 최소 콘텐츠 폭을 통해 가격 패널을 밀어내지 않게 한다. */
+.transport-map-detail, .transport-map-detail > *, .place-details, .price-grid { min-width: 0; }
+.transport-map-picker select { width: 100%; min-width: 0; max-width: 100%; }
+.price-grid > div { min-width: 0; }
+.price-grid dt { overflow-wrap: anywhere; }

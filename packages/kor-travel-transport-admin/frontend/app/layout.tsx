@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { AdminShell } from "@/components/admin-shell";
 import "./globals.css";
+import "./tokens.css";
 
 export const metadata: Metadata = {
   title: { default: "Kor Travel Transport Admin", template: "%s · Kor Travel Transport Admin" },

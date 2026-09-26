@@ -1,0 +1,9 @@
+[
+  {
+    "date": "2026-09-27",
+    "macrostructure": "Workbench",
+    "theme": "기존 transport 청록색·map/weather 참조",
+    "enrichment": "none",
+    "brief": "여행지 검색·지도·운항 비교와 제공자 수집 상태 분리"
+  }
+]

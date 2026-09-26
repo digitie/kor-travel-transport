@@ -177,16 +177,20 @@ class TransportPlaceMapItem(BaseModel):
     """kor-travel-map·PinVi가 지도 marker로 바로 소비할 저장 장소 요약."""
 
     id: int
-    kind: Literal["fuel_station", "rail_station", "ferry_port"]
+    kind: Literal["fuel_station", "rail_station", "ferry_port", "airport", "rest_area"]
     source: str
     provider_id: str | None = None
     name: str
-    longitude: float
-    latitude: float
+    longitude: float | None
+    latitude: float | None
     subtitle: str | None = None
     brand_name: str | None = None
     latest_price: float | None = None
     price_product_code: str | None = None
+    prices: list[FuelPriceItem] = Field(default_factory=list)
+    phone: str | None = None
+    facilities: list[str] = Field(default_factory=list)
+    station_type: str | None = None
     line_names: list[str] = Field(default_factory=list)
     address: str | None = None
     updated_at: datetime
@@ -199,6 +203,7 @@ class TransportPlaceMapResponse(BaseModel):
     kind: str | None = None
     total: int = 0
     truncated: bool = False
+    available_sources: list[str] = Field(default_factory=list)
     items: list[TransportPlaceMapItem]
 
 
@@ -216,6 +221,12 @@ class FerryOperationResponse(BaseModel):
     service_date: date
     fetched_at: datetime
     items: list[FerryOperationItem]
+
+
+class FerryStoredTimetableResponse(BaseModel):
+    service_date: date
+    items: list[FerryOperationResponse]
+    missing_port_ids: list[str]
 
 
 class BusTerminalItem(BaseModel):
@@ -254,7 +265,33 @@ class BusTimetableResponse(BaseModel):
     arrival_terminal_id: str
     service_date: date
     fetched_at: datetime
+    total: int | None = None
+    truncated: bool = False
     items: list[BusTimetableItem]
+
+
+class ProviderCollectionStatus(BaseModel):
+    source: str
+    job_status: str | None = None
+    name: str
+    job_name: str | None = None
+    mode: Literal["scheduled", "on_demand", "unconnected"] = "scheduled"
+    enabled: bool
+    status: str
+    interval_seconds: int | None = None
+    last_started_at: datetime | None = None
+    last_success_at: datetime | None = None
+    next_due_at: datetime | None = None
+    error_code: str | None = None
+
+
+class ProviderStatusResponse(BaseModel):
+    generated_at: datetime
+    items: list[ProviderCollectionStatus]
+    ferry_window_start: date
+    ferry_window_end: date
+    ferry_expected_snapshots: int
+    ferry_stored_snapshots: int
 
 
 class TransportCollectionRunStatus(BaseModel):

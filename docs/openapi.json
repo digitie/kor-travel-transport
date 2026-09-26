@@ -359,6 +359,22 @@
             ],
             "title": "Service Type",
             "type": "string"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
           }
         },
         "required": [
@@ -931,6 +947,36 @@
           "items"
         ],
         "title": "FerryOperationResponse",
+        "type": "object"
+      },
+      "FerryStoredTimetableResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FerryOperationResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "missing_port_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Port Ids",
+            "type": "array"
+          },
+          "service_date": {
+            "format": "date",
+            "title": "Service Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service_date",
+          "items",
+          "missing_port_ids"
+        ],
+        "title": "FerryStoredTimetableResponse",
         "type": "object"
       },
       "FlightStatusItem": {
@@ -2868,6 +2914,168 @@
         ],
         "type": "object"
       },
+      "ProviderCollectionStatus": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "interval_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Seconds"
+          },
+          "job_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Name"
+          },
+          "job_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Status"
+          },
+          "last_started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Started At"
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success At"
+          },
+          "mode": {
+            "default": "scheduled",
+            "enum": [
+              "scheduled",
+              "on_demand",
+              "unconnected"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "next_due_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Due At"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "name",
+          "enabled",
+          "status"
+        ],
+        "title": "ProviderCollectionStatus",
+        "type": "object"
+      },
+      "ProviderStatusResponse": {
+        "properties": {
+          "ferry_expected_snapshots": {
+            "title": "Ferry Expected Snapshots",
+            "type": "integer"
+          },
+          "ferry_stored_snapshots": {
+            "title": "Ferry Stored Snapshots",
+            "type": "integer"
+          },
+          "ferry_window_end": {
+            "format": "date",
+            "title": "Ferry Window End",
+            "type": "string"
+          },
+          "ferry_window_start": {
+            "format": "date",
+            "title": "Ferry Window Start",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderCollectionStatus"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generated_at",
+          "items",
+          "ferry_window_start",
+          "ferry_window_end",
+          "ferry_expected_snapshots",
+          "ferry_stored_snapshots"
+        ],
+        "title": "ProviderStatusResponse",
+        "type": "object"
+      },
       "ThresholdDateHistoryItem": {
         "properties": {
           "available_spaces": {
@@ -3266,6 +3474,13 @@
             ],
             "title": "Brand Name"
           },
+          "facilities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Facilities",
+            "type": "array"
+          },
           "id": {
             "title": "Id",
             "type": "integer"
@@ -3274,7 +3489,9 @@
             "enum": [
               "fuel_station",
               "rail_station",
-              "ferry_port"
+              "ferry_port",
+              "airport",
+              "rest_area"
             ],
             "title": "Kind",
             "type": "string"
@@ -3291,8 +3508,15 @@
             "title": "Latest Price"
           },
           "latitude": {
-            "title": "Latitude",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
           },
           "line_names": {
             "items": {
@@ -3324,12 +3548,30 @@
             "title": "Location Source"
           },
           "longitude": {
-            "title": "Longitude",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
           },
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
           },
           "price_product_code": {
             "anyOf": [
@@ -3341,6 +3583,13 @@
               }
             ],
             "title": "Price Product Code"
+          },
+          "prices": {
+            "items": {
+              "$ref": "#/components/schemas/FuelPriceItem"
+            },
+            "title": "Prices",
+            "type": "array"
           },
           "provider_id": {
             "anyOf": [
@@ -3356,6 +3605,17 @@
           "source": {
             "title": "Source",
             "type": "string"
+          },
+          "station_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Station Type"
           },
           "subtitle": {
             "anyOf": [
@@ -3388,6 +3648,13 @@
       },
       "TransportPlaceMapResponse": {
         "properties": {
+          "available_sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Available Sources",
+            "type": "array"
+          },
           "generated_at": {
             "format": "date-time",
             "title": "Generated At",
@@ -3411,37 +3678,6 @@
             ],
             "title": "Kind"
           },
-          "limit": {
-            "title": "Limit",
-            "type": "integer"
-          },
-          "next_offset": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Offset"
-          },
-          "offset": {
-            "default": 0,
-            "title": "Offset",
-            "type": "integer"
-          },
-          "query": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Query"
-          },
           "total": {
             "default": 0,
             "title": "Total",
@@ -3455,7 +3691,6 @@
         },
         "required": [
           "generated_at",
-          "limit",
           "items"
         ],
         "title": "TransportPlaceMapResponse",
@@ -5603,7 +5838,7 @@
         "operationId": "transport_place_features_v1_transport_features_places_get",
         "parameters": [
           {
-            "description": "fuel_station, rail_station, ferry_port 중 하나",
+            "description": "fuel_station, rail_station, ferry_port, airport, rest_area 중 하나",
             "in": "query",
             "name": "kind",
             "required": false,
@@ -5616,7 +5851,7 @@
                   "type": "null"
                 }
               ],
-              "description": "fuel_station, rail_station, ferry_port 중 하나",
+              "description": "fuel_station, rail_station, ferry_port, airport, rest_area 중 하나",
               "title": "Kind"
             }
           },
@@ -5633,20 +5868,35 @@
             }
           },
           {
-            "description": "종류별 목록 offset",
+            "description": "좌표 없는 기준정보도 검색 목록에 포함",
             "in": "query",
-            "name": "offset",
+            "name": "include_unlocated",
             "required": false,
             "schema": {
-              "default": 0,
-              "description": "종류별 목록 offset",
-              "minimum": 0,
-              "title": "Offset",
-              "type": "integer"
+              "default": false,
+              "description": "좌표 없는 기준정보도 검색 목록에 포함",
+              "title": "Include Unlocated",
+              "type": "boolean"
             }
           },
           {
-            "description": "역·노선 또는 항구 이름 검색어",
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
             "in": "query",
             "name": "query",
             "required": false,
@@ -5660,8 +5910,24 @@
                   "type": "null"
                 }
               ],
-              "description": "역·노선 또는 항구 이름 검색어",
               "title": "Query"
+            }
+          },
+          {
+            "in": "query",
+            "name": "product_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 20,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Product Code"
             }
           },
           {
@@ -6048,9 +6314,71 @@
         "summary": "Transport Highway Traffic"
       }
     },
+    "/v1/transport/ports/timetables": {
+      "get": {
+        "description": "비교 검색은 저장 데이터만 읽는다. 미수집과 제공기관의 빈 시간표를 구분한다.",
+        "operationId": "transport_stored_port_timetables_v1_transport_ports_timetables_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "port_ids",
+            "required": true,
+            "schema": {
+              "maxLength": 700,
+              "minLength": 1,
+              "title": "Port Ids",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "title": "Date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FerryStoredTimetableResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Transport Stored Port Timetables"
+      }
+    },
     "/v1/transport/ports/{port_id}/timetable": {
       "get": {
-        "description": "요청 항구·날짜 한 건만 provider에서 실시간 조회하며 DB/raw 응답에는 저장하지 않는다.",
+        "description": "저장된 운항일 스냅샷을 반환하고, 누락된 경우만 provider에서 채운다.",
         "operationId": "transport_port_timetable_v1_transport_ports__port_id__timetable_get",
         "parameters": [
           {
@@ -6106,6 +6434,34 @@
           }
         },
         "summary": "Transport Port Timetable"
+      }
+    },
+    "/v1/transport/providers": {
+      "get": {
+        "operationId": "transport_providers_v1_transport_providers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Transport Providers"
       }
     },
     "/v1/transport/statistics": {
