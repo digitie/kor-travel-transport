@@ -942,7 +942,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.1,<10.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=1.4,<2.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=7.1,<8.0" },
-    { name = "python-datagokr-api", git = "https://github.com/digitie/python-datagokr-api?rev=472c353e2a3bfce5fd0571357a6652dc6000adf0" },
+    { name = "python-datagokr-api", git = "https://github.com/digitie/python-datagokr-api?rev=b885ad6b9cff39b9ce642e971944b4c3e4863c86" },
     { name = "python-kasi-api", git = "https://github.com/digitie/python-kasi-api?rev=51c39c1b0dd5b169b748552e81b9b9a55e86b9a1" },
     { name = "python-krairport-api", git = "https://github.com/digitie/python-krairport-api?rev=cbe4d1380dc0388c078e8ae4622d3e580717064b" },
     { name = "python-krex-api", git = "https://github.com/digitie/python-krex-api?rev=adda2879f8bc1f0896867d28eee5583594ecda01" },
@@ -1692,7 +1692,7 @@ wheels = [
 [[package]]
 name = "python-datagokr-api"
 version = "0.1.0"
-source = { git = "https://github.com/digitie/python-datagokr-api?rev=472c353e2a3bfce5fd0571357a6652dc6000adf0#472c353e2a3bfce5fd0571357a6652dc6000adf0" }
+source = { git = "https://github.com/digitie/python-datagokr-api?rev=b885ad6b9cff39b9ce642e971944b4c3e4863c86#b885ad6b9cff39b9ce642e971944b4c3e4863c86" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
