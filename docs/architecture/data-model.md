@@ -101,8 +101,14 @@ SQLite dialect를 허용한다.
 
 - 공공데이터포털 국내선박운항정보의 항구, 여객선 터미널, 선박종류 기준정보
 - 원천 ID와 source의 조합으로 중복을 막고 최초/최종 확인 시각을 기록
-- 운항시간표·운항계획은 이 DB에 저장하지 않는다. 시간에 민감한 자료는 항구 API 요청마다
-  실시간 provider 응답으로 반환한다.
+
+### `ferry_timetable_snapshots`
+
+- 출발 항구, 운항일, source를 자연키로 하는 국내 여객선 운항시간표 응답 스냅샷
+- 공개 API와 동일한 선박명·출발/도착 항구·계획 시각·운임 JSON 배열과 `collected_at`을 저장
+- 오늘을 포함한 10일 범위만 유지한다. Dagster는 한 run에 최대 280건만 적재해 최초 누락
+  범위를 재개 가능하게 채우고, 이후에는 새 미래 운항일과 당일만 갱신하므로 항구 화면 반복
+  조회나 프로세스 재시작이 provider 재호출로 이어지지 않는다.
 
 ### `bus_terminal_references`
 
@@ -132,6 +138,7 @@ Alembic migration이 PostgreSQL 인덱스를 생성한다. SQLite 테스트에�
 - `highway_incident_snapshots (route_no, observed_at)`
 - `fuel_stations (sido_value, sigungu_value)` 및 `last_seen_at`
 - `fuel_price_snapshots (fuel_station_id, observed_at)` 및 `(product_code, observed_at)`
+- `ferry_timetable_snapshots (source, departure_port_id, service_date)` 및 `service_date`
 
 ## Migration and backup contract
 

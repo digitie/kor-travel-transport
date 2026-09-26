@@ -6,7 +6,7 @@ from collections import OrderedDict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from contextlib import suppress
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from functools import wraps
 from http import HTTPStatus
 from types import SimpleNamespace
@@ -21,6 +21,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import func, or_, select, true
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import load_only, selectinload
 from datagokr import DataGoKrClient
@@ -37,6 +38,7 @@ from app.models import (
     FuelPriceSnapshot,
     FuelStation,
     FerryPort,
+    FerryTimetableSnapshot,
     HighwayIncidentSnapshot,
     HighwayTrafficFiveMinuteStatistic,
     HighwayTrafficSnapshot,
@@ -969,16 +971,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         service_date: date = Query(default_factory=lambda: to_seoul(now_utc()).date(), alias="date"),
         session: AsyncSession = Depends(get_db),
     ) -> FerryOperationResponse:
-        """요청 항구·날짜 한 건만 provider에서 실시간 조회하며 DB/raw 응답에는 저장하지 않는다."""
+        """저장된 운항일 스냅샷을 반환하고, 누락된 경우만 provider에서 채운다."""
         settings: Settings = request.app.state.settings
         today = to_seoul(now_utc()).date()
-        if service_date < today or service_date > today + timedelta(days=settings.ferry_timetable_max_days_ahead):
-            raise HTTPException(status_code=422, detail="운항일은 오늘부터 허용된 미래 범위 안에서만 조회할 수 있습니다.")
+        last_stored_date = today + timedelta(days=settings.ferry_timetable_storage_days - 1)
+        if service_date < today or service_date > last_stored_date:
+            raise HTTPException(
+                status_code=422,
+                detail=f"운항일은 오늘부터 {settings.ferry_timetable_storage_days}일 보관 범위 안에서만 조회할 수 있습니다.",
+            )
         port = await session.scalar(select(FerryPort).where(FerryPort.port_id == port_id))
         if port is None:
             raise HTTPException(status_code=404, detail="저장된 항구를 찾을 수 없습니다.")
+        snapshot = await session.scalar(
+            select(FerryTimetableSnapshot).where(
+                FerryTimetableSnapshot.source == port.source,
+                FerryTimetableSnapshot.departure_port_id == port_id,
+                FerryTimetableSnapshot.service_date == service_date,
+            )
+        )
+        def snapshot_response(row: FerryTimetableSnapshot) -> FerryOperationResponse:
+            collected_at = (
+                row.collected_at.replace(tzinfo=UTC)
+                if row.collected_at.tzinfo is None
+                else row.collected_at
+            )
+            return FerryOperationResponse(
+                port_id=port_id,
+                service_date=service_date,
+                fetched_at=collected_at,
+                items=[FerryOperationItem.model_validate(item) for item in row.items_json],
+            )
+        if snapshot is not None:
+            return snapshot_response(snapshot)
         if not settings.data_go_kr_service_key:
-            raise HTTPException(status_code=503, detail="여객선 실시간 provider가 설정되지 않았습니다.")
+            raise HTTPException(status_code=503, detail="저장된 운항시간표가 없고 여객선 provider도 설정되지 않았습니다.")
         cache_key = (port_id, service_date)
         timetable_cache = request.app.state.ferry_timetable_cache
 
@@ -1044,6 +1071,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 port_id=port_id, service_date=service_date, fetched_at=now_utc(),
                 items=[FerryOperationItem(vessel_name=item.vessel_name, departure_port_name=item.departure_port_name, arrival_port_name=item.arrival_port_name, departure_planned_time=item.departure_planned_time, arrival_planned_time=item.arrival_planned_time, fare=item.fare) for item in operations],
             )
+            try:
+                session.add(
+                    FerryTimetableSnapshot(
+                        source=port.source,
+                        departure_port_id=port_id,
+                        service_date=service_date,
+                        collected_at=response.fetched_at,
+                        items_json=[item.model_dump(mode="json") for item in response.items],
+                    )
+                )
+                await session.commit()
+            except IntegrityError:
+                await session.rollback()
+                persisted = await session.scalar(
+                    select(FerryTimetableSnapshot).where(
+                        FerryTimetableSnapshot.source == port.source,
+                        FerryTimetableSnapshot.departure_port_id == port_id,
+                        FerryTimetableSnapshot.service_date == service_date,
+                    )
+                )
+                if persisted is None:
+                    raise
+                return snapshot_response(persisted)
             timetable_cache[cache_key] = (now_utc(), response)
             timetable_cache.move_to_end(cache_key)
             while len(timetable_cache) > settings.ferry_timetable_cache_max_entries:

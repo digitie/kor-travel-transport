@@ -55,21 +55,23 @@ n150의 비추적 환경 파일에만 둔다.
 | `fuel_collection_job` | 8시간 | 주유소·유가 snapshot | Playwright provider throttle |
 | `rail_reference_collection_job` | 매일 03:00 due 평가 | KRIC 공개 XLSX 역사 기준정보 | 마지막 성공 뒤 48시간이 지난 경우만 1회 |
 | `maritime_reference_collection_job` | 매월 1·4·7…일 03:00 | 항구·터미널·선박종류 기준정보 | data.go.kr 요청 세 건을 순차 실행 |
+| `ferry_timetable_collection_job` | 4시간마다 45분 | 항구별 운항일 시간표 snapshot | run당 최대 280건, 30초 provider 간격, 다음 run 재개 |
 
 KRIC는 인증 OpenAPI도 과도한 GET 대신 하루 한 번 이하의 batch 호출을 요청한다. 철도
 기준정보 job은 매일 due만 평가하지만 마지막 성공 수집 뒤 **48시간**이 지나기 전에는
 provider를 호출하지 않는다. 따라서 월 경계도 실제 수집 간격은 2일 이상이다. 한 run은 공개
 XLSX를 한 번만 읽고, 인증 OpenAPI를 전국 역·열차 단위로 순회하지 않는다.
 인증 OpenAPI의 역 상세·시간표는 이용자 요청에 필요한 단건 조회로 분리하고, 별도 cache
-정책을 구현하기 전에는 Dagster batch에 포함하지 않는다. 여객선 기준정보도 매일 또는 전국
-항구별 운항계획을 무차별 호출하지 않는다.
+정책을 구현하기 전에는 Dagster batch에 포함하지 않는다. 여객선 기준정보는 저변동 기준으로
+수집하고, 운항계획은 아래의 호출 예산을 가진 전용 job에서만 보충한다.
 
-항구 운항시간표는 저장하지 않는다. `GET /v1/transport/ports/{port_id}/timetable?date=YYYY-MM-DD`가
-요청한 항구와 날짜만 provider에 비동기로 전달해 실시간 응답으로 반환한다. 오늘부터 설정된
-미래 일수 안에서만 조회하고, 같은 `(항구, 날짜)`는 process cache와 async lock으로 묶어 cache
-TTL 동안 외부 API를 한 번만 호출한다. provider가 호출 제한을 돌려주면 전 항구 요청을
-`UPSTREAM_RATE_LIMIT_BACKOFF_SECONDS` 동안 429와 `Retry-After`로 차단한다. 따라서 시간표는
-오래된 DB snapshot으로 오인되지 않으며, 반복 클릭이나 오류 재시도도 provider quota를 소모하지 않는다.
+항구 운항시간표는 `ferry_timetable_snapshots`에 오늘 포함 10일만 저장한다.
+`GET /v1/transport/ports/{port_id}/timetable?date=YYYY-MM-DD`는 DB를 먼저 반환하고, 누락된
+항구·날짜 한 건만 provider에 비동기로 요청해 저장한다. Dagster는 한 run에 최대 280건만
+보충하고, 30초 보호 간격과 최대 15초 요청 timeout을 포함해 3시간 30분 예산 안에서 각 성공을
+즉시 commit하므로 4시간 runtime 상한이나 일시 오류 뒤에도 다음 run이 남은 범위를 재개한다.
+provider가 호출 제한을 돌려주면 전 항구 요청을
+`UPSTREAM_RATE_LIMIT_BACKOFF_SECONDS` 동안 429와 `Retry-After`로 차단한다.
 
 ## 운영 실행
 

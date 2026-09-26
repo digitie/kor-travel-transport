@@ -111,7 +111,11 @@ def test_alembic_history_keeps_the_deployed_rest_area_revision() -> None:
 
     assert deployed_revision is not None
     assert head_revision is not None
-    assert head_revision.down_revision == deployed_revision.revision
+    # 신규 migration이 여러 개 이어져도, 운영 DB의 0011이 현재 head의 조상으로
+    # 남아 있어야 upgrade가 가능한 계보가 된다.
+    assert deployed_revision.revision in {
+        revision.revision for revision in script.iterate_revisions(ALEMBIC_HEAD, "base")
+    }
     assert "rest_area_references" in Base.metadata.tables
 
 

@@ -16,7 +16,7 @@ from app.core.time_utils import now_utc
 from app.main import create_app
 from datagokr.exceptions import ApiErrorResponse
 from kric import KricRateLimitError
-from app.models import AnalyticsCache, Airport, BusTerminalReference, CollectionRun, FerryPort, FuelPriceSnapshot, FuelStation, ParkingLot, ParkingSnapshot, RailStationReference
+from app.models import AnalyticsCache, Airport, BusTerminalReference, CollectionRun, FerryPort, FerryTimetableSnapshot, FuelPriceSnapshot, FuelStation, ParkingLot, ParkingSnapshot, RailStationReference
 
 
 def assert_is_utc_iso(value: str | None) -> None:
@@ -198,11 +198,24 @@ def test_transport_port_timetable_caches_one_live_provider_call(tmp_path: Path) 
             first = client.get("/v1/transport/ports/P1/timetable")
             second = client.get("/v1/transport/ports/P1/timetable")
 
+        async def stored_snapshot() -> FerryTimetableSnapshot | None:
+            async with client.app.state.session_factory() as session:
+                return await session.scalar(select(FerryTimetableSnapshot))
+
+        snapshot = asyncio.run(stored_snapshot())
+
+    with build_client(tmp_path, data_go_kr_service_key=None) as restarted_client:
+        persisted = restarted_client.get("/v1/transport/ports/P1/timetable")
+
     assert first.status_code == 200
     assert second.status_code == 200
+    assert persisted.status_code == 200
     assert first.json() == second.json()
+    assert persisted.json() == first.json()
     assert first.json()["items"] == [{"vessel_name": "테스트호", "departure_port_name": "테스트항", "arrival_port_name": "도착항", "departure_planned_time": "09:00", "arrival_planned_time": "10:00", "fare": "10000"}]
     assert FakeMaritimeClient.calls == 1
+    assert snapshot is not None
+    assert snapshot.items_json[0]["vessel_name"] == "테스트호"
 
 
 def test_transport_port_timetable_bounds_cached_ports(tmp_path: Path) -> None:

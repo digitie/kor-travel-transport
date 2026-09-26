@@ -1,19 +1,24 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 from kric import DomesticFerryPort, FerryShipType, FerryTerminal, FileStationInfo, PortGuidelineLocation
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import func, select
 
 from app.core.config import Settings
+from app.core.time_utils import now_utc, to_seoul
 from app.db.session import create_engine_and_session_factory, init_database
 from app.models import (
     CollectionRun,
     FerryPort,
     FerryShipTypeReference,
     FerryTerminalReference,
+    FerryTimetableSnapshot,
     RailStationReference,
 )
 from app.services.rail_maritime_collection import RailMaritimeCollectionService
@@ -175,9 +180,171 @@ def test_reference_collections_are_explicitly_disabled_by_default(tmp_path: Path
         async with session_factory() as session:
             assert (await service.collect_rail_reference(session))["status"] == "skipped"
             assert (await service.collect_maritime_reference(session))["status"] == "skipped"
+            assert (await service.collect_ferry_timetables(session))["status"] == "skipped"
         await engine.dispose()
 
     asyncio.run(run())
+
+
+def test_ferry_timetable_collection_stores_horizon_and_reuses_future_snapshots(tmp_path: Path) -> None:
+    class TimetableClient:
+        calls: list[tuple[str, object]] = []
+
+        async def __aenter__(self) -> "TimetableClient":
+            return self
+
+        async def __aexit__(self, *_: object) -> None:
+            return None
+
+        async def get_domestic_ship_operations(self, *, departure_port_id: str, departure_date: object):
+            type(self).calls.append((departure_port_id, departure_date))
+            return (
+                SimpleNamespace(
+                    vessel_name="테스트호",
+                    departure_port_name="테스트항",
+                    arrival_port_name="도착항",
+                    departure_planned_time="09:00",
+                    arrival_planned_time="10:00",
+                    fare="10000",
+                ),
+            )
+
+    settings = _settings(
+        tmp_path,
+        ferry_timetable_collection_enabled=True,
+        ferry_timetable_storage_days=2,
+        ferry_timetable_min_interval_seconds=1,
+        data_go_kr_service_key="test-key",
+    )
+    engine, session_factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> None:
+        await init_database(engine)
+        now = now_utc()
+        today = to_seoul(now).date()
+        async with session_factory() as session:
+            session.add(FerryPort(source="data_go_kr_maritime", port_id="P001", port_name="테스트항", latitude=None, longitude=None, location_source=None, location_point_count=0, first_seen_at=now, last_seen_at=now, raw_item_json=None))
+            session.add(FerryTimetableSnapshot(source="data_go_kr_maritime", departure_port_id="P001", service_date=today - timedelta(days=1), collected_at=now, items_json=[]))
+            session.add(FerryTimetableSnapshot(source="data_go_kr_maritime", departure_port_id="P001", service_date=today + timedelta(days=10), collected_at=now, items_json=[]))
+            await session.commit()
+        service = RailMaritimeCollectionService(settings, maritime_client_factory=lambda _key, *, timeout: TimetableClient())
+        async with session_factory() as session:
+            first = await service.collect_ferry_timetables(session)
+        async with session_factory() as session:
+            second = await service.collect_ferry_timetables(session)
+        async with session_factory() as session:
+            snapshots = (await session.execute(select(FerryTimetableSnapshot).order_by(FerryTimetableSnapshot.service_date))).scalars().all()
+        assert first["provider_calls"] == 2
+        assert first["service_date_count"] == 2
+        assert first["operation_count"] == 2
+        assert second["provider_calls"] == 0
+        assert second["reused_snapshot_count"] == 2
+        assert len(TimetableClient.calls) == 2
+        assert len(snapshots) == 2
+        assert snapshots[0].items_json[0]["vessel_name"] == "테스트호"
+        await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_ferry_timetable_collection_keeps_completed_snapshots_when_later_call_fails(tmp_path: Path) -> None:
+    class PartiallyFailingClient:
+        calls = 0
+
+        async def __aenter__(self) -> "PartiallyFailingClient":
+            return self
+
+        async def __aexit__(self, *_: object) -> None:
+            return None
+
+        async def get_domestic_ship_operations(self, **_kwargs):
+            type(self).calls += 1
+            if type(self).calls == 2:
+                raise RuntimeError("provider timeout")
+            return ()
+
+    settings = _settings(
+        tmp_path,
+        ferry_timetable_collection_enabled=True,
+        ferry_timetable_storage_days=2,
+        ferry_timetable_min_interval_seconds=1,
+        data_go_kr_service_key="test-key",
+    )
+    engine, session_factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> None:
+        await init_database(engine)
+        now = now_utc()
+        async with session_factory() as session:
+            session.add(FerryPort(source="data_go_kr_maritime", port_id="P001", port_name="테스트항", latitude=None, longitude=None, location_source=None, location_point_count=0, first_seen_at=now, last_seen_at=now, raw_item_json=None))
+            await session.commit()
+        service = RailMaritimeCollectionService(settings, maritime_client_factory=lambda _key, *, timeout: PartiallyFailingClient())
+        async with session_factory() as session:
+            with pytest.raises(RuntimeError, match="provider timeout"):
+                await service.collect_ferry_timetables(session)
+        async with session_factory() as session:
+            assert await session.scalar(select(func.count()).select_from(FerryTimetableSnapshot)) == 1
+            run = await session.scalar(select(CollectionRun).order_by(CollectionRun.id.desc()))
+        assert run is not None
+        assert run.status == "failed"
+        await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_ferry_timetable_collection_resumes_after_provider_call_budget(tmp_path: Path) -> None:
+    class BudgetedClient:
+        calls = 0
+
+        async def __aenter__(self) -> "BudgetedClient":
+            return self
+
+        async def __aexit__(self, *_: object) -> None:
+            return None
+
+        async def get_domestic_ship_operations(self, **_kwargs):
+            type(self).calls += 1
+            return ()
+
+    settings = _settings(
+        tmp_path,
+        ferry_timetable_collection_enabled=True,
+        ferry_timetable_storage_days=2,
+        ferry_timetable_collection_max_provider_calls=1,
+        data_go_kr_service_key="test-key",
+    )
+    engine, session_factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> None:
+        await init_database(engine)
+        now = now_utc()
+        async with session_factory() as session:
+            session.add(FerryPort(source="data_go_kr_maritime", port_id="P001", port_name="테스트항", latitude=None, longitude=None, location_source=None, location_point_count=0, first_seen_at=now, last_seen_at=now, raw_item_json=None))
+            await session.commit()
+        service = RailMaritimeCollectionService(settings, maritime_client_factory=lambda _key, *, timeout: BudgetedClient())
+        async with session_factory() as session:
+            first = await service.collect_ferry_timetables(session)
+        async with session_factory() as session:
+            second = await service.collect_ferry_timetables(session)
+        async with session_factory() as session:
+            count = await session.scalar(select(func.count()).select_from(FerryTimetableSnapshot))
+        assert first["provider_calls"] == 1
+        assert first["deferred_snapshot_count"] == 1
+        assert second["provider_calls"] == 1
+        assert second["deferred_snapshot_count"] == 0
+        assert BudgetedClient.calls == 2
+        assert count == 2
+        await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_ferry_timetable_default_budget_includes_interval_and_timeout() -> None:
+    settings = Settings()
+
+    assert settings.ferry_timetable_collection_max_provider_calls == 280
+    with pytest.raises(ValidationError, match="3.5-hour ferry collection runtime budget"):
+        Settings(ferry_timetable_collection_max_provider_calls=281)
 
 
 def test_enabled_rail_reference_collection_requires_rustfs_configuration(tmp_path: Path) -> None:

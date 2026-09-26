@@ -21,16 +21,19 @@ from kric import (
     RustfsObjectStore,
     StoredObject,
 )
-from sqlalchemy import select
+from sqlalchemy import delete, or_, select
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.core.time_utils import now_utc
+from app.core.time_utils import now_utc, to_seoul
 from app.models import (
     CollectionRun,
     FerryPort,
     FerryShipTypeReference,
     FerryTerminalReference,
+    FerryTimetableSnapshot,
     RailStationReference,
     RawApiResponse,
 )
@@ -45,8 +48,7 @@ PORT_GUIDELINE_SOURCE = "data_go_kr_port_guideline"
 class RailMaritimeCollectionService:
     """저변동 철도·여객선 데이터를 Dagster job에서 안전하게 적재한다.
 
-    운항시간표는 시시각각 변하므로 이 job은 항구·터미널·선박종류 기준정보만 저장한다.
-    시간표는 항구 조회 API가 provider에서 실시간으로 받아 반환한다.
+    항구·터미널·선박 종류는 기준정보로, 운항시간표는 항구·운항일 단위 스냅샷으로 저장한다.
     """
 
     def __init__(
@@ -135,6 +137,137 @@ class RailMaritimeCollectionService:
         except Exception as exc:
             await self._fail_run(session, run.id, exc)
             raise
+
+    async def collect_ferry_timetables(
+        self, session: AsyncSession, *, trigger: str = "dagster_ferry_timetable"
+    ) -> dict[str, Any]:
+        """오늘부터 설정된 보관 범위의 항구별 운항시간표를 DB에 보충한다.
+
+        최초 실행만 모든 항구·운항일을 채운다. 이후에는 새로 추가된 운항일과 당일
+        시간표만 provider에서 갱신해 호출량을 예측 가능하게 유지한다.
+        """
+        if not self.settings.ferry_timetable_collection_enabled:
+            return {"status": "skipped", "reason": "ferry timetable collection is disabled"}
+        if not self.settings.data_go_kr_service_key:
+            return {"status": "skipped", "reason": "DATA_GO_KR_SERVICE_KEY is required"}
+
+        run = await self._start_run(session, trigger)
+        try:
+            summary = await self._collect_ferry_timetables(session)
+            await self._store_summary_response(
+                session, run.id, MARITIME_SOURCE, "data.go.kr:ferry-timetable", summary
+            )
+            await self._finish_run(session, run.id, "success")
+            logger.info("ferry timetable collection finished run_id=%s summary=%s", run.id, summary)
+            return {"status": "success", "run_id": run.id, **summary}
+        except asyncio.CancelledError as exc:
+            await self._fail_run(session, run.id, exc)
+            raise
+        except Exception as exc:
+            await self._fail_run(session, run.id, exc)
+            raise
+
+    async def _collect_ferry_timetables(self, session: AsyncSession) -> dict[str, int]:
+        key = self.settings.data_go_kr_service_key
+        assert key is not None
+        today = to_seoul(now_utc()).date()
+        service_dates = tuple(
+            today + timedelta(days=offset)
+            for offset in range(self.settings.ferry_timetable_storage_days)
+        )
+        last_service_date = service_dates[-1]
+        await session.execute(
+            delete(FerryTimetableSnapshot).where(
+                or_(
+                    FerryTimetableSnapshot.service_date < today,
+                    FerryTimetableSnapshot.service_date > last_service_date,
+                )
+            )
+        )
+        # 최초 10일 backfill 도중 provider가 제한·timeout을 반환해도 범위 정리는 남긴다.
+        await session.commit()
+        ports = tuple(
+            (await session.execute(
+                select(FerryPort)
+                .where(FerryPort.source == MARITIME_SOURCE)
+                .order_by(FerryPort.port_id)
+            )).scalars().all()
+        )
+        snapshots = tuple(
+            (await session.execute(
+                select(FerryTimetableSnapshot).where(
+                    FerryTimetableSnapshot.source == MARITIME_SOURCE,
+                    FerryTimetableSnapshot.service_date.in_(service_dates),
+                )
+            )).scalars().all()
+        )
+        by_port_date = {
+            (snapshot.source, snapshot.departure_port_id, snapshot.service_date): snapshot
+            for snapshot in snapshots
+        }
+        collected_at = now_utc()
+        provider_calls = 0
+        reused = 0
+        operation_count = 0
+        last_call_at = None
+        budget_exhausted = False
+        async with self._maritime_client_factory(key, timeout=self.settings.api_timeout_seconds) as client:
+            for port in ports:
+                for service_date in service_dates:
+                    snapshot = by_port_date.get((port.source, port.port_id, service_date))
+                    is_today_snapshot = snapshot is not None and service_date == today
+                    snapshot_collected_at = (
+                        snapshot.collected_at.replace(tzinfo=UTC)
+                        if snapshot is not None and snapshot.collected_at.tzinfo is None
+                        else snapshot.collected_at if snapshot is not None else None
+                    )
+                    is_fresh_today = (
+                        is_today_snapshot
+                        and snapshot_collected_at is not None
+                        and collected_at - snapshot_collected_at < timedelta(days=1)
+                    )
+                    if snapshot is not None and (service_date > today or is_fresh_today):
+                        reused += 1
+                        operation_count += len(snapshot.items_json)
+                        continue
+                    if provider_calls >= self.settings.ferry_timetable_collection_max_provider_calls:
+                        budget_exhausted = True
+                        break
+                    if last_call_at is not None:
+                        elapsed = (now_utc() - last_call_at).total_seconds()
+                        wait_seconds = self.settings.ferry_timetable_min_interval_seconds - elapsed
+                        if wait_seconds > 0:
+                            await asyncio.sleep(wait_seconds)
+                    operations = await client.get_domestic_ship_operations(
+                        departure_port_id=port.port_id,
+                        departure_date=service_date,
+                    )
+                    last_call_at = now_utc()
+                    items = [_ferry_operation_payload(item) for item in operations]
+                    operation_count += len(items)
+                    provider_calls += 1
+                    await _upsert_ferry_timetable_snapshot(
+                        session,
+                        source=port.source,
+                        departure_port_id=port.port_id,
+                        service_date=service_date,
+                        collected_at=collected_at,
+                        items_json=items,
+                    )
+                    # 호출 하나의 성공 결과를 즉시 durable하게 만든다. 이후 호출이 실패해도
+                    # 이미 채운 항구·운항일은 API가 DB에서 반환할 수 있다.
+                    await session.commit()
+                if budget_exhausted:
+                    break
+        deferred_snapshot_count = len(ports) * len(service_dates) - reused - provider_calls
+        return {
+            "port_count": len(ports),
+            "service_date_count": len(service_dates),
+            "provider_calls": provider_calls,
+            "reused_snapshot_count": reused,
+            "operation_count": operation_count,
+            "deferred_snapshot_count": deferred_snapshot_count,
+        }
 
     async def _fetch_rail_stations(self) -> tuple[tuple[FileStationInfo, ...], StoredObject | None]:
         if self._rail_fetcher is not None:
@@ -371,6 +504,52 @@ def _identity(*values: str | None) -> str:
 
 def _safe_error(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {str(exc)[:500]}"
+
+
+def _ferry_operation_payload(item: Any) -> dict[str, str | None]:
+    """provider 객체를 공개 API와 같은 안정된 JSON 계약으로 축소한다."""
+    return {
+        "vessel_name": item.vessel_name,
+        "departure_port_name": item.departure_port_name,
+        "arrival_port_name": item.arrival_port_name,
+        "departure_planned_time": item.departure_planned_time,
+        "arrival_planned_time": item.arrival_planned_time,
+        "fare": item.fare,
+    }
+
+
+async def _upsert_ferry_timetable_snapshot(
+    session: AsyncSession,
+    *,
+    source: str,
+    departure_port_id: str,
+    service_date: Any,
+    collected_at: Any,
+    items_json: list[dict[str, str | None]],
+) -> None:
+    """API lazy fill과 Dagster가 경합해도 항구·운항일당 한 스냅샷만 남긴다."""
+    values = {
+        "source": source,
+        "departure_port_id": departure_port_id,
+        "service_date": service_date,
+        "collected_at": collected_at,
+        "items_json": items_json,
+    }
+    dialect_name = session.bind.dialect.name if session.bind is not None else ""
+    if dialect_name == "postgresql":
+        statement = postgresql_insert(FerryTimetableSnapshot).values(**values)
+    elif dialect_name == "sqlite":
+        statement = sqlite_insert(FerryTimetableSnapshot).values(**values)
+    else:
+        raise RuntimeError(f"unsupported ferry timetable database dialect: {dialect_name}")
+    statement = statement.on_conflict_do_update(
+        index_elements=["source", "departure_port_id", "service_date"],
+        set_={
+            "collected_at": statement.excluded.collected_at,
+            "items_json": statement.excluded.items_json,
+        },
+    )
+    await session.execute(statement)
 
 
 def _port_name_key(value: str | None) -> str:

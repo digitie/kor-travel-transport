@@ -44,12 +44,18 @@ class Settings(BaseSettings):
     maritime_reference_collection_enabled: bool = False
     bus_reference_collection_enabled: bool = False
     port_guideline_collection_enabled: bool = True
+    ferry_timetable_collection_enabled: bool = False
+    # 오늘을 포함해 DB에 유지할 운항일 수다. 예: 10이면 오늘부터 9일 뒤까지다.
+    ferry_timetable_storage_days: int = Field(default=10, ge=1, le=31)
+    # 30초 provider 보호 간격과 15초 요청 timeout을 함께 반영해, Dagster 4시간
+    # 상한보다 여유 있는 3시간 30분 안에 끝나는 기본값이다.
+    ferry_timetable_collection_max_provider_calls: int = Field(default=280, ge=1, le=1_000)
     ferry_timetable_cache_seconds: int = Field(default=300, ge=30, le=3600)
     ferry_timetable_cache_max_entries: int = Field(default=500, ge=1, le=10_000)
     # 실시간 항구 시간표는 사용자 명시 요청만 허용하며, 서로 다른 항구 요청으로 provider
     # quota를 소진하지 않도록 cache miss 사이에도 전역 간격을 둔다.
     ferry_timetable_min_interval_seconds: int = Field(default=30, ge=1, le=3600)
-    ferry_timetable_max_days_ahead: int = Field(default=7, ge=0, le=31)
+    ferry_timetable_max_days_ahead: int = Field(default=9, ge=0, le=31)
     bus_timetable_cache_seconds: int = Field(default=900, ge=30, le=3600)
     bus_timetable_cache_max_entries: int = Field(default=500, ge=1, le=10_000)
     # 공개 TAGO 시간표는 인증되지 않은 호출도 받으므로 provider quota를 보호할 수 있게
@@ -93,6 +99,16 @@ class Settings(BaseSettings):
             raise ValueError(
                 "BUS_TIMETABLE_CACHE_SECONDS must be greater than or equal to "
                 "BUS_TIMETABLE_MIN_INTERVAL_SECONDS"
+            )
+        ferry_collection_runtime_budget_seconds = (
+            self.ferry_timetable_collection_max_provider_calls
+            * (self.ferry_timetable_min_interval_seconds + self.api_timeout_seconds)
+        )
+        if ferry_collection_runtime_budget_seconds > 12_600:
+            raise ValueError(
+                "FERRY_TIMETABLE_COLLECTION_MAX_PROVIDER_CALLS must fit within the "
+                "3.5-hour ferry collection runtime budget including API_TIMEOUT_SECONDS "
+                "and FERRY_TIMETABLE_MIN_INTERVAL_SECONDS"
             )
         return self
 

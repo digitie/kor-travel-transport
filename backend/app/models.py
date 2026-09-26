@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
@@ -8,6 +8,7 @@ from sqlalchemy import (
     Boolean,
     BigInteger,
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -422,6 +423,34 @@ class FerryPort(Base):
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
+
+
+class FerryTimetableSnapshot(Base):
+    """항구별 운항일 시간표의 DB 캐시.
+
+    운항정보 제공자는 출발 항구와 날짜를 기준으로만 조회할 수 있다. 한 응답을 한 행에
+    보관해 동일한 항구·운항일 조회가 provider를 다시 호출하지 않도록 한다.
+    """
+
+    __tablename__ = "ferry_timetable_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "source", "departure_port_id", "service_date",
+            name="uq_ferry_timetable_snapshot_port_date",
+        ),
+        Index(
+            "ix_ferry_timetable_snapshot_lookup",
+            "source", "departure_port_id", "service_date",
+        ),
+        Index("ix_ferry_timetable_snapshot_service_date", "service_date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(40))
+    departure_port_id: Mapped[str] = mapped_column(String(120))
+    service_date: Mapped[date] = mapped_column(Date)
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    items_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON_TYPE, nullable=False)
 
 
 class FerryTerminalReference(Base):
