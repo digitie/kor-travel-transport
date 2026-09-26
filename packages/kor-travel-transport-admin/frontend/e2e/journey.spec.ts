@@ -61,7 +61,7 @@ test("버스 결과는 시각·등급·요금·부분 결과를 읽기 쉽게 �
 test("유가 지도는 모든 유종 상세·출처 필터·목록 대체 보기를 제공한다", async ({ page }) => {
   await page.route("**/transport/features/places?**", (route) => {
     const fuel = new URL(route.request().url()).searchParams.get("kind") === "fuel_station";
-    return route.fulfill({ json: { total: fuel ? 1 : 0, truncated: false, items: fuel ? [{ id: 1, kind: "fuel_station", source: "opinet_browser", name: "검증 주유소", brand_name: "SK에너지", longitude: 127, latitude: 37, line_names: [], facilities: ["셀프", "세차"], updated_at: "2026-09-27T00:00:00Z", prices: [{ product_code: "B027", price: 1710, observed_at: "2026-09-27T00:00:00Z" }, { product_code: "D047", price: 1610, observed_at: "2026-09-27T00:00:00Z" }] }] : [] } });
+    return route.fulfill({ json: { total: fuel ? 1 : 0, truncated: false, items: fuel ? [{ id: 1, kind: "fuel_station", source: "opinet_browser", name: "검증 주유소 고속도로 복합휴게소 셀프 충전소 긴 실제 장소명", brand_name: "SK에너지", longitude: 127, latitude: 37, line_names: [], facilities: ["셀프", "세차"], updated_at: "2026-09-27T00:00:00Z", prices: [{ product_code: "B027", price: 1710, observed_at: "2026-09-27T00:00:00Z" }, { product_code: "D047", price: 1610, observed_at: "2026-09-27T00:00:00Z" }] }] : [] } });
   });
   await page.goto("/map");
   await page.getByRole("button", { name: "목록", exact: true }).click();
@@ -71,6 +71,12 @@ test("유가 지도는 모든 유종 상세·출처 필터·목록 대체 보기
   await expect(detail.getByText("1,610원/L", { exact: true })).toBeVisible();
   await expect(detail.getByText("편의시설 · 셀프 · 세차", { exact: true })).toBeVisible();
   await expect(page.getByLabel("선택 장소 상세")).toBeFocused();
+  for (const width of [1440, 375]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await expect.poll(() => detail.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await expect(detail.getByText("1,710원/L", { exact: true })).toBeVisible();
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.screenshot({ path: "test-results/journey-fuel-detail.png", fullPage: true });
   await page.getByLabel("데이터 출처").selectOption("opinet_browser");
   await page.getByLabel("표시 유종").selectOption("K015");

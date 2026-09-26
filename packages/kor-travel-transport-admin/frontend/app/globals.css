@@ -189,3 +189,8 @@ button:active:not(:disabled), .secondary:active { transform: translateY(1px); }
 .selection-chips button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .selection-chips button > svg { flex: 0 0 auto; }
 .page-header h1 { overflow-wrap: anywhere; min-width: 0; }
+/* 긴 실제 장소명이 select의 최소 콘텐츠 폭을 통해 가격 패널을 밀어내지 않게 한다. */
+.transport-map-detail, .transport-map-detail > *, .place-details, .price-grid { min-width: 0; }
+.transport-map-picker select { width: 100%; min-width: 0; max-width: 100%; }
+.price-grid > div { min-width: 0; }
+.price-grid dt { overflow-wrap: anywhere; }
