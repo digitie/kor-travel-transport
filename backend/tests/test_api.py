@@ -134,6 +134,8 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
             session.add(fuel)
             await session.flush()
             session.add(FuelPriceSnapshot(fuel_station_id=fuel.id, source="opinet", product_code="B027", price=1700, provider_updated_at=now, observed_at=now, collected_at=now, raw_item_json=None, collection_run_id=None))
+            session.add(FuelPriceSnapshot(fuel_station_id=fuel.id, source="opinet", product_code="D047", price=1600, observed_at=now, collected_at=now))
+            session.add(FuelPriceSnapshot(fuel_station_id=fuel.id, source="opinet", product_code="B027", price=1800, observed_at=now - timedelta(days=1), collected_at=now - timedelta(days=1)))
             session.add(RailStationReference(source="kric_public_file", identity_key="line|101|테스트역", rail_operator_name="테스트운영사", operating_line_name="테스트선", station_type=None, station_number="101", station_name="테스트역", english_name=None, longitude=127.2, latitude=37.6, lot_address=None, road_address="서울 테스트길", station_phone_number=None, data_reference_date=None, first_seen_at=now, last_seen_at=now, raw_item_json=None))
             session.add(FerryPort(source="data_go_kr_maritime", port_id="P1", port_name="테스트항", latitude=129.1, longitude=35.1, location_source="data_go_kr_port_guideline", location_point_count=2, first_seen_at=now, last_seen_at=now, raw_item_json=None))
             await session.commit()
@@ -143,9 +145,12 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
     assert response.status_code == 200
     payload = response.json()
     by_kind = {item["kind"]: item for item in payload["items"]}
-    assert payload["total"] == 3
+    assert payload["total"] == 7
+    assert len([item for item in payload["items"] if item["kind"] == "airport"]) == 4
     assert payload["truncated"] is False
     assert by_kind["fuel_station"]["latest_price"] == 1700
+    assert by_kind["fuel_station"]["prices"][0]["product_code"] == "B027"
+    assert {row["product_code"]: row["price"] for row in by_kind["fuel_station"]["prices"]} == {"B027": 1700, "D047": 1600}
     assert by_kind["rail_station"]["line_names"] == ["테스트선"]
     assert by_kind["ferry_port"]["location_point_count"] == 2
     bounded = client.get("/v1/transport/features/places?kind=fuel_station&min_longitude=127.0&min_latitude=37.4&max_longitude=127.15&max_latitude=37.55")
