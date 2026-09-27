@@ -60,9 +60,10 @@ test("공휴일 실패 시 요일 직접 선택과 오류 재시도", async ({ p
   await selectStation(page);
   await expect(page.getByText("공휴일을 확인하지 못했습니다.", { exact: false })).toBeVisible();
   await page.getByLabel("시간표 기준").selectOption("8");
-  await expect(page.getByRole("alert")).toContainText("시간표를 불러오지 못했습니다");
+  const region = page.getByRole("region", { name: "도시철도 예정 시간표" });
+  await expect(region.getByRole("alert")).toContainText("시간표를 불러오지 못했습니다");
   await page.getByRole("button", { name: "시간표 새로고침", exact: true }).click();
-  await expect(page.getByRole("alert")).not.toBeVisible();
+  await expect(region.getByRole("alert")).not.toBeVisible();
   expect(calls).toBe(3);
 });
 test("역 선택 해제 후 늦은 시간표 응답을 표시하지 않는다", async ({ page }) => {
