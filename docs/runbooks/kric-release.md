@@ -56,6 +56,14 @@ frontend, 다른 프로젝트, 공용 PostgreSQL/RustFS 컨테이너는 재생�
 
 ## code-server 무응답 복구 시 주의
 
+PR #43처럼 스키마·collector·의존성이 바뀌지 않는 API/UI 후속 배포는 WSL에서 검증한
+이미지를 전송하고 전체 해시·원격 이미지 ID를 대조한다. n150에서는 빌드하지 않는다.
+기존 `0014` 스키마를 유지하고 backend·관리 UI·API gateway만 명시적으로 재생성한다.
+code-server·daemon·webserver·Dagster gateway·parking frontend ID가 전후 동일해야 한다.
+실패 시 보존한 환경 파일·API gateway 설정·기존 이미지로 복구하고 API release와
+UI 로그인·gateway health까지 제한 시간 내 확인한다. 이는 collector를 바꾸는 배포에
+worker 교체 검증을 생략해도 된다는 의미가 아니다.
+
 - 2026-09-28 health timeout과 `ListRepositories` gRPC timeout이 장시간 지속됐다.
   `restart: unless-stopped`는 Docker의 `unhealthy`만으로 컨테이너를 재시작하지 않는다.
   daemon/webserver의 `healthy`만으로 수집 성공을 판단하지 않는다.

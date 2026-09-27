@@ -21,7 +21,7 @@ button, input { font: inherit; }
 .page-header p, .eyebrow { color: var(--muted); margin: 0; }
 .eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
 .grid { display: grid; gap: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 11px; padding: 20px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 11px; min-width: 0; padding: 20px; }
 .metric { color: var(--muted); display: block; font-size: 13px; margin-bottom: 8px; }
 .value { font-size: 28px; font-weight: 700; letter-spacing: -.04em; }
 .wide { grid-column: span 2; }

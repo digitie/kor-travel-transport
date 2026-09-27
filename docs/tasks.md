@@ -34,6 +34,10 @@ Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks
 - [ ] 후속 P2: 통계 API의 운영 지연과 proxy timeout 여유를 측정하고 보완한다.
       9월 19일 공개 proxy에서 간헐 504 후 재조회 성공을 확인했다. 전국 데이터 증가 시
       쿼리 계획/응답량/호스트 I/O를 분리해 확인하며 단순 timeout 완화로 숨기지 않는다.
+      9월 28일 이미지 적재·배포 후 첫 E2E에서 45초 timeout과 내부 집계 슬롯 포화 429가
+      발생했다. 후속 2/7/10일 조회는 각각 1.85/5.10/16.65초에 성공했지만 최초 원인은
+      미확정이다. 장기 집계의 유가 heap fetch·원본 경계 읽기, DB 조회 제한 시간과
+      클라이언트 이탈 후 취소/슬롯 해제를 재현해 검증한다. 단순 재시도로 해결 처리하지 않는다.
 
 ### T-041 공용 DB·Dagster와 철도·여객항구 기준정보
 
@@ -62,6 +66,10 @@ Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks
 - [ ] 9월 27일 16시 오피넷 `Page.goto`/DOMContentLoaded 시간 초과 뒤 다음 정기 수집을
       확인한다. 마지막 성공 00:36 KST와 Dagster 작업 종료/실제 provider 실패를 구분한다.
       인증·호출 제한을 우회하거나 근거 없이 timeout만 늘리지 않는다.
+- [ ] 오피넷 최신 병합 PR #19(`8708f10`, 기본 대기 60초)와 transport 고정 버전
+      `39e7acc`의 차이를 반영한다. transport가 `opinet_browser_timeout_ms=30000`을
+      명시 전달하므로 의존성 버전만 올려도 대기 정책은 바뀌지 않는다. 9월 28일 배치의
+      화면 데이터 대기 실패와 호스트 I/O를 함께 재현·검증하고 수집 성공을 별도로 확인한다.
 
 - [x] weather admin의 인증·server-side proxy·Dagster GraphQL 경계를 transport 전용
       Next.js 패키지로 복제
