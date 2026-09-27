@@ -131,7 +131,7 @@ def test_every_dagster_probe_is_exec_form(key: str) -> None:
     """`CMD-SHELL`은 timeout 때 셸만 죽이고 그 아래 Python을 고아로 남긴다."""
     probe = _probe(_DAGSTER_SERVICES[key])
     assert probe[0] == "CMD", f"`{key}` healthcheck가 exec 형식(`CMD`)이 아니다: {probe[:2]}"
-    if probe[1].startswith("python"):
+    if Path(probe[1]).name.startswith("python"):
         assert probe[2] == "-I", f"`{key}`의 Python probe가 `python -I`가 아니다: {probe[:4]}"
 
 
@@ -155,7 +155,7 @@ def test_code_server_probe_calls_grpc_health_with_a_deadline(key: str) -> None:
     assert probe[-1] == _port(service), f"`{key}` probe 포트 {probe[-1]} != command 포트"
     healthcheck = service["healthcheck"]
     assert healthcheck.get("start_period"), (key, healthcheck)
-    assert _seconds(healthcheck["timeout"]) > 8, (key, "probe deadline보다 timeout이 짧다")
+    assert _seconds(healthcheck.get("timeout", "30s")) > 8, (key, "probe deadline보다 timeout이 짧다")
 
 
 @pytest.mark.parametrize("key", sorted(_WEBSERVERS))
