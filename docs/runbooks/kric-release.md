@@ -64,6 +64,13 @@ code-server·daemon·webserver·Dagster gateway·parking frontend ID가 전후 �
 UI 로그인·gateway health까지 제한 시간 내 확인한다. 이는 collector를 바꾸는 배포에
 worker 교체 검증을 생략해도 된다는 의미가 아니다.
 
+UI만 수정한 후속 후보는 backend까지 다시 교체하지 않는다. PR #43의 통계 카드 크기
+보정은 backend `1dd1868`/이미지 `ab25bf7`을 유지하고 UI `3b6d220`/이미지 `d187870`만
+승격한다. `/health.release_sha`와 UI `/api/release.releaseSha`가 각각 어떤 소스에 대응하는지
+구분해 검증한다. source archive·이미지 해시, 내장 release, 별도 release 기록 파일을 모두
+대조하고 `--no-deps --no-build`로 관리 웹만 재생성한다. 두 프로젝트의 기존 Dagster
+gateway까지 보존 ID에 포함하며 로그인 health가 실패하면 이전 UI 이미지로만 복구한다.
+
 - 2026-09-28 health timeout과 `ListRepositories` gRPC timeout이 장시간 지속됐다.
   `restart: unless-stopped`는 Docker의 `unhealthy`만으로 컨테이너를 재시작하지 않는다.
   daemon/webserver의 `healthy`만으로 수집 성공을 판단하지 않는다.

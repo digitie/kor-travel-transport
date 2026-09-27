@@ -18,9 +18,12 @@ test("실제 통계 차트는 데스크톱에서 모바일로 줄여도 카드 �
   await expect(page.getByRole("list", { name: "유종별 평균 가격 그래프 수치" }).locator("li")).toHaveCount(5);
   for (const width of [375, 320, 768, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
+    await expect(page.locator(".transport-chart canvas")).toHaveCount(2);
     await expect.poll(() => page.locator(".panel, .transport-chart canvas").evaluateAll((nodes) => nodes.every((node) => {
       const bounds = node.getBoundingClientRect();
-      return bounds.width > 0 && bounds.left >= 0 && bounds.right <= innerWidth;
+      const panel = node.closest(".panel")?.getBoundingClientRect();
+      return Boolean(panel) && bounds.width > 0 && bounds.left >= 0 && bounds.right <= innerWidth
+        && bounds.left >= panel!.left && bounds.right <= panel!.right;
     }))).toBe(true);
     await expect(page.locator(".error")).toHaveCount(0);
   }
