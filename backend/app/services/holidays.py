@@ -7,7 +7,7 @@ from typing import Any
 from xml.etree import ElementTree
 
 import httpx
-from kasi import AsyncKasiClient
+from kasi import KasiClient
 from kasi.exceptions import KasiError
 
 from app.core.config import Settings
@@ -87,7 +87,7 @@ class KasiHolidayClient(HolidayClient):
 
     async def fetch_month(self, year: int, month: int) -> HolidaySourceResponse:
         params = {"solYear": str(year), "solMonth": f"{month:02d}"}
-        async with AsyncKasiClient(
+        async with KasiClient(
             service_key=self.settings.data_go_kr_service_key,
             timeout=self.settings.api_timeout_seconds,
         ) as client:

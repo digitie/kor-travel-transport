@@ -268,6 +268,39 @@ async def test_incomplete_calendar_cannot_overwrite_saved_holiday(test_settings,
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("count,items", [
+    (None, []), ("bad", []), (0.0, []), (False, []),
+    (0, [{"locdate": "20260928", "dateName": "휴일", "isHoliday": "Y"}]),
+])
+async def test_actual_kasi_parser_cannot_turn_unverified_month_into_weekday(
+    test_settings, monkeypatch, count, items,
+):
+    from kasi._http import KasiHttpResult
+    now = datetime(2026, 9, 28, 3, tzinfo=UTC)
+    old = now - timedelta(days=3)
+    monkeypatch.setattr("app.services.kric_collection.now_utc", lambda: now)
+    body = {"items": {"item": items}, "pageNo": 1, "numOfRows": 50}
+    if count is not None:
+        body["totalCount"] = count
+    # Page를 가짜로 만들지 않고 고정 provider의 _get_page/모델 변환을 그대로 통과한다.
+    monkeypatch.setattr("kasi._http.KasiHttp.get_result", AsyncMock(return_value=KasiHttpResult(
+        body=body, request={}, response={"status_code": 200},
+    )))
+    settings = test_settings.model_copy(update={"data_go_kr_service_key": "fake"})
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+    await init_database(engine)
+    async with factory() as session:
+        session.add(RailServiceDay(service_date=now.date(), day_code="9", verified_at=old))
+        await session.commit()
+        await KricTimetableCollectionService(settings)._sync_calendar(session)
+        await session.commit()
+        saved = await session.get(RailServiceDay, now.date())
+        assert saved.day_code == "9"
+        assert saved.verified_at.replace(tzinfo=UTC) == old
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_wait_cannot_start_request_after_batch_deadline(test_settings, monkeypatch):
     start = datetime(2026, 9, 27, 3, tzinfo=UTC)
     clock = [start]
@@ -314,3 +347,25 @@ def test_provider_coverage_counts_active_codes_and_freshness(client):
     assert coverage["stored_snapshots"] == 2
     assert coverage["fresh_snapshots"] == 1
     assert coverage["oldest_collected_at"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("age,status", [(1, "throttled"), (49, "not_collected")])
+async def test_skipped_kric_guard_is_visible_without_claiming_collection(test_settings, monkeypatch, age, status):
+    from app.services.provider_status import provider_status
+    now = datetime(2026, 9, 27, 4, tzinfo=UTC)
+    monkeypatch.setattr("app.services.provider_status.now_utc", lambda: now)
+    settings = test_settings.model_copy(update={"kric_timetable_collection_enabled": True, "kric_service_key": "fake"})
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+    await init_database(engine)
+    async with factory() as session:
+        session.add(CollectionRun(started_at=now - timedelta(hours=age), finished_at=now, trigger=TRIGGER, status="skipped"))
+        await session.commit()
+        response = await provider_status(session, settings)
+        item = next(item for item in response.items if item.source == "kric_timetable")
+        assert item.status == status
+        assert item.last_success_at is None
+        assert item.last_started_at is None
+        assert item.next_due_at == (now + timedelta(hours=48 - age))
+        assert item.error_code is None
+    await engine.dispose()

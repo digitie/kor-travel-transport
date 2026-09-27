@@ -15,6 +15,18 @@
   변환 결과가 평일로 저장되는 문제를 지적했다. 각각 실패를 재현하고 이전 결과 DOM 보존,
   초 검증, 월별 완전성 검사와 기존 달력 보존 회귀를 추가했다. 정수 ID 범위, 대기 후
   배치 마감 재확인, 전체 시간표 JSON 없는 후보 조회, OpenAPI 재생성, 적재 범위 지표도 보완했다.
+- 후보 `9b17bb6`은 WSL backend 209개/2개 건너뜀, Docker PostgreSQL 211개,
+  관리 UI 55개·타입·빌드, 신규 UI E2E 15개와 CI를 통과했다. James 재리뷰는 승인했지만
+  Popper가 고정 KASI 버전의 총건수 보정 우회를 찾아 배포를 보류했다. 해당 후보를
+  최종 배포 승인본으로 취급하지 않는다. `python-kasi-api` PR #7로 provider 원본 보존을
+  고치고, 실제 provider 변환 경로를 거치는 달력 보존 테스트를 추가했다.
+- KASI PR #7은 독립 James/Popper 승인과 Python 3.10~3.14 CI 후 `4259e574`로 머지했다.
+  transport는 제거된 `AsyncKasiClient` 대신 async 전용 `KasiClient`를 소비한다.
+- 배포 스크립트는 검증된 이미지 ID를 Compose에 강제 전달하고 실제 backend 이미지도
+  대조한다. 진단 후 48시간 보호 대기를 수집 성공과 구분해 provider 상태에 표시한다.
+- 일반철도 provider는 `python-datagokr-api` PR #20에서 네 오퍼레이션을 구현하고
+  WSL 오프라인 70개/14개 subtest, ruff/mypy를 통과했다. 현재 키 진단은 HTTP 403이며
+  승인 확인과 적대 리뷰가 남아 있다. transport 일반철도 통합 완료를 뜻하지 않는다.
 
 ## 2026-09-27 여행 검색 개편·n150 검증
 

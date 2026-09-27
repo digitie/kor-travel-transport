@@ -18,7 +18,7 @@ from app.services.holidays import (
 
 
 def _mock_kasi_client(**method_results: object) -> AsyncMock:
-    """Build a mock standing in for `async with AsyncKasiClient(...) as client`."""
+    """Build a mock standing in for `async with KasiClient(...) as client`."""
 
     client = AsyncMock()
     for name, result in method_results.items():
@@ -121,7 +121,7 @@ async def test_kasi_holiday_client_fetch_month_builds_json_source_response() -> 
     )
     mock_client = _mock_kasi_client(holidays=page)
 
-    with patch("app.services.holidays.AsyncKasiClient", return_value=mock_client):
+    with patch("app.services.holidays.KasiClient", return_value=mock_client):
         client = KasiHolidayClient(settings)
         response = await client.fetch_month(2026, 5)
 
@@ -136,7 +136,7 @@ async def test_kasi_holiday_client_rate_limit_error_propagates() -> None:
     settings = Settings(data_go_kr_service_key="test-key")
     mock_client = _mock_kasi_client(holidays=KasiRateLimitError("LIMITED"))
 
-    with patch("app.services.holidays.AsyncKasiClient", return_value=mock_client):
+    with patch("app.services.holidays.KasiClient", return_value=mock_client):
         client = KasiHolidayClient(settings)
         with pytest.raises(KasiRateLimitError):
             await client.fetch_month(2026, 5)
@@ -172,6 +172,6 @@ def test_incomplete_rows_are_not_a_successful_empty_calendar(row):
 async def test_kasi_calendar_requires_complete_month_metadata(total):
     page = _FakePage([])
     page.total_count = total
-    with patch("app.services.holidays.AsyncKasiClient", return_value=_mock_kasi_client(holidays=page)):
+    with patch("app.services.holidays.KasiClient", return_value=_mock_kasi_client(holidays=page)):
         with pytest.raises(ValueError, match="완전성"):
             await KasiHolidayClient(Settings(data_go_kr_service_key="fake")).fetch_month(2026, 9)
