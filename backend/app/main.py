@@ -102,6 +102,7 @@ from app.schemas import (
     TransportPlaceMapResponse,
     TransportStatisticsResponse,
     RailTimetableResponse,
+    RailDepartureSummaryResponse,
     WeekdayBucket,
     WeekdayHourlyPattern,
 )
@@ -571,6 +572,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # 실시간 TAGO 시간표는 설정·참조 데이터·상류 provider 상태를 함께 반영한다.
             ("/v1/transport/bus/timetable", "get"): (404, 429, 502, 503),
             ("/v1/transport/rail/timetables", "get"): (404,),
+            ("/v1/transport/rail/departures", "get"): (404,),
         }
         for path, path_item in schema.get("paths", {}).items():
             for method, operation in path_item.items():
@@ -1033,6 +1035,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             generated_at=now_utc(), kind=selected_kind, total=total,
             truncated=total > len(visible_items), items=visible_items, available_sources=sorted(available_sources),
         )
+
+    @router.get("/transport/rail/departures", response_model=RailDepartureSummaryResponse)
+    async def transport_rail_departures(
+        place_ids: str = Query(min_length=1, max_length=3300),
+        session: AsyncSession = Depends(get_db),
+    ) -> RailDepartureSummaryResponse:
+        """지도 표시 역의 다음 예정만 한 번에 읽는다. 전체 시간표·외부 요청은 없다."""
+        parts = place_ids.split(",")
+        if not 1 <= len(parts) <= 300 or any(not value.isascii() or not value.isdecimal() or len(value) > 10 for value in parts):
+            raise HTTPException(status_code=422, detail="지도 역은 1~300곳을 선택해 주세요.")
+        ids = list(dict.fromkeys(int(value) for value in parts))
+        if any(not 1 <= value <= 2147483647 for value in ids):
+            raise HTTPException(status_code=422, detail="유효한 역 식별자를 선택해 주세요.")
+        places = (await session.scalars(select(RailStationReference).where(RailStationReference.id.in_(ids)))).all()
+        if len(places) != len(ids):
+            raise HTTPException(status_code=404, detail="저장되지 않은 역이 포함되어 있습니다.")
+        result = await stored_rail_timetables(session, list(places), None, summary_only=True)
+        return RailDepartureSummaryResponse.model_validate(result.model_dump())
 
     @router.get("/transport/rail/timetables", response_model=RailTimetableResponse)
     async def transport_rail_timetables(

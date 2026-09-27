@@ -3192,6 +3192,127 @@
         "title": "RailDepartureItem",
         "type": "object"
       },
+      "RailDepartureSummary": {
+        "properties": {
+          "collected_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collected At"
+          },
+          "departure_count": {
+            "default": 0,
+            "title": "Departure Count",
+            "type": "integer"
+          },
+          "line_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Name"
+          },
+          "next_departure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RailDepartureItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "place_id": {
+            "title": "Place Id",
+            "type": "integer"
+          },
+          "stale": {
+            "default": false,
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "station_name": {
+            "title": "Station Name",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "unlinked",
+              "day_unresolved",
+              "not_collected",
+              "stored"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "place_id",
+          "station_name",
+          "status"
+        ],
+        "title": "RailDepartureSummary",
+        "type": "object"
+      },
+      "RailDepartureSummaryResponse": {
+        "properties": {
+          "basis": {
+            "enum": [
+              "calendar",
+              "selected_period",
+              "calendar_unavailable",
+              "overnight_unresolved"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "day_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "7",
+                  "8",
+                  "9"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Code"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RailDepartureSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generated_at",
+          "basis",
+          "items"
+        ],
+        "title": "RailDepartureSummaryResponse",
+        "type": "object"
+      },
       "RailTimetableItem": {
         "properties": {
           "collected_at": {
@@ -3205,6 +3326,11 @@
               }
             ],
             "title": "Collected At"
+          },
+          "departure_count": {
+            "default": 0,
+            "title": "Departure Count",
+            "type": "integer"
           },
           "items": {
             "items": {
@@ -6701,6 +6827,68 @@
           }
         },
         "summary": "Transport Providers"
+      }
+    },
+    "/v1/transport/rail/departures": {
+      "get": {
+        "description": "지도 표시 역의 다음 예정만 한 번에 읽는다. 전체 시간표·외부 요청은 없다.",
+        "operationId": "transport_rail_departures_v1_transport_rail_departures_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "place_ids",
+            "required": true,
+            "schema": {
+              "maxLength": 3300,
+              "minLength": 1,
+              "title": "Place Ids",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RailDepartureSummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Transport Rail Departures"
       }
     },
     "/v1/transport/rail/timetables": {

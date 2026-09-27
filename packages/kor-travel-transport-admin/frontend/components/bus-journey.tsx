@@ -33,7 +33,7 @@ export function BusJourney({ type }: { type: "express" | "intercity" }) {
   const [arrival, setArrival] = useState<Terminal | null>(null);
   const today = useSeoulToday();
   const [date, setDate] = useState(seoulDate);
-  const effectiveDate = type === "intercity" || date < today ? today : date;
+  const effectiveDate = type === "intercity" || (date !== "" && date < today) ? today : date;
   const [result, setResult] = useState<Timetable | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -49,10 +49,18 @@ export function BusJourney({ type }: { type: "express" | "intercity" }) {
   function invalidate() { request.current?.abort(); setResult(null); setError(""); setLoading(false); }
   async function search() {
     if (!departure || !arrival) return;
+    const currentToday = seoulDate();
+    const requestDate = type === "intercity" || (date !== "" && date < currentToday) ? currentToday : date;
+    if (!requestDate) return;
+    if (currentToday !== today) {
+      invalidate();
+      setError("한국 날짜가 변경되었습니다. 날짜 동기화 후 출발일을 확인하고 다시 조회해 주세요.");
+      return;
+    }
     request.current?.abort(); const controller = new AbortController(); request.current = controller;
     setLoading(true); setError(""); setResult(null);
     try {
-      const data = await transportGet<Timetable>(`transport/bus/timetable?${new URLSearchParams({ service_type: type, departure_terminal_id: departure.terminal_id, arrival_terminal_id: arrival.terminal_id, date: effectiveDate })}`, controller.signal);
+      const data = await transportGet<Timetable>(`transport/bus/timetable?${new URLSearchParams({ service_type: type, departure_terminal_id: departure.terminal_id, arrival_terminal_id: arrival.terminal_id, date: requestDate })}`, controller.signal);
       if (!controller.signal.aborted) setResult(data);
     } catch (reason) {
       if (!controller.signal.aborted) {

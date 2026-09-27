@@ -54,6 +54,37 @@ frontend, 다른 프로젝트, 공용 PostgreSQL/RustFS 컨테이너는 재생�
 - 배포 SHA·health·스키마·provider 상태·외부 호출 없는 철도 조회·운영 HTTPS E2E를 확인한다.
   초기 미연결/미수집을 운행 없음으로 표시하지 않는 것도 검증한다.
 
+## code-server 무응답 복구 시 주의
+
+PR #43처럼 스키마·collector·의존성이 바뀌지 않는 API/UI 후속 배포는 WSL에서 검증한
+이미지를 전송하고 전체 해시·원격 이미지 ID를 대조한다. n150에서는 빌드하지 않는다.
+기존 `0014` 스키마를 유지하고 backend·관리 UI·API gateway만 명시적으로 재생성한다.
+code-server·daemon·webserver·Dagster gateway·parking frontend ID가 전후 동일해야 한다.
+실패 시 보존한 환경 파일·API gateway 설정·기존 이미지로 복구하고 API release와
+UI 로그인·gateway health까지 제한 시간 내 확인한다. 이는 collector를 바꾸는 배포에
+worker 교체 검증을 생략해도 된다는 의미가 아니다.
+
+UI만 수정한 후속 후보는 backend까지 다시 교체하지 않는다. PR #43의 통계 카드 크기
+보정은 backend `1dd1868`/이미지 `ab25bf7`을 유지하고 UI `3b6d220`/이미지 `d187870`만
+승격한다. `/health.release_sha`와 UI `/api/release.releaseSha`가 각각 어떤 소스에 대응하는지
+구분해 검증한다. source archive·이미지 해시, 내장 release, 별도 release 기록 파일을 모두
+대조하고 `--no-deps --no-build`로 관리 웹만 재생성한다. 두 프로젝트의 기존 Dagster
+gateway까지 보존 ID에 포함하며 로그인 health가 실패하면 이전 UI 이미지로만 복구한다.
+
+- 2026-09-28 health timeout과 `ListRepositories` gRPC timeout이 장시간 지속됐다.
+  `restart: unless-stopped`는 Docker의 `unhealthy`만으로 컨테이너를 재시작하지 않는다.
+  daemon/webserver의 `healthy`만으로 수집 성공을 판단하지 않는다.
+- `runsOrError`에서 STARTED/STARTING/CANCELING 실행이 없고 실제 worker subprocess도
+  없는지 확인한다. 실행이 있으면 임의로 종료하지 않는다. CollectionRun의 `running`
+  잔재와 Dagster 활성 실행은 서로 다를 수 있다.
+- daemon 중지 후 활성 실행을 다시 확인하고 **기존 이미지·code-server만** 재시작한다.
+  gRPC health와 repository의 8개 job 등록을 확인한 뒤 daemon을 재개한다.
+  검증 실패 시 daemon을 무조건 다시 올리지 않고 복구 상태를 보고한다.
+- KRIC 48시간·유가 8시간 guard와 비밀값은 바꾸지 않는다. 밀린 정기 작업이 재개되므로
+  수동 중복 실행을 하지 않는다. backend/parking frontend/공용 DB/RustFS는 건드리지 않는다.
+- 이번의 재시작 성공은 근본 원인 해결을 뜻하지 않는다. 재발 시 시각·RPC 오류·프로세스·
+  I/O와 실제 제공자 수집 결과를 함께 확인하고 근거 없이 timeout만 늘리지 않는다.
+
 ## 복구
 
 `0013` 코드의 startup guard는 `0014`를 거부하므로 이미지 롤백만으로 충분하지 않다.

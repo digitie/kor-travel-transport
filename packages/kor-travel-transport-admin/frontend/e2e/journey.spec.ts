@@ -25,6 +25,33 @@ for (const width of [320, 375, 414, 768, 1440]) {
 async function mockBus(page: Page) {
   await page.route("**/transport/bus/terminals?**", (route) => route.fulfill({ json: { items: [{ terminal_id: "A", terminal_name: "서울", city_name: "서울" }, { terminal_id: "B", terminal_name: "부산", city_name: "부산" }] } }));
 }
+
+test("고속버스 날짜를 비우면 유지하고 조회하지 않는다", async ({ page }) => {
+  await mockBus(page);
+  let calls = 0;
+  await page.route("**/transport/bus/timetable?**", (route) => { calls++; return route.fulfill({ json: {} }); });
+  await page.goto("/bus/express");
+  await page.locator(".multi-search").nth(0).getByRole("checkbox", { name: /서울/ }).check();
+  await page.locator(".multi-search").nth(1).getByRole("checkbox", { name: /부산/ }).check();
+  await page.getByLabel("출발일").fill("");
+  await expect(page.getByLabel("출발일")).toHaveValue("");
+  await expect(page.getByRole("button", { name: "운행편 조회", exact: true })).toBeDisabled();
+  expect(calls).toBe(0);
+});
+
+for (const type of ["express", "intercity"]) test(`자정 직후 타이머 갱신 전 ${type} 조회를 차단한다`, async ({ page }) => {
+  await page.clock.install({ time: new Date("2026-09-27T14:59:55Z") });
+  await mockBus(page);
+  let calls = 0;
+  await page.route("**/transport/bus/timetable?**", (route) => { calls++; return route.fulfill({ json: {} }); });
+  await page.goto(`/bus/${type}`);
+  await page.locator(".multi-search").nth(0).getByRole("checkbox", { name: /서울/ }).check();
+  await page.locator(".multi-search").nth(1).getByRole("checkbox", { name: /부산/ }).check();
+  await page.clock.setSystemTime(new Date("2026-09-27T15:00:01Z"));
+  await page.getByRole("button", { name: "운행편 조회", exact: true }).click();
+  expect(calls).toBe(0);
+  await expect(page.locator("p[role=alert]")).toContainText("한국 날짜가 변경");
+});
 test("버스는 명시 조회만 호출하고 429 이후 반복 버튼을 눌러도 제공자를 호출하지 않는다", async ({ page }) => {
   await mockBus(page);
   let calls = 0;

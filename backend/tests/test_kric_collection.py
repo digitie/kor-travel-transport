@@ -165,6 +165,10 @@ async def test_read_models_avoid_invented_next_train(test_settings, monkeypatch,
         if period or expected == "calendar":
             assert result.items[0].items[0].departure_time == "000030"
             assert result.items[0].stale == stale
+        summary = await stored_rail_timetables(session, [target], period, summary_only=True)
+        assert summary.items[0].items == []
+        assert summary.items[0].next_departure == result.items[0].next_departure
+        assert summary.items[0].departure_count == result.items[0].departure_count
     await engine.dispose()
 
 
@@ -174,6 +178,90 @@ def test_rail_api_input_boundaries_and_missing_place(client):
     assert client.get("/v1/transport/rail/timetables", params={"place_ids": "999999"}).status_code == 404
     assert client.get("/v1/transport/rail/timetables", params={"place_ids": "2147483647"}).status_code == 404
     assert client.get("/v1/transport/rail/timetables", params={"place_ids": "1", "day_code": "0"}).status_code == 422
+
+
+def test_rail_marker_api_batch_boundaries(client):
+    for ids in ["", "-1", "0", "a", "1,", "١", "2147483648", ",".join(["1"] * 301)]:
+        assert client.get("/v1/transport/rail/departures", params={"place_ids": ids}).status_code == 422
+    assert client.get("/v1/transport/rail/departures", params={"place_ids": "999999"}).status_code == 404
+    assert client.get("/v1/transport/rail/departures", params={"place_ids": ",".join(["1"] * 300)}).status_code == 404
+
+
+def test_rail_marker_api_strips_full_timetable_and_deduplicates(client, monkeypatch):
+    from contextlib import asynccontextmanager
+    from app.schemas import RailDepartureSummaryResponse, RailTimetableResponse, RailTimetableItem, RailDepartureItem
+    now = datetime(2026, 9, 28, 3, tzinfo=UTC)
+    target = place(now)
+    target.id = 1
+    class Session:
+        async def scalars(self, statement):
+            return SimpleNamespace(all=lambda: [target])
+    @asynccontextmanager
+    async def db():
+        yield Session()
+    monkeypatch.setattr(client.app.state, "session_factory", db)
+    departure = RailDepartureItem(departure_time="140000")
+    lookup = AsyncMock(return_value=RailTimetableResponse(generated_at=now, basis="calendar", day_code="8", items=[
+        RailTimetableItem(place_id=1, station_name="역", status="stored", next_departure=departure, departure_count=2, items=[departure, departure]),
+    ]))
+    monkeypatch.setattr("app.main.stored_rail_timetables", lookup)
+    response = client.get("/v1/transport/rail/departures", params={"place_ids": "1,1"})
+    assert response.status_code == 200
+    body = response.json()
+    assert "items" not in body["items"][0]
+    assert body["items"][0]["departure_count"] == 2
+    assert body["items"][0]["next_departure"]["departure_time"] == "140000"
+    RailDepartureSummaryResponse.model_validate(body)
+    assert lookup.await_args.kwargs == {"summary_only": True}
+    assert len(lookup.await_args.args[1]) == 1
+
+
+def test_rail_marker_api_300_distinct_stations_uses_four_reads(client, monkeypatch):
+    import asyncio
+    from sqlalchemy import event
+
+    now = datetime(2026, 9, 28, 3, tzinfo=UTC)
+    monkeypatch.setattr("app.services.rail_timetable.now_utc", lambda: now)
+
+    async def seed():
+        async with client.app.state.session_factory() as session:
+            targets = [place(now, f"대량검증역{i}") for i in range(300)]
+            session.add_all(targets)
+            await session.flush()
+            codes = [KricStationCode(operator_code="S1", line_code="03", station_code=f"{i:04d}",
+                operator_name="운영기관", line_name="3호선", station_name=target.station_name,
+                rail_station_id=target.id, active=True, last_seen_at=now) for i, target in enumerate(targets)]
+            session.add_all(codes)
+            session.add(RailServiceDay(service_date=now.date(), day_code="8", verified_at=now))
+            await session.flush()
+            for i, station in enumerate(codes):
+                session.add(KricTimetableSnapshot(station_id=station.id, day_code="8", collected_at=now,
+                    items_json=[{"departure_time": "140000", "train_number": f"{j:04d}",
+                        "terminal_station_code": f"{(i + 1) % 300:04d}"} for j in range(344)]))
+            await session.commit()
+            return [target.id for target in targets]
+
+    ids = asyncio.run(seed())
+    reads = []
+    def count_reads(_conn, _cursor, statement, _params, _context, _many):
+        if statement.lstrip().upper().startswith("SELECT"):
+            reads.append(statement)
+    event.listen(client.app.state.engine.sync_engine, "before_cursor_execute", count_reads)
+    try:
+        response = client.get("/v1/transport/rail/departures", params={"place_ids": ",".join(map(str, ids))})
+    finally:
+        event.remove(client.app.state.engine.sync_engine, "before_cursor_execute", count_reads)
+    assert response.status_code == 200
+    items = {row["place_id"]: row for row in response.json()["items"]}
+    assert len(items) == 300
+    assert len(reads) == 4  # 장소·달력·코드·스냅샷 각각 한 번, 역별 조회 없음
+    assert len(response.content) < 200_000
+    for i, place_id in enumerate(ids):
+        item = items[place_id]
+        assert item["status"] == "stored"
+        assert item["departure_count"] == 344
+        assert "items" not in item
+        assert item["next_departure"]["destination_name"] == f"대량검증역{(i + 1) % 300}"
 
 
 @pytest.mark.asyncio
