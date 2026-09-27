@@ -121,10 +121,15 @@ def test_alembic_history_keeps_the_deployed_rest_area_revision() -> None:
 
 def test_committed_openapi_schema_includes_bus_routes_and_runtime_errors() -> None:
     schema_path = Path(__file__).resolve().parents[2] / "docs" / "openapi.json"
+    if not schema_path.is_file():
+        schema_path = Path(__file__).resolve().parents[1] / "compose-contract" / "openapi.json"
     paths = json.loads(schema_path.read_text(encoding="utf-8"))["paths"]
 
     assert "/v1/transport/bus/terminals" in paths
     assert "/v1/transport/bus/timetable" in paths
+    assert "/v1/transport/rail/timetables" in paths
+    assert paths["/v1/transport/rail/timetables"]["get"]["responses"]["200"]["content"]["application/json"]["schema"] == {"$ref": "#/components/schemas/RailTimetableResponse"}
+    assert paths["/v1/transport/rail/timetables"]["get"]["responses"]["404"]["content"]["application/problem+json"]["schema"] == {"$ref": "#/components/schemas/ProblemDetails"}
     responses = paths["/v1/transport/bus/timetable"]["get"]["responses"]
     for code in ("404", "429", "502", "503"):
         assert responses[code]["content"]["application/problem+json"]["schema"] == {
