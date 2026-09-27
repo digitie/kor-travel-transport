@@ -22,6 +22,37 @@
   `BACKEND_RUNTIME_IMAGE`를 그대로 읽어, 21:13Z draft PR #43 배포가 바꾼 `ab25bf7b`로 세
   서비스를 옮길 뻔했다. 이미지 고정·config hash gate·daemon 선정지를 넣었다. 첫 판 journal
   편집은 아래 2026-09-27 KRIC 항목의 제목을 지웠다가 되살렸다.
+- 재리뷰 반영: runbook의 수동 블록에는 구멍이 넷 있었다. 첫째, step 4의 탈출 명령
+  `compose start dagster-daemon`은 n150에서 실패한다. compose가 daemon의 의존
+  `migrate`·`dagster-migrate`를 따지는데, 한 번만 도는 그 컨테이너가 project에 없어 "missing
+  dependency"로 거부한다. daemon이 멈춘 동안에는 `run_monitoring`도 돌지 않아 끼인 run이 스스로
+  끝나지 않는데, 대기 루프에 상한도 없었다. 둘째, gate는 STOP을 출력만 했고 붙여 넣은 블록은 계속
+  진행했다. gate는 대기(최대 17분) 전에 한 번만 돌아 그 사이 PR #43 세션의 `.env.server14` 편집을
+  잡지 못했다. 셋째, 되돌리기는 같은 셸의 export에 기대어 새 셸에서는 draft 이미지로 옮겨 갔다.
+  넷째, gate는 code-server만 봤다. 이 절차를 `scripts/redeploy-dagster-services-server14.sh`로
+  옮겼다. `set -euo pipefail`에 렌더링 비교(세 서비스의 healthcheck·init 밖 차이 거부), 세 컨테이너
+  gate(각자의 이미지 문자열과 DSN을 넣어 계산, DSN은 scheme 차이만 허용), 고정 이미지 태그, 상한
+  있는 대기, 교체 직전 재확인, EXIT trap의 `docker start`를 넣었다. 되돌리기는 같은 스크립트에 옛
+  파일을 준다. `test_redeploy_dagster_services_script.py`가 가짜 docker·curl 앞에서 순서와 멈춤을
+  확인한다.
+- n150 읽기 전용 확인(2026-09-27 22:34Z): 옛 파일과 이 브랜치 파일의 렌더링 차이는 세 서비스의
+  healthcheck·init 경로 11개뿐이었다. 자기 이미지 문자열과 DSN을 넣으면 세 컨테이너 모두 label
+  hash와 같았다(code-server `7aab39fc`, webserver `bb742e8a`, daemon `e32bf6e3`). webserver·daemon의
+  drift는 `kor-travel-airport-backend:latest` 문자열과 DSN scheme(`postgresql://`)뿐이다. 그들이
+  실행 중인 `c8b47811`은 host에서 지워졌고 `:latest`는 지금 `3769528a`다. 고정 이미지의
+  dagster-postgres 0.29.24에는 `psycopg2.connect(` 호출이 없고 모든 storage가 SQLAlchemy
+  `create_engine`으로 연다.
+- 리뷰 중 스크립트 첫 판의 결함을 하나 더 찾았다. 백업 이름이 초 단위라, 같은 초에 되돌리기가
+  돌면 넘겨받은 백업을 덮어써 새 파일을 다시 넣었다. 백업 이름을 `mktemp`로 만들고, 넘겨받은
+  파일은 시작할 때 사본을 떠 검사·설치 모두 그 사본으로 한다.
+- 검증(n150 throwaway `--network none`, 고정 이미지의 dev 환경, 브랜치 트리의 conftest): 새 테스트
+  7개와 기존 계약 13개가 모두 통과했고, Docker 이미지 배치(`/app/scripts`·`/app/tests`)에서도 새
+  테스트 7개가 통과했다. `origin/main`에서는 스크립트가 없어 7개 모두 실패한다. 스크립트 변형
+  10개는 모두 빨갛다. 첫 gate를 출력만 하게 한 것, 대기 뒤 gate를 뺀 것, 렌더링 비교를 무시한
+  것, EXIT trap을 뺀 것, 탈출을 `compose start`로 되돌린 것이 여기에 든다. 고정 이미지를 export하지
+  않은 것, DSN 비교를 뺀 것, 태그를 뺀 것, daemon을 멈추지 않은 것, 검사하지 않은 원본 파일을 넣은
+  것도 빨갛다. 이번에는 `uv sync --locked`를 쓰지 않았다. `python-krex-api` git 의존성 fetch가
+  6분 넘게 멈춰 그 컨테이너를 내렸다.
 - n150 실측: 새 probe는 살아 있는 14005에서 exit 0(0.7~1.2초), 닫힌 포트에서 exit 1이다.
   기존 CLI probe는 1.8초가 걸렸다(부하 23).
 - 조사 결과 unhealthy의 원인은 probe가 아니라 code-server gRPC 서버 정지였다. 08:32Z
