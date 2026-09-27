@@ -34,7 +34,9 @@ export function dateTime(value: string | null | undefined) {
   return value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", dateStyle: "short", timeStyle: "short" }) : "확인되지 않음";
 }
 export function hasCoordinates(place: Place): place is Place & { longitude: number; latitude: number } {
-  return typeof place.longitude === "number" && typeof place.latitude === "number" && Number.isFinite(place.longitude) && Number.isFinite(place.latitude);
+  return typeof place.longitude === "number" && typeof place.latitude === "number"
+    && Number.isFinite(place.longitude) && Number.isFinite(place.latitude)
+    && Math.abs(place.longitude) <= 180 && Math.abs(place.latitude) <= 90;
 }
 // MapLibre 축척 막대의 최대 폭(100px)에 해당하는 거리. 화면 폭/단말과 무관하다.
 export function clusterAtScale(zoom: number, latitude: number) {

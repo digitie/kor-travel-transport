@@ -24,6 +24,8 @@ describe("여행 정보 표시 계약", () => {
     expect(clusterAtScale(11, 37)).toBe(false);
   });
   it.each([[null, 37, false], [127, null, false], [NaN, 37, false], [127, 37, true]])("미등록 좌표를 지도에 넣지 않는다", (longitude, latitude, expected) => expect(hasCoordinates({ longitude, latitude } as Place)).toBe(expected));
+  it.each([[37.424805, 126.423637], [181, 37], [-181, 37], [127, -91], [Infinity, 37], [127, -Infinity]])("범위 밖 좌표 %s/%s를 지도와 카메라에 넣지 않는다", (longitude, latitude) => expect(hasCoordinates({ longitude, latitude } as Place)).toBe(false));
+  it.each([[180, 90], [-180, -90], [0, 0]])("유효한 좌표 경계 %s/%s는 유지한다", (longitude, latitude) => expect(hasCoordinates({ longitude, latitude } as Place)).toBe(true));
   it("429 보호 시간을 보존한다", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: "제한" }), { status: 429, headers: { "retry-after": "30" } })));
     await expect(transportGet("transport/bus/timetable")).rejects.toMatchObject({ status: 429, retryAfter: 30 });

@@ -22,6 +22,21 @@ async function selectStation(page: Page) {
   await page.getByRole("checkbox", { name: /불광/ }).check();
 }
 
+for (const width of [375, 1440]) test(`범위 밖 원본 좌표 역도 검색·시간표 선택 가능 ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.route("**/transport/features/places?**", (route) => route.fulfill({ json: { items: [{ ...place, name: "용유", longitude: 37.424805, latitude: 126.423637 }] } }));
+  await page.route("**/transport/rail/timetables?**", (route) => route.fulfill({ json: response("unlinked") }));
+  await page.goto("/rail");
+  await page.getByRole("checkbox", { name: /용유/ }).check();
+  await expect(page.getByLabel("도시철도 예정 시간표", { exact: true })).toBeVisible();
+  await expect(page.getByText("공식 역사 코드와 위치 정보가 아직 연결되지 않았습니다.", { exact: false })).toBeVisible();
+  await expect(page.getByText("지도 좌표 0곳", { exact: false })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: /용유/ })).toBeChecked();
+  expect(errors).toEqual([]);
+});
+
 test("KRIC 보호 종료 시각은 중지된 스케줄의 실행 예약으로 표시하지 않는다", async ({ page }) => {
   await page.route("**/api/dagster/graphql", (route) => route.fulfill({ json: { data: {
     repositoriesOrError: { __typename: "RepositoryConnection", nodes: [{ schedules: [{
