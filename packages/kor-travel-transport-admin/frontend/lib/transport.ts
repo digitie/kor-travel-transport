@@ -9,6 +9,7 @@ export const TRANSPORT_ENDPOINTS = [
   "transport/bus/terminals",
   "transport/bus/timetable",
   "transport/ports/timetables",
+  "transport/rail/timetables",
   "airports",
   "flights/status",
   "parking/current",

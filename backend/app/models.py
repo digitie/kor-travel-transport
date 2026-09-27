@@ -14,6 +14,7 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Identity,
     Integer,
     Numeric,
     String,
@@ -373,6 +374,52 @@ class RailStationReference(Base):
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
+
+
+class RailServiceDay(Base):
+    """KASI 확인을 마친 한국 날짜별 KRIC 운행 요일. 조회 시 외부 API를 호출하지 않는다."""
+
+    __tablename__ = "rail_service_days"
+    __table_args__ = (CheckConstraint("day_code IN ('7', '8', '9')", name="ck_rail_service_day"),)
+    service_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    day_code: Mapped[str] = mapped_column(Text)
+    verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class KricStationCode(Base):
+    """공식 역사 코드 파일의 식별자. 위치 파일과는 명시적으로 연결한다."""
+
+    __tablename__ = "kric_station_codes"
+    __table_args__ = (
+        UniqueConstraint("operator_code", "line_code", "station_code", name="uq_kric_station_code"),
+        UniqueConstraint("rail_station_id", name="uq_kric_station_place"),
+    )
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), Identity(), primary_key=True)
+    operator_code: Mapped[str] = mapped_column(Text)
+    line_code: Mapped[str] = mapped_column(Text)
+    station_code: Mapped[str] = mapped_column(Text)
+    operator_name: Mapped[str] = mapped_column(Text)
+    line_name: Mapped[str] = mapped_column(Text)
+    station_name: Mapped[str] = mapped_column(Text)
+    rail_station_id: Mapped[int | None] = mapped_column(ForeignKey("rail_station_references.id", ondelete="SET NULL"))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class KricTimetableSnapshot(Base):
+    """역·요일별 마지막 정상 예정 시간표. 빈 성공 응답도 수집 시각을 가진다."""
+
+    __tablename__ = "kric_timetable_snapshots"
+    __table_args__ = (
+        UniqueConstraint("station_id", "day_code", name="uq_kric_timetable_station_day"),
+        CheckConstraint("day_code IN ('7', '8', '9')", name="ck_kric_timetable_day"),
+        Index("ix_kric_timetable_collected", "collected_at"),
+    )
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), Identity(), primary_key=True)
+    station_id: Mapped[int] = mapped_column(ForeignKey("kric_station_codes.id", ondelete="CASCADE"))
+    day_code: Mapped[str] = mapped_column(Text)
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    items_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON_TYPE)
 
 
 class RestAreaReference(Base):

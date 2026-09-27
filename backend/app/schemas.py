@@ -207,6 +207,32 @@ class TransportPlaceMapResponse(BaseModel):
     items: list[TransportPlaceMapItem]
 
 
+class RailDepartureItem(BaseModel):
+    train_number: str | None = None
+    departure_time: str | None = None
+    arrival_time: str | None = None
+    origin_name: str | None = None
+    destination_name: str | None = None
+
+
+class RailTimetableItem(BaseModel):
+    place_id: int
+    station_name: str
+    line_name: str | None = None
+    status: Literal["unlinked", "not_collected", "stored"]
+    collected_at: datetime | None = None
+    stale: bool = False
+    next_departure: RailDepartureItem | None = None
+    items: list[RailDepartureItem] = Field(default_factory=list)
+
+
+class RailTimetableResponse(BaseModel):
+    generated_at: datetime
+    day_code: Literal["7", "8", "9"] | None = None
+    basis: Literal["calendar", "selected_period", "calendar_unavailable", "overnight_unresolved"]
+    items: list[RailTimetableItem]
+
+
 class FerryOperationItem(BaseModel):
     vessel_name: str | None = None
     departure_port_name: str | None = None

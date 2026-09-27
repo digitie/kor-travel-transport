@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSeoulToday } from "@/lib/journey-hooks";
 import { dateTime, hasCoordinates, seoulDate, transportGet, type Place, type StoredFerry } from "@/lib/journey";
 import { FerryDepartures, MultiSearch, PlaceDetails } from "./journey-controls";
+import { RailTimetables } from "./rail-timetables";
 
 const TransportMap = dynamic(() => import("./transport-map").then((module) => module.TransportMap), { ssr: false, loading: () => <p className="loading">지도를 준비하는 중입니다…</p> });
 export function effectiveFerryServiceDate(serviceDate: string, today = seoulDate()) { return serviceDate < today ? today : serviceDate; }
@@ -88,7 +89,8 @@ export function TransportReferenceList({ kind }: { kind: "rail_station" | "ferry
           {(stored?.service_date === effectiveDate ? stored.items : []).map((table) => <FerryDepartures key={table.port_id} timetable={table} query={routeQuery} name={items.find((item) => item.provider_id === table.port_id)?.name ?? table.port_id} />)}
           {(stored?.service_date === effectiveDate ? stored.missing_port_ids : []).map((id) => <section className="empty-state" key={id}><h3>{items.find((item) => item.provider_id === id)?.name ?? id}</h3><p>이 날짜는 아직 수집 중입니다. 운항편이 없다는 뜻은 아닙니다. 정기 수집 후 저장 정보 새로고침으로 확인해 주세요.</p></section>)}
         </> : null}
-        {rail ? selected.map((place) => <section className="reference-detail" key={place.id}><PlaceDetails place={place} /></section>) : null}
+        {rail && selected.length ? <RailTimetables placeIds={selected.map((place) => place.id)} /> : null}
+        {rail ? selected.map((place) => <section className="reference-detail" key={place.id}><PlaceDetails place={place} showRailTimetable={false} /></section>) : null}
         {activePlace && !rail ? <details><summary>{activePlace.name} 항구 상세</summary><PlaceDetails place={activePlace} /></details> : null}
       </div>
       <div className="journey-map"><TransportMap places={mapItems} selectedPlace={activePlace} onSelectPlace={(place) => { setActivePlace(place); if (!selectedIds.includes(keyOf(place)) && selectedIds.length < 5) setSelectedIds((current) => [...current, keyOf(place)]); }} />

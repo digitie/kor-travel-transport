@@ -6,7 +6,7 @@ from pathlib import Path
 _BACKEND_ROOT = Path(__file__).resolve().parents[1]
 # 로컬 체크아웃은 `<repo>/backend/tests`, Docker 이미지는 `/app/tests`에 있다.
 # 두 환경 모두에서 Dockerfile이 복사한 scripts/를 우선해 계약 테스트를 실행한다.
-_ROOT = _BACKEND_ROOT if (_BACKEND_ROOT / "scripts").is_dir() else _BACKEND_ROOT.parent
+_ROOT = _BACKEND_ROOT if (_BACKEND_ROOT / "scripts" / "cutover-shared-db-server14.sh").is_file() else _BACKEND_ROOT.parent
 _GATEWAY_CONFIG = (
     _BACKEND_ROOT / "nginx" / "dagster-gateway.conf"
     if (_BACKEND_ROOT / "nginx" / "dagster-gateway.conf").is_file()

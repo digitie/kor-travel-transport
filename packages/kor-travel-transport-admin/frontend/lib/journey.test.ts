@@ -43,6 +43,7 @@ describe("수집 상태 표시", () => {
     const run = { runId: "1", status: "STARTED", jobName: "ferry_timetable_collection_job", startTime: 100, endTime: null };
     expect(runStalled(run, 3700 * 1000)).toBe(false);
     expect(runStalled(run, 15000 * 1000)).toBe(true);
+    expect(runStalled({ ...run, jobName: "kric_timetable_collection_job" }, 3700 * 1000)).toBe(false);
   });
   it("GraphQL HTTP 200 오류를 정상으로 표시하지 않는다", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ errors: [{ message: "failed" }] }))));

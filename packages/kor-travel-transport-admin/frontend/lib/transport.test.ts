@@ -7,6 +7,8 @@ describe("isAllowedTransportPath", () => {
     expect(isAllowedTransportPath(["transport", "collector-status"])).toBe(true);
     expect(isAllowedTransportPath(["transport", "bus", "terminals"])).toBe(true);
     expect(isAllowedTransportPath(["transport", "bus", "timetable"])).toBe(true);
+    expect(isAllowedTransportPath(["transport", "rail", "timetables"])).toBe(true);
+    expect(isAllowedTransportPath(["transport", "rail", "collect"])).toBe(false);
     expect(isAllowedTransportPath(["admin", "backups"])).toBe(false);
   });
 });

@@ -22,6 +22,7 @@ async def provider_status(session: AsyncSession, settings: Settings) -> Provider
         ("krex_traffic_incident", "고속도로 돌발", "highway_collection_job", "transport_dagster_highway", transport and bool(settings.kex_ex_api_key), settings.transport_collect_interval_seconds),
         ("opinet_browser", "오피넷 주유소·유가", "fuel_collection_job", "transport_dagster_fuel", transport and settings.opinet_browser_enabled, 28800),
         ("kric_public_file", "KRIC 역·노선 파일", "rail_reference_collection_job", "dagster_rail", settings.rail_reference_collection_enabled, 172800),
+        ("kric_timetable", "KRIC 예정 시간표", "kric_timetable_collection_job", "dagster_kric_timetable", settings.kric_timetable_collection_enabled and bool(settings.kric_service_key), 172800),
         ("data_go_kr_maritime", "여객항구·선종", "maritime_reference_collection_job", "dagster_maritime", keyed and settings.maritime_reference_collection_enabled, 259200),
         ("ferry_timetable", "여객선 10일 운항시간표", "ferry_timetable_collection_job", "dagster_ferry_timetable", keyed and settings.ferry_timetable_collection_enabled, 14400),
         ("data_go_kr_tago", "TAGO 고속·시외버스 터미널", "bus_reference_collection_job", "dagster_bus_reference", keyed and settings.bus_reference_collection_enabled, 259200),
@@ -50,7 +51,7 @@ async def provider_status(session: AsyncSession, settings: Settings) -> Provider
             error_code="collection_failed" if failed else None))
     for source, name, enabled in [("flights", "공항 출도착", keyed and settings.enable_flight_status_markers), ("bus_timetable", "TAGO 버스 시간표", keyed)]:
         items.append(ProviderCollectionStatus(source=source, name=name, mode="on_demand", enabled=enabled, status="on_demand" if enabled else "disabled"))
-    for source, name in [("kric_timetable", "KRIC 역별 다음 열차"), ("seoulgokr", "서울 교통정보"), ("rest_area", "휴게소 기준정보")]:
+    for source, name in [("seoulgokr", "서울 교통정보"), ("rest_area", "휴게소 기준정보")]:
         items.append(ProviderCollectionStatus(source=source, name=name, mode="unconnected", enabled=False, status="unconnected"))
     today = to_seoul(now_utc()).date()
     end = today + timedelta(days=settings.ferry_timetable_storage_days)

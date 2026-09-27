@@ -20,7 +20,7 @@ function MapMarker({ point, onSelect, selected, product }: { point: MapPoint; on
   const prices = (place.prices ?? []).filter((row) => row.price != null && (!product || row.product_code === product));
   const props = { ariaLabel: `${placeKindLabel(place.kind)} ${place.name} 상세 보기`, interactionId: point.id, lngLat: point.lngLat, onClick: () => onSelect(place), selected, className: `transport-map-marker ${place.kind}` };
   if (place.kind === "fuel_station" && prices.length) return <PriceMarker {...props} lodThresholds={[0, 0]} price={prices.map((row) => ({ label: `${place.brand_name ?? "주유소"} · ${fuelProductLabel(row.product_code)}`, price: `${row.price?.toLocaleString("ko-KR")}원/L` }))} />;
-  return <Marker {...props}><span className={`journey-marker ${place.kind}`}><PlaceIcon kind={place.kind} /><span><strong>{place.name}</strong><small>{place.line_names.length ? place.line_names.join(" · ") : place.subtitle ?? placeKindLabel(place.kind)}</small>{place.kind === "rail_station" ? <small>다음 열차 · 시간표 미연결</small> : null}</span></span></Marker>;
+  return <Marker {...props}><span className={`journey-marker ${place.kind}`}><PlaceIcon kind={place.kind} /><span><strong>{place.name}</strong><small>{place.line_names.length ? place.line_names.join(" · ") : place.subtitle ?? placeKindLabel(place.kind)}</small>{place.kind === "rail_station" ? <small>선택하여 예정 시간표 확인</small> : null}</span></span></Marker>;
 }
 
 export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?: Place[]; selectedPlace?: Place | null; onSelectPlace?: (place: Place) => void }) {
