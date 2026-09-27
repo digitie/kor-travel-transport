@@ -5,7 +5,7 @@ import { railMarkerLabel, type RailSummaries } from "./rail-markers";
 
 export function useRailMarkers(ids: string, enabled: boolean) {
   const [state, setState] = useState<{ ids: string; data?: RailSummaries; failed?: boolean }>({ ids: "" });
-  const [now, setNow] = useState(Date.now);
+  const [, setNow] = useState(Date.now);
   useEffect(() => {
     if (!enabled || !ids) return;
     let controller: AbortController | undefined;
@@ -27,5 +27,6 @@ export function useRailMarkers(ids: string, enabled: boolean) {
   const current = enabled && state.ids === ids ? state : undefined;
   const requested = new Set(ids.split(",").map(Number));
   const rows = new Map(current?.data?.items.map((row) => [row.place_id, row]));
-  return (id: number) => !enabled ? "확대하여 예정 시각 확인" : !requested.has(id) ? "선택하여 예정 시각 확인" : current?.failed ? "예정 시각 조회 실패" : railMarkerLabel(current?.data, rows.get(id), now);
+  // 목록/클러스터에서 복귀한 첫 렌더도 중단됐던 타이머가 아닌 현재 시각으로 평가한다.
+  return (id: number) => !enabled ? "확대하여 예정 시각 확인" : !requested.has(id) ? "선택하여 예정 시각 확인" : current?.failed ? "예정 시각 조회 실패" : railMarkerLabel(current?.data, rows.get(id), Date.now());
 }

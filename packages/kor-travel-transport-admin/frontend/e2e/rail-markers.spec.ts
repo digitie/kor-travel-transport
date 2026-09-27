@@ -55,3 +55,21 @@ test("다음 시각 갱신 실패 시 이전 열차 시각을 마커에 남기�
   await expect(marker).toContainText("예정 시각 조회 실패");
   await expect(marker).not.toContainText("12:10");
 });
+
+test("목록에서 오래 머문 뒤 지도에 복귀하면 느린 새 응답을 기다리는 동안 지난 열차를 숨긴다", async ({ page }) => {
+  let calls = 0;
+  await page.route("**/transport/rail/departures?**", (route) => ++calls === 1
+    ? route.fulfill({ json: { generated_at: now, basis: "calendar", items: [row] } })
+    : new Promise<void>(() => {}));
+  await page.goto("/rail");
+  await page.getByRole("checkbox", { name: /불광/ }).check();
+  await page.locator(".embedded-map").scrollIntoViewIfNeeded();
+  const marker = page.locator(".journey-marker.rail_station");
+  await expect(marker).toContainText("예정 12:10");
+  await page.getByRole("button", { name: "목록", exact: true }).click();
+  // 시계만 바꾸고 주기 타이머를 실행하지 않아 첫 5초의 거짓 표시를 숨기지 않는다.
+  await page.clock.setSystemTime(new Date("2026-09-28T04:00:00Z"));
+  await page.getByRole("button", { name: "지도", exact: true }).click();
+  await expect(marker).toContainText("예정 시각 재확인 중");
+  await expect(marker).not.toContainText("12:10");
+});

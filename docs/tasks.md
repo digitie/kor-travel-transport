@@ -83,6 +83,9 @@ Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks
 - [ ] 후속 P2: VWorld `vworld-tile-error`의 `mapId`를 transport 지도 identity와 대조하고,
       fallback 오류·정상 회복 event를 자동 검증한다. 현재 단일 map instance의 listener
       cleanup과 오류 배너 가시성은 확인됐다.
+- [ ] P2: 예정 열차 마커의 301역 viewport 절단·늦은 응답 취소·숨김 탭·클러스터 왕복
+      조합을 자동 검증한다. PR #43은 목록 왕복에서 지난 열차 숨김과 DB 300역 조회를
+      검증하지만 모든 지도 이벤트 조합을 포괄하지 않는다.
 - [ ] 후속 P2: transport deploy script의 stale middleware 보존/제거 조건을 mock으로
       검증하고, versioned release directory의 atomic switch와 remote checkout canonical path
       검증을 설계한다. 현재 build 실패는 `up --force-recreate` 전에 끝나 기존 서비스는 유지된다.
