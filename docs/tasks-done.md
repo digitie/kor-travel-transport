@@ -2,6 +2,22 @@
 
 완료한 task의 식별자, 핵심 변경, 검증 명령과 시각을 역시간순으로 보관한다.
 
+## 2026-09-27 — T-042 KRIC 저장 시간표 연동과 좌표 오류 방어
+
+- 역사 코드·운행일 달력·예정 시간표 저장, 실패 포함 48시간 보호와 제한 배치,
+  DB 전용 API·최대 5역 비교를 구현했다. KRIC/KASI provider 수정은 각각 머지 SHA로 고정했다.
+- 실제 용유 선택에서 발견한 좌표 오류를 KRIC 파일 파서·공통 장소 API·UI에서 방어했다.
+  원문과 1,108개 역 검색을 보존하고 유효한 1,090개만 지도에 제공한다.
+- 최종 런타임 `37c7ca5`는 James/Popper 독립 승인, WSL backend 229개/선택 2개 건너뜀,
+  동일 이미지 Docker PostgreSQL 231개·Alembic check, 관리 UI WSL/Docker 65개·빌드,
+  철도 E2E 18개와 n150 HTTPS E2E 349개를 통과했다. 실제 모바일/데스크톱도 확인했다.
+- n150 backend·code-server·관리 UI를 배포했고 기존 parking-radar frontend와
+  Dagster webserver는 유지했다. 최종 증적 CI·머지는
+  [PR #42](https://github.com/digitie/kor-travel-transport/pull/42)에서 확인한다.
+- 데이터 적재 완료와 구분한다. KRIC 첫 인증 배치는 9월 29일 15:04:58 KST까지 보호 대기이며
+  코드·달력·시간표는 아직 0건이다. 마커 자체의 다음 시각, 일반철도 연동/403 원인,
+  버스 좌표와 오피넷 다음 정기 배치 확인은 `docs/tasks.md`에 유지한다.
+
 ## 2026-09-27 — T-042 여행 검색·지도·수집 UI 구현 및 운영 검증
 
 - map/weather 구조를 적용해 장소 종류·출처·유종 필터, VWorld React 유종별 가격 마커,

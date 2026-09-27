@@ -20,6 +20,21 @@ frontend, 다른 프로젝트, 공용 PostgreSQL/RustFS 컨테이너는 재생�
 4. 기존 backend/code-server 이미지, 보호 컨테이너 ID, 환경 파일과 DB를 백업한다.
    DB는 custom-format `pg_dump` 후 `pg_restore --list`로 읽기 검증한다. 다른 백업을
    자동 삭제하는 보존 정책은 이 수동 배포 백업에 적용하지 않는다.
+   2026-09-27 약 13.5GB DB에서는 기본 압축/600초 제한으로 백업이 끝나지 않았다.
+   재시도는 `--compress=gzip:1`, 3,600초 상한을 사용한다. 환경 파일이 백업 원본과
+   동일하고 기존 backend 및 `0013` 스키마가 유지됐는지 먼저 확인한다.
+   생성 중에는 `.dump.incomplete`/0600으로 보관하며 dump 종료·목록 검증·SHA-256
+   계산을 모두 통과한 뒤 기존 파일을 덮어쓰지 않는 방식으로 `.dump` 이름을 확정한다.
+   실패·강제 종료된 파일은 정상 백업으로 인정하지 않는다.
+5. Docker 빌드 로그의 config digest와 containerd의 실제 이미지 ID를 혼동하지 않는다.
+   보존한 테스트 컨테이너의 `.Image`/`ExitCode`, 로컬·원격 `image inspect .Id`, 실제
+   배포 컨테이너의 `.Image`를 대조한다. PR #42 검증 이미지는 OCI index
+   `sha256:9b7c7ad397483a422d242fb1b6384454ed445d4c092eb03c030e628a20fc7cda`다.
+   실제 UI에서 발견된 좌표 보정 후보 `37c7ca5`는 이 이미지를 기반으로 최종 backend
+   소스를 재설치하고 KRIC provider를 `edf6ba49`로 고정했다. 새 OCI index는
+   `sha256:148a471b33b42123c6135ba3b3d0e259f3846554b371fbd1e3374964d1851283`이며
+   별도 전체 PostgreSQL 테스트 후에만 승격한다. 새 스키마 변경은 없으므로 `0014`와
+   검증된 백업을 유지하며 원본 좌표를 직접 UPDATE하지 않는다.
 
 ## 적용 순서
 
@@ -33,6 +48,8 @@ frontend, 다른 프로젝트, 공용 PostgreSQL/RustFS 컨테이너는 재생�
 - 실행 중인 Dagster 작업을 강제 중단하지 않는다. 긴 배편 작업이 끝나면 daemon의 새
   실행 시작을 잠시 멈추고 나머지 실행이 종료됐는지 다시 확인한다. 종료된 뒤에만
   code-server를 교체하고 daemon을 재시작한다. webserver와 parking frontend는 유지한다.
+  worker 검증 실패 시 이전 이미지 복구와 bounded gRPC health 확인 뒤에만 daemon을
+  재개한다. 복구 실패·이미지 불일치·health 실패이면 daemon은 중지 상태로 두고 알린다.
 - 전용 관리 UI 배포 스크립트는 transport의 gateway 두 개와 관리 웹만 교체한다.
 - 배포 SHA·health·스키마·provider 상태·외부 호출 없는 철도 조회·운영 HTTPS E2E를 확인한다.
   초기 미연결/미수집을 운행 없음으로 표시하지 않는 것도 검증한다.

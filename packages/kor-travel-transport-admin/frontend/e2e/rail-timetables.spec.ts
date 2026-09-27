@@ -32,11 +32,14 @@ for (const width of [375, 1440]) test(`범위 밖 원본 좌표 역도 검색·�
   await page.goto("/rail");
   await page.locator(".embedded-map").scrollIntoViewIfNeeded();
   await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator(".maplibregl-ctrl-zoom-in")).toBeVisible({ timeout: 15_000 });
   await page.getByRole("checkbox", { name: /용유/ }).check();
   await expect(page.getByLabel("도시철도 예정 시간표", { exact: true })).toBeVisible();
   await expect(page.getByText("공식 역사 코드와 위치 정보가 아직 연결되지 않았습니다.", { exact: false })).toBeVisible();
   await expect(page.getByText("지도 좌표 0곳", { exact: false })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: /용유/ })).toBeChecked();
+  await expect(page.locator("canvas.maplibregl-canvas")).toBeAttached();
+  await expect(page.locator(".maplibregl-ctrl-zoom-in")).toBeAttached();
   expect(errors).toEqual([]);
 });
 
