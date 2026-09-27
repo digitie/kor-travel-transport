@@ -2,6 +2,12 @@
 
 ## 현재 상태
 
+- 2026-09-28 `fix/dagster-healthcheck-exec-form`에서 Dagster 세 서비스의 healthcheck를
+  exec 형식·`python -I`·`init: true` 계약으로 바꾸고, command에서 Dagster 서비스를 유도하는
+  계약 테스트를 추가했다. 아직 미배포다. 반영은 compose 파일 교체와 Dagster 세 서비스
+  `up -d --no-deps --no-build`로 한다(`docs/runbooks/deployment.md`).
+  2026-09-27 11:46Z~19:51Z code-server 정지 조사는 `docs/journal.md` 같은 날짜 항목을 본다.
+
 - 2026-09-28 PR #43 `codex/transport-followups`는 backend `1dd1868`/이미지 `ab25bf7`,
   관리 UI `3b6d220`/이미지 `d187870`으로 n150에 배포됐다. DB 전용 최대 300역 다음 예정
   마커, 버스 빈 날짜/자정 경계, 모바일 전환 시 통계 차트 잘림을 수정했다.
@@ -413,6 +419,17 @@
   `n150-backup-cron.sh` 직접 실행으로 exit `0` + 실제 dump 생성까지 재검증했다.
 
 ## 다음 한 작업
+
+Dagster healthcheck 브랜치는 CI·리뷰 뒤 in-flight run이 0개일 때 Dagster 세 서비스만
+재생성해 반영한다. code-server가 다시 unhealthy가 되면 재시작 전에 스레드 stack을 먼저
+확보한다(재시작하면 lock을 잡은 frame이 사라진다).
+
+PR #42의 코드·운영 검증은 끝났으며 최종 증적 CI·머지는 PR에서 확인한다.
+다음 정기 오피넷 배치 결과와 9월 29일 15:04:58 KST 보호 종료 이후의 첫 KRIC 배치를
+확인한다. 보호 종료 전에는 인증 진단을 재호출하지 않는다. TAGO 일반철도는 현재 키의
+HTTP 403 원인을 확인해야 하며 성공 응답이나 이용 신청 승인을 가정하지 않는다.
+지도 마커 자체의 다음 예정 시각, 일반철도 운행·버스 좌표 및 날짜 경계/성능 P2는
+`docs/tasks.md`에 남아 있다.
 
 PR #43의 최종 증적 CI·머지를 확인한 뒤, 통계 장기 조회의 지연·취소 전파와 배포 직후
 호스트 I/O를 우선 보완한다. 오피넷 최신 provider와 transport의 명시 30초 설정 차이,

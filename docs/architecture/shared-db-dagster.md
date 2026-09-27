@@ -27,6 +27,23 @@ background task가 아니라 Dagster가 맡는다. 이 경계는 고속도로·�
 않는다. `dagster.yaml`의 `run_monitoring`은 사라진 worker가 STARTED 상태로 남아 queue를
 막는 경우를 5분 시작 제한과 4시간 실행 상한으로 회수한다.
 
+### healthcheck 계약
+
+Manager #426·Map #1284와 같은 계약이며 `backend/tests/test_dagster_healthcheck_contract.py`가
+command에서 Dagster 서비스를 찾아 검사한다.
+
+- 모든 Dagster probe는 exec 형식(`CMD`)이고 Python probe는 `python -I`다. `CMD-SHELL`은
+  timeout 때 셸만 죽이고 그 아래 Python을 고아로 남긴다.
+- code-server·webserver·daemon은 `init: true`다. PID 1인 dagster는 고아를 거두지 않는다.
+- code-server probe는 `grpc_health`로 `DagsterApi`가 `SERVING`인지 8초 deadline과 함께 묻는다.
+  CLI `dagster api grpc-health-check`와 같은 판정이지만 dagster를 import하지 않는다. CLI는
+  deadline이 없어 끼인 서버 앞에서 끝나지 않는다.
+- daemon `liveness-check`는 timeout 60s, interval 120s, retries 2다. 주기 × retries는
+  `DAGSTER_DAEMON_HEARTBEAT_TOLERANCE`(300s)를 넘지 않는다.
+- healthcheck는 상태를 보이게만 한다. docker는 unhealthy 컨테이너를 재시작하지 않는다.
+  2026-09-27 code-server가 gRPC worker 8개를 모두 막힌 호출에 잃고 8시간 unhealthy로 남은
+  사례는 `docs/journal.md`에 있다.
+
 ## 공용 PostgreSQL 계약
 
 `kor-travel-docker-manager`가 host-network로 관리하는 `kor-travel-shared-postgres`와

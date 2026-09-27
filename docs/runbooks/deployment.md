@@ -33,6 +33,37 @@ REMOTE_APP_DIR=/home/digitie/apps/kor-travel-airport \
 ./scripts/deploy-server14.sh
 ```
 
+### Dagster 서비스 정의만 바뀐 반영
+
+`docker-compose.shared.yml`의 Dagster healthcheck·`init`처럼 서비스 정의만 바뀌면 전체
+배포를 쓰지 않는다. 전체 배포는 `up -d --build`로 backend·frontend·gateway 이미지를 n150에서
+다시 빌드한다. `rsync --delete`는 archive에 없는 `.transport-admin-release-sha`와
+`.env.server14.before-*` 백업도 지운다. 대신 다음처럼 Dagster 세 서비스만 재생성한다.
+
+```bash
+# WSL: 머지된 main checkout에서 compose 파일 하나만 올린다.
+scp docker-compose.shared.yml digitie@192.168.1.14:/tmp/docker-compose.shared.yml.new
+
+# n150
+cd /home/digitie/apps/kor-travel-airport
+cp -p docker-compose.shared.yml /tmp/docker-compose.shared.yml.prev
+install -m 664 /tmp/docker-compose.shared.yml.new docker-compose.shared.yml
+compose() { docker compose --project-name kor-travel-airport --env-file .env.server14 \
+  -f docker-compose.yml -f docker-compose.shared.yml "$@"; }
+compose config -q
+# code-server 재생성은 실행 중인 run을 끊는다. STARTED/STARTING/CANCELING run이 0개일 때 진행한다.
+compose up -d --no-deps --no-build dagster-code-server dagster-webserver dagster-daemon
+compose ps dagster-code-server dagster-webserver dagster-daemon
+```
+
+- 재생성되는 컨테이너는 `kor-travel-airport-dagster-{code-server,webserver,daemon}-1`뿐이다.
+  backend·frontend·`dagster-gateway`·`migrate` 계열은 건드리지 않는다. 이미지는 빌드하지 않는다.
+- webserver·daemon은 `.env.server14`의 `BACKEND_RUNTIME_IMAGE`로 재생성된다. 이전에
+  `kor-travel-airport-backend:latest`로 떠 있었다면 이 단계에서 code-server와 같은 이미지로 바뀐다.
+- `kor-travel-transport-admin` project는 건드리지 않는다. webserver가 다시 healthy가 될 때까지
+  관리 UI의 Dagster 화면(12302 → 14004)만 잠시 502를 줄 수 있다.
+- 되돌릴 때는 `/tmp/docker-compose.shared.yml.prev`를 제자리에 복사하고 같은 `up` 명령을 다시 실행한다.
+
 n150의 기본 구성은 PostgreSQL 16, Alembic `0003_legacy_source_identity`,
 `COLLECT_INTERVAL_SECONDS=300`, `SCHEDULER_SAFETY_BUFFER_SECONDS=120`,
 `MANUAL_COLLECT_MIN_INTERVAL_SECONDS=300`, `ENABLE_MANUAL_COLLECT=false`이다. 백업 UI는 별도 인증이 없으므로

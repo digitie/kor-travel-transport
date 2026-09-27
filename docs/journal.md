@@ -1,5 +1,38 @@
 # journal.md — 작업 일지
 
+## 2026-09-28 Dagster healthcheck exec 계약과 code-server 8시간 정지 조사
+
+- `docker-compose.shared.yml`의 Dagster 세 서비스에 Manager #426·Map #1284와 같은
+  healthcheck 계약을 적용했다. code-server probe는 dagster CLI 대신 `python -I`로
+  `grpc_health`의 `DagsterApi` 판정을 8초 deadline과 함께 부른다(interval 30s, timeout 10s,
+  retries 5, start_period 180s, start_interval 5s). webserver probe는 같은 GraphQL 판정을
+  `python -I`로 바꿨다. daemon `liveness-check`는 interval 120s, timeout 60s, retries 2,
+  start_interval 15s로 바꿨다(120s×2 ≤ tolerance 300s). 세 서비스 모두 `init: true`다.
+  compose 파일은 이 파일만 Dagster 서비스를 정의한다.
+- `backend/tests/test_dagster_healthcheck_contract.py`는 이름이 아니라 command에서 Dagster
+  서비스를 찾는다. exec 형식, `python -I`, `init: true`를 확인하고, code-server probe가
+  `grpc_health` 판정과 command 포트를 쓰는지, daemon의 timeout과 tolerance를 확인한다.
+  `origin/main` compose에 돌리면 빨갛다.
+- n150 실측: 새 probe는 살아 있는 14005에서 exit 0(0.7~1.2초), 닫힌 포트에서 exit 1이다.
+  기존 CLI probe는 1.8초가 걸렸다(부하 23).
+- 조사 결과 unhealthy의 원인은 probe가 아니라 code-server gRPC 서버 정지였다. 08:32Z
+  공용 PostgreSQL이 recovery mode에 들어간 뒤 배편 run `f130efff`가 event log DB 재시도에
+  실패하고 출력을 멈췄다. 이 run은 11:45:39Z `run_monitoring` 4시간 상한에 걸렸다.
+  종료 요청(`CancelExecution`)이 60초 안에 돌아오지 않았고, 11:46:42Z부터 dequeue된
+  run 7개가 모두 `StartRun` 60초 시간 초과로 실패했다. 새 run 프로세스는 생기지 않았다.
+  dagster 1.13.24는 `CancelExecution`·`StartRun`·orphan 정리를 한 `_execution_lock`으로
+  묶는다. 막힌 호출 8개가 gRPC 기본 worker 8개(`min(32, cpu+4)`, n150 4코어)를 채웠다.
+  11:53Z부터는 health·ListRepositories·GetServerId도 응답하지 않았고 location을 못 읽은
+  daemon은 19:52Z까지 스케줄을 평가하지 못했다. 공항·고속도로 5분 수집이 약 8시간 멈췄다.
+  lock을 잡은 채 멈춘 정확한 frame은 확보하지 못했다. 19:49Z/19:51Z에 다른 작업자가 daemon을
+  멈추고 code-server를 재시작해 stack을 뜨기 전에 사라졌다. docker는 unhealthy로 재시작하지
+  않으므로 healthcheck만으로는 회복되지 않는다.
+- daemon ~100% CPU는 재현하지 못했다. daemon은 19:49:25Z에 SIGTERM으로 멈춘 뒤 재기동됐고,
+  이후 샘플은 3~59%였다. cAdvisor는 root cgroup만 노출해 과거 컨테이너별 CPU 기록이 없다.
+  정지 기간의 daemon 로그는 분당 location 재로딩 실패 1건뿐이라 hot loop 흔적도 없다.
+  재기동 직후 부하 22~35에서 `liveness-check`가 10초 timeout을 4회 연속 넘었다.
+  이번 60초 timeout과 120초 주기는 이 경우를 다룬다.
+
 ## 2026-09-28 지도 다음 예정 마커·날짜 경계 및 수집 복구
 
 - 새 브랜치 `codex/transport-followups`는 PR #42 merge `b855ec1`에서 시작했다.
