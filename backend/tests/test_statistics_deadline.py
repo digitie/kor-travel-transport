@@ -11,6 +11,15 @@ from fastapi import HTTPException
 from app.main import cached_transport_statistics
 
 
+def test_statistics_deadline_leaves_room_for_the_30_second_admin_proxy():
+    from pydantic import ValidationError
+    from app.core.config import Settings
+
+    assert Settings(transport_statistics_timeout_seconds=25).transport_statistics_timeout_seconds == 25
+    with pytest.raises(ValidationError):
+        Settings(transport_statistics_timeout_seconds=26)
+
+
 def _request(cache_seconds=60):
     return SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(
         settings=SimpleNamespace(transport_statistics_cache_seconds=cache_seconds,

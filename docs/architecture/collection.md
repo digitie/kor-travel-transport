@@ -38,6 +38,8 @@
 30초 간격을 유지하고, 3회 연속 네트워크 실패면 중단한다. 인증·quota·파싱 오류는 즉시 중단한다.
 일부 네트워크 실패가 있었으면 `partial_success`와 `failed_provider_calls`를 기록하므로 운영 화면에서
 전체 성공으로 보이지 않는다. 실패한 날짜는 다음 정기 실행에서 미수집으로 다시 선택된다.
+DB 커밋 뒤 Dagster op도 명시적인 실패로 종료한다. 이 실패의 자동 재시도는 비활성화해
+수집 간격·호출 예산을 우회하지 않는다.
 
 운영 live E2E는 수집·scheduler 활성화와 `client_mode=live`, 세 소스 모두의 최근 완료를
 요구한다. `last_success_at >= last_started_at`과 오류 없음으로 각 소스의 최신 시작이

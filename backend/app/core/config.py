@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     # 빠르게 반영한다.
     transport_statistics_cache_seconds: int = Field(default=60, ge=0, le=3600)
     transport_statistics_max_concurrent_misses: int = Field(default=2, ge=1, le=8)
-    transport_statistics_timeout_seconds: float = Field(default=20, gt=0, le=40)
+    transport_statistics_timeout_seconds: float = Field(default=20, gt=0, le=25)
     rustfs_endpoint_url: str | None = None
     rustfs_bucket: str = "kor-travel-transport-raw"
     rustfs_access_key_id: str | None = None
