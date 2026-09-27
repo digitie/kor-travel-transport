@@ -2,6 +2,15 @@
 
 ## 현재 상태
 
+- 2026-09-28 `codex/query-collection-reliability`에서 조회 지연·수집 오류를 보완 중이다.
+  KRIC provider PR #6은 count 없는 실제 터미널 27/선박종류 7행 계약으로 범위를 제한한 뒤
+  독립 두 리뷰·WSL 117개·CI를 통과해 `2cbe443`으로 머지했다. 소비 pin을 갱신했다.
+  통계 deadline/lock, 유가 부분 index·정비 정책, 오피넷 60초 설정 정렬, 배편 개별 네트워크
+  실패 격리를 구현했으며 transport 전체 WSL/Docker·CI·리뷰·배포는 아직 진행 중이다.
+  n150 유가 일반 VACUUM은 180초 상한으로 중단됐고 index cleanup 없는 visibility/analyze는
+  10.3초에 완료했다. heap fetch 244,958→36,917이며 전체 index 정비 완료나 안정적 지연 개선을
+  뜻하지 않는다. KRIC 48시간·오피넷 8시간 보호는 그대로다.
+
 - 2026-09-28 PR #43 `codex/transport-followups`는 backend `1dd1868`/이미지 `ab25bf7`,
   관리 UI `3b6d220`/이미지 `d187870`으로 n150에 배포됐다. DB 전용 최대 300역 다음 예정
   마커, 버스 빈 날짜/자정 경계, 모바일 전환 시 통계 차트 잘림을 수정했다.

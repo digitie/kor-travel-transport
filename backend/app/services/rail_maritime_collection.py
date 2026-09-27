@@ -18,6 +18,7 @@ from kric import (
     PortGuidelineFileClient,
     PortGuidelineLocation,
     KricFileClient,
+    KricNetworkError,
     RustfsObjectStore,
     StoredObject,
 )
@@ -157,9 +158,10 @@ class RailMaritimeCollectionService:
             await self._store_summary_response(
                 session, run.id, MARITIME_SOURCE, "data.go.kr:ferry-timetable", summary
             )
-            await self._finish_run(session, run.id, "success")
+            status = "partial_success" if summary["failed_provider_calls"] else "success"
+            await self._finish_run(session, run.id, status)
             logger.info("ferry timetable collection finished run_id=%s summary=%s", run.id, summary)
-            return {"status": "success", "run_id": run.id, **summary}
+            return {"status": status, "run_id": run.id, **summary}
         except asyncio.CancelledError as exc:
             await self._fail_run(session, run.id, exc)
             raise
@@ -207,6 +209,8 @@ class RailMaritimeCollectionService:
         }
         collected_at = now_utc()
         provider_calls = 0
+        failed_provider_calls = 0
+        consecutive_network_failures = 0
         reused = 0
         operation_count = 0
         last_call_at = None
@@ -238,20 +242,31 @@ class RailMaritimeCollectionService:
                         wait_seconds = self.settings.ferry_timetable_min_interval_seconds - elapsed
                         if wait_seconds > 0:
                             await asyncio.sleep(wait_seconds)
-                    operations = await client.get_domestic_ship_operations(
-                        departure_port_id=port.port_id,
-                        departure_date=service_date,
-                    )
-                    last_call_at = now_utc()
+                    # 실패도 동일 호출 예산에 포함한다. 한 항구의 일시적인 네트워크 실패가
+                    # 전체 누락 보충을 막지 않게 하되 연속 3회면 중단하고 재시도하지 않는다.
+                    provider_calls += 1
+                    try:
+                        operations = await client.get_domestic_ship_operations(
+                            departure_port_id=port.port_id,
+                            departure_date=service_date,
+                        )
+                    except KricNetworkError:
+                        failed_provider_calls += 1
+                        consecutive_network_failures += 1
+                        if consecutive_network_failures >= 3:
+                            raise
+                        continue
+                    finally:
+                        last_call_at = now_utc()
+                    consecutive_network_failures = 0
                     items = [_ferry_operation_payload(item) for item in operations]
                     operation_count += len(items)
-                    provider_calls += 1
                     await _upsert_ferry_timetable_snapshot(
                         session,
                         source=port.source,
                         departure_port_id=port.port_id,
                         service_date=service_date,
-                        collected_at=collected_at,
+                        collected_at=now_utc(),
                         items_json=items,
                     )
                     # 호출 하나의 성공 결과를 즉시 durable하게 만든다. 이후 호출이 실패해도
@@ -259,11 +274,12 @@ class RailMaritimeCollectionService:
                     await session.commit()
                 if budget_exhausted:
                     break
-        deferred_snapshot_count = len(ports) * len(service_dates) - reused - provider_calls
+        deferred_snapshot_count = len(ports) * len(service_dates) - reused - provider_calls + failed_provider_calls
         return {
             "port_count": len(ports),
             "service_date_count": len(service_dates),
             "provider_calls": provider_calls,
+            "failed_provider_calls": failed_provider_calls,
             "reused_snapshot_count": reused,
             "operation_count": operation_count,
             "deferred_snapshot_count": deferred_snapshot_count,

@@ -931,7 +931,7 @@ def test_transport_statistics_uses_short_lived_response_cache(tmp_path: Path) ->
 def test_transport_statistics_cache_coalesces_and_evicts_lru_entries() -> None:
     calls = 0
     state = SimpleNamespace(
-        settings=SimpleNamespace(transport_statistics_cache_seconds=60),
+        settings=SimpleNamespace(transport_statistics_cache_seconds=60, transport_statistics_timeout_seconds=20),
         transport_statistics_cache=OrderedDict(),
         transport_statistics_locks={},
         transport_statistics_miss_semaphore=asyncio.Semaphore(2),
@@ -966,7 +966,7 @@ def test_transport_statistics_cache_coalesces_and_evicts_lru_entries() -> None:
 def test_transport_statistics_cache_limits_distinct_cache_misses() -> None:
     active = maximum_active = 0
     state = SimpleNamespace(
-        settings=SimpleNamespace(transport_statistics_cache_seconds=60),
+        settings=SimpleNamespace(transport_statistics_cache_seconds=60, transport_statistics_timeout_seconds=20),
         transport_statistics_cache=OrderedDict(),
         transport_statistics_locks={},
         transport_statistics_miss_semaphore=asyncio.Semaphore(2),
