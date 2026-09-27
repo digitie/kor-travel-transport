@@ -21,6 +21,29 @@ async function selectStation(page: Page) {
   await page.goto("/rail");
   await page.getByRole("checkbox", { name: /불광/ }).check();
 }
+
+test("KRIC 보호 종료 시각은 중지된 스케줄의 실행 예약으로 표시하지 않는다", async ({ page }) => {
+  await page.route("**/api/dagster/graphql", (route) => route.fulfill({ json: { data: {
+    repositoriesOrError: { __typename: "RepositoryConnection", nodes: [{ schedules: [{
+      name: "kric_timetable_collection_job_schedule", pipelineName: "kric_timetable_collection_job",
+      cronSchedule: "0 * * * *", scheduleState: { status: "STOPPED" },
+    }] }] }, runsOrError: { __typename: "Runs", results: [] },
+  } } }));
+  await page.route("**/transport/providers", (route) => route.fulfill({ json: {
+    generated_at: "2026-09-27T03:17:00Z", ferry_window_start: "2026-09-27", ferry_window_end: "2026-10-06",
+    ferry_expected_snapshots: 0, ferry_stored_snapshots: 0, items: [{
+      source: "kric_timetable", name: "KRIC 예정 시간표", job_name: "kric_timetable_collection_job",
+      enabled: true, mode: "scheduled", status: "throttled", interval_seconds: 172800,
+      last_started_at: null, last_success_at: null, next_due_at: "2026-09-29T03:17:00Z", error_code: null,
+    }],
+  } }));
+  await page.goto("/collections");
+  await page.getByText("KRIC 예정 시간표", { exact: true }).click();
+  await expect(page.getByText("호출 보호 종료", { exact: true })).toBeVisible();
+  await expect(page.getByText("다음 실행 예약", { exact: true })).not.toBeVisible();
+  await expect(page.getByText("보호 종료는 실행 예약이 아닙니다.", { exact: false })).toBeVisible();
+  await expect(page.getByText("중지", { exact: true })).toBeVisible();
+});
 for (const width of [320, 375, 414, 768, 1440]) test(`예정 열차·행선지·전체 시간표 ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 900 });
   await mockPlaces(page);
