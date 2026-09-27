@@ -1,5 +1,26 @@
 # journal.md — 작업 일지
 
+## 2026-09-28 지도 다음 예정 마커·날짜 경계 및 수집 복구
+
+- 새 브랜치 `codex/transport-followups`는 PR #42 merge `b855ec1`에서 시작했다.
+  `postgres` 지침을 적용해 기존 테이블·유일 키를 유지하고 최대 300역의 DB 전용 요약
+  조회를 추가했다. 역마다 API를 호출하거나 전체 시간표를 지도 응답에 싣지 않는다.
+- 역 마커는 예정 시각·행선지와 미수집/미연결/노후/오류를 구분한다. 60초 주기 갱신과
+  출발 시각·70초 응답 나이·한국 날짜 검사를 적용한다. 고속버스 빈 날짜와 자정 직후
+  명시 조회 경계도 보완했다. 현재 WSL/Docker·적대 리뷰·운영 E2E 검증 중이다.
+- 04:47 KST 운영 점검에서 code-server health 709회 연속 timeout, daemon의 repository
+  gRPC 60초 timeout을 확인했다. 마지막 실행은 전날 20:45 KST였고 실행 중 Dagster
+  작업과 worker subprocess는 0개였다. 원인을 `dagster dev` heartbeat나 메모리 부족으로
+  단정하지 않는다. 당시 메모리 가용 약 8.9GB, 디스크 여유 88GB였다.
+- 활성 작업 0개 재확인 → daemon 중지 → 같은 이미지·code-server 컨테이너 재시작 →
+  gRPC/8개 job 확인 → daemon 재개 순서로 복구했다. 기존 parking frontend, API,
+  webserver·공용 DB는 재시작하지 않았다. KRIC 보호 종료는 9월 29일 15:04:58 KST로 유지했다.
+- 오피넷은 대기 중인 기존 Dagster 실행으로 04:54 KST 수집을 재개했다. 강제 중복 실행은
+  하지 않았다. 배편 04:57 배치는 `KricNetworkError`로 실패했으며 외부 오류와 서비스
+  복구를 구분한다. 과거 중단된 CollectionRun의 `running` 잔재도 실제 활성 작업과 다르다.
+- TAGO 일반철도 공식 페이지(15098552)는 활용신청·접근 권한 확인 대상으로 유지한다.
+  HTTP 403의 원인은 승인 여부 확인 전 단정하지 않으며 인증 재시도하지 않았다.
+
 ## 2026-09-27 KRIC 실제 응답 파싱과 저장 시간표 연동
 
 - `python-kric-api` PR #7에서 실제 `body` 배열, 행수 검증, 잘못된 header 거부를 수정했다.

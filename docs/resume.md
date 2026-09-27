@@ -2,6 +2,12 @@
 
 ## 현재 상태
 
+- 2026-09-28 `codex/transport-followups`에서 PR #42 후속을 진행한다. 먼저 n150
+  code-server의 709회 연속 health timeout과 repository RPC timeout을 확인했다.
+  Dagster의 STARTED/STARTING/CANCELING 작업은 0개이며 실행 subprocess도 없다.
+  같은 이미지·컨테이너 복구를 우선하고 KRIC 48시간 보호와 오피넷 8시간 제한은 유지한다.
+  이후 지도 마커의 DB 전용 다음 예정 시각과 버스 날짜 경계 회귀를 구현·검증한다.
+
 - 2026-09-27 `codex/rail-timetable-integration` PR #42의 최종 런타임 `37c7ca5`를
   n150에 배포하고 HTTPS E2E 349개를 모두 통과했다(실패·재시도·건너뜀 0개).
   제공기관 실제 `body` 배열 파싱은 `python-kric-api` PR #7(`7af9f237`)로 수정·머지했다.

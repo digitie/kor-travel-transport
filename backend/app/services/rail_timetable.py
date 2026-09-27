@@ -10,7 +10,7 @@ from app.schemas import RailDepartureItem, RailTimetableItem, RailTimetableRespo
 from app.services.kric_collection import aware
 
 
-async def stored_rail_timetables(session: AsyncSession, places: list[RailStationReference], day_code: str | None) -> RailTimetableResponse:
+async def stored_rail_timetables(session: AsyncSession, places: list[RailStationReference], day_code: str | None, *, summary_only: bool = False) -> RailTimetableResponse:
     now = now_utc()
     local = to_seoul(now)
     basis = "selected_period"
@@ -41,19 +41,24 @@ async def stored_rail_timetables(session: AsyncSession, places: list[RailStation
         if snapshot and code:
             item.collected_at = aware(snapshot.collected_at)
             item.stale = now - item.collected_at > timedelta(hours=48)
-            for row in snapshot.items_json:
-                item.items.append(RailDepartureItem(train_number=row.get("train_number"),
+            item.departure_count = len(snapshot.items_json)
+            def departure(row):
+                return RailDepartureItem(train_number=row.get("train_number"),
                     departure_time=row.get("departure_time"), arrival_time=row.get("arrival_time"),
                     origin_name=names.get((code.operator_code, code.line_code, row.get("origin_station_code"))),
-                    destination_name=names.get((code.operator_code, code.line_code, row.get("terminal_station_code")))))
-            item.items.sort(key=lambda row: row.departure_time or "999999")
+                    destination_name=names.get((code.operator_code, code.line_code, row.get("terminal_station_code"))))
+            if not summary_only:
+                item.items = sorted((departure(row) for row in snapshot.items_json), key=lambda row: row.departure_time or "999999")
             if basis == "calendar" and not item.stale:
                 current_clock = local.strftime("%H%M%S")
                 # 날짜가 없는 계획 시각은 같은 한국 날짜의 05~23시 범위만 다음 열차로 표시한다.
                 # 원문이 확정 범위 밖이면 전체 시간표에는 남기되 다음 열차로 추정하지 않는다.
-                item.next_departure = next((row for row in item.items if row.departure_time
-                    and len(row.departure_time) == 6 and row.departure_time.isascii() and row.departure_time.isdecimal()
-                    and "05" <= row.departure_time[:2] <= "23" and row.departure_time[2:4] < "60"
-                    and row.departure_time[4:] < "60" and row.departure_time >= current_clock), None)
+                next_row = min((row for row in snapshot.items_json
+                    if isinstance(value := row.get("departure_time"), str)
+                    and len(value) == 6 and value.isascii() and value.isdecimal()
+                    and "05" <= value[:2] <= "23" and value[2:4] < "60"
+                    and value[4:] < "60" and value >= current_clock),
+                    key=lambda row: row["departure_time"], default=None)
+                item.next_departure = departure(next_row) if next_row else None
         result.append(item)
     return RailTimetableResponse(generated_at=now, day_code=day_code, basis=basis, items=result)

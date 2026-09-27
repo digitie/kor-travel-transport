@@ -225,7 +225,7 @@ class RailDepartureItem(BaseModel):
     destination_name: str | None = None
 
 
-class RailTimetableItem(BaseModel):
+class RailDepartureSummary(BaseModel):
     place_id: int
     station_name: str
     line_name: str | None = None
@@ -233,6 +233,10 @@ class RailTimetableItem(BaseModel):
     collected_at: datetime | None = None
     stale: bool = False
     next_departure: RailDepartureItem | None = None
+    departure_count: int = 0
+
+
+class RailTimetableItem(RailDepartureSummary):
     items: list[RailDepartureItem] = Field(default_factory=list)
 
 
@@ -241,6 +245,13 @@ class RailTimetableResponse(BaseModel):
     day_code: Literal["7", "8", "9"] | None = None
     basis: Literal["calendar", "selected_period", "calendar_unavailable", "overnight_unresolved"]
     items: list[RailTimetableItem]
+
+
+class RailDepartureSummaryResponse(BaseModel):
+    generated_at: datetime
+    day_code: Literal["7", "8", "9"] | None = None
+    basis: Literal["calendar", "selected_period", "calendar_unavailable", "overnight_unresolved"]
+    items: list[RailDepartureSummary]
 
 
 class FerryOperationItem(BaseModel):

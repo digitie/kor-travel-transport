@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clusterAtScale, hasCoordinates, transportGet, type Place, type PlaceKind } from "@/lib/journey";
 import { collectionSourceLabel, fuelProductLabel, placeKindLabel } from "@/lib/transport-presentation";
 import { PlaceDetails, PlaceIcon, ViewSwitch } from "./journey-controls";
+import { useRailMarkers } from "@/lib/use-rail-markers";
 
 type MapPoint = { id: string; lngLat: [number, number]; place: Place };
 type Bounds = { getWest: () => number; getSouth: () => number; getEast: () => number; getNorth: () => number };
@@ -15,12 +16,12 @@ const KINDS: PlaceKind[] = ["fuel_station", "rail_station", "ferry_port", "airpo
 const DEFAULT_VIEWPORT: Viewport = { min_longitude: "124", min_latitude: "32", max_longitude: "132", max_latitude: "39" };
 const keyOf = (place: Place) => `${place.kind}:${place.id}`;
 
-function MapMarker({ point, onSelect, selected, product }: { point: MapPoint; onSelect: (place: Place) => void; selected: boolean; product: string }) {
+function MapMarker({ point, onSelect, selected, product, railLabel }: { point: MapPoint; onSelect: (place: Place) => void; selected: boolean; product: string; railLabel: (id: number) => string }) {
   const place = point.place;
   const prices = (place.prices ?? []).filter((row) => row.price != null && (!product || row.product_code === product));
-  const props = { ariaLabel: `${placeKindLabel(place.kind)} ${place.name} 상세 보기`, interactionId: point.id, lngLat: point.lngLat, onClick: () => onSelect(place), selected, className: `transport-map-marker ${place.kind}` };
+  const props = { ariaLabel: `${placeKindLabel(place.kind)} ${place.name}${place.kind === "rail_station" ? ` ${place.line_names.join(" · ")} ${railLabel(place.id)}` : ""} 상세 보기`, interactionId: point.id, lngLat: point.lngLat, onClick: () => onSelect(place), selected, className: `transport-map-marker ${place.kind}` };
   if (place.kind === "fuel_station" && prices.length) return <PriceMarker {...props} lodThresholds={[0, 0]} price={prices.map((row) => ({ label: `${place.brand_name ?? "주유소"} · ${fuelProductLabel(row.product_code)}`, price: `${row.price?.toLocaleString("ko-KR")}원/L` }))} />;
-  return <Marker {...props}><span className={`journey-marker ${place.kind}`}><PlaceIcon kind={place.kind} /><span><strong>{place.name}</strong><small>{place.line_names.length ? place.line_names.join(" · ") : place.subtitle ?? placeKindLabel(place.kind)}</small>{place.kind === "rail_station" ? <small>선택하여 예정 시간표 확인</small> : null}</span></span></Marker>;
+  return <Marker {...props}><span className={`journey-marker ${place.kind}`}><PlaceIcon kind={place.kind} /><span><strong>{place.name}</strong><small>{place.line_names.length ? place.line_names.join(" · ") : place.subtitle ?? placeKindLabel(place.kind)}</small>{place.kind === "rail_station" ? <small title="저장 시간표 기준이며 실시간 도착 정보가 아닙니다.">{railLabel(place.id)}</small> : null}</span></span></Marker>;
 }
 
 export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?: Place[]; selectedPlace?: Place | null; onSelectPlace?: (place: Place) => void }) {
@@ -49,6 +50,11 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
   const all = useMemo(() => places ?? kinds.flatMap((kind) => loaded[kind]?.items ?? []), [places, kinds, loaded]);
   const items = useMemo(() => all.filter((item) => (!source || item.source === source) && (!embedded || !query || [item.name, item.brand_name, item.address, item.subtitle, item.provider_id, ...item.line_names].join(" ").toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) && (!product || item.kind !== "fuel_station" || item.prices?.some((row) => row.product_code === product))), [all, embedded, source, query, product]);
   const points = useMemo<MapPoint[]>(() => items.filter(hasCoordinates).map((place) => ({ id: keyOf(place), lngLat: [place.longitude, place.latitude], place })), [items]);
+  const visibleRails = points.filter((point) => point.place.kind === "rail_station"
+    && point.lngLat[0] >= Number(viewport.min_longitude) && point.lngLat[0] <= Number(viewport.max_longitude)
+    && point.lngLat[1] >= Number(viewport.min_latitude) && point.lngLat[1] <= Number(viewport.max_latitude));
+  const railIds = visibleRails.map((point) => point.place.id).sort((a, b) => a - b).slice(0, 300).join(",");
+  const railLabel = useRailMarkers(railIds, !cluster && view === "map");
   const detail = useRef<HTMLElement | null>(null);
   const selectPlace = (place: Place) => {
     setSelected(place); onSelectPlace?.(place);
@@ -93,13 +99,12 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
   const moved = useCallback((bounds: Bounds, nextZoom: number) => {
     setZoom(nextZoom);
     setCluster(clusterAtScale(nextZoom, (bounds.getNorth() + bounds.getSouth()) / 2));
-    if (embedded) return;
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => setViewport({
       min_longitude: Math.max(-180, bounds.getWest()).toFixed(4), min_latitude: Math.max(-90, bounds.getSouth()).toFixed(4),
       max_longitude: Math.min(180, bounds.getEast()).toFixed(4), max_latitude: Math.min(90, bounds.getNorth()).toFixed(4),
     }), 250);
-  }, [embedded]);
+  }, []);
   const truncated = Object.entries(loaded).filter(([, row]) => row.truncated).map(([kind]) => placeKindLabel(kind));
   const camera = useMemo(() => current && hasCoordinates(current) ? { center: [current.longitude, current.latitude] as [number, number], zoom: Math.max(zoom, 11) } : undefined, [current]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -114,6 +119,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
     <div className="map-feedback" role="status">
       {pending.length ? <span>{pending.map(placeKindLabel).join("·")} 조회 중… </span> : null}
       <span>{items.length}곳 표시 · {cluster ? "넓은 축척에서 묶음 표시" : "30km 이하 축척 · 개별 마커"}</span>
+      {!cluster && view === "map" && visibleRails.length > 300 ? <p>예정 시각은 현재 영역의 최대 300역까지 표시합니다. 확대하거나 역을 선택해 주세요.</p> : null}
       {truncated.length ? <p>{truncated.join("·")} 일부를 표시합니다(종류별 최대 {perKindLimit}곳). 확대해 주세요. 묶음 수는 현재 불러온 장소 수입니다.</p> : null}
       {failed.length ? <p className="error">{failed.map(placeKindLabel).join("·")} 조회 실패 <button type="button" onClick={() => setReload((value) => value + 1)}>다시 조회</button></p> : null}
       {mapError ? <p className="error">{mapError}</p> : null}
@@ -126,7 +132,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
         onLoad={(map) => moved(map.getBounds(), map.getZoom())}
         onMoveEnd={(event) => { const map = event.target as { getBounds: () => Bounds; getZoom: () => number }; moved(map.getBounds(), map.getZoom()); }}
         unsupportedTileFallback={{ label: "지도를 불러오지 못했습니다." }} zoom={7}>
-        {cluster ? <ClusterLayer points={points} radius={50} renderMarker={(point) => <MapMarker key={point.id} point={point as MapPoint} product={product} onSelect={selectPlace} selected={current ? keyOf(current) === point.id : false} />} /> : points.map((point) => <MapMarker key={point.id} point={point} product={product} onSelect={selectPlace} selected={current ? keyOf(current) === point.id : false} />)}
+        {cluster ? <ClusterLayer points={points} radius={50} renderMarker={(point) => <MapMarker key={point.id} point={point as MapPoint} product={product} railLabel={railLabel} onSelect={selectPlace} selected={current ? keyOf(current) === point.id : false} />} /> : points.map((point) => <MapMarker key={point.id} point={point} product={product} railLabel={railLabel} onSelect={selectPlace} selected={current ? keyOf(current) === point.id : false} />)}
       </VWorldMapView> : <div className="map-place-list">{items.map((place) => <button type="button" className="place-row" key={keyOf(place)} aria-pressed={current ? keyOf(current) === keyOf(place) : false} onClick={() => selectPlace(place)}><PlaceIcon kind={place.kind} /><span><strong>{place.name}</strong><small>{place.line_names.join(" · ") || place.brand_name || place.subtitle || placeKindLabel(place.kind)}</small>{!hasCoordinates(place) ? <small>좌표 미등록</small> : null}</span></button>)}</div>}
       {!embedded ? <aside className="transport-map-detail" ref={detail} tabIndex={-1} aria-label="선택 장소 상세">
         <label className="transport-map-picker">장소 목록에서 선택<select value={current ? keyOf(current) : ""} onChange={(event) => { const place = items.find((item) => keyOf(item) === event.target.value); if (place) selectPlace(place); }}><option value="">장소 선택</option>{items.map((place) => <option key={keyOf(place)} value={keyOf(place)}>{placeKindLabel(place.kind)} · {place.name}</option>)}</select></label>
