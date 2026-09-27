@@ -155,6 +155,8 @@ async def test_read_models_avoid_invented_next_train(test_settings, monkeypatch,
         await session.commit()
         result = await stored_rail_timetables(session, [target], period)
         assert result.basis == expected
+        if expected in {"calendar_unavailable", "overnight_unresolved"}:
+            assert result.items[0].status == "day_unresolved"
         next_train = result.items[0].next_departure
         if expected == "calendar" and not stale:
             assert next_train.train_number == "0012"
@@ -167,9 +169,10 @@ async def test_read_models_avoid_invented_next_train(test_settings, monkeypatch,
 
 
 def test_rail_api_input_boundaries_and_missing_place(client):
-    for ids in ["", "-1", "a", "1,2,3,4,5,6", "١", "999999999999999999999999"]:
+    for ids in ["", "-1", "0", "a", "1,2,3,4,5,6", "١", "2147483648", "999999999999999999999999"]:
         assert client.get("/v1/transport/rail/timetables", params={"place_ids": ids}).status_code == 422
     assert client.get("/v1/transport/rail/timetables", params={"place_ids": "999999"}).status_code == 404
+    assert client.get("/v1/transport/rail/timetables", params={"place_ids": "2147483647"}).status_code == 404
     assert client.get("/v1/transport/rail/timetables", params={"place_ids": "1", "day_code": "0"}).status_code == 422
 
 
@@ -238,3 +241,76 @@ async def test_postgres_lease_survives_commits_and_releases(test_settings):
         async with service._lease(second) as released:
             assert released
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_incomplete_calendar_cannot_overwrite_saved_holiday(test_settings, monkeypatch):
+    from app.services.holidays import HolidaySourceResponse
+    now = datetime(2026, 9, 28, 3, tzinfo=UTC)
+    old = now - timedelta(days=3)
+    monkeypatch.setattr("app.services.kric_collection.now_utc", lambda: now)
+    monkeypatch.setattr("app.services.holidays.KasiHolidayClient.fetch_month", AsyncMock(return_value=HolidaySourceResponse(
+        source="kasi_holiday_info", endpoint="mock", request_params={}, status_code=200,
+        body_text='[{"locdate":"20260928","isHoliday":"Y"}]',
+    )))
+    settings = test_settings.model_copy(update={"data_go_kr_service_key": "fake"})
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+    await init_database(engine)
+    async with factory() as session:
+        session.add(RailServiceDay(service_date=now.date(), day_code="9", verified_at=old))
+        await session.commit()
+        await KricTimetableCollectionService(settings)._sync_calendar(session)
+        await session.commit()
+        saved = await session.get(RailServiceDay, now.date())
+        assert saved.day_code == "9"
+        assert saved.verified_at.replace(tzinfo=UTC) == old
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_wait_cannot_start_request_after_batch_deadline(test_settings, monkeypatch):
+    start = datetime(2026, 9, 27, 3, tzinfo=UTC)
+    clock = [start]
+    monkeypatch.setattr("app.services.kric_collection.now_utc", lambda: clock[0])
+    settings = test_settings.model_copy(update={"kric_timetable_collection_enabled": True, "kric_service_key": "fake"})
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+    await init_database(engine)
+    fake = FakeClient()
+    original = fake.get_station_timetable
+    async def fetch(**params):
+        result = await original(**params)
+        clock[0] = start + timedelta(hours=3, seconds=-1)
+        return result
+    async def sleep(seconds):
+        clock[0] += timedelta(seconds=seconds)
+    fake.get_station_timetable = fetch
+    service = KricTimetableCollectionService(settings, code_fetcher=AsyncMock(return_value=((code(),), None)), client_factory=lambda *a, **kw: fake, sleep=sleep)
+    async with factory() as session:
+        result = await service.collect(session)
+        assert result["stored_snapshot_count"] == 1
+        assert len(fake.calls) == 1
+    await engine.dispose()
+
+
+def test_provider_coverage_counts_active_codes_and_freshness(client):
+    import asyncio
+    async def seed():
+        now = datetime.now(UTC)
+        async with client.app.state.session_factory() as session:
+            target = place(now)
+            session.add(target)
+            await session.flush()
+            for index in range(3):
+                station = KricStationCode(operator_code="S1", line_code="03", station_code=str(index), operator_name="운영기관", line_name="3호선", station_name=f"역{index}", rail_station_id=target.id if index == 0 else None, active=index < 2, last_seen_at=now)
+                session.add(station)
+                await session.flush()
+                session.add(KricTimetableSnapshot(station_id=station.id, day_code="9", collected_at=now - timedelta(hours=49 if index == 1 else 1), items_json=[]))
+            await session.commit()
+    asyncio.run(seed())
+    coverage = client.get("/v1/transport/providers").json()["kric_coverage"]
+    assert coverage["station_count"] == 2
+    assert coverage["linked_station_count"] == 1
+    assert coverage["expected_snapshots"] == 6
+    assert coverage["stored_snapshots"] == 2
+    assert coverage["fresh_snapshots"] == 1
+    assert coverage["oldest_collected_at"]

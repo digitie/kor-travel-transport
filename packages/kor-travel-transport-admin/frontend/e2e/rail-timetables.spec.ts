@@ -39,6 +39,7 @@ for (const width of [320, 375, 414, 768, 1440]) test(`예정 열차·행선지·
 for (const [status, options, text] of [
   ["unlinked", {}, "공식 역사 코드와 위치 정보가 아직 연결되지 않았습니다."],
   ["not_collected", {}, "선택한 기준의 저장 시간표가 아직 없습니다."],
+  ["day_unresolved", {}, "운행일 기준을 결정하지 못해 저장본을 선택할 수 없습니다."],
   ["stored", { items: [], next_departure: null }, "제공기관의 마지막 정상 응답에 시간표가 없습니다."],
   ["stored", { stale: true, next_departure: null }, "48시간이 지난 저장본입니다."],
 ] as const) test(`예정 시간표 상태 구분 ${status} ${text.slice(0, 8)}`, async ({ page }) => {
@@ -79,4 +80,51 @@ test("역 선택 해제 후 늦은 시간표 응답을 표시하지 않는다", 
   await page.getByRole("button", { name: "불광 선택 해제" }).click();
   release?.();
   await expect(page.getByRole("region", { name: "도시철도 예정 시간표" })).not.toBeVisible();
+});
+
+test("자동 갱신과 갱신 실패가 펼침 상태와 키보드 위치를 보존한다", async ({ page }) => {
+  await page.clock.install();
+  await mockPlaces(page);
+  let calls = 0;
+  let release: (() => void) | undefined;
+  await page.route("**/transport/rail/timetables?**", async (route) => {
+    calls++;
+    if (calls === 1) return route.fulfill({ json: response() });
+    await new Promise<void>((resolve) => { release = resolve; });
+    return route.fulfill({ status: 503, json: {} });
+  });
+  await selectStation(page);
+  const summary = page.getByText("전체 예정 시간표 1편");
+  await summary.click();
+  await summary.focus();
+  await page.clock.runFor(60_001);
+  await expect.poll(() => Boolean(release)).toBe(true);
+  await expect(page.getByText("대화 출발 열차")).toBeVisible();
+  await expect(summary).toBeFocused();
+  release?.();
+  await expect(page.getByText("최신 조회에 실패해 이전 저장 조회 결과를 표시합니다.", { exact: false })).toBeVisible();
+  await expect(page.getByText("대화 출발 열차")).toBeVisible();
+  await expect(summary).toBeFocused();
+});
+
+test("잘못된 초는 정상 예정 시각으로 축약하지 않는다", async ({ page }) => {
+  await mockPlaces(page);
+  await page.route("**/transport/rail/timetables?**", (route) => route.fulfill({ json: response("stored", { next_departure: null, items: [{ ...departure, departure_time: "235960" }] }) }));
+  await selectStation(page);
+  await page.getByText("전체 예정 시간표 1편").click();
+  await expect(page.getByText("시각 확인 필요 (235960)", { exact: true })).toBeVisible();
+  await expect(page.getByText("23:59", { exact: true })).not.toBeVisible();
+});
+
+test("수집 화면에서 KRIC 부분 적재와 노후 범위를 구분한다", async ({ page }) => {
+  await page.route("**/api/transport/transport/providers", (route) => route.fulfill({ json: {
+    generated_at: new Date().toISOString(), items: [], ferry_window_start: "2026-09-27", ferry_window_end: "2026-10-06", ferry_expected_snapshots: 10, ferry_stored_snapshots: 2,
+    kric_coverage: { station_count: 1108, linked_station_count: 500, expected_snapshots: 3324, stored_snapshots: 1000, fresh_snapshots: 300, oldest_collected_at: "2026-09-20T00:00:00Z" },
+  } }));
+  await page.route("**/api/dagster/graphql", (route) => route.fulfill({ json: { errors: [{ message: "offline" }] } }));
+  await page.goto("/collections");
+  const region = page.getByRole("region", { name: "KRIC 시간표 적재 범위" });
+  await expect(region.getByText("500 / 1,108역", { exact: true })).toBeVisible();
+  await expect(region.getByText("1,000 / 3,324개", { exact: true })).toBeVisible();
+  await expect(region.getByText("300개", { exact: true })).toBeVisible();
 });

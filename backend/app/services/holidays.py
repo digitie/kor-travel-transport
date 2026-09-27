@@ -92,6 +92,8 @@ class KasiHolidayClient(HolidayClient):
             timeout=self.settings.api_timeout_seconds,
         ) as client:
             page = await client.holidays(sol_year=year, sol_month=month, num_of_rows=50)
+        if page.total_count is None or page.total_count != len(page.items):
+            raise ValueError("공휴일 월별 응답의 완전성을 확인할 수 없습니다.")
         raw_items = [dict(item.raw) for item in page.items]
         return HolidaySourceResponse(
             source="kasi_holiday_info",
@@ -171,6 +173,8 @@ class HolidayService:
             if response is None:
                 raise ValueError("공휴일 API 클라이언트가 설정되지 않았습니다.")
             items, error_message = parse_holiday_response(response.body_text)
+            if any((item.local_date.year, item.local_date.month) != (year, month) for item in items):
+                error_message = "holiday API error: response month mismatch"
             result = HolidayLookupResult(
                 source=response.source,
                 status="upstream_error" if error_message else "success",
@@ -181,7 +185,7 @@ class HolidayService:
             result = HolidayLookupResult(
                 source="kasi_holiday_info",
                 status="upstream_error",
-                error_message=f"공휴일 API 응답을 읽지 못했습니다. {exc}",
+                error_message=f"공휴일 API 응답을 읽지 못했습니다. {type(exc).__name__}",
                 items=[],
             )
 
@@ -207,13 +211,17 @@ def _parse_holiday_raw_items(body_text: str) -> tuple[list[HolidayItem], str | N
     # already a success response — no envelope/result_code check needed.
     raw_items = json.loads(body_text)
     items = []
+    incomplete = False
     for raw_item in raw_items:
         if not isinstance(raw_item, dict):
+            incomplete = True
             continue
         parsed = _parse_holiday_fields(raw_item)
         if parsed is not None:
             items.append(parsed)
-    return _deduplicate_holidays(items), None
+        else:
+            incomplete = True
+    return _deduplicate_holidays(items), "holiday API error: incomplete calendar rows" if incomplete else None
 
 
 def collapse_holidays_by_date(items: list[HolidayItem]) -> list[HolidayItem]:
@@ -244,6 +252,7 @@ def _parse_holiday_xml(body_text: str) -> tuple[list[HolidayItem], str | None]:
         return [], f"holiday API error {result_code}: {result_message or 'UNKNOWN ERROR'}"
 
     items: list[HolidayItem] = []
+    incomplete = False
     for element in root.findall(".//item"):
         parsed = _parse_holiday_fields(
             {
@@ -254,7 +263,9 @@ def _parse_holiday_xml(body_text: str) -> tuple[list[HolidayItem], str | None]:
         )
         if parsed is not None:
             items.append(parsed)
-    return _deduplicate_holidays(items), None
+        else:
+            incomplete = True
+    return _deduplicate_holidays(items), "holiday API error: incomplete calendar rows" if incomplete else None
 
 
 def _parse_holiday_json(body_text: str) -> tuple[list[HolidayItem], str | None]:
@@ -275,20 +286,25 @@ def _parse_holiday_json(body_text: str) -> tuple[list[HolidayItem], str | None]:
         raw_items = []
 
     items = []
+    incomplete = False
     for raw_item in raw_items:
         if not isinstance(raw_item, dict):
+            incomplete = True
             continue
         parsed = _parse_holiday_fields(raw_item)
         if parsed is not None:
             items.append(parsed)
-    return _deduplicate_holidays(items), None
+        else:
+            incomplete = True
+    return _deduplicate_holidays(items), "holiday API error: incomplete calendar rows" if incomplete else None
 
 
 def _parse_holiday_fields(item: dict[str, Any]) -> HolidayItem | None:
     name = str(item.get("dateName") or item.get("date_name") or "").strip()
     locdate = str(item.get("locdate") or "").strip()
-    is_holiday = str(item.get("isHoliday") or "Y").strip().upper() == "Y"
-    if not name or len(locdate) != 8:
+    holiday_flag = str(item.get("isHoliday") or "").strip().upper()
+    is_holiday = holiday_flag == "Y"
+    if not name or len(locdate) != 8 or not locdate.isascii() or not locdate.isdecimal() or holiday_flag not in {"Y", "N"}:
         return None
     try:
         local_date = datetime.strptime(locdate, "%Y%m%d").date()

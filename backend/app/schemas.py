@@ -219,7 +219,7 @@ class RailTimetableItem(BaseModel):
     place_id: int
     station_name: str
     line_name: str | None = None
-    status: Literal["unlinked", "not_collected", "stored"]
+    status: Literal["unlinked", "day_unresolved", "not_collected", "stored"]
     collected_at: datetime | None = None
     stale: bool = False
     next_departure: RailDepartureItem | None = None
@@ -311,6 +311,15 @@ class ProviderCollectionStatus(BaseModel):
     error_code: str | None = None
 
 
+class KricCoverage(BaseModel):
+    station_count: int
+    linked_station_count: int
+    expected_snapshots: int
+    stored_snapshots: int
+    fresh_snapshots: int
+    oldest_collected_at: datetime | None = None
+
+
 class ProviderStatusResponse(BaseModel):
     generated_at: datetime
     items: list[ProviderCollectionStatus]
@@ -318,6 +327,7 @@ class ProviderStatusResponse(BaseModel):
     ferry_window_end: date
     ferry_expected_snapshots: int
     ferry_stored_snapshots: int
+    kric_coverage: KricCoverage | None = None
 
 
 class TransportCollectionRunStatus(BaseModel):

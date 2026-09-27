@@ -4,6 +4,7 @@ import { getDagsterOverview, runStalled, statusLabel } from "./dagster";
 
 afterEach(() => vi.unstubAllGlobals());
 describe("여행 정보 표시 계약", () => {
+  it.each(["235960", "23:59:60", "20260927235960"])("잘못된 초 %s는 정상 시각으로 표시하지 않는다", (value) => expect(serviceTime(value)).toBe("시각 확인 필요"));
   it.each([["0900", "09:00"], ["093000", "09:30"], ["202609270930", "09:30"], ["20260927093000", "09:30"], ["9:30", "09:30"], ["24:05", "익일 00:05"], ["29:59", "익일 05:59"], ["30:00", "시각 확인 필요"], ["12:60", "시각 확인 필요"], ["unknown", "시각 확인 필요"], [null, "시각 미제공"]])("시각 %s", (value, expected) => expect(serviceTime(value)).toBe(expected));
   it.each([[0, "0원"], [12000, "12,000원"], ["12,000원", "12,000원"], [null, "요금 미제공"], ["", "요금 미제공"], ["미정", "요금 확인 필요"], [-1, "요금 확인 필요"]])("요금 %s", (value, expected) => expect(money(value)).toBe(expected));
   it("한국 자정/월말/연말 기준을 사용한다", () => {

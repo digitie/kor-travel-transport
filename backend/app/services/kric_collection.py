@@ -74,7 +74,10 @@ class KricTimetableCollectionService:
                         "rustfs_bucket": archive.bucket if archive else None, "checksum_sha256": archive.checksum_sha256 if archive else None}),
                 ))
                 await session.commit()
-                snapshots = {(row.station_id, row.day_code): row for row in (await session.scalars(select(KricTimetableSnapshot))).all()}
+                snapshots = {(row.station_id, row.day_code): row for row in (await session.execute(select(
+                    KricTimetableSnapshot.id, KricTimetableSnapshot.station_id,
+                    KricTimetableSnapshot.day_code, KricTimetableSnapshot.collected_at,
+                ))).all()}
                 missing_since = datetime.min.replace(tzinfo=UTC)
                 today = to_seoul(now_utc()).weekday()
                 preferred_day = "7" if today == 5 else "9" if today == 6 else "8"
@@ -92,6 +95,8 @@ class KricTimetableCollectionService:
                             break
                         if count:
                             await self.sleep(self.settings.kric_timetable_request_interval_seconds)
+                        if now_utc() - aware(run.started_at) >= timedelta(hours=3):
+                            break
                         rows = await client.get_station_timetable(rail_operator_code=station.operator_code,
                             line_code=station.line_code, station_code=station.station_code, day_code=day)
                         if any((row.rail_operator_code, row.line_code, row.station_code, str(row.day_code)) !=
@@ -103,7 +108,7 @@ class KricTimetableCollectionService:
                             snapshot = KricTimetableSnapshot(station_id=station.id, day_code=day, collected_at=now_utc(), items_json=items)
                             session.add(snapshot)
                         else:
-                            snapshot.collected_at, snapshot.items_json = now_utc(), items
+                            await session.execute(update(KricTimetableSnapshot).where(KricTimetableSnapshot.id == snapshot.id).values(collected_at=now_utc(), items_json=items))
                         await session.commit()  # 다음 역 실패가 앞서 검증한 정상 저장본을 없애지 않는다.
                         count += 1
                 run.status, run.finished_at = "success", now_utc()

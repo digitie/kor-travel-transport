@@ -1041,6 +1041,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not 1 <= len(parts) <= 5 or any(not value.isascii() or not value.isdecimal() or len(value) > 10 for value in parts):
             raise HTTPException(status_code=422, detail="역은 1~5곳을 선택해 주세요.")
         ids = list(dict.fromkeys(int(value) for value in parts))
+        if any(not 1 <= value <= 2147483647 for value in ids):
+            raise HTTPException(status_code=422, detail="유효한 역 식별자를 선택해 주세요.")
         places = (await session.scalars(select(RailStationReference).where(RailStationReference.id.in_(ids)))).all()
         if len(places) != len(ids):
             raise HTTPException(status_code=404, detail="저장되지 않은 역이 포함되어 있습니다.")

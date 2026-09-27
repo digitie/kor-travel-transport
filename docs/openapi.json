@@ -2589,6 +2589,51 @@
         "title": "HourlyBucket",
         "type": "object"
       },
+      "KricCoverage": {
+        "properties": {
+          "expected_snapshots": {
+            "title": "Expected Snapshots",
+            "type": "integer"
+          },
+          "fresh_snapshots": {
+            "title": "Fresh Snapshots",
+            "type": "integer"
+          },
+          "linked_station_count": {
+            "title": "Linked Station Count",
+            "type": "integer"
+          },
+          "oldest_collected_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Collected At"
+          },
+          "station_count": {
+            "title": "Station Count",
+            "type": "integer"
+          },
+          "stored_snapshots": {
+            "title": "Stored Snapshots",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "station_count",
+          "linked_station_count",
+          "expected_snapshots",
+          "stored_snapshots",
+          "fresh_snapshots"
+        ],
+        "title": "KricCoverage",
+        "type": "object"
+      },
       "ParkingCurrentResponse": {
         "properties": {
           "generated_at": {
@@ -3063,6 +3108,16 @@
             },
             "title": "Items",
             "type": "array"
+          },
+          "kric_coverage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KricCoverage"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -3074,6 +3129,190 @@
           "ferry_stored_snapshots"
         ],
         "title": "ProviderStatusResponse",
+        "type": "object"
+      },
+      "RailDepartureItem": {
+        "properties": {
+          "arrival_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arrival Time"
+          },
+          "departure_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Departure Time"
+          },
+          "destination_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Destination Name"
+          },
+          "origin_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin Name"
+          },
+          "train_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Train Number"
+          }
+        },
+        "title": "RailDepartureItem",
+        "type": "object"
+      },
+      "RailTimetableItem": {
+        "properties": {
+          "collected_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collected At"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RailDepartureItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "line_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Name"
+          },
+          "next_departure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RailDepartureItem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "place_id": {
+            "title": "Place Id",
+            "type": "integer"
+          },
+          "stale": {
+            "default": false,
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "station_name": {
+            "title": "Station Name",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "unlinked",
+              "day_unresolved",
+              "not_collected",
+              "stored"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "place_id",
+          "station_name",
+          "status"
+        ],
+        "title": "RailTimetableItem",
+        "type": "object"
+      },
+      "RailTimetableResponse": {
+        "properties": {
+          "basis": {
+            "enum": [
+              "calendar",
+              "selected_period",
+              "calendar_unavailable",
+              "overnight_unresolved"
+            ],
+            "title": "Basis",
+            "type": "string"
+          },
+          "day_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "7",
+                  "8",
+                  "9"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day Code"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RailTimetableItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generated_at",
+          "basis",
+          "items"
+        ],
+        "title": "RailTimetableResponse",
         "type": "object"
       },
       "ThresholdDateHistoryItem": {
@@ -6462,6 +6701,78 @@
           }
         },
         "summary": "Transport Providers"
+      }
+    },
+    "/v1/transport/rail/timetables": {
+      "get": {
+        "operationId": "transport_rail_timetables_v1_transport_rail_timetables_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "place_ids",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Place Ids",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "day_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "7",
+                    "8",
+                    "9"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Day Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RailTimetableResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Transport Rail Timetables"
       }
     },
     "/v1/transport/statistics": {

@@ -37,7 +37,7 @@ async def stored_rail_timetables(session: AsyncSession, places: list[RailStation
         code = linked.get(place.id)
         snapshot = snapshots.get(code.id) if code else None
         item = RailTimetableItem(place_id=place.id, station_name=place.station_name or "이름 없는 역",
-            line_name=place.operating_line_name, status="stored" if snapshot else "not_collected" if code else "unlinked")
+            line_name=place.operating_line_name, status="unlinked" if not code else "day_unresolved" if day_code is None else "stored" if snapshot else "not_collected")
         if snapshot and code:
             item.collected_at = aware(snapshot.collected_at)
             item.stale = now - item.collected_at > timedelta(hours=48)

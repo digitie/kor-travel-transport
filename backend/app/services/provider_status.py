@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.time_utils import now_utc, serialize_utc, to_seoul
-from app.models import CollectionRun, FerryPort, FerryTimetableSnapshot, TransportCollectionState
-from app.schemas import ProviderCollectionStatus, ProviderStatusResponse
+from app.models import CollectionRun, FerryPort, FerryTimetableSnapshot, KricStationCode, KricTimetableSnapshot, TransportCollectionState
+from app.schemas import KricCoverage, ProviderCollectionStatus, ProviderStatusResponse
 
 
 async def provider_status(session: AsyncSession, settings: Settings) -> ProviderStatusResponse:
@@ -57,4 +57,12 @@ async def provider_status(session: AsyncSession, settings: Settings) -> Provider
     end = today + timedelta(days=settings.ferry_timetable_storage_days)
     ports = int(await session.scalar(select(func.count()).select_from(FerryPort).where(FerryPort.source == "data_go_kr_maritime")) or 0)
     stored = int(await session.scalar(select(func.count()).select_from(FerryTimetableSnapshot).join(FerryPort, (FerryPort.source == FerryTimetableSnapshot.source) & (FerryPort.port_id == FerryTimetableSnapshot.departure_port_id)).where(FerryTimetableSnapshot.service_date >= today, FerryTimetableSnapshot.service_date < end, FerryPort.source == "data_go_kr_maritime")) or 0)
-    return ProviderStatusResponse(generated_at=now_utc(), items=items, ferry_window_start=today, ferry_window_end=end - timedelta(days=1), ferry_expected_snapshots=ports * settings.ferry_timetable_storage_days, ferry_stored_snapshots=stored)
+    stations, linked = (await session.execute(select(func.count(KricStationCode.id), func.count(KricStationCode.rail_station_id)).where(KricStationCode.active.is_(True)))).one()
+    count, fresh, oldest = (await session.execute(select(
+        func.count(KricTimetableSnapshot.id),
+        func.count(KricTimetableSnapshot.id).filter(KricTimetableSnapshot.collected_at >= now_utc() - timedelta(hours=48)),
+        func.min(KricTimetableSnapshot.collected_at),
+    ).join(KricStationCode, KricStationCode.id == KricTimetableSnapshot.station_id).where(KricStationCode.active.is_(True)))).one()
+    coverage = KricCoverage(station_count=stations, linked_station_count=linked, expected_snapshots=stations * 3,
+        stored_snapshots=count, fresh_snapshots=fresh, oldest_collected_at=serialize_utc(oldest) if oldest else None)
+    return ProviderStatusResponse(generated_at=now_utc(), items=items, ferry_window_start=today, ferry_window_end=end - timedelta(days=1), ferry_expected_snapshots=ports * settings.ferry_timetable_storage_days, ferry_stored_snapshots=stored, kric_coverage=coverage)

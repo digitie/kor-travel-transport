@@ -13,8 +13,8 @@ export function seoulDate(offset = 0, now = Date.now()) {
 export function serviceTime(value: string | null | undefined, referenceDate?: string) {
   if (!value) return "시각 미제공";
   const text = value.trim();
-  const match = /^(?:\d{8})?(\d{2})(\d{2})(?:\d{2})?$/.exec(text) ?? /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(text);
-  if (!match || Number(match[1]) > 29 || Number(match[2]) > 59) return "시각 확인 필요";
+  const match = /^(?:\d{8})?(\d{2})(\d{2})(\d{2})?$/.exec(text) ?? /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(text);
+  if (!match || Number(match[1]) > 29 || Number(match[2]) > 59 || Number(match[3] ?? "0") > 59) return "시각 확인 필요";
   const hour = Number(match[1]);
   let days = hour >= 24 ? 1 : 0;
   if (referenceDate && /^\d{12}(?:\d{2})?$/.test(text)) {
