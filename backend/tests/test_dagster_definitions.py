@@ -13,6 +13,10 @@ def test_dagster_definitions_evaluates_kric_rail_due_daily_with_a_48_hour_guard(
     maritime_schedule = definitions.get_schedule_def("maritime_reference_collection_job_schedule")
     ferry_timetable_schedule = definitions.get_schedule_def("ferry_timetable_collection_job_schedule")
     bus_schedule = definitions.get_schedule_def("bus_reference_collection_job_schedule")
+    kric_schedule = definitions.get_schedule_def("kric_timetable_collection_job_schedule")
+    assert kric_schedule.cron_schedule == "0 * * * *"
+    assert kric_schedule.execution_timezone == "Asia/Seoul"
+    assert kric_schedule.default_status.name == "RUNNING"
 
     assert rail_schedule.cron_schedule == "0 3 * * *"
     assert maritime_schedule.cron_schedule == "0 3 */3 * *"
@@ -37,6 +41,7 @@ def test_dagster_definitions_register_every_collection_domain() -> None:
         "maritime_reference_collection_job",
         "ferry_timetable_collection_job",
         "bus_reference_collection_job",
+        "kric_timetable_collection_job",
     }
     assert {definitions.get_job_def(name).name for name in job_names} == job_names
 
@@ -50,6 +55,7 @@ def test_dagster_definitions_enable_every_schedule_and_serialize_overlapping_gro
         "maritime_reference_collection_job_schedule",
         "ferry_timetable_collection_job_schedule",
         "bus_reference_collection_job_schedule",
+        "kric_timetable_collection_job_schedule",
     }
     assert {definitions.get_schedule_def(name).default_status.name for name in schedule_names} == {"RUNNING"}
 

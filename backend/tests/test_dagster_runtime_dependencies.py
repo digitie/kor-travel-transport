@@ -5,7 +5,8 @@ from pathlib import Path
 from sqlalchemy import create_engine
 
 
-_ROOT = Path(__file__).resolve().parents[2]
+_BACKEND_ROOT = Path(__file__).resolve().parents[1]
+_ROOT = _BACKEND_ROOT.parent if (_BACKEND_ROOT.parent / ".env.server14.example").is_file() else _BACKEND_ROOT / "compose-contract"
 
 
 def test_dagster_postgres_runtime_uses_psycopg2_driver() -> None:

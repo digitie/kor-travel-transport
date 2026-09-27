@@ -72,7 +72,8 @@ def test_provider_status_does_not_confuse_enabled_or_shared_job_with_success(cli
     assert rows["kac_parking"]["status"] == "shared_job_success"
     assert rows["kric_public_file"]["status"] == "failed"
     assert rows["kric_public_file"]["error_code"] == "collection_failed"
-    assert rows["kric_timetable"]["mode"] == "unconnected"
+    assert rows["kric_timetable"]["mode"] == "scheduled"
+    assert rows["kric_timetable"]["enabled"] is False
     assert rows["bus_timetable"]["mode"] == "on_demand"
     assert rows["krex_traffic_flow"]["status"] == "success"
     assert rows["krex_traffic_flow"]["job_status"] == "partial_success"

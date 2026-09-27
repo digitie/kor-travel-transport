@@ -12,6 +12,7 @@ from app.core.config import Settings, get_settings
 from app.db.session import create_engine_and_session_factory
 from app.services.collection import CollectionService
 from app.services.bus_collection import BusReferenceCollectionService
+from app.services.kric_collection import KricTimetableCollectionService
 from app.services.rail_maritime_collection import RailMaritimeCollectionService
 from app.services.transport_collection import CollectionScope, TransportCollectionService
 
@@ -108,6 +109,17 @@ def collect_bus_reference() -> dict[str, Any]:
     return _collect_bus_reference()
 
 
+@op
+def collect_kric_timetable() -> dict[str, Any]:
+    settings = _settings()
+    return asyncio.run(_run_with_session(settings, KricTimetableCollectionService(settings).collect))
+
+
+@job(tags={"kortraveltransport/run_group": "reference"})
+def kric_timetable_collection_job() -> None:
+    collect_kric_timetable()
+
+
 @job(tags={"kortraveltransport/run_group": "parking"})
 def airport_collection_job() -> None:
     collect_airport_parking()
@@ -152,6 +164,7 @@ definitions = Definitions(
         maritime_reference_collection_job,
         ferry_timetable_collection_job,
         bus_reference_collection_job,
+        kric_timetable_collection_job,
     ],
     schedules=[
         ScheduleDefinition(job=airport_collection_job, cron_schedule="*/5 * * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
@@ -164,5 +177,7 @@ definitions = Definitions(
         ScheduleDefinition(job=ferry_timetable_collection_job, cron_schedule="45 */4 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         # 매일 due를 평가하되 service가 마지막 성공 뒤 72시간 전에는 provider를 호출하지 않는다.
         ScheduleDefinition(job=bus_reference_collection_job, cron_schedule="30 3 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
+        # 실패·강제 종료도 포함해 마지막 시도부터 48시간 guard를 적용한다.
+        ScheduleDefinition(job=kric_timetable_collection_job, cron_schedule="0 * * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
     ],
 )

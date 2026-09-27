@@ -137,7 +137,7 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
             session.add(FuelPriceSnapshot(fuel_station_id=fuel.id, source="opinet", product_code="D047", price=1600, observed_at=now, collected_at=now))
             session.add(FuelPriceSnapshot(fuel_station_id=fuel.id, source="opinet", product_code="B027", price=1800, observed_at=now - timedelta(days=1), collected_at=now - timedelta(days=1)))
             session.add(RailStationReference(source="kric_public_file", identity_key="line|101|테스트역", rail_operator_name="테스트운영사", operating_line_name="테스트선", station_type=None, station_number="101", station_name="테스트역", english_name=None, longitude=127.2, latitude=37.6, lot_address=None, road_address="서울 테스트길", station_phone_number=None, data_reference_date=None, first_seen_at=now, last_seen_at=now, raw_item_json=None))
-            session.add(FerryPort(source="data_go_kr_maritime", port_id="P1", port_name="테스트항", latitude=129.1, longitude=35.1, location_source="data_go_kr_port_guideline", location_point_count=2, first_seen_at=now, last_seen_at=now, raw_item_json=None))
+            session.add(FerryPort(source="data_go_kr_maritime", port_id="P1", port_name="테스트항", latitude=35.1, longitude=129.1, location_source="data_go_kr_port_guideline", location_point_count=2, first_seen_at=now, last_seen_at=now, raw_item_json=None))
             await session.commit()
     asyncio.run(seed())
 
@@ -164,6 +164,33 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
     assert client.get("/v1/transport/features/places?kind=fuel_station&min_longitude=127.0").status_code == 422
     assert client.get("/v1/transport/ports/P1/timetable").status_code == 503
     assert client.get("/v1/transport/ports/P1/timetable?date=2000-01-01").status_code == 422
+
+
+def test_transport_place_invalid_saved_coordinates_remain_searchable(client) -> None:
+    async def seed() -> None:
+        now = now_utc()
+        async with client.app.state.session_factory() as session:
+            session.add(RailStationReference(
+                source="kric_public_file", identity_key="invalid-coordinate",
+                station_name="용유", longitude=37.424805, latitude=126.423637,
+                first_seen_at=now, last_seen_at=now,
+                raw_item_json={"역 위치(경도)": 37.424805, "역 위치(위도)": 126.423637},
+            ))
+            await session.commit()
+    asyncio.run(seed())
+    located = client.get("/v1/transport/features/places?kind=rail_station").json()
+    assert located["total"] == 0 and located["items"] == []
+    unlocated = client.get("/v1/transport/features/places?kind=rail_station&include_unlocated=true&query=용유").json()
+    assert unlocated["total"] == 1
+    assert unlocated["items"][0]["name"] == "용유"
+    assert unlocated["items"][0]["longitude"] is None
+    assert unlocated["items"][0]["latitude"] is None
+    async def verify_raw() -> None:
+        async with client.app.state.session_factory() as session:
+            row = await session.scalar(select(RailStationReference).where(RailStationReference.identity_key == "invalid-coordinate"))
+            assert row.latitude == 126.423637
+            assert row.raw_item_json["역 위치(위도)"] == 126.423637
+    asyncio.run(verify_raw())
 
 
 def test_transport_port_timetable_caches_one_live_provider_call(tmp_path: Path) -> None:

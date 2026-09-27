@@ -101,6 +101,7 @@ from app.schemas import (
     TransportPlaceMapItem,
     TransportPlaceMapResponse,
     TransportStatisticsResponse,
+    RailTimetableResponse,
     WeekdayBucket,
     WeekdayHourlyPattern,
 )
@@ -117,6 +118,7 @@ from app.services.analytics import (
     detect_threshold_events,
 )
 from app.services.provider_status import provider_status
+from app.services.rail_timetable import stored_rail_timetables
 from app.services.analytics_cache import (
     DEFAULT_THRESHOLD_EVENTS_DAYS,
     DEFAULT_THRESHOLD_EVENTS_LIMIT,
@@ -568,6 +570,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ("/v1/admin/backups/restore", "post"): (400, 404, 409, 503),
             # 실시간 TAGO 시간표는 설정·참조 데이터·상류 provider 상태를 함께 반영한다.
             ("/v1/transport/bus/timetable", "get"): (404, 429, 502, 503),
+            ("/v1/transport/rail/timetables", "get"): (404,),
         }
         for path, path_item in schema.get("paths", {}).items():
             for method, operation in path_item.items():
@@ -903,7 +906,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         total = 0
 
         def coordinate_conditions(model) -> list[Any]:
-            conditions = [] if include_unlocated else [model.latitude.is_not(None), model.longitude.is_not(None)]
+            conditions = [] if include_unlocated else [
+                model.latitude.between(-90, 90), model.longitude.between(-180, 180),
+            ]
             if source:
                 conditions.append(model.source == source)
             if query and query.strip():
@@ -1028,6 +1033,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             generated_at=now_utc(), kind=selected_kind, total=total,
             truncated=total > len(visible_items), items=visible_items, available_sources=sorted(available_sources),
         )
+
+    @router.get("/transport/rail/timetables", response_model=RailTimetableResponse)
+    async def transport_rail_timetables(
+        place_ids: str = Query(min_length=1, max_length=100),
+        day_code: Literal["7", "8", "9"] | None = None,
+        session: AsyncSession = Depends(get_db),
+    ) -> RailTimetableResponse:
+        parts = place_ids.split(",")
+        if not 1 <= len(parts) <= 5 or any(not value.isascii() or not value.isdecimal() or len(value) > 10 for value in parts):
+            raise HTTPException(status_code=422, detail="역은 1~5곳을 선택해 주세요.")
+        ids = list(dict.fromkeys(int(value) for value in parts))
+        if any(not 1 <= value <= 2147483647 for value in ids):
+            raise HTTPException(status_code=422, detail="유효한 역 식별자를 선택해 주세요.")
+        places = (await session.scalars(select(RailStationReference).where(RailStationReference.id.in_(ids)))).all()
+        if len(places) != len(ids):
+            raise HTTPException(status_code=404, detail="저장되지 않은 역이 포함되어 있습니다.")
+        return await stored_rail_timetables(session, list(places), day_code)
 
     @router.get("/transport/ports/timetables", response_model=FerryStoredTimetableResponse)
     async def transport_stored_port_timetables(

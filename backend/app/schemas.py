@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from math import isfinite
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -197,6 +198,15 @@ class TransportPlaceMapItem(BaseModel):
     location_source: str | None = None
     location_point_count: int | None = None
 
+    @model_validator(mode="after")
+    def valid_map_coordinates(self) -> "TransportPlaceMapItem":
+        # 기존 DB 원본은 보존하고 모든 지도 소비자에 유효한 좌표 쌍만 제공한다.
+        if (self.longitude is None or self.latitude is None
+                or not isfinite(self.longitude) or not isfinite(self.latitude)
+                or not -180 <= self.longitude <= 180 or not -90 <= self.latitude <= 90):
+            self.longitude = self.latitude = None
+        return self
+
 
 class TransportPlaceMapResponse(BaseModel):
     generated_at: datetime
@@ -205,6 +215,32 @@ class TransportPlaceMapResponse(BaseModel):
     truncated: bool = False
     available_sources: list[str] = Field(default_factory=list)
     items: list[TransportPlaceMapItem]
+
+
+class RailDepartureItem(BaseModel):
+    train_number: str | None = None
+    departure_time: str | None = None
+    arrival_time: str | None = None
+    origin_name: str | None = None
+    destination_name: str | None = None
+
+
+class RailTimetableItem(BaseModel):
+    place_id: int
+    station_name: str
+    line_name: str | None = None
+    status: Literal["unlinked", "day_unresolved", "not_collected", "stored"]
+    collected_at: datetime | None = None
+    stale: bool = False
+    next_departure: RailDepartureItem | None = None
+    items: list[RailDepartureItem] = Field(default_factory=list)
+
+
+class RailTimetableResponse(BaseModel):
+    generated_at: datetime
+    day_code: Literal["7", "8", "9"] | None = None
+    basis: Literal["calendar", "selected_period", "calendar_unavailable", "overnight_unresolved"]
+    items: list[RailTimetableItem]
 
 
 class FerryOperationItem(BaseModel):
@@ -285,6 +321,15 @@ class ProviderCollectionStatus(BaseModel):
     error_code: str | None = None
 
 
+class KricCoverage(BaseModel):
+    station_count: int
+    linked_station_count: int
+    expected_snapshots: int
+    stored_snapshots: int
+    fresh_snapshots: int
+    oldest_collected_at: datetime | None = None
+
+
 class ProviderStatusResponse(BaseModel):
     generated_at: datetime
     items: list[ProviderCollectionStatus]
@@ -292,6 +337,7 @@ class ProviderStatusResponse(BaseModel):
     ferry_window_end: date
     ferry_expected_snapshots: int
     ferry_stored_snapshots: int
+    kric_coverage: KricCoverage | None = None
 
 
 class TransportCollectionRunStatus(BaseModel):

@@ -4,6 +4,7 @@ import { getDagsterOverview, runStalled, statusLabel } from "./dagster";
 
 afterEach(() => vi.unstubAllGlobals());
 describe("여행 정보 표시 계약", () => {
+  it.each(["235960", "23:59:60", "20260927235960"])("잘못된 초 %s는 정상 시각으로 표시하지 않는다", (value) => expect(serviceTime(value)).toBe("시각 확인 필요"));
   it.each([["0900", "09:00"], ["093000", "09:30"], ["202609270930", "09:30"], ["20260927093000", "09:30"], ["9:30", "09:30"], ["24:05", "익일 00:05"], ["29:59", "익일 05:59"], ["30:00", "시각 확인 필요"], ["12:60", "시각 확인 필요"], ["unknown", "시각 확인 필요"], [null, "시각 미제공"]])("시각 %s", (value, expected) => expect(serviceTime(value)).toBe(expected));
   it.each([[0, "0원"], [12000, "12,000원"], ["12,000원", "12,000원"], [null, "요금 미제공"], ["", "요금 미제공"], ["미정", "요금 확인 필요"], [-1, "요금 확인 필요"]])("요금 %s", (value, expected) => expect(money(value)).toBe(expected));
   it("한국 자정/월말/연말 기준을 사용한다", () => {
@@ -23,6 +24,8 @@ describe("여행 정보 표시 계약", () => {
     expect(clusterAtScale(11, 37)).toBe(false);
   });
   it.each([[null, 37, false], [127, null, false], [NaN, 37, false], [127, 37, true]])("미등록 좌표를 지도에 넣지 않는다", (longitude, latitude, expected) => expect(hasCoordinates({ longitude, latitude } as Place)).toBe(expected));
+  it.each([[37.424805, 126.423637], [181, 37], [-181, 37], [127, -91], [Infinity, 37], [127, -Infinity]])("범위 밖 좌표 %s/%s를 지도와 카메라에 넣지 않는다", (longitude, latitude) => expect(hasCoordinates({ longitude, latitude } as Place)).toBe(false));
+  it.each([[180, 90], [-180, -90], [0, 0]])("유효한 좌표 경계 %s/%s는 유지한다", (longitude, latitude) => expect(hasCoordinates({ longitude, latitude } as Place)).toBe(true));
   it("429 보호 시간을 보존한다", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: "제한" }), { status: 429, headers: { "retry-after": "30" } })));
     await expect(transportGet("transport/bus/timetable")).rejects.toMatchObject({ status: 429, retryAfter: 30 });
@@ -43,6 +46,7 @@ describe("수집 상태 표시", () => {
     const run = { runId: "1", status: "STARTED", jobName: "ferry_timetable_collection_job", startTime: 100, endTime: null };
     expect(runStalled(run, 3700 * 1000)).toBe(false);
     expect(runStalled(run, 15000 * 1000)).toBe(true);
+    expect(runStalled({ ...run, jobName: "kric_timetable_collection_job" }, 3700 * 1000)).toBe(false);
   });
   it("GraphQL HTTP 200 오류를 정상으로 표시하지 않는다", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ errors: [{ message: "failed" }] }))));
