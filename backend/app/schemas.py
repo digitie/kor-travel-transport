@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from math import isfinite
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -196,6 +197,15 @@ class TransportPlaceMapItem(BaseModel):
     updated_at: datetime
     location_source: str | None = None
     location_point_count: int | None = None
+
+    @model_validator(mode="after")
+    def valid_map_coordinates(self) -> "TransportPlaceMapItem":
+        # 기존 DB 원본은 보존하고 모든 지도 소비자에 유효한 좌표 쌍만 제공한다.
+        if (self.longitude is None or self.latitude is None
+                or not isfinite(self.longitude) or not isfinite(self.latitude)
+                or not -180 <= self.longitude <= 180 or not -90 <= self.latitude <= 90):
+            self.longitude = self.latitude = None
+        return self
 
 
 class TransportPlaceMapResponse(BaseModel):

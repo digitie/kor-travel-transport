@@ -906,7 +906,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         total = 0
 
         def coordinate_conditions(model) -> list[Any]:
-            conditions = [] if include_unlocated else [model.latitude.is_not(None), model.longitude.is_not(None)]
+            conditions = [] if include_unlocated else [
+                model.latitude.between(-90, 90), model.longitude.between(-180, 180),
+            ]
             if source:
                 conditions.append(model.source == source)
             if query and query.strip():
