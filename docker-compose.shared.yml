@@ -204,7 +204,9 @@ services:
     healthcheck:
       # dagster의 정식 판정. 매번 dagster를 import하고 metadata DB까지 왕복한다(n150 부하 때 10초 초과
       # 실측) — timeout을 60초로 두고 주기를 늘려 probe가 부하를 키우지 않게 한다.
-      # 주기 × retries(240초)는 위 DAGSTER_DAEMON_HEARTBEAT_TOLERANCE(300초)를 넘지 않는다.
+      # 끼인 daemon이 unhealthy로 보이기까지 최악 30s(heartbeat 주기) + 300s(위 tolerance) +
+      # 60s(진행 중이던 probe) + 2 × (120s + 60s) = 750s다. docker는 이전 probe가 끝난 뒤에야
+      # interval을 다시 센다. docker는 unhealthy를 재시작하지 않으므로 이 시간을 기다리는 쪽은 없다.
       test: ["CMD", "dagster-daemon", "liveness-check"]
       interval: 120s
       timeout: 60s

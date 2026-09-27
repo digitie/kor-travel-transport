@@ -7,12 +7,21 @@
   `grpc_health`의 `DagsterApi` 판정을 8초 deadline과 함께 부른다(interval 30s, timeout 10s,
   retries 5, start_period 180s, start_interval 5s). webserver probe는 같은 GraphQL 판정을
   `python -I`로 바꿨다. daemon `liveness-check`는 interval 120s, timeout 60s, retries 2,
-  start_interval 15s로 바꿨다(120s×2 ≤ tolerance 300s). 세 서비스 모두 `init: true`다.
+  start_interval 15s로 바꿨다(tolerance는 300s). 세 서비스 모두 `init: true`다.
   compose 파일은 이 파일만 Dagster 서비스를 정의한다.
 - `backend/tests/test_dagster_healthcheck_contract.py`는 이름이 아니라 command에서 Dagster
-  서비스를 찾는다. exec 형식, `python -I`, `init: true`를 확인하고, code-server probe가
-  `grpc_health` 판정과 command 포트를 쓰는지, daemon의 timeout과 tolerance를 확인한다.
-  `origin/main` compose에 돌리면 빨갛다.
+  서비스를 찾는다. exec 형식(셸 감싸기·`disable` 금지), `python -I`, `init: true`를 확인한다.
+  code-server probe는 `Check`의 deadline이 docker timeout보다 짧은 숫자 상수인지 AST로 보고,
+  실제 gRPC health 서버 앞에서 실행해 `DagsterApi`가 SERVING일 때만 exit 0인지 확인한다.
+  daemon은 timeout과 tolerance를 확인한다. `origin/main` compose에 돌리면 빨갛다.
+- 적대 리뷰 반영: 첫 판 테스트는 문자열 조각만 봐서 `timeout=None`, `NOT_SERVING` 반전,
+  docker timeout보다 긴 deadline, `CMD sh -c`, `/usr/bin/env python`, `disable: true`가 모두
+  초록이었다. daemon의 "120s×2 ≤ 300s" 불변식은 docker가 probe가 끝난 뒤에야 interval을
+  센다는 점을 빠뜨려 아무것도 묶지 않았다. 실제 최악은 30 + 300 + 60 + 2 × (120 + 60) =
+  750s이고, 기다리는 소비자가 없어 테스트에서 뺐다. runbook의 최소 반영 경로는 `.env.server14`의
+  `BACKEND_RUNTIME_IMAGE`를 그대로 읽어, 21:13Z draft PR #43 배포가 바꾼 `ab25bf7b`로 세
+  서비스를 옮길 뻔했다. 이미지 고정·config hash gate·daemon 선정지를 넣었다. 첫 판 journal
+  편집은 아래 2026-09-27 KRIC 항목의 제목을 지웠다가 되살렸다.
 - n150 실측: 새 probe는 살아 있는 14005에서 exit 0(0.7~1.2초), 닫힌 포트에서 exit 1이다.
   기존 CLI probe는 1.8초가 걸렸다(부하 23).
 - 조사 결과 unhealthy의 원인은 probe가 아니라 code-server gRPC 서버 정지였다. 08:32Z

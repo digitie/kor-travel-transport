@@ -39,30 +39,72 @@ REMOTE_APP_DIR=/home/digitie/apps/kor-travel-airport \
 배포를 쓰지 않는다. 전체 배포는 `up -d --build`로 backend·frontend·gateway 이미지를 n150에서
 다시 빌드한다. `rsync --delete`는 archive에 없는 `.transport-admin-release-sha`와
 `.env.server14.before-*` 백업도 지운다. 대신 다음처럼 Dagster 세 서비스만 재생성한다.
+이 경로는 `deploy-server14-remote.sh`의 receipt·env gate를 거치지 않고 `.release-sha`도
+갱신하지 않는다. 다음 전체 배포 전까지 배포 디렉터리는 `.release-sha`와 일치하지 않는다.
 
 ```bash
 # WSL: 머지된 main checkout에서 compose 파일 하나만 올린다.
 scp docker-compose.shared.yml digitie@192.168.1.14:/tmp/docker-compose.shared.yml.new
 
-# n150
+# n150 — 같은 셸에서 끝까지 진행한다(아래 export를 rollback도 쓴다).
 cd /home/digitie/apps/kor-travel-airport
-cp -p docker-compose.shared.yml /tmp/docker-compose.shared.yml.prev
-install -m 664 /tmp/docker-compose.shared.yml.new docker-compose.shared.yml
 compose() { docker compose --project-name kor-travel-airport --env-file .env.server14 \
   -f docker-compose.yml -f docker-compose.shared.yml "$@"; }
+cs=kor-travel-airport-dagster-code-server-1
+
+# 1) 이미지를 지금 code-server 이미지로 고정한다. `.env.server14`의 BACKEND_RUNTIME_IMAGE는
+#    다른 배포가 바꿀 수 있고, 셸 env가 --env-file보다 우선한다.
+export BACKEND_RUNTIME_IMAGE="$(docker inspect -f '{{.Image}}' "$cs")"
+
+# 2) 드리프트 gate(아직 옛 shared.yml): code-server config hash가 실행 중 label과 같아야 한다.
+#    STOP이면 compose·env에 이 변경과 무관한 차이가 있다. 여기서 멈추고 전체 릴리스로 반영한다.
+want="$(docker inspect -f '{{index .Config.Labels "com.docker.compose.config-hash"}}' "$cs")"
+got="$(compose config --hash dagster-code-server | awk '{print $2}')"
+[ "$got" = "$want" ] && echo "gate OK" || echo "STOP: host drift ($got != $want)"
+
+# 3) 새 run이 시작되지 않게 daemon을 먼저 멈춘다(schedule·queue dequeue는 daemon이 한다).
+compose stop dagster-daemon
+
+# 4) 실행 중 run이 끝나기를 기다린다. code-server 재생성은 실행 중 run을 끊는다.
+#    그만두려면 `compose start dagster-daemon`으로 옛 daemon을 되살린다.
+q='{"query":"{runsOrError(filter:{statuses:[STARTED,STARTING,CANCELING]}){... on Runs{count}}}"}'
+while :; do
+  n="$(curl -s -m 20 -H 'Content-Type: application/json' -d "$q" http://127.0.0.1:14004/graphql \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["runsOrError"]["count"])')"
+  echo "in-flight runs: ${n:-?}"; [ "$n" = 0 ] && break; sleep 30
+done
+
+# 5) 파일 교체 → 세 서비스만 재생성(daemon도 새 정의로 다시 뜬다).
+cp -p docker-compose.shared.yml /tmp/docker-compose.shared.yml.prev
+install -m 664 /tmp/docker-compose.shared.yml.new docker-compose.shared.yml
 compose config -q
-# code-server 재생성은 실행 중인 run을 끊는다. STARTED/STARTING/CANCELING run이 0개일 때 진행한다.
 compose up -d --no-deps --no-build dagster-code-server dagster-webserver dagster-daemon
 compose ps dagster-code-server dagster-webserver dagster-daemon
+
+# 6) 효과 확인: 셋 다 init=true, 같은 이미지, 새 probe(code-server는 grpc_health).
+for s in code-server webserver daemon; do
+  docker inspect -f '{{.Name}} init={{.HostConfig.Init}} image={{.Image}} {{json .Config.Healthcheck.Test}}' \
+    "kor-travel-airport-dagster-$s-1"
+done
 ```
 
 - 재생성되는 컨테이너는 `kor-travel-airport-dagster-{code-server,webserver,daemon}-1`뿐이다.
   backend·frontend·`dagster-gateway`·`migrate` 계열은 건드리지 않는다. 이미지는 빌드하지 않는다.
-- webserver·daemon은 `.env.server14`의 `BACKEND_RUNTIME_IMAGE`로 재생성된다. 이전에
-  `kor-travel-airport-backend:latest`로 떠 있었다면 이 단계에서 code-server와 같은 이미지로 바뀐다.
+- code-server는 이미지가 그대로이고 healthcheck·`init`만 바뀐다. webserver·daemon은 의도적으로
+  code-server와 같은 이미지로 바뀐다(2026-09-28 기준 둘은 `kor-travel-airport-backend:latest`
+  `c8b47811`, code-server는 `148a471b`로 떠 있었다. 둘 다 dagster 1.13.24다).
+- 1)을 빼면 `.env.server14`의 현재 값으로 재생성된다. 2026-09-27 21:13Z에는 미머지 draft PR
+  #43 배포가 이 값을 `ab25bf7b`로 바꿔 두었으므로, 고정 없이 실행하면 세 서비스가 그 이미지로
+  옮겨 갔다. `compose config -q`는 이 차이를 잡지 못한다.
 - `kor-travel-transport-admin` project는 건드리지 않는다. webserver가 다시 healthy가 될 때까지
   관리 UI의 Dagster 화면(12302 → 14004)만 잠시 502를 줄 수 있다.
-- 되돌릴 때는 `/tmp/docker-compose.shared.yml.prev`를 제자리에 복사하고 같은 `up` 명령을 다시 실행한다.
+- 되돌릴 때는 같은 셸(1의 export 유지)에서 `/tmp/docker-compose.shared.yml.prev`를 제자리에
+  `install -m 664`로 복사하고 5)의 `up` 명령을 다시 실행한다. healthcheck·`init`만 돌아가고
+  webserver·daemon은 code-server 이미지에 남는다.
+- `scripts/deploy-transport-admin-server14.sh`도 HEAD archive 전체를 같은 디렉터리에 `rsync`
+  (삭제 없음)하므로 `docker-compose.shared.yml`을 그 배포 커밋의 내용으로 덮어쓴다. 이 변경이
+  없는 브랜치에서 transport-admin을 배포하면 파일이 옛 probe로 돌아가고, 다음 전체 배포의
+  `up`이 세 서비스를 옛 probe로 재생성한다. 그런 배포 뒤에는 6)의 확인을 다시 실행한다.
 
 n150의 기본 구성은 PostgreSQL 16, Alembic `0003_legacy_source_identity`,
 `COLLECT_INTERVAL_SECONDS=300`, `SCHEDULER_SAFETY_BUFFER_SECONDS=120`,

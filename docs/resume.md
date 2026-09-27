@@ -4,8 +4,12 @@
 
 - 2026-09-28 `fix/dagster-healthcheck-exec-form`에서 Dagster 세 서비스의 healthcheck를
   exec 형식·`python -I`·`init: true` 계약으로 바꾸고, command에서 Dagster 서비스를 유도하는
-  계약 테스트를 추가했다. 아직 미배포다. 반영은 compose 파일 교체와 Dagster 세 서비스
-  `up -d --no-deps --no-build`로 한다(`docs/runbooks/deployment.md`).
+  계약 테스트를 추가했다. 아직 미배포다. 반영은 `docs/runbooks/deployment.md`의 순서
+  그대로(이미지 고정 → config hash gate → daemon 정지 → in-flight run 0 대기 → compose 파일
+  교체 → Dagster 세 서비스 `up -d --no-deps --no-build`) 한다. `.env.server14`의
+  `BACKEND_RUNTIME_IMAGE`는 draft PR #43 배포가 `ab25bf7b`로 바꿔 두었으므로 고정 없이
+  실행하지 않는다. transport-admin 배포도 `docker-compose.shared.yml`을 덮어쓰므로
+  `codex/transport-followups`(PR #43)는 이 변경 위로 rebase한 뒤 배포한다.
   2026-09-27 11:46Z~19:51Z code-server 정지 조사는 `docs/journal.md` 같은 날짜 항목을 본다.
 
 - 2026-09-28 PR #43 `codex/transport-followups`는 backend `1dd1868`/이미지 `ab25bf7`,
@@ -420,8 +424,8 @@
 
 ## 다음 한 작업
 
-Dagster healthcheck 브랜치는 CI·리뷰 뒤 in-flight run이 0개일 때 Dagster 세 서비스만
-재생성해 반영한다. code-server가 다시 unhealthy가 되면 재시작 전에 스레드 stack을 먼저
+Dagster healthcheck 브랜치는 CI·리뷰 뒤 `docs/runbooks/deployment.md` "Dagster 서비스
+정의만 바뀐 반영"의 순서로 Dagster 세 서비스만 재생성해 반영한다. code-server가 다시 unhealthy가 되면 재시작 전에 스레드 stack을 먼저
 확보한다(재시작하면 lock을 잡은 frame이 사라진다).
 
 PR #42의 코드·운영 검증은 끝났으며 최종 증적 CI·머지는 PR에서 확인한다.

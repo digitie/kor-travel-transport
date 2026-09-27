@@ -32,14 +32,20 @@ background task가 아니라 Dagster가 맡는다. 이 경계는 고속도로·�
 Manager #426·Map #1284와 같은 계약이며 `backend/tests/test_dagster_healthcheck_contract.py`가
 command에서 Dagster 서비스를 찾아 검사한다.
 
-- 모든 Dagster probe는 exec 형식(`CMD`)이고 Python probe는 `python -I`다. `CMD-SHELL`은
-  timeout 때 셸만 죽이고 그 아래 Python을 고아로 남긴다.
+- 모든 Dagster probe는 exec 형식(`CMD`)이고 Python probe는 `python -I`다. `CMD-SHELL`이나
+  `CMD sh -c`는 timeout 때 셸만 죽이고 그 아래 Python을 고아로 남긴다. healthcheck를
+  `disable`하지 않는다.
 - code-server·webserver·daemon은 `init: true`다. PID 1인 dagster는 고아를 거두지 않는다.
 - code-server probe는 `grpc_health`로 `DagsterApi`가 `SERVING`인지 8초 deadline과 함께 묻는다.
   CLI `dagster api grpc-health-check`와 같은 판정이지만 dagster를 import하지 않는다. CLI는
-  deadline이 없어 끼인 서버 앞에서 끝나지 않는다.
-- daemon `liveness-check`는 timeout 60s, interval 120s, retries 2다. 주기 × retries는
-  `DAGSTER_DAEMON_HEARTBEAT_TOLERANCE`(300s)를 넘지 않는다.
+  deadline이 없어 끼인 서버 앞에서 끝나지 않는다. 테스트는 deadline이 숫자 상수이고 docker
+  timeout(10s)보다 짧은지 확인하고, 실제 gRPC health 서버 앞에서 probe를 실행해 `SERVING`일
+  때만 exit 0인지 확인한다.
+- daemon `liveness-check`는 timeout 60s, interval 120s, retries 2다.
+  `DAGSTER_DAEMON_HEARTBEAT_TOLERANCE`는 300s다. dagster는 마지막 heartbeat 뒤 heartbeat
+  주기(30s) + tolerance가 지나야 낡았다고 본다. docker는 이전 probe가 끝난 뒤에야 interval을
+  다시 세므로, 끼인 daemon이 unhealthy로 보이기까지 최악 30 + 300 + 60(진행 중이던 probe) +
+  2 × (120 + 60) = 750s다. 이 시간을 기다리는 소비자는 없어 테스트는 상한으로 걸지 않는다.
 - healthcheck는 상태를 보이게만 한다. docker는 unhealthy 컨테이너를 재시작하지 않는다.
   2026-09-27 code-server가 gRPC worker 8개를 모두 막힌 호출에 잃고 8시간 unhealthy로 남은
   사례는 `docs/journal.md`에 있다.
