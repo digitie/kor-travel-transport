@@ -195,6 +195,8 @@ for (const tiles of ["즉시 실패", "지연 실패", "지연 성공"]) test(`�
   await page.route("**/parking/current?**", (route) => route.fulfill({ json: { items: [] } }));
   await page.goto("/map");
   await page.locator("canvas.maplibregl-canvas").scrollIntoViewIfNeeded();
+  // 카메라 이동으로 초기화 결함을 가리지 않는다. 최초 지도에서도 묶음이 보여야 한다.
+  await expect(page.getByRole("button", { name: "4개 위치 묶음 펼치기", exact: true })).toBeVisible({ timeout: 15_000 });
   // 실제 타일 호출 없이도 카메라 이동으로 지도 viewport 계산을 완료한다.
   await page.getByLabel("장소 목록에서 선택").selectOption("rail_station:3");
   await page.getByRole("button", { name: "3개 위치 묶음 펼치기" }).click();
