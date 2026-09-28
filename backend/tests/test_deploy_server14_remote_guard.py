@@ -131,9 +131,12 @@ def test_release_image_is_pinned_per_release_through_the_shell_env() -> None:
     text = _REMOTE.read_text(encoding="utf-8")
     source = text.index('source "${REMOTE_ENV_FILE}"')
     pin = text.index('export BACKEND_RUNTIME_IMAGE="kor-travel-transport-backend:rel-${CANDIDATE_SHA:0:12}"')
+    sha = text.index('export RELEASE_SHA="${CANDIDATE_SHA}"')
     up = text.index("up -d --build")
-    # env 파일을 source한 뒤에 export해야 파일의 값(다른 배포가 적어 둔 draft 이미지)을 덮는다.
+    # env 파일을 source한 뒤에 export해야 파일의 값(다른 배포가 적어 둔 draft 이미지·옛 RELEASE_SHA)을 덮는다.
+    # `set -a; source`가 둘을 셸 env로 export하고, 셸 env는 --env-file보다 우선한다.
     assert source < pin < up
+    assert source < sha < up
     assert "awk '!/^(RELEASE_SHA|BACKEND_RUNTIME_IMAGE)=/'" in text
 
 

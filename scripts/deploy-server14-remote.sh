@@ -120,6 +120,9 @@ chmod 600 "${RUNTIME_ENV_FILE}"
 # migrate·Dagster 서비스도 같은 이미지로 뜬다. env 파일에 두면 다음 release가 같은 태그를 덮어써
 # 이전 release 이미지가 dangling이 되므로 셸 env로만 준다(셸 env가 --env-file보다 우선한다).
 export BACKEND_RUNTIME_IMAGE="kor-travel-transport-backend:rel-${CANDIDATE_SHA:0:12}"
+# 위 `set -a; source`는 env 파일의 `RELEASE_SHA=` 줄도 셸 env로 export한다. 셸 env가 --env-file보다
+# 우선하므로 runtime env에서 그 줄을 지운 것만으로는 옛 SHA가 이긴다. 셸 env도 candidate로 덮는다.
+export RELEASE_SHA="${CANDIDATE_SHA}"
 
 docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${RUNTIME_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml config -q
 docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${RUNTIME_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml up -d --build

@@ -1,10 +1,13 @@
 """`scripts/rename-deploy-identity-server14.sh`가 가짜 n150 앞에서 fail-closed로 동작하는지 본다.
 
 개명 cutover는 compose project·앱 디렉터리를 `kor-travel-airport`에서 `kor-travel-transport`로 옮긴다.
-여기서 고정하는 것은 순서와 멈춤, 그리고 끝난 뒤의 상태다. 옛 daemon을 먼저 멈추고 run을 기다린다.
-env는 fence 직전에 다시 복사한다. 새 스택을 검증한 뒤에만 옛 컨테이너를 은퇴시킨다(daemon 삭제,
-나머지는 restart=no로 이름 변경). 관리 스택은 빌드 없이 재생성한다. rollback은 디렉터리를 겹치지
-않게 되돌리고 고정 이미지로 재생성한다. 창이 끝나기 전에 멈추면 옛 스택을 되살린다.
+여기서 고정하는 것은 순서와 멈춤, 그리고 끝난 뒤의 상태다. 창은 옛 스택을 멈추기 전에 다시 빌드하고
+Dagster gate를 다시 보며, 새 컨테이너가 그 gate를 통과한 이미지 ID로 떴는지 확인한다. 옛 daemon을 먼저
+멈추고 run을 기다린다. env는 fence 직전에 다시 복사한다. 새 스택을 검증한 뒤에만 옛 컨테이너를
+은퇴시킨다(daemon 삭제, 나머지는 restart=no로 이름 변경). 관리 스택은 빌드 없이 재생성하고 중간에
+실패해도 다시 실행할 수 있다. rollback은 run을 기다리고, 디렉터리를 겹치지 않게 되돌리고, 고정
+이미지로 재생성한다. 창이 끝나기 전에 멈추면(신호 포함) 옛 스택을 되살리고, `docker start`로 뜨지 않는
+서비스는 rollback 태그로 재생성한다.
 docker·curl·ss·pgrep·crontab·sudo는 가짜다. compose 파일은 JSON으로 쓰고, 가짜 compose가 셸 env >
 `--env-file` 순으로 치환해 렌더링한다. 새 디렉터리의 `deploy-server14-remote.sh`는 가짜 배포다(진짜는
 `/home/digitie/apps/kor-travel-transport`에서만 돈다). 진짜 배포 스크립트의 guard는
@@ -16,9 +19,13 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import pty
+import select
+import signal
 import stat
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -92,8 +99,8 @@ def resolve(ref):
         return tags[ref]
     if not ref.startswith("sha256:") and ":" not in ref.split("/")[-1] and ref + ":latest" in tags:
         return tags[ref + ":latest"]
-    if re.fullmatch(r"sha256:[0-9a-f]{64}", ref) and ref in tags.values():
-        return ref
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", ref) and (ref in tags.values() or ref in state.get("layers", {})):
+        return ref  # 태그가 옮겨 가도 컨테이너가 쓰는 이미지는 ID로 남는다.
     return None
 
 def label(container, key):
@@ -144,6 +151,12 @@ if program == "curl":
         fail(f"curl: (7) Failed to connect to 127.0.0.1 port {port}", 7)
     if url.endswith("/graphql"):
         if "runsOrError" in data:
+            edit = state.get("env_edit_during_drain")
+            if edit:  # 창이 run을 기다리는 동안 다른 세션이 옛 env를 고친다(critique M1).
+                with open(edit["path"], "a") as handle:
+                    handle.write(edit["line"])
+                state["env_edit_during_drain"] = None
+                save()
             body = {"runsOrError": {"__typename": "Runs", "results": state["runs"]}}
         else:
             nodes = []
@@ -217,7 +230,15 @@ def image_ref(project, name, spec):
 def build(project, name, spec):
     ref = image_ref(project, name, spec)
     ref = ref if ":" in ref.split("/")[-1] else ref + ":latest"
-    state["tags"][ref] = "sha256:" + hashlib.sha256(f"built {project}/{name}/{ref}".encode()).hexdigest()
+    # containerd image store처럼: 빌드마다 config 생성 시각이 바뀌어 이미지 ID는 늘 새로 나온다. 층은 입력
+    # (렌더링한 build 절, 곧 env에서 온 build arg 포함)이 같으면 같다(cache hit). salt는 빌드 캐시가 비어
+    # 다시 빌드된 경우(pip·apt 층이 새로 만들어진다)를 흉내 낸다.
+    salt = state.get("build_salt", "") + os.environ.get("FAKE_BUILD_SALT", "")
+    inputs = json.dumps(spec.get("build"), sort_keys=True)
+    layer = "sha256:" + hashlib.sha256(f"layer {project}/{name}/{ref}{inputs}{salt}".encode()).hexdigest()
+    image = "sha256:" + hashlib.sha256(f"{layer} created {os.urandom(8).hex()}".encode()).hexdigest()
+    state.setdefault("layers", {})[image] = [layer]
+    state["tags"][ref] = image
 
 command = args[0]
 if command == "compose":
@@ -263,6 +284,10 @@ if command == "compose":
             for other in [n for n, c in state["containers"].items()
                           if label(c, "com.docker.compose.project") == project and label(c, "com.docker.compose.service") == name]:
                 del state["containers"][other]
+            if state.get("fail_up_at") == name:  # --force-recreate가 옛 컨테이너를 지운 뒤 실패한 경우
+                state["fail_up_at"] = None
+                save()
+                fail(f"Error response from daemon: failed to create {project}-{name}-1")
             cwd = os.getcwd()
             state["containers"][f"{project}-{name}-1"] = {
                 "Id": os.urandom(32).hex(), "Image": image, "ConfigImage": ref,
@@ -285,6 +310,8 @@ if command == "ps":
     labels = [args[i + 1].split("=", 1)[1] for i, a in enumerate(args) if a == "--filter"]
     if not quiet and args[args.index("--format") + 1] != "{{.Names}}":
         fail("fake docker ps: unsupported format", 2)
+    if state.get("fail_ps_filters") and all(f in labels for f in state["fail_ps_filters"]):
+        fail("Cannot connect to the Docker daemon at unix:///var/run/docker.sock")
     for name, c in containers.items():
         if (everything or c["Running"]) and all(label(c, l.split("=", 1)[0]) == l.split("=", 1)[1] for l in labels):
             print(c["Id"][:12] if quiet else name)
@@ -299,7 +326,13 @@ elif command == "image":
     image = resolve(args[-1])
     if image is None:
         fail(f"Error: No such image: {args[-1]}")
-    print(image)
+    if args[3] == "{{json .RootFS.Layers}}":
+        default = ["sha256:" + hashlib.sha256(f"layer of {image}".encode()).hexdigest()]
+        print(json.dumps(state.get("layers", {}).get(image, default)))
+    elif args[3] == "{{.Id}}":
+        print(image)
+    else:
+        fail(f"fake docker: unsupported image inspect format {args[3]}", 2)
 elif command == "tag":
     image = resolve(args[1])
     if image is None:
@@ -310,6 +343,9 @@ elif command in ("stop", "start"):
     for name in args[1:]:
         if name not in containers:
             fail(f"Error response from daemon: No such container: {name}")
+        # 돌던 이미지가 store에서 지워진 컨테이너를 start가 거부하는 경우(n150에서 확인하지 못한 동작).
+        if command == "start" and state.get("start_needs_image") and containers[name]["Image"] not in state["tags"].values():
+            fail(f"Error response from daemon: No such image: {containers[name]['Image']}")
         containers[name]["Running"] = command == "start"
     save()
 elif command == "rm":
@@ -385,9 +421,12 @@ if [[ -n "$(docker ps -q --filter label=com.docker.compose.project=kor-travel-ai
   exit 2
 fi
 export BACKEND_RUNTIME_IMAGE="kor-travel-transport-backend:rel-${CANDIDATE_SHA:0:12}"
+export RELEASE_SHA="$CANDIDATE_SHA"
 runtime="$(mktemp ./.env.server14.runtime.XXXXXX)"
 trap 'rm -f "$runtime"' EXIT
 { awk '!/^(RELEASE_SHA|BACKEND_RUNTIME_IMAGE)=/' .env.server14; printf 'RELEASE_SHA=%s\\n' "$CANDIDATE_SHA"; } > "$runtime"
+# 창 전 재빌드와 이 `up --build` 사이에 빌드 캐시가 빈 경우: 다른 이미지가 빌드된다.
+[[ "${FAKE_DEPLOY:-ok}" != rebuild-differs ]] || export FAKE_BUILD_SALT=evicted-during-window
 docker compose --project-name kor-travel-transport --env-file "$runtime" -f docker-compose.yml -f docker-compose.shared.yml up -d --build
 [[ "${FAKE_DEPLOY:-ok}" != fail-after-up ]] || { echo "fake deploy failed after up" >&2; exit 1; }
 # 창 안에서 다른 세션이 옛 daemon을 이름으로 띄운 경우(critique H1).
@@ -412,7 +451,12 @@ def _shared_compose(project: str) -> str:
         "migrate": {"image": image, "restart": "no"},
         "dagster-migrate": {"image": image, "restart": "no"},
         "dagster-gateway": {"build": {"context": "."}, "restart": "unless-stopped"},
-        "frontend": {"build": {"context": "."}, "restart": "unless-stopped", "healthcheck": _HEALTH},
+        # 진짜 compose처럼 frontend build arg는 env에서 온다.
+        "frontend": {
+            "build": {"context": ".", "args": {"NEXT_PUBLIC_API_PORT": "${NEXT_PUBLIC_API_PORT:-8000}"}},
+            "restart": "unless-stopped",
+            "healthcheck": _HEALTH,
+        },
     }
     for name in ("dagster-code-server", "dagster-webserver", "dagster-daemon"):
         services[name] = {
@@ -604,8 +648,9 @@ class Host:
             ],
             "migrations": {_BACKEND_IMG: _migration_listing(_MIGRATIONS)},
             "db_revision": "0015_fuel_statistics_priced",
-            "dagster": {_CODE_IMG: "1.13.23"},
-            "dagster_built": "1.13.23",
+            # 2026-09-28 n150: code-server는 1.13.24다(uv.lock·CI는 1.13.23이지만 이미지 빌드는 PyPI 최신을 받는다).
+            "dagster": {_CODE_IMG: "1.13.24"},
+            "dagster_built": "1.13.24",
             "pg_image": "postgis/postgis:16-3.5",
         }
 
@@ -721,6 +766,16 @@ def _index(calls: list[dict[str, Any]], prefix: list[str], *, after: int = -1) -
     return next(i for i, call in enumerate(calls) if i > after and call["argv"][: len(prefix)] == prefix)
 
 
+def _recorded(host: Host) -> dict[str, tuple[str, str]]:
+    """`release-images`: 역할 → (층 지문, 기록할 때의 이미지 ID)."""
+    rows = (host.work / "release-images").read_text(encoding="utf-8").splitlines()
+    return {role: (layers, image) for role, layers, image in (row.split() for row in rows)}
+
+
+def _layers(host: Host, image: str) -> list[str]:
+    return host.state()["layers"][image]
+
+
 def _assert_no_secret_leaked(host: Host, *results: subprocess.CompletedProcess[str]) -> None:
     logged = host.log_path.read_text(encoding="utf-8")
     for secret in (_APP_SECRET, _DAGSTER_SECRET, "admin-pw", "quoted key value"):
@@ -766,9 +821,14 @@ def test_cutover_runs_in_order_and_rolls_back_without_nesting(host: Host) -> Non
     assert build["argv"][-3:] == ["backend", "frontend", "dagster-gateway"]
     assert build["image_env"] == _REL and build["cwd"] == str(host.new)
 
-    # prepare 뒤 다른 세션이 옛 env를 고친다(critique M1). 창의 fence 직전 재복사가 이 편집을 가져가야 한다.
-    with (host.old / ".env.server14").open("a", encoding="utf-8") as env_file:
-        env_file.write("FERRY_TIMETABLE_COLLECTION_INTERVAL_SECONDS=900\n")
+    # 창이 옛 daemon을 멈추고 run을 기다리는 동안 다른 세션이 옛 env를 고친다(critique M1). 창 전 재빌드의
+    # env 사본 뒤의 편집이라 fence 직전 재복사만 이 편집을 가져간다.
+    host.update_state(
+        env_edit_during_drain={
+            "path": str(host.old / ".env.server14"),
+            "line": "FERRY_TIMETABLE_COLLECTION_INTERVAL_SECONDS=900\n",
+        }
+    )
     host.clear_log()
     window = host.ok("window", _R)
     calls = host.calls()
@@ -789,6 +849,11 @@ def test_cutover_runs_in_order_and_rolls_back_without_nesting(host: Host) -> Non
     assert sorted(p.name for p in (host.new / "backups").iterdir()) == sorted(p.name for p in (host.old / "backups").iterdir())
 
     rel_image = host.state()["tags"][_REL]
+    # 재빌드마다 이미지 ID는 새로 나온다(containerd image store). 창 전 재빌드와 배포의 `up --build`는
+    # 모두 cache hit이라 층이 같고, 검증은 층을 본다. 그래서 prebuild 뒤 바뀌었다는 주의도 없다.
+    assert rel_image != _recorded(host)["release"][1]
+    assert _layers(host, rel_image) == _layers(host, _recorded(host)["release"][1])
+    assert "층이 바뀌었다" not in window.stdout
     new = host.containers(_NEW)
     assert sorted(c["Labels"]["com.docker.compose.service"] for c in new.values() if c["Running"]) == sorted(_SERVICES)
     for service in ("backend", "dagster-code-server", "dagster-webserver", "dagster-daemon"):
@@ -844,6 +909,11 @@ def test_cutover_runs_in_order_and_rolls_back_without_nesting(host: Host) -> Non
     assert {s: old[f"{_OLD}-{s}-1"]["Image"] for s in _SERVICES} == expected_images
     assert all(c["Running"] and c["Restart"] == "unless-stopped" for c in old.values())
     calls = host.calls()
+    # 새 daemon을 먼저 멈추고 run이 0인 것을 본 뒤에야 code-server 등 나머지를 멈춘다(critique 후속 LOW).
+    new_daemon_stop = _index(calls, ["docker", "stop", f"{_NEW}-dagster-daemon-1"])
+    drained = _index(calls, ["curl"], after=new_daemon_stop)
+    new_code_stop = _index(calls, ["docker", "stop", f"{_NEW}-dagster-code-server-1"])
+    assert new_daemon_stop < drained < new_code_stop, [call["argv"] for call in calls]
     old_ups = [
         call["argv"]
         for call in calls
@@ -875,7 +945,7 @@ def test_window_restarts_the_old_daemon_when_runs_do_not_drain(host: Host) -> No
         calls, ["docker", "start", f"{_OLD}-dagster-daemon-1"]
     )
     assert not [c for c in calls if c["argv"][:2] == ["docker", "stop"] and "daemon" not in c["argv"][2]]
-    assert not [c for c in calls if c["argv"][:2] == ["docker", "compose"]]
+    assert not [c for c in calls if c["argv"][:2] == ["docker", "compose"] and "up" in c["argv"]]
     assert (host.old / ".env.server14").is_file()
     assert all(c["Running"] for c in host.containers(_OLD).values())
     assert not host.containers(_NEW)
@@ -979,12 +1049,27 @@ def test_prebuild_refuses_a_release_whose_migrations_differ_from_production(host
     assert result.returncode != 0 and "revision" in result.stderr
 
 
+def test_prebuild_refuses_a_render_that_still_has_a_network(host: Host) -> None:
+    host.ok("prepare", _R)
+    host.stage()
+    (host.new / "docker-compose.yml").write_text(
+        '{"services": {}, "networks": {"kor-travel-transport-net": {}}}\n', encoding="utf-8"
+    )
+    host.clear_log()
+    result = host.run("prebuild", _R)
+    assert result.returncode != 0 and "network가 남았다" in result.stderr
+    assert not [c for c in host.calls() if "build" in c["argv"]]
+
+
 def test_prebuild_refuses_a_different_dagster_version(host: Host) -> None:
     host.ok("prepare", _R)
     host.stage()
-    host.update_state(dagster_built="1.13.24")
+    host.update_state(dagster_built="1.13.25")
     result = host.run("prebuild", _R)
-    assert result.returncode != 0 and "dagster" in result.stderr
+    assert result.returncode != 0 and "dagster 버전이 다르다" in result.stderr
+    assert not (host.work / "release-images").exists()  # gate를 통과하지 못한 빌드는 기록하지 않는다.
+    window = host.run("window", _R)
+    assert window.returncode != 0 and "prebuild" in window.stderr
 
 
 def test_prepare_refuses_while_the_new_project_runs(host: Host) -> None:
@@ -1020,3 +1105,268 @@ def test_rollback_refuses_to_move_the_retired_tree_into_a_non_empty_directory(ho
     assert (retired / ".env.server14.fenced-" f"{host.stamp()}").is_file()
     assert not (host.old / retired.name).exists()
     assert not [c for c in host.calls() if c["argv"][:2] in (["docker", "stop"], ["docker", "compose"])]
+
+
+def test_rollback_refuses_when_no_cutover_is_in_progress(host: Host) -> None:
+    # prepare만 한 상태에서 잘못 부르면 멀쩡히 도는 옛 스택을 재생성할 뿐이다.
+    host.ok("prepare", _R)
+    host.clear_log()
+    result = host.run("rollback")
+
+    assert result.returncode != 0 and "되돌릴 cutover가 없다" in result.stderr
+    assert not [c for c in host.calls() if c["argv"][:2] in (["docker", "stop"], ["docker", "compose"], ["docker", "tag"])]
+    assert all(c["Running"] for c in host.containers(_OLD).values())
+
+
+def test_rollback_waits_for_runs_and_keeps_the_new_stack_when_they_do_not_drain(host: Host) -> None:
+    host.ready_for_window()
+    host.ok("window", _R)
+    host.ok("admin")
+    host.ok("finish")
+    retired = Path(f"{host.old}.retired-{host.stamp()}")
+    host.update_state(runs=[{"runId": "0f1e2d3c", "jobName": "fuel_collection_job", "status": "STARTED"}])
+    host.clear_log()
+    result = host.run("rollback", DRAIN_TIMEOUT_SECONDS="0")
+
+    assert result.returncode != 0 and "0f1e2d3c fuel_collection_job STARTED" in result.stderr
+    assert "--no-drain" in result.stderr
+    calls = host.calls()
+    new_daemon = f"{_NEW}-dagster-daemon-1"
+    assert _index(calls, ["docker", "stop", new_daemon]) < _index(calls, ["docker", "start", new_daemon])
+    assert not [c for c in calls if c["argv"][:2] == ["docker", "stop"] and c["argv"][2] != new_daemon]
+    assert not [c for c in calls if c["argv"][:2] == ["docker", "compose"]]
+    assert all(c["Running"] for c in host.containers(_NEW).values())
+    assert retired.is_dir() and not host.old.exists()  # 아무것도 옮기지 않았다.
+    assert (host.new / ".env.server14").is_file()
+
+    host.clear_log()
+    host.ok("rollback", "--no-drain")
+    assert not [c for c in host.containers(_NEW).values() if c["Running"]]
+    assert host.running_daemons() == [f"{_OLD}-dagster-daemon-1"]
+    assert not [c for c in host.calls() if c["argv"][0] == "curl" and "-d" in c["argv"]]  # run을 묻지 않았다.
+
+
+# ====================================================================== 창 전 재빌드와 이미지 동일성
+
+
+def test_window_regates_a_rebuilt_image_before_stopping_anything(host: Host) -> None:
+    # prebuild 뒤 빌드 캐시가 비어 창 전 재빌드가 PyPI의 새 Dagster를 받았다. 옛 스택을 멈추기 전에 멈춘다.
+    host.ready_for_window()
+    host.update_state(build_salt="cache-evicted", dagster_built="1.13.25")
+    result = host.run("window", _R)
+
+    assert result.returncode != 0 and "dagster 버전이 다르다(운영 1.13.24, 빌드 1.13.25)" in result.stderr
+    calls = host.calls()
+    assert [c for c in calls if c["argv"][:2] == ["docker", "compose"] and "build" in c["argv"]]
+    assert not [c for c in calls if c["argv"][:2] in (["docker", "stop"], ["docker", "rm"])]
+    assert not [c for c in calls if c["argv"][:2] == ["docker", "compose"] and "up" in c["argv"]]
+    assert all(c["Running"] for c in host.containers(_OLD).values())
+    assert (host.old / ".env.server14").is_file()
+
+
+def test_window_deploys_the_image_it_gated_after_a_cache_miss(host: Host) -> None:
+    host.ready_for_window()
+    prebuilt = _recorded(host)
+    host.update_state(build_salt="cache-evicted")
+    result = host.ok("window", _R)
+
+    assert "prebuild 뒤 이미지 층이 바뀌었다" in result.stdout
+    rebuilt = _recorded(host)
+    assert rebuilt["release"][0] != prebuilt["release"][0]
+    new = host.containers(_NEW)
+    expected = {"frontend": "frontend", "dagster-gateway": "gateway"}
+    for service in _SERVICES:
+        role = expected.get(service, "release")
+        assert _layers(host, new[f"{_NEW}-{service}-1"]["Image"]) == _layers(host, rebuilt[role][1]), service
+
+
+def test_window_rebuilds_with_the_env_the_deploy_will_use(host: Host) -> None:
+    # frontend build arg는 env에서 온다. prebuild 뒤 옛 env가 바뀌었으면 창 전 재빌드도 그 env로 빌드해야
+    # 배포의 `up --build`가 같은 이미지(cache hit)가 되고 이미지 확인을 통과한다.
+    host.ready_for_window()
+    with (host.old / ".env.server14").open("a", encoding="utf-8") as env_file:
+        env_file.write("NEXT_PUBLIC_API_PORT=14001\n")
+    result = host.ok("window", _R)
+
+    assert "prebuild 뒤 이미지 층이 바뀌었다" in result.stdout
+    frontend = host.containers(_NEW)[f"{_NEW}-frontend-1"]["Image"]
+    assert _layers(host, frontend) == _layers(host, _recorded(host)["frontend"][1])
+
+
+def test_window_restores_the_old_stack_when_the_deploy_runs_an_ungated_image(host: Host) -> None:
+    # 창 전 재빌드와 배포의 `up --build` 사이에 캐시가 비어 gate가 보지 않은 이미지가 떴다.
+    host.ready_for_window()
+    result = host.run("window", _R, FAKE_DEPLOY="rebuild-differs")
+    _assert_restored(host, result)
+    assert "gate를 통과한 이미지" in result.stderr
+
+
+# ====================================================================== 되살리기·재실행
+
+
+def test_window_recreates_old_services_that_docker_start_cannot_bring_back(host: Host) -> None:
+    # webserver·daemon(c8b47811)·gateway(f9f648a9)가 돌던 이미지는 store에 없다. start가 그런 컨테이너를
+    # 거부하면 되살리기는 rollback 태그로 재생성한다(daemon은 맨 나중).
+    host.ready_for_window()
+    host.update_state(start_needs_image=True)
+    result = host.run("window", _R, FAKE_DEPLOY="fail-after-up")
+
+    _assert_restored(host, result)
+    assert "실패:" not in result.stderr
+    old = host.containers(_OLD)
+    assert {s: old[f"{_OLD}-{s}-1"]["Image"] for s in _SERVICES} == {
+        "backend": _BACKEND_IMG,
+        "dagster-code-server": _CODE_IMG,
+        "frontend": _FRONTEND_IMG,
+        "dagster-webserver": _CODE_IMG,
+        "dagster-daemon": _CODE_IMG,
+        "dagster-gateway": _GATEWAY_LATEST_IMG,
+    }
+    old_ups = [
+        call["argv"]
+        for call in host.calls()
+        if call["argv"][:2] == ["docker", "compose"] and "up" in call["argv"] and _OLD in call["argv"]
+    ]
+    assert old_ups and old_ups[-1][-2:] == ["--force-recreate", "dagster-daemon"]
+    assert [argv for argv in old_ups if "dagster-daemon" in argv] == [old_ups[-1]]
+
+
+def test_window_stops_before_the_outage_when_new_backups_differ(host: Host) -> None:
+    # 지난 시도의 새 backend가 NEW/backups에 dump를 남겼다. 창 4단계에서 멈추면 중단만 생기고, 흔한 손
+    # 정리(`sudo rm -rf NEW/backups`)는 NEW에만 있는 dump를 지운다.
+    host.ready_for_window()
+    (host.new / "backups").mkdir()
+    for path in (host.old / "backups").iterdir():
+        os.link(path, host.new / "backups" / path.name)
+    only_new = host.new / "backups" / "kor_travel_transport-20260929T010000Z.dump"
+    only_new.write_bytes(b"PGDMP new stack")
+    result = host.run("window", _R)
+
+    assert result.returncode != 0
+    assert f"> {only_new.name}" in result.stderr and "--update=none" in result.stderr
+    calls = host.calls()
+    assert not [c for c in calls if c["argv"][:2] in (["docker", "stop"], ["docker", "rm"], ["docker", "compose"])]
+    assert only_new.is_file()
+    assert all(c["Running"] for c in host.containers(_OLD).values())
+
+
+def test_admin_can_be_rerun_after_a_recreate_failed_half_way(host: Host) -> None:
+    host.ready_for_window()
+    host.ok("window", _R)
+    host.update_state(fail_up_at="transport-admin-web")
+    failed = host.run("admin")
+    assert failed.returncode != 0
+    assert f"{_ADMIN}-transport-admin-web-1" not in host.state()["containers"]
+
+    rerun = host.ok("admin")
+    assert "pre-rename으로 다시 만든다" in rerun.stdout
+    admin = host.containers(_ADMIN)
+    assert admin[f"{_ADMIN}-transport-admin-web-1"]["Image"] == _ADMIN_WEB_IMG
+    assert admin[f"{_ADMIN}-transport-dagster-gateway-1"]["Image"] == _ADMIN_GATEWAY_IMG
+    assert {c["Labels"]["com.docker.compose.project.working_dir"] for c in admin.values()} == {str(host.new)}
+    assert (host.work / "admin-images").read_text(encoding="utf-8").count("\n") == 2
+
+
+def test_window_restores_the_old_stack_when_it_cannot_count_the_old_daemon(host: Host) -> None:
+    # 옛 project의 daemon 조회만 실패하고 옛 daemon은 실제로 떠 있다. 실패를 0으로 세면 daemon 둘을 통과시킨다.
+    host.ready_for_window()
+    host.update_state(fail_ps_filters=[f"com.docker.compose.project={_OLD}", "com.docker.compose.service=dagster-daemon"])
+    result = host.run("window", _R, FAKE_DEPLOY="start-old-daemon")
+    _assert_restored(host, result)
+    assert "dagster-daemon을 세지 못했다" in result.stderr
+
+
+# ====================================================================== 창 안의 신호
+
+
+def _drain_forever(host: Host) -> tuple[list[str], dict[str, str]]:
+    """끝나지 않는 run 앞에서 대기 루프에 머무는 창."""
+    host.ready_for_window()
+    host.update_state(runs=[{"runId": "f130efff", "jobName": "ferry_timetable_collection_job", "status": "STARTED"}])
+    return ["bash", str(_SCRIPT), "window", _R], host.env(DRAIN_TIMEOUT_SECONDS="600", DRAIN_POLL_SECONDS="0.2")
+
+
+def _read_until_draining(host: Host, output: int, deadline: float) -> None:
+    """옛 daemon을 멈추고 대기 루프에서 run을 물을 때까지 스크립트 출력을 읽어 버린다."""
+    old_daemon = f"{_OLD}-dagster-daemon-1"
+    while time.monotonic() < deadline:
+        try:
+            calls = host.calls()
+        except json.JSONDecodeError:  # 가짜 명령이 쓰는 중인 줄
+            calls = []
+        stops = [i for i, call in enumerate(calls) if call["argv"] == ["docker", "stop", old_daemon]]
+        if stops and any(call["argv"][0] == "curl" for call in calls[stops[0] :]):
+            return
+        if select.select([output], [], [], 0.1)[0]:
+            try:
+                data = os.read(output, 65536)
+            except OSError:  # pty: 자식이 끝나면 EIO
+                data = b""
+            if not data:
+                raise AssertionError(f"대기 루프 전에 끝났다: {calls}")
+    raise AssertionError(f"대기 루프에 들어가지 않았다: {host.calls()}")
+
+
+def _assert_old_daemon_restarted(host: Host, exit_code: int, signal_number: int) -> None:
+    """출력이 끊긴 뒤: 새 스택은 없고, 멈췄던 옛 daemon을 다시 띄웠고, 끊긴 이유를 exit code로 남겼다."""
+    calls = host.calls()
+    assert exit_code == 128 + signal_number, (exit_code, [call["argv"] for call in calls])
+    old_daemon = f"{_OLD}-dagster-daemon-1"
+    stop = _index(calls, ["docker", "stop", old_daemon])
+    assert any(call["argv"] == ["docker", "start", old_daemon] for call in calls[stop:])
+    assert not [call for call in calls if call["argv"][:2] == ["docker", "compose"] and "up" in call["argv"]]
+    assert all(c["Running"] for c in host.containers(_OLD).values())
+    assert not host.containers(_NEW)
+    assert (host.old / ".env.server14").is_file()
+
+
+def test_window_restarts_the_old_daemon_when_the_ssh_terminal_hangs_up(host: Host) -> None:
+    # tmux 없이 SSH가 끊긴 경우: 터미널이 사라져 SIGHUP이 오고, 그 뒤 모든 출력이 EIO로 실패한다.
+    command, env = _drain_forever(host)
+    pid, terminal = pty.fork()
+    if pid == 0:  # 자식은 곧바로 스크립트가 된다.
+        try:
+            os.chdir(host.home)
+            os.execvpe(command[0], command, env)
+        finally:
+            os._exit(127)
+    try:
+        _read_until_draining(host, terminal, time.monotonic() + 90)
+    except BaseException:
+        os.kill(pid, signal.SIGKILL)
+        os.waitpid(pid, 0)
+        raise
+    finally:
+        os.close(terminal)
+    deadline = time.monotonic() + 60
+    while (status := os.waitpid(pid, os.WNOHANG))[0] == 0:
+        if time.monotonic() > deadline:
+            os.kill(pid, signal.SIGKILL)
+            os.waitpid(pid, 0)
+            raise AssertionError("터미널이 사라진 뒤에도 스크립트가 끝나지 않았다")
+        time.sleep(0.1)
+    _assert_old_daemon_restarted(host, os.waitstatus_to_exitcode(status[1]), signal.SIGHUP)
+
+
+def test_window_restarts_the_old_daemon_when_the_output_pipe_closes(host: Host) -> None:
+    # pty 없는 `ssh n150 bash …`의 클라이언트가 끊기거나 `| tee`가 죽은 경우: 다음 출력이 SIGPIPE를 받는다.
+    command, env = _drain_forever(host)
+    process = subprocess.Popen(
+        command,
+        cwd=host.home,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    assert process.stdout is not None
+    try:
+        _read_until_draining(host, process.stdout.fileno(), time.monotonic() + 90)
+        process.stdout.close()
+        exit_code = process.wait(timeout=60)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+    _assert_old_daemon_restarted(host, exit_code, signal.SIGPIPE)

@@ -7,16 +7,17 @@
 #   bash rename-deploy-identity-server14.sh prepare <R>   # 창 전: 새 디렉터리·env 사본·스냅숏·rollback 태그
 #   bash rename-deploy-identity-server14.sh restore-point # 창 전: 두 DB의 직접 pg_dump + pg_restore --list
 #   (WSL, R 체크아웃) DEPLOY_STAGE_ONLY=true scripts/deploy-server14.sh
-#   bash rename-deploy-identity-server14.sh prebuild <R>  # 창 전: migration·Dagster gate, 이미지 미리 빌드
-#   bash rename-deploy-identity-server14.sh window <R>    # 창: 옛 스택 정지 → 새 스택 → 검증 → 옛 컨테이너 은퇴
+#   bash rename-deploy-identity-server14.sh prebuild <R>  # 창 전: migration gate, 이미지 미리 빌드, Dagster gate
+#   bash rename-deploy-identity-server14.sh window <R>    # 창: 재빌드·gate → 옛 스택 정지 → 새 스택 → 검증 → 옛 컨테이너 은퇴
 #   bash rename-deploy-identity-server14.sh admin         # 창: 관리 스택을 빌드 없이 새 디렉터리에서 재생성
 #   bash rename-deploy-identity-server14.sh finish        # 창 끝: crontab 백업 줄 제거, 옛 디렉터리 은퇴
-#   bash rename-deploy-identity-server14.sh rollback      # 되돌리기(정리 단계 전까지)
+#   bash rename-deploy-identity-server14.sh rollback [--no-drain]  # 되돌리기(정리 단계 전까지)
 #   bash rename-deploy-identity-server14.sh status        # 읽기 전용 상태
 #
 # 모든 단계는 조건이 어긋나면 `STOP:`을 출력하고 exit 1로 끝난다. 비밀값(env 값·DSN 비밀번호)은
 # 출력하지 않는다. `window`는 옛 daemon을 멈춘 뒤 새 스택 검증이 끝나기 전에 어디서 끝나든(STOP·실패·
-# Ctrl-C·SSH 끊김·출력 pipe 닫힘) 새 스택을 멈추고 옛 env를 되돌리고 옛 컨테이너를 다시 띄운다.
+# Ctrl-C·SSH 끊김·출력 pipe 닫힘) 새 스택을 멈추고 옛 env를 되돌리고 옛 컨테이너를 다시 띄운다
+# (`docker start`로 뜨지 않는 서비스는 rollback 태그로 재생성한다).
 set -euo pipefail
 
 OLD_PROJECT=kor-travel-airport
@@ -66,6 +67,7 @@ T_HASH='{{index .Config.Labels "com.docker.compose.config-hash"}}'
 T_INIT='{{.HostConfig.Init}}'
 T_RESTART='{{.HostConfig.RestartPolicy.Name}}'
 T_MOUNTS='{{range .Mounts}}{{.Source}}:{{.Destination}}{{println}}{{end}}'
+T_LAYERS='{{json .RootFS.Layers}}'
 
 die() { echo "STOP: $*" >&2; exit 1; }
 private_dir() { mkdir -p -- "$1" && chmod 700 -- "$1"; }
@@ -78,6 +80,16 @@ new_c() { printf '%s-%s-1' "$NEW_PROJECT" "$1"; }
 admin_c() { printf '%s-%s-1' "$ADMIN_PROJECT" "$1"; }
 insp() { docker inspect -f "$1" "$2"; }
 image_id() { docker image inspect -f "$T_ID" "$1" 2>/dev/null; }
+# 이미지 내용의 지문: 층(diff ID) 목록의 sha256. containerd image store에서는 모든 단계가 cache hit인
+# 재빌드도 config의 생성 시각이 바뀌어 이미지 ID가 새로 나온다(2026-09-28 WSL Docker 29.1.3·compose 5.1.4
+# 확인: 재빌드마다 ID가 다르고 층은 같다, 내용이 바뀌면 층도 바뀐다. n150 29.6.1도 containerd
+# snapshotter다). 같은 이미지인지는 층으로 본다.
+image_layers() {  # <image ref|id>
+  local layers
+  layers="$(docker image inspect -f "$T_LAYERS" "$1")" || return 1
+  [[ -n "$layers" && "$layers" != null && "$layers" != "[]" ]] || return 1
+  printf '%s' "$layers" | sha256sum | cut -d' ' -f1
+}
 # project label의 정확한 값으로 찾는다. 이름 접두어는 kor-travel-transport-admin-*과 겹친다.
 containers() {  # <project> [-a]
   docker ps ${2:-} --filter "label=com.docker.compose.project=$1" --format '{{.Names}}' | sort
@@ -218,11 +230,25 @@ port_busy() { [[ -n "$(ss -Hltn "sport = :$1" 2>/dev/null)" ]]; }
 daemon_count() {  # 두 project에서 실행 중인 dagster-daemon 수. 다른 저장소의 daemon은 세지 않는다.
   local project total=0 names
   for project in "$OLD_PROJECT" "$NEW_PROJECT"; do
+    # `$(daemon_count)` 안에서는 errexit가 꺼져 있다. docker ps가 실패하면 0으로 세지 않고 실패를 돌려준다.
     names="$(docker ps --filter "label=com.docker.compose.project=$project" \
-      --filter "label=com.docker.compose.service=dagster-daemon" --format '{{.Names}}')"
+      --filter "label=com.docker.compose.service=dagster-daemon" --format '{{.Names}}')" || return 1
     [[ -z "$names" ]] || total=$((total + $(printf '%s\n' "$names" | wc -l)))
   done
   echo "$total"
+}
+one_daemon() {  # 두 project를 통틀어 dagster-daemon이 정확히 하나여야 한다.
+  local count
+  count="$(daemon_count)" || die "docker ps로 dagster-daemon을 세지 못했다."
+  [[ "$count" == 1 ]] || die "두 project에서 dagster-daemon이 ${count}개 돈다."
+}
+
+# 신호로 끝나도 EXIT trap이 돌고 exit code가 128+번호로 남게 한다(바꾸지 않으면 trap 안의 $?가 0이다).
+exit_on_signals() {
+  trap 'trap "" INT TERM HUP PIPE; exit 130' INT
+  trap 'trap "" INT TERM HUP PIPE; exit 143' TERM
+  trap 'trap "" INT TERM HUP PIPE; exit 129' HUP
+  trap 'trap "" INT TERM HUP PIPE; exit 141' PIPE
 }
 
 # ---------------------------------------------------------------- PostgreSQL client
@@ -339,6 +365,60 @@ migration_gate() {
 }
 
 dagster_version() { docker run --rm --network none --entrypoint python "$1" -c 'import dagster; print(dagster.__version__)'; }
+
+# ---------------------------------------------------------------- release 이미지 빌드와 gate
+compose_new() { docker compose --project-name "$NEW_PROJECT" --env-file "$ENV_NAME" -f docker-compose.yml -f docker-compose.shared.yml "$@"; }
+
+# 운영 overlay는 모든 서비스를 host network로 돌린다. 렌더링에 network가 남으면 손으로 만든 network가
+# 필요해지고 db stack의 label과 어긋난다. 렌더링에는 비밀값이 있으므로 stdin으로만 넘기고 출력하지 않는다.
+RENDER_PY='
+import json, sys
+config = json.load(sys.stdin)
+if config.get("name") != "kor-travel-transport":
+    sys.exit("STOP: 렌더링 project 이름이 " + repr(config.get("name")) + "다.")
+if config.get("networks"):
+    sys.exit("STOP: 운영 렌더링에 network가 남았다: " + ", ".join(sorted(config["networks"])))
+backend = sorted(name for name, service in config["services"].items() if service.get("image") == sys.argv[1])
+if backend != ["backend", "dagster-code-server", "dagster-daemon", "dagster-migrate", "dagster-webserver", "migrate"]:
+    sys.exit("STOP: release 이미지를 쓰는 서비스가 다르다: " + ", ".join(backend))
+'
+
+# 창에 올릴 세 이미지를 NEW_DIR에서 빌드하고 그 결과에 Dagster 버전 gate를 건다. backend Dockerfile은
+# uv.lock이 아니라 `pip install -e .[dev]`(dagster>=1.9,<2)로 설치하므로 빌드 캐시가 비면 그때의 PyPI
+# 최신 Dagster가 들어온다(2026-09-28: uv.lock·CI 1.13.23, 운영 code-server 1.13.24). gate를 통과한 이미지의
+# 층 지문을 release-images에 적고(`역할 층지문 이미지ID`), verify_new_stack이 새 컨테이너가 같은 층으로
+# 떴는지 본다. 배포의 `up --build`가 cache hit이면 ID는 새로 나와도 층은 같다.
+build_release() {  # <R>
+  local tag new_version old_version ref id role layers
+  tag="$(release_tag "$1")"
+  # frontend build arg(NEXT_PUBLIC_API_BASE_URL·NEXT_PUBLIC_API_PORT)는 env에서 온다. 배포가 쓸 지금 env로
+  # 빌드해야 배포의 `up --build`가 같은 이미지(cache hit)가 된다. 창 3단계가 fence 직전에 한 번 더 복사한다.
+  copy_env
+  # `( … ) || die` 안에서는 errexit가 꺼진다. 명령마다 실패를 끝내 보낸다.
+  (
+    cd "$NEW_DIR" || exit 1
+    export BACKEND_RUNTIME_IMAGE="$tag"
+    compose_new config -q || exit 1
+    compose_new config --format json | python3 -c "$RENDER_PY" "$tag" || exit 1
+    compose_new build backend frontend dagster-gateway || exit 1
+  ) || die "새 project 렌더링 확인이나 이미지 빌드가 실패했다."
+  : > "$WORK_DIR/release-images.new"
+  for role in "release=$tag" "frontend=$NEW_PROJECT-frontend:latest" "gateway=$NEW_PROJECT-dagster-gateway:latest"; do
+    ref="${role#*=}"
+    id="$(image_id "$ref")" && [[ -n "$id" ]] || die "$ref 이미지가 없다."
+    layers="$(image_layers "$id")" || die "$ref의 층 목록을 읽지 못했다."
+    printf '%s %s %s\n' "${role%%=*}" "$layers" "$id" >> "$WORK_DIR/release-images.new"
+  done
+  # Dagster 버전이 같아야 dagster instance migrate가 no-op이고 rollback의 옛 daemon이 metadata DB를 읽는다.
+  new_version="$(dagster_version "$tag")" || die "$tag의 dagster 버전을 읽지 못했다."
+  old_version="$(dagster_version "$ROLLBACK_REPO:code")" || die "$ROLLBACK_REPO:code의 dagster 버전을 읽지 못했다."
+  [[ "$new_version" == "$old_version" ]] \
+    || die "dagster 버전이 다르다(운영 $old_version, 빌드 $new_version). runbook 'Dagster 버전이 다를 때'를 따른다."
+  mv -f -- "$WORK_DIR/release-images.new" "$WORK_DIR/release-images"
+  echo "빌드·gate OK: $tag 층 $(recorded_layers release | cut -c1-12), dagster $new_version"
+}
+recorded_layers() { awk -v role="$1" '$1 == role { print $2 }' "$WORK_DIR/release-images" 2>/dev/null; }
+layers_record() { awk '{ print $1, $2 }' "$@" 2>/dev/null; }  # ID는 재빌드마다 바뀌므로 비교에서 뺀다.
 
 # ---------------------------------------------------------------- 상태 기록
 snapshot() {
@@ -466,7 +546,7 @@ cmd_restore_point() {
 
 # ================================================================ prebuild
 cmd_prebuild() {
-  local R="${1:-}" tag
+  local R="${1:-}"
   require_release "$R"
   no_builds
   [[ "$(tr -d '\r\n' < "$NEW_DIR/.release-sha" 2>/dev/null)" == "$R" ]] \
@@ -475,35 +555,9 @@ cmd_prebuild() {
   trap cleanup_pgpass EXIT
   open_databases
   migration_gate
-  tag="$(release_tag "$R")"
-  cd "$NEW_DIR"
-  export BACKEND_RUNTIME_IMAGE="$tag"
-  compose_new() { docker compose --project-name "$NEW_PROJECT" --env-file "$ENV_NAME" -f docker-compose.yml -f docker-compose.shared.yml "$@"; }
-  compose_new config -q
-  # 운영 overlay는 모든 서비스를 host network로 돌린다. 렌더링에 network가 남으면 손으로 만든 network가
-  # 필요해지고 db stack의 label과 어긋난다. 렌더링에는 비밀값이 있으므로 stdin으로만 넘기고 출력하지 않는다.
-  compose_new config --format json | python3 -c '
-import json, sys
-config = json.load(sys.stdin)
-if config.get("name") != "kor-travel-transport":
-    sys.exit("STOP: 렌더링 project 이름이 " + repr(config.get("name")) + "다.")
-if config.get("networks"):
-    sys.exit("STOP: 운영 렌더링에 network가 남았다: " + ", ".join(sorted(config["networks"])))
-backend = sorted(name for name, service in config["services"].items() if service.get("image") == sys.argv[1])
-if backend != ["backend", "dagster-code-server", "dagster-daemon", "dagster-migrate", "dagster-webserver", "migrate"]:
-    sys.exit("STOP: release 이미지를 쓰는 서비스가 다르다: " + ", ".join(backend))
-' "$tag"
-  say "이미지 미리 빌드(창 안의 up --build는 cache hit)"
-  compose_new build backend frontend dagster-gateway
-  for ref in "$tag" "$NEW_PROJECT-frontend:latest" "$NEW_PROJECT-dagster-gateway:latest"; do
-    [[ -n "$(image_id "$ref")" ]] || die "$ref 이미지가 없다."
-  done
-  # Dagster 버전이 같아야 dagster instance migrate가 no-op이고 rollback의 옛 daemon이 metadata DB를 읽는다.
-  local new_version old_version
-  new_version="$(dagster_version "$tag")" || die "$tag의 dagster 버전을 읽지 못했다."
-  old_version="$(dagster_version "$ROLLBACK_REPO:code")" || die "$ROLLBACK_REPO:code의 dagster 버전을 읽지 못했다."
-  [[ "$new_version" == "$old_version" ]] || die "dagster 버전이 다르다(운영 $old_version, R $new_version)."
-  echo "prebuild OK: $tag, dagster $new_version"
+  cleanup_pgpass
+  say "이미지 미리 빌드(느린 빌드를 창 전에 끝낸다. window가 옛 스택을 멈추기 전에 다시 빌드·gate한다)"
+  build_release "$R"
 }
 
 # ================================================================ window
@@ -514,8 +568,38 @@ others_down=0
 fenced=0
 new_started=0
 
+old_running() { [[ "$(insp "$T_RUNNING" "$(old_c "$1")" 2>/dev/null)" == true ]]; }
+
+# 옛 서비스를 이 작업 전용 rollback 태그로 재생성한다(--no-deps --no-build --force-recreate). code-server·
+# webserver·daemon은 :code, backend는 :backend, frontend·gateway는 rollback 태그를 옛 compose 이미지 이름에
+# 다시 붙여 쓴다. daemon은 code-server가 healthy가 된 뒤 맨 나중에 띄운다. 실패하면 1을 돌려준다(EXIT
+# trap에서도 부르므로 die하지 않는다). 옛 env가 $OLD_DIR에 있어야 한다.
+recreate_old() {  # <service...>
+  local service code=() rest=() daemon=0
+  for service in "$@"; do
+    case "$service" in
+      dagster-daemon) daemon=1 ;;
+      dagster-code-server | dagster-webserver) code+=("$service") ;;
+      *) rest+=("$service") ;;
+    esac
+  done
+  docker tag "$ROLLBACK_REPO:frontend" "$OLD_PROJECT-frontend:latest" || return 1
+  docker tag "$ROLLBACK_REPO:gateway" "$OLD_PROJECT-dagster-gateway:latest" || return 1
+  cd "$OLD_DIR" || return 1
+  if ((${#code[@]})); then
+    BACKEND_RUNTIME_IMAGE="$ROLLBACK_REPO:code" compose_old up -d --no-deps --no-build --force-recreate "${code[@]}" || return 1
+  fi
+  if ((${#rest[@]})); then
+    BACKEND_RUNTIME_IMAGE="$ROLLBACK_REPO:backend" compose_old up -d --no-deps --no-build --force-recreate "${rest[@]}" || return 1
+  fi
+  if ((daemon)); then
+    wait_healthy "$(old_c dagster-code-server)" || return 1
+    BACKEND_RUNTIME_IMAGE="$ROLLBACK_REPO:code" compose_old up -d --no-deps --no-build --force-recreate dagster-daemon || return 1
+  fi
+}
+
 restore_old_stack() {
-  local status=$? name service
+  local status=$? name service missing=()
   set +e
   trap '' INT TERM HUP PIPE
   cleanup_pgpass
@@ -535,8 +619,14 @@ restore_old_stack() {
       ((stopping)) && docker stop "$(old_c dagster-daemon)" >/dev/null 2>&1
       docker start "$(old_c dagster-daemon)" >/dev/null 2>&1
     fi
+    # webserver·daemon(c8b47811)·gateway(f9f648a9)는 돌던 이미지가 store에 없어 docker start가 실패할 수
+    # 있다. 뜨지 않은 서비스는 rollback 태그로 재생성한다(daemon은 맨 나중).
+    for service in "${SERVICES[@]}"; do old_running "$service" || missing+=("$service"); done
+    if ((${#missing[@]})); then
+      recreate_old "${missing[@]}" >/dev/null 2>&1
+    fi
     for service in "${SERVICES[@]}"; do
-      if [[ "$(insp "$T_RUNNING" "$(old_c "$service")" 2>/dev/null)" != true ]]; then
+      if ! old_running "$service"; then
         note "실패: $(old_c "$service")가 떠 있지 않다. 'bash $0 rollback'으로 고정 이미지 재생성을 한다."
       fi
     done
@@ -548,6 +638,24 @@ restore_old_stack() {
 }
 
 backups_listing() { sudo -n find "$1" -mindepth 1 -printf '%P %s %y\n' | sort; }
+
+# 창 전(옛 스택이 도는 동안). 지난 시도나 rollback 뒤에 남은 NEW/backups가 OLD와 다르면 창 4단계에서
+# 멈춰 중단만 생긴다. NEW에만 있는 dump는 새 backend가 쓴 것이라 NEW를 지우면 사라진다.
+backups_precheck() {
+  local old="$OLD_DIR/backups" new="$NEW_DIR/backups" differ
+  sudo -n test -d "$old" || die "$old가 없다."
+  sudo -n test -e "$new" || return 0
+  if differ="$(diff <(backups_listing "$old") <(backups_listing "$new"))"; then
+    echo "backups: $new가 이미 있고 $old와 같다."
+    return 0
+  fi
+  die "$new가 이미 있고 $old와 다르다(< OLD에만, > NEW에만. 이름 크기 종류):
+$differ
+NEW를 지우지 않는다. 두 쪽을 hardlink로 합친다(덮어쓰거나 지우지 않는다):
+  sudo cp -a -l --update=none -T -- $new $old
+  sudo cp -a -l --update=none -T -- $old $new
+이름이 같고 크기가 다른 항목이 남으면 한쪽 이름을 바꾸고 두 줄을 다시 실행한다. 그다음 window를 다시 실행한다."
+}
 
 link_backups() {
   local old="$OLD_DIR/backups" new="$NEW_DIR/backups"
@@ -565,9 +673,21 @@ link_backups() {
 }
 
 verify_new_stack() {
-  local R="$1" name service mounts health project
+  local R="$1" name service mounts health project want got
   [[ "$(running_services "$NEW_PROJECT")" == "$(expected_services)" ]] \
     || die "$NEW_PROJECT의 실행 중 서비스가 여섯 개가 아니다: $(running_services "$NEW_PROJECT" | tr '\n' ' ')"
+  # 배포 스크립트의 `up --build`는 창 전 재빌드의 cache hit이어야 한다(ID는 새로 나와도 층은 같다).
+  # 캐시가 그 사이 비어 다시 빌드됐으면 gate가 보지 않은 이미지(다른 Dagster 버전일 수 있다)가 떴다.
+  for service in "${SERVICES[@]}"; do
+    case "$service" in
+      frontend) want="$(recorded_layers frontend)" ;;
+      dagster-gateway) want="$(recorded_layers gateway)" ;;
+      *) want="$(recorded_layers release)" ;;
+    esac
+    got="$(image_layers "$(insp "$T_IMAGE" "$(new_c "$service")")")" || got="(읽지 못함)"
+    [[ -n "$want" && "$got" == "$want" ]] \
+      || die "$(new_c "$service")의 이미지 층이 창 전 gate를 통과한 이미지와 다르다(배포 중 다시 빌드됐다). dagster-migrate가 다른 Dagster 버전으로 돌았을 수 있다. 버전을 확인하고, 다르면 restore-point의 kor_travel_transport_dagster dump가 되돌릴 지점이다."
+  done
   wait_healthy "$(new_c dagster-code-server)" "$(new_c dagster-webserver)" "$(new_c dagster-daemon)" || exit 1
   for service in "${SERVICES[@]}"; do
     name="$(new_c "$service")"
@@ -576,7 +696,7 @@ verify_new_stack() {
   for service in "${DAGSTER_SERVICES[@]}"; do
     [[ "$(insp "$T_INIT" "$(new_c "$service")")" == true ]] || die "$(new_c "$service")에 init이 없다."
   done
-  [[ "$(daemon_count)" == 1 ]] || die "두 project에서 dagster-daemon이 $(daemon_count)개 돈다."
+  one_daemon
   mounts="$(insp "$T_MOUNTS" "$(new_c backend)")"
   [[ "$mounts" == *"$NEW_DIR/backups:/app/backups"* && "$mounts" != *"$OLD_DIR"* ]] \
     || die "$(new_c backend)의 backups bind가 $NEW_DIR/backups가 아니다."
@@ -590,7 +710,7 @@ verify_new_stack() {
       || die "새 webserver의 location $NEW_PROJECT schedule 상태가 창 전과 다르다(diff $WORK_DIR/schedules.before $after)."
     sleep "$HEALTH_POLL_SECONDS"
   done
-  echo "새 스택 확인: 여섯 서비스, Dagster healthy·init, daemon 1개, backups bind, release_sha, schedule $(wc -l < "$after")개 상태 동일"
+  echo "새 스택 확인: 여섯 서비스(gate한 이미지 층), Dagster healthy·init, daemon 1개, backups bind, release_sha, schedule $(wc -l < "$after")개 상태 동일"
 }
 
 retire_old_containers() {
@@ -615,14 +735,13 @@ retire_old_containers() {
 }
 
 cmd_window() {
-  local R="${1:-}" service port
+  local R="${1:-}" service port role prebuilt
   require_release "$R"
   no_builds
   [[ "$(tr -d '\r\n' < "$NEW_DIR/.release-sha" 2>/dev/null)" == "$R" ]] || die "$NEW_DIR/.release-sha가 R이 아니다."
   [[ -x "$NEW_DIR/scripts/deploy-server14-remote.sh" ]] || die "$NEW_DIR/scripts/deploy-server14-remote.sh가 없다."
-  for ref in "$(release_tag "$R")" "$NEW_PROJECT-frontend:latest" "$NEW_PROJECT-dagster-gateway:latest"; do
-    [[ -n "$(image_id "$ref")" ]] || die "$ref가 없다. prebuild를 먼저 실행한다."
-  done
+  prebuilt="$(layers_record "$WORK_DIR/release-images")" && [[ -n "$prebuilt" ]] \
+    || die "prebuild 기록($WORK_DIR/release-images)이 없다. prebuild를 먼저 실행한다."
   for role in "${ROLLBACK_ROLES[@]}"; do
     [[ -n "$(image_id "$ROLLBACK_REPO:${role%%:*}")" ]] || die "$ROLLBACK_REPO:${role%%:*}가 없다. prepare를 다시 실행한다."
   done
@@ -631,19 +750,24 @@ cmd_window() {
   none_running "$NEW_PROJECT" || die "$NEW_PROJECT 컨테이너가 이미 실행 중이다."
   check_old_images
   [[ -f "$OLD_DIR/$ENV_NAME" && ! -e "$(fenced_env)" ]] || die "$OLD_DIR/$ENV_NAME 상태가 창 전과 다르다."
+  backups_precheck
   trap cleanup_pgpass EXIT
   open_databases
   migration_gate
   cleanup_pgpass
+  # 옛 스택이 도는 동안 다시 빌드한다. 보통 cache hit이고, prebuild 뒤 캐시가 비었으면 긴 빌드와 새
+  # Dagster 버전이 중단 밖에서 드러난다. gate는 이 빌드 결과에 다시 건다.
+  say "창 전 재빌드와 Dagster gate(옛 스택은 그대로 돈다)"
+  build_release "$R"
+  if [[ "$(layers_record "$WORK_DIR/release-images")" != "$prebuilt" ]]; then
+    echo "주의: prebuild 뒤 이미지 층이 바뀌었다(빌드 캐시가 비었거나 env·staged 파일이 바뀌었다). 새 이미지로 gate를 다시 봤다."
+  fi
   schedule_states > "$WORK_DIR/schedules.before" || die "창 전 schedule 상태를 읽지 못했다."
   echo "창 전 schedule $(wc -l < "$WORK_DIR/schedules.before")개 기록"
 
   armed=1
   trap restore_old_stack EXIT
-  trap 'trap "" INT TERM HUP PIPE; exit 130' INT
-  trap 'trap "" INT TERM HUP PIPE; exit 143' TERM
-  trap 'trap "" INT TERM HUP PIPE; exit 129' HUP
-  trap 'trap "" INT TERM HUP PIPE; exit 141' PIPE
+  exit_on_signals
 
   say "1. 옛 daemon 정지와 in-flight run 대기(상한 ${DRAIN_TIMEOUT_SECONDS}초)"
   daemon_down=1
@@ -688,17 +812,25 @@ cmd_admin() {
   local service name repo running latest pre gateway_mount
   [[ "$(running_services "$NEW_PROJECT")" == "$(expected_services)" ]] || die "$NEW_PROJECT가 여섯 서비스로 떠 있지 않다. window부터 마친다."
   [[ -f "$NEW_DIR/$ENV_NAME" && -f "$NEW_DIR/docker-compose.transport-admin.yml" ]] || die "$NEW_DIR 관리 스택 파일이 없다."
+  : > "$WORK_DIR/admin-images"
   for service in "${ADMIN_BUILT[@]}"; do
     name="$(admin_c "$service")"
     repo="$ADMIN_PROJECT-$service"
-    running="$(insp "$T_IMAGE" "$name")" || die "$name을 읽지 못했다."
     latest="$(image_id "$repo:latest" || true)"
-    [[ "$latest" == "$running" ]] || die "$repo:latest가 실행 중 이미지와 다르다. 빌드 없는 재생성이 이미지를 바꾼다."
     pre="$(image_id "$repo:pre-rename" || true)"
-    if [[ -z "$pre" ]]; then
-      docker tag "$running" "$repo:pre-rename"
-    elif [[ "$pre" != "$running" ]]; then
-      die "$repo:pre-rename이 실행 중 이미지와 다르다."
+    if running="$(insp "$T_IMAGE" "$name" 2>/dev/null)"; then
+      [[ "$latest" == "$running" ]] || die "$repo:latest가 실행 중 이미지와 다르다. 빌드 없는 재생성이 이미지를 바꾼다."
+      if [[ -z "$pre" ]]; then
+        docker tag "$running" "$repo:pre-rename"
+      elif [[ "$pre" != "$running" ]]; then
+        die "$repo:pre-rename이 실행 중 이미지와 다르다."
+      fi
+    else
+      # 지난 admin의 --force-recreate가 중간에 멈춰 컨테이너가 없다. 그때 붙인 :pre-rename이 기준이다.
+      [[ -n "$pre" ]] || die "$name이 없고 $repo:pre-rename도 없다. runbook의 관리 스택 수동 재생성을 본다."
+      [[ "$latest" == "$pre" ]] || die "$repo:latest가 :pre-rename과 다르다. 빌드 없는 재생성이 이미지를 바꾼다."
+      echo "$name이 없다. $repo:pre-rename으로 다시 만든다."
+      running="$pre"
     fi
     printf '%s %s\n' "$service" "$running" >> "$WORK_DIR/admin-images"
   done
@@ -727,14 +859,15 @@ cmd_admin() {
 
 # ================================================================ finish
 cmd_finish() {
-  local retired before after removed service name project
+  local retired before after removed service name names project
   retired="$(retired_dir)"
   [[ "$(running_services "$NEW_PROJECT")" == "$(expected_services)" ]] || die "$NEW_PROJECT가 여섯 서비스로 떠 있지 않다."
   for service in "${ADMIN_SERVICES[@]}"; do
     [[ "$(insp "$T_WORKDIR" "$(admin_c "$service")")" == "$NEW_DIR" ]] || die "관리 스택이 아직 $OLD_DIR에서 돈다. admin을 먼저 실행한다."
   done
   for project in "$NEW_PROJECT" "$ADMIN_PROJECT"; do
-    for name in $(containers "$project"); do
+    names="$(containers "$project")" || die "docker ps로 $project project를 읽지 못했다."
+    for name in $names; do
       [[ "$(insp "$T_MOUNTS" "$name")$(insp "$T_WORKDIR" "$name")" != *"$OLD_DIR"* ]] || die "$name이 아직 $OLD_DIR를 쓴다."
     done
   done
@@ -774,20 +907,85 @@ cmd_finish() {
 # ================================================================ rollback
 compose_old() { docker compose --project-name "$OLD_PROJECT" --env-file "$ENV_NAME" -f docker-compose.yml -f docker-compose.shared.yml "$@"; }
 
+# 옛 디렉터리 자리에 다시 생긴 것이 빈 backups/뿐인지 본다. 옛 배포 스크립트의 `mkdir -p`나 옛 backend의
+# bind가 빈 OLD(와 빈 backups)를 만들 수 있다. 그 밖의 내용이 있으면 은퇴한 트리를 그 안으로 옮기거나
+# 섞게 되므로 STOP이다(critique M4). 아무것도 바꾸지 않는다.
+check_old_leftover() {
+  local entry
+  for entry in "$OLD_DIR"/* "$OLD_DIR"/.[!.]* "$OLD_DIR"/..?*; do
+    [[ -e "$entry" || -L "$entry" ]] || continue
+    [[ "$entry" == "$OLD_DIR/backups" ]] && sudo -n test -d "$entry" \
+      && [[ -z "$(sudo -n find "$entry" -mindepth 1 -print -quit)" ]] \
+      || die "$OLD_DIR가 비어 있지 않다($entry). 겹치지 않게 직접 정리한 뒤 다시 실행한다."
+  done
+}
+
+# 되돌릴 것이 있어야 한다. prepare만 했거나 창이 옛 스택을 되살린 상태(옛 여섯 서비스가 돌고, 새 project는
+# 떠 있지 않고, fence·은퇴 디렉터리가 없음)에서 rollback은 멀쩡한 옛 스택을 재생성할 뿐이다.
+cutover_in_progress() {  # <retired dir>
+  local names
+  [[ -e "$1" || -e "$(fenced_env)" ]] && return 0
+  names="$(containers "$NEW_PROJECT")" || die "docker ps로 $NEW_PROJECT project를 읽지 못했다."
+  [[ -n "$names" ]] && return 0
+  [[ "$(running_services "$OLD_PROJECT")" != "$(expected_services)" ]]
+}
+
+rollback_daemon_stopped=0
+# rollback의 run 대기가 끝나지 않거나 끊기면 멈춘 새 daemon을 다시 띄운다. 새 스택은 그대로 돈다.
+restart_new_daemon() {
+  local status=$?
+  set +e
+  trap '' INT TERM HUP PIPE
+  if ((rollback_daemon_stopped)) && ((status != 0)); then
+    docker start "$(new_c dagster-daemon)" >/dev/null 2>&1
+    note "run이 끝나지 않아 새 daemon을 다시 띄웠다. 바뀐 것은 없다. run이 끝난 뒤 다시 실행하거나, 끊어도 되면 'bash $0 rollback --no-drain'."
+  fi
+  exit "$status"
+}
+
 cmd_rollback() {
-  local retired entry name line repo service
+  local retired entry name names line repo service drain_runs=1 wait_runs=0
+  case "${1:-}" in
+    "") ;;
+    --no-drain) drain_runs=0 ;;
+    *) die "사용법: $0 rollback [--no-drain]" ;;
+  esac
   retired="$(retired_dir)"
-  say "1. 옛 디렉터리"
+  cutover_in_progress "$retired" \
+    || die "되돌릴 cutover가 없다: $OLD_PROJECT가 여섯 서비스로 돌고, $NEW_PROJECT는 떠 있지 않고, env fence·은퇴 디렉터리도 없다."
+  for entry in "${ROLLBACK_ROLES[@]}"; do
+    [[ -n "$(image_id "$ROLLBACK_REPO:${entry%%:*}")" ]] || die "$ROLLBACK_REPO:${entry%%:*}가 없다."
+  done
+  if [[ -e "$retired" && -e "$OLD_DIR" ]]; then check_old_leftover; fi
+
+  # 새 code-server를 멈추면 실행 중 run(유가 Playwright 최대 2시간, 배편)이 끊겨 data.go.kr 오퍼레이션별
+  # 한도를 버린다. 창처럼 daemon을 먼저 멈추고 run을 기다린다.
+  say "1. 새 daemon 정지와 in-flight run 대기"
+  if [[ "$(insp "$T_RUNNING" "$(new_c dagster-code-server)" 2>/dev/null)" != true ]]; then
+    echo "새 code-server가 떠 있지 않다. 끊길 run이 없다."
+  elif ((drain_runs)); then
+    [[ "$(insp "$T_RUNNING" "$(new_c dagster-webserver)" 2>/dev/null)" == true ]] \
+      || die "새 webserver가 떠 있지 않아 run을 셀 수 없다. run을 끊어도 되면 'bash $0 rollback --no-drain'."
+    wait_runs=1
+    if [[ "$(insp "$T_RUNNING" "$(new_c dagster-daemon)" 2>/dev/null)" == true ]]; then
+      rollback_daemon_stopped=1
+      trap restart_new_daemon EXIT
+      exit_on_signals
+    fi
+  else
+    echo "--no-drain: 실행 중 run을 기다리지 않는다. 끊긴 run은 되살린 옛 daemon의 run monitoring이 실패로 정리한다."
+  fi
+  docker stop "$(new_c dagster-daemon)" >/dev/null 2>&1 || :
+  if ((wait_runs)); then
+    drain || exit 1
+    rollback_daemon_stopped=0
+    trap - EXIT INT TERM HUP PIPE
+  fi
+
+  say "2. 옛 디렉터리"
   if [[ -e "$retired" ]]; then
     if [[ -e "$OLD_DIR" ]]; then
-      # 옛 배포 스크립트의 `mkdir -p`나 옛 backend의 bind가 빈 OLD(와 빈 backups)를 만들 수 있다.
-      # 그대로 mv하면 은퇴한 트리가 그 안으로 들어간다(critique M4).
-      for entry in "$OLD_DIR"/* "$OLD_DIR"/.[!.]* "$OLD_DIR"/..?*; do
-        [[ -e "$entry" || -L "$entry" ]] || continue
-        [[ "$entry" == "$OLD_DIR/backups" ]] && sudo -n test -d "$entry" \
-          && [[ -z "$(sudo -n find "$entry" -mindepth 1 -print -quit)" ]] \
-          || die "$OLD_DIR가 비어 있지 않다($entry). 겹치지 않게 직접 정리한 뒤 다시 실행한다."
-      done
+      check_old_leftover
       [[ ! -e "$OLD_DIR/backups" ]] || sudo -n rmdir -- "$OLD_DIR/backups"
       rmdir -- "$OLD_DIR"
     fi
@@ -795,34 +993,26 @@ cmd_rollback() {
     echo "$retired → $OLD_DIR"
   fi
   [[ -d "$OLD_DIR" ]] || die "$OLD_DIR가 없다."
-  for entry in "${ROLLBACK_ROLES[@]}"; do
-    [[ -n "$(image_id "$ROLLBACK_REPO:${entry%%:*}")" ]] || die "$ROLLBACK_REPO:${entry%%:*}가 없다."
-  done
 
-  say "2. 새 project 정지(daemon 먼저)"
-  docker stop "$(new_c dagster-daemon)" >/dev/null 2>&1 || :
-  for name in $(containers "$NEW_PROJECT"); do docker stop "$name" >/dev/null; done
+  say "3. 나머지 새 project 정지"
+  names="$(containers "$NEW_PROJECT")" || die "docker ps로 $NEW_PROJECT project를 읽지 못했다."
+  for name in $names; do docker stop "$name" >/dev/null; done
   none_running "$NEW_PROJECT" || die "$NEW_PROJECT 컨테이너가 아직 돈다."
 
-  say "3. 옛 env 되돌림"
+  say "4. 옛 env 되돌림"
   if [[ ! -f "$OLD_DIR/$ENV_NAME" ]]; then
     [[ -f "$(fenced_env)" ]] || die "$OLD_DIR/$ENV_NAME도 fence 파일도 없다."
     mv -- "$(fenced_env)" "$OLD_DIR/$ENV_NAME"
   fi
 
-  say "4. 옛 스택을 고정 이미지로 재생성(daemon 마지막)"
-  docker tag "$ROLLBACK_REPO:frontend" "$OLD_PROJECT-frontend:latest"
-  docker tag "$ROLLBACK_REPO:gateway" "$OLD_PROJECT-dagster-gateway:latest"
+  say "5. 옛 스택을 고정 이미지로 재생성(code-server·webserver → backend·frontend·gateway → daemon 마지막)"
+  recreate_old "${SERVICES[@]}" || die "옛 스택 재생성이 실패했다."
   cd "$OLD_DIR"
-  BACKEND_RUNTIME_IMAGE="$ROLLBACK_REPO:code" compose_old up -d --no-deps --no-build --force-recreate dagster-code-server dagster-webserver
-  wait_healthy "$(old_c dagster-code-server)" || exit 1
-  BACKEND_RUNTIME_IMAGE="$ROLLBACK_REPO:backend" compose_old up -d --no-deps --no-build --force-recreate backend dagster-gateway frontend
-  BACKEND_RUNTIME_IMAGE="$ROLLBACK_REPO:code" compose_old up -d --no-deps --no-build --force-recreate dagster-daemon
   [[ "$(running_services "$OLD_PROJECT")" == "$(expected_services)" ]] || die "옛 스택 여섯 서비스가 떠 있지 않다."
-  [[ "$(daemon_count)" == 1 ]] || die "dagster-daemon이 $(daemon_count)개 돈다."
+  one_daemon
   wait_http "$API_URL/health" || exit 1
 
-  say "5. 관리 스택을 옛 디렉터리에서 옛 이미지로"
+  say "6. 관리 스택을 옛 디렉터리에서 옛 이미지로"
   local tagged=1
   for service in "${ADMIN_BUILT[@]}"; do
     repo="$ADMIN_PROJECT-$service"
@@ -835,7 +1025,7 @@ cmd_rollback() {
     echo "pre-rename 태그가 없다(admin 단계 전). 관리 스택은 $OLD_DIR에서 돌던 그대로다."
   fi
 
-  say "6. crontab 줄 되돌림"
+  say "7. crontab 줄 되돌림"
   if [[ -s "$WORK_DIR/crontab.removed" ]]; then
     local current
     current="$(mktemp "$WORK_DIR/crontab.rollback.XXXXXX")"
@@ -847,7 +1037,7 @@ cmd_rollback() {
     rm -f -- "$current"
   fi
 
-  say "7. 새 env fence(되돌린 동안 새 배포가 돌지 않게)"
+  say "8. 새 env fence(되돌린 동안 새 배포가 돌지 않게)"
   if [[ -f "$NEW_DIR/$ENV_NAME" ]]; then
     mv -- "$NEW_DIR/$ENV_NAME" "$NEW_DIR/$ENV_NAME.rolled-back-$(date -u +%Y%m%dT%H%M%SZ)"
   fi
@@ -870,7 +1060,7 @@ cmd_status() {
   for name in backend code frontend gateway; do
     echo "$ROLLBACK_REPO:$name $(image_id "$ROLLBACK_REPO:$name" || echo '(없음)')"
   done
-  echo "dagster-daemon(두 project): $(daemon_count)"
+  echo "dagster-daemon(두 project): $(daemon_count || echo '(조회 실패)')"
 }
 
 main() {
@@ -883,9 +1073,9 @@ main() {
     window) cmd_window "$@" ;;
     admin) cmd_admin ;;
     finish) cmd_finish ;;
-    rollback) cmd_rollback ;;
+    rollback) cmd_rollback "$@" ;;
     status) cmd_status ;;
-    *) die "사용법: $0 {prepare <R>|restore-point|prebuild <R>|window <R>|admin|finish|rollback|status}" ;;
+    *) die "사용법: $0 {prepare <R>|restore-point|prebuild <R>|window <R>|admin|finish|rollback [--no-drain]|status}" ;;
   esac
 }
 
