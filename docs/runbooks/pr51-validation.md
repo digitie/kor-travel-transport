@@ -1,5 +1,15 @@
 # PR #51 검증과 배포 기록
 
+## 최종 상태와 읽는 순서
+
+운영 API/code-server `fcd4d1f`, UI `55148d2`에서 유가 단일 수집 성공·관리자 E2E
+421개·parking-radar E2E 16개 통과를 확인했다. Provider PR #20은 자체 최종 CI·
+독립 리뷰·운영 수집 검증 후 **2026-09-29 08:05 KST**, `7e0f770`으로 머지했다.
+검증한 `5fa0046`은 main 이력에 보존했고 소비자 pin은 바꾸지 않았다.
+Transport PR #51은 최종 문서 커밋의 필수 CI를 확인한 뒤 머지한다. 이미 머지된
+PR은 반복하지 않으며 최종 상태는 각 PR이 정본이다. 아래 항목은 시간순 검증 이력으로,
+당시의 보류·실패를 기록한 것이지 추가 수집·재배포 지시가 아니다.
+
 ## 변경과 범위
 
 - 항만가이드라인 첫 항로 점을 승선 항구 좌표로 사용하지 않는다.
@@ -141,8 +151,8 @@ API/code-server/daemon/UI는 모두 healthy·재시작 횟수 0이다. 보호 �
   `/home/digitie/transport-pr51-rollback.2cAk5G`다.
 - 배포 후 단일 유가 run `83c635f8-1bf4-4216-a5aa-113efe51245f`을 실행했다.
   식별 태그는 `pr51-fuel-recovery-fcd4d1f-once`다. 실행 전 8시간 보호가 열려 있고
-  유가 대기/실행 job이 없으며 provider `5fa0046`인 것을 확인했다. 수집 결과는
-  확인 중이다. 운영 HTTPS E2E 결과는 아래와 같으며 최신성 게이트 전에는 머지하지 않는다.
+  유가 대기/실행 job이 없으며 provider `5fa0046`인 것을 확인했다. 당시 수집 결과는
+  확인 중이었다. 이후 실제 수집·운영 HTTPS E2E 결과는 아래에 기록했다.
 - 신규 배포 후 첫 운영 HTTPS E2E는 **417개 통과·4개 실패**(7분)다. 4개 모두 항공편
   상태 검사 이전 `beforeEach`의 `/login` 탐색에서 `ERR_NAME_NOT_RESOLVED`로 실패했다.
   같은 WSL에서 이후 DNS A 응답과 HTTPS 200을 확인했다. 원 실패 trace를 보존하고
@@ -179,5 +189,6 @@ API/code-server/daemon/UI는 모두 healthy·재시작 횟수 0이다. 보호 �
   바꾸지 않았고 수집이나 스케줄을 강제로 실행/중지하지 않았다. 최초 실패 결과는
   `pr51-live`/`pr51-live-first.json`, 최종 trace 출력 위치는 `pr51-live-final`로 구분했다.
 - 이로써 실제 유가 복구·관리자 421개·parking-radar 16개 운영 검증이 완료됐다.
-  최종 문서 커밋의 필수 CI를 확인한 뒤 provider PR #20, Transport PR #51 순서로
-  머지한다. 최종 CI·머지 여부는 각 PR을 정본으로 확인한다.
+  provider PR #20은 자체 CI·리뷰·실수집 게이트 통과 후 `7e0f770`으로 먼저 머지했다.
+  Transport PR #51만 최종 문서 커밋의 필수 CI 확인 후 머지한다.
+  최종 CI·머지 여부는 각 PR을 정본으로 확인한다.

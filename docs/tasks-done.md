@@ -2,6 +2,21 @@
 
 완료한 task의 식별자, 핵심 변경, 검증 명령과 시각을 역시간순으로 보관한다.
 
+## 2026-09-29 — 유가 provider 오류 감지·진단과 실제 저장 복구
+
+- python-opinet-api PR #20은 08:05 KST `7e0f770`으로 머지했다. 서비스 이용 불가
+  HTML 조기 감지·응답 대기 진단·비밀값 제외를 provider에서 구현했다. Transport의
+  검증 pin `5fa0046`을 main ancestry에 유지해 운영 의존성을 바꾸지 않았다.
+- WSL/Docker 각각 259개 통과·live 4개 제외·커버리지 93.45%, Python 3.11~3.13·
+  타입 CI 통과. James/Popper 독립 리뷰 P0/P1 없음. 비숫자 지역·응답 이후 DOM 진단
+  P2는 문서와 백로그에 남겼다.
+- n150 runtime `fcd4d1f`의 단일 run `83c635f8-1bf4-4216-a5aa-113efe51245f`과 DB
+  `19750` 성공, 주유소 원본 11,767개·가격/성공 시각 07:32:56 KST 갱신을 확인했다.
+  8시간 보호·기본 인증·주차 frontend·공용 DB 설정은 변경하지 않았다.
+- 소비자 관리자 운영 E2E 421개·parking-radar 16개 통과. 최초 DNS·조회 지연 실패도
+  [검증 기록](runbooks/pr51-validation.md)에 보존했다. 과거 timeout 원인은 미확정이다.
+  Transport PR #51 자체의 최종 CI·머지는 해당 PR을 별도 확인한다.
+
 ## 2026-09-28 — T-042 parking-radar 공용 DB 운영 확인
 
 - UI PR #47 머지 후 최신 Manager 정본과 운영 DSN·SQL을 대조했다. parking-radar는
