@@ -164,7 +164,8 @@ for (const width of widths) {
       const controls = pathname === "/map"
         ? [page.getByLabel("장소 검색"), page.getByLabel("표시 유종"), page.getByRole("group", { name: "보기 방식", exact: true }).getByRole("button").first()]
         : [page.locator(".page-header-actions button").first()];
-      for (const control of controls) expect((await rectangle(control)).height).toBeCloseTo(36, 0);
+      // 동적 지도 청크의 CSS가 적용되기 전 일시적인 native 높이를 최종 치수로 취급하지 않는다.
+      for (const control of controls) await expect.poll(async () => (await rectangle(control)).height).toBeCloseTo(36, 0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
       expect(unexpected).toEqual([]);
       await page.mouse.move(0, 0);
@@ -186,7 +187,7 @@ test.describe("터치 환경", () => {
       ? [page.getByLabel("장소 검색"), page.getByLabel("표시 유종"), page.getByRole("group", { name: "보기 방식", exact: true }).getByRole("button").first()]
       : [page.locator(".page-header-actions button").first()];
     controls.push(page.getByRole("button", { name: "로그아웃", exact: true }));
-    for (const control of controls) expect((await rectangle(control)).height).toBeGreaterThanOrEqual(44);
+    for (const control of controls) await expect.poll(async () => (await rectangle(control)).height).toBeGreaterThanOrEqual(44);
 
     await page.evaluate(() => {
       for (const version of [1, 2]) sessionStorage.setItem(`kor-travel-transport-dashboard-v${version}`, "cached");

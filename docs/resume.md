@@ -2,11 +2,16 @@
 
 ## 현재 상태
 
-- 2026-09-28 후속: PR #46은 `50215b3`으로 머지됐다. 새 `codex/weather-visual-parity`
-  브랜치에서 Weather 실제 구현과 Transport 외형을 맞춘다. 밝은 레일·파란 토큰·카드형
-  헤더·컨트롤/표 밀도를 적용했다. WSL 단위 109개·린트·타입·빌드 통과, 화면 E2E와
-  Docker/리뷰/운영 검증은 진행 중이다. 이 UI PR 머지 후 parking-radar DB를 공용
-  PostgreSQL Docker로 옮긴다. 이번 UI PR에서는 DB·DSN·API·worker를 변경하지 않는다.
+- 2026-09-28 PR #47: Weather 정본 `c25642099`의 밝은 17rem 레일·파란 토큰·카드형
+  헤더·컨트롤/표 밀도와 Dagster 요약 카드 치수를 적용했다. runtime 후보 `1db261e`를
+  16:24 KST n150 UI에만 배포했다. 이미지 `4580a5ca3c61`, 컨테이너 `fa1001e6f2b3`는
+  healthy/재시작 0/host network이며 보호 8개 컨테이너 ID·이미지는 불변이다.
+  WSL/Docker admin 각각 109개·린트·타입·빌드, WSL UI 117개, Docker backend 283개를
+  통과했다. James의 P2 두 건은 재현·수정·직접 재검증 완료, Popper 신규 지적 없음이다.
+  운영 HTTPS E2E 414개가 136.39초에 통과했다(실패/제외/flaky 0). 일부 오류 UI는 mock이다.
+  UI 소스도 백업 후 동기화했다. 최종 증적 문서 CI 확인·머지가 남았으며 정본은 PR #47이다.
+  이 UI PR 머지 후 parking-radar DB를 공용 PostgreSQL Docker로 옮긴다.
+  이번 UI PR에서는 DB·DSN·API·worker를 변경하지 않았다.
 
 - 2026-09-28 14:35 KST PR #46 후보 `8ff8e7c541d05f46c5736a6f97edd762f2d7da9a`의
   shadcn/Weather형 관리 UI를 n150에 배포했다. 공식 Dockerfile 이미지 `cda9a4d83c3d`,
@@ -590,8 +595,12 @@
 
 ## 다음 한 작업
 
-PR #46 최종 문서 CI를 확인해 머지한다. runtime은 `8ff8e7c`이며 이후 증적 문서 커밋만으로
-재배포하지 않는다. 이미 머지됐다면 다시 구현/배포하지 말고 GitHub 상태부터 확인한다.
+PR #47 최종 증적 커밋의 CI를 확인해 머지한다. 검증·독립 리뷰·UI 전용 배포·live E2E는
+완료됐다. 이미 머지됐다면 구현/배포를 반복하지 말고 GitHub 상태부터 확인한다.
+runtime 후보는 `1db261e`이다. PR #46은 이미 `50215b3`으로 머지됐다.
+이 UI PR이 머지된 뒤 parking-radar DB의 공용 PostgreSQL Docker 이전을 별도 PR로 진행한다.
+최신 docker-manager 설정과 실제 DSN을 확인하고 백업·복구 리허설·데이터 동등성 검증을
+선행한다. 기존 DB는 검증 전 삭제하지 않는다. 이후 증적 문서 커밋만으로 재배포하지 않는다.
 API/0015·worker와 배편 선실행은 이전 PR #44에서 완료됐고 정기 스케줄도 복원됐다.
 전체 배포 스크립트를 다시 실행하거나 배편 수집을 재호출하지 않는다.
 다음 실수집 검증 대상은 오피넷 16:00 KST 정기 배치다. UI E2E 성공을 provider 성공으로

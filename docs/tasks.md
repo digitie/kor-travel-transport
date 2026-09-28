@@ -50,8 +50,6 @@ Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks
 
 ### T-042 Transport 전용 운영 관리 UI
 
-- [ ] Weather 실제 구현 기준으로 Transport look and feel·레이아웃을 통일하고
-      WSL/Docker·독립 적대적 리뷰 2명·n150 live E2E 후 별도 PR로 머지한다.
 - [ ] 위 UI PR 머지 후 parking-radar DB를 공용 PostgreSQL Docker로 이전한다.
       docker-manager 최신 설정 확인 → 논리 백업/복구 리허설 → 전용 DB·role 이전 →
       행 수·최근 관측·API·수집 검증 → live E2E 순서다. 원본 DB는 검증 전 삭제하지 않는다.

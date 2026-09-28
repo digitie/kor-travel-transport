@@ -2,6 +2,21 @@
 
 완료한 task의 식별자, 핵심 변경, 검증 명령과 시각을 역시간순으로 보관한다.
 
+## 2026-09-28 — T-042 Weather 외형 일치화
+
+- Weather `c25642099` 정본의 밝은 17rem 레일·파란 의미 색상·카드형 헤더·반응형
+  여백과 shadcn 컨트롤·표·Dagster 요약 카드의 크기를 일치시켰다. 모바일 로그아웃은 보존했다.
+- James(Singer) P2 두 건(모바일 링크 버튼 너비, 요약 카드 밀도)을 실패 테스트로 재현 후
+  수정하고 10개 너비 직접 재검증을 받았다. Popper(Wegener)는 신규 지적이 없었다.
+- runtime `1db261e`/이미지 `4580a5ca3c61`을 n150 UI에만 배포했다. 보호 8개 컨테이너
+  ID·이미지, API `ff45aeac`는 그대로다. 원본 UI 소스/릴리스는 별도 백업했다.
+- WSL/Docker admin 각각 109개·lint/type/build, 기존 frontend 각각 85개,
+  WSL backend 279개·PostgreSQL 전용 4개 제외, Docker backend 283개 및 migration 왕복/check,
+  WSL UI 117개, 최종 운영 HTTPS E2E 414개(136.39초·실패/제외/flaky 0)를 통과했다.
+  일부 UI 오류 검사는 mock이다. provider 성공·전체 저장 범위 완성으로 확대 해석하지 않는다.
+- 최종 증적 CI와 머지 상태 정본은 [PR #47](https://github.com/digitie/kor-travel-transport/pull/47)이다.
+  parking-radar 공용 PostgreSQL 이전은 이 PR 머지 뒤의 별도 작업이다.
+
 ## 2026-09-28 — T-042 shadcn·Weather형 관리 UI
 
 - shadcn/ui Base UI base-nova와 Tailwind v4를 도입해 로그인·공통 검색/선택·지도 필터·상세·

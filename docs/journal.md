@@ -1,12 +1,42 @@
 # journal.md — 작업 일지
 
-## 2026-09-28 Weather 실제 외형 일치화 착수
+## 2026-09-28 PR #47 Weather 실제 외형 일치화·n150 검증
 
 - Weather 로컬 정본 `c25642099`의 색상·글꼴 fallback·17rem 레일·카드형 헤더·여백을
   Transport admin에 반영한다. 기존 청록색 보존을 중단하고 사용자 지정 참조에 맞춘다.
 - Hallmark는 참조 대조/반응형 검증에, shadcn은 기존 Base UI 컴포넌트의 역할·크기
   통일에 적용했다. 저장 데이터 조회·provider 호출·스케줄·POST 로그아웃은 유지한다.
-- WSL 단위 109개·린트·타입·빌드 통과. E2E/Docker/독립 리뷰/운영 배포는 진행 중이다.
+- WSL/Docker admin 단위 각각 109개·린트·타입·빌드, WSL UI E2E 117개 통과.
+  기존 frontend는 WSL/Docker 각각 85개, WSL backend는 279개 통과·PostgreSQL 전용
+  4개 제외다. 현재 후보 `ce9b807`의 GitHub backend/frontend/admin CI도 통과했다.
+- 최초 Docker backend 실행은 이전 PR 이미지의 오래된 Compose 계약 때문에 256개 통과·
+  1개 실패했다. 최신 소스와 Compose를 모두 복사한 검증 전용 이미지를 다시 만들고
+  의존성/Compose SHA-256 일치 및 `pip check`를 확인했다. 전체 재검증은 283개 통과,
+  Alembic 0014↔0015 왕복과 check 무변경으로 끝났다.
+  오류 상태 E2E 일부는 mock이며 실제 수집 성공으로 해석하지 않는다.
+- James(Singer)는 모바일 Dagster 링크 버튼 확장 누락과 요약 카드 밀도 차이를 P2로
+  재현했다. 원 작업자도 실패 테스트로 확인한 뒤 `1db261e`에서 data-slot 선택자와
+  카드 높이 160px·간격 16px·라벨 12px를 수정하고 회귀 조건을 추가했다.
+  Popper(Wegener)는 인증·데이터 조회·운영 경계의 신규 지적이 없었다. James는 수정 후
+  320~1440px 10개 너비를 직접 재검증해 신규 지적 없이 해소를 확인했다.
+- 최종 후보 `1db261e93c961471e552be1b312e6e59377264d8`의 WSL UI 117개가 2.3분에
+  통과했다. 로컬 재빌드 중 지도 테스트 키 누락으로 마커 3개 검사가 실패한 실행은 증적에서
+  제외하고, 빌드 시 테스트 키를 복구한 뒤 전체를 재실행했다. 운영 이미지는 기존 공개 키를
+  별도로 주입하므로 이 로컬 설정 누락의 영향이 없다. 운영 의존성 audit은 0건이다.
+- 16:24 KST 공식 Dockerfile 이미지 `4580a5ca3c61`을 n150 Transport UI에만 배포했다.
+  보호 8개 컨테이너의 ID·이미지는 불변이며 API release `ff45aeac`·DB ready를 확인했다.
+  실제 지도 타일·군산 저장 배편·청주공항 저장 주차·Dagster의 375/1440px 화면 5개를
+  확인했고 페이지 예외는 없었다. provider 출도착/실시간 시간표 호출은 하지 않았다.
+- 16:30:59 KST 시작한 최종 운영 HTTPS E2E 414개가 136.39초에 통과했다.
+  실패/skip/flaky 0이며 공개·인증 저장 API/CSRF/로그아웃/모바일 화면을 검증했다.
+  최초 413개 통과·터치 치수 1개 실패는 동적 CSS 적용 전 치수 측정으로, 44px 기준을
+  유지하며 assertion이 최종 치수를 기다리도록 고쳤다. 터치 반복 6개·WSL 패리티 12개도
+  통과했다. 중간 재실행의 공개 API DNS `ENOTFOUND`는 내부 health·외부 DNS/HTTPS
+  복구 확인 후 전체를 다시 검증했다. 이 실패 실행들을 성공 결과로 합산하지 않는다.
+- n150 UI 소스를 동기화했으며 이전 소스/릴리스 백업은
+  `/home/digitie/backups/transport-admin-ui/pr47-1db261e93c961471e552be1b312e6e59377264d8`다.
+  runtime은 `1db261e`로 고정하고 테스트·증적 문서만 후속 커밋한다. 최종 CI 후
+  [PR #47](https://github.com/digitie/kor-travel-transport/pull/47)을 머지한다.
 - 추가 요청인 parking-radar 공용 PostgreSQL 이전은 이 UI PR 머지 뒤 별도 PR로
   수행한다. 백업·복구 리허설과 데이터 동등성 검증 전 원본 DB를 삭제하지 않는다.
 
