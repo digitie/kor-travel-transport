@@ -6,9 +6,9 @@
 #   bash redeploy-dagster-services-server14.sh <설치할 docker-compose.shared.yml>
 #
 # 되돌리기도 같은 스크립트에 옛 파일을 준다. 매 실행이 이미지 고정·gate·daemon 정지·run 대기를
-# 처음부터 다시 하므로 새 셸에서 그대로 쓴다. daemon을 멈춘 뒤 어디서 끝나든(STOP·실패·Ctrl-C)
-# daemon 컨테이너를 `docker start`로 다시 띄운다. `compose start|up`은 쓰지 않는다: 전자는 한 번만
-# 도는 migrate 컨테이너가 없어 실패하고, 후자는 daemon을 재생성한다.
+# 처음부터 다시 하므로 새 셸에서 그대로 쓴다. daemon을 멈춘 뒤 어디서 끝나든(STOP·실패·Ctrl-C·
+# SSH 끊김·출력 pipe 닫힘) daemon 컨테이너를 `docker start`로 다시 띄운다. `compose start|up`은 쓰지
+# 않는다: 전자는 한 번만 도는 migrate 컨테이너가 없어 실패하고, 후자는 daemon을 재생성한다.
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/home/digitie/apps/kor-travel-airport}"
@@ -40,6 +40,14 @@ compose() {
 }
 
 container_of() { printf '%s-%s-1' "$PROJECT" "$1"; }
+
+# 세 컨테이너의 ID. 컨테이너의 이미지는 바뀌지 않으므로 ID가 같으면 이미지도 같다.
+container_ids() {
+  local service
+  for service in "${SERVICES[@]}"; do
+    docker inspect -f '{{.Id}}' "$(container_of "$service")" || return 1
+  done
+}
 
 container_dsn() {
   docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$1" | sed -n 's/^DAGSTER_POSTGRES_URL=//p'
@@ -179,25 +187,46 @@ wait_healthy() {
   done
 }
 
+# EXIT trap에서만 쓴다. 터미널이 사라졌거나(EIO) 출력 pipe가 닫혔으면(EPIPE) 출력은 버린다.
+note() { echo "$*" >&2 2>/dev/null || :; }
+
 daemon_down=0
+stopping=0
 rollback_file=""
 work=""
+# SSH가 끊겨 터미널이 사라지거나 출력 pipe가 닫힌 뒤에도 daemon을 되살려야 한다. 그때는 모든 출력이
+# 실패하고, errexit가 켜져 있으면 trap이 첫 echo에서 끝난다. 그래서 errexit를 풀고 신호(두 번째
+# Ctrl-C 포함)를 무시한 채, 출력보다 `docker start`를 먼저 한다.
 restore_daemon() {
   local status=$?
+  set +e
+  trap '' INT TERM HUP PIPE
   if ((daemon_down)); then
-    echo "daemon을 다시 띄운다: docker start $DAEMON" >&2
-    docker start "$DAEMON" >/dev/null || echo "실패: 'docker start $DAEMON'을 직접 실행한다." >&2
+    # `docker stop` 도중에 끊겼으면 daemon은 이미 SIGTERM을 받아 곧 멈춘다. 그 전에 start하면 아무 일도
+    # 하지 않은 채 뒤이어 멈추므로, stop을 마저 끝낸 뒤 start한다.
+    ((stopping)) && docker stop "$DAEMON" >/dev/null 2>&1
+    docker start "$DAEMON" >/dev/null 2>&1
+    if [[ "$(docker inspect -f '{{.State.Running}}' "$DAEMON" 2>/dev/null)" == true ]]; then
+      note "daemon 실행 중: $DAEMON"
+    else
+      note "실패: $DAEMON이 떠 있지 않다. 'docker start $DAEMON'을 직접 실행한다."
+    fi
   fi
   if ((status != 0)) && [[ -n "$rollback_file" ]]; then
-    echo "파일은 이미 교체됐다. 'docker ps -a'로 세 서비스를 보고, 되돌리려면 이 스크립트에 $rollback_file을 준다." >&2
+    note "파일은 이미 교체됐다. 'docker ps -a'로 세 서비스를 보고, 되돌리려면 이 스크립트에 $rollback_file을 준다."
   fi
   [[ -z "$work" ]] || rm -rf -- "$work"
   exit "$status"
 }
+# 신호는 exit code(128+번호)로 바꾼다. 비대화형 bash는 EXIT trap이 있으면 종료 신호에도 그 trap을
+# 돌리지만, 그때 trap 안의 $?는 신호를 담지 않는다(2026-09-28 bash 5.2·5.3 실측: SIGPIPE에서 0). 그러면
+# `exit "$status"`가 끊긴 실행을 exit 0으로 끝낸다. PIPE는 출력 pipe가 닫힌 경우다(pty 없는
+# `ssh n150 bash …`의 클라이언트가 끊기거나 `| tee`가 죽으면 다음 출력이 SIGPIPE를 받는다).
 trap restore_daemon EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 trap 'exit 129' HUP
+trap 'exit 141' PIPE
 
 # 검사한 내용과 설치하는 내용이 같도록 처음에 사본을 떠 두고 끝까지 그 사본만 쓴다.
 work="$(mktemp -d)"
@@ -208,6 +237,8 @@ for service in "${SERVICES[@]}"; do
   [[ "$(docker inspect -f '{{.State.Running}}' "$(container_of "$service")")" == true ]] \
     || die "$(container_of "$service")가 실행 중이 아니다."
 done
+# 교체 직전(5)에 이 컨테이너들이 그대로인지 본다.
+ids="$(container_ids)"
 
 # 1) 이미지를 지금 code-server 이미지로 고정한다. .env.server14의 BACKEND_RUNTIME_IMAGE는 다른 배포가
 #    바꿀 수 있고, 셸 env가 --env-file보다 우선한다. 고정 이미지는 태그로 붙잡아 둔다. 다른 작업의
@@ -221,18 +252,29 @@ echo "이미지 고정: $pin ($pin_tag)"
 # 2) 설치할 파일은 healthcheck·init만 바꿔야 하고, 실행 중 컨테이너는 지금 파일 그대로여야 한다.
 only_probe_changes || exit 1
 gate "$SHARED" || exit 1
+# run을 물을 수 없으면 4의 대기는 상한까지 daemon을 멈춘 채 헛돈다. 멈추기 전에 한 번 묻는다.
+in_flight_runs >/dev/null || die "Dagster GraphQL($DAGSTER_GRAPHQL_URL)에서 run을 읽지 못했다. daemon은 그대로다."
 docker tag "$pin" "$pin_tag"
 
 # 3) 새 run이 시작되지 않게 daemon을 먼저 멈춘다(schedule·queue dequeue는 daemon이 한다).
 daemon_down=1
+stopping=1
 docker stop "$DAEMON" >/dev/null
+stopping=0
 
 # 4) 실행 중 run이 끝나기를 기다린다.
 drain || exit 1
 
-# 5) 기다리는 동안 다른 배포가 env·compose를 바꿨을 수 있다. 교체 직전에 둘 다 다시 본다.
+# 5) 기다리는 동안 다른 배포가 env·compose를 바꿨거나, Dagster 서비스를 다시 만들었거나, daemon을
+#    띄웠을 수 있다. 교체 직전에 모두 다시 본다. gate는 각 컨테이너의 자기 이미지로 계산하므로 다른
+#    이미지로 다시 만든 컨테이너도 통과한다. 그것은 ID로 잡는다. 떠 있는 daemon은 새 run을 시작했을 수
+#    있고 재생성이 그 run을 끊는다.
 only_probe_changes || exit 1
 gate "$SHARED" || exit 1
+[[ "$(container_ids)" == "$ids" ]] \
+  || die "기다리는 동안 다른 작업이 Dagster 컨테이너를 다시 만들었다. 'docker ps -a'로 이미지를 확인한다."
+[[ "$(docker inspect -f '{{.State.Running}}' "$DAEMON")" == false ]] \
+  || die "기다리는 동안 다른 작업이 daemon을 띄웠다. run을 다시 확인하고 처음부터 실행한다."
 # 백업 이름은 겹치지 않아야 한다. 같은 초에 되돌리기가 돌면 넘겨받은 백업을 덮어쓸 수 있다.
 backup="$(mktemp "$SHARED.before-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX")"
 cp -p "$SHARED" "$backup"

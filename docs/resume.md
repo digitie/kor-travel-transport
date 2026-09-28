@@ -6,6 +6,13 @@
   exec 형식·`python -I`·`init: true` 계약으로 바꾸고, command에서 Dagster 서비스를 유도하는
   계약 테스트를 추가했다. 아직 미배포다. 반영은 `scripts/redeploy-dagster-services-server14.sh`로
   한다(`docs/runbooks/deployment.md` "Dagster healthcheck·init만 바뀐 반영"). 스크립트는 이미지
+  고정 → 렌더링 비교·drift gate → GraphQL 확인 → daemon 정지 → in-flight run 대기(상한 1800초) →
+  비교·gate·컨테이너 ID·daemon 정지 재확인 → 파일 교체 → Dagster 세 서비스
+  `up -d --no-deps --no-build` 순서로 진행한다. 어디서 멈추든(SSH 끊김·출력 pipe 닫힘 포함) daemon
+  컨테이너를 `docker start`로 되살린다. 되돌리기도 같은 스크립트에 옛 파일을 준다.
+  `.env.server14`의 `BACKEND_RUNTIME_IMAGE`는 PR #43 배포가 `ab25bf7b`로 바꿔 두었다
+  (PR #43은 2026-09-28 `8a34f77`로 main에 머지됐다).
+
   고정 → 렌더링 비교·drift gate → daemon 정지 → in-flight run 대기(상한 1800초) → 비교·gate
   재확인 → 파일 교체 → Dagster 세 서비스 `up -d --no-deps --no-build` 순서로 진행한다. 어디서
   멈추든 daemon 컨테이너를 `docker start`로 되살린다. 되돌리기도 같은 스크립트에 옛 파일을 준다.
@@ -428,7 +435,8 @@
 
 ## 다음 한 작업
 
-Dagster healthcheck 브랜치는 CI·리뷰 뒤 PR #43 세션과 시간을 맞추고, 머지 커밋의
+Dagster healthcheck 브랜치는 CI·리뷰 뒤 같은 디렉터리에 배포하는 다른 세션(2026-09-28 기준 열린
+PR #44)과 시간을 맞추고, 머지 커밋의
 `scripts/redeploy-dagster-services-server14.sh`로 Dagster 세 서비스만 재생성해 반영한다
 (`docs/runbooks/deployment.md` "Dagster healthcheck·init만 바뀐 반영"). `dagster-pin-*` 태그는
 다음 전체 릴리스까지 둔다. code-server가 다시 unhealthy가 되면 재시작 전에 스레드 stack을 먼저

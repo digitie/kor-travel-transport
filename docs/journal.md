@@ -53,6 +53,35 @@
   않은 것, DSN 비교를 뺀 것, 태그를 뺀 것, daemon을 멈추지 않은 것, 검사하지 않은 원본 파일을 넣은
   것도 빨갛다. 이번에는 `uv sync --locked`를 쓰지 않았다. `python-krex-api` git 의존성 fetch가
   6분 넘게 멈춰 그 컨테이너를 내렸다.
+- 델타 리뷰(ee5fcb0..73f1131) 반영: 첫째(HIGH), EXIT trap이 SSH 끊김·출력 pipe 닫힘에서 daemon을
+  되살리지 못했다. `restore_daemon`은 `set -e` 아래에서 돌았고 첫 명령이 `echo >&2`였다. 터미널이
+  사라지면 그 echo가 EIO로 실패해 trap이 `docker start` 전에 끝났다. pipe가 닫히면 그 echo가 다시
+  SIGPIPE를 받았다. 리뷰는 SIGPIPE를 trap하지 않아 bash가 EXIT trap 없이 죽는다고 봤다. 실측은
+  달랐다. 비대화형 bash는 EXIT trap이 있으면 SIGPIPE에도 그 trap을 돌린다(WSL·n150 bash 5.3,
+  컨테이너 5.2.37). 다만 trap 안의 `$?`가 0이라 `exit "$status"`가 끊긴 실행을 exit 0으로 끝낸다.
+  trap은 이제 errexit를 풀고 INT·TERM·HUP·PIPE를 무시한다. 출력보다 `docker start`를 먼저 하고,
+  출력 실패는 버린다. `trap 'exit 141' PIPE`로 끊긴 이유를 exit code로 남긴다. `docker stop` 도중에
+  끊기면 daemon은 이미 SIGTERM을 받았으므로 stop을 마저 끝낸 뒤 start한다. 둘째(MED), 대기 뒤
+  재확인은 다른 세션이 자기 이미지로 Dagster 서비스를 다시 만든 경우를 통과시켰다. gate가 각
+  컨테이너의 자기 이미지로 계산하기 때문이다. 그러면 스크립트는 exit 0으로 끝나면서 세 서비스를
+  옛 고정 이미지로 되돌렸다. 시작할 때 세 컨테이너 ID를 적어 두고, 교체 직전에 ID가 같은지와
+  daemon이 아직 멈춰 있는지 본다. code-server 이미지를 따로 비교하지는 않는다. 컨테이너의 이미지는
+  바뀌지 않으므로 ID 비교에 들어 있다. 셋째(LOW), GraphQL을 한 번도 묻지 않고 daemon을 멈췄다.
+  URL이 틀리면 1800초 동안 daemon을 멈춘 채 헛돌았으므로 멈추기 전에 한 번 묻는다. runbook의 수동
+  `up`에는 project·`--env-file`·두 `-f`를 쓴 전체 명령을 적었다. 다른 배포 세션 표기는 PR #44로
+  고쳤다(n150에 `local/transport-pr44:backend`가 있고 #44는 열려 있다). `c8b47811`이 태그만 풀려
+  남아 있다는 지적은 받지 않았다. `docker image inspect sha256:c8b47811…`은 "No such image"이고
+  dangling 목록에도 없다(containerd snapshotter). 원래 문구를 유지하고 근거를 붙였다.
+- 델타 검증(n150 throwaway `--network none`, 고정 이미지 `148a471b`, bash 5.2.37): 스크립트 테스트
+  13개와 계약 13개가 통과했다. Docker 이미지 배치에서도 13개가 통과했다. HEAD(73f1131) 스크립트에
+  새 테스트를 돌리면 7개가 빨갛다. GraphQL 선확인, 다른 작업 세 경우, pty hangup, pipe 닫힘,
+  순서 확인이 여기에 든다. hangup·pipe·다른 작업 테스트를 5회 반복해도 모두 통과했다. 스크립트
+  변형 17개 가운데 16개가 빨갛다. 이번 변형은 옛 trap(echo 먼저·errexit), PIPE·HUP trap 제거,
+  ID 재확인 제거, daemon 재확인 제거, GraphQL 선확인 제거다. 첫 판 테스트에서는 PIPE trap 제거와
+  ID 재확인 제거가 초록이었다. 세 서비스를 다시 만든 경우는 compose up이 daemon도 띄워 daemon
+  재확인에 먼저 걸렸다. 그래서 code-server만 다시 만드는 경우를 더했고, exit code가 128+신호
+  번호인지도 본다. 남은 초록 하나는 trap 안의 신호 무시(두 번째 Ctrl-C 방어)를 뺀 변형이다.
+  `docker stop` 도중 끊김 경로도 시험하지 못했다. 가짜 docker의 stop이 즉시 끝나기 때문이다.
 - n150 실측: 새 probe는 살아 있는 14005에서 exit 0(0.7~1.2초), 닫힌 포트에서 exit 1이다.
   기존 CLI probe는 1.8초가 걸렸다(부하 23).
 - 조사 결과 unhealthy의 원인은 probe가 아니라 code-server gRPC 서버 정지였다. 08:32Z

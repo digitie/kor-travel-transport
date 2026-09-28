@@ -1,8 +1,9 @@
 """`scripts/redeploy-dagster-services-server14.sh`가 fail-closed로 동작하는지 가짜 docker·curl 앞에서 본다.
 
 스크립트는 n150에서 Dagster 세 서비스만 다시 만든다. 여기서 고정하는 것은 순서와 멈춤이다.
-drift·허용 밖 변경은 daemon을 멈추기 전에 STOP이고, daemon을 멈춘 뒤의 STOP·실패는 daemon
-컨테이너를 `docker start`로 되살리며, 기다리는 동안 바뀐 env는 교체 직전에 다시 잡는다.
+drift·허용 밖 변경·닿지 않는 GraphQL은 daemon을 멈추기 전에 STOP이다. daemon을 멈춘 뒤의
+STOP·실패·SSH 끊김·출력 pipe 닫힘은 daemon 컨테이너를 `docker start`로 되살린다. 기다리는 동안
+바뀐 env, 다른 작업이 다시 만든 Dagster 컨테이너, 다른 작업이 띄운 daemon은 교체 직전에 다시 잡는다.
 compose의 실제 렌더링·hash는 흉내만 낸다. 가짜 compose는 shared 파일(JSON)을 셸 env >
 `--env-file` 순으로 치환해 렌더링하고, 서비스 정의의 hash를 config-hash label로 쓴다.
 """
@@ -11,8 +12,12 @@ from __future__ import annotations
 
 import json
 import os
+import pty
+import select
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -40,7 +45,7 @@ _ENV_DSN = "postgresql+psycopg2://dagster:pw@127.0.0.1:11000/kor_travel_transpor
 _OLD_SCHEME_DSN = "postgresql://dagster:pw@127.0.0.1:11000/kor_travel_transport_dagster"
 
 _FAKE = r'''
-import hashlib, json, os, re, sys
+import hashlib, json, os, re, subprocess, sys
 from pathlib import Path
 
 state_path = Path(os.environ["FAKE_STATE"])
@@ -65,12 +70,21 @@ def resolve(image):
     fail(f"No such image: {image}")
 
 if program == "curl":
-    # 기다리는 동안 다른 작업이 파일을 고치는 경우: [경로, 덧붙일 내용]
-    edit = state.pop("append_on_curl", None)
+    if state.get("curl_fails"):
+        fail("curl: (7) Failed to connect to 127.0.0.1 port 14004", 7)
+    # 기다리는 동안(daemon이 멈춘 동안) 다른 작업이 한 번 끼어든다.
+    waiting = not state["containers"]["kor-travel-airport-dagster-daemon-1"]["Running"]
+    edit = state.pop("append_on_curl", None) if waiting else None  # [경로, 덧붙일 내용]
+    other_job = state.pop("run_on_curl", None) if waiting else None  # 다른 세션의 명령
+    if edit or other_job:
+        save()
     if edit:
         with open(edit[0], "a") as edited:
             edited.write(edit[1])
-        save()
+    if other_job:
+        # 다른 세션은 이 스크립트가 export한 고정 이미지를 모른다.
+        env = {key: value for key, value in os.environ.items() if key != "BACKEND_RUNTIME_IMAGE"}
+        subprocess.run(other_job, env=env, check=True, stdout=subprocess.DEVNULL)
     print(json.dumps({"data": {"runsOrError": {"__typename": "Runs", "results": state["runs"]}}}))
     sys.exit(0)
 
@@ -124,6 +138,7 @@ if args[0] == "compose":
         for name in rest[3:]:
             service = config["services"][name]
             state["containers"][f"kor-travel-airport-{name}-1"] = {
+                "Id": os.urandom(32).hex(),
                 "Image": resolve(service["image"]),
                 "ConfigImage": service["image"],
                 "Labels": {"com.docker.compose.config-hash": service_hash(service)},
@@ -146,6 +161,7 @@ if command == "inspect":
     if container is None:
         fail(f"Error: No such object: {name}")
     formats = {
+        "{{.Id}}": lambda: container["Id"],
         "{{.Image}}": lambda: container["Image"],
         "{{.Config.Image}}": lambda: container["ConfigImage"],
         '{{index .Config.Labels "com.docker.compose.config-hash"}}':
@@ -252,11 +268,14 @@ class Host:
             **extra,
         }
 
-    def compose_up(self, services: list[str], **env: str) -> None:
+    def compose_up_command(self, services: list[str]) -> list[str]:
         compose = [str(self.bin / "docker"), "compose", "--project-name", _PROJECT, "--env-file", ".env.server14"]
         files = ["-f", "docker-compose.yml", "-f", "docker-compose.shared.yml"]
+        return [*compose, *files, "up", "-d", "--no-deps", "--no-build", *services]
+
+    def compose_up(self, services: list[str], **env: str) -> None:
         subprocess.run(
-            [*compose, *files, "up", "-d", "--no-deps", "--no-build", *services],
+            self.compose_up_command(services),
             cwd=self.app,
             env=self.env(**env),
             check=True,
@@ -279,16 +298,19 @@ class Host:
     def installed(self) -> str:
         return (self.app / "docker-compose.shared.yml").read_text(encoding="utf-8")
 
+    def script_env(self, *, drain_timeout: int = 0, drain_poll: str = "0") -> dict[str, str]:
+        return self.env(
+            APP_DIR=str(self.app),
+            DRAIN_TIMEOUT_SECONDS=str(drain_timeout),
+            DRAIN_POLL_SECONDS=drain_poll,
+            HEALTH_TIMEOUT_SECONDS="0",
+            HEALTH_POLL_SECONDS="0",
+        )
+
     def run(self, candidate: Path, *, drain_timeout: int = 0) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             ["bash", str(_SCRIPT), str(candidate)],
-            env=self.env(
-                APP_DIR=str(self.app),
-                DRAIN_TIMEOUT_SECONDS=str(drain_timeout),
-                DRAIN_POLL_SECONDS="0",
-                HEALTH_TIMEOUT_SECONDS="0",
-                HEALTH_POLL_SECONDS="0",
-            ),
+            env=self.script_env(drain_timeout=drain_timeout),
             capture_output=True,
             text=True,
             timeout=120,
@@ -307,8 +329,8 @@ def _candidate(tmp_path: Path, text: str = _NEW) -> Path:
     return path
 
 
-def _index(calls: list[list[str]], wanted: list[str]) -> int:
-    return next(i for i, call in enumerate(calls) if call[: len(wanted)] == wanted)
+def _index(calls: list[list[str]], wanted: list[str], *, after: int = -1) -> int:
+    return next(i for i, call in enumerate(calls) if i > after and call[: len(wanted)] == wanted)
 
 
 def _assert_untouched(host: Host, result: subprocess.CompletedProcess[str]) -> None:
@@ -328,11 +350,12 @@ def test_redeploy_recreates_the_three_services_on_the_pinned_image_and_rolls_bac
     assert result.returncode == 0, result.stdout + result.stderr
 
     calls = host.calls()
+    reachable = _index(calls, ["curl"])  # GraphQL에 닿는지 daemon을 멈추기 전에 본다.
     tag = _index(calls, ["docker", "tag", _PIN])
     stop = _index(calls, ["docker", "stop", _DAEMON])
-    drained = _index(calls, ["curl"])
+    drained = _index(calls, ["curl"], after=stop)
     up = next(i for i, call in enumerate(calls) if call[0] == "docker" and "up" in call)
-    assert tag < stop < drained < up, calls
+    assert reachable < tag < stop < drained < up, calls
     assert calls[up][-3:] == list(_SERVICES)
     assert ["docker", "start", _DAEMON] not in calls  # 성공하면 up이 새 daemon을 띄운다.
 
@@ -353,7 +376,9 @@ def test_redeploy_recreates_the_three_services_on_the_pinned_image_and_rolls_bac
     host.log_path.write_text("", encoding="utf-8")
     rollback = host.run(backups[0])
     assert rollback.returncode == 0, rollback.stdout + rollback.stderr
-    assert _index(host.calls(), ["docker", "stop", _DAEMON]) < _index(host.calls(), ["curl"])
+    rollback_calls = host.calls()
+    stopped = _index(rollback_calls, ["docker", "stop", _DAEMON])
+    assert any(call[0] == "curl" for call in rollback_calls[stopped:]), rollback_calls  # 멈춘 뒤 run을 기다렸다.
     assert host.installed() == _OLD
     for service in _SERVICES:
         container = host.state()["containers"][f"{_PROJECT}-{service}-1"]
@@ -427,3 +452,141 @@ def test_redeploy_installs_the_content_it_checked(host: Host, tmp_path: Path) ->
     assert result.returncode == 0, result.stdout + result.stderr
     assert candidate.read_text(encoding="utf-8") != _NEW
     assert host.installed() == _NEW
+
+
+def test_redeploy_stops_before_the_daemon_when_graphql_is_unreachable(host: Host, tmp_path: Path) -> None:
+    # run을 물을 수 없으면 대기가 상한(기본 1800초)까지 daemon을 멈춘 채 헛돈다.
+    host.update_state(curl_fails=True)
+    _assert_untouched(host, host.run(_candidate(tmp_path)))
+
+
+# 기다리는 동안 다른 세션이 하는 일. 다시 만드는 서비스는 그 세션의 이미지(.env.server14의 draft)로
+# 뜨고, gate는 각 컨테이너의 자기 이미지로 계산하므로 통과한다.
+_OTHER_JOBS: dict[str, list[str]] = {
+    # 세 서비스를 다시 만든다. compose up이 daemon도 다시 띄운다.
+    "recreates-the-services": list(_SERVICES),
+    # code-server만 다시 만든다. daemon은 멈춘 그대로라 컨테이너 ID로만 잡힌다.
+    "recreates-the-code-server": ["dagster-code-server"],
+    # daemon만 다시 띄운다. 새 run이 시작될 수 있다.
+    "starts-the-daemon": [],
+}
+
+
+@pytest.mark.parametrize("other_job", list(_OTHER_JOBS))
+def test_redeploy_stops_when_another_job_took_the_services_during_the_wait(
+    host: Host, tmp_path: Path, other_job: str
+) -> None:
+    recreated = _OTHER_JOBS[other_job]
+    job = host.compose_up_command(recreated) if recreated else ["docker", "start", _DAEMON]
+    host.update_state(run_on_curl=job)
+    before = {name: container["Id"] for name, container in host.state()["containers"].items()}
+    result = host.run(_candidate(tmp_path))
+
+    assert result.returncode != 0
+    assert "STOP" in result.stderr
+    ups = [call for call in host.calls() if call[0] == "docker" and "up" in call]
+    assert len(ups) == (1 if recreated else 0), ups  # 다른 세션의 up뿐이다.
+    assert host.installed() == _OLD
+    state = host.state()
+    assert state["containers"][_DAEMON]["Running"] is True
+    for service in _SERVICES:
+        name = f"{_PROJECT}-{service}-1"
+        container = state["containers"][name]
+        if service in recreated:
+            # 다른 세션이 만든 그대로다. 고정 이미지로 되돌려 놓지 않았다.
+            assert (container["ConfigImage"], container["HealthTest"][1]) == (_DRAFT, "old-probe"), service
+        else:
+            assert container["Id"] == before[name], service
+
+
+def _drain_forever(host: Host, tmp_path: Path) -> tuple[list[str], dict[str, str]]:
+    """끝나지 않는 run 앞에서 대기 루프에 머무는 실행."""
+    host.update_state(runs=[{"runId": "f130efff", "jobName": "ferry_job", "status": "STARTED"}])
+    return ["bash", str(_SCRIPT), str(_candidate(tmp_path))], host.script_env(drain_timeout=600, drain_poll="0.2")
+
+
+def _read_until_draining(host: Host, output: int, deadline: float) -> None:
+    """daemon을 멈추고 대기 루프에서 run을 물을 때까지 스크립트 출력을 읽어 버린다."""
+    while time.monotonic() < deadline:
+        try:
+            calls = host.calls()
+        except json.JSONDecodeError:  # 가짜 docker가 쓰는 중인 줄
+            calls = []
+        stops = [i for i, call in enumerate(calls) if call[:2] == ["docker", "stop"]]
+        if stops and any(call[0] == "curl" for call in calls[stops[0] :]):
+            return
+        if select.select([output], [], [], 0.1)[0]:
+            try:
+                data = os.read(output, 65536)
+            except OSError:  # pty: 자식이 끝나면 EIO
+                data = b""
+            if not data:
+                raise AssertionError(f"대기 루프 전에 끝났다: {calls}")
+    raise AssertionError(f"대기 루프에 들어가지 않았다: {host.calls()}")
+
+
+def _assert_daemon_restored(host: Host, exit_code: int, signal_number: int) -> None:
+    """출력이 끊긴 뒤: 아무것도 바꾸지 않았고, 멈췄던 daemon을 다시 띄웠고, 끊긴 이유를 exit code로 남겼다.
+
+    bash는 신호로 끝나도 EXIT trap을 돌리지만 trap 안의 $?가 0이라, 신호를 exit로 바꾸지 않으면
+    끊긴 실행이 exit 0으로 끝난다.
+    """
+    calls = host.calls()
+    assert exit_code == 128 + signal_number, (exit_code, calls)
+    assert any(call == ["docker", "start", _DAEMON] for call in calls[_index(calls, ["docker", "stop", _DAEMON]) :]), (
+        exit_code,
+        calls,
+    )
+    assert not [call for call in calls if call[0] == "docker" and "up" in call]
+    assert host.installed() == _OLD
+    assert host.state()["containers"][_DAEMON]["Running"] is True
+
+
+def test_redeploy_restarts_the_daemon_when_the_ssh_terminal_hangs_up(host: Host, tmp_path: Path) -> None:
+    # tmux 없이 SSH가 끊긴 경우: 터미널이 사라져 SIGHUP이 오고, 그 뒤 모든 출력이 EIO로 실패한다.
+    command, env = _drain_forever(host, tmp_path)
+    pid, terminal = pty.fork()
+    if pid == 0:  # 자식은 곧바로 스크립트가 된다.
+        try:
+            os.execvpe(command[0], command, env)
+        finally:
+            os._exit(127)
+    try:
+        _read_until_draining(host, terminal, time.monotonic() + 90)
+    except BaseException:
+        os.kill(pid, signal.SIGKILL)
+        os.waitpid(pid, 0)
+        raise
+    finally:
+        os.close(terminal)
+    deadline = time.monotonic() + 60
+    while (status := os.waitpid(pid, os.WNOHANG))[0] == 0:
+        if time.monotonic() > deadline:
+            os.kill(pid, signal.SIGKILL)
+            os.waitpid(pid, 0)
+            raise AssertionError("터미널이 사라진 뒤에도 스크립트가 끝나지 않았다")
+        time.sleep(0.1)
+    _assert_daemon_restored(host, os.waitstatus_to_exitcode(status[1]), signal.SIGHUP)
+
+
+def test_redeploy_restarts_the_daemon_when_the_output_pipe_closes(host: Host, tmp_path: Path) -> None:
+    # pty 없는 `ssh n150 bash …`의 클라이언트가 끊기거나 `| tee`가 죽은 경우: 다음 출력이 SIGPIPE를 받는다.
+    command, env = _drain_forever(host, tmp_path)
+    process = subprocess.Popen(
+        command,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    assert process.stdout is not None
+    try:
+        _read_until_draining(host, process.stdout.fileno(), time.monotonic() + 90)
+        process.stdout.close()
+        exit_code = process.wait(timeout=60)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+    _assert_daemon_restored(host, exit_code, signal.SIGPIPE)
