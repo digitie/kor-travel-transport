@@ -5,8 +5,8 @@
 - 2026-09-28 VWorld 키: 로컬 `kor-travel-map/.env`의 키를 transport 관리자 UI의
   Git 제외 `.env.local`과 WSL 검증 환경에 반영했다. 실제 키로 Next.js 빌드 성공,
   VWorld 타일 12개 `200 image/png`와 배경 지도 렌더링을 확인했다. 탭/상세 E2E는
-  31개 통과·1개 실패(동일 좌표 묶음에서 김포공항 선택 버튼 탐색)다. 키 값은 출력하거나
-  커밋하지 않았다. 운영 재배포 완료나 전체 E2E 성공을 의미하지 않는다.
+  최초 31개 통과·1개 실패였다. 재조회가 열린 겹친 장소 목록을 닫는 원인을 수정한 뒤
+  32개 모두 통과했다. 키 값은 출력하거나 커밋하지 않았다. 운영 재배포는 아직 미완료다.
 
 - **2026-09-28 12:24~12:33Z ADR-010 운영 식별자 개명 cutover 완료.** R=`b75fca1c`(#49).
   - 운영은 이제 project `kor-travel-transport`, 디렉터리 `/home/digitie/apps/kor-travel-transport`, 컨테이너
@@ -23,8 +23,9 @@
 
 - 2026-09-28 `codex/port-coordinates-button-scroll`: 승인된 KOMSA 기항지 API를 주요 항구
   19개 명시 대상·지역/이름 정확 대조·DB 호출 예약/캐시로 연결 중이다. 항로 안내 점을
-  항구로 쓰던 오류와 교통 탭 36px/버튼 44px 충돌을 수정했다. provider PR #9 CI 통과·
-  독립 리뷰 진행, admin WSL 단위 109개·린트·타입·빌드·탭 레이아웃 E2E 5개 통과다.
+  항구로 쓰던 오류와 교통 탭 36px/버튼 44px 충돌을 수정했다. provider PR #9는 CI·
+  두 독립 리뷰·live 확인 후 `2690f35`로 머지했고 의존성을 고정했다. admin WSL 단위
+  111개·린트·타입·빌드·탭/상세 E2E 32개가 통과했다.
   Transport 전체 WSL/Docker·운영 검증·머지는 미완료다. 후속 지도/combobox/Map·Weather
   일치화 11개 항목은 현재 PR 완료 뒤 진행하도록 tasks에 기록했다.
 

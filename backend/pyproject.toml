@@ -19,7 +19,7 @@ dependencies = [
   "python-datagokr-api @ git+https://github.com/digitie/python-datagokr-api@b885ad6b9cff39b9ce642e971944b4c3e4863c86",
   "python-kasi-api @ git+https://github.com/digitie/python-kasi-api@4259e574468435355be79d3fe85b394249ab1989",
   "python-krairport-api @ git+https://github.com/digitie/python-krairport-api@cbe4d1380dc0388c078e8ae4622d3e580717064b",
-  "python-kric-api @ git+https://github.com/digitie/python-kric-api@1c1bb0982cecd794a676498312384a66f4e8698c",
+  "python-kric-api @ git+https://github.com/digitie/python-kric-api@2690f35420ead326f0e04bc0366ece6bc075cd9e",
   "python-krex-api @ git+https://github.com/digitie/python-krex-api@adda2879f8bc1f0896867d28eee5583594ecda01",
   "python-opinet-api[browser] @ git+https://github.com/digitie/python-opinet-api@8708f10ecf187b8d14f8a963ad46eb0f3b8f8328",
   "python-multipart>=0.0.32,<1.0",
