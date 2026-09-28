@@ -36,6 +36,34 @@
   첫 판 테스트에서 살아남은 "되돌리기에서 daemon을 먼저 띄움"은 assertion을 고쳐 빨갛게 했다. 남은
   초록 하나는 `mv -T`를 `mv`로 바꾼 변이다. 바로 앞의 빈 디렉터리 검사·삭제가 같은 겹침을 막으므로
   `-T`는 그 사이 경합에 대한 이중 장치다. 전체 backend suite는 PR CI가 돈다(앱 코드는 바뀌지 않았다).
+- 2차 적대 검토(`2da0579`, MED 1·LOW 7, HIGH 없음) 반영.
+  - MED: "Dagster는 어디서나 1.13.23"이라는 계획의 전제가 틀렸다. `uv.lock`·CI는 1.13.23이지만
+    Dockerfile은 `pip install -e ".[dev]"`(`dagster>=1.9,<2`)라 빌드 시점 PyPI 최신을 받고, 운영
+    code-server는 1.13.24다. 창은 태그가 있는지만 봤고 배포의 `up --build`가 캐시가 빈 뒤 다른 이미지를
+    만들 수 있었다. 이제 `window`가 옛 스택을 멈추기 전에 env를 다시 복사하고(frontend build arg가
+    env에서 온다) 다시 빌드·Dagster gate하며 통과한 이미지의 층 지문(`RootFS.Layers`)을
+    `release-images`에 적는다. 새 스택 검증은 여섯 컨테이너의 이미지 층이 그것과 같은지 본다. 검토는
+    이미지 ID 비교를 제안했지만 WSL Docker 29.1.3(containerd snapshotter, compose 5.1.4)에서
+    `FROM scratch` 두 단계 이미지를 재보니 모두 cache hit인 재빌드·build arg만 바뀐 재빌드도 ID가 매번
+    달랐고 층은 같았다(내용을 바꾸면 층도 바뀌었다). ID로 비교했으면 실제 창은 매번 되살리기로 끝났다.
+    가짜 docker도 빌드마다 새 ID를 내게 고쳤다. 버전이 다를 때의 절차(운영 버전 고정 PR → 새 R)를
+    runbook에 적고 ADR-010 전제를 고쳤다. `( … ) || die` 안에서 errexit가 꺼져 렌더링 검사 실패가
+    묻히던 것도 명령마다 `|| exit 1`로 고쳤다.
+  - LOW: 창의 자동 되살리기가 `docker start`로 뜨지 않은 서비스를 rollback 태그로 재생성한다(daemon
+    마지막). `rollback`이 새 daemon을 먼저 멈추고 run을 기다리며(`--no-drain`로 끌 수 있다. 끝나지 않으면
+    새 daemon을 다시 띄우고 아무것도 옮기지 않는다) 되돌릴 cutover가 없으면 거부한다.
+    `deploy-server14-remote.sh`가 `RELEASE_SHA`도 source 뒤에 candidate로 export한다. 창 전에 새
+    `backups/`가 옛 것과 다르면 옛 스택을 멈추기 전에 멈추고 hardlink 합치기 명령을 출력한다. `admin`은
+    재생성이 중간에 실패해도 `:pre-rename`을 기준으로 다시 실행된다. `daemon_count`는 `docker ps`
+    실패를 0으로 세지 않는다(`finish`의 컨테이너 목록도). 창의 SIGHUP·SIGPIPE 테스트를 더했다.
+    정리 단계까지 prune 금지와 선택적 `docker save`, `rel-*` 보존 규칙(지금·바로 전만)을 runbook·ADR에
+    적었다. `rel-*` 자동 삭제는 다른 세션의 되돌리기 태그를 지울 수 있어 문서 단계로 두었다.
+  - 검증(n150 throwaway `--network none`, 고정 이미지 `148a471b`, bash 5.2.37): cutover·guard·redeploy
+    테스트 52개가 통과했다(cutover 26개 중 13개가 새것). 이번 수정의 변이 18개가 모두 빨갛다(창 재빌드,
+    Dagster gate, 층 확인과 그것을 ID 비교로 바꾼 변이, 재빌드 전 env 사본, fence 직전 env 재복사,
+    렌더링 errexit, 되살리기 재생성, rollback 대기·새 daemon 재시작·거부 조건·daemon 순서,
+    `RELEASE_SHA` export, backups 사전 검사, admin 재실행, daemon 수 실패, 두 daemon, 신호 exit).
+    n150 Docker 29.6.1도 containerd snapshotter인 것은 `docker info`로만 확인했다(빌드는 하지 않았다).
 
 ## 2026-09-28 PR #47 머지·parking-radar 공용 DB 확인
 

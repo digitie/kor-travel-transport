@@ -15,6 +15,18 @@
    candidate SHA와 일치하는지도 확인한다.
 4. [migration.md](migration.md)의 prewarm → final delta → 180초 scheduler와 300초 이내 cutover 검증을
    완료한다.
+5. release 이미지 보존: 배포마다 `kor-travel-transport-backend:rel-<sha12>` 태그가 남는다(ADR-010).
+   n150에서 하나가 약 2.5 GB이고 Dockerfile의 `COPY backend`가 `pip install` 앞이라 pip·playwright 층도
+   대부분 release마다 따로다. `docker image prune`은 태그가 붙은 이미지를 지우지 않는다. 배포가 health를
+   통과한 뒤 지금 release와 바로 전 release(되돌릴 이미지)만 남기고 나머지 `rel-*`를 지운다. 운영 식별자
+   개명 cutover의 관찰 기간에는 지우지 않는다. 배포 스크립트가 자동으로 지우지 않는 것은 다른 세션의
+   되돌리기가 쓰는 태그를 지울 수 있어서다.
+
+   ```bash
+   docker inspect -f '{{.Config.Image}}' kor-travel-transport-backend-1        # 지금 release
+   docker image ls kor-travel-transport-backend --format '{{.CreatedAt}}  {{.Tag}}' | sort -r
+   docker image rm kor-travel-transport-backend:rel-<지울 sha12>   # 지금·바로 전 밖만. -f는 쓰지 않는다
+   ```
 
 공용 DB 최초 cutover는 일반 배포와 다르다. 먼저 WSL checkout에서
 `DEPLOY_STAGE_ONLY=true ./scripts/deploy-server14.sh`로 reviewed artifact만 n150에 올린 뒤,
@@ -223,7 +235,14 @@ n150의 배포 식별자를 `kor-travel-airport`에서 `kor-travel-transport`로
 - Manager의 `chore/retire-dedicated-postgres` release는 창 전에 따로 설치·검증한다. Manager 개명
   release(target `transport`)는 CI를 통과해 두고, 창이 끝난 뒤 설치한다.
 - 창 전에 에이전트 공용 메모(n150 상시 서비스 목록)의 `kor-travel-airport`를 `kor-travel-transport`로
-  고친다. 옛 메모를 읽은 에이전트가 옛 컨테이너를 되살리지 않게 한다.
+  고친다. 옛 메모를 읽은 에이전트가 옛 컨테이너를 되살리지 않게 한다. 같은 메모에 "정리 단계까지
+  n150에서 `docker system prune`·`docker image prune`·`docker builder prune`을 하지 않는다"를 적는다.
+  관찰 기간의 되돌리기 재료(멈춘 `*-retired-<날짜>` 컨테이너, 멈춘 컨테이너만 쓰는
+  `kor-travel-airport-rollback:*`·`:pre-rename` 태그)는 Docker가 보기에 "안 쓰는" 것이라
+  `prune --all`이 지운다. 설치된 Manager의 디스크 카드는 회수 가능 공간이 20 GiB를 넘으면
+  `sudo -n docker system prune --all --volumes`를 다음 조치로 보여 주고, n150은 이미 그 선을 넘었다
+  (2026-09-28: 이미지 17 GB, 빌드 캐시 32.6 GB 회수 가능). 그 안내를 따르면 `rollback`이
+  "rollback 태그가 없다"로 멈추고 앞으로 고치는 것만 남는다. 창 전 재빌드도 캐시가 비어 길어진다.
 - 다른 세션의 이미지 빌드(`docker compose … build`, `buildx bake`)가 돌지 않는다. n150 부하는 디스크
   대기라 겹치면 창이 길어진다. `prebuild`와 `window`는 빌드 프로세스가 보이면 STOP이다.
 
@@ -303,26 +322,60 @@ bash ~/rename-deploy-identity-server14.sh status
    `alembic_version`이 R의 head인지 본다. revision ID만 보지 않는다(`0015`는 첫 커밋 뒤에도 고쳐졌다).
    렌더링한 새 project에 network가 없고(운영 overlay는 host network라 `kor-travel-transport-net`이
    필요 없다) 백엔드 계열 여섯 서비스가 release 태그를 쓰는지 본다. `backend`·`frontend`·
-   `dagster-gateway`를 미리 빌드하고, 새 이미지와 `:code`의 dagster 버전이 같은지 본다(같아야
-   `dagster instance migrate`가 no-op이고 되돌린 옛 daemon이 metadata DB를 읽는다).
+   `dagster-gateway`를 지금 env 사본으로 미리 빌드하고, 빌드한 이미지와 `:code`의 dagster 버전이 같은지 본다(같아야
+   `dagster instance migrate`가 no-op이고 되돌린 옛 daemon이 metadata DB를 읽는다). 통과한 세 이미지의
+   층 지문(`RootFS.Layers`의 sha256)을 `~/transport-rename/release-images`에 적는다. 이미지 ID가 아니라
+   층을 적는 것은 containerd image store(n150)에서는 모든 단계가 cache hit인 재빌드도 config의 생성
+   시각이 바뀌어 ID가 새로 나오기 때문이다(2026-09-28 WSL Docker 29.1.3·compose 5.1.4에서 확인: ID는
+   재빌드마다 다르고 층은 같다, 내용이 바뀌면 층도 바뀐다. n150 Docker 29.6.1도 같은 containerd
+   snapshotter다). backend 이미지는 `uv.lock`이 아니라
+   `pip install -e ".[dev]"`(`dagster>=1.9,<2`)로 설치하므로 빌드할 때의 PyPI 최신 Dagster를 받는다
+   (2026-09-28: `uv.lock`·CI 1.13.23, 운영 code-server 1.13.24). 그래서 gate는 소스가 아니라 빌드 결과에
+   건다. 버전이 다르면 아래 "Dagster 버전이 다를 때"를 따른다.
 5. `window R`(창): prepare 뒤 옛 컨테이너 이미지가 바뀌지 않았는지와 migration gate를 다시 본다.
-   창 전 schedule 상태를 적는다. 옛 daemon을 먼저 멈추고 run을 기다린 뒤 나머지 옛 서비스를
+   지난 시도나 rollback이 남긴 새 디렉터리 `backups/`가 옛 것과 다르면 옛 스택을 멈추기 전에 STOP이고,
+   두 쪽을 hardlink로 합치는 명령(`sudo cp -a -l --update=none -T …`, 덮어쓰거나 지우지 않는다)을
+   출력한다. `sudo rm -rf` 새 `backups/`는 하지 않는다. 새 backend가 쓴 dump는 거기에만 있다. 옛 스택이
+   도는 동안 env를 다시 복사하고(frontend build arg `NEXT_PUBLIC_API_BASE_URL`·`NEXT_PUBLIC_API_PORT`가
+   env에서 온다) 세 이미지를 다시 빌드하고 dagster 버전 gate를 다시 본다. 보통 cache hit이고, prebuild 뒤
+   빌드 캐시가 비었거나 env가 바뀌었으면 긴 빌드와 새 Dagster 버전이 중단 밖에서 드러난다(층이 바뀌면
+   그렇게 출력한다). 창 전 schedule 상태를 적는다. 옛 daemon을 먼저 멈추고 run을 기다린 뒤 나머지 옛 서비스를
    `docker stop`한다(rm·down 아님). 포트 14001~14005가 비었는지 본다. 옛 `.env.server14`를 새
    디렉터리에 다시 복사해(그 사이 다른 세션의 편집을 가져온다) 두 키 밖에서 같은지 비교하고, 옛
    파일을 `.env.server14.fenced-<날짜>`로 옮긴다. 이때부터 옛 배포 스크립트는 env가 없어 멈춘다.
    `sudo cp -al`로 `backups/`를 hardlink 사본으로 만든다(같은 파일시스템, 추가 공간 없음, root 소유
    유지, 옛 사본은 그대로). 새 디렉터리에서 `deploy-server14-remote.sh`로 올린다. 새 스택이 여섯
-   서비스, Dagster 세 서비스 healthy·`init`, 두 project를 통틀어 daemon 하나, backend의 `backups`
-   bind가 새 디렉터리, `/health.release_sha`가 R, frontend 응답, schedule 상태가 창 전과 같음을
-   통과하면 옛 컨테이너를 은퇴시킨다. 옛 daemon은 지우고(이미지가 store에 없어 되돌리기 재료가
-   아니다) 나머지 다섯은 `restart=no`로 바꿔 `*-retired-<날짜>`로 이름을 바꾼다. 이름으로 띄우는
-   `docker start`·Manager Start·재부팅이 옛 스택을 되살리지 못한다. 검증 전에 어디서 멈추든(STOP·
-   실패·Ctrl-C·SSH 끊김·출력 pipe 닫힘) 새 스택을 daemon부터 멈추고, env를 되돌리고, 옛 컨테이너를
-   daemon 마지막으로 다시 띄운다.
+   서비스, 여섯 컨테이너의 이미지 층이 창 전 gate를 통과한 이미지(`release-images`)와 같음, Dagster 세 서비스
+   healthy·`init`, 두 project를 통틀어 daemon 하나(`docker ps`가 실패하면 0으로 세지 않고 STOP),
+   backend의 `backups` bind가 새 디렉터리, `/health.release_sha`가 R, frontend 응답, schedule 상태가
+   창 전과 같음을 통과하면 옛 컨테이너를 은퇴시킨다. 배포 스크립트의 `up --build`는 창 전 재빌드의
+   cache hit이어야 한다(ID는 새로 나오고 층은 같다). 그 사이 캐시가 비어 pip·apt 층이 다시
+   만들어졌으면 층 확인에서 STOP이다. 이때
+   `dagster-migrate`는 이미 그 이미지로 돌았으므로 새 이미지의 Dagster 버전을 보고, 다르면
+   `restore-point`의 `kor_travel_transport_dagster` dump가 되돌릴 지점이다. 옛 daemon은 지우고(이미지가
+   store에 없어 되돌리기 재료가 아니다) 나머지 다섯은 `restart=no`로 바꿔 `*-retired-<날짜>`로 이름을
+   바꾼다. 이름으로 띄우는 `docker start`·Manager Start·재부팅이 옛 스택을 되살리지 못한다. 검증 전에
+   어디서 멈추든(STOP·실패·Ctrl-C·SSH 끊김(exit 129)·출력 pipe 닫힘(exit 141)) 새 스택을 daemon부터
+   멈추고, env를 되돌리고, 옛 컨테이너를 daemon 마지막으로 다시 띄운다. webserver·daemon·gateway는
+   돌던 이미지(`c8b47811`, `f9f648a9`)가 store에 없어 `docker start`가 실패할 수 있다. 그렇게 뜨지 않은
+   서비스는 rollback 태그로 재생성한다(`rollback`과 같은 `--no-deps --no-build --force-recreate`,
+   daemon은 code-server가 healthy가 된 뒤 맨 나중). 그래도 뜨지 않으면 `실패:` 줄을 남기고, 그때는
+   `rollback`을 실행한다.
 6. `admin`: 관리 project는 이름이 그대로라 빌드하지 않는다. 떠 있는 `transport-admin-web`·
    `transport-dagster-gateway` 이미지에 `:pre-rename` 태그를 붙이고 새 디렉터리에서
    `up -d --no-build --force-recreate`로 세 서비스를 재생성한다(bind 경로만 바뀐다). 이미지가 그대로이고
-   12301·12302·12305가 응답하는지 본다. 관리 UI release SHA 파일은 옛 값을 그대로 옮긴다.
+   12301·12302·12305가 응답하는지 본다. 관리 UI release SHA 파일은 옛 값을 그대로 옮긴다. 재생성이
+   중간에 실패해 컨테이너가 없어져도 `admin`을 다시 실행하면 된다. 없는 컨테이너는 첫 실행이 붙인
+   `:pre-rename`(`:latest`와 같아야 한다)을 기준으로 삼는다. 스크립트 없이 손으로 할 때는 다음과 같다
+   (`--no-build`를 빼면 관리 UI를 R로 다시 빌드한다).
+
+   ```bash
+   cd /home/digitie/apps/kor-travel-transport
+   docker image inspect -f '{{.Id}}' kor-travel-transport-admin-transport-admin-web:{pre-rename,latest} \
+     kor-travel-transport-admin-transport-dagster-gateway:{pre-rename,latest}   # 짝마다 같아야 한다
+   docker compose --project-name kor-travel-transport-admin --env-file .env.server14 \
+     -f docker-compose.transport-admin.yml up -d --no-build --force-recreate
+   ```
 7. Manager 개명 release 설치: `~/install-mgr.sh <sha>` → rebind → `ktdctl targets validate
    --check-coordinates`, `ktdctl status transport`(컨테이너 `kor-travel-transport-backend-1`·
    `-frontend-1`). 창과 이 설치 사이에는 Manager의 옛 airport 카드가 컨테이너를 찾지 못한다.
@@ -340,26 +393,70 @@ Dagster healthcheck·`init` 반영(#45)도 이 cutover가 한다. 여섯 서비�
 `.env.server14`에는 `RELEASE_SHA`와 `BACKEND_RUNTIME_IMAGE`를 두지 않는다. release SHA는 배포 스크립트가
 runtime env에 붙이고, 이미지는 배포 스크립트가 `kor-travel-transport-backend:rel-<sha12>`로 export한다.
 env 파일에 이미지를 적으면 다음 배포의 `up --build`가 같은 태그를 새 코드로 덮어써 이전 release
-이미지가 dangling이 된다. `--env-file .env.server14`만 주는 즉석 compose 실행은 `:latest` fallback을
-쓰므로 배포에는 스크립트만 쓴다.
+이미지가 dangling이 된다. 누가 env 파일에 두 줄을 다시 적어도 배포 스크립트가 `source` 뒤에 둘 다
+candidate 값으로 export한다(`set -a; source`가 파일의 줄을 셸 env로 올리고, 셸 env는 `--env-file`보다
+우선한다). `--env-file .env.server14`만 주는 즉석 compose 실행은 `:latest` fallback을 쓰므로 배포에는
+스크립트만 쓴다.
+
+### Dagster 버전이 다를 때
+
+`prebuild`나 `window`가 `dagster 버전이 다르다(운영 X, 빌드 Y)`로 멈추면 PyPI에 운영 code-server보다
+새 Dagster가 나온 것이다. backend Dockerfile은 `uv.lock`이 아니라 `pip install -e ".[dev]"`
+(`dagster>=1.9,<2`)로 설치하므로 빌드 캐시가 없는 빌드는 그때의 최신을 받는다. gate를 끄거나 태그를
+손으로 옮기지 않는다. 버전이 다르면 `dagster instance migrate`가 공유 metadata DB를 앞으로 올릴 수 있고,
+그 뒤에는 되돌린 옛 daemon(X)이 그 DB를 읽지 못할 수 있다.
+
+1. 창을 미룬다. 옛 스택은 그대로 돈다(`window`는 옛 스택을 멈추기 전에 멈춘다).
+2. 작은 transport PR로 `backend/pyproject.toml`의 Dagster 계열을 운영 버전 X에 고정한다
+   (`dagster==X`, `dagster-webserver==X`, 그와 짝인 `dagster-postgres`. 예: 1.13.24와 0.29.24).
+   `uv lock`으로 `uv.lock`도 같은 버전으로 맞춘다. CI가 운영과 같은 버전을 돈다. X는
+   `docker run --rm --network none --entrypoint python kor-travel-airport-rollback:code -c
+   'import dagster; print(dagster.__version__)'`로 읽는다.
+3. 그 PR을 머지하고 새 머지 커밋을 R로 `prepare`부터 다시 한다(stage도 새 R로).
+4. Dagster를 올리는 일은 이 cutover가 끝난 뒤 따로 한다. 그때는 metadata DB dump를 먼저 뜬다.
+
+Dockerfile이 `uv.lock`을 따르게 하는 것은 ADR-010 후속이다. 그 전까지는 이 gate가 유일한 장치다.
 
 ### 되돌리기
 
 72시간 관찰이 끝나 정리하기 전까지는 `bash ~/rename-deploy-identity-server14.sh rollback`으로
-되돌린다. 옛 디렉터리 자리에 빈 디렉터리가 다시 생겼으면(옛 배포 스크립트의 `mkdir -p`, 옛 backend
-bind가 만든 빈 `backups/`) 지운 뒤 `mv -T`로 되돌리고, 그 밖의 내용이 있으면 겹치지 않게 STOP이다.
-새 project를 daemon부터 멈추고, 옛 env를 되돌리고, 옛 스택을 rollback 태그로 재생성한다
+되돌린다. 되돌릴 cutover가 없으면(옛 여섯 서비스가 돌고, 새 project는 떠 있지 않고, env fence·은퇴
+디렉터리가 없음. 예: `prepare`만 한 상태) STOP이다. 옛 디렉터리 자리에 빈 디렉터리가 다시
+생겼으면(옛 배포 스크립트의 `mkdir -p`, 옛 backend bind가 만든 빈 `backups/`) 지운 뒤 `mv -T`로
+되돌리고, 그 밖의 내용이 있으면 아무것도 멈추기 전에 STOP이다.
+
+먼저 새 daemon을 멈추고 창처럼 `STARTED`·`STARTING`·`CANCELING` run이 0이 되기를 기다린다(같은
+`DRAIN_TIMEOUT_SECONDS` 상한). 새 code-server를 멈추면 실행 중인 유가(Playwright, 2시간까지)·배편 run이
+끊겨 data.go.kr 오퍼레이션별 한도를 버린다. 상한에 닿거나 대기 중에 끊기면 새 daemon을 다시 띄우고
+아무것도 옮기지 않은 채 멈춘다. run을 끊어도 되는 비상시에는 `rollback --no-drain`으로 기다리지 않는다
+(끊긴 run은 되살린 옛 daemon의 run monitoring이 실패로 정리한다). 새 webserver가 떠 있지 않아 run을 셀
+수 없을 때도 `--no-drain`이 필요하다.
+
+그다음 나머지 새 project를 멈추고, 옛 env를 되돌리고, 옛 스택을 rollback 태그로 재생성한다
 (code-server·webserver → backend·gateway·frontend → daemon 마지막, `--no-deps --no-build
 --force-recreate`). 관리 스택은 `:pre-rename` 이미지로 옛 디렉터리에서 재생성하고, 지운 crontab 줄을
 다시 넣고, 새 디렉터리의 env는 `.env.server14.rolled-back-<시각>`으로 옮긴다. Manager는 스냅숏의 이전
 sha로 다시 설치하고 rebind한다. Manager만 따로 되돌리지 않는다(live 필드가 함께 바뀐다).
-migration gate와 dagster 버전 gate를 통과한 release이므로 스키마는 그대로다.
+migration gate와 dagster 버전 gate를 통과한 이미지만 떴으므로(검증이 이미지 층을 본다) 스키마는 그대로다.
 
 ### 관찰과 정리
 
 72시간 동안 Dagster schedule run이 정상인지, Manager 상태가 초록인지 본다. Manager transport 백업
-역할이 설치되기 전까지는 주기 백업이 없으므로 `restore-point` dump를 지우지 않는다. 관찰이 끝나면 직접
-실행한다(되돌릴 수 없다).
+역할이 설치되기 전까지는 주기 백업이 없으므로 `restore-point` dump를 지우지 않는다.
+
+정리하기 전까지 n150에서 `docker system prune`·`docker image prune`·`docker builder prune`을 하지
+않는다. Manager 디스크 카드가 `sudo -n docker system prune --all --volumes`를 권해도 따르지 않는다.
+은퇴한 컨테이너는 멈춰 있고 rollback 태그는 그 멈춘 컨테이너만 쓰므로 `prune --all`이 모두 지운다.
+그러면 `rollback`은 "rollback 태그가 없다"로 멈춘다. prune을 막을 수 없는 사정이면 창 뒤에 네 이미지를
+파일로 남긴다(약 5 GB, 루트 디스크 여유를 먼저 본다). 지워졌으면 `docker load -i`로 태그가 돌아온다.
+
+```bash
+docker save -o ~/transport-rename/rollback-images.tar kor-travel-airport-rollback:{backend,code,frontend,gateway}
+chmod 600 ~/transport-rename/rollback-images.tar
+# 되돌리기 전에 태그가 없으면: docker load -i ~/transport-rename/rollback-images.tar
+```
+
+관찰이 끝나면 직접 실행한다(되돌릴 수 없다).
 
 ```bash
 stamp=$(cat ~/transport-rename/stamp)
@@ -374,8 +471,9 @@ sudo rm -rf /home/digitie/apps/kor-travel-airport.retired-$stamp   # .env.server
 ```
 
 legacy volume `parking-radar_parking_radar_postgres_data`는 남긴다. 정리 뒤 후속 PR에서
-`deploy-server14-remote.sh`의 임시 개명 guard와 그 테스트를 지운다. 오래된
-`kor-travel-transport-backend:rel-*` 태그는 되돌릴 release 하나만 남기고 지운다.
+`deploy-server14-remote.sh`의 임시 개명 guard와 그 테스트를 지운다. 그 뒤로 쌓이는
+`kor-travel-transport-backend:rel-*` 태그는 위 "n150 현재 운영 절차"의 보존 규칙(지금 release와 바로 전
+release만 남긴다)을 따른다.
 
 ## PostgreSQL 별도 컨테이너 (T-032)
 

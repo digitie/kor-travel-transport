@@ -8,7 +8,10 @@
   `scripts/rename-deploy-identity-server14.sh`와 `docs/runbooks/deployment.md` "운영 식별자 개명
   cutover"를 따른다. 창 전까지 옛 이름(`kor-travel-airport`, `/home/digitie/apps/kor-travel-airport`)이
   운영이다. 이 브랜치가 머지된 뒤에는 새 스크립트가 옛 디렉터리로 배포하지 않으므로 머지와 cutover
-  사이에 다른 배포를 하지 않는다.
+  사이에 다른 배포를 하지 않는다. `2da0579` 적대 검토(MED 1·LOW 7)를 반영했다: 창이 옛 스택을 멈추기
+  전에 다시 빌드·Dagster gate하고 새 컨테이너가 같은 이미지 층으로 떴는지 본다(이미지는 `uv.lock`이
+  아니라 빌드 시점 PyPI 최신을 받는다. containerd store에서는 cache hit 재빌드도 ID가 바뀌어 층으로 본다). 정리 단계까지 n150 prune 금지. 창 직전 PyPI에 운영(1.13.24)보다 새
+  Dagster가 나오면 gate가 멈추고, 그때는 runbook "Dagster 버전이 다를 때"대로 고정한 새 R이 필요하다.
 
   푸시했다(PR은 아직 없음). PR #44가 머지되면 origin/main으로 rebase하고 PR·CI·두 적대적 리뷰를 거쳐
   창 직전에 머지한다. n150 cutover는 `scripts/rename-deploy-identity-server14.sh`와

@@ -25,6 +25,11 @@ Compose project, 컨테이너, 앱 디렉터리, 빌드 이미지, 백업 cron�
 - 운영 스키마는 PR #44 배포로 이미 `0015`였다. #44가 없는 release는 배포할 수 없다.
 - 3일 백업 cron은 `backups/` 권한 때문에 2026-09-05 뒤로 dump를 만들지 못했다. 공용 DB dump는 1 GB가
   넘어 API 백업의 기본 120초 제한 안에 끝나지 않는다.
+- Dagster 버전은 한 곳에서 정해지지 않는다. `backend/uv.lock`(CI가 도는 것)은 1.13.23이지만
+  `backend/Dockerfile`은 `pip install -e ".[dev]"`(`dagster>=1.9,<2`)라 이미지를 빌드할 때의 PyPI 최신을
+  받는다. 운영 code-server는 1.13.24다. 소스나 lock 파일로는 배포될 이미지의 버전을 알 수 없다.
+- n150의 빌드 캐시는 48.6 GB(32.6 GB 회수 가능)이고 다른 세션도 빌드한다. 미리 빌드한 이미지가 창의
+  `up --build`에서 그대로 cache hit이 된다는 보장은 없다.
 
 ### 결정
 
@@ -64,6 +69,14 @@ Compose project, 컨테이너, 앱 디렉터리, 빌드 이미지, 백업 cron�
     (`prepare` → `restore-point` → stage → `prebuild` → `window` → `admin` → Manager 설치 → `finish`,
     되돌리기는 `rollback`)로 한다. 절차·타이밍은 [deployment.md](../runbooks/deployment.md)
     "운영 식별자 개명 cutover"가 정본이다. Manager target 개명은 별도 Manager PR이 한다.
+11. Dagster 버전 gate는 빌드한 이미지에 건다. `window`는 옛 스택을 멈추기 전에 다시 빌드하고 gate를 다시
+    보며 통과한 이미지의 층 지문(`RootFS.Layers`)을 적는다. 새 스택 검증은 여섯 컨테이너의 이미지 층이
+    그것과 같은지 본다. 이미지 ID는 쓰지 않는다. containerd image store에서는 모두 cache hit인 재빌드도
+    ID가 새로 나온다(2026-09-28 WSL Docker 29.1.3에서 확인, n150 29.6.1도 같은 containerd snapshotter).
+    버전이 다르면 gate를 끄지 않고 Dagster를 운영
+    버전에 고정한 새 R로 다시 한다(runbook "Dagster 버전이 다를 때").
+12. 정리 단계까지 n150에서 `docker system/image/builder prune`을 하지 않는다. 되돌리기 재료(멈춘
+    은퇴 컨테이너와 그것만 쓰는 rollback·`:pre-rename` 태그)를 `prune --all`이 지운다.
 
 ### 근거
 
@@ -75,7 +88,16 @@ Compose project, 컨테이너, 앱 디렉터리, 빌드 이미지, 백업 cron�
   거부한다. 옛 컨테이너는 검증 뒤 daemon을 지우고 나머지를 `restart=no`로 이름을 바꿔 이름으로
   되살아나지 않게 한다(재부팅·Manager Start·다른 세션의 `docker start`).
 - 되돌리기 재료를 다른 세션 태그에 맡기지 않는다. 이 작업 전용 `kor-travel-airport-rollback:*` 태그로
-  재생성한다. 이미지가 store에 없는 옛 컨테이너를 `docker start`에 기대지 않는다.
+  재생성한다. 이미지가 store에 없는 옛 컨테이너를 `docker start`에만 기대지 않는다. `rollback`은 처음부터
+  재생성하고, 창의 자동 되살리기는 `docker start`를 먼저 하되 뜨지 않은 서비스를 같은 rollback 태그로
+  재생성한다(daemon 마지막). 그런 컨테이너를 `docker start`할 수 있는지는 n150에서 확인하지 못했다.
+- 미리 빌드는 중단을 줄이는 수단일 뿐 무엇이 배포되는지를 정하지 않는다. 배포되는 이미지가 gate를 본
+  이미지와 같은 내용인지는 층 지문으로 확인한다. 이 확인은 `dagster-migrate` 뒤라서 사후 탐지다. 사전
+  장치는 창 직전 재빌드(가장 최근에 쓴 캐시라 곧바로 이어지는 빌드가 cache hit이 된다)와 빌드 중
+  거부다. 검토가 제안한 "ID가 그대로인지"는 containerd store에서 매번 어긋나 창마다 되살리기로 끝났을
+  것이다.
+- `rollback`도 창처럼 새 daemon을 먼저 멈추고 run을 기다린다. 기다리지 않으면 유가(2시간까지)·배편 run이
+  끊겨 data.go.kr 오퍼레이션별 한도를 버린다. 되돌릴 cutover가 없으면(`prepare`만 한 상태) 거부한다.
 - migration gate는 revision ID가 아니라 파일 내용(CRLF 무시)과 운영 DB `alembic_version`을 본다.
   `0015`는 첫 커밋 뒤에도 고쳐졌다.
 - 백업 API는 1 GB dump를 끝내지 못하므로 복원 지점을 API에 맡기지 않는다. 두 DB를 직접 dump하고
@@ -96,7 +118,10 @@ Compose project, 컨테이너, 앱 디렉터리, 빌드 이미지, 백업 cron�
 - Manager 개명 release를 설치하기 전까지 Manager의 옛 airport 카드는 컨테이너를 찾지 못한다.
 - Manager 백업 역할이 설치될 때까지 주기 백업이 없다.
 - frontend는 R에서 다시 빌드되므로 이전 frontend 이미지 뒤에 머지된 변경도 함께 나간다.
-- 정리 단계(72시간 관찰 뒤) 이후에는 앞으로 고치는 것만 가능하다.
+- 정리 단계(72시간 관찰 뒤) 이후에는 앞으로 고치는 것만 가능하다. 그때까지 n150에서 prune을 할 수 없다.
+- PyPI에 운영보다 새 Dagster가 나오면 gate가 cutover를 멈춘다. 그때는 Dagster를 고정한 새 R이 필요하다.
+- release 태그는 하나에 약 2.5 GB이고 `docker image prune`이 지우지 않는다. 지금·바로 전 release만 남기는
+  보존 단계를 배포 runbook에 둔다(자동 삭제는 다른 세션의 되돌리기 태그를 지울 수 있어 하지 않는다).
 
 ### 후속
 
@@ -105,4 +130,7 @@ Compose project, 컨테이너, 앱 디렉터리, 빌드 이미지, 백업 cron�
   컨테이너는 각각 별도 설계로 다룬다.
 - API 백업의 `BACKUP_COMMAND_TIMEOUT_SECONDS`(기본 120초)와 `BACKUP_STORAGE_LIMIT_BYTES`를 1 GB 넘는 DB에
   맞춰 따로 검토한다. 복원 전 사전 백업도 같은 제한을 받는다.
-- 에이전트 공용 메모의 상시 서비스 목록을 새 이름으로 고친다(창 전).
+- 에이전트 공용 메모의 상시 서비스 목록을 새 이름으로 고친다(창 전). 같은 메모에 정리 단계까지 prune
+  금지를 적는다.
+- backend 이미지가 `uv.lock`을 따르게 한다(지금은 빌드 시점의 PyPI 최신). 그러면 CI·운영·되돌리기
+  이미지의 Dagster 버전이 한 곳에서 정해진다.
