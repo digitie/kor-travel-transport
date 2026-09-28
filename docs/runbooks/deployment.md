@@ -65,7 +65,8 @@ bash /tmp/redeploy-dagster-services-server14.sh /tmp/docker-compose.shared.yml.n
 
 1. 이미지를 지금 code-server 이미지 ID로 고정한다(`BACKEND_RUNTIME_IMAGE` export). 셸 env가
    `--env-file`보다 우선한다. 고정하지 않으면 `.env.server14`의 값으로 재생성된다. 2026-09-27
-   21:13Z에는 미머지 draft PR #43 배포가 이 값을 `ab25bf7b`로 바꿔 두었다. `compose config -q`는
+   21:13Z에는 당시 미머지였던 PR #43 배포가 이 값을 `ab25bf7b`로 바꿔 두었다(#43은 2026-09-28
+   `8a34f77`로 머지). `compose config -q`는
    이 차이를 잡지 못한다.
 2. 지금 파일과 새 파일을 지금 env·고정 이미지로 렌더링해(`compose config --format json`) 비교한다.
    세 Dagster 서비스의 `healthcheck`·`init` 밖에서 다르면 STOP이다. 다른 PR이 main에서 이 파일을

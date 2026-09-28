@@ -12,15 +12,11 @@
   컨테이너를 `docker start`로 되살린다. 되돌리기도 같은 스크립트에 옛 파일을 준다.
   `.env.server14`의 `BACKEND_RUNTIME_IMAGE`는 PR #43 배포가 `ab25bf7b`로 바꿔 두었다
   (PR #43은 2026-09-28 `8a34f77`로 main에 머지됐다).
-
-  고정 → 렌더링 비교·drift gate → daemon 정지 → in-flight run 대기(상한 1800초) → 비교·gate
-  재확인 → 파일 교체 → Dagster 세 서비스 `up -d --no-deps --no-build` 순서로 진행한다. 어디서
-  멈추든 daemon 컨테이너를 `docker start`로 되살린다. 되돌리기도 같은 스크립트에 옛 파일을 준다.
-  `.env.server14`의 `BACKEND_RUNTIME_IMAGE`는 draft PR #43 배포가 `ab25bf7b`로 바꿔 두었다.
   전체 배포는 지금 대안이 아니다. `deploy-server14-remote.sh`의 `DAGSTER_POSTGRES_URL` 검사
   (`^postgresql://`)가 지금 env 파일(`postgresql+psycopg2://`)을 거부한다.
-  transport-admin 배포도 `docker-compose.shared.yml`을 덮어쓰므로
-  `codex/transport-followups`(PR #43)는 이 변경 위로 rebase한 뒤 배포한다.
+  transport-admin 배포도 `docker-compose.shared.yml`을 덮어쓴다. 이 브랜치는 #43 머지 뒤 main을
+  merge했으므로, 이 변경이 머지된 뒤의 main에서 나온 배포는 새 probe를 유지한다. 그 전의 트리에서
+  배포하면 옛 probe로 되돌아간다.
   2026-09-27 11:46Z~19:51Z code-server 정지 조사는 `docs/journal.md` 같은 날짜 항목을 본다.
 
 - 2026-09-28 PR #43 `codex/transport-followups`는 backend `1dd1868`/이미지 `ab25bf7`,
@@ -443,13 +439,6 @@ PR #44)과 시간을 맞추고, 머지 커밋의
 확보한다(재시작하면 lock을 잡은 frame이 사라진다). `deploy-server14-remote.sh`의
 `DAGSTER_POSTGRES_URL` regex와 `.env.server14`·example의 `postgresql+psycopg2://`를 맞추는 일은
 별도로 남아 있다.
-
-PR #42의 코드·운영 검증은 끝났으며 최종 증적 CI·머지는 PR에서 확인한다.
-다음 정기 오피넷 배치 결과와 9월 29일 15:04:58 KST 보호 종료 이후의 첫 KRIC 배치를
-확인한다. 보호 종료 전에는 인증 진단을 재호출하지 않는다. TAGO 일반철도는 현재 키의
-HTTP 403 원인을 확인해야 하며 성공 응답이나 이용 신청 승인을 가정하지 않는다.
-지도 마커 자체의 다음 예정 시각, 일반철도 운행·버스 좌표 및 날짜 경계/성능 P2는
-`docs/tasks.md`에 남아 있다.
 
 PR #43의 최종 증적 CI·머지를 확인한 뒤, 통계 장기 조회의 지연·취소 전파와 배포 직후
 호스트 I/O를 우선 보완한다. 오피넷 최신 provider와 transport의 명시 30초 설정 차이,
