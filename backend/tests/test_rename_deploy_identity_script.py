@@ -2,13 +2,14 @@
 
 개명 cutover는 compose project·앱 디렉터리를 `kor-travel-airport`에서 `kor-travel-transport`로 옮긴다.
 여기서 고정하는 것은 순서와 멈춤, 그리고 끝난 뒤의 상태다. 창은 옛 스택을 멈추기 전에 다시 빌드하고
-Dagster gate를 다시 보며, 새 컨테이너가 그 gate를 통과한 이미지 ID로 떴는지 확인한다. 옛 daemon을 먼저
+Dagster gate를 다시 보며, 새 컨테이너가 그 gate를 통과한 이미지 층으로 떴는지 확인한다. 옛 daemon을 먼저
 멈추고 run을 기다린다. env는 fence 직전에 다시 복사한다. 새 스택을 검증한 뒤에만 옛 컨테이너를
 은퇴시킨다(daemon 삭제, 나머지는 restart=no로 이름 변경). 관리 스택은 빌드 없이 재생성하고 중간에
 실패해도 다시 실행할 수 있다. rollback은 run을 기다리고, 디렉터리를 겹치지 않게 되돌리고, 고정
 이미지로 재생성한다. 창이 끝나기 전에 멈추면(신호 포함) 옛 스택을 되살리고, `docker start`로 뜨지 않는
 서비스는 rollback 태그로 재생성한다.
-docker·curl·ss·pgrep·crontab·sudo는 가짜다. compose 파일은 JSON으로 쓰고, 가짜 compose가 셸 env >
+docker·curl·ss·pgrep·crontab·sudo는 가짜다(pgrep은 가짜 프로세스 목록에 진짜처럼 ERE를 건다). 앱·Manager
+경로는 `RENAME_TEST_ROOT` 아래로 옮긴다. compose 파일은 JSON으로 쓰고, 가짜 compose가 셸 env >
 `--env-file` 순으로 치환해 렌더링한다. 새 디렉터리의 `deploy-server14-remote.sh`는 가짜 배포다(진짜는
 `/home/digitie/apps/kor-travel-transport`에서만 돈다). 진짜 배포 스크립트의 guard는
 `test_deploy_server14_remote_guard.py`가 본다.
@@ -111,10 +112,19 @@ def running(service=None):
             if c["Running"] and (service is None or label(c, "com.docker.compose.service") == service)]
 
 if program == "pgrep":
-    if state.get("builds"):
-        print(state["builds"])
-        sys.exit(0)
-    sys.exit(1)
+    # 진짜 `pgrep -fa`처럼 명령줄 전체를 ERE로 본다. 패턴의 POSIX 문자 클래스 때문에 grep -E로 맞춘다.
+    import subprocess
+    if args[:-1] != ["-fa"]:
+        fail(f"fake pgrep: unsupported flags {args[:-1]}", 2)
+    processes = state["processes"]
+    found = subprocess.run(["grep", "-nE", "--", args[-1]], input="".join(cmd + "\n" for _, cmd in processes),
+                           capture_output=True, text=True)
+    if found.returncode > 1:
+        fail(f"pgrep: {found.stderr.strip()}", 2)
+    hits = [processes[int(line.split(":", 1)[0]) - 1] for line in found.stdout.splitlines()]
+    for pid, cmd in hits:
+        print(pid, cmd)
+    sys.exit(0 if hits else 1)
 
 if program == "crontab":
     path = Path(os.environ["FAKE_CRONTAB"])
@@ -347,6 +357,8 @@ elif command in ("stop", "start"):
         if command == "start" and state.get("start_needs_image") and containers[name]["Image"] not in state["tags"].values():
             fail(f"Error response from daemon: No such image: {containers[name]['Image']}")
         containers[name]["Running"] = command == "start"
+        if command == "stop" and state.get("break_sudo_find_on_stop"):  # 중단이 시작된 뒤에야 find가 실패한다.
+            Path(os.environ["FAKE_SUDO_FIND_BROKEN"]).touch()
     save()
 elif command == "rm":
     if containers[args[1]]["Running"]:
@@ -555,7 +567,15 @@ class Host:
         for name in ("docker", "curl", "ss", "pgrep", "crontab"):
             (self.bin / name).symlink_to(fake)
         sudo = self.bin / "sudo"
-        sudo.write_text('#!/bin/sh\n[ "$1" = -n ] && shift\nexec "$@"\n', encoding="utf-8")
+        # `self.sudo_find_broken`가 있으면 `sudo -n find`가 실패한다(권한·I/O 오류로 끝난 find).
+        self.sudo_find_broken = root / "sudo-find-broken"
+        sudo.write_text(
+            '#!/bin/sh\n[ "$1" = -n ] && shift\n'
+            'if [ "$1" = find ] && [ -e "$FAKE_SUDO_FIND_BROKEN" ]; then\n'
+            '  echo "find: \'$2\': Input/output error" >&2\n  exit 1\nfi\n'
+            'exec "$@"\n',
+            encoding="utf-8",
+        )
         sudo.chmod(0o755)
         manager = root / "ktdm-release-e25f105"
         manager.mkdir()
@@ -641,6 +661,14 @@ class Host:
                 "postgis/postgis:16-3.5": _PG_IMG,
             },
             "runs": [],
+            # `pgrep -fa`가 보는 n150 프로세스. 빌드가 아닌 것만 있다. `--no-build` 재생성과 이 cutover
+            # 자신은 빌드 확인에 걸리지 않아야 한다.
+            "processes": [
+                [812, "/usr/bin/dockerd -H fd:// --containerd=/run/containerd/containerd.sock"],
+                [2210, f"docker compose --project-name {_ADMIN} --env-file .env.server14 "
+                       "-f docker-compose.transport-admin.yml up -d --no-build --force-recreate"],
+                [3301, f"bash /home/digitie/rename-deploy-identity-server14.sh window {_R}"],
+            ],
             "schedules": [
                 ["airport_collection_job_schedule", "RUNNING"],
                 ["ferry_timetable_collection_job_schedule", "RUNNING"],
@@ -679,14 +707,14 @@ class Host:
             "PATH": f"{self.bin}{os.pathsep}{os.environ.get('PATH', '/usr/bin:/bin')}",
             "HOME": str(self.home),
             "LC_ALL": "C.UTF-8",
-            "OLD_DIR": str(self.old),
-            "NEW_DIR": str(self.new),
-            "WORK_DIR": str(self.work),
-            "MANAGER_LINK": str(self.manager_link),
+            # 앱 디렉터리는 <root>/apps/{kor-travel-airport,kor-travel-transport}, Manager 링크는
+            # <root>/kor-travel-docker-manager, 작업 디렉터리는 $HOME/transport-rename이다.
+            "RENAME_TEST_ROOT": str(self.root),
             "FAKE_STATE": str(self.state_path),
             "FAKE_LOG": str(self.log_path),
             "FAKE_CRONTAB": str(self.crontab),
             "FAKE_DEPLOY_LOG": str(self.deploy_log),
+            "FAKE_SUDO_FIND_BROKEN": str(self.sudo_find_broken),
             "DRAIN_TIMEOUT_SECONDS": "5",
             "DRAIN_POLL_SECONDS": "0",
             "HEALTH_TIMEOUT_SECONDS": "3",
@@ -1014,12 +1042,22 @@ def test_window_stops_before_touching_anything_when_an_old_image_changed(host: H
     assert (host.old / ".env.server14").is_file()
 
 
-def test_window_and_prebuild_wait_for_other_image_builds(host: Host) -> None:
+@pytest.mark.parametrize(
+    "command",
+    [
+        "docker compose --env-file /dev/null -f - build pinvi-web",
+        # n150에 배포하는 저장소들의 표준 명령. 빌드 중에만 보이는 docker-buildx 프로세스가 없어도 잡는다.
+        "docker compose --project-name kor-travel-weather --env-file .env.n150 -f compose.yaml up -d --build",
+        "docker image build -t kor-travel-geo-api:rel-0123456789ab .",
+        "/usr/libexec/docker/cli-plugins/docker-buildx buildx bake --file docker-bake.hcl",
+    ],
+)
+def test_window_and_prebuild_wait_for_other_image_builds(host: Host, command: str) -> None:
     host.ready_for_window()
-    host.update_state(builds="3438396 docker compose --env-file /dev/null -f - build pinvi-web")
+    host.update_state(processes=[*host.state()["processes"], [3438396, command]])
     for args in (("prebuild", _R), ("window", _R)):
         result = host.run(*args)
-        assert result.returncode != 0 and "빌드" in result.stderr, args
+        assert result.returncode != 0 and "빌드" in result.stderr and command in result.stderr, args
     assert not [c for c in host.calls() if c["argv"][:2] in (["docker", "stop"], ["docker", "compose"])]
 
 
@@ -1248,6 +1286,63 @@ def test_window_stops_before_the_outage_when_new_backups_differ(host: Host) -> N
     assert not [c for c in calls if c["argv"][:2] in (["docker", "stop"], ["docker", "rm"], ["docker", "compose"])]
     assert only_new.is_file()
     assert all(c["Running"] for c in host.containers(_OLD).values())
+
+
+@pytest.mark.parametrize("new_backups", ["absent", "differs"])
+def test_window_stops_before_the_outage_when_it_cannot_list_backups(host: Host, new_backups: str) -> None:
+    # `sudo -n find`가 실패하면 목록 비교는 빈 목록 둘을 "같다"고 봤다. NEW/backups가 다르면 그대로 통과했고,
+    # NEW가 없으면 창 4단계의 hardlink 사본을 확인하지 않은 채 성공으로 적었다.
+    host.ready_for_window()
+    if new_backups == "differs":
+        (host.new / "backups").mkdir()
+        (host.new / "backups" / "kor_travel_transport-20260929T010000Z.dump").write_bytes(b"PGDMP new stack")
+    host.sudo_find_broken.touch()
+    result = host.run("window", _R)
+
+    assert result.returncode != 0 and "목록을 읽지 못했다" in result.stderr
+    assert not [c for c in host.calls() if c["argv"][:2] in (["docker", "stop"], ["docker", "rm"], ["docker", "compose"])]
+    assert all(c["Running"] for c in host.containers(_OLD).values())
+    assert (host.old / ".env.server14").is_file()
+
+
+def test_window_restores_the_old_stack_when_it_cannot_list_the_backups_copy(host: Host) -> None:
+    # 창 전 확인은 통과했고 중단 안(4단계)에서 find가 실패한다. 빈 목록 둘을 같다고 보면 확인하지 않은
+    # hardlink 사본으로 새 스택을 올렸다.
+    host.ready_for_window()
+    host.update_state(break_sudo_find_on_stop=True)
+    result = host.run("window", _R)
+
+    _assert_restored(host, result)
+    assert "목록을 읽지 못했다" in result.stderr
+    assert not host.deploy_log.exists()  # 새 project 배포까지 가지 않았다.
+
+
+def test_stray_exports_of_generic_names_do_not_retarget_the_stages(host: Host) -> None:
+    # 운영자의 tmux 셸에 남은 흔한 이름의 export. 예전에는 모든 단계가 이 값을 따라갔다.
+    stray = host.root / "stray"
+    stray.mkdir()
+    exports = {
+        "OLD_DIR": str(stray / "old"),
+        "NEW_DIR": str(stray / "new"),
+        "WORK_DIR": str(stray / "work"),
+        "MANAGER_LINK": str(stray / "manager"),
+        "DAGSTER_GRAPHQL_URL": "http://127.0.0.1:1/graphql",
+        "API_URL": "http://127.0.0.1:1",
+        "WEB_URL": "http://127.0.0.1:1",
+        "ADMIN_API_URL": "http://127.0.0.1:1/health",
+    }
+    host.ok("prepare", _R, **exports)
+    host.stage()
+    host.ok("prebuild", _R, **exports)
+    host.ok("window", _R, **exports)
+    host.ok("admin", **exports)
+
+    assert not list(stray.iterdir())
+    assert (host.work / "release").read_text(encoding="utf-8").strip() == _R
+    assert (host.new / ".env.server14").is_file() and not (host.old / ".env.server14").exists()
+    assert {c["Labels"]["com.docker.compose.project.working_dir"] for c in host.containers(_NEW).values()} == {str(host.new)}
+    assert {c["Labels"]["com.docker.compose.project.working_dir"] for c in host.containers(_ADMIN).values()} == {str(host.new)}
+    assert not [c for c in host.calls() if c["argv"][0] == "curl" and any(":1/" in a or a.endswith(":1") for a in c["argv"])]
 
 
 def test_admin_can_be_rerun_after_a_recreate_failed_half_way(host: Host) -> None:

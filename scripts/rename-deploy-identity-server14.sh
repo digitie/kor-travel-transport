@@ -23,26 +23,35 @@ set -euo pipefail
 OLD_PROJECT=kor-travel-airport
 NEW_PROJECT=kor-travel-transport
 ADMIN_PROJECT=kor-travel-transport-admin
-OLD_DIR="${OLD_DIR:-/home/digitie/apps/kor-travel-airport}"
-NEW_DIR="${NEW_DIR:-/home/digitie/apps/kor-travel-transport}"
-WORK_DIR="${WORK_DIR:-${HOME}/transport-rename}"
+# 대상 경로와 URL은 셸 env에서 받지 않는다. 운영자 셸에 남은 OLD_DIR·NEW_DIR·API_URL 같은 흔한 이름의
+# export가 모든 단계를 다른 곳으로 돌린다(틀린 NEW_DIR은 중단 안에서야 배포 스크립트의 디렉터리 검사에
+# 걸려 자동 되살리기로 끝난다). 가짜 n150 테스트만 RENAME_TEST_ROOT로 앱·Manager 경로를 옮긴다.
+APPS_ROOT=/home/digitie/apps
+MANAGER_LINK=/opt/kor-travel-docker-manager
+if [[ -n "${RENAME_TEST_ROOT:-}" ]]; then
+  APPS_ROOT="$RENAME_TEST_ROOT/apps"
+  MANAGER_LINK="$RENAME_TEST_ROOT/kor-travel-docker-manager"
+fi
+OLD_DIR="$APPS_ROOT/kor-travel-airport"
+NEW_DIR="$APPS_ROOT/kor-travel-transport"
+WORK_DIR="$HOME/transport-rename"
 ENV_NAME=.env.server14
 ROLLBACK_REPO=kor-travel-airport-rollback
 NEW_BACKEND_REPO=kor-travel-transport-backend
-DAGSTER_GRAPHQL_URL="${DAGSTER_GRAPHQL_URL:-http://127.0.0.1:14004/graphql}"
-API_URL="${API_URL:-http://127.0.0.1:14001}"
-WEB_URL="${WEB_URL:-http://127.0.0.1:14002}"
-ADMIN_API_URL="${ADMIN_API_URL:-http://127.0.0.1:12301/health}"
-ADMIN_DAGSTER_URL="${ADMIN_DAGSTER_URL:-http://127.0.0.1:12302/health}"
-ADMIN_WEB_URL="${ADMIN_WEB_URL:-http://127.0.0.1:12305/login}"
-# 고속도로 run이 17분까지 걸린 적이 있다. 유가 run은 보통 2시간이라 유가 시작 뒤 2시간 안에서는 창을 열지 않는다.
+DAGSTER_GRAPHQL_URL=http://127.0.0.1:14004/graphql
+API_URL=http://127.0.0.1:14001
+WEB_URL=http://127.0.0.1:14002
+ADMIN_API_URL=http://127.0.0.1:12301/health
+ADMIN_DAGSTER_URL=http://127.0.0.1:12302/health
+ADMIN_WEB_URL=http://127.0.0.1:12305/login
+# 고속도로 run이 17분까지 걸린 적이 있다. 유가 run은 최근 14일 성공이 52분까지였고(2026-09-25 07:00Z
+# 회차는 4시간 상한에서 실패), 배편은 #44 뒤 10분 안팎이다. 유가·배편 시작 직후에는 창을 열지 않는다.
 DRAIN_TIMEOUT_SECONDS="${DRAIN_TIMEOUT_SECONDS:-1800}"
 DRAIN_POLL_SECONDS="${DRAIN_POLL_SECONDS:-30}"
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-600}"
 HEALTH_POLL_SECONDS="${HEALTH_POLL_SECONDS:-10}"
 SHARED_PG_CONTAINER="${SHARED_PG_CONTAINER:-kor-travel-shared-postgres}"
 PG_CLIENT_IMAGE="${PG_CLIENT_IMAGE:-}"
-MANAGER_LINK="${MANAGER_LINK:-/opt/kor-travel-docker-manager}"
 
 SERVICES=(backend frontend dagster-code-server dagster-webserver dagster-daemon dagster-gateway)
 DAGSTER_SERVICES=(dagster-code-server dagster-webserver dagster-daemon)
@@ -54,7 +63,10 @@ ADMIN_BUILT=(transport-admin-web transport-dagster-gateway)
 # rollback 역할 → 옛 서비스. webserver·daemon은 code 이미지로 되돌린다(그들이 돌던 c8b47811은 store에 없다).
 ROLLBACK_ROLES=(backend:backend code:dagster-code-server frontend:frontend gateway:dagster-gateway)
 CRON_SCRIPT="${OLD_DIR}/scripts/n150-backup-cron.sh"
-BUILD_PATTERN='docker-buildx|docker build|compose .*[[:space:]]build([[:space:]]|$)'
+# `pgrep -f`(ERE)로 보는 빌드 명령줄. n150에 배포하는 저장소들의 표준 명령 `docker compose … up -d --build`도
+# 잡는다(`docker-buildx` 플러그인 프로세스는 빌드하는 동안에만 보인다). `--no-build`는 잡지 않는다.
+# `docker build`는 `docker buildx build`·`docker builder build`의 앞부분이기도 하다.
+BUILD_PATTERN='docker-buildx|docker( image)? build|compose .*[[:space:]](build|--build)([[:space:]]|$)'
 
 T_ID='{{.Id}}'
 T_IMAGE='{{.Image}}'
@@ -638,14 +650,24 @@ restore_old_stack() {
 }
 
 backups_listing() { sudo -n find "$1" -mindepth 1 -printf '%P %s %y\n' | sort; }
+# 목록은 변수로 먼저 받는다. `diff <(…)`나 `[[ "$(…)" == "$(…)" ]]`는 `sudo -n find` 실패를 빈 목록으로
+# 보고, 두 실패를 "같다"로 통과시킨다(pipefail이라 find의 실패가 여기서 드러난다).
+BACKUPS_LIST=""
+read_backups() {  # <dir>. 결과는 BACKUPS_LIST에 둔다(`$(…)` 안의 die는 호출부를 끝내지 않는다).
+  BACKUPS_LIST="$(backups_listing "$1")" || die "$1 목록을 읽지 못했다(sudo -n find)."
+}
 
 # 창 전(옛 스택이 도는 동안). 지난 시도나 rollback 뒤에 남은 NEW/backups가 OLD와 다르면 창 4단계에서
-# 멈춰 중단만 생긴다. NEW에만 있는 dump는 새 backend가 쓴 것이라 NEW를 지우면 사라진다.
+# 멈춰 중단만 생긴다. NEW에만 있는 dump는 새 backend가 쓴 것이라 NEW를 지우면 사라진다. OLD 목록은
+# NEW가 없어도 읽어 본다. 목록을 못 읽으면 창 4단계(중단 안)가 아니라 여기서 멈춘다.
 backups_precheck() {
-  local old="$OLD_DIR/backups" new="$NEW_DIR/backups" differ
+  local old="$OLD_DIR/backups" new="$NEW_DIR/backups" old_list differ
   sudo -n test -d "$old" || die "$old가 없다."
+  read_backups "$old"
+  old_list="$BACKUPS_LIST"
   sudo -n test -e "$new" || return 0
-  if differ="$(diff <(backups_listing "$old") <(backups_listing "$new"))"; then
+  read_backups "$new"
+  if differ="$(diff <(printf '%s\n' "$old_list") <(printf '%s\n' "$BACKUPS_LIST"))"; then
     echo "backups: $new가 이미 있고 $old와 같다."
     return 0
   fi
@@ -658,18 +680,21 @@ NEW를 지우지 않는다. 두 쪽을 hardlink로 합친다(덮어쓰거나 지
 }
 
 link_backups() {
-  local old="$OLD_DIR/backups" new="$NEW_DIR/backups"
+  local old="$OLD_DIR/backups" new="$NEW_DIR/backups" old_list
   sudo -n test -d "$old" || die "$old가 없다."
+  read_backups "$old"
+  old_list="$BACKUPS_LIST"
   if sudo -n test -e "$new"; then
-    [[ "$(backups_listing "$old")" == "$(backups_listing "$new")" ]] \
-      || die "$new가 이미 있고 $old와 다르다. 내용을 확인한 뒤 옮긴다."
+    read_backups "$new"
+    [[ "$old_list" == "$BACKUPS_LIST" ]] || die "$new가 이미 있고 $old와 다르다. 내용을 확인한 뒤 옮긴다."
     echo "backups 이미 같다: $new"
     return 0
   fi
   # 같은 파일시스템의 hardlink 사본: 즉시, 추가 공간 없음, root 소유·mode 유지. OLD는 그대로 남아 rollback이 쓴다.
   sudo -n cp -a -l -T -- "$old" "$new"
-  [[ "$(backups_listing "$old")" == "$(backups_listing "$new")" ]] || die "$new 사본이 $old와 다르다."
-  echo "backups hardlink 사본: $(backups_listing "$new" | wc -l)개 항목"
+  read_backups "$new"
+  [[ "$old_list" == "$BACKUPS_LIST" ]] || die "$new 사본이 $old와 다르다."
+  echo "backups hardlink 사본: $(printf '%s' "$BACKUPS_LIST" | grep -c '')개 항목"
 }
 
 verify_new_stack() {
@@ -958,7 +983,7 @@ cmd_rollback() {
   done
   if [[ -e "$retired" && -e "$OLD_DIR" ]]; then check_old_leftover; fi
 
-  # 새 code-server를 멈추면 실행 중 run(유가 Playwright 최대 2시간, 배편)이 끊겨 data.go.kr 오퍼레이션별
+  # 새 code-server를 멈추면 실행 중 run(유가 Playwright, 상한 4시간, 배편)이 끊겨 data.go.kr 오퍼레이션별
   # 한도를 버린다. 창처럼 daemon을 먼저 멈추고 run을 기다린다.
   say "1. 새 daemon 정지와 in-flight run 대기"
   if [[ "$(insp "$T_RUNNING" "$(new_c dagster-code-server)" 2>/dev/null)" != true ]]; then
