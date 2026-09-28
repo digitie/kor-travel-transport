@@ -39,7 +39,7 @@ export function DagsterTables({ snapshot }: { snapshot: DagsterOverview }) {
               return <TableRow key={run.runId}>
                 <TableCell>
                   <div className="flex flex-col items-start gap-1">
-                    <Badge variant={run.status === "FAILURE" ? "destructive" : stalled ? "outline" : "secondary"}>{statusLabel(run.status)}</Badge>
+                    <Badge variant={run.status === "FAILURE" || run.status === "CANCELED" ? "destructive" : stalled ? "warning" : run.status === "SUCCESS" || run.status === "STARTED" ? "success" : "warning"}>{statusLabel(run.status)}</Badge>
                     {elapsed != null ? <small>{elapsed}분 경과{stalled ? " · 정체 의심" : ""}</small> : null}
                   </div>
                 </TableCell>
@@ -75,7 +75,7 @@ export function DagsterTables({ snapshot }: { snapshot: DagsterOverview }) {
                   {JOB_LABELS[schedule.pipelineName] ?? schedule.pipelineName}
                 </Button></TableCell>
                 <TableCell>{scheduleDescription(schedule.cronSchedule)}</TableCell>
-                <TableCell><Badge variant={schedule.scheduleState.status === "RUNNING" ? "secondary" : "outline"}>{schedule.scheduleState.status === "RUNNING" ? "사용" : schedule.scheduleState.status === "STOPPED" ? "중지" : "상태 확인 필요"}</Badge></TableCell>
+                <TableCell><Badge variant={schedule.scheduleState.status === "RUNNING" ? "success" : schedule.scheduleState.status === "STOPPED" ? "destructive" : "warning"}>{schedule.scheduleState.status === "RUNNING" ? "사용" : schedule.scheduleState.status === "STOPPED" ? "중지" : "상태 확인 필요"}</Badge></TableCell>
               </TableRow>
               {expanded === schedule.name ? <TableRow><TableCell colSpan={3} className="whitespace-normal">
                 <div className="flex flex-col gap-4">
@@ -113,19 +113,19 @@ export function DagsterOperations() {
   const stalled = (snapshot?.activeRuns ?? snapshot?.runs ?? []).filter((run) => runStalled(run, Date.parse(snapshot?.checkedAt ?? ""))).length;
   return <>
     <PageHeader title="Dagster" description="자동 수집 작업의 실행 기록과 스케줄을 확인합니다. 제공기관별 저장 범위는 수집 상태 메뉴에서 확인하세요." actions={<><Button variant="outline" type="button" disabled={loading} onClick={refresh}>{loading ? <Spinner data-icon="inline-start" aria-hidden="true" /> : <RefreshCw data-icon="inline-start" aria-hidden="true" />}{loading ? "확인 중…" : "새로고침"}</Button><a data-slot="button" className={cn(buttonVariants({ variant: "outline" }))} href={DAGSTER_URL} target="_blank" rel="noreferrer">Dagster UI <ExternalLink data-icon="inline-end" aria-hidden="true" /></a></>} />
-    <div className="journey-workbench" aria-busy={loading}>
+    <div className="journey-workbench dagster-workbench" aria-busy={loading}>
       {error ? <Alert variant="destructive"><AlertDescription>{snapshot ? "Dagster 갱신에 실패해 마지막 확인 결과를 표시합니다." : "Dagster 상태를 불러오지 못했습니다."} 새로고침으로 다시 확인해 주세요.</AlertDescription></Alert> : null}
       {stalled > 0 ? <Alert variant="destructive"><AlertDescription>{stalled}개 실행이 작업별 확인 기준을 넘었습니다. 실제 저장 진행 여부를 실행 상세에서 확인하세요.</AlertDescription></Alert> : null}
-      <section className="grid grid-cols-2 gap-4 lg:grid-cols-4" aria-label="Dagster 요약">{[
+      <section className="ops-grid" aria-label="Dagster 요약">{[
         ["사용 중인 스케줄", snapshot ? `${snapshot.schedules.filter((row) => row.scheduleState.status === "RUNNING").length}/${snapshot.schedules.length}` : "—", "전체 스케줄 대비"],
         ["최근 성공", snapshot ? snapshot.runs.filter((row) => row.status === "SUCCESS").length : "—", `최근 ${snapshot?.runs.length ?? 0}건 중`],
         ["최근 실패", snapshot ? snapshot.runs.filter((row) => row.status === "FAILURE").length : "—", "원인 확인 대상"],
         ["장시간 실행", snapshot ? stalled : "—", "작업별 확인 기준 적용"],
-      ].map(([label, value, caption]) => <Card size="sm" className="min-w-0" key={label}>
-        <CardHeader><CardTitle>{label}</CardTitle></CardHeader>
+      ].map(([label, value, caption]) => <Card className="ops-card min-h-40 min-w-0 gap-3" key={label}>
+        <CardHeader><CardTitle className="text-xs leading-normal tracking-[0.04em] text-muted-foreground">{label}</CardTitle></CardHeader>
         <CardContent className="flex flex-col gap-2">
-          {loading && !snapshot ? <Skeleton className="h-7 w-12" aria-hidden="true" /> : <span>{value}</span>}
-          <CardDescription>{caption}</CardDescription>
+          {loading && !snapshot ? <Skeleton className="h-7 w-12" aria-hidden="true" /> : <strong>{value}</strong>}
+          <CardDescription className="text-[0.8125rem] leading-[1.45]">{caption}</CardDescription>
         </CardContent>
       </Card>)}</section>
       {snapshot ? <DagsterTables snapshot={snapshot} /> : loading ? <div className="flex flex-col gap-4">

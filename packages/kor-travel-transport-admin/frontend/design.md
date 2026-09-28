@@ -2,8 +2,10 @@
 
 ## 기준과 범위
 
-사용자 요청에 따라 로컬 kor-travel-map의 feature 지도/목록/선택 inspector와
-kor-travel-weather의 운영 화면을 기준으로 한다. 새 테마를 만들지 않는다.
+사용자 요청에 따라 로컬 kor-travel-weather의 실제 운영 화면을 정본으로 한다.
+2026-09-28 기준 커밋은 `c25642099e0968a36246a5aec24949cb7468e789`이며
+`app/tokens.css`, `app/globals.css`, `components/admin-shell.tsx`를 대조했다.
+문서와 코드가 다른 헤더 형태는 실제 코드의 둥근 카드형을 따른다. 새 테마를 만들지 않는다.
 교통 이용자가 장소와 운항을 비교하는 실용적인 화면이며 운영 상태는 별도 메뉴로 분리한다.
 기존 parking-radar의 화면과 스타일은 변경하지 않는다.
 
@@ -12,7 +14,14 @@ kor-travel-weather의 운영 화면을 기준으로 한다. 새 테마를 만들
 - 장르: modern-minimal, 앱 구조: Workbench, 탐색: N3 사이드 레일.
 - 검색·필터 → 지도/목록 전환 → 선택 항목 inspector 순서다.
 - 모바일에서는 inspector를 검색 바로 아래로 배치하고 목록보다 먼저 읽는다.
-- 기존 transport의 청록색, 한글 sans 글꼴을 유지하고 weather의 얇은 경계/6px 입력/8px 패널을 따른다.
+- Weather와 같은 밝은 17rem 레일, 파란 강조색, 중성 배경, 글꼴 fallback 순서를 쓴다.
+  폰트는 Weather처럼 시스템에 설치된 Geist/Pretendard/한글 글꼴을 순서대로 사용하며
+  외부 폰트 다운로드를 추가하지 않는다.
+- 제목은 24px, 헤더 카드 안쪽은 24px, 본문 좌우 여백은 24px다.
+  62rem 이하에서는 여백 16px·가로 탐색, 42rem 이하에서는 여백 12px다.
+  입력·버튼은 36px, 작은 버튼은 30px, 터치 환경은 최소 44px다.
+- Weather의 얇은 경계/6px 입력/8px 패널/18px 헤더 카드를 따른다.
+  모바일 로그아웃은 숨기지 않으며 POST·캐시 정리 계약을 유지한다.
 - 의미 없는 장식·진입 애니메이션·가짜 통계는 사용하지 않는다.
 - 가격에는 유종·단위·관측 시각을, 시간표에는 출발/도착·운항일·배/등급·요금을 붙인다.
 - 좌표 없음, 시간표 미수집, 수집 완료지만 운항 없음은 각각 다른 상태다.
@@ -26,7 +35,9 @@ kor-travel-weather의 운영 화면을 기준으로 한다. 새 테마를 만들
 
 ## 토큰·상태
 
-app/tokens.css는 기존 색상의 별칭과 간격·폰트·형태를 제공한다.
+app/tokens.css는 Weather 색상과 간격·폰트·형태를 제공한다.
+교통 마커의 기존 `--space-*` 이름은 호환성을 위해 유지하고 셸에는
+`--layout-gutter`, `--panel-padding`, `--control-h`를 사용한다.
 포커스 표시, 선택 상태, 로딩, 빈 결과, 오류, 재시도, disabled 설명을 제공한다.
 320/375/414/768px와 데스크톱에서 검증한다. 장식 모션은 없으며 reduced-motion을 따른다.
 
@@ -46,13 +57,14 @@ overflow로 숨기지 않고 패널 자체의 가로 넘침을 1440/375px에서 
 
 ## 다른 프로젝트로 옮길 때의 토큰
 
-CSS 정본은 `app/tokens.css`이며 기존 transport 색상을 별칭으로 참조한다.
+CSS 정본은 `app/tokens.css`이며 Weather 색상을 기존 transport 역할에 연결한다.
 Transport admin은 Tailwind v4 + shadcn/ui(Base UI, base-nova)를 사용한다.
-기존 청록색과 Weather 레이아웃을 유지하며 버튼·입력·선택·탭·상태·표·카드는
+Weather의 파란 강조색과 레이아웃을 적용하며 버튼·입력·선택·탭·상태·표·카드는
 `components/ui/`의 공식 컴포넌트로 구성한다. `components.json`이 설치 설정의 정본이다.
 `app/globals.css`에서 의미 색상을 기존 토큰에 연결하며, 기존 스타일은 `legacy` 레이어에
 두어 컴포넌트 유틸리티를 덮어쓰지 않게 한다. 기존 `--muted`(문자색), `--accent`(청록색)를
-shadcn의 같은 이름 배경색으로 재정의하지 않는다. 차트는 Apache ECharts를 유지한다.
+shadcn의 같은 이름 배경색으로 재정의하지 않는다. 현재 `--accent`는 Weather 강조색이다.
+차트는 Apache ECharts를 유지한다.
 다음은 다른 소비 앱을 위한 토큰 매핑 예시다.
 
 ```css
@@ -65,9 +77,9 @@ shadcn의 같은 이름 배경색으로 재정의하지 않는다. 차트는 Apa
 ```json
 {
   "color": {
-    "paper": { "$type": "color", "$value": "#f7f7f2" },
-    "ink": { "$type": "color", "$value": "#182022" },
-    "accent": { "$type": "color", "$value": "#0f766e" }
+    "paper": { "$type": "color", "$value": "oklch(97.8% 0.003 250)" },
+    "ink": { "$type": "color", "$value": "oklch(30% 0.025 255)" },
+    "accent": { "$type": "color", "$value": "oklch(47% 0.14 255)" }
   },
   "space": { "control": { "$type": "dimension", "$value": "0.75rem" } }
 }

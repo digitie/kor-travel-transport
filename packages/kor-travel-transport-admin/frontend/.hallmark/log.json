@@ -2,6 +2,14 @@
   {
     "date": "2026-09-28",
     "macrostructure": "Workbench",
+    "theme": "Weather c25642099 실제 구현의 밝은 레일·파란 강조색",
+    "scope": "app",
+    "enrichment": "none",
+    "brief": "사용자 지정 참조로 외형 일치화. 모바일 로그아웃과 교통 정보 위계는 유지."
+  },
+  {
+    "date": "2026-09-28",
+    "macrostructure": "Workbench",
     "theme": "기존 transport·Weather 구조 재사용",
     "scope": "app",
     "enrichment": "none",
