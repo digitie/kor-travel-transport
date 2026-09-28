@@ -20,4 +20,4 @@
 - **결과 (부정)**: 로컬 1차 테스트(WSL2, Docker 없이)는 SQLite로 돌리므로, PostgreSQL 전용 제약
   조건(스키마 한정, 타입 캐스팅 등)의 회귀는 2차 Docker 테스트나 CI에서만 드러날 수 있다.
 - **후속**: 새 스키마 변경은 항상 Alembic revision + 테스트 + `docs/architecture/data-model.md`
-  갱신을 함께 진행한다([runbooks/migration.md](</F:/dev/kor-travel-airport/docs/runbooks/migration.md>) 참고).
+  갱신을 함께 진행한다([runbooks/migration.md](../runbooks/migration.md) 참고).

@@ -13,7 +13,7 @@
   `locdate`/`is_holiday`/`date_name` 필드와 함께 원본 API 응답 키(`dateName`,
   `isHoliday`, `locdate`)를 그대로 보존하는 `raw` mapping도 제공해, parking-radar의
   기존 `parse_holiday_response`/`_parse_holiday_fields` 로직을 그대로 재사용할 수 있었다
-  ([ADR-004](</F:/dev/kor-travel-airport/docs/adr/004-krairport-provider-library.md>)의
+  ([ADR-004](004-krairport-provider-library.md)의
   krairport와 동일한 provider 라이브러리 원칙).
 - **결정**: parking-radar의 공휴일 조회는 `python-kasi-api`(`kasi`)의
   `AsyncKasiClient.holidays()`를 사용한다. 직접 구현한 HTTP 호출은 이 라이브러리 호출로

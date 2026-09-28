@@ -417,7 +417,7 @@
 
 ### `T-029` — `flight_status.py`를 `python-krairport-api`(krairport) client로 전환
 
-- [ADR-004](</F:/dev/kor-travel-airport/docs/adr/004-krairport-provider-library.md>)의 마지막 남은
+- [ADR-004](adr/004-krairport-provider-library.md)의 마지막 남은
   범위(비행편)를 완료했다. `LiveFlightStatusClient`를 `KrairportFlightStatusClient`로
   교체했다.
 - KAC ODCloud(`FlightStatusListDTL`)는 krairport의 다른 KAC 서비스(`openapi.airport.co.kr`)와
@@ -465,7 +465,7 @@
 
 ### 공휴일 수집을 `python-kasi-api`로 전환
 
-- [ADR-006](</F:/dev/kor-travel-airport/docs/adr/006-kasi-provider-library.md>) 참고. 사용자
+- [ADR-006](adr/006-kasi-provider-library.md) 참고. 사용자
   요청으로 한국천문연구원(KASI) 특일 정보(`15012690`) 조회를 krairport(T-030, ADR-004)와
   동일한 provider 라이브러리 패턴으로 형제 라이브러리 `python-kasi-api`(`kasi`)로
   옮겼다. `KasiHolidayClient`가 `AsyncKasiClient.holidays()`를 호출하고, 반환된 각
@@ -487,7 +487,7 @@
 
 ### 백엔드 API를 `/v1` 버저닝 + RFC7807 에러로 정식 계약화
 
-- [ADR-005](</F:/dev/kor-travel-airport/docs/adr/005-versioned-rest-api-contract.md>) 참고.
+- [ADR-005](adr/005-versioned-rest-api-contract.md) 참고.
   `kor-travel-map` 패턴을 참조해 `/health`를 제외한 모든 라우트를 `APIRouter(prefix="/v1")`로
   이동(무-호환 clean-cut)하고, 모든 에러 응답을 RFC7807 `application/problem+json`으로
   통일했다. `scripts/export_openapi.py`로 `docs/openapi.json`을 기계 정본으로 커밋한다.
@@ -532,7 +532,7 @@
 
 ### `T-030` — 주차 현황·주차요금 수집을 `python-krairport-api`로 전환
 
-- [ADR-004](</F:/dev/kor-travel-airport/docs/adr/004-krairport-provider-library.md>) 범위를
+- [ADR-004](adr/004-krairport-provider-library.md) 범위를
   비행편에서 주차 현황/요금까지 확장하고, KAC/IIAC 주차현황(`15056803`/`15095047`)과 KAC
   주차요금(`15038474`)이 krairport의 기존 raw-item escape hatch로 정확히 대체됨을 소스
   코드 대조(`krairport/providers/{kac,iiac}.py`)로 확인했다. IIAC 주차요금(`15095053`)은
@@ -613,7 +613,7 @@
   테이블·역할·외부 경계·Provider API 세부 원칙처럼 `kortravelmap` 패키지·PostGIS·
   멀티패키지 구조에 종속된 내용은 가져오지 않았다.
 - `python-krairport-api`(`krairport`, `F:\dev\python-krairport-api`)를 비행편 데이터
-  provider 라이브러리로 채택하기로 결정했다([ADR-004](</F:/dev/kor-travel-airport/docs/adr/004-krairport-provider-library.md>)).
+  provider 라이브러리로 채택하기로 결정했다([ADR-004](adr/004-krairport-provider-library.md)).
   현재 `backend/app/services/flight_status.py`는 KAC/IIAC API를 `httpx`로 직접
   재구현하고 있어 이 결정과 어긋난다 — 실제 마이그레이션은 `docs/tasks.md`의 `T-029`로
   등록했고 아직 시작하지 않았다. `AGENTS.md`에 "Provider 라이브러리 사용 원칙" 절을

@@ -50,7 +50,7 @@ PostgreSQL을 대상으로 하는 backend 테스트는 각 실행 전 관련 테
   (`AGENTS.md`).
 - 새 데이터 패널이나 UI 상호작용을 추가하면 컴포넌트 테스트를 함께 갱신한다(`AGENTS.md`).
 - 스키마를 바꾸면 Alembic revision + 테스트 + `docs/architecture/data-model.md`를 함께
-  갱신한다([ADR-001](</F:/dev/kor-travel-airport/docs/adr/001-postgresql-as-primary-db.md>)).
+  갱신한다([ADR-001](adr/001-postgresql-as-primary-db.md)).
 - CI green 전에는 머지하지 않는다(`backend`, `frontend`, `live-e2e` 3개 job 모두).
 
 ## 커버리지 현황

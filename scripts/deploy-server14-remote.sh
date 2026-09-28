@@ -3,18 +3,20 @@ set -euo pipefail
 
 # n150에서만 실행되는 receipt-gated deploy 단계다. 로컬 Git checkout은 필요하지 않으며,
 # deploy-server14.sh가 staging한 candidate artifact 또는 cutover 직후의 staged artifact를 쓴다.
-REMOTE_APP_DIR="${REMOTE_APP_DIR:-/home/digitie/apps/kor-travel-airport}"
+REMOTE_APP_DIR="${REMOTE_APP_DIR:-/home/digitie/apps/kor-travel-transport}"
 REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-.env.server14}"
-COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-kor-travel-airport}"
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-kor-travel-transport}"
 CUTOVER_RECEIPT_PATH="${CUTOVER_RECEIPT_PATH:-/var/tmp/kor-travel-transport-cutover/shared-db-cutover.receipt}"
 CANDIDATE_SHA="${CANDIDATE_SHA:?set the staged candidate SHA}"
 RELEASE_MANIFEST_FILE="${REMOTE_APP_DIR}/.release-sha"
+# 개명 전 Compose project(ADR-010). 아래 임시 guard만 쓰고, 개명 cutover 정리 PR에서 guard와 함께 지운다.
+PRE_RENAME_PROJECT_NAME="kor-travel-airport"
 
-if [[ "${REMOTE_APP_DIR}" != "/home/digitie/apps/kor-travel-airport" ]]; then
+if [[ "${REMOTE_APP_DIR}" != "/home/digitie/apps/kor-travel-transport" ]]; then
   echo "Refusing n150 deployment: only the approved app directory may be used." >&2
   exit 2
 fi
-if [[ "${REMOTE_ENV_FILE}" != ".env.server14" || "${COMPOSE_PROJECT_NAME}" != "kor-travel-airport" ]]; then
+if [[ "${REMOTE_ENV_FILE}" != ".env.server14" || "${COMPOSE_PROJECT_NAME}" != "kor-travel-transport" ]]; then
   echo "Refusing n150 deployment: unexpected environment file or Compose project." >&2
   exit 2
 fi
@@ -24,6 +26,17 @@ if [[ "${CUTOVER_RECEIPT_PATH}" != "/var/tmp/kor-travel-transport-cutover/shared
 fi
 if [[ ! "${CANDIDATE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
   echo "Refusing n150 deployment: candidate SHA must be a full Git SHA." >&2
+  exit 2
+fi
+# 임시 개명 guard: 개명 전 project의 컨테이너가 하나라도 떠 있으면 새 project를 올리지 않는다.
+# 모든 서비스가 host network라 두 스택은 포트를 다투고, 두 dagster-daemon이 같은 metadata DB에서
+# schedule을 두 번 평가한다. 이름이 아니라 compose project label의 정확한 값으로 찾는다.
+if ! pre_rename_running="$(docker ps -q --filter "label=com.docker.compose.project=${PRE_RENAME_PROJECT_NAME}")"; then
+  echo "Refusing n150 deployment: could not list containers of the pre-rename ${PRE_RENAME_PROJECT_NAME} project." >&2
+  exit 2
+fi
+if [[ -n "${pre_rename_running}" ]]; then
+  echo "Refusing n150 deployment: the pre-rename ${PRE_RENAME_PROJECT_NAME} project still runs containers; stop it through scripts/rename-deploy-identity-server14.sh first." >&2
   exit 2
 fi
 if [[ "$(pwd -P)" != "${REMOTE_APP_DIR}" || ! -f "${REMOTE_ENV_FILE}" ]]; then
@@ -74,7 +87,7 @@ if [[ ! "${DATABASE_URL:-}" =~ ^postgresql\+asyncpg://[^@]+@127\.0\.0\.1:11000/k
   echo "Refusing server14 deployment: DATABASE_URL must target the Manager shared application DB." >&2
   exit 2
 fi
-if [[ ! "${DAGSTER_POSTGRES_URL:-}" =~ ^postgresql://[^@]+@127\.0\.0\.1:11000/kor_travel_transport_dagster$ ]]; then
+if [[ ! "${DAGSTER_POSTGRES_URL:-}" =~ ^postgresql(\+psycopg2)?://[^@]+@127\.0\.0\.1:11000/kor_travel_transport_dagster$ ]]; then
   echo "Refusing server14 deployment: DAGSTER_POSTGRES_URL must target the dedicated Manager metadata DB." >&2
   exit 2
 fi
@@ -100,9 +113,16 @@ cleanup_remote() {
   rm -f -- "${RUNTIME_ENV_FILE}"
 }
 trap cleanup_remote EXIT
-awk '!/^RELEASE_SHA=/' "${REMOTE_ENV_FILE}" > "${RUNTIME_ENV_FILE}"
+awk '!/^(RELEASE_SHA|BACKEND_RUNTIME_IMAGE)=/' "${REMOTE_ENV_FILE}" > "${RUNTIME_ENV_FILE}"
 printf 'RELEASE_SHA=%s\n' "${CANDIDATE_SHA}" >> "${RUNTIME_ENV_FILE}"
 chmod 600 "${RUNTIME_ENV_FILE}"
+# 백엔드 계열 이미지는 release마다 자기 태그를 받는다. `up --build`가 backend를 이 이름으로 빌드하고
+# migrate·Dagster 서비스도 같은 이미지로 뜬다. env 파일에 두면 다음 release가 같은 태그를 덮어써
+# 이전 release 이미지가 dangling이 되므로 셸 env로만 준다(셸 env가 --env-file보다 우선한다).
+export BACKEND_RUNTIME_IMAGE="kor-travel-transport-backend:rel-${CANDIDATE_SHA:0:12}"
+# 위 `set -a; source`는 env 파일의 `RELEASE_SHA=` 줄도 셸 env로 export한다. 셸 env가 --env-file보다
+# 우선하므로 runtime env에서 그 줄을 지운 것만으로는 옛 SHA가 이긴다. 셸 env도 candidate로 덮는다.
+export RELEASE_SHA="${CANDIDATE_SHA}"
 
 docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${RUNTIME_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml config -q
 docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${RUNTIME_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml up -d --build

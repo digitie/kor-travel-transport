@@ -35,7 +35,7 @@ _SCRIPT = next(
     _BACKEND_ROOT.parent / "scripts" / _SCRIPT_NAME,
 )
 
-_PROJECT = "kor-travel-airport"
+_PROJECT = "kor-travel-transport"
 _SERVICES = ("dagster-code-server", "dagster-webserver", "dagster-daemon")
 _DAEMON = f"{_PROJECT}-dagster-daemon-1"
 _PIN = "sha256:" + "1" * 64
@@ -73,7 +73,7 @@ if program == "curl":
     if state.get("curl_fails"):
         fail("curl: (7) Failed to connect to 127.0.0.1 port 14004", 7)
     # 기다리는 동안(daemon이 멈춘 동안) 다른 작업이 한 번 끼어든다.
-    waiting = not state["containers"]["kor-travel-airport-dagster-daemon-1"]["Running"]
+    waiting = not state["containers"]["kor-travel-transport-dagster-daemon-1"]["Running"]
     edit = state.pop("append_on_curl", None) if waiting else None  # [경로, 덧붙일 내용]
     other_job = state.pop("run_on_curl", None) if waiting else None  # 다른 세션의 명령
     if edit or other_job:
@@ -121,7 +121,7 @@ if args[0] == "compose":
             files.append(value)
         else:
             options[flag] = value
-    if options.get("--project-name") != "kor-travel-airport" or len(files) != 2 or not Path(files[0]).is_file():
+    if options.get("--project-name") != "kor-travel-transport" or len(files) != 2 or not Path(files[0]).is_file():
         fail(f"fake compose: unexpected invocation {args}", 2)
     config = render(options["--env-file"], files[1])
     command, rest = rest[0], rest[1:]
@@ -137,7 +137,7 @@ if args[0] == "compose":
         assert rest[:3] == ["-d", "--no-deps", "--no-build"], rest
         for name in rest[3:]:
             service = config["services"][name]
-            state["containers"][f"kor-travel-airport-{name}-1"] = {
+            state["containers"][f"kor-travel-transport-{name}-1"] = {
                 "Id": os.urandom(32).hex(),
                 "Image": resolve(service["image"]),
                 "ConfigImage": service["image"],
@@ -190,7 +190,7 @@ def _shared(*, probe: str, init: bool | None, webserver_command: str = "dagster-
     services: dict[str, Any] = {}
     for name in _SERVICES:
         service: dict[str, Any] = {
-            "image": "${BACKEND_RUNTIME_IMAGE:-kor-travel-airport-backend:latest}",
+            "image": "${BACKEND_RUNTIME_IMAGE:-kor-travel-transport-backend:latest}",
             "environment": {"DAGSTER_POSTGRES_URL": "${DAGSTER_POSTGRES_URL:?set the Dagster DSN}"},
             "healthcheck": {"test": ["CMD", probe, name]},
         }
@@ -200,7 +200,7 @@ def _shared(*, probe: str, init: bool | None, webserver_command: str = "dagster-
     services["dagster-code-server"]["environment"]["DATABASE_URL"] = "${DATABASE_URL:?set the app DSN}"
     services["dagster-webserver"]["command"] = [webserver_command]
     services["backend"] = {
-        "image": "${BACKEND_RUNTIME_IMAGE:-kor-travel-airport-backend:latest}",
+        "image": "${BACKEND_RUNTIME_IMAGE:-kor-travel-transport-backend:latest}",
         "environment": {"DATABASE_URL": "${DATABASE_URL:?set the app DSN}"},
     }
     return json.dumps({"name": _PROJECT, "services": services}, indent=2) + "\n"
@@ -241,7 +241,7 @@ class Host:
             {
                 "containers": {},
                 "tags": {
-                    "kor-travel-airport-backend:latest": _LATEST,
+                    "kor-travel-transport-backend:latest": _LATEST,
                     "local/transport-pr42:coordinates": _PIN,
                     "local/transport-pr43:backend": _DRAFT,
                 },
@@ -253,7 +253,7 @@ class Host:
         self.compose_up(["dagster-code-server"], BACKEND_RUNTIME_IMAGE=_PIN)
         self.compose_up(
             ["dagster-webserver", "dagster-daemon"],
-            BACKEND_RUNTIME_IMAGE="kor-travel-airport-backend:latest",
+            BACKEND_RUNTIME_IMAGE="kor-travel-transport-backend:latest",
             DAGSTER_POSTGRES_URL=_OLD_SCHEME_DSN,
         )
         self.log_path.write_text("", encoding="utf-8")
@@ -367,7 +367,7 @@ def test_redeploy_recreates_the_three_services_on_the_pinned_image_and_rolls_bac
         assert container["Init"] is True and container["HealthTest"][1] == "new-probe", service
         # webserver·daemon도 .env.server14의 DSN(scheme `postgresql+psycopg2`)으로 다시 떴다.
         assert f"DAGSTER_POSTGRES_URL={_ENV_DSN}" in container["Env"], service
-    assert state["tags"][f"kor-travel-airport-backend:dagster-pin-{_PIN[7:19]}"] == _PIN
+    assert state["tags"][f"kor-travel-transport-backend:dagster-pin-{_PIN[7:19]}"] == _PIN
     assert host.installed() == _NEW
     backups = sorted(host.app.glob("docker-compose.shared.yml.before-*"))
     assert [backup.read_text(encoding="utf-8") for backup in backups] == [_OLD]
@@ -407,7 +407,7 @@ def test_redeploy_refuses_a_file_that_changes_more_than_probes(host: Host, tmp_p
 def test_redeploy_accepts_only_a_scheme_difference_in_the_running_dsn(host: Host, tmp_path: Path) -> None:
     host.compose_up(
         ["dagster-daemon"],
-        BACKEND_RUNTIME_IMAGE="kor-travel-airport-backend:latest",
+        BACKEND_RUNTIME_IMAGE="kor-travel-transport-backend:latest",
         DAGSTER_POSTGRES_URL="postgresql://dagster:pw@127.0.0.2:11000/kor_travel_transport_dagster",
     )
     host.log_path.write_text("", encoding="utf-8")

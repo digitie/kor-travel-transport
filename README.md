@@ -92,7 +92,7 @@ provider의 기본 전체 실행 간격은 8시간이다. provider 정책상 허
 ## 빠른 시작
 
 PostgreSQL은 앱(backend/frontend)과 분리된 별도 compose 스택이다(T-032). DB 스택을 먼저
-올려야 `kor-travel-airport-net` 외부 네트워크가 생기고, 앱 스택이 거기에 연결된다.
+올려야 `kor-travel-transport-net` 외부 네트워크가 생기고, 앱 스택이 거기에 연결된다.
 
 ```bash
 docker compose -f docker-compose.db.yml up -d
@@ -114,12 +114,13 @@ live E2E 기준 웹 주소는 [https://pr.digitie.mywire.org/](https://pr.digiti
 기준으로 유지한다.
 
 운영 환경 파일은 n150의
-`/home/digitie/apps/kor-travel-airport/.env.server14`에만 두며
-[`.env.server14.example`](.env.server14.example)을 시작점으로 사용한다.
+`/home/digitie/apps/kor-travel-transport/.env.server14`에만 두며
+[`.env.server14.example`](.env.server14.example)을 시작점으로 사용한다. Compose project는
+`kor-travel-transport`다(2026-09 운영 식별자 개명, [ADR-010](docs/adr/010-deploy-identity-rename-transport.md)).
 
 ```bash
 REMOTE_HOST=192.168.1.14 \
-REMOTE_APP_DIR=/home/digitie/apps/kor-travel-airport \
+REMOTE_APP_DIR=/home/digitie/apps/kor-travel-transport \
 ./scripts/deploy-server14.sh
 ```
 
@@ -142,7 +143,7 @@ E2E_BASE_URL=https://pr.digitie.mywire.org npm run test:e2e
 
 ## Historical: 기존 13번 ODROID 배포 (실행 금지)
 
-배포 기준 정보는 루트의 [.env.odroid](</F:/dev/kor-travel-airport/.env.odroid>)에 저장한다.
+배포 기준 정보는 루트의 [.env.odroid](.env.odroid)에 저장한다.
 
 - 대상 IP: `192.168.1.13`
 - 기존 13번 외부 주소: [https://pr2.digitie.mywire.org/](https://pr2.digitie.mywire.org/)
@@ -343,7 +344,7 @@ docker compose run --rm --no-deps frontend npm run test -- --run
 
 ## 주요 API
 
-`/health`를 제외한 모든 경로는 `/v1` 아래에 있다([ADR-005](</F:/dev/kor-travel-airport/docs/adr/005-versioned-rest-api-contract.md>)).
+`/health`를 제외한 모든 경로는 `/v1` 아래에 있다([ADR-005](docs/adr/005-versioned-rest-api-contract.md)).
 에러 응답은 RFC7807 `application/problem+json`. 기계 정본은 `docs/openapi.json`.
 
 - `GET /health`
@@ -363,25 +364,25 @@ docker compose run --rm --no-deps frontend npm run test -- --run
 
 ## 문서
 
-- [docs/current-state.md](</F:/dev/kor-travel-airport/docs/current-state.md>)
-- [docs/architecture/data-sources.md](</F:/dev/kor-travel-airport/docs/architecture/data-sources.md>)
-- [AGENTS.md](</F:/dev/kor-travel-airport/AGENTS.md>)
-- [deploy/odroid/README.md](</F:/dev/kor-travel-airport/deploy/odroid/README.md>)
-- [docs/architecture/architecture.md](</F:/dev/kor-travel-airport/docs/architecture/architecture.md>)
-- [docs/architecture/analytics.md](</F:/dev/kor-travel-airport/docs/architecture/analytics.md>)
-- [docs/runbooks/testing.md](</F:/dev/kor-travel-airport/docs/runbooks/testing.md>)
-- [docs/runbooks/deployment.md](</F:/dev/kor-travel-airport/docs/runbooks/deployment.md>)
-- [docs/architecture/collection.md](</F:/dev/kor-travel-airport/docs/architecture/collection.md>)
-- [docs/runbooks/troubleshooting.md](</F:/dev/kor-travel-airport/docs/runbooks/troubleshooting.md>)
-- [docs/runbooks/remote-command-safety.md](</F:/dev/kor-travel-airport/docs/runbooks/remote-command-safety.md>)
-- [docs/test-strategy.md](</F:/dev/kor-travel-airport/docs/test-strategy.md>)
-- [docs/dev-environment.md](</F:/dev/kor-travel-airport/docs/dev-environment.md>)
-- [docs/adr/README.md](</F:/dev/kor-travel-airport/docs/adr/README.md>)
-- [docs/runbooks/agent-failure-patterns.md](</F:/dev/kor-travel-airport/docs/runbooks/agent-failure-patterns.md>)
-- [docs/runbooks/branch-protection.md](</F:/dev/kor-travel-airport/docs/runbooks/branch-protection.md>)
-- [docs/runbooks/cross-repo-audit-checklist.md](</F:/dev/kor-travel-airport/docs/runbooks/cross-repo-audit-checklist.md>)
-- [docs/runbooks/hostile-review.md](</F:/dev/kor-travel-airport/docs/runbooks/hostile-review.md>)
-- [docs/tasks.md](</F:/dev/kor-travel-airport/docs/tasks.md>)
+- [docs/current-state.md](docs/current-state.md)
+- [docs/architecture/data-sources.md](docs/architecture/data-sources.md)
+- [AGENTS.md](AGENTS.md)
+- [deploy/odroid/README.md](deploy/odroid/README.md)
+- [docs/architecture/architecture.md](docs/architecture/architecture.md)
+- [docs/architecture/analytics.md](docs/architecture/analytics.md)
+- [docs/runbooks/testing.md](docs/runbooks/testing.md)
+- [docs/runbooks/deployment.md](docs/runbooks/deployment.md)
+- [docs/architecture/collection.md](docs/architecture/collection.md)
+- [docs/runbooks/troubleshooting.md](docs/runbooks/troubleshooting.md)
+- [docs/runbooks/remote-command-safety.md](docs/runbooks/remote-command-safety.md)
+- [docs/test-strategy.md](docs/test-strategy.md)
+- [docs/dev-environment.md](docs/dev-environment.md)
+- [docs/adr/README.md](docs/adr/README.md)
+- [docs/runbooks/agent-failure-patterns.md](docs/runbooks/agent-failure-patterns.md)
+- [docs/runbooks/branch-protection.md](docs/runbooks/branch-protection.md)
+- [docs/runbooks/cross-repo-audit-checklist.md](docs/runbooks/cross-repo-audit-checklist.md)
+- [docs/runbooks/hostile-review.md](docs/runbooks/hostile-review.md)
+- [docs/tasks.md](docs/tasks.md)
 
 ## WSL 테스트 기준
 

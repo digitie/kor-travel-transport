@@ -7,8 +7,8 @@
 
 ## 1. 실행 위치 원칙
 
-작업 디렉터리는 Windows NTFS(`F:\dev\kor-travel-airport`)에 있고, WSL2는 같은 경로를
-`/mnt/f/dev/kor-travel-airport`로 접근한다. 기준은 `AGENTS.md`/`README.md` "WSL 테스트 기준"과
+작업 디렉터리는 Windows NTFS(`F:\dev\kor-travel-transport`)에 있고, WSL2는 같은 경로를
+`/mnt/f/dev/kor-travel-transport`로 접근한다. 기준은 `AGENTS.md`/`README.md` "WSL 테스트 기준"과
 동일하다 — **테스트 합격 기준은 항상 WSL2 결과**다.
 
 | 작업 | 기준 실행 위치 |

@@ -5,13 +5,13 @@ set -euo pipefail
 # 스크립트의 Docker 명령 대상이 아니다.
 REMOTE_HOST="${REMOTE_HOST:-192.168.1.14}"
 REMOTE_USER="${REMOTE_USER:-digitie}"
-REMOTE_APP_DIR="${REMOTE_APP_DIR:-/home/digitie/apps/kor-travel-airport}"
+REMOTE_APP_DIR="${REMOTE_APP_DIR:-/home/digitie/apps/kor-travel-transport}"
 REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-.env.server14}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-kor-travel-transport-admin}"
 CANDIDATE_SHA="$(git rev-parse HEAD)"
 
 [[ "${REMOTE_HOST}" == "192.168.1.14" ]] || { echo "n150만 배포할 수 있습니다." >&2; exit 2; }
-[[ "${REMOTE_APP_DIR}" == "/home/digitie/apps/kor-travel-airport" ]] || { echo "승인된 transport checkout만 허용합니다." >&2; exit 2; }
+[[ "${REMOTE_APP_DIR}" == "/home/digitie/apps/kor-travel-transport" ]] || { echo "승인된 transport checkout만 허용합니다." >&2; exit 2; }
 [[ "${REMOTE_ENV_FILE}" == ".env.server14" ]] || { echo "승인된 운영 환경 파일만 허용합니다." >&2; exit 2; }
 [[ "${COMPOSE_PROJECT_NAME}" == "kor-travel-transport-admin" ]] || { echo "전용 Compose project만 허용합니다." >&2; exit 2; }
 

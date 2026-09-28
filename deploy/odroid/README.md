@@ -6,15 +6,15 @@
 
 ## 파일 설명
 
-- [remote-deploy.sh](</F:/dev/kor-travel-airport/deploy/odroid/remote-deploy.sh>)
+- [remote-deploy.sh](remote-deploy.sh)
   - legacy 경로 차단용 스크립트다. Docker 명령을 실행하지 않는다.
-- [bootstrap-docker.sh](</F:/dev/kor-travel-airport/deploy/odroid/bootstrap-docker.sh>)
+- [bootstrap-docker.sh](bootstrap-docker.sh)
   - Ubuntu 24.04 기준 Docker와 Compose plugin을 설치하는 1회성 스크립트다.
   - 실제 실행은 설치가 필요할 때만 한다.
 
 ## 로컬 설정 파일
 
-- 루트의 [.env.odroid](</F:/dev/kor-travel-airport/.env.odroid>)
+- 루트의 [.env.odroid](../../.env.odroid)
   - 로컬에서는 배포 대상 IP, 사용자, 앱 디렉터리, 포트 같은 배포 연결 정보를 저장한다.
   - 운영 공공데이터 인증키의 기준 파일은 ODROID의 `/home/digitie/apps/parking-radar/.env.odroid`다.
   - 비밀번호는 저장하지 않는다.
@@ -26,9 +26,9 @@
 
 ## 로컬 실행 스크립트
 
-- [scripts/deploy-odroid.ps1](</F:/dev/kor-travel-airport/scripts/deploy-odroid.ps1>)
+- [scripts/deploy-odroid.ps1](../../scripts/deploy-odroid.ps1)
   - legacy 경로 차단용으로 유지하며 실행하지 않는다.
-- [scripts/odroid-status.ps1](</F:/dev/kor-travel-airport/scripts/odroid-status.ps1>)
+- [scripts/odroid-status.ps1](../../scripts/odroid-status.ps1)
   - 배포 후 웹/API 상태와 최근 수집 상태를 요약해서 보여준다.
 
 ## 운영 호환성 메모

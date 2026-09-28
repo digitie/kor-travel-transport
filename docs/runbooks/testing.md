@@ -73,7 +73,7 @@ npm run build
 docker compose run --rm --no-deps -e DATABASE_URL=sqlite+aiosqlite:///:memory: -e PARKING_RADAR_TEST_SQLITE_TEMP=1 backend pytest -q
 ```
 
-이 명령은 로컬 Docker 또는 n150의 `kor-travel-airport` Compose project에서만 실행한다. 13번에는 보내지 않는다.
+이 명령은 로컬 Docker 또는 n150의 `kor-travel-transport` Compose project에서만 실행한다. 13번에는 보내지 않는다.
 테스트 fixture는 운영 `DATABASE_URL`을 읽지 않으며, 위 명령은 테스트별 임시 SQLite를 강제한다.
 PostgreSQL 통합 검증이 꼭 필요할 때만 전용 DB DSN과 안전 표지를 모두 명시한다. 운영 DB DSN을
 `TEST_DATABASE_URL`에 넣는 행위는 금지한다.
@@ -217,7 +217,7 @@ UI 확인 (로컬 profile에서 `ENABLE_MANUAL_COLLECT=true`일 때만):
 종료 명령:
 
 ```bash
-docker compose -f docker-compose.live.yml --project-name kor-travel-airport-live down
+docker compose -f docker-compose.live.yml --project-name kor-travel-transport-live down
 ```
 
 ## 브라우저 검증
@@ -287,7 +287,7 @@ Playwright 결과 JSON은 `frontend/test-results/live-e2e.json`에 남긴다. 32
 
 관련 문서:
 
-- [current-state.md](</F:/dev/kor-travel-airport/docs/current-state.md>)
+- [current-state.md](../current-state.md)
 - [../architecture/collection.md](../architecture/collection.md)
 
 ## Docker 프론트 테스트 메모

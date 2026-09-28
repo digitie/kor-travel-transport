@@ -131,7 +131,7 @@ throttle(허용 범위 8~12시간, 24시간 내 최대 3회)을 추가로 적용
 관련 문서:
 
 - [collection.md](collection.md)
-- [current-state.md](</F:/dev/kor-travel-airport/docs/current-state.md>)
+- [current-state.md](../current-state.md)
 
 ## 주요 백엔드 모듈
 
@@ -141,7 +141,7 @@ throttle(허용 범위 8~12시간, 24시간 내 최대 3회)을 추가로 적용
   - 수집 실행과 저장
   - KAC/IIAC 주차 현황·주차요금 fetch는 `KrairportPublicDataClient`가 형제 라이브러리
     `python-krairport-api`(`krairport`)의 `kac_raw_items`/`iiac_raw_items`를 통해 수행한다
-    ([ADR-004](</F:/dev/kor-travel-airport/docs/adr/004-krairport-provider-library.md>), `T-030`).
+    ([ADR-004](../adr/004-krairport-provider-library.md), `T-030`).
     파싱은 여전히 `parsers.py`가 담당한다 — krairport는 HTTP 호출과 XML/JSON item 추출만
     대체했다.
 - `backend/app/services/parsers.py`
@@ -156,7 +156,7 @@ throttle(허용 범위 8~12시간, 24시간 내 최대 3회)을 추가로 적용
   - 한국공항공사 `15113771` / 인천공항공사 `15112968` 비행편 출도착 조회, 정규화, 캐시
   - `KrairportFlightStatusClient`가 형제 라이브러리 `python-krairport-api`(`krairport`)를
     통해 fetch를 수행한다(`T-029`,
-    [ADR-004](</F:/dev/kor-travel-airport/docs/adr/004-krairport-provider-library.md>)). KAC는
+    [ADR-004](../adr/004-krairport-provider-library.md)). KAC는
     `kac_flight_status_detail_raw_items()`(ODCloud `FlightStatusListDTL` — krairport에
     새로 추가한 endpoint), IIAC는 `iiac_raw_items("StatusOfPassengerFlightsDeOdp", ...)`를
     쓴다. 파싱은 여전히 이 파일의 `parse_kac_flight_detail_json`/
@@ -164,13 +164,13 @@ throttle(허용 범위 8~12시간, 24시간 내 최대 3회)을 추가로 적용
 - `backend/app/services/holidays.py`
   - 한국천문연구원(KASI) 특일 정보(`15012690`) 조회, 월별 캐시
   - `KasiHolidayClient`가 형제 라이브러리 `python-kasi-api`(`kasi`)의 `AsyncKasiClient.holidays()`를
-    통해 fetch를 수행한다([ADR-006](</F:/dev/kor-travel-airport/docs/adr/006-kasi-provider-library.md>)).
+    통해 fetch를 수행한다([ADR-006](../adr/006-kasi-provider-library.md)).
     파싱은 kasi가 반환하는 item의 `raw` mapping을 `parse_holiday_response`로 넘겨 기존
     로직을 그대로 재사용한다.
 
 ## 분석 API
 
-모든 경로는 `/health`를 제외하고 `/v1` 아래에 있다([ADR-005](</F:/dev/kor-travel-airport/docs/adr/005-versioned-rest-api-contract.md>)).
+모든 경로는 `/health`를 제외하고 `/v1` 아래에 있다([ADR-005](../adr/005-versioned-rest-api-contract.md)).
 에러 응답은 RFC7807 `application/problem+json`이다. 기계 정본은
 `docs/openapi.json`(`scripts/export_openapi.py`로 재생성).
 

@@ -122,7 +122,7 @@ curl http://localhost:8000/v1/admin/collector-status
 - 기존 `15000126` 계열 `FlightStatusList/getFlightStatusList`는 현재 보유 키로 `SERVICE ACCESS DENIED ERROR.`가 반환되어 live 호출에서 제외한다.
 
 관련 문서:
-- [architecture/data-sources.md](</F:/dev/kor-travel-airport/docs/architecture/data-sources.md>)
+- [architecture/data-sources.md](architecture/data-sources.md)
 
 ## 4. 공항별 세부 주차장 기준
 
@@ -178,7 +178,7 @@ row-level `collected_at`과 전체 시스템 기준 동기화 시각은 백엔�
 직접 노출하지 않는다. 사용자에게 필요한 데이터 기준 시각만 표시한다.
 
 관련 문서:
-- [architecture/collection.md](</F:/dev/kor-travel-airport/docs/architecture/collection.md>)
+- [architecture/collection.md](architecture/collection.md)
 
 ## 6. 수동 수집 버튼
 
@@ -309,9 +309,9 @@ cutover read-only source로만 남긴다.
 
 현재 운영 배포 자산:
 
-- [scripts/deploy-server14.sh](</F:/dev/kor-travel-airport/scripts/deploy-server14.sh>)
-- [.env.server14.example](</F:/dev/kor-travel-airport/.env.server14.example>)
-- [docker-compose.yml](</F:/dev/kor-travel-airport/docker-compose.yml>)
+- [scripts/deploy-server14.sh](../scripts/deploy-server14.sh)
+- [.env.server14.example](../.env.server14.example)
+- [docker-compose.yml](../docker-compose.yml)
 - `deploy/odroid/*`와 `scripts/deploy-odroid.ps1`는 historical fail-closed 자산이며 실행하지 않는다.
 
 배포 대상:
@@ -323,8 +323,8 @@ cutover read-only source로만 남긴다.
 비밀번호는 저장하지 않는 것이 원칙이다.
 
 관련 문서:
-- [runbooks/deployment.md](</F:/dev/kor-travel-airport/docs/runbooks/deployment.md>)
-- [deploy/odroid/README.md](</F:/dev/kor-travel-airport/deploy/odroid/README.md>)
+- [runbooks/deployment.md](runbooks/deployment.md)
+- [deploy/odroid/README.md](../deploy/odroid/README.md)
 
 ## 10. 테스트 기준
 
@@ -347,7 +347,7 @@ cutover read-only source로만 남긴다.
 - 프론트: `47 passed` 및 TypeScript/build 통과
 
 관련 문서:
-- [runbooks/testing.md](</F:/dev/kor-travel-airport/docs/runbooks/testing.md>)
+- [runbooks/testing.md](runbooks/testing.md)
 
 ## 11. 운영 중 자주 헷갈리는 점
 
@@ -359,7 +359,7 @@ cutover read-only source로만 남긴다.
 - SQLite 런타임 파일을 OneDrive bind mount에 직접 두면 간헐 오류가 날 수 있다.
 
 관련 문서:
-- [runbooks/troubleshooting.md](</F:/dev/kor-travel-airport/docs/runbooks/troubleshooting.md>)
+- [runbooks/troubleshooting.md](runbooks/troubleshooting.md)
 
 ## 12. 다음 변경 시 같이 갱신해야 하는 문서
 

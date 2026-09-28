@@ -2,7 +2,8 @@
 
 ## 상태
 
-accepted
+accepted. 아래 "운영 리소스 이름은 호환 유지" 보류는 [ADR-010](010-deploy-identity-rename-transport.md)이
+대체한다(2026-09-28).
 
 ## 맥락
 

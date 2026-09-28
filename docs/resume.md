@@ -2,6 +2,22 @@
 
 ## 현재 상태
 
+- 2026-09-28 `chore/rename-deploy-identity-transport`: n150 운영 식별자 개명(ADR-010) 저장소 준비를
+  푸시했다(PR은 아직 없음). PR #44(`835c0ec`)·#46(`50215b3`)·#47(`bdc9c02`)·#48(`a6edbd5`) 머지 위로 rebase했다. main이 더 움직이면 다시
+  rebase한 뒤 PR·CI·두 적대적 리뷰를 거쳐 창 직전에 머지한다. n150 cutover는
+  `scripts/rename-deploy-identity-server14.sh`와 `docs/runbooks/deployment.md` "운영 식별자 개명
+  cutover"를 따른다. 창 전까지 옛 이름(`kor-travel-airport`, `/home/digitie/apps/kor-travel-airport`)이
+  운영이다. 이 브랜치가 머지된 뒤에는 새 스크립트가 옛 디렉터리로 배포하지 않으므로 머지와 cutover
+  사이에 다른 배포를 하지 않는다. `2da0579` 적대 검토(MED 1·LOW 7)를 반영했다: 창이 옛 스택을 멈추기
+  전에 다시 빌드·Dagster gate하고 새 컨테이너가 같은 이미지 층으로 떴는지 본다(이미지는 `uv.lock`이
+  아니라 빌드 시점 PyPI 최신을 받는다. containerd store에서는 cache hit 재빌드도 ID가 바뀌어 층으로 본다). 정리 단계까지 n150 prune 금지. 창 직전 PyPI에 운영(1.13.24)보다 새
+  Dagster가 나오면 gate가 멈추고, 그때는 runbook "Dagster 버전이 다를 때"대로 고정한 새 R이 필요하다.
+  3차 검토(`fdf6bee`·`a1e8e5f`, rebase 뒤 `16c3b01`·`237d37f`) 반영: 빌드 확인이 `… up -d --build`도 잡고, backups 목록을 못 읽으면
+  멈추고, 대상 경로·URL을 셸 env에서 받지 않는다. **R 머지부터 `finish`까지 n150 freeze**(transport·
+  관리 UI 배포, Map·Manager 빌드·rebind, prune 금지). 관리 UI는 #47 이미지
+  `4580a5ca3c61`로 돈다. 공용 PostgreSQL prewarm(소유자 요구: 모든 DB)은 이 창 밖의 Manager 변경이다
+  (runbook 전제, ADR-010 후속).
+
 - 2026-09-28 16:49 KST: PR #47은 `bdc9c02`로 머지됐다. 후속 parking-radar DB 점검에서
   이미 공용 PostgreSQL `:11000/kor_travel_transport`를 사용함을 운영 DSN·SQL·웹앱으로
   확인했다. 공항 14·주차장 53·주차 관측 735,925·요금 규칙 32건, 최신 관측 16:45:03 KST다.
@@ -600,6 +616,10 @@
   `n150-backup-cron.sh` 직접 실행으로 exit `0` + 실제 dump 생성까지 재검증했다.
 
 ## 다음 한 작업
+
+운영 식별자 개명(ADR-010): `chore/rename-deploy-identity-transport` PR을 열어 CI green 뒤 머지하고, 그 머지
+커밋 R로 2026-09-28 12:30~14:00Z 창을 연다(runbook "운영 식별자 개명 cutover"). R 머지부터 `finish`까지
+n150 freeze다(transport·관리 UI 배포, Map·Manager 빌드·rebind, prune 금지).
 
 PR #47은 머지됐고 runtime은 `1db261e`다. parking-radar DB도 이미 공용 PostgreSQL을
 사용하므로 추가 이전은 하지 않는다. 운영 확인 문서 PR #48은 독립 리뷰를 마쳤고 테스트

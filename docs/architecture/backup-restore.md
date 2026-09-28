@@ -17,31 +17,23 @@ web의 `/v1/admin/backups*` proxy는 `BACKUP_PROXY_TIMEOUT_MS=900000`으로 설�
 수집 scheduler가 켜진 운영 profile에서는 복원을 `409`로 거부한다. 복원은 현재 PostgreSQL을 덮어쓰므로,
 5분 freshness를 깨뜨리지 않도록 scheduler를 중지한 명시적 유지보수 창에서만 실행한다.
 
-## 자동 백업 (n150 cron)
+## 자동 백업 (Manager로 이관)
 
-`scripts/n150-backup-cron.sh`가 n150의 crontab에서 3일마다 `POST /v1/admin/backups`를
-`localhost:14001`로 호출한다. 앱 코드/배포와 무관하게 독립적으로 동작하며, 별도 보존
-로직은 두지 않는다 — 오래된 dump 삭제는 endpoint 자체의 `BACKUP_RETENTION_COUNT`가
-담당한다.
+2026-09 운영 식별자 개명([ADR-010](../adr/010-deploy-identity-rename-transport.md))부터 이 저장소는
+자체 백업 cron을 두지 않는다. 주기 백업은 `kor-travel-docker-manager`의 standalone backup으로
+옮긴다(소유자 결정). 개명 cutover의 `finish` 단계가 n150 digitie crontab의 옛 줄을 지우고,
+`scripts/n150-backup-cron.sh`는 저장소에서 삭제했다.
 
-n150 crontab에 2026-08-23부터 등록해 실제로 동작 중이다(`CRON_TZ=UTC` 전제,
-3일마다 18:00 UTC = 03:00 KST):
+옛 줄은 `0 18 */3 * * /home/digitie/apps/kor-travel-airport/scripts/n150-backup-cron.sh >>
+/home/digitie/apps/kor-travel-airport/backups/cron.log 2>&1`이었다. `backups/`가 `root:root 755`라
+digitie의 `>>` redirect가 스크립트 실행 전에 실패했고, 2026-09-05 뒤로는 dump를 만들지 못했다
+(syslog에는 실행 기록만 남았다). 1 GB가 넘은 공용 DB dump는 기본 `BACKUP_COMMAND_TIMEOUT_SECONDS=120`
+안에 끝나지 않는 것도 확인됐다(수동 dump 약 9분).
 
-```
-0 18 */3 * * /home/digitie/apps/kor-travel-airport/scripts/n150-backup-cron.sh >> /home/digitie/apps/kor-travel-airport/backups/cron.log 2>&1
-```
-
-n150은 다른 프로젝트(kor-travel-*, pinvi)의 백업 cron도 같은 crontab에 함께 등록돼 있다
-— 새 항목을 추가할 때는 `crontab -l`로 기존 줄을 먼저 확인하고 append한다(`crontab -e`나
-덮어쓰기로 기존 줄을 지우지 않는다).
-
-`cron.log`는 `backups/` bind mount 안에 있어 git에 들어가지 않는다.
-
-**Windows 로컬 체크아웃 주의**: `core.autocrlf`로 인해 이 저장소를 Windows에서 체크아웃한
-뒤 `scp`로 그대로 옮기면 스크립트가 CRLF로 깨진다(`env: $'bash\r': No such file or
-directory`). n150에 배포/갱신할 때는 원격에서 `sed -i 's/\r$//' scripts/n150-backup-cron.sh`로
-LF 정규화가 필요할 수 있다(`scripts/deploy-server14.sh`도 같은 문제가 있어 이미 이 방식으로
-우회하고 있다).
+Manager의 transport 백업 역할이 설치되기 전까지는 주기 백업이 없다. 그 사이의 복원 지점은 개명
+cutover `restore-point` 단계가 만든 두 DB(`kor_travel_transport`, `kor_travel_transport_dagster`)의
+직접 `pg_dump -Fc`다(`pg_restore --list`로 확인). `POST /v1/admin/backups` API와 백업 UI는 그대로
+남는다.
 
 ## 운영 주의
 
@@ -50,8 +42,8 @@ LF 정규화가 필요할 수 있다(`scripts/deploy-server14.sh`도 같은 문�
 ## 수동 확인
 
 ```bash
-docker compose --project-name kor-travel-airport --env-file .env.server14 exec backend ls -lh /app/backups
-docker compose --project-name kor-travel-airport --env-file .env.server14 exec backend pg_dump --version
+docker compose --project-name kor-travel-transport --env-file .env.server14 -f docker-compose.yml -f docker-compose.shared.yml exec backend ls -lh /app/backups
+docker compose --project-name kor-travel-transport --env-file .env.server14 -f docker-compose.yml -f docker-compose.shared.yml exec backend pg_dump --version
 ```
 
 백업 파일은 Git에 넣지 않는다. `backups/`는 호스트 bind mount이며 `.gitignore`에서 제외한다.

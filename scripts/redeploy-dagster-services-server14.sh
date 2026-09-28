@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# n150 kor-travel-airport project에서 Dagster 세 서비스(code-server·webserver·daemon)만 다시
+# n150 kor-travel-transport project에서 Dagster 세 서비스(code-server·webserver·daemon)만 다시
 # 만든다. 설치할 docker-compose.shared.yml은 지금 파일과 세 서비스의 healthcheck·init만 달라야
 # 한다. 전체 배포(`up --build`, `rsync --delete`)를 쓰지 않고 이미지도 빌드하지 않는다.
 #
@@ -11,8 +11,8 @@
 # 않는다: 전자는 한 번만 도는 migrate 컨테이너가 없어 실패하고, 후자는 daemon을 재생성한다.
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-/home/digitie/apps/kor-travel-airport}"
-PROJECT=kor-travel-airport
+APP_DIR="${APP_DIR:-/home/digitie/apps/kor-travel-transport}"
+PROJECT=kor-travel-transport
 DAGSTER_GRAPHQL_URL="${DAGSTER_GRAPHQL_URL:-http://127.0.0.1:14004/graphql}"
 # 고속도로 run이 17분(1002초)까지 걸린 적이 있다. 이보다 오래 남은 run은 끼인 것으로 보고 멈춘다.
 DRAIN_TIMEOUT_SECONDS="${DRAIN_TIMEOUT_SECONDS:-1800}"
@@ -249,7 +249,7 @@ ids="$(container_ids)"
 pin="$(docker inspect -f '{{.Image}}' "$CODE_SERVER")"
 [[ "$pin" =~ ^sha256:[0-9a-f]{64}$ ]] || die "code-server 이미지 ID를 읽지 못했다: $pin"
 export BACKEND_RUNTIME_IMAGE="$pin"
-pin_tag="kor-travel-airport-backend:dagster-pin-${pin:7:12}"
+pin_tag="kor-travel-transport-backend:dagster-pin-${pin:7:12}"
 echo "이미지 고정: $pin ($pin_tag)"
 
 # 2) 설치할 파일은 healthcheck·init만 바꿔야 하고, 실행 중 컨테이너는 지금 파일 그대로여야 한다.

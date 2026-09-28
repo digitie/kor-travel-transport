@@ -1,5 +1,109 @@
 # journal.md — 작업 일지
 
+## 2026-09-28 운영 식별자 개명(airport → transport) 저장소 준비
+
+- 브랜치 `chore/rename-deploy-identity-transport`(main `556052c`에서 시작해 PR #44 머지 `835c0ec` 위로
+  rebase. 충돌은 journal·resume의 맨 위 항목뿐이었다. 그 뒤 #46 머지 `50215b3` 위로 다시 rebase했다 —
+  충돌은 문서뿐이었고, 문서 밖 diff는 rebase 전과 바이트 단위로 같다. #47 머지 `bdc9c02`, 이어서 #48
+  머지 `a6edbd5` 위로 다시 rebase했다. 충돌은 또 journal·resume뿐이었고 문서 밖 diff는 hunk 줄 번호만
+  다르다).
+  ADR-010을 추가했다. 배포 식별자만 옮기고 공항 주차 도메인(`airports`, `/v1/airports`,
+  `airport_collection_job`, `AIRPORT_CODES_CSV`, trigger `dagster_airport` …)은 그대로 둔다.
+- compose: `name: kor-travel-transport`(db·live도), network `kor-travel-transport-net`, 백엔드 이미지
+  fallback `kor-travel-transport-backend:latest`. 키 단위 비교로 바뀐 키가 이것뿐인지 확인했다. 운영
+  렌더링(`-f docker-compose.yml -f docker-compose.shared.yml`)은 network가 없다(compose 5.1.4 로컬
+  확인). 운영에서는 손으로 network를 만들 필요가 없다.
+- `deploy-server14-remote.sh`: 새 디렉터리·project만 허용, `DAGSTER_POSTGRES_URL`의
+  `postgresql+psycopg2://` 허용(지금 운영 env 형식이라 전체 배포가 막혀 있었다), env `source` 뒤
+  `BACKEND_RUNTIME_IMAGE=kor-travel-transport-backend:rel-<sha12>` export, 임시 guard(label
+  `com.docker.compose.project=kor-travel-airport` 컨테이너가 떠 있으면 거부). guard는 디렉터리 검사
+  전이라 CI가 진짜 스크립트를 실행해 본다.
+- `scripts/n150-backup-cron.sh`를 지웠다. 주기 백업은 Manager로 옮긴다(소유자 결정). 옛 cron은
+  `backups/`가 root 소유라 `>>`가 실패해 2026-09-05 뒤로 dump를 만들지 못했다.
+- `scripts/rename-deploy-identity-server14.sh`: 적대 검토(H1·H2·M1~M8·L1~L5)를 반영한 단계형 cutover.
+  직접 `pg_dump -Fc`+`pg_restore --list` 복원 지점, fence 직전 env 재복사·비교, 이미지 태그를 env에
+  두지 않음, 관리 스택 빌드 없는 재생성과 `:pre-rename` 태그, 옛 daemon 삭제와 나머지 `restart=no`
+  이름 변경, `mv -T`와 빈 디렉터리 검사로 겹치지 않는 되돌리기, 파일 내용과 DB revision으로 보는
+  migration gate, dagster 버전 gate, 빌드 중 거부, project label로 센 daemon 하나, 전용 rollback
+  태그로 재생성. 창 검증 전 실패는 새 스택을 daemon부터 멈추고 옛 스택을 되살린다.
+- 문서: deployment.md에 cutover 절(타이밍은 definitions.py의 실제 schedule 기준), 백업 이관,
+  `F:/dev/kor-travel-airport/…` 절대 링크 74개(+ 같은 형식의 transport 링크 2개)를 상대 경로로.
+- 검증(n150 throwaway `--network none`, 고정 이미지 `148a471b`, bash 5.2.37): compose·스크립트를 읽는
+  테스트 10개 파일(새 두 파일 포함) 79개가 통과했고(관리 UI·OpenAPI 계약 3개는 `packages/`·
+  `docs/openapi.json`을 함께 옮겨 다시 돌렸다. `835c0ec` 위로 rebase한 뒤 같은 10개 파일 82개가
+  통과했다), Docker 이미지 배치(`/app/scripts`·`/app/tests`)에서
+  새 두 파일과 redeploy 테스트 39개가 통과했다. 새 테스트를 main 스크립트에 돌리면 18개가 빨갛다.
+  스크립트 변이 24개 중 23개가 빨갛다(env 재복사·drain·fence·은퇴·restart=no·daemon 수·schedule
+  비교·migration gate·dagster 버전·빌드 확인·비밀번호 argv·`pg_restore --list`·관리 스택 `--build`·
+  되돌리기 순서·빈 디렉터리 검사, guard 제거·이름 필터·docker 실패 무시, DSN scheme, export 위치).
+  첫 판 테스트에서 살아남은 "되돌리기에서 daemon을 먼저 띄움"은 assertion을 고쳐 빨갛게 했다. 남은
+  초록 하나는 `mv -T`를 `mv`로 바꾼 변이다. 바로 앞의 빈 디렉터리 검사·삭제가 같은 겹침을 막으므로
+  `-T`는 그 사이 경합에 대한 이중 장치다. 전체 backend suite는 PR CI가 돈다(앱 코드는 바뀌지 않았다).
+- 2차 적대 검토(`2da0579`, MED 1·LOW 7, HIGH 없음) 반영.
+  - MED: "Dagster는 어디서나 1.13.23"이라는 계획의 전제가 틀렸다. `uv.lock`·CI는 1.13.23이지만
+    Dockerfile은 `pip install -e ".[dev]"`(`dagster>=1.9,<2`)라 빌드 시점 PyPI 최신을 받고, 운영
+    code-server는 1.13.24다. 창은 태그가 있는지만 봤고 배포의 `up --build`가 캐시가 빈 뒤 다른 이미지를
+    만들 수 있었다. 이제 `window`가 옛 스택을 멈추기 전에 env를 다시 복사하고(frontend build arg가
+    env에서 온다) 다시 빌드·Dagster gate하며 통과한 이미지의 층 지문(`RootFS.Layers`)을
+    `release-images`에 적는다. 새 스택 검증은 여섯 컨테이너의 이미지 층이 그것과 같은지 본다. 검토는
+    이미지 ID 비교를 제안했지만 WSL Docker 29.1.3(containerd snapshotter, compose 5.1.4)에서
+    `FROM scratch` 두 단계 이미지를 재보니 모두 cache hit인 재빌드·build arg만 바뀐 재빌드도 ID가 매번
+    달랐고 층은 같았다(내용을 바꾸면 층도 바뀌었다). ID로 비교했으면 실제 창은 매번 되살리기로 끝났다.
+    가짜 docker도 빌드마다 새 ID를 내게 고쳤다. 버전이 다를 때의 절차(운영 버전 고정 PR → 새 R)를
+    runbook에 적고 ADR-010 전제를 고쳤다. `( … ) || die` 안에서 errexit가 꺼져 렌더링 검사 실패가
+    묻히던 것도 명령마다 `|| exit 1`로 고쳤다.
+  - LOW: 창의 자동 되살리기가 `docker start`로 뜨지 않은 서비스를 rollback 태그로 재생성한다(daemon
+    마지막). `rollback`이 새 daemon을 먼저 멈추고 run을 기다리며(`--no-drain`로 끌 수 있다. 끝나지 않으면
+    새 daemon을 다시 띄우고 아무것도 옮기지 않는다) 되돌릴 cutover가 없으면 거부한다.
+    `deploy-server14-remote.sh`가 `RELEASE_SHA`도 source 뒤에 candidate로 export한다. 창 전에 새
+    `backups/`가 옛 것과 다르면 옛 스택을 멈추기 전에 멈추고 hardlink 합치기 명령을 출력한다. `admin`은
+    재생성이 중간에 실패해도 `:pre-rename`을 기준으로 다시 실행된다. `daemon_count`는 `docker ps`
+    실패를 0으로 세지 않는다(`finish`의 컨테이너 목록도). 창의 SIGHUP·SIGPIPE 테스트를 더했다.
+    정리 단계까지 prune 금지와 선택적 `docker save`, `rel-*` 보존 규칙(지금·바로 전만)을 runbook·ADR에
+    적었다. `rel-*` 자동 삭제는 다른 세션의 되돌리기 태그를 지울 수 있어 문서 단계로 두었다.
+  - 검증(n150 throwaway `--network none`, 고정 이미지 `148a471b`, bash 5.2.37): cutover·guard·redeploy
+    테스트 52개가 통과했다(cutover 26개 중 13개가 새것). 이번 수정의 변이 18개가 모두 빨갛다(창 재빌드,
+    Dagster gate, 층 확인과 그것을 ID 비교로 바꾼 변이, 재빌드 전 env 사본, fence 직전 env 재복사,
+    렌더링 errexit, 되살리기 재생성, rollback 대기·새 daemon 재시작·거부 조건·daemon 순서,
+    `RELEASE_SHA` export, backups 사전 검사, admin 재실행, daemon 수 실패, 두 daemon, 신호 exit).
+    n150 Docker 29.6.1도 containerd snapshotter인 것은 `docker info`로만 확인했다(빌드는 하지 않았다).
+- 3차 검토(`fdf6bee`·`a1e8e5f`·`d2b7832`, 이번 rebase 뒤 `16c3b01`·`237d37f`·`882a07b`. MED 5·LOW 5) 반영.
+  - MED: #47이 `bdc9c02`로 머지돼 journal·resume가 충돌했다. `bdc9c02`, 그 사이 머지된 #48
+    `a6edbd5` 위로 rebase했다(위). R은 이 rebase 뒤의 머지 커밋이다.
+  - MED: 빌드 확인이 `docker compose … up -d --build`를 놓쳤다(n150 문자열 시험으로 확인). n150에
+    배포하는 저장소들의 표준 명령이고 `docker-buildx` 플러그인 프로세스는 빌드하는 동안에만 보인다.
+    패턴에 `--build`와 `docker image build`를 더했다. `--no-build`는 여전히 잡지 않는다(n150 `grep -E`로
+    확인, 지금 n150에서 맞는 프로세스는 없다).
+  - MED: freeze. 관리 UI는 #46의 `cda9a4d83c3d`가 아니라 #47 head를 손으로 올린 `4580a5ca3c61`
+    (`local/transport-weather-ui:runtime`, 07:24Z)로 돈다. runbook 전제에 R 머지부터 `finish`까지의 n150
+    freeze(transport·관리 UI 배포, Map·Manager 빌드·rebind, prune)와 손 확인용 `pgrep` 줄을 적었다.
+    ADR-010 결정 13. #47 뒤로 잡혀 있던 parking-radar DB 이전은 #48이 이미 공용 DB임을 확인해 없어졌다.
+  - MED: 공용 메모. 본문은 이미 새 이름과 prune 금지가 있었다. 교통 스택 항목, freeze,
+    `docker compose -p kor-travel-airport up` 금지(옛 스택을 다시 만들어 host 포트를 두고 싸운다),
+    ADR-010 포인터를 더했고 색인 줄도 고쳤다.
+  - MED: prewarm(소유자 요구: 모든 DB). n150 읽기 전용 확인: `kor-travel-shared-postgres`(16.9, DB 10개,
+    약 71 GB)는 `shared_preload_libraries=pg_stat_statements`, `shared_buffers=128MB`이고 `pg_prewarm.*`
+    설정·autoprewarm worker가 없다. transport 두 DB에는 `plpgsql`만 있다. autoprewarm은 instance 단위라
+    Manager가 한 번 켜면 모든 DB에 걸리지만 되살리는 양은 `shared_buffers`가 한도다. instance 재시작이라
+    이 창에 넣지 않고 Manager 변경으로 따로 한다(runbook 전제, ADR-010 후속, T-043). 이 PR은 Manager
+    compose를 바꾸지 않는다.
+  - LOW: 대상 경로·URL(`OLD_DIR`·`NEW_DIR`·`WORK_DIR`·`MANAGER_LINK`·API·web·Dagster·관리 URL)을 셸 env에서
+    받지 않는다. 테스트만 `RENAME_TEST_ROOT`로 옮긴다. `sudo -n find` 목록은 변수로 먼저 받아 실패를
+    STOP으로 만든다(두 실패가 "같다"로 통과했다). 창 전 확인은 NEW가 없어도 OLD 목록을 읽는다. 타이밍 표를
+    실측으로 고쳤다: 유가 성공 run 0~52분(09-21~28, 한 번은 4시간 상한 실패), 배편은 #44 뒤 약 10분(그 전
+    140분), Manager transport 백업 16:50Z(매일)·17:15Z(3일마다, 09-28 해당), `kor_travel_transport`
+    14 GB·custom dump 785 MB·467초. 층 확인을 `--no-build` 배포로 앞당기는 일은 ADR-010 후속으로 적었다.
+    옛 backend·code-server는 main 빌드가 아니라 `local/transport-pr44:delta`(`3b77ac7d`)·`:paced`
+    (`9067afc6`)다. 창이 R로 바꾼다.
+  - 검증(n150 throwaway `--network none`, 고정 이미지 `148a471b`, bash 5.2.37, Python 3.12.13, 부하 약 20):
+    compose·스크립트를 읽는 테스트 9개 파일 96개가 통과했다(24분 40초). cutover 테스트는 33개(새것 7개:
+    빌드 명령줄 매개변수 3개 추가, backups 목록 실패 3개, stray export 1개)다. 가짜 pgrep은 이제 진짜처럼
+    ERE를 가짜 프로세스 목록(`--no-build` 재생성, cutover 자신 포함)에 건다. Docker 이미지 배치
+    (`/app/scripts`·`/app/tests`를 읽기 전용 mount)에서 새 테스트와 전체 흐름 9개가 통과했다. 새 테스트를 고치기 전
+    스크립트(`882a07b`)에 돌리면 6개가 빨갛다(`up -d --build`, `docker image build`, 목록 실패 셋, stray
+    export). 변이 8개가 모두 빨갛다(옛 패턴, `--no-build`까지 잡는 넓은 패턴, 목록 실패 무시, 창 전 OLD 목록
+    생략, 사본 확인의 실패 무시, `NEW_DIR`·`API_URL`·`WORK_DIR`을 다시 env에서 받기).
+
 ## 2026-09-28 PR #47 머지·parking-radar 공용 DB 확인
 
 - PR #47 최종 CI 전부 통과 후 `bdc9c02`로 머지했다. runtime은 검증한 `1db261e` 그대로다.

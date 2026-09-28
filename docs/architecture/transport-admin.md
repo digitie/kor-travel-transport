@@ -76,7 +76,10 @@ Dagster 운영 UI ── TLS ── transport-dagster.digitie.mywire.org:12302
 
 세 listener는 `docker-compose.transport-admin.yml`의 독립
 `kor-travel-transport-admin` project에 속한다. host network를 쓰지만 기존
-`kor-travel-airport` 서비스의 port·network·lifecycle은 바꾸지 않는다.
+`kor-travel-transport` 서비스의 port·network·lifecycle은 바꾸지 않는다. 두 project는 같은 앱
+디렉터리(`/home/digitie/apps/kor-travel-transport`)에서 돈다. 컨테이너 이름 접두어가 겹치므로
+(`kor-travel-transport-*`와 `kor-travel-transport-admin-*`) 이름 필터 대신
+`com.docker.compose.project` label의 정확한 값으로 찾는다.
 
 ## 인증과 CSRF
 

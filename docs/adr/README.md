@@ -9,17 +9,18 @@
 
 | ADR | 제목 | 상태 |
 |---|---|---|
-| [ADR-001](</F:/dev/kor-travel-airport/docs/adr/001-postgresql-as-primary-db.md>) | PostgreSQL을 운영 기준 DB로 채택 | accepted |
-| [ADR-002](</F:/dev/kor-travel-airport/docs/adr/002-dual-check-5min-cutover.md>) | 5분 수집 경계의 이중 확인 컷오버 | accepted |
-| [ADR-003](</F:/dev/kor-travel-airport/docs/adr/003-unauthenticated-backup-network-restriction.md>) | 인증 없는 백업 UI의 네트워크 제한 | accepted |
-| [ADR-004](</F:/dev/kor-travel-airport/docs/adr/004-krairport-provider-library.md>) | 비행편·주차 현황·주차요금 데이터는 `python-krairport-api`를 provider 라이브러리로 사용 | accepted (주차는 구현 완료, 비행편은 미완료) |
-| [ADR-005](</F:/dev/kor-travel-airport/docs/adr/005-versioned-rest-api-contract.md>) | 백엔드 REST API를 `/v1` 버저닝 + RFC7807 에러로 정식 계약화 | accepted |
-| [ADR-006](</F:/dev/kor-travel-airport/docs/adr/006-kasi-provider-library.md>) | 공휴일 데이터는 `python-kasi-api`를 provider 라이브러리로 사용 | accepted |
-| [ADR-007](</F:/dev/kor-travel-airport/docs/adr/007-repo-rename-kor-travel-airport.md>) | 저장소/패키지/n150 식별자를 `kor-travel-airport`로 개명, 웹앱 브랜드는 `parking-radar` 유지 | accepted |
-| [ADR-008](008-repo-rename-kor-travel-transport.md) | 통합 교통정보 저장소를 `kor-travel-transport`로 개명하고 운영 리소스는 호환 유지 | accepted |
+| [ADR-001](001-postgresql-as-primary-db.md) | PostgreSQL을 운영 기준 DB로 채택 | accepted |
+| [ADR-002](002-dual-check-5min-cutover.md) | 5분 수집 경계의 이중 확인 컷오버 | accepted |
+| [ADR-003](003-unauthenticated-backup-network-restriction.md) | 인증 없는 백업 UI의 네트워크 제한 | accepted |
+| [ADR-004](004-krairport-provider-library.md) | 비행편·주차 현황·주차요금 데이터는 `python-krairport-api`를 provider 라이브러리로 사용 | accepted (주차는 구현 완료, 비행편은 미완료) |
+| [ADR-005](005-versioned-rest-api-contract.md) | 백엔드 REST API를 `/v1` 버저닝 + RFC7807 에러로 정식 계약화 | accepted |
+| [ADR-006](006-kasi-provider-library.md) | 공휴일 데이터는 `python-kasi-api`를 provider 라이브러리로 사용 | accepted |
+| [ADR-007](007-repo-rename-kor-travel-airport.md) | 저장소/패키지/n150 식별자를 `kor-travel-airport`로 개명, 웹앱 브랜드는 `parking-radar` 유지 | accepted |
+| [ADR-008](008-repo-rename-kor-travel-transport.md) | 통합 교통정보 저장소를 `kor-travel-transport`로 개명하고 운영 리소스는 호환 유지 | accepted (운영 리소스 보류는 ADR-010이 대체) |
 | [ADR-009](009-durable-transport-collection-reservations.md) | 교통정보 수집의 짧은 DB 예약과 외부 조회·저장 분리 | accepted |
+| [ADR-010](010-deploy-identity-rename-transport.md) | n150 운영 식별자를 `kor-travel-transport`로 옮기고 공항 주차 도메인은 유지 | accepted (n150 cutover는 PR #44 뒤) |
 
-**다음 번호 = ADR-010.**
+**다음 번호 = ADR-011.**
 
 ## 새 ADR 작성 규약
 

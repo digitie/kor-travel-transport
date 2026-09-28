@@ -87,6 +87,6 @@ James/Popper 각각을 별도 Agent 호출로 독립 실행한다(예: Claude Co
 
 ## 관련 문서
 
-- [runbooks/agent-failure-patterns.md](</F:/dev/kor-travel-airport/docs/runbooks/agent-failure-patterns.md>)
-- [runbooks/branch-protection.md](</F:/dev/kor-travel-airport/docs/runbooks/branch-protection.md>)
-- [adr/003-unauthenticated-backup-network-restriction.md](</F:/dev/kor-travel-airport/docs/adr/003-unauthenticated-backup-network-restriction.md>)
+- [runbooks/agent-failure-patterns.md](agent-failure-patterns.md)
+- [runbooks/branch-protection.md](branch-protection.md)
+- [adr/003-unauthenticated-backup-network-restriction.md](../adr/003-unauthenticated-backup-network-restriction.md)

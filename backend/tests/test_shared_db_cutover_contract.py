@@ -88,6 +88,8 @@ def test_deploy_receipt_binds_both_shared_database_names() -> None:
     assert "target_dagster_database=kor_travel_transport_dagster" in remote_script
     assert "@127\\.0\\.0\\.1:11000/kor_travel_transport$" in remote_script
     assert "@127\\.0\\.0\\.1:11000/kor_travel_transport_dagster$" in remote_script
+    # 운영 env와 .env.server14.example의 Dagster DSN은 `postgresql+psycopg2://`다(ADR-010).
+    assert "^postgresql(\\+psycopg2)?://[^@]+@127\\.0\\.0\\.1:11000/kor_travel_transport_dagster$" in remote_script
     assert "DEPLOY_STAGE_ONLY" in script
     assert '--exclude=".env.server14.legacy"' in script
     assert "Candidate ${CANDIDATE_SHA} staged on n150; no containers were changed." in script
