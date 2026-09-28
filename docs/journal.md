@@ -1,5 +1,20 @@
 # journal.md — 작업 일지
 
+## 2026-09-28 12:27 KST 항구 기준정보 복구 확인
+
+- 최신 문서 커밋 `f5e9bca`의 CI backend/frontend/admin을 확인했다.
+- 기존 Dagster는 전체 최대 3개·reference 그룹 1개다. 검증 helper가 모든 활성 작업을
+  막아 별도 고속도로 작업에도 대기하던 조건을 reference·유가 충돌 차단으로 좁혔다.
+  운영 스케줄·동시 실행 설정·기존 작업은 변경하지 않았다.
+- 단회 실행 요청의 25초 응답 timeout 뒤 재전송하지 않고 고유 tag로
+  `e0faedee-deb2-40e3-9080-4db5d92bd074`를 찾았다. Dagster SUCCESS를 확인했다.
+- 읽기 전용 DB 검증에서 run 19269가 12:27:13.538~12:27:21.222 KST success이며
+  항구 749·터미널 27·선박 종류 7행 전부가 해당 실행 시각으로 갱신됐다.
+  성공 summary의 `port_guideline_object_stored=1`로 원본 파일 RustFS 저장을 확인했다.
+  대표 위치 항구명 12개는 전체 749항구 위치 보강 완료를 뜻하지 않는다.
+- 배편 강제 수집·오피넷/KRIC 보호 우회·재배포는 하지 않았다. 배편 12:45와 오피넷
+  16:00 정기 수집의 실제 저장 성공 및 소스별 freshness가 남아 PR #44는 Draft로 유지한다.
+
 ## 2026-09-28 12시 PR #44 수집 검증 중간 확인
 
 - `e04356a` CI backend/frontend/admin 통과와 n150 8개 컨테이너 healthy·8개 job을 확인했다.
