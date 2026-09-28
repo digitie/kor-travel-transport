@@ -54,7 +54,7 @@ button, input { font: inherit; }
 .page-header h1 { font-size: clamp(26px, 3vw, 38px); letter-spacing: -.045em; margin: 4px 0 8px; }
 .page-header p, .eyebrow { color: var(--muted); margin: 0; }
 .eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
-.grid { display: grid; gap: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid:not([data-slot]) { display: grid; gap: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 11px; min-width: 0; padding: 20px; }
 .metric { color: var(--muted); display: block; font-size: 13px; margin-bottom: 8px; }
 .value { font-size: 28px; font-weight: 700; letter-spacing: -.04em; }
@@ -102,7 +102,7 @@ button, input { font: inherit; }
 .transport-map-picker select { background: white; border: 1px solid #b9c4bd; border-radius: 7px; min-height: 40px; padding: 8px; }
 .timetable-result { white-space: pre-wrap; }
 @media (max-width: 760px) { .transport-map-layout { grid-template-columns: 1fr; min-height: 0; } .transport-map-canvas { min-height: 440px; } .transport-map-detail { border-left: 0; border-top: 1px solid var(--line); } }
-@media (max-width: 760px) { .admin-layout { grid-template-columns: 1fr; } .rail { padding: 18px; } .brand { margin-bottom: 15px; } .nav { grid-template-columns: repeat(3, minmax(0, 1fr)); } .nav-label { display: none; } .sign-out { margin-top: 18px; } .main { padding: 28px 20px; } .grid, .reference-list { grid-template-columns: 1fr; } .wide { grid-column: span 1; } .reference-toolbar { align-items: stretch; flex-direction: column; gap: 8px; } }
+@media (max-width: 760px) { .admin-layout { grid-template-columns: 1fr; } .rail { padding: 18px; } .brand { margin-bottom: 15px; } .nav { grid-template-columns: repeat(3, minmax(0, 1fr)); } .nav-label { display: none; } .sign-out { margin-top: 18px; } .main { padding: 28px 20px; } .grid:not([data-slot]), .reference-list { grid-template-columns: 1fr; } .wide { grid-column: span 1; } .reference-toolbar { align-items: stretch; flex-direction: column; gap: 8px; } }
 
 /* Hallmark · genre: modern-minimal · macrostructure: Workbench · design-system: design.md · designed-as-app */
 .main { padding: var(--space-xl); }

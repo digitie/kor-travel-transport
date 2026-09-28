@@ -5,6 +5,7 @@ for (const width of [320, 375, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/login");
     await expect(page.locator("[data-slot=card]")).toBeVisible();
+    expect(await page.locator("[data-slot=card-header]").evaluate((node) => getComputedStyle(node).gridTemplateColumns.split(" ").length)).toBe(1);
     await expect(page.getByLabel("아이디")).toHaveAttribute("data-slot", "input");
     await expect(page.getByLabel("비밀번호")).toHaveAttribute("data-slot", "input");
     await page.route("**/api/auth/login", (route) => route.fulfill({ status: 401, json: { detail: "아이디 또는 비밀번호를 확인해 주세요." } }));
@@ -41,3 +42,22 @@ for (const width of [320, 375, 768, 1440]) {
     await page.screenshot({ path: `test-results/shadcn-map-${width}.png`, fullPage: true });
   });
 }
+
+test("교통 현황의 shadcn 탭은 키보드와 패널 연결을 유지한다", async ({ page }) => {
+  test.skip(!process.env.E2E_TRANSPORT_UI_PASSWORD, "로그인 암호 필요");
+  await page.goto("/login");
+  await page.getByLabel("비밀번호").fill(process.env.E2E_TRANSPORT_UI_PASSWORD!);
+  await page.getByRole("button", { name: "로그인", exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.route("**/transport/collector-status", (route) => route.fulfill({ json: { scheduler_enabled: true, enabled_sources: [], sources: [] } }));
+  await page.route("**/transport/statistics?**", (route) => route.fulfill({ json: { traffic: [], incidents: [], fuel_prices: [] } }));
+  await page.route("**/transport/highways/**", (route) => route.fulfill({ json: { items: [] } }));
+  await page.goto("/transport");
+  const tabs = page.getByRole("tablist", { name: "교통·유가 정보 보기" });
+  await tabs.getByRole("tab", { name: "통합 현황" }).focus();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  await expect(tabs.getByRole("tab", { name: "유가", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tabpanel", { name: "유가", exact: true })).toContainText("수집 주유소 수");
+  await expect(page.getByRole("tabpanel")).toHaveCount(1);
+});

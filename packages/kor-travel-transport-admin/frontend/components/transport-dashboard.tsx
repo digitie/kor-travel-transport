@@ -64,7 +64,7 @@ export function TransportDashboard() {
   useEffect(() => { if (status && statistics && traffic && incidents && Object.values(refreshed.current).every(Boolean)) writeCache(status, statistics, traffic, incidents); }, [status, statistics, traffic, incidents]);
 
   const routeNames = useMemo(() => new Map((traffic?.items ?? []).filter((item) => item.route_no).map((item) => [item.route_no as string, item.route_name])), [traffic]);
-  if (statusError && !status) return <Alert variant="destructive"><AlertDescription>{statusError}</AlertDescription></Alert>;
+  if (statusError && !status) return <Alert variant="destructive" className="grid-cols-1"><AlertDescription>{statusError}</AlertDescription></Alert>;
   if (!status) return <div role="status" aria-label="저장된 교통정보 현황을 읽는 중입니다…" className="flex flex-col gap-4">
     <p className="quiet">저장된 교통정보 현황을 읽는 중입니다…</p>
     <div className="grid" aria-hidden="true">{DASHBOARD_TABS.map(([value]) => <Skeleton key={value} className="h-32 w-full" />)}</div>
@@ -83,7 +83,7 @@ export function TransportDashboard() {
     <TabsList aria-label="교통·유가 정보 보기" className="max-w-full overflow-x-auto group-data-horizontal/tabs:h-auto">
       {DASHBOARD_TABS.map(([value, label]) => <TabsTrigger value={value} key={value} className="min-h-11 flex-none px-3 py-2">{label}</TabsTrigger>)}
     </TabsList>
-    {statisticsError ? <Alert variant="destructive">
+    {statisticsError ? <Alert variant="destructive" className="grid-cols-1">
       <AlertTitle>{statistics ? "통계 갱신에 실패해 이전 조회 결과를 표시합니다." : "통계를 아직 불러오지 못했습니다."}</AlertTitle>
       <AlertDescription className="flex flex-col items-start gap-3">
         <p>{statisticsError}</p>
@@ -94,54 +94,54 @@ export function TransportDashboard() {
         {statisticsRetry >= 3 ? <p>이 화면에서의 재시도 3회를 사용했습니다. 잠시 후 다시 방문해 주세요.</p> : null}
       </AlertDescription>
     </Alert> : null}
-    {statusError ? <Alert variant="destructive"><AlertDescription>수집 상태 갱신 실패: {statusError}</AlertDescription></Alert> : null}
+    {statusError ? <Alert variant="destructive" className="grid-cols-1"><AlertDescription>수집 상태 갱신 실패: {statusError}</AlertDescription></Alert> : null}
     {DASHBOARD_TABS.map(([value]) => <TabsContent key={value} value={value} keepMounted className="min-w-0 hidden:hidden">
       {tab === value ? <div className="grid">
         {value === "overview" ? <>
           <Card className={CARD_CLASS_NAME}>
-            <CardHeader><CardTitle><span className="metric mb-0">수집 설정</span></CardTitle></CardHeader>
+            <CardHeader className="grid-cols-1"><CardTitle><span className="metric mb-0">수집 설정</span></CardTitle></CardHeader>
             <CardContent className="flex flex-col gap-3"><strong className="value">{status.scheduler_enabled ? "활성" : "중지"}</strong><CardDescription>실제 성공·실패는 수집 상태 메뉴에서 확인</CardDescription></CardContent>
             <CardFooter><Link href="/collections">전체 수집 상태 →</Link></CardFooter>
           </Card>
           <Card className={CARD_CLASS_NAME}>
-            <CardHeader><CardTitle><span className="metric mb-0">도로·유가 연결 소스</span></CardTitle></CardHeader>
+            <CardHeader className="grid-cols-1"><CardTitle><span className="metric mb-0">도로·유가 연결 소스</span></CardTitle></CardHeader>
             <CardContent className="flex flex-col gap-3"><strong className="value">{status.enabled_sources.length}</strong><CardDescription>고속도로 소통·돌발·오피넷</CardDescription></CardContent>
           </Card>
           <Card className={CARD_CLASS_NAME}>
-            <CardHeader><CardTitle><span className="metric mb-0">최근 24시간 도로 돌발</span></CardTitle></CardHeader>
+            <CardHeader className="grid-cols-1"><CardTitle><span className="metric mb-0">최근 24시간 도로 돌발</span></CardTitle></CardHeader>
             <CardContent className="flex flex-col gap-3"><strong className="value">{incidents?.items.length ?? "…"}</strong><CardDescription>저장된 돌발 정보 기준</CardDescription></CardContent>
           </Card>
           <Card className={cn(CARD_CLASS_NAME, "wide")}>
-            <CardHeader><CardTitle><h2 className="m-0">고속도로 평균 속도</h2></CardTitle></CardHeader>
+            <CardHeader className="grid-cols-1"><CardTitle><h2 className="m-0">고속도로 평균 속도</h2></CardTitle></CardHeader>
             <CardContent>{statistics ? <TransportBarChart ariaLabel="노선별 평균 속도 그래프" items={speedChart} unit="km/h" /> : statisticsPlaceholder}</CardContent>
           </Card>
           <Card className={CARD_CLASS_NAME}>
-            <CardHeader><CardTitle><h2 className="m-0">주요 유종 평균 가격</h2></CardTitle></CardHeader>
+            <CardHeader className="grid-cols-1"><CardTitle><h2 className="m-0">주요 유종 평균 가격</h2></CardTitle></CardHeader>
             <CardContent>{statistics ? <TransportBarChart ariaLabel="유종별 평균 가격 그래프" items={fuelChart} unit="원/L" /> : statisticsPlaceholder}</CardContent>
           </Card>
         </> : null}
         {value === "highway" ? <>
           <Card className={cn(CARD_CLASS_NAME, "wide")}>
-            <CardHeader><CardTitle><h2 className="m-0">노선별 평균 속도 (최근 7일)</h2></CardTitle></CardHeader>
+            <CardHeader className="grid-cols-1"><CardTitle><h2 className="m-0">노선별 평균 속도 (최근 7일)</h2></CardTitle></CardHeader>
             <CardContent>{statistics ? <TransportBarChart ariaLabel="노선별 평균 속도 그래프" items={speedChart} unit="km/h" /> : statisticsPlaceholder}</CardContent>
           </Card>
           <Card className={CARD_CLASS_NAME}>
-            <CardHeader><CardTitle><h2 className="m-0">노선별 돌발 현황</h2></CardTitle></CardHeader>
+            <CardHeader className="grid-cols-1"><CardTitle><h2 className="m-0">노선별 돌발 현황</h2></CardTitle></CardHeader>
             <CardContent>{statistics ? <ul className="row-list">{statistics.incidents.slice(0, 8).map((item, index) => <li key={`${item.route_no}-${index}`}><span>{highwayRouteLabel(item.route_no, routeNames.get(item.route_no ?? ""))}</span><strong>{item.incidents}건</strong></li>)}</ul> : statisticsPlaceholder}</CardContent>
           </Card>
         </> : null}
         {value === "fuel" ? <>
           <Card className={cn(CARD_CLASS_NAME, "wide")}>
-            <CardHeader><CardTitle><h2 className="m-0">유종별 평균 가격 (최근 7일)</h2></CardTitle></CardHeader>
+            <CardHeader className="grid-cols-1"><CardTitle><h2 className="m-0">유종별 평균 가격 (최근 7일)</h2></CardTitle></CardHeader>
             <CardContent>{statistics ? <TransportBarChart ariaLabel="유종별 평균 가격 그래프" items={fuelChart} unit="원/L" /> : statisticsPlaceholder}</CardContent>
           </Card>
           <Card className={CARD_CLASS_NAME}>
-            <CardHeader><CardTitle><h2 className="m-0">수집 주유소 수</h2></CardTitle></CardHeader>
+            <CardHeader className="grid-cols-1"><CardTitle><h2 className="m-0">수집 주유소 수</h2></CardTitle></CardHeader>
             <CardContent>{statistics ? <ul className="row-list">{fuelRows.map((item) => <li key={item.product_code}><span>{fuelProductLabel(item.product_code)}</span><strong>{number(item.stations)}곳</strong></li>)}</ul> : statisticsPlaceholder}</CardContent>
           </Card>
         </> : null}
         <Card className={cn(CARD_CLASS_NAME, "wide")}>
-          <CardHeader><CardTitle><h2 className="m-0">교통정보 찾아보기</h2></CardTitle></CardHeader>
+          <CardHeader className="grid-cols-1"><CardTitle><h2 className="m-0">교통정보 찾아보기</h2></CardTitle></CardHeader>
           <CardContent><p className="m-0"><Link href="/map">주유소별 가격 지도 →</Link> · <Link href="/highways">고속도로 구간·돌발 검색 →</Link> · <Link href="/collections">제공기관별 수집 상태 →</Link></p></CardContent>
         </Card>
       </div> : null}
