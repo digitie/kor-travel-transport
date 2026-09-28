@@ -10,6 +10,10 @@
   24개 테이블의 앱 role 소유, 비특권 계정, 실제 application/metadata 연결을 확인했다.
 - 기존 parking-radar live E2E 5개 통과. DB·DSN·컨테이너는 변경하지 않았고 덤프/복원·
   백업 생성도 실행하지 않았다. [상세 증적](runbooks/parking-shared-postgres-status.md).
+- James(Mencius)/Popper(Tesla) 독립 리뷰에서 James P2 두 건의 테스트 증적 범위 문구를
+  실제 검사 조건으로 정정했다. Popper의 운영 DSN·과거 시각 상한 SQL 대조는 신규 지적이 없다.
+  검토 후보 `c397229`, UI runtime `1db261e`·API `ff45aeac`는 그대로이며 최종 CI·머지는
+  [PR #48](https://github.com/digitie/kor-travel-transport/pull/48)이 정본이다.
 
 ## 2026-09-28 — T-042 Weather 외형 일치화
 

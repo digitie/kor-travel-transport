@@ -11,6 +11,12 @@
 - Manager 최신 `68cc1a9`과도 일치한다. 운영 대상 확인 결과에 따라 이미 이전된 DB에
   중복 복원을 하지 않았다. DSN 변경/DB 생성·삭제/컨테이너 재시작은 0건이다.
   [점검 기록](runbooks/parking-shared-postgres-status.md)에 실제 연결과 범위를 남겼다.
+- PR #48 문서 후보 `c397229`의 CI 통과 후 James(Mencius)/Popper(Tesla)가 독립 리뷰했다.
+  James의 P2 두 건은 테스트 소스로 재현 확인해 문구를 좁혔다. 공항 선택은 쿠키 존재만,
+  반응형 폭은 선택창 표시 시점만 검사하며 선택 복원·로딩 완료 후 배치를 보장하지 않는다.
+  Popper는 운영 DSN과 기록 시각 상한까지의 735,925건을 재조회해 신규 지적이 없었다.
+  UI runtime `1db261e`와 API `ff45aeac`는 불변이며 문서만 수정했다. 최종 CI·머지 상태는
+  [PR #48](https://github.com/digitie/kor-travel-transport/pull/48)을 정본으로 확인한다.
 
 ## 2026-09-28 PR #47 Weather 실제 외형 일치화·n150 검증
 
