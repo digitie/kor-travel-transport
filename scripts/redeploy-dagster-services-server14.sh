@@ -222,11 +222,14 @@ restore_daemon() {
 # 돌리지만, 그때 trap 안의 $?는 신호를 담지 않는다(2026-09-28 bash 5.2·5.3 실측: SIGPIPE에서 0). 그러면
 # `exit "$status"`가 끊긴 실행을 exit 0으로 끝낸다. PIPE는 출력 pipe가 닫힌 경우다(pty 없는
 # `ssh n150 bash …`의 클라이언트가 끊기거나 `| tee`가 죽으면 다음 출력이 SIGPIPE를 받는다).
+# 각 신호 trap은 exit 전에 네 신호를 먼저 무시한다. 두 번째 신호가 restore_daemon의 `trap ''`보다
+# 먼저 닿으면(마이크로초 창, 적대 리뷰가 합성 테스트로 650회 중 16회 재현) 대기 중이던 exit가
+# `docker start`를 건너뛴다.
 trap restore_daemon EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
-trap 'exit 129' HUP
-trap 'exit 141' PIPE
+trap 'trap "" INT TERM HUP PIPE; exit 130' INT
+trap 'trap "" INT TERM HUP PIPE; exit 143' TERM
+trap 'trap "" INT TERM HUP PIPE; exit 129' HUP
+trap 'trap "" INT TERM HUP PIPE; exit 141' PIPE
 
 # 검사한 내용과 설치하는 내용이 같도록 처음에 사본을 떠 두고 끝까지 그 사본만 쓴다.
 work="$(mktemp -d)"
