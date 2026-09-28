@@ -121,11 +121,11 @@ export function DagsterOperations() {
         ["최근 성공", snapshot ? snapshot.runs.filter((row) => row.status === "SUCCESS").length : "—", `최근 ${snapshot?.runs.length ?? 0}건 중`],
         ["최근 실패", snapshot ? snapshot.runs.filter((row) => row.status === "FAILURE").length : "—", "원인 확인 대상"],
         ["장시간 실행", snapshot ? stalled : "—", "작업별 확인 기준 적용"],
-      ].map(([label, value, caption]) => <Card size="sm" className="ops-card min-w-0" key={label}>
-        <CardHeader><CardTitle>{label}</CardTitle></CardHeader>
+      ].map(([label, value, caption]) => <Card className="ops-card min-h-40 min-w-0 gap-3" key={label}>
+        <CardHeader><CardTitle className="text-xs leading-normal tracking-[0.04em] text-muted-foreground">{label}</CardTitle></CardHeader>
         <CardContent className="flex flex-col gap-2">
           {loading && !snapshot ? <Skeleton className="h-7 w-12" aria-hidden="true" /> : <strong>{value}</strong>}
-          <CardDescription>{caption}</CardDescription>
+          <CardDescription className="text-[0.8125rem] leading-[1.45]">{caption}</CardDescription>
         </CardContent>
       </Card>)}</section>
       {snapshot ? <DagsterTables snapshot={snapshot} /> : loading ? <div className="flex flex-col gap-4">

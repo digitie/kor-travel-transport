@@ -324,7 +324,8 @@ h1, h2, h3 { color: var(--text-primary); }
 .page-header-actions { display: flex; flex-shrink: 0; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .5rem; }
 .panel, .reference-card, .login-panel { border-radius: var(--radius-panel); box-shadow: var(--shadow-card); }
 .panel h2 { font-size: 1.125rem; font-weight: 600; letter-spacing: -.015em; }
-.grid:not([data-slot]), .ops-grid { gap: var(--layout-gutter); }
+.grid:not([data-slot]) { gap: var(--layout-gutter); }
+.ops-grid { gap: 1rem; }
 .status-list li, .row-list li { border-color: var(--surface-muted); }
 .ops-card strong { font-size: 1.875rem; }
 .dagster-workbench { gap: var(--layout-gutter); }
@@ -356,7 +357,7 @@ h1, h2, h3 { color: var(--text-primary); }
   .page-body { padding-top: 1rem; }
   .page-header-row { align-items: flex-start; flex-direction: column; gap: .75rem; }
   .page-header-actions { width: 100%; justify-content: flex-start; }
-  .page-header-actions .button, .page-header-actions button { flex: 1 1 auto; }
+  .page-header-actions .button, .page-header-actions [data-slot="button"] { flex: 1 1 auto; }
   .ops-grid { grid-template-columns: minmax(0, 1fr); }
   .panel-head { flex-direction: column; }
   .table-wrap { margin: .75rem; }

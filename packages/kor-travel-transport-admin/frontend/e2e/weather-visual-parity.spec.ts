@@ -117,11 +117,22 @@ for (const width of widths) {
         const summary = page.locator(".ops-grid");
         const columns = await summary.evaluate((node) => getComputedStyle(node).gridTemplateColumns.split(" ").length);
         expect(columns).toBe(width <= 672 ? 1 : width <= 992 ? 2 : 4);
+        await expect.soft(summary).toHaveCSS("gap", "16px");
+        for (const card of await summary.locator('[data-slot="card"]').all()) {
+          expect.soft((await rectangle(card)).height).toBeGreaterThanOrEqual(160);
+          await expect.soft(card.locator('[data-slot="card-title"]')).toHaveCSS("font-size", "12px");
+        }
         await expect(summary.locator("strong")).toHaveCount(4);
         for (const value of await summary.locator("strong").all()) await expect(value).toHaveCSS("font-size", "30px");
         const actions = await rectangle(header.locator(".page-header-actions"));
         expect(actions.x).toBeGreaterThanOrEqual(headerBox.x + 24);
         expect(actions.x + actions.width).toBeLessThanOrEqual(headerBox.x + headerBox.width - 24);
+        if (width <= 672) {
+          for (const action of await header.locator('.page-header-actions [data-slot="button"]').all()) {
+            await expect.soft(action).toHaveCSS("flex-grow", "1");
+            if (width === 320) expect.soft((await rectangle(action)).width).toBeCloseTo(actions.width, 0);
+          }
+        }
       }
 
       const railBox = await rectangle(rail);
