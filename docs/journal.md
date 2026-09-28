@@ -9,6 +9,10 @@
   전이라 17시간 최신성 게이트를 넘었다. 주차 UI 자체는 통과했다. 이 실패를 숨기지
   않고 PR #51 머지를 보류하며, 유가 복구까지 범위를 넓힐지 사용자 방향을 요청했다.
   [상세 증적](runbooks/pr51-validation.md).
+- Popper 읽기 전용 진단: 기존 Playwright timeout 반복 뒤 8시간 유예로 9/29 00시
+  수집이 건너뛰어졌다. 다음 정기는 08시 KST다. 수집 실패를 Dagster SUCCESS로
+  표시하는 기존 문제도 확인했다. timeout 근본 원인은 저장 로그만으로 구별하지
+  못했으며 신규 수집·재시작·설정 변경 없이 사용자 범위 확인을 기다린다.
 
 - n150 API/code-server `dc6ba5f`와 관리자 UI `55148d2`를 제한 배포했다. 원래 daemon은
   재개 후 healthy이며 기존 parking-radar frontend·공유 DB·gateway는 재시작하지 않았다.

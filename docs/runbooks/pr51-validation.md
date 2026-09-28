@@ -88,7 +88,21 @@ API/code-server/daemon/UI는 모두 healthy·재시작 횟수 0이다. 보호 �
 주차 UI·실제 수집 최신성·반응형 검사는 통과했다.
 
 오피넷 마지막 시도는 `2026-09-28T07:01:12Z`, 표시 오류는 `collection_failed`,
-다음 허용 시각은 `2026-09-28T15:24:00Z`다. 원인 진단은 읽기 전용으로 진행하며
-이번 지도/항구 범위를 넘어선 유가 수집 복구는 사용자 방향 확인 전 실행하지 않는다.
+다음 허용 시각은 `2026-09-28T15:24:00Z`다. Popper의 읽기 전용 진단 결과는 다음과 같다.
+
+- DB 수집 `19387`은 9/28 16:01:12~16:24:00 KST 실행 후 `failed`다.
+  저장 오류는 `Timeout 60000ms exceeded while waiting for event "response"`다.
+  대응 Dagster run `536082e3-aa6d-4103-9117-c79e0a45b793`은 `SUCCESS`로 표시됐다.
+- DB 수집 `19582`는 9/29 00:00:35 KST에 `skipped`다. 대응 run은
+  `b53622dc-1576-4b6f-802f-16d4e1ba55ff`다. 실패 종료 뒤 8시간 유예가 00:24까지라
+  0시 정기 실행이 허용 시각보다 빨랐다. 다음 정기는 08:00 KST이며 성공은 미확정이다.
+- `transport_collection.py`의 `_mark_fuel_failure()`는 provider의 8시간 간격을 적용한다.
+  `dagster/definitions.py`의 `_collect_transport()`/fuel op는 반환된 실패 상태를
+  Dagster 예외로 전환하지 않는다. 이 경로는 PR #51 변경 대상이 아니었다.
+- 기존 저장 로그로 사이트 지연·응답 조건 불일치·접근 차단 중 timeout 근본 원인을
+  구별하지 못했다. 이번 지도 변경과의 인과관계는 발견하지 못했다.
+
+진단 중 추가 provider 호출·수집 실행·재시작·설정 변경은 없었다. 이번 지도/항구
+범위를 넘어선 유가 수집 복구는 사용자 방향 확인 전 실행하지 않는다.
 따라서 [Transport PR #51](https://github.com/digitie/kor-travel-transport/pull/51)은
 전체 게이트 성공으로 보고하거나 머지하지 않는다. 최종 CI·머지 상태 정본은 PR이다.
