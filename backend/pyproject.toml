@@ -21,7 +21,7 @@ dependencies = [
   "python-krairport-api @ git+https://github.com/digitie/python-krairport-api@cbe4d1380dc0388c078e8ae4622d3e580717064b",
   "python-kric-api @ git+https://github.com/digitie/python-kric-api@2690f35420ead326f0e04bc0366ece6bc075cd9e",
   "python-krex-api @ git+https://github.com/digitie/python-krex-api@adda2879f8bc1f0896867d28eee5583594ecda01",
-  "python-opinet-api[browser] @ git+https://github.com/digitie/python-opinet-api@b87d7769db8d00b6e4cc61f511e82697da79e610",
+  "python-opinet-api[browser] @ git+https://github.com/digitie/python-opinet-api@5fa00463e8cd0c67aa935e8e2f0c3adef48c42e2",
   "python-multipart>=0.0.32,<1.0",
   "pydantic-settings>=2.15,<3.0",
   "psycopg2-binary>=2.9,<3.0",
