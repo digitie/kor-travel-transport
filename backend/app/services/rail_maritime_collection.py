@@ -336,7 +336,7 @@ class RailMaritimeCollectionService:
         collected_at = now_utc()
         _guidelines, archive = await self._fetch_port_guidelines()
         # 항만가이드라인은 항로 안내 자료로만 보관한다. 어느 한 점도 승선 항구로 쓰지 않는다.
-        locations: dict[str, PortCall] = {}
+        locations: dict[str, tuple[PortCall | None, bool]] = {}
         async with self._maritime_client_factory(key, timeout=self.settings.api_timeout_seconds) as client:
             # 공공데이터 호출량을 예측 가능하게 유지하려고 동시에 세 요청을 보내지 않는다.
             # Provider iterator는 page budget을 넘기면 오류로 끝나므로 첫 페이지 하나만
@@ -347,12 +347,11 @@ class RailMaritimeCollectionService:
             for port in ports:
                 target = PORT_CALL_TARGETS.get(port.port_id or "")
                 if target and port.port_name == target[0]:
-                    location = await self._port_call_location(session, run_id, client, port.port_id, target)
-                    if location is not None:
-                        locations[port.port_id] = location
+                    locations[port.port_id] = await self._port_call_location(session, run_id, client, port.port_id, target)
             for port in ports:
                 if port.port_id:
-                    await self._upsert_port(session, port, collected_at, locations.get(port.port_id))
+                    location, verified = locations.get(port.port_id, (None, False))
+                    await self._upsert_port(session, port, collected_at, location, location_verified=verified)
             for terminal in terminals:
                 if terminal.terminal_id:
                     await self._upsert_terminal(session, terminal, collected_at)
@@ -364,7 +363,7 @@ class RailMaritimeCollectionService:
             "port_count": len(ports),
             "terminal_count": len(terminals),
             "ship_type_count": len(ship_types),
-            "port_location_count": len(locations),
+            "port_location_count": sum(location is not None for location, _verified in locations.values()),
             "port_guideline_object_stored": int(archive is not None),
             "port_location_failed_calls": int(await session.scalar(select(func.count()).select_from(RawApiResponse).where(
                 RawApiResponse.collection_run_id == run_id, RawApiResponse.source == PORT_CALL_SOURCE,
@@ -375,8 +374,8 @@ class RailMaritimeCollectionService:
     async def _port_call_location(
         self, session: AsyncSession, run_id: int, client: DataGoKrMaritimeClient,
         port_id: str, target: tuple[str, str],
-    ) -> PortCall | None:
-        """DB에 호출 예약을 먼저 남겨 재기동·실패도 24시간 예산에 포함한다."""
+    ) -> tuple[PortCall | None, bool]:
+        """좌표와 정상 재검증 여부를 반환한다. 실패/유예와 정상 무결과를 구분한다."""
         endpoint = f"komsa:port-call:{port_id}"
         # 예약과 예산 검사만 잠근다. 네트워크 대기 중 트랜잭션을 잡고 있지 않는다.
         if session.bind is not None and session.bind.dialect.name == "postgresql":
@@ -392,14 +391,14 @@ class RailMaritimeCollectionService:
                 await session.commit()
                 if previous.parse_status == "success":
                     data = json.loads(previous.body_text)["selected"]
-                    return _unique_port_call((PortCall(**data),), target) if data else None
-                return None
+                    return (_unique_port_call((PortCall(**data),), target) if data else None), True
+                return None, False
         attempts = await session.scalar(select(func.count()).select_from(RawApiResponse).where(
             RawApiResponse.source == PORT_CALL_SOURCE, RawApiResponse.received_at >= now - timedelta(days=1),
         ))
         if (attempts or 0) >= 80:
             await session.commit()
-            return None
+            return None, False
         reservation = RawApiResponse(collection_run_id=run_id, source=PORT_CALL_SOURCE, endpoint=endpoint,
             request_params_json={"name": target[0], "province": target[1]}, status_code=0,
             body_text="null", received_at=now, parse_status="pending", parse_error=None)
@@ -418,14 +417,14 @@ class RailMaritimeCollectionService:
             reservation.status_code = 200
             reservation.parse_status = "success"
             await session.commit()
-            return location
+            return location, True
         except Exception as exc:
             # 기본 항구/시간표 수집은 계속한다. 서비스키가 들어간 예외 문자열은 저장하지 않는다.
             reservation.parse_status = "failed"
             reservation.parse_error = type(exc).__name__
             await session.commit()
             logger.warning("port call lookup failed port_id=%s error_type=%s", port_id, type(exc).__name__)
-            return None
+            return None, False
 
     async def _fetch_port_guidelines(self) -> tuple[tuple[PortGuidelineLocation, ...], StoredObject | None]:
         if not self.settings.port_guideline_collection_enabled:
@@ -527,6 +526,7 @@ class RailMaritimeCollectionService:
     async def _upsert_port(
         self, session: AsyncSession, item: DomesticFerryPort, collected_at: Any,
         location: PortCall | None,
+        *, location_verified: bool = False,
     ) -> None:
         assert item.port_id is not None
         row = await session.scalar(
@@ -539,8 +539,8 @@ class RailMaritimeCollectionService:
             values.update(latitude=location.latitude, longitude=location.longitude,
                           location_source=PORT_CALL_SOURCE, location_point_count=1)
             values["raw_item_json"]["_komsa_port_call"] = dict(location.raw)
-        elif row is None or row.location_source == PORT_GUIDELINE_SOURCE or row.port_name != item.port_name:
-            # 기존 잘못된 항로 안내 점만 비운다. 일시 장애로 검증된 기항지 좌표를 잃지 않는다.
+        elif location_verified or row is None or row.location_source == PORT_GUIDELINE_SOURCE or row.port_name != item.port_name:
+            # 정상 재검증의 무결과/중복/부적합 좌표는 연결 해제한다. 일시 장애만 기존 값을 보존한다.
             values.update(latitude=None, longitude=None, location_source=None, location_point_count=0)
         elif row.raw_item_json and "_komsa_port_call" in row.raw_item_json:
             values["raw_item_json"]["_komsa_port_call"] = row.raw_item_json["_komsa_port_call"]
