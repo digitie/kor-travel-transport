@@ -3,9 +3,9 @@ set -euo pipefail
 
 REMOTE_HOST="${REMOTE_HOST:-192.168.1.14}"
 REMOTE_USER="${REMOTE_USER:-digitie}"
-REMOTE_APP_DIR="${REMOTE_APP_DIR:-/home/digitie/apps/kor-travel-airport}"
+REMOTE_APP_DIR="${REMOTE_APP_DIR:-/home/digitie/apps/kor-travel-transport}"
 REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-.env.server14}"
-COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-kor-travel-airport}"
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-kor-travel-transport}"
 CUTOVER_RECEIPT_PATH="${CUTOVER_RECEIPT_PATH:-/var/tmp/kor-travel-transport-cutover/shared-db-cutover.receipt}"
 DEPLOY_STAGE_ONLY="${DEPLOY_STAGE_ONLY:-false}"
 CANDIDATE_SHA="$(git rev-parse HEAD)"
@@ -19,16 +19,16 @@ if [[ "${REMOTE_HOST}" != "192.168.1.14" ]]; then
   echo "Refusing deployment: this script may run Docker only on 192.168.1.14 (got ${REMOTE_HOST})." >&2
   exit 2
 fi
-if [[ "${REMOTE_APP_DIR}" != "/home/digitie/apps/kor-travel-airport" ]]; then
-  echo "Refusing deployment: only /home/digitie/apps/kor-travel-airport is an approved server14 app directory." >&2
+if [[ "${REMOTE_APP_DIR}" != "/home/digitie/apps/kor-travel-transport" ]]; then
+  echo "Refusing deployment: only /home/digitie/apps/kor-travel-transport is an approved server14 app directory." >&2
   exit 2
 fi
 if [[ "${REMOTE_ENV_FILE}" != ".env.server14" ]]; then
   echo "Refusing deployment: only .env.server14 is an approved server14 environment file." >&2
   exit 2
 fi
-if [[ "${COMPOSE_PROJECT_NAME}" != "kor-travel-airport" ]]; then
-  echo "Refusing deployment: this script may update only the kor-travel-airport Compose project." >&2
+if [[ "${COMPOSE_PROJECT_NAME}" != "kor-travel-transport" ]]; then
+  echo "Refusing deployment: this script may update only the kor-travel-transport Compose project." >&2
   exit 2
 fi
 if [[ "${CUTOVER_RECEIPT_PATH}" != "/var/tmp/kor-travel-transport-cutover/shared-db-cutover.receipt" ]]; then
@@ -40,7 +40,7 @@ if [[ "${DEPLOY_STAGE_ONLY}" != "true" && "${DEPLOY_STAGE_ONLY}" != "false" ]]; 
   exit 2
 fi
 
-ARCHIVE_PATH="$(mktemp -p /tmp kor-travel-airport-server14.XXXXXX.tgz)"
+ARCHIVE_PATH="$(mktemp -p /tmp kor-travel-transport-server14.XXXXXX.tgz)"
 REMOTE_ARCHIVE="/tmp/$(basename "${ARCHIVE_PATH}")"
 
 cleanup() {
@@ -64,7 +64,7 @@ if [[ ! -f "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" ]]; then
   exit 2
 fi
 
-REMOTE_STAGE="$(mktemp -d /tmp/kor-travel-airport-release.XXXXXX)"
+REMOTE_STAGE="$(mktemp -d /tmp/kor-travel-transport-release.XXXXXX)"
 cleanup_remote() {
   rm -rf -- "${REMOTE_STAGE}" "${REMOTE_ARCHIVE}"
 }

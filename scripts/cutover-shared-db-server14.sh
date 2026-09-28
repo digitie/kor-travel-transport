@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# 역사 기록(ADR-010): 2026-09-21에 한 번 실행을 마친 one-shot이다. 다시 실행하지 않는다.
+# 아래 LEGACY_*·TARGET_* 기본값은 실행 당시의 개명 전 이름(`kor-travel-airport` project·앱 디렉터리)
+# 그대로 둔다. 운영 식별자를 `kor-travel-transport`로 옮긴 뒤에는 TARGET_APP_DIR allowlist가 은퇴한
+# 옛 디렉터리를 가리키므로 staged artifact 확인에서 멈춘다.
+
 # 공용 PostgreSQL 전환은 이력 보존을 우선한다. 이 스크립트는 n150에서만, 운영자가
 # 명시적으로 확인한 maintenance window 안에서 실행한다. 기본 실행은 절대 허용하지 않는다.
 REMOTE_HOST="${REMOTE_HOST:-192.168.1.14}"
