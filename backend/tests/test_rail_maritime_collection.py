@@ -137,13 +137,14 @@ def test_maritime_reference_collection_stores_only_stable_reference_data(tmp_pat
             "ship_type_count": 1,
             "port_location_count": 0,
             "port_guideline_object_stored": 0,
+            "port_location_failed_calls": 0,
         }
         await engine.dispose()
 
     asyncio.run(run())
 
 
-def test_maritime_reference_links_port_to_keyless_guideline_location(tmp_path: Path) -> None:
+def test_maritime_reference_does_not_use_guideline_waypoint_as_port(tmp_path: Path) -> None:
     settings = _settings(tmp_path, maritime_reference_collection_enabled=True, data_go_kr_service_key="test-key")
     engine, session_factory = create_engine_and_session_factory(settings.database_url)
 
@@ -163,8 +164,8 @@ def test_maritime_reference_links_port_to_keyless_guideline_location(tmp_path: P
         async with session_factory() as session:
             port = await session.scalar(select(FerryPort))
         assert port is not None
-        assert (port.latitude, port.longitude, port.location_source, port.location_point_count) == (35.1, 129.0, "data_go_kr_port_guideline", 2)
-        assert summary["port_location_count"] == 1
+        assert (port.latitude, port.longitude, port.location_source, port.location_point_count) == (None, None, None, 0)
+        assert summary["port_location_count"] == 0
         await engine.dispose()
 
     asyncio.run(run())

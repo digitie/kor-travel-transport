@@ -1004,6 +1004,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ))
         if selected_kind in (None, "ferry_port"):
             conditions = coordinate_conditions(FerryPort)
+            if not include_unlocated or min_longitude is not None:
+                conditions.append(or_(FerryPort.location_source.is_(None), FerryPort.location_source != "data_go_kr_port_guideline"))
             total += int(await session.scalar(select(func.count()).select_from(FerryPort).where(*conditions)) or 0)
             rows = (await session.execute(
                 select(FerryPort).where(*conditions)
@@ -1013,7 +1015,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 items.append(TransportPlaceMapItem(
                     id=port.id, kind="ferry_port", source=port.source, name=port.port_name or port.port_id,
                     provider_id=port.port_id,
-                    longitude=port.longitude, latitude=port.latitude, subtitle="항만가이드라인 위치",
+                    longitude=None if port.location_source == "data_go_kr_port_guideline" else port.longitude,
+                    latitude=None if port.location_source == "data_go_kr_port_guideline" else port.latitude,
+                    subtitle="공식 기항지 위치" if port.location_source == "komsa_port_call" else "위치 확인 필요",
                     updated_at=serialize_utc(port.last_seen_at), location_source=port.location_source,
                     location_point_count=port.location_point_count,
                 ))

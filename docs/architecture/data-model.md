@@ -101,6 +101,10 @@ SQLite dialect를 허용한다.
 
 - 공공데이터포털 국내선박운항정보의 항구, 여객선 터미널, 선박종류 기준정보
 - 원천 ID와 source의 조합으로 중복을 막고 최초/최종 확인 시각을 기록
+- 항구 지도 위치는 KOMSA 기항지 코드/행정구역을 정확 대조한 결과만 새로 연결한다.
+  항만가이드라인 항로 안내 점은 지도에서 제외한다. 원문 기항지는
+  `raw_item_json._komsa_port_call`, 호출 예약/결과/확인 시각은 `raw_api_responses`에 둔다.
+  기존 테이블 스키마는 유지하며 상세는 [좌표 운영 규칙](../runbooks/port-coordinates.md)을 따른다.
 
 ### `ferry_timetable_snapshots`
 

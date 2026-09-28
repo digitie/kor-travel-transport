@@ -73,7 +73,12 @@ def _collect_reference(kind: str) -> dict[str, Any]:
     settings = _settings()
     service = RailMaritimeCollectionService(settings)
     action = service.collect_rail_reference if kind == "rail" else service.collect_maritime_reference
-    return asyncio.run(_run_with_session(settings, action))
+    result = asyncio.run(_run_with_session(settings, action))
+    if result.get("status") == "partial_success":
+        raise Failure(description="항구 기준정보는 저장했지만 일부 기항지 위치 조회에 실패했습니다.",
+                      metadata={"run_id": result["run_id"], "failed_provider_calls": result["port_location_failed_calls"]},
+                      allow_retries=False)
+    return result
 
 
 def _collect_ferry_timetable() -> dict[str, Any]:

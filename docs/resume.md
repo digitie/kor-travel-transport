@@ -15,6 +15,13 @@
   - 72시간 관찰 뒤 runbook "관찰과 정리"를 한다(그때까지 n150 prune 금지 — rollback 태그·retired 컨테이너가
     되돌리기 재료다). 되돌리기는 `rename-deploy-identity-server14.sh rollback`과 Manager 이전 release(`68cc1a93`) 재설치.
 
+- 2026-09-28 `codex/port-coordinates-button-scroll`: 승인된 KOMSA 기항지 API를 주요 항구
+  19개 명시 대상·지역/이름 정확 대조·DB 호출 예약/캐시로 연결 중이다. 항로 안내 점을
+  항구로 쓰던 오류와 교통 탭 36px/버튼 44px 충돌을 수정했다. provider PR #9 CI 통과·
+  독립 리뷰 진행, admin WSL 단위 109개·린트·타입·빌드·탭 레이아웃 E2E 5개 통과다.
+  Transport 전체 WSL/Docker·운영 검증·머지는 미완료다. 후속 지도/combobox/Map·Weather
+  일치화 11개 항목은 현재 PR 완료 뒤 진행하도록 tasks에 기록했다.
+
 - 2026-09-28 `chore/rename-deploy-identity-transport`: n150 운영 식별자 개명(ADR-010) 저장소 준비를
   푸시했다(PR은 아직 없음). PR #44(`835c0ec`)·#46(`50215b3`)·#47(`bdc9c02`)·#48(`a6edbd5`) 머지 위로 rebase했다. main이 더 움직이면 다시
   rebase한 뒤 PR·CI·두 적대적 리뷰를 거쳐 창 직전에 머지한다. n150 cutover는

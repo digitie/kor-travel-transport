@@ -96,6 +96,18 @@ def test_dagster_definitions_enable_every_schedule_and_serialize_overlapping_gro
     assert 'image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-transport-backend:latest}"' in shared_compose
 
 
+def test_maritime_partial_collection_is_not_dagster_success(monkeypatch) -> None:
+    from dagster import Failure
+    import pytest
+
+    async def fake_run(*_args, **_kwargs):
+        return {"status": "partial_success", "run_id": 10, "port_location_failed_calls": 1}
+    monkeypatch.setattr(dagster_definitions, "_run_with_session", fake_run)
+    with pytest.raises(Failure, match="기항지") as raised:
+        dagster_definitions._collect_reference("maritime")
+    assert raised.value.allow_retries is False
+
+
 def test_transport_provider_lifecycle_stays_in_one_event_loop(monkeypatch) -> None:
     loop_ids: list[int] = []
 

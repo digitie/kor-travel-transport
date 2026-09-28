@@ -15,6 +15,16 @@
 - 공개 확인: `pr-api`·`pr` backend·`transport` login·`transport-api` 200, `transport-dagster` 204.
 - 남은 것: 72시간 관찰 뒤 정리(rollback 태그·retired 컨테이너·옛 디렉터리), 그 전까지 n150 prune 금지.
 
+## 2026-09-28 기항지 좌표와 교통 탭 스크롤 수정 진행
+
+- 기존 지도 항구 8곳은 항만가이드라인의 임의 항로 점이었다. TAGO 터미널 주소에도
+  타 지역 값이 있어 주소 기반 자동 연결은 하지 않는다.
+- 승인된 KOMSA API는 provider PR #9로 추가하고 주요 항구 19개부터 정확 이름·시도를
+  대조한다. 전체 749곳 위치 완료는 아니다. DB 호출 예약·캐시·예산을 적용한다.
+- shadcn 스킬을 적용해 오래된 orientation 선택자와 넘치는 장식 pseudo-element를
+  수정했다. WSL admin 109개·린트·타입·빌드·실제 탭 레이아웃 E2E 5개가 통과했다.
+- n150 새 Compose 식별자와 옛 디렉터리 은퇴는 읽기 전용 확인했다. 이번 변경은 아직 배포하지 않았다.
+
 ## 2026-09-28 운영 식별자 개명(airport → transport) 저장소 준비
 
 - 브랜치 `chore/rename-deploy-identity-transport`(main `556052c`에서 시작해 PR #44 머지 `835c0ec` 위로
