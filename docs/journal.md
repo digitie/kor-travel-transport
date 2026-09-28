@@ -14,6 +14,22 @@
 - 기존 배편 run 19180은 08:45~11:06 KST에 스냅샷 280개를 저장하고 success로 종료했다.
   중단하지 않았으며 새 설정은 다음 worker 교체 이후에만 적용된다. 자동 배포 확인은
   새 후보 검증·스크립트 갱신 중 일시 중지했다. 전체 테스트와 재리뷰가 끝나기 전 배포하지 않는다.
+- 최종 코드 `be85eac`는 WSL 전체 253개/선택 PG 4개 skip, 최종 상한 수정 WSL 24개,
+  Docker 핵심 24개·전체 257개와 migration 왕복/check, CI를 통과했다.
+  경량 이미지의 이전 Compose 계약 파일 때문에 최초 Docker 핵심 검사 1개가 실패했고
+  그 이미지의 전체 검사는 취소했다. 최신 Compose/예제를 함께 COPY한 새 이미지로 재검증했다.
+- James/Popper 재승인, Gauss의 배포 복구 mock 9개 이후 11:27~11:29 KST에 worker만
+  교체했다. 새 이미지 `9067afc613eb`의 backend 전체 checksum은 후보와 일치한다.
+  실제 배치 2초·최대 280회·공개 조회 30초·오피넷 60초를 확인했다. API/UI는 보존했다.
+- daemon 재개 시 `dagster-code-server is missing dependency dagster-migrate`가 발생했다.
+  worker 교체와 보호 컨테이너 검증은 완료됐지만 배포 성공으로 간주하지 않고 기존 daemon의
+  ID·이미지·생성 시각과 정지 상태를 확인했다. 기존 ID 직접 start와 제한 시간 내 health
+  검사로 복구했다. 이후 전체 컨테이너 healthy 및 8개 job을 확인했고 복구 helper도 보완했다.
+- 새 간격의 실제 수집 성공은 다음 정기 실행에서 검증한다. 이번 변경 검증을 위해 배편을
+  강제 재실행하지 않았다. 기존 성공 280건과 새 설정 반영을 구분한다.
+- worker 교체 후 운영 HTTPS E2E 365개를 모두 통과했다(약 1.9분, 실패·skip·flaky 0).
+  API `ff45aea`/기존 UI와 worker `be85eac`를 구분해 기록한다. 일부 UI 상태 검사는 mock이며
+  이 검증을 다음 배편·오피넷의 실제 provider 수집 성공으로 해석하지 않는다.
 
 ## 2026-09-28 10:53~10:55 KST 배편 실제 진행 진단
 
