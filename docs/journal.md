@@ -3,7 +3,8 @@
 ## 2026-09-28 운영 식별자 개명(airport → transport) 저장소 준비
 
 - 브랜치 `chore/rename-deploy-identity-transport`(main `556052c`에서 시작해 PR #44 머지 `835c0ec` 위로
-  rebase. 충돌은 journal·resume의 맨 위 항목뿐이었다).
+  rebase. 충돌은 journal·resume의 맨 위 항목뿐이었다. 그 뒤 #46 머지 `50215b3` 위로 다시 rebase했다 —
+  충돌은 문서뿐이었고, 문서 밖 diff는 rebase 전과 바이트 단위로 같다).
   ADR-010을 추가했다. 배포 식별자만 옮기고 공항 주차 도메인(`airports`, `/v1/airports`,
   `airport_collection_job`, `AIRPORT_CODES_CSV`, trigger `dagster_airport` …)은 그대로 둔다.
 - compose: `name: kor-travel-transport`(db·live도), network `kor-travel-transport-net`, 백엔드 이미지

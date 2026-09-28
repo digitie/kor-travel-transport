@@ -3,7 +3,7 @@
 ## 현재 상태
 
 - 2026-09-28 `chore/rename-deploy-identity-transport`: n150 운영 식별자 개명(ADR-010) 저장소 준비를
-  푸시했다(PR은 아직 없음). PR #44가 `835c0ec`로 머지돼 그 위로 rebase했다. main이 더 움직이면 다시
+  푸시했다(PR은 아직 없음). PR #44(`835c0ec`)와 #46(`50215b3`) 머지 위로 rebase했다. main이 더 움직이면 다시
   rebase한 뒤 PR·CI·두 적대적 리뷰를 거쳐 창 직전에 머지한다. n150 cutover는
   `scripts/rename-deploy-identity-server14.sh`와 `docs/runbooks/deployment.md` "운영 식별자 개명
   cutover"를 따른다. 창 전까지 옛 이름(`kor-travel-airport`, `/home/digitie/apps/kor-travel-airport`)이
@@ -12,6 +12,7 @@
   전에 다시 빌드·Dagster gate하고 새 컨테이너가 같은 이미지 층으로 떴는지 본다(이미지는 `uv.lock`이
   아니라 빌드 시점 PyPI 최신을 받는다. containerd store에서는 cache hit 재빌드도 ID가 바뀌어 층으로 본다). 정리 단계까지 n150 prune 금지. 창 직전 PyPI에 운영(1.13.24)보다 새
   Dagster가 나오면 gate가 멈추고, 그때는 runbook "Dagster 버전이 다를 때"대로 고정한 새 R이 필요하다.
+
 
   푸시했다(PR은 아직 없음). PR #44가 머지되면 origin/main으로 rebase하고 PR·CI·두 적대적 리뷰를 거쳐
   창 직전에 머지한다. n150 cutover는 `scripts/rename-deploy-identity-server14.sh`와
