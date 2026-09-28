@@ -154,7 +154,7 @@ class RailMaritimeCollectionService:
             await self._store_summary_response(
                 session, run.id, MARITIME_SOURCE, "data.go.kr:maritime-reference", summary
             )
-            status = "partial_success" if summary["port_location_failed_calls"] else "success"
+            status = "partial_success" if summary["port_location_failed_calls"] or summary["port_location_deferred_count"] else "success"
             await self._finish_run(session, run.id, status)
             logger.info("maritime reference collection finished run_id=%s summary=%s", run.id, summary)
             return {"status": status, "run_id": run.id, **summary}
@@ -364,6 +364,7 @@ class RailMaritimeCollectionService:
             "terminal_count": len(terminals),
             "ship_type_count": len(ship_types),
             "port_location_count": sum(location is not None for location, _verified in locations.values()),
+            "port_location_deferred_count": sum(not verified for _location, verified in locations.values()),
             "port_guideline_object_stored": int(archive is not None),
             "port_location_failed_calls": int(await session.scalar(select(func.count()).select_from(RawApiResponse).where(
                 RawApiResponse.collection_run_id == run_id, RawApiResponse.source == PORT_CALL_SOURCE,
@@ -393,6 +394,17 @@ class RailMaritimeCollectionService:
                     data = json.loads(previous.body_text)["selected"]
                     return (_unique_port_call((PortCall(**data),), target) if data else None), True
                 return None, False
+        # 제공자 한도는 같은 키의 다른 소비자도 사용한다. 한 번 한도에 도달하면
+        # 개별 항구 캐시와 무관하게 이 서비스의 신규 요청을 24시간 유예한다.
+        limited = await session.scalar(select(RawApiResponse.id).where(
+            RawApiResponse.source == PORT_CALL_SOURCE,
+            RawApiResponse.parse_status == "failed",
+            RawApiResponse.parse_error == "KricRateLimitError",
+            RawApiResponse.received_at >= now - timedelta(days=1),
+        ).limit(1))
+        if limited is not None:
+            await session.commit()
+            return None, False
         attempts = await session.scalar(select(func.count()).select_from(RawApiResponse).where(
             RawApiResponse.source == PORT_CALL_SOURCE, RawApiResponse.received_at >= now - timedelta(days=1),
         ))

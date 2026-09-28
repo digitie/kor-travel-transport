@@ -171,6 +171,44 @@ def test_remove_only_guideline_coordinates_and_preserve_good_data_on_failure(tmp
     asyncio.run(run())
 
 
+def test_provider_rate_limit_stops_other_ports_for_24_hours_but_keeps_positive_cache(tmp_path):
+    async def run():
+        settings = Settings(database_url=f"sqlite+aiosqlite:///{tmp_path / 'quota.db'}", seed_sample_data=False)
+        engine, factory = create_engine_and_session_factory(settings.database_url)
+        await init_database(engine)
+        service = RailMaritimeCollectionService(settings)
+        calls = 0
+
+        class Client:
+            async def get_port_calls(self, **_kwargs):
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    raise KricRateLimitError("quota")
+                return (LOCATION,)
+
+        try:
+            async with factory() as session:
+                job = CollectionRun(started_at=now_utc(), status="running", trigger="test")
+                session.add(job)
+                await session.commit()
+                assert (await service._port_call_location(session, job.id, Client(), "cached", TARGET))[1]
+                assert await service._port_call_location(session, job.id, Client(), "limited", TARGET) == (None, False)
+                assert await service._port_call_location(session, job.id, Client(), "new", TARGET) == (None, False)
+                assert (await service._port_call_location(session, job.id, Client(), "cached", TARGET))[1]
+                assert calls == 2
+                assert await session.scalar(select(func.count()).select_from(RawApiResponse)) == 2
+                reservation = await session.scalar(select(RawApiResponse).where(RawApiResponse.parse_status == "failed"))
+                reservation.received_at = now_utc() - timedelta(hours=25)
+                await session.commit()
+                assert (await service._port_call_location(session, job.id, Client(), "new", TARGET))[1]
+                assert calls == 3
+        finally:
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("candidates", [
     (), (LOCATION, LOCATION),
     (PortCall("D000", "인천", "28", "인천광역시", None, None, None),),

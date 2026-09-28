@@ -75,8 +75,9 @@ def _collect_reference(kind: str) -> dict[str, Any]:
     action = service.collect_rail_reference if kind == "rail" else service.collect_maritime_reference
     result = asyncio.run(_run_with_session(settings, action))
     if result.get("status") == "partial_success":
-        raise Failure(description="항구 기준정보는 저장했지만 일부 기항지 위치 조회에 실패했습니다.",
-                      metadata={"run_id": result["run_id"], "failed_provider_calls": result["port_location_failed_calls"]},
+        raise Failure(description="항구 기준정보는 저장했지만 일부 기항지 위치 조회가 실패하거나 유예됐습니다.",
+                      metadata={"run_id": result["run_id"], "failed_provider_calls": result["port_location_failed_calls"],
+                                "deferred_port_locations": result.get("port_location_deferred_count", 0)},
                       allow_retries=False)
     return result
 
