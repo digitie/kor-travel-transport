@@ -117,9 +117,14 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
   const moved = useCallback((bounds: Bounds, nextZoom: number) => {
     setZoom(nextZoom);
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setViewport({
-      min_longitude: Math.max(-180, bounds.getWest()).toFixed(4), min_latitude: Math.max(-90, bounds.getSouth()).toFixed(4),
-      max_longitude: Math.min(180, bounds.getEast()).toFixed(4), max_latitude: Math.min(90, bounds.getNorth()).toFixed(4),
+    timer.current = setTimeout(() => setViewport((previous) => {
+      const next = {
+        min_longitude: Math.max(-180, bounds.getWest()).toFixed(4), min_latitude: Math.max(-90, bounds.getSouth()).toFixed(4),
+        max_longitude: Math.min(180, bounds.getEast()).toFixed(4), max_latitude: Math.min(90, bounds.getNorth()).toFixed(4),
+      };
+      // 패널 높이/스크롤 변화로 같은 bounds의 moveend가 와도 선택 목록을 지우거나
+      // 동일 DB 조회를 반복하지 않는다. 실제 이동·확대 시에는 기존대로 갱신한다.
+      return (Object.keys(next) as (keyof Viewport)[]).every((key) => next[key] === previous[key]) ? previous : next;
     }), 250);
   }, []);
   const truncated = Object.entries(loaded).filter(([, row]) => row.truncated).map(([kind]) => placeKindLabel(kind));

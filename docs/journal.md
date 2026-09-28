@@ -1,5 +1,15 @@
 # journal.md — 작업 일지
 
+## 2026-09-28 Weather 실제 외형 일치화 착수
+
+- Weather 로컬 정본 `c25642099`의 색상·글꼴 fallback·17rem 레일·카드형 헤더·여백을
+  Transport admin에 반영한다. 기존 청록색 보존을 중단하고 사용자 지정 참조에 맞춘다.
+- Hallmark는 참조 대조/반응형 검증에, shadcn은 기존 Base UI 컴포넌트의 역할·크기
+  통일에 적용했다. 저장 데이터 조회·provider 호출·스케줄·POST 로그아웃은 유지한다.
+- WSL 단위 109개·린트·타입·빌드 통과. E2E/Docker/독립 리뷰/운영 배포는 진행 중이다.
+- 추가 요청인 parking-radar 공용 PostgreSQL 이전은 이 UI PR 머지 뒤 별도 PR로
+  수행한다. 백업·복구 리허설과 데이터 동등성 검증 전 원본 DB를 삭제하지 않는다.
+
 ## 2026-09-28 PR #46 shadcn·Weather UI n150 검증 완료
 
 - runtime 후보 `8ff8e7c541d05f46c5736a6f97edd762f2d7da9a`, 공식 admin Dockerfile

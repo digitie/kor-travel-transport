@@ -4,6 +4,7 @@ import { Activity, Bus, ChartNoAxesCombined, Database, LogOut, Map, Plane, Route
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
+import { cn } from "@/lib/utils";
 
 const items = [
   ["/", "현황", Activity],
@@ -27,9 +28,52 @@ export function AdminShell({ children }: { children: ReactNode }) {
   // 로그인 문서가 열린 뒤에도 정리해 이전 문서의 비동기 작업과 경합하지 않는다.
   useEffect(() => { if (pathname === "/login") clearDashboardCache(); }, [pathname]);
   if (pathname === "/login") return <>{children}</>;
-  return <div className="admin-layout"><a className="skip-link" href="#main-content">본문으로 건너뛰기</a><aside className="rail"><Link className="brand" href="/"><strong>Kor Travel Transport</strong><span>운영 관리 화면</span></Link><nav className="nav" aria-label="주요 메뉴"><p className="nav-label">교통 정보·운영</p>{items.map(([href, label, Icon]) => <Link aria-current={pathname === href ? "page" : undefined} className={pathname === href ? "active" : ""} href={href} key={href}><Icon aria-hidden="true" size={16} /> {label}</Link>)}</nav><form action="/api/auth/logout" method="post" onSubmit={clearDashboardCache}><button className="sign-out" type="submit"><LogOut aria-hidden="true" size={15} /> 로그아웃</button></form></aside><main className="main" id="main-content" tabIndex={-1}>{children}</main></div>;
+  const activeHref = items.map(([href]) => href).filter((href) => href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`)).sort((a, b) => b.length - a.length)[0];
+  return (
+    <div className="transport-shell">
+      <a className="skip-link" href="#main-content">본문으로 건너뛰기</a>
+      <div className="admin-layout" data-testid="admin-shell">
+        <aside className="rail" aria-label="관리자 사이드바" data-slot="admin-shell-rail">
+          <div className="rail-shell">
+            <div className="rail-header">
+              <Link className="brand" href="/" aria-label="Kor Travel Transport 홈">
+                <span className="brand-mark"><Route aria-hidden="true" size={17} /></span>
+                <span className="brand-wordmark">Transport</span>
+                <span className="brand-subtitle">Admin UI</span>
+              </Link>
+            </div>
+            <nav className="nav rail-nav" aria-label="주요 메뉴">
+              {items.map(([href, label, Icon]) => (
+                <Link aria-current={activeHref === href ? "page" : undefined} className={cn("nav-link", activeHref === href && "active")} href={href} key={href}>
+                  <Icon aria-hidden="true" size={16} strokeWidth={1.8} /><span>{label}</span>
+                </Link>
+              ))}
+            </nav>
+            <form className="rail-footer" action="/api/auth/logout" method="post" onSubmit={clearDashboardCache}>
+              <button className="nav-link logout-button" type="submit"><LogOut aria-hidden="true" size={16} strokeWidth={1.8} /><span>로그아웃</span></button>
+            </form>
+          </div>
+        </aside>
+        <main className="main" id="main-content" tabIndex={-1}><div className="page-body">{children}</div></main>
+      </div>
+    </div>
+  );
 }
 
 export function PageHeader({ title, description, actions }: { title: string; description: string; actions?: ReactNode }) {
-  return <header className="page-header"><div><p className="eyebrow">Kor Travel Transport</p><h1>{title}</h1><p>{description}</p></div>{actions ? <div className="page-header-actions">{actions}</div> : null}</header>;
+  const pathname = usePathname();
+  return (
+    <header className="page-header-wrap" data-slot="admin-shell-header">
+      <div className="page-header">
+        <div className="page-header-copy">
+          <div className="page-context"><span className="page-path">{pathname}</span></div>
+          <div className="page-header-row">
+            <h1>{title}</h1>
+            {actions ? <div className="page-header-actions">{actions}</div> : null}
+          </div>
+          <p className="description">{description}</p>
+        </div>
+      </div>
+    </header>
+  );
 }

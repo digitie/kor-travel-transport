@@ -50,6 +50,12 @@ Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks
 
 ### T-042 Transport 전용 운영 관리 UI
 
+- [ ] Weather 실제 구현 기준으로 Transport look and feel·레이아웃을 통일하고
+      WSL/Docker·독립 적대적 리뷰 2명·n150 live E2E 후 별도 PR로 머지한다.
+- [ ] 위 UI PR 머지 후 parking-radar DB를 공용 PostgreSQL Docker로 이전한다.
+      docker-manager 최신 설정 확인 → 논리 백업/복구 리허설 → 전용 DB·role 이전 →
+      행 수·최근 관측·API·수집 검증 → live E2E 순서다. 원본 DB는 검증 전 삭제하지 않는다.
+      사용자 지시 순서에 따라 UI PR에서는 DB/DSN/운영 컨테이너를 변경하지 않는다.
 - [ ] PR #46 Popper P2: 내장 지도에서 검색 조건/전달 장소 목록이 바뀌면 이전 겹침 선택
       목록을 제거하거나 현재 결과로 제한한다. 전용 지도는 조회 변경 시 제거되지만 내장 지도는
       이전 실제 장소를 선택할 수 있다. 닫기/재선택이 가능해 후속으로 분리하며 회귀 테스트를 추가한다.

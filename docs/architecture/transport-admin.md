@@ -31,7 +31,9 @@ HttpOnly 서명 세션을 통과한 뒤에만 Next.js server route가 다음의 
 
 - 공통 UI는 shadcn/ui(Base UI, base-nova) + Tailwind v4다. 공식 컴포넌트 소스는
   `components/ui/`, 설정은 `components.json`, 의미 색상 연결은 `app/globals.css`에 둔다.
-  Weather형 배치와 기존 색상은 유지하며 legacy 스타일은 별도 CSS 레이어로 분리한다.
+  Weather `c25642099`의 실제 배치·색상·글꼴 fallback을 기준으로 한다. 밝은 17rem
+  레일, 파란 강조색, 24px 헤더 제목, 24/16/12px 반응형 여백을 공유한다.
+  모바일에서는 가로 메뉴와 로그아웃을 유지한다. legacy 스타일은 별도 CSS 레이어로 분리한다.
   로그인·검색·다중 선택·탭·상태·Dagster 표의 키보드 및 반응형 계약을 E2E로 검증한다.
 - `교통·유가`는 고속도로·유가를 한 화면에서 저장된 7일 통계와 함께 보여 준다. 유종·노선·수집
   source 코드는 화면에서 사람이 이해할 수 있는 명칭으로 바꾸며, 비교가 필요한 값은 Apache

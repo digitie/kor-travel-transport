@@ -2,6 +2,12 @@
 
 ## 현재 상태
 
+- 2026-09-28 후속: PR #46은 `50215b3`으로 머지됐다. 새 `codex/weather-visual-parity`
+  브랜치에서 Weather 실제 구현과 Transport 외형을 맞춘다. 밝은 레일·파란 토큰·카드형
+  헤더·컨트롤/표 밀도를 적용했다. WSL 단위 109개·린트·타입·빌드 통과, 화면 E2E와
+  Docker/리뷰/운영 검증은 진행 중이다. 이 UI PR 머지 후 parking-radar DB를 공용
+  PostgreSQL Docker로 옮긴다. 이번 UI PR에서는 DB·DSN·API·worker를 변경하지 않는다.
+
 - 2026-09-28 14:35 KST PR #46 후보 `8ff8e7c541d05f46c5736a6f97edd762f2d7da9a`의
   shadcn/Weather형 관리 UI를 n150에 배포했다. 공식 Dockerfile 이미지 `cda9a4d83c3d`,
   UI 컨테이너 `efadbf197aca`가 healthy/재시작 0/host network다. API·worker·legacy
