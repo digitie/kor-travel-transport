@@ -1,5 +1,107 @@
 # journal.md — 작업 일지
 
+## 2026-09-28 Dagster healthcheck exec 계약과 code-server 8시간 정지 조사
+
+- `docker-compose.shared.yml`의 Dagster 세 서비스에 Manager #426·Map #1284와 같은
+  healthcheck 계약을 적용했다. code-server probe는 dagster CLI 대신 `python -I`로
+  `grpc_health`의 `DagsterApi` 판정을 8초 deadline과 함께 부른다(interval 30s, timeout 10s,
+  retries 5, start_period 180s, start_interval 5s). webserver probe는 같은 GraphQL 판정을
+  `python -I`로 바꿨다. daemon `liveness-check`는 interval 120s, timeout 60s, retries 2,
+  start_interval 15s로 바꿨다(tolerance는 300s). 세 서비스 모두 `init: true`다.
+  compose 파일은 이 파일만 Dagster 서비스를 정의한다.
+- `backend/tests/test_dagster_healthcheck_contract.py`는 이름이 아니라 command에서 Dagster
+  서비스를 찾는다. exec 형식(셸 감싸기·`disable` 금지), `python -I`, `init: true`를 확인한다.
+  code-server probe는 `Check`의 deadline이 docker timeout보다 짧은 숫자 상수인지 AST로 보고,
+  실제 gRPC health 서버 앞에서 실행해 `DagsterApi`가 SERVING일 때만 exit 0인지 확인한다.
+  daemon은 timeout과 tolerance를 확인한다. `origin/main` compose에 돌리면 빨갛다.
+- 적대 리뷰 반영: 첫 판 테스트는 문자열 조각만 봐서 `timeout=None`, `NOT_SERVING` 반전,
+  docker timeout보다 긴 deadline, `CMD sh -c`, `/usr/bin/env python`, `disable: true`가 모두
+  초록이었다. daemon의 "120s×2 ≤ 300s" 불변식은 docker가 probe가 끝난 뒤에야 interval을
+  센다는 점을 빠뜨려 아무것도 묶지 않았다. 실제 최악은 30 + 300 + 60 + 2 × (120 + 60) =
+  750s이고, 기다리는 소비자가 없어 테스트에서 뺐다. runbook의 최소 반영 경로는 `.env.server14`의
+  `BACKEND_RUNTIME_IMAGE`를 그대로 읽어, 21:13Z draft PR #43 배포가 바꾼 `ab25bf7b`로 세
+  서비스를 옮길 뻔했다. 이미지 고정·config hash gate·daemon 선정지를 넣었다. 첫 판 journal
+  편집은 아래 2026-09-27 KRIC 항목의 제목을 지웠다가 되살렸다.
+- 재리뷰 반영: runbook의 수동 블록에는 구멍이 넷 있었다. 첫째, step 4의 탈출 명령
+  `compose start dagster-daemon`은 n150에서 실패한다. compose가 daemon의 의존
+  `migrate`·`dagster-migrate`를 따지는데, 한 번만 도는 그 컨테이너가 project에 없어 "missing
+  dependency"로 거부한다. daemon이 멈춘 동안에는 `run_monitoring`도 돌지 않아 끼인 run이 스스로
+  끝나지 않는데, 대기 루프에 상한도 없었다. 둘째, gate는 STOP을 출력만 했고 붙여 넣은 블록은 계속
+  진행했다. gate는 대기(최대 17분) 전에 한 번만 돌아 그 사이 PR #43 세션의 `.env.server14` 편집을
+  잡지 못했다. 셋째, 되돌리기는 같은 셸의 export에 기대어 새 셸에서는 draft 이미지로 옮겨 갔다.
+  넷째, gate는 code-server만 봤다. 이 절차를 `scripts/redeploy-dagster-services-server14.sh`로
+  옮겼다. `set -euo pipefail`에 렌더링 비교(세 서비스의 healthcheck·init 밖 차이 거부), 세 컨테이너
+  gate(각자의 이미지 문자열과 DSN을 넣어 계산, DSN은 scheme 차이만 허용), 고정 이미지 태그, 상한
+  있는 대기, 교체 직전 재확인, EXIT trap의 `docker start`를 넣었다. 되돌리기는 같은 스크립트에 옛
+  파일을 준다. `test_redeploy_dagster_services_script.py`가 가짜 docker·curl 앞에서 순서와 멈춤을
+  확인한다.
+- n150 읽기 전용 확인(2026-09-27 22:34Z): 옛 파일과 이 브랜치 파일의 렌더링 차이는 세 서비스의
+  healthcheck·init 경로 11개뿐이었다. 자기 이미지 문자열과 DSN을 넣으면 세 컨테이너 모두 label
+  hash와 같았다(code-server `7aab39fc`, webserver `bb742e8a`, daemon `e32bf6e3`). webserver·daemon의
+  drift는 `kor-travel-airport-backend:latest` 문자열과 DSN scheme(`postgresql://`)뿐이다. 그들이
+  실행 중인 `c8b47811`은 host에서 지워졌고 `:latest`는 지금 `3769528a`다. 고정 이미지의
+  dagster-postgres 0.29.24에는 `psycopg2.connect(` 호출이 없고 모든 storage가 SQLAlchemy
+  `create_engine`으로 연다.
+- 리뷰 중 스크립트 첫 판의 결함을 하나 더 찾았다. 백업 이름이 초 단위라, 같은 초에 되돌리기가
+  돌면 넘겨받은 백업을 덮어써 새 파일을 다시 넣었다. 백업 이름을 `mktemp`로 만들고, 넘겨받은
+  파일은 시작할 때 사본을 떠 검사·설치 모두 그 사본으로 한다.
+- 검증(n150 throwaway `--network none`, 고정 이미지의 dev 환경, 브랜치 트리의 conftest): 새 테스트
+  7개와 기존 계약 13개가 모두 통과했고, Docker 이미지 배치(`/app/scripts`·`/app/tests`)에서도 새
+  테스트 7개가 통과했다. `origin/main`에서는 스크립트가 없어 7개 모두 실패한다. 스크립트 변형
+  10개는 모두 빨갛다. 첫 gate를 출력만 하게 한 것, 대기 뒤 gate를 뺀 것, 렌더링 비교를 무시한
+  것, EXIT trap을 뺀 것, 탈출을 `compose start`로 되돌린 것이 여기에 든다. 고정 이미지를 export하지
+  않은 것, DSN 비교를 뺀 것, 태그를 뺀 것, daemon을 멈추지 않은 것, 검사하지 않은 원본 파일을 넣은
+  것도 빨갛다. 이번에는 `uv sync --locked`를 쓰지 않았다. `python-krex-api` git 의존성 fetch가
+  6분 넘게 멈춰 그 컨테이너를 내렸다.
+- 델타 리뷰(ee5fcb0..73f1131) 반영: 첫째(HIGH), EXIT trap이 SSH 끊김·출력 pipe 닫힘에서 daemon을
+  되살리지 못했다. `restore_daemon`은 `set -e` 아래에서 돌았고 첫 명령이 `echo >&2`였다. 터미널이
+  사라지면 그 echo가 EIO로 실패해 trap이 `docker start` 전에 끝났다. pipe가 닫히면 그 echo가 다시
+  SIGPIPE를 받았다. 리뷰는 SIGPIPE를 trap하지 않아 bash가 EXIT trap 없이 죽는다고 봤다. 실측은
+  달랐다. 비대화형 bash는 EXIT trap이 있으면 SIGPIPE에도 그 trap을 돌린다(WSL·n150 bash 5.3,
+  컨테이너 5.2.37). 다만 trap 안의 `$?`가 0이라 `exit "$status"`가 끊긴 실행을 exit 0으로 끝낸다.
+  trap은 이제 errexit를 풀고 INT·TERM·HUP·PIPE를 무시한다. 출력보다 `docker start`를 먼저 하고,
+  출력 실패는 버린다. `trap 'exit 141' PIPE`로 끊긴 이유를 exit code로 남긴다. `docker stop` 도중에
+  끊기면 daemon은 이미 SIGTERM을 받았으므로 stop을 마저 끝낸 뒤 start한다. 둘째(MED), 대기 뒤
+  재확인은 다른 세션이 자기 이미지로 Dagster 서비스를 다시 만든 경우를 통과시켰다. gate가 각
+  컨테이너의 자기 이미지로 계산하기 때문이다. 그러면 스크립트는 exit 0으로 끝나면서 세 서비스를
+  옛 고정 이미지로 되돌렸다. 시작할 때 세 컨테이너 ID를 적어 두고, 교체 직전에 ID가 같은지와
+  daemon이 아직 멈춰 있는지 본다. code-server 이미지를 따로 비교하지는 않는다. 컨테이너의 이미지는
+  바뀌지 않으므로 ID 비교에 들어 있다. 셋째(LOW), GraphQL을 한 번도 묻지 않고 daemon을 멈췄다.
+  URL이 틀리면 1800초 동안 daemon을 멈춘 채 헛돌았으므로 멈추기 전에 한 번 묻는다. runbook의 수동
+  `up`에는 project·`--env-file`·두 `-f`를 쓴 전체 명령을 적었다. 다른 배포 세션 표기는 PR #44로
+  고쳤다(n150에 `local/transport-pr44:backend`가 있고 #44는 열려 있다). `c8b47811`이 태그만 풀려
+  남아 있다는 지적은 받지 않았다. `docker image inspect sha256:c8b47811…`은 "No such image"이고
+  dangling 목록에도 없다(containerd snapshotter). 원래 문구를 유지하고 근거를 붙였다.
+- 델타 검증(n150 throwaway `--network none`, 고정 이미지 `148a471b`, bash 5.2.37): 스크립트 테스트
+  13개와 계약 13개가 통과했다. Docker 이미지 배치에서도 13개가 통과했다. HEAD(73f1131) 스크립트에
+  새 테스트를 돌리면 7개가 빨갛다. GraphQL 선확인, 다른 작업 세 경우, pty hangup, pipe 닫힘,
+  순서 확인이 여기에 든다. hangup·pipe·다른 작업 테스트를 5회 반복해도 모두 통과했다. 스크립트
+  변형 17개 가운데 16개가 빨갛다. 이번 변형은 옛 trap(echo 먼저·errexit), PIPE·HUP trap 제거,
+  ID 재확인 제거, daemon 재확인 제거, GraphQL 선확인 제거다. 첫 판 테스트에서는 PIPE trap 제거와
+  ID 재확인 제거가 초록이었다. 세 서비스를 다시 만든 경우는 compose up이 daemon도 띄워 daemon
+  재확인에 먼저 걸렸다. 그래서 code-server만 다시 만드는 경우를 더했고, exit code가 128+신호
+  번호인지도 본다. 남은 초록 하나는 trap 안의 신호 무시(두 번째 Ctrl-C 방어)를 뺀 변형이다.
+  `docker stop` 도중 끊김 경로도 시험하지 못했다. 가짜 docker의 stop이 즉시 끝나기 때문이다.
+- n150 실측: 새 probe는 살아 있는 14005에서 exit 0(0.7~1.2초), 닫힌 포트에서 exit 1이다.
+  기존 CLI probe는 1.8초가 걸렸다(부하 23).
+- 조사 결과 unhealthy의 원인은 probe가 아니라 code-server gRPC 서버 정지였다. 08:32Z
+  공용 PostgreSQL이 recovery mode에 들어간 뒤 배편 run `f130efff`가 event log DB 재시도에
+  실패하고 출력을 멈췄다. 이 run은 11:45:39Z `run_monitoring` 4시간 상한에 걸렸다.
+  종료 요청(`CancelExecution`)이 60초 안에 돌아오지 않았고, 11:46:42Z부터 dequeue된
+  run 7개가 모두 `StartRun` 60초 시간 초과로 실패했다. 새 run 프로세스는 생기지 않았다.
+  dagster 1.13.24는 `CancelExecution`·`StartRun`·orphan 정리를 한 `_execution_lock`으로
+  묶는다. 막힌 호출 8개가 gRPC 기본 worker 8개(`min(32, cpu+4)`, n150 4코어)를 채웠다.
+  11:53Z부터는 health·ListRepositories·GetServerId도 응답하지 않았고 location을 못 읽은
+  daemon은 19:52Z까지 스케줄을 평가하지 못했다. 공항·고속도로 5분 수집이 약 8시간 멈췄다.
+  lock을 잡은 채 멈춘 정확한 frame은 확보하지 못했다. 19:49Z/19:51Z에 다른 작업자가 daemon을
+  멈추고 code-server를 재시작해 stack을 뜨기 전에 사라졌다. docker는 unhealthy로 재시작하지
+  않으므로 healthcheck만으로는 회복되지 않는다.
+- daemon ~100% CPU는 재현하지 못했다. daemon은 19:49:25Z에 SIGTERM으로 멈춘 뒤 재기동됐고,
+  이후 샘플은 3~59%였다. cAdvisor는 root cgroup만 노출해 과거 컨테이너별 CPU 기록이 없다.
+  정지 기간의 daemon 로그는 분당 location 재로딩 실패 1건뿐이라 hot loop 흔적도 없다.
+  재기동 직후 부하 22~35에서 `liveness-check`가 10초 timeout을 4회 연속 넘었다.
+  이번 60초 timeout과 120초 주기는 이 경우를 다룬다.
+
 ## 2026-09-28 지도 다음 예정 마커·날짜 경계 및 수집 복구
 
 - 새 브랜치 `codex/transport-followups`는 PR #42 merge `b855ec1`에서 시작했다.

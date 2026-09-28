@@ -2,6 +2,23 @@
 
 ## 현재 상태
 
+- 2026-09-28 `fix/dagster-healthcheck-exec-form`에서 Dagster 세 서비스의 healthcheck를
+  exec 형식·`python -I`·`init: true` 계약으로 바꾸고, command에서 Dagster 서비스를 유도하는
+  계약 테스트를 추가했다. 아직 미배포다. 반영은 `scripts/redeploy-dagster-services-server14.sh`로
+  한다(`docs/runbooks/deployment.md` "Dagster healthcheck·init만 바뀐 반영"). 스크립트는 이미지
+  고정 → 렌더링 비교·drift gate → GraphQL 확인 → daemon 정지 → in-flight run 대기(상한 1800초) →
+  비교·gate·컨테이너 ID·daemon 정지 재확인 → 파일 교체 → Dagster 세 서비스
+  `up -d --no-deps --no-build` 순서로 진행한다. 어디서 멈추든(SSH 끊김·출력 pipe 닫힘 포함) daemon
+  컨테이너를 `docker start`로 되살린다. 되돌리기도 같은 스크립트에 옛 파일을 준다.
+  `.env.server14`의 `BACKEND_RUNTIME_IMAGE`는 PR #43 배포가 `ab25bf7b`로 바꿔 두었다
+  (PR #43은 2026-09-28 `8a34f77`로 main에 머지됐다).
+  전체 배포는 지금 대안이 아니다. `deploy-server14-remote.sh`의 `DAGSTER_POSTGRES_URL` 검사
+  (`^postgresql://`)가 지금 env 파일(`postgresql+psycopg2://`)을 거부한다.
+  transport-admin 배포도 `docker-compose.shared.yml`을 덮어쓴다. 이 브랜치는 #43 머지 뒤 main을
+  merge했으므로, 이 변경이 머지된 뒤의 main에서 나온 배포는 새 probe를 유지한다. 그 전의 트리에서
+  배포하면 옛 probe로 되돌아간다.
+  2026-09-27 11:46Z~19:51Z code-server 정지 조사는 `docs/journal.md` 같은 날짜 항목을 본다.
+
 - 2026-09-28 PR #43 `codex/transport-followups`는 backend `1dd1868`/이미지 `ab25bf7`,
   관리 UI `3b6d220`/이미지 `d187870`으로 n150에 배포됐다. DB 전용 최대 300역 다음 예정
   마커, 버스 빈 날짜/자정 경계, 모바일 전환 시 통계 차트 잘림을 수정했다.
@@ -413,6 +430,15 @@
   `n150-backup-cron.sh` 직접 실행으로 exit `0` + 실제 dump 생성까지 재검증했다.
 
 ## 다음 한 작업
+
+Dagster healthcheck 브랜치는 CI·리뷰 뒤 같은 디렉터리에 배포하는 다른 세션(2026-09-28 기준 열린
+PR #44)과 시간을 맞추고, 머지 커밋의
+`scripts/redeploy-dagster-services-server14.sh`로 Dagster 세 서비스만 재생성해 반영한다
+(`docs/runbooks/deployment.md` "Dagster healthcheck·init만 바뀐 반영"). `dagster-pin-*` 태그는
+다음 전체 릴리스까지 둔다. code-server가 다시 unhealthy가 되면 재시작 전에 스레드 stack을 먼저
+확보한다(재시작하면 lock을 잡은 frame이 사라진다). `deploy-server14-remote.sh`의
+`DAGSTER_POSTGRES_URL` regex와 `.env.server14`·example의 `postgresql+psycopg2://`를 맞추는 일은
+별도로 남아 있다.
 
 PR #43의 최종 증적 CI·머지를 확인한 뒤, 통계 장기 조회의 지연·취소 전파와 배포 직후
 호스트 I/O를 우선 보완한다. 오피넷 최신 provider와 transport의 명시 30초 설정 차이,

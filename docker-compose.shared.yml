@@ -139,12 +139,26 @@ services:
       <<: *dagster-execution-environment
     extra_hosts: !reset []
     command: ["dagster", "api", "grpc", "-h", "127.0.0.1", "-p", "14005", "-m", "app.dagster.definitions", "--inject-env-vars-from-instance"]
+    # PID 1인 dagster는 healthcheck·exec가 남긴 고아를 거두지 않는다. init이 PID 1이 되어 거둔다
+    # (2026-09-27 n150 Dagster 컨테이너 좀비 565개, Manager #426·Map #1284와 같은 계약).
+    init: true
     healthcheck:
-      test: ["CMD", "dagster", "api", "grpc-health-check", "-h", "127.0.0.1", "-p", "14005"]
+      # dagster의 gRPC health protocol(`DagsterApi`가 SERVING)을 dagster import 없이 부른다.
+      # CLI `dagster api grpc-health-check`는 같은 판정에 매번 dagster import(n150 유휴 2.4초)를
+      # 치르고 deadline이 없어, 끼인 code-server 앞에서 probe가 끝나지 않는다. 여기서는 8초 deadline.
+      # 마지막 인자는 위 command의 `-p` 포트다.
+      test:
+        - CMD
+        - python
+        - -I
+        - -c
+        - "import sys, grpc; from grpc_health.v1 import health_pb2 as h, health_pb2_grpc as g; r = g.HealthStub(grpc.insecure_channel('127.0.0.1:' + sys.argv[1])).Check(h.HealthCheckRequest(service='DagsterApi'), timeout=8); sys.exit(0 if r.status == h.HealthCheckResponse.SERVING else 1)"
+        - "14005"
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 30s
+      start_period: 180s
+      start_interval: 5s
 
   dagster-webserver:
     image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-airport-backend:latest}"
@@ -161,8 +175,10 @@ services:
       <<: *dagster-control-environment
     extra_hosts: !reset []
     command: ["dagster-webserver", "-h", "127.0.0.1", "-p", "14004", "-w", "/app/dagster_home/workspace.yaml"]
+    init: true
     healthcheck:
-      test: ["CMD", "python", "-c", "import json, urllib.request as u; q=json.dumps({'query':'{repositoriesOrError{__typename}}'}).encode(); r=u.urlopen(u.Request('http://127.0.0.1:14004/graphql', data=q, headers={'Content-Type':'application/json'}), timeout=5); raise SystemExit(0 if json.load(r).get('data', {}).get('repositoriesOrError', {}).get('__typename') == 'RepositoryConnection' else 1)"]
+      # exec 형식 + `python -I`(작업 디렉터리·PYTHON* env가 probe의 import를 가리지 않게 한다).
+      test: ["CMD", "python", "-I", "-c", "import json, urllib.request as u; q=json.dumps({'query':'{repositoriesOrError{__typename}}'}).encode(); r=u.urlopen(u.Request('http://127.0.0.1:14004/graphql', data=q, headers={'Content-Type':'application/json'}), timeout=5); raise SystemExit(0 if json.load(r).get('data', {}).get('repositoriesOrError', {}).get('__typename') == 'RepositoryConnection' else 1)"]
       interval: 15s
       timeout: 5s
       retries: 8
@@ -184,12 +200,19 @@ services:
       DAGSTER_DAEMON_HEARTBEAT_TOLERANCE: "300"
     extra_hosts: !reset []
     command: ["dagster-daemon", "run", "-w", "/app/dagster_home/workspace.yaml"]
+    init: true
     healthcheck:
+      # dagster의 정식 판정. 매번 dagster를 import하고 metadata DB까지 왕복한다(n150 부하 때 10초 초과
+      # 실측) — timeout을 60초로 두고 주기를 늘려 probe가 부하를 키우지 않게 한다.
+      # 끼인 daemon이 unhealthy로 보이기까지 최악 30s(heartbeat 주기) + 300s(위 tolerance) +
+      # 60s(진행 중이던 probe) + 2 × (120s + 60s) = 750s다. docker는 이전 probe가 끝난 뒤에야
+      # interval을 다시 센다. docker는 unhealthy를 재시작하지 않으므로 이 시간을 기다리는 쪽은 없다.
       test: ["CMD", "dagster-daemon", "liveness-check"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      interval: 120s
+      timeout: 60s
+      retries: 2
       start_period: 60s
+      start_interval: 15s
 
   dagster-gateway:
     build:
