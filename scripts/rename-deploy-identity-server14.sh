@@ -66,7 +66,9 @@ CRON_SCRIPT="${OLD_DIR}/scripts/n150-backup-cron.sh"
 # `pgrep -f`(ERE)로 보는 빌드 명령줄. n150에 배포하는 저장소들의 표준 명령 `docker compose … up -d --build`도
 # 잡는다(`docker-buildx` 플러그인 프로세스는 빌드하는 동안에만 보인다). `--no-build`는 잡지 않는다.
 # `docker build`는 `docker buildx build`·`docker builder build`의 앞부분이기도 하다.
-BUILD_PATTERN='docker-buildx|docker( image)? build|compose .*[[:space:]](build|--build)([[:space:]]|$)'
+# 첫 글자를 []로 감싼다: 이 패턴을 command line에 든 셸(런북의 `pgrep … || echo`가 fork한 bash,
+# watch 루프)이 떠 있으면 `docker-buildx` 글자 그대로와 맞아 스스로를 빌드로 본다.
+BUILD_PATTERN='[d]ocker-buildx|docker( image)? build|compose .*[[:space:]](build|--build)([[:space:]]|$)'
 
 T_ID='{{.Id}}'
 T_IMAGE='{{.Image}}'
@@ -789,6 +791,8 @@ cmd_window() {
   fi
   schedule_states > "$WORK_DIR/schedules.before" || die "창 전 schedule 상태를 읽지 못했다."
   echo "창 전 schedule $(wc -l < "$WORK_DIR/schedules.before")개 기록"
+  # 재빌드가 몇 분 걸리는 사이 다른 빌드가 시작됐을 수 있다. 자기 빌드는 끝났으니 중단 전에 한 번 더 본다.
+  no_builds
 
   armed=1
   trap restore_old_stack EXIT

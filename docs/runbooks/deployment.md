@@ -247,7 +247,7 @@ n150의 배포 식별자를 `kor-travel-airport`에서 `kor-travel-transport`로
     `docker image build`, `docker-buildx`)가 보이면 STOP이다. 두 단계 직전에 손으로도 본다.
 
     ```bash
-    pgrep -fa 'docker-buildx|docker( image)? build|compose .*[[:space:]](build|--build)([[:space:]]|$)' || echo "빌드 없음"
+    pgrep -fa '[d]ocker-buildx|docker( image)? build|compose .*[[:space:]](build|--build)([[:space:]]|$)' || echo "빌드 없음"
     ```
 - Manager의 `chore/retire-dedicated-postgres` release는 창 전에 따로 설치·검증한다. Manager 개명
   release(target `transport`)는 CI를 통과해 두고, 창이 끝난 뒤 설치한다.

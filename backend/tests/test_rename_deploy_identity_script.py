@@ -44,6 +44,15 @@ _SCRIPT = next(
     _BACKEND_ROOT.parent / "scripts" / _SCRIPT_NAME,
 )
 
+
+def _build_pattern() -> str:
+    """스크립트의 BUILD_PATTERN 그대로(사본을 두면 둘이 갈라져도 테스트는 초록이다)."""
+    prefix = "BUILD_PATTERN='"
+    lines = [line for line in _SCRIPT.read_text(encoding="utf-8").splitlines() if line.startswith(prefix)]
+    assert len(lines) == 1 and lines[0].endswith("'"), lines
+    return lines[0][len(prefix) : -1]
+
+
 _OLD = "kor-travel-airport"
 _NEW = "kor-travel-transport"
 _ADMIN = "kor-travel-transport-admin"
@@ -668,6 +677,8 @@ class Host:
                 [2210, f"docker compose --project-name {_ADMIN} --env-file .env.server14 "
                        "-f docker-compose.transport-admin.yml up -d --no-build --force-recreate"],
                 [3301, f"bash /home/digitie/rename-deploy-identity-server14.sh window {_R}"],
+                # 런북의 손 확인: `pgrep … || echo`는 fork한 bash가 패턴을 command line에 들고 산다.
+                [3302, f"bash -c pgrep -fa '{_build_pattern()}' || echo 빌드 없음"],
             ],
             "schedules": [
                 ["airport_collection_job_schedule", "RUNNING"],
