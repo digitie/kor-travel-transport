@@ -8,8 +8,8 @@
   호출하고 backend·code-server가 공용 application DB, Dagster가 공용 metadata DB를 쓴다.
 - 공용 DB의 실제 주차 관측 735,925건과 최신 16:45:03 KST, 앱 role 소유·비특권 설정을
   확인했다. 기존 parking-radar live E2E 5개가 6.7초에 통과했다.
-- Manager 최신 `68cc1a9`과도 일치한다. postgres 스킬의 대상 확인 원칙에 따라 이미
-  이전된 DB에 중복 복원을 하지 않았다. DSN 변경/DB 생성·삭제/컨테이너 재시작은 0건이다.
+- Manager 최신 `68cc1a9`과도 일치한다. 운영 대상 확인 결과에 따라 이미 이전된 DB에
+  중복 복원을 하지 않았다. DSN 변경/DB 생성·삭제/컨테이너 재시작은 0건이다.
   [점검 기록](runbooks/parking-shared-postgres-status.md)에 실제 연결과 범위를 남겼다.
 
 ## 2026-09-28 PR #47 Weather 실제 외형 일치화·n150 검증
