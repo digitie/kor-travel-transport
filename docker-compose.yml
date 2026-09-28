@@ -1,7 +1,7 @@
-name: kor-travel-airport
+name: kor-travel-transport
 
 # PostgreSQL은 이 파일이 아니라 `docker-compose.db.yml`에서 별도 lifecycle로 관리한다
-# (T-032). 이 스택을 올리기 전에 DB 스택을 먼저 올려 `kor-travel-airport-net`과 `postgres`
+# (T-032). 이 스택을 올리기 전에 DB 스택을 먼저 올려 `kor-travel-transport-net`과 `postgres`
 # 서비스가 존재해야 한다:
 #   docker compose -f docker-compose.db.yml up -d
 # backend는 `depends_on`으로 DB 준비를 강제하지 않는다(별도 compose 파일 간에는
@@ -71,7 +71,7 @@ services:
     volumes:
       - ./backups:/app/backups
     networks:
-      - kor-travel-airport-net
+      - kor-travel-transport-net
     ports:
       - "${PUBLIC_API_PORT:-14001}:8000"
     healthcheck:
@@ -99,7 +99,7 @@ services:
       backend:
         condition: service_healthy
     networks:
-      - kor-travel-airport-net
+      - kor-travel-transport-net
     ports:
       - "${PUBLIC_WEB_PORT:-14002}:3000"
     healthcheck:
@@ -110,5 +110,5 @@ services:
       start_period: 20s
 
 networks:
-  kor-travel-airport-net:
+  kor-travel-transport-net:
     external: true

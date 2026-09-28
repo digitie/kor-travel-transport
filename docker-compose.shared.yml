@@ -69,7 +69,7 @@ x-dagster-execution-environment: &dagster-execution-environment
 
 services:
   backend:
-    image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-airport-backend:latest}"
+    image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-transport-backend:latest}"
     network_mode: host
     networks: !reset []
     ports: !reset []
@@ -110,7 +110,7 @@ services:
 
   # Dagster 자신의 run/event/schedule storage schema는 application Alembic과 별개다.
   dagster-migrate:
-    image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-airport-backend:latest}"
+    image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-transport-backend:latest}"
     restart: "no"
     network_mode: host
     command: ["dagster", "instance", "migrate"]
@@ -119,7 +119,7 @@ services:
     extra_hosts: !reset []
 
   migrate:
-    image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-airport-backend:latest}"
+    image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-transport-backend:latest}"
     restart: "no"
     network_mode: host
     command: ["alembic", "upgrade", "head"]
@@ -131,7 +131,7 @@ services:
   # 이 컨테이너만 job 모듈을 import하고 run worker를 실행한다. webserver/daemon은
   # workspace gRPC를 통해서만 연결하므로 `dagster dev`의 child heartbeat에 의존하지 않는다.
   dagster-code-server:
-    image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-airport-backend:latest}"
+    image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-transport-backend:latest}"
     restart: unless-stopped
     network_mode: host
     depends_on:
@@ -165,7 +165,7 @@ services:
       start_interval: 5s
 
   dagster-webserver:
-    image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-airport-backend:latest}"
+    image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-transport-backend:latest}"
     restart: unless-stopped
     network_mode: host
     depends_on:
@@ -189,7 +189,7 @@ services:
       start_period: 30s
 
   dagster-daemon:
-    image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-airport-backend:latest}"
+    image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-transport-backend:latest}"
     restart: unless-stopped
     network_mode: host
     depends_on:
@@ -244,5 +244,5 @@ services:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:${PUBLIC_WEB_PORT:-14002}/').then((r) => { if (!r.ok) process.exit(1); }).catch(() => process.exit(1))"]
 
 networks:
-  kor-travel-airport-net:
+  kor-travel-transport-net:
     external: true

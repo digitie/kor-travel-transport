@@ -1,6 +1,6 @@
 # Short-lived local/live validation override. It uses PostgreSQL like the main
 # stack. Run Docker only in WSL/local or on 192.168.1.14; never on 192.168.1.13.
-name: kor-travel-airport-live
+name: kor-travel-transport-live
 
 services:
   postgres:

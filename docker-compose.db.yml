@@ -1,4 +1,4 @@
-name: kor-travel-airport-db
+name: kor-travel-transport-db
 
 # PostgreSQL을 앱(backend/frontend) compose 스택과 분리된 독립 lifecycle로 운영한다
 # (kor-travel-docker-manager 패턴 참고 — DB는 앱 재배포/재빌드와 무관하게 유지되어야 한다).
@@ -19,7 +19,7 @@ services:
     volumes:
       - parking_radar_postgres_data:/var/lib/postgresql/data
     networks:
-      - kor-travel-airport-net
+      - kor-travel-transport-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -28,8 +28,8 @@ services:
       start_period: 10s
 
 networks:
-  kor-travel-airport-net:
-    name: kor-travel-airport-net
+  kor-travel-transport-net:
+    name: kor-travel-transport-net
 
 volumes:
   parking_radar_postgres_data:
