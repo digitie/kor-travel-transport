@@ -4,12 +4,12 @@
 
 ## n150 현재 운영 절차
 
-1. n150에 `/home/digitie/apps/kor-travel-airport/.env.server14`를 만들고
+1. n150에 `/home/digitie/apps/kor-travel-transport/.env.server14`를 만들고
    [`.env.server14.example`](../../.env.server14.example)의 실제 DB 비밀번호와 운영
    API key를 입력한다.
 2. WSL 로컬 테스트와 `docker compose config`를 통과시킨다.
 3. [`scripts/deploy-server14.sh`](../../scripts/deploy-server14.sh)를 실행한다. 이
-   스크립트는 대상 host가 `192.168.1.14`이고 Compose project가 `kor-travel-airport`인지 먼저
+   스크립트는 대상 host가 `192.168.1.14`이고 Compose project가 `kor-travel-transport`인지 먼저
    확인한 뒤 현재 Git `HEAD`를 candidate artifact로 만들어 n150의 `docker compose`만
    호출하며 다른 Compose project를 중지하지 않는다. 배포 직후 `/health.release_sha`가
    candidate SHA와 일치하는지도 확인한다.
@@ -29,11 +29,16 @@ receipt-gated remote deploy를 호출하므로 n150에 `.git`이 없어도 된�
 
 ```bash
 REMOTE_HOST=192.168.1.14 \
-REMOTE_APP_DIR=/home/digitie/apps/kor-travel-airport \
+REMOTE_APP_DIR=/home/digitie/apps/kor-travel-transport \
 ./scripts/deploy-server14.sh
 ```
 
 ### Dagster healthcheck·init만 바뀐 반영
+
+> 2026-09 운영 식별자 개명 cutover([ADR-010](../adr/010-deploy-identity-rename-transport.md))가 #45의
+> healthcheck·`init` 반영을 전체 release로 대신했다(여섯 서비스가 모두 R로 다시 만들어진다). 아래
+> 절차는 그 뒤 healthcheck·`init`만 바뀐 반영에 쓴다. 2026-09-28 기준 이미지·태그 설명은 그 시점
+> 기록이다.
 
 `docker-compose.shared.yml`에서 Dagster 세 서비스의 healthcheck·`init`만 바뀌면 전체 배포를 쓰지
 않는다. 전체 배포는 `up -d --build`로 backend·frontend·gateway 이미지를 n150에서 다시 빌드한다.
@@ -79,10 +84,10 @@ bash /tmp/redeploy-dagster-services-server14.sh /tmp/docker-compose.shared.yml.n
 4. Dagster GraphQL(`DAGSTER_GRAPHQL_URL`, 기본 `http://127.0.0.1:14004/graphql`)에서 in-flight run을
    한 번 읽는다. 읽지 못하면 daemon을 멈추기 전에 STOP이다. 그대로 멈추면 7의 대기가 상한까지
    daemon을 멈춘 채 헛돈다.
-5. 고정 이미지에 `kor-travel-airport-backend:dagster-pin-<ID 앞 12자리>` 태그를 붙인다.
+5. 고정 이미지에 `kor-travel-transport-backend:dagster-pin-<ID 앞 12자리>` 태그를 붙인다.
 6. daemon을 `docker stop`으로 멈춘다(schedule·queue dequeue는 daemon이 한다). 이때부터 어디서
    끝나든(STOP·실패·Ctrl-C·SSH 끊김·출력 pipe 닫힘) EXIT trap이
-   `docker start kor-travel-airport-dagster-daemon-1`로 옛 daemon 컨테이너를 그대로 되살린다. trap은
+   `docker start kor-travel-transport-dagster-daemon-1`로 옛 daemon 컨테이너를 그대로 되살린다. trap은
    errexit를 풀고 신호를 무시한 채 출력보다 `docker start`를 먼저 한다. 터미널이 사라졌거나 pipe가
    닫혔으면 출력이 실패하기 때문이다. 신호로 끝나면 exit code 128+번호(HUP 129, PIPE 141)를 남긴다.
    이렇게 바꾸지 않으면 bash가 EXIT trap을 돌려도 trap 안의 `$?`가 0이라 끊긴 실행이 exit 0으로
@@ -105,7 +110,7 @@ bash /tmp/redeploy-dagster-services-server14.sh /tmp/docker-compose.shared.yml.n
 10. 효과 확인: 세 컨테이너가 고정 이미지로 떠 있고 3의 gate가 새 파일로 통과해야 한다. 그다음 셋 다
     healthy가 되기를 기다린다(기본 600초).
 
-- 재생성되는 컨테이너는 `kor-travel-airport-dagster-{code-server,webserver,daemon}-1`뿐이다.
+- 재생성되는 컨테이너는 `kor-travel-transport-dagster-{code-server,webserver,daemon}-1`뿐이다.
   backend·frontend·`dagster-gateway`·`migrate` 계열은 건드리지 않는다. 이미지는 빌드하지 않는다.
 - code-server는 이미지가 그대로이고 healthcheck·`init`만 바뀐다. webserver·daemon은 의도적으로
   code-server와 같은 이미지로 바뀐다. 2026-09-28 11:29 KST 이후 code-server는
@@ -118,35 +123,35 @@ bash /tmp/redeploy-dagster-services-server14.sh /tmp/docker-compose.shared.yml.n
   `postgresql://`에서 `postgresql+psycopg2://`로 바뀌고 사용자·host·DB·비밀번호는 같다.
   code-server와 그 run worker는 이미 이 scheme으로 같은 metadata DB에 붙어 있다. dagster_postgres
   0.29.24는 이 DSN을 SQLAlchemy로만 연다.
-- STOP이면 반영을 미룬다. 전체 배포로도 지금은 반영할 수 없다. `deploy-server14-remote.sh`는
-  `DAGSTER_POSTGRES_URL`이 `^postgresql://`이어야 하는데 `.env.server14`와 `.env.server14.example`은
-  `postgresql+psycopg2://`라 거부된다. env 파일이나 그 regex를 맞춘 뒤에야 전체 배포가 대안이 된다.
+- STOP이면 반영을 미루거나 전체 배포로 반영한다. ADR-010부터 `deploy-server14-remote.sh`는
+  `DAGSTER_POSTGRES_URL`의 `postgresql+psycopg2://`(`.env.server14`·`.env.server14.example`의 형식)도
+  받는다. 그 전에는 `^postgresql://`만 받아 전체 배포가 거부됐다.
 - `dagster-pin-*` 태그는 다음 전체 릴리스까지 둔다. 이 태그가 없으면 반영 뒤 고정 이미지를 붙잡는
   태그는 다른 작업이 관리하는 태그(현재 `local/transport-pr44:paced`)일 수 있다. 그 태그가 지워지면 되돌리기의
   재생성이 이미지를 찾지 못한다(compose가 `sha256:…`을 pull하려다 실패한다).
 - 되돌릴 때는 새 셸에서 같은 스크립트에 옛 파일을 준다. 옛 파일은 스크립트가 남긴
-  `/home/digitie/apps/kor-travel-airport/docker-compose.shared.yml.before-*`(완료 메시지에 경로가 나온다)나
+  `/home/digitie/apps/kor-travel-transport/docker-compose.shared.yml.before-*`(완료 메시지에 경로가 나온다)나
   `git show "$m^1:docker-compose.shared.yml"`이다. 스크립트가 고정 이미지를 code-server에서 다시
   읽고(반영 뒤에도 고정 이미지다) daemon 정지·run 대기·gate를 똑같이 한다. healthcheck·`init`만
   돌아가고 webserver·daemon은 code-server 이미지에 남는다.
 - 스크립트는 세 컨테이너가 모두 실행 중일 때만 시작한다. `up`이 중간에 실패해 하나라도 떠 있지
   않으면 되돌리기도 거부한다. 그때는 아래를 직접 실행한다. 고정 이미지는 스크립트가 처음에 출력한
   `이미지 고정: sha256:…` 값이다(`docker image inspect -f '{{.Id}}'
-  kor-travel-airport-backend:dagster-pin-<12자리>`로도 읽는다). project 이름·`--env-file`·두 `-f`를
+  kor-travel-transport-backend:dagster-pin-<12자리>`로도 읽는다). project 이름·`--env-file`·두 `-f`를
   빼면 다른 렌더링이 되거나(Dagster 서비스는 `docker-compose.shared.yml`에만 있다) 고정 없이
   재생성된다.
 
   ```bash
-  cd /home/digitie/apps/kor-travel-airport
+  cd /home/digitie/apps/kor-travel-transport
   export BACKEND_RUNTIME_IMAGE=<고정 이미지 sha256:…>
   install -m 664 <옛 파일> docker-compose.shared.yml
-  docker compose --project-name kor-travel-airport --env-file .env.server14 \
+  docker compose --project-name kor-travel-transport --env-file .env.server14 \
     -f docker-compose.yml -f docker-compose.shared.yml \
     up -d --no-deps --no-build dagster-code-server dagster-webserver dagster-daemon
   ```
 
   `up`을 바로 할 수 없으면 `docker ps -a`로 daemon을 보고, 멈춰 있으면
-  `docker start kor-travel-airport-dagster-daemon-1`로 먼저 띄운다.
+  `docker start kor-travel-transport-dagster-daemon-1`로 먼저 띄운다.
 - `kor-travel-transport-admin` project는 건드리지 않는다. webserver가 다시 healthy가 될 때까지
   관리 UI의 Dagster 화면(12302 → 14004)만 잠시 502를 줄 수 있다.
 - `scripts/deploy-transport-admin-server14.sh`도 HEAD archive 전체를 같은 디렉터리에 `rsync`
@@ -186,19 +191,205 @@ destructive 운영 API이므로, 외부 gateway가 private ACL/mTLS 등으로 �
 host에는 443 listener가 없을 수 있으므로 Compose 배포만으로 기존
 `pr.digitie.mywire.org`의 외부 라우팅이 바뀐다고 가정하지 않는다.
 
+## 운영 식별자 개명 cutover (ADR-010)
+
+n150의 배포 식별자를 `kor-travel-airport`에서 `kor-travel-transport`로 옮기는 한 번짜리 절차다.
+결정과 이름 목록은 [ADR-010](../adr/010-deploy-identity-rename-transport.md)이 정본이다. 실행은
+[`scripts/rename-deploy-identity-server14.sh`](../../scripts/rename-deploy-identity-server14.sh)가 맡고,
+단계마다 조건이 어긋나면 `STOP:`을 출력하고 exit 1로 끝난다. 비밀값은 출력하지 않는다.
+
+| 바뀌는 것 | 전 | 후 |
+|---|---|---|
+| 앱 디렉터리 | `/home/digitie/apps/kor-travel-airport` | `/home/digitie/apps/kor-travel-transport` |
+| Compose project | `kor-travel-airport` | `kor-travel-transport` |
+| 컨테이너 | `kor-travel-airport-<service>-1` | `kor-travel-transport-<service>-1` |
+| 백엔드 이미지 | `.env.server14`의 `BACKEND_RUNTIME_IMAGE` | 배포 스크립트가 셸 env로 주는 `kor-travel-transport-backend:rel-<sha12>` |
+| 빌드 이미지 | `kor-travel-airport-{frontend,dagster-gateway}` | `kor-travel-transport-{frontend,dagster-gateway}` |
+| 백업 cron | digitie crontab의 `n150-backup-cron.sh` 줄 | 없음(Manager standalone backup으로 이관) |
+
+바뀌지 않는 것: 포트(14001~14005, 12301·12302·12305), 공개 hostname, 공용 DB
+`kor_travel_transport`·`kor_travel_transport_dagster`, RustFS bucket, Dagster location
+`kor-travel-transport`, `kor-travel-transport-admin` project 이름, 공항 주차 도메인(`airports` 테이블,
+`/v1/airports`, `airport_collection_job`, `AIRPORT_CODES_CSV`, trigger `dagster_airport`). 비밀값은
+돌리지 않고 legacy volume `parking-radar_parking_radar_postgres_data`도 지우지 않는다(소유자 결정).
+
+### 전제
+
+- PR #44(`codex/query-collection-reliability`)가 main에 머지됐고, 이 개명 PR은 그 뒤 main에서
+  rebase돼 머지됐다. 운영 스키마는 이미 #44의 `0015`다. #44가 없는 release는 `migrate`가 모르는
+  revision에서 실패한다. 이 머지 커밋을 R(40자리)이라 한다.
+- #44 세션은 머지 뒤 옛 디렉터리에 배포·재시작·`.env.server14` 편집을 하지 않는다. 그 세션의
+  미추적 worker 스크립트는 옛 이름을 쓰므로 창 뒤에 돌리지 않는다.
+- Manager의 `chore/retire-dedicated-postgres` release는 창 전에 따로 설치·검증한다. Manager 개명
+  release(target `transport`)는 CI를 통과해 두고, 창이 끝난 뒤 설치한다.
+- 창 전에 에이전트 공용 메모(n150 상시 서비스 목록)의 `kor-travel-airport`를 `kor-travel-transport`로
+  고친다. 옛 메모를 읽은 에이전트가 옛 컨테이너를 되살리지 않게 한다.
+- 다른 세션의 이미지 빌드(`docker compose … build`, `buildx bake`)가 돌지 않는다. n150 부하는 디스크
+  대기라 겹치면 창이 길어진다. `prebuild`와 `window`는 빌드 프로세스가 보이면 STOP이다.
+
+### 타이밍
+
+n150 시계는 UTC이고 Dagster schedule은 `Asia/Seoul`이다(`backend/app/dagster/definitions.py`).
+
+| 작업 | KST | UTC | 비고 |
+|---|---|---|---|
+| 공항 주차·고속도로 수집 | 5분마다 | 5분마다 | 고속도로 run이 17분까지 걸린 적이 있다 |
+| KRIC 시간표 | 매시 정각 | 매시 정각 | 48시간 guard라 대부분 곧 끝난다 |
+| 유가 | 00:00·08:00·16:00 | 15:00·23:00·07:00 | 보통 2시간까지, `max_runtime_seconds` 4시간 |
+| 배편 시간표 | 00:45부터 4시간마다 | 15:45부터 4시간마다 | 04:45·08:45·12:45·16:45·20:45 KST |
+| 철도·항구 기준정보 | 03:00(항구는 3일마다) | 18:00 | |
+| 버스 기준정보 | 03:30 | 18:30 | |
+| 옛 transport 백업 cron | 03:00, 3일마다 | 18:00 | `finish`가 지운다 |
+| Manager standalone 백업 | 12:15~12:55 | 03:15~03:55 | 디스크 I/O가 크다 |
+
+- `window`는 옛 daemon을 멈춘 뒤 `STARTED`·`STARTING`·`CANCELING` run이 0이 되기를 기다린다(기본
+  상한 1800초). 유가 run 시작 뒤 2시간 안에서 창을 열면 상한에 닿는다. 권장 시작은 KST 10:05~11:30
+  (UTC 01:05~02:30, 08:00 유가와 08:45 배편이 끝났는지 먼저 본다) 또는 KST 21:30~23:00(UTC
+  12:30~14:00)이다.
+- `QUEUED` run은 기다리지 않는다. 같은 metadata DB라 새 daemon이 이어서 꺼낸다. schedule마다 놓치는
+  tick은 많아야 하나다.
+- daemon이 멈춘 동안에는 run monitoring도 돌지 않아 `STARTING`에 남은 run은 스스로 끝나지 않는다.
+  대기가 상한에 닿으면 스크립트가 옛 daemon을 다시 띄우고 멈춘다. 되살아난 daemon이
+  `start_timeout_seconds`(300초)가 지난 `STARTING` run을 실패로 정리하므로 5분 이상 지난 뒤 다시
+  연다. `STARTED`로 끼인 run은 Dagster UI에서 원인을 본 뒤 종료한다(종료 요청이 60초 안에 돌아오지
+  않으면 code-server가 막힌 것이다. 2026-09-27 사례).
+- `restore-point`는 공용 DB 약 1 GB를 dump한다(9분 이상). Manager 백업 시간과 겹치지 않게 창 전에
+  돌린다.
+
+### 단계
+
+스크립트는 R 체크아웃에서 n150으로 옮겨 tmux 안에서 실행한다. SSH가 끊겨도 `window`는 옛 스택을
+되살리지만, 창을 끝까지 보려면 tmux가 필요하다.
+
+```bash
+# WSL: 전용 worktree를 R에 둔다(공유 checkout은 다른 세션이 쓴다).
+git -C /mnt/f/dev/kor-travel-transport worktree add --detach /mnt/f/dev/kor-travel-transport-R "$R"
+cd /mnt/f/dev/kor-travel-transport-R
+git show "$R:scripts/rename-deploy-identity-server14.sh" > /tmp/rename-deploy-identity-server14.sh
+scp /tmp/rename-deploy-identity-server14.sh digitie@192.168.1.14:~/
+
+# n150 (tmux)
+bash ~/rename-deploy-identity-server14.sh prepare "$R"
+bash ~/rename-deploy-identity-server14.sh restore-point
+
+# WSL, R worktree: 새 디렉터리에 R을 올리기만 한다(컨테이너는 그대로).
+DEPLOY_STAGE_ONLY=true ./scripts/deploy-server14.sh
+
+# n150 (tmux)
+bash ~/rename-deploy-identity-server14.sh prebuild "$R"
+bash ~/rename-deploy-identity-server14.sh window "$R"   # 창
+bash ~/rename-deploy-identity-server14.sh admin
+bash ~/rename-deploy-identity-server14.sh finish
+bash ~/rename-deploy-identity-server14.sh status
+```
+
+1. `prepare R`(라이브 변화 없음): 옛 project가 여섯 서비스로 돌고 새 project는 없는지 본다.
+   `~/transport-rename/`(0700)에 스냅숏(컨테이너·이미지 ID·config-hash, Manager release, release
+   파일, env 키 이름, `backups/` 목록, in-flight run), `crontab.before`, 옛 컨테이너 이미지 목록을
+   남긴다. 새 디렉터리(0700)를 만들고 `.env.server14`를 `RELEASE_SHA`·`BACKEND_RUNTIME_IMAGE`만 빼고
+   복사한다(0600). 되돌리기 이미지에 이 작업 전용 태그를 붙인다: `kor-travel-airport-rollback:backend`
+   (옛 backend), `:code`(옛 code-server, webserver·daemon도 이것으로 되돌린다. 그들이 돌던 `c8b47811`은
+   store에 없다), `:frontend`, `:gateway`(돌던 `f9f648a9`가 store에 없으면
+   `kor-travel-airport-dagster-gateway:latest`로 대신하고 그렇게 출력한다). 다른 세션의
+   `local/transport-pr4x:*` 태그가 지워져도 되돌리기가 이미지를 찾는다. 창 전이면 다시 실행해도 된다.
+2. `restore-point`: 공용 PostgreSQL과 같은 major의 client(기본은 `kor-travel-shared-postgres`
+   컨테이너의 이미지)로 두 DB를 `pg_dump -Fc`해 `~/transport-rename/restore-point/`에 둔다.
+   비밀번호는 0600 passfile에만 쓰고 docker 명령줄에는 비밀번호 없는 URI만 넘긴다. 각 dump를
+   `pg_restore --list`로 읽어 `TABLE DATA`가 있어야 `.dump`로 확정한다. API 백업
+   (`POST /v1/admin/backups`)은 기본 120초 제한에 1 GB dump가 끝나지 않으므로 쓰지 않는다.
+3. stage: 새 디렉터리에 R을 rsync하고 `.release-sha`를 쓴다. `backups/`와 `.env.server14`는 옮기지
+   않는다.
+4. `prebuild R`: R의 alembic migration 파일(CRLF 무시 내용 hash)이 옛 backend 이미지와 같고 운영 DB
+   `alembic_version`이 R의 head인지 본다. revision ID만 보지 않는다(`0015`는 첫 커밋 뒤에도 고쳐졌다).
+   렌더링한 새 project에 network가 없고(운영 overlay는 host network라 `kor-travel-transport-net`이
+   필요 없다) 백엔드 계열 여섯 서비스가 release 태그를 쓰는지 본다. `backend`·`frontend`·
+   `dagster-gateway`를 미리 빌드하고, 새 이미지와 `:code`의 dagster 버전이 같은지 본다(같아야
+   `dagster instance migrate`가 no-op이고 되돌린 옛 daemon이 metadata DB를 읽는다).
+5. `window R`(창): prepare 뒤 옛 컨테이너 이미지가 바뀌지 않았는지와 migration gate를 다시 본다.
+   창 전 schedule 상태를 적는다. 옛 daemon을 먼저 멈추고 run을 기다린 뒤 나머지 옛 서비스를
+   `docker stop`한다(rm·down 아님). 포트 14001~14005가 비었는지 본다. 옛 `.env.server14`를 새
+   디렉터리에 다시 복사해(그 사이 다른 세션의 편집을 가져온다) 두 키 밖에서 같은지 비교하고, 옛
+   파일을 `.env.server14.fenced-<날짜>`로 옮긴다. 이때부터 옛 배포 스크립트는 env가 없어 멈춘다.
+   `sudo cp -al`로 `backups/`를 hardlink 사본으로 만든다(같은 파일시스템, 추가 공간 없음, root 소유
+   유지, 옛 사본은 그대로). 새 디렉터리에서 `deploy-server14-remote.sh`로 올린다. 새 스택이 여섯
+   서비스, Dagster 세 서비스 healthy·`init`, 두 project를 통틀어 daemon 하나, backend의 `backups`
+   bind가 새 디렉터리, `/health.release_sha`가 R, frontend 응답, schedule 상태가 창 전과 같음을
+   통과하면 옛 컨테이너를 은퇴시킨다. 옛 daemon은 지우고(이미지가 store에 없어 되돌리기 재료가
+   아니다) 나머지 다섯은 `restart=no`로 바꿔 `*-retired-<날짜>`로 이름을 바꾼다. 이름으로 띄우는
+   `docker start`·Manager Start·재부팅이 옛 스택을 되살리지 못한다. 검증 전에 어디서 멈추든(STOP·
+   실패·Ctrl-C·SSH 끊김·출력 pipe 닫힘) 새 스택을 daemon부터 멈추고, env를 되돌리고, 옛 컨테이너를
+   daemon 마지막으로 다시 띄운다.
+6. `admin`: 관리 project는 이름이 그대로라 빌드하지 않는다. 떠 있는 `transport-admin-web`·
+   `transport-dagster-gateway` 이미지에 `:pre-rename` 태그를 붙이고 새 디렉터리에서
+   `up -d --no-build --force-recreate`로 세 서비스를 재생성한다(bind 경로만 바뀐다). 이미지가 그대로이고
+   12301·12302·12305가 응답하는지 본다. 관리 UI release SHA 파일은 옛 값을 그대로 옮긴다.
+7. Manager 개명 release 설치: `~/install-mgr.sh <sha>` → rebind → `ktdctl targets validate
+   --check-coordinates`, `ktdctl status transport`(컨테이너 `kor-travel-transport-backend-1`·
+   `-frontend-1`). 창과 이 설치 사이에는 Manager의 옛 airport 카드가 컨테이너를 찾지 못한다.
+8. `finish`: 어떤 컨테이너도 옛 디렉터리를 bind하거나 working_dir로 쓰지 않는지 본다. digitie
+   crontab에서 옛 `n150-backup-cron.sh` 줄만 지우고(지운 줄은 `crontab.removed`에 남긴다) 옛
+   디렉터리를 `mv -T`로 `kor-travel-airport.retired-<날짜>`로 옮긴다(대상이 있으면 STOP).
+9. 공개 확인: `https://pr-api.digitie.mywire.org/health`, `https://pr.digitie.mywire.org/api/backend/health`,
+   `https://transport.digitie.mywire.org/login`, `https://transport-api.digitie.mywire.org/health`
+   200, `https://transport-dagster.digitie.mywire.org/health` 204.
+
+frontend는 R에서 다시 빌드된다. 이전 frontend 이미지 뒤에 머지된 frontend 변경도 이때 함께 나간다.
+Dagster healthcheck·`init` 반영(#45)도 이 cutover가 한다. 여섯 서비스가 모두 R로 다시 만들어지므로
+아래 `redeploy-dagster-services-server14.sh`를 따로 돌리지 않는다.
+
+`.env.server14`에는 `RELEASE_SHA`와 `BACKEND_RUNTIME_IMAGE`를 두지 않는다. release SHA는 배포 스크립트가
+runtime env에 붙이고, 이미지는 배포 스크립트가 `kor-travel-transport-backend:rel-<sha12>`로 export한다.
+env 파일에 이미지를 적으면 다음 배포의 `up --build`가 같은 태그를 새 코드로 덮어써 이전 release
+이미지가 dangling이 된다. `--env-file .env.server14`만 주는 즉석 compose 실행은 `:latest` fallback을
+쓰므로 배포에는 스크립트만 쓴다.
+
+### 되돌리기
+
+72시간 관찰이 끝나 정리하기 전까지는 `bash ~/rename-deploy-identity-server14.sh rollback`으로
+되돌린다. 옛 디렉터리 자리에 빈 디렉터리가 다시 생겼으면(옛 배포 스크립트의 `mkdir -p`, 옛 backend
+bind가 만든 빈 `backups/`) 지운 뒤 `mv -T`로 되돌리고, 그 밖의 내용이 있으면 겹치지 않게 STOP이다.
+새 project를 daemon부터 멈추고, 옛 env를 되돌리고, 옛 스택을 rollback 태그로 재생성한다
+(code-server·webserver → backend·gateway·frontend → daemon 마지막, `--no-deps --no-build
+--force-recreate`). 관리 스택은 `:pre-rename` 이미지로 옛 디렉터리에서 재생성하고, 지운 crontab 줄을
+다시 넣고, 새 디렉터리의 env는 `.env.server14.rolled-back-<시각>`으로 옮긴다. Manager는 스냅숏의 이전
+sha로 다시 설치하고 rebind한다. Manager만 따로 되돌리지 않는다(live 필드가 함께 바뀐다).
+migration gate와 dagster 버전 gate를 통과한 release이므로 스키마는 그대로다.
+
+### 관찰과 정리
+
+72시간 동안 Dagster schedule run이 정상인지, Manager 상태가 초록인지 본다. Manager transport 백업
+역할이 설치되기 전까지는 주기 백업이 없으므로 `restore-point` dump를 지우지 않는다. 관찰이 끝나면 직접
+실행한다(되돌릴 수 없다).
+
+```bash
+stamp=$(cat ~/transport-rename/stamp)
+docker rm kor-travel-airport-{backend,frontend,dagster-code-server,dagster-webserver,dagster-gateway}-1-retired-$stamp
+docker network rm kor-travel-airport_default kor-travel-airport-net
+docker image rm kor-travel-airport-rollback:{backend,code,frontend,gateway} \
+  kor-travel-transport-admin-transport-admin-web:pre-rename \
+  kor-travel-transport-admin-transport-dagster-gateway:pre-rename \
+  kor-travel-airport-backend:{latest,pr39-70a563e,pr39-f2d247f,pr40-0d7d292,pr41-3a6a1c3} \
+  kor-travel-airport-frontend:latest kor-travel-airport-dagster-gateway:latest
+sudo rm -rf /home/digitie/apps/kor-travel-airport.retired-$stamp   # .env.server14.* 백업 포함
+```
+
+legacy volume `parking-radar_parking_radar_postgres_data`는 남긴다. 정리 뒤 후속 PR에서
+`deploy-server14-remote.sh`의 임시 개명 guard와 그 테스트를 지운다. 오래된
+`kor-travel-transport-backend:rel-*` 태그는 되돌릴 release 하나만 남기고 지운다.
+
 ## PostgreSQL 별도 컨테이너 (T-032)
 
 PostgreSQL은 `docker-compose.yml`(backend/frontend)이 아니라 `docker-compose.db.yml`에서
 독립 lifecycle로 관리한다(`kor-travel-docker-manager`의 "DB는 앱과 분리된 컨테이너로
 운영한다" 패턴을 단일 프로젝트 규모로 축소 적용). 두 스택은 외부 네트워크
-`kor-travel-airport-net`으로 통신한다.
+`kor-travel-transport-net`으로 통신한다.
 
 ```bash
 # DB 스택 (거의 재기동하지 않음 — 앱 배포와 무관한 lifecycle)
-docker compose --project-name kor-travel-airport-db -f docker-compose.db.yml up -d
+docker compose --project-name kor-travel-transport-db -f docker-compose.db.yml up -d
 
 # 앱 스택 (배포마다 재빌드) — DB 스택이 먼저 떠 있어야 한다
-docker compose --project-name kor-travel-airport -f docker-compose.yml up -d --build
+docker compose --project-name kor-travel-transport -f docker-compose.yml up -d --build
 ```
 
 `scripts/deploy-server14.sh`는 DB 스택이 이미 떠 있으면 건드리지 않고, 없을 때만 올린다 —
@@ -216,7 +407,8 @@ docker compose --project-name kor-travel-airport -f docker-compose.yml up -d --b
 
 ## 로컬 개발 실행
 
-DB 스택을 먼저 올려야 앱 스택이 연결할 `kor-travel-airport-net` 외부 네트워크가 생긴다(T-032).
+DB 스택을 먼저 올려야 앱 스택이 연결할 `kor-travel-transport-net` 외부 네트워크가 생긴다(T-032). 운영
+overlay(`docker-compose.shared.yml`)는 모든 서비스를 host network로 돌려 이 network를 쓰지 않는다.
 
 ```bash
 docker compose -f docker-compose.db.yml up -d
@@ -296,11 +488,11 @@ DATA_GO_KR_SERVICE_KEY=...
 
 ## ODROID M1S 배포 파일
 
-- 운영용 compose: [docker-compose.odroid.yml](</F:/dev/kor-travel-airport/docker-compose.odroid.yml>)
-- 운영용 환경 파일: [/.env.odroid](</F:/dev/kor-travel-airport/.env.odroid>)
-- 로컬 배포 스크립트: [scripts/deploy-odroid.ps1](</F:/dev/kor-travel-airport/scripts/deploy-odroid.ps1>)
-- 상태 확인 스크립트: [scripts/odroid-status.ps1](</F:/dev/kor-travel-airport/scripts/odroid-status.ps1>)
-- 원격 실행 스크립트: [deploy/odroid/remote-deploy.sh](</F:/dev/kor-travel-airport/deploy/odroid/remote-deploy.sh>)
+- 운영용 compose: [docker-compose.odroid.yml](../../docker-compose.odroid.yml)
+- 운영용 환경 파일: [/.env.odroid](../../.env.odroid)
+- 로컬 배포 스크립트: [scripts/deploy-odroid.ps1](../../scripts/deploy-odroid.ps1)
+- 상태 확인 스크립트: [scripts/odroid-status.ps1](../../scripts/odroid-status.ps1)
+- 원격 실행 스크립트: [deploy/odroid/remote-deploy.sh](../../deploy/odroid/remote-deploy.sh)
 
 비밀값 관리:
 
@@ -392,7 +584,7 @@ SEED_SAMPLE_DATA=false \
 USE_SAMPLE_CLIENT_WHEN_NO_KEY=false \
 COLLECT_INTERVAL_SECONDS=15 \
 DATA_GO_KR_SERVICE_KEY=... \
-docker compose -f docker-compose.live.yml --project-name kor-travel-airport-live up -d
+docker compose -f docker-compose.live.yml --project-name kor-travel-transport-live up -d
 ```
 
 이 스택은 빠른 검증이 끝나면 반드시 바로 내린다.
@@ -400,7 +592,7 @@ docker compose -f docker-compose.live.yml --project-name kor-travel-airport-live
 종료:
 
 ```bash
-docker compose -f docker-compose.live.yml --project-name kor-travel-airport-live down
+docker compose -f docker-compose.live.yml --project-name kor-travel-transport-live down
 ```
 
 주의:
@@ -457,7 +649,7 @@ curl -X POST http://localhost:8000/v1/admin/collect
 
 관련 문서:
 
-- [current-state.md](</F:/dev/kor-travel-airport/docs/current-state.md>)
+- [current-state.md](../current-state.md)
 - [../architecture/collection.md](../architecture/collection.md)
 
 ## WSL 테스트 기준

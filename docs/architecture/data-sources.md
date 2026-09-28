@@ -9,7 +9,7 @@
 - 수집 주기 기준 스냅샷 저장
 - provider 라이브러리: `python-krairport-api`(krairport)의
   `kac_raw_items("AirportParking", "airportparkingRT", ...)`를 통해 조회한다(`T-030`,
-  [ADR-004](</F:/dev/kor-travel-airport/docs/adr/004-krairport-provider-library.md>)). 파싱은
+  [ADR-004](../adr/004-krairport-provider-library.md)). 파싱은
   여전히 `backend/app/services/parsers.py::parse_kac_parking`이 담당한다.
 
 ## 2. 한국공항공사 전국공항 주차장 혼잡도
@@ -90,7 +90,7 @@
 - 백엔드는 `/v1/flights/status`에서 응답을 정규화해 프론트에 전달한다.
 - provider 라이브러리: `python-krairport-api`(`krairport`)의
   `kac_flight_status_detail_raw_items()`로 대체했다(`T-029`,
-  [ADR-004](</F:/dev/kor-travel-airport/docs/adr/004-krairport-provider-library.md>)). ODCloud
+  [ADR-004](../adr/004-krairport-provider-library.md)). ODCloud
   `FlightStatusListDTL`은 KAC의 다른 서비스와 달리 `openapi.airport.co.kr`이 아닌
   `api.odcloud.kr` 호스트를 쓰는 별도 provider라 krairport의 기존
   `departures()`/`arrivals()`(`StatusOfFlights` 계열)로는 닿지 않는다 — krairport에
@@ -120,7 +120,7 @@
   - provider 라이브러리: `python-krairport-api`(`krairport`)의
     `iiac_raw_items("StatusOfPassengerFlightsDeOdp", "getPassengerDeparturesDeOdp"/
     "getPassengerArrivalsDeOdp", ...)`로 대체했다(`T-029`,
-    [ADR-004](</F:/dev/kor-travel-airport/docs/adr/004-krairport-provider-library.md>)) — 기존
+    [ADR-004](../adr/004-krairport-provider-library.md)) — 기존
     endpoint와 정확히 일치해 krairport 쪽 수정 없이 바로 전환 가능했다.
 
 ## 8. 한국천문연구원 특일 정보
@@ -207,5 +207,5 @@
 
 관련 문서:
 
-- [current-state.md](</F:/dev/kor-travel-airport/docs/current-state.md>)
+- [current-state.md](../current-state.md)
 - [collection.md](collection.md)

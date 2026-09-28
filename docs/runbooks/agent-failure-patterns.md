@@ -13,7 +13,7 @@
 - **A2 (실제 사례, T-027)**: 5분 수집 주기 그대로를 strict gate threshold로 썼더니 한 샘플이
   `319.7s`가 되어 실패했다. → 외부 스케줄/네트워크 변동을 포함하는 임계값은 이론값 그대로
   쓰지 말고 safety buffer를 두고(이 저장소는 120초), 그 여유를 ADR/런북에 근거와 함께 남긴다
-  ([ADR-002](</F:/dev/kor-travel-airport/docs/adr/002-dual-check-5min-cutover.md>) 참고).
+  ([ADR-002](../adr/002-dual-check-5min-cutover.md) 참고).
 - **A3 (일반 원칙)**: 로컬(WSL2) green을 CI green과 동일시하지 않는다. 이 저장소의 CI는
   실제 PostgreSQL 16 컨테이너로 `alembic upgrade head` + `alembic check`까지 돌리므로,
   SQLite 기준 로컬 1차 테스트만 통과했다고 "완료"로 보고하지 않는다. 2차(WSL2+Docker)까지
@@ -38,7 +38,7 @@
   `airport-parking-radar`는 개발용 fork였다. → remote가 2개 이상이면 항상
   `git remote -v`와 각 remote의 최근 활동(열린 PR, 최신 커밋 날짜)을 먼저 확인하고,
   정본이 아닌 remote는 이름 자체를 구분되게 바꿔둔다
-  ([cross-repo-audit-checklist.md](</F:/dev/kor-travel-airport/docs/runbooks/cross-repo-audit-checklist.md>) 참고).
+  ([cross-repo-audit-checklist.md](cross-repo-audit-checklist.md) 참고).
 - **B5 (일반 원칙)**: 두 브랜치의 히스토리가 갈라져 있을 때, 내용이 실제로 동일한지 확인하지
   않고 병합 전략(force-push, 무조건 merge)부터 정하지 않는다. `git diff <A> <B>`로 실제 파일
   내용이 같은지부터 확인한 뒤 결정한다. (오늘 `parking-radar/main`과 현재 브랜치 HEAD가
@@ -77,6 +77,6 @@
 - **D4**: 192.168.1.13에서는 Docker start/stop/build를 실행하지 않는다. 새 Docker 운영은
   192.168.1.14에서만 한다(`CLAUDE.md` §2, `AGENTS.md`).
 - **D5**: 무인증 backup/restore API의 네트워크 경계(`TRUSTED_HOSTS_CSV`, CORS)를 건드릴 때는
-  이 결정이 [ADR-003](</F:/dev/kor-travel-airport/docs/adr/003-unauthenticated-backup-network-restriction.md>)에
+  이 결정이 [ADR-003](../adr/003-unauthenticated-backup-network-restriction.md)에
   근거한 의도된 설계임을 먼저 확인한다. "인증이 없으니 위험하다"고 판단해 임의로 인증을
   추가하기 전에 ADR을 먼저 갱신한다.

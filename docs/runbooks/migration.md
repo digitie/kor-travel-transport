@@ -8,6 +8,11 @@
 > `kor-travel-airport-db`)으로 바꿔서 사용해야 한다. 이 컷오버 자체는
 > `T-003`(`docs/tasks-done.md`)으로 이미 완료됐고, 이 문서는 향후 유사한 host 이전이
 > 필요할 때의 절차 참고용으로만 남겨둔다.
+>
+> 2026-09 추가: 운영 식별자가 다시 개명됐다([ADR-010](../adr/010-deploy-identity-rename-transport.md)).
+> 지금 값은 Compose project `kor-travel-transport`/`kor-travel-transport-db`, 앱 디렉터리
+> `/home/digitie/apps/kor-travel-transport`이고, DB는 Manager 공용 PostgreSQL(`127.0.0.1:11000`)이다.
+> 위 문단은 그 시점의 기록으로 둔다.
 
 ## 불변 조건
 

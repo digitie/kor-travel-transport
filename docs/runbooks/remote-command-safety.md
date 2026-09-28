@@ -1,6 +1,6 @@
 # 원격 명령 안전 수칙
 
-이 문서는 `kor-travel-airport`를 Windows PowerShell에서 SSH로 원격 작업할 때 반복되었던 인용부호, 인코딩, 변수 충돌 실수를 줄이기 위한 재발 방지 메모다.
+이 문서는 `kor-travel-transport`를 Windows PowerShell에서 SSH로 원격 작업할 때 반복되었던 인용부호, 인코딩, 변수 충돌 실수를 줄이기 위한 재발 방지 메모다.
 
 ## 왜 필요한가
 
@@ -110,7 +110,7 @@ SQLite의 `DateTime` 컬럼이 문자열로 저장될 때는 `2026-04-27 12:00:0
 
 - [deployment.md](deployment.md)
 - [troubleshooting.md](troubleshooting.md)
-- [docs/current-state.md](</F:/dev/kor-travel-airport/docs/current-state.md>)
+- [docs/current-state.md](../current-state.md)
 ## 8. Docker stdin heredoc
 
 - `docker run ... python - <<'PY'` 또는 `docker exec ... python - <<'PY'` 형태로 표준입력을 넘길 때는 `-i`를 반드시 넣는다.

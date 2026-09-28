@@ -7,10 +7,10 @@
 
 ## 0. 정본 선언 (가장 먼저 확인)
 
-- **정본**: `origin` → `https://github.com/digitie/kor-travel-airport.git`
+- **정본**: `origin` → `https://github.com/digitie/kor-travel-transport.git`
   (2026-08-23 `digitie/parking-radar`로 정본 확정 → 2026-09-06 `digitie/kor-travel-airport`로
-  개명. GitHub는 구 이름 `digitie/parking-radar`에 대한 접근을 새 이름으로 자동 redirect하지만,
-  새 스크립트/문서는 새 이름을 직접 참조한다). 저장소 개명과 무관하게 배포되는 웹앱
+  개명 → 이후 `digitie/kor-travel-transport`로 개명(ADR-008). GitHub는 구 이름에 대한 접근을 새
+  이름으로 자동 redirect하지만, 새 스크립트/문서는 새 이름을 직접 참조한다). 저장소 개명과 무관하게 배포되는 웹앱
   브랜드는 계속 `parking-radar`다 — README.md/CLAUDE.md §1 참고.
 - **구 레포**: `airport-parking-radar` remote → `https://github.com/digitie/airport-parking-radar.git`.
   개발 중 사용했던 fork이며, 2026-08-23 이후 새 작업의 대상이 아니다.

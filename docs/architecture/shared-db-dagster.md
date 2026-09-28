@@ -132,7 +132,7 @@ Manager가 공용 DB/네트워크와 전용 role·RustFS bucket을 provision한 
    image와 환경·backup mount, frontend image·환경을 mode `0600` rollback artifact로 보존한다.
    artifact는 Compose label을 갖지 않는 standalone container로만 재기동하므로 candidate Compose의
    recreate 대상이 아니다. 기존 container가 host-network이면 그 mode를, legacy bridge이면
-   `kor-travel-airport-net`과 원래 `14001:8000`/`14002:3000` publish를 검증·복원한다. deploy
+   `kor-travel-airport-net`(개명 전 이름, ADR-010)과 원래 `14001:8000`/`14002:3000` publish를 검증·복원한다. deploy
    또는 health 검증이 실패하면 candidate backend endpoint를 제거하고 rollback backend에 `backend`
    alias를 붙여 기존 frontend proxy 계약을 복원한다. API, web proxy health를 모두 확인한다.
    rollback 실패는 성공으로 숨기지 않고 fatal로 남긴다.

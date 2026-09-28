@@ -10,7 +10,7 @@
 
 ## 진행 중인 작업 인덱스
 
-현재 진행 중 task는 `T-042`이다. `T-033`~`T-039`(shadcn/ui 전환 + 과거 자료 조회 +
+현재 진행 중 task는 `T-042`, `T-043`(운영 식별자 개명)이다. `T-033`~`T-039`(shadcn/ui 전환 + 과거 자료 조회 +
 Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks-done.md`로
 이동했다.
 
@@ -110,6 +110,20 @@ Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks
 - [ ] cAdvisor `12103`, Prometheus `12102`, Grafana `12104` 전환 후 n150에서 transport
       12301/12302/12305를 배포
 - [ ] 두 적대적 리뷰, CI, n150 live E2E 뒤 Draft PR을 머지
+
+### T-043 n150 운영 식별자 개명(airport → transport, ADR-010)
+
+- [x] 저장소 준비(`chore/rename-deploy-identity-transport`): compose `name:`·network·이미지 fallback,
+      배포 스크립트 allowlist, Dagster DSN `postgresql+psycopg2://` 허용, release 태그 export,
+      임시 개명 guard, 저장소 백업 cron 제거, cutover 스크립트와 가짜 docker 테스트, runbook·ADR-010
+- [ ] PR #44 머지 뒤 origin/main으로 rebase, CI, 두 적대적 리뷰, 머지(창 직전)
+- [ ] Manager `chore/retire-dedicated-postgres` release를 따로 설치·검증하고 Manager 개명 PR을 준비
+- [ ] n150 cutover: `prepare` → `restore-point` → stage → `prebuild` → `window` → `admin` → Manager 설치
+      → `finish`(runbook `deployment.md` "운영 식별자 개명 cutover")
+- [ ] 72시간 관찰 뒤 정리(은퇴 컨테이너·옛 network·옛 이미지·rollback 태그·은퇴 디렉터리), 후속 PR로
+      임시 guard 제거
+- [ ] 후속: Manager transport 백업 역할(그 전까지 주기 백업 없음), API 백업
+      `BACKUP_COMMAND_TIMEOUT_SECONDS`·`BACKUP_STORAGE_LIMIT_BYTES`를 1 GB 넘는 DB에 맞춰 검토
 
 `T-034`에서는 `<select>`/`ResponsiveSection`의 `<details>`/
 daily-flight-overlay-chart의 토글·체크박스는 테스트 호환성 위험 때문에 의도적으로

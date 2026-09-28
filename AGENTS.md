@@ -115,7 +115,7 @@ GitHub 운영은 `docs/runbooks/branch-protection.md`, `docs/runbooks/cross-repo
 - 이 저장소와 형제 관계인 `python-krairport-api`(`krairport`, `F:\dev\python-krairport-api`)처럼
   이미 검증된 provider 라이브러리가 있으면, 같은 기능을 backend 안에 다시 구현하지 않는다.
   이 저장소(`kor-travel-transport`) 안에 provider adapter/wrapper를 새로 만들지 않는다.
-  ([ADR-004](</F:/dev/kor-travel-airport/docs/adr/004-krairport-provider-library.md>))
+  ([ADR-004](docs/adr/004-krairport-provider-library.md))
 - 형제 라이브러리는 `F:\dev\<repo>` 로컬 체크아웃을 먼저 조회한다. GitHub fetch는 로컬에
   없을 때만 fallback으로 쓴다.
 - provider 응답 필드 의미·파싱 규칙 같은 데이터 정합성의 1차 책임은 해당 provider
@@ -199,5 +199,5 @@ GitHub 운영은 `docs/runbooks/branch-protection.md`, `docs/runbooks/cross-repo
 - [ ] `docs/resume.md`의 "현재 상태"/"다음 한 작업" 갱신
 - [ ] 완료 task는 `docs/tasks.md` → `docs/tasks-done.md`로 이동
 - [ ] 되돌림 비용이 큰 결정이면 `docs/adr/README.md`에 ADR 추가
-- [ ] `main` 머지 전 [hostile-review.md](</F:/dev/kor-travel-transport/docs/runbooks/hostile-review.md>)
+- [ ] `main` 머지 전 [hostile-review.md](docs/runbooks/hostile-review.md)
       게이트(James/Popper 서브에이전트) 통과

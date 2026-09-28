@@ -1,5 +1,40 @@
 # journal.md — 작업 일지
 
+## 2026-09-28 운영 식별자 개명(airport → transport) 저장소 준비
+
+- 브랜치 `chore/rename-deploy-identity-transport`(main `556052c`에서 시작, PR #44 머지 뒤 rebase).
+  ADR-010을 추가했다. 배포 식별자만 옮기고 공항 주차 도메인(`airports`, `/v1/airports`,
+  `airport_collection_job`, `AIRPORT_CODES_CSV`, trigger `dagster_airport` …)은 그대로 둔다.
+- compose: `name: kor-travel-transport`(db·live도), network `kor-travel-transport-net`, 백엔드 이미지
+  fallback `kor-travel-transport-backend:latest`. 키 단위 비교로 바뀐 키가 이것뿐인지 확인했다. 운영
+  렌더링(`-f docker-compose.yml -f docker-compose.shared.yml`)은 network가 없다(compose 5.1.4 로컬
+  확인). 운영에서는 손으로 network를 만들 필요가 없다.
+- `deploy-server14-remote.sh`: 새 디렉터리·project만 허용, `DAGSTER_POSTGRES_URL`의
+  `postgresql+psycopg2://` 허용(지금 운영 env 형식이라 전체 배포가 막혀 있었다), env `source` 뒤
+  `BACKEND_RUNTIME_IMAGE=kor-travel-transport-backend:rel-<sha12>` export, 임시 guard(label
+  `com.docker.compose.project=kor-travel-airport` 컨테이너가 떠 있으면 거부). guard는 디렉터리 검사
+  전이라 CI가 진짜 스크립트를 실행해 본다.
+- `scripts/n150-backup-cron.sh`를 지웠다. 주기 백업은 Manager로 옮긴다(소유자 결정). 옛 cron은
+  `backups/`가 root 소유라 `>>`가 실패해 2026-09-05 뒤로 dump를 만들지 못했다.
+- `scripts/rename-deploy-identity-server14.sh`: 적대 검토(H1·H2·M1~M8·L1~L5)를 반영한 단계형 cutover.
+  직접 `pg_dump -Fc`+`pg_restore --list` 복원 지점, fence 직전 env 재복사·비교, 이미지 태그를 env에
+  두지 않음, 관리 스택 빌드 없는 재생성과 `:pre-rename` 태그, 옛 daemon 삭제와 나머지 `restart=no`
+  이름 변경, `mv -T`와 빈 디렉터리 검사로 겹치지 않는 되돌리기, 파일 내용과 DB revision으로 보는
+  migration gate, dagster 버전 gate, 빌드 중 거부, project label로 센 daemon 하나, 전용 rollback
+  태그로 재생성. 창 검증 전 실패는 새 스택을 daemon부터 멈추고 옛 스택을 되살린다.
+- 문서: deployment.md에 cutover 절(타이밍은 definitions.py의 실제 schedule 기준), 백업 이관,
+  `F:/dev/kor-travel-airport/…` 절대 링크 74개(+ 같은 형식의 transport 링크 2개)를 상대 경로로.
+- 검증(n150 throwaway `--network none`, 고정 이미지 `148a471b`, bash 5.2.37): compose·스크립트를 읽는
+  테스트 10개 파일(새 두 파일 포함) 79개가 통과했고(관리 UI·OpenAPI 계약 3개는 `packages/`·
+  `docs/openapi.json`을 함께 옮겨 다시 돌렸다), Docker 이미지 배치(`/app/scripts`·`/app/tests`)에서
+  새 두 파일과 redeploy 테스트 39개가 통과했다. 새 테스트를 main 스크립트에 돌리면 18개가 빨갛다.
+  스크립트 변이 24개 중 23개가 빨갛다(env 재복사·drain·fence·은퇴·restart=no·daemon 수·schedule
+  비교·migration gate·dagster 버전·빌드 확인·비밀번호 argv·`pg_restore --list`·관리 스택 `--build`·
+  되돌리기 순서·빈 디렉터리 검사, guard 제거·이름 필터·docker 실패 무시, DSN scheme, export 위치).
+  첫 판 테스트에서 살아남은 "되돌리기에서 daemon을 먼저 띄움"은 assertion을 고쳐 빨갛게 했다. 남은
+  초록 하나는 `mv -T`를 `mv`로 바꾼 변이다. 바로 앞의 빈 디렉터리 검사·삭제가 같은 겹침을 막으므로
+  `-T`는 그 사이 경합에 대한 이중 장치다. 전체 backend suite는 PR CI가 돈다(앱 코드는 바뀌지 않았다).
+
 ## 2026-09-28 PR #47 머지·parking-radar 공용 DB 확인
 
 - PR #47 최종 CI 전부 통과 후 `bdc9c02`로 머지했다. runtime은 검증한 `1db261e` 그대로다.

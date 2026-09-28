@@ -2,6 +2,13 @@
 
 ## 현재 상태
 
+- 2026-09-28 `chore/rename-deploy-identity-transport`: n150 운영 식별자 개명(ADR-010) 저장소 준비를
+  푸시했다(PR은 아직 없음). PR #44가 머지되면 origin/main으로 rebase하고 PR·CI·두 적대적 리뷰를 거쳐
+  창 직전에 머지한다. n150 cutover는 `scripts/rename-deploy-identity-server14.sh`와
+  `docs/runbooks/deployment.md` "운영 식별자 개명 cutover"를 따른다. 창 전까지 옛 이름
+  (`kor-travel-airport`, `/home/digitie/apps/kor-travel-airport`)이 운영이다. 이 브랜치가 머지된 뒤에는
+  새 스크립트가 옛 디렉터리로 배포하지 않으므로 머지와 cutover 사이에 다른 배포를 하지 않는다.
+
 - 2026-09-28 16:49 KST: PR #47은 `bdc9c02`로 머지됐다. 후속 parking-radar DB 점검에서
   이미 공용 PostgreSQL `:11000/kor_travel_transport`를 사용함을 운영 DSN·SQL·웹앱으로
   확인했다. 공항 14·주차장 53·주차 관측 735,925·요금 규칙 32건, 최신 관측 16:45:03 KST다.
