@@ -2,6 +2,14 @@
 
 ## 2026-09-29 PR #51 적대 리뷰 보완
 
+- 사용자 승인으로 유가 복구를 진행한다. DB 실패·부분 성공이 Dagster SUCCESS로
+  표시되는 네 경우를 재현하고 commit/close 이후 `Failure(allow_retries=False)`로
+  전파하도록 수정했다. 성공·건너뜀 포함 회귀 8개, 관련 WSL/Docker 각각 55개 통과·
+  PostgreSQL 전용 2개 제외다. 기존 8시간 유예를 변경하지 않는다.
+- 공개 검색 HTML 1회 조회에서 HTTP 200의 `The service is not available.` 오류를
+  확인했다. 과거 response timeout 원인으로 단정하지 않는다. provider에서 오류 화면
+  조기 감지와 비밀값 없는 요청 단계 진단을 보강하고 독립 두 리뷰로 검증 중이다.
+
 - 최종 API/code-server `840f585` / UI `55148d2` 조합은 n150 healthy·재시작 0,
   운영 HTTPS 관리자 E2E 421개가 통과했다(4.1분). 실제 DB의 읽기 전용 quota 확인은
   예약 19건을 유지하고 HTTP 없이 유예됐다. James 운영 지도/모바일 확인도 차단 없음.

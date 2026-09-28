@@ -56,7 +56,16 @@ async def _collect_transport_in_one_loop(settings: Settings, scope: CollectionSc
 
 
 def _collect_transport(scope: CollectionScope) -> dict[str, Any]:
-    return asyncio.run(_collect_transport_in_one_loop(_settings(), scope))
+    result = asyncio.run(_collect_transport_in_one_loop(_settings(), scope))
+    # 성공분·실패 상태를 커밋하고 provider를 닫은 뒤 Dagster에도 실패를 전달한다.
+    # 응답 원문을 복제하지 않으며 기존 호출 유예를 자동 재시도로 우회하지 않는다.
+    if result.get("status") in {"failed", "partial_success"}:
+        raise Failure(
+            description="교통정보 수집에 실패했습니다. 저장된 성공분과 호출 유예는 유지합니다.",
+            metadata={"run_id": result["run_id"], "status": result["status"], "scope": scope},
+            allow_retries=False,
+        )
+    return result
 
 
 @op

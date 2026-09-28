@@ -11,6 +11,41 @@ from app.dagster import definitions as dagster_definitions
 from app.dagster.definitions import definitions
 
 
+@pytest.mark.parametrize("scope", ["fuel", "highway"])
+@pytest.mark.parametrize("status", ["success", "skipped", "failed", "partial_success"])
+def test_transport_failure_is_visible_after_commit_without_retry(monkeypatch, scope, status):
+    lifecycle = []
+
+    class FakeService:
+        def __init__(self, settings):
+            pass
+
+        async def collect(self, session, **kwargs):
+            return {"status": status, "run_id": 19387, "errors": ["secret-provider-detail"]}
+
+        async def close(self):
+            lifecycle.append("closed")
+
+    async def committed_run(settings, action, **kwargs):
+        result = await action(None, **kwargs)
+        lifecycle.append("committed")
+        return result
+
+    monkeypatch.setattr(dagster_definitions, "_settings", lambda: None)
+    monkeypatch.setattr(dagster_definitions, "TransportCollectionService", FakeService)
+    monkeypatch.setattr(dagster_definitions, "_run_with_session", committed_run)
+    job = getattr(dagster_definitions, f"{scope}_collection_job")
+    result = job.execute_in_process(raise_on_error=False)
+    assert lifecycle == ["committed", "closed"]
+    assert result.success is (status in {"success", "skipped"})
+    assert not any(event.is_step_up_for_retry for event in result.all_events)
+    if not result.success:
+        failure = result.failure_data_for_node(f"collect_{scope}_transport").user_failure_data
+        assert failure.metadata["run_id"].value == 19387
+        assert failure.metadata["status"].value == status
+        assert "secret-provider-detail" not in str(failure)
+
+
 @pytest.mark.parametrize("status", ["success", "skipped", "partial_success"])
 def test_ferry_partial_result_is_a_dagster_failure_without_retry(monkeypatch, status):
     committed = []
