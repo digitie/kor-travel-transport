@@ -1,5 +1,23 @@
 # journal.md — 작업 일지
 
+## 2026-09-28 12:29~12:33 KST 공용 DB 복구 모드 확인
+
+- 항구 수집 성공 후 전체 상태 조회에서 `/health` 40초 timeout을 관측했다.
+  별도 8초 제한 재확인 두 건은 HTTP 500이었다. 마지막 정상 응답은 12:27 KST다.
+- API 로그의 `asyncpg.exceptions.CannotConnectNowError`, 공용 PostgreSQL 로그의
+  `database system is in recovery mode`·`redo starts at`를 비밀값 없이 분류해 확인했다.
+  backend와 API gateway는 unhealthy로 바뀌었다. 공용 DB Docker healthy 표시는 실제
+  접속 복구를 증명하지 않는다. API·DB 컨테이너 재시작 횟수 0/OOMKilled=false는 확인했지만
+  DB 내부 프로세스 장애 원인은 아직 확인하지 못했다.
+- 같은 구간 I/O pressure full avg10 약 31%·load average 약 11.15를 관측했다.
+  부하와 복구의 인과관계를 단정하지 않는다. 다른 작업/공유 DB를 중단하거나 변경하지 않았다.
+- PR은 Draft 유지한다. 공용 DB 복구와 API 정상화 후 항구 저장 영속성·남은 정기 수집을
+  다시 확인해야 한다. 이번 실패를 앞선 E2E 365개 통과로 덮지 않는다.
+- 후속 로그에서 12:28:57 내부 서버 프로세스 종료, 12:29:12 재초기화, 12:30:56 redo 시작,
+  12:31:02 redo 완료를 확인했다. 별도 조치 없이 12:34 KST `/health`가 HTTP 200/0.495초로
+  복구됐고 API·gateway도 healthy였다. DB 재조회에서 run 19269 success와 749/27/7행
+  갱신·RustFS 저장 성공 summary가 보존된 것을 재확인했다. 초기 원인과 장기 안정은 미확인이다.
+
 ## 2026-09-28 12:27 KST 항구 기준정보 복구 확인
 
 - 최신 문서 커밋 `f5e9bca`의 CI backend/frontend/admin을 확인했다.
