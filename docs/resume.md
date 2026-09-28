@@ -14,9 +14,11 @@
   `6ec8cc3c-eefc-42f6-b567-6a189b5afa8c`/DB run 19180이 실행 중이고 스냅샷 완료 수가
   75→82로 증가했다. 이 실행을 중단하지 않는다. code-server는 기존 `148a471`이며
   실행부의 오피넷 60초 설정과 새 KRIC pin은 아직 반영되지 않았다.
-  `.playwright-mcp/pr44-deploy-worker-remote.sh`는 미실행 초안이다. 실제 상태를 다시 확인하고
-  활성 실행이 없을 때만 daemon을 잠시 멈춰 worker를 교체한다. API 선배포 실패 복구는
-  별도 리뷰 Gauss가 모의 실행 3건으로 재검증했다. 아래 08시 배포 차단 기록은 과거 상태다.
+  `.playwright-mcp/pr44-deploy-worker.sh`와 `pr44-deploy-worker-remote.sh`는 미실행 상태다.
+  업로드 전과 daemon 중지 후 활성 실행을 각각 확인하고 없을 때만 worker를 교체한다.
+  추가 리뷰 Gauss의 daemon 정지 실패 시 복구 누락·재개 health 미확인 P1 두 건을 수정했고
+  모의 실행 8건을 통과했다. 운영 적용·실수집 검증을 뜻하지 않는다. API 선배포 복구는
+  별도 모의 실행 3건을 통과했다. 아래 08시 배포 차단 기록은 과거 상태다.
 
 - 2026-09-28 PR #44 `codex/query-collection-reliability`의 코드 후보는 `ff45aea`다.
   KRIC provider PR #6은 count 없는 실제 터미널 27/선박종류 7행 계약으로 범위를 제한한 뒤
