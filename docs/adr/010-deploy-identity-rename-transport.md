@@ -23,13 +23,18 @@ Compose project, 컨테이너, 앱 디렉터리, 빌드 이미지, 백업 cron�
 - webserver·daemon·gateway가 돌던 이미지(`c8b47811`, `f9f648a9`)는 store에서 지워졌다. backend·
   code-server는 다른 PR 세션의 태그(`local/transport-pr4x:*`)에만 붙어 있었다.
 - 운영 스키마는 PR #44 배포로 이미 `0015`였다. #44가 없는 release는 배포할 수 없다.
-- 3일 백업 cron은 `backups/` 권한 때문에 2026-09-05 뒤로 dump를 만들지 못했다. 공용 DB dump는 1 GB가
-  넘어 API 백업의 기본 120초 제한 안에 끝나지 않는다.
+- 3일 백업 cron은 `backups/` 권한 때문에 2026-09-05 뒤로 dump를 만들지 못했다. `kor_travel_transport`는
+  디스크 14 GB이고 custom dump가 785 MB, 약 8분(2026-09-28 Manager 백업 실측 467초)이라 API 백업의 기본
+  120초 제한 안에 끝나지 않는다.
 - Dagster 버전은 한 곳에서 정해지지 않는다. `backend/uv.lock`(CI가 도는 것)은 1.13.23이지만
   `backend/Dockerfile`은 `pip install -e ".[dev]"`(`dagster>=1.9,<2`)라 이미지를 빌드할 때의 PyPI 최신을
   받는다. 운영 code-server는 1.13.24다. 소스나 lock 파일로는 배포될 이미지의 버전을 알 수 없다.
-- n150의 빌드 캐시는 48.6 GB(32.6 GB 회수 가능)이고 다른 세션도 빌드한다. 미리 빌드한 이미지가 창의
-  `up --build`에서 그대로 cache hit이 된다는 보장은 없다.
+- n150의 빌드 캐시는 51.9 GB(35.9 GB 회수 가능, 2026-09-28 08:10Z)이고 다른 세션도 빌드한다. 미리
+  빌드한 이미지가 창의 `up --build`에서 그대로 cache hit이 된다는 보장은 없다.
+- 다른 세션은 계획과 다른 이미지를 손으로 올린다. 2026-09-28 관리 UI는 #46의 `cda9a4d83c3d`가 아니라
+  #47 head의 `4580a5ca3c61`(07:24Z)로 돌고, 옛 backend·code-server는 main 빌드가 아니라 PR 브랜치 이미지
+  `local/transport-pr44:delta`(`3b77ac7d`)·`:paced`(`9067afc6`)다. 창은 그 이미지들을 R로 바꾼다
+  (migration gate가 파일 내용이 R과 같은지 본다).
 
 ### 결정
 
@@ -77,6 +82,9 @@ Compose project, 컨테이너, 앱 디렉터리, 빌드 이미지, 백업 cron�
     버전에 고정한 새 R로 다시 한다(runbook "Dagster 버전이 다를 때").
 12. 정리 단계까지 n150에서 `docker system/image/builder prune`을 하지 않는다. 되돌리기 재료(멈춘
     은퇴 컨테이너와 그것만 쓰는 rollback·`:pre-rename` 태그)를 `prune --all`이 지운다.
+13. R 머지부터 `finish`까지 n150을 freeze한다. transport·관리 UI 배포, Map·Manager 빌드·rebind(Manager
+    개명 release 설치 제외), prune을 하지 않는다. `prebuild`·`window`는 `… up -d --build`를 포함한 빌드
+    명령줄이 보이면 멈춘다.
 
 ### 근거
 
@@ -96,11 +104,11 @@ Compose project, 컨테이너, 앱 디렉터리, 빌드 이미지, 백업 cron�
   장치는 창 직전 재빌드(가장 최근에 쓴 캐시라 곧바로 이어지는 빌드가 cache hit이 된다)와 빌드 중
   거부다. 검토가 제안한 "ID가 그대로인지"는 containerd store에서 매번 어긋나 창마다 되살리기로 끝났을
   것이다.
-- `rollback`도 창처럼 새 daemon을 먼저 멈추고 run을 기다린다. 기다리지 않으면 유가(2시간까지)·배편 run이
+- `rollback`도 창처럼 새 daemon을 먼저 멈추고 run을 기다린다. 기다리지 않으면 유가(상한 4시간)·배편 run이
   끊겨 data.go.kr 오퍼레이션별 한도를 버린다. 되돌릴 cutover가 없으면(`prepare`만 한 상태) 거부한다.
 - migration gate는 revision ID가 아니라 파일 내용(CRLF 무시)과 운영 DB `alembic_version`을 본다.
   `0015`는 첫 커밋 뒤에도 고쳐졌다.
-- 백업 API는 1 GB dump를 끝내지 못하므로 복원 지점을 API에 맡기지 않는다. 두 DB를 직접 dump하고
+- 백업 API는 약 8분 걸리는 dump를 끝내지 못하므로 복원 지점을 API에 맡기지 않는다. 두 DB를 직접 dump하고
   `pg_restore --list`로 읽힌 것만 남긴다.
 - `backups/`는 같은 파일시스템의 hardlink 사본(`sudo cp -al`)으로 옮긴다. 즉시 끝나고 추가 공간이
   없으며 root 소유를 유지하고, 옛 사본이 남아 되돌리기가 원래 bind로 돈다.
@@ -116,7 +124,8 @@ Compose project, 컨테이너, 앱 디렉터리, 빌드 이미지, 백업 cron�
 
 - API·web이 약 3~5분, 관리 UI가 약 1분 끊긴다. Dagster schedule은 schedule마다 tick을 하나까지 놓친다.
 - Manager 개명 release를 설치하기 전까지 Manager의 옛 airport 카드는 컨테이너를 찾지 못한다.
-- Manager 백업 역할이 설치될 때까지 주기 백업이 없다.
+- 주기 백업은 Manager transport 백업(#430, 창 전에 설치: `transport_dagster` 매일 16:50Z, `transport` 3일마다
+  17:15Z)이 맡는다. 옛 cron은 `finish`가 지운다.
 - frontend는 R에서 다시 빌드되므로 이전 frontend 이미지 뒤에 머지된 변경도 함께 나간다.
 - 정리 단계(72시간 관찰 뒤) 이후에는 앞으로 고치는 것만 가능하다. 그때까지 n150에서 prune을 할 수 없다.
 - PyPI에 운영보다 새 Dagster가 나오면 gate가 cutover를 멈춘다. 그때는 Dagster를 고정한 새 R이 필요하다.
@@ -131,6 +140,12 @@ Compose project, 컨테이너, 앱 디렉터리, 빌드 이미지, 백업 cron�
 - API 백업의 `BACKUP_COMMAND_TIMEOUT_SECONDS`(기본 120초)와 `BACKUP_STORAGE_LIMIT_BYTES`를 1 GB 넘는 DB에
   맞춰 따로 검토한다. 복원 전 사전 백업도 같은 제한을 받는다.
 - 에이전트 공용 메모의 상시 서비스 목록을 새 이름으로 고친다(창 전). 같은 메모에 정리 단계까지 prune
-  금지를 적는다.
+  금지를 적는다(2026-09-28 08:35Z 고쳤다).
 - backend 이미지가 `uv.lock`을 따르게 한다(지금은 빌드 시점의 PyPI 최신). 그러면 CI·운영·되돌리기
   이미지의 Dagster 버전이 한 곳에서 정해진다.
+- 배포가 gate를 통과한 이미지를 `--no-build`로 올리게 한다. 지금은 층 확인이 `dagster-migrate` 뒤라
+  사후 탐지다. 그렇게 하면 같은 확인이 중단 전에 걸린다.
+- 공용 PostgreSQL prewarm(소유자 요구: 모든 DB). Manager가 `kor-travel-shared-postgres`에
+  `pg_prewarm`(shared_preload_libraries)과 `pg_prewarm.autoprewarm=on`을 켜고 `shared_buffers`(지금
+  128 MB) 크기를 정한다. autoprewarm은 instance 단위라 한 번 켜면 10개 DB 모두에 걸린다. instance
+  재시작이 필요하므로 이 cutover 창과 따로 한다(runbook 전제 참조).

@@ -229,22 +229,52 @@ n150의 배포 식별자를 `kor-travel-airport`에서 `kor-travel-transport`로
 
 - PR #44(`codex/query-collection-reliability`)가 main에 머지됐고, 이 개명 PR은 그 뒤 main에서
   rebase돼 머지됐다. 운영 스키마는 이미 #44의 `0015`다. #44가 없는 release는 `migrate`가 모르는
-  revision에서 실패한다. 이 머지 커밋을 R(40자리)이라 한다.
-- #44 세션은 머지 뒤 옛 디렉터리에 배포·재시작·`.env.server14` 편집을 하지 않는다. 그 세션의
-  미추적 worker 스크립트는 옛 이름을 쓰므로 창 뒤에 돌리지 않는다.
+  revision에서 실패한다. 이 머지 커밋을 R(40자리)이라 한다. main이 움직여 다시 rebase했으면 새 머지
+  커밋이 R이다. rebase 전 SHA나 브랜치 head를 R로 쓰지 않는다(모든 단계에 같은 R).
+- **n150 freeze: R 머지부터 `finish`까지**(2026-09-28 계획: 약 10:30Z~13:30Z). 다른 세션에 미리 알린다.
+  - transport·관리 UI 배포를 하지 않는다. 옛 디렉터리의 배포·재시작·`.env.server14` 편집도 하지 않는다.
+    #44 세션의 미추적 worker 스크립트는 옛 이름을 쓰므로 창 뒤에 돌리지 않는다. (#47 뒤로 잡혀 있던
+    parking-radar DB 이전은 #48에서 이미 공용 PostgreSQL을 쓰는 것으로 확인돼 할 일이 없다.)
+  - Map·Manager 빌드·재구축·rebind를 하지 않는다(창 뒤 Manager 개명 release 설치만 예외).
+  - 정리 단계까지 `docker system prune`·`docker image prune`·`docker builder prune`을 하지 않는다(아래).
+  - 이유: 관리 UI는 #46의 `cda9a4d83c3d`가 아니라 #47 head `1db261e`를 손으로 올린 `4580a5ca3c61`
+    (`local/transport-weather-ui:runtime`, 2026-09-28 07:24Z, 옛 디렉터리의 관리 project)로 돈다.
+    `transport-api-gateway`·관리 `transport-dagster-gateway`는 다시 만들지 않았다. 지금은 두 빌드
+    서비스 모두 `:latest`가 실행 중 이미지와 같아 `admin`이 통과한다. 그 사이 누가 관리 UI를 다시
+    올리면 `:latest`가 달라져 `admin`이 STOP이고, 다른 빌드는 창을 디스크 대기로 늘리고, prune은
+    rollback 태그를 지운다(2026-09-28 08:10Z 빌드 캐시 51.9 GB 중 35.9 GB 회수 가능).
+  - `prebuild`·`window`는 빌드 프로세스(`docker compose … build`, `… up -d --build`, `docker build`,
+    `docker image build`, `docker-buildx`)가 보이면 STOP이다. 두 단계 직전에 손으로도 본다.
+
+    ```bash
+    pgrep -fa 'docker-buildx|docker( image)? build|compose .*[[:space:]](build|--build)([[:space:]]|$)' || echo "빌드 없음"
+    ```
 - Manager의 `chore/retire-dedicated-postgres` release는 창 전에 따로 설치·검증한다. Manager 개명
   release(target `transport`)는 CI를 통과해 두고, 창이 끝난 뒤 설치한다.
 - 창 전에 에이전트 공용 메모(n150 상시 서비스 목록)의 `kor-travel-airport`를 `kor-travel-transport`로
   고친다. 옛 메모를 읽은 에이전트가 옛 컨테이너를 되살리지 않게 한다. 같은 메모에 "정리 단계까지
-  n150에서 `docker system prune`·`docker image prune`·`docker builder prune`을 하지 않는다"를 적는다.
+  n150에서 `docker system prune`·`docker image prune`·`docker builder prune`을 하지 않는다"를 적는다
+  (2026-09-28 08:35Z 고쳤다: 메모 본문과 색인 줄, freeze, `docker compose -p kor-travel-airport up` 금지,
+  ADR-010 포인터).
   관찰 기간의 되돌리기 재료(멈춘 `*-retired-<날짜>` 컨테이너, 멈춘 컨테이너만 쓰는
   `kor-travel-airport-rollback:*`·`:pre-rename` 태그)는 Docker가 보기에 "안 쓰는" 것이라
   `prune --all`이 지운다. 설치된 Manager의 디스크 카드는 회수 가능 공간이 20 GiB를 넘으면
   `sudo -n docker system prune --all --volumes`를 다음 조치로 보여 주고, n150은 이미 그 선을 넘었다
-  (2026-09-28: 이미지 17 GB, 빌드 캐시 32.6 GB 회수 가능). 그 안내를 따르면 `rollback`이
+  (2026-09-28 08:10Z: 이미지 22.2 GB, 빌드 캐시 35.9 GB 회수 가능). 그 안내를 따르면 `rollback`이
   "rollback 태그가 없다"로 멈추고 앞으로 고치는 것만 남는다. 창 전 재빌드도 캐시가 비어 길어진다.
-- 다른 세션의 이미지 빌드(`docker compose … build`, `buildx bake`)가 돌지 않는다. n150 부하는 디스크
-  대기라 겹치면 창이 길어진다. `prebuild`와 `window`는 빌드 프로세스가 보이면 STOP이다.
+- 다른 세션의 이미지 빌드(`docker compose … build`, `… up -d --build`, `buildx bake`)가 돌지 않는다.
+  n150 부하는 디스크 대기라 겹치면 창이 길어진다. `prebuild`와 `window`는 빌드 프로세스가 보이면 STOP이다.
+- 공용 PostgreSQL prewarm(소유자 요구: 모든 DB에 prewarm이 필요하다)은 이 창 밖의 Manager 변경이다.
+  2026-09-28 확인: `kor-travel-shared-postgres`(PostgreSQL 16.9, `postgres` 포함 DB 10개, 합계 약 71 GB,
+  `kor_travel_transport` 14 GB·`kor_travel_transport_dagster` 117 MB)는 `shared_preload_libraries=
+  pg_stat_statements`와 `shared_buffers=128MB`뿐이다. `pg_prewarm.*` 설정과 autoprewarm worker가 없고
+  transport 두 DB에는 `plpgsql`만 있다(이미지에 `pg_prewarm` 1.2는 있다). autoprewarm은 instance
+  전체의 shared buffer 목록을 저장해 재시작 때 다시 읽으므로 한 번 켜면 모든 DB에 걸린다. 다만
+  되살리는 양은 `shared_buffers`가 한도라 128 MB로는 거의 없다(n150 RAM 15 GiB). 그래서
+  `shared_preload_libraries`에 `pg_prewarm`, `pg_prewarm.autoprewarm=on`, `shared_buffers` 크기를 함께
+  정한다. 10개 DB를 쓰는 instance를 재시작하므로 이 cutover 창에 넣지 않고 따로 창을 잡는다. cutover는
+  PostgreSQL을 재시작하지 않으므로 prewarm이 없어서 나빠지는 것은 없다. 창 전에 해야 하면 `prepare`
+  전에 하고, 그 뒤 `prepare`를 다시 실행해(창 전이면 다시 실행해도 된다) 조건을 다시 본다.
 
 ### 타이밍
 
@@ -254,17 +284,20 @@ n150 시계는 UTC이고 Dagster schedule은 `Asia/Seoul`이다(`backend/app/dag
 |---|---|---|---|
 | 공항 주차·고속도로 수집 | 5분마다 | 5분마다 | 고속도로 run이 17분까지 걸린 적이 있다 |
 | KRIC 시간표 | 매시 정각 | 매시 정각 | 48시간 guard라 대부분 곧 끝난다 |
-| 유가 | 00:00·08:00·16:00 | 15:00·23:00·07:00 | 보통 2시간까지, `max_runtime_seconds` 4시간 |
-| 배편 시간표 | 00:45부터 4시간마다 | 15:45부터 4시간마다 | 04:45·08:45·12:45·16:45·20:45 KST |
+| 유가 | 00:00·08:00·16:00 | 15:00·23:00·07:00 | 09-21~28 성공 run 0~52분(00:00·08:00 KST 회차가 길다), 09-25 16:00 KST 회차는 `max_runtime_seconds` 4시간에서 실패 |
+| 배편 시간표 | 00:45부터 4시간마다 | 15:45부터 4시간마다 | 04:45·08:45·12:45·16:45·20:45 KST. #44 배포(09-28) 뒤 약 10분, 그 전 140분 |
 | 철도·항구 기준정보 | 03:00(항구는 3일마다) | 18:00 | |
 | 버스 기준정보 | 03:30 | 18:30 | |
 | 옛 transport 백업 cron | 03:00, 3일마다 | 18:00 | `finish`가 지운다 |
-| Manager standalone 백업 | 12:15~12:55 | 03:15~03:55 | 디스크 I/O가 크다 |
+| Manager standalone 백업(geo_dagster·concierge·pinvi) | 12:15~12:55 | 03:15~03:55 | 디스크 I/O가 크다 |
+| Manager transport_dagster 백업 | 01:50 | 16:50 | 매일, dump 4 MB |
+| Manager transport 백업 | 02:15, 3일마다 | 17:15(UTC 1·4·…·28·31일) | 785 MB custom dump 약 8분(09-28 06:55Z 실측 467초). 09-28이 해당일 |
 
 - `window`는 옛 daemon을 멈춘 뒤 `STARTED`·`STARTING`·`CANCELING` run이 0이 되기를 기다린다(기본
-  상한 1800초). 유가 run 시작 뒤 2시간 안에서 창을 열면 상한에 닿는다. 권장 시작은 KST 10:05~11:30
-  (UTC 01:05~02:30, 08:00 유가와 08:45 배편이 끝났는지 먼저 본다) 또는 KST 21:30~23:00(UTC
-  12:30~14:00)이다.
+  상한 1800초). 유가 run은 52분까지 걸렸으므로 유가·배편 run이 돌고 있으면 창을 열지 않는다(Dagster
+  UI에서 먼저 본다). 권장 시작은 KST 10:05~11:30 (UTC 01:05~02:30, 08:00 유가와 08:45 배편이 끝났는지
+  먼저 본다) 또는 KST 21:30~23:00(UTC 12:30~14:00)이다. 뒤쪽 창은 16:50·17:15·18:00 UTC 백업보다
+  앞서 `finish`까지 끝낸다.
 - `QUEUED` run은 기다리지 않는다. 같은 metadata DB라 새 daemon이 이어서 꺼낸다. schedule마다 놓치는
   tick은 많아야 하나다.
 - daemon이 멈춘 동안에는 run monitoring도 돌지 않아 `STARTING`에 남은 run은 스스로 끝나지 않는다.
@@ -272,13 +305,17 @@ n150 시계는 UTC이고 Dagster schedule은 `Asia/Seoul`이다(`backend/app/dag
   `start_timeout_seconds`(300초)가 지난 `STARTING` run을 실패로 정리하므로 5분 이상 지난 뒤 다시
   연다. `STARTED`로 끼인 run은 Dagster UI에서 원인을 본 뒤 종료한다(종료 요청이 60초 안에 돌아오지
   않으면 code-server가 막힌 것이다. 2026-09-27 사례).
-- `restore-point`는 공용 DB 약 1 GB를 dump한다(9분 이상). Manager 백업 시간과 겹치지 않게 창 전에
-  돌린다.
+- `restore-point`는 `kor_travel_transport`(디스크 14 GB)를 custom format으로 dump한다. 2026-09-28
+  06:55~07:03Z Manager 백업의 같은 dump가 785 MB, 467초(약 8분)였다. Dagster DB(117 MB)는 1분 안이다.
+  dump는 14 GB를 읽으며 OS page cache를 흔든다(PostgreSQL은 재시작하지 않는다). Manager 백업
+  시간(위 표)과 겹치지 않게 창 전에 돌린다.
 
 ### 단계
 
 스크립트는 R 체크아웃에서 n150으로 옮겨 tmux 안에서 실행한다. SSH가 끊겨도 `window`는 옛 스택을
-되살리지만, 창을 끝까지 보려면 tmux가 필요하다.
+되살리지만, 창을 끝까지 보려면 tmux가 필요하다. 스크립트는 대상 경로·URL(`OLD_DIR`·`NEW_DIR`·작업
+디렉터리·`API_URL` 등)을 셸 env에서 받지 않는다. tmux 셸에 남은 같은 이름의 export는 무시된다. env로
+바꿀 수 있는 것은 대기 상한(`DRAIN_TIMEOUT_SECONDS` 등)과 `PG_CLIENT_IMAGE`·`SHARED_PG_CONTAINER`뿐이다.
 
 ```bash
 # WSL: 전용 worktree를 R에 둔다(공유 checkout은 다른 세션이 쓴다).
@@ -315,7 +352,7 @@ bash ~/rename-deploy-identity-server14.sh status
    컨테이너의 이미지)로 두 DB를 `pg_dump -Fc`해 `~/transport-rename/restore-point/`에 둔다.
    비밀번호는 0600 passfile에만 쓰고 docker 명령줄에는 비밀번호 없는 URI만 넘긴다. 각 dump를
    `pg_restore --list`로 읽어 `TABLE DATA`가 있어야 `.dump`로 확정한다. API 백업
-   (`POST /v1/admin/backups`)은 기본 120초 제한에 1 GB dump가 끝나지 않으므로 쓰지 않는다.
+   (`POST /v1/admin/backups`)은 기본 120초 제한에 약 8분 걸리는 dump가 끝나지 않으므로 쓰지 않는다.
 3. stage: 새 디렉터리에 R을 rsync하고 `.release-sha`를 쓴다. `backups/`와 `.env.server14`는 옮기지
    않는다.
 4. `prebuild R`: R의 alembic migration 파일(CRLF 무시 내용 hash)이 옛 backend 이미지와 같고 운영 DB
@@ -426,7 +463,7 @@ Dockerfile이 `uv.lock`을 따르게 하는 것은 ADR-010 후속이다. 그 전
 되돌리고, 그 밖의 내용이 있으면 아무것도 멈추기 전에 STOP이다.
 
 먼저 새 daemon을 멈추고 창처럼 `STARTED`·`STARTING`·`CANCELING` run이 0이 되기를 기다린다(같은
-`DRAIN_TIMEOUT_SECONDS` 상한). 새 code-server를 멈추면 실행 중인 유가(Playwright, 2시간까지)·배편 run이
+`DRAIN_TIMEOUT_SECONDS` 상한). 새 code-server를 멈추면 실행 중인 유가(Playwright, 상한 4시간)·배편 run이
 끊겨 data.go.kr 오퍼레이션별 한도를 버린다. 상한에 닿거나 대기 중에 끊기면 새 daemon을 다시 띄우고
 아무것도 옮기지 않은 채 멈춘다. run을 끊어도 되는 비상시에는 `rollback --no-drain`으로 기다리지 않는다
 (끊긴 run은 되살린 옛 daemon의 run monitoring이 실패로 정리한다). 새 webserver가 떠 있지 않아 run을 셀
@@ -442,7 +479,9 @@ migration gate와 dagster 버전 gate를 통과한 이미지만 떴으므로(검
 ### 관찰과 정리
 
 72시간 동안 Dagster schedule run이 정상인지, Manager 상태가 초록인지 본다. Manager transport 백업
-역할이 설치되기 전까지는 주기 백업이 없으므로 `restore-point` dump를 지우지 않는다.
+역할(#430)은 창 전에 설치됐다(digitie crontab: `transport_dagster` 매일 16:50Z, `transport` 3일마다
+17:15Z, `~/backups/transport*/`). 창 뒤 첫 정기 dump가 생긴 것을 확인하기 전에는 `restore-point` dump를
+지우지 않는다.
 
 정리하기 전까지 n150에서 `docker system prune`·`docker image prune`·`docker builder prune`을 하지
 않는다. Manager 디스크 카드가 `sudo -n docker system prune --all --volumes`를 권해도 따르지 않는다.

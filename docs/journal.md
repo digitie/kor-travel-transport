@@ -4,7 +4,9 @@
 
 - 브랜치 `chore/rename-deploy-identity-transport`(main `556052c`에서 시작해 PR #44 머지 `835c0ec` 위로
   rebase. 충돌은 journal·resume의 맨 위 항목뿐이었다. 그 뒤 #46 머지 `50215b3` 위로 다시 rebase했다 —
-  충돌은 문서뿐이었고, 문서 밖 diff는 rebase 전과 바이트 단위로 같다).
+  충돌은 문서뿐이었고, 문서 밖 diff는 rebase 전과 바이트 단위로 같다. #47 머지 `bdc9c02`, 이어서 #48
+  머지 `a6edbd5` 위로 다시 rebase했다. 충돌은 또 journal·resume뿐이었고 문서 밖 diff는 hunk 줄 번호만
+  다르다).
   ADR-010을 추가했다. 배포 식별자만 옮기고 공항 주차 도메인(`airports`, `/v1/airports`,
   `airport_collection_job`, `AIRPORT_CODES_CSV`, trigger `dagster_airport` …)은 그대로 둔다.
 - compose: `name: kor-travel-transport`(db·live도), network `kor-travel-transport-net`, 백엔드 이미지
@@ -65,6 +67,42 @@
     렌더링 errexit, 되살리기 재생성, rollback 대기·새 daemon 재시작·거부 조건·daemon 순서,
     `RELEASE_SHA` export, backups 사전 검사, admin 재실행, daemon 수 실패, 두 daemon, 신호 exit).
     n150 Docker 29.6.1도 containerd snapshotter인 것은 `docker info`로만 확인했다(빌드는 하지 않았다).
+- 3차 검토(`fdf6bee`·`a1e8e5f`·`d2b7832`, 이번 rebase 뒤 `16c3b01`·`237d37f`·`882a07b`. MED 5·LOW 5) 반영.
+  - MED: #47이 `bdc9c02`로 머지돼 journal·resume가 충돌했다. `bdc9c02`, 그 사이 머지된 #48
+    `a6edbd5` 위로 rebase했다(위). R은 이 rebase 뒤의 머지 커밋이다.
+  - MED: 빌드 확인이 `docker compose … up -d --build`를 놓쳤다(n150 문자열 시험으로 확인). n150에
+    배포하는 저장소들의 표준 명령이고 `docker-buildx` 플러그인 프로세스는 빌드하는 동안에만 보인다.
+    패턴에 `--build`와 `docker image build`를 더했다. `--no-build`는 여전히 잡지 않는다(n150 `grep -E`로
+    확인, 지금 n150에서 맞는 프로세스는 없다).
+  - MED: freeze. 관리 UI는 #46의 `cda9a4d83c3d`가 아니라 #47 head를 손으로 올린 `4580a5ca3c61`
+    (`local/transport-weather-ui:runtime`, 07:24Z)로 돈다. runbook 전제에 R 머지부터 `finish`까지의 n150
+    freeze(transport·관리 UI 배포, Map·Manager 빌드·rebind, prune)와 손 확인용 `pgrep` 줄을 적었다.
+    ADR-010 결정 13. #47 뒤로 잡혀 있던 parking-radar DB 이전은 #48이 이미 공용 DB임을 확인해 없어졌다.
+  - MED: 공용 메모. 본문은 이미 새 이름과 prune 금지가 있었다. 교통 스택 항목, freeze,
+    `docker compose -p kor-travel-airport up` 금지(옛 스택을 다시 만들어 host 포트를 두고 싸운다),
+    ADR-010 포인터를 더했고 색인 줄도 고쳤다.
+  - MED: prewarm(소유자 요구: 모든 DB). n150 읽기 전용 확인: `kor-travel-shared-postgres`(16.9, DB 10개,
+    약 71 GB)는 `shared_preload_libraries=pg_stat_statements`, `shared_buffers=128MB`이고 `pg_prewarm.*`
+    설정·autoprewarm worker가 없다. transport 두 DB에는 `plpgsql`만 있다. autoprewarm은 instance 단위라
+    Manager가 한 번 켜면 모든 DB에 걸리지만 되살리는 양은 `shared_buffers`가 한도다. instance 재시작이라
+    이 창에 넣지 않고 Manager 변경으로 따로 한다(runbook 전제, ADR-010 후속, T-043). 이 PR은 Manager
+    compose를 바꾸지 않는다.
+  - LOW: 대상 경로·URL(`OLD_DIR`·`NEW_DIR`·`WORK_DIR`·`MANAGER_LINK`·API·web·Dagster·관리 URL)을 셸 env에서
+    받지 않는다. 테스트만 `RENAME_TEST_ROOT`로 옮긴다. `sudo -n find` 목록은 변수로 먼저 받아 실패를
+    STOP으로 만든다(두 실패가 "같다"로 통과했다). 창 전 확인은 NEW가 없어도 OLD 목록을 읽는다. 타이밍 표를
+    실측으로 고쳤다: 유가 성공 run 0~52분(09-21~28, 한 번은 4시간 상한 실패), 배편은 #44 뒤 약 10분(그 전
+    140분), Manager transport 백업 16:50Z(매일)·17:15Z(3일마다, 09-28 해당), `kor_travel_transport`
+    14 GB·custom dump 785 MB·467초. 층 확인을 `--no-build` 배포로 앞당기는 일은 ADR-010 후속으로 적었다.
+    옛 backend·code-server는 main 빌드가 아니라 `local/transport-pr44:delta`(`3b77ac7d`)·`:paced`
+    (`9067afc6`)다. 창이 R로 바꾼다.
+  - 검증(n150 throwaway `--network none`, 고정 이미지 `148a471b`, bash 5.2.37, Python 3.12.13, 부하 약 20):
+    compose·스크립트를 읽는 테스트 9개 파일 96개가 통과했다(24분 40초). cutover 테스트는 33개(새것 7개:
+    빌드 명령줄 매개변수 3개 추가, backups 목록 실패 3개, stray export 1개)다. 가짜 pgrep은 이제 진짜처럼
+    ERE를 가짜 프로세스 목록(`--no-build` 재생성, cutover 자신 포함)에 건다. Docker 이미지 배치
+    (`/app/scripts`·`/app/tests`를 읽기 전용 mount)에서 새 테스트와 전체 흐름 9개가 통과했다. 새 테스트를 고치기 전
+    스크립트(`882a07b`)에 돌리면 6개가 빨갛다(`up -d --build`, `docker image build`, 목록 실패 셋, stray
+    export). 변이 8개가 모두 빨갛다(옛 패턴, `--no-build`까지 잡는 넓은 패턴, 목록 실패 무시, 창 전 OLD 목록
+    생략, 사본 확인의 실패 무시, `NEW_DIR`·`API_URL`·`WORK_DIR`을 다시 env에서 받기).
 
 ## 2026-09-28 PR #47 머지·parking-radar 공용 DB 확인
 

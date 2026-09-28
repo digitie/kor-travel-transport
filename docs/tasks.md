@@ -122,8 +122,11 @@ Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks
       → `finish`(runbook `deployment.md` "운영 식별자 개명 cutover")
 - [ ] 72시간 관찰 뒤 정리(은퇴 컨테이너·옛 network·옛 이미지·rollback 태그·은퇴 디렉터리), 후속 PR로
       임시 guard 제거
-- [ ] 후속: Manager transport 백업 역할(그 전까지 주기 백업 없음), API 백업
-      `BACKUP_COMMAND_TIMEOUT_SECONDS`·`BACKUP_STORAGE_LIMIT_BYTES`를 1 GB 넘는 DB에 맞춰 검토
+- [ ] 후속: API 백업 `BACKUP_COMMAND_TIMEOUT_SECONDS`·`BACKUP_STORAGE_LIMIT_BYTES`를 785 MB dump(약 8분)
+      DB에 맞춰 검토. Manager transport 백업 역할은 #430으로 설치됐다(16:50·17:15 UTC).
+- [ ] 후속(소유자 요구, Manager 변경): 공용 PostgreSQL의 모든 DB에 prewarm — `pg_prewarm`
+      preload·`pg_prewarm.autoprewarm=on`·`shared_buffers`(지금 128 MB) 크기. instance 재시작이라
+      개명 창과 따로 한다(ADR-010 후속, runbook 전제).
 
 `T-034`에서는 `<select>`/`ResponsiveSection`의 `<details>`/
 daily-flight-overlay-chart의 토글·체크박스는 테스트 호환성 위험 때문에 의도적으로
