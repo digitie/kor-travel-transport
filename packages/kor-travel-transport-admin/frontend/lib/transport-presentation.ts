@@ -1,9 +1,9 @@
 export const FUEL_PRODUCT_LABELS: Record<string, string> = {
   B027: "휘발유",
-  B034: "고급휘발유",
-  D047: "자동차용경유",
-  C004: "실내등유",
-  K015: "자동차용부탄(LPG)",
+  B034: "고급유",
+  D047: "경유",
+  C004: "등유",
+  K015: "LPG",
 };
 
 export function fuelProductLabel(productCode: string | null | undefined) {
@@ -12,7 +12,7 @@ export function fuelProductLabel(productCode: string | null | undefined) {
 }
 
 export function highwayRouteLabel(routeNo: string | null | undefined, routeName?: string | null) {
-  if (routeName?.trim()) return routeName.trim();
+  if (routeName?.trim()) return routeNo ? `${routeNo} · ${routeName.trim()}` : routeName.trim();
   return routeNo ? `${routeNo}번 고속도로` : "노선 정보 없음";
 }
 

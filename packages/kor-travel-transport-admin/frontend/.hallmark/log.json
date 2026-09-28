@@ -1,5 +1,13 @@
 [
   {
+    "date": "2026-09-28",
+    "macrostructure": "Workbench",
+    "theme": "기존 transport·Weather 구조 재사용",
+    "scope": "app",
+    "enrichment": "none",
+    "brief": "우측 장소 출도착 상세·간결한 마커·밀도 기반 묶음·Weather형 Dagster 표"
+  },
+  {
     "date": "2026-09-27",
     "macrostructure": "Workbench",
     "theme": "기존 transport 청록색·map/weather 참조",

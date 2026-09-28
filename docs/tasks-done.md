@@ -2,6 +2,20 @@
 
 완료한 task의 식별자, 핵심 변경, 검증 명령과 시각을 역시간순으로 보관한다.
 
+## 2026-09-28 — T-042 shadcn·Weather형 관리 UI
+
+- shadcn/ui Base UI base-nova와 Tailwind v4를 도입해 로그인·공통 검색/선택·지도 필터·상세·
+  Dagster 카드/표·교통 현황 탭을 전환했다. Weather의 상세 패널과 실행/스케줄 구조를 따랐다.
+- 주유소 아이콘/단축 유종/가격, 역명+노선, 컴팩트 공항/항구, 밀도 기반 클러스터와 겹친 장소
+  선택을 구현했다. 고속도로 번호+이름, 통계 최초/갱신 실패 구분과 수동 재시도도 포함한다.
+- 항구는 DB 시간표, 공항은 저장 주차와 명시 출도착, 역은 저장 시간표를 연결했다.
+  버스 좌표/일반철도 운영 자료 미제공은 후속이며 가짜 지도 위치를 추가하지 않았다.
+- runtime `8ff8e7c`를 n150 UI에만 배포하고 8개 기존 컨테이너 ID/이미지 불변을 확인했다.
+  WSL/Docker admin 각각 96개·lint/type/build, WSL UI E2E 105개, 운영 HTTPS E2E
+  402개(121.24초, 실패/skip/flaky 0)를 통과했다. 일부 UI 오류 검사는 mock이다.
+- 독립 James/Popper 재리뷰 P0/P1 없음. 내장 지도 검색 후 겹침 목록 수명 P2는 백로그에
+  남겼다. 최종 문서 CI와 머지 상태 정본은 [PR #46](https://github.com/digitie/kor-travel-transport/pull/46)이다.
+
 ## 2026-09-28 — T-042 조회 지연·수집 오류 개선 검증
 
 - 통계 deadline/취소·동시 실행 슬롯·유가 partial index, 오피넷 60초 대기 설정과 provider pin,

@@ -1,3 +1,37 @@
+@layer theme, base, legacy, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "tw-animate-css";
+
+/* 기존 색상 변수 이름과 shadcn의 muted/accent 의미 충돌을 피한다. */
+@theme inline {
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
+  --color-card: var(--panel);
+  --color-card-foreground: var(--ink);
+  --color-popover: var(--panel);
+  --color-popover-foreground: var(--ink);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--color-accent-ink);
+  --color-secondary: var(--color-selected);
+  --color-secondary-foreground: var(--ink);
+  --color-muted: var(--paper);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--color-selected);
+  --color-accent-foreground: var(--ink);
+  --color-destructive: var(--danger);
+  --color-border: var(--line);
+  --color-input: var(--line);
+  --color-ring: var(--color-focus);
+  --font-sans: var(--font-body);
+  --radius-sm: var(--radius-control);
+  --radius-md: var(--radius-control);
+  --radius-lg: var(--radius-panel);
+  --radius-xl: var(--radius-panel);
+}
+
+@layer legacy {
 :root { --ink: #182022; --muted: #657274; --paper: #f7f7f2; --panel: #fffef9; --line: #dce1da; --accent: #0f766e; --danger: #b42318; --shadow-map: 0 2px 8px rgba(24, 32, 34, .22); }
 * { box-sizing: border-box; }
 html { background: var(--paper); color: var(--ink); overflow-x: clip; }
@@ -20,7 +54,7 @@ button, input { font: inherit; }
 .page-header h1 { font-size: clamp(26px, 3vw, 38px); letter-spacing: -.045em; margin: 4px 0 8px; }
 .page-header p, .eyebrow { color: var(--muted); margin: 0; }
 .eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
-.grid { display: grid; gap: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid:not([data-slot]) { display: grid; gap: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 11px; min-width: 0; padding: 20px; }
 .metric { color: var(--muted); display: block; font-size: 13px; margin-bottom: 8px; }
 .value { font-size: 28px; font-weight: 700; letter-spacing: -.04em; }
@@ -68,7 +102,7 @@ button, input { font: inherit; }
 .transport-map-picker select { background: white; border: 1px solid #b9c4bd; border-radius: 7px; min-height: 40px; padding: 8px; }
 .timetable-result { white-space: pre-wrap; }
 @media (max-width: 760px) { .transport-map-layout { grid-template-columns: 1fr; min-height: 0; } .transport-map-canvas { min-height: 440px; } .transport-map-detail { border-left: 0; border-top: 1px solid var(--line); } }
-@media (max-width: 760px) { .admin-layout { grid-template-columns: 1fr; } .rail { padding: 18px; } .brand { margin-bottom: 15px; } .nav { grid-template-columns: repeat(3, minmax(0, 1fr)); } .nav-label { display: none; } .sign-out { margin-top: 18px; } .main { padding: 28px 20px; } .grid, .reference-list { grid-template-columns: 1fr; } .wide { grid-column: span 1; } .reference-toolbar { align-items: stretch; flex-direction: column; gap: 8px; } }
+@media (max-width: 760px) { .admin-layout { grid-template-columns: 1fr; } .rail { padding: 18px; } .brand { margin-bottom: 15px; } .nav { grid-template-columns: repeat(3, minmax(0, 1fr)); } .nav-label { display: none; } .sign-out { margin-top: 18px; } .main { padding: 28px 20px; } .grid:not([data-slot]), .reference-list { grid-template-columns: 1fr; } .wide { grid-column: span 1; } .reference-toolbar { align-items: stretch; flex-direction: column; gap: 8px; } }
 
 /* Hallmark · genre: modern-minimal · macrostructure: Workbench · design-system: design.md · designed-as-app */
 .main { padding: var(--space-xl); }
@@ -194,3 +228,69 @@ button:active:not(:disabled), .secondary:active { transform: translateY(1px); }
 .transport-map-picker select { width: 100%; min-width: 0; max-width: 100%; }
 .price-grid > div { min-width: 0; }
 .price-grid dt { overflow-wrap: anywhere; }
+
+/* Weather의 패널 헤더·우측 inspector·운영 표 구조를 같은 토큰으로 유지한다. */
+.page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-lg); flex-wrap: wrap; }
+.page-header > div { min-width: 0; }
+.page-header-actions { display: flex; gap: var(--space-sm); flex-wrap: wrap; }
+.transport-map-layout { background: transparent; border: 0; border-radius: 0; overflow: visible; gap: var(--space-lg); grid-template-columns: minmax(0, 1fr) minmax(320px, 380px); align-items: start; }
+.map-primary { min-width: 0; overflow: clip; border: 1px solid var(--color-rule); border-radius: var(--radius-panel); }
+.weather-inspector { min-width: 0; background: var(--color-panel); border: 1px solid var(--color-rule); border-radius: var(--radius-panel); padding: 0; gap: 0; }
+.weather-inspector:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.weather-inspector .transport-map-picker { padding: var(--space-lg); border-bottom: 1px solid var(--color-rule); }
+.inspector-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-md); padding: var(--space-lg); border-bottom: 1px solid var(--color-rule); }
+.inspector-heading > div { min-width: 0; }
+.inspector-heading h2 { font-size: var(--text-lg); margin: var(--space-xs) 0; letter-spacing: -.025em; }
+.inspector-heading p { color: var(--color-muted); font-size: var(--text-xs); margin: var(--space-xs) 0 0; overflow-wrap: anywhere; }
+.icon-button { flex: 0 0 auto; width: 44px; padding: var(--space-sm); }
+.inspector-section { padding: var(--space-lg); min-width: 0; }
+.inspector-section + .inspector-section { border-top: 1px solid var(--color-rule); }
+.inspector-section h3 { font-size: var(--text-base); margin-top: 0; }
+.inspector-section .departure-row { grid-template-columns: minmax(75px, .7fr) minmax(0, 1fr); gap: var(--space-md); }
+.inspector-section .departure-meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: space-between; text-align: left; }
+.inspector-section .journey-toolbar > label { width: 100%; }
+.inspector-section select { width: 100%; }
+.parking-detail-row { display: grid; gap: var(--space-sm); padding-block: var(--space-md); border-bottom: 1px solid var(--color-rule); font-variant-numeric: tabular-nums; }
+.parking-detail-row small { color: var(--color-muted); }
+.compact-marker { border-width: 1px; border-radius: var(--radius-control); gap: var(--space-xs); padding: var(--space-xs) var(--space-sm); max-width: 240px; min-height: 36px; }
+.compact-marker > svg { flex: 0 0 auto; }
+.compact-marker > strong { max-width: 200px; }
+.compact-marker .marker-prices { display: grid; gap: var(--space-xs); min-width: 80px; }
+.marker-prices > span { display: flex; justify-content: space-between; gap: var(--space-sm); font-size: var(--text-xs); }
+.marker-prices strong { font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.transport-map-marker[aria-pressed=true] .compact-marker { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.ops-card strong { display: block; font-size: 1.875rem; letter-spacing: -.04em; line-height: 1; }
+.panel.dagster-runs, .panel.dagster-schedules { padding: 0; border-radius: var(--radius-panel); overflow: hidden; }
+.panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-md); padding: var(--space-lg); border-bottom: 1px solid var(--color-rule); }
+.panel-head h2, .panel-head p { margin: 0; }
+.panel-head p { color: var(--color-muted); font-size: var(--text-xs); }
+.table-wrap { max-width: 100%; overflow: auto; }
+.table-wrap table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); text-align: left; font-variant-numeric: tabular-nums; }
+.table-wrap th, .table-wrap td { padding: var(--space-md) var(--space-lg); border-bottom: 1px solid var(--color-rule); vertical-align: top; }
+.table-wrap th { color: var(--color-muted); font-weight: 500; white-space: nowrap; }
+.dagster-runs table { min-width: 38rem; }
+.dagster-schedules table { min-width: 30rem; }
+.dagster-runs td code, .dagster-run-elapsed { display: block; margin-top: var(--space-xs); color: var(--color-muted); font-size: var(--text-xs); }
+.dagster-run-elapsed { white-space: nowrap; }
+.status-badge.warning { color: var(--color-warning); }
+.inline-link { display: inline-flex; gap: var(--space-xs); align-items: center; }
+.row-expand-toggle { display: inline-flex; align-items: center; gap: var(--space-xs); background: transparent; border: 0; color: var(--color-ink); cursor: pointer; min-height: 44px; padding: var(--space-xs); }
+.sync-run-detail-row td { background: var(--color-paper); white-space: normal; }
+.sync-run-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: var(--space-lg); margin: 0; }
+.sync-run-detail-grid dt { color: var(--color-muted); font-size: var(--text-xs); }
+.sync-run-detail-grid dd { margin: var(--space-xs) 0 0; overflow-wrap: anywhere; }
+@media (max-width: 62rem) { .transport-map-layout { grid-template-columns: minmax(0, 1fr); } .weather-inspector { border: 1px solid var(--color-rule); } }
+@media (pointer: coarse) { .compact-marker { min-height: 44px; } }
+}
+
+@layer base {
+  :root { --secondary: var(--color-selected); --foreground: var(--ink); }
+  [data-slot="table-row"], [data-slot="alert"] { border-color: var(--line); }
+  [data-slot="button"], [data-slot="toggle-group-item"] { cursor: pointer; }
+  @media (pointer: coarse) {
+    [data-slot="button"], [data-slot="toggle-group-item"], [data-slot="native-select"], [data-slot="input"] { min-height: 44px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    [data-slot="spinner"], [data-slot="skeleton"] { animation: none; }
+  }
+}

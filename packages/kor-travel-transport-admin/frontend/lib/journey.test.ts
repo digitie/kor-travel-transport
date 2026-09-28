@@ -17,12 +17,14 @@ describe("여행 정보 표시 계약", () => {
     expect(serviceTime("202609290130", "2026-09-27")).toBe("2일 뒤 01:30");
     expect(serviceTime("2405", "2026-09-27")).toBe("익일 00:05");
   });
-  it("30km 축척 이하에서 클러스터링을 해제한다", () => {
-    const threshold = Math.log2(100 * 40075.016686 * Math.cos(37 * Math.PI / 180) / (512 * 30));
-    expect(clusterAtScale(threshold - 0.01, 37)).toBe(true);
-    expect(clusterAtScale(threshold + 0.01, 37)).toBe(false);
-    expect(clusterAtScale(11, 37)).toBe(false);
+  it("광역 축척에서는 밀도가 낮아도 묶음을 유지한다", () => expect(clusterAtScale(10.99, 37, 2)).toBe(true));
+  it("동네 축척의 드문 장소는 개별 표시한다", () => expect(clusterAtScale(11, 37, 6, 320, 380)).toBe(false));
+  it("같은 장소 수라도 작은 화면에서는 묶는다", () => {
+    expect(clusterAtScale(12, 37, 15, 320, 380)).toBe(true);
+    expect(clusterAtScale(12, 37, 15, 1000, 600)).toBe(false);
   });
+  it("최대 확대에서도 과밀한 장소를 한꺼번에 펼치지 않는다", () => expect(clusterAtScale(20, 37, 100, 1000, 600)).toBe(true));
+  it.each([NaN, Infinity, -Infinity])("잘못된 축척 %s는 보수적으로 묶는다", (zoom) => expect(clusterAtScale(zoom, 37)).toBe(true));
   it.each([[null, 37, false], [127, null, false], [NaN, 37, false], [127, 37, true]])("미등록 좌표를 지도에 넣지 않는다", (longitude, latitude, expected) => expect(hasCoordinates({ longitude, latitude } as Place)).toBe(expected));
   it.each([[37.424805, 126.423637], [181, 37], [-181, 37], [127, -91], [Infinity, 37], [127, -Infinity]])("범위 밖 좌표 %s/%s를 지도와 카메라에 넣지 않는다", (longitude, latitude) => expect(hasCoordinates({ longitude, latitude } as Place)).toBe(false));
   it.each([[180, 90], [-180, -90], [0, 0]])("유효한 좌표 경계 %s/%s는 유지한다", (longitude, latitude) => expect(hasCoordinates({ longitude, latitude } as Place)).toBe(true));

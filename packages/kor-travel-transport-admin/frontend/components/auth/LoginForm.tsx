@@ -1,6 +1,11 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Field, FieldGroup, FieldLabel, FieldError } from "@/components/ui/field";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
 
 export function LoginForm({ nextPath }: { nextPath: string }) {
   const [username, setUsername] = useState("admin");
@@ -16,5 +21,13 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
       window.location.assign(payload.next ?? nextPath);
     } catch { setError("로그인 서버에 연결하지 못했습니다."); } finally { setBusy(false); }
   }
-  return <section className="login-shell"><form className="login-panel" onSubmit={submit}><p className="eyebrow">Kor Travel Transport</p><h1>관리자 로그인</h1><label className="field" htmlFor="username">아이디<input autoComplete="username" id="username" onChange={(event) => setUsername(event.target.value)} required value={username} /></label><label className="field" htmlFor="password">비밀번호<input autoComplete="current-password" id="password" onChange={(event) => setPassword(event.target.value)} required type="password" value={password} /></label><button className="button" disabled={busy} type="submit">{busy ? "확인 중…" : "로그인"}</button><p className="login-error" role="alert">{error}</p></form></section>;
+  return <section className="login-shell"><Card className="w-full max-w-md">
+    <CardHeader><CardDescription>Kor Travel Transport</CardDescription><CardTitle><h1>관리자 로그인</h1></CardTitle></CardHeader>
+    <CardContent><form onSubmit={submit} aria-busy={busy}><FieldGroup>
+      <Field data-invalid={!!error}><FieldLabel htmlFor="username">아이디</FieldLabel><Input autoComplete="username" id="username" onChange={(event) => setUsername(event.target.value)} required value={username} aria-invalid={!!error} aria-describedby={error ? "login-error" : undefined} /></Field>
+      <Field data-invalid={!!error}><FieldLabel htmlFor="password">비밀번호</FieldLabel><Input autoComplete="current-password" id="password" onChange={(event) => setPassword(event.target.value)} required type="password" value={password} aria-invalid={!!error} aria-describedby={error ? "login-error" : undefined} /></Field>
+      <Button disabled={busy} type="submit">{busy ? <Spinner data-icon="inline-start" aria-label="로그인 확인 중" /> : null}{busy ? "확인 중…" : "로그인"}</Button>
+      {error ? <FieldError id="login-error">{error}</FieldError> : null}
+    </FieldGroup></form></CardContent>
+  </Card></section>;
 }

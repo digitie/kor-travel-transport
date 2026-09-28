@@ -30,6 +30,6 @@ export function AdminShell({ children }: { children: ReactNode }) {
   return <div className="admin-layout"><a className="skip-link" href="#main-content">본문으로 건너뛰기</a><aside className="rail"><Link className="brand" href="/"><strong>Kor Travel Transport</strong><span>운영 관리 화면</span></Link><nav className="nav" aria-label="주요 메뉴"><p className="nav-label">교통 정보·운영</p>{items.map(([href, label, Icon]) => <Link aria-current={pathname === href ? "page" : undefined} className={pathname === href ? "active" : ""} href={href} key={href}><Icon aria-hidden="true" size={16} /> {label}</Link>)}</nav><form action="/api/auth/logout" method="post" onSubmit={clearDashboardCache}><button className="sign-out" type="submit"><LogOut aria-hidden="true" size={15} /> 로그아웃</button></form></aside><main className="main" id="main-content" tabIndex={-1}>{children}</main></div>;
 }
 
-export function PageHeader({ title, description }: { title: string; description: string }) {
-  return <header className="page-header"><p className="eyebrow">Kor Travel Transport</p><h1>{title}</h1><p>{description}</p></header>;
+export function PageHeader({ title, description, actions }: { title: string; description: string; actions?: ReactNode }) {
+  return <header className="page-header"><div><p className="eyebrow">Kor Travel Transport</p><h1>{title}</h1><p>{description}</p></div>{actions ? <div className="page-header-actions">{actions}</div> : null}</header>;
 }

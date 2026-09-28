@@ -1,5 +1,71 @@
 # journal.md — 작업 일지
 
+## 2026-09-28 PR #46 shadcn·Weather UI n150 검증 완료
+
+- runtime 후보 `8ff8e7c541d05f46c5736a6f97edd762f2d7da9a`, 공식 admin Dockerfile
+  이미지 `sha256:cda9a4d83c3d47c3080b0408b4ae31cba8aeb303c7ca8d0cf8039796320120e1`를
+  14:35 KST UI 서비스에만 반영했다. UI `efadbf197aca`는 healthy/재시작 0/host network다.
+  API·code-server·daemon·webserver·legacy frontend·3개 gateway의 ID/이미지는 불변이다.
+- WSL/Docker admin 단위 각각 96개와 린트/타입/빌드, WSL UI E2E 105개를 통과했다.
+  기존 parking-radar 85개, Docker backend 283개와 migration 왕복/check도 통과했다.
+- 14:35:33 KST 시작한 운영 HTTPS E2E 402개가 121.24초에 모두 통과했다.
+  실패/skip/flaky 0이다. release SHA·공개/인증 저장 API·세션/CSRF·반응형 화면을 확인했다.
+  UI 오류 회귀 일부는 mock이므로 실제 provider 수집 성공이나 전국 자료 완성을 뜻하지 않는다.
+- 실제 타일·청주공항 저장 주차·군산 저장 배편·Dagster를 1440/375px에서 별도로 확인했다.
+  화면 예외는 없었고 출도착/provider 배편 실시간 호출은 실행하지 않았다. 군산 위치는 제공
+  원본의 항만 안내 지점으로 실제 승선 터미널 위치가 아님을 상세에 명시한다.
+- James(Lorentz)·Popper(Kierkegaard) 독립 재리뷰는 P0/P1 없음으로 끝났다. 잔존 P2인
+  내장 지도에서 검색을 바꿀 때 이미 열린 겹침 선택 목록 유지 현상은 후속으로 남긴다.
+  실제 장소 목록이며 닫기/재선택이 가능하고 전용 지도에서는 조회 조건 변경 시 제거된다.
+  이번 운영 후보의 추가 변경을 피하고 별도 검색·목록 수명 회귀와 함께 보완한다.
+- n150 admin 소스를 백업 후 동기화했다. 이전 소스/릴리스 기록은
+  `/home/digitie/backups/transport-admin-ui/pr46-8ff8e7c541d05f46c5736a6f97edd762f2d7da9a`에 있다.
+  최종 증적 문서 CI를 통과한 뒤 PR #46을 머지한다. 최종 머지 상태는 PR을 정본으로 삼는다.
+
+## 2026-09-28 PR #46 적대적 리뷰 회귀 수정
+
+- 독립 James(Lorentz)/Popper(Kierkegaard)가 동일 좌표 클러스터의 확대 한계, 항공편
+  비정상 HTTP 200을 정상 0편으로 오인하는 문제, 최근 30건 밖 장기 실행 누락을 지적했다.
+  P2인 선택 필터 색 구분·긴 선택 이름의 모바일 해제·패널 재선택 시 429 보호도 반영했다.
+- VWorld Base 최대 확대 19를 맞추고 더 확대할 수 없는 묶음은 장소 선택 목록을 연다.
+  API의 success/sample을 구분하고 sample은 예시임을 표시한다. 호출 대기는 패널 수명보다
+  긴 브라우저 탭 수명에 보존한다. Dagster STARTED 전체 조회를 최근 실행과 합쳐 중복 제거한다.
+- 구 후보에서 실패 회귀를 확인한 뒤 고쳤다. 타일을 차단한 클러스터 테스트의 초기 load
+  미발생은 카메라 이동으로 viewport를 초기화하도록 테스트를 수정했다. 운영 Dagster의 새
+  읽기 쿼리는 정상 Runs 응답이다. WSL 단위 96개·린트·타입·빌드 통과, 수정 후 UI 회귀
+  검증을 진행한다. 운영 provider 수집 호출이나 스케줄 변경은 하지 않았다.
+- n150의 API/worker 이미지가 서로 다른 현재 상태를 보존한다. 전체 배포 스크립트 대신
+  공식 admin Dockerfile 이미지와 UI 서비스만 --no-deps/--no-build로 교체하고 8개 보호
+  컨테이너 ID·이미지 불변을 검증한다. 이 기록 시점에는 배포/머지 미완료다.
+
+## 2026-09-28 Transport admin shadcn/ui 적용
+
+- 사용자 추가 요청을 반영해 이전의 shadcn 미설치 계획을 변경했다. 공식 Base UI
+  base-nova 컴포넌트와 Tailwind v4를 도입하고 기존 Weather 배치·청록 토큰을 유지한다.
+- 로그인, 지도 검색/필터, 다중 장소 선택, 지도/목록 전환, 항구·공항 상세,
+  Dagster 카드/표/상태, 통합 교통 현황 탭을 실제 컴포넌트로 전환한다.
+  출처 API 호출 시점·KRIC/배편 주기·로그인 초기값은 변경하지 않는다.
+- 공항 코드 누락 시 주차 무한 로딩을 명시적 미연결 상태로 수정했다.
+  신규 키보드·모바일·컴포넌트 계약 테스트를 추가했다. 초기 WSL 94개 통과,
+  운영 의존성 audit 0건. E2E·독립 리뷰·운영 배포·머지는 아직 진행 중이다.
+- 기존 백엔드 WSL 결과 272 통과/7 실패/4 제외 중 실패는 임시 공간 부족이었다.
+  다른 프로젝트 파일을 삭제하지 않고 TMPDIR를 디스크 경로로 지정해 백업 테스트
+  9개 재실행을 통과했다. Docker 백엔드 283개와 migration 왕복 검증은 통과했다.
+
+## 2026-09-28 Weather형 지도 상세·Dagster 화면 후속 착수
+
+- PR #44 머지를 확인하고 `codex/weather-inspector-markers`를 최신 main에서 분기했다.
+  이전 `codex/map-marker-density`의 고립된 변경과 로컬 상태를 대조했으며 오래된 브랜치를
+  통째로 병합하지 않는다. 기존 parking-radar와 provider 수집 설정은 변경하지 않는다.
+- Weather 로컬 `components/weather-map.tsx`의 inspector 제목/갱신/내용 분리와
+  `app/admin/dagster/page.tsx`의 카드·실행 표·펼치는 스케줄 표를 기준으로 삼았다.
+  기존 디자인 문서와 Hallmark의 상태·반응형 기준을 적용하며 shadcn을 새로 설치하지 않는다.
+- 항구 클릭은 DB 전용 시간표 1항구×1일만 조회한다. 공항은 저장 주차 자동 조회와
+  명시 출도착 버튼을 분리하며 429 재호출 보호·선택 전환 시 취소를 적용한다.
+- 유가 마커는 아이콘·짧은 유종·가격, 도시철도는 역명+노선 한 줄로 축약한다.
+  다음 열차는 상세에서 확인하며 마커의 불필요한 주기 조회는 제거한다.
+- 아직 운영 반영/완료가 아니다. WSL 초기 단위 90개·린트·빌드 통과 후 신규 UI E2E를 진행한다.
+
 ## 2026-09-28 PR #44 배편 선실행·main 통합 검증
 
 - 사용자 요청으로 12:45 정기 배편 회차를 앞당기고 오피넷 실수집 확인은 머지 후 후속으로
