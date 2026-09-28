@@ -11,6 +11,41 @@ from app.dagster import definitions as dagster_definitions
 from app.dagster.definitions import definitions
 
 
+@pytest.mark.parametrize("scope", ["fuel", "highway"])
+@pytest.mark.parametrize("status", ["success", "skipped", "failed", "partial_success"])
+def test_transport_failure_is_visible_after_commit_without_retry(monkeypatch, scope, status):
+    lifecycle = []
+
+    class FakeService:
+        def __init__(self, settings):
+            pass
+
+        async def collect(self, session, **kwargs):
+            return {"status": status, "run_id": 19387, "errors": ["secret-provider-detail"]}
+
+        async def close(self):
+            lifecycle.append("closed")
+
+    async def committed_run(settings, action, **kwargs):
+        result = await action(None, **kwargs)
+        lifecycle.append("committed")
+        return result
+
+    monkeypatch.setattr(dagster_definitions, "_settings", lambda: None)
+    monkeypatch.setattr(dagster_definitions, "TransportCollectionService", FakeService)
+    monkeypatch.setattr(dagster_definitions, "_run_with_session", committed_run)
+    job = getattr(dagster_definitions, f"{scope}_collection_job")
+    result = job.execute_in_process(raise_on_error=False)
+    assert lifecycle == ["committed", "closed"]
+    assert result.success is (status in {"success", "skipped"})
+    assert not any(event.is_step_up_for_retry for event in result.all_events)
+    if not result.success:
+        failure = result.failure_data_for_node(f"collect_{scope}_transport").user_failure_data
+        assert failure.metadata["run_id"].value == 19387
+        assert failure.metadata["status"].value == status
+        assert "secret-provider-detail" not in str(failure)
+
+
 @pytest.mark.parametrize("status", ["success", "skipped", "partial_success"])
 def test_ferry_partial_result_is_a_dagster_failure_without_retry(monkeypatch, status):
     committed = []
@@ -94,6 +129,23 @@ def test_dagster_definitions_enable_every_schedule_and_serialize_overlapping_gro
     assert 'RUSTFS_RAW_PREFIX: "${RUSTFS_RAW_PREFIX:-provider-raw}"' in shared_compose
     assert 'RUN_DB_MIGRATIONS: "false"' in shared_compose
     assert 'image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-transport-backend:latest}"' in shared_compose
+
+
+@pytest.mark.parametrize("failed_calls", [0, 1])
+def test_maritime_partial_collection_is_not_dagster_success(monkeypatch, failed_calls) -> None:
+    from dagster import Failure
+
+    async def fake_run(*_args, **_kwargs):
+        return {"status": "partial_success", "run_id": 10, "port_location_failed_calls": failed_calls,
+                "port_location_deferred_count": 2}
+    monkeypatch.setattr(dagster_definitions, "_settings", lambda: None)
+    monkeypatch.setattr(dagster_definitions, "RailMaritimeCollectionService",
+                        lambda _: SimpleNamespace(collect_maritime_reference=None))
+    monkeypatch.setattr(dagster_definitions, "_run_with_session", fake_run)
+    with pytest.raises(Failure, match="기항지") as raised:
+        dagster_definitions._collect_reference("maritime")
+    assert raised.value.allow_retries is False
+    assert raised.value.metadata["deferred_port_locations"].value == 2
 
 
 def test_transport_provider_lifecycle_stays_in_one_event_loop(monkeypatch) -> None:

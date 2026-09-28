@@ -80,7 +80,7 @@ export function TransportDashboard() {
   </div>;
 
   return <Tabs value={tab} onValueChange={(value) => { if (value === "overview" || value === "highway" || value === "fuel") setTab(value); }} className="min-w-0 gap-4">
-    <TabsList aria-label="교통·유가 정보 보기" className="max-w-full overflow-x-auto group-data-horizontal/tabs:h-auto">
+    <TabsList aria-label="교통·유가 정보 보기" className="max-w-full flex-wrap group-data-[orientation=horizontal]/tabs:h-auto">
       {DASHBOARD_TABS.map(([value, label]) => <TabsTrigger value={value} key={value} className="min-h-11 flex-none px-3 py-2">{label}</TabsTrigger>)}
     </TabsList>
     {statisticsError ? <Alert variant="destructive" className="grid-cols-1">

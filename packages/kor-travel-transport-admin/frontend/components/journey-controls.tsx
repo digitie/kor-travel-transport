@@ -59,7 +59,7 @@ export function PlaceDetails({ place, showRailTimetable = true, showHeading = tr
     {place.phone ? <p>전화 {place.phone}</p> : null}
     {place.facilities?.length ? <p>편의시설 · {place.facilities.join(" · ")}</p> : null}
     {place.kind === "rail_station" && showRailTimetable ? <RailTimetables placeIds={[place.id]} /> : null}
-    {place.kind === "ferry_port" ? <p className="data-caveat">{hasCoordinates(place) ? "항만 안내 지점입니다. 실제 승선 장소는 여객터미널에 확인해 주세요." : "좌표 미등록 · 목록에서 운항 정보를 확인할 수 있습니다."}</p> : null}
+    {place.kind === "ferry_port" ? <p className="data-caveat">{hasCoordinates(place) ? place.location_source === "komsa_port_call" ? "한국해양교통안전공단 기항지 위치입니다. 승선 부두·탑승구는 운항사에 확인해 주세요." : "항만 안내 지점입니다. 실제 승선 장소는 여객터미널에 확인해 주세요." : "좌표 미등록 · 목록에서 운항 정보를 확인할 수 있습니다."}</p> : null}
     <p className="quiet">출처 {collectionSourceLabel(place.source)} · 기준정보 반영 {dateTime(place.updated_at)}</p>
   </div>;
 }

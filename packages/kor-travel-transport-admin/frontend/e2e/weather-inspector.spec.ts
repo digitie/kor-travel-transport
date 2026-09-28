@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { MAP_FALLBACK_IMAGE } from "../lib/map-fallback";
 
 const stamp = "2026-09-28T03:00:00Z";
 const base = { source: "data_go_kr_maritime", prices: [], facilities: [], line_names: [], latitude: 37.5, longitude: 127, updated_at: stamp };
@@ -174,21 +175,42 @@ test("통계 수동 재시도는 화면당 3회까지이며 자동 반복하지 
   await expect(page.getByRole("button", { name: "통계 다시 조회" })).toBeDisabled(); expect(calls).toBe(4);
 });
 
-test("리뷰 회귀: 동일 좌표 묶음은 확대 한계 대신 장소 선택을 제공한다", async ({ page }) => {
+for (const tiles of ["즉시 실패", "지연 실패", "지연 성공"]) test(`리뷰 회귀: 동일 좌표 묶음은 확대 한계 대신 장소 선택을 제공한다 (${tiles})`, async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
+  let tileRequests = 0;
+  const decodeErrors: string[] = [];
+  page.on("console", (message) => { if (/decode|InvalidStateError/i.test(message.text())) decodeErrors.push(message.text()); });
+  await page.route("**://*.vworld.kr/**", async (route) => {
+    tileRequests++;
+    if (tiles !== "즉시 실패") await new Promise((resolve) => setTimeout(resolve, 500));
+    if (tiles === "지연 성공") return route.fulfill({ contentType: "image/png", body: Buffer.from(MAP_FALLBACK_IMAGE.split(",")[1], "base64") });
+    return route.abort();
+  });
+  let placeRequests = 0;
   await page.route("**/transport/features/places?**", (route) => {
+    placeRequests++;
     const kind = new URL(route.request().url()).searchParams.get("kind");
     return route.fulfill({ json: { items: [port, airport, rail, fuel].filter((place) => place.kind === kind).map((place) => ({ ...place, latitude: 36.2, longitude: 127.8 })), total: 1, truncated: false } });
   });
   await page.route("**/parking/current?**", (route) => route.fulfill({ json: { items: [] } }));
   await page.goto("/map");
   await page.locator("canvas.maplibregl-canvas").scrollIntoViewIfNeeded();
+  // 카메라 이동으로 초기화 결함을 가리지 않는다. 최초 지도에서도 묶음이 보여야 한다.
+  await expect(page.getByRole("button", { name: "4개 위치 묶음 펼치기", exact: true })).toBeVisible({ timeout: 15_000 });
   // 실제 타일 호출 없이도 카메라 이동으로 지도 viewport 계산을 완료한다.
   await page.getByLabel("장소 목록에서 선택").selectOption("rail_station:3");
   await page.getByRole("button", { name: "3개 위치 묶음 펼치기" }).click();
+  expect(tileRequests).toBeGreaterThan(0);
+  expect(decodeErrors).toEqual([]);
+  if (tiles !== "지연 성공") await expect(page.getByText("VWorld 지도 타일을 불러오지 못했습니다. 목록 보기에서 장소를 확인할 수 있습니다.")).toBeVisible();
   const choices = page.getByRole("region", { name: "겹친 장소 선택" });
   await expect(choices).toBeVisible();
   await expect(choices.getByRole("button").first()).toBeFocused();
+  // 선택 목록이 열린 뒤 viewport 재조회가 끝나도 버튼이 사라지면 안 된다.
+  const previousRequests = placeRequests;
+  await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+  await expect.poll(() => placeRequests).toBeGreaterThan(previousRequests);
+  await expect(choices).toBeVisible();
   await choices.getByRole("button", { name: "김포공항", exact: true }).click();
   await expect(page.getByRole("heading", { name: "김포공항", exact: true })).toBeVisible();
   await expect(choices).toHaveCount(0);

@@ -17,12 +17,13 @@ from kric import (
     FileStationInfo,
     PortGuidelineFileClient,
     PortGuidelineLocation,
+    PortCall,
     KricFileClient,
     KricNetworkError,
     RustfsObjectStore,
     StoredObject,
 )
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,6 +45,30 @@ logger = logging.getLogger(__name__)
 KRIC_FILE_SOURCE = "kric_public_file"
 MARITIME_SOURCE = "data_go_kr_maritime"
 PORT_GUIDELINE_SOURCE = "data_go_kr_port_guideline"
+PORT_CALL_SOURCE = "komsa_port_call"
+# TAGO와 KOMSA 코드는 서로 다르다. 지역을 확정한 TAGO 항구만 조회하며 이름 부분일치나
+# 터미널 주소로 지역을 추정하지 않는다(원본 터미널 주소에 타 지역 값이 존재한다).
+PORT_CALL_TARGETS = {
+    "SEA10100": ("인천", "인천광역시"),
+    "SEA30010": ("군산", "전북특별자치도"),
+    "SEA31010": ("목포", "전라남도"),
+    "SEA40010": ("마산", "경상남도"),
+    "SEA42010": ("부산", "부산광역시"),
+    "SEA43010": ("포항", "경상북도"),
+    "SEA44010": ("동해", "강원특별자치도"),
+    "SEA96140": ("여수", "전라남도"),
+    "SEA44030": ("묵호", "강원특별자치도"),
+    "SEA44060": ("강릉", "강원특별자치도"),
+    "SEA22010": ("대천", "충청남도"),
+    "SEA22040": ("평택", "경기도"),
+    "SEA43030": ("후포", "경상북도"),
+    "SEA40050": ("통영", "경상남도"),
+    "SEA30020": ("격포", "전북특별자치도"),
+    "SEA31020": ("완도", "전라남도"),
+    "SEA31910": ("녹동", "전라남도"),
+    "SEA35490": ("진도", "전라남도"),
+    "SEA50110": ("여수엑스포", "전라남도"),
+}
 
 
 class RailMaritimeCollectionService:
@@ -129,9 +154,10 @@ class RailMaritimeCollectionService:
             await self._store_summary_response(
                 session, run.id, MARITIME_SOURCE, "data.go.kr:maritime-reference", summary
             )
-            await self._finish_run(session, run.id, "success")
+            status = "partial_success" if summary["port_location_failed_calls"] or summary["port_location_deferred_count"] else "success"
+            await self._finish_run(session, run.id, status)
             logger.info("maritime reference collection finished run_id=%s summary=%s", run.id, summary)
-            return {"status": "success", "run_id": run.id, **summary}
+            return {"status": status, "run_id": run.id, **summary}
         except asyncio.CancelledError as exc:
             await self._fail_run(session, run.id, exc)
             raise
@@ -308,8 +334,9 @@ class RailMaritimeCollectionService:
         key = self.settings.data_go_kr_service_key
         assert key is not None
         collected_at = now_utc()
-        guidelines, archive = await self._fetch_port_guidelines()
-        locations = _representative_port_locations(guidelines)
+        _guidelines, archive = await self._fetch_port_guidelines()
+        # 항만가이드라인은 항로 안내 자료로만 보관한다. 어느 한 점도 승선 항구로 쓰지 않는다.
+        locations: dict[str, tuple[PortCall | None, bool]] = {}
         async with self._maritime_client_factory(key, timeout=self.settings.api_timeout_seconds) as client:
             # 공공데이터 호출량을 예측 가능하게 유지하려고 동시에 세 요청을 보내지 않는다.
             # Provider iterator는 page budget을 넘기면 오류로 끝나므로 첫 페이지 하나만
@@ -318,8 +345,13 @@ class RailMaritimeCollectionService:
             terminals = tuple([item async for item in client.iter_ferry_terminals(page_size=100, max_pages=20)])
             ship_types = tuple([item async for item in client.iter_ferry_ship_types(page_size=100, max_pages=20)])
             for port in ports:
+                target = PORT_CALL_TARGETS.get(port.port_id or "")
+                if target and port.port_name == target[0]:
+                    locations[port.port_id] = await self._port_call_location(session, run_id, client, port.port_id, target)
+            for port in ports:
                 if port.port_id:
-                    await self._upsert_port(session, port, collected_at, locations.get(_port_name_key(port.port_name)))
+                    location, verified = locations.get(port.port_id, (None, False))
+                    await self._upsert_port(session, port, collected_at, location, location_verified=verified)
             for terminal in terminals:
                 if terminal.terminal_id:
                     await self._upsert_terminal(session, terminal, collected_at)
@@ -331,9 +363,80 @@ class RailMaritimeCollectionService:
             "port_count": len(ports),
             "terminal_count": len(terminals),
             "ship_type_count": len(ship_types),
-            "port_location_count": len(locations),
+            "port_location_count": sum(location is not None for location, _verified in locations.values()),
+            "port_location_deferred_count": sum(not verified for _location, verified in locations.values()),
             "port_guideline_object_stored": int(archive is not None),
+            "port_location_failed_calls": int(await session.scalar(select(func.count()).select_from(RawApiResponse).where(
+                RawApiResponse.collection_run_id == run_id, RawApiResponse.source == PORT_CALL_SOURCE,
+                RawApiResponse.parse_status == "failed",
+            )) or 0),
         }
+
+    async def _port_call_location(
+        self, session: AsyncSession, run_id: int, client: DataGoKrMaritimeClient,
+        port_id: str, target: tuple[str, str],
+    ) -> tuple[PortCall | None, bool]:
+        """좌표와 정상 재검증 여부를 반환한다. 실패/유예와 정상 무결과를 구분한다."""
+        endpoint = f"komsa:port-call:{port_id}"
+        # 예약과 예산 검사만 잠근다. 네트워크 대기 중 트랜잭션을 잡고 있지 않는다.
+        if session.bind is not None and session.bind.dialect.name == "postgresql":
+            await session.execute(text("SELECT pg_advisory_xact_lock(420052)"))
+        previous = await session.scalar(select(RawApiResponse).where(
+            RawApiResponse.source == PORT_CALL_SOURCE, RawApiResponse.endpoint == endpoint,
+        ).order_by(RawApiResponse.received_at.desc(), RawApiResponse.id.desc()).limit(1))
+        now = now_utc()
+        if previous is not None:
+            received = previous.received_at.replace(tzinfo=UTC) if previous.received_at.tzinfo is None else previous.received_at
+            ttl = timedelta(days=30 if previous.parse_status == "success" else 1)
+            if now - received < ttl and previous.request_params_json == {"name": target[0], "province": target[1]}:
+                await session.commit()
+                if previous.parse_status == "success":
+                    data = json.loads(previous.body_text)["selected"]
+                    return (_unique_port_call((PortCall(**data),), target) if data else None), True
+                return None, False
+        # 제공자 한도는 같은 키의 다른 소비자도 사용한다. 한 번 한도에 도달하면
+        # 개별 항구 캐시와 무관하게 이 서비스의 신규 요청을 24시간 유예한다.
+        limited = await session.scalar(select(RawApiResponse.id).where(
+            RawApiResponse.source == PORT_CALL_SOURCE,
+            RawApiResponse.parse_status == "failed",
+            RawApiResponse.parse_error == "KricRateLimitError",
+            RawApiResponse.received_at >= now - timedelta(days=1),
+        ).limit(1))
+        if limited is not None:
+            await session.commit()
+            return None, False
+        attempts = await session.scalar(select(func.count()).select_from(RawApiResponse).where(
+            RawApiResponse.source == PORT_CALL_SOURCE, RawApiResponse.received_at >= now - timedelta(days=1),
+        ))
+        if (attempts or 0) >= 80:
+            await session.commit()
+            return None, False
+        reservation = RawApiResponse(collection_run_id=run_id, source=PORT_CALL_SOURCE, endpoint=endpoint,
+            request_params_json={"name": target[0], "province": target[1]}, status_code=0,
+            body_text="null", received_at=now, parse_status="pending", parse_error=None)
+        session.add(reservation)
+        await session.commit()
+        try:
+            candidates = await client.get_port_calls(name=target[0], province=target[1])
+            location = _unique_port_call(candidates, target)
+            selected = {
+                "port_code": location.port_code, "port_name": location.port_name,
+                "province_code": location.province_code, "province_name": location.province_name,
+                "district_name": location.district_name, "latitude": location.latitude,
+                "longitude": location.longitude, "raw": dict(location.raw),
+            } if location else None
+            reservation.body_text = json.dumps({"selected": selected, "candidates": [dict(item.raw) for item in candidates]}, ensure_ascii=False)
+            reservation.status_code = 200
+            reservation.parse_status = "success"
+            await session.commit()
+            return location, True
+        except Exception as exc:
+            # 기본 항구/시간표 수집은 계속한다. 서비스키가 들어간 예외 문자열은 저장하지 않는다.
+            reservation.parse_status = "failed"
+            reservation.parse_error = type(exc).__name__
+            await session.commit()
+            logger.warning("port call lookup failed port_id=%s error_type=%s", port_id, type(exc).__name__)
+            return None, False
 
     async def _fetch_port_guidelines(self) -> tuple[tuple[PortGuidelineLocation, ...], StoredObject | None]:
         if not self.settings.port_guideline_collection_enabled:
@@ -434,7 +537,8 @@ class RailMaritimeCollectionService:
 
     async def _upsert_port(
         self, session: AsyncSession, item: DomesticFerryPort, collected_at: Any,
-        location: tuple[float, float, int] | None,
+        location: PortCall | None,
+        *, location_verified: bool = False,
     ) -> None:
         assert item.port_id is not None
         row = await session.scalar(
@@ -442,10 +546,16 @@ class RailMaritimeCollectionService:
         )
         values = {
             "port_name": item.port_name, "last_seen_at": collected_at, "raw_item_json": dict(item.raw),
-            "latitude": location[0] if location else None, "longitude": location[1] if location else None,
-            "location_source": PORT_GUIDELINE_SOURCE if location else None,
-            "location_point_count": location[2] if location else 0,
         }
+        if location is not None:
+            values.update(latitude=location.latitude, longitude=location.longitude,
+                          location_source=PORT_CALL_SOURCE, location_point_count=1)
+            values["raw_item_json"]["_komsa_port_call"] = dict(location.raw)
+        elif location_verified or row is None or row.location_source == PORT_GUIDELINE_SOURCE or row.port_name != item.port_name:
+            # 정상 재검증의 무결과/중복/부적합 좌표는 연결 해제한다. 일시 장애만 기존 값을 보존한다.
+            values.update(latitude=None, longitude=None, location_source=None, location_point_count=0)
+        elif row.raw_item_json and "_komsa_port_call" in row.raw_item_json:
+            values["raw_item_json"]["_komsa_port_call"] = row.raw_item_json["_komsa_port_call"]
         if row is None:
             session.add(
                 FerryPort(
@@ -568,22 +678,12 @@ async def _upsert_ferry_timetable_snapshot(
     await session.execute(statement)
 
 
-def _port_name_key(value: str | None) -> str:
-    return "".join((value or "").split()).replace("항구", "").replace("항", "")
-
-
-def _representative_port_locations(
-    locations: tuple[PortGuidelineLocation, ...],
-) -> dict[str, tuple[float, float, int]]:
-    """원문 순서가 가장 이른 안내 지점을 marker로 선택하고 전체 점 수를 함께 남긴다."""
-    grouped: dict[str, list[PortGuidelineLocation]] = {}
-    for item in locations:
-        key = _port_name_key(item.port_name)
-        if key and item.latitude is not None and item.longitude is not None:
-            grouped.setdefault(key, []).append(item)
-    result: dict[str, tuple[float, float, int]] = {}
-    for key, items in grouped.items():
-        selected = min(items, key=lambda item: (int(item.position_order) if (item.position_order or "").isdigit() else 10**9, item.latitude or 0, item.longitude or 0))
-        assert selected.latitude is not None and selected.longitude is not None
-        result[key] = (selected.latitude, selected.longitude, len(items))
-    return result
+def _unique_port_call(candidates: tuple[PortCall, ...], target: tuple[str, str]) -> PortCall | None:
+    """지역·이름 정확 일치 한 건만 허용한다. 동명·중복은 임의 대표점으로 합치지 않는다."""
+    matches = [item for item in candidates if (item.port_name, item.province_name) == target]
+    if len(matches) != 1:
+        return None
+    item = matches[0]
+    if item.latitude is None or item.longitude is None or not (32 <= item.latitude <= 39.5 and 124 <= item.longitude <= 132):
+        return None
+    return item

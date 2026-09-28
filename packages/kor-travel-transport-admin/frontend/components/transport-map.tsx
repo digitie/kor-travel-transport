@@ -4,6 +4,7 @@ import { ClusterLayer, ClusterMarker, Marker, VWorldMapView } from "vworld-map-w
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { clusterAtScale, hasCoordinates, transportGet, type Place, type PlaceKind } from "@/lib/journey";
 import { collectionSourceLabel, fuelProductLabel, placeKindLabel } from "@/lib/transport-presentation";
+import { MAP_FALLBACK_IMAGE } from "@/lib/map-fallback";
 import { PlaceIcon, ViewSwitch } from "./journey-controls";
 import { PlaceInspector } from "./place-inspector";
 import { Input } from "@/components/ui/input";
@@ -85,12 +86,19 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
   }, [query]);
 
   useEffect(() => {
+    // 지도 이동·크기 변경으로 DB 결과가 갱신되어도 열어 둔 선택 목록은 유지한다.
+    // 검색 조건을 바꾸거나 명시적으로 선택/닫기한 경우에만 목록을 닫는다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setClusterPlaces([]);
+  }, [kindsKey, source, searchQuery, product, view]);
+
+  useEffect(() => {
     if (embedded) return;
     const controller = new AbortController();
     const selectedKinds = kindsKey ? kindsKey.split(",") : [];
     // 외부 조회 조건이 바뀌면 이전 영역의 결과를 제거하고 요청 상태를 초기화한다.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPending(selectedKinds); setFailed([]); setClusterPlaces([]);
+    setPending(selectedKinds); setFailed([]);
     // 각 종류가 끝나는 즉시 표시한다. 느린 유가 조회가 역·항구를 가리지 않는다.
     selectedKinds.forEach((kind) => {
       const search = new URLSearchParams({ kind, limit: String(perKindLimit), ...viewport });
@@ -157,7 +165,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
         geolocate={false} layerType="Base" lazy loadingSkeleton={<p className="loading">지도를 준비하는 중입니다…</p>} minZoom={5} navigation scale
         onLoad={(map) => moved(map.getBounds(), map.getZoom())}
         onMoveEnd={(event) => { const map = event.target as { getBounds: () => Bounds; getZoom: () => number }; moved(map.getBounds(), map.getZoom()); }}
-        unsupportedTileFallback={{ label: "지도를 불러오지 못했습니다." }} zoom={7}>
+        unsupportedTileFallback={{ imageUrl: MAP_FALLBACK_IMAGE }} zoom={7}>
         <ClusterLayer points={groupedPoints} radius={cluster ? (product ? 80 : 110) : 60} maxZoom={19}
           renderCluster={(group, count, index) => <ClusterMarker lngLat={group.geometry.coordinates} count={count} onClick={() => {
             const id = group.properties.cluster_id;

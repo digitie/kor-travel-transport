@@ -5,7 +5,7 @@ from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
-from kric import DomesticFerryPort, FerryShipType, FerryTerminal, FileStationInfo, PortGuidelineLocation
+from kric import DomesticFerryPort, FerryShipType, FerryTerminal, FileStationInfo, KricRateLimitError, PortGuidelineLocation
 import pytest
 from pydantic import ValidationError
 from sqlalchemy import func, select
@@ -136,14 +136,51 @@ def test_maritime_reference_collection_stores_only_stable_reference_data(tmp_pat
             "terminal_count": 1,
             "ship_type_count": 1,
             "port_location_count": 0,
+            "port_location_deferred_count": 0,
             "port_guideline_object_stored": 0,
+            "port_location_failed_calls": 0,
         }
         await engine.dispose()
 
     asyncio.run(run())
 
 
-def test_maritime_reference_links_port_to_keyless_guideline_location(tmp_path: Path) -> None:
+def test_maritime_quota_cooldown_keeps_later_runs_partial_without_retrying(tmp_path: Path) -> None:
+    settings = _settings(tmp_path, maritime_reference_collection_enabled=True,
+                         port_guideline_collection_enabled=False, data_go_kr_service_key="test-key")
+    calls = 0
+
+    class Client(_MaritimeClient):
+        async def iter_ports(self, **_kwargs):
+            yield DomesticFerryPort("SEA10100", "인천", {})
+            yield DomesticFerryPort("SEA42010", "부산", {})
+
+        async def get_port_calls(self, **_kwargs):
+            nonlocal calls
+            calls += 1
+            raise KricRateLimitError("quota")
+
+    async def run():
+        engine, factory = create_engine_and_session_factory(settings.database_url)
+        await init_database(engine)
+        service = RailMaritimeCollectionService(settings, maritime_client_factory=lambda *_args, **_kwargs: Client())
+        try:
+            async with factory() as session:
+                first = await service.collect_maritime_reference(session)
+                second = await service.collect_maritime_reference(session)
+                assert first["status"] == second["status"] == "partial_success"
+                assert first["port_location_failed_calls"] == 1
+                assert second["port_location_failed_calls"] == 0
+                assert first["port_location_deferred_count"] == second["port_location_deferred_count"] == 2
+                assert calls == 1
+                assert await session.scalar(select(func.count()).select_from(FerryPort)) == 2
+        finally:
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_maritime_reference_does_not_use_guideline_waypoint_as_port(tmp_path: Path) -> None:
     settings = _settings(tmp_path, maritime_reference_collection_enabled=True, data_go_kr_service_key="test-key")
     engine, session_factory = create_engine_and_session_factory(settings.database_url)
 
@@ -163,8 +200,8 @@ def test_maritime_reference_links_port_to_keyless_guideline_location(tmp_path: P
         async with session_factory() as session:
             port = await session.scalar(select(FerryPort))
         assert port is not None
-        assert (port.latitude, port.longitude, port.location_source, port.location_point_count) == (35.1, 129.0, "data_go_kr_port_guideline", 2)
-        assert summary["port_location_count"] == 1
+        assert (port.latitude, port.longitude, port.location_source, port.location_point_count) == (None, None, None, 0)
+        assert summary["port_location_count"] == 0
         await engine.dispose()
 
     asyncio.run(run())

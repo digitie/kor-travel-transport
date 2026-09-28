@@ -56,7 +56,16 @@ async def _collect_transport_in_one_loop(settings: Settings, scope: CollectionSc
 
 
 def _collect_transport(scope: CollectionScope) -> dict[str, Any]:
-    return asyncio.run(_collect_transport_in_one_loop(_settings(), scope))
+    result = asyncio.run(_collect_transport_in_one_loop(_settings(), scope))
+    # 성공분·실패 상태를 커밋하고 provider를 닫은 뒤 Dagster에도 실패를 전달한다.
+    # 응답 원문을 복제하지 않으며 기존 호출 유예를 자동 재시도로 우회하지 않는다.
+    if result.get("status") in {"failed", "partial_success"}:
+        raise Failure(
+            description="교통정보 수집에 실패했습니다. 저장된 성공분과 호출 유예는 유지합니다.",
+            metadata={"run_id": result["run_id"], "status": result["status"], "scope": scope},
+            allow_retries=False,
+        )
+    return result
 
 
 @op
@@ -73,7 +82,13 @@ def _collect_reference(kind: str) -> dict[str, Any]:
     settings = _settings()
     service = RailMaritimeCollectionService(settings)
     action = service.collect_rail_reference if kind == "rail" else service.collect_maritime_reference
-    return asyncio.run(_run_with_session(settings, action))
+    result = asyncio.run(_run_with_session(settings, action))
+    if result.get("status") == "partial_success":
+        raise Failure(description="항구 기준정보는 저장했지만 일부 기항지 위치 조회가 실패하거나 유예됐습니다.",
+                      metadata={"run_id": result["run_id"], "failed_provider_calls": result["port_location_failed_calls"],
+                                "deferred_port_locations": result.get("port_location_deferred_count", 0)},
+                      allow_retries=False)
+    return result
 
 
 def _collect_ferry_timetable() -> dict[str, Any]:

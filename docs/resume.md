@@ -2,6 +2,53 @@
 
 ## 현재 상태
 
+- **2026-09-29 유가 복구 범위 승인 후 진행.** Dagster의 실패/부분 성공 은폐를 재현해
+  commit·provider 종료 뒤 실패를 전파하도록 수정했다. WSL/Docker 관련 55개씩 통과.
+  provider PR #20은 서비스 이용 불가 화면 조기 감지와 비밀값 없는 응답 대기 단계
+  진단을 추가했고 자체 최종 CI·독립 리뷰·운영 수집 검증 후 08:05 KST `7e0f770`으로
+  머지됐다. 검증한 `5fa0046`이 main 이력에 보존돼 소비자 pin은 그대로다.
+  WSL/Docker 각각 259개·Chromium 모의 응답 검증 포함 통과,
+  live API 4개 제외, 커버리지 93.45%·타입 검사 통과. Transport 후보 `fcd4d1f`는
+  WSL/Docker 전체 각각 356개·6개 환경별 제외, GitHub PostgreSQL 362개 통과다.
+  과거 timeout 근본 원인은 아직 미확정이다. n150 API/code-server `fcd4d1f` 배포 후
+  healthy·재시작 0, 원래 daemon 재개·보호 서비스 불변을 확인했다. 8시간 보호가 열린
+  상태에서 단일 유가 run `83c635f8-1bf4-4216-a5aa-113efe51245f`을 실행했고
+  Dagster SUCCESS·DB `19750` success로 07:48 KST에 종료됐다. 이번 원본은 주유소
+  11,767개, DB 전체 주유소는 11,846개다. 마지막 성공·가격 저장 시각 07:32:56 KST,
+  오류 해제·다음 허용 15:32:56 KST를 확인했다. 추가 유가 호출은 하지 않는다.
+  운영 관리자 HTTPS E2E는 421개 통과했다(최초 DNS 실패 4개 기록 보존 후 재검증).
+  종료 직후 parking-radar live는 14개 통과·2개 실패(주차 목록 20초 지연, 마지막
+  고속도로 run의 running 상태 유지)였다. 최초 실패를 보존하고,
+  고속도로 run `19774`의 07:59:56 KST 성공과 주차 약 0.01초 응답을 확인한 뒤
+  같은 live 16개 전체를 재실행해 **16개 통과**(24.4초)했다. 최초 실패 기록을 보존하고
+  테스트 코드·기준·timeout을 변경하지 않았다. 최종 CI·머지 정본은 각 PR이다.
+
+### 이전 진행 기록 (각 시점의 상태이며 현재 지시가 아님)
+
+- **2026-09-29 유가 복구 전 PR #51 배포 완료·머지 보류.** API/code-server `840f585`, UI `55148d2`로
+  n150 healthy·재시작 0. VWorld 로컬 키 반영, 탭·겹침 목록·타일 실패·최초 마커 문제를
+  수정했고 두 독립 리뷰 완료. 운영 관리자 UI 421개 통과(4.1분). 항구 공식 좌표는
+  749개 중 10개이며 한도 오류 5개는 24시간 신규 호출 유예로 보호한다. 추가 실수집 없음.
+  기존 parking-radar 추가 검사에서 15개 통과·오피넷 약 48시간 노후로 1개 실패했다.
+  최신성 기준을 낮추거나 제외하지 않았으며 유가 복구 범위 확대 여부를 사용자에게 물었다.
+  읽기 전용 진단에서 기존 Playwright timeout 반복과 실패 뒤 8시간 유예로 9/29 00시
+  수집이 건너뛰어진 것을 확인했다. 다음 정기는 08시 KST이며 성공을 보장하지 않는다.
+  DB 수집 실패가 Dagster SUCCESS로 표시되는 기존 문제도 발견했다. timeout의 근본
+  원인과 이번 지도 변경의 인과관계는 확인되지 않았다. 복구 작업은 아직 하지 않았다.
+  [상세 검증·운영 지문·되돌림 자료](runbooks/pr51-validation.md). 아래는 이전 진행 기록이다.
+
+- 2026-09-29 PR #51 재검증: WSL/Docker 전체 백엔드는 각각 340개 통과·4개 제외,
+  후속 좌표 재검증 수정 범위는 각각 44개 통과·2개 PostgreSQL 전용 제외다. 전용
+  PostgreSQL 28개는 모두 통과했다. Popper의 정상 무결과 좌표 잔존 문제를 `dc6ba5f`로
+  수정했다. UI 전체 HTTPS E2E는 418개 통과·묶음 마커 1개 간헐 실패로 조사 중이며,
+  배포 이미지의 탭/상세 32개는 통과했다. 운영 교체·live·머지는 아직 남았다.
+
+- 2026-09-28 VWorld 키: 로컬 `kor-travel-map/.env`의 키를 transport 관리자 UI의
+  Git 제외 `.env.local`과 WSL 검증 환경에 반영했다. 실제 키로 Next.js 빌드 성공,
+  VWorld 타일 12개 `200 image/png`와 배경 지도 렌더링을 확인했다. 탭/상세 E2E는
+  최초 31개 통과·1개 실패였다. 재조회가 열린 겹친 장소 목록을 닫는 원인을 수정한 뒤
+  32개 모두 통과했다. 키 값은 출력하거나 커밋하지 않았다. 운영 재배포는 아직 미완료다.
+
 - **2026-09-28 12:24~12:33Z ADR-010 운영 식별자 개명 cutover 완료.** R=`b75fca1c`(#49).
   - 운영은 이제 project `kor-travel-transport`, 디렉터리 `/home/digitie/apps/kor-travel-transport`, 컨테이너
     `kor-travel-transport-<service>-1`이다. 여섯 서비스와 관리 스택 세 서비스 모두 healthy, daemon 1개.
@@ -14,6 +61,14 @@
     retired 컨테이너를 `docker start`하거나 `-p kor-travel-airport`로 올리지 않는다.
   - 72시간 관찰 뒤 runbook "관찰과 정리"를 한다(그때까지 n150 prune 금지 — rollback 태그·retired 컨테이너가
     되돌리기 재료다). 되돌리기는 `rename-deploy-identity-server14.sh rollback`과 Manager 이전 release(`68cc1a93`) 재설치.
+
+- 2026-09-28 `codex/port-coordinates-button-scroll`: 승인된 KOMSA 기항지 API를 주요 항구
+  19개 명시 대상·지역/이름 정확 대조·DB 호출 예약/캐시로 연결 중이다. 항로 안내 점을
+  항구로 쓰던 오류와 교통 탭 36px/버튼 44px 충돌을 수정했다. provider PR #9는 CI·
+  두 독립 리뷰·live 확인 후 `2690f35`로 머지했고 의존성을 고정했다. admin WSL 단위
+  111개·린트·타입·빌드·탭/상세 E2E 32개가 통과했다.
+  Transport 전체 WSL/Docker·운영 검증·머지는 미완료다. 후속 지도/combobox/Map·Weather
+  일치화 11개 항목은 현재 PR 완료 뒤 진행하도록 tasks에 기록했다.
 
 - 2026-09-28 `chore/rename-deploy-identity-transport`: n150 운영 식별자 개명(ADR-010) 저장소 준비를
   푸시했다(PR은 아직 없음). PR #44(`835c0ec`)·#46(`50215b3`)·#47(`bdc9c02`)·#48(`a6edbd5`) 머지 위로 rebase했다. main이 더 움직이면 다시
@@ -630,27 +685,27 @@
 
 ## 다음 한 작업
 
-운영 식별자 개명(ADR-010): `chore/rename-deploy-identity-transport` PR을 열어 CI green 뒤 머지하고, 그 머지
-커밋 R로 2026-09-28 12:30~14:00Z 창을 연다(runbook "운영 식별자 개명 cutover"). R 머지부터 `finish`까지
-n150 freeze다(transport·관리 UI 배포, Map·Manager 빌드·rebind, prune 금지).
+단일 유가 run `83c635f8-1bf4-4216-a5aa-113efe51245f`(DB `19750`)의 성공과 갱신은
+확인됐다. 관리자 운영 E2E 421개와 parking-radar 16개도 모두 통과했다. 유가를
+재호출하지 않는다. Provider PR #20은 자체 게이트 통과 후 `7e0f770`으로 머지됐다.
+Transport PR #51의 최종 문서 커밋 필수 CI를 확인한 뒤 이 PR만 머지한다.
+이미 머지된 것이 확인되면 반복하지 않고 아래 후속 작업으로 넘어간다.
+원 실패 기록과 I/O 지연의 원인 미확정 상태를 보존한다. 새 수집 실행·운영 교체는 하지 않는다.
+API/code-server `fcd4d1f`, UI `55148d2`는 이미 배포됐고 관리자 HTTPS E2E 421개도
+통과했다. quota/다음 허용 시각을 초기화하지 않는다. 최종 CI 통과 전에는
+머지하지 않는다. 최종 결과·머지 여부는 각 PR을 확인한다.
+최종 CI와 운영 상태는 PR #51·검증 runbook에서 확인한다. 전체 스택 재기동과 추가
+기항지 수집은 하지 않는다.
 
-PR #47은 머지됐고 runtime은 `1db261e`다. parking-radar DB도 이미 공용 PostgreSQL을
-사용하므로 추가 이전은 하지 않는다. 운영 확인 문서 PR #48은 독립 리뷰를 마쳤고 테스트
-증적 범위 P2 두 건의 표현을 정정했다. 최종 CI·머지 상태 정본은 PR #48이다.
-증적 문서 커밋만으로 재배포하지 않는다. 과거 DB를 추정해 복원하거나 새 DB를 만들지 않는다.
-API/0015·worker와 배편 선실행은 이전 PR #44에서 완료됐고 정기 스케줄도 복원됐다.
-전체 배포 스크립트를 다시 실행하거나 배편 수집을 재호출하지 않는다.
-다음 실수집 검증 대상은 오피넷 16:00 KST 정기 배치다. UI E2E 성공을 provider 성공으로
-대체하지 않는다. KRIC은 09-29 15:04:58 KST 보호 종료 전에 재호출하지 않는다.
-공용 DB 장애 최초 원인, TAGO 일반철도 HTTP 403, 버스 좌표, 배편 전체 저장 범위는 남았다.
-공유 DB 재시작/설정 변경은 별도 영향 범위 확인이 필요하다. 내장 지도 검색 뒤 이전 겹침
-목록이 남는 P2는 `docs/tasks.md`에 기록했으며 선택 가능한 실제 장소를 잘못 생성하지는 않는다.
+KRIC 철도 수집은 09-29 15:04:58 KST 보호 종료 전에 재호출하지 않는다. 현재 PR을
+완료한 뒤 별도 PR에서 `tasks.md`의 지도 정보·combobox·Map/Weather 일치화 11개 항목을 진행한다.
+사용자가 추가한 유가 지역 분산·순서 무작위화·주야간 간격 변경도 현재 모든 작업
+머지 후 별도 PR에서 진행하며, 최종 간격은 `tasks.md`에 기록했다.
 
-별도 PR #45는 main에 머지됐다. healthcheck/init 운영 반영은 활성 수집과 겹치지 않게
-조율하고 `scripts/redeploy-dagster-services-server14.sh`의 drift gate를 따른다.
-code-server 이미지는 보존하지만 webserver·daemon도 그 이미지로 바뀐다. 세 서비스 각각의
-기존 이미지를 보존하는 절차가 아니다. `dagster-pin-*` 태그는 다음 전체 릴리스까지 둔다.
-code-server 재발 시 재시작 전 stack 확보, 배포 스크립트 DSN regex 정렬은 후속으로 남긴다.
+ADR-010 개명과 #45 운영 반영은 완료됐다. 새 디렉터리·project만 사용하고 72시간
+관찰 전 n150 prune은 하지 않는다. parking-radar DB도 이미 공용 PostgreSQL이므로
+추가 이전하지 않는다. 공유 DB 장애 원인, TAGO 일반철도 HTTP 403, 버스 좌표 및
+배편 전체 저장 범위 등 나머지 이슈는 백로그를 따른다.
 
 ## 확인된 사실
 

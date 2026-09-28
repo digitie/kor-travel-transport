@@ -137,7 +137,7 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
             session.add(FuelPriceSnapshot(fuel_station_id=fuel.id, source="opinet", product_code="D047", price=1600, observed_at=now, collected_at=now))
             session.add(FuelPriceSnapshot(fuel_station_id=fuel.id, source="opinet", product_code="B027", price=1800, observed_at=now - timedelta(days=1), collected_at=now - timedelta(days=1)))
             session.add(RailStationReference(source="kric_public_file", identity_key="line|101|테스트역", rail_operator_name="테스트운영사", operating_line_name="테스트선", station_type=None, station_number="101", station_name="테스트역", english_name=None, longitude=127.2, latitude=37.6, lot_address=None, road_address="서울 테스트길", station_phone_number=None, data_reference_date=None, first_seen_at=now, last_seen_at=now, raw_item_json=None))
-            session.add(FerryPort(source="data_go_kr_maritime", port_id="P1", port_name="테스트항", latitude=35.1, longitude=129.1, location_source="data_go_kr_port_guideline", location_point_count=2, first_seen_at=now, last_seen_at=now, raw_item_json=None))
+            session.add(FerryPort(source="data_go_kr_maritime", port_id="P1", port_name="테스트항", latitude=35.1, longitude=129.1, location_source="komsa_port_call", location_point_count=1, first_seen_at=now, last_seen_at=now, raw_item_json=None))
             await session.commit()
     asyncio.run(seed())
 
@@ -152,7 +152,8 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
     assert by_kind["fuel_station"]["prices"][0]["product_code"] == "B027"
     assert {row["product_code"]: row["price"] for row in by_kind["fuel_station"]["prices"]} == {"B027": 1700, "D047": 1600}
     assert by_kind["rail_station"]["line_names"] == ["테스트선"]
-    assert by_kind["ferry_port"]["location_point_count"] == 2
+    assert by_kind["ferry_port"]["location_point_count"] == 1
+    assert by_kind["ferry_port"]["subtitle"] == "공식 기항지 위치"
     bounded = client.get("/v1/transport/features/places?kind=fuel_station&min_longitude=127.0&min_latitude=37.4&max_longitude=127.15&max_latitude=37.55")
     assert bounded.status_code == 200
     assert bounded.json()["total"] == 1
@@ -164,6 +165,25 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
     assert client.get("/v1/transport/features/places?kind=fuel_station&min_longitude=127.0").status_code == 422
     assert client.get("/v1/transport/ports/P1/timetable").status_code == 503
     assert client.get("/v1/transport/ports/P1/timetable?date=2000-01-01").status_code == 422
+
+
+def test_guideline_port_is_searchable_but_not_a_map_location(client) -> None:
+    async def seed() -> None:
+        async with client.app.state.session_factory() as session:
+            now = now_utc()
+            session.add(FerryPort(source="data_go_kr_maritime", port_id="old-guideline", port_name="인천",
+                latitude=37.07833333, longitude=126.2683333, location_source="data_go_kr_port_guideline",
+                location_point_count=445, first_seen_at=now, last_seen_at=now))
+            await session.commit()
+    asyncio.run(seed())
+    assert client.get("/v1/transport/features/places?kind=ferry_port").json()["total"] == 0
+    listing = client.get("/v1/transport/features/places?kind=ferry_port&include_unlocated=true").json()
+    assert listing["total"] == 1
+    assert listing["items"][0]["latitude"] is None
+    assert listing["items"][0]["longitude"] is None
+    assert listing["items"][0]["provider_id"] == "old-guideline"
+    bounded = client.get("/v1/transport/features/places?kind=ferry_port&include_unlocated=true&min_longitude=124&max_longitude=132&min_latitude=32&max_latitude=39")
+    assert bounded.json()["total"] == 0
 
 
 def test_transport_place_invalid_saved_coordinates_remain_searchable(client) -> None:
