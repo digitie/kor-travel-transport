@@ -85,12 +85,19 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
   }, [query]);
 
   useEffect(() => {
+    // 지도 이동·크기 변경으로 DB 결과가 갱신되어도 열어 둔 선택 목록은 유지한다.
+    // 검색 조건을 바꾸거나 명시적으로 선택/닫기한 경우에만 목록을 닫는다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setClusterPlaces([]);
+  }, [kindsKey, source, searchQuery, product, view]);
+
+  useEffect(() => {
     if (embedded) return;
     const controller = new AbortController();
     const selectedKinds = kindsKey ? kindsKey.split(",") : [];
     // 외부 조회 조건이 바뀌면 이전 영역의 결과를 제거하고 요청 상태를 초기화한다.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPending(selectedKinds); setFailed([]); setClusterPlaces([]);
+    setPending(selectedKinds); setFailed([]);
     // 각 종류가 끝나는 즉시 표시한다. 느린 유가 조회가 역·항구를 가리지 않는다.
     selectedKinds.forEach((kind) => {
       const search = new URLSearchParams({ kind, limit: String(perKindLimit), ...viewport });

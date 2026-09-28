@@ -2,6 +2,12 @@
 
 ## 현재 상태
 
+- 2026-09-28 VWorld 키: 로컬 `kor-travel-map/.env`의 키를 transport 관리자 UI의
+  Git 제외 `.env.local`과 WSL 검증 환경에 반영했다. 실제 키로 Next.js 빌드 성공,
+  VWorld 타일 12개 `200 image/png`와 배경 지도 렌더링을 확인했다. 탭/상세 E2E는
+  31개 통과·1개 실패(동일 좌표 묶음에서 김포공항 선택 버튼 탐색)다. 키 값은 출력하거나
+  커밋하지 않았다. 운영 재배포 완료나 전체 E2E 성공을 의미하지 않는다.
+
 - **2026-09-28 12:24~12:33Z ADR-010 운영 식별자 개명 cutover 완료.** R=`b75fca1c`(#49).
   - 운영은 이제 project `kor-travel-transport`, 디렉터리 `/home/digitie/apps/kor-travel-transport`, 컨테이너
     `kor-travel-transport-<service>-1`이다. 여섯 서비스와 관리 스택 세 서비스 모두 healthy, daemon 1개.

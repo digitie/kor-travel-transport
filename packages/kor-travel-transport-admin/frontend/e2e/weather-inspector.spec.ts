@@ -176,7 +176,9 @@ test("통계 수동 재시도는 화면당 3회까지이며 자동 반복하지 
 
 test("리뷰 회귀: 동일 좌표 묶음은 확대 한계 대신 장소 선택을 제공한다", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
+  let placeRequests = 0;
   await page.route("**/transport/features/places?**", (route) => {
+    placeRequests++;
     const kind = new URL(route.request().url()).searchParams.get("kind");
     return route.fulfill({ json: { items: [port, airport, rail, fuel].filter((place) => place.kind === kind).map((place) => ({ ...place, latitude: 36.2, longitude: 127.8 })), total: 1, truncated: false } });
   });
@@ -189,6 +191,11 @@ test("리뷰 회귀: 동일 좌표 묶음은 확대 한계 대신 장소 선택�
   const choices = page.getByRole("region", { name: "겹친 장소 선택" });
   await expect(choices).toBeVisible();
   await expect(choices.getByRole("button").first()).toBeFocused();
+  // 선택 목록이 열린 뒤 viewport 재조회가 끝나도 버튼이 사라지면 안 된다.
+  const previousRequests = placeRequests;
+  await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+  await expect.poll(() => placeRequests).toBeGreaterThan(previousRequests);
+  await expect(choices).toBeVisible();
   await choices.getByRole("button", { name: "김포공항", exact: true }).click();
   await expect(page.getByRole("heading", { name: "김포공항", exact: true })).toBeVisible();
   await expect(choices).toHaveCount(0);
