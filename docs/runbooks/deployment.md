@@ -33,6 +33,127 @@ REMOTE_APP_DIR=/home/digitie/apps/kor-travel-airport \
 ./scripts/deploy-server14.sh
 ```
 
+### Dagster healthcheck·init만 바뀐 반영
+
+`docker-compose.shared.yml`에서 Dagster 세 서비스의 healthcheck·`init`만 바뀌면 전체 배포를 쓰지
+않는다. 전체 배포는 `up -d --build`로 backend·frontend·gateway 이미지를 n150에서 다시 빌드한다.
+`rsync --delete`는 archive에 없는 `.transport-admin-release-sha`와 `.env.server14.before-*` 백업도
+지운다. 대신 [`scripts/redeploy-dagster-services-server14.sh`](../../scripts/redeploy-dagster-services-server14.sh)로
+Dagster 세 서비스만 재생성한다. 이 경로는 `deploy-server14-remote.sh`의 receipt·env gate를 거치지
+않고 `.release-sha`도 갱신하지 않는다. 다음 전체 배포 전까지 배포 디렉터리는 `.release-sha`와
+일치하지 않는다.
+
+시작 전에 같은 디렉터리에 배포하는 다른 작업과 시간을 맞춘다. PR 배포 세션은 `.env.server14`를
+고치고 트리 전체를 이 디렉터리에 rsync한다(2026-09-28 기준 열린 PR #44 세션이
+`local/transport-pr44:backend`를 빌드해 두었다). 스크립트는 run 대기 뒤 교체 직전에 gate와 컨테이너
+ID·daemon 정지를 다시 봐서 그 사이의 변경을 잡는다. 다만 그 직후 몇 초 사이의 변경은 막지 못한다.
+SSH가 끊기면 스크립트도 끝나므로(daemon은 되살린다) tmux 안에서 실행한다.
+
+```bash
+# WSL: 작업 트리가 아니라 머지 커밋의 내용을 올린다.
+m=<머지 커밋 SHA>
+git show "$m:docker-compose.shared.yml" > /tmp/docker-compose.shared.yml.new
+git show "$m:scripts/redeploy-dagster-services-server14.sh" > /tmp/redeploy-dagster-services-server14.sh
+scp /tmp/docker-compose.shared.yml.new /tmp/redeploy-dagster-services-server14.sh \
+  digitie@192.168.1.14:/tmp/
+
+# n150
+bash /tmp/redeploy-dagster-services-server14.sh /tmp/docker-compose.shared.yml.new
+```
+
+스크립트는 다음 순서로 진행하고, 하나라도 어긋나면 STOP을 출력하고 exit 1로 끝난다.
+
+1. 이미지를 지금 code-server 이미지 ID로 고정한다(`BACKEND_RUNTIME_IMAGE` export). 셸 env가
+   `--env-file`보다 우선한다. 고정하지 않으면 `.env.server14`의 값으로 재생성된다. 2026-09-27
+   21:13Z에는 당시 미머지였던 PR #43 배포가 이 값을 `ab25bf7b`로 바꿔 두었다(#43은 2026-09-28
+   `8a34f77`로 머지). `compose config -q`는
+   이 차이를 잡지 못한다.
+2. 지금 파일과 새 파일을 지금 env·고정 이미지로 렌더링해(`compose config --format json`) 비교한다.
+   세 Dagster 서비스의 `healthcheck`·`init` 밖에서 다르면 STOP이다. 다른 PR이 main에서 이 파일을
+   바꿨어도 여기서 멈춘다. 차이는 경로만 출력한다(값에는 비밀이 있다). 배포된 파일은 Windows
+   `git archive`가 만든 CRLF라 줄 단위 `diff`로는 비교할 수 없다.
+3. drift gate: 세 컨테이너 각각의 config-hash label을 지금 파일에서 다시 계산한 hash와 비교한다.
+   계산에는 그 컨테이너가 만들어질 때의 이미지 문자열과 `DAGSTER_POSTGRES_URL`을 넣는다. DSN은
+   `.env.server14`와 scheme만 달라도 된다. 이 두 가지 밖의 drift면 STOP이다.
+4. Dagster GraphQL(`DAGSTER_GRAPHQL_URL`, 기본 `http://127.0.0.1:14004/graphql`)에서 in-flight run을
+   한 번 읽는다. 읽지 못하면 daemon을 멈추기 전에 STOP이다. 그대로 멈추면 7의 대기가 상한까지
+   daemon을 멈춘 채 헛돈다.
+5. 고정 이미지에 `kor-travel-airport-backend:dagster-pin-<ID 앞 12자리>` 태그를 붙인다.
+6. daemon을 `docker stop`으로 멈춘다(schedule·queue dequeue는 daemon이 한다). 이때부터 어디서
+   끝나든(STOP·실패·Ctrl-C·SSH 끊김·출력 pipe 닫힘) EXIT trap이
+   `docker start kor-travel-airport-dagster-daemon-1`로 옛 daemon 컨테이너를 그대로 되살린다. trap은
+   errexit를 풀고 신호를 무시한 채 출력보다 `docker start`를 먼저 한다. 터미널이 사라졌거나 pipe가
+   닫혔으면 출력이 실패하기 때문이다. 신호로 끝나면 exit code 128+번호(HUP 129, PIPE 141)를 남긴다.
+   이렇게 바꾸지 않으면 bash가 EXIT trap을 돌려도 trap 안의 `$?`가 0이라 끊긴 실행이 exit 0으로
+   끝난다. `docker stop` 도중에 끊겼으면 stop을 마저 끝낸 뒤 start한다. `compose start dagster-daemon`은 쓰지 않는다. 한 번만 도는
+   `migrate`·`dagster-migrate` 컨테이너가 이 project에 없어 compose가 "missing dependency"로 거부한다.
+   `compose up`은 고정 이미지로 daemon을 재생성한다.
+7. `STARTED`·`STARTING`·`CANCELING` run이 0이 되기를 기다린다. code-server 재생성은 실행 중 run을
+   끊는다. daemon이 멈춘 동안에는 `run_monitoring`도 돌지 않아, 끼인 run이나 멈춘 daemon이 남긴
+   `STARTING`은 스스로 끝나지 않는다. 그래서 기다림에 상한을 둔다. 기본 1800초
+   (`DRAIN_TIMEOUT_SECONDS`)가 지나면 남은 runId를 출력하고 STOP이다. 그런 run을 정리한 뒤 다시
+   실행한다.
+8. 2·3을 다시 돌리고, 세 컨테이너의 ID가 시작할 때와 같은지와 daemon이 아직 멈춰 있는지 본다.
+   기다리는 동안 다른 배포가 env나 compose 파일을 바꿨거나, Dagster 서비스를 다시 만들었거나,
+   daemon을 띄웠으면 여기서 멈춘다. 3의 gate는 각 컨테이너의 자기 이미지로 계산하므로 다른
+   이미지로 다시 만든 컨테이너도 통과한다. 그래서 ID를 따로 본다. 떠 있는 daemon은 새 run을
+   시작했을 수 있고, 재생성이 그 run을 끊는다.
+9. 지금 파일을 `docker-compose.shared.yml.before-<UTC 시각>.<임의 6자>`로 남긴다. 시작할 때 떠 둔
+   새 파일의 사본(2·8에서 검사한 그 내용)을 `install -m 664`로 넣고 `compose up -d --no-deps
+   --no-build dagster-code-server dagster-webserver dagster-daemon`을 실행한다.
+10. 효과 확인: 세 컨테이너가 고정 이미지로 떠 있고 3의 gate가 새 파일로 통과해야 한다. 그다음 셋 다
+    healthy가 되기를 기다린다(기본 600초).
+
+- 재생성되는 컨테이너는 `kor-travel-airport-dagster-{code-server,webserver,daemon}-1`뿐이다.
+  backend·frontend·`dagster-gateway`·`migrate` 계열은 건드리지 않는다. 이미지는 빌드하지 않는다.
+- code-server는 이미지가 그대로이고 healthcheck·`init`만 바뀐다. webserver·daemon은 의도적으로
+  code-server와 같은 이미지로 바뀐다. 2026-09-28 기준 code-server는 `148a471b`(태그
+  `local/transport-pr42:coordinates`)로 떠 있다. webserver·daemon은 `kor-travel-airport-backend:latest`
+  문자열로 만들어져 `c8b47811`로 떠 있다. 그 이미지는 태그가 풀려 host에서 지워졌고(dangling으로도
+  남지 않았다. `docker image inspect sha256:c8b47811…`은 "No such image"이고, 두 컨테이너는
+  containerd snapshot으로 계속 돈다) `:latest`는 지금 `3769528a`다. `148a471b`와 `c8b47811`은 둘 다
+  dagster 1.13.24다.
+- webserver·daemon은 `.env.server14`의 현재 `DAGSTER_POSTGRES_URL`로도 다시 뜬다. scheme이
+  `postgresql://`에서 `postgresql+psycopg2://`로 바뀌고 사용자·host·DB·비밀번호는 같다.
+  code-server와 그 run worker는 이미 이 scheme으로 같은 metadata DB에 붙어 있다. dagster_postgres
+  0.29.24는 이 DSN을 SQLAlchemy로만 연다.
+- STOP이면 반영을 미룬다. 전체 배포로도 지금은 반영할 수 없다. `deploy-server14-remote.sh`는
+  `DAGSTER_POSTGRES_URL`이 `^postgresql://`이어야 하는데 `.env.server14`와 `.env.server14.example`은
+  `postgresql+psycopg2://`라 거부된다. env 파일이나 그 regex를 맞춘 뒤에야 전체 배포가 대안이 된다.
+- `dagster-pin-*` 태그는 다음 전체 릴리스까지 둔다. 이 태그가 없으면 반영 뒤 고정 이미지를 붙잡는
+  태그는 다른 작업의 `local/transport-pr42:coordinates`뿐이다. 그 태그가 지워지면 되돌리기의
+  재생성이 이미지를 찾지 못한다(compose가 `sha256:…`을 pull하려다 실패한다).
+- 되돌릴 때는 새 셸에서 같은 스크립트에 옛 파일을 준다. 옛 파일은 스크립트가 남긴
+  `/home/digitie/apps/kor-travel-airport/docker-compose.shared.yml.before-*`(완료 메시지에 경로가 나온다)나
+  `git show "$m^1:docker-compose.shared.yml"`이다. 스크립트가 고정 이미지를 code-server에서 다시
+  읽고(반영 뒤에도 고정 이미지다) daemon 정지·run 대기·gate를 똑같이 한다. healthcheck·`init`만
+  돌아가고 webserver·daemon은 code-server 이미지에 남는다.
+- 스크립트는 세 컨테이너가 모두 실행 중일 때만 시작한다. `up`이 중간에 실패해 하나라도 떠 있지
+  않으면 되돌리기도 거부한다. 그때는 아래를 직접 실행한다. 고정 이미지는 스크립트가 처음에 출력한
+  `이미지 고정: sha256:…` 값이다(`docker image inspect -f '{{.Id}}'
+  kor-travel-airport-backend:dagster-pin-<12자리>`로도 읽는다). project 이름·`--env-file`·두 `-f`를
+  빼면 다른 렌더링이 되거나(Dagster 서비스는 `docker-compose.shared.yml`에만 있다) 고정 없이
+  재생성된다.
+
+  ```bash
+  cd /home/digitie/apps/kor-travel-airport
+  export BACKEND_RUNTIME_IMAGE=<고정 이미지 sha256:…>
+  install -m 664 <옛 파일> docker-compose.shared.yml
+  docker compose --project-name kor-travel-airport --env-file .env.server14 \
+    -f docker-compose.yml -f docker-compose.shared.yml \
+    up -d --no-deps --no-build dagster-code-server dagster-webserver dagster-daemon
+  ```
+
+  `up`을 바로 할 수 없으면 `docker ps -a`로 daemon을 보고, 멈춰 있으면
+  `docker start kor-travel-airport-dagster-daemon-1`로 먼저 띄운다.
+- `kor-travel-transport-admin` project는 건드리지 않는다. webserver가 다시 healthy가 될 때까지
+  관리 UI의 Dagster 화면(12302 → 14004)만 잠시 502를 줄 수 있다.
+- `scripts/deploy-transport-admin-server14.sh`도 HEAD archive 전체를 같은 디렉터리에 `rsync`
+  (삭제 없음)하므로 `docker-compose.shared.yml`을 그 배포 커밋의 내용으로 덮어쓴다. 이 변경이
+  없는 브랜치에서 transport-admin을 배포하면 파일이 옛 probe로 돌아가고, 다음 전체 배포의
+  `up`이 세 서비스를 옛 probe로 재생성한다. 그런 배포 뒤에는 세 컨테이너의 `init`과
+  healthcheck를 `docker inspect`로 다시 확인한다.
+
 n150의 기본 구성은 PostgreSQL 16, Alembic `0003_legacy_source_identity`,
 `COLLECT_INTERVAL_SECONDS=300`, `SCHEDULER_SAFETY_BUFFER_SECONDS=120`,
 `MANUAL_COLLECT_MIN_INTERVAL_SECONDS=300`, `ENABLE_MANUAL_COLLECT=false`이다. 백업 UI는 별도 인증이 없으므로

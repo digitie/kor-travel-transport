@@ -109,6 +109,25 @@
   10.3초에 완료했다. heap fetch 244,958→36,917이며 전체 index 정비 완료나 안정적 지연 개선을
   뜻하지 않는다. KRIC 48시간·오피넷 8시간 보호는 그대로다.
 
+### PR #45의 별도 Dagster 개선 기록(수집 배포 상태는 위 최신 기록 우선)
+
+- 2026-09-28 `fix/dagster-healthcheck-exec-form`에서 Dagster 세 서비스의 healthcheck를
+  exec 형식·`python -I`·`init: true` 계약으로 바꾸고, command에서 Dagster 서비스를 유도하는
+  계약 테스트를 추가했다. 아직 미배포다. 반영은 `scripts/redeploy-dagster-services-server14.sh`로
+  한다(`docs/runbooks/deployment.md` "Dagster healthcheck·init만 바뀐 반영"). 스크립트는 이미지
+  고정 → 렌더링 비교·drift gate → GraphQL 확인 → daemon 정지 → in-flight run 대기(상한 1800초) →
+  비교·gate·컨테이너 ID·daemon 정지 재확인 → 파일 교체 → Dagster 세 서비스
+  `up -d --no-deps --no-build` 순서로 진행한다. 어디서 멈추든(SSH 끊김·출력 pipe 닫힘 포함) daemon
+  컨테이너를 `docker start`로 되살린다. 되돌리기도 같은 스크립트에 옛 파일을 준다.
+  `.env.server14`의 `BACKEND_RUNTIME_IMAGE`는 PR #43 배포가 `ab25bf7b`로 바꿔 두었다
+  (PR #43은 2026-09-28 `8a34f77`로 main에 머지됐다).
+  전체 배포는 지금 대안이 아니다. `deploy-server14-remote.sh`의 `DAGSTER_POSTGRES_URL` 검사
+  (`^postgresql://`)가 지금 env 파일(`postgresql+psycopg2://`)을 거부한다.
+  transport-admin 배포도 `docker-compose.shared.yml`을 덮어쓴다. 이 브랜치는 #43 머지 뒤 main을
+  merge했으므로, 이 변경이 머지된 뒤의 main에서 나온 배포는 새 probe를 유지한다. 그 전의 트리에서
+  배포하면 옛 probe로 되돌아간다.
+  2026-09-27 11:46Z~19:51Z code-server 정지 조사는 `docs/journal.md` 같은 날짜 항목을 본다.
+
 - 2026-09-28 PR #43 `codex/transport-followups`는 backend `1dd1868`/이미지 `ab25bf7`,
   관리 UI `3b6d220`/이미지 `d187870`으로 n150에 배포됐다. DB 전용 최대 300역 다음 예정
   마커, 버스 빈 날짜/자정 경계, 모바일 전환 시 통계 차트 잘림을 수정했다.
@@ -527,16 +546,26 @@ API/0015와 worker 배포는 완료됐다. 기존 배포 스크립트를 다시 
 `.playwright-mcp/pr44-db-recovery-timeline.py`는 시스템 복구 메시지만 비밀값 없이 출력한다.
 API 실제 health 응답과 DB 접근 정상화 전에는 수집 검증 성공이나 운영 안정으로 판단하지 않는다.
 공유 DB 재시작·설정 변경처럼 다른 프로젝트에 영향을 주는 조치는 별도 사용자 판단이 필요하다.
-배편은 09-28 12:45 KST 다음 정기 실행에서 새 2초 간격의 실제 저장 건수 증가·건별
-완료 시각·최종 상태·소요 시간을 확인한다. STARTED만으로 정상 진행이라 판단하지 않는다.
-유가는 09-28 13:10:46 KST 보호 해제 이후 **16:00 KST 정기 배치**의 실제 수집 성공을 확인한다.
+사용자가 배편을 앞당겨 검증한 뒤 머지하라고 요청했다. 배편 스케줄은 12:45 회차 중복을
+막기 위해 일시 STOPPED이며 12:46 이후 원래 RUNNING으로 반드시 복원한다.
+최초 실행 `86c90fda-da14-4e2f-9845-104254319919`는 DB 복구 뒤 끊어진 연결 때문에
+enqueue 로그 저장에서 실패했고 실행 시작·새 DB collection run은 없었다.
+이를 확인한 단회 재요청 `b5038bf4-698d-43d3-9ac4-2e8a4a54afde`가 등록됐다.
+실제 저장 건수 증가·건별 완료 시각·최종 상태·소요 시간을 확인한다. STARTED만으로
+정상 진행이라 판단하지 않는다. 재호출/중복 실행하지 않는다.
+오피넷 **16:00 KST 정기 배치**의 실제 성공은 사용자 지시에 따라 머지 후 후속 검증으로 남긴다.
 항구 기준정보 단회 검증은 12:27 KST에 실제 DB 갱신·Dagster 성공까지 완료했다. 재실행하지 않는다.
-운영 소스별 freshness와 남은 배편·유가 실수집, 최신 CI를 확인해야 PR #44를
+운영 복구·배편 실수집, 최신 CI와 통합 검증을 확인해야 PR #44를
 머지한다. 기존 365개 UI E2E 통과를 provider 성공으로 대체하지 않는다.
 KRIC 인증은 09-29 15:04:58 KST 보호 종료 전 재호출하지 않는다.
 그 다음 별도 PR에서 주유소 아이콘·단축 유종·단위 삭제, 도시철도 `이름 호선`, 밀도 기반
 클러스터 해제, 고속도로 번호+이름과 통계 최초 실패 안내/수동 재조회 UI를 진행한다.
 TAGO 일반철도 HTTP 403·버스 좌표·배편 저장 범위는 아직 미완료다.
+
+별도 PR #45는 main에 머지됐다. healthcheck/init 운영 반영은 활성 수집과 겹치지 않게
+조율하고 `scripts/redeploy-dagster-services-server14.sh`의 drift gate를 따른다.
+기존 실행 이미지를 보존하며 `dagster-pin-*` 태그는 다음 전체 릴리스까지 둔다.
+code-server 재발 시 재시작 전 stack 확보, 배포 스크립트 DSN regex 정렬은 후속으로 남긴다.
 
 ## 확인된 사실
 
