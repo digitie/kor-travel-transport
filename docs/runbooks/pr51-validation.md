@@ -25,8 +25,8 @@
 | --- | --- |
 | WSL 백엔드 전체 | 340개 통과·4개 환경별 제외 |
 | WSL Docker Compose 백엔드 전체 | 340개 통과·4개 환경별 제외 |
-| 재검증 후 변경 범위 WSL / Docker | 각각 44개 통과·2개 PostgreSQL 전용 제외 |
-| 전용 PostgreSQL | 동시 예약·상한·재검증·Dagster 28개 통과, Alembic drift 없음 |
+| 최종 quota 보강 범위 WSL / Docker | 각각 47개 통과·2개 PostgreSQL 전용 제외 |
+| 전용 PostgreSQL | 동시 예약·상한·재검증·quota·Dagster 30개 통과, Alembic drift 없음 |
 | backend 후보 `dc6ba5f` GitHub CI | PostgreSQL 포함 351개 통과 |
 | 관리자 WSL / Docker Compose | 각각 111개 통과, 린트·타입·운영 빌드 통과 |
 | 기존 parking-radar WSL / Docker | 각각 85개 통과, WSL 빌드 통과 |
@@ -59,5 +59,36 @@ backend/code-server 제한 교체와 원래 daemon 재개 후 모두 healthy를 
 `/home/digitie/transport-pr51-rollback.ET4C1m`에 보관한다. 72시간 관찰 중 prune은 하지 않는다.
 
 기항지 job은 식별 태그 `pr51-komsa-port-call-dc6ba5f-once`, run
-`cf5c1d60-48ac-496f-a565-ec6aaf11db70`으로 한 번 요청했다. 저장 결과·관리 UI
-후보 `55148d2` 배포·운영 HTTPS 검증은 아직 진행 중이며 최종 결과를 아래에 추가한다.
+`cf5c1d60-48ac-496f-a565-ec6aaf11db70`으로 한 번 실행했다. 항구 749·터미널 27·
+선박 종류 7·RustFS 원본 1개를 저장했고 공식 좌표 10개를 연결했다. 정상 응답
+14회(10개 연결·4개 무결과), 한도 오류 5회로 부분 성공이며 Dagster 실패를 유지한다.
+quota 카운터를 초기화하거나 추가 실호출로 확인하지 않았다.
+
+이후 서비스 전체 24시간 유예를 보강한 API/code-server `840f5854c7118f2c1d68c53ae54f7e8311aecb04`를
+image `e1dddd1e0738348bd3f4ba62da2fa324dcb059fac0620d00697d990cd741afaa`로 배포했다.
+독립 이미지/소스 지문 확인 및 네트워크 없는 후보 47개 통과·2개 제외를 거쳤다.
+되돌림 자료는 `/home/digitie/transport-pr51-rollback.qmuZrU`에 있다.
+실제 DB의 READ ONLY transaction에서 HTTP client 없이 유예를 확인했고 호출 예약은
+검증 전후 19건으로 불변이다.
+
+관리자 UI 후보는 `55148d2c94cc6b80ce6c757f713fa6972853fb83`, 이미지 digest는
+`fe4f3fe65e443e6826fafa56114fba2864bb1f3b2713dc2d4acd72971bf15ce9`다.
+관리자 웹만 교체했고 되돌림 자료는 `/home/digitie/transport-pr51-ui-rollback.5bpAcW`다.
+API/code-server/daemon/UI는 모두 healthy·재시작 횟수 0이다. 보호 서비스는 불변이다.
+
+최종 backend `840f585` / UI `55148d2` 조합에서 운영 HTTPS E2E **421개 통과**
+(4.1분, 재시도·제외 없음). James도 실제 VWorld 배경·인천 마커·공식 위치 안내와
+저장 시간표 41편, 320/390px 넘침 없음·상세 포커스 복원을 독립 확인했다.
+
+## 추가 운영 게이트와 머지 보류
+
+기존 parking-radar 전체 live 검사에서는 **15개 통과·1개 실패**였다. 실패는 통합
+교통 API 최신성 검사로, `opinet_browser.last_success_at=2026-09-26T15:36:34Z`가
+17시간 기준보다 오래됐다(검사 시 약 48시간). 기준을 완화하거나 검사를 제외하지 않았다.
+주차 UI·실제 수집 최신성·반응형 검사는 통과했다.
+
+오피넷 마지막 시도는 `2026-09-28T07:01:12Z`, 표시 오류는 `collection_failed`,
+다음 허용 시각은 `2026-09-28T15:24:00Z`다. 원인 진단은 읽기 전용으로 진행하며
+이번 지도/항구 범위를 넘어선 유가 수집 복구는 사용자 방향 확인 전 실행하지 않는다.
+따라서 [Transport PR #51](https://github.com/digitie/kor-travel-transport/pull/51)은
+전체 게이트 성공으로 보고하거나 머지하지 않는다. 최종 CI·머지 상태 정본은 PR이다.

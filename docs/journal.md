@@ -2,6 +2,14 @@
 
 ## 2026-09-29 PR #51 적대 리뷰 보완
 
+- 최종 API/code-server `840f585` / UI `55148d2` 조합은 n150 healthy·재시작 0,
+  운영 HTTPS 관리자 E2E 421개가 통과했다(4.1분). 실제 DB의 읽기 전용 quota 확인은
+  예약 19건을 유지하고 HTTP 없이 유예됐다. James 운영 지도/모바일 확인도 차단 없음.
+- 추가 parking-radar live 전체는 15개 통과·1개 실패: 오피넷 마지막 성공이 약 48시간
+  전이라 17시간 최신성 게이트를 넘었다. 주차 UI 자체는 통과했다. 이 실패를 숨기지
+  않고 PR #51 머지를 보류하며, 유가 복구까지 범위를 넓힐지 사용자 방향을 요청했다.
+  [상세 증적](runbooks/pr51-validation.md).
+
 - n150 API/code-server `dc6ba5f`와 관리자 UI `55148d2`를 제한 배포했다. 원래 daemon은
   재개 후 healthy이며 기존 parking-radar frontend·공유 DB·gateway는 재시작하지 않았다.
 - 기항지 job 한 번에서 항구 749·터미널 27·선박 종류 7·RustFS 원본 1건을 저장했다.
