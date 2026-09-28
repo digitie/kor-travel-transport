@@ -1,3 +1,37 @@
+@layer theme, base, legacy, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "tw-animate-css";
+
+/* 기존 색상 변수 이름과 shadcn의 muted/accent 의미 충돌을 피한다. */
+@theme inline {
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
+  --color-card: var(--panel);
+  --color-card-foreground: var(--ink);
+  --color-popover: var(--panel);
+  --color-popover-foreground: var(--ink);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--color-accent-ink);
+  --color-secondary: var(--color-selected);
+  --color-secondary-foreground: var(--ink);
+  --color-muted: var(--paper);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--color-selected);
+  --color-accent-foreground: var(--ink);
+  --color-destructive: var(--danger);
+  --color-border: var(--line);
+  --color-input: var(--line);
+  --color-ring: var(--color-focus);
+  --font-sans: var(--font-body);
+  --radius-sm: var(--radius-control);
+  --radius-md: var(--radius-control);
+  --radius-lg: var(--radius-panel);
+  --radius-xl: var(--radius-panel);
+}
+
+@layer legacy {
 :root { --ink: #182022; --muted: #657274; --paper: #f7f7f2; --panel: #fffef9; --line: #dce1da; --accent: #0f766e; --danger: #b42318; --shadow-map: 0 2px 8px rgba(24, 32, 34, .22); }
 * { box-sizing: border-box; }
 html { background: var(--paper); color: var(--ink); overflow-x: clip; }
@@ -247,3 +281,16 @@ button:active:not(:disabled), .secondary:active { transform: translateY(1px); }
 .sync-run-detail-grid dd { margin: var(--space-xs) 0 0; overflow-wrap: anywhere; }
 @media (max-width: 62rem) { .transport-map-layout { grid-template-columns: minmax(0, 1fr); } .weather-inspector { border: 1px solid var(--color-rule); } }
 @media (pointer: coarse) { .compact-marker { min-height: 44px; } }
+}
+
+@layer base {
+  :root { --secondary: var(--color-selected); --foreground: var(--ink); }
+  [data-slot="table-row"], [data-slot="alert"] { border-color: var(--line); }
+  [data-slot="button"], [data-slot="toggle-group-item"] { cursor: pointer; }
+  @media (pointer: coarse) {
+    [data-slot="button"], [data-slot="toggle-group-item"], [data-slot="native-select"], [data-slot="input"] { min-height: 44px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    [data-slot="spinner"], [data-slot="skeleton"] { animation: none; }
+  }
+}

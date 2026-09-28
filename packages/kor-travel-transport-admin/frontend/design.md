@@ -45,7 +45,13 @@ overflow로 숨기지 않고 패널 자체의 가로 넘침을 1440/375px에서 
 ## 다른 프로젝트로 옮길 때의 토큰
 
 CSS 정본은 `app/tokens.css`이며 기존 transport 색상을 별칭으로 참조한다.
-다음은 선택적 복사 예시이며 현재 앱에 Tailwind나 shadcn을 설치하지 않는다.
+Transport admin은 Tailwind v4 + shadcn/ui(Base UI, base-nova)를 사용한다.
+기존 청록색과 Weather 레이아웃을 유지하며 버튼·입력·선택·탭·상태·표·카드는
+`components/ui/`의 공식 컴포넌트로 구성한다. `components.json`이 설치 설정의 정본이다.
+`app/globals.css`에서 의미 색상을 기존 토큰에 연결하며, 기존 스타일은 `legacy` 레이어에
+두어 컴포넌트 유틸리티를 덮어쓰지 않게 한다. 기존 `--muted`(문자색), `--accent`(청록색)를
+shadcn의 같은 이름 배경색으로 재정의하지 않는다. 차트는 Apache ECharts를 유지한다.
+다음은 다른 소비 앱을 위한 토큰 매핑 예시다.
 
 ```css
 /* CSS 정본 역할의 별칭 */

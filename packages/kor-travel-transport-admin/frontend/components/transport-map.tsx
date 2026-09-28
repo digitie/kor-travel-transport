@@ -1,11 +1,17 @@
 "use client";
 
 import { ClusterLayer, Marker, VWorldMapView } from "vworld-map-web";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { clusterAtScale, hasCoordinates, transportGet, type Place, type PlaceKind } from "@/lib/journey";
 import { collectionSourceLabel, fuelProductLabel, placeKindLabel } from "@/lib/transport-presentation";
 import { PlaceIcon, ViewSwitch } from "./journey-controls";
 import { PlaceInspector } from "./place-inspector";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Empty, EmptyHeader, EmptyDescription } from "@/components/ui/empty";
 
 type MapPoint = { id: string; lngLat: [number, number]; place: Place };
 type Bounds = { getWest: () => number; getSouth: () => number; getEast: () => number; getNorth: () => number };
@@ -23,6 +29,7 @@ function MapMarker({ point, onSelect, selected, product }: { point: MapPoint; on
 }
 
 export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?: Place[]; selectedPlace?: Place | null; onSelectPlace?: (place: Place) => void }) {
+  const controlId = useId();
   const embedded = places !== undefined;
   const [loaded, setLoaded] = useState<Record<string, PlaceResponse>>({});
   const [kinds, setKinds] = useState<PlaceKind[]>(KINDS);
@@ -116,17 +123,17 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
 
   return <section className="map-workbench" aria-label="교통 장소 지도">
     {!embedded ? <div className="map-filter-bar">
-      <div className="kind-filters" role="group" aria-label="장소 종류">{KINDS.map((kind) => <button type="button" key={kind} aria-pressed={kinds.includes(kind)} onClick={() => { setKinds((value) => value.includes(kind) ? value.filter((entry) => entry !== kind) : [...value, kind]); setSelected(null); }}><PlaceIcon kind={kind} />{placeKindLabel(kind)}</button>)}</div>
-      <div className="journey-toolbar"><label>장소 검색<input type="search" value={query} onChange={(event) => { setQuery(event.target.value); setSelected(null); }} placeholder="이름·브랜드·노선" /></label>
-      <label>데이터 출처<select value={source} onChange={(event) => { setSource(event.target.value); setSelected(null); }}><option value="">모든 출처</option>{sources.map((value) => <option key={value} value={value}>{collectionSourceLabel(value)}</option>)}</select></label>
-      <label>표시 유종<select value={product} onChange={(event) => { setProduct(event.target.value); setSelected(null); }}><option value="">전체 유종</option>{["B027", "D047", "B034", "K015", "C004"].map((code) => <option key={code} value={code}>{fuelProductLabel(code)}</option>)}</select></label>
-      <ViewSwitch value={view} onChange={setView} /></div>
+      <ToggleGroup multiple variant="outline" className="flex-wrap" aria-label="장소 종류" value={kinds} onValueChange={(values) => { setKinds(values.filter((value): value is PlaceKind => KINDS.includes(value as PlaceKind))); setSelected(null); }}>{KINDS.map((kind) => <ToggleGroupItem key={kind} value={kind}><PlaceIcon kind={kind} />{placeKindLabel(kind)}</ToggleGroupItem>)}</ToggleGroup>
+      <FieldGroup className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 xl:grid-cols-4"><Field><FieldLabel htmlFor={`${controlId}-query`}>장소 검색</FieldLabel><Input id={`${controlId}-query`} type="search" value={query} onChange={(event) => { setQuery(event.target.value); setSelected(null); }} placeholder="이름·브랜드·노선" /></Field>
+      <Field><FieldLabel htmlFor={`${controlId}-source`}>데이터 출처</FieldLabel><NativeSelect id={`${controlId}-source`} value={source} onChange={(event) => { setSource(event.target.value); setSelected(null); }}><NativeSelectOption value="">모든 출처</NativeSelectOption>{sources.map((value) => <NativeSelectOption key={value} value={value}>{collectionSourceLabel(value)}</NativeSelectOption>)}</NativeSelect></Field>
+      <Field><FieldLabel htmlFor={`${controlId}-product`}>표시 유종</FieldLabel><NativeSelect id={`${controlId}-product`} value={product} onChange={(event) => { setProduct(event.target.value); setSelected(null); }}><NativeSelectOption value="">전체 유종</NativeSelectOption>{["B027", "D047", "B034", "K015", "C004"].map((code) => <NativeSelectOption key={code} value={code}>{fuelProductLabel(code)}</NativeSelectOption>)}</NativeSelect></Field>
+      <ViewSwitch value={view} onChange={setView} /></FieldGroup>
     </div> : <ViewSwitch value={view} onChange={setView} />}
     <div className="map-feedback" role="status">
       {pending.length ? <span>{pending.map(placeKindLabel).join("·")} 조회 중… </span> : null}
       <span>{items.length}곳 표시 · {cluster ? "축척·화면 밀도에 따라 묶음 표시" : "가까운 장소만 묶음 표시"}</span>
       {truncated.length ? <p>{truncated.join("·")} 일부를 표시합니다(종류별 최대 {perKindLimit}곳). 확대해 주세요. 묶음 수는 현재 불러온 장소 수입니다.</p> : null}
-      {failed.length ? <p className="error">{failed.map(placeKindLabel).join("·")} 조회 실패 <button type="button" onClick={() => setReload((value) => value + 1)}>다시 조회</button></p> : null}
+      {failed.length ? <p className="error">{failed.map(placeKindLabel).join("·")} 조회 실패 <Button variant="outline" type="button" onClick={() => setReload((value) => value + 1)}>다시 조회</Button></p> : null}
       {mapError ? <p className="error">{mapError}</p> : null}
       {!items.length && !pending.length ? <p>표시할 장소가 없습니다. 종류·출처·검색 조건을 확인해 주세요.</p> : null}
     </div>
@@ -141,8 +148,8 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
         {selectedPoint ? <MapMarker point={selectedPoint} product={product} onSelect={selectPlace} selected /> : null}
       </VWorldMapView> : <div className="map-place-list">{items.map((place) => <button type="button" className="place-row" key={keyOf(place)} aria-pressed={current ? keyOf(current) === keyOf(place) : false} onClick={() => selectPlace(place)}><PlaceIcon kind={place.kind} /><span><strong>{place.name}</strong><small>{place.line_names.join(" · ") || place.brand_name || place.subtitle || placeKindLabel(place.kind)}</small>{!hasCoordinates(place) ? <small>좌표 미등록</small> : null}</span></button>)}</div>}
       </div>{!embedded ? <aside className="transport-map-detail weather-inspector" ref={detail} tabIndex={-1} aria-label="선택 장소 상세">
-        <label className="transport-map-picker">장소 목록에서 선택<select value={current ? keyOf(current) : ""} onChange={(event) => { const place = items.find((item) => keyOf(item) === event.target.value); if (place) selectPlace(place); }}><option value="">장소 선택</option>{items.map((place) => <option key={keyOf(place)} value={keyOf(place)}>{placeKindLabel(place.kind)} · {place.name}</option>)}</select></label>
-        {current ? <PlaceInspector key={keyOf(current)} place={current} onClose={() => { setSelected(null); detail.current?.querySelector("select")?.focus(); }} /> : <p className="empty-state">지도나 목록에서 장소를 선택하면 가격·노선·출도착·편의정보를 확인할 수 있습니다.</p>}
+        <FieldGroup className="mb-4"><Field><FieldLabel htmlFor={`${controlId}-place`}>장소 목록에서 선택</FieldLabel><NativeSelect id={`${controlId}-place`} value={current ? keyOf(current) : ""} onChange={(event) => { const place = items.find((item) => keyOf(item) === event.target.value); if (place) selectPlace(place); }}><NativeSelectOption value="">장소 선택</NativeSelectOption>{items.map((place) => <NativeSelectOption key={keyOf(place)} value={keyOf(place)}>{placeKindLabel(place.kind)} · {place.name}</NativeSelectOption>)}</NativeSelect></Field></FieldGroup>
+        {current ? <PlaceInspector key={keyOf(current)} place={current} onClose={() => { setSelected(null); detail.current?.querySelector("select")?.focus(); }} /> : <Empty><EmptyHeader><EmptyDescription>지도나 목록에서 장소를 선택하면 가격·노선·출도착·편의정보를 확인할 수 있습니다.</EmptyDescription></EmptyHeader></Empty>}
       </aside> : null}
     </div>
   </section>;

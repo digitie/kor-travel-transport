@@ -80,9 +80,9 @@ test("공항 429는 버튼을 다시 눌러도 즉시 재호출하지 않는다"
   await page.route("**/flights/status?**", (route) => { calls++; return route.fulfill({ status: 429, headers: { "retry-after": "60" }, json: {} }); });
   await page.goto("/map"); await page.getByLabel("장소 목록에서 선택").selectOption("airport:2");
   await page.getByRole("button", { name: "오늘 출도착 조회" }).click();
-  await expect(page.locator("p[role=alert]")).toBeVisible();
+  await expect(page.locator("[data-slot=alert]")).toBeVisible();
   await page.getByRole("button", { name: "오늘 출도착 조회" }).click();
-  await expect(page.locator("p[role=alert]")).toContainText("다음 조회 가능 시각"); expect(calls).toBe(1);
+  await expect(page.locator("[data-slot=alert]")).toContainText("다음 조회 가능 시각"); expect(calls).toBe(1);
 });
 
 test("도시철도 상세 시간표와 간결한 주유소·항구 마커", async ({ page }) => {
@@ -111,7 +111,7 @@ for (const width of [320, 375, 414, 768, 1440]) test(`Weather Dagster 표·펼�
   await button.click(); await expect(button).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByText("ferry_schedule", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "새로고침", exact: true }).click();
-  await expect(page.locator("p[role=alert]")).toContainText("마지막 확인 결과");
+  await expect(page.locator("[data-slot=alert]")).toContainText("마지막 확인 결과");
   await expect(page.getByRole("region", { name: "최근 Dagster 실행 표" })).toContainText("성공");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: `test-results/weather-dagster-${width}.png`, fullPage: true });
@@ -119,7 +119,7 @@ for (const width of [320, 375, 414, 768, 1440]) test(`Weather Dagster 표·펼�
 
 test("Dagster 최초 실패를 빈 실행 목록으로 오인하지 않는다", async ({ page }) => {
   await page.route("**/api/dagster/graphql", (route) => route.fulfill({ status: 503, json: {} }));
-  await page.goto("/admin/dagster"); await expect(page.locator("p[role=alert]")).toContainText("상태를 불러오지 못했습니다");
+  await page.goto("/admin/dagster"); await expect(page.locator("[data-slot=alert]")).toContainText("상태를 불러오지 못했습니다");
   await expect(page.getByText("최근 Dagster 실행이 없습니다.")).toHaveCount(0);
 });
 
@@ -149,7 +149,7 @@ for (const cached of [false, true]) test(`통계 실패 안내는 실제 이전 
   let calls = 0;
   await page.route("**/transport/statistics?**", (route) => ++calls === 1 ? route.fulfill({ status: 504, json: {} }) : route.fulfill({ json: statistics }));
   await page.goto("/transport");
-  const alert = page.locator(".error[role=alert]");
+  const alert = page.locator("[data-slot=alert]");
   await expect(alert).toContainText(cached ? "이전 조회 결과를 표시" : "통계를 아직 불러오지 못했습니다");
   if (!cached) await expect(alert).not.toContainText("이전 조회");
   await page.getByRole("button", { name: "통계 다시 조회" }).click();

@@ -4,7 +4,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
 import { TransportBarChart } from "@/components/transport-bar-chart";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fuelProductLabel, highwayRouteLabel } from "@/lib/transport-presentation";
+import { cn } from "@/lib/utils";
 
 type Status = { scheduler_enabled: boolean; collection_enabled: boolean; client_mode: string; enabled_sources: string[]; sources: { source: string; last_success_at: string | null; next_due_at: string | null; last_error: string | null }[] };
 type Statistics = { traffic: { route_no: string | null; direction: string | null; observations: number; average_speed: number | null }[]; incidents: { route_no: string | null; incidents: number }[]; fuel_prices: { product_code: string; stations: number; average_price: number | null }[] };
@@ -15,6 +22,8 @@ type DashboardTab = "overview" | "highway" | "fuel";
 
 const CACHE_KEY = "kor-travel-transport-dashboard-v2";
 const CACHE_MAX_AGE_MS = 60_000;
+const DASHBOARD_TABS = [["overview", "통합 현황"], ["highway", "고속도로"], ["fuel", "유가"]] as const;
+const CARD_CLASS_NAME = "panel gap-3 px-0 py-5 [--card-spacing:--spacing(5)]";
 
 function number(value: number | null) { return value === null ? "—" : new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 1 }).format(value); }
 function readCache(): DashboardCache | null { try { const value = JSON.parse(window.sessionStorage.getItem(CACHE_KEY) ?? "null") as DashboardCache | null; return value && Date.now() - value.savedAt <= CACHE_MAX_AGE_MS ? value : null; } catch { return null; } }
@@ -55,37 +64,87 @@ export function TransportDashboard() {
   useEffect(() => { if (status && statistics && traffic && incidents && Object.values(refreshed.current).every(Boolean)) writeCache(status, statistics, traffic, incidents); }, [status, statistics, traffic, incidents]);
 
   const routeNames = useMemo(() => new Map((traffic?.items ?? []).filter((item) => item.route_no).map((item) => [item.route_no as string, item.route_name])), [traffic]);
-  if (statusError && !status) return <p className="error">{statusError}</p>;
-  if (!status) return <p className="loading">저장된 교통정보 현황을 읽는 중입니다…</p>;
+  if (statusError && !status) return <Alert variant="destructive"><AlertDescription>{statusError}</AlertDescription></Alert>;
+  if (!status) return <div role="status" aria-label="저장된 교통정보 현황을 읽는 중입니다…" className="flex flex-col gap-4">
+    <p className="quiet">저장된 교통정보 현황을 읽는 중입니다…</p>
+    <div className="grid" aria-hidden="true">{DASHBOARD_TABS.map(([value]) => <Skeleton key={value} className="h-32 w-full" />)}</div>
+  </div>;
   const statisticalMessage = statisticsError || "저장된 7일 통계를 집계하는 중입니다…";
   const trafficRows = statistics?.traffic.slice(0, 8) ?? [];
   const fuelRows = statistics?.fuel_prices ?? [];
   const speedChart = trafficRows.map((item) => ({ label: highwayRouteLabel(item.route_no, routeNames.get(item.route_no ?? "")), value: item.average_speed }));
   const fuelChart = fuelRows.map((item) => ({ label: fuelProductLabel(item.product_code), value: item.average_price }));
+  const statisticsPlaceholder = <div className="flex flex-col gap-3" role={statisticsLoading ? "status" : undefined}>
+    <p className="quiet">{statisticalMessage}</p>
+    {statisticsLoading ? <Skeleton className="transport-chart" aria-hidden="true" /> : null}
+  </div>;
 
-  return <>
-    <div className="transport-tabs" role="group" aria-label="교통·유가 정보 보기">
-      {([ ["overview", "통합 현황"], ["highway", "고속도로"], ["fuel", "유가"] ] as const).map(([value, label]) => <button aria-controls={`transport-panel-${value}`} aria-pressed={tab === value} className={tab === value ? "active" : ""} key={value} onClick={() => setTab(value)} type="button">{label}</button>)}
-    </div>
-    {statisticsError ? <div className="error" role="alert"><p>{statistics ? "통계 갱신에 실패해 이전 조회 결과를 표시합니다." : "통계를 아직 불러오지 못했습니다."} {statisticsError}</p><button className="secondary" type="button" disabled={statisticsLoading || statisticsRetry >= 3} onClick={() => { setStatisticsLoading(true); setStatisticsRetry((value) => value + 1); }}>{statisticsLoading ? "통계 확인 중…" : "통계 다시 조회"}</button>{statisticsRetry >= 3 ? <p>이 화면에서의 재시도 3회를 사용했습니다. 잠시 후 다시 방문해 주세요.</p> : null}</div> : null}
-    {statusError ? <p className="error" role="alert">수집 상태 갱신 실패: {statusError}</p> : null}
-    <div className="grid" id={`transport-panel-${tab}`}>
-      {tab === "overview" ? <>
-        <section className="panel"><span className="metric">수집 설정</span><strong className="value">{status.scheduler_enabled ? "활성" : "중지"}</strong><p className="quiet">실제 성공·실패는 수집 상태 메뉴에서 확인</p><Link href="/collections">전체 수집 상태 →</Link></section>
-        <section className="panel"><span className="metric">도로·유가 연결 소스</span><strong className="value">{status.enabled_sources.length}</strong><p className="quiet">고속도로 소통·돌발·오피넷</p></section>
-        <section className="panel"><span className="metric">최근 24시간 도로 돌발</span><strong className="value">{incidents?.items.length ?? "…"}</strong><p className="quiet">저장된 돌발 정보 기준</p></section>
-        <section className="panel wide"><h2>고속도로 평균 속도</h2>{statistics ? <TransportBarChart ariaLabel="노선별 평균 속도 그래프" items={speedChart} unit="km/h" /> : <p className="quiet">{statisticalMessage}</p>}</section>
-        <section className="panel"><h2>주요 유종 평균 가격</h2>{statistics ? <TransportBarChart ariaLabel="유종별 평균 가격 그래프" items={fuelChart} unit="원/L" /> : <p className="quiet">{statisticalMessage}</p>}</section>
-      </> : null}
-      {tab === "highway" ? <>
-        <section className="panel wide"><h2>노선별 평균 속도 (최근 7일)</h2>{statistics ? <TransportBarChart ariaLabel="노선별 평균 속도 그래프" items={speedChart} unit="km/h" /> : <p className="quiet">{statisticalMessage}</p>}</section>
-        <section className="panel"><h2>노선별 돌발 현황</h2>{statistics ? <ul className="row-list">{statistics.incidents.slice(0, 8).map((item, index) => <li key={`${item.route_no}-${index}`}><span>{highwayRouteLabel(item.route_no, routeNames.get(item.route_no ?? ""))}</span><strong>{item.incidents}건</strong></li>)}</ul> : <p className="quiet">{statisticalMessage}</p>}</section>
-      </> : null}
-      {tab === "fuel" ? <>
-        <section className="panel wide"><h2>유종별 평균 가격 (최근 7일)</h2>{statistics ? <TransportBarChart ariaLabel="유종별 평균 가격 그래프" items={fuelChart} unit="원/L" /> : <p className="quiet">{statisticalMessage}</p>}</section>
-        <section className="panel"><h2>수집 주유소 수</h2>{statistics ? <ul className="row-list">{fuelRows.map((item) => <li key={item.product_code}><span>{fuelProductLabel(item.product_code)}</span><strong>{number(item.stations)}곳</strong></li>)}</ul> : <p className="quiet">{statisticalMessage}</p>}</section>
-      </> : null}
-      <section className="panel wide"><h2>교통정보 찾아보기</h2><p><Link href="/map">주유소별 가격 지도 →</Link> · <Link href="/highways">고속도로 구간·돌발 검색 →</Link> · <Link href="/collections">제공기관별 수집 상태 →</Link></p></section>
-    </div>
-  </>;
+  return <Tabs value={tab} onValueChange={(value) => { if (value === "overview" || value === "highway" || value === "fuel") setTab(value); }} className="min-w-0 gap-4">
+    <TabsList aria-label="교통·유가 정보 보기" className="max-w-full overflow-x-auto group-data-horizontal/tabs:h-auto">
+      {DASHBOARD_TABS.map(([value, label]) => <TabsTrigger value={value} key={value} className="min-h-11 flex-none px-3 py-2">{label}</TabsTrigger>)}
+    </TabsList>
+    {statisticsError ? <Alert variant="destructive">
+      <AlertTitle>{statistics ? "통계 갱신에 실패해 이전 조회 결과를 표시합니다." : "통계를 아직 불러오지 못했습니다."}</AlertTitle>
+      <AlertDescription className="flex flex-col items-start gap-3">
+        <p>{statisticsError}</p>
+        <Button variant="outline" type="button" disabled={statisticsLoading || statisticsRetry >= 3} onClick={() => { setStatisticsLoading(true); setStatisticsRetry((value) => value + 1); }}>
+          {statisticsLoading ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
+          {statisticsLoading ? "통계 확인 중…" : "통계 다시 조회"}
+        </Button>
+        {statisticsRetry >= 3 ? <p>이 화면에서의 재시도 3회를 사용했습니다. 잠시 후 다시 방문해 주세요.</p> : null}
+      </AlertDescription>
+    </Alert> : null}
+    {statusError ? <Alert variant="destructive"><AlertDescription>수집 상태 갱신 실패: {statusError}</AlertDescription></Alert> : null}
+    {DASHBOARD_TABS.map(([value]) => <TabsContent key={value} value={value} keepMounted className="min-w-0 hidden:hidden">
+      {tab === value ? <div className="grid">
+        {value === "overview" ? <>
+          <Card className={CARD_CLASS_NAME}>
+            <CardHeader><CardTitle><span className="metric mb-0">수집 설정</span></CardTitle></CardHeader>
+            <CardContent className="flex flex-col gap-3"><strong className="value">{status.scheduler_enabled ? "활성" : "중지"}</strong><CardDescription>실제 성공·실패는 수집 상태 메뉴에서 확인</CardDescription></CardContent>
+            <CardFooter><Link href="/collections">전체 수집 상태 →</Link></CardFooter>
+          </Card>
+          <Card className={CARD_CLASS_NAME}>
+            <CardHeader><CardTitle><span className="metric mb-0">도로·유가 연결 소스</span></CardTitle></CardHeader>
+            <CardContent className="flex flex-col gap-3"><strong className="value">{status.enabled_sources.length}</strong><CardDescription>고속도로 소통·돌발·오피넷</CardDescription></CardContent>
+          </Card>
+          <Card className={CARD_CLASS_NAME}>
+            <CardHeader><CardTitle><span className="metric mb-0">최근 24시간 도로 돌발</span></CardTitle></CardHeader>
+            <CardContent className="flex flex-col gap-3"><strong className="value">{incidents?.items.length ?? "…"}</strong><CardDescription>저장된 돌발 정보 기준</CardDescription></CardContent>
+          </Card>
+          <Card className={cn(CARD_CLASS_NAME, "wide")}>
+            <CardHeader><CardTitle><h2 className="m-0">고속도로 평균 속도</h2></CardTitle></CardHeader>
+            <CardContent>{statistics ? <TransportBarChart ariaLabel="노선별 평균 속도 그래프" items={speedChart} unit="km/h" /> : statisticsPlaceholder}</CardContent>
+          </Card>
+          <Card className={CARD_CLASS_NAME}>
+            <CardHeader><CardTitle><h2 className="m-0">주요 유종 평균 가격</h2></CardTitle></CardHeader>
+            <CardContent>{statistics ? <TransportBarChart ariaLabel="유종별 평균 가격 그래프" items={fuelChart} unit="원/L" /> : statisticsPlaceholder}</CardContent>
+          </Card>
+        </> : null}
+        {value === "highway" ? <>
+          <Card className={cn(CARD_CLASS_NAME, "wide")}>
+            <CardHeader><CardTitle><h2 className="m-0">노선별 평균 속도 (최근 7일)</h2></CardTitle></CardHeader>
+            <CardContent>{statistics ? <TransportBarChart ariaLabel="노선별 평균 속도 그래프" items={speedChart} unit="km/h" /> : statisticsPlaceholder}</CardContent>
+          </Card>
+          <Card className={CARD_CLASS_NAME}>
+            <CardHeader><CardTitle><h2 className="m-0">노선별 돌발 현황</h2></CardTitle></CardHeader>
+            <CardContent>{statistics ? <ul className="row-list">{statistics.incidents.slice(0, 8).map((item, index) => <li key={`${item.route_no}-${index}`}><span>{highwayRouteLabel(item.route_no, routeNames.get(item.route_no ?? ""))}</span><strong>{item.incidents}건</strong></li>)}</ul> : statisticsPlaceholder}</CardContent>
+          </Card>
+        </> : null}
+        {value === "fuel" ? <>
+          <Card className={cn(CARD_CLASS_NAME, "wide")}>
+            <CardHeader><CardTitle><h2 className="m-0">유종별 평균 가격 (최근 7일)</h2></CardTitle></CardHeader>
+            <CardContent>{statistics ? <TransportBarChart ariaLabel="유종별 평균 가격 그래프" items={fuelChart} unit="원/L" /> : statisticsPlaceholder}</CardContent>
+          </Card>
+          <Card className={CARD_CLASS_NAME}>
+            <CardHeader><CardTitle><h2 className="m-0">수집 주유소 수</h2></CardTitle></CardHeader>
+            <CardContent>{statistics ? <ul className="row-list">{fuelRows.map((item) => <li key={item.product_code}><span>{fuelProductLabel(item.product_code)}</span><strong>{number(item.stations)}곳</strong></li>)}</ul> : statisticsPlaceholder}</CardContent>
+          </Card>
+        </> : null}
+        <Card className={cn(CARD_CLASS_NAME, "wide")}>
+          <CardHeader><CardTitle><h2 className="m-0">교통정보 찾아보기</h2></CardTitle></CardHeader>
+          <CardContent><p className="m-0"><Link href="/map">주유소별 가격 지도 →</Link> · <Link href="/highways">고속도로 구간·돌발 검색 →</Link> · <Link href="/collections">제공기관별 수집 상태 →</Link></p></CardContent>
+        </Card>
+      </div> : null}
+    </TabsContent>)}
+  </Tabs>;
 }

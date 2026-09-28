@@ -5,6 +5,13 @@ import { useId } from "react";
 import { dateTime, hasCoordinates, money, serviceTime, type FerryTimetable, type Place } from "@/lib/journey";
 import { collectionSourceLabel, fuelProductLabel, placeKindLabel } from "@/lib/transport-presentation";
 import { RailTimetables } from "./rail-timetables";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Field, FieldGroup, FieldLabel, FieldSet, FieldLegend } from "@/components/ui/field";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Badge } from "@/components/ui/badge";
+import { Empty, EmptyHeader, EmptyDescription } from "@/components/ui/empty";
 
 export function PlaceIcon({ kind }: { kind: string }) {
   const Icon = ({ fuel_station: Fuel, rail_station: TrainFront, ferry_port: Anchor, airport: Plane, rest_area: Coffee, bus_terminal: Bus, highway_incident: TriangleAlert } as const)[kind as Place["kind"]] ?? MapPin;
@@ -12,7 +19,10 @@ export function PlaceIcon({ kind }: { kind: string }) {
 }
 
 export function ViewSwitch({ value, onChange }: { value: "map" | "list"; onChange: (value: "map" | "list") => void }) {
-  return <div className="view-switch" role="group" aria-label="보기 방식"><button type="button" aria-pressed={value === "map"} onClick={() => onChange("map")}>지도</button><button type="button" aria-pressed={value === "list"} onClick={() => onChange("list")}>목록</button></div>;
+  return <ToggleGroup variant="outline" aria-label="보기 방식" value={[value]} onValueChange={(values) => { if (values[0] === "map" || values[0] === "list") onChange(values[0]); }}>
+    <ToggleGroupItem value="map" aria-label="지도">지도</ToggleGroupItem>
+    <ToggleGroupItem value="list" aria-label="목록">목록</ToggleGroupItem>
+  </ToggleGroup>;
 }
 
 export function MultiSearch({ label, query, onQuery, options, selected, onSelect, max = 5, loading = false }: {
@@ -22,11 +32,18 @@ export function MultiSearch({ label, query, onQuery, options, selected, onSelect
 }) {
   const id = useId();
   return <section className="multi-search">
-    <label htmlFor={id}>{label}<input id={id} type="search" value={query} onChange={(event) => onQuery(event.target.value)} placeholder="이름·지역으로 검색" autoComplete="off" /></label>
-    {selected.length ? <div className="selection-chips" aria-label="선택한 장소">{selected.map((item) => <button type="button" key={item.id} onClick={() => onSelect(item.id)} aria-label={`${item.name} 선택 해제`}><span>{item.name}</span><X size={14} aria-hidden="true" /></button>)}</div> : null}
+    <FieldGroup><Field><FieldLabel htmlFor={id}>{label}</FieldLabel><Input id={id} type="search" value={query} onChange={(event) => onQuery(event.target.value)} placeholder="이름·지역으로 검색" autoComplete="off" /></Field></FieldGroup>
+    {selected.length ? <div className="flex flex-wrap gap-2" aria-label="선택한 장소">{selected.map((item) => <Button variant="secondary" type="button" key={item.id} onClick={() => onSelect(item.id)} aria-label={`${item.name} 선택 해제`}><span>{item.name}</span><X data-icon="inline-end" aria-hidden="true" /></Button>)}</div> : null}
     <p className="quiet" role="status">{loading ? "검색 중…" : `${options.length}개 결과 · ${selected.length}/${max}곳 선택`}</p>
-    <div className="search-options">{options.slice(0, 60).map((item) => <label key={item.id}><input type="checkbox" checked={selected.some((value) => value.id === item.id)} disabled={max > 1 && selected.length >= max && !selected.some((value) => value.id === item.id)} onChange={() => onSelect(item.id)} /><span><strong>{item.name}</strong>{item.description ? <small>{item.description}</small> : null}</span></label>)}</div>
-    {!loading && !options.length ? <p className="empty-state">검색 결과가 없습니다. 다른 이름이나 지역을 입력해 주세요.</p> : null}
+    <FieldSet><FieldLegend className="sr-only">{label} 검색 결과</FieldLegend><FieldGroup className="max-h-64 overflow-y-auto gap-2">{options.slice(0, 60).map((item) => {
+      const checked = selected.some((value) => value.id === item.id);
+      const disabled = max > 1 && selected.length >= max && !checked;
+      return <Field orientation="horizontal" key={item.id} data-disabled={disabled} className="min-h-11">
+        <Checkbox id={`${id}-${item.id}`} checked={checked} disabled={disabled} onCheckedChange={() => onSelect(item.id)} />
+        <FieldLabel htmlFor={`${id}-${item.id}`} className="min-w-0 min-h-11 flex-1"><span className="flex min-w-0 flex-col gap-1"><strong>{item.name}</strong>{item.description ? <small>{item.description}</small> : null}</span></FieldLabel>
+      </Field>;
+    })}</FieldGroup></FieldSet>
+    {!loading && !options.length ? <Empty><EmptyHeader><EmptyDescription>검색 결과가 없습니다. 다른 이름이나 지역을 입력해 주세요.</EmptyDescription></EmptyHeader></Empty> : null}
     {options.length > 60 ? <p className="quiet">상위 60곳을 표시합니다. 검색어를 입력해 범위를 좁혀 주세요.</p> : null}
   </section>;
 }
@@ -35,7 +52,7 @@ export function PlaceDetails({ place, showRailTimetable = true, showHeading = tr
   return <div className="place-details">
     {showHeading ? <><div className="place-title"><PlaceIcon kind={place.kind} /><span>{placeKindLabel(place.kind)}</span></div><h2>{place.name}</h2></> : null}
     {place.brand_name ? <p>{place.brand_name}</p> : null}
-    {place.line_names.length ? <div className="line-chips">{place.line_names.map((line) => <span key={line}>{line}</span>)}</div> : null}
+    {place.line_names.length ? <div className="flex flex-wrap gap-2">{place.line_names.map((line) => <Badge variant="secondary" key={line}>{line}</Badge>)}</div> : null}
     {place.subtitle ? <p>{place.subtitle}</p> : null}
     {place.prices?.length ? <dl className="price-grid">{place.prices.map((price) => <div key={price.product_code}><dt>{fuelProductLabel(price.product_code)}</dt><dd>{money(price.price, "원/L")}</dd><small>{dateTime(price.provider_updated_at ?? price.observed_at)}</small></div>)}</dl> : place.kind === "fuel_station" ? <p className="quiet">등록된 유가가 없습니다.</p> : null}
     {place.address ? <p>{place.address}</p> : null}
