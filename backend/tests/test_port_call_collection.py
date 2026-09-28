@@ -19,6 +19,59 @@ LOCATION = PortCall("D000", *TARGET[:1], "28", TARGET[1], "제물포구", 37.455
                     {"portcl_cd": "D000", "portcl_nm": "인천", "lat": "37.4557", "lot": "126.598"})
 
 
+@pytest.mark.parametrize("same_port", [True, False])
+def test_postgres_concurrent_reservation_protects_identity_and_budget(test_settings, same_port):
+    if not test_settings.database_url.startswith("postgresql"):
+        pytest.skip("명시적으로 허용한 전용 PostgreSQL 테스트 DB가 필요합니다")
+
+    async def run():
+        engine, factory = create_engine_and_session_factory(test_settings.database_url)
+        service = RailMaritimeCollectionService(test_settings)
+        started, release = asyncio.Event(), asyncio.Event()
+        calls = 0
+
+        class Client:
+            async def get_port_calls(self, **_kwargs):
+                nonlocal calls
+                calls += 1
+                started.set()
+                await release.wait()
+                return (LOCATION,)
+
+        try:
+            async with factory() as session:
+                job = CollectionRun(started_at=now_utc(), status="running", trigger="test")
+                session.add(job)
+                await session.flush()
+                run_id = job.id
+                if not same_port:
+                    for index in range(79):
+                        session.add(RawApiResponse(collection_run_id=run_id, source=PORT_CALL_SOURCE,
+                            endpoint=f"previous:{index}", status_code=0, body_text="null",
+                            received_at=now_utc(), parse_status="failed"))
+                await session.commit()
+            async with factory() as first, factory() as second:
+                pending = asyncio.create_task(service._port_call_location(first, run_id, Client(), "SEA10100", TARGET))
+                try:
+                    await asyncio.wait_for(started.wait(), timeout=5)
+                    # 첫 HTTP 요청이 대기 중에도 두 번째 DB 검사는 끝나야 한다.
+                    result = await asyncio.wait_for(service._port_call_location(second, run_id, Client(),
+                        "SEA10100" if same_port else "SEA30010", TARGET), timeout=5)
+                    assert result is None
+                    assert calls == 1
+                finally:
+                    release.set()
+                    await pending
+            async with factory() as check:
+                count = await check.scalar(select(func.count()).select_from(RawApiResponse)
+                    .where(RawApiResponse.source == PORT_CALL_SOURCE))
+                assert count == (1 if same_port else 80)
+        finally:
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("rows,target,found", [
     ((LOCATION,), TARGET, True), ((), TARGET, False), ((LOCATION, LOCATION), TARGET, False),
     ((LOCATION,), ("인", TARGET[1]), False), ((LOCATION,), (TARGET[0], "전라남도"), False),
