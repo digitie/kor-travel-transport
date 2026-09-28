@@ -2,6 +2,19 @@
 
 완료한 task의 식별자, 핵심 변경, 검증 명령과 시각을 역시간순으로 보관한다.
 
+## 2026-09-28 — T-042 parking-radar 공용 DB 운영 확인
+
+- UI PR #47 머지 후 최신 Manager 정본과 운영 DSN·SQL을 대조했다. parking-radar는
+  이미 공용 `kor_travel_transport` DB를 사용하며 별도 이전은 필요하지 않았다.
+- 공항 14·주차장 53·주차 관측 735,925·요금 규칙 32건과 최신 관측 16:45:03 KST,
+  24개 테이블의 앱 role 소유, 비특권 계정, 실제 application/metadata 연결을 확인했다.
+- 기존 parking-radar live E2E 5개 통과. DB·DSN·컨테이너는 변경하지 않았고 덤프/복원·
+  백업 생성도 실행하지 않았다. [상세 증적](runbooks/parking-shared-postgres-status.md).
+- James(Mencius)/Popper(Tesla) 독립 리뷰에서 James P2 두 건의 테스트 증적 범위 문구를
+  실제 검사 조건으로 정정했다. Popper의 운영 DSN·과거 시각 상한 SQL 대조는 신규 지적이 없다.
+  검토 후보 `c397229`, UI runtime `1db261e`·API `ff45aeac`는 그대로이며 최종 CI·머지는
+  [PR #48](https://github.com/digitie/kor-travel-transport/pull/48)이 정본이다.
+
 ## 2026-09-28 — T-042 Weather 외형 일치화
 
 - Weather `c25642099` 정본의 밝은 17rem 레일·파란 의미 색상·카드형 헤더·반응형

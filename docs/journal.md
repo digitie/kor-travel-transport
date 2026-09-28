@@ -1,5 +1,23 @@
 # journal.md — 작업 일지
 
+## 2026-09-28 PR #47 머지·parking-radar 공용 DB 확인
+
+- PR #47 최종 CI 전부 통과 후 `bdc9c02`로 머지했다. runtime은 검증한 `1db261e` 그대로다.
+- 이어서 요청된 parking-radar DB 이전을 점검했으나, 실제로는 이미 공용 PostgreSQL
+  `:11000/kor_travel_transport`에 연결돼 있었다. 기존 frontend가 `:14001` backend를
+  호출하고 backend·code-server가 공용 application DB, Dagster가 공용 metadata DB를 쓴다.
+- 공용 DB의 실제 주차 관측 735,925건과 최신 16:45:03 KST, 앱 role 소유·비특권 설정을
+  확인했다. 기존 parking-radar live E2E 5개가 6.7초에 통과했다.
+- Manager 최신 `68cc1a9`과도 일치한다. 운영 대상 확인 결과에 따라 이미 이전된 DB에
+  중복 복원을 하지 않았다. DSN 변경/DB 생성·삭제/컨테이너 재시작은 0건이다.
+  [점검 기록](runbooks/parking-shared-postgres-status.md)에 실제 연결과 범위를 남겼다.
+- PR #48 문서 후보 `c397229`의 CI 통과 후 James(Mencius)/Popper(Tesla)가 독립 리뷰했다.
+  James의 P2 두 건은 테스트 소스로 재현 확인해 문구를 좁혔다. 공항 선택은 쿠키 존재만,
+  반응형 폭은 선택창 표시 시점만 검사하며 선택 복원·로딩 완료 후 배치를 보장하지 않는다.
+  Popper는 운영 DSN과 기록 시각 상한까지의 735,925건을 재조회해 신규 지적이 없었다.
+  UI runtime `1db261e`와 API `ff45aeac`는 불변이며 문서만 수정했다. 최종 CI·머지 상태는
+  [PR #48](https://github.com/digitie/kor-travel-transport/pull/48)을 정본으로 확인한다.
+
 ## 2026-09-28 PR #47 Weather 실제 외형 일치화·n150 검증
 
 - Weather 로컬 정본 `c25642099`의 색상·글꼴 fallback·17rem 레일·카드형 헤더·여백을

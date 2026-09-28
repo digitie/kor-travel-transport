@@ -2,6 +2,12 @@
 
 ## 현재 상태
 
+- 2026-09-28 16:49 KST: PR #47은 `bdc9c02`로 머지됐다. 후속 parking-radar DB 점검에서
+  이미 공용 PostgreSQL `:11000/kor_travel_transport`를 사용함을 운영 DSN·SQL·웹앱으로
+  확인했다. 공항 14·주차장 53·주차 관측 735,925·요금 규칙 32건, 최신 관측 16:45:03 KST다.
+  기존 parking-radar live E2E 5개도 통과했다. 추가 DB 이전이나 복원·재시작은 하지 않았다.
+  상세는 [공용 DB 운영 확인](runbooks/parking-shared-postgres-status.md)을 따른다.
+
 - 2026-09-28 PR #47: Weather 정본 `c25642099`의 밝은 17rem 레일·파란 토큰·카드형
   헤더·컨트롤/표 밀도와 Dagster 요약 카드 치수를 적용했다. runtime 후보 `1db261e`를
   16:24 KST n150 UI에만 배포했다. 이미지 `4580a5ca3c61`, 컨테이너 `fa1001e6f2b3`는
@@ -9,8 +15,8 @@
   WSL/Docker admin 각각 109개·린트·타입·빌드, WSL UI 117개, Docker backend 283개를
   통과했다. James의 P2 두 건은 재현·수정·직접 재검증 완료, Popper 신규 지적 없음이다.
   운영 HTTPS E2E 414개가 136.39초에 통과했다(실패/제외/flaky 0). 일부 오류 UI는 mock이다.
-  UI 소스도 백업 후 동기화했다. 최종 증적 문서 CI 확인·머지가 남았으며 정본은 PR #47이다.
-  이 UI PR 머지 후 parking-radar DB를 공용 PostgreSQL Docker로 옮긴다.
+  UI 소스도 백업 후 동기화했고 최종 증적 CI 통과 후 PR #47을 머지했다.
+  후속 parking-radar 점검에서 공용 PostgreSQL 사용을 확인해 추가 이전은 하지 않았다.
   이번 UI PR에서는 DB·DSN·API·worker를 변경하지 않았다.
 
 - 2026-09-28 14:35 KST PR #46 후보 `8ff8e7c541d05f46c5736a6f97edd762f2d7da9a`의
@@ -595,12 +601,10 @@
 
 ## 다음 한 작업
 
-PR #47 최종 증적 커밋의 CI를 확인해 머지한다. 검증·독립 리뷰·UI 전용 배포·live E2E는
-완료됐다. 이미 머지됐다면 구현/배포를 반복하지 말고 GitHub 상태부터 확인한다.
-runtime 후보는 `1db261e`이다. PR #46은 이미 `50215b3`으로 머지됐다.
-이 UI PR이 머지된 뒤 parking-radar DB의 공용 PostgreSQL Docker 이전을 별도 PR로 진행한다.
-최신 docker-manager 설정과 실제 DSN을 확인하고 백업·복구 리허설·데이터 동등성 검증을
-선행한다. 기존 DB는 검증 전 삭제하지 않는다. 이후 증적 문서 커밋만으로 재배포하지 않는다.
+PR #47은 머지됐고 runtime은 `1db261e`다. parking-radar DB도 이미 공용 PostgreSQL을
+사용하므로 추가 이전은 하지 않는다. 운영 확인 문서 PR #48은 독립 리뷰를 마쳤고 테스트
+증적 범위 P2 두 건의 표현을 정정했다. 최종 CI·머지 상태 정본은 PR #48이다.
+증적 문서 커밋만으로 재배포하지 않는다. 과거 DB를 추정해 복원하거나 새 DB를 만들지 않는다.
 API/0015·worker와 배편 선실행은 이전 PR #44에서 완료됐고 정기 스케줄도 복원됐다.
 전체 배포 스크립트를 다시 실행하거나 배편 수집을 재호출하지 않는다.
 다음 실수집 검증 대상은 오피넷 16:00 KST 정기 배치다. UI E2E 성공을 provider 성공으로
