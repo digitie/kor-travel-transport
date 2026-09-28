@@ -4,6 +4,7 @@ import { ClusterLayer, ClusterMarker, Marker, VWorldMapView } from "vworld-map-w
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { clusterAtScale, hasCoordinates, transportGet, type Place, type PlaceKind } from "@/lib/journey";
 import { collectionSourceLabel, fuelProductLabel, placeKindLabel } from "@/lib/transport-presentation";
+import { MAP_FALLBACK_IMAGE } from "@/lib/map-fallback";
 import { PlaceIcon, ViewSwitch } from "./journey-controls";
 import { PlaceInspector } from "./place-inspector";
 import { Input } from "@/components/ui/input";
@@ -164,7 +165,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
         geolocate={false} layerType="Base" lazy loadingSkeleton={<p className="loading">지도를 준비하는 중입니다…</p>} minZoom={5} navigation scale
         onLoad={(map) => moved(map.getBounds(), map.getZoom())}
         onMoveEnd={(event) => { const map = event.target as { getBounds: () => Bounds; getZoom: () => number }; moved(map.getBounds(), map.getZoom()); }}
-        unsupportedTileFallback={{ label: "지도를 불러오지 못했습니다." }} zoom={7}>
+        unsupportedTileFallback={{ imageUrl: MAP_FALLBACK_IMAGE }} zoom={7}>
         <ClusterLayer points={groupedPoints} radius={cluster ? (product ? 80 : 110) : 60} maxZoom={19}
           renderCluster={(group, count, index) => <ClusterMarker lngLat={group.geometry.coordinates} count={count} onClick={() => {
             const id = group.properties.cluster_id;

@@ -2,6 +2,12 @@
 
 ## 현재 상태
 
+- 2026-09-29 PR #51 재검증: WSL/Docker 전체 백엔드는 각각 340개 통과·4개 제외,
+  후속 좌표 재검증 수정 범위는 각각 44개 통과·2개 PostgreSQL 전용 제외다. 전용
+  PostgreSQL 28개는 모두 통과했다. Popper의 정상 무결과 좌표 잔존 문제를 `dc6ba5f`로
+  수정했다. UI 전체 HTTPS E2E는 418개 통과·묶음 마커 1개 간헐 실패로 조사 중이며,
+  배포 이미지의 탭/상세 32개는 통과했다. 운영 교체·live·머지는 아직 남았다.
+
 - 2026-09-28 VWorld 키: 로컬 `kor-travel-map/.env`의 키를 transport 관리자 UI의
   Git 제외 `.env.local`과 WSL 검증 환경에 반영했다. 실제 키로 Next.js 빌드 성공,
   VWorld 타일 12개 `200 image/png`와 배경 지도 렌더링을 확인했다. 탭/상세 E2E는
@@ -644,27 +650,21 @@
 
 ## 다음 한 작업
 
-운영 식별자 개명(ADR-010): `chore/rename-deploy-identity-transport` PR을 열어 CI green 뒤 머지하고, 그 머지
-커밋 R로 2026-09-28 12:30~14:00Z 창을 연다(runbook "운영 식별자 개명 cutover"). R 머지부터 `finish`까지
-n150 freeze다(transport·관리 UI 배포, Map·Manager 빌드·rebind, prune 금지).
+PR #51의 지도 회귀 원인을 해소하고 James/Popper 재리뷰·CI를 통과한 뒤, n150의
+backend/code-server와 관리자 UI만 제한적으로 교체한다. Dagster 실행이 없음을 확인하고
+daemon을 잠시 멈춰 다시 확인하며, 성공·실패 모두 원래 daemon을 재개한다. 기존
+parking-radar frontend·공유 DB·gateway는 재시작하지 않는다. 검증한 이미지 digest와
+소스 지문을 확인하고 기존 이미지·환경·소스는 되돌리기용으로 보존한다.
 
-PR #47은 머지됐고 runtime은 `1db261e`다. parking-radar DB도 이미 공용 PostgreSQL을
-사용하므로 추가 이전은 하지 않는다. 운영 확인 문서 PR #48은 독립 리뷰를 마쳤고 테스트
-증적 범위 P2 두 건의 표현을 정정했다. 최종 CI·머지 상태 정본은 PR #48이다.
-증적 문서 커밋만으로 재배포하지 않는다. 과거 DB를 추정해 복원하거나 새 DB를 만들지 않는다.
-API/0015·worker와 배편 선실행은 이전 PR #44에서 완료됐고 정기 스케줄도 복원됐다.
-전체 배포 스크립트를 다시 실행하거나 배편 수집을 재호출하지 않는다.
-다음 실수집 검증 대상은 오피넷 16:00 KST 정기 배치다. UI E2E 성공을 provider 성공으로
-대체하지 않는다. KRIC은 09-29 15:04:58 KST 보호 종료 전에 재호출하지 않는다.
-공용 DB 장애 최초 원인, TAGO 일반철도 HTTP 403, 버스 좌표, 배편 전체 저장 범위는 남았다.
-공유 DB 재시작/설정 변경은 별도 영향 범위 확인이 필요하다. 내장 지도 검색 뒤 이전 겹침
-목록이 남는 P2는 `docs/tasks.md`에 기록했으며 선택 가능한 실제 장소를 잘못 생성하지는 않는다.
+기항지 기준정보 job을 식별 태그로 한 번만 실행해 실제 좌표·호출 예약을 확인하고,
+운영 HTTPS E2E와 기존 parking-radar 회귀를 통과한 뒤 머지한다. KRIC 철도 수집은
+09-29 15:04:58 KST 보호 종료 전에 재호출하지 않는다. 이후 별도 PR에서 `tasks.md`의
+지도 정보·combobox·Map/Weather 일치화 11개 항목을 진행한다.
 
-별도 PR #45는 main에 머지됐다. healthcheck/init 운영 반영은 활성 수집과 겹치지 않게
-조율하고 `scripts/redeploy-dagster-services-server14.sh`의 drift gate를 따른다.
-code-server 이미지는 보존하지만 webserver·daemon도 그 이미지로 바뀐다. 세 서비스 각각의
-기존 이미지를 보존하는 절차가 아니다. `dagster-pin-*` 태그는 다음 전체 릴리스까지 둔다.
-code-server 재발 시 재시작 전 stack 확보, 배포 스크립트 DSN regex 정렬은 후속으로 남긴다.
+ADR-010 개명과 #45 운영 반영은 완료됐다. 새 디렉터리·project만 사용하고 72시간
+관찰 전 n150 prune은 하지 않는다. parking-radar DB도 이미 공용 PostgreSQL이므로
+추가 이전하지 않는다. 공유 DB 장애 원인, TAGO 일반철도 HTTP 403, 버스 좌표 및
+배편 전체 저장 범위 등 나머지 이슈는 백로그를 따른다.
 
 ## 확인된 사실
 
