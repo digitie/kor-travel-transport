@@ -2,7 +2,8 @@
 
 ## 2026-09-28 운영 식별자 개명(airport → transport) 저장소 준비
 
-- 브랜치 `chore/rename-deploy-identity-transport`(main `556052c`에서 시작, PR #44 머지 뒤 rebase).
+- 브랜치 `chore/rename-deploy-identity-transport`(main `556052c`에서 시작해 PR #44 머지 `835c0ec` 위로
+  rebase. 충돌은 journal·resume의 맨 위 항목뿐이었다).
   ADR-010을 추가했다. 배포 식별자만 옮기고 공항 주차 도메인(`airports`, `/v1/airports`,
   `airport_collection_job`, `AIRPORT_CODES_CSV`, trigger `dagster_airport` …)은 그대로 둔다.
 - compose: `name: kor-travel-transport`(db·live도), network `kor-travel-transport-net`, 백엔드 이미지
@@ -26,7 +27,8 @@
   `F:/dev/kor-travel-airport/…` 절대 링크 74개(+ 같은 형식의 transport 링크 2개)를 상대 경로로.
 - 검증(n150 throwaway `--network none`, 고정 이미지 `148a471b`, bash 5.2.37): compose·스크립트를 읽는
   테스트 10개 파일(새 두 파일 포함) 79개가 통과했고(관리 UI·OpenAPI 계약 3개는 `packages/`·
-  `docs/openapi.json`을 함께 옮겨 다시 돌렸다), Docker 이미지 배치(`/app/scripts`·`/app/tests`)에서
+  `docs/openapi.json`을 함께 옮겨 다시 돌렸다. `835c0ec` 위로 rebase한 뒤 같은 10개 파일 82개가
+  통과했다), Docker 이미지 배치(`/app/scripts`·`/app/tests`)에서
   새 두 파일과 redeploy 테스트 39개가 통과했다. 새 테스트를 main 스크립트에 돌리면 18개가 빨갛다.
   스크립트 변이 24개 중 23개가 빨갛다(env 재복사·drain·fence·은퇴·restart=no·daemon 수·schedule
   비교·migration gate·dagster 버전·빌드 확인·비밀번호 argv·`pg_restore --list`·관리 스택 `--build`·

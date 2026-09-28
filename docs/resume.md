@@ -3,6 +3,13 @@
 ## 현재 상태
 
 - 2026-09-28 `chore/rename-deploy-identity-transport`: n150 운영 식별자 개명(ADR-010) 저장소 준비를
+  푸시했다(PR은 아직 없음). PR #44가 `835c0ec`로 머지돼 그 위로 rebase했다. main이 더 움직이면 다시
+  rebase한 뒤 PR·CI·두 적대적 리뷰를 거쳐 창 직전에 머지한다. n150 cutover는
+  `scripts/rename-deploy-identity-server14.sh`와 `docs/runbooks/deployment.md` "운영 식별자 개명
+  cutover"를 따른다. 창 전까지 옛 이름(`kor-travel-airport`, `/home/digitie/apps/kor-travel-airport`)이
+  운영이다. 이 브랜치가 머지된 뒤에는 새 스크립트가 옛 디렉터리로 배포하지 않으므로 머지와 cutover
+  사이에 다른 배포를 하지 않는다.
+
   푸시했다(PR은 아직 없음). PR #44가 머지되면 origin/main으로 rebase하고 PR·CI·두 적대적 리뷰를 거쳐
   창 직전에 머지한다. n150 cutover는 `scripts/rename-deploy-identity-server14.sh`와
   `docs/runbooks/deployment.md` "운영 식별자 개명 cutover"를 따른다. 창 전까지 옛 이름
