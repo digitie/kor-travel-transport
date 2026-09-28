@@ -33,7 +33,7 @@ export function MultiSearch({ label, query, onQuery, options, selected, onSelect
   const id = useId();
   return <section className="multi-search">
     <FieldGroup><Field><FieldLabel htmlFor={id}>{label}</FieldLabel><Input id={id} type="search" value={query} onChange={(event) => onQuery(event.target.value)} placeholder="이름·지역으로 검색" autoComplete="off" /></Field></FieldGroup>
-    {selected.length ? <div className="flex flex-wrap gap-2" aria-label="선택한 장소">{selected.map((item) => <Button variant="secondary" type="button" key={item.id} onClick={() => onSelect(item.id)} aria-label={`${item.name} 선택 해제`}><span>{item.name}</span><X data-icon="inline-end" aria-hidden="true" /></Button>)}</div> : null}
+    {selected.length ? <div className="flex min-w-0 flex-wrap gap-2" aria-label="선택한 장소">{selected.map((item) => <Button className="max-w-full" variant="secondary" type="button" key={item.id} onClick={() => onSelect(item.id)} aria-label={`${item.name} 선택 해제`} title={item.name}><span className="min-w-0 truncate">{item.name}</span><X data-icon="inline-end" aria-hidden="true" /></Button>)}</div> : null}
     <p className="quiet" role="status">{loading ? "검색 중…" : `${options.length}개 결과 · ${selected.length}/${max}곳 선택`}</p>
     <FieldSet><FieldLegend className="sr-only">{label} 검색 결과</FieldLegend><FieldGroup className="max-h-64 overflow-y-auto gap-2">{options.slice(0, 60).map((item) => {
       const checked = selected.some((value) => value.id === item.id);

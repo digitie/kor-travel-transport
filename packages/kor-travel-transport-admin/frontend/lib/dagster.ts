@@ -1,6 +1,6 @@
 export type DagsterRun = { runId: string; status: string; jobName: string; startTime: number | null; endTime: number | null };
 export type DagsterSchedule = { name: string; cronSchedule: string; pipelineName: string; scheduleState: { status: string } };
-export type DagsterOverview = { runs: DagsterRun[]; schedules: DagsterSchedule[]; checkedAt?: string };
+export type DagsterOverview = { runs: DagsterRun[]; activeRuns?: DagsterRun[]; schedules: DagsterSchedule[]; checkedAt?: string };
 export const JOB_LABELS: Record<string, string> = { airport_collection_job: "공항 주차·요금", highway_collection_job: "고속도로 소통·돌발", fuel_collection_job: "주유소·유가", rail_reference_collection_job: "철도·도시철도 기준정보", maritime_reference_collection_job: "여객항구 기준정보", ferry_timetable_collection_job: "여객선 10일 시간표", bus_reference_collection_job: "고속·시외버스 터미널" };
 export function statusLabel(value: string): string {
   const key = value.toLowerCase();
@@ -20,10 +20,10 @@ export function scheduleDescription(cron: string) {
 }
 export function runStalled(run: DagsterRun, now = Date.now()) { return run.status === "STARTED" && run.startTime != null && now / 1000 - run.startTime > jobBudgetSeconds(run.jobName); }
 export async function getDagsterOverview(signal?: AbortSignal): Promise<DagsterOverview> {
-  const query = `{ repositoriesOrError { __typename ... on RepositoryConnection { nodes { schedules { name cronSchedule pipelineName scheduleState { status } } } } } runsOrError(limit: 30) { __typename ... on Runs { results { runId status jobName startTime endTime } } } }`;
+  const query = `{ repositoriesOrError { __typename ... on RepositoryConnection { nodes { schedules { name cronSchedule pipelineName scheduleState { status } } } } } runsOrError(limit: 30) { __typename ... on Runs { results { runId status jobName startTime endTime } } } activeRuns: runsOrError(filter: { statuses: [STARTED] }) { __typename ... on Runs { results { runId status jobName startTime endTime } } } }`;
   const response = await fetch("/api/dagster/graphql", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query }), cache: "no-store", signal });
   if (!response.ok) throw new Error("Dagster 연결에 실패했습니다. 다시 조회해 주세요.");
-  const payload = await response.json() as { errors?: unknown[]; data?: { repositoriesOrError: { __typename: string; nodes?: { schedules: DagsterSchedule[] }[] }; runsOrError: { __typename: string; results?: DagsterRun[] } } };
-  if (payload.errors?.length || payload.data?.repositoriesOrError.__typename !== "RepositoryConnection" || payload.data?.runsOrError.__typename !== "Runs") throw new Error("Dagster 작업 목록을 확인하지 못했습니다.");
-  return { checkedAt: new Date().toISOString(), schedules: payload.data.repositoriesOrError.nodes?.flatMap((row) => row.schedules) ?? [], runs: payload.data.runsOrError.results ?? [] };
+  const payload = await response.json() as { errors?: unknown[]; data?: { repositoriesOrError: { __typename: string; nodes?: { schedules: DagsterSchedule[] }[] }; runsOrError: { __typename: string; results?: DagsterRun[] }; activeRuns?: { __typename: string; results?: DagsterRun[] } } };
+  if (payload.errors?.length || payload.data?.repositoriesOrError?.__typename !== "RepositoryConnection" || payload.data?.runsOrError?.__typename !== "Runs" || payload.data?.activeRuns?.__typename !== "Runs") throw new Error("Dagster 작업 목록을 확인하지 못했습니다.");
+  return { checkedAt: new Date().toISOString(), schedules: payload.data.repositoriesOrError.nodes?.flatMap((row) => row.schedules) ?? [], runs: payload.data.runsOrError.results ?? [], activeRuns: payload.data.activeRuns.results ?? [] };
 }

@@ -22,6 +22,7 @@ export function DagsterTables({ snapshot }: { snapshot: DagsterOverview }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   // 화면의 경과 시간도 마지막 상태 조회 시각에 고정한다.
   const checkedAt = Date.parse(snapshot.checkedAt ?? "") || 0;
+  const runs = [...(snapshot.activeRuns ?? []).filter((active) => !snapshot.runs.some((run) => run.runId === active.runId)), ...snapshot.runs];
   return <>
     <Card className="min-w-0">
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4">
@@ -29,10 +30,10 @@ export function DagsterTables({ snapshot }: { snapshot: DagsterOverview }) {
         <CardDescription>마지막 확인 {dateTime(snapshot.checkedAt)}</CardDescription>
       </CardHeader>
       <CardContent>
-        {snapshot.runs.length ? <div className="max-w-full overflow-x-auto [&>[data-slot=table-container]]:overflow-visible" role="region" aria-label="최근 Dagster 실행 표" tabIndex={0}>
+        {runs.length ? <div className="max-w-full overflow-x-auto [&>[data-slot=table-container]]:overflow-visible" role="region" aria-label="최근 Dagster 실행 표" tabIndex={0}>
           <Table className="min-w-[38rem]">
             <TableHeader><TableRow><TableHead scope="col">상태</TableHead><TableHead scope="col">작업</TableHead><TableHead scope="col">시작</TableHead><TableHead scope="col">종료</TableHead><TableHead scope="col">상세</TableHead></TableRow></TableHeader>
-            <TableBody>{snapshot.runs.map((run) => {
+            <TableBody>{runs.map((run) => {
               const stalled = checkedAt > 0 && runStalled(run, checkedAt);
               const elapsed = run.startTime != null && (run.endTime != null || checkedAt > 0) ? Math.max(0, Math.floor(((run.endTime ?? checkedAt / 1000) - run.startTime) / 60)) : null;
               return <TableRow key={run.runId}>
@@ -109,7 +110,7 @@ export function DagsterOperations() {
     return () => controller.abort();
   }, [reload]);
   function refresh() { setLoading(true); setError(false); setReload((value) => value + 1); }
-  const stalled = snapshot?.runs.filter((run) => runStalled(run, Date.parse(snapshot.checkedAt ?? ""))).length ?? 0;
+  const stalled = (snapshot?.activeRuns ?? snapshot?.runs ?? []).filter((run) => runStalled(run, Date.parse(snapshot?.checkedAt ?? ""))).length;
   return <>
     <PageHeader title="Dagster" description="자동 수집 작업의 실행 기록과 스케줄을 확인합니다. 제공기관별 저장 범위는 수집 상태 메뉴에서 확인하세요." actions={<><Button variant="outline" type="button" disabled={loading} onClick={refresh}>{loading ? <Spinner data-icon="inline-start" aria-hidden="true" /> : <RefreshCw data-icon="inline-start" aria-hidden="true" />}{loading ? "확인 중…" : "새로고침"}</Button><a data-slot="button" className={cn(buttonVariants({ variant: "outline" }))} href={DAGSTER_URL} target="_blank" rel="noreferrer">Dagster UI <ExternalLink data-icon="inline-end" aria-hidden="true" /></a></>} />
     <div className="journey-workbench" aria-busy={loading}>

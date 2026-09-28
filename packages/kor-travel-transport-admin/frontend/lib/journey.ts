@@ -38,7 +38,7 @@ export function hasCoordinates(place: Place): place is Place & { longitude: numb
     && Number.isFinite(place.longitude) && Number.isFinite(place.latitude)
     && Math.abs(place.longitude) <= 180 && Math.abs(place.latitude) <= 90;
 }
-// MapLibre 축척 막대의 최대 폭(100px)에 해당하는 거리. 화면 폭/단말과 무관하다.
+// 확대 수준과 현재 화면 면적당 장소 수로 묶음 반경을 선택한다.
 export function clusterAtScale(zoom: number, latitude: number, count = 0, width = 800, height = 540) {
   // 광역 지도에서는 유지하고, 동네 수준에서도 화면 면적 대비 과밀하면 묶는다.
   // 작은 모바일 화면에서 데스크톱과 같은 수의 가격표가 한꺼번에 펼쳐지지 않는다.

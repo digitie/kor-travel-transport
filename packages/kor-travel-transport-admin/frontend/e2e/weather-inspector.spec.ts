@@ -64,7 +64,7 @@ for (const mode of ["missing", "empty", "error"] as const) test(`항구 상세 $
 test("공항 선택은 저장 주차만 조회하고 출도착은 클릭 후 호출한다", async ({ page }) => {
   let calls = 0;
   await page.route("**/parking/current?**", (route) => route.fulfill({ json: { items: [{ parking_lot_name: "제1주차장", available_spaces: 123, total_spaces: 500, observed_at: stamp }] } }));
-  await page.route("**/flights/status?**", (route) => { calls++; return route.fulfill({ json: { items: [{ flight_number: "KE123", direction: "departure", airline: "대한항공", origin_airport: "김포", destination_airport: "제주", scheduled_at: stamp, estimated_at: null, status: "예정" }] } }); });
+  await page.route("**/flights/status?**", (route) => { calls++; return route.fulfill({ json: { status: "success", error_message: null, items: [{ flight_number: "KE123", direction: "departure", airline: "대한항공", origin_airport: "김포", destination_airport: "제주", scheduled_at: stamp, estimated_at: null, status: "예정" }] } }); });
   await page.goto("/map"); await page.getByLabel("장소 목록에서 선택").selectOption("airport:2");
   const panel = page.getByRole("complementary", { name: "선택 장소 상세" });
   await expect(panel).toContainText("여유 123 / 500면"); expect(calls).toBe(0);
@@ -81,6 +81,10 @@ test("공항 429는 버튼을 다시 눌러도 즉시 재호출하지 않는다"
   await page.goto("/map"); await page.getByLabel("장소 목록에서 선택").selectOption("airport:2");
   await page.getByRole("button", { name: "오늘 출도착 조회" }).click();
   await expect(page.locator("[data-slot=alert]")).toBeVisible();
+  await page.getByRole("button", { name: "오늘 출도착 조회" }).click();
+  await expect(page.locator("[data-slot=alert]")).toContainText("다음 조회 가능 시각"); expect(calls).toBe(1);
+  await page.getByRole("button", { name: "장소 상세 닫기" }).click();
+  await page.getByLabel("장소 목록에서 선택").selectOption("airport:2");
   await page.getByRole("button", { name: "오늘 출도착 조회" }).click();
   await expect(page.locator("[data-slot=alert]")).toContainText("다음 조회 가능 시각"); expect(calls).toBe(1);
 });
@@ -100,7 +104,7 @@ test("도시철도 상세 시간표와 간결한 주유소·항구 마커", asyn
   await expect(page.getByRole("complementary", { name: "선택 장소 상세" })).toContainText("시험 브랜드");
 });
 
-const snapshot = { data: { repositoriesOrError: { __typename: "RepositoryConnection", nodes: [{ schedules: [{ name: "ferry_schedule", pipelineName: "ferry_timetable_collection_job", cronSchedule: "45 */4 * * *", scheduleState: { status: "RUNNING" } }] }] }, runsOrError: { __typename: "Runs", results: [{ runId: "sample-run-123456789", jobName: "ferry_timetable_collection_job", status: "SUCCESS", startTime: 100, endTime: 200 }] } } };
+const snapshot = { data: { activeRuns: { __typename: "Runs", results: [] }, repositoriesOrError: { __typename: "RepositoryConnection", nodes: [{ schedules: [{ name: "ferry_schedule", pipelineName: "ferry_timetable_collection_job", cronSchedule: "45 */4 * * *", scheduleState: { status: "RUNNING" } }] }] }, runsOrError: { __typename: "Runs", results: [{ runId: "sample-run-123456789", jobName: "ferry_timetable_collection_job", status: "SUCCESS", startTime: 100, endTime: 200 }] } } };
 for (const width of [320, 375, 414, 768, 1440]) test(`Weather Dagster 표·펼치기·갱신 실패 ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 });
   let calls = 0;
@@ -168,4 +172,54 @@ test("통계 수동 재시도는 화면당 3회까지이며 자동 반복하지 
     await expect(page.getByRole("button", { name: "통계 확인 중…" })).toHaveCount(0);
   }
   await expect(page.getByRole("button", { name: "통계 다시 조회" })).toBeDisabled(); expect(calls).toBe(4);
+});
+
+test("리뷰 회귀: 동일 좌표 묶음은 확대 한계 대신 장소 선택을 제공한다", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.route("**/transport/features/places?**", (route) => {
+    const kind = new URL(route.request().url()).searchParams.get("kind");
+    return route.fulfill({ json: { items: [port, airport, rail, fuel].filter((place) => place.kind === kind).map((place) => ({ ...place, latitude: 36.2, longitude: 127.8 })), total: 1, truncated: false } });
+  });
+  await page.route("**/parking/current?**", (route) => route.fulfill({ json: { items: [] } }));
+  await page.goto("/map");
+  await page.locator("canvas.maplibregl-canvas").scrollIntoViewIfNeeded();
+  // 실제 타일 호출 없이도 카메라 이동으로 지도 viewport 계산을 완료한다.
+  await page.getByLabel("장소 목록에서 선택").selectOption("rail_station:3");
+  await page.getByRole("button", { name: "3개 위치 묶음 펼치기" }).click();
+  const choices = page.getByRole("region", { name: "겹친 장소 선택" });
+  await expect(choices).toBeVisible();
+  await expect(choices.getByRole("button").first()).toBeFocused();
+  await choices.getByRole("button", { name: "김포공항", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "김포공항", exact: true })).toBeVisible();
+  await expect(choices).toHaveCount(0);
+});
+
+for (const [status, message] of [["disabled", "비활성화"], ["config_error", "설정을 확인"], ["rate_limited", "호출 제한"], ["upstream_error", "확인하지 못했습니다"]]) {
+  test(`리뷰 회귀: 항공편 ${status}는 정상 0편이 아니다`, async ({ page }) => {
+    let calls = 0;
+    await page.route("**/parking/current?**", (route) => route.fulfill({ json: { items: [] } }));
+    await page.route("**/flights/status?**", (route) => { calls++; return route.fulfill({ json: { status, error_message: null, items: [] } }); });
+    await page.goto("/map");
+    await page.getByLabel("장소 목록에서 선택").selectOption("airport:2");
+    await page.getByRole("button", { name: "오늘 출도착 조회" }).click();
+    await expect(page.locator("[data-slot=alert]")).toContainText(message);
+    await expect(page.getByText("등록된 항공편이 없습니다.", { exact: false })).toHaveCount(0);
+    if (status === "rate_limited") {
+      await page.getByRole("button", { name: "장소 상세 닫기" }).click();
+      await page.getByLabel("장소 목록에서 선택").selectOption("airport:2");
+      await page.getByRole("button", { name: "오늘 출도착 조회" }).click();
+      await expect(page.locator("[data-slot=alert]")).toContainText("다음 조회 가능 시각");
+      expect(calls).toBe(1);
+    }
+  });
+}
+
+test("리뷰 회귀: 최근 30건 밖의 장시간 작업도 집계·표시한다", async ({ page }) => {
+  await page.route("**/api/dagster/graphql", (route) => route.fulfill({ json: { data: {
+    ...snapshot.data,
+    activeRuns: { __typename: "Runs", results: [{ runId: "old-ferry-run", jobName: "ferry_timetable_collection_job", status: "STARTED", startTime: Date.now() / 1000 - 5 * 3600, endTime: null }] },
+  } } }));
+  await page.goto("/admin/dagster");
+  await expect(page.locator("[data-slot=alert]")).toContainText("1개 실행");
+  await expect(page.getByRole("region", { name: "최근 Dagster 실행 표" })).toContainText("old-ferry-run");
 });

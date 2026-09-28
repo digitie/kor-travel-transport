@@ -1,6 +1,6 @@
 "use client";
 
-import { ClusterLayer, Marker, VWorldMapView } from "vworld-map-web";
+import { ClusterLayer, ClusterMarker, Marker, VWorldMapView } from "vworld-map-web";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { clusterAtScale, hasCoordinates, transportGet, type Place, type PlaceKind } from "@/lib/journey";
 import { collectionSourceLabel, fuelProductLabel, placeKindLabel } from "@/lib/transport-presentation";
@@ -37,6 +37,9 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
   const [knownSources, setKnownSources] = useState<string[]>([]);
   const [product, setProduct] = useState("");
   const [query, setQuery] = useState("");
+  const [clusterPlaces, setClusterPlaces] = useState<Place[]>([]);
+  const [clusterCamera, setClusterCamera] = useState<{ center: [number, number]; zoom: number }>();
+  const clusterList = useRef<HTMLElement | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [view, setView] = useState<"map" | "list">("map");
   const [selected, setSelected] = useState<Place | null>(null);
@@ -64,6 +67,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
   const selectedPoint = points.find((point) => current && point.id === keyOf(current));
   const detail = useRef<HTMLElement | null>(null);
   const selectPlace = (place: Place) => {
+    setClusterPlaces([]); setClusterCamera(undefined);
     setSelected(place); onSelectPlace?.(place);
     if (!embedded) requestAnimationFrame(() => detail.current?.focus({ preventScroll: true }));
   };
@@ -86,7 +90,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
     const selectedKinds = kindsKey ? kindsKey.split(",") : [];
     // 외부 조회 조건이 바뀌면 이전 영역의 결과를 제거하고 요청 상태를 초기화한다.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPending(selectedKinds); setFailed([]);
+    setPending(selectedKinds); setFailed([]); setClusterPlaces([]);
     // 각 종류가 끝나는 즉시 표시한다. 느린 유가 조회가 역·항구를 가리지 않는다.
     selectedKinds.forEach((kind) => {
       const search = new URLSearchParams({ kind, limit: String(perKindLimit), ...viewport });
@@ -119,7 +123,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
     }), 250);
   }, []);
   const truncated = Object.entries(loaded).filter(([, row]) => row.truncated).map(([kind]) => placeKindLabel(kind));
-  const camera = useMemo(() => current && hasCoordinates(current) ? { center: [current.longitude, current.latitude] as [number, number], zoom: Math.max(zoom, 11) } : undefined, [current]); // eslint-disable-line react-hooks/exhaustive-deps
+  const camera = useMemo(() => clusterCamera ?? (current && hasCoordinates(current) ? { center: [current.longitude, current.latitude] as [number, number], zoom: Math.max(zoom, 11) } : undefined), [current, clusterCamera]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return <section className="map-workbench" aria-label="교통 장소 지도">
     {!embedded ? <div className="map-filter-bar">
@@ -138,13 +142,30 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
       {!items.length && !pending.length ? <p>표시할 장소가 없습니다. 종류·출처·검색 조건을 확인해 주세요.</p> : null}
     </div>
     <div className={embedded ? "embedded-map" : "transport-map-layout"}>
+      {clusterPlaces.length ? <section ref={clusterList} className="col-span-full flex min-w-0 flex-col gap-2" aria-label="겹친 장소 선택">
+        <p>더 확대해도 겹치는 {clusterPlaces.length}곳입니다. 상세를 볼 장소를 선택해 주세요.</p>
+        <div className="flex max-h-64 flex-wrap gap-2 overflow-y-auto">{clusterPlaces.map((place) => <Button key={keyOf(place)} className="max-w-full" variant="outline" onClick={() => selectPlace(place)}><PlaceIcon kind={place.kind} /><span className="truncate">{place.name}</span></Button>)}</div>
+        <Button className="w-fit" variant="ghost" onClick={() => setClusterPlaces([])}>묶음 목록 닫기</Button>
+      </section> : null}
       <div className="map-primary" ref={mapContainer}>{view === "map" ? <VWorldMapView apiKey={process.env.NEXT_PUBLIC_VWORLD_API_KEY ?? ""} cameraTarget={camera} center={[127.8, 36.2]} className="transport-map-canvas"
         fallback={() => <p className="empty-state">지도 키가 없어 지도를 표시하지 못합니다. 위의 목록 보기에서 장소를 선택해 주세요.</p>}
         geolocate={false} layerType="Base" lazy loadingSkeleton={<p className="loading">지도를 준비하는 중입니다…</p>} minZoom={5} navigation scale
         onLoad={(map) => moved(map.getBounds(), map.getZoom())}
         onMoveEnd={(event) => { const map = event.target as { getBounds: () => Bounds; getZoom: () => number }; moved(map.getBounds(), map.getZoom()); }}
         unsupportedTileFallback={{ label: "지도를 불러오지 못했습니다." }} zoom={7}>
-        <ClusterLayer points={groupedPoints} radius={cluster ? (product ? 80 : 110) : 60} maxZoom={22} renderMarker={(point) => <MapMarker key={point.id} point={point as MapPoint} product={product} onSelect={selectPlace} selected={false} />} />
+        <ClusterLayer points={groupedPoints} radius={cluster ? (product ? 80 : 110) : 60} maxZoom={19}
+          renderCluster={(group, count, index) => <ClusterMarker lngLat={group.geometry.coordinates} count={count} onClick={() => {
+            const id = group.properties.cluster_id;
+            if (id === undefined) return;
+            const expansion = index.getClusterExpansionZoom(id);
+            if (expansion > 19 || zoom >= 19) {
+              setClusterPlaces(index.getLeaves(id, count).map((leaf: { properties: { place: Place } }) => leaf.properties.place));
+              requestAnimationFrame(() => clusterList.current?.querySelector("button")?.focus());
+            } else {
+              setClusterPlaces([]); setClusterCamera({ center: group.geometry.coordinates, zoom: Math.min(19, expansion) });
+            }
+          }} />}
+          renderMarker={(point) => <MapMarker key={point.id} point={point as MapPoint} product={product} onSelect={selectPlace} selected={false} />} />
         {selectedPoint ? <MapMarker point={selectedPoint} product={product} onSelect={selectPlace} selected /> : null}
       </VWorldMapView> : <div className="map-place-list">{items.map((place) => <button type="button" className="place-row" key={keyOf(place)} aria-pressed={current ? keyOf(current) === keyOf(place) : false} onClick={() => selectPlace(place)}><PlaceIcon kind={place.kind} /><span><strong>{place.name}</strong><small>{place.line_names.join(" · ") || place.brand_name || place.subtitle || placeKindLabel(place.kind)}</small>{!hasCoordinates(place) ? <small>좌표 미등록</small> : null}</span></button>)}</div>}
       </div>{!embedded ? <aside className="transport-map-detail weather-inspector" ref={detail} tabIndex={-1} aria-label="선택 장소 상세">

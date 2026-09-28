@@ -29,13 +29,19 @@ HttpOnly 서명 세션을 통과한 뒤에만 Next.js server route가 다음의 
 
 ## 화면과 지도 데이터 경계
 
+- 공통 UI는 shadcn/ui(Base UI, base-nova) + Tailwind v4다. 공식 컴포넌트 소스는
+  `components/ui/`, 설정은 `components.json`, 의미 색상 연결은 `app/globals.css`에 둔다.
+  Weather형 배치와 기존 색상은 유지하며 legacy 스타일은 별도 CSS 레이어로 분리한다.
+  로그인·검색·다중 선택·탭·상태·Dagster 표의 키보드 및 반응형 계약을 E2E로 검증한다.
 - `교통·유가`는 고속도로·유가를 한 화면에서 저장된 7일 통계와 함께 보여 준다. 유종·노선·수집
   source 코드는 화면에서 사람이 이해할 수 있는 명칭으로 바꾸며, 비교가 필요한 값은 Apache
   ECharts 막대 그래프로 제공한다.
-- `열차·도시철도`와 `배편`은 각각 저장한 장소 기준정보를 별도 탭에서 검색한다. 배편 탭은
-  목록을 열거나 검색할 때 시간표 provider를 호출하지 않는다. 사용자가 특정 항구의 `오늘 운항 보기`
-  를 선택한 경우에만 해당 항구의 실시간 시간표를 한 번 요청한다.
-- `/map`은 저장 장소 API만 읽는다. 주유소에는 최신 가격·브랜드, 역에는 노선, 항구에는 저장된
+- `열차·도시철도`와 `배편`은 각각 저장한 장소 기준정보를 별도 탭에서 검색한다. 배편은
+  선택 항구·운항일의 DB 시간표를 읽으며 검색/선택으로 provider를 호출하지 않는다.
+  지도 우측 상세는 한 항구·하루만 읽고 오늘부터 9일 뒤까지 선택할 수 있다.
+- `/map`의 장소 검색은 저장 장소 API만 읽는다. 공항 상세는 저장 주차를 자동 조회하고
+  출도착 버튼을 누를 때만 항공편 조회를 수행한다. 429 보호, 타임아웃, 선택 전환 취소를 적용한다.
+  주유소에는 최신 가격·브랜드, 역에는 노선, 항구에는 저장된
   위치·노선을 표시한다. 지도 이동이 끝난 현재 bbox만 종류별로 조회하고, 범위에 한 종류가
   5,000곳을 넘으면 잘린 사실과 확대 방법을 화면에 표시한다. 운영 앱은 지도 엔진을 직접 조작하지 않고
   [`digitie/maplibre-vworld-react`](https://github.com/digitie/maplibre-vworld-react) 의
@@ -86,11 +92,17 @@ Dagster 운영 UI ── TLS ── transport-dagster.digitie.mywire.org:12302
 
 ## 배포와 검증
 
-운영 환경값은 n150의 추적하지 않는 `.env.server14`에 둔다. 배포는
-`scripts/deploy-transport-admin-server14.sh`만 사용하며, 서비스가 아직 실행 중이지
+운영 환경값은 n150의 추적하지 않는 `.env.server14`에 둔다. 초기 스택 배포는
+`scripts/deploy-transport-admin-server14.sh`를 사용하며, 서비스가 아직 실행 중이지
 않은 port에 listener가 있으면 기존 프로세스를 중단하지 않고 실패한다.
 공개 API gateway는 bind mount한 allowlist 설정을 쓰므로 배포 때 전용 세 서비스를
 강제 재생성하여 변경된 공개 경로가 즉시 적용되게 한다.
+
+UI만 바뀌는 경우 전체 스택 배포는 하지 않는다. 검증한 UI 이미지만 지정한 뒤
+`up -d --no-deps --no-build --force-recreate transport-admin-web`으로 교체한다.
+이전 UI 이미지를 보존하고 실패 시 같은 명령으로 복구한다. 전후 API·worker·daemon·
+webserver·gateway·기존 parking-radar의 컨테이너 ID와 이미지를 대조한다.
+서로 다른 API/worker release를 전체 Compose 명령으로 임의 통일하지 않는다.
 
 포트 전환 같은 공용 인프라 작업은 `kor-travel-docker-manager`가 소유한다. 이 저장소가
 cAdvisor, Prometheus, Grafana의 lifecycle을 조작하지 않는다.
