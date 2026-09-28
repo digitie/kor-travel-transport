@@ -2,6 +2,19 @@
 
 ## 현재 상태
 
+- **2026-09-28 12:24~12:33Z ADR-010 운영 식별자 개명 cutover 완료.** R=`b75fca1c`(#49).
+  - 운영은 이제 project `kor-travel-transport`, 디렉터리 `/home/digitie/apps/kor-travel-transport`, 컨테이너
+    `kor-travel-transport-<service>-1`이다. 여섯 서비스와 관리 스택 세 서비스 모두 healthy, daemon 1개.
+    공개 URL 다섯 개 정상, `/health.release_sha`=R. #45의 Dagster healthcheck·`init`도 이 배포로 나갔다.
+  - 옛 컨테이너 다섯 개는 `*-retired-20260928`(restart=no), 옛 daemon은 삭제, 옛 디렉터리는
+    `/home/digitie/apps/kor-travel-airport.retired-20260928`. 옛 `n150-backup-cron.sh` crontab 줄은 지웠다(transport
+    백업은 Manager standalone role `transport`·`transport_dagster`, 16:50·17:15 UTC).
+  - Manager 개명 release(Manager #432 `e2d45d65`, target `transport`)를 설치했다. 옛 별칭 `airport`는 없다.
+  - **배포는 새 디렉터리·project로만 된다.** 옛 이름을 쓰는 브랜치·손 스크립트는 main으로 rebase한 뒤 쓴다.
+    retired 컨테이너를 `docker start`하거나 `-p kor-travel-airport`로 올리지 않는다.
+  - 72시간 관찰 뒤 runbook "관찰과 정리"를 한다(그때까지 n150 prune 금지 — rollback 태그·retired 컨테이너가
+    되돌리기 재료다). 되돌리기는 `rename-deploy-identity-server14.sh rollback`과 Manager 이전 release(`68cc1a93`) 재설치.
+
 - 2026-09-28 `chore/rename-deploy-identity-transport`: n150 운영 식별자 개명(ADR-010) 저장소 준비를
   푸시했다(PR은 아직 없음). PR #44(`835c0ec`)·#46(`50215b3`)·#47(`bdc9c02`)·#48(`a6edbd5`) 머지 위로 rebase했다. main이 더 움직이면 다시
   rebase한 뒤 PR·CI·두 적대적 리뷰를 거쳐 창 직전에 머지한다. n150 cutover는

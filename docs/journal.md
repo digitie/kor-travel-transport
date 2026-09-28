@@ -1,5 +1,20 @@
 # journal.md — 작업 일지
 
+## 2026-09-28 운영 식별자 개명 cutover 실행(airport → transport)
+
+- R=`b75fca1c`(#49, 브랜치 `015b737`과 트리 동일). 창 전 세 번째 적대 검토와 n150 dry check로 GO-with-fixes를 받았고,
+  마지막 수정(`BUILD_PATTERN`이 자기 문자열과 맞는 문제, `[d]ocker-buildx`)은 n150에서 33 passed, 옛 패턴으로 되돌리면
+  전체 흐름 테스트가 빨갛다.
+- 단계와 시각(UTC): `prepare` 09:39(env 72줄, rollback 태그 넷 — gateway는 실행 중 이미지가 store에 없어
+  `kor-travel-airport-dagster-gateway:latest`로 대신), `restore-point` 09:39~09:46(app 759M·TABLE DATA 24개,
+  dagster 4.0M·22개), stage 09:4x, `prebuild` 09:47~10:14(27분 — 대부분 디스크 대기 속 층 export·unpack,
+  Dagster 1.13.24 gate OK), `window` 12:24:19~12:25:43(재빌드는 cache hit, 실제 중단 약 1분, run 대기 0),
+  `admin` 12:25:50, Manager #432 설치 12:32, `finish` 12:33.
+- 창 전 옛 스택은 main 빌드가 아니라 PR 브랜치 이미지였다(backend `local/transport-pr44:delta` `3b77ac7d`,
+  code-server `local/transport-pr44:paced` `9067afc6`). 이번 release가 R 빌드로 바꿨다.
+- 공개 확인: `pr-api`·`pr` backend·`transport` login·`transport-api` 200, `transport-dagster` 204.
+- 남은 것: 72시간 관찰 뒤 정리(rollback 태그·retired 컨테이너·옛 디렉터리), 그 전까지 n150 prune 금지.
+
 ## 2026-09-28 운영 식별자 개명(airport → transport) 저장소 준비
 
 - 브랜치 `chore/rename-deploy-identity-transport`(main `556052c`에서 시작해 PR #44 머지 `835c0ec` 위로
