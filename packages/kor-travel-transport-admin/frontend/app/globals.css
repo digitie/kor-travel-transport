@@ -21,6 +21,10 @@
   --color-accent: var(--color-selected);
   --color-accent-foreground: var(--brand);
   --color-destructive: var(--danger);
+  --color-success: var(--success);
+  --color-success-tint: var(--success-tint);
+  --color-warning: var(--warning);
+  --color-warning-tint: var(--warning-tint);
   --color-border: var(--line);
   --color-input: var(--control-line);
   --color-ring: var(--color-focus);
@@ -331,6 +335,7 @@ h1, h2, h3 { color: var(--text-primary); }
 .table-wrap th, .table-wrap td { padding: .75rem; }
 .transport-map-layout { gap: var(--layout-gutter); grid-template-columns: minmax(0, 1fr) 22rem; }
 .inspector-heading, .inspector-section, .weather-inspector .transport-map-picker { padding: var(--panel-padding); }
+.weather-inspector > [data-slot="field-group"] { padding: var(--panel-padding); margin-bottom: 0; border-bottom: 1px solid var(--surface-muted); }
 .inspector-heading p { font-family: var(--font-mono); font-size: .6875rem; }
 .reference-toolbar input, .field input, .transport-map-picker select { border-color: var(--control-line); border-radius: var(--radius-control); background: var(--card); color: var(--text-primary); }
 .button { border-radius: var(--radius-control); background: var(--brand); color: var(--brand-foreground); }

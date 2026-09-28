@@ -39,7 +39,7 @@ export function DagsterTables({ snapshot }: { snapshot: DagsterOverview }) {
               return <TableRow key={run.runId}>
                 <TableCell>
                   <div className="flex flex-col items-start gap-1">
-                    <Badge variant={run.status === "FAILURE" ? "destructive" : stalled ? "outline" : "secondary"}>{statusLabel(run.status)}</Badge>
+                    <Badge variant={run.status === "FAILURE" || run.status === "CANCELED" ? "destructive" : stalled ? "warning" : run.status === "SUCCESS" || run.status === "STARTED" ? "success" : "warning"}>{statusLabel(run.status)}</Badge>
                     {elapsed != null ? <small>{elapsed}분 경과{stalled ? " · 정체 의심" : ""}</small> : null}
                   </div>
                 </TableCell>
@@ -75,7 +75,7 @@ export function DagsterTables({ snapshot }: { snapshot: DagsterOverview }) {
                   {JOB_LABELS[schedule.pipelineName] ?? schedule.pipelineName}
                 </Button></TableCell>
                 <TableCell>{scheduleDescription(schedule.cronSchedule)}</TableCell>
-                <TableCell><Badge variant={schedule.scheduleState.status === "RUNNING" ? "secondary" : "outline"}>{schedule.scheduleState.status === "RUNNING" ? "사용" : schedule.scheduleState.status === "STOPPED" ? "중지" : "상태 확인 필요"}</Badge></TableCell>
+                <TableCell><Badge variant={schedule.scheduleState.status === "RUNNING" ? "success" : schedule.scheduleState.status === "STOPPED" ? "destructive" : "warning"}>{schedule.scheduleState.status === "RUNNING" ? "사용" : schedule.scheduleState.status === "STOPPED" ? "중지" : "상태 확인 필요"}</Badge></TableCell>
               </TableRow>
               {expanded === schedule.name ? <TableRow><TableCell colSpan={3} className="whitespace-normal">
                 <div className="flex flex-col gap-4">

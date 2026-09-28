@@ -45,6 +45,8 @@ test("경과 시간과 정체 판정은 현재 시각 대신 스냅샷 확인 �
   const html = renderToStaticMarkup(<DagsterTables snapshot={snapshot} />);
 
   expect(html).toContain("20분 경과 · 정체 의심");
+  expect(html).toContain('data-variant="warning"');
+  expect(html).toContain('data-variant="success"');
   const withoutCheckTime = renderToStaticMarkup(<DagsterTables snapshot={{ ...snapshot, checkedAt: undefined }} />);
   expect(withoutCheckTime).not.toContain("분 경과");
   expect(withoutCheckTime).not.toContain("정체 의심");
@@ -61,6 +63,7 @@ test("빈 조회 결과와 실패한 실행을 각각 표시한다", () => {
     runs: [{ ...snapshot.runs[0], status: "FAILURE", endTime: snapshot.runs[0].startTime! + 60 }],
   }} />);
   expect(failed).toContain("실패 원인은 실행 상세에서 확인하세요.");
+  expect(failed).toContain('data-variant="destructive"');
   expect(failed).toContain("1분 경과");
   expect(failed).not.toContain("정체 의심");
 });
