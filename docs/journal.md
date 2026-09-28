@@ -1,5 +1,27 @@
 # journal.md — 작업 일지
 
+## 2026-09-28 PR #46 shadcn·Weather UI n150 검증 완료
+
+- runtime 후보 `8ff8e7c541d05f46c5736a6f97edd762f2d7da9a`, 공식 admin Dockerfile
+  이미지 `sha256:cda9a4d83c3d47c3080b0408b4ae31cba8aeb303c7ca8d0cf8039796320120e1`를
+  14:35 KST UI 서비스에만 반영했다. UI `efadbf197aca`는 healthy/재시작 0/host network다.
+  API·code-server·daemon·webserver·legacy frontend·3개 gateway의 ID/이미지는 불변이다.
+- WSL/Docker admin 단위 각각 96개와 린트/타입/빌드, WSL UI E2E 105개를 통과했다.
+  기존 parking-radar 85개, Docker backend 283개와 migration 왕복/check도 통과했다.
+- 14:35:33 KST 시작한 운영 HTTPS E2E 402개가 121.24초에 모두 통과했다.
+  실패/skip/flaky 0이다. release SHA·공개/인증 저장 API·세션/CSRF·반응형 화면을 확인했다.
+  UI 오류 회귀 일부는 mock이므로 실제 provider 수집 성공이나 전국 자료 완성을 뜻하지 않는다.
+- 실제 타일·청주공항 저장 주차·군산 저장 배편·Dagster를 1440/375px에서 별도로 확인했다.
+  화면 예외는 없었고 출도착/provider 배편 실시간 호출은 실행하지 않았다. 군산 위치는 제공
+  원본의 항만 안내 지점으로 실제 승선 터미널 위치가 아님을 상세에 명시한다.
+- James(Lorentz)·Popper(Kierkegaard) 독립 재리뷰는 P0/P1 없음으로 끝났다. 잔존 P2인
+  내장 지도에서 검색을 바꿀 때 이미 열린 겹침 선택 목록 유지 현상은 후속으로 남긴다.
+  실제 장소 목록이며 닫기/재선택이 가능하고 전용 지도에서는 조회 조건 변경 시 제거된다.
+  이번 운영 후보의 추가 변경을 피하고 별도 검색·목록 수명 회귀와 함께 보완한다.
+- n150 admin 소스를 백업 후 동기화했다. 이전 소스/릴리스 기록은
+  `/home/digitie/backups/transport-admin-ui/pr46-8ff8e7c541d05f46c5736a6f97edd762f2d7da9a`에 있다.
+  최종 증적 문서 CI를 통과한 뒤 PR #46을 머지한다. 최종 머지 상태는 PR을 정본으로 삼는다.
+
 ## 2026-09-28 PR #46 적대적 리뷰 회귀 수정
 
 - 독립 James(Lorentz)/Popper(Kierkegaard)가 동일 좌표 클러스터의 확대 한계, 항공편
