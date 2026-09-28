@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     # 오늘을 포함해 DB에 유지할 운항일 수다. 예: 10이면 오늘부터 9일 뒤까지다.
     ferry_timetable_storage_days: int = Field(default=10, ge=1, le=31)
     # 호출 속도와 총량은 별개다. 간격을 줄여도 기존 실행당 예산은 늘리지 않는다.
-    ferry_timetable_collection_max_provider_calls: int = Field(default=280, ge=1, le=1_000)
+    ferry_timetable_collection_max_provider_calls: int = Field(default=280, ge=1, le=280)
     # 배치는 순차 호출 완료 후 2초를 쉰다. 공식 초당 한도가 아닌 운영 기본값이며,
     # quota 응답 시 즉시 중단한다. 사용자 실시간 조회의 보호 간격과 분리한다.
     ferry_timetable_collection_interval_seconds: int = Field(default=2, ge=1, le=3600)

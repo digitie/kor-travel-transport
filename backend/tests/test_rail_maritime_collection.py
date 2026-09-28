@@ -345,11 +345,12 @@ def test_ferry_timetable_default_budget_includes_interval_and_timeout() -> None:
     assert settings.ferry_timetable_collection_max_provider_calls == 280
     assert settings.ferry_timetable_collection_interval_seconds == 2
     assert settings.ferry_timetable_min_interval_seconds == 30
-    Settings(ferry_timetable_collection_max_provider_calls=741)
+    Settings(ferry_timetable_collection_max_provider_calls=280)
+    for call_budget in (281, 400, 741, 1000):
+        with pytest.raises(ValidationError, match="less than or equal to 280"):
+            Settings(ferry_timetable_collection_max_provider_calls=call_budget)
     with pytest.raises(ValidationError, match="3.5-hour ferry collection runtime budget"):
-        Settings(ferry_timetable_collection_max_provider_calls=742)
-    with pytest.raises(ValidationError, match="3.5-hour ferry collection runtime budget"):
-        Settings(ferry_timetable_collection_max_provider_calls=281, ferry_timetable_collection_interval_seconds=30)
+        Settings(ferry_timetable_collection_max_provider_calls=280, ferry_timetable_collection_interval_seconds=31)
     # UI 보호 간격이 커도 배치의 실행시간 예산과 섞이지 않는다.
     Settings(ferry_timetable_min_interval_seconds=3600)
     with pytest.raises(ValidationError):
