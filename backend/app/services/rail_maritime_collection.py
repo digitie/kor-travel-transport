@@ -239,7 +239,7 @@ class RailMaritimeCollectionService:
                         break
                     if last_call_at is not None:
                         elapsed = (now_utc() - last_call_at).total_seconds()
-                        wait_seconds = self.settings.ferry_timetable_min_interval_seconds - elapsed
+                        wait_seconds = self.settings.ferry_timetable_collection_interval_seconds - elapsed
                         if wait_seconds > 0:
                             await asyncio.sleep(wait_seconds)
                     # 실패도 동일 호출 예산에 포함한다. 한 항구의 일시적인 네트워크 실패가
