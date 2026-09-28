@@ -5,11 +5,11 @@ import { collectionSourceLabel, fuelProductLabel, highwayRouteLabel } from "./tr
 describe("교통 화면용 표현 변환", () => {
   it("오피넷 유종 코드를 사람이 읽는 이름으로 바꾼다", () => {
     expect(fuelProductLabel("B027")).toBe("휘발유");
-    expect(fuelProductLabel("K015")).toBe("자동차용부탄(LPG)");
+    expect(fuelProductLabel("K015")).toBe("LPG");
   });
 
   it("고속도로는 저장된 노선명을 우선 표시한다", () => {
-    expect(highwayRouteLabel("0010", "경부고속도로")).toBe("경부고속도로");
+    expect(highwayRouteLabel("0010", "경부고속도로")).toBe("0010 · 경부고속도로");
     expect(highwayRouteLabel("0010")).toBe("0010번 고속도로");
   });
 

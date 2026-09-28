@@ -29,6 +29,8 @@ export function TransportDashboard() {
   const [traffic, setTraffic] = useState<Traffic | null>(() => cached?.traffic ?? null);
   const [statusError, setStatusError] = useState("");
   const [statisticsError, setStatisticsError] = useState("");
+  const [statisticsRetry, setStatisticsRetry] = useState(0);
+  const [statisticsLoading, setStatisticsLoading] = useState(true);
   const [tab, setTab] = useState<DashboardTab>("overview");
   const refreshed = useRef({ status: false, incidents: false, statistics: false, traffic: false });
 
@@ -37,10 +39,18 @@ export function TransportDashboard() {
     const load = <T,>(path: string, apply: (value: T) => void, failed?: (message: string) => void) => void fetch(path).then(json<T>).then((value) => { if (active) apply(value); }).catch((reason: unknown) => { if (active && failed) failed(reason instanceof Error ? reason.message : "저장된 정보를 불러오지 못했습니다."); });
     load<Status>("/api/transport/transport/collector-status", (value) => { refreshed.current.status = true; setStatus(value); setStatusError(""); }, setStatusError);
     load<Incidents>("/api/transport/transport/highways/incidents?days=1&limit=20", (value) => { refreshed.current.incidents = true; setIncidents(value); });
-    load<Statistics>("/api/transport/transport/statistics?days=7", (value) => { refreshed.current.statistics = true; setStatistics(value); setStatisticsError(""); }, setStatisticsError);
     load<Traffic>("/api/transport/transport/highways/traffic?days=7&limit=200", (value) => { refreshed.current.traffic = true; setTraffic(value); });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/transport/transport/statistics?days=7", { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]) }).then(json<Statistics>)
+      .then((value) => { if (!controller.signal.aborted) { refreshed.current.statistics = true; setStatistics(value); setStatisticsError(""); } })
+      .catch(() => { if (!controller.signal.aborted) setStatisticsError("저장된 7일 통계 조회를 완료하지 못했습니다."); })
+      .finally(() => { if (!controller.signal.aborted) setStatisticsLoading(false); });
+    return () => controller.abort();
+  }, [statisticsRetry]);
 
   useEffect(() => { if (status && statistics && traffic && incidents && Object.values(refreshed.current).every(Boolean)) writeCache(status, statistics, traffic, incidents); }, [status, statistics, traffic, incidents]);
 
@@ -57,7 +67,7 @@ export function TransportDashboard() {
     <div className="transport-tabs" role="group" aria-label="교통·유가 정보 보기">
       {([ ["overview", "통합 현황"], ["highway", "고속도로"], ["fuel", "유가"] ] as const).map(([value, label]) => <button aria-controls={`transport-panel-${value}`} aria-pressed={tab === value} className={tab === value ? "active" : ""} key={value} onClick={() => setTab(value)} type="button">{label}</button>)}
     </div>
-    {statisticsError ? <p className="error">통계 갱신에 실패해 이전 저장 정보를 표시합니다: {statisticsError}</p> : null}
+    {statisticsError ? <div className="error" role="alert"><p>{statistics ? "통계 갱신에 실패해 이전 조회 결과를 표시합니다." : "통계를 아직 불러오지 못했습니다."} {statisticsError}</p><button className="secondary" type="button" disabled={statisticsLoading || statisticsRetry >= 3} onClick={() => { setStatisticsLoading(true); setStatisticsRetry((value) => value + 1); }}>{statisticsLoading ? "통계 확인 중…" : "통계 다시 조회"}</button>{statisticsRetry >= 3 ? <p>이 화면에서의 재시도 3회를 사용했습니다. 잠시 후 다시 방문해 주세요.</p> : null}</div> : null}
     {statusError ? <p className="error" role="alert">수집 상태 갱신 실패: {statusError}</p> : null}
     <div className="grid" id={`transport-panel-${tab}`}>
       {tab === "overview" ? <>

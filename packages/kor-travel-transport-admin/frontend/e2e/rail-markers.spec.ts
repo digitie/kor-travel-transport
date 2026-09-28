@@ -28,7 +28,7 @@ for (const width of [375, 1440]) for (const [changes, basis, label] of [
   [{ status: "not_collected" }, "calendar", "시간표 수집 대기"],
   [{ status: "unlinked" }, "calendar", "시간표 연결 전"],
   [{}, "calendar_unavailable", "운행일 확인 필요"],
-] as const) test(`역 마커 ${label} ${width}px`, async ({ page }) => {
+] as const) test(`간결한 역 마커 · 기존 ${label} 상태 ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 });
   const requests: string[] = [];
   await page.route("**/transport/rail/departures?**", (route) => {
@@ -39,15 +39,16 @@ for (const width of [375, 1440]) for (const [changes, basis, label] of [
   await page.getByRole("checkbox", { name: /불광/ }).check();
   await waitForMap(page);
   const marker = page.locator(".journey-marker.rail_station");
-  await expect(marker).toContainText(label);
-  expect(requests).toEqual(["71"]);
+  await expect(marker).toHaveText("불광 3호선");
+  await expect(marker).not.toContainText(label);
+  expect(requests).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.getByRole("button", { name: "목록", exact: true }).click();
   await page.clock.runFor(61_000);
-  expect(requests).toHaveLength(1);
+  expect(requests).toHaveLength(0);
 });
 
-test("다음 시각 갱신 실패 시 이전 열차 시각을 마커에 남기지 않는다", async ({ page }) => {
+test("간결한 마커를 위해 다음 열차 API를 주기적으로 호출하지 않는다", async ({ page }) => {
   let calls = 0;
   await page.route("**/transport/rail/departures?**", (route) => ++calls === 1
     ? route.fulfill({ json: { generated_at: now, basis: "calendar", items: [row] } })
@@ -56,9 +57,10 @@ test("다음 시각 갱신 실패 시 이전 열차 시각을 마커에 남기�
   await page.getByRole("checkbox", { name: /불광/ }).check();
   await waitForMap(page);
   const marker = page.locator(".journey-marker.rail_station");
-  await expect(marker).toContainText("예정 12:10");
+  await expect(marker).toHaveText("불광 3호선");
   await page.clock.runFor(61_000);
-  await expect(marker).toContainText("예정 시각 조회 실패");
+  await expect(marker).toHaveText("불광 3호선");
+  expect(calls).toBe(0);
   await expect(marker).not.toContainText("12:10");
 });
 
@@ -71,11 +73,12 @@ test("목록에서 오래 머문 뒤 지도에 복귀하면 느린 새 응답을
   await page.getByRole("checkbox", { name: /불광/ }).check();
   await waitForMap(page);
   const marker = page.locator(".journey-marker.rail_station");
-  await expect(marker).toContainText("예정 12:10");
+  await expect(marker).toHaveText("불광 3호선");
   await page.getByRole("button", { name: "목록", exact: true }).click();
   // 시계만 바꾸고 주기 타이머를 실행하지 않아 첫 5초의 거짓 표시를 숨기지 않는다.
   await page.clock.setSystemTime(new Date("2026-09-28T04:00:00Z"));
   await page.getByRole("button", { name: "지도", exact: true }).click();
-  await expect(marker).toContainText("예정 시각 재확인 중");
+  await expect(marker).toHaveText("불광 3호선");
+  expect(calls).toBe(0);
   await expect(marker).not.toContainText("12:10");
 });

@@ -1,13 +1,13 @@
 "use client";
 
-import { Anchor, Fuel, Plane, TrainFront, Coffee, MapPin, TriangleAlert, X } from "lucide-react";
+import { Anchor, Bus, Fuel, Plane, TrainFront, Coffee, MapPin, TriangleAlert, X } from "lucide-react";
 import { useId } from "react";
-import { dateTime, money, serviceTime, type FerryTimetable, type Place } from "@/lib/journey";
+import { dateTime, hasCoordinates, money, serviceTime, type FerryTimetable, type Place } from "@/lib/journey";
 import { collectionSourceLabel, fuelProductLabel, placeKindLabel } from "@/lib/transport-presentation";
 import { RailTimetables } from "./rail-timetables";
 
 export function PlaceIcon({ kind }: { kind: string }) {
-  const Icon = ({ fuel_station: Fuel, rail_station: TrainFront, ferry_port: Anchor, airport: Plane, rest_area: Coffee, highway_incident: TriangleAlert } as const)[kind as Place["kind"]] ?? MapPin;
+  const Icon = ({ fuel_station: Fuel, rail_station: TrainFront, ferry_port: Anchor, airport: Plane, rest_area: Coffee, bus_terminal: Bus, highway_incident: TriangleAlert } as const)[kind as Place["kind"]] ?? MapPin;
   return <Icon size={18} aria-hidden="true" />;
 }
 
@@ -31,10 +31,9 @@ export function MultiSearch({ label, query, onQuery, options, selected, onSelect
   </section>;
 }
 
-export function PlaceDetails({ place, showRailTimetable = true }: { place: Place; showRailTimetable?: boolean }) {
+export function PlaceDetails({ place, showRailTimetable = true, showHeading = true }: { place: Place; showRailTimetable?: boolean; showHeading?: boolean }) {
   return <div className="place-details">
-    <div className="place-title"><PlaceIcon kind={place.kind} /><span>{placeKindLabel(place.kind)}</span></div>
-    <h2>{place.name}</h2>
+    {showHeading ? <><div className="place-title"><PlaceIcon kind={place.kind} /><span>{placeKindLabel(place.kind)}</span></div><h2>{place.name}</h2></> : null}
     {place.brand_name ? <p>{place.brand_name}</p> : null}
     {place.line_names.length ? <div className="line-chips">{place.line_names.map((line) => <span key={line}>{line}</span>)}</div> : null}
     {place.subtitle ? <p>{place.subtitle}</p> : null}
@@ -43,7 +42,7 @@ export function PlaceDetails({ place, showRailTimetable = true }: { place: Place
     {place.phone ? <p>전화 {place.phone}</p> : null}
     {place.facilities?.length ? <p>편의시설 · {place.facilities.join(" · ")}</p> : null}
     {place.kind === "rail_station" && showRailTimetable ? <RailTimetables placeIds={[place.id]} /> : null}
-    {place.kind === "ferry_port" ? <p className="data-caveat">{place.location_source ? "항만 안내 지점입니다. 실제 승선 장소는 여객터미널에 확인해 주세요." : "좌표 미등록 · 목록에서 운항 정보를 확인할 수 있습니다."}</p> : null}
+    {place.kind === "ferry_port" ? <p className="data-caveat">{hasCoordinates(place) ? "항만 안내 지점입니다. 실제 승선 장소는 여객터미널에 확인해 주세요." : "좌표 미등록 · 목록에서 운항 정보를 확인할 수 있습니다."}</p> : null}
     <p className="quiet">출처 {collectionSourceLabel(place.source)} · 기준정보 반영 {dateTime(place.updated_at)}</p>
   </div>;
 }
