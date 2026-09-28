@@ -2,10 +2,34 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 from app.core.config import Settings
 from app.dagster import definitions as dagster_definitions
 from app.dagster.definitions import definitions
+
+
+@pytest.mark.parametrize("status", ["success", "skipped", "partial_success"])
+def test_ferry_partial_result_is_a_dagster_failure_without_retry(monkeypatch, status):
+    committed = []
+
+    async def fake_run_with_session(*args, **kwargs):
+        committed.append(True)
+        return {"status": status, "run_id": 7, "failed_provider_calls": int(status == "partial_success")}
+
+    monkeypatch.setattr(dagster_definitions, "_settings", lambda: None)
+    monkeypatch.setattr(dagster_definitions, "RailMaritimeCollectionService",
+                        lambda _: SimpleNamespace(collect_ferry_timetables=None))
+    monkeypatch.setattr(dagster_definitions, "_run_with_session", fake_run_with_session)
+    result = dagster_definitions.ferry_timetable_collection_job.execute_in_process(raise_on_error=False)
+    assert committed == [True]
+    assert result.success is (status != "partial_success")
+    assert not any(event.is_step_up_for_retry for event in result.all_events)
+    if status == "partial_success":
+        failure = result.failure_data_for_node("collect_ferry_timetable")
+        assert failure.user_failure_data.metadata["failed_provider_calls"].value == 1
 
 
 def test_dagster_definitions_evaluates_kric_rail_due_daily_with_a_48_hour_guard() -> None:

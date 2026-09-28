@@ -2,6 +2,127 @@
 
 ## 현재 상태
 
+- 2026-09-28 12:48:45 KST 앞당긴 배편 수집 완료: Dagster
+  `b5038bf4-698d-43d3-9ac4-2e8a4a54afde` SUCCESS, DB run 19304 success다.
+  12:38:54~12:48:45 KST(591.20초)에 호출 280회·스냅샷 280개 저장·실패 0건을 확인했다.
+  건별 저장 간격 중앙값 2.146초(최소 2.039/최대 2.674초)다. 10일 범위 저장은
+  1,697→1,977/7,490 스냅샷이며 미수집 5,513개는 다음 배치로 남는다. 스냅샷은 운항 편수가 아니다.
+  12:45 정기 회차는 대체했고 12:46에 원래 `45 */4 * * *` RUNNING으로 복원했다.
+  원래 주기와 280회 상한은 그대로다. 오피넷 실제 성공은 사용자 지시로 이번 머지 범위에서 제외했다.
+  main PR #45 통합 `c606505`의 독립 James/Popper 재리뷰는 P0/P1 없이 끝났고, WSL/Docker
+  통합 50개씩·운영 HTTPS E2E 365개(90.25초)가 통과했다. 최종 문서 커밋 CI와 머지 상태는
+  [PR #44](https://github.com/digitie/kor-travel-transport/pull/44)를 정본으로 확인한다.
+  공용 DB 일시 장애 원인·오피넷·KRIC 인증·UI 변경은 후속이며 완료로 보고하지 않는다.
+
+- 2026-09-28 12:33 KST 재확인에서 `/health` HTTP 200(약 0.495초), API·gateway healthy,
+  컨테이너 재시작 0을 확인했다. 공용 DB는 별도 조치 없이 자동 복구됐으며 장애 전 run 19269와
+  항구 749·터미널 27·선종 7행의 갱신 데이터·성공 summary가 모두 보존됐다.
+  로그상 12:28:57 내부 서버 프로세스 종료, 12:29:12 재초기화, 12:30:56 redo 시작,
+  12:31:02 redo 완료가 관측됐다. 최초 장애 원인은 미확인이고 장기 안정 검증은 남았다.
+
+- 2026-09-28 12:29~12:33 KST 후속 상태 확인에서 새 운영 문제가 발생했다.
+  `/health`가 40초 timeout 후 재확인에서 HTTP 500을 반환했고 API 로그의
+  `CannotConnectNowError`와 공용 PostgreSQL 로그의 `database system is in recovery mode`,
+  `redo starts at`를 확인했다. backend·API gateway는 unhealthy다. API와 공용 DB의
+  컨테이너 재시작 횟수는 0이며 OOMKilled=false지만 DB 내부 프로세스 장애 여부까지
+  부정하는 증거는 아니다. 초기 원인은 아직 미확인이다. 컨테이너 healthy만으로 복구됐다고
+  판단하지 않는다. 공유 DB/다른 프로젝트는 변경·재시작하지 않았고 머지도 하지 않는다.
+  아래 항구 수집 성공은 이 장애 **이전** 검증이다. DB 복구 후 영속성·API 응답을 다시 확인한다.
+
+- 2026-09-28 12:27 KST 항구 기준정보 복구 검증 완료: Dagster
+  `e0faedee-deb2-40e3-9080-4db5d92bd074` SUCCESS, DB run 19269 success다.
+  12:27:13~12:27:21 KST에 항구 749·터미널 27·선박 종류 7행이 전부 갱신됐으며
+  성공 summary의 파일 RustFS 저장 플래그도 1이다. 위치 파일의 대표 항구명 12개는
+  전체 749항구의 좌표 확보를 뜻하지 않는다. 이 단회 검증은 끝났으므로 재실행하지 않는다.
+  고속도로·주차와 별도 reference 그룹 1개/전체 최대 3개라는 기존 Dagster 동시 실행
+  계약에 맞춰 helper의 모든 활성 작업 차단을 기준정보·유가 충돌 차단으로 좁혔다.
+  요청 응답은 25초 timeout이었으나 고유 tag 조회로 생성된 작업을 찾아 재요청하지 않았다.
+  최신 `f5e9bca` CI backend/frontend/admin도 통과했다. 배편 12:45·오피넷 16:00 검증은 남았다.
+
+- 2026-09-28 12:07~12:12 KST 확인: API/worker를 포함한 8개 컨테이너와 8개 job이
+  정상이며 `e04356a`의 backend/frontend/admin CI가 통과했다. 항구 기준정보는 여전히
+  DB run 19085 failed이며 항구 749·터미널 27·선박 종류 7행의 마지막 갱신은
+  09-25 03:01 KST다. 수정 후 실제 기준정보 수집 성공은 아직 확인하지 않았다.
+  단회 Dagster 검증 helper를 준비했으나 첫 요청은 지원하지 않는 executionMetadata.runId로
+  작업 생성 전 거부됐다. 스키마 확인 후 고유 tag 기반 중복 방지로 수정했으며,
+  정기 고속도로 작업 실행 중에는 안전 검사로 시작하지 않았다. 항구 작업은 아직 미실행이다.
+  배편 12:45 실행은 기다린다. 오피넷의 13:10:46은 보호 해제 시각이며, 현재 정기 cron
+  `0 */8 * * *`의 다음 실행은 **16:00 KST**다. 보호 해제 직후 자동 실행으로 오인하지 않는다.
+
+- 2026-09-28 11:29 KST 배치 2초 설정을 n150 worker에 적용했다. 코드 후보 `be85eac`,
+  이미지 `9067afc613eb`, code-server ID `c504c2673e02`다. 실제 Settings에서 배치 2초,
+  호출 상한 280, 공개 조회 30초, 오피넷 60초를 확인했다. API는 기존 `ff45aea`/`3b77ac7`,
+  UI는 기존 `3b6d220`을 유지한다. API/UI/기타 제어부 ID·이미지·재시작 횟수·시작 시각 불변.
+  daemon Compose start는 완료 후 제거된 dagster-migrate 의존성 검사로 실패했으며,
+  기존 ID `0c29730d59e8`를 직접 start해 healthy로 복구했다. 8개 job과 전체 health 정상.
+  WSL 전체 253/선택 PG 4 skip, 최종 변경 WSL·Docker 24개씩, 최종 이미지 Docker 전체
+  257개와 migration 왕복/check, CI를 통과했다. James/Popper가 최종 후보를 승인했다.
+  새 간격의 실제 정기 수집은 아직 시작 전이며 다음 12:45 KST 배편 실행에서 확인한다.
+  운영 HTTPS E2E 365개가 모두 통과했다(실패·skip·flaky 0, 약 1.9분). 일부 UI 상태 검사는 mock이며
+  이는 새 간격의 실제 provider 수집 성공을 뜻하지 않는다. 오피넷 성공은 여전히 미확인이고
+  보호 해제는 13:10:46 KST다. PR #44 머지는 이 실제 수집 검증 이후 판단한다.
+  `transport-pr44` 자동 확인은 배포 재실행이 아닌 수집 검증 단계로 갱신해 ACTIVE로 재개했다.
+
+- 2026-09-28 배편 간격 조정: 사용자 승인으로 배치 전용
+  `FERRY_TIMETABLE_COLLECTION_INTERVAL_SECONDS=2`를 도입했다. 사용자 실시간 조회 30초,
+  배치당 280회·4시간 주기, quota 즉시 중단은 유지한다. 기존 배편 run 19180은 11:06 KST에
+  280개 스냅샷 저장 후 success로 끝났다. 새 후보는 아직 운영 미반영이며 전체 WSL/Docker
+  테스트와 독립 재리뷰를 진행 중이다. 이전 ff45 후보 worker 배포 스크립트는 새 후보에 맞춰
+  갱신하기 전 실행하지 않는다. `transport-pr44` 자동화는 이 작업 동안 PAUSED다.
+
+- 2026-09-28 10:53~10:55 KST 사용자 요청으로 배편의 실제 진행을 재검증했다.
+  DB run 19180 저장 스냅샷이 253→256→257개로 증가했고 전부 해당 배치의 동일
+  `collected_at=2026-09-27T23:45:50.634951Z`다. 구 worker의 실제 코드가 배치 시작
+  시각을 각 스냅샷에 재사용하며 건별 commit함을 확인했다. 정지 상태가 아니라 실제
+  저장 중이다. 실제 설정은 호출 상한 280회·최소 간격 30초·요청 timeout 15초·10일분이다.
+  08:45 KST에 시작한 이번 배치는 간격만 약 2시간 20분이 필요하다. 257개 시점에서
+  호출 예산은 최대 23회 남지만 종료 시각을 확정하지 않는다. 스냅샷 수는 운항 편수가 아니다.
+  앞선 STARTED만 확인한 모니터링은 실제 진행 증명이 아니며 이후에는 저장 증가도 대조한다.
+
+- 2026-09-28 10:46 KST 자동 확인: 배편 `6ec8cc3c-eefc-42f6-b567-6a189b5afa8c`가
+  STARTED다. 다른 활성 실행은 없고 API/worker 모두 healthy,
+  이미지·컨테이너는 기존 상태를 유지한다. 배포·수집 중단·추가 수집·머지는 하지 않았다.
+  `transport-pr44` 자동 확인은 15분 간격으로 유지한다.
+
+- 2026-09-28 09:26 KST PR #44 API 선배포를 완료했다. runtime `ff45aea`, n150 이미지
+  `3b77ac7d588e`이며 운영 스키마는 `0015_fuel_statistics_priced`다. 전체 backend 소스
+  체크섬과 provider pin을 검증했다. 기존 UI `3b6d220`, parking frontend와 Dagster 실행부·
+  제어부는 컨테이너 ID/이미지/재시작 횟수/시작 시각까지 보존했다.
+  09:27 HTTPS E2E **365개 통과**(127.8초, 실패·건너뜀·flaky 0). 별도 무재시도 실데이터
+  통계 2/7/10일은 8.067/10.179/1.792초, 로그인부터 통계 표시까지 4.593초였다.
+  320/375/414/768/1440px 실화면 차트와 넘침을 확인했다. 유가 7일 SQL은 partial index를
+  사용해 heap fetch 0·235ms였으나 전체 API 조회의 지연이 모두 해소된 것은 아니다.
+  **worker 교체·실수집 검증·PR 머지는 아직 미완료**다. 배편 Dagster run
+  `6ec8cc3c-eefc-42f6-b567-6a189b5afa8c`/DB run 19180이 실행 중이고 스냅샷 완료 수가
+  75→82로 증가했다. 이 실행을 중단하지 않는다. code-server는 기존 `148a471`이며
+  실행부의 오피넷 60초 설정과 새 KRIC pin은 아직 반영되지 않았다.
+  `.playwright-mcp/pr44-deploy-worker.sh`와 `pr44-deploy-worker-remote.sh`는 미실행 상태다.
+  업로드 전과 daemon 중지 후 활성 실행을 각각 확인하고 없을 때만 worker를 교체한다.
+  추가 리뷰 Gauss의 daemon 정지 실패 시 복구 누락·재개 health 미확인 P1 두 건을 수정했고
+  모의 실행 8건을 통과했다. 운영 적용·실수집 검증을 뜻하지 않는다. API 선배포 복구는
+  별도 모의 실행 3건을 통과했다. 아래 08시 배포 차단 기록은 과거 상태다.
+
+- 2026-09-28 PR #44 `codex/query-collection-reliability`의 코드 후보는 `ff45aea`다.
+  KRIC provider PR #6은 count 없는 실제 터미널 27/선박종류 7행 계약으로 범위를 제한한 뒤
+  독립 두 리뷰·WSL 117개·CI를 통과해 `2cbe443`으로 머지했다. 소비 pin을 갱신했다.
+  통계 deadline/lock, 유가 부분 index·정비 정책, 오피넷 60초 설정 정렬, 배편 개별 네트워크
+  실패 격리를 구현했다. CI backend 253/admin 84/frontend 85, WSL 전체 244(선택 PG 3 skip),
+  Docker PG 전체 247과 최종 수정분 67, UI Docker 84/85개를 통과했다. 최종 수정의 WSL
+  추가 검사는 16개 통과/PG 2개 skip이며 PG 취소·DDL 잠금/복구는 Docker에서 통과했다.
+  James(Halley)/Popper(Arendt)는 `ff45aea`를 P0/P1 잔여 없이 재승인했다.
+  **n150 배포·live E2E·머지는 미완료다.** 이미지 적재가 300초 상한을 초과해 해당
+  `docker load` 클라이언트 PID 1072812만 정확한 명령 확인 후 중단했다. 이미 적재된
+  `85ff755` 기반 1.3MB 소스만 얹는 경량 빌드도 120초 상한 내 완료되지 않았다.
+  08:18 KST에는 두 작업 프로세스가 없고 최종 운영 이미지도 없는 것을 확인했다.
+  I/O pressure full avg10 약 46%, load average 최대 19.54로 공유 서버 부하가 높다.
+  API는 기존 `1dd1868`의 정상 응답을 유지한다. daemon 중지·서비스 교체·0015 운영
+  migration은 실행하지 않았다. 다른 프로젝트 컨테이너는 변경하지 않았다.
+  n150 유가 일반 VACUUM은 180초 상한으로 중단됐고 index cleanup 없는 visibility/analyze는
+  10.3초에 완료했다. heap fetch 244,958→36,917이며 전체 index 정비 완료나 안정적 지연 개선을
+  뜻하지 않는다. KRIC 48시간·오피넷 8시간 보호는 그대로다.
+
+### PR #45의 별도 Dagster 개선 기록(수집 배포 상태는 위 최신 기록 우선)
+
 - 2026-09-28 `fix/dagster-healthcheck-exec-form`에서 Dagster 세 서비스의 healthcheck를
   exec 형식·`python -I`·`init: true` 계약으로 바꾸고, command에서 Dagster 서비스를 유도하는
   계약 테스트를 추가했다. 아직 미배포다. 반영은 `scripts/redeploy-dagster-services-server14.sh`로
@@ -10,7 +131,7 @@
   비교·gate·컨테이너 ID·daemon 정지 재확인 → 파일 교체 → Dagster 세 서비스
   `up -d --no-deps --no-build` 순서로 진행한다. 어디서 멈추든(SSH 끊김·출력 pipe 닫힘 포함) daemon
   컨테이너를 `docker start`로 되살린다. 되돌리기도 같은 스크립트에 옛 파일을 준다.
-  `.env.server14`의 `BACKEND_RUNTIME_IMAGE`는 PR #43 배포가 `ab25bf7b`로 바꿔 두었다
+  당시 `.env.server14`의 `BACKEND_RUNTIME_IMAGE`는 PR #43 배포가 `ab25bf7b`로 바꿔 두었다
   (PR #43은 2026-09-28 `8a34f77`로 main에 머지됐다).
   전체 배포는 지금 대안이 아니다. `deploy-server14-remote.sh`의 `DAGSTER_POSTGRES_URL` 검사
   (`^postgresql://`)가 지금 env 파일(`postgresql+psycopg2://`)을 거부한다.
@@ -431,20 +552,31 @@
 
 ## 다음 한 작업
 
-Dagster healthcheck 브랜치는 CI·리뷰 뒤 같은 디렉터리에 배포하는 다른 세션(2026-09-28 기준 열린
-PR #44)과 시간을 맞추고, 머지 커밋의
-`scripts/redeploy-dagster-services-server14.sh`로 Dagster 세 서비스만 재생성해 반영한다
-(`docs/runbooks/deployment.md` "Dagster healthcheck·init만 바뀐 반영"). `dagster-pin-*` 태그는
-다음 전체 릴리스까지 둔다. code-server가 다시 unhealthy가 되면 재시작 전에 스레드 stack을 먼저
-확보한다(재시작하면 lock을 잡은 frame이 사라진다). `deploy-server14-remote.sh`의
-`DAGSTER_POSTGRES_URL` regex와 `.env.server14`·example의 `postgresql+psycopg2://`를 맞추는 일은
-별도로 남아 있다.
+API/0015와 worker 배포는 완료됐다. 기존 배포 스크립트를 다시 실행하지 않는다.
+공용 PostgreSQL 복구 모드/Transport API 500은 12:33 KST에 해소됐고 저장 영속성을 재확인했다.
+다음 확인에서도 API 실제 응답과 정기 수집 정상 여부를 읽기 전용으로 확인해 재발을 점검한다.
+`.playwright-mcp/pr44-db-recovery-timeline.py`는 시스템 복구 메시지만 비밀값 없이 출력한다.
+API 실제 health 응답과 DB 접근 정상화 전에는 수집 검증 성공이나 운영 안정으로 판단하지 않는다.
+공유 DB 재시작·설정 변경처럼 다른 프로젝트에 영향을 주는 조치는 별도 사용자 판단이 필요하다.
+사용자가 지정한 배편 선실행 검증은 12:48 KST 성공 완료했고 정기 스케줄도 복원했다.
+최종 문서 커밋 CI를 확인해 PR #44를 머지한다. 배편을 다시 호출하지 않는다.
+오피넷 **16:00 KST 정기 배치**의 실제 성공은 사용자 지시에 따라 머지 후 후속 검증으로 남긴다.
+항구 기준정보 단회 검증은 12:27 KST에 실제 DB 갱신·Dagster 성공까지 완료했다. 재실행하지 않는다.
+운영 복구·배편 실수집·독립 통합 리뷰·WSL/Docker/E2E는 확인됐다. 최종 CI·머지 결과는 PR이 정본이다.
+UI E2E 통과를 다른 provider 성공으로 대체하지 않는다.
+KRIC 인증은 09-29 15:04:58 KST 보호 종료 전 재호출하지 않는다.
+그 다음 별도 PR에서 주유소 아이콘·단축 유종·단위 삭제, 도시철도 `이름 호선`, 밀도 기반
+클러스터 해제, 고속도로 번호+이름과 통계 최초 실패 안내/수동 재조회 UI를 진행한다.
+추가 사용자 요청: Weather의 Dagster UI 세부 구조·형태를 그대로 가져오고 지도 우측 상세
+패널도 재사용한다. 공항/역/항구/정거장 선택 시 출도착 등 상세를 표시하며 항구·공항·버스정거장
+마커는 컴팩트하게 만든다. 이 변경은 다음 PR 범위이며 이번 PR에는 구현하지 않는다.
+TAGO 일반철도 HTTP 403·버스 좌표·배편 저장 범위는 아직 미완료다.
 
-PR #43의 최종 증적 CI·머지를 확인한 뒤, 통계 장기 조회의 지연·취소 전파와 배포 직후
-호스트 I/O를 우선 보완한다. 오피넷 최신 provider와 transport의 명시 30초 설정 차이,
-다음 정기 배치 결과도 확인한다. KRIC 첫 인증 배치는 9월 29일 15:04:58 KST 보호 종료
-이후 due 평가에 맡기며 그 전에 인증을 재호출하지 않는다. TAGO 일반철도 HTTP 403,
-버스 좌표, 항구 `totalCount` 오류와 배편 1,548/7,490 저장 범위는 아직 미완료다.
+별도 PR #45는 main에 머지됐다. healthcheck/init 운영 반영은 활성 수집과 겹치지 않게
+조율하고 `scripts/redeploy-dagster-services-server14.sh`의 drift gate를 따른다.
+code-server 이미지는 보존하지만 webserver·daemon도 그 이미지로 바뀐다. 세 서비스 각각의
+기존 이미지를 보존하는 절차가 아니다. `dagster-pin-*` 태그는 다음 전체 릴리스까지 둔다.
+code-server 재발 시 재시작 전 stack 확보, 배포 스크립트 DSN regex 정렬은 후속으로 남긴다.
 
 ## 확인된 사실
 

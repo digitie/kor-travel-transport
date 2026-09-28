@@ -78,7 +78,7 @@
   8시간마다 실행한다. KRIC 공개 XLSX를 읽는 `rail_reference_collection_job`은 제공기관
   요청에 맞춰 마지막 성공 후 실제 48시간 간격, `maritime_reference_collection_job`은 3일
   주기로 실행한다. `ferry_timetable_collection_job`은 4시간마다 오늘을 포함한 10일 운항일
-  DB 범위를 보충한다. 한 run의 provider 호출은 280건으로 제한하고, 30초 보호 간격과 최대 15초
+  DB 범위를 보충한다. 한 run의 provider 호출은 280건으로 제한하고, 배치 전용 2초 간격과 최대 15초
   요청 timeout을 포함해 3시간 30분 예산 안에서 Dagster 4시간 상한보다 여유 있게 중단 없이
   재개하며, 최초 누락 범위 외에는 당일과 새 미래 운항일만 provider에서 갱신한다.
   `bus_reference_collection_job`은 매일 실행을 평가하되 마지막 성공 뒤

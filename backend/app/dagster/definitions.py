@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from dagster import DefaultScheduleStatus, Definitions, ScheduleDefinition, job, op
+from dagster import DefaultScheduleStatus, Definitions, Failure, ScheduleDefinition, job, op
 
 from app.core.config import Settings, get_settings
 from app.db.session import create_engine_and_session_factory
@@ -79,7 +79,16 @@ def _collect_reference(kind: str) -> dict[str, Any]:
 def _collect_ferry_timetable() -> dict[str, Any]:
     settings = _settings()
     service = RailMaritimeCollectionService(settings)
-    return asyncio.run(_run_with_session(settings, service.collect_ferry_timetables))
+    result = asyncio.run(_run_with_session(settings, service.collect_ferry_timetables))
+    # 성공분과 partial_success 기록이 커밋된 뒤 실행 상태도 실패로 전달한다.
+    # 외부 호출 보호를 위해 Dagster 자동 재시도는 허용하지 않는다.
+    if result.get("status") == "partial_success":
+        raise Failure(
+            description="일부 배편 수집에 실패했습니다. 저장된 성공분은 유지하며 다음 정기 수집에서 보충합니다.",
+            metadata={"run_id": result["run_id"], "failed_provider_calls": result["failed_provider_calls"]},
+            allow_retries=False,
+        )
+    return result
 
 
 def _collect_bus_reference() -> dict[str, Any]:

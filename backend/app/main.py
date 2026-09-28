@@ -180,6 +180,7 @@ def cached_transport_statistics(handler):
     ) -> TransportStatisticsResponse:
         settings = request.app.state.settings
         semaphore = request.app.state.transport_statistics_miss_semaphore
+        deadline = asyncio.get_running_loop().time() + settings.transport_statistics_timeout_seconds
 
         async def calculate() -> TransportStatisticsResponse:
             # asyncio.Semaphore는 값이 남아 있을 때 acquire가 suspend하지 않는다.
@@ -188,7 +189,16 @@ def cached_transport_statistics(handler):
                 raise HTTPException(status_code=429, detail="교통 통계 집계가 혼잡합니다. 잠시 후 다시 시도하세요.")
             await semaphore.acquire()
             try:
-                return await handler(request=request, route_no=route_no, days=days, session=session)
+                # 프록시가 포기한 뒤에도 집계가 계속 슬롯과 DB 연결을 점유하지 않게 한다.
+                async with asyncio.timeout_at(deadline):
+                    return await handler(request=request, route_no=route_no, days=days, session=session)
+            except TimeoutError as exc:
+                if session is not None:
+                    await session.rollback()
+                raise HTTPException(
+                    status_code=504,
+                    detail="교통 통계 조회 시간이 초과되었습니다. 조회 기간을 줄여 다시 시도하세요.",
+                ) from exc
             finally:
                 semaphore.release()
 
@@ -212,9 +222,14 @@ def cached_transport_statistics(handler):
         if cached_response := get_cached():
             return cached_response
 
-        lock = request.app.state.transport_statistics_locks.setdefault(cache_key, asyncio.Lock())
+        locks = request.app.state.transport_statistics_locks
+        # 대기자가 남아 있는 lock을 제거하면 같은 키에 별도 집계가 시작될 수 있다.
+        entry = locks.setdefault(cache_key, SimpleNamespace(lock=asyncio.Lock(), users=0))
+        entry.users += 1
         try:
-            async with lock:
+            async with asyncio.timeout_at(deadline):
+                await entry.lock.acquire()
+            try:
                 if cached_response := get_cached():
                     return cached_response
                 response = await calculate()
@@ -223,9 +238,15 @@ def cached_transport_statistics(handler):
                 while len(statistics_cache) > MAX_TRANSPORT_STATISTICS_CACHE_ENTRIES:
                     statistics_cache.popitem(last=False)
                 return response
+            finally:
+                entry.lock.release()
+        except TimeoutError as exc:
+            # 동일 키를 기다린 시간도 요청 제한에 포함하며 대기 실패를 캐시하지 않는다.
+            raise HTTPException(status_code=504, detail="교통 통계 조회 시간이 초과되었습니다. 조회 기간을 줄여 다시 시도하세요.") from exc
         finally:
-            if not lock.locked():
-                request.app.state.transport_statistics_locks.pop(cache_key, None)
+            entry.users -= 1
+            if entry.users == 0:
+                locks.pop(cache_key, None)
 
     return wrapped
 

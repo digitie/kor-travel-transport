@@ -306,11 +306,13 @@ class FuelPriceSnapshot(Base):
         Index("ix_fuel_prices_station_collected", "fuel_station_id", "collected_at"),
         Index("ix_fuel_prices_product_collected", "product_code", "collected_at"),
         Index(
-            "ix_fuel_prices_statistics_collected",
+            "ix_fuel_prices_statistics_priced",
             "collected_at",
             "product_code",
             "fuel_station_id",
             postgresql_include=["price", "observed_at"],
+            postgresql_where=text("price IS NOT NULL"),
+            sqlite_where=text("price IS NOT NULL"),
         ),
         Index("ix_fuel_prices_collection_run_id", "collection_run_id"),
     )

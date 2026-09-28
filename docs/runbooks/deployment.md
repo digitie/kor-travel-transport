@@ -44,8 +44,8 @@ Dagster 세 서비스만 재생성한다. 이 경로는 `deploy-server14-remote.
 일치하지 않는다.
 
 시작 전에 같은 디렉터리에 배포하는 다른 작업과 시간을 맞춘다. PR 배포 세션은 `.env.server14`를
-고치고 트리 전체를 이 디렉터리에 rsync한다(2026-09-28 기준 열린 PR #44 세션이
-`local/transport-pr44:backend`를 빌드해 두었다). 스크립트는 run 대기 뒤 교체 직전에 gate와 컨테이너
+고치고 트리 전체를 이 디렉터리에 rsync한다(2026-09-28 11:29 KST PR #44 세션은
+`local/transport-pr44:paced`/`9067afc613eb` worker를 반영했다). 스크립트는 run 대기 뒤 교체 직전에 gate와 컨테이너
 ID·daemon 정지를 다시 봐서 그 사이의 변경을 잡는다. 다만 그 직후 몇 초 사이의 변경은 막지 못한다.
 SSH가 끊기면 스크립트도 끝나므로(daemon은 되살린다) tmux 안에서 실행한다.
 
@@ -66,8 +66,9 @@ bash /tmp/redeploy-dagster-services-server14.sh /tmp/docker-compose.shared.yml.n
 1. 이미지를 지금 code-server 이미지 ID로 고정한다(`BACKEND_RUNTIME_IMAGE` export). 셸 env가
    `--env-file`보다 우선한다. 고정하지 않으면 `.env.server14`의 값으로 재생성된다. 2026-09-27
    21:13Z에는 당시 미머지였던 PR #43 배포가 이 값을 `ab25bf7b`로 바꿔 두었다(#43은 2026-09-28
-   `8a34f77`로 머지). `compose config -q`는
-   이 차이를 잡지 못한다.
+   `8a34f77`로 머지). 2026-09-28 11:29 KST 이후 env와 code-server는 `9067afc613eb`이나,
+   실행 중 API는 `3b77ac7d588e`, webserver·daemon은 `c8b47811`로 분리돼 있다.
+   `compose config -q`는 실행 중 이미지와 env의 차이를 잡지 못한다.
 2. 지금 파일과 새 파일을 지금 env·고정 이미지로 렌더링해(`compose config --format json`) 비교한다.
    세 Dagster 서비스의 `healthcheck`·`init` 밖에서 다르면 STOP이다. 다른 PR이 main에서 이 파일을
    바꿨어도 여기서 멈춘다. 차이는 경로만 출력한다(값에는 비밀이 있다). 배포된 파일은 Windows
@@ -107,12 +108,12 @@ bash /tmp/redeploy-dagster-services-server14.sh /tmp/docker-compose.shared.yml.n
 - 재생성되는 컨테이너는 `kor-travel-airport-dagster-{code-server,webserver,daemon}-1`뿐이다.
   backend·frontend·`dagster-gateway`·`migrate` 계열은 건드리지 않는다. 이미지는 빌드하지 않는다.
 - code-server는 이미지가 그대로이고 healthcheck·`init`만 바뀐다. webserver·daemon은 의도적으로
-  code-server와 같은 이미지로 바뀐다. 2026-09-28 기준 code-server는 `148a471b`(태그
-  `local/transport-pr42:coordinates`)로 떠 있다. webserver·daemon은 `kor-travel-airport-backend:latest`
-  문자열로 만들어져 `c8b47811`로 떠 있다. 그 이미지는 태그가 풀려 host에서 지워졌고(dangling으로도
-  남지 않았다. `docker image inspect sha256:c8b47811…`은 "No such image"이고, 두 컨테이너는
-  containerd snapshot으로 계속 돈다) `:latest`는 지금 `3769528a`다. `148a471b`와 `c8b47811`은 둘 다
-  dagster 1.13.24다.
+  code-server와 같은 이미지로 바뀐다. 2026-09-28 11:29 KST 이후 code-server는
+  `9067afc613eb`(태그 `local/transport-pr44:paced`)이고 webserver·daemon은 `c8b47811`이다.
+  이 스크립트를 실행하면 세 서비스가 `9067afc613eb`로 통일되므로, **세 서비스 각각의 기존
+  이미지를 보존하는 배포가 아니다.** PR #44에서는 이 healthcheck 전용 재배포를 실행하지 않았다.
+  과거 09-27 조사 당시 code-server는 `148a471b`, `:latest`는 `3769528a`였고 `c8b47811`은
+  image inspect에서 찾을 수 없었다. 그때의 태그/상태를 현재 값으로 가정하지 말고 실행 전에 읽는다.
 - webserver·daemon은 `.env.server14`의 현재 `DAGSTER_POSTGRES_URL`로도 다시 뜬다. scheme이
   `postgresql://`에서 `postgresql+psycopg2://`로 바뀌고 사용자·host·DB·비밀번호는 같다.
   code-server와 그 run worker는 이미 이 scheme으로 같은 metadata DB에 붙어 있다. dagster_postgres
@@ -121,7 +122,7 @@ bash /tmp/redeploy-dagster-services-server14.sh /tmp/docker-compose.shared.yml.n
   `DAGSTER_POSTGRES_URL`이 `^postgresql://`이어야 하는데 `.env.server14`와 `.env.server14.example`은
   `postgresql+psycopg2://`라 거부된다. env 파일이나 그 regex를 맞춘 뒤에야 전체 배포가 대안이 된다.
 - `dagster-pin-*` 태그는 다음 전체 릴리스까지 둔다. 이 태그가 없으면 반영 뒤 고정 이미지를 붙잡는
-  태그는 다른 작업의 `local/transport-pr42:coordinates`뿐이다. 그 태그가 지워지면 되돌리기의
+  태그는 다른 작업이 관리하는 태그(현재 `local/transport-pr44:paced`)일 수 있다. 그 태그가 지워지면 되돌리기의
   재생성이 이미지를 찾지 못한다(compose가 `sha256:…`을 pull하려다 실패한다).
 - 되돌릴 때는 새 셸에서 같은 스크립트에 옛 파일을 준다. 옛 파일은 스크립트가 남긴
   `/home/digitie/apps/kor-travel-airport/docker-compose.shared.yml.before-*`(완료 메시지에 경로가 나온다)나

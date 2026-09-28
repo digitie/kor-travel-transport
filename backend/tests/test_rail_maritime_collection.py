@@ -213,7 +213,7 @@ def test_ferry_timetable_collection_stores_horizon_and_reuses_future_snapshots(t
         tmp_path,
         ferry_timetable_collection_enabled=True,
         ferry_timetable_storage_days=2,
-        ferry_timetable_min_interval_seconds=1,
+        ferry_timetable_collection_interval_seconds=1,
         data_go_kr_service_key="test-key",
     )
     engine, session_factory = create_engine_and_session_factory(settings.database_url)
@@ -267,7 +267,7 @@ def test_ferry_timetable_collection_keeps_completed_snapshots_when_later_call_fa
         tmp_path,
         ferry_timetable_collection_enabled=True,
         ferry_timetable_storage_days=2,
-        ferry_timetable_min_interval_seconds=1,
+        ferry_timetable_collection_interval_seconds=1,
         data_go_kr_service_key="test-key",
     )
     engine, session_factory = create_engine_and_session_factory(settings.database_url)
@@ -343,8 +343,75 @@ def test_ferry_timetable_default_budget_includes_interval_and_timeout() -> None:
     settings = Settings()
 
     assert settings.ferry_timetable_collection_max_provider_calls == 280
+    assert settings.ferry_timetable_collection_interval_seconds == 2
+    assert settings.ferry_timetable_min_interval_seconds == 30
+    Settings(ferry_timetable_collection_max_provider_calls=280)
+    for call_budget in (281, 400, 741, 1000):
+        with pytest.raises(ValidationError, match="less than or equal to 280"):
+            Settings(ferry_timetable_collection_max_provider_calls=call_budget)
     with pytest.raises(ValidationError, match="3.5-hour ferry collection runtime budget"):
-        Settings(ferry_timetable_collection_max_provider_calls=281)
+        Settings(ferry_timetable_collection_max_provider_calls=280, ferry_timetable_collection_interval_seconds=31)
+    # UI 보호 간격이 커도 배치의 실행시간 예산과 섞이지 않는다.
+    Settings(ferry_timetable_min_interval_seconds=3600)
+    with pytest.raises(ValidationError):
+        Settings(ferry_timetable_collection_interval_seconds=0)
+
+
+@pytest.mark.parametrize('failure_kind', ['transient', 'continuous', 'quota', 'auth'])
+@pytest.mark.parametrize('batch_interval', [2, 7])
+def test_ferry_network_failures_are_bounded_and_do_not_become_empty_success(tmp_path, monkeypatch, failure_kind, batch_interval):
+    from unittest.mock import AsyncMock
+    from kric import KricAuthError, KricNetworkError, KricRateLimitError
+    delays = AsyncMock()
+    monkeypatch.setattr('app.services.rail_maritime_collection.asyncio.sleep', delays)
+    calls = []
+    class Client(_MaritimeClient):
+        async def get_domestic_ship_operations(self, **kwargs):
+            calls.append(kwargs['departure_date'])
+            if failure_kind == 'continuous' or (failure_kind == 'transient' and len(calls) == 1):
+                raise KricNetworkError('temporary network failure')
+            if failure_kind == 'quota':
+                raise KricRateLimitError('quota')
+            if failure_kind == 'auth':
+                raise KricAuthError('auth')
+            return ()
+    settings = _settings(tmp_path, ferry_timetable_collection_enabled=True,
+        ferry_timetable_storage_days=5, ferry_timetable_collection_max_provider_calls=3,
+        ferry_timetable_collection_interval_seconds=batch_interval,
+        ferry_timetable_min_interval_seconds=30,
+        data_go_kr_service_key='test-key')
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+    async def exercise():
+        await init_database(engine)
+        now = now_utc()
+        async with factory() as session:
+            session.add(FerryPort(source='data_go_kr_maritime',port_id='P1',port_name='항구',
+                first_seen_at=now,last_seen_at=now,location_point_count=0))
+            await session.commit()
+        service=RailMaritimeCollectionService(settings,maritime_client_factory=lambda *a,**kw:Client())
+        async with factory() as session:
+            if failure_kind == 'transient':
+                result=await service.collect_ferry_timetables(session)
+                assert result['status']=='partial_success'
+                assert result['provider_calls']==3
+                assert result['failed_provider_calls']==1
+                assert result['deferred_snapshot_count']==3
+            else:
+                error={'continuous':KricNetworkError,'quota':KricRateLimitError,'auth':KricAuthError}[failure_kind]
+                with pytest.raises(error):
+                    await service.collect_ferry_timetables(session)
+        async with factory() as session:
+            snapshots=(await session.scalars(select(FerryTimetableSnapshot))).all()
+            assert len(snapshots)==(2 if failure_kind=='transient' else 0)
+            assert all(s.service_date!=to_seoul(now).date() for s in snapshots)
+            run=await session.scalar(select(CollectionRun))
+            assert run.status==('partial_success' if failure_kind=='transient' else 'failed')
+        assert len(calls)==(3 if failure_kind in {'transient','continuous'} else 1)
+        assert len(set(calls))==len(calls)
+        assert delays.await_count==max(0,len(calls)-1)
+        assert all(batch_interval - 1 < call.args[0] <= batch_interval for call in delays.await_args_list)
+        await engine.dispose()
+    asyncio.run(exercise())
 
 
 def test_enabled_rail_reference_collection_requires_rustfs_configuration(tmp_path: Path) -> None:

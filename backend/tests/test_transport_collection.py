@@ -928,10 +928,21 @@ def test_transport_statistics_uses_short_lived_response_cache(tmp_path: Path) ->
     assert cached.json() == first.json()
 
 
+def test_opinet_latest_wait_policy_is_explicitly_forwarded(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+    collector = Mock()
+    monkeypatch.setattr('app.services.transport_collection.OpinetBrowserCollector', collector)
+    provider = LiveTransportProvider(build_settings(tmp_path))
+    assert provider.settings.opinet_browser_timeout_ms == 60_000
+    assert collector.call_args.kwargs['timeout_ms'] == 60_000
+    assert collector.call_args.kwargs['query_level'] == 'sigungu'
+    asyncio.run(provider.aclose())
+
+
 def test_transport_statistics_cache_coalesces_and_evicts_lru_entries() -> None:
     calls = 0
     state = SimpleNamespace(
-        settings=SimpleNamespace(transport_statistics_cache_seconds=60),
+        settings=SimpleNamespace(transport_statistics_cache_seconds=60, transport_statistics_timeout_seconds=20),
         transport_statistics_cache=OrderedDict(),
         transport_statistics_locks={},
         transport_statistics_miss_semaphore=asyncio.Semaphore(2),
@@ -966,7 +977,7 @@ def test_transport_statistics_cache_coalesces_and_evicts_lru_entries() -> None:
 def test_transport_statistics_cache_limits_distinct_cache_misses() -> None:
     active = maximum_active = 0
     state = SimpleNamespace(
-        settings=SimpleNamespace(transport_statistics_cache_seconds=60),
+        settings=SimpleNamespace(transport_statistics_cache_seconds=60, transport_statistics_timeout_seconds=20),
         transport_statistics_cache=OrderedDict(),
         transport_statistics_locks={},
         transport_statistics_miss_semaphore=asyncio.Semaphore(2),
