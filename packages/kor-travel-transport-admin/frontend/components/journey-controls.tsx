@@ -57,6 +57,7 @@ export function PlaceDetails({ place, showRailTimetable = true, showHeading = tr
     {place.prices?.length ? <dl className="price-grid">{place.prices.map((price) => <div key={price.product_code}><dt>{fuelProductLabel(price.product_code)}</dt><dd>{money(price.price, "원/L")}</dd><small>{dateTime(price.provider_updated_at ?? price.observed_at)}</small></div>)}</dl> : place.kind === "fuel_station" ? <p className="quiet">등록된 유가가 없습니다.</p> : null}
     {place.address ? <p>{place.address}</p> : null}
     {place.phone ? <p>전화 {place.phone}</p> : null}
+    {place.kind === "ferry_port" ? <p className="quiet">항구 코드 {place.provider_id ?? "미제공"} · 항구명만으로 서로 다른 항구를 합치지 않습니다.</p> : null}
     {place.facilities?.length ? <p>편의시설 · {place.facilities.join(" · ")}</p> : null}
     {place.kind === "rail_station" && showRailTimetable ? <RailTimetables placeIds={[place.id]} /> : null}
     {place.kind === "ferry_port" ? <p className="data-caveat">{hasCoordinates(place) ? place.location_source === "komsa_port_call" ? "한국해양교통안전공단 기항지 위치입니다. 승선 부두·탑승구는 운항사에 확인해 주세요." : "항만 안내 지점입니다. 실제 승선 장소는 여객터미널에 확인해 주세요." : "좌표 미등록 · 목록에서 운항 정보를 확인할 수 있습니다."}</p> : null}
@@ -67,7 +68,7 @@ export function PlaceDetails({ place, showRailTimetable = true, showHeading = tr
 export function FerryDepartures({ timetable, name, query = "" }: { timetable: FerryTimetable; name: string; query?: string }) {
   const rows = timetable.items.filter((item) => [item.arrival_port_name, item.departure_port_name, item.vessel_name].join(" ").includes(query.trim())).sort((a, b) => (a.departure_planned_time ?? "").localeCompare(b.departure_planned_time ?? ""));
   return <section className="departures" aria-label={`${name} 운항 정보`}>
-    <header><h3>{name} · {timetable.service_date}</h3><p className="quiet">저장본 확인 {dateTime(timetable.fetched_at)} · {rows.length}편</p></header>
+    <header><h3>{name} · {timetable.service_date}</h3><p className="quiet">항구 코드 {timetable.port_id}{timetable.port_name ? ` · ${timetable.port_name}` : ""}</p><p className="quiet">저장본 확인 {dateTime(timetable.fetched_at)} · {rows.length}편</p></header>
     {rows.length ? rows.map((item, index) => <article className="departure-row" key={index}>
       <div className="departure-time"><strong>{serviceTime(item.departure_planned_time, timetable.service_date)}</strong><span>{item.departure_port_name ?? name}</span></div>
       <div className="departure-route"><span aria-hidden="true">→</span><strong>{item.arrival_port_name ?? "도착항 미제공"}</strong><small>도착 {serviceTime(item.arrival_planned_time, timetable.service_date)}</small></div>

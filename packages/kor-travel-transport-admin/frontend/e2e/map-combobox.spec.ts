@@ -4,6 +4,27 @@ const stamp = "2026-09-29T00:00:00Z";
 const place = { id: 1, kind: "fuel_station", source: "opinet_browser", name: "다중필터 시험주유소", longitude: 127, latitude: 37, line_names: [], facilities: [], updated_at: stamp,
   prices: [{ product_code: "B027", price: 1700, observed_at: stamp }, { product_code: "D047", price: 1600, observed_at: stamp }] };
 
+test("지도는 휴게소와 돌발 정보를 각각 조회하고 상세·출처를 표시한다", async ({ page }) => {
+  const requests: string[] = [];
+  await page.route("**/transport/features/places?**", (route) => {
+    const kind = new URL(route.request().url()).searchParams.get("kind")!; requests.push(kind);
+    const rows = kind === "rest_area" ? [{ ...place, kind, name: "시험휴게소", source: "krex_rest_area", prices: [], line_names: ["경부고속도로"], facilities: ["주차장"] }]
+      : kind === "highway_incident" ? [{ ...place, kind, name: "시험분기점", source: "krex_traffic_incident", prices: [], line_names: ["0010 · 경부고속도로"], subtitle: "사고 · 처리중", address: "1차로 통제" }] : [];
+    return route.fulfill({ json: { total: rows.length, items: rows, available_sources: rows.map((row) => row.source), truncated: false } });
+  });
+  await page.goto("/map");
+  await page.getByRole("button", { name: "목록", exact: true }).click();
+  await page.locator(".map-place-list").getByRole("button", { name: /시험휴게소/ }).click();
+  await expect(page.getByLabel("선택 장소 상세").getByText("편의시설 · 주차장")).toBeVisible();
+  await page.getByRole("button", { name: "장소 상세 닫기" }).click();
+  await page.locator(".map-place-list").getByRole("button", { name: /시험분기점/ }).click();
+  const detail = page.getByLabel("선택 장소 상세");
+  await expect(detail.getByText("0010 · 경부고속도로", { exact: true })).toBeVisible();
+  await expect(detail.getByText("사고 · 처리중", { exact: true })).toBeVisible();
+  await expect(detail.getByText("1차로 통제", { exact: true })).toBeVisible();
+  expect(requests).toEqual(expect.arrayContaining(["rest_area", "highway_incident"]));
+});
+
 test.beforeEach(async ({ page }) => {
   test.skip(!process.env.E2E_TRANSPORT_UI_PASSWORD, "로그인 암호 필요");
   await page.goto("/login");
@@ -93,7 +114,7 @@ test("유종은 OR로 표시하고 새 조회 실패 시 이전 장소를 숨긴
   await expect(list.getByRole("button", { name: /D047/ })).toBeVisible();
   await expect(list.getByRole("button", { name: /K015/ })).toHaveCount(0);
   await page.getByLabel("장소 검색").fill("새로운 조건");
-  await expect(page.getByText("주유소·철도역·항구·공항·휴게소 조회 실패")).toBeVisible();
+  await expect(page.getByText("주유소·철도역·항구·공항·휴게소·도로 돌발 조회 실패")).toBeVisible();
   await expect(list.getByRole("button")).toHaveCount(0);
 });
 
@@ -111,6 +132,32 @@ test("작은 가로 화면에서도 combobox 마지막 항목까지 스크롤한
   await expect(last).toBeInViewport();
   await last.click();
   await expect(page.getByRole("button", { name: "등유 선택 해제" })).toBeVisible();
+});
+
+test("고급유 필터는 최신 가격이 없는 주유소를 제외하고 복수 유종은 OR로 표시한다", async ({ page }) => {
+  const rows = [2000, null, 0, undefined].map((price, index) => ({
+    ...place, id: index + 1, name: `고급유 가격 시험 ${index}`,
+    prices: [{ product_code: "D047", price: 1600, observed_at: stamp },
+      ...(price === undefined ? [] : [{ product_code: "B034", price, observed_at: stamp }])],
+  }));
+  // 서버의 잘못된/이전 응답이 섞여도 지도와 목록이 가격 미제공을 판매로 표시하면 안 된다.
+  await page.route("**/transport/features/places?**", (route) => route.fulfill({ json: {
+    items: new URL(route.request().url()).searchParams.get("kind") === "fuel_station" ? rows : [],
+    total: rows.length, truncated: false,
+  } }));
+  await page.goto("/map");
+  await page.getByRole("button", { name: "목록", exact: true }).click();
+  const input = page.getByRole("combobox", { name: "표시 유종" });
+  await input.fill("고급유");
+  await page.getByRole("option", { name: "고급유", exact: true }).click();
+  await input.press("Escape");
+  const list = page.locator(".map-place-list");
+  await expect(list.getByRole("button")).toHaveCount(1);
+  await expect(list.getByRole("button", { name: /고급유 가격 시험 0/ })).toBeVisible();
+  await input.fill("경유");
+  await page.getByRole("option", { name: "경유", exact: true }).click();
+  await input.press("Escape");
+  await expect(list.getByRole("button")).toHaveCount(4);
 });
 
 test("검색 debounce 중 선택한 이전 장소가 새 빈 결과에 남지 않는다", async ({ page }) => {

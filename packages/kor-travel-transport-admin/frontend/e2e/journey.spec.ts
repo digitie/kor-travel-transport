@@ -52,10 +52,17 @@ for (const type of ["express", "intercity"]) test(`자정 직후 타이머 갱�
   expect(calls).toBe(0);
   await expect(page.locator("p[role=alert]")).toContainText("한국 날짜가 변경");
 });
-test("버스는 명시 조회만 호출하고 429 이후 반복 버튼을 눌러도 제공자를 호출하지 않는다", async ({ page }) => {
+test("버스는 429 이후에도 제공기관 호출 없이 DB 저장본을 조회한다", async ({ page }) => {
   await mockBus(page);
   let calls = 0;
-  await page.route("**/transport/bus/timetable?**", (route) => { calls++; return route.fulfill({ status: 429, headers: { "retry-after": "30" }, json: { detail: "rate limited" } }); });
+  let storedCalls = 0;
+  await page.route("**/transport/bus/timetable?**", (route) => {
+    if (new URL(route.request().url()).searchParams.get("stored_only") === "true") {
+      storedCalls++;
+      return route.fulfill({ json: { service_date: "2026-09-29", fetched_at: "2026-09-29T00:00:00Z", stored: true, stale: true, items: [{ departure_planned_time: "0900", arrival_planned_time: "1300", adult_fare: 35000, grade_name: "우등" }] } });
+    }
+    calls++; return route.fulfill({ status: 429, headers: { "retry-after": "30" }, json: { detail: "rate limited" } });
+  });
   await page.goto("/bus/express");
   const searches = page.locator(".multi-search");
   await searches.nth(0).getByRole("checkbox", { name: /서울/ }).check();
@@ -64,7 +71,10 @@ test("버스는 명시 조회만 호출하고 429 이후 반복 버튼을 눌러
   await page.getByRole("button", { name: "운행편 조회", exact: true }).click();
   await expect(page.locator("p[role=alert]")).toContainText("제공기관 호출 보호");
   await page.getByRole("button", { name: "운행편 조회", exact: true }).click();
-  await expect(page.locator("p[role=alert]")).toContainText("다음 조회 가능 시각");
+  await expect(page.getByText("DB 저장 시간표입니다.", { exact: false })).toBeVisible();
+  await expect(page.getByText("35,000원", { exact: true })).toBeVisible();
+  await expect(page.locator("p[role=alert]")).not.toBeVisible();
+  expect(storedCalls).toBe(1);
   expect(calls).toBe(1);
 });
 
@@ -165,4 +175,15 @@ for (const type of ["express", "intercity"]) test(`한국 자정 이후 ${type} 
   await expect.poll(() => dates.at(-1)).toBe("2026-09-28");
   await expect(page.getByText("09:30", { exact: true })).toBeVisible();
   await expect(page.getByText("익일 09:30", { exact: true })).not.toBeVisible();
+});
+
+for (const status of ["upstream_error", "rate_limited", "config_error", "disabled"]) test(`항공편 ${status}를 정상 빈 시간표로 표시하지 않는다`, async ({ page }) => {
+  await page.route("**/transport/features/places?kind=airport**", (route) => route.fulfill({ json: { items: [{ id: 1, provider_id: "CJJ", kind: "airport", source: "airport", name: "청주공항", line_names: [], prices: [], facilities: [], longitude: null, latitude: null, updated_at: new Date().toISOString() }] } }));
+  await page.route("**/parking/current?**", (route) => route.fulfill({ json: { items: [] } }));
+  await page.route("**/flights/status?**", (route) => route.fulfill({ json: { status, error_message: "provider_failed", items: [] } }));
+  await page.goto("/flights");
+  await page.getByRole("checkbox", { name: /청주공항/ }).check();
+  await page.getByRole("button", { name: "오늘 출도착 조회" }).click();
+  await expect(page.locator("p[role=alert]")).toBeVisible();
+  await expect(page.getByText("조건에 맞는 등록 항공편이 없습니다.")).not.toBeVisible();
 });

@@ -33,7 +33,10 @@ export function TransportReferenceList({ kind }: { kind: "rail_station" | "ferry
       if (controller.signal.aborted) return;
       setError(""); setItems(payload.items); setMessage(payload.items.length ? "" : "아직 저장된 기준정보가 없습니다.");
       const port = new URLSearchParams(window.location.search).get("port");
-      if (!restoredPort.current && port && payload.items.some((item) => item.provider_id === port)) setSelectedIds([port]);
+      if (!restoredPort.current && port) {
+        if (payload.items.some((item) => item.provider_id === port)) setSelectedIds([port]);
+        else setError("링크의 항구 코드를 저장된 항구에서 찾을 수 없습니다. 항구를 다시 검색해 주세요.");
+      }
       restoredPort.current = true;
     }).catch(() => { if (!controller.signal.aborted) { setMessage(""); setError("기준정보를 불러오지 못했습니다. 다시 조회해 주세요."); } });
     return () => controller.abort();
@@ -41,6 +44,13 @@ export function TransportReferenceList({ kind }: { kind: "rail_station" | "ferry
 
   const keyOf = (place: Place) => rail ? String(place.id) : place.provider_id ?? String(place.id);
   const selected = items.filter((item) => selectedIds.includes(keyOf(item)));
+  const nameCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of items) counts.set(item.name, (counts.get(item.name) ?? 0) + 1);
+    return counts;
+  }, [items]);
+  const displayName = (item: Pick<Place, "name" | "provider_id">) => !rail && (nameCounts.get(item.name) ?? 0) > 1
+    ? `${item.name} · ${item.provider_id ?? "코드 미제공"} · 지역 미확인` : item.name;
   const selectedKey = selectedIds.join(",");
   useEffect(() => {
     if (rail || !selectedKey) {
@@ -61,7 +71,7 @@ export function TransportReferenceList({ kind }: { kind: "rail_station" | "ferry
   }, [rail, selectedKey, effectiveDate, reload]);
 
   const lines = useMemo(() => [...new Set(items.flatMap((item) => item.line_names))].sort(), [items]);
-  const filtered = useMemo(() => items.filter((item) => (!line || item.line_names.includes(line)) && query.trim().split(/\s+/).every((term) => [item.name, item.subtitle, item.address, ...item.line_names].join(" ").includes(term))), [items, query, line]);
+  const filtered = useMemo(() => items.filter((item) => (!line || item.line_names.includes(line)) && query.trim().split(/\s+/).every((term) => [item.name, item.provider_id, item.subtitle, item.address, ...item.line_names].join(" ").includes(term))), [items, query, line]);
   function toggle(id: string) {
     setSelectedIds((current) => current.includes(id) ? current.filter((value) => value !== id) : current.length < 5 ? [...current, id] : current);
     setActivePlace(selectedIds.includes(id) ? null : items.find((item) => keyOf(item) === id) ?? null);
@@ -78,20 +88,20 @@ export function TransportReferenceList({ kind }: { kind: "rail_station" | "ferry
     <div className="journey-layout">
       <div className="journey-search">
         <MultiSearch label={rail ? "역 또는 노선 검색" : "항구 검색"} query={query} onQuery={setQuery}
-          options={filtered.map((item) => ({ id: keyOf(item), name: item.name, description: item.line_names.join(" · ") || (hasCoordinates(item) ? "지도 위치 제공" : "좌표 미등록 · 운항 검색 가능") }))}
-          selected={selected.map((item) => ({ id: keyOf(item), name: item.name }))} onSelect={toggle} />
+          options={filtered.map((item) => ({ id: keyOf(item), name: displayName(item), description: item.line_names.join(" · ") || [item.provider_id ? `항구 코드 ${item.provider_id}` : null, hasCoordinates(item) ? "지도 위치 제공" : "좌표 미등록 · 운항 검색 가능"].filter(Boolean).join(" · ") }))}
+          selected={selected.map((item) => ({ id: keyOf(item), name: displayName(item) }))} onSelect={toggle} />
       </div>
       <div className="journey-inspector" aria-live="polite">
         {!selected.length ? <div className="empty-state"><h2>{rail ? "역·노선 비교" : "어디에서 출발하시나요?"}</h2><p>{rail ? "역을 선택하면 노선·주소·연락처를 비교할 수 있습니다." : "출발 항구를 최대 5곳 선택하세요. 선택 즉시 저장된 운항편을 비교합니다."}</p></div> : null}
         {!rail && selected.length ? <>
           <div className="journey-toolbar"><h2>{effectiveDate === today ? "오늘 운항" : `${effectiveDate} 운항`} 비교</h2><label>도착항·선박 검색<input type="search" value={routeQuery} onChange={(event) => setRouteQuery(event.target.value)} placeholder="예: 제주, 퀸" /></label></div>
           {loading ? <p role="status">저장된 운항 정보를 확인하는 중입니다…</p> : null}
-          {(stored?.service_date === effectiveDate ? stored.items : []).map((table) => <FerryDepartures key={table.port_id} timetable={table} query={routeQuery} name={items.find((item) => item.provider_id === table.port_id)?.name ?? table.port_id} />)}
-          {(stored?.service_date === effectiveDate ? stored.missing_port_ids : []).map((id) => <section className="empty-state" key={id}><h3>{items.find((item) => item.provider_id === id)?.name ?? id}</h3><p>이 날짜는 아직 수집 중입니다. 운항편이 없다는 뜻은 아닙니다. 정기 수집 후 저장 정보 새로고침으로 확인해 주세요.</p></section>)}
+          {(stored?.service_date === effectiveDate ? stored.items : []).map((table) => <FerryDepartures key={table.port_id} timetable={table} query={routeQuery} name={displayName(items.find((item) => item.provider_id === table.port_id) ?? { name: table.port_id, provider_id: table.port_id })} />)}
+          {(stored?.service_date === effectiveDate ? stored.missing_port_ids : []).map((id) => <section className="empty-state" key={id}><h3>{displayName(items.find((item) => item.provider_id === id) ?? { name: id, provider_id: id })}</h3><p>이 날짜는 아직 수집 중입니다. 운항편이 없다는 뜻은 아닙니다. 정기 수집 후 저장 정보 새로고침으로 확인해 주세요.</p></section>)}
         </> : null}
         {rail && selected.length ? <RailTimetables placeIds={selected.map((place) => place.id)} /> : null}
         {rail ? selected.map((place) => <section className="reference-detail" key={place.id}><PlaceDetails place={place} showRailTimetable={false} /></section>) : null}
-        {activePlace && !rail ? <details><summary>{activePlace.name} 항구 상세</summary><PlaceDetails place={activePlace} /></details> : null}
+        {activePlace && !rail ? <details><summary>{displayName(activePlace)} 항구 상세</summary><PlaceDetails place={activePlace} /></details> : null}
       </div>
       <div className="journey-map"><TransportMap places={mapItems} selectedPlace={activePlace} onSelectPlace={(place) => { setActivePlace(place); if (!selectedIds.includes(keyOf(place)) && selectedIds.length < 5) setSelectedIds((current) => [...current, keyOf(place)]); }} />
         <p className="quiet">좌표가 없는 장소는 검색·선택 목록에 계속 표시됩니다. {stored?.items.length ? `저장본 최근 확인 ${dateTime(stored.items[0].fetched_at)}` : ""}</p>

@@ -376,6 +376,39 @@ def test_ferry_timetable_collection_resumes_after_provider_call_budget(tmp_path:
     asyncio.run(run())
 
 
+def test_ferry_budget_fills_every_port_today_before_future_days(tmp_path: Path) -> None:
+    calls = []
+    class FakeClient:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_args): pass
+        async def get_domestic_ship_operations(self, **kwargs):
+            calls.append((kwargs["departure_port_id"], kwargs["departure_date"]))
+            return ()
+    settings = _settings(tmp_path, ferry_timetable_collection_enabled=True,
+        ferry_timetable_storage_days=2, ferry_timetable_collection_max_provider_calls=1,
+        data_go_kr_service_key="test-key")
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+    async def run():
+        await init_database(engine)
+        now = now_utc()
+        today = to_seoul(now).date()
+        async with factory() as session:
+            for port_id in ["P001", "P999"]:
+                session.add(FerryPort(source="data_go_kr_maritime", port_id=port_id,
+                    port_name=port_id, first_seen_at=now, last_seen_at=now))
+            await session.commit()
+        service = RailMaritimeCollectionService(settings, maritime_client_factory=lambda *_args, **_kwargs: FakeClient())
+        for remaining in [3, 2, 1, 0]:
+            async with factory() as session:
+                result = await service.collect_ferry_timetables(session)
+                assert result["provider_calls"] == 1
+                assert result["deferred_snapshot_count"] == remaining
+        assert calls == [("P001", today), ("P999", today),
+            ("P001", today + timedelta(days=1)), ("P999", today + timedelta(days=1))]
+        await engine.dispose()
+    asyncio.run(run())
+
+
 def test_ferry_timetable_default_budget_includes_interval_and_timeout() -> None:
     settings = Settings()
 

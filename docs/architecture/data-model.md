@@ -2,6 +2,25 @@
 
 ## 핵심 테이블
 
+### 버스 시간표 저장본 (`0016_bus_timetable_snapshots`)
+
+`bus_timetable_snapshots`는 TAGO의 정상 시간표 응답을 JSONB로 보관한다. 기본 키는
+`(service_type, departure_terminal_id, arrival_terminal_id, service_date, bus_grade_id)`다.
+등급 전체 조회는 NULL 대신 빈 문자열로 정규화해 PostgreSQL 중복 키 문제를 막는다.
+응답 확인 시각은 `TIMESTAMPTZ`, 운행일은 한국 날짜 기준 `DATE`다. `service_date` 인덱스를 둔다.
+동일 키의 오래된 응답이 늦게 도착해 최신 저장본을 덮어쓰지 못하도록 upsert 시각을 비교한다.
+
+정상 빈 응답과 일부 결과의 `total/truncated`도 보존하지만 오류 응답은 저장하지 않는다.
+조회는 10일 범위이며 시외버스는 오늘만 허용한다. DB 저장본을 키 설정·제공자 호출 보호보다
+먼저 읽는다. 유효시간이 지난 저장본은 `stale=true`와 원래 `fetched_at`을 유지하고,
+`refresh_status`로 저장 전용·호출 보호·설정 누락·갱신 오류를 구분한다.
+`stored_only=true`는 누락 시 404이며 어떤 경우에도 외부 API를 호출하지 않는다.
+기존 in-memory 호출 보호가 영속화되거나 다중 프로세스에서 공유되는 것은 아니다.
+이 migration은 기존 테이블을 변경하지 않는 추가 전용이다. 운영 되돌림은 아래 검증 기록의
+스키마 호환 후보를 준비해야 하며, 이전 이미지로 단순 교체하거나 새 저장본을 삭제하지 않는다.
+
+[PR #52 후속 검증·배포 조건](../runbooks/pr52-journey-fixes.md).
+
 운영 DB는 PostgreSQL 16이며 모든 이벤트 시각은 timezone-aware UTC `TIMESTAMPTZ`로
 저장한다. Alembic의 `0001_initial`이 기준 스키마이고, 테스트와 legacy import에서만
 SQLite dialect를 허용한다.

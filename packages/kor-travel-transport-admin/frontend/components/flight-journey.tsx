@@ -31,10 +31,14 @@ export function FlightJourney() {
   async function load() {
     if (!selected?.provider_id) return;
     request.current?.abort(); const controller = new AbortController(); request.current = controller;
-    setLoading(true); setError("");
+    setLoading(true); setError(""); setFlights(null);
     try {
       const data = await transportGet<{ items: Flight[]; status: string; error_message: string | null }>(`flights/status?airport_code=${encodeURIComponent(selected.provider_id)}&local_date=${seoulDate()}`, controller.signal);
-      if (!controller.signal.aborted) { setFlights(data.items); if (data.error_message) setError("제공기관의 항공편 조회가 지연되거나 일부 자료가 없습니다. 잠시 후 다시 조회해 주세요."); }
+      if (!controller.signal.aborted) {
+        if (!["success", "sample"].includes(data.status) || data.error_message) {
+          setError(({ disabled: "항공편 조회가 비활성화되어 있습니다.", config_error: "항공편 조회 설정을 확인해야 합니다.", rate_limited: "제공기관 호출 제한으로 조회를 보류했습니다.", upstream_error: "제공기관의 항공편 정보를 확인하지 못했습니다." } as Record<string, string>)[data.status] ?? "항공편 응답 상태를 확인하지 못했습니다.");
+        } else setFlights(data.items);
+      }
     } catch { if (!controller.signal.aborted) setError("항공편 정보를 불러오지 못했습니다."); }
     finally { if (!controller.signal.aborted) setLoading(false); }
   }

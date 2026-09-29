@@ -242,8 +242,10 @@ class RailMaritimeCollectionService:
         last_call_at = None
         budget_exhausted = False
         async with self._maritime_client_factory(key, timeout=self.settings.api_timeout_seconds) as client:
-            for port in ports:
-                for service_date in service_dates:
+            # 모든 항구의 오늘 누락분을 먼저 채운 뒤 내일 이후를 보충한다.
+            # 항구 하나의 10일치를 먼저 채우면 호출 예산 뒤쪽 항구가 계속 밀린다.
+            for service_date in service_dates:
+                for port in ports:
                     snapshot = by_port_date.get((port.source, port.port_id, service_date))
                     is_today_snapshot = snapshot is not None and service_date == today
                     snapshot_collected_at = (

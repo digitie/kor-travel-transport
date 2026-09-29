@@ -2,7 +2,7 @@
 
 import { ClusterLayer, ClusterMarker, Marker, VWorldMapView } from "vworld-map-web";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { clusterAtScale, hasCoordinates, transportGet, type Place, type PlaceKind } from "@/lib/journey";
+import { clusterAtScale, hasCoordinates, hasFuelPrice, transportGet, type Place, type PlaceKind } from "@/lib/journey";
 import { collectionSourceLabel, fuelProductLabel, placeKindLabel } from "@/lib/transport-presentation";
 import { MAP_FALLBACK_IMAGE } from "@/lib/map-fallback";
 import { PlaceIcon, ViewSwitch } from "./journey-controls";
@@ -18,13 +18,13 @@ type MapPoint = { id: string; lngLat: [number, number]; place: Place };
 type Bounds = { getWest: () => number; getSouth: () => number; getEast: () => number; getNorth: () => number };
 type Viewport = { min_longitude: string; min_latitude: string; max_longitude: string; max_latitude: string };
 type PlaceResponse = { items: Place[]; total: number; truncated: boolean; available_sources?: string[] };
-const KINDS: PlaceKind[] = ["fuel_station", "rail_station", "ferry_port", "airport", "rest_area"];
+const KINDS: PlaceKind[] = ["fuel_station", "rail_station", "ferry_port", "airport", "rest_area", "highway_incident"];
 const DEFAULT_VIEWPORT: Viewport = { min_longitude: "124", min_latitude: "32", max_longitude: "132", max_latitude: "39" };
 const keyOf = (place: Place) => `${place.kind}:${place.id}`;
 
 function MapMarker({ point, onSelect, selected, products }: { point: MapPoint; onSelect: (place: Place) => void; selected: boolean; products: string[] }) {
   const place = point.place;
-  const prices = (place.prices ?? []).filter((row) => row.price != null && (!products.length || products.includes(row.product_code)));
+  const prices = (place.prices ?? []).filter((row) => hasFuelPrice(row) && (!products.length || products.includes(row.product_code)));
   const props = { ariaLabel: `${placeKindLabel(place.kind)} ${place.name} ${place.line_names.join(" · ")} 상세 보기`, interactionId: point.id, lngLat: point.lngLat, onClick: () => onSelect(place), selected, className: `transport-map-marker ${place.kind}` };
   return <Marker {...props}><span className={`journey-marker compact-marker ${place.kind}`} title={`${place.name}${place.brand_name ? ` · ${place.brand_name}` : ""}`}><PlaceIcon kind={place.kind} />{place.kind === "fuel_station" && prices.length ? <span className="marker-prices">{prices.map((row) => <span key={row.product_code}><span>{fuelProductLabel(row.product_code)}</span><strong>{row.price?.toLocaleString("ko-KR")}</strong></span>)}</span> : <strong>{[place.name, place.kind === "rail_station" ? place.line_names.join("·") : null].filter(Boolean).join(" ")}</strong>}</span></Marker>;
 }
@@ -61,7 +61,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
   const perKindLimit = Math.min(300, Math.floor(900 / Math.max(1, kinds.length)));
   const sources = useMemo(() => [...new Set([...knownSources, ...(places ?? []).map((item) => item.source)])], [places, knownSources]);
   const all = useMemo(() => places ?? kinds.flatMap((kind) => loaded[kind]?.items ?? []), [places, kinds, loaded]);
-  const items = useMemo(() => all.filter((item) => (!selectedSources.length || selectedSources.includes(item.source)) && (!embedded || !query || [item.name, item.brand_name, item.address, item.subtitle, item.provider_id, ...item.line_names].join(" ").toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) && (!products.length || item.kind !== "fuel_station" || item.prices?.some((row) => products.includes(row.product_code)))), [all, embedded, selectedSources, query, products]);
+  const items = useMemo(() => all.filter((item) => (!selectedSources.length || selectedSources.includes(item.source)) && (!embedded || !query || [item.name, item.brand_name, item.address, item.subtitle, item.provider_id, ...item.line_names].join(" ").toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) && (!products.length || item.kind !== "fuel_station" || item.prices?.some((row) => hasFuelPrice(row) && products.includes(row.product_code)))), [all, embedded, selectedSources, query, products]);
   const points = useMemo<MapPoint[]>(() => items.filter(hasCoordinates).map((place) => ({ id: keyOf(place), lngLat: [place.longitude, place.latitude], place })), [items]);
   const visiblePoints = points.filter((point) =>
     point.lngLat[0] >= Number(viewport.min_longitude) && point.lngLat[0] <= Number(viewport.max_longitude)
@@ -153,6 +153,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
     <div className="map-feedback" role="status">
       {pending.length ? <span>{pending.map(placeKindLabel).join("·")} 조회 중… </span> : null}
       <span>{items.length}곳 표시 · {cluster ? "축척·화면 밀도에 따라 묶음 표시" : "가까운 장소만 묶음 표시"}</span>
+      {!embedded && kinds.includes("highway_incident") ? <p>도로 돌발은 최근 24시간의 최신 저장 관측입니다. 현재 통제 여부는 상세의 처리 상태와 관측 시각을 확인해 주세요.</p> : null}
       {truncated.length ? <p>{truncated.join("·")} 일부를 표시합니다(종류별 최대 {perKindLimit}곳). 확대해 주세요. 묶음 수는 현재 불러온 장소 수입니다.</p> : null}
       {failed.length ? <p className="error">{failed.map(placeKindLabel).join("·")} 조회 실패 <Button variant="outline" type="button" onClick={() => setReload((value) => value + 1)}>다시 조회</Button></p> : null}
       {mapError ? <p className="error">{mapError}</p> : null}

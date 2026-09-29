@@ -347,6 +347,23 @@
             "title": "Items",
             "type": "array"
           },
+          "refresh_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "stored_only",
+                  "rate_limited",
+                  "not_configured",
+                  "upstream_error"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refresh Status"
+          },
           "service_date": {
             "format": "date",
             "title": "Service Date",
@@ -359,6 +376,16 @@
             ],
             "title": "Service Type",
             "type": "string"
+          },
+          "stale": {
+            "default": false,
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "stored": {
+            "default": false,
+            "title": "Stored",
+            "type": "boolean"
           },
           "total": {
             "anyOf": [
@@ -933,6 +960,17 @@
           "port_id": {
             "title": "Port Id",
             "type": "string"
+          },
+          "port_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port Name"
           },
           "service_date": {
             "format": "date",
@@ -3856,7 +3894,8 @@
               "rail_station",
               "ferry_port",
               "airport",
-              "rest_area"
+              "rest_area",
+              "highway_incident"
             ],
             "title": "Kind",
             "type": "string"
@@ -6028,7 +6067,7 @@
     },
     "/v1/transport/bus/timetable": {
       "get": {
-        "description": "저장하지 않는 실시간 TAGO 시간표. 같은 요청은 짧게 cache한다.",
+        "description": "정상 응답을 DB에 저장하고 호출 보호 중에도 저장본을 제공한다.",
         "operationId": "transport_bus_timetable_v1_transport_bus_timetable_get",
         "parameters": [
           {
@@ -6091,6 +6130,18 @@
                 }
               ],
               "title": "Bus Grade Id"
+            }
+          },
+          {
+            "description": "저장본만 조회하고 제공기관을 호출하지 않음",
+            "in": "query",
+            "name": "stored_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "저장본만 조회하고 제공기관을 호출하지 않음",
+              "title": "Stored Only",
+              "type": "boolean"
             }
           }
         ],
@@ -6203,7 +6254,7 @@
         "operationId": "transport_place_features_v1_transport_features_places_get",
         "parameters": [
           {
-            "description": "fuel_station, rail_station, ferry_port, airport, rest_area 중 하나",
+            "description": "fuel_station, rail_station, ferry_port, airport, rest_area, highway_incident 중 하나. 돌발은 최근 24시간 최신 저장 관측",
             "in": "query",
             "name": "kind",
             "required": false,
@@ -6216,7 +6267,7 @@
                   "type": "null"
                 }
               ],
-              "description": "fuel_station, rail_station, ferry_port, airport, rest_area 중 하나",
+              "description": "fuel_station, rail_station, ferry_port, airport, rest_area, highway_incident 중 하나. 돌발은 최근 24시간 최신 저장 관측",
               "title": "Kind"
             }
           },

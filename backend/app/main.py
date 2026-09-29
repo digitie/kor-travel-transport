@@ -119,6 +119,7 @@ from app.services.analytics import (
     detect_threshold_events,
 )
 from app.services.provider_status import provider_status
+from app.services.bus_timetable_storage import save_bus_timetable, stored_bus_timetable
 from app.services.rail_timetable import stored_rail_timetables
 from app.services.analytics_cache import (
     DEFAULT_THRESHOLD_EVENTS_DAYS,
@@ -899,7 +900,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @router.get("/transport/features/places", response_model=TransportPlaceMapResponse)
     async def transport_place_features(
-        kind: str | None = Query(default=None, description="fuel_station, rail_station, ferry_port, airport, rest_area 중 하나"),
+        kind: str | None = Query(default=None, description="fuel_station, rail_station, ferry_port, airport, rest_area, highway_incident 중 하나. 돌발은 최근 24시간 최신 저장 관측"),
         limit: int = Query(default=1000, ge=1, le=5000),
         include_unlocated: bool = Query(default=False, description="좌표 없는 기준정보도 검색 목록에 포함"),
         source: str | None = Query(default=None, max_length=80),
@@ -915,7 +916,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> TransportPlaceMapResponse:
         """저장된 장소만 지도 marker 계약으로 반환한다. provider 원문이나 비밀값은 노출하지 않는다."""
         selected_kind = kind.strip() if kind else None
-        supported = {"fuel_station", "rail_station", "ferry_port", "airport", "rest_area"}
+        supported = {"fuel_station", "rail_station", "ferry_port", "airport", "rest_area", "highway_incident"}
         def filter_values(single: str | None, multiple: str | None, maximum: int, length: int) -> list[str]:
             if multiple is None:
                 return [single] if single else []
@@ -952,10 +953,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     RailStationReference: [RailStationReference.station_name, RailStationReference.operating_line_name, RailStationReference.road_address],
                     FerryPort: [FerryPort.port_name, FerryPort.port_id],
                     RestAreaReference: [RestAreaReference.name, RestAreaReference.route_name],
+                    HighwayIncidentSnapshot: [HighwayIncidentSnapshot.point_name, HighwayIncidentSnapshot.route_no, HighwayIncidentSnapshot.route_name, HighwayIncidentSnapshot.message],
                 }[model]
                 conditions.append(or_(*(field.icontains(query.strip(), autoescape=True) for field in fields)))
             if model is FuelStation and selected_products:
-                conditions.append(select(FuelPriceSnapshot.id).where(FuelPriceSnapshot.fuel_station_id == FuelStation.id, FuelPriceSnapshot.product_code.in_(selected_products)).exists())
+                # 유종 행은 가격 미제공(NULL)도 저장된다. 과거 가격 존재가 아니라
+                # 상세 응답과 동일한 최신 행을 기준으로 실제 판매 가격을 확인한다.
+                conditions.append(or_(*(
+                    select(FuelPriceSnapshot.price).where(
+                        FuelPriceSnapshot.fuel_station_id == FuelStation.id,
+                        FuelPriceSnapshot.product_code == code,
+                    ).order_by(FuelPriceSnapshot.collected_at.desc(), FuelPriceSnapshot.id.desc())
+                    .limit(1).correlate(FuelStation).scalar_subquery() > 0
+                    for code in selected_products
+                )))
             if min_longitude is not None:
                 conditions.extend((
                     model.longitude >= min_longitude,
@@ -1043,6 +1054,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     line_names=[row.route_name] if row.route_name else [], phone=row.phone_number,
                     facilities=[label for field, label in (("has_gas_station", "주유소"), ("has_lpg_station", "LPG 충전"), ("has_ev_charger", "전기차 충전")) if getattr(row, field) is True],
                     updated_at=serialize_utc(row.last_seen_at)))
+        if selected_kind in (None, "highway_incident"):
+            observed_until = now_utc()
+            ranked_incidents = select(
+                HighwayIncidentSnapshot.id.label("id"),
+                func.row_number().over(
+                    partition_by=(HighwayIncidentSnapshot.source, HighwayIncidentSnapshot.identity_key),
+                    order_by=(HighwayIncidentSnapshot.observed_at.desc(), HighwayIncidentSnapshot.collected_at.desc(), HighwayIncidentSnapshot.id.desc()),
+                ).label("rank"),
+            ).where(HighwayIncidentSnapshot.observed_at.between(observed_until - timedelta(days=1), observed_until)).subquery()
+            conditions = [ranked_incidents.c.rank == 1, *coordinate_conditions(HighwayIncidentSnapshot)]
+            latest_incidents = select(HighwayIncidentSnapshot).join(ranked_incidents, HighwayIncidentSnapshot.id == ranked_incidents.c.id).where(*conditions)
+            total += int(await session.scalar(select(func.count()).select_from(latest_incidents.subquery())) or 0)
+            rows = (await session.scalars(latest_incidents.order_by(HighwayIncidentSnapshot.observed_at.desc(), HighwayIncidentSnapshot.id.desc()).limit(per_kind_limit))).all()
+            for row in rows:
+                route = " · ".join(value for value in [row.route_no, row.route_name] if value)
+                items.append(TransportPlaceMapItem(
+                    id=row.id, kind="highway_incident", source=row.source, provider_id=row.identity_key,
+                    name=row.point_name or row.incident_type or "도로 돌발", longitude=row.longitude, latitude=row.latitude,
+                    line_names=[route] if route else [],
+                    subtitle=" · ".join(value for value in [row.incident_type, row.process_status, row.direction] if value),
+                    address=row.message, updated_at=serialize_utc(row.observed_at),
+                ))
         if selected_kind in (None, "airport"):
             airports = (await session.scalars(select(Airport).order_by(Airport.code))).all()
             airport_items = []
@@ -1064,7 +1097,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             total += len(airport_items)
             items.extend(airport_items[:per_kind_limit])
         visible_items = items[:limit]
-        source_models = {"fuel_station": FuelStation, "rail_station": RailStationReference, "ferry_port": FerryPort, "airport": Airport, "rest_area": RestAreaReference}
+        source_models = {"fuel_station": FuelStation, "rail_station": RailStationReference, "ferry_port": FerryPort, "airport": Airport, "rest_area": RestAreaReference, "highway_incident": HighwayIncidentSnapshot}
         available_sources: set[str] = set()
         for requested_kind in requested_kinds:
             available_sources.update((await session.scalars(select(source_models[requested_kind].source).distinct())).all())
@@ -1125,11 +1158,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ports = (await session.scalars(select(FerryPort).where(FerryPort.port_id.in_(ids)))).all()
         if set(ids) - {port.port_id for port in ports}:
             raise HTTPException(status_code=404, detail="저장되지 않은 항구가 포함되어 있습니다.")
+        port_names = {(port.source, port.port_id): port.port_name for port in ports}
         rows = (await session.scalars(select(FerryTimetableSnapshot).join(FerryPort,
             (FerryPort.port_id == FerryTimetableSnapshot.departure_port_id) & (FerryPort.source == FerryTimetableSnapshot.source))
             .where(FerryPort.port_id.in_(ids), FerryTimetableSnapshot.service_date == service_date))).all()
         return FerryStoredTimetableResponse(service_date=service_date,
             items=[FerryOperationResponse(port_id=row.departure_port_id, service_date=row.service_date,
+                port_name=port_names[(row.source, row.departure_port_id)],
                 fetched_at=serialize_utc(row.collected_at), items=[FerryOperationItem.model_validate(item) for item in row.items_json]) for row in rows],
             missing_port_ids=[port_id for port_id in ids if port_id not in {row.departure_port_id for row in rows}])
 
@@ -1167,6 +1202,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             return FerryOperationResponse(
                 port_id=port_id,
+                port_name=port.port_name,
                 service_date=service_date,
                 fetched_at=collected_at,
                 items=[FerryOperationItem.model_validate(item) for item in row.items_json],
@@ -1238,6 +1274,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ) from exc
             response = FerryOperationResponse(
                 port_id=port_id, service_date=service_date, fetched_at=now_utc(),
+                port_name=port.port_name,
                 items=[FerryOperationItem(vessel_name=item.vessel_name, departure_port_name=item.departure_port_name, arrival_port_name=item.arrival_port_name, departure_planned_time=item.departure_planned_time, arrival_planned_time=item.arrival_planned_time, fare=item.fare) for item in operations],
             )
             try:
@@ -1327,17 +1364,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         arrival_terminal_id: str = Query(min_length=1, max_length=120),
         service_date: date = Query(default_factory=lambda: to_seoul(now_utc()).date(), alias="date"),
         bus_grade_id: str | None = Query(default=None, max_length=40),
+        stored_only: bool = Query(default=False, description="저장본만 조회하고 제공기관을 호출하지 않음"),
         session: AsyncSession = Depends(get_db),
     ) -> BusTimetableResponse:
-        """저장하지 않는 실시간 TAGO 시간표. 같은 요청은 짧게 cache한다."""
+        """정상 응답을 DB에 저장하고 호출 보호 중에도 저장본을 제공한다."""
         settings: Settings = request.app.state.settings
         if departure_terminal_id == arrival_terminal_id:
             raise HTTPException(status_code=422, detail="출발과 도착 터미널은 달라야 합니다.")
         today = to_seoul(now_utc()).date()
         if service_type == "intercity" and service_date != today:
             raise HTTPException(status_code=422, detail="시외버스 시간표는 오늘(Asia/Seoul)만 제공합니다.")
-        if not settings.data_go_kr_service_key:
-            raise HTTPException(status_code=503, detail="TAGO 버스 provider가 설정되지 않았습니다.")
+        if not today <= service_date <= today + timedelta(days=9):
+            raise HTTPException(status_code=422, detail="버스 운행일은 오늘부터 10일 범위 안에서 선택해 주세요.")
+        if bus_grade_id is not None and not bus_grade_id.strip():
+            raise HTTPException(status_code=422, detail="버스 등급을 비워서 전달하지 마세요. 전체 등급은 조건을 생략해 주세요.")
         terminals = (
             await session.execute(
                 select(BusTerminalReference.terminal_id).where(
@@ -1352,6 +1392,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if service_type == "intercity" and bus_grade_id is not None:
             raise HTTPException(status_code=422, detail="시외버스 시간표는 등급 필터를 지원하지 않습니다.")
         cache_key = (service_type, departure_terminal_id, arrival_terminal_id, service_date, bus_grade_id)
+        saved = await stored_bus_timetable(session, cache_key)
+        await session.rollback()  # provider/lock 대기 동안 DB 연결을 붙잡지 않는다.
+        if saved is not None:
+            saved = saved.model_copy(update={"stored": True, "stale": now_utc() - saved.fetched_at >= timedelta(seconds=settings.bus_timetable_cache_seconds)})
+            if stored_only or not saved.stale:
+                return saved.model_copy(update={"refresh_status": "stored_only" if stored_only else None})
+        if stored_only:
+            raise HTTPException(status_code=404, detail="이 노선·운행일의 시간표가 아직 저장되지 않았습니다. 운행편이 없다는 뜻은 아닙니다.")
+        if not settings.data_go_kr_service_key:
+            if saved is not None:
+                return saved.model_copy(update={"refresh_status": "not_configured"})
+            raise HTTPException(status_code=503, detail="TAGO 버스 provider가 설정되지 않았습니다.")
         timetable_cache = request.app.state.bus_timetable_cache
 
         def cached_response() -> BusTimetableResponse | None:
@@ -1371,6 +1423,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return cached
         rate_limited_until: datetime | None = request.app.state.bus_timetable_rate_limited_until
         if rate_limited_until is not None and now_utc() < rate_limited_until:
+            if saved is not None:
+                return saved.model_copy(update={"refresh_status": "rate_limited"})
             retry_after_seconds = max(1, int((rate_limited_until - now_utc()).total_seconds()))
             raise HTTPException(
                 status_code=429,
@@ -1383,6 +1437,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return cached
             rate_limited_until = request.app.state.bus_timetable_rate_limited_until
             if rate_limited_until is not None and now_utc() < rate_limited_until:
+                if saved is not None:
+                    return saved.model_copy(update={"refresh_status": "rate_limited"})
                 retry_after_seconds = max(1, int((rate_limited_until - now_utc()).total_seconds()))
                 raise HTTPException(
                     status_code=429,
@@ -1393,6 +1449,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if last_call is not None:
                 remaining = settings.bus_timetable_min_interval_seconds - (now_utc() - last_call).total_seconds()
                 if remaining > 0:
+                    if saved is not None:
+                        return saved.model_copy(update={"refresh_status": "rate_limited"})
                     raise HTTPException(
                         status_code=429,
                         detail="TAGO 시간표 provider 보호 간격이 적용 중입니다.",
@@ -1415,6 +1473,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if exc.code == "22":
                     blocked_until = now_utc() + timedelta(seconds=settings.upstream_rate_limit_backoff_seconds)
                     request.app.state.bus_timetable_rate_limited_until = blocked_until
+                    if saved is not None:
+                        return saved.model_copy(update={"refresh_status": "rate_limited"})
                     retry_after_seconds = max(1, int((blocked_until - now_utc()).total_seconds()))
                     raise HTTPException(
                         status_code=429,
@@ -1422,13 +1482,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         headers={"Retry-After": str(retry_after_seconds)},
                     ) from exc
                 logger.warning("TAGO timetable provider returned API error: %s", exc.code)
+                if saved is not None:
+                    return saved.model_copy(update={"refresh_status": "upstream_error"})
                 raise HTTPException(status_code=502, detail="TAGO 시간표 provider 조회에 실패했습니다.") from exc
             except Exception as exc:
                 logger.warning("TAGO timetable provider failed: %s", type(exc).__name__)
+                if saved is not None:
+                    return saved.model_copy(update={"refresh_status": "upstream_error"})
                 raise HTTPException(status_code=502, detail="TAGO 시간표 provider 조회에 실패했습니다.") from exc
             response = BusTimetableResponse(
                 service_type=service_type, departure_terminal_id=departure_terminal_id,
                 arrival_terminal_id=arrival_terminal_id, service_date=service_date, fetched_at=now_utc(),
+                stored=True,
                 total=getattr(page, "total_count", None),
                 truncated=(getattr(page, "total_count", None) or 0) > len(page.items) or (getattr(page, "total_count", None) is None and len(page.items) >= 100),
                 items=[
@@ -1442,6 +1507,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     for item in page.items
                 ],
             )
+            await save_bus_timetable(session, response, bus_grade_id)
             timetable_cache[cache_key] = (now_utc(), response)
             timetable_cache.move_to_end(cache_key)
             while len(timetable_cache) > settings.bus_timetable_cache_max_entries:

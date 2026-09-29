@@ -117,6 +117,43 @@ async def replace_default_timeseries_cache(client: TestClient) -> None:
         await session.commit()
 
 
+def test_map_fuel_filter_requires_latest_positive_price(client) -> None:
+    async def seed() -> None:
+        now = now_utc()
+        async with client.app.state.session_factory() as session:
+            for index, (name, latest) in enumerate([
+                ("고급유 판매", 2000), ("고급유 미제공", None), ("고급유 0", 0),
+                ("같은 수집시각 최신 미제공", None),
+            ]):
+                station = FuelStation(source="opinet", identity_key=f"premium-{index}", name=name,
+                    query_level="sigungu", source_kinds=[], longitude=127, latitude=37,
+                    sido_value="11", sido_name="서울", sigungu_value="110", sigungu_name="테스트",
+                    first_seen_at=now, last_seen_at=now)
+                session.add(station)
+                await session.flush()
+                # 과거 판매 이력이나 NULL인 유종 row만으로는 필터에 포함하면 안 된다.
+                session.add(FuelPriceSnapshot(fuel_station_id=station.id, source="opinet",
+                    product_code="B034", price=1900, observed_at=now - timedelta(days=1),
+                    collected_at=now if index == 3 else now - timedelta(days=1)))
+                await session.flush()
+                session.add(FuelPriceSnapshot(fuel_station_id=station.id, source="opinet",
+                    product_code="B034", price=latest, observed_at=now, collected_at=now))
+                session.add(FuelPriceSnapshot(fuel_station_id=station.id, source="opinet",
+                    product_code="D047", price=1600, observed_at=now, collected_at=now))
+            await session.commit()
+    asyncio.run(seed())
+    path = "/v1/transport/features/places"
+    for key in ["product_code", "product_codes"]:
+        result = client.get(path, params={"kind": "fuel_station", key: "B034", "limit": 1}).json()
+        assert result["total"] == 1
+        assert result["truncated"] is False
+        assert result["items"][0]["name"] == "고급유 판매"
+        assert len(result["items"][0]["prices"]) == 2
+    assert client.get(path, params={"kind": "fuel_station", "product_codes": "B034,D047"}).json()["total"] == 4
+    assert client.get(path, params={"kind": "fuel_station", "product_codes": "B034,K015"}).json()["total"] == 1
+    assert client.get(path, params={"kind": "fuel_station"}).json()["total"] == 4
+
+
 def test_health(client) -> None:
     response = client.get("/health")
     assert response.status_code == 200

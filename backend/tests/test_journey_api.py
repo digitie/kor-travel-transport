@@ -5,7 +5,45 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from app.core.time_utils import now_utc, to_seoul
-from app.models import CollectionRun, FerryPort, FerryTimetableSnapshot, TransportCollectionState
+from app.models import CollectionRun, FerryPort, FerryTimetableSnapshot, HighwayIncidentSnapshot, RestAreaReference, TransportCollectionState
+
+
+def test_map_incidents_use_latest_saved_observation_and_rest_areas_remain_visible(client):
+    async def seed():
+        now = now_utc()
+        async with client.app.state.session_factory() as session:
+            for identity, hours, longitude, status in [
+                ("same", 2, 127, "처리중"), ("same", 1, 127.1, "처리완료"),
+                ("old", 25, 127, "처리중"), ("unlocated", 1, None, "처리중"),
+                ("moved", 2, 127, "처리중"), ("moved", 1, 129, "처리중"),
+            ]:
+                session.add(HighwayIncidentSnapshot(source="krex_traffic_incident", identity_key=identity,
+                    observed_at=now - timedelta(hours=hours), collected_at=now,
+                    route_no="0010", route_name="경부고속도로", point_name=identity,
+                    incident_type="사고", process_status=status, message="차로 통제 정보",
+                    longitude=longitude, latitude=37 if longitude is not None else None))
+            session.add(RestAreaReference(source="krex_rest_area", identity_key="rest-one", name="시험휴게소",
+                route_name="경부고속도로", longitude=127, latitude=37, first_seen_at=now, last_seen_at=now))
+            await session.commit()
+    asyncio.run(seed())
+    path = "/v1/transport/features/places"
+    response = client.get(path, params={"kind": "highway_incident"})
+    assert response.status_code == 200
+    assert response.json()["total"] == 2
+    assert {r["provider_id"] for r in response.json()["items"]} == {"same", "moved"}
+    row = next(r for r in response.json()["items"] if r["provider_id"] == "same")
+    assert row["line_names"] == ["0010 · 경부고속도로"]
+    assert row["subtitle"] == "사고 · 처리완료"
+    assert row["address"] == "차로 통제 정보"
+    bounded = client.get(path, params={"kind": "highway_incident", "min_longitude": 126,
+        "max_longitude": 128, "min_latitude": 36, "max_latitude": 38, "product_codes": "B034"}).json()
+    assert bounded["total"] == 1  # 범위 안의 오래된 moved 행을 되살리지 않는다.
+    assert client.get(path, params={"kind": "highway_incident", "include_unlocated": True}).json()["total"] == 3
+    assert client.get(path, params={"kind": "highway_incident", "query": "0010", "limit": 1}).json()["truncated"] is True
+    assert client.get(path, params={"kind": "highway_incident", "sources": "absent"}).json()["total"] == 0
+    rest = client.get(path, params={"kind": "rest_area", "query": "경부"}).json()
+    assert rest["total"] == 1
+    assert rest["items"][0]["name"] == "시험휴게소"
 
 
 @pytest.mark.parametrize("params", [
@@ -93,6 +131,38 @@ def test_provider_status_does_not_confuse_enabled_or_shared_job_with_success(cli
     assert rows["krex_traffic_incident"]["status"] == "failed"
     assert "test-key" not in response.text
     assert "secret-provider-key" not in response.text
+
+
+def test_same_name_ferry_ports_keep_distinct_codes_and_timetables(client):
+    today = to_seoul(now_utc()).date()
+
+    async def seed():
+        now = now_utc()
+        async with client.app.state.session_factory() as session:
+            for code, vessel in [("SEA10070", "첫째호"), ("SEA96540", "둘째호")]:
+                session.add(FerryPort(source="data_go_kr_maritime", port_id=code,
+                    port_name="육도", first_seen_at=now, last_seen_at=now))
+                session.add(FerryTimetableSnapshot(source="data_go_kr_maritime",
+                    departure_port_id=code, service_date=today, collected_at=now,
+                    items_json=[{"vessel_name": vessel, "departure_port_name": "육도"}]))
+            await session.commit()
+
+    asyncio.run(seed())
+    with patch("app.main.DataGoKrMaritimeClient", side_effect=AssertionError("외부 호출 금지")):
+        places = client.get("/v1/transport/features/places", params={
+            "kind": "ferry_port", "include_unlocated": True, "query": "육도"}).json()
+        assert {row["provider_id"] for row in places["items"]} == {"SEA10070", "SEA96540"}
+        for code, vessel in [("SEA10070", "첫째호"), ("SEA96540", "둘째호")]:
+            for path, params in [
+                ("/v1/transport/ports/timetables", {"port_ids": code}),
+                (f"/v1/transport/ports/{code}/timetable", {}),
+            ]:
+                response = client.get(path, params=params)
+                assert response.status_code == 200
+                row = response.json()["items"][0] if "port_ids" in params else response.json()
+                assert (row["port_id"], row["port_name"]) == (code, "육도")
+                assert row["items"][0]["vessel_name"] == vessel
+        assert client.get("/v1/transport/ports/timetables?port_ids=육도").status_code == 404
 
 
 def test_place_sources_survive_response_limit_and_empty_bounds(client):

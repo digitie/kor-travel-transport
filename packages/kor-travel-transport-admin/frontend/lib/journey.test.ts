@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { clusterAtScale, dateTime, hasCoordinates, money, seoulDate, serviceTime, transportGet, type Place } from "./journey";
+import { clusterAtScale, dateTime, hasCoordinates, hasFuelPrice, money, seoulDate, serviceTime, transportGet, type Place } from "./journey";
 import { getDagsterOverview, runStalled, statusLabel } from "./dagster";
 
 afterEach(() => vi.unstubAllGlobals());
 describe("여행 정보 표시 계약", () => {
+  it.each([null, 0, -1, NaN, Infinity])("미제공 또는 잘못된 유가 %s는 판매 가격이 아니다", (price) => {
+    expect(hasFuelPrice({ product_code: "B034", price, observed_at: "2026-09-29T00:00:00Z" })).toBe(false);
+  });
+  it("양수 유가만 판매 가격으로 표시한다", () => expect(hasFuelPrice({ product_code: "B034", price: 2000, observed_at: "2026-09-29T00:00:00Z" })).toBe(true));
   it.each(["235960", "23:59:60", "20260927235960"])("잘못된 초 %s는 정상 시각으로 표시하지 않는다", (value) => expect(serviceTime(value)).toBe("시각 확인 필요"));
   it.each([["0900", "09:00"], ["093000", "09:30"], ["202609270930", "09:30"], ["20260927093000", "09:30"], ["9:30", "09:30"], ["24:05", "익일 00:05"], ["29:59", "익일 05:59"], ["30:00", "시각 확인 필요"], ["12:60", "시각 확인 필요"], ["unknown", "시각 확인 필요"], [null, "시각 미제공"]])("시각 %s", (value, expected) => expect(serviceTime(value)).toBe(expected));
   it.each([[0, "0원"], [12000, "12,000원"], ["12,000원", "12,000원"], [null, "요금 미제공"], ["", "요금 미제공"], ["미정", "요금 확인 필요"], [-1, "요금 확인 필요"]])("요금 %s", (value, expected) => expect(money(value)).toBe(expected));
