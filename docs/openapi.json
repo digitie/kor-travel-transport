@@ -6262,6 +6262,25 @@
             }
           },
           {
+            "description": "쉼표로 구분한 출처 최대 10개. source와 동시 지정 불가",
+            "in": "query",
+            "name": "sources",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 800,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "쉼표로 구분한 출처 최대 10개. source와 동시 지정 불가",
+              "title": "Sources"
+            }
+          },
+          {
             "in": "query",
             "name": "query",
             "required": false,
@@ -6293,6 +6312,25 @@
                 }
               ],
               "title": "Product Code"
+            }
+          },
+          {
+            "description": "쉼표로 구분한 유종 최대 5개. product_code와 동시 지정 불가",
+            "in": "query",
+            "name": "product_codes",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 104,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "쉼표로 구분한 유종 최대 5개. product_code와 동시 지정 불가",
+              "title": "Product Codes"
             }
           },
           {

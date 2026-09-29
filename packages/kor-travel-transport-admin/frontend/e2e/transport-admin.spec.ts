@@ -185,7 +185,8 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
     });
     await mapPage.goto("/map");
     await expect(mapPage.getByLabel("교통 장소 지도")).toBeVisible();
-    await expect(mapPage.getByLabel("장소 목록에서 선택")).toBeVisible();
+    await expect(mapPage.getByLabel("데이터 출처")).toHaveAttribute("role", "combobox");
+    await expect(mapPage.getByLabel("장소 목록에서 선택")).toHaveCount(0);
     await expect(mapPage.locator("canvas.maplibregl-canvas")).toBeVisible({ timeout: 20_000 });
     await expect.poll(() => [...mapPlaceRequests.keys()].sort()).toEqual(["airport", "ferry_port", "fuel_station", "rail_station", "rest_area"]);
     expect([...mapPlaceRequests.values()].every((url) => url.searchParams.get("limit") === "180" && ["min_longitude", "min_latitude", "max_longitude", "max_latitude"].every((key) => url.searchParams.has(key)))).toBe(true);
@@ -195,9 +196,10 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
       await expect(tileError).toContainText("목록 보기에서 장소를 확인할 수 있습니다.");
     }
     await expect.poll(() => timetableRequests).toEqual([]);
-    const placePicker = mapPage.getByLabel("장소 목록에서 선택");
-    await expect.poll(() => placePicker.locator("option").count()).toBeGreaterThan(1);
-    await placePicker.selectOption({ index: 1 });
+    await mapPage.getByRole("button", { name: "목록", exact: true }).click();
+    const placeRows = mapPage.locator(".map-place-list").getByRole("button");
+    await expect.poll(() => placeRows.count()).toBeGreaterThan(0);
+    await placeRows.first().click();
     await expect(mapPage.locator(".transport-map-detail h2")).not.toHaveText("교통 장소");
     await mapContext.close();
   });

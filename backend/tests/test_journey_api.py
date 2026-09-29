@@ -1,10 +1,23 @@
 """여행 UI용 읽기 계약: 누락/빈 응답 구분, 다중 선택, 제공자 호출 금지."""
 import asyncio
+import pytest
 from datetime import timedelta
 from unittest.mock import patch
 
 from app.core.time_utils import now_utc, to_seoul
 from app.models import CollectionRun, FerryPort, FerryTimetableSnapshot, TransportCollectionState
+
+
+@pytest.mark.parametrize("params", [
+    {"sources": ""}, {"sources": "a,,b"}, {"sources": "a, "},
+    {"sources": ",".join(["a"] * 11)}, {"sources": "x" * 81},
+    {"source": "a", "sources": "a,b"}, {"source": "", "sources": "a"},
+    {"product_codes": ""}, {"product_codes": "B027,"},
+    {"product_codes": ",".join(["B027"] * 6)}, {"product_codes": "x" * 21},
+    {"product_code": "B027", "product_codes": "D047"},
+])
+def test_place_multi_filters_reject_ambiguous_or_unbounded_input(client, params):
+    assert client.get("/v1/transport/features/places", params=params).status_code == 422
 
 
 def test_stored_ferry_search_never_calls_provider_and_keeps_missing_distinct(client):

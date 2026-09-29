@@ -28,7 +28,7 @@ for (const width of [320, 375, 768, 1440]) {
     await page.route("**/transport/features/places?**", (route) => route.fulfill({ json: { items: [], total: 0, truncated: false } }));
     await page.goto("/map");
     await expect(page.getByLabel("장소 검색")).toHaveAttribute("data-slot", "input");
-    await expect(page.getByLabel("표시 유종")).toHaveAttribute("data-slot", "native-select");
+    await expect(page.getByLabel("표시 유종")).toHaveAttribute("role", "combobox");
     const view = page.getByRole("group", { name: "보기 방식", exact: true });
     await view.getByRole("button", { name: "목록", exact: true }).click();
     await expect(view.getByRole("button", { name: "목록", exact: true })).toHaveAttribute("aria-pressed", "true");

@@ -148,6 +148,14 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
     assert payload["total"] == 7
     assert len([item for item in payload["items"] if item["kind"] == "airport"]) == 4
     assert payload["truncated"] is False
+    multi_sources = client.get("/v1/transport/features/places", params={"sources": "opinet,data_go_kr_maritime", "product_codes": "B027,D047"}).json()
+    assert multi_sources["total"] == 2
+    assert {item["kind"] for item in multi_sources["items"]} == {"fuel_station", "ferry_port"}
+    airport_source = next(item["source"] for item in payload["items"] if item["kind"] == "airport")
+    airport_multi = client.get("/v1/transport/features/places", params={"kind": "airport", "sources": f"absent,{airport_source}"}).json()
+    expected_airports = [item for item in payload["items"] if item["kind"] == "airport" and item["source"] == airport_source]
+    assert airport_multi["total"] == len(expected_airports)
+    assert {item["id"] for item in airport_multi["items"]} == {item["id"] for item in expected_airports}
     assert by_kind["fuel_station"]["latest_price"] == 1700
     assert by_kind["fuel_station"]["prices"][0]["product_code"] == "B027"
     assert {row["product_code"]: row["price"] for row in by_kind["fuel_station"]["prices"]} == {"B027": 1700, "D047": 1600}
@@ -160,6 +168,13 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
     assert client.get("/v1/transport/features/places?kind=fuel_station&source=opinet&query=테스트&product_code=D047&limit=1").json()["total"] == 1
     assert client.get("/v1/transport/features/places?kind=fuel_station&query=%25").json()["total"] == 0
     assert client.get("/v1/transport/features/places?kind=fuel_station&product_code=K015").json()["total"] == 0
+    for codes in ["B027,D047", "K015,D047", "D047,D047"]:
+        multi = client.get("/v1/transport/features/places", params={"kind": "fuel_station", "sources": "absent,opinet", "product_codes": codes, "limit": 1})
+        assert multi.status_code == 200
+        assert multi.json()["total"] == 1
+        assert multi.json()["items"][0]["name"] == "테스트주유소"
+        assert len(multi.json()["items"][0]["prices"]) == 2  # 상세는 모든 유종 보존
+    assert client.get("/v1/transport/features/places?kind=fuel_station&product_codes=K015,C004").json()["total"] == 0
     assert [item["name"] for item in bounded.json()["items"]] == ["테스트주유소"]
     assert client.get("/v1/transport/features/places?kind=unknown").status_code == 422
     assert client.get("/v1/transport/features/places?kind=fuel_station&min_longitude=127.0").status_code == 422

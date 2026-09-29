@@ -903,8 +903,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         limit: int = Query(default=1000, ge=1, le=5000),
         include_unlocated: bool = Query(default=False, description="좌표 없는 기준정보도 검색 목록에 포함"),
         source: str | None = Query(default=None, max_length=80),
+        sources: str | None = Query(default=None, max_length=800, description="쉼표로 구분한 출처 최대 10개. source와 동시 지정 불가"),
         query: str | None = Query(default=None, max_length=100),
         product_code: str | None = Query(default=None, max_length=20),
+        product_codes: str | None = Query(default=None, max_length=104, description="쉼표로 구분한 유종 최대 5개. product_code와 동시 지정 불가"),
         min_longitude: float | None = Query(default=None, ge=-180, le=180),
         min_latitude: float | None = Query(default=None, ge=-90, le=90),
         max_longitude: float | None = Query(default=None, ge=-180, le=180),
@@ -914,6 +916,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """저장된 장소만 지도 marker 계약으로 반환한다. provider 원문이나 비밀값은 노출하지 않는다."""
         selected_kind = kind.strip() if kind else None
         supported = {"fuel_station", "rail_station", "ferry_port", "airport", "rest_area"}
+        def filter_values(single: str | None, multiple: str | None, maximum: int, length: int) -> list[str]:
+            if multiple is None:
+                return [single] if single else []
+            values = [value.strip() for value in multiple.split(",")]
+            if single is not None or not 1 <= len(values) <= maximum or any(not value or len(value) > length for value in values):
+                raise HTTPException(status_code=422, detail="필터 선택 개수와 값을 확인해 주세요. 단일·다중 조건은 함께 지정할 수 없습니다.")
+            return list(dict.fromkeys(values))
+
+        selected_sources = filter_values(source, sources, 10, 80)
+        selected_products = filter_values(product_code, product_codes, 5, 20)
         if selected_kind is not None and selected_kind not in supported:
             raise HTTPException(status_code=422, detail="지원하지 않는 교통 장소 종류입니다.")
         bounds = (min_longitude, min_latitude, max_longitude, max_latitude)
@@ -932,8 +944,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             conditions = [] if include_unlocated else [
                 model.latitude.between(-90, 90), model.longitude.between(-180, 180),
             ]
-            if source:
-                conditions.append(model.source == source)
+            if selected_sources:
+                conditions.append(model.source.in_(selected_sources))
             if query and query.strip():
                 fields = {
                     FuelStation: [FuelStation.name, FuelStation.brand_name, FuelStation.address],
@@ -942,8 +954,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     RestAreaReference: [RestAreaReference.name, RestAreaReference.route_name],
                 }[model]
                 conditions.append(or_(*(field.icontains(query.strip(), autoescape=True) for field in fields)))
-            if model is FuelStation and product_code:
-                conditions.append(select(FuelPriceSnapshot.id).where(FuelPriceSnapshot.fuel_station_id == FuelStation.id, FuelPriceSnapshot.product_code == product_code).exists())
+            if model is FuelStation and selected_products:
+                conditions.append(select(FuelPriceSnapshot.id).where(FuelPriceSnapshot.fuel_station_id == FuelStation.id, FuelPriceSnapshot.product_code.in_(selected_products)).exists())
             if min_longitude is not None:
                 conditions.extend((
                     model.longitude >= min_longitude,
@@ -1037,7 +1049,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             for airport in airports:
                 metadata = get_airport_or_none(airport.code)
                 coordinate = metadata.coordinate if metadata else None
-                if source and airport.source != source:
+                if selected_sources and airport.source not in selected_sources:
                     continue
                 if query and query.strip().casefold() not in f"{airport.name_ko} {airport.name_en or ''} {airport.code}".casefold():
                     continue

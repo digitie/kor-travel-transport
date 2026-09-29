@@ -105,8 +105,12 @@ test("유가 지도는 모든 유종 상세·출처 필터·목록 대체 보기
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.screenshot({ path: "test-results/journey-fuel-detail.png", fullPage: true });
-  await page.getByLabel("데이터 출처").selectOption("opinet_browser");
-  await page.getByLabel("표시 유종").selectOption("K015");
+  await page.getByLabel("데이터 출처").click();
+  await page.getByRole("option").first().click();
+  await page.keyboard.press("Escape");
+  await page.getByLabel("표시 유종").fill("LPG");
+  await page.getByRole("option", { name: "LPG", exact: true }).click();
+  await page.keyboard.press("Escape");
   await expect(page.getByText("표시할 장소가 없습니다.", { exact: false })).toBeVisible();
 });
 
@@ -130,7 +134,9 @@ test("지도는 상한 밖 출처와 공항 코드·영문명 서버 검색 결�
   });
   await page.goto("/map");
   await page.getByRole("button", { name: "목록", exact: true }).click();
-  await expect(page.getByLabel("데이터 출처").locator('option[value="hidden-source"]')).toHaveCount(1);
+  await page.getByLabel("데이터 출처").click();
+  await expect(page.getByRole("option", { name: "hidden-source" })).toBeVisible();
+  await page.keyboard.press("Escape");
   for (const query of ["GMP", "Gimpo"]) {
     await page.getByLabel("장소 검색").fill(query);
     await expect.poll(() => queries.includes(query)).toBe(true);

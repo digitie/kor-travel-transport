@@ -162,7 +162,7 @@ for (const width of widths) {
       // trial 클릭으로 가림·pointer-events 회귀도 검사하되 세션은 유지한다.
       await logout.click({ trial: true });
       const controls = pathname === "/map"
-        ? [page.getByLabel("장소 검색"), page.getByLabel("표시 유종"), page.getByRole("group", { name: "보기 방식", exact: true }).getByRole("button").first()]
+        ? [page.getByLabel("장소 검색"), page.locator('[data-slot="combobox-chips"]').last(), page.getByRole("group", { name: "보기 방식", exact: true }).getByRole("button").first()]
         : [page.locator(".page-header-actions button").first()];
       // 동적 지도 청크의 CSS가 적용되기 전 일시적인 native 높이를 최종 치수로 취급하지 않는다.
       for (const control of controls) await expect.poll(async () => (await rectangle(control)).height).toBeCloseTo(36, 0);
@@ -184,7 +184,7 @@ test.describe("터치 환경", () => {
     const unexpected = await loginWithFixtures(page, pathname);
     expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
     const controls = pathname === "/map"
-      ? [page.getByLabel("장소 검색"), page.getByLabel("표시 유종"), page.getByRole("group", { name: "보기 방식", exact: true }).getByRole("button").first()]
+      ? [page.getByLabel("장소 검색"), page.locator('[data-slot="combobox-chips"]').last(), page.getByRole("group", { name: "보기 방식", exact: true }).getByRole("button").first()]
       : [page.locator(".page-header-actions button").first()];
     controls.push(page.getByRole("button", { name: "로그아웃", exact: true }));
     for (const control of controls) await expect.poll(async () => (await rectangle(control)).height).toBeGreaterThanOrEqual(44);
