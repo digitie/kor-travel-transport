@@ -1,5 +1,23 @@
 # journal.md — 작업 일지
 
+## 2026-09-29 — 이미지 PostgreSQL 검증 및 실행 거부 재확인
+
+- `c4eef6c` 전체 WSL387개/6개 제외(1009초), Docker387개/6개 제외(1127초) 통과.
+- `b80faf9` 실제 백엔드 이미지에서 PostgreSQL36개와 Alembic upgrade/check 통과.
+  이미지 `b76b1109edf9c4f74828e4a95b5c20ae676351c27f0f9af824b2b56eaa3b10f2`,
+  SDK63d4db0/KRIC5536131 설치 commit 및 원본 SHA 검증 완료. 운영 배포 아님.
+- rollback 이미지 `906b631c23b70a1baa296ab0e160bce11c3ea8b81e292339ef32f66ff84a51f4`
+  는 기존91262cc 기능+0016 schema guard만 변경했다. 전용 PostgreSQL에서 시작/health,
+  버스 시험 데이터 보존 통과. 최초 검증의 키 없는 실제 client 설정 오류는 모의 client로
+  수정하고 scheduler/seed를 꺼 재실행했다. 실제키/외부API/운영DB 변경 없음.
+- James/Popper가 코드셰어 P1 해소 재확인. 리뷰 중 발생한 구 의존성 pin 경합도
+  b80faf9의 pyproject/lock63d4db0 일치로 해소 확인. SDK 최신 CI8개 모두 성공.
+- 14:08 KST 실제 정책 거부 원문을 확인했다. 이를 모든 Docker/UI 실행의 영구 차단으로
+  단정한 설명은 정정했다. 이후 사용자 진행 요청으로 같은 도구/복합 실행 경로에서 최신
+  UI 후보를 한 번 재시도했으나 다시 `blocked by policy`로 실행 전 거부됐다.
+  정확한 거부 규칙은 미제공이며 다른 도구/스크립트/호스트로 우회하지 않았다.
+  실행 환경에서 허용 여부 해결이 필요하고 n150 배포/live/머지를 보류한다.
+
 ## 2026-09-29 — 공동운항 중복 집계 재리뷰 수정
 
 - James/Popper가 독립적으로 새 GW 경로의 코드셰어 마커 통합 누락(P1)을 재현했다.
