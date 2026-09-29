@@ -33,6 +33,30 @@ def _settings(tmp_path: Path, **values: object) -> Settings:
     )
 
 
+def test_maritime_reference_upsert_preserves_independent_vworld_location(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> None:
+        await init_database(engine)
+        now = now_utc()
+        async with factory() as session:
+            session.add(FerryPort(source="data_go_kr_maritime", port_id="P1", port_name="테스트항",
+                latitude=34.1, longitude=127.2, location_source="vworld_place", location_point_count=0,
+                first_seen_at=now, last_seen_at=now, raw_item_json={"_vworld_place": {"title": "테스트항"}}))
+            await session.commit()
+            service = RailMaritimeCollectionService(settings)
+            await service._upsert_port(session, DomesticFerryPort(port_id="P1", port_name="테스트항", raw={"nodeId": "P1"}),
+                                       now, None, location_verified=True)
+            await session.commit()
+            row = await session.scalar(select(FerryPort).where(FerryPort.port_id == "P1"))
+            assert (row.latitude, row.longitude, row.location_source) == (34.1, 127.2, "vworld_place")
+            assert row.raw_item_json["_vworld_place"]["title"] == "테스트항"
+        await engine.dispose()
+
+    asyncio.run(run())
+
+
 def _station() -> FileStationInfo:
     return FileStationInfo(
         rail_operator_name="테스트운영사",

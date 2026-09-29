@@ -34,6 +34,35 @@ test.beforeEach(async ({ page }) => {
   await page.route("**://*.vworld.kr/**", (route) => route.abort());
 });
 
+test("좌표 미확인 항구·버스 터미널은 지도 대신 검색 목록과 상세에서 찾는다", async ({ page }) => {
+  const requests: URLSearchParams[] = [];
+  await page.route("**/transport/features/places?**", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    requests.push(params);
+    const rows = params.get("kind") === "ferry_port"
+      ? [{ ...place, id: 401, kind: "ferry_port", source: "data_go_kr_maritime", provider_id: "SEA97580", name: "백야도", longitude: null, latitude: null, prices: [] }]
+      : params.get("kind") === "bus_terminal"
+        ? [{ ...place, id: 402, kind: "bus_terminal", source: "data_go_kr_tago", provider_id: "NAI2551901", name: "강릉", longitude: null, latitude: null, subtitle: "시외버스 · 강원도", prices: [] }]
+        : [];
+    return route.fulfill({ json: { items: rows.filter((row) => !params.get("query") || row.name.includes(params.get("query")!)), total: rows.length,
+      available_sources: rows.map((row) => row.source), truncated: false } });
+  });
+  await page.goto("/map");
+  await page.getByRole("button", { name: "목록", exact: true }).click();
+  await expect(page.locator(".map-place-list").getByRole("button", { name: /백야도/ })).toBeVisible();
+  await expect(page.locator(".map-place-list").getByRole("button", { name: /강릉/ })).toBeVisible();
+  await page.locator(".map-place-list").getByRole("button", { name: /백야도/ }).click();
+  await expect(page.getByLabel("선택 장소 상세").getByText(/항구 코드 SEA97580/)).toBeVisible();
+  await page.getByRole("button", { name: "장소 상세 닫기" }).click();
+  await page.getByLabel("장소 검색").fill("강릉");
+  await expect.poll(() => requests.some((params) => params.get("kind") === "bus_terminal" &&
+    params.get("include_unlocated") === "true" && params.get("query") === "강릉")).toBe(true);
+  await expect(page.locator(".map-place-list").getByRole("button", { name: /강릉/ })).toBeVisible();
+  await page.locator(".map-place-list").getByRole("button", { name: /강릉/ }).click();
+  await expect(page.getByLabel("선택 장소 상세").getByText(/터미널 코드 NAI2551901/)).toBeVisible();
+  expect(requests.some((params) => params.get("kind") === "ferry_port" && params.get("include_unlocated") === "true")).toBe(true);
+});
+
 for (const width of [320, 375, 768, 1440]) {
   test(`지도 다중 필터 검색·해제·중복 선택 제거 ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });

@@ -18,7 +18,7 @@ type MapPoint = { id: string; lngLat: [number, number]; place: Place };
 type Bounds = { getWest: () => number; getSouth: () => number; getEast: () => number; getNorth: () => number };
 type Viewport = { min_longitude: string; min_latitude: string; max_longitude: string; max_latitude: string };
 type PlaceResponse = { items: Place[]; total: number; truncated: boolean; available_sources?: string[] };
-const KINDS: PlaceKind[] = ["fuel_station", "rail_station", "ferry_port", "airport", "rest_area", "highway_incident"];
+const KINDS: PlaceKind[] = ["fuel_station", "rail_station", "ferry_port", "bus_terminal", "airport", "rest_area", "highway_incident"];
 const DEFAULT_VIEWPORT: Viewport = { min_longitude: "124", min_latitude: "32", max_longitude: "132", max_latitude: "39" };
 const keyOf = (place: Place) => `${place.kind}:${place.id}`;
 
@@ -105,7 +105,10 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
     setPending(selectedKinds); setFailed([]); setLoaded({});
     // 각 종류가 끝나는 즉시 표시한다. 느린 유가 조회가 역·항구를 가리지 않는다.
     selectedKinds.forEach((kind) => {
-      const search = new URLSearchParams({ kind, limit: String(perKindLimit), ...viewport });
+      // 좌표 없는 항구·터미널도 목록에서 코드/이름으로 찾되 지도에는 검증된 위치만 놓는다.
+      const referenceList = view === "list" && (kind === "ferry_port" || kind === "bus_terminal");
+      const search = new URLSearchParams({ kind, limit: String(referenceList && searchQuery.trim() ? 5000 : perKindLimit),
+        ...(referenceList ? { include_unlocated: "true" } : viewport) });
       if (sourcesKey) search.set("sources", sourcesKey);
       if (searchQuery.trim()) search.set("query", searchQuery.trim());
       if (productsKey && kind === "fuel_station") search.set("product_codes", productsKey);
@@ -118,7 +121,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
         .finally(() => { if (!controller.signal.aborted) setPending((value) => value.filter((entry) => entry !== kind)); });
     });
     return () => controller.abort();
-  }, [embedded, kindsKey, perKindLimit, viewport, reload, sourcesKey, searchQuery, productsKey]);
+  }, [embedded, kindsKey, perKindLimit, viewport, reload, sourcesKey, searchQuery, productsKey, view]);
 
   useEffect(() => {
     const handleError = () => setMapError("VWorld 지도 타일을 불러오지 못했습니다. 목록 보기에서 장소를 확인할 수 있습니다.");
@@ -153,6 +156,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
     <div className="map-feedback" role="status">
       {pending.length ? <span>{pending.map(placeKindLabel).join("·")} 조회 중… </span> : null}
       <span>{items.length}곳 표시 · {cluster ? "축척·화면 밀도에 따라 묶음 표시" : "가까운 장소만 묶음 표시"}</span>
+      {!embedded && (kinds.includes("ferry_port") || kinds.includes("bus_terminal")) ? <p>지도는 검증된 좌표만 표시합니다. 위치 미확인 항구·버스 터미널은 목록 보기에서 이름·코드로 검색하세요.</p> : null}
       {!embedded && kinds.includes("highway_incident") ? <p>도로 돌발은 최근 24시간의 최신 저장 관측입니다. 현재 통제 여부는 상세의 처리 상태와 관측 시각을 확인해 주세요.</p> : null}
       {truncated.length ? <p>{truncated.join("·")} 일부를 표시합니다(종류별 최대 {perKindLimit}곳). 확대해 주세요. 묶음 수는 현재 불러온 장소 수입니다.</p> : null}
       {failed.length ? <p className="error">{failed.map(placeKindLabel).join("·")} 조회 실패 <Button variant="outline" type="button" onClick={() => setReload((value) => value + 1)}>다시 조회</Button></p> : null}

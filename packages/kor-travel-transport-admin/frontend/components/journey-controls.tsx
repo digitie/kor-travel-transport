@@ -58,9 +58,10 @@ export function PlaceDetails({ place, showRailTimetable = true, showHeading = tr
     {place.address ? <p>{place.address}</p> : null}
     {place.phone ? <p>전화 {place.phone}</p> : null}
     {place.kind === "ferry_port" ? <p className="quiet">항구 코드 {place.provider_id ?? "미제공"} · 항구명만으로 서로 다른 항구를 합치지 않습니다.</p> : null}
+    {place.kind === "bus_terminal" ? <p className="quiet">터미널 코드 {place.provider_id ?? "미제공"} · 지도 위치는 검증된 터미널만 표시합니다.</p> : null}
     {place.facilities?.length ? <p>편의시설 · {place.facilities.join(" · ")}</p> : null}
     {place.kind === "rail_station" && showRailTimetable ? <RailTimetables placeIds={[place.id]} /> : null}
-    {place.kind === "ferry_port" ? <p className="data-caveat">{hasCoordinates(place) ? place.location_source === "komsa_port_call" ? "한국해양교통안전공단 기항지 위치입니다. 승선 부두·탑승구는 운항사에 확인해 주세요." : "항만 안내 지점입니다. 실제 승선 장소는 여객터미널에 확인해 주세요." : "좌표 미등록 · 목록에서 운항 정보를 확인할 수 있습니다."}</p> : null}
+    {place.kind === "ferry_port" ? <p className="data-caveat">{hasCoordinates(place) ? place.location_source === "komsa_port_call" ? "한국해양교통안전공단 기항지 위치입니다. 승선 부두·탑승구는 운항사에 확인해 주세요." : "지도 검색에서 확인한 항만 시설입니다. 실제 승선 장소는 운항사에 확인해 주세요." : "좌표 미등록 · 목록에서 운항 정보를 확인할 수 있습니다."}</p> : null}
     <p className="quiet">출처 {collectionSourceLabel(place.source)} · 기준정보 반영 {dateTime(place.updated_at)}</p>
   </div>;
 }

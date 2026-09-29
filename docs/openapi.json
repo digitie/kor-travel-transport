@@ -136,6 +136,39 @@
             "title": "Id",
             "type": "integer"
           },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "location_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Source"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
           "service_type": {
             "enum": [
               "express",
@@ -3893,6 +3926,7 @@
               "fuel_station",
               "rail_station",
               "ferry_port",
+              "bus_terminal",
               "airport",
               "rest_area",
               "highway_incident"
@@ -6254,7 +6288,7 @@
         "operationId": "transport_place_features_v1_transport_features_places_get",
         "parameters": [
           {
-            "description": "fuel_station, rail_station, ferry_port, airport, rest_area, highway_incident 중 하나. 돌발은 최근 24시간 최신 저장 관측",
+            "description": "fuel_station, rail_station, ferry_port, bus_terminal, airport, rest_area, highway_incident 중 하나. 돌발은 최근 24시간 최신 저장 관측",
             "in": "query",
             "name": "kind",
             "required": false,
@@ -6267,7 +6301,7 @@
                   "type": "null"
                 }
               ],
-              "description": "fuel_station, rail_station, ferry_port, airport, rest_area, highway_incident 중 하나. 돌발은 최근 24시간 최신 저장 관측",
+              "description": "fuel_station, rail_station, ferry_port, bus_terminal, airport, rest_area, highway_incident 중 하나. 돌발은 최근 24시간 최신 저장 관측",
               "title": "Kind"
             }
           },

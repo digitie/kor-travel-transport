@@ -5,7 +5,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from app.core.time_utils import now_utc, to_seoul
-from app.models import CollectionRun, FerryPort, FerryTimetableSnapshot, HighwayIncidentSnapshot, RestAreaReference, TransportCollectionState
+from app.models import BusTerminalReference, CollectionRun, FerryPort, FerryTimetableSnapshot, HighwayIncidentSnapshot, RestAreaReference, TransportCollectionState
 
 
 def test_map_incidents_use_latest_saved_observation_and_rest_areas_remain_visible(client):
@@ -172,6 +172,36 @@ def test_provider_status_does_not_confuse_enabled_or_shared_job_with_success(cli
     assert rows["krex_traffic_incident"]["status"] == "failed"
     assert "test-key" not in response.text
     assert "secret-provider-key" not in response.text
+
+
+def test_bus_terminal_map_uses_only_verified_coordinates_and_preserves_code(client):
+    async def seed():
+        now = now_utc()
+        async with client.app.state.session_factory() as session:
+            session.add(BusTerminalReference(source="data_go_kr_tago", service_type="intercity",
+                terminal_id="NAI2551901", terminal_name="강릉", city_name="강원도",
+                longitude=128.8788, latitude=37.7546, location_source="vworld_place",
+                first_seen_at=now, last_seen_at=now))
+            session.add(BusTerminalReference(source="data_go_kr_tago", service_type="express",
+                terminal_id="NAEK200", terminal_name="강릉", city_name=None,
+                first_seen_at=now, last_seen_at=now))
+            await session.commit()
+
+    asyncio.run(seed())
+    located = client.get("/v1/transport/features/places", params={"kind": "bus_terminal"})
+    assert located.status_code == 200
+    assert located.json()["total"] == 1
+    assert located.json()["items"][0]["provider_id"] == "NAI2551901"
+    assert located.json()["items"][0]["location_source"] == "vworld_place"
+    all_rows = client.get("/v1/transport/features/places", params={
+        "kind": "bus_terminal", "include_unlocated": True, "query": "강릉"})
+    assert all_rows.status_code == 200
+    assert {row["provider_id"] for row in all_rows.json()["items"]} == {"NAI2551901", "NAEK200"}
+    assert client.get("/v1/transport/features/places", params={
+        "kind": "bus_terminal", "min_longitude": 128, "max_longitude": 129,
+        "min_latitude": 37, "max_latitude": 38}).json()["total"] == 1
+    terminals = client.get("/v1/transport/bus/terminals?service_type=intercity").json()["items"]
+    assert terminals[0]["longitude"] == 128.8788
 
 
 def test_same_name_ferry_ports_keep_distinct_codes_and_timetables(client):

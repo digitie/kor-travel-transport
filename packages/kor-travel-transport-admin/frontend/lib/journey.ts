@@ -1,4 +1,4 @@
-export type PlaceKind = "fuel_station" | "rail_station" | "ferry_port" | "airport" | "rest_area" | "highway_incident";
+export type PlaceKind = "fuel_station" | "rail_station" | "ferry_port" | "bus_terminal" | "airport" | "rest_area" | "highway_incident";
 export type FuelPrice = { product_code: string; price: number | null; observed_at: string; provider_updated_at?: string | null };
 export function hasFuelPrice(row: FuelPrice) {
   return row.price !== null && Number.isFinite(row.price) && row.price > 0;

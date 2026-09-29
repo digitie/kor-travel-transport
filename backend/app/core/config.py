@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     upstream_rate_limit_backoff_seconds: int = Field(default=3600, ge=0)
     api_timeout_seconds: int = Field(default=15, gt=0)
     data_go_kr_service_key: str | None = None
+    vworld_api_key: str | None = None
+    place_location_collection_enabled: bool = False
+    place_location_max_calls_per_day: int = Field(default=80, ge=1, le=80)
+    place_location_request_interval_seconds: int = Field(default=2, ge=2, le=60)
     kex_ex_api_key: str | None = None
     # KRIC 인증 OpenAPI는 48시간 batch 전용이다. 공개 조회는 DB만 읽는다.
     kric_service_key: str | None = None
