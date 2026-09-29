@@ -12,7 +12,7 @@ from typing import Any
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from vworld import VworldClient, VworldNoDataError, parse_search_response, process_search_response
+from vworld import VworldClient, VworldNetworkError, VworldNoDataError, parse_search_response, process_search_response
 
 from app.core.config import Settings
 from app.core.time_utils import now_utc
@@ -124,6 +124,8 @@ class PlaceLocationCollectionService:
             acquired = bool(await connection.scalar(text(
                 "SELECT pg_try_advisory_lock(hashtext('kor_travel_transport:vworld_place_collection'))"
             )))
+            # Session-level lock은 transaction commit 뒤에도 유지된다. 긴 검색 동안 idle transaction을 남기지 않는다.
+            await connection.commit()
             try:
                 yield acquired
             finally:
@@ -131,6 +133,7 @@ class PlaceLocationCollectionService:
                     released = bool(await connection.scalar(text(
                         "SELECT pg_advisory_unlock(hashtext('kor_travel_transport:vworld_place_collection'))"
                     )))
+                    await connection.commit()
                     if not released:
                         raise RuntimeError("VWorld place collection advisory lock was not released")
 
@@ -185,7 +188,9 @@ class PlaceLocationCollectionService:
                     now = now_utc()
                     if previous is not None:
                         received = previous.received_at.replace(tzinfo=UTC) if previous.received_at.tzinfo is None else previous.received_at
-                        if now - received < timedelta(days=30 if previous.parse_status == "success" else 1):
+                        if (previous.request_params_json or {}).get("query") == query and now - received < timedelta(
+                            days=30 if previous.parse_status == "success" else 1
+                        ):
                             continue
                     if session.bind is not None and session.bind.dialect.name == "postgresql":
                         await session.execute(text("SELECT pg_advisory_xact_lock(420053)"))
@@ -220,18 +225,26 @@ class PlaceLocationCollectionService:
                             processed = process_search_response(parse_search_response(raw))
                             if processed.status not in ("OK", "NOT_FOUND"):
                                 raise RuntimeError("VWorld search failed")
-                        count = (int((processed.record or {}).get("total") or len(processed.items))
-                                 if processed is not None else 0)
+                        raw_total = (processed.record or {}).get("total") if processed is not None else 0
+                        try:
+                            count = int(raw_total) if raw_total is not None else None
+                        except (TypeError, ValueError):
+                            count = None
+                        incomplete = processed is not None and processed.status == "OK" and (
+                            count is None or count != len(processed.items)
+                        )
                         selected = None
-                        if processed is not None and count <= len(processed.items):
+                        if processed is not None and not incomplete:
                             selected = (choose_bus_location(processed.items, name=name,
                                 service_type=row.service_type, city_name=row.city_name) if kind == "bus"
                                 else choose_port_location(processed.items, name=name))
                         receipt.status_code = 200
-                        receipt.parse_status = "success"
+                        receipt.parse_status = "incomplete" if incomplete else "success"
                         receipt.body_text = json.dumps({"selected": selected, "returned": len(processed.items) if processed else 0,
                             "total": count}, ensure_ascii=False)
-                        if selected is None:
+                        if incomplete:
+                            summary["deferred"] += 1
+                        elif selected is None:
                             summary["unmatched"] += 1
                         else:
                             row.latitude = selected["latitude"]
@@ -249,9 +262,12 @@ class PlaceLocationCollectionService:
                         await session.commit()
                         summary["deferred"] += 1
                         summary["provider_failed"] += 1
+                        if isinstance(exc, VworldNetworkError):
+                            await asyncio.sleep(2)
+                            continue
                         break
                     await asyncio.sleep(self.settings.place_location_request_interval_seconds)
-            run.status = "partial_success" if summary["provider_failed"] else "success"
+            run.status = "partial_success" if summary["deferred"] else "success"
             run.finished_at = now_utc()
             await session.commit()
             return {"status": run.status, "run_id": run.id, **summary}

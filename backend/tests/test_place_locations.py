@@ -15,7 +15,7 @@ from app.core.time_utils import now_utc
 from app.db.session import create_engine_and_session_factory, init_database
 from app.models import BusTerminalReference, FerryPort, RawApiResponse
 from app.services.place_locations import PlaceLocationCollectionService, choose_bus_location, choose_port_location
-from vworld import VworldNoDataError
+from vworld import VworldNetworkError, VworldNoDataError
 
 
 def test_location_collection_rate_contract_allows_one_full_reference_pass() -> None:
@@ -33,6 +33,7 @@ def test_postgres_location_collection_lease_uses_dedicated_connection(lock_acqui
     class LockConnection:
         def __init__(self) -> None:
             self.statements: list[str] = []
+            self.commits = 0
 
         async def __aenter__(self):
             return self
@@ -44,6 +45,9 @@ def test_postgres_location_collection_lease_uses_dedicated_connection(lock_acqui
             self.statements.append(str(statement))
             return lock_acquired
 
+        async def commit(self) -> None:
+            self.commits += 1
+
     async def run() -> None:
         connection = LockConnection()
         session = SimpleNamespace(bind=SimpleNamespace(
@@ -54,6 +58,7 @@ def test_postgres_location_collection_lease_uses_dedicated_connection(lock_acqui
             assert acquired is lock_acquired
             assert len(connection.statements) == 1
         assert len(connection.statements) == (2 if lock_acquired else 1)
+        assert connection.commits == (2 if lock_acquired else 1)
         assert "pg_try_advisory_lock" in connection.statements[0]
         if lock_acquired:
             assert "pg_advisory_unlock" in connection.statements[1]
@@ -200,6 +205,45 @@ def test_location_collection_counts_reserved_calls_and_does_not_retry_failed_pro
     assert FailingVworld.calls == ["강릉시외버스터미널"]
 
 
+def test_single_network_error_does_not_stop_other_locations(tmp_path: Path, monkeypatch) -> None:
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    class IntermittentVworld(FakeVworld):
+        async def search_place(self, query: str, *, size: int):
+            if "강릉" in query:
+                self.calls.append(query)
+                raise VworldNetworkError("transient")
+            return await super().search_place(query, size=size)
+
+    monkeypatch.setattr("app.services.place_locations.asyncio.sleep", no_sleep)
+    IntermittentVworld.calls = []
+    settings = Settings(database_url=f"sqlite+aiosqlite:///{tmp_path / 'network.sqlite3'}",
+                        seed_sample_data=False, place_location_collection_enabled=True,
+                        vworld_api_key="test-key", place_location_max_calls_per_day=2)
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> None:
+        await init_database(engine)
+        now = now_utc()
+        async with factory() as session:
+            session.add(BusTerminalReference(source="data_go_kr_tago", service_type="intercity",
+                terminal_id="B1", terminal_name="강릉", city_name="강원도",
+                first_seen_at=now, last_seen_at=now, raw_item_json={}))
+            session.add(FerryPort(source="data_go_kr_maritime", port_id="P1", port_name="대천",
+                first_seen_at=now, last_seen_at=now, raw_item_json={}))
+            await session.commit()
+            result = await PlaceLocationCollectionService(settings, client_factory=IntermittentVworld).collect(session)
+            port = await session.scalar(select(FerryPort))
+            assert result["status"] == "partial_success"
+            assert (result["provider_calls"], result["provider_failed"], result["port_locations"]) == (2, 1, 1)
+            assert port.longitude == 126.5
+        await engine.dispose()
+
+    asyncio.run(run())
+    assert IntermittentVworld.calls == ["강릉시외버스터미널", "대천항"]
+
+
 def test_location_collection_treats_not_found_as_normal_unmatched_result(tmp_path: Path, monkeypatch) -> None:
     async def no_sleep(_seconds: int) -> None:
         return None
@@ -234,3 +278,97 @@ def test_location_collection_treats_not_found_as_normal_unmatched_result(tmp_pat
 
     asyncio.run(run())
     assert NoDataVworld.calls == ["강릉시외버스터미널", "백야도항"]
+
+
+def test_changed_terminal_name_bypasses_old_success_receipt(tmp_path: Path, monkeypatch) -> None:
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("app.services.place_locations.asyncio.sleep", no_sleep)
+    FakeVworld.calls = []
+    settings = Settings(database_url=f"sqlite+aiosqlite:///{tmp_path / 'renamed.sqlite3'}",
+                        seed_sample_data=False, place_location_collection_enabled=True, vworld_api_key="test-key")
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> None:
+        await init_database(engine)
+        now = now_utc()
+        async with factory() as session:
+            session.add(BusTerminalReference(source="data_go_kr_tago", service_type="intercity",
+                terminal_id="B1", terminal_name="새강릉", city_name="강원도",
+                first_seen_at=now, last_seen_at=now, raw_item_json={}))
+            session.add(RawApiResponse(source="vworld_place", endpoint="vworld:bus:intercity:B1",
+                request_params_json={"query": "강릉시외버스터미널"}, status_code=200,
+                body_text="{}", received_at=now, parse_status="success"))
+            await session.commit()
+            result = await PlaceLocationCollectionService(settings, client_factory=FakeVworld).collect(session)
+            assert result["provider_calls"] == 1
+            assert await session.scalar(select(func.count()).select_from(RawApiResponse)) == 2
+        await engine.dispose()
+
+    asyncio.run(run())
+    assert FakeVworld.calls == ["새강릉시외버스터미널"]
+
+
+def test_exhausted_call_budget_is_partial_success(tmp_path: Path, monkeypatch) -> None:
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("app.services.place_locations.asyncio.sleep", no_sleep)
+    FakeVworld.calls = []
+    settings = Settings(database_url=f"sqlite+aiosqlite:///{tmp_path / 'budget.sqlite3'}",
+                        seed_sample_data=False, place_location_collection_enabled=True,
+                        vworld_api_key="test-key", place_location_max_calls_per_day=1)
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> None:
+        await init_database(engine)
+        now = now_utc()
+        async with factory() as session:
+            session.add(BusTerminalReference(source="data_go_kr_tago", service_type="intercity",
+                terminal_id="B1", terminal_name="강릉", city_name="강원도",
+                first_seen_at=now, last_seen_at=now, raw_item_json={}))
+            session.add(FerryPort(source="data_go_kr_maritime", port_id="P1", port_name="대천",
+                first_seen_at=now, last_seen_at=now, raw_item_json={}))
+            await session.commit()
+            result = await PlaceLocationCollectionService(settings, client_factory=FakeVworld).collect(session)
+            assert result["status"] == "partial_success"
+            assert result["provider_calls"] == result["deferred"] == 1
+            assert result["provider_failed"] == 0
+        await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_missing_search_total_never_confirms_coordinate(tmp_path: Path, monkeypatch) -> None:
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    class IncompleteVworld(FakeVworld):
+        async def search_place(self, query: str, *, size: int):
+            return {"response": {"status": "OK", "result": {"items": [
+                place("대천항", "항만시설 > 페리/해운", x="126.5", y="36.3"),
+            ]}}}
+
+    monkeypatch.setattr("app.services.place_locations.asyncio.sleep", no_sleep)
+    settings = Settings(database_url=f"sqlite+aiosqlite:///{tmp_path / 'incomplete.sqlite3'}",
+                        seed_sample_data=False, place_location_collection_enabled=True, vworld_api_key="test-key")
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> None:
+        await init_database(engine)
+        now = now_utc()
+        async with factory() as session:
+            session.add(FerryPort(source="data_go_kr_maritime", port_id="P1", port_name="대천",
+                first_seen_at=now, last_seen_at=now, raw_item_json={}))
+            await session.commit()
+            result = await PlaceLocationCollectionService(settings, client_factory=IncompleteVworld).collect(session)
+            port = await session.scalar(select(FerryPort))
+            receipt = await session.scalar(select(RawApiResponse))
+            assert result["status"] == "partial_success"
+            assert result["deferred"] == 1
+            assert port.latitude is None and port.longitude is None
+            assert receipt.parse_status == "incomplete"
+        await engine.dispose()
+
+    asyncio.run(run())

@@ -158,7 +158,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
       <span>{items.length}곳 표시 · {cluster ? "축척·화면 밀도에 따라 묶음 표시" : "가까운 장소만 묶음 표시"}</span>
       {!embedded && (kinds.includes("ferry_port") || kinds.includes("bus_terminal")) ? <p>지도는 검증된 좌표만 표시합니다. 위치 미확인 항구·버스 터미널은 목록 보기에서 이름·코드로 검색하세요.</p> : null}
       {!embedded && kinds.includes("highway_incident") ? <p>도로 돌발은 최근 24시간의 최신 저장 관측입니다. 현재 통제 여부는 상세의 처리 상태와 관측 시각을 확인해 주세요.</p> : null}
-      {truncated.length ? <p>{truncated.join("·")} 일부를 표시합니다(종류별 최대 {perKindLimit}곳). 확대해 주세요. 묶음 수는 현재 불러온 장소 수입니다.</p> : null}
+      {truncated.length ? <p>{truncated.join("·")} 일부만 표시합니다. {view === "list" ? "이름·코드 검색으로 범위를 좁혀 주세요." : "지도에서 확대하거나 목록 보기에서 이름·코드로 검색해 주세요."} 묶음 수는 현재 불러온 장소 수입니다.</p> : null}
       {failed.length ? <p className="error">{failed.map(placeKindLabel).join("·")} 조회 실패 <Button variant="outline" type="button" onClick={() => setReload((value) => value + 1)}>다시 조회</Button></p> : null}
       {mapError ? <p className="error">{mapError}</p> : null}
       {!items.length && !pending.length ? <p>표시할 장소가 없습니다. 종류·출처·검색 조건을 확인해 주세요.</p> : null}
@@ -189,7 +189,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
           }} />}
           renderMarker={(point) => <MapMarker key={point.id} point={point as MapPoint} products={products} onSelect={selectPlace} selected={false} />} />
         {selectedPoint ? <MapMarker point={selectedPoint} products={products} onSelect={selectPlace} selected /> : null}
-      </VWorldMapView> : <div className="map-place-list">{items.map((place) => <button type="button" className="place-row" key={keyOf(place)} aria-pressed={current ? keyOf(current) === keyOf(place) : false} onClick={() => selectPlace(place)}><PlaceIcon kind={place.kind} /><span><strong>{place.name}</strong><small>{place.line_names.join(" · ") || place.brand_name || place.subtitle || placeKindLabel(place.kind)}</small>{!hasCoordinates(place) ? <small>좌표 미등록</small> : null}</span></button>)}</div>}
+      </VWorldMapView> : <div className="map-place-list">{items.map((place) => <button type="button" className="place-row" key={keyOf(place)} aria-pressed={current ? keyOf(current) === keyOf(place) : false} onClick={() => selectPlace(place)}><PlaceIcon kind={place.kind} /><span><strong>{place.name}</strong><small>{place.line_names.join(" · ") || place.brand_name || place.subtitle || placeKindLabel(place.kind)}</small>{(place.kind === "ferry_port" || place.kind === "bus_terminal") && place.provider_id ? <small>{place.kind === "ferry_port" ? "항구" : "터미널"} 코드 {place.provider_id}</small> : null}{!hasCoordinates(place) ? <small>좌표 미등록</small> : null}</span></button>)}</div>}
       </div>{!embedded ? <aside className="transport-map-detail weather-inspector" ref={detail} tabIndex={-1} aria-label="선택 장소 상세">
         {current ? <PlaceInspector key={keyOf(current)} place={current} onClose={() => { setSelected(null); queryInput.current?.focus(); }} /> : <Empty><EmptyHeader><EmptyDescription>지도나 목록에서 장소를 선택하면 가격·노선·출도착·편의정보를 확인할 수 있습니다.</EmptyDescription></EmptyHeader></Empty>}
       </aside> : null}

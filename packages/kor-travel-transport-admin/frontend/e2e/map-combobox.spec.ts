@@ -51,6 +51,8 @@ test("좌표 미확인 항구·버스 터미널은 지도 대신 검색 목록�
   await page.getByRole("button", { name: "목록", exact: true }).click();
   await expect(page.locator(".map-place-list").getByRole("button", { name: /백야도/ })).toBeVisible();
   await expect(page.locator(".map-place-list").getByRole("button", { name: /강릉/ })).toBeVisible();
+  await expect(page.locator(".map-place-list").getByRole("button", { name: /백야도/ })).toContainText("항구 코드 SEA97580");
+  await expect(page.locator(".map-place-list").getByRole("button", { name: /강릉/ })).toContainText("터미널 코드 NAI2551901");
   await page.locator(".map-place-list").getByRole("button", { name: /백야도/ }).click();
   await expect(page.getByLabel("선택 장소 상세").getByText(/항구 코드 SEA97580/)).toBeVisible();
   await page.getByRole("button", { name: "장소 상세 닫기" }).click();
@@ -61,6 +63,17 @@ test("좌표 미확인 항구·버스 터미널은 지도 대신 검색 목록�
   await page.locator(".map-place-list").getByRole("button", { name: /강릉/ }).click();
   await expect(page.getByLabel("선택 장소 상세").getByText(/터미널 코드 NAI2551901/)).toBeVisible();
   expect(requests.some((params) => params.get("kind") === "ferry_port" && params.get("include_unlocated") === "true")).toBe(true);
+});
+
+test("잘린 목록은 확대 대신 이름·코드 검색을 안내한다", async ({ page }) => {
+  await page.route("**/transport/features/places?**", (route) => {
+    const kind = new URL(route.request().url()).searchParams.get("kind");
+    return route.fulfill({ json: { items: [], total: kind === "ferry_port" ? 749 : 0,
+      truncated: kind === "ferry_port", available_sources: [] } });
+  });
+  await page.goto("/map");
+  await page.getByRole("button", { name: "목록", exact: true }).click();
+  await expect(page.getByText(/항구 일부만 표시합니다\. 이름·코드 검색으로 범위를 좁혀 주세요/)).toBeVisible();
 });
 
 for (const width of [320, 375, 768, 1440]) {
@@ -143,7 +156,7 @@ test("유종은 OR로 표시하고 새 조회 실패 시 이전 장소를 숨긴
   await expect(list.getByRole("button", { name: /D047/ })).toBeVisible();
   await expect(list.getByRole("button", { name: /K015/ })).toHaveCount(0);
   await page.getByLabel("장소 검색").fill("새로운 조건");
-  await expect(page.getByText("주유소·철도역·항구·공항·휴게소·도로 돌발 조회 실패")).toBeVisible();
+  await expect(page.getByText("주유소·철도역·항구·버스터미널·공항·휴게소·도로 돌발 조회 실패")).toBeVisible();
   await expect(list.getByRole("button")).toHaveCount(0);
 });
 
