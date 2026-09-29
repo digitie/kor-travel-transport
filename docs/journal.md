@@ -1,5 +1,14 @@
 # journal.md — 작업 일지
 
+## 2026-09-30 — PR #54 최종 병합 확인
+
+- 최종 HEAD `41e5b9a`의 GitHub CI 백엔드·프론트엔드·관리 UI가 중복 실행 두 건씩
+  모두 통과했다. Actions의 `live-e2e` job은 수동 운영 E2E와 별개로 skipped였으며,
+  운영 HTTPS Playwright 447개와 실제 Kakao 좌표 검증 1개는 별도 실행해 통과했다.
+- Draft를 해제한 뒤 [PR #54](https://github.com/digitie/kor-travel-transport/pull/54)의
+  `MERGED`와 squash merge commit `ac6605ad60bec1067f238f095716f2bcea576a3b`를
+  확인했다. 이 기록은 완료 상태 반영만이며 추가 수집·배포를 한 것은 아니다.
+
 ## 2026-09-30 — PR #54 n150 실수집·운영 UI 검증
 
 - 코드 후보 `643b97e`의 백엔드·프론트엔드·관리 UI CI, WSL과 최신 Docker 이미지의
