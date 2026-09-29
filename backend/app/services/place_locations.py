@@ -134,7 +134,7 @@ class PlaceLocationCollectionService:
                     targets.append(("port", ports.pop(0)))
             async with self.client_factory(
                 api_key=self.settings.vworld_api_key, timeout=self.settings.api_timeout_seconds,
-                max_retries=0, max_rps=0.5,
+                max_retries=0, max_rps=25.0,
             ) as client:
                 for kind, row in targets:
                     if kind == "bus":
