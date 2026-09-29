@@ -126,6 +126,8 @@ def test_committed_openapi_schema_includes_bus_routes_and_runtime_errors() -> No
     paths = json.loads(schema_path.read_text(encoding="utf-8"))["paths"]
 
     assert "/v1/transport/bus/terminals" in paths
+    assert "/v1/transport/admin/place-locations" in paths
+    assert "/v1/transport/admin/place-locations/capability" in paths
     assert "/v1/transport/bus/timetable" in paths
     assert "/v1/transport/rail/timetables" in paths
     assert paths["/v1/transport/rail/timetables"]["get"]["responses"]["200"]["content"]["application/json"]["schema"] == {"$ref": "#/components/schemas/RailTimetableResponse"}

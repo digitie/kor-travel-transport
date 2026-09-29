@@ -85,7 +85,7 @@ def _collect_reference(kind: str) -> dict[str, Any]:
     service = RailMaritimeCollectionService(settings)
     action = service.collect_rail_reference if kind == "rail" else service.collect_maritime_reference
     result = asyncio.run(_run_with_session(settings, action))
-    if result.get("status") == "partial_success":
+    if result.get("status") == "partial_success" and kind != "maritime":
         raise Failure(description="항구 기준정보는 저장했지만 일부 기항지 위치 조회가 실패하거나 유예됐습니다.",
                       metadata={"run_id": result["run_id"], "failed_provider_calls": result["port_location_failed_calls"],
                                 "deferred_port_locations": result.get("port_location_deferred_count", 0)},
@@ -158,6 +158,32 @@ def collect_kakao_place_locations() -> dict[str, Any]:
 
 
 @op
+def enrich_new_reference_locations(reference_result: dict[str, Any]) -> dict[str, Any]:
+    """공식 기준정보 적재 직후 기존 수집기의 호출 예산·receipt를 그대로 사용한다."""
+    settings = _settings()
+    results: dict[str, dict[str, Any]] = {}
+    for name, service in (("vworld", PlaceLocationCollectionService), ("kakao", KakaoPlaceCollectionService)):
+        try:
+            results[name] = asyncio.run(_run_with_session(settings, service(settings).collect))
+        except Exception as exc:
+            # 한 제공기관의 장애가 다른 제공기관의 독립된 호출 예산을 막지 않는다.
+            results[name] = {"status": "failed", "error_type": type(exc).__name__}
+    vworld, kakao = results["vworld"], results["kakao"]
+    if reference_result.get("status") == "partial_success" or any(
+        result.get("status") in ("partial_success", "failed") for result in (vworld, kakao)
+    ):
+        raise Failure(description="기준정보와 장소 좌표 보강의 성공분은 저장했지만 일부 조회가 실패하거나 유예됐습니다.",
+                      metadata={"reference_run_id": reference_result.get("run_id", ""),
+                                "reference_failed_calls": reference_result.get("port_location_failed_calls", 0),
+                                "reference_deferred": reference_result.get("port_location_deferred_count", 0),
+                                "vworld_run_id": vworld.get("run_id", ""),
+                                "kakao_run_id": kakao.get("run_id", ""),
+                                "vworld_status": vworld.get("status", ""),
+                                "kakao_status": kakao.get("status", "")}, allow_retries=False)
+    return {"reference_status": reference_result.get("status"), "vworld": vworld, "kakao": kakao}
+
+
+@op
 def collect_kric_timetable() -> dict[str, Any]:
     settings = _settings()
     return asyncio.run(_run_with_session(settings, KricTimetableCollectionService(settings).collect))
@@ -190,7 +216,7 @@ def rail_reference_collection_job() -> None:
 
 @job(tags={"kortraveltransport/run_group": "reference"})
 def maritime_reference_collection_job() -> None:
-    collect_maritime_reference()
+    enrich_new_reference_locations(collect_maritime_reference())
 
 
 @job(tags={"kortraveltransport/run_group": "reference"})
@@ -200,7 +226,7 @@ def ferry_timetable_collection_job() -> None:
 
 @job(tags={"kortraveltransport/run_group": "reference"})
 def bus_reference_collection_job() -> None:
-    collect_bus_reference()
+    enrich_new_reference_locations(collect_bus_reference())
 
 
 @job(tags={"kortraveltransport/run_group": "reference"})

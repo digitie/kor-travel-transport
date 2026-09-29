@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     kakao_place_max_calls_per_day: int = Field(default=5000, ge=1, le=100000)
     kakao_place_max_calls_per_month: int = Field(default=50000, ge=1, le=3000000)
     kakao_place_request_interval_seconds: float = Field(default=0.2, ge=0.1, le=60)
+    transport_admin_write_token: str | None = None
     kex_ex_api_key: str | None = None
     # KRIC 인증 OpenAPI는 48시간 batch 전용이다. 공개 조회는 DB만 읽는다.
     kric_service_key: str | None = None

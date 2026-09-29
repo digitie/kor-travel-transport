@@ -147,6 +147,9 @@ class KakaoPlaceCollectionService:
             async with self.client_factory(timeout=self.settings.api_timeout_seconds,
                                            headers={"Authorization": f"KakaoAK {self.settings.kakao_rest_api_key}"}) as client:
                 for kind, row in targets:
+                    await session.refresh(row)
+                    if row.latitude is not None or row.location_source == "admin_manual":
+                        continue
                     if kind == "bus":
                         if bus_names[(row.service_type, row.terminal_name, row.city_name)] != 1:
                             continue
@@ -217,10 +220,12 @@ class KakaoPlaceCollectionService:
                         elif selected is None:
                             summary["unmatched"] += 1
                         else:
-                            row.latitude, row.longitude = selected["latitude"], selected["longitude"]
-                            row.location_source = SOURCE
-                            row.raw_item_json = {**(row.raw_item_json or {}), "_kakao_place": selected}
-                            summary["bus_locations" if kind == "bus" else "port_locations"] += 1
+                            await session.refresh(row, with_for_update=True)
+                            if row.latitude is None and row.location_source != "admin_manual":
+                                row.latitude, row.longitude = selected["latitude"], selected["longitude"]
+                                row.location_source = SOURCE
+                                row.raw_item_json = {**(row.raw_item_json or {}), "_kakao_place": selected}
+                                summary["bus_locations" if kind == "bus" else "port_locations"] += 1
                         await session.commit()
                     except Exception as exc:
                         await session.rollback()

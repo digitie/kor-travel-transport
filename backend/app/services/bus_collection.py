@@ -161,7 +161,7 @@ class BusReferenceCollectionService:
                 BusTerminalReference.source == TAGO_BUS_SOURCE,
                 BusTerminalReference.service_type == service_type,
                 BusTerminalReference.terminal_id == item.terminal_id,
-            )
+            ).with_for_update()
         )
         values = {
             "terminal_name": item.terminal_name,
@@ -170,7 +170,10 @@ class BusReferenceCollectionService:
             "raw_item_json": dict(item.raw),
         }
         if row is not None:
-            if row.terminal_name != item.terminal_name or row.city_name != item.city_name:
+            if (row.location_source == "admin_manual" and
+                    row.terminal_name == item.terminal_name and row.city_name == item.city_name):
+                values["raw_item_json"]["_manual_location"] = (row.raw_item_json or {}).get("_manual_location")
+            elif row.terminal_name != item.terminal_name or row.city_name != item.city_name:
                 values.update(latitude=None, longitude=None, location_source=None)
             elif row.raw_item_json:
                 for provenance in ("_vworld_place", "_kakao_place"):

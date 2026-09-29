@@ -21,9 +21,19 @@ ssh "${REMOTE_USER}@${REMOTE_HOST}" \
   "REMOTE_APP_DIR='${REMOTE_APP_DIR}' REMOTE_ENV_FILE='${REMOTE_ENV_FILE}' bash -s" <<'PREFLIGHT'
 set -euo pipefail
 [[ -f "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" ]] || { echo "운영 환경 파일이 없습니다." >&2; exit 2; }
-for key in TRANSPORT_UI_PASSWORD TRANSPORT_UI_SESSION_SECRET TRANSPORT_UI_PUBLIC_ORIGIN TRANSPORT_DAGSTER_PUBLIC_ORIGIN TRANSPORT_DAGSTER_PASSWORD NEXT_PUBLIC_VWORLD_API_KEY; do
+for key in TRANSPORT_UI_PASSWORD TRANSPORT_UI_SESSION_SECRET TRANSPORT_ADMIN_WRITE_TOKEN TRANSPORT_UI_PUBLIC_ORIGIN TRANSPORT_DAGSTER_PUBLIC_ORIGIN TRANSPORT_DAGSTER_PASSWORD NEXT_PUBLIC_VWORLD_API_KEY; do
   grep -Eq "^${key}=.+" "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" || { echo "${key}가 설정되지 않았습니다." >&2; exit 2; }
 done
+write_token="$(grep -E '^TRANSPORT_ADMIN_WRITE_TOKEN=' "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" | tail -n 1 | cut -d= -f2-)"
+[[ ${#write_token} -ge 32 ]] || { echo "TRANSPORT_ADMIN_WRITE_TOKEN은 32자 이상이어야 합니다." >&2; exit 2; }
+capability="$(curl --fail --silent --show-error --max-time 5 -H @- http://127.0.0.1:14001/v1/transport/admin/place-locations/capability <<<"X-Transport-Admin-Token: ${write_token}")" || {
+  echo "좌표 보정 기능이 있는 backend를 먼저 배포해야 합니다." >&2; exit 2;
+}
+unset write_token
+grep -Fq '"contract":"coordinate-write-v1"' <<<"${capability}" || {
+  echo "backend 좌표 보정 계약이 일치하지 않습니다." >&2; exit 2;
+}
+unset capability
 port_from_env() {
   local key="$1" fallback="$2" line value
   line="$(grep -E "^${key}=" "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" || true)"

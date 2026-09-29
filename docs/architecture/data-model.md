@@ -2,6 +2,12 @@
 
 ## 핵심 테이블
 
+항구 `ferry_ports`와 버스 `bus_terminal_references`의 관리자 좌표 보정은 새 장소를
+만들지 않는다. 기존 행의 위도·경도와 `location_source=admin_manual`을 갱신하고
+`raw_item_json._manual_location`에 마지막 근거·보정 시간·이전 좌표·수정 버전을 보존한다.
+같은 코드·이름·지역의 기준정보 재적재 시 이 값의 우선순위가 높다. 이름·지역이 바뀌면
+위치를 재검증하도록 해제한다. 전체 편집 이력은 별도 보관하지 않는다.
+
 ### 버스 시간표 저장본 (`0016_bus_timetable_snapshots`)
 
 `bus_timetable_snapshots`는 TAGO의 정상 시간표 응답을 JSONB로 보관한다. 기본 키는

@@ -174,6 +174,24 @@ class FuelStationResponse(BaseModel):
     items: list[FuelStationItem]
 
 
+class ManualPlaceLocationRequest(BaseModel):
+    """관리자만 기존 기준정보 행의 좌표를 보정한다."""
+
+    kind: Literal["ferry_port", "bus_terminal"]
+    id: int = Field(gt=0)
+    source: str = Field(min_length=1, max_length=40)
+    provider_id: str = Field(min_length=1, max_length=120)
+    expected_name: str = Field(min_length=1, max_length=200)
+    expected_city_name: str | None = Field(max_length=120)
+    expected_latitude: float | None = Field(ge=-90, le=90, allow_inf_nan=False)
+    expected_longitude: float | None = Field(ge=-180, le=180, allow_inf_nan=False)
+    expected_location_source: str | None = Field(max_length=80)
+    expected_manual_revision: str | None = Field(max_length=64)
+    latitude: float = Field(ge=32, le=39.5, allow_inf_nan=False)
+    longitude: float = Field(ge=124, le=132, allow_inf_nan=False)
+    note: str = Field(min_length=5, max_length=500)
+
+
 class TransportPlaceMapItem(BaseModel):
     """kor-travel-map·PinVi가 지도 marker로 바로 소비할 저장 장소 요약."""
 
@@ -181,6 +199,7 @@ class TransportPlaceMapItem(BaseModel):
     kind: Literal["fuel_station", "rail_station", "ferry_port", "bus_terminal", "airport", "rest_area", "highway_incident"]
     source: str
     provider_id: str | None = None
+    city_name: str | None = None
     name: str
     longitude: float | None
     latitude: float | None
@@ -196,6 +215,7 @@ class TransportPlaceMapItem(BaseModel):
     address: str | None = None
     updated_at: datetime
     location_source: str | None = None
+    manual_location_revision: str | None = None
     location_point_count: int | None = None
 
     @model_validator(mode="after")

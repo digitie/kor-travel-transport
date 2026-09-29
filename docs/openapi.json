@@ -2705,6 +2705,139 @@
         "title": "KricCoverage",
         "type": "object"
       },
+      "ManualPlaceLocationRequest": {
+        "description": "관리자만 기존 기준정보 행의 좌표를 보정한다.",
+        "properties": {
+          "expected_city_name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected City Name"
+          },
+          "expected_latitude": {
+            "anyOf": [
+              {
+                "maximum": 90.0,
+                "minimum": -90.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Latitude"
+          },
+          "expected_location_source": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Location Source"
+          },
+          "expected_longitude": {
+            "anyOf": [
+              {
+                "maximum": 180.0,
+                "minimum": -180.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Longitude"
+          },
+          "expected_manual_revision": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Manual Revision"
+          },
+          "expected_name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Expected Name",
+            "type": "string"
+          },
+          "id": {
+            "exclusiveMinimum": 0.0,
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "ferry_port",
+              "bus_terminal"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "latitude": {
+            "maximum": 39.5,
+            "minimum": 32.0,
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "maximum": 132.0,
+            "minimum": 124.0,
+            "title": "Longitude",
+            "type": "number"
+          },
+          "note": {
+            "maxLength": 500,
+            "minLength": 5,
+            "title": "Note",
+            "type": "string"
+          },
+          "provider_id": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Provider Id",
+            "type": "string"
+          },
+          "source": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "source",
+          "provider_id",
+          "expected_name",
+          "expected_city_name",
+          "expected_latitude",
+          "expected_longitude",
+          "expected_location_source",
+          "expected_manual_revision",
+          "latitude",
+          "longitude",
+          "note"
+        ],
+        "title": "ManualPlaceLocationRequest",
+        "type": "object"
+      },
       "ParkingCurrentResponse": {
         "properties": {
           "generated_at": {
@@ -3910,6 +4043,17 @@
             ],
             "title": "Brand Name"
           },
+          "city_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City Name"
+          },
           "facilities": {
             "items": {
               "type": "string"
@@ -3995,6 +4139,17 @@
               }
             ],
             "title": "Longitude"
+          },
+          "manual_location_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Location Revision"
           },
           "name": {
             "title": "Name",
@@ -6003,6 +6158,87 @@
           }
         },
         "summary": "Parking History"
+      }
+    },
+    "/v1/transport/admin/place-locations": {
+      "post": {
+        "description": "공개 gateway에서 닫힌, 관리자 BFF 전용 좌표 보정 경로.",
+        "operationId": "save_manual_place_location_v1_transport_admin_place_locations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualPlaceLocationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransportPlaceMapItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Save Manual Place Location"
+      }
+    },
+    "/v1/transport/admin/place-locations/capability": {
+      "get": {
+        "operationId": "manual_place_location_capability_v1_transport_admin_place_locations_capability_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Manual Place Location Capability V1 Transport Admin Place Locations Capability Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Manual Place Location Capability"
       }
     },
     "/v1/transport/bus/terminals": {

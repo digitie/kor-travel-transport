@@ -8,7 +8,7 @@
 
 관리 UI는 provider API·PostgreSQL·RustFS credential을 받지 않는다. 브라우저 요청은
 HttpOnly 서명 세션을 통과한 뒤에만 Next.js server route가 다음의 저장 데이터 읽기 API를
-중계한다.
+중계한다. 별도 수동 좌표 보정 쓰기 토큰은 서버 측에만 전달하고 브라우저로 보내지 않는다.
 
 - `GET /v1/transport/collector-status`
 - `GET /v1/transport/statistics`
@@ -23,7 +23,8 @@ HttpOnly 서명 세션을 통과한 뒤에만 Next.js server route가 다음의 
 서로 다른 cache miss도 기본 두 개까지만 동시에 집계해 public 요청이 공용 PostgreSQL을
 점유하지 못하게 한다.
 
-수집 실행, 백업, DB 변경, provider 키는 관리 UI의 허용 목록에 없다. 이 경계는
+수집 실행, 백업, 일반 DB 변경, provider 키는 관리 UI의 읽기 proxy 허용 목록에 없다.
+예외는 공식 항구·버스터미널 기존 행의 좌표 수동 보정 BFF 한 경로뿐이다. 이 경계는
 `lib/transport.ts` 단위 테스트와 `backend/tests/test_transport_admin_contract.py`가
 회귀를 막는다.
 
@@ -91,6 +92,10 @@ Dagster 운영 UI ── TLS ── transport-dagster.digitie.mywire.org:12302
 - Next.js transport proxy는 upstream `Retry-After`를 그대로 전달한다. 항구 시간표 cache
   miss는 provider 전체에서 기본 30초의 보호 간격을 적용하며, 기간 중에는 `429`과 재시도
   초를 반환한다. 따라서 항구 목록을 순회하는 호출도 provider quota를 소진하지 않는다.
+- 항구·버스터미널 좌표 수동 보정 POST는 기존 읽기 proxy와 분리한다. 관리자 세션과
+  exact origin을 검사한 BFF만 별도 32자 이상 `TRANSPORT_ADMIN_WRITE_TOKEN`을 backend에
+  전달한다. 공개 API gateway는 이 경로를 열지 않는다. 토큰이 없는 환경에서는
+  쓰기가 비활성화되며 기존 관리자 아이디·비밀번호 초기값은 바꾸지 않는다.
 - 로그인·로그아웃과 Dagster GraphQL POST는 `TRANSPORT_UI_PUBLIC_ORIGIN`과 exact
   비교한다. reverse proxy가 client IP를 재작성하는 계약이 있을 때만
   `TRANSPORT_UI_TRUST_PROXY=true`를 허용한다.
@@ -105,6 +110,9 @@ Dagster 운영 UI ── TLS ── transport-dagster.digitie.mywire.org:12302
 않은 port에 listener가 있으면 기존 프로세스를 중단하지 않고 실패한다.
 공개 API gateway는 bind mount한 allowlist 설정을 쓰므로 배포 때 전용 세 서비스를
 강제 재생성하여 변경된 공개 경로가 즉시 적용되게 한다.
+수동 좌표 보정 기능이 포함된 관리자 UI는 새 backend를 먼저 배포한다. 전용 관리자
+배포 스크립트가 내부 `coordinate-write-v1` capability와 비추적 쓰기 토큰 설정을
+사전 확인하므로, 이전 backend와 새 UI의 엇갈린 배포를 성공으로 보지 않는다.
 
 UI만 바뀌는 경우 전체 스택 배포는 하지 않는다. 검증한 UI 이미지만 지정한 뒤
 `up -d --no-deps --no-build --force-recreate transport-admin-web`으로 교체한다.

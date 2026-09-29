@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 from collections import OrderedDict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -9,6 +10,7 @@ from contextlib import suppress
 from datetime import UTC, date, datetime, time, timedelta
 from functools import wraps
 from http import HTTPStatus
+from math import isfinite
 from types import SimpleNamespace
 from typing import Literal
 from zoneinfo import ZoneInfo
@@ -85,6 +87,7 @@ from app.schemas import (
     HolidayPatternItem,
     HolidayPatternResponse,
     HolidaySummaryResponse,
+    ManualPlaceLocationRequest,
     HourlyBucket,
     ParkingCurrentResponse,
     ParkingHistoryResponse,
@@ -650,6 +653,76 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     router = APIRouter()
 
+    @router.get("/transport/admin/place-locations/capability")
+    async def manual_place_location_capability(request: Request) -> dict[str, str]:
+        configured = resolved_settings.transport_admin_write_token or ""
+        if len(configured) < 32 or not secrets.compare_digest(
+            configured, request.headers.get("x-transport-admin-token", ""),
+        ):
+            raise HTTPException(status_code=404, detail="사용할 수 없는 관리자 경로입니다.")
+        return {"contract": "coordinate-write-v1"}
+
+    @router.post("/transport/admin/place-locations", response_model=TransportPlaceMapItem)
+    async def save_manual_place_location(
+        payload: ManualPlaceLocationRequest,
+        request: Request,
+        session: AsyncSession = Depends(get_db),
+    ) -> TransportPlaceMapItem:
+        """공개 gateway에서 닫힌, 관리자 BFF 전용 좌표 보정 경로."""
+        configured = resolved_settings.transport_admin_write_token or ""
+        provided = request.headers.get("x-transport-admin-token", "")
+        if len(configured) < 32 or not secrets.compare_digest(configured, provided):
+            raise HTTPException(status_code=404, detail="사용할 수 없는 관리자 경로입니다.")
+        model = FerryPort if payload.kind == "ferry_port" else BusTerminalReference
+        row = await session.scalar(select(model).where(model.id == payload.id).with_for_update())
+        official_source = "data_go_kr_maritime" if payload.kind == "ferry_port" else "data_go_kr_tago"
+        if row is None or row.source != official_source:
+            raise HTTPException(status_code=404, detail="공식 기준정보에서 해당 장소를 찾지 못했습니다.")
+        provider_id = row.port_id if payload.kind == "ferry_port" else row.terminal_id
+        if row.source != payload.source or provider_id != payload.provider_id:
+            raise HTTPException(status_code=409, detail="기준정보가 변경됐습니다. 새로 조회한 뒤 다시 시도해 주세요.")
+        current_name = (row.port_name if payload.kind == "ferry_port" else row.terminal_name) or provider_id
+        current_city = None if payload.kind == "ferry_port" else row.city_name
+        if (current_name, current_city) != (payload.expected_name, payload.expected_city_name):
+            raise HTTPException(status_code=409, detail="장소 이름·지역이 변경됐습니다. 새로 조회한 뒤 다시 시도해 주세요.")
+        visible_latitude, visible_longitude = row.latitude, row.longitude
+        if (row.location_source == "data_go_kr_port_guideline" or
+                visible_latitude is None or visible_longitude is None or
+                not isfinite(visible_latitude) or not isfinite(visible_longitude) or
+                not -90 <= visible_latitude <= 90 or not -180 <= visible_longitude <= 180):
+            visible_latitude = visible_longitude = None
+        if (visible_latitude, visible_longitude, row.location_source) != (
+            payload.expected_latitude, payload.expected_longitude, payload.expected_location_source,
+        ):
+            raise HTTPException(status_code=409, detail="다른 좌표가 먼저 저장됐습니다. 새로 조회한 뒤 다시 시도해 주세요.")
+        current_revision = ((row.raw_item_json or {}).get("_manual_location") or {}).get("revision") if row.location_source == "admin_manual" else None
+        if current_revision != payload.expected_manual_revision:
+            raise HTTPException(status_code=409, detail="보정 근거가 먼저 변경됐습니다. 새로 조회한 뒤 다시 시도해 주세요.")
+        note = payload.note.strip()
+        if len(note) < 5:
+            raise HTTPException(status_code=422, detail="좌표 확인 근거를 5자 이상 적어 주세요.")
+        previous = {"latitude": row.latitude, "longitude": row.longitude,
+                    "location_source": row.location_source}
+        changed_at = now_utc()
+        revision = secrets.token_hex(16)
+        row.latitude, row.longitude = payload.latitude, payload.longitude
+        row.location_source = "admin_manual"
+        if payload.kind == "ferry_port":
+            row.location_point_count = 1
+        row.raw_item_json = {**(row.raw_item_json or {}), "_manual_location": {
+            "note": note, "updated_at": changed_at.isoformat(), "previous": previous,
+            "revision": revision,
+        }}
+        await session.commit()
+        return TransportPlaceMapItem(
+            id=row.id, kind=payload.kind, source=row.source, provider_id=provider_id,
+            name=current_name, city_name=current_city,
+            longitude=row.longitude, latitude=row.latitude, location_source=row.location_source,
+            manual_location_revision=revision,
+            location_point_count=row.location_point_count if payload.kind == "ferry_port" else None,
+            updated_at=serialize_utc(row.last_seen_at),
+        )
+
     @router.get("/airports", response_model=list[AirportSummary])
     async def airports(session: AsyncSession = Depends(get_db)) -> list[AirportSummary]:
         result = await session.execute(
@@ -1041,10 +1114,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     provider_id=port.port_id,
                     longitude=None if port.location_source == "data_go_kr_port_guideline" else port.longitude,
                     latitude=None if port.location_source == "data_go_kr_port_guideline" else port.latitude,
-                    subtitle=("공식 기항지 위치" if port.location_source == "komsa_port_call"
+                    subtitle=("관리자가 검증한 위치" if port.location_source == "admin_manual"
+                              else "공식 기항지 위치" if port.location_source == "komsa_port_call"
                               else "지도 시설 위치 · 승선 장소 확인 필요" if port.location_source in ("vworld_place", "kakao_place")
                               else "위치 확인 필요"),
                     updated_at=serialize_utc(port.last_seen_at), location_source=port.location_source,
+                    manual_location_revision=((port.raw_item_json or {}).get("_manual_location") or {}).get("revision") if port.location_source == "admin_manual" else None,
                     location_point_count=port.location_point_count,
                 ))
         if selected_kind in (None, "rest_area"):
@@ -1089,10 +1164,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 items.append(TransportPlaceMapItem(
                     id=terminal.id, kind="bus_terminal", source=terminal.source,
                     provider_id=terminal.terminal_id, name=terminal.terminal_name or terminal.terminal_id,
+                    city_name=terminal.city_name,
                     longitude=terminal.longitude, latitude=terminal.latitude,
                     subtitle=("고속버스" if terminal.service_type == "express" else "시외버스") +
                         (f" · {terminal.city_name}" if terminal.city_name else ""),
                     location_source=terminal.location_source, updated_at=serialize_utc(terminal.last_seen_at),
+                    manual_location_revision=((terminal.raw_item_json or {}).get("_manual_location") or {}).get("revision") if terminal.location_source == "admin_manual" else None,
                 ))
         if selected_kind in (None, "airport"):
             airports = (await session.scalars(select(Airport).order_by(Airport.code))).all()
