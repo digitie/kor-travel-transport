@@ -76,7 +76,12 @@ def test_bus_reference_collection_stores_terminal_reference_only(tmp_path: Path)
     asyncio.run(run())
 
 
-def test_bus_reference_upsert_keeps_verified_location_only_for_unchanged_identity(tmp_path: Path) -> None:
+@pytest.mark.parametrize("location_source,provenance", [
+    ("vworld_place", "_vworld_place"), ("kakao_place", "_kakao_place"),
+])
+def test_bus_reference_upsert_keeps_verified_location_only_for_unchanged_identity(
+    tmp_path: Path, location_source: str, provenance: str,
+) -> None:
     settings = Settings(database_url=f"sqlite+aiosqlite:///{tmp_path / 'bus-location.sqlite3'}",
                         seed_sample_data=False)
     engine, factory = create_engine_and_session_factory(settings.database_url)
@@ -87,21 +92,21 @@ def test_bus_reference_upsert_keeps_verified_location_only_for_unchanged_identit
         async with factory() as session:
             session.add(BusTerminalReference(source="data_go_kr_tago", service_type="intercity",
                 terminal_id="B1", terminal_name="강릉", city_name="강원도", latitude=37.75,
-                longitude=128.88, location_source="vworld_place", first_seen_at=now,
-                last_seen_at=now, raw_item_json={"_vworld_place": {"title": "강릉시외버스터미널"}}))
+                longitude=128.88, location_source=location_source, first_seen_at=now,
+                last_seen_at=now, raw_item_json={provenance: {"title": "강릉시외버스터미널"}}))
             await session.commit()
             service = BusReferenceCollectionService(settings)
             await service._upsert_terminal(session, "intercity", TagoBusTerminal(
                 terminalId="B1", terminalNm="강릉", cityName="강원도"), now)
             await session.commit()
             row = await session.scalar(select(BusTerminalReference).where(BusTerminalReference.terminal_id == "B1"))
-            assert (row.latitude, row.location_source) == (37.75, "vworld_place")
-            assert row.raw_item_json["_vworld_place"]["title"] == "강릉시외버스터미널"
+            assert (row.latitude, row.location_source) == (37.75, location_source)
+            assert row.raw_item_json[provenance]["title"] == "강릉시외버스터미널"
             await service._upsert_terminal(session, "intercity", TagoBusTerminal(
                 terminalId="B1", terminalNm="새강릉", cityName="강원도"), now)
             await session.commit()
             assert (row.latitude, row.longitude, row.location_source) == (None, None, None)
-            assert "_vworld_place" not in row.raw_item_json
+            assert provenance not in row.raw_item_json
         await engine.dispose()
 
     asyncio.run(run())

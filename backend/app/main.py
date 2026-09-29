@@ -1042,7 +1042,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     longitude=None if port.location_source == "data_go_kr_port_guideline" else port.longitude,
                     latitude=None if port.location_source == "data_go_kr_port_guideline" else port.latitude,
                     subtitle=("공식 기항지 위치" if port.location_source == "komsa_port_call"
-                              else "지도 시설 위치 · 승선 장소 확인 필요" if port.location_source == "vworld_place"
+                              else "지도 시설 위치 · 승선 장소 확인 필요" if port.location_source in ("vworld_place", "kakao_place")
                               else "위치 확인 필요"),
                     updated_at=serialize_utc(port.last_seen_at), location_source=port.location_source,
                     location_point_count=port.location_point_count,

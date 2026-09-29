@@ -204,6 +204,22 @@ def test_bus_terminal_map_uses_only_verified_coordinates_and_preserves_code(clie
     assert terminals[0]["longitude"] == 128.8788
 
 
+def test_kakao_port_position_is_labeled_as_facility_not_unverified(client):
+    async def seed():
+        now = now_utc()
+        async with client.app.state.session_factory() as session:
+            session.add(FerryPort(source="data_go_kr_maritime", port_id="SEA22010",
+                port_name="대천", longitude=126.5, latitude=36.3,
+                location_source="kakao_place", first_seen_at=now, last_seen_at=now))
+            await session.commit()
+
+    asyncio.run(seed())
+    places = client.get("/v1/transport/features/places", params={"kind": "ferry_port"}).json()
+    assert places["total"] == 1
+    assert places["items"][0]["location_source"] == "kakao_place"
+    assert places["items"][0]["subtitle"] == "지도 시설 위치 · 승선 장소 확인 필요"
+
+
 def test_same_name_ferry_ports_keep_distinct_codes_and_timetables(client):
     today = to_seoul(now_utc()).date()
 

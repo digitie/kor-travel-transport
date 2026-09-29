@@ -190,6 +190,8 @@ class PlaceLocationCollectionService:
                         received = previous.received_at.replace(tzinfo=UTC) if previous.received_at.tzinfo is None else previous.received_at
                         if ((previous.request_params_json or {}).get("query") == query
                                 and (previous.request_params_json or {}).get("name") == name
+                                and (previous.request_params_json or {}).get("city_name") == (
+                                    row.city_name if kind == "bus" else None)
                                 and now - received < timedelta(
                             days=30 if previous.parse_status == "success" else 1
                         )):
@@ -213,7 +215,8 @@ class PlaceLocationCollectionService:
                         await session.commit()
                         break
                     receipt = RawApiResponse(collection_run_id=run.id, source=LOCATION_SOURCE,
-                        endpoint=endpoint, request_params_json={"query": query, "name": name}, status_code=0,
+                        endpoint=endpoint, request_params_json={"query": query, "name": name,
+                            "city_name": row.city_name if kind == "bus" else None}, status_code=0,
                         body_text="null", received_at=now, parse_status="pending", parse_error=None)
                     session.add(receipt)
                     await session.commit()

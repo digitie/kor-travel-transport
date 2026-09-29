@@ -316,6 +316,35 @@ def test_changed_terminal_name_bypasses_old_success_receipt(
     assert FakeVworld.calls == [new_name if "터미널" in new_name else new_name + "시외버스터미널"]
 
 
+def test_city_correction_bypasses_old_success_receipt(tmp_path: Path, monkeypatch) -> None:
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("app.services.place_locations.asyncio.sleep", no_sleep)
+    FakeVworld.calls = []
+    settings = Settings(database_url=f"sqlite+aiosqlite:///{tmp_path / 'city.sqlite3'}",
+                        seed_sample_data=False, place_location_collection_enabled=True, vworld_api_key="test-key")
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> None:
+        await init_database(engine)
+        now = now_utc()
+        async with factory() as session:
+            session.add(BusTerminalReference(source="data_go_kr_tago", service_type="intercity",
+                terminal_id="B1", terminal_name="강릉", city_name="강원도",
+                first_seen_at=now, last_seen_at=now, raw_item_json={}))
+            session.add(RawApiResponse(source="vworld_place", endpoint="vworld:bus:intercity:B1",
+                request_params_json={"query": "강릉시외버스터미널", "name": "강릉", "city_name": "경기도"},
+                status_code=200, body_text="{}", received_at=now, parse_status="success"))
+            await session.commit()
+            result = await PlaceLocationCollectionService(settings, client_factory=FakeVworld).collect(session)
+            assert result["provider_calls"] == 1
+        await engine.dispose()
+
+    asyncio.run(run())
+    assert FakeVworld.calls == ["강릉시외버스터미널"]
+
+
 def test_exhausted_call_budget_is_partial_success(tmp_path: Path, monkeypatch) -> None:
     async def no_sleep(_seconds: float) -> None:
         return None

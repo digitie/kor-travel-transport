@@ -553,11 +553,11 @@ class RailMaritimeCollectionService:
             values["raw_item_json"]["_komsa_port_call"] = dict(location.raw)
         elif (row is None or row.location_source == PORT_GUIDELINE_SOURCE or
               row.port_name != item.port_name or
-              (location_verified and row.location_source != "vworld_place")):
-            # KOMSA 무결과는 KOMSA 연결만 해제한다. 별도로 검증한 VWorld 시설 좌표는 보존한다.
+              (location_verified and row.location_source not in ("vworld_place", "kakao_place"))):
+            # KOMSA 무결과는 KOMSA 연결만 해제한다. 별도 장소 검색에서 검증한 시설 좌표는 보존한다.
             values.update(latitude=None, longitude=None, location_source=None, location_point_count=0)
         elif row.raw_item_json:
-            for provenance in ("_komsa_port_call", "_vworld_place"):
+            for provenance in ("_komsa_port_call", "_vworld_place", "_kakao_place"):
                 if provenance in row.raw_item_json:
                     values["raw_item_json"][provenance] = row.raw_item_json[provenance]
         if row is None:

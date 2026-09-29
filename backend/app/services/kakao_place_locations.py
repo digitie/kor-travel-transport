@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from collections import Counter
 from collections.abc import Mapping
@@ -100,8 +101,9 @@ class KakaoPlaceCollectionService:
         session.add(run)
         await session.commit()
         summary = {"provider_calls": 0, "bus_locations": 0, "port_locations": 0,
-                   "unmatched": 0, "deferred": 0, "provider_failed": 0}
+                   "unmatched": 0, "incomplete": 0, "deferred": 0, "provider_failed": 0}
         try:
+            key_fingerprint = hashlib.sha256(self.settings.kakao_rest_api_key.encode()).hexdigest()
             bus = (await session.scalars(select(BusTerminalReference).where(
                 BusTerminalReference.latitude.is_(None), BusTerminalReference.terminal_name.is_not(None),
             ).order_by(BusTerminalReference.id))).all()
@@ -128,6 +130,20 @@ class KakaoPlaceCollectionService:
                 RawApiResponse.source == SOURCE,
                 RawApiResponse.received_at >= budget_time - timedelta(days=31),
             )) or 0)
+            # 429는 키 전체의 한도 응답이다. 재실행이 다른 장소를 다시 호출하지
+            # 않도록 24시간 유예한다. 401/403은 키 교체 직후 재검증할 수 있어야 한다.
+            recent_quota_errors = (await session.scalars(select(RawApiResponse).where(
+                RawApiResponse.source == SOURCE,
+                RawApiResponse.status_code == 429,
+                RawApiResponse.received_at >= budget_time - timedelta(days=1),
+            ))).all()
+            if targets and any((receipt.request_params_json or {}).get("key_fingerprint") == key_fingerprint
+                               for receipt in recent_quota_errors):
+                summary["deferred"] = len(targets)
+                run.status = "partial_success"
+                run.finished_at = now_utc()
+                await session.commit()
+                return {"status": run.status, "run_id": run.id, **summary}
             async with self.client_factory(timeout=self.settings.api_timeout_seconds,
                                            headers={"Authorization": f"KakaoAK {self.settings.kakao_rest_api_key}"}) as client:
                 for kind, row in targets:
@@ -153,7 +169,11 @@ class KakaoPlaceCollectionService:
                     if previous is not None:
                         received = previous.received_at.replace(tzinfo=UTC) if previous.received_at.tzinfo is None else previous.received_at
                         params = previous.request_params_json or {}
-                        if (params.get("query") == query and params.get("name") == name and
+                        if (previous.status_code not in (401, 403) and
+                                not (previous.status_code == 429 and
+                                     params.get("key_fingerprint") != key_fingerprint) and
+                                params.get("query") == query and params.get("name") == name and
+                                params.get("city_name") == (row.city_name if kind == "bus" else None) and
                                 now - received < timedelta(days=30 if previous.parse_status == "success" else 1)):
                             continue
                     # session-level lease가 같은 collector의 동시 실행을 배제한다.
@@ -163,7 +183,9 @@ class KakaoPlaceCollectionService:
                         await session.commit()
                         break
                     receipt = RawApiResponse(collection_run_id=run.id, source=SOURCE, endpoint=endpoint,
-                        request_params_json={"query": query, "name": name, "page": 1}, status_code=0,
+                        request_params_json={"query": query, "name": name,
+                            "city_name": row.city_name if kind == "bus" else None,
+                            "key_fingerprint": key_fingerprint, "page": 1}, status_code=0,
                         body_text="null", received_at=now, parse_status="pending", parse_error=None)
                     session.add(receipt)
                     await session.commit()
@@ -191,7 +213,7 @@ class KakaoPlaceCollectionService:
                         receipt.body_text = json.dumps({"selected": selected, "returned": len(items),
                             "total": meta.get("total_count")}, ensure_ascii=False)
                         if incomplete:
-                            summary["deferred"] += 1
+                            summary["incomplete"] += 1
                         elif selected is None:
                             summary["unmatched"] += 1
                         else:

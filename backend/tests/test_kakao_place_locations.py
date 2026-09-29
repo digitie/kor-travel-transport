@@ -160,7 +160,8 @@ def test_kakao_incomplete_and_quota_error_never_persist_coordinates(
             FakeKakaoClient.incomplete = incomplete
             FakeKakaoClient.status_code = status_code
             result = await KakaoPlaceCollectionService(settings, client_factory=FakeKakaoClient).collect(session)
-            assert result["status"] == "partial_success"
+            assert result["status"] == ("success" if incomplete else "partial_success")
+            assert result["incomplete"] == int(incomplete)
             assert (await session.scalar(select(FerryPort))).latitude is None
             assert (await session.scalar(select(RawApiResponse))).parse_status == (
                 "incomplete" if incomplete else "failed"
@@ -172,3 +173,107 @@ def test_kakao_incomplete_and_quota_error_never_persist_coordinates(
     finally:
         FakeKakaoClient.incomplete = False
         FakeKakaoClient.status_code = 200
+
+
+def test_kakao_429_cools_down_the_key_across_runs(tmp_path: Path, monkeypatch) -> None:
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("app.services.kakao_place_locations.asyncio.sleep", no_sleep)
+    FakeKakaoClient.calls = []
+    FakeKakaoClient.status_code = 429
+    settings = Settings(database_url=f"sqlite+aiosqlite:///{tmp_path / 'cooldown.sqlite3'}",
+                        seed_sample_data=False, kakao_place_collection_enabled=True,
+                        kakao_rest_api_key="test-key")
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> None:
+        await init_database(engine)
+        now = now_utc()
+        async with factory() as session:
+            for port_id, name in (("P1", "대천"), ("P2", "여수")):
+                session.add(FerryPort(source="data_go_kr_maritime", port_id=port_id, port_name=name,
+                    first_seen_at=now, last_seen_at=now, raw_item_json={}))
+            await session.commit()
+            service = KakaoPlaceCollectionService(settings, client_factory=FakeKakaoClient)
+            first = await service.collect(session)
+            second = await service.collect(session)
+            assert first["provider_calls"] == 1
+            assert second["provider_calls"] == 0 and second["deferred"] == 2
+            assert len(FakeKakaoClient.calls) == 1
+            FakeKakaoClient.status_code = 200
+            rotated = settings.model_copy(update={"kakao_rest_api_key": "rotated-test-key"})
+            third = await KakaoPlaceCollectionService(rotated, client_factory=FakeKakaoClient).collect(session)
+            assert third["provider_calls"] == third["port_locations"] == 2
+            assert len(FakeKakaoClient.calls) == 3
+            no_targets = await service.collect(session)
+            assert no_targets["status"] == "success" and no_targets["deferred"] == 0
+        await engine.dispose()
+
+    try:
+        asyncio.run(run())
+    finally:
+        FakeKakaoClient.status_code = 200
+
+
+def test_kakao_city_correction_bypasses_old_receipt(tmp_path: Path, monkeypatch) -> None:
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("app.services.kakao_place_locations.asyncio.sleep", no_sleep)
+    FakeKakaoClient.calls = []
+    settings = Settings(database_url=f"sqlite+aiosqlite:///{tmp_path / 'city.sqlite3'}",
+                        seed_sample_data=False, kakao_place_collection_enabled=True,
+                        kakao_rest_api_key="test-key")
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> None:
+        await init_database(engine)
+        now = now_utc()
+        async with factory() as session:
+            session.add(BusTerminalReference(source="data_go_kr_tago", service_type="intercity",
+                terminal_id="B1", terminal_name="강릉", city_name="강원도",
+                first_seen_at=now, last_seen_at=now, raw_item_json={}))
+            session.add(RawApiResponse(source="kakao_place", endpoint="kakao:bus:intercity:B1",
+                request_params_json={"query": "강릉시외버스터미널", "name": "강릉", "city_name": "경기도"},
+                status_code=200, body_text="{}", received_at=now, parse_status="success"))
+            await session.commit()
+            result = await KakaoPlaceCollectionService(settings, client_factory=FakeKakaoClient).collect(session)
+            assert result["provider_calls"] == 1
+        await engine.dispose()
+
+    asyncio.run(run())
+    assert FakeKakaoClient.calls == ["강릉시외버스터미널"]
+
+
+def test_kakao_auth_recovery_can_retry_without_waiting_a_day(tmp_path: Path, monkeypatch) -> None:
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("app.services.kakao_place_locations.asyncio.sleep", no_sleep)
+    FakeKakaoClient.calls = []
+    settings = Settings(database_url=f"sqlite+aiosqlite:///{tmp_path / 'auth.sqlite3'}",
+                        seed_sample_data=False, kakao_place_collection_enabled=True,
+                        kakao_rest_api_key="test-key")
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> None:
+        await init_database(engine)
+        now = now_utc()
+        async with factory() as session:
+            session.add(FerryPort(source="data_go_kr_maritime", port_id="P1", port_name="대천",
+                first_seen_at=now, last_seen_at=now, raw_item_json={}))
+            await session.commit()
+            FakeKakaoClient.status_code = 401
+            first = await KakaoPlaceCollectionService(settings, client_factory=FakeKakaoClient).collect(session)
+            FakeKakaoClient.status_code = 200
+            second = await KakaoPlaceCollectionService(settings, client_factory=FakeKakaoClient).collect(session)
+            assert first["provider_calls"] == second["provider_calls"] == 1
+            assert second["port_locations"] == 1
+        await engine.dispose()
+
+    try:
+        asyncio.run(run())
+    finally:
+        FakeKakaoClient.status_code = 200
+    assert FakeKakaoClient.calls == ["대천항", "대천항"]
