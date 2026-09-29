@@ -30,8 +30,8 @@ class Settings(BaseSettings):
     data_go_kr_service_key: str | None = None
     vworld_api_key: str | None = None
     place_location_collection_enabled: bool = False
-    place_location_max_calls_per_day: int = Field(default=2000, ge=1, le=2000)
-    place_location_request_interval_seconds: float = Field(default=0.04, ge=0.04, le=60)
+    place_location_max_calls_per_day: int = Field(default=10000, ge=1, le=10000)
+    place_location_request_interval_seconds: float = Field(default=0.01, ge=0.01, le=60)
     kex_ex_api_key: str | None = None
     # KRIC 인증 OpenAPI는 48시간 batch 전용이다. 공개 조회는 DB만 읽는다.
     kric_service_key: str | None = None

@@ -19,12 +19,12 @@ from vworld import VworldNoDataError
 
 def test_location_collection_rate_contract_allows_one_full_reference_pass() -> None:
     settings = Settings()
-    assert settings.place_location_max_calls_per_day == 2000
-    assert settings.place_location_request_interval_seconds == 0.04
+    assert settings.place_location_max_calls_per_day == 10000
+    assert settings.place_location_request_interval_seconds == 0.01
     with pytest.raises(ValidationError):
-        Settings(place_location_max_calls_per_day=2001)
+        Settings(place_location_max_calls_per_day=10001)
     with pytest.raises(ValidationError):
-        Settings(place_location_request_interval_seconds=0.03)
+        Settings(place_location_request_interval_seconds=0.009)
 
 
 def place(title: str, category: str, *, x: str = "128.8788", y: str = "37.7546", address: str = "강원특별자치도 강릉시") -> dict:
