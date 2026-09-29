@@ -4,6 +4,9 @@ from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+from datagokr.models import TagoBusTimetable
+
 from app.core.time_utils import now_utc, to_seoul
 from app.models import BusTerminalReference
 from app.schemas import BusTimetableResponse
@@ -86,3 +89,47 @@ def test_bus_cache_does_not_overwrite_newer_response(client):
             assert saved is not None and saved.total == 123 and saved.truncated
             assert await stored_bus_timetable(session, ("express", "A", "B", latest.service_date, "1")) is None
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("has_saved", [True, False])
+def test_bus_provider_validation_error_uses_saved_data_or_sanitized_502(client, has_saved):
+    now = now_utc()
+    today = to_seoul(now).date()
+    saved_at = now - timedelta(hours=1)
+
+    async def seed():
+        async with client.app.state.session_factory() as session:
+            for terminal in ["A", "B"]:
+                session.add(BusTerminalReference(source="data_go_kr_tago", service_type="express",
+                    terminal_id=terminal, terminal_name=terminal, first_seen_at=now, last_seen_at=now))
+            await session.commit()
+            if has_saved:
+                await save_bus_timetable(session, BusTimetableResponse(service_type="express",
+                    departure_terminal_id="A", arrival_terminal_id="B", service_date=today,
+                    fetched_at=saved_at, total=0, stored=True, items=[]), None)
+
+    asyncio.run(seed())
+
+    class MalformedProvider:
+        calls = 0
+        def __init__(self, **_kwargs): self.express_bus = self
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_args): pass
+        async def timetable_list(self, **_kwargs):
+            type(self).calls += 1
+            return TagoBusTimetable.model_validate({"charge": "not-a-number-private-value"})
+
+    client.app.state.settings.data_go_kr_service_key = "test-key"
+    params = dict(service_type="express", departure_terminal_id="A", arrival_terminal_id="B", date=today.isoformat())
+    with patch("app.main.DataGoKrClient", MalformedProvider):
+        response = client.get("/v1/transport/bus/timetable", params=params)
+    assert MalformedProvider.calls == 1
+    assert response.status_code == (200 if has_saved else 502)
+    assert "not-a-number-private-value" not in response.text
+    if has_saved:
+        payload = response.json()
+        assert payload["stored"] and payload["stale"]
+        assert payload["refresh_status"] == "upstream_error"
+        assert BusTimetableResponse.model_validate(payload).fetched_at == saved_at
+    stored = client.get("/v1/transport/bus/timetable", params={**params, "stored_only": True})
+    assert stored.status_code == (200 if has_saved else 404)

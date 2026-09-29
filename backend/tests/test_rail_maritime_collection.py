@@ -409,6 +409,54 @@ def test_ferry_budget_fills_every_port_today_before_future_days(tmp_path: Path) 
     asyncio.run(run())
 
 
+@pytest.mark.parametrize("stale_today", [False, True])
+@pytest.mark.parametrize("provider_fails", [False, True])
+def test_ferry_deferred_count_includes_saved_future_after_budget(tmp_path, stale_today, provider_fails):
+    from kric import KricNetworkError
+
+    class Client:
+        calls = 0
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_args): pass
+        async def get_domestic_ship_operations(self, **_kwargs):
+            type(self).calls += 1
+            if provider_fails:
+                raise KricNetworkError("temporary failure")
+            return ()
+
+    settings = _settings(tmp_path, ferry_timetable_collection_enabled=True,
+        ferry_timetable_storage_days=2, ferry_timetable_collection_max_provider_calls=1,
+        data_go_kr_service_key="test-key")
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run():
+        await init_database(engine)
+        now = now_utc()
+        today = to_seoul(now).date()
+        async with factory() as session:
+            for port_id in ["P001", "P999"]:
+                session.add(FerryPort(source="data_go_kr_maritime", port_id=port_id,
+                    port_name=port_id, first_seen_at=now, last_seen_at=now))
+                session.add(FerryTimetableSnapshot(source="data_go_kr_maritime",
+                    departure_port_id=port_id, service_date=today + timedelta(days=1),
+                    collected_at=now, items_json=[]))
+                if stale_today:
+                    session.add(FerryTimetableSnapshot(source="data_go_kr_maritime",
+                        departure_port_id=port_id, service_date=today,
+                        collected_at=now - timedelta(days=2), items_json=[]))
+            await session.commit()
+        service = RailMaritimeCollectionService(settings, maritime_client_factory=lambda *_a, **_kw: Client())
+        async with factory() as session:
+            result = await service.collect_ferry_timetables(session)
+        assert result["provider_calls"] == Client.calls == 1
+        assert result["failed_provider_calls"] == int(provider_fails)
+        assert result["reused_snapshot_count"] == 2
+        assert result["deferred_snapshot_count"] == (2 if provider_fails else 1)
+        await engine.dispose()
+
+    asyncio.run(run())
+
+
 def test_ferry_timetable_default_budget_includes_interval_and_timeout() -> None:
     settings = Settings()
 

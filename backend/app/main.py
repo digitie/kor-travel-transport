@@ -28,6 +28,7 @@ from datagokr import DataGoKrClient
 from datagokr.exceptions import ApiErrorResponse
 from kric import DataGoKrMaritimeClient, KricRateLimitError
 from krairport import get_airport_or_none
+from pydantic import ValidationError
 
 from app.core.config import Settings, get_settings
 from app.core.time_utils import now_utc, serialize_utc, to_seoul
@@ -1465,6 +1466,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         bus_grade_id=bus_grade_id,
                         num_of_rows=100,
                     )
+            except ValidationError as exc:
+                # provider 응답 검증 실패는 사용자 입력 오류가 아니다. 원시 값을 노출하지 않는다.
+                logger.warning("TAGO timetable provider returned invalid data")
+                if saved is not None:
+                    return saved.model_copy(update={"refresh_status": "upstream_error"})
+                raise HTTPException(status_code=502, detail="TAGO 시간표 provider 조회에 실패했습니다.") from exc
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
             except ApiErrorResponse as exc:
