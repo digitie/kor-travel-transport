@@ -1,5 +1,26 @@
 # journal.md — 작업 일지
 
+## 2026-09-29 — PR #52 CI·머지 및 n150 운영 배포
+
+- KAC SDK #9 `63d4db0`, KRIC SDK #10 `5536131`, transport #52 `cb2ba27`의
+  해당 HEAD CI가 통과한 뒤 차례대로 머지했다. transport merge SHA `683752b`를
+  n150 API·Dagster code-server·웹·전용 관리자 UI·두 게이트웨이에 배포했다.
+- 배포 전 Manager transport DB 백업 `transport-1790669814.dump`(875,972,499바이트,
+  TOC 241, Alembic `0015`, SHA-256 검증 정보)과 transport_dagster 백업
+  `transport_dagster-1790669835.dump`를 확보했다. Dagster in-flight 0건에서 daemon을
+  멈추고 배포 후 healthy 재개를 확인했다. 공유 PostgreSQL·parking-radar 컨테이너를
+  직접 중지하거나 변경하지 않았다.
+- `/health.release_sha`와 관리자 UI 릴리스 표식 모두 `683752b`; Alembic `0016`.
+  API·code-server·webserver·daemon·frontend·관리 UI·게이트웨이는 healthy다.
+  HTTPS API health와 관리자 `/login`은 200, Dagster `/health`는 204였다.
+- KRIC 신규 provider로 저장 raw 6행을 재파싱해 자기부상 좌표만 갱신했다. DB의
+  6/6 좌표와 지도 API 6/6 마커를 확인했고 외부 KRIC API는 호출하지 않았다.
+  항구 749개·동명 9쌍의 코드 구분과 백야도 저장 시간표의 코드별 이름/누락 구분,
+  청주 공항편 새 GW 경로 105건도 운영에서 확인했다.
+- 배편 10일 snapshot 3,452개·오늘 출발 항구 346/749개는 아직 새 수집 로직의
+  정기 run 이전 수치다. 다음 자연 run을 확인한다. 브라우저 live E2E는 실행 정책
+  거부를 우회하지 않아 미실시이며, 머지는 사용자 요청에 따라 CI 통과 후 진행했다.
+
 ## 2026-09-29 — n150 저장 상태 읽기 전용 확인
 
 - `/health` `91262cc`·스키마 `0015`, 디스크 115 GiB 가용. 운영 컨테이너 교체 없음.
