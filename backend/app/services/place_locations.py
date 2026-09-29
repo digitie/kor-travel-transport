@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 from collections import Counter
-from collections.abc import Callable, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
+from contextlib import asynccontextmanager
 from datetime import UTC, timedelta
 from typing import Any
 
@@ -108,6 +109,32 @@ class PlaceLocationCollectionService:
     async def collect(self, session: AsyncSession) -> dict[str, Any]:
         if not self.settings.place_location_collection_enabled or not self.settings.vworld_api_key:
             return {"status": "skipped", "reason": "place location collection or VWorld key is disabled"}
+        async with self._postgres_collection_lease(session) as acquired:
+            if not acquired:
+                return {"status": "skipped", "reason": "another VWorld place collection is active"}
+            return await self._collect_unlocked(session)
+
+    @asynccontextmanager
+    async def _postgres_collection_lease(self, session: AsyncSession) -> AsyncIterator[bool]:
+        engine = session.bind
+        if engine is None or engine.dialect.name != "postgresql":
+            yield True
+            return
+        async with engine.connect() as connection:
+            acquired = bool(await connection.scalar(text(
+                "SELECT pg_try_advisory_lock(hashtext('kor_travel_transport:vworld_place_collection'))"
+            )))
+            try:
+                yield acquired
+            finally:
+                if acquired:
+                    released = bool(await connection.scalar(text(
+                        "SELECT pg_advisory_unlock(hashtext('kor_travel_transport:vworld_place_collection'))"
+                    )))
+                    if not released:
+                        raise RuntimeError("VWorld place collection advisory lock was not released")
+
+    async def _collect_unlocked(self, session: AsyncSession) -> dict[str, Any]:
         run = CollectionRun(started_at=now_utc(), status="running", trigger=TRIGGER)
         session.add(run)
         await session.commit()

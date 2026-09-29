@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 
 from sqlalchemy import func, select
 from pydantic import ValidationError
@@ -25,6 +26,39 @@ def test_location_collection_rate_contract_allows_one_full_reference_pass() -> N
         Settings(place_location_max_calls_per_day=10001)
     with pytest.raises(ValidationError):
         Settings(place_location_request_interval_seconds=0.009)
+
+
+@pytest.mark.parametrize("lock_acquired", [True, False])
+def test_postgres_location_collection_lease_uses_dedicated_connection(lock_acquired: bool) -> None:
+    class LockConnection:
+        def __init__(self) -> None:
+            self.statements: list[str] = []
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+        async def scalar(self, statement):
+            self.statements.append(str(statement))
+            return lock_acquired
+
+    async def run() -> None:
+        connection = LockConnection()
+        session = SimpleNamespace(bind=SimpleNamespace(
+            dialect=SimpleNamespace(name="postgresql"), connect=lambda: connection,
+        ))
+        service = PlaceLocationCollectionService(Settings())
+        async with service._postgres_collection_lease(session) as acquired:
+            assert acquired is lock_acquired
+            assert len(connection.statements) == 1
+        assert len(connection.statements) == (2 if lock_acquired else 1)
+        assert "pg_try_advisory_lock" in connection.statements[0]
+        if lock_acquired:
+            assert "pg_advisory_unlock" in connection.statements[1]
+
+    asyncio.run(run())
 
 
 def place(title: str, category: str, *, x: str = "128.8788", y: str = "37.7546", address: str = "강원특별자치도 강릉시") -> dict:
