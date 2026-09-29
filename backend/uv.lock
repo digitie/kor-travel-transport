@@ -914,6 +914,7 @@ dependencies = [
     { name = "python-kric-api" },
     { name = "python-multipart" },
     { name = "python-opinet-api", extra = ["browser"] },
+    { name = "python-vworld-api" },
     { name = "sqlalchemy" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -949,6 +950,7 @@ requires-dist = [
     { name = "python-kric-api", git = "https://github.com/digitie/python-kric-api?rev=55361313ad59f13e8699ebcbe130c532002b9b76" },
     { name = "python-multipart", specifier = ">=0.0.32,<1.0" },
     { name = "python-opinet-api", extras = ["browser"], git = "https://github.com/digitie/python-opinet-api?rev=5fa00463e8cd0c67aa935e8e2f0c3adef48c42e2" },
+    { name = "python-vworld-api", git = "https://github.com/digitie/python-vworld-api?rev=3b174abea1a1e734c60a9c2522b2844474a1ec71" },
     { name = "sqlalchemy", specifier = ">=2.0.52,<3.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.52,<1.0" },
 ]
@@ -1779,6 +1781,15 @@ dependencies = [
 [package.optional-dependencies]
 browser = [
     { name = "playwright" },
+]
+
+[[package]]
+name = "python-vworld-api"
+version = "0.1.0"
+source = { git = "https://github.com/digitie/python-vworld-api?rev=3b174abea1a1e734c60a9c2522b2844474a1ec71#3b174abea1a1e734c60a9c2522b2844474a1ec71" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
 ]
 
 [[package]]

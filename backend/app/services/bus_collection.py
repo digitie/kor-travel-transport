@@ -169,6 +169,13 @@ class BusReferenceCollectionService:
             "last_seen_at": collected_at,
             "raw_item_json": dict(item.raw),
         }
+        if row is not None:
+            if row.terminal_name != item.terminal_name or row.city_name != item.city_name:
+                values.update(latitude=None, longitude=None, location_source=None)
+            elif row.raw_item_json:
+                for provenance in ("_vworld_place", "_kakao_place"):
+                    if provenance in row.raw_item_json:
+                        values["raw_item_json"][provenance] = row.raw_item_json[provenance]
         if row is None:
             session.add(
                 BusTerminalReference(

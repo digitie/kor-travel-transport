@@ -67,11 +67,30 @@ def test_ferry_partial_result_is_a_dagster_failure_without_retry(monkeypatch, st
         assert failure.user_failure_data.metadata["failed_provider_calls"].value == 1
 
 
+@pytest.mark.parametrize("status", ["success", "skipped", "partial_success"])
+def test_kakao_place_partial_result_is_a_dagster_failure_without_retry(monkeypatch, status):
+    async def fake_run_with_session(*_args, **_kwargs):
+        return {"status": status, "run_id": 12, "deferred": int(status == "partial_success")}
+
+    monkeypatch.setattr(dagster_definitions, "_settings", lambda: None)
+    monkeypatch.setattr(dagster_definitions, "KakaoPlaceCollectionService",
+                        lambda _: SimpleNamespace(collect=None))
+    monkeypatch.setattr(dagster_definitions, "_run_with_session", fake_run_with_session)
+    result = dagster_definitions.kakao_place_location_collection_job.execute_in_process(raise_on_error=False)
+    assert result.success is (status != "partial_success")
+    assert not any(event.is_step_up_for_retry for event in result.all_events)
+    if status == "partial_success":
+        failure = result.failure_data_for_node("collect_kakao_place_locations").user_failure_data
+        assert failure.metadata["deferred"].value == 1
+
+
 def test_dagster_definitions_evaluates_kric_rail_due_daily_with_a_48_hour_guard() -> None:
     rail_schedule = definitions.get_schedule_def("rail_reference_collection_job_schedule")
     maritime_schedule = definitions.get_schedule_def("maritime_reference_collection_job_schedule")
     ferry_timetable_schedule = definitions.get_schedule_def("ferry_timetable_collection_job_schedule")
     bus_schedule = definitions.get_schedule_def("bus_reference_collection_job_schedule")
+    place_schedule = definitions.get_schedule_def("place_location_collection_job_schedule")
+    kakao_schedule = definitions.get_schedule_def("kakao_place_location_collection_job_schedule")
     kric_schedule = definitions.get_schedule_def("kric_timetable_collection_job_schedule")
     assert kric_schedule.cron_schedule == "0 * * * *"
     assert kric_schedule.execution_timezone == "Asia/Seoul"
@@ -81,14 +100,20 @@ def test_dagster_definitions_evaluates_kric_rail_due_daily_with_a_48_hour_guard(
     assert maritime_schedule.cron_schedule == "0 3 */3 * *"
     assert ferry_timetable_schedule.cron_schedule == "45 */4 * * *"
     assert bus_schedule.cron_schedule == "30 3 * * *"
+    assert place_schedule.cron_schedule == "30 4 * * *"
+    assert kakao_schedule.cron_schedule == "30 6 * * *"
     assert rail_schedule.execution_timezone == "Asia/Seoul"
     assert maritime_schedule.execution_timezone == "Asia/Seoul"
     assert ferry_timetable_schedule.execution_timezone == "Asia/Seoul"
     assert bus_schedule.execution_timezone == "Asia/Seoul"
+    assert place_schedule.execution_timezone == "Asia/Seoul"
+    assert kakao_schedule.execution_timezone == "Asia/Seoul"
     assert rail_schedule.default_status.name == "RUNNING"
     assert maritime_schedule.default_status.name == "RUNNING"
     assert ferry_timetable_schedule.default_status.name == "RUNNING"
     assert bus_schedule.default_status.name == "RUNNING"
+    assert place_schedule.default_status.name == "RUNNING"
+    assert kakao_schedule.default_status.name == "RUNNING"
 
 
 def test_dagster_definitions_register_every_collection_domain() -> None:
@@ -100,6 +125,8 @@ def test_dagster_definitions_register_every_collection_domain() -> None:
         "maritime_reference_collection_job",
         "ferry_timetable_collection_job",
         "bus_reference_collection_job",
+        "place_location_collection_job",
+        "kakao_place_location_collection_job",
         "kric_timetable_collection_job",
     }
     assert {definitions.get_job_def(name).name for name in job_names} == job_names
@@ -114,6 +141,8 @@ def test_dagster_definitions_enable_every_schedule_and_serialize_overlapping_gro
         "maritime_reference_collection_job_schedule",
         "ferry_timetable_collection_job_schedule",
         "bus_reference_collection_job_schedule",
+        "place_location_collection_job_schedule",
+        "kakao_place_location_collection_job_schedule",
         "kric_timetable_collection_job_schedule",
     }
     assert {definitions.get_schedule_def(name).default_status.name for name in schedule_names} == {"RUNNING"}

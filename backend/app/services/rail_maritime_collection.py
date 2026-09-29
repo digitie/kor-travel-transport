@@ -551,11 +551,15 @@ class RailMaritimeCollectionService:
             values.update(latitude=location.latitude, longitude=location.longitude,
                           location_source=PORT_CALL_SOURCE, location_point_count=1)
             values["raw_item_json"]["_komsa_port_call"] = dict(location.raw)
-        elif location_verified or row is None or row.location_source == PORT_GUIDELINE_SOURCE or row.port_name != item.port_name:
-            # 정상 재검증의 무결과/중복/부적합 좌표는 연결 해제한다. 일시 장애만 기존 값을 보존한다.
+        elif (row is None or row.location_source == PORT_GUIDELINE_SOURCE or
+              row.port_name != item.port_name or
+              (location_verified and row.location_source not in ("vworld_place", "kakao_place"))):
+            # KOMSA 무결과는 KOMSA 연결만 해제한다. 별도 장소 검색에서 검증한 시설 좌표는 보존한다.
             values.update(latitude=None, longitude=None, location_source=None, location_point_count=0)
-        elif row.raw_item_json and "_komsa_port_call" in row.raw_item_json:
-            values["raw_item_json"]["_komsa_port_call"] = row.raw_item_json["_komsa_port_call"]
+        elif row.raw_item_json:
+            for provenance in ("_komsa_port_call", "_vworld_place", "_kakao_place"):
+                if provenance in row.raw_item_json:
+                    values["raw_item_json"][provenance] = row.raw_item_json[provenance]
         if row is None:
             session.add(
                 FerryPort(

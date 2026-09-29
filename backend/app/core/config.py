@@ -28,6 +28,15 @@ class Settings(BaseSettings):
     upstream_rate_limit_backoff_seconds: int = Field(default=3600, ge=0)
     api_timeout_seconds: int = Field(default=15, gt=0)
     data_go_kr_service_key: str | None = None
+    vworld_api_key: str | None = None
+    place_location_collection_enabled: bool = False
+    place_location_max_calls_per_day: int = Field(default=10000, ge=1, le=10000)
+    place_location_request_interval_seconds: float = Field(default=0.01, ge=0.01, le=60)
+    kakao_rest_api_key: str | None = None
+    kakao_place_collection_enabled: bool = False
+    kakao_place_max_calls_per_day: int = Field(default=5000, ge=1, le=100000)
+    kakao_place_max_calls_per_month: int = Field(default=50000, ge=1, le=3000000)
+    kakao_place_request_interval_seconds: float = Field(default=0.2, ge=0.1, le=60)
     kex_ex_api_key: str | None = None
     # KRIC 인증 OpenAPI는 48시간 batch 전용이다. 공개 조회는 DB만 읽는다.
     kric_service_key: str | None = None

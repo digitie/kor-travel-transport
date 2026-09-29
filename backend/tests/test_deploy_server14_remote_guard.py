@@ -19,7 +19,8 @@ import pytest
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[1]
 _SCRIPTS = next(
-    (candidate for candidate in (_BACKEND_ROOT / "scripts", _BACKEND_ROOT.parent / "scripts") if candidate.is_dir()),
+    (candidate for candidate in (_BACKEND_ROOT / "scripts", _BACKEND_ROOT.parent / "scripts")
+     if (candidate / "deploy-server14-remote.sh").is_file()),
     _BACKEND_ROOT.parent / "scripts",
 )
 _REMOTE = _SCRIPTS / "deploy-server14-remote.sh"

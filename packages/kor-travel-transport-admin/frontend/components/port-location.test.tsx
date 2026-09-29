@@ -23,4 +23,20 @@ describe("항구 위치 출처 안내", () => {
     const html = renderToStaticMarkup(<PlaceDetails place={{ ...port, provider_id: null }} />);
     expect(html).toContain("항구 코드 미제공");
   });
+  it("지도 검색 좌표는 공식 기항지와 구분하고 승선 위치 확정을 피한다", () => {
+    const html = renderToStaticMarkup(<PlaceDetails place={{ ...port, location_source: "vworld_place" }} />);
+    expect(html).toContain("지도 검색에서 확인한 항만 시설");
+    expect(html).toContain("실제 승선 장소는 운항사에 확인");
+  });
+  it("버스 터미널 코드와 좌표 검증 상태를 표시한다", () => {
+    const html = renderToStaticMarkup(<PlaceDetails place={{ ...port, kind: "bus_terminal", provider_id: "NAI2551901", location_source: "vworld_place" }} />);
+    expect(html).toContain("터미널 코드 NAI2551901");
+    expect(html).toContain("VWorld 시설 검색으로 확인한 터미널 위치");
+    expect(html).toContain("실제 승차 홈은 운송사에 확인");
+  });
+  it("카카오 검색 좌표의 출처와 승차 위치 한계를 표시한다", () => {
+    const html = renderToStaticMarkup(<PlaceDetails place={{ ...port, kind: "bus_terminal", location_source: "kakao_place" }} />);
+    expect(html).toContain("카카오맵 장소 검색으로 확인한 터미널 위치");
+    expect(html).toContain("실제 승차 홈은 운송사에 확인");
+  });
 });

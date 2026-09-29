@@ -550,14 +550,21 @@ class FerryShipTypeReference(Base):
 class BusTerminalReference(Base):
     """TAGO 고속·시외버스의 저변동 터미널 기준정보.
 
-    운행 시간표는 당일성 provider 조회이므로 이 테이블에 저장하지 않는다.
+    운행 시간표는 별도 snapshot 테이블에 저장하며 기준정보와 섞지 않는다.
     """
 
     __tablename__ = "bus_terminal_references"
     __table_args__ = (
         UniqueConstraint("source", "service_type", "terminal_id", name="uq_bus_terminal_reference"),
+        CheckConstraint(
+            "(latitude IS NULL AND longitude IS NULL) OR "
+            "(latitude IS NOT NULL AND longitude IS NOT NULL AND "
+            "latitude BETWEEN 32 AND 39.5 AND longitude BETWEEN 124 AND 132)",
+            name="ck_bus_terminal_reference_coordinates",
+        ),
         Index("ix_bus_terminal_reference_lookup", "service_type", "terminal_name"),
         Index("ix_bus_terminal_reference_last_seen", "last_seen_at"),
+        Index("ix_bus_terminal_reference_coordinates", "latitude", "longitude"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -566,6 +573,9 @@ class BusTerminalReference(Base):
     terminal_id: Mapped[str] = mapped_column(String(120))
     terminal_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     city_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    location_source: Mapped[str | None] = mapped_column(String(80), nullable=True)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)

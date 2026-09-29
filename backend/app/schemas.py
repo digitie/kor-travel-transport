@@ -178,7 +178,7 @@ class TransportPlaceMapItem(BaseModel):
     """kor-travel-map·PinVi가 지도 marker로 바로 소비할 저장 장소 요약."""
 
     id: int
-    kind: Literal["fuel_station", "rail_station", "ferry_port", "airport", "rest_area", "highway_incident"]
+    kind: Literal["fuel_station", "rail_station", "ferry_port", "bus_terminal", "airport", "rest_area", "highway_incident"]
     source: str
     provider_id: str | None = None
     name: str
@@ -283,6 +283,9 @@ class BusTerminalItem(BaseModel):
     terminal_id: str
     terminal_name: str | None = None
     city_name: str | None = None
+    longitude: float | None = None
+    latitude: float | None = None
+    location_source: str | None = None
     updated_at: datetime
 
 

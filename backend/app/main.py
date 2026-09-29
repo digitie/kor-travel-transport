@@ -900,7 +900,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @router.get("/transport/features/places", response_model=TransportPlaceMapResponse)
     async def transport_place_features(
-        kind: str | None = Query(default=None, description="fuel_station, rail_station, ferry_port, airport, rest_area, highway_incident 중 하나. 돌발은 최근 24시간 최신 저장 관측"),
+        kind: str | None = Query(default=None, description="fuel_station, rail_station, ferry_port, bus_terminal, airport, rest_area, highway_incident 중 하나. 돌발은 최근 24시간 최신 저장 관측"),
         limit: int = Query(default=1000, ge=1, le=5000),
         include_unlocated: bool = Query(default=False, description="좌표 없는 기준정보도 검색 목록에 포함"),
         source: str | None = Query(default=None, max_length=80),
@@ -916,7 +916,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> TransportPlaceMapResponse:
         """저장된 장소만 지도 marker 계약으로 반환한다. provider 원문이나 비밀값은 노출하지 않는다."""
         selected_kind = kind.strip() if kind else None
-        supported = {"fuel_station", "rail_station", "ferry_port", "airport", "rest_area", "highway_incident"}
+        supported = {"fuel_station", "rail_station", "ferry_port", "bus_terminal", "airport", "rest_area", "highway_incident"}
         def filter_values(single: str | None, multiple: str | None, maximum: int, length: int) -> list[str]:
             if multiple is None:
                 return [single] if single else []
@@ -952,6 +952,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     FuelStation: [FuelStation.name, FuelStation.brand_name, FuelStation.address],
                     RailStationReference: [RailStationReference.station_name, RailStationReference.operating_line_name, RailStationReference.road_address],
                     FerryPort: [FerryPort.port_name, FerryPort.port_id],
+                    BusTerminalReference: [BusTerminalReference.terminal_name, BusTerminalReference.terminal_id, BusTerminalReference.city_name],
                     RestAreaReference: [RestAreaReference.name, RestAreaReference.route_name],
                     HighwayIncidentSnapshot: [HighwayIncidentSnapshot.point_name, HighwayIncidentSnapshot.route_no, HighwayIncidentSnapshot.route_name, HighwayIncidentSnapshot.message],
                 }[model]
@@ -1040,7 +1041,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     provider_id=port.port_id,
                     longitude=None if port.location_source == "data_go_kr_port_guideline" else port.longitude,
                     latitude=None if port.location_source == "data_go_kr_port_guideline" else port.latitude,
-                    subtitle="공식 기항지 위치" if port.location_source == "komsa_port_call" else "위치 확인 필요",
+                    subtitle=("공식 기항지 위치" if port.location_source == "komsa_port_call"
+                              else "지도 시설 위치 · 승선 장소 확인 필요" if port.location_source in ("vworld_place", "kakao_place")
+                              else "위치 확인 필요"),
                     updated_at=serialize_utc(port.last_seen_at), location_source=port.location_source,
                     location_point_count=port.location_point_count,
                 ))
@@ -1076,6 +1079,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     subtitle=" · ".join(value for value in [row.incident_type, row.process_status, row.direction] if value),
                     address=row.message, updated_at=serialize_utc(row.collected_at),
                 ))
+        if selected_kind in (None, "bus_terminal"):
+            conditions = coordinate_conditions(BusTerminalReference)
+            total += int(await session.scalar(select(func.count()).select_from(BusTerminalReference).where(*conditions)) or 0)
+            rows = (await session.scalars(select(BusTerminalReference).where(*conditions)
+                .order_by(BusTerminalReference.last_seen_at.desc(), BusTerminalReference.id.desc())
+                .limit(per_kind_limit))).all()
+            for terminal in rows:
+                items.append(TransportPlaceMapItem(
+                    id=terminal.id, kind="bus_terminal", source=terminal.source,
+                    provider_id=terminal.terminal_id, name=terminal.terminal_name or terminal.terminal_id,
+                    longitude=terminal.longitude, latitude=terminal.latitude,
+                    subtitle=("고속버스" if terminal.service_type == "express" else "시외버스") +
+                        (f" · {terminal.city_name}" if terminal.city_name else ""),
+                    location_source=terminal.location_source, updated_at=serialize_utc(terminal.last_seen_at),
+                ))
         if selected_kind in (None, "airport"):
             airports = (await session.scalars(select(Airport).order_by(Airport.code))).all()
             airport_items = []
@@ -1097,7 +1115,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             total += len(airport_items)
             items.extend(airport_items[:per_kind_limit])
         visible_items = items[:limit]
-        source_models = {"fuel_station": FuelStation, "rail_station": RailStationReference, "ferry_port": FerryPort, "airport": Airport, "rest_area": RestAreaReference, "highway_incident": HighwayIncidentSnapshot}
+        source_models = {"fuel_station": FuelStation, "rail_station": RailStationReference, "ferry_port": FerryPort, "bus_terminal": BusTerminalReference, "airport": Airport, "rest_area": RestAreaReference, "highway_incident": HighwayIncidentSnapshot}
         available_sources: set[str] = set()
         for requested_kind in requested_kinds:
             available_sources.update((await session.scalars(select(source_models[requested_kind].source).distinct())).all())
@@ -1350,6 +1368,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 BusTerminalItem(
                     id=row.id, service_type=row.service_type, terminal_id=row.terminal_id,
                     terminal_name=row.terminal_name, city_name=row.city_name,
+                    longitude=row.longitude, latitude=row.latitude, location_source=row.location_source,
                     updated_at=row.last_seen_at,
                 )
                 for row in rows
