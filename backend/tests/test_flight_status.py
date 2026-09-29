@@ -404,6 +404,34 @@ def test_krairport_flight_status_client_fetch_incheon_status_calls_both_directio
     assert calls[1].args[:2] == ("StatusOfPassengerFlightsDeOdp", "getPassengerArrivalsDeOdp")
 
 
+def test_gateway_groups_explicit_codeshares_without_merging_unrelated_flights() -> None:
+    base = dict(provider="kac", airport_code="GMP", direction="departure",
+        scheduled_at=datetime.fromisoformat("2026-05-09T08:30:00+09:00"),
+        estimated_at=None, departure_airport_name="김포", arrival_airport_name="제주",
+        flight_unique_id=None, airline_code=None, airline_name=None,
+        departure_airport_code="GMP", arrival_airport_code="CJU",
+        status_korean=None, status_english=None, terminal=None, gate=None, codeshare=None)
+    flights = [Flight(**base, flight_id="KE123", master_flight_id="KE123"),
+        Flight(**{**base, "estimated_at": datetime.fromisoformat("2026-05-09T08:45:00+09:00")},
+            flight_id="DL9123", master_flight_id="KE123"),
+        Flight(**base, flight_id="7C123"),
+        Flight(**{**base, "direction": "arrival"}, flight_id="KE123", master_flight_id="KE123"),
+        Flight(**{**base, "scheduled_at": datetime.fromisoformat("2026-05-10T08:30:00+09:00")},
+            flight_id="KE123", master_flight_id="KE123")]
+    service = FlightStatusService(Settings(data_go_kr_service_key=None, use_sample_client_when_no_key=False))
+    service.client = AsyncMock()
+    service.client.fetch_status.return_value = FlightSourceResponse(
+        source="kac_flight_status_gateway", endpoint="fixture", request_params={},
+        status_code=200, body_text="", flights=tuple(flights))
+    payload = asyncio.run(service.get_status("GMP", date(2026, 5, 9)))
+    assert payload["status"] == "success"
+    assert len(payload["items"]) == 4
+    grouped = next(item for item in payload["items"] if item["flight_number"] == "DL9123 / KE123")
+    assert grouped["codeshare_flight_numbers"] == ["DL9123", "KE123"]
+    assert grouped["marker_at"] == base["scheduled_at"]
+    assert all("_codeshare_identity" not in item for item in payload["items"])
+
+
 def test_krairport_flight_status_client_rate_limit_error_propagates() -> None:
     settings = Settings(data_go_kr_service_key="test-key")
     mock_client = _mock_krairport_client()

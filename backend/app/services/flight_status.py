@@ -300,7 +300,13 @@ class FlightStatusService:
                         "destination_airport": flight.arrival_airport_name or flight.arrival_airport_code or "-",
                         "status": flight.status_korean or flight.status_english,
                         "line_type": flight.line_type,
+                        "_codeshare_identity": (
+                            flight.airport_code, str(flight.direction),
+                            serialize_utc(flight.scheduled_at),
+                            flight.master_flight_id or flight.flight_id,
+                        ),
                     })
+                items = _deduplicate_codeshare_flights(items)
                 items.sort(key=lambda flight: (flight["marker_at"], flight["flight_number"]))
                 error_message = None
             elif response.source in {"incheon_flight_status", "sample_incheon_flight_status"}:
@@ -458,9 +464,9 @@ def _sanitize_upstream_error(error: Exception | str, service_key: str | None) ->
 
 
 def _deduplicate_codeshare_flights(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    grouped: dict[tuple[str, Any, str, str], list[dict[str, Any]]] = {}
+    grouped: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
     for item in items:
-        key = (
+        key = item.get("_codeshare_identity") or (
             str(item.get("direction") or ""),
             item.get("marker_at"),
             str(item.get("origin_airport") or "").strip(),
@@ -472,12 +478,16 @@ def _deduplicate_codeshare_flights(items: list[dict[str, Any]]) -> list[dict[str
     for group in grouped.values():
         if len(group) == 1:
             item = {**group[0]}
+            item.pop("_codeshare_identity", None)
             item["codeshare_flight_numbers"] = [str(item.get("flight_number") or "").strip()]
             deduplicated.append(item)
             continue
 
         ordered_group = sorted(group, key=lambda flight: str(flight.get("flight_number") or ""))
-        representative = {**ordered_group[0]}
+        representative = {**next((flight for flight in ordered_group
+            if flight.get("_codeshare_identity")
+            and flight["flight_number"] == flight["_codeshare_identity"][-1]), ordered_group[0])}
+        representative.pop("_codeshare_identity", None)
         flight_numbers = _unique_text_values(ordered_group, "flight_number")
         airlines = _unique_text_values(ordered_group, "airline")
         representative["flight_number"] = " / ".join(flight_numbers)

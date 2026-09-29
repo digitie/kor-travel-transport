@@ -68,7 +68,7 @@
 
 한국공항공사 주차 API가 한도 초과 상태이면 한국공항공사 주차/요금 소스는 건너뛰지만, 인천공항 전용 소스가 활성화되어 있으면 같은 수집 실행에서 계속 호출한다.
 
-비행편 운항 정보는 주차장 스냅샷 수집 흐름과 분리한다. `/v1/flights/status` 호출 시 공항 코드에 따라 한국공항공사 `15113771` ODCloud JSON API 또는 인천국제공항공사 `15112968` 도착/출발 엔드포인트를 조회하고, 응답은 짧게 캐시한 뒤 하루 흐름 오버레이 차트의 마커용으로만 반환한다.
+비행편 운항 정보는 주차장 스냅샷 수집 흐름과 분리한다. `/v1/flights/status` 호출 시 공항 코드에 따라 한국공항공사 `15158625` GW 또는 인천국제공항공사 `15112968` 도착/출발 엔드포인트를 조회한다. 응답은 짧게 캐시해 하루 흐름 오버레이와 교통 관리자 출도착 정보로 제공한다.
 
 ## 스케줄러
 
@@ -155,14 +155,13 @@ throttle(허용 범위 8~12시간, 24시간 내 최대 3회)을 추가로 적용
 - `backend/app/services/fee_calculator.py`
   - 주차 요금 계산
 - `backend/app/services/flight_status.py`
-  - 한국공항공사 `15113771` / 인천공항공사 `15112968` 비행편 출도착 조회, 정규화, 캐시
+  - 한국공항공사 `15158625` / 인천공항공사 `15112968` 비행편 출도착 조회, 정규화, 캐시
   - `KrairportFlightStatusClient`가 형제 라이브러리 `python-krairport-api`(`krairport`)를
     통해 fetch를 수행한다(`T-029`,
     [ADR-004](../adr/004-krairport-provider-library.md)). KAC는
-    `kac_flight_status_detail_raw_items()`(ODCloud `FlightStatusListDTL` — krairport에
-    새로 추가한 endpoint), IIAC는 `iiac_raw_items("StatusOfPassengerFlightsDeOdp", ...)`를
-    쓴다. 파싱은 여전히 이 파일의 `parse_kac_flight_detail_json`/
-    `parse_incheon_flight_status_json`이 담당한다.
+    `client.kac.flight_status()`의 typed `Flight`를 사용한다. GW 필드·시간·페이지 파싱은
+    provider가 담당하며 소비자는 대표 편명·방향·예정시각으로 공동운항 마커를 묶는다.
+    IIAC는 `iiac_raw_items("StatusOfPassengerFlightsDeOdp", ...)`와 기존 파싱을 유지한다.
 - `backend/app/services/holidays.py`
   - 한국천문연구원(KASI) 특일 정보(`15012690`) 조회, 월별 캐시
   - `KasiHolidayClient`가 형제 라이브러리 `python-kasi-api`(`kasi`)의 `AsyncKasiClient.holidays()`를
@@ -214,7 +213,8 @@ throttle(허용 범위 8~12시간, 24시간 내 최대 3회)을 추가로 적용
 - `GET /v1/transport/bus/terminals`
   - 3일 주기로 저장한 고속·시외버스 터미널 기준정보
 - `GET /v1/transport/bus/timetable`
-  - 저장하지 않는 실시간 TAGO 시간표. 제공자 호출 제한을 보호하며 시외버스는 한국 시간 당일만 제공
+  - TAGO 시간표를 PostgreSQL 조회 조건별 snapshot으로 저장한다. 갱신 오류나 호출 보호 중에는
+    기존 저장본과 갱신 상태를 반환한다. 시외버스는 한국 시간 당일만 제공한다.
   - 여객선과 함께 TTL·LRU 항목 상한을 둔 프로세스 cache를 사용해 장기 실행 중에도 무한히 쌓이지 않게 한다.
 
 ## 프론트 화면 구조
