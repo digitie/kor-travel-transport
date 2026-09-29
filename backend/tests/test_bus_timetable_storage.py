@@ -1,5 +1,6 @@
 """저장 시간표는 제공기관 호출 보호·프로세스 캐시와 독립해서 읽는다."""
 import asyncio
+import json
 from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -92,7 +93,8 @@ def test_bus_cache_does_not_overwrite_newer_response(client):
 
 
 @pytest.mark.parametrize("has_saved", [True, False])
-def test_bus_provider_validation_error_uses_saved_data_or_sanitized_502(client, has_saved):
+@pytest.mark.parametrize("failure", ["validation", "json", "unicode", "value"])
+def test_bus_provider_validation_error_uses_saved_data_or_sanitized_502(client, has_saved, failure):
     now = now_utc()
     today = to_seoul(now).date()
     saved_at = now - timedelta(hours=1)
@@ -117,6 +119,12 @@ def test_bus_provider_validation_error_uses_saved_data_or_sanitized_502(client, 
         async def __aexit__(self, *_args): pass
         async def timetable_list(self, **_kwargs):
             type(self).calls += 1
+            if failure == "json":
+                json.loads(b'{"response":')
+            if failure == "unicode":
+                b'\xffprivate-value'.decode("utf-8")
+            if failure == "value":
+                raise ValueError("not-a-number-private-value")
             return TagoBusTimetable.model_validate({"charge": "not-a-number-private-value"})
 
     client.app.state.settings.data_go_kr_service_key = "test-key"

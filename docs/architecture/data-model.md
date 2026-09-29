@@ -87,6 +87,8 @@ SQLite dialect를 허용한다.
 - `python-krex-api` `traffic.incident`의 돌발·사고·처리상태·위치·정체길이
 - provider의 발생 날짜/시각은 `occurred_date`/`occurred_time`으로 보존하고,
   처리상태 변경을 시계열로 남길 수 있도록 현재 수집 시각을 `observed_at`으로 사용
+- 상태가 같으면 이력을 추가하지 않고 `collected_at`만 마지막 재관측 시각으로 갱신한다.
+  지도 TTL과 갱신 표시에는 `collected_at`을 사용해 장기 공사/통제가 사라지지 않게 한다.
 - 소통 스냅샷과 분리해 분석·장애 추적 시 역할을 섞지 않음
 
 ### `fuel_stations` / `fuel_price_snapshots`

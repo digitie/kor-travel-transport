@@ -24,7 +24,7 @@ from app.services.collection import (
 
 
 def _mock_krairport_client(**method_results: object) -> AsyncMock:
-    """Build a mock standing in for `async with AsyncKrairportClient(...) as client`.
+    """Build a mock standing in for `async with KrairportClient(...) as client`.
 
     `method_results` maps method name (`kac_raw_items`/`iiac_raw_items`) to
     either a return value or an exception instance to raise.
@@ -197,7 +197,7 @@ async def test_krairport_client_fetch_kac_parking_builds_json_source_response() 
     items = [{"aprKor": "김포국제공항", "parkingFullSpace": "2279"}]
 
     with patch(
-        "app.services.collection.AsyncKrairportClient",
+        "app.services.collection.KrairportClient",
         return_value=_mock_krairport_client(kac_raw_items=items),
     ) as client_cls:
         response = await KrairportPublicDataClient(settings).fetch_kac_parking()
@@ -215,7 +215,7 @@ async def test_krairport_client_fetch_incheon_fee_calls_generic_raw_items_escape
     items = [{"charid": "FB00000001", "chardesc": "최초 00:30 에 한해 1200원 적용"}]
     mock_client = _mock_krairport_client(iiac_raw_items=items)
 
-    with patch("app.services.collection.AsyncKrairportClient", return_value=mock_client):
+    with patch("app.services.collection.KrairportClient", return_value=mock_client):
         response = await KrairportPublicDataClient(settings).fetch_incheon_fee()
 
     mock_client.__aenter__.return_value.iiac_raw_items.assert_called_once_with(
@@ -239,7 +239,7 @@ async def test_krairport_client_rate_limit_error_propagates_with_detectable_mess
     upstream_error = KrairportRateLimitError("LIMITED NUMBER OF SERVICE REQUESTS EXCEEDS ERROR.")
 
     with patch(
-        "app.services.collection.AsyncKrairportClient",
+        "app.services.collection.KrairportClient",
         return_value=_mock_krairport_client(kac_raw_items=upstream_error),
     ):
         with pytest.raises(KrairportRateLimitError) as exc_info:

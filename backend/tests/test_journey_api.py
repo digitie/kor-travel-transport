@@ -18,7 +18,7 @@ def test_map_incidents_use_latest_saved_observation_and_rest_areas_remain_visibl
                 ("moved", 2, 127, "처리중"), ("moved", 1, 129, "처리중"),
             ]:
                 session.add(HighwayIncidentSnapshot(source="krex_traffic_incident", identity_key=identity,
-                    observed_at=now - timedelta(hours=hours), collected_at=now,
+                    observed_at=now - timedelta(hours=hours), collected_at=now - timedelta(hours=hours),
                     route_no="0010", route_name="경부고속도로", point_name=identity,
                     incident_type="사고", process_status=status, message="차로 통제 정보",
                     longitude=longitude, latitude=37 if longitude is not None else None))
@@ -44,6 +44,47 @@ def test_map_incidents_use_latest_saved_observation_and_rest_areas_remain_visibl
     rest = client.get(path, params={"kind": "rest_area", "query": "경부"}).json()
     assert rest["total"] == 1
     assert rest["items"][0]["name"] == "시험휴게소"
+
+
+def test_unchanged_incident_reobservation_preserves_history_and_map_visibility(client):
+    from sqlalchemy import select
+    from krex import Incident
+    from app.services.transport_collection import TransportCollectionService, INCIDENT_SOURCE
+
+    old = now_utc() - timedelta(hours=25)
+    recent = now_utc() - timedelta(minutes=1)
+    item = Incident(series_no=123, incident_type="공사", process_status="처리중",
+        route_no="0010", route_name="경부고속도로", latitude=37, longitude=127,
+        occurred_date=old.strftime("%Y%m%d"), occurred_time="0900", incident_type_code="02",
+        direction=None, message="공사 중", point_name="시험 구간", process_status_code="01",
+        congestion_length=None, raw={})
+
+    async def run():
+        service = TransportCollectionService(client.app.state.settings)
+        async with client.app.state.session_factory() as session:
+            run = CollectionRun(trigger="test", started_at=old, status="success")
+            session.add(run)
+            await session.flush()
+            with patch("app.services.transport_collection.now_utc", return_value=old):
+                assert await service._store_incidents(session, run.id, (item,)) == 1
+            await session.commit()
+            with patch("app.services.transport_collection.now_utc", return_value=recent):
+                assert await service._store_incidents(session, run.id, (item,)) == 0
+            await session.commit()
+            rows = (await session.scalars(select(HighwayIncidentSnapshot).where(
+                HighwayIncidentSnapshot.source == INCIDENT_SOURCE))).all()
+            assert len(rows) == 1
+            from app.core.time_utils import serialize_utc
+            assert serialize_utc(rows[0].observed_at) == old
+            assert serialize_utc(rows[0].collected_at) == recent
+        await service.close()
+
+    asyncio.run(run())
+    response = client.get("/v1/transport/features/places", params={"kind": "highway_incident"})
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    from datetime import datetime
+    assert datetime.fromisoformat(response.json()["items"][0]["updated_at"]) == recent
 
 
 @pytest.mark.parametrize("params", [

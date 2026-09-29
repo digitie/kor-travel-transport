@@ -28,7 +28,6 @@ from datagokr import DataGoKrClient
 from datagokr.exceptions import ApiErrorResponse
 from kric import DataGoKrMaritimeClient, KricRateLimitError
 from krairport import get_airport_or_none
-from pydantic import ValidationError
 
 from app.core.config import Settings, get_settings
 from app.core.time_utils import now_utc, serialize_utc, to_seoul
@@ -1063,7 +1062,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     partition_by=(HighwayIncidentSnapshot.source, HighwayIncidentSnapshot.identity_key),
                     order_by=(HighwayIncidentSnapshot.observed_at.desc(), HighwayIncidentSnapshot.collected_at.desc(), HighwayIncidentSnapshot.id.desc()),
                 ).label("rank"),
-            ).where(HighwayIncidentSnapshot.observed_at.between(observed_until - timedelta(days=1), observed_until)).subquery()
+            ).where(HighwayIncidentSnapshot.collected_at.between(observed_until - timedelta(days=1), observed_until)).subquery()
             conditions = [ranked_incidents.c.rank == 1, *coordinate_conditions(HighwayIncidentSnapshot)]
             latest_incidents = select(HighwayIncidentSnapshot).join(ranked_incidents, HighwayIncidentSnapshot.id == ranked_incidents.c.id).where(*conditions)
             total += int(await session.scalar(select(func.count()).select_from(latest_incidents.subquery())) or 0)
@@ -1075,7 +1074,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     name=row.point_name or row.incident_type or "도로 돌발", longitude=row.longitude, latitude=row.latitude,
                     line_names=[route] if route else [],
                     subtitle=" · ".join(value for value in [row.incident_type, row.process_status, row.direction] if value),
-                    address=row.message, updated_at=serialize_utc(row.observed_at),
+                    address=row.message, updated_at=serialize_utc(row.collected_at),
                 ))
         if selected_kind in (None, "airport"):
             airports = (await session.scalars(select(Airport).order_by(Airport.code))).all()
@@ -1466,14 +1465,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         bus_grade_id=bus_grade_id,
                         num_of_rows=100,
                     )
-            except ValidationError as exc:
-                # provider 응답 검증 실패는 사용자 입력 오류가 아니다. 원시 값을 노출하지 않는다.
-                logger.warning("TAGO timetable provider returned invalid data")
-                if saved is not None:
-                    return saved.model_copy(update={"refresh_status": "upstream_error"})
-                raise HTTPException(status_code=502, detail="TAGO 시간표 provider 조회에 실패했습니다.") from exc
-            except ValueError as exc:
-                raise HTTPException(status_code=422, detail=str(exc)) from exc
             except ApiErrorResponse as exc:
                 if exc.code == "22":
                     blocked_until = now_utc() + timedelta(seconds=settings.upstream_rate_limit_backoff_seconds)
@@ -1491,10 +1482,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     return saved.model_copy(update={"refresh_status": "upstream_error"})
                 raise HTTPException(status_code=502, detail="TAGO 시간표 provider 조회에 실패했습니다.") from exc
             except Exception as exc:
+                # 요청 검증은 provider 호출 전에 끝난다. JSON/인코딩/모델 오류를
+                # ValueError라는 이유로 사용자 오류(422)로 오인하지 않는다.
                 logger.warning("TAGO timetable provider failed: %s", type(exc).__name__)
                 if saved is not None:
                     return saved.model_copy(update={"refresh_status": "upstream_error"})
-                raise HTTPException(status_code=502, detail="TAGO 시간표 provider 조회에 실패했습니다.") from exc
+                raise HTTPException(status_code=502, detail="TAGO 시간표 provider 조회에 실패했습니다.") from None
             response = BusTimetableResponse(
                 service_type=service_type, departure_terminal_id=departure_terminal_id,
                 arrival_terminal_id=arrival_terminal_id, service_date=service_date, fetched_at=now_utc(),

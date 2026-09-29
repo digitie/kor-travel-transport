@@ -9,6 +9,12 @@ import { RailTimetables } from "./rail-timetables";
 
 const TransportMap = dynamic(() => import("./transport-map").then((module) => module.TransportMap), { ssr: false, loading: () => <p className="loading">지도를 준비하는 중입니다…</p> });
 export function effectiveFerryServiceDate(serviceDate: string, today = seoulDate()) { return serviceDate < today ? today : serviceDate; }
+export function referenceDescription(item: Pick<Place, "line_names" | "provider_id" | "latitude" | "longitude">, rail: boolean) {
+  return item.line_names.join(" · ") || [
+    item.provider_id ? `${rail ? "역" : "항구"} 코드 ${item.provider_id}` : null,
+    hasCoordinates(item) ? "지도 위치 제공" : rail ? "좌표 미등록" : "좌표 미등록 · 운항 검색 가능",
+  ].filter(Boolean).join(" · ");
+}
 
 export function TransportReferenceList({ kind }: { kind: "rail_station" | "ferry_port" }) {
   const [items, setItems] = useState<Place[]>([]);
@@ -88,7 +94,7 @@ export function TransportReferenceList({ kind }: { kind: "rail_station" | "ferry
     <div className="journey-layout">
       <div className="journey-search">
         <MultiSearch label={rail ? "역 또는 노선 검색" : "항구 검색"} query={query} onQuery={setQuery}
-          options={filtered.map((item) => ({ id: keyOf(item), name: displayName(item), description: item.line_names.join(" · ") || [item.provider_id ? `항구 코드 ${item.provider_id}` : null, hasCoordinates(item) ? "지도 위치 제공" : "좌표 미등록 · 운항 검색 가능"].filter(Boolean).join(" · ") }))}
+          options={filtered.map((item) => ({ id: keyOf(item), name: displayName(item), description: referenceDescription(item, rail) }))}
           selected={selected.map((item) => ({ id: keyOf(item), name: displayName(item) }))} onSelect={toggle} />
       </div>
       <div className="journey-inspector" aria-live="polite">
