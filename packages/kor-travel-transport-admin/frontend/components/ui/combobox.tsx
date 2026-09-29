@@ -37,7 +37,7 @@ export function ComboboxChips({ className, ...props }: React.ComponentPropsWithR
 export function ComboboxChip({ children, label, ...props }: Primitive.Chip.Props & { label: string }) {
   return <Primitive.Chip data-slot="combobox-chip" className="flex min-w-0 max-w-full items-center gap-1 rounded-sm bg-muted pl-2 text-sm text-foreground" {...props}>
     <span className="min-w-0 truncate" title={label}>{children}</span>
-    <Primitive.ChipRemove data-slot="combobox-chip-remove" aria-label={`${label} 선택 해제`} render={<Button variant="ghost" size="icon-sm" />}><XIcon data-icon="inline-end" /></Primitive.ChipRemove>
+    <Primitive.ChipRemove data-slot="combobox-chip-remove" aria-label={`${label} 선택 해제`} render={<Button variant="ghost" size="icon-sm" className="pointer-coarse:size-11" />}><XIcon data-icon="inline-end" /></Primitive.ChipRemove>
   </Primitive.Chip>;
 }
 

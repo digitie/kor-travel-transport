@@ -148,3 +148,22 @@ test("출처 10개 선택 제한과 해제 후 재선택을 제공한다", async
   await page.getByRole("option", { name: sources[10], exact: true }).click();
   await expect(page.getByRole("button", { name: `${sources[10]} 선택 해제`, exact: true })).toBeVisible();
 });
+
+test.describe("다중 선택 터치 해제", () => {
+  test.use({ hasTouch: true, viewport: { width: 375, height: 900 } });
+  test("칩 해제 버튼도 44px 터치 영역을 제공한다", async ({ page }) => {
+    await page.route("**/transport/features/places?**", (route) => route.fulfill({ json: { items: [], total: 0, truncated: false } }));
+    await page.goto("/map");
+    const input = page.getByRole("combobox", { name: "표시 유종" });
+    await input.fill("휘발유");
+    await page.getByRole("option", { name: "휘발유", exact: true }).click();
+    await input.press("Escape");
+    const remove = page.getByRole("button", { name: "휘발유 선택 해제", exact: true });
+    const bounds = await remove.boundingBox();
+    expect(bounds!.width).toBeGreaterThanOrEqual(44);
+    expect(bounds!.height).toBeGreaterThanOrEqual(44);
+    await remove.tap();
+    await expect(remove).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+});
