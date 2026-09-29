@@ -150,6 +150,11 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
     assert payload["truncated"] is False
     multi_sources = client.get("/v1/transport/features/places", params={"sources": "opinet,data_go_kr_maritime", "product_codes": "B027,D047"}).json()
     assert multi_sources["total"] == 2
+    longest_sources = ",".join(f"{index:02d}" + "a" * 78 for index in range(10))
+    assert len(longest_sources) == 809
+    boundary = client.get("/v1/transport/features/places", params={"sources": longest_sources})
+    assert boundary.status_code == 200
+    assert boundary.json()["total"] == 0
     assert {item["kind"] for item in multi_sources["items"]} == {"fuel_station", "ferry_port"}
     airport_source = next(item["source"] for item in payload["items"] if item["kind"] == "airport")
     airport_multi = client.get("/v1/transport/features/places", params={"kind": "airport", "sources": f"absent,{airport_source}"}).json()

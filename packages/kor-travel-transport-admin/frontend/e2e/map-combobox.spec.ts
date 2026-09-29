@@ -167,3 +167,33 @@ test.describe("다중 선택 터치 해제", () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 });
+
+test("낮은 화면에서 휠 스크롤만으로 마지막 옵션 전체를 표시한다", async ({ page }) => {
+  await page.setViewportSize({ width: 640, height: 280 });
+  const sources = Array.from({ length: 11 }, (_, index) => `source-${String(index).padStart(2, "0")}`);
+  await page.route("**/transport/features/places?**", (route) => route.fulfill({ json: { available_sources: sources, items: [], total: 0, truncated: false } }));
+  await page.goto("/map");
+  await page.getByRole("combobox", { name: "데이터 출처" }).click();
+  const list = page.getByRole("listbox");
+  const listBox = (await list.boundingBox())!;
+  await page.mouse.move(listBox.x + 20, listBox.y + 20);
+  await page.mouse.wheel(0, 10000);
+  const last = page.getByRole("option", { name: sources[10], exact: true });
+  const popup = page.locator('[data-slot="combobox-content"]');
+  await expect.poll(async () => {
+    const row = (await last.boundingBox())!;
+    const box = (await popup.boundingBox())!;
+    return Math.min(row.y + row.height, box.y + box.height) - Math.max(row.y, box.y);
+  }).toBeGreaterThanOrEqual(44);
+});
+
+test("모바일에서 긴 출처 옵션의 전체 이름을 줄바꿈한다", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 900 });
+  const source = "long-source-" + "a".repeat(57);
+  await page.route("**/transport/features/places?**", (route) => route.fulfill({ json: { available_sources: [source], items: [], total: 0, truncated: false } }));
+  await page.goto("/map");
+  await page.getByRole("combobox", { name: "데이터 출처" }).click();
+  const option = page.getByRole("option", { name: source, exact: true });
+  await expect(option).toBeVisible();
+  expect(await option.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+});

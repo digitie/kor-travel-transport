@@ -22,12 +22,12 @@ export function ComboboxList({ className, ...props }: Primitive.List.Props) {
 
 export function ComboboxItem({ children, className, ...props }: Primitive.Item.Props) {
   return <Primitive.Item data-slot="combobox-item" className={cn("relative flex min-h-11 w-full cursor-default items-center gap-2 rounded-md py-2 pr-8 pl-2 text-sm outline-none select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50", className)} {...props}>
-    {children}<Primitive.ItemIndicator className="pointer-events-none absolute right-2"><CheckIcon className="size-4" /></Primitive.ItemIndicator>
+    <span className="min-w-0 whitespace-normal break-all">{children}</span><Primitive.ItemIndicator className="pointer-events-none absolute right-2"><CheckIcon className="size-4" /></Primitive.ItemIndicator>
   </Primitive.Item>;
 }
 
 export function ComboboxEmpty(props: Primitive.Empty.Props) {
-  return <Primitive.Empty data-slot="combobox-empty" className="p-3 text-sm text-muted-foreground" {...props} />;
+  return <Primitive.Empty data-slot="combobox-empty" className="p-3 text-sm text-muted-foreground empty:hidden" {...props} />;
 }
 
 export function ComboboxChips({ className, ...props }: React.ComponentPropsWithRef<typeof Primitive.Chips>) {

@@ -903,7 +903,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         limit: int = Query(default=1000, ge=1, le=5000),
         include_unlocated: bool = Query(default=False, description="좌표 없는 기준정보도 검색 목록에 포함"),
         source: str | None = Query(default=None, max_length=80),
-        sources: str | None = Query(default=None, max_length=800, description="쉼표로 구분한 출처 최대 10개. source와 동시 지정 불가"),
+        sources: str | None = Query(default=None, max_length=809, description="쉼표로 구분한 출처 최대 10개. source와 동시 지정 불가"),
         query: str | None = Query(default=None, max_length=100),
         product_code: str | None = Query(default=None, max_length=20),
         product_codes: str | None = Query(default=None, max_length=104, description="쉼표로 구분한 유종 최대 5개. product_code와 동시 지정 불가"),
