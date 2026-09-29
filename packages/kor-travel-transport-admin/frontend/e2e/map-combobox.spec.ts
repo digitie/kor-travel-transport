@@ -53,6 +53,7 @@ for (const width of [320, 375, 768, 1440]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await source.fill("없는 출처");
     await expect(page.getByText("검색 결과가 없습니다.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("status")).toHaveAttribute("aria-live", "polite");
     await page.keyboard.press("Escape");
   });
 
@@ -174,6 +175,7 @@ test("낮은 화면에서 휠 스크롤만으로 마지막 옵션 전체를 표�
   await page.route("**/transport/features/places?**", (route) => route.fulfill({ json: { available_sources: sources, items: [], total: 0, truncated: false } }));
   await page.goto("/map");
   await page.getByRole("combobox", { name: "데이터 출처" }).click();
+  await expect(page.locator('[data-slot="combobox-empty"]')).toHaveCSS("display", "block");
   const list = page.getByRole("listbox");
   const listBox = (await list.boundingBox())!;
   await page.mouse.move(listBox.x + 20, listBox.y + 20);

@@ -63,6 +63,8 @@ UI 행렬은 모의 응답 기반 경계 검증과 기존 운영 저장 DB 읽�
   긴 출처명 잘림 P2 두 건. `hover`나 `scrollIntoViewIfNeeded`의 자동 스크롤을 쓰지
   않고 휠만 움직여 마지막 44px 항목 중 23.75px만 보이는 실패를 재현했다. 비어 있는
   안내 요소의 padding을 숨기고 옵션 이름에 줄바꿈을 적용했다. 두 회귀를 추가했다.
+  재리뷰의 live region 숨김 P2도 반영해 루트를 숨기지 않고 빈 상태의 padding만
+  제거한다. `role=status`, `aria-live=polite`와 표시 유지 회귀를 추가했다.
 - Popper(에이전트 표시명 Schrodinger): API P0/P1 없음. 80자 출처 10개의 CSV 길이
   809자가 800 제한으로 거절되는 P2를 재현해 809로 맞췄다. 길이 경계 회귀를 추가했다.
 - 운영 보조 스크립트 P1: rollback 실패 뒤 daemon 재개를 모의 함수로 재현했다.

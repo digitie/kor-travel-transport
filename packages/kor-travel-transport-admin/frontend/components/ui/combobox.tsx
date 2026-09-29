@@ -27,7 +27,7 @@ export function ComboboxItem({ children, className, ...props }: Primitive.Item.P
 }
 
 export function ComboboxEmpty(props: Primitive.Empty.Props) {
-  return <Primitive.Empty data-slot="combobox-empty" className="p-3 text-sm text-muted-foreground empty:hidden" {...props} />;
+  return <Primitive.Empty data-slot="combobox-empty" className="p-3 text-sm text-muted-foreground empty:p-0" {...props} />;
 }
 
 export function ComboboxChips({ className, ...props }: React.ComponentPropsWithRef<typeof Primitive.Chips>) {
