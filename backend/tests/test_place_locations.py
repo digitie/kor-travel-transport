@@ -70,8 +70,8 @@ def test_port_match_rejects_island_centroid_duplicate_and_unverified_coord() -> 
 class FakeVworld:
     calls: list[str] = []
 
-    def __init__(self, **_kwargs) -> None:
-        pass
+    def __init__(self, **kwargs) -> None:
+        assert kwargs["max_rps"] == 100.0
 
     async def __aenter__(self):
         return self
