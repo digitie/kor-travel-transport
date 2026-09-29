@@ -27,6 +27,7 @@ async def provider_status(session: AsyncSession, settings: Settings) -> Provider
         ("ferry_timetable", "여객선 10일 운항시간표", "ferry_timetable_collection_job", "dagster_ferry_timetable", keyed and settings.ferry_timetable_collection_enabled, 14400),
         ("data_go_kr_tago", "TAGO 고속·시외버스 터미널", "bus_reference_collection_job", "dagster_bus_reference", keyed and settings.bus_reference_collection_enabled, 259200),
         ("vworld_place", "VWorld 항구·버스 터미널 위치", "place_location_collection_job", "dagster_place_locations", settings.place_location_collection_enabled and bool(settings.vworld_api_key), 86400),
+        ("kakao_place", "카카오 항구·버스 터미널 위치", "kakao_place_location_collection_job", "dagster_kakao_place_locations", settings.kakao_place_collection_enabled and bool(settings.kakao_rest_api_key), 86400),
     ]
     triggers = {row[3] for row in catalog}
     ranked = select(CollectionRun.id, func.row_number().over(partition_by=CollectionRun.trigger, order_by=(CollectionRun.started_at.desc(), CollectionRun.id.desc())).label("rank")).where(CollectionRun.trigger.in_(triggers), CollectionRun.status != "skipped").subquery()

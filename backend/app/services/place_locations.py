@@ -188,9 +188,11 @@ class PlaceLocationCollectionService:
                     now = now_utc()
                     if previous is not None:
                         received = previous.received_at.replace(tzinfo=UTC) if previous.received_at.tzinfo is None else previous.received_at
-                        if (previous.request_params_json or {}).get("query") == query and now - received < timedelta(
+                        if ((previous.request_params_json or {}).get("query") == query
+                                and (previous.request_params_json or {}).get("name") == name
+                                and now - received < timedelta(
                             days=30 if previous.parse_status == "success" else 1
-                        ):
+                        )):
                             continue
                     if session.bind is not None and session.bind.dialect.name == "postgresql":
                         await session.execute(text("SELECT pg_advisory_xact_lock(420053)"))
@@ -211,7 +213,7 @@ class PlaceLocationCollectionService:
                         await session.commit()
                         break
                     receipt = RawApiResponse(collection_run_id=run.id, source=LOCATION_SOURCE,
-                        endpoint=endpoint, request_params_json={"query": query}, status_code=0,
+                        endpoint=endpoint, request_params_json={"query": query, "name": name}, status_code=0,
                         body_text="null", received_at=now, parse_status="pending", parse_error=None)
                     session.add(receipt)
                     await session.commit()

@@ -13,6 +13,7 @@ from app.db.session import create_engine_and_session_factory
 from app.services.collection import CollectionService
 from app.services.bus_collection import BusReferenceCollectionService
 from app.services.kric_collection import KricTimetableCollectionService
+from app.services.kakao_place_locations import KakaoPlaceCollectionService
 from app.services.place_locations import PlaceLocationCollectionService
 from app.services.rail_maritime_collection import RailMaritimeCollectionService
 from app.services.transport_collection import CollectionScope, TransportCollectionService
@@ -146,6 +147,17 @@ def collect_place_locations() -> dict[str, Any]:
 
 
 @op
+def collect_kakao_place_locations() -> dict[str, Any]:
+    settings = _settings()
+    result = asyncio.run(_run_with_session(settings, KakaoPlaceCollectionService(settings).collect))
+    if result.get("status") == "partial_success":
+        raise Failure(description="카카오 장소 위치 조회가 유예되거나 실패했습니다. 성공분은 저장했습니다.",
+                      metadata={"run_id": result["run_id"], "deferred": result["deferred"]},
+                      allow_retries=False)
+    return result
+
+
+@op
 def collect_kric_timetable() -> dict[str, Any]:
     settings = _settings()
     return asyncio.run(_run_with_session(settings, KricTimetableCollectionService(settings).collect))
@@ -196,6 +208,11 @@ def place_location_collection_job() -> None:
     collect_place_locations()
 
 
+@job(tags={"kortraveltransport/run_group": "reference"})
+def kakao_place_location_collection_job() -> None:
+    collect_kakao_place_locations()
+
+
 definitions = Definitions(
     jobs=[
         airport_collection_job,
@@ -206,6 +223,7 @@ definitions = Definitions(
         ferry_timetable_collection_job,
         bus_reference_collection_job,
         place_location_collection_job,
+        kakao_place_location_collection_job,
         kric_timetable_collection_job,
     ],
     schedules=[
@@ -220,6 +238,7 @@ definitions = Definitions(
         # 매일 due를 평가하되 service가 마지막 성공 뒤 72시간 전에는 provider를 호출하지 않는다.
         ScheduleDefinition(job=bus_reference_collection_job, cron_schedule="30 3 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         ScheduleDefinition(job=place_location_collection_job, cron_schedule="30 4 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
+        ScheduleDefinition(job=kakao_place_location_collection_job, cron_schedule="30 6 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         # 실패·강제 종료도 포함해 마지막 시도부터 48시간 guard를 적용한다.
         ScheduleDefinition(job=kric_timetable_collection_job, cron_schedule="0 * * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
     ],
