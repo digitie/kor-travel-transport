@@ -178,7 +178,7 @@ class TransportPlaceMapItem(BaseModel):
     """kor-travel-map·PinVi가 지도 marker로 바로 소비할 저장 장소 요약."""
 
     id: int
-    kind: Literal["fuel_station", "rail_station", "ferry_port", "airport", "rest_area"]
+    kind: Literal["fuel_station", "rail_station", "ferry_port", "airport", "rest_area", "highway_incident"]
     source: str
     provider_id: str | None = None
     name: str
@@ -265,6 +265,7 @@ class FerryOperationItem(BaseModel):
 
 class FerryOperationResponse(BaseModel):
     port_id: str
+    port_name: str | None = None
     service_date: date
     fetched_at: datetime
     items: list[FerryOperationItem]
@@ -314,6 +315,9 @@ class BusTimetableResponse(BaseModel):
     fetched_at: datetime
     total: int | None = None
     truncated: bool = False
+    stored: bool = False
+    stale: bool = False
+    refresh_status: Literal["stored_only", "rate_limited", "not_configured", "upstream_error"] | None = None
     items: list[BusTimetableItem]
 
 

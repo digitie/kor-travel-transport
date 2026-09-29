@@ -117,6 +117,43 @@ async def replace_default_timeseries_cache(client: TestClient) -> None:
         await session.commit()
 
 
+def test_map_fuel_filter_requires_latest_positive_price(client) -> None:
+    async def seed() -> None:
+        now = now_utc()
+        async with client.app.state.session_factory() as session:
+            for index, (name, latest) in enumerate([
+                ("고급유 판매", 2000), ("고급유 미제공", None), ("고급유 0", 0),
+                ("같은 수집시각 최신 미제공", None),
+            ]):
+                station = FuelStation(source="opinet", identity_key=f"premium-{index}", name=name,
+                    query_level="sigungu", source_kinds=[], longitude=127, latitude=37,
+                    sido_value="11", sido_name="서울", sigungu_value="110", sigungu_name="테스트",
+                    first_seen_at=now, last_seen_at=now)
+                session.add(station)
+                await session.flush()
+                # 과거 판매 이력이나 NULL인 유종 row만으로는 필터에 포함하면 안 된다.
+                session.add(FuelPriceSnapshot(fuel_station_id=station.id, source="opinet",
+                    product_code="B034", price=1900, observed_at=now - timedelta(days=1),
+                    collected_at=now if index == 3 else now - timedelta(days=1)))
+                await session.flush()
+                session.add(FuelPriceSnapshot(fuel_station_id=station.id, source="opinet",
+                    product_code="B034", price=latest, observed_at=now, collected_at=now))
+                session.add(FuelPriceSnapshot(fuel_station_id=station.id, source="opinet",
+                    product_code="D047", price=1600, observed_at=now, collected_at=now))
+            await session.commit()
+    asyncio.run(seed())
+    path = "/v1/transport/features/places"
+    for key in ["product_code", "product_codes"]:
+        result = client.get(path, params={"kind": "fuel_station", key: "B034", "limit": 1}).json()
+        assert result["total"] == 1
+        assert result["truncated"] is False
+        assert result["items"][0]["name"] == "고급유 판매"
+        assert len(result["items"][0]["prices"]) == 2
+    assert client.get(path, params={"kind": "fuel_station", "product_codes": "B034,D047"}).json()["total"] == 4
+    assert client.get(path, params={"kind": "fuel_station", "product_codes": "B034,K015"}).json()["total"] == 1
+    assert client.get(path, params={"kind": "fuel_station"}).json()["total"] == 4
+
+
 def test_health(client) -> None:
     response = client.get("/health")
     assert response.status_code == 200
@@ -148,6 +185,19 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
     assert payload["total"] == 7
     assert len([item for item in payload["items"] if item["kind"] == "airport"]) == 4
     assert payload["truncated"] is False
+    multi_sources = client.get("/v1/transport/features/places", params={"sources": "opinet,data_go_kr_maritime", "product_codes": "B027,D047"}).json()
+    assert multi_sources["total"] == 2
+    longest_sources = ",".join(f"{index:02d}" + "a" * 78 for index in range(10))
+    assert len(longest_sources) == 809
+    boundary = client.get("/v1/transport/features/places", params={"sources": longest_sources})
+    assert boundary.status_code == 200
+    assert boundary.json()["total"] == 0
+    assert {item["kind"] for item in multi_sources["items"]} == {"fuel_station", "ferry_port"}
+    airport_source = next(item["source"] for item in payload["items"] if item["kind"] == "airport")
+    airport_multi = client.get("/v1/transport/features/places", params={"kind": "airport", "sources": f"absent,{airport_source}"}).json()
+    expected_airports = [item for item in payload["items"] if item["kind"] == "airport" and item["source"] == airport_source]
+    assert airport_multi["total"] == len(expected_airports)
+    assert {item["id"] for item in airport_multi["items"]} == {item["id"] for item in expected_airports}
     assert by_kind["fuel_station"]["latest_price"] == 1700
     assert by_kind["fuel_station"]["prices"][0]["product_code"] == "B027"
     assert {row["product_code"]: row["price"] for row in by_kind["fuel_station"]["prices"]} == {"B027": 1700, "D047": 1600}
@@ -160,6 +210,13 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
     assert client.get("/v1/transport/features/places?kind=fuel_station&source=opinet&query=테스트&product_code=D047&limit=1").json()["total"] == 1
     assert client.get("/v1/transport/features/places?kind=fuel_station&query=%25").json()["total"] == 0
     assert client.get("/v1/transport/features/places?kind=fuel_station&product_code=K015").json()["total"] == 0
+    for codes in ["B027,D047", "K015,D047", "D047,D047"]:
+        multi = client.get("/v1/transport/features/places", params={"kind": "fuel_station", "sources": "absent,opinet", "product_codes": codes, "limit": 1})
+        assert multi.status_code == 200
+        assert multi.json()["total"] == 1
+        assert multi.json()["items"][0]["name"] == "테스트주유소"
+        assert len(multi.json()["items"][0]["prices"]) == 2  # 상세는 모든 유종 보존
+    assert client.get("/v1/transport/features/places?kind=fuel_station&product_codes=K015,C004").json()["total"] == 0
     assert [item["name"] for item in bounded.json()["items"]] == ["테스트주유소"]
     assert client.get("/v1/transport/features/places?kind=unknown").status_code == 422
     assert client.get("/v1/transport/features/places?kind=fuel_station&min_longitude=127.0").status_code == 422

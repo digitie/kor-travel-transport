@@ -1,8 +1,11 @@
 export type PlaceKind = "fuel_station" | "rail_station" | "ferry_port" | "airport" | "rest_area" | "highway_incident";
 export type FuelPrice = { product_code: string; price: number | null; observed_at: string; provider_updated_at?: string | null };
+export function hasFuelPrice(row: FuelPrice) {
+  return row.price !== null && Number.isFinite(row.price) && row.price > 0;
+}
 export type Place = { id: number; kind: PlaceKind; source: string; provider_id?: string | null; name: string; longitude: number | null; latitude: number | null; subtitle?: string | null; brand_name?: string | null; latest_price?: number | null; price_product_code?: string | null; prices: FuelPrice[]; line_names: string[]; facilities: string[]; phone?: string | null; station_type?: string | null; address?: string | null; updated_at: string; location_source?: string | null; location_point_count?: number | null };
 export type FerryOperation = { vessel_name: string | null; departure_port_name: string | null; arrival_port_name: string | null; departure_planned_time: string | null; arrival_planned_time: string | null; fare: string | null };
-export type FerryTimetable = { port_id: string; service_date: string; fetched_at: string; items: FerryOperation[] };
+export type FerryTimetable = { port_id: string; port_name?: string | null; service_date: string; fetched_at: string; items: FerryOperation[] };
 export type StoredFerry = { service_date: string; items: FerryTimetable[]; missing_port_ids: string[] };
 
 export function seoulDate(offset = 0, now = Date.now()) {
@@ -33,7 +36,7 @@ export function money(value: string | number | null | undefined, suffix = "원")
 export function dateTime(value: string | null | undefined) {
   return value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", dateStyle: "short", timeStyle: "short" }) : "확인되지 않음";
 }
-export function hasCoordinates(place: Place): place is Place & { longitude: number; latitude: number } {
+export function hasCoordinates<T extends Pick<Place, "longitude" | "latitude">>(place: T): place is T & { longitude: number; latitude: number } {
   return typeof place.longitude === "number" && typeof place.latitude === "number"
     && Number.isFinite(place.longitude) && Number.isFinite(place.latitude)
     && Math.abs(place.longitude) <= 180 && Math.abs(place.latitude) <= 90;

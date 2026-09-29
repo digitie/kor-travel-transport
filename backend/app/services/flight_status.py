@@ -9,7 +9,7 @@ from xml.etree import ElementTree
 from zoneinfo import ZoneInfo
 
 import httpx
-from krairport import AsyncKrairportClient
+from krairport import Flight, KrairportClient
 from krairport.exceptions import KrairportError, KrairportRateLimitError
 
 from app.core.config import Settings
@@ -17,6 +17,7 @@ from app.core.time_utils import now_utc, serialize_utc
 
 KAC_FLIGHT_STATUS_ENDPOINT = "http://openapi.airport.co.kr/service/rest/FlightStatusList/getFlightStatusList"
 KAC_FLIGHT_DETAIL_STATUS_ENDPOINT = "https://api.odcloud.kr/api/FlightStatusListDTL/v1/getFlightStatusListDetail"
+KAC_FLIGHT_GATEWAY_ENDPOINT = "https://apis.data.go.kr/B551178/flight-status"
 INCHEON_FLIGHT_ARRIVALS_ENDPOINT = "http://apis.data.go.kr/B551177/StatusOfPassengerFlightsDeOdp/getPassengerArrivalsDeOdp"
 INCHEON_FLIGHT_DEPARTURES_ENDPOINT = "http://apis.data.go.kr/B551177/StatusOfPassengerFlightsDeOdp/getPassengerDeparturesDeOdp"
 SUCCESS_RESULT_CODES = {"00", "0"}
@@ -127,6 +128,7 @@ class FlightSourceResponse:
     request_params: dict[str, Any]
     status_code: int
     body_text: str
+    flights: tuple[Flight, ...] | None = None
 
 
 class FlightStatusClient:
@@ -159,12 +161,10 @@ class FixtureFlightStatusClient(FlightStatusClient):
 
 
 class KrairportFlightStatusClient(FlightStatusClient):
-    """`python-krairport-api`(`krairport`)를 통해 비행편 현황을 조회한다
-    (ADR-004, T-029). KAC는 `kac_flight_status_detail_raw_items()`(ODCloud
-    `FlightStatusListDTL`), IIAC는 `iiac_raw_items()`(`StatusOfPassengerFlightsDeOdp`)
-    escape hatch를 쓴다 — 두 endpoint 모두 krairport의 typed model이 아닌 raw item
-    dict를 그대로 돌려주므로, 파싱은 여전히 이 파일의 `parse_kac_flight_detail_json`/
-    `parse_incheon_flight_status_json`이 담당한다."""
+    """KAC는 provider의 typed GW 조회, IIAC는 기존 raw 조회를 사용한다.
+
+    GW 필드/시각/페이지 해석은 형제 라이브러리에 맡긴다(ADR-004).
+    """
 
     def __init__(self, settings: Settings) -> None:
         if not settings.data_go_kr_service_key:
@@ -177,23 +177,25 @@ class KrairportFlightStatusClient(FlightStatusClient):
         return await self._fetch_kac_status(airport_code, local_date)
 
     async def _fetch_kac_status(self, airport_code: str, local_date: date) -> FlightSourceResponse:
-        async with AsyncKrairportClient(
+        async with KrairportClient(
             kac_service_key=self.settings.data_go_kr_service_key,
             iiac_service_key=self.settings.data_go_kr_service_key,
             timeout=self.settings.api_timeout_seconds,
+            retries=0,
         ) as client:
-            items = await client.kac_flight_status_detail_raw_items(
+            flights = await client.kac.flight_status(
                 airport_code=airport_code,
-                flight_date=local_date.strftime("%Y%m%d"),
-                page=1,
-                per_page=1000,
+                searchday=local_date.strftime("%Y%m%d"),
+                num_of_rows=100,
+                max_pages=20,
             )
         return FlightSourceResponse(
-            source="kac_flight_detail_status",
-            endpoint=KAC_FLIGHT_DETAIL_STATUS_ENDPOINT,
+            source="kac_flight_status_gateway",
+            endpoint=KAC_FLIGHT_GATEWAY_ENDPOINT,
             request_params={"airport_code": airport_code.upper(), "local_date": local_date.isoformat()},
             status_code=200,
-            body_text=json.dumps({"data": items}, ensure_ascii=False),
+            body_text="",
+            flights=tuple(flights),
         )
 
     async def _fetch_incheon_status(self, local_date: date) -> FlightSourceResponse:
@@ -207,7 +209,7 @@ class KrairportFlightStatusClient(FlightStatusClient):
             "lang": "K",
             "inqtimechcd": "E",
         }
-        async with AsyncKrairportClient(
+        async with KrairportClient(
             kac_service_key=self.settings.data_go_kr_service_key,
             iiac_service_key=self.settings.data_go_kr_service_key,
             timeout=self.settings.api_timeout_seconds,
@@ -281,7 +283,33 @@ class FlightStatusService:
 
         try:
             response = await self.client.fetch_status(airport_code, local_date)
-            if response.source in {"incheon_flight_status", "sample_incheon_flight_status"}:
+            if response.source == "kac_flight_status_gateway":
+                if response.flights is None:
+                    raise FlightStatusUpstreamError("항공편 응답이 없습니다.")
+                items = []
+                for flight in response.flights:
+                    if not flight.flight_id or flight.scheduled_at is None:
+                        raise FlightStatusUpstreamError("항공편 예정시각 또는 편명이 없습니다.")
+                    items.append({
+                        "airport_code": flight.airport_code, "direction": str(flight.direction),
+                        "flight_number": flight.flight_id, "airline": flight.airline_name,
+                        "scheduled_at": serialize_utc(flight.scheduled_at),
+                        "estimated_at": serialize_utc(flight.estimated_at) if flight.estimated_at else None,
+                        "marker_at": serialize_utc(flight.estimated_at or flight.scheduled_at),
+                        "origin_airport": flight.departure_airport_name or flight.departure_airport_code or "-",
+                        "destination_airport": flight.arrival_airport_name or flight.arrival_airport_code or "-",
+                        "status": flight.status_korean or flight.status_english,
+                        "line_type": flight.line_type,
+                        "_codeshare_identity": (
+                            flight.airport_code, str(flight.direction),
+                            serialize_utc(flight.scheduled_at),
+                            flight.master_flight_id or flight.flight_id,
+                        ),
+                    })
+                items = _deduplicate_codeshare_flights(items)
+                items.sort(key=lambda flight: (flight["marker_at"], flight["flight_number"]))
+                error_message = None
+            elif response.source in {"incheon_flight_status", "sample_incheon_flight_status"}:
                 items, error_message = parse_incheon_flight_status_json(response.body_text, local_date, self.settings.app_timezone)
             elif response.source == "kac_flight_detail_status":
                 items, error_message = parse_kac_flight_detail_json(
@@ -436,9 +464,9 @@ def _sanitize_upstream_error(error: Exception | str, service_key: str | None) ->
 
 
 def _deduplicate_codeshare_flights(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    grouped: dict[tuple[str, Any, str, str], list[dict[str, Any]]] = {}
+    grouped: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
     for item in items:
-        key = (
+        key = item.get("_codeshare_identity") or (
             str(item.get("direction") or ""),
             item.get("marker_at"),
             str(item.get("origin_airport") or "").strip(),
@@ -450,12 +478,16 @@ def _deduplicate_codeshare_flights(items: list[dict[str, Any]]) -> list[dict[str
     for group in grouped.values():
         if len(group) == 1:
             item = {**group[0]}
+            item.pop("_codeshare_identity", None)
             item["codeshare_flight_numbers"] = [str(item.get("flight_number") or "").strip()]
             deduplicated.append(item)
             continue
 
         ordered_group = sorted(group, key=lambda flight: str(flight.get("flight_number") or ""))
-        representative = {**ordered_group[0]}
+        representative = {**next((flight for flight in ordered_group
+            if flight.get("_codeshare_identity")
+            and flight["flight_number"] == flight["_codeshare_identity"][-1]), ordered_group[0])}
+        representative.pop("_codeshare_identity", None)
         flight_numbers = _unique_text_values(ordered_group, "flight_number")
         airlines = _unique_text_values(ordered_group, "airline")
         representative["flight_number"] = " / ".join(flight_numbers)

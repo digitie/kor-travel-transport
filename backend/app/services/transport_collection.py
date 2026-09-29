@@ -716,6 +716,9 @@ class TransportCollectionService:
                 .limit(1)
             )
             if latest is not None and _incident_state_matches(latest, item):
+                # 상태 변경 이력은 보존하고 실제 재관측 시각만 갱신한다.
+                # 지도 TTL은 이 시각을 사용해 장기 공사/통제를 누락하지 않는다.
+                latest.collected_at = max(serialize_utc(latest.collected_at), collected_at)
                 continue
             existing = await session.scalar(
                 select(HighwayIncidentSnapshot).where(

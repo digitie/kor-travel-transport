@@ -240,10 +240,11 @@ class RailMaritimeCollectionService:
         reused = 0
         operation_count = 0
         last_call_at = None
-        budget_exhausted = False
         async with self._maritime_client_factory(key, timeout=self.settings.api_timeout_seconds) as client:
-            for port in ports:
-                for service_date in service_dates:
+            # 모든 항구의 오늘 누락분을 먼저 채운 뒤 내일 이후를 보충한다.
+            # 항구 하나의 10일치를 먼저 채우면 호출 예산 뒤쪽 항구가 계속 밀린다.
+            for service_date in service_dates:
+                for port in ports:
                     snapshot = by_port_date.get((port.source, port.port_id, service_date))
                     is_today_snapshot = snapshot is not None and service_date == today
                     snapshot_collected_at = (
@@ -261,8 +262,9 @@ class RailMaritimeCollectionService:
                         operation_count += len(snapshot.items_json)
                         continue
                     if provider_calls >= self.settings.ferry_timetable_collection_max_provider_calls:
-                        budget_exhausted = True
-                        break
+                        # 이후 날짜에 이미 저장된 시간표도 재사용/잔여 집계에 포함한다.
+                        # 예산 소진은 외부 요청만 중단하며 저장 범위 확인은 끝까지 한다.
+                        continue
                     if last_call_at is not None:
                         elapsed = (now_utc() - last_call_at).total_seconds()
                         wait_seconds = self.settings.ferry_timetable_collection_interval_seconds - elapsed
@@ -298,8 +300,6 @@ class RailMaritimeCollectionService:
                     # 호출 하나의 성공 결과를 즉시 durable하게 만든다. 이후 호출이 실패해도
                     # 이미 채운 항구·운항일은 API가 DB에서 반환할 수 있다.
                     await session.commit()
-                if budget_exhausted:
-                    break
         deferred_snapshot_count = len(ports) * len(service_dates) - reused - provider_calls + failed_provider_calls
         return {
             "port_count": len(ports),

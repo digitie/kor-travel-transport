@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from xml.etree import ElementTree
 
-from krairport import AsyncKrairportClient
+from krairport import KrairportClient
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -215,7 +215,7 @@ class KrairportPublicDataClient(PublicDataClient):
         source: str,
         endpoint: str,
     ) -> SourceResponse:
-        async with AsyncKrairportClient(
+        async with KrairportClient(
             kac_service_key=self.settings.data_go_kr_service_key,
             iiac_service_key=self.settings.data_go_kr_service_key,
             timeout=self.settings.api_timeout_seconds,

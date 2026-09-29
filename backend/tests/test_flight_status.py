@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
+from krairport import Flight
 from krairport.exceptions import KrairportRateLimitError
 
 from app.core.config import Settings
@@ -21,7 +22,7 @@ from app.services.flight_status import (
 
 
 def _mock_krairport_client(**method_results: object) -> AsyncMock:
-    """Build a mock standing in for `async with AsyncKrairportClient(...) as client`."""
+    """Build a mock standing in for `async with KrairportClient(...) as client`."""
 
     client = AsyncMock()
     for name, result in method_results.items():
@@ -334,30 +335,35 @@ def test_parse_incheon_flight_status_json_accepts_pre_extracted_item_lists() -> 
     assert items[1]["direction"] == "departure"
 
 
-def test_krairport_flight_status_client_fetch_kac_status_builds_json_source_response() -> None:
+def test_krairport_flight_status_client_fetch_kac_status_uses_typed_gateway() -> None:
     settings = Settings(data_go_kr_service_key="test-key")
-    items = [
-        {
-            "AIR_FLN": "KE1101",
-            "AIRLINE_KOREAN": "대한항공",
-            "BOARDING_KOR": "김포",
-            "ARRIVED_KOR": "제주",
-            "IO": "O",
-            "STD": "0830",
-            "ETD": "0840",
-            "FLIGHT_DATE": "20260509",
-        }
-    ]
-    mock_client = _mock_krairport_client(kac_flight_status_detail_raw_items=items)
+    items = [Flight(provider="kac", airport_code="GMP", direction="departure", flight_id="KE1101",
+        scheduled_at=datetime.fromisoformat("2026-05-09T08:30:00+09:00"),
+        estimated_at=datetime.fromisoformat("2026-05-09T08:40:00+09:00"),
+        departure_airport_name="김포", arrival_airport_name="제주", airline_name="대한항공",
+        flight_unique_id="0001", airline_code="KE", departure_airport_code="GMP", arrival_airport_code="CJU",
+        status_korean=None, status_english=None, terminal=None, gate=None, codeshare=None)]
+    mock_client = _mock_krairport_client()
+    provider = mock_client.__aenter__.return_value.kac
+    provider.flight_status.return_value = items
 
-    with patch("app.services.flight_status.AsyncKrairportClient", return_value=mock_client):
+    with patch("app.services.flight_status.KrairportClient", return_value=mock_client) as factory:
         client = KrairportFlightStatusClient(settings)
         response = asyncio.run(client.fetch_status("GMP", date(2026, 5, 9)))
 
-    assert response.source == "kac_flight_detail_status"
-    parsed_items, error_message = parse_kac_flight_detail_json(response.body_text, "GMP", date(2026, 5, 9))
-    assert error_message is None
-    assert parsed_items[0]["flight_number"] == "KE1101"
+    assert response.source == "kac_flight_status_gateway"
+    assert response.flights == tuple(items)
+    assert response.body_text == ""
+    assert factory.call_args.kwargs["retries"] == 0
+    provider.flight_status.assert_awaited_once_with(airport_code="GMP", searchday="20260509", num_of_rows=100, max_pages=20)
+    service = FlightStatusService(settings)
+    service.client = AsyncMock()
+    service.client.fetch_status.return_value = response
+    payload = asyncio.run(service.get_status("GMP", date(2026, 5, 9)))
+    assert payload["status"] == "success"
+    assert payload["items"][0]["flight_number"] == "KE1101"
+    assert payload["items"][0]["destination_airport"] == "제주"
+    assert payload["items"][0]["marker_at"].isoformat() == "2026-05-08T23:40:00+00:00"
 
 
 def test_krairport_flight_status_client_fetch_incheon_status_calls_both_directions() -> None:
@@ -384,7 +390,7 @@ def test_krairport_flight_status_client_fetch_incheon_status_calls_both_directio
     # order get swapped.
     mock_client.__aenter__.return_value.iiac_raw_items.side_effect = [[departure_item], [arrival_item]]
 
-    with patch("app.services.flight_status.AsyncKrairportClient", return_value=mock_client):
+    with patch("app.services.flight_status.KrairportClient", return_value=mock_client):
         client = KrairportFlightStatusClient(settings)
         response = asyncio.run(client.fetch_status("ICN", date(2026, 5, 9)))
 
@@ -398,13 +404,40 @@ def test_krairport_flight_status_client_fetch_incheon_status_calls_both_directio
     assert calls[1].args[:2] == ("StatusOfPassengerFlightsDeOdp", "getPassengerArrivalsDeOdp")
 
 
+def test_gateway_groups_explicit_codeshares_without_merging_unrelated_flights() -> None:
+    base = dict(provider="kac", airport_code="GMP", direction="departure",
+        scheduled_at=datetime.fromisoformat("2026-05-09T08:30:00+09:00"),
+        estimated_at=None, departure_airport_name="김포", arrival_airport_name="제주",
+        flight_unique_id=None, airline_code=None, airline_name=None,
+        departure_airport_code="GMP", arrival_airport_code="CJU",
+        status_korean=None, status_english=None, terminal=None, gate=None, codeshare=None)
+    flights = [Flight(**base, flight_id="KE123", master_flight_id="KE123"),
+        Flight(**{**base, "estimated_at": datetime.fromisoformat("2026-05-09T08:45:00+09:00")},
+            flight_id="DL9123", master_flight_id="KE123"),
+        Flight(**base, flight_id="7C123"),
+        Flight(**{**base, "direction": "arrival"}, flight_id="KE123", master_flight_id="KE123"),
+        Flight(**{**base, "scheduled_at": datetime.fromisoformat("2026-05-10T08:30:00+09:00")},
+            flight_id="KE123", master_flight_id="KE123")]
+    service = FlightStatusService(Settings(data_go_kr_service_key=None, use_sample_client_when_no_key=False))
+    service.client = AsyncMock()
+    service.client.fetch_status.return_value = FlightSourceResponse(
+        source="kac_flight_status_gateway", endpoint="fixture", request_params={},
+        status_code=200, body_text="", flights=tuple(flights))
+    payload = asyncio.run(service.get_status("GMP", date(2026, 5, 9)))
+    assert payload["status"] == "success"
+    assert len(payload["items"]) == 4
+    grouped = next(item for item in payload["items"] if item["flight_number"] == "DL9123 / KE123")
+    assert grouped["codeshare_flight_numbers"] == ["DL9123", "KE123"]
+    assert grouped["marker_at"] == base["scheduled_at"]
+    assert all("_codeshare_identity" not in item for item in payload["items"])
+
+
 def test_krairport_flight_status_client_rate_limit_error_propagates() -> None:
     settings = Settings(data_go_kr_service_key="test-key")
-    mock_client = _mock_krairport_client(
-        kac_flight_status_detail_raw_items=KrairportRateLimitError("LIMITED")
-    )
+    mock_client = _mock_krairport_client()
+    mock_client.__aenter__.return_value.kac.flight_status.side_effect = KrairportRateLimitError("LIMITED")
 
-    with patch("app.services.flight_status.AsyncKrairportClient", return_value=mock_client):
+    with patch("app.services.flight_status.KrairportClient", return_value=mock_client):
         client = KrairportFlightStatusClient(settings)
         with pytest.raises(KrairportRateLimitError):
             asyncio.run(client.fetch_status("GMP", date(2026, 5, 9)))

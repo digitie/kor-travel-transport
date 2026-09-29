@@ -453,6 +453,23 @@ class RestAreaReference(Base):
     raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
 
 
+class BusTimetableSnapshot(Base):
+    """노선·운행일·등급별 마지막 정상 TAGO 응답. 호출 보호와 독립해서 조회한다."""
+
+    __tablename__ = "bus_timetable_snapshots"
+    __table_args__ = (
+        CheckConstraint("service_type IN ('express', 'intercity')", name="ck_bus_timetable_service_type"),
+        Index("ix_bus_timetable_service_date", "service_date"),
+    )
+    service_type: Mapped[str] = mapped_column(Text, primary_key=True)
+    departure_terminal_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    arrival_terminal_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    service_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    bus_grade_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    response_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
 class FerryPort(Base):
     __tablename__ = "ferry_ports"
     __table_args__ = (

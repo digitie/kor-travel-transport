@@ -8,6 +8,13 @@ const airport = { ...base, id: 2, kind: "airport", provider_id: "GMP", name: "�
 const rail = { ...base, id: 3, kind: "rail_station", provider_id: "KRIC3", name: "서울역", line_names: ["1호선"] };
 const fuel = { ...base, id: 4, kind: "fuel_station", name: "시험주유소", brand_name: "시험 브랜드", prices: ["B027", "B034", "D047", "K015", "C004"].map((product_code) => ({ product_code, price: 1700, observed_at: stamp })) };
 
+async function selectPlace(page: Page, id: string) {
+  const item = [port, airport, rail, fuel].find((place) => `${place.kind}:${place.id}` === id)!;
+  await page.getByRole("button", { name: "목록", exact: true }).click();
+  await page.locator(".map-place-list").getByRole("button", { name: new RegExp(item.name) }).click();
+  await page.getByRole("button", { name: "지도", exact: true }).click();
+}
+
 async function places(page: Page) {
   await page.route("**://*.vworld.kr/**", (route) => route.abort());
   await page.route("**/transport/features/places?**", (route) => {
@@ -35,7 +42,7 @@ for (const width of [320, 375, 414, 768, 1440]) test(`Weather 우측 상세 · �
     return route.fulfill({ json: { service_date: date, missing_port_ids: [], items: [{ port_id: "SEA1", service_date: date, fetched_at: stamp, items: [{ vessel_name: "시험호", departure_port_name: "시험항", arrival_port_name: "제주항", departure_planned_time: "0900", arrival_planned_time: "1100", fare: "12000" }] }] } });
   });
   await page.goto("/map");
-  await page.getByLabel("장소 목록에서 선택").selectOption("ferry_port:1");
+  await selectPlace(page, "ferry_port:1");
   const panel = page.getByRole("complementary", { name: "선택 장소 상세" });
   await expect(panel.getByRole("heading", { name: "시험항", exact: true })).toBeVisible();
   await expect(panel.getByText("시험호", { exact: true })).toBeVisible();
@@ -52,13 +59,13 @@ for (const width of [320, 375, 414, 768, 1440]) test(`Weather 우측 상세 · �
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: `test-results/weather-inspector-${width}.png`, fullPage: true });
   await panel.getByRole("button", { name: "장소 상세 닫기" }).click();
-  await expect(panel.getByLabel("장소 목록에서 선택")).toBeFocused();
+  await expect(page.getByLabel("장소 검색")).toBeFocused();
   await expect(panel.getByRole("heading", { name: "시험항", exact: true })).toHaveCount(0);
 });
 
 for (const mode of ["missing", "empty", "error"] as const) test(`항구 상세 ${mode} 상태를 구분한다`, async ({ page }) => {
   await page.route("**/transport/ports/timetables?**", (route) => route.fulfill({ status: mode === "error" ? 503 : 200, json: { items: mode === "empty" ? [{ port_id: "SEA1", service_date: "2026-09-28", fetched_at: stamp, items: [] }] : [], missing_port_ids: ["SEA1"] } }));
-  await page.goto("/map"); await page.getByLabel("장소 목록에서 선택").selectOption("ferry_port:1");
+  await page.goto("/map"); await selectPlace(page, "ferry_port:1");
   await expect(page.getByRole("complementary", { name: "선택 장소 상세" })).toContainText(mode === "missing" ? "아직 저장되지 않았습니다" : mode === "empty" ? "결항을 의미하지는 않습니다" : "시간표를 불러오지 못했습니다");
 });
 
@@ -66,7 +73,7 @@ test("공항 선택은 저장 주차만 조회하고 출도착은 클릭 후 호
   let calls = 0;
   await page.route("**/parking/current?**", (route) => route.fulfill({ json: { items: [{ parking_lot_name: "제1주차장", available_spaces: 123, total_spaces: 500, observed_at: stamp }] } }));
   await page.route("**/flights/status?**", (route) => { calls++; return route.fulfill({ json: { status: "success", error_message: null, items: [{ flight_number: "KE123", direction: "departure", airline: "대한항공", origin_airport: "김포", destination_airport: "제주", scheduled_at: stamp, estimated_at: null, status: "예정" }] } }); });
-  await page.goto("/map"); await page.getByLabel("장소 목록에서 선택").selectOption("airport:2");
+  await page.goto("/map"); await selectPlace(page, "airport:2");
   const panel = page.getByRole("complementary", { name: "선택 장소 상세" });
   await expect(panel).toContainText("여유 123 / 500면"); expect(calls).toBe(0);
   await panel.getByRole("button", { name: "오늘 출도착 조회" }).click();
@@ -79,13 +86,13 @@ test("공항 429는 버튼을 다시 눌러도 즉시 재호출하지 않는다"
   let calls = 0;
   await page.route("**/parking/current?**", (route) => route.fulfill({ json: { items: [] } }));
   await page.route("**/flights/status?**", (route) => { calls++; return route.fulfill({ status: 429, headers: { "retry-after": "60" }, json: {} }); });
-  await page.goto("/map"); await page.getByLabel("장소 목록에서 선택").selectOption("airport:2");
+  await page.goto("/map"); await selectPlace(page, "airport:2");
   await page.getByRole("button", { name: "오늘 출도착 조회" }).click();
   await expect(page.locator("[data-slot=alert]")).toBeVisible();
   await page.getByRole("button", { name: "오늘 출도착 조회" }).click();
   await expect(page.locator("[data-slot=alert]")).toContainText("다음 조회 가능 시각"); expect(calls).toBe(1);
   await page.getByRole("button", { name: "장소 상세 닫기" }).click();
-  await page.getByLabel("장소 목록에서 선택").selectOption("airport:2");
+  await selectPlace(page, "airport:2");
   await page.getByRole("button", { name: "오늘 출도착 조회" }).click();
   await expect(page.locator("[data-slot=alert]")).toContainText("다음 조회 가능 시각"); expect(calls).toBe(1);
 });
@@ -94,10 +101,10 @@ test("도시철도 상세 시간표와 간결한 주유소·항구 마커", asyn
   let departures = 0;
   await page.route("**/transport/rail/departures?**", (route) => { departures++; return route.fulfill({ json: {} }); });
   await page.route("**/transport/rail/timetables?**", (route) => route.fulfill({ json: { generated_at: stamp, basis: "calendar", day_code: "8", items: [{ place_id: 3, station_name: "서울역", line_name: "1호선", status: "not_collected", items: [] }] } }));
-  await page.goto("/map"); await page.getByLabel("장소 목록에서 선택").selectOption("rail_station:3");
+  await page.goto("/map"); await selectPlace(page, "rail_station:3");
   await expect(page.getByRole("complementary", { name: "선택 장소 상세" })).toContainText("저장 시간표가 아직 없습니다");
   await expect(page.locator(".journey-marker.rail_station")).toHaveText("서울역 1호선"); expect(departures).toBe(0);
-  await page.getByLabel("장소 목록에서 선택").selectOption("fuel_station:4");
+  await selectPlace(page, "fuel_station:4");
   const marker = page.locator(".journey-marker.fuel_station");
   await expect(marker).toBeVisible();
   for (const label of ["휘발유", "고급유", "경유", "LPG", "등유"]) await expect(marker).toContainText(label);
@@ -134,9 +141,9 @@ test("늦게 도착한 항구 시간표가 새로 선택한 공항에 섞이지 
     await route.fulfill({ json: { items: [{ port_id: "SEA1", service_date: "2026-09-28", fetched_at: stamp, items: [{ vessel_name: "늦은 응답호" }] }] } });
   });
   await page.route("**/parking/current?**", (route) => route.fulfill({ json: { items: [] } }));
-  await page.goto("/map"); await page.getByLabel("장소 목록에서 선택").selectOption("ferry_port:1");
+  await page.goto("/map"); await selectPlace(page, "ferry_port:1");
   await expect(page.getByText("저장 시간표 확인 중…")).toBeVisible();
-  await page.getByLabel("장소 목록에서 선택").selectOption("airport:2");
+  await selectPlace(page, "airport:2");
   await expect(page.getByRole("heading", { name: "김포공항", exact: true })).toBeVisible();
   await page.waitForTimeout(900);
   await expect(page.getByText("늦은 응답호")).toHaveCount(0);
@@ -198,7 +205,7 @@ for (const tiles of ["즉시 실패", "지연 실패", "지연 성공"]) test(`�
   // 카메라 이동으로 초기화 결함을 가리지 않는다. 최초 지도에서도 묶음이 보여야 한다.
   await expect(page.getByRole("button", { name: "4개 위치 묶음 펼치기", exact: true })).toBeVisible({ timeout: 15_000 });
   // 실제 타일 호출 없이도 카메라 이동으로 지도 viewport 계산을 완료한다.
-  await page.getByLabel("장소 목록에서 선택").selectOption("rail_station:3");
+  await selectPlace(page, "rail_station:3");
   await page.getByRole("button", { name: "3개 위치 묶음 펼치기" }).click();
   expect(tileRequests).toBeGreaterThan(0);
   expect(decodeErrors).toEqual([]);
@@ -222,13 +229,13 @@ for (const [status, message] of [["disabled", "비활성화"], ["config_error", 
     await page.route("**/parking/current?**", (route) => route.fulfill({ json: { items: [] } }));
     await page.route("**/flights/status?**", (route) => { calls++; return route.fulfill({ json: { status, error_message: null, items: [] } }); });
     await page.goto("/map");
-    await page.getByLabel("장소 목록에서 선택").selectOption("airport:2");
+    await selectPlace(page, "airport:2");
     await page.getByRole("button", { name: "오늘 출도착 조회" }).click();
     await expect(page.locator("[data-slot=alert]")).toContainText(message);
     await expect(page.getByText("등록된 항공편이 없습니다.", { exact: false })).toHaveCount(0);
     if (status === "rate_limited") {
       await page.getByRole("button", { name: "장소 상세 닫기" }).click();
-      await page.getByLabel("장소 목록에서 선택").selectOption("airport:2");
+      await selectPlace(page, "airport:2");
       await page.getByRole("button", { name: "오늘 출도착 조회" }).click();
       await expect(page.locator("[data-slot=alert]")).toContainText("다음 조회 가능 시각");
       expect(calls).toBe(1);
