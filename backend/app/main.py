@@ -1374,8 +1374,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         today = to_seoul(now_utc()).date()
         if service_type == "intercity" and service_date != today:
             raise HTTPException(status_code=422, detail="시외버스 시간표는 오늘(Asia/Seoul)만 제공합니다.")
-        if not today <= service_date <= today + timedelta(days=9):
-            raise HTTPException(status_code=422, detail="버스 운행일은 오늘부터 10일 범위 안에서 선택해 주세요.")
         if bus_grade_id is not None and not bus_grade_id.strip():
             raise HTTPException(status_code=422, detail="버스 등급을 비워서 전달하지 마세요. 전체 등급은 조건을 생략해 주세요.")
         terminals = (

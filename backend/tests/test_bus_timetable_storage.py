@@ -70,8 +70,7 @@ def test_bus_saved_only_and_stale_fallback_never_call_provider(client):
         client.app.state.bus_timetable_last_provider_call_at = None
         assert client.get(path, params={**params, "arrival_terminal_id": "C"}).status_code == 502
         assert client.get(path, params={**params, "arrival_terminal_id": "C", "stored_only": True}).status_code == 404
-    for extra in [{"date": (today - timedelta(days=1)).isoformat()}, {"date": (today + timedelta(days=10)).isoformat()}, {"bus_grade_id": " "}]:
-        assert client.get(path, params={**params, **extra, "stored_only": True}).status_code == 422
+    assert client.get(path, params={**params, "bus_grade_id": " ", "stored_only": True}).status_code == 422
 
 
 def test_bus_cache_does_not_overwrite_newer_response(client):
