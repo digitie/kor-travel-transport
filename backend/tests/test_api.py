@@ -14,6 +14,7 @@ from sqlalchemy.exc import OperationalError
 from app.core.config import Settings
 from app.core.time_utils import now_utc
 from app.main import create_app
+from app.services.analytics import build_time_series, deduplicate_snapshots
 from datagokr.exceptions import ApiErrorResponse
 from kric import KricRateLimitError
 from app.models import AnalyticsCache, Airport, BusTerminalReference, CollectionRun, FerryPort, FerryTimetableSnapshot, FuelPriceSnapshot, FuelStation, ParkingLot, ParkingSnapshot, RailStationReference
@@ -846,6 +847,20 @@ def test_time_series_explicit_date_range_with_no_data_returns_empty_items(client
     assert payload["items"] == []
 
 
+def test_time_series_late_observation_after_last_bucket_keeps_empty_buckets(client) -> None:
+    asyncio.run(insert_isolated_snapshot(
+        client, airport_code="GMP",
+        observed_at=datetime(2026, 1, 1, 14, 59, tzinfo=ZoneInfo("UTC")),
+    ))
+    response = client.get("/v1/parking/analytics/timeseries", params={
+        "airport_code": "GMP", "start_date": "2026-01-01", "end_date": "2026-01-01",
+        "interval_minutes": 60,
+    })
+    assert response.status_code == 200
+    assert len(response.json()["items"]) == 24
+    assert all(point["lot_observations"] == 0 for point in response.json()["items"])
+
+
 def test_time_series_date_range_preserves_kst_boundary_and_live_source_priority(client) -> None:
     async def seed() -> None:
         async with client.app.state.session_factory() as session:
@@ -882,6 +897,28 @@ def test_time_series_date_range_preserves_kst_boundary_and_live_source_priority(
     midnight = points[datetime(2026, 1, 1, 15, 0, tzinfo=ZoneInfo("UTC"))]
     assert (before["lot_observations"], before["available_spaces"]) == (0, 0)
     assert (midnight["lot_observations"], midnight["available_spaces"]) == (2, 110)
+
+    async def legacy_expected() -> list[dict]:
+        async with client.app.state.session_factory() as session:
+            airport = await session.scalar(select(Airport).where(Airport.code == "GMP"))
+            snapshots = (await session.scalars(select(ParkingSnapshot).where(
+                ParkingSnapshot.airport_id == airport.id,
+                ParkingSnapshot.observed_at >= datetime(2025, 12, 31, 15, 0, tzinfo=ZoneInfo("UTC")),
+                ParkingSnapshot.observed_at < datetime(2026, 1, 2, 15, 0, tzinfo=ZoneInfo("UTC")),
+            ))).all()
+            return build_time_series(
+                deduplicate_snapshots(snapshots), days=2, interval_minutes=10,
+                tz_name="Asia/Seoul",
+                anchor_at=datetime(2026, 1, 2, 23, 50, tzinfo=ZoneInfo("Asia/Seoul")),
+            )
+
+    expected = asyncio.run(legacy_expected())
+    actual = response.json()["items"]
+    assert len(actual) == len(expected)
+    for item, legacy in zip(actual, expected, strict=True):
+        assert datetime.fromisoformat(item["bucket_at"].replace("Z", "+00:00")) == legacy["bucket_at"]
+        for field in ("available_spaces", "occupied_spaces", "total_spaces", "lot_observations"):
+            assert item[field] == legacy[field]
 
 
 def test_time_series_rejects_reversed_date_range(client) -> None:

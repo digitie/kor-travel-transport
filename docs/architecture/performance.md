@@ -33,7 +33,9 @@
   `transport_collection_states`의 `fuel_latest_prices` 상태에 오류와 5분 후 재시도
   시각을 기록한다. 5분 간격의 고속도로 수집 실행도 이 상태를 검사해 **제공기관
   유가 API를 다시 호출하지 않고** MV만 재시도한다. 갱신 전까지 API는 직전 MV 값을
-  읽으므로 상태를 모니터링해야 한다. 갱신 잠금 3초·문장 60초 상한을 적용한다.
+  읽으므로 상태를 모니터링해야 한다. 원본 커밋의 재시도 예약과 MV 갱신은
+  PostgreSQL advisory transaction lock으로 순서를 고정한다. 갱신 잠금 3초·문장
+  60초 상한을 적용한다.
   SQLite 단위 테스트와 legacy import는 기존 이력 window 조회를 유지한다.
 - 조회는 원본 `raw_item_json`을 가져오지 않고, 가격 응답은 주유소 ID로 한 번만
   그룹화한다. 전용 로컬 PostgreSQL 12,000곳·12만 가격 이력 표본에서 유가 목록

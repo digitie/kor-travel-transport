@@ -2639,12 +2639,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if parking_lot_id:
             lot_condition = "l.id = :lot_id"
             lot_id = parking_lot_id
+            scope_condition = ParkingSnapshot.parking_lot_id == parking_lot_id
         else:
             airport = await session.scalar(select(Airport).where(Airport.code == airport_code.upper()))
             if airport is None:
                 return []
             lot_condition = "l.airport_id = :airport_id"
             lot_id = None
+            scope_condition = ParkingSnapshot.airport_id == airport.id
+        has_snapshot = await session.scalar(select(ParkingSnapshot.id).where(
+            scope_condition, ParkingSnapshot.observed_at >= start_at,
+            ParkingSnapshot.observed_at < end_at,
+        ).limit(1))
+        if has_snapshot is None:
+            return []
         bucket_count = max(1, days * 24 * 60 // interval_minutes)
         aligned = align_to_interval(anchor_at, interval_minutes, resolved_settings.app_timezone)
         bucket_start = aligned - timedelta(minutes=interval_minutes * (bucket_count - 1))
@@ -2684,7 +2692,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                   "interval_minutes": interval_minutes, "bucket_count": bucket_count,
                   "lot_id": lot_id, "airport_id": airport.id if not parking_lot_id else None}
         rows = (await session.execute(statement, params)).mappings().all()
-        return [dict(row) for row in rows] if any(row["lot_observations"] for row in rows) else []
+        return [dict(row) for row in rows]
 
     async def _load_timeseries_snapshots(
         session: AsyncSession,

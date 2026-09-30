@@ -373,6 +373,9 @@ class TransportCollectionService:
                         await self._mark_fuel_success(session, snapshot.collected_at)
                         if session.bind.dialect.name == "postgresql":
                             # MV 잠금 경합이 원본 수집의 성공/커밋을 취소하지 않도록 분리한다.
+                            # 별도 수집 프로세스의 MV 갱신과 예약 상태 변경 순서를 고정한다.
+                            await session.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"),
+                                                  {"lock_key": TRANSPORT_COLLECTION_ADVISORY_LOCK_KEY + 2})
                             read_model = await self._get_or_create_state(session, FUEL_READ_MODEL_SOURCE)
                             read_model.next_due_at = now_utc()
                             read_model.updated_at = now_utc()
@@ -388,6 +391,8 @@ class TransportCollectionService:
                     collected_source = True
                     raw_count += 1
             if session.bind.dialect.name == "postgresql":
+                await session.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"),
+                                      {"lock_key": TRANSPORT_COLLECTION_ADVISORY_LOCK_KEY + 2})
                 read_model = await session.scalar(select(TransportCollectionState).where(
                     TransportCollectionState.source == FUEL_READ_MODEL_SOURCE,
                 ))
@@ -403,12 +408,16 @@ class TransportCollectionService:
                         await session.commit()
                     except Exception as exc:
                         await session.rollback()
+                        await session.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"),
+                                              {"lock_key": TRANSPORT_COLLECTION_ADVISORY_LOCK_KEY + 2})
                         read_model = await self._get_or_create_state(session, FUEL_READ_MODEL_SOURCE)
-                        message = _safe_error(exc, self.settings)
-                        read_model.last_error = message
-                        read_model.next_due_at = now_utc() + timedelta(minutes=5)
-                        read_model.updated_at = now_utc()
-                        errors.append(f"최신 유가 읽기 모델 갱신 실패: {message}")
+                        # 다른 프로세스가 이미 성공한 뒤라면 실패 상태를 덮어쓰지 않는다.
+                        if read_model.next_due_at is not None:
+                            message = _safe_error(exc, self.settings)
+                            read_model.last_error = message
+                            read_model.next_due_at = now_utc() + timedelta(minutes=5)
+                            read_model.updated_at = now_utc()
+                            errors.append(f"최신 유가 읽기 모델 갱신 실패: {message}")
                         await session.commit()
             # rollback은 ORM 객체를 만료시키므로 async get으로 명시적으로 다시 읽는다.
             run = await session.get(CollectionRun, run_id)

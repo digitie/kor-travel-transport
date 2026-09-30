@@ -853,11 +853,14 @@ def test_transport_openapi_returns_stored_data_and_statistics(tmp_path: Path) ->
     assert statistics.json()["traffic"][0]["observations"] == 1
     assert statistics.json()["fuel_prices"][0]["average_price"] == 1700.5
     assert status.status_code == 200
-    assert {item["source"] for item in status.json()["sources"]} == {
+    expected_sources = {
         TRAFFIC_SOURCE,
         INCIDENT_SOURCE,
         OPINET_SOURCE,
     }
+    if client.app.state.engine.dialect.name == "postgresql":
+        expected_sources.add(FUEL_READ_MODEL_SOURCE)
+    assert {item["source"] for item in status.json()["sources"]} == expected_sources
     assert status.json()["last_run"]["status"] == "success"
     assert status.json()["last_run"]["trigger"] == "transport_test"
 
@@ -919,6 +922,12 @@ def test_postgresql_fuel_refresh_failure_preserves_raw_and_retries_without_provi
     assert client.get("/v1/transport/fuel/stations").json()["items"][0]["prices"] == []
 
     monkeypatch.setattr(AsyncSession, "execute", original_execute)
+    service.provider.enabled_sources = (OPINET_SOURCE,)
+
+    async def reject_fuel_call() -> None:
+        raise AssertionError("읽기 모델 재시도는 제공기관 유가 API를 호출하면 안 됩니다")
+
+    service.provider.collect_fuel = reject_fuel_call
 
     async def retry() -> dict:
         async with client.app.state.session_factory() as session:
@@ -928,7 +937,7 @@ def test_postgresql_fuel_refresh_failure_preserves_raw_and_retries_without_provi
             read_model.next_due_at = now_utc() - timedelta(seconds=1)
             await session.commit()
         async with client.app.state.session_factory() as session:
-            return await service.collect(session, scope="fuel", trigger="test_retry")
+            return await service.collect(session, scope="highway", trigger="test_retry")
 
     retry_result = asyncio.run(retry())
     assert retry_result["status"] == "skipped"
