@@ -29,6 +29,7 @@ die() { echo "STOP: $*" >&2; exit 1; }
 
 [[ $# -eq 1 && -f "${1:-}" ]] || die "사용법: $0 <설치할 docker-compose.shared.yml>"
 source_file="$(realpath -e -- "$1")"
+APP_DIR="$(realpath -e -- "$APP_DIR")" || die "앱 디렉터리의 실제 경로를 확인할 수 없다."
 cd "$APP_DIR"
 # 전체 release와 관리자 배포는 같은 checkout을 사용한다. 검증·drain·교체가
 # 진행되는 동안 그 두 배포가 파일을 바꾸지 못하도록 동일 잠금을 잡는다.

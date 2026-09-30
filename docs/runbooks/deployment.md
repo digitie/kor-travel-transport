@@ -40,7 +40,9 @@ SHA-256을 확인했다. Dagster DB는 별도 새 백업을 만들었다. 배포
 무효화하며, Dagster Compose 긴급 교체도 설치 전 무효화한다. backend 전체 동기화가
 끝난 뒤에만 이를 새 SHA로 발행한다. 이 세 경로와 수동 원격 배포는 공통
 `/home/digitie/apps/.kor-travel-transport-deploy.lock`을 복사·빌드가 끝날 때까지
-유지하며, 경합하면 대기하지 않고 실패한다. 원격 배포
+유지하며, 경합하면 대기하지 않고 실패한다. Dagster 긴급 교체에서 상대경로·
+심볼릭 링크 `APP_DIR`을 지정해도 실제 절대경로로 정규화한 뒤 잠금 위치를 정한다.
+원격 배포
 단계는 이 stage 완료 표식까지 검사한다. 관리자 동기화 뒤 수동 backend 원격 배포가
 필요하면 `deploy-server14.sh`로 동일 후보를 다시 stage해야 한다.
 

@@ -189,6 +189,7 @@ def test_all_shared_checkout_writers_hold_the_same_release_lock() -> None:
     dagster = (_SCRIPTS / names[2]).read_text(encoding="utf-8")
     assert 'APP_DIR="${APP_DIR:-/home/digitie/apps/kor-travel-transport}"' in dagster
     assert '$(dirname "$APP_DIR")/.kor-travel-transport-deploy.lock' in dagster
+    assert dagster.index('APP_DIR="$(realpath -e -- "$APP_DIR")"') < dagster.index('$(dirname "$APP_DIR")/.kor-travel-transport-deploy.lock')
     assert "flock -n 9" in dagster
     backend = (_SCRIPTS / names[0]).read_text(encoding="utf-8")
     admin = (_SCRIPTS / names[1]).read_text(encoding="utf-8")
