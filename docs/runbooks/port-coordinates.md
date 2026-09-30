@@ -182,6 +182,43 @@ RustFS 저장으로 확대한다. 현재 PR은 이 파일의 연결 완료를 �
 
 ## 검증
 
+2026-09-30 운영 단회 재수집에서 항구·버스 기준정보와 두 장소 검색 보강 경로가
+모두 성공했지만 최근 영수증을 재사용해 신규 외부 호출·좌표 저장은 없었다.
+정상 응답은 30일, 불완전 응답은 1일 동안 재호출을 유예한다. 일반 실패와
+인증·한도 오류는 제공자별 예외 규칙을 따른다.
+항구 607곳과 버스 터미널 649곳의 현재 미확보 목록은
+[운영 DB CSV 추출본](../reports/unlocated-port-terminals-2026-09-30.csv)이다.
+`not_searched`는 코드 오류가 아니라 중복 시설명 또는 `_`가 들어간 복합 명칭으로
+자동 검색에서 제외됐음을 뜻한다. `no_results`는 제공자가 후보를 반환하지 않았고,
+`unverified_candidates`는 후보가 있지만 이름·시설 분류·지역을 모두 충족하는
+단일 장소를 고르지 못한 경우이며,
+`incomplete_page`는 응답의 페이지가 완전하지 않아 좌표를 보류한 경우다.
+`verify_physical_boarding_facility`는 `통합단말` 코드가 실제 승차 장소인지 먼저
+확인해야 한다는 경고다. `city_name` 공란은 확인된 지역값이 원천 기준정보에
+없음을 뜻한다(항구 전체 607곳, 버스 터미널 407곳). 주소나 지역을 임의로
+추론하지 말고 공식 코드·시설명 교차표로 확인한다. CSV는 2026-09-30 06:15 UTC에
+운영 DB에서 순차 추출한 비원자적 목록으로, 이후 DB 변경을 자동 반영하지 않는다.
+Windows Excel에서 한글이 깨지면 파일을 직접 열지 말고 텍스트/CSV 가져오기에서
+UTF-8을 선택한다.
+CSV의 두 provider 상태는 최종 좌표를 보증하지 않는다. 실제 승선·승차 시설을
+교차 확인한 뒤에만 관리자가 보정한다.
+
+CSV 재확인은 n150 `kor_travel_transport` DB의 `ferry_ports`,
+`bus_terminal_references`에서 위도·경도가 모두 NULL인 공식 행을 각각 조회한다.
+제공자 상태는 `raw_api_responses`의 최초 전수 검색 수집 실행
+`20168`(VWorld), `20169`(Kakao)의 `endpoint`와 해당 공식 코드를 연결해 판정했다.
+항구 endpoint는 `vworld:port:<port_id>`/`kakao:port:<port_id>`, 버스는
+`vworld:bus:<service_type>:<terminal_id>`/`kakao:bus:<service_type>:<terminal_id>`다.
+`parse_status`와 키·인증값을 제외한 `body_text`의 `returned`를 사용해
+`no_results`(0건)와 `unverified_candidates`(1건 이상, `selected` 없음)를 구분한다.
+이번 기준정보 재수집 Dagster run은 버스
+`81f9e031-fb09-4731-a30e-d2e5f24389ae`, 항구
+`251477cb-3d0e-46a0-91f2-b8f5aa0db97a`이며, 뒤따른 장소 보강의
+`collection_runs.id`는 `20535`, `20536`, `20538`, `20539`다. 이 실행들의
+신규 장소 검색 receipt는 0건이다. 재생성 시에는 현재 DB의 미확보 행·가장 최근
+해당 장소 receipt를 다시 연결하고 새 시각의 별도 CSV로 저장한다. 이전 CSV를
+덮어쓰지 않는다.
+
 provider 좌표/개수/153·117 오류, 수집 예약·캐시·실패·예산·기존 좌표 보존, 지도 API의
 항로 점 제외 회귀를 실행한다. UI 탭은 320/375/414/768/1440px에서 실제 scroll/client
 치수와 버튼 포함 범위, 44px 터치 영역, 클릭·키보드를 검증한다.
