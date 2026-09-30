@@ -171,8 +171,8 @@ class FuelStationResponse(BaseModel):
     sido_value: str | None = None
     sigungu_value: str | None = None
     product_code: str | None = None
-    fuel_prices_stale: bool = False
-    fuel_prices_last_refreshed_at: datetime | None = None
+    fuel_prices_stale: bool = Field(default=False, description="확인된 최신 유가 읽기 모델 지연 여부. false는 직후 발생한 늦은 원본 커밋까지 보증하지 않습니다.")
+    fuel_prices_last_refreshed_at: datetime | None = Field(default=None, description="주유소별 가격 읽기 모델의 마지막 성공 갱신 시각(UTC).")
     items: list[FuelStationItem]
 
 
@@ -235,8 +235,8 @@ class TransportPlaceMapResponse(BaseModel):
     kind: str | None = None
     total: int = 0
     truncated: bool = False
-    fuel_prices_stale: bool = False
-    fuel_prices_last_refreshed_at: datetime | None = None
+    fuel_prices_stale: bool = Field(default=False, description="확인된 최신 유가 읽기 모델 지연 여부. false는 직후 발생한 늦은 원본 커밋까지 보증하지 않습니다.")
+    fuel_prices_last_refreshed_at: datetime | None = Field(default=None, description="주유소별 가격 읽기 모델의 마지막 성공 갱신 시각(UTC).")
     available_sources: list[str] = Field(default_factory=list)
     items: list[TransportPlaceMapItem]
 

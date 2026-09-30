@@ -1762,10 +1762,12 @@
                 "type": "null"
               }
             ],
+            "description": "주유소별 가격 읽기 모델의 마지막 성공 갱신 시각(UTC).",
             "title": "Fuel Prices Last Refreshed At"
           },
           "fuel_prices_stale": {
             "default": false,
+            "description": "확인된 최신 유가 읽기 모델 지연 여부. false는 직후 발생한 늦은 원본 커밋까지 보증하지 않습니다.",
             "title": "Fuel Prices Stale",
             "type": "boolean"
           },
@@ -4275,10 +4277,12 @@
                 "type": "null"
               }
             ],
+            "description": "주유소별 가격 읽기 모델의 마지막 성공 갱신 시각(UTC).",
             "title": "Fuel Prices Last Refreshed At"
           },
           "fuel_prices_stale": {
             "default": false,
+            "description": "확인된 최신 유가 읽기 모델 지연 여부. false는 직후 발생한 늦은 원본 커밋까지 보증하지 않습니다.",
             "title": "Fuel Prices Stale",
             "type": "boolean"
           },

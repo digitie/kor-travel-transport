@@ -1225,6 +1225,57 @@ def test_postgresql_checkpoint_refresh_failure_is_visible(client, monkeypatch) -
     assert row["status"] == "failed"
 
 
+def test_postgresql_out_of_order_reconciliation_failure_is_visible(client, monkeypatch) -> None:
+    if client.app.state.engine.dialect.name != "postgresql":
+        pytest.skip("전용 PostgreSQL 테스트 DB에서만 낮은 ID 재대조 실패를 검증합니다")
+    service = client.app.state.transport_collection_service
+    service.provider = FakeTransportProvider()
+
+    async def seed() -> None:
+        async with client.app.state.session_factory() as session:
+            assert (await service.collect(session, scope="fuel", trigger="initial"))["status"] == "success"
+        async with client.app.state.session_factory() as session:
+            station = await session.scalar(select(FuelStation))
+            stamp = now_utc() + timedelta(minutes=1)
+            session.add(FuelPriceSnapshot(id=3, fuel_station_id=station.id, source=OPINET_SOURCE,
+                product_code="B027", price=1750.5, observed_at=stamp, collected_at=stamp))
+            await session.commit()
+        async with client.app.state.session_factory() as session:
+            assert (await service.collect(session, scope="highway", trigger="checkpoint"))["status"] == "success"
+        async with client.app.state.session_factory() as session:
+            station = await session.scalar(select(FuelStation))
+            stamp = now_utc() + timedelta(minutes=2)
+            session.add(FuelPriceSnapshot(id=2, fuel_station_id=station.id, source=OPINET_SOURCE,
+                product_code="B027", price=1800.5, observed_at=stamp, collected_at=stamp))
+            await session.commit()
+
+    asyncio.run(seed())
+    original_execute = AsyncSession.execute
+
+    async def fail_refresh(self, statement, *args, **kwargs):
+        if str(statement).startswith("REFRESH MATERIALIZED VIEW CONCURRENTLY fuel_latest_prices"):
+            raise RuntimeError("test-only out-of-order refresh failure")
+        return await original_execute(self, statement, *args, **kwargs)
+
+    monkeypatch.setattr(AsyncSession, "execute", fail_refresh)
+
+    async def retry() -> None:
+        async with client.app.state.session_factory() as session:
+            assert (await service.collect(session, scope="highway", trigger="reconcile_fail"))["status"] in {"success", "skipped"}
+        async with client.app.state.session_factory() as session:
+            state = await session.scalar(select(TransportCollectionState).where(
+                TransportCollectionState.source == FUEL_READ_MODEL_SOURCE,
+            ))
+            assert state.last_error is not None and state.next_due_at is not None
+            assert state.last_refreshed_snapshot_id == 3
+
+    asyncio.run(retry())
+    client.app.state.settings.transport_collection_enabled = True
+    row = next(item for item in client.get("/v1/transport/providers").json()["items"]
+        if item["source"] == FUEL_READ_MODEL_SOURCE)
+    assert row["status"] == "failed"
+
+
 def test_postgresql_failed_refresh_preserves_new_batch_immediate_reservation(client, monkeypatch) -> None:
     if client.app.state.engine.dialect.name != "postgresql":
         pytest.skip("전용 PostgreSQL 테스트 DB에서만 실패·신규 배치 경합을 검증합니다")

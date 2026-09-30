@@ -72,6 +72,7 @@ export function TransportDashboard() {
   const statisticalMessage = statisticsError || "저장된 7일 통계를 집계하는 중입니다…";
   const trafficRows = statistics?.traffic.slice(0, 8) ?? [];
   const fuelRows = statistics?.fuel_prices ?? [];
+  const fuelReadModel = status.sources.find((item) => item.source === "fuel_latest_prices");
   const speedChart = trafficRows.map((item) => ({ label: highwayRouteLabel(item.route_no, routeNames.get(item.route_no ?? "")), value: item.average_speed }));
   const fuelChart = fuelRows.map((item) => ({ label: fuelProductLabel(item.product_code), value: item.average_price }));
   const statisticsPlaceholder = <div className="flex flex-col gap-3" role={statisticsLoading ? "status" : undefined}>
@@ -95,6 +96,10 @@ export function TransportDashboard() {
       </AlertDescription>
     </Alert> : null}
     {statusError ? <Alert variant="destructive" className="grid-cols-1"><AlertDescription>수집 상태 갱신 실패: {statusError}</AlertDescription></Alert> : null}
+    {fuelReadModel && (fuelReadModel.last_error || fuelReadModel.next_due_at) ? <Alert variant="destructive" className="grid-cols-1">
+      <AlertTitle>주유소별 최신 가격 반영 지연</AlertTitle>
+      <AlertDescription>저장된 유가 원본과 주유소별 가격 지도가 다를 수 있습니다. <Link href="/collections">수집 상태 확인 →</Link></AlertDescription>
+    </Alert> : null}
     {DASHBOARD_TABS.map(([value]) => <TabsContent key={value} value={value} keepMounted className="min-w-0 hidden:hidden">
       {tab === value ? <div className="grid">
         {value === "overview" ? <>

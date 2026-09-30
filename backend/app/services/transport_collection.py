@@ -418,6 +418,8 @@ class TransportCollectionService:
             if session.bind.dialect.name == "postgresql":
                 attempted_generation: int | None = None
                 attempted_raw_id: int | None = None
+                attempted_model_differs = False
+                attempted_last_success_at: datetime | None = None
                 try:
                     await session.execute(text("SET LOCAL lock_timeout = '3s'"))
                     await session.execute(text("SET LOCAL statement_timeout = '60s'"))
@@ -457,6 +459,8 @@ class TransportCollectionService:
                     if due or latest_raw_id > read_model.last_refreshed_snapshot_id or model_differs:
                         attempted_generation = read_model.refresh_generation
                         attempted_raw_id = latest_raw_id
+                        attempted_model_differs = model_differs
+                        attempted_last_success_at = read_model.last_success_at
                         await session.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY fuel_latest_prices"))
                         await session.execute(update(TransportCollectionState).where(
                             TransportCollectionState.id == read_model.id,
@@ -487,7 +491,12 @@ class TransportCollectionService:
                             and attempted_generation == read_model.refresh_generation
                             and read_model.last_refreshed_snapshot_id < attempted_raw_id
                         )
-                        if read_model.next_due_at is not None or checkpoint_outdated:
+                        reconciliation_failed = (
+                            attempted_model_differs
+                            and attempted_generation == read_model.refresh_generation
+                            and read_model.last_success_at == attempted_last_success_at
+                        )
+                        if read_model.next_due_at is not None or checkpoint_outdated or reconciliation_failed:
                             read_model.last_started_at = now_utc()
                             read_model.last_error = message
                             # 이전 갱신이 실패한 동안 새 원본이 들어왔으면 새 배치의
