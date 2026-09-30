@@ -10,6 +10,8 @@ depends_on = None
 
 
 def upgrade() -> None:
+    op.execute("SET LOCAL lock_timeout = '3s'")
+    op.execute("SET LOCAL statement_timeout = '30s'")
     op.add_column(
         "transport_collection_states",
         sa.Column("refresh_generation", sa.BigInteger(), nullable=False, server_default="0"),
@@ -17,4 +19,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute("SET LOCAL lock_timeout = '3s'")
+    op.execute("SET LOCAL statement_timeout = '30s'")
     op.drop_column("transport_collection_states", "refresh_generation")

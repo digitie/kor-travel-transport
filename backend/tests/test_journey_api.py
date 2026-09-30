@@ -182,6 +182,25 @@ def test_provider_status_does_not_confuse_enabled_or_shared_job_with_success(cli
     assert "secret-view-lock" not in response.text
 
 
+def test_fuel_read_model_overdue_is_visible_without_recorded_error(client):
+    async def seed():
+        async with client.app.state.session_factory() as session:
+            session.add(TransportCollectionState(
+                source="fuel_latest_prices", next_due_at=now_utc() - timedelta(minutes=15),
+                updated_at=now_utc(),
+            ))
+            await session.commit()
+
+    asyncio.run(seed())
+    client.app.state.settings.transport_collection_enabled = True
+    client.app.state.settings.opinet_browser_enabled = True
+    response = client.get("/v1/transport/providers")
+    assert response.status_code == 200
+    row = next(item for item in response.json()["items"] if item["source"] == "fuel_latest_prices")
+    assert row["status"] == "failed"
+    assert row["error_code"] == "read_model_refresh_delayed"
+
+
 def test_bus_terminal_map_uses_only_verified_coordinates_and_preserves_code(client):
     async def seed():
         now = now_utc()
