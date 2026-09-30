@@ -82,9 +82,9 @@ async def provider_status(session: AsyncSession, settings: Settings) -> Provider
         enabled=read_model_enabled, status=read_model_status, interval_seconds=300,
         last_started_at=serialize_utc(read_model.last_started_at) if read_model and read_model.last_started_at else None,
         last_success_at=serialize_utc(read_model.last_success_at) if read_model and read_model.last_success_at else None,
-        next_due_at=serialize_utc(read_model.next_due_at) if read_model and read_model.next_due_at else None,
-        error_code=("read_model_refresh_failed" if read_model and read_model.last_error else
-                    "read_model_refresh_delayed" if read_model_overdue else None),
+        next_due_at=serialize_utc(read_model.next_due_at) if read_model_enabled and read_model and read_model.next_due_at else None,
+        error_code=("read_model_refresh_failed" if read_model_enabled and read_model and read_model.last_error else
+                    "read_model_refresh_delayed" if read_model_enabled and read_model_overdue else None),
     ))
     for source, name, enabled in [("flights", "공항 출도착", keyed and settings.enable_flight_status_markers), ("bus_timetable", "TAGO 버스 시간표", keyed)]:
         items.append(ProviderCollectionStatus(source=source, name=name, mode="on_demand", enabled=enabled, status="on_demand" if enabled else "disabled"))

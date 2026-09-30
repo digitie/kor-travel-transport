@@ -393,20 +393,23 @@ class TransportCollectionService:
                     collected_source = True
                     raw_count += 1
             if session.bind.dialect.name == "postgresql":
+                attempted_generation: int | None = None
                 try:
                     await session.execute(text("SET LOCAL lock_timeout = '3s'"))
                     await session.execute(text("SET LOCAL statement_timeout = '60s'"))
                     await session.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"),
                                           {"lock_key": TRANSPORT_COLLECTION_ADVISORY_LOCK_KEY + 2})
-                    read_model = await session.scalar(select(TransportCollectionState).where(
-                        TransportCollectionState.source == FUEL_READ_MODEL_SOURCE,
-                    ))
-                    if read_model is not None and read_model.next_due_at is not None and now_utc() >= serialize_utc(read_model.next_due_at):
-                        generation = read_model.refresh_generation
+                    read_model = await self._get_or_create_state(session, FUEL_READ_MODEL_SOURCE)
+                    if read_model.next_due_at is None and read_model.last_success_at is None:
+                        # 마이그레이션 직후 구버전 수집기가 남긴 원본도 첫 job에서 반영한다.
+                        read_model.next_due_at = now_utc()
+                        await session.flush()
+                    if read_model.next_due_at is not None and now_utc() >= serialize_utc(read_model.next_due_at):
+                        attempted_generation = read_model.refresh_generation
                         await session.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY fuel_latest_prices"))
                         await session.execute(update(TransportCollectionState).where(
                             TransportCollectionState.id == read_model.id,
-                            TransportCollectionState.refresh_generation == generation,
+                            TransportCollectionState.refresh_generation == attempted_generation,
                         ).values(
                             last_started_at=now_utc(), last_success_at=now_utc(),
                             next_due_at=None, last_error=None, updated_at=now_utc(),
@@ -419,9 +422,24 @@ class TransportCollectionService:
                         await session.execute(text("SET LOCAL lock_timeout = '3s'"))
                         await session.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"),
                                               {"lock_key": TRANSPORT_COLLECTION_ADVISORY_LOCK_KEY + 2})
-                        read_model = await self._get_or_create_state(session, FUEL_READ_MODEL_SOURCE)
+                        read_model = await session.scalar(
+                            select(TransportCollectionState).where(
+                                TransportCollectionState.source == FUEL_READ_MODEL_SOURCE,
+                            ).with_for_update()
+                        )
+                        if read_model is None:
+                            read_model = await self._get_or_create_state(session, FUEL_READ_MODEL_SOURCE)
                         # 다른 프로세스가 이미 성공한 뒤라면 실패 상태를 덮어쓰지 않는다.
                         if read_model.next_due_at is not None:
+                            read_model.last_started_at = now_utc()
+                            read_model.last_error = message
+                            # 이전 갱신이 실패한 동안 새 원본이 들어왔으면 새 배치의
+                            # 즉시 갱신 예약을 5분 뒤로 덮지 않는다.
+                            if attempted_generation == read_model.refresh_generation:
+                                read_model.next_due_at = now_utc() + timedelta(minutes=5)
+                            read_model.updated_at = now_utc()
+                        elif read_model.last_success_at is None:
+                            # 첫 갱신이 rollback되면서 새 상태 행도 사라진 경우.
                             read_model.last_started_at = now_utc()
                             read_model.last_error = message
                             read_model.next_due_at = now_utc() + timedelta(minutes=5)
