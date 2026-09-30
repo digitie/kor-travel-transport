@@ -88,19 +88,31 @@ def test_deadline_cancels_real_postgres_query_and_returns_connection(test_settin
     asyncio.run(exercise())
 
 
-def test_waiters_share_total_request_deadline():
+def test_waiters_respect_deadline_without_parallel_aggregation():
     async def exercise():
         request = _request()
         calls = 0
+        active = 0
+        max_active = 0
         async def handler(**kwargs):
-            nonlocal calls
+            nonlocal calls, active, max_active
             calls += 1
-            await asyncio.Event().wait()
+            active += 1
+            max_active = max(max_active, active)
+            try:
+                await asyncio.Event().wait()
+            finally:
+                active -= 1
         cached = cached_transport_statistics(handler)
         tasks = [cached(request=request) for _ in range(10)]
         results = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=0.5)
         assert all(isinstance(result,HTTPException) and result.status_code==504 for result in results)
-        assert calls == 1
+        # 각 요청의 20ms deadline 시작 시각은 다를 수 있어 첫 취소 직후 늦게
+        # 도착한 대기자가 두 번째 집계를 순차 시작할 수 있다. 동시 집계가 없는지가 계약이다.
+        assert calls >= 1
+        assert max_active == 1
+        assert active == 0
+        assert not request.app.state.transport_statistics_miss_semaphore.locked()
         assert not request.app.state.transport_statistics_locks
     asyncio.run(exercise())
 
