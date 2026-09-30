@@ -149,3 +149,13 @@ def test_deploy_scripts_accept_only_the_renamed_directory_and_project() -> None:
     for name in ("deploy-server14.sh", "deploy-server14-remote.sh"):
         text = (_SCRIPTS / name).read_text(encoding="utf-8")
         assert 'COMPOSE_PROJECT_NAME:-kor-travel-transport}' in text, name
+
+
+def test_interrupted_sync_preserves_current_release_receipts() -> None:
+    text = (_SCRIPTS / "deploy-server14.sh").read_text(encoding="utf-8")
+    sync = text.index("rsync -a --delete")
+    manifest_update = text.index('"${CANDIDATE_SHA}" > "${REMOTE_APP_DIR}/.release-sha"')
+    sync_step = text[sync:manifest_update]
+
+    assert '--exclude=".release-sha"' in sync_step
+    assert '--exclude=".transport-admin-release-sha"' in sync_step
