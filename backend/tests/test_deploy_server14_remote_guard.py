@@ -182,13 +182,16 @@ def test_all_shared_checkout_writers_hold_the_same_release_lock() -> None:
         "deploy-server14-remote.sh",
     )
     lock_path = "/home/digitie/apps/.kor-travel-transport-deploy.lock"
-    for name in names:
+    for name in (names[0], names[1], names[3]):
         source = (_SCRIPTS / name).read_text(encoding="utf-8")
         assert lock_path in source, name
         assert "flock -n 9" in source, name
+    dagster = (_SCRIPTS / names[2]).read_text(encoding="utf-8")
+    assert 'APP_DIR="${APP_DIR:-/home/digitie/apps/kor-travel-transport}"' in dagster
+    assert '$(dirname "$APP_DIR")/.kor-travel-transport-deploy.lock' in dagster
+    assert "flock -n 9" in dagster
     backend = (_SCRIPTS / names[0]).read_text(encoding="utf-8")
     admin = (_SCRIPTS / names[1]).read_text(encoding="utf-8")
-    dagster = (_SCRIPTS / names[2]).read_text(encoding="utf-8")
     remote = (_SCRIPTS / names[3]).read_text(encoding="utf-8")
     assert backend.index("flock -n 9") < backend.index("rsync -a --delete")
     assert admin.index("flock -n 9") < admin.index("rsync -a --exclude=")

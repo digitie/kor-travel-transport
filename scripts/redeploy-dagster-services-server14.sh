@@ -32,7 +32,7 @@ source_file="$(realpath -e -- "$1")"
 cd "$APP_DIR"
 # 전체 release와 관리자 배포는 같은 checkout을 사용한다. 검증·drain·교체가
 # 진행되는 동안 그 두 배포가 파일을 바꾸지 못하도록 동일 잠금을 잡는다.
-exec 9>"/home/digitie/apps/.kor-travel-transport-deploy.lock"
+exec 9>"$(dirname "$APP_DIR")/.kor-travel-transport-deploy.lock"
 flock -n 9 || die "공유 checkout을 다른 배포가 변경 중이다."
 [[ -f .env.server14 && -f docker-compose.yml && -f "$SHARED" ]] || die "$APP_DIR에 배포 파일이 없다."
 
