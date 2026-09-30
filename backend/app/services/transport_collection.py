@@ -372,6 +372,8 @@ class TransportCollectionService:
                         if session.bind.dialect.name == "postgresql":
                             # 원본과 최신 가격 읽기 모델을 같은 트랜잭션으로 확정한다.
                             # UNIQUE index를 가진 MV라 읽는 동안에도 concurrent refresh가 가능하다.
+                            await session.execute(text("SET LOCAL lock_timeout = '3s'"))
+                            await session.execute(text("SET LOCAL statement_timeout = '60s'"))
                             await session.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY fuel_latest_prices"))
                         await self._mark_fuel_success(session, snapshot.collected_at)
                     await session.commit()
