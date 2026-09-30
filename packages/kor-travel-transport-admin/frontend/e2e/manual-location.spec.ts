@@ -54,6 +54,9 @@ test("운영 BFF 쓰기 경로의 세션·토큰·backend 연결을 비파괴적
   await page.goto("/login");
   await page.getByLabel("비밀번호").fill(process.env.E2E_TRANSPORT_UI_PASSWORD!);
   await page.getByRole("button", { name: "로그인", exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
+  const sessionCookiePresent = (await page.context().cookies()).some((cookie) => cookie.name === "kor_travel_transport_admin_session");
+  const releaseStatus = await page.evaluate(async () => (await fetch("/api/release")).status);
   const result = await page.evaluate(async () => {
     const response = await fetch("/api/admin/place-locations", { method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ kind: "ferry_port", id: 2147483647, source: "data_go_kr_maritime", provider_id: "nonexistent",
@@ -62,7 +65,7 @@ test("운영 BFF 쓰기 경로의 세션·토큰·backend 연결을 비파괴적
         latitude: 34.123, longitude: 127.123, note: "존재하지 않는 테스트 코드" }) });
     return { status: response.status, body: await response.json() as { detail?: string } };
   });
-  expect(result.status).toBe(404);
+  expect(result.status, JSON.stringify({ sessionCookiePresent, releaseStatus, detail: result.body.detail })).toBe(404);
   expect(result.body.detail).toBe("공식 기준정보에서 해당 장소를 찾지 못했습니다.");
 });
 
@@ -71,6 +74,7 @@ test("다른 관리자 보정과 충돌하면 목록을 다시 조회한다", as
   await page.goto("/login");
   await page.getByLabel("비밀번호").fill(process.env.E2E_TRANSPORT_UI_PASSWORD!);
   await page.getByRole("button", { name: "로그인", exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
   let loads = 0;
   await page.route("**/transport/features/places?**", (route) => {
     const kind = new URL(route.request().url()).searchParams.get("kind");

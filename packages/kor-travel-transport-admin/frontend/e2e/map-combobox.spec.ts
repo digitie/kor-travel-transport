@@ -54,14 +54,14 @@ test("좌표 미확인 항구·버스 터미널은 지도 대신 검색 목록�
   await expect(page.locator(".map-place-list").getByRole("button", { name: /백야도/ })).toContainText("항구 코드 SEA97580");
   await expect(page.locator(".map-place-list").getByRole("button", { name: /강릉/ })).toContainText("터미널 코드 NAI2551901");
   await page.locator(".map-place-list").getByRole("button", { name: /백야도/ }).click();
-  await expect(page.getByLabel("선택 장소 상세").getByText(/항구 코드 SEA97580/)).toBeVisible();
+  await expect(page.getByLabel("선택 장소 상세").getByText(/항구 코드 SEA97580 · 항구명만으로/)).toBeVisible();
   await page.getByRole("button", { name: "장소 상세 닫기" }).click();
   await page.getByLabel("장소 검색").fill("강릉");
   await expect.poll(() => requests.some((params) => params.get("kind") === "bus_terminal" &&
     params.get("include_unlocated") === "true" && params.get("query") === "강릉")).toBe(true);
   await expect(page.locator(".map-place-list").getByRole("button", { name: /강릉/ })).toBeVisible();
   await page.locator(".map-place-list").getByRole("button", { name: /강릉/ }).click();
-  await expect(page.getByLabel("선택 장소 상세").getByText(/터미널 코드 NAI2551901/)).toBeVisible();
+  await expect(page.getByLabel("선택 장소 상세").getByText(/터미널 코드 NAI2551901 · 지도 위치는/)).toBeVisible();
   expect(requests.some((params) => params.get("kind") === "ferry_port" && params.get("include_unlocated") === "true")).toBe(true);
 });
 

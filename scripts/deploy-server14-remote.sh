@@ -43,11 +43,19 @@ if [[ "$(pwd -P)" != "${REMOTE_APP_DIR}" || ! -f "${REMOTE_ENV_FILE}" ]]; then
   echo "Refusing n150 deployment: run from the staged approved app directory with its environment file." >&2
   exit 2
 fi
+# deploy-server14.sh의 자식이면 FD 9의 열린 파일 설명과 lock을 상속한다.
+# 수동 실행이면 여기서 동일 lock을 새로 잡는다. 경로가 다른 FD는 재사용하지 않는다.
+release_lock_path="/home/digitie/apps/.kor-travel-transport-deploy.lock"
+if [[ "$(readlink -f "/proc/$$/fd/9" 2>/dev/null || true)" != "${release_lock_path}" ]]; then
+  exec 9>"${release_lock_path}"
+fi
+flock -n 9 || { echo "Refusing n150 deployment: shared checkout is being changed." >&2; exit 2; }
 if [[ ! -f "${RELEASE_MANIFEST_FILE}" || -L "${RELEASE_MANIFEST_FILE}" ]] \
   || [[ "$(tr -d '\r\n' < "${RELEASE_MANIFEST_FILE}")" != "${CANDIDATE_SHA}" ]]; then
   echo "Refusing n150 deployment: staged release manifest does not match candidate." >&2
   exit 2
 fi
+bash ./scripts/verify-release-stage.sh "${REMOTE_APP_DIR}" "${CANDIDATE_SHA}"
 
 set -a
 source "${REMOTE_ENV_FILE}"
