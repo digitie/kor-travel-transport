@@ -68,12 +68,16 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
     && point.lngLat[1] >= Number(viewport.min_latitude) && point.lngLat[1] <= Number(viewport.max_latitude));
   const cluster = clusterAtScale(zoom, (Number(viewport.min_latitude) + Number(viewport.max_latitude)) / 2, visiblePoints.length, mapSize.width, mapSize.height);
   const groupedPoints = useMemo(() => current ? points.filter((point) => point.id !== keyOf(current)) : points, [points, current]);
-  const selectedPoint = points.find((point) => current && point.id === keyOf(current));
+  const selectedPoint = points.find((point) => current && point.id === keyOf(current))
+    ?? (current && hasCoordinates(current) ? { id: keyOf(current), lngLat: [current.longitude, current.latitude] as [number, number], place: current } : undefined);
   const detail = useRef<HTMLElement | null>(null);
   const selectPlace = (place: Place) => {
     setClusterPlaces([]); setClusterCamera(undefined);
     setSelected(place); onSelectPlace?.(place);
-    if (!embedded) requestAnimationFrame(() => detail.current?.focus({ preventScroll: true }));
+    if (!embedded) requestAnimationFrame(() => {
+      detail.current?.focus({ preventScroll: true });
+      if (window.matchMedia("(max-width: 62rem)").matches) detail.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
   };
 
   useEffect(() => {
@@ -191,7 +195,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
         {selectedPoint ? <MapMarker point={selectedPoint} products={products} onSelect={selectPlace} selected /> : null}
       </VWorldMapView> : <div className="map-place-list">{items.map((place) => <button type="button" className="place-row" key={keyOf(place)} aria-pressed={current ? keyOf(current) === keyOf(place) : false} onClick={() => selectPlace(place)}><PlaceIcon kind={place.kind} /><span><strong>{place.name}</strong><small>{place.line_names.join(" · ") || place.brand_name || place.subtitle || placeKindLabel(place.kind)}</small>{(place.kind === "ferry_port" || place.kind === "bus_terminal") && place.provider_id ? <small>{place.kind === "ferry_port" ? "항구" : "터미널"} 코드 {place.provider_id}</small> : null}{!hasCoordinates(place) ? <small>좌표 미등록</small> : null}</span></button>)}</div>}
       </div>{!embedded ? <aside className="transport-map-detail weather-inspector" ref={detail} tabIndex={-1} aria-label="선택 장소 상세">
-        {current ? <PlaceInspector key={keyOf(current)} place={current} onClose={() => { setSelected(null); queryInput.current?.focus(); }} /> : <Empty><EmptyHeader><EmptyDescription>지도나 목록에서 장소를 선택하면 가격·노선·출도착·편의정보를 확인할 수 있습니다.</EmptyDescription></EmptyHeader></Empty>}
+        {current ? <PlaceInspector key={keyOf(current)} place={current} onClose={() => { setSelected(null); queryInput.current?.focus(); }} onSaved={(updated) => { setSelected(updated); setReload((value) => value + 1); }} onReload={() => { setSelected(null); setReload((value) => value + 1); queryInput.current?.focus(); }} /> : <Empty><EmptyHeader><EmptyDescription>지도나 목록에서 장소를 선택하면 가격·노선·출도착·편의정보를 확인할 수 있습니다.</EmptyDescription></EmptyHeader></Empty>}
       </aside> : null}
     </div>
   </section>;

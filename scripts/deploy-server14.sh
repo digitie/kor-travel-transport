@@ -63,6 +63,11 @@ if [[ ! -f "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" ]]; then
   echo "Missing ${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}; copy .env.server14.example and add the existing operations values." >&2
   exit 2
 fi
+# 관리자 배포·Dagster 긴급 교체와 같은 checkout의 동시 변경을 막는다.
+# FD 9는 아래 remote 배포 자식에도 상속되어 빌드가 끝날 때까지 잠금을 유지한다.
+RELEASE_LOCK_PATH="/home/digitie/apps/.kor-travel-transport-deploy.lock"
+exec 9>"${RELEASE_LOCK_PATH}"
+flock -n 9 || { echo "Refusing deployment: shared checkout is being changed." >&2; exit 2; }
 
 REMOTE_STAGE="$(mktemp -d /tmp/kor-travel-transport-release.XXXXXX)"
 cleanup_remote() {
@@ -70,14 +75,24 @@ cleanup_remote() {
 }
 trap cleanup_remote EXIT
 tar -xzf "${REMOTE_ARCHIVE}" -C "${REMOTE_STAGE}"
+# 이 receipt는 현재 배포된 SHA와 달리, 공유 checkout의 복사가 끝났다는 증거다.
+# 복사 중 끊기면 이전 receipt로 혼합 소스를 배포하지 못하도록 먼저 무효화한다.
+STAGE_MARKER="${REMOTE_APP_DIR}/.staged-release-sha"
+rm -f -- "${STAGE_MARKER}"
 rsync -a --delete \
   --exclude="${REMOTE_ENV_FILE}" \
   --exclude=".env.server14.legacy" \
+  --exclude=".transport-admin-release-sha" \
+  --exclude=".release-sha" \
   --exclude="backups/" \
   "${REMOTE_STAGE}/" "${REMOTE_APP_DIR}/"
 cd "${REMOTE_APP_DIR}"
 printf '%s\n' "${CANDIDATE_SHA}" > "${REMOTE_APP_DIR}/.release-sha"
 chmod 600 "${REMOTE_APP_DIR}/.release-sha"
+stage_marker_tmp="$(mktemp "${STAGE_MARKER}.XXXXXX")"
+printf '%s\n' "${CANDIDATE_SHA}" > "${stage_marker_tmp}"
+chmod 600 "${stage_marker_tmp}"
+mv -f -- "${stage_marker_tmp}" "${STAGE_MARKER}"
 if [[ "${DEPLOY_STAGE_ONLY}" == "true" ]]; then
   echo "Candidate ${CANDIDATE_SHA} staged on n150; no containers were changed."
   exit 0

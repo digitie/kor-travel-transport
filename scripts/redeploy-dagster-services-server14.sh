@@ -29,7 +29,12 @@ die() { echo "STOP: $*" >&2; exit 1; }
 
 [[ $# -eq 1 && -f "${1:-}" ]] || die "사용법: $0 <설치할 docker-compose.shared.yml>"
 source_file="$(realpath -e -- "$1")"
+APP_DIR="$(realpath -e -- "$APP_DIR")" || die "앱 디렉터리의 실제 경로를 확인할 수 없다."
 cd "$APP_DIR"
+# 전체 release와 관리자 배포는 같은 checkout을 사용한다. 검증·drain·교체가
+# 진행되는 동안 그 두 배포가 파일을 바꾸지 못하도록 동일 잠금을 잡는다.
+exec 9>"$(dirname "$APP_DIR")/.kor-travel-transport-deploy.lock"
+flock -n 9 || die "공유 checkout을 다른 배포가 변경 중이다."
 [[ -f .env.server14 && -f docker-compose.yml && -f "$SHARED" ]] || die "$APP_DIR에 배포 파일이 없다."
 
 compose() {
@@ -281,6 +286,9 @@ gate "$SHARED" || exit 1
 # 백업 이름은 겹치지 않아야 한다. 같은 초에 되돌리기가 돌면 넘겨받은 백업을 덮어쓸 수 있다.
 backup="$(mktemp "$SHARED.before-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX")"
 cp -p "$SHARED" "$backup"
+# 이 긴급 재배포는 공유 checkout의 추적 파일을 교체한다. 이전 전체 release의
+# stage 완료 표식으로 이후 원격 재배포를 허용하면 후보 SHA와 Compose가 어긋난다.
+rm -f -- "$APP_DIR/.staged-release-sha"
 install -m 664 "$candidate" "$SHARED"
 rollback_file="$APP_DIR/$backup"
 echo "교체: $SHARED (이전 파일 $rollback_file)"

@@ -149,3 +149,94 @@ def test_deploy_scripts_accept_only_the_renamed_directory_and_project() -> None:
     for name in ("deploy-server14.sh", "deploy-server14-remote.sh"):
         text = (_SCRIPTS / name).read_text(encoding="utf-8")
         assert 'COMPOSE_PROJECT_NAME:-kor-travel-transport}' in text, name
+
+
+def test_interrupted_sync_preserves_current_release_receipts() -> None:
+    text = (_SCRIPTS / "deploy-server14.sh").read_text(encoding="utf-8")
+    sync = text.index("rsync -a --delete")
+    manifest_update = text.index('"${CANDIDATE_SHA}" > "${REMOTE_APP_DIR}/.release-sha"')
+    sync_step = text[sync:manifest_update]
+
+    assert '--exclude=".release-sha"' in sync_step
+    assert '--exclude=".transport-admin-release-sha"' in sync_step
+
+
+def test_stage_receipt_is_invalidated_before_either_shared_checkout_sync() -> None:
+    backend = (_SCRIPTS / "deploy-server14.sh").read_text(encoding="utf-8")
+    admin = (_SCRIPTS / "deploy-transport-admin-server14.sh").read_text(encoding="utf-8")
+    dagster = (_SCRIPTS / "redeploy-dagster-services-server14.sh").read_text(encoding="utf-8")
+    remote = _REMOTE.read_text(encoding="utf-8")
+
+    assert backend.index('rm -f -- "${STAGE_MARKER}"') < backend.index("rsync -a --delete")
+    assert backend.index("rsync -a --delete") < backend.index('mv -f -- "${stage_marker_tmp}" "${STAGE_MARKER}"')
+    assert admin.index('rm -f -- "${REMOTE_APP_DIR}/.staged-release-sha"') < admin.index("rsync -a --exclude=")
+    assert dagster.index('rm -f -- "$APP_DIR/.staged-release-sha"') < dagster.index('install -m 664 "$candidate" "$SHARED"')
+    assert 'bash ./scripts/verify-release-stage.sh "${REMOTE_APP_DIR}" "${CANDIDATE_SHA}"' in remote
+
+
+def test_all_shared_checkout_writers_hold_the_same_release_lock() -> None:
+    names = (
+        "deploy-server14.sh",
+        "deploy-transport-admin-server14.sh",
+        "redeploy-dagster-services-server14.sh",
+        "deploy-server14-remote.sh",
+    )
+    lock_path = "/home/digitie/apps/.kor-travel-transport-deploy.lock"
+    for name in (names[0], names[1], names[3]):
+        source = (_SCRIPTS / name).read_text(encoding="utf-8")
+        assert lock_path in source, name
+        assert "flock -n 9" in source, name
+    dagster = (_SCRIPTS / names[2]).read_text(encoding="utf-8")
+    assert 'APP_DIR="${APP_DIR:-/home/digitie/apps/kor-travel-transport}"' in dagster
+    assert '$(dirname "$APP_DIR")/.kor-travel-transport-deploy.lock' in dagster
+    assert dagster.index('APP_DIR="$(realpath -e -- "$APP_DIR")"') < dagster.index('$(dirname "$APP_DIR")/.kor-travel-transport-deploy.lock')
+    assert "flock -n 9" in dagster
+    backend = (_SCRIPTS / names[0]).read_text(encoding="utf-8")
+    admin = (_SCRIPTS / names[1]).read_text(encoding="utf-8")
+    remote = (_SCRIPTS / names[3]).read_text(encoding="utf-8")
+    assert backend.index("flock -n 9") < backend.index("rsync -a --delete")
+    assert admin.index("flock -n 9") < admin.index("rsync -a --exclude=")
+    assert dagster.index("flock -n 9") < dagster.index('install -m 664 "$candidate" "$SHARED"')
+    assert remote.index("flock -n 9") < remote.index('bash ./scripts/verify-release-stage.sh')
+
+
+def test_release_lock_is_inherited_by_remote_deploy_child(tmp_path: Path) -> None:
+    lock_path = str(tmp_path / "shared-release.lock")
+    result = subprocess.run(
+        ["bash", "-c", 'exec 9>"$1"; flock -n 9; bash -c \'[[ "$(readlink -f /proc/$$/fd/9)" == "$1" ]] && flock -n 9\' _ "$1"', "_", lock_path],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    contested = subprocess.run(
+        ["bash", "-c", 'exec 9>"$1"; flock -n 9; bash -c \'exec 9>&-; exec 9>"$1"; flock -n 9\' _ "$1"; child_status=$?; exit "$child_status"', "_", lock_path],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert contested.returncode != 0
+
+
+def test_remote_stage_guard_refuses_interrupted_or_superseded_sync(tmp_path: Path) -> None:
+    verifier = _SCRIPTS / "verify-release-stage.sh"
+    marker = tmp_path / ".staged-release-sha"
+
+    def verify() -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["bash", str(verifier), str(tmp_path), _SHA],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    # 이전 배포가 남아 있어도 이번 동기화 시작 시 marker가 제거되면 재배포를 거부한다.
+    assert verify().returncode == 2
+    marker.write_text("a" * 40 + "\n", encoding="ascii")
+    assert verify().returncode == 2
+    marker.write_text(_SHA + "\n", encoding="ascii")
+    assert verify().returncode == 0
+    marker.unlink()
+    assert verify().returncode == 2
+    marker.symlink_to(tmp_path / "old-receipt")
+    assert verify().returncode == 2

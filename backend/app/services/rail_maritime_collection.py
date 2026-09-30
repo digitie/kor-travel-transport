@@ -542,12 +542,14 @@ class RailMaritimeCollectionService:
     ) -> None:
         assert item.port_id is not None
         row = await session.scalar(
-            select(FerryPort).where(FerryPort.source == MARITIME_SOURCE, FerryPort.port_id == item.port_id)
+            select(FerryPort).where(FerryPort.source == MARITIME_SOURCE, FerryPort.port_id == item.port_id).with_for_update()
         )
         values = {
             "port_name": item.port_name, "last_seen_at": collected_at, "raw_item_json": dict(item.raw),
         }
-        if location is not None:
+        if row is not None and row.location_source == "admin_manual" and row.port_name == item.port_name:
+            values["raw_item_json"]["_manual_location"] = (row.raw_item_json or {}).get("_manual_location")
+        elif location is not None:
             values.update(latitude=location.latitude, longitude=location.longitude,
                           location_source=PORT_CALL_SOURCE, location_point_count=1)
             values["raw_item_json"]["_komsa_port_call"] = dict(location.raw)

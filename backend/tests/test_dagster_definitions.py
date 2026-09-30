@@ -132,6 +132,15 @@ def test_dagster_definitions_register_every_collection_domain() -> None:
     assert {definitions.get_job_def(name).name for name in job_names} == job_names
 
 
+@pytest.mark.parametrize("job_name,first_op", [
+    ("maritime_reference_collection_job", "collect_maritime_reference"),
+    ("bus_reference_collection_job", "collect_bus_reference"),
+])
+def test_reference_jobs_enrich_coordinates_after_official_rows(job_name: str, first_op: str) -> None:
+    graph = definitions.get_job_def(job_name).graph
+    assert graph.node_names() == [first_op, "enrich_new_reference_locations"]
+
+
 def test_dagster_definitions_enable_every_schedule_and_serialize_overlapping_groups() -> None:
     schedule_names = {
         "airport_collection_job_schedule",
@@ -162,19 +171,50 @@ def test_dagster_definitions_enable_every_schedule_and_serialize_overlapping_gro
 
 @pytest.mark.parametrize("failed_calls", [0, 1])
 def test_maritime_partial_collection_is_not_dagster_success(monkeypatch, failed_calls) -> None:
-    from dagster import Failure
-
-    async def fake_run(*_args, **_kwargs):
-        return {"status": "partial_success", "run_id": 10, "port_location_failed_calls": failed_calls,
-                "port_location_deferred_count": 2}
+    invoked = []
+    async def fake_run(_settings, action, *_args, **_kwargs):
+        invoked.append(action)
+        if action == "reference":
+            return {"status": "partial_success", "run_id": 10, "port_location_failed_calls": failed_calls,
+                    "port_location_deferred_count": 2}
+        return {"status": "success", "run_id": 11}
     monkeypatch.setattr(dagster_definitions, "_settings", lambda: None)
     monkeypatch.setattr(dagster_definitions, "RailMaritimeCollectionService",
-                        lambda _: SimpleNamespace(collect_maritime_reference=None))
+                        lambda _: SimpleNamespace(collect_maritime_reference="reference"))
+    monkeypatch.setattr(dagster_definitions, "PlaceLocationCollectionService",
+                        lambda _: SimpleNamespace(collect="vworld"))
+    monkeypatch.setattr(dagster_definitions, "KakaoPlaceCollectionService",
+                        lambda _: SimpleNamespace(collect="kakao"))
     monkeypatch.setattr(dagster_definitions, "_run_with_session", fake_run)
-    with pytest.raises(Failure, match="기항지") as raised:
-        dagster_definitions._collect_reference("maritime")
-    assert raised.value.allow_retries is False
-    assert raised.value.metadata["deferred_port_locations"].value == 2
+    result = dagster_definitions.maritime_reference_collection_job.execute_in_process(raise_on_error=False)
+    assert result.success is False
+    assert invoked == ["reference", "vworld", "kakao"]
+    assert not any(event.is_step_up_for_retry for event in result.all_events)
+    failure = result.failure_data_for_node("enrich_new_reference_locations").user_failure_data
+    assert failure.metadata["reference_deferred"].value == 2
+
+
+def test_reference_enrichment_continues_kakao_after_vworld_exception(monkeypatch) -> None:
+    invoked = []
+    async def fake_run(_settings, action, *_args, **_kwargs):
+        invoked.append(action)
+        if action == "vworld":
+            raise RuntimeError("provider URL with secret must not be logged")
+        return {"status": "success", "run_id": 42}
+    monkeypatch.setattr(dagster_definitions, "_settings", lambda: None)
+    monkeypatch.setattr(dagster_definitions, "BusReferenceCollectionService",
+                        lambda _: SimpleNamespace(collect="reference"))
+    monkeypatch.setattr(dagster_definitions, "PlaceLocationCollectionService",
+                        lambda _: SimpleNamespace(collect="vworld"))
+    monkeypatch.setattr(dagster_definitions, "KakaoPlaceCollectionService",
+                        lambda _: SimpleNamespace(collect="kakao"))
+    monkeypatch.setattr(dagster_definitions, "_run_with_session", fake_run)
+    result = dagster_definitions.bus_reference_collection_job.execute_in_process(raise_on_error=False)
+    assert result.success is False
+    assert invoked == ["reference", "vworld", "kakao"]
+    failure = result.failure_data_for_node("enrich_new_reference_locations").user_failure_data
+    assert failure.metadata["vworld_status"].value == "failed"
+    assert "provider URL with secret" not in str(failure)
 
 
 def test_transport_provider_lifecycle_stays_in_one_event_loop(monkeypatch) -> None:

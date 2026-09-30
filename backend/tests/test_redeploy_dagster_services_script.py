@@ -329,6 +329,28 @@ def _candidate(tmp_path: Path, text: str = _NEW) -> Path:
     return path
 
 
+@pytest.mark.parametrize("app_alias", ["relative", "symlink"])
+def test_redeploy_canonicalizes_app_alias_before_locking(host: Host, tmp_path: Path, app_alias: str) -> None:
+    if app_alias == "relative":
+        app_dir, cwd = ".", host.app
+    else:
+        alias = tmp_path / "app-alias"
+        alias.symlink_to(host.app, target_is_directory=True)
+        app_dir, cwd = str(alias), tmp_path
+    result = subprocess.run(
+        ["bash", str(_SCRIPT), str(_candidate(tmp_path))],
+        cwd=cwd,
+        env={**host.script_env(), "APP_DIR": app_dir},
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (host.app.parent / ".kor-travel-transport-deploy.lock").is_file()
+    assert not (host.app / ".kor-travel-transport-deploy.lock").exists()
+
+
 def _index(calls: list[list[str]], wanted: list[str], *, after: int = -1) -> int:
     return next(i for i, call in enumerate(calls) if i > after and call[: len(wanted)] == wanted)
 

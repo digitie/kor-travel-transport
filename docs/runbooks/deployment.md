@@ -28,6 +28,24 @@
    docker image rm kor-travel-transport-backend:rel-<지울 sha12>   # 지금·바로 전 밖만. -f는 쓰지 않는다
    ```
 
+2026-09-30 운영 메모: Manager의 `db-backup create transport --timeout 600`이 시간 초과로
+실패했는데, 그 뒤 `pg_dump` 자식 프로세스가 삭제된 임시 dump에 계속 쓰며 n150 디스크를
+포화시켰다. 백업 실패 뒤에는 성공으로 간주하지 말고 해당 실행의 자식 프로세스가
+남았는지 확인한다. 이번에는 식별된 고아 프로세스만 종료하고 기존 앱 DB 백업의
+SHA-256을 확인했다. Dagster DB는 별도 새 백업을 만들었다. 배포 동기화가 SSH 종료로
+끊기더라도 현재 `.release-sha`와 `.transport-admin-release-sha`를 보존하도록 했다.
+이 SHA-256 검사는 파일 무결성만 확인하며, 복원 성공이나 배포 직전 데이터 보존을
+입증하지 않는다. 이번 릴리스에는 DB migration이 없었다.
+공유 checkout의 backend 또는 관리자 소스 동기화는 시작 전에 `.staged-release-sha`를
+무효화하며, Dagster Compose 긴급 교체도 설치 전 무효화한다. backend 전체 동기화가
+끝난 뒤에만 이를 새 SHA로 발행한다. 이 세 경로와 수동 원격 배포는 공통
+`/home/digitie/apps/.kor-travel-transport-deploy.lock`을 복사·빌드가 끝날 때까지
+유지하며, 경합하면 대기하지 않고 실패한다. Dagster 긴급 교체에서 상대경로·
+심볼릭 링크 `APP_DIR`을 지정해도 실제 절대경로로 정규화한 뒤 잠금 위치를 정한다.
+원격 배포
+단계는 이 stage 완료 표식까지 검사한다. 관리자 동기화 뒤 수동 backend 원격 배포가
+필요하면 `deploy-server14.sh`로 동일 후보를 다시 stage해야 한다.
+
 공용 DB 최초 cutover는 일반 배포와 다르다. 먼저 WSL checkout에서
 `DEPLOY_STAGE_ONLY=true ./scripts/deploy-server14.sh`로 reviewed artifact만 n150에 올린 뒤,
 n150에서 `scripts/cutover-shared-db-server14.sh`를 실행한다. cutover는 staged artifact의
@@ -54,8 +72,9 @@ REMOTE_APP_DIR=/home/digitie/apps/kor-travel-transport \
 
 `docker-compose.shared.yml`에서 Dagster 세 서비스의 healthcheck·`init`만 바뀌면 전체 배포를 쓰지
 않는다. 전체 배포는 `up -d --build`로 backend·frontend·gateway 이미지를 n150에서 다시 빌드한다.
-`rsync --delete`는 archive에 없는 `.transport-admin-release-sha`와 `.env.server14.before-*` 백업도
-지운다. 대신 [`scripts/redeploy-dagster-services-server14.sh`](../../scripts/redeploy-dagster-services-server14.sh)로
+`rsync --delete`는 archive에 없는 `.env.server14.before-*` 백업도
+지운다(`.transport-admin-release-sha`와 현재 `.release-sha`는 동기화 중에도 보존한다).
+대신 [`scripts/redeploy-dagster-services-server14.sh`](../../scripts/redeploy-dagster-services-server14.sh)로
 Dagster 세 서비스만 재생성한다. 이 경로는 `deploy-server14-remote.sh`의 receipt·env gate를 거치지
 않고 `.release-sha`도 갱신하지 않는다. 다음 전체 배포 전까지 배포 디렉터리는 `.release-sha`와
 일치하지 않는다.
