@@ -171,6 +171,8 @@ class FuelStationResponse(BaseModel):
     sido_value: str | None = None
     sigungu_value: str | None = None
     product_code: str | None = None
+    fuel_prices_stale: bool = False
+    fuel_prices_last_refreshed_at: datetime | None = None
     items: list[FuelStationItem]
 
 

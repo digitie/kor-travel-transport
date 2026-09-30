@@ -53,7 +53,6 @@ from app.models import (
     RawApiResponse,
     RailStationReference,
     RestAreaReference,
-    TransportCollectionState,
 )
 from app.schemas import (
     AirportSummary,
@@ -162,7 +161,7 @@ from app.services.holidays import (
     format_holiday_sentence,
 )
 from app.services.sample_data import seed_sample_database
-from app.services.transport_collection import CollectionScope, FUEL_READ_MODEL_SOURCE, OPINET_SOURCE, TRANSPORT_TRIGGER_PREFIX, TransportCollectionService
+from app.services.transport_collection import CollectionScope, OPINET_SOURCE, TRANSPORT_TRIGGER_PREFIX, TransportCollectionService, fuel_read_model_freshness
 
 logger = logging.getLogger(__name__)
 
@@ -953,12 +952,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     prices=prices,
                 )
             )
+        fuel_prices_stale, read_model = await fuel_read_model_freshness(session)
         return FuelStationResponse(
             generated_at=now_utc(),
             days=days,
             sido_value=sido_value.strip() if sido_value else None,
             sigungu_value=sigungu_value.strip() if sigungu_value else None,
             product_code=product_code.strip() if product_code else None,
+            fuel_prices_stale=fuel_prices_stale,
+            fuel_prices_last_refreshed_at=serialize_utc(read_model.last_success_at) if read_model and read_model.last_success_at else None,
             items=items,
         )
 
@@ -1215,18 +1217,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             available_sources.update((await session.scalars(select(source_models[requested_kind].source).distinct())).all())
         fuel_prices_stale = False
         fuel_prices_last_refreshed_at = None
-        if "fuel_station" in requested_kinds and use_latest_prices:
-            read_model = await session.scalar(select(TransportCollectionState).where(
-                TransportCollectionState.source == FUEL_READ_MODEL_SOURCE,
-            ))
-            latest_raw_id = int(await session.scalar(select(FuelPriceSnapshot.id).order_by(
-                FuelPriceSnapshot.id.desc(),
-            ).limit(1)) or 0)
-            fuel_prices_stale = (
-                read_model is None or read_model.last_success_at is None
-                or read_model.next_due_at is not None or read_model.last_error is not None
-                or latest_raw_id > read_model.last_refreshed_snapshot_id
-            )
+        if "fuel_station" in requested_kinds:
+            fuel_prices_stale, read_model = await fuel_read_model_freshness(session)
             fuel_prices_last_refreshed_at = (
                 serialize_utc(read_model.last_success_at) if read_model and read_model.last_success_at else None
             )

@@ -8,7 +8,7 @@ from app.core.config import Settings
 from app.core.time_utils import now_utc, serialize_utc, to_seoul
 from app.models import CollectionRun, FerryPort, FerryTimetableSnapshot, KricStationCode, KricTimetableSnapshot, TransportCollectionState
 from app.schemas import KricCoverage, ProviderCollectionStatus, ProviderStatusResponse
-from app.services.transport_collection import FUEL_READ_MODEL_SOURCE
+from app.services.transport_collection import FUEL_READ_MODEL_SOURCE, fuel_read_model_freshness
 
 
 async def provider_status(session: AsyncSession, settings: Settings) -> ProviderStatusResponse:
@@ -63,7 +63,8 @@ async def provider_status(session: AsyncSession, settings: Settings) -> Provider
             error_code="collection_failed" if failed else None))
     # 이 상태는 고속도로 job이 재시도하지만 고속도로 수집 성공 여부와 독립적이다.
     # 실패를 job 상태에 섞지 않아도 관리 화면에서 MV 정체를 확인할 수 있게 노출한다.
-    read_model = states.get(FUEL_READ_MODEL_SOURCE)
+    read_model_stale, fresh_read_model = await fuel_read_model_freshness(session)
+    read_model = fresh_read_model if session.bind.dialect.name == "postgresql" else states.get(FUEL_READ_MODEL_SOURCE)
     read_model_enabled = transport and settings.opinet_browser_enabled
     read_model_overdue = bool(
         read_model and read_model.next_due_at
@@ -73,7 +74,7 @@ async def provider_status(session: AsyncSession, settings: Settings) -> Provider
     read_model_status = (
         "disabled" if not read_model_enabled else
         "failed" if read_model_failed else
-        "queued" if read_model and read_model.next_due_at else
+        "queued" if read_model_stale or read_model and read_model.next_due_at else
         "success" if read_model and read_model.last_success_at else "not_collected"
     )
     items.append(ProviderCollectionStatus(
@@ -84,7 +85,8 @@ async def provider_status(session: AsyncSession, settings: Settings) -> Provider
         last_success_at=serialize_utc(read_model.last_success_at) if read_model and read_model.last_success_at else None,
         next_due_at=serialize_utc(read_model.next_due_at) if read_model_enabled and read_model and read_model.next_due_at else None,
         error_code=("read_model_refresh_failed" if read_model_enabled and read_model and read_model.last_error else
-                    "read_model_refresh_delayed" if read_model_enabled and read_model_overdue else None),
+                    "read_model_refresh_delayed" if read_model_enabled and read_model_overdue else
+                    "read_model_refresh_pending" if read_model_enabled and read_model_stale else None),
     ))
     for source, name, enabled in [("flights", "공항 출도착", keyed and settings.enable_flight_status_markers), ("bus_timetable", "TAGO 버스 시간표", keyed)]:
         items.append(ProviderCollectionStatus(source=source, name=name, mode="on_demand", enabled=enabled, status="on_demand" if enabled else "disabled"))

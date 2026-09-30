@@ -55,6 +55,29 @@ CollectionScope = Literal["all", "highway", "fuel"]
 T = TypeVar("T")
 
 
+async def fuel_read_model_freshness(
+    session: AsyncSession,
+) -> tuple[bool, TransportCollectionState | None]:
+    """지도·유가 API·운영 현황이 같은 MV 갱신 상태를 표시한다."""
+    if session.bind.dialect.name != "postgresql":
+        return False, None
+    state = await session.scalar(select(TransportCollectionState).where(
+        TransportCollectionState.source == FUEL_READ_MODEL_SOURCE,
+    ))
+    latest_raw_id = int(await session.scalar(select(FuelPriceSnapshot.id).order_by(
+        FuelPriceSnapshot.id.desc(),
+    ).limit(1)) or 0)
+    stale = (
+        (state is None and latest_raw_id > 0)
+        or (state is not None and (
+            (state.last_success_at is None and latest_raw_id > 0)
+            or state.next_due_at is not None or state.last_error is not None
+            or latest_raw_id > state.last_refreshed_snapshot_id
+        ))
+    )
+    return stale, state
+
+
 @dataclass(frozen=True, slots=True)
 class HighwayPayload:
     traffic: tuple[TrafficFlow, ...] | Exception | None
@@ -394,6 +417,7 @@ class TransportCollectionService:
                     raw_count += 1
             if session.bind.dialect.name == "postgresql":
                 attempted_generation: int | None = None
+                attempted_raw_id: int | None = None
                 try:
                     await session.execute(text("SET LOCAL lock_timeout = '3s'"))
                     await session.execute(text("SET LOCAL statement_timeout = '60s'"))
@@ -410,8 +434,29 @@ class TransportCollectionService:
                     # 구버전 Dagster run이 첫 MV 갱신 뒤 원본을 늦게 커밋해도
                     # 상태 세대를 올리지 못한다. 원본 PK 체크포인트로 이를 감지한다.
                     due = read_model.next_due_at is not None and now_utc() >= serialize_utc(read_model.next_due_at)
-                    if due or latest_raw_id > read_model.last_refreshed_snapshot_id:
+                    # ID 할당 순서와 커밋 순서는 다르다. 최대 ID가 그대로여도 늦게
+                    # 커밋한 구버전 작업이나 제자리 수정이 MV와 다른지 대조한다.
+                    model_differs = False
+                    if not due and latest_raw_id <= read_model.last_refreshed_snapshot_id:
+                        model_differs = bool(await session.scalar(text("""
+                            WITH latest AS (
+                                SELECT DISTINCT ON (fuel_station_id, product_code)
+                                    id, fuel_station_id, product_code, price,
+                                    provider_updated_at, observed_at, collected_at
+                                FROM fuel_price_snapshots
+                                ORDER BY fuel_station_id, product_code, collected_at DESC, id DESC
+                            )
+                            SELECT EXISTS (
+                                SELECT 1 FROM latest l
+                                FULL JOIN fuel_latest_prices v USING (fuel_station_id, product_code)
+                                WHERE (l.id, l.price, l.provider_updated_at, l.observed_at, l.collected_at)
+                                    IS DISTINCT FROM
+                                    (v.id, v.price, v.provider_updated_at, v.observed_at, v.collected_at)
+                            )
+                        """)))
+                    if due or latest_raw_id > read_model.last_refreshed_snapshot_id or model_differs:
                         attempted_generation = read_model.refresh_generation
+                        attempted_raw_id = latest_raw_id
                         await session.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY fuel_latest_prices"))
                         await session.execute(update(TransportCollectionState).where(
                             TransportCollectionState.id == read_model.id,
@@ -437,7 +482,12 @@ class TransportCollectionService:
                         if read_model is None:
                             read_model = await self._get_or_create_state(session, FUEL_READ_MODEL_SOURCE)
                         # 다른 프로세스가 이미 성공한 뒤라면 실패 상태를 덮어쓰지 않는다.
-                        if read_model.next_due_at is not None:
+                        checkpoint_outdated = (
+                            attempted_raw_id is not None
+                            and attempted_generation == read_model.refresh_generation
+                            and read_model.last_refreshed_snapshot_id < attempted_raw_id
+                        )
+                        if read_model.next_due_at is not None or checkpoint_outdated:
                             read_model.last_started_at = now_utc()
                             read_model.last_error = message
                             # 이전 갱신이 실패한 동안 새 원본이 들어왔으면 새 배치의
@@ -984,9 +1034,20 @@ class TransportCollectionService:
             select(TransportCollectionState).where(TransportCollectionState.source == source)
         )
         if state is None:
-            state = TransportCollectionState(source=source, updated_at=now_utc())
-            session.add(state)
-            await session.flush()
+            if session.bind.dialect.name == "postgresql":
+                # 서로 다른 수집 작업의 첫 실행이 같은 상태 행을 동시에 만들어도
+                # 유가 원본 트랜잭션을 unique 충돌로 되돌리지 않는다.
+                await session.execute(text(
+                    "INSERT INTO transport_collection_states (source, updated_at) "
+                    "VALUES (:source, :updated_at) ON CONFLICT (source) DO NOTHING"
+                ), {"source": source, "updated_at": now_utc()})
+                state = await session.scalar(select(TransportCollectionState).where(
+                    TransportCollectionState.source == source,
+                ))
+            else:
+                state = TransportCollectionState(source=source, updated_at=now_utc())
+                session.add(state)
+                await session.flush()
         return state
 
     async def next_collection_delay(self, session: AsyncSession, scope: CollectionScope) -> float:

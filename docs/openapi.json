@@ -1752,6 +1752,23 @@
             "title": "Days",
             "type": "integer"
           },
+          "fuel_prices_last_refreshed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fuel Prices Last Refreshed At"
+          },
+          "fuel_prices_stale": {
+            "default": false,
+            "title": "Fuel Prices Stale",
+            "type": "boolean"
+          },
           "generated_at": {
             "format": "date-time",
             "title": "Generated At",
