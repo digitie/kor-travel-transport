@@ -90,6 +90,23 @@ test("느린 7일 통계가 수집 상태 화면을 가로막지 않는다", asy
   await context.close();
 });
 
+test("유가 읽기 모델 갱신 실패를 수집 화면 상단에 별도 경고한다", async ({ page }) => {
+  await page.route("**/api/transport/transport/providers", (route) => route.fulfill({ json: {
+    generated_at: "2026-09-30T09:00:00Z", items: [{ source: "fuel_latest_prices", name: "오피넷 최신 유가 읽기 모델",
+      job_name: "highway_collection_job", job_status: null, enabled: true, mode: "scheduled",
+      status: "failed", interval_seconds: 300, last_started_at: "2026-09-30T08:55:00Z",
+      last_success_at: "2026-09-30T08:00:00Z", next_due_at: "2026-09-30T09:05:00Z",
+      error_code: "read_model_refresh_failed" }], ferry_window_start: "2026-09-30",
+    ferry_window_end: "2026-10-09", ferry_expected_snapshots: 0, ferry_stored_snapshots: 0,
+  } }));
+  await login(page);
+  await page.goto("/collections");
+  const alert = page.getByRole("alert").filter({ hasText: "최신 유가 표시 지연" });
+  await expect(alert).toContainText("주유소·가격 원본은 저장됐지만");
+  await expect(alert).toContainText("다음 재시도");
+  await expect(page.getByText("오피넷 최신 유가 읽기 모델")).toBeVisible();
+});
+
 test("로그아웃 처리 중 늦게 저장된 통계 캐시도 로그인 화면에서 제거한다", async ({ page }) => {
   await login(page);
   await expect(page.getByRole("heading", { name: "교통정보 찾아보기" })).toBeVisible();

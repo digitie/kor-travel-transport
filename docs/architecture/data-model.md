@@ -7,7 +7,10 @@
 PostgreSQL의 `fuel_latest_prices`는 일반 테이블이 아닌 materialized view다. 원본
 `fuel_price_snapshots`의 주유소·유종별 최신 `collected_at`, 동일 시각이면 최대 `id`
 행을 담는다. `(fuel_station_id, product_code)` 유일 인덱스가 동시 갱신과 조회를
-보장한다. 수집 성공 트랜잭션에서 갱신하며, 갱신 실패 시 원본도 롤백한다.
+보장한다. 원본 수집은 먼저 커밋하고 MV 갱신은 별도 트랜잭션에서 수행한다.
+`0019`의 `transport_collection_states.refresh_generation BIGINT NOT NULL DEFAULT 0`은
+원본 커밋마다 증가한다. 갱신은 시작 세대와 같은 경우에만 대기 상태를 지우므로
+동시에 새 원본이 들어오면 다음 실행에서 다시 갱신한다. 실패 시 원본은 유지된다.
 SQLite 테스트의 동명 ORM 테이블은 운영 읽기 경로가 아니며 window 조회로 동작한다.
 
 항구 `ferry_ports`와 버스 `bus_terminal_references`의 관리자 좌표 보정은 새 장소를

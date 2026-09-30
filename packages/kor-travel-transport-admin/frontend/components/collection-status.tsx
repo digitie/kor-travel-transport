@@ -1,6 +1,7 @@
 "use client";
 // weather Dagster의 요약 → 최근 실행 → 접을 수 있는 스케줄 구조를 transport에 적용한다.
 import { useEffect, useState } from "react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { dateTime, transportGet } from "@/lib/journey";
 import { getDagsterOverview, JOB_LABELS, runStalled, scheduleDescription, statusLabel, type DagsterOverview } from "@/lib/dagster";
 type Provider = { source: string; job_status?: string | null; name: string; job_name: string | null; enabled: boolean; mode: string; status: string; interval_seconds: number | null; last_started_at: string | null; last_success_at: string | null; next_due_at: string | null; error_code: string | null };
@@ -24,11 +25,13 @@ export function CollectionStatus() {
     ]).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [reload]);
+  const fuelReadModel = providers?.items.find((item) => item.source === "fuel_latest_prices");
   return <section className="journey-workbench">
     <div className="journey-toolbar"><label>제공기관·작업 검색<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="예: 오피넷, 버스, KRIC" /></label><button className="secondary" type="button" disabled={loading} onClick={() => setReload((value) => value + 1)}>{loading ? "확인 중…" : "새로고침"}</button><a className="secondary" href="https://transport-dagster.digitie.mywire.org" target="_blank" rel="noreferrer">Dagster 열기</a></div>
     {errors.map((error) => <p className="error" key={error} role="alert">{error} 이전 결과가 있으면 마지막 성공 조회 내용을 유지합니다.</p>)}
     <div className="ops-grid" aria-label="수집 요약"><div className="panel"><span>등록된 정보 영역</span><strong>{providers?.items.length ?? "—"}</strong></div><div className="panel"><span>사용 중인 스케줄</span><strong>{dagster ? `${dagster.schedules.filter((row) => row.scheduleState.status === "RUNNING").length}/${dagster.schedules.length}` : "—"}</strong></div><div className="panel"><span>최근 실패한 실행</span><strong>{dagster?.runs.filter((row) => row.status === "FAILURE").length ?? "—"}</strong></div><div className="panel"><span>배편 저장 범위</span><strong>{providers ? `${providers.ferry_stored_snapshots.toLocaleString()} / ${providers.ferry_expected_snapshots.toLocaleString()}` : "—"}</strong><small>항구 × 운항일 · 빈 응답 포함</small></div></div>
     {providers ? <p className="quiet">마지막 확인 {dateTime(providers.generated_at)} · 배편 {providers.ferry_window_start}~{providers.ferry_window_end}. 작업 성공과 전국 적재 완료는 다릅니다.</p> : null}
+    {fuelReadModel?.error_code ? <Alert variant="destructive"><AlertTitle>최신 유가 표시 지연</AlertTitle><AlertDescription>주유소·가격 원본은 저장됐지만 최신 가격 읽기 모델 갱신이 실패했습니다. 마지막 성공 {dateTime(fuelReadModel.last_success_at)} · 다음 재시도 {dateTime(fuelReadModel.next_due_at)}. 주유소 가격 화면은 마지막으로 갱신된 값일 수 있습니다.</AlertDescription></Alert> : null}
     {providers?.kric_coverage ? <section aria-label="KRIC 시간표 적재 범위"><h2>KRIC 시간표 적재 범위</h2><dl className="provider-detail">
       <div><dt>위치 연결 역사</dt><dd>{providers.kric_coverage.linked_station_count.toLocaleString()} / {providers.kric_coverage.station_count.toLocaleString()}역</dd></div>
       <div><dt>저장 시간표</dt><dd>{providers.kric_coverage.stored_snapshots.toLocaleString()} / {providers.kric_coverage.expected_snapshots.toLocaleString()}개</dd></div>

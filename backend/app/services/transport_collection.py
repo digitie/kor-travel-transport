@@ -21,7 +21,7 @@ from opinet.experimental import (
     OpinetBrowserCollector,
     OpinetBrowserSnapshot,
 )
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -372,13 +372,15 @@ class TransportCollectionService:
                         )
                         await self._mark_fuel_success(session, snapshot.collected_at)
                         if session.bind.dialect.name == "postgresql":
-                            # MV 잠금 경합이 원본 수집의 성공/커밋을 취소하지 않도록 분리한다.
-                            # 별도 수집 프로세스의 MV 갱신과 예약 상태 변경 순서를 고정한다.
-                            await session.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"),
-                                                  {"lock_key": TRANSPORT_COLLECTION_ADVISORY_LOCK_KEY + 2})
+                            # 원본은 MV 잠금을 기다리지 않고 커밋한다. 세대 증가는
+                            # 뒤따르는 갱신이 새 원본의 예약을 지우지 못하게 한다.
                             read_model = await self._get_or_create_state(session, FUEL_READ_MODEL_SOURCE)
-                            read_model.next_due_at = now_utc()
-                            read_model.updated_at = now_utc()
+                            await session.execute(update(TransportCollectionState).where(
+                                TransportCollectionState.id == read_model.id,
+                            ).values(
+                                refresh_generation=TransportCollectionState.refresh_generation + 1,
+                                next_due_at=now_utc(), updated_at=now_utc(),
+                            ))
                     await session.commit()
                 except Exception as exc:
                     await session.rollback()
@@ -391,34 +393,50 @@ class TransportCollectionService:
                     collected_source = True
                     raw_count += 1
             if session.bind.dialect.name == "postgresql":
-                await session.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"),
-                                      {"lock_key": TRANSPORT_COLLECTION_ADVISORY_LOCK_KEY + 2})
-                read_model = await session.scalar(select(TransportCollectionState).where(
-                    TransportCollectionState.source == FUEL_READ_MODEL_SOURCE,
-                ))
-                if read_model is not None and read_model.next_due_at is not None and now_utc() >= serialize_utc(read_model.next_due_at):
+                try:
+                    await session.execute(text("SET LOCAL lock_timeout = '3s'"))
+                    await session.execute(text("SET LOCAL statement_timeout = '60s'"))
+                    await session.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"),
+                                          {"lock_key": TRANSPORT_COLLECTION_ADVISORY_LOCK_KEY + 2})
+                    read_model = await session.scalar(select(TransportCollectionState).where(
+                        TransportCollectionState.source == FUEL_READ_MODEL_SOURCE,
+                    ))
+                    if read_model is not None and read_model.next_due_at is not None and now_utc() >= serialize_utc(read_model.next_due_at):
+                        generation = read_model.refresh_generation
+                        await session.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY fuel_latest_prices"))
+                        await session.execute(update(TransportCollectionState).where(
+                            TransportCollectionState.id == read_model.id,
+                            TransportCollectionState.refresh_generation == generation,
+                        ).values(
+                            last_started_at=now_utc(), last_success_at=now_utc(),
+                            next_due_at=None, last_error=None, updated_at=now_utc(),
+                        ))
+                    await session.commit()
+                except Exception as exc:
+                    await session.rollback()
+                    message = _safe_error(exc, self.settings)
                     try:
                         await session.execute(text("SET LOCAL lock_timeout = '3s'"))
-                        await session.execute(text("SET LOCAL statement_timeout = '60s'"))
-                        await session.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY fuel_latest_prices"))
-                        read_model.last_success_at = now_utc()
-                        read_model.next_due_at = None
-                        read_model.last_error = None
-                        read_model.updated_at = now_utc()
-                        await session.commit()
-                    except Exception as exc:
-                        await session.rollback()
                         await session.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"),
                                               {"lock_key": TRANSPORT_COLLECTION_ADVISORY_LOCK_KEY + 2})
                         read_model = await self._get_or_create_state(session, FUEL_READ_MODEL_SOURCE)
                         # 다른 프로세스가 이미 성공한 뒤라면 실패 상태를 덮어쓰지 않는다.
                         if read_model.next_due_at is not None:
-                            message = _safe_error(exc, self.settings)
+                            read_model.last_started_at = now_utc()
                             read_model.last_error = message
                             read_model.next_due_at = now_utc() + timedelta(minutes=5)
                             read_model.updated_at = now_utc()
-                            errors.append(f"최신 유가 읽기 모델 갱신 실패: {message}")
                         await session.commit()
+                    except Exception as state_exc:
+                        await session.rollback()
+                        logger.error("fuel latest prices refresh state could not be recorded: %s",
+                                     _safe_error(state_exc, self.settings))
+                    if scope == "highway":
+                        # 읽기 모델의 독립 재시도 실패가 정상 고속도로 수집을
+                        # Dagster 실패로 오인시키지 않게 상태·로그에만 남긴다.
+                        logger.warning("fuel latest prices refresh retry failed: %s", message)
+                    else:
+                        errors.append(f"최신 유가 읽기 모델 갱신 실패: {message}")
             # rollback은 ORM 객체를 만료시키므로 async get으로 명시적으로 다시 읽는다.
             run = await session.get(CollectionRun, run_id)
             if not errors and not collected_source and raw_count == 0:
