@@ -25,6 +25,8 @@
 - `ix_fuel_prices_latest_lookup`을 concurrent로 만든 다음 뷰를 채우고 유일 인덱스를
   만든다. `CREATE INDEX CONCURRENTLY` 중단으로 invalid index가 남으면 자동 통과하지
   않는다. 해당 이름과 `pg_index.indisvalid`를 확인해 그 인덱스만 정리하고 재실행한다.
+  downgrade는 원본 이력 인덱스를 잠금 3초 상한으로 먼저 제거한다. 잠겨 있으면 MV를
+  남긴 채 실패하고, 잠금이 풀린 뒤 재실행할 수 있다.
 - 유가 수집은 원본 저장과 `REFRESH MATERIALIZED VIEW CONCURRENTLY`를 같은
   트랜잭션에서 확정한다. 뷰 갱신에 실패하면 원본도 롤백돼 API가 최신 원본과 오래된
   읽기 모델을 섞지 않는다. 제공기관 호출 성공분까지 취소되는 운영 비용이 있으므로

@@ -49,7 +49,18 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("DROP MATERIALIZED VIEW fuel_latest_prices")
+    if op.get_context().as_sql:
+        raise RuntimeError("0018은 concurrent index 검증을 위해 온라인 migration만 지원합니다.")
+    # 먼저 원본 테이블의 index를 잠금 상한 안에서 정리한다. 이 단계가 실패하면
+    # MV를 건드리지 않아 현재 runtime의 조회 계약이 유지된다.
     with op.get_context().autocommit_block():
-        op.drop_index("ix_fuel_prices_latest_lookup", table_name="fuel_price_snapshots",
-                      postgresql_concurrently=True)
+        op.execute("SET lock_timeout = '3s'")
+        op.execute("SET statement_timeout = '180s'")
+        try:
+            op.drop_index("ix_fuel_prices_latest_lookup", table_name="fuel_price_snapshots",
+                          postgresql_concurrently=True, if_exists=True)
+        finally:
+            op.execute("RESET statement_timeout")
+            op.execute("RESET lock_timeout")
+    op.execute("SET LOCAL lock_timeout = '3s'")
+    op.execute("DROP MATERIALIZED VIEW fuel_latest_prices")

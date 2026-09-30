@@ -96,6 +96,9 @@ def test_postgres_migration_lock_timeout_and_recovery(test_settings):
                 elapsed = asyncio.get_running_loop().time() - started
                 assert code != 0 and "lock timeout" in output
                 assert 2.5 <= elapsed < 15
+                # 잠금 경합으로 0018 downgrade가 중단돼도 런타임 MV는 남는다.
+                async with engine.connect() as verifier:
+                    assert await verifier.scalar(text("SELECT to_regclass('fuel_latest_prices')")) == "fuel_latest_prices"
             # 잠금이 해제된 뒤 동일 migration 재실행과 원래 head 복원이 가능해야 한다.
             code, output = await migrate("downgrade", "0014_kric_timetables")
             assert code == 0, output
