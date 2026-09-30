@@ -133,12 +133,34 @@ def test_release_image_is_pinned_per_release_through_the_shell_env() -> None:
     source = text.index('source "${REMOTE_ENV_FILE}"')
     pin = text.index('export BACKEND_RUNTIME_IMAGE="kor-travel-transport-backend:rel-${CANDIDATE_SHA:0:12}"')
     sha = text.index('export RELEASE_SHA="${CANDIDATE_SHA}"')
-    up = text.index("up -d --build")
+    build = text.index(' -f docker-compose.shared.yml build')
+    up = text.index("up -d --no-build")
     # env 파일을 source한 뒤에 export해야 파일의 값(다른 배포가 적어 둔 draft 이미지·옛 RELEASE_SHA)을 덮는다.
     # `set -a; source`가 둘을 셸 env로 export하고, 셸 env는 --env-file보다 우선한다.
-    assert source < pin < up
-    assert source < sha < up
+    assert source < pin < build < up
+    assert source < sha < build < up
     assert "awk '!/^(RELEASE_SHA|BACKEND_RUNTIME_IMAGE)=/'" in text
+
+
+def test_deploy_drains_dagster_runs_after_build_and_restores_daemon_on_failure() -> None:
+    text = _REMOTE.read_text(encoding="utf-8")
+    build = text.index(' -f docker-compose.shared.yml build')
+    preflight = text.index('in_flight_runs >/dev/null')
+    stop = text.index('docker stop "${dagster_daemon}" >/dev/null\n')
+    drain = text.index('if runs="$(in_flight_runs)" && [[ -z "${runs}" ]]')
+    final_probe = text.index('runs="$(in_flight_runs)" || { echo "서비스 교체 직전에')
+    up = text.index('up -d --no-build')
+    assert build < preflight < stop < drain < final_probe < up
+    assert 'trap resume_dagster_daemon EXIT' in text
+    assert 'docker start "${dagster_daemon}"' in text
+    assert 'cleanup_remote\n  exit "${status}"' in text
+    assert '((SECONDS >= drain_deadline))' in text
+    assert '[[ -z "${runs}" ]] ||' in text
+
+
+def test_remote_deploy_script_has_valid_bash_syntax() -> None:
+    result = subprocess.run(["bash", "-n", str(_REMOTE)], capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stderr
 
 
 def test_deploy_scripts_accept_only_the_renamed_directory_and_project() -> None:

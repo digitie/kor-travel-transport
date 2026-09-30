@@ -99,6 +99,18 @@ Pydantic 객체 생성·이중 직렬화를 피한다.
 Pydantic 모델로 다시 검증하지 않고 동일한 Core JSON 인코더로 직렬화해,
 로컬 약 20만 행 표본의 30일 응답 중앙값을 약 0.41초로 낮췄다.
 
+2026-10-01 n150 재측정에서는 `parking_snapshots`의 추정 행 수가 실제 약
+77만 행에 비해 3.6만 행에 머물고 `last_analyze`가 비어 있었다. `ANALYZE` 뒤
+공항·관측시각 인덱스를 선택했지만, 30일 GMP 약 6만 행의 heap 접근이
+많아 공유 호스트 부하 중에는 SQL만 약 10초 걸렸다. `0021`은
+`(airport_id, observed_at)`에 순위 계산과 응답에 필요한 열을 포함하는
+covering index를 concurrent로 만들고 해당 테이블의 auto-analyze 임계비를
+0.02로 낮춘다. index-only scan은 visibility map에 좌우되므로 인덱스
+생성만으로 1초 목표를 달성했다고 간주하지 않는다. 배포 뒤
+`EXPLAIN (ANALYZE, BUFFERS)`의 heap fetch와 본문 수신 완료 시간을 다시
+측정한다. 중단으로 invalid index가 남으면 해당 이름·valid 상태를 확인한 뒤
+그 인덱스만 별도로 정리하고 migration을 재실행한다.
+
 ## 첫 화면
 
 첫 화면은 `GET /v1/dashboard/bootstrap` 한 번으로 공항·주차 현황·수집기 상태·공휴일 요약을 받는다. 기존 개별 endpoint는 하위 호환과 직접 진단용으로 유지한다. `/v1/airports`는 `selectinload`로 주차장 목록을 한 번에 읽어 공항 수만큼 반복하던 N+1 조회를 제거했다.
@@ -111,6 +123,7 @@ Pydantic 모델로 다시 검증하지 않고 동일한 Core JSON 인코더로 �
 
 - `parking_snapshots (airport_id, parking_lot_id, observed_at DESC, id DESC)` — 주차장별 최신 관측
 - `parking_snapshots (airport_id, parking_lot_id, observed_at)` — 기간 분석
+- `parking_snapshots (airport_id, observed_at) INCLUDE (parking_lot_id, id, collected_at, source, occupied_spaces, total_spaces, available_spaces)` — 30일 원본 이력
 - `parking_snapshots (collected_at)` — 수집 신선도 확인
 - `parking_snapshots (collection_run_id)` — 실행과 원본 추적
 - `highway_traffic_snapshots (route_no, observed_at, direction) INCLUDE (speed, free_flow_speed)` —

@@ -623,6 +623,13 @@ class ParkingSnapshot(Base):
             name="ck_snapshot_congestion_ratio",
         ),
         Index("ix_parking_snapshots_airport_observed", "airport_id", "observed_at"),
+        Index(
+            "ix_parking_snapshots_history_cover", "airport_id", "observed_at",
+            postgresql_include=(
+                "parking_lot_id", "id", "collected_at", "source",
+                "occupied_spaces", "total_spaces", "available_spaces",
+            ),
+        ),
         Index("ix_parking_snapshots_lot_observed", "parking_lot_id", "observed_at"),
         Index("ix_parking_snapshots_airport_lot_observed", "airport_id", "parking_lot_id", "observed_at"),
         Index(

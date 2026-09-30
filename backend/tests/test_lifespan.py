@@ -75,6 +75,7 @@ def test_database_startup_creates_query_indexes(tmp_path: Path) -> None:
     assert {
         "ix_parking_snapshots_airport_lot_observed",
         "ix_parking_snapshots_airport_lot_observed_desc",
+        "ix_parking_snapshots_history_cover",
         "ix_parking_snapshots_collected_at",
         "ix_parking_snapshots_collection_run_id",
         "ix_raw_api_responses_collection_run_id",
@@ -88,6 +89,16 @@ def test_database_startup_creates_query_indexes(tmp_path: Path) -> None:
         "ix_fuel_prices_statistics_priced",
         "ix_transport_collection_states_next_due",
     } <= index_names
+
+
+def test_parking_history_cover_index_contains_response_fields() -> None:
+    index = next(index for index in Base.metadata.tables["parking_snapshots"].indexes
+                 if index.name == "ix_parking_snapshots_history_cover")
+    assert [column.name for column in index.expressions] == ["airport_id", "observed_at"]
+    assert tuple(index.dialect_options["postgresql"]["include"]) == (
+        "parking_lot_id", "id", "collected_at", "source",
+        "occupied_spaces", "total_spaces", "available_spaces",
+    )
 
 
 def test_postgresql_schema_guard_tracks_alembic_head() -> None:

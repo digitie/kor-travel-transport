@@ -12,7 +12,10 @@
    스크립트는 대상 host가 `192.168.1.14`이고 Compose project가 `kor-travel-transport`인지 먼저
    확인한 뒤 현재 Git `HEAD`를 candidate artifact로 만들어 n150의 `docker compose`만
    호출하며 다른 Compose project를 중지하지 않는다. 배포 직후 `/health.release_sha`가
-   candidate SHA와 일치하는지도 확인한다.
+   candidate SHA와 일치하는지도 확인한다. 이미지 빌드 뒤 기존 Dagster daemon을
+   멈춰 새 예약을 차단하고, 진행 중인 실행이 0건이 될 때까지 최대 30분 기다린 후
+   서비스를 교체한다. 조회 실패·시간 초과·중간 재기동이면 교체를 중단하고
+   daemon을 복구한다. 장기 수집이 진행 중이면 배포 대기 시간이 늘어날 수 있다.
 4. [migration.md](migration.md)의 prewarm → final delta → 180초 scheduler와 300초 이내 cutover 검증을
    완료한다.
 5. release 이미지 보존: 배포마다 `kor-travel-transport-backend:rel-<sha12>` 태그가 남는다(ADR-010).
