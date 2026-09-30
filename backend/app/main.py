@@ -1948,7 +1948,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "상대 조회(`days`)와 명시적 범위 조회(`start_date`+`end_date`)는 상호배타적이다. "
             "start_date/end_date를 지정하면 days와 future_hours는 무시되고(future_hours=0으로 "
             "고정) airport_code 또는 parking_lot_id가 필요하며, 최대 90일까지 조회할 수 있다. "
-            "범위 조회의 기본 간격은 7일 이하 10분, 30일 이하 30분, 그 이상 60분이다."
+            "범위 조회의 기본 간격은 3일 이하 10분, 14일 이하 30분, 그 이상 60분이다."
         ),
     )
     async def parking_time_series(
@@ -1982,7 +1982,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     detail=f"조회 기간은 최대 {MAX_TIMESERIES_RANGE_DAYS}일까지 가능합니다.",
                 )
             interval_minutes = interval_minutes or (
-                60 if span_days > 30 else 30 if span_days > 7 else DEFAULT_TIMESERIES_INTERVAL_MINUTES
+                60 if span_days > 14 else 30 if span_days > 3 else DEFAULT_TIMESERIES_INTERVAL_MINUTES
             )
             # Anchor bucket placement on the *requested* end of range, not on whichever
             # snapshot happens to be latest - otherwise a trailing collection gap (a

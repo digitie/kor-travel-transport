@@ -923,7 +923,7 @@ def test_time_series_date_range_preserves_kst_boundary_and_live_source_priority(
 
 def test_time_series_range_defaults_to_useful_resolution(client) -> None:
     today = datetime.now(ZoneInfo("Asia/Seoul")).date()
-    for span_days, expected_interval in ((7, 10), (8, 30), (30, 30), (31, 60), (90, 60)):
+    for span_days, expected_interval in ((3, 10), (4, 30), (14, 30), (15, 60), (90, 60)):
         start = today - timedelta(days=span_days - 1)
         response = client.get("/v1/parking/analytics/timeseries", params={
             "airport_code": "GMP", "start_date": start.isoformat(), "end_date": today.isoformat(),
