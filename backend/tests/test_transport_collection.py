@@ -1054,6 +1054,56 @@ def test_postgresql_highway_job_initializes_missing_fuel_read_model_state(client
     assert client.get("/v1/transport/fuel/stations").json()["items"][0]["prices"][0]["price"] == 1800.5
 
 
+def test_postgresql_highway_job_refreshes_after_legacy_fuel_commit(client) -> None:
+    if client.app.state.engine.dialect.name != "postgresql":
+        pytest.skip("전용 PostgreSQL 테스트 DB에서만 구버전 배포 경합을 검증합니다")
+    service = client.app.state.transport_collection_service
+    service.provider = FakeTransportProvider()
+
+    async def legacy_commit() -> None:
+        async with client.app.state.session_factory() as session:
+            assert (await service.collect(session, scope="fuel", trigger="initial"))["status"] == "success"
+        async with client.app.state.session_factory() as session:
+            state = await session.scalar(select(TransportCollectionState).where(
+                TransportCollectionState.source == FUEL_READ_MODEL_SOURCE,
+            ))
+            station = await session.scalar(select(FuelStation))
+            assert state.next_due_at is None
+            initial_checkpoint = state.last_refreshed_snapshot_id
+            newer = now_utc() + timedelta(minutes=1)
+            session.add(FuelPriceSnapshot(
+                fuel_station_id=station.id, source=OPINET_SOURCE, product_code="B027",
+                price=1800.5, observed_at=newer, collected_at=newer,
+            ))
+            await session.commit()
+        async with client.app.state.session_factory() as session:
+            state = await session.scalar(select(TransportCollectionState).where(
+                TransportCollectionState.source == FUEL_READ_MODEL_SOURCE,
+            ))
+            assert state.last_refreshed_snapshot_id == initial_checkpoint
+            assert state.next_due_at is None
+
+    asyncio.run(legacy_commit())
+    stale = client.get("/v1/transport/features/places?kind=fuel_station").json()
+    assert stale["fuel_prices_stale"] is True
+    assert stale["fuel_prices_last_refreshed_at"] is not None
+
+    async def retry() -> None:
+        async with client.app.state.session_factory() as session:
+            assert (await service.collect(session, scope="highway", trigger="after_legacy_commit"))["status"] == "success"
+        async with client.app.state.session_factory() as session:
+            state = await session.scalar(select(TransportCollectionState).where(
+                TransportCollectionState.source == FUEL_READ_MODEL_SOURCE,
+            ))
+            raw_id = await session.scalar(select(FuelPriceSnapshot.id).order_by(FuelPriceSnapshot.id.desc()).limit(1))
+            assert state.last_refreshed_snapshot_id == raw_id
+            assert state.next_due_at is None
+
+    asyncio.run(retry())
+    assert client.get("/v1/transport/fuel/stations").json()["items"][0]["prices"][0]["price"] == 1800.5
+    assert client.get("/v1/transport/features/places?kind=fuel_station").json()["fuel_prices_stale"] is False
+
+
 def test_postgresql_failed_refresh_preserves_new_batch_immediate_reservation(client, monkeypatch) -> None:
     if client.app.state.engine.dialect.name != "postgresql":
         pytest.skip("전용 PostgreSQL 테스트 DB에서만 실패·신규 배치 경합을 검증합니다")

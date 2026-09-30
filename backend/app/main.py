@@ -53,6 +53,7 @@ from app.models import (
     RawApiResponse,
     RailStationReference,
     RestAreaReference,
+    TransportCollectionState,
 )
 from app.schemas import (
     AirportSummary,
@@ -161,7 +162,7 @@ from app.services.holidays import (
     format_holiday_sentence,
 )
 from app.services.sample_data import seed_sample_database
-from app.services.transport_collection import CollectionScope, OPINET_SOURCE, TRANSPORT_TRIGGER_PREFIX, TransportCollectionService
+from app.services.transport_collection import CollectionScope, FUEL_READ_MODEL_SOURCE, OPINET_SOURCE, TRANSPORT_TRIGGER_PREFIX, TransportCollectionService
 
 logger = logging.getLogger(__name__)
 
@@ -1212,9 +1213,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         available_sources: set[str] = set()
         for requested_kind in requested_kinds:
             available_sources.update((await session.scalars(select(source_models[requested_kind].source).distinct())).all())
+        fuel_prices_stale = False
+        fuel_prices_last_refreshed_at = None
+        if "fuel_station" in requested_kinds and use_latest_prices:
+            read_model = await session.scalar(select(TransportCollectionState).where(
+                TransportCollectionState.source == FUEL_READ_MODEL_SOURCE,
+            ))
+            latest_raw_id = int(await session.scalar(select(FuelPriceSnapshot.id).order_by(
+                FuelPriceSnapshot.id.desc(),
+            ).limit(1)) or 0)
+            fuel_prices_stale = (
+                read_model is None or read_model.last_success_at is None
+                or read_model.next_due_at is not None or read_model.last_error is not None
+                or latest_raw_id > read_model.last_refreshed_snapshot_id
+            )
+            fuel_prices_last_refreshed_at = (
+                serialize_utc(read_model.last_success_at) if read_model and read_model.last_success_at else None
+            )
         result = TransportPlaceMapResponse(
             generated_at=now_utc(), kind=selected_kind, total=total,
             truncated=total > len(visible_items), items=visible_items, available_sources=sorted(available_sources),
+            fuel_prices_stale=fuel_prices_stale, fuel_prices_last_refreshed_at=fuel_prices_last_refreshed_at,
         )
         # 대량 지도 응답은 이미 검증된 Pydantic 모델을 FastAPI가 다시 순회하지 않게 한다.
         return Response(content=result.model_dump_json(), media_type="application/json")

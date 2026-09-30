@@ -105,6 +105,19 @@ test("유가 읽기 모델 갱신 실패를 수집 화면 상단에 별도 경�
   await expect(alert).toContainText("주유소·가격 원본은 저장됐지만");
   await expect(alert).toContainText("다음 재시도");
   await expect(page.getByText("오피넷 최신 유가 읽기 모델")).toBeVisible();
+  await expect(page.getByText("유가 원본은 저장됐지만 최신 가격 읽기 모델 갱신이 지연됩니다.")).toBeVisible();
+});
+
+test("지도는 최신 유가 읽기 모델 지연을 유종 필터와 함께 경고한다", async ({ page }) => {
+  await page.route("**/api/transport/transport/features/places?kind=fuel_station*", (route) => route.fulfill({ json: {
+    generated_at: "2026-09-30T09:00:00Z", kind: "fuel_station", total: 0, truncated: false,
+    items: [], available_sources: [], fuel_prices_stale: true,
+    fuel_prices_last_refreshed_at: "2026-09-30T08:00:00Z",
+  } }));
+  await login(page);
+  await page.goto("/map");
+  await expect(page.getByText(/최신 유가 반영이 지연되고 있습니다/)).toBeVisible();
+  await expect(page.getByText(/현재 판매 여부와 다를 수 있습니다/)).toBeVisible();
 });
 
 test("로그아웃 처리 중 늦게 저장된 통계 캐시도 로그인 화면에서 제거한다", async ({ page }) => {

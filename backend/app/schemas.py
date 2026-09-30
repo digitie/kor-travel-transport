@@ -233,6 +233,8 @@ class TransportPlaceMapResponse(BaseModel):
     kind: str | None = None
     total: int = 0
     truncated: bool = False
+    fuel_prices_stale: bool = False
+    fuel_prices_last_refreshed_at: datetime | None = None
     available_sources: list[str] = Field(default_factory=list)
     items: list[TransportPlaceMapItem]
 

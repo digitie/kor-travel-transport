@@ -404,7 +404,13 @@ class TransportCollectionService:
                         # 마이그레이션 직후 구버전 수집기가 남긴 원본도 첫 job에서 반영한다.
                         read_model.next_due_at = now_utc()
                         await session.flush()
-                    if read_model.next_due_at is not None and now_utc() >= serialize_utc(read_model.next_due_at):
+                    latest_raw_id = int(await session.scalar(select(FuelPriceSnapshot.id).order_by(
+                        FuelPriceSnapshot.id.desc(),
+                    ).limit(1)) or 0)
+                    # 구버전 Dagster run이 첫 MV 갱신 뒤 원본을 늦게 커밋해도
+                    # 상태 세대를 올리지 못한다. 원본 PK 체크포인트로 이를 감지한다.
+                    due = read_model.next_due_at is not None and now_utc() >= serialize_utc(read_model.next_due_at)
+                    if due or latest_raw_id > read_model.last_refreshed_snapshot_id:
                         attempted_generation = read_model.refresh_generation
                         await session.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY fuel_latest_prices"))
                         await session.execute(update(TransportCollectionState).where(
@@ -413,6 +419,7 @@ class TransportCollectionService:
                         ).values(
                             last_started_at=now_utc(), last_success_at=now_utc(),
                             next_due_at=None, last_error=None, updated_at=now_utc(),
+                            last_refreshed_snapshot_id=latest_raw_id,
                         ))
                     await session.commit()
                 except Exception as exc:

@@ -2,7 +2,7 @@
 
 import { ClusterLayer, ClusterMarker, Marker, VWorldMapView } from "vworld-map-web";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { clusterAtScale, hasCoordinates, hasFuelPrice, transportGet, type Place, type PlaceKind } from "@/lib/journey";
+import { clusterAtScale, dateTime, hasCoordinates, hasFuelPrice, transportGet, type Place, type PlaceKind } from "@/lib/journey";
 import { collectionSourceLabel, fuelProductLabel, placeKindLabel } from "@/lib/transport-presentation";
 import { MAP_FALLBACK_IMAGE } from "@/lib/map-fallback";
 import { PlaceIcon, ViewSwitch } from "./journey-controls";
@@ -17,7 +17,7 @@ import { Empty, EmptyHeader, EmptyDescription } from "@/components/ui/empty";
 type MapPoint = { id: string; lngLat: [number, number]; place: Place };
 type Bounds = { getWest: () => number; getSouth: () => number; getEast: () => number; getNorth: () => number };
 type Viewport = { min_longitude: string; min_latitude: string; max_longitude: string; max_latitude: string };
-type PlaceResponse = { items: Place[]; total: number; truncated: boolean; available_sources?: string[] };
+type PlaceResponse = { items: Place[]; total: number; truncated: boolean; available_sources?: string[]; fuel_prices_stale?: boolean; fuel_prices_last_refreshed_at?: string | null };
 const KINDS: PlaceKind[] = ["fuel_station", "rail_station", "ferry_port", "bus_terminal", "airport", "rest_area", "highway_incident"];
 const DEFAULT_VIEWPORT: Viewport = { min_longitude: "124", min_latitude: "32", max_longitude: "132", max_latitude: "39" };
 const keyOf = (place: Place) => `${place.kind}:${place.id}`;
@@ -160,6 +160,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
     <div className="map-feedback" role="status">
       {pending.length ? <span>{pending.map(placeKindLabel).join("·")} 조회 중… </span> : null}
       <span>{items.length}곳 표시 · {cluster ? "축척·화면 밀도에 따라 묶음 표시" : "가까운 장소만 묶음 표시"}</span>
+      {!embedded && kinds.includes("fuel_station") && loaded.fuel_station?.fuel_prices_stale ? <p className="error">최신 유가 반영이 지연되고 있습니다. 유종 필터와 가격은 마지막 갱신 기준이며 현재 판매 여부와 다를 수 있습니다. 마지막 갱신 {dateTime(loaded.fuel_station.fuel_prices_last_refreshed_at)}.</p> : null}
       {!embedded && (kinds.includes("ferry_port") || kinds.includes("bus_terminal")) ? <p>지도는 검증된 좌표만 표시합니다. 위치 미확인 항구·버스 터미널은 목록 보기에서 이름·코드로 검색하세요.</p> : null}
       {!embedded && kinds.includes("highway_incident") ? <p>도로 돌발은 최근 24시간의 최신 저장 관측입니다. 현재 통제 여부는 상세의 처리 상태와 관측 시각을 확인해 주세요.</p> : null}
       {truncated.length ? <p>{truncated.join("·")} 일부만 표시합니다. {view === "list" ? "이름·코드 검색으로 범위를 좁혀 주세요." : "지도에서 확대하거나 목록 보기에서 이름·코드로 검색해 주세요."} 묶음 수는 현재 불러온 장소 수입니다.</p> : null}

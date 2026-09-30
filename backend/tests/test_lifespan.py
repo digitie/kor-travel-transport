@@ -137,3 +137,17 @@ def test_committed_openapi_schema_includes_bus_routes_and_runtime_errors() -> No
         assert responses[code]["content"]["application/problem+json"]["schema"] == {
             "$ref": "#/components/schemas/ProblemDetails"
         }
+
+
+def test_committed_openapi_schema_matches_runtime() -> None:
+    schema_path = Path(__file__).resolve().parents[2] / "docs" / "openapi.json"
+    if not schema_path.is_file():
+        schema_path = Path(__file__).resolve().parents[1] / "compose-contract" / "openapi.json"
+    committed = json.loads(schema_path.read_text(encoding="utf-8"))
+    runtime = create_app(Settings(
+        database_url="sqlite+aiosqlite:///:memory:",
+        data_go_kr_service_key=None,
+        use_sample_client_when_no_key=True,
+        enable_api_docs=True,
+    )).openapi()
+    assert committed == runtime
