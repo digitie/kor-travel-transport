@@ -208,11 +208,14 @@ test.describe("live parking-radar dashboard", () => {
       expect(status.scheduler_enabled).toBe(true);
       expect(status.client_mode).toBe("live");
       expect(status.last_run?.trigger).toMatch(/^transport_dagster_(highway|fuel)$/);
-      expect(status.last_run?.status).toBe("success");
+      // 5분 주기 작업과 검사 시점이 겹치면 가장 최근 실행은 정상적으로 진행 중이다.
+      // 오래 멈춘 실행은 아래 시작 시각 검증으로 계속 실패 처리한다.
+      expect(["success", "running"]).toContain(status.last_run?.status);
       expect(status.last_run?.error ?? null).toBeNull();
-      const finishedAt = Date.parse(status.last_run?.finished_at);
-      expect(Number.isFinite(finishedAt)).toBe(true);
-      expect(Date.now() - finishedAt).toBeLessThanOrEqual(900_000);
+      const runAt = Date.parse(status.last_run?.status === "running"
+        ? status.last_run?.started_at : status.last_run?.finished_at);
+      expect(Number.isFinite(runAt)).toBe(true);
+      expect(Date.now() - runAt).toBeLessThanOrEqual(900_000);
       expect(Array.isArray(status.sources)).toBe(true);
       for (const name of ["krex_traffic_flow", "krex_traffic_incident", "opinet_browser"]) {
         expect(status.enabled_sources).toContain(name);

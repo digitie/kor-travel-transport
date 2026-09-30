@@ -105,6 +105,7 @@ test("유가 읽기 모델 갱신 실패를 수집 화면 상단에 별도 경�
   await expect(alert).toContainText("주유소·가격 원본은 저장됐지만");
   await expect(alert).toContainText("다음 재시도");
   await expect(page.getByText("오피넷 최신 유가 읽기 모델")).toBeVisible();
+  await page.locator("details.provider-row").filter({ hasText: "오피넷 최신 유가 읽기 모델" }).locator("summary").click();
   await expect(page.getByText("유가 원본은 저장됐지만 최신 가격 읽기 모델 갱신이 지연됩니다.")).toBeVisible();
 });
 

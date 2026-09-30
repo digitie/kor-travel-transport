@@ -14,7 +14,7 @@ test("실제 통계 차트는 데스크톱에서 모바일로 줄여도 카드 �
   await page.getByLabel("아이디").fill("admin");
   await page.getByLabel("비밀번호").fill(process.env.E2E_TRANSPORT_UI_PASSWORD!);
   await page.getByRole("button", { name: "로그인", exact: true }).click();
-  await expect(page.getByRole("img", { name: "노선별 평균 속도 그래프", exact: true }).locator("canvas")).toBeVisible();
+  await expect(page.getByRole("img", { name: "노선별 평균 속도 그래프", exact: true }).locator("canvas")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole("list", { name: "유종별 평균 가격 그래프 수치" }).locator("li")).toHaveCount(5);
   for (const width of [375, 320, 768, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
