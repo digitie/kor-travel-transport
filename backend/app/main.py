@@ -21,6 +21,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, JSONResponse, Response
+from pydantic_core import to_json
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import DateTime, Integer, and_, bindparam, case, func, or_, select, text as sql_text, true
 from sqlalchemy.exc import IntegrityError
@@ -1053,15 +1054,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             conditions = coordinate_conditions(FuelStation)
             total += int(await session.scalar(select(func.count()).select_from(FuelStation).where(*conditions)) or 0)
             stations = (await session.execute(
-                select(FuelStation).options(defer(FuelStation.raw_item_json)).where(*conditions)
+                select(
+                    FuelStation.id, FuelStation.source, FuelStation.name,
+                    FuelStation.longitude, FuelStation.latitude, FuelStation.address,
+                    FuelStation.brand_name, FuelStation.phone, FuelStation.is_self,
+                    FuelStation.is_24h, FuelStation.has_carwash,
+                    FuelStation.has_maintenance, FuelStation.has_cvs,
+                    FuelStation.last_seen_at,
+                ).where(*conditions)
                 .order_by(FuelStation.last_seen_at.desc(), FuelStation.id.desc()).limit(per_kind_limit)
-            )).scalars().all()
+            )).all()
             station_ids = [station.id for station in stations]
-            latest: dict[int, list[FuelPriceSnapshot | FuelLatestPrice]] = {}
+            latest: dict[int, list[Any]] = {}
             if station_ids:
                 if use_latest_prices:
-                    rows = (await session.scalars(
-                        select(FuelLatestPrice).where(FuelLatestPrice.fuel_station_id.in_(station_ids))
+                    rows = (await session.execute(
+                        select(
+                            FuelLatestPrice.fuel_station_id, FuelLatestPrice.product_code,
+                            FuelLatestPrice.price, FuelLatestPrice.provider_updated_at,
+                            FuelLatestPrice.observed_at, FuelLatestPrice.collected_at,
+                        ).where(FuelLatestPrice.fuel_station_id.in_(station_ids))
                     )).all()
                 else:
                     ranked = select(
@@ -1863,14 +1875,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 .where(ranked.c.rank == 1)
                 .order_by(ranked.c.observed_at, ranked.c.parking_lot_id, ranked.c.id)
             )).all()
-            result = ParkingHistoryResponse(items=[
+            items = [
                 {"observed_at": serialize_utc(row.observed_at),
                  "occupied_spaces": row.occupied_spaces,
                  "total_spaces": row.total_spaces,
                  "available_spaces": row.available_spaces}
                 for row in rows
-            ])
-            return Response(content=result.model_dump_json(), media_type="application/json")
+            ]
+            # SQL 투영 결과는 계약 필드만 포함한다. 수만 행의 개별 모델 재검증을
+            # 생략하고 같은 Pydantic Core encoder로 한 번만 직렬화한다.
+            return Response(content=to_json({"items": items}), media_type="application/json")
 
         query = select(ParkingSnapshot).where(*conditions).order_by(ParkingSnapshot.observed_at)
         snapshots = deduplicate_snapshots((await session.execute(query)).scalars().all())
@@ -1933,14 +1947,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         description=(
             "상대 조회(`days`)와 명시적 범위 조회(`start_date`+`end_date`)는 상호배타적이다. "
             "start_date/end_date를 지정하면 days와 future_hours는 무시되고(future_hours=0으로 "
-            "고정) airport_code 또는 parking_lot_id가 필요하며, 최대 90일까지 조회할 수 있다."
+            "고정) airport_code 또는 parking_lot_id가 필요하며, 최대 90일까지 조회할 수 있다. "
+            "범위 조회의 기본 간격은 7일 이하 10분, 30일 이하 30분, 그 이상 60분이다."
         ),
     )
     async def parking_time_series(
         airport_code: str | None = Query(default=None),
         parking_lot_id: int | None = Query(default=None),
         days: int = Query(default=7, ge=1, le=30),
-        interval_minutes: int = Query(default=DEFAULT_TIMESERIES_INTERVAL_MINUTES, ge=10, le=60),
+        interval_minutes: int | None = Query(default=None, ge=10, le=60,
+            description="생략 시 상대 조회는 10분, 날짜 범위 조회는 길이에 따라 10/30/60분. 명시값은 그대로 적용한다."),
         future_hours: int = Query(default=0, ge=0, le=12),
         session: AsyncSession = Depends(get_db),
         start_date: str | None = Query(default=None, description="명시적 범위 조회 시작일(YYYY-MM-DD). end_date와 함께 지정한다. 지정 시 days/future_hours는 무시된다."),
@@ -1965,6 +1981,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     status_code=400,
                     detail=f"조회 기간은 최대 {MAX_TIMESERIES_RANGE_DAYS}일까지 가능합니다.",
                 )
+            interval_minutes = interval_minutes or (
+                60 if span_days > 30 else 30 if span_days > 7 else DEFAULT_TIMESERIES_INTERVAL_MINUTES
+            )
             # Anchor bucket placement on the *requested* end of range, not on whichever
             # snapshot happens to be latest - otherwise a trailing collection gap (a
             # maintenance-window restore, an upstream rate-limit block, or simply asking
@@ -2000,6 +2019,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             return Response(content=result.model_dump_json(), media_type="application/json")
 
+        interval_minutes = interval_minutes or DEFAULT_TIMESERIES_INTERVAL_MINUTES
         if (
             airport_code
             and days == DEFAULT_TIMESERIES_DAYS
