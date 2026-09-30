@@ -3970,6 +3970,12 @@
             "title": "Enabled Sources",
             "type": "array"
           },
+          "fuel_prices_stale": {
+            "default": false,
+            "description": "확인된 최신 유가 읽기 모델 지연 여부. 상태 행이 없어도 원본이 있으면 참입니다.",
+            "title": "Fuel Prices Stale",
+            "type": "boolean"
+          },
           "last_fuel_error": {
             "anyOf": [
               {

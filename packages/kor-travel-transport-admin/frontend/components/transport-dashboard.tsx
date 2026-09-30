@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fuelProductLabel, highwayRouteLabel } from "@/lib/transport-presentation";
 import { cn } from "@/lib/utils";
 
-type Status = { scheduler_enabled: boolean; collection_enabled: boolean; client_mode: string; enabled_sources: string[]; sources: { source: string; last_success_at: string | null; next_due_at: string | null; last_error: string | null }[] };
+type Status = { scheduler_enabled: boolean; collection_enabled: boolean; client_mode: string; enabled_sources: string[]; fuel_prices_stale?: boolean; sources: { source: string; last_success_at: string | null; next_due_at: string | null; last_error: string | null }[] };
 type Statistics = { traffic: { route_no: string | null; direction: string | null; observations: number; average_speed: number | null }[]; incidents: { route_no: string | null; incidents: number }[]; fuel_prices: { product_code: string; stations: number; average_price: number | null }[] };
 type Traffic = { items: { route_no: string | null; route_name: string | null }[] };
 type Incidents = { items: unknown[] };
@@ -96,7 +96,7 @@ export function TransportDashboard() {
       </AlertDescription>
     </Alert> : null}
     {statusError ? <Alert variant="destructive" className="grid-cols-1"><AlertDescription>수집 상태 갱신 실패: {statusError}</AlertDescription></Alert> : null}
-    {fuelReadModel && (fuelReadModel.last_error || fuelReadModel.next_due_at) ? <Alert variant="destructive" className="grid-cols-1">
+    {(status.fuel_prices_stale || Boolean(fuelReadModel?.last_error || fuelReadModel?.next_due_at)) ? <Alert variant="destructive" className="grid-cols-1">
       <AlertTitle>주유소별 최신 가격 반영 지연</AlertTitle>
       <AlertDescription>저장된 유가 원본과 주유소별 가격 지도가 다를 수 있습니다. <Link href="/collections">수집 상태 확인 →</Link></AlertDescription>
     </Alert> : null}

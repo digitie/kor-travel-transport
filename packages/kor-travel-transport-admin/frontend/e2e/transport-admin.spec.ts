@@ -121,6 +121,16 @@ test("유가 현황에서도 최신 가격 반영 지연을 알린다", async ({
   await expect(alert.getByRole("link", { name: "수집 상태 확인" })).toHaveAttribute("href", "/collections");
 });
 
+test("읽기 모델 상태 행이 없어도 유가 현황에 지연을 알린다", async ({ page }) => {
+  await page.route("**/api/transport/transport/collector-status", (route) => route.fulfill({ json: {
+    scheduler_enabled: true, collection_enabled: true, client_mode: "live", enabled_sources: ["opinet"],
+    fuel_prices_stale: true, sources: [],
+  } }));
+  await login(page);
+  await page.goto("/fuel");
+  await expect(page.getByRole("alert").filter({ hasText: "주유소별 최신 가격 반영 지연" })).toBeVisible();
+});
+
 test("지도는 최신 유가 읽기 모델 지연을 유종 필터와 함께 경고한다", async ({ page }) => {
   await page.route("**/api/transport/transport/features/places?kind=fuel_station*", (route) => route.fulfill({ json: {
     generated_at: "2026-09-30T09:00:00Z", kind: "fuel_station", total: 0, truncated: false,

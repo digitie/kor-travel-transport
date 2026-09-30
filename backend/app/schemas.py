@@ -397,6 +397,7 @@ class TransportCollectorStatus(BaseModel):
     collect_interval_seconds: int
     client_mode: str
     enabled_sources: list[str]
+    fuel_prices_stale: bool = Field(default=False, description="확인된 최신 유가 읽기 모델 지연 여부. 상태 행이 없어도 원본이 있으면 참입니다.")
     last_fuel_success_at: datetime | None = None
     next_fuel_due_at: datetime | None = None
     last_fuel_error: str | None = None

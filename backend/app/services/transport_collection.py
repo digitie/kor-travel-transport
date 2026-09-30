@@ -420,6 +420,7 @@ class TransportCollectionService:
                 attempted_raw_id: int | None = None
                 attempted_model_differs = False
                 attempted_last_success_at: datetime | None = None
+                reconciliation_unverified = False
                 try:
                     await session.execute(text("SET LOCAL lock_timeout = '3s'"))
                     await session.execute(text("SET LOCAL statement_timeout = '60s'"))
@@ -440,6 +441,11 @@ class TransportCollectionService:
                     # 커밋한 구버전 작업이나 제자리 수정이 MV와 다른지 대조한다.
                     model_differs = False
                     if not due and latest_raw_id <= read_model.last_refreshed_snapshot_id:
+                        # 대조 자체가 실패해도 최신성 미확인 상태를 운영에 남긴다.
+                        attempted_generation = read_model.refresh_generation
+                        attempted_raw_id = latest_raw_id
+                        attempted_last_success_at = read_model.last_success_at
+                        reconciliation_unverified = True
                         model_differs = bool(await session.scalar(text("""
                             WITH latest AS (
                                 SELECT DISTINCT ON (fuel_station_id, product_code)
@@ -456,6 +462,7 @@ class TransportCollectionService:
                                     (v.id, v.price, v.provider_updated_at, v.observed_at, v.collected_at)
                             )
                         """)))
+                        reconciliation_unverified = False
                     if due or latest_raw_id > read_model.last_refreshed_snapshot_id or model_differs:
                         attempted_generation = read_model.refresh_generation
                         attempted_raw_id = latest_raw_id
@@ -492,7 +499,7 @@ class TransportCollectionService:
                             and read_model.last_refreshed_snapshot_id < attempted_raw_id
                         )
                         reconciliation_failed = (
-                            attempted_model_differs
+                            (attempted_model_differs or reconciliation_unverified)
                             and attempted_generation == read_model.refresh_generation
                             and read_model.last_success_at == attempted_last_success_at
                         )
@@ -1074,6 +1081,7 @@ class TransportCollectionService:
         return max(1.0, remaining)
 
     async def status(self, session: AsyncSession) -> dict[str, Any]:
+        fuel_prices_stale, _read_model = await fuel_read_model_freshness(session)
         states = (
             await session.execute(
                 select(TransportCollectionState).order_by(TransportCollectionState.source)
@@ -1095,6 +1103,7 @@ class TransportCollectionService:
             "collect_interval_seconds": self.settings.transport_collect_interval_seconds,
             "client_mode": self.client_mode,
             "enabled_sources": self.enabled_sources,
+            "fuel_prices_stale": fuel_prices_stale,
             "last_fuel_success_at": fuel_state.last_success_at if fuel_state is not None else None,
             "next_fuel_due_at": fuel_state.next_due_at if fuel_state is not None else None,
             "last_fuel_error": fuel_state.last_error if fuel_state is not None else None,

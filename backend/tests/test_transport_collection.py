@@ -21,7 +21,7 @@ from opinet.experimental import (
     OpinetBrowserSnapshot,
     parse_browser_response,
 )
-from sqlalchemy import func, select, text
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -1119,6 +1119,26 @@ def test_postgresql_empty_fuel_read_model_does_not_claim_stale_prices(client) ->
     assert response["fuel_prices_stale"] is False
 
 
+def test_postgresql_collector_status_warns_when_read_model_state_is_missing(client) -> None:
+    if client.app.state.engine.dialect.name != "postgresql":
+        pytest.skip("전용 PostgreSQL 테스트 DB에서만 읽기 모델 상태 누락을 검증합니다")
+    service = client.app.state.transport_collection_service
+    service.provider = FakeTransportProvider()
+
+    async def remove_read_model_state() -> None:
+        async with client.app.state.session_factory() as session:
+            assert (await service.collect(session, scope="fuel", trigger="initial"))["status"] == "success"
+        async with client.app.state.session_factory() as session:
+            await session.execute(delete(TransportCollectionState).where(
+                TransportCollectionState.source == FUEL_READ_MODEL_SOURCE,
+            ))
+            await session.commit()
+
+    asyncio.run(remove_read_model_state())
+    assert client.get("/v1/transport/features/places?kind=fuel_station").json()["fuel_prices_stale"] is True
+    assert client.get("/v1/transport/collector-status").json()["fuel_prices_stale"] is True
+
+
 def test_postgresql_reconciles_out_of_order_and_in_place_fuel_writes(client) -> None:
     if client.app.state.engine.dialect.name != "postgresql":
         pytest.skip("전용 PostgreSQL 테스트 DB에서만 MV 원본 대조를 검증합니다")
@@ -1225,7 +1245,8 @@ def test_postgresql_checkpoint_refresh_failure_is_visible(client, monkeypatch) -
     assert row["status"] == "failed"
 
 
-def test_postgresql_out_of_order_reconciliation_failure_is_visible(client, monkeypatch) -> None:
+@pytest.mark.parametrize("failure_point", ["refresh", "comparison"])
+def test_postgresql_out_of_order_reconciliation_failure_is_visible(client, monkeypatch, failure_point) -> None:
     if client.app.state.engine.dialect.name != "postgresql":
         pytest.skip("전용 PostgreSQL 테스트 DB에서만 낮은 ID 재대조 실패를 검증합니다")
     service = client.app.state.transport_collection_service
@@ -1251,13 +1272,23 @@ def test_postgresql_out_of_order_reconciliation_failure_is_visible(client, monke
 
     asyncio.run(seed())
     original_execute = AsyncSession.execute
+    original_scalar = AsyncSession.scalar
 
     async def fail_refresh(self, statement, *args, **kwargs):
-        if str(statement).startswith("REFRESH MATERIALIZED VIEW CONCURRENTLY fuel_latest_prices"):
+        refresh_failed = failure_point == "refresh" and str(statement).startswith(
+            "REFRESH MATERIALIZED VIEW CONCURRENTLY fuel_latest_prices"
+        )
+        if refresh_failed:
             raise RuntimeError("test-only out-of-order refresh failure")
         return await original_execute(self, statement, *args, **kwargs)
 
+    async def fail_comparison(self, statement, *args, **kwargs):
+        if failure_point == "comparison" and str(statement).lstrip().startswith("WITH latest AS"):
+            raise RuntimeError("test-only out-of-order comparison failure")
+        return await original_scalar(self, statement, *args, **kwargs)
+
     monkeypatch.setattr(AsyncSession, "execute", fail_refresh)
+    monkeypatch.setattr(AsyncSession, "scalar", fail_comparison)
 
     async def retry() -> None:
         async with client.app.state.session_factory() as session:
@@ -1274,6 +1305,8 @@ def test_postgresql_out_of_order_reconciliation_failure_is_visible(client, monke
     row = next(item for item in client.get("/v1/transport/providers").json()["items"]
         if item["source"] == FUEL_READ_MODEL_SOURCE)
     assert row["status"] == "failed"
+    assert client.get("/v1/transport/fuel/stations").json()["fuel_prices_stale"] is True
+    assert client.get("/v1/transport/collector-status").json()["fuel_prices_stale"] is True
 
 
 def test_postgresql_failed_refresh_preserves_new_batch_immediate_reservation(client, monkeypatch) -> None:
