@@ -73,6 +73,7 @@ tar -xzf "${REMOTE_ARCHIVE}" -C "${REMOTE_STAGE}"
 rsync -a --delete \
   --exclude="${REMOTE_ENV_FILE}" \
   --exclude=".env.server14.legacy" \
+  --exclude=".transport-admin-release-sha" \
   --exclude="backups/" \
   "${REMOTE_STAGE}/" "${REMOTE_APP_DIR}/"
 cd "${REMOTE_APP_DIR}"

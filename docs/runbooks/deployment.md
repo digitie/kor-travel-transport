@@ -54,8 +54,8 @@ REMOTE_APP_DIR=/home/digitie/apps/kor-travel-transport \
 
 `docker-compose.shared.yml`에서 Dagster 세 서비스의 healthcheck·`init`만 바뀌면 전체 배포를 쓰지
 않는다. 전체 배포는 `up -d --build`로 backend·frontend·gateway 이미지를 n150에서 다시 빌드한다.
-`rsync --delete`는 archive에 없는 `.transport-admin-release-sha`와 `.env.server14.before-*` 백업도
-지운다. 대신 [`scripts/redeploy-dagster-services-server14.sh`](../../scripts/redeploy-dagster-services-server14.sh)로
+`rsync --delete`는 archive에 없는 `.env.server14.before-*` 백업도
+지운다(`.transport-admin-release-sha`는 보존한다). 대신 [`scripts/redeploy-dagster-services-server14.sh`](../../scripts/redeploy-dagster-services-server14.sh)로
 Dagster 세 서비스만 재생성한다. 이 경로는 `deploy-server14-remote.sh`의 receipt·env gate를 거치지
 않고 `.release-sha`도 갱신하지 않는다. 다음 전체 배포 전까지 배포 디렉터리는 `.release-sha`와
 일치하지 않는다.
