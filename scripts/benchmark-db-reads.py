@@ -6,8 +6,10 @@ import argparse
 import statistics
 import sys
 import time
+from datetime import datetime, timedelta
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
 
 
 DEFAULT_PATHS = (
@@ -34,6 +36,13 @@ DEFAULT_PATHS = (
 )
 
 
+def default_paths() -> tuple[str, ...]:
+    today = datetime.now(ZoneInfo("Asia/Seoul")).date()
+    start = today - timedelta(days=89)
+    return (*DEFAULT_PATHS,
+            f"/v1/parking/analytics/timeseries?airport_code=GMP&start_date={start}&end_date={today}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default="http://127.0.0.1:14001")
@@ -44,7 +53,7 @@ def main() -> int:
     args = parser.parse_args()
     if args.samples < 1 or args.threshold_seconds <= 0:
         parser.error("samples와 threshold-seconds는 양수여야 합니다")
-    paths = args.path or DEFAULT_PATHS
+    paths = args.path or default_paths()
     failed = False
     print("상태\t최대초\t중앙값초\t본문KB\t경로", flush=True)
     for path in paths:

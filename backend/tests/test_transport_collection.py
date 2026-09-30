@@ -37,6 +37,7 @@ from app.models import (
     TransportCollectionState,
 )
 from app.services.transport_collection import (
+    FUEL_READ_MODEL_SOURCE,
     HighwayPayload,
     INCIDENT_SOURCE,
     OPINET_SOURCE,
@@ -884,7 +885,7 @@ def test_postgresql_fuel_collection_refreshes_latest_prices(client) -> None:
     assert place.json()["items"][0]["latest_price"] == 1700.5
 
 
-def test_postgresql_fuel_refresh_failure_rolls_back_raw_and_reports_failure(client, monkeypatch) -> None:
+def test_postgresql_fuel_refresh_failure_preserves_raw_and_retries_without_provider(client, monkeypatch) -> None:
     if client.app.state.engine.dialect.name != "postgresql":
         pytest.skip("전용 PostgreSQL 테스트 DB에서만 MV 실패 경로를 검증합니다")
     service = client.app.state.transport_collection_service
@@ -902,6 +903,10 @@ def test_postgresql_fuel_refresh_failure_rolls_back_raw_and_reports_failure(clie
         async with client.app.state.session_factory() as session:
             result = await service.collect(session, scope="fuel", trigger="test")
         async with client.app.state.session_factory() as session:
+            read_model = await session.scalar(select(TransportCollectionState).where(
+                TransportCollectionState.source == FUEL_READ_MODEL_SOURCE,
+            ))
+            assert read_model is not None and read_model.last_error
             return (
                 result,
                 int(await session.scalar(select(func.count()).select_from(FuelStation)) or 0),
@@ -909,8 +914,25 @@ def test_postgresql_fuel_refresh_failure_rolls_back_raw_and_reports_failure(clie
             )
 
     result, stations, prices = asyncio.run(collect_and_count())
-    assert result["status"] == "failed"
-    assert (stations, prices) == (0, 0)
+    assert result["status"] == "partial_success"
+    assert (stations, prices) == (1, 1)
+    assert client.get("/v1/transport/fuel/stations").json()["items"][0]["prices"] == []
+
+    monkeypatch.setattr(AsyncSession, "execute", original_execute)
+
+    async def retry() -> dict:
+        async with client.app.state.session_factory() as session:
+            read_model = await session.scalar(select(TransportCollectionState).where(
+                TransportCollectionState.source == FUEL_READ_MODEL_SOURCE,
+            ))
+            read_model.next_due_at = now_utc() - timedelta(seconds=1)
+            await session.commit()
+        async with client.app.state.session_factory() as session:
+            return await service.collect(session, scope="fuel", trigger="test_retry")
+
+    retry_result = asyncio.run(retry())
+    assert retry_result["status"] == "skipped"
+    assert client.get("/v1/transport/fuel/stations").json()["items"][0]["prices"][0]["price"] == 1700.5
 
 
 def test_transport_statistics_reads_preaggregated_traffic_when_available(tmp_path: Path) -> None:

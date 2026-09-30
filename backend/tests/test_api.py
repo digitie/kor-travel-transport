@@ -846,6 +846,44 @@ def test_time_series_explicit_date_range_with_no_data_returns_empty_items(client
     assert payload["items"] == []
 
 
+def test_time_series_date_range_preserves_kst_boundary_and_live_source_priority(client) -> None:
+    async def seed() -> None:
+        async with client.app.state.session_factory() as session:
+            airport = await session.scalar(select(Airport).where(Airport.code == "GMP"))
+            lots = (await session.scalars(select(ParkingLot).where(
+                ParkingLot.airport_id == airport.id,
+            ).order_by(ParkingLot.id).limit(2))).all()
+            assert len(lots) == 2
+            for lot, source, observed_at, available, collected_at in (
+                (lots[0], "migration_http", datetime(2026, 1, 1, 15, 0, tzinfo=ZoneInfo("UTC")), 10,
+                 datetime(2026, 1, 1, 16, 0, tzinfo=ZoneInfo("UTC"))),
+                (lots[0], "kac_parking", datetime(2026, 1, 1, 15, 0, tzinfo=ZoneInfo("UTC")), 80,
+                 datetime(2026, 1, 1, 15, 0, tzinfo=ZoneInfo("UTC"))),
+                (lots[1], "kac_parking", datetime(2026, 1, 1, 14, 50, tzinfo=ZoneInfo("UTC")), 30,
+                 datetime(2026, 1, 1, 14, 50, tzinfo=ZoneInfo("UTC"))),
+            ):
+                session.add(ParkingSnapshot(
+                    airport_id=airport.id, parking_lot_id=lot.id, source=source,
+                    observed_at=observed_at, collected_at=collected_at,
+                    occupied_spaces=100 - available, total_spaces=100,
+                    available_spaces=available,
+                ))
+            await session.commit()
+
+    asyncio.run(seed())
+    response = client.get("/v1/parking/analytics/timeseries", params={
+        "airport_code": "GMP", "start_date": "2026-01-01", "end_date": "2026-01-02",
+        "interval_minutes": 10,
+    })
+    assert response.status_code == 200
+    points = {datetime.fromisoformat(point["bucket_at"].replace("Z", "+00:00")): point
+              for point in response.json()["items"]}
+    before = points[datetime(2026, 1, 1, 14, 40, tzinfo=ZoneInfo("UTC"))]
+    midnight = points[datetime(2026, 1, 1, 15, 0, tzinfo=ZoneInfo("UTC"))]
+    assert (before["lot_observations"], before["available_spaces"]) == (0, 0)
+    assert (midnight["lot_observations"], midnight["available_spaces"]) == (2, 110)
+
+
 def test_time_series_rejects_reversed_date_range(client) -> None:
     today = datetime.now(ZoneInfo("Asia/Seoul")).date()
     response = client.get(

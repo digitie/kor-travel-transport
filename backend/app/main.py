@@ -20,9 +20,9 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from sqlalchemy import and_, case, func, or_, select, true
+from sqlalchemy import DateTime, Integer, and_, bindparam, case, func, or_, select, text as sql_text, true
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import defer, load_only, selectinload
@@ -32,7 +32,7 @@ from kric import DataGoKrMaritimeClient, KricRateLimitError
 from krairport import get_airport_or_none
 
 from app.core.config import Settings, get_settings
-from app.core.time_utils import now_utc, serialize_utc, to_seoul
+from app.core.time_utils import align_to_interval, now_utc, serialize_utc, to_seoul
 from app.db.session import create_engine_and_session_factory, init_database
 from app.models import (
     Airport,
@@ -1200,10 +1200,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         available_sources: set[str] = set()
         for requested_kind in requested_kinds:
             available_sources.update((await session.scalars(select(source_models[requested_kind].source).distinct())).all())
-        return TransportPlaceMapResponse(
+        result = TransportPlaceMapResponse(
             generated_at=now_utc(), kind=selected_kind, total=total,
             truncated=total > len(visible_items), items=visible_items, available_sources=sorted(available_sources),
         )
+        # 대량 지도 응답은 이미 검증된 Pydantic 모델을 FastAPI가 다시 순회하지 않게 한다.
+        return Response(content=result.model_dump_json(), media_type="application/json")
 
     @router.get("/transport/rail/departures", response_model=RailDepartureSummaryResponse)
     async def transport_rail_departures(
@@ -1861,13 +1863,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 .where(ranked.c.rank == 1)
                 .order_by(ranked.c.observed_at, ranked.c.parking_lot_id, ranked.c.id)
             )).all()
-            return ParkingHistoryResponse(items=[
+            result = ParkingHistoryResponse(items=[
                 {"observed_at": serialize_utc(row.observed_at),
                  "occupied_spaces": row.occupied_spaces,
                  "total_spaces": row.total_spaces,
                  "available_spaces": row.available_spaces}
                 for row in rows
             ])
+            return Response(content=result.model_dump_json(), media_type="application/json")
 
         query = select(ParkingSnapshot).where(*conditions).order_by(ParkingSnapshot.observed_at)
         snapshots = deduplicate_snapshots((await session.execute(query)).scalars().all())
@@ -1962,9 +1965,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     status_code=400,
                     detail=f"조회 기간은 최대 {MAX_TIMESERIES_RANGE_DAYS}일까지 가능합니다.",
                 )
-            snapshots = await _load_snapshots_between_local_dates(
-                session, airport_code, parking_lot_id, resolved_start, resolved_end
-            )
             # Anchor bucket placement on the *requested* end of range, not on whichever
             # snapshot happens to be latest - otherwise a trailing collection gap (a
             # maintenance-window restore, an upstream rate-limit block, or simply asking
@@ -1973,7 +1973,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             tz = ZoneInfo(resolved_settings.app_timezone)
             range_end_exclusive_local = datetime.combine(resolved_end, time.min, tzinfo=tz) + timedelta(days=1)
             anchor_at = range_end_exclusive_local - timedelta(minutes=interval_minutes)
-            return ParkingTimeSeriesResponse(
+            if session.bind.dialect.name == "postgresql":
+                points = await _aggregate_timeseries_between_local_dates(
+                    session, airport_code, parking_lot_id, resolved_start, resolved_end,
+                    span_days, interval_minutes, anchor_at,
+                )
+            else:
+                snapshots = await _load_timeseries_snapshots_between_local_dates(
+                    session, airport_code, parking_lot_id, resolved_start, resolved_end
+                )
+                points = build_time_series(
+                    snapshots, days=span_days, interval_minutes=interval_minutes,
+                    future_hours=0, tz_name=resolved_settings.app_timezone,
+                    anchor_at=anchor_at,
+                )
+            result = ParkingTimeSeriesResponse(
                 generated_at=now_utc(),
                 airport_code=airport_code.upper() if airport_code else None,
                 parking_lot_id=parking_lot_id,
@@ -1982,18 +1996,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 future_hours=0,
                 start_date=resolved_start.isoformat(),
                 end_date=resolved_end.isoformat(),
-                items=[
-                    TimeSeriesPoint(**point)
-                    for point in build_time_series(
-                        snapshots,
-                        days=span_days,
-                        interval_minutes=interval_minutes,
-                        future_hours=0,
-                        tz_name=resolved_settings.app_timezone,
-                        anchor_at=anchor_at,
-                    )
-                ],
+                items=[TimeSeriesPoint(**point) for point in points],
             )
+            return Response(content=result.model_dump_json(), media_type="application/json")
 
         if (
             airport_code
@@ -2013,7 +2018,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if cached is not None:
                 return ParkingTimeSeriesResponse(**cached)
 
-        snapshots = await _load_snapshots(
+        snapshots = await _load_timeseries_snapshots(
             session,
             airport_code,
             parking_lot_id,
@@ -2565,6 +2570,138 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             query = query.where(ParkingSnapshot.airport_id == airport.id)
 
         return deduplicate_snapshots((await session.execute(query)).scalars().all())
+
+    async def _load_compact_timeseries_snapshots(
+        session: AsyncSession,
+        conditions: list[Any],
+    ) -> list[ParkingSnapshot]:
+        # 시계열 계산에는 원본 JSONB나 나머지 ORM 컬럼이 불필요하다. DB에서 소스
+        # 우선순위에 따라 중복을 먼저 제거하고 계산에 쓰는 값만 전송한다.
+        if session.bind.dialect.name != "postgresql":
+            return deduplicate_snapshots((await session.scalars(
+                select(ParkingSnapshot).where(*conditions)
+            )).all())
+        ranked = select(
+            ParkingSnapshot.id.label("id"),
+            ParkingSnapshot.parking_lot_id.label("parking_lot_id"),
+            ParkingSnapshot.observed_at.label("observed_at"),
+            ParkingSnapshot.occupied_spaces.label("occupied_spaces"),
+            ParkingSnapshot.total_spaces.label("total_spaces"),
+            ParkingSnapshot.available_spaces.label("available_spaces"),
+            func.row_number().over(
+                partition_by=(ParkingSnapshot.parking_lot_id, ParkingSnapshot.observed_at),
+                order_by=(
+                    case((func.left(ParkingSnapshot.source, 10) == "migration_", 1), else_=0),
+                    ParkingSnapshot.collected_at.desc(),
+                    ParkingSnapshot.id.desc(),
+                ),
+            ).label("rank"),
+        ).where(*conditions).subquery()
+        rows = (await session.execute(select(
+            ranked.c.id, ranked.c.parking_lot_id, ranked.c.observed_at,
+            ranked.c.occupied_spaces, ranked.c.total_spaces, ranked.c.available_spaces,
+        ).where(ranked.c.rank == 1))).all()
+        return [SimpleNamespace(**row._mapping) for row in rows]
+
+    async def _load_timeseries_snapshots_between_local_dates(
+        session: AsyncSession,
+        airport_code: str | None,
+        parking_lot_id: int | None,
+        start_date: date,
+        end_date: date,
+    ) -> list[ParkingSnapshot]:
+        tz = ZoneInfo(resolved_settings.app_timezone)
+        start_at = datetime.combine(start_date, time.min, tzinfo=tz).astimezone(UTC)
+        end_at = (datetime.combine(end_date, time.min, tzinfo=tz) + timedelta(days=1)).astimezone(UTC)
+        conditions = [ParkingSnapshot.observed_at >= start_at, ParkingSnapshot.observed_at < end_at]
+        if parking_lot_id:
+            conditions.append(ParkingSnapshot.parking_lot_id == parking_lot_id)
+        elif airport_code:
+            airport = await session.scalar(select(Airport).where(Airport.code == airport_code.upper()))
+            if airport is None:
+                return []
+            conditions.append(ParkingSnapshot.airport_id == airport.id)
+        return await _load_compact_timeseries_snapshots(session, conditions)
+
+    async def _aggregate_timeseries_between_local_dates(
+        session: AsyncSession,
+        airport_code: str | None,
+        parking_lot_id: int | None,
+        start_date: date,
+        end_date: date,
+        days: int,
+        interval_minutes: int,
+        anchor_at: datetime,
+    ) -> list[dict[str, int | datetime]]:
+        tz = ZoneInfo(resolved_settings.app_timezone)
+        start_at = datetime.combine(start_date, time.min, tzinfo=tz).astimezone(UTC)
+        end_at = (datetime.combine(end_date, time.min, tzinfo=tz) + timedelta(days=1)).astimezone(UTC)
+        if parking_lot_id:
+            lot_condition = "l.id = :lot_id"
+            lot_id = parking_lot_id
+        else:
+            airport = await session.scalar(select(Airport).where(Airport.code == airport_code.upper()))
+            if airport is None:
+                return []
+            lot_condition = "l.airport_id = :airport_id"
+            lot_id = None
+        bucket_count = max(1, days * 24 * 60 // interval_minutes)
+        aligned = align_to_interval(anchor_at, interval_minutes, resolved_settings.app_timezone)
+        bucket_start = aligned - timedelta(minutes=interval_minutes * (bucket_count - 1))
+        # 한 bucket/주차장마다 최신 관측 한 건만 인덱스로 찾는다. 원본 기간 전체를
+        # Python으로 전송하지 않으며, 같은 시각의 live > migration 우선순위를 유지한다.
+        statement = sql_text(f"""
+            SELECT b.bucket_at,
+                   COALESCE(SUM(s.available_spaces), 0)::integer AS available_spaces,
+                   COALESCE(SUM(s.occupied_spaces), 0)::integer AS occupied_spaces,
+                   COALESCE(SUM(s.total_spaces), 0)::integer AS total_spaces,
+                   COUNT(s.id)::integer AS lot_observations
+            FROM (SELECT :bucket_start + n * :interval_minutes * interval '1 minute' AS bucket_at
+                  FROM generate_series(0, :bucket_count - 1) AS n) AS b
+            CROSS JOIN parking_lots AS l
+            LEFT JOIN LATERAL (
+                SELECT p.id, p.available_spaces, p.occupied_spaces, p.total_spaces
+                FROM parking_snapshots AS p
+                WHERE p.parking_lot_id = l.id
+                  AND p.observed_at >= :start_at AND p.observed_at < :end_at
+                  AND p.observed_at <= b.bucket_at
+                ORDER BY p.observed_at DESC,
+                         CASE WHEN left(p.source, 10) = 'migration_' THEN 1 ELSE 0 END,
+                         p.collected_at DESC, p.id DESC
+                LIMIT 1
+            ) AS s ON true
+            WHERE {lot_condition}
+            GROUP BY b.bucket_at
+            ORDER BY b.bucket_at
+        """).bindparams(
+            bindparam("bucket_start", type_=DateTime(timezone=True)),
+            bindparam("start_at", type_=DateTime(timezone=True)),
+            bindparam("end_at", type_=DateTime(timezone=True)),
+            bindparam("interval_minutes", type_=Integer),
+            bindparam("bucket_count", type_=Integer),
+        )
+        params = {"bucket_start": bucket_start, "start_at": start_at, "end_at": end_at,
+                  "interval_minutes": interval_minutes, "bucket_count": bucket_count,
+                  "lot_id": lot_id, "airport_id": airport.id if not parking_lot_id else None}
+        rows = (await session.execute(statement, params)).mappings().all()
+        return [dict(row) for row in rows] if any(row["lot_observations"] for row in rows) else []
+
+    async def _load_timeseries_snapshots(
+        session: AsyncSession,
+        airport_code: str | None,
+        parking_lot_id: int | None,
+        days: int,
+        buffer_minutes: int = 0,
+    ) -> list[ParkingSnapshot]:
+        conditions = [ParkingSnapshot.observed_at >= now_utc() - timedelta(days=days, minutes=buffer_minutes)]
+        if parking_lot_id:
+            conditions.append(ParkingSnapshot.parking_lot_id == parking_lot_id)
+        elif airport_code:
+            airport = await session.scalar(select(Airport).where(Airport.code == airport_code.upper()))
+            if airport is None:
+                return []
+            conditions.append(ParkingSnapshot.airport_id == airport.id)
+        return await _load_compact_timeseries_snapshots(session, conditions)
 
     async def _load_snapshots_on_local_dates(
         session: AsyncSession,

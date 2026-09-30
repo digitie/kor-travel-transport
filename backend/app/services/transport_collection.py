@@ -42,6 +42,7 @@ logger = logging.getLogger(__name__)
 TRAFFIC_SOURCE = "krex_traffic_flow"
 INCIDENT_SOURCE = "krex_traffic_incident"
 OPINET_SOURCE = "opinet_browser"
+FUEL_READ_MODEL_SOURCE = "fuel_latest_prices"
 KREX_PAGE_SIZE = 1000
 KREX_MAX_PAGES = 100
 KREX_MAX_FILTER_VALUES = 20
@@ -369,13 +370,12 @@ class TransportCollectionService:
                         fuel_station_count, fuel_price_count = await self._store_fuel_snapshot(
                             session, run_id, snapshot,
                         )
-                        if session.bind.dialect.name == "postgresql":
-                            # 원본과 최신 가격 읽기 모델을 같은 트랜잭션으로 확정한다.
-                            # UNIQUE index를 가진 MV라 읽는 동안에도 concurrent refresh가 가능하다.
-                            await session.execute(text("SET LOCAL lock_timeout = '3s'"))
-                            await session.execute(text("SET LOCAL statement_timeout = '60s'"))
-                            await session.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY fuel_latest_prices"))
                         await self._mark_fuel_success(session, snapshot.collected_at)
+                        if session.bind.dialect.name == "postgresql":
+                            # MV 잠금 경합이 원본 수집의 성공/커밋을 취소하지 않도록 분리한다.
+                            read_model = await self._get_or_create_state(session, FUEL_READ_MODEL_SOURCE)
+                            read_model.next_due_at = now_utc()
+                            read_model.updated_at = now_utc()
                     await session.commit()
                 except Exception as exc:
                     await session.rollback()
@@ -387,6 +387,29 @@ class TransportCollectionService:
                 if snapshot is not None:
                     collected_source = True
                     raw_count += 1
+            if session.bind.dialect.name == "postgresql":
+                read_model = await session.scalar(select(TransportCollectionState).where(
+                    TransportCollectionState.source == FUEL_READ_MODEL_SOURCE,
+                ))
+                if read_model is not None and read_model.next_due_at is not None and now_utc() >= serialize_utc(read_model.next_due_at):
+                    try:
+                        await session.execute(text("SET LOCAL lock_timeout = '3s'"))
+                        await session.execute(text("SET LOCAL statement_timeout = '60s'"))
+                        await session.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY fuel_latest_prices"))
+                        read_model.last_success_at = now_utc()
+                        read_model.next_due_at = None
+                        read_model.last_error = None
+                        read_model.updated_at = now_utc()
+                        await session.commit()
+                    except Exception as exc:
+                        await session.rollback()
+                        read_model = await self._get_or_create_state(session, FUEL_READ_MODEL_SOURCE)
+                        message = _safe_error(exc, self.settings)
+                        read_model.last_error = message
+                        read_model.next_due_at = now_utc() + timedelta(minutes=5)
+                        read_model.updated_at = now_utc()
+                        errors.append(f"최신 유가 읽기 모델 갱신 실패: {message}")
+                        await session.commit()
             # rollback은 ORM 객체를 만료시키므로 async get으로 명시적으로 다시 읽는다.
             run = await session.get(CollectionRun, run_id)
             if not errors and not collected_source and raw_count == 0:
