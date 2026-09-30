@@ -691,6 +691,33 @@ def test_dashboard_aggregate_endpoints(client) -> None:
     assert "threshold_events" in analytics_payload
 
 
+def test_parking_history_prefers_live_overlap_without_returning_duplicates(client) -> None:
+    observed_at = (now_utc() - timedelta(minutes=5)).replace(microsecond=123456)
+
+    async def seed() -> int:
+        async with client.app.state.session_factory() as session:
+            airport = await session.scalar(select(Airport).where(Airport.code == "GMP"))
+            lot = await session.scalar(select(ParkingLot).where(ParkingLot.airport_id == airport.id))
+            session.add_all([
+                ParkingSnapshot(airport_id=airport.id, parking_lot_id=lot.id, source="migration_http",
+                    observed_at=observed_at, collected_at=observed_at + timedelta(minutes=2),
+                    occupied_spaces=90, total_spaces=100, available_spaces=10),
+                ParkingSnapshot(airport_id=airport.id, parking_lot_id=lot.id, source="kac_parking",
+                    observed_at=observed_at, collected_at=observed_at + timedelta(minutes=1),
+                    occupied_spaces=40, total_spaces=100, available_spaces=60),
+            ])
+            await session.commit()
+            return lot.id
+
+    lot_id = asyncio.run(seed())
+    response = client.get("/v1/parking/history", params={"parking_lot_id": lot_id, "days": 1})
+    assert response.status_code == 200
+    selected = [item for item in response.json()["items"] if
+                datetime.fromisoformat(item["observed_at"].replace("Z", "+00:00")) == observed_at]
+    assert len(selected) == 1
+    assert selected[0]["occupied_spaces"] == 40
+
+
 def test_current_and_analytics(client) -> None:
     current = client.get("/v1/parking/current", params={"airport_code": "GMP"})
     assert current.status_code == 200

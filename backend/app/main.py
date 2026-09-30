@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from sqlalchemy import and_, func, or_, select, true
+from sqlalchemy import and_, case, func, or_, select, true
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import defer, load_only, selectinload
@@ -1827,16 +1827,49 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session: AsyncSession = Depends(get_db),
     ) -> ParkingHistoryResponse:
         cutoff = now_utc() - timedelta(days=days)
-        query = select(ParkingSnapshot).where(ParkingSnapshot.observed_at >= cutoff).order_by(ParkingSnapshot.observed_at)
-
+        conditions = [ParkingSnapshot.observed_at >= cutoff]
         if parking_lot_id:
-            query = query.where(ParkingSnapshot.parking_lot_id == parking_lot_id)
+            conditions.append(ParkingSnapshot.parking_lot_id == parking_lot_id)
         elif airport_code:
             airport = await session.scalar(select(Airport).where(Airport.code == airport_code.upper()))
             if airport is None:
                 return ParkingHistoryResponse(items=[])
-            query = query.where(ParkingSnapshot.airport_id == airport.id)
+            conditions.append(ParkingSnapshot.airport_id == airport.id)
 
+        if session.bind.dialect.name == "postgresql":
+            # 이 API는 30일에 수만 행을 반환할 수 있다. 원본 JSONB를 포함한 ORM 객체를
+            # 모두 만들고 Python에서 중복 제거하지 말고 필요한 네 필드만 읽는다.
+            ranked = select(
+                ParkingSnapshot.id.label("id"),
+                ParkingSnapshot.parking_lot_id.label("parking_lot_id"),
+                ParkingSnapshot.observed_at.label("observed_at"),
+                ParkingSnapshot.occupied_spaces.label("occupied_spaces"),
+                ParkingSnapshot.total_spaces.label("total_spaces"),
+                ParkingSnapshot.available_spaces.label("available_spaces"),
+                func.row_number().over(
+                    partition_by=(ParkingSnapshot.parking_lot_id, ParkingSnapshot.observed_at),
+                    order_by=(
+                        case((func.left(ParkingSnapshot.source, 10) == "migration_", 1), else_=0),
+                        ParkingSnapshot.collected_at.desc(),
+                        ParkingSnapshot.id.desc(),
+                    ),
+                ).label("rank"),
+            ).where(*conditions).subquery()
+            rows = (await session.execute(
+                select(ranked.c.observed_at, ranked.c.occupied_spaces,
+                       ranked.c.total_spaces, ranked.c.available_spaces)
+                .where(ranked.c.rank == 1)
+                .order_by(ranked.c.observed_at, ranked.c.parking_lot_id, ranked.c.id)
+            )).all()
+            return ParkingHistoryResponse(items=[
+                {"observed_at": serialize_utc(row.observed_at),
+                 "occupied_spaces": row.occupied_spaces,
+                 "total_spaces": row.total_spaces,
+                 "available_spaces": row.available_spaces}
+                for row in rows
+            ])
+
+        query = select(ParkingSnapshot).where(*conditions).order_by(ParkingSnapshot.observed_at)
         snapshots = deduplicate_snapshots((await session.execute(query)).scalars().all())
         return ParkingHistoryResponse(
             items=[

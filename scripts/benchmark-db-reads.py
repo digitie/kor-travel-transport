@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 DEFAULT_PATHS = (
     "/v1/parking/current",
     "/v1/parking/history?airport_code=GMP&days=7",
+    "/v1/parking/history?airport_code=GMP&days=30",
     "/v1/dashboard/bootstrap",
     "/v1/dashboard/analytics?airport_code=GMP",
     "/v1/parking/analytics/holiday-patterns?airport_code=GMP",
