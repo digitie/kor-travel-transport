@@ -332,6 +332,23 @@ class FuelPriceSnapshot(Base):
     raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
 
 
+class FuelLatestPrice(Base):
+    """PostgreSQL에서는 수집 커밋과 함께 갱신하는 최신 유가 MV이다."""
+
+    __tablename__ = "fuel_latest_prices"
+    __table_args__ = (
+        Index("uq_fuel_latest_prices_station_product", "fuel_station_id", "product_code", unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    fuel_station_id: Mapped[int] = mapped_column(Integer)
+    product_code: Mapped[str] = mapped_column(String(20))
+    price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    provider_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class TransportCollectionState(Base):
     __tablename__ = "transport_collection_states"
     __table_args__ = (

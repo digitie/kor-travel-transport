@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import OperationalError
 
 from app.core.config import Settings
@@ -140,6 +140,9 @@ def test_map_fuel_filter_requires_latest_positive_price(client) -> None:
                     product_code="B034", price=latest, observed_at=now, collected_at=now))
                 session.add(FuelPriceSnapshot(fuel_station_id=station.id, source="opinet",
                     product_code="D047", price=1600, observed_at=now, collected_at=now))
+            if session.bind.dialect.name == "postgresql":
+                await session.flush()
+                await session.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY fuel_latest_prices"))
             await session.commit()
     asyncio.run(seed())
     path = "/v1/transport/features/places"
@@ -175,6 +178,9 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
             session.add(FuelPriceSnapshot(fuel_station_id=fuel.id, source="opinet", product_code="B027", price=1800, observed_at=now - timedelta(days=1), collected_at=now - timedelta(days=1)))
             session.add(RailStationReference(source="kric_public_file", identity_key="line|101|테스트역", rail_operator_name="테스트운영사", operating_line_name="테스트선", station_type=None, station_number="101", station_name="테스트역", english_name=None, longitude=127.2, latitude=37.6, lot_address=None, road_address="서울 테스트길", station_phone_number=None, data_reference_date=None, first_seen_at=now, last_seen_at=now, raw_item_json=None))
             session.add(FerryPort(source="data_go_kr_maritime", port_id="P1", port_name="테스트항", latitude=35.1, longitude=129.1, location_source="komsa_port_call", location_point_count=1, first_seen_at=now, last_seen_at=now, raw_item_json=None))
+            if session.bind.dialect.name == "postgresql":
+                await session.flush()
+                await session.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY fuel_latest_prices"))
             await session.commit()
     asyncio.run(seed())
 

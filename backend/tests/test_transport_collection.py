@@ -22,6 +22,7 @@ from opinet.experimental import (
     parse_browser_response,
 )
 from sqlalchemy import func, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.time_utils import now_utc, serialize_utc
@@ -858,6 +859,58 @@ def test_transport_openapi_returns_stored_data_and_statistics(tmp_path: Path) ->
     }
     assert status.json()["last_run"]["status"] == "success"
     assert status.json()["last_run"]["trigger"] == "transport_test"
+
+
+def test_postgresql_fuel_collection_refreshes_latest_prices(client) -> None:
+    if client.app.state.engine.dialect.name != "postgresql":
+        pytest.skip("전용 PostgreSQL 테스트 DB에서만 MV 수집 경로를 검증합니다")
+    service = client.app.state.transport_collection_service
+    service.provider = FakeTransportProvider()
+
+    async def collect() -> dict:
+        async with client.app.state.session_factory() as session:
+            return await service.collect(session, scope="fuel", trigger="test")
+
+    result = asyncio.run(collect())
+    assert result["status"] == "success"
+    fuel = client.get("/v1/transport/fuel/stations", params={"sido_value": "11"})
+    assert fuel.status_code == 200
+    assert fuel.json()["items"][0]["prices"][0]["price"] == 1700.5
+    place = client.get("/v1/transport/features/places", params={
+        "kind": "fuel_station", "product_code": "B027",
+    })
+    assert place.status_code == 200
+    assert place.json()["total"] == 1
+    assert place.json()["items"][0]["latest_price"] == 1700.5
+
+
+def test_postgresql_fuel_refresh_failure_rolls_back_raw_and_reports_failure(client, monkeypatch) -> None:
+    if client.app.state.engine.dialect.name != "postgresql":
+        pytest.skip("전용 PostgreSQL 테스트 DB에서만 MV 실패 경로를 검증합니다")
+    service = client.app.state.transport_collection_service
+    service.provider = FakeTransportProvider()
+    original_execute = AsyncSession.execute
+
+    async def fail_refresh(self, statement, *args, **kwargs):
+        if str(statement).startswith("REFRESH MATERIALIZED VIEW CONCURRENTLY fuel_latest_prices"):
+            raise RuntimeError("test-only materialized view refresh failure")
+        return await original_execute(self, statement, *args, **kwargs)
+
+    monkeypatch.setattr(AsyncSession, "execute", fail_refresh)
+
+    async def collect_and_count() -> tuple[dict, int, int]:
+        async with client.app.state.session_factory() as session:
+            result = await service.collect(session, scope="fuel", trigger="test")
+        async with client.app.state.session_factory() as session:
+            return (
+                result,
+                int(await session.scalar(select(func.count()).select_from(FuelStation)) or 0),
+                int(await session.scalar(select(func.count()).select_from(FuelPriceSnapshot)) or 0),
+            )
+
+    result, stations, prices = asyncio.run(collect_and_count())
+    assert result["status"] == "failed"
+    assert (stations, prices) == (0, 0)
 
 
 def test_transport_statistics_reads_preaggregated_traffic_when_available(tmp_path: Path) -> None:

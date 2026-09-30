@@ -2,6 +2,14 @@
 
 ## 현재 상태
 
+- **2026-09-30 저장 데이터 API 성능 개선 진행 중 (`codex/transport-db-latency-under-1s`).**
+  운영 변경 전 유가 목록 1,000곳 3.84~4.67초, 유가 지도 5,000곳 1.78~4.09초,
+  GMP 주차 통합 분석 1.57~2.28초였다. 유가 최신 가격 MV/원본 JSONB 조회 제거/
+  가격 조립 선형화와 주차 공휴일 선택 날짜 조회를 구현했다. 전용 로컬 PostgreSQL에
+  `0018` 업그레이드·`alembic check`·수집 및 실패 주입 테스트가 통과했다.
+  **다음 한 작업:** WSL/Docker 전체 테스트와 n150 사전 백업·배포 후
+  `scripts/benchmark-db-reads.py` 및 HTTPS UI E2E로 1초 목표를 검증한다.
+
 - **2026-09-30 운영 항구·버스 기준정보 및 좌표 보강 재실행 완료.** n150 Dagster의
   `bus_reference_collection_job`(run `81f9e031-fb09-4731-a30e-d2e5f24389ae`)과
   `maritime_reference_collection_job`(run `251477cb-3d0e-46a0-91f2-b8f5aa0db97a`)이

@@ -369,6 +369,10 @@ class TransportCollectionService:
                         fuel_station_count, fuel_price_count = await self._store_fuel_snapshot(
                             session, run_id, snapshot,
                         )
+                        if session.bind.dialect.name == "postgresql":
+                            # 원본과 최신 가격 읽기 모델을 같은 트랜잭션으로 확정한다.
+                            # UNIQUE index를 가진 MV라 읽는 동안에도 concurrent refresh가 가능하다.
+                            await session.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY fuel_latest_prices"))
                         await self._mark_fuel_success(session, snapshot.collected_at)
                     await session.commit()
                 except Exception as exc:
