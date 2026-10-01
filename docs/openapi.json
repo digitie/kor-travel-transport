@@ -4021,6 +4021,13 @@
             ],
             "title": "Next Fuel Due At"
           },
+          "recent_runs": {
+            "items": {
+              "$ref": "#/components/schemas/TransportCollectionRunStatus"
+            },
+            "title": "Recent Runs",
+            "type": "array"
+          },
           "scheduler_enabled": {
             "title": "Scheduler Enabled",
             "type": "boolean"
