@@ -233,6 +233,20 @@ test.describe("live parking-radar dashboard", () => {
     expect((await secondAgain.json()).items).toEqual(secondPage.items);
   });
 
+  test("reads the complete 30-day history through the public streaming proxy", async ({ request }) => {
+    test.setTimeout(120_000);
+    const started = Date.now();
+    const response = await request.get("/api/backend/v1/parking/history?days=30", { timeout: 90_000 });
+    expect(response.status()).toBe(200);
+    const payload = await response.json();
+    test.info().annotations.push({ type: "full-history-body-ms", description: String(Date.now() - started) });
+    expect(payload.next_cursor).toBeNull();
+    expect(payload.items.length).toBeGreaterThan(0);
+    expect(Date.parse(payload.items[0].observed_at)).toBeLessThanOrEqual(
+      Date.parse(payload.items.at(-1).observed_at),
+    );
+  });
+
   test("exposes the integrated transport API through the frontend proxy", async ({
     page,
   }) => {

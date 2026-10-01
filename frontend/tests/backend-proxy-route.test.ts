@@ -86,6 +86,29 @@ describe("backend proxy route", () => {
     }
   });
 
+  test("does not cut a progressing full-history stream at the ordinary JSON body deadline", async () => {
+    vi.stubEnv("BACKEND_PROXY_BODY_TIMEOUT_MS", "1000");
+    const server = createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.write('{"items":[');
+      setTimeout(() => response.end('1],"next_cursor":null}'), 1_100);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("missing test server port");
+      vi.stubEnv("BACKEND_INTERNAL_URL", `http://127.0.0.1:${address.port}`);
+      const { GET } = await import("@/app/api/backend/[...path]/route");
+      const request = new NextRequest("https://pr.digitie.mywire.org/api/backend/v1/parking/history?days=30");
+      const response = await GET(request, { params: Promise.resolve({ path: ["v1", "parking", "history"] }) });
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ items: [1], next_cursor: null });
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+
   test("returns a stable 502 response when the backend connection fails", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => {
       throw new Error("connection refused");

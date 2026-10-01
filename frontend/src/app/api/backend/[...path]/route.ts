@@ -145,8 +145,11 @@ function proxyFullHistory(request: NextRequest, targetUrl: string, timeoutMs: nu
         if (value) responseHeaders.set(key, Array.isArray(value) ? value.join(", ") : value);
       }
       responseHeaders.set("cache-control", "no-store, max-age=0, must-revalidate");
-      const bodyTimer = setTimeout(() => incoming.destroy(new Error("backend response body timeout")), bodyTimeoutMs);
-      incoming.once("close", () => clearTimeout(bodyTimer));
+      // 대용량 스트림은 전체 전송시간이 아니라 비활성 시간을 제한한다.
+      // 헤더 뒤 슬롯 대기나 느린 클라이언트가 정상 본문을 10초에 절단하지 않게 한다.
+      incoming.setTimeout(Math.max(bodyTimeoutMs, 120_000), () => {
+        incoming.destroy(new Error("backend response body idle timeout"));
+      });
       resolve(new Response(Readable.toWeb(incoming) as ReadableStream<Uint8Array>, {
         status: incoming.statusCode ?? 502,
         headers: responseHeaders,

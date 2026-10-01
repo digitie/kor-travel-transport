@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import gzip
 import json
+import threading
 from datetime import UTC, datetime, timedelta
 from time import monotonic
 from types import SimpleNamespace
@@ -14,6 +15,16 @@ from sqlalchemy.dialects import postgresql
 
 from app.models import Airport, ParkingLot, ParkingSnapshot
 from app.services import parking_history_cache as history_cache
+
+
+async def _send_response(response) -> bytes:
+    sent = []
+
+    async def send(message):
+        sent.append(message)
+
+    await response({"type": "http", "method": "GET", "asgi": {"spec_version": "2.4"}}, None, send)
+    return b"".join(message.get("body", b"") for message in sent if message["type"] == "http.response.body")
 
 
 def _row(when: datetime, lot_id: int, code: str = "GMP") -> SimpleNamespace:
@@ -76,14 +87,49 @@ def test_direct_history_delivery_releases_slot_on_send_failure() -> None:
     async def check() -> None:
         semaphore = asyncio.Semaphore(2)
         await semaphore.acquire()
-        response = history_cache.BoundedHistoryResponse(b"{}", delivery_semaphore=semaphore)
+        response = history_cache.BoundedHistoryResponse(b"x" * 150_000, delivery_semaphore=semaphore)
+        body_chunks = 0
 
-        async def fail_send(_message):
-            raise RuntimeError("client disconnected")
+        async def fail_send(message):
+            nonlocal body_chunks
+            if message["type"] == "http.response.body" and message.get("body"):
+                body_chunks += 1
+                assert semaphore._value == 1
+                if body_chunks == 2:
+                    raise RuntimeError("client disconnected")
 
         with pytest.raises(RuntimeError, match="client disconnected"):
-            await response({"type": "http", "method": "GET"}, None, fail_send)
+            await response({"type": "http", "method": "GET", "asgi": {"spec_version": "2.4"}}, None, fail_send)
+        assert body_chunks == 2
         assert semaphore._value == 2
+
+    asyncio.run(check())
+
+
+def test_cancelled_cpu_work_holds_delivery_slot_until_worker_exits() -> None:
+    async def check() -> None:
+        semaphore = asyncio.Semaphore(1)
+        entered = threading.Event()
+        finish = threading.Event()
+
+        def blocking_work() -> bytes:
+            entered.set()
+            finish.wait(timeout=5)
+            return b"complete"
+
+        async def render() -> bytes:
+            async with semaphore:
+                return await history_cache.run_history_cpu(blocking_work)
+
+        task = asyncio.create_task(render())
+        assert await asyncio.to_thread(entered.wait, 2)
+        task.cancel()
+        await asyncio.sleep(0.01)
+        assert semaphore.locked()
+        finish.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert not semaphore.locked()
 
     asyncio.run(check())
 
@@ -177,7 +223,8 @@ def test_postgres_history_route_uses_prepared_gzip_without_database_scan(monkeyp
 
     fake_engine = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
     monkeypatch.setattr(main_module, "create_engine_and_session_factory", lambda _url: (fake_engine, object()))
-    monkeypatch.setattr(main_module, "ParkingHistoryReadCache", lambda _factory: FakeCache())
+    cache = FakeCache()
+    monkeypatch.setattr(main_module, "ParkingHistoryReadCache", lambda _factory: cache)
     app = main_module.create_app(test_settings.model_copy(update={"seed_sample_data": False}))
     included = next(route for route in app.routes if hasattr(route, "original_router"))
     route = next(route for route in included.original_router.routes if route.path == "/parking/history")
@@ -186,7 +233,7 @@ def test_postgres_history_route_uses_prepared_gzip_without_database_scan(monkeyp
             SimpleNamespace(headers={"accept-encoding": "gzip"}),
             None, None, 30, None, None, FakeSession(),
         )
-        body = b"".join([chunk async for chunk in response.body_iterator])
+        body = await _send_response(response)
         return response, body
 
     response, body = asyncio.run(get_response())
@@ -194,6 +241,17 @@ def test_postgres_history_route_uses_prepared_gzip_without_database_scan(monkeyp
     assert response.headers["x-parking-history-cache"] == "hit"
     assert response.headers["x-parking-history-checked-at"]
     assert [item["parking_lot_id"] for item in json.loads(gzip.decompress(body))["items"]] == [3]
+
+    def fail_render(*_args):
+        raise RuntimeError("render failed before headers")
+
+    monkeypatch.setattr(history_cache.ParkingHistorySnapshot, "render", fail_render)
+    with pytest.raises(RuntimeError, match="render failed before headers"):
+        asyncio.run(route.endpoint(
+            SimpleNamespace(headers={"accept-encoding": "gzip"}),
+            None, None, 30, None, None, FakeSession(),
+        ))
+    assert cache.delivery_semaphore._value == 2
 
 
 def test_postgres_history_cache_miss_holds_slot_until_response_sent(monkeypatch, test_settings) -> None:
@@ -223,14 +281,54 @@ def test_postgres_history_cache_miss_holds_slot_until_response_sent(monkeypatch,
         response = await route.endpoint(SimpleNamespace(headers={}), None, None, 1, None, None, FakeSession())
         assert isinstance(response, history_cache.BoundedHistoryResponse)
         assert cache.delivery_semaphore.locked()
-        sent = []
-
-        async def send(message):
-            sent.append(message)
-
-        await response({"type": "http", "method": "GET"}, None, send)
+        body = await _send_response(response)
         assert not cache.delivery_semaphore.locked()
-        assert json.loads(sent[-1]["body"])["items"] == []
+        assert json.loads(body)["items"] == []
+
+    asyncio.run(check())
+
+
+def test_postgres_history_rechecks_snapshot_after_waiting_for_delivery_slot(monkeypatch, test_settings) -> None:
+    from app import main as main_module
+
+    now = datetime.now(UTC)
+    stale_row = _row(now - timedelta(hours=1), 3)
+    fresh_row = _row(now - timedelta(hours=1), 3)
+    fresh_row.occupied_spaces = 25
+    stale = history_cache.ParkingHistorySnapshot.from_rows(now - timedelta(days=31), 1, [stale_row])
+    fresh = history_cache.ParkingHistorySnapshot.from_rows(now - timedelta(days=31), 2, [fresh_row])
+
+    class FakeCache:
+        delivery_semaphore = asyncio.Semaphore(1)
+        validated_at_utc = now
+        snapshot = stale
+
+        def usable_snapshot(self, _cutoff):
+            return self.snapshot
+
+    class FakeSession:
+        bind = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+
+        async def execute(self, _statement):
+            raise AssertionError("cache hit must not scan PostgreSQL")
+
+    cache = FakeCache()
+    fake_engine = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+    monkeypatch.setattr(main_module, "create_engine_and_session_factory", lambda _url: (fake_engine, object()))
+    monkeypatch.setattr(main_module, "ParkingHistoryReadCache", lambda _factory: cache)
+    app = main_module.create_app(test_settings.model_copy(update={"seed_sample_data": False}))
+    included = next(route for route in app.routes if hasattr(route, "original_router"))
+    route = next(route for route in included.original_router.routes if route.path == "/parking/history")
+
+    async def check():
+        await cache.delivery_semaphore.acquire()
+        pending = asyncio.create_task(route.endpoint(SimpleNamespace(headers={}), None, None, 1, None, None, FakeSession()))
+        await asyncio.sleep(0)
+        cache.snapshot = fresh
+        cache.delivery_semaphore.release()
+        response = await pending
+        body = await _send_response(response)
+        assert json.loads(body)["items"][0]["occupied_spaces"] == 25
 
     asyncio.run(check())
 

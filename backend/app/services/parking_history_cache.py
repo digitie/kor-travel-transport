@@ -13,7 +13,7 @@ from time import monotonic
 from pydantic_core import to_json
 from sqlalchemy import case, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from starlette.responses import Response
+from starlette.responses import StreamingResponse
 
 from app.core.time_utils import now_utc, serialize_utc
 from app.models import Airport, ParkingSnapshot
@@ -23,11 +23,16 @@ POLL_SECONDS = 5
 MAX_UNCHECKED_SECONDS = 30
 
 
-class BoundedHistoryResponse(Response):
-    """본문 송신 실패·클라이언트 연결 종료 때도 점유 슬롯을 돌려준다."""
+class BoundedHistoryResponse(StreamingResponse):
+    """대량 본문을 backpressure 단위로 보내고 실패해도 점유 슬롯을 돌려준다."""
 
-    def __init__(self, *args, delivery_semaphore: asyncio.Semaphore, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, content: bytes, *, delivery_semaphore: asyncio.Semaphore, **kwargs) -> None:
+        async def chunks():
+            for start in range(0, len(content), 64 * 1024):
+                yield content[start:start + 64 * 1024]
+
+        super().__init__(chunks(), **kwargs)
+        self.body = content
         self.delivery_semaphore = delivery_semaphore
 
     async def __call__(self, scope, receive, send) -> None:
@@ -35,6 +40,24 @@ class BoundedHistoryResponse(Response):
             await super().__call__(scope, receive, send)
         finally:
             self.delivery_semaphore.release()
+
+
+async def run_history_cpu(fn, *args):
+    """요청 취소 뒤에도 실행 중인 CPU 작업이 끝나기 전에는 슬롯을 반환하지 않는다."""
+    task = asyncio.create_task(asyncio.to_thread(fn, *args))
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                continue
+            except Exception:
+                break
+        if not task.cancelled():
+            task.exception()
+        raise
 
 
 @dataclass(frozen=True, slots=True)

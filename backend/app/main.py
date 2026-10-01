@@ -25,7 +25,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic_core import to_json
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import DateTime, Integer, and_, bindparam, case, func, or_, select, text as sql_text, true
@@ -41,7 +41,7 @@ from app.core.config import Settings, get_settings
 from app.core.time_utils import align_to_interval, now_utc, serialize_utc, to_seoul
 from app.db.session import create_engine_and_session_factory, init_database
 from app.services.parking_history_cache import (
-    BoundedHistoryResponse, ParkingHistoryReadCache, accepts_gzip, encode_response,
+    BoundedHistoryResponse, ParkingHistoryReadCache, encode_response, run_history_cpu,
 )
 from app.models import (
     Airport,
@@ -1947,71 +1947,61 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         if session.bind.dialect.name == "postgresql":
             if limit is None:
-                cached = history_read_cache.usable_snapshot(cutoff) if history_read_cache is not None else None
-                if cached is not None:
-                    checked_at = history_read_cache.validated_at_utc if history_read_cache is not None else None
-                    accept_encoding = request.headers.get("accept-encoding", "")
-                    headers = {"Vary": "Accept-Encoding", "Cache-Control": "private, no-store"}
-                    if accepts_gzip(accept_encoding):
-                        headers["Content-Encoding"] = "gzip"
-                    headers["X-Parking-History-Cache"] = "hit"
-                    if checked_at is not None:
-                        headers["X-Parking-History-Checked-At"] = serialize_utc(
-                            checked_at
-                        ).isoformat()
-
-                    async def stream_cached_history() -> AsyncIterator[bytes]:
-                        # 압축/직렬화뿐 아니라 ASGI 전송이 끝날 때까지 동시 수를 제한한다.
-                        async with history_read_cache.delivery_semaphore:
-                            body = await asyncio.to_thread(
-                                cached.render, cutoff, normalized_airport_code, parking_lot_id
-                            )
-                            encoded, _ = await asyncio.to_thread(encode_response, body, accept_encoding)
-                            yield encoded
-
-                    return StreamingResponse(stream_cached_history(), headers=headers, media_type="application/json")
-                # 기존 대량 이력 계약(전체·오래된 순서)을 보존한다. 각 키마다
-                # LATERAL 탐색을 반복하지 않고 원본을 한 번 읽어 live 우선순위로
-                # DISTINCT ON 정리한 뒤 직렬화한다.
                 delivery_semaphore = history_read_cache.delivery_semaphore if history_read_cache else None
                 if delivery_semaphore is not None:
                     await delivery_semaphore.acquire()
                 try:
-                    history_rows = (select(
-                        ParkingSnapshot.observed_at.label("observed_at"),
-                        ParkingSnapshot.parking_lot_id.label("parking_lot_id"),
-                        ParkingSnapshot.airport_id.label("airport_id"),
-                        ParkingSnapshot.occupied_spaces.label("occupied_spaces"),
-                        ParkingSnapshot.total_spaces.label("total_spaces"),
-                        ParkingSnapshot.available_spaces.label("available_spaces"),
-                    ).where(*conditions)
-                        .distinct(ParkingSnapshot.observed_at, ParkingSnapshot.parking_lot_id)
-                        .order_by(
-                            ParkingSnapshot.observed_at, ParkingSnapshot.parking_lot_id,
-                            case((func.left(ParkingSnapshot.source, 10) == "migration_", 1), else_=0),
-                            ParkingSnapshot.collected_at.desc(), ParkingSnapshot.id.desc(),
-                        ).subquery("history_rows"))
-                    rows = (await session.execute(select(
-                        history_rows.c.observed_at, history_rows.c.parking_lot_id, Airport.code,
-                        history_rows.c.occupied_spaces, history_rows.c.total_spaces,
-                        history_rows.c.available_spaces,
-                    ).join(Airport, Airport.id == history_rows.c.airport_id)
-                        .order_by(history_rows.c.observed_at, history_rows.c.parking_lot_id))).all()
-                    def serialize_rows() -> bytes:
-                        return to_json({"items": [
-                            {"airport_code": row.code, "parking_lot_id": row.parking_lot_id,
-                             "observed_at": serialize_utc(row.observed_at),
-                             "occupied_spaces": row.occupied_spaces,
-                             "total_spaces": row.total_spaces,
-                             "available_spaces": row.available_spaces}
-                            for row in rows
-                        ], "next_cursor": None})
+                    # 대기 중 캐시가 교체·만료될 수 있으므로 슬롯 획득 뒤에 다시 판정한다.
+                    cached = history_read_cache.usable_snapshot(cutoff) if history_read_cache else None
+                    if cached is not None:
+                        checked_at = history_read_cache.validated_at_utc
+                        body = await run_history_cpu(
+                            cached.render, cutoff, normalized_airport_code, parking_lot_id
+                        )
+                        body, headers = await run_history_cpu(
+                            encode_response, body, request.headers.get("accept-encoding", "")
+                        )
+                        headers["X-Parking-History-Cache"] = "hit"
+                        if checked_at is not None:
+                            headers["X-Parking-History-Checked-At"] = serialize_utc(checked_at).isoformat()
+                    else:
+                        # 기존 전체·오래된 순서 계약을 단일 DISTINCT ON으로 보존한다.
+                        history_rows = (select(
+                            ParkingSnapshot.observed_at.label("observed_at"),
+                            ParkingSnapshot.parking_lot_id.label("parking_lot_id"),
+                            ParkingSnapshot.airport_id.label("airport_id"),
+                            ParkingSnapshot.occupied_spaces.label("occupied_spaces"),
+                            ParkingSnapshot.total_spaces.label("total_spaces"),
+                            ParkingSnapshot.available_spaces.label("available_spaces"),
+                        ).where(*conditions)
+                            .distinct(ParkingSnapshot.observed_at, ParkingSnapshot.parking_lot_id)
+                            .order_by(
+                                ParkingSnapshot.observed_at, ParkingSnapshot.parking_lot_id,
+                                case((func.left(ParkingSnapshot.source, 10) == "migration_", 1), else_=0),
+                                ParkingSnapshot.collected_at.desc(), ParkingSnapshot.id.desc(),
+                            ).subquery("history_rows"))
+                        rows = (await session.execute(select(
+                            history_rows.c.observed_at, history_rows.c.parking_lot_id, Airport.code,
+                            history_rows.c.occupied_spaces, history_rows.c.total_spaces,
+                            history_rows.c.available_spaces,
+                        ).join(Airport, Airport.id == history_rows.c.airport_id)
+                            .order_by(history_rows.c.observed_at, history_rows.c.parking_lot_id))).all()
 
-                    body = await asyncio.to_thread(serialize_rows)
-                    body, headers = await asyncio.to_thread(
-                        encode_response, body, request.headers.get("accept-encoding", "")
-                    )
-                    headers["X-Parking-History-Cache"] = "miss"
+                        def serialize_rows() -> bytes:
+                            return to_json({"items": [
+                                {"airport_code": row.code, "parking_lot_id": row.parking_lot_id,
+                                 "observed_at": serialize_utc(row.observed_at),
+                                 "occupied_spaces": row.occupied_spaces,
+                                 "total_spaces": row.total_spaces,
+                                 "available_spaces": row.available_spaces}
+                                for row in rows
+                            ], "next_cursor": None})
+
+                        body = await run_history_cpu(serialize_rows)
+                        body, headers = await run_history_cpu(
+                            encode_response, body, request.headers.get("accept-encoding", "")
+                        )
+                        headers["X-Parking-History-Cache"] = "miss"
                 except BaseException:
                     if delivery_semaphore is not None:
                         delivery_semaphore.release()
