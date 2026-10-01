@@ -1,0 +1,161 @@
+"""PostgreSQL 전체 주차 이력의 재생성 가능한 읽기 캐시."""
+
+from __future__ import annotations
+
+import asyncio
+import gzip
+import logging
+from bisect import bisect_left
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from time import monotonic
+
+from pydantic_core import to_json
+from sqlalchemy import case, func, select, text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.core.time_utils import now_utc, serialize_utc
+from app.models import Airport, ParkingSnapshot
+
+logger = logging.getLogger(__name__)
+POLL_SECONDS = 5
+MAX_UNCHECKED_SECONDS = 30
+
+
+@dataclass(frozen=True, slots=True)
+class CachedHistoryItem:
+    observed_at: datetime
+    airport_code: str
+    parking_lot_id: int
+    encoded: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class ParkingHistorySnapshot:
+    earliest_observed_at: datetime
+    max_snapshot_id: int
+    items: tuple[CachedHistoryItem, ...]
+    times: tuple[datetime, ...]
+
+    @classmethod
+    def from_rows(cls, earliest_observed_at: datetime, max_snapshot_id: int, rows: list) -> ParkingHistorySnapshot:
+        items = tuple(CachedHistoryItem(
+            observed_at=serialize_utc(row.observed_at),
+            airport_code=row.code,
+            parking_lot_id=row.parking_lot_id,
+            encoded=to_json({
+                "airport_code": row.code,
+                "parking_lot_id": row.parking_lot_id,
+                "observed_at": serialize_utc(row.observed_at),
+                "occupied_spaces": row.occupied_spaces,
+                "total_spaces": row.total_spaces,
+                "available_spaces": row.available_spaces,
+            }),
+        ) for row in rows)
+        return cls(earliest_observed_at, max_snapshot_id, items, tuple(item.observed_at for item in items))
+
+    def render(self, cutoff: datetime, airport_code: str | None, parking_lot_id: int | None) -> bytes:
+        start = bisect_left(self.times, cutoff)
+        if parking_lot_id:
+            payload = b",".join(item.encoded for item in self.items[start:]
+                                if item.parking_lot_id == parking_lot_id)
+        elif airport_code:
+            payload = b",".join(item.encoded for item in self.items[start:]
+                                if item.airport_code == airport_code)
+        else:
+            payload = b",".join(item.encoded for item in self.items[start:])
+        return b'{"items":[' + payload + b'],"next_cursor":null}'
+
+
+def accepts_gzip(header: str) -> bool:
+    for value in header.split(","):
+        parts = [part.strip().lower() for part in value.split(";")]
+        if parts[0] != "gzip":
+            continue
+        for part in parts[1:]:
+            if part.startswith("q="):
+                try:
+                    return float(part[2:]) > 0
+                except ValueError:
+                    return False
+        return True
+    return False
+
+
+async def load_snapshot(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    earliest_observed_at: datetime | None = None,
+) -> ParkingHistorySnapshot:
+    earliest = earliest_observed_at or now_utc() - timedelta(days=30)
+    async with session_factory() as session:
+        max_id = await session.scalar(select(func.max(ParkingSnapshot.id))) or 0
+        ranked = (select(
+            ParkingSnapshot.observed_at.label("observed_at"),
+            ParkingSnapshot.parking_lot_id.label("parking_lot_id"),
+            ParkingSnapshot.airport_id.label("airport_id"),
+            ParkingSnapshot.occupied_spaces.label("occupied_spaces"),
+            ParkingSnapshot.total_spaces.label("total_spaces"),
+            ParkingSnapshot.available_spaces.label("available_spaces"),
+        ).where(ParkingSnapshot.observed_at >= earliest, ParkingSnapshot.id <= max_id)
+            .distinct(ParkingSnapshot.observed_at, ParkingSnapshot.parking_lot_id)
+            .order_by(
+                ParkingSnapshot.observed_at, ParkingSnapshot.parking_lot_id,
+                case((func.left(ParkingSnapshot.source, 10) == "migration_", 1), else_=0),
+                ParkingSnapshot.collected_at.desc(), ParkingSnapshot.id.desc(),
+            ).subquery("history_rows"))
+        rows = (await session.execute(select(
+            ranked.c.observed_at, ranked.c.parking_lot_id, Airport.code,
+            ranked.c.occupied_spaces, ranked.c.total_spaces, ranked.c.available_spaces,
+        ).join(Airport, Airport.id == ranked.c.airport_id)
+            .order_by(ranked.c.observed_at, ranked.c.parking_lot_id))).all()
+    return ParkingHistorySnapshot.from_rows(earliest, max_id, rows)
+
+
+class ParkingHistoryReadCache:
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self.session_factory = session_factory
+        self.snapshot: ParkingHistorySnapshot | None = None
+        self.validated_at = 0.0
+        self.validated_at_utc: datetime | None = None
+        self.last_fingerprint: tuple[int, int, int, int] | None = None
+
+    async def refresh_once(self) -> None:
+        async with self.session_factory() as session:
+            current_max_id = await session.scalar(select(func.max(ParkingSnapshot.id))) or 0
+            counters = (await session.execute(text(
+                "SELECT n_tup_ins, n_tup_upd, n_tup_del FROM pg_stat_user_tables "
+                "WHERE relid = 'parking_snapshots'::regclass"
+            ))).one()
+        fingerprint = (current_max_id, *(int(value) for value in counters))
+        if self.snapshot is None or self.last_fingerprint != fingerprint:
+            refreshed = await load_snapshot(self.session_factory)
+            self.snapshot = refreshed
+            logger.info("parking history cache refreshed rows=%s max_id=%s", len(refreshed.items), refreshed.max_snapshot_id)
+        self.last_fingerprint = fingerprint
+        self.validated_at = monotonic()
+        self.validated_at_utc = now_utc()
+
+    def usable_snapshot(self, cutoff: datetime) -> ParkingHistorySnapshot | None:
+        snapshot = self.snapshot
+        if (snapshot is None or cutoff < snapshot.earliest_observed_at
+                or monotonic() - self.validated_at > MAX_UNCHECKED_SECONDS):
+            return None
+        return snapshot
+
+    async def run(self) -> None:
+        while True:
+            await asyncio.sleep(POLL_SECONDS)
+            try:
+                await self.refresh_once()
+            except Exception:
+                logger.exception("parking history cache refresh failed")
+
+
+def encode_response(body: bytes, accept_encoding: str) -> tuple[bytes, dict[str, str]]:
+    if accepts_gzip(accept_encoding):
+        return gzip.compress(body, compresslevel=1, mtime=0), {
+            "Content-Encoding": "gzip", "Vary": "Accept-Encoding",
+            "Cache-Control": "private, no-store",
+        }
+    return body, {"Vary": "Accept-Encoding", "Cache-Control": "private, no-store"}

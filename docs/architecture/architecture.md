@@ -13,6 +13,8 @@
 ### 백엔드
 
 - FastAPI API 서버
+- 무제한 주차 이력은 PostgreSQL 원본의 재생성 가능한 읽기 캐시를 사용한다.
+  최대 30초 반영 지연을 허용하며, 확인이 오래되면 직접 조회로 돌아간다.
 - SQLAlchemy 2 기반 비동기 데이터 접근
 - PostgreSQL 16 저장, Alembic migration
 - SQLite는 legacy import와 빠른 단위 테스트에만 사용

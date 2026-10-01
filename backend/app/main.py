@@ -40,6 +40,7 @@ from krairport import get_airport_or_none
 from app.core.config import Settings, get_settings
 from app.core.time_utils import align_to_interval, now_utc, serialize_utc, to_seoul
 from app.db.session import create_engine_and_session_factory, init_database
+from app.services.parking_history_cache import ParkingHistoryReadCache, encode_response
 from app.models import (
     Airport,
     BusTerminalReference,
@@ -400,6 +401,10 @@ async def _transport_traffic_statistics_rows(
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved_settings = settings or get_settings()
     engine, session_factory = create_engine_and_session_factory(resolved_settings.database_url)
+    history_read_cache = (
+        ParkingHistoryReadCache(session_factory)
+        if engine.dialect.name == "postgresql" and not resolved_settings.seed_sample_data else None
+    )
     # 배포·프로세스 재시작 뒤에도 발급한 페이지 커서가 유효해야 한다. 운영 DB
     # 접속 문자열의 비공개 자격증명으로 도메인 분리된 서명 키를 파생한다.
     history_cursor_secret = hmac.new(
@@ -439,6 +444,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.scheduler_task = None
         app.state.transport_scheduler_task = None
         app.state.fuel_scheduler_task = None
+        app.state.history_cache_task = None
 
         if resolved_settings.seed_sample_data and app.state.collection_service.client_mode == "sample":
             async with session_factory() as session:
@@ -447,6 +453,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await session.commit()
         elif resolved_settings.seed_sample_data:
             logger.info("sample seeding skipped because client_mode=%s", app.state.collection_service.client_mode)
+
+        if history_read_cache is not None:
+            await history_read_cache.refresh_once()
+            app.state.history_cache_task = asyncio.create_task(history_read_cache.run())
 
         if resolved_settings.enable_scheduler and resolved_settings.scheduler_mode == "in_process":
             logger.info(
@@ -468,6 +478,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            history_cache_task = app.state.history_cache_task
+            if history_cache_task is not None:
+                history_cache_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await history_cache_task
             scheduler_task = app.state.scheduler_task
             if scheduler_task is not None:
                 scheduler_task.cancel()
@@ -1857,6 +1872,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @router.get("/parking/history", response_model=ParkingHistoryResponse)
     async def parking_history(
+        request: Request,
         airport_code: str | None = Query(default=None),
         parking_lot_id: int | None = Query(default=None),
         days: int = Query(default=3, ge=1, le=30),
@@ -1928,6 +1944,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         if session.bind.dialect.name == "postgresql":
             if limit is None:
+                cached = history_read_cache.usable_snapshot(cutoff) if history_read_cache is not None else None
+                if cached is not None:
+                    checked_at = history_read_cache.validated_at_utc if history_read_cache is not None else None
+                    body = await asyncio.to_thread(cached.render, cutoff, normalized_airport_code, parking_lot_id)
+                    body, headers = await asyncio.to_thread(
+                        encode_response, body, request.headers.get("accept-encoding", "")
+                    )
+                    headers["X-Parking-History-Cache"] = "hit"
+                    if checked_at is not None:
+                        headers["X-Parking-History-Checked-At"] = serialize_utc(
+                            checked_at
+                        ).isoformat()
+                    return Response(content=body, headers=headers, media_type="application/json")
                 # 기존 대량 이력 계약(전체·오래된 순서)을 보존한다. 각 키마다
                 # LATERAL 탐색을 반복하지 않고 원본을 한 번 읽어 live 우선순위로
                 # DISTINCT ON 정리한 뒤 직렬화한다.
@@ -1951,14 +1980,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     history_rows.c.available_spaces,
                 ).join(Airport, Airport.id == history_rows.c.airport_id)
                     .order_by(history_rows.c.observed_at, history_rows.c.parking_lot_id))).all()
-                return Response(content=to_json({"items": [
+                body = to_json({"items": [
                     {"airport_code": row.code, "parking_lot_id": row.parking_lot_id,
                      "observed_at": serialize_utc(row.observed_at),
                      "occupied_spaces": row.occupied_spaces,
                      "total_spaces": row.total_spaces,
                      "available_spaces": row.available_spaces}
                     for row in rows
-                ], "next_cursor": None}), media_type="application/json")
+                ], "next_cursor": None})
+                body, headers = await asyncio.to_thread(
+                    encode_response, body, request.headers.get("accept-encoding", "")
+                )
+                headers["X-Parking-History-Cache"] = "miss"
+                return Response(content=body, headers=headers, media_type="application/json")
             # 먼저 인덱스 순서로 중복 없는 관측 키만 한 페이지 읽는다. 30일 전체
             # 이력을 window/sort한 뒤 JSON 수십 MB를 보내는 비용을 피한다.
             keys = select(

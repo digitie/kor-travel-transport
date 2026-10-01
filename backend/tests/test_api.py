@@ -894,7 +894,7 @@ def test_parking_history_postgres_uses_bounded_lateral_page_query(client) -> Non
             assert "LIMIT" in compiled
             return SimpleNamespace(all=lambda: [])
 
-    response = asyncio.run(route.endpoint(None, None, 30, 1000, None, FakeSession()))
+    response = asyncio.run(route.endpoint(SimpleNamespace(headers={}), None, None, 30, 1000, None, FakeSession()))
     assert response.status_code == 200
     assert response.body == b'{"items":[],"next_cursor":null}'
 
@@ -913,7 +913,7 @@ def test_parking_history_postgres_legacy_uses_single_pass_distinct_query(client)
             assert "LATERAL" not in compiled
             return SimpleNamespace(all=lambda: [])
 
-    response = asyncio.run(route.endpoint(None, None, 30, None, None, FakeSession()))
+    response = asyncio.run(route.endpoint(SimpleNamespace(headers={}), None, None, 30, None, None, FakeSession()))
     assert response.status_code == 200
     assert response.body == b'{"items":[],"next_cursor":null}'
 
