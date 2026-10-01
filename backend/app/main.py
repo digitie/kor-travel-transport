@@ -1940,10 +1940,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if parking_lot_id:
             conditions.append(ParkingSnapshot.parking_lot_id == parking_lot_id)
         elif airport_code:
-            airport = await session.scalar(select(Airport).where(Airport.code == airport_code.upper()))
-            if airport is None:
-                return ParkingHistoryResponse(items=[])
-            conditions.append(ParkingSnapshot.airport_id == airport.id)
+            if session.bind.dialect.name == "postgresql" and limit is None:
+                # 캐시 적중/전송 슬롯 대기 중에는 DB 연결을 점유하지 않는다.
+                # fallback SQL에서만 이 서브쿼리를 실행한다.
+                conditions.append(ParkingSnapshot.airport_id == select(Airport.id).where(
+                    Airport.code == normalized_airport_code
+                ).scalar_subquery())
+            else:
+                airport = await session.scalar(select(Airport).where(Airport.code == normalized_airport_code))
+                if airport is None:
+                    return ParkingHistoryResponse(items=[])
+                conditions.append(ParkingSnapshot.airport_id == airport.id)
 
         if session.bind.dialect.name == "postgresql":
             if limit is None:

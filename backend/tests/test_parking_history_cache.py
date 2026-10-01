@@ -218,6 +218,9 @@ def test_postgres_history_route_uses_prepared_gzip_without_database_scan(monkeyp
     class FakeSession:
         bind = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
 
+        async def scalar(self, _statement):
+            raise AssertionError("cache hit must not check out a PostgreSQL connection")
+
         async def execute(self, _statement):
             raise AssertionError("cache hit must not scan PostgreSQL")
 
@@ -231,7 +234,7 @@ def test_postgres_history_route_uses_prepared_gzip_without_database_scan(monkeyp
     async def get_response():
         response = await route.endpoint(
             SimpleNamespace(headers={"accept-encoding": "gzip"}),
-            None, None, 30, None, None, FakeSession(),
+            "GMP", None, 30, None, None, FakeSession(),
         )
         body = await _send_response(response)
         return response, body
@@ -249,7 +252,7 @@ def test_postgres_history_route_uses_prepared_gzip_without_database_scan(monkeyp
     with pytest.raises(RuntimeError, match="render failed before headers"):
         asyncio.run(route.endpoint(
             SimpleNamespace(headers={"accept-encoding": "gzip"}),
-            None, None, 30, None, None, FakeSession(),
+            "GMP", None, 30, None, None, FakeSession(),
         ))
     assert cache.delivery_semaphore._value == 2
 

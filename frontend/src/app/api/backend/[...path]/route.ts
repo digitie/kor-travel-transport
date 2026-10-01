@@ -23,6 +23,8 @@ const BACKUP_PROXY_BODY_TIMEOUT_MS = Math.max(
 );
 // JSON 버퍼가 요청별로 무제한 증가하지 않도록 실제 수신 바이트를 제한한다.
 const MAX_JSON_BODY_BYTES = 16 * 1024 * 1024;
+const MAX_PENDING_FULL_HISTORY_HEADERS = 8;
+let pendingFullHistoryHeaders = 0;
 const FORWARDED_REQUEST_HEADERS = new Set(["accept", "content-type"]);
 const FORWARDED_RESPONSE_HEADERS = new Set([
   "cache-control",
@@ -121,7 +123,18 @@ function acceptsGzip(header: string | null): boolean {
 // fetch()는 gzip을 자동 해제한다. 30일 전체 이력을 통과시키는 경로에서는
 // 압축된 원본 스트림을 그대로 전달해 16MiB JSON 버퍼와 이중 전송을 피한다.
 function proxyFullHistory(request: NextRequest, targetUrl: string, timeoutMs: number, bodyTimeoutMs: number): Promise<Response> {
+  if (pendingFullHistoryHeaders >= MAX_PENDING_FULL_HISTORY_HEADERS) {
+    return Promise.resolve(buildProxyErrorResponse(request, 503,
+      "전체 이력 조회가 많습니다. 잠시 후 다시 시도해 주세요."));
+  }
+  pendingFullHistoryHeaders += 1;
   return new Promise((resolve) => {
+    let headerPending = true;
+    const finishHeaderWait = () => {
+      if (!headerPending) return;
+      headerPending = false;
+      pendingFullHistoryHeaders -= 1;
+    };
     const url = new URL(targetUrl);
     const send = url.protocol === "https:" ? httpsRequest : httpRequest;
     let timedOut = false;
@@ -134,6 +147,7 @@ function proxyFullHistory(request: NextRequest, targetUrl: string, timeoutMs: nu
     if (accept) headers.accept = accept;
 
     const upstream = send(url, { method: "GET", headers }, (incoming) => {
+      finishHeaderWait();
       clearTimeout(headerTimer);
       const responseHeaders = new Headers();
       for (const key of FORWARDED_RESPONSE_HEADERS) {
@@ -155,11 +169,14 @@ function proxyFullHistory(request: NextRequest, targetUrl: string, timeoutMs: nu
         headers: responseHeaders,
       }));
     });
+    // API가 앞선 대량 응답의 전송 슬롯을 기다릴 수 있으므로 일반 JSON의
+    // 짧은 헤더 제한을 적용하지 않는다. 연결 자체가 멈춘 경우에는 종료한다.
     const headerTimer = setTimeout(() => {
       timedOut = true;
       upstream.destroy(new Error("backend response header timeout"));
-    }, timeoutMs);
+    }, Math.max(timeoutMs, 120_000));
     upstream.once("error", () => {
+      finishHeaderWait();
       clearTimeout(headerTimer);
       resolve(buildProxyErrorResponse(request, timedOut ? 504 : 502,
         timedOut ? "백엔드 응답 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요."
@@ -169,8 +186,8 @@ function proxyFullHistory(request: NextRequest, targetUrl: string, timeoutMs: nu
   });
 }
 
-function buildProxyErrorResponse(request: NextRequest, status: 404 | 502 | 504, detail: string): Response {
-  const titles = { 404: "Not Found", 502: "Bad Gateway", 504: "Gateway Timeout" };
+function buildProxyErrorResponse(request: NextRequest, status: 404 | 502 | 503 | 504, detail: string): Response {
+  const titles = { 404: "Not Found", 502: "Bad Gateway", 503: "Service Unavailable", 504: "Gateway Timeout" };
 
   // ADR-005의 오류 계약을 따르되 기존 클라이언트의 detail/code 호환성을 유지한다.
   return Response.json(
@@ -180,7 +197,7 @@ function buildProxyErrorResponse(request: NextRequest, status: 404 | 502 | 504, 
       status,
       detail,
       instance: request.nextUrl.pathname,
-      ...(status === 404 ? {} : { code: status === 504 ? "backend_timeout" : "backend_unavailable" }),
+      ...(status === 404 ? {} : { code: status === 504 ? "backend_timeout" : status === 503 ? "backend_busy" : "backend_unavailable" }),
     },
     {
       status,
