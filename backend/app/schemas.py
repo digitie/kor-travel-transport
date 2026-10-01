@@ -48,6 +48,8 @@ class ParkingCurrentResponse(BaseModel):
 
 
 class HistoryPoint(BaseModel):
+    airport_code: str
+    parking_lot_id: int
     observed_at: datetime
     occupied_spaces: int
     total_spaces: int
@@ -56,6 +58,7 @@ class HistoryPoint(BaseModel):
 
 class ParkingHistoryResponse(BaseModel):
     items: list[HistoryPoint]
+    next_cursor: str | None = None
 
 
 class HighwayTrafficItem(BaseModel):
@@ -171,6 +174,8 @@ class FuelStationResponse(BaseModel):
     sido_value: str | None = None
     sigungu_value: str | None = None
     product_code: str | None = None
+    fuel_prices_stale: bool = Field(default=False, description="확인된 최신 유가 읽기 모델 지연 여부. false는 직후 발생한 늦은 원본 커밋까지 보증하지 않습니다.")
+    fuel_prices_last_refreshed_at: datetime | None = Field(default=None, description="주유소별 가격 읽기 모델의 마지막 성공 갱신 시각(UTC).")
     items: list[FuelStationItem]
 
 
@@ -233,6 +238,8 @@ class TransportPlaceMapResponse(BaseModel):
     kind: str | None = None
     total: int = 0
     truncated: bool = False
+    fuel_prices_stale: bool = Field(default=False, description="확인된 최신 유가 읽기 모델 지연 여부. false는 직후 발생한 늦은 원본 커밋까지 보증하지 않습니다.")
+    fuel_prices_last_refreshed_at: datetime | None = Field(default=None, description="주유소별 가격 읽기 모델의 마지막 성공 갱신 시각(UTC).")
     available_sources: list[str] = Field(default_factory=list)
     items: list[TransportPlaceMapItem]
 
@@ -393,10 +400,14 @@ class TransportCollectorStatus(BaseModel):
     collect_interval_seconds: int
     client_mode: str
     enabled_sources: list[str]
+    fuel_prices_stale: bool = Field(default=False, description="확인된 최신 유가 읽기 모델 지연 여부. 상태 행이 없어도 원본이 있으면 참입니다.")
     last_fuel_success_at: datetime | None = None
     next_fuel_due_at: datetime | None = None
     last_fuel_error: str | None = None
     last_run: TransportCollectionRunStatus | None = None
+    recent_runs: list[TransportCollectionRunStatus] = Field(default_factory=list)
+    running_run_count: int = 0
+    running_runs: list[TransportCollectionRunStatus] = Field(default_factory=list)
     sources: list["TransportSourceStatus"] = Field(default_factory=list)
 
 

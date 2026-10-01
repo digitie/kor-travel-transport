@@ -281,7 +281,19 @@ export function HistoryChart({ holidays, series, scopeLabel }: HistoryChartProps
   const labelIndexes = buildLabelIndexes(points);
   const chartWidth = Math.max(CHART_MIN_WIDTH, labelIndexes.length * 64);
   const chartPoints = buildChartPoints(points, chartWidth);
-  const observedChartPoints = chartPoints.filter((point) => point.lot_observations > 0);
+  const observedRuns: ChartPoint[][] = [];
+  let inObservedRun = false;
+  for (const point of chartPoints) {
+    if (point.lot_observations > 0) {
+      if (!inObservedRun) {
+        observedRuns.push([]);
+      }
+      observedRuns[observedRuns.length - 1].push(point);
+      inObservedRun = true;
+    } else {
+      inObservedRun = false;
+    }
+  }
   const axisMarkers = buildAxisMarkers(chartPoints, labelIndexes);
   const holidayBands = buildSpecialDayBands(buildSpecialDays(holidays, chartPoints), chartPoints, chartWidth);
   const latestPoint = observedPoints[observedPoints.length - 1];
@@ -398,8 +410,16 @@ export function HistoryChart({ holidays, series, scopeLabel }: HistoryChartProps
                 </g>
               ))}
 
-              <path className="history-area" d={buildStepAreaPath(observedChartPoints)} />
-              <path className="history-line" d={buildStepLinePath(observedChartPoints)} fill="none" />
+              {observedRuns.map((run, index) => (
+                <path key={`area-${index}`} className="history-area" d={buildStepAreaPath(run)} />
+              ))}
+              {observedRuns.map((run, index) => (
+                <path key={`line-${index}`} className="history-line" d={buildStepLinePath(run)} fill="none" />
+              ))}
+              {observedRuns.filter((run) => run.length === 1).map(([point]) => (
+                <circle key={`isolated-${point.bucket_at}`} className="history-point isolated"
+                  cx={point.x} cy={point.y} r="4" />
+              ))}
 
               {activePoint ? (
                 <>

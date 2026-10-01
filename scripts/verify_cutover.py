@@ -123,6 +123,7 @@ async def latest_lot_history(
             "/parking/history",
             parking_lot_id=lot["id"],
             days=days,
+            limit=1,
         )
         checked_at = datetime.now(timezone.utc)
         items = payload.get("items", [])

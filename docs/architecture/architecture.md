@@ -13,6 +13,8 @@
 ### 백엔드
 
 - FastAPI API 서버
+- 무제한 주차 이력은 PostgreSQL 원본의 재생성 가능한 읽기 캐시를 사용한다.
+  최대 30초 반영 지연을 허용하며, 확인이 오래되면 직접 조회로 돌아간다.
 - SQLAlchemy 2 기반 비동기 데이터 접근
 - PostgreSQL 16 저장, Alembic migration
 - SQLite는 legacy import와 빠른 단위 테스트에만 사용
@@ -179,7 +181,8 @@ throttle(허용 범위 8~12시간, 24시간 내 최대 3회)을 추가로 적용
 - `GET /v1/parking/current`
   - 현재 주차 현황
 - `GET /v1/parking/analytics/timeseries`
-  - 최근 N일, M분 단위 시계열
+  - 최근 N일과 `start_date`/`end_date` 범위 조회의 기본 간격은 모두 10분이다.
+    `interval_minutes`를 명시하면 그 값(10~60분)을 그대로 사용한다.
 - `GET /v1/parking/analytics/by-hour`
   - 시간대별 단순 평균
 - `GET /v1/parking/analytics/by-weekday`

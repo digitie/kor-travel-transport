@@ -75,6 +75,7 @@ def test_database_startup_creates_query_indexes(tmp_path: Path) -> None:
     assert {
         "ix_parking_snapshots_airport_lot_observed",
         "ix_parking_snapshots_airport_lot_observed_desc",
+        "ix_parking_snapshots_history_cover",
         "ix_parking_snapshots_collected_at",
         "ix_parking_snapshots_collection_run_id",
         "ix_raw_api_responses_collection_run_id",
@@ -88,6 +89,16 @@ def test_database_startup_creates_query_indexes(tmp_path: Path) -> None:
         "ix_fuel_prices_statistics_priced",
         "ix_transport_collection_states_next_due",
     } <= index_names
+
+
+def test_parking_history_cover_index_contains_response_fields() -> None:
+    index = next(index for index in Base.metadata.tables["parking_snapshots"].indexes
+                 if index.name == "ix_parking_snapshots_history_cover")
+    assert [column.name for column in index.expressions] == ["airport_id", "observed_at"]
+    assert tuple(index.dialect_options["postgresql"]["include"]) == (
+        "parking_lot_id", "id", "collected_at", "source",
+        "occupied_spaces", "total_spaces", "available_spaces",
+    )
 
 
 def test_postgresql_schema_guard_tracks_alembic_head() -> None:
@@ -137,3 +148,17 @@ def test_committed_openapi_schema_includes_bus_routes_and_runtime_errors() -> No
         assert responses[code]["content"]["application/problem+json"]["schema"] == {
             "$ref": "#/components/schemas/ProblemDetails"
         }
+
+
+def test_committed_openapi_schema_matches_runtime() -> None:
+    schema_path = Path(__file__).resolve().parents[2] / "docs" / "openapi.json"
+    if not schema_path.is_file():
+        schema_path = Path(__file__).resolve().parents[1] / "compose-contract" / "openapi.json"
+    committed = json.loads(schema_path.read_text(encoding="utf-8"))
+    runtime = create_app(Settings(
+        database_url="sqlite+aiosqlite:///:memory:",
+        data_go_kr_service_key=None,
+        use_sample_client_when_no_key=True,
+        enable_api_docs=True,
+    )).openapi()
+    assert committed == runtime

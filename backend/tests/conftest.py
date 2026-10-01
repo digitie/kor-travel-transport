@@ -44,6 +44,7 @@ def test_settings(tmp_path: Path) -> Settings:
                         "fuel_stations, parking_lots, airports RESTART IDENTITY CASCADE"
                     )
                 )
+                await connection.execute(text("REFRESH MATERIALIZED VIEW fuel_latest_prices"))
             await engine.dispose()
 
         asyncio.run(reset_postgres())

@@ -62,7 +62,8 @@ def test_release_observation_shape_is_fixed() -> None:
 @pytest.mark.asyncio
 async def test_lot_history_records_the_response_check_time() -> None:
     class FakeClient:
-        async def get(self, *_args, **_kwargs):
+        async def get(self, *_args, **kwargs):
+            assert kwargs["params"]["limit"] == 1
             class Response:
                 def raise_for_status(self) -> None:
                     return None

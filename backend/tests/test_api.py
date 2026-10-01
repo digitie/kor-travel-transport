@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -8,12 +10,14 @@ from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import OperationalError
 
 from app.core.config import Settings
 from app.core.time_utils import now_utc
 from app.main import create_app
+from app.services.analytics import build_time_series, deduplicate_snapshots
 from datagokr.exceptions import ApiErrorResponse
 from kric import KricRateLimitError
 from app.models import AnalyticsCache, Airport, BusTerminalReference, CollectionRun, FerryPort, FerryTimetableSnapshot, FuelPriceSnapshot, FuelStation, ParkingLot, ParkingSnapshot, RailStationReference
@@ -140,6 +144,9 @@ def test_map_fuel_filter_requires_latest_positive_price(client) -> None:
                     product_code="B034", price=latest, observed_at=now, collected_at=now))
                 session.add(FuelPriceSnapshot(fuel_station_id=station.id, source="opinet",
                     product_code="D047", price=1600, observed_at=now, collected_at=now))
+            if session.bind.dialect.name == "postgresql":
+                await session.flush()
+                await session.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY fuel_latest_prices"))
             await session.commit()
     asyncio.run(seed())
     path = "/v1/transport/features/places"
@@ -175,6 +182,9 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
             session.add(FuelPriceSnapshot(fuel_station_id=fuel.id, source="opinet", product_code="B027", price=1800, observed_at=now - timedelta(days=1), collected_at=now - timedelta(days=1)))
             session.add(RailStationReference(source="kric_public_file", identity_key="line|101|테스트역", rail_operator_name="테스트운영사", operating_line_name="테스트선", station_type=None, station_number="101", station_name="테스트역", english_name=None, longitude=127.2, latitude=37.6, lot_address=None, road_address="서울 테스트길", station_phone_number=None, data_reference_date=None, first_seen_at=now, last_seen_at=now, raw_item_json=None))
             session.add(FerryPort(source="data_go_kr_maritime", port_id="P1", port_name="테스트항", latitude=35.1, longitude=129.1, location_source="komsa_port_call", location_point_count=1, first_seen_at=now, last_seen_at=now, raw_item_json=None))
+            if session.bind.dialect.name == "postgresql":
+                await session.flush()
+                await session.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY fuel_latest_prices"))
             await session.commit()
     asyncio.run(seed())
 
@@ -685,6 +695,229 @@ def test_dashboard_aggregate_endpoints(client) -> None:
     assert "threshold_events" in analytics_payload
 
 
+def test_parking_history_prefers_live_overlap_without_returning_duplicates(client) -> None:
+    observed_at = (now_utc() - timedelta(minutes=5)).replace(microsecond=123456)
+
+    async def seed() -> int:
+        async with client.app.state.session_factory() as session:
+            airport = await session.scalar(select(Airport).where(Airport.code == "GMP"))
+            lot = await session.scalar(select(ParkingLot).where(ParkingLot.airport_id == airport.id))
+            session.add_all([
+                ParkingSnapshot(airport_id=airport.id, parking_lot_id=lot.id, source="migration_http",
+                    observed_at=observed_at, collected_at=observed_at + timedelta(minutes=2),
+                    occupied_spaces=90, total_spaces=100, available_spaces=10),
+                ParkingSnapshot(airport_id=airport.id, parking_lot_id=lot.id, source="kac_parking",
+                    observed_at=observed_at, collected_at=observed_at + timedelta(minutes=1),
+                    occupied_spaces=40, total_spaces=100, available_spaces=60),
+            ])
+            await session.commit()
+            return lot.id
+
+    lot_id = asyncio.run(seed())
+    response = client.get("/v1/parking/history", params={"parking_lot_id": lot_id, "days": 1})
+    assert response.status_code == 200
+    selected = [item for item in response.json()["items"] if
+                datetime.fromisoformat(item["observed_at"].replace("Z", "+00:00")) == observed_at]
+    assert len(selected) == 1
+    assert selected[0]["occupied_spaces"] == 40
+
+
+def test_parking_history_pages_same_timestamp_without_losing_lots(client) -> None:
+    observed_at = now_utc() + timedelta(minutes=2)
+
+    async def seed() -> tuple[int, int]:
+        async with client.app.state.session_factory() as session:
+            airport = await session.scalar(select(Airport).where(Airport.code == "GMP"))
+            lots = (await session.scalars(
+                select(ParkingLot).where(ParkingLot.airport_id == airport.id)
+                .order_by(ParkingLot.id).limit(2)
+            )).all()
+            assert len(lots) == 2
+            session.add_all([
+                ParkingSnapshot(
+                    airport_id=airport.id, parking_lot_id=lot.id, source="kac_parking",
+                    observed_at=observed_at, collected_at=observed_at,
+                    occupied_spaces=10, total_spaces=100, available_spaces=90,
+                )
+                for lot in lots
+            ])
+            await session.commit()
+            return lots[0].id, lots[1].id
+
+    first_lot, second_lot = asyncio.run(seed())
+    legacy = client.get("/v1/parking/history", params={"airport_code": "GMP"})
+    assert legacy.status_code == 200
+    observed_times = [item["observed_at"] for item in legacy.json()["items"]]
+    assert observed_times == sorted(observed_times)
+    first = client.get("/v1/parking/history", params={"airport_code": "GMP", "limit": 1})
+    assert first.status_code == 200
+    first_payload = first.json()
+    assert first_payload["items"][0]["parking_lot_id"] == second_lot
+    assert first_payload["items"][0]["airport_code"] == "GMP"
+    assert first_payload["next_cursor"]
+
+    second = client.get("/v1/parking/history", params={
+        "airport_code": "GMP", "limit": 1, "cursor": first_payload["next_cursor"],
+    })
+    assert second.status_code == 200
+    with TestClient(create_app(client.app.state.settings)) as restarted:
+        assert restarted.get("/v1/parking/history", params={
+            "airport_code": "GMP", "limit": 1, "cursor": first_payload["next_cursor"],
+        }).status_code == 200
+    assert second.json()["items"][0]["parking_lot_id"] == first_lot
+    assert second.json()["items"][0]["observed_at"] == first_payload["items"][0]["observed_at"]
+    assert second.json()["next_cursor"] != first_payload["next_cursor"]
+    first_token = first_payload["next_cursor"]
+    assert len(first_token) <= 200
+    second_token = second.json()["next_cursor"]
+    first_cutoff = json.loads(base64.urlsafe_b64decode(first_token + "=" * (-len(first_token) % 4)))[0]
+    second_cutoff = json.loads(base64.urlsafe_b64decode(second_token + "=" * (-len(second_token) % 4)))[0]
+    assert first_cutoff == second_cutoff
+    assert client.get("/v1/parking/history", params={
+        "airport_code": "GMP", "days": 2, "limit": 1, "cursor": first_token,
+    }).status_code == 422
+    forged = json.loads(base64.urlsafe_b64decode(first_token + "=" * (-len(first_token) % 4)))
+    forged[0] = (datetime.fromisoformat(forged[0]) - timedelta(minutes=30)).isoformat()
+    forged_token = base64.urlsafe_b64encode(json.dumps(forged).encode()).decode().rstrip("=")
+    assert client.get("/v1/parking/history", params={
+        "airport_code": "GMP", "limit": 1, "cursor": forged_token,
+    }).status_code == 422
+
+    invalid = client.get("/v1/parking/history", params={"limit": 1, "cursor": "invalid"})
+    assert invalid.status_code == 422
+    assert client.get("/v1/parking/history", params={"limit": 1001}).status_code == 422
+
+
+def test_parking_history_preserves_oversized_legacy_response_without_truncation(client) -> None:
+    observed_at = now_utc() - timedelta(minutes=2)
+
+    async def seed() -> int:
+        async with client.app.state.session_factory() as session:
+            airport = await session.scalar(select(Airport).where(Airport.code == "GMP"))
+            lot = await session.scalar(select(ParkingLot).where(ParkingLot.airport_id == airport.id))
+            session.add_all([
+                ParkingSnapshot(
+                    airport_id=airport.id, parking_lot_id=lot.id, source="test_history",
+                    observed_at=observed_at - timedelta(seconds=index),
+                    collected_at=observed_at, occupied_spaces=10,
+                    total_spaces=100, available_spaces=90,
+                )
+                for index in range(1001)
+            ])
+            await session.commit()
+            return lot.id
+
+    lot_id = asyncio.run(seed())
+    legacy = client.get("/v1/parking/history", params={"parking_lot_id": lot_id, "days": 1})
+    assert legacy.status_code == 200
+    legacy_items = legacy.json()["items"]
+    assert len(legacy_items) >= 1001
+    observed_times = [datetime.fromisoformat(item["observed_at"].replace("Z", "+00:00"))
+                      for item in legacy_items]
+    assert observed_times == sorted(observed_times)
+    paged = client.get("/v1/parking/history", params={
+        "parking_lot_id": lot_id, "days": 1, "limit": 1000,
+    })
+    assert paged.status_code == 200
+    assert len(paged.json()["items"]) == 1000
+    assert paged.json()["next_cursor"]
+
+
+def test_parking_history_accepts_its_own_cursor_when_observation_is_in_future(client) -> None:
+    async def seed() -> None:
+        async with client.app.state.session_factory() as session:
+            airport = await session.scalar(select(Airport).where(Airport.code == "GMP"))
+            lot = await session.scalar(select(ParkingLot).where(ParkingLot.airport_id == airport.id))
+            session.add(ParkingSnapshot(
+                airport_id=airport.id, parking_lot_id=lot.id, source="test_future",
+                observed_at=now_utc() + timedelta(hours=2), collected_at=now_utc(),
+                occupied_spaces=10, total_spaces=100, available_spaces=90,
+            ))
+            await session.commit()
+
+    asyncio.run(seed())
+    first = client.get("/v1/parking/history", params={"airport_code": "GMP", "limit": 1})
+    assert first.status_code == 200
+    token = first.json()["next_cursor"]
+    assert token
+    assert client.get("/v1/parking/history", params={
+        "airport_code": "GMP", "limit": 1, "cursor": token,
+    }).status_code == 200
+
+
+def test_parking_history_cursor_excludes_late_inserted_older_observation(client) -> None:
+    base = now_utc() + timedelta(hours=1)
+
+    async def seed(*, late: bool = False) -> None:
+        async with client.app.state.session_factory() as session:
+            airport = await session.scalar(select(Airport).where(Airport.code == "GMP"))
+            lot = await session.scalar(select(ParkingLot).where(ParkingLot.airport_id == airport.id))
+            minutes = (150,) if late else (180, 120, 60)
+            session.add_all([ParkingSnapshot(
+                airport_id=airport.id, parking_lot_id=lot.id, source="test_backfill",
+                observed_at=base + timedelta(minutes=minute), collected_at=now_utc(),
+                occupied_spaces=10, total_spaces=100, available_spaces=90,
+            ) for minute in minutes])
+            await session.commit()
+
+    asyncio.run(seed())
+    first = client.get("/v1/parking/history", params={"airport_code": "GMP", "limit": 1})
+    assert first.status_code == 200
+    token = first.json()["next_cursor"]
+    assert token and len(token) <= 200
+    asyncio.run(seed(late=True))
+    second = client.get("/v1/parking/history", params={
+        "airport_code": "GMP", "limit": 1, "cursor": token,
+    })
+    assert second.status_code == 200
+    assert datetime.fromisoformat(second.json()["items"][0]["observed_at"].replace("Z", "+00:00")) == (
+        base + timedelta(minutes=120)
+    )
+
+
+def test_parking_history_postgres_uses_bounded_lateral_page_query(client) -> None:
+    included = next(route for route in client.app.routes if hasattr(route, "original_router"))
+    route = next(route for route in included.original_router.routes
+                 if route.path == "/parking/history")
+
+    class FakeSession:
+        bind = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+
+        async def scalar(self, _statement):
+            return 123
+
+        async def execute(self, statement):
+            compiled = str(statement.compile(dialect=postgresql.dialect()))
+            assert "LATERAL" in compiled
+            assert "history_keys" in compiled
+            assert compiled.count("parking_snapshots.id <=") == 2
+            assert "LIMIT" in compiled
+            return SimpleNamespace(all=lambda: [])
+
+    response = asyncio.run(route.endpoint(SimpleNamespace(headers={}), None, None, 30, 1000, None, FakeSession()))
+    assert response.status_code == 200
+    assert response.body == b'{"items":[],"next_cursor":null}'
+
+
+def test_parking_history_postgres_legacy_uses_single_pass_distinct_query(client) -> None:
+    included = next(route for route in client.app.routes if hasattr(route, "original_router"))
+    route = next(route for route in included.original_router.routes
+                 if route.path == "/parking/history")
+
+    class FakeSession:
+        bind = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+
+        async def execute(self, statement):
+            compiled = str(statement.compile(dialect=postgresql.dialect()))
+            assert "DISTINCT ON" in compiled
+            assert "LATERAL" not in compiled
+            return SimpleNamespace(all=lambda: [])
+
+    response = asyncio.run(route.endpoint(SimpleNamespace(headers={}), None, None, 30, None, None, FakeSession()))
+    assert response.status_code == 200
+    assert response.body == b'{"items":[],"next_cursor":null}'
+
+
 def test_current_and_analytics(client) -> None:
     current = client.get("/v1/parking/current", params={"airport_code": "GMP"})
     assert current.status_code == 200
@@ -731,17 +964,20 @@ def test_current_and_analytics(client) -> None:
     assert timeseries_payload["days"] == 7
     assert timeseries_payload["interval_minutes"] == 10
     assert timeseries_payload["future_hours"] == 0
-    assert len(timeseries_payload["items"]) == 1008
+    assert len(timeseries_payload["items"]) in (1008, 1009)
     assert max(point["lot_observations"] for point in timeseries_payload["items"]) >= 1
     assert_is_utc_iso(timeseries_payload["items"][0]["bucket_at"])
     latest_observed_point = next(
         point for point in reversed(timeseries_payload["items"]) if point["lot_observations"] > 0
     )
-    assert latest_observed_point["available_spaces"] == sum(
-        item["available_spaces"] for item in current_payload["items"]
-    )
+    latest_at = datetime.fromisoformat(latest_observed_point["bucket_at"].replace("Z", "+00:00"))
+    fresh_cutoff = latest_at - timedelta(minutes=timeseries_payload["interval_minutes"])
+    fresh_items = [item for item in current_payload["items"]
+                   if datetime.fromisoformat(item["observed_at"].replace("Z", "+00:00")) >= fresh_cutoff]
+    assert latest_observed_point["lot_observations"] == len(fresh_items)
+    assert latest_observed_point["available_spaces"] == sum(item["available_spaces"] for item in fresh_items)
     assert timeseries_payload["items"][-1]["available_spaces"] == sum(
-        item["available_spaces"] for item in current_payload["items"]
+        item["available_spaces"] for item in fresh_items
     )
 
     holiday_summary_payload = holiday_summary.json()
@@ -798,6 +1034,44 @@ def test_time_series_explicit_date_range_returns_data(client) -> None:
     assert max(point["lot_observations"] for point in payload["items"]) >= 1
 
 
+def test_time_series_date_range_keeps_ten_minute_default(client) -> None:
+    today = datetime.now(ZoneInfo("Asia/Seoul")).date()
+    response = client.get("/v1/parking/analytics/timeseries", params={
+        "airport_code": "GMP", "start_date": (today - timedelta(days=3)).isoformat(),
+        "end_date": today.isoformat(),
+    })
+    assert response.status_code == 200
+    assert response.json()["interval_minutes"] == 10
+    assert len(response.json()["items"]) == 4 * 24 * 6
+
+
+def test_time_series_postgres_uses_single_scan_for_high_resolution_range(client) -> None:
+    included = next(route for route in client.app.routes if hasattr(route, "original_router"))
+    route = next(route for route in included.original_router.routes
+                 if route.path == "/parking/analytics/timeseries")
+
+    class FakeSession:
+        bind = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+        scalar_calls = 0
+
+        async def scalar(self, _statement):
+            self.scalar_calls += 1
+            return SimpleNamespace(id=1) if self.scalar_calls == 1 else 1
+
+        async def execute(self, statement, params):
+            sql = str(statement)
+            assert "date_bin" in sql and "DISTINCT ON" in sql
+            assert "CROSS JOIN LATERAL (VALUES" in sql
+            assert "LEFT JOIN LATERAL" not in sql
+            assert params["bucket_count"] == 90 * 24 * 6
+            return SimpleNamespace(mappings=lambda: SimpleNamespace(all=lambda: []))
+
+    response = asyncio.run(route.endpoint(
+        "GMP", None, 7, 10, 0, FakeSession(), "2026-07-04", "2026-10-01",
+    ))
+    assert response.status_code == 200
+
+
 def test_time_series_explicit_date_range_with_no_data_returns_empty_items(client) -> None:
     today = datetime.now(ZoneInfo("Asia/Seoul")).date()
     start = today + timedelta(days=30)
@@ -811,6 +1085,96 @@ def test_time_series_explicit_date_range_with_no_data_returns_empty_items(client
     assert response.status_code == 200
     payload = response.json()
     assert payload["items"] == []
+
+
+def test_time_series_late_observation_after_last_bucket_keeps_empty_buckets(client) -> None:
+    asyncio.run(insert_isolated_snapshot(
+        client, airport_code="GMP",
+        observed_at=datetime(2026, 1, 1, 14, 59, tzinfo=ZoneInfo("UTC")),
+    ))
+    response = client.get("/v1/parking/analytics/timeseries", params={
+        "airport_code": "GMP", "start_date": "2026-01-01", "end_date": "2026-01-01",
+        "interval_minutes": 60,
+    })
+    assert response.status_code == 200
+    assert len(response.json()["items"]) == 24
+    assert all(point["lot_observations"] == 0 for point in response.json()["items"])
+
+
+def test_time_series_date_range_preserves_kst_boundary_and_live_source_priority(client) -> None:
+    async def seed() -> None:
+        async with client.app.state.session_factory() as session:
+            airport = await session.scalar(select(Airport).where(Airport.code == "GMP"))
+            lots = (await session.scalars(select(ParkingLot).where(
+                ParkingLot.airport_id == airport.id,
+            ).order_by(ParkingLot.id).limit(2))).all()
+            assert len(lots) == 2
+            for lot, source, observed_at, available, collected_at in (
+                (lots[0], "migration_http", datetime(2026, 1, 1, 15, 0, tzinfo=ZoneInfo("UTC")), 10,
+                 datetime(2026, 1, 1, 16, 0, tzinfo=ZoneInfo("UTC"))),
+                (lots[0], "kac_parking", datetime(2026, 1, 1, 15, 0, tzinfo=ZoneInfo("UTC")), 80,
+                 datetime(2026, 1, 1, 15, 0, tzinfo=ZoneInfo("UTC"))),
+                (lots[1], "kac_parking", datetime(2026, 1, 1, 14, 50, tzinfo=ZoneInfo("UTC")), 30,
+                 datetime(2026, 1, 1, 14, 50, tzinfo=ZoneInfo("UTC"))),
+            ):
+                session.add(ParkingSnapshot(
+                    airport_id=airport.id, parking_lot_id=lot.id, source=source,
+                    observed_at=observed_at, collected_at=collected_at,
+                    occupied_spaces=100 - available, total_spaces=100,
+                    available_spaces=available,
+                ))
+            await session.commit()
+
+    asyncio.run(seed())
+    response = client.get("/v1/parking/analytics/timeseries", params={
+        "airport_code": "GMP", "start_date": "2026-01-01", "end_date": "2026-01-02",
+        "interval_minutes": 10,
+    })
+    assert response.status_code == 200
+    points = {datetime.fromisoformat(point["bucket_at"].replace("Z", "+00:00")): point
+              for point in response.json()["items"]}
+    before = points[datetime(2026, 1, 1, 14, 40, tzinfo=ZoneInfo("UTC"))]
+    midnight = points[datetime(2026, 1, 1, 15, 0, tzinfo=ZoneInfo("UTC"))]
+    next_bucket = points[datetime(2026, 1, 1, 15, 10, tzinfo=ZoneInfo("UTC"))]
+    assert (before["lot_observations"], before["available_spaces"]) == (0, 0)
+    assert (midnight["lot_observations"], midnight["available_spaces"]) == (2, 110)
+    assert (next_bucket["lot_observations"], next_bucket["available_spaces"]) == (1, 80)
+
+    async def legacy_expected() -> list[dict]:
+        async with client.app.state.session_factory() as session:
+            airport = await session.scalar(select(Airport).where(Airport.code == "GMP"))
+            snapshots = (await session.scalars(select(ParkingSnapshot).where(
+                ParkingSnapshot.airport_id == airport.id,
+                ParkingSnapshot.observed_at >= datetime(2025, 12, 31, 15, 0, tzinfo=ZoneInfo("UTC")),
+                ParkingSnapshot.observed_at < datetime(2026, 1, 2, 15, 0, tzinfo=ZoneInfo("UTC")),
+            ))).all()
+            return build_time_series(
+                deduplicate_snapshots(snapshots), days=2, interval_minutes=10,
+                tz_name="Asia/Seoul",
+                anchor_at=datetime(2026, 1, 2, 23, 50, tzinfo=ZoneInfo("Asia/Seoul")),
+            )
+
+    expected = asyncio.run(legacy_expected())
+    actual = response.json()["items"]
+    assert len(actual) == len(expected)
+    for item, legacy in zip(actual, expected, strict=True):
+        assert datetime.fromisoformat(item["bucket_at"].replace("Z", "+00:00")) == legacy["bucket_at"]
+        for field in ("available_spaces", "occupied_spaces", "total_spaces", "lot_observations"):
+            assert item[field] == legacy[field]
+
+
+def test_time_series_range_keeps_ten_minute_default_at_every_duration(client) -> None:
+    today = datetime.now(ZoneInfo("Asia/Seoul")).date()
+    for span_days in (3, 4, 14, 15, 90):
+        start = today - timedelta(days=span_days - 1)
+        response = client.get("/v1/parking/analytics/timeseries", params={
+            "airport_code": "GMP", "start_date": start.isoformat(), "end_date": today.isoformat(),
+        })
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["interval_minutes"] == 10
+        if payload["items"]:
+            assert len(payload["items"]) == span_days * 24 * 60 // 10
 
 
 def test_time_series_rejects_reversed_date_range(client) -> None:
@@ -906,7 +1270,11 @@ def test_time_series_range_stays_pinned_to_requested_end_despite_trailing_gap(cl
     assert last_bucket < range_end_exclusive_seoul
     # The tail (days 2-5, after the only snapshot) must be honestly reported as
     # no-observation, not fabricated and not silently dropped from the response.
-    assert any(point["lot_observations"] == 0 for point in payload["items"])
+    trailing = [point for point in payload["items"]
+                if datetime.fromisoformat(point["bucket_at"].replace("Z", "+00:00"))
+                >= datetime(2026, 1, 2, 0, 0, tzinfo=ZoneInfo("Asia/Seoul"))]
+    assert trailing
+    assert all(point["lot_observations"] == 0 and point["available_spaces"] == 0 for point in trailing)
 
 
 def test_collector_status_reports_earliest_snapshot(client) -> None:

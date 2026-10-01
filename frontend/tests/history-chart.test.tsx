@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { fireEvent, render, screen, within } from "@testing-library/react";
 
 import { HistoryChart } from "@/components/history-chart";
@@ -47,6 +49,29 @@ function buildWeekendSeries(): ParkingTimeSeriesResponse {
 }
 
 describe("HistoryChart", () => {
+  test("breaks the line and area across missing observations", () => {
+    const series = buildSeries();
+    series.items = series.items.slice(0, 6).map((item, index) => index === 2 || index === 3
+      ? { ...item, lot_observations: 0, available_spaces: 0, occupied_spaces: 0, total_spaces: 0 }
+      : item);
+    const { container } = render(<HistoryChart holidays={[]} series={series} scopeLabel="P1" />);
+
+    expect(container.querySelectorAll(".history-line")).toHaveLength(2);
+    expect(container.querySelectorAll(".history-area")).toHaveLength(2);
+  });
+
+  test("keeps isolated older observations visible as points", () => {
+    const series = buildSeries();
+    series.items = series.items.slice(0, 5).map((item, index) => index === 1 || index === 3
+      ? item
+      : { ...item, lot_observations: 0, available_spaces: 0, occupied_spaces: 0, total_spaces: 0 });
+    const { container } = render(<HistoryChart holidays={[]} series={series} scopeLabel="P1" />);
+
+    expect(container.querySelectorAll(".history-point.isolated")).toHaveLength(2);
+    const css = readFileSync("src/app/globals.css", "utf8");
+    expect(css).toMatch(/\.history-point\.isolated\s*\{[^}]*fill:\s*var\(--teal\)/);
+  });
+
   test("renders 6 hour axis labels", () => {
     const { container } = render(
       <HistoryChart

@@ -237,6 +237,9 @@ def build_time_series(
 
             if current is None:
                 continue
+            # 관측 공백 뒤의 과거 값을 현재 버킷에 계속 이월하지 않는다.
+            if bucket_at - ensure_tz(current.observed_at, "UTC") > timedelta(minutes=interval_minutes):
+                continue
 
             item["available_spaces"] += current.available_spaces
             item["occupied_spaces"] += current.occupied_spaces
@@ -250,13 +253,22 @@ def build_time_series(
     # stale data into that slot would misrepresent it as current-as-of-end-of-range.
     if anchor_at is None and latest_snapshots:
         current_index = history_bucket_count - 1
-        items[current_index] = {
+        fresh_snapshots = [snapshot for snapshot in latest_snapshots
+                           if latest_observed_at - ensure_tz(snapshot.observed_at, "UTC")
+                           <= timedelta(minutes=interval_minutes)]
+        latest_item = {
             "bucket_at": latest_observed_at,
-            "available_spaces": sum(snapshot.available_spaces for snapshot in latest_snapshots),
-            "occupied_spaces": sum(snapshot.occupied_spaces for snapshot in latest_snapshots),
-            "total_spaces": sum(snapshot.total_spaces for snapshot in latest_snapshots),
-            "lot_observations": len(latest_snapshots),
+            "available_spaces": sum(snapshot.available_spaces for snapshot in fresh_snapshots),
+            "occupied_spaces": sum(snapshot.occupied_spaces for snapshot in fresh_snapshots),
+            "total_spaces": sum(snapshot.total_spaces for snapshot in fresh_snapshots),
+            "lot_observations": len(fresh_snapshots),
         }
+        if items[current_index]["bucket_at"] == latest_observed_at:
+            items[current_index] = latest_item
+        else:
+            # 마지막 정규 bucket은 수집 공백일 수 있다. 그 자리를 덮으면 공백이
+            # 사라져 차트가 이전 관측과 최신 관측을 연속선으로 잘못 연결한다.
+            items.insert(history_bucket_count, latest_item)
 
     return items
 

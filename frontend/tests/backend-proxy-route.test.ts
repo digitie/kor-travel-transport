@@ -1,9 +1,12 @@
 import { NextRequest } from "next/server";
+import { createServer } from "node:http";
+import { brotliCompressSync, brotliDecompressSync, constants, gunzipSync, gzipSync } from "node:zlib";
 
 describe("backend proxy route", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   test("proxies allowed backend requests without storing mobile-stale API responses", async () => {
@@ -38,6 +41,170 @@ describe("backend proxy route", () => {
         method: "GET",
       })
     );
+  });
+
+  test("does not forward compressed Content-Length after fetch decodes JSON", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response('{"items":[1,2,3]}', {
+      headers: { "content-type": "application/json", "content-length": "4" },
+    })));
+    const { GET } = await import("@/app/api/backend/[...path]/route");
+    const request = new NextRequest("https://pr.digitie.mywire.org/api/backend/v1/parking/history?limit=3");
+    const response = await GET(request, { params: Promise.resolve({ path: ["v1", "parking", "history"] }) });
+
+    expect(response.headers.has("content-length")).toBe(false);
+    expect(await response.json()).toEqual({ items: [1, 2, 3] });
+  });
+
+  test.each([
+    { clientEncoding: "gzip", forwarded: "gzip", responseEncoding: "gzip" },
+    { clientEncoding: "br", forwarded: "br", responseEncoding: "br" },
+    { clientEncoding: "br, gzip;q=0", forwarded: "br", responseEncoding: "br" },
+    { clientEncoding: "br, gzip", forwarded: "br, gzip", responseEncoding: "br" },
+  ])("streams $clientEncoding full history without the JSON buffer limit", async ({ clientEncoding, forwarded, responseEncoding }) => {
+    const uncompressed = JSON.stringify({ items: ["x".repeat(17 * 1024 * 1024)], next_cursor: null });
+    const compressed = responseEncoding === "br" ? brotliCompressSync(uncompressed, {
+      params: { [constants.BROTLI_PARAM_QUALITY]: 4 },
+    }) : gzipSync(uncompressed);
+    let forwardedEncoding: string | undefined;
+    const server = createServer((upstreamRequest, response) => {
+      forwardedEncoding = upstreamRequest.headers["accept-encoding"];
+      response.writeHead(200, {
+        "content-type": "application/json",
+        "content-encoding": responseEncoding,
+        "content-length": compressed.length,
+      });
+      response.end(compressed);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("missing test server port");
+      vi.stubEnv("BACKEND_INTERNAL_URL", `http://127.0.0.1:${address.port}`);
+      const { GET } = await import("@/app/api/backend/[...path]/route");
+      const request = new NextRequest("https://pr.digitie.mywire.org/api/backend/v1/parking/history?days=30", {
+        headers: { "accept-encoding": clientEncoding },
+      });
+      const response = await GET(request, { params: Promise.resolve({ path: ["v1", "parking", "history"] }) });
+
+      expect(response.status).toBe(200);
+      expect(forwardedEncoding).toBe(forwarded);
+      expect(response.headers.get("content-encoding")).toBe(responseEncoding);
+      expect(response.headers.get("content-length")).toBe(String(compressed.length));
+      const payload = Buffer.from(await response.arrayBuffer());
+      expect((responseEncoding === "br" ? brotliDecompressSync(payload) : gunzipSync(payload)).toString()).toBe(uncompressed);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+
+  test("does not cut a progressing full-history stream at the ordinary JSON body deadline", async () => {
+    vi.stubEnv("BACKEND_PROXY_BODY_TIMEOUT_MS", "1000");
+    const server = createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.write('{"items":[');
+      setTimeout(() => response.end('1],"next_cursor":null}'), 1_100);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("missing test server port");
+      vi.stubEnv("BACKEND_INTERNAL_URL", `http://127.0.0.1:${address.port}`);
+      const { GET } = await import("@/app/api/backend/[...path]/route");
+      const request = new NextRequest("https://pr.digitie.mywire.org/api/backend/v1/parking/history?days=30");
+      const response = await GET(request, { params: Promise.resolve({ path: ["v1", "parking", "history"] }) });
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ items: [1], next_cursor: null });
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+
+  test("waits for a full-history response header beyond the ordinary JSON deadline", async () => {
+    vi.stubEnv("BACKEND_PROXY_TIMEOUT_MS", "1000");
+    const server = createServer((_request, response) => {
+      setTimeout(() => response.end('{"items":[],"next_cursor":null}'), 1_100);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("missing test server port");
+      vi.stubEnv("BACKEND_INTERNAL_URL", `http://127.0.0.1:${address.port}`);
+      const { GET } = await import("@/app/api/backend/[...path]/route");
+      const request = new NextRequest("https://pr.digitie.mywire.org/api/backend/v1/parking/history?days=30");
+      const response = await GET(request, { params: Promise.resolve({ path: ["v1", "parking", "history"] }) });
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ items: [], next_cursor: null });
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+
+  test("bounds simultaneous full-history requests waiting for backend headers", async () => {
+    const waitingResponses: import("node:http").ServerResponse[] = [];
+    let allStarted!: () => void;
+    const started = new Promise<void>((resolve) => { allStarted = resolve; });
+    const server = createServer((_request, response) => {
+      waitingResponses.push(response);
+      if (waitingResponses.length === 8) allStarted();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("missing test server port");
+      vi.stubEnv("BACKEND_INTERNAL_URL", `http://127.0.0.1:${address.port}`);
+      const { GET } = await import("@/app/api/backend/[...path]/route");
+      const makeRequest = () => GET(
+        new NextRequest("https://pr.digitie.mywire.org/api/backend/v1/parking/history?days=30"),
+        { params: Promise.resolve({ path: ["v1", "parking", "history"] }) },
+      );
+      const waiting = Array.from({ length: 8 }, makeRequest);
+      await started;
+      const rejected = await makeRequest();
+      expect(rejected.status).toBe(503);
+      expect((await rejected.json()).code).toBe("backend_busy");
+      waitingResponses.forEach((response) => response.end('{"items":[],"next_cursor":null}'));
+      const completed = await Promise.all(waiting);
+      expect(completed.every((response) => response.status === 200)).toBe(true);
+      await Promise.all(completed.map((response) => response.json()));
+    } finally {
+      waitingResponses.forEach((response) => { if (!response.writableEnded) response.end(); });
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+
+  test("releases full-history header slots when waiting clients abort", async () => {
+    const waitingResponses: import("node:http").ServerResponse[] = [];
+    let allStarted!: () => void;
+    const started = new Promise<void>((resolve) => { allStarted = resolve; });
+    const server = createServer((_request, response) => {
+      waitingResponses.push(response);
+      if (waitingResponses.length === 8) allStarted();
+      if (waitingResponses.length === 9) response.end('{"items":[],"next_cursor":null}');
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("missing test server port");
+      vi.stubEnv("BACKEND_INTERNAL_URL", `http://127.0.0.1:${address.port}`);
+      const { GET } = await import("@/app/api/backend/[...path]/route");
+      const makeRequest = (signal?: AbortSignal) => GET(
+        new NextRequest("https://pr.digitie.mywire.org/api/backend/v1/parking/history?days=30", { signal }),
+        { params: Promise.resolve({ path: ["v1", "parking", "history"] }) },
+      );
+      const controllers = Array.from({ length: 8 }, () => new AbortController());
+      const waiting = controllers.map((controller) => makeRequest(controller.signal));
+      await started;
+      controllers.forEach((controller) => controller.abort());
+      await Promise.all(waiting);
+      const next = await makeRequest();
+      expect(next.status).toBe(200);
+      expect(await next.json()).toEqual({ items: [], next_cursor: null });
+    } finally {
+      waitingResponses.forEach((response) => { if (!response.writableEnded) response.end(); });
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
   });
 
   test("returns a stable 502 response when the backend connection fails", async () => {

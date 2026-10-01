@@ -90,6 +90,72 @@ test("느린 7일 통계가 수집 상태 화면을 가로막지 않는다", asy
   await context.close();
 });
 
+test("유가 읽기 모델 갱신 실패를 수집 화면 상단에 별도 경고한다", async ({ page }) => {
+  await page.route("**/api/transport/transport/providers", (route) => route.fulfill({ json: {
+    generated_at: "2026-09-30T09:00:00Z", items: [{ source: "fuel_latest_prices", name: "오피넷 최신 유가 읽기 모델",
+      job_name: "highway_collection_job", job_status: null, enabled: true, mode: "scheduled",
+      status: "failed", interval_seconds: 300, last_started_at: "2026-09-30T08:55:00Z",
+      last_success_at: "2026-09-30T08:00:00Z", next_due_at: "2026-09-30T09:05:00Z",
+      error_code: "read_model_refresh_failed" }], ferry_window_start: "2026-09-30",
+    ferry_window_end: "2026-10-09", ferry_expected_snapshots: 0, ferry_stored_snapshots: 0,
+  } }));
+  await login(page);
+  await page.goto("/collections");
+  const alert = page.getByRole("alert").filter({ hasText: "최신 유가 표시 지연" });
+  await expect(alert).toContainText("주유소·가격 원본은 저장됐지만");
+  await expect(alert).toContainText("다음 재시도");
+  await expect(page.getByText("오피넷 최신 유가 읽기 모델")).toBeVisible();
+  await page.locator("details.provider-row").filter({ hasText: "오피넷 최신 유가 읽기 모델" }).locator("summary").click();
+  await expect(page.getByText("유가 원본은 저장됐지만 최신 가격 읽기 모델 갱신이 지연됩니다.")).toBeVisible();
+});
+
+test("유가 현황에서도 최신 가격 반영 지연을 알린다", async ({ page }) => {
+  await page.route("**/api/transport/transport/collector-status", (route) => route.fulfill({ json: {
+    scheduler_enabled: true, collection_enabled: true, client_mode: "live", enabled_sources: ["opinet"],
+    sources: [{ source: "fuel_latest_prices", last_success_at: "2026-09-30T08:00:00Z",
+      next_due_at: "2026-09-30T09:05:00Z", last_error: "collection_failed" }],
+  } }));
+  await login(page);
+  await page.goto("/fuel");
+  const alert = page.getByRole("alert").filter({ hasText: "주유소별 최신 가격 반영 지연" });
+  await expect(alert).toContainText("저장된 유가 원본과 주유소별 가격 지도가 다를 수 있습니다.");
+  await expect(alert.getByRole("link", { name: "수집 상태 확인" })).toHaveAttribute("href", "/collections");
+});
+
+test("읽기 모델 상태 행이 없어도 유가 현황에 지연을 알린다", async ({ page }) => {
+  await page.route("**/api/transport/transport/collector-status", (route) => route.fulfill({ json: {
+    scheduler_enabled: true, collection_enabled: true, client_mode: "live", enabled_sources: ["opinet"],
+    fuel_prices_stale: true, sources: [],
+  } }));
+  await login(page);
+  await page.goto("/fuel");
+  await expect(page.getByRole("alert").filter({ hasText: "주유소별 최신 가격 반영 지연" })).toBeVisible();
+});
+
+test("지도는 최신 유가 읽기 모델 지연을 유종 필터와 함께 경고한다", async ({ page }) => {
+  await page.route("**/api/transport/transport/features/places?kind=fuel_station*", (route) => route.fulfill({ json: {
+    generated_at: "2026-09-30T09:00:00Z", kind: "fuel_station", total: 0, truncated: false,
+    items: [], available_sources: [], fuel_prices_stale: true,
+    fuel_prices_last_refreshed_at: "2026-09-30T08:00:00Z",
+  } }));
+  await login(page);
+  await page.goto("/map");
+  await expect(page.getByText(/최신 유가 반영이 지연되고 있습니다/)).toBeVisible();
+  await expect(page.getByText(/현재 판매 여부와 다를 수 있습니다/)).toBeVisible();
+});
+
+test("지도는 정상 가격도 마지막 반영 시각을 함께 알린다", async ({ page }) => {
+  await page.route("**/api/transport/transport/features/places?kind=fuel_station*", (route) => route.fulfill({ json: {
+    generated_at: "2026-09-30T09:00:00Z", kind: "fuel_station", total: 0, truncated: false,
+    items: [], available_sources: [], fuel_prices_stale: false,
+    fuel_prices_last_refreshed_at: "2026-09-30T08:00:00Z",
+  } }));
+  await login(page);
+  await page.goto("/map");
+  await expect(page.getByText(/주유소별 가격은 .* 갱신본입니다/)).toBeVisible();
+  await expect(page.getByText(/늦게 저장된 원본은 다음 수집 작업에서 반영될 수 있습니다/)).toBeVisible();
+});
+
 test("로그아웃 처리 중 늦게 저장된 통계 캐시도 로그인 화면에서 제거한다", async ({ page }) => {
   await login(page);
   await expect(page.getByRole("heading", { name: "교통정보 찾아보기" })).toBeVisible();

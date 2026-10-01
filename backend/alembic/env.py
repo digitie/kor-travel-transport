@@ -18,6 +18,16 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+def include_object(_object, name: str, type_: str, _reflected: bool, _compare_to) -> bool:
+    # PostgreSQL MV는 Table ORM으로 읽지만 Alembic의 일반 테이블 reflection에는
+    # 포함되지 않는다. 두 객체는 0018의 수동 DDL만 소유한다.
+    if type_ == "table" and name == "fuel_latest_prices":
+        return False
+    if type_ == "index" and name == "ix_fuel_prices_latest_lookup":
+        return False
+    return True
+
+
 def normalized_database_url(value: str) -> str:
     if value.startswith("postgres://"):
         return "postgresql+asyncpg://" + value.removeprefix("postgres://")
@@ -30,6 +40,7 @@ def run_migrations_offline() -> None:
     context.configure(
         url=normalized_database_url(get_settings().database_url),
         target_metadata=target_metadata,
+        include_object=include_object,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
@@ -38,7 +49,7 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(connection=connection, target_metadata=target_metadata, include_object=include_object)
     with context.begin_transaction():
         context.run_migrations()
 

@@ -1752,6 +1752,25 @@
             "title": "Days",
             "type": "integer"
           },
+          "fuel_prices_last_refreshed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "주유소별 가격 읽기 모델의 마지막 성공 갱신 시각(UTC).",
+            "title": "Fuel Prices Last Refreshed At"
+          },
+          "fuel_prices_stale": {
+            "default": false,
+            "description": "확인된 최신 유가 읽기 모델 지연 여부. false는 직후 발생한 늦은 원본 커밋까지 보증하지 않습니다.",
+            "title": "Fuel Prices Stale",
+            "type": "boolean"
+          },
           "generated_at": {
             "format": "date-time",
             "title": "Generated At",
@@ -2365,6 +2384,10 @@
       },
       "HistoryPoint": {
         "properties": {
+          "airport_code": {
+            "title": "Airport Code",
+            "type": "string"
+          },
           "available_spaces": {
             "title": "Available Spaces",
             "type": "integer"
@@ -2378,12 +2401,18 @@
             "title": "Occupied Spaces",
             "type": "integer"
           },
+          "parking_lot_id": {
+            "title": "Parking Lot Id",
+            "type": "integer"
+          },
           "total_spaces": {
             "title": "Total Spaces",
             "type": "integer"
           }
         },
         "required": [
+          "airport_code",
+          "parking_lot_id",
           "observed_at",
           "occupied_spaces",
           "total_spaces",
@@ -2868,6 +2897,17 @@
             },
             "title": "Items",
             "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
           }
         },
         "required": [
@@ -3951,6 +3991,12 @@
             "title": "Enabled Sources",
             "type": "array"
           },
+          "fuel_prices_stale": {
+            "default": false,
+            "description": "확인된 최신 유가 읽기 모델 지연 여부. 상태 행이 없어도 원본이 있으면 참입니다.",
+            "title": "Fuel Prices Stale",
+            "type": "boolean"
+          },
           "last_fuel_error": {
             "anyOf": [
               {
@@ -3995,6 +4041,25 @@
               }
             ],
             "title": "Next Fuel Due At"
+          },
+          "recent_runs": {
+            "items": {
+              "$ref": "#/components/schemas/TransportCollectionRunStatus"
+            },
+            "title": "Recent Runs",
+            "type": "array"
+          },
+          "running_run_count": {
+            "default": 0,
+            "title": "Running Run Count",
+            "type": "integer"
+          },
+          "running_runs": {
+            "items": {
+              "$ref": "#/components/schemas/TransportCollectionRunStatus"
+            },
+            "title": "Running Runs",
+            "type": "array"
           },
           "scheduler_enabled": {
             "title": "Scheduler Enabled",
@@ -4247,6 +4312,25 @@
             },
             "title": "Available Sources",
             "type": "array"
+          },
+          "fuel_prices_last_refreshed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "주유소별 가격 읽기 모델의 마지막 성공 갱신 시각(UTC).",
+            "title": "Fuel Prices Last Refreshed At"
+          },
+          "fuel_prices_stale": {
+            "default": false,
+            "description": "확인된 최신 유가 읽기 모델 지연 여부. false는 직후 발생한 늦은 원본 커밋까지 보증하지 않습니다.",
+            "title": "Fuel Prices Stale",
+            "type": "boolean"
           },
           "generated_at": {
             "format": "date-time",
@@ -5867,7 +5951,7 @@
     },
     "/v1/parking/analytics/timeseries": {
       "get": {
-        "description": "상대 조회(`days`)와 명시적 범위 조회(`start_date`+`end_date`)는 상호배타적이다. start_date/end_date를 지정하면 days와 future_hours는 무시되고(future_hours=0으로 고정) airport_code 또는 parking_lot_id가 필요하며, 최대 90일까지 조회할 수 있다.",
+        "description": "상대 조회(`days`)와 명시적 범위 조회(`start_date`+`end_date`)는 상호배타적이다. start_date/end_date를 지정하면 days와 future_hours는 무시되고(future_hours=0으로 고정) airport_code 또는 parking_lot_id가 필요하며, 최대 90일까지 조회할 수 있다. 범위 조회의 기본 간격은 10분이며, 긴 범위는 interval_minutes로 해상도를 선택할 수 있다.",
         "operationId": "parking_time_series_v1_parking_analytics_timeseries_get",
         "parameters": [
           {
@@ -5915,11 +5999,13 @@
             }
           },
           {
+            "description": "생략 시 상대·날짜 범위 모두 10분. 명시값은 그대로 적용한다.",
             "in": "query",
             "name": "interval_minutes",
             "required": false,
             "schema": {
               "default": 10,
+              "description": "생략 시 상대·날짜 범위 모두 10분. 명시값은 그대로 적용한다.",
               "maximum": 60,
               "minimum": 10,
               "title": "Interval Minutes",
@@ -6122,6 +6208,41 @@
               "minimum": 1,
               "title": "Days",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 1000,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
             }
           }
         ],

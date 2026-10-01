@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
+import hashlib
+import hmac
+import json
 import logging
 import secrets
 from collections import OrderedDict
@@ -20,24 +25,29 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
+from pydantic_core import to_json
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from sqlalchemy import func, or_, select, true
+from sqlalchemy import DateTime, Integer, and_, bindparam, case, func, or_, select, text as sql_text, true
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlalchemy.orm import load_only, selectinload
+from sqlalchemy.orm import defer, load_only, selectinload
 from datagokr import DataGoKrClient
 from datagokr.exceptions import ApiErrorResponse
 from kric import DataGoKrMaritimeClient, KricRateLimitError
 from krairport import get_airport_or_none
 
 from app.core.config import Settings, get_settings
-from app.core.time_utils import now_utc, serialize_utc, to_seoul
+from app.core.time_utils import align_to_interval, now_utc, serialize_utc, to_seoul
 from app.db.session import create_engine_and_session_factory, init_database
+from app.services.parking_history_cache import (
+    BoundedHistoryResponse, ParkingHistoryReadCache, encode_response, run_history_cpu,
+)
 from app.models import (
     Airport,
     BusTerminalReference,
     CollectionRun,
+    FuelLatestPrice,
     FuelPriceSnapshot,
     FuelStation,
     FerryPort,
@@ -159,7 +169,7 @@ from app.services.holidays import (
     format_holiday_sentence,
 )
 from app.services.sample_data import seed_sample_database
-from app.services.transport_collection import CollectionScope, OPINET_SOURCE, TRANSPORT_TRIGGER_PREFIX, TransportCollectionService
+from app.services.transport_collection import CollectionScope, OPINET_SOURCE, TRANSPORT_TRIGGER_PREFIX, TransportCollectionService, fuel_read_model_freshness
 
 logger = logging.getLogger(__name__)
 
@@ -393,6 +403,16 @@ async def _transport_traffic_statistics_rows(
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved_settings = settings or get_settings()
     engine, session_factory = create_engine_and_session_factory(resolved_settings.database_url)
+    history_read_cache = (
+        ParkingHistoryReadCache(session_factory)
+        if engine.dialect.name == "postgresql" and not resolved_settings.seed_sample_data else None
+    )
+    # 배포·프로세스 재시작 뒤에도 발급한 페이지 커서가 유효해야 한다. 운영 DB
+    # 접속 문자열의 비공개 자격증명으로 도메인 분리된 서명 키를 파생한다.
+    history_cursor_secret = hmac.new(
+        resolved_settings.database_url.encode(),
+        b"kor-travel-transport/parking-history-cursor/v1", hashlib.sha256,
+    ).digest()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -426,6 +446,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.scheduler_task = None
         app.state.transport_scheduler_task = None
         app.state.fuel_scheduler_task = None
+        app.state.history_cache_task = None
 
         if resolved_settings.seed_sample_data and app.state.collection_service.client_mode == "sample":
             async with session_factory() as session:
@@ -434,6 +455,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await session.commit()
         elif resolved_settings.seed_sample_data:
             logger.info("sample seeding skipped because client_mode=%s", app.state.collection_service.client_mode)
+
+        if history_read_cache is not None:
+            # 전체 이력 조회가 느리거나 DB 읽기가 잠겨도 readiness를 막지 않는다.
+            # 채우기 전에는 기존 직접 SQL 경로를 사용한다.
+            app.state.history_cache_task = asyncio.create_task(history_read_cache.run())
 
         if resolved_settings.enable_scheduler and resolved_settings.scheduler_mode == "in_process":
             logger.info(
@@ -455,6 +481,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
+            history_cache_task = app.state.history_cache_task
+            if history_cache_task is not None:
+                history_cache_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await history_cache_task
             scheduler_task = app.state.scheduler_task
             if scheduler_task is not None:
                 scheduler_task.cancel()
@@ -847,7 +878,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session: AsyncSession = Depends(get_db),
     ) -> FuelStationResponse:
         cutoff = now_utc() - timedelta(days=days)
-        query = select(FuelStation).where(FuelStation.last_seen_at >= cutoff)
+        query = select(FuelStation).options(defer(FuelStation.raw_item_json)).where(FuelStation.last_seen_at >= cutoff)
         if sido_value:
             query = query.where(FuelStation.sido_value == sido_value.strip())
         if sigungu_value:
@@ -855,56 +886,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         query = query.order_by(FuelStation.last_seen_at.desc(), FuelStation.id.desc()).limit(limit)
         stations = (await session.execute(query)).scalars().all()
         station_ids = [station.id for station in stations]
-        price_rows: list[FuelPriceSnapshot] = []
+        price_rows: list[FuelPriceSnapshot | FuelLatestPrice] = []
         if station_ids:
-            # Keep the response bounded by one row per station/product.  A
-            # plain period query would load every historical observation for
-            # all selected stations before Python discarded all but the latest
-            # row, which grows with retention rather than with this request.
-            ranked_prices = (
-                select(
-                    FuelPriceSnapshot.id.label("price_id"),
-                    func.row_number()
-                    .over(
-                        partition_by=(
-                            FuelPriceSnapshot.fuel_station_id,
-                            FuelPriceSnapshot.product_code,
-                        ),
-                        order_by=(
-                            FuelPriceSnapshot.collected_at.desc(),
-                            FuelPriceSnapshot.id.desc(),
-                        ),
+            if session.bind.dialect.name == "postgresql":
+                price_query = select(FuelLatestPrice).where(
+                    FuelLatestPrice.fuel_station_id.in_(station_ids),
+                    FuelLatestPrice.collected_at >= cutoff,
+                )
+                if product_code:
+                    price_query = price_query.where(FuelLatestPrice.product_code == product_code.strip())
+                price_query = price_query.order_by(FuelLatestPrice.fuel_station_id, FuelLatestPrice.product_code)
+            else:
+                # SQLite 테스트/legacy import는 PostgreSQL MV 대신 동일한 최신 행 규칙을 사용한다.
+                ranked_prices = (
+                    select(
+                        FuelPriceSnapshot.id.label("price_id"),
+                        func.row_number().over(
+                            partition_by=(FuelPriceSnapshot.fuel_station_id, FuelPriceSnapshot.product_code),
+                            order_by=(FuelPriceSnapshot.collected_at.desc(), FuelPriceSnapshot.id.desc()),
+                        ).label("row_number"),
                     )
-                    .label("row_number"),
+                    .where(FuelPriceSnapshot.fuel_station_id.in_(station_ids), FuelPriceSnapshot.collected_at >= cutoff)
                 )
-                .where(
-                    FuelPriceSnapshot.fuel_station_id.in_(station_ids),
-                    FuelPriceSnapshot.collected_at >= cutoff,
+                if product_code:
+                    ranked_prices = ranked_prices.where(FuelPriceSnapshot.product_code == product_code.strip())
+                ranked_prices_subquery = ranked_prices.subquery()
+                price_query = (
+                    select(FuelPriceSnapshot).options(defer(FuelPriceSnapshot.raw_item_json))
+                    .join(ranked_prices_subquery, FuelPriceSnapshot.id == ranked_prices_subquery.c.price_id)
+                    .where(ranked_prices_subquery.c.row_number == 1)
+                    .order_by(FuelPriceSnapshot.fuel_station_id, FuelPriceSnapshot.product_code)
                 )
-            )
-            if product_code:
-                ranked_prices = ranked_prices.where(
-                    FuelPriceSnapshot.product_code == product_code.strip()
-                )
-            ranked_prices_subquery = ranked_prices.subquery()
-            price_query = (
-                select(FuelPriceSnapshot)
-                .join(
-                    ranked_prices_subquery,
-                    FuelPriceSnapshot.id == ranked_prices_subquery.c.price_id,
-                )
-                .where(ranked_prices_subquery.c.row_number == 1)
-                .order_by(FuelPriceSnapshot.fuel_station_id, FuelPriceSnapshot.product_code)
-            )
             price_rows = (await session.execute(price_query)).scalars().all()
 
-        latest_prices: dict[tuple[int, str], FuelPriceSnapshot] = {}
+        prices_by_station: dict[int, list[FuelPriceItem]] = {}
         for row in price_rows:
-            latest_prices.setdefault((row.fuel_station_id, row.product_code), row)
-
-        items: list[FuelStationItem] = []
-        for station in stations:
-            prices = [
+            prices_by_station.setdefault(row.fuel_station_id, []).append(
                 FuelPriceItem(
                     product_code=row.product_code,
                     price=float(row.price) if row.price is not None else None,
@@ -912,9 +929,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     observed_at=serialize_utc(row.observed_at),
                     collected_at=serialize_utc(row.collected_at),
                 )
-                for (station_id, _product), row in sorted(latest_prices.items())
-                if station_id == station.id
-            ]
+            )
+
+        items: list[FuelStationItem] = []
+        for station in stations:
+            prices = prices_by_station.get(station.id, [])
             items.append(
                 FuelStationItem(
                     source=station.source,
@@ -962,12 +981,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     prices=prices,
                 )
             )
+        fuel_prices_stale, read_model = await fuel_read_model_freshness(session)
         return FuelStationResponse(
             generated_at=now_utc(),
             days=days,
             sido_value=sido_value.strip() if sido_value else None,
             sigungu_value=sigungu_value.strip() if sigungu_value else None,
             product_code=product_code.strip() if product_code else None,
+            fuel_prices_stale=fuel_prices_stale,
+            fuel_prices_last_refreshed_at=serialize_utc(read_model.last_success_at) if read_model and read_model.last_success_at else None,
             items=items,
         )
 
@@ -1000,6 +1022,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         selected_sources = filter_values(source, sources, 10, 80)
         selected_products = filter_values(product_code, product_codes, 5, 20)
+        use_latest_prices = session.bind.dialect.name == "postgresql"
         if selected_kind is not None and selected_kind not in supported:
             raise HTTPException(status_code=422, detail="지원하지 않는 교통 장소 종류입니다.")
         bounds = (min_longitude, min_latitude, max_longitude, max_latitude)
@@ -1033,14 +1056,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if model is FuelStation and selected_products:
                 # 유종 행은 가격 미제공(NULL)도 저장된다. 과거 가격 존재가 아니라
                 # 상세 응답과 동일한 최신 행을 기준으로 실제 판매 가격을 확인한다.
-                conditions.append(or_(*(
-                    select(FuelPriceSnapshot.price).where(
-                        FuelPriceSnapshot.fuel_station_id == FuelStation.id,
-                        FuelPriceSnapshot.product_code == code,
-                    ).order_by(FuelPriceSnapshot.collected_at.desc(), FuelPriceSnapshot.id.desc())
-                    .limit(1).correlate(FuelStation).scalar_subquery() > 0
-                    for code in selected_products
-                )))
+                if use_latest_prices:
+                    conditions.append(or_(*(
+                        select(FuelLatestPrice.price).where(
+                            FuelLatestPrice.fuel_station_id == FuelStation.id,
+                            FuelLatestPrice.product_code == code,
+                        ).correlate(FuelStation).scalar_subquery() > 0
+                        for code in selected_products
+                    )))
+                else:
+                    conditions.append(or_(*(
+                        select(FuelPriceSnapshot.price).where(
+                            FuelPriceSnapshot.fuel_station_id == FuelStation.id,
+                            FuelPriceSnapshot.product_code == code,
+                        ).order_by(FuelPriceSnapshot.collected_at.desc(), FuelPriceSnapshot.id.desc())
+                        .limit(1).correlate(FuelStation).scalar_subquery() > 0
+                        for code in selected_products
+                    )))
             if min_longitude is not None:
                 conditions.extend((
                     model.longitude >= min_longitude,
@@ -1054,21 +1086,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             conditions = coordinate_conditions(FuelStation)
             total += int(await session.scalar(select(func.count()).select_from(FuelStation).where(*conditions)) or 0)
             stations = (await session.execute(
-                select(FuelStation).where(*conditions)
+                select(
+                    FuelStation.id, FuelStation.source, FuelStation.name,
+                    FuelStation.longitude, FuelStation.latitude, FuelStation.address,
+                    FuelStation.brand_name, FuelStation.phone, FuelStation.is_self,
+                    FuelStation.is_24h, FuelStation.has_carwash,
+                    FuelStation.has_maintenance, FuelStation.has_cvs,
+                    FuelStation.last_seen_at,
+                ).where(*conditions)
                 .order_by(FuelStation.last_seen_at.desc(), FuelStation.id.desc()).limit(per_kind_limit)
-            )).scalars().all()
+            )).all()
             station_ids = [station.id for station in stations]
-            latest: dict[int, list[FuelPriceSnapshot]] = {}
+            latest: dict[int, list[Any]] = {}
             if station_ids:
-                ranked = select(
-                    FuelPriceSnapshot.id.label("id"),
-                    func.row_number().over(partition_by=(FuelPriceSnapshot.fuel_station_id, FuelPriceSnapshot.product_code), order_by=(FuelPriceSnapshot.collected_at.desc(), FuelPriceSnapshot.id.desc())).label("rank"),
-                ).where(FuelPriceSnapshot.fuel_station_id.in_(station_ids)).subquery()
-                rows = (await session.execute(select(FuelPriceSnapshot).options(load_only(
-                    FuelPriceSnapshot.id, FuelPriceSnapshot.fuel_station_id, FuelPriceSnapshot.product_code,
-                    FuelPriceSnapshot.price, FuelPriceSnapshot.provider_updated_at, FuelPriceSnapshot.observed_at,
-                    FuelPriceSnapshot.collected_at,
-                )).join(ranked, FuelPriceSnapshot.id == ranked.c.id).where(ranked.c.rank == 1))).scalars().all()
+                if use_latest_prices:
+                    rows = (await session.execute(
+                        select(
+                            FuelLatestPrice.fuel_station_id, FuelLatestPrice.product_code,
+                            FuelLatestPrice.price, FuelLatestPrice.provider_updated_at,
+                            FuelLatestPrice.observed_at, FuelLatestPrice.collected_at,
+                        ).where(FuelLatestPrice.fuel_station_id.in_(station_ids))
+                    )).all()
+                else:
+                    ranked = select(
+                        FuelPriceSnapshot.id.label("id"),
+                        func.row_number().over(partition_by=(FuelPriceSnapshot.fuel_station_id, FuelPriceSnapshot.product_code), order_by=(FuelPriceSnapshot.collected_at.desc(), FuelPriceSnapshot.id.desc())).label("rank"),
+                    ).where(FuelPriceSnapshot.fuel_station_id.in_(station_ids)).subquery()
+                    rows = (await session.execute(select(FuelPriceSnapshot).options(load_only(
+                        FuelPriceSnapshot.id, FuelPriceSnapshot.fuel_station_id, FuelPriceSnapshot.product_code,
+                        FuelPriceSnapshot.price, FuelPriceSnapshot.provider_updated_at, FuelPriceSnapshot.observed_at,
+                        FuelPriceSnapshot.collected_at,
+                    )).join(ranked, FuelPriceSnapshot.id == ranked.c.id).where(ranked.c.rank == 1))).scalars().all()
                 for row in rows:
                     latest.setdefault(row.fuel_station_id, []).append(row)
             for station in stations:
@@ -1196,10 +1244,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         available_sources: set[str] = set()
         for requested_kind in requested_kinds:
             available_sources.update((await session.scalars(select(source_models[requested_kind].source).distinct())).all())
-        return TransportPlaceMapResponse(
+        fuel_prices_stale = False
+        fuel_prices_last_refreshed_at = None
+        if "fuel_station" in requested_kinds:
+            fuel_prices_stale, read_model = await fuel_read_model_freshness(session)
+            fuel_prices_last_refreshed_at = (
+                serialize_utc(read_model.last_success_at) if read_model and read_model.last_success_at else None
+            )
+        result = TransportPlaceMapResponse(
             generated_at=now_utc(), kind=selected_kind, total=total,
             truncated=total > len(visible_items), items=visible_items, available_sources=sorted(available_sources),
+            fuel_prices_stale=fuel_prices_stale, fuel_prices_last_refreshed_at=fuel_prices_last_refreshed_at,
         )
+        # 대량 지도 응답은 이미 검증된 Pydantic 모델을 FastAPI가 다시 순회하지 않게 한다.
+        return Response(content=result.model_dump_json(), media_type="application/json")
 
     @router.get("/transport/rail/departures", response_model=RailDepartureSummaryResponse)
     async def transport_rail_departures(
@@ -1627,10 +1685,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     item[key] = serialize_utc(item[key])
             if item["last_error"] is not None:
                 item["last_error"] = "collection_failed"
-        if status["last_run"] is not None:
+        for run in (*status["recent_runs"], *status["running_runs"]):
             for key in ("started_at", "finished_at"):
-                if status["last_run"][key] is not None:
-                    status["last_run"][key] = serialize_utc(status["last_run"][key])
+                if run[key] is not None:
+                    run[key] = serialize_utc(run[key])
         if status["last_fuel_error"] is not None:
             status["last_fuel_error"] = "collection_failed"
         return TransportCollectorStatus(**status)
@@ -1817,33 +1875,222 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @router.get("/parking/history", response_model=ParkingHistoryResponse)
     async def parking_history(
+        request: Request,
         airport_code: str | None = Query(default=None),
         parking_lot_id: int | None = Query(default=None),
         days: int = Query(default=3, ge=1, le=30),
+        limit: int | None = Query(default=None, ge=1, le=1000),
+        cursor: str | None = Query(default=None, max_length=200),
         session: AsyncSession = Depends(get_db),
     ) -> ParkingHistoryResponse:
-        cutoff = now_utc() - timedelta(days=days)
-        query = select(ParkingSnapshot).where(ParkingSnapshot.observed_at >= cutoff).order_by(ParkingSnapshot.observed_at)
+        page_limit = limit or 1000
+        request_time = now_utc()
+        cutoff = request_time - timedelta(days=days)
+        normalized_airport_code = airport_code.upper() if airport_code else None
+        cursor_key: tuple[datetime, int] | None = None
+        snapshot_max_id: int | None = None
+        if cursor is not None:
+            if limit is None:
+                raise HTTPException(status_code=422, detail="커서 조회에는 limit이 필요합니다")
+            try:
+                decoded = base64.b64decode(cursor + "=" * (-len(cursor) % 4), altchars=b"-_", validate=True)
+                value = json.loads(decoded)
+                if (not isinstance(value, list) or len(value) != 8
+                        or not isinstance(value[0], str) or not isinstance(value[1], str)
+                        or type(value[2]) is not int or value[2] <= 0
+                        or value[3] != normalized_airport_code or value[4] != parking_lot_id
+                        or value[5] != days or type(value[6]) is not int or value[6] <= 0
+                        or not isinstance(value[7], str)):
+                    raise ValueError("invalid cursor payload")
+                signed = json.dumps(value[:7], separators=(",", ":")).encode()
+                expected = base64.urlsafe_b64encode(
+                    hmac.new(history_cursor_secret, signed, hashlib.sha256).digest()[:16]
+                ).decode().rstrip("=")
+                if not hmac.compare_digest(expected, value[7]):
+                    raise ValueError("invalid cursor signature")
+                cutoff = datetime.fromisoformat(value[0].replace("Z", "+00:00"))
+                cursor_time = datetime.fromisoformat(value[1].replace("Z", "+00:00"))
+                if cutoff.tzinfo is None or cursor_time.tzinfo is None:
+                    raise ValueError("cursor times must have timezones")
+                if (cutoff < request_time - timedelta(days=days + 1)
+                        or cutoff > request_time or cursor_time < cutoff):
+                    raise ValueError("cursor time outside the permitted window")
+                cursor_key = (cursor_time, value[2])
+                snapshot_max_id = value[6]
+            except (ValueError, UnicodeDecodeError, binascii.Error) as exc:
+                raise HTTPException(status_code=422, detail="유효하지 않은 이력 커서입니다") from exc
 
+        def next_cursor(observed_at: datetime, lot_id: int) -> str:
+            payload = [
+                cutoff.isoformat(), serialize_utc(observed_at).isoformat(), lot_id,
+                normalized_airport_code, parking_lot_id, days, snapshot_max_id,
+            ]
+            signed = json.dumps(payload, separators=(",", ":")).encode()
+            payload.append(base64.urlsafe_b64encode(
+                hmac.new(history_cursor_secret, signed, hashlib.sha256).digest()[:16]
+            ).decode().rstrip("="))
+            raw = json.dumps(payload, separators=(",", ":"))
+            return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+
+        conditions = [ParkingSnapshot.observed_at >= cutoff]
+        if limit is not None:
+            if snapshot_max_id is None:
+                snapshot_max_id = await session.scalar(select(func.max(ParkingSnapshot.id))) or 0
+            conditions.append(ParkingSnapshot.id <= snapshot_max_id)
         if parking_lot_id:
-            query = query.where(ParkingSnapshot.parking_lot_id == parking_lot_id)
+            conditions.append(ParkingSnapshot.parking_lot_id == parking_lot_id)
         elif airport_code:
-            airport = await session.scalar(select(Airport).where(Airport.code == airport_code.upper()))
-            if airport is None:
-                return ParkingHistoryResponse(items=[])
-            query = query.where(ParkingSnapshot.airport_id == airport.id)
+            if session.bind.dialect.name == "postgresql" and limit is None:
+                # 캐시 적중/전송 슬롯 대기 중에는 DB 연결을 점유하지 않는다.
+                # fallback SQL에서만 이 서브쿼리를 실행한다.
+                conditions.append(ParkingSnapshot.airport_id == select(Airport.id).where(
+                    Airport.code == normalized_airport_code
+                ).scalar_subquery())
+            else:
+                airport = await session.scalar(select(Airport).where(Airport.code == normalized_airport_code))
+                if airport is None:
+                    return ParkingHistoryResponse(items=[])
+                conditions.append(ParkingSnapshot.airport_id == airport.id)
 
+        if session.bind.dialect.name == "postgresql":
+            if limit is None:
+                delivery_semaphore = history_read_cache.delivery_semaphore if history_read_cache else None
+                if delivery_semaphore is not None:
+                    await delivery_semaphore.acquire()
+                try:
+                    # 대기 중 캐시가 교체·만료될 수 있으므로 슬롯 획득 뒤에 다시 판정한다.
+                    cached = history_read_cache.usable_snapshot(cutoff) if history_read_cache else None
+                    if cached is not None:
+                        checked_at = history_read_cache.validated_at_utc
+                        body, headers = await history_read_cache.response_body(
+                            cached, cutoff, normalized_airport_code, parking_lot_id,
+                            request.headers.get("accept-encoding", ""),
+                        )
+                        headers["X-Parking-History-Cache"] = "hit"
+                        if checked_at is not None:
+                            headers["X-Parking-History-Checked-At"] = serialize_utc(checked_at).isoformat()
+                    else:
+                        # 기존 전체·오래된 순서 계약을 단일 DISTINCT ON으로 보존한다.
+                        history_rows = (select(
+                            ParkingSnapshot.observed_at.label("observed_at"),
+                            ParkingSnapshot.parking_lot_id.label("parking_lot_id"),
+                            ParkingSnapshot.airport_id.label("airport_id"),
+                            ParkingSnapshot.occupied_spaces.label("occupied_spaces"),
+                            ParkingSnapshot.total_spaces.label("total_spaces"),
+                            ParkingSnapshot.available_spaces.label("available_spaces"),
+                        ).where(*conditions)
+                            .distinct(ParkingSnapshot.observed_at, ParkingSnapshot.parking_lot_id)
+                            .order_by(
+                                ParkingSnapshot.observed_at, ParkingSnapshot.parking_lot_id,
+                                case((func.left(ParkingSnapshot.source, 10) == "migration_", 1), else_=0),
+                                ParkingSnapshot.collected_at.desc(), ParkingSnapshot.id.desc(),
+                            ).subquery("history_rows"))
+                        rows = (await session.execute(select(
+                            history_rows.c.observed_at, history_rows.c.parking_lot_id, Airport.code,
+                            history_rows.c.occupied_spaces, history_rows.c.total_spaces,
+                            history_rows.c.available_spaces,
+                        ).join(Airport, Airport.id == history_rows.c.airport_id)
+                            .order_by(history_rows.c.observed_at, history_rows.c.parking_lot_id))).all()
+
+                        def serialize_rows() -> bytes:
+                            return to_json({"items": [
+                                {"airport_code": row.code, "parking_lot_id": row.parking_lot_id,
+                                 "observed_at": serialize_utc(row.observed_at),
+                                 "occupied_spaces": row.occupied_spaces,
+                                 "total_spaces": row.total_spaces,
+                                 "available_spaces": row.available_spaces}
+                                for row in rows
+                            ], "next_cursor": None})
+
+                        body = await run_history_cpu(serialize_rows)
+                        body, headers = await run_history_cpu(
+                            encode_response, body, request.headers.get("accept-encoding", "")
+                        )
+                        headers["X-Parking-History-Cache"] = "miss"
+                except BaseException:
+                    if delivery_semaphore is not None:
+                        delivery_semaphore.release()
+                    raise
+                if delivery_semaphore is not None:
+                    return BoundedHistoryResponse(
+                        content=body, headers=headers, media_type="application/json",
+                        delivery_semaphore=delivery_semaphore,
+                    )
+                return Response(content=body, headers=headers, media_type="application/json")
+            # 먼저 인덱스 순서로 중복 없는 관측 키만 한 페이지 읽는다. 30일 전체
+            # 이력을 window/sort한 뒤 JSON 수십 MB를 보내는 비용을 피한다.
+            keys = select(
+                ParkingSnapshot.observed_at.label("observed_at"),
+                ParkingSnapshot.parking_lot_id.label("parking_lot_id"),
+            ).where(*conditions)
+            if cursor_key is not None:
+                keys = keys.where(or_(
+                    ParkingSnapshot.observed_at < cursor_key[0],
+                    and_(ParkingSnapshot.observed_at == cursor_key[0],
+                         ParkingSnapshot.parking_lot_id < cursor_key[1]),
+                ))
+            keys = (keys.distinct()
+                    .order_by(ParkingSnapshot.observed_at.desc(), ParkingSnapshot.parking_lot_id.desc()))
+            keys = keys.limit(page_limit + 1)
+            keys = keys.cte("history_keys")
+            latest = (select(
+                ParkingSnapshot.airport_id.label("airport_id"),
+                ParkingSnapshot.occupied_spaces.label("occupied_spaces"),
+                ParkingSnapshot.total_spaces.label("total_spaces"),
+                ParkingSnapshot.available_spaces.label("available_spaces"),
+            ).where(
+                ParkingSnapshot.observed_at == keys.c.observed_at,
+                ParkingSnapshot.parking_lot_id == keys.c.parking_lot_id,
+                ParkingSnapshot.id <= snapshot_max_id,
+            ).order_by(
+                case((func.left(ParkingSnapshot.source, 10) == "migration_", 1), else_=0),
+                ParkingSnapshot.collected_at.desc(), ParkingSnapshot.id.desc(),
+            ).limit(1).lateral())
+            rows = (await session.execute(
+                select(keys.c.observed_at, keys.c.parking_lot_id, Airport.code,
+                       latest.c.occupied_spaces, latest.c.total_spaces, latest.c.available_spaces)
+                .select_from(keys)
+                .join(latest, true()).join(Airport, Airport.id == latest.c.airport_id)
+                .order_by(keys.c.observed_at.desc(), keys.c.parking_lot_id.desc())
+            )).all()
+            has_more = len(rows) > page_limit
+            rows = rows[:page_limit]
+            items = [
+                {"airport_code": row.code, "parking_lot_id": row.parking_lot_id,
+                 "observed_at": serialize_utc(row.observed_at),
+                 "occupied_spaces": row.occupied_spaces,
+                 "total_spaces": row.total_spaces,
+                 "available_spaces": row.available_spaces}
+                for row in rows
+            ]
+            page_cursor = next_cursor(rows[-1].observed_at, rows[-1].parking_lot_id) if has_more else None
+            return Response(content=to_json({"items": items, "next_cursor": page_cursor}), media_type="application/json")
+
+        query = select(ParkingSnapshot).where(*conditions).order_by(ParkingSnapshot.observed_at.desc())
         snapshots = deduplicate_snapshots((await session.execute(query)).scalars().all())
+        snapshots.sort(key=lambda row: (serialize_utc(row.observed_at), row.parking_lot_id), reverse=True)
+        if cursor_key is not None:
+            snapshots = [row for row in snapshots
+                         if (serialize_utc(row.observed_at), row.parking_lot_id) < cursor_key]
+        has_more = limit is not None and len(snapshots) > page_limit
+        page = snapshots[:page_limit] if limit is not None else snapshots
+        if limit is None:
+            page.reverse()
+        airport_codes = dict((await session.execute(select(Airport.id, Airport.code))).all())
         return ParkingHistoryResponse(
             items=[
                 {
+                    "airport_code": airport_codes[snapshot.airport_id],
+                    "parking_lot_id": snapshot.parking_lot_id,
                     "observed_at": serialize_utc(snapshot.observed_at),
                     "occupied_spaces": snapshot.occupied_spaces,
                     "total_spaces": snapshot.total_spaces,
                     "available_spaces": snapshot.available_spaces,
                 }
-                for snapshot in snapshots
-            ]
+                for snapshot in page
+            ],
+            next_cursor=next_cursor(page[-1].observed_at, page[-1].parking_lot_id)
+            if has_more else None,
         )
 
     @router.get("/parking/analytics/by-hour", response_model=list[HourlyBucket])
@@ -1893,14 +2140,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         description=(
             "상대 조회(`days`)와 명시적 범위 조회(`start_date`+`end_date`)는 상호배타적이다. "
             "start_date/end_date를 지정하면 days와 future_hours는 무시되고(future_hours=0으로 "
-            "고정) airport_code 또는 parking_lot_id가 필요하며, 최대 90일까지 조회할 수 있다."
+            "고정) airport_code 또는 parking_lot_id가 필요하며, 최대 90일까지 조회할 수 있다. "
+            "범위 조회의 기본 간격은 10분이며, 긴 범위는 interval_minutes로 해상도를 선택할 수 있다."
         ),
     )
     async def parking_time_series(
         airport_code: str | None = Query(default=None),
         parking_lot_id: int | None = Query(default=None),
         days: int = Query(default=7, ge=1, le=30),
-        interval_minutes: int = Query(default=DEFAULT_TIMESERIES_INTERVAL_MINUTES, ge=10, le=60),
+        interval_minutes: int = Query(default=DEFAULT_TIMESERIES_INTERVAL_MINUTES, ge=10, le=60,
+            description="생략 시 상대·날짜 범위 모두 10분. 명시값은 그대로 적용한다."),
         future_hours: int = Query(default=0, ge=0, le=12),
         session: AsyncSession = Depends(get_db),
         start_date: str | None = Query(default=None, description="명시적 범위 조회 시작일(YYYY-MM-DD). end_date와 함께 지정한다. 지정 시 days/future_hours는 무시된다."),
@@ -1925,9 +2174,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     status_code=400,
                     detail=f"조회 기간은 최대 {MAX_TIMESERIES_RANGE_DAYS}일까지 가능합니다.",
                 )
-            snapshots = await _load_snapshots_between_local_dates(
-                session, airport_code, parking_lot_id, resolved_start, resolved_end
-            )
             # Anchor bucket placement on the *requested* end of range, not on whichever
             # snapshot happens to be latest - otherwise a trailing collection gap (a
             # maintenance-window restore, an upstream rate-limit block, or simply asking
@@ -1936,7 +2182,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             tz = ZoneInfo(resolved_settings.app_timezone)
             range_end_exclusive_local = datetime.combine(resolved_end, time.min, tzinfo=tz) + timedelta(days=1)
             anchor_at = range_end_exclusive_local - timedelta(minutes=interval_minutes)
-            return ParkingTimeSeriesResponse(
+            if session.bind.dialect.name == "postgresql":
+                points = await _aggregate_timeseries_between_local_dates(
+                    session, airport_code, parking_lot_id, resolved_start, resolved_end,
+                    span_days, interval_minutes, anchor_at,
+                )
+            else:
+                snapshots = await _load_timeseries_snapshots_between_local_dates(
+                    session, airport_code, parking_lot_id, resolved_start, resolved_end
+                )
+                points = build_time_series(
+                    snapshots, days=span_days, interval_minutes=interval_minutes,
+                    future_hours=0, tz_name=resolved_settings.app_timezone,
+                    anchor_at=anchor_at,
+                )
+            result = ParkingTimeSeriesResponse(
                 generated_at=now_utc(),
                 airport_code=airport_code.upper() if airport_code else None,
                 parking_lot_id=parking_lot_id,
@@ -1945,18 +2205,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 future_hours=0,
                 start_date=resolved_start.isoformat(),
                 end_date=resolved_end.isoformat(),
-                items=[
-                    TimeSeriesPoint(**point)
-                    for point in build_time_series(
-                        snapshots,
-                        days=span_days,
-                        interval_minutes=interval_minutes,
-                        future_hours=0,
-                        tz_name=resolved_settings.app_timezone,
-                        anchor_at=anchor_at,
-                    )
-                ],
+                items=[TimeSeriesPoint(**point) for point in points],
             )
+            return Response(content=result.model_dump_json(), media_type="application/json")
 
         if (
             airport_code
@@ -1976,7 +2227,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if cached is not None:
                 return ParkingTimeSeriesResponse(**cached)
 
-        snapshots = await _load_snapshots(
+        snapshots = await _load_timeseries_snapshots(
             session,
             airport_code,
             parking_lot_id,
@@ -2045,13 +2296,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         snapshots: list[ParkingSnapshot] = []
         if special_days:
             local_dates = [local_date for local_date, _name, _day_type in special_days]
-            snapshots = await _load_snapshots_between_local_dates(
-                session,
-                airport_code,
-                parking_lot_id,
-                min(local_dates),
-                max(local_dates),
-            )
+            snapshots = await _load_snapshots_on_local_dates(session, airport_code, parking_lot_id, local_dates)
 
         return HolidayPatternResponse(
             generated_at=now_utc(),
@@ -2533,6 +2778,189 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return []
             query = query.where(ParkingSnapshot.airport_id == airport.id)
 
+        return deduplicate_snapshots((await session.execute(query)).scalars().all())
+
+    async def _load_compact_timeseries_snapshots(
+        session: AsyncSession,
+        conditions: list[Any],
+    ) -> list[ParkingSnapshot]:
+        # 시계열 계산에는 원본 JSONB나 나머지 ORM 컬럼이 불필요하다. DB에서 소스
+        # 우선순위에 따라 중복을 먼저 제거하고 계산에 쓰는 값만 전송한다.
+        if session.bind.dialect.name != "postgresql":
+            return deduplicate_snapshots((await session.scalars(
+                select(ParkingSnapshot).where(*conditions)
+            )).all())
+        ranked = select(
+            ParkingSnapshot.id.label("id"),
+            ParkingSnapshot.parking_lot_id.label("parking_lot_id"),
+            ParkingSnapshot.observed_at.label("observed_at"),
+            ParkingSnapshot.occupied_spaces.label("occupied_spaces"),
+            ParkingSnapshot.total_spaces.label("total_spaces"),
+            ParkingSnapshot.available_spaces.label("available_spaces"),
+            func.row_number().over(
+                partition_by=(ParkingSnapshot.parking_lot_id, ParkingSnapshot.observed_at),
+                order_by=(
+                    case((func.left(ParkingSnapshot.source, 10) == "migration_", 1), else_=0),
+                    ParkingSnapshot.collected_at.desc(),
+                    ParkingSnapshot.id.desc(),
+                ),
+            ).label("rank"),
+        ).where(*conditions).subquery()
+        rows = (await session.execute(select(
+            ranked.c.id, ranked.c.parking_lot_id, ranked.c.observed_at,
+            ranked.c.occupied_spaces, ranked.c.total_spaces, ranked.c.available_spaces,
+        ).where(ranked.c.rank == 1))).all()
+        return [SimpleNamespace(**row._mapping) for row in rows]
+
+    async def _load_timeseries_snapshots_between_local_dates(
+        session: AsyncSession,
+        airport_code: str | None,
+        parking_lot_id: int | None,
+        start_date: date,
+        end_date: date,
+    ) -> list[ParkingSnapshot]:
+        tz = ZoneInfo(resolved_settings.app_timezone)
+        start_at = datetime.combine(start_date, time.min, tzinfo=tz).astimezone(UTC)
+        end_at = (datetime.combine(end_date, time.min, tzinfo=tz) + timedelta(days=1)).astimezone(UTC)
+        conditions = [ParkingSnapshot.observed_at >= start_at, ParkingSnapshot.observed_at < end_at]
+        if parking_lot_id:
+            conditions.append(ParkingSnapshot.parking_lot_id == parking_lot_id)
+        elif airport_code:
+            airport = await session.scalar(select(Airport).where(Airport.code == airport_code.upper()))
+            if airport is None:
+                return []
+            conditions.append(ParkingSnapshot.airport_id == airport.id)
+        return await _load_compact_timeseries_snapshots(session, conditions)
+
+    async def _aggregate_timeseries_between_local_dates(
+        session: AsyncSession,
+        airport_code: str | None,
+        parking_lot_id: int | None,
+        start_date: date,
+        end_date: date,
+        days: int,
+        interval_minutes: int,
+        anchor_at: datetime,
+    ) -> list[dict[str, int | datetime]]:
+        tz = ZoneInfo(resolved_settings.app_timezone)
+        start_at = datetime.combine(start_date, time.min, tzinfo=tz).astimezone(UTC)
+        end_at = (datetime.combine(end_date, time.min, tzinfo=tz) + timedelta(days=1)).astimezone(UTC)
+        if parking_lot_id:
+            scope_condition_sql = "p.parking_lot_id = :lot_id"
+            lot_id = parking_lot_id
+            scope_condition = ParkingSnapshot.parking_lot_id == parking_lot_id
+        else:
+            airport = await session.scalar(select(Airport).where(Airport.code == airport_code.upper()))
+            if airport is None:
+                return []
+            scope_condition_sql = "p.airport_id = :airport_id"
+            lot_id = None
+            scope_condition = ParkingSnapshot.airport_id == airport.id
+        has_snapshot = await session.scalar(select(ParkingSnapshot.id).where(
+            scope_condition, ParkingSnapshot.observed_at >= start_at,
+            ParkingSnapshot.observed_at < end_at,
+        ).limit(1))
+        if has_snapshot is None:
+            return []
+        bucket_count = max(1, days * 24 * 60 // interval_minutes)
+        aligned = align_to_interval(anchor_at, interval_minutes, resolved_settings.app_timezone)
+        bucket_start = aligned - timedelta(minutes=interval_minutes * (bucket_count - 1))
+        # 날짜 범위의 원본을 한 번 훑어 관측을 해당 bucket에 배정한다. 버킷×주차장
+        # LATERAL 반복 탐색은 90일·10분 요청에서 12,960번의 빈 구간까지 조회해
+        # 느려진다. 정각 관측은 기존 양끝 포함 구간과 같도록 다음 버킷에도
+        # 후보로 넣고, DISTINCT ON은 같은 버킷의 최신 관측·live 우선순위를 보존한다.
+        statement = sql_text(f"""
+            WITH scoped AS MATERIALIZED (
+                SELECT p.parking_lot_id, p.observed_at, p.source,
+                       p.collected_at, p.id, p.available_spaces,
+                       p.occupied_spaces, p.total_spaces,
+                       date_bin(:interval_minutes * interval '1 minute',
+                                p.observed_at - interval '1 microsecond',
+                                :bucket_start)
+                         + :interval_minutes * interval '1 minute' AS bucket_at
+                FROM parking_snapshots AS p
+                WHERE {scope_condition_sql}
+                  AND p.observed_at >= :start_at AND p.observed_at < :end_at
+            ), chosen AS MATERIALIZED (
+                SELECT DISTINCT ON (p.parking_lot_id, assigned.bucket_at)
+                       p.parking_lot_id, assigned.bucket_at,
+                       p.available_spaces, p.occupied_spaces, p.total_spaces
+                FROM scoped AS p
+                CROSS JOIN LATERAL (VALUES
+                    (p.bucket_at),
+                    (CASE WHEN p.observed_at = p.bucket_at
+                          THEN p.bucket_at + :interval_minutes * interval '1 minute'
+                          ELSE NULL END)
+                ) AS assigned(bucket_at)
+                WHERE assigned.bucket_at IS NOT NULL
+                ORDER BY p.parking_lot_id, assigned.bucket_at, p.observed_at DESC,
+                         CASE WHEN left(p.source, 10) = 'migration_' THEN 1 ELSE 0 END,
+                         p.collected_at DESC, p.id DESC
+            )
+            SELECT b.bucket_at,
+                   COALESCE(SUM(c.available_spaces), 0)::integer AS available_spaces,
+                   COALESCE(SUM(c.occupied_spaces), 0)::integer AS occupied_spaces,
+                   COALESCE(SUM(c.total_spaces), 0)::integer AS total_spaces,
+                   COUNT(c.parking_lot_id)::integer AS lot_observations
+            FROM (SELECT :bucket_start + n * :interval_minutes * interval '1 minute' AS bucket_at
+                  FROM generate_series(0, :bucket_count - 1) AS n) AS b
+            LEFT JOIN chosen AS c ON c.bucket_at = b.bucket_at
+            GROUP BY b.bucket_at
+            ORDER BY b.bucket_at
+        """).bindparams(
+            bindparam("bucket_start", type_=DateTime(timezone=True)),
+            bindparam("start_at", type_=DateTime(timezone=True)),
+            bindparam("end_at", type_=DateTime(timezone=True)),
+            bindparam("interval_minutes", type_=Integer),
+            bindparam("bucket_count", type_=Integer),
+        )
+        params = {"bucket_start": bucket_start, "start_at": start_at, "end_at": end_at,
+                  "interval_minutes": interval_minutes, "bucket_count": bucket_count,
+                  "lot_id": lot_id, "airport_id": airport.id if not parking_lot_id else None}
+        rows = (await session.execute(statement, params)).mappings().all()
+        return [dict(row) for row in rows]
+
+    async def _load_timeseries_snapshots(
+        session: AsyncSession,
+        airport_code: str | None,
+        parking_lot_id: int | None,
+        days: int,
+        buffer_minutes: int = 0,
+    ) -> list[ParkingSnapshot]:
+        conditions = [ParkingSnapshot.observed_at >= now_utc() - timedelta(days=days, minutes=buffer_minutes)]
+        if parking_lot_id:
+            conditions.append(ParkingSnapshot.parking_lot_id == parking_lot_id)
+        elif airport_code:
+            airport = await session.scalar(select(Airport).where(Airport.code == airport_code.upper()))
+            if airport is None:
+                return []
+            conditions.append(ParkingSnapshot.airport_id == airport.id)
+        return await _load_compact_timeseries_snapshots(session, conditions)
+
+    async def _load_snapshots_on_local_dates(
+        session: AsyncSession,
+        airport_code: str | None,
+        parking_lot_id: int | None,
+        local_dates: list[date],
+    ) -> list[ParkingSnapshot]:
+        """공휴일 패턴에 필요한 날짜만 읽어 날짜 사이의 수주치 관측 적재를 피한다."""
+        if not local_dates:
+            return []
+        tz = ZoneInfo(resolved_settings.app_timezone)
+        day_ranges = []
+        for local_date in sorted(set(local_dates)):
+            start_local = datetime.combine(local_date, time.min, tzinfo=tz)
+            start_at = start_local.astimezone(UTC)
+            end_at = (start_local + timedelta(days=1)).astimezone(UTC)
+            day_ranges.append(and_(ParkingSnapshot.observed_at >= start_at, ParkingSnapshot.observed_at < end_at))
+        query = select(ParkingSnapshot).where(or_(*day_ranges))
+        if parking_lot_id:
+            query = query.where(ParkingSnapshot.parking_lot_id == parking_lot_id)
+        elif airport_code:
+            airport = await session.scalar(select(Airport).where(Airport.code == airport_code.upper()))
+            if airport is None:
+                return []
+            query = query.where(ParkingSnapshot.airport_id == airport.id)
         return deduplicate_snapshots((await session.execute(query)).scalars().all())
 
     async def _load_snapshot_rows(

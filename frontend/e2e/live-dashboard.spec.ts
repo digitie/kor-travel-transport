@@ -193,11 +193,97 @@ test.describe("live parking-radar dashboard", () => {
     );
   });
 
+  test("pages 30-day parking history without repeating a parking lot observation", async ({ page }) => {
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const first = await getJsonWithTransientRetry(
+      page.request, "/api/backend/v1/parking/history?days=30&limit=2",
+    );
+    expect(first.status()).toBe(200);
+    const firstPage = await first.json();
+    expect(firstPage.items).toHaveLength(2);
+    expect(typeof firstPage.next_cursor).toBe("string");
+    expect(firstPage.items[0].airport_code).toBeTruthy();
+    expect(firstPage.items[0].parking_lot_id).toBeGreaterThan(0);
+
+    const second = await getJsonWithTransientRetry(
+      page.request,
+      `/api/backend/v1/parking/history?days=30&limit=2&cursor=${encodeURIComponent(firstPage.next_cursor)}`,
+    );
+    expect(second.status()).toBe(200);
+    const secondPage = await second.json();
+    expect(secondPage.items).toHaveLength(2);
+    expect(typeof secondPage.next_cursor).toBe("string");
+    const third = await getJsonWithTransientRetry(
+      page.request,
+      `/api/backend/v1/parking/history?days=30&limit=2&cursor=${encodeURIComponent(secondPage.next_cursor)}`,
+    );
+    expect(third.status()).toBe(200);
+    const thirdPage = await third.json();
+    expect(thirdPage.items).toHaveLength(2);
+    const keys = [...firstPage.items, ...secondPage.items, ...thirdPage.items].map(
+      (item: { observed_at: string; parking_lot_id: number }) =>
+        `${item.observed_at}:${item.parking_lot_id}`,
+    );
+    expect(new Set(keys).size).toBe(6);
+    const secondAgain = await getJsonWithTransientRetry(
+      page.request,
+      `/api/backend/v1/parking/history?days=30&limit=2&cursor=${encodeURIComponent(firstPage.next_cursor)}`,
+    );
+    expect(secondAgain.status()).toBe(200);
+    expect((await secondAgain.json()).items).toEqual(secondPage.items);
+  });
+
+  test("reads the complete 30-day history through the public streaming proxy", async ({ request }) => {
+    test.setTimeout(120_000);
+    const started = Date.now();
+    const response = await request.get("/api/backend/v1/parking/history?days=30", { timeout: 90_000 });
+    expect(response.status()).toBe(200);
+    const payload = await response.json();
+    test.info().annotations.push({ type: "full-history-body-ms", description: String(Date.now() - started) });
+    expect(payload.next_cursor).toBeNull();
+    expect(payload.items.length).toBeGreaterThan(0);
+    expect(Date.parse(payload.items[0].observed_at)).toBeLessThanOrEqual(
+      Date.parse(payload.items.at(-1).observed_at),
+    );
+  });
+
+  test("reads the complete 30-day history in a browser within 3 seconds", async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const result = await page.evaluate(async () => {
+      const started = performance.now();
+      const response = await fetch("/api/backend/v1/parking/history?days=30", { cache: "no-store" });
+      const bytes = await response.arrayBuffer();
+      const bodyMs = performance.now() - started;
+      const payload = JSON.parse(new TextDecoder().decode(bytes)) as {
+        items: { observed_at: string }[];
+        next_cursor: string | null;
+      };
+      return {
+        status: response.status,
+        bodyMs,
+        bytes: bytes.byteLength,
+        count: payload.items.length,
+        nextCursor: payload.next_cursor,
+        first: payload.items[0]?.observed_at,
+        last: payload.items.at(-1)?.observed_at,
+      };
+    });
+    test.info().annotations.push({ type: "browser-full-history-body-ms", description: String(Math.round(result.bodyMs)) });
+    expect(result.status).toBe(200);
+    expect(result.bodyMs).toBeLessThanOrEqual(3000);
+    expect(result.bytes).toBeGreaterThan(0);
+    expect(result.count).toBeGreaterThan(0);
+    expect(result.nextCursor).toBeNull();
+    expect(Date.parse(result.first ?? "")).toBeLessThanOrEqual(Date.parse(result.last ?? ""));
+  });
+
   test("exposes the integrated transport API through the frontend proxy", async ({
     page,
   }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(1_200_000);
     await page.goto("/", { waitUntil: "domcontentloaded" });
+    let runningHighwayRunIds: number[] = [];
     // 다른 소스의 후속 성공이 아직 진행 중인 fuel 실행을 가리지 못하게 한다.
     // last_started는 조회 전, last_success는 데이터 저장 transaction과 함께 확정된다.
     await expect(async () => {
@@ -208,11 +294,38 @@ test.describe("live parking-radar dashboard", () => {
       expect(status.scheduler_enabled).toBe(true);
       expect(status.client_mode).toBe("live");
       expect(status.last_run?.trigger).toMatch(/^transport_dagster_(highway|fuel)$/);
-      expect(status.last_run?.status).toBe("success");
+      // 5분 주기 작업과 검사 시점이 겹치면 가장 최근 실행은 정상적으로 진행 중이다.
+      // 오래 멈춘 실행은 아래 시작 시각 검증으로 계속 실패 처리한다.
+      expect(["success", "running"]).toContain(status.last_run?.status);
       expect(status.last_run?.error ?? null).toBeNull();
-      const finishedAt = Date.parse(status.last_run?.finished_at);
-      expect(Number.isFinite(finishedAt)).toBe(true);
-      expect(Date.now() - finishedAt).toBeLessThanOrEqual(900_000);
+      const latestHighwayRun = status.recent_runs.find(
+        (run: { trigger: string }) => run.trigger === "transport_dagster_highway",
+      );
+      expect(latestHighwayRun, "최근 고속도로 수집 실행이 없음").toBeTruthy();
+      expect(["success", "running"], "최근 고속도로 수집 실패").toContain(latestHighwayRun.status);
+      expect(latestHighwayRun.error ?? null).toBeNull();
+      expect(Array.isArray(status.running_runs)).toBe(true);
+      // 최근 10건 밖으로 밀린 고아 실행도 별도 활성 목록에서 확인한다.
+      expect(status.running_run_count).toBe(status.running_runs.length);
+      for (const run of status.running_runs as Array<{ id: number; trigger: string; started_at: string }>) {
+        const age = Date.now() - Date.parse(run.started_at);
+        const maxAge = run.trigger === "transport_dagster_fuel" ? 135 * 60_000 : 15 * 60_000;
+        expect(Number.isFinite(age), `수집 실행 ${run.id}`).toBe(true);
+        expect(age, `수집 실행 ${run.id} 허용 시간을 초과`).toBeLessThanOrEqual(maxAge);
+      }
+      runningHighwayRunIds = [...new Set(
+        [...status.recent_runs, ...status.running_runs]
+          .filter((run: { trigger: string; status: string }) =>
+            run.trigger === "transport_dagster_highway" && run.status === "running")
+          .map((run: { id: number }) => run.id),
+      )];
+      const runAt = Date.parse(status.last_run?.status === "running"
+        ? status.last_run?.started_at : status.last_run?.finished_at);
+      expect(Number.isFinite(runAt)).toBe(true);
+      expect(Date.now() - runAt).toBeLessThanOrEqual(
+        status.last_run?.status === "running" && status.last_run?.trigger === "transport_dagster_fuel"
+          ? 135 * 60_000 : 900_000,
+      );
       expect(Array.isArray(status.sources)).toBe(true);
       for (const name of ["krex_traffic_flow", "krex_traffic_incident", "opinet_browser"]) {
         expect(status.enabled_sources).toContain(name);
@@ -236,6 +349,21 @@ test.describe("live parking-radar dashboard", () => {
         }
       }
     }).toPass({ timeout: 120_000, intervals: [2_000, 5_000] });
+
+    // 고속도로 작업은 정상 상한이 짧다. 처음 관측한 각 실행이 실제 success로
+    // 끝나야 한다. 정상 유가 작업은 최대 2시간이므로 여기서 강제 종료를 기다리지 않는다.
+    if (runningHighwayRunIds.length > 0) {
+      await expect(async () => {
+        const response = await getJsonWithTransientRetry(page.request, "/api/backend/v1/transport/collector-status");
+        expect(response.status()).toBe(200);
+        const status = await response.json();
+        for (const id of runningHighwayRunIds) {
+          const run = status.recent_runs.find((item: { id: number }) => item.id === id);
+          expect(run, `수집 실행 ${id}이 완료 전 목록에서 사라짐`).toBeTruthy();
+          expect(run.status, `수집 실행 ${id}이 정상 종료되지 않음`).toBe("success");
+        }
+      }).toPass({ timeout: 900_000, intervals: [5_000] });
+    }
 
     // 모든 소스의 저장 완료를 확인한 뒤 API를 새로 조회한다.
     for (const path of [

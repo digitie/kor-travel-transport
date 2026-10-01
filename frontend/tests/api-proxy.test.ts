@@ -99,7 +99,8 @@ describe("프록시 응답 본문 계약", () => {
 
     expect(response.status).toBe(502);
     expect(response.headers.get("content-type")).toBe("application/problem+json");
-    expect(response.headers.get("content-length")).toBe(String(bytes.length));
+    // fetch()가 gzip 본문을 자동 해제할 수 있으므로 상류 길이는 전달하지 않는다.
+    expect(response.headers.get("content-length")).toBeNull();
     expect(await response.text()).toBe(text);
     expect(vi.getTimerCount()).toBe(0);
   });

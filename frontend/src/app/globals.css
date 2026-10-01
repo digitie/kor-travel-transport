@@ -563,6 +563,12 @@ select {
   stroke-width: 3;
 }
 
+.history-point.isolated {
+  fill: var(--teal);
+  stroke: var(--surface-strong);
+  stroke-width: 2;
+}
+
 .history-point.active {
   fill: var(--surface-strong);
   stroke: var(--color-accent);

@@ -129,12 +129,51 @@ def test_build_time_series_aggregates_latest_state_per_half_hour() -> None:
 
     buckets = build_time_series(snapshots, now=base + timedelta(hours=1), days=1, interval_minutes=30, tz_name="UTC")
 
-    assert len(buckets) == 48
-    assert buckets[-2]["available_spaces"] == 0
-    assert buckets[-2]["total_spaces"] == 0
+    assert len(buckets) == 49
+    assert buckets[-3]["available_spaces"] == 0
+    assert buckets[-3]["total_spaces"] == 0
     assert buckets[-1]["available_spaces"] == 85
     assert buckets[-1]["lot_observations"] == 2
     assert buckets[-1]["bucket_at"] == base + timedelta(minutes=40)
+
+
+def test_relative_time_series_final_point_excludes_stale_parking_lot() -> None:
+    current = datetime(2026, 4, 21, 12, 0, tzinfo=ZoneInfo("UTC"))
+    snapshots = [
+        ParkingSnapshot(id=index, collection_run_id=None, airport_id=1, parking_lot_id=index,
+                        source="seed", observed_at=observed_at, collected_at=observed_at,
+                        occupied_spaces=100 - available, total_spaces=100,
+                        available_spaces=available, congestion_label=None, congestion_ratio=None,
+                        raw_item_json=None)
+        for index, observed_at, available in (
+            (1, current, 80), (2, current - timedelta(hours=2), 30),
+        )
+    ]
+
+    items = build_time_series(snapshots, days=1, interval_minutes=10, tz_name="UTC")
+    assert (items[-1]["lot_observations"], items[-1]["available_spaces"]) == (1, 80)
+    assert all(item["lot_observations"] == 0 for item in items[-10:-1])
+
+
+def test_relative_time_series_keeps_gap_before_unaligned_latest_point() -> None:
+    base = datetime(2026, 4, 21, 12, 0, tzinfo=ZoneInfo("UTC"))
+    snapshots = [
+        ParkingSnapshot(id=index, collection_run_id=None, airport_id=1, parking_lot_id=1,
+                        source="seed", observed_at=observed_at, collected_at=observed_at,
+                        occupied_spaces=20, total_spaces=100, available_spaces=80,
+                        congestion_label=None, congestion_ratio=None, raw_item_json=None)
+        for index, observed_at in (
+            (1, base + timedelta(minutes=39)),
+            (2, base + timedelta(minutes=59)),
+        )
+    ]
+    items = build_time_series(snapshots, days=1, interval_minutes=10, tz_name="UTC")
+    assert items[-3]["bucket_at"] == base + timedelta(minutes=40)
+    assert items[-3]["lot_observations"] == 1
+    assert items[-2]["bucket_at"] == base + timedelta(minutes=50)
+    assert items[-2]["lot_observations"] == 0
+    assert items[-1]["bucket_at"] == base + timedelta(minutes=59)
+    assert items[-1]["lot_observations"] == 1
 
 
 def test_build_time_series_adds_future_axis_without_carrying_parking_values() -> None:
@@ -152,7 +191,7 @@ def test_build_time_series_adds_future_axis_without_carrying_parking_values() ->
         tz_name="UTC",
     )
 
-    assert len(buckets) == 50
+    assert len(buckets) == 51
     assert buckets[-3]["bucket_at"] == base + timedelta(minutes=40)
     assert buckets[-3]["available_spaces"] == 60
     assert buckets[-2]["lot_observations"] == 0

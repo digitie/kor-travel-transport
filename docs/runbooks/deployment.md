@@ -12,9 +12,26 @@
    스크립트는 대상 host가 `192.168.1.14`이고 Compose project가 `kor-travel-transport`인지 먼저
    확인한 뒤 현재 Git `HEAD`를 candidate artifact로 만들어 n150의 `docker compose`만
    호출하며 다른 Compose project를 중지하지 않는다. 배포 직후 `/health.release_sha`가
-   candidate SHA와 일치하는지도 확인한다.
+   candidate SHA와 일치하는지도 확인한다. 이미지 빌드 뒤 기존 Dagster daemon을
+   멈춰 새 예약을 차단하고, 진행 중인 실행이 0건이 될 때까지 최대 30분 기다린 후
+   서비스를 교체한다. 새 Dagster daemon의 `healthy` 상태까지 확인해야 배포가
+   성공한다. daemon이 이미 없는 상태에서도 활성 실행·code-server worker가
+   있거나 둘 중 하나의 조회가 불가능하면 교체를 거부한다. 드레인 뒤에도
+   두 상태를 다시 확인한다. 드레인 중 실패하면 이전 daemon을
+   다시 시작한다. 서비스 교체가 시작된 뒤 실패하면 DB·code-server가 이미
+   새 버전일 수 있어 이전 daemon만 되돌리지 않는다. 후보 daemon도 멈춰
+   혼합 릴리스에서 수집을 재개하지 않고 수동 복구를 요구한다. 장기 수집이
+   진행 중이면 배포 대기 시간이 늘어날 수 있다.
 4. [migration.md](migration.md)의 prewarm → final delta → 180초 scheduler와 300초 이내 cutover 검증을
    완료한다.
+   브라우저 live E2E 뒤 n150에서
+   `python3 scripts/verify-dagster-workers-server14.py`를 실행해 GraphQL의
+   `STARTED` run과 code-server의 실제 worker 프로세스, 앱의 `running`
+   `collection_runs`와 Dagster 활성 job·시작 시각을 대조한다. 이 검사는
+   읽기 전용이고 짧은 시작 경합을 재시도한 뒤에도 worker가 없거나 앱
+   수집 실행에 대응하는 Dagster run이 없으면 실패한다. 앱 `collection_runs`의
+   성공만으로 Dagster 실행 종료를 증명하지 않는다. 역방향으로 Dagster
+   실행 기록 없이 남은 code-server worker도 실패로 보고한다.
 5. release 이미지 보존: 배포마다 `kor-travel-transport-backend:rel-<sha12>` 태그가 남는다(ADR-010).
    n150에서 하나가 약 2.5 GB이고 Dockerfile의 `COPY backend`가 `pip install` 앞이라 pip·playwright 층도
    대부분 release마다 따로다. `docker image prune`은 태그가 붙은 이미지를 지우지 않는다. 배포가 health를

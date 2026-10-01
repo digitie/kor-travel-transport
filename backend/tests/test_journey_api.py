@@ -152,6 +152,9 @@ def test_provider_status_does_not_confuse_enabled_or_shared_job_with_success(cli
             session.add(CollectionRun(trigger="transport_dagster_highway", status="partial_success", started_at=now, finished_at=now))
             session.add(TransportCollectionState(source="krex_traffic_flow", last_started_at=now, last_success_at=now, updated_at=now))
             session.add(TransportCollectionState(source="krex_traffic_incident", last_started_at=now, last_error="secret-failed", updated_at=now))
+            session.add(TransportCollectionState(source="fuel_latest_prices", last_started_at=now,
+                                                 last_error="secret-view-lock", next_due_at=now + timedelta(minutes=5),
+                                                 updated_at=now))
             await session.commit()
     asyncio.run(seed())
     client.app.state.settings.data_go_kr_service_key = "test-key"
@@ -170,8 +173,52 @@ def test_provider_status_does_not_confuse_enabled_or_shared_job_with_success(cli
     assert rows["krex_traffic_flow"]["status"] == "success"
     assert rows["krex_traffic_flow"]["job_status"] == "partial_success"
     assert rows["krex_traffic_incident"]["status"] == "failed"
+    assert rows["fuel_latest_prices"]["status"] == "failed"
+    assert rows["fuel_latest_prices"]["error_code"] == "read_model_refresh_failed"
+    assert rows["fuel_latest_prices"]["next_due_at"] is not None
+    assert rows["fuel_latest_prices"]["job_status"] is None
     assert "test-key" not in response.text
     assert "secret-provider-key" not in response.text
+    assert "secret-view-lock" not in response.text
+
+
+def test_fuel_read_model_overdue_is_visible_without_recorded_error(client):
+    async def seed():
+        async with client.app.state.session_factory() as session:
+            session.add(TransportCollectionState(
+                source="fuel_latest_prices", next_due_at=now_utc() - timedelta(minutes=15),
+                updated_at=now_utc(),
+            ))
+            await session.commit()
+
+    asyncio.run(seed())
+    client.app.state.settings.transport_collection_enabled = True
+    client.app.state.settings.opinet_browser_enabled = True
+    response = client.get("/v1/transport/providers")
+    assert response.status_code == 200
+    row = next(item for item in response.json()["items"] if item["source"] == "fuel_latest_prices")
+    assert row["status"] == "failed"
+    assert row["error_code"] == "read_model_refresh_delayed"
+
+
+def test_disabled_fuel_read_model_does_not_promise_a_retry(client):
+    async def seed():
+        async with client.app.state.session_factory() as session:
+            session.add(TransportCollectionState(
+                source="fuel_latest_prices", next_due_at=now_utc() - timedelta(minutes=15),
+                last_error="past refresh failure", updated_at=now_utc(),
+            ))
+            await session.commit()
+
+    asyncio.run(seed())
+    client.app.state.settings.transport_collection_enabled = True
+    client.app.state.settings.opinet_browser_enabled = False
+    response = client.get("/v1/transport/providers")
+    assert response.status_code == 200
+    row = next(item for item in response.json()["items"] if item["source"] == "fuel_latest_prices")
+    assert row["status"] == "disabled"
+    assert row["error_code"] is None
+    assert row["next_due_at"] is None
 
 
 def test_bus_terminal_map_uses_only_verified_coordinates_and_preserves_code(client):
