@@ -159,13 +159,27 @@ wait_dagster_daemon_health() {
 }
 daemon_stopped=0
 daemon_stopping=0
+cutover_started=0
 old_daemon_container_id=""
 old_daemon_image=""
 resume_dagster_daemon() {
   local status=$?
   set +e
   trap '' INT TERM HUP PIPE
-  if ((daemon_stopped)); then
+  if ((cutover_started)); then
+    # migrate/code-server/backend가 이미 교체됐을 수 있다. 이전 daemon만 복구하면
+    # 스키마·코드가 다른 혼합 릴리스가 된다. 새 daemon이 같은 후보 이미지로
+    # healthy일 때만 유지하고, 그 외에는 수집을 멈춰 수동 복구를 요구한다.
+    candidate_image="$(docker image inspect -f '{{.Id}}' "${BACKEND_RUNTIME_IMAGE}" 2>/dev/null || true)"
+    current_image="$(docker inspect -f '{{.Image}}' "${dagster_daemon}" 2>/dev/null || true)"
+    if [[ -n "${candidate_image}" && "${current_image}" == "${candidate_image}" ]] \
+      && wait_dagster_daemon_health; then
+      echo "부분 배포 실패: 새 daemon은 유지하지만 전체 서비스 상태를 수동 확인해야 한다." >&2
+    else
+      docker stop "${dagster_daemon}" >/dev/null 2>&1 || true
+      echo "부분 배포 실패: 혼합 릴리스를 막기 위해 daemon을 중지했다. 수동 복구가 필요하다." >&2
+    fi
+  elif ((daemon_stopped)); then
     ((daemon_stopping)) && docker stop "${dagster_daemon}" >/dev/null 2>&1
     current_daemon_id="$(docker inspect -f '{{.Id}}' "${dagster_daemon}" 2>/dev/null || true)"
     if [[ -n "${old_daemon_container_id}" && "${current_daemon_id}" == "${old_daemon_container_id}" ]]; then
@@ -188,12 +202,12 @@ trap 'trap "" INT TERM HUP PIPE; exit 130' INT
 trap 'trap "" INT TERM HUP PIPE; exit 143' TERM
 trap 'trap "" INT TERM HUP PIPE; exit 129' HUP
 trap 'trap "" INT TERM HUP PIPE; exit 141' PIPE
+initial_runs="$(in_flight_runs)" || { echo "Dagster 실행 목록을 읽을 수 없다." >&2; exit 1; }
 if docker inspect "${dagster_daemon}" >/dev/null 2>&1; then
   [[ "$(docker inspect -f '{{.State.Running}}' "${dagster_daemon}")" == true ]] || {
     echo "Dagster daemon이 이미 중지됐다. 수집 상태를 확인한 뒤 배포한다." >&2
     exit 1
   }
-  in_flight_runs >/dev/null || { echo "Dagster 실행 목록을 읽을 수 없다." >&2; exit 1; }
   old_daemon_container_id="$(docker inspect -f '{{.Id}}' "${dagster_daemon}")"
   old_daemon_image="$(docker inspect -f '{{.Image}}' "${dagster_daemon}")"
   daemon_stopped=1
@@ -216,9 +230,15 @@ if docker inspect "${dagster_daemon}" >/dev/null 2>&1; then
     echo "대기 중 Dagster daemon이 다시 시작됐다. 배포를 중단한다." >&2
     exit 1
   }
-  runs="$(in_flight_runs)" || { echo "서비스 교체 직전에 Dagster 실행 목록을 읽지 못했다." >&2; exit 1; }
-  [[ -z "${runs}" ]] || { echo "서비스 교체 직전에 새 Dagster 실행을 발견했다: ${runs}" >&2; exit 1; }
+else
+  [[ -z "${initial_runs}" ]] || {
+    echo "Dagster daemon이 없지만 활성 실행이 있다. code-server 교체를 중단한다: ${initial_runs}" >&2
+    exit 1
+  }
 fi
+runs="$(in_flight_runs)" || { echo "서비스 교체 직전에 Dagster 실행 목록을 읽지 못했다." >&2; exit 1; }
+[[ -z "${runs}" ]] || { echo "서비스 교체 직전에 새 Dagster 실행을 발견했다: ${runs}" >&2; exit 1; }
+cutover_started=1
 docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${RUNTIME_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml up -d --no-build
 docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${RUNTIME_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml ps
 # Compose가 컨테이너를 만들었다는 것과 Dagster 수집기가 실제로 healthy인 것은
@@ -250,3 +270,4 @@ for attempt in $(seq 1 30); do
   sleep 2
 done
 daemon_stopped=0
+cutover_started=0

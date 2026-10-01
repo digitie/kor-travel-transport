@@ -1852,30 +1852,46 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         airport_code: str | None = Query(default=None),
         parking_lot_id: int | None = Query(default=None),
         days: int = Query(default=3, ge=1, le=30),
-        limit: int = Query(default=1000, ge=1, le=1000),
+        limit: int | None = Query(default=None, ge=1, le=1000),
         cursor: str | None = Query(default=None, max_length=200),
         session: AsyncSession = Depends(get_db),
     ) -> ParkingHistoryResponse:
+        page_limit = limit or 1000
+        request_time = now_utc()
+        cutoff = request_time - timedelta(days=days)
+        normalized_airport_code = airport_code.upper() if airport_code else None
         cursor_key: tuple[datetime, int] | None = None
         if cursor is not None:
+            if limit is None:
+                raise HTTPException(status_code=422, detail="커서 조회에는 limit이 필요합니다")
             try:
                 decoded = base64.b64decode(cursor + "=" * (-len(cursor) % 4), altchars=b"-_", validate=True)
                 value = json.loads(decoded)
-                if (not isinstance(value, list) or len(value) != 2
-                        or not isinstance(value[0], str) or type(value[1]) is not int or value[1] <= 0):
+                if (not isinstance(value, list) or len(value) != 6
+                        or not isinstance(value[0], str) or not isinstance(value[1], str)
+                        or type(value[2]) is not int or value[2] <= 0
+                        or value[3] != normalized_airport_code or value[4] != parking_lot_id
+                        or value[5] != days):
                     raise ValueError("invalid cursor payload")
-                cursor_time = datetime.fromisoformat(value[0].replace("Z", "+00:00"))
-                if cursor_time.tzinfo is None:
-                    raise ValueError("cursor time must have a timezone")
-                cursor_key = (cursor_time, value[1])
+                cutoff = datetime.fromisoformat(value[0].replace("Z", "+00:00"))
+                cursor_time = datetime.fromisoformat(value[1].replace("Z", "+00:00"))
+                if cutoff.tzinfo is None or cursor_time.tzinfo is None:
+                    raise ValueError("cursor times must have timezones")
+                if (cutoff < request_time - timedelta(days=days + 1)
+                        or cutoff > request_time or cursor_time < cutoff
+                        or cursor_time > request_time + timedelta(hours=1)):
+                    raise ValueError("cursor time outside the permitted window")
+                cursor_key = (cursor_time, value[2])
             except (ValueError, UnicodeDecodeError, binascii.Error) as exc:
                 raise HTTPException(status_code=422, detail="유효하지 않은 이력 커서입니다") from exc
 
         def next_cursor(observed_at: datetime, lot_id: int) -> str:
-            raw = json.dumps([serialize_utc(observed_at).isoformat(), lot_id], separators=(",", ":"))
+            raw = json.dumps([
+                cutoff.isoformat(), serialize_utc(observed_at).isoformat(), lot_id,
+                normalized_airport_code, parking_lot_id, days,
+            ], separators=(",", ":"))
             return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
 
-        cutoff = now_utc() - timedelta(days=days)
         conditions = [ParkingSnapshot.observed_at >= cutoff]
         if parking_lot_id:
             conditions.append(ParkingSnapshot.parking_lot_id == parking_lot_id)
@@ -1900,7 +1916,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ))
             keys = (keys.distinct()
                     .order_by(ParkingSnapshot.observed_at.desc(), ParkingSnapshot.parking_lot_id.desc())
-                    .limit(limit + 1).cte("history_keys"))
+                    .limit(page_limit + 1).cte("history_keys"))
             latest = (select(
                 ParkingSnapshot.airport_id.label("airport_id"),
                 ParkingSnapshot.occupied_spaces.label("occupied_spaces"),
@@ -1920,8 +1936,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 .join(latest, true()).join(Airport, Airport.id == latest.c.airport_id)
                 .order_by(keys.c.observed_at.desc(), keys.c.parking_lot_id.desc())
             )).all()
-            has_more = len(rows) > limit
-            rows = rows[:limit]
+            has_more = len(rows) > page_limit
+            if has_more and limit is None:
+                raise HTTPException(status_code=422, detail="이력 1,000건 초과: limit과 cursor로 페이지를 조회하세요")
+            rows = rows[:page_limit]
+            if limit is None:
+                rows.reverse()  # 기존 소량 조회의 오래된 순서 계약은 유지한다.
             items = [
                 {"airport_code": row.code, "parking_lot_id": row.parking_lot_id,
                  "observed_at": serialize_utc(row.observed_at),
@@ -1939,7 +1959,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if cursor_key is not None:
             snapshots = [row for row in snapshots
                          if (serialize_utc(row.observed_at), row.parking_lot_id) < cursor_key]
-        page = snapshots[:limit]
+        has_more = len(snapshots) > page_limit
+        if has_more and limit is None:
+            raise HTTPException(status_code=422, detail="이력 1,000건 초과: limit과 cursor로 페이지를 조회하세요")
+        page = snapshots[:page_limit]
+        if limit is None:
+            page.reverse()
         airport_codes = dict((await session.execute(select(Airport.id, Airport.code))).all())
         return ParkingHistoryResponse(
             items=[
@@ -1954,7 +1979,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 for snapshot in page
             ],
             next_cursor=next_cursor(page[-1].observed_at, page[-1].parking_lot_id)
-            if len(snapshots) > limit else None,
+            if has_more else None,
         )
 
     @router.get("/parking/analytics/by-hour", response_model=list[HourlyBucket])
@@ -2005,15 +2030,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "상대 조회(`days`)와 명시적 범위 조회(`start_date`+`end_date`)는 상호배타적이다. "
             "start_date/end_date를 지정하면 days와 future_hours는 무시되고(future_hours=0으로 "
             "고정) airport_code 또는 parking_lot_id가 필요하며, 최대 90일까지 조회할 수 있다. "
-            "범위 조회의 기본 간격은 3일 이하 10분, 14일 이하 30분, 그 이상 60분이다."
+            "범위 조회의 기본 간격은 10분이며, 긴 범위는 interval_minutes로 해상도를 선택할 수 있다."
         ),
     )
     async def parking_time_series(
         airport_code: str | None = Query(default=None),
         parking_lot_id: int | None = Query(default=None),
         days: int = Query(default=7, ge=1, le=30),
-        interval_minutes: int | None = Query(default=None, ge=10, le=60,
-            description="생략 시 상대 조회는 10분, 날짜 범위 조회는 길이에 따라 10/30/60분. 명시값은 그대로 적용한다."),
+        interval_minutes: int = Query(default=DEFAULT_TIMESERIES_INTERVAL_MINUTES, ge=10, le=60,
+            description="생략 시 상대·날짜 범위 모두 10분. 명시값은 그대로 적용한다."),
         future_hours: int = Query(default=0, ge=0, le=12),
         session: AsyncSession = Depends(get_db),
         start_date: str | None = Query(default=None, description="명시적 범위 조회 시작일(YYYY-MM-DD). end_date와 함께 지정한다. 지정 시 days/future_hours는 무시된다."),
@@ -2038,9 +2063,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     status_code=400,
                     detail=f"조회 기간은 최대 {MAX_TIMESERIES_RANGE_DAYS}일까지 가능합니다.",
                 )
-            interval_minutes = interval_minutes or (
-                60 if span_days > 14 else 30 if span_days > 3 else DEFAULT_TIMESERIES_INTERVAL_MINUTES
-            )
             # Anchor bucket placement on the *requested* end of range, not on whichever
             # snapshot happens to be latest - otherwise a trailing collection gap (a
             # maintenance-window restore, an upstream rate-limit block, or simply asking
@@ -2076,7 +2098,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             return Response(content=result.model_dump_json(), media_type="application/json")
 
-        interval_minutes = interval_minutes or DEFAULT_TIMESERIES_INTERVAL_MINUTES
         if (
             airport_code
             and days == DEFAULT_TIMESERIES_DAYS
@@ -2714,14 +2735,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         start_at = datetime.combine(start_date, time.min, tzinfo=tz).astimezone(UTC)
         end_at = (datetime.combine(end_date, time.min, tzinfo=tz) + timedelta(days=1)).astimezone(UTC)
         if parking_lot_id:
-            lot_condition = "l.id = :lot_id"
+            scope_condition_sql = "p.parking_lot_id = :lot_id"
             lot_id = parking_lot_id
             scope_condition = ParkingSnapshot.parking_lot_id == parking_lot_id
         else:
             airport = await session.scalar(select(Airport).where(Airport.code == airport_code.upper()))
             if airport is None:
                 return []
-            lot_condition = "l.airport_id = :airport_id"
+            scope_condition_sql = "p.airport_id = :airport_id"
             lot_id = None
             scope_condition = ParkingSnapshot.airport_id == airport.id
         has_snapshot = await session.scalar(select(ParkingSnapshot.id).where(
@@ -2733,30 +2754,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         bucket_count = max(1, days * 24 * 60 // interval_minutes)
         aligned = align_to_interval(anchor_at, interval_minutes, resolved_settings.app_timezone)
         bucket_start = aligned - timedelta(minutes=interval_minutes * (bucket_count - 1))
-        # 한 bucket/주차장마다 최신 관측 한 건만 인덱스로 찾는다. 원본 기간 전체를
-        # Python으로 전송하지 않으며, 같은 시각의 live > migration 우선순위를 유지한다.
+        # 날짜 범위의 원본을 한 번 훑어 관측을 해당 bucket에 배정한다. 버킷×주차장
+        # LATERAL 반복 탐색은 90일·10분 요청에서 12,960번의 빈 구간까지 조회해
+        # 느려진다. DISTINCT ON은 같은 버킷의 최신 관측 및 live 우선순위를 보존한다.
         statement = sql_text(f"""
-            SELECT b.bucket_at,
-                   COALESCE(SUM(s.available_spaces), 0)::integer AS available_spaces,
-                   COALESCE(SUM(s.occupied_spaces), 0)::integer AS occupied_spaces,
-                   COALESCE(SUM(s.total_spaces), 0)::integer AS total_spaces,
-                   COUNT(s.id)::integer AS lot_observations
-            FROM (SELECT :bucket_start + n * :interval_minutes * interval '1 minute' AS bucket_at
-                  FROM generate_series(0, :bucket_count - 1) AS n) AS b
-            CROSS JOIN parking_lots AS l
-            LEFT JOIN LATERAL (
-                SELECT p.id, p.available_spaces, p.occupied_spaces, p.total_spaces
-                FROM parking_snapshots AS p
-                WHERE p.parking_lot_id = l.id
-                  AND p.observed_at >= :start_at AND p.observed_at < :end_at
-                  AND p.observed_at <= b.bucket_at
-                  AND p.observed_at >= b.bucket_at - :interval_minutes * interval '1 minute'
-                ORDER BY p.observed_at DESC,
+            WITH chosen AS MATERIALIZED (
+                SELECT DISTINCT ON (p.parking_lot_id, p.bucket_at)
+                       p.parking_lot_id, p.bucket_at,
+                       p.available_spaces, p.occupied_spaces, p.total_spaces
+                FROM (
+                    SELECT p.parking_lot_id, p.observed_at, p.source,
+                           p.collected_at, p.id, p.available_spaces,
+                           p.occupied_spaces, p.total_spaces,
+                           date_bin(:interval_minutes * interval '1 minute',
+                                    p.observed_at - interval '1 microsecond',
+                                    :bucket_start)
+                             + :interval_minutes * interval '1 minute' AS bucket_at
+                    FROM parking_snapshots AS p
+                    WHERE {scope_condition_sql}
+                      AND p.observed_at >= :start_at AND p.observed_at < :end_at
+                ) AS p
+                ORDER BY p.parking_lot_id, p.bucket_at, p.observed_at DESC,
                          CASE WHEN left(p.source, 10) = 'migration_' THEN 1 ELSE 0 END,
                          p.collected_at DESC, p.id DESC
-                LIMIT 1
-            ) AS s ON true
-            WHERE {lot_condition}
+            )
+            SELECT b.bucket_at,
+                   COALESCE(SUM(c.available_spaces), 0)::integer AS available_spaces,
+                   COALESCE(SUM(c.occupied_spaces), 0)::integer AS occupied_spaces,
+                   COALESCE(SUM(c.total_spaces), 0)::integer AS total_spaces,
+                   COUNT(c.parking_lot_id)::integer AS lot_observations
+            FROM (SELECT :bucket_start + n * :interval_minutes * interval '1 minute' AS bucket_at
+                  FROM generate_series(0, :bucket_count - 1) AS n) AS b
+            LEFT JOIN chosen AS c ON c.bucket_at = b.bucket_at
             GROUP BY b.bucket_at
             ORDER BY b.bucket_at
         """).bindparams(

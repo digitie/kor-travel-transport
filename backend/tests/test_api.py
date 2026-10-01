@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -743,6 +745,10 @@ def test_parking_history_pages_same_timestamp_without_losing_lots(client) -> Non
             return lots[0].id, lots[1].id
 
     first_lot, second_lot = asyncio.run(seed())
+    legacy = client.get("/v1/parking/history", params={"airport_code": "GMP"})
+    assert legacy.status_code == 200
+    observed_times = [item["observed_at"] for item in legacy.json()["items"]]
+    assert observed_times == sorted(observed_times)
     first = client.get("/v1/parking/history", params={"airport_code": "GMP", "limit": 1})
     assert first.status_code == 200
     first_payload = first.json()
@@ -757,10 +763,55 @@ def test_parking_history_pages_same_timestamp_without_losing_lots(client) -> Non
     assert second.json()["items"][0]["parking_lot_id"] == first_lot
     assert second.json()["items"][0]["observed_at"] == first_payload["items"][0]["observed_at"]
     assert second.json()["next_cursor"] != first_payload["next_cursor"]
+    first_token = first_payload["next_cursor"]
+    second_token = second.json()["next_cursor"]
+    first_cutoff = json.loads(base64.urlsafe_b64decode(first_token + "=" * (-len(first_token) % 4)))[0]
+    second_cutoff = json.loads(base64.urlsafe_b64decode(second_token + "=" * (-len(second_token) % 4)))[0]
+    assert first_cutoff == second_cutoff
+    assert client.get("/v1/parking/history", params={
+        "airport_code": "GMP", "days": 2, "limit": 1, "cursor": first_token,
+    }).status_code == 422
+    forged = json.loads(base64.urlsafe_b64decode(first_token + "=" * (-len(first_token) % 4)))
+    forged[0] = (now_utc() - timedelta(days=40)).isoformat()
+    forged_token = base64.urlsafe_b64encode(json.dumps(forged).encode()).decode().rstrip("=")
+    assert client.get("/v1/parking/history", params={
+        "airport_code": "GMP", "limit": 1, "cursor": forged_token,
+    }).status_code == 422
 
-    invalid = client.get("/v1/parking/history", params={"cursor": "invalid"})
+    invalid = client.get("/v1/parking/history", params={"limit": 1, "cursor": "invalid"})
     assert invalid.status_code == 422
     assert client.get("/v1/parking/history", params={"limit": 1001}).status_code == 422
+
+
+def test_parking_history_rejects_oversized_legacy_response_instead_of_truncating(client) -> None:
+    observed_at = now_utc() - timedelta(minutes=2)
+
+    async def seed() -> int:
+        async with client.app.state.session_factory() as session:
+            airport = await session.scalar(select(Airport).where(Airport.code == "GMP"))
+            lot = await session.scalar(select(ParkingLot).where(ParkingLot.airport_id == airport.id))
+            session.add_all([
+                ParkingSnapshot(
+                    airport_id=airport.id, parking_lot_id=lot.id, source="test_history",
+                    observed_at=observed_at - timedelta(seconds=index),
+                    collected_at=observed_at, occupied_spaces=10,
+                    total_spaces=100, available_spaces=90,
+                )
+                for index in range(1001)
+            ])
+            await session.commit()
+            return lot.id
+
+    lot_id = asyncio.run(seed())
+    legacy = client.get("/v1/parking/history", params={"parking_lot_id": lot_id, "days": 1})
+    assert legacy.status_code == 422
+    assert "limit" in legacy.json()["detail"]
+    paged = client.get("/v1/parking/history", params={
+        "parking_lot_id": lot_id, "days": 1, "limit": 1000,
+    })
+    assert paged.status_code == 200
+    assert len(paged.json()["items"]) == 1000
+    assert paged.json()["next_cursor"]
 
 
 def test_parking_history_postgres_uses_bounded_lateral_page_query(client) -> None:
@@ -829,7 +880,7 @@ def test_current_and_analytics(client) -> None:
     assert timeseries_payload["days"] == 7
     assert timeseries_payload["interval_minutes"] == 10
     assert timeseries_payload["future_hours"] == 0
-    assert len(timeseries_payload["items"]) == 1008
+    assert len(timeseries_payload["items"]) in (1008, 1009)
     assert max(point["lot_observations"] for point in timeseries_payload["items"]) >= 1
     assert_is_utc_iso(timeseries_payload["items"][0]["bucket_at"])
     latest_observed_point = next(
@@ -897,6 +948,43 @@ def test_time_series_explicit_date_range_returns_data(client) -> None:
     assert payload["future_hours"] == 0
     assert payload["items"]
     assert max(point["lot_observations"] for point in payload["items"]) >= 1
+
+
+def test_time_series_date_range_keeps_ten_minute_default(client) -> None:
+    today = datetime.now(ZoneInfo("Asia/Seoul")).date()
+    response = client.get("/v1/parking/analytics/timeseries", params={
+        "airport_code": "GMP", "start_date": (today - timedelta(days=3)).isoformat(),
+        "end_date": today.isoformat(),
+    })
+    assert response.status_code == 200
+    assert response.json()["interval_minutes"] == 10
+    assert len(response.json()["items"]) == 4 * 24 * 6
+
+
+def test_time_series_postgres_uses_single_scan_for_high_resolution_range(client) -> None:
+    included = next(route for route in client.app.routes if hasattr(route, "original_router"))
+    route = next(route for route in included.original_router.routes
+                 if route.path == "/parking/analytics/timeseries")
+
+    class FakeSession:
+        bind = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+        scalar_calls = 0
+
+        async def scalar(self, _statement):
+            self.scalar_calls += 1
+            return SimpleNamespace(id=1) if self.scalar_calls == 1 else 1
+
+        async def execute(self, statement, params):
+            sql = str(statement)
+            assert "date_bin" in sql and "DISTINCT ON" in sql
+            assert "LATERAL" not in sql
+            assert params["bucket_count"] == 90 * 24 * 6
+            return SimpleNamespace(mappings=lambda: SimpleNamespace(all=lambda: []))
+
+    response = asyncio.run(route.endpoint(
+        "GMP", None, 7, 10, 0, FakeSession(), "2026-07-04", "2026-10-01",
+    ))
+    assert response.status_code == 200
 
 
 def test_time_series_explicit_date_range_with_no_data_returns_empty_items(client) -> None:
@@ -988,18 +1076,18 @@ def test_time_series_date_range_preserves_kst_boundary_and_live_source_priority(
             assert item[field] == legacy[field]
 
 
-def test_time_series_range_defaults_to_useful_resolution(client) -> None:
+def test_time_series_range_keeps_ten_minute_default_at_every_duration(client) -> None:
     today = datetime.now(ZoneInfo("Asia/Seoul")).date()
-    for span_days, expected_interval in ((3, 10), (4, 30), (14, 30), (15, 60), (90, 60)):
+    for span_days in (3, 4, 14, 15, 90):
         start = today - timedelta(days=span_days - 1)
         response = client.get("/v1/parking/analytics/timeseries", params={
             "airport_code": "GMP", "start_date": start.isoformat(), "end_date": today.isoformat(),
         })
         assert response.status_code == 200
         payload = response.json()
-        assert payload["interval_minutes"] == expected_interval
+        assert payload["interval_minutes"] == 10
         if payload["items"]:
-            assert len(payload["items"]) == span_days * 24 * 60 // expected_interval
+            assert len(payload["items"]) == span_days * 24 * 60 // 10
 
 
 def test_time_series_rejects_reversed_date_range(client) -> None:

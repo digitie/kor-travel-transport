@@ -145,7 +145,7 @@ def test_release_image_is_pinned_per_release_through_the_shell_env() -> None:
 def test_deploy_drains_dagster_runs_after_build_and_restores_daemon_on_failure() -> None:
     text = _REMOTE.read_text(encoding="utf-8")
     build = text.index(' -f docker-compose.shared.yml build')
-    preflight = text.index('in_flight_runs >/dev/null')
+    preflight = text.index('initial_runs="$(in_flight_runs)"')
     stop = text.index('docker stop "${dagster_daemon}" >/dev/null\n')
     drain = text.index('if runs="$(in_flight_runs)" && [[ -z "${runs}" ]]')
     final_probe = text.index('runs="$(in_flight_runs)" || { echo "서비스 교체 직전에')
@@ -156,6 +156,9 @@ def test_deploy_drains_dagster_runs_after_build_and_restores_daemon_on_failure()
     assert 'cleanup_remote\n  exit "${status}"' in text
     assert '((SECONDS >= drain_deadline))' in text
     assert '[[ -z "${runs}" ]] ||' in text
+    assert 'Dagster daemon이 없지만 활성 실행이 있다' in text
+    assert text.index('cutover_started=1\n') < up
+    assert '혼합 릴리스를 막기 위해 daemon을 중지했다' in text
     assert text.index('wait_dagster_daemon_health() {') < text.index('trap resume_dagster_daemon EXIT') < up
     assert text.index('wait_dagster_daemon_health\nhealth_payload=""') < text.rindex('daemon_stopped=0')
     assert 'BACKEND_RUNTIME_IMAGE="${old_daemon_image}" docker compose' in text
@@ -178,11 +181,11 @@ def test_deploy_daemon_health_probe_rejects_dead_daemon_and_accepts_healthy_one(
             assert "Dagster daemon이 healthy가 되지 않았다" in result.stderr
 
 
-def test_failed_deploy_restores_previous_daemon_image_after_compose_replacement() -> None:
+def test_failed_deploy_before_cutover_restores_previous_daemon_image() -> None:
     text = _REMOTE.read_text(encoding="utf-8")
     body = text.split('resume_dagster_daemon() {\n', 1)[1].split('\n}\ntrap resume_dagster_daemon EXIT', 1)[0]
     script = ('resume_dagster_daemon() {\n' + body + '\n}\n'
-              + 'daemon_stopped=1\ndaemon_stopping=0\n'
+              + 'daemon_stopped=1\ndaemon_stopping=0\ncutover_started=0\n'
               + 'dagster_daemon=transport-dagster-daemon-1\n'
               + 'old_daemon_container_id=old-container\nold_daemon_image=sha256:old-image\n'
               + 'COMPOSE_PROJECT_NAME=transport\nRUNTIME_ENV_FILE=/tmp/runtime.env\nrestored=0\n'
@@ -205,6 +208,27 @@ def test_failed_deploy_restores_previous_daemon_image_after_compose_replacement(
     assert result.returncode == 17, result.stderr
     assert "restored-old-image" in result.stdout
     assert "자동 복구하지 못했다" not in result.stderr
+
+
+def test_failed_deploy_after_cutover_does_not_restore_old_daemon() -> None:
+    text = _REMOTE.read_text(encoding="utf-8")
+    body = text.split('resume_dagster_daemon() {\n', 1)[1].split('\n}\ntrap resume_dagster_daemon EXIT', 1)[0]
+    script = ('resume_dagster_daemon() {\n' + body + '\n}\n'
+              + 'cutover_started=1\ndaemon_stopped=1\ndaemon_stopping=0\n'
+              + 'dagster_daemon=transport-dagster-daemon-1\n'
+              + 'BACKEND_RUNTIME_IMAGE=candidate\nold_daemon_image=sha256:old-image\n'
+              + 'docker() {\n'
+              + '  if [[ "$1 $2" == "image inspect" ]]; then echo sha256:new-image; return 0; fi\n'
+              + '  if [[ "$1 $2" == "inspect -f" ]]; then echo sha256:old-image; return 0; fi\n'
+              + '  if [[ "$1" == "stop" ]]; then echo stopped-new-daemon; return 0; fi\n'
+              + '  if [[ "$1" == "compose" ]]; then echo unsafe-rollback; return 1; fi\n'
+              + '  return 1\n}\n'
+              + 'wait_dagster_daemon_health() { return 1; }\n'
+              + 'cleanup_remote() { :; }\ntrap resume_dagster_daemon EXIT\nexit 17\n')
+    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=False)
+    assert result.returncode == 17, result.stderr
+    assert "혼합 릴리스를 막기 위해 daemon을 중지했다" in result.stderr
+    assert "unsafe-rollback" not in result.stdout
 
 
 def test_remote_deploy_script_has_valid_bash_syntax() -> None:

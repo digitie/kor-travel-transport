@@ -179,8 +179,7 @@ throttle(허용 범위 8~12시간, 24시간 내 최대 3회)을 추가로 적용
 - `GET /v1/parking/current`
   - 현재 주차 현황
 - `GET /v1/parking/analytics/timeseries`
-  - 최근 N일 시계열의 기본 간격은 10분이다. `start_date`/`end_date` 범위 조회는
-    3일 이하 10분, 4~14일 30분, 15~90일 60분을 기본으로 하며,
+  - 최근 N일과 `start_date`/`end_date` 범위 조회의 기본 간격은 모두 10분이다.
     `interval_minutes`를 명시하면 그 값(10~60분)을 그대로 사용한다.
 - `GET /v1/parking/analytics/by-hour`
   - 시간대별 단순 평균

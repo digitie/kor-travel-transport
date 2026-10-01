@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 from datetime import timedelta
+from urllib.request import Request, urlopen
 
 from sqlalchemy import select
 
@@ -21,6 +23,22 @@ from app.models import CollectionRun
 MINIMUM_AGE = timedelta(hours=4)
 TRIGGERS = {"transport_dagster_highway", "transport_dagster_fuel"}
 REASON = "운영 점검: Dagster 활성 실행/worker가 없는 오래된 수집 실행을 실패 종료로 정리함"
+GRAPHQL_URL = "http://127.0.0.1:14004/graphql"
+ACTIVE_QUERY = "{runsOrError(filter:{statuses:[STARTED,STARTING,CANCELING]},limit:1000){__typename ... on Runs{results{runId}}}}"
+
+
+def require_no_active_dagster_runs() -> None:
+    request = Request(GRAPHQL_URL, data=json.dumps({"query": ACTIVE_QUERY}).encode(),
+                      headers={"Content-Type": "application/json"})
+    with urlopen(request, timeout=20) as response:
+        payload = json.load(response)
+    if payload.get("errors"):
+        raise RuntimeError("Dagster 실행 상태 조회에 실패했습니다")
+    result = payload.get("data", {}).get("runsOrError", {})
+    if result.get("__typename") != "Runs" or not isinstance(result.get("results"), list):
+        raise RuntimeError("Dagster 활성 실행 전체를 확인할 수 없습니다")
+    if result["results"]:
+        raise RuntimeError("Dagster 활성 실행이 있어 수집 실행을 정리할 수 없습니다")
 
 
 async def reconcile(ids: list[int], *, apply: bool) -> int:
@@ -44,6 +62,9 @@ async def reconcile(ids: list[int], *, apply: bool) -> int:
                 await session.rollback()
                 print("읽기 전용 점검 완료. --apply를 지정해야 상태가 변경됩니다.")
                 return 0
+            # 운영 backend와 Dagster webserver는 둘 다 host network다. 조회 실패도
+            # fail-closed로 처리하고 대상 row lock을 잡은 상태에서 마지막으로 확인한다.
+            require_no_active_dagster_runs()
             for row in rows:
                 row.status = "failed"
                 row.finished_at = current_time

@@ -14,9 +14,9 @@ from zoneinfo import ZoneInfo
 
 DEFAULT_PATHS = (
     "/v1/parking/current",
-    "/v1/parking/history?airport_code=GMP&days=7",
-    "/v1/parking/history?airport_code=GMP&days=30",
-    "/v1/parking/history?days=30",
+    "/v1/parking/history?airport_code=GMP&days=7&limit=1000",
+    "/v1/parking/history?airport_code=GMP&days=30&limit=1000",
+    "/v1/parking/history?days=30&limit=1000",
     "/v1/dashboard/bootstrap",
     "/v1/dashboard/analytics?airport_code=GMP",
     "/v1/parking/analytics/holiday-patterns?airport_code=GMP",
@@ -40,8 +40,8 @@ DEFAULT_PATHS = (
 def default_paths() -> tuple[str, ...]:
     today = datetime.now(ZoneInfo("Asia/Seoul")).date()
     start = today - timedelta(days=89)
-    return (*DEFAULT_PATHS,
-            f"/v1/parking/analytics/timeseries?airport_code=GMP&start_date={start}&end_date={today}")
+    base = f"/v1/parking/analytics/timeseries?airport_code=GMP&start_date={start}&end_date={today}"
+    return (*DEFAULT_PATHS, base, base + "&interval_minutes=10")
 
 
 def main() -> int:

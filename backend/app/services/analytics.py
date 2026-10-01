@@ -256,13 +256,19 @@ def build_time_series(
         fresh_snapshots = [snapshot for snapshot in latest_snapshots
                            if latest_observed_at - ensure_tz(snapshot.observed_at, "UTC")
                            <= timedelta(minutes=interval_minutes)]
-        items[current_index] = {
+        latest_item = {
             "bucket_at": latest_observed_at,
             "available_spaces": sum(snapshot.available_spaces for snapshot in fresh_snapshots),
             "occupied_spaces": sum(snapshot.occupied_spaces for snapshot in fresh_snapshots),
             "total_spaces": sum(snapshot.total_spaces for snapshot in fresh_snapshots),
             "lot_observations": len(fresh_snapshots),
         }
+        if items[current_index]["bucket_at"] == latest_observed_at:
+            items[current_index] = latest_item
+        else:
+            # 마지막 정규 bucket은 수집 공백일 수 있다. 그 자리를 덮으면 공백이
+            # 사라져 차트가 이전 관측과 최신 관측을 연속선으로 잘못 연결한다.
+            items.insert(history_bucket_count, latest_item)
 
     return items
 

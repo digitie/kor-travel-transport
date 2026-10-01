@@ -212,11 +212,19 @@ test.describe("live parking-radar dashboard", () => {
     expect(second.status()).toBe(200);
     const secondPage = await second.json();
     expect(secondPage.items).toHaveLength(2);
-    const keys = [...firstPage.items, ...secondPage.items].map(
+    expect(typeof secondPage.next_cursor).toBe("string");
+    const third = await getJsonWithTransientRetry(
+      page.request,
+      `/api/backend/v1/parking/history?days=30&limit=2&cursor=${encodeURIComponent(secondPage.next_cursor)}`,
+    );
+    expect(third.status()).toBe(200);
+    const thirdPage = await third.json();
+    expect(thirdPage.items).toHaveLength(2);
+    const keys = [...firstPage.items, ...secondPage.items, ...thirdPage.items].map(
       (item: { observed_at: string; parking_lot_id: number }) =>
         `${item.observed_at}:${item.parking_lot_id}`,
     );
-    expect(new Set(keys).size).toBe(4);
+    expect(new Set(keys).size).toBe(6);
   });
 
   test("exposes the integrated transport API through the frontend proxy", async ({
@@ -239,6 +247,12 @@ test.describe("live parking-radar dashboard", () => {
       // 오래 멈춘 실행은 아래 시작 시각 검증으로 계속 실패 처리한다.
       expect(["success", "running"]).toContain(status.last_run?.status);
       expect(status.last_run?.error ?? null).toBeNull();
+      const latestHighwayRun = status.recent_runs.find(
+        (run: { trigger: string }) => run.trigger === "transport_dagster_highway",
+      );
+      expect(latestHighwayRun, "최근 고속도로 수집 실행이 없음").toBeTruthy();
+      expect(["success", "running"], "최근 고속도로 수집 실패").toContain(latestHighwayRun.status);
+      expect(latestHighwayRun.error ?? null).toBeNull();
       expect(Array.isArray(status.running_runs)).toBe(true);
       // 최근 10건 밖으로 밀린 고아 실행도 별도 활성 목록에서 확인한다.
       expect(status.running_run_count).toBe(status.running_runs.length);
