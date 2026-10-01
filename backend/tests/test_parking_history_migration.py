@@ -1,6 +1,7 @@
 """장기 주차 이력 인덱스 생성은 잠금 제한·중단 복구 계약을 지킨다."""
 
 import importlib.util
+import asyncio
 from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
@@ -106,3 +107,19 @@ def test_offline_migration_is_rejected(monkeypatch):
     ))
     with pytest.raises(RuntimeError, match="온라인 migration"):
         migration.upgrade()
+
+
+def test_postgresql_created_index_matches_upgrade_guard(test_settings):
+    if not test_settings.database_url.startswith("postgresql"):
+        pytest.skip("전용 PostgreSQL 테스트 DB에서만 index 정의를 확인합니다")
+    from app.db.session import create_engine_and_session_factory
+
+    async def check() -> bool | None:
+        engine, _ = create_engine_and_session_factory(test_settings.database_url)
+        try:
+            async with engine.connect() as connection:
+                return await connection.scalar(_migration().INDEX_MATCH_SQL)
+        finally:
+            await engine.dispose()
+
+    assert asyncio.run(check()) is True

@@ -9,6 +9,21 @@ branch_labels = None
 depends_on = None
 
 INDEX_NAME = "ix_parking_snapshots_history_cover"
+INDEX_MATCH_SQL = sa.text("""
+    SELECT i.indisvalid AND t.relname = 'parking_snapshots' AND am.amname = 'btree'
+        AND i.indnkeyatts = 2 AND
+        (SELECT array_agg(pg_get_indexdef(i.indexrelid, n, true) ORDER BY n)
+         FROM generate_series(1, i.indnatts) AS n) = ARRAY[
+            'airport_id', 'observed_at', 'parking_lot_id', 'id',
+            'collected_at', 'source', 'occupied_spaces',
+            'total_spaces', 'available_spaces'
+        ]
+    FROM pg_index AS i
+    JOIN pg_class AS t ON t.oid = i.indrelid
+    JOIN pg_class AS c ON c.oid = i.indexrelid
+    JOIN pg_am AS am ON am.oid = c.relam
+    WHERE i.indexrelid = to_regclass('ix_parking_snapshots_history_cover')
+""")
 
 
 def upgrade() -> None:
@@ -18,21 +33,7 @@ def upgrade() -> None:
         op.execute("SET lock_timeout = '3s'")
         op.execute("SET statement_timeout = '180s'")
         try:
-            matching = op.get_bind().scalar(sa.text("""
-                SELECT i.indisvalid AND t.relname = 'parking_snapshots' AND am.amname = 'btree'
-                    AND i.indnkeyatts = 2 AND
-                    (SELECT array_agg(pg_get_indexdef(i.indexrelid, n, true) ORDER BY n)
-                     FROM generate_series(1, i.indnatts) AS n) = ARRAY[
-                        'airport_id', 'observed_at', 'parking_lot_id', 'id',
-                        'collected_at', 'source', 'occupied_spaces',
-                        'total_spaces', 'available_spaces'
-                    ]
-                FROM pg_index AS i
-                JOIN pg_class AS t ON t.oid = i.indrelid
-                JOIN pg_class AS c ON c.oid = i.indexrelid
-                JOIN pg_am AS am ON am.oid = c.relam
-                WHERE i.indexrelid = to_regclass('ix_parking_snapshots_history_cover')
-            """))
+            matching = op.get_bind().scalar(INDEX_MATCH_SQL)
             if matching is False:
                 raise RuntimeError("invalid or unexpected ix_parking_snapshots_history_cover: 해당 index만 확인 후 재실행 필요")
             if matching is None:
