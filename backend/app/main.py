@@ -2704,7 +2704,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 WHERE p.parking_lot_id = l.id
                   AND p.observed_at >= :start_at AND p.observed_at < :end_at
                   AND p.observed_at <= b.bucket_at
-                  AND p.observed_at > b.bucket_at - :interval_minutes * interval '1 minute'
+                  AND p.observed_at >= b.bucket_at - :interval_minutes * interval '1 minute'
                 ORDER BY p.observed_at DESC,
                          CASE WHEN left(p.source, 10) = 'migration_' THEN 1 ELSE 0 END,
                          p.collected_at DESC, p.id DESC
