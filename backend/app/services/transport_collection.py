@@ -21,7 +21,7 @@ from opinet.experimental import (
     OpinetBrowserCollector,
     OpinetBrowserSnapshot,
 )
-from sqlalchemy import select, text, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -1098,8 +1098,8 @@ class TransportCollectionService:
             .limit(10)
         )).all()
         last_run = recent_runs[0] if recent_runs else None
-        run_items = [
-            {
+        def public_run(run: CollectionRun) -> dict[str, Any]:
+            return {
                 "id": run.id,
                 "started_at": run.started_at,
                 "finished_at": run.finished_at,
@@ -1108,8 +1108,19 @@ class TransportCollectionService:
                 # The public endpoint deliberately exposes only a stable error marker.
                 "error": "collection_failed" if run.error_message else None,
             }
-            for run in recent_runs
-        ]
+
+        running_condition = (
+            CollectionRun.trigger.startswith(TRANSPORT_TRIGGER_PREFIX, autoescape=True),
+            CollectionRun.status == "running",
+        )
+        running_run_count = int(await session.scalar(
+            select(func.count()).select_from(CollectionRun).where(*running_condition)
+        ) or 0)
+        running_rows = (await session.scalars(
+            select(CollectionRun).where(*running_condition)
+            .order_by(CollectionRun.started_at, CollectionRun.id).limit(100)
+        )).all()
+        run_items = [public_run(run) for run in recent_runs]
         return {
             "scheduler_enabled": self.settings.enable_scheduler and self.enabled,
             "collection_enabled": self.enabled,
@@ -1122,6 +1133,8 @@ class TransportCollectionService:
             "last_fuel_error": fuel_state.last_error if fuel_state is not None else None,
             "last_run": run_items[0] if last_run is not None else None,
             "recent_runs": run_items,
+            "running_run_count": running_run_count,
+            "running_runs": [public_run(run) for run in running_rows],
             "sources": [
                 {
                     "source": item.source,

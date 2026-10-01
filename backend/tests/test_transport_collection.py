@@ -877,16 +877,20 @@ def test_transport_collector_status_keeps_older_running_run_visible(client) -> N
             session.add(running)
             await session.flush()
             running_id = running.id
-            session.add(CollectionRun(started_at=now_utc(), finished_at=now_utc(),
-                                      status="success", trigger="transport_dagster_fuel"))
+            for index in range(12):
+                session.add(CollectionRun(started_at=now_utc() + timedelta(seconds=index),
+                                          finished_at=now_utc(), status="success",
+                                          trigger="transport_dagster_fuel"))
             await session.commit()
             return running_id
 
     running_id = asyncio.run(seed())
     payload = client.get("/v1/transport/collector-status").json()
     assert payload["last_run"]["status"] == "success"
+    assert all(run["id"] != running_id for run in payload["recent_runs"])
+    assert payload["running_run_count"] == 1
     assert any(run["id"] == running_id and run["status"] == "running"
-               for run in payload["recent_runs"])
+               for run in payload["running_runs"])
 
 
 def test_postgresql_fuel_collection_refreshes_latest_prices(client) -> None:

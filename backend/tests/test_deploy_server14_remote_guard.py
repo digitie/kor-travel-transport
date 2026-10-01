@@ -149,21 +149,24 @@ def test_deploy_drains_dagster_runs_after_build_and_restores_daemon_on_failure()
     stop = text.index('docker stop "${dagster_daemon}" >/dev/null\n')
     drain = text.index('if runs="$(in_flight_runs)" && [[ -z "${runs}" ]]')
     final_probe = text.index('runs="$(in_flight_runs)" || { echo "서비스 교체 직전에')
-    up = text.index('up -d --no-build')
+    up = text.index('up -d --no-build\n', final_probe)
     assert build < preflight < stop < drain < final_probe < up
     assert 'trap resume_dagster_daemon EXIT' in text
     assert 'docker start "${dagster_daemon}"' in text
     assert 'cleanup_remote\n  exit "${status}"' in text
     assert '((SECONDS >= drain_deadline))' in text
     assert '[[ -z "${runs}" ]] ||' in text
-    assert text.index('up -d --no-build') < text.index('wait_dagster_daemon_health() {') < text.index('daemon_stopped=0\nhealth_payload=""')
+    assert text.index('wait_dagster_daemon_health() {') < text.index('trap resume_dagster_daemon EXIT') < up
+    assert text.index('wait_dagster_daemon_health\nhealth_payload=""') < text.rindex('daemon_stopped=0')
+    assert 'BACKEND_RUNTIME_IMAGE="${old_daemon_image}" docker compose' in text
+    assert '"${restored_image}" != "${old_daemon_image}"' in text
     assert '"${daemon_health}" == "true healthy"' in text
     assert 'Dagster daemon이 healthy가 되지 않았다' in text
 
 
 def test_deploy_daemon_health_probe_rejects_dead_daemon_and_accepts_healthy_one() -> None:
     text = _REMOTE.read_text(encoding="utf-8")
-    body = text.split('wait_dagster_daemon_health() {\n', 1)[1].split('\n}\nwait_dagster_daemon_health', 1)[0]
+    body = text.split('wait_dagster_daemon_health() {\n', 1)[1].split('\n}\ndaemon_stopped=0', 1)[0]
     definition = 'wait_dagster_daemon_health() {\n' + body + '\n}\n'
     for state, expected in (("false unhealthy", 1), ("true healthy", 0)):
         script = (definition + 'dagster_daemon=test-daemon\n'
@@ -173,6 +176,35 @@ def test_deploy_daemon_health_probe_rejects_dead_daemon_and_accepts_healthy_one(
         assert result.returncode == expected, result.stderr
         if expected:
             assert "Dagster daemon이 healthy가 되지 않았다" in result.stderr
+
+
+def test_failed_deploy_restores_previous_daemon_image_after_compose_replacement() -> None:
+    text = _REMOTE.read_text(encoding="utf-8")
+    body = text.split('resume_dagster_daemon() {\n', 1)[1].split('\n}\ntrap resume_dagster_daemon EXIT', 1)[0]
+    script = ('resume_dagster_daemon() {\n' + body + '\n}\n'
+              + 'daemon_stopped=1\ndaemon_stopping=0\n'
+              + 'dagster_daemon=transport-dagster-daemon-1\n'
+              + 'old_daemon_container_id=old-container\nold_daemon_image=sha256:old-image\n'
+              + 'COMPOSE_PROJECT_NAME=transport\nRUNTIME_ENV_FILE=/tmp/runtime.env\nrestored=0\n'
+              + 'docker() {\n'
+              + '  if [[ "$1 $2 $3" == "inspect -f {{.Id}}" ]]; then echo new-container; return; fi\n'
+              + '  if [[ "$1 $2 $3" == "inspect -f {{.Image}}" ]]; then\n'
+              + '    if ((restored)); then echo sha256:old-image; else echo sha256:new-image; fi\n'
+              + '    return\n'
+              + '  fi\n'
+              + '  if [[ "$1 $2" == "image inspect" ]]; then return 0; fi\n'
+              + '  if [[ "$1" == "compose" ]]; then\n'
+              + '    [[ "$BACKEND_RUNTIME_IMAGE" == "sha256:old-image" ]] || return 1\n'
+              + '    restored=1\n'
+              + '    return 0\n'
+              + '  fi\n'
+              + '  return 1\n}\n'
+              + 'wait_dagster_daemon_health() { ((restored)) && echo restored-old-image; }\n'
+              + 'cleanup_remote() { :; }\ntrap resume_dagster_daemon EXIT\nexit 17\n')
+    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=False)
+    assert result.returncode == 17, result.stderr
+    assert "restored-old-image" in result.stdout
+    assert "자동 복구하지 못했다" not in result.stderr
 
 
 def test_remote_deploy_script_has_valid_bash_syntax() -> None:

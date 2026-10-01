@@ -111,7 +111,9 @@ covering index를 concurrent로 만들고 해당 테이블의 auto-analyze 임�
 생성만으로 1초 목표를 달성했다고 간주하지 않는다. 배포 뒤
 `EXPLAIN (ANALYZE, BUFFERS)`의 heap fetch와 본문 수신 완료 시간을 다시
 측정한다. 중단으로 invalid index가 남으면 해당 이름·valid 상태를 확인한 뒤
-그 인덱스만 별도로 정리하고 migration을 재실행한다.
+그 인덱스만 별도로 정리하고 migration을 재실행한다. 롤백에서는 버전 갱신과
+원자적으로 묶을 수 없는 concurrent 인덱스 삭제를 하지 않는다. 안전한 추가
+인덱스를 남기고 테이블 설정만 되돌리며, 재적용은 정의를 확인해 재사용한다.
 
 ## 첫 화면
 

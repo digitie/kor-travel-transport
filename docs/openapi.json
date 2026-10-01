@@ -4028,6 +4028,18 @@
             "title": "Recent Runs",
             "type": "array"
           },
+          "running_run_count": {
+            "default": 0,
+            "title": "Running Run Count",
+            "type": "integer"
+          },
+          "running_runs": {
+            "items": {
+              "$ref": "#/components/schemas/TransportCollectionRunStatus"
+            },
+            "title": "Running Runs",
+            "type": "array"
+          },
           "scheduler_enabled": {
             "title": "Scheduler Enabled",
             "type": "boolean"

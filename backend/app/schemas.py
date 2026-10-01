@@ -403,6 +403,8 @@ class TransportCollectorStatus(BaseModel):
     last_fuel_error: str | None = None
     last_run: TransportCollectionRunStatus | None = None
     recent_runs: list[TransportCollectionRunStatus] = Field(default_factory=list)
+    running_run_count: int = 0
+    running_runs: list[TransportCollectionRunStatus] = Field(default_factory=list)
     sources: list["TransportSourceStatus"] = Field(default_factory=list)
 
 

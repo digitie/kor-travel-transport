@@ -47,6 +47,17 @@ function buildWeekendSeries(): ParkingTimeSeriesResponse {
 }
 
 describe("HistoryChart", () => {
+  test("breaks the line and area across missing observations", () => {
+    const series = buildSeries();
+    series.items = series.items.slice(0, 6).map((item, index) => index === 2 || index === 3
+      ? { ...item, lot_observations: 0, available_spaces: 0, occupied_spaces: 0, total_spaces: 0 }
+      : item);
+    const { container } = render(<HistoryChart holidays={[]} series={series} scopeLabel="P1" />);
+
+    expect(container.querySelectorAll(".history-line")).toHaveLength(2);
+    expect(container.querySelectorAll(".history-area")).toHaveLength(2);
+  });
+
   test("renders 6 hour axis labels", () => {
     const { container } = render(
       <HistoryChart

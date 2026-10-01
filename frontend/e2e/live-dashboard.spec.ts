@@ -198,7 +198,7 @@ test.describe("live parking-radar dashboard", () => {
   }) => {
     test.setTimeout(1_200_000);
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    let runningRunIds: number[] = [];
+    let runningHighwayRunIds: number[] = [];
     // 다른 소스의 후속 성공이 아직 진행 중인 fuel 실행을 가리지 못하게 한다.
     // last_started는 조회 전, last_success는 데이터 저장 transaction과 함께 확정된다.
     await expect(async () => {
@@ -213,14 +213,25 @@ test.describe("live parking-radar dashboard", () => {
       // 오래 멈춘 실행은 아래 시작 시각 검증으로 계속 실패 처리한다.
       expect(["success", "running"]).toContain(status.last_run?.status);
       expect(status.last_run?.error ?? null).toBeNull();
-      expect(Array.isArray(status.recent_runs)).toBe(true);
-      runningRunIds = status.recent_runs
-        .filter((run: { status: string }) => run.status === "running")
+      expect(Array.isArray(status.running_runs)).toBe(true);
+      // 최근 10건 밖으로 밀린 고아 실행도 별도 활성 목록에서 확인한다.
+      expect(status.running_run_count).toBe(status.running_runs.length);
+      for (const run of status.running_runs as Array<{ id: number; trigger: string; started_at: string }>) {
+        const age = Date.now() - Date.parse(run.started_at);
+        const maxAge = run.trigger === "transport_dagster_fuel" ? 135 * 60_000 : 15 * 60_000;
+        expect(Number.isFinite(age), `수집 실행 ${run.id}`).toBe(true);
+        expect(age, `수집 실행 ${run.id} 허용 시간을 초과`).toBeLessThanOrEqual(maxAge);
+      }
+      runningHighwayRunIds = status.running_runs
+        .filter((run: { trigger: string }) => run.trigger === "transport_dagster_highway")
         .map((run: { id: number }) => run.id);
       const runAt = Date.parse(status.last_run?.status === "running"
         ? status.last_run?.started_at : status.last_run?.finished_at);
       expect(Number.isFinite(runAt)).toBe(true);
-      expect(Date.now() - runAt).toBeLessThanOrEqual(900_000);
+      expect(Date.now() - runAt).toBeLessThanOrEqual(
+        status.last_run?.status === "running" && status.last_run?.trigger === "transport_dagster_fuel"
+          ? 135 * 60_000 : 900_000,
+      );
       expect(Array.isArray(status.sources)).toBe(true);
       for (const name of ["krex_traffic_flow", "krex_traffic_incident", "opinet_browser"]) {
         expect(status.enabled_sources).toContain(name);
@@ -245,14 +256,14 @@ test.describe("live parking-radar dashboard", () => {
       }
     }).toPass({ timeout: 120_000, intervals: [2_000, 5_000] });
 
-    // 배포 직후 고아 run도 처음에는 최근 15분 running으로 보인다. 시작 시
-    // 관측한 각 run이 실제 success로 끝나야 게이트를 통과시킨다.
-    if (runningRunIds.length > 0) {
+    // 고속도로 작업은 정상 상한이 짧다. 처음 관측한 각 실행이 실제 success로
+    // 끝나야 한다. 정상 유가 작업은 최대 2시간이므로 여기서 강제 종료를 기다리지 않는다.
+    if (runningHighwayRunIds.length > 0) {
       await expect(async () => {
         const response = await getJsonWithTransientRetry(page.request, "/api/backend/v1/transport/collector-status");
         expect(response.status()).toBe(200);
         const status = await response.json();
-        for (const id of runningRunIds) {
+        for (const id of runningHighwayRunIds) {
           const run = status.recent_runs.find((item: { id: number }) => item.id === id);
           expect(run, `수집 실행 ${id}이 완료 전 목록에서 사라짐`).toBeTruthy();
           expect(run.status, `수집 실행 ${id}이 정상 종료되지 않음`).toBe("success");

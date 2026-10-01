@@ -143,16 +143,40 @@ in_flight_runs() {
   curl -fsS --max-time 20 -H 'Content-Type: application/json' -d "${dagster_runs_query}" "${dagster_graphql_url}" |
     python3 -c 'import json,sys; value=json.load(sys.stdin)["data"]["runsOrError"]; assert value["__typename"] == "Runs", value; [print(row["runId"], row["jobName"], row["status"]) for row in value["results"]]'
 }
+wait_dagster_daemon_health() {
+  local daemon_health="" attempt
+  for attempt in $(seq 1 36); do
+    daemon_health="$(docker inspect -f '{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "${dagster_daemon}" 2>/dev/null || true)"
+    if [[ "${daemon_health}" == "true healthy" ]]; then
+      return 0
+    fi
+    if [[ "${attempt}" == "36" ]]; then
+      echo "Dagster daemon이 healthy가 되지 않았다: ${dagster_daemon} (${daemon_health:-missing})" >&2
+      return 1
+    fi
+    sleep 5
+  done
+}
 daemon_stopped=0
 daemon_stopping=0
+old_daemon_container_id=""
+old_daemon_image=""
 resume_dagster_daemon() {
   local status=$?
   set +e
   trap '' INT TERM HUP PIPE
   if ((daemon_stopped)); then
     ((daemon_stopping)) && docker stop "${dagster_daemon}" >/dev/null 2>&1
-    docker start "${dagster_daemon}" >/dev/null 2>&1
-    if [[ "$(docker inspect -f '{{.State.Running}}' "${dagster_daemon}" 2>/dev/null)" != true ]]; then
+    current_daemon_id="$(docker inspect -f '{{.Id}}' "${dagster_daemon}" 2>/dev/null || true)"
+    if [[ -n "${old_daemon_container_id}" && "${current_daemon_id}" == "${old_daemon_container_id}" ]]; then
+      docker start "${dagster_daemon}" >/dev/null 2>&1
+    elif [[ -n "${old_daemon_image}" ]] && docker image inspect "${old_daemon_image}" >/dev/null 2>&1; then
+      # compose up이 기존 컨테이너를 교체했다면 docker start는 새 불량 이미지만
+      # 재시작한다. 이전 image ID로 daemon 서비스만 되돌리고 건강을 확인한다.
+      BACKEND_RUNTIME_IMAGE="${old_daemon_image}" docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${RUNTIME_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml up -d --no-build --no-deps --force-recreate dagster-daemon >/dev/null 2>&1
+    fi
+    restored_image="$(docker inspect -f '{{.Image}}' "${dagster_daemon}" 2>/dev/null || true)"
+    if [[ "${restored_image}" != "${old_daemon_image}" ]] || ! wait_dagster_daemon_health; then
       echo "Dagster daemon을 자동 복구하지 못했다: ${dagster_daemon}" >&2
     fi
   fi
@@ -170,6 +194,8 @@ if docker inspect "${dagster_daemon}" >/dev/null 2>&1; then
     exit 1
   }
   in_flight_runs >/dev/null || { echo "Dagster 실행 목록을 읽을 수 없다." >&2; exit 1; }
+  old_daemon_container_id="$(docker inspect -f '{{.Id}}' "${dagster_daemon}")"
+  old_daemon_image="$(docker inspect -f '{{.Image}}' "${dagster_daemon}")"
   daemon_stopped=1
   daemon_stopping=1
   docker stop "${dagster_daemon}" >/dev/null
@@ -197,22 +223,7 @@ docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${RUNTIME_EN
 docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${RUNTIME_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml ps
 # Compose가 컨테이너를 만들었다는 것과 Dagster 수집기가 실제로 healthy인 것은
 # 다르다. metadata DB 오류 등으로 새 daemon이 죽으면 성공 배포로 보고하지 않는다.
-wait_dagster_daemon_health() {
-  local daemon_health="" attempt
-  for attempt in $(seq 1 36); do
-    daemon_health="$(docker inspect -f '{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "${dagster_daemon}" 2>/dev/null || true)"
-    if [[ "${daemon_health}" == "true healthy" ]]; then
-      return 0
-    fi
-    if [[ "${attempt}" == "36" ]]; then
-      echo "Dagster daemon이 healthy가 되지 않았다: ${dagster_daemon} (${daemon_health:-missing})" >&2
-      return 1
-    fi
-    sleep 5
-  done
-}
 wait_dagster_daemon_health
-daemon_stopped=0
 health_payload=""
 for attempt in $(seq 1 30); do
   if health_payload="$(curl -fsS "http://127.0.0.1:${PUBLIC_API_PORT:-14001}/health" 2>/dev/null)"; then
@@ -238,3 +249,4 @@ for attempt in $(seq 1 30); do
   fi
   sleep 2
 done
+daemon_stopped=0

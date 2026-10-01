@@ -253,12 +253,15 @@ def build_time_series(
     # stale data into that slot would misrepresent it as current-as-of-end-of-range.
     if anchor_at is None and latest_snapshots:
         current_index = history_bucket_count - 1
+        fresh_snapshots = [snapshot for snapshot in latest_snapshots
+                           if latest_observed_at - ensure_tz(snapshot.observed_at, "UTC")
+                           <= timedelta(minutes=interval_minutes)]
         items[current_index] = {
             "bucket_at": latest_observed_at,
-            "available_spaces": sum(snapshot.available_spaces for snapshot in latest_snapshots),
-            "occupied_spaces": sum(snapshot.occupied_spaces for snapshot in latest_snapshots),
-            "total_spaces": sum(snapshot.total_spaces for snapshot in latest_snapshots),
-            "lot_observations": len(latest_snapshots),
+            "available_spaces": sum(snapshot.available_spaces for snapshot in fresh_snapshots),
+            "occupied_spaces": sum(snapshot.occupied_spaces for snapshot in fresh_snapshots),
+            "total_spaces": sum(snapshot.total_spaces for snapshot in fresh_snapshots),
+            "lot_observations": len(fresh_snapshots),
         }
 
     return items

@@ -20,6 +20,11 @@
    배포 대기 시간이 늘어날 수 있다.
 4. [migration.md](migration.md)의 prewarm → final delta → 180초 scheduler와 300초 이내 cutover 검증을
    완료한다.
+   브라우저 live E2E 뒤 n150에서
+   `python3 scripts/verify-dagster-workers-server14.py`를 실행해 GraphQL의
+   `STARTED` run과 code-server의 실제 worker 프로세스를 대조한다. 이 검사는
+   읽기 전용이고 한 번의 짧은 시작 경합을 재시도한 뒤에도 worker가 없으면
+   실패한다. 앱 `collection_runs`의 성공만으로 Dagster 실행 종료를 증명하지 않는다.
 5. release 이미지 보존: 배포마다 `kor-travel-transport-backend:rel-<sha12>` 태그가 남는다(ADR-010).
    n150에서 하나가 약 2.5 GB이고 Dockerfile의 `COPY backend`가 `pip install` 앞이라 pip·playwright 층도
    대부분 release마다 따로다. `docker image prune`은 태그가 붙은 이미지를 지우지 않는다. 배포가 health를

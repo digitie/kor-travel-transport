@@ -1656,7 +1656,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     item[key] = serialize_utc(item[key])
             if item["last_error"] is not None:
                 item["last_error"] = "collection_failed"
-        for run in status["recent_runs"]:
+        for run in (*status["recent_runs"], *status["running_runs"]):
             for key in ("started_at", "finished_at"):
                 if run[key] is not None:
                     run[key] = serialize_utc(run[key])

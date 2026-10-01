@@ -35,6 +35,7 @@ def test_cover_index_created_concurrently_and_analyzed(monkeypatch, valid, expec
 
     assert "pg_get_indexdef" in str(scalar.call_args.args[0])
     assert "t.relname = 'parking_snapshots'" in str(scalar.call_args.args[0])
+    assert "i.indpred IS NULL" in str(scalar.call_args.args[0])
 
     assert create.call_count == expected_creates
     if expected_creates:
@@ -87,7 +88,7 @@ def test_downgrade_keeps_index_when_table_lock_fails(monkeypatch):
     drop.assert_not_called()
 
 
-def test_downgrade_resets_table_before_concurrent_drop(monkeypatch):
+def test_downgrade_keeps_covering_index_for_atomic_revision_rollback(monkeypatch):
     migration = _migration()
     operations = []
     monkeypatch.setattr(migration, "op", SimpleNamespace(
@@ -97,7 +98,10 @@ def test_downgrade_resets_table_before_concurrent_drop(monkeypatch):
     ))
 
     migration.downgrade()
-    assert operations.index("ALTER TABLE parking_snapshots RESET (autovacuum_analyze_scale_factor)") < operations.index("DROP INDEX CONCURRENTLY")
+    assert operations == [
+        "SET LOCAL lock_timeout = '3s'",
+        "ALTER TABLE parking_snapshots RESET (autovacuum_analyze_scale_factor)",
+    ]
 
 
 def test_offline_migration_is_rejected(monkeypatch):

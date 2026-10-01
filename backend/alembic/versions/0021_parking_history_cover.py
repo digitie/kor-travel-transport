@@ -10,7 +10,8 @@ depends_on = None
 
 INDEX_NAME = "ix_parking_snapshots_history_cover"
 INDEX_MATCH_SQL = sa.text("""
-    SELECT i.indisvalid AND t.relname = 'parking_snapshots' AND am.amname = 'btree'
+    SELECT i.indisvalid AND i.indisready AND i.indpred IS NULL
+        AND t.relname = 'parking_snapshots' AND am.amname = 'btree'
         AND i.indnkeyatts = 2 AND
         (SELECT array_agg(pg_get_indexdef(i.indexrelid, n, true) ORDER BY n)
          FROM generate_series(1, i.indnatts) AS n) = ARRAY[
@@ -60,16 +61,8 @@ def upgrade() -> None:
 def downgrade() -> None:
     if op.get_context().as_sql:
         raise RuntimeError("0021은 concurrent index 검증을 위해 온라인 migration만 지원합니다.")
-    # 잠금 실패가 나더라도 index와 0021 revision이 서로 어긋나지 않도록
-    # 트랜잭션형 테이블 설정 변경을 먼저 끝낸 뒤 비트랜잭션 index 삭제를 한다.
+    # 인덱스를 concurrent로 삭제하면 버전 갱신과 원자적으로 묶을 수 없다.
+    # 롤백은 테이블 설정만 되돌리고 안전한 추가 인덱스는 남긴다. 0021 재적용 시
+    # 정의를 검증한 뒤 재사용한다. 인덱스 삭제는 별도 점검된 정비 작업으로 한다.
     op.execute("SET LOCAL lock_timeout = '3s'")
     op.execute("ALTER TABLE parking_snapshots RESET (autovacuum_analyze_scale_factor)")
-    with op.get_context().autocommit_block():
-        op.execute("SET lock_timeout = '3s'")
-        op.execute("SET statement_timeout = '180s'")
-        try:
-            op.drop_index(INDEX_NAME, table_name="parking_snapshots", postgresql_concurrently=True,
-                          if_exists=True)
-        finally:
-            op.execute("RESET statement_timeout")
-            op.execute("RESET lock_timeout")
