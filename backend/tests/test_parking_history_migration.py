@@ -22,14 +22,18 @@ def test_cover_index_created_concurrently_and_analyzed(monkeypatch, valid, expec
     migration = _migration()
     execute = Mock()
     create = Mock()
+    scalar = Mock(return_value=valid)
     monkeypatch.setattr(migration, "op", SimpleNamespace(
         get_context=lambda: SimpleNamespace(autocommit_block=nullcontext, as_sql=False),
-        get_bind=lambda: SimpleNamespace(scalar=Mock(return_value=valid)),
+        get_bind=lambda: SimpleNamespace(scalar=scalar),
         execute=execute,
         create_index=create,
     ))
 
     migration.upgrade()
+
+    assert "pg_get_indexdef" in str(scalar.call_args.args[0])
+    assert "t.relname = 'parking_snapshots'" in str(scalar.call_args.args[0])
 
     assert create.call_count == expected_creates
     if expected_creates:
@@ -64,6 +68,35 @@ def test_invalid_index_fails_before_table_change_and_resets_limits(monkeypatch):
     assert [call.args[0] for call in execute.call_args_list][-2:] == [
         "RESET statement_timeout", "RESET lock_timeout",
     ]
+
+
+def test_downgrade_keeps_index_when_table_lock_fails(monkeypatch):
+    migration = _migration()
+    execute = Mock(side_effect=lambda statement: (_ for _ in ()).throw(RuntimeError("lock timeout"))
+                   if statement.startswith("ALTER TABLE") else None)
+    drop = Mock()
+    monkeypatch.setattr(migration, "op", SimpleNamespace(
+        get_context=lambda: SimpleNamespace(autocommit_block=nullcontext, as_sql=False),
+        execute=execute,
+        drop_index=drop,
+    ))
+
+    with pytest.raises(RuntimeError, match="lock timeout"):
+        migration.downgrade()
+    drop.assert_not_called()
+
+
+def test_downgrade_resets_table_before_concurrent_drop(monkeypatch):
+    migration = _migration()
+    operations = []
+    monkeypatch.setattr(migration, "op", SimpleNamespace(
+        get_context=lambda: SimpleNamespace(autocommit_block=nullcontext, as_sql=False),
+        execute=lambda statement: operations.append(statement),
+        drop_index=lambda *args, **kwargs: operations.append("DROP INDEX CONCURRENTLY"),
+    ))
+
+    migration.downgrade()
+    assert operations.index("ALTER TABLE parking_snapshots RESET (autovacuum_analyze_scale_factor)") < operations.index("DROP INDEX CONCURRENTLY")
 
 
 def test_offline_migration_is_rejected(monkeypatch):

@@ -237,6 +237,9 @@ def build_time_series(
 
             if current is None:
                 continue
+            # 관측 공백 뒤의 과거 값을 현재 버킷에 계속 이월하지 않는다.
+            if bucket_at - ensure_tz(current.observed_at, "UTC") >= timedelta(minutes=interval_minutes):
+                continue
 
             item["available_spaces"] += current.available_spaces
             item["occupied_spaces"] += current.occupied_spaces

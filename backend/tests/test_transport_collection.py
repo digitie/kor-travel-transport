@@ -29,6 +29,7 @@ from app.core.time_utils import now_utc, serialize_utc
 from app.db.session import create_engine_and_session_factory, init_database
 from app.main import cached_transport_statistics, create_app
 from app.models import (
+    CollectionRun,
     FuelLatestPrice,
     FuelPriceSnapshot,
     FuelStation,
@@ -865,6 +866,27 @@ def test_transport_openapi_returns_stored_data_and_statistics(tmp_path: Path) ->
     assert {item["source"] for item in status.json()["sources"]} == expected_sources
     assert status.json()["last_run"]["status"] == "success"
     assert status.json()["last_run"]["trigger"] == "transport_test"
+    assert status.json()["recent_runs"][0]["id"] == status.json()["last_run"]["id"]
+
+
+def test_transport_collector_status_keeps_older_running_run_visible(client) -> None:
+    async def seed() -> int:
+        async with client.app.state.session_factory() as session:
+            running = CollectionRun(started_at=now_utc() - timedelta(minutes=1),
+                                    status="running", trigger="transport_dagster_highway")
+            session.add(running)
+            await session.flush()
+            running_id = running.id
+            session.add(CollectionRun(started_at=now_utc(), finished_at=now_utc(),
+                                      status="success", trigger="transport_dagster_fuel"))
+            await session.commit()
+            return running_id
+
+    running_id = asyncio.run(seed())
+    payload = client.get("/v1/transport/collector-status").json()
+    assert payload["last_run"]["status"] == "success"
+    assert any(run["id"] == running_id and run["status"] == "running"
+               for run in payload["recent_runs"])
 
 
 def test_postgresql_fuel_collection_refreshes_latest_prices(client) -> None:

@@ -156,6 +156,9 @@ def test_deploy_drains_dagster_runs_after_build_and_restores_daemon_on_failure()
     assert 'cleanup_remote\n  exit "${status}"' in text
     assert '((SECONDS >= drain_deadline))' in text
     assert '[[ -z "${runs}" ]] ||' in text
+    assert text.index('up -d --no-build') < text.index('daemon_health=""') < text.index('daemon_stopped=0\nhealth_payload=""')
+    assert '"${daemon_health}" == "true healthy"' in text
+    assert 'Dagster daemon이 healthy가 되지 않았다' in text
 
 
 def test_remote_deploy_script_has_valid_bash_syntax() -> None:

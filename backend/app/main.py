@@ -1656,10 +1656,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     item[key] = serialize_utc(item[key])
             if item["last_error"] is not None:
                 item["last_error"] = "collection_failed"
-        if status["last_run"] is not None:
+        for run in status["recent_runs"]:
             for key in ("started_at", "finished_at"):
-                if status["last_run"][key] is not None:
-                    status["last_run"][key] = serialize_utc(status["last_run"][key])
+                if run[key] is not None:
+                    run[key] = serialize_utc(run[key])
         if status["last_fuel_error"] is not None:
             status["last_fuel_error"] = "collection_failed"
         return TransportCollectorStatus(**status)
@@ -2704,6 +2704,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 WHERE p.parking_lot_id = l.id
                   AND p.observed_at >= :start_at AND p.observed_at < :end_at
                   AND p.observed_at <= b.bucket_at
+                  AND p.observed_at > b.bucket_at - :interval_minutes * interval '1 minute'
                 ORDER BY p.observed_at DESC,
                          CASE WHEN left(p.source, 10) = 'migration_' THEN 1 ELSE 0 END,
                          p.collected_at DESC, p.id DESC

@@ -194,8 +194,22 @@ if docker inspect "${dagster_daemon}" >/dev/null 2>&1; then
   [[ -z "${runs}" ]] || { echo "서비스 교체 직전에 새 Dagster 실행을 발견했다: ${runs}" >&2; exit 1; }
 fi
 docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${RUNTIME_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml up -d --no-build
-daemon_stopped=0
 docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${RUNTIME_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml ps
+# Compose가 컨테이너를 만들었다는 것과 Dagster 수집기가 실제로 healthy인 것은
+# 다르다. metadata DB 오류 등으로 새 daemon이 죽으면 성공 배포로 보고하지 않는다.
+daemon_health=""
+for attempt in $(seq 1 36); do
+  daemon_health="$(docker inspect -f '{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "${dagster_daemon}" 2>/dev/null || true)"
+  if [[ "${daemon_health}" == "true healthy" ]]; then
+    break
+  fi
+  if [[ "${attempt}" == "36" ]]; then
+    echo "Dagster daemon이 healthy가 되지 않았다: ${dagster_daemon} (${daemon_health:-missing})" >&2
+    exit 1
+  fi
+  sleep 5
+done
+daemon_stopped=0
 health_payload=""
 for attempt in $(seq 1 30); do
   if health_payload="$(curl -fsS "http://127.0.0.1:${PUBLIC_API_PORT:-14001}/health" 2>/dev/null)"; then

@@ -196,8 +196,9 @@ test.describe("live parking-radar dashboard", () => {
   test("exposes the integrated transport API through the frontend proxy", async ({
     page,
   }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(1_200_000);
     await page.goto("/", { waitUntil: "domcontentloaded" });
+    let runningRunIds: number[] = [];
     // 다른 소스의 후속 성공이 아직 진행 중인 fuel 실행을 가리지 못하게 한다.
     // last_started는 조회 전, last_success는 데이터 저장 transaction과 함께 확정된다.
     await expect(async () => {
@@ -212,6 +213,10 @@ test.describe("live parking-radar dashboard", () => {
       // 오래 멈춘 실행은 아래 시작 시각 검증으로 계속 실패 처리한다.
       expect(["success", "running"]).toContain(status.last_run?.status);
       expect(status.last_run?.error ?? null).toBeNull();
+      expect(Array.isArray(status.recent_runs)).toBe(true);
+      runningRunIds = status.recent_runs
+        .filter((run: { status: string }) => run.status === "running")
+        .map((run: { id: number }) => run.id);
       const runAt = Date.parse(status.last_run?.status === "running"
         ? status.last_run?.started_at : status.last_run?.finished_at);
       expect(Number.isFinite(runAt)).toBe(true);
@@ -239,6 +244,21 @@ test.describe("live parking-radar dashboard", () => {
         }
       }
     }).toPass({ timeout: 120_000, intervals: [2_000, 5_000] });
+
+    // 배포 직후 고아 run도 처음에는 최근 15분 running으로 보인다. 시작 시
+    // 관측한 각 run이 실제 success로 끝나야 게이트를 통과시킨다.
+    if (runningRunIds.length > 0) {
+      await expect(async () => {
+        const response = await getJsonWithTransientRetry(page.request, "/api/backend/v1/transport/collector-status");
+        expect(response.status()).toBe(200);
+        const status = await response.json();
+        for (const id of runningRunIds) {
+          const run = status.recent_runs.find((item: { id: number }) => item.id === id);
+          expect(run, `수집 실행 ${id}이 완료 전 목록에서 사라짐`).toBeTruthy();
+          expect(run.status, `수집 실행 ${id}이 정상 종료되지 않음`).toBe("success");
+        }
+      }).toPass({ timeout: 900_000, intervals: [5_000] });
+    }
 
     // 모든 소스의 저장 완료를 확인한 뒤 API를 새로 조회한다.
     for (const path of [

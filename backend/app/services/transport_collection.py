@@ -1088,15 +1088,28 @@ class TransportCollectionService:
             )
         ).scalars().all()
         fuel_state = next((item for item in states if item.source == OPINET_SOURCE), None)
-        last_run = await session.scalar(
+        recent_runs = (await session.scalars(
             select(CollectionRun)
             .where(
                 CollectionRun.trigger.startswith(TRANSPORT_TRIGGER_PREFIX, autoescape=True),
                 CollectionRun.status != "skipped",
             )
             .order_by(CollectionRun.started_at.desc(), CollectionRun.id.desc())
-            .limit(1)
-        )
+            .limit(10)
+        )).all()
+        last_run = recent_runs[0] if recent_runs else None
+        run_items = [
+            {
+                "id": run.id,
+                "started_at": run.started_at,
+                "finished_at": run.finished_at,
+                "status": run.status,
+                "trigger": run.trigger,
+                # The public endpoint deliberately exposes only a stable error marker.
+                "error": "collection_failed" if run.error_message else None,
+            }
+            for run in recent_runs
+        ]
         return {
             "scheduler_enabled": self.settings.enable_scheduler and self.enabled,
             "collection_enabled": self.enabled,
@@ -1107,19 +1120,8 @@ class TransportCollectionService:
             "last_fuel_success_at": fuel_state.last_success_at if fuel_state is not None else None,
             "next_fuel_due_at": fuel_state.next_due_at if fuel_state is not None else None,
             "last_fuel_error": fuel_state.last_error if fuel_state is not None else None,
-            "last_run": (
-                {
-                    "id": last_run.id,
-                    "started_at": last_run.started_at,
-                    "finished_at": last_run.finished_at,
-                    "status": last_run.status,
-                    "trigger": last_run.trigger,
-                    # The public endpoint deliberately exposes only a stable error marker.
-                    "error": "collection_failed" if last_run.error_message else None,
-                }
-                if last_run is not None
-                else None
-            ),
+            "last_run": run_items[0] if last_run is not None else None,
+            "recent_runs": run_items,
             "sources": [
                 {
                     "source": item.source,

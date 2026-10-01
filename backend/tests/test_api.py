@@ -1028,7 +1028,11 @@ def test_time_series_range_stays_pinned_to_requested_end_despite_trailing_gap(cl
     assert last_bucket < range_end_exclusive_seoul
     # The tail (days 2-5, after the only snapshot) must be honestly reported as
     # no-observation, not fabricated and not silently dropped from the response.
-    assert any(point["lot_observations"] == 0 for point in payload["items"])
+    trailing = [point for point in payload["items"]
+                if datetime.fromisoformat(point["bucket_at"].replace("Z", "+00:00"))
+                >= datetime(2026, 1, 2, 0, 0, tzinfo=ZoneInfo("Asia/Seoul"))]
+    assert trailing
+    assert all(point["lot_observations"] == 0 and point["available_spaces"] == 0 for point in trailing)
 
 
 def test_collector_status_reports_earliest_snapshot(client) -> None:
