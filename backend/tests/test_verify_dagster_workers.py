@@ -39,6 +39,7 @@ def test_app_running_run_requires_matching_active_dagster_run() -> None:
     assert verifier.orphaned_app_runs(app, dagster) == []
     assert verifier.orphaned_app_runs(app, []) == [17]
     assert verifier.orphaned_app_runs(app, [{**dagster[0], "jobName": "highway_collection_job"}]) == [17]
+    assert verifier.orphaned_app_runs(app, [{**dagster[0], "status": "CANCELING"}]) == [17]
     assert verifier.orphaned_app_runs(app, [{**dagster[0], "startTime":
                                             (started - timedelta(minutes=30)).timestamp()}]) == [17]
 
@@ -58,6 +59,24 @@ def test_audit_fails_after_worker_failure_leaves_app_run_running(monkeypatch, ca
     verifier = _verifier()
     started = datetime(2026, 10, 1, 1, 0, tzinfo=timezone.utc)
     monkeypatch.setattr(verifier, "active_runs", lambda: [])  # Dagster가 이미 FAILURE로 종료했다.
+    monkeypatch.setattr(verifier, "running_app_runs", lambda: [
+        {"id": 17, "trigger": "transport_dagster_fuel", "started_at": started.isoformat()}
+    ])
+    monkeypatch.setattr(verifier.subprocess, "run", lambda *args, **kwargs:
+                        SimpleNamespace(stdout="PID PPID COMMAND\n"))
+    monkeypatch.setattr(verifier.time, "sleep", lambda seconds: None)
+
+    assert verifier.main() == 1
+    assert "앱 고아 수집 실행 의심: 17" in capsys.readouterr().err
+
+
+def test_audit_fails_when_canceling_run_lost_worker_but_app_is_running(monkeypatch, capsys) -> None:
+    verifier = _verifier()
+    started = datetime(2026, 10, 1, 1, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(verifier, "active_runs", lambda: [
+        {"runId": "dagster-1", "jobName": "fuel_collection_job", "status": "CANCELING",
+         "startTime": started.timestamp()}
+    ])
     monkeypatch.setattr(verifier, "running_app_runs", lambda: [
         {"id": 17, "trigger": "transport_dagster_fuel", "started_at": started.isoformat()}
     ])

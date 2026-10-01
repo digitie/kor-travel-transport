@@ -79,7 +79,8 @@ def orphaned_app_runs(app_runs: list[dict[str, object]], dagster_runs: list[dict
             continue
         started = datetime.fromisoformat(str(app_run["started_at"]).replace("Z", "+00:00")).timestamp()
         candidates = [run for run in dagster_runs
-                      if run["jobName"] == job and run["runId"] not in matched
+                      if run["jobName"] == job and run["status"] == "STARTED"
+                      and run["runId"] not in matched
                       and run.get("startTime") is not None
                       and -60 <= started - float(run["startTime"]) <= 600]
         if not candidates:

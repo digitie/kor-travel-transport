@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { fireEvent, render, screen, within } from "@testing-library/react";
 
 import { HistoryChart } from "@/components/history-chart";
@@ -66,6 +68,8 @@ describe("HistoryChart", () => {
     const { container } = render(<HistoryChart holidays={[]} series={series} scopeLabel="P1" />);
 
     expect(container.querySelectorAll(".history-point.isolated")).toHaveLength(2);
+    const css = readFileSync("src/app/globals.css", "utf8");
+    expect(css).toMatch(/\.history-point\.isolated\s*\{[^}]*fill:\s*var\(--teal\)/);
   });
 
   test("renders 6 hour axis labels", () => {
