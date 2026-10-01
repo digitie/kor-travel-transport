@@ -2,6 +2,9 @@
 
 ## 현재 상태
 
+- **2026-10-02 `chore/retire-airport-parking-radar-names`(ADR-011) 푸시, PR 미생성.** 옛 서비스 이름
+  정리. 머지 뒤 배포는 deployment.md "백엔드 내부 식별자 개명 배포 (ADR-011)"를 따른다(배포 직후
+  n150 백업 dump 이름 변경). Manager `docs/transport-dump-prefix`도 같이 머지한다.
 - **2026-10-02 PR #59 최종 운영 검증 중.** 후보 `7949477`의 WSL 백엔드
   491건 통과/23건 제외, 프론트 94건과 빌드, GitHub 백엔드/프론트/관리자 CI,
   n150 격리 Docker 백엔드 491건 통과/23건 제외·프론트 96건이 통과했다.

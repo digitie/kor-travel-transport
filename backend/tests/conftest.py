@@ -20,15 +20,15 @@ def fixtures_dir() -> Path:
 
 @pytest.fixture
 def test_settings(tmp_path: Path) -> Settings:
-    force_temp_sqlite = os.getenv("PARKING_RADAR_TEST_SQLITE_TEMP") == "1"
+    force_temp_sqlite = os.getenv("KOR_TRAVEL_TRANSPORT_TEST_SQLITE_TEMP") == "1"
     # 테스트는 운영 DATABASE_URL을 절대 상속하지 않는다. PostgreSQL 통합 검증은
     # TEST_DATABASE_URL과 명시적인 안전 표지를 함께 준 경우에만 허용한다.
     database_url = None if force_temp_sqlite else os.getenv("TEST_DATABASE_URL")
     if not database_url:
         database_url = f"sqlite+aiosqlite:///{tmp_path / 'test.sqlite3'}"
     if database_url.startswith(("postgres://", "postgresql://", "postgresql+asyncpg://")):
-        if os.getenv("PARKING_RADAR_TEST_DATABASE") != "1":
-            raise RuntimeError("PostgreSQL 테스트에는 PARKING_RADAR_TEST_DATABASE=1이 필요합니다.")
+        if os.getenv("KOR_TRAVEL_TRANSPORT_TEST_DATABASE") != "1":
+            raise RuntimeError("PostgreSQL 테스트에는 KOR_TRAVEL_TRANSPORT_TEST_DATABASE=1이 필요합니다.")
         engine, _session_factory = create_engine_and_session_factory(database_url)
 
         async def reset_postgres() -> None:

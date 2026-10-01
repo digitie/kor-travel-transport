@@ -15,12 +15,13 @@
 | [ADR-004](004-krairport-provider-library.md) | 비행편·주차 현황·주차요금 데이터는 `python-krairport-api`를 provider 라이브러리로 사용 | accepted (주차는 구현 완료, 비행편은 미완료) |
 | [ADR-005](005-versioned-rest-api-contract.md) | 백엔드 REST API를 `/v1` 버저닝 + RFC7807 에러로 정식 계약화 | accepted |
 | [ADR-006](006-kasi-provider-library.md) | 공휴일 데이터는 `python-kasi-api`를 provider 라이브러리로 사용 | accepted |
-| [ADR-007](007-repo-rename-kor-travel-airport.md) | 저장소/패키지/n150 식별자를 `kor-travel-airport`로 개명, 웹앱 브랜드는 `parking-radar` 유지 | accepted |
+| [ADR-007](007-repo-rename-kor-travel-airport.md) | 저장소/패키지/n150 식별자를 `kor-travel-airport`로 개명, 웹앱 브랜드는 `parking-radar` 유지 | accepted (브랜드 유지 범위는 ADR-011이 사용자 노출 표면으로 좁힘) |
 | [ADR-008](008-repo-rename-kor-travel-transport.md) | 통합 교통정보 저장소를 `kor-travel-transport`로 개명하고 운영 리소스는 호환 유지 | accepted (운영 리소스 보류는 ADR-010이 대체) |
 | [ADR-009](009-durable-transport-collection-reservations.md) | 교통정보 수집의 짧은 DB 예약과 외부 조회·저장 분리 | accepted |
 | [ADR-010](010-deploy-identity-rename-transport.md) | n150 운영 식별자를 `kor-travel-transport`로 옮기고 공항 주차 도메인은 유지 | accepted (n150 cutover는 PR #44 뒤) |
+| [ADR-011](011-backend-internal-identity-transport.md) | 백엔드·내부 식별자를 `kor-travel-transport`로 옮기고 사용자 노출 브랜드 `parking-radar`만 남긴다 | accepted |
 
-**다음 번호 = ADR-011.**
+**다음 번호 = ADR-012.**
 
 ## 새 ADR 작성 규약
 

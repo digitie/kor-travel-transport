@@ -32,7 +32,7 @@ def create_engine_and_session_factory(database_url: str) -> tuple[AsyncEngine, a
         "pool_recycle": 1800,
     }
     if database_url.startswith("postgresql"):
-        if os.getenv("PARKING_RADAR_TEST_DATABASE") == "1":
+        if os.getenv("KOR_TRAVEL_TRANSPORT_TEST_DATABASE") == "1":
             engine_options["poolclass"] = NullPool
         else:
             engine_options.update({"pool_size": 5, "max_overflow": 5})

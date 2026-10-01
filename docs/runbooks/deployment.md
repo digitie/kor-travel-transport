@@ -63,9 +63,10 @@ SHA-256을 확인했다. Dagster DB는 별도 새 백업을 만들었다. 배포
 단계는 이 stage 완료 표식까지 검사한다. 관리자 동기화 뒤 수동 backend 원격 배포가
 필요하면 `deploy-server14.sh`로 동일 후보를 다시 stage해야 한다.
 
-공용 DB 최초 cutover는 일반 배포와 다르다. 먼저 WSL checkout에서
+공용 DB 최초 cutover는 일반 배포와 달랐다(완료). 먼저 WSL checkout에서
 `DEPLOY_STAGE_ONLY=true ./scripts/deploy-server14.sh`로 reviewed artifact만 n150에 올린 뒤,
-n150에서 `scripts/cutover-shared-db-server14.sh`를 실행한다. cutover는 staged artifact의
+n150에서 `scripts/cutover-shared-db-server14.sh`를 실행했다. 이 한 번짜리 스크립트는 ADR-011로
+지웠다(재현은 `git show 07d3848:scripts/cutover-shared-db-server14.sh`). cutover는 staged artifact의
 receipt-gated remote deploy를 호출하므로 n150에 `.git`이 없어도 된다. `.env.server14.legacy`는
 동기화 삭제 대상이 아니며 live E2E 수용 전까지 보존한다.
 
@@ -239,7 +240,38 @@ destructive 운영 API이므로, 외부 gateway가 private ACL/mTLS 등으로 �
 host에는 443 listener가 없을 수 있으므로 Compose 배포만으로 기존
 `pr.digitie.mywire.org`의 외부 라우팅이 바뀐다고 가정하지 않는다.
 
+## 백엔드 내부 식별자 개명 배포 (ADR-011)
+
+[ADR-011](../adr/011-backend-internal-identity-transport.md) release는 DB schema를 바꾸지 않는다.
+바뀌는 운영 효과는 백업 dump 파일 이름 접두어 하나다: 앱은 `kor-travel-transport-<UTC>Z*.dump`만
+목록·다운로드·복원·보존 개수에 넣고, 옛 `parking-radar-*.dump`는 보지 않는다. 그래서 배포 직후
+기존 파일 이름을 바꾼다. 비밀값은 출력하지 않는다.
+
+1. 복원 지점: `/home/digitie/backups/transport.log`의 마지막 Manager standalone 백업이 90시간 안인지
+   본다. 오래됐으면 crontab의 `run-standalone-backup.sh transport 3` 줄을 손으로 한 번 돌린다.
+2. 평소처럼 `scripts/deploy-server14.sh`로 머지 SHA를 배포한다(마이그레이션 없음).
+3. 배포 직후 앱 백업 디렉터리(`/home/digitie/apps/kor-travel-transport/backups`, root 소유)에서
+   이름을 바꾼다. `mv -n`이라 같은 이름이 있으면 덮지 않는다.
+
+   ```bash
+   cd /home/digitie/apps/kor-travel-transport/backups
+   sudo ls -la -- parking-radar-*.dump .parking-radar-* 2>/dev/null   # 바꿀 대상 확인
+   for f in parking-radar-*.dump; do [ -e "$f" ] || continue
+     sudo mv -n -- "$f" "kor-travel-transport-${f#parking-radar-}"; done
+   sudo ls -- parking-radar-*.dump 2>/dev/null && echo "STOP: 남은 옛 이름이 있다"
+   ```
+
+   `.parking-radar-*`(점으로 시작)는 끝나지 않은 업로드·백업의 staging 파일이다. 새 코드는 이
+   접두어를 청소하지 않으므로 1시간보다 오래된 것은 `sudo rm --`로 지운다.
+4. 관리 UI 백업 목록(또는 관리 인증으로 `GET /v1/admin/backups`)에 옮긴 파일이 보이는지 본다.
+
+되돌리기: 이전 `kor-travel-transport-backend:rel-<sha12>`로 다시 배포하고, 같은 디렉터리에서
+`for f in kor-travel-transport-*.dump; do sudo mv -n -- "$f" "parking-radar-${f#kor-travel-transport-}"; done`.
+
 ## 운영 식별자 개명 cutover (ADR-010)
+
+> 완료된 기록이다(2026-09-28 cutover). 실행 스크립트와 그 테스트는 ADR-011로 지웠다. 아래 명령을
+> 다시 봐야 하면 `git show 07d3848:scripts/rename-deploy-identity-server14.sh`로 꺼낸다.
 
 n150의 배포 식별자를 `kor-travel-airport`에서 `kor-travel-transport`로 옮기는 한 번짜리 절차다.
 결정과 이름 목록은 [ADR-010](../adr/010-deploy-identity-rename-transport.md)이 정본이다. 실행은
@@ -545,8 +577,8 @@ docker image rm kor-travel-airport-rollback:{backend,code,frontend,gateway} \
 sudo rm -rf /home/digitie/apps/kor-travel-airport.retired-$stamp   # .env.server14.* 백업 포함
 ```
 
-legacy volume `parking-radar_parking_radar_postgres_data`는 남긴다. 정리 뒤 후속 PR에서
-`deploy-server14-remote.sh`의 임시 개명 guard와 그 테스트를 지운다. 그 뒤로 쌓이는
+legacy volume `parking-radar_parking_radar_postgres_data`는 n150에 없다(2026-10-02 확인).
+`deploy-server14-remote.sh`의 임시 개명 guard와 그 테스트는 ADR-011에서 지웠다. 그 뒤로 쌓이는
 `kor-travel-transport-backend:rel-*` 태그는 위 "n150 현재 운영 절차"의 보존 규칙(지금 release와 바로 전
 release만 남긴다)을 따른다.
 
@@ -568,9 +600,9 @@ docker compose --project-name kor-travel-transport -f docker-compose.yml up -d -
 `scripts/deploy-server14.sh`는 DB 스택이 이미 떠 있으면 건드리지 않고, 없을 때만 올린다 —
 매 배포마다 postgres 컨테이너를 재생성하지 않는다.
 
-기존 볼륨 `parking-radar_parking_radar_postgres_data`를 그대로 재사용하도록
-`docker-compose.db.yml`의 volume `name`을 고정해뒀다. 이 값을 바꾸면 빈 새 볼륨이 생겨
-기존 주차 스냅샷/요금 데이터와 연결이 끊긴다 — 절대 바꾸지 않는다.
+운영 데이터는 공용 PostgreSQL로 옮겨 이 스택은 쉬고 있다. volume 이름은 ADR-011에서
+`kor-travel-transport_postgres_data`로 바꿨다(옛 `parking-radar_parking_radar_postgres_data`는 n150에
+없다). 다른 호스트에 옛 볼륨이 있으면 이름으로 이어 붙이지 말고 dump/restore로 옮긴다.
 
 **전환 절차(운영 서버, 최초 1회)**: (1) `pg_dump`로 백업 생성, (2) 기존 `docker-compose.yml`
 (postgres 포함 구버전)로 `docker compose stop postgres`(볼륨은 유지, 컨테이너만 중지),

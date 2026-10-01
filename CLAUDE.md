@@ -13,9 +13,9 @@
 이 저장소(`kor-travel-transport`)는 국내 여행 통합 교통정보 라이브러리/API와 이를
 검증하는 `parking-radar` 반응형 웹앱을 담고 있다 — 저장소/패키지 식별자는
 `kor-travel-transport`, 실제 배포되는 웹앱의 브랜드/화면 표시 이름은 계속
-`parking-radar`다(Next.js 페이지
-타이틀, 백엔드 `Settings.app_name`, 백업 파일명 접두어 등은 전부 `parking-radar`로
-유지 — 사용자 눈에 보이는 것은 아무것도 바뀌지 않는다).
+`parking-radar`다(Next.js 페이지 타이틀·브라우저 저장 키처럼 사용자 눈에 보이는 것만).
+백엔드 `Settings.app_name`(OpenAPI 제목), 백업 파일명 접두어, 테스트 env
+(`KOR_TRAVEL_TRANSPORT_TEST_*`), CI·로컬 DB 이름은 `kor-travel-transport`다(ADR-011).
 
 `kor-travel-transport`는 provider 데이터를 주기적으로 PostgreSQL에 저장하고 외부
 OpenAPI와 내부 통계로 즉시 제공한다. 현재 `parking-radar`는 그중 국내 공항 주차장의
@@ -33,9 +33,9 @@ OpenAPI와 내부 통계로 즉시 제공한다. 현재 `parking-radar`는 그�
 - 수집: 운영 기본 5분. 외부 API rate limit과 실제 관측 시각을 함께 확인한다.
 - 새 운영 호스트: `digitie@192.168.1.14` (별칭 `n150`)
 - 기존 호스트: `digitie@192.168.1.13` — 데이터 확인 외 Docker 조작 금지
-- GitHub 정본: `origin` → `github.com/digitie/kor-travel-transport` (이번 작업에서
-  `kor-travel-airport`에서 개명, 저장소 식별자만 변경—
-  배포되는 웹앱 자체의 이름은 계속 `parking-radar`다. §1 참고).
+- GitHub 정본: `origin` → `github.com/digitie/kor-travel-transport` (옛 이름
+  `kor-travel-airport`, ADR-008·010·011 — 배포되는 웹앱 화면 브랜드는 계속
+  `parking-radar`다. §1 참고).
   `airport-parking-radar`는 구 개발 fork이며 새 작업의 대상이 아니다. remote가 여러 개
   보이면 `docs/runbooks/cross-repo-audit-checklist.md`를 먼저 확인한다.
 

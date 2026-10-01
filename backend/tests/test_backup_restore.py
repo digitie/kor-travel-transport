@@ -59,17 +59,17 @@ async def test_uploaded_backup_is_safely_named_and_listed(tmp_path: Path) -> Non
 
 
 def test_pg_dump_url_does_not_expose_password_in_argv() -> None:
-    safe_url, environment = _postgres_command_database("postgresql+asyncpg://operator:secret@postgres:5432/parking_radar")
+    safe_url, environment = _postgres_command_database("postgresql+asyncpg://operator:secret@postgres:5432/kor_travel_transport")
 
     assert "secret" not in safe_url
     assert "***" not in safe_url
-    assert safe_url == "postgresql://operator@postgres:5432/parking_radar"
+    assert safe_url == "postgresql://operator@postgres:5432/kor_travel_transport"
     assert environment["PGPASSWORD"] == "secret"
 
 
 @pytest.mark.asyncio
 async def test_uploaded_backup_enforces_aggregate_storage_limit(tmp_path: Path) -> None:
-    old_path = tmp_path / "parking-radar-20260101T000000Z.dump"
+    old_path = tmp_path / "kor-travel-transport-20260101T000000Z.dump"
     old_path.write_bytes(b"old")
 
     uploaded = await save_uploaded_backup(
@@ -87,7 +87,7 @@ async def test_uploaded_backup_enforces_aggregate_storage_limit(tmp_path: Path) 
 
 @pytest.mark.asyncio
 async def test_upload_rejects_a_chunk_larger_than_aggregate_quota_before_deleting_backups(tmp_path: Path) -> None:
-    old_path = tmp_path / "parking-radar-20260101T000000Z.dump"
+    old_path = tmp_path / "kor-travel-transport-20260101T000000Z.dump"
     old_path.write_bytes(b"old")
 
     with pytest.raises(ValueError, match="aggregate"):
@@ -99,7 +99,7 @@ async def test_upload_rejects_a_chunk_larger_than_aggregate_quota_before_deletin
 
 @pytest.mark.asyncio
 async def test_failed_staged_upload_does_not_prune_existing_backups(tmp_path: Path) -> None:
-    old_path = tmp_path / "parking-radar-20260101T000000Z.dump"
+    old_path = tmp_path / "kor-travel-transport-20260101T000000Z.dump"
     old_path.write_bytes(b"old")
 
     with pytest.raises(RuntimeError, match="simulated upload failure"):
@@ -114,12 +114,12 @@ async def test_slow_upload_is_bounded_and_cleans_its_staging_file(tmp_path: Path
     with pytest.raises(ValueError, match="제한 시간"):
         await save_uploaded_backup(SlowUpload(), str(tmp_path), upload_timeout_seconds=0.01)
 
-    assert list(tmp_path.glob(".parking-radar-*.dump")) == []
+    assert list(tmp_path.glob(".kor-travel-transport-*.dump")) == []
 
 
 @pytest.mark.asyncio
 async def test_listing_removes_stale_orphaned_staging_files(tmp_path: Path) -> None:
-    stale_path = tmp_path / ".parking-radar-upload-orphan.dump"
+    stale_path = tmp_path / ".kor-travel-transport-upload-orphan.dump"
     stale_path.write_bytes(b"partial")
     stale_timestamp = time.time() - backup_restore.STAGING_BACKUP_MAX_AGE_SECONDS - 1
     os.utime(stale_path, (stale_timestamp, stale_timestamp))
@@ -130,8 +130,8 @@ async def test_listing_removes_stale_orphaned_staging_files(tmp_path: Path) -> N
 
 @pytest.mark.asyncio
 async def test_upload_preserves_pre_restore_backup_when_quota_prunes_old_files(tmp_path: Path) -> None:
-    pre_restore_path = tmp_path / "parking-radar-20260101T000000Z.dump"
-    old_path = tmp_path / "parking-radar-20260102T000000Z.dump"
+    pre_restore_path = tmp_path / "kor-travel-transport-20260101T000000Z.dump"
+    old_path = tmp_path / "kor-travel-transport-20260102T000000Z.dump"
     pre_restore_path.write_bytes(b"pre")
     old_path.write_bytes(b"old")
 
@@ -151,7 +151,7 @@ async def test_upload_preserves_pre_restore_backup_when_quota_prunes_old_files(t
 async def test_create_backup_checks_dump_size_before_moving_into_backup_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    old_path = tmp_path / "parking-radar-20260101T000000Z.dump"
+    old_path = tmp_path / "kor-travel-transport-20260101T000000Z.dump"
     old_path.write_bytes(b"old")
 
     def fake_run(command: list[str], _timeout_seconds: int, _env: dict[str, str]) -> None:
@@ -162,7 +162,7 @@ async def test_create_backup_checks_dump_size_before_moving_into_backup_dir(
 
     created = await backup_restore.create_backup(
         str(tmp_path),
-        "postgresql+asyncpg://operator:secret@postgres:5432/parking_radar",
+        "postgresql+asyncpg://operator:secret@postgres:5432/kor_travel_transport",
         retention_count=14,
         timeout_seconds=30,
         storage_limit_bytes=4,
@@ -174,7 +174,7 @@ async def test_create_backup_checks_dump_size_before_moving_into_backup_dir(
 
     second = await backup_restore.create_backup(
         str(tmp_path),
-        "postgresql+asyncpg://operator:secret@postgres:5432/parking_radar",
+        "postgresql+asyncpg://operator:secret@postgres:5432/kor_travel_transport",
         retention_count=14,
         timeout_seconds=30,
         storage_limit_bytes=8,

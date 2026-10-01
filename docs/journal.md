@@ -1,5 +1,17 @@
 # journal.md — 작업 일지
 
+## 2026-10-02 — 옛 서비스 이름 정리(ADR-011, `chore/retire-airport-parking-radar-names`)
+
+- 소유자 결정: 서비스 정체성으로 남은 `kor-travel-airport`·`parking-radar`만 `kor-travel-transport`로
+  바꾸고, 실제 공항을 뜻하는 이름(`airports`, `airport_code`, `/v1/airports`, `krairport` 등)과 사용자
+  노출 브랜드(웹 타이틀·브라우저 저장 키·`pr.`/`pr-api.` hostname)는 그대로 둔다.
+- 지운 것: 한 번짜리 `rename-deploy-identity-server14.sh`·`cutover-shared-db-server14.sh`와 그 테스트,
+  `deploy-server14-remote.sh`의 임시 개명 guard(ADR-010 §6 후속)와 guard 테스트.
+- 바꾼 것: `app_name`/OpenAPI 제목, `PARKING_RADAR_TEST_*` → `KOR_TRAVEL_TRANSPORT_TEST_*`, CI 테스트
+  DB(`kor_travel_transport_test`), 로컬 기본 DSN, 백업 dump 접두어, 쉬는 Compose 스택 DB·volume 이름.
+- n150 읽기 전용 조사: transport DB에 서비스 이름을 담은 schema·role·table 없음, `parking-radar_*`
+  volume 없음. 배포 직후 백업 파일 이름 변경은 runbook "백엔드 내부 식별자 개명 배포 (ADR-011)".
+
 ## 2026-10-02 — PR #59 최종 운영 검증
 
 - 후보 `7949477`은 WSL 백엔드 491건 통과/23건 제외, 프론트 94건·빌드,

@@ -6,13 +6,13 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: "${POSTGRES_DB:-parking_radar_live}"
-      POSTGRES_USER: "${POSTGRES_USER:-parking_radar}"
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-parking_radar}"
+      POSTGRES_DB: "${POSTGRES_DB:-kor_travel_transport_live}"
+      POSTGRES_USER: "${POSTGRES_USER:-kor_travel_transport}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-kor_travel_transport}"
     ports:
       - "${POSTGRES_LIVE_HOST_PORT:-55432}:5432"
     volumes:
-      - parking_radar_postgres_live_data:/var/lib/postgresql/data
+      - kor_travel_transport_postgres_live_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -25,7 +25,7 @@ services:
       dockerfile: backend/Dockerfile
     restart: unless-stopped
     environment:
-      DATABASE_URL: "${DATABASE_URL:-postgresql+asyncpg://parking_radar:parking_radar@postgres:5432/parking_radar_live}"
+      DATABASE_URL: "${DATABASE_URL:-postgresql+asyncpg://kor_travel_transport:kor_travel_transport@postgres:5432/kor_travel_transport_live}"
       RELEASE_SHA: "${RELEASE_SHA:-unknown}"
       RUN_DB_MIGRATIONS: "${RUN_DB_MIGRATIONS:-true}"
       ENABLE_SCHEDULER: "${ENABLE_SCHEDULER:-true}"
@@ -74,4 +74,4 @@ services:
       start_period: 20s
 
 volumes:
-  parking_radar_postgres_live_data:
+  kor_travel_transport_postgres_live_data:

@@ -187,9 +187,9 @@ class KrairportPublicDataClient(PublicDataClient):
     Uses krairport's generic raw-item escape hatch (`kac_raw_items` /
     `iiac_raw_items`) rather than its typed `parking_status()`/
     `parking_fees()` models: krairport's `ParkingFee` model is missing
-    holiday rates and the progressive per-unit fee fields parking-radar's
+    holiday rates and the progressive per-unit fee fields this service's
     fee calculator needs, and its field-name assumptions for KAC fees
-    don't match the field names parking-radar has verified against the
+    don't match the field names this service has verified against the
     live API. The raw-item path returns the same flat `{tag: text}` /
     `{key: value}` shape our own `parsers.py` already expects, so the
     parsing/business logic stays untouched -- only the HTTP fetch layer

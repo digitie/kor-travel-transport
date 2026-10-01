@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kor-travel-transport-backend"
 version = "0.1.0"
-description = "Integrated domestic travel transport data API for parking-radar"
+description = "Integrated domestic travel transport data API"
 requires-python = ">=3.12"
 dependencies = [
   "aiosqlite>=0.22,<1.0",

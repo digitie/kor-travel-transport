@@ -6,7 +6,7 @@ server {
         proxy_pass http://127.0.0.1:14001;
         proxy_http_version 1.1;
         # backend TrustedHostMiddleware에는 public transport hostname을 추가하지
-        # 않는다. 내부 loopback host로 고정해 기존 parking-radar 설정을 보존한다.
+        # 않는다. 내부 loopback host로 고정해 기존 backend 설정을 보존한다.
         proxy_set_header Host 127.0.0.1;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -15,7 +15,7 @@ server {
     }
 
     # 공개 transport API는 저장 장소 조회와 제한된 항구 실시간 시간표를 포함한 읽기 endpoint만 제공한다.
-    # parking-radar의 주차·관리·백업/복원 경로를 이 listener로 전달하지 않는다.
+    # 기본 backend의 주차·관리·백업/복원 경로를 이 listener로 전달하지 않는다.
     location ~ ^/v1/transport/(collector-status|providers|statistics|highways/traffic|highways/incidents|fuel/stations|features/places|bus/(terminals|timetable)|rail/(timetables|departures)|ports/timetables|ports/[^/]+/timetable)$ {
         limit_except GET { deny all; }
         proxy_pass http://127.0.0.1:14001;
