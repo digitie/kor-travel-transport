@@ -197,18 +197,21 @@ docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${RUNTIME_EN
 docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${RUNTIME_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml ps
 # Compose가 컨테이너를 만들었다는 것과 Dagster 수집기가 실제로 healthy인 것은
 # 다르다. metadata DB 오류 등으로 새 daemon이 죽으면 성공 배포로 보고하지 않는다.
-daemon_health=""
-for attempt in $(seq 1 36); do
-  daemon_health="$(docker inspect -f '{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "${dagster_daemon}" 2>/dev/null || true)"
-  if [[ "${daemon_health}" == "true healthy" ]]; then
-    break
-  fi
-  if [[ "${attempt}" == "36" ]]; then
-    echo "Dagster daemon이 healthy가 되지 않았다: ${dagster_daemon} (${daemon_health:-missing})" >&2
-    exit 1
-  fi
-  sleep 5
-done
+wait_dagster_daemon_health() {
+  local daemon_health="" attempt
+  for attempt in $(seq 1 36); do
+    daemon_health="$(docker inspect -f '{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "${dagster_daemon}" 2>/dev/null || true)"
+    if [[ "${daemon_health}" == "true healthy" ]]; then
+      return 0
+    fi
+    if [[ "${attempt}" == "36" ]]; then
+      echo "Dagster daemon이 healthy가 되지 않았다: ${dagster_daemon} (${daemon_health:-missing})" >&2
+      return 1
+    fi
+    sleep 5
+  done
+}
+wait_dagster_daemon_health
 daemon_stopped=0
 health_payload=""
 for attempt in $(seq 1 30); do

@@ -156,9 +156,23 @@ def test_deploy_drains_dagster_runs_after_build_and_restores_daemon_on_failure()
     assert 'cleanup_remote\n  exit "${status}"' in text
     assert '((SECONDS >= drain_deadline))' in text
     assert '[[ -z "${runs}" ]] ||' in text
-    assert text.index('up -d --no-build') < text.index('daemon_health=""') < text.index('daemon_stopped=0\nhealth_payload=""')
+    assert text.index('up -d --no-build') < text.index('wait_dagster_daemon_health() {') < text.index('daemon_stopped=0\nhealth_payload=""')
     assert '"${daemon_health}" == "true healthy"' in text
     assert 'Dagster daemon이 healthy가 되지 않았다' in text
+
+
+def test_deploy_daemon_health_probe_rejects_dead_daemon_and_accepts_healthy_one() -> None:
+    text = _REMOTE.read_text(encoding="utf-8")
+    body = text.split('wait_dagster_daemon_health() {\n', 1)[1].split('\n}\nwait_dagster_daemon_health', 1)[0]
+    definition = 'wait_dagster_daemon_health() {\n' + body + '\n}\n'
+    for state, expected in (("false unhealthy", 1), ("true healthy", 0)):
+        script = (definition + 'dagster_daemon=test-daemon\n'
+                  + f'docker() {{ printf "%s\\n" "{state}"; }}\n'
+                  + 'sleep() { :; }\nwait_dagster_daemon_health\n')
+        result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=False)
+        assert result.returncode == expected, result.stderr
+        if expected:
+            assert "Dagster daemon이 healthy가 되지 않았다" in result.stderr
 
 
 def test_remote_deploy_script_has_valid_bash_syntax() -> None:
