@@ -34,8 +34,9 @@
   - PostgreSQL은 `docker-compose.db.yml`로 앱과 분리된 독립 컨테이너에서 운영(T-032)
   - Manager 공용 PostgreSQL `127.0.0.1:11000`, RustFS `127.0.0.1:12101`
   - public web `14002`, public API `14001`; backend는 host-network에서 `14001`을 직접 수신
-  - Dagster code-server `127.0.0.1:14005`, Dagster webserver `127.0.0.1:14004`, Basic Auth gateway `127.0.0.1:14003`
-    (외부 공개는 Manager TLS reverse proxy가 이 loopback endpoint만 upstream으로 연결할 때만 허용)
+  - Dagster code-server `127.0.0.1:14005`(location `kor-travel-transport`). schedule·queue·UI는 Manager 공용 Dagster
+    제어 평면(webserver `127.0.0.1:11002`, gateway `https://dagster.digitie.mywire.org`)이 맡는다. 옛 전용 webserver
+    `14004`·gateway `14003`은 `legacy-dagster` profile(되돌리기용)이다 — [shared-db-dagster.md](shared-db-dagster.md)
 - live E2E 기준 origin: `https://pr.digitie.mywire.org`
 - 외부 API 기준 origin: `https://pr-api.digitie.mywire.org`
 - `192.168.1.13`은 cutover 전까지 read-only source/rollback 기준으로 유지

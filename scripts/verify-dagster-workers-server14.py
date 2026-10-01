@@ -15,9 +15,10 @@ from urllib.request import Request, urlopen
 
 
 CONTAINER = "kor-travel-transport-dagster-code-server-1"
-GRAPHQL_URL = "http://127.0.0.1:14004/graphql"
+# 공용 Dagster webserver(Manager ADR-54)의 loopback. 다른 테넌트의 run이 함께 있으므로 이 location으로 좁힌다.
+GRAPHQL_URL = "http://127.0.0.1:11002/graphql"
 COLLECTOR_URL = "http://127.0.0.1:14001/v1/transport/collector-status"
-QUERY = "{runsOrError(filter:{statuses:[STARTED,STARTING,CANCELING]},limit:1000){__typename ... on Runs{results{runId jobName status startTime}}}}"
+QUERY = "{runsOrError(filter:{statuses:[STARTED,STARTING,CANCELING],tags:[{key:\"dagster/code_location\",value:\"kor-travel-transport\"}]},limit:1000){__typename ... on Runs{results{runId jobName status startTime}}}}"
 TRANSPORT_JOBS = {
     "transport_dagster_highway": "highway_collection_job",
     "transport_dagster_fuel": "fuel_collection_job",

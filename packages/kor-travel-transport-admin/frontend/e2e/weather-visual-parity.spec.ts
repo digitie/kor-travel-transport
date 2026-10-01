@@ -4,9 +4,9 @@ const widths = [320, 375, 414, 768, 1440];
 const paths = ["/map", "/admin/dagster"] as const;
 const stamp = "2026-09-28T03:00:00Z";
 const dagster = { data: {
-  repositoriesOrError: { __typename: "RepositoryConnection", nodes: [{ schedules: [{
+  repositoryOrError: { __typename: "Repository", schedules: [{
     name: "airport_schedule", cronSchedule: "*/5 * * * *", pipelineName: "airport_collection_job", scheduleState: { status: "RUNNING" },
-  }] }] },
+  }] },
   runsOrError: { __typename: "Runs", results: [{
     runId: "visual-parity-run", jobName: "airport_collection_job", status: "SUCCESS",
     startTime: Date.parse(stamp) / 1000 - 60, endTime: Date.parse(stamp) / 1000,

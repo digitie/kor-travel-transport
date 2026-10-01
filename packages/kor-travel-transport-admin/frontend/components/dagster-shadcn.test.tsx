@@ -33,7 +33,7 @@ test("실행 표와 스케줄 표의 제목·키보드 진입·링크 의미를 
   expect(html).toMatch(/<button[^>]*aria-expanded="false"/);
   expect(html).toContain("5분마다");
   const link = html.match(/<a\b[^>]*>/)?.[0];
-  expect(link).toContain('href="https://transport-dagster.digitie.mywire.org/runs/run%2Fwith%20space"');
+  expect(link).toContain('href="https://dagster.digitie.mywire.org/runs/run%2Fwith%20space"');
   expect(link).toContain('target="_blank"');
   expect(link).toContain('rel="noreferrer"');
   expect(link).not.toContain('role="button"');

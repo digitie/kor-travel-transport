@@ -6,7 +6,7 @@
 import하고 deadline이 없어, 끼인 code-server 앞에서는 probe가 끝나지 않는다.
 
 검사는 **이름 목록이 아니라 command에서 유도한다.** 저장소의 모든 compose 파일에서
-`dagster api grpc`·`dagster-webserver`·`dagster-daemon run`을 실행하는 서비스를 찾으므로,
+`dagster code-server start`(또는 옛 `dagster api grpc`)·`dagster-webserver`·`dagster-daemon run`을 실행하는 서비스를 찾으므로,
 새 Dagster 서비스도 같은 요구를 받는다. code-server probe의 판정은 문자열이 아니라 실제
 gRPC health 서버 앞에서 probe를 실행해 확인한다.
 """
@@ -33,7 +33,8 @@ ROOT = (
     else _BACKEND_ROOT.parent
 )
 
-_CODE_SERVER = ("dagster", "api", "grpc")
+#: code-server는 `dagster code-server start`(공용 plane, reload 가능) 또는 옛 `dagster api grpc`다.
+_CODE_SERVER_PROGRAMS = (("dagster", "code-server", "start"), ("dagster", "api", "grpc"))
 _WEBSERVER = ("dagster-webserver",)
 _DAEMON = ("dagster-daemon", "run")
 
@@ -141,7 +142,11 @@ def _python_probe(key: str, service: dict[str, Any]) -> tuple[str, str]:
     return program[3], program[4]
 
 
-_CODE_SERVERS = _services_running(_CODE_SERVER)
+_CODE_SERVERS = {
+    key: service
+    for program in _CODE_SERVER_PROGRAMS
+    for key, service in _services_running(program).items()
+}
 _WEBSERVERS = _services_running(_WEBSERVER)
 _DAEMONS = _services_running(_DAEMON)
 _DAGSTER_SERVICES = {**_CODE_SERVERS, **_WEBSERVERS, **_DAEMONS}

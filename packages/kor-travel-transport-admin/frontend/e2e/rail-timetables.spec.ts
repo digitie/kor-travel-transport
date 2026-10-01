@@ -45,10 +45,10 @@ for (const width of [375, 1440]) test(`범위 밖 원본 좌표 역도 검색·�
 
 test("KRIC 보호 종료 시각은 중지된 스케줄의 실행 예약으로 표시하지 않는다", async ({ page }) => {
   await page.route("**/api/dagster/graphql", (route) => route.fulfill({ json: { data: {
-    repositoriesOrError: { __typename: "RepositoryConnection", nodes: [{ schedules: [{
+    repositoryOrError: { __typename: "Repository", schedules: [{
       name: "kric_timetable_collection_job_schedule", pipelineName: "kric_timetable_collection_job",
       cronSchedule: "0 * * * *", scheduleState: { status: "STOPPED" },
-    }] }] }, runsOrError: { __typename: "Runs", results: [] }, activeRuns: { __typename: "Runs", results: [] },
+    }] }, runsOrError: { __typename: "Runs", results: [] }, activeRuns: { __typename: "Runs", results: [] },
   } } }));
   await page.route("**/transport/providers", (route) => route.fulfill({ json: {
     generated_at: "2026-09-27T03:17:00Z", ferry_window_start: "2026-09-27", ferry_window_end: "2026-10-06",

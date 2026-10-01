@@ -19,6 +19,17 @@ from app.services.rail_maritime_collection import RailMaritimeCollectionService
 from app.services.rest_area_collection import RestAreaCollectionService
 from app.services.transport_collection import CollectionScope, TransportCollectionService
 
+#: 실행 상한(초). 공용 Dagster instance의 전역 상한(6시간, Manager `config/dagster-shared/dagster.yaml`)은
+#: 다른 테넌트의 값이라, 옛 전용 instance의 상한(4시간 — 유가 Playwright 수집의 정상 상한 2시간에 여유를 둔
+#: 값)을 job마다 tag로 단다. run monitoring이 이 tag를 읽어 넘긴 run을 실패로 끝낸다.
+MAX_RUNTIME_SECONDS = 14400
+
+
+def _job_tags(run_group: str) -> dict[str, str]:
+    """job tag — 겹치는 수집을 묶는 run group(공용 instance의 tag 상한 key)과 실행 상한."""
+
+    return {"kortraveltransport/run_group": run_group, "dagster/max_runtime": str(MAX_RUNTIME_SECONDS)}
+
 
 async def _run_with_session(
     settings: Settings, action: Callable[..., Awaitable[dict[str, Any]]], *args: Any, **kwargs: Any
@@ -202,62 +213,62 @@ def collect_rest_area_fuel_prices() -> dict[str, Any]:
     return asyncio.run(_run_with_session(settings, RestAreaCollectionService(settings).collect_fuel_prices))
 
 
-@job(tags={"kortraveltransport/run_group": "reference"})
+@job(tags=_job_tags("reference"))
 def rest_area_reference_collection_job() -> None:
     collect_rest_area_reference()
 
 
-@job(tags={"kortraveltransport/run_group": "reference"})
+@job(tags=_job_tags("reference"))
 def rest_area_fuel_price_collection_job() -> None:
     collect_rest_area_fuel_prices()
 
 
-@job(tags={"kortraveltransport/run_group": "reference"})
+@job(tags=_job_tags("reference"))
 def kric_timetable_collection_job() -> None:
     collect_kric_timetable()
 
 
-@job(tags={"kortraveltransport/run_group": "parking"})
+@job(tags=_job_tags("parking"))
 def airport_collection_job() -> None:
     collect_airport_parking()
 
 
-@job(tags={"kortraveltransport/run_group": "highway"})
+@job(tags=_job_tags("highway"))
 def highway_collection_job() -> None:
     collect_highway_transport()
 
 
-@job(tags={"kortraveltransport/run_group": "fuel"})
+@job(tags=_job_tags("fuel"))
 def fuel_collection_job() -> None:
     collect_fuel_transport()
 
 
-@job(tags={"kortraveltransport/run_group": "reference"})
+@job(tags=_job_tags("reference"))
 def rail_reference_collection_job() -> None:
     collect_rail_reference()
 
 
-@job(tags={"kortraveltransport/run_group": "reference"})
+@job(tags=_job_tags("reference"))
 def maritime_reference_collection_job() -> None:
     enrich_new_reference_locations(collect_maritime_reference())
 
 
-@job(tags={"kortraveltransport/run_group": "reference"})
+@job(tags=_job_tags("reference"))
 def ferry_timetable_collection_job() -> None:
     collect_ferry_timetable()
 
 
-@job(tags={"kortraveltransport/run_group": "reference"})
+@job(tags=_job_tags("reference"))
 def bus_reference_collection_job() -> None:
     enrich_new_reference_locations(collect_bus_reference())
 
 
-@job(tags={"kortraveltransport/run_group": "reference"})
+@job(tags=_job_tags("reference"))
 def place_location_collection_job() -> None:
     collect_place_locations()
 
 
-@job(tags={"kortraveltransport/run_group": "reference"})
+@job(tags=_job_tags("reference"))
 def kakao_place_location_collection_job() -> None:
     collect_kakao_place_locations()
 

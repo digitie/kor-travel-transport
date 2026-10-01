@@ -2,6 +2,11 @@ name: kor-travel-transport-admin
 
 # 기본 `kor-travel-transport` Compose와 독립된 host-network UI/gateway 스택이다. backend,
 # Dagster webserver를 재기동하거나 포트를 변경하지 않고 loopback upstream만 읽는다.
+#
+# Dagster는 공용 제어 평면(kor-travel-docker-manager ADR-54)이다. UI는 공용 webserver
+# (`127.0.0.1:11002`)에 이 location(`kor-travel-transport`)으로 좁힌 이름 붙은 query만 보낸다
+# (`lib/dagster-scope.ts`). 외부 Dagster UI는 공용 gateway(`dagster.digitie.mywire.org`)다 — 이 스택의
+# 옛 `transport-dagster-gateway`(12302, transport-dagster.digitie.mywire.org)는 없어졌다(redirect 없음).
 services:
   transport-api-gateway:
     image: nginx:1.27-alpine
@@ -17,23 +22,6 @@ services:
       timeout: 5s
       retries: 5
 
-  transport-dagster-gateway:
-    build:
-      context: .
-      dockerfile: deploy/transport-admin/Dockerfile.dagster-gateway
-    restart: unless-stopped
-    network_mode: host
-    environment:
-      TRANSPORT_DAGSTER_PORT: "${TRANSPORT_DAGSTER_PORT:-12302}"
-      TRANSPORT_DAGSTER_PUBLIC_ORIGIN: "${TRANSPORT_DAGSTER_PUBLIC_ORIGIN:?set the public Dagster origin}"
-      TRANSPORT_DAGSTER_USER: "${TRANSPORT_DAGSTER_USER:-admin}"
-      TRANSPORT_DAGSTER_PASSWORD: "${TRANSPORT_DAGSTER_PASSWORD:?set the transport Dagster password}"
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${TRANSPORT_DAGSTER_PORT:-12302}/health >/dev/null"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-
   transport-admin-web:
     build:
       context: .
@@ -45,7 +33,8 @@ services:
     network_mode: host
     environment:
       TRANSPORT_API_INTERNAL_URL: "${TRANSPORT_API_INTERNAL_URL:-http://127.0.0.1:14001}"
-      TRANSPORT_DAGSTER_INTERNAL_URL: "${TRANSPORT_DAGSTER_INTERNAL_URL:-http://127.0.0.1:14004}"
+      # 공용 Dagster webserver의 loopback(인증 없음). 옛 전용 webserver(14004)는 legacy-dagster로 내려갔다.
+      TRANSPORT_DAGSTER_INTERNAL_URL: "${TRANSPORT_DAGSTER_INTERNAL_URL:-http://127.0.0.1:11002}"
       TRANSPORT_UI_USER: "${TRANSPORT_UI_USER:-admin}"
       TRANSPORT_UI_PASSWORD: "${TRANSPORT_UI_PASSWORD:?set the transport admin password}"
       TRANSPORT_UI_SESSION_SECRET: "${TRANSPORT_UI_SESSION_SECRET:?set a 32+ character transport admin session secret}"
@@ -56,8 +45,6 @@ services:
     command: ["sh", "-c", "npm run start -- --hostname 0.0.0.0 --port ${TRANSPORT_PUBLIC_WEB_PORT:-12305}"]
     depends_on:
       transport-api-gateway:
-        condition: service_healthy
-      transport-dagster-gateway:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:${TRANSPORT_PUBLIC_WEB_PORT:-12305}/login').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]

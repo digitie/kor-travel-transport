@@ -4,6 +4,8 @@
   개명 guard는 cutover 정리와 함께 지웠다(ADR-011).
 - `DAGSTER_POSTGRES_URL`은 운영 env 그대로의 `postgresql+psycopg2://`도 받는다.
 - 백엔드 계열 이미지는 release마다 `kor-travel-transport-backend:rel-<sha12>`를 셸 env로 받는다.
+- 공용 Dagster 제어 평면(Manager ADR-54) 합류 뒤의 배포: 공용 daemon을 멈추지 않고 이 location의 run·worker가
+  0일 때 교체하며, 합류 전(공용 plane이 location을 모르거나 옛 daemon이 돌 때)에는 거부한다.
 """
 
 from __future__ import annotations
@@ -116,8 +118,8 @@ def test_release_image_is_pinned_per_release_through_the_shell_env() -> None:
     source = text.index('source "${REMOTE_ENV_FILE}"')
     pin = text.index('export BACKEND_RUNTIME_IMAGE="kor-travel-transport-backend:rel-${CANDIDATE_SHA:0:12}"')
     sha = text.index('export RELEASE_SHA="${CANDIDATE_SHA}"')
-    build = text.index(' -f docker-compose.shared.yml build')
-    up = text.index("up -d --no-build")
+    build = text.index("\ncompose build\n")
+    up = text.index("\ncompose up -d --no-build\n")
     # env 파일을 source한 뒤에 export해야 파일의 값(다른 배포가 적어 둔 draft 이미지·옛 RELEASE_SHA)을 덮는다.
     # `set -a; source`가 둘을 셸 env로 export하고, 셸 env는 --env-file보다 우선한다.
     assert source < pin < build < up
@@ -125,58 +127,107 @@ def test_release_image_is_pinned_per_release_through_the_shell_env() -> None:
     assert "awk '!/^(RELEASE_SHA|BACKEND_RUNTIME_IMAGE)=/'" in text
 
 
-def test_deploy_drains_dagster_runs_after_build_and_restores_daemon_on_failure() -> None:
-    text = _REMOTE.read_text(encoding="utf-8")
-    build = text.index(' -f docker-compose.shared.yml build')
-    preflight = text.index('initial_runs="$(in_flight_runs)"')
-    stop = text.index('docker stop "${dagster_daemon}" >/dev/null\n')
-    drain = text.index('if runs="$(in_flight_runs)" && [[ -z "${runs}" ]]')
-    final_probe = text.index('runs="$(in_flight_runs)" || { echo "서비스 교체 직전에')
-    worker_probe = text.index('workers="$(in_flight_workers)" || { echo "서비스 교체 직전에')
-    up = text.index('up -d --no-build\n', final_probe)
-    assert build < preflight < stop < drain < final_probe < worker_probe < up
-    assert 'trap resume_dagster_daemon EXIT' in text
-    assert 'docker start "${dagster_daemon}"' in text
-    assert 'cleanup_remote\n  exit "${status}"' in text
-    assert '((SECONDS >= drain_deadline))' in text
-    assert '[[ -z "${runs}" ]] ||' in text
-    assert 'Dagster daemon이 없지만 활성 실행이 있다' in text
-    assert 'Dagster daemon이 없지만 worker가 살아 있다' in text
-    assert text.index('cutover_started=1\n') < up
-    assert '혼합 릴리스를 막기 위해 daemon을 중지했다' in text
-    assert text.index('wait_dagster_daemon_health() {') < text.index('trap resume_dagster_daemon EXIT') < up
-    assert text.index('wait_dagster_daemon_health\nhealth_payload=""') < text.rindex('daemon_stopped=0')
-    assert 'BACKEND_RUNTIME_IMAGE="${old_daemon_image}" docker compose' in text
-    assert '"${restored_image}" != "${old_daemon_image}"' in text
-    assert '"${daemon_health}" == "true healthy"' in text
-    assert 'Dagster daemon이 healthy가 되지 않았다' in text
+def _function(text: str, name: str) -> str:
+    """스크립트에서 함수 하나의 정의(`name() {` … 첫 `\\n}\\n`)."""
+
+    start = text.index(f"{name}() {{\n")
+    return text[start : text.index("\n}\n", start) + 3]
 
 
-def test_deploy_daemon_health_probe_rejects_dead_daemon_and_accepts_healthy_one() -> None:
+def test_shared_plane_deploy_drains_this_location_without_stopping_the_shared_daemon() -> None:
+    """공용 daemon은 다른 테넌트도 돌린다 — 멈추지 않고 이 location의 run·worker가 0일 때 교체한다."""
+
     text = _REMOTE.read_text(encoding="utf-8")
-    body = text.split('wait_dagster_daemon_health() {\n', 1)[1].split('\n}\ndaemon_stopped=0', 1)[0]
-    definition = 'wait_dagster_daemon_health() {\n' + body + '\n}\n'
+    build = text.index("\ncompose build\n")
+    prepare_exit = text.index('if [[ "${DEPLOY_MODE}" == "prepare-shared-dagster-cutover" ]]; then')
+    plane_guard = text.index('plane_state="$(location_state)"')
+    drain = text.index('if runs="$(in_flight_runs)" && [[ -z "${runs}" ]]; then')
+    up = text.index("\ncompose up -d --no-build\n")
+    assert build < prepare_exit < plane_guard < drain < up
+    assert text.index('wait_code_server_health\nwait_location_loaded\n') > up
+    # 옛 전용 daemon을 멈추고 되살리던 길은 없다.
+    assert "docker stop" not in text
+    assert "docker start" not in text
+    assert "dagster-daemon-1\"" not in text
+    # 공용 webserver에 이 location으로 좁혀 묻는다(다른 테넌트의 run을 세지 않는다).
+    assert 'dagster_graphql_url="http://127.0.0.1:11002/graphql"' in text
+    assert 'dagster_location="kor-travel-transport"' in text
+    assert "14004" not in text
+
+
+def test_runs_query_is_valid_json_scoped_to_the_location() -> None:
+    text = _REMOTE.read_text(encoding="utf-8")
+    line = next(line for line in text.splitlines() if line.startswith("dagster_runs_query="))
+    result = subprocess.run(
+        ["bash", "-c", 'dagster_location=kor-travel-transport\n' + line + '\nprintf "%s" "$dagster_runs_query"'],
+        capture_output=True, text=True, check=True,
+    )
+    query = json.loads(result.stdout)["query"]
+    assert 'statuses:[STARTED,STARTING,CANCELING]' in query
+    assert 'tags:[{key:"dagster/code_location",value:"kor-travel-transport"}]' in query
+
+
+@pytest.mark.parametrize(
+    ("workspace", "expected"),
+    [
+        ({"__typename": "Workspace", "locationEntries": [{"name": "kor-travel-transport", "locationOrLoadError": {"__typename": "RepositoryLocation"}}]}, "RepositoryLocation"),
+        ({"__typename": "Workspace", "locationEntries": [{"name": "kor-travel-transport", "locationOrLoadError": {"__typename": "PythonError"}}]}, "PythonError"),
+        ({"__typename": "Workspace", "locationEntries": [{"name": "kortravelmap.dagster.definitions", "locationOrLoadError": {"__typename": "RepositoryLocation"}}]}, "absent"),
+    ],
+)
+def test_location_state_reads_only_this_location(workspace: dict[str, object], expected: str) -> None:
+    text = _REMOTE.read_text(encoding="utf-8")
+    script = ("set -o pipefail\n" + _function(text, "location_state")
+              + 'dagster_location=kor-travel-transport\ndagster_workspace_query=q\ndagster_graphql_url=u\n'
+              + 'curl() { printf "%s" "$PAYLOAD"; }\nlocation_state\n')
+    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=False,
+                            env={**os.environ, "PAYLOAD": json.dumps({"data": {"workspaceOrError": workspace}})})
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == expected
+
+
+def test_deploy_refuses_before_the_plane_carries_the_location_or_while_the_old_daemon_runs() -> None:
+    """합류 전 배포는 code-server만 공용 instance로 옮겨 Manager 전환의 펜스를 건너뛴다 — 거부한다."""
+
+    text = _REMOTE.read_text(encoding="utf-8")
+    guard = text[text.index('plane_state="$(location_state)"') : text.index("drain_deadline=")]
+    for plane, legacy_running, expected in (
+        ("absent", "false", "does not list kor-travel-transport yet"),
+        ("RepositoryLocation", "true", "still runs next to the shared plane"),
+        ("RepositoryLocation", "false", "PASSED"),
+    ):
+        script = ('COMPOSE_PROJECT_NAME=kor-travel-transport\ndagster_location=kor-travel-transport\n'
+                  + f'location_state() {{ echo {plane}; }}\n'
+                  + f'docker() {{ echo {legacy_running}; }}\n'
+                  + guard + 'echo PASSED\n')
+        result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=False)
+        assert expected in result.stdout + result.stderr, (plane, legacy_running, result.stderr)
+        assert (result.returncode == 0) is (expected == "PASSED")
+
+
+def test_code_server_health_wait_rejects_a_dead_code_server_and_accepts_a_healthy_one() -> None:
+    text = _REMOTE.read_text(encoding="utf-8")
+    definition = _function(text, "wait_code_server_health")
     for state, expected in (("false unhealthy", 1), ("true healthy", 0)):
-        script = (definition + 'dagster_daemon=test-daemon\n'
+        script = (definition + 'dagster_code_server=test-code-server\n'
                   + f'docker() {{ printf "%s\\n" "{state}"; }}\n'
-                  + 'sleep() { :; }\nwait_dagster_daemon_health\n')
+                  + 'sleep() { :; }\nwait_code_server_health\n')
         result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=False)
         assert result.returncode == expected, result.stderr
         if expected:
-            assert "Dagster daemon이 healthy가 되지 않았다" in result.stderr
+            assert "Dagster code-server가 healthy가 되지 않았다" in result.stderr
 
 
 def test_deploy_worker_probe_detects_orphan_and_fails_closed() -> None:
     text = _REMOTE.read_text(encoding="utf-8")
-    body = text.split('in_flight_workers() {\n', 1)[1].split('\n}\nwait_dagster_daemon_health()', 1)[0]
-    definition = 'in_flight_workers() {\n' + body + '\n}\n'
+    definition = _function(text, "in_flight_workers")
     script = ('set -o pipefail\n' + definition
               + 'dagster_code_server=transport-dagster-code-server-1\n'
               + 'docker() { printf "%s" "$PROCESS_TABLE"; }\n'
               + 'in_flight_workers\n')
     for process_table, expected in (
-        ('PID PPID COMMAND\n1 0 dagster api grpc\n', ''),
-        ('PID PPID COMMAND\n1 0 dagster api grpc\n2 1 python -c multiprocessing.spawn /storage/run-id/\n',
+        ('PID PPID COMMAND\n1 0 dagster code-server start\n', ''),
+        ('PID PPID COMMAND\n1 0 dagster code-server start\n2 1 python -c multiprocessing.spawn /storage/run-id/\n',
          'multiprocessing.spawn'),
     ):
         result = subprocess.run(["bash", "-c", script], capture_output=True, text=True,
@@ -189,57 +240,34 @@ def test_deploy_worker_probe_detects_orphan_and_fails_closed() -> None:
     assert broken.returncode == 17
 
 
-def test_failed_deploy_before_cutover_restores_previous_daemon_image() -> None:
+def test_prepare_mode_builds_and_writes_the_cutover_env_without_touching_containers() -> None:
     text = _REMOTE.read_text(encoding="utf-8")
-    body = text.split('resume_dagster_daemon() {\n', 1)[1].split('\n}\ntrap resume_dagster_daemon EXIT', 1)[0]
-    script = ('resume_dagster_daemon() {\n' + body + '\n}\n'
-              + 'daemon_stopped=1\ndaemon_stopping=0\ncutover_started=0\n'
-              + 'dagster_daemon=transport-dagster-daemon-1\n'
-              + 'old_daemon_container_id=old-container\nold_daemon_image=sha256:old-image\n'
-              + 'COMPOSE_PROJECT_NAME=transport\nRUNTIME_ENV_FILE=/tmp/runtime.env\nrestored=0\n'
-              + 'docker() {\n'
-              + '  if [[ "$1 $2 $3" == "inspect -f {{.Id}}" ]]; then echo new-container; return; fi\n'
-              + '  if [[ "$1 $2 $3" == "inspect -f {{.Image}}" ]]; then\n'
-              + '    if ((restored)); then echo sha256:old-image; else echo sha256:new-image; fi\n'
-              + '    return\n'
-              + '  fi\n'
-              + '  if [[ "$1 $2" == "image inspect" ]]; then return 0; fi\n'
-              + '  if [[ "$1" == "compose" ]]; then\n'
-              + '    [[ "$BACKEND_RUNTIME_IMAGE" == "sha256:old-image" ]] || return 1\n'
-              + '    restored=1\n'
-              + '    return 0\n'
-              + '  fi\n'
-              + '  return 1\n}\n'
-              + 'wait_dagster_daemon_health() { ((restored)) && echo restored-old-image; }\n'
-              + 'cleanup_remote() { :; }\ntrap resume_dagster_daemon EXIT\nexit 17\n')
-    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=False)
-    assert result.returncode == 17, result.stderr
-    assert "restored-old-image" in result.stdout
-    assert "자동 복구하지 못했다" not in result.stderr
+    block = text[text.index('if [[ "${DEPLOY_MODE}" == "prepare-shared-dagster-cutover" ]]; then') :]
+    block = block[: block.index("\nfi\n")]
+    assert "compose up" not in block and "docker " not in block
+    assert 'printf \'BACKEND_RUNTIME_IMAGE=%s\\n\' "${BACKEND_RUNTIME_IMAGE}"' in block
+    assert 'chmod 600 "${cutover_env_tmp}"' in block
+    assert "exit 0" in block
+    # 공용 password 검사는 prepare·deploy 둘 다 지난다(빌드 전).
+    assert text.index("KOR_TRAVEL_DAGSTER_SHARED_APP_PASSWORD:-}\" =~") < text.index("\ncompose build\n")
+    # 배포 동기화(rsync --delete)가 n150에서 만든 전환 env 파일을 지우지 않는다.
+    backend = (_SCRIPTS / "deploy-server14.sh").read_text(encoding="utf-8")
+    assert '--exclude=".env.server14.shared-dagster-cutover"' in backend
+    assert "DEPLOY_MODE='${DEPLOY_MODE}'" in backend
 
 
-@pytest.mark.parametrize("running,expected", [
-    ("false", "혼합 릴리스를 막기 위해 daemon을 중지했다"),
-    ("true", "치명적 부분 배포 실패: daemon 중지를 확인하지 못했다"),
-])
-def test_failed_deploy_after_cutover_does_not_restore_old_daemon(running: str, expected: str) -> None:
+@pytest.mark.parametrize(
+    ("password", "accepted"),
+    [("Abc123._~-", True), ("", False), ("has space", False), ("p@ss", False), ("a/b", False)],
+)
+def test_shared_password_check_matches_the_manager_rule(password: str, accepted: bool) -> None:
     text = _REMOTE.read_text(encoding="utf-8")
-    body = text.split('resume_dagster_daemon() {\n', 1)[1].split('\n}\ntrap resume_dagster_daemon EXIT', 1)[0]
-    script = ('resume_dagster_daemon() {\n' + body + '\n}\n'
-              + 'cutover_started=1\ndaemon_stopped=1\ndaemon_stopping=0\n'
-              + 'dagster_daemon=transport-dagster-daemon-1\n'
-              + 'BACKEND_RUNTIME_IMAGE=candidate\nold_daemon_image=sha256:old-image\n'
-              + 'docker() {\n'
-              + f'  if [[ "$1 $2" == "inspect -f" ]]; then echo {running}; return 0; fi\n'
-              + f'  if [[ "$1" == "stop" ]]; then return {0 if running == "false" else 1}; fi\n'
-              + '  if [[ "$1" == "compose" ]]; then echo unsafe-rollback; return 1; fi\n'
-              + '  return 1\n}\n'
-              + 'wait_dagster_daemon_health() { return 1; }\n'
-              + 'cleanup_remote() { :; }\ntrap resume_dagster_daemon EXIT\nexit 17\n')
-    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=False)
-    assert result.returncode == 17, result.stderr
-    assert expected in result.stderr
-    assert "unsafe-rollback" not in result.stdout
+    match = re.search(r'"\$\{KOR_TRAVEL_DAGSTER_SHARED_APP_PASSWORD:-\}" =~ (\S+) \]\]', text)
+    assert match
+    result = subprocess.run(["bash", "-c", '[[ $1 =~ $2 ]]', "_", password, match.group(1)],
+                            capture_output=True, text=True, check=False)
+    assert (result.returncode == 0) is accepted
+
 
 
 def test_remote_deploy_script_has_valid_bash_syntax() -> None:
@@ -270,40 +298,29 @@ def test_interrupted_sync_preserves_current_release_receipts() -> None:
 def test_stage_receipt_is_invalidated_before_either_shared_checkout_sync() -> None:
     backend = (_SCRIPTS / "deploy-server14.sh").read_text(encoding="utf-8")
     admin = (_SCRIPTS / "deploy-transport-admin-server14.sh").read_text(encoding="utf-8")
-    dagster = (_SCRIPTS / "redeploy-dagster-services-server14.sh").read_text(encoding="utf-8")
     remote = _REMOTE.read_text(encoding="utf-8")
 
     assert backend.index('rm -f -- "${STAGE_MARKER}"') < backend.index("rsync -a --delete")
     assert backend.index("rsync -a --delete") < backend.index('mv -f -- "${stage_marker_tmp}" "${STAGE_MARKER}"')
     assert admin.index('rm -f -- "${REMOTE_APP_DIR}/.staged-release-sha"') < admin.index("rsync -a --exclude=")
-    assert dagster.index('rm -f -- "$APP_DIR/.staged-release-sha"') < dagster.index('install -m 664 "$candidate" "$SHARED"')
     assert 'bash ./scripts/verify-release-stage.sh "${REMOTE_APP_DIR}" "${CANDIDATE_SHA}"' in remote
 
 
 def test_all_shared_checkout_writers_hold_the_same_release_lock() -> None:
-    names = (
-        "deploy-server14.sh",
-        "deploy-transport-admin-server14.sh",
-        "redeploy-dagster-services-server14.sh",
-        "deploy-server14-remote.sh",
-    )
+    names = ("deploy-server14.sh", "deploy-transport-admin-server14.sh", "deploy-server14-remote.sh")
     lock_path = "/home/digitie/apps/.kor-travel-transport-deploy.lock"
-    for name in (names[0], names[1], names[3]):
+    for name in names:
         source = (_SCRIPTS / name).read_text(encoding="utf-8")
         assert lock_path in source, name
         assert "flock -n 9" in source, name
-    dagster = (_SCRIPTS / names[2]).read_text(encoding="utf-8")
-    assert 'APP_DIR="${APP_DIR:-/home/digitie/apps/kor-travel-transport}"' in dagster
-    assert '$(dirname "$APP_DIR")/.kor-travel-transport-deploy.lock' in dagster
-    assert dagster.index('APP_DIR="$(realpath -e -- "$APP_DIR")"') < dagster.index('$(dirname "$APP_DIR")/.kor-travel-transport-deploy.lock')
-    assert "flock -n 9" in dagster
-    backend = (_SCRIPTS / names[0]).read_text(encoding="utf-8")
-    admin = (_SCRIPTS / names[1]).read_text(encoding="utf-8")
-    remote = (_SCRIPTS / names[3]).read_text(encoding="utf-8")
+    backend, admin, remote = ((_SCRIPTS / name).read_text(encoding="utf-8") for name in names)
     assert backend.index("flock -n 9") < backend.index("rsync -a --delete")
     assert admin.index("flock -n 9") < admin.index("rsync -a --exclude=")
-    assert dagster.index("flock -n 9") < dagster.index('install -m 664 "$candidate" "$SHARED"')
     assert remote.index("flock -n 9") < remote.index('bash ./scripts/verify-release-stage.sh')
+    # 옛 전용 Dagster 세 서비스 긴급 교체 스크립트는 공용 plane 합류로 없어졌다(되살아나면 옛 daemon을 띄운다).
+    assert not (_SCRIPTS / "redeploy-dagster-services-server14.sh").exists()
+
+
 
 
 def test_release_lock_is_inherited_by_remote_deploy_child(tmp_path: Path) -> None:

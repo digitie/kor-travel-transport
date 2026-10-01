@@ -23,12 +23,16 @@ def test_transport_admin_is_a_separate_host_network_stack() -> None:
     compose = (ROOT / "docker-compose.transport-admin.yml").read_text(encoding="utf-8")
 
     assert "name: kor-travel-transport-admin" in compose
-    assert compose.count("network_mode: host") == 3
+    assert compose.count("network_mode: host") == 2
     assert "TRANSPORT_PUBLIC_API_PORT:-12301" in compose
-    assert "TRANSPORT_DAGSTER_PORT:-12302" in compose
     assert "TRANSPORT_PUBLIC_WEB_PORT:-12305" in compose
     assert "http://127.0.0.1:14001" in compose
-    assert "http://127.0.0.1:14004" in compose
+    # Dagster는 공용 제어 평면이다(Manager ADR-54) — 공용 webserver의 loopback을 부르고, 옛 전용
+    # webserver(14004)와 그 앞의 12302 gateway는 없다.
+    assert 'TRANSPORT_DAGSTER_INTERNAL_URL: "${TRANSPORT_DAGSTER_INTERNAL_URL:-http://127.0.0.1:11002}"' in compose
+    assert "14004" not in compose
+    assert "transport-dagster-gateway" not in compose
+    assert "TRANSPORT_DAGSTER_PORT" not in compose
     assert "기본 `kor-travel-transport` Compose와 독립된" in compose
 
 
@@ -67,9 +71,8 @@ def test_transport_admin_builds_the_vworld_browser_key_into_the_map_bundle() -> 
     assert '"vworld-map-web"' in package
 
 
-def test_transport_gateway_contract_has_bounded_upstreams_and_dagster_auth() -> None:
+def test_transport_gateway_contract_has_bounded_upstreams() -> None:
     api_gateway = (ROOT / "deploy/transport-admin/api-gateway.conf.template").read_text(encoding="utf-8")
-    dagster_gateway = (ROOT / "deploy/transport-admin/dagster-gateway.conf.template").read_text(encoding="utf-8")
     proxy = (ROOT / "packages/kor-travel-transport-admin/frontend/app/api/transport/[...path]/route.ts").read_text(encoding="utf-8")
     upstream = (ROOT / "packages/kor-travel-transport-admin/frontend/lib/upstream.ts").read_text(encoding="utf-8")
 
@@ -82,11 +85,26 @@ def test_transport_gateway_contract_has_bounded_upstreams_and_dagster_auth() -> 
     assert "location / { return 404; }" in api_gateway
     assert "/admin/backups" not in api_gateway
     assert "proxy_set_header Host 127.0.0.1" in api_gateway
-    assert "proxy_pass http://127.0.0.1:14004" in dagster_gateway
-    assert "auth_basic" in dagster_gateway
-    assert "transport_dagster_csrf_block" in dagster_gateway
     assert "isAllowedTransportPath" in upstream
     assert "fetchNoStore" in proxy
+    # 옛 전용 Dagster gateway(12302)는 공용 plane 합류로 없어졌다. 외부 Dagster UI는 공용 gateway다.
+    assert not (ROOT / "deploy/transport-admin/dagster-gateway.conf.template").exists()
+    assert not (ROOT / "deploy/transport-admin/Dockerfile.dagster-gateway").exists()
+
+
+def test_transport_admin_dagster_proxy_forwards_only_scoped_named_operations() -> None:
+    """공용 webserver에는 다른 프로젝트의 run·schedule이 있다 — 브라우저의 GraphQL 문서를 넘기지 않는다."""
+
+    frontend = ROOT / "packages/kor-travel-transport-admin/frontend"
+    route = (frontend / "app/api/dagster/graphql/route.ts").read_text(encoding="utf-8")
+    scope = (frontend / "lib/dagster-scope.ts").read_text(encoding="utf-8")
+
+    assert "scopedDagsterRequest(parsed)" in route
+    assert "body: scoped.body" in route
+    assert "body }" not in route and "body })" not in route  # 원문 body를 그대로 넘기지 않는다
+    assert 'TRANSPORT_DAGSTER_INTERNAL_URL ?? "http://127.0.0.1:11002"' in route
+    assert "repositoriesOrError" not in scope.split("*/", 1)[1]
+    assert 'export const DAGSTER_UI_BASE = "https://dagster.digitie.mywire.org";' in scope
 
 
 def test_transport_runtime_forwards_port_guideline_and_timetable_limits() -> None:

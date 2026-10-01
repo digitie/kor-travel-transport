@@ -24,9 +24,10 @@ from app.models import CollectionRun
 MINIMUM_AGE = timedelta(hours=4)
 TRIGGERS = {"transport_dagster_highway", "transport_dagster_fuel"}
 REASON = "운영 점검: Dagster 활성 실행/worker가 없는 오래된 수집 실행을 실패 종료로 정리함"
-GRAPHQL_URL = "http://127.0.0.1:14004/graphql"
+# 공용 Dagster webserver(Manager ADR-54)의 loopback. 다른 테넌트의 run이 함께 있으므로 이 location으로 좁힌다.
+GRAPHQL_URL = "http://127.0.0.1:11002/graphql"
 CODE_SERVER_CONTAINER = "kor-travel-transport-dagster-code-server-1"
-ACTIVE_QUERY = "{runsOrError(filter:{statuses:[STARTED,STARTING,CANCELING]},limit:1000){__typename ... on Runs{results{runId}}}}"
+ACTIVE_QUERY = "{runsOrError(filter:{statuses:[STARTED,STARTING,CANCELING],tags:[{key:\"dagster/code_location\",value:\"kor-travel-transport\"}]},limit:1000){__typename ... on Runs{results{runId}}}}"
 
 
 def require_no_active_dagster_runs() -> None:

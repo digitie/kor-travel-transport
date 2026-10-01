@@ -65,20 +65,18 @@ HttpOnly 서명 세션을 통과한 뒤에만 Next.js server route가 다음의 
                          ▼
                  transport-admin-web
                   ├─ 127.0.0.1:14001/v1/transport/*
-                  └─ 127.0.0.1:14004/graphql
+                  └─ 127.0.0.1:11002/graphql (공용 Dagster webserver, location 범위 query만)
 
 외부 OpenAPI ── TLS ── transport-api.digitie.mywire.org:12301
                          ▼
                    transport-api-gateway ── 127.0.0.1:14001
 
-Dagster 운영 UI ── TLS ── transport-dagster.digitie.mywire.org:12302
+Dagster 운영 UI ── TLS ── dagster.digitie.mywire.org (Manager 공용 gateway 11001, Basic Auth)
                          ▼
-                  transport-dagster-gateway (Basic Auth + Origin POST 차단)
-                         ▼
-                       127.0.0.1:14004
+                 공용 Dagster webserver 127.0.0.1:11002 — location `kor-travel-transport`
 ```
 
-세 listener는 `docker-compose.transport-admin.yml`의 독립
+두 listener(12301·12305)는 `docker-compose.transport-admin.yml`의 독립
 `kor-travel-transport-admin` project에 속한다. host network를 쓰지만 기존
 `kor-travel-transport` 서비스의 port·network·lifecycle은 바꾸지 않는다. 두 project는 같은 앱
 디렉터리(`/home/digitie/apps/kor-travel-transport`)에서 돈다. 컨테이너 이름 접두어가 겹치므로
@@ -99,16 +97,17 @@ Dagster 운영 UI ── TLS ── transport-dagster.digitie.mywire.org:12302
 - 로그인·로그아웃과 Dagster GraphQL POST는 `TRANSPORT_UI_PUBLIC_ORIGIN`과 exact
   비교한다. reverse proxy가 client IP를 재작성하는 계약이 있을 때만
   `TRANSPORT_UI_TRUST_PROXY=true`를 허용한다.
-- 외부 Dagster gateway는 별도의 Basic Auth를 요구하고 POST의 `Origin`을
-  `TRANSPORT_DAGSTER_PUBLIC_ORIGIN`으로 제한한다. `/health`만 인증 없이 204를
-  반환한다.
+- Dagster는 Manager의 공용 제어 평면이다(ADR-54). 운영 UI의 `/api/dagster/graphql`은 브라우저의 GraphQL
+  문서를 넘기지 않고, 이름 붙은 작업(`TransportDagsterOverview`)을 이 location(`kor-travel-transport`)으로 좁힌
+  query로 바꿔 공용 webserver에 보낸다(`lib/dagster-scope.ts`). 외부 Dagster UI는 공용 gateway(Basic Auth,
+  same-origin POST, `/health`만 무인증 204)다. 옛 `transport-dagster-gateway`(12302)는 없어졌다(redirect 없음).
 
 ## 배포와 검증
 
 운영 환경값은 n150의 추적하지 않는 `.env.server14`에 둔다. 초기 스택 배포는
 `scripts/deploy-transport-admin-server14.sh`를 사용하며, 서비스가 아직 실행 중이지
 않은 port에 listener가 있으면 기존 프로세스를 중단하지 않고 실패한다.
-공개 API gateway는 bind mount한 allowlist 설정을 쓰므로 배포 때 전용 세 서비스를
+공개 API gateway는 bind mount한 allowlist 설정을 쓰므로 배포 때 전용 두 서비스를
 강제 재생성하여 변경된 공개 경로가 즉시 적용되게 한다.
 수동 좌표 보정 기능이 포함된 관리자 UI는 새 backend를 먼저 배포한다. 전용 관리자
 배포 스크립트가 내부 `coordinate-write-v1` capability와 비추적 쓰기 토큰 설정을
@@ -130,7 +129,7 @@ live E2E는 n150에서 다음처럼 실행한다. 비밀번호는 shell history�
 cd packages/kor-travel-transport-admin/frontend
 E2E_BASE_URL=https://transport.digitie.mywire.org \
 E2E_TRANSPORT_API_BASE_URL=https://transport-api.digitie.mywire.org \
-E2E_TRANSPORT_DAGSTER_BASE_URL=https://transport-dagster.digitie.mywire.org \
+E2E_TRANSPORT_DAGSTER_BASE_URL=https://dagster.digitie.mywire.org \
 E2E_TRANSPORT_UI_PASSWORD="$E2E_TRANSPORT_UI_PASSWORD" \
 npm run test:e2e
 ```
