@@ -362,6 +362,11 @@ docker compose run --rm --no-deps frontend npm run test -- --run
 - `POST /v1/admin/collect` (로컬에서 `ENABLE_MANUAL_COLLECT=true`일 때만)
 - `GET /v1/admin/collector-status`
 
+주차 이력은 최신 관측부터 최대 1,000건을 반환한다. `next_cursor`가 있으면 같은
+`airport_code`/`parking_lot_id`/`days` 조건에 `cursor`를 추가해 다음 페이지를
+조회한다. 각 항목은 `airport_code`와 `parking_lot_id`를 포함한다. 전체 30일 원본을
+한 번에 반환하지 않으므로 큰 응답을 피하면서 필요한 기간을 끝까지 순회할 수 있다.
+
 ## 문서
 
 - [docs/current-state.md](docs/current-state.md)

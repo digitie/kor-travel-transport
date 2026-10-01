@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
+import json
 import logging
 import secrets
 from collections import OrderedDict
@@ -1849,8 +1852,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         airport_code: str | None = Query(default=None),
         parking_lot_id: int | None = Query(default=None),
         days: int = Query(default=3, ge=1, le=30),
+        limit: int = Query(default=1000, ge=1, le=1000),
+        cursor: str | None = Query(default=None, max_length=200),
         session: AsyncSession = Depends(get_db),
     ) -> ParkingHistoryResponse:
+        cursor_key: tuple[datetime, int] | None = None
+        if cursor is not None:
+            try:
+                decoded = base64.b64decode(cursor + "=" * (-len(cursor) % 4), altchars=b"-_", validate=True)
+                value = json.loads(decoded)
+                if (not isinstance(value, list) or len(value) != 2
+                        or not isinstance(value[0], str) or type(value[1]) is not int or value[1] <= 0):
+                    raise ValueError("invalid cursor payload")
+                cursor_time = datetime.fromisoformat(value[0].replace("Z", "+00:00"))
+                if cursor_time.tzinfo is None:
+                    raise ValueError("cursor time must have a timezone")
+                cursor_key = (cursor_time, value[1])
+            except (ValueError, UnicodeDecodeError, binascii.Error) as exc:
+                raise HTTPException(status_code=422, detail="유효하지 않은 이력 커서입니다") from exc
+
+        def next_cursor(observed_at: datetime, lot_id: int) -> str:
+            raw = json.dumps([serialize_utc(observed_at).isoformat(), lot_id], separators=(",", ":"))
+            return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+
         cutoff = now_utc() - timedelta(days=days)
         conditions = [ParkingSnapshot.observed_at >= cutoff]
         if parking_lot_id:
@@ -1862,53 +1886,75 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             conditions.append(ParkingSnapshot.airport_id == airport.id)
 
         if session.bind.dialect.name == "postgresql":
-            # 이 API는 30일에 수만 행을 반환할 수 있다. 원본 JSONB를 포함한 ORM 객체를
-            # 모두 만들고 Python에서 중복 제거하지 말고 필요한 네 필드만 읽는다.
-            ranked = select(
-                ParkingSnapshot.id.label("id"),
-                ParkingSnapshot.parking_lot_id.label("parking_lot_id"),
+            # 먼저 인덱스 순서로 중복 없는 관측 키만 한 페이지 읽는다. 30일 전체
+            # 이력을 window/sort한 뒤 JSON 수십 MB를 보내는 비용을 피한다.
+            keys = select(
                 ParkingSnapshot.observed_at.label("observed_at"),
+                ParkingSnapshot.parking_lot_id.label("parking_lot_id"),
+            ).where(*conditions)
+            if cursor_key is not None:
+                keys = keys.where(or_(
+                    ParkingSnapshot.observed_at < cursor_key[0],
+                    and_(ParkingSnapshot.observed_at == cursor_key[0],
+                         ParkingSnapshot.parking_lot_id < cursor_key[1]),
+                ))
+            keys = (keys.distinct()
+                    .order_by(ParkingSnapshot.observed_at.desc(), ParkingSnapshot.parking_lot_id.desc())
+                    .limit(limit + 1).cte("history_keys"))
+            latest = (select(
+                ParkingSnapshot.airport_id.label("airport_id"),
                 ParkingSnapshot.occupied_spaces.label("occupied_spaces"),
                 ParkingSnapshot.total_spaces.label("total_spaces"),
                 ParkingSnapshot.available_spaces.label("available_spaces"),
-                func.row_number().over(
-                    partition_by=(ParkingSnapshot.parking_lot_id, ParkingSnapshot.observed_at),
-                    order_by=(
-                        case((func.left(ParkingSnapshot.source, 10) == "migration_", 1), else_=0),
-                        ParkingSnapshot.collected_at.desc(),
-                        ParkingSnapshot.id.desc(),
-                    ),
-                ).label("rank"),
-            ).where(*conditions).subquery()
+            ).where(
+                ParkingSnapshot.observed_at == keys.c.observed_at,
+                ParkingSnapshot.parking_lot_id == keys.c.parking_lot_id,
+            ).order_by(
+                case((func.left(ParkingSnapshot.source, 10) == "migration_", 1), else_=0),
+                ParkingSnapshot.collected_at.desc(), ParkingSnapshot.id.desc(),
+            ).limit(1).lateral())
             rows = (await session.execute(
-                select(ranked.c.observed_at, ranked.c.occupied_spaces,
-                       ranked.c.total_spaces, ranked.c.available_spaces)
-                .where(ranked.c.rank == 1)
-                .order_by(ranked.c.observed_at, ranked.c.parking_lot_id, ranked.c.id)
+                select(keys.c.observed_at, keys.c.parking_lot_id, Airport.code,
+                       latest.c.occupied_spaces, latest.c.total_spaces, latest.c.available_spaces)
+                .select_from(keys)
+                .join(latest, true()).join(Airport, Airport.id == latest.c.airport_id)
+                .order_by(keys.c.observed_at.desc(), keys.c.parking_lot_id.desc())
             )).all()
+            has_more = len(rows) > limit
+            rows = rows[:limit]
             items = [
-                {"observed_at": serialize_utc(row.observed_at),
+                {"airport_code": row.code, "parking_lot_id": row.parking_lot_id,
+                 "observed_at": serialize_utc(row.observed_at),
                  "occupied_spaces": row.occupied_spaces,
                  "total_spaces": row.total_spaces,
                  "available_spaces": row.available_spaces}
                 for row in rows
             ]
-            # SQL 투영 결과는 계약 필드만 포함한다. 수만 행의 개별 모델 재검증을
-            # 생략하고 같은 Pydantic Core encoder로 한 번만 직렬화한다.
-            return Response(content=to_json({"items": items}), media_type="application/json")
+            page_cursor = next_cursor(rows[-1].observed_at, rows[-1].parking_lot_id) if has_more else None
+            return Response(content=to_json({"items": items, "next_cursor": page_cursor}), media_type="application/json")
 
-        query = select(ParkingSnapshot).where(*conditions).order_by(ParkingSnapshot.observed_at)
+        query = select(ParkingSnapshot).where(*conditions).order_by(ParkingSnapshot.observed_at.desc())
         snapshots = deduplicate_snapshots((await session.execute(query)).scalars().all())
+        snapshots.sort(key=lambda row: (serialize_utc(row.observed_at), row.parking_lot_id), reverse=True)
+        if cursor_key is not None:
+            snapshots = [row for row in snapshots
+                         if (serialize_utc(row.observed_at), row.parking_lot_id) < cursor_key]
+        page = snapshots[:limit]
+        airport_codes = dict((await session.execute(select(Airport.id, Airport.code))).all())
         return ParkingHistoryResponse(
             items=[
                 {
+                    "airport_code": airport_codes[snapshot.airport_id],
+                    "parking_lot_id": snapshot.parking_lot_id,
                     "observed_at": serialize_utc(snapshot.observed_at),
                     "occupied_spaces": snapshot.occupied_spaces,
                     "total_spaces": snapshot.total_spaces,
                     "available_spaces": snapshot.available_spaces,
                 }
-                for snapshot in snapshots
-            ]
+                for snapshot in page
+            ],
+            next_cursor=next_cursor(page[-1].observed_at, page[-1].parking_lot_id)
+            if len(snapshots) > limit else None,
         )
 
     @router.get("/parking/analytics/by-hour", response_model=list[HourlyBucket])

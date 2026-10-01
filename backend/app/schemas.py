@@ -48,6 +48,8 @@ class ParkingCurrentResponse(BaseModel):
 
 
 class HistoryPoint(BaseModel):
+    airport_code: str
+    parking_lot_id: int
     observed_at: datetime
     occupied_spaces: int
     total_spaces: int
@@ -56,6 +58,7 @@ class HistoryPoint(BaseModel):
 
 class ParkingHistoryResponse(BaseModel):
     items: list[HistoryPoint]
+    next_cursor: str | None = None
 
 
 class HighwayTrafficItem(BaseModel):

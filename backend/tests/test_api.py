@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import OperationalError
 
 from app.core.config import Settings
@@ -717,6 +718,69 @@ def test_parking_history_prefers_live_overlap_without_returning_duplicates(clien
                 datetime.fromisoformat(item["observed_at"].replace("Z", "+00:00")) == observed_at]
     assert len(selected) == 1
     assert selected[0]["occupied_spaces"] == 40
+
+
+def test_parking_history_pages_same_timestamp_without_losing_lots(client) -> None:
+    observed_at = now_utc() + timedelta(minutes=2)
+
+    async def seed() -> tuple[int, int]:
+        async with client.app.state.session_factory() as session:
+            airport = await session.scalar(select(Airport).where(Airport.code == "GMP"))
+            lots = (await session.scalars(
+                select(ParkingLot).where(ParkingLot.airport_id == airport.id)
+                .order_by(ParkingLot.id).limit(2)
+            )).all()
+            assert len(lots) == 2
+            session.add_all([
+                ParkingSnapshot(
+                    airport_id=airport.id, parking_lot_id=lot.id, source="kac_parking",
+                    observed_at=observed_at, collected_at=observed_at,
+                    occupied_spaces=10, total_spaces=100, available_spaces=90,
+                )
+                for lot in lots
+            ])
+            await session.commit()
+            return lots[0].id, lots[1].id
+
+    first_lot, second_lot = asyncio.run(seed())
+    first = client.get("/v1/parking/history", params={"airport_code": "GMP", "limit": 1})
+    assert first.status_code == 200
+    first_payload = first.json()
+    assert first_payload["items"][0]["parking_lot_id"] == second_lot
+    assert first_payload["items"][0]["airport_code"] == "GMP"
+    assert first_payload["next_cursor"]
+
+    second = client.get("/v1/parking/history", params={
+        "airport_code": "GMP", "limit": 1, "cursor": first_payload["next_cursor"],
+    })
+    assert second.status_code == 200
+    assert second.json()["items"][0]["parking_lot_id"] == first_lot
+    assert second.json()["items"][0]["observed_at"] == first_payload["items"][0]["observed_at"]
+    assert second.json()["next_cursor"] != first_payload["next_cursor"]
+
+    invalid = client.get("/v1/parking/history", params={"cursor": "invalid"})
+    assert invalid.status_code == 422
+    assert client.get("/v1/parking/history", params={"limit": 1001}).status_code == 422
+
+
+def test_parking_history_postgres_uses_bounded_lateral_page_query(client) -> None:
+    included = next(route for route in client.app.routes if hasattr(route, "original_router"))
+    route = next(route for route in included.original_router.routes
+                 if route.path == "/parking/history")
+
+    class FakeSession:
+        bind = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+
+        async def execute(self, statement):
+            compiled = str(statement.compile(dialect=postgresql.dialect()))
+            assert "LATERAL" in compiled
+            assert "history_keys" in compiled
+            assert "LIMIT" in compiled
+            return SimpleNamespace(all=lambda: [])
+
+    response = asyncio.run(route.endpoint(None, None, 30, 1000, None, FakeSession()))
+    assert response.status_code == 200
+    assert response.body == b'{"items":[],"next_cursor":null}'
 
 
 def test_current_and_analytics(client) -> None:

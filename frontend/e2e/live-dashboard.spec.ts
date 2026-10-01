@@ -193,6 +193,32 @@ test.describe("live parking-radar dashboard", () => {
     );
   });
 
+  test("pages 30-day parking history without repeating a parking lot observation", async ({ page }) => {
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const first = await getJsonWithTransientRetry(
+      page.request, "/api/backend/v1/parking/history?days=30&limit=2",
+    );
+    expect(first.status()).toBe(200);
+    const firstPage = await first.json();
+    expect(firstPage.items).toHaveLength(2);
+    expect(typeof firstPage.next_cursor).toBe("string");
+    expect(firstPage.items[0].airport_code).toBeTruthy();
+    expect(firstPage.items[0].parking_lot_id).toBeGreaterThan(0);
+
+    const second = await getJsonWithTransientRetry(
+      page.request,
+      `/api/backend/v1/parking/history?days=30&limit=2&cursor=${encodeURIComponent(firstPage.next_cursor)}`,
+    );
+    expect(second.status()).toBe(200);
+    const secondPage = await second.json();
+    expect(secondPage.items).toHaveLength(2);
+    const keys = [...firstPage.items, ...secondPage.items].map(
+      (item: { observed_at: string; parking_lot_id: number }) =>
+        `${item.observed_at}:${item.parking_lot_id}`,
+    );
+    expect(new Set(keys).size).toBe(4);
+  });
+
   test("exposes the integrated transport API through the frontend proxy", async ({
     page,
   }) => {

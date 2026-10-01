@@ -2384,6 +2384,10 @@
       },
       "HistoryPoint": {
         "properties": {
+          "airport_code": {
+            "title": "Airport Code",
+            "type": "string"
+          },
           "available_spaces": {
             "title": "Available Spaces",
             "type": "integer"
@@ -2397,12 +2401,18 @@
             "title": "Occupied Spaces",
             "type": "integer"
           },
+          "parking_lot_id": {
+            "title": "Parking Lot Id",
+            "type": "integer"
+          },
           "total_spaces": {
             "title": "Total Spaces",
             "type": "integer"
           }
         },
         "required": [
+          "airport_code",
+          "parking_lot_id",
           "observed_at",
           "occupied_spaces",
           "total_spaces",
@@ -2887,6 +2897,17 @@
             },
             "title": "Items",
             "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
           }
         },
         "required": [
@@ -6193,6 +6214,35 @@
               "minimum": 1,
               "title": "Days",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 1000,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
             }
           }
         ],
