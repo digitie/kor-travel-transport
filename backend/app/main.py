@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import hashlib
+import hmac
 import json
 import logging
 import secrets
@@ -398,6 +400,7 @@ async def _transport_traffic_statistics_rows(
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved_settings = settings or get_settings()
     engine, session_factory = create_engine_and_session_factory(resolved_settings.database_url)
+    history_cursor_secret = secrets.token_bytes(32)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -1867,12 +1870,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             try:
                 decoded = base64.b64decode(cursor + "=" * (-len(cursor) % 4), altchars=b"-_", validate=True)
                 value = json.loads(decoded)
-                if (not isinstance(value, list) or len(value) != 6
+                if (not isinstance(value, list) or len(value) != 7
                         or not isinstance(value[0], str) or not isinstance(value[1], str)
                         or type(value[2]) is not int or value[2] <= 0
                         or value[3] != normalized_airport_code or value[4] != parking_lot_id
-                        or value[5] != days):
+                        or value[5] != days or not isinstance(value[6], str)):
                     raise ValueError("invalid cursor payload")
+                signed = json.dumps(value[:6], separators=(",", ":")).encode()
+                expected = base64.urlsafe_b64encode(
+                    hmac.new(history_cursor_secret, signed, hashlib.sha256).digest()[:16]
+                ).decode().rstrip("=")
+                if not hmac.compare_digest(expected, value[6]):
+                    raise ValueError("invalid cursor signature")
                 cutoff = datetime.fromisoformat(value[0].replace("Z", "+00:00"))
                 cursor_time = datetime.fromisoformat(value[1].replace("Z", "+00:00"))
                 if cutoff.tzinfo is None or cursor_time.tzinfo is None:
@@ -1886,10 +1895,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(status_code=422, detail="유효하지 않은 이력 커서입니다") from exc
 
         def next_cursor(observed_at: datetime, lot_id: int) -> str:
-            raw = json.dumps([
+            payload = [
                 cutoff.isoformat(), serialize_utc(observed_at).isoformat(), lot_id,
                 normalized_airport_code, parking_lot_id, days,
-            ], separators=(",", ":"))
+            ]
+            signed = json.dumps(payload, separators=(",", ":")).encode()
+            payload.append(base64.urlsafe_b64encode(
+                hmac.new(history_cursor_secret, signed, hashlib.sha256).digest()[:16]
+            ).decode().rstrip("="))
+            raw = json.dumps(payload, separators=(",", ":"))
             return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
 
         conditions = [ParkingSnapshot.observed_at >= cutoff]
@@ -1915,8 +1929,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                          ParkingSnapshot.parking_lot_id < cursor_key[1]),
                 ))
             keys = (keys.distinct()
-                    .order_by(ParkingSnapshot.observed_at.desc(), ParkingSnapshot.parking_lot_id.desc())
-                    .limit(page_limit + 1).cte("history_keys"))
+                    .order_by(ParkingSnapshot.observed_at.desc(), ParkingSnapshot.parking_lot_id.desc()))
+            if limit is not None:
+                keys = keys.limit(page_limit + 1)
+            keys = keys.cte("history_keys")
             latest = (select(
                 ParkingSnapshot.airport_id.label("airport_id"),
                 ParkingSnapshot.occupied_spaces.label("occupied_spaces"),
@@ -1936,10 +1952,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 .join(latest, true()).join(Airport, Airport.id == latest.c.airport_id)
                 .order_by(keys.c.observed_at.desc(), keys.c.parking_lot_id.desc())
             )).all()
-            has_more = len(rows) > page_limit
-            if has_more and limit is None:
-                raise HTTPException(status_code=422, detail="이력 1,000건 초과: limit과 cursor로 페이지를 조회하세요")
-            rows = rows[:page_limit]
+            has_more = limit is not None and len(rows) > page_limit
+            if limit is not None:
+                rows = rows[:page_limit]
             if limit is None:
                 rows.reverse()  # 기존 소량 조회의 오래된 순서 계약은 유지한다.
             items = [
@@ -1959,10 +1974,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if cursor_key is not None:
             snapshots = [row for row in snapshots
                          if (serialize_utc(row.observed_at), row.parking_lot_id) < cursor_key]
-        has_more = len(snapshots) > page_limit
-        if has_more and limit is None:
-            raise HTTPException(status_code=422, detail="이력 1,000건 초과: limit과 cursor로 페이지를 조회하세요")
-        page = snapshots[:page_limit]
+        has_more = limit is not None and len(snapshots) > page_limit
+        page = snapshots[:page_limit] if limit is not None else snapshots
         if limit is None:
             page.reverse()
         airport_codes = dict((await session.execute(select(Airport.id, Airport.code))).all())
@@ -2756,25 +2769,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         bucket_start = aligned - timedelta(minutes=interval_minutes * (bucket_count - 1))
         # 날짜 범위의 원본을 한 번 훑어 관측을 해당 bucket에 배정한다. 버킷×주차장
         # LATERAL 반복 탐색은 90일·10분 요청에서 12,960번의 빈 구간까지 조회해
-        # 느려진다. DISTINCT ON은 같은 버킷의 최신 관측 및 live 우선순위를 보존한다.
+        # 느려진다. 정각 관측은 기존 양끝 포함 구간과 같도록 다음 버킷에도
+        # 후보로 넣고, DISTINCT ON은 같은 버킷의 최신 관측·live 우선순위를 보존한다.
         statement = sql_text(f"""
-            WITH chosen AS MATERIALIZED (
-                SELECT DISTINCT ON (p.parking_lot_id, p.bucket_at)
-                       p.parking_lot_id, p.bucket_at,
+            WITH scoped AS MATERIALIZED (
+                SELECT p.parking_lot_id, p.observed_at, p.source,
+                       p.collected_at, p.id, p.available_spaces,
+                       p.occupied_spaces, p.total_spaces,
+                       date_bin(:interval_minutes * interval '1 minute',
+                                p.observed_at - interval '1 microsecond',
+                                :bucket_start)
+                         + :interval_minutes * interval '1 minute' AS bucket_at
+                FROM parking_snapshots AS p
+                WHERE {scope_condition_sql}
+                  AND p.observed_at >= :start_at AND p.observed_at < :end_at
+            ), chosen AS MATERIALIZED (
+                SELECT DISTINCT ON (p.parking_lot_id, assigned.bucket_at)
+                       p.parking_lot_id, assigned.bucket_at,
                        p.available_spaces, p.occupied_spaces, p.total_spaces
-                FROM (
-                    SELECT p.parking_lot_id, p.observed_at, p.source,
-                           p.collected_at, p.id, p.available_spaces,
-                           p.occupied_spaces, p.total_spaces,
-                           date_bin(:interval_minutes * interval '1 minute',
-                                    p.observed_at - interval '1 microsecond',
-                                    :bucket_start)
-                             + :interval_minutes * interval '1 minute' AS bucket_at
-                    FROM parking_snapshots AS p
-                    WHERE {scope_condition_sql}
-                      AND p.observed_at >= :start_at AND p.observed_at < :end_at
-                ) AS p
-                ORDER BY p.parking_lot_id, p.bucket_at, p.observed_at DESC,
+                FROM scoped AS p
+                CROSS JOIN LATERAL (VALUES
+                    (p.bucket_at),
+                    (CASE WHEN p.observed_at = p.bucket_at
+                          THEN p.bucket_at + :interval_minutes * interval '1 minute'
+                          ELSE NULL END)
+                ) AS assigned(bucket_at)
+                WHERE assigned.bucket_at IS NOT NULL
+                ORDER BY p.parking_lot_id, assigned.bucket_at, p.observed_at DESC,
                          CASE WHEN left(p.source, 10) = 'migration_' THEN 1 ELSE 0 END,
                          p.collected_at DESC, p.id DESC
             )

@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -149,14 +150,16 @@ def test_deploy_drains_dagster_runs_after_build_and_restores_daemon_on_failure()
     stop = text.index('docker stop "${dagster_daemon}" >/dev/null\n')
     drain = text.index('if runs="$(in_flight_runs)" && [[ -z "${runs}" ]]')
     final_probe = text.index('runs="$(in_flight_runs)" || { echo "서비스 교체 직전에')
+    worker_probe = text.index('workers="$(in_flight_workers)" || { echo "서비스 교체 직전에')
     up = text.index('up -d --no-build\n', final_probe)
-    assert build < preflight < stop < drain < final_probe < up
+    assert build < preflight < stop < drain < final_probe < worker_probe < up
     assert 'trap resume_dagster_daemon EXIT' in text
     assert 'docker start "${dagster_daemon}"' in text
     assert 'cleanup_remote\n  exit "${status}"' in text
     assert '((SECONDS >= drain_deadline))' in text
     assert '[[ -z "${runs}" ]] ||' in text
     assert 'Dagster daemon이 없지만 활성 실행이 있다' in text
+    assert 'Dagster daemon이 없지만 worker가 살아 있다' in text
     assert text.index('cutover_started=1\n') < up
     assert '혼합 릴리스를 막기 위해 daemon을 중지했다' in text
     assert text.index('wait_dagster_daemon_health() {') < text.index('trap resume_dagster_daemon EXIT') < up
@@ -179,6 +182,29 @@ def test_deploy_daemon_health_probe_rejects_dead_daemon_and_accepts_healthy_one(
         assert result.returncode == expected, result.stderr
         if expected:
             assert "Dagster daemon이 healthy가 되지 않았다" in result.stderr
+
+
+def test_deploy_worker_probe_detects_orphan_and_fails_closed() -> None:
+    text = _REMOTE.read_text(encoding="utf-8")
+    body = text.split('in_flight_workers() {\n', 1)[1].split('\n}\nwait_dagster_daemon_health()', 1)[0]
+    definition = 'in_flight_workers() {\n' + body + '\n}\n'
+    script = ('set -o pipefail\n' + definition
+              + 'dagster_code_server=transport-dagster-code-server-1\n'
+              + 'docker() { printf "%s" "$PROCESS_TABLE"; }\n'
+              + 'in_flight_workers\n')
+    for process_table, expected in (
+        ('PID PPID COMMAND\n1 0 dagster api grpc\n', ''),
+        ('PID PPID COMMAND\n1 0 dagster api grpc\n2 1 python -c multiprocessing.spawn /storage/run-id/\n',
+         'multiprocessing.spawn'),
+    ):
+        result = subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                                env={**os.environ, "PROCESS_TABLE": process_table}, check=False)
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == expected or expected in result.stdout
+    broken = subprocess.run(["bash", "-c", 'set -o pipefail\n' + definition
+                             + 'docker() { return 17; }\nin_flight_workers\n'],
+                            capture_output=True, text=True, check=False)
+    assert broken.returncode == 17
 
 
 def test_failed_deploy_before_cutover_restores_previous_daemon_image() -> None:

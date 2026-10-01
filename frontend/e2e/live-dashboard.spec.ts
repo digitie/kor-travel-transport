@@ -225,6 +225,15 @@ test.describe("live parking-radar dashboard", () => {
         `${item.observed_at}:${item.parking_lot_id}`,
     );
     expect(new Set(keys).size).toBe(6);
+    const six = await getJsonWithTransientRetry(
+      page.request, "/api/backend/v1/parking/history?days=30&limit=6",
+    );
+    expect(six.status()).toBe(200);
+    const reference = await six.json();
+    expect(keys).toEqual(reference.items.map(
+      (item: { observed_at: string; parking_lot_id: number }) =>
+        `${item.observed_at}:${item.parking_lot_id}`,
+    ));
   });
 
   test("exposes the integrated transport API through the frontend proxy", async ({
@@ -262,9 +271,12 @@ test.describe("live parking-radar dashboard", () => {
         expect(Number.isFinite(age), `수집 실행 ${run.id}`).toBe(true);
         expect(age, `수집 실행 ${run.id} 허용 시간을 초과`).toBeLessThanOrEqual(maxAge);
       }
-      runningHighwayRunIds = status.running_runs
-        .filter((run: { trigger: string }) => run.trigger === "transport_dagster_highway")
-        .map((run: { id: number }) => run.id);
+      runningHighwayRunIds = [...new Set(
+        [...status.recent_runs, ...status.running_runs]
+          .filter((run: { trigger: string; status: string }) =>
+            run.trigger === "transport_dagster_highway" && run.status === "running")
+          .map((run: { id: number }) => run.id),
+      )];
       const runAt = Date.parse(status.last_run?.status === "running"
         ? status.last_run?.started_at : status.last_run?.finished_at);
       expect(Number.isFinite(runAt)).toBe(true);

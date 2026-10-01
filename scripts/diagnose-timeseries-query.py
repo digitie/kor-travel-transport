@@ -16,20 +16,27 @@ from app.db.session import create_engine_and_session_factory
 
 
 QUERY = """
-WITH chosen AS MATERIALIZED (
-    SELECT DISTINCT ON (p.parking_lot_id, bucket_at)
-           p.parking_lot_id, bucket_at,
+WITH scoped AS MATERIALIZED (
+    SELECT p.*,
+           date_bin(:interval_minutes * interval '1 minute',
+                    p.observed_at - interval '1 microsecond',
+                    :bucket_start) + :interval_minutes * interval '1 minute' AS bucket_at
+    FROM parking_snapshots p
+    WHERE p.airport_id = (SELECT id FROM airports WHERE code = 'GMP')
+      AND p.observed_at >= :start_at AND p.observed_at < :end_at
+), chosen AS MATERIALIZED (
+    SELECT DISTINCT ON (p.parking_lot_id, assigned.bucket_at)
+           p.parking_lot_id, assigned.bucket_at,
            p.available_spaces, p.occupied_spaces, p.total_spaces
-    FROM (
-        SELECT p.*,
-               date_bin(:interval_minutes * interval '1 minute',
-                        p.observed_at - interval '1 microsecond',
-                        :bucket_start) + :interval_minutes * interval '1 minute' AS bucket_at
-        FROM parking_snapshots p
-        WHERE p.airport_id = (SELECT id FROM airports WHERE code = 'GMP')
-          AND p.observed_at >= :start_at AND p.observed_at < :end_at
-    ) p
-    ORDER BY p.parking_lot_id, bucket_at, p.observed_at DESC,
+    FROM scoped p
+    CROSS JOIN LATERAL (VALUES
+        (p.bucket_at),
+        (CASE WHEN p.observed_at = p.bucket_at
+              THEN p.bucket_at + :interval_minutes * interval '1 minute'
+              ELSE NULL END)
+    ) assigned(bucket_at)
+    WHERE assigned.bucket_at IS NOT NULL
+    ORDER BY p.parking_lot_id, assigned.bucket_at, p.observed_at DESC,
              CASE WHEN left(p.source, 10) = 'migration_' THEN 1 ELSE 0 END,
              p.collected_at DESC, p.id DESC
 )

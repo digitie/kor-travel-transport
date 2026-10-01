@@ -764,6 +764,7 @@ def test_parking_history_pages_same_timestamp_without_losing_lots(client) -> Non
     assert second.json()["items"][0]["observed_at"] == first_payload["items"][0]["observed_at"]
     assert second.json()["next_cursor"] != first_payload["next_cursor"]
     first_token = first_payload["next_cursor"]
+    assert len(first_token) <= 200
     second_token = second.json()["next_cursor"]
     first_cutoff = json.loads(base64.urlsafe_b64decode(first_token + "=" * (-len(first_token) % 4)))[0]
     second_cutoff = json.loads(base64.urlsafe_b64decode(second_token + "=" * (-len(second_token) % 4)))[0]
@@ -772,7 +773,7 @@ def test_parking_history_pages_same_timestamp_without_losing_lots(client) -> Non
         "airport_code": "GMP", "days": 2, "limit": 1, "cursor": first_token,
     }).status_code == 422
     forged = json.loads(base64.urlsafe_b64decode(first_token + "=" * (-len(first_token) % 4)))
-    forged[0] = (now_utc() - timedelta(days=40)).isoformat()
+    forged[0] = (datetime.fromisoformat(forged[0]) - timedelta(minutes=30)).isoformat()
     forged_token = base64.urlsafe_b64encode(json.dumps(forged).encode()).decode().rstrip("=")
     assert client.get("/v1/parking/history", params={
         "airport_code": "GMP", "limit": 1, "cursor": forged_token,
@@ -783,7 +784,7 @@ def test_parking_history_pages_same_timestamp_without_losing_lots(client) -> Non
     assert client.get("/v1/parking/history", params={"limit": 1001}).status_code == 422
 
 
-def test_parking_history_rejects_oversized_legacy_response_instead_of_truncating(client) -> None:
+def test_parking_history_preserves_oversized_legacy_response_without_truncation(client) -> None:
     observed_at = now_utc() - timedelta(minutes=2)
 
     async def seed() -> int:
@@ -804,8 +805,12 @@ def test_parking_history_rejects_oversized_legacy_response_instead_of_truncating
 
     lot_id = asyncio.run(seed())
     legacy = client.get("/v1/parking/history", params={"parking_lot_id": lot_id, "days": 1})
-    assert legacy.status_code == 422
-    assert "limit" in legacy.json()["detail"]
+    assert legacy.status_code == 200
+    legacy_items = legacy.json()["items"]
+    assert len(legacy_items) >= 1001
+    observed_times = [datetime.fromisoformat(item["observed_at"].replace("Z", "+00:00"))
+                      for item in legacy_items]
+    assert observed_times == sorted(observed_times)
     paged = client.get("/v1/parking/history", params={
         "parking_lot_id": lot_id, "days": 1, "limit": 1000,
     })
@@ -977,7 +982,8 @@ def test_time_series_postgres_uses_single_scan_for_high_resolution_range(client)
         async def execute(self, statement, params):
             sql = str(statement)
             assert "date_bin" in sql and "DISTINCT ON" in sql
-            assert "LATERAL" not in sql
+            assert "CROSS JOIN LATERAL (VALUES" in sql
+            assert "LEFT JOIN LATERAL" not in sql
             assert params["bucket_count"] == 90 * 24 * 6
             return SimpleNamespace(mappings=lambda: SimpleNamespace(all=lambda: []))
 
@@ -1050,8 +1056,10 @@ def test_time_series_date_range_preserves_kst_boundary_and_live_source_priority(
               for point in response.json()["items"]}
     before = points[datetime(2026, 1, 1, 14, 40, tzinfo=ZoneInfo("UTC"))]
     midnight = points[datetime(2026, 1, 1, 15, 0, tzinfo=ZoneInfo("UTC"))]
+    next_bucket = points[datetime(2026, 1, 1, 15, 10, tzinfo=ZoneInfo("UTC"))]
     assert (before["lot_observations"], before["available_spaces"]) == (0, 0)
     assert (midnight["lot_observations"], midnight["available_spaces"]) == (2, 110)
+    assert (next_bucket["lot_observations"], next_bucket["available_spaces"]) == (1, 80)
 
     async def legacy_expected() -> list[dict]:
         async with client.app.state.session_factory() as session:

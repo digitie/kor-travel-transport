@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import subprocess
 from datetime import timedelta
 from urllib.request import Request, urlopen
 
@@ -24,6 +25,7 @@ MINIMUM_AGE = timedelta(hours=4)
 TRIGGERS = {"transport_dagster_highway", "transport_dagster_fuel"}
 REASON = "운영 점검: Dagster 활성 실행/worker가 없는 오래된 수집 실행을 실패 종료로 정리함"
 GRAPHQL_URL = "http://127.0.0.1:14004/graphql"
+CODE_SERVER_CONTAINER = "kor-travel-transport-dagster-code-server-1"
 ACTIVE_QUERY = "{runsOrError(filter:{statuses:[STARTED,STARTING,CANCELING]},limit:1000){__typename ... on Runs{results{runId}}}}"
 
 
@@ -39,6 +41,16 @@ def require_no_active_dagster_runs() -> None:
         raise RuntimeError("Dagster 활성 실행 전체를 확인할 수 없습니다")
     if result["results"]:
         raise RuntimeError("Dagster 활성 실행이 있어 수집 실행을 정리할 수 없습니다")
+
+
+def require_no_live_dagster_workers() -> None:
+    table = subprocess.run(
+        ["docker", "top", CODE_SERVER_CONTAINER, "-eo", "pid,ppid,args"],
+        capture_output=True, text=True, check=True, timeout=20,
+    ).stdout
+    if any("multiprocessing.spawn" in line or "/storage/" in line
+           for line in table.splitlines()[1:]):
+        raise RuntimeError("Dagster worker가 살아 있어 수집 실행을 정리할 수 없습니다")
 
 
 async def reconcile(ids: list[int], *, apply: bool) -> int:
@@ -65,6 +77,7 @@ async def reconcile(ids: list[int], *, apply: bool) -> int:
             # 운영 backend와 Dagster webserver는 둘 다 host network다. 조회 실패도
             # fail-closed로 처리하고 대상 row lock을 잡은 상태에서 마지막으로 확인한다.
             require_no_active_dagster_runs()
+            require_no_live_dagster_workers()
             for row in rows:
                 row.status = "failed"
                 row.finished_at = current_time

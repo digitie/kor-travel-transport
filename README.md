@@ -365,8 +365,8 @@ docker compose run --rm --no-deps frontend npm run test -- --run
 주차 이력은 `limit`을 지정하면 최신 관측부터 최대 1,000건씩 반환한다.
 `next_cursor`가 있으면 같은 `airport_code`/`parking_lot_id`/`days`/`limit` 조건에
 `cursor`를 추가해 다음 페이지를 조회한다. 커서는 첫 페이지의 기간 시작 시각을
-고정한다. `limit` 없는 기존 호출은 1,000건 이하일 때 기존의 오래된 순서로 모두
-반환하며, 초과하면 조용히 잘라내지 않고 422와 페이지 조회 안내를 반환한다.
+고정한다. `limit` 없는 기존 호출은 건수와 관계없이 예전처럼 오래된 순서로
+전체를 반환한다. 대량 데이터의 1초 조회 목표에는 `limit`·`cursor` 페이지를 사용한다.
 각 항목은 `airport_code`와 `parking_lot_id`를 포함한다.
 
 ## 문서

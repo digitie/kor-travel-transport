@@ -15,12 +15,13 @@
    candidate SHA와 일치하는지도 확인한다. 이미지 빌드 뒤 기존 Dagster daemon을
    멈춰 새 예약을 차단하고, 진행 중인 실행이 0건이 될 때까지 최대 30분 기다린 후
    서비스를 교체한다. 새 Dagster daemon의 `healthy` 상태까지 확인해야 배포가
-   성공한다. daemon이 이미 없는 상태에서도 활성 실행이 있거나 조회가
-   불가능하면 code-server 교체를 거부한다. 드레인 중 실패하면 이전 daemon을
+   성공한다. daemon이 이미 없는 상태에서도 활성 실행·code-server worker가
+   있거나 둘 중 하나의 조회가 불가능하면 교체를 거부한다. 드레인 뒤에도
+   두 상태를 다시 확인한다. 드레인 중 실패하면 이전 daemon을
    다시 시작한다. 서비스 교체가 시작된 뒤 실패하면 DB·code-server가 이미
-   새 버전일 수 있어 이전 daemon만 되돌리지 않는다. 새 후보 daemon이 같은
-   이미지로 정상이라면 유지하고, 아니면 daemon을 중지한 채 수동 복구를
-   요구한다. 장기 수집이 진행 중이면 배포 대기 시간이 늘어날 수 있다.
+   새 버전일 수 있어 이전 daemon만 되돌리지 않는다. 후보 daemon도 멈춰
+   혼합 릴리스에서 수집을 재개하지 않고 수동 복구를 요구한다. 장기 수집이
+   진행 중이면 배포 대기 시간이 늘어날 수 있다.
 4. [migration.md](migration.md)의 prewarm → final delta → 180초 scheduler와 300초 이내 cutover 검증을
    완료한다.
    브라우저 live E2E 뒤 n150에서
