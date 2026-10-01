@@ -78,8 +78,7 @@ def untracked_workers(runs: list[dict[str, str]], process_table: str) -> list[st
             matched_spawns.add(parent)
             if marker.group(1) not in active_ids:
                 orphaned.add(marker.group(1))
-    if not active_ids:
-        orphaned.update(f"worker-pid:{pid}" for pid in spawn_pids - matched_spawns)
+    orphaned.update(f"worker-pid:{pid}" for pid in spawn_pids - matched_spawns)
     return sorted(orphaned)
 
 

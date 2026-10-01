@@ -1869,23 +1869,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         cutoff = request_time - timedelta(days=days)
         normalized_airport_code = airport_code.upper() if airport_code else None
         cursor_key: tuple[datetime, int] | None = None
+        snapshot_max_id: int | None = None
         if cursor is not None:
             if limit is None:
                 raise HTTPException(status_code=422, detail="커서 조회에는 limit이 필요합니다")
             try:
                 decoded = base64.b64decode(cursor + "=" * (-len(cursor) % 4), altchars=b"-_", validate=True)
                 value = json.loads(decoded)
-                if (not isinstance(value, list) or len(value) != 7
+                if (not isinstance(value, list) or len(value) != 8
                         or not isinstance(value[0], str) or not isinstance(value[1], str)
                         or type(value[2]) is not int or value[2] <= 0
                         or value[3] != normalized_airport_code or value[4] != parking_lot_id
-                        or value[5] != days or not isinstance(value[6], str)):
+                        or value[5] != days or type(value[6]) is not int or value[6] <= 0
+                        or not isinstance(value[7], str)):
                     raise ValueError("invalid cursor payload")
-                signed = json.dumps(value[:6], separators=(",", ":")).encode()
+                signed = json.dumps(value[:7], separators=(",", ":")).encode()
                 expected = base64.urlsafe_b64encode(
                     hmac.new(history_cursor_secret, signed, hashlib.sha256).digest()[:16]
                 ).decode().rstrip("=")
-                if not hmac.compare_digest(expected, value[6]):
+                if not hmac.compare_digest(expected, value[7]):
                     raise ValueError("invalid cursor signature")
                 cutoff = datetime.fromisoformat(value[0].replace("Z", "+00:00"))
                 cursor_time = datetime.fromisoformat(value[1].replace("Z", "+00:00"))
@@ -1895,13 +1897,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         or cutoff > request_time or cursor_time < cutoff):
                     raise ValueError("cursor time outside the permitted window")
                 cursor_key = (cursor_time, value[2])
+                snapshot_max_id = value[6]
             except (ValueError, UnicodeDecodeError, binascii.Error) as exc:
                 raise HTTPException(status_code=422, detail="유효하지 않은 이력 커서입니다") from exc
 
         def next_cursor(observed_at: datetime, lot_id: int) -> str:
             payload = [
                 cutoff.isoformat(), serialize_utc(observed_at).isoformat(), lot_id,
-                normalized_airport_code, parking_lot_id, days,
+                normalized_airport_code, parking_lot_id, days, snapshot_max_id,
             ]
             signed = json.dumps(payload, separators=(",", ":")).encode()
             payload.append(base64.urlsafe_b64encode(
@@ -1911,6 +1914,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
 
         conditions = [ParkingSnapshot.observed_at >= cutoff]
+        if limit is not None:
+            if snapshot_max_id is None:
+                snapshot_max_id = await session.scalar(select(func.max(ParkingSnapshot.id))) or 0
+            conditions.append(ParkingSnapshot.id <= snapshot_max_id)
         if parking_lot_id:
             conditions.append(ParkingSnapshot.parking_lot_id == parking_lot_id)
         elif airport_code:
@@ -1920,6 +1927,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             conditions.append(ParkingSnapshot.airport_id == airport.id)
 
         if session.bind.dialect.name == "postgresql":
+            if limit is None:
+                # 기존 대량 이력 계약(전체·오래된 순서)을 보존한다. 각 키마다
+                # LATERAL 탐색을 반복하지 않고 원본을 한 번 읽어 live 우선순위로
+                # DISTINCT ON 정리한 뒤 직렬화한다.
+                history_rows = (select(
+                    ParkingSnapshot.observed_at.label("observed_at"),
+                    ParkingSnapshot.parking_lot_id.label("parking_lot_id"),
+                    ParkingSnapshot.airport_id.label("airport_id"),
+                    ParkingSnapshot.occupied_spaces.label("occupied_spaces"),
+                    ParkingSnapshot.total_spaces.label("total_spaces"),
+                    ParkingSnapshot.available_spaces.label("available_spaces"),
+                ).where(*conditions)
+                    .distinct(ParkingSnapshot.observed_at, ParkingSnapshot.parking_lot_id)
+                    .order_by(
+                        ParkingSnapshot.observed_at, ParkingSnapshot.parking_lot_id,
+                        case((func.left(ParkingSnapshot.source, 10) == "migration_", 1), else_=0),
+                        ParkingSnapshot.collected_at.desc(), ParkingSnapshot.id.desc(),
+                    ).subquery("history_rows"))
+                rows = (await session.execute(select(
+                    history_rows.c.observed_at, history_rows.c.parking_lot_id, Airport.code,
+                    history_rows.c.occupied_spaces, history_rows.c.total_spaces,
+                    history_rows.c.available_spaces,
+                ).join(Airport, Airport.id == history_rows.c.airport_id)
+                    .order_by(history_rows.c.observed_at, history_rows.c.parking_lot_id))).all()
+                return Response(content=to_json({"items": [
+                    {"airport_code": row.code, "parking_lot_id": row.parking_lot_id,
+                     "observed_at": serialize_utc(row.observed_at),
+                     "occupied_spaces": row.occupied_spaces,
+                     "total_spaces": row.total_spaces,
+                     "available_spaces": row.available_spaces}
+                    for row in rows
+                ], "next_cursor": None}), media_type="application/json")
             # 먼저 인덱스 순서로 중복 없는 관측 키만 한 페이지 읽는다. 30일 전체
             # 이력을 window/sort한 뒤 JSON 수십 MB를 보내는 비용을 피한다.
             keys = select(
@@ -1934,8 +1973,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ))
             keys = (keys.distinct()
                     .order_by(ParkingSnapshot.observed_at.desc(), ParkingSnapshot.parking_lot_id.desc()))
-            if limit is not None:
-                keys = keys.limit(page_limit + 1)
+            keys = keys.limit(page_limit + 1)
             keys = keys.cte("history_keys")
             latest = (select(
                 ParkingSnapshot.airport_id.label("airport_id"),
@@ -1945,6 +1983,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ).where(
                 ParkingSnapshot.observed_at == keys.c.observed_at,
                 ParkingSnapshot.parking_lot_id == keys.c.parking_lot_id,
+                ParkingSnapshot.id <= snapshot_max_id,
             ).order_by(
                 case((func.left(ParkingSnapshot.source, 10) == "migration_", 1), else_=0),
                 ParkingSnapshot.collected_at.desc(), ParkingSnapshot.id.desc(),
@@ -1956,11 +1995,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 .join(latest, true()).join(Airport, Airport.id == latest.c.airport_id)
                 .order_by(keys.c.observed_at.desc(), keys.c.parking_lot_id.desc())
             )).all()
-            has_more = limit is not None and len(rows) > page_limit
-            if limit is not None:
-                rows = rows[:page_limit]
-            if limit is None:
-                rows.reverse()  # 기존 소량 조회의 오래된 순서 계약은 유지한다.
+            has_more = len(rows) > page_limit
+            rows = rows[:page_limit]
             items = [
                 {"airport_code": row.code, "parking_lot_id": row.parking_lot_id,
                  "observed_at": serialize_utc(row.observed_at),

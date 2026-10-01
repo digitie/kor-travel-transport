@@ -44,6 +44,13 @@ def test_worker_without_active_dagster_run_is_detected() -> None:
     assert verifier.untracked_workers([], "PID PPID COMMAND\n100 1 python -c multiprocessing.spawn\n") == [
         "worker-pid:100"
     ]
+    mixed = ("PID PPID COMMAND\n"
+             "100 1 python -c multiprocessing.spawn\n"
+             "101 100 tail /storage/live-run/compute_logs/op.out\n"
+             "200 1 python -c multiprocessing.spawn\n")
+    assert verifier.untracked_workers([{"runId": "live-run", "status": "STARTED"}], mixed) == [
+        "worker-pid:200"
+    ]
 
 
 def test_audit_fails_when_worker_remains_after_run_disappears(monkeypatch, capsys) -> None:

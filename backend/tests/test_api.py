@@ -845,7 +845,61 @@ def test_parking_history_accepts_its_own_cursor_when_observation_is_in_future(cl
     }).status_code == 200
 
 
+def test_parking_history_cursor_excludes_late_inserted_older_observation(client) -> None:
+    base = now_utc() + timedelta(hours=1)
+
+    async def seed(*, late: bool = False) -> None:
+        async with client.app.state.session_factory() as session:
+            airport = await session.scalar(select(Airport).where(Airport.code == "GMP"))
+            lot = await session.scalar(select(ParkingLot).where(ParkingLot.airport_id == airport.id))
+            minutes = (150,) if late else (180, 120, 60)
+            session.add_all([ParkingSnapshot(
+                airport_id=airport.id, parking_lot_id=lot.id, source="test_backfill",
+                observed_at=base + timedelta(minutes=minute), collected_at=now_utc(),
+                occupied_spaces=10, total_spaces=100, available_spaces=90,
+            ) for minute in minutes])
+            await session.commit()
+
+    asyncio.run(seed())
+    first = client.get("/v1/parking/history", params={"airport_code": "GMP", "limit": 1})
+    assert first.status_code == 200
+    token = first.json()["next_cursor"]
+    assert token and len(token) <= 200
+    asyncio.run(seed(late=True))
+    second = client.get("/v1/parking/history", params={
+        "airport_code": "GMP", "limit": 1, "cursor": token,
+    })
+    assert second.status_code == 200
+    assert datetime.fromisoformat(second.json()["items"][0]["observed_at"].replace("Z", "+00:00")) == (
+        base + timedelta(minutes=120)
+    )
+
+
 def test_parking_history_postgres_uses_bounded_lateral_page_query(client) -> None:
+    included = next(route for route in client.app.routes if hasattr(route, "original_router"))
+    route = next(route for route in included.original_router.routes
+                 if route.path == "/parking/history")
+
+    class FakeSession:
+        bind = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+
+        async def scalar(self, _statement):
+            return 123
+
+        async def execute(self, statement):
+            compiled = str(statement.compile(dialect=postgresql.dialect()))
+            assert "LATERAL" in compiled
+            assert "history_keys" in compiled
+            assert compiled.count("parking_snapshots.id <=") == 2
+            assert "LIMIT" in compiled
+            return SimpleNamespace(all=lambda: [])
+
+    response = asyncio.run(route.endpoint(None, None, 30, 1000, None, FakeSession()))
+    assert response.status_code == 200
+    assert response.body == b'{"items":[],"next_cursor":null}'
+
+
+def test_parking_history_postgres_legacy_uses_single_pass_distinct_query(client) -> None:
     included = next(route for route in client.app.routes if hasattr(route, "original_router"))
     route = next(route for route in included.original_router.routes
                  if route.path == "/parking/history")
@@ -855,12 +909,11 @@ def test_parking_history_postgres_uses_bounded_lateral_page_query(client) -> Non
 
         async def execute(self, statement):
             compiled = str(statement.compile(dialect=postgresql.dialect()))
-            assert "LATERAL" in compiled
-            assert "history_keys" in compiled
-            assert "LIMIT" in compiled
+            assert "DISTINCT ON" in compiled
+            assert "LATERAL" not in compiled
             return SimpleNamespace(all=lambda: [])
 
-    response = asyncio.run(route.endpoint(None, None, 30, 1000, None, FakeSession()))
+    response = asyncio.run(route.endpoint(None, None, 30, None, None, FakeSession()))
     assert response.status_code == 200
     assert response.body == b'{"items":[],"next_cursor":null}'
 
