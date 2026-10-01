@@ -1113,13 +1113,12 @@ class TransportCollectionService:
             CollectionRun.trigger.startswith(TRANSPORT_TRIGGER_PREFIX, autoescape=True),
             CollectionRun.status == "running",
         )
-        running_run_count = int(await session.scalar(
-            select(func.count()).select_from(CollectionRun).where(*running_condition)
-        ) or 0)
-        running_rows = (await session.scalars(
-            select(CollectionRun).where(*running_condition)
+        running_result = (await session.execute(
+            select(CollectionRun, func.count().over().label("total_runs")).where(*running_condition)
             .order_by(CollectionRun.started_at, CollectionRun.id).limit(100)
         )).all()
+        running_run_count = int(running_result[0].total_runs) if running_result else 0
+        running_rows = [row[0] for row in running_result]
         run_items = [public_run(run) for run in recent_runs]
         return {
             "scheduler_enabled": self.settings.enable_scheduler and self.enabled,

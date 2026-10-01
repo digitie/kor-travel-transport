@@ -416,6 +416,10 @@ export function HistoryChart({ holidays, series, scopeLabel }: HistoryChartProps
               {observedRuns.map((run, index) => (
                 <path key={`line-${index}`} className="history-line" d={buildStepLinePath(run)} fill="none" />
               ))}
+              {observedRuns.filter((run) => run.length === 1).map(([point]) => (
+                <circle key={`isolated-${point.bucket_at}`} className="history-point isolated"
+                  cx={point.x} cy={point.y} r="4" />
+              ))}
 
               {activePoint ? (
                 <>

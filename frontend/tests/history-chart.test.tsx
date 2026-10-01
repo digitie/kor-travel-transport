@@ -58,6 +58,16 @@ describe("HistoryChart", () => {
     expect(container.querySelectorAll(".history-area")).toHaveLength(2);
   });
 
+  test("keeps isolated older observations visible as points", () => {
+    const series = buildSeries();
+    series.items = series.items.slice(0, 5).map((item, index) => index === 1 || index === 3
+      ? item
+      : { ...item, lot_observations: 0, available_spaces: 0, occupied_spaces: 0, total_spaces: 0 });
+    const { container } = render(<HistoryChart holidays={[]} series={series} scopeLabel="P1" />);
+
+    expect(container.querySelectorAll(".history-point.isolated")).toHaveLength(2);
+  });
+
   test("renders 6 hour axis labels", () => {
     const { container } = render(
       <HistoryChart

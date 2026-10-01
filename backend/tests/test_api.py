@@ -771,11 +771,14 @@ def test_current_and_analytics(client) -> None:
     latest_observed_point = next(
         point for point in reversed(timeseries_payload["items"]) if point["lot_observations"] > 0
     )
-    assert latest_observed_point["available_spaces"] == sum(
-        item["available_spaces"] for item in current_payload["items"]
-    )
+    latest_at = datetime.fromisoformat(latest_observed_point["bucket_at"].replace("Z", "+00:00"))
+    fresh_cutoff = latest_at - timedelta(minutes=timeseries_payload["interval_minutes"])
+    fresh_items = [item for item in current_payload["items"]
+                   if datetime.fromisoformat(item["observed_at"].replace("Z", "+00:00")) >= fresh_cutoff]
+    assert latest_observed_point["lot_observations"] == len(fresh_items)
+    assert latest_observed_point["available_spaces"] == sum(item["available_spaces"] for item in fresh_items)
     assert timeseries_payload["items"][-1]["available_spaces"] == sum(
-        item["available_spaces"] for item in current_payload["items"]
+        item["available_spaces"] for item in fresh_items
     )
 
     holiday_summary_payload = holiday_summary.json()
