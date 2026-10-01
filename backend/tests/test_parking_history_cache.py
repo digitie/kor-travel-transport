@@ -148,6 +148,7 @@ def test_postgres_history_route_uses_prepared_gzip_without_database_scan(monkeyp
 
     class FakeCache:
         validated_at_utc = now
+        delivery_semaphore = asyncio.Semaphore(2)
 
         def usable_snapshot(self, _cutoff):
             return snapshot
@@ -164,14 +165,19 @@ def test_postgres_history_route_uses_prepared_gzip_without_database_scan(monkeyp
     app = main_module.create_app(test_settings.model_copy(update={"seed_sample_data": False}))
     included = next(route for route in app.routes if hasattr(route, "original_router"))
     route = next(route for route in included.original_router.routes if route.path == "/parking/history")
-    response = asyncio.run(route.endpoint(
-        SimpleNamespace(headers={"accept-encoding": "gzip"}),
-        None, None, 30, None, None, FakeSession(),
-    ))
+    async def get_response():
+        response = await route.endpoint(
+            SimpleNamespace(headers={"accept-encoding": "gzip"}),
+            None, None, 30, None, None, FakeSession(),
+        )
+        body = b"".join([chunk async for chunk in response.body_iterator])
+        return response, body
+
+    response, body = asyncio.run(get_response())
     assert response.headers["content-encoding"] == "gzip"
     assert response.headers["x-parking-history-cache"] == "hit"
     assert response.headers["x-parking-history-checked-at"]
-    assert [item["parking_lot_id"] for item in json.loads(gzip.decompress(response.body))["items"]] == [3]
+    assert [item["parking_lot_id"] for item in json.loads(gzip.decompress(body))["items"]] == [3]
 
 
 def test_postgres_cache_matches_live_priority_and_detects_new_rows(client) -> None:

@@ -1,4 +1,7 @@
 import type { NextRequest } from "next/server";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { Readable } from "node:stream";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -24,7 +27,6 @@ const FORWARDED_REQUEST_HEADERS = new Set(["accept", "content-type"]);
 const FORWARDED_RESPONSE_HEADERS = new Set([
   "cache-control",
   "content-disposition",
-  "content-length",
   "content-type",
   "expires",
   "pragma",
@@ -105,6 +107,63 @@ function buildResponseHeaders(upstreamResponse: Response): Headers {
 
   headers.set("cache-control", "no-store, max-age=0, must-revalidate");
   return headers;
+}
+
+function acceptsGzip(header: string | null): boolean {
+  return (header ?? "").split(",").some((entry) => {
+    const [name, ...parameters] = entry.trim().toLowerCase().split(";").map((part) => part.trim());
+    if (name !== "gzip") return false;
+    const quality = parameters.find((part) => part.startsWith("q="));
+    return !quality || Number(quality.slice(2)) > 0;
+  });
+}
+
+// fetch()는 gzip을 자동 해제한다. 30일 전체 이력을 통과시키는 경로에서는
+// 압축된 원본 스트림을 그대로 전달해 16MiB JSON 버퍼와 이중 전송을 피한다.
+function proxyFullHistory(request: NextRequest, targetUrl: string, timeoutMs: number, bodyTimeoutMs: number): Promise<Response> {
+  return new Promise((resolve) => {
+    const url = new URL(targetUrl);
+    const send = url.protocol === "https:" ? httpsRequest : httpRequest;
+    let timedOut = false;
+    const headers: Record<string, string> = {
+      "accept-encoding": acceptsGzip(request.headers.get("accept-encoding")) ? "gzip" : "identity",
+      "x-forwarded-host": request.headers.get("host") ?? "",
+      "x-forwarded-proto": request.headers.get("x-forwarded-proto") ?? request.nextUrl.protocol.replace(":", ""),
+    };
+    const accept = request.headers.get("accept");
+    if (accept) headers.accept = accept;
+
+    const upstream = send(url, { method: "GET", headers }, (incoming) => {
+      clearTimeout(headerTimer);
+      const responseHeaders = new Headers();
+      for (const key of FORWARDED_RESPONSE_HEADERS) {
+        const value = incoming.headers[key];
+        if (value) responseHeaders.set(key, Array.isArray(value) ? value.join(", ") : value);
+      }
+      for (const key of ["content-encoding", "content-length", "vary"]) {
+        const value = incoming.headers[key];
+        if (value) responseHeaders.set(key, Array.isArray(value) ? value.join(", ") : value);
+      }
+      responseHeaders.set("cache-control", "no-store, max-age=0, must-revalidate");
+      const bodyTimer = setTimeout(() => incoming.destroy(new Error("backend response body timeout")), bodyTimeoutMs);
+      incoming.once("close", () => clearTimeout(bodyTimer));
+      resolve(new Response(Readable.toWeb(incoming) as ReadableStream<Uint8Array>, {
+        status: incoming.statusCode ?? 502,
+        headers: responseHeaders,
+      }));
+    });
+    const headerTimer = setTimeout(() => {
+      timedOut = true;
+      upstream.destroy(new Error("backend response header timeout"));
+    }, timeoutMs);
+    upstream.once("error", () => {
+      clearTimeout(headerTimer);
+      resolve(buildProxyErrorResponse(request, timedOut ? 504 : 502,
+        timedOut ? "백엔드 응답 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요."
+          : "백엔드에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요."));
+    });
+    upstream.end();
+  });
 }
 
 function buildProxyErrorResponse(request: NextRequest, status: 404 | 502 | 504, detail: string): Response {
@@ -263,6 +322,9 @@ async function proxyToBackend(request: NextRequest, context: RouteContext): Prom
   const isBackupRequest = backendPath.startsWith("v1/admin/backups");
   const requestTimeoutMs = isBackupRequest ? BACKUP_PROXY_TIMEOUT_MS : BACKEND_PROXY_TIMEOUT_MS;
   const bodyTimeoutMs = isBackupRequest ? BACKUP_PROXY_BODY_TIMEOUT_MS : BACKEND_PROXY_BODY_TIMEOUT_MS;
+  if (backendPath === "v1/parking/history" && method === "GET" && !request.nextUrl.searchParams.has("limit")) {
+    return proxyFullHistory(request, targetUrl, requestTimeoutMs, bodyTimeoutMs);
+  }
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), requestTimeoutMs);
   const requestBody = method === "GET" || method === "HEAD" ? undefined : request.body;

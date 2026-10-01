@@ -115,6 +115,9 @@ async def load_snapshot(
 class ParkingHistoryReadCache:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self.session_factory = session_factory
+        # 응답 전송이 끝날 때까지 점유한다. 압축하지 않은 전체 이력 요청도
+        # 요청 수만큼 75MB 본문을 동시에 보유하지 않게 한다.
+        self.delivery_semaphore = asyncio.Semaphore(2)
         self.snapshot: ParkingHistorySnapshot | None = None
         self.validated_at = 0.0
         self.validated_at_utc: datetime | None = None
@@ -145,11 +148,11 @@ class ParkingHistoryReadCache:
 
     async def run(self) -> None:
         while True:
-            await asyncio.sleep(POLL_SECONDS)
             try:
                 await self.refresh_once()
             except Exception:
                 logger.exception("parking history cache refresh failed")
+            await asyncio.sleep(POLL_SECONDS)
 
 
 def encode_response(body: bytes, accept_encoding: str) -> tuple[bytes, dict[str, str]]:

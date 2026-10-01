@@ -1,9 +1,12 @@
 import { NextRequest } from "next/server";
+import { createServer } from "node:http";
+import { gunzipSync, gzipSync } from "node:zlib";
 
 describe("backend proxy route", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   test("proxies allowed backend requests without storing mobile-stale API responses", async () => {
@@ -38,6 +41,49 @@ describe("backend proxy route", () => {
         method: "GET",
       })
     );
+  });
+
+  test("does not forward compressed Content-Length after fetch decodes JSON", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response('{"items":[1,2,3]}', {
+      headers: { "content-type": "application/json", "content-length": "4" },
+    })));
+    const { GET } = await import("@/app/api/backend/[...path]/route");
+    const request = new NextRequest("https://pr.digitie.mywire.org/api/backend/v1/parking/history?limit=3");
+    const response = await GET(request, { params: Promise.resolve({ path: ["v1", "parking", "history"] }) });
+
+    expect(response.headers.has("content-length")).toBe(false);
+    expect(await response.json()).toEqual({ items: [1, 2, 3] });
+  });
+
+  test("streams the compressed full-history body without the JSON buffer limit", async () => {
+    const uncompressed = JSON.stringify({ items: ["x".repeat(17 * 1024 * 1024)], next_cursor: null });
+    const compressed = gzipSync(uncompressed);
+    const server = createServer((_request, response) => {
+      response.writeHead(200, {
+        "content-type": "application/json",
+        "content-encoding": "gzip",
+        "content-length": compressed.length,
+      });
+      response.end(compressed);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("missing test server port");
+      vi.stubEnv("BACKEND_INTERNAL_URL", `http://127.0.0.1:${address.port}`);
+      const { GET } = await import("@/app/api/backend/[...path]/route");
+      const request = new NextRequest("https://pr.digitie.mywire.org/api/backend/v1/parking/history?days=30", {
+        headers: { "accept-encoding": "gzip" },
+      });
+      const response = await GET(request, { params: Promise.resolve({ path: ["v1", "parking", "history"] }) });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-encoding")).toBe("gzip");
+      expect(response.headers.get("content-length")).toBe(String(compressed.length));
+      expect(gunzipSync(Buffer.from(await response.arrayBuffer())).toString()).toBe(uncompressed);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
   });
 
   test("returns a stable 502 response when the backend connection fails", async () => {

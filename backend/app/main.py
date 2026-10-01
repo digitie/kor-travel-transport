@@ -25,7 +25,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic_core import to_json
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import DateTime, Integer, and_, bindparam, case, func, or_, select, text as sql_text, true
@@ -40,7 +40,7 @@ from krairport import get_airport_or_none
 from app.core.config import Settings, get_settings
 from app.core.time_utils import align_to_interval, now_utc, serialize_utc, to_seoul
 from app.db.session import create_engine_and_session_factory, init_database
-from app.services.parking_history_cache import ParkingHistoryReadCache, encode_response
+from app.services.parking_history_cache import ParkingHistoryReadCache, accepts_gzip, encode_response
 from app.models import (
     Airport,
     BusTerminalReference,
@@ -455,10 +455,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             logger.info("sample seeding skipped because client_mode=%s", app.state.collection_service.client_mode)
 
         if history_read_cache is not None:
-            try:
-                await history_read_cache.refresh_once()
-            except Exception:
-                logger.exception("initial parking history cache build failed; direct SQL remains available")
+            # 전체 이력 조회가 느리거나 DB 읽기가 잠겨도 readiness를 막지 않는다.
+            # 채우기 전에는 기존 직접 SQL 경로를 사용한다.
             app.state.history_cache_task = asyncio.create_task(history_read_cache.run())
 
         if resolved_settings.enable_scheduler and resolved_settings.scheduler_mode == "in_process":
@@ -1950,16 +1948,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 cached = history_read_cache.usable_snapshot(cutoff) if history_read_cache is not None else None
                 if cached is not None:
                     checked_at = history_read_cache.validated_at_utc if history_read_cache is not None else None
-                    body = await asyncio.to_thread(cached.render, cutoff, normalized_airport_code, parking_lot_id)
-                    body, headers = await asyncio.to_thread(
-                        encode_response, body, request.headers.get("accept-encoding", "")
-                    )
+                    accept_encoding = request.headers.get("accept-encoding", "")
+                    headers = {"Vary": "Accept-Encoding", "Cache-Control": "private, no-store"}
+                    if accepts_gzip(accept_encoding):
+                        headers["Content-Encoding"] = "gzip"
                     headers["X-Parking-History-Cache"] = "hit"
                     if checked_at is not None:
                         headers["X-Parking-History-Checked-At"] = serialize_utc(
                             checked_at
                         ).isoformat()
-                    return Response(content=body, headers=headers, media_type="application/json")
+
+                    async def stream_cached_history() -> AsyncIterator[bytes]:
+                        # 압축/직렬화뿐 아니라 ASGI 전송이 끝날 때까지 동시 수를 제한한다.
+                        async with history_read_cache.delivery_semaphore:
+                            body = await asyncio.to_thread(
+                                cached.render, cutoff, normalized_airport_code, parking_lot_id
+                            )
+                            encoded, _ = await asyncio.to_thread(encode_response, body, accept_encoding)
+                            yield encoded
+
+                    return StreamingResponse(stream_cached_history(), headers=headers, media_type="application/json")
                 # 기존 대량 이력 계약(전체·오래된 순서)을 보존한다. 각 키마다
                 # LATERAL 탐색을 반복하지 않고 원본을 한 번 읽어 live 우선순위로
                 # DISTINCT ON 정리한 뒤 직렬화한다.
