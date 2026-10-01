@@ -7,7 +7,11 @@ from types import SimpleNamespace
 
 
 def _verifier():
-    path = Path(__file__).resolve().parents[2] / "scripts/verify-dagster-workers-server14.py"
+    test_file = Path(__file__).resolve()
+    path = next(candidate for candidate in (
+        test_file.parents[1] / "scripts/verify-dagster-workers-server14.py",
+        test_file.parents[2] / "scripts/verify-dagster-workers-server14.py",
+    ) if candidate.is_file())
     spec = importlib.util.spec_from_file_location("verify_dagster_workers", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
