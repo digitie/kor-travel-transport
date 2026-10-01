@@ -109,7 +109,7 @@ async def load_snapshot(
             ranked.c.occupied_spaces, ranked.c.total_spaces, ranked.c.available_spaces,
         ).join(Airport, Airport.id == ranked.c.airport_id)
             .order_by(ranked.c.observed_at, ranked.c.parking_lot_id))).all()
-    return ParkingHistorySnapshot.from_rows(earliest, max_id, rows)
+    return await asyncio.to_thread(ParkingHistorySnapshot.from_rows, earliest, max_id, rows)
 
 
 class ParkingHistoryReadCache:

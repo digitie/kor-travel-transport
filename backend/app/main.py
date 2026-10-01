@@ -455,7 +455,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             logger.info("sample seeding skipped because client_mode=%s", app.state.collection_service.client_mode)
 
         if history_read_cache is not None:
-            await history_read_cache.refresh_once()
+            try:
+                await history_read_cache.refresh_once()
+            except Exception:
+                logger.exception("initial parking history cache build failed; direct SQL remains available")
             app.state.history_cache_task = asyncio.create_task(history_read_cache.run())
 
         if resolved_settings.enable_scheduler and resolved_settings.scheduler_mode == "in_process":
