@@ -149,6 +149,7 @@ function proxyFullHistory(request: NextRequest, targetUrl: string, timeoutMs: nu
     const upstream = send(url, { method: "GET", headers }, (incoming) => {
       finishHeaderWait();
       clearTimeout(headerTimer);
+      incoming.once("close", () => request.signal.removeEventListener("abort", abortUpstream));
       const responseHeaders = new Headers();
       for (const key of FORWARDED_RESPONSE_HEADERS) {
         const value = incoming.headers[key];
@@ -175,14 +176,21 @@ function proxyFullHistory(request: NextRequest, targetUrl: string, timeoutMs: nu
       timedOut = true;
       upstream.destroy(new Error("backend response header timeout"));
     }, Math.max(timeoutMs, 120_000));
+    const abortUpstream = () => {
+      finishHeaderWait();
+      upstream.destroy(new Error("client aborted"));
+    };
     upstream.once("error", () => {
       finishHeaderWait();
       clearTimeout(headerTimer);
+      request.signal.removeEventListener("abort", abortUpstream);
       resolve(buildProxyErrorResponse(request, timedOut ? 504 : 502,
         timedOut ? "백엔드 응답 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요."
           : "백엔드에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요."));
     });
-    upstream.end();
+    request.signal.addEventListener("abort", abortUpstream, { once: true });
+    if (request.signal.aborted) abortUpstream();
+    else upstream.end();
   });
 }
 

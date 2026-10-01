@@ -163,6 +163,39 @@ describe("backend proxy route", () => {
     }
   });
 
+  test("releases full-history header slots when waiting clients abort", async () => {
+    const waitingResponses: import("node:http").ServerResponse[] = [];
+    let allStarted!: () => void;
+    const started = new Promise<void>((resolve) => { allStarted = resolve; });
+    const server = createServer((_request, response) => {
+      waitingResponses.push(response);
+      if (waitingResponses.length === 8) allStarted();
+      if (waitingResponses.length === 9) response.end('{"items":[],"next_cursor":null}');
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("missing test server port");
+      vi.stubEnv("BACKEND_INTERNAL_URL", `http://127.0.0.1:${address.port}`);
+      const { GET } = await import("@/app/api/backend/[...path]/route");
+      const makeRequest = (signal?: AbortSignal) => GET(
+        new NextRequest("https://pr.digitie.mywire.org/api/backend/v1/parking/history?days=30", { signal }),
+        { params: Promise.resolve({ path: ["v1", "parking", "history"] }) },
+      );
+      const controllers = Array.from({ length: 8 }, () => new AbortController());
+      const waiting = controllers.map((controller) => makeRequest(controller.signal));
+      await started;
+      controllers.forEach((controller) => controller.abort());
+      await Promise.all(waiting);
+      const next = await makeRequest();
+      expect(next.status).toBe(200);
+      expect(await next.json()).toEqual({ items: [], next_cursor: null });
+    } finally {
+      waitingResponses.forEach((response) => { if (!response.writableEnded) response.end(); });
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+
   test("returns a stable 502 response when the backend connection fails", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => {
       throw new Error("connection refused");
