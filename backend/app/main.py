@@ -40,7 +40,9 @@ from krairport import get_airport_or_none
 from app.core.config import Settings, get_settings
 from app.core.time_utils import align_to_interval, now_utc, serialize_utc, to_seoul
 from app.db.session import create_engine_and_session_factory, init_database
-from app.services.parking_history_cache import ParkingHistoryReadCache, accepts_gzip, encode_response
+from app.services.parking_history_cache import (
+    BoundedHistoryResponse, ParkingHistoryReadCache, accepts_gzip, encode_response,
+)
 from app.models import (
     Airport,
     BusTerminalReference,
@@ -1971,38 +1973,54 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 # 기존 대량 이력 계약(전체·오래된 순서)을 보존한다. 각 키마다
                 # LATERAL 탐색을 반복하지 않고 원본을 한 번 읽어 live 우선순위로
                 # DISTINCT ON 정리한 뒤 직렬화한다.
-                history_rows = (select(
-                    ParkingSnapshot.observed_at.label("observed_at"),
-                    ParkingSnapshot.parking_lot_id.label("parking_lot_id"),
-                    ParkingSnapshot.airport_id.label("airport_id"),
-                    ParkingSnapshot.occupied_spaces.label("occupied_spaces"),
-                    ParkingSnapshot.total_spaces.label("total_spaces"),
-                    ParkingSnapshot.available_spaces.label("available_spaces"),
-                ).where(*conditions)
-                    .distinct(ParkingSnapshot.observed_at, ParkingSnapshot.parking_lot_id)
-                    .order_by(
-                        ParkingSnapshot.observed_at, ParkingSnapshot.parking_lot_id,
-                        case((func.left(ParkingSnapshot.source, 10) == "migration_", 1), else_=0),
-                        ParkingSnapshot.collected_at.desc(), ParkingSnapshot.id.desc(),
-                    ).subquery("history_rows"))
-                rows = (await session.execute(select(
-                    history_rows.c.observed_at, history_rows.c.parking_lot_id, Airport.code,
-                    history_rows.c.occupied_spaces, history_rows.c.total_spaces,
-                    history_rows.c.available_spaces,
-                ).join(Airport, Airport.id == history_rows.c.airport_id)
-                    .order_by(history_rows.c.observed_at, history_rows.c.parking_lot_id))).all()
-                body = to_json({"items": [
-                    {"airport_code": row.code, "parking_lot_id": row.parking_lot_id,
-                     "observed_at": serialize_utc(row.observed_at),
-                     "occupied_spaces": row.occupied_spaces,
-                     "total_spaces": row.total_spaces,
-                     "available_spaces": row.available_spaces}
-                    for row in rows
-                ], "next_cursor": None})
-                body, headers = await asyncio.to_thread(
-                    encode_response, body, request.headers.get("accept-encoding", "")
-                )
-                headers["X-Parking-History-Cache"] = "miss"
+                delivery_semaphore = history_read_cache.delivery_semaphore if history_read_cache else None
+                if delivery_semaphore is not None:
+                    await delivery_semaphore.acquire()
+                try:
+                    history_rows = (select(
+                        ParkingSnapshot.observed_at.label("observed_at"),
+                        ParkingSnapshot.parking_lot_id.label("parking_lot_id"),
+                        ParkingSnapshot.airport_id.label("airport_id"),
+                        ParkingSnapshot.occupied_spaces.label("occupied_spaces"),
+                        ParkingSnapshot.total_spaces.label("total_spaces"),
+                        ParkingSnapshot.available_spaces.label("available_spaces"),
+                    ).where(*conditions)
+                        .distinct(ParkingSnapshot.observed_at, ParkingSnapshot.parking_lot_id)
+                        .order_by(
+                            ParkingSnapshot.observed_at, ParkingSnapshot.parking_lot_id,
+                            case((func.left(ParkingSnapshot.source, 10) == "migration_", 1), else_=0),
+                            ParkingSnapshot.collected_at.desc(), ParkingSnapshot.id.desc(),
+                        ).subquery("history_rows"))
+                    rows = (await session.execute(select(
+                        history_rows.c.observed_at, history_rows.c.parking_lot_id, Airport.code,
+                        history_rows.c.occupied_spaces, history_rows.c.total_spaces,
+                        history_rows.c.available_spaces,
+                    ).join(Airport, Airport.id == history_rows.c.airport_id)
+                        .order_by(history_rows.c.observed_at, history_rows.c.parking_lot_id))).all()
+                    def serialize_rows() -> bytes:
+                        return to_json({"items": [
+                            {"airport_code": row.code, "parking_lot_id": row.parking_lot_id,
+                             "observed_at": serialize_utc(row.observed_at),
+                             "occupied_spaces": row.occupied_spaces,
+                             "total_spaces": row.total_spaces,
+                             "available_spaces": row.available_spaces}
+                            for row in rows
+                        ], "next_cursor": None})
+
+                    body = await asyncio.to_thread(serialize_rows)
+                    body, headers = await asyncio.to_thread(
+                        encode_response, body, request.headers.get("accept-encoding", "")
+                    )
+                    headers["X-Parking-History-Cache"] = "miss"
+                except BaseException:
+                    if delivery_semaphore is not None:
+                        delivery_semaphore.release()
+                    raise
+                if delivery_semaphore is not None:
+                    return BoundedHistoryResponse(
+                        content=body, headers=headers, media_type="application/json",
+                        delivery_semaphore=delivery_semaphore,
+                    )
                 return Response(content=body, headers=headers, media_type="application/json")
             # 먼저 인덱스 순서로 중복 없는 관측 키만 한 페이지 읽는다. 30일 전체
             # 이력을 window/sort한 뒤 JSON 수십 MB를 보내는 비용을 피한다.

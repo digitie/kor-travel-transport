@@ -72,6 +72,22 @@ def test_cached_history_gzip_is_negotiated_without_changing_json() -> None:
     assert "Content-Encoding" not in headers
 
 
+def test_direct_history_delivery_releases_slot_on_send_failure() -> None:
+    async def check() -> None:
+        semaphore = asyncio.Semaphore(2)
+        await semaphore.acquire()
+        response = history_cache.BoundedHistoryResponse(b"{}", delivery_semaphore=semaphore)
+
+        async def fail_send(_message):
+            raise RuntimeError("client disconnected")
+
+        with pytest.raises(RuntimeError, match="client disconnected"):
+            await response({"type": "http", "method": "GET"}, None, fail_send)
+        assert semaphore._value == 2
+
+    asyncio.run(check())
+
+
 def test_cache_refreshes_on_new_snapshot_and_expires_when_unchecked(monkeypatch) -> None:
     now = datetime(2026, 10, 1, tzinfo=UTC)
     current_id = 10
@@ -178,6 +194,45 @@ def test_postgres_history_route_uses_prepared_gzip_without_database_scan(monkeyp
     assert response.headers["x-parking-history-cache"] == "hit"
     assert response.headers["x-parking-history-checked-at"]
     assert [item["parking_lot_id"] for item in json.loads(gzip.decompress(body))["items"]] == [3]
+
+
+def test_postgres_history_cache_miss_holds_slot_until_response_sent(monkeypatch, test_settings) -> None:
+    from app import main as main_module
+
+    class FakeCache:
+        delivery_semaphore = asyncio.Semaphore(1)
+
+        def usable_snapshot(self, _cutoff):
+            return None
+
+    class FakeSession:
+        bind = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+
+        async def execute(self, _statement):
+            return SimpleNamespace(all=lambda: [])
+
+    cache = FakeCache()
+    fake_engine = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
+    monkeypatch.setattr(main_module, "create_engine_and_session_factory", lambda _url: (fake_engine, object()))
+    monkeypatch.setattr(main_module, "ParkingHistoryReadCache", lambda _factory: cache)
+    app = main_module.create_app(test_settings.model_copy(update={"seed_sample_data": False}))
+    included = next(route for route in app.routes if hasattr(route, "original_router"))
+    route = next(route for route in included.original_router.routes if route.path == "/parking/history")
+
+    async def check():
+        response = await route.endpoint(SimpleNamespace(headers={}), None, None, 1, None, None, FakeSession())
+        assert isinstance(response, history_cache.BoundedHistoryResponse)
+        assert cache.delivery_semaphore.locked()
+        sent = []
+
+        async def send(message):
+            sent.append(message)
+
+        await response({"type": "http", "method": "GET"}, None, send)
+        assert not cache.delivery_semaphore.locked()
+        assert json.loads(sent[-1]["body"])["items"] == []
+
+    asyncio.run(check())
 
 
 def test_postgres_cache_matches_live_priority_and_detects_new_rows(client) -> None:

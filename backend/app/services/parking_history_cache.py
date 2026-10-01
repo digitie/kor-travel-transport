@@ -13,6 +13,7 @@ from time import monotonic
 from pydantic_core import to_json
 from sqlalchemy import case, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from starlette.responses import Response
 
 from app.core.time_utils import now_utc, serialize_utc
 from app.models import Airport, ParkingSnapshot
@@ -20,6 +21,20 @@ from app.models import Airport, ParkingSnapshot
 logger = logging.getLogger(__name__)
 POLL_SECONDS = 5
 MAX_UNCHECKED_SECONDS = 30
+
+
+class BoundedHistoryResponse(Response):
+    """본문 송신 실패·클라이언트 연결 종료 때도 점유 슬롯을 돌려준다."""
+
+    def __init__(self, *args, delivery_semaphore: asyncio.Semaphore, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.delivery_semaphore = delivery_semaphore
+
+    async def __call__(self, scope, receive, send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self.delivery_semaphore.release()
 
 
 @dataclass(frozen=True, slots=True)
