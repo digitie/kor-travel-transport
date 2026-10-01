@@ -400,7 +400,12 @@ async def _transport_traffic_statistics_rows(
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved_settings = settings or get_settings()
     engine, session_factory = create_engine_and_session_factory(resolved_settings.database_url)
-    history_cursor_secret = secrets.token_bytes(32)
+    # 배포·프로세스 재시작 뒤에도 발급한 페이지 커서가 유효해야 한다. 운영 DB
+    # 접속 문자열의 비공개 자격증명으로 도메인 분리된 서명 키를 파생한다.
+    history_cursor_secret = hmac.new(
+        resolved_settings.database_url.encode(),
+        b"kor-travel-transport/parking-history-cursor/v1", hashlib.sha256,
+    ).digest()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -1887,8 +1892,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if cutoff.tzinfo is None or cursor_time.tzinfo is None:
                     raise ValueError("cursor times must have timezones")
                 if (cutoff < request_time - timedelta(days=days + 1)
-                        or cutoff > request_time or cursor_time < cutoff
-                        or cursor_time > request_time + timedelta(hours=1)):
+                        or cutoff > request_time or cursor_time < cutoff):
                     raise ValueError("cursor time outside the permitted window")
                 cursor_key = (cursor_time, value[2])
             except (ValueError, UnicodeDecodeError, binascii.Error) as exc:

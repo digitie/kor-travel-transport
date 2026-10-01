@@ -760,6 +760,10 @@ def test_parking_history_pages_same_timestamp_without_losing_lots(client) -> Non
         "airport_code": "GMP", "limit": 1, "cursor": first_payload["next_cursor"],
     })
     assert second.status_code == 200
+    with TestClient(create_app(client.app.state.settings)) as restarted:
+        assert restarted.get("/v1/parking/history", params={
+            "airport_code": "GMP", "limit": 1, "cursor": first_payload["next_cursor"],
+        }).status_code == 200
     assert second.json()["items"][0]["parking_lot_id"] == first_lot
     assert second.json()["items"][0]["observed_at"] == first_payload["items"][0]["observed_at"]
     assert second.json()["next_cursor"] != first_payload["next_cursor"]
@@ -817,6 +821,28 @@ def test_parking_history_preserves_oversized_legacy_response_without_truncation(
     assert paged.status_code == 200
     assert len(paged.json()["items"]) == 1000
     assert paged.json()["next_cursor"]
+
+
+def test_parking_history_accepts_its_own_cursor_when_observation_is_in_future(client) -> None:
+    async def seed() -> None:
+        async with client.app.state.session_factory() as session:
+            airport = await session.scalar(select(Airport).where(Airport.code == "GMP"))
+            lot = await session.scalar(select(ParkingLot).where(ParkingLot.airport_id == airport.id))
+            session.add(ParkingSnapshot(
+                airport_id=airport.id, parking_lot_id=lot.id, source="test_future",
+                observed_at=now_utc() + timedelta(hours=2), collected_at=now_utc(),
+                occupied_spaces=10, total_spaces=100, available_spaces=90,
+            ))
+            await session.commit()
+
+    asyncio.run(seed())
+    first = client.get("/v1/parking/history", params={"airport_code": "GMP", "limit": 1})
+    assert first.status_code == 200
+    token = first.json()["next_cursor"]
+    assert token
+    assert client.get("/v1/parking/history", params={
+        "airport_code": "GMP", "limit": 1, "cursor": token,
+    }).status_code == 200
 
 
 def test_parking_history_postgres_uses_bounded_lateral_page_query(client) -> None:

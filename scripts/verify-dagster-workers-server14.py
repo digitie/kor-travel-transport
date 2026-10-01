@@ -7,6 +7,7 @@ GraphQL 상태만 STARTED로 남고 worker가 사라진 고아 실행을 실패 
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import time
@@ -58,6 +59,30 @@ def missing_started_workers(runs: list[dict[str, str]], process_table: str) -> l
     return missing
 
 
+def untracked_workers(runs: list[dict[str, str]], process_table: str) -> list[str]:
+    active_ids = {run["runId"] for run in runs}
+    processes: dict[str, tuple[str, str]] = {}
+    for line in process_table.splitlines()[1:]:
+        fields = line.split(maxsplit=2)
+        if len(fields) == 3:
+            processes[fields[0]] = (fields[1], fields[2])
+    spawn_pids = {pid for pid, (_parent, command) in processes.items()
+                  if "multiprocessing.spawn" in command}
+    orphaned: set[str] = set()
+    matched_spawns: set[str] = set()
+    for parent, command in processes.values():
+        if parent not in spawn_pids:
+            continue
+        marker = re.search(r"/storage/([^/]+)/", command)
+        if marker:
+            matched_spawns.add(parent)
+            if marker.group(1) not in active_ids:
+                orphaned.add(marker.group(1))
+    if not active_ids:
+        orphaned.update(f"worker-pid:{pid}" for pid in spawn_pids - matched_spawns)
+    return sorted(orphaned)
+
+
 def running_app_runs() -> list[dict[str, object]]:
     with urlopen(COLLECTOR_URL, timeout=20) as response:
         status = json.load(response)
@@ -100,13 +125,15 @@ def main() -> int:
             check=True, capture_output=True, text=True,
         ).stdout
         missing = missing_started_workers(runs, table)
+        extra = untracked_workers(runs, table)
         orphaned = orphaned_app_runs(app_runs, runs)
-        if not missing and not orphaned:
+        if not missing and not extra and not orphaned:
             print(f"Dagster 활성 실행 {len(runs)}건, 앱 수집 실행 {len(app_runs)}건: worker·실행 상태 확인")
             return 0
         if attempt < 2:
             time.sleep(10)
     print("Dagster 고아 실행 의심: " + ", ".join(missing)
+          + "; 추적되지 않은 worker 의심: " + ", ".join(extra)
           + "; 앱 고아 수집 실행 의심: " + ", ".join(map(str, orphaned)), file=sys.stderr)
     return 1
 

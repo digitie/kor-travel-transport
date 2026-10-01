@@ -236,7 +236,11 @@ def test_failed_deploy_before_cutover_restores_previous_daemon_image() -> None:
     assert "자동 복구하지 못했다" not in result.stderr
 
 
-def test_failed_deploy_after_cutover_does_not_restore_old_daemon() -> None:
+@pytest.mark.parametrize("running,expected", [
+    ("false", "혼합 릴리스를 막기 위해 daemon을 중지했다"),
+    ("true", "치명적 부분 배포 실패: daemon 중지를 확인하지 못했다"),
+])
+def test_failed_deploy_after_cutover_does_not_restore_old_daemon(running: str, expected: str) -> None:
     text = _REMOTE.read_text(encoding="utf-8")
     body = text.split('resume_dagster_daemon() {\n', 1)[1].split('\n}\ntrap resume_dagster_daemon EXIT', 1)[0]
     script = ('resume_dagster_daemon() {\n' + body + '\n}\n'
@@ -244,16 +248,15 @@ def test_failed_deploy_after_cutover_does_not_restore_old_daemon() -> None:
               + 'dagster_daemon=transport-dagster-daemon-1\n'
               + 'BACKEND_RUNTIME_IMAGE=candidate\nold_daemon_image=sha256:old-image\n'
               + 'docker() {\n'
-              + '  if [[ "$1 $2" == "image inspect" ]]; then echo sha256:new-image; return 0; fi\n'
-              + '  if [[ "$1 $2" == "inspect -f" ]]; then echo sha256:old-image; return 0; fi\n'
-              + '  if [[ "$1" == "stop" ]]; then echo stopped-new-daemon; return 0; fi\n'
+              + f'  if [[ "$1 $2" == "inspect -f" ]]; then echo {running}; return 0; fi\n'
+              + f'  if [[ "$1" == "stop" ]]; then return {0 if running == "false" else 1}; fi\n'
               + '  if [[ "$1" == "compose" ]]; then echo unsafe-rollback; return 1; fi\n'
               + '  return 1\n}\n'
               + 'wait_dagster_daemon_health() { return 1; }\n'
               + 'cleanup_remote() { :; }\ntrap resume_dagster_daemon EXIT\nexit 17\n')
     result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=False)
     assert result.returncode == 17, result.stderr
-    assert "혼합 릴리스를 막기 위해 daemon을 중지했다" in result.stderr
+    assert expected in result.stderr
     assert "unsafe-rollback" not in result.stdout
 
 

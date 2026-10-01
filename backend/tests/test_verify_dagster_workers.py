@@ -34,6 +34,31 @@ def test_starting_run_does_not_need_compute_log_worker_yet() -> None:
                                             "PID PPID COMMAND\n") == []
 
 
+def test_worker_without_active_dagster_run_is_detected() -> None:
+    verifier = _verifier()
+    table = ("PID PPID COMMAND\n"
+             "100 1 python -B -c multiprocessing.spawn\n"
+             "101 100 tail /app/dagster_home/storage/retired-run/compute_logs/op.out\n")
+    assert verifier.untracked_workers([], table) == ["retired-run"]
+    assert verifier.untracked_workers([{"runId": "retired-run", "status": "STARTED"}], table) == []
+    assert verifier.untracked_workers([], "PID PPID COMMAND\n100 1 python -c multiprocessing.spawn\n") == [
+        "worker-pid:100"
+    ]
+
+
+def test_audit_fails_when_worker_remains_after_run_disappears(monkeypatch, capsys) -> None:
+    verifier = _verifier()
+    monkeypatch.setattr(verifier, "active_runs", lambda: [])
+    monkeypatch.setattr(verifier, "running_app_runs", lambda: [])
+    monkeypatch.setattr(verifier.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(
+        stdout="PID PPID COMMAND\n100 1 python -c multiprocessing.spawn\n"
+               "101 100 tail /storage/retired-run/compute_logs/op.out\n"
+    ))
+    monkeypatch.setattr(verifier.time, "sleep", lambda _seconds: None)
+    assert verifier.main() == 1
+    assert "추적되지 않은 worker 의심: retired-run" in capsys.readouterr().err
+
+
 def test_app_running_run_requires_matching_active_dagster_run() -> None:
     verifier = _verifier()
     started = datetime(2026, 10, 1, 1, 0, tzinfo=timezone.utc)

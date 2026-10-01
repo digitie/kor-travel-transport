@@ -175,7 +175,12 @@ resume_dagster_daemon() {
     # 코드/DB 일부만 교체됐을 수 있어 이미지 일치 여부와 무관하게 수집을 멈춘다.
     # 이전 daemon만 복구하면 혼합 릴리스에서 수집이 재개된다.
     docker stop "${dagster_daemon}" >/dev/null 2>&1 || true
-    echo "부분 배포 실패: 혼합 릴리스를 막기 위해 daemon을 중지했다. 수동 복구가 필요하다." >&2
+    daemon_running="$(docker inspect -f '{{.State.Running}}' "${dagster_daemon}" 2>/dev/null || true)"
+    if [[ "${daemon_running}" == false ]]; then
+      echo "부분 배포 실패: 혼합 릴리스를 막기 위해 daemon을 중지했다. 수동 복구가 필요하다." >&2
+    else
+      echo "치명적 부분 배포 실패: daemon 중지를 확인하지 못했다 (${daemon_running:-조회 실패}). 수동으로 즉시 중지해야 한다." >&2
+    fi
   elif ((daemon_stopped)); then
     ((daemon_stopping)) && docker stop "${dagster_daemon}" >/dev/null 2>&1
     current_daemon_id="$(docker inspect -f '{{.Id}}' "${dagster_daemon}" 2>/dev/null || true)"

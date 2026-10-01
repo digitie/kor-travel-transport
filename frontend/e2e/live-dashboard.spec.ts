@@ -225,15 +225,18 @@ test.describe("live parking-radar dashboard", () => {
         `${item.observed_at}:${item.parking_lot_id}`,
     );
     expect(new Set(keys).size).toBe(6);
-    const six = await getJsonWithTransientRetry(
-      page.request, "/api/backend/v1/parking/history?days=30&limit=6",
+    const referenceResponse = await getJsonWithTransientRetry(
+      page.request, "/api/backend/v1/parking/history?days=30&limit=1000",
     );
-    expect(six.status()).toBe(200);
-    const reference = await six.json();
-    expect(keys).toEqual(reference.items.map(
+    expect(referenceResponse.status()).toBe(200);
+    const reference = await referenceResponse.json();
+    const referenceKeys = reference.items.map(
       (item: { observed_at: string; parking_lot_id: number }) =>
         `${item.observed_at}:${item.parking_lot_id}`,
-    ));
+    );
+    const startIndex = referenceKeys.indexOf(keys[0]);
+    expect(startIndex).toBeGreaterThanOrEqual(0);
+    expect(keys).toEqual(referenceKeys.slice(startIndex, startIndex + 6));
   });
 
   test("exposes the integrated transport API through the frontend proxy", async ({

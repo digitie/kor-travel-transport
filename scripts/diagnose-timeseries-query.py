@@ -17,7 +17,9 @@ from app.db.session import create_engine_and_session_factory
 
 QUERY = """
 WITH scoped AS MATERIALIZED (
-    SELECT p.*,
+    SELECT p.parking_lot_id, p.observed_at, p.source,
+           p.collected_at, p.id, p.available_spaces,
+           p.occupied_spaces, p.total_spaces,
            date_bin(:interval_minutes * interval '1 minute',
                     p.observed_at - interval '1 microsecond',
                     :bucket_start) + :interval_minutes * interval '1 minute' AS bucket_at
@@ -78,6 +80,7 @@ GROUP BY b.bucket_at ORDER BY b.bucket_at
 async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--interval", type=int, default=10, choices=range(10, 61))
+    parser.add_argument("--show-plan", action="store_true")
     args = parser.parse_args()
     tz = ZoneInfo("Asia/Seoul")
     start_at = datetime.combine(date(2026, 7, 4), time.min, tzinfo=tz).astimezone(UTC)
@@ -101,6 +104,15 @@ async def main() -> None:
                                            "interval_minutes": args.interval})
             plan = raw[0] if isinstance(raw, list) else json.loads(raw)[0]
             print("execution_ms", plan["Execution Time"], "result_rows", plan["Plan"]["Actual Rows"], flush=True)
+            if args.show_plan:
+                def show_node(node: dict, depth: int = 0) -> None:
+                    print("  " * depth, node["Node Type"], "rows", node.get("Actual Rows"),
+                          "loops", node.get("Actual Loops"), "ms", node.get("Actual Total Time"),
+                          "disk_kb", node.get("Sort Space Used"),
+                          "temp_read", node.get("Temp Read Blocks"), flush=True)
+                    for child in node.get("Plans", []):
+                        show_node(child, depth + 1)
+                show_node(plan["Plan"])
             params = {"start_at": start_at, "end_at": end_at,
                       "bucket_start": bucket_start, "bucket_end": bucket_end,
                       "interval_minutes": args.interval}
