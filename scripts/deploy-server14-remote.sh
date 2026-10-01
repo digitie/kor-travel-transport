@@ -9,8 +9,6 @@ COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-kor-travel-transport}"
 CUTOVER_RECEIPT_PATH="${CUTOVER_RECEIPT_PATH:-/var/tmp/kor-travel-transport-cutover/shared-db-cutover.receipt}"
 CANDIDATE_SHA="${CANDIDATE_SHA:?set the staged candidate SHA}"
 RELEASE_MANIFEST_FILE="${REMOTE_APP_DIR}/.release-sha"
-# 개명 전 Compose project(ADR-010). 아래 임시 guard만 쓰고, 개명 cutover 정리 PR에서 guard와 함께 지운다.
-PRE_RENAME_PROJECT_NAME="kor-travel-airport"
 
 if [[ "${REMOTE_APP_DIR}" != "/home/digitie/apps/kor-travel-transport" ]]; then
   echo "Refusing n150 deployment: only the approved app directory may be used." >&2
@@ -26,17 +24,6 @@ if [[ "${CUTOVER_RECEIPT_PATH}" != "/var/tmp/kor-travel-transport-cutover/shared
 fi
 if [[ ! "${CANDIDATE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
   echo "Refusing n150 deployment: candidate SHA must be a full Git SHA." >&2
-  exit 2
-fi
-# 임시 개명 guard: 개명 전 project의 컨테이너가 하나라도 떠 있으면 새 project를 올리지 않는다.
-# 모든 서비스가 host network라 두 스택은 포트를 다투고, 두 dagster-daemon이 같은 metadata DB에서
-# schedule을 두 번 평가한다. 이름이 아니라 compose project label의 정확한 값으로 찾는다.
-if ! pre_rename_running="$(docker ps -q --filter "label=com.docker.compose.project=${PRE_RENAME_PROJECT_NAME}")"; then
-  echo "Refusing n150 deployment: could not list containers of the pre-rename ${PRE_RENAME_PROJECT_NAME} project." >&2
-  exit 2
-fi
-if [[ -n "${pre_rename_running}" ]]; then
-  echo "Refusing n150 deployment: the pre-rename ${PRE_RENAME_PROJECT_NAME} project still runs containers; stop it through scripts/rename-deploy-identity-server14.sh first." >&2
   exit 2
 fi
 if [[ "$(pwd -P)" != "${REMOTE_APP_DIR}" || ! -f "${REMOTE_ENV_FILE}" ]]; then

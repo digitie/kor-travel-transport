@@ -115,7 +115,8 @@ Manager가 공용 DB/네트워크와 전용 role·RustFS bucket을 provision한 
    reviewed candidate artifact와 full SHA manifest를 n150에 올린다. 이 단계는 컨테이너를
    변경하지 않으며, `.env.server14.legacy`도 보존한다. 이어 n150 maintenance window에서
    `CUTOVER_CONFIRM=MOVE_KOR_TRAVEL_TRANSPORT_HISTORY_TO_SHARED_DB`와 함께
-   [`scripts/cutover-shared-db-server14.sh`](../../scripts/cutover-shared-db-server14.sh)를 실행한다.
+   `scripts/cutover-shared-db-server14.sh`를 실행한다(완료. 스크립트는 ADR-011로 지웠고 재현은
+   `git show 07d3848:scripts/cutover-shared-db-server14.sh`).
    one-shot은 staged artifact의 `deploy-server14-remote.sh`를 직접 호출하므로 n150의 Git checkout을
    요구하지 않는다. 또한 n150에 PostgreSQL client 패키지를 설치하지 않고, host network의
    일회성 `postgres:16-alpine` client container로 legacy loopback DB와 shared DB를 조회한다.
