@@ -1962,11 +1962,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     cached = history_read_cache.usable_snapshot(cutoff) if history_read_cache else None
                     if cached is not None:
                         checked_at = history_read_cache.validated_at_utc
-                        body = await run_history_cpu(
-                            cached.render, cutoff, normalized_airport_code, parking_lot_id
-                        )
-                        body, headers = await run_history_cpu(
-                            encode_response, body, request.headers.get("accept-encoding", "")
+                        body, headers = await history_read_cache.response_body(
+                            cached, cutoff, normalized_airport_code, parking_lot_id,
+                            request.headers.get("accept-encoding", ""),
                         )
                         headers["X-Parking-History-Cache"] = "hit"
                         if checked_at is not None:

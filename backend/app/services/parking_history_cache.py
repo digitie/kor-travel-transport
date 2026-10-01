@@ -6,10 +6,12 @@ import asyncio
 import gzip
 import logging
 from bisect import bisect_left
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from time import monotonic
 
+import brotli
 from pydantic_core import to_json
 from sqlalchemy import case, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -21,6 +23,7 @@ from app.models import Airport, ParkingSnapshot
 logger = logging.getLogger(__name__)
 POLL_SECONDS = 5
 MAX_UNCHECKED_SECONDS = 30
+MAX_PREPARED_RESPONSES = 8
 
 
 class BoundedHistoryResponse(StreamingResponse):
@@ -160,17 +163,52 @@ class ParkingHistoryReadCache:
         self.validated_at = 0.0
         self.validated_at_utc: datetime | None = None
         self.last_fingerprint: tuple[int, int, int, int] | None = None
+        self.prepared_responses: OrderedDict[tuple[int, str | None, int | None, str], bytes] = OrderedDict()
 
-    async def refresh_once(self) -> None:
+    async def response_body(
+        self, snapshot: ParkingHistorySnapshot, cutoff: datetime,
+        airport_code: str | None, parking_lot_id: int | None, accept_encoding: str,
+    ) -> tuple[bytes, dict[str, str]]:
+        encoding = response_encoding(accept_encoding)
+        key = (bisect_left(snapshot.times, cutoff), airport_code, parking_lot_id, encoding)
+        if encoding != "identity" and snapshot is self.snapshot and key in self.prepared_responses:
+            self.prepared_responses.move_to_end(key)
+            return self.prepared_responses[key], response_headers(encoding)
+        body = await run_history_cpu(snapshot.render, cutoff, airport_code, parking_lot_id)
+        prepared, headers = await run_history_cpu(encode_response, body, accept_encoding)
+        if encoding != "identity" and snapshot is self.snapshot:
+            self.prepared_responses[key] = prepared
+            self.prepared_responses.move_to_end(key)
+            while len(self.prepared_responses) > MAX_PREPARED_RESPONSES:
+                self.prepared_responses.popitem(last=False)
+        return prepared, headers
+
+    async def source_fingerprint(self) -> tuple[int, int, int, int]:
         async with self.session_factory() as session:
             current_max_id = await session.scalar(select(func.max(ParkingSnapshot.id))) or 0
             counters = (await session.execute(text(
                 "SELECT n_tup_ins, n_tup_upd, n_tup_del FROM pg_stat_user_tables "
                 "WHERE relid = 'parking_snapshots'::regclass"
             ))).one()
-        fingerprint = (current_max_id, *(int(value) for value in counters))
+        return current_max_id, *(int(value) for value in counters)
+
+    async def refresh_once(self) -> None:
+        fingerprint = await self.source_fingerprint()
         if self.snapshot is None or self.last_fingerprint != fingerprint:
             refreshed = await load_snapshot(self.session_factory)
+            # 자주 쓰는 30일 전체 결과를 게시 전에 압축한다. 요청 경로에서는
+            # 동일한 시작 행 번호 동안 이 바이트를 재사용한다.
+            cutoff = now_utc() - timedelta(days=30)
+            prepared: OrderedDict[tuple[int, str | None, int | None, str], bytes] = OrderedDict()
+            body = await asyncio.to_thread(refreshed.render, cutoff, None, None)
+            start = bisect_left(refreshed.times, cutoff)
+            for encoding in ("br", "gzip"):
+                prepared[(start, None, None, encoding)] = await asyncio.to_thread(compress_body, body, encoding)
+            # 준비 중 원본이 바뀌었다면 오래된 스냅샷에 새 확인 시각을 찍지 않는다.
+            if await self.source_fingerprint() != fingerprint:
+                logger.info("parking history cache source changed during preparation; retrying")
+                return
+            self.prepared_responses = prepared
             self.snapshot = refreshed
             logger.info("parking history cache refreshed rows=%s max_id=%s", len(refreshed.items), refreshed.max_snapshot_id)
         self.last_fingerprint = fingerprint
@@ -193,10 +231,44 @@ class ParkingHistoryReadCache:
             await asyncio.sleep(POLL_SECONDS)
 
 
-def encode_response(body: bytes, accept_encoding: str) -> tuple[bytes, dict[str, str]]:
+def accepts_br(header: str) -> bool:
+    for value in header.split(","):
+        parts = [part.strip().lower() for part in value.split(";")]
+        if parts[0] != "br":
+            continue
+        for part in parts[1:]:
+            if part.startswith("q="):
+                try:
+                    return float(part[2:]) > 0
+                except ValueError:
+                    return False
+        return True
+    return False
+
+
+def response_encoding(accept_encoding: str) -> str:
+    if accepts_br(accept_encoding):
+        return "br"
     if accepts_gzip(accept_encoding):
-        return gzip.compress(body, compresslevel=1, mtime=0), {
-            "Content-Encoding": "gzip", "Vary": "Accept-Encoding",
-            "Cache-Control": "private, no-store",
-        }
-    return body, {"Vary": "Accept-Encoding", "Cache-Control": "private, no-store"}
+        return "gzip"
+    return "identity"
+
+
+def response_headers(encoding: str) -> dict[str, str]:
+    headers = {"Vary": "Accept-Encoding", "Cache-Control": "private, no-store"}
+    if encoding != "identity":
+        headers["Content-Encoding"] = encoding
+    return headers
+
+
+def compress_body(body: bytes, encoding: str) -> bytes:
+    if encoding == "br":
+        return brotli.compress(body, quality=6)
+    if encoding == "gzip":
+        return gzip.compress(body, compresslevel=9, mtime=0)
+    return body
+
+
+def encode_response(body: bytes, accept_encoding: str) -> tuple[bytes, dict[str, str]]:
+    encoding = response_encoding(accept_encoding)
+    return compress_body(body, encoding), response_headers(encoding)

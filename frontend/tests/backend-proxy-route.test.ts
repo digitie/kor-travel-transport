@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { createServer } from "node:http";
-import { gunzipSync, gzipSync } from "node:zlib";
+import { brotliCompressSync, brotliDecompressSync, constants, gunzipSync, gzipSync } from "node:zlib";
 
 describe("backend proxy route", () => {
   beforeEach(() => {
@@ -55,13 +55,22 @@ describe("backend proxy route", () => {
     expect(await response.json()).toEqual({ items: [1, 2, 3] });
   });
 
-  test("streams the compressed full-history body without the JSON buffer limit", async () => {
+  test.each([
+    { clientEncoding: "gzip", forwarded: "gzip", responseEncoding: "gzip" },
+    { clientEncoding: "br", forwarded: "br", responseEncoding: "br" },
+    { clientEncoding: "br, gzip;q=0", forwarded: "br", responseEncoding: "br" },
+    { clientEncoding: "br, gzip", forwarded: "br, gzip", responseEncoding: "br" },
+  ])("streams $clientEncoding full history without the JSON buffer limit", async ({ clientEncoding, forwarded, responseEncoding }) => {
     const uncompressed = JSON.stringify({ items: ["x".repeat(17 * 1024 * 1024)], next_cursor: null });
-    const compressed = gzipSync(uncompressed);
-    const server = createServer((_request, response) => {
+    const compressed = responseEncoding === "br" ? brotliCompressSync(uncompressed, {
+      params: { [constants.BROTLI_PARAM_QUALITY]: 4 },
+    }) : gzipSync(uncompressed);
+    let forwardedEncoding: string | undefined;
+    const server = createServer((upstreamRequest, response) => {
+      forwardedEncoding = upstreamRequest.headers["accept-encoding"];
       response.writeHead(200, {
         "content-type": "application/json",
-        "content-encoding": "gzip",
+        "content-encoding": responseEncoding,
         "content-length": compressed.length,
       });
       response.end(compressed);
@@ -73,14 +82,16 @@ describe("backend proxy route", () => {
       vi.stubEnv("BACKEND_INTERNAL_URL", `http://127.0.0.1:${address.port}`);
       const { GET } = await import("@/app/api/backend/[...path]/route");
       const request = new NextRequest("https://pr.digitie.mywire.org/api/backend/v1/parking/history?days=30", {
-        headers: { "accept-encoding": "gzip" },
+        headers: { "accept-encoding": clientEncoding },
       });
       const response = await GET(request, { params: Promise.resolve({ path: ["v1", "parking", "history"] }) });
 
       expect(response.status).toBe(200);
-      expect(response.headers.get("content-encoding")).toBe("gzip");
+      expect(forwardedEncoding).toBe(forwarded);
+      expect(response.headers.get("content-encoding")).toBe(responseEncoding);
       expect(response.headers.get("content-length")).toBe(String(compressed.length));
-      expect(gunzipSync(Buffer.from(await response.arrayBuffer())).toString()).toBe(uncompressed);
+      const payload = Buffer.from(await response.arrayBuffer());
+      expect((responseEncoding === "br" ? brotliDecompressSync(payload) : gunzipSync(payload)).toString()).toBe(uncompressed);
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     }

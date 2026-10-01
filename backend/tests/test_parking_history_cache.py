@@ -9,6 +9,7 @@ from time import monotonic
 from types import SimpleNamespace
 
 import pytest
+import brotli
 from pydantic_core import to_json
 from sqlalchemy import select
 from sqlalchemy.dialects import postgresql
@@ -73,14 +74,49 @@ def test_cached_history_preserves_legacy_json_order_filters_and_cutoff() -> None
     assert snapshot.render(now + timedelta(seconds=1), None, None) == b'{"items":[],"next_cursor":null}'
 
 
-def test_cached_history_gzip_is_negotiated_without_changing_json() -> None:
+def test_cached_history_compression_is_negotiated_without_changing_json() -> None:
     body = b'{"items":[],"next_cursor":null}'
     compressed, headers = history_cache.encode_response(body, "br, gzip;q=1")
+    assert brotli.decompress(compressed) == body
+    assert headers["Content-Encoding"] == "br"
+    compressed, headers = history_cache.encode_response(body, "br;q=0, gzip;q=1")
     assert gzip.decompress(compressed) == body
     assert headers["Content-Encoding"] == "gzip"
-    plain, headers = history_cache.encode_response(body, "gzip;q=0, br")
+    plain, headers = history_cache.encode_response(body, "gzip;q=0, br;q=0")
     assert plain == body
     assert "Content-Encoding" not in headers
+
+
+def test_prepared_history_reuses_same_start_row_and_rebuilds_on_filter_change(monkeypatch) -> None:
+    now = datetime(2026, 10, 1, tzinfo=UTC)
+    snapshot = history_cache.ParkingHistorySnapshot.from_rows(
+        now - timedelta(days=30), 2, [_row(now - timedelta(hours=1), 1), _row(now, 2, "CJU")],
+    )
+    cache = history_cache.ParkingHistoryReadCache(None)
+    cache.snapshot = snapshot
+    calls = 0
+    original_compress = history_cache.compress_body
+
+    def count_compress(body, encoding):
+        nonlocal calls
+        calls += 1
+        return original_compress(body, encoding)
+
+    monkeypatch.setattr(history_cache, "compress_body", count_compress)
+
+    async def check():
+        first, _ = await cache.response_body(snapshot, now - timedelta(hours=2), None, None, "br, gzip")
+        second, _ = await cache.response_body(snapshot, now - timedelta(hours=2, seconds=1), None, None, "br")
+        assert first == second
+        assert calls == 1
+        filtered, _ = await cache.response_body(snapshot, now - timedelta(hours=2), "CJU", None, "br")
+        assert [item["airport_code"] for item in json.loads(brotli.decompress(filtered))["items"]] == ["CJU"]
+        assert calls == 2
+        plain, _ = await cache.response_body(snapshot, now - timedelta(hours=2), None, None, "identity")
+        assert json.loads(plain)["items"][0]["parking_lot_id"] == 1
+        assert all(key[-1] != "identity" for key in cache.prepared_responses)
+
+    asyncio.run(check())
 
 
 def test_direct_history_delivery_releases_slot_on_send_failure() -> None:
@@ -175,6 +211,44 @@ def test_cache_refreshes_on_new_snapshot_and_expires_when_unchecked(monkeypatch)
     assert cache.usable_snapshot(now - timedelta(days=31)) is None
 
 
+def test_cache_does_not_publish_snapshot_changed_while_preparing(monkeypatch) -> None:
+    now = datetime(2026, 10, 1, tzinfo=UTC)
+    current_id = 10
+
+    class FakeSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def scalar(self, _statement):
+            return current_id
+
+        async def execute(self, _statement):
+            return SimpleNamespace(one=lambda: (10, 0, 0))
+
+    async def fake_load(_factory):
+        return history_cache.ParkingHistorySnapshot.from_rows(
+            now - timedelta(days=30), current_id, [_row(now, 1)],
+        )
+
+    original_compress = history_cache.compress_body
+
+    def change_during_compression(body, encoding):
+        nonlocal current_id
+        current_id = 11
+        return original_compress(body, encoding)
+
+    monkeypatch.setattr(history_cache, "load_snapshot", fake_load)
+    monkeypatch.setattr(history_cache, "compress_body", change_during_compression)
+    cache = history_cache.ParkingHistoryReadCache(FakeSession)
+    asyncio.run(cache.refresh_once())
+    assert cache.snapshot is None
+    assert cache.validated_at == 0
+    assert cache.prepared_responses == {}
+
+
 def test_cache_load_query_prefers_live_and_caps_snapshot_id() -> None:
     now = datetime(2026, 10, 1, tzinfo=UTC)
 
@@ -214,6 +288,10 @@ def test_postgres_history_route_uses_prepared_gzip_without_database_scan(monkeyp
 
         def usable_snapshot(self, _cutoff):
             return snapshot
+
+        async def response_body(self, snapshot, cutoff, airport_code, parking_lot_id, accept_encoding):
+            body = await history_cache.run_history_cpu(snapshot.render, cutoff, airport_code, parking_lot_id)
+            return history_cache.encode_response(body, accept_encoding)
 
     class FakeSession:
         bind = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
@@ -308,6 +386,10 @@ def test_postgres_history_rechecks_snapshot_after_waiting_for_delivery_slot(monk
 
         def usable_snapshot(self, _cutoff):
             return self.snapshot
+
+        async def response_body(self, snapshot, cutoff, airport_code, parking_lot_id, accept_encoding):
+            body = await history_cache.run_history_cpu(snapshot.render, cutoff, airport_code, parking_lot_id)
+            return history_cache.encode_response(body, accept_encoding)
 
     class FakeSession:
         bind = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))

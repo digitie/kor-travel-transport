@@ -111,10 +111,10 @@ function buildResponseHeaders(upstreamResponse: Response): Headers {
   return headers;
 }
 
-function acceptsGzip(header: string | null): boolean {
+function acceptsEncoding(header: string | null, encoding: string): boolean {
   return (header ?? "").split(",").some((entry) => {
     const [name, ...parameters] = entry.trim().toLowerCase().split(";").map((part) => part.trim());
-    if (name !== "gzip") return false;
+    if (name !== encoding) return false;
     const quality = parameters.find((part) => part.startsWith("q="));
     return !quality || Number(quality.slice(2)) > 0;
   });
@@ -138,8 +138,11 @@ function proxyFullHistory(request: NextRequest, targetUrl: string, timeoutMs: nu
     const url = new URL(targetUrl);
     const send = url.protocol === "https:" ? httpsRequest : httpRequest;
     let timedOut = false;
+    const supportedEncodings = ["br", "gzip"].filter((encoding) =>
+      acceptsEncoding(request.headers.get("accept-encoding"), encoding)
+    );
     const headers: Record<string, string> = {
-      "accept-encoding": acceptsGzip(request.headers.get("accept-encoding")) ? "gzip" : "identity",
+      "accept-encoding": supportedEncodings.length ? supportedEncodings.join(", ") : "identity",
       "x-forwarded-host": request.headers.get("host") ?? "",
       "x-forwarded-proto": request.headers.get("x-forwarded-proto") ?? request.nextUrl.protocol.replace(":", ""),
     };
