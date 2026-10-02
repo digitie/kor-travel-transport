@@ -1,4 +1,4 @@
-"""고속도로 휴게소 기준정보와 휴게소 주유소 현재 유가 수집 (ADR-012).
+"""고속도로 휴게소 기준정보와 휴게소 주유소 현재 유가 수집 (ADR-013).
 
 - 기준정보: data.go.kr 표준데이터 `tn_pubr_public_rest_area_api`(`krex.restarea.list_all`,
   data.go.kr 키). 원천에 안정 식별자가 없어 `name::route_name::direction`(strip→lower)을

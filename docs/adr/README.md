@@ -20,7 +20,9 @@
 | [ADR-009](009-durable-transport-collection-reservations.md) | 교통정보 수집의 짧은 DB 예약과 외부 조회·저장 분리 | accepted |
 | [ADR-010](010-deploy-identity-rename-transport.md) | n150 운영 식별자를 `kor-travel-transport`로 옮기고 공항 주차 도메인은 유지 | accepted (n150 cutover는 PR #44 뒤) |
 | [ADR-011](011-backend-internal-identity-transport.md) | 백엔드·내부 식별자를 `kor-travel-transport`로 옮기고 사용자 노출 브랜드 `parking-radar`만 남긴다 | accepted |
-| [ADR-012](012-internal-service-exports-for-map.md) | kor-travel-map에 OpiNet·KREX·공항 데이터를 토큰으로 닫힌 내부 export로 제공한다 | accepted |
+| [ADR-013](013-internal-service-exports-for-map.md) | kor-travel-map에 OpiNet·KREX·공항 데이터를 토큰으로 닫힌 내부 export로 제공한다 | accepted |
+
+**다음 번호 = ADR-014.**
 
 | [ADR-012](012-admin-token-for-backup-and-admin-routes.md) | 백업·관리 API는 관리자 토큰으로 닫고 공개 웹 앱에서 백업 UI를 없앤다 | accepted |
 

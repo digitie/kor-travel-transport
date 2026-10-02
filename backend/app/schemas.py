@@ -745,7 +745,7 @@ class DashboardAnalyticsResponse(BaseModel):
     time_series: ParkingTimeSeriesResponse
 
 
-# --- 내부 서비스 export (ADR-012) -------------------------------------------------
+# --- 내부 서비스 export (ADR-013) -------------------------------------------------
 # `/v1/service/exports/*`는 kor-travel-map 같은 내부 소비자가 저장 데이터를 일괄로 읽는 경로다.
 # 응답은 concierge export와 같은 무-envelope 모양 `{items, next_cursor, has_more}`이고
 # cursor는 불투명 문자열이다. 원본 provider 행은 `raw`로 그대로 넘긴다(소비자의 lineage 증거).

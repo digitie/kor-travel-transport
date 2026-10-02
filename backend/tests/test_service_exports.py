@@ -1,4 +1,4 @@
-"""내부 서비스 export `/v1/service/exports/*`와 휴게소 수집 (ADR-012)."""
+"""내부 서비스 export `/v1/service/exports/*`와 휴게소 수집 (ADR-013)."""
 
 from __future__ import annotations
 
@@ -162,7 +162,7 @@ def test_fuel_station_export_pages_stable_ids_with_latest_prices(export_client: 
     {"last_success_at_age": timedelta(hours=25)},
 ])
 def test_fuel_station_export_refuses_without_a_current_collection(export_client: TestClient, state) -> None:
-    """이력 없음·실패·24시간 초과면 503 — 빈·낡은 집합을 현재로 주지 않는다(ADR-012)."""
+    """이력 없음·실패·24시간 초과면 503 — 빈·낡은 집합을 현재로 주지 않는다(ADR-013)."""
     async def seed(session) -> None:
         if state is None:
             return
@@ -250,7 +250,7 @@ def test_rest_area_collection_and_exports(export_client: TestClient) -> None:
     fake.fuel_prices = boom
     with pytest.raises(RuntimeError):
         _run(export_client, service.collect_fuel_prices)
-    # 실패한 수집 뒤에는 503이다 — 소비자가 낡은 집합을 현재로, 빈 집합을 삭제로 읽지 않게(ADR-012).
+    # 실패한 수집 뒤에는 503이다 — 소비자가 낡은 집합을 현재로, 빈 집합을 삭제로 읽지 않게(ADR-013).
     failed = export_client.get("/v1/service/exports/rest-area-fuel-prices", headers=HEADERS)
     assert failed.status_code == 503
     assert "secret-url" not in failed.text

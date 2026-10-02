@@ -665,7 +665,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ("/v1/transport/rail/timetables", "get"): (404,),
             ("/v1/transport/rail/departures", "get"): (404,),
             # 내부 서비스 export는 토큰·접속 주소가 맞지 않으면 경로를 숨기고(404), 근거 수집이
-            # 이력 없음·실패·stale이면 503이다(ADR-012).
+            # 이력 없음·실패·stale이면 503이다(ADR-013).
             ("/v1/service/exports/fuel-stations", "get"): (404, 503),
             ("/v1/service/exports/rest-areas", "get"): (404, 503),
             ("/v1/service/exports/rest-area-fuel-prices", "get"): (404, 503),
@@ -2981,7 +2981,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # fixed, everything else is versioned). All other routes live under `/v1`
     # (ADR-005) -- a clean-cut, no legacy unprefixed alias.
     app.include_router(router, prefix="/v1")
-    # 내부 서비스 일괄 export(ADR-012) — 토큰·loopback Host로 닫힌다.
+    # 내부 서비스 일괄 export(ADR-013) — 토큰·loopback Host로 닫힌다.
     app.include_router(build_service_export_router(resolved_settings, get_db), prefix="/v1")
 
     return app

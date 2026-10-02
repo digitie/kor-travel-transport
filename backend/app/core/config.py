@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     kakao_place_max_calls_per_month: int = Field(default=50000, ge=1, le=3000000)
     kakao_place_request_interval_seconds: float = Field(default=0.2, ge=0.1, le=60)
     transport_admin_write_token: str | None = None
-    # kor-travel-map 등 내부 서비스가 `/v1/service/exports/*`를 읽는 토큰(ADR-012). 32자 미만이면
+    # kor-travel-map 등 내부 서비스가 `/v1/service/exports/*`를 읽는 토큰(ADR-013). 32자 미만이면
     # 경로 전체가 404다. 허용 Host는 loopback 이름만 — 외부 reverse proxy(pr-api)를 거친 요청은
     # 토큰이 맞아도 닫힌다.
     transport_service_export_token: str | None = None

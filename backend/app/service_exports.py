@@ -1,4 +1,4 @@
-"""내부 서비스용 일괄 export `/v1/service/exports/*` (ADR-012).
+"""내부 서비스용 일괄 export `/v1/service/exports/*` (ADR-013).
 
 kor-travel-map이 OpiNet·KREX·공항 데이터를 provider에 직접 묻지 않고 transport가 저장한 값을
 읽어 가는 경로다. 공개 지도 API와 달리 원본 provider 행(`raw`)을 함께 주므로 토큰과 **접속한

@@ -849,7 +849,7 @@ class TransportCollectionService:
             )
             stored += 1
         # 이번 수집이 재관측한 행은 모두 collected_at이 이 값이다. 상태의 성공 시각을 같은 값으로
-        # 맞춰 service export가 "마지막 성공 수집의 활성 집합"을 정확히 고르게 한다(ADR-012).
+        # 맞춰 service export가 "마지막 성공 수집의 활성 집합"을 정확히 고르게 한다(ADR-013).
         state = await self._get_or_create_state(session, INCIDENT_SOURCE)
         state.last_success_at = collected_at
         await session.flush()

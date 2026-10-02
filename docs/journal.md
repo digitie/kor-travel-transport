@@ -1,6 +1,6 @@
 # journal.md — 작업 일지
 
-## 2026-10-02 — Map 이관용 내부 export·휴게소 수집(ADR-012, `feat/map-service-exports`)
+## 2026-10-02 — Map 이관용 내부 export·휴게소 수집(ADR-013, `feat/map-service-exports`)
 
 - 소유자 결정: kor-travel-map이 transport로 얻을 수 있는 것은 transport API로 바꾸고, 필요하면 transport API를 고친다.
 - 새 수집: 휴게소 기준정보(data.go.kr `tn_pubr_public_rest_area_api`, 매일 03:40)와 휴게소 주유소 현재 유가(EX

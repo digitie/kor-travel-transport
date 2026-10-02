@@ -97,7 +97,7 @@ services:
       KAKAO_REST_API_KEY: "${KAKAO_REST_API_KEY:-}"
       KAKAO_PLACE_COLLECTION_ENABLED: "${KAKAO_PLACE_COLLECTION_ENABLED:-false}"
       TRANSPORT_ADMIN_WRITE_TOKEN: "${TRANSPORT_ADMIN_WRITE_TOKEN:-}"
-      # kor-travel-map이 읽는 내부 export 토큰(ADR-012). 비면 /v1/service/exports/*는 404다.
+      # kor-travel-map이 읽는 내부 export 토큰(ADR-013). 비면 /v1/service/exports/*는 404다.
       TRANSPORT_SERVICE_EXPORT_TOKEN: "${TRANSPORT_SERVICE_EXPORT_TOKEN:-}"
       # export에 접속할 수 있는 peer 대역(CIDR). 운영은 Map이 host network라 loopback만 연다.
       SERVICE_EXPORT_ALLOWED_CLIENTS_CSV: "${SERVICE_EXPORT_ALLOWED_CLIENTS_CSV:-127.0.0.1/32,::1/128}"

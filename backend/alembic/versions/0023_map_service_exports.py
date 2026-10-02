@@ -1,4 +1,4 @@
-"""Map 이관용 휴게소 유가 저장소와 돌발 활성 집합 index (ADR-012).
+"""Map 이관용 휴게소 유가 저장소와 돌발 활성 집합 index (ADR-013).
 
 - `rest_area_fuel_prices`: EX `curStateStation` 휴게소 주유소의 현재 유가(휴게소별 1행).
 - `ix_highway_incidents_source_collected`: 마지막 성공 수집이 재관측한 돌발 집합을

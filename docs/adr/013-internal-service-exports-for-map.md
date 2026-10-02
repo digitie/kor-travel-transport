@@ -1,4 +1,4 @@
-# ADR-012: kor-travel-map에 OpiNet·KREX·공항 데이터를 토큰으로 닫힌 내부 export로 제공한다
+# ADR-013: kor-travel-map에 OpiNet·KREX·공항 데이터를 토큰으로 닫힌 내부 export로 제공한다
 
 - **상태**: accepted
 - **날짜**: 2026-10-02

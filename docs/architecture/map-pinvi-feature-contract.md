@@ -33,7 +33,7 @@ cross-schema FK를 만드는 것은 금지한다.
 `kind`는 `timetable` 또는 `facility`이며, 제공하지 않는 필드는 `null`로 유지한다. 원본에
 타임존이 없으면 임의 UTC 변환을 하지 않고 문자열·원본 날짜를 보존한다.
 
-## 내부 일괄 export (ADR-012, 2026-10-02)
+## 내부 일괄 export (ADR-013, 2026-10-02)
 
 Map은 marker API가 아니라 `/v1/service/exports/*`를 읽는다. 토큰(`X-Kor-Travel-Transport-Service-Token`)과
 loopback Host가 모두 맞아야 하고 아니면 404다. `fuel-stations`·`rest-areas`·`rest-area-fuel-prices`는
