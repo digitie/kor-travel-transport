@@ -48,6 +48,8 @@ provider 원본을 숨기며, 돌발은 "최근 24시간"이라 "지금 활성�
    `last_success_at`을 재관측 행의 `collected_at`과 같은 값으로 남긴다.
 4. **새 수집**: 휴게소 기준정보(data.go.kr `tn_pubr_public_rest_area_api`, 매일 03:40)와 휴게소 주유소
    현재 유가(EX `curStateStation`, 4시간마다)를 `rest_area_references`·`rest_area_fuel_prices`에 적재한다.
+   두 원천은 전국 집합이므로 저장할 행이 0건인 수집은 성공이 아니라 실패로 남긴다
+   (`EmptyRestAreaCollectionError`) — 그래야 export가 빈 200이 아니라 503이 된다.
    휴게소 자연키는 원천에 안정 ID가 없어 `name::route_name::direction`(strip→lower) — Map이 같은
    원천에서 쓰던 규칙과 같다. 기본 비활성(`REST_AREA_COLLECTION_ENABLED`)이다.
 5. **공항**은 주차 수집 여부와 무관하게 `python-krairport-api` 번들의 운영 공항 전체(포항경주 KPO 포함)를

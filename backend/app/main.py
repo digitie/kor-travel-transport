@@ -2981,7 +2981,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # fixed, everything else is versioned). All other routes live under `/v1`
     # (ADR-005) -- a clean-cut, no legacy unprefixed alias.
     app.include_router(router, prefix="/v1")
-    # 내부 서비스 일괄 export(ADR-013) — 토큰·loopback Host로 닫힌다.
+    # 내부 서비스 일괄 export(ADR-013) — 서비스 토큰과 접속한 쪽의 주소(peer, 기본 loopback)로 닫힌다.
     app.include_router(build_service_export_router(resolved_settings, get_db), prefix="/v1")
 
     return app

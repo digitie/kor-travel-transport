@@ -17,14 +17,24 @@ import json
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from krex import KrexClient, RestArea, RestAreaFuelPrice as KrexRestAreaFuelPrice
+from krex import KrexClient, RestArea
+from krex import RestAreaFuelPrice as KrexRestAreaFuelPrice
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.time_utils import now_utc
-from app.models import CollectionRun, RawApiResponse, RestAreaFuelPrice, RestAreaReference
-from app.services.transport_collection import _collect_krex_pages, _plain_json, get_or_create_state
+from app.models import (
+    CollectionRun,
+    RawApiResponse,
+    RestAreaFuelPrice,
+    RestAreaReference,
+)
+from app.services.transport_collection import (
+    _collect_krex_pages,
+    _plain_json,
+    get_or_create_state,
+)
 
 REST_AREA_SOURCE = "krex_rest_area"
 REST_AREA_FUEL_SOURCE = "krex_rest_area_fuel"
@@ -35,6 +45,15 @@ REST_AREA_FUEL_TRIGGER = "dagster_rest_area_fuel"
 def rest_area_identity(name: str | None, route_name: str | None, direction: str | None) -> str:
     """휴게소 자연키. kor-travel-map `_rest_area_natural_key`와 같은 규칙이다."""
     return "::".join((value or "").strip().lower() for value in (name, route_name, direction))
+
+
+class EmptyRestAreaCollectionError(RuntimeError):
+    """휴게소 기준정보·휴게소 유가 수집이 저장할 행을 0건 받았다.
+
+    두 원천은 전국 집합이라 0건은 "휴게소가 없다"가 아니라 상류 장애·계약 변화다. 성공으로 남기면
+    3일 창이 지난 뒤 export가 빈 200을 내고 소비자(Map)가 전량 삭제로 읽는다. 실패로 남겨 export가
+    503이 되게 한다(ADR-013).
+    """
 
 
 class RestAreaCollectionService:
@@ -100,6 +119,8 @@ class RestAreaCollectionService:
                 await client.aclose()
             collected_at = now_utc()
             stored = await store(session, items, collected_at)
+            if stored == 0:
+                raise EmptyRestAreaCollectionError(f"{source}: received {len(items)}, stored 0")
             summary = {"received": len(items), "stored": stored}
             session.add(RawApiResponse(
                 collection_run_id=run_id, source=source, endpoint=endpoint, request_params_json=None,

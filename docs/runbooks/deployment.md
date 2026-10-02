@@ -96,6 +96,11 @@ docker exec kor-travel-transport-backend-1 python scripts/backfill-fuel-latest-p
 docker exec kor-travel-transport-backend-1 python scripts/backfill-fuel-latest-prices.py --apply
 ```
 
+`--apply`는 전 이력 upsert를 한 트랜잭션으로 돌려(statement timeout 15분) `fuel_latest_prices` 행 잠금을
+끝날 때까지 쥔다. **오피넷 수집 시각(KST 00·08·16시, 약 35분 소요)을 피해서** 돌린다 — 겹치면 수집기의
+증분 upsert가 같은 행 잠금을 기다리다 앱 `statement_timeout`(60초)에 걸려 그 수집이 실패할 수 있다(다음 수집이
+회복한다). 읽기 전용 점검은 잠금을 잡지 않는다.
+
 ### Dagster healthcheck·init만 바뀐 반영
 
 > 2026-09 운영 식별자 개명 cutover([ADR-010](../adr/010-deploy-identity-rename-transport.md))가 #45의

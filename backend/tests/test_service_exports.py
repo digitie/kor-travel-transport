@@ -8,10 +8,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from fastapi.testclient import TestClient
-from krex import Incident, RestArea, RestAreaFuelPrice
-from sqlalchemy import select
-
 from app.core.config import Settings
 from app.core.time_utils import now_utc
 from app.dagster.definitions import definitions
@@ -20,6 +16,7 @@ from app.models import FuelPriceSnapshot, FuelStation, TransportCollectionState
 from app.services.rest_area_collection import (
     REST_AREA_FUEL_SOURCE,
     REST_AREA_SOURCE,
+    EmptyRestAreaCollectionError,
     RestAreaCollectionService,
     rest_area_identity,
 )
@@ -29,6 +26,9 @@ from app.services.transport_collection import (
     HighwayPayload,
     upsert_latest_fuel_prices,
 )
+from fastapi.testclient import TestClient
+from krex import Incident, RestArea, RestAreaFuelPrice
+from sqlalchemy import select
 
 TOKEN = "s" * 40
 HEADERS = {"X-Kor-Travel-Transport-Service-Token": TOKEN}
@@ -257,6 +257,38 @@ def test_rest_area_collection_and_exports(export_client: TestClient) -> None:
     status = {row["source"]: row for row in export_client.get("/v1/transport/providers").json()["items"]}
     assert status[REST_AREA_FUEL_SOURCE]["status"] == "failed"
     assert "secret-url" not in export_client.get("/v1/transport/providers").text
+
+
+def test_an_empty_rest_area_collection_fails_so_the_export_goes_503(export_client: TestClient) -> None:
+    """전국 집합이 0건이면 성공이 아니다 — 3일 창이 지난 뒤 빈 200(전량 삭제로 읽힘)을 내지 않게 실패로 남긴다."""
+    settings = export_client.app.state.settings
+    settings.rest_area_collection_enabled = True
+    settings.data_go_kr_service_key = "go-key"
+    settings.kex_ex_api_key = "ex-key"
+    fake = FakeKrex([_rest_area("행담도휴게소")], [_fuel("A00001", 1700)])
+    service = RestAreaCollectionService(settings, client_factory=lambda **_: fake)
+    assert _run(export_client, service.collect_references)["stored"] == 1
+    assert _run(export_client, service.collect_fuel_prices)["stored"] == 1
+
+    # 0건, 그리고 저장할 수 없는 행만(이름 없음) 온 경우 모두 실패다.
+    for rest_areas in ([], [_rest_area("  ")]):
+        fake.rest_areas = rest_areas
+        with pytest.raises(EmptyRestAreaCollectionError):
+            _run(export_client, service.collect_references)
+        assert export_client.get("/v1/service/exports/rest-areas", headers=HEADERS).status_code == 503
+    fake.fuel = []
+    with pytest.raises(EmptyRestAreaCollectionError):
+        _run(export_client, service.collect_fuel_prices)
+    assert export_client.get("/v1/service/exports/rest-area-fuel-prices", headers=HEADERS).status_code == 503
+
+    async def states(session):
+        rows = (await session.scalars(select(TransportCollectionState).where(
+            TransportCollectionState.source.in_([REST_AREA_SOURCE, REST_AREA_FUEL_SOURCE])))).all()
+        return {row.source: row.last_error for row in rows}
+    assert _run(export_client, states) == {
+        REST_AREA_SOURCE: "EmptyRestAreaCollectionError",
+        REST_AREA_FUEL_SOURCE: "EmptyRestAreaCollectionError",
+    }
 
 
 class IncidentProvider:
