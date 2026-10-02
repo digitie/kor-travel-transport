@@ -46,6 +46,7 @@ from app.services.transport_collection import (
     TransportCollectionService,
     _collect_krex_pages,
     _traffic_identity,
+    upsert_latest_fuel_prices,
 )
 
 
@@ -1240,6 +1241,9 @@ def test_fuel_openapi_returns_only_the_latest_price_per_product(tmp_path: Path) 
                         ),
                     ]
                 )
+                await session.flush()
+                # 읽기 모델은 수집기 저장 경로의 증분 upsert로만 갱신된다(0022).
+                await upsert_latest_fuel_prices(session)
                 await session.commit()
 
         asyncio.run(collect_and_add_history())
