@@ -2,6 +2,9 @@
 
 ## 현재 상태
 
+- **2026-10-02 `fix/fuel-latest-prices-incremental` 푸시, PR 미생성.** 최신 유가 MV가 60초 timeout으로
+  영구 stale이던 문제를 `0022` 증분 테이블로 고쳤다(journal 같은 날). 배포는 migration 1회 backfill(약 60초)
+  뒤 다음 유가 수집부터 정상 갱신. Map 이관(`feat/map-service-exports`)이 이 브랜치 위에 쌓인다.
 - **2026-10-02 보안 hotfix `hotfix/public-backup-exposure`(ADR-012) 푸시, PR 미생성.** 공개로 열려 있던
   `/v1/admin/backups*`를 관리자 토큰(`x-transport-admin-token`)으로 닫고 공개 웹의 백업 UI·프록시 경로를
   제거했다. n150에는 소유자가 건 iptables 임시 차단(14001 비-loopback DROP, loopback 백업 경로 REJECT)이

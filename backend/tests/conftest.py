@@ -37,14 +37,13 @@ def test_settings(tmp_path: Path) -> Settings:
                     text(
                         "TRUNCATE TABLE bus_timetable_snapshots, rail_service_days, kric_timetable_snapshots, kric_station_codes, bus_terminal_references, ferry_timetable_snapshots, ferry_ship_type_references, ferry_terminal_references, "
                         "ferry_ports, rail_station_references, rest_area_references, "
-                        "fuel_price_snapshots, highway_incident_snapshots, "
+                        "fuel_latest_prices, fuel_price_snapshots, highway_incident_snapshots, "
                         "highway_traffic_five_minute_statistics, highway_traffic_snapshots, "
                         "transport_collection_states, raw_api_responses, "
                         "parking_snapshots, parking_fee_rules, analytics_caches, collection_runs, "
                         "fuel_stations, parking_lots, airports RESTART IDENTITY CASCADE"
                     )
                 )
-                await connection.execute(text("REFRESH MATERIALIZED VIEW fuel_latest_prices"))
             await engine.dispose()
 
         asyncio.run(reset_postgres())

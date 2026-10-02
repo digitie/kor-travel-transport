@@ -21,13 +21,16 @@ from opinet.experimental import (
     OpinetBrowserCollector,
     OpinetBrowserSnapshot,
 )
-from sqlalchemy import func, select, text, update
+from sqlalchemy import and_, func, or_, select, text, update
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.time_utils import now_utc, serialize_utc
 from app.models import (
     CollectionRun,
+    FuelLatestPrice,
     FuelPriceSnapshot,
     FuelStation,
     HighwayIncidentSnapshot,
@@ -42,7 +45,8 @@ logger = logging.getLogger(__name__)
 TRAFFIC_SOURCE = "krex_traffic_flow"
 INCIDENT_SOURCE = "krex_traffic_incident"
 OPINET_SOURCE = "opinet_browser"
-FUEL_READ_MODEL_SOURCE = "fuel_latest_prices"
+# 정기 수집은 약 8시간 간격이다. 세 번 연속 성공하지 못하면 최신 유가를 오래됐다고 표시한다.
+FUEL_STALE_AFTER = timedelta(hours=24)
 KREX_PAGE_SIZE = 1000
 KREX_MAX_PAGES = 100
 KREX_MAX_FILTER_VALUES = 20
@@ -58,24 +62,67 @@ T = TypeVar("T")
 async def fuel_read_model_freshness(
     session: AsyncSession,
 ) -> tuple[bool, TransportCollectionState | None]:
-    """지도·유가 API·운영 현황이 같은 MV 갱신 상태를 표시한다."""
-    if session.bind.dialect.name != "postgresql":
-        return False, None
+    """최신 유가가 오래됐는지와 그 근거인 오피넷 수집 상태를 돌려준다.
+
+    `fuel_latest_prices`는 원본과 같은 트랜잭션에서 갱신되므로 원본과 어긋나지
+    않는다(0022). 남은 위험은 수집 자체가 멈추거나 실패하는 것뿐이라 그것만 본다.
+    저장된 가격이 하나도 없으면 오래된 가격도 없으므로 stale이 아니다.
+    """
     state = await session.scalar(select(TransportCollectionState).where(
-        TransportCollectionState.source == FUEL_READ_MODEL_SOURCE,
+        TransportCollectionState.source == OPINET_SOURCE,
     ))
-    latest_raw_id = int(await session.scalar(select(FuelPriceSnapshot.id).order_by(
-        FuelPriceSnapshot.id.desc(),
-    ).limit(1)) or 0)
+    has_prices = await session.scalar(select(FuelLatestPrice.fuel_station_id).limit(1)) is not None
+    if not has_prices:
+        return False, state
     stale = (
-        (state is None and latest_raw_id > 0)
-        or (state is not None and (
-            (state.last_success_at is None and latest_raw_id > 0)
-            or state.next_due_at is not None or state.last_error is not None
-            or latest_raw_id > state.last_refreshed_snapshot_id
-        ))
+        state is None
+        or state.last_success_at is None
+        or state.last_error is not None
+        or now_utc() - serialize_utc(state.last_success_at) > FUEL_STALE_AFTER
     )
     return stale, state
+
+
+async def upsert_latest_fuel_prices(
+    session: AsyncSession, *, collected_at: datetime | None = None,
+) -> None:
+    """원본 유가 행에서 주유소·유종별 최신 행을 `fuel_latest_prices`에 반영한다.
+
+    `collected_at`을 주면 그 수집 배치가 쓴 행만 읽는다(수집 경로). 생략하면 전 이력을
+    다시 읽는다(테스트 시드·수동 복구). 기존 행보다 오래된 원본은 덮어쓰지 않는다 —
+    순서 기준은 MV 시절과 같은 `(collected_at, id)`다.
+    """
+    ranked = select(
+        FuelPriceSnapshot.fuel_station_id, FuelPriceSnapshot.product_code,
+        FuelPriceSnapshot.id.label("snapshot_id"), FuelPriceSnapshot.price,
+        FuelPriceSnapshot.provider_updated_at, FuelPriceSnapshot.observed_at,
+        FuelPriceSnapshot.collected_at,
+        func.row_number().over(
+            partition_by=(FuelPriceSnapshot.fuel_station_id, FuelPriceSnapshot.product_code),
+            order_by=(FuelPriceSnapshot.collected_at.desc(), FuelPriceSnapshot.id.desc()),
+        ).label("rank"),
+    )
+    if collected_at is not None:
+        ranked = ranked.where(FuelPriceSnapshot.collected_at == collected_at)
+    ranked_subquery = ranked.subquery()
+    columns = ("fuel_station_id", "product_code", "snapshot_id", "price",
+               "provider_updated_at", "observed_at", "collected_at")
+    source_rows = select(*(ranked_subquery.c[name] for name in columns)).where(ranked_subquery.c.rank == 1)
+    insert = postgresql_insert if session.bind.dialect.name == "postgresql" else sqlite_insert
+    statement = insert(FuelLatestPrice).from_select(list(columns), source_rows)
+    table = FuelLatestPrice.__table__
+    statement = statement.on_conflict_do_update(
+        index_elements=["fuel_station_id", "product_code"],
+        set_={name: statement.excluded[name] for name in columns[2:]},
+        where=or_(
+            statement.excluded.collected_at > table.c.collected_at,
+            and_(
+                statement.excluded.collected_at == table.c.collected_at,
+                statement.excluded.snapshot_id >= table.c.snapshot_id,
+            ),
+        ),
+    )
+    await session.execute(statement)
 
 
 @dataclass(frozen=True, slots=True)
@@ -394,16 +441,6 @@ class TransportCollectionService:
                             session, run_id, snapshot,
                         )
                         await self._mark_fuel_success(session, snapshot.collected_at)
-                        if session.bind.dialect.name == "postgresql":
-                            # 원본은 MV 잠금을 기다리지 않고 커밋한다. 세대 증가는
-                            # 뒤따르는 갱신이 새 원본의 예약을 지우지 못하게 한다.
-                            read_model = await self._get_or_create_state(session, FUEL_READ_MODEL_SOURCE)
-                            await session.execute(update(TransportCollectionState).where(
-                                TransportCollectionState.id == read_model.id,
-                            ).values(
-                                refresh_generation=TransportCollectionState.refresh_generation + 1,
-                                next_due_at=now_utc(), updated_at=now_utc(),
-                            ))
                     await session.commit()
                 except Exception as exc:
                     await session.rollback()
@@ -415,119 +452,6 @@ class TransportCollectionService:
                 if snapshot is not None:
                     collected_source = True
                     raw_count += 1
-            if session.bind.dialect.name == "postgresql":
-                attempted_generation: int | None = None
-                attempted_raw_id: int | None = None
-                attempted_model_differs = False
-                attempted_last_success_at: datetime | None = None
-                reconciliation_unverified = False
-                try:
-                    await session.execute(text("SET LOCAL lock_timeout = '3s'"))
-                    await session.execute(text("SET LOCAL statement_timeout = '60s'"))
-                    await session.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"),
-                                          {"lock_key": TRANSPORT_COLLECTION_ADVISORY_LOCK_KEY + 2})
-                    read_model = await self._get_or_create_state(session, FUEL_READ_MODEL_SOURCE)
-                    if read_model.next_due_at is None and read_model.last_success_at is None:
-                        # 마이그레이션 직후 구버전 수집기가 남긴 원본도 첫 job에서 반영한다.
-                        read_model.next_due_at = now_utc()
-                        await session.flush()
-                    latest_raw_id = int(await session.scalar(select(FuelPriceSnapshot.id).order_by(
-                        FuelPriceSnapshot.id.desc(),
-                    ).limit(1)) or 0)
-                    # 구버전 Dagster run이 첫 MV 갱신 뒤 원본을 늦게 커밋해도
-                    # 상태 세대를 올리지 못한다. 원본 PK 체크포인트로 이를 감지한다.
-                    due = read_model.next_due_at is not None and now_utc() >= serialize_utc(read_model.next_due_at)
-                    # ID 할당 순서와 커밋 순서는 다르다. 최대 ID가 그대로여도 늦게
-                    # 커밋한 구버전 작업이나 제자리 수정이 MV와 다른지 대조한다.
-                    model_differs = False
-                    if not due and latest_raw_id <= read_model.last_refreshed_snapshot_id:
-                        # 대조 자체가 실패해도 최신성 미확인 상태를 운영에 남긴다.
-                        attempted_generation = read_model.refresh_generation
-                        attempted_raw_id = latest_raw_id
-                        attempted_last_success_at = read_model.last_success_at
-                        reconciliation_unverified = True
-                        model_differs = bool(await session.scalar(text("""
-                            WITH latest AS (
-                                SELECT DISTINCT ON (fuel_station_id, product_code)
-                                    id, fuel_station_id, product_code, price,
-                                    provider_updated_at, observed_at, collected_at
-                                FROM fuel_price_snapshots
-                                ORDER BY fuel_station_id, product_code, collected_at DESC, id DESC
-                            )
-                            SELECT EXISTS (
-                                SELECT 1 FROM latest l
-                                FULL JOIN fuel_latest_prices v USING (fuel_station_id, product_code)
-                                WHERE (l.id, l.price, l.provider_updated_at, l.observed_at, l.collected_at)
-                                    IS DISTINCT FROM
-                                    (v.id, v.price, v.provider_updated_at, v.observed_at, v.collected_at)
-                            )
-                        """)))
-                        reconciliation_unverified = False
-                    if due or latest_raw_id > read_model.last_refreshed_snapshot_id or model_differs:
-                        attempted_generation = read_model.refresh_generation
-                        attempted_raw_id = latest_raw_id
-                        attempted_model_differs = model_differs
-                        attempted_last_success_at = read_model.last_success_at
-                        await session.execute(text("REFRESH MATERIALIZED VIEW CONCURRENTLY fuel_latest_prices"))
-                        await session.execute(update(TransportCollectionState).where(
-                            TransportCollectionState.id == read_model.id,
-                            TransportCollectionState.refresh_generation == attempted_generation,
-                        ).values(
-                            last_started_at=now_utc(), last_success_at=now_utc(),
-                            next_due_at=None, last_error=None, updated_at=now_utc(),
-                            last_refreshed_snapshot_id=latest_raw_id,
-                        ))
-                    await session.commit()
-                except Exception as exc:
-                    await session.rollback()
-                    message = _safe_error(exc, self.settings)
-                    try:
-                        await session.execute(text("SET LOCAL lock_timeout = '3s'"))
-                        await session.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"),
-                                              {"lock_key": TRANSPORT_COLLECTION_ADVISORY_LOCK_KEY + 2})
-                        read_model = await session.scalar(
-                            select(TransportCollectionState).where(
-                                TransportCollectionState.source == FUEL_READ_MODEL_SOURCE,
-                            ).with_for_update()
-                        )
-                        if read_model is None:
-                            read_model = await self._get_or_create_state(session, FUEL_READ_MODEL_SOURCE)
-                        # 다른 프로세스가 이미 성공한 뒤라면 실패 상태를 덮어쓰지 않는다.
-                        checkpoint_outdated = (
-                            attempted_raw_id is not None
-                            and attempted_generation == read_model.refresh_generation
-                            and read_model.last_refreshed_snapshot_id < attempted_raw_id
-                        )
-                        reconciliation_failed = (
-                            (attempted_model_differs or reconciliation_unverified)
-                            and attempted_generation == read_model.refresh_generation
-                            and read_model.last_success_at == attempted_last_success_at
-                        )
-                        if read_model.next_due_at is not None or checkpoint_outdated or reconciliation_failed:
-                            read_model.last_started_at = now_utc()
-                            read_model.last_error = message
-                            # 이전 갱신이 실패한 동안 새 원본이 들어왔으면 새 배치의
-                            # 즉시 갱신 예약을 5분 뒤로 덮지 않는다.
-                            if attempted_generation == read_model.refresh_generation:
-                                read_model.next_due_at = now_utc() + timedelta(minutes=5)
-                            read_model.updated_at = now_utc()
-                        elif read_model.last_success_at is None:
-                            # 첫 갱신이 rollback되면서 새 상태 행도 사라진 경우.
-                            read_model.last_started_at = now_utc()
-                            read_model.last_error = message
-                            read_model.next_due_at = now_utc() + timedelta(minutes=5)
-                            read_model.updated_at = now_utc()
-                        await session.commit()
-                    except Exception as state_exc:
-                        await session.rollback()
-                        logger.error("fuel latest prices refresh state could not be recorded: %s",
-                                     _safe_error(state_exc, self.settings))
-                    if scope == "highway":
-                        # 읽기 모델의 독립 재시도 실패가 정상 고속도로 수집을
-                        # Dagster 실패로 오인시키지 않게 상태·로그에만 남긴다.
-                        logger.warning("fuel latest prices refresh retry failed: %s", message)
-                    else:
-                        errors.append(f"최신 유가 읽기 모델 갱신 실패: {message}")
             # rollback은 ORM 객체를 만료시키므로 async get으로 명시적으로 다시 읽는다.
             run = await session.get(CollectionRun, run_id)
             if not errors and not collected_source and raw_count == 0:
@@ -977,6 +901,8 @@ class TransportCollectionService:
                     existing.collected_at = collected_at
                     existing.raw_item_json = raw_item
         await session.flush()
+        # 이 배치가 새로 쓰거나 다시 확인한 행은 모두 같은 collected_at을 갖는다.
+        await upsert_latest_fuel_prices(session, collected_at=collected_at)
         return station_count, price_count
 
     async def _source_is_due(self, session: AsyncSession, source: str) -> bool:
