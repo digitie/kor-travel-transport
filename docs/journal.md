@@ -1,5 +1,33 @@
 # journal.md — 작업 일지
 
+## 2026-10-02 — 공용 Dagster 제어 평면 합류(브랜치 `feat/shared-dagster-plane`, Manager ADR-54)
+
+소유자 승인 작업. Manager의 공용 Dagster plane(weather·pinvi·geo·map이 2026-09-30~10-01 합류)에 transport를 더한다.
+짝 Manager 브랜치는 `feat/transport-shared-dagster`(prep 커밋 — 형제 프로젝트 지원, transport `own` — 과 flip 커밋).
+배포·전환은 하지 않았다(소유자가 리뷰 뒤 실행).
+
+- compose: code-server만 남는다 — `dagster code-server start -h 127.0.0.1 -p 14005 -m app.dagster.definitions
+  --location-name kor-travel-transport`(옛 workspace의 location 이름 그대로 → selector id·`dagster/code_location`
+  유지), 공용 instance URL(`KOR_TRAVEL_DAGSTER_SHARED_APP_PASSWORD`), `$DAGSTER_HOME/dagster.yaml`은 설치된 Manager
+  release의 공용 정의를 읽기 전용으로. 옛 webserver·daemon·gateway·`dagster-migrate`는 `legacy-dagster` profile.
+- n150 읽기 전용 실측(2026-10-02): 옛 instance의 RUNNING은 schedule 10개·sensor 0 — 코드의 `default_status`가 모두
+  RUNNING이라 같다(D4). code-server는 root라 `/opt/dagster/state`를 만들 수 있다. dagster 1.13.24(공용 호스트와 같다).
+  `dagster code-server start`는 `--location-name`·`--inject-env-vars-from-instance`를 받는다. `.env.server14`의
+  `BACKEND_RUNTIME_IMAGE`는 낡은 digest라 Manager 전환이 그대로 쓰면 옛 이미지로 뜬다 → `DEPLOY_MODE=
+  prepare-shared-dagster-cutover`가 실제 tag를 담은 전환 env 파일을 만든다.
+- job에 `dagster/max_runtime=14400`(옛 instance의 4시간, 공용 전역은 6시간). 상한(location 3, run_group 넷 각 1)은
+  Manager 공용 `dagster.yaml`이 갖는다.
+- 운영 UI: `/api/dagster/graphql`이 브라우저 query를 넘기지 않고 이름 붙은 `TransportDagsterOverview`를 location
+  범위로 바꿔 공용 webserver(11002)에 보낸다(weather `dagster-scope`와 같은 형태). 옛 12302 gateway 삭제, 링크는
+  공용 host.
+- 배포 스크립트: 공용 daemon을 멈추지 않고 location 범위의 run·worker 0을 기다려 교체, 합류 전(공용 plane이
+  location을 모름·옛 daemon이 돎)에는 거부. 옛 세 서비스 긴급 교체 스크립트 삭제.
+- 전환·되돌리기 절차: `docs/architecture/shared-db-dagster.md` "공용 Dagster 제어 평면".
+- 검증(n150 격리 컨테이너): 관련 백엔드 9파일 138 passed(공용 plane 계약·배포 가드·운영 UI 계약·healthcheck·
+  rename·definitions 등), 운영 UI vitest 136 passed·type-check·build 통과. 전체 백엔드 스위트는 n150 부하
+  (load 10~60, PostgreSQL TRUNCATE 46초)로 끝내지 못했다 — CI가 정본이다. 실제 렌더(`docker compose config`,
+  예시 env)를 Manager 창 스크립트의 derive에 넣어 선언과 일치함을 확인했다.
+
 ## 2026-10-02 — Map 이관용 내부 export·휴게소 수집(ADR-013, `feat/map-service-exports`)
 
 - 소유자 결정: kor-travel-map이 transport로 얻을 수 있는 것은 transport API로 바꾸고, 필요하면 transport API를 고친다.

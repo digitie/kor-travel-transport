@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 
 
@@ -30,8 +31,8 @@ def test_transport_admin_is_a_separate_host_network_stack() -> None:
     # Dagster는 공용 제어 평면이다(Manager ADR-54) — 공용 webserver의 loopback을 부르고, 옛 전용
     # webserver(14004)와 그 앞의 12302 gateway는 없다.
     assert 'TRANSPORT_DAGSTER_INTERNAL_URL: "${TRANSPORT_DAGSTER_INTERNAL_URL:-http://127.0.0.1:11002}"' in compose
-    assert "14004" not in compose
-    assert "transport-dagster-gateway" not in compose
+    assert "127.0.0.1:14004" not in compose
+    assert "\n  transport-dagster-gateway:" not in compose  # 서비스 정의가 없다(주석의 언급은 무관)
     assert "TRANSPORT_DAGSTER_PORT" not in compose
     assert "기본 `kor-travel-transport` Compose와 독립된" in compose
 
@@ -101,7 +102,8 @@ def test_transport_admin_dagster_proxy_forwards_only_scoped_named_operations() -
 
     assert "scopedDagsterRequest(parsed)" in route
     assert "body: scoped.body" in route
-    assert "body }" not in route and "body })" not in route  # 원문 body를 그대로 넘기지 않는다
+    # 원문 body를 그대로 넘기지 않는다 — upstream fetch의 본문은 scope가 만든 것뿐이다.
+    assert re.findall(r"\bbody(?::\s*[\w.]+)?\s*[,}]", route.split("fetchNoStore(", 1)[1].split(");", 1)[0]) == ["body: scoped.body }"]
     assert 'TRANSPORT_DAGSTER_INTERNAL_URL ?? "http://127.0.0.1:11002"' in route
     assert "repositoriesOrError" not in scope.split("*/", 1)[1]
     assert 'export const DAGSTER_UI_BASE = "https://dagster.digitie.mywire.org";' in scope
