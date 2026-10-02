@@ -110,8 +110,11 @@ gateway와 `dagster-migrate`는 `profiles: [legacy-dagster]`로 내려갔고, �
 2. n150 root: Manager 전환 release를 설치한 직후
    `EXTERNAL_ENV_FILE=/home/digitie/apps/kor-travel-transport/.env.server14.shared-dagster-cutover`로
    `scripts/dagster-shared-cutover.sh transport forward <manager-sha>`(systemd-run).
-3. WSL: `./scripts/deploy-server14.sh`(일반 배포 — backend·frontend를 같은 release로 맞춘다),
-   `./scripts/deploy-transport-admin-server14.sh`(공용 webserver를 부르는 운영 UI, 옛 12302 gateway 제거).
+3. WSL: `./scripts/deploy-server14.sh`(일반 배포 — backend·frontend를 같은 release로 맞춘다), 이어서 **바로**
+   `./scripts/deploy-transport-admin-server14.sh`(공용 webserver를 부르는 운영 UI, 옛 12302 gateway 제거 — 그
+   전까지 옛 UI의 Dagster 화면은 지워진 14004를 불러 실패한다).
+4. 관찰 기간 뒤 `.env.server14.shared-dagster-cutover`(운영 비밀 전체의 사본)를 지운다. 되돌리기는 지원하지
+   않는다(보장 없는 수동 best-effort).
 
 이후 Dagster 정의·healthcheck가 바뀌는 반영도 일반 배포 하나로 한다(code-server만 Dagster 프로세스다).
 

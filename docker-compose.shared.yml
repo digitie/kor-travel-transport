@@ -8,9 +8,9 @@
 # Dagster는 공용 제어 평면(kor-travel-docker-manager ADR-54)에 합류했다. 공용 daemon·webserver
 # (`127.0.0.1:11002`)·gateway(`dagster.digitie.mywire.org`)가 이 프로젝트의 code-server를 workspace
 # location `kor-travel-transport`로 싣는다. 이 파일에 남는 Dagster 프로세스는 code-server 하나다.
-# 옛 webserver·daemon·gateway와 옛 metadata DB의 migrate는 `profiles: [legacy-dagster]`에 남는다 — 되돌리기
-# (Manager `scripts/dagster-shared-cutover.sh transport rollback`)와 그 스크립트의 모양 파생이 찾는다. 평소
-# `up`은 그것들을 띄우지 않는다. 자세히는 `docs/architecture/shared-db-dagster.md` §공용 Dagster 제어 평면.
+# 옛 webserver·daemon·gateway와 옛 metadata DB의 migrate는 `profiles: [legacy-dagster]`에 남는다 — Manager 전환
+# 스크립트의 모양 파생(펜스할 옛 서비스)이 찾는다. 평소 `up`은 그것들을 띄우지 않는다. 되돌리기는 지원하지 않는다
+# (보장 없는 수동 best-effort). 자세히는 `docs/architecture/shared-db-dagster.md` §공용 Dagster 제어 평면.
 
 # 옛 프로젝트 전용 Dagster instance(`kor_travel_transport_dagster`) — legacy-dagster 서비스만 쓴다.
 x-dagster-control-environment: &dagster-control-environment
@@ -150,7 +150,7 @@ services:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${PUBLIC_API_PORT:-14001}/health', timeout=5).read()"]
 
   # 옛 전용 Dagster instance의 run/event/schedule storage schema(application Alembic과 별개). 공용
-  # instance의 schema는 Manager의 storage migrate one-shot만 만든다. 되돌리기용으로 legacy-dagster에 남는다.
+  # instance의 schema는 Manager의 storage migrate one-shot만 만든다. 옛 DB(30일 보존)용으로 legacy-dagster에 남는다.
   dagster-migrate:
     image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-transport-backend:latest}"
     profiles: [legacy-dagster]
@@ -222,8 +222,7 @@ services:
       start_interval: 5s
 
   # ── 옛 전용 Dagster(legacy-dagster) ─────────────────────────────────────────────
-  # 공용 plane 합류로 내려갔다. 평소 `up`은 띄우지 않는다. 되돌리기는 이 서비스들이 profile 없이 다시
-  # 활성인 이전 release를 stage한 뒤 Manager의 `dagster-shared-cutover.sh transport rollback`이 띄운다.
+  # 공용 plane 합류로 내려갔다. 평소 `up`은 띄우지 않는다. Manager 전환 스크립트가 모양으로 찾아 펜스한다.
   # 이 서비스들을 이 profile로 직접 띄우지 않는다 — 공용 daemon이 같은 schedule을 이미 쏜다(이중 발화).
   dagster-webserver:
     image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-transport-backend:latest}"

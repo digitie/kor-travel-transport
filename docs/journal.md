@@ -22,7 +22,9 @@
   공용 host.
 - 배포 스크립트: 공용 daemon을 멈추지 않고 location 범위의 run·worker 0을 기다려 교체, 합류 전(공용 plane이
   location을 모름·옛 daemon이 돎)에는 거부. 옛 세 서비스 긴급 교체 스크립트 삭제.
-- 전환·되돌리기 절차: `docs/architecture/shared-db-dagster.md` "공용 Dagster 제어 평면".
+- 전환 절차: `docs/architecture/shared-db-dagster.md` "공용 Dagster 제어 평면". 되돌리기는 지원하지 않는다
+  (소유자 결정 — 보장 없는 수동 best-effort). 전환 직후 운영 UI를 바로 배포하고, 관찰 기간 뒤 전환 env 파일
+  (운영 비밀 사본)을 지운다. `origin/main`(#60, ADR-011 — receipt 게이트·개명 스크립트 삭제) 위로 rebase했다.
 - 검증(n150 격리 컨테이너): 관련 백엔드 9파일 138 passed(공용 plane 계약·배포 가드·운영 UI 계약·healthcheck·
   rename·definitions 등), 운영 UI vitest 136 passed·type-check·build 통과. 전체 백엔드 스위트는 n150 부하
   (load 10~60, PostgreSQL TRUNCATE 46초)로 끝내지 못했다 — CI가 정본이다. 실제 렌더(`docker compose config`,

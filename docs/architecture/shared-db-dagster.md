@@ -220,12 +220,14 @@ Manager 쪽 전환 PR(`feat/transport-shared-dagster`의 flip)과 이 저장소�
    `RepositoryLocation`·RUNNING instigator 동등(10 schedule) → 옛 컨테이너 제거 → 첫 tick(5분 주기라 몇 분).
 4. WSL: `./scripts/deploy-server14.sh`(일반 배포 — backend·frontend를 같은 release로 맞춘다. 공용 plane이 location을
    싣는지·옛 daemon이 멈췄는지 확인한 뒤에만 교체한다).
-5. WSL: `./scripts/deploy-transport-admin-server14.sh`(공용 webserver를 부르는 운영 UI. `--remove-orphans`가 옛
-   12302 gateway 컨테이너를 지운다).
+5. WSL: `./scripts/deploy-transport-admin-server14.sh` — **3이 끝나면 바로**. 그 전까지 떠 있는 옛 운영 UI는 지워진
+   옛 webserver(14004)를 불러 Dagster 화면이 실패하고, 옛 12302 gateway도 upstream이 없다. 새 UI는 공용
+   webserver를 부르고 `--remove-orphans`가 옛 12302 gateway 컨테이너를 지운다.
+6. 관찰 기간(공용 plane에서 transport tick·run이 며칠 정상)이 끝나면 전환 env 파일을 지운다 —
+   `.env.server14.shared-dagster-cutover`는 운영 비밀 전체의 사본이다:
+   `shred -u /home/digitie/apps/kor-travel-transport/.env.server14.shared-dagster-cutover`(없으면 `rm -f`).
 
-되돌리기: 먼저 전환 env 파일을 working_dir 밖에 복사한다(`sudo install -m 0600 .env.server14.shared-dagster-cutover
-/root/transport-cutover.env` — 이전 release의 배포 동기화(`rsync --delete`)는 이 파일을 지운다). 이 저장소의 이전
-release를 stage(`DEPLOY_STAGE_ONLY=true`)하고, Manager의 이전 release(prep — transport `own`)를 설치한 뒤
-`EXTERNAL_ENV_FILE=/root/transport-cutover.env dagster-shared-cutover.sh transport rollback <prep-sha>`를 돈다. 공용
-plane에서 location을 내리고 공용 instance의 진행 중 run을 취소한 뒤 옛 code-server·webserver·daemon·gateway를
-다시 만든다(이미지는 그 env 파일의 tag — 정의는 tag만 다르다). 운영 UI도 이전 release로 다시 배포한다.
+되돌리기는 **지원하지 않는다**(소유자 결정, 2026-10-02). 보장 없는 수동 best-effort뿐이다 — 문제가 생기면 이
+저장소의 이전 release를 다시 배포하고 옛 Dagster 서비스를 손으로 띄우는 것을 상황에 맞게 판단한다. 옛 metadata
+DB(`kor_travel_transport_dagster`)는 지우지 않고 남는다(30일). Manager 창 스크립트의 `rollback` 모드는 이 형제
+프로젝트에 대해 검증하지 않았다(이전 release의 code-server는 `--location-name`이 없어 선언과의 대조에서 멈춘다).
