@@ -52,7 +52,11 @@ from app.schemas import (
     RestAreaFuelPriceExportPage,
 )
 from app.services.rest_area_collection import REST_AREA_FUEL_SOURCE, REST_AREA_SOURCE
-from app.services.transport_collection import FUEL_STALE_AFTER, INCIDENT_SOURCE, OPINET_SOURCE
+from app.services.transport_collection import (
+    FUEL_STALE_AFTER,
+    INCIDENT_SOURCE,
+    OPINET_SOURCE,
+)
 
 SERVICE_TOKEN_HEADER = "x-kor-travel-transport-service-token"
 MIN_SERVICE_TOKEN_LENGTH = 32
