@@ -35,12 +35,14 @@ HEADERS = {"X-Kor-Travel-Transport-Service-Token": TOKEN}
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+LOOPBACK_CLIENT = ("127.0.0.1", 50123)
+
+
 @pytest.fixture
 def export_client(test_settings: Settings):
     test_settings.transport_service_export_token = TOKEN
-    test_settings.service_export_allowed_hosts_csv = "testserver"
-    test_settings.trusted_hosts_csv = "testserver,pr-api.example.test"
-    with TestClient(create_app(test_settings)) as client:
+    test_settings.trusted_hosts_csv = "testserver,pr-api.example.test,127.0.0.1"
+    with TestClient(create_app(test_settings), client=LOOPBACK_CLIENT) as client:
         yield client
 
 
@@ -69,19 +71,45 @@ async def _set_state(session, source: str, **values) -> None:
     "/v1/service/exports/highway-incidents/active",
     "/v1/service/exports/airports",
 ])
-def test_exports_hide_without_token_or_from_a_public_host(export_client: TestClient, path: str) -> None:
-    assert export_client.get(path).status_code == 404
-    assert export_client.get(path, headers={"X-Kor-Travel-Transport-Service-Token": "x" * 40}).status_code == 404
-    # 토큰이 맞아도 외부 reverse proxy의 Host로 들어오면 닫힌다.
-    public = export_client.get(path, headers={**HEADERS, "Host": "pr-api.example.test"})
-    assert public.status_code == 404
-    assert export_client.get(path, headers=HEADERS).status_code in {200, 503}
+def test_exports_hide_without_token_or_from_a_remote_peer(test_settings: Settings, path: str) -> None:
+    test_settings.transport_service_export_token = TOKEN
+    test_settings.trusted_hosts_csv = "testserver,127.0.0.1,localhost"
+    app = create_app(test_settings)
+    with TestClient(app, client=LOOPBACK_CLIENT) as local:
+        assert local.get(path).status_code == 404
+        assert local.get(path, headers={"X-Kor-Travel-Transport-Service-Token": "x" * 40}).status_code == 404
+        # 같은 토큰이라도 loopback 밖 peer는 닫힌다 — Host 헤더를 loopback으로 꾸며도 마찬가지다
+        # (`curl -H 'Host: 127.0.0.1' http://192.168.1.14:14001/...`).
+        assert local.get(path, headers=HEADERS).status_code in {200, 503}
+    with TestClient(app, client=("192.168.1.50", 40000)) as remote:
+        assert remote.get(path, headers=HEADERS).status_code == 404
+        assert remote.get(path, headers={**HEADERS, "Host": "127.0.0.1"}).status_code == 404
+        assert remote.get(path, headers={**HEADERS, "Host": "localhost"}).status_code == 404
+    with TestClient(app, client=("::ffff:192.168.1.50", 40000)) as mapped:
+        assert mapped.get(path, headers={**HEADERS, "Host": "127.0.0.1"}).status_code == 404
+    with TestClient(app, client=("::ffff:127.0.0.1", 40000)) as mapped_loopback:
+        assert mapped_loopback.get(path, headers=HEADERS).status_code in {200, 503}
+    # Starlette TestClient 기본 peer("testclient")처럼 IP가 아닌 값도 닫힌다.
+    with TestClient(app) as unknown:
+        assert unknown.get(path, headers=HEADERS).status_code == 404
+
+
+def test_allowed_clients_widen_only_by_cidr(test_settings: Settings) -> None:
+    """standalone 개발(Map이 docker bridge에서 host.docker.internal로 접속)은 대역을 명시해 연다."""
+    test_settings.transport_service_export_token = TOKEN
+    test_settings.service_export_allowed_clients_csv = "127.0.0.1/32,172.16.0.0/12"
+    app = create_app(test_settings)
+    with TestClient(app, client=("172.18.0.5", 40000)) as bridge:
+        assert bridge.get("/v1/service/exports/airports", headers=HEADERS).status_code == 200
+    with TestClient(app, client=("192.168.1.50", 40000)) as lan:
+        assert lan.get("/v1/service/exports/airports", headers=HEADERS).status_code == 404
+    with pytest.raises(ValueError, match="SERVICE_EXPORT_ALLOWED_CLIENTS_CSV"):
+        Settings(service_export_allowed_clients_csv="127.0.0.1,not-a-network")
 
 
 def test_exports_stay_closed_when_the_token_is_short(test_settings: Settings) -> None:
     test_settings.transport_service_export_token = "short"
-    test_settings.service_export_allowed_hosts_csv = "testserver"
-    with TestClient(create_app(test_settings)) as client:
+    with TestClient(create_app(test_settings), client=LOOPBACK_CLIENT) as client:
         response = client.get("/v1/service/exports/airports",
                               headers={"X-Kor-Travel-Transport-Service-Token": "short"})
     assert response.status_code == 404
@@ -127,6 +155,36 @@ def test_fuel_station_export_pages_stable_ids_with_latest_prices(export_client: 
     assert bad.status_code == 422
 
 
+@pytest.mark.parametrize("state", [
+    None,
+    {"last_success_at": None},
+    {"last_error": "collection_failed"},
+    {"last_success_at_age": timedelta(hours=25)},
+])
+def test_fuel_station_export_refuses_without_a_current_collection(export_client: TestClient, state) -> None:
+    """이력 없음·실패·24시간 초과면 503 — 빈·낡은 집합을 현재로 주지 않는다(ADR-012)."""
+    async def seed(session) -> None:
+        if state is None:
+            return
+        values = dict(state)
+        age = values.pop("last_success_at_age", timedelta(0))
+        values.setdefault("last_success_at", now_utc() - age)
+        await _set_state(session, OPINET_SOURCE, **values)
+
+    _run(export_client, seed)
+    response = export_client.get("/v1/service/exports/fuel-stations", headers=HEADERS)
+    assert response.status_code == 503
+
+
+def test_rest_area_export_refuses_once_the_reference_is_older_than_three_days(export_client: TestClient) -> None:
+    _run(export_client, lambda session: _set_state(
+        session, REST_AREA_SOURCE, last_success_at=now_utc() - timedelta(days=3, minutes=1)))
+    assert export_client.get("/v1/service/exports/rest-areas", headers=HEADERS).status_code == 503
+    _run(export_client, lambda session: _set_state(session, REST_AREA_SOURCE, last_success_at=now_utc()))
+    ok = export_client.get("/v1/service/exports/rest-areas", headers=HEADERS)
+    assert ok.status_code == 200 and ok.json()["collection"]["stale"] is False
+
+
 def _rest_area(name: str, *, lat: float = 36.9) -> RestArea:
     return RestArea(name=name, route_name="서해안고속도로", direction="목포방향", lat=lat, lon=126.8,
                     has_gas_station=True, has_lpg_station=False, has_ev_charger=True, phone_number="031-000-0000",
@@ -159,6 +217,9 @@ class FakeKrex:
 def test_rest_area_collection_and_exports(export_client: TestClient) -> None:
     settings = export_client.app.state.settings
     assert _run(export_client, RestAreaCollectionService(settings).collect_references)["status"] == "skipped"
+    # 수집이 꺼져 있어 이력이 없으면 빈 200이 아니라 503이다(소비자가 전량 삭제로 읽지 않게).
+    for path in ("/v1/service/exports/rest-areas", "/v1/service/exports/rest-area-fuel-prices"):
+        assert export_client.get(path, headers=HEADERS).status_code == 503
     settings.rest_area_collection_enabled = True
     settings.data_go_kr_service_key = "go-key"
     settings.kex_ex_api_key = "ex-key"
@@ -189,9 +250,10 @@ def test_rest_area_collection_and_exports(export_client: TestClient) -> None:
     fake.fuel_prices = boom
     with pytest.raises(RuntimeError):
         _run(export_client, service.collect_fuel_prices)
-    failed = export_client.get("/v1/service/exports/rest-area-fuel-prices", headers=HEADERS).json()
-    assert failed["collection"]["failed"] is True and failed["collection"]["stale"] is True
-    assert len(failed["items"]) == 1
+    # 실패한 수집 뒤에는 503이다 — 소비자가 낡은 집합을 현재로, 빈 집합을 삭제로 읽지 않게(ADR-012).
+    failed = export_client.get("/v1/service/exports/rest-area-fuel-prices", headers=HEADERS)
+    assert failed.status_code == 503
+    assert "secret-url" not in failed.text
     status = {row["source"]: row for row in export_client.get("/v1/transport/providers").json()["items"]}
     assert status[REST_AREA_FUEL_SOURCE]["status"] == "failed"
     assert "secret-url" not in export_client.get("/v1/transport/providers").text

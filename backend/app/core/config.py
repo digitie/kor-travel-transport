@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 from functools import lru_cache
 from typing import Literal
 
@@ -42,7 +43,8 @@ class Settings(BaseSettings):
     # 경로 전체가 404다. 허용 Host는 loopback 이름만 — 외부 reverse proxy(pr-api)를 거친 요청은
     # 토큰이 맞아도 닫힌다.
     transport_service_export_token: str | None = None
-    service_export_allowed_hosts_csv: str = "127.0.0.1,localhost"
+    #: export에 접속할 수 있는 peer 주소 대역(CIDR). Host 헤더가 아니라 실제 접속 주소로 판정한다.
+    service_export_allowed_clients_csv: str = "127.0.0.1/32,::1/128"
     rest_area_collection_enabled: bool = False
     kex_ex_api_key: str | None = None
     # KRIC 인증 OpenAPI는 48시간 batch 전용이다. 공개 조회는 DB만 읽는다.
@@ -132,6 +134,10 @@ class Settings(BaseSettings):
                 "3.5-hour ferry collection runtime budget including API_TIMEOUT_SECONDS "
                 "and FERRY_TIMETABLE_COLLECTION_INTERVAL_SECONDS"
             )
+        try:
+            self.service_export_allowed_client_networks  # noqa: B018 - 기동 때 CIDR을 검증한다.
+        except ValueError as exc:
+            raise ValueError("SERVICE_EXPORT_ALLOWED_CLIENTS_CSV must be a comma-separated CIDR list") from exc
         return self
 
     @property
@@ -147,9 +153,11 @@ class Settings(BaseSettings):
         return [host.strip() for host in self.trusted_hosts_csv.split(",") if host.strip()]
 
     @property
-    def service_export_allowed_hosts(self) -> frozenset[str]:
-        return frozenset(
-            host.strip().lower() for host in self.service_export_allowed_hosts_csv.split(",") if host.strip()
+    def service_export_allowed_client_networks(self) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+        """`SERVICE_EXPORT_ALLOWED_CLIENTS_CSV`의 CIDR 목록. 잘못된 값은 기동 때 거부된다."""
+        return tuple(
+            ipaddress.ip_network(value.strip(), strict=False)
+            for value in self.service_export_allowed_clients_csv.split(",") if value.strip()
         )
 
     @property

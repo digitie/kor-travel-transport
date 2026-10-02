@@ -1,13 +1,20 @@
 """내부 서비스용 일괄 export `/v1/service/exports/*` (ADR-012).
 
 kor-travel-map이 OpiNet·KREX·공항 데이터를 provider에 직접 묻지 않고 transport가 저장한 값을
-읽어 가는 경로다. 공개 지도 API와 달리 원본 provider 행(`raw`)을 함께 주므로 토큰과 loopback
-Host로 닫는다. 토큰이 없거나 짧거나 다르거나, 외부 reverse proxy의 Host로 들어오면 경로 자체를
-숨긴다(404) — 관리자 좌표 보정 경로와 같은 관례다.
+읽어 가는 경로다. 공개 지도 API와 달리 원본 provider 행(`raw`)을 함께 주므로 토큰과 **접속한
+쪽의 주소**(loopback 기본)로 닫는다. 토큰이 없거나 짧거나 다르거나, 허용 대역 밖에서 접속하면 경로
+자체를 숨긴다(404) — 관리자 좌표 보정 경로와 같은 관례다. `Host` 헤더는 호출자가 마음대로 정하는
+값이라 판정에 쓰지 않는다(backend는 host network라 `request.client`가 실제 peer 주소다).
+
+모든 dataset은 같은 신선도 계약을 따른다: 수집 이력이 없거나, 마지막 수집이 실패했거나, stale
+기준을 넘었으면 503이다. 200이면 그 응답의 집합은 "마지막 성공 수집의 현재 집합"이라는 뜻이고,
+소비자는 거기 없는 행을 사라진 것으로 다뤄도 된다. 한 응답 안의 상태 행과 데이터 행은
+REPEATABLE READ 한 snapshot에서 읽는다.
 """
 
 from __future__ import annotations
 
+import ipaddress
 import secrets
 from collections.abc import AsyncIterator, Callable
 from datetime import datetime, timedelta
@@ -45,7 +52,7 @@ from app.schemas import (
     RestAreaFuelPriceExportPage,
 )
 from app.services.rest_area_collection import REST_AREA_FUEL_SOURCE, REST_AREA_SOURCE
-from app.services.transport_collection import INCIDENT_SOURCE, OPINET_SOURCE, fuel_read_model_freshness
+from app.services.transport_collection import FUEL_STALE_AFTER, INCIDENT_SOURCE, OPINET_SOURCE
 
 SERVICE_TOKEN_HEADER = "x-kor-travel-transport-service-token"
 MIN_SERVICE_TOKEN_LENGTH = 32
@@ -54,8 +61,10 @@ MIN_SERVICE_TOKEN_LENGTH = 32
 CURRENT_SET_WINDOW = timedelta(days=3)
 #: 돌발 활성 집합은 5분 수집이 이보다 오래 성공하지 못하면 내주지 않는다(소비자가 해소로 오판).
 INCIDENT_ACTIVE_SET_MAX_AGE = timedelta(minutes=30)
-#: 참조 데이터 stale 표시 기준. 정기 주기(유가 8시간·휴게소 1일·유가 4시간)의 약 3배.
+#: 참조 데이터 stale 기준(넘으면 503). 정기 주기(유가 8시간·휴게소 1일·휴게소 유가 4시간)의 약 3배.
+#: 오피넷은 공개 API의 유가 신선도(`FUEL_STALE_AFTER`)와 같은 값을 쓴다.
 REFERENCE_STALE_AFTER = {
+    OPINET_SOURCE: FUEL_STALE_AFTER,
     REST_AREA_SOURCE: timedelta(days=3),
     REST_AREA_FUEL_SOURCE: timedelta(hours=12),
 }
@@ -68,11 +77,10 @@ def build_service_export_router(
     def require_service_token(request: Request) -> None:
         configured = settings.transport_service_export_token or ""
         provided = request.headers.get(SERVICE_TOKEN_HEADER, "")
-        host = (request.url.hostname or "").lower()
         token_ok = len(configured) >= MIN_SERVICE_TOKEN_LENGTH and secrets.compare_digest(
             configured.encode(), provided.encode(),
         )
-        if not token_ok or host not in settings.service_export_allowed_hosts:
+        if not token_ok or not _client_allowed(request, settings):
             raise HTTPException(status_code=404, detail="Not Found")
 
     router = APIRouter(prefix="/service/exports", dependencies=[Depends(require_service_token)],
@@ -85,8 +93,9 @@ def build_service_export_router(
         session: AsyncSession = Depends(get_db),
     ) -> FuelStationExportPage:
         """오피넷 주유소와 유종별 최신 가격. 안정 ID(uni_id)가 없는 행은 내보내지 않는다."""
-        stale, state = await fuel_read_model_freshness(session)
-        collection = _collection(OPINET_SOURCE, state, stale)
+        await _begin_snapshot(session)
+        state = await _state(session, OPINET_SOURCE)
+        collection = _require_current(_reference_collection(OPINET_SOURCE, state))
         after = _decode_cursor(cursor)
         query = (
             select(FuelStation)
@@ -130,7 +139,9 @@ def build_service_export_router(
         session: AsyncSession = Depends(get_db),
     ) -> RestAreaExportPage:
         """고속도로 휴게소 기준정보(data.go.kr 표준데이터)."""
+        await _begin_snapshot(session)
         state = await _state(session, REST_AREA_SOURCE)
+        collection = _require_current(_reference_collection(REST_AREA_SOURCE, state))
         query = (
             select(RestAreaReference)
             .where(RestAreaReference.source == REST_AREA_SOURCE, RestAreaReference.id > _decode_cursor(cursor))
@@ -147,7 +158,7 @@ def build_service_export_router(
             last_seen_at=serialize_utc(row.last_seen_at), raw=row.raw_item_json,
         ) for row in page]
         return RestAreaExportPage(
-            generated_at=now_utc(), collection=_reference_collection(REST_AREA_SOURCE, state), items=items,
+            generated_at=now_utc(), collection=collection, items=items,
             next_cursor=str(page[-1].id) if has_more else None, has_more=has_more,
         )
 
@@ -158,7 +169,9 @@ def build_service_export_router(
         session: AsyncSession = Depends(get_db),
     ) -> RestAreaFuelPriceExportPage:
         """휴게소 주유소 현재 유가(한국도로공사 EX). `observed_at`은 transport 수집 시각이다."""
+        await _begin_snapshot(session)
         state = await _state(session, REST_AREA_FUEL_SOURCE)
+        collection = _require_current(_reference_collection(REST_AREA_FUEL_SOURCE, state))
         query = (
             select(RestAreaFuelPrice)
             .where(RestAreaFuelPrice.source == REST_AREA_FUEL_SOURCE, RestAreaFuelPrice.id > _decode_cursor(cursor))
@@ -175,7 +188,7 @@ def build_service_export_router(
             lpg_price=row.lpg_price, observed_at=serialize_utc(row.last_seen_at), raw=row.raw_item_json,
         ) for row in page]
         return RestAreaFuelPriceExportPage(
-            generated_at=now_utc(), collection=_reference_collection(REST_AREA_FUEL_SOURCE, state), items=items,
+            generated_at=now_utc(), collection=collection, items=items,
             next_cursor=str(page[-1].id) if has_more else None, has_more=has_more,
         )
 
@@ -186,6 +199,7 @@ def build_service_export_router(
         수집이 실패했거나 30분 넘게 성공하지 못했으면 503이다 — 오래된 집합을 주면 소비자가
         사라진 사건을 해소로 오판한다. 빈 목록은 "현재 돌발 없음"이라는 확인된 사실이다.
         """
+        await _begin_snapshot(session)
         state = await _state(session, INCIDENT_SOURCE)
         if (state is None or state.last_success_at is None or state.last_error is not None
                 or now_utc() - serialize_utc(state.last_success_at) > INCIDENT_ACTIVE_SET_MAX_AGE):
@@ -243,6 +257,37 @@ def build_service_export_router(
         return AirportExportResponse(generated_at=now_utc(), items=items)
 
     return router
+
+
+def _client_allowed(request: Request, settings: Settings) -> bool:
+    """접속한 peer 주소가 허용 대역 안인가. IPv4-mapped IPv6는 IPv4로 본다."""
+    if request.client is None:
+        return False
+    try:
+        address = ipaddress.ip_address(request.client.host)
+    except ValueError:
+        return False
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        address = address.ipv4_mapped
+    return any(address in network for network in settings.service_export_allowed_client_networks)
+
+
+async def _begin_snapshot(session: AsyncSession) -> None:
+    """상태 행과 데이터 행을 한 snapshot에서 읽도록 트랜잭션을 REPEATABLE READ로 연다.
+
+    첫 문장 전에 불러야 한다. 연결이 pool로 돌아갈 때 SQLAlchemy가 격리 수준을 되돌린다.
+    """
+    if session.bind.dialect.name == "postgresql":
+        await session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
+
+
+def _require_current(collection: ExportCollectionState) -> ExportCollectionState:
+    """수집 이력이 없거나 실패했거나 stale이면 503 — 소비자가 빈·낡은 집합을 삭제로 읽지 않게."""
+    if collection.last_success_at is None or collection.failed or collection.stale:
+        raise HTTPException(
+            status_code=503, detail=f"{collection.source} 수집이 최근에 성공하지 않았습니다.",
+        )
+    return collection
 
 
 def _decode_cursor(cursor: str | None) -> int:

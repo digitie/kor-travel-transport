@@ -99,6 +99,11 @@ services:
       TRANSPORT_ADMIN_WRITE_TOKEN: "${TRANSPORT_ADMIN_WRITE_TOKEN:-}"
       # kor-travel-map이 읽는 내부 export 토큰(ADR-012). 비면 /v1/service/exports/*는 404다.
       TRANSPORT_SERVICE_EXPORT_TOKEN: "${TRANSPORT_SERVICE_EXPORT_TOKEN:-}"
+      # export에 접속할 수 있는 peer 대역(CIDR). 운영은 Map이 host network라 loopback만 연다.
+      SERVICE_EXPORT_ALLOWED_CLIENTS_CSV: "${SERVICE_EXPORT_ALLOWED_CLIENTS_CSV:-127.0.0.1/32,::1/128}"
+      # 휴게소 수집 상태(/v1/transport/providers)가 Dagster 수집기와 같은 설정을 보도록 backend에도 준다.
+      REST_AREA_COLLECTION_ENABLED: "${REST_AREA_COLLECTION_ENABLED:-false}"
+      KEX_EX_API_KEY: "${KEX_EX_API_KEY:-}"
       RAIL_REFERENCE_COLLECTION_ENABLED: "${RAIL_REFERENCE_COLLECTION_ENABLED:-false}"
       KRIC_SERVICE_KEY: "${KRIC_SERVICE_KEY:-}"
       KRIC_TIMETABLE_COLLECTION_ENABLED: "${KRIC_TIMETABLE_COLLECTION_ENABLED:-false}"

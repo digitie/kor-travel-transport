@@ -664,10 +664,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ("/v1/transport/bus/timetable", "get"): (404, 429, 502, 503),
             ("/v1/transport/rail/timetables", "get"): (404,),
             ("/v1/transport/rail/departures", "get"): (404,),
-            # 내부 서비스 export는 토큰·Host가 맞지 않으면 경로를 숨긴다(ADR-012).
-            ("/v1/service/exports/fuel-stations", "get"): (404,),
-            ("/v1/service/exports/rest-areas", "get"): (404,),
-            ("/v1/service/exports/rest-area-fuel-prices", "get"): (404,),
+            # 내부 서비스 export는 토큰·접속 주소가 맞지 않으면 경로를 숨기고(404), 근거 수집이
+            # 이력 없음·실패·stale이면 503이다(ADR-012).
+            ("/v1/service/exports/fuel-stations", "get"): (404, 503),
+            ("/v1/service/exports/rest-areas", "get"): (404, 503),
+            ("/v1/service/exports/rest-area-fuel-prices", "get"): (404, 503),
             ("/v1/service/exports/highway-incidents/active", "get"): (404, 503),
             ("/v1/service/exports/airports", "get"): (404,),
         }
