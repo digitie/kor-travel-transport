@@ -22,12 +22,13 @@ _SERVER_ENV_EXAMPLE = (
 )
 
 
-def test_deploy_receipt_binds_both_shared_database_names() -> None:
+def test_deploy_binds_both_shared_database_names() -> None:
     script = (_ROOT / "scripts" / "deploy-server14.sh").read_text(encoding="utf-8")
     remote_script = (_ROOT / "scripts" / "deploy-server14-remote.sh").read_text(encoding="utf-8")
 
-    assert "target_database=kor_travel_transport" in remote_script
-    assert "target_dagster_database=kor_travel_transport_dagster" in remote_script
+    # 한 번짜리 cutover receipt 게이트는 지웠다(ADR-011). 공용 DB 대상은 DSN 정규식이 고정한다.
+    assert "CUTOVER_RECEIPT" not in remote_script
+    assert "CUTOVER_RECEIPT" not in script
     assert "@127\\.0\\.0\\.1:11000/kor_travel_transport$" in remote_script
     assert "@127\\.0\\.0\\.1:11000/kor_travel_transport_dagster$" in remote_script
     # 운영 env와 .env.server14.example의 Dagster DSN은 `postgresql+psycopg2://`다(ADR-010).

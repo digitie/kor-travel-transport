@@ -275,7 +275,7 @@ host에는 443 listener가 없을 수 있으므로 Compose 배포만으로 기�
 
 n150의 배포 식별자를 `kor-travel-airport`에서 `kor-travel-transport`로 옮기는 한 번짜리 절차다.
 결정과 이름 목록은 [ADR-010](../adr/010-deploy-identity-rename-transport.md)이 정본이다. 실행은
-[`scripts/rename-deploy-identity-server14.sh`](../../scripts/rename-deploy-identity-server14.sh)가 맡고,
+`scripts/rename-deploy-identity-server14.sh`(ADR-011로 삭제, `07d3848`에서 꺼낼 수 있다)가 맡았고,
 단계마다 조건이 어긋나면 `STOP:`을 출력하고 exit 1로 끝난다. 비밀값은 출력하지 않는다.
 
 | 바뀌는 것 | 전 | 후 |
