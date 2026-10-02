@@ -28,9 +28,14 @@ def assert_is_utc_iso(value: str | None) -> None:
     assert value.endswith("Z") or value.endswith("+00:00")
 
 
+ADMIN_TOKEN = "a" * 40
+ADMIN_HEADERS = {"x-transport-admin-token": ADMIN_TOKEN}
+
+
 def build_client(tmp_path: Path, *, raise_server_exceptions: bool = True, **overrides) -> TestClient:
     settings = Settings(
         **{
+            "transport_admin_write_token": ADMIN_TOKEN,
             "database_url": f"sqlite+aiosqlite:///{tmp_path / 'test.sqlite3'}",
             "seed_sample_data": True,
             "enable_scheduler": False,
@@ -1348,14 +1353,14 @@ def test_incheon_fee_calculation_is_supported(client) -> None:
 
 def test_admin_collect_returns_cooldown_error(tmp_path: Path) -> None:
     with build_client(tmp_path, manual_collect_min_interval_seconds=999999999) as client:
-        response = client.post("/v1/admin/collect")
+        response = client.post("/v1/admin/collect", headers=ADMIN_HEADERS)
         assert response.status_code == 409
         assert response.json()["detail"]
 
 
 def test_admin_collect_is_disabled_without_explicit_enablement(tmp_path: Path) -> None:
     with build_client(tmp_path, manual_collect_enabled=False) as client:
-        response = client.post("/v1/admin/collect")
+        response = client.post("/v1/admin/collect", headers=ADMIN_HEADERS)
 
     assert response.status_code == 404
 
@@ -1365,6 +1370,7 @@ def test_admin_restore_requires_a_scheduler_maintenance_window(tmp_path: Path) -
         response = client.post(
             "/v1/admin/backups/restore",
             files={"file": ("restore.dump", b"dump", "application/octet-stream")},
+            headers=ADMIN_HEADERS,
         )
 
     assert response.status_code == 409
@@ -1373,7 +1379,7 @@ def test_admin_restore_requires_a_scheduler_maintenance_window(tmp_path: Path) -
 
 def test_admin_collect_succeeds_when_cooldown_is_disabled(tmp_path: Path) -> None:
     with build_client(tmp_path, manual_collect_min_interval_seconds=0) as client:
-        response = client.post("/v1/admin/collect")
+        response = client.post("/v1/admin/collect", headers=ADMIN_HEADERS)
         assert response.status_code == 200
         payload = response.json()
         assert payload["status"] in {"success", "partial_success"}
@@ -1445,7 +1451,7 @@ def test_admin_collect_returns_upstream_rate_limit_error(tmp_path: Path) -> None
             )
         )
 
-        response = client.post("/v1/admin/collect")
+        response = client.post("/v1/admin/collect", headers=ADMIN_HEADERS)
         assert response.status_code == 429
         assert "공공데이터 API 요청 한도" in response.json()["detail"]
 
@@ -1474,7 +1480,7 @@ def test_admin_collect_continues_incheon_when_kac_rate_limited(tmp_path: Path) -
             "get_upstream_rate_limit_state",
             new=AsyncMock(return_value=blocked_state),
         ):
-            response = client.post("/v1/admin/collect")
+            response = client.post("/v1/admin/collect", headers=ADMIN_HEADERS)
 
         assert response.status_code == 200
         payload = response.json()
@@ -1565,7 +1571,7 @@ def test_admin_collect_raises_429_when_collection_fails_due_to_rate_limit(tmp_pa
             "get_upstream_rate_limit_state",
             new=AsyncMock(side_effect=[unblocked_state, blocked_state]),
         ):
-            response = client.post("/v1/admin/collect")
+            response = client.post("/v1/admin/collect", headers=ADMIN_HEADERS)
 
         assert response.status_code == 429
         assert "공공데이터 API 요청 한도" in response.json()["detail"]

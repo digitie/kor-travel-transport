@@ -1,8 +1,5 @@
 import type {
   Airport,
-  BackupFile,
-  BackupListResponse,
-  BackupRestoreResponse,
   CollectionSummary,
   CollectorStatusResponse,
   DashboardAnalyticsResponse,
@@ -140,29 +137,6 @@ export function buildApiClient(apiBaseUrl?: string) {
     runCollector(): Promise<CollectionSummary> {
       return getJson<CollectionSummary>(`${baseUrl}/v1/admin/collect`, {
         method: "POST",
-      });
-    },
-    listBackups(): Promise<BackupListResponse> {
-      return getJson<BackupListResponse>(`${baseUrl}/v1/admin/backups`);
-    },
-    createBackup(): Promise<BackupFile> {
-      return getJson<BackupFile>(`${baseUrl}/v1/admin/backups`, { method: "POST" });
-    },
-    async downloadBackup(filename: string): Promise<Blob> {
-      const response = await fetch(`${baseUrl}/v1/admin/backups/${encodeURIComponent(filename)}`, {
-        cache: "no-store",
-      });
-      if (!response.ok) {
-        throw new ApiError(await readErrorMessage(response), response.status);
-      }
-      return response.blob();
-    },
-    restoreBackup(file: File): Promise<BackupRestoreResponse> {
-      const formData = new FormData();
-      formData.append("file", file, file.name);
-      return getJson<BackupRestoreResponse>(`${baseUrl}/v1/admin/backups/restore`, {
-        method: "POST",
-        body: formData,
       });
     },
     getByHour(airportCode: string, parkingLotId: number | null = null): Promise<HourlyBucket[]> {

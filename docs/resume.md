@@ -2,6 +2,13 @@
 
 ## 현재 상태
 
+- **2026-10-02 보안 hotfix `hotfix/public-backup-exposure`(ADR-012) 푸시, PR 미생성.** 공개로 열려 있던
+  `/v1/admin/backups*`를 관리자 토큰(`x-transport-admin-token`)으로 닫고 공개 웹의 백업 UI·프록시 경로를
+  제거했다. n150에는 소유자가 건 iptables 임시 차단(14001 비-loopback DROP, loopback 백업 경로 REJECT)이
+  남아 있다. **다음 한 작업:** 소유자가 배포한 뒤 `pr-api.../v1/admin/backups`와
+  `pr.../api/backend/v1/admin/backups`가 404인지 확인하고 iptables 임시 차단을 푼다. 14001 `0.0.0.0` 바인딩·
+  `pr-api` 유지 여부는 journal 2026-10-02 권고를 따라 결정한다.
+
 - **2026-10-02 `chore/retire-airport-parking-radar-names`(ADR-011) 푸시, PR 미생성.** 옛 서비스 이름
   정리. 머지 뒤 배포는 deployment.md "백엔드 내부 식별자 개명 배포 (ADR-011)"를 따른다(배포 직후
   n150 백업 dump 이름 변경). Manager `docs/transport-dump-prefix`도 같이 머지한다.

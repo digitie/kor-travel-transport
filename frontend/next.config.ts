@@ -13,11 +13,6 @@ const NO_STORE_HEADERS = [
   ...SECURITY_HEADERS,
 ];
 
-// T-035: /backup은 별도 인증 없이 제공되는 운영 도구다(docs/adr/003-*.md). 라우트
-// 분리로 이전보다 발견하기 쉬운 고정 링크가 됐으니, 최소한 검색엔진/크롤러 색인만은
-// 명시적으로 막는다 - 이것이 network ACL을 대신하지는 않는다(ADR-003 참고).
-const BACKUP_HEADERS = [{ key: "X-Robots-Tag", value: "noindex, nofollow" }, ...NO_STORE_HEADERS];
-
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   // 저장소는 루트의 CLAUDE.md/AGENTS.md만 AI agent entry로 둔다(drift 회피 정책,
@@ -34,10 +29,6 @@ const nextConfig: NextConfig = {
         // "/" 하나에만 걸려 있던 no-store 규칙을 신규 라우트에도 적용한다.
         source: "/:page(analytics|history|fees)",
         headers: NO_STORE_HEADERS,
-      },
-      {
-        source: "/backup",
-        headers: BACKUP_HEADERS,
       },
       {
         source: "/api/backend/:path*",

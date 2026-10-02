@@ -267,22 +267,6 @@ export type FeeCalculationResponse = {
   breakdown: FeeBreakdown[];
 };
 
-export type BackupFile = {
-  filename: string;
-  size_bytes: number;
-  created_at: string;
-};
-
-export type BackupListResponse = {
-  items: BackupFile[];
-};
-
-export type BackupRestoreResponse = {
-  status: "restored";
-  restored_from: BackupFile;
-  pre_restore_backup?: BackupFile;
-};
-
 export type DashboardBootstrapResponse = {
   airports: Airport[];
   current: ParkingCurrentResponse;

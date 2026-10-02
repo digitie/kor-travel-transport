@@ -6,7 +6,7 @@ import {
 } from "@playwright/test";
 import { isFreshHighwayObservation } from "./transport-freshness";
 
-const ROUTES = ["/", "/analytics", "/history", "/fees", "/backup"] as const;
+const ROUTES = ["/", "/analytics", "/history", "/fees"] as const;
 
 /**
  * A click right after a client-side route change can land before React has finished
@@ -42,7 +42,7 @@ async function getJsonWithTransientRetry(
 }
 
 test.describe("live parking-radar dashboard", () => {
-  test("paints current data, remembers selection, and exposes the backup route", async ({
+  test("paints current data, remembers selection, and exposes no backup route (ADR-012)", async ({
     page,
     context,
   }) => {
@@ -132,37 +132,13 @@ test.describe("live parking-radar dashboard", () => {
         .toBe(true);
     }
 
-    // The shared selection lives in DashboardProvider, so it must survive a route change.
-    await page
-      .getByRole("navigation", { name: "주요 메뉴" })
-      .getByRole("link", { name: "백업" })
-      .click();
-    await expect(page).toHaveURL(/\/backup$/);
-    await expect(
-      page.getByRole("button", { name: /백업 \/ 복원/ }),
-    ).toBeVisible();
-    await page.getByRole("button", { name: /백업 \/ 복원/ }).click();
-    await expect(
-      page.getByText(/별도 인증 없이 제공되는 운영 도구/),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "새 백업 만들기" }),
-    ).toBeVisible();
-    if (process.env.EXERCISE_LIVE_BACKUP === "true") {
-      await page.getByRole("button", { name: "새 백업 만들기" }).click();
-      await expect(page.getByText(/백업을 만들었습니다:/)).toBeVisible({
-        timeout: 180_000,
-      });
+    // 공개 앱은 백업 화면·백업 프록시를 제공하지 않는다(2026-10-02 사고, ADR-012).
+    await expect(page.locator('a[href="/backup"]')).toHaveCount(0);
+    expect((await page.request.get("/backup")).status()).toBe(404);
+    for (const path of ["v1/admin/backups", "v1/admin/back%75ps", "v1/admin/backups/restore"]) {
+      expect((await page.request.get(`/api/backend/${path}`)).status()).toBe(404);
+      expect((await page.request.post(`/api/backend/${path}`)).status()).toBe(404);
     }
-    await expect(
-      page
-        .locator(
-          '[data-testid="backup-empty-state"], [data-testid="backup-list"]',
-        )
-        .first(),
-    ).toBeVisible({
-      timeout: 20_000,
-    });
   });
 
   test("desktop nav switches routes and marks the active tab", async ({
@@ -417,13 +393,8 @@ test.describe("live parking-radar dashboard", () => {
       bottomNav.getByRole("link", { name: "과거조회" }),
     ).toHaveAttribute("aria-current", "page");
 
-    const moreMenu = page.getByRole("dialog");
-    await clickUntilEffective(
-      bottomNav.getByRole("button", { name: "더보기" }),
-      () => expect(moreMenu).toBeVisible({ timeout: 1_000 }),
-    );
-    await moreMenu.getByRole("link", { name: "백업" }).click();
-    await expect(page).toHaveURL(/\/backup$/);
+    await expect(bottomNav.getByRole("button", { name: "더보기" })).toHaveCount(0);
+    await expect(bottomNav.getByRole("link")).toHaveCount(4);
   });
 
   // "/" keeps the full 320/375/414/768px sweep (established baseline coverage). The other
