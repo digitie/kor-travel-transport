@@ -167,7 +167,8 @@ n150 배포와 상태 확인은 [n150 배포 런북](docs/runbooks/deployment.md
   `https://pr2.digitie.mywire.org`를 사용한다.
 - `TRUSTED_HOSTS_CSV`는 운영 도메인/내부 호스트만 허용한다.
 - `ENABLE_API_DOCS=false`로 공개 API 문서를 닫는다.
-- 백업/복원 UI는 별도 app auth 없이 제공하되 private ACL/gateway 보호를 전제로 한다. `지금 수집`은
+- 백업/복원·수동 수집 API(`/v1/admin/*`, `collector-status` 제외)는 `x-transport-admin-token` 관리자 토큰이
+  있어야 열리고 공개 웹 앱에는 백업 UI가 없다(ADR-012). `지금 수집`은
   local development profile에서만 활성화하며, 브라우저에 공공데이터 API 키를 요구하거나 노출하지 않는다.
 
 ## 실데이터 수집

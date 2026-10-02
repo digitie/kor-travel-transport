@@ -1,5 +1,4 @@
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 
 import { AppShell } from "@/components/app-shell";
 import { DashboardProvider } from "@/lib/dashboard-context";
@@ -95,27 +94,18 @@ describe("AppShell", () => {
     }
   });
 
-  test("renders exactly the five destinations, with backup tucked behind 더보기 on mobile", async () => {
+  test("renders exactly the four read-only destinations and no backup entry (ADR-012)", async () => {
     renderShell("/");
 
-    // Desktop top nav + mobile bottom tabbar both render all 4 primary links each (8 total),
-    // plus 1 in the "더보기" popover once opened - but the popover starts closed.
-    expect((await screen.findAllByRole("link", { name: "현황" })).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("link", { name: "분석" }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("link", { name: "과거조회" }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("link", { name: "요금계산" }).length).toBeGreaterThan(0);
-    // "백업" only appears via the desktop nav until "더보기" is opened.
-    expect(screen.getAllByRole("link", { name: "백업" })).toHaveLength(1);
-  });
-
-  test("reveals 백업 through the mobile 더보기 popover", async () => {
-    const user = userEvent.setup();
-    renderShell("/");
-
-    await screen.findByRole("button", { name: "더보기" });
-    await user.click(screen.getByRole("button", { name: "더보기" }));
-
-    expect(await screen.findAllByRole("link", { name: "백업" })).toHaveLength(2);
+    // Desktop top nav + mobile bottom tabbar each render the same 4 links.
+    expect(await screen.findAllByRole("link", { name: "현황" })).toHaveLength(2);
+    expect(screen.getAllByRole("link", { name: "분석" })).toHaveLength(2);
+    expect(screen.getAllByRole("link", { name: "과거조회" })).toHaveLength(2);
+    expect(screen.getAllByRole("link", { name: "요금계산" })).toHaveLength(2);
+    expect(screen.getAllByRole("link")).toHaveLength(8);
+    expect(screen.queryByRole("link", { name: "백업" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "더보기" })).toBeNull();
+    expect(document.querySelector('a[href="/backup"]')).toBeNull();
   });
 
   test("renders the page content passed as children", async () => {

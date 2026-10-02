@@ -1,5 +1,27 @@
 # journal.md — 작업 일지
 
+## 2026-10-02 — 보안 hotfix: 공개 백업 API 노출 (ADR-012, `hotfix/public-backup-exposure`)
+
+- 사고(~12:40Z 확인): `/v1/admin/backups*`에 인증이 없었고 두 공개 경로로 열려 있었다.
+  `https://pr-api.digitie.mywire.org/v1/admin/backups`(edge → n150 uvicorn `0.0.0.0:14001`)에서 목록·dump
+  다운로드(Range 206)·생성 POST가 됐고, 복원은 scheduler가 켜져 있어 409로만 막혔다. 공개 웹 프록시
+  `pr.digitie.mywire.org/api/backend/v1/admin/backups*`도 allowlist가 GET/POST·restore·파일 다운로드를
+  명시적으로 허용했다. ADR-003의 "네트워크 경계" 전제가 실제로는 없었다.
+- 임시 조치(n150, 소유자): iptables로 14001 비-loopback DROP, loopback `/v1/admin/backups` 문자열 REJECT.
+- 수정: 백엔드는 `collector-status`를 뺀 모든 `/v1/admin/*`에 `x-transport-admin-token`(상수 시간 비교,
+  불일치 404)을 요구한다 — 라우트 의존성 + 업로드 본문 전에 닫는 미들웨어. 공개 웹은 프록시 allowlist에서
+  백업 경로를 지우고 관리 경로·점/빈/구분자 세그먼트를 거부하며 세그먼트를 다시 인코딩해 전달한다. `/backup`
+  화면·백업 패널·API 함수·`BACKUP_PROXY_*`를 제거했다. 관리자 앱은 원래 백업 기능이 없고 gateway가
+  `/admin/backups`를 숨기므로 그대로 둔다.
+- `collector-status`는 공개 대시보드가 쓰므로 공개 유지. 현재 응답에 비밀은 없었으나(`error_message` 6건 모두
+  비어 있음) 수집 실패 시 provider 예외 `str(exc)`가 그대로 저장·노출되는 구조라 후속 점검 대상이다.
+- 14001 `0.0.0.0` 바인딩: 공개 웹(`BACKEND_INTERNAL_URL=http://127.0.0.1:14001`, host network)·관리자 gateway·
+  스크립트는 모두 loopback을 쓴다. 외부에서 14001에 닿는 것은 `pr-api` edge뿐이고 형제 저장소(Manager, concierge
+  등)에서 `pr-api` 소비처는 찾지 못했다. 권고: `pr-api`의 외부 소비자가 없으면 uvicorn을 `127.0.0.1`로 묶고
+  `pr-api`를 내리거나, 유지한다면 edge에서 `/health`·읽기 전용 `GET /v1/*`만 허용하고 `/v1/admin/*`·`/docs`를
+  막는다. 바인딩은 이번 hotfix에서 바꾸지 않았다(edge 위치 확인 필요).
+- 배포 후 iptables를 풀기 전에 두 공개 경로가 404인지 확인한다.
+
 ## 2026-10-02 — 옛 서비스 이름 정리(ADR-011, `chore/retire-airport-parking-radar-names`)
 
 - 소유자 결정: 서비스 정체성으로 남은 `kor-travel-airport`·`parking-radar`만 `kor-travel-transport`로

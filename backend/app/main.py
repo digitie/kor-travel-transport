@@ -181,6 +181,9 @@ logger = logging.getLogger(__name__)
 # 일회성 히스토리 조회라 더 넓은 상한을 허용해도 상시 부하로 이어지지 않는다
 # (threshold_insights의 기존 90일 상한과 동일한 값).
 MAX_TIMESERIES_RANGE_DAYS = 90
+# /v1/admin/* 중 관리자 토큰 없이 열린 경로(공개 대시보드 읽기 전용 상태). 나머지는 모두 토큰 필요.
+PUBLIC_ADMIN_PATHS = frozenset({"/v1/admin/collector-status"})
+ADMIN_NOT_FOUND_DETAIL = "사용할 수 없는 관리자 경로입니다."
 MAX_TRANSPORT_STATISTICS_CACHE_ENTRIES = 128
 
 
@@ -575,6 +578,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["Content-Type"],
     )
 
+    # 2026-10-02 사고(ADR-012): /v1/admin/backups*가 인증 없이 공개됐다. collector-status(공개
+    # 대시보드 읽기 전용)를 뺀 모든 /v1/admin/* 경로는 관리자 토큰을 요구한다. 라우트 의존성이
+    # 정본이고, 이 미들웨어는 복원 업로드 본문을 읽기 전에(인증 전 디스크 spool 방지) 같은 판정으로
+    # 먼저 닫는다. scope path는 라우팅이 쓰는 것과 같은 디코드된 경로다.
+    def admin_token_valid(request: Request) -> bool:
+        configured = (resolved_settings.transport_admin_write_token or "").encode("utf-8")
+        provided = request.headers.get("x-transport-admin-token", "").encode("utf-8")
+        return len(configured) >= 32 and secrets.compare_digest(configured, provided)
+
+    @app.middleware("http")
+    async def guard_admin_routes(request: Request, call_next):
+        path = request.scope.get("path", "")
+        if (
+            path.lower().startswith("/v1/admin")
+            and path.rstrip("/") not in PUBLIC_ADMIN_PATHS
+            and not admin_token_valid(request)
+        ):
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "type": "about:blank",
+                    "title": HTTPStatus.NOT_FOUND.phrase,
+                    "status": 404,
+                    "detail": ADMIN_NOT_FOUND_DETAIL,
+                    "instance": path,
+                },
+                media_type="application/problem+json",
+            )
+        return await call_next(request)
+
     @app.middleware("http")
     async def add_security_headers(request: Request, call_next):
         response = await call_next(request)
@@ -622,7 +655,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ("/v1/flights/status", "get"): (400,),
             ("/v1/fees/calculate", "post"): (404,),
             ("/v1/admin/collect", "post"): (404, 409, 429, 502),
-            ("/v1/admin/backups", "post"): (503,),
+            ("/v1/admin/backups", "get"): (404,),
+            ("/v1/admin/backups", "post"): (404, 503),
             ("/v1/admin/backups/{filename}", "get"): (400, 404),
             ("/v1/admin/backups/restore", "post"): (400, 404, 409, 503),
             # 실시간 TAGO 시간표는 설정·참조 데이터·상류 provider 상태를 함께 반영한다.
@@ -672,6 +706,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def get_transport_collection_service(request: Request) -> TransportCollectionService:
         return request.app.state.transport_collection_service
 
+    def require_admin_token(request: Request) -> None:
+        if not admin_token_valid(request):
+            raise HTTPException(status_code=404, detail=ADMIN_NOT_FOUND_DETAIL)
+
     @app.get("/health", response_model=HealthResponse)
     async def health(session: AsyncSession = Depends(get_db)) -> HealthResponse:
         seeded = await session.scalar(select(func.count(ParkingSnapshot.id)))
@@ -686,11 +724,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @router.get("/transport/admin/place-locations/capability")
     async def manual_place_location_capability(request: Request) -> dict[str, str]:
-        configured = resolved_settings.transport_admin_write_token or ""
-        if len(configured) < 32 or not secrets.compare_digest(
-            configured, request.headers.get("x-transport-admin-token", ""),
-        ):
-            raise HTTPException(status_code=404, detail="사용할 수 없는 관리자 경로입니다.")
+        require_admin_token(request)
         return {"contract": "coordinate-write-v1"}
 
     @router.post("/transport/admin/place-locations", response_model=TransportPlaceMapItem)
@@ -700,10 +734,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session: AsyncSession = Depends(get_db),
     ) -> TransportPlaceMapItem:
         """공개 gateway에서 닫힌, 관리자 BFF 전용 좌표 보정 경로."""
-        configured = resolved_settings.transport_admin_write_token or ""
-        provided = request.headers.get("x-transport-admin-token", "")
-        if len(configured) < 32 or not secrets.compare_digest(configured, provided):
-            raise HTTPException(status_code=404, detail="사용할 수 없는 관리자 경로입니다.")
+        require_admin_token(request)
         model = FerryPort if payload.kind == "ferry_port" else BusTerminalReference
         row = await session.scalar(select(model).where(model.id == payload.id).with_for_update())
         official_source = "data_go_kr_maritime" if payload.kind == "ferry_port" else "data_go_kr_tago"
@@ -2478,7 +2509,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             breakdown=calculated.breakdown,
         )
 
-    @router.post("/admin/collect", response_model=CollectionSummary)
+    @router.post("/admin/collect", response_model=CollectionSummary, dependencies=[Depends(require_admin_token)])
     async def admin_collect(
         session: AsyncSession = Depends(get_db),
         service: CollectionService = Depends(get_collection_service),
@@ -2580,14 +2611,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             recent_runs=recent_runs,
         )
 
-    @router.get("/admin/backups", response_model=BackupListResponse)
+    @router.get("/admin/backups", response_model=BackupListResponse, dependencies=[Depends(require_admin_token)])
     async def admin_backups() -> BackupListResponse:
         items = await list_backups(resolved_settings.backup_dir)
         return BackupListResponse(
             items=[BackupFile(filename=item.filename, size_bytes=item.size_bytes, created_at=item.created_at) for item in items]
         )
 
-    @router.post("/admin/backups", response_model=BackupFile, status_code=201)
+    @router.post("/admin/backups", response_model=BackupFile, status_code=201, dependencies=[Depends(require_admin_token)])
     async def admin_create_backup(
         service: CollectionService = Depends(get_collection_service),
     ) -> BackupFile:
@@ -2604,7 +2635,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(status_code=503, detail=str(exc)) from exc
         return BackupFile(filename=item.filename, size_bytes=item.size_bytes, created_at=item.created_at)
 
-    @router.get("/admin/backups/{filename}")
+    @router.get("/admin/backups/{filename}", dependencies=[Depends(require_admin_token)])
     async def admin_download_backup(filename: str) -> FileResponse:
         try:
             path = backup_path_for_download(resolved_settings.backup_dir, filename)
@@ -2614,7 +2645,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="백업 파일을 찾지 못했습니다.")
         return FileResponse(path, media_type="application/octet-stream", filename=filename)
 
-    @router.post("/admin/backups/restore", response_model=BackupRestoreResponse)
+    @router.post("/admin/backups/restore", response_model=BackupRestoreResponse, dependencies=[Depends(require_admin_token)])
     async def admin_restore_backup(
         file: UploadFile = File(...),
         service: CollectionService = Depends(get_collection_service),

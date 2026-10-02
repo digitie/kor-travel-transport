@@ -7,8 +7,6 @@ describe("프록시 응답 본문 계약", () => {
     vi.stubEnv("BACKEND_INTERNAL_URL", "http://test-backend:8000");
     vi.stubEnv("BACKEND_PROXY_TIMEOUT_MS", "1000");
     vi.stubEnv("BACKEND_PROXY_BODY_TIMEOUT_MS", "1000");
-    vi.stubEnv("BACKUP_PROXY_TIMEOUT_MS", "1000");
-    vi.stubEnv("BACKUP_PROXY_BODY_TIMEOUT_MS", "2000");
   });
 
   afterEach(() => {
@@ -21,8 +19,7 @@ describe("프록시 응답 본문 계약", () => {
     { contentType: "application/json", partial: false, path: "health", status: 200, timeoutMs: 1000 },
     { contentType: "Application/JSON; charset=utf-8", partial: true, path: "health", status: 200, timeoutMs: 1000 },
     { contentType: "application/problem+json", partial: true, path: "health", status: 502, timeoutMs: 1000 },
-    { contentType: "application/json", partial: true, path: "v1/admin/backups", status: 200, timeoutMs: 2000 },
-    { contentType: "application/problem+json", partial: true, path: "v1/admin/backups/test.dump", status: 404, timeoutMs: 2000 },
+    { contentType: "application/json", partial: true, path: "v1/airports", status: 200, timeoutMs: 1000 },
   ])("$path의 $contentType 본문이 멈추면 기존 $status 대신 504를 반환한다", async ({ contentType, partial, path, status, timeoutMs }) => {
     // 취소 자체가 끝나지 않는 소스도 오류 응답을 지연시키면 안 된다.
     const cancel = vi.fn(() => new Promise<void>(() => undefined));
@@ -200,7 +197,7 @@ describe("프록시 응답 본문 계약", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  test("백업 파일은 크기 제한 없이 즉시 스트리밍하고 이후 timeout은 본문 읽기 오류로 남는다", async () => {
+  test("JSON이 아닌 응답은 크기 제한 없이 즉시 스트리밍하고 이후 timeout은 본문 읽기 오류로 남는다", async () => {
     const cancel = vi.fn();
     const chunk = new Uint8Array(17 * 1024 * 1024);
     const body = new ReadableStream<Uint8Array>({
@@ -214,8 +211,8 @@ describe("프록시 응답 본문 계약", () => {
       },
     })));
     const { GET } = await import("@/app/api/backend/[...path]/route");
-    const response = await GET(new NextRequest("https://proxy.test/api/backend/v1/admin/backups/test.dump"), {
-      params: Promise.resolve({ path: ["v1", "admin", "backups", "test.dump"] }),
+    const response = await GET(new NextRequest("https://proxy.test/api/backend/v1/transport/export.bin"), {
+      params: Promise.resolve({ path: ["v1", "transport", "export.bin"] }),
     });
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/octet-stream");
@@ -223,7 +220,7 @@ describe("프록시 응답 본문 계약", () => {
     const reader = response.body!.getReader();
     expect((await reader.read()).value?.byteLength).toBe(chunk.byteLength);
     const bodyFailure = expect(reader.read()).rejects.toThrow("backend response body timeout");
-    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(1000);
     await bodyFailure;
     expect(response.status).toBe(200);
     expect(cancel).toHaveBeenCalledOnce();

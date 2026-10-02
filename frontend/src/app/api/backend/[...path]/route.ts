@@ -16,11 +16,6 @@ const BACKEND_PROXY_BODY_TIMEOUT_MS = Math.max(
   1_000,
   Number(process.env.BACKEND_PROXY_BODY_TIMEOUT_MS ?? BACKEND_PROXY_TIMEOUT_MS) || BACKEND_PROXY_TIMEOUT_MS
 );
-const BACKUP_PROXY_TIMEOUT_MS = Math.max(1_000, Number(process.env.BACKUP_PROXY_TIMEOUT_MS ?? 900_000) || 900_000);
-const BACKUP_PROXY_BODY_TIMEOUT_MS = Math.max(
-  1_000,
-  Number(process.env.BACKUP_PROXY_BODY_TIMEOUT_MS ?? BACKUP_PROXY_TIMEOUT_MS) || BACKUP_PROXY_TIMEOUT_MS
-);
 // JSON 버퍼가 요청별로 무제한 증가하지 않도록 실제 수신 바이트를 제한한다.
 const MAX_JSON_BODY_BYTES = 16 * 1024 * 1024;
 const MAX_PENDING_FULL_HISTORY_HEADERS = 8;
@@ -72,16 +67,22 @@ function isAllowedBackendRequest(path: string, method: string): boolean {
   if ((versioned === "dashboard/bootstrap" || versioned === "dashboard/analytics") && method === "GET") {
     return true;
   }
-  if (versioned === "admin/backups" && (method === "GET" || method === "POST")) {
-    return true;
-  }
-  if (versioned === "admin/backups/restore" && method === "POST") {
-    return true;
-  }
-  if (/^admin\/backups\/[^/]+$/.test(versioned) && method === "GET") {
-    return true;
-  }
   return false;
+}
+
+// 2026-10-02 공개 백업 노출 사고(docs/adr/012-*.md): 공개 웹 앱은 어떤 관리 기능도 중계하지
+// 않는다. 백업·복원·수동 수집은 관리자 토큰을 아는 운영자만 호스트에서 직접 호출한다.
+// Next는 catch-all 세그먼트를 디코드해 넘기므로(`back%75ps` → `backups`, `%2F` → `/` 포함 세그먼트),
+// 빈 세그먼트·점 세그먼트·구분자를 품은 세그먼트는 경로 정규화 우회를 막기 위해 통째로 거부한다.
+function hasUnsafeSegment(segments: string[]): boolean {
+  return segments.some((segment) =>
+    segment === "" || segment === "." || segment === ".." || /[\\/%\u0000-\u001f]/.test(segment)
+  );
+}
+
+function isAdminOperationPath(path: string): boolean {
+  const lowered = path.toLowerCase();
+  return lowered.includes("admin/backup") || (lowered.startsWith("v1/admin/") && lowered !== "v1/admin/collector-status");
 }
 
 function buildForwardHeaders(request: NextRequest): Headers {
@@ -338,10 +339,11 @@ function streamWithReadTimeout(
 
 async function proxyToBackend(request: NextRequest, context: RouteContext): Promise<Response> {
   const params = await context.params;
-  const backendPath = (params.path ?? []).join("/");
+  const segments = params.path ?? [];
+  const backendPath = segments.join("/");
   const method = request.method.toUpperCase();
 
-  if (!isAllowedBackendRequest(backendPath, method)) {
+  if (hasUnsafeSegment(segments) || isAdminOperationPath(backendPath) || !isAllowedBackendRequest(backendPath, method)) {
     return buildProxyErrorResponse(request, 404, "Not found");
   }
 
@@ -349,10 +351,9 @@ async function proxyToBackend(request: NextRequest, context: RouteContext): Prom
   // unversioned. `api.ts` already includes `v1/` in every path it builds (so
   // that direct-to-backend usage, bypassing this proxy, also gets the
   // correct versioned path) -- this proxy just forwards the path as-is.
-  const targetUrl = `${BACKEND_INTERNAL_URL}/${backendPath}${request.nextUrl.search}`;
-  const isBackupRequest = backendPath.startsWith("v1/admin/backups");
-  const requestTimeoutMs = isBackupRequest ? BACKUP_PROXY_TIMEOUT_MS : BACKEND_PROXY_TIMEOUT_MS;
-  const bodyTimeoutMs = isBackupRequest ? BACKUP_PROXY_BODY_TIMEOUT_MS : BACKEND_PROXY_BODY_TIMEOUT_MS;
+  const targetUrl = `${BACKEND_INTERNAL_URL}/${segments.map(encodeURIComponent).join("/")}${request.nextUrl.search}`;
+  const requestTimeoutMs = BACKEND_PROXY_TIMEOUT_MS;
+  const bodyTimeoutMs = BACKEND_PROXY_BODY_TIMEOUT_MS;
   if (backendPath === "v1/parking/history" && method === "GET" && !request.nextUrl.searchParams.has("limit")) {
     return proxyFullHistory(request, targetUrl, requestTimeoutMs, bodyTimeoutMs);
   }
@@ -375,7 +376,7 @@ async function proxyToBackend(request: NextRequest, context: RouteContext): Prom
     const mediaType = upstreamResponse.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase() ?? "";
     const isJson = mediaType === "application/json" || mediaType.endsWith("+json");
     // JSON은 완료 전까지 헤더를 보내지 않아 본문 timeout도 RFC7807 504로 반환한다.
-    // 백업 바이너리 등 스트리밍 응답은 전송 시작 후 오류를 504로 바꿀 수 없으며 읽기가 실패한다.
+    // JSON이 아닌 스트리밍 응답은 전송 시작 후 오류를 504로 바꿀 수 없으며 읽기가 실패한다.
     const responseBody = isJson
       ? await bufferJsonBody(upstreamResponse.body, bodyTimeoutMs)
       : streamWithReadTimeout(upstreamResponse.body, bodyTimeoutMs);
