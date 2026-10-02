@@ -55,7 +55,9 @@ provider 원본을 숨기며, 돌발은 "최근 24시간"이라 "지금 활성�
 5. **공항**은 주차 수집 여부와 무관하게 `python-krairport-api` 번들의 운영 공항 전체(포항경주 KPO 포함)를
    ICAO·소재지·좌표와 함께 낸다. 주차 데이터 보유 여부는 `has_parking_data`로 표시한다.
 6. **계약 정본**은 `docs/openapi.json`이고 CI가 `scripts/export_openapi.py --check`로 최신 여부를
-   검사한다. Map은 이 파일을 SHA와 함께 vendoring한다.
+   검사한다(transport 자신의 drift 방지). 이 export는 Map을 위해 있다 — Map에 필드·모양이 필요하면 이 API를
+   그에 맞게 바꾼다(같은 PR 쌍, 버전·호환 층·옛 모양 shim 없음). Map은 이 파일을 pin·vendoring하지 않고
+   응답을 런타임에 엄격히 검증한다(2026-10-03 소유자 결정, Map ADR-106).
 
 ### 근거
 
