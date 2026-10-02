@@ -81,6 +81,21 @@ REMOTE_APP_DIR=/home/digitie/apps/kor-travel-transport \
 ./scripts/deploy-server14.sh
 ```
 
+### 최신 유가 테이블(0022) 배포 뒤 1회
+
+0022는 `fuel_latest_prices` materialized view를 증분 테이블로 바꾸고 migration 안에서 한 번 채운다.
+`deploy-server14.sh`는 daemon을 멈추고 활성 실행을 비운 뒤 교체하므로 보통은 빈틈이 없다. 그래도 드레인을
+건너뛴 수동 반영이나 혼합 릴리스 창에서는 옛 Dagster 코드가 (1) 지워진 view를 refresh하려다 실패하고
+(2) 그 전에 커밋한 유가 행이 새 테이블에 반영되지 않아 다음 오피넷 수집(최대 약 8시간)까지 빠질 수 있다.
+배포가 health를 통과한 뒤 아래를 실행한다. 단조 upsert라 수집과 겹쳐도 안전하고 다시 실행해도 같다.
+
+```bash
+# n150. 먼저 읽기 전용으로 어긋난 (주유소, 유종) 수를 본다.
+docker exec kor-travel-transport-backend-1 python scripts/backfill-fuel-latest-prices.py
+# 0이 아니면 반영한다(남은 어긋남 0이어야 exit 0).
+docker exec kor-travel-transport-backend-1 python scripts/backfill-fuel-latest-prices.py --apply
+```
+
 ### Dagster healthcheck·init만 바뀐 반영
 
 > 2026-09 운영 식별자 개명 cutover([ADR-010](../adr/010-deploy-identity-rename-transport.md))가 #45의

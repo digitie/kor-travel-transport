@@ -19,10 +19,7 @@ target_metadata = Base.metadata
 
 
 def include_object(_object, name: str, type_: str, _reflected: bool, _compare_to) -> bool:
-    # PostgreSQL MV는 Table ORM으로 읽지만 Alembic의 일반 테이블 reflection에는
-    # 포함되지 않는다. 두 객체는 0018의 수동 DDL만 소유한다.
-    if type_ == "table" and name == "fuel_latest_prices":
-        return False
+    # 이력 정렬 index는 0018의 수동 DDL만 소유한다(ORM 모델에 두지 않는다).
     if type_ == "index" and name == "ix_fuel_prices_latest_lookup":
         return False
     return True

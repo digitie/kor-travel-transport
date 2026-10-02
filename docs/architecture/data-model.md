@@ -2,16 +2,13 @@
 
 ## 핵심 테이블
 
-### 최신 유가 읽기 모델 (`0018_fuel_latest_prices`)
+### 최신 유가 테이블 (`0022_fuel_latest_prices_table`)
 
-PostgreSQL의 `fuel_latest_prices`는 일반 테이블이 아닌 materialized view다. 원본
+`fuel_latest_prices`는 `(fuel_station_id, product_code)` PK의 일반 테이블이다. 원본
 `fuel_price_snapshots`의 주유소·유종별 최신 `collected_at`, 동일 시각이면 최대 `id`
-행을 담는다. `(fuel_station_id, product_code)` 유일 인덱스가 동시 갱신과 조회를
-보장한다. 원본 수집은 먼저 커밋하고 MV 갱신은 별도 트랜잭션에서 수행한다.
-`0019`의 `transport_collection_states.refresh_generation BIGINT NOT NULL DEFAULT 0`은
-원본 커밋마다 증가한다. 갱신은 시작 세대와 같은 경우에만 대기 상태를 지우므로
-동시에 새 원본이 들어오면 다음 실행에서 다시 갱신한다. 실패 시 원본은 유지된다.
-SQLite 테스트의 동명 ORM 테이블은 운영 읽기 경로가 아니며 window 조회로 동작한다.
+행(`snapshot_id`)과 가격·시각을 담는다. 유가 수집이 원본과 같은 트랜잭션에서 그 배치만
+upsert하며, 더 오래된 배치는 기존 행을 덮지 못한다. `0018`~`0020`의 materialized view와
+갱신 세대·체크포인트 열은 `0022`가 제거했다(배경은 `performance.md`).
 
 항구 `ferry_ports`와 버스 `bus_terminal_references`의 관리자 좌표 보정은 새 장소를
 만들지 않는다. 기존 행의 위도·경도와 `location_source=admin_manual`을 갱신하고

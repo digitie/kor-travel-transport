@@ -11,7 +11,7 @@ from sqlalchemy.pool import NullPool
 
 from app.models import Base
 
-ALEMBIC_HEAD = "0021_parking_history_cover"
+ALEMBIC_HEAD = "0022_fuel_latest_prices_table"
 
 
 def create_engine_and_session_factory(database_url: str) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:

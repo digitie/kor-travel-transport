@@ -333,16 +333,24 @@ class FuelPriceSnapshot(Base):
 
 
 class FuelLatestPrice(Base):
-    """PostgreSQL에서는 수집 커밋과 함께 갱신하는 최신 유가 MV이다."""
+    """주유소·유종별 최신 유가. 원본 유가 행과 같은 트랜잭션에서 upsert한다.
+
+    0022 이전에는 전 이력을 다시 읽는 materialized view였다. 이력이 커지며 갱신과
+    대조 질의가 60초 statement timeout을 넘겨 영구 stale로 굳었다(2026-10-02 n150).
+    """
 
     __tablename__ = "fuel_latest_prices"
     __table_args__ = (
-        Index("uq_fuel_latest_prices_station_product", "fuel_station_id", "product_code", unique=True),
+        Index("ix_fuel_latest_prices_snapshot_id", "snapshot_id"),
     )
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    fuel_station_id: Mapped[int] = mapped_column(Integer)
-    product_code: Mapped[str] = mapped_column(String(20))
+    fuel_station_id: Mapped[int] = mapped_column(
+        ForeignKey("fuel_stations.id", ondelete="CASCADE"), primary_key=True,
+    )
+    product_code: Mapped[str] = mapped_column(String(20), primary_key=True)
+    snapshot_id: Mapped[int] = mapped_column(
+        ForeignKey("fuel_price_snapshots.id", ondelete="CASCADE"),
+    )
     price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     provider_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -361,8 +369,6 @@ class TransportCollectionState(Base):
     last_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     next_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    refresh_generation: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text("0"))
-    last_refreshed_snapshot_id: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default=text("0"))
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 

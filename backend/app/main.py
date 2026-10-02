@@ -31,7 +31,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import DateTime, Integer, and_, bindparam, case, func, or_, select, text as sql_text, true
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlalchemy.orm import defer, load_only, selectinload
+from sqlalchemy.orm import defer, selectinload
 from datagokr import DataGoKrClient
 from datagokr.exceptions import ApiErrorResponse
 from kric import DataGoKrMaritimeClient, KricRateLimitError
@@ -917,38 +917,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         query = query.order_by(FuelStation.last_seen_at.desc(), FuelStation.id.desc()).limit(limit)
         stations = (await session.execute(query)).scalars().all()
         station_ids = [station.id for station in stations]
-        price_rows: list[FuelPriceSnapshot | FuelLatestPrice] = []
+        price_rows: list[FuelLatestPrice] = []
         if station_ids:
-            if session.bind.dialect.name == "postgresql":
-                price_query = select(FuelLatestPrice).where(
-                    FuelLatestPrice.fuel_station_id.in_(station_ids),
-                    FuelLatestPrice.collected_at >= cutoff,
-                )
-                if product_code:
-                    price_query = price_query.where(FuelLatestPrice.product_code == product_code.strip())
-                price_query = price_query.order_by(FuelLatestPrice.fuel_station_id, FuelLatestPrice.product_code)
-            else:
-                # SQLite 테스트/legacy import는 PostgreSQL MV 대신 동일한 최신 행 규칙을 사용한다.
-                ranked_prices = (
-                    select(
-                        FuelPriceSnapshot.id.label("price_id"),
-                        func.row_number().over(
-                            partition_by=(FuelPriceSnapshot.fuel_station_id, FuelPriceSnapshot.product_code),
-                            order_by=(FuelPriceSnapshot.collected_at.desc(), FuelPriceSnapshot.id.desc()),
-                        ).label("row_number"),
-                    )
-                    .where(FuelPriceSnapshot.fuel_station_id.in_(station_ids), FuelPriceSnapshot.collected_at >= cutoff)
-                )
-                if product_code:
-                    ranked_prices = ranked_prices.where(FuelPriceSnapshot.product_code == product_code.strip())
-                ranked_prices_subquery = ranked_prices.subquery()
-                price_query = (
-                    select(FuelPriceSnapshot).options(defer(FuelPriceSnapshot.raw_item_json))
-                    .join(ranked_prices_subquery, FuelPriceSnapshot.id == ranked_prices_subquery.c.price_id)
-                    .where(ranked_prices_subquery.c.row_number == 1)
-                    .order_by(FuelPriceSnapshot.fuel_station_id, FuelPriceSnapshot.product_code)
-                )
-            price_rows = (await session.execute(price_query)).scalars().all()
+            price_query = select(FuelLatestPrice).where(
+                FuelLatestPrice.fuel_station_id.in_(station_ids),
+                FuelLatestPrice.collected_at >= cutoff,
+            )
+            if product_code:
+                price_query = price_query.where(FuelLatestPrice.product_code == product_code.strip())
+            price_query = price_query.order_by(FuelLatestPrice.fuel_station_id, FuelLatestPrice.product_code)
+            price_rows = list((await session.execute(price_query)).scalars().all())
 
         prices_by_station: dict[int, list[FuelPriceItem]] = {}
         for row in price_rows:
@@ -1053,7 +1031,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         selected_sources = filter_values(source, sources, 10, 80)
         selected_products = filter_values(product_code, product_codes, 5, 20)
-        use_latest_prices = session.bind.dialect.name == "postgresql"
         if selected_kind is not None and selected_kind not in supported:
             raise HTTPException(status_code=422, detail="지원하지 않는 교통 장소 종류입니다.")
         bounds = (min_longitude, min_latitude, max_longitude, max_latitude)
@@ -1087,23 +1064,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if model is FuelStation and selected_products:
                 # 유종 행은 가격 미제공(NULL)도 저장된다. 과거 가격 존재가 아니라
                 # 상세 응답과 동일한 최신 행을 기준으로 실제 판매 가격을 확인한다.
-                if use_latest_prices:
-                    conditions.append(or_(*(
-                        select(FuelLatestPrice.price).where(
-                            FuelLatestPrice.fuel_station_id == FuelStation.id,
-                            FuelLatestPrice.product_code == code,
-                        ).correlate(FuelStation).scalar_subquery() > 0
-                        for code in selected_products
-                    )))
-                else:
-                    conditions.append(or_(*(
-                        select(FuelPriceSnapshot.price).where(
-                            FuelPriceSnapshot.fuel_station_id == FuelStation.id,
-                            FuelPriceSnapshot.product_code == code,
-                        ).order_by(FuelPriceSnapshot.collected_at.desc(), FuelPriceSnapshot.id.desc())
-                        .limit(1).correlate(FuelStation).scalar_subquery() > 0
-                        for code in selected_products
-                    )))
+                conditions.append(or_(*(
+                    select(FuelLatestPrice.price).where(
+                        FuelLatestPrice.fuel_station_id == FuelStation.id,
+                        FuelLatestPrice.product_code == code,
+                    ).correlate(FuelStation).scalar_subquery() > 0
+                    for code in selected_products
+                )))
             if min_longitude is not None:
                 conditions.extend((
                     model.longitude >= min_longitude,
@@ -1130,24 +1097,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             station_ids = [station.id for station in stations]
             latest: dict[int, list[Any]] = {}
             if station_ids:
-                if use_latest_prices:
-                    rows = (await session.execute(
-                        select(
-                            FuelLatestPrice.fuel_station_id, FuelLatestPrice.product_code,
-                            FuelLatestPrice.price, FuelLatestPrice.provider_updated_at,
-                            FuelLatestPrice.observed_at, FuelLatestPrice.collected_at,
-                        ).where(FuelLatestPrice.fuel_station_id.in_(station_ids))
-                    )).all()
-                else:
-                    ranked = select(
-                        FuelPriceSnapshot.id.label("id"),
-                        func.row_number().over(partition_by=(FuelPriceSnapshot.fuel_station_id, FuelPriceSnapshot.product_code), order_by=(FuelPriceSnapshot.collected_at.desc(), FuelPriceSnapshot.id.desc())).label("rank"),
-                    ).where(FuelPriceSnapshot.fuel_station_id.in_(station_ids)).subquery()
-                    rows = (await session.execute(select(FuelPriceSnapshot).options(load_only(
-                        FuelPriceSnapshot.id, FuelPriceSnapshot.fuel_station_id, FuelPriceSnapshot.product_code,
-                        FuelPriceSnapshot.price, FuelPriceSnapshot.provider_updated_at, FuelPriceSnapshot.observed_at,
-                        FuelPriceSnapshot.collected_at,
-                    )).join(ranked, FuelPriceSnapshot.id == ranked.c.id).where(ranked.c.rank == 1))).scalars().all()
+                rows = (await session.execute(
+                    select(
+                        FuelLatestPrice.fuel_station_id, FuelLatestPrice.product_code,
+                        FuelLatestPrice.price, FuelLatestPrice.provider_updated_at,
+                        FuelLatestPrice.observed_at, FuelLatestPrice.collected_at,
+                    ).where(FuelLatestPrice.fuel_station_id.in_(station_ids))
+                )).all()
                 for row in rows:
                     latest.setdefault(row.fuel_station_id, []).append(row)
             for station in stations:

@@ -1,5 +1,19 @@
 # journal.md — 작업 일지
 
+## 2026-10-02 — 최신 유가 MV를 증분 테이블로 교체(`fix/fuel-latest-prices-incremental`)
+
+- n150 읽기 전용 조사: `fuel_prices_stale=true`가 굳어 있었다. `transport_collection_states`의
+  `fuel_latest_prices` 행 `last_error`가 `REFRESH MATERIALIZED VIEW CONCURRENTLY ... statement
+  timeout`이었고 code-server 로그에는 원본 대조 SQL의 같은 timeout이 번갈아 찍혔다. 원본은
+  73만 행·987MB, 대조 SQL 단독 실측 61.2초(제한 60초), 실제 MV와 원본 최신 행 차이는 0행.
+  둘 다 이력 전체를 읽는 구조라 수집할수록 느려져 언젠가는 반드시 넘는 문턱이었다.
+- 수정: `0022`가 MV를 일반 테이블(PK `fuel_station_id, product_code`, `snapshot_id` FK)로 바꾸고
+  한 번 backfill한다. 유가 수집이 원본과 같은 트랜잭션에서 그 배치만 upsert하며 `(collected_at, id)`가
+  작은 늦은 배치는 덮지 못한다. 세대(`0019`)·체크포인트(`0020`)·대조·고속도로 job 재시도와
+  `/v1/transport/providers`의 별도 읽기 모델 행을 지웠다. stale은 오피넷 수집 실패·24시간 정체만 뜻한다.
+- 테스트: MV 상태 기계 테스트 10여 건을 지우고 upsert 순서·제자리 정정·전체 재계산, 수집 상태 기반
+  stale, 고속도로 job이 유가 이력을 건드리지 않음을 새로 고정했다. SQLite·PostgreSQL 같은 경로다.
+
 ## 2026-10-02 — 보안 hotfix: 공개 백업 API 노출 (ADR-012, `hotfix/public-backup-exposure`)
 
 - 사고(~12:40Z 확인): `/v1/admin/backups*`에 인증이 없었고 두 공개 경로로 열려 있었다.
