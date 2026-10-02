@@ -28,6 +28,8 @@ async def provider_status(session: AsyncSession, settings: Settings) -> Provider
         ("data_go_kr_tago", "TAGO 고속·시외버스 터미널", "bus_reference_collection_job", "dagster_bus_reference", keyed and settings.bus_reference_collection_enabled, 259200),
         ("vworld_place", "VWorld 항구·버스 터미널 위치", "place_location_collection_job", "dagster_place_locations", settings.place_location_collection_enabled and bool(settings.vworld_api_key), 86400),
         ("kakao_place", "카카오 항구·버스 터미널 위치", "kakao_place_location_collection_job", "dagster_kakao_place_locations", settings.kakao_place_collection_enabled and bool(settings.kakao_rest_api_key), 86400),
+        ("krex_rest_area", "휴게소 기준정보", "rest_area_reference_collection_job", "dagster_rest_area_reference", keyed and settings.rest_area_collection_enabled, 86400),
+        ("krex_rest_area_fuel", "휴게소 주유소 유가", "rest_area_fuel_price_collection_job", "dagster_rest_area_fuel", settings.rest_area_collection_enabled and bool(settings.kex_ex_api_key), 14400),
     ]
     triggers = {row[3] for row in catalog}
     ranked = select(CollectionRun.id, func.row_number().over(partition_by=CollectionRun.trigger, order_by=(CollectionRun.started_at.desc(), CollectionRun.id.desc())).label("rank")).where(CollectionRun.trigger.in_(triggers), CollectionRun.status != "skipped").subquery()
@@ -62,7 +64,7 @@ async def provider_status(session: AsyncSession, settings: Settings) -> Provider
             error_code="collection_failed" if failed else None))
     for source, name, enabled in [("flights", "공항 출도착", keyed and settings.enable_flight_status_markers), ("bus_timetable", "TAGO 버스 시간표", keyed)]:
         items.append(ProviderCollectionStatus(source=source, name=name, mode="on_demand", enabled=enabled, status="on_demand" if enabled else "disabled"))
-    for source, name in [("seoulgokr", "서울 교통정보"), ("rest_area", "휴게소 기준정보")]:
+    for source, name in [("seoulgokr", "서울 교통정보")]:
         items.append(ProviderCollectionStatus(source=source, name=name, mode="unconnected", enabled=False, status="unconnected"))
     today = to_seoul(now_utc()).date()
     end = today + timedelta(days=settings.ferry_timetable_storage_days)

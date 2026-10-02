@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 from functools import lru_cache
 from typing import Literal
 
@@ -38,6 +39,13 @@ class Settings(BaseSettings):
     kakao_place_max_calls_per_month: int = Field(default=50000, ge=1, le=3000000)
     kakao_place_request_interval_seconds: float = Field(default=0.2, ge=0.1, le=60)
     transport_admin_write_token: str | None = None
+    # kor-travel-map 등 내부 서비스가 `/v1/service/exports/*`를 읽는 토큰(ADR-013). 32자 미만이면
+    # 경로 전체가 404다. 허용 Host는 loopback 이름만 — 외부 reverse proxy(pr-api)를 거친 요청은
+    # 토큰이 맞아도 닫힌다.
+    transport_service_export_token: str | None = None
+    #: export에 접속할 수 있는 peer 주소 대역(CIDR). Host 헤더가 아니라 실제 접속 주소로 판정한다.
+    service_export_allowed_clients_csv: str = "127.0.0.1/32,::1/128"
+    rest_area_collection_enabled: bool = False
     kex_ex_api_key: str | None = None
     # KRIC 인증 OpenAPI는 48시간 batch 전용이다. 공개 조회는 DB만 읽는다.
     kric_service_key: str | None = None
@@ -126,6 +134,10 @@ class Settings(BaseSettings):
                 "3.5-hour ferry collection runtime budget including API_TIMEOUT_SECONDS "
                 "and FERRY_TIMETABLE_COLLECTION_INTERVAL_SECONDS"
             )
+        try:
+            self.service_export_allowed_client_networks  # noqa: B018 - 기동 때 CIDR을 검증한다.
+        except ValueError as exc:
+            raise ValueError("SERVICE_EXPORT_ALLOWED_CLIENTS_CSV must be a comma-separated CIDR list") from exc
         return self
 
     @property
@@ -139,6 +151,14 @@ class Settings(BaseSettings):
     @property
     def trusted_hosts(self) -> list[str]:
         return [host.strip() for host in self.trusted_hosts_csv.split(",") if host.strip()]
+
+    @property
+    def service_export_allowed_client_networks(self) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+        """`SERVICE_EXPORT_ALLOWED_CLIENTS_CSV`의 CIDR 목록. 잘못된 값은 기동 때 거부된다."""
+        return tuple(
+            ipaddress.ip_network(value.strip(), strict=False)
+            for value in self.service_export_allowed_clients_csv.split(",") if value.strip()
+        )
 
     @property
     def transport_route_nos(self) -> list[str]:

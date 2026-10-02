@@ -3,6 +3,7 @@
 Usage (from repo root, backend deps installed):
 
     uv run --project backend python scripts/export_openapi.py
+    uv run --project backend python scripts/export_openapi.py --check   # CI: 커밋본이 최신인지만 확인
 
 The output (`docs/openapi.json`) is the machine-readable source of truth for
 kor-travel-transport's public `/v1` API contract. Regenerate it whenever a route,
@@ -26,7 +27,7 @@ from app.main import create_app  # noqa: E402
 OUTPUT_PATH = Path(__file__).resolve().parent.parent / "docs" / "openapi.json"
 
 
-def main() -> None:
+def render() -> str:
     # Use a throwaway settings instance so exporting the schema never needs a
     # real database or DATA_GO_KR_SERVICE_KEY -- the OpenAPI schema is static
     # route/model metadata, not something the running app state affects.
@@ -38,9 +39,22 @@ def main() -> None:
     )
     app = create_app(settings)
     schema = app.openapi()
-    OUTPUT_PATH.write_text(json.dumps(schema, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"wrote {OUTPUT_PATH} ({len(schema.get('paths', {}))} paths)")
+    return json.dumps(schema, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+
+
+def main(argv: list[str]) -> int:
+    rendered = render()
+    if "--check" in argv:
+        current = OUTPUT_PATH.read_text(encoding="utf-8") if OUTPUT_PATH.exists() else ""
+        if current != rendered:
+            print(f"{OUTPUT_PATH} is stale: run scripts/export_openapi.py and commit the result", file=sys.stderr)
+            return 1
+        print(f"{OUTPUT_PATH} is up to date")
+        return 0
+    OUTPUT_PATH.write_text(rendered, encoding="utf-8")
+    print(f"wrote {OUTPUT_PATH} ({len(json.loads(rendered).get('paths', {}))} paths)")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main(sys.argv[1:]))

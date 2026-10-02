@@ -33,6 +33,14 @@ cross-schema FK를 만드는 것은 금지한다.
 `kind`는 `timetable` 또는 `facility`이며, 제공하지 않는 필드는 `null`로 유지한다. 원본에
 타임존이 없으면 임의 UTC 변환을 하지 않고 문자열·원본 날짜를 보존한다.
 
+## 내부 일괄 export (ADR-013, 2026-10-02)
+
+Map은 marker API가 아니라 `/v1/service/exports/*`를 읽는다. 토큰(`X-Kor-Travel-Transport-Service-Token`)과
+loopback Host가 모두 맞아야 하고 아니면 404다. `fuel-stations`·`rest-areas`·`rest-area-fuel-prices`는
+`{items, next_cursor, has_more, collection}` 페이지, `highway-incidents/active`는 마지막 성공 수집의 활성
+사건 전체(수집 실패·30분 정체면 503), `airports`는 krairport 번들의 운영 공항 전체다. 기계 정본은
+`docs/openapi.json`(CI `--check`). 아래 "단계별 API"의 `/notices`·`/prices` 계획은 이 export가 대체한다.
+
 ## 단계별 API
 
 1. 저장 기준정보를 읽는 `/v1/transport/features/places`, `/notices`, `/prices`를 추가한다.

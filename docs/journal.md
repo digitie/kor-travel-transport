@@ -1,5 +1,19 @@
 # journal.md — 작업 일지
 
+## 2026-10-02 — Map 이관용 내부 export·휴게소 수집(ADR-013, `feat/map-service-exports`)
+
+- 소유자 결정: kor-travel-map이 transport로 얻을 수 있는 것은 transport API로 바꾸고, 필요하면 transport API를 고친다.
+- 새 수집: 휴게소 기준정보(data.go.kr `tn_pubr_public_rest_area_api`, 매일 03:40)와 휴게소 주유소 현재 유가(EX
+  `curStateStation`, 4시간마다). 기본 비활성 `REST_AREA_COLLECTION_ENABLED`. 휴게소 자연키는 Map과 같은
+  `name::route_name::direction`(strip→lower). `0023`이 `rest_area_fuel_prices`와 돌발 `(source, collected_at)` index를 더한다.
+- 새 표면 `GET /v1/service/exports/{fuel-stations,rest-areas,rest-area-fuel-prices,highway-incidents/active,airports}`:
+  토큰(`TRANSPORT_SERVICE_EXPORT_TOKEN`, 32자+, 상수 시간 비교)과 loopback Host가 모두 맞아야 하고 아니면 404.
+  공개 웹 프록시·관리자 API gateway의 allowlist에는 없다(테스트로 고정).
+- 돌발 활성 집합은 마지막 성공 수집이 재관측한 사건 전체다. 이를 위해 돌발 수집이 상태 `last_success_at`을 행의
+  `collected_at`과 같은 값으로 남긴다. 실패·30분 정체면 503.
+- 공항은 krairport 번들의 운영 공항 15곳(KPO 포함)을 ICAO·소재지·좌표와 함께 낸다(주차 수집 대상 14곳과 무관).
+- `docs/openapi.json`을 재생성했고(오래 낡아 있었다) CI가 `export_openapi.py --check`로 지킨다.
+
 ## 2026-10-02 — 최신 유가 MV를 증분 테이블로 교체(`fix/fuel-latest-prices-incremental`)
 
 - n150 읽기 전용 조사: `fuel_prices_stale=true`가 굳어 있었다. `transport_collection_states`의
