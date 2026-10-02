@@ -2,6 +2,10 @@
 
 ## 현재 상태
 
+- **2026-10-02 `feat/map-service-exports`(ADR-012) 푸시, PR 미생성(`fix/fuel-latest-prices-incremental` 위에 쌓임).**
+  Map 이관용 내부 export와 휴게소 수집기. 배포 때 n150 `.env.server14`에 `TRANSPORT_SERVICE_EXPORT_TOKEN`(Map의
+  `KOR_TRAVEL_MAP_KOR_TRAVEL_TRANSPORT_SERVICE_TOKEN`과 같은 값)과 `REST_AREA_COLLECTION_ENABLED=true`를 넣는다(Manager
+  `docs/docker-management.md` §7.3). 후속: 관리자 UI의 옛 `fuel_latest_prices` 읽기 모델 경고 코드 정리.
 - **2026-10-02 `fix/fuel-latest-prices-incremental` 푸시, PR 미생성.** 최신 유가 MV가 60초 timeout으로
   영구 stale이던 문제를 `0022` 증분 테이블로 고쳤다(journal 같은 날). 배포는 migration 1회 backfill(약 60초)
   뒤 다음 유가 수집부터 정상 갱신. Map 이관(`feat/map-service-exports`)이 이 브랜치 위에 쌓인다.
