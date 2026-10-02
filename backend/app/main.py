@@ -40,6 +40,7 @@ from krairport import get_airport_or_none
 from app.core.config import Settings, get_settings
 from app.core.time_utils import align_to_interval, now_utc, serialize_utc, to_seoul
 from app.db.session import create_engine_and_session_factory, init_database
+from app.service_exports import build_service_export_router
 from app.services.parking_history_cache import (
     BoundedHistoryResponse, ParkingHistoryReadCache, encode_response, run_history_cpu,
 )
@@ -663,6 +664,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ("/v1/transport/bus/timetable", "get"): (404, 429, 502, 503),
             ("/v1/transport/rail/timetables", "get"): (404,),
             ("/v1/transport/rail/departures", "get"): (404,),
+            # 내부 서비스 export는 토큰·Host가 맞지 않으면 경로를 숨긴다(ADR-012).
+            ("/v1/service/exports/fuel-stations", "get"): (404,),
+            ("/v1/service/exports/rest-areas", "get"): (404,),
+            ("/v1/service/exports/rest-area-fuel-prices", "get"): (404,),
+            ("/v1/service/exports/highway-incidents/active", "get"): (404, 503),
+            ("/v1/service/exports/airports", "get"): (404,),
         }
         for path, path_item in schema.get("paths", {}).items():
             for method, operation in path_item.items():
@@ -2973,6 +2980,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # fixed, everything else is versioned). All other routes live under `/v1`
     # (ADR-005) -- a clean-cut, no legacy unprefixed alias.
     app.include_router(router, prefix="/v1")
+    # 내부 서비스 일괄 export(ADR-012) — 토큰·loopback Host로 닫힌다.
+    app.include_router(build_service_export_router(resolved_settings, get_db), prefix="/v1")
 
     return app
 

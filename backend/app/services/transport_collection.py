@@ -83,6 +83,28 @@ async def fuel_read_model_freshness(
     return stale, state
 
 
+async def get_or_create_state(session: AsyncSession, source: str) -> TransportCollectionState:
+    state = await session.scalar(
+        select(TransportCollectionState).where(TransportCollectionState.source == source)
+    )
+    if state is None:
+        if session.bind.dialect.name == "postgresql":
+            # 서로 다른 수집 작업의 첫 실행이 같은 상태 행을 동시에 만들어도
+            # 원본 트랜잭션을 unique 충돌로 되돌리지 않는다.
+            await session.execute(text(
+                "INSERT INTO transport_collection_states (source, updated_at) "
+                "VALUES (:source, :updated_at) ON CONFLICT (source) DO NOTHING"
+            ), {"source": source, "updated_at": now_utc()})
+            state = await session.scalar(select(TransportCollectionState).where(
+                TransportCollectionState.source == source,
+            ))
+        else:
+            state = TransportCollectionState(source=source, updated_at=now_utc())
+            session.add(state)
+            await session.flush()
+    return state
+
+
 async def upsert_latest_fuel_prices(
     session: AsyncSession, *, collected_at: datetime | None = None,
 ) -> None:
@@ -826,6 +848,10 @@ class TransportCollectionService:
                 )
             )
             stored += 1
+        # 이번 수집이 재관측한 행은 모두 collected_at이 이 값이다. 상태의 성공 시각을 같은 값으로
+        # 맞춰 service export가 "마지막 성공 수집의 활성 집합"을 정확히 고르게 한다(ADR-012).
+        state = await self._get_or_create_state(session, INCIDENT_SOURCE)
+        state.last_success_at = collected_at
         await session.flush()
         return stored
 
@@ -972,25 +998,7 @@ class TransportCollectionService:
         await session.flush()
 
     async def _get_or_create_state(self, session: AsyncSession, source: str) -> TransportCollectionState:
-        state = await session.scalar(
-            select(TransportCollectionState).where(TransportCollectionState.source == source)
-        )
-        if state is None:
-            if session.bind.dialect.name == "postgresql":
-                # 서로 다른 수집 작업의 첫 실행이 같은 상태 행을 동시에 만들어도
-                # 유가 원본 트랜잭션을 unique 충돌로 되돌리지 않는다.
-                await session.execute(text(
-                    "INSERT INTO transport_collection_states (source, updated_at) "
-                    "VALUES (:source, :updated_at) ON CONFLICT (source) DO NOTHING"
-                ), {"source": source, "updated_at": now_utc()})
-                state = await session.scalar(select(TransportCollectionState).where(
-                    TransportCollectionState.source == source,
-                ))
-            else:
-                state = TransportCollectionState(source=source, updated_at=now_utc())
-                session.add(state)
-                await session.flush()
-        return state
+        return await get_or_create_state(session, source)
 
     async def next_collection_delay(self, session: AsyncSession, scope: CollectionScope) -> float:
         """고정 tick과 DB 예정 시각의 미세한 차이 때문에 한 주기를 건너뛰지 않는다."""

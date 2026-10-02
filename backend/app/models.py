@@ -207,6 +207,8 @@ class HighwayIncidentSnapshot(Base):
         Index("ix_highway_incidents_route_observed", "route_no", "observed_at"),
         Index("ix_highway_incidents_statistics_observed", "observed_at", "route_no"),
         Index("ix_highway_incidents_collection_run_id", "collection_run_id"),
+        # 마지막 성공 수집이 재관측한 활성 집합(service export)을 찾는다.
+        Index("ix_highway_incidents_source_collected", "source", "collected_at"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -473,6 +475,38 @@ class RestAreaReference(Base):
     has_ev_charger: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     phone_number: Mapped[str | None] = mapped_column(String(80), nullable=True)
     data_reference_date: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
+
+
+class RestAreaFuelPrice(Base):
+    """한국도로공사 EX `curStateStation`의 휴게소 주유소 현재 유가(휴게소별 최신 1행).
+
+    원천에는 관측 시각이 없어 `collected_at`이 관측 시각이다. 이력은 소비자(Map)가 보관한다.
+    """
+
+    __tablename__ = "rest_area_fuel_prices"
+    __table_args__ = (
+        UniqueConstraint("source", "service_area_code", name="uq_rest_area_fuel_price_code"),
+        Index("ix_rest_area_fuel_prices_last_seen", "last_seen_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(40))
+    service_area_code: Mapped[str] = mapped_column(String(40))
+    service_area_code2: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    service_area_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    route_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    route_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    direction: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    oil_company: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    has_lpg: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    phone_number: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    address: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    gasoline_price: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    diesel_price: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    lpg_price: Mapped[int | None] = mapped_column(Integer, nullable=True)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)

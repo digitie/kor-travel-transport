@@ -743,3 +743,158 @@ class DashboardAnalyticsResponse(BaseModel):
     weekday_hour_patterns: list[WeekdayHourlyPattern]
     holiday_patterns: HolidayPatternResponse
     time_series: ParkingTimeSeriesResponse
+
+
+# --- 내부 서비스 export (ADR-012) -------------------------------------------------
+# `/v1/service/exports/*`는 kor-travel-map 같은 내부 소비자가 저장 데이터를 일괄로 읽는 경로다.
+# 응답은 concierge export와 같은 무-envelope 모양 `{items, next_cursor, has_more}`이고
+# cursor는 불투명 문자열이다. 원본 provider 행은 `raw`로 그대로 넘긴다(소비자의 lineage 증거).
+
+
+class ExportCollectionState(BaseModel):
+    """이 export가 근거로 삼는 transport 수집의 상태. 오류 문구는 노출하지 않는다."""
+
+    source: str
+    last_success_at: datetime | None = None
+    failed: bool
+    stale: bool
+
+
+class ExportFuelPrice(BaseModel):
+    product_code: str
+    price: float | None = None
+    provider_updated_at: datetime | None = None
+    observed_at: datetime
+    collected_at: datetime
+
+
+class ExportFuelStation(BaseModel):
+    natural_key: str = Field(description="오피넷 주유소 ID(uni_id). 안정 자연키")
+    source: str
+    name: str
+    brand_code: str | None = None
+    brand_name: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    longitude: float | None = None
+    latitude: float | None = None
+    is_self: bool | None = None
+    is_24h: bool | None = None
+    has_carwash: bool | None = None
+    has_maintenance: bool | None = None
+    has_cvs: bool | None = None
+    first_seen_at: datetime
+    last_seen_at: datetime
+    prices: list[ExportFuelPrice]
+    raw: dict | None = None
+
+
+class FuelStationExportPage(BaseModel):
+    generated_at: datetime
+    collection: ExportCollectionState
+    items: list[ExportFuelStation]
+    next_cursor: str | None = None
+    has_more: bool
+
+
+class ExportRestArea(BaseModel):
+    natural_key: str = Field(description="`name::route_name::direction`(strip→lower). 원천에 안정 ID가 없다")
+    source: str
+    name: str
+    route_name: str | None = None
+    direction: str | None = None
+    longitude: float | None = None
+    latitude: float | None = None
+    has_gas_station: bool | None = None
+    has_lpg_station: bool | None = None
+    has_ev_charger: bool | None = None
+    phone_number: str | None = None
+    data_reference_date: str | None = None
+    first_seen_at: datetime
+    last_seen_at: datetime
+    raw: dict | None = None
+
+
+class RestAreaExportPage(BaseModel):
+    generated_at: datetime
+    collection: ExportCollectionState
+    items: list[ExportRestArea]
+    next_cursor: str | None = None
+    has_more: bool
+
+
+class ExportRestAreaFuelPrice(BaseModel):
+    service_area_code: str = Field(description="한국도로공사 휴게소 코드. 안정 자연키")
+    source: str
+    service_area_code2: str | None = None
+    service_area_name: str | None = None
+    route_code: str | None = None
+    route_name: str | None = None
+    direction: str | None = None
+    oil_company: str | None = None
+    has_lpg: bool | None = None
+    phone_number: str | None = None
+    address: str | None = None
+    gasoline_price: int | None = None
+    diesel_price: int | None = None
+    lpg_price: int | None = None
+    observed_at: datetime = Field(description="원천에 관측 시각이 없어 transport 수집 시각")
+    raw: dict | None = None
+
+
+class RestAreaFuelPriceExportPage(BaseModel):
+    generated_at: datetime
+    collection: ExportCollectionState
+    items: list[ExportRestAreaFuelPrice]
+    next_cursor: str | None = None
+    has_more: bool
+
+
+class ExportHighwayIncident(BaseModel):
+    identity_key: str
+    source: str
+    occurred_date: str | None = None
+    occurred_time: str | None = None
+    incident_type: str | None = None
+    incident_type_code: str | None = None
+    direction: str | None = None
+    message: str | None = None
+    point_name: str | None = None
+    route_no: str | None = None
+    route_name: str | None = None
+    process_status: str | None = None
+    process_status_code: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    congestion_length: float | None = None
+    series_no: int | None = None
+    observed_at: datetime = Field(description="이 상태를 처음 관측한 시각")
+    collected_at: datetime = Field(description="마지막으로 재관측한 시각(= 활성 집합 수집 시각)")
+    raw: dict | None = None
+
+
+class HighwayIncidentActiveSet(BaseModel):
+    """마지막 성공 돌발 수집이 본 활성 사건 전체. 여기에 없는 사건은 해소된 것이다."""
+
+    generated_at: datetime
+    collection: ExportCollectionState
+    collected_at: datetime
+    items: list[ExportHighwayIncident]
+
+
+class ExportAirport(BaseModel):
+    code: str = Field(description="IATA 공항 코드. 안정 자연키")
+    icao_code: str | None = None
+    name_korean: str | None = None
+    name_english: str
+    municipality: str | None = None
+    longitude: float | None = None
+    latitude: float | None = None
+    airport_type: str | None = None
+    metadata_source: str | None = Field(default=None, description="좌표·메타데이터 출처(krairport 번들)")
+    has_parking_data: bool = Field(description="transport가 이 공항의 주차 현황을 수집하는지")
+
+
+class AirportExportResponse(BaseModel):
+    generated_at: datetime
+    items: list[ExportAirport]

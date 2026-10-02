@@ -16,6 +16,7 @@ from app.services.kric_collection import KricTimetableCollectionService
 from app.services.kakao_place_locations import KakaoPlaceCollectionService
 from app.services.place_locations import PlaceLocationCollectionService
 from app.services.rail_maritime_collection import RailMaritimeCollectionService
+from app.services.rest_area_collection import RestAreaCollectionService
 from app.services.transport_collection import CollectionScope, TransportCollectionService
 
 
@@ -189,6 +190,28 @@ def collect_kric_timetable() -> dict[str, Any]:
     return asyncio.run(_run_with_session(settings, KricTimetableCollectionService(settings).collect))
 
 
+@op
+def collect_rest_area_reference() -> dict[str, Any]:
+    settings = _settings()
+    return asyncio.run(_run_with_session(settings, RestAreaCollectionService(settings).collect_references))
+
+
+@op
+def collect_rest_area_fuel_prices() -> dict[str, Any]:
+    settings = _settings()
+    return asyncio.run(_run_with_session(settings, RestAreaCollectionService(settings).collect_fuel_prices))
+
+
+@job(tags={"kortraveltransport/run_group": "reference"})
+def rest_area_reference_collection_job() -> None:
+    collect_rest_area_reference()
+
+
+@job(tags={"kortraveltransport/run_group": "reference"})
+def rest_area_fuel_price_collection_job() -> None:
+    collect_rest_area_fuel_prices()
+
+
 @job(tags={"kortraveltransport/run_group": "reference"})
 def kric_timetable_collection_job() -> None:
     collect_kric_timetable()
@@ -251,6 +274,8 @@ definitions = Definitions(
         place_location_collection_job,
         kakao_place_location_collection_job,
         kric_timetable_collection_job,
+        rest_area_reference_collection_job,
+        rest_area_fuel_price_collection_job,
     ],
     schedules=[
         ScheduleDefinition(job=airport_collection_job, cron_schedule="*/5 * * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
@@ -267,5 +292,8 @@ definitions = Definitions(
         ScheduleDefinition(job=kakao_place_location_collection_job, cron_schedule="30 6 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         # 실패·강제 종료도 포함해 마지막 시도부터 48시간 guard를 적용한다.
         ScheduleDefinition(job=kric_timetable_collection_job, cron_schedule="0 * * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
+        # 휴게소 기준정보는 저변동(약 200행·1회 호출)이라 하루 한 번, 유가는 4시간마다 갱신한다(ADR-012).
+        ScheduleDefinition(job=rest_area_reference_collection_job, cron_schedule="40 3 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
+        ScheduleDefinition(job=rest_area_fuel_price_collection_job, cron_schedule="25 */4 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
     ],
 )
