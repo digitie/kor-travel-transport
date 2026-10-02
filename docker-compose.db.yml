@@ -2,22 +2,22 @@ name: kor-travel-transport-db
 
 # PostgreSQL을 앱(backend/frontend) compose 스택과 분리된 독립 lifecycle로 운영한다
 # (kor-travel-docker-manager 패턴 참고 — DB는 앱 재배포/재빌드와 무관하게 유지되어야 한다).
-# 기존 볼륨 `parking-radar_parking_radar_postgres_data`를 그대로 재사용하므로 아래
-# `volumes.parking_radar_postgres_data.name`을 바꾸지 않는다 — 바꾸면 빈 새 볼륨이
-# 생성되어 기존 주차 스냅샷/요금 데이터에 연결되지 않는다.
+# 운영 DB는 공용 PostgreSQL(`127.0.0.1:11000`)로 옮겨 이 스택은 쉬고 있다. 옛 볼륨
+# `parking-radar_parking_radar_postgres_data`는 n150에 없다(2026-10-02 확인, ADR-011). 다른
+# 호스트에 옛 볼륨이 남아 있으면 이 이름으로는 연결되지 않으므로 dump/restore로 옮긴다.
 
 services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: "${POSTGRES_DB:-parking_radar}"
-      POSTGRES_USER: "${POSTGRES_USER:-parking_radar}"
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-parking_radar}"
+      POSTGRES_DB: "${POSTGRES_DB:-kor_travel_transport}"
+      POSTGRES_USER: "${POSTGRES_USER:-kor_travel_transport}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-kor_travel_transport}"
     ports:
       - "${POSTGRES_BIND_HOST:-127.0.0.1}:${POSTGRES_HOST_PORT:-14000}:5432"
     volumes:
-      - parking_radar_postgres_data:/var/lib/postgresql/data
+      - kor_travel_transport_postgres_data:/var/lib/postgresql/data
     networks:
       - kor-travel-transport-net
     healthcheck:
@@ -32,5 +32,5 @@ networks:
     name: kor-travel-transport-net
 
 volumes:
-  parking_radar_postgres_data:
-    name: parking-radar_parking_radar_postgres_data
+  kor_travel_transport_postgres_data:
+    name: kor-travel-transport_postgres_data

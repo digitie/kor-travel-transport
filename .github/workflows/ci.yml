@@ -20,20 +20,20 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # Alembic은 Settings의 DATABASE_URL을 읽고, pytest fixture는 TEST_DATABASE_URL만 opt-in으로 쓴다.
-      DATABASE_URL: postgresql+asyncpg://parking_radar:parking_radar@localhost:5432/parking_radar
-      TEST_DATABASE_URL: postgresql+asyncpg://parking_radar:parking_radar@localhost:5432/parking_radar
-      PARKING_RADAR_TEST_DATABASE: "1"
+      DATABASE_URL: postgresql+asyncpg://kor_travel_transport:kor_travel_transport@localhost:5432/kor_travel_transport_test
+      TEST_DATABASE_URL: postgresql+asyncpg://kor_travel_transport:kor_travel_transport@localhost:5432/kor_travel_transport_test
+      KOR_TRAVEL_TRANSPORT_TEST_DATABASE: "1"
     services:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_DB: parking_radar
-          POSTGRES_USER: parking_radar
-          POSTGRES_PASSWORD: parking_radar
+          POSTGRES_DB: kor_travel_transport_test
+          POSTGRES_USER: kor_travel_transport
+          POSTGRES_PASSWORD: kor_travel_transport
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U parking_radar -d parking_radar"
+          --health-cmd "pg_isready -U kor_travel_transport -d kor_travel_transport_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20

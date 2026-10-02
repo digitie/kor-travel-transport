@@ -5,7 +5,7 @@ Usage (from repo root, backend deps installed):
     uv run --project backend python scripts/export_openapi.py
 
 The output (`docs/openapi.json`) is the machine-readable source of truth for
-parking-radar's public `/v1` API contract. Regenerate it whenever a route,
+kor-travel-transport's public `/v1` API contract. Regenerate it whenever a route,
 request/response model, or the error envelope changes, and commit the
 result in the same PR -- this mirrors kor-travel-map's
 `packages/kor-travel-map-api/scripts/export_openapi.py` convention.

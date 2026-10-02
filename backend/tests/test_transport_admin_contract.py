@@ -29,7 +29,7 @@ def test_transport_admin_is_a_separate_host_network_stack() -> None:
     assert "TRANSPORT_PUBLIC_WEB_PORT:-12305" in compose
     assert "http://127.0.0.1:14001" in compose
     assert "http://127.0.0.1:14004" in compose
-    assert "parking-radar" in compose
+    assert "기본 `kor-travel-transport` Compose와 독립된" in compose
 
 
 def test_provider_status_and_worker_share_bus_collection_switch() -> None:

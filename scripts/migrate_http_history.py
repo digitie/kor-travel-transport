@@ -1,4 +1,4 @@
-"""Import parking history from a running parking-radar HTTP API into PostgreSQL.
+"""Import parking history from a running kor-travel-transport HTTP API into PostgreSQL.
 
 This is the least-privilege fallback for a source host whose Docker volume is not
 readable by the SSH account. It intentionally imports airports, parking lots, and

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 별도 Compose project만 갱신한다. parking-radar backend/frontend/Dagster는 이
+# 별도 Compose project만 갱신한다. 기본 kor-travel-transport backend/frontend/Dagster는 이
 # 스크립트의 Docker 명령 대상이 아니다.
 REMOTE_HOST="${REMOTE_HOST:-192.168.1.14}"
 REMOTE_USER="${REMOTE_USER:-digitie}"

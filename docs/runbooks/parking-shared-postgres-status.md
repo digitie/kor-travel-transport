@@ -17,6 +17,9 @@
 | Dagster metadata | `127.0.0.1:11000/kor_travel_transport_dagster` |
 | DB 컨테이너 | `kor-travel-shared-postgres`, host network, healthy |
 
+컨테이너 이름은 점검 당시(개명 창 전) 것이다. 같은 날 ADR-010 cutover 뒤로는
+`kor-travel-transport-{frontend,backend}-1`이다.
+
 DSN 비밀번호는 출력하거나 문서에 기록하지 않았다. `docker inspect`에서 주소·포트·DB명·
 계정만 추출했다. application DB에 앱 계정 연결 6개, metadata DB에 3개가 관측됐다.
 이 연결 수는 점검 시점의 값이며 고정된 운영 조건이 아니다.

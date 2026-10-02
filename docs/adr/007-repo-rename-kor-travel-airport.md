@@ -1,6 +1,6 @@
 # ADR-007: 저장소/패키지/n150 운영 식별자를 `kor-travel-airport`로 개명하고, 배포되는 웹앱 브랜드는 `parking-radar`로 분리 유지한다
 
-- **상태**: accepted, 구현 완료
+- **상태**: accepted, 구현 완료. 브랜드 유지 범위는 [ADR-011](011-backend-internal-identity-transport.md)이 사용자 노출 표면(웹 타이틀·브라우저 저장 키·hostname)으로 좁혔다
 - **날짜**: 2026-09-06
 - **결정자**: agent + human
 - **컨텍스트**: 이 저장소는 `kor-travel-map`, `kor-travel-geo`, `kor-travel-concierge`,

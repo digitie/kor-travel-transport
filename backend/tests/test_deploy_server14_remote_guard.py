@@ -1,8 +1,7 @@
-"""`scripts/deploy-server14-remote.sh`의 개명 관련 계약을 진짜 스크립트로 본다.
+"""`scripts/deploy-server14-remote.sh`의 배포 식별자 계약을 진짜 스크립트로 본다.
 
-- 임시 guard: 개명 전 `kor-travel-airport` project 컨테이너가 하나라도 떠 있으면 새 project를 올리지
-  않는다(두 host-network 스택, 같은 metadata DB의 두 dagster-daemon). guard는 디렉터리 검사 전에 돌므로
-  CI에서도 진짜 스크립트를 실행해 볼 수 있다. guard를 통과하면 다음 검사(승인된 디렉터리)에서 멈춘다.
+- 승인된 앱 디렉터리·Compose project·실행 위치가 아니면 docker를 부르기 전에 멈춘다. ADR-010의 임시
+  개명 guard는 cutover 정리와 함께 지웠다(ADR-011).
 - `DAGSTER_POSTGRES_URL`은 운영 env 그대로의 `postgresql+psycopg2://`도 받는다.
 - 백엔드 계열 이미지는 release마다 `kor-travel-transport-backend:rel-<sha12>`를 셸 env로 받는다.
 """
@@ -62,43 +61,26 @@ def _run(tmp_path: Path, **env: str) -> tuple[subprocess.CompletedProcess[str], 
     return result, [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
 
 
-_GUARD_CALL = ["ps", "-q", "--filter", "label=com.docker.compose.project=kor-travel-airport"]
-
-
-def test_deploy_refuses_while_a_pre_rename_container_runs(tmp_path: Path) -> None:
-    result, calls = _run(tmp_path, FAKE_PS_OUTPUT="0123456789ab\n")
-    assert result.returncode == 2
-    assert "pre-rename kor-travel-airport project still runs containers" in result.stderr
-    assert calls == [_GUARD_CALL]  # compose도, 다른 docker 명령도 부르지 않았다.
-
-
-def test_deploy_passes_the_guard_when_no_pre_rename_container_runs(tmp_path: Path) -> None:
+def test_deploy_refuses_outside_the_approved_directory_before_calling_docker(tmp_path: Path) -> None:
     result, calls = _run(tmp_path)
-    # guard 다음 검사(승인된 디렉터리에서 실행하는가)에서 멈춘다. 테스트 디렉터리는 승인된 디렉터리가 아니다.
+    # 테스트 디렉터리는 승인된 디렉터리가 아니다. compose도, 다른 docker 명령도 부르지 않는다.
     assert result.returncode == 2
     assert "run from the staged approved app directory" in result.stderr
-    assert calls == [_GUARD_CALL]
-
-
-def test_deploy_refuses_when_docker_cannot_list_containers(tmp_path: Path) -> None:
-    result, calls = _run(tmp_path, FAKE_PS_EXIT="1")
-    assert result.returncode == 2
-    assert "could not list containers of the pre-rename" in result.stderr
-    assert calls == [_GUARD_CALL]
+    assert calls == []
 
 
 @pytest.mark.parametrize(
     ("env", "message"),
     [
-        ({"REMOTE_APP_DIR": "/home/digitie/apps/kor-travel-airport"}, "only the approved app directory may be used"),
-        ({"COMPOSE_PROJECT_NAME": "kor-travel-airport"}, "unexpected environment file or Compose project"),
+        ({"REMOTE_APP_DIR": "/home/digitie/apps/other"}, "only the approved app directory may be used"),
+        ({"COMPOSE_PROJECT_NAME": "other"}, "unexpected environment file or Compose project"),
     ],
 )
-def test_deploy_refuses_the_pre_rename_directory_and_project(tmp_path: Path, env: dict[str, str], message: str) -> None:
+def test_deploy_refuses_an_unapproved_directory_and_project(tmp_path: Path, env: dict[str, str], message: str) -> None:
     result, calls = _run(tmp_path, **env)
     assert result.returncode == 2
     assert message in result.stderr
-    assert calls == []  # 문자열 검사에서 멈춰 guard까지 가지 않는다.
+    assert calls == []  # 문자열 검사에서 멈춘다.
 
 
 def _dagster_dsn_regex() -> str:
@@ -269,7 +251,7 @@ def test_deploy_scripts_accept_only_the_renamed_directory_and_project() -> None:
     for name in ("deploy-server14.sh", "deploy-server14-remote.sh", "deploy-transport-admin-server14.sh"):
         text = (_SCRIPTS / name).read_text(encoding="utf-8")
         assert "/home/digitie/apps/kor-travel-transport" in text, name
-        assert "/home/digitie/apps/kor-travel-airport" not in text, name
+        assert "kor-travel-airport" not in text, name
     for name in ("deploy-server14.sh", "deploy-server14-remote.sh"):
         text = (_SCRIPTS / name).read_text(encoding="utf-8")
         assert 'COMPOSE_PROJECT_NAME:-kor-travel-transport}' in text, name

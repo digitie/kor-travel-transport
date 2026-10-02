@@ -270,7 +270,8 @@ legacy 병렬 요청 경로:
 
 ## 운영상 주의할 점
 
-- PostgreSQL 런타임 데이터는 `parking_radar_postgres_data` named volume을 사용한다.
+- PostgreSQL 런타임 데이터는 공용 PostgreSQL(`127.0.0.1:11000`)의 `kor_travel_transport`에 있다. 쉬는
+  `docker-compose.db.yml` 스택의 volume은 `kor-travel-transport_postgres_data`다(ADR-011).
 - 백업 파일은 `./backups:/app/backups` bind mount로 별도 보존하며 git에 넣지 않는다.
 - 실데이터 모드로 컨테이너를 띄울 때는 같은 환경 변수를 유지한 상태로 재기동해야 한다.
 - 프론트 이미지를 새로 빌드한 뒤 컨테이너를 재생성하지 않으면 이전 UI가 계속 보일 수 있다.

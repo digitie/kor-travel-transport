@@ -14,10 +14,10 @@ from pathlib import Path
 
 from sqlalchemy.engine import make_url
 
-BACKUP_NAME_PATTERN = re.compile(r"^parking-radar-[0-9T]{15}Z(?:-[A-Za-z0-9_-]+)?\.dump$")
+BACKUP_NAME_PATTERN = re.compile(r"^kor-travel-transport-[0-9T]{15}Z(?:-[A-Za-z0-9_-]+)?\.dump$")
 MAX_BACKUP_BYTES = 2 * 1024 * 1024 * 1024
 DEFAULT_BACKUP_STORAGE_LIMIT_BYTES = 8 * 1024 * 1024 * 1024
-STAGING_BACKUP_PREFIX = ".parking-radar-"
+STAGING_BACKUP_PREFIX = ".kor-travel-transport-"
 STAGING_BACKUP_MAX_AGE_SECONDS = 3600
 
 
@@ -210,10 +210,10 @@ async def create_backup(
         directory.mkdir(parents=True, exist_ok=True)
         _cleanup_staging_backups_sync(backup_dir)
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        filename = f"parking-radar-{timestamp}.dump"
+        filename = f"kor-travel-transport-{timestamp}.dump"
         path = _backup_path(backup_dir, filename)
         if path.exists():
-            filename = f"parking-radar-{timestamp}-{uuid4().hex[:12]}.dump"
+            filename = f"kor-travel-transport-{timestamp}-{uuid4().hex[:12]}.dump"
             path = _backup_path(backup_dir, filename)
         safe_database_url, environment = _postgres_command_database(database_url)
         _enforce_storage_limit_sync(backup_dir, storage_limit_bytes)
@@ -223,7 +223,7 @@ async def create_backup(
         # A /tmp -> /app/backups rename can fail with EXDEV on server14.
         temporary_fd, temporary_name = tempfile.mkstemp(
             dir=directory,
-            prefix=".parking-radar-",
+            prefix=".kor-travel-transport-",
             suffix=".dump",
         )
         os.close(temporary_fd)
@@ -319,15 +319,15 @@ async def save_uploaded_backup(
     _cleanup_staging_backups_sync(backup_dir)
     safe_stem = re.sub(r"[^A-Za-z0-9_-]", "-", Path(uploaded_file.filename or "upload").stem)[:48] or "upload"
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    filename = f"parking-radar-{timestamp}-{safe_stem}.dump"
+    filename = f"kor-travel-transport-{timestamp}-{safe_stem}.dump"
     path = _backup_path(backup_dir, filename)
     if path.exists() or path.is_symlink():
-        filename = f"parking-radar-{timestamp}-{uuid4().hex[:12]}-{safe_stem}.dump"
+        filename = f"kor-travel-transport-{timestamp}-{uuid4().hex[:12]}-{safe_stem}.dump"
         path = _backup_path(backup_dir, filename)
 
     temporary_fd, temporary_name = tempfile.mkstemp(
         dir=directory,
-        prefix=".parking-radar-upload-",
+        prefix=".kor-travel-transport-upload-",
         suffix=".dump",
     )
     os.close(temporary_fd)

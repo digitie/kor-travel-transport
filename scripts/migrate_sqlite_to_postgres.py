@@ -1,4 +1,4 @@
-"""Copy the complete known parking-radar SQLite schema into PostgreSQL.
+"""Copy the complete known legacy parking-radar SQLite schema into PostgreSQL.
 
 Run this on 14 only, after placing an authorized copy of the 13 SQLite file on
 14. The script preserves primary keys and resets PostgreSQL sequences. It never

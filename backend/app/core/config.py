@@ -15,8 +15,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "parking-radar"
-    database_url: str = "postgresql+asyncpg://parking_radar:parking_radar@postgres:5432/parking_radar"
+    app_name: str = "kor-travel-transport"
+    database_url: str = "postgresql+asyncpg://kor_travel_transport:kor_travel_transport@postgres:5432/kor_travel_transport"
     app_timezone: str = "Asia/Seoul"
     enable_scheduler: bool = False
     scheduler_mode: Literal["in_process", "dagster"] = "in_process"

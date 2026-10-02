@@ -1,5 +1,5 @@
 # DISABLED: the historical 192.168.1.13 stack is intentionally not runnable.
 # Docker/PostgreSQL deployment belongs only to 192.168.1.14 via docker-compose.yml.
 # Keep this file as a fail-closed marker for old automation and documentation.
-name: parking-radar-odroid-disabled
+name: kor-travel-transport-odroid-disabled
 services: {}

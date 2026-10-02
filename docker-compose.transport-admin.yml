@@ -1,6 +1,6 @@
 name: kor-travel-transport-admin
 
-# 기존 parking-radar Compose와 독립된 host-network UI/gateway 스택이다. backend,
+# 기본 `kor-travel-transport` Compose와 독립된 host-network UI/gateway 스택이다. backend,
 # Dagster webserver를 재기동하거나 포트를 변경하지 않고 loopback upstream만 읽는다.
 services:
   transport-api-gateway:
