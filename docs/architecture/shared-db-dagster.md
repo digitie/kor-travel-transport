@@ -40,11 +40,12 @@ command에서 Dagster 서비스를 찾아 검사한다.
   `CMD sh -c`는 timeout 때 셸만 죽이고 그 아래 Python을 고아로 남긴다. healthcheck를
   `disable`하지 않는다.
 - code-server·webserver·daemon은 `init: true`다. PID 1인 dagster는 고아를 거두지 않는다.
-- code-server probe는 `grpc_health`로 `DagsterApi`가 `SERVING`인지 8초 deadline과 함께 묻는다.
-  CLI `dagster api grpc-health-check`와 같은 판정이지만 dagster를 import하지 않는다. CLI는
-  deadline이 없어 끼인 서버 앞에서 끝나지 않는다. 테스트는 deadline이 숫자 상수이고 docker
-  timeout(10s)보다 짧은지 확인하고, 실제 gRPC health 서버 앞에서 probe를 실행해 `SERVING`일
-  때만 exit 0인지 확인한다.
+- code-server probe는 Manager 공용 code-server와 같은 원문(`x-dagster-code-server-probe`, Manager #456)이다.
+  dagster를 import하지 않고 `grpc_health`로 proxy의 `DagsterApi`를 4초 deadline으로 묻고, proxy가 자식에
+  전달하는 `ListRepositories`로 자식의 load error·죽음·멈춤을 본다. 확정되면(run worker가 없을 때, 시간 기준)
+  PID 1(init)을 끝내 `restart`가 다시 띄운다. 컨테이너가 새로 뜨면 그 전에 시작한 이 location의 STARTED run을
+  실패로 닫는다. 판정 실행 테스트는 Manager에 있고, 여기서는 조각·deadline·heartbeat를 본다. 옛 단순 probe를
+  쓰는 code-server가 생기면 실제 gRPC health 서버 앞에서 `SERVING`일 때만 exit 0인지 실행해 본다.
 - daemon `liveness-check`는 timeout 60s, interval 120s, retries 2다.
   `DAGSTER_DAEMON_HEARTBEAT_TOLERANCE`는 300s다. dagster는 마지막 heartbeat 뒤 heartbeat
   주기(30s) + tolerance가 지나야 낡았다고 본다. docker는 이전 probe가 끝난 뒤에야 interval을
@@ -185,6 +186,10 @@ Basic Auth, 공개 host `https://dagster.digitie.mywire.org`)와 공용 instance
   kor-travel-transport`다. `api grpc`는 공용 webserver의 location reload를 무시한다. location 이름은 옛 workspace의
   이름 그대로다 — run의 `dagster/code_location` tag(공용 instance의 테넌트 상한 key)와 schedule selector id가
   이 이름에서 나온다. 포트는 literal이고 healthcheck가 같은 포트를 부른다.
+- healthcheck는 Manager의 공용 probe 원문 그대로(이 compose의 `x-dagster-code-server-probe` anchor, exec 형식),
+  proxy heartbeat `DAGSTER_GRPC_PROXY_HEARTBEAT_TTL_SECONDS=600`, `init: true` — Manager 공용 code-server와 같은
+  규칙이다. Manager 전환 스크립트가 렌더끼리 대조하고 다르면 전환을 멈춘다. Manager가 probe를 바꾸면 그 원문을 다시
+  복사한다.
 - code-server는 공용 instance URL(`KOR_TRAVEL_DAGSTER_SHARED_PG_URL`, `postgresql+psycopg2://…/dagster_shared`)을
   받고 옛 metadata DSN은 받지 않는다. `$DAGSTER_HOME/dagster.yaml`은 Manager의 공용 instance 정의
   (`/opt/kor-travel-docker-manager/config/dagster-shared/dagster.yaml`, `KOR_TRAVEL_DAGSTER_SHARED_INSTANCE_CONFIG`로

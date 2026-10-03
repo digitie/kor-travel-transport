@@ -5,7 +5,8 @@
 (`scripts/dagster-shared-cutover.sh transport …`)는 이 compose를 렌더해 같은 모양을 **파생**하고 Manager
 `config/docker-targets.yml`의 transport 선언과 대조한다. 여기서는 이 저장소가 지킬 쪽을 본다.
 
-- code-server: `dagster code-server start`(공용 webserver의 reload가 정의를 다시 읽는다), gRPC는 loopback,
+- code-server: `dagster code-server start`(공용 webserver의 reload가 정의를 다시 읽는다), Manager의 공용 probe
+  (`x-dagster-code-server-probe` 원문)·proxy heartbeat 600초·`init: true`, gRPC는 loopback,
   `-p`는 literal이고 healthcheck가 같은 포트를 부른다, `--location-name`은 운영 UI(`lib/dagster-scope.ts`)와 같다,
   공용 instance URL을 받고 옛 metadata DSN은 받지 않는다, `$DAGSTER_HOME/dagster.yaml`을 공용 instance 정의로
   덮는다.
@@ -133,12 +134,21 @@ def _violations(compose: dict[str, Any]) -> list[str]:
     probe = [str(word) for word in ((code.get("healthcheck") or {}).get("test") or [])]
     if not probe or probe[-1] != port:
         violations.append(f"(a) healthcheck가 `-p {port}`와 다른 포트를 부른다: {probe[-1:]}")
+    # 공용 probe — Manager `x-dagster-code-server-probe` 원문(이 파일의 같은 이름 anchor)을 exec 형식으로. 원문이 Manager와
+    # 같은지는 Manager 전환 스크립트가 렌더끼리 대조한다(저장소 사이에 SHA를 박지 않는다).
+    anchor = str(compose.get("x-dagster-code-server-probe") or "")
+    if not anchor or probe[:4] != ["CMD", "python", "-I", "-c"] or len(probe) != 6 or probe[4] != anchor:
+        violations.append("(a) healthcheck가 공용 probe(`x-dagster-code-server-probe`, exec 형식)가 아니다")
+    if code.get("init") is not True:
+        violations.append("(a) code-server에 `init: true`가 없다")
     location = _flag(argv, "--location-name", "-l")
     if location != _LOCATION:
         violations.append(f"(a) `--location-name`이 `{location}`다 — `{_LOCATION}`여야 한다(옛 location 이름·selector id)")
     environment = code.get("environment") or {}
     if not _SHARED_URL.match(str(environment.get("KOR_TRAVEL_DAGSTER_SHARED_PG_URL", ""))):
         violations.append("(a) code-server에 공용 instance URL(`KOR_TRAVEL_DAGSTER_SHARED_PG_URL`, psycopg2·dagster_shared)이 없다")
+    if str(environment.get("DAGSTER_GRPC_PROXY_HEARTBEAT_TTL_SECONDS")) != "600":
+        violations.append("(a) `DAGSTER_GRPC_PROXY_HEARTBEAT_TTL_SECONDS`가 공용 code-server의 600이 아니다")
     if "DAGSTER_POSTGRES_URL" in environment:
         violations.append("(a) code-server가 옛 metadata DSN(`DAGSTER_POSTGRES_URL`)을 받는다")
     home = environment.get("DAGSTER_HOME")
@@ -206,6 +216,14 @@ def _mutate(compose: dict[str, Any], step: str) -> None:
         services["dagster-migrate"].pop("profiles")
     elif step == "depends":
         code["depends_on"]["dagster-migrate"] = {"condition": "service_completed_successfully"}
+    elif step == "probe":
+        code["healthcheck"]["test"][4] = "import sys; sys.exit(0)"
+    elif step == "shell-probe":
+        code["healthcheck"]["test"] = ["CMD-SHELL", "python -I -c x 14005"]
+    elif step == "heartbeat":
+        code["environment"].pop("DAGSTER_GRPC_PROXY_HEARTBEAT_TTL_SECONDS")
+    elif step == "init":
+        code.pop("init")
     elif step == "old-port":
         services["backend"]["environment"]["DAGSTER_URL"] = "http://127.0.0.1:14004"
     else:  # pragma: no cover - 표가 틀렸다
@@ -226,6 +244,10 @@ def _mutate(compose: dict[str, Any], step: str) -> None:
         ("migrate-profile", "`dagster-migrate`: `profiles: [legacy-dagster]`가 아니다"),
         ("depends", "활성 `dagster-code-server`이 옛 `dagster-migrate`에 기댄다"),
         ("old-port", "옛 Dagster 포트를 부른다"),
+        ("probe", "공용 probe"),
+        ("shell-probe", "공용 probe"),
+        ("heartbeat", "HEARTBEAT_TTL_SECONDS"),
+        ("init", "`init: true`가 없다"),
     ],
 )
 def test_undoing_one_step_of_the_join_is_named(step: str, named: str) -> None:
