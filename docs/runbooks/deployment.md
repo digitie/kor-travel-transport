@@ -105,16 +105,20 @@ gateway와 `dagster-migrate`는 `profiles: [legacy-dagster]`로 내려갔고, �
 합류 전환·되돌리기 절차와 계약은 [shared-db-dagster.md](../architecture/shared-db-dagster.md)의
 "공용 Dagster 제어 평면" 절이 정본이다. 요약:
 
+0. 사전: 운영 DB가 이 release의 Alembic head에 있어야 한다(전환은 migrate를 돌리지 않는다 — prepare가 확인하고
+   거부한다). 합류 release에 새 migration이 있으면 합류 전 release로 먼저 일반 배포한다. `.env.server14`에
+   `KOR_TRAVEL_DAGSTER_SHARED_APP_PASSWORD`를 더하고, `TRANSPORT_DAGSTER_INTERNAL_URL`이 있으면 지우거나
+   `http://127.0.0.1:11002`로 바꾼다(운영 UI 배포 preflight가 그 밖의 값을 거부한다).
 1. WSL(머지된 main): `DEPLOY_MODE=prepare-shared-dagster-cutover ./scripts/deploy-server14.sh` — stage·이미지
-   빌드만 하고 `.env.server14.shared-dagster-cutover`(0600, 전환이 쓸 env)를 남긴다. 컨테이너는 그대로다.
+   빌드만 하고(이미지의 dagster가 공용 plane과 다르면, DB가 head가 아니면 거부) `.env.server14.shared-dagster-cutover`
+   (0600, 전환이 쓸 env)를 남긴다. 컨테이너는 그대로다.
 2. n150 root: Manager 전환 release를 설치한 직후
-   `EXTERNAL_ENV_FILE=/home/digitie/apps/kor-travel-transport/.env.server14.shared-dagster-cutover`로
-   `scripts/dagster-shared-cutover.sh transport forward <manager-sha>`(systemd-run).
+   `systemd-run --unit=dagster-cutover-transport --collect -E EXTERNAL_ENV_FILE=/home/digitie/apps/kor-travel-transport/.env.server14.shared-dagster-cutover /opt/kor-travel-docker-manager/scripts/dagster-shared-cutover.sh transport forward <manager-sha>`.
 3. WSL: `./scripts/deploy-server14.sh`(일반 배포 — backend·frontend를 같은 release로 맞춘다), 이어서 **바로**
    `./scripts/deploy-transport-admin-server14.sh`(공용 webserver를 부르는 운영 UI, 옛 12302 gateway 제거 — 그
    전까지 옛 UI의 Dagster 화면은 지워진 14004를 불러 실패한다).
-4. 관찰 기간 뒤 `.env.server14.shared-dagster-cutover`(운영 비밀 전체의 사본)를 지운다. 되돌리기는 지원하지
-   않는다(보장 없는 수동 best-effort).
+4. 운영 UI 배포 직후 `.env.server14.shared-dagster-cutover`(운영 비밀 전체의 사본)를 `shred -u`로 지운다. 되돌리기는
+   지원하지 않는다(보장 없는 수동 best-effort).
 
 이후 Dagster 정의·healthcheck가 바뀌는 반영도 일반 배포 하나로 한다(code-server만 Dagster 프로세스다).
 

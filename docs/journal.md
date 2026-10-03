@@ -22,6 +22,12 @@
   공용 host.
 - 배포 스크립트: 공용 daemon을 멈추지 않고 location 범위의 run·worker 0을 기다려 교체, 합류 전(공용 plane이
   location을 모름·옛 daemon이 돎)에는 거부. 옛 세 서비스 긴급 교체 스크립트 삭제.
+- 적대 리뷰(2026-10-03) 반영: (H1) Dagster 계열을 공용 plane 호스트와 같은 `==1.13.24`(dagster-postgres 0.29.24)로
+  고정하고 `uv.lock`을 맞췄다 — n150 실측으로 운영 이미지는 이미 1.13.25였다(공용 webserver 상한 위반). 배포 스크립트가
+  빌드 직후 이미지의 dagster를 공용 webserver `{ version }`과 대조한다(Manager 전환도 펜스 전에 같은 대조). (M2) prepare는
+  운영 DB가 이 release의 Alembic head일 때만 진행한다. (M3) 운영 UI 배포 preflight는 `TRANSPORT_DAGSTER_INTERNAL_URL`이
+  비었거나 `http://127.0.0.1:11002`일 때만 진행한다 — n150 `.env.server14`에는 이 키가 없다(떠 있는 UI 컨테이너는 옛 compose
+  기본값 14004). 각 가드는 옛 코드에 먼저 빨간 것을 확인했다(14 failed). 전환 env 파일은 운영 UI 배포 직후 지운다.
 - 전환 절차: `docs/architecture/shared-db-dagster.md` "공용 Dagster 제어 평면". 되돌리기는 지원하지 않는다
   (소유자 결정 — 보장 없는 수동 best-effort). 전환 직후 운영 UI를 바로 배포하고, 관찰 기간 뒤 전환 env 파일
   (운영 비밀 사본)을 지운다. `origin/main`(#60, ADR-011 — receipt 게이트·개명 스크립트 삭제) 위로 rebase했다.

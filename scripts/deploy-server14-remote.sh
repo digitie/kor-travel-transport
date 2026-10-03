@@ -121,18 +121,49 @@ compose() {
   docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${RUNTIME_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml "$@"
 }
 
+shared_dagster_graphql_url="http://127.0.0.1:11002/graphql"
+# 이 이미지의 dagster 버전 — 컨테이너를 네트워크 없이 잠깐 띄워 묻는다(서비스를 바꾸지 않는다).
+image_dagster_version() {
+  docker run --rm --network none --entrypoint python "${BACKEND_RUNTIME_IMAGE}" -I -c 'import importlib.metadata as m; print(m.version("dagster"))'
+}
+# 공용 Dagster 제어 평면(호스트 webserver)의 dagster 버전.
+shared_dagster_version() {
+  curl -fsS --max-time 20 -H 'Content-Type: application/json' -d '{"query":"{ version }"}' "${shared_dagster_graphql_url}" |
+    python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["version"])'
+}
+# 이 release의 Alembic head가 운영 DB의 현재 revision인가 — 전환은 migrate를 돌리지 않는다.
+database_at_release_head() {
+  compose run --rm --no-deps -T migrate alembic current 2>/dev/null | grep -q '(head)'
+}
+
 compose config -q
 # 이미지를 만드는 동안에는 기존 수집기를 계속 운영한다.
 compose build
 
+# code-server의 dagster는 공용 plane 호스트와 **같은 버전**이어야 한다. 높으면 공용 webserver가 unhealthy가 되어
+# 다른 테넌트까지 내려가고(버전 상한), 낮아도 run worker가 다른 버전의 instance ref를 읽는다. 컨테이너를 바꾸기 전에 본다.
+image_version="$(image_dagster_version)" || { echo "Refusing server14 deployment: cannot read the dagster version of ${BACKEND_RUNTIME_IMAGE}." >&2; exit 1; }
+host_version="$(shared_dagster_version)" || { echo "Refusing server14 deployment: cannot ask the shared Dagster webserver for its version." >&2; exit 1; }
+if [[ "${image_version}" != "${host_version}" ]]; then
+  echo "Refusing server14 deployment: ${BACKEND_RUNTIME_IMAGE} has dagster ${image_version}, the shared Dagster plane runs ${host_version} — pin backend/pyproject.toml to the host version." >&2
+  exit 2
+fi
+
 if [[ "${DEPLOY_MODE}" == "prepare-shared-dagster-cutover" ]]; then
+  # Manager 전환은 code-server만 다시 만들고 Alembic migrate를 돌리지 않는다. 이 release에 운영 DB가 아직 받지 않은
+  # migration이 있으면 새 code-server가 옛 schema 위에서 돈다 — 펜스 전, 여기서 멈춘다. 그런 migration은 먼저 일반
+  # 배포(합류 전 release)로 반영한다.
+  database_at_release_head || {
+    echo "Refusing prepare: the production database is not at this release's Alembic head. Deploy the pending migrations first (normal deploy of a pre-join release), then prepare again." >&2
+    exit 2
+  }
   cutover_env_tmp="$(mktemp "${CUTOVER_ENV_FILE}.XXXXXX")"
   cat "${RUNTIME_ENV_FILE}" > "${cutover_env_tmp}"
   printf 'BACKEND_RUNTIME_IMAGE=%s\n' "${BACKEND_RUNTIME_IMAGE}" >> "${cutover_env_tmp}"
   chmod 600 "${cutover_env_tmp}"
   mv -f -- "${cutover_env_tmp}" "${CUTOVER_ENV_FILE}"
   echo "Built ${BACKEND_RUNTIME_IMAGE}; wrote ${CUTOVER_ENV_FILE} (0600). No containers were changed."
-  echo "Next (root, Manager): EXTERNAL_ENV_FILE=${CUTOVER_ENV_FILE} dagster-shared-cutover.sh transport forward <manager-sha>"
+  echo "Next (root, right after installing the Manager release): systemd-run --unit=dagster-cutover-transport --collect -E EXTERNAL_ENV_FILE=${CUTOVER_ENV_FILE} /opt/kor-travel-docker-manager/scripts/dagster-shared-cutover.sh transport forward <manager-sha>"
   exit 0
 fi
 

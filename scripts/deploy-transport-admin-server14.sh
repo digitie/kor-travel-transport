@@ -24,6 +24,14 @@ set -euo pipefail
 for key in TRANSPORT_UI_PASSWORD TRANSPORT_UI_SESSION_SECRET TRANSPORT_ADMIN_WRITE_TOKEN TRANSPORT_UI_PUBLIC_ORIGIN NEXT_PUBLIC_VWORLD_API_KEY; do
   grep -Eq "^${key}=.+" "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" || { echo "${key}가 설정되지 않았습니다." >&2; exit 2; }
 done
+# Dagster는 공용 제어 평면이다 — 운영 UI는 공용 webserver(loopback 11002)만 부른다. 옛 값(전용 webserver 14004)이
+# 남아 있으면 지워진 webserver를 부르게 되므로 배포하지 않는다. 비우면 compose 기본값(11002)이다.
+dagster_url="$({ grep -E '^TRANSPORT_DAGSTER_INTERNAL_URL=' "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" || true; } | tail -n 1 | cut -d= -f2- | tr -d "\"'")"
+if [[ -n "${dagster_url}" && "${dagster_url}" != "http://127.0.0.1:11002" ]]; then
+  echo "TRANSPORT_DAGSTER_INTERNAL_URL은 비우거나 http://127.0.0.1:11002(공용 Dagster webserver)여야 합니다: ${dagster_url}" >&2
+  exit 2
+fi
+unset dagster_url
 write_token="$(grep -E '^TRANSPORT_ADMIN_WRITE_TOKEN=' "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" | tail -n 1 | cut -d= -f2-)"
 [[ ${#write_token} -ge 32 ]] || { echo "TRANSPORT_ADMIN_WRITE_TOKEN은 32자 이상이어야 합니다." >&2; exit 2; }
 capability="$(curl --fail --silent --show-error --max-time 5 -H @- http://127.0.0.1:14001/v1/transport/admin/place-locations/capability <<<"X-Transport-Admin-Token: ${write_token}")" || {

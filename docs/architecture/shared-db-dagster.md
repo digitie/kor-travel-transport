@@ -215,12 +215,17 @@ Manager 쪽 전환 PR(`feat/transport-shared-dagster`의 flip)과 이 저장소�
 머지된 뒤 순서대로 한다. 비밀은 출력하지 않는다.
 
 1. `.env.server14`에 `KOR_TRAVEL_DAGSTER_SHARED_APP_PASSWORD`를 더한다(값은 root만 읽는 Manager `.env`의 같은 이름 값).
+   `TRANSPORT_DAGSTER_INTERNAL_URL`이 있으면 지우거나 `http://127.0.0.1:11002`로 바꾼다(운영 UI 배포 preflight가 그 밖의
+   값을 거부한다). 운영 DB가 이 release의 Alembic head에 있어야 한다 — 전환은 migrate를 돌리지 않는다. 합류 release에
+   새 migration이 있으면 합류 전 release로 먼저 일반 배포한다(2의 prepare가 확인하고 거부한다).
 2. WSL(머지된 main): `DEPLOY_MODE=prepare-shared-dagster-cutover ./scripts/deploy-server14.sh`. stage·이미지
    빌드(`kor-travel-transport-backend:rel-<sha12>`)만 하고 `.env.server14.shared-dagster-cutover`(0600)를 남긴다.
-   컨테이너는 바꾸지 않는다.
+   컨테이너는 바꾸지 않는다. 이미지의 dagster가 공용 plane 호스트와 다르거나 운영 DB가 이 release의 Alembic head가
+   아니면 거부한다.
 3. n150 root: Manager 전환 release를 설치하고(`~/install-mgr.sh <sha>`) **이어서** 창 스크립트를 돈다:
    `systemd-run --unit=dagster-cutover-transport --collect -E EXTERNAL_ENV_FILE=/home/digitie/apps/kor-travel-transport/.env.server14.shared-dagster-cutover /opt/kor-travel-docker-manager/scripts/dagster-shared-cutover.sh transport forward <manager-sha>`.
-   precheck(선언·렌더 대조, 이미지, plane이 아직 이 location을 안 싣는지) → 옛 daemon·webserver·gateway 정지(펜스)
+   precheck(선언·렌더 대조, 공용 code-server 규칙, 이미지와 그 dagster 버전 = 공용 plane, 옛 instance의 schedule 상태 =
+   코드의 `default_status`, plane이 아직 이 location을 안 싣는지) → 옛 daemon·webserver·gateway 정지(펜스)
    → 옛 DB의 진행 중 run 취소 → code-server를 공용 instance로 재생성 → 공용 daemon·webserver 재생성 → location
    `RepositoryLocation`·RUNNING instigator 동등(10 schedule) → 옛 컨테이너 제거 → 첫 tick(5분 주기라 몇 분).
 4. WSL: `./scripts/deploy-server14.sh`(일반 배포 — backend·frontend를 같은 release로 맞춘다. 공용 plane이 location을
@@ -228,9 +233,12 @@ Manager 쪽 전환 PR(`feat/transport-shared-dagster`의 flip)과 이 저장소�
 5. WSL: `./scripts/deploy-transport-admin-server14.sh` — **3이 끝나면 바로**. 그 전까지 떠 있는 옛 운영 UI는 지워진
    옛 webserver(14004)를 불러 Dagster 화면이 실패하고, 옛 12302 gateway도 upstream이 없다. 새 UI는 공용
    webserver를 부르고 `--remove-orphans`가 옛 12302 gateway 컨테이너를 지운다.
-6. 관찰 기간(공용 plane에서 transport tick·run이 며칠 정상)이 끝나면 전환 env 파일을 지운다 —
-   `.env.server14.shared-dagster-cutover`는 운영 비밀 전체의 사본이다:
-   `shred -u /home/digitie/apps/kor-travel-transport/.env.server14.shared-dagster-cutover`(없으면 `rm -f`).
+6. 5가 끝나면 바로 전환 env 파일을 지운다 — `.env.server14.shared-dagster-cutover`는 운영 비밀 전체의 사본이다:
+   `shred -u /home/digitie/apps/kor-travel-transport/.env.server14.shared-dagster-cutover`.
+
+다른 테넌트 영향: 이 합류로 공용 `dagster.yaml`이 바뀌어(transport 상한) geo·weather·map·pinvi code-server의 instance
+digest env가 달라진다. 각자 다음 compose `up`·재구축 때 한 번 다시 만들어진다(그 code-server의 진행 중 run은 끊긴다).
+전환 창이나 진행 중 run이 없는 조용한 때에 맞춘다.
 
 되돌리기는 **지원하지 않는다**(소유자 결정, 2026-10-02). 보장 없는 수동 best-effort뿐이다 — 문제가 생기면 이
 저장소의 이전 release를 다시 배포하고 옛 Dagster 서비스를 손으로 띄우는 것을 상황에 맞게 판단한다. 옛 metadata
