@@ -443,14 +443,14 @@ def _build_client(settings: Settings) -> FlightStatusClient | None:
 
 
 def _build_flight_api_error_message(exc: Exception, service_key: str | None) -> str:
-    sanitized_error = _sanitize_upstream_error(exc, service_key)
+    sanitized_error = sanitize_upstream_error(exc, service_key)
     return f"비행편 API 응답을 읽지 못했습니다: {sanitized_error}"
 
 
-def _sanitize_upstream_error(error: Exception | str, service_key: str | None) -> str:
+def sanitize_upstream_error(error: Exception | str, service_key: str | None) -> str:
     if isinstance(error, httpx.HTTPStatusError):
         response = error.response
-        body = _sanitize_upstream_error(response.text, service_key) if response is not None else ""
+        body = sanitize_upstream_error(response.text, service_key) if response is not None else ""
         if body:
             return f"HTTP {response.status_code}: {body}"
         if response is not None:

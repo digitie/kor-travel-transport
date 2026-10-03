@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.core.time_utils import now_utc, serialize_utc
 from app.models import Airport, CollectionRun, ParkingFeeRule, ParkingLot, ParkingSnapshot, RawApiResponse
+from app.services.flight_status import sanitize_upstream_error
 from app.services.parsers import (
     ParsedFeeRule,
     ParsedParkingObservation,
@@ -502,7 +503,7 @@ class CollectionService:
                 run.status = "partial_success"
         except Exception as exc:
             failed_at = now_utc()
-            error_message = str(exc)
+            error_message = self._redact(str(exc))
             await session.rollback()
             session.add(
                 CollectionRun(
@@ -585,8 +586,8 @@ class CollectionService:
         }
 
     def _redact(self, message: str) -> str:
-        secret = self.settings.data_go_kr_service_key
-        return message.replace(secret, "<redacted>") if secret else message
+        # flight_status와 같은 sanitizer(원문 키 + URL의 serviceKey= 값 — 인코딩된 키 포함)를 쓴다.
+        return sanitize_upstream_error(message, self.settings.data_go_kr_service_key)
 
     async def _safe_fetch(
         self,

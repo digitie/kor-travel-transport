@@ -246,3 +246,74 @@ async def test_krairport_client_rate_limit_error_propagates_with_detectable_mess
             await KrairportPublicDataClient(settings).fetch_kac_parking()
 
     assert is_upstream_rate_limit_error(str(exc_info.value))
+
+
+# 적대 리뷰 L1/L2(2026-10-04): 수집 오류 원문이 DB·로그로 갈 때 서비스 키는 원문·URL 인코딩 형태 모두
+# flight_status와 같은 sanitizer로 가려진다(정상 경로의 로그와 예외 경로의 DB 기록 둘 다).
+_SECRET_KEY = "RAW+KEY/abc=="
+_LEAKY = f"401 for url 'https://apis.data.go.kr/x?serviceKey=RAW%2BKEY%2Fabc%3D%3D&a=1' key={_SECRET_KEY}"
+
+
+def _secret_free(text: str) -> bool:
+    return "RAW+KEY" not in text and "RAW%2BKEY" not in text
+
+
+def _leak_settings(tmp_path) -> Settings:
+    return Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'leak.sqlite3'}",
+        seed_sample_data=False,
+        enable_scheduler=False,
+        data_go_kr_service_key=_SECRET_KEY,
+        enable_incheon_collection=False,
+        enable_incheon_fee_collection=False,
+        enable_fee_collection=False,
+        airport_codes_csv="GMP",
+    )
+
+
+def test_collection_error_log_redacts_service_key_variants(tmp_path, caplog) -> None:
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    settings = _leak_settings(tmp_path)
+    fixture = FixturePublicDataClient()
+    fixture.fetch_kac_parking = AsyncMock(side_effect=RuntimeError(_LEAKY))
+    with TestClient(create_app(settings)) as client:
+        service = CollectionService(settings, client=fixture)
+
+        async def run() -> dict:
+            async with client.app.state.session_factory() as session:
+                return await service.collect(session, trigger="manual")
+
+        with caplog.at_level("WARNING", logger="app.services.collection"):
+            summary = asyncio.run(run())
+
+    assert summary["status"] == "failed"
+    logged = "\n".join(record.getMessage() for record in caplog.records)
+    assert "serviceKey=<redacted>" in logged
+    assert _secret_free(logged)
+
+
+def test_collection_crash_stores_redacted_error(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+    from sqlalchemy import select
+
+    from app.main import create_app
+    from app.models import CollectionRun
+
+    settings = _leak_settings(tmp_path)
+    with TestClient(create_app(settings)) as client:
+        service = CollectionService(settings, client=FixturePublicDataClient())
+        service._store_observations = AsyncMock(side_effect=RuntimeError(_LEAKY))
+
+        async def run() -> list[str | None]:
+            async with client.app.state.session_factory() as session:
+                with pytest.raises(RuntimeError):
+                    await service.collect(session, trigger="manual")
+            async with client.app.state.session_factory() as session:
+                return list((await session.execute(select(CollectionRun.error_message))).scalars())
+
+        stored = asyncio.run(run())
+
+    assert stored and all(message and _secret_free(message) for message in stored)

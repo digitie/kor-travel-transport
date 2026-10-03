@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -151,3 +151,21 @@ def test_transport_admin_routes_work_with_valid_token(tmp_path: Path) -> None:
     assert capability.json() == {"contract": "coordinate-write-v1"}
     # 인증을 통과한 뒤에야 본문 검증이 돈다.
     assert invalid_body.status_code == 422
+
+
+def test_transport_admin_post_never_opens_a_db_session(guarded_client: TestClient) -> None:
+    """미들웨어가 라우트 의존성(get_db)보다 먼저 닫는다 — 무인증 요청은 DB 세션을 열지 않는다."""
+    real_factory = guarded_client.app.state.session_factory
+    opened = MagicMock(side_effect=AssertionError("get_db entered without a valid admin token"))
+    guarded_client.app.state.session_factory = opened
+    payload = {
+        "kind": "ferry_port", "id": 1, "source": "data_go_kr_maritime", "provider_id": "P1",
+        "expected_name": "x", "expected_city_name": None, "latitude": 34.1, "longitude": 127.2,
+    }
+    try:
+        response = guarded_client.post("/v1/transport/admin/place-locations", json=payload)
+    finally:
+        guarded_client.app.state.session_factory = real_factory
+
+    assert response.status_code == 404
+    opened.assert_not_called()
