@@ -1,5 +1,19 @@
 # journal.md — 작업 일지
 
+## 2026-10-04 — 적대 리뷰 LOW 후속 3건(브랜치 `fix/admin-auth-and-collector-lows`)
+
+배포·PR은 하지 않았다. 세 수정 모두 테스트를 옛 코드에서 먼저 빨갛게 확인했다.
+
+- `/v1/transport/admin/*`(관리자 BFF 좌표 보정)를 `/v1/admin/*`와 같은 토큰 미들웨어 뒤로 옮겼다. 핸들러 안에서만
+  토큰을 봐서 무인증 POST가 본문 검증 422로 스키마를 드러내고 DB 세션을 먼저 열었다. 공개 웹 프록시도
+  `v1/transport/admin/*`을 중계하지 않는다(전에는 GET을 넘겼고 백엔드가 404로 막았다).
+- 공개 `/v1/admin/collector-status`(와 이를 품는 `/v1/dashboard/bootstrap`)가 `collection_runs.error_message`
+  원문(URL·키·SQL)을 그대로 냈다. 이제 `upstream_rate_limited`/`collection_failed` 코드만 낸다
+  (`/v1/transport/collector-status`의 기존 규약). 원문은 DB와 run당 1회 warning 로그(서비스 키 가림)에만 남는다.
+- 죽은 수집 경로: 공개 대시보드 `지금 수집` 버튼 → `api.runCollector()` → `POST /v1/admin/collect`는 #61 이후 공개
+  프록시가 항상 거부하고 브라우저엔 토큰이 없어 성공할 수 없었다(단위 테스트는 fetch mock으로만 통과). 버튼·
+  `runCollector`·그것만 쓰던 메시지 상태를 지웠다. 수동 수집은 운영자가 호스트에서 토큰과 함께 호출한다.
+
 ## 2026-10-02 — 공용 Dagster 제어 평면 합류(브랜치 `feat/shared-dagster-plane`, Manager ADR-54)
 
 소유자 승인 작업. Manager의 공용 Dagster plane(weather·pinvi·geo·map이 2026-09-30~10-01 합류)에 transport를 더한다.
