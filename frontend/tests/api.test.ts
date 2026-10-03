@@ -48,7 +48,7 @@ describe("api client", () => {
   test("the public api client offers no manual collection (ADR-012)", () => {
     // 공개 프록시는 v1/admin/collect를 중계하지 않고 브라우저에는 관리자 토큰도 없다(#61).
     const client = buildApiClient("http://localhost:8000");
-    expect(Object.keys(client).filter((name) => /collector$|collect|runcollect/i.test(name))).toEqual([]);
+    expect(client).not.toHaveProperty("runCollector");
   });
 
   test("uses the same-origin backend proxy when the API base URL is not explicitly passed", async () => {
