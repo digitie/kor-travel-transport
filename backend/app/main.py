@@ -159,7 +159,7 @@ from app.services.backup_restore import (
     restore_backup,
     save_uploaded_backup,
 )
-from app.services.collection import CollectionService
+from app.services.collection import CollectionService, is_upstream_rate_limit_error
 from app.services.fee_calculator import calculate_total_fee
 from app.services.flight_status import FlightStatusService
 from app.services.holidays import (
@@ -3091,6 +3091,17 @@ async def _run_transport_scheduler(app: FastAPI, scope: CollectionScope = "highw
         await asyncio.sleep(delay)
 
 
+def _public_run_error(message: str | None) -> str | None:
+    """공개 collector-status에는 예외 원문(URL·키·SQL) 대신 안정된 오류 코드만 낸다.
+
+    원문은 collection_runs.error_message와 수집 로그에만 남는다(/v1/transport/collector-status의
+    "collection_failed"와 같은 규약).
+    """
+    if not message:
+        return None
+    return "upstream_rate_limited" if is_upstream_rate_limit_error(message) else "collection_failed"
+
+
 async def _load_collection_run_statuses(
     session: AsyncSession,
     limit: int = 5,
@@ -3135,7 +3146,7 @@ async def _load_collection_run_statuses(
             finished_at=serialize_utc(run.finished_at) if run.finished_at else None,
             status=run.status,
             trigger=run.trigger,
-            error_message=run.error_message,
+            error_message=_public_run_error(run.error_message),
             raw_response_count=raw_counts.get(run.id, 0),
             snapshot_count=snapshot_counts.get(run.id, 0),
         )

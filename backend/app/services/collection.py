@@ -519,6 +519,9 @@ class CollectionService:
             run.finished_at = now_utc()
             run.error_message = "\n".join(errors) if errors else None
             await session.commit()
+            if errors:
+                # 공개 collector-status는 오류 코드만 낸다. 원문은 서버 로그(키는 가림)와 DB에만 둔다.
+                logger.warning("collection run_id=%s errors: %s", run.id, self._redact(" | ".join(errors)))
 
         logger.info(
             "collection finished run_id=%s trigger=%s status=%s client_mode=%s raw=%s snapshots=%s fee_rules=%s errors=%s",
@@ -580,6 +583,10 @@ class CollectionService:
             "fee_rule_count": 0,
             "errors": [error_message],
         }
+
+    def _redact(self, message: str) -> str:
+        secret = self.settings.data_go_kr_service_key
+        return message.replace(secret, "<redacted>") if secret else message
 
     async def _safe_fetch(
         self,

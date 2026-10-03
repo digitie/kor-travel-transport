@@ -1432,6 +1432,37 @@ def test_admin_collector_status_reports_upstream_rate_limit(tmp_path: Path) -> N
         assert_is_utc_iso(payload["upstream_rate_limited_until"])
 
 
+def test_public_collector_status_hides_raw_run_errors(tmp_path: Path) -> None:
+    """공개 collector-status·대시보드는 예외 원문(URL·키·SQL) 대신 오류 코드만 보인다."""
+    leaked = (
+        "HTTPStatusError: Client error '401' for url "
+        "'https://apis.data.go.kr/B551177/parking?serviceKey=SECRET-KEY-123' "
+        "[SQL: SELECT * FROM collection_runs WHERE id = 7]"
+    )
+    with build_client(tmp_path, seed_sample_data=False) as client:
+        asyncio.run(insert_collection_run(client, status="failed", trigger="scheduler", error_message=leaked))
+        asyncio.run(
+            insert_collection_run(
+                client,
+                status="failed",
+                trigger="scheduler",
+                error_message="kac_parking API error 99: LIMITED NUMBER OF SERVICE REQUESTS EXCEEDS ERROR.",
+            )
+        )
+        asyncio.run(insert_collection_run(client, status="success", trigger="scheduler", error_message=None))
+        status = client.get("/v1/admin/collector-status")
+        bootstrap = client.get("/v1/dashboard/bootstrap")
+
+    assert status.status_code == 200
+    assert bootstrap.status_code == 200
+    for body in (status.text, bootstrap.text):
+        for fragment in ("SECRET-KEY-123", "apis.data.go.kr", "SELECT", "LIMITED NUMBER", "HTTPStatusError"):
+            assert fragment not in body
+    errors = sorted(run["error_message"] for run in status.json()["recent_runs"] if run["error_message"])
+    assert errors == ["collection_failed", "upstream_rate_limited"]
+    assert bootstrap.json()["collector"]["recent_runs"] == status.json()["recent_runs"]
+
+
 def test_admin_collect_returns_upstream_rate_limit_error(tmp_path: Path) -> None:
     with build_client(
         tmp_path,
