@@ -109,8 +109,10 @@ x-dagster-code-server-probe: &dagster-code-server-probe |-
   born = open('/proc/1/stat').read().rsplit(')', 1)[1].split()[19]
   key = open('/proc/sys/kernel/random/boot_id').read().strip() + ':' + born
   def write(path, text):
-      open(path + '.new', 'w').write(text)
-      os.replace(path + '.new', path)
+      new = '%s.%d.%s' % (path, os.getpid(), os.urandom(4).hex())
+      with open(new, 'w') as f:
+          f.write(text)
+      os.replace(new, path)
   if sys.argv[2:] == ['reap']:
       import fcntl
       lock = open(mark + '.lock', 'w')
@@ -142,7 +144,7 @@ x-dagster-code-server-probe: &dagster-code-server-probe |-
       sys.exit(0)
   import grpc
   from grpc_health.v1 import health_pb2 as h, health_pb2_grpc as g
-  now = time.time()
+  now = time.monotonic()
   seen_healthy = os.path.exists(passed) and open(passed).read() == key
   c = grpc.insecure_channel('127.0.0.1:' + sys.argv[1])
   def kind_of(e):
@@ -161,14 +163,14 @@ x-dagster-code-server-probe: &dagster-code-server-probe |-
           kind = kind_of(e)
   if kind:
       try:
-          k, count, first, down = open(fails).read().split()
-          if k != key:
+          k, count, first, down, clock = open(fails).read().split()
+          if k != key or clock != 'monotonic':
               raise ValueError(k)
           count, first = int(count) + 1, float(first)
       except (OSError, ValueError):
           count, first, down = 1, now, '-'
       down = '-' if kind == 'load error' else (down if down != '-' else str(now))
-      write(fails, ' '.join((key, str(count), str(first), down)))
+      write(fails, ' '.join((key, str(count), str(first), down, 'monotonic')))
       print('child', kind, 'x' + str(count), file=sys.stderr)
       def runs_in_flight():
           for pid in os.listdir('/proc'):
@@ -182,7 +184,7 @@ x-dagster-code-server-probe: &dagster-code-server-probe |-
       if kind == 'load error':
           due = now - first >= 90
       elif kind == 'timeout':
-          due = seen_healthy and down_for >= 300
+          due = down_for >= (300 if seen_healthy else 1800)
       else:
           due = down_for >= 90
       if count >= 3 and due and (down_for >= 7200 or not runs_in_flight()):
