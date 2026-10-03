@@ -13,9 +13,9 @@ import { Spinner } from "@/components/ui/spinner";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { dateTime } from "@/lib/journey";
 import { getDagsterOverview, jobBudgetSeconds, JOB_LABELS, runStalled, scheduleDescription, statusLabel, type DagsterOverview } from "@/lib/dagster";
+import { dagsterLocationUrl, dagsterRunUrl } from "@/lib/dagster-scope";
 import { cn } from "@/lib/utils";
 
-const DAGSTER_URL = "https://transport-dagster.digitie.mywire.org";
 const epochLabel = (value: number | null) => dateTime(value == null ? null : new Date(value * 1000).toISOString());
 
 export function DagsterTables({ snapshot }: { snapshot: DagsterOverview }) {
@@ -52,7 +52,7 @@ export function DagsterTables({ snapshot }: { snapshot: DagsterOverview }) {
                 </TableCell>
                 <TableCell>{epochLabel(run.startTime)}</TableCell>
                 <TableCell>{epochLabel(run.endTime)}</TableCell>
-                <TableCell><a data-slot="button" className={cn(buttonVariants({ variant: "link", size: "sm" }))} href={`${DAGSTER_URL}/runs/${encodeURIComponent(run.runId)}`} target="_blank" rel="noreferrer">실행 상세 <ExternalLink data-icon="inline-end" aria-hidden="true" /></a></TableCell>
+                <TableCell><a data-slot="button" className={cn(buttonVariants({ variant: "link", size: "sm" }))} href={dagsterRunUrl(run.runId)} target="_blank" rel="noreferrer">실행 상세 <ExternalLink data-icon="inline-end" aria-hidden="true" /></a></TableCell>
               </TableRow>;
             })}</TableBody>
           </Table>
@@ -112,7 +112,7 @@ export function DagsterOperations() {
   function refresh() { setLoading(true); setError(false); setReload((value) => value + 1); }
   const stalled = (snapshot?.activeRuns ?? snapshot?.runs ?? []).filter((run) => runStalled(run, Date.parse(snapshot?.checkedAt ?? ""))).length;
   return <>
-    <PageHeader title="Dagster" description="자동 수집 작업의 실행 기록과 스케줄을 확인합니다. 제공기관별 저장 범위는 수집 상태 메뉴에서 확인하세요." actions={<><Button variant="outline" type="button" disabled={loading} onClick={refresh}>{loading ? <Spinner data-icon="inline-start" aria-hidden="true" /> : <RefreshCw data-icon="inline-start" aria-hidden="true" />}{loading ? "확인 중…" : "새로고침"}</Button><a data-slot="button" className={cn(buttonVariants({ variant: "outline" }))} href={DAGSTER_URL} target="_blank" rel="noreferrer">Dagster UI <ExternalLink data-icon="inline-end" aria-hidden="true" /></a></>} />
+    <PageHeader title="Dagster" description="자동 수집 작업의 실행 기록과 스케줄을 확인합니다. 제공기관별 저장 범위는 수집 상태 메뉴에서 확인하세요." actions={<><Button variant="outline" type="button" disabled={loading} onClick={refresh}>{loading ? <Spinner data-icon="inline-start" aria-hidden="true" /> : <RefreshCw data-icon="inline-start" aria-hidden="true" />}{loading ? "확인 중…" : "새로고침"}</Button><a data-slot="button" className={cn(buttonVariants({ variant: "outline" }))} href={dagsterLocationUrl()} target="_blank" rel="noreferrer">Dagster UI <ExternalLink data-icon="inline-end" aria-hidden="true" /></a></>} />
     <div className="journey-workbench dagster-workbench" aria-busy={loading}>
       {error ? <Alert variant="destructive"><AlertDescription>{snapshot ? "Dagster 갱신에 실패해 마지막 확인 결과를 표시합니다." : "Dagster 상태를 불러오지 못했습니다."} 새로고침으로 다시 확인해 주세요.</AlertDescription></Alert> : null}
       {stalled > 0 ? <Alert variant="destructive"><AlertDescription>{stalled}개 실행이 작업별 확인 기준을 넘었습니다. 실제 저장 진행 여부를 실행 상세에서 확인하세요.</AlertDescription></Alert> : null}

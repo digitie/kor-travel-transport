@@ -6,7 +6,7 @@
 import하고 deadline이 없어, 끼인 code-server 앞에서는 probe가 끝나지 않는다.
 
 검사는 **이름 목록이 아니라 command에서 유도한다.** 저장소의 모든 compose 파일에서
-`dagster api grpc`·`dagster-webserver`·`dagster-daemon run`을 실행하는 서비스를 찾으므로,
+`dagster code-server start`(또는 옛 `dagster api grpc`)·`dagster-webserver`·`dagster-daemon run`을 실행하는 서비스를 찾으므로,
 새 Dagster 서비스도 같은 요구를 받는다. code-server probe의 판정은 문자열이 아니라 실제
 gRPC health 서버 앞에서 probe를 실행해 확인한다.
 """
@@ -33,7 +33,8 @@ ROOT = (
     else _BACKEND_ROOT.parent
 )
 
-_CODE_SERVER = ("dagster", "api", "grpc")
+#: code-server는 `dagster code-server start`(공용 plane, reload 가능) 또는 옛 `dagster api grpc`다.
+_CODE_SERVER_PROGRAMS = (("dagster", "code-server", "start"), ("dagster", "api", "grpc"))
 _WEBSERVER = ("dagster-webserver",)
 _DAEMON = ("dagster-daemon", "run")
 
@@ -141,7 +142,11 @@ def _python_probe(key: str, service: dict[str, Any]) -> tuple[str, str]:
     return program[3], program[4]
 
 
-_CODE_SERVERS = _services_running(_CODE_SERVER)
+_CODE_SERVERS = {
+    key: service
+    for program in _CODE_SERVER_PROGRAMS
+    for key, service in _services_running(program).items()
+}
 _WEBSERVERS = _services_running(_WEBSERVER)
 _DAEMONS = _services_running(_DAEMON)
 _DAGSTER_SERVICES = {**_CODE_SERVERS, **_WEBSERVERS, **_DAEMONS}
@@ -212,7 +217,29 @@ def test_code_server_probe_calls_grpc_health_with_a_deadline(key: str) -> None:
         )
 
 
-@pytest.mark.parametrize("key", sorted(_CODE_SERVERS))
+#: 공용 plane의 probe(Manager `x-dagster-code-server-probe`)가 자식까지 닿는 조각 — proxy가 자식에 전달하는 RPC, 그
+#: 답의 load error 표지, 확정된 죽음에서 PID 1(init)을 끝내는 동작. 그 probe의 판정은 Manager의 실행 테스트가 잰다
+#: (healthy 표지·orphan reaper가 `/tmp`와 PID 1을 건드리므로 여기서 실제로 돌리지 않는다).
+_PROXY_PROBE_FRAGMENTS = ("/api.DagsterApi/ListRepositories", "SerializableErrorInfo", "os.kill(1,")
+_PROXY_CODE_SERVERS = {key: s for key, s in _CODE_SERVERS.items() if _runs(s, ("dagster", "code-server", "start"))}
+_SIMPLE_PROBE_CODE_SERVERS = {key: s for key, s in _CODE_SERVERS.items() if key not in _PROXY_CODE_SERVERS}
+
+
+@pytest.mark.parametrize("key", sorted(_PROXY_CODE_SERVERS))
+def test_proxy_code_server_probe_reaches_the_child(key: str) -> None:
+    """`code-server start`의 proxy는 자식이 죽어도 SERVING이다 — probe는 자식에 전달되는 RPC를 보고 PID 1을 끝낸다."""
+    source, _ = _python_probe(key, _PROXY_CODE_SERVERS[key])
+    missing = [fragment for fragment in _PROXY_PROBE_FRAGMENTS if fragment not in source]
+    assert not missing, (key, missing)
+    heartbeat = str((_PROXY_CODE_SERVERS[key].get("environment") or {}).get("DAGSTER_GRPC_PROXY_HEARTBEAT_TTL_SECONDS"))
+    assert heartbeat.isdecimal() and 300 <= int(heartbeat) <= 1800, (key, heartbeat)
+
+
+def test_the_proxy_probe_derivation_sees_the_code_server() -> None:
+    assert _PROXY_CODE_SERVERS, "`dagster code-server start` code-server를 찾지 못했다"
+
+
+@pytest.mark.parametrize("key", sorted(_SIMPLE_PROBE_CODE_SERVERS))
 def test_code_server_probe_passes_only_while_dagster_api_is_serving(key: str) -> None:
     """실제 gRPC health 서버 앞에서 probe를 실행한다. `DagsterApi`가 SERVING일 때만 exit 0이다.
 

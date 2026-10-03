@@ -6,7 +6,7 @@ const password = process.env.E2E_TRANSPORT_UI_PASSWORD;
 const expectedReleaseSha = process.env.E2E_TRANSPORT_RELEASE_SHA;
 const webBase = process.env.E2E_BASE_URL ?? "https://transport.digitie.mywire.org";
 const apiBase = process.env.E2E_TRANSPORT_API_BASE_URL ?? "https://transport-api.digitie.mywire.org";
-const dagsterBase = process.env.E2E_TRANSPORT_DAGSTER_BASE_URL ?? "https://transport-dagster.digitie.mywire.org";
+const dagsterBase = process.env.E2E_TRANSPORT_DAGSTER_BASE_URL ?? "https://dagster.digitie.mywire.org";
 
 type EndpointCase = { name: string; path: string; arrayKey: string };
 

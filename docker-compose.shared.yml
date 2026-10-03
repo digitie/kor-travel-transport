@@ -4,16 +4,35 @@
 # 로컬의 기존 `docker-compose.yml` + `docker-compose.db.yml` 흐름은 빠른 개발·legacy
 # data rollback 전용으로 남긴다. 운영에서는 이 파일을 base compose와 함께 사용한다.
 
+#
+# Dagster는 공용 제어 평면(kor-travel-docker-manager ADR-54)에 합류했다. 공용 daemon·webserver
+# (`127.0.0.1:11002`)·gateway(`dagster.digitie.mywire.org`)가 이 프로젝트의 code-server를 workspace
+# location `kor-travel-transport`로 싣는다. 이 파일에 남는 Dagster 프로세스는 code-server 하나다.
+# 옛 webserver·daemon·gateway와 옛 metadata DB의 migrate는 `profiles: [legacy-dagster]`에 남는다 — Manager 전환
+# 스크립트의 모양 파생(펜스할 옛 서비스)이 찾는다. 평소 `up`은 그것들을 띄우지 않는다. 되돌리기는 지원하지 않는다
+# (보장 없는 수동 best-effort). 자세히는 `docs/architecture/shared-db-dagster.md` §공용 Dagster 제어 평면.
+
+# 옛 프로젝트 전용 Dagster instance(`kor_travel_transport_dagster`) — legacy-dagster 서비스만 쓴다.
 x-dagster-control-environment: &dagster-control-environment
   DAGSTER_HOME: /app/dagster_home
   DAGSTER_POSTGRES_URL: "${DAGSTER_POSTGRES_URL:?set the dedicated Dagster metadata DSN}"
   # Application schema DDL belongs only to the migrate one-shot service.
   RUN_DB_MIGRATIONS: "false"
 
+# 공용 Dagster instance. 값은 Manager compose의 `x-dagster-shared-control-env`와 같은 URL이다(role·DB 이름은
+# literal — env override로 한쪽만 바꾸면 다른 DB를 겨냥한다). 비밀번호는 Manager `.env`의
+# `KOR_TRAVEL_DAGSTER_SHARED_APP_PASSWORD`와 같은 값을 `.env.server14`에 둔다. `postgresql+psycopg2://`를
+# 명시한다 — 이 이미지는 SQLAlchemy 2.1이라 맨 `postgresql://`이면 psycopg v3를 골라 dagster-postgres가 깨진다.
+x-dagster-shared-environment: &dagster-shared-environment
+  DAGSTER_HOME: /app/dagster_home
+  KOR_TRAVEL_DAGSTER_SHARED_PG_URL: "postgresql+psycopg2://kor_travel_dagster_shared_app:${KOR_TRAVEL_DAGSTER_SHARED_APP_PASSWORD:?set KOR_TRAVEL_DAGSTER_SHARED_APP_PASSWORD (same value as the Manager .env)}@127.0.0.1:11000/dagster_shared"
+  # Application schema DDL belongs only to the migrate one-shot service.
+  RUN_DB_MIGRATIONS: "false"
+
 # code-server와 그 run worker만 provider·application DB·RustFS secrets를 받는다.
-# webserver/daemon은 Dagster metadata DB와 gRPC workspace만 필요하다.
+# 공용 webserver/daemon은 이 값을 모른다 — gRPC workspace로만 이 code-server에 닿는다.
 x-dagster-execution-environment: &dagster-execution-environment
-  <<: *dagster-control-environment
+  <<: *dagster-shared-environment
   DATABASE_URL: "${DATABASE_URL:?set the application database DSN}"
   SCHEDULER_MODE: dagster
   ENABLE_SCHEDULER: "true"
@@ -77,6 +96,106 @@ x-dagster-execution-environment: &dagster-execution-environment
   RUSTFS_RAW_PREFIX: "${RUSTFS_RAW_PREFIX:-provider-raw}"
   RUSTFS_ALLOW_INSECURE_HTTP: "${RUSTFS_ALLOW_INSECURE_HTTP:-false}"
 
+
+# 공용 plane code-server의 healthcheck — kor-travel-docker-manager `docker-compose.yml`의 `x-dagster-code-server-probe`
+# **원문 그대로**다(Manager #456). proxy(`code-server start`)가 아니라 자식에 전달되는 `ListRepositories`를 보고, 죽은·멈춘
+# 자식은 run worker가 없을 때 PID 1(init)을 끝내 `restart`가 다시 띄우게 하며, 컨테이너가 새로 뜨면 그 전에 시작한 이
+# location의 STARTED run(worker가 함께 사라진 run)을 실패로 닫는다. 판정 규칙·근거는 Manager 쪽 주석이 정본이다.
+# **고치지 않는다** — Manager 전환 스크립트가 이 원문이 Manager의 것과 같은지 대조하고 다르면 전환을 멈춘다. Manager가
+# probe를 바꾸면 이 블록을 그 원문으로 다시 복사한다.
+x-dagster-code-server-probe: &dagster-code-server-probe |-
+  import os, sys, time, subprocess
+  mark, tried, fails, passed = '/tmp/.ktdm-orphan-reap', '/tmp/.ktdm-orphan-reap.tried', '/tmp/.ktdm-probe-fails', '/tmp/.ktdm-probe-passed'
+  born = open('/proc/1/stat').read().rsplit(')', 1)[1].split()[19]
+  key = open('/proc/sys/kernel/random/boot_id').read().strip() + ':' + born
+  def write(path, text):
+      open(path + '.new', 'w').write(text)
+      os.replace(path + '.new', path)
+  if sys.argv[2:] == ['reap']:
+      import fcntl
+      lock = open(mark + '.lock', 'w')
+      try:
+          fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+      except OSError:
+          sys.exit(0)
+      argv = open('/proc/1/cmdline').read().split('\0')
+      def flag(*names):
+          for i, w in enumerate(argv):
+              for name in names:
+                  if w == name and i + 1 < len(argv):
+                      return argv[i + 1]
+                  if w.startswith(name + '='):
+                      return w[len(name) + 1:]
+      location = flag('--location-name', '-l') or flag('-m', '--module-name')
+      if not location:
+          print('orphan reaper: PID 1 argv names no code location; nothing to reap', flush=True)
+      else:
+          from dagster import DagsterInstance
+          from dagster._core.storage.dagster_run import DagsterRunStatus, RunsFilter
+          since = time.time() - float(open('/proc/uptime').read().split()[0]) + int(born) / os.sysconf('SC_CLK_TCK')
+          instance = DagsterInstance.get()
+          for record in instance.get_run_records(filters=RunsFilter(statuses=[DagsterRunStatus.STARTED], tags={'dagster/code_location': location})):
+              if record.start_time is not None and record.start_time < since:
+                  instance.report_run_failed(record.dagster_run, 'run worker lost: this code server container restarted after the run started')
+                  print('orphan run failed:', record.dagster_run.run_id, flush=True)
+      write(mark, key)
+      sys.exit(0)
+  import grpc
+  from grpc_health.v1 import health_pb2 as h, health_pb2_grpc as g
+  now = time.time()
+  seen_healthy = os.path.exists(passed) and open(passed).read() == key
+  c = grpc.insecure_channel('127.0.0.1:' + sys.argv[1])
+  def kind_of(e):
+      return 'timeout' if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED else str(e.code())
+  try:
+      r = g.HealthStub(c).Check(h.HealthCheckRequest(service='DagsterApi'), timeout=4)
+      kind = None if r.status == h.HealthCheckResponse.SERVING else 'NOT_SERVING'
+  except grpc.RpcError as e:
+      kind = kind_of(e)
+  if kind and not seen_healthy:
+      sys.exit(1)
+  if not kind:
+      try:
+          kind = 'load error' if b'SerializableErrorInfo' in c.unary_unary('/api.DagsterApi/ListRepositories')(b'', timeout=4) else None
+      except grpc.RpcError as e:
+          kind = kind_of(e)
+  if kind:
+      try:
+          k, count, first, down = open(fails).read().split()
+          if k != key:
+              raise ValueError(k)
+          count, first = int(count) + 1, float(first)
+      except (OSError, ValueError):
+          count, first, down = 1, now, '-'
+      down = '-' if kind == 'load error' else (down if down != '-' else str(now))
+      write(fails, ' '.join((key, str(count), str(first), down)))
+      print('child', kind, 'x' + str(count), file=sys.stderr)
+      def runs_in_flight():
+          for pid in os.listdir('/proc'):
+              try:
+                  if pid.isdigit() and any(arg.startswith(b'from multiprocessing.spawn import spawn_main') for arg in open('/proc/' + pid + '/cmdline', 'rb').read().split(b'\0')):
+                      return True
+              except OSError:
+                  pass
+          return False
+      down_for = now - float(down) if down != '-' else 0.0
+      if kind == 'load error':
+          due = now - first >= 90
+      elif kind == 'timeout':
+          due = seen_healthy and down_for >= 300
+      else:
+          due = down_for >= 90
+      if count >= 3 and due and (down_for >= 7200 or not runs_in_flight()):
+          os.kill(1, 15)
+      sys.exit(1)
+  os.path.exists(fails) and os.remove(fails)
+  seen_healthy or write(passed, key)
+  if (not os.path.exists(mark) or open(mark).read() != key) and (not os.path.exists(tried) or time.time() - os.path.getmtime(tried) >= 300):
+      open(tried, 'w').close()
+      log = open('/proc/1/fd/2', 'w')
+      subprocess.Popen([sys.executable, '-I', '-c', sys.orig_argv[sys.orig_argv.index('-c') + 1], sys.argv[1], 'reap'], start_new_session=True, stdin=subprocess.DEVNULL, stdout=log, stderr=log)
+
+
 services:
   backend:
     image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-transport-backend:latest}"
@@ -130,9 +249,11 @@ services:
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${PUBLIC_API_PORT:-14001}/health', timeout=5).read()"]
 
-  # Dagster 자신의 run/event/schedule storage schema는 application Alembic과 별개다.
+  # 옛 전용 Dagster instance의 run/event/schedule storage schema(application Alembic과 별개). 공용
+  # instance의 schema는 Manager의 storage migrate one-shot만 만든다. 옛 DB(30일 보존)용으로 legacy-dagster에 남는다.
   dagster-migrate:
     image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-transport-backend:latest}"
+    profiles: [legacy-dagster]
     restart: "no"
     network_mode: host
     command: ["dagster", "instance", "migrate"]
@@ -150,8 +271,22 @@ services:
       RUN_DB_MIGRATIONS: "false"
     extra_hosts: !reset []
 
-  # 이 컨테이너만 job 모듈을 import하고 run worker를 실행한다. webserver/daemon은
-  # workspace gRPC를 통해서만 연결하므로 `dagster dev`의 child heartbeat에 의존하지 않는다.
+  # 이 컨테이너만 job 모듈을 import하고 run worker를 실행한다. 공용 webserver·daemon은
+  # workspace gRPC(`127.0.0.1:14005`, host network)로만 연결한다.
+  #
+  # 공용 plane 합류 계약(Manager ADR-54):
+  # - `dagster code-server start`다(`dagster api grpc`가 아니다). 공용 webserver의 location reload가
+  #   ReloadCode로 정의를 다시 import하게 한다 — `api grpc`는 reload를 무시한다(Manager
+  #   `fix/dagster-code-server-reloadable`, 2026-10-01 n150 실측).
+  # - `--location-name kor-travel-transport`: 옛 workspace의 location 이름 그대로다. 공용 workspace가 같은
+  #   이름으로 싣고, run의 `dagster/code_location` tag(공용 instance의 테넌트 상한 key)와 schedule selector
+  #   id가 이 이름에서 나온다.
+  # - gRPC는 127.0.0.1에서만 듣는다(인증이 없다). `-p`는 literal이다 — 공용 workspace가 이 값을 싣는다.
+  # - `$DAGSTER_HOME/dagster.yaml`은 Manager의 공용 instance 정의(`config/dagster-shared/dagster.yaml`)를
+  #   읽기 전용으로 덮는다. run worker는 공용 daemon이 넘긴 instance ref로 돌지만, code-server 자신의
+  #   instance(`--inject-env-vars-from-instance`)도 같은 공용 instance여야 옛 DB에 닿지 않는다. 공용
+  #   instance의 로컬 쓰기(`/opt/dagster/state`)는 이 컨테이너 안에서 풀린다(root라 쓸 수 있다).
+  # - 옛 metadata DSN(`DAGSTER_POSTGRES_URL`)은 받지 않는다.
   dagster-code-server:
     image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-transport-backend:latest}"
     restart: unless-stopped
@@ -159,26 +294,27 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-      dagster-migrate:
-        condition: service_completed_successfully
     environment:
       <<: *dagster-execution-environment
+      # `code-server start`의 proxy→자식 heartbeat — Manager 공용 code-server와 같은 600초(Manager #456: 기본 30초는
+      # n150 디스크 대기 급등에 짧아 멀쩡한 자식이 내려간다). 전환 스크립트가 Manager 값과 대조한다.
+      DAGSTER_GRPC_PROXY_HEARTBEAT_TTL_SECONDS: "600"
+    volumes:
+      - "${KOR_TRAVEL_DAGSTER_SHARED_INSTANCE_CONFIG:-/opt/kor-travel-docker-manager/config/dagster-shared/dagster.yaml}:/app/dagster_home/dagster.yaml:ro"
     extra_hosts: !reset []
-    command: ["dagster", "api", "grpc", "-h", "127.0.0.1", "-p", "14005", "-m", "app.dagster.definitions", "--inject-env-vars-from-instance"]
+    command: ["dagster", "code-server", "start", "-h", "127.0.0.1", "-p", "14005", "-m", "app.dagster.definitions", "--location-name", "kor-travel-transport", "--inject-env-vars-from-instance"]
     # PID 1인 dagster는 healthcheck·exec가 남긴 고아를 거두지 않는다. init이 PID 1이 되어 거둔다
     # (2026-09-27 n150 Dagster 컨테이너 좀비 565개, Manager #426·Map #1284와 같은 계약).
     init: true
     healthcheck:
-      # dagster의 gRPC health protocol(`DagsterApi`가 SERVING)을 dagster import 없이 부른다.
-      # CLI `dagster api grpc-health-check`는 같은 판정에 매번 dagster import(n150 유휴 2.4초)를
-      # 치르고 deadline이 없어, 끼인 code-server 앞에서 probe가 끝나지 않는다. 여기서는 8초 deadline.
-      # 마지막 인자는 위 command의 `-p` 포트다.
+      # 공용 probe(`x-dagster-code-server-probe`, 위 — Manager 원문 그대로). exec 형식·`python -I`, 마지막 인자는 위
+      # command의 `-p` 포트다. 자식이 죽거나 멈추면 init(PID 1)을 끝내 `restart`가 다시 띄운다.
       test:
         - CMD
         - python
         - -I
         - -c
-        - "import sys, grpc; from grpc_health.v1 import health_pb2 as h, health_pb2_grpc as g; r = g.HealthStub(grpc.insecure_channel('127.0.0.1:' + sys.argv[1])).Check(h.HealthCheckRequest(service='DagsterApi'), timeout=8); sys.exit(0 if r.status == h.HealthCheckResponse.SERVING else 1)"
+        - *dagster-code-server-probe
         - "14005"
       interval: 30s
       timeout: 10s
@@ -186,8 +322,12 @@ services:
       start_period: 180s
       start_interval: 5s
 
+  # ── 옛 전용 Dagster(legacy-dagster) ─────────────────────────────────────────────
+  # 공용 plane 합류로 내려갔다. 평소 `up`은 띄우지 않는다. Manager 전환 스크립트가 모양으로 찾아 펜스한다.
+  # 이 서비스들을 이 profile로 직접 띄우지 않는다 — 공용 daemon이 같은 schedule을 이미 쏜다(이중 발화).
   dagster-webserver:
     image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-transport-backend:latest}"
+    profiles: [legacy-dagster]
     restart: unless-stopped
     network_mode: host
     depends_on:
@@ -212,6 +352,7 @@ services:
 
   dagster-daemon:
     image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-transport-backend:latest}"
+    profiles: [legacy-dagster]
     restart: unless-stopped
     network_mode: host
     depends_on:
@@ -244,6 +385,7 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile.dagster-gateway
+    profiles: [legacy-dagster]
     restart: unless-stopped
     network_mode: host
     depends_on:

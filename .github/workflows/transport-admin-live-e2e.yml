@@ -14,9 +14,9 @@ on:
         default: "https://transport-api.digitie.mywire.org"
         type: string
       dagster_url:
-        description: "배포한 transport Dagster URL"
+        description: "공용 Dagster gateway URL(transport는 공용 plane의 location kor-travel-transport)"
         required: true
-        default: "https://transport-dagster.digitie.mywire.org"
+        default: "https://dagster.digitie.mywire.org"
         type: string
       release_sha:
         description: "배포 스크립트가 기록한 candidate Git SHA"

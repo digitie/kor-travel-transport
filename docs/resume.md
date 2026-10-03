@@ -2,6 +2,13 @@
 
 ## 현재 상태
 
+- **2026-10-02 공용 Dagster 제어 평면 합류 준비(브랜치 `feat/shared-dagster-plane`, 미배포).** code-server만
+  남기고 옛 webserver·daemon·gateway를 `legacy-dagster`로 내렸고, 운영 UI는 공용 webserver에 location 범위의
+  이름 붙은 query만 보낸다. 짝 Manager 브랜치 `feat/transport-shared-dagster`(prep·flip). 전환 순서는
+  `docs/architecture/shared-db-dagster.md` "공용 Dagster 제어 평면".
+  **다음 한 작업:** 리뷰 뒤 두 저장소 PR 머지 → `.env.server14`에 공용 비밀번호 → prepare → Manager 설치·
+  `dagster-shared-cutover.sh transport forward` → 일반 배포 → 운영 UI 배포.
+
 - **2026-10-02 `feat/map-service-exports`(ADR-013) 푸시, PR 미생성(`fix/fuel-latest-prices-incremental` 위에 쌓임).**
   Map 이관용 내부 export와 휴게소 수집기. 배포 때 n150 `.env.server14`에 `TRANSPORT_SERVICE_EXPORT_TOKEN`(Map의
   `KOR_TRAVEL_MAP_KOR_TRAVEL_TRANSPORT_SERVICE_TOKEN`과 같은 값)과 `REST_AREA_COLLECTION_ENABLED=true`를 넣는다(Manager

@@ -112,7 +112,7 @@ test("도시철도 상세 시간표와 간결한 주유소·항구 마커", asyn
   await expect(page.getByRole("complementary", { name: "선택 장소 상세" })).toContainText("시험 브랜드");
 });
 
-const snapshot = { data: { activeRuns: { __typename: "Runs", results: [] }, repositoriesOrError: { __typename: "RepositoryConnection", nodes: [{ schedules: [{ name: "ferry_schedule", pipelineName: "ferry_timetable_collection_job", cronSchedule: "45 */4 * * *", scheduleState: { status: "RUNNING" } }] }] }, runsOrError: { __typename: "Runs", results: [{ runId: "sample-run-123456789", jobName: "ferry_timetable_collection_job", status: "SUCCESS", startTime: 100, endTime: 200 }] } } };
+const snapshot = { data: { activeRuns: { __typename: "Runs", results: [] }, repositoryOrError: { __typename: "Repository", schedules: [{ name: "ferry_schedule", pipelineName: "ferry_timetable_collection_job", cronSchedule: "45 */4 * * *", scheduleState: { status: "RUNNING" } }] }, runsOrError: { __typename: "Runs", results: [{ runId: "sample-run-123456789", jobName: "ferry_timetable_collection_job", status: "SUCCESS", startTime: 100, endTime: 200 }] } } };
 for (const width of [320, 375, 414, 768, 1440]) test(`Weather Dagster 표·펼치기·갱신 실패 ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 });
   let calls = 0;

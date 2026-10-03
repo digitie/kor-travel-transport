@@ -21,9 +21,17 @@ ssh "${REMOTE_USER}@${REMOTE_HOST}" \
   "REMOTE_APP_DIR='${REMOTE_APP_DIR}' REMOTE_ENV_FILE='${REMOTE_ENV_FILE}' bash -s" <<'PREFLIGHT'
 set -euo pipefail
 [[ -f "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" ]] || { echo "운영 환경 파일이 없습니다." >&2; exit 2; }
-for key in TRANSPORT_UI_PASSWORD TRANSPORT_UI_SESSION_SECRET TRANSPORT_ADMIN_WRITE_TOKEN TRANSPORT_UI_PUBLIC_ORIGIN TRANSPORT_DAGSTER_PUBLIC_ORIGIN TRANSPORT_DAGSTER_PASSWORD NEXT_PUBLIC_VWORLD_API_KEY; do
+for key in TRANSPORT_UI_PASSWORD TRANSPORT_UI_SESSION_SECRET TRANSPORT_ADMIN_WRITE_TOKEN TRANSPORT_UI_PUBLIC_ORIGIN NEXT_PUBLIC_VWORLD_API_KEY; do
   grep -Eq "^${key}=.+" "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" || { echo "${key}가 설정되지 않았습니다." >&2; exit 2; }
 done
+# Dagster는 공용 제어 평면이다 — 운영 UI는 공용 webserver(loopback 11002)만 부른다. 옛 값(전용 webserver 14004)이
+# 남아 있으면 지워진 webserver를 부르게 되므로 배포하지 않는다. 비우면 compose 기본값(11002)이다.
+dagster_url="$({ grep -E '^TRANSPORT_DAGSTER_INTERNAL_URL=' "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" || true; } | tail -n 1 | cut -d= -f2- | tr -d "\"'")"
+if [[ -n "${dagster_url}" && "${dagster_url}" != "http://127.0.0.1:11002" ]]; then
+  echo "TRANSPORT_DAGSTER_INTERNAL_URL은 비우거나 http://127.0.0.1:11002(공용 Dagster webserver)여야 합니다: ${dagster_url}" >&2
+  exit 2
+fi
+unset dagster_url
 write_token="$(grep -E '^TRANSPORT_ADMIN_WRITE_TOKEN=' "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" | tail -n 1 | cut -d= -f2-)"
 [[ ${#write_token} -ge 32 ]] || { echo "TRANSPORT_ADMIN_WRITE_TOKEN은 32자 이상이어야 합니다." >&2; exit 2; }
 capability="$(curl --fail --silent --show-error --max-time 5 -H @- http://127.0.0.1:14001/v1/transport/admin/place-locations/capability <<<"X-Transport-Admin-Token: ${write_token}")" || {
@@ -41,7 +49,7 @@ port_from_env() {
   printf '%s' "${value:-${fallback}}"
 }
 running="$(docker compose --project-name kor-travel-transport-admin --env-file "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" -f "${REMOTE_APP_DIR}/docker-compose.transport-admin.yml" ps --services --status running || true)"
-for pair in "transport-api-gateway:$(port_from_env TRANSPORT_PUBLIC_API_PORT 12301)" "transport-dagster-gateway:$(port_from_env TRANSPORT_DAGSTER_PORT 12302)" "transport-admin-web:$(port_from_env TRANSPORT_PUBLIC_WEB_PORT 12305)"; do
+for pair in "transport-api-gateway:$(port_from_env TRANSPORT_PUBLIC_API_PORT 12301)" "transport-admin-web:$(port_from_env TRANSPORT_PUBLIC_WEB_PORT 12305)"; do
   service="${pair%%:*}"; port="${pair##*:}"
   if ! grep -qx "${service}" <<<"${running}" && ss -lnt "( sport = :${port} )" | grep -q ":${port}"; then
     echo "${port}가 이미 사용 중입니다. 기존 listener를 중단하지 않았습니다." >&2
@@ -88,13 +96,13 @@ fi
 cd "${REMOTE_APP_DIR}"
 
 # api-gateway는 설정 파일을 bind mount한다. image digest만으로는 파일 내용 변경을
-# 감지하지 못하므로, 이 전용 세 서비스를 명시적으로 재생성해 공개 allowlist가
-# 이전 설정에 머무르지 않게 한다.
-TRANSPORT_ADMIN_RELEASE_SHA="${CANDIDATE_SHA}" docker compose --project-name kor-travel-transport-admin --env-file "${REMOTE_ENV_FILE}" -f docker-compose.transport-admin.yml up -d --build --force-recreate transport-api-gateway transport-dagster-gateway transport-admin-web
+# 감지하지 못하므로, 이 전용 두 서비스를 명시적으로 재생성해 공개 allowlist가
+# 이전 설정에 머무르지 않게 한다. `--remove-orphans`는 이 project에서 정의가 사라진
+# 서비스(공용 Dagster plane 합류로 없어진 옛 `transport-dagster-gateway`, 12302)의 컨테이너를 지운다.
+TRANSPORT_ADMIN_RELEASE_SHA="${CANDIDATE_SHA}" docker compose --project-name kor-travel-transport-admin --env-file "${REMOTE_ENV_FILE}" -f docker-compose.transport-admin.yml up -d --build --force-recreate --remove-orphans transport-api-gateway transport-admin-web
 api_port="$(port_from_env TRANSPORT_PUBLIC_API_PORT 12301)"
-dagster_port="$(port_from_env TRANSPORT_DAGSTER_PORT 12302)"
 web_port="$(port_from_env TRANSPORT_PUBLIC_WEB_PORT 12305)"
-for url in "http://127.0.0.1:${api_port}/health" "http://127.0.0.1:${dagster_port}/health" "http://127.0.0.1:${web_port}/login"; do
+for url in "http://127.0.0.1:${api_port}/health" "http://127.0.0.1:${web_port}/login"; do
   ready=false
   for attempt in $(seq 1 20); do
     if curl --fail --silent --show-error --max-time 5 "${url}" >/dev/null; then

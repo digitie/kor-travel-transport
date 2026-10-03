@@ -12,9 +12,12 @@ dependencies = [
   "alembic>=1.19,<2.0",
   "asyncpg>=0.31,<1.0",
   "brotli>=1.1,<2.0",
-  "dagster>=1.9,<2",
-  "dagster-postgres>=0.25,<2",
-  "dagster-webserver>=1.9,<2",
+  # Dagster 계열은 공용 Dagster 제어 평면의 호스트(Manager `docker/dagster-host`, 1.13.24)와 **같은 버전**으로 고정한다.
+  # 공용 webserver는 code-server의 dagster가 호스트보다 높으면 unhealthy가 되고(전 테넌트), 배포·전환 스크립트는
+  # 다르면 멈춘다. 호스트를 올릴 때 함께 올린다(uv.lock도).
+  "dagster==1.13.24",
+  "dagster-postgres==0.29.24",
+  "dagster-webserver==1.13.24",
   "fastapi>=0.141,<1.0",
   "httpx>=0.28,<1.0",
   "python-datagokr-api @ git+https://github.com/digitie/python-datagokr-api@b885ad6b9cff39b9ce642e971944b4c3e4863c86",

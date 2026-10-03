@@ -16,11 +16,15 @@ background task가 아니라 Dagster가 맡는다. 이 경계는 고속도로·�
 | --- | --- | --- |
 | `backend` | 읽기 API, 주차/교통 조회, 즉시 통계 | 하지 않음 (`SCHEDULER_MODE=dagster`) |
 | `migrate` | 애플리케이션 Alembic migration 1회 실행 | Alembic만 |
-| `dagster-migrate` | Dagster run/event/schedule metadata schema 1회 초기화·업그레이드 | Dagster instance migration만 |
-| `dagster-code-server` | job 코드와 run worker 실행 | 함 |
-| `dagster-webserver` | Dagster UI/GraphQL | 하지 않음, gRPC workspace만 연결 |
-| `dagster-daemon` | schedule, queue, run monitoring | 하지 않음, gRPC workspace만 연결 |
-| `dagster-gateway` | loopback Basic Auth와 same-origin POST 검증 뒤 Manager TLS proxy에만 UI 제공 | 하지 않음 |
+| `dagster-code-server` | job 코드와 run worker 실행(`dagster code-server start`, 공용 plane의 location `kor-travel-transport`) | 함 |
+| `dagster-migrate` *(legacy-dagster)* | 옛 전용 Dagster metadata schema 1회 초기화·업그레이드 | Dagster instance migration만 |
+| `dagster-webserver` *(legacy-dagster)* | 옛 전용 Dagster UI/GraphQL | 하지 않음, gRPC workspace만 연결 |
+| `dagster-daemon` *(legacy-dagster)* | 옛 전용 schedule, queue, run monitoring | 하지 않음, gRPC workspace만 연결 |
+| `dagster-gateway` *(legacy-dagster)* | 옛 전용 UI의 loopback Basic Auth gateway | 하지 않음 |
+
+2026-10부터 schedule·queue·run monitoring·UI는 Manager의 **공용 Dagster 제어 평면**이 맡는다(아래
+"공용 Dagster 제어 평면" 절). *(legacy-dagster)* 서비스는 되돌리기용으로 compose에 남지만 평소 `up`은 띄우지
+않는다.
 
 `dagster dev`는 운영에서 사용하지 않는다. code-server는 독립 컨테이너라 실제 crash/OOM이면
 `restart: unless-stopped`로 재기동하고, webserver/daemon은 child-process heartbeat를 관리하지
@@ -36,11 +40,12 @@ command에서 Dagster 서비스를 찾아 검사한다.
   `CMD sh -c`는 timeout 때 셸만 죽이고 그 아래 Python을 고아로 남긴다. healthcheck를
   `disable`하지 않는다.
 - code-server·webserver·daemon은 `init: true`다. PID 1인 dagster는 고아를 거두지 않는다.
-- code-server probe는 `grpc_health`로 `DagsterApi`가 `SERVING`인지 8초 deadline과 함께 묻는다.
-  CLI `dagster api grpc-health-check`와 같은 판정이지만 dagster를 import하지 않는다. CLI는
-  deadline이 없어 끼인 서버 앞에서 끝나지 않는다. 테스트는 deadline이 숫자 상수이고 docker
-  timeout(10s)보다 짧은지 확인하고, 실제 gRPC health 서버 앞에서 probe를 실행해 `SERVING`일
-  때만 exit 0인지 확인한다.
+- code-server probe는 Manager 공용 code-server와 같은 원문(`x-dagster-code-server-probe`, Manager #456)이다.
+  dagster를 import하지 않고 `grpc_health`로 proxy의 `DagsterApi`를 4초 deadline으로 묻고, proxy가 자식에
+  전달하는 `ListRepositories`로 자식의 load error·죽음·멈춤을 본다. 확정되면(run worker가 없을 때, 시간 기준)
+  PID 1(init)을 끝내 `restart`가 다시 띄운다. 컨테이너가 새로 뜨면 그 전에 시작한 이 location의 STARTED run을
+  실패로 닫는다. 판정 실행 테스트는 Manager에 있고, 여기서는 조각·deadline·heartbeat를 본다. 옛 단순 probe를
+  쓰는 code-server가 생기면 실제 gRPC health 서버 앞에서 `SERVING`일 때만 exit 0인지 실행해 본다.
 - daemon `liveness-check`는 timeout 60s, interval 120s, retries 2다.
   `DAGSTER_DAEMON_HEARTBEAT_TOLERANCE`는 300s다. dagster는 마지막 heartbeat 뒤 heartbeat
   주기(30s) + tolerance가 지나야 낡았다고 본다. docker는 이전 probe가 끝난 뒤에야 interval을
@@ -150,9 +155,9 @@ receipt-gated deployment script를 사용한다.
 docker compose -f docker-compose.yml -f docker-compose.shared.yml up -d --build
 ```
 
-Dagster gateway는 `127.0.0.1:14003`에만 bind한다. 외부 UI가 필요하면 Manager가 TLS를 종단하고
-그 loopback endpoint만 upstream으로 지정해야 한다. 운영 값은 최소한 `DATABASE_URL`,
-`DAGSTER_POSTGRES_URL`, `DAGSTER_UI_PASSWORD`를 요구한다.
+외부 Dagster UI는 Manager 공용 gateway(`https://dagster.digitie.mywire.org`, 11001)다. 운영 값은 최소한
+`DATABASE_URL`, `KOR_TRAVEL_DAGSTER_SHARED_APP_PASSWORD`, 그리고 legacy-dagster 서비스의 보간을 위한
+`DAGSTER_POSTGRES_URL`·`DAGSTER_UI_PASSWORD`를 요구한다.
 KRIC 파일 수집은 `RAIL_REFERENCE_COLLECTION_ENABLED=true`와 RustFS endpoint·bucket·접근키가,
 여객항구 기준정보는 `MARITIME_REFERENCE_COLLECTION_ENABLED=true`와,
 TAGO 버스 터미널 기준정보는 `BUS_REFERENCE_COLLECTION_ENABLED=true`와
@@ -167,3 +172,75 @@ provider는 HTTPS RustFS endpoint를 기본 요구한다. 현재 Manager RustFS�
 기존 `docker-compose.db.yml`은 기존 n150 데이터의 rollback과 local 개발 격리용이다.
 공용 DB cutover가 완료되고 live E2E가 수용될 때까지 기존 DB volume을 삭제하거나 그 compose를
 내리지 않는다.
+
+## 공용 Dagster 제어 평면(2026-10, Manager ADR-54)
+
+transport의 schedule·queue·run monitoring·UI는 Manager가 운영하는 **공용 Dagster 제어 평면**이 맡는다 —
+공용 daemon(`kor-travel-dagster-daemon`), webserver(`127.0.0.1:11002`, 인증 없음, loopback), gateway(11001,
+Basic Auth, 공개 host `https://dagster.digitie.mywire.org`)와 공용 instance(`dagster_shared`, 공용 PostgreSQL
+`:11000`, role `kor_travel_dagster_shared_app`). 이 저장소에 남는 Dagster 프로세스는 code-server 하나다.
+
+### 계약(`backend/tests/test_shared_dagster_plane_contract.py`)
+
+- code-server는 `dagster code-server start -h 127.0.0.1 -p 14005 -m app.dagster.definitions --location-name
+  kor-travel-transport`다. `api grpc`는 공용 webserver의 location reload를 무시한다. location 이름은 옛 workspace의
+  이름 그대로다 — run의 `dagster/code_location` tag(공용 instance의 테넌트 상한 key)와 schedule selector id가
+  이 이름에서 나온다. 포트는 literal이고 healthcheck가 같은 포트를 부른다.
+- healthcheck는 Manager의 공용 probe 원문 그대로(이 compose의 `x-dagster-code-server-probe` anchor, exec 형식),
+  proxy heartbeat `DAGSTER_GRPC_PROXY_HEARTBEAT_TTL_SECONDS=600`, `init: true` — Manager 공용 code-server와 같은
+  규칙이다. Manager 전환 스크립트가 렌더끼리 대조하고 다르면 전환을 멈춘다. Manager가 probe를 바꾸면 그 원문을 다시
+  복사한다.
+- code-server는 공용 instance URL(`KOR_TRAVEL_DAGSTER_SHARED_PG_URL`, `postgresql+psycopg2://…/dagster_shared`)을
+  받고 옛 metadata DSN은 받지 않는다. `$DAGSTER_HOME/dagster.yaml`은 Manager의 공용 instance 정의
+  (`/opt/kor-travel-docker-manager/config/dagster-shared/dagster.yaml`, `KOR_TRAVEL_DAGSTER_SHARED_INSTANCE_CONFIG`로
+  바꿀 수 있다)로 읽기 전용으로 덮는다. 공용 instance의 로컬 쓰기(`/opt/dagster/state`)는 이 컨테이너 안에서
+  풀린다(root라 쓸 수 있다). compute log는 오늘처럼 code-server 컨테이너의 로컬 파일이다(D5).
+- 옛 `dagster-webserver`·`dagster-daemon`·`dagster-gateway`와 옛 metadata DB의 `dagster-migrate`는
+  `profiles: [legacy-dagster]`다. 활성 서비스는 그것에 기대지 않고 그 포트(14003·14004)를 부르지 않는다. 그
+  profile로 직접 띄우지 않는다 — 공용 daemon이 같은 schedule을 이미 쏜다(이중 발화).
+- 공용 instance의 상한은 Manager `config/dagster-shared/dagster.yaml`이 갖는다 — 이 location 3(옛
+  `max_concurrent_runs`), `kortraveltransport/run_group` 넷 각 1(옛 값). 실행 상한은 job tag
+  `dagster/max_runtime=14400`(옛 instance의 4시간, `backend/app/dagster/definitions.py`)이다. 이 저장소의
+  `backend/dagster_home/dagster.yaml`은 legacy-dagster(되돌리기)만 쓴다.
+- schedule의 상태는 코드에 선언한다 — 10개 모두 `default_status=RUNNING`(2026-10-02 옛 instance의 RUNNING 집합과
+  같다). 이력은 새로 시작한다(D1). 옛 metadata DB `kor_travel_transport_dagster`는 30일 보존한다(지금 지우지 않는다).
+- 운영 UI(`kor-travel-transport-admin`)는 공용 webserver에 이 location으로 좁힌 이름 붙은 query만 보낸다
+  (`packages/kor-travel-transport-admin/frontend/lib/dagster-scope.ts`). 브라우저의 GraphQL 문서는 넘기지 않는다
+  — 공용 webserver에는 다른 프로젝트의 run·schedule이 있다. 옛 `transport-dagster-gateway`(12302,
+  `transport-dagster.digitie.mywire.org`)는 없어졌다(redirect 없음). Dagster UI 링크는 공용 host다.
+
+### 전환(1회) — n150
+
+Manager 쪽 전환 PR(`feat/transport-shared-dagster`의 flip)과 이 저장소의 전환 PR(`feat/shared-dagster-plane`)이
+머지된 뒤 순서대로 한다. 비밀은 출력하지 않는다.
+
+1. `.env.server14`에 `KOR_TRAVEL_DAGSTER_SHARED_APP_PASSWORD`를 더한다(값은 root만 읽는 Manager `.env`의 같은 이름 값).
+   `TRANSPORT_DAGSTER_INTERNAL_URL`이 있으면 지우거나 `http://127.0.0.1:11002`로 바꾼다(운영 UI 배포 preflight가 그 밖의
+   값을 거부한다). 운영 DB가 이 release의 Alembic head에 있어야 한다 — 전환은 migrate를 돌리지 않는다. 합류 release에
+   새 migration이 있으면 합류 전 release로 먼저 일반 배포한다(2의 prepare가 확인하고 거부한다).
+2. WSL(머지된 main): `DEPLOY_MODE=prepare-shared-dagster-cutover ./scripts/deploy-server14.sh`. stage·이미지
+   빌드(`kor-travel-transport-backend:rel-<sha12>`)만 하고 `.env.server14.shared-dagster-cutover`(0600)를 남긴다.
+   컨테이너는 바꾸지 않는다. 이미지의 dagster가 공용 plane 호스트와 다르거나 운영 DB가 이 release의 Alembic head가
+   아니면 거부한다.
+3. n150 root: Manager 전환 release를 설치하고(`~/install-mgr.sh <sha>`) **이어서** 창 스크립트를 돈다:
+   `systemd-run --unit=dagster-cutover-transport --collect -E EXTERNAL_ENV_FILE=/home/digitie/apps/kor-travel-transport/.env.server14.shared-dagster-cutover /opt/kor-travel-docker-manager/scripts/dagster-shared-cutover.sh transport forward <manager-sha>`.
+   precheck(선언·렌더 대조, 공용 code-server 규칙, 이미지와 그 dagster 버전 = 공용 plane, 옛 instance의 schedule 상태 =
+   코드의 `default_status`, plane이 아직 이 location을 안 싣는지) → 옛 daemon·webserver·gateway 정지(펜스)
+   → 옛 DB의 진행 중 run 취소 → code-server를 공용 instance로 재생성 → 공용 daemon·webserver 재생성 → location
+   `RepositoryLocation`·RUNNING instigator 동등(10 schedule) → 옛 컨테이너 제거 → 첫 tick(5분 주기라 몇 분).
+4. WSL: `./scripts/deploy-server14.sh`(일반 배포 — backend·frontend를 같은 release로 맞춘다. 공용 plane이 location을
+   싣는지·옛 daemon이 멈췄는지 확인한 뒤에만 교체한다).
+5. WSL: `./scripts/deploy-transport-admin-server14.sh` — **3이 끝나면 바로**. 그 전까지 떠 있는 옛 운영 UI는 지워진
+   옛 webserver(14004)를 불러 Dagster 화면이 실패하고, 옛 12302 gateway도 upstream이 없다. 새 UI는 공용
+   webserver를 부르고 `--remove-orphans`가 옛 12302 gateway 컨테이너를 지운다.
+6. 5가 끝나면 바로 전환 env 파일을 지운다 — `.env.server14.shared-dagster-cutover`는 운영 비밀 전체의 사본이다:
+   `shred -u /home/digitie/apps/kor-travel-transport/.env.server14.shared-dagster-cutover`.
+
+다른 테넌트 영향: 이 합류로 공용 `dagster.yaml`이 바뀌어(transport 상한) geo·weather·map·pinvi code-server의 instance
+digest env가 달라진다. 각자 다음 compose `up`·재구축 때 한 번 다시 만들어진다(그 code-server의 진행 중 run은 끊긴다).
+전환 창이나 진행 중 run이 없는 조용한 때에 맞춘다.
+
+되돌리기는 **지원하지 않는다**(소유자 결정, 2026-10-02). 보장 없는 수동 best-effort뿐이다 — 문제가 생기면 이
+저장소의 이전 release를 다시 배포하고 옛 Dagster 서비스를 손으로 띄우는 것을 상황에 맞게 판단한다. 옛 metadata
+DB(`kor_travel_transport_dagster`)는 지우지 않고 남는다(30일). Manager 창 스크립트의 `rollback` 모드는 이 형제
+프로젝트에 대해 검증하지 않았다(이전 release의 code-server는 `--location-name`이 없어 선언과의 대조에서 멈춘다).
