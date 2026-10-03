@@ -1,7 +1,6 @@
 "use client";
 
 import { Alert } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useDashboard } from "@/lib/dashboard-context";
@@ -27,13 +26,8 @@ export function CurrentStatusView() {
     selectedParkingLotName,
     scopeItems,
     holidaySummary,
-    collectorStatus,
     loading,
-    collecting,
     error,
-    actionMessage,
-    actionMessageIsError,
-    onManualCollect,
   } = useDashboard();
 
   const latestObservedAt = findLatestValue(scopeItems);
@@ -55,25 +49,6 @@ export function CurrentStatusView() {
             {holidaySummary ? <span className="holiday-sentence">{holidaySummary.sentence}</span> : null}
           </div>
         </div>
-        {collectorStatus?.manual_collect_enabled ? (
-          <div className="action-stack">
-            <Button
-              aria-label="즉시 수집 실행"
-              className="button"
-              data-testid="manual-collect-button"
-              disabled={collecting}
-              type="button"
-              onClick={onManualCollect}
-            >
-              {collecting ? "수집 중..." : "지금 수집"}
-            </Button>
-            {collectorStatus.manual_collect_available_at ? (
-              <p className="action-hint">
-                다음 수동 수집 가능: {formatDateTime(collectorStatus.manual_collect_available_at)}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
       </section>
 
       <section className="detail-ribbon">
@@ -110,28 +85,12 @@ export function CurrentStatusView() {
 
       {/* T-038 Hallmark audit: a screen reader is not guaranteed to announce a live
           region that arrives already-mounted with its final content - the region
-          must exist first, then have its content change. These two announcers stay
-          permanently mounted (empty text = nothing announced) instead of the visible
-          notices below, which mount/unmount freely since sighted users see them
-          appear without needing an ARIA announcement. */}
-      <p className="sr-only" aria-live="polite">
-        {actionMessage && !actionMessageIsError ? actionMessage : ""}
-      </p>
+          must exist first, then have its content change. This announcer stays
+          permanently mounted (empty text = nothing announced). */}
       <p className="sr-only" aria-live="polite">
         {loading ? "데이터를 불러오는 중입니다." : ""}
       </p>
 
-      {actionMessage ? (
-        actionMessageIsError ? (
-          <Alert className="notice error" variant="destructive">
-            {actionMessage}
-          </Alert>
-        ) : (
-          <p className="notice" aria-hidden="true">
-            {actionMessage}
-          </p>
-        )
-      ) : null}
       {error ? (
         <Alert className="notice error" variant="destructive">
           {error}

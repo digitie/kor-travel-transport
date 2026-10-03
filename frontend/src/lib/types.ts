@@ -38,16 +38,6 @@ export type ParkingCurrentResponse = {
   items: ParkingStatus[];
 };
 
-export type CollectionSummary = {
-  collection_run_id: number;
-  status: string;
-  client_mode: string;
-  raw_response_count: number;
-  snapshot_count: number;
-  fee_rule_count: number;
-  errors: string[];
-};
-
 export type CollectionRunStatus = {
   id: number;
   started_at: string;

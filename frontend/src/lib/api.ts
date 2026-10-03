@@ -1,6 +1,5 @@
 import type {
   Airport,
-  CollectionSummary,
   CollectorStatusResponse,
   DashboardAnalyticsResponse,
   DashboardBootstrapResponse,
@@ -133,11 +132,6 @@ export function buildApiClient(apiBaseUrl?: string) {
     },
     getHolidaySummary(): Promise<HolidaySummaryResponse> {
       return getJson<HolidaySummaryResponse>(`${baseUrl}/v1/holidays/summary`);
-    },
-    runCollector(): Promise<CollectionSummary> {
-      return getJson<CollectionSummary>(`${baseUrl}/v1/admin/collect`, {
-        method: "POST",
-      });
     },
     getByHour(airportCode: string, parkingLotId: number | null = null): Promise<HourlyBucket[]> {
       return getJson<HourlyBucket[]>(buildAnalyticsUrl(baseUrl, "/v1/parking/analytics/by-hour", airportCode, { parkingLotId }));

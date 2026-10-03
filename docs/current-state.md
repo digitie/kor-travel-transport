@@ -180,23 +180,18 @@ row-level `collected_at`과 전체 시스템 기준 동기화 시각은 백엔�
 관련 문서:
 - [architecture/collection.md](architecture/collection.md)
 
-## 6. 수동 수집 버튼
+## 6. 수동 수집
 
-로컬 개발 profile에서 `ENABLE_MANUAL_COLLECT=true`이면 웹 UI의 `지금 수집` 버튼이
-`POST /v1/admin/collect`를 호출한다. public n150 profile에서는 버튼과 endpoint가 모두
-비활성화된다.
+`ENABLE_MANUAL_COLLECT=true`이면 `POST /v1/admin/collect`가 열린다. 관리자 토큰
+(`x-transport-admin-token`)이 필요하고 공개 웹 프록시는 이 경로를 중계하지 않으므로(ADR-012),
+운영자가 호스트에서 직접 호출한다. 공개 웹 UI의 `지금 수집` 버튼은 #61 이후 항상 거부되는 죽은
+경로라 제거했다. public n150 profile에서는 endpoint도 비활성화된다.
 
 동작 규칙:
 
-- 마지막 적재 후 제한 시간이 지나지 않았으면 실행하지 않는다.
-- 프론트엔드는 먼저 상태를 확인해 사용자 메시지를 보여준다.
-- 백엔드도 같은 규칙으로 다시 검증한다.
+- 마지막 적재 후 제한 시간이 지나지 않았으면 백엔드가 `409`로 막는다.
 - 외부 API 한도 초과 상태이면 백엔드는 `429`로 막고 다음 재시도 가능 시각을 안내한다.
 - 현재 한도 보호는 `UPSTREAM_RATE_LIMIT_BACKOFF_SECONDS` 기준의 짧은 backoff를 사용한다. 하루가 끝날 때까지 통으로 멈추지 않는다.
-
-성공 시 예시:
-
-- `즉시 수집을 완료했습니다. 신규 스냅샷 10건을 저장했습니다.`
 
 실패 시 예시:
 
