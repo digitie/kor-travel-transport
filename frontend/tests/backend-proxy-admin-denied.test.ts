@@ -20,6 +20,10 @@ const DENIED: { url: string; segments: string[] }[] = [
   { url: "v1/transport/..%5Cadmin%5Cbackups", segments: ["v1", "transport", "..\\admin\\backups"] },
   { url: "v1/transport/admin/backups", segments: ["v1", "transport", "admin", "backups"] },
   { url: "v1/admin/collect", segments: ["v1", "admin", "collect"] },
+  // 관리자 BFF 전용 좌표 보정 경로(/v1/transport/admin/*)도 공개 프록시가 중계하지 않는다.
+  { url: "v1/transport/admin/place-locations", segments: ["v1", "transport", "admin", "place-locations"] },
+  { url: "v1/transport/admin/place-locations/capability", segments: ["v1", "transport", "admin", "place-locations", "capability"] },
+  { url: "v1/Transport/Admin/place-locations/capability", segments: ["v1", "Transport", "Admin", "place-locations", "capability"] },
   { url: "v1/admin/collector-status/../backups", segments: ["v1", "admin", "collector-status", "..", "backups"] },
   { url: "%2E%2E/v1/admin/backups", segments: ["..", "v1", "admin", "backups"] },
 ];

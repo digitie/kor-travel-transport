@@ -1,6 +1,6 @@
 """관리자 경로 인증 회귀 테스트 (2026-10-02 공개 백업 노출 사고, ADR-012).
 
-/v1/admin/collector-status를 뺀 모든 /v1/admin/* 경로는 `x-transport-admin-token`이
+/v1/admin/collector-status를 뺀 모든 /v1/admin/*·/v1/transport/admin/* 경로는 `x-transport-admin-token`이
 설정된 관리자 토큰과 일치할 때만 열린다. 불일치는 경로 존재를 숨기는 404이고, 백업 서비스
 함수는 호출되지 않아야 한다(복원 업로드는 본문을 저장하기 전에 거부).
 """
@@ -33,6 +33,13 @@ PROTECTED_REQUESTS = [
     ("POST", "/v1/admin/backups/restore"),
     ("POST", "/v1/admin/collect"),
     ("GET", "/v1/admin/unknown"),
+    # 관리자 BFF 전용 좌표 보정 경로도 같은 미들웨어 뒤에 있다. 본문 검증(422)·DB 세션보다 먼저
+    # 404로 닫혀야 경로·스키마가 드러나지 않는다.
+    ("GET", "/v1/transport/admin/place-locations/capability"),
+    ("POST", "/v1/transport/admin/place-locations"),
+    ("POST", "/v1/transport/admin/place-locations/"),
+    ("GET", "/v1/TRANSPORT/ADMIN/place-locations/capability"),
+    ("GET", "/v1/transport/admin/unknown"),
 ]
 
 
@@ -132,3 +139,15 @@ def test_collector_status_stays_public(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert bootstrap.status_code == 200
+
+
+def test_transport_admin_routes_work_with_valid_token(tmp_path: Path) -> None:
+    headers = {"x-transport-admin-token": TOKEN}
+    with _client(tmp_path, TOKEN) as client:
+        capability = client.get("/v1/transport/admin/place-locations/capability", headers=headers)
+        invalid_body = client.post("/v1/transport/admin/place-locations", headers=headers, json={})
+
+    assert capability.status_code == 200
+    assert capability.json() == {"contract": "coordinate-write-v1"}
+    # 인증을 통과한 뒤에야 본문 검증이 돈다.
+    assert invalid_body.status_code == 422

@@ -184,6 +184,8 @@ logger = logging.getLogger(__name__)
 MAX_TIMESERIES_RANGE_DAYS = 90
 # /v1/admin/* 중 관리자 토큰 없이 열린 경로(공개 대시보드 읽기 전용 상태). 나머지는 모두 토큰 필요.
 PUBLIC_ADMIN_PATHS = frozenset({"/v1/admin/collector-status"})
+# 관리자 토큰 미들웨어가 닫는 경로 접두어. /v1/transport/admin/*은 관리자 BFF 전용 좌표 보정 경로다.
+ADMIN_PATH_PREFIXES = ("/v1/admin", "/v1/transport/admin")
 ADMIN_NOT_FOUND_DETAIL = "사용할 수 없는 관리자 경로입니다."
 MAX_TRANSPORT_STATISTICS_CACHE_ENTRIES = 128
 
@@ -580,9 +582,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     # 2026-10-02 사고(ADR-012): /v1/admin/backups*가 인증 없이 공개됐다. collector-status(공개
-    # 대시보드 읽기 전용)를 뺀 모든 /v1/admin/* 경로는 관리자 토큰을 요구한다. 라우트 의존성이
-    # 정본이고, 이 미들웨어는 복원 업로드 본문을 읽기 전에(인증 전 디스크 spool 방지) 같은 판정으로
-    # 먼저 닫는다. scope path는 라우팅이 쓰는 것과 같은 디코드된 경로다.
+    # 대시보드 읽기 전용)를 뺀 모든 /v1/admin/*·/v1/transport/admin/* 경로는 관리자 토큰을 요구한다.
+    # 라우트 의존성이 정본이고, 이 미들웨어는 본문 검증(422)·복원 업로드 spool·DB 세션보다 먼저 같은
+    # 판정으로 닫는다. scope path는 라우팅이 쓰는 것과 같은 디코드된 경로다.
     def admin_token_valid(request: Request) -> bool:
         configured = (resolved_settings.transport_admin_write_token or "").encode("utf-8")
         provided = request.headers.get("x-transport-admin-token", "").encode("utf-8")
@@ -592,7 +594,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def guard_admin_routes(request: Request, call_next):
         path = request.scope.get("path", "")
         if (
-            path.lower().startswith("/v1/admin")
+            path.lower().startswith(ADMIN_PATH_PREFIXES)
             and path.rstrip("/") not in PUBLIC_ADMIN_PATHS
             and not admin_token_valid(request)
         ):
