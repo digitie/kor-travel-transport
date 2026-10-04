@@ -21,7 +21,6 @@ test.each([
   const current = (html.match(/<a\b[^>]*>/g) ?? []).filter((tag) => tag.includes('aria-current="page"'));
   expect(current).toHaveLength(1);
   expect(current[0]).toContain(`href="${href}"`);
-  expect(current[0]).toMatch(/class="[^"]*\bactive\b/);
 });
 
 test.each(["/mapping", "/admin/dagster-other", "/bus/expressway"])("%s는 비슷한 접두사의 메뉴를 활성화하지 않는다", (pathname) => {

@@ -1,33 +1,19 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Field, FieldGroup, FieldLabel, FieldError } from "@/components/ui/field";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Spinner } from "@/components/ui/spinner";
+import { LoginForm as CommonLoginForm, sanitizeLocalPath, type LoginSubmission } from "@kor-travel/ui";
+import { useState } from "react";
 
 export function LoginForm({ nextPath }: { nextPath: string }) {
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError("");
-    try {
-      const response = await fetch("/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username, password, next: nextPath }) });
-      const payload = await response.json().catch(() => ({})) as { detail?: string; next?: string };
-      if (!response.ok) { setError(payload.detail ?? "로그인에 실패했습니다."); return; }
-      window.location.assign(payload.next ?? nextPath);
-    } catch { setError("로그인 서버에 연결하지 못했습니다."); } finally { setBusy(false); }
+  async function submit({ credentials, nextPath: next }: LoginSubmission) {
+    const response = await fetch("/api/auth/login", { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...credentials, next }), signal: AbortSignal.timeout(15_000) });
+    const payload = await response.json().catch(() => ({})) as { next?: string };
+    if (!response.ok) { setError("아이디와 비밀번호를 확인하고 다시 시도해 주세요."); return; }
+    window.location.assign(sanitizeLocalPath(payload.next ?? next));
   }
-  return <section className="login-shell"><Card className="w-full max-w-md">
-    <CardHeader><CardDescription>Kor Travel Transport</CardDescription><CardTitle><h1>관리자 로그인</h1></CardTitle></CardHeader>
-    <CardContent><form onSubmit={submit} aria-busy={busy}><FieldGroup>
-      <Field data-invalid={!!error}><FieldLabel htmlFor="username">아이디</FieldLabel><Input autoComplete="username" id="username" onChange={(event) => setUsername(event.target.value)} required value={username} aria-invalid={!!error} aria-describedby={error ? "login-error" : undefined} /></Field>
-      <Field data-invalid={!!error}><FieldLabel htmlFor="password">비밀번호</FieldLabel><Input autoComplete="current-password" id="password" onChange={(event) => setPassword(event.target.value)} required type="password" value={password} aria-invalid={!!error} aria-describedby={error ? "login-error" : undefined} /></Field>
-      <Button disabled={busy} type="submit">{busy ? <Spinner data-icon="inline-start" aria-label="로그인 확인 중" /> : null}{busy ? "확인 중…" : "로그인"}</Button>
-      {error ? <FieldError id="login-error">{error}</FieldError> : null}
-    </FieldGroup></form></CardContent>
-  </Card></section>;
+  return <section className="login-shell"><div className="panel login-panel"><h1>관리자 로그인</h1>
+    <CommonLoginForm brand="Kor Travel Transport" defaultUsername="admin" nextPath={nextPath}
+      description="교통정보 관리 계정으로 로그인해 주세요." error={error} onClearError={() => setError("")} onSubmit={submit} />
+  </div></section>;
 }
