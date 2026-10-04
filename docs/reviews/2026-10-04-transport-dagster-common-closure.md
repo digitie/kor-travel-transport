@@ -75,6 +75,23 @@ kill 이후 `communicate()`의 출력 회수와 reap에 10초 상한을 적용�
 보강된 테스트의 CI·독립 재검토 및 최종 disposition은 PR #67에서 확인한다.
 제품 runtime·migration·UI·공통 pin은 위 runtime candidate와 동일하다.
 
+후속 테스트 후보 `0a4588af20bd97bedc0e10686c45145b31544b07`의 두 CI도 각각661 passed·1 skipped였다.
+[37194466593](https://github.com/digitie/kor-travel-transport/actions/runs/37194466593) 836.26초,
+[37194463827](https://github.com/digitie/kor-travel-transport/actions/runs/37194463827) 801.95초.
+이 CI green 뒤 두 독립 재리뷰가 P2 두 finding을 **CLOSED**했고 새 finding은 없었다.
+[James 원문](evidence/2026-10-04-transport-migration-postfix-james.md) SHA256
+`61035D503FF2A4B03FA06DBF8C67EB3F7406629807E87BDBF2121D54B96304A0`,
+[Popper 원문](evidence/2026-10-04-transport-migration-postfix-popper.md) SHA256
+`8D8B59D27E084A5236F13C257BC3D1828812CEAA349F14AFCD9EF56072B58822`.
+실제 PIPE child의 취소/timeout 뒤 drain·회수·원 예외 전달과 실제10초 cleanup timer를 검증했다.
+
+새 격리 project `codex-transport-full-final-20261004`의 해당 후보 전체 실행은354 passed·1 skipped
+뒤1 FAIL/942.03초였다. 실제 lock timeout은 발생했지만 CLI 종료·observer 지연을 포함한
+시각 차이10.415초가 임의의10초 비교 상한을 넘었다. 이를 서버 timeout 수치로 해석하지 않는다.
+해당 관찰 비교의 상한을 제거하고, 실제0018 downgrade의3초 설정과 index 실패 뒤MV 보존을
+성공/실패 단위 검사2개로 직접 보호했다. native 오류·대상 relation 대기·CLI60초 상한·복원 검사는
+유지한다. WSL6 passed·1 PostgreSQL skip이며 마지막 CI·독립 판정·Docker 전체는 PR #67 정본이다.
+
 ## 서버 전체 회귀와 남은 범위
 
 이전 디스크 기반 격리 Docker 전체 테스트는 host I/O 지연으로 중단해 PASS로 세지 않았다.

@@ -1,5 +1,21 @@
 # journal.md — 작업 일지
 
+## 2026-10-04 — T-044 migration 잠금 설정과 관찰 시간의 계약 분리
+
+수정 테스트 `0a4588a`의 두 PostgreSQL CI는 661 passed·1 skipped/836.26초와 801.95초였다.
+두 독립 후속 원문도 PASS/J-MIG-P2-01 및 B-M-P2-01 CLOSED다. 원문을
+`docs/reviews/evidence/2026-10-04-transport-migration-postfix-{james,popper}.md`에 그대로 보존한다.
+제품 runtime은 계속 `027a9ca`와 같고 cleanup 보강에는 신규 finding이 없다.
+
+그 뒤 격리 Docker 전체는 354 passed·1 skipped 뒤 관찰 시간 10.415초가 임의의10초 상한을
+넘어 1 FAIL/942.03초로 끝났다. 실제 native lock-timeout 오류는 정상 발생했고 schema head도
+finally에서 복원됐다. CLI 종료와 observer 지연을 포함하는 시각 차이는 서버 lock timeout
+상한 검증으로 쓸 수 없어 이 비교의 상한을 제거했다. 3초 설정 자체는 실제0018 downgrade
+성공/실패 양쪽을 직접 실행하는 단위 검사2개로 보호한다. index 잠금 실패 뒤 MV가 유지되는
+순서도 검증한다. native 검사는 실제 대상 relation 대기·정확한 lock-timeout 오류·CLI60초
+상한과 잠금 해제 후 downgrade/head 복원을 유지한다. timeout 수치를 늘리지 않았다.
+WSL6 passed·1 PostgreSQL skip. 새 후보 CI·독립 재검토·Docker 전체 결과는 PR #67이 정본이다.
+
 ## 2026-10-04 — T-044 migration subprocess 정리 상한과 Docker 테스트 환경 수정
 
 테스트 후보 `1c5bd96`의 두 CI는 각각 661 passed·1 skipped였다. 독립 James/Popper가

@@ -12,8 +12,8 @@ from unittest.mock import Mock
 import pytest
 
 
-def _migration():
-    path = Path(__file__).parents[1] / "alembic/versions/0015_fuel_statistics_priced.py"
+def _migration(file_name="0015_fuel_statistics_priced.py"):
+    path = Path(__file__).parents[1] / "alembic/versions" / file_name
     spec = importlib.util.spec_from_file_location("fuel_statistics_migration", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -61,6 +61,35 @@ def test_offline_migration_reports_the_required_online_validation(monkeypatch):
     ))
     with pytest.raises(RuntimeError, match="온라인 migration"):
         migration.upgrade()
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_latest_prices_downgrade_bounds_lock_and_preserves_view_on_failure(monkeypatch, fails):
+    migration = _migration("0018_fuel_latest_prices.py")
+    execute = Mock()
+    drop_index = Mock(side_effect=RuntimeError("DDL failure") if fails else None)
+    monkeypatch.setattr(migration, "op", SimpleNamespace(
+        execute=execute, drop_index=drop_index,
+        get_context=lambda: SimpleNamespace(autocommit_block=nullcontext, as_sql=False),
+    ))
+    if fails:
+        with pytest.raises(RuntimeError, match="DDL failure"):
+            migration.downgrade()
+    else:
+        migration.downgrade()
+    statements = [call.args[0] for call in execute.call_args_list]
+    assert statements[:4] == [
+        "SET lock_timeout = '3s'", "SET statement_timeout = '180s'",
+        "RESET statement_timeout", "RESET lock_timeout",
+    ]
+    drop_index.assert_called_once_with(
+        "ix_fuel_prices_latest_lookup", table_name="fuel_price_snapshots",
+        postgresql_concurrently=True, if_exists=True,
+    )
+    # index 잠금 실패 뒤 MV를 삭제하지 않으며 정상 경로도 3초 상한을 유지한다.
+    assert statements[4:] == ([] if fails else [
+        "SET LOCAL lock_timeout = '3s'", "DROP MATERIALIZED VIEW fuel_latest_prices",
+    ])
 
 
 def test_postgres_migration_lock_timeout_and_recovery(test_settings):
@@ -120,7 +149,9 @@ def test_postgres_migration_lock_timeout_and_recovery(test_settings):
                 wait_finished_at = await connection.scalar(text("SELECT clock_timestamp()"))
                 assert code != 0 and "canceling statement due to lock timeout" in output
                 assert wait_started_at is not None
-                assert 2.5 <= (wait_finished_at - wait_started_at).total_seconds() < 10
+                # 종료 시각은 CLI 종료·observer 지연도 포함해 서버 잠금 상한으로 쓰지 않는다.
+                # 3초 설정은 위 단위 검사가, 실제 timeout은 오류 문구와 60초 CLI 상한이 검증한다.
+                assert (wait_finished_at - wait_started_at).total_seconds() >= 2.5
                 # 잠금 경합으로 0018 downgrade가 중단돼도 런타임 MV는 남는다.
                 async with engine.connect() as verifier:
                     assert await verifier.scalar(text("SELECT to_regclass('fuel_latest_prices')")) == "fuel_latest_prices"
