@@ -7,7 +7,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from dagster import DefaultScheduleStatus, Definitions, Failure, multiprocess_executor, job, op
-from kortravelcommon.dagster import RecoveryPolicy, coalescing_schedule, reconciliation_sensor
+from kortravelcommon.dagster import RecoveryPolicy, coalescing_schedule, infrastructure_retry_sensor, reconciliation_sensor
 
 from app.dagster.recovery import OWNER, collection_owner, owned_session_factory, reconcile_collection_runs
 
@@ -319,7 +319,14 @@ worker_recovery = reconciliation_sensor(name="transport_worker_recovery", reconc
 
 
 definitions = Definitions(
-    sensors=[worker_recovery],
+    sensors=[worker_recovery, *[
+        infrastructure_retry_sensor(
+            name=f"transport_infra_retry_{retry_job.name}",
+            project="transport", location_name="kor-travel-transport", job=retry_job,
+            policy=RecoveryPolicy(MAX_RUNTIME_SECONDS, idempotent=True, infrastructure_retries=1),
+        )
+        for retry_job in (airport_collection_job, highway_collection_job, rest_area_reference_collection_job)
+    ]],
     jobs=[
         airport_collection_job,
         highway_collection_job,

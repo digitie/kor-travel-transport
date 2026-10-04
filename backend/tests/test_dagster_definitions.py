@@ -11,6 +11,19 @@ from app.dagster import definitions as dagster_definitions
 from app.dagster.definitions import definitions
 
 
+def test_native_disabled_retry_sensors_target_only_three_idempotent_jobs():
+    from dagster import Definitions
+
+    Definitions.validate_loadable(definitions)
+    sensors = definitions.get_repository_def().sensor_defs
+    retry_sensors = [item for item in sensors if item.name.startswith("transport_infra_retry_")]
+    expected = {"airport_collection_job", "highway_collection_job", "rest_area_reference_collection_job"}
+    assert {item.name.removeprefix("transport_infra_retry_") for item in retry_sensors} == expected
+    assert all(item.default_status.name == "RUNNING" for item in retry_sensors)
+    assert all(item.minimum_interval_seconds == 60 for item in retry_sensors)
+    assert {item.job.name for item in retry_sensors} == expected
+
+
 @pytest.mark.parametrize("scope", ["fuel", "highway"])
 @pytest.mark.parametrize("status", ["success", "skipped", "failed", "partial_success"])
 def test_transport_failure_is_visible_after_commit_without_retry(monkeypatch, scope, status):

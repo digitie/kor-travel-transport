@@ -11,6 +11,10 @@ export function statusLabel(value: string): string {
   return ({ success: "성공", failure: "실패", failed: "실패", partial: "일부 실패", partial_success: "일부 실패", started: "진행 중", starting: "시작 중", running: "진행 중", queued: "대기 중", disabled: "비활성", stopped: "중지", canceled: "취소", canceling: "취소 중", skipped: "실행 건너뜀", not_collected: "수집 이력 없음", on_demand: "요청 시 조회", unconnected: "미연결" } as Record<string, string>)[key] ?? "상태 확인 필요";
 }
 JOB_LABELS.kric_timetable_collection_job = "도시철도 예정 시간표";
+JOB_LABELS.place_location_collection_job = "시설 좌표 보강 (VWorld)";
+JOB_LABELS.kakao_place_location_collection_job = "시설 좌표 보강 (Kakao)";
+JOB_LABELS.rest_area_reference_collection_job = "휴게소 기준정보";
+JOB_LABELS.rest_area_fuel_price_collection_job = "휴게소 유가";
 export function jobBudgetSeconds(job: string) { return ["ferry_timetable_collection_job", "kric_timetable_collection_job"].includes(job) ? 4 * 3600 : job === "fuel_collection_job" ? 2 * 3600 + 600 : job.includes("reference") ? 3600 : 600; }
 export function scheduleDescription(cron: string) {
   const [minute, hour, day, month, weekday] = cron.split(" ");

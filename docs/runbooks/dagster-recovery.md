@@ -1,6 +1,6 @@
 # Transport Dagster 중단 복구
 
-Weather PR #72의 개선과 common PR #24 (`090f984`) Python 코어를 채택한다.
+Weather PR #72의 개선과 common PR #24·#25 Python 코어를 채택한다.
 공용 가이드: https://github.com/digitie/kor-travel-common/blob/main/docs/runbooks/dagster-adoption.md
 
 ## 구조와 호출 보호
@@ -27,10 +27,12 @@ metadata 장애는 회수 사유가 아니다. legacy NULL owner 행은 자동 �
 ## 실제 instance와 배포 순서
 
 공용 운영은 Manager instance YAML을 사용한다. 소비자의 `backend/dagster_home/dagster.yaml`
-변경은 전용 instance에만 적용된다. shared host에서 monitoring enabled, start/cancel 300초,
-job max_runtime tag, run_retries enabled/기본 0/asset-op 실패 false를 확인한다. project transport
+변경은 전용 instance에만 적용된다. 읽어 확인한 shared 설정은 monitoring enabled,
+start/cancel 600초·전역 6시간이며 native retry/coordinator 설정은 없었다. native retry가 꺼져
+있을 때 공통 인프라 retry sensor 3개가 명시적 worker 종료만 1회 재예약한다. 같은 run의
+step 실패·원인 불명·취소는 제외한다. native retry를 켜면 fallback은 위임한다. project transport
 limit 3과 common job별 limit 1 및 기존 run_group 제한도 shared coordinator에 적용해야 한다.
-Manager 설정·운영 shared daemon의 실제 worker kill/retry child/RSS 검증은 별도 운영 작업이다.
+Manager coordinator 설정·운영 shared daemon의 실제 worker kill/retry child/RSS 검증은 별도 운영 작업이다.
 
 1. 별도 테스트 DB에 `alembic upgrade head`·`alembic check` 실행.
 2. provider 보호 상태/최근 관측을 기록하고 새 스케줄 발화를 멈춘 뒤 worker drain.
