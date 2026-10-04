@@ -221,14 +221,13 @@ class RailMaritimeCollectionService:
                 .order_by(FerryPort.port_id)
             )).scalars().all()
         )
-        snapshots = tuple(
-            (await session.execute(
-                select(FerryTimetableSnapshot).where(
-                    FerryTimetableSnapshot.source == MARITIME_SOURCE,
-                    FerryTimetableSnapshot.service_date.in_(service_dates),
-                )
-            )).scalars().all()
-        )
+        length = func.jsonb_array_length if session.get_bind().dialect.name == "postgresql" else func.json_array_length
+        snapshots = (await session.execute(select(
+            FerryTimetableSnapshot.source, FerryTimetableSnapshot.departure_port_id,
+            FerryTimetableSnapshot.service_date, FerryTimetableSnapshot.collected_at,
+            length(FerryTimetableSnapshot.items_json).label("operation_count"),
+        ).where(FerryTimetableSnapshot.source == MARITIME_SOURCE,
+                FerryTimetableSnapshot.service_date.in_(service_dates)))).all()
         by_port_date = {
             (snapshot.source, snapshot.departure_port_id, snapshot.service_date): snapshot
             for snapshot in snapshots
@@ -259,7 +258,7 @@ class RailMaritimeCollectionService:
                     )
                     if snapshot is not None and (service_date > today or is_fresh_today):
                         reused += 1
-                        operation_count += len(snapshot.items_json)
+                        operation_count += snapshot.operation_count or 0
                         continue
                     if provider_calls >= self.settings.ferry_timetable_collection_max_provider_calls:
                         # 이후 날짜에 이미 저장된 시간표도 재사용/잔여 집계에 포함한다.

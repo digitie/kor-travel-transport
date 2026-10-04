@@ -46,11 +46,21 @@ const OVERVIEW_QUERY = `query TransportDagsterOverview($repositoryLocationName: 
   }
   runsOrError(limit: ${DAGSTER_RUN_LIMIT}, filter: { ${RUN_TAG_FILTER} }) {
     __typename
-    ... on Runs { results { runId status jobName startTime endTime } }
+    ... on Runs { results { runId status jobName startTime endTime tags { key value } } }
   }
-  activeRuns: runsOrError(filter: { statuses: [STARTED], ${RUN_TAG_FILTER} }) {
+  activeRuns: runsOrError(limit: 1000, filter: { statuses: [QUEUED, STARTING, STARTED, CANCELING], ${RUN_TAG_FILTER} }) {
     __typename
-    ... on Runs { results { runId status jobName startTime endTime } }
+    ... on Runs { results { runId status jobName startTime endTime tags { key value } } }
+  }
+}`;
+
+const FAILURE_QUERY = `query TransportDagsterRunFailure($runId: String!, $locationTag: String!, $cursor: String) {
+  runsOrError(limit: 1, filter: { runIds: [$runId], ${RUN_TAG_FILTER} }) {
+    __typename
+    ... on Runs { results { eventConnection(limit: 1000, afterCursor: $cursor) {
+      cursor hasMore events { __typename ... on RunFailureEvent { message }
+        ... on ExecutionStepFailureEvent { stepKey message } }
+    } } }
   }
 }`;
 
@@ -60,12 +70,13 @@ type DagsterOperation = {
 
 export const DAGSTER_OPERATIONS = {
   TransportDagsterOverview: { query: OVERVIEW_QUERY },
+  TransportDagsterRunFailure: { query: FAILURE_QUERY },
 } satisfies Record<string, DagsterOperation>;
 
 export type DagsterOperationName = keyof typeof DAGSTER_OPERATIONS;
 
 /** What the browser posts to /api/dagster/graphql: a name, never a query document. */
-export type DagsterOperationRequest = { operationName: DagsterOperationName };
+export type DagsterOperationRequest = { operationName: DagsterOperationName; variables?: { runId: string; cursor?: string | null } };
 
 export type ScopedDagsterRequest = { ok: true; body: string } | { ok: false; message: string };
 
@@ -80,14 +91,23 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  */
 export function scopedDagsterRequest(raw: unknown): ScopedDagsterRequest {
   if (!isPlainObject(raw)) return { ok: false, message: "Dagster 요청 형식이 올바르지 않습니다." };
-  const unexpected = Object.keys(raw).filter((key) => key !== "operationName");
+  const unexpected = Object.keys(raw).filter((key) => key !== "operationName" && (key !== "variables" || raw.operationName !== "TransportDagsterRunFailure"));
   if (unexpected.length) return { ok: false, message: `허용되지 않은 Dagster 요청 필드입니다: ${unexpected.join(", ")}` };
   const { operationName } = raw;
   if (typeof operationName !== "string" || !Object.hasOwn(DAGSTER_OPERATIONS, operationName)) {
     return { ok: false, message: "허용되지 않은 Dagster 작업입니다." };
   }
   const operation: DagsterOperation = DAGSTER_OPERATIONS[operationName as DagsterOperationName];
-  return { ok: true, body: JSON.stringify({ operationName, query: operation.query, variables: { ...SCOPE_VARIABLES } }) };
+  const variables = raw.variables;
+  if (operationName === "TransportDagsterRunFailure") {
+    if (!isPlainObject(variables) || Object.keys(variables).some(key => key !== "runId" && key !== "cursor")
+      || typeof variables.runId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(variables.runId)
+      || (variables.cursor !== undefined && variables.cursor !== null && (typeof variables.cursor !== "string" || variables.cursor.length > 512))) {
+      return { ok: false, message: "Dagster 요청 변수 형식이 올바르지 않습니다." };
+    }
+  }
+  const scope = operationName === "TransportDagsterRunFailure" ? { locationTag: DAGSTER_LOCATION_NAME } : SCOPE_VARIABLES;
+  return { ok: true, body: JSON.stringify({ operationName, query: operation.query, variables: { ...(isPlainObject(variables) ? variables : {}), ...scope } }) };
 }
 
 /**
@@ -95,7 +115,7 @@ export function scopedDagsterRequest(raw: unknown): ScopedDagsterRequest {
  * unique across the instance, so run links stay global; everything else goes
  * through this location's own pages.
  */
-export const DAGSTER_UI_BASE = "https://dagster.digitie.mywire.org";
+export const DAGSTER_UI_BASE = (process.env.NEXT_PUBLIC_TRANSPORT_DAGSTER_URL ?? "https://dagster.digitie.mywire.org").replace(/\/+$/, "");
 
 export function dagsterLocationUrl(path = ""): string {
   return `${DAGSTER_UI_BASE}/locations/${encodeURIComponent(DAGSTER_LOCATION_NAME)}${path}`;

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { AdminShell } from "@/components/admin-shell";
+import "@kor-travel/tokens/tokens.css";
 import "./globals.css";
 import "./tokens.css";
 

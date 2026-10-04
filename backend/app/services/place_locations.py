@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections import Counter
 from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from datetime import UTC, timedelta
@@ -14,6 +13,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from vworld import VworldClient, VworldNetworkError, VworldNoDataError, parse_search_response, process_search_response
 
+from app.services.place_targets import iter_missing_place_targets, matching_place_names
 from app.core.config import Settings
 from app.core.time_utils import now_utc
 from app.models import BusTerminalReference, CollectionRun, FerryPort, RawApiResponse
@@ -144,41 +144,23 @@ class PlaceLocationCollectionService:
         summary = {"provider_calls": 0, "bus_locations": 0, "port_locations": 0, "unmatched": 0,
                    "deferred": 0, "provider_failed": 0}
         try:
-            bus = (await session.scalars(select(BusTerminalReference).where(
-                BusTerminalReference.latitude.is_(None), BusTerminalReference.terminal_name.is_not(None),
-            ).order_by(BusTerminalReference.id))).all()
-            ports = (await session.scalars(select(FerryPort).where(
-                FerryPort.latitude.is_(None), FerryPort.port_name.is_not(None),
-            ).order_by(FerryPort.id))).all()
-            bus_names = Counter((service, name, city) for service, name, city in (await session.execute(
-                select(BusTerminalReference.service_type, BusTerminalReference.terminal_name,
-                       BusTerminalReference.city_name)
-            )).all())
-            port_names = Counter((await session.scalars(select(FerryPort.port_name))).all())
-            # 양쪽에 같은 호출 예산을 나눈다. 한쪽이 비어도 나머지가 미사용 슬롯을 사용한다.
-            targets: list[tuple[str, Any]] = []
-            while bus or ports:
-                if bus:
-                    targets.append(("bus", bus.pop(0)))
-                if ports:
-                    targets.append(("port", ports.pop(0)))
             async with self.client_factory(
                 api_key=self.settings.vworld_api_key, timeout=self.settings.api_timeout_seconds,
                 max_retries=0, max_rps=100.0,
             ) as client:
-                for kind, row in targets:
+                async for kind, row in iter_missing_place_targets(session):
                     await session.refresh(row)
                     if row.latitude is not None or row.location_source == "admin_manual":
                         continue
                     if kind == "bus":
-                        if bus_names[(row.service_type, row.terminal_name, row.city_name)] != 1:
+                        if await matching_place_names(session, kind, row) != 1:
                             continue
                         name = row.terminal_name.strip()
                         suffix = "고속버스터미널" if row.service_type == "express" else "시외버스터미널"
                         query = name if "터미널" in name else name + suffix
                         endpoint = f"vworld:bus:{row.service_type}:{row.terminal_id}"
                     else:
-                        if port_names[row.port_name] != 1:
+                        if await matching_place_names(session, kind, row) != 1:
                             continue
                         name = row.port_name.strip()
                         query = name if name.endswith("항") else name + "항"

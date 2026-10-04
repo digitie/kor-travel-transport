@@ -1,5 +1,87 @@
 # journal.md — 작업 일지
 
+## 2026-10-04 — T-044 migration 잠금 설정과 관찰 시간의 계약 분리
+
+수정 테스트 `0a4588a`의 두 PostgreSQL CI는 661 passed·1 skipped/836.26초와 801.95초였다.
+두 독립 후속 원문도 PASS/J-MIG-P2-01 및 B-M-P2-01 CLOSED다. 원문을
+`docs/reviews/evidence/2026-10-04-transport-migration-postfix-{james,popper}.md`에 그대로 보존한다.
+제품 runtime은 계속 `027a9ca`와 같고 cleanup 보강에는 신규 finding이 없다.
+
+그 뒤 격리 Docker 전체는 354 passed·1 skipped 뒤 관찰 시간 10.415초가 임의의10초 상한을
+넘어 1 FAIL/942.03초로 끝났다. 실제 native lock-timeout 오류는 정상 발생했고 schema head도
+finally에서 복원됐다. CLI 종료와 observer 지연을 포함하는 시각 차이는 서버 lock timeout
+상한 검증으로 쓸 수 없어 이 비교의 상한을 제거했다. 3초 설정 자체는 실제0018 downgrade
+성공/실패 양쪽을 직접 실행하는 단위 검사2개로 보호한다. index 잠금 실패 뒤 MV가 유지되는
+순서도 검증한다. native 검사는 실제 대상 relation 대기·정확한 lock-timeout 오류·CLI60초
+상한과 잠금 해제 후 downgrade/head 복원을 유지한다. timeout 수치를 늘리지 않았다.
+WSL6 passed·1 PostgreSQL skip. 새 후보 CI·독립 재검토·Docker 전체 결과는 PR #67이 정본이다.
+
+## 2026-10-04 — T-044 migration subprocess 정리 상한과 Docker 테스트 환경 수정
+
+테스트 후보 `1c5bd96`의 두 CI는 각각 661 passed·1 skipped였다. 독립 James/Popper가
+기존 kill→무상한 wait의 stdout PIPE backpressure를 각각 P2로 재현했다. 원문은
+`docs/reviews/evidence/2026-10-04-transport-migration-{james,popper}.md`에 보존했다.
+부모도 같은 격리 child에서 kill 이후 대기 정체를 재현하고, 출력 회수 `communicate()`에
+10초 cleanup 상한을 적용했다. 같은 공격에서 child -9·PIPE 미정체·buffer0·helper 완료를 확인했다.
+원래 timeout은 정상 cleanup 뒤 그대로 전달한다. runtime·migration·공통 pin·UI는 `027a9ca`와 같다.
+수정 후보의 최종 CI·독립 재검토는 PR #67 정본에 보존한다.
+
+격리 Docker 전체의 614 passed·1 skipped 뒤 legacy scheduler 테스트 1 FAIL은 통과로 세지 않는다.
+원 작업자의 테스트 Compose에 `SCHEDULER_MODE=dagster`가 전역 지정돼 in-process scheduler를
+기다리는 테스트와 충돌했다. source 변경 없이 같은 테스트에서 env 지정 시 1 FAIL/10.49초,
+지정 제거 시 1 PASS/0.42초를 재현했다. 테스트 환경 변수를 제거하고 전체 회귀를 다시 수행한다.
+운영 설정은 바꾸지 않았다. 다른 앱·운영 DB·provider·daemon에는 접근하지 않았다.
+
+## 2026-10-04 — T-044 서버 migration 테스트의 시간 판정·실패 격리 보강
+
+n150 Docker 전체 회귀에서 기존 migration 잠금 테스트를 단독 재현했다. DB는 정상적으로
+lock timeout으로 중단했지만 CLI 초기화를 포함한 19.01초가 기존 15초 가정을 넘었다.
+실제 잡·migration timeout을 늘리지 않고 테스트가 `pg_locks.waitstart`에서 대상 DB·
+`fuel_price_snapshots` 잠금 대기를 관측하도록 바꿨다. CLI는 별도의 60초 상한과 취소 시
+child 종료를 유지한다. Assertion 실패 때도 schema head를 복원해 후속 테스트를 격리한다.
+
+WSL 정적 4 passed·1 PostgreSQL 전용 skip, 격리 PostgreSQL 단독 경계 PASS(14.19초).
+대상 relation 필터를 추가한 뒤 성공 downgrade 직후 의도적 assertion 실패를 주입해
+head0024·owner column2 복원을 직접 확인했다. 이 의도적 1 FAIL은 제품 통과 수에 합산하지 않는다.
+런타임 코드·migration·공통 pin·UI는 승인 후보 `027a9ca`와 같고 테스트만 보강했다.
+최종 전체 회귀·CI와 두 독립 추가 검증 결과는 PR #67에 보존한다.
+
+## 2026-10-04 — T-044 최종 코드 리뷰·live 검증 완료
+
+runtime `027a9ca1ef943d792278cc8a09964bb6e4ea5c44`에서 James/Popper가 각각 PASS했다.
+원본 P1 두 건과 P2 두 건은 모두 CLOSED이며 새 actionable finding은 없다. rollback 이후
+알 수 없는 ORM 상태도 fence 추적을 유지하고, 회수 owner는 새 session·다음 provider에서
+다시 게시하지 못한다. native metadata 장애를 worker 사망으로 오판하지 않는다.
+최근 30건 밖 QUEUED·STARTING·CANCELING도 별도 조회해 표시한다.
+
+WSL 전체 653 passed·9 skipped, 두 PostgreSQL CI 각 661 passed·1 skipped,
+격리 PostgreSQL 복구 35 passed, 관리자 149/type/build 및 Docker 149/type-check,
+공개 130/type/build·Docker, migration roundtrip, 최신 production bundle live UI가 통과했다.
+서버 전체 디스크 I/O 지연과 RAM DB bootstrap 누락은 통과에 합산하지 않는다.
+전용 RAM PostgreSQL 전체 재실행·최종 문서 CI를 끝낸 뒤 PR #67을 merge한다.
+Common PR #25는 `589a01e`로 merge됐고 고정 Python `430a9e9`가 main에 포함된다.
+
+두 원문 해시와 실제 검증/NOT_RUN은 [최종 판정](reviews/2026-10-04-transport-dagster-common-closure.md)에
+보존한다. 운영 shared 설정·worker kill/retry child·RSS는 미실행이다. 원본 untracked 테스트
+폴더와 common T-301 작업은 보존한다. 공통 가이드는 common `docs/runbooks/dagster-adoption.md`다.
+
+## 2026-10-04 — T-044 Dagster 복구·공통 UI 채택 후보
+
+최신 main `e00e634`를 받아 weather `8ed94e7`·common `090f984`와 대조했다.
+독립 baseline James/Popper 원본은 `docs/reviews/evidence`에 보존했다. worker 소유권·
+부분 commit fencing·terminal 회수, 중복 schedule 합침, 제한된 인프라 retry를 적용했다.
+공항 partial/failed를 Dagster 실패로 알리고 기존 KRIC·버스·유가·장소 보호를 유지한다.
+배편 JSON/장소/KRIC 후보 적재를 줄이고 공통 로그인·메뉴·Dagster UI dev.2를 사용한다.
+Dagster/회수 27 tests, 관리자 142 tests/type/build, 공개 frontend 130 tests/type/build PASS.
+첫 후보 7817233의 전체 PostgreSQL CI(655 passed·1 skipped), WSL(647 passed·9 skipped),
+격리 PostgreSQL 복구 29건·common 56건·live UI PASS 뒤 James/Popper를 독립 실행했다.
+Popper의 rollback fence 추적 유실·lease loss 후 다음 provider 게시 P1 두 건을 실제로 재현하고
+보강했다. James/Popper의 오래된 pending 실행 누락·Python pin 문서 P2도 수정했다.
+옛 코드에서 공격 회귀 5 FAIL, 수정 코드에서 경계 35건·관리자 149건/type/build PASS.
+수정 후보의 전체 회귀·CI·재리뷰와 최종 live UI를 진행한다. 자세한 원문·disposition은
+`docs/reviews/2026-10-04-transport-dagster-common.md`에 보존한다.
+
+
 ## 2026-10-04 — 적대 리뷰 LOW 후속 3건(브랜치 `fix/admin-auth-and-collector-lows`)
 
 배포·PR은 하지 않았다. 세 수정 모두 테스트를 옛 코드에서 먼저 빨갛게 확인했다.

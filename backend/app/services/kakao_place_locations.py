@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-from collections import Counter
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from datetime import UTC, timedelta
@@ -15,6 +14,7 @@ import httpx
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.place_targets import iter_missing_place_targets, matching_place_names, missing_place_count
 from app.core.config import Settings
 from app.core.time_utils import now_utc
 from app.models import BusTerminalReference, CollectionRun, FerryPort, RawApiResponse
@@ -104,23 +104,6 @@ class KakaoPlaceCollectionService:
                    "unmatched": 0, "incomplete": 0, "deferred": 0, "provider_failed": 0}
         try:
             key_fingerprint = hashlib.sha256(self.settings.kakao_rest_api_key.encode()).hexdigest()
-            bus = (await session.scalars(select(BusTerminalReference).where(
-                BusTerminalReference.latitude.is_(None), BusTerminalReference.terminal_name.is_not(None),
-            ).order_by(BusTerminalReference.id))).all()
-            ports = (await session.scalars(select(FerryPort).where(
-                FerryPort.latitude.is_(None), FerryPort.port_name.is_not(None),
-            ).order_by(FerryPort.id))).all()
-            bus_names = Counter((service, name, city) for service, name, city in (await session.execute(
-                select(BusTerminalReference.service_type, BusTerminalReference.terminal_name,
-                       BusTerminalReference.city_name)
-            )).all())
-            port_names = Counter((await session.scalars(select(FerryPort.port_name))).all())
-            targets: list[tuple[str, Any]] = []
-            while bus or ports:
-                if bus:
-                    targets.append(("bus", bus.pop(0)))
-                if ports:
-                    targets.append(("port", ports.pop(0)))
             budget_time = now_utc()
             day_calls = int(await session.scalar(select(func.count()).select_from(RawApiResponse).where(
                 RawApiResponse.source == SOURCE,
@@ -132,33 +115,34 @@ class KakaoPlaceCollectionService:
             )) or 0)
             # 429는 키 전체의 한도 응답이다. 재실행이 다른 장소를 다시 호출하지
             # 않도록 24시간 유예한다. 401/403은 키 교체 직후 재검증할 수 있어야 한다.
-            recent_quota_errors = (await session.scalars(select(RawApiResponse).where(
+            recent_quota_error = await session.scalar(select(RawApiResponse.id).where(
                 RawApiResponse.source == SOURCE,
                 RawApiResponse.status_code == 429,
                 RawApiResponse.received_at >= budget_time - timedelta(days=1),
-            ))).all()
-            if targets and any((receipt.request_params_json or {}).get("key_fingerprint") == key_fingerprint
-                               for receipt in recent_quota_errors):
-                summary["deferred"] = len(targets)
+                RawApiResponse.request_params_json["key_fingerprint"].as_string() == key_fingerprint,
+            ).limit(1))
+            target_count = await missing_place_count(session)
+            if target_count and recent_quota_error is not None:
+                summary["deferred"] = target_count
                 run.status = "partial_success"
                 run.finished_at = now_utc()
                 await session.commit()
                 return {"status": run.status, "run_id": run.id, **summary}
             async with self.client_factory(timeout=self.settings.api_timeout_seconds,
                                            headers={"Authorization": f"KakaoAK {self.settings.kakao_rest_api_key}"}) as client:
-                for kind, row in targets:
+                async for kind, row in iter_missing_place_targets(session):
                     await session.refresh(row)
                     if row.latitude is not None or row.location_source == "admin_manual":
                         continue
                     if kind == "bus":
-                        if bus_names[(row.service_type, row.terminal_name, row.city_name)] != 1:
+                        if await matching_place_names(session, kind, row) != 1:
                             continue
                         name = row.terminal_name.strip()
                         suffix = "고속버스터미널" if row.service_type == "express" else "시외버스터미널"
                         query = name if "터미널" in name else name + suffix
                         endpoint = f"kakao:bus:{row.service_type}:{row.terminal_id}"
                     else:
-                        if port_names[row.port_name] != 1:
+                        if await matching_place_names(session, kind, row) != 1:
                             continue
                         name = row.port_name.strip()
                         query = name if name.endswith("항") else name + "항"

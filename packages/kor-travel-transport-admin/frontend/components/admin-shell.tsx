@@ -4,7 +4,7 @@ import { Activity, Bus, ChartNoAxesCombined, Database, LogOut, Map, Plane, Route
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
-import { cn } from "@/lib/utils";
+import { AppMenu } from "@kor-travel/ui";
 
 const items = [
   ["/", "현황", Activity],
@@ -42,13 +42,10 @@ export function AdminShell({ children }: { children: ReactNode }) {
                 <span className="brand-subtitle">Admin UI</span>
               </Link>
             </div>
-            <nav className="nav rail-nav" aria-label="주요 메뉴">
-              {items.map(([href, label, Icon]) => (
-                <Link aria-current={activeHref === href ? "page" : undefined} className={cn("nav-link", activeHref === href && "active")} href={href} key={href}>
-                  <Icon aria-hidden="true" size={16} strokeWidth={1.8} /><span>{label}</span>
-                </Link>
-              ))}
-            </nav>
+            <div className="rail-nav common-menu">
+              <AppMenu label="주요 메뉴" pathname={pathname} activeItemId={activeHref} linkComponent={Link}
+                groups={[{ id: "transport", items: items.map(([href, label, Icon]) => ({ id: href, href, label, exact: href === "/", icon: <Icon aria-hidden="true" size={16} strokeWidth={1.8} /> })) }]} />
+            </div>
             <form className="rail-footer" action="/api/auth/logout" method="post" onSubmit={clearDashboardCache}>
               <button className="nav-link logout-button" type="submit"><LogOut aria-hidden="true" size={16} strokeWidth={1.8} /><span>로그아웃</span></button>
             </form>

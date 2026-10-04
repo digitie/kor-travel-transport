@@ -1,7 +1,23 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { getDagsterOverview, runStalled, statusLabel } from "./dagster";
+import { getDagsterOverview, getRunFailure, runStalled, statusLabel } from "./dagster";
 
 afterEach(() => vi.unstubAllGlobals());
+
+test("job 실행 상한 태그가 오래 걸리는 정상 작업의 오탐을 막는다", () => {
+  const run = { runId: "run", jobName: "airport_collection_job", status: "STARTED", startTime: 0, endTime: null,
+    tags: [{ key: "dagster/max_runtime", value: "14400" }] };
+  expect(runStalled(run, 3600_000)).toBe(false);
+  expect(runStalled(run, 14400_000)).toBe(true);
+});
+
+test("첫 1000개 event 뒤의 실패 원인도 페이지를 넘겨 확인한다", async () => {
+  const fetch = vi.fn().mockResolvedValueOnce(Response.json({ data: { runsOrError: { results: [{ eventConnection: {
+    events: [], hasMore: true, cursor: "next" } }] } } })).mockResolvedValueOnce(Response.json({ data: { runsOrError: { results: [{ eventConnection: {
+    events: [{ __typename: "RunFailureEvent", message: "failure" }], hasMore: false } }] } } }));
+  vi.stubGlobal("fetch", fetch);
+  expect(await getRunFailure("00000000-0000-0000-0000-000000000001")).toBe("failure");
+  expect(JSON.parse(fetch.mock.calls[1][1].body).variables.cursor).toBe("next");
+});
 
 test("수집 전 보호 대기는 성공이나 장애로 표시하지 않는다", () => {
   expect(statusLabel("throttled")).toBe("호출 보호 대기");

@@ -1,6 +1,20 @@
 import { expect, test } from "vitest";
 import { DAGSTER_LOCATION_NAME, dagsterLocationUrl, dagsterRunUrl, scopedDagsterRequest } from "./dagster-scope";
 
+test("실패 상세도 소유 location 태그로 제한하고 scope 변수를 거절한다", () => {
+  const runId = "00000000-0000-0000-0000-000000000001";
+  const result = scopedDagsterRequest({ operationName: "TransportDagsterRunFailure", variables: { runId } });
+  expect(result.ok).toBe(true);
+  if (result.ok) {
+    const body = JSON.parse(result.body);
+    expect(body.variables.locationTag).toBe(DAGSTER_LOCATION_NAME);
+    expect(body.query).toContain('key: "dagster/code_location"');
+    expect(body.query).toContain("afterCursor: $cursor");
+  }
+  expect(scopedDagsterRequest({ operationName: "TransportDagsterRunFailure", variables: { runId, locationTag: "weather" } }).ok).toBe(false);
+  expect(scopedDagsterRequest({ operationName: "TransportDagsterRunFailure", variables: { runId: "invalid" } }).ok).toBe(false);
+});
+
 test("이름 붙은 작업은 이 location으로 좁힌 query가 된다", () => {
   const scoped = scopedDagsterRequest({ operationName: "TransportDagsterOverview" });
   expect(scoped.ok).toBe(true);
@@ -14,6 +28,7 @@ test("이름 붙은 작업은 이 location으로 좁힌 query가 된다", () => 
   // 두 run 목록 모두 이 location의 tag로 좁힌다.
   expect(body.query.match(/tags: \[\{ key: "dagster\/code_location", value: \$locationTag \}\]/g)).toHaveLength(2);
   expect(body.query).not.toMatch(/\bmutation\b/);
+  expect(body.query).toContain("activeRuns: runsOrError(limit: 1000, filter: { statuses: [QUEUED, STARTING, STARTED, CANCELING]");
 });
 
 test.each([

@@ -3,6 +3,9 @@
 @import "tailwindcss/preflight.css" layer(base);
 @import "tailwindcss/utilities.css" layer(utilities);
 @import "tw-animate-css";
+@import "@kor-travel/tokens/theme.css";
+@import "@kor-travel/ui/dagster.css";
+@source "../node_modules/@kor-travel/ui/dist";
 
 /* 기존 색상 변수 이름과 shadcn의 muted/accent 의미 충돌을 피한다. */
 @theme inline {
@@ -378,4 +381,17 @@ h1, h2, h3 { color: var(--text-primary); }
   @media (prefers-reduced-motion: reduce) {
     [data-slot="spinner"], [data-slot="skeleton"] { animation: none; }
   }
+}
+
+/* 공통 메뉴는 transport shell의 기존 62rem 전환 지점을 따른다. */
+.common-menu [data-slot="app-menu"] { flex-direction: column; overflow-x: visible; padding: 0; }
+.common-menu ul { flex-direction: column; }
+.common-menu [data-slot="app-menu-group"] { flex-shrink: 1; min-width: 0; }
+.common-menu [aria-current="page"] { background: var(--surface-subtle); }
+.login-panel { width: min(100%, 28rem); }
+.login-panel > h1 { margin: 1rem 1rem 0; }
+@media (max-width: 62rem) {
+  .common-menu [data-slot="app-menu"], .common-menu ul { flex-direction: row; }
+  .common-menu [data-slot="app-menu-group"] { flex-shrink: 0; }
+  .common-menu [data-slot="app-menu-link"] { width: auto; }
 }
