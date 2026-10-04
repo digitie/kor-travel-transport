@@ -2,6 +2,13 @@
 
 ## 현재 상태
 
+- **2026-10-04 T-044 진행 중**: 최신 main `e00e634`에서 `codex/transport-dagster-common`.
+  Weather `8ed94e7`·common `090f984` 복구 코어와 공통 UI 후보 dev.2를 적용했다.
+  Dagster/worker 경계 27 tests, 관리자 142 tests/type/build, 공개 frontend 130 tests/type/build PASS.
+  전체 backend·PostgreSQL·Docker·CI·최종 독립 리뷰·n150 live UI는 검증 중이다.
+  원본 untracked `.pytest-tmp-7949477`과 common T-301 변경을 보존한다.
+  다음 작업: Draft PR CI → 독립 James/Popper 리뷰 → n150 live UI → 두 PR 머지.
+
 - **2026-10-02 공용 Dagster 제어 평면 합류 준비(브랜치 `feat/shared-dagster-plane`, 미배포).** code-server만
   남기고 옛 webserver·daemon·gateway를 `legacy-dagster`로 내렸고, 운영 UI는 공용 webserver에 location 범위의
   이름 붙은 query만 보낸다. 짝 Manager 브랜치 `feat/transport-shared-dagster`(prep·flip). 전환 순서는

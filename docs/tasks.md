@@ -10,6 +10,11 @@
 
 ## 진행 중인 작업 인덱스
 
+- [ ] T-044 Weather/common Dagster 복구 로직 transport 채택: 소유권 migration·게시 fencing·
+      중복 예약 합침·provider 보호·메모리 구조·공통 로그인/메뉴/Dagster UI.
+      전체 회귀·CI·James/Popper 독립 리뷰·n150 live UI 후 PR 머지.
+      [복구 절차](runbooks/dagster-recovery.md)를 따른다.
+
 - [ ] 통합 교통 통계 캐시 미적중 지연 조사: n150 운영에서
       `/v1/transport/statistics?days=2` 공개 요청이 간헐적으로 10초 프록시
       제한에 걸려 504를 반환했다. `days=3` 내부 미적중 0.69초 및 `days=4`

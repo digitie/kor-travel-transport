@@ -1,5 +1,14 @@
 # 데이터 모델
 
+## 수집 실행 소유권 (`0024_collection_run_owner`)
+
+`collection_runs.orchestrator_run_id`는 Dagster run UUID이며 nullable index를 갖는다.
+`heartbeat_at`은 timezone-aware UTC `TIMESTAMPTZ`다. 기존 API DTO는 변경하지 않는다.
+API·legacy 실행의 NULL 소유권은 자동 회수 대상에서 제외한다. migration을 code-server보다
+먼저 적용한다. collector의 commit/flush는 status=running과 owner를 잠가 확인하며, terminal
+실행의 늦은 게시를 거절한다. metadata 유실은 5시간 heartbeat grace와 CAS로 확인한다.
+기존 원천 응답·성공 부분·provider receipt는 삭제하거나 재생성하지 않는다.
+
 ## 핵심 테이블
 
 ### 최신 유가 테이블 (`0022_fuel_latest_prices_table`)

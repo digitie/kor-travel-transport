@@ -1,5 +1,16 @@
 # journal.md — 작업 일지
 
+## 2026-10-04 — T-044 Dagster 복구·공통 UI 채택 후보
+
+최신 main `e00e634`를 받아 weather `8ed94e7`·common `090f984`와 대조했다.
+독립 baseline James/Popper 원본은 `docs/reviews/evidence`에 보존했다. worker 소유권·
+부분 commit fencing·terminal 회수, 중복 schedule 합침, 제한된 인프라 retry를 적용했다.
+공항 partial/failed를 Dagster 실패로 알리고 기존 KRIC·버스·유가·장소 보호를 유지한다.
+배편 JSON/장소/KRIC 후보 적재를 줄이고 공통 로그인·메뉴·Dagster UI dev.2를 사용한다.
+Dagster/회수 27 tests, 관리자 142 tests/type/build, 공개 frontend 130 tests/type/build PASS.
+전체 backend·CI·PostgreSQL/Docker·최종 리뷰·n150 live UI는 아직 검증 중이다.
+
+
 ## 2026-10-04 — 적대 리뷰 LOW 후속 3건(브랜치 `fix/admin-auth-and-collector-lows`)
 
 배포·PR은 하지 않았다. 세 수정 모두 테스트를 옛 코드에서 먼저 빨갛게 확인했다.
