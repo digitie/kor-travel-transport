@@ -1,5 +1,24 @@
 # journal.md — 작업 일지
 
+## 2026-10-04 — T-044 최종 코드 리뷰·live 검증 완료
+
+runtime `027a9ca1ef943d792278cc8a09964bb6e4ea5c44`에서 James/Popper가 각각 PASS했다.
+원본 P1 두 건과 P2 두 건은 모두 CLOSED이며 새 actionable finding은 없다. rollback 이후
+알 수 없는 ORM 상태도 fence 추적을 유지하고, 회수 owner는 새 session·다음 provider에서
+다시 게시하지 못한다. native metadata 장애를 worker 사망으로 오판하지 않는다.
+최근 30건 밖 QUEUED·STARTING·CANCELING도 별도 조회해 표시한다.
+
+WSL 전체 653 passed·9 skipped, 두 PostgreSQL CI 각 661 passed·1 skipped,
+격리 PostgreSQL 복구 35 passed, 관리자 149/type/build 및 Docker 149/type-check,
+공개 130/type/build·Docker, migration roundtrip, 최신 production bundle live UI가 통과했다.
+서버 전체 디스크 I/O 지연과 RAM DB bootstrap 누락은 통과에 합산하지 않는다.
+전용 RAM PostgreSQL 전체 재실행·최종 문서 CI를 끝낸 뒤 PR #67을 merge한다.
+Common PR #25는 `589a01e`로 merge됐고 고정 Python `430a9e9`가 main에 포함된다.
+
+두 원문 해시와 실제 검증/NOT_RUN은 [최종 판정](reviews/2026-10-04-transport-dagster-common-closure.md)에
+보존한다. 운영 shared 설정·worker kill/retry child·RSS는 미실행이다. 원본 untracked 테스트
+폴더와 common T-301 작업은 보존한다. 공통 가이드는 common `docs/runbooks/dagster-adoption.md`다.
+
 ## 2026-10-04 — T-044 Dagster 복구·공통 UI 채택 후보
 
 최신 main `e00e634`를 받아 weather `8ed94e7`·common `090f984`와 대조했다.

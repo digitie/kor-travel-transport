@@ -2,12 +2,15 @@
 
 ## 현재 상태
 
-- **2026-10-04 T-044 진행 중**: 최신 main `e00e634`에서 `codex/transport-dagster-common`.
-  Weather `8ed94e7`·common `090f984` 복구 코어와 공통 UI 후보 dev.2를 적용했다.
-  Dagster/worker 경계 27 tests, 관리자 142 tests/type/build, 공개 frontend 130 tests/type/build PASS.
-  전체 backend·PostgreSQL·Docker·CI·최종 독립 리뷰·n150 live UI는 검증 중이다.
-  원본 untracked `.pytest-tmp-7949477`과 common T-301 변경을 보존한다.
-  다음 작업: Draft PR CI → 독립 James/Popper 리뷰 → n150 live UI → 두 PR 머지.
+- **2026-10-04 T-044 코드·리뷰·live 검증 완료**: 최신 main `e00e634`에서 구현한 runtime
+  `027a9ca`를 James/Popper가 각각 PASS했다. 기존 P1 두 건·P2 두 건은 CLOSED다.
+  Weather `8ed94e7`·common Python `430a9e9`·공통 UI dev.2를 채택했다.
+  WSL 전체 653 passed·9 skipped, 두 PostgreSQL CI 각 661 passed·1 skipped,
+  격리 PostgreSQL 복구 35, 관리자 149/type/build·Docker, 공개 130/type/build·Docker PASS.
+  migration roundtrip·최신 live UI·두 원문은 [최종 판정](reviews/2026-10-04-transport-dagster-common-closure.md)에 있다.
+  Common PR #25는 `589a01e`로 merge됐다. 최종 문서 CI·격리 Docker 전체 재실행 뒤 PR #67을 merge한다.
+  원본 `.pytest-tmp-7949477`과 common T-301 변경을 보존한다. 운영 shared 설정·worker kill/RSS는 미실행이다.
+  다음 작업: PR #67의 최종 merge gate 확인. 이후 운영 확산은 [복구 절차](runbooks/dagster-recovery.md)를 따른다.
 
 - **2026-10-02 공용 Dagster 제어 평면 합류 준비(브랜치 `feat/shared-dagster-plane`, 미배포).** code-server만
   남기고 옛 webserver·daemon·gateway를 `legacy-dagster`로 내렸고, 운영 UI는 공용 webserver에 location 범위의

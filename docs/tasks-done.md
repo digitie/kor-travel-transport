@@ -2,6 +2,20 @@
 
 완료한 task의 식별자, 핵심 변경, 검증 명령과 시각을 역시간순으로 보관한다.
 
+## 2026-10-04 — T-044 Weather/common Dagster 복구·공통 UI 코드 채택
+
+- runtime `027a9ca`에서 durable CollectionRun owner·heartbeat·늦은 게시 fencing,
+  terminal 회수·중복 예약 합침·멱등 인프라 retry, provider 보호와 bounded 적재를 구현했다.
+- 공통 로그인·메뉴·Dagster UI dev.2를 사용하며 오래된 활성 네 상태를 별도 조회한다.
+  Common Python `430a9e9`와 가이드는 [PR #25](https://github.com/digitie/kor-travel-common/pull/25)에
+  포함돼 `589a01e`로 merge됐다. 원본 common T-301 작업은 보존했다.
+- James/Popper 독립 최종 PASS, 기존 P1 두 건·P2 두 건 CLOSED. WSL 전체 653/9 skipped,
+  PostgreSQL CI 두 실행 각 661/1 skipped, 격리 복구 35·migration roundtrip·관리자 149·공개130·
+  최신 live UI PASS. [원문·검증](reviews/2026-10-04-transport-dagster-common-closure.md)을 보존한다.
+- 코드 채택 완료 기록이다. 최종 문서 CI·격리 Docker 전체 재실행 후
+  [PR #67](https://github.com/digitie/kor-travel-transport/pull/67)을 merge하며, 결과는 PR 기록을 정본으로 삼는다.
+  운영 shared 설정·worker kill/retry child·RSS·다른 소비자 배포는 완료로 세지 않는다.
+
 ## 2026-09-30 — PR #56 항구·버스 터미널 좌표 보강 연계와 수동 보정
 
 - 공식 항구·터미널 기준정보 수집 뒤 VWorld→Kakao 보강을 연결하고, 기존 공식
