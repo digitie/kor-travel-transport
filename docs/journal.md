@@ -1,5 +1,19 @@
 # journal.md — 작업 일지
 
+## 2026-10-04 — T-044 서버 migration 테스트의 시간 판정·실패 격리 보강
+
+n150 Docker 전체 회귀에서 기존 migration 잠금 테스트를 단독 재현했다. DB는 정상적으로
+lock timeout으로 중단했지만 CLI 초기화를 포함한 19.01초가 기존 15초 가정을 넘었다.
+실제 잡·migration timeout을 늘리지 않고 테스트가 `pg_locks.waitstart`에서 대상 DB·
+`fuel_price_snapshots` 잠금 대기를 관측하도록 바꿨다. CLI는 별도의 60초 상한과 취소 시
+child 종료를 유지한다. Assertion 실패 때도 schema head를 복원해 후속 테스트를 격리한다.
+
+WSL 정적 4 passed·1 PostgreSQL 전용 skip, 격리 PostgreSQL 단독 경계 PASS(14.19초).
+대상 relation 필터를 추가한 뒤 성공 downgrade 직후 의도적 assertion 실패를 주입해
+head0024·owner column2 복원을 직접 확인했다. 이 의도적 1 FAIL은 제품 통과 수에 합산하지 않는다.
+런타임 코드·migration·공통 pin·UI는 승인 후보 `027a9ca`와 같고 테스트만 보강했다.
+최종 전체 회귀·CI와 두 독립 추가 검증 결과는 PR #67에 보존한다.
+
 ## 2026-10-04 — T-044 최종 코드 리뷰·live 검증 완료
 
 runtime `027a9ca1ef943d792278cc8a09964bb6e4ea5c44`에서 James/Popper가 각각 PASS했다.

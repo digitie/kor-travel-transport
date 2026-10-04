@@ -80,7 +80,8 @@ def test_postgres_migration_lock_timeout_and_recovery(test_settings):
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
             )
             try:
-                output, _ = await asyncio.wait_for(process.communicate(), timeout=20)
+                # CLI 초기화·여러 revision 처리 시간과 DB의 잠금 상한은 별개다.
+                output, _ = await asyncio.wait_for(process.communicate(), timeout=60)
             except BaseException:
                 if process.returncode is None:
                     process.kill()
@@ -91,11 +92,34 @@ def test_postgres_migration_lock_timeout_and_recovery(test_settings):
         try:
             async with engine.begin() as connection:
                 await connection.execute(text("LOCK TABLE fuel_price_snapshots IN ACCESS EXCLUSIVE MODE"))
-                started = asyncio.get_running_loop().time()
-                code, output = await migrate("downgrade", "0014_kric_timetables")
-                elapsed = asyncio.get_running_loop().time() - started
-                assert code != 0 and "lock timeout" in output
-                assert 2.5 <= elapsed < 15
+                migration_task = asyncio.create_task(migrate("downgrade", "0014_kric_timetables"))
+                wait_started_at = None
+                try:
+                    # pg_locks.waitstart는 CLI import 이전 시간을 포함하지 않는다.
+                    # 이 테스트 DB에는 observer와 migration만 연결한다.
+                    while not migration_task.done():
+                        wait_started_at = await connection.scalar(text("""
+                            SELECT min(waitstart) FROM pg_locks
+                            WHERE NOT granted AND waitstart IS NOT NULL
+                              AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+                              AND relation = 'fuel_price_snapshots'::regclass
+                              AND pid <> pg_backend_pid()
+                        """))
+                        if wait_started_at is not None:
+                            break
+                        await asyncio.sleep(0.1)
+                    code, output = await migration_task
+                finally:
+                    if not migration_task.done():
+                        migration_task.cancel()
+                        try:
+                            await migration_task
+                        except asyncio.CancelledError:
+                            pass
+                wait_finished_at = await connection.scalar(text("SELECT clock_timestamp()"))
+                assert code != 0 and "canceling statement due to lock timeout" in output
+                assert wait_started_at is not None
+                assert 2.5 <= (wait_finished_at - wait_started_at).total_seconds() < 10
                 # 잠금 경합으로 0018 downgrade가 중단돼도 런타임 MV는 남는다.
                 async with engine.connect() as verifier:
                     assert await verifier.scalar(text("SELECT to_regclass('fuel_latest_prices')")) == "fuel_latest_prices"
@@ -108,6 +132,11 @@ def test_postgres_migration_lock_timeout_and_recovery(test_settings):
                 assert await connection.scalar(text("SELECT indisvalid FROM pg_index WHERE indexrelid=to_regclass('ix_fuel_prices_statistics_priced')")) is True
                 assert await connection.scalar(text("SELECT to_regclass('ix_fuel_prices_statistics_collected')")) is None
         finally:
-            await engine.dispose()
+            try:
+                # assertion 실패로 중간 revision이 남아 다음 테스트가 깨지지 않게 한다.
+                code, output = await migrate("upgrade", "head")
+                assert code == 0, output
+            finally:
+                await engine.dispose()
 
     asyncio.run(exercise())
