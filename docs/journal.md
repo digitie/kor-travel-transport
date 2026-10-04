@@ -1,5 +1,21 @@
 # journal.md — 작업 일지
 
+## 2026-10-04 — T-044 migration subprocess 정리 상한과 Docker 테스트 환경 수정
+
+테스트 후보 `1c5bd96`의 두 CI는 각각 661 passed·1 skipped였다. 독립 James/Popper가
+기존 kill→무상한 wait의 stdout PIPE backpressure를 각각 P2로 재현했다. 원문은
+`docs/reviews/evidence/2026-10-04-transport-migration-{james,popper}.md`에 보존했다.
+부모도 같은 격리 child에서 kill 이후 대기 정체를 재현하고, 출력 회수 `communicate()`에
+10초 cleanup 상한을 적용했다. 같은 공격에서 child -9·PIPE 미정체·buffer0·helper 완료를 확인했다.
+원래 timeout은 정상 cleanup 뒤 그대로 전달한다. runtime·migration·공통 pin·UI는 `027a9ca`와 같다.
+수정 후보의 최종 CI·독립 재검토는 PR #67 정본에 보존한다.
+
+격리 Docker 전체의 614 passed·1 skipped 뒤 legacy scheduler 테스트 1 FAIL은 통과로 세지 않는다.
+원 작업자의 테스트 Compose에 `SCHEDULER_MODE=dagster`가 전역 지정돼 in-process scheduler를
+기다리는 테스트와 충돌했다. source 변경 없이 같은 테스트에서 env 지정 시 1 FAIL/10.49초,
+지정 제거 시 1 PASS/0.42초를 재현했다. 테스트 환경 변수를 제거하고 전체 회귀를 다시 수행한다.
+운영 설정은 바꾸지 않았다. 다른 앱·운영 DB·provider·daemon에는 접근하지 않았다.
+
 ## 2026-10-04 — T-044 서버 migration 테스트의 시간 판정·실패 격리 보강
 
 n150 Docker 전체 회귀에서 기존 migration 잠금 테스트를 단독 재현했다. DB는 정상적으로

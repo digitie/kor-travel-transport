@@ -56,6 +56,25 @@ James는 고정 source·vendored UI 실행으로 34건 합치기·중복 제거�
 metadata SUCCESS 35개와 과거 STARTED는 synthetic fixture이며 실제 provider 수집 성공·
 실제 장시간 worker 실행으로 세지 않는다.
 
+## 추가 migration 테스트 리뷰
+
+테스트 후보 `1c5bd965b02b38bc608ce15de196636d7c09ba4b`의 두 PostgreSQL CI도 각각
+661 passed·1 skipped였다. [37192358801](https://github.com/digitie/kor-travel-transport/actions/runs/37192358801)
+1470.68초, [37192355824](https://github.com/digitie/kor-travel-transport/actions/runs/37192355824) 1532.65초.
+두 reviewer가 이 CI green 이후 서로의 원문을 배제하고 테스트 변경만 독립 검토했다.
+
+- [James 원문](evidence/2026-10-04-transport-migration-james.md): PASS / P2 한 건.
+  SHA256 `69F54114DFA20D1AF663AF818AA03C6BE81627ED78E533430AFCACF7CA1A0086`.
+- [Popper 원문](evidence/2026-10-04-transport-migration-popper.md): PASS / P2 한 건.
+  SHA256 `C68E40DED48A8DFA593D53580F775C49B2253CCD5B3752AAE08839104FC57ECF`.
+
+두 지적 J-MIG-P2-01 / B-M-P2-01은 같은 기존 subprocess cleanup 경계였다.
+부모도 대량 stdout child가 -9로 끝났지만 PIPE paused·196608 bytes로 wait가 멈추는 공격을 재현했다.
+kill 이후 `communicate()`의 출력 회수와 reap에 10초 상한을 적용해 동일 공격에서 helper가
+끝나고 PIPE unpaused·buffer0이 되는 것을 확인했다. 원문 P2 판정은 변경하지 않았다.
+보강된 테스트의 CI·독립 재검토 및 최종 disposition은 PR #67에서 확인한다.
+제품 runtime·migration·UI·공통 pin은 위 runtime candidate와 동일하다.
+
 ## 서버 전체 회귀와 남은 범위
 
 이전 디스크 기반 격리 Docker 전체 테스트는 host I/O 지연으로 중단해 PASS로 세지 않았다.
@@ -64,7 +83,14 @@ metadata SUCCESS 35개와 과거 STARTED는 synthetic fixture이며 실제 provi
 512MiB / container 768MiB 한도와 backend 2GiB 한도로 다시 실행한다. WAL/fsync 설정을 끄지 않는다.
 WAL checkpoint는 max 128MiB·min 32MiB·60초로 설정했다. 첫 RAM DB는 schema bootstrap 누락으로
 테이블 없음 오류가 발생해 중단했고 PASS로 세지 않았다. 새 전용 DB에서 Alembic head 초기화 후 다시 실행한다.
-RAM DB는 디스크 장애·전원 손실 내구성 검증을 대체하지 않는다. 최종 결과는 PR #67에 기록한다.
+RAM DB는 디스크 장애·전원 손실 내구성 검증을 대체하지 않는다.
+초기화된 RAM DB 전체 실행은 614 passed·1 skipped 뒤 legacy in-process scheduler 테스트에서
+1 FAIL / 1754.43초로 끝났고 PASS로 세지 않는다. 테스트 Compose의 전역 `SCHEDULER_MODE=dagster`
+충돌을 같은 source에서 1 FAIL/10.49초와 env 제거 후 1 PASS/0.42초로 확인했다.
+테스트 환경을 수정해 전체 회귀를 다시 수행하며 최종 결과는 PR #67에 기록한다.
+서버 base image의 FastAPI 0.142.2·SQLAlchemy 2.1.3·python-dotenv 1.2.4는 선언 범위 내
+추가 조합이다. frozen CI의 0.141.1·2.0.52·1.2.3과 구분하며 provider Git pin 7개와
+Dagster 1.13.24·common 430a9e9는 일치한다.
 
 운영 shared coordinator 변경·운영 daemon/launcher worker kill·실제 retry child·운영 RSS는
 **NOT_RUN**이다. per-record RPC deadline을 넘어 reaper 전체 tick의 규모·공정성/지속 cursor,

@@ -85,7 +85,8 @@ def test_postgres_migration_lock_timeout_and_recovery(test_settings):
             except BaseException:
                 if process.returncode is None:
                     process.kill()
-                await process.wait()
+                # PIPE가 가득 차면 wait()도 멈출 수 있어 출력 회수에 별도 상한을 둔다.
+                await asyncio.wait_for(process.communicate(), timeout=10)
                 raise
             return process.returncode, output.decode()
 
