@@ -85,3 +85,12 @@ test("최근 30건 밖의 active run은 추가하고 중복 실행은 한 번만
   expect(html.match(/title="airport_collection_job"/g)).toHaveLength(1);
   expect(html).toContain('title="old-job"');
 });
+
+test.each(["QUEUED", "STARTING", "CANCELING"])("최근 30건 밖의 %s 실행도 표시한다", status => {
+  const recent = Array.from({ length: 30 }, (_, index) => ({ ...snapshot.runs[0],
+    runId: `completed-${index}`, status: "SUCCESS", endTime: snapshot.runs[0].startTime! + 60 }));
+  const html = renderToStaticMarkup(<DagsterTables snapshot={{ ...snapshot, runs: recent,
+    activeRuns: [{ ...snapshot.runs[0], runId: `old-${status}`, status, startTime: null }] }} />);
+  expect(html).toContain(`/runs/old-${status}`);
+  expect(html).not.toContain("정체 의심");
+});

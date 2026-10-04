@@ -8,7 +8,13 @@
 공항 partial/failed를 Dagster 실패로 알리고 기존 KRIC·버스·유가·장소 보호를 유지한다.
 배편 JSON/장소/KRIC 후보 적재를 줄이고 공통 로그인·메뉴·Dagster UI dev.2를 사용한다.
 Dagster/회수 27 tests, 관리자 142 tests/type/build, 공개 frontend 130 tests/type/build PASS.
-전체 backend·CI·PostgreSQL/Docker·최종 리뷰·n150 live UI는 아직 검증 중이다.
+첫 후보 7817233의 전체 PostgreSQL CI(655 passed·1 skipped), WSL(647 passed·9 skipped),
+격리 PostgreSQL 복구 29건·common 56건·live UI PASS 뒤 James/Popper를 독립 실행했다.
+Popper의 rollback fence 추적 유실·lease loss 후 다음 provider 게시 P1 두 건을 실제로 재현하고
+보강했다. James/Popper의 오래된 pending 실행 누락·Python pin 문서 P2도 수정했다.
+옛 코드에서 공격 회귀 5 FAIL, 수정 코드에서 경계 35건·관리자 149건/type/build PASS.
+수정 후보의 전체 회귀·CI·재리뷰와 최종 live UI를 진행한다. 자세한 원문·disposition은
+`docs/reviews/2026-10-04-transport-dagster-common.md`에 보존한다.
 
 
 ## 2026-10-04 — 적대 리뷰 LOW 후속 3건(브랜치 `fix/admin-auth-and-collector-lows`)

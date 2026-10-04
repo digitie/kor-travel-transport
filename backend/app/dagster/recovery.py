@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass
 from datetime import timedelta
+from typing import Any
 
 from kortravelcommon.deadline import call_with_deadline
 from sqlalchemy import event, select, update
@@ -15,6 +17,18 @@ from app.core.time_utils import now_utc, serialize_utc
 from app.models import CollectionRun
 
 OWNER: ContextVar[str | None] = ContextVar("transport_dagster_owner", default=None)
+
+
+@dataclass
+class OwnerLease:
+    """동일 op의 새 session과 asyncio context에도 회수 사실을 유지한다."""
+
+    run_id: str
+    instance: Any = None
+    revoked: bool = False
+
+
+OWNER_LEASE: ContextVar[OwnerLease | None] = ContextVar("transport_dagster_lease", default=None)
 MISSING_RUN_GRACE = timedelta(hours=5)  # 기존 4시간 실행 상한보다 길게 둔다.
 PAGE_SIZE = 100
 
@@ -24,12 +38,35 @@ class CollectionLeaseLost(RuntimeError):
 
 
 @contextmanager
-def collection_owner(run_id: str):
+def collection_owner(run_id: str, instance=None):
     token = OWNER.set(run_id)
+    lease = OWNER_LEASE.get()
+    if lease is None or lease.run_id != run_id:
+        lease = OwnerLease(run_id, instance)
+    elif instance is not None:
+        lease.instance = instance
+    lease_token = OWNER_LEASE.set(lease)
     try:
         yield
     finally:
+        OWNER_LEASE.reset(lease_token)
         OWNER.reset(token)
+
+
+def ensure_collection_owner_active() -> None:
+    """새 session/후속 op는 terminal owner를 다시 쓰지 않는다. 조회 장애는 예외로 전달한다."""
+    lease = OWNER_LEASE.get()
+    if lease is None:
+        return
+    if lease.revoked:
+        raise CollectionLeaseLost("회수된 실행은 새 수집을 시작할 수 없습니다.")
+    if lease.instance is not None:
+        run = call_with_deadline(
+            lambda: lease.instance.get_run_by_id(lease.run_id), timeout_seconds=10
+        )
+        if run is None or run.is_finished:
+            lease.revoked = True
+            raise CollectionLeaseLost("종료된 Dagster 실행은 새 수집을 시작할 수 없습니다.")
 
 
 class CollectorSyncSession(Session):
@@ -41,15 +78,21 @@ class CollectorSession(AsyncSession):
 
 
 def owned_session_factory(engine, owner: str):
+    lease = OWNER_LEASE.get()
+    if lease is None or lease.run_id != owner:
+        lease = OwnerLease(owner)
     return async_sessionmaker(
         engine,
         class_=CollectorSession,
         expire_on_commit=False,
-        info={"collector_owner": owner},
+        info={"collector_owner": owner, "collector_owner_lease": lease},
     )
 
 
 def _fence(session: CollectorSyncSession) -> None:
+    lease = session.info["collector_owner_lease"]
+    if lease.revoked:
+        raise CollectionLeaseLost("회수된 실행의 게시를 거절합니다.")
     # SQLAlchemy bulk execute는 ORM flush를 우회한다. before_commit에서도 같은 잠금을 잡는다.
     fenced = session.info.setdefault("collector_fenced", set())
     for run_id in session.info.get("collector_runs", {}):
@@ -66,11 +109,10 @@ def _fence(session: CollectorSyncSession) -> None:
             or row.status != "running"
             or row.orchestrator_run_id != session.info["collector_owner"]
         ):
+            lease.revoked = True
             raise CollectionLeaseLost("수집 실행 소유권이 종료되어 게시를 거절합니다.")
         connection.execute(
-            update(CollectionRun)
-            .where(CollectionRun.id == run_id)
-            .values(heartbeat_at=now_utc())
+            update(CollectionRun).where(CollectionRun.id == run_id).values(heartbeat_at=now_utc())
         )
         fenced.add(run_id)
 
@@ -106,7 +148,8 @@ def _after_commit(session):
     session.info["collector_runs"] = {
         key: row
         for key, row in session.info.get("collector_runs", {}).items()
-        if row.__dict__.get("status") == "running"
+        # rollback/expire로 상태를 모르면 DB fence를 유지한다. None은 종료의 증거가 아니다.
+        if row.__dict__.get("status") in (None, "running")
     }
     session.info.pop("collector_fenced", None)
     session.info.pop("collector_new_ids", None)
@@ -168,14 +211,15 @@ async def reconcile_collection_runs(
                     CollectionRun.orchestrator_run_id == row.orchestrator_run_id,
                 )
                 if missing_expired:
-                    statement = statement.where(
-                        CollectionRun.heartbeat_at == row.heartbeat_at
-                    )
+                    statement = statement.where(CollectionRun.heartbeat_at == row.heartbeat_at)
                 result = await session.execute(
                     statement.values(
                         status="failed",
                         finished_at=now,
-                        error_message="Dagster 실행 종료 또는 소유권 유실을 확인하여 수집 기록을 회수했습니다.",
+                        error_message=(
+                            "Dagster 실행 종료 또는 소유권 유실을 확인하여 "
+                            "수집 기록을 회수했습니다."
+                        ),
                     )
                 )
                 await session.commit()

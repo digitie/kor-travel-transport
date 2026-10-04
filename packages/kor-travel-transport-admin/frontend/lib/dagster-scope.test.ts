@@ -28,6 +28,7 @@ test("이름 붙은 작업은 이 location으로 좁힌 query가 된다", () => 
   // 두 run 목록 모두 이 location의 tag로 좁힌다.
   expect(body.query.match(/tags: \[\{ key: "dagster\/code_location", value: \$locationTag \}\]/g)).toHaveLength(2);
   expect(body.query).not.toMatch(/\bmutation\b/);
+  expect(body.query).toContain("activeRuns: runsOrError(limit: 1000, filter: { statuses: [QUEUED, STARTING, STARTED, CANCELING]");
 });
 
 test.each([

@@ -14,6 +14,9 @@ lock 5초와 async action 14340초 제한을 적용한다. provider public cance
 `0024` migration 뒤 worker는 `CollectionRun`을 외부 호출 전에 commit하여 소유권을 남긴다.
 소유 session은 ORM flush와 bulk SQL commit에서 기존 running/owner를 잠그고 heartbeat를
 갱신한다. 회수된 worker의 늦은 게시·완료 덮어쓰기는 rollback된다. 부분 저장본은 유지한다.
+rollback으로 ORM 상태가 만료되어도 소유권 fence를 유지한다. 권한 상실은 같은 op의
+새 session에도 전파하고 다음 provider를 시작하지 않는다. 후속 op/session 시작 때 native
+owner 생존을 10초 상한으로 확인하며 조회 장애는 provider 호출 전에 실패로 전달한다.
 회수 sensor는 외부 provider 없이 stable ID keyset 100행씩 확인한다. Dagster terminal은
 running 수집 기록을 failed로 회수하고, 없는 run은 5시간 grace·heartbeat CAS로 확인한다.
 metadata 장애는 회수 사유가 아니다. legacy NULL owner 행은 자동 변경하지 않는다.
@@ -30,7 +33,8 @@ metadata 장애는 회수 사유가 아니다. legacy NULL owner 행은 자동 �
 변경은 전용 instance에만 적용된다. 읽어 확인한 shared 설정은 monitoring enabled,
 start/cancel 600초·전역 6시간이며 native retry/coordinator 설정은 없었다. native retry가 꺼져
 있을 때 공통 인프라 retry sensor 3개가 명시적 worker 종료만 1회 재예약한다. 같은 run의
-step 실패·원인 불명·취소는 제외한다. native retry를 켜면 fallback은 위임한다. project transport
+step 실패·원인 불명·취소는 제외한다. native retry를 켜면 fallback은 pending 인계를 마무리하고
+새 실패를 native에 위임한다. project transport
 limit 3과 common job별 limit 1 및 기존 run_group 제한도 shared coordinator에 적용해야 한다.
 Manager coordinator 설정·운영 shared daemon의 실제 worker kill/retry child/RSS 검증은 별도 운영 작업이다.
 

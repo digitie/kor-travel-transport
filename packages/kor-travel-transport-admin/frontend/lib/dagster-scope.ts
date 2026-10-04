@@ -48,7 +48,7 @@ const OVERVIEW_QUERY = `query TransportDagsterOverview($repositoryLocationName: 
     __typename
     ... on Runs { results { runId status jobName startTime endTime tags { key value } } }
   }
-  activeRuns: runsOrError(limit: 1000, filter: { statuses: [STARTED], ${RUN_TAG_FILTER} }) {
+  activeRuns: runsOrError(limit: 1000, filter: { statuses: [QUEUED, STARTING, STARTED, CANCELING], ${RUN_TAG_FILTER} }) {
     __typename
     ... on Runs { results { runId status jobName startTime endTime tags { key value } } }
   }

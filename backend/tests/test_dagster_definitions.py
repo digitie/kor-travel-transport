@@ -230,6 +230,66 @@ def test_reference_enrichment_continues_kakao_after_vworld_exception(monkeypatch
     assert "provider URL with secret" not in str(failure)
 
 
+def test_reference_enrichment_does_not_continue_after_lease_revocation(monkeypatch):
+    from app.dagster.recovery import CollectionLeaseLost
+
+    invoked = []
+
+    async def fake_run(_settings, action, *_args, **_kwargs):
+        invoked.append(action)
+        if action == "vworld":
+            raise CollectionLeaseLost("revoked")
+        return {"status": "success", "run_id": 42}
+
+    monkeypatch.setattr(dagster_definitions, "_settings", lambda: None)
+    monkeypatch.setattr(dagster_definitions, "BusReferenceCollectionService", lambda _: SimpleNamespace(collect="reference"))
+    monkeypatch.setattr(dagster_definitions, "PlaceLocationCollectionService", lambda _: SimpleNamespace(collect="vworld"))
+    monkeypatch.setattr(dagster_definitions, "KakaoPlaceCollectionService", lambda _: SimpleNamespace(collect="kakao"))
+    monkeypatch.setattr(dagster_definitions, "_run_with_session", fake_run)
+    result = dagster_definitions.bus_reference_collection_job.execute_in_process(raise_on_error=False)
+    assert not result.success
+    assert invoked == ["reference", "vworld"]
+
+
+async def test_terminal_native_owner_does_not_start_a_fresh_provider_session():
+    from dagster import DagsterInstance, DagsterRunStatus
+    from app.dagster.recovery import CollectionLeaseLost, collection_owner
+
+    async def provider(_session):
+        pytest.fail("종료된 owner의 provider를 호출해서는 안 된다")
+
+    with DagsterInstance.local_temp() as instance:
+        run = instance.create_run_for_job(dagster_definitions.airport_collection_job, status=DagsterRunStatus.FAILURE)
+        with collection_owner(run.run_id, instance):
+            with pytest.raises(CollectionLeaseLost):
+                await dagster_definitions._run_with_session(
+                    Settings(database_url="sqlite+aiosqlite:///unused.sqlite3"), provider
+                )
+
+
+async def test_owner_metadata_error_is_fail_closed_without_revoking_a_live_owner(monkeypatch):
+    from dagster import DagsterInstance, DagsterRunStatus
+    from app.dagster.recovery import collection_owner
+
+    calls = []
+
+    async def provider(_session):
+        calls.append("provider")
+        return {"status": "success"}
+
+    with DagsterInstance.local_temp() as instance:
+        run = instance.create_run_for_job(dagster_definitions.airport_collection_job, status=DagsterRunStatus.STARTED)
+        original = instance.get_run_by_id
+        with collection_owner(run.run_id, instance):
+            monkeypatch.setattr(instance, "get_run_by_id", lambda _: (_ for _ in ()).throw(ConnectionError("metadata offline")))
+            with pytest.raises(ConnectionError):
+                await dagster_definitions._run_with_session(Settings(database_url="sqlite+aiosqlite://"), provider)
+            assert calls == []
+            monkeypatch.setattr(instance, "get_run_by_id", original)
+            assert await dagster_definitions._run_with_session(Settings(database_url="sqlite+aiosqlite://"), provider) == {"status": "success"}
+            assert calls == ["provider"]
+
+
 def test_transport_provider_lifecycle_stays_in_one_event_loop(monkeypatch) -> None:
     loop_ids: list[int] = []
 

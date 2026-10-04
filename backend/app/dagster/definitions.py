@@ -9,7 +9,10 @@ from typing import Any
 from dagster import DefaultScheduleStatus, Definitions, Failure, multiprocess_executor, job, op
 from kortravelcommon.dagster import RecoveryPolicy, coalescing_schedule, infrastructure_retry_sensor, reconciliation_sensor
 
-from app.dagster.recovery import OWNER, collection_owner, owned_session_factory, reconcile_collection_runs
+from app.dagster.recovery import (
+    OWNER, CollectionLeaseLost, collection_owner, ensure_collection_owner_active,
+    owned_session_factory, reconcile_collection_runs,
+)
 
 from app.core.config import Settings, get_settings
 from app.db.session import create_engine_and_session_factory
@@ -41,6 +44,7 @@ def _job_tags(run_group: str, job_name: str) -> dict[str, str]:
 async def _run_with_session(
     settings: Settings, action: Callable[..., Awaitable[dict[str, Any]]], *args: Any, **kwargs: Any
 ) -> dict[str, Any]:
+    ensure_collection_owner_active()
     engine, session_factory = create_engine_and_session_factory(settings.database_url, collector=True)
     if OWNER.get() is not None:
         session_factory = owned_session_factory(engine, OWNER.get())
@@ -68,7 +72,7 @@ def _settings() -> Settings:
 
 @op
 def collect_airport_parking(context) -> dict[str, Any]:
-    with collection_owner(context.run_id):
+    with collection_owner(context.run_id, context.instance):
         settings = _settings()
         result = asyncio.run(_run_with_session(settings, CollectionService(settings).collect, trigger="dagster_airport"))
         if result.get("status") in {"failed", "partial_success"}:
@@ -101,13 +105,13 @@ def _collect_transport(scope: CollectionScope) -> dict[str, Any]:
 
 @op
 def collect_highway_transport(context) -> dict[str, Any]:
-    with collection_owner(context.run_id):
+    with collection_owner(context.run_id, context.instance):
         return _collect_transport("highway")
 
 
 @op
 def collect_fuel_transport(context) -> dict[str, Any]:
-    with collection_owner(context.run_id):
+    with collection_owner(context.run_id, context.instance):
         return _collect_transport("fuel")
 
 
@@ -148,31 +152,31 @@ def _collect_bus_reference() -> dict[str, Any]:
 
 @op
 def collect_rail_reference(context) -> dict[str, Any]:
-    with collection_owner(context.run_id):
+    with collection_owner(context.run_id, context.instance):
         return _collect_reference("rail")
 
 
 @op
 def collect_maritime_reference(context) -> dict[str, Any]:
-    with collection_owner(context.run_id):
+    with collection_owner(context.run_id, context.instance):
         return _collect_reference("maritime")
 
 
 @op
 def collect_ferry_timetable(context) -> dict[str, Any]:
-    with collection_owner(context.run_id):
+    with collection_owner(context.run_id, context.instance):
         return _collect_ferry_timetable()
 
 
 @op
 def collect_bus_reference(context) -> dict[str, Any]:
-    with collection_owner(context.run_id):
+    with collection_owner(context.run_id, context.instance):
         return _collect_bus_reference()
 
 
 @op
 def collect_place_locations(context) -> dict[str, Any]:
-    with collection_owner(context.run_id):
+    with collection_owner(context.run_id, context.instance):
         settings = _settings()
         result = asyncio.run(_run_with_session(settings, PlaceLocationCollectionService(settings).collect))
         if result.get("status") == "partial_success":
@@ -184,7 +188,7 @@ def collect_place_locations(context) -> dict[str, Any]:
 
 @op
 def collect_kakao_place_locations(context) -> dict[str, Any]:
-    with collection_owner(context.run_id):
+    with collection_owner(context.run_id, context.instance):
         settings = _settings()
         result = asyncio.run(_run_with_session(settings, KakaoPlaceCollectionService(settings).collect))
         if result.get("status") == "partial_success":
@@ -196,13 +200,16 @@ def collect_kakao_place_locations(context) -> dict[str, Any]:
 
 @op
 def enrich_new_reference_locations(context, reference_result: dict[str, Any]) -> dict[str, Any]:
-    with collection_owner(context.run_id):
+    with collection_owner(context.run_id, context.instance):
         """공식 기준정보 적재 직후 기존 수집기의 호출 예산·receipt를 그대로 사용한다."""
         settings = _settings()
         results: dict[str, dict[str, Any]] = {}
         for name, service in (("vworld", PlaceLocationCollectionService), ("kakao", KakaoPlaceCollectionService)):
             try:
                 results[name] = asyncio.run(_run_with_session(settings, service(settings).collect))
+            except CollectionLeaseLost:
+                # 소유권 회수는 provider 장애가 아니다. 후속 provider/session을 시작하지 않는다.
+                raise
             except Exception as exc:
                 # 한 제공기관의 장애가 다른 제공기관의 독립된 호출 예산을 막지 않는다.
                 results[name] = {"status": "failed", "error_type": type(exc).__name__}
@@ -223,21 +230,21 @@ def enrich_new_reference_locations(context, reference_result: dict[str, Any]) ->
 
 @op
 def collect_kric_timetable(context) -> dict[str, Any]:
-    with collection_owner(context.run_id):
+    with collection_owner(context.run_id, context.instance):
         settings = _settings()
         return asyncio.run(_run_with_session(settings, KricTimetableCollectionService(settings).collect))
 
 
 @op
 def collect_rest_area_reference(context) -> dict[str, Any]:
-    with collection_owner(context.run_id):
+    with collection_owner(context.run_id, context.instance):
         settings = _settings()
         return asyncio.run(_run_with_session(settings, RestAreaCollectionService(settings).collect_references))
 
 
 @op
 def collect_rest_area_fuel_prices(context) -> dict[str, Any]:
-    with collection_owner(context.run_id):
+    with collection_owner(context.run_id, context.instance):
         settings = _settings()
         return asyncio.run(_run_with_session(settings, RestAreaCollectionService(settings).collect_fuel_prices))
 
