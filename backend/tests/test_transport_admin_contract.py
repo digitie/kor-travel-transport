@@ -103,10 +103,12 @@ def test_transport_admin_dagster_proxy_forwards_only_scoped_named_operations() -
     assert "scopedDagsterRequest(parsed)" in route
     assert "body: scoped.body" in route
     # 원문 body를 그대로 넘기지 않는다 — upstream fetch의 본문은 scope가 만든 것뿐이다.
-    assert re.findall(r"\bbody(?::\s*[\w.]+)?\s*[,}]", route.split("fetchNoStore(", 1)[1].split(");", 1)[0]) == ["body: scoped.body }"]
+    assert re.findall(r"\bbody(?::\s*[\w.]+)?\s*[,}]", route.split("await fetch(", 1)[1].split(");", 1)[0]) == ["body: scoped.body,"]
+    assert "readBounded(response.body, 4_194_304)" in route
+    assert "AbortSignal.timeout(10_000)" in route
     assert 'TRANSPORT_DAGSTER_INTERNAL_URL ?? "http://127.0.0.1:11002"' in route
     assert "repositoriesOrError" not in scope.split("*/", 1)[1]
-    assert 'export const DAGSTER_UI_BASE = "https://dagster.digitie.mywire.org";' in scope
+    assert 'process.env.NEXT_PUBLIC_TRANSPORT_DAGSTER_URL ?? "https://dagster.digitie.mywire.org"' in scope
 
 
 def test_transport_runtime_forwards_port_guideline_and_timetable_limits() -> None:
