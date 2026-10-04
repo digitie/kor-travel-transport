@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.core.time_utils import now_utc, serialize_utc
 from app.models import Airport, CollectionRun, ParkingFeeRule, ParkingLot, ParkingSnapshot, RawApiResponse
+from app.services.flight_status import sanitize_upstream_error
 from app.services.parsers import (
     ParsedFeeRule,
     ParsedParkingObservation,
@@ -502,7 +503,7 @@ class CollectionService:
                 run.status = "partial_success"
         except Exception as exc:
             failed_at = now_utc()
-            error_message = str(exc)
+            error_message = self._redact(str(exc))
             await session.rollback()
             session.add(
                 CollectionRun(
@@ -519,6 +520,9 @@ class CollectionService:
             run.finished_at = now_utc()
             run.error_message = "\n".join(errors) if errors else None
             await session.commit()
+            if errors:
+                # 공개 collector-status는 오류 코드만 낸다. 원문은 서버 로그(키는 가림)와 DB에만 둔다.
+                logger.warning("collection run_id=%s errors: %s", run.id, self._redact(" | ".join(errors)))
 
         logger.info(
             "collection finished run_id=%s trigger=%s status=%s client_mode=%s raw=%s snapshots=%s fee_rules=%s errors=%s",
@@ -580,6 +584,10 @@ class CollectionService:
             "fee_rule_count": 0,
             "errors": [error_message],
         }
+
+    def _redact(self, message: str) -> str:
+        # flight_status와 같은 sanitizer(원문 키 + URL의 serviceKey= 값 — 인코딩된 키 포함)를 쓴다.
+        return sanitize_upstream_error(message, self.settings.data_go_kr_service_key)
 
     async def _safe_fetch(
         self,

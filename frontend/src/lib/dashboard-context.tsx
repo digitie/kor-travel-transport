@@ -17,7 +17,6 @@ import {
   readStoredDashboardSelection,
   writeStoredDashboardSelection,
 } from "@/lib/dashboard-preferences";
-import { formatDateTime } from "@/lib/format";
 import type {
   Airport,
   CollectorStatusResponse,
@@ -39,14 +38,6 @@ function buildBackendUpdateMarker(status: CollectorStatusResponse): string {
   return `${status.latest_snapshot_observed_at ?? ""}|${status.latest_snapshot_collected_at ?? ""}`;
 }
 
-function buildCollectorCooldownMessage(status: CollectorStatusResponse): string {
-  const cooldownMinutes = Math.max(1, Math.round(status.manual_collect_min_interval_seconds / 60));
-  if (status.manual_collect_available_at) {
-    return `마지막 업데이트 후 ${cooldownMinutes}분이 지나지 않았습니다. ${formatDateTime(status.manual_collect_available_at)} 이후 다시 시도해 주세요.`;
-  }
-  return `마지막 업데이트 후 ${cooldownMinutes}분이 지나지 않았습니다. 잠시 후 다시 시도해 주세요.`;
-}
-
 type DashboardContextValue = {
   api: ReturnType<typeof buildApiClient>;
   airports: Airport[];
@@ -64,14 +55,10 @@ type DashboardContextValue = {
    *  render. */
   dataVersion: number;
   loading: boolean;
-  collecting: boolean;
   error: string | null;
-  actionMessage: string | null;
-  actionMessageIsError: boolean;
   onAirportChange: (airportCode: string) => void;
   onParkingLotChange: (parkingLotId: number | null) => void;
   onRefresh: () => void;
-  onManualCollect: () => void;
 };
 
 const DashboardContext = createContext<DashboardContextValue | null>(null);
@@ -94,10 +81,7 @@ export function DashboardProvider({
   const [collectorStatus, setCollectorStatus] = useState<CollectorStatusResponse | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [collecting, setCollecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const [actionMessageIsError, setActionMessageIsError] = useState(false);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -139,7 +123,6 @@ export function DashboardProvider({
         if (!mountedRef.current || loadRequestIdRef.current !== requestId) {
           return;
         }
-        setActionMessageIsError(true);
         setError(caughtError instanceof Error ? caughtError.message : "대시보드 데이터를 불러오지 못했습니다.");
         if (showLoading) {
           setLoading(false);
@@ -284,31 +267,6 @@ export function DashboardProvider({
     [currentItems, selectedAirportCode, selectedParkingLotId]
   );
 
-  async function handleManualCollect() {
-    setActionMessage(null);
-    setActionMessageIsError(false);
-    setError(null);
-
-    if (collectorStatus?.manual_collect_blocked) {
-      setActionMessage(buildCollectorCooldownMessage(collectorStatus));
-      setActionMessageIsError(true);
-      return;
-    }
-
-    try {
-      setCollecting(true);
-      const summary = await api.runCollector();
-      await loadAirportData(selectedAirportCode, selectedParkingLotId);
-      setActionMessageIsError(false);
-      setActionMessage(`즉시 수집을 완료했습니다. 신규 스냅샷 ${summary.snapshot_count}건을 저장했습니다.`);
-    } catch (caughtError) {
-      setActionMessageIsError(true);
-      setActionMessage(caughtError instanceof Error ? caughtError.message : "즉시 수집 실행에 실패했습니다.");
-    } finally {
-      setCollecting(false);
-    }
-  }
-
   const value: DashboardContextValue = {
     api,
     airports,
@@ -322,37 +280,23 @@ export function DashboardProvider({
     collectorStatus,
     dataVersion,
     loading,
-    collecting,
     error,
-    actionMessage,
-    actionMessageIsError,
     onAirportChange: (airportCode) => {
       startTransition(() => {
         setSelectedAirportCode(airportCode);
         setSelectedParkingLotId(null);
-        setActionMessage(null);
-        setActionMessageIsError(false);
       });
       void loadAirportData(airportCode, null);
     },
     onParkingLotChange: (parkingLotId) => {
       startTransition(() => {
         setSelectedParkingLotId(parkingLotId);
-        setActionMessage(null);
-        setActionMessageIsError(false);
       });
       void loadAirportData(selectedAirportCode, parkingLotId);
     },
     onRefresh: () => {
-      setActionMessage(null);
-      setActionMessageIsError(false);
       if (selectedAirportCode) {
         void loadAirportData(selectedAirportCode, selectedParkingLotId);
-      }
-    },
-    onManualCollect: () => {
-      if (selectedAirportCode) {
-        void handleManualCollect();
       }
     },
   };

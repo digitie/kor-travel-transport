@@ -45,6 +45,12 @@ describe("api client", () => {
     expect(Object.keys(client).filter((name) => /backup|restore/i.test(name))).toEqual([]);
   });
 
+  test("the public api client offers no manual collection (ADR-012)", () => {
+    // 공개 프록시는 v1/admin/collect를 중계하지 않고 브라우저에는 관리자 토큰도 없다(#61).
+    const client = buildApiClient("http://localhost:8000");
+    expect(client).not.toHaveProperty("runCollector");
+  });
+
   test("uses the same-origin backend proxy when the API base URL is not explicitly passed", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -180,20 +186,7 @@ describe("api client", () => {
     );
   });
 
-  test("surfaces backend detail messages for collector cooldown errors", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 409,
-      json: async () => ({ detail: "마지막 업데이트 후 5분이 지나지 않았습니다." }),
-    });
-
-    vi.stubGlobal("fetch", fetchMock);
-    const client = buildApiClient("http://localhost:8000");
-
-    await expect(client.runCollector()).rejects.toThrow("마지막 업데이트 후 5분이 지나지 않았습니다.");
-  });
-
-  test("requests collector status and manual collection endpoints", async () => {
+  test("requests the collector status endpoint", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({
@@ -216,38 +209,17 @@ describe("api client", () => {
           last_run: null,
           recent_runs: [],
         }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          collection_run_id: 1,
-          status: "success",
-          client_mode: "live",
-          raw_response_count: 1,
-          snapshot_count: 3,
-          fee_rule_count: 0,
-          errors: [],
-        }),
       });
 
     vi.stubGlobal("fetch", fetchMock);
     const client = buildApiClient("http://localhost:8000");
 
     await client.getCollectorStatus();
-    await client.runCollector();
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       "http://localhost:8000/v1/admin/collector-status",
       expect.objectContaining({ cache: "no-store" })
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      "http://localhost:8000/v1/admin/collect",
-      expect.objectContaining({
-        method: "POST",
-        cache: "no-store",
-      })
     );
   });
 });

@@ -163,15 +163,6 @@ const apiClient = {
     items: [],
   })),
   getCollectorStatus: vi.fn(async () => buildCollectorStatus()),
-  runCollector: vi.fn(async () => ({
-    collection_run_id: 1,
-    status: "success",
-    client_mode: "live",
-    raw_response_count: 1,
-    snapshot_count: 1,
-    fee_rule_count: 0,
-    errors: [],
-  })),
 };
 
 vi.mock("@/lib/api", () => ({
@@ -253,51 +244,13 @@ describe("DashboardProvider + CurrentStatusView", () => {
     });
   });
 
-  test("shows the collector cooldown using the reported interval minutes", async () => {
-    const user = userEvent.setup();
-    apiClient.getCollectorStatus.mockResolvedValue(
-      buildCollectorStatus({
-        collect_interval_seconds: 1200,
-        manual_collect_min_interval_seconds: 1200,
-        manual_collect_available_at: "2026-04-26T00:30:00.000Z",
-        manual_collect_blocked: true,
-      })
-    );
-    apiClient.getDashboardBootstrap.mockResolvedValue({
-      airports,
-      current: currentPayload,
-      collector: buildCollectorStatus({
-        collect_interval_seconds: 1200,
-        manual_collect_min_interval_seconds: 1200,
-        manual_collect_available_at: "2026-04-26T00:30:00.000Z",
-        manual_collect_blocked: true,
-      }),
-      holidays: holidaySummaryPayload,
-    });
-
+  test("offers no manual collect action even when the backend enables manual collection", async () => {
+    // 공개 대시보드의 즉시 수집은 프록시가 항상 거부하는 죽은 경로였다(ADR-012, #61).
     renderCurrentStatus();
 
-    await screen.findByTestId("manual-collect-button");
-    await user.click(screen.getByTestId("manual-collect-button"));
-
-    expect(
-      await screen.findByText("마지막 업데이트 후 20분이 지나지 않았습니다. 04.26 09:30 이후 다시 시도해 주세요.")
-    ).toBeInTheDocument();
-  });
-
-  test("runs manual collection and shows a success message", async () => {
-    const user = userEvent.setup();
-    renderCurrentStatus();
-
-    await screen.findByTestId("manual-collect-button");
-    await user.click(screen.getByTestId("manual-collect-button"));
-
-    await waitFor(() => {
-      expect(apiClient.runCollector).toHaveBeenCalledWith();
-    });
-    // Matches both the visible notice and the persistent sr-only aria-live announcer
-    // that mirrors it (T-038) - assert at least one is present rather than exactly one.
-    expect((await screen.findAllByText(/즉시 수집을 완료했습니다/)).length).toBeGreaterThan(0);
+    await screen.findAllByText((_, element) => element?.textContent === "100/200대");
+    expect(screen.queryByTestId("manual-collect-button")).toBeNull();
+    expect(screen.queryByRole("button", { name: /수집/ })).toBeNull();
   });
 
   test("does not fetch analytics data when only the current-status view is mounted", async () => {

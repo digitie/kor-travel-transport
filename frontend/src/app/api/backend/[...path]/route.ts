@@ -82,7 +82,12 @@ function hasUnsafeSegment(segments: string[]): boolean {
 
 function isAdminOperationPath(path: string): boolean {
   const lowered = path.toLowerCase();
-  return lowered.includes("admin/backup") || (lowered.startsWith("v1/admin/") && lowered !== "v1/admin/collector-status");
+  return (
+    lowered.includes("admin/backup") ||
+    (lowered.startsWith("v1/admin/") && lowered !== "v1/admin/collector-status") ||
+    // 관리자 BFF 전용 좌표 보정 경로. 백엔드도 토큰 없이 404지만 공개 프록시는 아예 중계하지 않는다.
+    lowered.startsWith("v1/transport/admin/")
+  );
 }
 
 function buildForwardHeaders(request: NextRequest): Headers {

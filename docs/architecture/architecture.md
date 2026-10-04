@@ -126,12 +126,11 @@ throttle(허용 범위 8~12시간, 24시간 내 최대 3회)을 추가로 적용
 
 수동 수집 규칙 (로컬 개발 전용):
 
-- `ENABLE_MANUAL_COLLECT=true`인 로컬 profile에서만 웹 UI의 `지금 수집` 버튼이
-  `POST /v1/admin/collect`를 호출한다. public n150에서는 버튼과 endpoint가 비활성화된다.
+- `ENABLE_MANUAL_COLLECT=true`일 때만 `POST /v1/admin/collect`가 열리고, 관리자 토큰을 아는 운영자가
+  호스트에서 직접 호출한다. 공개 웹 UI에는 수동 수집 버튼이 없다(ADR-012). public n150에서는 endpoint도 비활성화된다.
 - 수동 수집 제한은 `manual_collect_min_interval_seconds`를 따른다.
 - 운영에서는 마지막 적재 후 `MANUAL_COLLECT_MIN_INTERVAL_SECONDS`가 지나지 않았으면
-  프론트와 백엔드 모두 수동 수집을 막는다.
-- 따라서 프론트 우회 호출을 하더라도 백엔드에서 다시 차단된다.
+  백엔드가 수동 수집을 막는다.
 
 관련 문서:
 

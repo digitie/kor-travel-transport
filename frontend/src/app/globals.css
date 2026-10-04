@@ -251,12 +251,6 @@ select {
   gap: 6px;
 }
 
-.action-hint {
-  margin: 0;
-  color: var(--muted-foreground);
-  font-size: 0.82rem;
-}
-
 .status-header {
   display: flex;
   align-items: start;
@@ -1418,11 +1412,6 @@ select {
 
   .action-stack {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .action-hint {
-    grid-column: 1 / -1;
-    font-size: 0.76rem;
   }
 
   .status-header,
