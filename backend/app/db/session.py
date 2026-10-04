@@ -11,10 +11,10 @@ from sqlalchemy.pool import NullPool
 
 from app.models import Base
 
-ALEMBIC_HEAD = "0023_map_service_exports"
+ALEMBIC_HEAD = "0024_collection_run_owner"
 
 
-def create_engine_and_session_factory(database_url: str) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
+def create_engine_and_session_factory(database_url: str, *, collector: bool = False) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
     if database_url.startswith("postgres://"):
         database_url = "postgresql+asyncpg://" + database_url.removeprefix("postgres://")
     elif database_url.startswith("postgresql://"):
@@ -32,10 +32,14 @@ def create_engine_and_session_factory(database_url: str) -> tuple[AsyncEngine, a
         "pool_recycle": 1800,
     }
     if database_url.startswith("postgresql"):
+        if collector:
+            engine_options["connect_args"] = {"timeout": 10, "command_timeout": 60,
+                                               "server_settings": {"lock_timeout": "5s"}}
         if os.getenv("KOR_TRAVEL_TRANSPORT_TEST_DATABASE") == "1":
             engine_options["poolclass"] = NullPool
         else:
-            engine_options.update({"pool_size": 5, "max_overflow": 5})
+            # 한 connection은 session advisory lease, 나머지는 게시 transaction이 사용한다.
+            engine_options.update({"pool_size": 2 if collector else 5, "max_overflow": 0 if collector else 5})
     engine = create_async_engine(database_url, **engine_options)
 
     if database_url.startswith("sqlite"):

@@ -92,6 +92,10 @@ class CollectionRun(Base):
     trigger: Mapped[str] = mapped_column(String(30))
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # API DTO는 그대로 두고 worker 소유권/회수 경계만 내부적으로 연결한다.
+    orchestrator_run_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
 
 class RawApiResponse(Base):
     __tablename__ = "raw_api_responses"

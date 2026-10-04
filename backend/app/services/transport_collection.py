@@ -1123,6 +1123,8 @@ async def _collect_krex_pages(
                 expected_count = page.total_count
             elif page.total_count != expected_count:
                 raise RuntimeError(f"{endpoint} changed total_count while paging")
+        if page_no > 100 or len(items) + len(page_items) > 50_000:
+            raise RuntimeError(f"{endpoint} exceeded bounded pagination budget")
         items.extend(page_items)
         if expected_count is not None:
             if len(items) > expected_count:

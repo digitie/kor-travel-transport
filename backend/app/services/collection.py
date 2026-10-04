@@ -442,6 +442,10 @@ class CollectionService:
         session.add(run)
         await session.flush()
 
+        owner_run_id = run.id if session.info.get("collector_owner") else None
+        if owner_run_id is not None:
+            await session.commit()  # worker 강제 종료 전에도 소유권 기록을 남긴다.
+
         errors: list[str] = []
         raw_count = 0
         snapshot_count = 0
@@ -505,15 +509,22 @@ class CollectionService:
             failed_at = now_utc()
             error_message = self._redact(str(exc))
             await session.rollback()
-            session.add(
-                CollectionRun(
-                    started_at=started_at,
-                    finished_at=failed_at,
-                    status="failed",
-                    trigger=trigger,
-                    error_message=error_message,
+            if owner_run_id is not None:
+                stored_run = await session.get(CollectionRun, owner_run_id)
+                if stored_run is not None:
+                    stored_run.status = "failed"
+                    stored_run.finished_at = failed_at
+                    stored_run.error_message = error_message
+            else:
+                session.add(
+                    CollectionRun(
+                        started_at=started_at,
+                        finished_at=failed_at,
+                        status="failed",
+                        trigger=trigger,
+                        error_message=error_message,
+                    )
                 )
-            )
             await session.commit()
             raise
         else:

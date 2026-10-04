@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import heapq
 import json
 from collections import Counter, defaultdict
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -81,15 +82,15 @@ class KricTimetableCollectionService:
                 missing_since = datetime.min.replace(tzinfo=UTC)
                 today = to_seoul(now_utc()).weekday()
                 preferred_day = "7" if today == 5 else "9" if today == 6 else "8"
-                candidates = [(station, day) for station in stations for day in ("7", "8", "9")
-                    if (station.id, day) not in snapshots or now_utc() - aware(snapshots[(station.id, day)].collected_at) >= timedelta(hours=48)]
-                candidates.sort(key=lambda pair: (
+                candidates = ((station, day) for station in stations for day in ("7", "8", "9")
+                    if (station.id, day) not in snapshots or now_utc() - aware(snapshots[(station.id, day)].collected_at) >= timedelta(hours=48))
+                candidates = heapq.nsmallest(self.settings.kric_timetable_max_calls, candidates, key=lambda pair: (
                     aware(snapshots[(pair[0].id, pair[1])].collected_at) if (pair[0].id, pair[1]) in snapshots else missing_since,
                     pair[0].rail_station_id is None, pair[1] != preferred_day, pair[0].id, pair[1],
                 ))
                 count = 0
                 async with self.client_factory(self.settings.kric_service_key, timeout=self.settings.api_timeout_seconds) as client:
-                    for station, day in candidates[:self.settings.kric_timetable_max_calls]:
+                    for station, day in candidates:
                         # 4시간 Dagster 상한보다 일찍 종료하고 다음 48시간 batch에서 재개한다.
                         if now_utc() - aware(run.started_at) >= timedelta(hours=3):
                             break

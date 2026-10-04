@@ -28,6 +28,12 @@ run_monitoring:
   max_resume_run_attempts: 0
   poll_interval_seconds: 60
   max_runtime_seconds: 14400
+  cancel_timeout_seconds: 300
+
+run_retries:
+  enabled: true
+  max_retries: 0
+  retry_on_asset_or_op_failure: false
 
 run_coordinator:
   module: dagster._core.run_coordinator
@@ -35,6 +41,13 @@ run_coordinator:
   config:
     max_concurrent_runs: 3
     tag_concurrency_limits:
+      - key: kortravelcommon/project
+        value: transport
+        limit: 3
+      - key: kortravelcommon/job
+        value:
+          applyLimitPerUniqueValue: true
+        limit: 1
       - key: kortraveltransport/run_group
         value: fuel
         limit: 1

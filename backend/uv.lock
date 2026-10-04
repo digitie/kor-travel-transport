@@ -931,6 +931,16 @@ wheels = [
 ]
 
 [[package]]
+name = "kor-travel-common"
+version = "0.1.0.dev0"
+source = { git = "https://github.com/digitie/kor-travel-common.git?subdirectory=packages%2Fpy%2Fkor-travel-common&rev=090f98429453d8882150eb9e56ccae98e0e353a2#090f98429453d8882150eb9e56ccae98e0e353a2" }
+
+[package.optional-dependencies]
+dagster = [
+    { name = "dagster" },
+]
+
+[[package]]
 name = "kor-travel-transport-backend"
 version = "0.1.0"
 source = { editable = "." }
@@ -944,6 +954,7 @@ dependencies = [
     { name = "dagster-webserver" },
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "kor-travel-common", extra = ["dagster"] },
     { name = "psycopg2-binary" },
     { name = "pydantic-settings" },
     { name = "python-datagokr-api" },
@@ -978,6 +989,7 @@ requires-dist = [
     { name = "dagster-webserver", specifier = "==1.13.24" },
     { name = "fastapi", specifier = ">=0.141,<1.0" },
     { name = "httpx", specifier = ">=0.28,<1.0" },
+    { name = "kor-travel-common", extras = ["dagster"], git = "https://github.com/digitie/kor-travel-common.git?subdirectory=packages%2Fpy%2Fkor-travel-common&rev=090f98429453d8882150eb9e56ccae98e0e353a2" },
     { name = "psycopg2-binary", specifier = ">=2.9,<3.0" },
     { name = "pydantic-settings", specifier = ">=2.15,<3.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.1,<10.0" },
