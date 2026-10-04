@@ -933,7 +933,7 @@ wheels = [
 [[package]]
 name = "kor-travel-common"
 version = "0.1.0.dev0"
-source = { git = "https://github.com/digitie/kor-travel-common.git?subdirectory=packages%2Fpy%2Fkor-travel-common&rev=b324b0afdc27f268e6e6aaee1f6d7d2f42e4743b#b324b0afdc27f268e6e6aaee1f6d7d2f42e4743b" }
+source = { git = "https://github.com/digitie/kor-travel-common.git?subdirectory=packages%2Fpy%2Fkor-travel-common&rev=7ee00152c2f7b3877ff3bedcd61a58ec15122d89#7ee00152c2f7b3877ff3bedcd61a58ec15122d89" }
 
 [package.optional-dependencies]
 dagster = [
@@ -989,7 +989,7 @@ requires-dist = [
     { name = "dagster-webserver", specifier = "==1.13.24" },
     { name = "fastapi", specifier = ">=0.141,<1.0" },
     { name = "httpx", specifier = ">=0.28,<1.0" },
-    { name = "kor-travel-common", extras = ["dagster"], git = "https://github.com/digitie/kor-travel-common.git?subdirectory=packages%2Fpy%2Fkor-travel-common&rev=b324b0afdc27f268e6e6aaee1f6d7d2f42e4743b" },
+    { name = "kor-travel-common", extras = ["dagster"], git = "https://github.com/digitie/kor-travel-common.git?subdirectory=packages%2Fpy%2Fkor-travel-common&rev=7ee00152c2f7b3877ff3bedcd61a58ec15122d89" },
     { name = "psycopg2-binary", specifier = ">=2.9,<3.0" },
     { name = "pydantic-settings", specifier = ">=2.15,<3.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.1,<10.0" },
