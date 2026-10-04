@@ -115,14 +115,14 @@ class KakaoPlaceCollectionService:
             )) or 0)
             # 429는 키 전체의 한도 응답이다. 재실행이 다른 장소를 다시 호출하지
             # 않도록 24시간 유예한다. 401/403은 키 교체 직후 재검증할 수 있어야 한다.
-            recent_quota_errors = (await session.scalars(select(RawApiResponse).where(
+            recent_quota_error = await session.scalar(select(RawApiResponse.id).where(
                 RawApiResponse.source == SOURCE,
                 RawApiResponse.status_code == 429,
                 RawApiResponse.received_at >= budget_time - timedelta(days=1),
-            ))).all()
+                RawApiResponse.request_params_json["key_fingerprint"].as_string() == key_fingerprint,
+            ).limit(1))
             target_count = await missing_place_count(session)
-            if target_count and any((receipt.request_params_json or {}).get("key_fingerprint") == key_fingerprint
-                               for receipt in recent_quota_errors):
+            if target_count and recent_quota_error is not None:
                 summary["deferred"] = target_count
                 run.status = "partial_success"
                 run.finished_at = now_utc()

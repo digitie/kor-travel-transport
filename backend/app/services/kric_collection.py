@@ -82,8 +82,16 @@ class KricTimetableCollectionService:
                 missing_since = datetime.min.replace(tzinfo=UTC)
                 today = to_seoul(now_utc()).weekday()
                 preferred_day = "7" if today == 5 else "9" if today == 6 else "8"
-                candidates = ((station, day) for station in stations for day in ("7", "8", "9")
-                    if (station.id, day) not in snapshots or now_utc() - aware(snapshots[(station.id, day)].collected_at) >= timedelta(hours=48))
+                candidate_count = 0
+                def eligible_candidates():
+                    nonlocal candidate_count
+                    for station in stations:
+                        for day in ("7", "8", "9"):
+                            previous = snapshots.get((station.id, day))
+                            if previous is None or now_utc() - aware(previous.collected_at) >= timedelta(hours=48):
+                                candidate_count += 1
+                                yield station, day
+                candidates = eligible_candidates()
                 candidates = heapq.nsmallest(self.settings.kric_timetable_max_calls, candidates, key=lambda pair: (
                     aware(snapshots[(pair[0].id, pair[1])].collected_at) if (pair[0].id, pair[1]) in snapshots else missing_since,
                     pair[0].rail_station_id is None, pair[1] != preferred_day, pair[0].id, pair[1],
@@ -116,7 +124,7 @@ class KricTimetableCollectionService:
                 await session.commit()
                 return {"status": "success", "run_id": run_id, "station_count": len(stations),
                         "linked_station_count": sum(station.rail_station_id is not None for station in stations),
-                        "stored_snapshot_count": count, "deferred_snapshot_count": len(candidates) - count}
+                        "stored_snapshot_count": count, "deferred_snapshot_count": candidate_count - count}
             except (Exception, asyncio.CancelledError) as exc:
                 await session.rollback()
                 stored_run = await session.get(CollectionRun, run_id)
