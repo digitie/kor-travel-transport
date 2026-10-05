@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 from collections.abc import Awaitable, Callable
 from typing import Any
+from urllib.parse import quote, unquote
 
 from dagster import DefaultScheduleStatus, Definitions, Failure, multiprocess_executor, job, op
 from kortravelcommon.dagster import RecoveryPolicy, coalescing_schedule, infrastructure_retry_sensor, reconciliation_sensor
@@ -17,6 +19,7 @@ from app.dagster.recovery import (
 from app.core.config import Settings, get_settings
 from app.db.session import create_engine_and_session_factory
 from app.services.collection import CollectionService
+from app.services.flight_status import sanitize_upstream_error
 from app.services.bus_collection import BusReferenceCollectionService
 from app.services.kric_collection import KricTimetableCollectionService
 from app.services.kakao_place_locations import KakaoPlaceCollectionService
@@ -29,6 +32,49 @@ from app.services.transport_collection import CollectionScope, TransportCollecti
 #: 다른 테넌트의 값이라, 옛 전용 instance의 상한(4시간 — 유가 Playwright 수집의 정상 상한 2시간에 여유를 둔
 #: 값)을 job마다 tag로 단다. run monitoring이 이 tag를 읽어 넘긴 run을 실패로 끝낸다.
 MAX_RUNTIME_SECONDS = 14400
+
+
+def _sanitize_op_error(error: Exception) -> str:
+    """`sanitize_upstream_error`(URL의 serviceKey= 값)에 설정된 provider 키 원문·URL 인코딩형까지 가린다."""
+    try:
+        settings = get_settings()
+        secrets = [settings.data_go_kr_service_key, settings.kric_service_key, settings.kex_ex_api_key,
+                   settings.vworld_api_key, settings.kakao_rest_api_key]
+    except Exception:  # noqa: BLE001 — 설정을 못 읽어도 pattern 가림은 한다.
+        secrets = []
+    text = sanitize_upstream_error(error, None)
+    for secret in filter(None, secrets):
+        for form in {secret, quote(secret, safe=""), unquote(secret)}:
+            text = text.replace(form, "<redacted>")
+    return text
+
+
+def _redact_op_errors(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """op에서 빠져나가는 예외를 가린 `Failure`로 바꾼다.
+
+    공용 Dagster event log(`dagster_shared`)는 모든 테넌트 UI가 읽는다. Dagster는 step 실패의 `str(exc)`·
+    traceback·`__cause__`/`__context__` 사슬을 그대로 직렬화하는데, code-server는 `app.main`의 logging
+    filter를 import하지 않는다. 그래서 op 경계에서 예외 종류와 가린 문장만 남기고 사슬은 끊는다.
+    의도된 `Failure`(고정 문구·메타데이터)와 `BaseException`(중단·종료 신호)은 그대로 둔다.
+    step 실패는 원래부터 재시도하지 않으므로(op RetryPolicy 없음, `retry_on_asset_or_op_failure=false`,
+    infra 재시도 sensor는 STEP_FAILURE가 있으면 건너뜀) `allow_retries=False`는 의미를 바꾸지 않는다.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return fn(*args, **kwargs)
+        except Failure:
+            raise
+        except Exception as exc:  # noqa: BLE001 — 경계에서 모든 원문을 가린다.
+            error_type = type(exc).__name__
+            description = f"{error_type}: {_sanitize_op_error(exc)}"
+        # except 블록 밖에서 던져 __context__에도 원래 예외가 걸리지 않게 한다.
+        failure = Failure(description=description, metadata={"error_type": error_type}, allow_retries=False)
+        failure.__suppress_context__ = True
+        raise failure
+
+    return wrapper
 
 
 def _job_tags(run_group: str, job_name: str) -> dict[str, str]:
@@ -71,6 +117,7 @@ def _settings() -> Settings:
 
 
 @op
+@_redact_op_errors
 def collect_airport_parking(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         settings = _settings()
@@ -104,12 +151,14 @@ def _collect_transport(scope: CollectionScope) -> dict[str, Any]:
 
 
 @op
+@_redact_op_errors
 def collect_highway_transport(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         return _collect_transport("highway")
 
 
 @op
+@_redact_op_errors
 def collect_fuel_transport(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         return _collect_transport("fuel")
@@ -151,30 +200,35 @@ def _collect_bus_reference() -> dict[str, Any]:
 
 
 @op
+@_redact_op_errors
 def collect_rail_reference(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         return _collect_reference("rail")
 
 
 @op
+@_redact_op_errors
 def collect_maritime_reference(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         return _collect_reference("maritime")
 
 
 @op
+@_redact_op_errors
 def collect_ferry_timetable(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         return _collect_ferry_timetable()
 
 
 @op
+@_redact_op_errors
 def collect_bus_reference(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         return _collect_bus_reference()
 
 
 @op
+@_redact_op_errors
 def collect_place_locations(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         settings = _settings()
@@ -187,6 +241,7 @@ def collect_place_locations(context) -> dict[str, Any]:
 
 
 @op
+@_redact_op_errors
 def collect_kakao_place_locations(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         settings = _settings()
@@ -199,6 +254,7 @@ def collect_kakao_place_locations(context) -> dict[str, Any]:
 
 
 @op
+@_redact_op_errors
 def enrich_new_reference_locations(context, reference_result: dict[str, Any]) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         """공식 기준정보 적재 직후 기존 수집기의 호출 예산·receipt를 그대로 사용한다."""
@@ -229,6 +285,7 @@ def enrich_new_reference_locations(context, reference_result: dict[str, Any]) ->
 
 
 @op
+@_redact_op_errors
 def collect_kric_timetable(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         settings = _settings()
@@ -236,6 +293,7 @@ def collect_kric_timetable(context) -> dict[str, Any]:
 
 
 @op
+@_redact_op_errors
 def collect_rest_area_reference(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         settings = _settings()
@@ -243,6 +301,7 @@ def collect_rest_area_reference(context) -> dict[str, Any]:
 
 
 @op
+@_redact_op_errors
 def collect_rest_area_fuel_prices(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         settings = _settings()
