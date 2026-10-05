@@ -10,8 +10,9 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 from urllib.parse import quote, unquote
 
-from dagster import DefaultScheduleStatus, Definitions, Failure, multiprocess_executor, job, op
-from dagster._core.errors import DagsterExecutionInterruptedError
+from dagster import (
+    DagsterExecutionInterruptedError, DefaultScheduleStatus, Definitions, Failure, multiprocess_executor, job, op,
+)
 from sqlalchemy.engine import make_url
 from kortravelcommon.dagster import RecoveryPolicy, coalescing_schedule, infrastructure_retry_sensor, reconciliation_sensor
 
@@ -40,6 +41,8 @@ MAX_RUNTIME_SECONDS = 14400
 
 #: Failure 설명의 상한(응답 본문 같은 긴 문장을 공용 event log에 그대로 두지 않는다).
 MAX_FAILURE_DESCRIPTION_CHARS = 2000
+#: metadata `frames`에 남기는 frame 수.
+MAX_FAILURE_FRAMES = 50
 #: 그대로 통과시키는 중단 신호. 나머지 BaseException(CancelledError·BaseExceptionGroup 등)은 가린다.
 _PASSTHROUGH_ERRORS = (KeyboardInterrupt, SystemExit, DagsterExecutionInterruptedError)
 
@@ -70,16 +73,19 @@ def _type_name(error: BaseException) -> str:
     return f"{kind.__module__}.{kind.__qualname__}"
 
 
+def _redact_text(text: str, forms: list[str]) -> str:
+    for form in forms:
+        text = text.replace(form, "<redacted>")
+    return text
+
+
 def _sanitize_op_error(error: BaseException, forms: list[str]) -> str:
     """`sanitize_upstream_error`(URL의 serviceKey= 값)에 설정된 비밀값의 모든 형태를 더 가린다.
 
     sanitizer 자체가 실패하면(예: 읽지 않은 응답의 `httpx.ResponseNotRead`) 원문 대신 `<unavailable>`.
     """
     try:
-        text = sanitize_upstream_error(error, None)  # type: ignore[arg-type]
-        for form in forms:
-            text = text.replace(form, "<redacted>")
-        return text
+        return _redact_text(sanitize_upstream_error(error, None), forms)  # type: ignore[arg-type]
     except Exception:  # noqa: BLE001
         return "<unavailable>"
 
@@ -99,21 +105,26 @@ def _redacted_failure(error: BaseException) -> Failure:
     stderr는 run 컨테이너의 compute log(로컬 파일)로 가고 공용 event log에는 들어가지 않는다.
     """
     forms = _secret_forms()
-    error_type = _type_name(error)
+    error_type = _redact_text(_type_name(error), forms)
     description = f"{error_type}: {_sanitize_op_error(error, forms)}"
     if len(description) > MAX_FAILURE_DESCRIPTION_CHARS:
         description = description[: MAX_FAILURE_DESCRIPTION_CHARS - 3] + "..."
     metadata: dict[str, str] = {"error_type": error_type}
     try:
         chain = _error_chain(error)
-        metadata["frames"] = "\n".join(
-            f"{frame.filename}:{frame.lineno} {frame.name}" for frame in traceback.extract_tb(error.__traceback__))
-        metadata["error_chain"] = "\n".join(_type_name(item) for item in chain)
+        frames = traceback.extract_tb(error.__traceback__)
+        if len(frames) > MAX_FAILURE_FRAMES:
+            # 가장 안쪽(raise 지점 쪽) frame을 남기고 생략한 개수를 적는다.
+            metadata["frames_omitted"] = str(len(frames) - MAX_FAILURE_FRAMES)
+            frames = frames[-MAX_FAILURE_FRAMES:]
+        metadata["frames"] = _redact_text(
+            "\n".join(f"{frame.filename}:{frame.lineno} {frame.name}" for frame in frames), forms)
+        metadata["error_chain"] = _redact_text("\n".join(_type_name(item) for item in chain), forms)
         blocks = []
         for item in reversed(chain):
-            frames = "".join(traceback.format_tb(item.__traceback__))
-            blocks.append(f"Traceback (most recent call last):\n{frames}{_type_name(item)}: "
-                          f"{_sanitize_op_error(item, forms)}\n")
+            tb_text = "".join(traceback.format_tb(item.__traceback__))
+            blocks.append(_redact_text(f"Traceback (most recent call last):\n{tb_text}{_type_name(item)}: ", forms)
+                          + f"{_sanitize_op_error(item, forms)}\n")
         print("\nThe above exception was the direct cause of the following exception:\n\n".join(blocks),
               file=sys.stderr, flush=True)
     except Exception:  # noqa: BLE001 — 진단 보강의 실패가 원문을 사슬에 매달면 안 된다.
