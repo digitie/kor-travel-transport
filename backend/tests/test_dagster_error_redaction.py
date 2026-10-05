@@ -402,3 +402,58 @@ def test_encoded_key_variants_are_redacted(monkeypatch, configured, seen):
     description = raised.value.description
     assert seen not in description
     assert "FAKE+enc" not in description and "FAKE%2Benc" not in description and "FAKE%252Benc" not in description
+
+
+def _recurse(depth: int) -> None:
+    if depth == 0:
+        raise RuntimeError("bottom")
+    _recurse(depth - 1)
+
+
+def test_frames_are_capped_to_the_most_recent(monkeypatch):
+    """깊은 재귀는 마지막 50개 frame만 남기고 생략 사실을 메타데이터에 적는다."""
+    from dagster import Failure
+
+    monkeypatch.setattr(dagster_definitions, "get_settings", _secret_settings)
+
+    @dagster_definitions._redact_op_errors
+    def body() -> None:
+        _recurse(300)
+
+    with pytest.raises(Failure) as raised:
+        body()
+    metadata = {key: str(value.value) for key, value in raised.value.metadata.items()}
+    frames = metadata["frames"].splitlines()
+    assert len(frames) == 50
+    assert frames[-1].endswith(" _recurse")  # 가장 안쪽(raise 지점)이 남는다.
+    assert int(metadata["frames_omitted"]) == 2 + 301 - 50  # wrapper + body + _recurse 301단
+
+
+class Err_FAKEframeKey42(RuntimeError):
+    pass
+
+
+def frame_FAKEframeKey42() -> None:
+    raise Err_FAKEframeKey42("in a frame whose name collides with a secret")
+
+
+def test_frames_and_chain_strings_are_redacted(monkeypatch):
+    from dagster import Failure
+
+    monkeypatch.setattr(dagster_definitions, "get_settings", lambda: Settings(
+        database_url="sqlite+aiosqlite://", kex_ex_api_key="FAKEframeKey42"))
+    with pytest.raises(Failure) as raised:
+        _wrapped_call(frame_FAKEframeKey42)()
+    metadata = {key: str(value.value) for key, value in raised.value.metadata.items()}
+    assert "FAKEframeKey42" not in metadata["frames"]
+    assert "frame_<redacted>" in metadata["frames"]
+    assert metadata["error_chain"] == f"{__name__}.Err_<redacted>"
+    assert "FAKEframeKey42" not in metadata["error_type"] + raised.value.description
+
+
+def _wrapped_call(target):
+    @dagster_definitions._redact_op_errors
+    def body() -> None:
+        target()
+
+    return body
