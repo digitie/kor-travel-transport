@@ -136,9 +136,11 @@ def test_op_crash_reaches_event_log_without_provider_keys(monkeypatch, job_name,
     assert [event.step_key for event in failures] == [op_name]
     failure_data = failures[0].step_failure_data
     texts = _error_texts(failure_data.error)
-    if failure_data.user_failure_data is not None:
-        texts.append(str(failure_data.user_failure_data.description))
-        texts.extend(str(value) for value in failure_data.user_failure_data.metadata.values())
+    user_failure = failure_data.user_failure_data
+    assert user_failure is not None
+    texts.append(str(user_failure.description))
+    texts.extend(str(value.value) for value in user_failure.metadata.values())
+    assert user_failure.metadata["error_type"].value == "builtins.ConnectionError"
     # 공용 event log에 실제로 쓰이는 사건(로그 메시지 포함) 전부를 본다.
     texts.extend(str(event.message) for event in result.all_events)
     _assert_no_secret(texts)
@@ -201,8 +203,8 @@ def test_boundary_reraises_sanitized_failure_without_chain(monkeypatch):
     assert error.__context__ is None
     assert error.__suppress_context__ is True
     assert error.allow_retries is False
-    assert error.description.startswith("ConnectionError: ")
-    assert error.metadata["error_type"].value == "ConnectionError"
+    assert error.description.startswith("builtins.ConnectionError: ")
+    assert error.metadata["error_type"].value == "builtins.ConnectionError"
     _assert_no_secret(_exception_texts(error))
     _assert_no_secret([str(error.description)])
 
@@ -242,3 +244,161 @@ def test_boundary_still_redacts_when_settings_cannot_load(monkeypatch):
     with pytest.raises(Exception) as raised:
         body()
     assert URL_ONLY_KEY not in "\n".join(_exception_texts(raised.value))
+
+
+# --- 리뷰 후속(MED·LOW2~7) ---------------------------------------------------------------------------
+
+
+def _wrapped(error: BaseException):
+    @dagster_definitions._redact_op_errors
+    def body() -> None:
+        raise error
+
+    return body
+
+
+def _raise_leaky_from_helper() -> None:
+    raise _leaky_error()
+
+
+def test_failure_metadata_keeps_safe_frames_and_chain_types(monkeypatch, capsys):
+    """MED: traceback 위치(file:line func)와 사슬의 종류 이름은 남기고, 원문은 남기지 않는다."""
+    from dagster import Failure
+
+    monkeypatch.setattr(dagster_definitions, "get_settings", _secret_settings)
+
+    @dagster_definitions._redact_op_errors
+    def body() -> None:
+        _raise_leaky_from_helper()
+
+    with pytest.raises(Failure) as raised:
+        body()
+    metadata = {key: str(value.value) for key, value in raised.value.metadata.items()}
+    frames = metadata["frames"].splitlines()
+    assert any(line.endswith(" _raise_leaky_from_helper") and "test_dagster_error_redaction.py:" in line
+               for line in frames)
+    assert any(line.endswith(" body") for line in frames)
+    assert metadata["error_chain"].splitlines() == ["builtins.ConnectionError", "builtins.ValueError"]
+    _assert_no_secret(list(metadata.values()))
+    # 가린 전체 traceback은 run 컨테이너의 compute log(stderr)로만 간다.
+    err = capsys.readouterr().err
+    assert "Traceback (most recent call last)" in err
+    assert "_raise_leaky_from_helper" in err
+    assert "builtins.ValueError: upstream said" in err
+    assert "serviceKey=<redacted>" in err
+    _assert_no_secret([err])
+
+
+class _UnprintableError(Exception):
+    def __str__(self) -> str:  # sanitizer 자체가 실패하는 경우(예: httpx.ResponseNotRead)
+        raise RuntimeError(f"cannot render {KEX_KEY}")
+
+
+def test_sanitizer_failure_falls_back_without_chaining(monkeypatch, capsys):
+    """LOW2: 가리는 단계가 실패해도 원래 예외를 사슬에 매달지 않는다."""
+    import httpx
+    from dagster import Failure
+
+    monkeypatch.setattr(dagster_definitions, "get_settings", _secret_settings)
+    with pytest.raises(Failure) as raised:
+        _wrapped(_UnprintableError())()
+    assert raised.value.description == f"{__name__}._UnprintableError: <unavailable>"
+    assert raised.value.__context__ is None and raised.value.__cause__ is None
+    _assert_no_secret(_exception_texts(raised.value) + [capsys.readouterr().err])
+
+    request = httpx.Request("GET", f"https://apis.data.go.kr/x?serviceKey={URL_ONLY_KEY}")
+    response = httpx.Response(500, request=request, stream=httpx.ByteStream(b"body"))
+    error = httpx.HTTPStatusError(f"500 for {request.url}", request=request, response=response)
+    with pytest.raises(Failure) as raised:
+        _wrapped(error)()
+    assert raised.value.description == "httpx.HTTPStatusError: <unavailable>"
+    assert raised.value.__context__ is None and raised.value.__cause__ is None
+    _assert_no_secret(_exception_texts(raised.value) + [capsys.readouterr().err])
+
+
+def test_only_interrupts_pass_through_other_base_exceptions_are_redacted(monkeypatch):
+    """LOW3: KeyboardInterrupt·SystemExit·DagsterExecutionInterruptedError만 그대로 둔다."""
+    import asyncio
+
+    from dagster import Failure
+    from dagster._core.errors import DagsterExecutionInterruptedError
+
+    monkeypatch.setattr(dagster_definitions, "get_settings", _secret_settings)
+    for passthrough in (KeyboardInterrupt(), SystemExit(1), DagsterExecutionInterruptedError()):
+        with pytest.raises(type(passthrough)):
+            _wrapped(passthrough)()
+    for converted, type_name in (
+        (asyncio.CancelledError(f"cancel {KEX_KEY}"), "asyncio.exceptions.CancelledError"),
+        (BaseExceptionGroup(f"group {KEX_KEY}", [GeneratorExit()]), "builtins.BaseExceptionGroup"),
+    ):
+        with pytest.raises(Failure) as raised:
+            _wrapped(converted)()
+        assert raised.value.metadata["error_type"].value == type_name
+        assert raised.value.__context__ is None
+        _assert_no_secret(_exception_texts(raised.value) + [raised.value.description])
+
+
+def test_settings_validation_error_does_not_echo_input():
+    """LOW4: ValidationError가 env 값을 그대로 옮기지 않는다."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError) as raised:
+        Settings(database_url="sqlite+aiosqlite://", scheduler_mode=f"leak-{KEX_KEY}")
+    assert KEX_KEY not in str(raised.value)
+
+
+def test_infrastructure_secrets_are_redacted(monkeypatch):
+    """LOW5: DB 비밀번호·RustFS secret·관리자/export 토큰도 가린다."""
+    from dagster import Failure
+
+    db_password = "FAKEdbPass4321"
+    secrets = {
+        "rustfs_secret_access_key": "FAKErustfsSecret77",
+        "transport_admin_write_token": "FAKEadminWriteToken88",
+        "transport_service_export_token": "FAKEserviceExportToken99xxxxxxxxxxxx",
+    }
+    monkeypatch.setattr(dagster_definitions, "get_settings", lambda: Settings(
+        database_url=f"postgresql+asyncpg://transport_user:{db_password}@db:5432/transport", **secrets))
+    message = f"connect failed password={db_password} " + " ".join(secrets.values())
+    with pytest.raises(Failure) as raised:
+        _wrapped(RuntimeError(message))()
+    description = raised.value.description
+    for secret in (db_password, *secrets.values()):
+        assert secret not in description
+    assert "<redacted>" in description
+
+
+def test_description_is_capped(monkeypatch):
+    """LOW6: 응답 본문 같은 긴 문장은 잘라서 남긴다."""
+    from dagster import Failure
+
+    monkeypatch.setattr(dagster_definitions, "get_settings", _secret_settings)
+    with pytest.raises(Failure) as raised:
+        _wrapped(RuntimeError("x" * 10000))()
+    assert len(raised.value.description) <= 2000
+
+
+ENCODED_KEY = "FAKE+enc/Key=="
+
+
+@pytest.mark.parametrize(
+    ("configured", "seen"),
+    [
+        (ENCODED_KEY, ENCODED_KEY),                       # 원문
+        (ENCODED_KEY, "FAKE%2Benc%2FKey%3D%3D"),          # URL 인코딩
+        (ENCODED_KEY, "FAKE%252Benc%252FKey%253D%253D"),  # 이중 인코딩
+        ("FAKE%2Benc%2FKey%3D%3D", ENCODED_KEY),          # 인코딩형을 설정, 원문이 보임
+        ("FAKE%2Benc%2FKey%3D%3D", "FAKE%252Benc%252FKey%253D%253D"),
+    ],
+)
+def test_encoded_key_variants_are_redacted(monkeypatch, configured, seen):
+    """LOW7: data.go.kr 키의 `+`·`/`·`=`가 인코딩·이중 인코딩된 형태도 가린다."""
+    from dagster import Failure
+
+    monkeypatch.setattr(dagster_definitions, "get_settings", lambda: Settings(
+        database_url="sqlite+aiosqlite://", data_go_kr_service_key=configured))
+    with pytest.raises(Failure) as raised:
+        _wrapped(RuntimeError(f"GET /x?key={seen}&b=1 token {seen}"))()
+    description = raised.value.description
+    assert seen not in description
+    assert "FAKE+enc" not in description and "FAKE%2Benc" not in description and "FAKE%252Benc" not in description
