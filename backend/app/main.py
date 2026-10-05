@@ -8,6 +8,7 @@ import hmac
 import json
 import logging
 import secrets
+import traceback
 from collections import OrderedDict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -161,7 +162,7 @@ from app.services.backup_restore import (
 )
 from app.services.collection import CollectionService, is_upstream_rate_limit_error
 from app.services.fee_calculator import calculate_total_fee
-from app.services.flight_status import FlightStatusService
+from app.services.flight_status import FlightStatusService, sanitize_upstream_error
 from app.services.holidays import (
     HolidayItem,
     HolidayService,
@@ -173,6 +174,59 @@ from app.services.sample_data import seed_sample_database
 from app.services.transport_collection import CollectionScope, OPINET_SOURCE, TRANSPORT_TRIGGER_PREFIX, TransportCollectionService, fuel_read_model_freshness
 
 logger = logging.getLogger(__name__)
+
+
+class _RedactExceptionLogFilter(logging.Filter):
+    """예외 로그의 traceback에서 `str(exc)` 원문을 빼고 공용 sanitizer를 거친 글만 남긴다.
+
+    scheduler tick 실패와 route 예외(Starlette ServerErrorMiddleware가 다시 던져 uvicorn이 `uvicorn.error`로
+    남긴다)의 원문에는 serviceKey가 들어갈 수 있다. 스택 프레임(파일·줄·소스)은 그대로 두고 예외 문장만
+    `sanitize_upstream_error`로 바꾼다. logger filter라 어떤 handler·formatter보다 먼저 적용된다.
+    """
+
+    def __init__(self, secrets_to_hide: tuple[str, ...]) -> None:
+        super().__init__()
+        self.secrets_to_hide = secrets_to_hide
+
+    def _sanitize(self, error: BaseException) -> str:
+        first = self.secrets_to_hide[0] if self.secrets_to_hide else None
+        text = sanitize_upstream_error(error if isinstance(error, Exception) else str(error), first)
+        for secret in self.secrets_to_hide[1:]:
+            text = sanitize_upstream_error(text, secret)
+        return text
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        error = record.exc_info[1] if record.exc_info else None
+        if error is None:
+            return True
+        chain: list[str] = []
+        seen: set[int] = set()
+        current: BaseException | None = error
+        while current is not None and id(current) not in seen:
+            seen.add(id(current))
+            chain.append(f"{type(current).__qualname__}: {self._sanitize(current)}")
+            current = current.__cause__ or (None if current.__suppress_context__ else current.__context__)
+        frames = "".join(traceback.format_tb(error.__traceback__))
+        record.exc_text = "Traceback (most recent call last):\n" + frames + "\n  from ".join(chain)
+        record.exc_info = None
+        return True
+
+
+#: 예외 traceback을 남기는 logger — scheduler tick(이 모듈)과, uvicorn이 route 예외를 남기는 logger.
+_REDACTED_EXCEPTION_LOGGERS = (__name__, "uvicorn.error")
+
+
+def _install_exception_log_redaction(settings: Settings) -> None:
+    secrets_to_hide = tuple(
+        secret
+        for secret in (settings.data_go_kr_service_key, settings.kric_service_key, settings.kex_ex_api_key)
+        if secret
+    )
+    for name in _REDACTED_EXCEPTION_LOGGERS:
+        target = logging.getLogger(name)
+        for existing in [item for item in target.filters if isinstance(item, _RedactExceptionLogFilter)]:
+            target.removeFilter(existing)
+        target.addFilter(_RedactExceptionLogFilter(secrets_to_hide))
 
 # T-036: 과거 자료 조회의 명시적 start_date/end_date 범위 상한(일). 관측 데이터는
 # 삭제 정책 없이 전체 보존되므로 상한이 없으면 임의로 큰 범위가 무거운 시계열
@@ -408,6 +462,7 @@ async def _transport_traffic_statistics_rows(
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved_settings = settings or get_settings()
+    _install_exception_log_redaction(resolved_settings)
     engine, session_factory = create_engine_and_session_factory(resolved_settings.database_url)
     history_read_cache = (
         ParkingHistoryReadCache(session_factory)

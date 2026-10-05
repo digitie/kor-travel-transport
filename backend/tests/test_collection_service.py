@@ -317,3 +317,85 @@ def test_collection_crash_stores_redacted_error(tmp_path) -> None:
         stored = asyncio.run(run())
 
     assert stored and all(message and _secret_free(message) for message in stored)
+
+
+# 정상 경로(예외가 collect 밖으로 나가지 않는 경로)도 DB에 원문을 남기지 않는다:
+# collection_runs.error_message와 raw_api_responses.parse_error 둘 다 같은 sanitizer를 거친다.
+def _stored_error_text(client, service: CollectionService) -> tuple[dict, list[str | None], list[str | None]]:
+    from sqlalchemy import select
+
+    from app.models import CollectionRun, RawApiResponse
+
+    async def run() -> tuple[dict, list[str | None], list[str | None]]:
+        async with client.app.state.session_factory() as session:
+            summary = await service.collect(session, trigger="manual")
+        async with client.app.state.session_factory() as session:
+            runs = list((await session.execute(select(CollectionRun.error_message))).scalars())
+            raws = list((await session.execute(select(RawApiResponse.parse_error))).scalars())
+        return summary, runs, raws
+
+    return asyncio.run(run())
+
+
+def test_collection_fetch_failure_stores_redacted_run_and_raw_errors(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    settings = _leak_settings(tmp_path)
+    fixture = FixturePublicDataClient()
+    fixture.fetch_kac_parking = AsyncMock(side_effect=RuntimeError(_LEAKY))
+    with TestClient(create_app(settings)) as client:
+        summary, runs, raws = _stored_error_text(client, CollectionService(settings, client=fixture))
+
+    assert [message for message in runs if message], runs
+    assert [error for error in raws if error], raws
+    stored = [text for text in (*runs, *raws, *summary["errors"]) if text]
+    assert all(_secret_free(text) for text in stored), stored
+    assert all("serviceKey=<redacted>" in text for text in stored), stored
+
+
+def test_collection_validation_failure_stores_redacted_parse_error(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    settings = _leak_settings(tmp_path)
+    with TestClient(create_app(settings)) as client:
+        with patch("app.services.collection.validate_source_response_body", side_effect=ValueError(_LEAKY)):
+            summary, runs, raws = _stored_error_text(
+                client, CollectionService(settings, client=FixturePublicDataClient())
+            )
+
+    assert [error for error in raws if error], raws
+    stored = [text for text in (*runs, *raws, *summary["errors"]) if text]
+    assert stored and all(_secret_free(text) for text in stored), stored
+
+
+def test_rate_limit_detection_survives_redacted_error_message(tmp_path) -> None:
+    """`get_upstream_rate_limit_state`는 저장된 error_message의 표지를 읽는다 — 가린 뒤에도 표지가 남아야 한다."""
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    settings = _leak_settings(tmp_path)
+    upstream_error = KrairportRateLimitError(f"LIMITED NUMBER OF SERVICE REQUESTS EXCEEDS ERROR. {_LEAKY}")
+    with TestClient(create_app(settings)) as client:
+        with patch(
+            "app.services.collection.KrairportClient",
+            return_value=_mock_krairport_client(kac_raw_items=upstream_error),
+        ):
+            service = CollectionService(settings, client=KrairportPublicDataClient(settings))
+            assert service.client_mode == "live"
+            summary, runs, _ = _stored_error_text(client, service)
+
+        async def state():
+            async with client.app.state.session_factory() as session:
+                return await service.get_upstream_rate_limit_state(session)
+
+        rate_limit_state = asyncio.run(state())
+
+    assert summary["status"] == "failed"
+    assert [message for message in runs if message] and all(_secret_free(m) for m in runs if m), runs
+    assert rate_limit_state.is_blocked, rate_limit_state
+    assert rate_limit_state.blocked_until is not None
