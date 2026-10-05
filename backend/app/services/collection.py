@@ -625,14 +625,18 @@ class CollectionService:
             try:
                 validate_source_response_body(response.source, response.body_text)
             except Exception as exc:
+                # DB(parse_error·collection_runs.error_message)와 route 응답에는 가린 글만 둔다. 가린 뒤에도
+                # rate-limit 표지(UPSTREAM_RATE_LIMIT_MARKER)는 남는다 — get_upstream_rate_limit_state가 읽는다.
+                message = self._redact(str(exc))
                 raw.parse_status = "failed"
-                raw.parse_error = str(exc)
+                raw.parse_error = message
                 await session.flush()
-                errors.append(str(exc))
+                errors.append(message)
                 return None
             return response
         except Exception as exc:
-            errors.append(str(exc))
+            message = self._redact(str(exc))
+            errors.append(message)
             session.add(
                 RawApiResponse(
                     collection_run_id=run.id,
@@ -643,7 +647,7 @@ class CollectionService:
                     body_text="",
                     received_at=now_utc(),
                     parse_status="failed",
-                    parse_error=str(exc),
+                    parse_error=message,
                 )
             )
             await session.flush()

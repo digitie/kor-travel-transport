@@ -321,7 +321,10 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 180s
+      # Manager #460과 같은 냉기동 창. 2026-10-04 n150 재구축에서 180초 창이 디스크 대기 중 냉기동(자식 import가
+      # 4분 55초에야 시작)을 못 덮었다. start_interval 덕분에 빨리 뜨면 창을 다 쓰지 않는다. 전환 스크립트는 probe 원문·
+      # exec 형식·포트·heartbeat·init만 대조하고 시간 값은 대조하지 않는다.
+      start_period: 600s
       start_interval: 5s
 
   # ── 옛 전용 Dagster(legacy-dagster) ─────────────────────────────────────────────
