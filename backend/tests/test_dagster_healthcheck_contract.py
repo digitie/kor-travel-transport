@@ -235,6 +235,21 @@ def test_proxy_code_server_probe_reaches_the_child(key: str) -> None:
     assert heartbeat.isdecimal() and 300 <= int(heartbeat) <= 1800, (key, heartbeat)
 
 
+#: Manager #460과 같은 냉기동 창. 2026-10-04 n150 재구축에서 180초 창이 디스크 대기 중 냉기동(자식 import가 4분 55초에야
+#: 시작)을 못 덮었다. 짧은 `start_interval`이 빨리 뜬 기동을 바로 healthy로 만든다.
+_CODE_SERVER_MIN_START_PERIOD_SECONDS = 600.0
+_CODE_SERVER_MAX_START_INTERVAL_SECONDS = 5.0
+
+
+@pytest.mark.parametrize("key", sorted(_PROXY_CODE_SERVERS))
+def test_proxy_code_server_start_window_covers_a_loaded_cold_start(key: str) -> None:
+    healthcheck = _PROXY_CODE_SERVERS[key].get("healthcheck") or {}
+    start_period = _seconds(healthcheck.get("start_period", "0s"))
+    assert start_period >= _CODE_SERVER_MIN_START_PERIOD_SECONDS, (key, healthcheck.get("start_period"))
+    assert "start_interval" in healthcheck, (key, "start_interval이 없다")
+    assert _seconds(healthcheck["start_interval"]) <= _CODE_SERVER_MAX_START_INTERVAL_SECONDS, (key, healthcheck)
+
+
 def test_the_proxy_probe_derivation_sees_the_code_server() -> None:
     assert _PROXY_CODE_SERVERS, "`dagster code-server start` code-server를 찾지 못했다"
 
