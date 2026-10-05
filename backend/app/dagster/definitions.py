@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import sys
+import traceback
 from collections.abc import Awaitable, Callable
 from typing import Any
 from urllib.parse import quote, unquote
 
 from dagster import DefaultScheduleStatus, Definitions, Failure, multiprocess_executor, job, op
+from dagster._core.errors import DagsterExecutionInterruptedError
+from sqlalchemy.engine import make_url
 from kortravelcommon.dagster import RecoveryPolicy, coalescing_schedule, infrastructure_retry_sensor, reconciliation_sensor
 
 from app.dagster.recovery import (
@@ -34,19 +38,87 @@ from app.services.transport_collection import CollectionScope, TransportCollecti
 MAX_RUNTIME_SECONDS = 14400
 
 
-def _sanitize_op_error(error: Exception) -> str:
-    """`sanitize_upstream_error`(URL의 serviceKey= 값)에 설정된 provider 키 원문·URL 인코딩형까지 가린다."""
+#: Failure 설명의 상한(응답 본문 같은 긴 문장을 공용 event log에 그대로 두지 않는다).
+MAX_FAILURE_DESCRIPTION_CHARS = 2000
+#: 그대로 통과시키는 중단 신호. 나머지 BaseException(CancelledError·BaseExceptionGroup 등)은 가린다.
+_PASSTHROUGH_ERRORS = (KeyboardInterrupt, SystemExit, DagsterExecutionInterruptedError)
+
+
+def _secret_forms() -> list[str]:
+    """가릴 비밀값의 원문·URL 디코딩형·인코딩형·이중 인코딩형(긴 것부터)."""
     try:
         settings = get_settings()
         secrets = [settings.data_go_kr_service_key, settings.kric_service_key, settings.kex_ex_api_key,
-                   settings.vworld_api_key, settings.kakao_rest_api_key]
+                   settings.vworld_api_key, settings.kakao_rest_api_key, settings.rustfs_secret_access_key,
+                   settings.transport_admin_write_token, settings.transport_service_export_token]
+        try:
+            secrets.append(make_url(settings.database_url).password)
+        except Exception:  # noqa: BLE001 — 해석할 수 없는 URL은 통째로 가린다.
+            secrets.append(settings.database_url)
     except Exception:  # noqa: BLE001 — 설정을 못 읽어도 pattern 가림은 한다.
         secrets = []
-    text = sanitize_upstream_error(error, None)
+    forms: set[str] = set()
     for secret in filter(None, secrets):
-        for form in {secret, quote(secret, safe=""), unquote(secret)}:
+        for base in {secret, unquote(secret)}:
+            encoded = quote(base, safe="")
+            forms.update({base, encoded, quote(encoded, safe="")})
+    return sorted(forms, key=len, reverse=True)
+
+
+def _type_name(error: BaseException) -> str:
+    kind = type(error)
+    return f"{kind.__module__}.{kind.__qualname__}"
+
+
+def _sanitize_op_error(error: BaseException, forms: list[str]) -> str:
+    """`sanitize_upstream_error`(URL의 serviceKey= 값)에 설정된 비밀값의 모든 형태를 더 가린다.
+
+    sanitizer 자체가 실패하면(예: 읽지 않은 응답의 `httpx.ResponseNotRead`) 원문 대신 `<unavailable>`.
+    """
+    try:
+        text = sanitize_upstream_error(error, None)  # type: ignore[arg-type]
+        for form in forms:
             text = text.replace(form, "<redacted>")
-    return text
+        return text
+    except Exception:  # noqa: BLE001
+        return "<unavailable>"
+
+
+def _error_chain(error: BaseException) -> list[BaseException]:
+    chain: list[BaseException] = []
+    current: BaseException | None = error
+    while current is not None and all(current is not seen for seen in chain):
+        chain.append(current)
+        current = current.__cause__ or (None if current.__suppress_context__ else current.__context__)
+    return chain
+
+
+def _redacted_failure(error: BaseException) -> Failure:
+    """예외 종류·가린 문장·안전한 코드 위치만 담은 Failure. 가린 전체 traceback은 stderr로 보낸다.
+
+    stderr는 run 컨테이너의 compute log(로컬 파일)로 가고 공용 event log에는 들어가지 않는다.
+    """
+    forms = _secret_forms()
+    error_type = _type_name(error)
+    description = f"{error_type}: {_sanitize_op_error(error, forms)}"
+    if len(description) > MAX_FAILURE_DESCRIPTION_CHARS:
+        description = description[: MAX_FAILURE_DESCRIPTION_CHARS - 3] + "..."
+    metadata: dict[str, str] = {"error_type": error_type}
+    try:
+        chain = _error_chain(error)
+        metadata["frames"] = "\n".join(
+            f"{frame.filename}:{frame.lineno} {frame.name}" for frame in traceback.extract_tb(error.__traceback__))
+        metadata["error_chain"] = "\n".join(_type_name(item) for item in chain)
+        blocks = []
+        for item in reversed(chain):
+            frames = "".join(traceback.format_tb(item.__traceback__))
+            blocks.append(f"Traceback (most recent call last):\n{frames}{_type_name(item)}: "
+                          f"{_sanitize_op_error(item, forms)}\n")
+        print("\nThe above exception was the direct cause of the following exception:\n\n".join(blocks),
+              file=sys.stderr, flush=True)
+    except Exception:  # noqa: BLE001 — 진단 보강의 실패가 원문을 사슬에 매달면 안 된다.
+        pass
+    return Failure(description=description, metadata=metadata, allow_retries=False)
 
 
 def _redact_op_errors(fn: Callable[..., Any]) -> Callable[..., Any]:
@@ -54,8 +126,8 @@ def _redact_op_errors(fn: Callable[..., Any]) -> Callable[..., Any]:
 
     공용 Dagster event log(`dagster_shared`)는 모든 테넌트 UI가 읽는다. Dagster는 step 실패의 `str(exc)`·
     traceback·`__cause__`/`__context__` 사슬을 그대로 직렬화하는데, code-server는 `app.main`의 logging
-    filter를 import하지 않는다. 그래서 op 경계에서 예외 종류와 가린 문장만 남기고 사슬은 끊는다.
-    의도된 `Failure`(고정 문구·메타데이터)와 `BaseException`(중단·종료 신호)은 그대로 둔다.
+    filter를 import하지 않는다. 그래서 op 경계에서 예외 종류·가린 문장·코드 위치만 남기고 사슬은 끊는다.
+    의도된 `Failure`(고정 문구·메타데이터)와 중단 신호(`_PASSTHROUGH_ERRORS`)는 그대로 둔다.
     step 실패는 원래부터 재시도하지 않으므로(op RetryPolicy 없음, `retry_on_asset_or_op_failure=false`,
     infra 재시도 sensor는 STEP_FAILURE가 있으면 건너뜀) `allow_retries=False`는 의미를 바꾸지 않는다.
     """
@@ -64,13 +136,16 @@ def _redact_op_errors(fn: Callable[..., Any]) -> Callable[..., Any]:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             return fn(*args, **kwargs)
-        except Failure:
+        except (Failure, *_PASSTHROUGH_ERRORS):
             raise
-        except Exception as exc:  # noqa: BLE001 — 경계에서 모든 원문을 가린다.
-            error_type = type(exc).__name__
-            description = f"{error_type}: {_sanitize_op_error(exc)}"
+        except BaseException as exc:  # noqa: BLE001 — 경계에서 모든 원문을 가린다.
+            try:
+                failure = _redacted_failure(exc)
+            except Exception:  # noqa: BLE001
+                failure = Failure(description=f"{_type_name(exc)}: <unavailable>",
+                                  metadata={"error_type": _type_name(exc)}, allow_retries=False)
+            del exc
         # except 블록 밖에서 던져 __context__에도 원래 예외가 걸리지 않게 한다.
-        failure = Failure(description=description, metadata={"error_type": error_type}, allow_retries=False)
         failure.__suppress_context__ = True
         raise failure
 
