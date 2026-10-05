@@ -14,6 +14,8 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        # ValidationError가 env 값(키·토큰)을 그대로 옮기지 않게 한다 — 예외 문장은 로그·Dagster로 나간다.
+        hide_input_in_errors=True,
     )
 
     app_name: str = "kor-travel-transport"

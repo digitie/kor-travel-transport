@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import functools
+import sys
+import traceback
 from collections.abc import Awaitable, Callable
 from typing import Any
+from urllib.parse import quote, unquote
 
-from dagster import DefaultScheduleStatus, Definitions, Failure, multiprocess_executor, job, op
+from dagster import (
+    DagsterExecutionInterruptedError, DefaultScheduleStatus, Definitions, Failure, multiprocess_executor, job, op,
+)
+from sqlalchemy.engine import make_url
 from kortravelcommon.dagster import RecoveryPolicy, coalescing_schedule, infrastructure_retry_sensor, reconciliation_sensor
 
 from app.dagster.recovery import (
@@ -17,6 +24,7 @@ from app.dagster.recovery import (
 from app.core.config import Settings, get_settings
 from app.db.session import create_engine_and_session_factory
 from app.services.collection import CollectionService
+from app.services.flight_status import sanitize_upstream_error
 from app.services.bus_collection import BusReferenceCollectionService
 from app.services.kric_collection import KricTimetableCollectionService
 from app.services.kakao_place_locations import KakaoPlaceCollectionService
@@ -29,6 +37,130 @@ from app.services.transport_collection import CollectionScope, TransportCollecti
 #: 다른 테넌트의 값이라, 옛 전용 instance의 상한(4시간 — 유가 Playwright 수집의 정상 상한 2시간에 여유를 둔
 #: 값)을 job마다 tag로 단다. run monitoring이 이 tag를 읽어 넘긴 run을 실패로 끝낸다.
 MAX_RUNTIME_SECONDS = 14400
+
+
+#: Failure 설명의 상한(응답 본문 같은 긴 문장을 공용 event log에 그대로 두지 않는다).
+MAX_FAILURE_DESCRIPTION_CHARS = 2000
+#: metadata `frames`에 남기는 frame 수.
+MAX_FAILURE_FRAMES = 50
+#: 그대로 통과시키는 중단 신호. 나머지 BaseException(CancelledError·BaseExceptionGroup 등)은 가린다.
+_PASSTHROUGH_ERRORS = (KeyboardInterrupt, SystemExit, DagsterExecutionInterruptedError)
+
+
+def _secret_forms() -> list[str]:
+    """가릴 비밀값의 원문·URL 디코딩형·인코딩형·이중 인코딩형(긴 것부터)."""
+    try:
+        settings = get_settings()
+        secrets = [settings.data_go_kr_service_key, settings.kric_service_key, settings.kex_ex_api_key,
+                   settings.vworld_api_key, settings.kakao_rest_api_key, settings.rustfs_secret_access_key,
+                   settings.transport_admin_write_token, settings.transport_service_export_token]
+        try:
+            secrets.append(make_url(settings.database_url).password)
+        except Exception:  # noqa: BLE001 — 해석할 수 없는 URL은 통째로 가린다.
+            secrets.append(settings.database_url)
+    except Exception:  # noqa: BLE001 — 설정을 못 읽어도 pattern 가림은 한다.
+        secrets = []
+    forms: set[str] = set()
+    for secret in filter(None, secrets):
+        for base in {secret, unquote(secret)}:
+            encoded = quote(base, safe="")
+            forms.update({base, encoded, quote(encoded, safe="")})
+    return sorted(forms, key=len, reverse=True)
+
+
+def _type_name(error: BaseException) -> str:
+    kind = type(error)
+    return f"{kind.__module__}.{kind.__qualname__}"
+
+
+def _redact_text(text: str, forms: list[str]) -> str:
+    for form in forms:
+        text = text.replace(form, "<redacted>")
+    return text
+
+
+def _sanitize_op_error(error: BaseException, forms: list[str]) -> str:
+    """`sanitize_upstream_error`(URL의 serviceKey= 값)에 설정된 비밀값의 모든 형태를 더 가린다.
+
+    sanitizer 자체가 실패하면(예: 읽지 않은 응답의 `httpx.ResponseNotRead`) 원문 대신 `<unavailable>`.
+    """
+    try:
+        return _redact_text(sanitize_upstream_error(error, None), forms)  # type: ignore[arg-type]
+    except Exception:  # noqa: BLE001
+        return "<unavailable>"
+
+
+def _error_chain(error: BaseException) -> list[BaseException]:
+    chain: list[BaseException] = []
+    current: BaseException | None = error
+    while current is not None and all(current is not seen for seen in chain):
+        chain.append(current)
+        current = current.__cause__ or (None if current.__suppress_context__ else current.__context__)
+    return chain
+
+
+def _redacted_failure(error: BaseException) -> Failure:
+    """예외 종류·가린 문장·안전한 코드 위치만 담은 Failure. 가린 전체 traceback은 stderr로 보낸다.
+
+    stderr는 run 컨테이너의 compute log(로컬 파일)로 가고 공용 event log에는 들어가지 않는다.
+    """
+    forms = _secret_forms()
+    error_type = _redact_text(_type_name(error), forms)
+    description = f"{error_type}: {_sanitize_op_error(error, forms)}"
+    if len(description) > MAX_FAILURE_DESCRIPTION_CHARS:
+        description = description[: MAX_FAILURE_DESCRIPTION_CHARS - 3] + "..."
+    metadata: dict[str, str] = {"error_type": error_type}
+    try:
+        chain = _error_chain(error)
+        frames = traceback.extract_tb(error.__traceback__)
+        if len(frames) > MAX_FAILURE_FRAMES:
+            # 가장 안쪽(raise 지점 쪽) frame을 남기고 생략한 개수를 적는다.
+            metadata["frames_omitted"] = str(len(frames) - MAX_FAILURE_FRAMES)
+            frames = frames[-MAX_FAILURE_FRAMES:]
+        metadata["frames"] = _redact_text(
+            "\n".join(f"{frame.filename}:{frame.lineno} {frame.name}" for frame in frames), forms)
+        metadata["error_chain"] = _redact_text("\n".join(_type_name(item) for item in chain), forms)
+        blocks = []
+        for item in reversed(chain):
+            tb_text = "".join(traceback.format_tb(item.__traceback__))
+            blocks.append(_redact_text(f"Traceback (most recent call last):\n{tb_text}{_type_name(item)}: ", forms)
+                          + f"{_sanitize_op_error(item, forms)}\n")
+        print("\nThe above exception was the direct cause of the following exception:\n\n".join(blocks),
+              file=sys.stderr, flush=True)
+    except Exception:  # noqa: BLE001 — 진단 보강의 실패가 원문을 사슬에 매달면 안 된다.
+        pass
+    return Failure(description=description, metadata=metadata, allow_retries=False)
+
+
+def _redact_op_errors(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """op에서 빠져나가는 예외를 가린 `Failure`로 바꾼다.
+
+    공용 Dagster event log(`dagster_shared`)는 모든 테넌트 UI가 읽는다. Dagster는 step 실패의 `str(exc)`·
+    traceback·`__cause__`/`__context__` 사슬을 그대로 직렬화하는데, code-server는 `app.main`의 logging
+    filter를 import하지 않는다. 그래서 op 경계에서 예외 종류·가린 문장·코드 위치만 남기고 사슬은 끊는다.
+    의도된 `Failure`(고정 문구·메타데이터)와 중단 신호(`_PASSTHROUGH_ERRORS`)는 그대로 둔다.
+    step 실패는 원래부터 재시도하지 않으므로(op RetryPolicy 없음, `retry_on_asset_or_op_failure=false`,
+    infra 재시도 sensor는 STEP_FAILURE가 있으면 건너뜀) `allow_retries=False`는 의미를 바꾸지 않는다.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return fn(*args, **kwargs)
+        except (Failure, *_PASSTHROUGH_ERRORS):
+            raise
+        except BaseException as exc:  # noqa: BLE001 — 경계에서 모든 원문을 가린다.
+            try:
+                failure = _redacted_failure(exc)
+            except Exception:  # noqa: BLE001
+                failure = Failure(description=f"{_type_name(exc)}: <unavailable>",
+                                  metadata={"error_type": _type_name(exc)}, allow_retries=False)
+            del exc
+        # except 블록 밖에서 던져 __context__에도 원래 예외가 걸리지 않게 한다.
+        failure.__suppress_context__ = True
+        raise failure
+
+    return wrapper
 
 
 def _job_tags(run_group: str, job_name: str) -> dict[str, str]:
@@ -71,6 +203,7 @@ def _settings() -> Settings:
 
 
 @op
+@_redact_op_errors
 def collect_airport_parking(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         settings = _settings()
@@ -104,12 +237,14 @@ def _collect_transport(scope: CollectionScope) -> dict[str, Any]:
 
 
 @op
+@_redact_op_errors
 def collect_highway_transport(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         return _collect_transport("highway")
 
 
 @op
+@_redact_op_errors
 def collect_fuel_transport(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         return _collect_transport("fuel")
@@ -151,30 +286,35 @@ def _collect_bus_reference() -> dict[str, Any]:
 
 
 @op
+@_redact_op_errors
 def collect_rail_reference(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         return _collect_reference("rail")
 
 
 @op
+@_redact_op_errors
 def collect_maritime_reference(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         return _collect_reference("maritime")
 
 
 @op
+@_redact_op_errors
 def collect_ferry_timetable(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         return _collect_ferry_timetable()
 
 
 @op
+@_redact_op_errors
 def collect_bus_reference(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         return _collect_bus_reference()
 
 
 @op
+@_redact_op_errors
 def collect_place_locations(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         settings = _settings()
@@ -187,6 +327,7 @@ def collect_place_locations(context) -> dict[str, Any]:
 
 
 @op
+@_redact_op_errors
 def collect_kakao_place_locations(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         settings = _settings()
@@ -199,6 +340,7 @@ def collect_kakao_place_locations(context) -> dict[str, Any]:
 
 
 @op
+@_redact_op_errors
 def enrich_new_reference_locations(context, reference_result: dict[str, Any]) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         """공식 기준정보 적재 직후 기존 수집기의 호출 예산·receipt를 그대로 사용한다."""
@@ -229,6 +371,7 @@ def enrich_new_reference_locations(context, reference_result: dict[str, Any]) ->
 
 
 @op
+@_redact_op_errors
 def collect_kric_timetable(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         settings = _settings()
@@ -236,6 +379,7 @@ def collect_kric_timetable(context) -> dict[str, Any]:
 
 
 @op
+@_redact_op_errors
 def collect_rest_area_reference(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         settings = _settings()
@@ -243,6 +387,7 @@ def collect_rest_area_reference(context) -> dict[str, Any]:
 
 
 @op
+@_redact_op_errors
 def collect_rest_area_fuel_prices(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         settings = _settings()
