@@ -176,6 +176,12 @@ button:active:not(:disabled), .secondary:active { transform: translateY(1px); }
  * 399d6b6a의 inline style 값을 그대로 옮겼다). 배지 자체는 vendored `createMarkerElement`가 그린다. */
 .transport-map-marker { position: relative; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; cursor: pointer; user-select: none; border-radius: 9999px; }
 .transport-map-marker:focus-visible, .map-cluster:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+/* 선택 마커는 묶음 원 위(z 4)에 그리되 포인터는 통과시켜(DomMarker passThrough) 같은 좌표의 묶음도 누를 수 있게 한다. */
+.map-cluster { position: relative; }
+/* 터치 화면에서는 보이는 크기(24px·36px)는 Map과 같게 두고 누르는 영역만 44px로 넓힌다. */
+@media (pointer: coarse) {
+  .transport-map-marker::before, .map-cluster::before { content: ""; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); border-radius: 9999px; }
+}
 .map-marker-badge { display: contents; }
 .map-marker-price { position: absolute; left: calc(100% + 4px); top: 50%; transform: translateY(-50%); min-width: 58px; padding: 3px 6px; border-radius: 6px; background: rgba(255, 255, 255, .96); border: 1px solid var(--marker-color, #3b82f6); box-shadow: 0 1px 4px rgba(0, 0, 0, .24); color: #111827; font-size: 11px; font-weight: 700; line-height: 1.18; white-space: pre; text-align: left; pointer-events: none; font-variant-numeric: tabular-nums; }
 .map-cluster { display: block; cursor: pointer; border-radius: 9999px; }

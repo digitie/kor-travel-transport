@@ -9,7 +9,13 @@
 | 원본 저장소 | `digitie/kor-travel-map` |
 | 원본 경로 | `packages/map-marker-react/src/{index,marker,palette,maki,maki.test}.ts` |
 | 원본 commit | `399d6b6a844d0d806dc067ab29aaf8442840f789` (Map `origin/main`, 2026-10-08) |
-| 라이선스 | MIT (`packages/map-marker-react/package.json`의 `license`, Map ADR-029) |
+| 라이선스 | MIT (`packages/map-marker-react/package.json`의 `license`, Map ADR-029). 전문은 같은 폴더 `LICENSE` |
+| 저작권 | Copyright (c) 2026 digitie (패키지 `author`) |
+
+라이선스 주의: Map 저장소 루트는 GPL-3.0이지만 이 패키지는 PinVi(비공개)에서도 쓰도록
+`package.json`에 MIT를 따로 선언했다(Map ADR-029). 원본 패키지 폴더에는 별도 LICENSE 파일이 없어
+MIT 조건(저작권 표시와 허가 문구 동봉)을 지키려고 `LICENSE`를 이 폴더에 두었다. transport는 GPL-3.0이라
+MIT 코드를 포함해도 문제가 없다.
 
 ## 왜 vendoring인가
 

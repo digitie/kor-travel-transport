@@ -31,7 +31,16 @@ export function useVWorldMap(): MapLibreMap | null {
   return use(VWorldMapContext);
 }
 
-export type CameraTarget = { center: [number, number]; zoom: number };
+/**
+ * 카메라 이동 요청. `id`가 요청의 정체다 — 같은 위치·확대라도 id가 바뀌면 다시 이동한다(손으로 옮긴 뒤
+ * 같은 묶음·장소를 다시 누른 경우). 같은 id의 재렌더는 사용자가 옮긴 화면을 되돌리지 않는다.
+ */
+export type CameraTarget = { center: [number, number]; zoom: number; id: string | number };
+
+/** 로그에 남기기 전에 메시지·URL 안의 VWorld 키를 가린다. */
+function redactVWorldText(value: string | undefined): string | undefined {
+  return value?.replace(/(\/req\/wmts\/1\.0\.0\/)([^/?#\s]+)(\/)/g, "$1***$3");
+}
 
 /** Map `SELECTED_OUTLINE` — 선택 강조는 불투명 focus 토큰 outline이다. */
 const SELECTED_OUTLINE = "3px solid var(--focus)";
@@ -58,6 +67,8 @@ type VWorldMapViewProps = {
   cameraTarget?: CameraTarget;
   className?: string;
   loading?: ReactNode;
+  /** 지도를 만들지 못했을 때(WebGL 미지원 등) 지도 자리에 보인다. */
+  fallback?: ReactNode;
   children?: ReactNode;
   onLoad?: (map: MapLibreMap) => void;
   onMoveEnd?: (map: MapLibreMap) => void;
@@ -67,8 +78,9 @@ type VWorldMapViewProps = {
 
 export function VWorldMapView({
   apiKey, center, zoom, layerType = "Base", minZoom = 6, maxZoom = 22, navigation = false, scale = false,
-  cameraTarget, className, loading, children, onLoad, onMoveEnd, onTileError,
+  cameraTarget, className, loading, fallback, children, onLoad, onMoveEnd, onTileError,
 }: VWorldMapViewProps) {
+  const [initFailed, setInitFailed] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const initialRef = useRef({ apiKey, center: cameraTarget?.center ?? center, zoom: cameraTarget?.zoom ?? zoom, layerType, minZoom, maxZoom, navigation, scale });
   const appliedStyleRef = useRef({ apiKey, layerType });
@@ -88,15 +100,25 @@ export function VWorldMapView({
   useEffect(() => {
     if (containerRef.current === null) return;
     const initial = initialRef.current;
-    const nextMap = new maplibregl.Map({
-      container: containerRef.current,
-      style: buildVWorldStyle(initial.apiKey, initial.layerType),
-      center: initial.center,
-      zoom: initial.zoom,
-      minZoom: initial.minZoom,
-      maxZoom: Math.min(initial.maxZoom, getVWorldMaxZoom(initial.layerType)),
-      attributionControl: { compact: true },
-    });
+    let nextMap: MapLibreMap;
+    try {
+      nextMap = new maplibregl.Map({
+        container: containerRef.current,
+        style: buildVWorldStyle(initial.apiKey, initial.layerType),
+        center: initial.center,
+        zoom: initial.zoom,
+        minZoom: initial.minZoom,
+        maxZoom: Math.min(initial.maxZoom, getVWorldMaxZoom(initial.layerType)),
+        attributionControl: { compact: true },
+      });
+    } catch (error) {
+      // WebGL이 없거나 막힌 브라우저에서 생성자가 던진다. 페이지 전체를 깨지 않고 대체 안내로 바꿔
+      // 필터·목록·상세는 계속 쓰게 한다.
+      console.warn("[VWorldMapView] 지도를 초기화하지 못했습니다", redactVWorldText(error instanceof Error ? error.message : String(error)));
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setInitFailed(true);
+      return;
+    }
     setMap(nextMap);
     // e2e 훅(Map과 같다): 컨테이너 DOM에 지도 인스턴스를 매달아 Playwright가 카메라·bounds를 단언할 수 있게 한다.
     const containerNode = containerRef.current as HTMLDivElement & { _maplibreMap?: MapLibreMap };
@@ -116,7 +138,7 @@ export function VWorldMapView({
         return;
       }
       const error = event.error as { message?: string; url?: string } | undefined;
-      console.warn("[VWorldMapView]", error?.message ?? "unknown map error", redactVWorldUrl(error?.url) ?? "");
+      console.warn("[VWorldMapView]", redactVWorldText(error?.message) ?? "unknown map error", redactVWorldUrl(error?.url) ?? "");
     };
     nextMap.on("load", notifyLoad);
     nextMap.on("idle", notifyLoad);
@@ -160,15 +182,16 @@ export function VWorldMapView({
   const targetLng = cameraTarget?.center[0];
   const targetLat = cameraTarget?.center[1];
   const targetZoom = cameraTarget?.zoom;
+  const targetId = cameraTarget?.id;
   useEffect(() => {
-    if (map === null || targetLng === undefined || targetLat === undefined || targetZoom === undefined) return;
-    const previous = appliedCameraRef.current;
-    // 같은 목표를 다시 받으면(재렌더) 사용자가 옮긴 화면을 되돌리지 않는다. mount 때의 목표는 초기 카메라로 이미 반영됐다.
-    if (previous && previous.center[0] === targetLng && previous.center[1] === targetLat && previous.zoom === targetZoom) return;
-    appliedCameraRef.current = { center: [targetLng, targetLat], zoom: targetZoom };
+    if (map === null || targetLng === undefined || targetLat === undefined || targetZoom === undefined || targetId === undefined) return;
+    // 요청 정체(id)로만 비교한다. mount 때의 요청은 초기 카메라로 이미 반영됐다.
+    if (appliedCameraRef.current?.id === targetId) return;
+    appliedCameraRef.current = { center: [targetLng, targetLat], zoom: targetZoom, id: targetId };
     map.easeTo({ center: [targetLng, targetLat], zoom: Math.min(targetZoom, map.getMaxZoom()) });
-  }, [map, targetLng, targetLat, targetZoom]);
+  }, [map, targetLng, targetLat, targetZoom, targetId]);
 
+  if (initFailed) return <>{fallback ?? null}</>;
   return <VWorldMapContext value={map}>
     <div ref={containerRef} className={className} data-testid="vworld-map-container" />
     {loaded ? children : loading ?? null}
@@ -182,7 +205,12 @@ type DomMarkerProps = {
   interactionId?: string;
   className?: string;
   zIndex?: number;
-  onClick?: () => void;
+  /** 위에 그리되 마우스·터치는 아래 마커로 통과시킨다(키보드로는 그대로 고른다). */
+  passThrough?: boolean;
+  /** 선택 상태를 `aria-pressed`로 알린다. 생략하면 토글 버튼이 아니다(묶음). */
+  pressed?: boolean;
+  /** 누른 마커 요소를 넘긴다(팝업을 닫을 때 그 자리로 포커스를 돌려주는 데 쓴다). */
+  onClick?: (element: HTMLElement) => void;
   children: ReactNode;
 };
 
@@ -190,7 +218,7 @@ type DomMarkerProps = {
  * React children을 MapLibre DOM 마커로 띄운다. 클릭할 수 있으면 키보드(Enter·Space)로도 연다.
  * 마커 DOM은 지도가 바뀔 때만 다시 만들고 위치는 setLngLat로만 옮긴다(Map `VWorldMarker`와 같다).
  */
-export function DomMarker({ lngLat, ariaLabel, title, interactionId, className, zIndex, onClick, children }: DomMarkerProps) {
+export function DomMarker({ lngLat, ariaLabel, title, interactionId, className, zIndex, passThrough = false, pressed, onClick, children }: DomMarkerProps) {
   const map = useVWorldMap();
   const [element] = useState(() => (typeof document === "undefined" ? null : document.createElement("div")));
   const markerRef = useRef<MapLibreMarker | null>(null);
@@ -207,17 +235,19 @@ export function DomMarker({ lngLat, ariaLabel, title, interactionId, className, 
 
   useEffect(() => { markerRef.current?.setLngLat([lng, lat]); }, [lng, lat]);
   useEffect(() => {
-    // 선택한 마커가 묶음·이웃 마커 위에 오게 한다. 같은 element라 지도 재생성 뒤에도 유지된다.
+    // 선택한 마커가 묶음·이웃 마커 위에 오게 한다. MapLibre가 감싸는 바깥 요소에 걸어야 효과가 있다.
     const host = markerRef.current?.getElement();
-    if (host) host.style.zIndex = zIndex === undefined ? "" : String(zIndex);
-  }, [map, zIndex]);
+    if (!host) return;
+    host.style.zIndex = zIndex === undefined ? "" : String(zIndex);
+    host.style.pointerEvents = passThrough ? "none" : "";
+  }, [map, zIndex, passThrough]);
 
   if (element === null) return null;
   const interactive = onClick !== undefined;
   const handleKeyDown = (event: KeyboardEvent<HTMLSpanElement>) => {
     if (!interactive || (event.key !== "Enter" && event.key !== " ")) return;
     event.preventDefault();
-    onClick();
+    onClick(event.currentTarget);
   };
   return createPortal(<span
     className={className}
@@ -226,7 +256,8 @@ export function DomMarker({ lngLat, ariaLabel, title, interactionId, className, 
     role={interactive ? "button" : undefined}
     tabIndex={interactive ? 0 : undefined}
     aria-label={ariaLabel}
-    onClick={interactive ? (event) => { event.preventDefault(); onClick(); } : undefined}
+    aria-pressed={interactive ? pressed : undefined}
+    onClick={interactive ? (event) => { event.preventDefault(); onClick(event.currentTarget); } : undefined}
     onKeyDown={interactive ? handleKeyDown : undefined}
   >{children}</span>, element);
 }
@@ -275,9 +306,18 @@ export function MapPopup({ lngLat, maxWidth = "260px", onClose, children }: MapP
       .setDOMContent(container)
       .addTo(map);
     const handleClose = () => onCloseRef.current?.();
+    // Escape는 팝업 안 어디에 포커스가 있든(목록 버튼·닫기 버튼) 팝업을 닫는다.
+    const popupElement = popup.getElement();
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      onCloseRef.current?.();
+    };
+    popupElement.addEventListener("keydown", handleKeyDown);
     popup.on("close", handleClose);
     popupRef.current = popup;
-    return () => { popup.off("close", handleClose); popup.remove(); popupRef.current = null; };
+    return () => { popupElement.removeEventListener("keydown", handleKeyDown); popup.off("close", handleClose); popup.remove(); popupRef.current = null; };
   }, [map, container, maxWidth]);
 
   useEffect(() => { popupRef.current?.setLngLat([lng, lat]); }, [lng, lat]);
@@ -329,7 +369,10 @@ export function PointClusters<P extends ClusterPoint>({ points, radius = 60, max
   return <>{index.getClusters(viewport.bbox, Math.floor(viewport.zoom)).map((feature) => {
     if ((feature.properties as Partial<Supercluster.ClusterProperties>).cluster) {
       const cluster = feature as Supercluster.ClusterFeature<Supercluster.AnyProps>;
-      return <Fragment key={`cluster-${cluster.properties.cluster_id}`}>{renderCluster(cluster, cluster.properties.point_count, index)}</Fragment>;
+      // cluster_id는 확대 단계를 품고 있어 같은 묶음도 zoom이 바뀌면 달라진다. 위치·개수로 key를 잡아 같은 묶음의
+      // DOM(과 그 위의 포커스)을 재사용한다.
+      const [clusterLng, clusterLat] = cluster.geometry.coordinates;
+      return <Fragment key={`cluster-${clusterLng.toFixed(6)},${clusterLat.toFixed(6)}:${cluster.properties.point_count}`}>{renderCluster(cluster, cluster.properties.point_count, index)}</Fragment>;
     }
     const point = feature.properties as P;
     return <Fragment key={point.id}>{renderPoint(point)}</Fragment>;
