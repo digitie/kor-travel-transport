@@ -172,15 +172,25 @@ button:active:not(:disabled), .secondary:active { transform: translateY(1px); }
 .map-place-list { display: grid; align-content: start; max-height: 600px; overflow-y: auto; }
 .place-row { display: flex; align-items: center; text-align: left; white-space: normal; gap: var(--space-md); background: var(--color-panel); color: var(--color-ink); border: 0; border-bottom: 1px solid var(--color-rule); padding: var(--space-lg); min-height: 56px; cursor: pointer; }
 .place-row > span { display: grid; gap: var(--space-xs); }
-.journey-marker { display: flex; align-items: center; gap: var(--space-sm); padding: var(--space-sm) var(--space-md); background: var(--color-panel); color: var(--color-ink); border: 2px solid var(--color-accent); border-radius: var(--radius-panel); box-shadow: var(--shadow-map); max-width: 220px; font-family: var(--font-body); min-height: 44px; }
-.journey-marker > span { display: grid; gap: var(--space-xs); }
-.journey-marker strong { max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); }
-.journey-marker small { font-size: var(--text-xs); color: var(--color-muted); }
-.journey-marker.rail_station { border-color: var(--color-rail); }
-.journey-marker.ferry_port { border-color: var(--color-port); }
-.journey-marker.airport { border-color: var(--color-airport); }
-.journey-marker.rest_area { border-color: var(--color-rest); }
-.transport-map-marker.fuel_station { font-variant-numeric: tabular-nums; }
+/* Map 지도와 같은 마커·묶음·겹친 지점 팝업(kor-travel-map admin `components/vworld-map-view.tsx`
+ * 399d6b6a의 inline style 값을 그대로 옮겼다). 배지 자체는 vendored `createMarkerElement`가 그린다. */
+.transport-map-marker { position: relative; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; cursor: pointer; user-select: none; border-radius: 9999px; }
+.transport-map-marker:focus-visible, .map-cluster:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+.map-marker-badge { display: contents; }
+.map-marker-price { position: absolute; left: calc(100% + 4px); top: 50%; transform: translateY(-50%); min-width: 58px; padding: 3px 6px; border-radius: 6px; background: rgba(255, 255, 255, .96); border: 1px solid var(--marker-color, #3b82f6); box-shadow: 0 1px 4px rgba(0, 0, 0, .24); color: #111827; font-size: 11px; font-weight: 700; line-height: 1.18; white-space: pre; text-align: left; pointer-events: none; font-variant-numeric: tabular-nums; }
+.map-cluster { display: block; cursor: pointer; border-radius: 9999px; }
+.map-cluster-bubble { display: flex; align-items: center; justify-content: center; border-radius: 9999px; background: var(--brand); color: var(--brand-foreground); font-weight: 600; line-height: 1; border: 2px solid var(--card); box-shadow: var(--shadow-elevated); user-select: none; }
+.map-overlap { min-width: 248px; font: 13px/1.4 system-ui, -apple-system, sans-serif; color: #111827; background: #fff; }
+.map-overlap > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2px 2px 10px; }
+.map-overlap-title { font-size: 13px; font-weight: 800; letter-spacing: 0; color: #0f172a; }
+.map-overlap-count { flex: 0 0 auto; border-radius: 9999px; background: #e0f2fe; border: 1px solid #bae6fd; color: #075985; font-size: 11px; font-weight: 800; line-height: 1; padding: 5px 8px; }
+.map-overlap-list { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow-y: auto; }
+.map-overlap-list > button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 42px; padding: 8px 9px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; box-shadow: 0 1px 2px rgba(15, 23, 42, .06); cursor: pointer; text-align: left; font: inherit; color: inherit; transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease; }
+.map-overlap-list > button:hover { background: #f8fafc; border-color: var(--marker-color); box-shadow: 0 4px 12px rgba(15, 23, 42, .12); }
+.map-overlap-list > button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.map-overlap-dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 9999px; background: var(--marker-color); box-shadow: 0 0 0 3px color-mix(in srgb, var(--marker-color) 13%, transparent); }
+.map-overlap-kind { flex: 0 0 auto; font-size: 10px; font-weight: 800; line-height: 1; padding: 4px 6px; border-radius: 9999px; background: color-mix(in srgb, var(--marker-color) 12%, transparent); color: var(--marker-color); border: 1px solid color-mix(in srgb, var(--marker-color) 20%, transparent); }
+.map-overlap-name { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 650; }
 .bus-search-grid { display: grid; gap: var(--space-xl); grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .bus-search-grid .search-options { max-height: 220px; }
 .ops-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-lg); }
@@ -258,13 +268,6 @@ button:active:not(:disabled), .secondary:active { transform: translateY(1px); }
 .inspector-section select { width: 100%; }
 .parking-detail-row { display: grid; gap: var(--space-sm); padding-block: var(--space-md); border-bottom: 1px solid var(--color-rule); font-variant-numeric: tabular-nums; }
 .parking-detail-row small { color: var(--color-muted); }
-.compact-marker { border-width: 1px; border-radius: var(--radius-control); gap: var(--space-xs); padding: var(--space-xs) var(--space-sm); max-width: 240px; min-height: 36px; }
-.compact-marker > svg { flex: 0 0 auto; }
-.compact-marker > strong { max-width: 200px; }
-.compact-marker .marker-prices { display: grid; gap: var(--space-xs); min-width: 80px; }
-.marker-prices > span { display: flex; justify-content: space-between; gap: var(--space-sm); font-size: var(--text-xs); }
-.marker-prices strong { font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
-.transport-map-marker[aria-pressed=true] .compact-marker { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .ops-card strong { display: block; font-size: 1.875rem; letter-spacing: -.04em; line-height: 1; }
 .panel.dagster-runs, .panel.dagster-schedules { padding: 0; border-radius: var(--radius-panel); overflow: hidden; }
 .panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-md); padding: var(--space-lg); border-bottom: 1px solid var(--color-rule); }
@@ -286,7 +289,6 @@ button:active:not(:disabled), .secondary:active { transform: translateY(1px); }
 .sync-run-detail-grid dt { color: var(--color-muted); font-size: var(--text-xs); }
 .sync-run-detail-grid dd { margin: var(--space-xs) 0 0; overflow-wrap: anywhere; }
 @media (max-width: 62rem) { .transport-map-layout { grid-template-columns: minmax(0, 1fr); } .weather-inspector { border: 1px solid var(--color-rule); } }
-@media (pointer: coarse) { .compact-marker { min-height: 44px; } }
 
 /* Weather c25642099: 밝은 17rem 레일, 경량 헤더 카드, 동일한 본문 밀도.
  * API/지도/인증 동작은 바꾸지 않고 공통 외형만 맞춘다. */
