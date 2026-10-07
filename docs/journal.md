@@ -1,5 +1,26 @@
 # journal.md — 작업 일지
 
+## 2026-10-08 — 교통 지도를 Map 지도와 같은 마커·배경지도·컨트롤로 교체 (`feat/mapview-map-look`)
+
+소유자 요청: transport mapview를 map과 같은 마커와 look and feel로, VWorld 키를 실제로 쓰게.
+지도는 transport-admin(`packages/kor-travel-transport-admin/frontend`, compose
+`docker-compose.transport-admin.yml`의 `transport-admin-web`)의 `/map`과 철도·항공·고속도로·참조 목록에
+박힌 `TransportMap`이다. 기본 `docker-compose.yml`의 `frontend`에는 지도가 없다.
+
+- `vworld-map-web`/`core` tarball을 걷고 kor-travel-map `399d6b6a`의 admin 지도 방식을 그대로 옮겼다:
+  in-repo VWorld style builder 사본(`lib/vworld-style.ts`), `VWorldMapView` 셸 포팅(`components/vworld-map.tsx`),
+  Map 공용 마커 패키지 소스 vendoring(`lib/vendor/map-marker-react/`, MIT, 수정 없음, npm 게시 없음).
+- 키 사용: 이전에는 `unsupportedTileFallback` 때문에 타일이 `vworld://` custom protocol(main-thread fetch)로
+  돌았고 키가 없으면 지도 대신 문구만 보였다. 이제 Map처럼 WMTS raster URL에 키를 넣어 MapLibre가 직접 받는다.
+  키가 비면 배경색만 그리고 마커는 그대로 보인다(로컬 개발). 운영 build는 compose `:?`가 빈 키를 거부한다.
+- 마커 매핑은 Map provider 상수와 같다(주유소 fuel/P-08, 휴게소 fast-food/P-06, 돌발 roadblock/P-13, 공항 airport/P-10).
+  철도·항구·버스는 Map category catalog의 rail/ferry/bus maki와 겹치지 않는 팔레트(P-01/P-15/P-03).
+  주유소 가격은 Map 가격 라벨 형식(`휘 1,650`). 묶음은 brand 원, 확대 한계 묶음은 Map 겹친 지점 Popup.
+- 같은 좌표 묶음이 선택 마커(z 2) 아래 깔려 펼칠 수 없던 회귀를 로컬 e2e가 잡아 묶음 원을 z 3에 둔다.
+- 검증(Windows 로컬): type-check·lint 0건, vitest 23 files/171 passed, `next build` 성공(더미 키가 번들의
+  WMTS URL 경로에 들어감을 확인), 설치된 Chrome으로 지도 관련 e2e 16건 PASS(로컬 next start + 경로 mock).
+  backend `test_transport_admin_contract.py` 7 passed(WSL). n150 e2e·배포는 하지 않았다.
+
 ## 2026-10-04 — T-044 migration 잠금 설정과 관찰 시간의 계약 분리
 
 수정 테스트 `0a4588a`의 두 PostgreSQL CI는 661 passed·1 skipped/836.26초와 801.95초였다.

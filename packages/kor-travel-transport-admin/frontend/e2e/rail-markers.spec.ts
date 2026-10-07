@@ -38,8 +38,10 @@ for (const width of [375, 1440]) for (const [changes, basis, label] of [
   await page.goto("/rail");
   await page.getByRole("checkbox", { name: /불광/ }).check();
   await waitForMap(page);
-  const marker = page.locator(".journey-marker.rail_station");
-  await expect(marker).toHaveText("불광 3호선");
+  const marker = page.locator(".transport-map-marker.rail_station");
+  await expect(marker).toHaveAccessibleName("철도역 불광 3호선 상세 보기");
+  // Map 공용 마커 배지(maki "rail")만 그리고 이름·예정 시각 라벨은 붙이지 않는다.
+  await expect(marker.locator("[data-marker-icon=rail]")).toBeVisible();
   await expect(marker).not.toContainText(label);
   expect(requests).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -56,10 +58,10 @@ test("간결한 마커를 위해 다음 열차 API를 주기적으로 호출하�
   await page.goto("/rail");
   await page.getByRole("checkbox", { name: /불광/ }).check();
   await waitForMap(page);
-  const marker = page.locator(".journey-marker.rail_station");
-  await expect(marker).toHaveText("불광 3호선");
+  const marker = page.locator(".transport-map-marker.rail_station");
+  await expect(marker).toHaveAccessibleName("철도역 불광 3호선 상세 보기");
   await page.clock.runFor(61_000);
-  await expect(marker).toHaveText("불광 3호선");
+  await expect(marker).toHaveAccessibleName("철도역 불광 3호선 상세 보기");
   expect(calls).toBe(0);
   await expect(marker).not.toContainText("12:10");
 });
@@ -72,13 +74,13 @@ test("목록에서 오래 머문 뒤 지도에 복귀하면 느린 새 응답을
   await page.goto("/rail");
   await page.getByRole("checkbox", { name: /불광/ }).check();
   await waitForMap(page);
-  const marker = page.locator(".journey-marker.rail_station");
-  await expect(marker).toHaveText("불광 3호선");
+  const marker = page.locator(".transport-map-marker.rail_station");
+  await expect(marker).toHaveAccessibleName("철도역 불광 3호선 상세 보기");
   await page.getByRole("button", { name: "목록", exact: true }).click();
   // 시계만 바꾸고 주기 타이머를 실행하지 않아 첫 5초의 거짓 표시를 숨기지 않는다.
   await page.clock.setSystemTime(new Date("2026-09-28T04:00:00Z"));
   await page.getByRole("button", { name: "지도", exact: true }).click();
-  await expect(marker).toHaveText("불광 3호선");
+  await expect(marker).toHaveAccessibleName("철도역 불광 3호선 상세 보기");
   expect(calls).toBe(0);
   await expect(marker).not.toContainText("12:10");
 });

@@ -198,7 +198,9 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
         <PointClusters points={groupedPoints} radius={cluster ? (products.length === 1 ? 80 : 110) : 60} maxZoom={19}
           renderCluster={(group, count, index) => {
             const coordinates = group.geometry.coordinates as [number, number];
-            return <DomMarker lngLat={coordinates} ariaLabel={`${count}개 위치 묶음 펼치기`} className="map-cluster" onClick={() => {
+            // 선택 마커(z 2)는 묶음에서 빠져 따로 그려진다. 같은 좌표의 묶음 원이 그 아래에 깔리면 펼칠 수 없으므로
+            // 더 큰 묶음 원을 위에 둔다.
+            return <DomMarker lngLat={coordinates} ariaLabel={`${count}개 위치 묶음 펼치기`} className="map-cluster" zIndex={3} onClick={() => {
               const id = group.properties.cluster_id;
               const expansion = index.getClusterExpansionZoom(id);
               if (expansion > 19 || zoom >= 19) {

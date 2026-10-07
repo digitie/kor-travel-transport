@@ -103,11 +103,13 @@ test("도시철도 상세 시간표와 간결한 주유소·항구 마커", asyn
   await page.route("**/transport/rail/timetables?**", (route) => route.fulfill({ json: { generated_at: stamp, basis: "calendar", day_code: "8", items: [{ place_id: 3, station_name: "서울역", line_name: "1호선", status: "not_collected", items: [] }] } }));
   await page.goto("/map"); await selectPlace(page, "rail_station:3");
   await expect(page.getByRole("complementary", { name: "선택 장소 상세" })).toContainText("저장 시간표가 아직 없습니다");
-  await expect(page.locator(".journey-marker.rail_station")).toHaveText("서울역 1호선"); expect(departures).toBe(0);
+  await expect(page.locator(".transport-map-marker.rail_station")).toHaveAccessibleName("철도역 서울역 1호선 상세 보기"); expect(departures).toBe(0);
   await selectPlace(page, "fuel_station:4");
-  const marker = page.locator(".journey-marker.fuel_station");
+  const marker = page.locator(".transport-map-marker.fuel_station");
   await expect(marker).toBeVisible();
-  for (const label of ["휘발유", "고급유", "경유", "LPG", "등유"]) await expect(marker).toContainText(label);
+  // Map 가격 마커와 같은 라벨: 짧은 유종 표기 + 가격을 한 줄에 하나씩.
+  for (const line of ["휘 1,700", "경 1,700", "고 1,700", "LPG 1,700", "등유 1,700"]) await expect(marker.locator(".map-marker-price")).toContainText(line);
+  await expect(marker).toHaveAccessibleName(/휘발유 1,700원, 경유 1,700원, 고급유 1,700원, LPG 1,700원, 등유 1,700원/);
   await expect(marker).not.toContainText("원/L"); await expect(marker).not.toContainText("주유소");
   await expect(page.getByRole("complementary", { name: "선택 장소 상세" })).toContainText("시험 브랜드");
 });

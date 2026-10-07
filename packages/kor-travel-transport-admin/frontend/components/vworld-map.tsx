@@ -98,6 +98,9 @@ export function VWorldMapView({
       attributionControl: { compact: true },
     });
     setMap(nextMap);
+    // e2e 훅(Map과 같다): 컨테이너 DOM에 지도 인스턴스를 매달아 Playwright가 카메라·bounds를 단언할 수 있게 한다.
+    const containerNode = containerRef.current as HTMLDivElement & { _maplibreMap?: MapLibreMap };
+    containerNode._maplibreMap = nextMap;
 
     let didNotifyLoad = false;
     const notifyLoad = () => {
@@ -139,6 +142,7 @@ export function VWorldMapView({
       nextMap.off("idle", notifyLoad);
       nextMap.off("moveend", handleMoveEnd);
       nextMap.off("error", handleError);
+      delete containerNode._maplibreMap;
       nextMap.remove();
       setLoaded(false);
       setMap(null);

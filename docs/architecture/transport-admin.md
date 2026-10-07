@@ -46,16 +46,26 @@ HttpOnly 서명 세션을 통과한 뒤에만 Next.js server route가 다음의 
   출도착 버튼을 누를 때만 항공편 조회를 수행한다. 429 보호, 타임아웃, 선택 전환 취소를 적용한다.
   주유소에는 최신 가격·브랜드, 역에는 노선, 항구에는 저장된
   위치·노선을 표시한다. 지도 이동이 끝난 현재 bbox만 종류별로 조회하고, 범위에 한 종류가
-  `min(300, floor(900 / 선택 종류 수))`곳을 넘으면 잘린 사실과 확대 방법을 화면에 표시한다. 운영 앱은 지도 엔진을 직접 조작하지 않고
-  [`digitie/maplibre-vworld-react`](https://github.com/digitie/maplibre-vworld-react) 의
-  `VWorldMapView`, `ClusterLayer`, `Marker`, `Popup` 선언형 컴포넌트를 사용한다.
-- 위 provider는 Git submodule `third_party/maplibre-vworld-react`의 `fb754755` 고정 revision과
-  `packages/kor-travel-transport-admin/frontend/vendor/README.md`의 SHA-256 매핑과 재현 가능한 tarball로 추적한다. Docker build는 tarball만 설치하므로
-  checkout 경로에 의존하지 않는다. VWorld 키는 `NEXT_PUBLIC_VWORLD_API_KEY`로 Docker
-  build 시점에 주입하며, 추적 파일에 넣지 않는다.
-- 타일 실패 시 지원되는 내부 PNG를 대체 타일로 사용하고 오류 안내를 별도로 보여준다.
-  최초 묶음은 지도 라이브러리의 최초 load 이력을 사용해 표시하며, 타일 갱신 중에도
-  사용자 이동·재선택을 기다리지 않는다. 열린 겹침 목록은 viewport 재조회로 닫지 않는다.
+  `min(300, floor(900 / 선택 종류 수))`곳을 넘으면 잘린 사실과 확대 방법을 화면에 표시한다.
+- 지도는 kor-travel-map admin 지도와 같은 마커·배경지도·컨트롤을 쓴다(2026-10-08,
+  Map `399d6b6a` 기준). 이전의 `digitie/maplibre-vworld-react` tarball(`vworld-map-web`/`core`)은
+  걷어냈고 `third_party/maplibre-vworld-react` submodule은 이력 참조로만 남는다.
+  - 배경지도: `lib/vworld-style.ts`는 Map in-repo VWorld style builder의 사본이다. VWorld WMTS
+    `Base` raster(`https://api.vworld.kr/req/wmts/1.0.0/{key}/Base/{z}/{y}/{x}.png`, 256px, 최대 19)를
+    MapLibre가 직접 받는다. 키가 비거나 `CHANGE_ME`면 배경색(`#edf1f5`)만 그려 지도와 마커는 그대로
+    쓰고 "배경지도 없이" 안내를 띄운다.
+  - 셸: `components/vworld-map.tsx`는 Map `VWorldMapView` 포팅이다. 확대/축소(나침반 없음) 오른쪽 위,
+    축척(150px·미터) 오른쪽 아래, 접힌 출처 표기. VWorld 타일 오류는 키를 가린 채 화면 안내로만 알린다.
+  - 마커: `lib/vendor/map-marker-react/`는 Map 공용 `@kor-travel-map/map-marker-react` 소스(MIT)를
+    수정 없이 복사한 것이다(npm 게시 금지·Map ADR-043). 장소 종류 → maki·팔레트 매핑은
+    `lib/place-marker-style.ts`가 Map provider 상수(OpiNet·KREX·공항)와 category catalog에서 가져온다.
+    주유소 가격은 Map 가격 마커 라벨(`휘 1,650` 한 줄씩)로 쓴다. 이름은 배지에 쓰지 않고 hover 제목·접근 이름으로 준다.
+  - 묶음: supercluster(main thread)로 계산하고 Map `createClusterElement`와 같은 brand 원으로 그린다.
+    확대 한계 묶음은 Map 겹친 지점 팝업과 같은 MapLibre Popup으로 고른다. 열린 팝업은 viewport 재조회로 닫지 않는다.
+- VWorld 브라우저 키는 `NEXT_PUBLIC_VWORLD_API_KEY`로 Docker build 시점에 주입한다
+  (`docker-compose.transport-admin.yml`의 `transport-admin-web` build arg → Dockerfile `ARG`/`ENV` →
+  `next build`가 번들에 넣는다). compose는 값이 없으면 build를 거부한다(`:?`). 추적 파일에 값을 넣지 않는다.
+  기본 `docker-compose.yml`의 `frontend` 서비스에는 지도가 없어 이 키를 받지 않는다.
 
 ## 운영 경로
 
