@@ -103,11 +103,14 @@ test("도시철도 상세 시간표와 간결한 주유소·항구 마커", asyn
   await page.route("**/transport/rail/timetables?**", (route) => route.fulfill({ json: { generated_at: stamp, basis: "calendar", day_code: "8", items: [{ place_id: 3, station_name: "서울역", line_name: "1호선", status: "not_collected", items: [] }] } }));
   await page.goto("/map"); await selectPlace(page, "rail_station:3");
   await expect(page.getByRole("complementary", { name: "선택 장소 상세" })).toContainText("저장 시간표가 아직 없습니다");
-  await expect(page.locator(".journey-marker.rail_station")).toHaveText("서울역 1호선"); expect(departures).toBe(0);
+  await expect(page.locator(".transport-map-marker.rail_station")).toHaveAccessibleName("철도역 서울역 1호선 상세 보기"); expect(departures).toBe(0);
+  await expect(page.locator(".transport-map-marker.rail_station")).toHaveAttribute("aria-pressed", "true");
   await selectPlace(page, "fuel_station:4");
-  const marker = page.locator(".journey-marker.fuel_station");
+  const marker = page.locator(".transport-map-marker.fuel_station");
   await expect(marker).toBeVisible();
-  for (const label of ["휘발유", "고급유", "경유", "LPG", "등유"]) await expect(marker).toContainText(label);
+  // Map 가격 마커와 같은 라벨: 짧은 유종 표기 + 가격을 한 줄에 하나씩.
+  for (const line of ["휘 1,700", "경 1,700", "고 1,700", "LPG 1,700", "등유 1,700"]) await expect(marker.locator(".map-marker-price")).toContainText(line);
+  await expect(marker).toHaveAccessibleName(/휘발유 1,700원, 경유 1,700원, 고급유 1,700원, LPG 1,700원, 등유 1,700원/);
   await expect(marker).not.toContainText("원/L"); await expect(marker).not.toContainText("주유소");
   await expect(page.getByRole("complementary", { name: "선택 장소 상세" })).toContainText("시험 브랜드");
 });
@@ -212,6 +215,16 @@ for (const tiles of ["즉시 실패", "지연 실패", "지연 성공"]) test(`�
   if (tiles !== "지연 성공") await expect(page.getByText("VWorld 지도 타일을 불러오지 못했습니다. 목록 보기에서 장소를 확인할 수 있습니다.")).toBeVisible();
   const choices = page.getByRole("region", { name: "겹친 장소 선택" });
   await expect(choices).toBeVisible();
+  await expect(choices.getByRole("button").first()).toBeFocused();
+  // Escape로 닫으면 포커스가 묶음 원으로 돌아오고, 다시 열 수 있다.
+  const clusterButton = page.getByRole("button", { name: "3개 위치 묶음 펼치기" });
+  await page.keyboard.press("Escape");
+  await expect(choices).toHaveCount(0);
+  await expect(clusterButton).toBeFocused();
+  // 닫은 뒤 장소 재조회로 묶음 원이 다시 만들어져도 포커스가 body로 떨어지지 않는다.
+  await page.waitForTimeout(1_000);
+  await expect(clusterButton).toBeFocused();
+  await clusterButton.click();
   await expect(choices.getByRole("button").first()).toBeFocused();
   // 선택 목록이 열린 뒤 viewport 재조회가 끝나도 버튼이 사라지면 안 된다.
   const previousRequests = placeRequests;

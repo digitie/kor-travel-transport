@@ -2,6 +2,10 @@
 
 ## 현재 상태
 
+- **2026-10-08 `feat/mapview-map-look` 푸시, PR 미생성·미배포.** 교통 지도(transport-admin)를 Map 지도와 같은
+  마커·VWorld 배경지도·컨트롤로 바꿨다(journal 같은 날). **다음 한 작업:** 리뷰 뒤 PR → CI → 머지 →
+  transport-admin 재build·배포(키는 이미 `.env.server14`에 있다) → 운영 `/map`에서 VWorld 타일·마커 확인.
+
 - **2026-10-04 T-044 코드·리뷰·live 검증 완료**: 최신 main `e00e634`에서 구현한 runtime
   `027a9ca`를 James/Popper가 각각 PASS했다. 기존 P1 두 건·P2 두 건은 CLOSED다.
   Weather `8ed94e7`·common Python `430a9e9`·공통 UI dev.2를 채택했다.

@@ -1,10 +1,12 @@
 "use client";
 
-import { ClusterLayer, ClusterMarker, Marker, VWorldMapView } from "vworld-map-web";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
+import type { Map as MapLibreMap } from "maplibre-gl";
 import { clusterAtScale, dateTime, hasCoordinates, hasFuelPrice, transportGet, type Place, type PlaceKind } from "@/lib/journey";
 import { collectionSourceLabel, fuelProductLabel, placeKindLabel } from "@/lib/transport-presentation";
-import { MAP_FALLBACK_IMAGE } from "@/lib/map-fallback";
+import { placeMarkerColor, placeMarkerStyle, priceMarkerLabel, priceSpeech } from "@/lib/place-marker-style";
+import { isVWorldApiKeyConfigured } from "@/lib/vworld-style";
+import { ClusterBubble, DomMarker, MapPopup, MarkerBadge, PointClusters, VWorldMapView, type CameraTarget } from "./vworld-map";
 import { PlaceIcon, ViewSwitch } from "./journey-controls";
 import { PlaceInspector } from "./place-inspector";
 import { Input } from "@/components/ui/input";
@@ -15,18 +17,39 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Empty, EmptyHeader, EmptyDescription } from "@/components/ui/empty";
 
 type MapPoint = { id: string; lngLat: [number, number]; place: Place };
-type Bounds = { getWest: () => number; getSouth: () => number; getEast: () => number; getNorth: () => number };
 type Viewport = { min_longitude: string; min_latitude: string; max_longitude: string; max_latitude: string };
 type PlaceResponse = { items: Place[]; total: number; truncated: boolean; available_sources?: string[]; fuel_prices_stale?: boolean; fuel_prices_last_refreshed_at?: string | null };
 const KINDS: PlaceKind[] = ["fuel_station", "rail_station", "ferry_port", "bus_terminal", "airport", "rest_area", "highway_incident"];
 const DEFAULT_VIEWPORT: Viewport = { min_longitude: "124", min_latitude: "32", max_longitude: "132", max_latitude: "39" };
 const keyOf = (place: Place) => `${place.kind}:${place.id}`;
 
+const VWORLD_KEY = process.env.NEXT_PUBLIC_VWORLD_API_KEY;
+const HAS_VWORLD_KEY = isVWorldApiKeyConfigured(VWORLD_KEY);
+
+// Map 지도와 같은 마커: 24px 원형 배지(maki 글리프 + 팔레트 색). 이름은 배지에 쓰지 않고 hover 제목과
+// 접근 이름으로만 준다. 주유소 가격은 Map 가격 마커처럼 배지 오른쪽의 흰 라벨에 한 줄씩 쓴다.
 function MapMarker({ point, onSelect, selected, products }: { point: MapPoint; onSelect: (place: Place) => void; selected: boolean; products: string[] }) {
   const place = point.place;
-  const prices = (place.prices ?? []).filter((row) => hasFuelPrice(row) && (!products.length || products.includes(row.product_code)));
-  const props = { ariaLabel: `${placeKindLabel(place.kind)} ${place.name} ${place.line_names.join(" · ")} 상세 보기`, interactionId: point.id, lngLat: point.lngLat, onClick: () => onSelect(place), selected, className: `transport-map-marker ${place.kind}` };
-  return <Marker {...props}><span className={`journey-marker compact-marker ${place.kind}`} title={`${place.name}${place.brand_name ? ` · ${place.brand_name}` : ""}`}><PlaceIcon kind={place.kind} />{place.kind === "fuel_station" && prices.length ? <span className="marker-prices">{prices.map((row) => <span key={row.product_code}><span>{fuelProductLabel(row.product_code)}</span><strong>{row.price?.toLocaleString("ko-KR")}</strong></span>)}</span> : <strong>{[place.name, place.kind === "rail_station" ? place.line_names.join("·") : null].filter(Boolean).join(" ")}</strong>}</span></Marker>;
+  const { markerIcon, markerColor } = placeMarkerStyle(place.kind);
+  const priceLabel = place.kind === "fuel_station" ? priceMarkerLabel(place.prices, products) : null;
+  const title = [place.name, place.brand_name, place.kind === "rail_station" ? place.line_names.join("·") : null].filter(Boolean).join(" · ");
+  const ariaLabel = [placeKindLabel(place.kind), place.name, place.line_names.join(" · "), priceLabel ? priceSpeech(place.prices, products) : null, "상세 보기"].filter(Boolean).join(" ");
+  return <DomMarker lngLat={point.lngLat} interactionId={point.id} zIndex={selected ? 4 : undefined} passThrough={selected} pressed={selected}
+    className={`transport-map-marker ${place.kind}${selected ? " is-selected" : ""}`}
+    title={priceLabel ? `${title} ${priceLabel.replace(/\n/g, " ")}` : title} ariaLabel={ariaLabel} onClick={() => onSelect(place)}>
+    <MarkerBadge markerIcon={markerIcon} markerColor={markerColor} selected={selected} />
+    {priceLabel ? <span className="map-marker-price" style={{ "--marker-color": placeMarkerColor(place.kind) } as CSSProperties}>{priceLabel}</span> : null}
+  </DomMarker>;
+}
+
+// Map `showCoincidentPopup`과 같은 겹친 지점 팝업: 제목·개수 칩과 색 점·종류 배지·이름 행.
+function OverlapList({ places, onSelect, listRef }: { places: Place[]; onSelect: (place: Place) => void; listRef: RefObject<HTMLElement | null> }) {
+  return <section ref={listRef} className="map-overlap" aria-label="겹친 장소 선택">
+    <header><span className="map-overlap-title">겹친 지점</span><span className="map-overlap-count">{places.length}개</span></header>
+    <div className="map-overlap-list">{places.map((place) => <button type="button" key={keyOf(place)} aria-label={place.name} style={{ "--marker-color": placeMarkerColor(place.kind) } as CSSProperties} onClick={() => onSelect(place)}>
+      <span className="map-overlap-dot" aria-hidden="true" /><span className="map-overlap-kind" aria-hidden="true">{placeKindLabel(place.kind)}</span><span className="map-overlap-name">{place.name}</span>
+    </button>)}</div>
+  </section>;
 }
 
 export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?: Place[]; selectedPlace?: Place | null; onSelectPlace?: (place: Place) => void }) {
@@ -39,7 +62,9 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
   const [products, setProducts] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [clusterPlaces, setClusterPlaces] = useState<Place[]>([]);
+  const [clusterAnchor, setClusterAnchor] = useState<[number, number]>([127.8, 36.2]);
   const [clusterCamera, setClusterCamera] = useState<{ center: [number, number]; zoom: number }>();
+  const [cameraRequest, setCameraRequest] = useState(0);
   const clusterList = useRef<HTMLElement | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [view, setView] = useState<"map" | "list">("map");
@@ -71,8 +96,32 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
   const selectedPoint = points.find((point) => current && point.id === keyOf(current))
     ?? (current && hasCoordinates(current) ? { id: keyOf(current), lngLat: [current.longitude, current.latitude] as [number, number], place: current } : undefined);
   const detail = useRef<HTMLElement | null>(null);
+  // 겹친 지점 팝업을 연 묶음 원. 닫기(×·Escape) 뒤 포커스를 그 자리로 돌려준다. 장소를 고르면 상세로 간다.
+  const overlapOpener = useRef<HTMLElement | null>(null);
+  const closeOverlap = () => {
+    const opener = overlapOpener.current;
+    overlapOpener.current = null;
+    setClusterPlaces([]);
+    const id = opener?.dataset.interactionId;
+    const root = mapContainer.current;
+    if (!opener || !id || !root) return;
+    // 팝업을 지우기 전에 포커스를 묶음 원으로 옮긴다(포커스된 목록 버튼이 먼저 사라지면 body로 간다).
+    // 장소 재조회는 목록을 비웠다 다시 채우므로 같은 좌표의 묶음 원 DOM이 곧 새로 만들어질 수 있다. 잠시 동안
+    // 포커스가 body로 떨어지면 같은 묶음(data-interaction-id)을 다시 잡는다. 사용자가 다른 곳으로 옮겼으면 건드리지 않는다.
+    const find = () => root.querySelector<HTMLElement>(`[data-interaction-id="${CSS.escape(id)}"]`);
+    (opener.isConnected ? opener : find())?.focus();
+    const observer = new MutationObserver(() => {
+      if (document.activeElement && document.activeElement !== document.body) return;
+      find()?.focus();
+    });
+    observer.observe(root, { childList: true, subtree: true });
+    setTimeout(() => observer.disconnect(), 2000);
+  };
   const selectPlace = (place: Place) => {
+    overlapOpener.current = null;
     setClusterPlaces([]); setClusterCamera(undefined);
+    // 같은 장소를 다시 골라도(손으로 지도를 옮긴 뒤) 다시 그 자리로 이동하도록 요청 번호를 올린다.
+    setCameraRequest((value) => value + 1);
     setSelected(place); onSelectPlace?.(place);
     if (!embedded) requestAnimationFrame(() => {
       detail.current?.focus({ preventScroll: true });
@@ -127,14 +176,12 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
     return () => controller.abort();
   }, [embedded, kindsKey, perKindLimit, viewport, reload, sourcesKey, searchQuery, productsKey, view]);
 
-  useEffect(() => {
-    const handleError = () => setMapError("VWorld 지도 타일을 불러오지 못했습니다. 목록 보기에서 장소를 확인할 수 있습니다.");
-    window.addEventListener("vworld-tile-error", handleError);
-    return () => { window.removeEventListener("vworld-tile-error", handleError); if (timer.current) clearTimeout(timer.current); };
-  }, []);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  const tileFailed = useCallback(() => setMapError("VWorld 지도 타일을 불러오지 못했습니다. 목록 보기에서 장소를 확인할 수 있습니다."), []);
 
-  const moved = useCallback((bounds: Bounds, nextZoom: number) => {
-    setZoom(nextZoom);
+  const moved = useCallback((map: MapLibreMap) => {
+    const bounds = map.getBounds();
+    setZoom(map.getZoom());
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => setViewport((previous) => {
       const next = {
@@ -147,7 +194,11 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
     }), 250);
   }, []);
   const truncated = Object.entries(loaded).filter(([, row]) => row.truncated).map(([kind]) => placeKindLabel(kind));
-  const camera = useMemo(() => clusterCamera ?? (current && hasCoordinates(current) ? { center: [current.longitude, current.latitude] as [number, number], zoom: Math.max(zoom, 11) } : undefined), [current, clusterCamera]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 카메라 요청 정체: 장소 key(부모가 선택을 바꾼 경우)와 요청 번호(같은 묶음·장소를 다시 누른 경우).
+  // 현재 zoom은 이동 목표 계산에만 쓰고 정체에는 넣지 않는다 — 넣으면 손으로 확대할 때마다 다시 끌려간다.
+  const camera = useMemo<CameraTarget | undefined>(() => clusterCamera ? { ...clusterCamera, id: `cluster:${cameraRequest}` }
+    : current && hasCoordinates(current) ? { center: [current.longitude, current.latitude], zoom: Math.max(zoom, 11), id: `${keyOf(current)}:${cameraRequest}` } : undefined,
+  [current, clusterCamera, cameraRequest]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return <section className="map-workbench" aria-label="교통 장소 지도">
     {!embedded ? <div className="map-filter-bar">
@@ -167,34 +218,40 @@ export function TransportMap({ places, selectedPlace, onSelectPlace }: { places?
       {truncated.length ? <p>{truncated.join("·")} 일부만 표시합니다. {view === "list" ? "이름·코드 검색으로 범위를 좁혀 주세요." : "지도에서 확대하거나 목록 보기에서 이름·코드로 검색해 주세요."} 묶음 수는 현재 불러온 장소 수입니다.</p> : null}
       {failed.length ? <p className="error">{failed.map(placeKindLabel).join("·")} 조회 실패 <Button variant="outline" type="button" onClick={() => setReload((value) => value + 1)}>다시 조회</Button></p> : null}
       {mapError ? <p className="error">{mapError}</p> : null}
+      {!HAS_VWORLD_KEY && view === "map" ? <p>VWorld 지도 키가 없어 배경지도 없이 장소만 표시합니다.</p> : null}
       {!items.length && !pending.length ? <p>표시할 장소가 없습니다. 종류·출처·검색 조건을 확인해 주세요.</p> : null}
     </div>
     <div className={embedded ? "embedded-map" : "transport-map-layout"}>
-      {clusterPlaces.length ? <section ref={clusterList} className="col-span-full flex min-w-0 flex-col gap-2" aria-label="겹친 장소 선택">
-        <p>더 확대해도 겹치는 {clusterPlaces.length}곳입니다. 상세를 볼 장소를 선택해 주세요.</p>
-        <div className="flex max-h-64 flex-wrap gap-2 overflow-y-auto">{clusterPlaces.map((place) => <Button key={keyOf(place)} className="max-w-full" variant="outline" onClick={() => selectPlace(place)}><PlaceIcon kind={place.kind} /><span className="truncate">{place.name}</span></Button>)}</div>
-        <Button className="w-fit" variant="ghost" onClick={() => setClusterPlaces([])}>묶음 목록 닫기</Button>
-      </section> : null}
-      <div className="map-primary" ref={mapContainer}>{view === "map" ? <VWorldMapView apiKey={process.env.NEXT_PUBLIC_VWORLD_API_KEY ?? ""} cameraTarget={camera} center={[127.8, 36.2]} className="transport-map-canvas"
-        fallback={() => <p className="empty-state">지도 키가 없어 지도를 표시하지 못합니다. 위의 목록 보기에서 장소를 선택해 주세요.</p>}
-        geolocate={false} layerType="Base" lazy loadingSkeleton={<p className="loading">지도를 준비하는 중입니다…</p>} minZoom={5} navigation scale
-        onLoad={(map) => moved(map.getBounds(), map.getZoom())}
-        onMoveEnd={(event) => { const map = event.target as { getBounds: () => Bounds; getZoom: () => number }; moved(map.getBounds(), map.getZoom()); }}
-        unsupportedTileFallback={{ imageUrl: MAP_FALLBACK_IMAGE }} zoom={7}>
-        <ClusterLayer points={groupedPoints} radius={cluster ? (products.length === 1 ? 80 : 110) : 60} maxZoom={19}
-          renderCluster={(group, count, index) => <ClusterMarker lngLat={group.geometry.coordinates} count={count} onClick={() => {
-            const id = group.properties.cluster_id;
-            if (id === undefined) return;
-            const expansion = index.getClusterExpansionZoom(id);
-            if (expansion > 19 || zoom >= 19) {
-              setClusterPlaces(index.getLeaves(id, count).map((leaf: { properties: { place: Place } }) => leaf.properties.place));
-              requestAnimationFrame(() => clusterList.current?.querySelector("button")?.focus());
-            } else {
-              setClusterPlaces([]); setClusterCamera({ center: group.geometry.coordinates, zoom: Math.min(19, expansion) });
-            }
-          }} />}
-          renderMarker={(point) => <MapMarker key={point.id} point={point as MapPoint} products={products} onSelect={selectPlace} selected={false} />} />
+      <div className="map-primary" ref={mapContainer}>{view === "map" ? <VWorldMapView apiKey={VWORLD_KEY} cameraTarget={camera} center={[127.8, 36.2]} className="transport-map-canvas"
+        layerType="Base" loading={<p className="loading">지도를 준비하는 중입니다…</p>} minZoom={5} navigation scale
+        fallback={<p className="empty-state">이 브라우저에서 지도를 표시하지 못합니다. 위의 목록 보기에서 장소를 선택해 주세요.</p>}
+        onLoad={moved} onMoveEnd={moved} onTileError={tileFailed} zoom={7}>
+        <PointClusters points={groupedPoints} radius={cluster ? (products.length === 1 ? 80 : 110) : 60} maxZoom={19}
+          renderCluster={(group, count, index) => {
+            const coordinates = group.geometry.coordinates as [number, number];
+            // 묶음 원은 낱개 마커 위(z 3), 선택 마커 아래다. 선택 마커(z 4)는 포인터를 통과시켜(CSS) 같은
+            // 좌표의 묶음 원도 눌린다.
+            return <DomMarker lngLat={coordinates} ariaLabel={`${count}개 위치 묶음 펼치기`} className="map-cluster" zIndex={3}
+              interactionId={`cluster:${coordinates[0].toFixed(6)},${coordinates[1].toFixed(6)}`} onClick={(element) => {
+              const id = group.properties.cluster_id;
+              const expansion = index.getClusterExpansionZoom(id);
+              if (expansion > 19 || zoom >= 19) {
+                // Map과 같이 확대해도 풀리지 않는 묶음은 겹친 지점 팝업으로 고르게 한다.
+                overlapOpener.current = element;
+                setClusterAnchor(coordinates);
+                setClusterPlaces(index.getLeaves(id, count).map((leaf) => leaf.properties.place));
+                requestAnimationFrame(() => clusterList.current?.querySelector("button")?.focus());
+              } else {
+                setClusterPlaces([]); setClusterCamera({ center: coordinates, zoom: Math.min(19, expansion) });
+                setCameraRequest((value) => value + 1);
+              }
+            }}><ClusterBubble count={count} label={String(group.properties.point_count_abbreviated ?? count)} /></DomMarker>;
+          }}
+          renderPoint={(point) => <MapMarker point={point} products={products} onSelect={selectPlace} selected={false} />} />
         {selectedPoint ? <MapMarker point={selectedPoint} products={products} onSelect={selectPlace} selected /> : null}
+        {clusterPlaces.length ? <MapPopup lngLat={clusterAnchor} onClose={closeOverlap}>
+          <OverlapList places={clusterPlaces} onSelect={selectPlace} listRef={clusterList} />
+        </MapPopup> : null}
       </VWorldMapView> : <div className="map-place-list">{items.map((place) => <button type="button" className="place-row" key={keyOf(place)} aria-pressed={current ? keyOf(current) === keyOf(place) : false} onClick={() => selectPlace(place)}><PlaceIcon kind={place.kind} /><span><strong>{place.name}</strong><small>{place.line_names.join(" · ") || place.brand_name || place.subtitle || placeKindLabel(place.kind)}</small>{(place.kind === "ferry_port" || place.kind === "bus_terminal") && place.provider_id ? <small>{place.kind === "ferry_port" ? "항구" : "터미널"} 코드 {place.provider_id}</small> : null}{!hasCoordinates(place) ? <small>좌표 미등록</small> : null}</span></button>)}</div>}
       </div>{!embedded ? <aside className="transport-map-detail weather-inspector" ref={detail} tabIndex={-1} aria-label="선택 장소 상세">
         {current ? <PlaceInspector key={keyOf(current)} place={current} onClose={() => { setSelected(null); queryInput.current?.focus(); }} onSaved={(updated) => { setSelected(updated); setReload((value) => value + 1); }} onReload={() => { setSelected(null); setReload((value) => value + 1); queryInput.current?.focus(); }} /> : <Empty><EmptyHeader><EmptyDescription>지도나 목록에서 장소를 선택하면 가격·노선·출도착·편의정보를 확인할 수 있습니다.</EmptyDescription></EmptyHeader></Empty>}
