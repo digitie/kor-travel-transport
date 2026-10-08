@@ -3,7 +3,7 @@
 ## 2026-10-08 — 마커 `roadblock` 글리프 재vendoring + 안 쓰던 submodule 제거 (`chore/marker-roadblock-and-drop-vworld-submodule`)
 
 - 고속도로 돌발(`highway_incident`)의 maki `roadblock`이 Map 마커 패키지에 글리프가 없어 "R" 배지로 떨어졌다. Map 브랜치
-  `feat/marker-roadblock-symbol`(`9e1df9d5`)이 `roadblock`(🚧)·`warning`(⚠)을 더했고, 그 `src/*.ts`를
+  `feat/marker-roadblock-symbol`(head `30bf92e9`, 글리프 commit `9e1df9d5`)이 `roadblock`(🚧)·`warning`(⚠)을 더했고, 그 `src/*.ts`를
   `lib/vendor/map-marker-react/`에 다시 복사했다(내용 변화는 `maki.ts`·`maki.test.ts`뿐, LICENSE 유지). README의 원본
   commit은 Map 머지 뒤 머지 commit으로 다시 가리킨다. `place-marker-style.test.ts`는 이제 모든 장소 종류가 글리프를
   갖는지 본다.
