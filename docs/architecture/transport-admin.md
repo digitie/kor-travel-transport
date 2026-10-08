@@ -49,7 +49,7 @@ HttpOnly 서명 세션을 통과한 뒤에만 Next.js server route가 다음의 
   `min(300, floor(900 / 선택 종류 수))`곳을 넘으면 잘린 사실과 확대 방법을 화면에 표시한다.
 - 지도는 kor-travel-map admin 지도와 같은 마커·배경지도·컨트롤을 쓴다(2026-10-08,
   Map `399d6b6a` 기준). 이전의 `digitie/maplibre-vworld-react` tarball(`vworld-map-web`/`core`)은
-  걷어냈고 `third_party/maplibre-vworld-react` submodule은 이력 참조로만 남는다.
+  걷어냈고 쓰지 않던 `third_party/maplibre-vworld-react` submodule도 지웠다(git 이력에만 남는다).
   - 배경지도: `lib/vworld-style.ts`는 Map in-repo VWorld style builder의 사본이다. VWorld WMTS
     `Base` raster(`https://api.vworld.kr/req/wmts/1.0.0/{key}/Base/{z}/{y}/{x}.png`, 256px, 최대 19)를
     MapLibre가 직접 받는다. 키가 비거나 `CHANGE_ME`면 배경색(`#edf1f5`)만 그려 지도와 마커는 그대로
