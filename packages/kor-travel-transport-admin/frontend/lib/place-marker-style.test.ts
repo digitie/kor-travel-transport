@@ -20,7 +20,7 @@ describe("Map 마커 매핑", () => {
     expect(PLACE_MARKER_STYLE.airport).toEqual({ markerIcon: "airport", markerColor: "P-10" });
   });
   it("모든 종류가 첫 글자 배지가 아닌 maki 글리프와 서로 다른 색을 받는다", () => {
-    // highway_incident의 "roadblock"은 Map 9e1df9d5 전까지 글리프가 없어 "R" 배지로 떨어졌다.
+    // highway_incident의 "roadblock"은 Map #1311(bcbd14c2) 전까지 글리프가 없어 "R" 배지로 떨어졌다.
     for (const kind of Object.keys(PLACE_MARKER_STYLE)) expect(getMakiGlyph(placeMarkerStyle(kind).markerIcon), kind).not.toBeNull();
     const colors = Object.values(PLACE_MARKER_STYLE).map((style) => style.markerColor);
     expect(new Set(colors).size).toBe(colors.length);
