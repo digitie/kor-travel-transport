@@ -9,6 +9,7 @@ import pytest
 from app.core.config import Settings
 from app.dagster import definitions as dagster_definitions
 from app.dagster.definitions import definitions
+from app.services.transport_collection import TransportCollectionService
 
 
 def test_native_disabled_retry_sensors_target_only_three_idempotent_jobs():
@@ -34,7 +35,13 @@ def test_transport_failure_is_visible_after_commit_without_retry(monkeypatch, sc
             pass
 
         async def collect(self, session, **kwargs):
-            return {"status": status, "run_id": 19387, "errors": ["secret-provider-detail"]}
+            # 손으로 쓴 dict가 아니라 실제 서비스의 요약 함수로 만든다. 예전 대역은 `run_id`를 돌려줘
+            # 실제 키(`collection_run_id`)와 어긋난 채 통과했고, 운영에서는 실패마다 KeyError가 났다.
+            return TransportCollectionService._summary(
+                SimpleNamespace(id=19387, status=status), client_mode="live", raw_count=0,
+                traffic_count=0, incident_count=0, fuel_station_count=0, fuel_price_count=0,
+                errors=["secret-provider-detail"],
+            )
 
         async def close(self):
             lifecycle.append("closed")
@@ -57,6 +64,26 @@ def test_transport_failure_is_visible_after_commit_without_retry(monkeypatch, sc
         assert failure.metadata["run_id"].value == 19387
         assert failure.metadata["status"].value == status
         assert "secret-provider-detail" not in str(failure)
+        assert failure.description.startswith("교통정보 수집에 실패했습니다")
+
+
+@pytest.mark.parametrize("status", ["failed", "partial_success"])
+def test_airport_failure_reports_collection_run_id(monkeypatch, status):
+    """공항 수집 결과도 `collection_run_id`를 쓴다(`CollectionService.collect` 반환 계약)."""
+
+    async def committed_run(settings, action, **kwargs):
+        return {"collection_run_id": 512, "status": status, "client_mode": "live", "raw_response_count": 0,
+                "snapshot_count": 0, "fee_rule_count": 0, "errors": ["secret-provider-detail"]}
+
+    monkeypatch.setattr(dagster_definitions, "_settings", lambda: None)
+    monkeypatch.setattr(dagster_definitions, "CollectionService", lambda _settings: SimpleNamespace(collect=None))
+    monkeypatch.setattr(dagster_definitions, "_run_with_session", committed_run)
+    result = dagster_definitions.airport_collection_job.execute_in_process(raise_on_error=False)
+    assert not result.success
+    failure = result.failure_data_for_node("collect_airport_parking").user_failure_data
+    assert failure.description.startswith("공항 수집의 성공분은 저장했지만")
+    assert failure.metadata["run_id"].value == 512
+    assert failure.metadata["status"].value == status
 
 
 @pytest.mark.parametrize("status", ["success", "skipped", "partial_success"])
@@ -228,6 +255,49 @@ def test_reference_enrichment_continues_kakao_after_vworld_exception(monkeypatch
     failure = result.failure_data_for_node("enrich_new_reference_locations").user_failure_data
     assert failure.metadata["vworld_status"].value == "failed"
     assert "provider URL with secret" not in str(failure)
+
+
+def _run_bus_reference_with(monkeypatch, vworld: dict, kakao: dict):
+    async def fake_run(_settings, action, *_args, **_kwargs):
+        return {"reference": {"status": "success", "run_id": 40}, "vworld": vworld, "kakao": kakao}[action]
+
+    monkeypatch.setattr(dagster_definitions, "_settings", lambda: None)
+    monkeypatch.setattr(dagster_definitions, "BusReferenceCollectionService", lambda _: SimpleNamespace(collect="reference"))
+    monkeypatch.setattr(dagster_definitions, "PlaceLocationCollectionService", lambda _: SimpleNamespace(collect="vworld"))
+    monkeypatch.setattr(dagster_definitions, "KakaoPlaceCollectionService", lambda _: SimpleNamespace(collect="kakao"))
+    monkeypatch.setattr(dagster_definitions, "_run_with_session", fake_run)
+    return dagster_definitions.bus_reference_collection_job.execute_in_process(raise_on_error=False)
+
+
+def test_reference_enrichment_deferral_only_is_success_with_metadata(monkeypatch):
+    """유예만 있는 날(예: VWorld 검색 결과가 100건 상한을 넘어 `incomplete`)은 run을 실패로 만들지 않는다.
+
+    운영(2026-10-03~09)에서 같은 9개 이름이 매일 `incomplete`로 유예돼 bus_reference_collection_job이
+    매일 FAILURE였다. 유예 건수는 output metadata로 남긴다.
+    """
+    vworld = {"status": "partial_success", "run_id": 26132, "provider_calls": 9, "deferred": 9, "provider_failed": 0}
+    kakao = {"status": "success", "run_id": 26133, "provider_calls": 0, "deferred": 0, "provider_failed": 0}
+    result = _run_bus_reference_with(monkeypatch, vworld, kakao)
+    assert result.success
+    output = result.output_for_node("enrich_new_reference_locations")
+    assert output["vworld"]["deferred"] == 9
+    materialized = [event for event in result.all_events
+                    if event.step_key == "enrich_new_reference_locations" and event.event_type_value == "STEP_OUTPUT"]
+    metadata = materialized[0].event_specific_data.metadata
+    assert metadata["vworld_deferred"].value == 9
+    assert metadata["vworld_status"].value == "partial_success"
+    assert metadata["kakao_deferred"].value == 0
+
+
+@pytest.mark.parametrize("provider", ["vworld", "kakao"])
+def test_reference_enrichment_provider_errors_still_fail(monkeypatch, provider):
+    partial = {"status": "partial_success", "run_id": 7, "deferred": 1, "provider_failed": 1}
+    ok = {"status": "success", "run_id": 8, "deferred": 0, "provider_failed": 0}
+    result = _run_bus_reference_with(monkeypatch, *((partial, ok) if provider == "vworld" else (ok, partial)))
+    assert not result.success
+    failure = result.failure_data_for_node("enrich_new_reference_locations").user_failure_data
+    assert failure.metadata[f"{provider}_provider_failed"].value == 1
+    assert failure.metadata[f"{provider}_status"].value == "partial_success"
 
 
 def test_reference_enrichment_does_not_continue_after_lease_revocation(monkeypatch):
