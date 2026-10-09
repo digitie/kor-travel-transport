@@ -1,5 +1,28 @@
 # journal.md — 작업 일지
 
+## 2026-10-10 — Dagster 갱신 점검: highway KeyError·krex WAF 차단·좌표 보강 유예 (`fix/dagster-highway-runid-krex-block`)
+
+소유자 요청(공용 Dagster 24시간 실측)으로 transport job 실패를 원인까지 따라갔다.
+
+- **highway 183/288 FAILED = 두 겹.** (a) `_collect_transport`·`collect_airport_parking`이 실패·부분 성공 결과에서
+  `result["run_id"]`를 읽지만 `TransportCollectionService._summary`·`CollectionService.collect`는
+  `collection_run_id`를 돌려준다. 그래서 실패마다 `KeyError: 'run_id'`가 원래 원인을 가렸다. 테스트 대역이 실제와
+  다른 `run_id`를 돌려줘 통과하고 있었다 — 이제 대역을 실제 `_summary`로 만든다(수정 전 9건 실패 확인).
+  (b) 가려진 원인은 아래 krex 차단이다: `collection_runs` 183건 모두 `400 Bad Request / Request Blocked`.
+  나머지 105건은 `skipped`(due 아님)라 성공으로 보였을 뿐이다.
+- **krex 차단 진단(n150, 수동 요청 6회).** data.ex.co.kr WAF가 2026-10-08 04:35Z(13:35 KST) 무렵부터
+  흔한 HTTP 라이브러리 기본 User-Agent를 막는다. 키 없는 홈페이지 `GET /`도 `curl/*`·`python-httpx/*`는 400
+  Request Blocked, 브라우저 UA·`kor-travel-transport (+url)`·`python-krex-api/0.1.0`은 200. 같은 IP·키로
+  `restarea.fuel_prices` 1쪽이 정체를 밝힌 UA로 200(226건 중 10). 요청 모양·호출량(차단 전 하루 flow·incident
+  각 ~180, fuel 6으로 일정)·IP 전체 차단이 아니다. data.go.kr 경유 `restarea.list_all`은 영향 없음(10-09 성공).
+  수정: krex 두 호출 지점에 `KREX_USER_AGENT` session을 넘기고 닫는다(브라우저 흉내 아님).
+- **bus_reference 4/7 FAILED = 오류 없는 유예.** 실패 4건 모두 VWorld `partial_success`·Kakao `success`, provider
+  오류 0. 같은 9개 이름(당진항·평택항·장항·세종/안산/수원/통영/남양/김해 터미널)이 VWorld 검색 결과 100건 상한을
+  넘어(`total` 104~20245) `incomplete`로 매일 유예된다(1일 뒤 재시도). `enrich_new_reference_locations`는 이제
+  예외로 끝난 수집·`provider_failed>0`·기준정보 `partial_success`만 실패로 올리고, 유예만 있으면 성공 + output
+  metadata(`*_deferred`·`*_provider_failed`·`*_status`) + 경고 로그.
+- 그대로 둠: KRIC `KricServerError`(24시간 1/30)는 일시 장애.
+
 ## 2026-10-09 — PR #72 적대 리뷰 반영(HIGH 0, MED 1, LOW 2 + 선택 1)
 
 - MED: 라이브러리 `Marker`는 누른 마커를 전역 카운터(1001+)로 올리고 `zIndex` prop이 바뀔 때까지 그 값을 다시
