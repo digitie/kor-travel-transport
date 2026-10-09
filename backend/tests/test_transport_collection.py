@@ -8,10 +8,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from krex import CongestionLevel, Direction, Incident, KrexQuotaExceededError, TrafficFlow
+from krex import CongestionLevel, Direction, Incident, KrexClient, KrexQuotaExceededError, TrafficFlow
 from opinet import ProductCode, StationType
 from opinet.experimental import (
     BrowserFuelPrice,
@@ -40,12 +41,14 @@ from app.models import (
 from app.services.transport_collection import (
     HighwayPayload,
     INCIDENT_SOURCE,
+    KREX_USER_AGENT,
     OPINET_SOURCE,
     TRAFFIC_SOURCE,
     LiveTransportProvider,
     TransportCollectionService,
     _collect_krex_pages,
     _traffic_identity,
+    krex_http_session,
     upsert_latest_fuel_prices,
 )
 
@@ -1267,7 +1270,6 @@ def test_fuel_openapi_returns_only_the_latest_price_per_product(tmp_path: Path) 
 
 def _waf_like_handler(seen: list[str]):
     """2026-10-08부터의 data.ex.co.kr WAF처럼 흔한 라이브러리 기본 UA를 400 HTML로 막는다."""
-    import httpx
 
     def handler(request: httpx.Request) -> httpx.Response:
         user_agent = request.headers.get("user-agent", "")
@@ -1281,11 +1283,6 @@ def _waf_like_handler(seen: list[str]):
 
 
 def test_krex_session_identifies_the_caller_on_the_wire() -> None:
-    import httpx
-    from krex import KrexClient
-
-    from app.services.transport_collection import KREX_USER_AGENT, krex_http_session
-
     seen: list[str] = []
 
     async def call() -> int:
@@ -1305,7 +1302,6 @@ def test_krex_session_identifies_the_caller_on_the_wire() -> None:
 
 def test_live_transport_provider_sends_krex_through_identified_session(tmp_path, monkeypatch) -> None:
     from app.services import transport_collection
-    from app.services.transport_collection import KREX_USER_AGENT
 
     created: list[dict] = []
 
