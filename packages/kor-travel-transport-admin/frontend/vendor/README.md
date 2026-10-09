@@ -6,7 +6,7 @@
 tarball을 쓰지 않는다. kor-travel-map과 같은 look-and-feel을 위해 Map의 in-repo VWorld style
 builder(`lib/vworld-style.ts` 사본)와 MapLibre 셸(`components/vworld-map.tsx`), Map 공용 마커
 패키지 소스(`lib/vendor/map-marker-react/`, MIT)를 쓴다. 두 tarball은 이 폴더에서 지웠다.
-`third_party/maplibre-vworld-react` submodule은 이력 참조로만 남는다.
+쓰지 않던 `third_party/maplibre-vworld-react` submodule도 지웠다(git 이력에만 남는다).
 
 
 ## 공용 UI·토큰 후보 고정 (2026-10-04)

@@ -8,7 +8,7 @@
 | --- | --- |
 | 원본 저장소 | `digitie/kor-travel-map` |
 | 원본 경로 | `packages/map-marker-react/src/{index,marker,palette,maki,maki.test}.ts` |
-| 원본 commit | `399d6b6a844d0d806dc067ab29aaf8442840f789` (Map `origin/main`, 2026-10-08) |
+| 원본 commit | `bcbd14c24f0cdd49533f3a64ee87cb2c7e69d1a2` (Map PR #1311 머지 commit, 2026-10-09 — `roadblock`·`warning` 글리프 추가) |
 | 라이선스 | MIT (`packages/map-marker-react/package.json`의 `license`, Map ADR-029). 전문은 같은 폴더 `LICENSE` |
 | 저작권 | Copyright (c) 2026 digitie (패키지 `author`) |
 

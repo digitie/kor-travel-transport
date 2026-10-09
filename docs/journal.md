@@ -1,5 +1,16 @@
 # journal.md — 작업 일지
 
+## 2026-10-08 — 마커 `roadblock` 글리프 재vendoring + 안 쓰던 submodule 제거 (`chore/marker-roadblock-and-drop-vworld-submodule`)
+
+- 고속도로 돌발(`highway_incident`)의 maki `roadblock`이 Map 마커 패키지에 글리프가 없어 "R" 배지로 떨어졌다. Map PR
+  #1311(머지 `bcbd14c2`)이 `roadblock`(🚧)·`warning`(⚠)을 더했고, 그 `src/*.ts`를
+  `lib/vendor/map-marker-react/`에 다시 복사했다(내용 변화는 `maki.ts`·`maki.test.ts`뿐, LICENSE 유지). README의 원본
+  commit은 그 머지 commit이다. `place-marker-style.test.ts`는 이제 모든 장소 종류가 글리프를
+  갖는지 본다.
+- `third_party/maplibre-vworld-react` submodule(`fb754755`)을 지웠다: gitlink `git rm`, 비게 된 `.gitmodules` 삭제.
+  #70 이후 코드·Dockerfile·`.dockerignore`·package.json 어디서도 쓰지 않았고, CI의 `actions/checkout@v4`는
+  `submodules:`를 켜지 않아 영향이 없다. 공용 `.git/modules/third_party`는 다른 체크아웃 소유라 건드리지 않았다.
+
 ## 2026-10-08 — `feat/mapview-map-look` 적대 리뷰 반영(HIGH 0, MED 2, LOW 5)
 
 - MED-1: 카메라 요청에 정체(`CameraTarget.id`)를 둔다. 장소 key + 요청 번호라 손으로 지도를 옮긴 뒤 같은 묶음·장소를
