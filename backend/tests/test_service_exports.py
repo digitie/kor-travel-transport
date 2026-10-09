@@ -214,36 +214,6 @@ class FakeKrex:
         self.closed = True
 
 
-@pytest.mark.parametrize("fails", [False, True])
-def test_rest_area_krex_calls_use_identified_session_and_close_it(export_client: TestClient, fails: bool) -> None:
-    """data.ex.co.kr WAF가 라이브러리 기본 UA를 막으므로(2026-10-08~) 호출 주체를 밝힌 session을 넘긴다."""
-    from app.services.transport_collection import KREX_USER_AGENT
-
-    settings = export_client.app.state.settings
-    settings.rest_area_collection_enabled = True
-    settings.data_go_kr_service_key = "go-key"
-    settings.kex_ex_api_key = "ex-key"
-    fake = FakeKrex([_rest_area("행담도휴게소")], [_fuel("A00001", 1700)])
-    if fails:
-        async def blocked(**_):
-            raise RuntimeError("blocked")
-        fake.fuel_prices = blocked
-    sessions = []
-
-    def factory(**kwargs):
-        sessions.append(kwargs["session"])
-        return fake
-
-    service = RestAreaCollectionService(settings, client_factory=factory)
-    if fails:
-        with pytest.raises(RuntimeError):
-            _run(export_client, service.collect_fuel_prices)
-    else:
-        assert _run(export_client, service.collect_fuel_prices)["stored"] == 1
-    assert sessions[0].headers["user-agent"] == KREX_USER_AGENT
-    assert sessions[0].is_closed and fake.closed
-
-
 def test_rest_area_collection_and_exports(export_client: TestClient) -> None:
     settings = export_client.app.state.settings
     assert _run(export_client, RestAreaCollectionService(settings).collect_references)["status"] == "skipped"

@@ -34,7 +34,6 @@ from app.services.transport_collection import (
     _collect_krex_pages,
     _plain_json,
     get_or_create_state,
-    krex_http_session,
 )
 
 REST_AREA_SOURCE = "krex_rest_area"
@@ -109,20 +108,15 @@ class RestAreaCollectionService:
         await session.commit()
         run_id = run.id
         try:
-            http_session = krex_http_session(self.settings.api_timeout_seconds)
+            client = self._client_factory(
+                ex_api_key=self.settings.kex_ex_api_key,
+                go_api_key=self.settings.data_go_kr_service_key,
+                timeout=self.settings.api_timeout_seconds,
+            )
             try:
-                client = self._client_factory(
-                    ex_api_key=self.settings.kex_ex_api_key,
-                    go_api_key=self.settings.data_go_kr_service_key,
-                    timeout=self.settings.api_timeout_seconds,
-                    session=http_session,
-                )
-                try:
-                    items = await fetch(client)
-                finally:
-                    await client.aclose()
+                items = await fetch(client)
             finally:
-                await http_session.aclose()
+                await client.aclose()
             collected_at = now_utc()
             stored = await store(session, items, collected_at)
             if stored == 0:
