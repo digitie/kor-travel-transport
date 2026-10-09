@@ -67,16 +67,22 @@ def test_transport_admin_builds_the_vworld_browser_key_into_the_map_bundle() -> 
     package = (ROOT / "packages/kor-travel-transport-admin/frontend/package.json").read_text(encoding="utf-8")
     frontend = ROOT / "packages/kor-travel-transport-admin/frontend"
     map_view = (frontend / "components/transport-map.tsx").read_text(encoding="utf-8")
-    style = (frontend / "lib/vworld-style.ts").read_text(encoding="utf-8")
+    gitmodules = (ROOT / ".gitmodules").read_text(encoding="utf-8")
 
     assert 'NEXT_PUBLIC_VWORLD_API_KEY: "${NEXT_PUBLIC_VWORLD_API_KEY:?' in compose
     assert "ARG NEXT_PUBLIC_VWORLD_API_KEY" in dockerfile
     assert "ENV NEXT_PUBLIC_VWORLD_API_KEY=${NEXT_PUBLIC_VWORLD_API_KEY}" in dockerfile
-    # Next.js는 정적 참조만 번들에 넣는다. 지도는 Map in-repo style builder 사본으로 WMTS URL에 키를 넣는다.
+    # Next.js는 정적 참조만 번들에 넣는다. 지도 엔진·VWorld 타일 protocol·대체 화면은
+    # digitie/maplibre-vworld-react(vworld-map-web/core vendor tarball, source는 submodule)가 맡는다.
     assert "process.env.NEXT_PUBLIC_VWORLD_API_KEY" in map_view
-    assert "https://api.vworld.kr/req/wmts/1.0.0/" in style
+    assert 'from "vworld-map-web"' in map_view
+    assert "unsupportedTileFallback" in map_view
+    assert '"vworld-map-web": "file:vendor/vworld-map-web-1.0.0.tgz"' in package
+    assert '"vworld-map-core": "file:vendor/vworld-map-core-1.0.0.tgz"' in package
     assert '"maplibre-gl"' in package
-    assert '"vworld-map-web"' not in package
+    assert "https://github.com/digitie/maplibre-vworld-react.git" in gitmodules
+    assert not (frontend / "lib/vworld-style.ts").exists()
+    assert not (frontend / "components/vworld-map.tsx").exists()
 
 
 def test_transport_gateway_contract_has_bounded_upstreams() -> None:
