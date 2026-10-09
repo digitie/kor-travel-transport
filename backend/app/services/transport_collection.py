@@ -15,6 +15,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Literal, Protocol, TypeVar
 from zoneinfo import ZoneInfo
 
+import httpx
 from krex import Incident, KrexClient, KrexQuotaExceededError, TrafficFlow
 from opinet.experimental import (
     BrowserStation,
@@ -53,6 +54,20 @@ KREX_MAX_FILTER_VALUES = 20
 TRANSPORT_COLLECTION_ADVISORY_LOCK_KEY = 420040
 TRANSPORT_TRIGGER_PREFIX = "transport_"
 HIGHWAY_FETCH_TIMEOUT_SECONDS = 120
+
+#: data.ex.co.kr 요청에 붙이는 User-Agent. 한국도로공사 WAF가 2026-10-08 13:35 KST 무렵부터 흔한 HTTP
+#: 라이브러리 기본값(`python-httpx/*`, `curl/*`)을 "400 Request Blocked"로 막는다 — 같은 IP·키·URL도
+#: 이 값으로는 통과한다(n150 실측). 브라우저를 흉내내지 않고 호출 주체를 그대로 밝힌다.
+KREX_USER_AGENT = "kor-travel-transport (+https://github.com/digitie/kor-travel-transport)"
+
+
+def krex_http_session(timeout: float, *, transport: httpx.AsyncBaseTransport | None = None) -> httpx.AsyncClient:
+    """`KrexClient(session=...)`에 넘길 HTTP session. 호출자가 닫는다(krex는 넘겨받은 session을 닫지 않는다).
+
+    timeout·redirect는 krex가 스스로 만드는 session과 같게 둔다.
+    """
+    return httpx.AsyncClient(timeout=timeout, follow_redirects=True,
+                             headers={"User-Agent": KREX_USER_AGENT}, transport=transport)
 FUEL_FETCH_TIMEOUT_SECONDS = 7200
 CollectionScope = Literal["all", "highway", "fuel"]
 
@@ -213,10 +228,12 @@ class LiveTransportProvider:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        self._krex_session = krex_http_session(settings.api_timeout_seconds)
         self.krex = KrexClient(
             ex_api_key=settings.kex_ex_api_key,
             go_api_key=settings.data_go_kr_service_key,
             timeout=settings.api_timeout_seconds,
+            session=self._krex_session,
         )
         self.opinet = (
             OpinetBrowserCollector(
@@ -277,7 +294,10 @@ class LiveTransportProvider:
         return self.opinet.throttle.sample_run_interval(self.opinet.rng)
 
     async def aclose(self) -> None:
-        await self.krex.aclose()
+        try:
+            await self.krex.aclose()
+        finally:
+            await self._krex_session.aclose()
 
 
 def build_transport_provider(settings: Settings) -> TransportProvider:

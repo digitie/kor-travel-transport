@@ -1263,3 +1263,63 @@ def test_fuel_openapi_returns_only_the_latest_price_per_product(tmp_path: Path) 
             "collected_at": (provider.observed_at + timedelta(minutes=1)).isoformat().replace("+00:00", "Z"),
         }
     ]
+
+
+def _waf_like_handler(seen: list[str]):
+    """2026-10-08부터의 data.ex.co.kr WAF처럼 흔한 라이브러리 기본 UA를 400 HTML로 막는다."""
+    import httpx
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        user_agent = request.headers.get("user-agent", "")
+        seen.append(user_agent)
+        if user_agent.startswith(("python-httpx/", "curl/")):
+            return httpx.Response(400, text="<HTML><HEAD><TITLE>400 Bad Request</TITLE></HEAD>"
+                                            "<BODY><H1>Request Blocked</H1></BODY></HTML>")
+        return httpx.Response(200, json={"count": 0, "realTimeSMSList": []})
+
+    return handler
+
+
+def test_krex_session_identifies_the_caller_on_the_wire() -> None:
+    import httpx
+    from krex import KrexClient
+
+    from app.services.transport_collection import KREX_USER_AGENT, krex_http_session
+
+    seen: list[str] = []
+
+    async def call() -> int:
+        session = krex_http_session(5.0, transport=httpx.MockTransport(_waf_like_handler(seen)))
+        client = KrexClient(ex_api_key="ex-key", timeout=5.0, max_retries=0, session=session)
+        try:
+            page = await client.traffic.incident(num_of_rows=10, page_no=1)
+        finally:
+            await client.aclose()
+            await session.aclose()
+        return len(page.items)
+
+    assert asyncio.run(call()) == 0
+    assert seen == [KREX_USER_AGENT]
+    assert not KREX_USER_AGENT.startswith(("python-httpx/", "curl/", "Mozilla/"))
+
+
+def test_live_transport_provider_sends_krex_through_identified_session(tmp_path, monkeypatch) -> None:
+    from app.services import transport_collection
+    from app.services.transport_collection import KREX_USER_AGENT
+
+    created: list[dict] = []
+
+    class RecordingKrex:
+        def __init__(self, **kwargs) -> None:
+            created.append(kwargs)
+
+        async def aclose(self) -> None:
+            return None
+
+    monkeypatch.setattr(transport_collection, "KrexClient", RecordingKrex)
+    provider = LiveTransportProvider(build_settings(tmp_path))
+    session = created[0]["session"]
+    assert session.headers["user-agent"] == KREX_USER_AGENT
+    asyncio.run(provider.aclose())
+    # krex는 넘겨받은 session을 닫지 않으므로 provider가 닫아야 한다.
+    assert session.is_closed
