@@ -196,9 +196,12 @@ Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks
       오류 뒤 회복 시 안내 해제를 E2E로 고정한다. 현재 initial zoom 7의 종류당 100개,
       선택 중 오류 가시성, 성공 타일은 live E2E가 확인한다.
 - [x] ~~후속 P2: VWorld `vworld-tile-error`의 `mapId`를 transport 지도 identity와 대조~~ —
-      2026-10-08 `feat/mapview-map-look`에서 `vworld-map-web`을 걷어 window 전역 `vworld-tile-error`
-      event와 `mapId`가 없어졌다. 타일 오류는 각 지도 인스턴스의 `error` event(`sourceId` `vworld-*`)로만
-      받으므로 지도 사이 혼선이 생길 수 없다. 정상 회복 시 안내 해제 자동 검증은 위 map event seam 항목에 남는다.
+      2026-10-09 `feat/admin-map-maplibre-vworld-react`에서 `vworld-map-web`을 되살렸다. 라이브러리
+      `VWorldMapView`가 window `vworld-tile-error`의 `detail.mapId`를 자기 인스턴스 id와 대조한 뒤에만
+      `onError`로 넘기므로 지도 사이 혼선이 없다. 회복 시 안내 해제는 `map-overlays.test.tsx`가 단위로 고정한다.
+- [x] 2026-10-09 교통 지도 엔진을 `digitie/maplibre-vworld-react`로 되돌리고(#70의 손으로 쓴 셸·style builder 제거)
+      Map 마커 겉모양은 유지. #70이 라이브러리 fallback을 우회해 제공 영역 밖 `200/XML` 타일 하나에도
+      "타일을 불러오지 못했습니다"를 띄우고 거두지 않던 회귀를 닫았다.
 - [ ] P2: 예정 열차 마커의 301역 viewport 절단·늦은 응답 취소·숨김 탭·클러스터 왕복
       조합을 자동 검증한다. PR #43은 목록 왕복에서 지난 열차 숨김과 DB 300역 조회를
       검증하지만 모든 지도 이벤트 조합을 포괄하지 않는다.

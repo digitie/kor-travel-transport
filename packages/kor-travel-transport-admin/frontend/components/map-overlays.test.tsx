@@ -138,23 +138,33 @@ describe("VWorld 배경지도 상태", () => {
   const failed = () => host.querySelector("p")!.dataset.failed;
   beforeEach(() => act(() => root.render(<HealthProbe onReady={(value) => { health = value; }} />)));
 
-  it("타일 하나가 실패해도(서비스 영역 밖·일시 오류) 화면 안내를 띄우지 않는다", () => {
+  it("타일 하나가 실패해도(서비스 영역 밖·일시 오류) 화면 안내를 띄우지 않고, 키를 가린 요약 한 줄만 남긴다", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     for (const path of ["7/49/108", "7/49/109", "7/50/108"]) health.transformRequest(tile(path), "Tile" as never);
     act(() => health.onError(tileError("7/49/108") as never));
+    expect(warn).not.toHaveBeenCalled();
     act(() => health.onIdle());
     expect(failed()).toBe("false");
+    expect(warn).toHaveBeenCalledTimes(1);
+    const logged = JSON.stringify(warn.mock.calls);
+    expect(logged).toContain("1/3");
+    expect(logged).not.toContain("SECRET-KEY");
+    expect(logged).toContain("/req/wmts/1.0.0/***/Base/7/49/108.png");
+    warn.mockRestore();
   });
   it("한 번의 그리기에서 요청한 VWorld 타일이 모두 실패하면 배경지도 실패로 보고, 성공하면 거둔다", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     for (const path of ["7/49/108", "7/49/109"]) { health.transformRequest(tile(path), "Tile" as never); act(() => health.onError(tileError(path) as never)); }
     act(() => health.onIdle());
     expect(failed()).toBe("true");
     health.transformRequest(tile("8/98/217"), "Tile" as never);
     act(() => health.onIdle());
     expect(failed()).toBe("false");
+    vi.restoreAllMocks();
   });
   it("타일이 아닌 지도 오류는 메시지와 URL 양쪽에서 VWorld 키를 가려 남긴다", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    act(() => health.onError({ type: "error", error: { message: "Style failed at https://api.vworld.kr/req/wmts/1.0.0/SECRET-KEY/Base/x", url: "https://example.test/req/wmts/1.0.0/SECRET-KEY/Base/style.json" } } as never));
+    act(() => health.onError({ type: "error", error: { message: "Style failed at https://api.vworld.kr/req/wmts/1.0.0/SECRET-KEY/Base/x" } } as never));
     const logged = JSON.stringify(warn.mock.calls);
     expect(logged).not.toContain("SECRET-KEY");
     expect(logged).toContain("/req/wmts/1.0.0/***/Base");

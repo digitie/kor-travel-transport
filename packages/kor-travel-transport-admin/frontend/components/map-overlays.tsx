@@ -191,7 +191,7 @@ const WMTS_TILE = /\/req\/wmts\/1\.0\.0\/[^/?#]+\/([^?#]+)/;
 export function useVWorldBasemapHealth() {
   const [basemapFailed, setBasemapFailed] = useState(false);
   const requestedRef = useRef(new Set<string>());
-  const failedRef = useRef(new Set<string>());
+  const failedRef = useRef(new Map<string, string>());
   const transformRequest = useCallback<RequestTransformFunction>((url) => {
     const tile = WMTS_TILE.exec(url)?.[1];
     if (tile) requestedRef.current.add(tile);
@@ -201,18 +201,20 @@ export function useVWorldBasemapHealth() {
     const error = event.error as { message?: string; url?: string } | undefined;
     const tile = error?.url ? WMTS_TILE.exec(error.url)?.[1] : undefined;
     if (tile && isVWorldTileError(event)) {
-      failedRef.current.add(tile);
+      // 타일마다 남기지 않고 idle에 한 줄로 요약한다. URL은 키를 가린 것만 갖고 있는다.
+      failedRef.current.set(tile, redactVWorldUrl(error?.url ?? ""));
       return;
     }
     console.warn("[TransportMap]", redactVWorldText(error?.message) ?? "unknown map error", redactVWorldUrl(error?.url) ?? "");
   }, []);
   const onIdle = useCallback(() => {
     const requested = requestedRef.current.size;
-    const failed = [...failedRef.current].filter((tile) => requestedRef.current.has(tile)).length;
+    const failures = [...failedRef.current].filter(([tile]) => requestedRef.current.has(tile));
     requestedRef.current = new Set();
-    failedRef.current = new Set();
+    failedRef.current = new Map();
     if (requested === 0) return;
-    setBasemapFailed(failed >= requested);
+    if (failures.length) console.warn(`[TransportMap] VWorld 타일 ${failures.length}/${requested}개를 불러오지 못했습니다(대체 이미지로 표시)`, failures[0][1]);
+    setBasemapFailed(failures.length >= requested);
   }, []);
   return { basemapFailed, transformRequest, onError, onIdle };
 }

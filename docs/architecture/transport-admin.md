@@ -47,21 +47,34 @@ HttpOnly 서명 세션을 통과한 뒤에만 Next.js server route가 다음의 
   주유소에는 최신 가격·브랜드, 역에는 노선, 항구에는 저장된
   위치·노선을 표시한다. 지도 이동이 끝난 현재 bbox만 종류별로 조회하고, 범위에 한 종류가
   `min(300, floor(900 / 선택 종류 수))`곳을 넘으면 잘린 사실과 확대 방법을 화면에 표시한다.
-- 지도는 kor-travel-map admin 지도와 같은 마커·배경지도·컨트롤을 쓴다(2026-10-08,
-  Map `399d6b6a` 기준). 이전의 `digitie/maplibre-vworld-react` tarball(`vworld-map-web`/`core`)은
-  걷어냈고 쓰지 않던 `third_party/maplibre-vworld-react` submodule도 지웠다(git 이력에만 남는다).
-  - 배경지도: `lib/vworld-style.ts`는 Map in-repo VWorld style builder의 사본이다. VWorld WMTS
-    `Base` raster(`https://api.vworld.kr/req/wmts/1.0.0/{key}/Base/{z}/{y}/{x}.png`, 256px, 최대 19)를
-    MapLibre가 직접 받는다. 키가 비거나 `CHANGE_ME`면 배경색(`#edf1f5`)만 그려 지도와 마커는 그대로
-    쓰고 "배경지도 없이" 안내를 띄운다.
-  - 셸: `components/vworld-map.tsx`는 Map `VWorldMapView` 포팅이다. 확대/축소(나침반 없음) 오른쪽 위,
-    축척(150px·미터) 오른쪽 아래, 접힌 출처 표기. VWorld 타일 오류는 키를 가린 채 화면 안내로만 알린다.
+- 지도 엔진은 `digitie/maplibre-vworld-react`다(소유자 결정 2026-10-09). `vworld-map-web`/`core` 1.0.0
+  vendor tarball(`fb75475`, 해시는 `frontend/vendor/README.md`)을 설치하고 source는
+  `third_party/maplibre-vworld-react` submodule로 고정한다. 겉모양은 kor-travel-map admin 지도와 같은
+  마커·묶음·팝업·컨트롤이다(2026-10-08 #70/#71, Map `399d6b6a` 기준).
+  - 배경지도: 라이브러리 `VWorldMapView`가 VWorld WMTS `Base` raster(256px, 최대 19)를
+    `unsupportedTileFallback`의 `vworld://` protocol로 받는다. VWorld는 제공 영역 밖 타일(z5 전부, 먼 바다
+    z18·19, 북쪽 끝 행 등)을 `200 application/xml` ExceptionReport("서비스 제공영역이 아닙니다")로 답하는데,
+    라이브러리가 이를 대체 이미지(`lib/map-fallback.ts`, 1px PNG)로 바꾼다. 키가 비거나 자리표시자면
+    라이브러리 `missing-api-key` 대체 화면이 지도 자리에 목록 보기 안내를 보인다. WebGL이 없으면
+    `map-init-error` 대체 화면이다. 둘 다 페이지는 깨지지 않는다.
+  - 타일 오류: 타일 하나의 실패는 안내하지 않는다. `components/map-overlays.tsx`의
+    `useVWorldBasemapHealth`가 `transformRequest`로 요청한 VWorld 타일을, `onError`로 실패한 타일을 세어
+    한 번의 그리기(`idle`)에서 요청한 타일이 모두 실패했을 때만 "VWorld 지도 타일을 불러오지 못했습니다"를
+    띄우고, 다음 그리기에서 하나라도 성공하면 거둔다. 실패는 키를 가린 요약 한 줄로만 남긴다.
+  - 컨트롤: 확대/축소(나침반 없음) 오른쪽 위는 `useMap()`으로 단다(라이브러리 `navigation`은 나침반이
+    붙는다). 축척(150px·미터) 오른쪽 아래는 라이브러리 `scale`이다. 출처 표기는 MapLibre 기본이다(좁은
+    화면에서 접힌다).
+  - 카메라: 라이브러리 `cameraTarget`은 값으로 비교해 손으로 옮긴 뒤 같은 장소를 다시 눌러도 움직이지 않는다.
+    `CameraRequest`가 요청 id로 비교해 `useMap()`으로 옮긴다.
   - 마커: `lib/vendor/map-marker-react/`는 Map 공용 `@kor-travel-map/map-marker-react` 소스(MIT)를
     수정 없이 복사한 것이다(npm 게시 금지·Map ADR-043). 장소 종류 → maki·팔레트 매핑은
     `lib/place-marker-style.ts`가 Map provider 상수(OpiNet·KREX·공항)와 category catalog에서 가져온다.
     주유소 가격은 Map 가격 마커 라벨(`휘 1,650` 한 줄씩)로 쓴다. 이름은 배지에 쓰지 않고 hover 제목·접근 이름으로 준다.
-  - 묶음: supercluster(main thread)로 계산하고 Map `createClusterElement`와 같은 brand 원으로 그린다.
-    확대 한계 묶음은 Map 겹친 지점 팝업과 같은 MapLibre Popup으로 고른다. 열린 팝업은 viewport 재조회로 닫지 않는다.
+    배지·묶음 원은 라이브러리 `Marker`의 children으로 그린다. `aria-pressed`와 선택 마커 포인터 통과는
+    라이브러리에 prop이 없어 `MapMarkerButton`이 마커 요소에 직접 단다.
+  - 묶음: 라이브러리 `ClusterLayer`(supercluster)로 계산하고 Map `createClusterElement`와 같은 brand 원으로 그린다.
+    확대 한계 묶음은 Map 겹친 지점 팝업과 같은 라이브러리 `Popup`으로 고른다(Escape로 닫고 묶음 원으로 포커스를
+    돌려준다). 열린 팝업은 viewport 재조회로 닫지 않는다.
 - VWorld 브라우저 키는 `NEXT_PUBLIC_VWORLD_API_KEY`로 Docker build 시점에 주입한다
   (`docker-compose.transport-admin.yml`의 `transport-admin-web` build arg → Dockerfile `ARG`/`ENV` →
   `next build`가 번들에 넣는다). compose는 값이 없으면 build를 거부한다(`:?`). 추적 파일에 값을 넣지 않는다.
