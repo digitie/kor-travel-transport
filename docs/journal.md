@@ -1,5 +1,23 @@
 # journal.md — 작업 일지
 
+## 2026-10-09 — PR #72 적대 리뷰 반영(HIGH 0, MED 1, LOW 2 + 선택 1)
+
+- MED: 라이브러리 `Marker`는 누른 마커를 전역 카운터(1001+)로 올리고 `zIndex` prop이 바뀔 때까지 그 값을 다시
+  칠한다. 겹친 지점 묶음 원을 누른 뒤 팝업에서 고른 선택 마커(z 4)가 그 묶음 원 아래 깔렸다. `MapMarkerButton`이
+  마커 요소의 z-index를 prop 값으로 고정한다(MutationObserver로 클릭·라이브러리 상태 effect 뒤 되돌림).
+  선택 4 > 묶음 3 > 일반. 단위 테스트는 수정 전 `['4','1002','1003']`으로 실패했다. 실 타일 브라우저에서 묶음 클릭 →
+  팝업에서 선택 뒤 computed z-index 선택 4·묶음 3.
+- LOW: 겹친 지점 팝업 `z-index: 2147483000 !important`가 필터 combobox 목록·skip link를 덮을 수 있었다. 지도
+  컨테이너(`.transport-map-canvas`)에 `isolation: isolate`를 두고 팝업은 필요한 최소값 5로 고정한다.
+- LOW: 관리자 배포는 `--delete` 없이 rsync하므로 #70의 `components/vworld-map.tsx`·`vworld-map.test.tsx`·
+  `lib/vworld-style.ts`가 공유 checkout에 남아 `next build`가 걷어낸 `supercluster` import에서 실패할 수 있었다.
+  기존 `middleware.ts` 정리를 명시 목록(`retired_files`)으로 넓혔다. 이번 archive에 없고 일반 파일(링크 아님)일 때만
+  지운다. 실제 블록을 임시 디렉터리에서 돌리는 테스트를 더했다(옛 스크립트에서 실패 확인).
+- 선택: 200이지만 이미지가 아닌 본문(text/html)은 protocol을 통과해 디코드에서 URL 없이 실패한다. 타일 좌표
+  (`z/y/x`)로 같은 실패로 센다.
+- 검증(n150): vitest 24 files/183 passed, type-check·lint 0, build 성공, backend 배포 guard·계약 39 passed,
+  실 타일 하네스 1440: 타일 129건 200(XML 32), 안내·콘솔 오류 0.
+
 ## 2026-10-09 — 교통 지도 엔진을 maplibre-vworld-react로 복원 (`feat/admin-map-maplibre-vworld-react`)
 
 소유자 결정: 교통 지도는 `digitie/maplibre-vworld-react` 위에 만든다. #70/#71의 Map 겉모양은 유지한다.

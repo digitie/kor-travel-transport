@@ -162,6 +162,14 @@ describe("VWorld 배경지도 상태", () => {
     expect(failed()).toBe("false");
     vi.restoreAllMocks();
   });
+  it("200이지만 이미지가 아닌 본문(text/html)으로 디코드에 실패한 타일도 같은 실패로 센다", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    for (const path of ["7/49/108", "7/49/109"]) health.transformRequest(tile(path), "Tile" as never);
+    for (const [y, x] of [[49, 108], [49, 109]]) act(() => health.onError({ type: "error", sourceId: "vworld-base", tile: { tileID: { canonical: { z: 7, x, y } } }, error: new Error("Could not decode image") } as never));
+    act(() => health.onIdle());
+    expect(failed()).toBe("true");
+    vi.restoreAllMocks();
+  });
   it("타일이 아닌 지도 오류는 메시지와 URL 양쪽에서 VWorld 키를 가려 남긴다", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     act(() => health.onError({ type: "error", error: { message: "Style failed at https://api.vworld.kr/req/wmts/1.0.0/SECRET-KEY/Base/x" } } as never));
@@ -189,6 +197,27 @@ describe("마커와 팝업 접근성", () => {
     expect(selected.style.pointerEvents).toBe("none");
     act(() => selected.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
     expect(onClick).toHaveBeenCalledWith(selected);
+  });
+  it("누른 묶음 원이 라이브러리 bring-to-front로 선택 마커를 덮지 않는다(선택 4 > 묶음 3 > 일반)", async () => {
+    const markers = (onClick = vi.fn()) => <>
+      <MapMarkerButton lngLat={[127, 37]} ariaLabel="묶음" interactionId="cluster:1" className="map-cluster" zIndex={3} isCluster onClick={onClick}><span /></MapMarkerButton>
+      <MapMarkerButton lngLat={[127, 37]} ariaLabel="선택" interactionId="rail_station:1" className="transport-map-marker" zIndex={4} pressed passThrough onClick={onClick}><span /></MapMarkerButton>
+      <MapMarkerButton lngLat={[127.2, 37]} ariaLabel="일반" interactionId="rail_station:2" className="transport-map-marker" onClick={onClick}><span /></MapMarkerButton>
+    </>;
+    render(markers());
+    emit("load");
+    const z = (label: string) => document.querySelector<HTMLElement>(`[aria-label='${label}']`)!.style.zIndex;
+    const settle = () => act(async () => { await Promise.resolve(); });
+    // 라이브러리 Marker는 누른 마커를 전역 카운터(1001+)로 올린다. 겹친 지점 팝업을 연 묶음 원이 그 경우다.
+    act(() => document.querySelector<HTMLElement>("[aria-label='묶음']")!.click());
+    await settle();
+    act(() => document.querySelector<HTMLElement>("[aria-label='일반']")!.click());
+    await settle();
+    expect([z("선택"), z("묶음"), z("일반")]).toEqual(["4", "3", ""]);
+    // 부모가 다시 그려도(라이브러리 상태 effect가 다시 돈다) 올린 값으로 돌아가지 않는다.
+    render(markers(vi.fn()));
+    await settle();
+    expect([z("선택"), z("묶음"), z("일반")]).toEqual(["4", "3", ""]);
   });
   it("Escape로 팝업을 닫는다(목록 버튼에 포커스가 있어도)", () => {
     const onClose = vi.fn();

@@ -180,8 +180,11 @@ button:active:not(:disabled), .secondary:active { transform: translateY(1px); }
 .transport-map-marker:focus-visible, .map-cluster:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
 /* 선택 마커는 묶음 원 위(z 4)에 그리되 포인터는 통과시켜(MapMarkerButton passThrough) 같은 좌표의 묶음도 누를 수 있게 한다. */
 .map-marker-content { display: flex; align-items: center; justify-content: center; }
-/* 라이브러리 Marker는 누른 마커를 z 1000 위로 올린다. 겹친 지점 팝업은 그 묶음 원에 매달리므로 언제나 위에 둔다. */
-.maplibregl-popup.map-overlap-popup { z-index: 2147483000 !important; }
+/* 지도 안의 쌓임 순서(일반 마커 < 묶음 원 3 < 선택 마커 4 < 겹친 지점 팝업 5)는 지도 컨테이너 안에서만 통한다.
+ * isolation으로 쌓임 맥락을 만들어 필터 combobox 목록·skip link 같은 페이지 overlay를 덮지 않게 한다.
+ * 라이브러리 Popup은 열 때마다 inline z-index를 2부터 올리므로 팝업만 !important로 5에 고정한다. */
+.transport-map-canvas { isolation: isolate; }
+.maplibregl-popup.map-overlap-popup { z-index: 5 !important; }
 /* 터치 화면에서는 보이는 크기(24px·36px)는 Map과 같게 두고 누르는 영역만 44px로 넓힌다. */
 @media (pointer: coarse) {
   .transport-map-marker::before, .map-cluster::before { content: ""; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); border-radius: 9999px; }

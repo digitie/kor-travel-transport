@@ -54,6 +54,15 @@ type MapMarkerButtonProps = {
   children: ReactNode;
 };
 
+/** 마커 요소의 z-index를 `wanted`로 고정한다. 바뀔 때마다 되돌리고, 돌려준 함수로 감시를 멈춘다. */
+function pinZIndex(host: HTMLElement, wanted: string): () => void {
+  const restore = () => { if (host.style.zIndex !== wanted) host.style.zIndex = wanted; };
+  restore();
+  const observer = new MutationObserver(restore);
+  observer.observe(host, { attributes: true, attributeFilter: ["style"] });
+  return () => observer.disconnect();
+}
+
 /**
  * 라이브러리 `Marker`(role=button, Enter·Space, interactionId)에 교통 지도 접근성을 더한다.
  * 라이브러리는 children을 `마커 요소 > div > children`으로 portal한다. 마커 요소는 MapLibre가 쓰기 전에
@@ -68,6 +77,14 @@ export function MapMarkerButton({ lngLat, ariaLabel, interactionId, className, t
     else host.setAttribute("aria-pressed", String(pressed));
     host.style.pointerEvents = passThrough ? "none" : "";
   }, [pressed, passThrough]);
+  // 쌓임 순서는 prop이 정한다(선택 4 > 묶음 3 > 일반). 라이브러리 Marker는 누른 마커를 전역 카운터(1001+)로 올리고
+  // zIndex prop이 바뀔 때까지 그 값을 다시 칠한다. 그러면 겹친 지점 팝업을 연 묶음 원이 그 자리에서 고른 선택
+  // 마커를 덮는다. 마커 요소의 z-index가 prop과 달라질 때마다(클릭·라이브러리 상태 effect) prop 값으로 되돌린다.
+  useLayoutEffect(() => {
+    const host = contentRef.current?.parentElement?.parentElement;
+    if (!host) return;
+    return pinZIndex(host, zIndex === undefined ? "" : String(zIndex));
+  }, [zIndex]);
   return <Marker lngLat={lngLat} ariaLabel={ariaLabel} interactionId={interactionId} className={className} zIndex={zIndex} isCluster={isCluster}
     onClick={(_event, _context, marker) => onClick(marker.getElement())}>
     <span ref={contentRef} className="map-marker-content" title={title}>{children}</span>
@@ -180,7 +197,12 @@ export function MapUnavailable({ info }: { info: VWorldMapFallbackInfo }) {
     : "이 브라우저에서 지도를 표시하지 못합니다. 위의 목록 보기에서 장소를 선택해 주세요."}</p>;
 }
 
-const WMTS_TILE = /\/req\/wmts\/1\.0\.0\/[^/?#]+\/([^?#]+)/;
+// 타일 정체는 `z/y/x`다. 요청 URL(`vworld://…?fallback=…`)·실패 URL(`https://…`)·MapLibre 타일 좌표에서 같은 값을 만든다.
+const WMTS_TILE = /\/req\/wmts\/1\.0\.0\/[^/?#]+\/[^/?#]+\/(\d+)\/(\d+)\/(\d+)\.\w+/;
+function tileKeyOf(url: string | undefined): string | undefined {
+  const match = url ? WMTS_TILE.exec(url) : null;
+  return match ? `${match[1]}/${match[2]}/${match[3]}` : undefined;
+}
 
 /**
  * VWorld 배경지도 상태. 라이브러리 `transformRequest`로 요청한 타일을, `onError`(타일 protocol이 대체
@@ -193,16 +215,20 @@ export function useVWorldBasemapHealth() {
   const requestedRef = useRef(new Set<string>());
   const failedRef = useRef(new Map<string, string>());
   const transformRequest = useCallback<RequestTransformFunction>((url) => {
-    const tile = WMTS_TILE.exec(url)?.[1];
+    const tile = tileKeyOf(url);
     if (tile) requestedRef.current.add(tile);
     return { url };
   }, []);
   const onError = useCallback((event: MapErrorEvent) => {
     const error = event.error as { message?: string; url?: string } | undefined;
-    const tile = error?.url ? WMTS_TILE.exec(error.url)?.[1] : undefined;
+    // 라이브러리 protocol은 HTTP 오류·제공 영역 밖 XML·예상 밖 XML을 대체 이미지로 메우고 URL을 실어 알린다.
+    // 200이지만 이미지가 아닌 본문(예: text/html)은 protocol을 통과해 MapLibre 디코드에서 실패하고 URL 없이
+    // `sourceId`·`tile`만 실려 온다. 그 타일 좌표로 같은 실패로 센다.
+    const canonical = (event as { tile?: { tileID?: { canonical?: { z: number; x: number; y: number } } } }).tile?.tileID?.canonical;
+    const tile = tileKeyOf(error?.url) ?? (canonical ? `${canonical.z}/${canonical.y}/${canonical.x}` : undefined);
     if (tile && isVWorldTileError(event)) {
       // 타일마다 남기지 않고 idle에 한 줄로 요약한다. URL은 키를 가린 것만 갖고 있는다.
-      failedRef.current.set(tile, redactVWorldUrl(error?.url ?? ""));
+      failedRef.current.set(tile, redactVWorldUrl(error?.url) ?? `${(event as { sourceId?: string }).sourceId ?? "vworld"} ${tile}: ${redactVWorldText(error?.message) ?? ""}`);
       return;
     }
     console.warn("[TransportMap]", redactVWorldText(error?.message) ?? "unknown map error", redactVWorldUrl(error?.url) ?? "");

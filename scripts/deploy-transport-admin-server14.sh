@@ -86,13 +86,25 @@ tar -xzf "${REMOTE_ARCHIVE}" -C "${stage}"
 # 무효화해야 수동 remote 재시도에서 혼합 파일을 release로 오인하지 않는다.
 rm -f -- "${REMOTE_APP_DIR}/.staged-release-sha"
 rsync -a --exclude="${REMOTE_ENV_FILE}" --exclude=".env.server14.legacy" --exclude="backups/" "${stage}/" "${REMOTE_APP_DIR}/"
-# Next.js 16은 `proxy.ts`와 이전 `middleware.ts`가 함께 있으면 build를 중단한다.
-# archive에 없는, 과거 release에서만 남은 정확한 파일만 제거한다. `--delete`로 checkout의
-# 알려지지 않은 운영 파일을 넓게 지우지 않는다.
-legacy_middleware="packages/kor-travel-transport-admin/frontend/middleware.ts"
-if [[ ! -e "${stage}/${legacy_middleware}" && -e "${REMOTE_APP_DIR}/${legacy_middleware}" ]]; then
-  rm -f -- "${REMOTE_APP_DIR}/${legacy_middleware}"
-fi
+# BEGIN retired-file prune
+# 과거 release에서만 있던 정확한 파일을 지운다. `--delete`로 checkout의 알려지지 않은 운영 파일을
+# 넓게 지우지 않는다. 각 파일은 이번 archive에 없을 때만, 일반 파일(심볼릭 링크 아님)일 때만 지운다.
+# - middleware.ts: Next.js 16은 `proxy.ts`와 이전 `middleware.ts`가 함께 있으면 build를 중단한다.
+# - vworld-map.tsx·vworld-map.test.tsx·vworld-style.ts: #70의 손으로 쓴 지도 셸. maplibre-vworld-react로 되돌린
+#   뒤에도 남으면 `next build`가 걷어낸 `supercluster` import를 type-check하다 실패한다.
+retired_files=(
+  "packages/kor-travel-transport-admin/frontend/middleware.ts"
+  "packages/kor-travel-transport-admin/frontend/components/vworld-map.tsx"
+  "packages/kor-travel-transport-admin/frontend/components/vworld-map.test.tsx"
+  "packages/kor-travel-transport-admin/frontend/lib/vworld-style.ts"
+)
+for retired in "${retired_files[@]}"; do
+  if [[ ! -e "${stage}/${retired}" && -f "${REMOTE_APP_DIR}/${retired}" && ! -L "${REMOTE_APP_DIR}/${retired}" ]]; then
+    rm -f -- "${REMOTE_APP_DIR}/${retired}"
+    echo "지난 release 파일 제거: ${retired}"
+  fi
+done
+# END retired-file prune
 cd "${REMOTE_APP_DIR}"
 
 # api-gateway는 설정 파일을 bind mount한다. image digest만으로는 파일 내용 변경을
