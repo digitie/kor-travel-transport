@@ -1,5 +1,35 @@
 # journal.md — 작업 일지
 
+## 2026-10-09 — 교통 지도 엔진을 maplibre-vworld-react로 복원 (`feat/admin-map-maplibre-vworld-react`)
+
+소유자 결정: 교통 지도는 `digitie/maplibre-vworld-react` 위에 만든다. #70/#71의 Map 겉모양은 유지한다.
+
+- 의존: #70 이전과 같은 byte의 `vworld-map-web`/`core` 1.0.0 vendor tarball(SHA-256은 `vendor/README.md`)과
+  source submodule `third_party/maplibre-vworld-react@fb75475`(2026-10-09 라이브러리 `origin/main` HEAD)를 되살렸다.
+  라이브러리는 npm에 발행하지 않는다(README "설치": tarball pin 또는 submodule).
+- 엔진: 라이브러리 `VWorldMapView`·`ClusterLayer`·`Marker`·`Popup`. 손으로 쓴 `components/vworld-map.tsx`·
+  `lib/vworld-style.ts`를 지웠다. `unsupportedTileFallback`(`vworld://` protocol)이 제공 영역 밖 XML·실패 타일을
+  대체 이미지로 메우고, 키 없음·WebGL 없음은 라이브러리 `fallback`(`missing-api-key`/`map-init-error`)이 맡는다.
+- 라이브러리로 표현하지 못한 것(`components/map-overlays.tsx`): `aria-pressed`·선택 마커 포인터 통과(마커 요소에 직접),
+  요청 id 카메라 재이동(`cameraTarget`은 값 비교라 같은 장소 재클릭에 안 움직인다 → `useMap()`), 나침반 없는
+  확대/축소(라이브러리 `navigation`은 나침반 포함), 팝업 Escape(문서 keydown), 겹친 지점 팝업 z-index(라이브러리
+  `Marker`가 누른 마커를 z 1000 위로 올려 팝업을 덮는다 → CSS). 출처 표기 강제 compact는 MapLibre 기본(좁은
+  화면에서만 접힘)으로 둔다. 키 없을 때 "배경지도 없이 마커만"은 라이브러리에 없어 목록 보기 안내로 바뀐다.
+- 타일 오류: 한 번의 그리기(`idle`)에서 요청한 VWorld 타일이 모두 실패했을 때만 안내하고, 하나라도 성공하면 거둔다.
+- #70이 브라우저에서 "VWorld 지도 타일을 불러오지 못했습니다"를 띄운 원인: VWorld는 제공 영역 밖 타일을
+  `200 application/xml` ExceptionReport("서비스 제공영역이 아닙니다")로 답한다(z5 전부, 먼 바다 z18·19, z7 북쪽 끝
+  행·남동 모서리; Referer와 무관, 매번 같다). #70은 MapLibre가 raster를 직접 받아 그 XML을 이미지로 디코드하다
+  실패하고, `sourceId` `vworld-*` error 하나에 안내를 띄운 뒤 **다시 거두지 않았다**. 라이브러리 #28이 이미 고친
+  경로를 #70이 우회한 회귀다(tasks.md "VWorld 제공 영역 밖 200/XML FileNotFound"). 서버 측 점검은 한국 위 타일만
+  봐서 200 PNG였다. MapLibre는 256px raster를 지도 zoom+1로 요청해 처음 화면(zoom 7 → z8)에는 XML이 없고,
+  섬·항구 묶음을 펼쳐 바다 위 zoom 17~19로 가거나 북쪽으로 옮기면 생긴다. 같은 하네스로 #70 빌드(88428cd)는 먼 바다
+  단계부터 안내가 뜨고 서울 z12로 돌아와도 남았고, 이 브랜치는 같은 XML 43건에도 안내·콘솔 오류가 없었다.
+- 검증(n150): vitest 24 files/181 passed, type-check·lint 0, 실제 키 build 성공(키는 client chunk 1개), backend
+  `test_transport_admin_contract.py` 7 passed. 실제 VWorld 타일 headless Chromium(1440·1920, transport API mock):
+  타일 129/183건 전부 HTTP 200(PNG 97/140, 제공 영역 밖 XML 32/43), 실패 요청 0, 콘솔 경고·오류 0, 마커·선택
+  `aria-pressed`·가격 라벨·겹친 지점 팝업·Escape 포커스 반환 확인. 지도 mock e2e 77 passed, 실패 11건
+  (shadcn 로그인 필드·Dagster 패널)은 #70 빌드에서도 같은 11건이 실패하는 로컬 환경 문제다.
+
 ## 2026-10-08 — 마커 `roadblock` 글리프 재vendoring + 안 쓰던 submodule 제거 (`chore/marker-roadblock-and-drop-vworld-submodule`)
 
 - 고속도로 돌발(`highway_incident`)의 maki `roadblock`이 Map 마커 패키지에 글리프가 없어 "R" 배지로 떨어졌다. Map PR
