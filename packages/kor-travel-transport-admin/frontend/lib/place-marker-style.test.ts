@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { abbreviateClusterCount, clusterBubbleSize, PLACE_MARKER_STYLE, placeMarkerColor, placeMarkerStyle, priceMarkerLabel, priceSpeech } from "./place-marker-style";
 import { getMakiGlyph, PALETTE } from "./vendor/map-marker-react";
-import { buildVWorldStyle, getVWorldTileUrl, redactVWorldUrl } from "./vworld-style";
 
 const observed = "2026-10-08T00:00:00Z";
 const prices = [
@@ -44,16 +43,3 @@ describe("클러스터", () => {
   it.each([[999, "999"], [1234, "1.2k"], [12_345, "12k"]])("%s건 축약은 %s", (count, label) => expect(abbreviateClusterCount(count)).toBe(label));
 });
 
-describe("VWorld 배경지도 style", () => {
-  it("키가 있으면 VWorld WMTS raster를 직접 쓴다", () => {
-    const style = buildVWorldStyle(" test-key ", "Base");
-    expect(style.sources["vworld-base"]).toMatchObject({ type: "raster", tiles: [getVWorldTileUrl("test-key", "Base")], tileSize: 256, maxzoom: 19 });
-    expect(getVWorldTileUrl("test-key", "Base")).toBe("https://api.vworld.kr/req/wmts/1.0.0/test-key/Base/{z}/{y}/{x}.png");
-  });
-  it.each(["", "   ", "CHANGE_ME", undefined])("키가 %j이면 배경색만 그린다", (key) => {
-    const style = buildVWorldStyle(key);
-    expect(style.sources).toEqual({});
-    expect(style.layers).toEqual([{ id: "bg", type: "background", paint: { "background-color": "#edf1f5" } }]);
-  });
-  it("오류 로그에서 키를 가린다", () => expect(redactVWorldUrl("https://api.vworld.kr/req/wmts/1.0.0/secret/Base/7/1/2.png")).toBe("https://api.vworld.kr/req/wmts/1.0.0/***/Base/7/1/2.png"));
-});

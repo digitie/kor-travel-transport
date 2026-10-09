@@ -363,3 +363,42 @@ def test_remote_stage_guard_refuses_interrupted_or_superseded_sync(tmp_path: Pat
     assert verify().returncode == 2
     marker.symlink_to(tmp_path / "old-receipt")
     assert verify().returncode == 2
+
+
+def _retired_file_prune_block() -> str:
+    admin = (_SCRIPTS / "deploy-transport-admin-server14.sh").read_text(encoding="utf-8")
+    start = admin.index("# BEGIN retired-file prune")
+    end = admin.index("# END retired-file prune")
+    # 동기화 뒤·build 전에 돌고, 관리자 동기화 자체는 `--delete`를 쓰지 않는다(공유 checkout의 운영 파일 보호).
+    assert admin.index("rsync -a --exclude=") < start < admin.index("up -d --build --force-recreate", start)
+    assert "--delete" not in admin[admin.index("rsync -a --exclude="):start]
+    return admin[start:end]
+
+
+def test_admin_deploy_prunes_only_listed_retired_files_absent_from_the_release(tmp_path: Path) -> None:
+    frontend = "packages/kor-travel-transport-admin/frontend"
+    retired = [f"{frontend}/middleware.ts", f"{frontend}/components/vworld-map.tsx",
+               f"{frontend}/components/vworld-map.test.tsx", f"{frontend}/lib/vworld-style.ts"]
+    stage, app = tmp_path / "stage", tmp_path / "app"
+    for relative in [*retired, f"{frontend}/components/map-overlays.tsx", f"{frontend}/notes-from-operator.md"]:
+        (app / relative).parent.mkdir(parents=True, exist_ok=True)
+        (app / relative).write_text("x", encoding="utf-8")
+    # 이번 release가 다시 싣는 파일은 지우지 않는다.
+    (stage / retired[3]).parent.mkdir(parents=True)
+    (stage / retired[3]).write_text("x", encoding="utf-8")
+    # 심볼릭 링크는 따라가 지우지 않는다.
+    target = tmp_path / "outside.ts"
+    target.write_text("keep", encoding="utf-8")
+    (app / retired[1]).unlink()
+    (app / retired[1]).symlink_to(target)
+
+    result = subprocess.run(["bash", "-c", "set -euo pipefail\n" + _retired_file_prune_block()],
+                            env={**os.environ, "stage": str(stage), "REMOTE_APP_DIR": str(app)}, capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stderr
+    assert not (app / retired[0]).exists()
+    assert not (app / retired[2]).exists()
+    assert (app / retired[1]).is_symlink() and target.read_text(encoding="utf-8") == "keep"
+    assert (app / retired[3]).exists()
+    assert (app / frontend / "components/map-overlays.tsx").exists()
+    assert (app / frontend / "notes-from-operator.md").exists()

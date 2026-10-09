@@ -1,0 +1,3 @@
+[submodule "third_party/maplibre-vworld-react"]
+	path = third_party/maplibre-vworld-react
+	url = https://github.com/digitie/maplibre-vworld-react.git

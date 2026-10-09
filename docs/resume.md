@@ -2,6 +2,12 @@
 
 ## 현재 상태
 
+- **2026-10-09 `feat/admin-map-maplibre-vworld-react` 푸시, PR 미생성·미배포.** 소유자 결정에 따라 교통 지도 엔진을
+  `digitie/maplibre-vworld-react`(vendor tarball + submodule `fb75475`)로 되돌리고 #70/#71의 Map 마커 겉모양은 유지했다.
+  #70 운영 화면의 타일 오류 안내 원인(제공 영역 밖 `200/XML` 타일을 직접 디코드, 한 번 뜨면 안 거둠)과 검증은 journal
+  같은 날. **다음 한 작업:** 리뷰 뒤 PR → CI → 머지 → transport-admin 재build·배포 → 운영 `/map`에서 섬·항구 묶음을
+  펼쳐 바다 위로 확대해도 안내가 뜨지 않는지 확인.
+
 - **2026-10-08 `feat/mapview-map-look` 푸시, PR 미생성·미배포.** 교통 지도(transport-admin)를 Map 지도와 같은
   마커·VWorld 배경지도·컨트롤로 바꿨다(journal 같은 날). **다음 한 작업:** 리뷰 뒤 PR → CI → 머지 →
   transport-admin 재build·배포(키는 이미 `.env.server14`에 있다) → 운영 `/map`에서 VWorld 타일·마커 확인.
