@@ -2,6 +2,12 @@
 
 ## 현재 상태
 
+- **2026-10-10 `fix/dagster-highway-runid-krex-block` 푸시, PR 미생성·미배포.** highway job 실패를 가리던
+  `KeyError: 'run_id'`(실제 키 `collection_run_id`), data.ex.co.kr WAF의 라이브러리 기본 UA 차단(2026-10-08~,
+  python-krex-api #17 핀으로 기본 UA), 좌표 보강의 오류 없는 유예가 bus_reference job을 매일 실패로 만들던 것을 고쳤다
+  (journal 같은 날). krex 핀은 PR #17 머지 커밋 `1a37a01`. **다음 한 작업:** 리뷰 뒤 PR → CI → 머지 → 배포 → highway·휴게소 유가 run이 성공하는지,
+  bus_reference가 유예 metadata로 성공하는지 확인. weather `krex_restarea_sync`도 같은 차단이다(같은 라이브러리 핀 갱신으로 풀린다).
+
 - **2026-10-09 `feat/admin-map-maplibre-vworld-react` 푸시, PR 미생성·미배포.** 소유자 결정에 따라 교통 지도 엔진을
   `digitie/maplibre-vworld-react`(vendor tarball + submodule `fb75475`)로 되돌리고 #70/#71의 Map 마커 겉모양은 유지했다.
   #70 운영 화면의 타일 오류 안내 원인(제공 영역 밖 `200/XML` 타일을 직접 디코드, 한 번 뜨면 안 거둠)과 검증은 journal

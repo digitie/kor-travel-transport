@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
@@ -1263,3 +1264,42 @@ def test_fuel_openapi_returns_only_the_latest_price_per_product(tmp_path: Path) 
             "collected_at": (provider.observed_at + timedelta(minutes=1)).isoformat().replace("+00:00", "Z"),
         }
     ]
+
+
+
+def test_live_krex_calls_pass_the_data_ex_waf_with_the_library_user_agent(tmp_path, monkeypatch) -> None:
+    """운영 경로(LiveTransportProvider → krex가 직접 만든 session)가 WAF에 막히지 않는 UA를 보낸다.
+
+    data.ex.co.kr WAF는 2026-10-08부터 `python-httpx/*`·`curl/*` 기본 UA를 400 Request Blocked로
+    막았고, 그때 highway 수집이 전부 실패했다. python-krex-api가 `python-krex-api/<version>`을 보낸다.
+    """
+    seen: list[str] = []
+
+    def waf_like(request: httpx.Request) -> httpx.Response:
+        user_agent = request.headers.get("user-agent", "")
+        seen.append(user_agent)
+        if user_agent.startswith(("python-httpx/", "curl/")):
+            return httpx.Response(400, text="<HTML><HEAD><TITLE>400 Bad Request</TITLE></HEAD>"
+                                            "<BODY><H1>Request Blocked</H1></BODY></HTML>")
+        return httpx.Response(200, json={"count": 0, "realTimeSMSList": []})
+
+    factory = httpx.AsyncClient
+
+    class WafClient(factory):
+        def __init__(self, **kwargs) -> None:
+            super().__init__(transport=httpx.MockTransport(waf_like), **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", WafClient)
+    settings = build_settings(tmp_path)
+    settings.kex_ex_api_key = "ex-key"
+    provider = LiveTransportProvider(settings)
+
+    async def collect():
+        try:
+            return await provider.collect_highway(sources=(INCIDENT_SOURCE,))
+        finally:
+            await provider.aclose()
+
+    payload = asyncio.run(collect())
+    assert payload.incidents == ()
+    assert seen and all(agent.startswith("python-krex-api/") for agent in seen)

@@ -210,7 +210,8 @@ def collect_airport_parking(context) -> dict[str, Any]:
         result = asyncio.run(_run_with_session(settings, CollectionService(settings).collect, trigger="dagster_airport"))
         if result.get("status") in {"failed", "partial_success"}:
             raise Failure(description="공항 수집의 성공분은 저장했지만 일부 수집이 실패했습니다.",
-                          metadata={"run_id": result["run_id"], "status": result["status"]}, allow_retries=False)
+                          metadata={"run_id": result["collection_run_id"], "status": result["status"]},
+                          allow_retries=False)
         return result
 
 
@@ -230,7 +231,7 @@ def _collect_transport(scope: CollectionScope) -> dict[str, Any]:
     if result.get("status") in {"failed", "partial_success"}:
         raise Failure(
             description="교통정보 수집에 실패했습니다. 저장된 성공분과 호출 유예는 유지합니다.",
-            metadata={"run_id": result["run_id"], "status": result["status"], "scope": scope},
+            metadata={"run_id": result["collection_run_id"], "status": result["status"], "scope": scope},
             allow_retries=False,
         )
     return result
@@ -356,17 +357,27 @@ def enrich_new_reference_locations(context, reference_result: dict[str, Any]) ->
                 # 한 제공기관의 장애가 다른 제공기관의 독립된 호출 예산을 막지 않는다.
                 results[name] = {"status": "failed", "error_type": type(exc).__name__}
         vworld, kakao = results["vworld"], results["kakao"]
-        if reference_result.get("status") == "partial_success" or any(
-            result.get("status") in ("partial_success", "failed") for result in (vworld, kakao)
-        ):
+        metadata: dict[str, Any] = {
+            "reference_run_id": reference_result.get("run_id", ""),
+            "reference_failed_calls": reference_result.get("port_location_failed_calls", 0),
+            "reference_deferred": reference_result.get("port_location_deferred_count", 0),
+        }
+        for name, result in (("vworld", vworld), ("kakao", kakao)):
+            metadata.update({f"{name}_run_id": result.get("run_id", ""), f"{name}_status": result.get("status", ""),
+                             f"{name}_deferred": result.get("deferred", 0),
+                             f"{name}_provider_failed": result.get("provider_failed", 0)})
+        # 실제 오류(예외로 끝난 수집, 호출 실패)만 실패로 올린다. 유예(일일 호출 예산, 429 유예,
+        # 검색 결과가 페이지 상한을 넘어 확정할 수 없는 `incomplete`)는 성공분을 저장한 정상 결과다 —
+        # 같은 이름이 매일 유예돼 job이 매일 FAILURE가 되면 진짜 장애가 묻힌다. 유예 건수는 metadata로 남긴다.
+        provider_error = any(result.get("status") == "failed" or result.get("provider_failed", 0)
+                             for result in (vworld, kakao))
+        if reference_result.get("status") == "partial_success" or provider_error:
             raise Failure(description="기준정보와 장소 좌표 보강의 성공분은 저장했지만 일부 조회가 실패하거나 유예됐습니다.",
-                          metadata={"reference_run_id": reference_result.get("run_id", ""),
-                                    "reference_failed_calls": reference_result.get("port_location_failed_calls", 0),
-                                    "reference_deferred": reference_result.get("port_location_deferred_count", 0),
-                                    "vworld_run_id": vworld.get("run_id", ""),
-                                    "kakao_run_id": kakao.get("run_id", ""),
-                                    "vworld_status": vworld.get("status", ""),
-                                    "kakao_status": kakao.get("status", "")}, allow_retries=False)
+                          metadata=metadata, allow_retries=False)
+        deferred = sum(int(result.get("deferred", 0) or 0) for result in (vworld, kakao))
+        if deferred:
+            context.log.warning(f"장소 좌표 보강에서 {deferred}건이 유예됐습니다(오류 없음). 다음 정기 수집에서 다시 봅니다.")
+        context.add_output_metadata(metadata)
         return {"reference_status": reference_result.get("status"), "vworld": vworld, "kakao": kakao}
 
 
