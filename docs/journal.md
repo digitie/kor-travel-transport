@@ -16,8 +16,7 @@
   `restarea.fuel_prices` 1쪽이 정체를 밝힌 UA로 200(226건 중 10). 요청 모양·호출량(차단 전 하루 flow·incident
   각 ~180, fuel 6으로 일정)·IP 전체 차단이 아니다. data.go.kr 경유 `restarea.list_all`은 영향 없음(10-09 성공).
   수정(소유자 결정: 라이브러리에서): python-krex-api `fix/default-user-agent`(`b0b1dcd`)가 직접 만드는 session에
-  `User-Agent: python-krex-api/<version>`을 붙인다. transport는 그 head로 핀을 올렸다 — 라이브러리 PR 머지 뒤
-  머지 커밋으로 다시 고정한다. 운영 경로(LiveTransportProvider)가 WAF 흉내 대역을 통과하는지 선 위에서 확인한다.
+  `User-Agent: python-krex-api/<version>`을 붙인다(PR #17, 머지 커밋 `1a37a01`로 핀). 운영 경로(LiveTransportProvider)가 WAF 흉내 대역을 통과하는지 선 위에서 확인한다.
 - **bus_reference 4/7 FAILED = 오류 없는 유예.** 실패 4건 모두 VWorld `partial_success`·Kakao `success`, provider
   오류 0. 같은 9개 이름(당진항·평택항·장항·세종/안산/수원/통영/남양/김해 터미널)이 VWorld 검색 결과 100건 상한을
   넘어(`total` 104~20245) `incomplete`로 매일 유예된다(1일 뒤 재시도). `enrich_new_reference_locations`는 이제

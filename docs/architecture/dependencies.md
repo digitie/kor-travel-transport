@@ -4,8 +4,8 @@
 
 - Frontend: Next.js 16.3.2, React/React DOM 19.2.8, TypeScript 7.0.2, Vitest 4.1.11, Playwright 1.62.1
 - Backend: FastAPI 0.141.1, SQLAlchemy 2.0.52, Alembic 1.19.x, asyncpg 0.31.x, Uvicorn 0.52.x
-- Provider: `python-krex-api`는 `b0b1dcd7ff066dc55ddf314e7ed709dd324ee51a`(2026-10-10 브랜치 `fix/default-user-agent` —
-  기본 User-Agent, data.ex.co.kr WAF 대응. 라이브러리 PR 머지 뒤 머지 커밋으로 다시 고정한다),
+- Provider: `python-krex-api`는 `1a37a0108fa837351aa6bb6644052f325ae76daf`(PR #17, 기본 User-Agent —
+  data.ex.co.kr WAF 대응),
   `python-opinet-api`는 `1601ef360300b35cba09942d8ededf806ac86f2d`로 고정한다.
   각각 전체 VDS 조회와 Chromium 자동 탐색 응답 본문 복구를 포함한 수정 PR 기준이다.
   provider PR과 통합 PR의 운영 검증·머지 게이트는 별도로 관리한다.
