@@ -1,5 +1,43 @@
 # journal.md — 작업 일지
 
+## 2026-10-12 — 유가 실패 원인 규명·저장 재시도, 장소 좌표 job 유예 성공 처리 (`fix/fuel-failure-cause-and-place-deferral`)
+
+소유자 요청(transport Dagster 건강 개선). 운영 41885919(#73) 기준, 읽기 전용으로 조사했다.
+
+- **fuel_collection_job 최근 25회 중 FAILURE 5회 — Dagster에는 전부 같은 고정 문구만 남았다.** 실제 원인
+  (`collection_runs.error_message`·`raw_api_responses.parse_error`, run 시간):
+  | Dagster run(시작 Z) | 소요 | 원인 | 분류 |
+  |---|---|---|---|
+  | 10-11 07:00 | 1262s | `Opinet browser action failed: phase=search:station:target=non-numeric; cause=TimeoutError; events=response:GET:other:200` | 상류 일시(검색 응답 60s 미도착) |
+  | 10-10 15:00 | 3310s | `TimeoutError`(메시지 없음) | 우리 쪽: 저장 단계 DB 시간 초과(아래) |
+  | 10-09 23:00 | 1343s | 10-11 07:00과 같음 | 상류 일시 |
+  | 10-07 23:00 | 3029s | `TimeoutError`(메시지 없음) | 우리 쪽: 저장 단계 DB 시간 초과 |
+  | 10-05 07:04 | 691s | `phase=search:station:target=non-numeric; cause=TimeoutError; events=none` | 상류 일시 |
+  쿼터·상류 형식 변경은 없다(형식 변경이면 매 run 같은 단계에서 실패한다 — 같은 단계가 다음 run에 성공).
+  60일: 실제 수집 run 성공 19·실패 13·부분 1.
+- **메시지 없는 `TimeoutError` = 수집 엔진의 asyncpg 시간 초과.** 수집 엔진은 `command_timeout=60`·연결 `timeout=10`이고,
+  넘으면 SQLAlchemy가 번역하지 않은 내장 `TimeoutError('')`가 올라온다 — 운영 이미지에서 `pg_sleep(3)`에
+  `command_timeout=1`로 재현(`builtins.TimeoutError`, `str=''`, innermost `asyncpg/protocol/protocol.pyx bind_execute`).
+  Playwright·python-opinet-api의 시간 초과는 모두 메시지가 있다(`Timeout Nms exceeded`, `phase=`). 시간도 맞는다:
+  성공 run의 저장 단계는 14~16분짜리 단일 트랜잭션이다(예: 10-11 23:00 run의 스냅샷 `collected_at` 23:35:10Z, 끝 23:51:36Z).
+  실패 두 건은 성공 run(2736~2961s)보다 조금 긴 3015/3296s에 끝났다 — 브라우저 수집을 마친 뒤 저장 중 한 문장(또는
+  `pool_recycle=1800` 때문에 30분 넘는 브라우저 단계 뒤 반드시 생기는 재연결)이 넘어 스냅샷 전체를 버렸다. 그 시각 n150 load 11~14.
+  어느 문장인지는 남지 않았다(서비스가 예외를 잡아 `str(exc) or 종류 이름`만 남기고 traceback을 버림, 공용 PG는 문장 로그 off).
+- **수정.** (1) 유가 저장이 일시적 DB 오류(`TimeoutError`·`ConnectionError`·`connection_invalidated`)로 실패하면 공급자를
+  다시 부르지 않고 메모리의 스냅샷으로 저장만 한 번 더 한다(결정적 오류는 그대로 실패). (2) 메시지 없는 예외는
+  `TimeoutError at <innermost file:line in func> (from app/...:line in func)`로 남긴다 — 다음엔 어느 문장인지 보인다.
+  공개 상태 API는 그대로 `collection_failed`. (3) highway/fuel Failure 설명에 status와 가린 원인 한 줄(설정 비밀값 전 형태·
+  `serviceKey=` 가림, HTML 태그 제거, 중복 합침, 오류당 300자·전체 2000자)을 싣는다.
+- **highway 10-11 21:00Z 1건** = `KrexTimeoutError` 두 소스 모두(15s). 다음 run부터 정상 — 상류 일시. 이제 Dagster 설명에 바로 보인다.
+- **장소 좌표 job.** 14일 `dagster_place_locations` 32회 중 12회가 유예만으로 partial_success → job FAILURE였다.
+  bus_reference(#73)와 같은 규칙으로: 유예만(호출 예산, VWorld `incomplete`, 카카오 429 뒤 24시간 유예)이면 SUCCESS +
+  output metadata + warning, 예외·`provider_failed>0`·유예로 설명되지 않는 `partial_success`는 FAILURE.
+- **maritime_reference_collection_job.** 기준정보 `partial_success`는 기항지 조회 실패 *또는* 유예(실패 TTL·429 24시간·일일 80회)
+  였다. 이제 이번 실행의 호출 실패(`port_location_failed_calls>0`)만 실패다. 좌표 보강 Failure 문구는 실제 조건과 실패한 부분
+  (`failed_parts`)을 적는다.
+- 그대로 둠(소유자 판단): python-opinet-api의 지역 검색 1회 재시도·진단에 지역 이름(현재 230개 시군구 값이 전부 한글이라
+  `target=non-numeric`만 찍힌다), 유가 저장 단계 일괄화(약 7만 번 왕복), 수집 엔진 `command_timeout` 상향.
+
 ## 2026-10-10 — Dagster 갱신 점검: highway KeyError·krex WAF 차단·좌표 보강 유예 (`fix/dagster-highway-runid-krex-block`)
 
 소유자 요청(공용 Dagster 24시간 실측)으로 transport job 실패를 원인까지 따라갔다.

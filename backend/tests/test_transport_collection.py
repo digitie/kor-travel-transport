@@ -1365,7 +1365,7 @@ def test_fuel_store_repeated_timeout_is_recorded_with_its_location(tmp_path: Pat
     assert result["status"] == "failed"
     assert len(result["errors"]) == 1
     message = result["errors"][0]
-    assert message.startswith("TimeoutError at test_transport_collection.py:")
+    assert message.startswith("TimeoutError at tests/test_transport_collection.py:")
     assert "in failing_store" in message
     assert "(from app/services/transport_collection.py:" in message and "in _collect_unlocked)" in message
     assert run_row.error_message == message
@@ -1414,5 +1414,5 @@ def test_safe_error_keeps_messages_and_locates_empty_ones() -> None:
         raise_empty()
     except TimeoutError as exc:
         located = _safe_error(exc, settings)
-    assert located.startswith("TimeoutError at test_transport_collection.py:")
+    assert located.startswith("TimeoutError at tests/test_transport_collection.py:")
     assert located.endswith("in raise_empty")
