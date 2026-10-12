@@ -222,6 +222,22 @@ async def dump_fuel_state(session: AsyncSession) -> dict[str, Any]:
     return {"stations": station_state, "prices": price_state, "latest": latest_state}
 
 
+def state_differences(left: dict[str, Any], right: dict[str, Any]) -> list[str]:
+    """두 덤프의 차이를 (테이블, 키, 열, 왼쪽, 오른쪽)으로 풀어 쓴다. 실패 메시지용."""
+    differences = []
+    for table in sorted(set(left) | set(right)):
+        left_rows, right_rows = left.get(table, {}), right.get(table, {})
+        for key in sorted(set(left_rows) | set(right_rows), key=repr):
+            if key not in left_rows or key not in right_rows:
+                differences.append(f"{table} {key!r}: only in {'legacy' if key in left_rows else 'bulk'}")
+                continue
+            for column in sorted(set(left_rows[key]) | set(right_rows[key])):
+                a, b = left_rows[key].get(column), right_rows[key].get(column)
+                if a != b:
+                    differences.append(f"{table} {key!r} {column}: legacy={a!r} bulk={b!r}")
+    return differences
+
+
 async def new_run(session: AsyncSession) -> int:
     run = CollectionRun(started_at=now_utc(), status="running", trigger="fuel_store_test")
     session.add(run)
@@ -314,7 +330,7 @@ def test_bulk_store_matches_row_by_row_store(client, monkeypatch, batch) -> None
     (legacy_counts, legacy_state), (bulk_counts, bulk_state) = asyncio.run(run())
 
     assert bulk_counts == legacy_counts == [(3, 8)]
-    assert bulk_state == legacy_state
+    assert state_differences(legacy_state, bulk_state) == []
 
     stations = bulk_state["stations"]
     assert stations["station:A"]["name"] == "에이-개명"
@@ -356,7 +372,7 @@ def test_bulk_store_matches_row_by_row_store_on_random_snapshots(client, monkeyp
 
     (legacy_counts, legacy_state), (bulk_counts, bulk_state) = asyncio.run(run())
     assert bulk_counts == legacy_counts
-    assert bulk_state == legacy_state
+    assert state_differences(legacy_state, bulk_state) == []
     assert sum(prices for _, prices in bulk_counts) > 0
 
 
