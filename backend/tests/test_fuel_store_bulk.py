@@ -20,7 +20,7 @@ from typing import Any
 import pytest
 from opinet import ProductCode, StationType
 from opinet.experimental import BrowserFuelPrice, BrowserRegion, BrowserStation, OpinetBrowserSnapshot
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.time_utils import now_utc, serialize_utc
@@ -441,17 +441,40 @@ def test_bench_fuel_store_at_production_size(client) -> None:
                                     price_change_ratio=0.1, raw_padding=padding)
         results = {}
         for label, store in (("bulk", TransportCollectionService._store_fuel_snapshot),
-                             ("legacy", legacy_store_fuel_snapshot)):
+                             ("legacy", legacy_store_fuel_snapshot),
+                             ("bulk-again", TransportCollectionService._store_fuel_snapshot)):
             async with factory() as session:
                 run_id = await new_run(session)
-                started = time.perf_counter()
-                counts = await store(service, session, run_id, target)
-                elapsed = time.perf_counter() - started
+                timings: dict[str, list[float]] = {}
+                engine = session.bind.sync_engine if hasattr(session.bind, "sync_engine") else session.bind
+
+                def before(_conn, _cursor, statement, _params, context, _executemany):
+                    context._bench_started = time.perf_counter()
+
+                def after(_conn, _cursor, statement, _params, context, _executemany):
+                    kind = " ".join(statement.split()[:3])[:40]
+                    timings.setdefault(kind, []).append(time.perf_counter() - context._bench_started)
+
+                event.listen(engine, "before_cursor_execute", before)
+                event.listen(engine, "after_cursor_execute", after)
+                try:
+                    started = time.perf_counter()
+                    counts = await store(service, session, run_id, target)
+                    elapsed = time.perf_counter() - started
+                finally:
+                    event.remove(engine, "before_cursor_execute", before)
+                    event.remove(engine, "after_cursor_execute", after)
                 await session.rollback()
-            results[label] = (elapsed, counts)
+            results[label] = (elapsed, counts, timings)
         return results
 
     results = asyncio.run(run())
-    for label, (elapsed, counts) in results.items():
-        print(f"FUEL_STORE_BENCH {label}: {elapsed:.1f}s stations_new={counts[0]} prices_new={counts[1]}")
-    assert results["bulk"][1] == results["legacy"][1]
+    for label, (elapsed, counts, timings) in results.items():
+        database = sum(sum(values) for values in timings.values())
+        calls = sum(len(values) for values in timings.values())
+        slowest = max((max(values) for values in timings.values()), default=0.0)
+        print(f"FUEL_STORE_BENCH {label}: {elapsed:.1f}s stations_new={counts[0]} prices_new={counts[1]} "
+              f"db_calls={calls} db_time={database:.1f}s slowest_call={slowest:.2f}s")
+        for kind, values in sorted(timings.items(), key=lambda item: -sum(item[1]))[:6]:
+            print(f"FUEL_STORE_BENCH   {label} {kind!r}: calls={len(values)} total={sum(values):.1f}s max={max(values):.2f}s")
+    assert results["bulk"][1] == results["legacy"][1] == results["bulk-again"][1]
