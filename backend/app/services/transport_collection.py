@@ -7,6 +7,8 @@ import hashlib
 import json
 import logging
 import re
+import traceback
+from pathlib import Path
 from collections.abc import Awaitable, Callable, Mapping
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
@@ -24,6 +26,7 @@ from opinet.experimental import (
 from sqlalchemy import and_, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -54,6 +57,8 @@ TRANSPORT_COLLECTION_ADVISORY_LOCK_KEY = 420040
 TRANSPORT_TRIGGER_PREFIX = "transport_"
 HIGHWAY_FETCH_TIMEOUT_SECONDS = 120
 FUEL_FETCH_TIMEOUT_SECONDS = 7200
+#: 유가 스냅샷 저장 시도 횟수. 일시적 DB 오류(`_is_transient_database_error`)에만 한 번 더 저장한다.
+FUEL_STORE_ATTEMPTS = 2
 CollectionScope = Literal["all", "highway", "fuel"]
 
 T = TypeVar("T")
@@ -456,20 +461,34 @@ class TransportCollectionService:
                             incident_count += count
 
             if fuel_due:
-                try:
-                    snapshot = await self._collect_fuel(session, run_id, errors, fuel_result)
-                    if snapshot is not None:
-                        fuel_station_count, fuel_price_count = await self._store_fuel_snapshot(
-                            session, run_id, snapshot,
-                        )
-                        await self._mark_fuel_success(session, snapshot.collected_at)
-                    await session.commit()
-                except Exception as exc:
-                    await session.rollback()
-                    await self._collect_fuel(session, run_id, errors, exc)
-                    await session.commit()
-                    snapshot = None
-                    fuel_station_count = fuel_price_count = 0
+                error_mark = len(errors)
+                for attempt in range(1, FUEL_STORE_ATTEMPTS + 1):
+                    try:
+                        snapshot = await self._collect_fuel(session, run_id, errors, fuel_result)
+                        if snapshot is not None:
+                            fuel_station_count, fuel_price_count = await self._store_fuel_snapshot(
+                                session, run_id, snapshot,
+                            )
+                            await self._mark_fuel_success(session, snapshot.collected_at)
+                        await session.commit()
+                        break
+                    except Exception as exc:
+                        await session.rollback()
+                        # 브라우저 수집(30~50분, 하루 최대 3회)은 이미 메모리에 있다. 저장 단계의 일시적
+                        # DB 시간 초과·연결 끊김 한 번으로 그것을 버리지 않고, 공급자를 다시 부르지 않은 채
+                        # 저장만 한 번 더 한다. 같은 오류가 반복되거나 다른 종류의 오류면 실패로 기록한다.
+                        if attempt < FUEL_STORE_ATTEMPTS and _is_transient_database_error(exc):
+                            logger.warning(
+                                "fuel snapshot store attempt %s hit a transient database error; retrying once: %s",
+                                attempt, _safe_error(exc, self.settings),
+                            )
+                            del errors[error_mark:]
+                            continue
+                        await self._collect_fuel(session, run_id, errors, exc)
+                        await session.commit()
+                        snapshot = None
+                        fuel_station_count = fuel_price_count = 0
+                        break
                 persisted_sources.add(OPINET_SOURCE)
                 if snapshot is not None:
                     collected_source = True
@@ -1321,8 +1340,62 @@ def _plain_json(value: Any) -> Any:
     return getattr(value, "value", value)
 
 
+def _is_transient_database_error(error: BaseException) -> bool:
+    """저장 단계에서 한 번 더 시도할 만한 DB 오류인가.
+
+    수집 엔진은 asyncpg `command_timeout`/연결 `timeout`을 쓰는데, 둘 다 넘으면 SQLAlchemy가 번역하지 않은
+    내장 `TimeoutError`(메시지 없음)가 그대로 올라온다(2026-10-12 운영 이미지에서 재현). 연결이 끊긴 경우는
+    SQLAlchemy가 `connection_invalidated`로 표시한다. 제약 위반 같은 결정적 오류는 다시 해도 같으므로 제외한다.
+    """
+    if isinstance(error, (TimeoutError, ConnectionError)):
+        return True
+    return isinstance(error, DBAPIError) and bool(error.connection_invalidated)
+
+
+#: `app` 패키지 디렉터리. 우리 코드 frame을 경로 모양이 아니라 실제 위치로 가린다.
+_APP_PACKAGE_DIR = Path(__file__).resolve().parents[1]
+
+
+def _app_relative(filename: str) -> str | None:
+    try:
+        return Path(filename).resolve().relative_to(_APP_PACKAGE_DIR.parent).as_posix()
+    except (OSError, ValueError):
+        return None
+
+
+def _frame_label(frame: traceback.FrameSummary) -> str:
+    path = _app_relative(frame.filename)
+    if path is None:
+        normalized = frame.filename.replace("\\", "/")
+        path = (normalized.rsplit("site-packages/", 1)[1] if "site-packages/" in normalized
+                else normalized.rsplit("/", 1)[-1])
+    return f"{path}:{frame.lineno} in {frame.name}"
+
+
+def _is_app_frame(frame: traceback.FrameSummary) -> bool:
+    path = _app_relative(frame.filename)
+    return path is not None and path.startswith(f"{_APP_PACKAGE_DIR.name}/")
+
+
+def _error_origin(error: BaseException) -> str:
+    """메시지가 빈 예외의 발생 위치 — 가장 안쪽 frame과, 그것이 아니면 가장 안쪽 우리 코드(`app` 패키지) frame.
+
+    파일·줄·함수 이름만 담는다(값·URL·인자는 담지 않는다).
+    """
+    frames = traceback.extract_tb(error.__traceback__)
+    if not frames:
+        return ""
+    origin = f" at {_frame_label(frames[-1])}"
+    app_frames = [frame for frame in frames if _is_app_frame(frame)]
+    if app_frames and app_frames[-1] is not frames[-1]:
+        origin += f" (from {_frame_label(app_frames[-1])})"
+    return origin
+
+
 def _safe_error(error: Exception, settings: Settings) -> str:
-    message = str(error).strip() or error.__class__.__name__
+    # 메시지가 빈 예외(예: asyncpg 시간 초과의 내장 TimeoutError)는 종류 이름만으로는 어디서 났는지 알 수 없다
+    # (2026-10-07·10-10 유가 실패가 "TimeoutError" 한 단어만 남겼다). 발생 위치를 붙인다.
+    message = str(error).strip() or f"{error.__class__.__name__}{_error_origin(error)}"
     for secret in (settings.kex_ex_api_key, settings.data_go_kr_service_key):
         if secret:
             message = message.replace(secret, "<redacted>")

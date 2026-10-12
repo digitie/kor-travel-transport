@@ -1303,3 +1303,116 @@ def test_live_krex_calls_pass_the_data_ex_waf_with_the_library_user_agent(tmp_pa
     payload = asyncio.run(collect())
     assert payload.incidents == ()
     assert seen and all(agent.startswith("python-krex-api/") for agent in seen)
+
+
+def _run_fuel_with_store(tmp_path: Path, store) -> tuple[dict, CollectionRun, TransportCollectionState, AsyncMock]:
+    """유가 수집을 한 번 돌린다. `store`가 `_store_fuel_snapshot`을 대신한다(원래 함수를 인자로 받는다)."""
+    settings = build_settings(tmp_path)
+    provider = FakeTransportProvider()
+    provider.collect_fuel = AsyncMock(wraps=provider.collect_fuel)
+
+    async def run():
+        engine, factory = create_engine_and_session_factory(settings.database_url)
+        await init_database(engine)
+        service = TransportCollectionService(settings, provider)
+        original = service._store_fuel_snapshot
+        service._store_fuel_snapshot = lambda *args: store(original, *args)
+        async with factory() as session:
+            result = await service.collect(session, trigger="test", scope="fuel")
+            run_row = await session.get(CollectionRun, result["collection_run_id"])
+            state = await session.scalar(select(TransportCollectionState).where(
+                TransportCollectionState.source == OPINET_SOURCE))
+        await service.close()
+        await engine.dispose()
+        return result, run_row, state
+
+    result, run_row, state = asyncio.run(run())
+    return result, run_row, state, provider.collect_fuel
+
+
+def test_fuel_store_retries_once_after_a_transient_database_timeout(tmp_path: Path) -> None:
+    """2026-10-07·10-10 유가 실패: 브라우저 수집(30~50분)을 마친 뒤 저장 단계에서 asyncpg command_timeout이
+    메시지 없는 내장 TimeoutError로 올라와 스냅샷 전체를 버렸다. 공급자를 다시 부르지 않고 저장만 한 번 더 한다."""
+    calls = []
+
+    async def flaky_store(original, *args):
+        calls.append(len(calls) + 1)
+        if len(calls) == 1:
+            raise TimeoutError()
+        return await original(*args)
+
+    result, run_row, state, collect_fuel = _run_fuel_with_store(tmp_path, flaky_store)
+    assert calls == [1, 2]
+    collect_fuel.assert_awaited_once()
+    assert result["status"] == "success"
+    assert result["errors"] == []
+    assert result["fuel_price_count"] == 1
+    assert run_row.error_message is None
+    assert state.last_success_at is not None and state.last_error is None
+
+
+def test_fuel_store_repeated_timeout_is_recorded_with_its_location(tmp_path: Path) -> None:
+    """두 번째도 실패하면 실패로 기록하되 "TimeoutError" 한 단어가 아니라 발생 위치를 남긴다."""
+    calls = []
+
+    async def failing_store(original, *args):
+        calls.append(1)
+        raise TimeoutError()
+
+    result, run_row, state, collect_fuel = _run_fuel_with_store(tmp_path, failing_store)
+    assert len(calls) == 2
+    collect_fuel.assert_awaited_once()
+    assert result["status"] == "failed"
+    assert len(result["errors"]) == 1
+    message = result["errors"][0]
+    assert message.startswith("TimeoutError at test_transport_collection.py:")
+    assert "in failing_store" in message
+    assert "(from app/services/transport_collection.py:" in message and "in _collect_unlocked)" in message
+    assert run_row.error_message == message
+    assert state.last_error == message and state.last_success_at is None
+
+
+def test_fuel_store_does_not_retry_a_deterministic_error(tmp_path: Path) -> None:
+    calls = []
+
+    async def broken_store(original, *args):
+        calls.append(1)
+        raise ValueError("price column overflow")
+
+    result, run_row, _state, _collect_fuel = _run_fuel_with_store(tmp_path, broken_store)
+    assert len(calls) == 1
+    assert result["status"] == "failed"
+    assert result["errors"] == ["price column overflow"]
+
+
+def test_transient_database_error_classification() -> None:
+    from sqlalchemy.exc import DBAPIError, IntegrityError, OperationalError
+
+    from app.services.transport_collection import _is_transient_database_error
+
+    assert _is_transient_database_error(TimeoutError())
+    assert _is_transient_database_error(ConnectionResetError())
+    assert _is_transient_database_error(OperationalError("SELECT 1", {}, Exception("x"), connection_invalidated=True))
+    assert not _is_transient_database_error(OperationalError("SELECT 1", {}, Exception("x")))
+    assert not _is_transient_database_error(IntegrityError("INSERT", {}, Exception("dup")))
+    assert not _is_transient_database_error(DBAPIError("INSERT", {}, Exception("x")))
+    assert not _is_transient_database_error(ValueError("bad"))
+
+
+def test_safe_error_keeps_messages_and_locates_empty_ones() -> None:
+    from app.services.transport_collection import _safe_error
+
+    settings = Settings(kex_ex_api_key="ex-secret", data_go_kr_service_key="go-secret")
+    assert _safe_error(RuntimeError("blocked ex-secret go-secret"), settings) == "blocked <redacted> <redacted>"
+    # 던져진 적 없는 예외는 위치가 없으니 종류 이름만 남는다(이전 동작).
+    assert _safe_error(TimeoutError(), settings) == "TimeoutError"
+
+    def raise_empty():
+        raise TimeoutError()
+
+    try:
+        raise_empty()
+    except TimeoutError as exc:
+        located = _safe_error(exc, settings)
+    assert located.startswith("TimeoutError at test_transport_collection.py:")
+    assert located.endswith("in raise_empty")
