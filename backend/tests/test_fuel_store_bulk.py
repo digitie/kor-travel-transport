@@ -192,8 +192,9 @@ def synthetic_snapshot(
 
 # --- DB 비교 ---------------------------------------------------------------------------------------------------
 
-async def dump_fuel_state(session: AsyncSession) -> dict[str, Any]:
-    """id 대신 자연 키로 세 테이블을 읽는다(두 실행의 시퀀스 값은 다를 수 있다)."""
+async def dump_fuel_state(session: AsyncSession, run_labels: dict[int, str]) -> dict[str, Any]:
+    """id 대신 자연 키로 세 테이블을 읽는다. PostgreSQL 시퀀스는 롤백돼도 되돌아가지 않아 두 실행의
+    id(주유소·유가·수집 run)가 다르므로, 수집 run id도 `run_labels`의 이름(seed/run0/...)으로 바꿔 비교한다."""
     stations = (await session.scalars(select(FuelStation).where(FuelStation.source == OPINET_SOURCE))).all()
     identity_by_id = {station.id: station.identity_key for station in stations}
     station_columns = [column.key for column in FuelStation.__table__.columns if column.key != "id"]
@@ -207,7 +208,7 @@ async def dump_fuel_state(session: AsyncSession) -> dict[str, Any]:
         key = (identity_by_id[row.fuel_station_id], row.source, row.product_code, row.observed_at)
         price_key_by_id[row.id] = key
         price_state[key] = {
-            "collection_run_id": row.collection_run_id, "price": row.price,
+            "collection_run_id": run_labels.get(row.collection_run_id, row.collection_run_id), "price": row.price,
             "provider_updated_at": row.provider_updated_at, "collected_at": row.collected_at,
             "raw_item_json": row.raw_item_json,
         }
@@ -249,26 +250,31 @@ async def apply_both(
     service: TransportCollectionService,
     factory,
     snapshots: list[OpinetBrowserSnapshot],
+    seed_runs: dict[int, str],
 ) -> tuple[tuple[list[tuple[int, int]], dict], tuple[list[tuple[int, int]], dict]]:
     """같은 커밋 상태에서 옛·새 구현으로 `snapshots`를 차례로 저장하고 (개수, 상태)를 돌려준다."""
     outcomes = []
     for store in (legacy_store_fuel_snapshot, TransportCollectionService._store_fuel_snapshot):
         async with factory() as session:
             counts = []
-            for snapshot in snapshots:
+            run_labels = dict(seed_runs)
+            for index, snapshot in enumerate(snapshots):
                 run_id = await new_run(session)
+                run_labels[run_id] = f"run{index}"
                 counts.append(await store(service, session, run_id, snapshot))
                 session.expunge_all()
-            state = await dump_fuel_state(session)
+            state = await dump_fuel_state(session, run_labels)
             await session.rollback()
         outcomes.append((counts, state))
     return outcomes[0], outcomes[1]
 
 
-async def seed(service: TransportCollectionService, factory, snapshot: OpinetBrowserSnapshot) -> None:
+async def seed(service: TransportCollectionService, factory, snapshot: OpinetBrowserSnapshot) -> dict[int, str]:
     async with factory() as session:
-        await legacy_store_fuel_snapshot(service, session, await new_run(session), snapshot)
+        run_id = await new_run(session)
+        await legacy_store_fuel_snapshot(service, session, run_id, snapshot)
         await session.commit()
+    return {run_id: "seed"}
 
 
 # --- 테스트 ---------------------------------------------------------------------------------------------------
@@ -324,8 +330,8 @@ def test_bulk_store_matches_row_by_row_store(client, monkeypatch, batch) -> None
     first, second = _scenario()
 
     async def run():
-        await seed(service, factory, first)
-        return await apply_both(service, factory, [second])
+        seed_runs = await seed(service, factory, first)
+        return await apply_both(service, factory, [second], seed_runs)
 
     (legacy_counts, legacy_state), (bulk_counts, bulk_state) = asyncio.run(run())
 
@@ -342,8 +348,8 @@ def test_bulk_store_matches_row_by_row_store(client, monkeypatch, batch) -> None
                    if key[0] == "station:A" and key[2] == "B027")
     assert float(updated["price"]) == 1710.0
     assert updated["collected_at"] != stations["station:A"]["first_seen_at"]
-    first_run_id = min(value["collection_run_id"] for value in bulk_state["prices"].values())
-    assert updated["collection_run_id"] == first_run_id
+    # 기존 유가 행을 갱신해도 수집 run은 처음 쓴 run(seed) 그대로다.
+    assert updated["collection_run_id"] == "seed"
     dup_gasoline = next(value for key, value in bulk_state["prices"].items()
                         if key[0] == "station:DUP" and key[2] == "B027")
     assert float(dup_gasoline["price"]) == 1550.0
@@ -367,8 +373,8 @@ def test_bulk_store_matches_row_by_row_store_on_random_snapshots(client, monkeyp
                                          price_change_ratio=0.3))
 
     async def run():
-        await seed(service, factory, seed_snapshot)
-        return await apply_both(service, factory, rounds)
+        seed_runs = await seed(service, factory, seed_snapshot)
+        return await apply_both(service, factory, rounds, seed_runs)
 
     (legacy_counts, legacy_state), (bulk_counts, bulk_state) = asyncio.run(run())
     assert bulk_counts == legacy_counts
