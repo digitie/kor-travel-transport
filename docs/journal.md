@@ -1,5 +1,44 @@
 # journal.md — 작업 일지
 
+## 2026-10-12 — 유가 저장 집합 upsert화, 오피넷 지역 검색 1회 재시도 핀 (`perf/fuel-store-batched`)
+
+소유자 승인(같은 날 유가 조사 후속 두 건). 기준 main `e0545fb`(#74, 배포 대기).
+
+- **운영 크기(읽기 전용 조회, 2026-10-12).** `fuel_stations` 11,885행, `fuel_price_snapshots` 약 126만 행·1,709MB,
+  `fuel_latest_prices` 59,425행. 최근 스냅샷 하나가 쓰는 유가 행 53,567~58,845(그중 새 행 54,654 — 가격 없는 유종은
+  observed_at이 수집 시각이라 매번 새 행), 저장 단계는 `collected_at` 23:35:10Z → run 종료 23:51:34Z(약 16분).
+  `upsert_latest_fuel_prices`의 배치 필터는 `ix_fuel_prices_latest_lookup` index-only scan이다.
+- **수정.** `_store_fuel_snapshot`이 주유소·유가를 행마다 select→update/insert 하던 것(스냅샷당 DB 호출 약 14만 번)을
+  자연 키로 합친 뒤 `INSERT … ON CONFLICT … DO UPDATE` 묶음(주유소 500행·유가 2,000행, bind 파라미터 2만 개 안팎)으로
+  바꿨다. 의미는 같다: 같은 unique 키, 같은 갱신 열(충돌 시 `first_seen_at`·`collection_run_id` 유지), 스냅샷에 없는
+  주유소는 손대지 않음(옛 구현도 그랬다), 반환 개수는 이번 호출이 새로 만든 행 수(같은 트랜잭션 안 전후 개수 차),
+  같은 키가 두 번 오면 마지막 값·처음 위치. **트랜잭션은 하나로 둔다** — `fuel_latest_prices`와 성공 상태가 원본과 같은
+  트랜잭션에서 확정된다는 0022 계약을 읽는 쪽(최신 유가·`fuel_read_model_freshness`)이 전제로 삼는다.
+- **동등성 근거.** 옛 구현을 `tests/test_fuel_store_bulk.py`에 원문 그대로 두고(오라클), 같은 커밋 상태에서 두 구현을 각각
+  트랜잭션 안에서 돌린 뒤 세 테이블을 자연 키로 비교한다(시퀀스는 롤백되지 않으므로 id·수집 run은 이름으로 바꿔 비교).
+  기존 행 갱신·새 행·코드 없는 주유소·중복 키·사라진 주유소·묶음 경계(1·2·17/29행)·무작위 스냅샷 3회. n150에서
+  PostgreSQL·SQLite 모두 통과. 의미를 일부러 바꾼 변이 셋(충돌 시 `collection_run_id` 갱신, `first_seen_at` 갱신, 중복 키
+  처음 값 우선)은 각각 동등성 테스트 5건을 전부 빨갛게 만든다.
+- **측정(n150, 새 postgres:16, 주유소 11,885 x 5유종 = 59,425 유가 행, 이력 3회 약 12.8만 행, load 11~16).**
+  | | 전체 | DB 호출 | DB 시간 | 가장 긴 문장 |
+  |---|---|---|---|---|
+  | 옛 구현 | 159.7s(앞 실행 217.8s) | 142,621 | 89.6s | 16.2s(최신 유가 upsert) |
+  | 새 구현 | 69.1s / 92.9s(앞 실행 72.4s·78.8s) | 59 | 67.5~91.4s | 19.3s(최신 유가 upsert), 새 문장 최대 11.4s |
+  남은 시간은 쓰기량 자체다(유가 행마다 인덱스 9개). 옛 구현의 같은 쓰기(INSERT 32,797 + UPDATE 26,628)도 DB 시간 43.7s였다.
+  운영(이력 126만 행, 공용 PG, 왕복 지연)에서 옛 구현은 14~16분이었고 줄어드는 몫은 대부분 왕복이다. 운영 크기 이력으로
+  다시 재지 않았다 — n150 `/`가 92%(여유 40G)·load 15라 수 GB 측정 DB를 띄우지 않았다. 배포 뒤 첫 유가 run의
+  `collected_at`→종료 시간으로 확인한다.
+- ON CONFLICT는 충돌 행에도 시퀀스 값을 하나씩 쓴다(유가 약 2.7만·주유소 약 1.2만/run). 유가 시퀀스 139만/21.4억이라
+  하루 3회여도 수십 년 여유다.
+- python-opinet-api 핀을 PR #21 머지 커밋 `4654310`으로 올렸다. '조회' 검색 응답 시간 초과만 검색 화면을 새로 열고
+  탭·지역을 다시 고른 뒤 1회 재시도한다(지역 선택·결과 DOM 대기 시간 초과는 재시도 안 함, 성공한 재시도는 경고 로그와
+  `OpinetBrowserSnapshot.region_retry_count`). 실패 문구는 `target=non-numeric` 대신 `region=시도/시군구:attempt=N`.
+  (작업 중에는 브랜치 머리 `23d0897`에 임시 핀했다.)
+  Dagster 실패 설명 테스트의 대역 문구도 새 형식으로 바꿨다.
+- 검증: n150 CI-parity(python:3.12 + postgres:16, `uv sync --extra dev --locked` → `alembic upgrade head`·`check` →
+  `export_openapi.py --check` → `pytest tests -q`) @ `a92323d`: alembic head·check 무변경, OpenAPI 최신,
+  PostgreSQL 738 passed·2 skipped(1:02:52), SQLite 유가 저장+수집 50 passed·2 skipped. 측정 DB 볼륨은 지웠다.
+
 ## 2026-10-12 — 유가 실패 원인 규명·저장 재시도, 장소 좌표 job 유예 성공 처리 (`fix/fuel-failure-cause-and-place-deferral`)
 
 소유자 요청(transport Dagster 건강 개선). 운영 41885919(#73) 기준, 읽기 전용으로 조사했다.

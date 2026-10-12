@@ -41,9 +41,9 @@ def test_transport_failure_is_visible_after_commit_without_retry(monkeypatch, sc
             return TransportCollectionService._summary(
                 SimpleNamespace(id=19387, status=status), client_mode="live", raw_count=0,
                 traffic_count=0, incident_count=0, fuel_station_count=0, fuel_price_count=0,
-                errors=["Opinet browser action failed: phase=search:station:target=non-numeric; cause=TimeoutError",
+                errors=["Opinet browser action failed: phase=search:station:region=경기도/용인시수지구:attempt=2; cause=TimeoutError",
                         "GET https://api.example/x?serviceKey=raw-service-key&page=1 secret-provider-detail",
-                        "Opinet browser action failed: phase=search:station:target=non-numeric; cause=TimeoutError"],
+                        "Opinet browser action failed: phase=search:station:region=경기도/용인시수지구:attempt=2; cause=TimeoutError"],
             )
 
         async def close(self):
@@ -70,7 +70,7 @@ def test_transport_failure_is_visible_after_commit_without_retry(monkeypatch, sc
         assert failure.metadata["error_count"].value == 3
         assert failure.description.startswith(f"교통정보 수집에 실패했습니다(status={status}): ")
         # 다음 진단이 DB를 보지 않아도 되게 실제 원인을 싣되(중복은 한 번), 비밀값과 serviceKey 값은 가린다.
-        assert failure.description.count("phase=search:station:target=non-numeric; cause=TimeoutError") == 1
+        assert failure.description.count("phase=search:station:region=경기도/용인시수지구:attempt=2; cause=TimeoutError") == 1
         assert "serviceKey=<redacted>" in failure.description
         assert "raw-service-key" not in str(failure)
         assert "secret-provider-detail" not in str(failure)

@@ -57,6 +57,10 @@ TRANSPORT_COLLECTION_ADVISORY_LOCK_KEY = 420040
 TRANSPORT_TRIGGER_PREFIX = "transport_"
 HIGHWAY_FETCH_TIMEOUT_SECONDS = 120
 FUEL_FETCH_TIMEOUT_SECONDS = 7200
+#: 유가 스냅샷 upsert 한 문장에 싣는 행 수. bind 파라미터 상한(PostgreSQL·SQLite 32,767)과 수집 엔진의
+#: 문장당 `command_timeout`(60초) 안에 들도록 정한다. 주유소 41열 x 500 = 20,500개, 유가 9열 x 2,000 = 18,000개.
+FUEL_STATION_UPSERT_BATCH = 500
+FUEL_PRICE_UPSERT_BATCH = 2_000
 #: 유가 스냅샷 저장 시도 횟수. 일시적 DB 오류(`_is_transient_database_error`)에만 한 번 더 저장한다.
 FUEL_STORE_ATTEMPTS = 2
 CollectionScope = Literal["all", "highway", "fuel"]
@@ -880,33 +884,65 @@ class TransportCollectionService:
         collection_run_id: int,
         snapshot: OpinetBrowserSnapshot,
     ) -> tuple[int, int]:
-        station_count = 0
-        price_count = 0
+        """오피넷 스냅샷을 집합 단위 upsert로 저장하고 (새 주유소 수, 새 유가 행 수)를 돌려준다.
+
+        행마다 select→update/insert 하던 옛 구현(운영 크기 스냅샷당 DB 호출 실측 142,621번, 운영에서 14~16분)을
+        `INSERT … ON CONFLICT … DO UPDATE` 묶음으로 바꿨다. 의미는 옛 구현과 같다.
+
+        - 주유소 키는 `(source, identity_key)`. 기존 행은 `_station_values` 열(`last_seen_at` 포함)만
+          갱신하고 `first_seen_at`은 두며, 이번 스냅샷에 없는 주유소는 건드리지 않는다.
+        - 유가 키는 `(fuel_station_id, source, product_code, observed_at)`. 기존 행은 `price`,
+          `provider_updated_at`, `collected_at`, `raw_item_json`만 갱신하고 `collection_run_id`는 둔다.
+        - 같은 키가 한 스냅샷에 두 번 오면 마지막 값이 이기고 순서(새 id 배정)는 처음 위치를 따른다.
+          한 문장 안에 같은 키가 두 번 있으면 PostgreSQL ON CONFLICT가 거부하므로 미리 합친다.
+        - 반환 개수는 옛 구현처럼 이번 호출이 **새로 만든** 행 수다. 갱신은 `collection_run_id`·주유소 수를
+          바꾸지 않으므로 같은 트랜잭션 안의 전후 개수 차이가 곧 삽입 수다.
+
+        트랜잭션은 나누지 않는다. `fuel_latest_prices`와 수집 성공 상태가 원본과 같은 트랜잭션에서
+        확정돼야 읽는 쪽이 반쪽 스냅샷을 보지 않는다(0022). 문장 하나는 bind 파라미터 상한과
+        수집 엔진의 문장당 `command_timeout`(60초) 안에 들도록 묶음 크기를 제한한다.
+        """
         collected_at = serialize_utc(snapshot.collected_at, self.settings.app_timezone)
+        insert = postgresql_insert if session.bind.dialect.name == "postgresql" else sqlite_insert
+        station_table = FuelStation.__table__
+        price_table = FuelPriceSnapshot.__table__
+
+        station_rows: dict[str, dict[str, Any]] = {}
+        station_prices: list[tuple[str, BrowserStation]] = []
         for item in snapshot.stations:
             identity_key = _station_identity(item)
-            station = await session.scalar(
-                select(FuelStation).where(
-                    FuelStation.source == OPINET_SOURCE,
-                    FuelStation.identity_key == identity_key,
-                )
-            )
-            values = _station_values(item, collected_at)
-            if station is None:
-                station = FuelStation(
-                    source=OPINET_SOURCE,
-                    identity_key=identity_key,
-                    first_seen_at=collected_at,
-                    **values,
-                )
-                session.add(station)
-                station_count += 1
-                await session.flush()
-            else:
-                for key, value in values.items():
-                    setattr(station, key, value)
-                station.last_seen_at = collected_at
+            station_rows[identity_key] = {
+                "source": OPINET_SOURCE,
+                "identity_key": identity_key,
+                "first_seen_at": collected_at,
+                **_station_values(item, collected_at),
+            }
+            station_prices.append((identity_key, item))
 
+        stations_before = await self._count_opinet_stations(session)
+        station_ids: dict[str, int] = {}
+        rows = list(station_rows.values())
+        if rows:
+            station_statement = insert(station_table)
+            station_statement = station_statement.on_conflict_do_update(
+                index_elements=["source", "identity_key"],
+                set_={
+                    name: station_statement.excluded[name]
+                    for name in rows[0]
+                    if name not in ("source", "identity_key", "first_seen_at")
+                },
+            ).returning(station_table.c.identity_key, station_table.c.id)
+            for chunk in _chunked(rows, FUEL_STATION_UPSERT_BATCH):
+                result = await session.execute(
+                    station_statement.execution_options(insertmanyvalues_page_size=len(chunk)), chunk,
+                )
+                station_ids.update((identity_key, station_id) for identity_key, station_id in result.all())
+        station_count = await self._count_opinet_stations(session) - stations_before
+
+        price_rows: dict[tuple[int, str, datetime], dict[str, Any]] = {}
+        for identity_key, item in station_prices:
+            station_id = station_ids[identity_key]
+            raw_item = _plain_json(item.raw)
             for price in item.prices:
                 provider_updated_at = (
                     serialize_utc(price.updated_at, self.settings.app_timezone)
@@ -915,40 +951,52 @@ class TransportCollectionService:
                 )
                 observed_at = provider_updated_at or collected_at
                 product_code = _enum_value(price.product_code) or "unknown"
-                existing = await session.scalar(
-                    select(FuelPriceSnapshot).where(
-                        FuelPriceSnapshot.fuel_station_id == station.id,
-                        FuelPriceSnapshot.source == OPINET_SOURCE,
-                        FuelPriceSnapshot.product_code == product_code,
-                        FuelPriceSnapshot.observed_at == observed_at,
-                    )
+                price_rows[(station_id, product_code, observed_at)] = {
+                    "collection_run_id": collection_run_id,
+                    "fuel_station_id": station_id,
+                    "source": OPINET_SOURCE,
+                    "product_code": product_code,
+                    "price": _decimal_or_none(price.price),
+                    "provider_updated_at": provider_updated_at,
+                    "observed_at": observed_at,
+                    "collected_at": collected_at,
+                    "raw_item_json": raw_item,
+                }
+
+        prices_before = await self._count_run_fuel_prices(session, collection_run_id)
+        if price_rows:
+            price_statement = insert(price_table)
+            price_statement = price_statement.on_conflict_do_update(
+                index_elements=["fuel_station_id", "source", "product_code", "observed_at"],
+                set_={
+                    name: price_statement.excluded[name]
+                    for name in ("price", "provider_updated_at", "collected_at", "raw_item_json")
+                },
+            )
+            for chunk in _chunked(list(price_rows.values()), FUEL_PRICE_UPSERT_BATCH):
+                await session.execute(
+                    price_statement.execution_options(insertmanyvalues_page_size=len(chunk)), chunk,
                 )
-                price_value = _decimal_or_none(price.price)
-                raw_item = _plain_json(item.raw)
-                if existing is None:
-                    session.add(
-                        FuelPriceSnapshot(
-                            collection_run_id=collection_run_id,
-                            fuel_station_id=station.id,
-                            source=OPINET_SOURCE,
-                            product_code=product_code,
-                            price=price_value,
-                            provider_updated_at=provider_updated_at,
-                            observed_at=observed_at,
-                            collected_at=collected_at,
-                            raw_item_json=raw_item,
-                        )
-                    )
-                    price_count += 1
-                else:
-                    existing.price = price_value
-                    existing.provider_updated_at = provider_updated_at
-                    existing.collected_at = collected_at
-                    existing.raw_item_json = raw_item
-        await session.flush()
+        price_count = await self._count_run_fuel_prices(session, collection_run_id) - prices_before
+
         # 이 배치가 새로 쓰거나 다시 확인한 행은 모두 같은 collected_at을 갖는다.
         await upsert_latest_fuel_prices(session, collected_at=collected_at)
         return station_count, price_count
+
+    @staticmethod
+    async def _count_opinet_stations(session: AsyncSession) -> int:
+        return int(await session.scalar(
+            select(func.count()).select_from(FuelStation).where(FuelStation.source == OPINET_SOURCE)
+        ) or 0)
+
+    @staticmethod
+    async def _count_run_fuel_prices(session: AsyncSession, collection_run_id: int) -> int:
+        return int(await session.scalar(
+            select(func.count()).select_from(FuelPriceSnapshot).where(
+                FuelPriceSnapshot.collection_run_id == collection_run_id,
+                FuelPriceSnapshot.source == OPINET_SOURCE,
+            )
+        ) or 0)
 
     async def _source_is_due(self, session: AsyncSession, source: str) -> bool:
         state = await session.scalar(select(TransportCollectionState).where(
@@ -1162,6 +1210,10 @@ async def _collect_krex_pages(
             raise RuntimeError(f"{endpoint} exceeded the {KREX_MAX_PAGES}-page safety limit")
         page_no += 1
     return tuple(items)
+
+
+def _chunked(rows: list[T], size: int) -> list[list[T]]:
+    return [rows[index:index + size] for index in range(0, len(rows), size)]
 
 
 def _station_identity(item: BrowserStation) -> str:

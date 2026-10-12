@@ -41,8 +41,9 @@ Transport PR #51(`50a1f71`)과 provider PR #20(`7e0f770`)은 머지 완료다.
   동 단위로 변경할 때는 기존 검색 상한 10,000과 예상 호출량을 먼저 대조한다.
   지역 선택·탭 이동 등의 부수 요청도 전체 호출 예산에서 별도로 계산해야 한다.
 - Transport `backend/app/services/transport_collection.py`는 `collect_once()` 결과를
-  받은 후 주유소와 가격을 저장한다. `_store_fuel_snapshot()`은 개별 조회/저장을
-  반복하므로 지역 분할 후에도 DB I/O와 트랜잭션 길이를 측정해야 한다.
+  받은 후 주유소와 가격을 저장한다. `_store_fuel_snapshot()`은 2026-10-12부터 자연 키로
+  합친 뒤 `INSERT … ON CONFLICT … DO UPDATE` 묶음(주유소 500행·유가 2,000행)으로 쓴다(옛 행 단위
+  select→update/insert는 스냅샷당 왕복 ~7만 번). 지역 분할 후에도 트랜잭션 길이는 다시 측정한다.
 - Dagster의 현재 연료 cron은 `0 */8 * * *`다. provider 기본 8시간 간격과 Transport
   예약/실패 유예도 함께 존재한다. cron만 짧게 바꾸거나 보호를 삭제해서는 안 된다.
 
