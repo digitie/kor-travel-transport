@@ -886,7 +886,7 @@ class TransportCollectionService:
     ) -> tuple[int, int]:
         """오피넷 스냅샷을 집합 단위 upsert로 저장하고 (새 주유소 수, 새 유가 행 수)를 돌려준다.
 
-        행마다 select→update/insert 하던 옛 구현(스냅샷당 왕복 ~7만 번, n150 디스크 대기에서 14~16분)을
+        행마다 select→update/insert 하던 옛 구현(운영 크기 스냅샷당 DB 호출 실측 142,621번, 운영에서 14~16분)을
         `INSERT … ON CONFLICT … DO UPDATE` 묶음으로 바꿨다. 의미는 옛 구현과 같다.
 
         - 주유소 키는 `(source, identity_key)`. 기존 행은 `_station_values` 열(`last_seen_at` 포함)만

@@ -34,7 +34,8 @@
   `target=non-numeric` 대신 `region=시도/시군구:attempt=N`). 라이브러리 머지 뒤 머지 커밋으로 다시 핀한다.
   Dagster 실패 설명 테스트의 대역 문구도 새 형식으로 바꿨다.
 - 검증: n150 CI-parity(python:3.12 + postgres:16, `uv sync --extra dev --locked` → `alembic upgrade head`·`check` →
-  `export_openapi.py --check` → `pytest tests -q`). 결과는 resume.
+  `export_openapi.py --check` → `pytest tests -q`) @ `a92323d`: alembic head·check 무변경, OpenAPI 최신,
+  PostgreSQL 738 passed·2 skipped(1:02:52), SQLite 유가 저장+수집 50 passed·2 skipped. 측정 DB 볼륨은 지웠다.
 
 ## 2026-10-12 — 유가 실패 원인 규명·저장 재시도, 장소 좌표 job 유예 성공 처리 (`fix/fuel-failure-cause-and-place-deferral`)
 
