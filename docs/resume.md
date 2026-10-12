@@ -3,9 +3,8 @@
 ## 현재 상태
 
 - **2026-10-12 `perf/fuel-store-batched` 푸시, PR 미생성·미배포.** 유가 저장을 집합 upsert로 바꿨다(DB 호출 약 14만 → 59,
-  의미 동등성은 옛 구현 오라클 비교, journal 같은 날). python-opinet-api는 `fix/region-search-retry-and-diagnostics`
-  머리 `23d0897`에 임시 핀. **다음 한 작업:** 라이브러리 PR 머지 → 머지 커밋으로 재핀(`backend/pyproject.toml` rev +
-  `uv lock --upgrade-package python-opinet-api`) → 리뷰 → PR → CI → 머지 → 배포 → 첫 유가 run의 저장 단계
+  의미 동등성은 옛 구현 오라클 비교, journal 같은 날). python-opinet-api는 PR #21 머지 커밋 `4654310`에 핀.
+  **다음 한 작업:** 리뷰 → PR → CI → 머지 → 배포 → 첫 유가 run의 저장 단계
   (`collected_at`→종료) 시간과 지역 검색 실패 문구(`region=…:attempt=N`) 확인.
 
 - **2026-10-12 `fix/fuel-failure-cause-and-place-deferral` 푸시, PR 미생성·미배포.** 유가 FAILURE 5/25의 원인을 규명했다

@@ -30,8 +30,10 @@
   `collected_at`→종료 시간으로 확인한다.
 - ON CONFLICT는 충돌 행에도 시퀀스 값을 하나씩 쓴다(유가 약 2.7만·주유소 약 1.2만/run). 유가 시퀀스 139만/21.4억이라
   하루 3회여도 수십 년 여유다.
-- python-opinet-api 핀을 `fix/region-search-retry-and-diagnostics` 머리 `23d0897`로 올렸다(지역 검색 시간 초과 1회 재시도,
-  `target=non-numeric` 대신 `region=시도/시군구:attempt=N`). 라이브러리 머지 뒤 머지 커밋으로 다시 핀한다.
+- python-opinet-api 핀을 PR #21 머지 커밋 `4654310`으로 올렸다. '조회' 검색 응답 시간 초과만 검색 화면을 새로 열고
+  탭·지역을 다시 고른 뒤 1회 재시도한다(지역 선택·결과 DOM 대기 시간 초과는 재시도 안 함, 성공한 재시도는 경고 로그와
+  `OpinetBrowserSnapshot.region_retry_count`). 실패 문구는 `target=non-numeric` 대신 `region=시도/시군구:attempt=N`.
+  (작업 중에는 브랜치 머리 `23d0897`에 임시 핀했다.)
   Dagster 실패 설명 테스트의 대역 문구도 새 형식으로 바꿨다.
 - 검증: n150 CI-parity(python:3.12 + postgres:16, `uv sync --extra dev --locked` → `alembic upgrade head`·`check` →
   `export_openapi.py --check` → `pytest tests -q`) @ `a92323d`: alembic head·check 무변경, OpenAPI 최신,
