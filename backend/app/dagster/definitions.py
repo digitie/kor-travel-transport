@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import re
 import sys
 import traceback
 from collections.abc import Awaitable, Callable
@@ -224,14 +225,50 @@ async def _collect_transport_in_one_loop(settings: Settings, scope: CollectionSc
         await asyncio.wait_for(service.close(), timeout=10)
 
 
+#: Failure 설명에 담는 오류 하나의 상한. 차단 페이지 HTML 같은 긴 문장은 잘라 둔다.
+MAX_FAILURE_CAUSE_CHARS = 300
+_HTML_TAG = re.compile(r"<(?!redacted>)[^<>]{1,200}>")
+
+
+def _redacted_causes(errors: Any) -> str:
+    """수집 서비스가 남긴 오류 문장들을 공용 event log에 실어도 되는 한 줄로 만든다.
+
+    서비스의 `_safe_error`는 두 키만 가린다. 여기서 설정된 모든 비밀값의 모든 형태와 URL의 `serviceKey=` 값을
+    더 가리고, HTML 태그를 걷고, 중복을 합치고, 길이를 자른다. 진단에 DB 접근이 필요 없게 하려는 것이다.
+    """
+    if not isinstance(errors, (list, tuple)) or not errors:
+        return "원인 미기록"
+    forms = _secret_forms()
+    causes: list[str] = []
+    for error in errors:
+        try:
+            # 먼저 가린 뒤 태그를 걷는다(태그 제거가 비밀값을 쪼개 가림을 피해 가지 않게).
+            text = _HTML_TAG.sub(" ", _redact_text(sanitize_upstream_error(str(error), None), forms))
+        except Exception:  # noqa: BLE001 — 가림에 실패한 문장은 싣지 않는다.
+            text = "<unavailable>"
+        text = " ".join(text.split())
+        if len(text) > MAX_FAILURE_CAUSE_CHARS:
+            text = text[: MAX_FAILURE_CAUSE_CHARS - 3] + "..."
+        if text not in causes:
+            causes.append(text)
+    return " | ".join(causes)
+
+
 def _collect_transport(scope: CollectionScope) -> dict[str, Any]:
     result = asyncio.run(_collect_transport_in_one_loop(_settings(), scope))
     # 성공분·실패 상태를 커밋하고 provider를 닫은 뒤 Dagster에도 실패를 전달한다.
-    # 응답 원문을 복제하지 않으며 기존 호출 유예를 자동 재시도로 우회하지 않는다.
+    # 원인은 가린 한 줄로 설명에 싣는다(다음 진단이 DB를 보지 않아도 되게). 기존 호출 유예를 자동 재시도로
+    # 우회하지 않는다.
     if result.get("status") in {"failed", "partial_success"}:
+        errors = result.get("errors")
+        description = (f"교통정보 수집에 실패했습니다(status={result['status']}): {_redacted_causes(errors)}. "
+                       "저장된 성공분과 호출 유예는 유지합니다.")
+        if len(description) > MAX_FAILURE_DESCRIPTION_CHARS:
+            description = description[: MAX_FAILURE_DESCRIPTION_CHARS - 3] + "..."
         raise Failure(
-            description="교통정보 수집에 실패했습니다. 저장된 성공분과 호출 유예는 유지합니다.",
-            metadata={"run_id": result["collection_run_id"], "status": result["status"], "scope": scope},
+            description=description,
+            metadata={"run_id": result["collection_run_id"], "status": result["status"], "scope": scope,
+                      "error_count": len(errors) if isinstance(errors, (list, tuple)) else 0},
             allow_retries=False,
         )
     return result
@@ -249,6 +286,52 @@ def collect_highway_transport(context) -> dict[str, Any]:
 def collect_fuel_transport(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         return _collect_transport("fuel")
+
+
+def _place_collection_error(result: dict[str, Any]) -> bool:
+    """장소 좌표 조회 결과에 실제 오류가 있는가(유예와 구분한다).
+
+    실제 오류: 예외로 끝난 수집(`failed`), 제공기관 호출 실패(`provider_failed>0`), 그리고 유예로 설명되지 않는
+    `partial_success`(지금의 서비스는 만들지 않지만, 설명 없는 부분 성공은 실패 쪽으로 둔다).
+    유예: 일일·월간 호출 예산, VWorld `incomplete`(결과가 페이지 상한을 넘어 확정 불가), 카카오 429 뒤 24시간 유예.
+    """
+    status = result.get("status")
+    return (status == "failed" or bool(result.get("provider_failed", 0))
+            or (status == "partial_success" and not result.get("deferred", 0)))
+
+
+def _place_metadata(result: dict[str, Any]) -> dict[str, Any]:
+    return {key: result.get(key, default) for key, default in (
+        ("run_id", ""), ("status", ""), ("provider_calls", 0), ("deferred", 0), ("provider_failed", 0),
+        ("incomplete", 0), ("unmatched", 0), ("bus_locations", 0), ("port_locations", 0))}
+
+
+def _finish_place_collection(context, result: dict[str, Any], provider: str) -> dict[str, Any]:
+    """독립 장소 좌표 job의 끝맺음. bus_reference의 좌표 보강(PR #73)과 같은 규칙이다."""
+    metadata = _place_metadata(result)
+    if _place_collection_error(result):
+        raise Failure(description=f"{provider} 장소 위치 조회 중 제공기관 호출이 실패했습니다"
+                                  f"(provider_failed={metadata['provider_failed']}, status={metadata['status']}). "
+                                  "성공분은 저장했고 유예분은 다음 정기 수집에서 다시 봅니다.",
+                      metadata=metadata, allow_retries=False)
+    if metadata["deferred"]:
+        context.log.warning(f"{provider} 장소 위치 조회에서 {metadata['deferred']}건이 유예됐습니다(오류 없음). "
+                            "다음 정기 수집에서 다시 봅니다.")
+    context.add_output_metadata(metadata)
+    return result
+
+
+def _reference_error(result: dict[str, Any]) -> bool:
+    """기준정보 수집(버스·항구) 결과에 실제 오류가 있는가.
+
+    항구 기준정보는 기항지 위치 조회가 실패(`port_location_failed_calls>0`)하거나 유예(`port_location_deferred_count>0`
+    — 실패 TTL, 429 뒤 24시간 유예, 일일 80회 예산)되면 `partial_success`다. 이번 실행의 호출 실패만 실제 오류다.
+    """
+    if result.get("status") == "failed":
+        return True
+    if result.get("status") != "partial_success":
+        return False
+    return bool(result.get("port_location_failed_calls", 0)) or not result.get("port_location_deferred_count", 0)
 
 
 def _collect_reference(kind: str) -> dict[str, Any]:
@@ -320,11 +403,7 @@ def collect_place_locations(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         settings = _settings()
         result = asyncio.run(_run_with_session(settings, PlaceLocationCollectionService(settings).collect))
-        if result.get("status") == "partial_success":
-            raise Failure(description="장소 위치 조회가 유예되거나 실패했습니다. 성공분은 저장했습니다.",
-                          metadata={"run_id": result["run_id"], "deferred": result["deferred"]},
-                          allow_retries=False)
-        return result
+        return _finish_place_collection(context, result, "VWorld")
 
 
 @op
@@ -333,11 +412,7 @@ def collect_kakao_place_locations(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         settings = _settings()
         result = asyncio.run(_run_with_session(settings, KakaoPlaceCollectionService(settings).collect))
-        if result.get("status") == "partial_success":
-            raise Failure(description="카카오 장소 위치 조회가 유예되거나 실패했습니다. 성공분은 저장했습니다.",
-                          metadata={"run_id": result["run_id"], "deferred": result["deferred"]},
-                          allow_retries=False)
-        return result
+        return _finish_place_collection(context, result, "카카오")
 
 
 @op
@@ -367,16 +442,27 @@ def enrich_new_reference_locations(context, reference_result: dict[str, Any]) ->
                              f"{name}_deferred": result.get("deferred", 0),
                              f"{name}_provider_failed": result.get("provider_failed", 0)})
         # 실제 오류(예외로 끝난 수집, 호출 실패)만 실패로 올린다. 유예(일일 호출 예산, 429 유예,
-        # 검색 결과가 페이지 상한을 넘어 확정할 수 없는 `incomplete`)는 성공분을 저장한 정상 결과다 —
-        # 같은 이름이 매일 유예돼 job이 매일 FAILURE가 되면 진짜 장애가 묻힌다. 유예 건수는 metadata로 남긴다.
-        provider_error = any(result.get("status") == "failed" or result.get("provider_failed", 0)
-                             for result in (vworld, kakao))
-        if reference_result.get("status") == "partial_success" or provider_error:
-            raise Failure(description="기준정보와 장소 좌표 보강의 성공분은 저장했지만 일부 조회가 실패하거나 유예됐습니다.",
-                          metadata=metadata, allow_retries=False)
+        # 검색 결과가 페이지 상한을 넘어 확정할 수 없는 `incomplete`, 항구 기항지 조회의 실패 TTL·예산)는 성공분을
+        # 저장한 정상 결과다 — 같은 이름이 매일 유예돼 job이 매일 FAILURE가 되면 진짜 장애가 묻힌다.
+        # 유예 건수는 metadata로 남긴다.
+        failed = [name for name, failed in (
+            ("reference", _reference_error(reference_result)),
+            ("vworld", _place_collection_error(vworld)),
+            ("kakao", _place_collection_error(kakao)),
+        ) if failed]
+        if failed:
+            raise Failure(description=(
+                f"제공기관 호출 실패가 있습니다({', '.join(failed)}): 예외로 끝난 수집, provider_failed>0, "
+                "또는 이번 실행의 기항지 위치 조회 실패(reference_failed_calls>0). 유예만 있는 날은 실패가 아닙니다. "
+                "기준정보와 좌표 보강의 성공분은 저장했습니다."),
+                metadata={**metadata, "failed_parts": ",".join(failed)}, allow_retries=False)
         deferred = sum(int(result.get("deferred", 0) or 0) for result in (vworld, kakao))
         if deferred:
             context.log.warning(f"장소 좌표 보강에서 {deferred}건이 유예됐습니다(오류 없음). 다음 정기 수집에서 다시 봅니다.")
+        reference_deferred = int(reference_result.get("port_location_deferred_count", 0) or 0)
+        if reference_deferred:
+            context.log.warning(f"기항지 위치 조회에서 {reference_deferred}건이 유예됐습니다(이번 실행의 호출 실패 없음). "
+                                "다음 정기 수집에서 다시 봅니다.")
         context.add_output_metadata(metadata)
         return {"reference_status": reference_result.get("status"), "vworld": vworld, "kakao": kakao}
 

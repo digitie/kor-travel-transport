@@ -2,6 +2,12 @@
 
 ## 현재 상태
 
+- **2026-10-12 `fix/fuel-failure-cause-and-place-deferral` 푸시, PR 미생성·미배포.** 유가 FAILURE 5/25의 원인을 규명했다
+  (상류 Opinet 검색 시간 초과 3, 저장 단계 asyncpg 시간 초과 2 — journal 같은 날). 저장 단계 일시적 DB 오류에 저장만 한 번 재시도,
+  메시지 없는 예외에 발생 위치, highway/fuel Failure 설명에 가린 원인. 장소 좌표 job 2개와 maritime 기항지 조회는 유예만이면 성공.
+  **다음 한 작업:** 리뷰 → PR → CI → 머지 → 배포 → 다음 유가 실패의 Dagster 설명에 원인이 보이는지, place/kakao job이 유예일에
+  SUCCESS + metadata인지 확인.
+
 - **2026-10-10 `fix/dagster-highway-runid-krex-block` 푸시, PR 미생성·미배포.** highway job 실패를 가리던
   `KeyError: 'run_id'`(실제 키 `collection_run_id`), data.ex.co.kr WAF의 라이브러리 기본 UA 차단(2026-10-08~,
   python-krex-api #17 핀으로 기본 UA), 좌표 보강의 오류 없는 유예가 bus_reference job을 매일 실패로 만들던 것을 고쳤다
