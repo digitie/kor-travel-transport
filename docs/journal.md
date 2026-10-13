@@ -1,5 +1,105 @@
 # journal.md — 작업 일지
 
+## 2026-10-13 — odroid 호스트 이전 ADR-014·런북 계획 절 (`docs/adr-014-odroid-host-move`)
+
+소유자 지시(설계와 각 프로젝트 문서를 수정해 코딩을 준비, 각각 PR 머지까지). 기준 main `eb40e3b`(#76). **문서만 바꿨다.**
+
+- **배경.** 교차 저장소 Track 2 설계(2026-10-13 최종본 + odroid 실측 반영)가 geo·weather·transport와 그들의 PG를 odroid
+  (`192.168.1.13`)로 옮긴다. 저장소 안 정본은 Manager ADR-58(상위)·transport **ADR-014**·geo ADR-070·Map ADR-110·concierge
+  ADR-50(전부 proposed). transport 몫은 "포트·project·디렉터리 동일, 호스트만 `.14 → .13`, 배포 스크립트의 `.14` 리터럴
+  거부를 `--host <addr>` + 효과 검사로, loopback 값 불변, `kor_travel_transport_dagster`는 env만 남기고 DB 없음, allow-list에
+  n150 `/32`, 운영 UI Dagster 링크 env, legacy `parking-radar`·`pr2` 폐기, fresh 재적재(highway 28 GB 포기), n150 수집 먼저
+  멈춤"이다.
+- **쓴 것.** `docs/adr/014-odroid-host-and-deploy-host-flag.md`(proposed; 결박 B1~B11을 head `eb40e3b` file:line으로, 결정 11개,
+  Track 1 무영향 한 줄), `docs/adr/README.md`(014 행, 다음 015), `docs/runbooks/deployment.md`("odroid 배포 계획(ADR-014)" 절 —
+  전제·env 표·4a/4b/5 순서·효과 게이트·마커 해제 조건; Historical 절 머리에 해제 시점), `docs/architecture/shared-db-dagster.md`
+  (두 DB 문단에 "env 둘·실체 하나" 설명, 호스트·plane 변경 계획 절), `docs/current-state.md`·`README.md`(호스트 계획 한 단락),
+  `docs/tasks.md` T-046(T-TRN-01~04, 수정 파일·빨간 입력 명시), 이 journal·`resume.md`.
+- **설계와 달리 쓴 것(근거).** ① 설계 §9.1·T-TRN-02의 "`TRANSPORT_DAGSTER_PUBLIC_ORIGIN` 부활" 대신 head가 이미 읽는
+  `NEXT_PUBLIC_TRANSPORT_DAGSTER_URL`(`packages/kor-travel-transport-admin/frontend/lib/dagster-scope.ts:118`)을 compose build
+  arg로 넘기는 쪽으로 적었다 — 옛 이름은 `.env.server14.example:104-106`이 "더 쓰지 않는다"로 닫았고 새 변수보다 작다; 단 build
+  시점 값이라 plane host 변경 = 재build(ADR 결과(부정)). ② 설계가 적은 file:line 중 head와 다른 것은 head 값으로 고쳤다:
+  `main.py:575` → `:630-632`(TrustedHost/CORS), `config.py:47` → `:49`, `remote.sh:76-84` → `:71,77-84`, `:143-150` → `:145-150`,
+  `definitions.py:352-368` → `:594-610`(schedule 선언), `docker-compose.shared.yml:303-306` → `:305`. ③ 실행 위치: 설계 "n150 또는
+  ProxyJump(WSL 직결 불가)"는 fact base §A3(2026-10-13 03:4xZ, WSL 직접 ssh 가능)로 낡아 "n150 또는 WSL"로 적었다. ④ `.env.server14.example`
+  주석 변경은 설계 plan에 있었으나 이 PR의 금지 목록이라 하지 않고 T-TRN-02 수정 파일로 옮겼다. ⑤ "13번 Docker 금지" 문구는 소유자
+  §14-2 결정 전이라 지우지 않고 교체 시점(T-TRN-03a, 4b 전)만 적었다; `AGENTS.md`·`SKILL.md`·`CLAUDE.md`의 같은 문구도 그때 함께(T-TRN-03a 목록).
+  ⑥ task 번호는 저장소 규약 `T-0NN`(T-046)을 쓰고 설계 ID T-TRN-xx를 항목 머리에 병기했다. ⑦ **설계 §8.3 정정**: "실패 시
+  `TRANSPORT_COLLECTION_ENABLED=false`로 Opinet만 비활성"은 사실 오류다 — head `backend/app/services/transport_collection.py:292-294`는
+  그 플래그로 `DisabledTransportProvider`를 돌려 KREX 고속도로 소통·돌발(`collect_highway`)까지 끈다. 유가만 끄는 토글은 이미 있는
+  `OPINET_BROWSER_ENABLED`(`config.py:62`, `transport_collection.py:230-243`, `.env.server14.example:128`)이고 ADR 결정 7·B9·런북
+  게이트·T-TRN-02/04가 그 이름을 쓴다(새 토글 T 없음). ⑧ 설계 T-TRN-03 하나를 03a(문구 교체, 4b 전, 문서만)·03b(마커 삭제, 게이트
+  뒤)로 나눴다 — 문구를 게이트 뒤에 풀면 4b를 수행하는 에이전트가 `AGENTS.md`·`SKILL.md`·`CLAUDE.md`가 금지하는 행위를 해야 한다.
+  ⑨ Manager 쪽 절 번호: Manager ADR-58 본문(Track 2 worktree `docs/decisions.md`, origin/main `094d397` 위)에는 §11.x가 없고
+  절차는 `docs/prod-deployment.md` §9(§9.2 플립·§9.5 체크리스트·§9.6 해체)에 있다 — 설계 §11.2/§11.5 인용을 그렇게 바꿨고,
+  §14-N은 ADR-58 "열린 결정"이 설계 번호를 그대로 쓰므로 "열린 결정 N"으로 적었다. 머지 뒤 1회 대조는 T-TRN-04.
+- **1차 리뷰 반영(두 리뷰어, HIGH 2·MED 10·LOW 9 — 전부 반영).** 위 ⑦~⑨ 외: `scripts/deploy-transport-admin-server14.sh:6,9,13,15`의
+  `.14`·`.env.server14` 결박을 B1·결정 1·T-TRN-01·런북 4b에 추가(운영 UI 배포 스크립트도 `--host`); 이름 추종 변경(B1′: mktemp
+  접두·ignore 예외·compose 주석·Dockerfile COPY·토큰 스크립트·계약 테스트 5개)을 T-TRN-01 수정 파일과 `pytest` 수용에 넣음;
+  env 승인 값을 `.env.prod`로 명시; T-TRN-03 수용 grep을 주소 문자열이 아니라 금지 문구·경로 부재 효과로; ADR B7의 deployment.md
+  인용을 줄 번호 대신 절 제목으로(이 PR이 그 앞에 절을 끼워 넣는다); Portainer 9443/parking-radar 8000 바로잡고 런북 "포트 메모"에
+  과거 기록 각주; `shared-db-dagster.md`의 "Manager bootstrap이 두 DB 준비" 문장을 "transport DB만, `_dagster`는 옛 산물"로 정정;
+  방화벽은 미완·미결(계획)으로 표기하고 그 전까지 경계는 ADR-013 토큰+peer-IP뿐임을 명시; Dagster 링크 변수 이탈을 ADR 열린
+  결정에 올림; `.env.prod` 키 수 101(head `KEY=` 줄 수); build args 줄 범위 `:29-31`/`:26-31`; `tasks-done.md` T-045의 ADR-014
+  예약 문구에 정정 한 줄; Manager 테스트 인용에 sha·줄(`094d397` `:37-38,47`)과 stale 로컬 체크아웃 주의(설계 §14-9).
+- **2차 리뷰 반영(두 리뷰어, HIGH 2·MED 6·LOW 9 — 반영 16·해당 없음 1).** ① **HIGH** 효과 검사 ③의 `targets.transport.host == <addr>`는
+  Manager Track 2 초안(`docs/docker-management.md` "`targets validate --json` 출력")의 `host` 값이 **hosts 키**(`odroid`)라 주소와
+  비교하면 항상 거부된다 — 결정 1을 "`k = targets.transport.host` → `hosts.<k>.addr == <addr>`"로 고치고 `--json`에 `hosts.<키>.addr`를
+  싣는 것을 T-MGR-01a에 대한 교차 저장소 계약으로 "후속"·T-046 의존·T-TRN-04 대조 항목에 올렸다(런북 4b·T-TRN-01 수용도 같은 모양).
+  ② **HIGH/MED** 런북 전제의 "`.env.prod` root 0600"은 digitie로 도는 배포 기제(`deploy-server14.sh:5`, `remote.sh:43-44,91,121`,
+  admin `:23-51,114`, 토큰 `:14,41-48`)와 양립하지 않아 **`digitie:digitie 0600`(n150 동일)**으로 결정 1에 확정 — 설계 §7.5·§11.3
+  이탈이라 열린 결정 A로 소유자에게 올리고 SMB 가시성을 결과(부정)에 적었다; 대안 (나)(원격 단계 `sudo -n` 승격)는 기각 사유와
+  함께 남겼고, T-TRN-01에 "env 읽기 불가 → exit 2"(`remote.sh:25` `-r`)를 더했다. ③ **MED** T-TRN-03a 수용 regex가 자기 매치·교체
+  문구·목록 밖 runbook 4개에 걸려 도달 불가 — 수용을 (파일, 원문) 목록 + `rg -F` 0건으로 바꾸고 runbook 4개(`migration.md:19,151`·
+  `troubleshooting.md:5`·`agent-failure-patterns.md:77`·`hostile-review.md:82` 주석만)·`AGENTS.md:187`·`README.md:113`·`tasks.md`
+  "운영 제약"을 목록에 넣었다; 교체 문구를 "odroid 작업은 … 절차만 따른다"로 바꿔 "Docker"와 "금지"가 한 줄에 오지 않게 했고,
+  보조 regex는 `docs/tasks.md`·`hostile-review.md`를 빼고 **이 worktree에서 돌려 9건**(완료 뒤 0건)을 기록했다 —
+  `deployment.md`의 인용 문구 "13번 Docker 금지"도 바꿨다. ④ **MED** T-TRN-01 수용 grep이 마커 `scripts/deploy-odroid.ps1:6`에 걸려
+  T-TRN-03b 전엔 초록 불가 — 마커 집합 M(6경로)을 ADR 결정 6·T-046 머리에 한 번 정의하고 T-TRN-01은 M 제외, T-TRN-03b는 M 부재로
+  대칭화(worktree에서 M 제외 grep에 odroid 경로 없음 확인). ⑤ **MED** 수용 기반 "bats"는 저장소·CI(`ci.yml:49-70`)에 없다 —
+  pytest 계약 테스트(`test_deploy_server14_remote_guard.py`의 PATH 스텁 패턴을 `ssh`/`sudo`로)로 바꾸고 설계 §13 이탈로 ADR "후속"에
+  적었다. ⑥ **MED** `shared-db-dagster.md` 계획 절이 기존 문단을 쪼개 "전환 창…" 문장이 고아가 되고 "되돌리기" 문단이 계획 절
+  아래로 들어갔다 — 절을 공용 plane 절 끝으로 옮기고 문장을 원 문단에 되돌렸다. ⑦ **LOW** file:line 2건(`deploy-server14.sh:26-29`,
+  `definitions.py:277-288`); `current-state.md` §9의 낡은 앱 경로 `parking-radar` → `kor-travel-transport`(`deploy-server14.sh:6`)와
+  자산 목록에 `docker-compose.shared.yml`(`remote.sh:121`)·`transport-admin.yml`(admin `:114`); T-TRN-02의 불필요한 테스트 `:124`
+  갱신 삭제(head가 이미 env 우선 + 폴백을 단언 — ADR B6·결정 5 정정); 미결 §14-2·§14-7을 컨텍스트·결정 6·9에서 "가정"으로;
+  README `:60` 운영 환경 줄과 Historical 절 머리에 ADR-014 포인터; T-TRN-04 수용을 효과 4개(current-state 행·Manager 절 제목
+  `rg -F`·`--json` 계약·README 표 accepted)로; tasks.md 인덱스 문장에 T-046. **해당 없음**: "작성자 보고 파일 수 불일치"는 보고
+  문구 문제이고 journal(10 파일)이 맞다 — PR 본문은 journal 기준으로 쓴다.
+- **3차 리뷰 반영(두 리뷰어, HIGH 1·MED 8·LOW 9 — 반영 17·기각 1).** ① **HIGH** 런북 4b 순서가 원격 스크립트의 "공용 webserver
+  workspace에 location이 없으면 exit 2" 가드(`remote.sh:187-189`, `:222-226`)와 충돌해 odroid 첫 배포가 반드시 거부됐다 — 가드는 바꾸지
+  않고(대안 (b) "설치된 workspace 파일 검사"는 효과 검사를 파일 검사로 낮춘다) **4a 끝에 odroid `ensure dagster`**(플립 PR workspace
+  반영, location은 load error로 실림) → 4b 배포 순서로 바꿨다(ADR 결정 10·B10; 전제 ①② 실측은 T-TRN-01; `prepare-shared-dagster-cutover`
+  탈출로는 fresh DB에서 `remote.sh:152-159`로 역시 exit 2라 쓰지 않음; Manager §9.2 ②에 전달·T-TRN-04 대조). ② **MED** n150 backend
+  stop 명령·시점이 없고 stop → Map 게이트 → HAProxy 순서가 공개 503을 만든다 — 5단계를 "HAProxy 선전환(odroid `/health`·첫 스냅샷 뒤)
+  → n150 `docker compose … stop backend frontend`(`remote.sh:121` 모양) → Map export 게이트(`Exited` 상태) → `pr2`"로 재배열하고
+  Manager §9.2 ④와 다른 점·대안(outage 창 수용)을 적었다(결정 8). ③ **MED** `.env.prod` "네 값만" 주장이 호스트별 비밀 2종을 빠뜨렸다 —
+  env 표에 `KOR_TRAVEL_DAGSTER_SHARED_APP_PASSWORD`(odroid Manager `.env` 값)·`RUSTFS_*_KEY` 행을 더하고 결정 2에 "자격증명은 호스트별",
+  게이트에 code-server healthy(= 비밀번호 효과)·RustFS 버킷 목록 200. ④ **MED** `KOR_TRAVEL_DAGSTER_SHARED_PG_URL`은 `.env` 키가 아니라
+  compose 리터럴(`docker-compose.shared.yml:28`) — ADR 결정 2·런북 표·`shared-db-dagster.md` 세 곳 정정. ⑤ **MED** transport compose의
+  메모리·swap 한도(실측 반영 #20)가 어느 T에도 없었다 — ADR 결정 11·B11 + **T-TRN-05** 신설(backend 0.8g·cs 1.0g·나머지 합 0.3g,
+  다섯 서비스 `memswap_limit == mem_limit`, 계약 테스트 "하나 빼면 빨강"). ⑥ **MED** NTP 전제가 오늘 수동 동기 상태로도 초록인
+  항진 검사였다 — Manager §9.5 행 PASS(재부팅 2회 `ConditionTimestamp`)로 위임·결박하고 `docker compose version`을 "Manager compose
+  `config` 렌더 성공"으로 교체. ⑦ **MED** DHCP(§14-20) 전제 누락 — ADR 컨텍스트 "주소"·열린 결정 20·결과(부정)·런북 전제·게이트에
+  `.13/24` ∧ §9.5 임대 갱신 행. ⑧ **MED** `scripts/odroid-status.ps1`은 마커가 아니라 legacy 상태 프로브(거부 분기 없음) — M을
+  "legacy 자산 집합"으로 부르고 fail-closed 마커는 셋(빈 compose·throw·exit 2)으로 분류, B7·결정 6·런북 게이트·`current-state.md` 자산
+  행을 같은 집합으로. ⑨ **MED** 해상 "월 3회" → "3일마다 03:00, run당 요청 3건"(`definitions.py:599`). ⑩ **LOW** `README.md:158-160` →
+  `:153,155`(head `git show eb40e3b:README.md` 실측; 두 리뷰어가 `153/155`·`159/161`로 갈렸는데 head는 153·155다 — 두 번째 값은
+  worktree 추가 줄을 뺀 계산 오류라 **기각**); `--json` 계약에 "`targets.<id>.host`는 default target에서도 resolve된 키"를 명시하고
+  죽은 분기 `targets.transport-admin.host` 삭제(registry에 그 target 없음); T-046 인덱스 문장을 T별 착수 조건으로(T-TRN-02/03a/05는
+  소유자 확인 뒤 즉시); B8 근거를 저장소 cron 폐지(`backup-restore.md:25-28`) + Manager `run-standalone-backup.sh:12-13`·§9.6으로;
+  HAProxy 소재를 OPNsense로; 실재하지 않는 `SSH_OPTS` 전제를 "옵션 없이 부르므로 `~/.ssh/config`"로; 예시 파일 `BACKEND_INTERNAL_URL=
+  http://backend:8000`(`:19`)이 `remote.sh:71` `require_exact`와 어긋남을 결정 2·런북 전제·T-TRN-02 수정 파일에; `pr2`·legacy 폐기를
+  `current-state.md`·런북에서 "(소유자 §14-2 미결 — ADR-014 가정)"으로. 설계 이탈 셋(4a `ensure dagster` 선행·HAProxy 선전환·
+  T-TRN-05)을 ADR "후속"에 소유자 확인용으로 올렸다.
+- **ADR-014 예약 충돌.** 전 PR(T-045)이 "ADR-014는 geo 릴리스 대응 후속용 예약"이라 적었으나 소유자가 교차 저장소 번호를 Track 2
+  = transport ADR-014로 고정했다(Track 1 transport 몫은 ADR 없이 T-045로 끝났다). 예약 문구는 `resume.md`와 `tasks-done.md`에서
+  정정했다(PR 번호·SHA 기입은 규칙대로 별도).
+- **바꾸지 않은 것.** 코드·스크립트·compose·`.env.server14.example`·`docs/openapi.json`·CHANGELOG·테스트 없음. transport CI에
+  docs lint는 없다(`.github/workflows/ci.yml:49-70`은 `uv sync`·alembic·`export_openapi.py --check`·pytest·vitest·tsc를 돌리지만
+  docs를 보는 검사는 `export_openapi.py --check`뿐이고 openapi.json 미변경) — 검증은 `git status --short`로 docs 10개 파일
+  (`README.md` 포함)만 바뀌었음을 확인한 것이다. odroid·n150에 접속하지 않았다(사실은 설계 fact base §A2·§A3).
+
 ## 2026-10-13 — geo 릴리스 무영향 문서화 (`docs/t045-geo-release-no-impact`)
 
 소유자 지시(설계와 각 프로젝트 문서를 수정해 코딩을 준비). 기준 main `2b7b6bc`(#75). 문서만 바꿨다.

@@ -107,9 +107,114 @@
 - [ ] Map 지도 페이지의 색상 외 레이아웃·상호작용을 최대한 동일하게 반영
 - [ ] Weather Dagster 정보 페이지의 색상 외 구조·상호작용·페이지별 링크를 최대한 동일하게 반영
 
-현재 진행 중 task는 `T-042`, `T-043`(운영 식별자 개명)이다. `T-033`~`T-039`(shadcn/ui 전환 + 과거 자료 조회 +
+현재 진행 중 task는 `T-042`, `T-043`(운영 식별자 개명)이다. 예정: `T-046`(ADR-014 odroid 이전 — T-TRN-02/03a/05는 소유자
+확인 뒤 즉시, T-TRN-01은 Manager T-MGR-01a 머지 뒤, T-TRN-03b/04는 배포 게이트 뒤). `T-033`~`T-039`(shadcn/ui 전환 + 과거 자료 조회 +
 Hallmark 재감사/재설계 + UI 밀도 개선) 전체가 완료돼 `docs/tasks-done.md`로
 이동했다.
+
+### T-046 odroid 호스트 이전(ADR-014, 교차 저장소 Track 2 설계 2026-10-13의 T-TRN-01~04 + 저장소 추가 T-TRN-05)
+
+정본은 [ADR-014](adr/014-odroid-host-and-deploy-host-flag.md)(proposed)와 Manager ADR-58. T-TRN-03a 외에는 **코드 T**이며 이
+문서 PR(`docs/adr-014-odroid-host-move`)에서는 하지 않았다. 의존: T-TRN-01만 Manager T-MGR-01a(`hosts:`·`ktdctl targets validate
+--json` — 출력에 `targets.<id>.host`(hosts **키**, `host:` 생략 target도 resolve된 키)와 **`hosts.<키>.addr`**가 함께 실려야 한다,
+ADR-014 "후속" 교차 저장소 계약) 머지 뒤; T-TRN-02·05는 소유자 확인(변수명 이탈·한도 값) 뒤 바로; T-TRN-03a는 소유자 §14-2
+(legacy 폐기 범위) 결정 직후·odroid 배포 4b **전**; T-TRN-03b는 odroid 배포 게이트 초록 뒤. 수용 기준은 "빨갛게 만드는 입력"을
+하나씩 포함한다. file:line은 head `eb40e3b`(원문이 정본, 줄은 참고 — 이 PR 머지 뒤 README 줄이 밀린다). **legacy 자산 집합 M**
+(ADR-014 결정 6) = `docker-compose.odroid.yml`, `deploy/odroid/README.md`, `deploy/odroid/remote-deploy.sh`,
+`deploy/odroid/bootstrap-docker.sh`, `scripts/deploy-odroid.ps1`, `scripts/odroid-status.ps1`(그중 fail-closed 마커는
+`docker-compose.odroid.yml`·`remote-deploy.sh`·`deploy-odroid.ps1` 셋; 나머지는 n150 전용 설치 스크립트·legacy 상태 프로브·README) —
+T-TRN-01은 M을 건드리지 않고(제외), T-TRN-03b가 M 부재를 단언한다.
+
+- [ ] **T-TRN-01** 배포 스크립트 두 개 개명 + `--host <addr>` 필수(기본값·host 목록 파일·스크립트 안 키→주소 표 없음):
+      `scripts/deploy-server14.sh`·`deploy-server14-remote.sh` → `scripts/deploy-prod.sh`(+`deploy-prod-remote.sh`),
+      `scripts/deploy-transport-admin-server14.sh` → `scripts/deploy-transport-admin-prod.sh`(운영 UI 12301/12305, Dagster 링크
+      build arg는 T-TRN-02). 효과 검사(둘 다, 거부 = exit 2) = 원격 IPv4 집합 ∋ addr ∧ Manager 설치 ∧ 원격 `sudo -n ktdctl targets
+      validate --json`에서 `k = targets.transport.host`(두 스크립트 같은 키 — registry에 `transport-admin` target은 없고 만들지 않는다;
+      `k`가 비어 있어도 거부)를 읽어
+      `hosts.<k>.addr == addr`(`sudo -n` 불가·`hosts` 필드 부재·`k` 없음도 거부) ∧ env 파일을 호출 사용자가 읽을 수 있음(`remote.sh:25`의
+      `-f`에 `-r` 추가 — `.env.prod`는 n150과 같이 `digitie:digitie 0600`, ADR-014 결정 1; 원격 단계 실행 사용자는 digitie 그대로
+      `deploy-server14.sh:5`, `remote.sh:43-44,91,121`, admin `:23-51,114`, 토큰 `set-transport-admin-write-token.py:14,41-48` 무변경).
+      `.14` 리터럴 거부(`deploy-server14.sh:18-21`, `deploy-transport-admin-server14.sh:13`)·`REMOTE_HOST` 기본값(`:4`, `:6`) 삭제;
+      app dir·env 파일명·project명 **대조는 유지하되 env 승인 값을 `.env.server14` → `.env.prod`로**(`deploy-server14.sh:26-29`,
+      `deploy-transport-admin-server14.sh:9,15`); DSN `require`/regex(`remote.sh:71,77-84`)·plane 버전 동등(`:145-150`)은 유지.
+      이름 추종 변경(ADR-014 B1′): `.env.server14.example` → `.env.prod.example`, `backend/Dockerfile:25` COPY·compose-contract 경로,
+      `deploy-server14-remote.sh:86` mktemp 접두, `.gitignore:18`, `.dockerignore:13`, `docker-compose.shared.yml:24` 주석,
+      `scripts/set-transport-admin-write-token.py:14,41`, `scripts/verify-release-stage.sh:4`, `.env.example:38`,
+      `packages/kor-travel-transport-admin/frontend/.env.example:11`, 계약 테스트 5개(`backend/tests/test_deploy_server14_remote_guard.py`,
+      `test_shared_db_deploy_contract.py`, `test_shared_dagster_cutover_guards.py`, `test_dagster_runtime_dependencies.py`,
+      `test_admin_write_token_script.py` — 새 이름·새 검사를 단언하도록 갱신, 옛 이름을 흉내내는 대역은 함께 고친다).
+      수용: **pytest 계약 테스트**(저장소에 bats 없음, CI `ci.yml:49-70`은 pytest·vitest·tsc만 — 설계 §13의 "bats"는 이 저장소
+      규약으로 바꾼다; `test_deploy_server14_remote_guard.py`가 `docker`를 PATH 스텁으로 바꿔 진짜 스크립트를 돌리는 패턴을 `ssh`·
+      `sudo` 스텁으로 확장) — `--host` 없음·원격 IPv4에 없는 addr·Manager 미설치·sudo 불가·`hosts.<k>.addr` 불일치(또는 `hosts`
+      부재·`k` 빈 값)·env 읽기 불가 각각 exit 2(두 스크립트 모두); DSN을 `.13`으로 바꾸면 거부; `DAGSTER_POSTGRES_URL` 모양만 요구(DB 존재
+      검사 없음); **plane 합류 가드 불변**(ADR-014 결정 10·B10): `remote.sh:222-226`은 그대로 두고, 스텁 webserver 응답으로
+      "location `absent` → exit 2"·"location load error(`PythonError`) → 통과해 `wait_location_loaded`로 진행"을 각각 단언(빈 workspace
+      plane + fresh DB 호스트의 첫 배포 모양); 첫 odroid 배포에서 결정 10 전제 ①(4a 뒤 `location_state` ≠ `absent`)·②(code-server
+      healthy 뒤 3분 안에 `RepositoryLocation`) 실측값을 journal에 기록; `pytest -q backend/tests` 초록; 효과 게이트 `rg -n "deploy-server14|env\.server14" --glob '!docs/**'
+      --glob '!deploy/odroid/**' --glob '!scripts/deploy-odroid.ps1' --glob '!scripts/odroid-status.ps1'` 0건(M 제외 — head에서는
+      `scripts/deploy-odroid.ps1:6`이 걸리므로 제외 없이는 T-TRN-03b 전에 초록이 될 수 없다). 문서: `docs/runbooks/deployment.md`
+      (계획 절 → 현재 절차), `README.md`·`docs/current-state.md` 배포 명령.
+- [ ] **T-TRN-02** env 규칙 + Dagster 링크. `.env.prod.example`: `TRUSTED_HOSTS_CSV`/`CORS_ORIGINS_CSV`의 LAN 항목은 배포 host
+      addr(주석으로 규칙), `SERVICE_EXPORT_ALLOWED_CLIENTS_CSV=127.0.0.1/32,::1/128,192.168.1.14/32` 예시, `DAGSTER_POSTGRES_URL`
+      "DB 없음·env 유지" 주석, `NEXT_PUBLIC_TRANSPORT_DAGSTER_URL=`(odroid plane 공개 host) 추가, `OPINET_BROWSER_ENABLED`(`:128`)
+      주석에 "arm64 Chromium smoke 실패 시 false — `TRANSPORT_COLLECTION_ENABLED=false`는 고속도로까지 끈다" 한 줄,
+      `BACKEND_INTERNAL_URL`(`:19` `http://backend:8000`)을 원격 검사 값 `http://127.0.0.1:14001`(`remote.sh:71` `require_exact`)로 정정,
+      `KOR_TRAVEL_DAGSTER_SHARED_APP_PASSWORD`(`:12`)·`RUSTFS_*_KEY`(`:62-63`) 주석에 "호스트별 — 그 호스트의 Manager `.env` 값" 한 줄.
+      `docker-compose.transport-admin.yml:29-31` build args에 `NEXT_PUBLIC_TRANSPORT_DAGSTER_URL: "${NEXT_PUBLIC_TRANSPORT_DAGSTER_URL:-https://dagster.digitie.mywire.org}"`
+      (VWorld 키 `:31`과 같은 모양), `packages/kor-travel-transport-admin/frontend/Dockerfile`에 ARG/ENV 한 쌍(VWorld 키 `:9-10`와 같은
+      모양). `backend/tests/test_transport_admin_contract.py:124`는 이미 "env 우선 + 상수 폴백" 모양(`process.env.NEXT_PUBLIC_TRANSPORT_DAGSTER_URL
+      ?? "https://dagster.digitie.mywire.org"`)을 단언하므로 **그대로 둔다**; 새 테스트는 compose 렌더의 build arg 존재. `:104-106`
+      주석의 "코드 상수" 문구 교체. 설계 이탈(설계 T-TRN-02는 `TRANSPORT_DAGSTER_PUBLIC_ORIGIN` 부활)은 ADR-014 "후속" 열린 결정 —
+      소유자 확인 뒤 착수. 수용: `docker compose -f docker-compose.transport-admin.yml config` 렌더에 그 build arg 존재(없으면 빨강);
+      env를 다른 값으로 주고 build한 번들에 그 값.
+- [ ] **T-TRN-03a** 13번 금지 문구 교체(**문서만**, 소유자 §14-2 결정 직후·4b 전). 교체 문구는 "odroid 작업은
+      `docs/runbooks/deployment.md` 계획 절·ADR-014 절차만 따른다"(ADR-014 결정 6 — "Docker"와 "금지"를 같은 줄에 두지 않는다).
+      교체할 (파일, 원문) 목록 — 완료 뒤 각 원문에 `rg -F -n "<원문>" <파일>` 0건(`AGENTS.md:187`은 줄바꿈을 걸치므로 앞 조각으로;
+      이 항목 자체의 인용은 완료 시 `tasks-done.md`로 옮겨지므로 `docs/tasks.md`에서 자기 매치가 남지 않는다):
+      `AGENTS.md:32` "192.168.1.13에서는 Docker를 조작하지 않는다" · `AGENTS.md:187` "192.168.1.13에서는 Docker를" ·
+      `SKILL.md:10` "13번 호스트에서는 Docker 명령을 실행하지 않는다" · `SKILL.md:41` "13번에 Docker stop/up/build 명령 금지" ·
+      `CLAUDE.md:35` "데이터 확인 외 Docker 조작 금지" · `CLAUDE.md:68` "192.168.1.13에서 Docker stop/up/build 금지" ·
+      `docs/architecture/architecture.md:42` "cutover 전까지 read-only source/rollback 기준으로 유지" ·
+      `README.md:113` "13번에서는 Docker를 실행하거나 중지하지 않고" · `README.md:153,155` "13번은 보존된 기존 시스템이며 배포 대상이
+      아니다"·"`docker compose` 명령은 실행하지 않는다" · `docs/runbooks/deployment.md` 머리말 "Docker/PostgreSQL은 n150에서만
+      실행한다"·Historical 절 "Docker를 실행·중지·재생성하지 않는다" · `docs/runbooks/migration.md:19` "13번에는 Docker 명령을
+      실행하지 않는다"·`:151` "13번은 이 runbook과 사용자 제약에 따라 Docker를 조작하지 않는다" · `docs/runbooks/troubleshooting.md:5`
+      "13번에는 Docker를 실행하지 않는다" · `docs/runbooks/agent-failure-patterns.md:77` "192.168.1.13에서는 Docker start/stop/build를
+      실행하지 않는다" · `docs/tasks.md` "운영 제약 및 미해결 위험" 첫 항목 "192.168.1.13에서는 Docker를 조작하지 않는다".
+      `docs/runbooks/hostile-review.md:82` "13번 Docker 금지 guard"는 옛 리뷰 기록이라 지우지 않고 "(ADR-014로 교체됨)" 주석만.
+      보조 검사: `rg -n "Docker.*(금지|조작하지 않는다|실행하지 않는다).*(13번|192\.168\.1\.13|odroid)|(13번|192\.168\.1\.13).*Docker.*(금지|조작하지 않는다|실행하지 않는다)" AGENTS.md SKILL.md CLAUDE.md README.md docs/architecture docs/runbooks --glob '!docs/runbooks/hostile-review.md'`
+      — 이 문서 PR 시점(`docs/tasks.md`는 이 항목이 자기 매치하므로 대상에서 뺀다; 그 파일의 교체 대상은 위 `rg -F` 목록이 잡는다)
+      **9건**(`CLAUDE.md:35,68`·`SKILL.md:10,41`·`AGENTS.md:32`·`agent-failure-patterns.md:77`·`migration.md:19,151`·
+      `troubleshooting.md:5`), 완료 뒤 **0건**. 이 regex가 못 잡는 변형(`AGENTS.md:187`, `README.md:113,153,155`, `architecture.md:42`,
+      deployment.md 두 문장)은 `rg -F` 목록이 잡는다. `.env.prod.example`·README usage의 `192.168.1.13` 예시와 테스트 픽스처의
+      `.14` 리터럴(`backend/tests/test_service_exports.py:82`)은 **허용**(주소 자체를 세지 않는다).
+- [ ] **T-TRN-03b** legacy 자산 집합 M 삭제(odroid 배포 게이트 전부 초록 뒤; `docs/current-state.md` 자산 목록의 M 행도 지운다). 수용(효과): M의 6개 경로 부재;
+      `rg -n "deploy-server14|env\.server14" --glob '!docs/**'` 0건(T-TRN-01의 M 제외가 풀린다 — `scripts/deploy-odroid.ps1:6`이
+      그때 함께 사라진다).
+- [ ] **T-TRN-04** arm64 검증 기록 + ADR-014 accepted: odroid 현지 빌드(`backend/Dockerfile` `python:3.12-slim` arm64,
+      `playwright install --with-deps chromium` 성공 여부, headless 렌더 smoke 결과, 실패 시 `OPINET_BROWSER_ENABLED=false`
+      적용 사실)를 `docs/current-state.md`와 journal에 기록; Manager Track 2 문서 PR 머지 뒤 ADR-014·deployment.md가 인용한
+      Manager 절 제목(ADR-58 "열린 결정", `prod-deployment.md` §9.2/§9.5/§9.6)과 `targets validate --json` 출력 계약(`hosts.<키>.addr`
+      존재·`targets.<id>.host`가 default target에서도 resolve된 키, `docs/docker-management.md`)과 **§9.2 ② 순서**(transport는
+      odroid `ensure dagster`가 `ensure <target>`보다 앞 — ADR-014 결정 10)·**§9.2 ④ 순서**(transport는 HAProxy 선전환 — 결정 8)를 실제와
+      1회 대조·갱신; ADR-014 상태를 accepted로, deployment.md "계획" 절을 현재 절차로 승격, `docs/architecture/shared-db-dagster.md`
+      계획 단락을 현재형으로. 수용(효과): ① `docs/current-state.md`에 `playwright install` 결과·headless smoke 결과·
+      `OPINET_BROWSER_ENABLED` 적용 여부 행이 있다; ② ADR-014·deployment.md가 인용한 Manager 절 제목이 Manager main
+      `docs/decisions.md`·`docs/prod-deployment.md`에 `rg -F`로 존재하고 `docs/docker-management.md`의 `--json` 출력 설명에
+      `hosts.<키>.addr`가 있으며 §9.2 ②·④ 문장이 ADR-014 결정 10·8과 같은 순서다; ③ ADR-014 상태와 `docs/adr/README.md` 표가 둘 다
+      accepted; ④ 그 PR의 파일 목록이 docs만.
+- [ ] **T-TRN-05** compose 메모리·swap 한도(ADR-014 결정 11·B11, 설계 §3.2·실측 반영 #20; 규모 S). 수정 파일: `docker-compose.shared.yml`
+      (`backend` `mem_limit: 0.8g`, `dagster-code-server` `mem_limit: 1g`, `frontend`), `docker-compose.transport-admin.yml`
+      (`transport-admin-web`, `transport-api-gateway`) — frontend·admin web·gateway는 합 0.3g를 n150 `docker stats` 실측으로 분배;
+      **다섯 서비스 모두 `memswap_limit == mem_limit`**(리터럴, 두 호스트 동일 — odroid cgroup v1 swap accounting on에서는 기본 swap 2×가
+      실제 적용되고 n150 cgroup v2에서는 `memory.swap.max=0`과 같은 뜻); `oom_score_adj`·`pids_limit`은 두지 않는다. 계약 테스트
+      (`backend/tests/test_shared_db_deploy_contract.py` 또는 새 파일): 두 compose 파일을 파싱해 "`mem_limit` 있는 서비스마다
+      `memswap_limit == mem_limit`"와 "다섯 서비스에 `mem_limit` 존재"를 단언 — 하나를 빼거나 값을 다르게 하면 빨강. 수용(효과):
+      `docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.shared.yml config`·운영 UI compose `config` 렌더에
+      다섯 서비스의 메모리 한도가 있다(렌더 키는 compose major에 따라 `mem_limit` 또는 `deploy.resources.limits.memory` — 테스트는 둘 다
+      수용); n150 배포 뒤 `docker inspect -f '{{.HostConfig.Memory}} {{.HostConfig.MemorySwap}}'`가 다섯 컨테이너에서 같은 두 값;
+      Opinet run ≥1회 포함 창에서 OOM-kill 0(cs 한도 도달 시 한도를 올리지 않고 Opinet 배치 크기를 먼저 본다). 소유자 확인: 설계
+      §3.2 값 그대로(backend 0.8g·cs 1.0g·나머지 합 0.3g).
 
 ### T-040 통합 교통정보 수집·OpenAPI
 

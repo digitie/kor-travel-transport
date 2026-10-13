@@ -1,6 +1,7 @@
 # 배포 및 실행
 
 > 현재 기준 배포 대상은 `192.168.1.14`이며 Docker/PostgreSQL은 n150에서만 실행한다. 13번은 source API와 rollback 기준으로 읽기만 한다. 새 배포는 [migration.md](migration.md)와 [`scripts/deploy-server14.sh`](../../scripts/deploy-server14.sh)를 우선 사용한다. 이 문서의 기존 ODROID 절차는 historical reference다.
+> **계획**: transport 스택을 odroid(`192.168.1.13`)로 옮기는 절차는 아래 "[odroid 배포 계획(ADR-014)](#odroid-배포-계획adr-014-proposed-미구현)" 절에 있다 — proposed·미구현이며 그때까지 이 머리말이 현재 운영이다.
 
 ## n150 현재 운영 절차
 
@@ -539,11 +540,133 @@ docker compose up -d
 - 프론트엔드: [http://localhost:3000](http://localhost:3000)
 - 백엔드 문서: [http://localhost:8000/docs](http://localhost:8000/docs)
 
+## odroid 배포 계획(ADR-014 proposed, 미구현)
+
+[ADR-014](../adr/014-odroid-host-and-deploy-host-flag.md)·Manager ADR-58(proposed)에 따라 transport 스택 전체
+(backend·frontend·code-server·transport-admin·gateway, 그리고 odroid 로컬 PG `kor_travel_transport`·RustFS·공용 plane)를
+odroid `192.168.1.13`에서 운영한다. 포트·compose project(`kor-travel-transport`, `kor-travel-transport-admin`)·앱 디렉터리
+`/home/digitie/apps/kor-travel-transport`는 n150과 같고 호스트만 바뀐다. **아래 명령·파일명(`deploy-prod.sh`, `.env.prod`)은
+T-TRN-01이 만들기 전까지 존재하지 않는다.** 단계 번호(4a/4b/5·해체 11)는 Track 2 설계 최종본 §11.2·§11.5의 것이고, 저장소 안
+정본은 Manager 런북 `docs/prod-deployment.md` §9(§9.2 플립 PR 배포 절차·§9.5 검증 체크리스트·§9.6 n150 해체 — Manager Track 2 문서
+PR에 수록, 머지 예정)다. Manager ADR-58 본문은 절차를 그 런북에 위임하므로 "ADR-58 §11.x"라는 절은 없다.
+
+### 전제(odroid 쪽, Manager 런북이 정본)
+
+- odroid 초기화 완료: 2026-10-13 03:4xZ 기준 **완료** = WSL 직접 ssh(키)·NOPASSWD sudo(`sudo -n` 동작)·docker 그룹·NTP 수동
+  동기(시계 2026). **미완** = timesyncd 부팅 순서 사이클 drop-in(재부팅 뒤 재발 가능), `docker compose` v2·buildx 설치, 방화벽,
+  NVMe 디렉터리 트리·fstab bind, swapfile. 미완 항목은 Manager `docs/prod-deployment.md` §9.1(T-OPS-01)이 맡고, 이 런북은 **재검사하지
+  않고 Manager §9.5 체크리스트의 해당 행이 PASS로 기록돼 있는지만 본다** — 효과가 오늘의 수동 상태로도 초록이 되는 검사는 쓰지
+  않는다: NTP는 "재부팅 2회마다 `systemctl show systemd-timesyncd -p ConditionTimestamp`가 비어 있지 않음 ∧ synchronized yes ∧
+  `/var/lib/systemd/timesync/clock` mtime 갱신"(§9.5 NTP 행 — `timedatectl`의 `synchronized: yes` 하나는 2026-10-13 수동
+  `set-ntp true` 상태로도 통과하므로 **그것만으로는 통과시키지 않는다**); compose는 "Manager compose `docker compose config` 렌더
+  성공"(§9.1-5·§9.5 compose 행 — 버전 문자열이 아니다); 디스크는 `swapon --show`에 `/mnt/media/kor-travel/swapfile` 4 G ∧
+  `findmnt -T /home/digitie/kor-travel-shared-data/pgdata -o SOURCE`가 NVMe 장치(§9.5 디스크 행); 주소는 `ip -4 addr show eth0`에
+  `192.168.1.13/24` ∧ §9.5 "DHCP 임대 갱신 뒤에도 `.13` 유지" 행 PASS(OPNsense 예약 — 설계 §14-20 소유자 결정; 이 절의 `.13`
+  리터럴 전부의 전제).
+- odroid Manager 설치(현지 arm64 wheelhouse) → `ensure dagster`(**PG 11000 포함**, 빈 workspace plane healthy) → 롤 bootstrap
+  (`kor_travel_transport` / `kor_travel_transport_app`; `kor_travel_transport_dagster`는 **만들지 않는다**) → `ensure storage`
+  (RustFS 12101, 버킷 `kor-travel-transport-raw`) → `ensure cadv`.
+- `.env.prod`(101 키 — head `eb40e3b` `.env.server14.example`의 `KEY=` 줄 수) 반입: **시작점은 n150 실파일 `.env.server14`**(예시
+  파일 `.env.server14.example:19`의 `BACKEND_INTERNAL_URL=http://backend:8000`은 원격 검사 `scripts/deploy-server14-remote.sh:71`의
+  `http://127.0.0.1:14001`과 어긋난다 — T-TRN-02가 고친다)를 복사해 아래 네 값을 바꾸고, **호스트별 비밀 두 쌍은 odroid Manager
+  root `.env`에서 가져온다**(표 아래 두 행). **소유·권한은 n150과 같이 `digitie:digitie 0600`**(ADR-014 결정 1 — 원격 단계가 digitie로
+  `source`·`awk`·`docker compose --env-file`을 돌린다: `scripts/deploy-server14-remote.sh:43-44`, `:91`, `:121`; 운영 UI
+  `scripts/deploy-transport-admin-server14.sh:23-51`, `:114`; 토큰 `scripts/set-transport-admin-write-token.py:14`, `:41-48`).
+  root 0600으로 두면 4b의 `source` 단계가 권한 오류로 멈춘다. 대가: Samba `[homes]` 공유 루트가 `/home/digitie`라 digitie SMB
+  자격으로 읽힌다 — ADR-014 결과(부정)·열린 결정 A(소유자). 비밀번호 SSH 단계에서는 보내지 않는다.
+
+| 키 | n150 값 | odroid 값 | 규칙 |
+|---|---|---|---|
+| `TRUSTED_HOSTS_CSV` | `192.168.1.14,pr…,pr-api…,localhost,127.0.0.1,testserver,backend` | `192.168.1.13,…`(나머지 동일) | LAN 항목 = 배포 host addr |
+| `CORS_ORIGINS_CSV` | `http://192.168.1.14:14002,https://pr…,https://pr-api…` | `http://192.168.1.13:14002,…` | 같음 |
+| `SERVICE_EXPORT_ALLOWED_CLIENTS_CSV` | `127.0.0.1/32,::1/128` | `127.0.0.1/32,::1/128,192.168.1.14/32` | Map code-server가 n150에서 LAN peer로 부른다 |
+| `NEXT_PUBLIC_TRANSPORT_DAGSTER_URL`(T-TRN-02 신설 build arg) | (없음 — 코드 기본 `https://dagster.digitie.mywire.org`) | odroid plane 공개 host(Manager ADR-58 "열린 결정" 4 — 소유자) | 운영 UI 재build |
+| `KOR_TRAVEL_DAGSTER_SHARED_APP_PASSWORD`(`.env.server14.example:12`) | n150 Manager `.env`의 값 | **odroid Manager root `.env`의 같은 키**(호스트별 발급; n150과 같게 할지는 소유자) | compose가 이 값으로 `KOR_TRAVEL_DAGSTER_SHARED_PG_URL`(`docker-compose.shared.yml:28`, loopback 리터럴)을 만든다 — 틀리면 code-server가 healthy가 되지 않아 배포가 exit |
+| `RUSTFS_ACCESS_KEY_ID`·`RUSTFS_SECRET_ACCESS_KEY`(`:62-63`) | n150 RustFS 키 | **odroid Manager `.env`의 RustFS 키** | 틀리면 KRIC XLSX 업로드 403 |
+| `DATABASE_URL`·`DAGSTER_POSTGRES_URL`·`RUSTFS_ENDPOINT_URL`·`BACKEND_INTERNAL_URL`·`TRANSPORT_*_INTERNAL_URL` | loopback | **불변**(URL; 비밀번호 부분은 odroid 롤 bootstrap 값) | PG·RustFS·plane이 odroid 로컬 |
+
+### 순서(설계 §11.2 = Manager `prod-deployment.md` §9.2: 4a → 4b → 5)
+
+1. **4a(플립 PR, Manager)**: registry `transport: {host: odroid}` + 파생물(workspace ×2·compose 기본값 `.13:14001`·Prometheus
+   타깃) 머지 → n150 Manager 재설치 → **n150 transport code-server `stop`**(수집 중지 = 공백 시작 — `SCHEDULER_MODE=dagster`라 cs가
+   유일한 수집 프로세스; backend·frontend는 아직 둔다) → n150 `ensure dagster`(plane 재생성, map/pinvi/conc tick 공백 ≈2 min) →
+   odroid Manager 같은 sha 재설치 → odroid root `.env` workspace digest 갱신 → `ktdctl targets validate` → **odroid `ensure dagster`**
+   (플립 PR workspace 반영 — webserver가 location `kor-travel-transport`를 **load error 상태로 싣는다**; code-server는 아직 없다.
+   ADR-014 결정 10·B10: 원격 배포 단계는 webserver workspace에 이 location이 없으면(`absent`) `scripts/deploy-server14-remote.sh:222-226`에서
+   exit 2이므로 이 단계가 4b보다 **앞**이어야 한다. Manager §9.2 ②는 아직 이 순서를 적지 않았다 — Manager 쪽 전달 사항, T-TRN-04 대조).
+   효과: odroid `curl 127.0.0.1:11002/graphql`의 workspace에 `kor-travel-transport` 항목이 있고 typename이 `RepositoryLocation`이
+   아닌 load error(`PythonError` 류)다 — T-TRN-01이 첫 배포에서 그 값을 기록한다.
+2. **4b(이 저장소)**: 전제 — T-TRN-03a(금지 문구 교체)가 머지돼 있어야 한다(아니면 `AGENTS.md`·`SKILL.md`·`CLAUDE.md`가 이 단계를
+   금지한다). n150 또는 WSL에서, tmux/nohup 아래
+   ```bash
+   ./scripts/deploy-prod.sh --host 192.168.1.13                  # T-TRN-01 뒤에만 존재
+   ./scripts/deploy-transport-admin-prod.sh --host 192.168.1.13  # 같은 T, 운영 UI(12301/12305) — Dagster 링크 build arg 포함
+   ```
+   효과 검사(두 스크립트가 한다, 거부 = exit 2): 원격 IPv4 집합 ∋ `192.168.1.13` ∧ Manager 설치됨 ∧
+   `sudo -n ktdctl targets validate --json`에서 `k = targets.transport.host`(hosts **키**, 예 `odroid` — `host:`를 생략한 default
+   target에서도 resolve된 키가 실린다, 비어 있으면 거부)를 읽어 `hosts.<k>.addr == "192.168.1.13"`(두 스크립트 모두 같은 키;
+   registry에 `transport-admin` target은 없다; `hosts` 필드 부재·키 없음도 거부 — Manager T-MGR-01a 출력 계약, ADR-014 "후속") ∧
+   `.env.prod`를 호출 사용자(digitie)가 읽을 수 있음 ∧ 이미지 dagster 버전 == odroid plane 버전(기존 검사 그대로) ∧ odroid webserver
+   workspace에 location 있음(4a 마지막 단계의 결과 — 기존 가드 `remote.sh:222-226` 그대로). 이어서 fresh `migrate`(Alembic head) →
+   backend·frontend·code-server 기동 → webserver가 code-server를 다시 로드해 `RepositoryLocation`(`wait_location_loaded`, 최대 3분 —
+   ADR-014 결정 10 전제 ②; 안 되면 odroid `ensure dagster` 1회로 webserver 재생성 뒤 재시도) → 운영 UI 배포. **첫 빌드 직후 Opinet
+   Chromium headless smoke 1회(arm64)** — 실패면 `.env.prod`에 `OPINET_BROWSER_ENABLED=false`를 두고 진행한다(유가만 비활성;
+   `TRANSPORT_COLLECTION_ENABLED=false`는 고속도로 수집까지 끄므로 쓰지 않는다 — ADR-014 결정 7·B9).
+3. **참조 로드(쿼터 창)**: fresh DB이므로 KRIC 시간표(≤500회/48 h — `.env.server14.example:55-57`), 해상 기준정보(3일마다 03:00,
+   run당 data.go.kr 요청 3건 — `backend/app/dagster/definitions.py:599`, `docs/architecture/shared-db-dagster.md` 수집 일정 표),
+   휴게소 기준정보·유가(ADR-013), Opinet 유가(8시간 주기; 4b의 Chromium smoke가 통과한 경우만)가 각 schedule의 다음 tick에서
+   채워진다. 1~2일 걸린다; 수동으로 앞당기지 않는다(한도).
+4. **5(consumer 전환 — 공개 경로 먼저, 그 뒤 n150 stop → Map 게이트)**: n150 `ensure map`(transport URL `.13:14001` 기본값 반영,
+   code-server 재생성 — Map은 HAProxy가 아니라 이 주소로 직접 부른다) → odroid `/health` 200·첫 5분 스냅샷 SUCCESS 확인 뒤
+   **HAProxy(OPNsense) `pr`/`pr-api`/`transport`/`transport-api` backend → `.13:14002/14001/12305/12301`**(공개 경로 선전환; 공개
+   `pr.`/`pr-api.` 4 host 200 확인) → **n150 transport backend·frontend stop** — n150 `/home/digitie/apps/kor-travel-transport`에서
+   ```bash
+   docker compose --project-name kor-travel-transport --env-file .env.server14 -f docker-compose.yml -f docker-compose.shared.yml stop backend frontend
+   docker ps -a --filter name=kor-travel-transport-backend-1 --format '{{.Status}}'   # Exited …
+   ```
+   (원격 배포 스크립트의 `compose()` 모양 `scripts/deploy-server14-remote.sh:121`; 운영 UI project 12301/12305는 공개 host가 이미 `.13`이라
+   그대로 둔다) → **Map export 1회 성공**을 n150 backend `Exited` 상태에서 확인(odroid access log peer `192.168.1.14`) → `pr2` host 제거
+   (소유자 §14-2 미결 — ADR-014 가정) → n150 cron `run-standalone-backup.sh transport`를 odroid로 이동. 이 순서는 Manager §9.2 ④
+   ("stop 상태에서 … 확인한 뒤 HAProxy")와 다르다 — `pr-api.`가 n150 backend로 가는 transport에서는 그 순서가 stop~전환 사이 공개 503을
+   만들고, Map 게이트는 HAProxy와 무관하므로 선전환한다(ADR-014 결정 8, 설계 이탈 — Manager 쪽 전달). 대안을 택하면(§9.2 ④ 순서 유지)
+   "n150 stop ~ HAProxy 전환" 사이 outage 창(Map export 다음 run까지, 분 단위)을 소유자가 수용한 것으로 적는다.
+5. **해체(설계 §11.5 단계 11 = Manager `prod-deployment.md` §9.6)**: n150 transport 두 compose project `docker compose rm -sf <서비스 목록>`(bare `down` 금지 —
+   map/pinvi/PG까지 내린다), 공용 PG `kor_travel_transport`·`kor_travel_transport_dagster` drop, 이미지 정리. 그 전까지는
+   "n150 Manager 옛 sha 재설치 + code-server start(+ backend·frontend start, HAProxy `.14`로 복귀)"로 되돌릴 수 있는 상태를 유지한다.
+
+### 게이트(효과 기반; 하나라도 빨강이면 다음 단계로 가지 않는다)
+
+- [ ] 4a 끝: odroid webserver workspace에 `kor-travel-transport` 항목 존재(load error 상태; `absent`가 아님) — ADR-014 결정 10 전제 ①.
+- [ ] odroid `/health`의 `release_sha` == 배포 SHA; code-server healthy(= `dagster_shared` 비밀번호가 맞다는 효과); odroid webserver가
+      location `kor-travel-transport`를 `RepositoryLocation`으로 실음(결정 10 전제 ②); 12 schedule RUNNING; RustFS 버킷
+      `kor-travel-transport-raw` 목록 조회가 odroid 키로 200(KRIC XLSX 업로드 경로).
+- [ ] **같은 시각 run이 두 호스트에 0건**(n150 code-server stop 시각 ~ odroid 첫 tick 사이 n150 `collection_runs` 증가 0).
+- [ ] 5분 스냅샷(공항·고속도로) 첫 run SUCCESS; 돌발 export `/v1/service/exports/highway-incidents/active`가 n150에서 200
+      (토큰 + peer `.14`).
+- [ ] HAProxy 4 host 전부 200(`.13` backend) — n150 stop **전**.
+- [ ] n150 backend·frontend 컨테이너 `Exited` 상태에서 Map transport export 1 run 성공 + odroid access log peer `192.168.1.14`.
+- [ ] NTP(odroid): Manager §9.5 NTP 행 PASS 기록(재부팅 2회 뒤 `ConditionTimestamp` 비어 있지 않음 ∧ synchronized yes) — 수동
+      `set-ntp true` 상태의 `synchronized: yes`만으로는 통과시키지 않는다. Map의 돌발 ±30 min 시계 검사가 fail-closed라 재부팅 뒤
+      시계가 틀리면 Map 적재가 거부된다.
+- [ ] 주소: `ip -4 addr show eth0`에 `192.168.1.13/24` ∧ Manager §9.5 "임대 갱신 뒤 `.13` 유지" 행 PASS.
+- [ ] Opinet Chromium headless smoke 1회(arm64) — 실패면 `OPINET_BROWSER_ENABLED=false`(유가만 비활성, 고속도로 수집은
+      그대로)로 두고 다른 게이트는 진행; 그 사실을 T-TRN-04가 기록한다. `TRANSPORT_COLLECTION_ENABLED=false`로 두면 위의
+      고속도로 스냅샷·돌발 export·Map export 게이트가 같이 비므로 그 fallback은 없다.
+- [ ] 메모리(T-TRN-05 뒤): `docker inspect`의 `HostConfig.Memory`·`MemorySwap`이 다섯 서비스에서 같은 값(swap 0 효과); Opinet run
+      ≥1회 포함 창에서 OOM-kill 0.
+- [ ] `pr2` 404/제거(소유자 §14-2 미결 — ADR-014 가정).
+- [ ] legacy 자산 삭제 조건(T-TRN-03b): 위 게이트 전부 초록 — 그 전까지 `docker-compose.odroid.yml`·`deploy/odroid/*`·
+      `scripts/deploy-odroid.ps1`·`scripts/odroid-status.ps1`(ADR-014 결정 6의 집합 M; 그중 fail-closed 마커는
+      `docker-compose.odroid.yml`·`deploy/odroid/remote-deploy.sh`·`scripts/deploy-odroid.ps1` 셋)는 그대로 둔다. (13번 금지 **문구**는
+      이와 달리 4b **전**에 T-TRN-03a가 교체한다 — 소유자 §14-2 결정 직후.)
+
 ## Historical: 기존 13번/ODROID 설정 (실행 금지)
 
 아래 내용은 13번의 기존 SQLite/10분 운영을 보존하기 위한 참고 기록이다. 13번에서
 Docker를 실행·중지·재생성하지 않는다. 현재 운영 배포에는 사용하지 말고, source API와
-rollback 상태를 확인할 때만 읽는다.
+rollback 상태를 확인할 때만 읽는다. (이 금지 **문구**는 [ADR-014](../adr/014-odroid-host-and-deploy-host-flag.md) 결정 6에 따라
+소유자 §14-2(legacy 폐기 범위) 결정 직후·odroid 배포 4b **전**에 T-TRN-03a가 "odroid 작업은 위 계획 절·ADR-014 절차만 따른다"로
+교체하고, 아래 fail-closed 마커 파일들과 legacy 자산(ADR-014 집합 M)은 배포 게이트가 전부 초록인 뒤 T-TRN-03b가 삭제한다 — 그때까지 유효하다.)
 
 이 절의 환경변수·포트·스크립트는 과거 기록이다. `scripts/deploy-odroid.ps1`와
 `deploy/odroid/remote-deploy.sh`는 현재 fail-closed 차단 파일이며 Docker 명령을 실행하지 않는다.
@@ -634,7 +757,8 @@ DATA_GO_KR_SERVICE_KEY=...
 
 포트 메모:
 
-- 현재 ODROID에서는 `8000` 포트를 Portainer가 사용 중이다.
+- 현재 ODROID에서는 `8000` 포트를 Portainer가 사용 중이다. (과거 기록 — 2026-10-13 실측에서는 8000이 `parking-radar` uvicorn
+  404이고 Portainer는 9443이다; ADR-014 B7.)
 - 따라서 `parking-radar` 백엔드는 `18000` 포트를 기본값으로 사용한다.
 - 프론트는 기본적으로 같은 origin의 `/api/backend`를 호출하고, Next.js 서버가 Docker 내부의 `BACKEND_INTERNAL_URL`로 프록시한다.
 - 기존 13번 외부 서비스 주소는 `https://pr2.digitie.mywire.org/`를 기준으로 한다.

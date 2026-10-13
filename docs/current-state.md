@@ -304,16 +304,28 @@ cutover read-only source로만 남긴다.
 
 현재 운영 배포 자산:
 
-- [scripts/deploy-server14.sh](../scripts/deploy-server14.sh)
+- [scripts/deploy-server14.sh](../scripts/deploy-server14.sh)(+ `scripts/deploy-server14-remote.sh`),
+  [scripts/deploy-transport-admin-server14.sh](../scripts/deploy-transport-admin-server14.sh)(운영 UI project)
 - [.env.server14.example](../.env.server14.example)
-- [docker-compose.yml](../docker-compose.yml)
-- `deploy/odroid/*`와 `scripts/deploy-odroid.ps1`는 historical fail-closed 자산이며 실행하지 않는다.
+- [docker-compose.yml](../docker-compose.yml) + [docker-compose.shared.yml](../docker-compose.shared.yml)
+  (원격 스크립트가 둘을 함께 렌더한다 — `scripts/deploy-server14-remote.sh:121`),
+  [docker-compose.transport-admin.yml](../docker-compose.transport-admin.yml)(`scripts/deploy-transport-admin-server14.sh:114`)
+- legacy odroid 자산 `docker-compose.odroid.yml`·`deploy/odroid/*`·`scripts/deploy-odroid.ps1`·`scripts/odroid-status.ps1`
+  (ADR-014 결정 6의 집합 M; 그중 fail-closed 마커는 `docker-compose.odroid.yml`·`deploy/odroid/remote-deploy.sh`·
+  `scripts/deploy-odroid.ps1`)은 실행하지 않는다 — odroid 배포 게이트가 전부 초록인 뒤 T-TRN-03b가 삭제한다.
 
 배포 대상:
 
 - IP: `192.168.1.14`
 - 사용자: `digitie`
-- 앱 경로: `/home/digitie/apps/parking-radar`
+- 앱 경로: `/home/digitie/apps/kor-travel-transport`(`scripts/deploy-server14.sh:6`이 승인하는 유일한 디렉터리; 옛 경로
+  `/home/digitie/apps/parking-radar`는 ADR-010 개명 전 값)
+
+계획(2026-10-13 기준, [ADR-014](adr/014-odroid-host-and-deploy-host-flag.md) proposed, 미구현): 배포 대상을
+odroid `192.168.1.13`으로 옮긴다 — 포트(14001/14002/14005, 12301/12305)·compose project·앱 디렉터리
+`/home/digitie/apps/kor-travel-transport`는 같고 호스트만 바뀌며, HAProxy `pr`/`pr-api`/`transport`/`transport-api`
+backend가 `.13`으로, 옛 `pr2` host와 odroid의 legacy `parking-radar` 스택은 폐기 예정이다(소유자 §14-2 미결 — ADR-014
+가정). 전환 전까지 이 절의 n150 값이 현재 운영이다.
 
 비밀번호는 저장하지 않는 것이 원칙이다.
 
