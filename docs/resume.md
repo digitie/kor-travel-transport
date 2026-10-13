@@ -2,12 +2,34 @@
 
 ## 현재 상태
 
-- **2026-10-13 `docs/t045-geo-release-no-impact` 푸시, PR 미생성.** T-045 문서만(`docs/` 4개 파일, journal 같은
-  날; 근거는 `docs/architecture/data-model.md` "주소·행정구역 값의 출처" 절). ADR-014 번호는 geo 릴리스 대응
-  후속 PR용으로 예약 — 다른 결정에 쓰지 않는다(`docs/adr/README.md` "다음 번호" 갱신도 그 PR에서).
-  **다음 한 작업:** 머지 직전 geo `docs/adr/README.md` 다음 후보 069·Map 109(또는 그 파일 존재) 확인 →
-  PR → 파일 목록이 `docs/` 4개뿐임을 확인하고 즉시 머지(doc-only) → `tasks-done.md` T-045 항목과 journal 다음
-  항목에 PR 번호·머지 SHA 기입.
+- **2026-10-13 `docs/adr-014-odroid-host-move` 작성 중(커밋 전), 문서만.** 교차 저장소 Track 2(geo·weather·transport를
+  odroid `192.168.1.13`으로)의 transport 몫: `docs/adr/014-odroid-host-and-deploy-host-flag.md`(proposed, 미구현),
+  README 인덱스(다음 015), `docs/runbooks/deployment.md` "odroid 배포 계획(ADR-014)" 절, `shared-db-dagster.md`·
+  `current-state.md`·`README.md` 계획 단락, `docs/tasks.md` T-046(T-TRN-01~05). journal 같은 날.
+  **다음 한 작업:** 파일 목록이 docs(+README.md)뿐임을 `git status --short`로 확인 → 커밋·푸시 → PR → doc-only 즉시 머지 →
+  T-046은 T-TRN-02/03a/05(소유자 확인 뒤 즉시)와 T-TRN-01(Manager T-MGR-01a `ktdctl targets validate --json` 머지 뒤); T-TRN-03a
+  (금지 문구 교체, 문서만)는 소유자 §14-2 결정 직후·odroid 배포 전, T-TRN-03b(legacy 자산 M 삭제)·04는 게이트 초록 뒤. 1차 리뷰
+  (2명, 21건) 전부 반영 — 핵심은 Opinet fallback 토글이 `TRANSPORT_COLLECTION_ENABLED`가 아니라 `OPINET_BROWSER_ENABLED`라는 정정
+  (journal ⑦). 2차 리뷰(2명, 17건) 반영 — 핵심 둘: `targets validate --json`의 `host`는 주소가 아니라 **hosts 키**라 효과 검사를
+  `hosts.<k>.addr == addr`로 고치고 Manager T-MGR-01a에 그 필드를 요구(교차 저장소 계약); `.env.prod`는 root 0600이 아니라
+  **digitie 0600**(배포 기제가 digitie로 돈다 — 설계 §7.5·§11.3 이탈, 열린 결정 A). 3차 리뷰(2명, 18건) 반영 17·기각 1 — 핵심 셋:
+  원격 스크립트의 plane 합류 가드(`remote.sh:222-226`) 때문에 **odroid `ensure dagster`를 4a 끝(배포 전)으로**(결정 10); 5단계는
+  **HAProxy 선전환 → n150 `compose stop backend frontend` → Map export 게이트**(결정 8); transport compose 메모리·swap 한도
+  **T-TRN-05** 신설(결정 11). 그 밖에 호스트별 비밀 2쌍·DHCP 전제·NTP 게이트 결박·해상 주기·M 분류 정정(journal 3차 항목).
+  열린 소유자 결정(Manager ADR-58 "열린 결정" — 번호는 설계 §14): 2 legacy 폐기 범위, 4 odroid plane 공개 host 이름, 7 백업 대상,
+  12 이전 순서, 13 수집 공백 수용, **20 odroid IP 고정(DHCP 예약 — `.13` 리터럴 전부의 전제)**, 26 compose major, 28 방화벽 정책;
+  추가로 ADR-014의 설계 이탈 확인 — Dagster 링크 변수 `NEXT_PUBLIC_TRANSPORT_DAGSTER_URL` build arg, `.env.prod` digitie 0600(열린
+  결정 A), 수용 기반 bats → pytest, 4a `ensure dagster` 선행, HAProxy 선전환, T-TRN-05 한도 값(설계 §3.2 그대로).
+  **Manager 쪽에 전할 것**: `targets validate --json`에 `hosts.<키>.addr` 포함 + `targets.<id>.host`는 default target도 resolve된 키
+  (`docs/docker-management.md` 초안 갱신); `prod-deployment.md` §9.2 ②에 transport는 odroid `ensure dagster`가 `ensure <target>`보다
+  앞(결정 10), ④는 transport에 한해 HAProxy 선전환(결정 8); §9.5 SMB 게이트 행에서 transport `.env.prod` 제외(열린 결정 A 승인 시).
+
+- **2026-10-13 `docs/t045-geo-release-no-impact` — #76으로 머지됨(`eb40e3b`).** T-045 문서만(`docs/` 4개 파일, journal 같은
+  날; 근거는 `docs/architecture/data-model.md` "주소·행정구역 값의 출처" 절). **ADR-014 예약 정정**: 그 PR이 적은 "geo 릴리스
+  대응 후속용 예약"은 소유자의 교차 저장소 번호 고정(Track 2 = transport ADR-014)으로 대체됐다 — Track 1의 transport 몫은 ADR
+  없이 T-045로 끝났고, geo 릴리스 대응에 ADR이 필요해지면 다음 번호를 쓴다.
+  **다음 한 작업:** `tasks-done.md` T-045 항목에 PR 번호 #76·머지 SHA `eb40e3b` 기입(이 PR에서는 하지 않았다 — T-045 항목의
+  "머지 뒤 기입" 규칙대로 별도 doc PR 또는 다음 doc PR에 묶는다).
 
 - **2026-10-12 `perf/fuel-store-batched` — #75로 머지됨(`2b7b6bc`, 2026-10-13 확인), 배포 여부 미확인.** 유가 저장을 집합 upsert로 바꿨다(DB 호출 약 14만 → 59,
   의미 동등성은 옛 구현 오라클 비교, journal 같은 날). python-opinet-api는 PR #21 머지 커밋 `4654310`에 핀.

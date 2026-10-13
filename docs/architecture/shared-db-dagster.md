@@ -63,16 +63,27 @@ RustFS를 소비한다. 이 저장소의 compose는 PostgreSQL superuser 권한�
 Manager의 정식 Weather 운영 패턴과 같이 모든 runtime 컨테이너를 n150 host-network로
 실행한다. 따라서 공용 PostgreSQL은 `127.0.0.1:11000`, RustFS는
 `127.0.0.1:12101`로 접근한다. 일반 Compose bridge와 임시 TCP relay는 사용하지 않는다.
-Manager 소유 bootstrap이 아래 두 DB와 각각 전용 role을 먼저 준비해야 한다.
+Manager 소유 bootstrap이 `kor_travel_transport`와 전용 role(`kor_travel_transport_app`)을 먼저 준비해야 한다.
+`kor_travel_transport_dagster`는 2026-10 공용 plane 합류 **전**의 옛 bootstrap 산물이며, 현재 Manager `db-init-transport`는
+만들지도 CONNECT를 주지도 않는다(Manager origin/main `094d397` `backend/tests/test_transport_shared_bootstrap_contract.py:37-38,47`
+`"DAGSTER" not in script`).
 
 | 용도 | DB | 환경변수 |
 | --- | --- | --- |
 | 애플리케이션 데이터·Alembic | `kor_travel_transport` | `DATABASE_URL` |
-| Dagster run/event/schedule metadata | `kor_travel_transport_dagster` | `DAGSTER_POSTGRES_URL` |
+| Dagster run/event/schedule metadata(legacy-dagster profile 전용; n150에만 존재, Manager가 더 만들지 않음) | `kor_travel_transport_dagster` | `DAGSTER_POSTGRES_URL` |
 
 두 DB를 합치면 양쪽 Alembic이 `alembic_version` 테이블을 서로 덮어쓰므로 절대 합치지 않는다.
 운영 DSN은 `127.0.0.1:11000`을 사용하며, 비밀번호·service key·RustFS key는
 n150의 비추적 환경 파일에만 둔다.
+
+공용 Dagster 제어 평면 합류(아래 절) 뒤 `kor_travel_transport_dagster`는 **legacy-dagster profile만 쓰는 옛
+DB**다 — 활성 code-server는 공용 instance(`dagster_shared`)를 쓰고 이 DSN을 받지 않는다
+(`docker-compose.shared.yml:291`). 호스트 이전 계획([ADR-014](../adr/014-odroid-host-and-deploy-host-flag.md)
+proposed, 미구현)에서는 odroid의 PG에 이 DB를 **만들지 않는다**(Manager db-init이 만들지 않고 backend 코드가 읽지
+않는다); `DAGSTER_POSTGRES_URL` env는 compose의 `:?` 필수 보간(`docker-compose.shared.yml:18`)과 배포 스크립트의
+모양 검사(`scripts/deploy-server14-remote.sh:81-84`) 때문에 **값만 남는다**. 그때부터 "두 DB 분리 유지"는
+"env 두 개 분리 유지, 실체는 하나"로 읽는다.
 
 ## 수집 일정과 저장 경계
 
@@ -244,3 +255,19 @@ digest env가 달라진다. 각자 다음 compose `up`·재구축 때 한 번 �
 저장소의 이전 release를 다시 배포하고 옛 Dagster 서비스를 손으로 띄우는 것을 상황에 맞게 판단한다. 옛 metadata
 DB(`kor_travel_transport_dagster`)는 지우지 않고 남는다(30일). Manager 창 스크립트의 `rollback` 모드는 이 형제
 프로젝트에 대해 검증하지 않았다(이전 release의 code-server는 `--location-name`이 없어 선언과의 대조에서 멈춘다).
+
+### 호스트·plane 변경 계획(ADR-014 proposed, 미구현)
+
+[ADR-014](../adr/014-odroid-host-and-deploy-host-flag.md)·Manager ADR-58(proposed)은 transport를 odroid
+(`192.168.1.13`)로 옮기고 그 호스트에 **자체 공용 plane**(같은 Manager compose의 `dagster` target: daemon·webserver
+`127.0.0.1:11002`·gateway 11001·`dagster_shared` DB, odroid 로컬 PG 11000)을 둔다. 이 저장소의 compose 계약은 그대로다
+— code-server 명령·포트·probe·compose가 `KOR_TRAVEL_DAGSTER_SHARED_APP_PASSWORD`로 만드는 `KOR_TRAVEL_DAGSTER_SHARED_PG_URL`
+(`docker-compose.shared.yml:28`, loopback 리터럴; 비밀번호 값만 odroid Manager `.env`의 것)·`dagster.yaml` bind(`:305`,
+Manager 설치 경로)는 호스트가 바뀌어도 같은 문자열이다. 주의 셋: ① bind가 Manager **설치 경로**이므로 odroid에서 Manager를
+재설치하기 전까지 code-server는 옛 `dagster.yaml`을 읽는다(플립 PR마다 "odroid Manager 재설치 → `.env` digest 갱신 →
+`targets validate`"가 붙는 이유); ② 배포 스크립트의 plane 버전 동등 검사(`scripts/deploy-server14-remote.sh:145-150`)는
+odroid plane의 `127.0.0.1:11002`에 그대로 적용된다 — 두 plane 사이 버전 차이는 허용(통신 없음); ③ 배포 스크립트는 webserver
+workspace에 location이 없으면 거부하므로(`:222-226`) odroid 첫 배포 **전에** 플립 PR workspace로 odroid `ensure dagster`를 돌려
+location을 load error 상태로라도 실어 둔다(ADR-014 결정 10). `legacy-dagster` profile은
+"호스트 plane"이 아니라 "프로젝트 전용 plane"이므로 odroid에서도 재활용하지 않는다(설계 §6.4). 위 "되돌리기 지원 없음"은
+2026-10-02 공용 plane 합류에 대한 결정이고, ADR-014의 호스트 이전은 데이터 보존·롤백을 **검토하지 않는다**(fresh 재적재).

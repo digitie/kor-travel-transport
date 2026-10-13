@@ -10,7 +10,8 @@
   `docs/architecture/data-model.md` "주소·행정구역 값의 출처" 절에 근거(file:line, head `2b7b6bc`)와
   함께 적었다. 근거의 정본은 그 절이고 여기에는 복제하지 않는다.
 - 문서만 바꿨다(`git diff --stat`: `docs/` 4개 파일). 코드·migration·`docs/openapi.json`·ADR(ADR-014는
-  geo 릴리스 대응 후속 PR용 예약, `resume.md` 현재 상태)·CHANGELOG 변경 없음. transport CI에는 docs lint가
+  geo 릴리스 대응 후속 PR용 예약, `resume.md` 현재 상태 — **2026-10-13 정정**: 소유자의 교차 저장소 번호 고정으로 ADR-014는
+  Track 2 odroid 이전에 쓰였다, `resume.md`·`docs/adr/014-*.md`)·CHANGELOG 변경 없음. transport CI에는 docs lint가
   없다(`.github/workflows/ci.yml`; docs 관련 검사는 `export_openapi.py --check`뿐이고 openapi.json 미변경) —
   따라서 이 PR을 빨갛게 만들 자동 검사는 없고, 검증은 파일 목록(`docs/` 4개) 수작업 확인이다.
 - 설계와 다른 결정 셋(소유자 확인용): ① `docs/tasks.md`에 `[ ]` 없이 여기로 바로 적음(`tasks-rule.md`

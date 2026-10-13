@@ -58,7 +58,8 @@
 - 테스트: pytest, Vitest
 - 실행: Docker Compose (PostgreSQL은 `docker-compose.db.yml`로 별도 컨테이너, T-032)
 - 개발 환경: WSL2 + Docker
-- 운영 목표 환경: Ubuntu 24.04 on Odroid M1S
+- 운영 환경: 현재 n150(`192.168.1.14`, [192.168.1.14 운영 배포](#1921681114-운영-배포)); odroid(`192.168.1.13`, ODROID M1S)
+  이전은 [ADR-014](docs/adr/014-odroid-host-and-deploy-host-flag.md) proposed·미구현
 
 ## 데이터 소스
 
@@ -113,6 +114,11 @@ live E2E 기준 웹 주소는 [https://pr.digitie.mywire.org/](https://pr.digiti
 13번에서는 Docker를 실행하거나 중지하지 않고, cutover 전까지 source API와 rollback
 기준으로 유지한다.
 
+> **계획(ADR-014 proposed, 미구현).** transport 스택 전체를 odroid(`192.168.1.13`)로 옮기는 설계가
+> [ADR-014](docs/adr/014-odroid-host-and-deploy-host-flag.md)에 있다 — 포트·compose project·앱 디렉터리는
+> 그대로이고 호스트만 `.14 → .13`, 배포 명령은 `scripts/deploy-prod.sh --host 192.168.1.13`으로 바뀐다. 아직
+> 코드·스크립트는 바뀌지 않았고 이 절의 n150 절차가 현재 운영이다.
+
 운영 환경 파일은 n150의
 `/home/digitie/apps/kor-travel-transport/.env.server14`에만 두며
 [`.env.server14.example`](.env.server14.example)을 시작점으로 사용한다. Compose project는
@@ -142,6 +148,9 @@ E2E_BASE_URL=https://pr.digitie.mywire.org npm run test:e2e
 ```
 
 ## Historical: 기존 13번 ODROID 배포 (실행 금지)
+
+> 이 절의 금지 문구는 [ADR-014](docs/adr/014-odroid-host-and-deploy-host-flag.md) 결정 6에 따라 소유자 §14-2 결정 직후·odroid
+> 배포 전에 T-TRN-03a가 교체하고, fail-closed 마커 파일은 배포 게이트가 전부 초록인 뒤 T-TRN-03b가 삭제한다 — 그때까지 유효하다.
 
 배포 기준 정보는 루트의 [.env.odroid](.env.odroid)에 저장한다.
 
