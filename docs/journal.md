@@ -1,5 +1,34 @@
 # journal.md — 작업 일지
 
+## 2026-10-13 — geo 릴리스 무영향 문서화 (`docs/t045-geo-release-no-impact`)
+
+소유자 지시(설계와 각 프로젝트 문서를 수정해 코딩을 준비). 기준 main `2b7b6bc`(#75). 문서만 바꿨다.
+
+- **배경.** kor-travel-geo가 주소 DB를 새 릴리스로 교체했을 때 소비자(Map·concierge·weather·transport)가
+  반응하는 교차 저장소 설계(2026-10-13; 저장소 내 정본은 Map ADR-109·geo ADR-069, 둘 다 proposed·미구현)에서
+  transport의 결론은 "변경 없음"이다. 근거를 저장소 안에 남기지 않으면 다음 릴리스 때 다시 조사하게 되므로
+  `docs/architecture/data-model.md`에 한 절로 적었다.
+- **확인한 방법(head `2b7b6bc`).** `backend/app/**/*.py`·`backend/alembic`·`frontend/src`·compose·pyproject에
+  `kor-travel-geo`/`geocod`/`12501` 참조 0건(grep); `backend/tests` 픽스처 문자열 `legacy_geocode` 1파일은 #56
+  (`5de3a51`)이 넣은 합성 값이고 `backend/app`·alembic 이력에 `geocod`가 들어간 적이 없다(`git log -S`) — 코드가
+  만든 적 있는 `location_source`가 아니다. `backend/uv.lock`은 해시 안의 부분 문자열만 잡힌다. `Settings`에 geo
+  필드 없음, `models.py`에 geo 유도 행정코드·PNU·지오코딩 시각·데이터셋 버전 컬럼 없음, export 응답 스키마
+  (`schemas.py:748-900`)에 행정코드·PNU 필드 없음(공개 유가 API의 `sido_value/…`는 Opinet 검색 문맥). 좌표 출처의
+  file:line은 `data-model.md` 그 절이 정본이고, 좌표 보강·보존·해제 규칙은 `runbooks/port-coordinates.md`에 위임해
+  복제하지 않는다(공항은 테이블에 좌표 없이 export 시점에 krairport 번들 `municipality`·좌표를 싣는다).
+- **남는 간접 영향(transport 책임 아님).** Map의 transport place asset(주유소·휴게소·공항)이 export 좌표를 reverse
+  geocoder로 넘겨 만든 행정코드만 Map ADR-109·geo ADR-069(proposed, 미구현)의 재지오코딩 대상이다(price·notice
+  asset은 넘기지 않는다 — 정본은 Map). 하드코딩 시도 표 `_province()`·`PORT_CALL_TARGETS`는 행정구역 개편 때
+  사람이 갱신한다(위치는 같은 절).
+- **바꾸지 않은 것.** 코드·migration·`docs/openapi.json`·CHANGELOG 없음. ADR 없음 — ADR-014 번호는 geo 릴리스
+  대응 후속 PR용으로 예약돼 있어 다른 결정에 쓰지 않으며(예약은 `resume.md` 현재 상태에 걸었다),
+  `docs/adr/README.md`의 "다음 번호" 갱신은 그 PR에서 한다. `docs/tasks.md`에 T-045 `[ ]`를 만들지 않고
+  `tasks-done.md`로 바로 적은 것은 `tasks-rule.md` 1항과 T-044 선례(`5aa0ad7`, tasks.md 이력에 T-044 없음)를 따른
+  것이다. `resume.md` '현재 상태' 상단의 `perf/fuel-store-batched` "PR 미생성·미배포"는 #75 머지(`2b7b6bc`)로
+  낡아 그 사실만 1줄 정정했고 배포 여부는 이 PR에서 확인하지 않았다. T-045는 이 PR로 완료(`tasks-done.md`).
+  transport CI에 docs lint는 없으므로 검증은 `git diff --stat`의 `docs/` 4개 파일뿐임을 수작업으로 확인하는 것이고,
+  설계가 요구한 "ADR-069·ADR-109 번호 확정 뒤 머지"는 머지 직전 눈 확인으로 대신한다(`tasks-done.md` 편차 ③).
+
 ## 2026-10-12 — 유가 저장 집합 upsert화, 오피넷 지역 검색 1회 재시도 핀 (`perf/fuel-store-batched`)
 
 소유자 승인(같은 날 유가 조사 후속 두 건). 기준 main `e0545fb`(#74, 배포 대기).

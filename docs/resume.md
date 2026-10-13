@@ -2,9 +2,16 @@
 
 ## 현재 상태
 
-- **2026-10-12 `perf/fuel-store-batched` 푸시, PR 미생성·미배포.** 유가 저장을 집합 upsert로 바꿨다(DB 호출 약 14만 → 59,
+- **2026-10-13 `docs/t045-geo-release-no-impact` 푸시, PR 미생성.** T-045 문서만(`docs/` 4개 파일, journal 같은
+  날; 근거는 `docs/architecture/data-model.md` "주소·행정구역 값의 출처" 절). ADR-014 번호는 geo 릴리스 대응
+  후속 PR용으로 예약 — 다른 결정에 쓰지 않는다(`docs/adr/README.md` "다음 번호" 갱신도 그 PR에서).
+  **다음 한 작업:** 머지 직전 geo `docs/adr/README.md` 다음 후보 069·Map 109(또는 그 파일 존재) 확인 →
+  PR → 파일 목록이 `docs/` 4개뿐임을 확인하고 즉시 머지(doc-only) → `tasks-done.md` T-045 항목과 journal 다음
+  항목에 PR 번호·머지 SHA 기입.
+
+- **2026-10-12 `perf/fuel-store-batched` — #75로 머지됨(`2b7b6bc`, 2026-10-13 확인), 배포 여부 미확인.** 유가 저장을 집합 upsert로 바꿨다(DB 호출 약 14만 → 59,
   의미 동등성은 옛 구현 오라클 비교, journal 같은 날). python-opinet-api는 PR #21 머지 커밋 `4654310`에 핀.
-  **다음 한 작업:** 리뷰 → PR → CI → 머지 → 배포 → 첫 유가 run의 저장 단계
+  **다음 한 작업:** 배포 → 첫 유가 run의 저장 단계
   (`collected_at`→종료) 시간과 지역 검색 실패 문구(`region=…:attempt=N`) 확인.
 
 - **2026-10-12 `fix/fuel-failure-cause-and-place-deferral` 푸시, PR 미생성·미배포.** 유가 FAILURE 5/25의 원인을 규명했다
@@ -1029,6 +1036,10 @@ ADR-010 개명과 #45 운영 반영은 완료됐다. 새 디렉터리·project�
 
 ## 확인된 사실
 
+- transport는 kor-travel-geo를 호출하지 않으며 geo 주소 데이터셋 릴리스는 저장 데이터·계약에 영향이
+  없다(2026-10-13 확인, head `2b7b6bc`). Map이 export 좌표에서 geo로 행정코드를 유도하는 경우는 Map ADR-109
+  (proposed, 미구현)의 책임이다 — 근거(file:line)는 `docs/architecture/data-model.md` "주소·행정구역 값의 출처"
+  절이 정본(T-045).
 - 13번의 현재 서비스는 프론트 `:3000`, 백엔드 `:8000`에서 응답한다.
 - 13번은 Docker를 조작하지 않고 `http://192.168.1.13:3000/api/backend` HTTP GET만 사용했다.
 - 13번 수집기는 10분 주기, n150 scheduler는 configured 300초/effective 180초로 운영 중이며
