@@ -2,6 +2,8 @@ import os
 import re
 from pathlib import Path
 
+import pytest
+
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[1]
 # Docker regression image에는 계약 검증에 필요한 무비밀 admin 파일만 복사한다.
@@ -149,7 +151,6 @@ def test_transport_runtime_forwards_port_guideline_and_timetable_limits() -> Non
     assert 'DATA_GO_KR_SERVICE_KEY: "${DATA_GO_KR_SERVICE_KEY:-}"' in shared_compose
 
 
-
 def test_transport_admin_builder_receives_public_dagster_origin() -> None:
     import yaml
 
@@ -162,28 +163,29 @@ def test_transport_admin_builder_receives_public_dagster_origin() -> None:
     assert builder.index("ENV NEXT_PUBLIC_TRANSPORT_DAGSTER_URL") < builder.index("RUN npm run build")
 
 
-def test_transport_admin_compose_renders_public_dagster_origin() -> None:
+@pytest.mark.parametrize("public_origin", [None, "", "https://dagster-unit.example.invalid"])
+def test_transport_admin_compose_renders_public_dagster_origin(public_origin: str | None) -> None:
     """Compose 실효 렌더는 CLI가 있는 호스트 게이트에서 실행한다."""
     import json
     import os
     import shutil
     import subprocess
 
-    import pytest
-
     if shutil.which("docker") is None:
         pytest.skip("Docker CLI 없는 앱 이미지: 호스트의 Compose 실효 렌더 게이트로 검증")
     env = {
         **os.environ,
-        "NEXT_PUBLIC_TRANSPORT_DAGSTER_URL": "https://dagster-unit.example.invalid",
         "NEXT_PUBLIC_VWORLD_API_KEY": "unit-browser-key",
         "TRANSPORT_UI_PASSWORD": "unit-password",
         "TRANSPORT_UI_SESSION_SECRET": "unit-session-secret-32-characters",
         "TRANSPORT_UI_PUBLIC_ORIGIN": "https://transport-unit.example.invalid",
     }
+    env.pop("NEXT_PUBLIC_TRANSPORT_DAGSTER_URL", None)
+    if public_origin is not None:
+        env["NEXT_PUBLIC_TRANSPORT_DAGSTER_URL"] = public_origin
     result = subprocess.run(
         ["docker", "compose", "-f", "docker-compose.transport-admin.yml", "config", "--format", "json"],
-        cwd=ROOT, env=env, check=True, capture_output=True, text=True,
+        cwd=ROOT, env=env, check=True, capture_output=True, text=True, timeout=30,
     )
     services = json.loads(result.stdout)["services"]
-    assert services["transport-admin-web"]["build"]["args"]["NEXT_PUBLIC_TRANSPORT_DAGSTER_URL"] == env["NEXT_PUBLIC_TRANSPORT_DAGSTER_URL"]
+    assert services["transport-admin-web"]["build"]["args"]["NEXT_PUBLIC_TRANSPORT_DAGSTER_URL"] == (public_origin or "https://dagster.digitie.mywire.org")
