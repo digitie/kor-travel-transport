@@ -4,7 +4,7 @@
 
 - 최신 main `859d7a0`에서 별도 브랜치로 작업했다. 이미 frontend가 읽는 `NEXT_PUBLIC_TRANSPORT_DAGSTER_URL`을 Compose build arg와 Docker builder의 ARG/ENV로 전달한다. 생략·빈 값은 기존 공개 기본값으로 돌아가며 수동 Docker build도 같은 기본값이다. 주소 변경은 UI 재빌드가 필요하다.
 - 현재 `.env.server14.example`에 공개 주소 설정 규칙을 추가했다. T-TRN-01의 파일 개명과 Manager 호스트 계약, 최소 배포 인수·실제 운영 링크 확인은 별도다. 수집 비활성화나 메모리 한도·공용 plane은 변경하지 않았다.
-- 로컬 계약 11 PASS(Compose 미설정·빈 값·override), 구형 Compose/Docker 계약은 4개 입력에서 실패하고 후보는 통과했다. 관리자 UI 타입·183 테스트·빌드 PASS, 기존 frontend 130 테스트·타입·빌드 PASS. Draft PR #78. 전체 backend·Docker gate와 두 적대 리뷰는 진행 중이며 운영 배포·live UI 완료로 표시하지 않는다.
+- 로컬 계약 11 PASS(Compose 미설정·빈 값·override), 구형 Compose/Docker 계약은 4개 입력에서 실패하고 후보는 통과했다. 관리자 UI 타입·183 테스트·빌드 PASS, 기존 frontend 130 테스트·타입·빌드 PASS. Draft PR #78. 전체 native backend 732 PASS·10 SKIP 뒤 최종 계약 11건을 별도 통과했다. 실제 UI Docker 빌드와 클라이언트 번들의 시험 origin 전달도 PASS다. 두 독립 적대 리뷰의 소스 판정은 PASS·OPEN 0이다. backend Docker 전체 suite·운영 배포·live UI는 미수행이며 완료로 표시하지 않는다.
 
 
 ## 2026-10-13 — odroid 호스트 이전 ADR-014·런북 계획 절 (`docs/adr-014-odroid-host-move`)
