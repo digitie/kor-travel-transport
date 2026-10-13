@@ -904,3 +904,12 @@ curl -X POST http://localhost:8000/v1/admin/collect
 - Windows PowerShell은 `deploy-odroid.ps1` 같은 배포 스크립트 실행과 상태 확인에 사용한다.
 - 단, ODROID live 장애 조사와 운영 복구는 ODROID를 대상으로 한다.
 - 사용자가 명시하지 않으면 WSL2에서 실행 중인 다른 프로젝트의 컨테이너, 타이머, 프로세스는 중지하거나 변경하지 않는다.
+
+
+## 공개 Dagster UI 링크 빌드 설정
+
+`NEXT_PUBLIC_TRANSPORT_DAGSTER_URL`은 관리자 UI가 쓰는 공개 origin이다. 배포 env에서 이 값을 지정하면
+`docker-compose.transport-admin.yml`이 Docker builder에 전달하고 Next 빌드에 포함한다. 미설정·빈 값은
+기존 기본 공개 origin을 사용한다. 내부 GraphQL 주소와 admin token은 이 공개 변수에 넣지 않는다.
+주소를 바꾸면 관리자 UI 이미지를 재빌드해야 하며 실행 중 컨테이너의 env만 바꿔서는 링크가 바뀌지 않는다.
+최소 배포 인수 뒤 실제 로그인·Dagster 화면에서 링크 목적지를 확인하고 live gate를 남긴다.

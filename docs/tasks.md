@@ -154,7 +154,7 @@ T-TRN-01은 M을 건드리지 않고(제외), T-TRN-03b가 M 부재를 단언한
       --glob '!deploy/odroid/**' --glob '!scripts/deploy-odroid.ps1' --glob '!scripts/odroid-status.ps1'` 0건(M 제외 — head에서는
       `scripts/deploy-odroid.ps1:6`이 걸리므로 제외 없이는 T-TRN-03b 전에 초록이 될 수 없다). 문서: `docs/runbooks/deployment.md`
       (계획 절 → 현재 절차), `README.md`·`docs/current-state.md` 배포 명령.
-- [ ] **T-TRN-02** env 규칙 + Dagster 링크. `.env.prod.example`: `TRUSTED_HOSTS_CSV`/`CORS_ORIGINS_CSV`의 LAN 항목은 배포 host
+- [ ] **T-TRN-02** env 규칙 + Dagster 링크. **부분 구현 중(2026-10-14):** 현재 env 파일명에 공개 URL 설정을 추가하고 Compose→Docker builder→Next 빌드 전달을 구현했다. env 개명·호스트별 env 정리·운영 live 확인은 후속이며 task는 열어 둔다. `.env.prod.example`: `TRUSTED_HOSTS_CSV`/`CORS_ORIGINS_CSV`의 LAN 항목은 배포 host
       addr(주석으로 규칙), `SERVICE_EXPORT_ALLOWED_CLIENTS_CSV=127.0.0.1/32,::1/128,192.168.1.14/32` 예시, `DAGSTER_POSTGRES_URL`
       "DB 없음·env 유지" 주석, `NEXT_PUBLIC_TRANSPORT_DAGSTER_URL=`(odroid plane 공개 host) 추가, `OPINET_BROWSER_ENABLED`(`:128`)
       주석에 "arm64 Chromium smoke 실패 시 false — `TRANSPORT_COLLECTION_ENABLED=false`는 고속도로까지 끈다" 한 줄,

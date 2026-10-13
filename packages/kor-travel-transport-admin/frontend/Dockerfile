@@ -6,6 +6,8 @@ COPY packages/kor-travel-transport-admin/frontend/vendor ./vendor
 RUN npm ci --ignore-scripts --no-audit --no-fund
 
 FROM dependencies AS builder
+ARG NEXT_PUBLIC_TRANSPORT_DAGSTER_URL=https://dagster.digitie.mywire.org
+ENV NEXT_PUBLIC_TRANSPORT_DAGSTER_URL=${NEXT_PUBLIC_TRANSPORT_DAGSTER_URL}
 ARG NEXT_PUBLIC_VWORLD_API_KEY
 ENV NEXT_PUBLIC_VWORLD_API_KEY=${NEXT_PUBLIC_VWORLD_API_KEY}
 COPY packages/kor-travel-transport-admin/frontend ./

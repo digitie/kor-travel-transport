@@ -147,3 +147,43 @@ def test_transport_runtime_forwards_port_guideline_and_timetable_limits() -> Non
 
     assert "BUS_REFERENCE_COLLECTION_ENABLED" in shared_compose
     assert 'DATA_GO_KR_SERVICE_KEY: "${DATA_GO_KR_SERVICE_KEY:-}"' in shared_compose
+
+
+
+def test_transport_admin_builder_receives_public_dagster_origin() -> None:
+    import yaml
+
+    compose = yaml.safe_load((ROOT / "docker-compose.transport-admin.yml").read_text())
+    assert "NEXT_PUBLIC_TRANSPORT_DAGSTER_URL" in compose["services"]["transport-admin-web"]["build"]["args"]
+    dockerfile = (ROOT / "packages/kor-travel-transport-admin/frontend/Dockerfile").read_text()
+    builder = dockerfile.split("FROM dependencies AS builder", 1)[1].split("FROM node:22-alpine AS runner", 1)[0]
+    assert "ARG NEXT_PUBLIC_TRANSPORT_DAGSTER_URL" in builder
+    assert "ENV NEXT_PUBLIC_TRANSPORT_DAGSTER_URL=${NEXT_PUBLIC_TRANSPORT_DAGSTER_URL}" in builder
+    assert builder.index("ENV NEXT_PUBLIC_TRANSPORT_DAGSTER_URL") < builder.index("RUN npm run build")
+
+
+def test_transport_admin_compose_renders_public_dagster_origin() -> None:
+    """Compose 실효 렌더는 CLI가 있는 호스트 게이트에서 실행한다."""
+    import json
+    import os
+    import shutil
+    import subprocess
+
+    import pytest
+
+    if shutil.which("docker") is None:
+        pytest.skip("Docker CLI 없는 앱 이미지: 호스트의 Compose 실효 렌더 게이트로 검증")
+    env = {
+        **os.environ,
+        "NEXT_PUBLIC_TRANSPORT_DAGSTER_URL": "https://dagster-unit.example.invalid",
+        "NEXT_PUBLIC_VWORLD_API_KEY": "unit-browser-key",
+        "TRANSPORT_UI_PASSWORD": "unit-password",
+        "TRANSPORT_UI_SESSION_SECRET": "unit-session-secret-32-characters",
+        "TRANSPORT_UI_PUBLIC_ORIGIN": "https://transport-unit.example.invalid",
+    }
+    result = subprocess.run(
+        ["docker", "compose", "-f", "docker-compose.transport-admin.yml", "config", "--format", "json"],
+        cwd=ROOT, env=env, check=True, capture_output=True, text=True,
+    )
+    services = json.loads(result.stdout)["services"]
+    assert services["transport-admin-web"]["build"]["args"]["NEXT_PUBLIC_TRANSPORT_DAGSTER_URL"] == env["NEXT_PUBLIC_TRANSPORT_DAGSTER_URL"]
