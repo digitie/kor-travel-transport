@@ -170,6 +170,35 @@ SQLite dialect를 허용한다.
 - 도시·등급 목록은 수집 receipt의 수량으로만 남기고, 운행 시간표는 시간 민감 자료이므로
   별도 `bus_timetable_snapshots`에 저장한다.
 
+## 주소·행정구역 값의 출처 — kor-travel-geo 미사용
+
+본 서비스는 kor-travel-geo를 호출하지 않는다(이 절의 file:line은 2026-10-13 head `2b7b6bc` 기준이고,
+경로는 `backend/app/` 기준이며 수집 서비스는 `backend/app/services/` 아래다).
+`Settings`(`core/config.py:11-184`)에 geo URL·키 필드가 없고 geo 클라이언트도 없다. 좌표는
+provider 원본(주유소는 Opinet `katec_x/y`·경위도 `services/transport_collection.py:1252-1255`, 휴게소·돌발은 provider
+값 저장 `models.py:475-476`·`:238-239`, 공항은 `airports` 테이블에 좌표 없이 krairport 번들 좌표·소재지를 export
+시점에 그대로 실음 `service_exports.py:255-259`)과 버스 터미널·항구 기준정보의 VWorld/Kakao 장소 검색·KOMSA 기항지
+조회 보강(`services/place_targets.py:30-38`, `services/place_locations.py:151-154`,
+`services/kakao_place_locations.py:207-212`, `services/rail_maritime_collection.py:537-575`; 옛 항만가이드라인
+`data_go_kr_port_guideline` 좌표는 지도에서 제외하고 재적재 시 해제)으로만 채운다. 보강·보존·해제 규칙과 출처
+표기(`location_source`, `raw_item_json._*`)는 [좌표 운영 규칙](../runbooks/port-coordinates.md)과 위 핵심 테이블
+절(`admin_manual`)이 정본이다. 어느 경로도 kor-travel-geo를 거치지 않는다.
+
+주소·소재지는 provider 문자열 그대로이고(`models.py:261,403-404,510,593,638`), geo에서 유도한 행정표준코드
+(법정동·행정동·시군구)·PNU·지오코딩 시각·주소 데이터셋 버전 컬럼은 어느 테이블에도 없다(`models.py`;
+`fuel_stations.sido_*/sigungu_*/dong_*`(`:266-271`)는 Opinet 검색 문맥이다 — 위 `fuel_stations` 절). 내부 export
+응답 스키마(ADR-013, `schemas.py:748-900`의 `Export*`·`*ExportPage`·`AirportExportResponse` = `docs/openapi.json`의
+`/v1/service/exports/*` 응답 컴포넌트)에도 행정코드·PNU 필드는 없다(공개 유가 API `FuelStationItem`/
+`FuelStationResponse`의 `sido_value/sigungu_value/dong_value`는 위 Opinet 검색 문맥 값이다). 따라서 geo 주소
+데이터셋 릴리스는 본 서비스의 저장 데이터·API 계약에 영향을 주지 않는다. Map의 transport place asset(주유소·휴게소·
+공항)이 export 좌표를 reverse geocoder로 넘겨 만든 행정코드만 Map ADR-109·geo ADR-069(둘 다 2026-10-13 기준
+**proposed, 미구현**)의 재지오코딩 대상이고(price·notice asset은 reverse를 넘기지 않는다 — 어느 asset이 넘기는지의
+정본은 Map `dagster/assets.py`), 본 서비스 책임이 아니다 — 그 설계는 그 ADR이 정본이고 여기에 복제하지 않는다.
+
+단, 하드코딩 시도 표 `_province()`(`services/place_locations.py:25-35`)와 KOMSA 대상 표
+`PORT_CALL_TARGETS`(`services/rail_maritime_collection.py:51-71`)는 행정구역 개편(시도 명칭·통합) 때 사람이 갱신한다.
+geo 릴리스는 이를 알려 주지 않는다.
+
 ## 분석 데이터 처리 원칙
 
 - 시계열 차트용 집계 결과는 현재 별도 테이블에 저장하지 않는다.

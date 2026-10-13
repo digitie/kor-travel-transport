@@ -2,6 +2,26 @@
 
 완료한 task의 식별자, 핵심 변경, 검증 명령과 시각을 역시간순으로 보관한다.
 
+## 2026-10-13 — T-045 geo 릴리스 무영향 근거 문서화
+
+- 교차 저장소 설계(2026-10-13, kor-travel-geo 주소 데이터셋 릴리스 → 소비자 반영; 저장소 내 정본은
+  Map ADR-109·geo ADR-069, 둘 다 proposed·미구현)의 결론 "transport는 변경 없음(geo 미호출, geo 유도
+  행정코드·PNU·지오코딩 시각 컬럼 없음, geo 릴리스는 저장 데이터·계약에 무영향)"을
+  `docs/architecture/data-model.md` "주소·행정구역 값의 출처" 절에 근거(file:line, head `2b7b6bc`)와
+  함께 적었다. 근거의 정본은 그 절이고 여기에는 복제하지 않는다.
+- 문서만 바꿨다(`git diff --stat`: `docs/` 4개 파일). 코드·migration·`docs/openapi.json`·ADR(ADR-014는
+  geo 릴리스 대응 후속 PR용 예약, `resume.md` 현재 상태)·CHANGELOG 변경 없음. transport CI에는 docs lint가
+  없다(`.github/workflows/ci.yml`; docs 관련 검사는 `export_openapi.py --check`뿐이고 openapi.json 미변경) —
+  따라서 이 PR을 빨갛게 만들 자동 검사는 없고, 검증은 파일 목록(`docs/` 4개) 수작업 확인이다.
+- 설계와 다른 결정 셋(소유자 확인용): ① `docs/tasks.md`에 `[ ]` 없이 여기로 바로 적음(`tasks-rule.md`
+  1항, T-044 선례 `5aa0ad7` — tasks.md 이력에 T-044 없음); ② 수용 기준의 Map ADR-109 링크는 파일이 아직
+  없어 저장소 관행(ADR-013의 'Map ADR-106' 텍스트 인용)대로 텍스트 인용으로 대체 — Map ADR-109 머지 뒤 URL
+  추가 여부는 소유자 결정; ③ 설계는 "ADR-069·ADR-109 번호 확정(geo·Map 문서 PR 머지) 뒤 머지"인데 텍스트
+  인용이라 번호가 밀려도 빨개지는 검사가 없으므로, 머지 직전 geo `docs/adr/README.md` 다음 후보가 069(또는
+  069 파일 존재)·Map 같은 파일이 109(또는 109 파일 존재)인지 눈으로 확인하고 어긋나면 이 PR의 번호 인용
+  3곳(`data-model.md`·`resume.md`·여기)을 고친 뒤 머지한다.
+- 머지 뒤 이 항목과 journal 다음 항목에 PR 번호·머지 SHA를 적는다(#56·#67 선례).
+
 ## 2026-10-04 — T-044 Weather/common Dagster 복구·공통 UI 코드 채택
 
 - runtime `027a9ca`에서 durable CollectionRun owner·heartbeat·늦은 게시 fencing,
