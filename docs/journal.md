@@ -1,5 +1,11 @@
 # journal.md — 작업 일지
 
+## 2026-10-14 — Odroid 장애로 운영 E2E 미실행, 사용자 지시에 따른 머지
+
+- 사용자 보고로 운영 Odroid 중단을 확인했다. live E2E·UI E2E는 실행하지 못했으며 PASS로 표시하지 않는다. 사용자가 현재 PR의 E2E 선행 조건을 명시적으로 유예하고 머지 후 남은 작업을 계속하도록 지시했다.
+- 이번 예외와 복구 뒤 검증은 [운영 E2E 미실행 기록](reviews/2026-10-14-odroid-e2e-deferred.md)에 남긴다. 운영 배포와 후속 검증은 실제 결과까지 미완료로 남긴다.
+
+
 ## 2026-10-14 — T-TRN-02 공개 Dagster 링크 빌드 전달 구현 중
 
 - 최신 main `859d7a0`에서 별도 브랜치로 작업했다. 이미 frontend가 읽는 `NEXT_PUBLIC_TRANSPORT_DAGSTER_URL`을 Compose build arg와 Docker builder의 ARG/ENV로 전달한다. 생략·빈 값은 기존 공개 기본값으로 돌아가며 수동 Docker build도 같은 기본값이다. 주소 변경은 UI 재빌드가 필요하다.
