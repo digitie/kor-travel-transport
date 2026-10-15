@@ -2,6 +2,12 @@
 
 ## 현재 상태
 
+- **2026-10-16 두 Node core HTTP healthcheck 후보.** wget의302/noLocation거짓양성을확정해폐기하고 두운영UI의동일coreGET/strict2xx/4초전체요청timer로보강한다. redirect는failclosed, 원URL/주기/5초Docker상한보존. exact실제각1회CPU0.535/0.558초·CLI1.91/2.46초exit0(비통제표본). 다음은최종소스계약/새ARM/CI/독립2리뷰이며서비스변경0. [검증 경계](reviews/2026-10-16-node-healthcheck.md).
+
+- **2026-10-16 Transport81 backend lock 빌드 보강 중.** Docker의 pip 설치가 lock을 소비하지 않아 base provider commit과 registry 버전이 달랐다. 실제 Dockerfile을 uv0.11.21·새 전용환경의 locked dev 설치로 바꾼다. 새 빈 native 환경104개/Common7파일 parity와 KREX WAF·cadence·retry28 PASS, lock drift 사전거절을 확인했다. 실제9c ARM의 uv캐시413266264B를 확인해 원no-cache footprint도 복구한다. 9c 증거는 보존하며 새HEAD image를 별도 고정한다. 다음은 새HEAD의 ARM/Python3.12 설치 parity·산출물·CI·두 독립 delta 리뷰다. 기존f42b Docker757/13/1 및 제품086 native759 결과는 보존하며 merge/deploy는 하지 않는다.
+
+- **2026-10-15 공항·고속도로 phase 분산 후보 구현 중.** Common Python41b pin/lock과 공항phase1·고속도로phase3을 적용해 예약 총량288회/일·5분 간격을 보존한다. OLD 달력3 FAIL/계약10 PASS, NEW 최초 표적25 PASS. 제품086에서 native 전체759 PASS·10 SKIP, 후속 retry14 PASS와 lock/OpenAPI 확인을 마쳤다. 최종HEAD CI·Docker·frontend·2인 독립 리뷰는 별도 후속이다. 다음은 결과 고정·초안 PR·독립 적대 리뷰이며 배포/merge는 하지 않는다. [검증 기록](reviews/2026-10-15-transport-cadence-common.md).
+
 - **2026-10-15 적대 리뷰 A-P2-01 보강.** 긴 단일 오류 토큰의 clipping을 Common 상세 본문 클래스 재사용으로 수정했다. 로컬 Chromium375/1440px OLD RED→NEW GREEN을 확인했다. 다음은 후속 커밋의 독립 재리뷰·CI·live UI이며 운영 완료로 표시하지 않는다. [검증 기록](reviews/2026-10-15-transport-dagster-on-demand-detail.md).
 
 - **2026-10-15 Dagster 실패 상세 선택 조회 구현.** main38eafb1에서 시작했고 초기 fanout OLD4회→NEW1회 회귀를 확인했다. 기존15초/20page/2000자·진행 중1000건을 보존한다. 관리자 frontend202·type/lint/build PASS. 다음은 Draft PR·CI·독립 적대 리뷰2인·Docker2차와 운영 live UI이며 아직 완료로 표시하지 않는다. [검증 기록](reviews/2026-10-15-transport-dagster-on-demand-detail.md).
@@ -1048,6 +1054,9 @@
   `n150-backup-cron.sh` 직접 실행으로 exit `0` + 실제 dump 생성까지 재검증했다.
 
 ## 다음 한 작업
+
+공항·고속도로 phase/Common 후보의 전체 검증 결과와 HEAD를 고정하고 초안 PR에서
+두 독립 적대 리뷰를 받는다. 운영 반영·merge는 별도 승인 범위다.
 
 항구 607곳과 버스 터미널 649곳의 미확인 좌표를 공식 코드·주소·시설명 교차표로
 검증한다. 장소 중심점이나 항로 안내 점을 실제 승선·승차 지점으로 대체하지 않는다.

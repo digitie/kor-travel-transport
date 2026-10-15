@@ -1,3 +1,24 @@
+## 2026-10-16 — 두 Node UI healthcheck의 core HTTP GET
+
+- 가벼운 wget 후보는302/noLocation/Content-Length0 거짓양성을 독립반례로 확인해 폐기했다. 원문/초기artifact는보존하며 양role동일 Nodecore http.get·strict2xx·고정4초요청timer/abort로보강한다. API/CS·gateway·개발bridge probe는변경0.
+- exact템플릿 실제2role각1회는 CPU0.535/0.558초·CLI1.91/2.46초로exit0이며CID/PID/fullConfig/HostConfig불변. 계측hook포함 비통제표본이어서 평균·절감률은주장하지않는다. redirect는추적하지않고failclosed/본문읽지않는헤더판정이라는정책을 [검증 기록](reviews/2026-10-16-node-healthcheck.md)에명시한다.
+- 자체ARM모형은302양형태/304/404/503/stall/closedport를거절하고200/204/헤더성공을확인했다. 최종계약/Compose/ARM/CI·독립2리뷰는별도로고정하며운영서비스변경0. fb52·b4artifact를최종HEAD로부르지않는다.
+
+## 2026-10-16 — backend Docker 빌드의 uv.lock 소비
+
+- 실제9c ARM tar의 /root/.cache/uv regular11953파일·413266264B(rounded444006400B)를 측정했다. 원 pip --no-cache-dir의 footprint를 보존하도록 uv sync --no-cache를 추가한다. 9c 산출물/실행 증거는 보존하고 새HEAD를 같은 실제 base digest에 결박해 다시 검증한다. 공유 layer를 뺀 실제 target 공간은 별도 검사이며 raw 보수산식을 실제 필요량으로 단정하지 않는다.
+
+- f42b의 고정 소스 Docker 전체는 757 PASS·13 SKIP·1 FAIL이었다. 유일 실패는 MockTransport WAF이며 network 차단이 아니라 base KREX Git commit이 lock과 다른 환경 문제였다. 전체 대조에서 registry25개·Git2개의 불일치가 확인돼 exact-lock PASS로 보고하지 않는다. 이전 overlay의 stale scripts/Compose/OpenAPI47실패와 원문을 별도 보존했다.
+- 재구축 때 같은 문제가 반복되지 않도록 backend Dockerfile만 uv0.11.21·새 /opt/venv·uv sync --locked --extra dev로 바꾼다. Python3.12-slim/apt/Chromium/entrypoint/서비스 계약은 유지한다. provider·cadence·retry 제품 코드는 바꾸지 않는다.
+- 새 빈 native Python3.13 환경에 실제 locked 설치를 수행해104개 version/VCS와 Common7파일 bytes parity를 확인했다. KREX WAF/cadence/retry28 PASS, pyproject version을 바꾼 부정 입력은 --locked에서 설치 전 거절됐다. 이전 제품086 native759와 최종f42b CI green은 새 이미지 검증으로 합산하지 않는다. ARM/Python3.12 산출물·새HEAD CI·두 독립 delta 리뷰·운영은 아직 후속이다.
+
+## 2026-10-15 — 공항·고속도로 5분 phase 분산과 Common Python pin
+
+- 최신 origin/main `15a928b`에서 별도 브랜치로 작업한다. 공항은 KST `1-59/5`, 고속도로는 `3-59/5`로 예약 시작을 2분 벌리며 각각 하루288회·5분 간격을 유지한다.
+- Common Python pin을 `430a9e9`에서 `41b672c`로 올린다. provider 예산·coalescing·executor·resources·실행 태그·시간대와 기존 healthcheck는 보존한다.
+- 달력 OLD RED3건/기존 계약10 PASS를 immutable Git archive로 재현했고 후보의 달력/실행 계약13건 및 실제 Transport retry sensor12건이 통과했다. 제품086에서 native 전체759 PASS·10 SKIP(1433.08초), 후속 checkpoint2건/parent-budget 보강을 포함한 focused14 PASS와 lock/OpenAPI 확인을 마쳤다. 최종HEAD의 CI·Docker·frontend·두 독립 리뷰는 별도이며 아직 완료로 표시하지 않는다.
+- Common의 proven child-process crash 복구 확장과 소비하지 않는 HTTP/health 모듈의 경계를 [검증 기록](reviews/2026-10-15-transport-cadence-common.md)에 남긴다. CPU/RSS 개선율·운영 freshness는 아직 실측하지 않았다.
+
 ## 2026-10-15 — Dagster 긴 실패 상세 줄바꿈 보강
 
 - 독립 리뷰 A-P2-01을 로컬 Chromium375/1440px에서 재현했다. 공백 없는2000자 오류가 패널 오른쪽에서 잘리는 문제를 Common 기존 상세 본문 클래스 적용으로 수정했다.

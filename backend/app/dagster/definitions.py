@@ -16,6 +16,7 @@ from dagster import (
 )
 from sqlalchemy.engine import make_url
 from kortravelcommon.dagster import RecoveryPolicy, coalescing_schedule, infrastructure_retry_sensor, reconciliation_sensor
+from kortravelcommon.scheduling import staggered_cron
 
 from app.dagster.recovery import (
     OWNER, CollectionLeaseLost, collection_owner, ensure_collection_owner_active,
@@ -591,8 +592,8 @@ definitions = Definitions(
         rest_area_fuel_price_collection_job,
     ],
     schedules=[
-        coalescing_schedule(project="transport", location_name="kor-travel-transport", job=airport_collection_job, cron_schedule="*/5 * * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
-        coalescing_schedule(project="transport", location_name="kor-travel-transport", job=highway_collection_job, cron_schedule="*/5 * * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
+        coalescing_schedule(project="transport", location_name="kor-travel-transport", job=airport_collection_job, cron_schedule=staggered_cron(interval_minutes=5, phase_minutes=1), execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
+        coalescing_schedule(project="transport", location_name="kor-travel-transport", job=highway_collection_job, cron_schedule=staggered_cron(interval_minutes=5, phase_minutes=3), execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=fuel_collection_job, cron_schedule="0 */8 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         # 매일 due를 평가하되 service가 마지막 성공 뒤 48시간 전에는 provider를 호출하지 않는다.
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=rail_reference_collection_job, cron_schedule="0 3 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
