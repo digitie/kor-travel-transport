@@ -25,10 +25,12 @@ tarball은 submodule PR #29 병합 `fb754755871ca8318907327c9a7d096dd96b1278`과
 마커 겉모양은 #70의 Map 공용 마커 패키지 소스(`lib/vendor/map-marker-react/`, MIT)를 그대로 쓴다.
 
 
-## 공용 UI·토큰 후보 고정 (2026-10-04)
+## 공용 UI·토큰 후보 고정 (2026-10-15)
 
-common 후보 commit `9da1889`의 `npm run build` 뒤 `npm pack` 산출물이다.
-UI는 `0.1.0-dev.2`, tokens는 변경 없는 `0.1.0`이며 정식 registry 배포가 아니다.
+UI는 Common `091d4fe1dda8eacf43b453ad39b4f2e42e9e80fc`에서 `npm pack`으로 만들었다.
+UI 소스는 main `efcd671207d7f9e2fb01251bab6854a8d543279a`와 동일하다.
+UI는 `0.1.0-dev.6`, tokens는 기존 `9da1889`의 변경 없는 `0.1.0`이며 정식 registry 배포가 아니다.
+실행 검색·상태 필터·50행 페이지·상세를 공유하며 인증과 API는 소비 앱이 소유한다.
 각 tarball은 GPL-3.0-or-later `LICENSE`·`NOTICE`·`THIRD_PARTY_NOTICES.md`를 포함한다.
 Python 복구 코어는 `backend/pyproject.toml`과 `backend/uv.lock`에서 common
 `430a9e9cd5429204579792b1d4f8e399366dcb2f`로 별도 고정한다. 위 UI tarball의 source commit과 구분한다.
@@ -36,4 +38,4 @@ Python 복구 코어는 `backend/pyproject.toml`과 `backend/uv.lock`에서 comm
 | 파일 | SHA-256 |
 | --- | --- |
 | `kor-travel-tokens-0.1.0.tgz` | `22b7613085e55885987ce05720a178b65ac649b097763db650b8c7b8b4acaa84` |
-| `kor-travel-ui-0.1.0-dev.2.tgz` | `5c7bb61dce3245bf175795c39a9310782557ce65948ddc161452faa7c0cfca4b` |
+| `kor-travel-ui-0.1.0-dev.6.tgz` | `e4945d01d9eb89ed505a95b551899fd0ecf41be66c9ee6b76246701350447e6d` |

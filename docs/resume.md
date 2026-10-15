@@ -2,6 +2,8 @@
 
 ## 현재 상태
 
+- **2026-10-15 공통 Dagster UI dev.6 적용 중.** 운영 검색 입력 부재를 재현했다. Geo와 동일한 vendor 의존성으로 올리고 인증·조회 계약을 유지한다. 로컬/CI·2인 리뷰·운영 live UI는 아직 NOT_RUN. 다음 작업은 검증 및 관리자 UI만 재빌드·배포다. [검증 기록](reviews/2026-10-15-common-dagster-ui.md).
+
 - **2026-10-14 T-TRN-02 부분 구현 중.** 공개 Dagster URL의 Compose/Docker 빌드 전달과 계약 회귀를 구현했다. 기존 env 파일명은 유지하고 Manager 계약·최소 배포 인수 뒤 후속 호스트 변경과 운영 live UI를 진행한다. native 전체 backend 732 PASS·10 SKIP, 최종 계약 11 PASS·UI Docker 빌드 PASS·두 소스 리뷰 OPEN 0. 다음 작업은 최소 배포 인수 뒤 운영 링크·live E2E/UI·backend Docker gate다. journal 같은 날짜.
 
 - **2026-10-13 `docs/adr-014-odroid-host-move` 작성 중(커밋 전), 문서만.** 교차 저장소 Track 2(geo·weather·transport를
