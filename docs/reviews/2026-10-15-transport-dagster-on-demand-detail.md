@@ -41,3 +41,20 @@ Common의 기존 controlled selection/detail props를 재사용하고 CSS를 for
 브라우저 취소가 proxy 뒤 Dagster 계산까지 강제 중단한다는 뜻은 아니다.
 운영 배포·live E2E/UI·2인 적대 리뷰·CI·Docker2차·backend 재실행은 아직 NOT_RUN이다.
 실제 CPU 감소율이나502해소를 로컬 green만으로 선언하지 않는다. 후속 검증을 마친 뒤 머지한다.
+
+## 적대 리뷰 A-P2-01 후속: 긴 실패 문자열 줄바꿈
+
+사용자 정의 상세 루트에 Common의 dagster-detail-body 클래스를 적용했다.
+기존 Common CSS의 overflow-wrap:anywhere를 재사용하며 CSS·vendor를 복제하지 않는다.
+실제 React/Common과 production CSS를 사용하는 로컬 Chromium 모형에서 공백 없는
+2000자 오류를 조회했다. 수정 전에는375/1440px 모두 본문 scrollWidth17754px로
+잘렸고, 수정 후에는 각각 본문301/519px·panel373/591px 안에서 모두 줄바꿈됐다.
+원문 문자열2000자는 유지되며 가로 숨김이나 메시지 절단으로 통과시키지 않았다.
+
+이 모형은 API 응답과 PageHeader만 고정했고 네트워크를 차단했다. live E2E로 집계하지 않는다.
+최초 모형 준비 중 process 전역 누락·모호한 locator 두 실패는 제품 실패와 분리했다.
+같은 최종 모형의 OLD RED와 NEW GREEN 결과를 비공개 증거로 보존한다.
+후속 소스의 독립 재리뷰·CI·운영 UI 검증은 별도다.
+
+후속 로컬 검증: 관리자 frontend 전체202 PASS·type-check·lint·production build PASS다.
+이 한 클래스 변경에 backend/DB/Docker 검증을 새로 실행하지 않았으며 기존 운영 게이트를 대체하지 않는다.

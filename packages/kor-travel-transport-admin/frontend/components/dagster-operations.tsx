@@ -106,7 +106,7 @@ export function DagsterOperations() {
     <CommonDagsterOperations {...props} snapshot={displaySnapshot}
       error={error || snapshot?.warning} loading={loading} onRefresh={load} locationUrl={dagsterLocationUrl()}
       showRunDetails selectedRunId={selectedRunId} onSelectRun={selectRun}
-      renderRunDetail={run => !run ? <p className="empty">실행을 선택하면 상세를 확인할 수 있습니다.</p> : <div>
+      renderRunDetail={run => !run ? <p className="empty">실행을 선택하면 상세를 확인할 수 있습니다.</p> : <div className="dagster-detail-body">
         <h3>{props.jobLabel(run.jobName)}</h3><code>{run.runId}</code><p>{statusLabel(run.status)}</p>
         {run.status === "FAILURE" ? <div aria-busy={detail?.loading ?? false}>
           {detail?.runId !== run.runId ? <p>실패 원인 미조회</p> : detail.loading ? <p role="status">실패 원인 조회 중…</p> : detail.error ? <div role="alert"><p>{detail.error}</p><button type="button" onClick={() => selectRun(run.runId)}>실패 원인 다시 조회</button></div>

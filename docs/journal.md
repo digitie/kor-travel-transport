@@ -1,3 +1,10 @@
+## 2026-10-15 — Dagster 긴 실패 상세 줄바꿈 보강
+
+- 독립 리뷰 A-P2-01을 로컬 Chromium375/1440px에서 재현했다. 공백 없는2000자 오류가 패널 오른쪽에서 잘리는 문제를 Common 기존 상세 본문 클래스 적용으로 수정했다.
+- 실제 React/Common·production CSS의 동일 모형 OLD RED→NEW GREEN을 확인했고 원문2000자를 보존한다. CSS·vendor·백엔드·요청 예산은 변경하지 않는다.
+- 후속 관리자 frontend 전체202 PASS·type-check·lint·production build PASS다.
+- 모형 준비의 전역/locator 실패는 제품 실패로 집계하지 않는다. CI·독립 후속 재리뷰·live UI는 아직 미완료이며 소스 수정으로 운영 통과를 주장하지 않는다. [검증 기록](reviews/2026-10-15-transport-dagster-on-demand-detail.md).
+
 ## 2026-10-15 — Dagster 실패 상세를 선택할 때만 조회
 
 - 최신 main38eafb1에서 실패3개일 때 초기요청4회인 회귀를 재현하고 overview1회로 줄였다. Weather의 선택·취소·버전 패턴과 Common 기존 상세 props를 적용했다.
