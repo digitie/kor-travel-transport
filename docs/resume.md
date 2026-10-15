@@ -2,6 +2,10 @@
 
 ## 현재 상태
 
+- **2026-10-15 적대 리뷰 A-P2-01 보강.** 긴 단일 오류 토큰의 clipping을 Common 상세 본문 클래스 재사용으로 수정했다. 로컬 Chromium375/1440px OLD RED→NEW GREEN을 확인했다. 다음은 후속 커밋의 독립 재리뷰·CI·live UI이며 운영 완료로 표시하지 않는다. [검증 기록](reviews/2026-10-15-transport-dagster-on-demand-detail.md).
+
+- **2026-10-15 Dagster 실패 상세 선택 조회 구현.** main38eafb1에서 시작했고 초기 fanout OLD4회→NEW1회 회귀를 확인했다. 기존15초/20page/2000자·진행 중1000건을 보존한다. 관리자 frontend202·type/lint/build PASS. 다음은 Draft PR·CI·독립 적대 리뷰2인·Docker2차와 운영 live UI이며 아직 완료로 표시하지 않는다. [검증 기록](reviews/2026-10-15-transport-dagster-on-demand-detail.md).
+
 - **2026-10-15 공통 Dagster UI dev.6 적용 중.** 운영 검색 입력 부재를 재현했다. Geo와 동일한 vendor 의존성으로 올리고 인증·조회 계약을 유지한다. 로컬/CI·2인 리뷰·운영 live UI는 아직 NOT_RUN. 다음 작업은 검증 및 관리자 UI만 재빌드·배포다. [검증 기록](reviews/2026-10-15-common-dagster-ui.md).
 
 - **2026-10-14 T-TRN-02 부분 구현 중.** 공개 Dagster URL의 Compose/Docker 빌드 전달과 계약 회귀를 구현했다. 기존 env 파일명은 유지하고 Manager 계약·최소 배포 인수 뒤 후속 호스트 변경과 운영 live UI를 진행한다. native 전체 backend 732 PASS·10 SKIP, 최종 계약 11 PASS·UI Docker 빌드 PASS·두 소스 리뷰 OPEN 0. 다음 작업은 최소 배포 인수 뒤 운영 링크·live E2E/UI·backend Docker gate다. journal 같은 날짜.
