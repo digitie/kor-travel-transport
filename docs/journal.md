@@ -1,3 +1,10 @@
+## 2026-10-15 — Dagster 실패 상세를 선택할 때만 조회
+
+- 최신 main38eafb1에서 실패3개일 때 초기요청4회인 회귀를 재현하고 overview1회로 줄였다. Weather의 선택·취소·버전 패턴과 Common 기존 상세 props를 적용했다.
+- Transport의 overview25초·상세15초/20page/2000자·진행 중1000건과 경고는 유지한다. timeout확대·proxy/인증/Common제품/Python 변경은 없다.
+- 관리자 frontend202 PASS·type/lint/build PASS. 실제 React/Common DOM8건이 선택/중복/취소/늦은응답/오류복구를 검사한다. 최초 jsdom환경6실패와 lint실패를 보존한 뒤 테스트 환경·effect구조를 보강했다.
+- 2인 적대 리뷰·CI·Docker2차·운영 배포/live UI는 후속이며 현재 NOT_RUN이다. 502의 단독원인이나 실제 CPU 감소율은 확정하지 않는다. [검증 기록](reviews/2026-10-15-transport-dagster-on-demand-detail.md).
+
 ## 2026-10-15 공통 Dagster UI 최신화 시작
 
 운영 UI에서 검색 입력 부재를 확인했다. common dev.6 tarball과 lock을 동일하게 적용한다. Geo 튜닝값은 유지한다. 검증·리뷰·운영 배포는 아직 NOT_RUN이며 세부 상태는 reviews/2026-10-15-common-dagster-ui.md에 기록한다. 사용자가 Odroid 이전·운영 배포를 명시적으로 지시했으므로 과거 13번 Docker 금지 문구보다 이번 지시를 우선한다.

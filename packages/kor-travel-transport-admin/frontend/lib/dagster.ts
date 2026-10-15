@@ -26,36 +26,50 @@ export function scheduleDescription(cron: string) {
 }
 export function runStalled(run: DagsterRun, now = Date.now()) { return run.status === "STARTED" && run.startTime != null && now / 1000 - run.startTime >= (Number(run.tags?.find(tag => tag.key === "dagster/max_runtime")?.value) || jobBudgetSeconds(run.jobName)); }
 export async function getDagsterOverview(signal?: AbortSignal): Promise<DagsterOverview> {
+  signal?.throwIfAborted();
   // 공용 Dagster webserver다 — query 본문과 이 location의 범위는 proxy가 채운다(lib/dagster-scope.ts).
   const request: DagsterOperationRequest = { operationName: "TransportDagsterOverview" };
   const response = await fetch("/api/dagster/graphql", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(request), cache: "no-store", signal });
   if (!response.ok) throw new Error("Dagster 연결에 실패했습니다. 다시 조회해 주세요.");
   const payload = await response.json() as { errors?: unknown[]; data?: { repositoryOrError: { __typename: string; schedules?: DagsterSchedule[] }; runsOrError: { __typename: string; results?: DagsterRun[] }; activeRuns?: { __typename: string; results?: DagsterRun[] } } };
   if (payload.errors?.length || payload.data?.repositoryOrError?.__typename !== "Repository" || payload.data?.runsOrError?.__typename !== "Runs" || payload.data?.activeRuns?.__typename !== "Runs") throw new Error("Dagster 작업 목록을 확인하지 못했습니다.");
-  const runs = payload.data.runsOrError.results ?? [];
-  // 실패 상세는 최대 3개만 조회한다. event 페이지를 순차 회수해 전체 로그를 메모리에 보관하지 않는다.
-  await Promise.all(runs.filter(run => run.status === "FAILURE").slice(0, 3).map(async run => {
-    run.errorMessage = await getRunFailure(run.runId, signal).catch(() => null);
-  }));
+  signal?.throwIfAborted();
   return { warning: (payload.data.activeRuns.results?.length ?? 0) >= 1000 ? "진행 중 실행이 조회 상한 1000건에 도달했습니다. Dagster UI에서 전체 목록을 확인하세요." : undefined, checkedAt: new Date().toISOString(), schedules: payload.data.repositoryOrError.schedules ?? [], runs: payload.data.runsOrError.results ?? [], activeRuns: payload.data.activeRuns.results ?? [] };
 }
 
 
-export async function getRunFailure(runId: string, signal?: AbortSignal): Promise<string | null> {
-  const deadline = AbortSignal.timeout(15_000);
-  const boundedSignal = signal ? AbortSignal.any([signal, deadline]) : deadline;
+export type DagsterRunFailureDetail = { message: string | null; complete: boolean };
+type RunEvent = { __typename: string; message?: string };
+
+export async function getRunFailure(runId: string, signal?: AbortSignal): Promise<DagsterRunFailureDetail> {
+  signal?.throwIfAborted();
+  const deadline = performance.now() + 15_000;
+  const timeout = AbortSignal.timeout(15_000);
+  const boundedSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
   let cursor: string | null = null;
+  let lastStepMessage: string | null = null;
+  const message = (event: RunEvent) => String(event.message ?? "실패 원인을 Dagster에서 확인하세요.").slice(0, 2000);
+  // 사용자가 선택한 실행 하나만 순차 조회한다. 한 page와 마지막 요약만 보존한다.
   for (let page = 0; page < 20; page++) {
+    boundedSignal.throwIfAborted();
+    if (performance.now() >= deadline) throw new Error("실패 원인 조회 시간이 초과됐습니다.");
     const request: DagsterOperationRequest = { operationName: "TransportDagsterRunFailure", variables: { runId, cursor } };
     const response = await fetch("/api/dagster/graphql", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(request), cache: "no-store", signal: boundedSignal });
-    if (!response.ok) return null;
+    if (!response.ok) throw new Error("실패 원인을 조회하지 못했습니다. 다시 조회해 주세요.");
     const payload = await response.json();
-    const connection = payload.data?.runsOrError?.results?.[0]?.eventConnection;
-    if (payload.errors?.length || !connection) return null;
-    const failures = connection.events?.filter((event: { __typename: string }) => ["RunFailureEvent", "ExecutionStepFailureEvent"].includes(event.__typename)) ?? [];
-    if (failures.length) return String(failures.at(-1).message ?? "실패 원인을 Dagster에서 확인하세요.").slice(0, 2000);
-    if (!connection.hasMore || !connection.cursor || connection.cursor === cursor) return null;
+    boundedSignal.throwIfAborted();
+    if (performance.now() >= deadline) throw new Error("실패 원인 조회 시간이 초과됐습니다.");
+    if (payload.errors?.length || payload.data?.runsOrError?.__typename !== "Runs") throw new Error("실행 로그를 읽지 못했습니다.");
+    const connection = payload.data.runsOrError.results?.[0]?.eventConnection;
+    if (!connection || !Array.isArray(connection.events)) throw new Error("선택한 실행의 로그를 찾지 못했습니다.");
+    const events = connection.events as RunEvent[];
+    const runFailure = events.find(event => event.__typename === "RunFailureEvent");
+    if (runFailure) return { message: message(runFailure), complete: true };
+    const stepFailure = events.filter(event => event.__typename === "ExecutionStepFailureEvent").at(-1);
+    if (stepFailure) lastStepMessage = message(stepFailure);
+    if (!connection.hasMore) return { message: lastStepMessage, complete: true };
+    if (!connection.cursor || connection.cursor === cursor) throw new Error("실행 로그의 다음 페이지를 확인하지 못했습니다.");
     cursor = connection.cursor;
   }
-  return null;
+  return { message: lastStepMessage, complete: false };
 }
