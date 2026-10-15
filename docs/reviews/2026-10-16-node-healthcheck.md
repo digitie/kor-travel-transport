@@ -44,8 +44,8 @@ self CPU3.237/1.172초, RSS65400/45756KiB였다. 서로 다른 시각/계측 방
 - 기존 소유 ARM UI 이미지의 BusyBox1.37을 networknone/1CPU/2GiB/read-only인
   독립 컨테이너에서 실행했다. 200/204/404/503/304/정상·불량redirect/headers·body stall/
   closed port 총10경우 판정 PASS. 실제 운영 장치 실행과 구분한다.
-- 초기 ext4 bind mount가 Docker daemon에서 보이지 않아 MODULE_NOT_FOUND였던
-  로컬 harness 실패는 원문 보존했다. stdin 전달로 바꿔 검증했고 제품 실패로 합산하지 않는다.
+- 초기 ext4 bind mount 방식의 MODULE_NOT_FOUND 로컬 harness 실패는 원문 보존했다.
+  원인은 확정하지 않았다. stdin 전달로 바꿔 검증했고 제품 실패로 합산하지 않는다.
   static config harness의 required-variable regex 오류도 설정 렌더 전에 거절돼 수정 후 따로 보존했다.
 - 전체 Python/UI suite 반복 대신 영향 계약과 CI를 사용한다. 새 HEAD CI/두 독립 narrow 리뷰/
   새 ARM artifact parity 및 운영 적용은 별도다. fb52 ARM681200128B 증거를 새 HEAD 이미지로 부르지 않는다.
