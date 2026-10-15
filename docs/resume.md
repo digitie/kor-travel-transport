@@ -2,6 +2,8 @@
 
 ## 현재 상태
 
+- **2026-10-16 Transport81 backend lock 빌드 보강 중.** Docker의 pip 설치가 lock을 소비하지 않아 base provider commit과 registry 버전이 달랐다. 실제 Dockerfile을 uv0.11.21·새 전용환경의 locked dev 설치로 바꾼다. 새 빈 native 환경104개/Common7파일 parity와 KREX WAF·cadence·retry28 PASS, lock drift 사전거절을 확인했다. 다음은 새HEAD의 ARM/Python3.12 설치 parity·산출물·CI·두 독립 delta 리뷰다. 기존f42b Docker757/13/1 및 제품086 native759 결과는 보존하며 merge/deploy는 하지 않는다.
+
 - **2026-10-15 공항·고속도로 phase 분산 후보 구현 중.** Common Python41b pin/lock과 공항phase1·고속도로phase3을 적용해 예약 총량288회/일·5분 간격을 보존한다. OLD 달력3 FAIL/계약10 PASS, NEW 최초 표적25 PASS. 제품086에서 native 전체759 PASS·10 SKIP, 후속 retry14 PASS와 lock/OpenAPI 확인을 마쳤다. 최종HEAD CI·Docker·frontend·2인 독립 리뷰는 별도 후속이다. 다음은 결과 고정·초안 PR·독립 적대 리뷰이며 배포/merge는 하지 않는다. [검증 기록](reviews/2026-10-15-transport-cadence-common.md).
 
 - **2026-10-15 적대 리뷰 A-P2-01 보강.** 긴 단일 오류 토큰의 clipping을 Common 상세 본문 클래스 재사용으로 수정했다. 로컬 Chromium375/1440px OLD RED→NEW GREEN을 확인했다. 다음은 후속 커밋의 독립 재리뷰·CI·live UI이며 운영 완료로 표시하지 않는다. [검증 기록](reviews/2026-10-15-transport-dagster-on-demand-detail.md).

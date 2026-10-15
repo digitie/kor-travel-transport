@@ -1,3 +1,9 @@
+## 2026-10-16 — backend Docker 빌드의 uv.lock 소비
+
+- f42b의 고정 소스 Docker 전체는 757 PASS·13 SKIP·1 FAIL이었다. 유일 실패는 MockTransport WAF이며 network 차단이 아니라 base KREX Git commit이 lock과 다른 환경 문제였다. 전체 대조에서 registry25개·Git2개의 불일치가 확인돼 exact-lock PASS로 보고하지 않는다. 이전 overlay의 stale scripts/Compose/OpenAPI47실패와 원문을 별도 보존했다.
+- 재구축 때 같은 문제가 반복되지 않도록 backend Dockerfile만 uv0.11.21·새 /opt/venv·uv sync --locked --extra dev로 바꾼다. Python3.12-slim/apt/Chromium/entrypoint/서비스 계약은 유지한다. provider·cadence·retry 제품 코드는 바꾸지 않는다.
+- 새 빈 native Python3.13 환경에 실제 locked 설치를 수행해104개 version/VCS와 Common7파일 bytes parity를 확인했다. KREX WAF/cadence/retry28 PASS, pyproject version을 바꾼 부정 입력은 --locked에서 설치 전 거절됐다. 이전 제품086 native759와 최종f42b CI green은 새 이미지 검증으로 합산하지 않는다. ARM/Python3.12 산출물·새HEAD CI·두 독립 delta 리뷰·운영은 아직 후속이다.
+
 ## 2026-10-15 — 공항·고속도로 5분 phase 분산과 Common Python pin
 
 - 최신 origin/main `15a928b`에서 별도 브랜치로 작업한다. 공항은 KST `1-59/5`, 고속도로는 `3-59/5`로 예약 시작을 2분 벌리며 각각 하루288회·5분 간격을 유지한다.

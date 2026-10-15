@@ -39,6 +39,18 @@ npm run build
 
 1차 테스트는 빠른 피드백을 위한 단계다. 여기서 실패하면 Docker 테스트나 n150 배포로 넘어가지 않는다.
 
+## 백엔드 이미지 의존성 확인
+
+backend Dockerfile은 uv 0.11.21과 backend/uv.lock으로 새 /opt/venv에
+dev extra까지 설치한다. uv sync --locked는 pyproject와 lock 불일치를 거절하며,
+기존 이미지 site-packages 위에 소스만 덮어 검증하지 않는다. apt·Chromium·entrypoint는 유지한다.
+
+이미지를 검증할 때 후보 소스뿐 아니라 설치된 distribution 버전과 VCS direct_url commit을
+lock과 비교한다. 같은 0.1.0 version이라도 provider Git commit이 다를 수 있다.
+Common을 wheel로 가져오는 격리 검증은 해당 wheel hash와 실제 설치 소스 바이트도 확인한다.
+pip check의 requirement 호환성만으로 lock 전체 일치를 주장하지 않는다.
+고속도로 WAF User-Agent 회귀는 MockTransport이므로 network=none에서도 검증할 수 있다.
+
 ## 백엔드 테스트
 
 주요 범위:
