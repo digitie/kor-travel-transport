@@ -1,3 +1,10 @@
+## 2026-10-15 — 공항·고속도로 5분 phase 분산과 Common Python pin
+
+- 최신 origin/main `15a928b`에서 별도 브랜치로 작업한다. 공항은 KST `1-59/5`, 고속도로는 `3-59/5`로 예약 시작을 2분 벌리며 각각 하루288회·5분 간격을 유지한다.
+- Common Python pin을 `430a9e9`에서 `41b672c`로 올린다. provider 예산·coalescing·executor·resources·실행 태그·시간대와 기존 healthcheck는 보존한다.
+- 달력 OLD RED3건/기존 계약10 PASS를 immutable Git archive로 재현했고 후보의 달력/실행 계약13건 및 실제 Transport retry sensor12건이 통과했다. 제품086에서 native 전체759 PASS·10 SKIP(1433.08초), 후속 checkpoint2건/parent-budget 보강을 포함한 focused14 PASS와 lock/OpenAPI 확인을 마쳤다. 최종HEAD의 CI·Docker·frontend·두 독립 리뷰는 별도이며 아직 완료로 표시하지 않는다.
+- Common의 proven child-process crash 복구 확장과 소비하지 않는 HTTP/health 모듈의 경계를 [검증 기록](reviews/2026-10-15-transport-cadence-common.md)에 남긴다. CPU/RSS 개선율·운영 freshness는 아직 실측하지 않았다.
+
 ## 2026-10-15 — Dagster 긴 실패 상세 줄바꿈 보강
 
 - 독립 리뷰 A-P2-01을 로컬 Chromium375/1440px에서 재현했다. 공백 없는2000자 오류가 패널 오른쪽에서 잘리는 문제를 Common 기존 상세 본문 클래스 적용으로 수정했다.

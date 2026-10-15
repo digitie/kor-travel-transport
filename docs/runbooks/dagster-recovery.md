@@ -27,6 +27,44 @@ metadata 장애는 회수 사유가 아니다. legacy NULL owner 행은 자동 �
 수동 재실행도 이 보호를 우회하지 않는다. 보호가 끝나면 정기 tick이나 Dagster Re-execute로
 누락 범위를 보충한다. 기존 정상 데이터 삭제·전국 재수집은 복구 절차가 아니다.
 
+## 5분 수집 phase와 Common Python pin
+
+후보는 Common Python `41b672c562c059a1f41f459925364459e320bc16`의
+[고정 phase·복구 채택 가이드](https://github.com/digitie/kor-travel-common/blob/41b672c562c059a1f41f459925364459e320bc16/docs/runbooks/dagster-adoption.md)를
+따른다. `staggered_cron(interval_minutes=5, phase_minutes=1)`은 공항을
+KST 매시1·6·11…56분에, phase3은 고속도로를3·8·13…58분에 예약한다.
+각각 하루288회이며 자정·월말·연말·윤일을 넘어 간격300초를 유지한다.
+두 예약의 시작을2분 벌리는 변경이며, 실제 run 실행 시간이 길면 서로 겹칠 수 있다.
+
+동일 job active/pending coalescing, project/job/run_group 태그, 4시간 실행 상한,
+step 동시성1, resources, provider 호출·유예·일일 예산은 그대로다.
+다른 schedule·sensor의 실행 주기나 공용 coordinator 한도를 변경하지 않는다.
+
+이 pin은 복구 의미도 포함한다. 기존 명시적 worker 인프라 종료 외에,
+`DagsterSubprocessError`와 순수 framework `ChildProcessCrashException`
+step 증거를 모두 확인한 장애를 멱등 job3개에서만 최대1회 재예약한다.
+provider/user step 실패가 한 건이라도 섞이거나 증거가 없으면 재예약하지 않는다.
+step 이력은100개씩 끝까지 검사하고 시간 예산이 부족하면 cursor를 다음 tick에 잇는다.
+기존 native retry 인계·중복 key·선택 실행 보호와 consumer DB lease는 유지한다.
+새 factory는 기존 FAILED 이력도 순회하므로 이전 pin에서 제외한 과거의 증명된
+child crash가 새 복구 후보가 될 수 있다. sensor 복원 전 기존 cursor와 대상 실패 이력,
+run config·provider receipt·이미 발급된 retry child를 확인하며 임의 cursor 초기화로
+과거 이력을 숨기거나 provider 보호를 우회하지 않는다.
+`call_with_deadline`, coalescing, reconciliation factory의 구현은 이전 pin과 같다.
+
+Transport 앱은 Common `bounded_request`를 호출하지 않으며 기존 provider HTTP 구현도
+이번에 옮기지 않는다. Common HTTP는 신규 선택 모듈이고 Python `http` extra도 추가하지
+않는다. `dagster_health`도 이번에 채택하지 않으며 tracked Compose와 운영 HC의 차이는
+별도 배포 입력 검증 대상이다.
+
+소스의 예약 총량 보존은 운영 관측 수·지연·CPU 감소를 증명하지 않는다.
+배포 시 기존 instigator 상태와 sensor cursor, 마지막 관측 시각/CollectionRun을 보존하고
+기존 worker를 drain한 후 원래 running 상태만 복원한다. 전환 시각에 따른 첫 tick 공백도
+관측하며, 배포 직후와 정상5분 주기 구간의 provider 호출 수·관측 시각·queue/start 지연·
+CPU/RSS·다른 location health를 같은 길이의 전후 창으로 비교한다.
+두 예약이 분리되었어도 실행시간이2분보다 길면 CPU peak가 겹칠 수 있다.
+실측 악화 시 원인과 provider 보호 상태를 확인하고, 수집 주기·동시성을 임의로 낮추지 않는다.
+
 ## 실제 instance와 배포 순서
 
 공용 운영은 Manager instance YAML을 사용한다. 소비자의 `backend/dagster_home/dagster.yaml`

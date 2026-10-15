@@ -2,6 +2,8 @@
 
 ## 현재 상태
 
+- **2026-10-15 공항·고속도로 phase 분산 후보 구현 중.** Common Python41b pin/lock과 공항phase1·고속도로phase3을 적용해 예약 총량288회/일·5분 간격을 보존한다. OLD 달력3 FAIL/계약10 PASS, NEW 최초 표적25 PASS. 제품086에서 native 전체759 PASS·10 SKIP, 후속 retry14 PASS와 lock/OpenAPI 확인을 마쳤다. 최종HEAD CI·Docker·frontend·2인 독립 리뷰는 별도 후속이다. 다음은 결과 고정·초안 PR·독립 적대 리뷰이며 배포/merge는 하지 않는다. [검증 기록](reviews/2026-10-15-transport-cadence-common.md).
+
 - **2026-10-15 적대 리뷰 A-P2-01 보강.** 긴 단일 오류 토큰의 clipping을 Common 상세 본문 클래스 재사용으로 수정했다. 로컬 Chromium375/1440px OLD RED→NEW GREEN을 확인했다. 다음은 후속 커밋의 독립 재리뷰·CI·live UI이며 운영 완료로 표시하지 않는다. [검증 기록](reviews/2026-10-15-transport-dagster-on-demand-detail.md).
 
 - **2026-10-15 Dagster 실패 상세 선택 조회 구현.** main38eafb1에서 시작했고 초기 fanout OLD4회→NEW1회 회귀를 확인했다. 기존15초/20page/2000자·진행 중1000건을 보존한다. 관리자 frontend202·type/lint/build PASS. 다음은 Draft PR·CI·독립 적대 리뷰2인·Docker2차와 운영 live UI이며 아직 완료로 표시하지 않는다. [검증 기록](reviews/2026-10-15-transport-dagster-on-demand-detail.md).
@@ -1048,6 +1050,9 @@
   `n150-backup-cron.sh` 직접 실행으로 exit `0` + 실제 dump 생성까지 재검증했다.
 
 ## 다음 한 작업
+
+공항·고속도로 phase/Common 후보의 전체 검증 결과와 HEAD를 고정하고 초안 PR에서
+두 독립 적대 리뷰를 받는다. 운영 반영·merge는 별도 승인 범위다.
 
 항구 607곳과 버스 터미널 649곳의 미확인 좌표를 공식 코드·주소·시설명 교차표로
 검증한다. 장소 중심점이나 항로 안내 점을 실제 승선·승차 지점으로 대체하지 않는다.
