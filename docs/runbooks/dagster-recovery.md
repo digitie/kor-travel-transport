@@ -46,6 +46,17 @@ step 증거를 모두 확인한 장애를 멱등 job3개에서만 최대1회 재
 provider/user step 실패가 한 건이라도 섞이거나 증거가 없으면 재예약하지 않는다.
 step 이력은100개씩 끝까지 검사하고 시간 예산이 부족하면 cursor를 다음 tick에 잇는다.
 기존 native retry 인계·중복 key·선택 실행 보호와 consumer DB lease는 유지한다.
+
+각 retry sensor evaluation은 실패 parent를100개까지 읽지만 첫 RunRequest를 만들면 즉시
+반환하므로 요청은0/1개다. sensor3개 전체에서는 서로 다른 job에 최대3개 요청이 가능하다.
+최대1회 예산은 failed parent당 제한이며 job의 전체 queued 개수 상한을 뜻하지 않는다.
+활성 조회는 이미 저장된 QUEUED/STARTING/STARTED/CANCELING을 확인한다.
+아직 저장되지 않은 RunRequest·NOT_STARTED 창·수동/예약 발화의 경쟁은 원자적으로 묶지
+않는다. coordinator의 job limit1은 실행 동시성을, DB lease는 중복 provider 게시·호출을
+보호하며 queue 길이1을 보장하지 않는다. 운영에서 cursor·후보 이력을 보존하고
+sensor 요청·queued/running 수·provider 실제 호출과 lease 결과를 구분해 관측한다.
+
+
 새 factory는 기존 FAILED 이력도 순회하므로 이전 pin에서 제외한 과거의 증명된
 child crash가 새 복구 후보가 될 수 있다. sensor 복원 전 기존 cursor와 대상 실패 이력,
 run config·provider receipt·이미 발급된 retry child를 확인하며 임의 cursor 초기화로

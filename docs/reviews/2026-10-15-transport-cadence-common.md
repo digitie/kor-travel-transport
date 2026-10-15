@@ -39,6 +39,15 @@ Dagster local instance에서 평가했다. framework child crash는 기존 confi
 1회 요청하며 재평가 run key가 같고 native max_retries는0이다.
 provider/user 실패·crash+provider 혼합·step 증거 없음은 요청하지 않는다.
 유가·철도·배편·과금/좌표 job을 retry 대상으로 추가하지 않았다.
+각 retry sensor evaluation은 실패 parent를100개까지 읽지만 첫 RunRequest를 만들면 즉시
+반환하므로 요청은0/1개다. sensor3개 전체에서는 서로 다른 job에 최대3개 요청이 가능하다.
+최대1회 예산은 failed parent당 제한이며 job의 전체 queued 개수 상한을 뜻하지 않는다.
+활성 조회는 이미 저장된 QUEUED/STARTING/STARTED/CANCELING을 확인한다.
+아직 저장되지 않은 RunRequest·NOT_STARTED 창·수동/예약 발화의 경쟁은 원자적으로 묶지
+않는다. coordinator의 job limit1은 실행 동시성을, DB lease는 중복 provider 게시·호출을
+보호하며 queue 길이1을 보장하지 않는다. 운영에서 cursor·후보 이력을 보존하고
+sensor 요청·queued/running 수·provider 실제 호출과 lease 결과를 구분해 관측한다.
+
 새 factory의 FAILED 이력 순회에는 생성 시각 하한이 없으므로, 이전 pin에서 제외했던
 과거의 증명된 child crash도 새 복구 후보가 될 수 있다. 새 장애만의 변화라고
 표현하지 않는다. 운영 sensor 복원 전 기존 cursor·대상 이력·retry child·provider receipt를
