@@ -1,3 +1,9 @@
+## 2026-10-16 — 두 Node UI healthcheck의 시작 비용 제거
+
+- 실제 원 URL의 단일 wget 표본0.38/0.58초·RSS1MiB 미만을 확인해 shared frontend와 독립 admin의 Node probe만 기존 BusyBox exec GET으로 바꾼다. API/CS·gateway·개발 bridge probe는 보존한다.
+- 기존4계약 RED→관련47 PASS·1 기존SKIP, 실제 config4경우와 ARM BusyBox loopback10경우 PASS. HTTP불량/timeout은 nonzero이고 원endpoint/주기/retries/5초Docker상한을 보존한다. BusyBox가 지원하지 않는 retry flag는 추가하지 않는다.
+- 단일 비통제 표본·read timeout/redirect 경계를 [검증 기록](reviews/2026-10-16-node-healthcheck.md)에 명시한다. source변경 후 운영0. fb52 artifact/proof는 보존하고 새HEAD ARM을 별도 생성하며 CI·두 독립 narrow 리뷰는 후속이다.
+
 ## 2026-10-16 — backend Docker 빌드의 uv.lock 소비
 
 - 실제9c ARM tar의 /root/.cache/uv regular11953파일·413266264B(rounded444006400B)를 측정했다. 원 pip --no-cache-dir의 footprint를 보존하도록 uv sync --no-cache를 추가한다. 9c 산출물/실행 증거는 보존하고 새HEAD를 같은 실제 base digest에 결박해 다시 검증한다. 공유 layer를 뺀 실제 target 공간은 별도 검사이며 raw 보수산식을 실제 필요량으로 단정하지 않는다.

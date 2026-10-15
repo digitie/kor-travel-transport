@@ -410,7 +410,7 @@ services:
     environment:
       BACKEND_INTERNAL_URL: "http://127.0.0.1:${PUBLIC_API_PORT:-14001}"
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:${PUBLIC_WEB_PORT:-14002}/').then((r) => { if (!r.ok) process.exit(1); }).catch(() => process.exit(1))"]
+      test: ["CMD", "/usr/bin/wget", "-q", "-T5", "-O/dev/null", "http://127.0.0.1:${PUBLIC_WEB_PORT:-14002}/"]
 
 networks:
   kor-travel-transport-net:

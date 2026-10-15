@@ -52,6 +52,14 @@ Common을 wheel로 가져오는 격리 검증은 해당 wheel hash와 실제 설
 pip check의 requirement 호환성만으로 lock 전체 일치를 주장하지 않는다.
 고속도로 WAF User-Agent 회귀는 MockTransport이므로 network=none에서도 검증할 수 있다.
 
+## UI healthcheck 영향 검증
+
+공용 운영 frontend와 독립 관리자 UI의 BusyBox GET probe는
+[판정·시간 제한·redirect 경계](../reviews/2026-10-16-node-healthcheck.md)를 따른다.
+변경 시 backend/tests/test_node_healthcheck_contract.py와 실제 Compose config의
+기본/override 포트를 확인하고, 이미지의 BusyBox로 HTTP 불량·읽기 timeout·redirect를
+격리 loopback에서 검증한다. -T5만으로 전체 deadline을 보장한다고 표현하지 않는다.
+
 ## 백엔드 테스트
 
 주요 범위:
