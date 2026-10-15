@@ -44,6 +44,7 @@ npm run build
 backend Dockerfile은 uv 0.11.21과 backend/uv.lock으로 새 /opt/venv에
 dev extra까지 설치한다. uv sync --locked는 pyproject와 lock 불일치를 거절하며,
 기존 이미지 site-packages 위에 소스만 덮어 검증하지 않는다. apt·Chromium·entrypoint는 유지한다.
+uv sync --no-cache로 다운로드·VCS 캐시를 최종 이미지에 남기지 않는다.
 
 이미지를 검증할 때 후보 소스뿐 아니라 설치된 distribution 버전과 VCS direct_url commit을
 lock과 비교한다. 같은 0.1.0 version이라도 provider Git commit이 다를 수 있다.

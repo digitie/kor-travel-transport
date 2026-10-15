@@ -23,7 +23,8 @@ COPY docker-compose.shared.yml /app/compose-contract/docker-compose.shared.yml
 
 # 빈 전용 환경에 lock의 정확한 버전·VCS revision을 설치한다.
 # pyproject만 읽는 pip 설치는 같은 version의 오래된 provider commit을 남길 수 있다.
-RUN uv sync --locked --extra dev --python /usr/local/bin/python --no-managed-python
+# 기존 pip --no-cache-dir처럼 다운로드·VCS 캐시를 이미지에 남기지 않는다.
+RUN uv sync --locked --extra dev --python /usr/local/bin/python --no-managed-python --no-cache
 
 # Opinet의 실험적 지역별 화면 수집기가 사용하는 Chromium과 Linux 런타임을
 # 이미지에 포함한다. 수집기는 TRANSPORT_COLLECTION_ENABLED=true일 때만 실행된다.
