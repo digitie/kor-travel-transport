@@ -1,3 +1,7 @@
+## 2026-10-15 공통 Dagster UI 최신화 시작
+
+운영 UI에서 검색 입력 부재를 확인했다. common dev.6 tarball과 lock을 동일하게 적용한다. Geo 튜닝값은 유지한다. 검증·리뷰·운영 배포는 아직 NOT_RUN이며 세부 상태는 reviews/2026-10-15-common-dagster-ui.md에 기록한다. 사용자가 Odroid 이전·운영 배포를 명시적으로 지시했으므로 과거 13번 Docker 금지 문구보다 이번 지시를 우선한다.
+
 # journal.md — 작업 일지
 
 ## 2026-10-14 — Odroid 장애로 운영 E2E 미실행, 사용자 지시에 따른 머지
