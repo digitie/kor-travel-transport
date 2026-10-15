@@ -54,11 +54,12 @@ pip check의 requirement 호환성만으로 lock 전체 일치를 주장하지 �
 
 ## UI healthcheck 영향 검증
 
-공용 운영 frontend와 독립 관리자 UI의 BusyBox GET probe는
+공용 운영 frontend와 독립 관리자 UI의 Node core HTTP GET probe는
 [판정·시간 제한·redirect 경계](../reviews/2026-10-16-node-healthcheck.md)를 따른다.
 변경 시 backend/tests/test_node_healthcheck_contract.py와 실제 Compose config의
-기본/override 포트를 확인하고, 이미지의 BusyBox로 HTTP 불량·읽기 timeout·redirect를
-격리 loopback에서 검증한다. -T5만으로 전체 deadline을 보장한다고 표현하지 않는다.
+기본/override 포트를 확인하고, 동일 Node 템플릿으로 HTTP 불량·전체4초 요청 timer·
+Location 없는302도 격리 loopback에서 검증한다. redirect는 fail-closed이며
+Node bootstrap을 포함한 전체 상한은 기존 Docker5초가 담당한다.
 
 ## 백엔드 테스트
 

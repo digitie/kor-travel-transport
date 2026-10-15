@@ -2,7 +2,7 @@
 
 ## 현재 상태
 
-- **2026-10-16 두 Node healthcheck 전환 후보.** shared 공개 frontend/독립 admin의 원 loopback GET을 BusyBox exec로 실행해 Node 시작 비용을 제거한다. 원5초Docker상한/관측주기 보존. OLD4 RED·관련47 PASS/1기존SKIP·실제config4/ARM BusyBox10 PASS. 다음은 새HEAD ARM exact-lock/source parity·CI·독립 narrow2리뷰이며 운영0. fb52 원681MB artifact를 새HEAD로 부르지 않는다. [검증 경계](reviews/2026-10-16-node-healthcheck.md).
+- **2026-10-16 두 Node core HTTP healthcheck 후보.** wget의302/noLocation거짓양성을확정해폐기하고 두운영UI의동일coreGET/strict2xx/4초전체요청timer로보강한다. redirect는failclosed, 원URL/주기/5초Docker상한보존. exact실제각1회CPU0.535/0.558초·CLI1.91/2.46초exit0(비통제표본). 다음은최종소스계약/새ARM/CI/독립2리뷰이며서비스변경0. [검증 경계](reviews/2026-10-16-node-healthcheck.md).
 
 - **2026-10-16 Transport81 backend lock 빌드 보강 중.** Docker의 pip 설치가 lock을 소비하지 않아 base provider commit과 registry 버전이 달랐다. 실제 Dockerfile을 uv0.11.21·새 전용환경의 locked dev 설치로 바꾼다. 새 빈 native 환경104개/Common7파일 parity와 KREX WAF·cadence·retry28 PASS, lock drift 사전거절을 확인했다. 실제9c ARM의 uv캐시413266264B를 확인해 원no-cache footprint도 복구한다. 9c 증거는 보존하며 새HEAD image를 별도 고정한다. 다음은 새HEAD의 ARM/Python3.12 설치 parity·산출물·CI·두 독립 delta 리뷰다. 기존f42b Docker757/13/1 및 제품086 native759 결과는 보존하며 merge/deploy는 하지 않는다.
 

@@ -1,8 +1,8 @@
-## 2026-10-16 — 두 Node UI healthcheck의 시작 비용 제거
+## 2026-10-16 — 두 Node UI healthcheck의 core HTTP GET
 
-- 실제 원 URL의 단일 wget 표본0.38/0.58초·RSS1MiB 미만을 확인해 shared frontend와 독립 admin의 Node probe만 기존 BusyBox exec GET으로 바꾼다. API/CS·gateway·개발 bridge probe는 보존한다.
-- 기존4계약 RED→관련47 PASS·1 기존SKIP, 실제 config4경우와 ARM BusyBox loopback10경우 PASS. HTTP불량/timeout은 nonzero이고 원endpoint/주기/retries/5초Docker상한을 보존한다. BusyBox가 지원하지 않는 retry flag는 추가하지 않는다.
-- 단일 비통제 표본·read timeout/redirect 경계를 [검증 기록](reviews/2026-10-16-node-healthcheck.md)에 명시한다. source변경 후 운영0. fb52 artifact/proof는 보존하고 새HEAD ARM을 별도 생성하며 CI·두 독립 narrow 리뷰는 후속이다.
+- 가벼운 wget 후보는302/noLocation/Content-Length0 거짓양성을 독립반례로 확인해 폐기했다. 원문/초기artifact는보존하며 양role동일 Nodecore http.get·strict2xx·고정4초요청timer/abort로보강한다. API/CS·gateway·개발bridge probe는변경0.
+- exact템플릿 실제2role각1회는 CPU0.535/0.558초·CLI1.91/2.46초로exit0이며CID/PID/fullConfig/HostConfig불변. 계측hook포함 비통제표본이어서 평균·절감률은주장하지않는다. redirect는추적하지않고failclosed/본문읽지않는헤더판정이라는정책을 [검증 기록](reviews/2026-10-16-node-healthcheck.md)에명시한다.
+- 자체ARM모형은302양형태/304/404/503/stall/closedport를거절하고200/204/헤더성공을확인했다. 최종계약/Compose/ARM/CI·독립2리뷰는별도로고정하며운영서비스변경0. fb52·b4artifact를최종HEAD로부르지않는다.
 
 ## 2026-10-16 — backend Docker 빌드의 uv.lock 소비
 

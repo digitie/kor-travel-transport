@@ -1,4 +1,4 @@
-"""공개/관리자 UI의 loopback HTTP health를 interpreter 없이 확인한다."""
+"""공개/관리자 UI의 core HTTP GET 판정과 전체 요청 시간 제한 계약."""
 
 from pathlib import Path
 
@@ -32,8 +32,15 @@ def test_ui_health_uses_one_exec_form_bounded_get(
     filename: str, role: str, url: str, interval: str, retries: str,
 ) -> None:
     health = _health(filename, role)
-    # Node/셸 시작 비용·timeout 고아를 피하고 HEAD 대신 원래 GET을 유지한다.
-    assert health["test"] == ["CMD", "/usr/bin/wget", "-q", "-T5", "-O/dev/null", url]
+    # Undici fetch/셸·하위 프로세스 없이 GET 응답의 strict 2xx만 통과한다.
+    assert health["test"][:3] == ["CMD", "node", "-e"]
+    probe = health["test"][3]
+    assert "require(\'node:http\')" in probe and "fetch(" not in probe
+    assert "http.get(\'" + url + "\'" in probe
+    assert "res.statusCode>=200&&res.statusCode<300" in probe
+    assert "res.destroy()" in probe and "req.destroy()" in probe
+    assert "setTimeout(" in probe and "4000" in probe
+    assert "req.on(\'error\',()=>process.exit(1))" in probe
     assert str(health["timeout"]) == "5s"
 
 
@@ -42,7 +49,7 @@ def test_ui_health_preserves_endpoint_and_docker_observation_window(
     filename: str, role: str, url: str, interval: str, retries: str,
 ) -> None:
     health = _health(filename, role)
-    assert health["test"][-1] == url
+    assert url in health["test"][3]
     assert health["interval"] == interval
     assert str(health["retries"]) == retries
     assert health["start_period"] == "20s"
