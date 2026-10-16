@@ -22,13 +22,15 @@ RUN pip install --no-cache-dir --upgrade pip \
 # 이미지에 포함한다. 수집기는 TRANSPORT_COLLECTION_ENABLED=true일 때만 실행된다.
 RUN playwright install --with-deps chromium
 
-# 최종 인터프리터의 stdlib을 root 권한에서 미리 컴파일한다. 런타임 점검에서 재컴파일하지 않는다.
+# 최종 인터프리터의 stdlib을 root 권한에서 미리 컴파일한다. 런타임에서 이 helper를 호출하지 않는다(무효 cache의 암묵적 컴파일은 별도).
 RUN python -I -m kortravelcommon.build_bytecode --stdlib
 
 COPY .env.server14.example /app/compose-contract/.env.server14.example
 COPY docs/openapi.json /app/compose-contract/openapi.json
 COPY docker-compose.yml /app/compose-contract/docker-compose.yml
 COPY docker-compose.transport-admin.yml /app/compose-contract/docker-compose.transport-admin.yml
+# 회귀 컨테이너에서 legacy DB와 실험 fixture의 간격을 구분해 확인한다.
+COPY docker-compose.db.yml docker-compose.live.yml /app/compose-contract/
 COPY deploy/transport-admin /app/compose-contract/deploy/transport-admin
 COPY packages/kor-travel-transport-admin/frontend /app/compose-contract/packages/kor-travel-transport-admin/frontend
 

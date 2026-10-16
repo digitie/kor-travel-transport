@@ -5,14 +5,17 @@
 PR82의 /health seeded EXISTS 조회를 그대로 포함한다. Common37 merged
 c48595880aaad4367802ad71af2525a8a5e17c6a의 순수 표준 라이브러리 HTTP CLI와
 build_bytecode --stdlib을 소비한다. Python 최종 이미지에서 모든 설치가 끝난 뒤 root가
-stdlib을 한 번 컴파일한다. 실제 런타임 Python의 cache tag/magic을 사용하며 다른 minor에서 만든
+stdlib을 한 번 컴파일한다. 런타임에서 이 helper를 호출하지 않는다.
+캐시 누락·무효 시 Python은 암묵적으로 다시 컴파일하거나 쓰기를 시도할 수 있다.
+-I는 PYTHONDONTWRITEBYTECODE 환경을 무시하므로 최종 캐시와 runtime UID 권한은 이미지에서 검증한다. 실제 런타임 Python의 cache tag/magic을 사용하며 다른 minor에서 만든
 pyc를 복사하지 않는다. API와 code-server는 같은 backend 이미지를 소비한다.
 
 API probe는 python -I -m kortravelcommon.http_health --port <서비스 포트>
 --path /health --timeout-seconds 4다. 기본 이미지 포트8000과 shared host 포트
 PUBLIC_API_PORT(default14001)를 각 Compose의 실행 포트와 맞춘다. 기존 urllib의 proxy·redirect와
 body EOF 읽기는 제거된다. 새 CLI는 loopback GET, 최대16KiB 완전한 헤더, 전체4초 예산,
-2xx만 성공이며 redirect/retry를 하지 않는다. 헤더만 읽으므로 body 완전성 검증과 동등하지 않다.
+2xx만 성공이며 redirect/retry를 하지 않는다. 4초는 모듈 시작 이후 HTTP 논리 예산이다.
+Python cold startup/import를 포함하는 Docker timeout5초의 성공 보장이 아니다. 헤더만 읽으므로 body 완전성 검증과 동등하지 않다.
 /health handler의 DB 조회·seeded DTO·오류 상태는 바꾸지 않는다. DB 없는 liveness로
 표현하지 않는다. Common 없는 구 이미지에 선언부터 적용하면 모듈 없음으로 실패하므로
 **소비 이미지에 CLI 존재를 확인한 뒤 Compose 선언을 적용**한다.
@@ -25,6 +28,7 @@ body EOF 읽기는 제거된다. 새 CLI는 loopback GET, 최대16KiB 완전한 
 | code-server | 30s | 90s | timeout10s/retries5/start600s/start_interval5s 유지 |
 | admin gateway·admin web | 15s | 45s | timeout5s/retries5, 기존 start 유지 |
 | legacy webserver | 15s | 45s | timeout5s/retries8/start30s 유지 |
+| legacy 독립 PostgreSQL | 5s | 15s | timeout5s/retries20/start10s 유지 |
 | legacy daemon | 120s | 360s | timeout60s/retries2/start60s/start_interval15s 유지 |
 
 실험 전용 docker-compose.live.yml의 Postgres5s/backend10s는 대상이 아니다.
@@ -52,7 +56,22 @@ cadence/Common41 핀이 없다. 전체 운영 이미지 Git HEAD를 증명하지
 현재 브랜치는 PR82 c3e3afe 위이며 COUNT→EXISTS 패치를 보존한다. PR81의 미배포 기능을
 이 점검 변경에 섞지 않는다. 배포 시 다른 미확인 실행 파일의 provenance는 별도로 정산해야 한다.
 
-새 회귀는 운영·legacy 모든 interval 및 나머지 시간값, 실제 설치 Common VCS commit,
+새 회귀는 운영·legacy 모든 interval 및 나머지 시간값, 실제 설치 Common의 정본 소스 해시와 VCS 또는 wheel 설치 출처,
 컴파일 순서, quiet2xx/redirect/503 거절, CS guard 원문, 실험 전용 간격을 확인한다.
 로컬 loopback 시험은 provider 호출이 아니다. 실제 ARM 이미지 pyc와 CPU 개선,
 Docker 검증·운영 배포·live E2E는 별도 단계이며 소스 시험만으로 완료라고 표시하지 않는다.
+
+## 의존성과 시험 정산
+
+Common430→c485에서 RecoveryPolicy/coalescing_schedule/reconciliation_sensor는 AST가 동일하다.
+기존 단일 infrastructure_retry_sensor는 공개 signature를 보존하지만 Common32/35 내부 helper로
+위임하며 명시적 framework ChildProcessCrash 분류·step checkpoint가 추가된다. 이를 retry 구현
+byte불변이라고 표현하지 않는다. Transport의 세 멱등 job allowlist/한도1/provider 실패 제외
+설정은 보존하며 새 multi/native sensor를 등록하지 않는다.
+
+657ec6d5 source의 WSL1차 전체 backend754 PASS/10 SKIP(1517.06초), frontend130 PASS와
+admin202 PASS·양쪽 type/build PASS를 확인했다. 첫 build의 외부 node_modules symlink
+거절은 원문 보존하고 own 디렉터리 복사 후 정상 build했다.
+후속 delta는 legacy DB interval/회귀·문구·wheel 설치의 정본 hash 확인 및
+Docker 회귀에 필요한 무비밀 Compose fixture COPY뿐이다. backend/app·업무 정의는 불변이다.
+이 결과를 실제 PostgreSQL/ARM/운영 성능 증거로 합산하지 않는다.

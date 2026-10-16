@@ -15,6 +15,8 @@ import pytest
 import yaml
 from test_dagster_healthcheck_contract import ROOT, _ComposeLoader
 
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+
 
 def _services(filename: str) -> dict:
     return yaml.load((ROOT / filename).read_text(), Loader=_ComposeLoader)["services"]
@@ -24,6 +26,7 @@ def _services(filename: str) -> dict:
     ("filename", "name", "expected"),
     [
         ("docker-compose.yml", "backend", ("30s", "5s", 10, "20s", None)),
+        ("docker-compose.db.yml", "postgres", ("15s", "5s", 20, "10s", None)),
         ("docker-compose.yml", "frontend", ("30s", "5s", 10, "20s", None)),
         ("docker-compose.shared.yml", "dagster-code-server", ("90s", "10s", 5, "600s", "5s")),
         ("docker-compose.shared.yml", "dagster-webserver", ("45s", "5s", 8, "30s", None)),
@@ -49,7 +52,7 @@ def test_api_health_uses_explicit_loopback_cli_and_port(filename, port):
 
 
 def test_stdlib_compile_uses_final_image_interpreter_after_installs():
-    dockerfile = (ROOT / "backend/Dockerfile").read_text()
+    dockerfile = (BACKEND_ROOT / "Dockerfile").read_text()
     step = "RUN python -I -m kortravelcommon.build_bytecode --stdlib"
     assert dockerfile.count(step) == 1
     assert dockerfile.index('pip install --no-cache-dir -e ".[dev]"') < dockerfile.index(step)
@@ -59,11 +62,22 @@ def test_stdlib_compile_uses_final_image_interpreter_after_installs():
 
 def test_installed_common_has_pinned_cli_modules():
     metadata = importlib.metadata.distribution("kor-travel-common")
-    direct = json.loads(metadata.read_text("direct_url.json"))
-    assert direct["vcs_info"]["commit_id"] == "c48595880aaad4367802ad71af2525a8a5e17c6a"
+    direct = json.loads(metadata.read_text("direct_url.json") or "{}")
+    if "vcs_info" in direct:
+        assert direct["vcs_info"]["commit_id"] == "c48595880aaad4367802ad71af2525a8a5e17c6a"
+    else:
+        # 실제 no-index wheel은 file URL이며 Git VCS 설치였다고 위조하지 않는다.
+        assert direct.get("url", "").startswith("file:") and "archive_info" in direct
     package = Path(metadata.locate_file("kortravelcommon"))
-    assert (package / "http_health.py").is_file()
-    assert (package / "build_bytecode.py").is_file()
+    expected = {
+        "http_health.py": "dafb57227662e1298675017be9de04ad602cbeb1a383dcb029e387792c9ec4f6",
+        "build_bytecode.py": "b07c7f94565147f619bffba7f1f9871106c0ee07d3683974393d596ffda5d266",
+    }
+    for name, digest in expected.items():
+        assert hashlib.sha256((package / name).read_bytes()).hexdigest() == digest
+    for name in ("pyproject.toml", "uv.lock"):
+        assert "c48595880aaad4367802ad71af2525a8a5e17c6a" in (BACKEND_ROOT / name).read_text()
+
 
 
 @pytest.mark.parametrize(("status", "expected"), [(200, 0), (302, 1), (503, 1)])
