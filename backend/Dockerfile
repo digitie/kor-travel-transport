@@ -22,6 +22,9 @@ RUN pip install --no-cache-dir --upgrade pip \
 # 이미지에 포함한다. 수집기는 TRANSPORT_COLLECTION_ENABLED=true일 때만 실행된다.
 RUN playwright install --with-deps chromium
 
+# 최종 인터프리터의 stdlib을 root 권한에서 미리 컴파일한다. 런타임 점검에서 재컴파일하지 않는다.
+RUN python -I -m kortravelcommon.build_bytecode --stdlib
+
 COPY .env.server14.example /app/compose-contract/.env.server14.example
 COPY docs/openapi.json /app/compose-contract/openapi.json
 COPY docker-compose.yml /app/compose-contract/docker-compose.yml

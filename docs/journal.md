@@ -1,5 +1,10 @@
 ## 2026-10-16 — /health 존재 조회 후보
 
+## 2026-10-16 Transport 점검 비용/주기 개선 초안
+
+PR82 위 Common37 핀·최종 stdlib 사전 컴파일·API HTTP CLI·전체 운영/legacy interval3배를 구현했다. CS guard/reaper·business cadence는 보존했다. [점검 운영 문서](runbooks/health-cpu-bytecode.md)에 계약과 미검증 배포 범위를 기록한다. 운영 변경은 없다.
+
+
 - main15a928b 별도 branch에서 health seeded COUNT만 EXISTS로 바꿨다. DTO/DB오류/readiness/의존성/수집·HC주기 불변.
 - ASGI·자기SQLite0/1/1024와DB장애: OLD3RED/1PASS→NEW4PASS. nativePG16 50만행3쌍은 [별도 범위·한계](reviews/2026-10-16-health-presence.md)에 기록했다.
 - 초기 benchmark 준비/fixture 오류와 자기PG 정상 정리는 보존했다. 로컬 전체738 PASS·10 SKIP, PostgreSQL CI746 PASS·2 SKIP, 격리Docker 신규4 PASS와 독립 A/C SOURCE_PASS·OPEN0을 확인했다. runtime bde6120은 불변이며 [두 원문·한계](reviews/2026-10-16-health-presence.md)를 통합했다. 운영/provider 호출0, 증거 head CI와 실제 배포·CPU 실측은 별도다.

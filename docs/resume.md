@@ -1,5 +1,8 @@
 # resume.md — 현재 인수인계
 
+> 2026-10-16 후속 초안: codex/health-bytecode-20261016은 PR82를 보존한 점검 CPU 개선이다. [범위·주기·배포 선행조건](runbooks/health-cpu-bytecode.md)을 참고한다. 독립2리뷰/실제 Docker/ARM 측정/배포는 아직 미완이다.
+
+
 ## 현재 상태
 
 - **2026-10-16 PR82 /health seeded EXISTS 소스 검증 완료.** COUNT만 존재 조회로 바꿔 DTO/DB장애/readiness를 보존한다. OLD3RED→focused4PASS, 로컬 전체738 PASS·10 SKIP, PostgreSQL CI746 PASS·2 SKIP, 격리Docker 신규4 PASS·독립 A/C SOURCE_PASS OPEN0. runtime bde6120 불변/이후 docs-only이며 증거 head CI를 별도 추적한다. 운영 적용·실제 CPU 개선은 NOT_RUN, PR81/Common pin/HC주기와 분리한다. [검증 범위·원문](reviews/2026-10-16-health-presence.md).

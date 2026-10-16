@@ -249,7 +249,7 @@ services:
       migrate:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${PUBLIC_API_PORT:-14001}/health', timeout=5).read()"]
+      test: ["CMD", "python", "-I", "-m", "kortravelcommon.http_health", "--port", "${PUBLIC_API_PORT:-14001}", "--path", "/health", "--timeout-seconds", "4"]
 
   # 옛 전용 Dagster instance의 run/event/schedule storage schema(application Alembic과 별개). 공용
   # instance의 schema는 Manager의 storage migrate one-shot만 만든다. 옛 DB(30일 보존)용으로 legacy-dagster에 남는다.
@@ -318,7 +318,7 @@ services:
         - -c
         - *dagster-code-server-probe
         - "14005"
-      interval: 30s
+      interval: 90s
       timeout: 10s
       retries: 5
       # Manager #460과 같은 냉기동 창. 2026-10-04 n150 재구축에서 180초 창이 디스크 대기 중 냉기동(자식 import가
@@ -350,7 +350,7 @@ services:
     healthcheck:
       # exec 형식 + `python -I`(작업 디렉터리·PYTHON* env가 probe의 import를 가리지 않게 한다).
       test: ["CMD", "python", "-I", "-c", "import json, urllib.request as u; q=json.dumps({'query':'{repositoriesOrError{__typename}}'}).encode(); r=u.urlopen(u.Request('http://127.0.0.1:14004/graphql', data=q, headers={'Content-Type':'application/json'}), timeout=5); raise SystemExit(0 if json.load(r).get('data', {}).get('repositoriesOrError', {}).get('__typename') == 'RepositoryConnection' else 1)"]
-      interval: 15s
+      interval: 45s
       timeout: 5s
       retries: 8
       start_period: 30s
@@ -377,10 +377,10 @@ services:
       # dagster의 정식 판정. 매번 dagster를 import하고 metadata DB까지 왕복한다(n150 부하 때 10초 초과
       # 실측) — timeout을 60초로 두고 주기를 늘려 probe가 부하를 키우지 않게 한다.
       # 끼인 daemon이 unhealthy로 보이기까지 최악 30s(heartbeat 주기) + 300s(위 tolerance) +
-      # 60s(진행 중이던 probe) + 2 × (120s + 60s) = 750s다. docker는 이전 probe가 끝난 뒤에야
+      # 60s(진행 중이던 probe) + 2 × (360s + 60s) = 1230s다. docker는 이전 probe가 끝난 뒤에야
       # interval을 다시 센다. docker는 unhealthy를 재시작하지 않으므로 이 시간을 기다리는 쪽은 없다.
       test: ["CMD", "dagster-daemon", "liveness-check"]
-      interval: 120s
+      interval: 360s
       timeout: 60s
       retries: 2
       start_period: 60s
