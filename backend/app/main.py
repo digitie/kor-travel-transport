@@ -29,7 +29,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic_core import to_json
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from sqlalchemy import DateTime, Integer, and_, bindparam, case, func, or_, select, text as sql_text, true
+from sqlalchemy import DateTime, Integer, and_, bindparam, case, exists, func, or_, select, text as sql_text, true
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import defer, selectinload
@@ -777,7 +777,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health", response_model=HealthResponse)
     async def health(session: AsyncSession = Depends(get_db)) -> HealthResponse:
-        seeded = await session.scalar(select(func.count(ParkingSnapshot.id)))
+        seeded = await session.scalar(select(exists().select_from(ParkingSnapshot)))
         return HealthResponse(
             status="ok",
             database="ready",
