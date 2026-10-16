@@ -75,3 +75,7 @@ admin202 PASS·양쪽 type/build PASS를 확인했다. 첫 build의 외부 node_
 후속 delta는 legacy DB interval/회귀·문구·wheel 설치의 정본 hash 확인 및
 Docker 회귀에 필요한 무비밀 Compose fixture COPY뿐이다. backend/app·업무 정의는 불변이다.
 이 결과를 실제 PostgreSQL/ARM/운영 성능 증거로 합산하지 않는다.
+
+## 소스 리뷰와 로컬 검증 정산
+
+최종 runtime d797의 A/C 독립 source 원문, host·Docker 전체 실패와 동일artifact7개 재검증, CI 및 아직 남은 ARM/live gate는 [검증 정산](../reviews/2026-10-16-health-bytecode-closure.md)에 기록한다. 원 Docker 전체FAIL을 후속 전체PASS로 바꾸지 않는다.

@@ -1,3 +1,9 @@
+## 2026-10-16 — Transport83 소스 리뷰·로컬 Docker 실패 정산
+
+- runtime d797 불변, A 최초/후속과 C FULL 원문3개를 byte/hash 그대로 보관했다. 최종 SOURCE_PASS OPEN0·P3 문구 CLOSED.
+- host754P10S와 d797집중49P1S, Docker 전체745P13S7F를 구분한다. 1GiB fixture에서2GiB 백업 여유 선행검사가 거절된7개는 같은image/caps·tmpfs표시3GiB만 보정한 새fixture에서7P. 원전체FAIL 보존/새전체PASS로 합산0.
+- exactd797 CI6SUCCESS/live2SKIPPED. ARM cache/운영 적용·cold HC/live UI/CPU 인과는 아직 NOT_RUN. [통합 정산·한계](reviews/2026-10-16-health-bytecode-closure.md).
+
 ## 2026-10-16 — /health 존재 조회 후보
 
 ## 2026-10-16 Transport 점검 비용/주기 개선 초안

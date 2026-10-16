@@ -1,6 +1,6 @@
 # resume.md — 현재 인수인계
 
-> 2026-10-16 후속 초안: codex/health-bytecode-20261016은 PR82를 보존한 점검 CPU 개선이다. [범위·주기·배포 선행조건](runbooks/health-cpu-bytecode.md)을 참고한다. 독립2리뷰/실제 Docker/ARM 측정/배포는 아직 미완이다.
+> 2026-10-16 PR83: runtime d797은 PR82를 보존한 점검 CPU 개선이며 A/C SOURCE_PASS OPEN0다. host754P10S/집중49P1S, Docker745P13S7F와 용량조건만 보정한 동일image7P를 [정산·실패 이력](reviews/2026-10-16-health-bytecode-closure.md)에 구분했다. exactd797 CI6SUCCESS/live2SKIPPED. 다음은 ARM/운영 cold HC·live/CPU gate이며 배포 완료가 아니다.
 
 
 ## 현재 상태
