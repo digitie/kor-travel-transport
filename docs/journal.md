@@ -1,3 +1,9 @@
+## 2026-10-16 — /health 존재 조회 후보
+
+- main15a928b 별도 branch에서 health seeded COUNT만 EXISTS로 바꿨다. DTO/DB오류/readiness/의존성/수집·HC주기 불변.
+- ASGI·자기SQLite0/1/1024와DB장애: OLD3RED/1PASS→NEW4PASS. nativePG16 50만행3쌍은 [별도 범위·한계](reviews/2026-10-16-health-presence.md)에 기록했다.
+- 초기 benchmark 준비/fixture 오류와 자기PG 정상 정리는 보존했다. 운영/provider 호출0, 전체검증·2리뷰·배포는 아직 후속이다.
+
 ## 2026-10-15 — Dagster 긴 실패 상세 줄바꿈 보강
 
 - 독립 리뷰 A-P2-01을 로컬 Chromium375/1440px에서 재현했다. 공백 없는2000자 오류가 패널 오른쪽에서 잘리는 문제를 Common 기존 상세 본문 클래스 적용으로 수정했다.
