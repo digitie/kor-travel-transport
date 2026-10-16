@@ -13,7 +13,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-
 from test_dagster_healthcheck_contract import ROOT, _ComposeLoader
 
 
@@ -88,7 +87,7 @@ def test_installed_http_cli_is_quiet_strict_and_does_not_follow_redirect(status,
         result = subprocess.run(
             [sys.executable, "-I", "-m", "kortravelcommon.http_health",
              "--port", str(server.server_port), "--path", "/health", "--timeout-seconds", "1"],
-            capture_output=True, timeout=4,
+            capture_output=True, timeout=4, check=False,
         )
         assert result.returncode == expected
         assert result.stdout == result.stderr == b""
