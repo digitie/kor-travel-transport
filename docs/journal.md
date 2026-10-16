@@ -1,3 +1,9 @@
+## 2026-10-17 — FE/admin 점검 body 완료·기한 검증
+
+- PR83 제품2a6e9ba에서 Compose3곳의 Node fetch를 bounded node:http로 교체했다. URL/interval/timeout/retries/start와 backend/runtime 의존성은 보존한다.
+- 실제 선언 argv의 로컬 Node37PASS·기존 계약17PASS·Ruff/node syntax PASS. 구 probe200headers/body stall RED와 초기 구 소스 전체RED를 보존한다. DB/SDK/Docker/provider/운영 호출0.
+- runtime imageac57과 배포 설정2a6을 구분한다. 다음 gate는 최종 CI·두 독립 리뷰와 root native strict probe/운영/live/CPU다. [계약·검증 한계](runbooks/health-cpu-bytecode.md#feadmin-core-http-점검-2026-10-17).
+
 ## 2026-10-16 — Transport83 소스 리뷰·로컬 Docker 실패 정산
 
 - runtime d797 불변, A 최초/후속과 C FULL 원문3개를 byte/hash 그대로 보관했다. 최종 SOURCE_PASS OPEN0·P3 문구 CLOSED.

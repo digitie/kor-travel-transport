@@ -32,8 +32,7 @@ Python cold startup/import를 포함하는 Docker timeout5초의 성공 보장�
 | legacy daemon | 120s | 360s | timeout60s/retries2/start60s/start_interval15s 유지 |
 
 실험 전용 docker-compose.live.yml의 Postgres5s/backend10s는 대상이 아니다.
-business cron, provider cadence, UI 요청 timeout은 변경하지 않는다. frontend/admin Node probe의
-원문도 이 변경에 포함하지 않는다.
+business cron, provider cadence, UI 요청 timeout은 변경하지 않는다. 후속 FE/admin Node probe 변경은 아래 절에 별도로 기록한다.
 
 CS의 legacy health 내 PID1 kill·orphan reaper·ListRepositories 검사는 원문 그대로 보존한다.
 passed/mark는 boot ID와 incarnation 식별자이며 mtime 만료 검사가 없다. tried의300초는
@@ -79,3 +78,34 @@ Docker 회귀에 필요한 무비밀 Compose fixture COPY뿐이다. backend/app�
 ## 소스 리뷰와 로컬 검증 정산
 
 최종 runtime d797의 A/C 독립 source 원문, host·Docker 전체 실패와 동일artifact7개 재검증, CI 및 아직 남은 ARM/live gate는 [검증 정산](../reviews/2026-10-16-health-bytecode-closure.md)에 기록한다. 원 Docker 전체FAIL을 후속 전체PASS로 바꾸지 않는다.
+
+## FE/admin core HTTP 점검 (2026-10-17)
+
+제품 커밋 2a6e9ba2e39c7fc46a8072c9fd2adb811ecf9ee3은 기본·shared frontend와
+transport-admin-web의 Healthcheck.Test 세 곳만 node:http로 바꾼다. URL과 포트 변수,
+frontend30초/admin45초 interval, timeout5초, retries/start_period는 유지한다.
+Node fetch의 200 헤더 수신만으로 성공하던 경로를 제거하고, GET 응답의 2xx와 완전한
+body end/complete 및 not-aborted를 확인한다. redirect를 따라가지 않으며 agent:false와
+Connection:close를 사용한다. body를 누적하지 않고 최대1MiB까지 읽는다.
+오류·초과·중단·기한 도달은 quiet exit1, 완전한 성공만 quiet exit0이다.
+
+단일 monotonic4초 기한은 첫 JavaScript 실행부터 적용하며 core 모듈 로딩과 body 읽기를
+포함한다. Node 프로세스 부트스트랩 이전 시간은 포함하지 않는다. 따라서 부하가 있는
+ARM에서 Docker timeout5초 통과를 보장하지 않는다. 기존 CS reaper/guard는 바꾸지 않는다.
+
+실제 Compose Test를 로컬 Node loopback fixture에서 실행한 신규37개와 기존 health
+계약17개가 통과했고 Ruff/node --check도 통과했다. 기존 admin probe는 200 헤더 뒤
+body가 멈춘 fixture에서 exit0으로 실패를 재현했다. 초기 source 작성 실패로 구 소스에서
+실행된 전체34FAIL/3PASS도 보존하며 후보 결과로 합산하지 않는다.
+--noconftest를 사용해 app/SDK/DB를 초기화하지 않았다. 이 좁은 delta에서 전체 backend,
+UI build, Docker 검증을 다시 실행하지 않았으며 CI와 두 독립 리뷰는 별도 gate다.
+
+배포 provenance는 runtime_image_source=ac57b56a4d3b7e15e326346de8441a34fb0fe276과
+deployment_config_source=2a6e9ba2e39c7fc46a8072c9fd2adb811ecf9ee3을 구분한다.
+backend/app, backend/Dockerfile, Python 의존성과 Common 핀은 ac57과 byte 동일하다.
+이미지에 포함된 과거 Compose 사본이 새 runtime Git HEAD를 뜻하지 않는다.
+
+별도 단일 native 비교의 기존 fetch2.533822 CPU초/RSS75756KiB와 core 후보0.392888
+CPU초/RSS43976KiB는 비통제 한 쌍의 관측이다. 해당 후보는 최종 strict script와 다르므로
+이 수치를 최종 script의 실측이나 전체 CPU 개선으로 주장하지 않는다.
+운영 적용·최종 strict script native 검증·live UI/CPU 비교는 root의 후속 단계다.

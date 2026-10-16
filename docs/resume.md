@@ -1,5 +1,7 @@
 # resume.md — 현재 인수인계
 
+> 2026-10-17 PR83 후속: 제품2a6e9ba는 FE/admin Compose Test3곳만 core HTTP로 보강했다. 로컬 Node37+기존 health17 PASS/Ruff·syntax PASS. runtime imageac57과 deployment config2a6 분리. 전체 backend/DB/Docker/운영 재실행0; 최종 CI·독립2리뷰·native strict probe/live/CPU는 후속이다. [계약](runbooks/health-cpu-bytecode.md#feadmin-core-http-점검-2026-10-17).
+
 > 2026-10-16 PR83: runtime d797은 PR82를 보존한 점검 CPU 개선이며 A/C SOURCE_PASS OPEN0다. host754P10S/집중49P1S, Docker745P13S7F와 용량조건만 보정한 동일image7P를 [정산·실패 이력](reviews/2026-10-16-health-bytecode-closure.md)에 구분했다. exactd797 CI6SUCCESS/live2SKIPPED. 다음은 ARM/운영 cold HC·live/CPU gate이며 배포 완료가 아니다.
 
 
