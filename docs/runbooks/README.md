@@ -10,3 +10,5 @@
 - `cross-repo-audit-checklist.md` — 복수 GitHub remote 정합성 점검
 - `hostile-review.md` — 적대적 리뷰 게이트(James/Popper) 절차
 
+
+- [점검 CPU·bytecode 계약](health-cpu-bytecode.md) — PR83 범위와 [소스·검증 정산](../reviews/2026-10-16-health-bytecode-closure.md)

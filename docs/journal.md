@@ -1,4 +1,21 @@
+## 2026-10-17 — FE/admin 점검 body 완료·기한 검증
+
+- PR83 제품2a6e9ba에서 Compose3곳의 Node fetch를 bounded node:http로 교체했다. URL/interval/timeout/retries/start와 backend/runtime 의존성은 보존한다.
+- 실제 선언 argv의 로컬 Node37PASS·기존 계약17PASS·Ruff/node syntax PASS. 구 probe200headers/body stall RED와 초기 구 소스 전체RED를 보존한다. DB/SDK/Docker/provider/운영 호출0.
+- runtime imageac57과 배포 설정2a6을 구분한다. 다음 gate는 최종 CI·두 독립 리뷰와 root native strict probe/운영/live/CPU다. [계약·검증 한계](runbooks/health-cpu-bytecode.md#feadmin-core-http-점검-2026-10-17).
+
+## 2026-10-16 — Transport83 소스 리뷰·로컬 Docker 실패 정산
+
+- runtime d797 불변, A 최초/후속과 C FULL 원문3개를 byte/hash 그대로 보관했다. 최종 SOURCE_PASS OPEN0·P3 문구 CLOSED.
+- host754P10S와 d797집중49P1S, Docker 전체745P13S7F를 구분한다. 1GiB fixture에서2GiB 백업 여유 선행검사가 거절된7개는 같은image/caps·tmpfs표시3GiB만 보정한 새fixture에서7P. 원전체FAIL 보존/새전체PASS로 합산0.
+- exactd797 CI6SUCCESS/live2SKIPPED. ARM cache/운영 적용·cold HC/live UI/CPU 인과는 아직 NOT_RUN. [통합 정산·한계](reviews/2026-10-16-health-bytecode-closure.md).
+
 ## 2026-10-16 — /health 존재 조회 후보
+
+## 2026-10-16 Transport 점검 비용/주기 개선 초안
+
+PR82 위 Common37 핀·최종 stdlib 사전 컴파일·API HTTP CLI·전체 운영/legacy interval3배를 구현했다. CS guard/reaper·business cadence는 보존했다. [점검 운영 문서](runbooks/health-cpu-bytecode.md)에 계약과 미검증 배포 범위를 기록한다. 운영 변경은 없다.
+
 
 - main15a928b 별도 branch에서 health seeded COUNT만 EXISTS로 바꿨다. DTO/DB오류/readiness/의존성/수집·HC주기 불변.
 - ASGI·자기SQLite0/1/1024와DB장애: OLD3RED/1PASS→NEW4PASS. nativePG16 50만행3쌍은 [별도 범위·한계](reviews/2026-10-16-health-presence.md)에 기록했다.
