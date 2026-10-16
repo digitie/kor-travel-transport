@@ -410,7 +410,7 @@ services:
     environment:
       BACKEND_INTERNAL_URL: "http://127.0.0.1:${PUBLIC_API_PORT:-14001}"
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:${PUBLIC_WEB_PORT:-14002}/').then((r) => { if (!r.ok) process.exit(1); }).catch(() => process.exit(1))"]
+      test: ["CMD", "node", "-e", "const started=process.hrtime.bigint(),http=require('node:http');let request,response,timer,done=false,size=0;const remaining=()=>4000-Number(process.hrtime.bigint()-started)/1e6;const finish=code=>{if(done)return;done=true;if(code===0&&remaining()<=0)code=1;clearTimeout(timer);response?.destroy();request?.destroy();process.exitCode=code;};timer=setTimeout(()=>finish(1),Math.max(0,remaining()));try{request=http.get('http://127.0.0.1:${PUBLIC_WEB_PORT:-14002}/',{agent:false,headers:{Connection:'close'}},r=>{response=r;r.on('error',()=>finish(1));r.on('aborted',()=>finish(1));r.on('close',()=>{if(!r.complete)finish(1);});if(!Number.isInteger(r.statusCode)||r.statusCode<200||r.statusCode>=300){finish(1);return;}const length=r.headers['content-length'];if(length!==undefined&&(!length.length||Number(length)>1048576||!Array.from(length).every(c=>c>='0'&&c<='9'))){finish(1);return;}r.on('data',chunk=>{size+=chunk.length;if(size>1048576)finish(1);});r.on('end',()=>finish(r.complete&&!r.aborted?0:1));});request.on('error',()=>finish(1));}catch{finish(1);}"]
 
 networks:
   kor-travel-transport-net:
