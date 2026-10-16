@@ -2,7 +2,7 @@
 
 ## 현재 상태
 
-- **2026-10-16 /health seeded EXISTS 후보.** 전체 ParkingSnapshot COUNT를 존재 조회로 바꿔 DTO/DB장애/readiness 의미를 보존한다. OLD3RED→focused4PASS·독립PG16 50만행3쌍 조기종료를 확인했다. 전체 backend/CI/독립2리뷰·운영은 후속이며 PR81/Common pin/HC주기와 분리한다. [검증 범위](reviews/2026-10-16-health-presence.md).
+- **2026-10-16 PR82 /health seeded EXISTS 소스 검증 완료.** COUNT만 존재 조회로 바꿔 DTO/DB장애/readiness를 보존한다. OLD3RED→focused4PASS, 로컬 전체738 PASS·10 SKIP, PostgreSQL CI746 PASS·2 SKIP, 격리Docker 신규4 PASS·독립 A/C SOURCE_PASS OPEN0. runtime bde6120 불변/이후 docs-only이며 증거 head CI를 별도 추적한다. 운영 적용·실제 CPU 개선은 NOT_RUN, PR81/Common pin/HC주기와 분리한다. [검증 범위·원문](reviews/2026-10-16-health-presence.md).
 
 - **2026-10-15 적대 리뷰 A-P2-01 보강.** 긴 단일 오류 토큰의 clipping을 Common 상세 본문 클래스 재사용으로 수정했다. 로컬 Chromium375/1440px OLD RED→NEW GREEN을 확인했다. 다음은 후속 커밋의 독립 재리뷰·CI·live UI이며 운영 완료로 표시하지 않는다. [검증 기록](reviews/2026-10-15-transport-dagster-on-demand-detail.md).
 

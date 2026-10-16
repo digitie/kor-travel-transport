@@ -34,6 +34,26 @@ EXISTS는 ActualRows1×ActualLoops1와 shared hit1이었다. 상위 노드의 bu
 자기 PG는 정상Exit0/PID0/noOOM으로 정지했고 운영/외부 provider 요청은0이다.
 초기 호스트 서버 바이너리 부재·stdin 누락·임시init server readiness 오판과 해당 자기PG 정상 정리는 별도 원문으로 보존한다.
 
-- focused4PASS. 전체 backend 검증은 진행 중이며 완료로 표시하지 않는다.
+## 완료한 검증과 남은 운영 범위
+
+검토 대상 runtime candidate는 bde61206c2e3522624ba22ce5d28a9ec39762c5e다.
+이후 증거 통합은 docs-only이며 main.py·신규 회귀·의존성·Compose blob은 그대로다.
+
+- 로컬 Python3.13.14 전체 backend: **738 PASS·10 SKIP·기존 warnings6**, pytest1509.30초/호출 wall1512.706초, exit0.
+  강제 per-test 임시 SQLite와 빈 TEST_DATABASE_URL을 사용했고 공유/운영 PostgreSQL 접근은0이다.
+- 해당 runtime commit의 PostgreSQL16/Python3.12 CI run38881965311: **746 PASS·2 SKIP·warnings6**,881.75초.
+  같은 backend job에서 locked sync·Alembic upgrade/check·OpenAPI --check가 통과했다.
+  기존 frontend와 관리자 frontend CI의 test/type/build도 SUCCESS다. push/PR 중복 run을 별개 제품 검증으로 합산하지 않는다.
+- Docker2차: 캐시된 nativeamd64/Python3.12 시험 이미지에 현재 backend를 read-only mount하여 신규4 ASGI/SQLite 회귀 **4 PASS**.
+  networknone/ports0/readOnly/capdropALL/noNewPriv/CPU1/memory=swap1GiB/PIDs128, 자연 exit0/PID0/noOOM.
+  이는 정확 candidate를 새로 빌드한 이미지나 운영 ARM64 검증이라고 주장하지 않는다.
+- 독립 제품 리뷰 A/C 모두 **SOURCE_PASS·열린 P0/P1/P2=0**. 작성자 결과와 분리해 원문을 byte 그대로 보존했다.
+  A는 실제 모델/handler·AST 및 자기 SQLite41조건, C는 격리 신규4회귀와13조건을 직접 확인했다.
 - frontend/DTO/schema/의존성/HC주기/수집/admission 변경0.
-- 두 독립 제품 리뷰·정확 candidate CI·Docker2차 및 운영 적용/CPU 실측은 별도 후속이다.
+- 증거 문서 head의 CI는 push 후 별도로 추적한다. 운영 build/deploy·실제 HC/live API·동일 workload CPU 실측은 **NOT_RUN**이며 root가 별도 소유한다.
+  두 소스 리뷰와 합성 benchmark로 운영 개선률 또는 live E2E 완료를 주장하지 않는다.
+
+| 원문 | SHA256 |
+|---|---|
+|[독립 리뷰 A](evidence/2026-10-16-health-presence-review-a.md)|8a55727cc52b147d3192bcc4eac6192f0983053d5eb872410f0e07db0c1deb3a|
+|[독립 리뷰 C](evidence/2026-10-16-health-presence-review-c.md)|56ac1b2ca97ad6ff23c1ccd5bc3dcfb50b9d1544168057a85890f25abf4fcd35|
