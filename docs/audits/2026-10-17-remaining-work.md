@@ -47,7 +47,7 @@ Track1의 상세 책임 경계는 [data-model의 Geo 미사용 절](../architect
 | PR | 현재 공개 상태 | 감사 판단 |
 | --- | --- | --- |
 | [81](https://github.com/digitie/kor-travel-transport/pull/81) `027ad551` | draft, main 비조상, DIRTY. 해당 옛 HEAD CI backend/frontend/admin3 SUCCESS·live1 SKIP(10월15일) | phase 변경은 main에 없음. 현재 main과 비교하면 Common41b/옛 HC/옛 env명이 섞여 있으므로 기존 green을 최신 main 수용으로 세거나 branch를 무검토 통합하지 않음 |
-| [38](https://github.com/digitie/kor-travel-transport/pull/38) `671397e7` | draft, main 비조상. 옛 HEAD CI6 SUCCESS·live2 SKIP(9월23일), mergeability UNKNOWN | 0011 migration은 main과 바이트 동일하고 rest-area 모델/API/job이 이미 존재함. UI 밀도 등 고유 차이는 최신 main 대조 후 정리/종결할 대상이며 feature 전체 중복 재구현 대상이 아님. 전체가 이미 머지됐다고도 단정하지 않음 |
+| [38](https://github.com/digitie/kor-travel-transport/pull/38) `671397e7` | draft, main 비조상. 옛 HEAD CI6 SUCCESS·live2 SKIP(9월23일). 최초 mergeability 조회 UNKNOWN, 후속 공개 GH 조회 CONFLICTING | 0011 migration은 main과 바이트 동일하고 rest-area 모델/API/job이 이미 존재함. UI 밀도 등 고유 차이는 최신 main 대조 후 정리/종결할 대상이며 feature 전체 중복 재구현 대상이 아님. 전체가 이미 머지됐다고도 단정하지 않음 |
 | [31](https://github.com/digitie/kor-travel-transport/pull/31) `6b727062` | draft, main 비조상. 옛 backend/frontend4 SUCCESS·live2 FAILURE(9월20일) | 두 research 문서는 main에 없음. 남길 조사 내용과 오래된 config/핀 변경을 분리해 최신 사실로 검토할 잔여. 옛 live 실패를 현재 runtime 장애로 해석하거나 재시도로 지우지 않음 |
 
 Manager530/531·Common38의 최신 union/review/native 차이는 root 공통 dependency 감사가 정본이다. Transport84는 Manager530의 hosts.addr 제품만 기존 RC에 적용한 실제 CLI 수용과 **미머지 PR530**을 구분한다. 후속 clean 설치 재현에는 정식 merged release 정합이 필요하지만, 이번 문서 작업이 다른 저장소 PR을 머지하거나 설치하지 않는다.
