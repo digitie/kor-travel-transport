@@ -209,4 +209,6 @@ def test_both_entries_and_direct_remote_use_the_same_effect_contract():
         text = (ROOT / "scripts" / name).read_text()
         assert "validate-deploy-host.py" in text and "--host" in text
         assert "REMOTE_HOST:-" not in text and "192.168.1.14" not in text
-    assert not (ROOT / "scripts/deploy-server14.sh").exists()
+    assert {p.name for p in (ROOT / "scripts").glob("deploy-*.sh")} == {
+        "deploy-prod.sh", "deploy-prod-remote.sh", "deploy-transport-admin-prod.sh"
+    }
