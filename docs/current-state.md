@@ -308,8 +308,8 @@ cutover read-only source로만 남긴다.
   [scripts/deploy-transport-admin-prod.sh](../scripts/deploy-transport-admin-prod.sh)(운영 UI project)
 - [.env.prod.example](../.env.prod.example)
 - [docker-compose.yml](../docker-compose.yml) + [docker-compose.shared.yml](../docker-compose.shared.yml)
-  (원격 스크립트가 둘을 함께 렌더한다 — `scripts/deploy-prod-remote.sh:121`),
-  [docker-compose.transport-admin.yml](../docker-compose.transport-admin.yml)(`scripts/deploy-transport-admin-prod.sh:114`)
+  (원격 스크립트가 둘을 함께 렌더한다 — `scripts/deploy-prod-remote.sh`),
+  [docker-compose.transport-admin.yml](../docker-compose.transport-admin.yml)(`scripts/deploy-transport-admin-prod.sh`)
 - legacy odroid 자산 `docker-compose.odroid.yml`·`deploy/odroid/*`·`scripts/deploy-odroid.ps1`·`scripts/odroid-status.ps1`
   (ADR-014 결정 6의 집합 M; 그중 fail-closed 마커는 `docker-compose.odroid.yml`·`deploy/odroid/remote-deploy.sh`·
   `scripts/deploy-odroid.ps1`)은 실행하지 않는다 — odroid 배포 게이트가 전부 초록인 뒤 T-TRN-03b가 삭제한다.
@@ -320,7 +320,7 @@ cutover read-only source로만 남긴다.
 
 - IP: `192.168.1.14`
 - 사용자: `digitie`
-- 앱 경로: `/home/digitie/apps/kor-travel-transport`(`scripts/deploy-prod.sh:6`이 승인하는 유일한 디렉터리; 옛 경로
+- 앱 경로: `/home/digitie/apps/kor-travel-transport`(`scripts/deploy-prod.sh`이 승인하는 유일한 디렉터리; 옛 경로
   `/home/digitie/apps/parking-radar`는 ADR-010 개명 전 값)
 
 계획(2026-10-13 기준, [ADR-014](adr/014-odroid-host-and-deploy-host-flag.md) proposed, 미구현): 배포 대상을

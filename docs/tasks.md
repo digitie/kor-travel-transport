@@ -153,7 +153,7 @@ T-TRN-01은 M을 건드리지 않고(제외), T-TRN-03b가 M 부재를 단언한
       "location `absent` → exit 2"·"location load error(`PythonError`) → 통과해 `wait_location_loaded`로 진행"을 각각 단언(빈 workspace
       plane + fresh DB 호스트의 첫 배포 모양); 첫 odroid 배포에서 결정 10 전제 ①(4a 뒤 `location_state` ≠ `absent`)·②(code-server
       healthy 뒤 3분 안에 `RepositoryLocation`) 실측값을 journal에 기록; `pytest -q backend/tests` 초록; 효과 게이트 `rg -n "deploy-server14|env\.server14" --glob '!docs/**'
-      --glob '!deploy/odroid/**' --glob '!scripts/deploy-odroid.ps1' --glob '!scripts/odroid-status.ps1'` 0건(M 제외 — head에서는
+      --glob '!deploy/odroid/**' --glob '!scripts/deploy-odroid.ps1' --glob '!scripts/odroid-status.ps1'` 보호용 구 env3개 exact exclude와 해당 보존 회귀를 제외하고 0건(M 제외 — head에서는
       `scripts/deploy-odroid.ps1:6`이 걸리므로 제외 없이는 T-TRN-03b 전에 초록이 될 수 없다). 문서: `docs/runbooks/deployment.md`
       (계획 절 → 현재 절차), `README.md`·`docs/current-state.md` 배포 명령.
 - [ ] **T-TRN-02** env 규칙 + Dagster 링크. **부분 구현 중(2026-10-14):** 현재 env 파일명에 공개 URL 설정을 추가하고 Compose→Docker builder→Next 빌드 전달을 구현했다. env 개명·호스트별 env 정리·운영 live 확인은 후속이며 task는 열어 둔다. `.env.prod.example`: `TRUSTED_HOSTS_CSV`/`CORS_ORIGINS_CSV`의 LAN 항목은 배포 host

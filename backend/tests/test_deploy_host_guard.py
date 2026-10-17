@@ -212,3 +212,34 @@ def test_both_entries_and_direct_remote_use_the_same_effect_contract():
     assert {p.name for p in (ROOT / "scripts").glob("deploy-*.sh")} == {
         "deploy-prod.sh", "deploy-prod-remote.sh", "deploy-transport-admin-prod.sh"
     }
+
+
+def test_backend_sync_preserves_old_and_new_environment_artifacts(tmp_path):
+    import shutil
+
+    if shutil.which("rsync") is None:
+        pytest.skip("소유 임시 디렉터리의 rsync 계약에는 rsync 실행 파일이 필요하다")
+    text = (ROOT / "scripts/deploy-prod.sh").read_text()
+    start = text.index("rsync -a --delete")
+    block = text[start:text.index('\ncd "${REMOTE_APP_DIR}"', start)]
+    source, destination = tmp_path / "source", tmp_path / "destination"
+    source.mkdir()
+    destination.mkdir()
+    protected = (
+        ".env.prod", ".env.prod.legacy", ".env.prod.shared-dagster-cutover",
+        ".env.server14", ".env.server14.legacy", ".env.server14.shared-dagster-cutover",
+    )
+    for name in protected:
+        (destination / name).write_text("owned-preserve-" + name)
+    (destination / "obsolete-owned.txt").write_text("owned stale")
+    (source / "candidate.txt").write_text("owned candidate")
+    result = subprocess.run(
+        ["bash", "-c", "set -euo pipefail\n" + block],
+        env={"PATH": "/usr/bin:/bin", "REMOTE_ENV_FILE": ".env.prod", "REMOTE_STAGE": str(source), "REMOTE_APP_DIR": str(destination)},
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (destination / "candidate.txt").read_text() == "owned candidate"
+    assert not (destination / "obsolete-owned.txt").exists()
+    for name in protected:
+        assert (destination / name).read_text() == "owned-preserve-" + name

@@ -2,7 +2,7 @@
 
 ## T-TRN-01 source 배포 계약(2026-10-17)
 
-현재 source의 entry는 scripts/deploy-prod.sh --host <IPv4>, scripts/deploy-prod-remote.sh --host <IPv4>, scripts/deploy-transport-admin-prod.sh --host <IPv4>다. env 정본은 .env.prod와 .env.prod.example이며 app dir·project·실행 사용자는 유지한다. 구 env의 실제 개명·배포를 이 PR이 자동 수행하지 않는다.
+현재 source의 entry는 scripts/deploy-prod.sh --host <IPv4>, scripts/deploy-prod-remote.sh --host <IPv4>, scripts/deploy-transport-admin-prod.sh --host <IPv4>다. env 정본은 .env.prod와 .env.prod.example이며 app dir·project·실행 사용자는 유지한다. 구 env의 실제 개명·배포를 이 PR이 자동 수행하지 않는다. 구 .env.server14와 .env.server14.legacy/.env.server14.shared-dagster-cutover 세 파일은 정확한 exclude로 보존하며 root의 별도 확인 없이 정리하지 않는다.
 
 주소는 필수 인자다. 원격 IPv4에 주소가 있고, sudo -n ktdctl targets validate --json의 targets.transport.host가 가리키는 hosts.<key>.addr와 같으며 호출자가 env를 읽을 수 있어야 한다. Manager PR530 설치 전 hosts 필드가 없거나 sudo/registry 조회가 실패하면 복사·Docker 변경 전에 exit2다. 코드에 허용 주소표나 호스트 기본값을 두지 않는다. 운영 UI도 transport 키를 사용한다.
 

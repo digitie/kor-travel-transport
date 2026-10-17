@@ -129,7 +129,7 @@ REMOTE_APP_DIR=/home/digitie/apps/kor-travel-transport \
 ./scripts/deploy-prod.sh --host "<배포할 IPv4>"
 ```
 
-Manager PR530의 검증 JSON에 있는 targets.transport.host → hosts.<key>.addr가 요청한 주소와 같고, 원격 자기 IPv4·env 읽기 권한도 맞아야 한다. 주소 기본값이나 코드 안 주소표는 없다. 구 Manager가 hosts를 출력하지 않으면 배포 전 exit2다. 실제 비밀 파일의 개명·배포는 이 source 변경에서 자동 수행하지 않는다.
+Manager PR530의 검증 JSON에 있는 targets.transport.host → hosts.<key>.addr가 요청한 주소와 같고, 원격 자기 IPv4·env 읽기 권한도 맞아야 한다. 주소 기본값이나 코드 안 주소표는 없다. 구 Manager가 hosts를 출력하지 않으면 배포 전 exit2다. 실제 비밀 파일의 개명·배포는 이 source 변경에서 자동 수행하지 않는다. 구 .env.server14와 .env.server14.legacy/.env.server14.shared-dagster-cutover 세 파일은 정확한 exclude로 보존하며 root의 별도 확인 없이 정리하지 않는다.
 
 배포 후 확인:
 

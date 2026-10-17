@@ -4,6 +4,14 @@
 - 실제 선언 argv의 로컬 Node37PASS·기존 계약17PASS·Ruff/node syntax PASS. 구 probe200headers/body stall RED와 초기 구 소스 전체RED를 보존한다. DB/SDK/Docker/provider/운영 호출0.
 - runtime imageac57과 배포 설정2a6을 구분한다. 다음 gate는 최종 CI·두 독립 리뷰와 root native strict probe/운영/live/CPU다. [계약·검증 한계](runbooks/health-cpu-bytecode.md#feadmin-core-http-점검-2026-10-17).
 
+## 2026-10-17 — PR84 구 env 보존 P2 수정
+
+- A의 T84-A-P2-01을 실제 소유 임시 디렉터리 rsync로 재현했다. 새 env 이름만 보호하면 --delete가 구 .env.server14 및 .legacy/.shared-dagster-cutover를 지웠다. 실제 운영 env 이관·정리는 이 PR 권한이 아니다.
+- backend/admin 동기화의 exclude에 구 세 파일을 정확히 추가해 새 .env.prod 계열과 함께 보존한다. 새 runtime env 선택은 계속 .env.prod이며 구 이름 fallback/주소표를 되살리지 않는다.
+- 신규 보존 회귀1RED→관련 전체95PASS/Ruff·Bash syntax·diff PASS. 원 e474 source와 최초 실패 로그를 보존했다. 옛 명명 검색0건 주장은 보존용3개 exclude 및 해당 회귀를 명시적으로 제외해 읽는다.
+- 운영/SSH/Docker/DB/비밀값 접근0이며 독립 closure/CI/실제 배포는 별도다.
+
+
 ## 2026-10-17 — PR84 T-TRN-01 source 및 command 회귀
 
 - deploy-prod.sh/deploy-prod-remote.sh/deploy-transport-admin-prod.sh로 개명하고 필수 --host를 추가했다. 주소 기본값·주소표 대신 원격 자기 IPv4와 sudo -n ktdctl targets validate --json의 transport host 키→hosts.addr를 대조한다. Manager530 미머지·미설치이면 배포를 거절한다.

@@ -93,7 +93,7 @@ tar -xzf "${REMOTE_ARCHIVE}" -C "${stage}"
 # 두 배포가 같은 checkout을 쓴다. 관리자 동기화도 backend staging 증거를
 # 무효화해야 수동 remote 재시도에서 혼합 파일을 release로 오인하지 않는다.
 rm -f -- "${REMOTE_APP_DIR}/.staged-release-sha"
-rsync -a --exclude="${REMOTE_ENV_FILE}" --exclude=".env.prod.legacy" --exclude="backups/" "${stage}/" "${REMOTE_APP_DIR}/"
+rsync -a --exclude="${REMOTE_ENV_FILE}" --exclude=".env.server14" --exclude=".env.server14.legacy" --exclude=".env.server14.shared-dagster-cutover" --exclude=".env.prod.legacy" --exclude="backups/" "${stage}/" "${REMOTE_APP_DIR}/"
 # BEGIN retired-file prune
 # 과거 release에서만 있던 정확한 파일을 지운다. `--delete`로 checkout의 알려지지 않은 운영 파일을
 # 넓게 지우지 않는다. 각 파일은 이번 archive에 없을 때만, 일반 파일(심볼릭 링크 아님)일 때만 지운다.
