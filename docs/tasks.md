@@ -125,6 +125,8 @@ ADR-014 "후속" 교차 저장소 계약) 머지 뒤; T-TRN-02·05는 소유자 
 `docker-compose.odroid.yml`·`remote-deploy.sh`·`deploy-odroid.ps1` 셋; 나머지는 n150 전용 설치 스크립트·legacy 상태 프로브·README) —
 T-TRN-01은 M을 건드리지 않고(제외), T-TRN-03b가 M 부재를 단언한다.
 
+> 2026-10-17 PR84 이번 범위 수용: 필수 --host/Manager530 addr 효과/.env.prod source 정렬, 독립 A/C 리뷰, af8a source CI 6 SUCCESS·live 2 SKIP, WSL 배포 계약 95 PASS와 로컬 Docker 95 PASS·0 SKIP를 확인했다. root는 운영 tracked source를 af8a로 전진시키고 중앙 env와 동일한 .env.prod(0600/UID1001), 실제 승인/비로컬/env 없음 3종 효과 검사 및 기존 34개 live UI 기준 34 PASS를 확인했다. 77개 컨테이너·16 running·보호 파일11개·daemon OFF를 보존했고 build/recreate는 0이다. Manager530 제품의 설치 수용과 PR530의 머지는 별개이며 PR530은 아직 미머지다. 전체 ARM 빌드·새 번들의 env 전달 재현·첫 전체 cutover는 NOT_RUN이므로 T-TRN-01/02 전체 체크와 T-TRN-03 이후 항목은 유지한다. 자세한 실패 이력·범위는 journal 같은 날짜.
+
 - [ ] **T-TRN-01** 배포 스크립트 두 개 개명 + `--host <addr>` 필수(기본값·host 목록 파일·스크립트 안 키→주소 표 없음):
       `scripts/deploy-server14.sh`·`deploy-server14-remote.sh` → `scripts/deploy-prod.sh`(+`deploy-prod-remote.sh`),
       `scripts/deploy-transport-admin-server14.sh` → `scripts/deploy-transport-admin-prod.sh`(운영 UI 12301/12305, Dagster 링크
@@ -151,10 +153,10 @@ T-TRN-01은 M을 건드리지 않고(제외), T-TRN-03b가 M 부재를 단언한
       "location `absent` → exit 2"·"location load error(`PythonError`) → 통과해 `wait_location_loaded`로 진행"을 각각 단언(빈 workspace
       plane + fresh DB 호스트의 첫 배포 모양); 첫 odroid 배포에서 결정 10 전제 ①(4a 뒤 `location_state` ≠ `absent`)·②(code-server
       healthy 뒤 3분 안에 `RepositoryLocation`) 실측값을 journal에 기록; `pytest -q backend/tests` 초록; 효과 게이트 `rg -n "deploy-server14|env\.server14" --glob '!docs/**'
-      --glob '!deploy/odroid/**' --glob '!scripts/deploy-odroid.ps1' --glob '!scripts/odroid-status.ps1'` 0건(M 제외 — head에서는
+      --glob '!deploy/odroid/**' --glob '!scripts/deploy-odroid.ps1' --glob '!scripts/odroid-status.ps1'` 보호용 구 env3개 exact exclude와 해당 보존 회귀를 제외하고 0건(M 제외 — head에서는
       `scripts/deploy-odroid.ps1:6`이 걸리므로 제외 없이는 T-TRN-03b 전에 초록이 될 수 없다). 문서: `docs/runbooks/deployment.md`
       (계획 절 → 현재 절차), `README.md`·`docs/current-state.md` 배포 명령.
-- [ ] **T-TRN-02** env 규칙 + Dagster 링크. **부분 구현 중(2026-10-14):** 현재 env 파일명에 공개 URL 설정을 추가하고 Compose→Docker builder→Next 빌드 전달을 구현했다. env 개명·호스트별 env 정리·운영 live 확인은 후속이며 task는 열어 둔다. `.env.prod.example`: `TRUSTED_HOSTS_CSV`/`CORS_ORIGINS_CSV`의 LAN 항목은 배포 host
+- [ ] **T-TRN-02** env 규칙 + Dagster 링크. **부분 수용(2026-10-17):** 공개 URL의 Compose→Docker builder→Next 전달 source는 기존 구현을 유지한다. PR84에서 .env.prod 명명을 정렬하고 root가 기존 중앙 env와 동일한 파일 및 실제 현재 plane 링크를 포함한 UI34를 확인했다. 이번에는 기존 컨테이너·번들을 재사용했으므로 새 env로 빌드한 번들의 값 재현과 호스트별 env 전체 정리는 후속이며 task는 열어 둔다. `.env.prod.example`: `TRUSTED_HOSTS_CSV`/`CORS_ORIGINS_CSV`의 LAN 항목은 배포 host
       addr(주석으로 규칙), `SERVICE_EXPORT_ALLOWED_CLIENTS_CSV=127.0.0.1/32,::1/128,192.168.1.14/32` 예시, `DAGSTER_POSTGRES_URL`
       "DB 없음·env 유지" 주석, `NEXT_PUBLIC_TRANSPORT_DAGSTER_URL=`(odroid plane 공개 host) 추가, `OPINET_BROWSER_ENABLED`(`:128`)
       주석에 "arm64 Chromium smoke 실패 시 false — `TRANSPORT_COLLECTION_ENABLED=false`는 고속도로까지 끈다" 한 줄,

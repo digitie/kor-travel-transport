@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 
-ENV_PATH = Path("/home/digitie/apps/kor-travel-transport/.env.server14")
+ENV_PATH = Path("/home/digitie/apps/kor-travel-transport/.env.prod")
 BACKUP_DIR = Path("/home/digitie/backups/transport-config")
 KEY = "TRANSPORT_ADMIN_WRITE_TOKEN"
 
@@ -38,7 +38,7 @@ def main() -> None:
     updated = [f"{KEY}={token}" if line.startswith(f"{KEY}=") else line for line in lines]
     if not found:
         updated.append(f"{KEY}={token}")
-    descriptor, temporary = tempfile.mkstemp(prefix=".env.server14.admin-write-", dir=ENV_PATH.parent)
+    descriptor, temporary = tempfile.mkstemp(prefix=".env.prod.admin-write-", dir=ENV_PATH.parent)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as target:
             target.write("\n".join(updated) + "\n")

@@ -1,8 +1,43 @@
+## 2026-10-17 — PR84 source·호스트 효과·기존 UI 최소 수용
+
+- 이번 제품 정본은 af8a9a220afd942d9c4b4f34e517b1dec1a3d2eb다. 독립 A/C source 리뷰 지적을 닫았고 해당 source CI는 6 SUCCESS·live 2 SKIP다. CI live SKIP를 실제 UI PASS로 바꾸어 집계하지 않는다.
+- 작성자 D의 sterile WSL 배포 계약 95 PASS에 이어 현재 Git archive를 readonly로 제공한 소유 WSL Docker fixture에서도 95 PASS·0 SKIP(3.98초)를 확인했다. 실제 rsync의 구/신 env6개 보존을 포함한다. 네트워크·운영 socket·DB 없이 실행했으며 전체 backend/frontend suite 재실행이나 제품 image build가 아니다. Docker 초기 fixture 23 FAIL/72 PASS(Python 경로), 다음 16 FAIL/79 PASS(command stub 실행 환경)를 보존한 뒤 source/test 변경 없이 fixture만 보정했다.
+- root가 실제 NVMe appdir의 tracked source만 기존 40f 계열에서 af8a로 전진시켰다. rsync --delete stage는 실행하지 않았고 .git·backups·비추적/추가 파일을 보존했다. 중앙 transport.env와 바이트가 같은 .env.prod를 operator 소유 UID1001/0600으로 두고 staged marker를 af8a에 맞췄다. 중앙 설정 자체는 바꾸지 않았다.
+- root는 Manager530 제품 5cb 계열만 기존 2e3 RC에 적용한 c7d6 후보를 공식 설치했다. CLI source53d 정합·다른 tree396개 보존·관련105 PASS 및 workspace12 PASS를 확인했고 기존 frontend PID/ticks를 유지했다. 이는 Manager530 PR의 머지 완료 주장이 아니다(아직 미머지이며 별도 UI 문제 진단 중).
+- 최초 실제 효과 검사는 전역 ktdctl 진입점이 없어 거절됐다. 공식 installer의 venv CLI를 가리키는 root 소유 진입점을 덮어쓰기 없이 프로비저닝한 뒤 승인 주소 exit0(17.35초), 비로컬 주소 exit2, env 없음 exit2(17.64초)를 확인했다. 원 실패를 보존한다. runbook에 공식 installer와 전역 PATH 진입점의 역할을 구분했다.
+- root의 동일 34개 live UI 기준 r3는 2026-10-17 10:32:03–10:32:31 UTC에 34 PASS·0 FAIL이다. r1/r2의 각각 31 PASS·3 FAIL은 namespace EEXIST/track-prefix 문제로 원문을 보존하고 새 namespace만 수정했다. 제품이나 case 기준을 완화하지 않았다. 전후 native SHA 42ffa0752fb9e6f9be7dc89f48e6e5f9da46f05f9d6a85d5f62fb2b42cc3c461이 같으며 전체77/16 running·보호 파일11개·daemon OFF를 유지했다.
+- root 공개 증거: transport84-host-gate-closure-root-r1-20261017.safe.json 및 transport84-ui34-root-bound-r3-20261017.safe.json. D의 Docker 증거: transport84-local-docker-contract-d-r3-20261017.safe.json. 실제 운영 검증은 root 수행이며 D는 source/소유 로컬 fixture만 실행했다.
+- 실제 runtime 컨테이너 build/recreate는 0이다. 기존 PR83 앱 코드와 이번 제품의 동등 범위를 이용했으며 새 Docker COPY env 이름은 source/집중 Docker 계약으로만 확인했다. 전체 ARM build·새 Next 번들의 env 전달 재현·첫 전체 cutover·Opinet smoke·n150 해체는 NOT_RUN이다. T-TRN-01/02 전체 체크 및 T-TRN-03a/b/04/05, ADR014 accepted는 이번 범위에서 변경하지 않는다.
+
 ## 2026-10-17 — FE/admin 점검 body 완료·기한 검증
 
 - PR83 제품2a6e9ba에서 Compose3곳의 Node fetch를 bounded node:http로 교체했다. URL/interval/timeout/retries/start와 backend/runtime 의존성은 보존한다.
 - 실제 선언 argv의 로컬 Node37PASS·기존 계약17PASS·Ruff/node syntax PASS. 구 probe200headers/body stall RED와 초기 구 소스 전체RED를 보존한다. DB/SDK/Docker/provider/운영 호출0.
 - runtime imageac57과 배포 설정2a6을 구분한다. 다음 gate는 최종 CI·두 독립 리뷰와 root native strict probe/운영/live/CPU다. [계약·검증 한계](runbooks/health-cpu-bytecode.md#feadmin-core-http-점검-2026-10-17).
+
+## 2026-10-17 — PR84 구 env 보존 P2 수정
+
+- A의 T84-A-P2-01을 실제 소유 임시 디렉터리 rsync로 재현했다. 새 env 이름만 보호하면 --delete가 구 .env.server14 및 .legacy/.shared-dagster-cutover를 지웠다. 실제 운영 env 이관·정리는 이 PR 권한이 아니다.
+- backend/admin 동기화의 exclude에 구 세 파일을 정확히 추가해 새 .env.prod 계열과 함께 보존한다. 새 runtime env 선택은 계속 .env.prod이며 구 이름 fallback/주소표를 되살리지 않는다.
+- 신규 보존 회귀1RED→관련 전체95PASS/Ruff·Bash syntax·diff PASS. 원 e474 source와 최초 실패 로그를 보존했다. 옛 명명 검색0건 주장은 보존용3개 exclude 및 해당 회귀를 명시적으로 제외해 읽는다.
+- 운영/SSH/Docker/DB/비밀값 접근0이며 독립 closure/CI/실제 배포는 별도다.
+
+
+## 2026-10-17 — PR84 T-TRN-01 source 및 command 회귀
+
+- deploy-prod.sh/deploy-prod-remote.sh/deploy-transport-admin-prod.sh로 개명하고 필수 --host를 추가했다. 주소 기본값·주소표 대신 원격 자기 IPv4와 sudo -n ktdctl targets validate --json의 transport host 키→hosts.addr를 대조한다. Manager530 미머지·미설치이면 배포를 거절한다.
+- .env.prod.example/ignore/Docker COPY/토큰·stage helper/계약 테스트 이름을 함께 정렬했다. 실제 비밀 env 파일·호스트·DB는 변경하지 않았다. DSN loopback/plane 버전/location absent·PythonError/drain/release lock/project/appdir 보호는 유지했다.
+- sterile WSL 명령으로 신규 command stub 및 기존 순수 배포 계약 94PASS, 변경 Python Ruff·세 Bash syntax·diff check PASS. 최초 기존 회귀1FAIL은 n150 고정 출력 기대값을 host별 출력으로 정렬했고 원 실패를 현재 PASS로 소급하지 않는다. 신규 테스트의 초기 스타일 Ruff 실패도 수정 후 재검증했다.
+- 기본 conftest/DB·provider·Docker·SSH·실운영 호출0. 전체 backend suite/frontend test/build/Docker2차/live E2E는 NOT_RUN이며 CI와 독립2리뷰도 별도다. T-TRN-01/02·ADR014를 운영 완료로 체크하지 않았다.
+
+
+## 2026-10-17 — T-TRN-01 배포 host 효과 검증 준비
+
+- 최신 main7398a168에서 별도 codex/track2-deploy-host-20261017 worktree를 만들고 원본 WIP를 보존했다.
+- 세 배포 script를 prod 이름으로 정렬하고 필수 --host, 원격 IPv4 및 Manager registry target→hosts.addr 효과 검사, .env.prod 이름을 최소 구현한다. DSN·공용 plane·location drain·프로젝트·app dir·실행 사용자 계약은 보존한다.
+- 선행 Manager PR530의 hosts.addr projection은 아직 미머지다. 부재/실패는 exit2로 거절하며 주소표나 임의 fallback으로 우회하지 않는다.
+- 운영 SSH/Docker/DB/provider 호출은 하지 않는다. 합성 command stub 회귀·독립 리뷰·CI 뒤 실제 적용과 live 검증은 별도다.
+
 
 ## 2026-10-16 — Transport83 소스 리뷰·로컬 Docker 실패 정산
 

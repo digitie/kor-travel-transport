@@ -21,7 +21,7 @@ x-dagster-control-environment: &dagster-control-environment
 
 # 공용 Dagster instance. 값은 Manager compose의 `x-dagster-shared-control-env`와 같은 URL이다(role·DB 이름은
 # literal — env override로 한쪽만 바꾸면 다른 DB를 겨냥한다). 비밀번호는 Manager `.env`의
-# `KOR_TRAVEL_DAGSTER_SHARED_APP_PASSWORD`와 같은 값을 `.env.server14`에 둔다. `postgresql+psycopg2://`를
+# `KOR_TRAVEL_DAGSTER_SHARED_APP_PASSWORD`와 같은 값을 `.env.prod`에 둔다. `postgresql+psycopg2://`를
 # 명시한다 — 이 이미지는 SQLAlchemy 2.1이라 맨 `postgresql://`이면 psycopg v3를 골라 dagster-postgres가 깨진다.
 x-dagster-shared-environment: &dagster-shared-environment
   DAGSTER_HOME: /app/dagster_home

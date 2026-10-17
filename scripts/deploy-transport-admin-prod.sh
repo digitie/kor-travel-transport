@@ -3,24 +3,32 @@ set -euo pipefail
 
 # 별도 Compose project만 갱신한다. 기본 kor-travel-transport backend/frontend/Dagster는 이
 # 스크립트의 Docker 명령 대상이 아니다.
-REMOTE_HOST="${REMOTE_HOST:-192.168.1.14}"
+if [[ "$#" != 2 || "$1" != "--host" || -z "$2" ]]; then
+  echo "Usage: $0 --host <IPv4 address>" >&2
+  exit 2
+fi
+REMOTE_HOST="$2"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+python3 "${SCRIPT_DIR}/validate-deploy-host.py" --host "${REMOTE_HOST}" --parse-only
 REMOTE_USER="${REMOTE_USER:-digitie}"
 REMOTE_APP_DIR="${REMOTE_APP_DIR:-/home/digitie/apps/kor-travel-transport}"
-REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-.env.server14}"
+REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-.env.prod}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-kor-travel-transport-admin}"
 CANDIDATE_SHA="$(git rev-parse HEAD)"
 
-[[ "${REMOTE_HOST}" == "192.168.1.14" ]] || { echo "n150만 배포할 수 있습니다." >&2; exit 2; }
 [[ "${REMOTE_APP_DIR}" == "/home/digitie/apps/kor-travel-transport" ]] || { echo "승인된 transport checkout만 허용합니다." >&2; exit 2; }
-[[ "${REMOTE_ENV_FILE}" == ".env.server14" ]] || { echo "승인된 운영 환경 파일만 허용합니다." >&2; exit 2; }
+[[ "${REMOTE_ENV_FILE}" == ".env.prod" ]] || { echo "승인된 운영 환경 파일만 허용합니다." >&2; exit 2; }
 [[ "${COMPOSE_PROJECT_NAME}" == "kor-travel-transport-admin" ]] || { echo "전용 Compose project만 허용합니다." >&2; exit 2; }
+
+# 주소 정본은 Manager registry다. 복사/생성 전에 실제 효과를 확인한다.
+ssh "${REMOTE_USER}@${REMOTE_HOST}" "python3 - --host '${REMOTE_HOST}' --env-file '${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}'" < "${SCRIPT_DIR}/validate-deploy-host.py"
 
 # 새 release를 복사하기 전에 환경과 port를 먼저 확인한다. listener 충돌 때문에
 # 실패한 배포가 공유 checkout의 비추적 파일을 삭제·교체하지 않도록 한다.
 ssh "${REMOTE_USER}@${REMOTE_HOST}" \
   "REMOTE_APP_DIR='${REMOTE_APP_DIR}' REMOTE_ENV_FILE='${REMOTE_ENV_FILE}' bash -s" <<'PREFLIGHT'
 set -euo pipefail
-[[ -f "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" ]] || { echo "운영 환경 파일이 없습니다." >&2; exit 2; }
+[[ -f "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" && -r "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" ]] || { echo "운영 환경 파일이 없습니다." >&2; exit 2; }
 for key in TRANSPORT_UI_PASSWORD TRANSPORT_UI_SESSION_SECRET TRANSPORT_ADMIN_WRITE_TOKEN TRANSPORT_UI_PUBLIC_ORIGIN NEXT_PUBLIC_VWORLD_API_KEY; do
   grep -Eq "^${key}=.+" "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" || { echo "${key}가 설정되지 않았습니다." >&2; exit 2; }
 done
@@ -68,7 +76,7 @@ scp "${archive}" "${REMOTE_USER}@${REMOTE_HOST}:${remote_archive}"
 ssh "${REMOTE_USER}@${REMOTE_HOST}" \
   "REMOTE_APP_DIR='${REMOTE_APP_DIR}' REMOTE_ENV_FILE='${REMOTE_ENV_FILE}' REMOTE_ARCHIVE='${remote_archive}' CANDIDATE_SHA='${CANDIDATE_SHA}' bash -s" <<'REMOTE'
 set -euo pipefail
-[[ -f "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" ]] || { echo "운영 환경 파일이 없습니다." >&2; exit 2; }
+[[ -f "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" && -r "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" ]] || { echo "운영 환경 파일이 없습니다." >&2; exit 2; }
 # backend 동기화·빌드와 Dagster Compose 교체가 끝날 때까지 같은 checkout을 건드리지 않는다.
 exec 9>"/home/digitie/apps/.kor-travel-transport-deploy.lock"
 flock -n 9 || { echo "공유 checkout을 다른 배포가 변경 중입니다." >&2; exit 2; }
@@ -85,7 +93,7 @@ tar -xzf "${REMOTE_ARCHIVE}" -C "${stage}"
 # 두 배포가 같은 checkout을 쓴다. 관리자 동기화도 backend staging 증거를
 # 무효화해야 수동 remote 재시도에서 혼합 파일을 release로 오인하지 않는다.
 rm -f -- "${REMOTE_APP_DIR}/.staged-release-sha"
-rsync -a --exclude="${REMOTE_ENV_FILE}" --exclude=".env.server14.legacy" --exclude="backups/" "${stage}/" "${REMOTE_APP_DIR}/"
+rsync -a --exclude="${REMOTE_ENV_FILE}" --exclude=".env.server14" --exclude=".env.server14.legacy" --exclude=".env.server14.shared-dagster-cutover" --exclude=".env.prod.legacy" --exclude="backups/" "${stage}/" "${REMOTE_APP_DIR}/"
 # BEGIN retired-file prune
 # 과거 release에서만 있던 정확한 파일을 지운다. `--delete`로 checkout의 알려지지 않은 운영 파일을
 # 넓게 지우지 않는다. 각 파일은 이번 archive에 없을 때만, 일반 파일(심볼릭 링크 아님)일 때만 지운다.

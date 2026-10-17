@@ -1,4 +1,4 @@
-"""`scripts/deploy-server14-remote.sh`의 배포 식별자 계약을 진짜 스크립트로 본다.
+"""`scripts/deploy-prod-remote.sh`의 배포 식별자 계약을 진짜 스크립트로 본다.
 
 - 승인된 앱 디렉터리·Compose project·실행 위치가 아니면 docker를 부르기 전에 멈춘다. ADR-010의 임시
   개명 guard는 cutover 정리와 함께 지웠다(ADR-011).
@@ -22,10 +22,10 @@ import pytest
 _BACKEND_ROOT = Path(__file__).resolve().parents[1]
 _SCRIPTS = next(
     (candidate for candidate in (_BACKEND_ROOT / "scripts", _BACKEND_ROOT.parent / "scripts")
-     if (candidate / "deploy-server14-remote.sh").is_file()),
+     if (candidate / "deploy-prod-remote.sh").is_file()),
     _BACKEND_ROOT.parent / "scripts",
 )
-_REMOTE = _SCRIPTS / "deploy-server14-remote.sh"
+_REMOTE = _SCRIPTS / "deploy-prod-remote.sh"
 _SHA = "c" * 40
 
 _FAKE_DOCKER = r'''
@@ -52,7 +52,7 @@ def _run(tmp_path: Path, **env: str) -> tuple[subprocess.CompletedProcess[str], 
     log = tmp_path / "docker.jsonl"
     log.write_text("", encoding="utf-8")
     result = subprocess.run(
-        ["bash", str(_REMOTE)],
+        ["bash", str(_REMOTE), "--host", "192.0.2.7"],
         cwd=tmp_path,
         env={"PATH": f"{bin_dir}:/usr/bin:/bin", "CANDIDATE_SHA": _SHA, "FAKE_LOG": str(log), **env},
         capture_output=True,
@@ -100,6 +100,7 @@ def _dagster_dsn_regex() -> str:
         ("postgresql+asyncpg://dagster:pw@127.0.0.1:11000/kor_travel_transport_dagster", False),
         ("postgresql+psycopg://dagster:pw@127.0.0.1:11000/kor_travel_transport_dagster", False),
         ("postgresql+psycopg2://dagster:pw@127.0.0.2:11000/kor_travel_transport_dagster", False),
+        ("postgresql+psycopg2://dagster:pw@192.168.1.13:11000/kor_travel_transport_dagster", False),
         ("postgresql+psycopg2://dagster:pw@127.0.0.1:11000/kor_travel_transport", False),
     ],
 )
@@ -195,6 +196,7 @@ def test_deploy_refuses_before_the_plane_carries_the_location_or_while_the_old_d
         ("absent", "false", "does not list kor-travel-transport yet"),
         ("RepositoryLocation", "true", "still runs next to the shared plane"),
         ("RepositoryLocation", "false", "PASSED"),
+        ("PythonError", "false", "PASSED"),
     ):
         script = ('COMPOSE_PROJECT_NAME=kor-travel-transport\ndagster_location=kor-travel-transport\n'
                   + f'location_state() {{ echo {plane}; }}\n'
@@ -251,8 +253,8 @@ def test_prepare_mode_builds_and_writes_the_cutover_env_without_touching_contain
     # 공용 password 검사는 prepare·deploy 둘 다 지난다(빌드 전).
     assert text.index("KOR_TRAVEL_DAGSTER_SHARED_APP_PASSWORD:-}\" =~") < text.index("\ncompose build\n")
     # 배포 동기화(rsync --delete)가 n150에서 만든 전환 env 파일을 지우지 않는다.
-    backend = (_SCRIPTS / "deploy-server14.sh").read_text(encoding="utf-8")
-    assert '--exclude=".env.server14.shared-dagster-cutover"' in backend
+    backend = (_SCRIPTS / "deploy-prod.sh").read_text(encoding="utf-8")
+    assert '--exclude=".env.prod.shared-dagster-cutover"' in backend
     assert "DEPLOY_MODE='${DEPLOY_MODE}'" in backend
 
 
@@ -276,17 +278,17 @@ def test_remote_deploy_script_has_valid_bash_syntax() -> None:
 
 
 def test_deploy_scripts_accept_only_the_renamed_directory_and_project() -> None:
-    for name in ("deploy-server14.sh", "deploy-server14-remote.sh", "deploy-transport-admin-server14.sh"):
+    for name in ("deploy-prod.sh", "deploy-prod-remote.sh", "deploy-transport-admin-prod.sh"):
         text = (_SCRIPTS / name).read_text(encoding="utf-8")
         assert "/home/digitie/apps/kor-travel-transport" in text, name
         assert "kor-travel-airport" not in text, name
-    for name in ("deploy-server14.sh", "deploy-server14-remote.sh"):
+    for name in ("deploy-prod.sh", "deploy-prod-remote.sh"):
         text = (_SCRIPTS / name).read_text(encoding="utf-8")
         assert 'COMPOSE_PROJECT_NAME:-kor-travel-transport}' in text, name
 
 
 def test_interrupted_sync_preserves_current_release_receipts() -> None:
-    text = (_SCRIPTS / "deploy-server14.sh").read_text(encoding="utf-8")
+    text = (_SCRIPTS / "deploy-prod.sh").read_text(encoding="utf-8")
     sync = text.index("rsync -a --delete")
     manifest_update = text.index('"${CANDIDATE_SHA}" > "${REMOTE_APP_DIR}/.release-sha"')
     sync_step = text[sync:manifest_update]
@@ -296,8 +298,8 @@ def test_interrupted_sync_preserves_current_release_receipts() -> None:
 
 
 def test_stage_receipt_is_invalidated_before_either_shared_checkout_sync() -> None:
-    backend = (_SCRIPTS / "deploy-server14.sh").read_text(encoding="utf-8")
-    admin = (_SCRIPTS / "deploy-transport-admin-server14.sh").read_text(encoding="utf-8")
+    backend = (_SCRIPTS / "deploy-prod.sh").read_text(encoding="utf-8")
+    admin = (_SCRIPTS / "deploy-transport-admin-prod.sh").read_text(encoding="utf-8")
     remote = _REMOTE.read_text(encoding="utf-8")
 
     assert backend.index('rm -f -- "${STAGE_MARKER}"') < backend.index("rsync -a --delete")
@@ -307,7 +309,7 @@ def test_stage_receipt_is_invalidated_before_either_shared_checkout_sync() -> No
 
 
 def test_all_shared_checkout_writers_hold_the_same_release_lock() -> None:
-    names = ("deploy-server14.sh", "deploy-transport-admin-server14.sh", "deploy-server14-remote.sh")
+    names = ("deploy-prod.sh", "deploy-transport-admin-prod.sh", "deploy-prod-remote.sh")
     lock_path = "/home/digitie/apps/.kor-travel-transport-deploy.lock"
     for name in names:
         source = (_SCRIPTS / name).read_text(encoding="utf-8")
@@ -366,7 +368,7 @@ def test_remote_stage_guard_refuses_interrupted_or_superseded_sync(tmp_path: Pat
 
 
 def _retired_file_prune_block() -> str:
-    admin = (_SCRIPTS / "deploy-transport-admin-server14.sh").read_text(encoding="utf-8")
+    admin = (_SCRIPTS / "deploy-transport-admin-prod.sh").read_text(encoding="utf-8")
     start = admin.index("# BEGIN retired-file prune")
     end = admin.index("# END retired-file prune")
     # 동기화 뒤·build 전에 돌고, 관리자 동기화 자체는 `--delete`를 쓰지 않는다(공유 checkout의 운영 파일 보호).
