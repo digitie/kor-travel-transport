@@ -4,6 +4,14 @@
 - 실제 선언 argv의 로컬 Node37PASS·기존 계약17PASS·Ruff/node syntax PASS. 구 probe200headers/body stall RED와 초기 구 소스 전체RED를 보존한다. DB/SDK/Docker/provider/운영 호출0.
 - runtime imageac57과 배포 설정2a6을 구분한다. 다음 gate는 최종 CI·두 독립 리뷰와 root native strict probe/운영/live/CPU다. [계약·검증 한계](runbooks/health-cpu-bytecode.md#feadmin-core-http-점검-2026-10-17).
 
+## 2026-10-17 — T-TRN-01 배포 host 효과 검증 준비
+
+- 최신 main7398a168에서 별도 codex/track2-deploy-host-20261017 worktree를 만들고 원본 WIP를 보존했다.
+- 세 배포 script를 prod 이름으로 정렬하고 필수 --host, 원격 IPv4 및 Manager registry target→hosts.addr 효과 검사, .env.prod 이름을 최소 구현한다. DSN·공용 plane·location drain·프로젝트·app dir·실행 사용자 계약은 보존한다.
+- 선행 Manager PR530의 hosts.addr projection은 아직 미머지다. 부재/실패는 exit2로 거절하며 주소표나 임의 fallback으로 우회하지 않는다.
+- 운영 SSH/Docker/DB/provider 호출은 하지 않는다. 합성 command stub 회귀·독립 리뷰·CI 뒤 실제 적용과 live 검증은 별도다.
+
+
 ## 2026-10-16 — Transport83 소스 리뷰·로컬 Docker 실패 정산
 
 - runtime d797 불변, A 최초/후속과 C FULL 원문3개를 byte/hash 그대로 보관했다. 최종 SOURCE_PASS OPEN0·P3 문구 CLOSED.
