@@ -1,3 +1,14 @@
+## 2026-10-17 — PR84 source·호스트 효과·기존 UI 최소 수용
+
+- 이번 제품 정본은 af8a9a220afd942d9c4b4f34e517b1dec1a3d2eb다. 독립 A/C source 리뷰 지적을 닫았고 해당 source CI는 6 SUCCESS·live 2 SKIP다. CI live SKIP를 실제 UI PASS로 바꾸어 집계하지 않는다.
+- 작성자 D의 sterile WSL 배포 계약 95 PASS에 이어 현재 Git archive를 readonly로 제공한 소유 WSL Docker fixture에서도 95 PASS·0 SKIP(3.98초)를 확인했다. 실제 rsync의 구/신 env6개 보존을 포함한다. 네트워크·운영 socket·DB 없이 실행했으며 전체 backend/frontend suite 재실행이나 제품 image build가 아니다. Docker 초기 fixture 23 FAIL/72 PASS(Python 경로), 다음 16 FAIL/79 PASS(command stub 실행 환경)를 보존한 뒤 source/test 변경 없이 fixture만 보정했다.
+- root가 실제 NVMe appdir의 tracked source만 기존 40f 계열에서 af8a로 전진시켰다. rsync --delete stage는 실행하지 않았고 .git·backups·비추적/추가 파일을 보존했다. 중앙 transport.env와 바이트가 같은 .env.prod를 operator 소유 UID1001/0600으로 두고 staged marker를 af8a에 맞췄다. 중앙 설정 자체는 바꾸지 않았다.
+- root는 Manager530 제품 5cb 계열만 기존 2e3 RC에 적용한 c7d6 후보를 공식 설치했다. CLI source53d 정합·다른 tree396개 보존·관련105 PASS 및 workspace12 PASS를 확인했고 기존 frontend PID/ticks를 유지했다. 이는 Manager530 PR의 머지 완료 주장이 아니다(아직 미머지이며 별도 UI 문제 진단 중).
+- 최초 실제 효과 검사는 전역 ktdctl 진입점이 없어 거절됐다. 공식 installer의 venv CLI를 가리키는 root 소유 진입점을 덮어쓰기 없이 프로비저닝한 뒤 승인 주소 exit0(17.35초), 비로컬 주소 exit2, env 없음 exit2(17.64초)를 확인했다. 원 실패를 보존한다. runbook에 공식 installer와 전역 PATH 진입점의 역할을 구분했다.
+- root의 동일 34개 live UI 기준 r3는 2026-10-17 10:32:03–10:32:31 UTC에 34 PASS·0 FAIL이다. r1/r2의 각각 31 PASS·3 FAIL은 namespace EEXIST/track-prefix 문제로 원문을 보존하고 새 namespace만 수정했다. 제품이나 case 기준을 완화하지 않았다. 전후 native SHA 42ffa0752fb9e6f9be7dc89f48e6e5f9da46f05f9d6a85d5f62fb2b42cc3c461이 같으며 전체77/16 running·보호 파일11개·daemon OFF를 유지했다.
+- root 공개 증거: transport84-host-gate-closure-root-r1-20261017.safe.json 및 transport84-ui34-root-bound-r3-20261017.safe.json. D의 Docker 증거: transport84-local-docker-contract-d-r3-20261017.safe.json. 실제 운영 검증은 root 수행이며 D는 source/소유 로컬 fixture만 실행했다.
+- 실제 runtime 컨테이너 build/recreate는 0이다. 기존 PR83 앱 코드와 이번 제품의 동등 범위를 이용했으며 새 Docker COPY env 이름은 source/집중 Docker 계약으로만 확인했다. 전체 ARM build·새 Next 번들의 env 전달 재현·첫 전체 cutover·Opinet smoke·n150 해체는 NOT_RUN이다. T-TRN-01/02 전체 체크 및 T-TRN-03a/b/04/05, ADR014 accepted는 이번 범위에서 변경하지 않는다.
+
 ## 2026-10-17 — FE/admin 점검 body 완료·기한 검증
 
 - PR83 제품2a6e9ba에서 Compose3곳의 Node fetch를 bounded node:http로 교체했다. URL/interval/timeout/retries/start와 backend/runtime 의존성은 보존한다.

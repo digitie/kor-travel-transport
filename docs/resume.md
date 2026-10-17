@@ -1,5 +1,10 @@
 # resume.md — 현재 인수인계
 
+
+> 2026-10-17 PR84 이번 범위 수용 완료: 제품 af8a source CI6 SUCCESS/live2 SKIP·A/C 독립 리뷰·WSL95 PASS·로컬 Docker95 PASS/0 SKIP. root는 tracked source만 전진(.git/backups/추가 파일 보존), 중앙 env와 동일한 .env.prod0600/UID1001, 공식 Manager530 제품의 실제 CLI 진입점 및 승인0/비로컬2/env없음2 효과 검사를 확인했다. Manager530 PR은 아직 미머지다. 기존34 live UI는 새 namespace r3 34 PASS(10:32:03–31 UTC), 전후 native 동일·77/16·보호 파일11·daemon OFF 유지. r1/r2 각31P3F와 최초 CLI 부재 실패는 보존했다. 자세한 정산은 journal 같은 날짜.
+
+> 다음 범위: 실제 runtime build/recreate0이므로 전체 ARM 빌드·새 env로 만든 bundle 검증·첫 full cutover는 NOT_RUN이다. T-TRN-01/02 전체 task는 unchecked, T-TRN-03 이후와 ADR014 accepted는 미정산이다. 아래 예전 대기/NOT_RUN 문장은 당시 이력이며 최신 이번 범위 판단은 이 머리말을 따른다. Manager530 머지/별도 UI 수용 및 전체 전환 게이트는 후속이며 daemon을 자동 복구하지 않는다.
+
 > PR84 보완: 구 env3개 exact exclude 보존 P2를 실제 임시 rsync 1RED→전체95PASS로 수정했다. 구 runtime fallback은 없으며 원 결과/백업을 보존한다. 독립 closure·CI·운영 수용 대기다.
 
 > 2026-10-17 PR84 source: prod 이름3script/필수 --host/Manager530 addr 효과/.env.prod 정렬. 신규·기존 배포 순수계약94PASS/Ruff·Bash·diff PASS. Manager530 미머지·미설치 의존, 전체suite/Docker/live/실제env개명은 NOT_RUN. 독립2리뷰·CI 뒤 root 수용이 남아 있다.

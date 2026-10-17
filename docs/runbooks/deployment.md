@@ -6,9 +6,19 @@
 
 주소는 필수 인자다. 원격 IPv4에 주소가 있고, sudo -n ktdctl targets validate --json의 targets.transport.host가 가리키는 hosts.<key>.addr와 같으며 호출자가 env를 읽을 수 있어야 한다. Manager PR530 설치 전 hosts 필드가 없거나 sudo/registry 조회가 실패하면 복사·Docker 변경 전에 exit2다. 코드에 허용 주소표나 호스트 기본값을 두지 않는다. 운영 UI도 transport 키를 사용한다.
 
+공식 Manager installer는 backend venv의 ktdctl을 설치하며 전역 /usr/local/bin/ktdctl 진입점까지 만들지는 않는다. 이 계약의 sudo -n ktdctl 조회 전에 root가 정식 설치 경로의 실행 파일과 기존 전역 진입점을 확인한다. 아래 프로비저닝은 전역 경로가 없을 때만 수행하며, 기존 파일·symlink가 있으면 출처를 확인하고 임의로 덮어쓰지 않는다.
+
+    if test -x /opt/kor-travel-docker-manager/backend/.venv/bin/ktdctl &&
+       ! test -e /usr/local/bin/ktdctl && ! test -L /usr/local/bin/ktdctl; then
+      sudo ln -s /opt/kor-travel-docker-manager/backend/.venv/bin/ktdctl /usr/local/bin/ktdctl
+    fi
+    sudo -n ktdctl targets validate --json
+
+2026-10-17 root는 최초 CLI 부재 거절을 보존하고 이 root 소유 진입점 준비 뒤 실제 승인/비로컬/env 없음 효과 검사를 각각 exit0/2/2로 확인했다. tracked source와 env 정렬·기존 UI34 수용을 완료했지만 runtime build/recreate는 0이다. 전체 ARM build·새 bundle·첫 full cutover 및 아래 역사적 정책의 정산은 T-TRN-01/02 후속과 T-TRN-03a/04에서 구분한다. Manager530 제품의 실제 설치를 PR530 머지 완료로 해석하지 않는다.
+
 DSN의 loopback11000/DB 이름, 공용 Dagster 버전, location absent 거절·PythonError 재로드 대기, 이 location의 run/worker drain·release lock은 바꾸지 않았다. 공용 daemon을 시작하거나 복구하지 않는다. 사용자의 daemon OFF 지시가 유지되는 동안에도 이를 자동 해제하지 않는다.
 
-예전 n150/파일명으로 적힌 아래 절은 당시 이력이다. 현재 명령에는 위 prod entry·--host·.env.prod를 적용하고, 이전 정책 문구·실제 source 배포/ARM/live 수용은 T-TRN-03a/04에서 별도로 정산한다. 현재 source가 실제 운영에 적용됐다는 의미가 아니다.
+예전 n150/파일명으로 적힌 아래 절은 당시 이력이다. 현재 명령에는 위 prod entry·--host·.env.prod를 적용하고, 이전 정책 문구·실제 source 배포/ARM/live 수용은 T-TRN-03a/04에서 별도로 정산한다. 현재 source의 tracked-file/효과 검사 적용과 runtime image 재빌드·전체 cutover는 별개다.
 
 > 현재 기준 배포 대상은 `192.168.1.14`이며 Docker/PostgreSQL은 n150에서만 실행한다. 13번은 source API와 rollback 기준으로 읽기만 한다. 새 배포는 [migration.md](migration.md)와 [`scripts/deploy-server14.sh`](../../scripts/deploy-server14.sh)를 우선 사용한다. 이 문서의 기존 ODROID 절차는 historical reference다.
 > **계획**: transport 스택을 odroid(`192.168.1.13`)로 옮기는 절차는 아래 "[odroid 배포 계획(ADR-014)](#odroid-배포-계획adr-014-proposed-미구현)" 절에 있다 — proposed·미구현이며 그때까지 이 머리말이 현재 운영이다.
