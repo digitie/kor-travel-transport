@@ -1,3 +1,11 @@
+## 2026-10-17 — Transport 남은 작업 감사·문서 정합(제품 변경 없음)
+
+- main d1593ecc/PR84 MERGED와 CI를 공개 GH에서 재확인했다. root의11:58:07 UTC safe 관측77/16·14healthy2noHC·daemon OFF, PR84 UI34/호스트 효과와 D의 Docker95를 source·이미지·수집 수용과 분리했다.
+- Track1 Transport는 T045/#76 무영향 문서화 완료이며 token/regeo 신규 구현이 아니다. T-TRN-01/02의 이번 최소 수용과 공식 ARM build·새 bundle·첫 전체 cutover NOT_RUN, T05 canonical 메모리 제한 source 부재를 구분했다. 낡은 RELEASE_SHA만으로 코드 미배포를 단정하거나 metadata만 갱신해 정합성을 위장하지 않는다.
+- OPEN81은 현재 Common/strict HC와 충돌하는 옛 branch로 고유 phase 분산만 재정산할 대상이다. OPEN38의0011은 main과 같고 rest-area 기능도 존재하며, OPEN31 research2개는 main에 없어서 최신 사실 검토가 남는다. 과거 CI/live 실패는 보존하고 현재 장애로 확대하지 않는다.
+- PR67/74/75의 기존 owner/fence/retry/bulk 저장을 중복 구현하지 않는다. 수집 부하 CPU/RSS·provider/browser·실패 복구 실환경 검증, 지역 영속 분산, API 부하·좌표/전국 완전성은 [감사](audits/2026-10-17-remaining-work.md)의 단계별 잔여다. PG/Rust HC 전환과 공통 dependency는 root 별도 lane이다.
+- 변경은 감사/tasks/resume/journal 네 문서뿐이다. 사용자 지시로 [skip ci] 문서 commit을 사용하며 diffcheck·문서 link·근거/checkbox 보존을 확인한다. 독립2리뷰 뒤 root가 머지한다. 제품/config/tests/workflow 변경·전체 suite·이미지 build·live UI 재실행·운영 접속·daemon start는0이다. 이전 실패·본문 이력을 보존했다.
+
 ## 2026-10-17 — PR84 source·호스트 효과·기존 UI 최소 수용
 
 - 이번 제품 정본은 af8a9a220afd942d9c4b4f34e517b1dec1a3d2eb다. 독립 A/C source 리뷰 지적을 닫았고 해당 source CI는 6 SUCCESS·live 2 SKIP다. CI live SKIP를 실제 UI PASS로 바꾸어 집계하지 않는다.
