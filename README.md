@@ -117,18 +117,19 @@ live E2E 기준 웹 주소는 [https://pr.digitie.mywire.org/](https://pr.digiti
 > **계획(ADR-014 proposed, 미구현).** transport 스택 전체를 odroid(`192.168.1.13`)로 옮기는 설계가
 > [ADR-014](docs/adr/014-odroid-host-and-deploy-host-flag.md)에 있다 — 포트·compose project·앱 디렉터리는
 > 그대로이고 호스트만 `.14 → .13`, 배포 명령은 `scripts/deploy-prod.sh --host 192.168.1.13`으로 바뀐다. 아직
-> 코드·스크립트는 바뀌지 않았고 이 절의 n150 절차가 현재 운영이다.
+> 배포 script의 host 효과 검증은 T-TRN-01에서 구현했으며 실제 설치·이전 수용과 나머지 정책 정산은 별도다.
 
 운영 환경 파일은 n150의
-`/home/digitie/apps/kor-travel-transport/.env.server14`에만 두며
-[`.env.server14.example`](.env.server14.example)을 시작점으로 사용한다. Compose project는
+`/home/digitie/apps/kor-travel-transport/.env.prod`에만 두며
+[`.env.prod.example`](.env.prod.example)을 시작점으로 사용한다. Compose project는
 `kor-travel-transport`다(2026-09 운영 식별자 개명, [ADR-010](docs/adr/010-deploy-identity-rename-transport.md)).
 
 ```bash
-REMOTE_HOST=192.168.1.14 \
 REMOTE_APP_DIR=/home/digitie/apps/kor-travel-transport \
-./scripts/deploy-server14.sh
+./scripts/deploy-prod.sh --host "<배포할 IPv4>"
 ```
+
+Manager PR530의 검증 JSON에 있는 targets.transport.host → hosts.<key>.addr가 요청한 주소와 같고, 원격 자기 IPv4·env 읽기 권한도 맞아야 한다. 주소 기본값이나 코드 안 주소표는 없다. 구 Manager가 hosts를 출력하지 않으면 배포 전 exit2다. 실제 비밀 파일의 개명·배포는 이 source 변경에서 자동 수행하지 않는다.
 
 배포 후 확인:
 

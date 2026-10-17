@@ -4,6 +4,14 @@
 - 실제 선언 argv의 로컬 Node37PASS·기존 계약17PASS·Ruff/node syntax PASS. 구 probe200headers/body stall RED와 초기 구 소스 전체RED를 보존한다. DB/SDK/Docker/provider/운영 호출0.
 - runtime imageac57과 배포 설정2a6을 구분한다. 다음 gate는 최종 CI·두 독립 리뷰와 root native strict probe/운영/live/CPU다. [계약·검증 한계](runbooks/health-cpu-bytecode.md#feadmin-core-http-점검-2026-10-17).
 
+## 2026-10-17 — PR84 T-TRN-01 source 및 command 회귀
+
+- deploy-prod.sh/deploy-prod-remote.sh/deploy-transport-admin-prod.sh로 개명하고 필수 --host를 추가했다. 주소 기본값·주소표 대신 원격 자기 IPv4와 sudo -n ktdctl targets validate --json의 transport host 키→hosts.addr를 대조한다. Manager530 미머지·미설치이면 배포를 거절한다.
+- .env.prod.example/ignore/Docker COPY/토큰·stage helper/계약 테스트 이름을 함께 정렬했다. 실제 비밀 env 파일·호스트·DB는 변경하지 않았다. DSN loopback/plane 버전/location absent·PythonError/drain/release lock/project/appdir 보호는 유지했다.
+- sterile WSL 명령으로 신규 command stub 및 기존 순수 배포 계약 94PASS, 변경 Python Ruff·세 Bash syntax·diff check PASS. 최초 기존 회귀1FAIL은 n150 고정 출력 기대값을 host별 출력으로 정렬했고 원 실패를 현재 PASS로 소급하지 않는다. 신규 테스트의 초기 스타일 Ruff 실패도 수정 후 재검증했다.
+- 기본 conftest/DB·provider·Docker·SSH·실운영 호출0. 전체 backend suite/frontend test/build/Docker2차/live E2E는 NOT_RUN이며 CI와 독립2리뷰도 별도다. T-TRN-01/02·ADR014를 운영 완료로 체크하지 않았다.
+
+
 ## 2026-10-17 — T-TRN-01 배포 host 효과 검증 준비
 
 - 최신 main7398a168에서 별도 codex/track2-deploy-host-20261017 worktree를 만들고 원본 WIP를 보존했다.

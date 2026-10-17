@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[1]
-_ROOT = _BACKEND_ROOT.parent if (_BACKEND_ROOT.parent / ".env.server14.example").is_file() else _BACKEND_ROOT / "compose-contract"
+_ROOT = _BACKEND_ROOT.parent if (_BACKEND_ROOT.parent / ".env.prod.example").is_file() else _BACKEND_ROOT / "compose-contract"
 
 
 def test_dagster_postgres_runtime_uses_psycopg2_driver() -> None:
@@ -18,5 +18,5 @@ def test_dagster_postgres_runtime_uses_psycopg2_driver() -> None:
     finally:
         engine.dispose()
 
-    example = (_ROOT / ".env.server14.example").read_text(encoding="utf-8")
+    example = (_ROOT / ".env.prod.example").read_text(encoding="utf-8")
     assert "DAGSTER_POSTGRES_URL=postgresql+psycopg2://" in example

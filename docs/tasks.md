@@ -125,6 +125,8 @@ ADR-014 "후속" 교차 저장소 계약) 머지 뒤; T-TRN-02·05는 소유자 
 `docker-compose.odroid.yml`·`remote-deploy.sh`·`deploy-odroid.ps1` 셋; 나머지는 n150 전용 설치 스크립트·legacy 상태 프로브·README) —
 T-TRN-01은 M을 건드리지 않고(제외), T-TRN-03b가 M 부재를 단언한다.
 
+> 2026-10-17 구현 중(PR84): 필수 --host/Manager530 addr 효과 검증/.env.prod 추종 source와 합성 command 회귀를 추가했다. Manager530 머지·CI·독립2리뷰·실제 설치/ARM/운영UI 수용 전이므로 아래 체크는 유지한다.
+
 - [ ] **T-TRN-01** 배포 스크립트 두 개 개명 + `--host <addr>` 필수(기본값·host 목록 파일·스크립트 안 키→주소 표 없음):
       `scripts/deploy-server14.sh`·`deploy-server14-remote.sh` → `scripts/deploy-prod.sh`(+`deploy-prod-remote.sh`),
       `scripts/deploy-transport-admin-server14.sh` → `scripts/deploy-transport-admin-prod.sh`(운영 UI 12301/12305, Dagster 링크

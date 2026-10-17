@@ -25,7 +25,7 @@ RUN playwright install --with-deps chromium
 # 최종 인터프리터의 stdlib을 root 권한에서 미리 컴파일한다. 런타임에서 이 helper를 호출하지 않는다(무효 cache의 암묵적 컴파일은 별도).
 RUN python -I -m kortravelcommon.build_bytecode --stdlib
 
-COPY .env.server14.example /app/compose-contract/.env.server14.example
+COPY .env.prod.example /app/compose-contract/.env.prod.example
 COPY docs/openapi.json /app/compose-contract/openapi.json
 COPY docker-compose.yml /app/compose-contract/docker-compose.yml
 COPY docker-compose.transport-admin.yml /app/compose-contract/docker-compose.transport-admin.yml

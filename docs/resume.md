@@ -1,5 +1,7 @@
 # resume.md — 현재 인수인계
 
+> 2026-10-17 PR84 source: prod 이름3script/필수 --host/Manager530 addr 효과/.env.prod 정렬. 신규·기존 배포 순수계약94PASS/Ruff·Bash·diff PASS. Manager530 미머지·미설치 의존, 전체suite/Docker/live/실제env개명은 NOT_RUN. 독립2리뷰·CI 뒤 root 수용이 남아 있다.
+
 > 2026-10-17 T-TRN-01 착수: 필수 --host/Manager530 addr 효과 검증/.env.prod 명명 정합을 별도 feature에서 구현한다. 운영 변경0이며 Manager530 머지·CI·독립 리뷰·실제 적용은 후속이다.
 
 > 2026-10-17 PR83 후속: 제품2a6e9ba는 FE/admin Compose Test3곳만 core HTTP로 보강했다. 로컬 Node37+기존 health17 PASS/Ruff·syntax PASS. runtime imageac57과 deployment config2a6 분리. 전체 backend/DB/Docker/운영 재실행0; 최종 CI·독립2리뷰·native strict probe/live/CPU는 후속이다. [계약](runbooks/health-cpu-bytecode.md#feadmin-core-http-점검-2026-10-17).

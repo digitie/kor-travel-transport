@@ -20,11 +20,11 @@ import pytest
 _BACKEND_ROOT = Path(__file__).resolve().parents[1]
 _SCRIPTS = next(
     (candidate for candidate in (_BACKEND_ROOT / "scripts", _BACKEND_ROOT.parent / "scripts")
-     if (candidate / "deploy-server14-remote.sh").is_file()),
+     if (candidate / "deploy-prod-remote.sh").is_file()),
     _BACKEND_ROOT.parent / "scripts",
 )
-_REMOTE = _SCRIPTS / "deploy-server14-remote.sh"
-_ADMIN = _SCRIPTS / "deploy-transport-admin-server14.sh"
+_REMOTE = _SCRIPTS / "deploy-prod-remote.sh"
+_ADMIN = _SCRIPTS / "deploy-transport-admin-prod.sh"
 _DAGSTER_FAMILY = ("dagster", "dagster-postgres", "dagster-webserver")
 
 
@@ -136,8 +136,8 @@ def test_admin_deploy_requires_the_shared_dagster_url_or_none(tmp_path: Path, li
     text = _ADMIN.read_text(encoding="utf-8")
     start = text.index('dagster_url="$(')
     guard = text[start : text.index("unset dagster_url\n", start) + len("unset dagster_url\n")]
-    (tmp_path / ".env.server14").write_text("OTHER=1\n" + line, encoding="utf-8")
-    script = f"set -euo pipefail\nREMOTE_APP_DIR={tmp_path}\nREMOTE_ENV_FILE=.env.server14\n" + guard + "echo PASSED\n"
+    (tmp_path / ".env.prod").write_text("OTHER=1\n" + line, encoding="utf-8")
+    script = f"set -euo pipefail\nREMOTE_APP_DIR={tmp_path}\nREMOTE_ENV_FILE=.env.prod\n" + guard + "echo PASSED\n"
     result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=False)
     assert result.returncode == code, result.stderr
     assert ("PASSED" in result.stdout) is (code == 0)

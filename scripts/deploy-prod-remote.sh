@@ -1,41 +1,50 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# n150에서만 실행되는 deploy 단계다. 공용 DB 대상은 아래 DSN 검사가 고정한다(한 번짜리 cutover
+# Manager registry가 transport 소유 호스트임을 확인한 뒤 실행하는 deploy 단계다. 공용 DB 대상은 아래 DSN 검사가 고정한다(한 번짜리 cutover
 # receipt 게이트는 cutover가 끝나 ADR-011에서 걷어냈다). 로컬 Git checkout은 필요하지 않으며,
-# deploy-server14.sh가 staging한 candidate artifact 또는 cutover 직후의 staged artifact를 쓴다.
+# deploy-prod.sh가 staging한 candidate artifact 또는 cutover 직후의 staged artifact를 쓴다.
+if [[ "$#" != 2 || "$1" != "--host" || -z "$2" ]]; then
+  echo "Usage: $0 --host <IPv4 address>" >&2
+  exit 2
+fi
+REMOTE_HOST="$2"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+python3 "${SCRIPT_DIR}/validate-deploy-host.py" --host "${REMOTE_HOST}" --parse-only
 REMOTE_APP_DIR="${REMOTE_APP_DIR:-/home/digitie/apps/kor-travel-transport}"
-REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-.env.server14}"
+REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-.env.prod}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-kor-travel-transport}"
 CANDIDATE_SHA="${CANDIDATE_SHA:?set the staged candidate SHA}"
 RELEASE_MANIFEST_FILE="${REMOTE_APP_DIR}/.release-sha"
 
 if [[ "${REMOTE_APP_DIR}" != "/home/digitie/apps/kor-travel-transport" ]]; then
-  echo "Refusing n150 deployment: only the approved app directory may be used." >&2
+  echo "Refusing production deployment: only the approved app directory may be used." >&2
   exit 2
 fi
-if [[ "${REMOTE_ENV_FILE}" != ".env.server14" || "${COMPOSE_PROJECT_NAME}" != "kor-travel-transport" ]]; then
-  echo "Refusing n150 deployment: unexpected environment file or Compose project." >&2
+if [[ "${REMOTE_ENV_FILE}" != ".env.prod" || "${COMPOSE_PROJECT_NAME}" != "kor-travel-transport" ]]; then
+  echo "Refusing production deployment: unexpected environment file or Compose project." >&2
   exit 2
 fi
 if [[ ! "${CANDIDATE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
-  echo "Refusing n150 deployment: candidate SHA must be a full Git SHA." >&2
+  echo "Refusing production deployment: candidate SHA must be a full Git SHA." >&2
   exit 2
 fi
-if [[ "$(pwd -P)" != "${REMOTE_APP_DIR}" || ! -f "${REMOTE_ENV_FILE}" ]]; then
-  echo "Refusing n150 deployment: run from the staged approved app directory with its environment file." >&2
+if [[ "$(pwd -P)" != "${REMOTE_APP_DIR}" || ! -f "${REMOTE_ENV_FILE}" || ! -r "${REMOTE_ENV_FILE}" ]]; then
+  echo "Refusing production deployment: run from the staged approved app directory with its environment file." >&2
   exit 2
 fi
-# deploy-server14.sh의 자식이면 FD 9의 열린 파일 설명과 lock을 상속한다.
+python3 "${SCRIPT_DIR}/validate-deploy-host.py" --host "${REMOTE_HOST}" --env-file "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}"
+
+# deploy-prod.sh의 자식이면 FD 9의 열린 파일 설명과 lock을 상속한다.
 # 수동 실행이면 여기서 동일 lock을 새로 잡는다. 경로가 다른 FD는 재사용하지 않는다.
 release_lock_path="/home/digitie/apps/.kor-travel-transport-deploy.lock"
 if [[ "$(readlink -f "/proc/$$/fd/9" 2>/dev/null || true)" != "${release_lock_path}" ]]; then
   exec 9>"${release_lock_path}"
 fi
-flock -n 9 || { echo "Refusing n150 deployment: shared checkout is being changed." >&2; exit 2; }
+flock -n 9 || { echo "Refusing production deployment: shared checkout is being changed." >&2; exit 2; }
 if [[ ! -f "${RELEASE_MANIFEST_FILE}" || -L "${RELEASE_MANIFEST_FILE}" ]] \
   || [[ "$(tr -d '\r\n' < "${RELEASE_MANIFEST_FILE}")" != "${CANDIDATE_SHA}" ]]; then
-  echo "Refusing n150 deployment: staged release manifest does not match candidate." >&2
+  echo "Refusing production deployment: staged release manifest does not match candidate." >&2
   exit 2
 fi
 bash ./scripts/verify-release-stage.sh "${REMOTE_APP_DIR}" "${CANDIDATE_SHA}"
@@ -49,7 +58,7 @@ require_exact() {
   local expected="$2"
   local actual="${!name-}"
   if [[ "${actual}" != "${expected}" ]]; then
-    echo "Refusing server14 deployment: ${name}=${actual@Q}, expected ${expected@Q}." >&2
+    echo "Refusing production deployment: ${name}=${actual@Q}, expected ${expected@Q}." >&2
     exit 2
   fi
 }
@@ -64,26 +73,26 @@ require_exact SEED_SAMPLE_DATA false
 require_exact USE_SAMPLE_CLIENT_WHEN_NO_KEY false
 require_exact COLLECT_INTERVAL_SECONDS 300
 if [[ "${SCHEDULER_SAFETY_BUFFER_SECONDS:-}" != "120" ]]; then
-  echo "Refusing server14 deployment: SCHEDULER_SAFETY_BUFFER_SECONDS must be explicitly set to 120." >&2
+  echo "Refusing production deployment: SCHEDULER_SAFETY_BUFFER_SECONDS must be explicitly set to 120." >&2
   exit 2
 fi
 require_exact MANUAL_COLLECT_MIN_INTERVAL_SECONDS 300
 require_exact BACKEND_INTERNAL_URL http://127.0.0.1:14001
 require_exact BACKUP_DIR /app/backups
 if [[ -n "${NEXT_PUBLIC_API_BASE_URL:-}" ]]; then
-  echo "Refusing server14 deployment: NEXT_PUBLIC_API_BASE_URL must be empty for same-origin proxying." >&2
+  echo "Refusing production deployment: NEXT_PUBLIC_API_BASE_URL must be empty for same-origin proxying." >&2
   exit 2
 fi
 if [[ ! "${DATABASE_URL:-}" =~ ^postgresql\+asyncpg://[^@]+@127\.0\.0\.1:11000/kor_travel_transport$ ]]; then
-  echo "Refusing server14 deployment: DATABASE_URL must target the Manager shared application DB." >&2
+  echo "Refusing production deployment: DATABASE_URL must target the Manager shared application DB." >&2
   exit 2
 fi
 if [[ ! "${DAGSTER_POSTGRES_URL:-}" =~ ^postgresql(\+psycopg2)?://[^@]+@127\.0\.0\.1:11000/kor_travel_transport_dagster$ ]]; then
-  echo "Refusing server14 deployment: DAGSTER_POSTGRES_URL must target the dedicated Manager metadata DB." >&2
+  echo "Refusing production deployment: DAGSTER_POSTGRES_URL must target the dedicated Manager metadata DB." >&2
   exit 2
 fi
 
-RUNTIME_ENV_FILE="$(mktemp "${REMOTE_APP_DIR}/.env.server14.runtime.XXXXXX")"
+RUNTIME_ENV_FILE="$(mktemp "${REMOTE_APP_DIR}/.env.prod.runtime.XXXXXX")"
 cleanup_remote() {
   rm -f -- "${RUNTIME_ENV_FILE}"
 }
@@ -103,7 +112,7 @@ export RELEASE_SHA="${CANDIDATE_SHA}"
 # 하나이고, 공용 daemon·webserver가 그것을 location `kor-travel-transport`로 싣는다. 비밀번호는 Manager의
 # `x-dagster-shared-control-env`와 같은 규칙이다 — URL에 그대로 들어가므로 URI unreserved 문자만 받는다.
 if [[ ! "${KOR_TRAVEL_DAGSTER_SHARED_APP_PASSWORD:-}" =~ ^[A-Za-z0-9._~-]+$ ]]; then
-  echo "Refusing server14 deployment: KOR_TRAVEL_DAGSTER_SHARED_APP_PASSWORD must be the Manager shared Dagster password (URI-unreserved characters)." >&2
+  echo "Refusing production deployment: KOR_TRAVEL_DAGSTER_SHARED_APP_PASSWORD must be the Manager shared Dagster password (URI-unreserved characters)." >&2
   exit 2
 fi
 # DEPLOY_MODE=prepare-shared-dagster-cutover: 이미지만 빌드하고, Manager의 전환 스크립트
@@ -112,10 +121,10 @@ fi
 # 스크립트만 한다(이중 발화 방지).
 DEPLOY_MODE="${DEPLOY_MODE:-deploy}"
 if [[ "${DEPLOY_MODE}" != "deploy" && "${DEPLOY_MODE}" != "prepare-shared-dagster-cutover" ]]; then
-  echo "Refusing server14 deployment: DEPLOY_MODE must be deploy or prepare-shared-dagster-cutover." >&2
+  echo "Refusing production deployment: DEPLOY_MODE must be deploy or prepare-shared-dagster-cutover." >&2
   exit 2
 fi
-CUTOVER_ENV_FILE="${REMOTE_APP_DIR}/.env.server14.shared-dagster-cutover"
+CUTOVER_ENV_FILE="${REMOTE_APP_DIR}/.env.prod.shared-dagster-cutover"
 
 compose() {
   docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${RUNTIME_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml "$@"
@@ -142,10 +151,10 @@ compose build
 
 # code-server의 dagster는 공용 plane 호스트와 **같은 버전**이어야 한다. 높으면 공용 webserver가 unhealthy가 되어
 # 다른 테넌트까지 내려가고(버전 상한), 낮아도 run worker가 다른 버전의 instance ref를 읽는다. 컨테이너를 바꾸기 전에 본다.
-image_version="$(image_dagster_version)" || { echo "Refusing server14 deployment: cannot read the dagster version of ${BACKEND_RUNTIME_IMAGE}." >&2; exit 1; }
-host_version="$(shared_dagster_version)" || { echo "Refusing server14 deployment: cannot ask the shared Dagster webserver for its version." >&2; exit 1; }
+image_version="$(image_dagster_version)" || { echo "Refusing production deployment: cannot read the dagster version of ${BACKEND_RUNTIME_IMAGE}." >&2; exit 1; }
+host_version="$(shared_dagster_version)" || { echo "Refusing production deployment: cannot ask the shared Dagster webserver for its version." >&2; exit 1; }
 if [[ "${image_version}" != "${host_version}" ]]; then
-  echo "Refusing server14 deployment: ${BACKEND_RUNTIME_IMAGE} has dagster ${image_version}, the shared Dagster plane runs ${host_version} — pin backend/pyproject.toml to the host version." >&2
+  echo "Refusing production deployment: ${BACKEND_RUNTIME_IMAGE} has dagster ${image_version}, the shared Dagster plane runs ${host_version} — pin backend/pyproject.toml to the host version." >&2
   exit 2
 fi
 
@@ -219,14 +228,14 @@ wait_location_loaded() {
 
 # 공용 plane에 합류하기 전에는 이 배포가 code-server를 옮기면 안 된다 — 옛 daemon이 아직 schedule을 쏘는데
 # code-server만 공용 instance로 가고, Manager 전환 스크립트의 펜스·검증을 건너뛴다. 합류 여부는 실제 상태로 본다.
-plane_state="$(location_state)" || { echo "Refusing server14 deployment: cannot ask the shared Dagster webserver (${dagster_graphql_url}) for its workspace." >&2; exit 1; }
+plane_state="$(location_state)" || { echo "Refusing production deployment: cannot ask the shared Dagster webserver (${dagster_graphql_url}) for its workspace." >&2; exit 1; }
 if [[ "${plane_state}" == "absent" ]]; then
-  echo "Refusing server14 deployment: the shared Dagster plane does not list ${dagster_location} yet. Run DEPLOY_MODE=prepare-shared-dagster-cutover and the Manager cutover first." >&2
+  echo "Refusing production deployment: the shared Dagster plane does not list ${dagster_location} yet. Run DEPLOY_MODE=prepare-shared-dagster-cutover and the Manager cutover first." >&2
   exit 2
 fi
 for legacy in dagster-daemon dagster-webserver; do
   if [[ "$(docker inspect -f '{{.State.Running}}' "${COMPOSE_PROJECT_NAME}-${legacy}-1" 2>/dev/null || true)" == true ]]; then
-    echo "Refusing server14 deployment: the old ${legacy} still runs next to the shared plane (double fire). Finish the Manager cutover first." >&2
+    echo "Refusing production deployment: the old ${legacy} still runs next to the shared plane (double fire). Finish the Manager cutover first." >&2
     exit 2
   fi
 done

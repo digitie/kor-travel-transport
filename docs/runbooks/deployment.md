@@ -1,5 +1,15 @@
 # 배포 및 실행
 
+## T-TRN-01 source 배포 계약(2026-10-17)
+
+현재 source의 entry는 scripts/deploy-prod.sh --host <IPv4>, scripts/deploy-prod-remote.sh --host <IPv4>, scripts/deploy-transport-admin-prod.sh --host <IPv4>다. env 정본은 .env.prod와 .env.prod.example이며 app dir·project·실행 사용자는 유지한다. 구 env의 실제 개명·배포를 이 PR이 자동 수행하지 않는다.
+
+주소는 필수 인자다. 원격 IPv4에 주소가 있고, sudo -n ktdctl targets validate --json의 targets.transport.host가 가리키는 hosts.<key>.addr와 같으며 호출자가 env를 읽을 수 있어야 한다. Manager PR530 설치 전 hosts 필드가 없거나 sudo/registry 조회가 실패하면 복사·Docker 변경 전에 exit2다. 코드에 허용 주소표나 호스트 기본값을 두지 않는다. 운영 UI도 transport 키를 사용한다.
+
+DSN의 loopback11000/DB 이름, 공용 Dagster 버전, location absent 거절·PythonError 재로드 대기, 이 location의 run/worker drain·release lock은 바꾸지 않았다. 공용 daemon을 시작하거나 복구하지 않는다. 사용자의 daemon OFF 지시가 유지되는 동안에도 이를 자동 해제하지 않는다.
+
+예전 n150/파일명으로 적힌 아래 절은 당시 이력이다. 현재 명령에는 위 prod entry·--host·.env.prod를 적용하고, 이전 정책 문구·실제 source 배포/ARM/live 수용은 T-TRN-03a/04에서 별도로 정산한다. 현재 source가 실제 운영에 적용됐다는 의미가 아니다.
+
 > 현재 기준 배포 대상은 `192.168.1.14`이며 Docker/PostgreSQL은 n150에서만 실행한다. 13번은 source API와 rollback 기준으로 읽기만 한다. 새 배포는 [migration.md](migration.md)와 [`scripts/deploy-server14.sh`](../../scripts/deploy-server14.sh)를 우선 사용한다. 이 문서의 기존 ODROID 절차는 historical reference다.
 > **계획**: transport 스택을 odroid(`192.168.1.13`)로 옮기는 절차는 아래 "[odroid 배포 계획(ADR-014)](#odroid-배포-계획adr-014-proposed-미구현)" 절에 있다 — proposed·미구현이며 그때까지 이 머리말이 현재 운영이다.
 

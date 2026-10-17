@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REMOTE_HOST="${REMOTE_HOST:-192.168.1.14}"
+if [[ "$#" != 2 || "$1" != "--host" || -z "$2" ]]; then
+  echo "Usage: $0 --host <IPv4 address>" >&2
+  exit 2
+fi
+REMOTE_HOST="$2"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+python3 "${SCRIPT_DIR}/validate-deploy-host.py" --host "${REMOTE_HOST}" --parse-only
 REMOTE_USER="${REMOTE_USER:-digitie}"
 REMOTE_APP_DIR="${REMOTE_APP_DIR:-/home/digitie/apps/kor-travel-transport}"
-REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-.env.server14}"
+REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-.env.prod}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-kor-travel-transport}"
 DEPLOY_STAGE_ONLY="${DEPLOY_STAGE_ONLY:-false}"
 DEPLOY_MODE="${DEPLOY_MODE:-deploy}"
@@ -15,16 +21,12 @@ if [[ ! "${CANDIDATE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
   exit 2
 fi
 
-if [[ "${REMOTE_HOST}" != "192.168.1.14" ]]; then
-  echo "Refusing deployment: this script may run Docker only on 192.168.1.14 (got ${REMOTE_HOST})." >&2
-  exit 2
-fi
 if [[ "${REMOTE_APP_DIR}" != "/home/digitie/apps/kor-travel-transport" ]]; then
-  echo "Refusing deployment: only /home/digitie/apps/kor-travel-transport is an approved server14 app directory." >&2
+  echo "Refusing deployment: only /home/digitie/apps/kor-travel-transport is an approved production app directory." >&2
   exit 2
 fi
-if [[ "${REMOTE_ENV_FILE}" != ".env.server14" ]]; then
-  echo "Refusing deployment: only .env.server14 is an approved server14 environment file." >&2
+if [[ "${REMOTE_ENV_FILE}" != ".env.prod" ]]; then
+  echo "Refusing deployment: only .env.prod is an approved production environment file." >&2
   exit 2
 fi
 if [[ "${COMPOSE_PROJECT_NAME}" != "kor-travel-transport" ]]; then
@@ -40,7 +42,10 @@ if [[ "${DEPLOY_STAGE_ONLY}" != "true" && "${DEPLOY_STAGE_ONLY}" != "false" ]]; 
   exit 2
 fi
 
-ARCHIVE_PATH="$(mktemp -p /tmp kor-travel-transport-server14.XXXXXX.tgz)"
+# 주소 정본은 Manager registry다. 복사/생성 전에 실제 효과를 확인한다.
+ssh "${REMOTE_USER}@${REMOTE_HOST}" "python3 - --host '${REMOTE_HOST}' --env-file '${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}'" < "${SCRIPT_DIR}/validate-deploy-host.py"
+
+ARCHIVE_PATH="$(mktemp -p /tmp kor-travel-transport-prod.XXXXXX.tgz)"
 REMOTE_ARCHIVE="/tmp/$(basename "${ARCHIVE_PATH}")"
 
 cleanup() {
@@ -53,14 +58,14 @@ git archive --format=tar.gz --output="${ARCHIVE_PATH}" HEAD
 ssh "${REMOTE_USER}@${REMOTE_HOST}" "mkdir -p '${REMOTE_APP_DIR}'"
 scp "${ARCHIVE_PATH}" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_ARCHIVE}"
 ssh "${REMOTE_USER}@${REMOTE_HOST}" \
-  "REMOTE_APP_DIR='${REMOTE_APP_DIR}' REMOTE_ARCHIVE='${REMOTE_ARCHIVE}' REMOTE_ENV_FILE='${REMOTE_ENV_FILE}' COMPOSE_PROJECT_NAME='${COMPOSE_PROJECT_NAME}' CANDIDATE_SHA='${CANDIDATE_SHA}' DEPLOY_STAGE_ONLY='${DEPLOY_STAGE_ONLY}' DEPLOY_MODE='${DEPLOY_MODE}' bash -s" <<'REMOTE_SCRIPT'
+  "REMOTE_HOST='${REMOTE_HOST}' REMOTE_APP_DIR='${REMOTE_APP_DIR}' REMOTE_ARCHIVE='${REMOTE_ARCHIVE}' REMOTE_ENV_FILE='${REMOTE_ENV_FILE}' COMPOSE_PROJECT_NAME='${COMPOSE_PROJECT_NAME}' CANDIDATE_SHA='${CANDIDATE_SHA}' DEPLOY_STAGE_ONLY='${DEPLOY_STAGE_ONLY}' DEPLOY_MODE='${DEPLOY_MODE}' bash -s" <<'REMOTE_SCRIPT'
 set -euo pipefail
 if ! command -v rsync >/dev/null 2>&1; then
   echo "Refusing deployment: rsync is required to remove stale candidate files safely." >&2
   exit 2
 fi
-if [[ ! -f "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" ]]; then
-  echo "Missing ${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}; copy .env.server14.example and add the existing operations values." >&2
+if [[ ! -f "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" || ! -r "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" ]]; then
+  echo "Missing ${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}; copy .env.prod.example and add the existing operations values." >&2
   exit 2
 fi
 # 관리자 배포·Dagster 긴급 교체와 같은 checkout의 동시 변경을 막는다.
@@ -81,10 +86,10 @@ STAGE_MARKER="${REMOTE_APP_DIR}/.staged-release-sha"
 rm -f -- "${STAGE_MARKER}"
 rsync -a --delete \
   --exclude="${REMOTE_ENV_FILE}" \
-  --exclude=".env.server14.legacy" \
+  --exclude=".env.prod.legacy" \
   --exclude=".transport-admin-release-sha" \
   --exclude=".release-sha" \
-  --exclude=".env.server14.shared-dagster-cutover" \
+  --exclude=".env.prod.shared-dagster-cutover" \
   --exclude="backups/" \
   "${REMOTE_STAGE}/" "${REMOTE_APP_DIR}/"
 cd "${REMOTE_APP_DIR}"
@@ -95,13 +100,13 @@ printf '%s\n' "${CANDIDATE_SHA}" > "${stage_marker_tmp}"
 chmod 600 "${stage_marker_tmp}"
 mv -f -- "${stage_marker_tmp}" "${STAGE_MARKER}"
 if [[ "${DEPLOY_STAGE_ONLY}" == "true" ]]; then
-  echo "Candidate ${CANDIDATE_SHA} staged on n150; no containers were changed."
+  echo "Candidate ${CANDIDATE_SHA} staged on ${REMOTE_HOST}; no containers were changed."
   exit 0
 fi
 REMOTE_APP_DIR="${REMOTE_APP_DIR}" REMOTE_ENV_FILE="${REMOTE_ENV_FILE}" \
   COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME}" CANDIDATE_SHA="${CANDIDATE_SHA}" \
   DEPLOY_MODE="${DEPLOY_MODE}" \
-  ./scripts/deploy-server14-remote.sh
+  ./scripts/deploy-prod-remote.sh --host "${REMOTE_HOST}"
 REMOTE_SCRIPT
 
-echo "192.168.1.14 deployment completed; existing compose projects were not stopped."
+echo "Deployment completed; existing compose projects were not stopped."
