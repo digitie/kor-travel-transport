@@ -1,5 +1,9 @@
 # resume.md — 현재 인수인계
 
+> **2026-10-17 최신 main 감사:** PR84 MERGED d1593ecc(11:03:25 UTC), PR84 CI6 SUCCESS/live2 SKIP·main CI SUCCESS. root의11:58:07 UTC 조회는77/16·14healthy2noHC·daemon OFF이며 native sourceGit06d025a와 main tree는 같다. RELEASE_SHA40f6349는 낡은 metadata이고 기존 ac57 native 파일 검증과 별개다. label만으로 미배포/최신을 판정하지 않는다. [남은 작업·우선순위·실측 한계](audits/2026-10-17-remaining-work.md)가 최신 요약이다.
+
+> **다음 한 작업:** 코드 중복 구현 대신 T01/02/04의 공식 ARM/browser·새 bundle 수용과 T05 메모리 제한 source 계획을 준비한다. 수집 부하 CPU/RSS·provider 완주/복구는 사용자 재개 승인 후에만 검증한다. OPEN81/38/31은 옛 HEAD/중복 구현 여부를 재정산할 대상이며 무검토 머지하지 않는다. T03 정책 문서와 legacy M 삭제는 별개이며 전체 전환 수용 전 M을 보존한다.
+
 
 > 2026-10-17 PR84 이번 범위 수용 완료: 제품 af8a source CI6 SUCCESS/live2 SKIP·A/C 독립 리뷰·WSL95 PASS·로컬 Docker95 PASS/0 SKIP. root는 tracked source만 전진(.git/backups/추가 파일 보존), 중앙 env와 동일한 .env.prod0600/UID1001, 공식 Manager530 제품의 실제 CLI 진입점 및 승인0/비로컬2/env없음2 효과 검사를 확인했다. Manager530 PR은 아직 미머지다. 기존34 live UI는 새 namespace r3 34 PASS(10:32:03–31 UTC), 전후 native 동일·77/16·보호 파일11·daemon OFF 유지. r1/r2 각31P3F와 최초 CLI 부재 실패는 보존했다. 자세한 정산은 journal 같은 날짜.
 
