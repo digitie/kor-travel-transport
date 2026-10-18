@@ -64,7 +64,7 @@ def test_installed_common_has_pinned_cli_modules():
     metadata = importlib.metadata.distribution("kor-travel-common")
     direct = json.loads(metadata.read_text("direct_url.json") or "{}")
     if "vcs_info" in direct:
-        assert direct["vcs_info"]["commit_id"] == "a68d0495acc38906c31b95b1d0db163bd8f96f5b"
+        assert direct["vcs_info"]["commit_id"] == "89291f36d731ab906161b96757522e1cd833b4ef"
     else:
         # 실제 no-index wheel은 file URL이며 Git VCS 설치였다고 위조하지 않는다.
         assert direct.get("url", "").startswith("file:") and "archive_info" in direct
@@ -76,7 +76,7 @@ def test_installed_common_has_pinned_cli_modules():
     for name, digest in expected.items():
         assert hashlib.sha256((package / name).read_bytes()).hexdigest() == digest
     for name in ("pyproject.toml", "uv.lock"):
-        assert "a68d0495acc38906c31b95b1d0db163bd8f96f5b" in (BACKEND_ROOT / name).read_text()
+        assert "89291f36d731ab906161b96757522e1cd833b4ef" in (BACKEND_ROOT / name).read_text()
 
 
 
