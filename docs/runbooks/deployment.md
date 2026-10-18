@@ -811,8 +811,7 @@ Windows 로컬 PowerShell 테스트만으로 ODROID에 배포하지 않는다. P
 
 `.\scripts\deploy-odroid.ps1`는 실행 시 즉시 종료된다. 현재 운영에는 위 현재 정본 절·ADR-014 절차를 사용한다.
 
-실제 운영 배포는 [n150 현재 운영 절차](#n150-현재-운영-절차)의
-`scripts/deploy-server14.sh`만 사용한다.
+이 절은 당시 n150 배포의 역사적 기록이다. 현재 운영은 위 [현재 Odroid 정본](#현재-odroid-정본2026-10-19)과 scripts/deploy-prod.sh를 따른다.
 
 호환성 메모:
 
