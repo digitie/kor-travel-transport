@@ -1,5 +1,27 @@
 # resume.md — 현재 인수인계
 
+## 2026-10-18 수집 공항 조회 비용 개선 후보
+
+최신 main f3be717에서 공항 조회를 저장 호출별로 재사용했다. 신규/기존 공항,
+중복 관측 메타데이터 정정과 실패 rollback 뒤 재호출을 검증한다.
+[실측 및 한계](architecture/performance.md#공항-주차-수집의-반복-조회-감소-2026-10-18)를 참고한다.
+집중 Python23 PASS(snapshot savepoint 충돌 후 같은 공항 재사용 포함).
+Odroid ARM 격리 실측은 기준·후보 각3회 PASS: helper CPU 중앙값15.2357→7.7411초,
+SELECT1000→3/UPDATE1000 유지, RSS는 사실상 동일하다. 운영 job 전체 감소율이 아니다.
+[실측 이력과 아직 남은 검증](reviews/2026-10-18-collector-airport-cpu.md)을 따른다.
+최초 전체 Python 실행은 종료 요약 없이 중단되어 NOT_COMPLETED 이력으로 보존한다.
+root 재실행은846 PASS/10 SKIP/6 warnings,1846.29초,exit0이며 ARM 집중23 PASS(12.37초)다.
+제품 e487ca16 CI는6 SUCCESS/live2 SKIPPED다. SKIP를 live 통과로 취급하지 않는다.
+API/CS 운영 전환 attempt297a1d36은 PASS, 배포 후 공개 UI34/34 PASS(WSL Chromium1243)다.
+WSL Docker 전체2차는 e487 소스605개를 고정해839 PASS/7 FAIL/10 SKIP로 완주했다.
+1GiB 임시FS가2GiB 여유 공간 검사를 충족하지 못한7실패는 충분한 공간의 소유
+임시FS로 바꾼 관련 모듈52 PASS에서 모두 해소했다. 단일 전체 PASS로 합산하지 않는다.
+James/Popper의 독립 소스·최종 검증 리뷰는 미해소 P0/P1/P2 0건이며,
+실패군 전체 재검증으로 수용했다. 이 기록을 PR #88에 포함한다.
+다음 작업은 전체 수집 경로의 CPU·메모리 실측과 병목 개선이다.
+전체 수집 RSS·idle 개선은 아직 증명하지 않았다. daemon OFF다.
+
+
 ## 2026-10-18 주소 갱신 운영 배포·UI 수용 진행
 
 #86 source2c9b416c/네 역할 배포와 migration0025, 실제 VWorld 단일 대상 및 원천 5표 보존을 확인했다.

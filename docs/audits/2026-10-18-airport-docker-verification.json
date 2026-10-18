@@ -1,0 +1,51 @@
+{
+  "status": "FULL_RUN_FAILURES_RESOLVED_BY_SCOPED_RERUN",
+  "source": "e487ca1669e9d2974e2e3c05c7f4d7c26f87876f",
+  "single_full_run_pass": false,
+  "full_r3": {
+    "passed": 839,
+    "failed": 7,
+    "skipped": 10,
+    "seconds": 1045.02,
+    "exit": 1
+  },
+  "focused_r4": {
+    "passed": 52,
+    "failed": 0,
+    "seconds": 3.37,
+    "exit": 0
+  },
+  "failed_ids_all_in_rerun_pass": [
+    "tests.test_backup_restore::test_create_backup_checks_dump_size_before_moving_into_backup_dir",
+    "tests.test_backup_restore::test_failed_staged_upload_does_not_prune_existing_backups",
+    "tests.test_backup_restore::test_slow_upload_is_bounded_and_cleans_its_staging_file",
+    "tests.test_backup_restore::test_upload_preserves_pre_restore_backup_when_quota_prunes_old_files",
+    "tests.test_backup_restore::test_upload_rejects_a_chunk_larger_than_aggregate_quota_before_deleting_backups",
+    "tests.test_backup_restore::test_uploaded_backup_enforces_aggregate_storage_limit",
+    "tests.test_backup_restore::test_uploaded_backup_is_safely_named_and_listed"
+  ],
+  "same_image_id": "sha256:f46d222b61884d564dba68e6cc3ce3988d32c86c8fd934ac61533d088c21da3b",
+  "same_env_mapping_no_duplicate_keys": true,
+  "env_array_order_differs_only": true,
+  "same_source_manifest": true,
+  "source_files": 605,
+  "manifest_sha256": "ce335948bc032f8ca5c02e68bcd547b6a5041be2b1e85eb1db0957f98678dd85",
+  "fixture_delta": [
+    "selected test modules",
+    "replace 1GiB tmpfs with owned host tmp directory; no product limit change",
+    "full r3 uses pytest-xdist -n2 --dist loadfile; focused r4 runs serial without xdist"
+  ],
+  "tmp_owned": true,
+  "tmp_free_bytes": 147803631616,
+  "runtime_network": "none",
+  "docker_socket_mounted": false,
+  "original_results_retained": true,
+  "remaining_scope": "single full run under new temporary filesystem not executed; all original failed testcase IDs passed in targeted rerun; focused rerun does not revalidate parallel execution",
+  "hashes": {
+    "results-r3/junit.xml": "c2b96dc62c233ed74f6ad767e54c8b75184619cddd5d37734a727b16d7d08a97",
+    "results-r3/focused-r4.xml": "302fe86c512f33a3756aca72c4422058f902b8478e080c6d8c66baa67d808836",
+    "focused-r4.log": "4c6ebae489644136621f261ef5e50a62c9695ac2cffff4a35d6a19fdeea1c901",
+    "results-r3/pytest.log": "858a91f1648a31f7c07c4c7fe45484a61bfeb80932b1214e294e4767c649590a",
+    "results-r3/proof.safe.json": "d22c161e09c9c71d017a0c4ed5bb4dfd1b9a6263ff1e1ccf6153d2788d52056a"
+  }
+}

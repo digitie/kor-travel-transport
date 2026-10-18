@@ -1,0 +1,161 @@
+{
+  "status": "PASS_ARM_ISOLATED",
+  "proof": {
+    "source_files": 37,
+    "versions": {
+      "SQLAlchemy": "2.1.5",
+      "dagster": "1.13.24",
+      "kor-travel-common": "0.1.0.dev0"
+    }
+  },
+  "results": [
+    {
+      "role": "old",
+      "iteration": 0,
+      "candidate_lookup_lower_bound": 3,
+      "case": "transport-airport",
+      "cpu_ns": 15120898794,
+      "distinct_airports": 3,
+      "models_sha256": "a7919bc474961b895d0430bfed7b97059ade4c11ab007f8224c3531642908ad9",
+      "process_peak_rss_kib": 51780,
+      "python_live_bytes": 116456,
+      "python_peak_bytes": 136465,
+      "revision": "2c9b416cc92f18cd6f4c47c1852344c7049ad67c",
+      "rows": 1000,
+      "scope": "actual airport helper; SQLite memory; excludes lot/snapshot/provider",
+      "source_sha256": "9b0f5cab1cf7a3fa4417283a1fa1d87cdc0aae37c132a538037816fe684ea469",
+      "sql": {
+        "insert": 0,
+        "other": 0,
+        "select": 1000,
+        "update": 1000
+      },
+      "status": "PASS_LOCAL_FIXTURE",
+      "wall_ns": 15478280629
+    },
+    {
+      "role": "new",
+      "iteration": 0,
+      "candidate_lookup_lower_bound": 3,
+      "case": "transport-airport",
+      "cpu_ns": 7757328196,
+      "distinct_airports": 3,
+      "models_sha256": "a7919bc474961b895d0430bfed7b97059ade4c11ab007f8224c3531642908ad9",
+      "process_peak_rss_kib": 51756,
+      "python_live_bytes": 93687,
+      "python_peak_bytes": 132494,
+      "revision": "working-tree-candidate",
+      "rows": 1000,
+      "scope": "actual airport helper; SQLite memory; excludes lot/snapshot/provider",
+      "source_sha256": "426e96a5a0649bfa7ee4d93f720ba7f3389032c4d144e361fa32a77c0c1eb142",
+      "sql": {
+        "insert": 0,
+        "other": 0,
+        "select": 3,
+        "update": 1000
+      },
+      "status": "PASS_LOCAL_FIXTURE",
+      "wall_ns": 7874428473
+    },
+    {
+      "role": "old",
+      "iteration": 1,
+      "candidate_lookup_lower_bound": 3,
+      "case": "transport-airport",
+      "cpu_ns": 15346257138,
+      "distinct_airports": 3,
+      "models_sha256": "a7919bc474961b895d0430bfed7b97059ade4c11ab007f8224c3531642908ad9",
+      "process_peak_rss_kib": 51640,
+      "python_live_bytes": 121129,
+      "python_peak_bytes": 140912,
+      "revision": "2c9b416cc92f18cd6f4c47c1852344c7049ad67c",
+      "rows": 1000,
+      "scope": "actual airport helper; SQLite memory; excludes lot/snapshot/provider",
+      "source_sha256": "9b0f5cab1cf7a3fa4417283a1fa1d87cdc0aae37c132a538037816fe684ea469",
+      "sql": {
+        "insert": 0,
+        "other": 0,
+        "select": 1000,
+        "update": 1000
+      },
+      "status": "PASS_LOCAL_FIXTURE",
+      "wall_ns": 15652552648
+    },
+    {
+      "role": "new",
+      "iteration": 1,
+      "candidate_lookup_lower_bound": 3,
+      "case": "transport-airport",
+      "cpu_ns": 7521519520,
+      "distinct_airports": 3,
+      "models_sha256": "a7919bc474961b895d0430bfed7b97059ade4c11ab007f8224c3531642908ad9",
+      "process_peak_rss_kib": 51484,
+      "python_live_bytes": 93681,
+      "python_peak_bytes": 132479,
+      "revision": "working-tree-candidate",
+      "rows": 1000,
+      "scope": "actual airport helper; SQLite memory; excludes lot/snapshot/provider",
+      "source_sha256": "426e96a5a0649bfa7ee4d93f720ba7f3389032c4d144e361fa32a77c0c1eb142",
+      "sql": {
+        "insert": 0,
+        "other": 0,
+        "select": 3,
+        "update": 1000
+      },
+      "status": "PASS_LOCAL_FIXTURE",
+      "wall_ns": 7631614370
+    },
+    {
+      "role": "old",
+      "iteration": 2,
+      "candidate_lookup_lower_bound": 3,
+      "case": "transport-airport",
+      "cpu_ns": 15235709020,
+      "distinct_airports": 3,
+      "models_sha256": "a7919bc474961b895d0430bfed7b97059ade4c11ab007f8224c3531642908ad9",
+      "process_peak_rss_kib": 51504,
+      "python_live_bytes": 114596,
+      "python_peak_bytes": 134320,
+      "revision": "2c9b416cc92f18cd6f4c47c1852344c7049ad67c",
+      "rows": 1000,
+      "scope": "actual airport helper; SQLite memory; excludes lot/snapshot/provider",
+      "source_sha256": "9b0f5cab1cf7a3fa4417283a1fa1d87cdc0aae37c132a538037816fe684ea469",
+      "sql": {
+        "insert": 0,
+        "other": 0,
+        "select": 1000,
+        "update": 1000
+      },
+      "status": "PASS_LOCAL_FIXTURE",
+      "wall_ns": 15515417155
+    },
+    {
+      "role": "new",
+      "iteration": 2,
+      "candidate_lookup_lower_bound": 3,
+      "case": "transport-airport",
+      "cpu_ns": 7741055233,
+      "distinct_airports": 3,
+      "models_sha256": "a7919bc474961b895d0430bfed7b97059ade4c11ab007f8224c3531642908ad9",
+      "process_peak_rss_kib": 51540,
+      "python_live_bytes": 93653,
+      "python_peak_bytes": 132451,
+      "revision": "working-tree-candidate",
+      "rows": 1000,
+      "scope": "actual airport helper; SQLite memory; excludes lot/snapshot/provider",
+      "source_sha256": "426e96a5a0649bfa7ee4d93f720ba7f3389032c4d144e361fa32a77c0c1eb142",
+      "sql": {
+        "insert": 0,
+        "other": 0,
+        "select": 3,
+        "update": 1000
+      },
+      "status": "PASS_LOCAL_FIXTURE",
+      "wall_ns": 7870784838
+    }
+  ],
+  "runtime_unchanged": true,
+  "daemon_off": true,
+  "external_network": false,
+  "production_database": false
+}
