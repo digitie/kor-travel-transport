@@ -1,6 +1,6 @@
 # ADR-014: transport 스택을 odroid(192.168.1.13)에서 운영하고 배포 스크립트는 `--host <addr>`를 효과로 검사한다
 
-- **상태**: proposed (미구현 — 이 문서는 코드를 바꾸지 않았다. 구현은 `docs/tasks.md` T-046의 T-TRN-01~05)
+- **상태**: accepted (2026-10-19 현재 운영 계약 수용; 최초 전환 이력 미회수 범위와 T-TRN-05는 별도)
 - **날짜**: 2026-10-13
 - **결정자**: agent + human (교차 저장소 Track 2 설계 "geo·weather·transport를 odroid로 옮긴다" 2026-10-13 최종본;
   소유자 지시 "설계와 각 프로젝트 문서 수정해서 코딩을 할 수 있게 준비")
@@ -13,6 +13,26 @@
   단 이 PR이 함께 고치는 `docs/runbooks/deployment.md`는 줄 번호 대신 절 제목으로 인용한다. Manager 쪽 인용(ADR-58·`docs/prod-deployment.md`
   §9·`test_transport_shared_bootstrap_contract.py`)은 Manager origin/main `094d397` + Track 2 문서 PR(머지 예정) 기준이며, 그 PR 머지 뒤
   절 번호를 한 번 대조한다(T-TRN-04).
+
+### 2026-10-19 현재 운영 정합
+
+아래 컨텍스트·파일 줄 번호·명령은 2026-10-13 설계 시점의 기록이다. 현재 배포는
+[현재 런북](../runbooks/deployment.md)과 [Manager 대조](../audits/2026-10-19-manager-contract-alignment.md)를 따른다.
+Manager main `397a91ca`의 §9.2②는 workspace digest·동일 SHA 설치·targets validate 후
+`dagster-plane converge --dry-run/--confirm`으로 plane을 먼저 반영한다. 아래 결정10의
+옛 `ensure dagster` 명령을 현재 운영에서 실행하지 않는다. plane/workspace 선행이라는
+효과 조건은 유지하며, 운영의 공용 PG를 포함한 ensure는 사용하지 않는다.
+
+PR90에서 현재 Odroid gateway 정본·Map 실제 소비자 GET 15개·UI34를 수용했다.
+admin ARM 번들 증거는 [실제 빌드 기록](../audits/2026-10-19-admin-bundle-acceptance.md)에 연결했다.
+현재 양 호스트 active run0·daemon OFF·상태 불변, Odroid5역할 healthy와 정상 Transport
+location, n150 Transport 컨테이너 및 location 부재를 읽기 전용으로 확인했다.
+현재 배포의 host 효과 검사와 실제 n150 소비자 GET/UI 수용을 근거로 운영 결정을 accepted로
+정산한다. 최초 workspace load-error→정상 순간의 원문은 미회수이며, 과거 n150 backend
+exited를 현재 상태라고 주장하지 않는다. 현재 부재는 중복 실행이 없다는 조건을 충족한다.
+HAProxy는 사용자 설정을 유지한 채 외부 UI/API를 검증했으며 직접 접속·변경하지 않았다.
+아래 최초 전환 체크리스트는 역사적 절차로 보존한다. accepted는 모든 후속 task 완료를
+뜻하지 않는다. 메모리 한도·실제 Opinet 수용은 T-TRN-05에서 별도 처리한다.
 
 ### 컨텍스트
 

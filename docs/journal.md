@@ -1,3 +1,11 @@
+## 2026-10-19 PR91 현재 Track2 문서 수용
+
+PR90 머지 뒤 현재 ARM 이미지·번들·브라우저 및 실소비자/UI 증거를 연결했다.
+T-TRN-02/03a/04를 정산하고 ADR014의 현재 운영 결정을 accepted로 기록했다.
+최초 load-error 순간 원문은 미회수로 보존하며 현재 정상 location 조회와 구분한다.
+양 호스트 active0·daemon OFF·container 불변을 RO로 확인했다. M6 은퇴와
+5role memory==memswap/실 Opinet 수용은 후속으로 남긴다. 제품·운영 변경0.
+
 ## 2026-10-18 주소 갱신 최종 소스 검증
 
 ## 2026-10-19 Track2 문서 정본 정렬 초안

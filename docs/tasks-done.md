@@ -1,5 +1,19 @@
 # tasks-done.md — 완료 작업 아카이브
 
+## 2026-10-19 — T-TRN-02·04 현재 운영 계약 수용
+
+- [x] T-TRN-02: PR86의 실제 ARM 관리자 이미지14e8c212·빌드276.24초·canonical URL2/옛 URL0/같은 chunk2를 회수했다. PR90 후 같은 이미지의 UI34도 PASS다. [번들 근거](audits/2026-10-19-admin-bundle-acceptance.md).
+- [x] T-TRN-04: 실제 ARM backend 빌드/설치37파일·Chromium 렌더, Manager main397a91 정본 대조, 양 호스트 active0·Odroid location 정상·n150 Transport 부재와 Map 실제 소비자GET/UI 수용을 연결해 ADR014를 accepted로 정산했다.
+- 최초 load-error→정상 전환 순간의 원문은 미회수이며 현재 정상 상태로 대체해 역사적 PASS를 주장하지 않는다. daemon OFF·사용자 HAProxy 설정을 유지했고 별도 실 Opinet/메모리 정책은 T-TRN-05로 남긴다. [현재 상태](current-state.md), [Manager 대조](audits/2026-10-19-manager-contract-alignment.md).
+
+
+## 2026-10-19 — T-TRN-03a 운영 호스트 규칙 정렬
+
+- [x] 현재 사용자 지시와 실제 Odroid NVMe 배포에 맞춰 AGENTS/SKILL/CLAUDE 및 운영 런북의 옛 호스트 금지 문구를 현재 절차로 교체했다. daemon OFF·승인 서비스 범위·Manager host 효과 검사는 유지한다.
+- 역사적 설계/리뷰의 문구는 당시 기록으로 구분한다. 자산 M 6개 삭제(T-TRN-03b), 메모리 정책·실제 Opinet 수용(T-TRN-05)은 이 문서 변경의 완료 범위가 아니다.
+
+원래 상세 교체 목록은 PR91 이전 tasks 이력에 보존한다. 지정된 active 문서의 금지 문구 정규식 검사는 0건이다.
+
 ## 2026-10-19 PR90 운영 배포 계약 수용
 
 포트12302/12303·NVMe staging·단일 project와 소비자 제한 export를 정본화했다.

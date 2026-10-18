@@ -22,7 +22,7 @@
 | [ADR-011](011-backend-internal-identity-transport.md) | 백엔드·내부 식별자를 `kor-travel-transport`로 옮기고 사용자 노출 브랜드 `parking-radar`만 남긴다 | accepted |
 | [ADR-012](012-admin-token-for-backup-and-admin-routes.md) | 백업·관리 API는 관리자 토큰으로 닫고 공개 웹 앱에서 백업 UI를 없앤다 | accepted |
 | [ADR-013](013-internal-service-exports-for-map.md) | kor-travel-map에 OpiNet·KREX·공항 데이터를 토큰으로 닫힌 내부 export로 제공한다 | accepted |
-| [ADR-014](014-odroid-host-and-deploy-host-flag.md) | transport 스택을 odroid(192.168.1.13)에서 운영하고 배포 스크립트는 `--host <addr>`를 효과로 검사한다 | proposed (미구현; 교차 저장소 Track 2 설계 2026-10-13) |
+| [ADR-014](014-odroid-host-and-deploy-host-flag.md) | transport 스택을 Odroid에서 운영하고 배포 스크립트는 `--host <addr>`를 효과로 검사한다 | accepted (2026-10-19 현재 운영 수용; 최초 전환 이력·T-TRN-05 한계 별도) |
 
 **다음 번호 = ADR-015.**
 
