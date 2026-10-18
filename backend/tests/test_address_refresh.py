@@ -1,8 +1,12 @@
 """원천 주소·정방향 좌표를 보존하며 Geo 없이 파생 주소를 갱신한다."""
 from datetime import UTC, datetime
 
-from kortravelcommon.reverse_address import AddressResolver
-from sqlalchemy import create_engine, insert, select
+from kortravelcommon.reverse_address import (
+    AddressResolver,
+    DatabaseAddressSource,
+    refresh_reverse_addresses,
+)
+from sqlalchemy import String, cast, create_engine, insert, literal, select
 
 from app.core.config import Settings
 from app.models import (
@@ -75,3 +79,73 @@ def test_admin_summary_is_read_only_and_fail_closed(test_settings, monkeypatch):
         assert result.json()["refresh_months"] == 6
         assert result.json()["configured"] is True
         assert "private-provider-key" not in result.text
+
+
+class RecordingResolver(Resolver):
+    def __init__(self):
+        self.calls = []
+
+    def reverse(self, target):
+        self.calls.append(target.key)
+        return super().reverse(target)
+
+
+def ferry_address_fixture(tmp_path):
+    url = "sqlite:///" + str(tmp_path / "ferry-address.db")
+    settings = Settings(_env_file=None, database_url=url)
+    engine = create_engine(url)
+    models = (FuelStation, BusTerminalReference, FerryPort, RailStationReference, RestAreaReference)
+    tables = [model.__table__ for model in models]
+    tables.extend(Base.metadata.tables[name] for name in ("reverse_address_entries", "reverse_address_control"))
+    Base.metadata.create_all(engine, tables=tables)
+    now = datetime.now(UTC)
+    rows = [
+        {"id": i, "source": "data_go_kr_maritime", "port_id": str(i), "port_name": "시험 항구 " + str(i),
+         "longitude": 127 + i * 0.1, "latitude": 37 + i * 0.1,
+         "location_source": origin, "first_seen_at": now, "last_seen_at": now}
+        for i, origin in enumerate(("data_go_kr_port_guideline", "admin_manual", None), start=1)
+    ]
+    with engine.begin() as conn:
+        conn.execute(insert(FerryPort), rows)
+    return settings, engine
+
+
+def test_legacy_ferry_guideline_is_not_reverse_geocoded_and_sources_are_preserved(tmp_path):
+    settings, engine = ferry_address_fixture(tmp_path)
+    resolver = RecordingResolver()
+    try:
+        with engine.connect() as conn:
+            before = [dict(row) for row in conn.execute(select(FerryPort.__table__)).mappings()]
+        result = run_address_refresh(settings, force=True, resolver=resolver)
+        assert result["requests"] == 2
+        assert set(resolver.calls) == {"ferry_port:2", "ferry_port:3"}
+        with address_source(settings) as source:
+            assert source.summary()["total"] == 2
+            assert {row["target_key"] for row in source.sample()} == {"ferry_port:2", "ferry_port:3"}
+            assert source.store.row("ferry_port:1") is None
+        with engine.connect() as conn:
+            after = [dict(row) for row in conn.execute(select(FerryPort.__table__)).mappings()]
+        assert after == before
+    finally:
+        engine.dispose()
+
+
+def test_existing_derived_address_for_legacy_ferry_is_hidden(tmp_path):
+    settings, engine = ferry_address_fixture(tmp_path)
+    try:
+        with address_source(settings) as source:
+            # 이전 admission으로 저장된 결과를 실제 공통 엔진으로 만든다.
+            old_selection = select(
+                (literal("ferry_port:") + cast(FerryPort.id, String)).label("target_key"),
+                FerryPort.longitude, FerryPort.latitude, FerryPort.port_name.label("display_name"),
+            )
+            old_source = DatabaseAddressSource(source.store, old_selection)
+            refresh_reverse_addresses(
+                source.store, Resolver(), old_source.page, old_source.retries,
+                pending_failures=old_source.pending_failures, force=True,
+            )
+            assert source.store.row("ferry_port:1")["status"] == "ok"
+            assert {row["target_key"] for row in source.sample()} == {"ferry_port:2", "ferry_port:3"}
+            assert source.summary()["total"] == 2
+    finally:
+        engine.dispose()

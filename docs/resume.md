@@ -4,7 +4,17 @@
 
 VWorld 우선·Kakao fallback, 위치별 달력 6개월 자동 갱신과 Admin 수동 실행을 구현했다. 두 앱은 같은 Common Python 엔진을 고정 commit으로 사용한다. [설계·설정 및 검증 범위](reverse-address-refresh.md)를 참조한다. 원천 주소·좌표는 보존한다.
 
-로컬 실브라우저 최종 재검증은 앱별 13개(합계 26개) 통과했고 실제 인증·상태 API·Dagster 큐 예약·중복 차단·모바일/키보드·오류 복구를 포함한다. 제공자는 주입 fixture다. Python 전체 검증은 Common 509개, Weather 657개와 추가 GraphQL 계약, Transport 838개 통과·환경 조건 10개 skip이다. Draft PR과 독립 리뷰를 진행하며 운영 migration·실제 제공자 실호출·배포·운영 UI 수용은 미실행이다. Daemon은 중지 상태를 유지한다.
+로컬 실브라우저 최종 재검증은 앱별 13개(합계 26개) 통과했고 실제 인증·상태 API·Dagster 큐 예약·중복 차단·모바일/키보드·오류 복구를 포함한다. 제공자는 주입 fixture다. Python 전체 검증은 Common 509개, Weather 658개, Transport 838개 통과·환경 조건 10개 skip이다. Draft PR과 독립 리뷰를 진행하며 운영 migration·실제 제공자 실호출·배포·운영 UI 수용은 미실행이다. Daemon은 중지 상태를 유지한다.
+
+2026-10-18 추가 리뷰: James r1 SOURCE PASS/P3 문구1, Popper r1 REQUEST_CHANGES/P2 legacy 항구 좌표 admission1.
+기준 f8e5dd06f8bfe478fdb57785e70b2304958333ad에서 두 원문을 확정한 뒤 기존 지도와 같은 제외 조건을 적용했다.
+작성자 SQLite 2 FAIL→PASS, 주소/health 집중21 PASS 및 소유 PostgreSQL17 실제 모델·공통엔진에서
+legacy 제외·NULL/수동 좌표 유지·이전 파생 결과 숨김·원천 불변을 확인했다. 수정 후 최종 CI/두 리뷰는 별도다.
+[최초 리뷰 원문](reviews/2026-10-18-address-refresh-r1.md)을 보존한다.
+
+사용자 작업 순서: Track1·2 관련 작업을 먼저 모두 완료하고, 그 뒤 Transport·Weather 수집기의 CPU·메모리를
+같은 workload에서 실측해 개선한다. 이 주소 기능 검증을 수집기 최적화나 Track1·2 전체 수용으로 대신하지 않는다.
+Daemon OFF는 계속 유지한다.
 
 > **2026-10-17 최신 main 감사:** PR84 MERGED d1593ecc(11:03:25 UTC), PR84 CI6 SUCCESS/live2 SKIP·main CI SUCCESS. root의11:58:07 UTC 조회는77/16·14healthy2noHC·daemon OFF이며 native sourceGit06d025a와 main tree는 같다. RELEASE_SHA40f6349는 낡은 metadata이고 기존 ac57 native 파일 검증과 별개다. label만으로 미배포/최신을 판정하지 않는다. [남은 작업·우선순위·실측 한계](audits/2026-10-17-remaining-work.md)가 최신 요약이다.
 

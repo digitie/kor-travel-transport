@@ -1,0 +1,32 @@
+{
+  "scope": "Transport86 formal FULL initial consumer review; Weather/Common context and already separately reviewed",
+  "base": "61a566dee0b1cc40f858652c0683883c26e56411",
+  "head": "f8e5dd06f8bfe478fdb57785e70b2304958333ad",
+  "path": "/home/digitie/dev/kor-travel-transport-codex-reverse-address-20261018",
+  "created_utc": "2026-10-18T02:58:40.021410+00:00",
+  "request": "VWorld primary/Kakao fallback, six calendar month automatic reverse address refresh/Admin manual queue; source/coords preserved, no Geo dependency, shared Common engine, bounded memory and reliable failure/recovery",
+  "common_pin": "c067a7f6a11b106931a73cd7465503d90e54d976",
+  "acceptance": [
+    "Read-only source union valid-coord fuel/bus/ferry/rail/rest area; sidecar derived addresses only Admin/API, ordinary source/map fields unchanged",
+    "Native own-location address job/sensor; calendar six-month scheduling and manual failure resume with AUTO off; daemon OFF",
+    "Auth/CSRF/fixed job scope/body/deadlines, bounded summaries, single Node process submission guard with explicit distributed exactly-once limit",
+    "Migration0025/lineage/OpenAPI/TS/config/compose share correct pin/page-retries-required pending callbacks",
+    "No source/provider implementation copies; sequential batch50/time budget/owner lease/backoff/cursor wrap/cache"
+  ],
+  "root_checks": [
+    "Exact-head pull_request workflow39090952872 SUCCESS incl PostgreSQL846 PASS/2 SKIP, frontend/Admin test/type/build. Duplicate push workflow39090949959 still pending, explicitly not counted PASS and must finish before merge.",
+    "Final functional source6a93c61 Docker full835 PASS13 SKIP/793.28sec; f8 differs only two EOF whitespace files, normalized exact/Python AST equality verified. Product backend c067 image and Admin6a build/tests211 PASS.",
+    "Actual owned loopback auth/API/native queued Dagster + injected provider UI13 Transport +13 Weather=26 PASS; late GET4 FAIL->4 PASS. Owned queue2 and fixture process5 groups cleaned, no daemon.",
+    "Common c067 two FULL source PASS/CI14 and Common39 merged33a3382; Weather111 two FULL source PASS/CI/UI and mergedf3ab79e, docs112 merged36c1195."
+  ],
+  "evidence": [
+    "reverse-address-final-ui26-verification-20261018.json SHA256 fcc89310e250b1828fc65a9151a8ebf92160aa72096bbb734a8790a616702e5e",
+    "reverse-address-transport-final-docker-verification-20261018.json SHA256 8d068bd19fe3e9ddef6d0f9ae81a1f29b3a93c73feac49862a0a7b43afd84465"
+  ],
+  "constraints": [
+    "Read-only immutable Git object / owned temp fixture only; other agents present, no edit/revert source/index/branch",
+    "No actual credentials/providers/production/SSH/Docker/daemon operations",
+    "No peer new report until both final; historical Common/Weather reports may be read as dependency context, not substitute Transport formal review",
+    "Actual production migration/provider/UI/deploy/CPU-RSS not run; collector optimization deferred until Track1/2 complete per latest user"
+  ]
+}

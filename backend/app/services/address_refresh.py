@@ -8,7 +8,7 @@ from kortravelcommon.reverse_address import (
     address_engine,
     refresh_reverse_addresses,
 )
-from sqlalchemy import String, cast, literal, select, union_all
+from sqlalchemy import String, cast, literal, or_, select, union_all
 
 from app.models import (
     BusTerminalReference,
@@ -30,13 +30,19 @@ def address_source(settings):
             ("rail_station", RailStationReference, "station_name"),
             ("rest_area", RestAreaReference, "name"),
         ]
-        selects = [
-            select(
+        selects = []
+        for kind, model, name in tables:
+            conditions = [model.longitude.between(124, 132), model.latitude.between(33, 43)]
+            if model is FerryPort:
+                # 지도와 같은 무효 좌표 정책을 적용하고 수동/출처 미지정 좌표는 보존한다.
+                conditions.append(or_(
+                    FerryPort.location_source.is_(None),
+                    FerryPort.location_source != "data_go_kr_port_guideline",
+                ))
+            selects.append(select(
                 (literal(kind + ":") + cast(model.id, String)).label("target_key"),
                 model.longitude, model.latitude, getattr(model, name).label("display_name"),
-            ).where(model.longitude.between(124, 132), model.latitude.between(33, 43))
-            for kind, model, name in tables
-        ]
+            ).where(*conditions))
         yield DatabaseAddressSource(
             ReverseAddressStore(engine, VworldKakaoAddressResolver.provider_id), union_all(*selects)
         )
