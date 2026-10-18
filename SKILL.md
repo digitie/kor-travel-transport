@@ -7,7 +7,7 @@
 - 운영 데이터와 비밀값을 커밋하지 않는다.
 - PostgreSQL 스키마 변경은 Alembic migration, 테스트, 데이터 모델 문서를 함께 바꾼다.
 - UI 변경은 모바일/데스크톱 상태와 loading/empty/error/focus 상태를 테스트한다.
-- 13번 호스트에서는 Docker 명령을 실행하지 않는다. n150에서만 Compose를 실행한다.
+- Odroid 작업은 `docs/runbooks/deployment.md` 현재 절차와 ADR-014를 따른다. 운영 파일은 NVMe를 사용한다.
 
 ## 2. 계층과 책임
 
@@ -38,7 +38,7 @@ frontend (Next.js) → backend API (FastAPI) → services → repositories/SQLAl
 ## 4. 구현·검증 금지 목록
 
 1. main 직접 push 금지. feature branch + Draft PR + CI + 리뷰 후 머지한다.
-2. 13번에 Docker stop/up/build 명령 금지.
+2. Odroid 작업은 현재 배포 런북과 ADR-014의 대상·NVMe·소유 범위 검사를 먼저 통과한다.
 3. 백업 파일·SQLite·`.env`·API key를 git에 추가하지 않는다.
 4. 무관한 파일을 `git add -A`로 stage하지 않는다.
 5. API 호출을 컴포넌트에 직접 흩뿌리지 않고 `frontend/src/lib/api.ts`를 통한다.

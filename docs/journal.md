@@ -1,5 +1,12 @@
 ## 2026-10-18 주소 갱신 최종 소스 검증
 
+## 2026-10-19 Track2 문서 정본 정렬 초안
+
+PR90에 의존하는 별도 문서 작업이다. 사용자 승인 Odroid/NVMe 운영과 과거 n150
+금지 안내의 충돌을 정렬하고, 이미 완료한 PR86 ARM 관리자 bundle 증거를 회수했다.
+제품·서비스·legacy M6 파일은 변경하지 않았다. ADR accepted 및 최종 체크는
+PR90 gateway/UI/consumer 수용과 Manager 정본 대조 뒤 별도로 정산한다.
+
 ## 2026-10-19 PR90 운영 배포 계약 수용
 
 포트12302/12303·NVMe staging·단일 project와 소비자 제한 export를 정본화했다.

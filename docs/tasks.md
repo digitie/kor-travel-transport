@@ -382,7 +382,7 @@ dark-mode 차트/톤 팔레트 미토큰화, `globals.css` 전반의 desktop-fir
 
 ## 운영 제약 및 미해결 위험
 
-- 192.168.1.13에서는 Docker를 조작하지 않는다. 원본은 `http://192.168.1.13:3000/api/backend`
+- 현재 Odroid 작업은 배포 런북·ADR-014를 따른다. 과거 SQLite 원본은 전용 내부 API를
   HTTP GET으로만 읽었고, 외부 원본 주소 `https://pr2.digitie.mywire.org`는 cutover 당시
   parking-radar가 아닌 Home Assistant 응답을 보여 원본 검증에 사용하지 않았다.
 - HTTP fallback은 공항·주차장·관측 시계열을 보존했지만 raw response와 기존 collection run ID를

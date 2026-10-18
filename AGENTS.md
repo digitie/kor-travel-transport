@@ -29,8 +29,8 @@
   위해 영어를 유지할 수 있다. 프로젝트 설명과 운영 문서는 한국어로 작성한다.
 - main에 직접 push하지 않고 `codex/` feature branch와 Draft PR을 사용한다. CI,
   두 명의 적대적 리뷰, live E2E UI 검증이 끝난 뒤에만 머지한다.
-- 192.168.1.13에서는 Docker를 조작하지 않는다. 새 Docker 운영은 192.168.1.14에서만
-  수행한다.
+- Odroid 운영 작업은 `docs/runbooks/deployment.md`의 현재 절차와 ADR-014를 따른다.
+  빌드·이미지·앱·DB 파일은 NVMe를 사용하며 daemon OFF와 승인된 서비스 범위를 유지한다.
 
 ## 문서 언어 정책
 
@@ -159,7 +159,7 @@ GitHub 운영은 `docs/runbooks/branch-protection.md`, `docs/runbooks/cross-repo
 - Windows 로컬 PowerShell에서 테스트를 끝낸 것으로 판단하지 않는다.
 - 1차 테스트는 `WSL2` 셸에서 백엔드/프론트엔드 로컬 테스트로 실행한다.
 - 2차 테스트는 `WSL2 + Docker`에서 `docker compose run --rm --no-deps ...` 형태로 실행한다.
-- 1차와 2차 테스트가 통과한 뒤 192.168.1.14에 배포한다.
+- 1차와 2차 테스트가 통과한 뒤 Manager 정본이 승인한 Odroid 대상에 배포한다.
 - 반응형 UI 변경 시 모바일/데스크톱 렌더링 확인을 포함한다.
 
 ## 문서 반영 범위
@@ -184,8 +184,7 @@ GitHub 운영은 `docs/runbooks/branch-protection.md`, `docs/runbooks/cross-repo
 - 2차 테스트는 `WSL2 + Docker`에서 실행한다.
   - 백엔드: `docker compose run --rm --no-deps backend pytest -q`
   - 프론트엔드: `docker compose run --rm --no-deps frontend npm run test -- --run`
-- 192.168.1.14 배포는 1차/2차 테스트 이후 진행한다. 192.168.1.13에서는 Docker를
-  실행하거나 중지하지 않는다.
+- Odroid 배포는 1차/2차 테스트 이후 현재 배포 런북과 ADR-014 절차로 진행한다.
 - Windows PowerShell은 배포 스크립트 실행과 원격 상태 확인 보조 용도로 사용하고, 테스트 기준 환경으로 간주하지 않는다.
 - 운영 장애 조사 중 사용자가 명시하지 않은 다른 WSL 프로젝트의 컨테이너/프로세스는 임의로 중지하거나 변경하지 않는다.
 

@@ -58,8 +58,7 @@
 - 테스트: pytest, Vitest
 - 실행: Docker Compose (PostgreSQL은 `docker-compose.db.yml`로 별도 컨테이너, T-032)
 - 개발 환경: WSL2 + Docker
-- 운영 환경: 현재 n150(`192.168.1.14`, [192.168.1.14 운영 배포](#1921681114-운영-배포)); odroid(`192.168.1.13`, ODROID M1S)
-  이전은 [ADR-014](docs/adr/014-odroid-host-and-deploy-host-flag.md) proposed·미구현
+- 운영 환경: Manager가 승인한 Odroid/NVMe 정본. [현재 배포 절차](docs/runbooks/deployment.md)를 따른다.
 
 ## 데이터 소스
 
@@ -104,25 +103,17 @@ docker compose up -d
 - 프론트엔드: [http://localhost:3000](http://localhost:3000)
 - 백엔드 문서: [http://localhost:8000/docs](http://localhost:8000/docs)
 
-## 192.168.1.14 운영 배포
+## Odroid 운영 배포
 
-n150에서만 Docker/PostgreSQL을 실행한다. PostgreSQL은 `docker-compose.db.yml`로 앱과
-분리된 독립 컨테이너에서 운영한다(T-032). 운영 공개 포트는 API `14001`, web `14002`이며
-DB는 `14000`(loopback 전용, 외부 미노출)이다. 외부 API 주소는
-[https://pr-api.digitie.mywire.org](https://pr-api.digitie.mywire.org),
-live E2E 기준 웹 주소는 [https://pr.digitie.mywire.org/](https://pr.digitie.mywire.org/)다.
-13번에서는 Docker를 실행하거나 중지하지 않고, cutover 전까지 source API와 rollback
-기준으로 유지한다.
+현재 Transport는 Odroid의 NVMe에 배포한다. backend12302/web12303,
+gateway12301/admin12305/code-server12306이며 project는 `kor-travel-transport` 하나다.
+공개 주소는 기존 pr/pr-api 도메인을 사용한다. 배포 대상은 Manager 정본의 host로 검증한다.
 
-> **계획(ADR-014 proposed, 미구현).** transport 스택 전체를 odroid(`192.168.1.13`)로 옮기는 설계가
-> [ADR-014](docs/adr/014-odroid-host-and-deploy-host-flag.md)에 있다 — 포트·compose project·앱 디렉터리는
-> 그대로이고 호스트만 `.14 → .13`, 배포 명령은 `scripts/deploy-prod.sh --host 192.168.1.13`으로 바뀐다. 아직
-> 배포 script의 host 효과 검증은 T-TRN-01에서 구현했으며 실제 설치·이전 수용과 나머지 정책 정산은 별도다.
-
-운영 환경 파일은 n150의
-`/home/digitie/apps/kor-travel-transport/.env.prod`에만 두며
-[`.env.prod.example`](.env.prod.example)을 시작점으로 사용한다. Compose project는
-`kor-travel-transport`다(2026-09 운영 식별자 개명, [ADR-010](docs/adr/010-deploy-identity-rename-transport.md)).
+앱은 `/home/digitie/apps/kor-travel-transport`, 환경 정본은
+`/opt/kor-travel-odroid/transport.env`와 동일 내용의 앱 `.env.prod`다.
+실제 경로가 NVMe 장치인지 확인하고 staging은 `/mnt/media/kor-travel/build/transport`를 사용한다.
+[ADR-014](docs/adr/014-odroid-host-and-deploy-host-flag.md)와 현재 배포 런북의
+잠금·현재 세대·서비스 보존 절차를 따른다. daemon OFF를 유지한다.
 
 ```bash
 REMOTE_APP_DIR=/home/digitie/apps/kor-travel-transport \
@@ -131,11 +122,11 @@ REMOTE_APP_DIR=/home/digitie/apps/kor-travel-transport \
 
 Manager PR530의 검증 JSON에 있는 targets.transport.host → hosts.<key>.addr가 요청한 주소와 같고, 원격 자기 IPv4·env 읽기 권한도 맞아야 한다. 주소 기본값이나 코드 안 주소표는 없다. 구 Manager가 hosts를 출력하지 않으면 배포 전 exit2다. 실제 비밀 파일의 개명·배포는 이 source 변경에서 자동 수행하지 않는다. 구 .env.server14와 .env.server14.legacy/.env.server14.shared-dagster-cutover 세 파일은 정확한 exclude로 보존하며 root의 별도 확인 없이 정리하지 않는다.
 
-배포 후 확인:
+배포 후 확인(`TRANSPORT_HOST`는 Manager가 승인한 주소로 설정):
 
 ```bash
-curl -fsS http://192.168.1.14:14001/health
-curl -fsS http://192.168.1.14:14002/
+curl -fsS http://${TRANSPORT_HOST}:12302/health
+curl -fsS http://${TRANSPORT_HOST}:12303/
 curl -fsS https://pr-api.digitie.mywire.org/health
 curl -fsS https://pr.digitie.mywire.org/api/backend/health
 ```
@@ -150,8 +141,8 @@ E2E_BASE_URL=https://pr.digitie.mywire.org npm run test:e2e
 
 ## Historical: 기존 13번 ODROID 배포 (실행 금지)
 
-> 이 절의 금지 문구는 [ADR-014](docs/adr/014-odroid-host-and-deploy-host-flag.md) 결정 6에 따라 소유자 §14-2 결정 직후·odroid
-> 배포 전에 T-TRN-03a가 교체하고, fail-closed 마커 파일은 배포 게이트가 전부 초록인 뒤 T-TRN-03b가 삭제한다 — 그때까지 유효하다.
+이 절은 과거 SQLite 스택의 이력이다. 현재 Odroid 작업은 위 배포 절차를 따른다.
+legacy M6 파일 삭제는 별도 변경이며 서비스·볼륨·HAProxy 변경을 뜻하지 않는다.
 
 배포 기준 정보는 루트의 [.env.odroid](.env.odroid)에 저장한다.
 
@@ -160,11 +151,7 @@ E2E_BASE_URL=https://pr.digitie.mywire.org npm run test:e2e
 - 사용자: `digitie`
 - 앱 디렉터리: `/home/digitie/apps/parking-radar`
 
-13번은 보존된 기존 시스템이며 배포 대상이 아니다. 이 프로젝트의 Docker,
-PostgreSQL, 백업/복원, 수집 스케줄러는 모두 n150에서만 실행한다. 따라서
-13번을 대상으로 하는 배포 스크립트와 `docker compose` 명령은 실행하지 않는다.
-13번은 `https://pr2.digitie.mywire.org/`의 기존 서비스에서 HTTP 읽기만 허용되는
-마이그레이션 원본으로 취급한다.
+이전 migration 당시 원본 스택의 경로·주소를 남긴 기록이다. 현재 운영 명령으로 사용하지 않는다.
 
 n150 배포와 상태 확인은 [n150 배포 런북](docs/runbooks/deployment.md)을 따른다.
 

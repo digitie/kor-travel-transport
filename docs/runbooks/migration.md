@@ -1,4 +1,7 @@
-# 192.168.1.13 → 192.168.1.14 migration runbook
+# 과거 SQLite → n150 migration 기록
+
+현재 Odroid/NVMe 운영 작업은 [deployment.md](deployment.md)와 ADR-014를 따른다.
+아래 절차는 이전 방향이 반대였던 과거 이력이며 현재 실행 절차가 아니다.
 
 > **포트 번호와 Compose project 이름은 이 문서가 기록한 시점 기준의 historical
 > 기록이다.** 이 문서의 `14000`은 T-032(2026-08-23) 이전 API 포트를 가리키며,
@@ -16,7 +19,7 @@
 
 ## 불변 조건
 
-- 13번에는 Docker 명령을 실행하지 않는다. 기존 서비스와 DB volume은 변경하지 않고 HTTP API만 읽는다.
+- 당시 원본 호스트는 기존 서비스와 DB volume을 보존하고 HTTP API만 읽었다.
 - Docker Compose와 PostgreSQL은 14번에서만 실행한다.
 - 13번 수집기는 cutover 검증이 끝날 때까지 유지해 source of truth와 rollback 경로로 둔다.
 - 14번 scheduler는 `COLLECT_INTERVAL_SECONDS=300` 계약으로 시작하며, 최초 수집은 scheduler 시작
@@ -48,7 +51,7 @@ docker compose --project-name parking-radar --env-file .env.server14 up -d postg
 docker compose --project-name parking-radar --env-file .env.server14 run --rm --no-deps backend alembic upgrade head
 ```
 
-위 명령은 모두 14번에서 실행한다. 13번에는 Docker 명령을 보내지 않는다.
+위 명령은 당시 n150 대상 migration에 사용한 예시다. 현재 작업은 배포 런북·ADR-014를 따른다.
 
 ### 3. prewarm import
 
@@ -148,4 +151,4 @@ latest observed, latest collected, last run ID, 실제 elapsed seconds를 남긴
 
 ## rollback
 
-14번 컨테이너만 `docker compose --project-name parking-radar ... stop`으로 중지할 수 있다. 13번은 이 runbook과 사용자 제약에 따라 Docker를 조작하지 않는다. 14번 PostgreSQL을 되돌릴 때는 복원 UI/API의 pre-restore backup 또는 `pg_restore`를 사용한다.
+당시 rollback은 n150 컨테이너 중지와 pre-restore backup 또는 `pg_restore`를 사용했다. 현재 Odroid rollback은 현재 배포 런북·ADR-014의 소유 서비스와 보존 증거를 따른다.

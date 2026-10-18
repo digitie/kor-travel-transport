@@ -1,8 +1,8 @@
 # 트러블슈팅
 
-> 현재 운영은 192.168.1.14의 Docker/PostgreSQL이며 scheduler 계약은 300초,
-> 유효 tick은 180초다. 192.168.1.13/ODROID 관련 수치와 SQLite 항목은 historical
-> reference로만 읽고, 13번에는 Docker를 실행하지 않는다.
+> 현재 운영은 Manager가 승인한 Odroid/NVMe 정본이며 daemon은 사용자 지시로 OFF다.
+> 현재 작업은 배포 런북·ADR-014를 따른다. 아래 옛 n150·SQLite·scheduler 수치는
+> 당시 장애 분석 이력이며 현재 수집 재개나 호스트 변경 지시가 아니다.
 
 ## 프론트에서 `fetch` 에러가 보일 때
 

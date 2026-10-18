@@ -398,3 +398,11 @@ backend가 `.13`으로, 옛 `pr2` host와 odroid의 legacy `parking-radar` 스�
 - `15056803` 카탈로그에는 개발계정 `5,000` 트래픽이 보이지만, `2026-04-28` 실측에서는 100회 성공 후 101번째부터 `LIMITED NUMBER OF SERVICE REQUESTS EXCEEDS ERROR.`가 발생했다.
 - 중복 수집기를 제거한 현재 기준으로는 n150 live 프로파일이 5분 configured 주기와
   5분 수동 수집 제한 계약을 사용한다.
+
+## 2026-10-19 현재 호스트와 ARM 번들 증거
+
+현재 운영 정본은 Manager의 Odroid/NVMe 대상과 단일 kor-travel-transport project다.
+관리자 번들의 canonical Dagster URL은 실제 ARM64 build와 정적 chunk 검사에서
+확인했고, 같은14e8c212 이미지를 운영 UI34가 검증했다.
+[정적 빌드와 설치 세대 연결](audits/2026-10-19-admin-bundle-acceptance.md)을 따른다.
+과거 n150/SQLite 설명은 이전 세대의 이력이다. daemon OFF는 유지한다.
