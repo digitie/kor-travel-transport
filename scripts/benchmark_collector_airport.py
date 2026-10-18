@@ -98,7 +98,7 @@ def transport_airport(args):
             session.flush()
             return len(returned)
         distinct, metrics = measure(lambda: asyncio.run(action()))
-        assert counts['select'] == (3 if args.candidate else args.rows) and counts['insert'] == 0
+        assert counts['select'] == (distinct if args.candidate else args.rows) and counts['insert'] == 0
         assert counts['update'] == args.rows
         session.rollback()
     engine.dispose()
