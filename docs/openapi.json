@@ -1,6 +1,75 @@
 {
   "components": {
     "schemas": {
+      "AddressRefreshSummary": {
+        "properties": {
+          "auto_enabled": {
+            "title": "Auto Enabled",
+            "type": "boolean"
+          },
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "due": {
+            "title": "Due",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "in_progress": {
+            "title": "In Progress",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "last_resolved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Resolved At"
+          },
+          "manual_cycle": {
+            "title": "Manual Cycle",
+            "type": "boolean"
+          },
+          "refresh_months": {
+            "title": "Refresh Months",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "due",
+          "failed",
+          "last_resolved_at",
+          "in_progress",
+          "manual_cycle",
+          "refresh_months",
+          "configured",
+          "auto_enabled",
+          "items"
+        ],
+        "title": "AddressRefreshSummary",
+        "type": "object"
+      },
       "AirportExportResponse": {
         "properties": {
           "generated_at": {
@@ -7743,6 +7812,34 @@
         "tags": [
           "service-exports"
         ]
+      }
+    },
+    "/v1/transport/admin/address-refresh": {
+      "get": {
+        "operationId": "address_refresh_summary_v1_transport_admin_address_refresh_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressRefreshSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Address Refresh Summary"
       }
     },
     "/v1/transport/admin/place-locations": {

@@ -1,4 +1,57 @@
+## 2026-10-18 주소 갱신 최종 소스 검증
+
+최신 Common pin은 89291f36d731ab906161b96757522e1cd833b4ef다.
+[최종 리뷰·검증 범위](reviews/2026-10-18-native-address-final.md)에 두 독립 PASS와
+집중23개·Docker23개·실제 native 연동 UI17개 및 지연 재시도1개 통과를 정리했다.
+아래 이전 날짜의 a68·보류 판정은 당시 이력이며 최신 상태는 이 항목을 따른다.
+최종 CI 6 SUCCESS·조건부 live 2 SKIP를 확인했다. 운영 배포·Track1/2 수용은 후속이다. Daemon OFF를 유지한다.
+
+## 2026-10-18 영속 예약의 잠금 연결 장애 보강
+
+현재 Common pin은 a68d0495acc38906c31b95b1d0db163bd8f96f5b다.
+동일 요청 ID와 NOT_STARTED 제출 복구를 유지하며, PostgreSQL 잠금 연결이 끊긴 뒤
+늦은 제출이 STARTED를 QUEUED로 되돌리지 않도록 native run 저장도 같은 연결에 묶는다.
+이전 23e4775의 동시 제출 문제와 2704830의 잠금 연결 소실 반례는 이력으로 보존한다.
+새 pin에서 실제 native 지연 요청·재시도 시험은 앱별 1건 통과했다. 전체 Python·UI
+회귀와 두 독립 최종 리뷰는 진행 중이며, 이 기록은 운영 수용 완료가 아니다.
+공용 webserver를 먼저 배포하고 소비자 Admin을 갱신한다. Daemon OFF를 유지한다.
+
+## 2026-10-18 — 두 번째 리뷰의 공통 집계 후속
+
+## 2026-10-18 — 주소 갱신 날짜·예약 복구 후속
+
+- 브라우저 UTC/미국 서부 시간대 PC·모바일 4건에서 날짜 표시 오류를 재현하고 Asia/Seoul 표시로 고정했다.
+- 앱별 빌드·타입 검사·단위 211건 및 로컬 실제 API/native Dagster 연동 UI 17건 통과. 이 결과는 시간대 수정까지의 결과이며 운영 배포 증거가 아니다.
+- 적대 리뷰에서 발견한 응답 유실 후 늦은 예약 중복 문제를 Common 영속 요청 ID mutation으로 연결 중이다. NOT_STARTED 실행은 재조회 완료로 처리하지 않고 제출 복구하며, 새 mutation 미지원 서버에서 기존 무작위 launch로 우회하지 않는다.
+- 신규 예약 복구의 실제 SDK·재시작·지연 커밋 검증, 두 독립 리뷰, CI 및 운영 배포는 미완료다. daemon OFF를 유지한다.
+
+
+r2 A SOURCE PASS와 B REQUEST_CHANGES를 [원문](reviews/2026-10-18-address-refresh-r2.md)으로 보존했다.
+원 legacy admission과 P3 문구는 닫혔으나 Common c067의 provider 전체 MAX가 제외 항만의
+과거 확인 시각을 노출하는 T86-B-P2-02는 새 OPEN이다. 공통 수정522525a와 lock을 채택하고
+legacy-only 파생 결과의 실제 consumer 반례를 추가했다(이전 pin에서1 FAIL).
+현재 source/좌표만 집계하고 과거 sidecar·원천은 보존한다. 후속 CI·두 독립 재검토·UI를
+진행하며 이전8c의 CI848/2나 fullDocker6a835/13을 새 candidate 결과로 전용하지 않는다.
+Track1·2 전체 종료 뒤 수집기 CPU/RSS 개선, Daemon OFF 방침을 유지한다.
+
+## 2026-10-18 주소 갱신 구현·로컬 검증
+
+VWorld 우선·Kakao fallback, 위치별 달력 6개월 자동 갱신과 Admin 수동 실행을 구현했다. 두 앱은 같은 Common Python 엔진을 고정 commit으로 사용한다. [설계·설정 및 검증 범위](reverse-address-refresh.md)를 참조한다. 원천 주소·좌표는 보존한다.
+
+로컬 실브라우저 최종 재검증은 앱별 13개(합계 26개) 통과했고 실제 인증·상태 API·Dagster 큐 예약·중복 차단·모바일/키보드·오류 복구를 포함한다. 제공자는 주입 fixture다. Python 전체 검증은 Common 509개, Weather 658개, Transport 838개 통과·환경 조건 10개 skip이다. Draft PR과 독립 리뷰를 진행하며 운영 migration·실제 제공자 실호출·배포·운영 UI 수용은 미실행이다. Daemon은 중지 상태를 유지한다.
+
+2026-10-18 추가 리뷰: James r1 SOURCE PASS/P3 문구1, Popper r1 REQUEST_CHANGES/P2 legacy 항구 좌표 admission1.
+기준 f8e5dd06f8bfe478fdb57785e70b2304958333ad에서 두 원문을 확정한 뒤 기존 지도와 같은 제외 조건을 적용했다.
+작성자 SQLite 2 FAIL→PASS, 주소/health 집중21 PASS 및 소유 PostgreSQL17 실제 모델·공통엔진에서
+legacy 제외·NULL/수동 좌표 유지·이전 파생 결과 숨김·원천 불변을 확인했다. 수정 후 최종 CI/두 리뷰는 별도다.
+[최초 리뷰 원문](reviews/2026-10-18-address-refresh-r1.md)을 보존한다.
+
+사용자 작업 순서: Track1·2 관련 작업을 먼저 모두 완료하고, 그 뒤 Transport·Weather 수집기의 CPU·메모리를
+같은 workload에서 실측해 개선한다. 이 주소 기능 검증을 수집기 최적화나 Track1·2 전체 수용으로 대신하지 않는다.
+Daemon OFF는 계속 유지한다.
+
 ## 2026-10-17 — Transport 남은 작업 감사·문서 정합(제품 변경 없음)
+
 
 - main d1593ecc/PR84 MERGED와 CI를 공개 GH에서 재확인했다. root의11:58:07 UTC safe 관측77/16·14healthy2noHC·daemon OFF, PR84 UI34/호스트 효과와 D의 Docker95를 source·이미지·수집 수용과 분리했다.
 - Track1 Transport는 T045/#76 무영향 문서화 완료이며 token/regeo 신규 구현이 아니다. T-TRN-01/02의 이번 최소 수용과 공식 ARM build·새 bundle·첫 전체 cutover NOT_RUN, T05 canonical 메모리 제한 source 부재를 구분했다. 낡은 RELEASE_SHA만으로 코드 미배포를 단정하거나 metadata만 갱신해 정합성을 위장하지 않는다.
