@@ -310,7 +310,7 @@ def test_stage_receipt_is_invalidated_before_either_shared_checkout_sync() -> No
 
 def test_all_shared_checkout_writers_hold_the_same_release_lock() -> None:
     names = ("deploy-prod.sh", "deploy-transport-admin-prod.sh", "deploy-prod-remote.sh")
-    lock_path = "/home/digitie/apps/.kor-travel-transport-deploy.lock"
+    lock_path = "/mnt/media/kor-travel/build/.kor-travel-transport-deploy.lock"
     for name in names:
         source = (_SCRIPTS / name).read_text(encoding="utf-8")
         assert lock_path in source, name

@@ -34,3 +34,14 @@ def test_shared_and_admin_defaults_follow_current_role_ports():
     assert shared["frontend"]["command"][-1] == "${PUBLIC_WEB_PORT:-12303}"
     assert shared["frontend"]["environment"]["BACKEND_INTERNAL_URL"] == "http://127.0.0.1:${PUBLIC_API_PORT:-12302}"
     assert admin["transport-admin-web"]["environment"]["TRANSPORT_API_INTERNAL_URL"] == "${TRANSPORT_API_INTERNAL_URL:-http://127.0.0.1:12302}"
+
+
+def test_admin_deploy_uses_existing_project_without_removing_other_roles():
+    script = (SCRIPTS / "deploy-transport-admin-prod.sh").read_text()
+    assert "--project-name kor-travel-transport " in script
+    assert "--project-name kor-travel-transport-admin" not in script
+    commands = [line for line in script.splitlines() if line.startswith("TRANSPORT_ADMIN_RELEASE_SHA=")]
+    assert len(commands) == 1
+    assert commands[0].endswith("transport-api-gateway transport-admin-web")
+    assert "--remove-orphans" not in commands[0]
+    assert " down" not in commands[0]

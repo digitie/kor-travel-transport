@@ -1,6 +1,6 @@
-name: kor-travel-transport-admin
+name: kor-travel-transport
 
-# 기본 `kor-travel-transport` Compose와 독립된 host-network UI/gateway 스택이다. backend,
+# 기본 `kor-travel-transport` project의 host-network UI/gateway 서비스다. backend,
 # Dagster webserver를 재기동하거나 포트를 변경하지 않고 loopback upstream만 읽는다.
 #
 # Dagster는 공용 제어 평면(kor-travel-docker-manager ADR-54)이다. UI는 공용 webserver

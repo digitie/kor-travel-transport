@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 별도 Compose project만 갱신한다. 기본 kor-travel-transport backend/frontend/Dagster는 이
-# 스크립트의 Docker 명령 대상이 아니다.
+# 현재 단일 Compose project에서 admin/gateway 두 서비스만 갱신한다.
+# backend/frontend/Dagster는 이 스크립트의 Docker 변경 대상이 아니다.
 if [[ "$#" != 2 || "$1" != "--host" || -z "$2" ]]; then
   echo "Usage: $0 --host <IPv4 address>" >&2
   exit 2
@@ -13,12 +13,12 @@ python3 "${SCRIPT_DIR}/validate-deploy-host.py" --host "${REMOTE_HOST}" --parse-
 REMOTE_USER="${REMOTE_USER:-digitie}"
 REMOTE_APP_DIR="${REMOTE_APP_DIR:-/home/digitie/apps/kor-travel-transport}"
 REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-.env.prod}"
-COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-kor-travel-transport-admin}"
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-kor-travel-transport}"
 CANDIDATE_SHA="$(git rev-parse HEAD)"
 
 [[ "${REMOTE_APP_DIR}" == "/home/digitie/apps/kor-travel-transport" ]] || { echo "승인된 transport checkout만 허용합니다." >&2; exit 2; }
 [[ "${REMOTE_ENV_FILE}" == ".env.prod" ]] || { echo "승인된 운영 환경 파일만 허용합니다." >&2; exit 2; }
-[[ "${COMPOSE_PROJECT_NAME}" == "kor-travel-transport-admin" ]] || { echo "전용 Compose project만 허용합니다." >&2; exit 2; }
+[[ "${COMPOSE_PROJECT_NAME}" == "kor-travel-transport" ]] || { echo "승인된 Compose project만 허용합니다." >&2; exit 2; }
 
 # 주소 정본은 Manager registry다. 복사/생성 전에 실제 효과를 확인한다.
 ssh "${REMOTE_USER}@${REMOTE_HOST}" "python3 - --host '${REMOTE_HOST}' --env-file '${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}'" < "${SCRIPT_DIR}/validate-deploy-host.py"
@@ -56,7 +56,7 @@ port_from_env() {
   value="$(printf '%s\n' "${line}" | tail -n 1 | cut -d= -f2-)"
   printf '%s' "${value:-${fallback}}"
 }
-running="$(docker compose --project-name kor-travel-transport-admin --env-file "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" -f "${REMOTE_APP_DIR}/docker-compose.transport-admin.yml" ps --services --status running || true)"
+running="$(docker compose --project-name kor-travel-transport --env-file "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" -f "${REMOTE_APP_DIR}/docker-compose.transport-admin.yml" ps --services --status running || true)"
 for pair in "transport-api-gateway:$(port_from_env TRANSPORT_PUBLIC_API_PORT 12301)" "transport-admin-web:$(port_from_env TRANSPORT_PUBLIC_WEB_PORT 12305)"; do
   service="${pair%%:*}"; port="${pair##*:}"
   if ! grep -qx "${service}" <<<"${running}" && ss -lnt "( sport = :${port} )" | grep -q ":${port}"; then
@@ -67,18 +67,30 @@ done
 PREFLIGHT
 
 archive="$(mktemp -p /tmp kor-travel-transport-admin.XXXXXX.tgz)"
-remote_archive="/tmp/$(basename "${archive}")"
-trap 'rm -f "${archive}"' EXIT
+remote_stage=""
+cleanup_local() {
+  rm -f -- "${archive}"
+  if [[ "${remote_stage}" =~ ^/mnt/media/kor-travel/build/transport-deploy\.[A-Za-z0-9_]+$ ]]; then
+    ssh "${REMOTE_USER}@${REMOTE_HOST}" "rm -f -- '${remote_stage}/archive.tgz'; rmdir -- '${remote_stage}' 2>/dev/null || true" || true
+  fi
+}
+trap cleanup_local EXIT
+
+remote_stage="$(ssh "${REMOTE_USER}@${REMOTE_HOST}" "python3 - --app-dir '${REMOTE_APP_DIR}'" < "${SCRIPT_DIR}/prepare-deploy-storage.py")"
+[[ "${remote_stage}" =~ ^/mnt/media/kor-travel/build/transport-deploy\.[A-Za-z0-9_]+$ ]] || { echo "잘못된 NVMe staging 경로입니다." >&2; exit 2; }
+remote_archive="${remote_stage}/archive.tgz"
 git archive --format=tar.gz --output="${archive}" HEAD
 ssh "${REMOTE_USER}@${REMOTE_HOST}" "mkdir -p '${REMOTE_APP_DIR}'"
 scp "${archive}" "${REMOTE_USER}@${REMOTE_HOST}:${remote_archive}"
 
 ssh "${REMOTE_USER}@${REMOTE_HOST}" \
-  "REMOTE_APP_DIR='${REMOTE_APP_DIR}' REMOTE_ENV_FILE='${REMOTE_ENV_FILE}' REMOTE_ARCHIVE='${remote_archive}' CANDIDATE_SHA='${CANDIDATE_SHA}' bash -s" <<'REMOTE'
+  "REMOTE_APP_DIR='${REMOTE_APP_DIR}' REMOTE_ENV_FILE='${REMOTE_ENV_FILE}' REMOTE_ARCHIVE='${remote_archive}' REMOTE_STAGE='${remote_stage}' CANDIDATE_SHA='${CANDIDATE_SHA}' bash -s" <<'REMOTE'
 set -euo pipefail
 [[ -f "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" && -r "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" ]] || { echo "운영 환경 파일이 없습니다." >&2; exit 2; }
 # backend 동기화·빌드와 Dagster Compose 교체가 끝날 때까지 같은 checkout을 건드리지 않는다.
-exec 9>"/home/digitie/apps/.kor-travel-transport-deploy.lock"
+release_lock_path="/mnt/media/kor-travel/build/.kor-travel-transport-deploy.lock"
+[[ ! -L "${release_lock_path}" ]] || { echo "Refusing deployment: symlink lock." >&2; exit 2; }
+exec 9>"${release_lock_path}"
 flock -n 9 || { echo "공유 checkout을 다른 배포가 변경 중입니다." >&2; exit 2; }
 port_from_env() {
   local key="$1" fallback="$2" line value
@@ -86,8 +98,11 @@ port_from_env() {
   value="$(printf '%s\n' "${line}" | tail -n 1 | cut -d= -f2-)"
   printf '%s' "${value:-${fallback}}"
 }
-stage="$(mktemp -d /tmp/kor-travel-transport-admin-release.XXXXXX)"
-cleanup() { rm -rf -- "${stage}" "${REMOTE_ARCHIVE}"; }
+[[ "${REMOTE_STAGE}" =~ ^/mnt/media/kor-travel/build/transport-deploy\.[A-Za-z0-9_]+$ && ! -L "${REMOTE_STAGE}" ]] || { echo "잘못된 NVMe staging 경로입니다." >&2; exit 2; }
+[[ "${REMOTE_ARCHIVE}" == "${REMOTE_STAGE}/archive.tgz" ]] || { echo "잘못된 staging archive입니다." >&2; exit 2; }
+stage="${REMOTE_STAGE}/source"
+mkdir -m 700 "${stage}"
+cleanup() { rm -rf -- "${REMOTE_STAGE}"; }
 trap cleanup EXIT
 tar -xzf "${REMOTE_ARCHIVE}" -C "${stage}"
 # 두 배포가 같은 checkout을 쓴다. 관리자 동기화도 backend staging 증거를
@@ -117,9 +132,9 @@ cd "${REMOTE_APP_DIR}"
 
 # api-gateway는 설정 파일을 bind mount한다. image digest만으로는 파일 내용 변경을
 # 감지하지 못하므로, 이 전용 두 서비스를 명시적으로 재생성해 공개 allowlist가
-# 이전 설정에 머무르지 않게 한다. `--remove-orphans`는 이 project에서 정의가 사라진
-# 서비스(공용 Dagster plane 합류로 없어진 옛 `transport-dagster-gateway`, 12302)의 컨테이너를 지운다.
-TRANSPORT_ADMIN_RELEASE_SHA="${CANDIDATE_SHA}" docker compose --project-name kor-travel-transport-admin --env-file "${REMOTE_ENV_FILE}" -f docker-compose.transport-admin.yml up -d --build --force-recreate --remove-orphans transport-api-gateway transport-admin-web
+# 이전 설정에 머무르지 않게 한다. 같은 project의 backend/frontend/code-server를
+# orphan으로 지우지 않도록 아래 명시한 두 서비스만 갱신한다.
+TRANSPORT_ADMIN_RELEASE_SHA="${CANDIDATE_SHA}" docker compose --project-name kor-travel-transport --env-file "${REMOTE_ENV_FILE}" -f docker-compose.transport-admin.yml up -d --build --force-recreate transport-api-gateway transport-admin-web
 api_port="$(port_from_env TRANSPORT_PUBLIC_API_PORT 12301)"
 web_port="$(port_from_env TRANSPORT_PUBLIC_WEB_PORT 12305)"
 for url in "http://127.0.0.1:${api_port}/health" "http://127.0.0.1:${web_port}/login"; do

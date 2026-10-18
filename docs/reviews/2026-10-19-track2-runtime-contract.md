@@ -12,6 +12,19 @@ PUBLIC_WEB_PORT14002를 강제하고 gateway와 관리 UI 사전검사도14001�
 신규 계약검사3개 FAIL을 먼저 기록한 뒤 production Compose·env 예시·gateway·
 backend/admin 배포 검사 값을 현재12302/12303으로 맞췄다. 관련66개 WSL 검사 PASS다.
 
+## 배포 저장소와 관리자 서비스 범위
+
+원격 archive·압축 해제 디렉터리·배포 잠금은 /mnt/media/kor-travel/build를 사용한다.
+승인된 checkout과 .env.prod, staging의 실제 장치가 NVMe와 같고 rootfs와 다르며
+findmnt SOURCE가 NVMe인지 확인한다. symlink와 bind mount는 실제 장치 증거로
+판단한다. 이 검사는 배포 시에만 수행하며 부팅 조건을 추가하지 않는다.
+
+관리자 배포는 현재 kor-travel-transport project에서 transport-api-gateway와
+transport-admin-web만 명시한다. remove-orphans를 제거하여 같은 project의
+backend/frontend/code-server를 보존한다. 잘못된 project 재현1 FAIL과 저장소
+fixture의 초기 실패 로그를 보존했고 수정 후 집중검사121 PASS를 확인했다.
+전체 회귀·실운영 배포 검증은 아직 남아 있다.
+
 ## ARM browser 수용
 
 기존 설치 이미지5942696(a0b,arm64)를 network-none/read-only/CPU0.5/메모리1GiB
@@ -29,8 +42,7 @@ HOME 변경을 확정 원인으로 표현하지 않는다. 두 실패를 성공 
 
 ## 남은 조건
 
-- NVMe staging 및 승인된 symlink checkout의 효과 검증, 현재 단일 Compose project와
-  관리자 배포 절차를 대조한다. 이번 초기 포트 수정만으로 공식 배포 전체가 수용된 것은 아니다.
+- NVMe·단일 project 수정은 로컬 구현까지 완료했다. 공식 배포 전체의 운영 수용은 후속 검증이다.
 - 5개 역할 모두 현재 Memory/MemorySwap0(무제한)이다. 메모리 정책은 별도 작은 변경으로
   구현한다. 현재 웹2개와 gateway의 부팅 이후 peak 합은 기존0.3GiB 예산을 넘는다.
 - 공유 서비스의 유한 상한 합만8.375GiB로 물리 약7.5GiB를 넘는다. 개별 한도는 예약 메모리가
