@@ -214,4 +214,15 @@ WSL RAM SQLite의 실제 공항 helper를 1,000관측/3공항으로 각 3회 독
 RSS 중앙값은 55,424 → 55,408 KiB로 사실상 같아서 메모리 개선으로 주장하지 않는다.
 이는 공항 helper 국소 수치다. provider·lot/snapshot·네트워크·운영 PostgreSQL을
 제외했으므로 전체 수집이나 Odroid CPU 감소율을 의미하지 않는다.
-운영 비교, live UI, 독립 리뷰와 배포는 별도 게이트다. Dagster daemon은 OFF를 유지한다.
+Odroid ARM64의 격리 컨테이너에서도 동일 1,000관측/3공항을 기준·후보 각각
+3회 측정했다(SQLAlchemy 2.1.5). CPU 중앙값은 15.2357초 → 7.7411초
+(49.2% 감소), wall 중앙값은 15.5154초 → 7.8708초다. SELECT 1,000→3 및
+UPDATE 1,000 유지도 확인했다. RSS 중앙값은 51,640→51,540 KiB로 사실상 같고
+Python 할당 peak 중앙값은 136,465→132,479 bytes다. WSL과 ARM은 별도 환경의
+측정이므로 둘 사이 절대시간을 성능 변화로 비교하지 않는다.
+
+[ARM 원시 6표본](../audits/2026-10-18-airport-helper-arm-ab.json)과
+[검증 이력 및 한계](../reviews/2026-10-18-collector-airport-cpu.md)를 보존한다.
+이 ARM 결과도 SQLite RAM DB의 공항 helper만 측정했으며 외부 네트워크와 운영 DB에
+접근하지 않았다. 실제 운영 job 전체 CPU·메모리 사용량이나 idle 부하는 아직 증명하지
+않았다. live UI·독립 리뷰·배포는 별도 게이트다. Dagster daemon은 OFF를 유지한다.
