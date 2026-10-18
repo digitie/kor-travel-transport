@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 
 import type { AddressRefreshSummary } from "@/lib/transport";
 
-const date = (value?: string | null) => value ? new Date(value).toLocaleString("ko-KR") : "미확인";
+const date = (value?: string | null) => value ? new Date(value).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }) : "미확인";
 
 export function AddressRefresh() {
   const [summary, setSummary] = useState<AddressRefreshSummary | null>(null);
