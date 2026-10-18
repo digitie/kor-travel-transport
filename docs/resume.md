@@ -1,5 +1,9 @@
 # resume.md — 현재 인수인계
 
+## 2026-10-18 주소 갱신 구현 진행
+
+VWorld·Kakao 기반 위치별 달력 6개월 자동 갱신 및 Admin 수동 실행을 구현 중이다. [설계·설정](reverse-address-refresh.md)을 참조한다. 운영 적용과 검증 완료는 미확정이며 Daemon은 중지 상태를 유지한다.
+
 > **2026-10-17 최신 main 감사:** PR84 MERGED d1593ecc(11:03:25 UTC), PR84 CI6 SUCCESS/live2 SKIP·main CI SUCCESS. root의11:58:07 UTC 조회는77/16·14healthy2noHC·daemon OFF이며 native sourceGit06d025a와 main tree는 같다. RELEASE_SHA40f6349는 낡은 metadata이고 기존 ac57 native 파일 검증과 별개다. label만으로 미배포/최신을 판정하지 않는다. [남은 작업·우선순위·실측 한계](audits/2026-10-17-remaining-work.md)가 최신 요약이다.
 
 > **다음 한 작업:** 코드 중복 구현 대신 T01/02/04의 공식 ARM/browser·새 bundle 수용과 T05 메모리 제한 source 계획을 준비한다. 수집 부하 CPU/RSS·provider 완주/복구는 사용자 재개 승인 후에만 검증한다. OPEN81/38/31은 옛 HEAD/중복 구현 여부를 재정산할 대상이며 무검토 머지하지 않는다. T03 정책 문서와 legacy M 삭제는 별개이며 전체 전환 수용 전 M을 보존한다.

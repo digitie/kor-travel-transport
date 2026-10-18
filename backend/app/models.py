@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from kortravelcommon.reverse_address import reverse_address_tables
+
 from datetime import date, datetime
 from typing import Any
 
@@ -28,6 +30,10 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 class Base(DeclarativeBase):
     pass
+
+
+# 파생 주소는 원천 주소·좌표와 분리해 같은 소비자 DB에 저장한다.
+reverse_address_tables(Base.metadata)
 
 
 JSON_TYPE = JSON().with_variant(JSONB, "postgresql")

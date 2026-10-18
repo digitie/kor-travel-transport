@@ -11,6 +11,8 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 from urllib.parse import quote, unquote
 
+from .address_refresh import address_refresh_job, address_refresh_sensor
+
 from dagster import (
     DagsterExecutionInterruptedError, DefaultScheduleStatus, Definitions, Failure, multiprocess_executor, job, op,
 )
@@ -568,7 +570,7 @@ worker_recovery = reconciliation_sensor(name="transport_worker_recovery", reconc
 
 
 definitions = Definitions(
-    sensors=[worker_recovery, *[
+    sensors=[address_refresh_sensor, worker_recovery, *[
         infrastructure_retry_sensor(
             name=f"transport_infra_retry_{retry_job.name}",
             project="transport", location_name="kor-travel-transport", job=retry_job,
@@ -577,6 +579,7 @@ definitions = Definitions(
         for retry_job in (airport_collection_job, highway_collection_job, rest_area_reference_collection_job)
     ]],
     jobs=[
+        address_refresh_job,
         airport_collection_job,
         highway_collection_job,
         fuel_collection_job,

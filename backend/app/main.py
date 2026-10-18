@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.schemas import AddressRefreshSummary
+
 import asyncio
 import base64
 import binascii
@@ -786,6 +788,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     router = APIRouter()
+
+    from app.services.address_refresh import address_summary
+
+    @router.get("/transport/admin/address-refresh", response_model=AddressRefreshSummary,
+                dependencies=[Depends(require_admin_token)])
+    def address_refresh_summary() -> AddressRefreshSummary:
+        # sync endpoint는 FastAPI threadpool에서 실행된다.
+        return AddressRefreshSummary(**address_summary(resolved_settings))
 
     @router.get("/transport/admin/place-locations/capability")
     async def manual_place_location_capability(request: Request) -> dict[str, str]:

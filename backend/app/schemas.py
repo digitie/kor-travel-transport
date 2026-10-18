@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from math import isfinite
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -898,3 +898,18 @@ class ExportAirport(BaseModel):
 class AirportExportResponse(BaseModel):
     generated_at: datetime
     items: list[ExportAirport]
+
+
+class AddressRefreshSummary(BaseModel):
+    total: int
+    due: int
+    failed: int
+    last_resolved_at: str | None
+    in_progress: bool
+    manual_cycle: bool
+    refresh_months: int
+    configured: bool
+    auto_enabled: bool
+    items: list[dict[str, Any]]
+
+

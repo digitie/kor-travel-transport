@@ -1,5 +1,9 @@
 ## 2026-10-17 — Transport 남은 작업 감사·문서 정합(제품 변경 없음)
 
+## 2026-10-18 주소 갱신 구현 진행
+
+VWorld·Kakao 기반 위치별 달력 6개월 자동 갱신 및 Admin 수동 실행을 구현 중이다. [설계·설정](reverse-address-refresh.md)을 참조한다. 운영 적용과 검증 완료는 미확정이며 Daemon은 중지 상태를 유지한다.
+
 - main d1593ecc/PR84 MERGED와 CI를 공개 GH에서 재확인했다. root의11:58:07 UTC safe 관측77/16·14healthy2noHC·daemon OFF, PR84 UI34/호스트 효과와 D의 Docker95를 source·이미지·수집 수용과 분리했다.
 - Track1 Transport는 T045/#76 무영향 문서화 완료이며 token/regeo 신규 구현이 아니다. T-TRN-01/02의 이번 최소 수용과 공식 ARM build·새 bundle·첫 전체 cutover NOT_RUN, T05 canonical 메모리 제한 source 부재를 구분했다. 낡은 RELEASE_SHA만으로 코드 미배포를 단정하거나 metadata만 갱신해 정합성을 위장하지 않는다.
 - OPEN81은 현재 Common/strict HC와 충돌하는 옛 branch로 고유 phase 분산만 재정산할 대상이다. OPEN38의0011은 main과 같고 rest-area 기능도 존재하며, OPEN31 research2개는 main에 없어서 최신 사실 검토가 남는다. 과거 CI/live 실패는 보존하고 현재 장애로 확대하지 않는다.
