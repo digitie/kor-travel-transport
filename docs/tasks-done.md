@@ -2,6 +2,21 @@
 
 완료한 task의 식별자, 핵심 변경, 검증 명령과 시각을 역시간순으로 보관한다.
 
+## 2026-10-18 — PR #89 유가 저장 임시 버퍼 축소 구현·격리 검증
+
+- station 임시 버퍼를 가격 행 생성 전에 해제하고 DB batch를 지연 생성했다.
+  원본·lineage·중복 정정·가격 INSERT 후 rollback과 동일 snapshot 재시도를 유지한다.
+- WSL/Docker 전체 각각852 PASS/10 SKIP, PostgreSQL 집중11 PASS/1 SKIP,
+  제품 a0b789df CI6개 SUCCESS를 확인했다.
+- ARM 합성11885곳/59425가격 초기 저장 3쌍 PASS. 최대 RSS 중앙값
+  171520→163072KiB(-4.93%)이며 앱+PG CPU 차이는0.47%로 속도 개선은 주장하지 않는다.
+- ARM64 native 이미지 설치 소스37파일 검증, API/CS 운영 전환 및 배포 후
+  WSL Chromium1243 UI34/34 PASS를 확인했다. daemon OFF와 기존 큐를 유지했다.
+  [배포·UI 증거](audits/2026-10-19-fuel-memory-deployment.json)를 포함해 이 수용 기록을
+  PR #89에 포함한다. 전체 수집·idle·PG 메모리 개선은 미입증이다.
+  [범위·원문·실패 이력](reviews/2026-10-18-fuel-store-memory.md)을 따른다.
+
+
 ## 2026-10-13 — T-045 geo 릴리스 무영향 근거 문서화
 
 - 교차 저장소 설계(2026-10-13, kor-travel-geo 주소 데이터셋 릴리스 → 소비자 반영; 저장소 내 정본은
