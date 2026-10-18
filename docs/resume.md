@@ -1,5 +1,10 @@
 # resume.md — 현재 인수인계
 
+## 2026-10-19 T-TRN-05 진행
+
+5역할 memory==memswap 합계4032MiB 후보를 준비한다. 실제 cap 적용 후 CS native fuel1회 수용이 남았다.
+[검증 순서](reviews/2026-10-19-runtime-memory.md)를 따른다. daemon OFF를 유지한다.
+
 
 ## 2026-10-19 현재 Track2 다음 작업
 
