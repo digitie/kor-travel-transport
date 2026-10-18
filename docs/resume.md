@@ -1,5 +1,12 @@
 # resume.md — 현재 인수인계
 
+## 2026-10-18 주소 갱신 운영 배포·UI 수용 진행
+
+#86 source2c9b416c/네 역할 배포와 migration0025, 실제 VWorld 단일 대상 및 원천 5표 보존을 확인했다.
+Dagster 링크 origin 수정·관리자 단독 교체 후 최종 UI34/34와 주소 UI10/10이 통과했다. 시험용 실행은 취소했고 기존 큐 3개는 보존했다.
+[운영 결과와 남은 검증](reviews/2026-10-18-address-live-deployment.md)을 따른다. Daemon OFF를 유지한다.
+
+
 ## 2026-10-18 주소 갱신 최종 소스 검증
 
 최신 Common pin은 89291f36d731ab906161b96757522e1cd833b4ef다.
