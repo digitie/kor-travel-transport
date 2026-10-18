@@ -1,5 +1,13 @@
 # resume.md — 현재 인수인계
 
+## 2026-10-18 주소 갱신 최종 소스 검증
+
+최신 Common pin은 89291f36d731ab906161b96757522e1cd833b4ef다.
+[최종 리뷰·검증 범위](reviews/2026-10-18-native-address-final.md)에 두 독립 PASS와
+집중23개·Docker23개·실제 native 연동 UI17개 및 지연 재시도1개 통과를 정리했다.
+아래 이전 날짜의 a68·보류 판정은 당시 이력이며 최신 상태는 이 항목을 따른다.
+최종 CI 6 SUCCESS·조건부 live 2 SKIP를 확인했다. 운영 배포·Track1/2 수용은 후속이다. Daemon OFF를 유지한다.
+
 ## 2026-10-18 영속 예약의 잠금 연결 장애 보강
 
 현재 Common pin은 a68d0495acc38906c31b95b1d0db163bd8f96f5b다.

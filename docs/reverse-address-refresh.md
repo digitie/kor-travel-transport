@@ -133,3 +133,6 @@ loopback 24602 프록시는 첫 요청을 지연시켜 24102 native GraphQL로 �
 공식 SQLAlchemy Pool.recreate로 연결 생성 설정과 listener를 보존하고 원래 풀의
 연결을 빌리지 않는다. 기존 연결 유실 시 제출 차단도 유지한다.
 최종 pin의 독립 재리뷰·CI·소비자 검증은 별도로 확인하며 운영 배포 전이다.
+
+최종 native 예약 복구와 시간대 검증은 [독립 리뷰 정산](reviews/2026-10-18-native-address-final.md)을 참조한다.
+공용 webserver의 새 mutation 지원 버전을 먼저 배포하고 Admin을 배포한다. Daemon OFF를 유지한다.
