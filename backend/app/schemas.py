@@ -911,5 +911,3 @@ class AddressRefreshSummary(BaseModel):
     configured: bool
     auto_enabled: bool
     items: list[dict[str, Any]]
-
-
