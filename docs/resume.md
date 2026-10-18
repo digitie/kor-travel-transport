@@ -1,13 +1,14 @@
 # resume.md — 현재 인수인계
 
-## 2026-10-19 Track 2 운영 계약 정렬 진행
+## 2026-10-19 PR90 운영 배포 계약 수용
 
-최신 main f9e90bc에서 현재 포트12302/12303과 공식 배포 스크립트의14001/14002
-불일치를 재현·수정했다. 관련66개 검사 PASS, 기존 ARM 이미지의 로컬 Chromium
-렌더 smoke PASS이며 실제 Opinet 전체 수집은 아니다. NVMe staging·project 계약과
-메모리 정책의 잔여는 [현재 증거와 계획](reviews/2026-10-19-track2-runtime-contract.md)을 따른다.
-전체 수용 완료를 선언하지 않으며 daemon OFF를 유지한다.
-
+포트12302/12303·NVMe staging·단일 project와 소비자 제한 export를 정본화했다.
+최종2c9553c CI6SUCCESS/live2SKIP, backend 전체899PASS/2SKIP 두 실행과
+WSL/Docker 관련38PASS씩을 확인했다. 앞선 전체각890PASS/10SKIP/1정책실패는 보존한다.
+gateway만 실제 교체하고 옛 컨테이너를 보존했다. 실제 Map 소비자 GET200/15공항,
+배포 후 UI34/34 PASS·daemon OFF·다른 역할 불변을 확인했다.
+[검증과 실패 이력](reviews/2026-10-19-track2-runtime-contract.md)을 따른다.
+ADR014·legacy6개 은퇴·5role 메모리/Opinet 수용은 후속이다.
 
 ## 2026-10-18 유가 저장 메모리 축소 후보
 

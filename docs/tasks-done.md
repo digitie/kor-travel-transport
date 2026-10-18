@@ -1,5 +1,15 @@
 # tasks-done.md — 완료 작업 아카이브
 
+## 2026-10-19 PR90 운영 배포 계약 수용
+
+포트12302/12303·NVMe staging·단일 project와 소비자 제한 export를 정본화했다.
+최종2c9553c CI6SUCCESS/live2SKIP, backend 전체899PASS/2SKIP 두 실행과
+WSL/Docker 관련38PASS씩을 확인했다. 앞선 전체각890PASS/10SKIP/1정책실패는 보존한다.
+gateway만 실제 교체하고 옛 컨테이너를 보존했다. 실제 Map 소비자 GET200/15공항,
+배포 후 UI34/34 PASS·daemon OFF·다른 역할 불변을 확인했다.
+[검증과 실패 이력](reviews/2026-10-19-track2-runtime-contract.md)을 따른다.
+ADR014·legacy6개 은퇴·5role 메모리/Opinet 수용은 후속이다.
+
 완료한 task의 식별자, 핵심 변경, 검증 명령과 시각을 역시간순으로 보관한다.
 
 ## 2026-10-18 — PR #89 유가 저장 임시 버퍼 축소 구현·격리 검증

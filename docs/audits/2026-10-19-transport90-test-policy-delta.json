@@ -1,0 +1,51 @@
+{
+  "source": "2c9553cc2121ea327ac09984dcfa64a436ee359f",
+  "changed_since_full": [
+    "backend/tests/test_service_exports.py"
+  ],
+  "runtime_source_unchanged": true,
+  "full_runs_remain_failed": true,
+  "failure_reason": "기존 무조건 service 금지 조건과 승인된 소비자 IP 제한 export 정본화의 충돌",
+  "focused_scope": [
+    "tests/test_service_exports.py",
+    "tests/test_transport_export_gateway.py"
+  ],
+  "results": [
+    {
+      "scope": "WSL full",
+      "source": "7e4e652a2940405671288707cfd7a4519fe1225f",
+      "passed": 890,
+      "skipped": 10,
+      "failed": 1,
+      "log_sha256": "1f34acdba993a698b10f74a702c67121a21c9d688e70f2f9bfdc386970631034"
+    },
+    {
+      "scope": "Docker full",
+      "source": "7e4e652a2940405671288707cfd7a4519fe1225f",
+      "passed": 890,
+      "skipped": 10,
+      "failed": 1,
+      "log_sha256": "83fbcfcc504e33636c7cb615780e4cb97b33f59865274f17c37fea3ede664198"
+    },
+    {
+      "scope": "WSL focused",
+      "source": "2c9553cc2121ea327ac09984dcfa64a436ee359f",
+      "passed": 38,
+      "skipped": 0,
+      "failed": 0,
+      "log_sha256": "967709d8cbc5bed51f276ff300b91f3fa7034b10343bccac95737ba9e8a58237"
+    },
+    {
+      "scope": "Docker focused",
+      "source": "2c9553cc2121ea327ac09984dcfa64a436ee359f",
+      "passed": 38,
+      "skipped": 0,
+      "failed": 0,
+      "log_sha256": "ae671659e538688821b6d3e9d305931f43f087cb48ae133386f07e2383444a29"
+    }
+  ],
+  "docker_source_manifest_verified": true,
+  "docker_dependency_pin_verified": true,
+  "docker_oom_killed": false,
+  "docker_owned_container_removed": true
+}

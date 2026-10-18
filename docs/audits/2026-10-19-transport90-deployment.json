@@ -1,0 +1,240 @@
+{
+  "source": "2c9553cc2121ea327ac09984dcfa64a436ee359f",
+  "api_cs_runtime_source": "a0b789df0e3f6eab2fab48e7ec58ab995d0e33dd",
+  "rollout": {
+    "attempt": "f036eb68-526b-404b-a983-58b194a611ce",
+    "exit": 0,
+    "status": "PASS_OLD_RETAINED",
+    "gateway_image": "sha256:96868d9fa38f469a86d2f25787e43ee9ad330339d30be260aa9f5a338bb03751",
+    "gateway_cid": "139a5cbab51841d6efd1b34ef45844b7c8b00b9fb7a11d0e96d4ef4f72358329",
+    "source_tools_updated": true,
+    "runtime_image_rebuilds": 0,
+    "changed_runtime_roles": [
+      "transport-api-gateway"
+    ],
+    "old_gateway_retained": true,
+    "raw_sha256": "487a80264f41e07733e3ef73e8253dc57ef3251decedf7ee9492f38268a60329"
+  },
+  "consumer": {
+    "source_matches_gateway_allow": true,
+    "host_network": true,
+    "calls": 1,
+    "db_writes": 0,
+    "item_count": 15,
+    "status": 200,
+    "response_bytes": 4580,
+    "elapsed_seconds": 0.6856781002134085,
+    "runtime_unchanged": true,
+    "pass": true,
+    "raw_sha256": "5587184d828b91172e064ae4cc5b0453ce15bda5d9bddae2d1a7ccf0d6eb9716"
+  },
+  "ui": {
+    "status": "PASS",
+    "source": "2c9553cc2121ea327ac09984dcfa64a436ee359f",
+    "runtime_source": "a0b789df0e3f6eab2fab48e7ec58ab995d0e33dd",
+    "runtime": "WSL Chromium1243",
+    "counts": {
+      "PASS": 34,
+      "FAIL": 0,
+      "NOT_RUN": 0
+    },
+    "cases": [
+      {
+        "name": "anonymous-protected-redirect",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "public-login-screen",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "anonymous-monitor-api-denied",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "invalid-login-rejected",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "browser-login-form",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "authenticated-page-and-menu",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "navigate:/",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "navigate:/map",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "map-feature-requests-settle",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "navigate:/transport",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "navigate:/rail",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "navigate:/ferry",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "navigate:/bus/express",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "navigate:/bus/intercity",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "dagster-monitor-native-identity",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "failure-detail-not-fetched-before-selection",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "selected-failure-detail-live",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "dagster-external-links-use-current-plane",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "run-search-empty-and-clear",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "schedule-expand-collapse",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "monitor-fault:http-503",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "monitor-recovery:http-503",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "monitor-fault:network-abort",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "monitor-recovery:network-abort",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "stylesheet-ready",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "viewport:320",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "viewport:375",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "viewport:414",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "viewport:768",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "viewport:1440",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "logout-and-protected-redirect",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "map-abort-signal-evidence",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "browser-runtime-errors",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "same-origin-api-responses",
+        "service": "transport",
+        "status": "PASS"
+      }
+    ],
+    "daemon_off": true,
+    "transport_lifecycle_unchanged": true,
+    "started_at": "2026-10-18T23:18:18.858Z",
+    "finished_at": "2026-10-18T23:18:43.998Z",
+    "raw_sha256": "b732aca3b8352913d1b39e5a3932a58b0605db1ce10273ab74d93b438664f5db"
+  },
+  "ci": {
+    "commit": "2c9553cc2121ea327ac09984dcfa64a436ee359f",
+    "success": 6,
+    "live_skipped": 2,
+    "backend_runs": [
+      {
+        "id": 39173874475,
+        "passed": 899,
+        "skipped": 2,
+        "warnings": 6,
+        "seconds": 1548.74
+      },
+      {
+        "id": 39173872011,
+        "passed": 899,
+        "skipped": 2,
+        "warnings": 6,
+        "seconds": 1220.39
+      }
+    ]
+  }
+}
