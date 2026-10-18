@@ -142,7 +142,7 @@ E2E_BASE_URL=https://pr.digitie.mywire.org npm run test:e2e
 ## Historical: 기존 13번 ODROID 배포 (실행 금지)
 
 이 절은 과거 SQLite 스택의 이력이다. 현재 Odroid 작업은 위 배포 절차를 따른다.
-legacy M6 파일 삭제는 별도 변경이며 서비스·볼륨·HAProxy 변경을 뜻하지 않는다.
+옛 M6 배포 파일 6개는 은퇴했다. 현재 배포 entry는 scripts/deploy-prod.sh이며 서비스·볼륨·HAProxy는 변경하지 않았다.
 
 배포 기준 정보는 루트의 [.env.odroid](.env.odroid)에 저장한다.
 
@@ -372,7 +372,6 @@ docker compose run --rm --no-deps frontend npm run test -- --run
 - [docs/current-state.md](docs/current-state.md)
 - [docs/architecture/data-sources.md](docs/architecture/data-sources.md)
 - [AGENTS.md](AGENTS.md)
-- [deploy/odroid/README.md](deploy/odroid/README.md)
 - [docs/architecture/architecture.md](docs/architecture/architecture.md)
 - [docs/architecture/analytics.md](docs/architecture/analytics.md)
 - [docs/runbooks/testing.md](docs/runbooks/testing.md)

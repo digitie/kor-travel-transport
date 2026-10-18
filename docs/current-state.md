@@ -320,9 +320,7 @@ cutover read-only source로만 남긴다.
 - [docker-compose.yml](../docker-compose.yml) + [docker-compose.shared.yml](../docker-compose.shared.yml)
   (원격 스크립트가 둘을 함께 렌더한다 — `scripts/deploy-prod-remote.sh`),
   [docker-compose.transport-admin.yml](../docker-compose.transport-admin.yml)(`scripts/deploy-transport-admin-prod.sh`)
-- legacy odroid 자산 `docker-compose.odroid.yml`·`deploy/odroid/*`·`scripts/deploy-odroid.ps1`·`scripts/odroid-status.ps1`
-  (ADR-014 결정 6의 집합 M; 그중 fail-closed 마커는 `docker-compose.odroid.yml`·`deploy/odroid/remote-deploy.sh`·
-  `scripts/deploy-odroid.ps1`)은 실행하지 않는다 — odroid 배포 게이트가 전부 초록인 뒤 T-TRN-03b가 삭제한다.
+- legacy M6 파일 6개는 T-TRN-03b에서 은퇴했다. 실제 운영 파일·컨테이너·볼륨 삭제는 실행하지 않았다.
 
 배포 host는 필수 --host 인자로 받고 Manager530의 targets.transport.host → hosts.<key>.addr 및 원격 자기 IPv4와 대조한다. 아래 n150 값은 기존 운영 이력이며 새 script의 주소 기본값이 아니다.
 
@@ -343,7 +341,6 @@ backend가 `.13`으로, 옛 `pr2` host와 odroid의 legacy `parking-radar` 스�
 
 관련 문서:
 - [runbooks/deployment.md](runbooks/deployment.md)
-- [deploy/odroid/README.md](../deploy/odroid/README.md)
 
 ## 10. 테스트 기준
 

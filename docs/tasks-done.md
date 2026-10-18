@@ -1,5 +1,14 @@
 # tasks-done.md — 완료 작업 아카이브
 
+
+## 2026-10-19 — T-TRN-03b 옛 배포 자산 은퇴
+
+- [x] 빈 Compose·거부 wrapper·옛 bootstrap/status 및 안내 문서의 M6 경로를 삭제했다. 현재 공식 배포·테스트·CI가 이 파일을 호출하지 않음을 확인했다.
+- README/current-state의 깨진 링크를 제거했다. 역사적 ADR/작업 기록의 경로는 당시 근거로 남긴다.
+- 운영의 legacy 비밀 파일 보호를 위한 .env.server14 계열3개 rsync exclude와 기존 회귀 테스트는 유지한다. 검색 0건을 만들기 위해 이 보호를 삭제하지 않는다.
+- 실제 컨테이너·볼륨·eMMC/NVMe·HAProxy 변경0이다.
+
+
 ## 2026-10-19 — T-TRN-02·04 현재 운영 계약 수용
 
 - [x] T-TRN-02: PR86의 실제 ARM 관리자 이미지14e8c212·빌드276.24초·canonical URL2/옛 URL0/같은 chunk2를 회수했다. PR90 후 같은 이미지의 UI34도 PASS다. [번들 근거](audits/2026-10-19-admin-bundle-acceptance.md).
