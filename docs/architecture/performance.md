@@ -197,3 +197,21 @@ covering index를 concurrent로 만들고 해당 테이블의 auto-analyze 임�
 - bootstrap 성공 후 주차 현황이 표시되고 외부 비행편 지연으로 loading 전체가 붙잡히지 않는다.
 - 모바일에서 page-level 가로 스크롤은 없고, 큰 테이블/차트만 자체 스크롤한다.
 - 14 운영에서 `/health` 200, `/v1/parking/current`, `/v1/dashboard/bootstrap`, `/v1/dashboard/analytics`가 정상 응답한다.
+
+## 공항 주차 수집의 반복 조회 감소 (2026-10-18)
+
+관측 저장 한 번 안에서 공항 코드별 ORM 객체만 재사용한다. 1,000개 관측이 3개
+공항에 속하는 경우 공항 SELECT는 1,000회에서 3회로 줄어든다. 이름·영문명·
+updated_at은 여전히 관측마다 갱신한다. 원천, 원본 payload, 주차장 식별자,
+관측 중복 unique key와 snapshot savepoint는 그대로다. 캐시는 저장 호출이 끝나면
+폐기하므로 rollback 이후 재호출이나 다음 수집으로 객체가 넘어가지 않는다.
+메모리는 관측 수 대신 해당 배치의 공항 수에 비례한다.
+
+WSL RAM SQLite의 실제 공항 helper를 1,000관측/3공항으로 각 3회 독립 프로세스에서
+교대로 측정했다. 양쪽 모두 관측마다 flush해 실제 다음 lot SELECT의 autoflush를
+모사했으며 UPDATE는 양쪽 모두 1,000회다. CPU 중앙값은 1,227.9ms → 543.9ms
+(55.7% 감소), Python 할당 peak 중앙값은 171,567 → 171,144 bytes다.
+RSS 중앙값은 55,424 → 55,408 KiB로 사실상 같아서 메모리 개선으로 주장하지 않는다.
+이는 공항 helper 국소 수치다. provider·lot/snapshot·네트워크·운영 PostgreSQL을
+제외했으므로 전체 수집이나 Odroid CPU 감소율을 의미하지 않는다.
+운영 비교, live UI, 독립 리뷰와 배포는 별도 게이트다. Dagster daemon은 OFF를 유지한다.

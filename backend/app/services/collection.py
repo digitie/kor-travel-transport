@@ -660,8 +660,12 @@ class CollectionService:
         name_ko: str,
         name_en: str | None,
         source: str,
+        *,
+        airports: dict[str, Airport] | None = None,
     ) -> Airport:
-        airport = await session.scalar(select(Airport).where(Airport.code == airport_code))
+        airport = airports.get(airport_code) if airports is not None else None
+        if airport is None:
+            airport = await session.scalar(select(Airport).where(Airport.code == airport_code))
         timestamp = now_utc()
         if airport is None:
             airport = Airport(
@@ -678,6 +682,8 @@ class CollectionService:
             airport.name_ko = name_ko
             airport.name_en = name_en
             airport.updated_at = timestamp
+        if airports is not None:
+            airports[airport_code] = airport
         return airport
 
     async def _get_or_create_lot(
@@ -738,6 +744,8 @@ class CollectionService:
         observations: list[ParsedParkingObservation],
     ) -> int:
         stored = 0
+        # 같은 저장 호출 안에서만 재사용한다. rollback/다음 수집으로 ORM 객체를 넘기지 않는다.
+        airports: dict[str, Airport] = {}
         for observation in observations:
             airport = await self._get_or_create_airport(
                 session,
@@ -745,6 +753,7 @@ class CollectionService:
                 observation.airport_name_ko,
                 observation.airport_name_en,
                 "incheon" if observation.airport_code == "ICN" else "kac",
+                airports=airports,
             )
             lot = await self._get_or_create_lot(
                 session,
