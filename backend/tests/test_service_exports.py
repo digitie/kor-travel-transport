@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -115,10 +116,22 @@ def test_exports_stay_closed_when_the_token_is_short(test_settings: Settings) ->
     assert response.status_code == 404
 
 
-def test_public_proxies_never_forward_service_exports() -> None:
+def test_public_proxy_blocks_exports_and_gateway_requires_consumer_allowlist() -> None:
     gateway = (REPO_ROOT / "deploy/transport-admin/api-gateway.conf.template").read_text(encoding="utf-8")
     proxy = (REPO_ROOT / "frontend/src/app/api/backend/[...path]/route.ts").read_text(encoding="utf-8")
-    assert "service" not in gateway
+    # 운영 소비자 전용 경로만 예외이며, 공개 프록시는 계속 service 경로를 전달하지 않는다.
+    locations = re.findall(r"^    location (.+?) \{", gateway, re.MULTILINE)
+    assert len(locations) == 4
+    assert locations[0] == "= /health"
+    assert locations[1].startswith("~ ^/v1/transport/")
+    assert locations[1].endswith("$")
+    assert locations[2:] == ["^~ /v1/service/exports/", "/"]
+    export = gateway.split("    location ^~ /v1/service/exports/ {", 1)[1].split("\n    }", 1)[0]
+    assert "include /etc/nginx/transport-export-allow.conf;" in export
+    assert "limit_except GET { deny all; }" in export
+    assert 'proxy_set_header X-Forwarded-For "";' in export
+    assert "allow all;" not in export
+    assert "location / { return 404; }" in gateway
     assert "service/" not in proxy and '"service' not in proxy
 
 
