@@ -149,3 +149,27 @@ def test_existing_derived_address_for_legacy_ferry_is_hidden(tmp_path):
             assert source.summary()["total"] == 2
     finally:
         engine.dispose()
+
+
+def test_legacy_only_result_does_not_set_current_summary_confirmation(tmp_path):
+    settings, engine = ferry_address_fixture(tmp_path)
+    try:
+        with address_source(settings) as source:
+            old_selection = select(
+                (literal("ferry_port:") + cast(FerryPort.id, String)).label("target_key"),
+                FerryPort.longitude, FerryPort.latitude, FerryPort.port_name.label("display_name"),
+            ).where(FerryPort.id == 1)
+            old_source = DatabaseAddressSource(source.store, old_selection)
+            refresh_reverse_addresses(
+                source.store, Resolver(), old_source.page, old_source.retries,
+                pending_failures=old_source.pending_failures, force=True,
+            )
+            original = source.store.row("ferry_port:1")
+            assert original["status"] == "ok"
+            summary = source.summary()
+            assert summary["total"] == summary["due"] == 2
+            assert summary["items"] == []
+            assert summary["last_resolved_at"] is None
+            assert source.store.row("ferry_port:1") == original
+    finally:
+        engine.dispose()

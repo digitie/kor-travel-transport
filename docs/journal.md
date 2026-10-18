@@ -1,3 +1,13 @@
+## 2026-10-18 — 두 번째 리뷰의 공통 집계 후속
+
+r2 A SOURCE PASS와 B REQUEST_CHANGES를 [원문](reviews/2026-10-18-address-refresh-r2.md)으로 보존했다.
+원 legacy admission과 P3 문구는 닫혔으나 Common c067의 provider 전체 MAX가 제외 항만의
+과거 확인 시각을 노출하는 T86-B-P2-02는 새 OPEN이다. 공통 수정522525a와 lock을 채택하고
+legacy-only 파생 결과의 실제 consumer 반례를 추가했다(이전 pin에서1 FAIL).
+현재 source/좌표만 집계하고 과거 sidecar·원천은 보존한다. 후속 CI·두 독립 재검토·UI를
+진행하며 이전8c의 CI848/2나 fullDocker6a835/13을 새 candidate 결과로 전용하지 않는다.
+Track1·2 전체 종료 뒤 수집기 CPU/RSS 개선, Daemon OFF 방침을 유지한다.
+
 ## 2026-10-18 주소 갱신 구현·로컬 검증
 
 VWorld 우선·Kakao fallback, 위치별 달력 6개월 자동 갱신과 Admin 수동 실행을 구현했다. 두 앱은 같은 Common Python 엔진을 고정 commit으로 사용한다. [설계·설정 및 검증 범위](reverse-address-refresh.md)를 참조한다. 원천 주소·좌표는 보존한다.

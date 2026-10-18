@@ -1,6 +1,6 @@
 # 6개월 자동 주소 갱신과 Admin 수동 실행
 
-정본 구현 계약은 [Common 구현 가이드](https://github.com/digitie/kor-travel-common/blob/c067a7f6a11b106931a73cd7465503d90e54d976/docs/reverse-address-refresh.md)를 따른다.
+정본 구현 계약은 [Common 구현 가이드](https://github.com/digitie/kor-travel-common/blob/522525aed3db934767c1c9e742b3bfc68e91679c/docs/reverse-address-refresh.md)를 따른다.
 기존 VWorld 우선·Kakao 보조를 유지하며 Geo API나 데이터 토큰에는 의존하지 않는다.
 
 환경변수: VWORLD_API_KEY, KAKAO_REST_API_KEY,
@@ -81,3 +81,10 @@ Common PR39는 두 독립 FULL source 리뷰·최종 CI14개 통과 후 merge됐
 
 legacy data_go_kr_port_guideline 항구 좌표는 기존 지도 정책과 동일하게 갱신·집계·최근 결과에서 제외한다.
 admin_manual과 출처 미지정의 유효 좌표는 유지하며 원천/기존 파생 row를 삭제하거나 수정하지 않는다.
+
+## 현재 원천의 최근 정상 확인 시각 보정
+
+Common40의 522525a pin은 현재 원천 SELECT에 있고 좌표가 같은 파생 결과에서만
+최근 정상 확인 시각을 집계한다. 비활성·제외·이동 전 결과는 현재 확인 시각에 섞지 않고
+과거 행은 보존한다. 같은 좌표의 재시도 실패에는 마지막 정상 확인 시각을 유지한다.
+이 pin의 검증·CI·두 독립 리뷰와 운영 수용은 이전 기능 검증과 구분한다.

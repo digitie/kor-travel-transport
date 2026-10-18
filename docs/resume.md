@@ -1,5 +1,13 @@
 # resume.md — 현재 인수인계
 
+## 2026-10-18 주소 확인 시각 공통 후속
+
+[r2 원문과 판정](reviews/2026-10-18-address-refresh-r2.md): A SOURCE PASS, B REQUEST_CHANGES다.
+원 legacy admission P2는 CLOSED지만 현재 원천에서 제외한 결과의 정상 확인 시각이 남는 새
+T86-B-P2-02가 발견됐다. 공통 엔진에서 반례5개를 재현한 Common40의 522525a로 pin을 갱신하고,
+Transport legacy-only 결과의 확인 시각 반례1 FAIL을 추가했다. 새 CI·두 독립 재검토로
+consumer closure를 확인한다. 운영·수집기 CPU/RSS 완료로 표시하지 않으며 Daemon OFF다.
+
 ## 2026-10-18 주소 갱신 구현·로컬 검증
 
 VWorld 우선·Kakao fallback, 위치별 달력 6개월 자동 갱신과 Admin 수동 실행을 구현했다. 두 앱은 같은 Common Python 엔진을 고정 commit으로 사용한다. [설계·설정 및 검증 범위](reverse-address-refresh.md)를 참조한다. 원천 주소·좌표는 보존한다.
