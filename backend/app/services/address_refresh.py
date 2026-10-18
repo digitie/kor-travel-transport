@@ -3,11 +3,20 @@ from contextlib import contextmanager
 
 from kortravelcommon.address_providers import VworldKakaoAddressResolver
 from kortravelcommon.reverse_address import (
-    DatabaseAddressSource, ReverseAddressStore, address_engine, refresh_reverse_addresses,
+    DatabaseAddressSource,
+    ReverseAddressStore,
+    address_engine,
+    refresh_reverse_addresses,
 )
 from sqlalchemy import String, cast, literal, select, union_all
 
-from app.models import BusTerminalReference, FerryPort, FuelStation, RailStationReference, RestAreaReference
+from app.models import (
+    BusTerminalReference,
+    FerryPort,
+    FuelStation,
+    RailStationReference,
+    RestAreaReference,
+)
 
 
 @contextmanager

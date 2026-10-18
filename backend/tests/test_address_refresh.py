@@ -1,12 +1,18 @@
 """원천 주소·정방향 좌표를 보존하며 Geo 없이 파생 주소를 갱신한다."""
 from datetime import UTC, datetime
 
-from sqlalchemy import create_engine, insert, select
-
 from app.core.config import Settings
-from app.models import Base, BusTerminalReference, FerryPort, FuelStation, RailStationReference, RestAreaReference
+from app.models import (
+    Base,
+    BusTerminalReference,
+    FerryPort,
+    FuelStation,
+    RailStationReference,
+    RestAreaReference,
+)
 from app.services.address_refresh import address_source, run_address_refresh
 from kortravelcommon.reverse_address import AddressResolver
+from sqlalchemy import create_engine, insert, select
 
 
 class Resolver(AddressResolver):
@@ -49,8 +55,8 @@ def test_transport_coordinate_sources_keep_original_fields(tmp_path):
 
 
 def test_admin_summary_is_read_only_and_fail_closed(test_settings, monkeypatch):
-    from fastapi.testclient import TestClient
     from app.main import create_app
+    from fastapi.testclient import TestClient
     from kortravelcommon.address_providers import VworldKakaoAddressResolver
 
     def no_provider(*args):
