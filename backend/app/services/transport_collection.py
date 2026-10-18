@@ -8,11 +8,12 @@ import json
 import logging
 import re
 import traceback
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Iterator, Mapping
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+from itertools import islice
 from pathlib import Path
 from typing import Any, Literal, Protocol, TypeVar
 from zoneinfo import ZoneInfo
@@ -921,22 +922,25 @@ class TransportCollectionService:
 
         stations_before = await self._count_opinet_stations(session)
         station_ids: dict[str, int] = {}
-        rows = list(station_rows.values())
-        if rows:
+        if station_rows:
             station_statement = insert(station_table)
             station_statement = station_statement.on_conflict_do_update(
                 index_elements=["source", "identity_key"],
                 set_={
                     name: station_statement.excluded[name]
-                    for name in rows[0]
+                    for name in next(iter(station_rows.values()))
                     if name not in ("source", "identity_key", "first_seen_at")
                 },
             ).returning(station_table.c.identity_key, station_table.c.id)
-            for chunk in _chunked(rows, FUEL_STATION_UPSERT_BATCH):
+            for chunk in _chunked(station_rows.values(), FUEL_STATION_UPSERT_BATCH):
                 result = await session.execute(
                     station_statement.execution_options(insertmanyvalues_page_size=len(chunk)), chunk,
                 )
                 station_ids.update((identity_key, station_id) for identity_key, station_id in result.all())
+                del result, chunk
+        # 가격 행을 만들기 전에 주유소 저장용 원본 복사본을 해제한다.
+        # 재시도에 필요한 snapshot과 station_prices는 그대로 보존한다.
+        station_rows.clear()
         station_count = await self._count_opinet_stations(session) - stations_before
 
         price_rows: dict[tuple[int, str, datetime], dict[str, Any]] = {}
@@ -973,7 +977,7 @@ class TransportCollectionService:
                     for name in ("price", "provider_updated_at", "collected_at", "raw_item_json")
                 },
             )
-            for chunk in _chunked(list(price_rows.values()), FUEL_PRICE_UPSERT_BATCH):
+            for chunk in _chunked(price_rows.values(), FUEL_PRICE_UPSERT_BATCH):
                 await session.execute(
                     price_statement.execution_options(insertmanyvalues_page_size=len(chunk)), chunk,
                 )
@@ -1212,8 +1216,12 @@ async def _collect_krex_pages(
     return tuple(items)
 
 
-def _chunked(rows: list[T], size: int) -> list[list[T]]:
-    return [rows[index:index + size] for index in range(0, len(rows), size)]
+def _chunked(rows: Iterable[T], size: int) -> Iterator[list[T]]:
+    if size <= 0:
+        raise ValueError("chunk size must be positive")
+    iterator = iter(rows)
+    while chunk := list(islice(iterator, size)):
+        yield chunk
 
 
 def _station_identity(item: BrowserStation) -> str:

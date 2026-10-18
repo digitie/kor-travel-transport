@@ -478,3 +478,54 @@ def test_bench_fuel_store_at_production_size(client) -> None:
         for kind, values in sorted(timings.items(), key=lambda item: -sum(item[1]))[:6]:
             print(f"FUEL_STORE_BENCH   {label} {kind!r}: calls={len(values)} total={sum(values):.1f}s max={max(values):.2f}s")
     assert results["bulk"][1] == results["legacy"][1] == results["bulk-again"][1]
+
+
+def test_chunked_consumes_only_requested_batch() -> None:
+    consumed = []
+
+    def values():
+        for value in range(5):
+            consumed.append(value)
+            yield value
+
+    chunks = collection_module._chunked(values(), 2)
+    assert consumed == []
+    assert next(chunks) == [0, 1]
+    assert consumed == [0, 1]
+    assert next(chunks) == [2, 3]
+    assert consumed == [0, 1, 2, 3]
+    assert list(chunks) == [[4]]
+    assert list(collection_module._chunked({}, 2)) == []
+
+
+@pytest.mark.parametrize("size", [0, -1])
+def test_chunked_rejects_invalid_batch_size(size) -> None:
+    with pytest.raises(ValueError, match="chunk size"):
+        list(collection_module._chunked([1], size))
+
+
+def test_chunked_preserves_iterator_failure() -> None:
+    def values():
+        yield 1
+        yield 2
+        raise RuntimeError("fixture iterator failure")
+
+    chunks = collection_module._chunked(values(), 2)
+    assert next(chunks) == [1, 2]
+    with pytest.raises(RuntimeError, match="fixture iterator failure"):
+        next(chunks)
+
+def test_empty_fuel_snapshot_keeps_empty_store(client) -> None:
+    service = client.app.state.transport_collection_service
+    factory = client.app.state.session_factory
+
+    async def run():
+        async with factory() as session:
+            counts = await service._store_fuel_snapshot(session, await new_run(session), make_snapshot(T0, []))
+            state = await dump_fuel_state(session, {})
+            await session.rollback()
+            return counts, state
+
+    counts, state = asyncio.run(run())
+    assert counts == (0, 0)
+    assert state == {"stations": {}, "prices": {}, "latest": {}}

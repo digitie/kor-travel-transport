@@ -1,0 +1,291 @@
+{
+  "source": "a0b789df0e3f6eab2fab48e7ec58ab995d0e33dd",
+  "build": {
+    "source": "a0b789df0e3f6eab2fab48e7ec58ab995d0e33dd",
+    "image_id": "sha256:5942696b548fad24eeae2943925c84387ff216fdcc46f31c536a8a4a865feb47",
+    "architecture": "arm64",
+    "exit": 0,
+    "elapsed_seconds": 660.5149235889548,
+    "foreign_equal": true,
+    "revision_label_applied": true
+  },
+  "installed_source": {
+    "status": "PASS_INSTALLED_SOURCE_PROOF",
+    "image_id": "sha256:5942696b548fad24eeae2943925c84387ff216fdcc46f31c536a8a4a865feb47",
+    "revision": "a0b789df0e3f6eab2fab48e7ec58ab995d0e33dd",
+    "architecture": "arm64",
+    "proof": {
+      "status": "PASS_INSTALLED_SOURCE",
+      "source_files": 37,
+      "source_manifest_sha256": "3046c8d3bb490426b18b4354081e9bb0cc6682bb786d40459f26971626b072c5",
+      "app_origin": "/app/app/__init__.py"
+    },
+    "runtime_unchanged": true,
+    "daemon_off": true,
+    "owned_removed": true
+  },
+  "deployment": {
+    "phase": "PASS",
+    "at": 1792335864.2462726,
+    "attempt": "e3d795ce-798a-42d0-9d05-56430b00093a",
+    "source": "a0b789df0e3f6eab2fab48e7ec58ab995d0e33dd",
+    "targets": [
+      {
+        "service": "backend",
+        "old_cid": "157e31fc0569319849e875ba22c00eac4bf5a3d0ffee656c126069b21db0ec18",
+        "new_cid": "cff0d8a34514a3851cc559d21ed1f63be422e1403ca98245d999514f7451b127",
+        "pid": 3741673,
+        "ticks": 35359009,
+        "fp": "fdc7c8cd0b24b7d2e5f209e5b83c6dcad9e33a1a5502c1c53469ee3b070d2223"
+      },
+      {
+        "service": "dagster-code-server",
+        "old_cid": "443fbc0f163f538a4ad7dbd6f715d07a55fb3cac5d2a7343972285f12b84bd72",
+        "new_cid": "08941b513b6ca75e8504e156009e12eab51c9719267d38cabfddba901b2caa0f",
+        "pid": 3742809,
+        "ticks": 35362205,
+        "fp": "e0bdb798c6445c04a2798e38fc70de849930b3b3e1f4506338af1a13a5aa4167"
+      }
+    ]
+  },
+  "rollout": {
+    "status": "PASS",
+    "attempt": "e3d795ce-798a-42d0-9d05-56430b00093a",
+    "source": "a0b789df0e3f6eab2fab48e7ec58ab995d0e33dd",
+    "targets": [
+      {
+        "service": "backend",
+        "new_cid": "cff0d8a34514a3851cc559d21ed1f63be422e1403ca98245d999514f7451b127"
+      },
+      {
+        "service": "dagster-code-server",
+        "new_cid": "08941b513b6ca75e8504e156009e12eab51c9719267d38cabfddba901b2caa0f"
+      }
+    ],
+    "daemon_off": true,
+    "queue_unchanged": true
+  },
+  "ui": {
+    "status": "PASS",
+    "source": "a0b789df0e3f6eab2fab48e7ec58ab995d0e33dd",
+    "runtime": "WSL Chromium1243",
+    "cases": [
+      {
+        "name": "anonymous-protected-redirect",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "public-login-screen",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "anonymous-monitor-api-denied",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "invalid-login-rejected",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "browser-login-form",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "authenticated-page-and-menu",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "navigate:/",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "navigate:/map",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "map-feature-requests-settle",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "navigate:/transport",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "navigate:/rail",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "navigate:/ferry",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "navigate:/bus/express",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "navigate:/bus/intercity",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "dagster-monitor-native-identity",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "failure-detail-not-fetched-before-selection",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "selected-failure-detail-live",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "dagster-external-links-use-current-plane",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "run-search-empty-and-clear",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "schedule-expand-collapse",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "monitor-fault:http-503",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "monitor-recovery:http-503",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "monitor-fault:network-abort",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "monitor-recovery:network-abort",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "stylesheet-ready",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "viewport:320",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "viewport:375",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "viewport:414",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "viewport:768",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "viewport:1440",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "logout-and-protected-redirect",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "map-abort-signal-evidence",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "browser-runtime-errors",
+        "service": "transport",
+        "status": "PASS"
+      },
+      {
+        "name": "same-origin-api-responses",
+        "service": "transport",
+        "status": "PASS"
+      }
+    ],
+    "counts": {
+      "PASS": 34,
+      "FAIL": 0,
+      "NOT_RUN": 0
+    },
+    "roles": {
+      "dagster-code-server": {
+        "cid": "08941b513b6ca75e8504e156009e12eab51c9719267d38cabfddba901b2caa0f",
+        "image": "sha256:5942696b548fad24eeae2943925c84387ff216fdcc46f31c536a8a4a865feb47",
+        "pid": 3742809,
+        "ticks": 35362205,
+        "fp": "9969b1841317822f176ce40f9f05e760cf53a42621afe442f2bf4841c3d08f50"
+      },
+      "backend": {
+        "cid": "cff0d8a34514a3851cc559d21ed1f63be422e1403ca98245d999514f7451b127",
+        "image": "sha256:5942696b548fad24eeae2943925c84387ff216fdcc46f31c536a8a4a865feb47",
+        "pid": 3741673,
+        "ticks": 35359009,
+        "fp": "46b0481139643e5587d68be9a38dd81169d336b275d4788f456014f2f6f3951d"
+      },
+      "transport-admin-web": {
+        "cid": "4cab75ea2562d41b28ea4ef64de11659525cbf501d9da687e5614abc1f53129b",
+        "image": "sha256:14e8c212173a7b06cfd4f8a0acd528d26d2afa11c39def3b1182e2dc555ad3ee",
+        "pid": 2961790,
+        "ticks": 32986925,
+        "fp": "5cf279e9d48e7824a036662682bee8940a9dd6b8471dbeed02aba24a1875741b"
+      },
+      "frontend": {
+        "cid": "75628b303e511d48487632081079c917a11f584a9613e61205422551ad92d00c",
+        "image": "sha256:6902aad489f205c942b818e5fc9afea76a56263acfca827150fcc88bf17d3659",
+        "pid": 2800122,
+        "ticks": 32486452,
+        "fp": "dcb572ba26b01a9ab5938bfcf4d0945d94537d2b45cd27263f0f6c81591e7e6a"
+      }
+    },
+    "daemon_off": true,
+    "transport_lifecycle_unchanged": true,
+    "started_at": "2026-10-18T15:04:39.128Z",
+    "finished_at": "2026-10-18T15:05:06.218Z",
+    "raw_result_sha256": "cb0cc27d99203db6e425086fbc2f44feaab478285c245d7f40e74b29092dc6b2"
+  },
+  "raw_sha256": {
+    "transport89-native-build-924b324c-cb7c-49e9-bb00-2862c60b0543.safe.jsonl": "e8dfde8ac6673dd9dd57447b0f35243b8806c871d117a120a7ac928eaf03f5a5",
+    "transport89-installed-proof-94a32ef8-0546-44f6-8b87-f8a2a8b93b99.safe.jsonl": "2359b39a66b9d2a9840b6f7b994ca9eef503d3cc2195eb00fba34c0de1a450ba",
+    "transport89-rollout-e3d795ce-798a-42d0-9d05-56430b00093a.safe.jsonl": "ec67b97a46f57cc298c6174be768c87e3688afe1a7d52deabe5e2c6846fa2dbc",
+    "transport89-deployment-receipt.safe.json": "55b9bd610bf1817418193b90fbd2a2b6c2e8cb38d88b81d34d8d533a360c4b2b"
+  }
+}

@@ -1,0 +1,196 @@
+{
+  "baseline_commit": "a8ff6caa6064e3bab0ccd724f685e6913006d221",
+  "candidate_product_commit": "fd53f66",
+  "samples": [
+    {
+      "variant": "baseline",
+      "source_sha256": "31b13f15a7dbd546fbcca28ed6e77a4522638433ef089f85b39940129196a333",
+      "stations": 11885,
+      "prices": 59425,
+      "raw_utf8_bytes": 8713255,
+      "raw_sha256": "55b525e0dba7a37220b4e6443486649af8bfe9b103556f57fd6ff32a66eede16",
+      "measured": {
+        "cpu_s": 1.153440314,
+        "wall_s": 4.4147194642573595,
+        "rss_peak_kib": 173780,
+        "rss_before_kib": 127068,
+        "db_calls": 60,
+        "db_wall_s": 3.59133307589218,
+        "counts": [
+          11885,
+          59425
+        ]
+      },
+      "persisted_digest": {
+        "fuel_stations": "ae574ac0e665a1f01e20cd87a5b970e1",
+        "fuel_price_snapshots": "9f2e274ff12590ac9b325cee8ebdfdb8",
+        "fuel_latest_prices": "b2471364a227bf0b5fa9361a3d31e6c4"
+      },
+      "idempotence_counts": [
+        0,
+        0
+      ],
+      "scope": "complete _store_fuel_snapshot plus commit; synthetic provider snapshot already constructed; DB timing included; provider/browser excluded"
+    },
+    {
+      "variant": "candidate",
+      "source_sha256": "cf11e6f382cce31e3cabe770330d87fe5cfe0574f0c775e30bd228d676fea996",
+      "stations": 11885,
+      "prices": 59425,
+      "raw_utf8_bytes": 8713255,
+      "raw_sha256": "55b525e0dba7a37220b4e6443486649af8bfe9b103556f57fd6ff32a66eede16",
+      "measured": {
+        "cpu_s": 1.1146004669999998,
+        "wall_s": 4.561037007253617,
+        "rss_peak_kib": 165556,
+        "rss_before_kib": 127096,
+        "db_calls": 60,
+        "db_wall_s": 3.78943011444062,
+        "counts": [
+          11885,
+          59425
+        ]
+      },
+      "persisted_digest": {
+        "fuel_stations": "ae574ac0e665a1f01e20cd87a5b970e1",
+        "fuel_price_snapshots": "9f2e274ff12590ac9b325cee8ebdfdb8",
+        "fuel_latest_prices": "b2471364a227bf0b5fa9361a3d31e6c4"
+      },
+      "idempotence_counts": [
+        0,
+        0
+      ],
+      "scope": "complete _store_fuel_snapshot plus commit; synthetic provider snapshot already constructed; DB timing included; provider/browser excluded"
+    },
+    {
+      "variant": "candidate",
+      "source_sha256": "cf11e6f382cce31e3cabe770330d87fe5cfe0574f0c775e30bd228d676fea996",
+      "stations": 11885,
+      "prices": 59425,
+      "raw_utf8_bytes": 8713255,
+      "raw_sha256": "55b525e0dba7a37220b4e6443486649af8bfe9b103556f57fd6ff32a66eede16",
+      "measured": {
+        "cpu_s": 1.1449329979999998,
+        "wall_s": 4.468752070795745,
+        "rss_peak_kib": 165912,
+        "rss_before_kib": 127164,
+        "db_calls": 60,
+        "db_wall_s": 3.684961379505694,
+        "counts": [
+          11885,
+          59425
+        ]
+      },
+      "persisted_digest": {
+        "fuel_stations": "ae574ac0e665a1f01e20cd87a5b970e1",
+        "fuel_price_snapshots": "9f2e274ff12590ac9b325cee8ebdfdb8",
+        "fuel_latest_prices": "b2471364a227bf0b5fa9361a3d31e6c4"
+      },
+      "idempotence_counts": [
+        0,
+        0
+      ],
+      "scope": "complete _store_fuel_snapshot plus commit; synthetic provider snapshot already constructed; DB timing included; provider/browser excluded"
+    },
+    {
+      "variant": "baseline",
+      "source_sha256": "31b13f15a7dbd546fbcca28ed6e77a4522638433ef089f85b39940129196a333",
+      "stations": 11885,
+      "prices": 59425,
+      "raw_utf8_bytes": 8713255,
+      "raw_sha256": "55b525e0dba7a37220b4e6443486649af8bfe9b103556f57fd6ff32a66eede16",
+      "measured": {
+        "cpu_s": 1.179907618,
+        "wall_s": 32.808457501232624,
+        "rss_peak_kib": 174340,
+        "rss_before_kib": 127076,
+        "db_calls": 60,
+        "db_wall_s": 31.989716024138033,
+        "counts": [
+          11885,
+          59425
+        ]
+      },
+      "persisted_digest": {
+        "fuel_stations": "ae574ac0e665a1f01e20cd87a5b970e1",
+        "fuel_price_snapshots": "9f2e274ff12590ac9b325cee8ebdfdb8",
+        "fuel_latest_prices": "b2471364a227bf0b5fa9361a3d31e6c4"
+      },
+      "idempotence_counts": [
+        0,
+        0
+      ],
+      "scope": "complete _store_fuel_snapshot plus commit; synthetic provider snapshot already constructed; DB timing included; provider/browser excluded"
+    },
+    {
+      "variant": "baseline",
+      "source_sha256": "31b13f15a7dbd546fbcca28ed6e77a4522638433ef089f85b39940129196a333",
+      "stations": 11885,
+      "prices": 59425,
+      "raw_utf8_bytes": 8713255,
+      "raw_sha256": "55b525e0dba7a37220b4e6443486649af8bfe9b103556f57fd6ff32a66eede16",
+      "measured": {
+        "cpu_s": 1.127540246,
+        "wall_s": 4.07433653390035,
+        "rss_peak_kib": 173920,
+        "rss_before_kib": 127100,
+        "db_calls": 60,
+        "db_wall_s": 3.3136292179115117,
+        "counts": [
+          11885,
+          59425
+        ]
+      },
+      "persisted_digest": {
+        "fuel_stations": "ae574ac0e665a1f01e20cd87a5b970e1",
+        "fuel_price_snapshots": "9f2e274ff12590ac9b325cee8ebdfdb8",
+        "fuel_latest_prices": "b2471364a227bf0b5fa9361a3d31e6c4"
+      },
+      "idempotence_counts": [
+        0,
+        0
+      ],
+      "scope": "complete _store_fuel_snapshot plus commit; synthetic provider snapshot already constructed; DB timing included; provider/browser excluded"
+    },
+    {
+      "variant": "candidate",
+      "source_sha256": "cf11e6f382cce31e3cabe770330d87fe5cfe0574f0c775e30bd228d676fea996",
+      "stations": 11885,
+      "prices": 59425,
+      "raw_utf8_bytes": 8713255,
+      "raw_sha256": "55b525e0dba7a37220b4e6443486649af8bfe9b103556f57fd6ff32a66eede16",
+      "measured": {
+        "cpu_s": 1.1092666039999999,
+        "wall_s": 4.068495740182698,
+        "rss_peak_kib": 165492,
+        "rss_before_kib": 127160,
+        "db_calls": 60,
+        "db_wall_s": 3.310222807340324,
+        "counts": [
+          11885,
+          59425
+        ]
+      },
+      "persisted_digest": {
+        "fuel_stations": "ae574ac0e665a1f01e20cd87a5b970e1",
+        "fuel_price_snapshots": "9f2e274ff12590ac9b325cee8ebdfdb8",
+        "fuel_latest_prices": "b2471364a227bf0b5fa9361a3d31e6c4"
+      },
+      "idempotence_counts": [
+        0,
+        0
+      ],
+      "scope": "complete _store_fuel_snapshot plus commit; synthetic provider snapshot already constructed; DB timing included; provider/browser excluded"
+    }
+  ],
+  "fixture": "synthetic 11885 stations x5 prices, historical station count only; current provider payload not accessed",
+  "limitations": [
+    "SQLite and PostgreSQL source tests separate",
+    "DB execution wall included; server CPU/RSS not measured",
+    "provider/browser excluded",
+    "RSS sampled before digest/idempotence verification",
+    "RSS includes imports and prebuilt snapshot",
+    "fresh empty DB per process; no existing large price history"
+  ],
+  "runner_sha256": "9d45076e932940d32f4e5737e0ff68a43f3487c633aee0c15def61878e91b9cd"
+}

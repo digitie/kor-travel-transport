@@ -1,5 +1,20 @@
 # resume.md — 현재 인수인계
 
+## 2026-10-18 유가 저장 메모리 축소 후보
+
+주유소 임시 원본 버퍼를 가격 생성 전에 해제하고 배치를 지연 생성한다.
+로컬 합성11885곳/59425가격 저장 RSS 중앙값173920→165556KiB이며 원본·DB digest와
+rollback 재시도를 검증했다. 전체 job·DB 서버 메모리 개선은 미입증이다.
+WSL/Docker 전체 각각852 PASS/10 SKIP, PostgreSQL 집중11 PASS/1 SKIP를 확인했다.
+ARM 합성11885곳/59425가격 초기 저장의 3쌍도 PASS했다. RSS 중앙값171520→163072KiB
+(-4.93%), worker cgroup peak164491264→154791936bytes(-5.90%)다.
+앱+전용 PG CPU90.986→90.562초(-0.47%), wall153.867→153.285초로 속도 개선은 주장하지 않는다.
+제품 a0b789df CI6개 SUCCESS, ARM64 native 이미지의 설치 소스37파일 검증 및
+API/CS 운영 배포가 완료됐다. 배포 후 WSL Chromium1243 UI34/34 PASS이며 daemon OFF다.
+[배포·UI 증거](audits/2026-10-19-fuel-memory-deployment.json)를 따른다.
+[검증 범위와 남은 게이트](reviews/2026-10-18-fuel-store-memory.md)를 따른다.
+
+
 ## 2026-10-18 수집 공항 조회 비용 개선 후보
 
 최신 main f3be717에서 공항 조회를 저장 호출별로 재사용했다. 신규/기존 공항,

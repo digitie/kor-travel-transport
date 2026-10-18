@@ -1,0 +1,899 @@
+{
+  "status": "PASS_SIX_ARM_SAMPLES",
+  "source": "a0b789df0e3f6eab2fab48e7ec58ab995d0e33dd",
+  "raw_log": "/home/digitie/dev/transport89-arm-pg-series-92442a58-8816-45eb-abca-a6625e819f7c.safe.jsonl",
+  "raw_log_sha256": "e027508e2d8292ceb687fdd719240f3252e932b826bdafc38eaad70b9085f9ad",
+  "terminal": {
+    "status": "PASS_SIX_ARM_SAMPLES",
+    "sample_count": 6,
+    "remote": "/mnt/media/kor-travel/build/transport89-arm-pg-series-92442a58-8816-45eb-abca-a6625e819f7c",
+    "runtime_unchanged": true,
+    "daemon_off": true
+  },
+  "process": {
+    "exit": 0,
+    "terminal_received": true,
+    "attempt": "92442a58-8816-45eb-abca-a6625e819f7c",
+    "remote": "/mnt/media/kor-travel/build/transport89-arm-pg-series-92442a58-8816-45eb-abca-a6625e819f7c",
+    "local_log": "/home/digitie/dev/transport89-arm-pg-series-92442a58-8816-45eb-abca-a6625e819f7c.safe.jsonl",
+    "execution": "ONE_SHOT_NO_AUTOREPLAY"
+  },
+  "metrics": {
+    "cpu_s": {
+      "baseline": {
+        "values": [
+          20.132639006999998,
+          19.944495564,
+          19.855968652
+        ],
+        "median": 19.944495564
+      },
+      "candidate": {
+        "values": [
+          19.826181024,
+          19.778391171000003,
+          19.939923148000002
+        ],
+        "median": 19.826181024
+      },
+      "change_percent": -0.5932190143407734
+    },
+    "pg_store_cpu_s": {
+      "baseline": {
+        "values": [
+          71.068544,
+          70.855573,
+          71.130156
+        ],
+        "median": 71.068544
+      },
+      "candidate": {
+        "values": [
+          70.621858,
+          70.783969,
+          71.364984
+        ],
+        "median": 70.783969
+      },
+      "change_percent": -0.4004232871296809
+    },
+    "worker_plus_pg_store_cpu_s": {
+      "baseline": {
+        "values": [
+          91.201183007,
+          90.80006856400001,
+          90.986124652
+        ],
+        "median": 90.986124652
+      },
+      "candidate": {
+        "values": [
+          90.448039024,
+          90.562360171,
+          91.30490714800001
+        ],
+        "median": 90.562360171
+      },
+      "change_percent": -0.4657462691380676
+    },
+    "wall_s": {
+      "baseline": {
+        "values": [
+          154.16253353701904,
+          153.4418375029927,
+          153.8673689510324
+        ],
+        "median": 153.8673689510324
+      },
+      "candidate": {
+        "values": [
+          153.1067105649854,
+          153.2854377439944,
+          154.59440772194648
+        ],
+        "median": 153.2854377439944
+      },
+      "change_percent": -0.378203131050614
+    },
+    "ru_maxrss_kib": {
+      "baseline": {
+        "values": [
+          171616,
+          171520,
+          171136
+        ],
+        "median": 171520
+      },
+      "candidate": {
+        "values": [
+          162952,
+          163084,
+          163072
+        ],
+        "median": 163072
+      },
+      "change_percent": -4.925373134328359
+    },
+    "memory.peak": {
+      "baseline": {
+        "values": [
+          164855808,
+          164491264,
+          164192256
+        ],
+        "median": 164491264
+      },
+      "candidate": {
+        "values": [
+          155774976,
+          154525696,
+          154791936
+        ],
+        "median": 154791936
+      },
+      "change_percent": -5.896561169351822
+    }
+  },
+  "samples": [
+    {
+      "phase": "PASS_SAMPLE",
+      "index": 0,
+      "variant": "baseline",
+      "path": "/mnt/media/kor-travel/build/transport89-arm-pg-series-92442a58-8816-45eb-abca-a6625e819f7c/transport-memory-01f8c1f53b27",
+      "report": {
+        "worker_image": "sha256:f4c488b21bcc1b989dfaf4d2ae4c6723f4f568f460647bc849eae5d7ad6af912",
+        "postgres_image": "sha256:c47285045a2a82d706d083de13065be97aaca0978782c4e37c05226228ba0509",
+        "variant": "baseline",
+        "exit": 0,
+        "oom": false,
+        "terminal": {
+          "status": "PASS_FIXTURE_ONLY",
+          "variant": "baseline",
+          "source_files": {
+            "main.py": "9e3636bc26cdb17a70888cb018de64d698e3840e7719678d281ee8777aca6a82",
+            "service_exports.py": "68ef358ca220c1a5f574dd64d55b0758b787ad72dadc849d9f708e631c83feb9",
+            "__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "models.py": "a7919bc474961b895d0430bfed7b97059ade4c11ab007f8224c3531642908ad9",
+            "schemas.py": "657bca9fe4a6d4e3278187b87e727d8690f74dffd3f8f2483d8d8034e4267710",
+            "dagster/__init__.py": "a8d5c32413a21e992f96dcf841cca92ca6e0daabfb76d3a6d5f6e388531eecec",
+            "dagster/address_refresh.py": "b35d22481f934fd5167952bf209b845b4cd7ff1d398263a6990065ad2063940f",
+            "dagster/definitions.py": "82edf50a11399cbf7cb7638831c0f7d7b9e9017768298d79c1d43884e12d15bd",
+            "dagster/recovery.py": "45fe440f0a50c528267792fab0c88e0ccab1e1a123887965f04d1cbe21e9f1cc",
+            "db/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "db/session.py": "6c1fdaf1dadfd98ed0021770f7c1d0d05e74825384c086e664728070987c3feb",
+            "core/time_utils.py": "042e7dccc0cddb7499450cb5b88ebe3d6012b92e19988bcdf9aed0e3f2aca843",
+            "core/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "core/config.py": "113a3ef4f03409d651bfacd1228720a7e2bf77bce280bf00011949f97d1a13d6",
+            "services/place_locations.py": "e9b2a4da60c19b40887d6f703940eff50d988c4cc888987a2ff5502f7be51932",
+            "services/kric_collection.py": "a6f67f88d7f20487874e072a39061bf7f0e937f905553c92393bafdb15977910",
+            "services/backup_restore.py": "5b2b58ec0e9804929a28788c7f7f1517ee2c38366067a9d212df764871d1ee1e",
+            "services/kakao_place_locations.py": "4a052812fc366bae79c3f382223330d73c3ed28cc2328b52e56962d85b27710c",
+            "services/collection.py": "426e96a5a0649bfa7ee4d93f720ba7f3389032c4d144e361fa32a77c0c1eb142",
+            "services/transport_collection.py": "31b13f15a7dbd546fbcca28ed6e77a4522638433ef089f85b39940129196a333",
+            "services/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "services/address_refresh.py": "9bd7052a38845035fab8dec28fcff28ccc5243679a692da9403d58125a54bff7",
+            "services/fee_calculator.py": "30865627135d86e1ca649a61be708f2d7bdad35918158e9a0b902176120ac531",
+            "services/analytics.py": "58f9233b0bdaad7b3d36963daa852285c75c91f6eb044f53fbb10150d32382c0",
+            "services/bus_collection.py": "a3054a8c552264eb802a4b66fc6ef45287f807628f6fc820b4b61e02b6ac5aba",
+            "services/analytics_cache.py": "a4b5cb15dd53a8bd63c1dcb96114b47412a9f1bd91181a7c5103e91074abeb45",
+            "services/holidays.py": "9b201b86484738d61331dd7e4a000381126d9431740315837985149852924713",
+            "services/parsers.py": "16b09501a7369e57468c1be1b9ca8967ea9c8df329489ecb6ee249fe09b860f1",
+            "services/bus_timetable_storage.py": "e5ce209f28051e4437444a0cf83d64243b946fa7ad2dab9a0fa4fb37703e54f3",
+            "services/parking_history_cache.py": "6933ec052257cca36a0348c35e6f1085847c3d7ba99c6f6d25e0637e1f96714e",
+            "services/flight_status.py": "76eba7d73984ec3d2aa6e7df1efe6fde739f67654b3b876efe1078c640839fb8",
+            "services/rest_area_collection.py": "9c56affbc085264df2604b936b58c14a0967784c7a9acde524b3ef6b8542ef07",
+            "services/place_targets.py": "b49bfbcfb53172f3a737729c783b43c708e6dce2480e6ff21af272a64ea1f13a",
+            "services/sample_data.py": "f4044b6a90182d0c16c218a06a17b085c5ad040cd1b7acca3154070463d427eb",
+            "services/rail_timetable.py": "a6445683aac40843fc196aa102fb3cc2973d687203309bb774293238fdc69b9c",
+            "services/rail_maritime_collection.py": "47e0519c1afd92706003252eda339d91271c702bbd83f5bfdeb6fe246ad5d18c",
+            "services/provider_status.py": "16ade83ddd1f187ea4ac4430cd9a25970987d63a137f246b6dc204d2e54f8166"
+          },
+          "raw_utf8_bytes": 8713255,
+          "raw_sha256": "55b525e0dba7a37220b4e6443486649af8bfe9b103556f57fd6ff32a66eede16",
+          "measured": {
+            "cpu_s": 20.132639006999998,
+            "wall_s": 154.16253353701904,
+            "pg_cpu_before_usec": 21761307,
+            "pg_cpu_after_usec": 92829851,
+            "pg_store_cpu_s": 71.068544,
+            "worker_plus_pg_store_cpu_s": 91.201183007,
+            "memory": {
+              "VmHWM": 175734784,
+              "VmRSS": 152084480,
+              "memory.current": 139751424,
+              "memory.peak": 164855808,
+              "ru_maxrss_kib": 171616
+            },
+            "before_memory": {
+              "VmHWM": 127709184,
+              "VmRSS": 118460416,
+              "memory.current": 106528768,
+              "memory.peak": 116064256,
+              "ru_maxrss_kib": 124716
+            },
+            "prestorage_memory": {
+              "VmHWM": 127709184,
+              "VmRSS": 119291904,
+              "memory.current": 107409408,
+              "memory.peak": 116064256,
+              "ru_maxrss_kib": 124716
+            },
+            "db_calls_including_run_insert": 60,
+            "db_wall_s_including_run_insert": 140.88491906307172,
+            "counts": [
+              11885,
+              59425
+            ]
+          },
+          "persisted_digest": {
+            "fuel_stations": "ae574ac0e665a1f01e20cd87a5b970e1",
+            "fuel_price_snapshots": "9f2e274ff12590ac9b325cee8ebdfdb8",
+            "fuel_latest_prices": "b2471364a227bf0b5fa9361a3d31e6c4"
+          },
+          "idempotence_counts": [
+            0,
+            0
+          ],
+          "scope": "CPU/wall: complete store+commit; peak memory through commit includes imports/schema/prebuilt snapshot; verification excluded; provider/browser excluded; owned PG CPU same store window includes PG background activity; PG RSS excluded"
+        },
+        "network": "none; PostgreSQL Unix socket only",
+        "measured": "worker memory; worker+owned PG CPU aligned to initial store; PG memory excluded"
+      },
+      "cleanup": [
+        {
+          "name": "transport-memory-01f8c1f53b27-worker",
+          "status": "removed",
+          "stderr": ""
+        },
+        {
+          "name": "transport-memory-01f8c1f53b27-pg",
+          "status": "removed",
+          "stderr": ""
+        },
+        {
+          "name": "transport-memory-01f8c1f53b27-socket",
+          "status": "removed",
+          "stderr": ""
+        }
+      ],
+      "foreign": {
+        "unchanged": true
+      }
+    },
+    {
+      "phase": "PASS_SAMPLE",
+      "index": 1,
+      "variant": "candidate",
+      "path": "/mnt/media/kor-travel/build/transport89-arm-pg-series-92442a58-8816-45eb-abca-a6625e819f7c/transport-memory-d0ded976fe70",
+      "report": {
+        "worker_image": "sha256:f4c488b21bcc1b989dfaf4d2ae4c6723f4f568f460647bc849eae5d7ad6af912",
+        "postgres_image": "sha256:c47285045a2a82d706d083de13065be97aaca0978782c4e37c05226228ba0509",
+        "variant": "candidate",
+        "exit": 0,
+        "oom": false,
+        "terminal": {
+          "status": "PASS_FIXTURE_ONLY",
+          "variant": "candidate",
+          "source_files": {
+            "main.py": "9e3636bc26cdb17a70888cb018de64d698e3840e7719678d281ee8777aca6a82",
+            "service_exports.py": "68ef358ca220c1a5f574dd64d55b0758b787ad72dadc849d9f708e631c83feb9",
+            "__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "models.py": "a7919bc474961b895d0430bfed7b97059ade4c11ab007f8224c3531642908ad9",
+            "schemas.py": "657bca9fe4a6d4e3278187b87e727d8690f74dffd3f8f2483d8d8034e4267710",
+            "dagster/__init__.py": "a8d5c32413a21e992f96dcf841cca92ca6e0daabfb76d3a6d5f6e388531eecec",
+            "dagster/address_refresh.py": "b35d22481f934fd5167952bf209b845b4cd7ff1d398263a6990065ad2063940f",
+            "dagster/definitions.py": "82edf50a11399cbf7cb7638831c0f7d7b9e9017768298d79c1d43884e12d15bd",
+            "dagster/recovery.py": "45fe440f0a50c528267792fab0c88e0ccab1e1a123887965f04d1cbe21e9f1cc",
+            "db/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "db/session.py": "6c1fdaf1dadfd98ed0021770f7c1d0d05e74825384c086e664728070987c3feb",
+            "core/time_utils.py": "042e7dccc0cddb7499450cb5b88ebe3d6012b92e19988bcdf9aed0e3f2aca843",
+            "core/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "core/config.py": "113a3ef4f03409d651bfacd1228720a7e2bf77bce280bf00011949f97d1a13d6",
+            "services/place_locations.py": "e9b2a4da60c19b40887d6f703940eff50d988c4cc888987a2ff5502f7be51932",
+            "services/kric_collection.py": "a6f67f88d7f20487874e072a39061bf7f0e937f905553c92393bafdb15977910",
+            "services/backup_restore.py": "5b2b58ec0e9804929a28788c7f7f1517ee2c38366067a9d212df764871d1ee1e",
+            "services/kakao_place_locations.py": "4a052812fc366bae79c3f382223330d73c3ed28cc2328b52e56962d85b27710c",
+            "services/collection.py": "426e96a5a0649bfa7ee4d93f720ba7f3389032c4d144e361fa32a77c0c1eb142",
+            "services/transport_collection.py": "cf11e6f382cce31e3cabe770330d87fe5cfe0574f0c775e30bd228d676fea996",
+            "services/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "services/address_refresh.py": "9bd7052a38845035fab8dec28fcff28ccc5243679a692da9403d58125a54bff7",
+            "services/fee_calculator.py": "30865627135d86e1ca649a61be708f2d7bdad35918158e9a0b902176120ac531",
+            "services/analytics.py": "58f9233b0bdaad7b3d36963daa852285c75c91f6eb044f53fbb10150d32382c0",
+            "services/bus_collection.py": "a3054a8c552264eb802a4b66fc6ef45287f807628f6fc820b4b61e02b6ac5aba",
+            "services/analytics_cache.py": "a4b5cb15dd53a8bd63c1dcb96114b47412a9f1bd91181a7c5103e91074abeb45",
+            "services/holidays.py": "9b201b86484738d61331dd7e4a000381126d9431740315837985149852924713",
+            "services/parsers.py": "16b09501a7369e57468c1be1b9ca8967ea9c8df329489ecb6ee249fe09b860f1",
+            "services/bus_timetable_storage.py": "e5ce209f28051e4437444a0cf83d64243b946fa7ad2dab9a0fa4fb37703e54f3",
+            "services/parking_history_cache.py": "6933ec052257cca36a0348c35e6f1085847c3d7ba99c6f6d25e0637e1f96714e",
+            "services/flight_status.py": "76eba7d73984ec3d2aa6e7df1efe6fde739f67654b3b876efe1078c640839fb8",
+            "services/rest_area_collection.py": "9c56affbc085264df2604b936b58c14a0967784c7a9acde524b3ef6b8542ef07",
+            "services/place_targets.py": "b49bfbcfb53172f3a737729c783b43c708e6dce2480e6ff21af272a64ea1f13a",
+            "services/sample_data.py": "f4044b6a90182d0c16c218a06a17b085c5ad040cd1b7acca3154070463d427eb",
+            "services/rail_timetable.py": "a6445683aac40843fc196aa102fb3cc2973d687203309bb774293238fdc69b9c",
+            "services/rail_maritime_collection.py": "47e0519c1afd92706003252eda339d91271c702bbd83f5bfdeb6fe246ad5d18c",
+            "services/provider_status.py": "16ade83ddd1f187ea4ac4430cd9a25970987d63a137f246b6dc204d2e54f8166"
+          },
+          "raw_utf8_bytes": 8713255,
+          "raw_sha256": "55b525e0dba7a37220b4e6443486649af8bfe9b103556f57fd6ff32a66eede16",
+          "measured": {
+            "cpu_s": 19.826181024,
+            "wall_s": 153.1067105649854,
+            "pg_cpu_before_usec": 21737135,
+            "pg_cpu_after_usec": 92358993,
+            "pg_store_cpu_s": 70.621858,
+            "worker_plus_pg_store_cpu_s": 90.448039024,
+            "memory": {
+              "VmHWM": 166862848,
+              "VmRSS": 144162816,
+              "memory.current": 131911680,
+              "memory.peak": 155774976,
+              "ru_maxrss_kib": 162952
+            },
+            "before_memory": {
+              "VmHWM": 127557632,
+              "VmRSS": 118321152,
+              "memory.current": 105824256,
+              "memory.peak": 115769344,
+              "ru_maxrss_kib": 124568
+            },
+            "prestorage_memory": {
+              "VmHWM": 127557632,
+              "VmRSS": 119152640,
+              "memory.current": 106598400,
+              "memory.peak": 115769344,
+              "ru_maxrss_kib": 124568
+            },
+            "db_calls_including_run_insert": 60,
+            "db_wall_s_including_run_insert": 140.00593112484785,
+            "counts": [
+              11885,
+              59425
+            ]
+          },
+          "persisted_digest": {
+            "fuel_stations": "ae574ac0e665a1f01e20cd87a5b970e1",
+            "fuel_price_snapshots": "9f2e274ff12590ac9b325cee8ebdfdb8",
+            "fuel_latest_prices": "b2471364a227bf0b5fa9361a3d31e6c4"
+          },
+          "idempotence_counts": [
+            0,
+            0
+          ],
+          "scope": "CPU/wall: complete store+commit; peak memory through commit includes imports/schema/prebuilt snapshot; verification excluded; provider/browser excluded; owned PG CPU same store window includes PG background activity; PG RSS excluded"
+        },
+        "network": "none; PostgreSQL Unix socket only",
+        "measured": "worker memory; worker+owned PG CPU aligned to initial store; PG memory excluded"
+      },
+      "cleanup": [
+        {
+          "name": "transport-memory-d0ded976fe70-worker",
+          "status": "removed",
+          "stderr": ""
+        },
+        {
+          "name": "transport-memory-d0ded976fe70-pg",
+          "status": "removed",
+          "stderr": ""
+        },
+        {
+          "name": "transport-memory-d0ded976fe70-socket",
+          "status": "removed",
+          "stderr": ""
+        }
+      ],
+      "foreign": {
+        "unchanged": true
+      }
+    },
+    {
+      "phase": "PASS_SAMPLE",
+      "index": 2,
+      "variant": "baseline",
+      "path": "/mnt/media/kor-travel/build/transport89-arm-pg-series-92442a58-8816-45eb-abca-a6625e819f7c/transport-memory-4547f7e2a2d2",
+      "report": {
+        "worker_image": "sha256:f4c488b21bcc1b989dfaf4d2ae4c6723f4f568f460647bc849eae5d7ad6af912",
+        "postgres_image": "sha256:c47285045a2a82d706d083de13065be97aaca0978782c4e37c05226228ba0509",
+        "variant": "baseline",
+        "exit": 0,
+        "oom": false,
+        "terminal": {
+          "status": "PASS_FIXTURE_ONLY",
+          "variant": "baseline",
+          "source_files": {
+            "main.py": "9e3636bc26cdb17a70888cb018de64d698e3840e7719678d281ee8777aca6a82",
+            "service_exports.py": "68ef358ca220c1a5f574dd64d55b0758b787ad72dadc849d9f708e631c83feb9",
+            "__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "models.py": "a7919bc474961b895d0430bfed7b97059ade4c11ab007f8224c3531642908ad9",
+            "schemas.py": "657bca9fe4a6d4e3278187b87e727d8690f74dffd3f8f2483d8d8034e4267710",
+            "dagster/__init__.py": "a8d5c32413a21e992f96dcf841cca92ca6e0daabfb76d3a6d5f6e388531eecec",
+            "dagster/address_refresh.py": "b35d22481f934fd5167952bf209b845b4cd7ff1d398263a6990065ad2063940f",
+            "dagster/definitions.py": "82edf50a11399cbf7cb7638831c0f7d7b9e9017768298d79c1d43884e12d15bd",
+            "dagster/recovery.py": "45fe440f0a50c528267792fab0c88e0ccab1e1a123887965f04d1cbe21e9f1cc",
+            "db/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "db/session.py": "6c1fdaf1dadfd98ed0021770f7c1d0d05e74825384c086e664728070987c3feb",
+            "core/time_utils.py": "042e7dccc0cddb7499450cb5b88ebe3d6012b92e19988bcdf9aed0e3f2aca843",
+            "core/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "core/config.py": "113a3ef4f03409d651bfacd1228720a7e2bf77bce280bf00011949f97d1a13d6",
+            "services/place_locations.py": "e9b2a4da60c19b40887d6f703940eff50d988c4cc888987a2ff5502f7be51932",
+            "services/kric_collection.py": "a6f67f88d7f20487874e072a39061bf7f0e937f905553c92393bafdb15977910",
+            "services/backup_restore.py": "5b2b58ec0e9804929a28788c7f7f1517ee2c38366067a9d212df764871d1ee1e",
+            "services/kakao_place_locations.py": "4a052812fc366bae79c3f382223330d73c3ed28cc2328b52e56962d85b27710c",
+            "services/collection.py": "426e96a5a0649bfa7ee4d93f720ba7f3389032c4d144e361fa32a77c0c1eb142",
+            "services/transport_collection.py": "31b13f15a7dbd546fbcca28ed6e77a4522638433ef089f85b39940129196a333",
+            "services/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "services/address_refresh.py": "9bd7052a38845035fab8dec28fcff28ccc5243679a692da9403d58125a54bff7",
+            "services/fee_calculator.py": "30865627135d86e1ca649a61be708f2d7bdad35918158e9a0b902176120ac531",
+            "services/analytics.py": "58f9233b0bdaad7b3d36963daa852285c75c91f6eb044f53fbb10150d32382c0",
+            "services/bus_collection.py": "a3054a8c552264eb802a4b66fc6ef45287f807628f6fc820b4b61e02b6ac5aba",
+            "services/analytics_cache.py": "a4b5cb15dd53a8bd63c1dcb96114b47412a9f1bd91181a7c5103e91074abeb45",
+            "services/holidays.py": "9b201b86484738d61331dd7e4a000381126d9431740315837985149852924713",
+            "services/parsers.py": "16b09501a7369e57468c1be1b9ca8967ea9c8df329489ecb6ee249fe09b860f1",
+            "services/bus_timetable_storage.py": "e5ce209f28051e4437444a0cf83d64243b946fa7ad2dab9a0fa4fb37703e54f3",
+            "services/parking_history_cache.py": "6933ec052257cca36a0348c35e6f1085847c3d7ba99c6f6d25e0637e1f96714e",
+            "services/flight_status.py": "76eba7d73984ec3d2aa6e7df1efe6fde739f67654b3b876efe1078c640839fb8",
+            "services/rest_area_collection.py": "9c56affbc085264df2604b936b58c14a0967784c7a9acde524b3ef6b8542ef07",
+            "services/place_targets.py": "b49bfbcfb53172f3a737729c783b43c708e6dce2480e6ff21af272a64ea1f13a",
+            "services/sample_data.py": "f4044b6a90182d0c16c218a06a17b085c5ad040cd1b7acca3154070463d427eb",
+            "services/rail_timetable.py": "a6445683aac40843fc196aa102fb3cc2973d687203309bb774293238fdc69b9c",
+            "services/rail_maritime_collection.py": "47e0519c1afd92706003252eda339d91271c702bbd83f5bfdeb6fe246ad5d18c",
+            "services/provider_status.py": "16ade83ddd1f187ea4ac4430cd9a25970987d63a137f246b6dc204d2e54f8166"
+          },
+          "raw_utf8_bytes": 8713255,
+          "raw_sha256": "55b525e0dba7a37220b4e6443486649af8bfe9b103556f57fd6ff32a66eede16",
+          "measured": {
+            "cpu_s": 19.944495564,
+            "wall_s": 153.4418375029927,
+            "pg_cpu_before_usec": 21770782,
+            "pg_cpu_after_usec": 92626355,
+            "pg_store_cpu_s": 70.855573,
+            "worker_plus_pg_store_cpu_s": 90.80006856400001,
+            "memory": {
+              "VmHWM": 175636480,
+              "VmRSS": 149676032,
+              "memory.current": 137588736,
+              "memory.peak": 164491264,
+              "ru_maxrss_kib": 171520
+            },
+            "before_memory": {
+              "VmHWM": 127709184,
+              "VmRSS": 118366208,
+              "memory.current": 106418176,
+              "memory.peak": 116109312,
+              "ru_maxrss_kib": 124716
+            },
+            "prestorage_memory": {
+              "VmHWM": 127709184,
+              "VmRSS": 119209984,
+              "memory.current": 107204608,
+              "memory.peak": 116109312,
+              "ru_maxrss_kib": 124716
+            },
+            "db_calls_including_run_insert": 60,
+            "db_wall_s_including_run_insert": 140.37963029701496,
+            "counts": [
+              11885,
+              59425
+            ]
+          },
+          "persisted_digest": {
+            "fuel_stations": "ae574ac0e665a1f01e20cd87a5b970e1",
+            "fuel_price_snapshots": "9f2e274ff12590ac9b325cee8ebdfdb8",
+            "fuel_latest_prices": "b2471364a227bf0b5fa9361a3d31e6c4"
+          },
+          "idempotence_counts": [
+            0,
+            0
+          ],
+          "scope": "CPU/wall: complete store+commit; peak memory through commit includes imports/schema/prebuilt snapshot; verification excluded; provider/browser excluded; owned PG CPU same store window includes PG background activity; PG RSS excluded"
+        },
+        "network": "none; PostgreSQL Unix socket only",
+        "measured": "worker memory; worker+owned PG CPU aligned to initial store; PG memory excluded"
+      },
+      "cleanup": [
+        {
+          "name": "transport-memory-4547f7e2a2d2-worker",
+          "status": "removed",
+          "stderr": ""
+        },
+        {
+          "name": "transport-memory-4547f7e2a2d2-pg",
+          "status": "removed",
+          "stderr": ""
+        },
+        {
+          "name": "transport-memory-4547f7e2a2d2-socket",
+          "status": "removed",
+          "stderr": ""
+        }
+      ],
+      "foreign": {
+        "unchanged": true
+      }
+    },
+    {
+      "phase": "PASS_SAMPLE",
+      "index": 3,
+      "variant": "candidate",
+      "path": "/mnt/media/kor-travel/build/transport89-arm-pg-series-92442a58-8816-45eb-abca-a6625e819f7c/transport-memory-d9b44255dac3",
+      "report": {
+        "worker_image": "sha256:f4c488b21bcc1b989dfaf4d2ae4c6723f4f568f460647bc849eae5d7ad6af912",
+        "postgres_image": "sha256:c47285045a2a82d706d083de13065be97aaca0978782c4e37c05226228ba0509",
+        "variant": "candidate",
+        "exit": 0,
+        "oom": false,
+        "terminal": {
+          "status": "PASS_FIXTURE_ONLY",
+          "variant": "candidate",
+          "source_files": {
+            "main.py": "9e3636bc26cdb17a70888cb018de64d698e3840e7719678d281ee8777aca6a82",
+            "service_exports.py": "68ef358ca220c1a5f574dd64d55b0758b787ad72dadc849d9f708e631c83feb9",
+            "__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "models.py": "a7919bc474961b895d0430bfed7b97059ade4c11ab007f8224c3531642908ad9",
+            "schemas.py": "657bca9fe4a6d4e3278187b87e727d8690f74dffd3f8f2483d8d8034e4267710",
+            "dagster/__init__.py": "a8d5c32413a21e992f96dcf841cca92ca6e0daabfb76d3a6d5f6e388531eecec",
+            "dagster/address_refresh.py": "b35d22481f934fd5167952bf209b845b4cd7ff1d398263a6990065ad2063940f",
+            "dagster/definitions.py": "82edf50a11399cbf7cb7638831c0f7d7b9e9017768298d79c1d43884e12d15bd",
+            "dagster/recovery.py": "45fe440f0a50c528267792fab0c88e0ccab1e1a123887965f04d1cbe21e9f1cc",
+            "db/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "db/session.py": "6c1fdaf1dadfd98ed0021770f7c1d0d05e74825384c086e664728070987c3feb",
+            "core/time_utils.py": "042e7dccc0cddb7499450cb5b88ebe3d6012b92e19988bcdf9aed0e3f2aca843",
+            "core/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "core/config.py": "113a3ef4f03409d651bfacd1228720a7e2bf77bce280bf00011949f97d1a13d6",
+            "services/place_locations.py": "e9b2a4da60c19b40887d6f703940eff50d988c4cc888987a2ff5502f7be51932",
+            "services/kric_collection.py": "a6f67f88d7f20487874e072a39061bf7f0e937f905553c92393bafdb15977910",
+            "services/backup_restore.py": "5b2b58ec0e9804929a28788c7f7f1517ee2c38366067a9d212df764871d1ee1e",
+            "services/kakao_place_locations.py": "4a052812fc366bae79c3f382223330d73c3ed28cc2328b52e56962d85b27710c",
+            "services/collection.py": "426e96a5a0649bfa7ee4d93f720ba7f3389032c4d144e361fa32a77c0c1eb142",
+            "services/transport_collection.py": "cf11e6f382cce31e3cabe770330d87fe5cfe0574f0c775e30bd228d676fea996",
+            "services/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "services/address_refresh.py": "9bd7052a38845035fab8dec28fcff28ccc5243679a692da9403d58125a54bff7",
+            "services/fee_calculator.py": "30865627135d86e1ca649a61be708f2d7bdad35918158e9a0b902176120ac531",
+            "services/analytics.py": "58f9233b0bdaad7b3d36963daa852285c75c91f6eb044f53fbb10150d32382c0",
+            "services/bus_collection.py": "a3054a8c552264eb802a4b66fc6ef45287f807628f6fc820b4b61e02b6ac5aba",
+            "services/analytics_cache.py": "a4b5cb15dd53a8bd63c1dcb96114b47412a9f1bd91181a7c5103e91074abeb45",
+            "services/holidays.py": "9b201b86484738d61331dd7e4a000381126d9431740315837985149852924713",
+            "services/parsers.py": "16b09501a7369e57468c1be1b9ca8967ea9c8df329489ecb6ee249fe09b860f1",
+            "services/bus_timetable_storage.py": "e5ce209f28051e4437444a0cf83d64243b946fa7ad2dab9a0fa4fb37703e54f3",
+            "services/parking_history_cache.py": "6933ec052257cca36a0348c35e6f1085847c3d7ba99c6f6d25e0637e1f96714e",
+            "services/flight_status.py": "76eba7d73984ec3d2aa6e7df1efe6fde739f67654b3b876efe1078c640839fb8",
+            "services/rest_area_collection.py": "9c56affbc085264df2604b936b58c14a0967784c7a9acde524b3ef6b8542ef07",
+            "services/place_targets.py": "b49bfbcfb53172f3a737729c783b43c708e6dce2480e6ff21af272a64ea1f13a",
+            "services/sample_data.py": "f4044b6a90182d0c16c218a06a17b085c5ad040cd1b7acca3154070463d427eb",
+            "services/rail_timetable.py": "a6445683aac40843fc196aa102fb3cc2973d687203309bb774293238fdc69b9c",
+            "services/rail_maritime_collection.py": "47e0519c1afd92706003252eda339d91271c702bbd83f5bfdeb6fe246ad5d18c",
+            "services/provider_status.py": "16ade83ddd1f187ea4ac4430cd9a25970987d63a137f246b6dc204d2e54f8166"
+          },
+          "raw_utf8_bytes": 8713255,
+          "raw_sha256": "55b525e0dba7a37220b4e6443486649af8bfe9b103556f57fd6ff32a66eede16",
+          "measured": {
+            "cpu_s": 19.778391171000003,
+            "wall_s": 153.2854377439944,
+            "pg_cpu_before_usec": 21961453,
+            "pg_cpu_after_usec": 92745422,
+            "pg_store_cpu_s": 70.783969,
+            "worker_plus_pg_store_cpu_s": 90.562360171,
+            "memory": {
+              "VmHWM": 166998016,
+              "VmRSS": 144523264,
+              "memory.current": 130633728,
+              "memory.peak": 154525696,
+              "ru_maxrss_kib": 163084
+            },
+            "before_memory": {
+              "VmHWM": 127422464,
+              "VmRSS": 118333440,
+              "memory.current": 104849408,
+              "memory.peak": 114700288,
+              "ru_maxrss_kib": 124436
+            },
+            "prestorage_memory": {
+              "VmHWM": 127422464,
+              "VmRSS": 119169024,
+              "memory.current": 105553920,
+              "memory.peak": 114700288,
+              "ru_maxrss_kib": 124436
+            },
+            "db_calls_including_run_insert": 60,
+            "db_wall_s_including_run_insert": 140.27437344676582,
+            "counts": [
+              11885,
+              59425
+            ]
+          },
+          "persisted_digest": {
+            "fuel_stations": "ae574ac0e665a1f01e20cd87a5b970e1",
+            "fuel_price_snapshots": "9f2e274ff12590ac9b325cee8ebdfdb8",
+            "fuel_latest_prices": "b2471364a227bf0b5fa9361a3d31e6c4"
+          },
+          "idempotence_counts": [
+            0,
+            0
+          ],
+          "scope": "CPU/wall: complete store+commit; peak memory through commit includes imports/schema/prebuilt snapshot; verification excluded; provider/browser excluded; owned PG CPU same store window includes PG background activity; PG RSS excluded"
+        },
+        "network": "none; PostgreSQL Unix socket only",
+        "measured": "worker memory; worker+owned PG CPU aligned to initial store; PG memory excluded"
+      },
+      "cleanup": [
+        {
+          "name": "transport-memory-d9b44255dac3-worker",
+          "status": "removed",
+          "stderr": ""
+        },
+        {
+          "name": "transport-memory-d9b44255dac3-pg",
+          "status": "removed",
+          "stderr": ""
+        },
+        {
+          "name": "transport-memory-d9b44255dac3-socket",
+          "status": "removed",
+          "stderr": ""
+        }
+      ],
+      "foreign": {
+        "unchanged": true
+      }
+    },
+    {
+      "phase": "PASS_SAMPLE",
+      "index": 4,
+      "variant": "baseline",
+      "path": "/mnt/media/kor-travel/build/transport89-arm-pg-series-92442a58-8816-45eb-abca-a6625e819f7c/transport-memory-0aaf45707e05",
+      "report": {
+        "worker_image": "sha256:f4c488b21bcc1b989dfaf4d2ae4c6723f4f568f460647bc849eae5d7ad6af912",
+        "postgres_image": "sha256:c47285045a2a82d706d083de13065be97aaca0978782c4e37c05226228ba0509",
+        "variant": "baseline",
+        "exit": 0,
+        "oom": false,
+        "terminal": {
+          "status": "PASS_FIXTURE_ONLY",
+          "variant": "baseline",
+          "source_files": {
+            "main.py": "9e3636bc26cdb17a70888cb018de64d698e3840e7719678d281ee8777aca6a82",
+            "service_exports.py": "68ef358ca220c1a5f574dd64d55b0758b787ad72dadc849d9f708e631c83feb9",
+            "__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "models.py": "a7919bc474961b895d0430bfed7b97059ade4c11ab007f8224c3531642908ad9",
+            "schemas.py": "657bca9fe4a6d4e3278187b87e727d8690f74dffd3f8f2483d8d8034e4267710",
+            "dagster/__init__.py": "a8d5c32413a21e992f96dcf841cca92ca6e0daabfb76d3a6d5f6e388531eecec",
+            "dagster/address_refresh.py": "b35d22481f934fd5167952bf209b845b4cd7ff1d398263a6990065ad2063940f",
+            "dagster/definitions.py": "82edf50a11399cbf7cb7638831c0f7d7b9e9017768298d79c1d43884e12d15bd",
+            "dagster/recovery.py": "45fe440f0a50c528267792fab0c88e0ccab1e1a123887965f04d1cbe21e9f1cc",
+            "db/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "db/session.py": "6c1fdaf1dadfd98ed0021770f7c1d0d05e74825384c086e664728070987c3feb",
+            "core/time_utils.py": "042e7dccc0cddb7499450cb5b88ebe3d6012b92e19988bcdf9aed0e3f2aca843",
+            "core/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "core/config.py": "113a3ef4f03409d651bfacd1228720a7e2bf77bce280bf00011949f97d1a13d6",
+            "services/place_locations.py": "e9b2a4da60c19b40887d6f703940eff50d988c4cc888987a2ff5502f7be51932",
+            "services/kric_collection.py": "a6f67f88d7f20487874e072a39061bf7f0e937f905553c92393bafdb15977910",
+            "services/backup_restore.py": "5b2b58ec0e9804929a28788c7f7f1517ee2c38366067a9d212df764871d1ee1e",
+            "services/kakao_place_locations.py": "4a052812fc366bae79c3f382223330d73c3ed28cc2328b52e56962d85b27710c",
+            "services/collection.py": "426e96a5a0649bfa7ee4d93f720ba7f3389032c4d144e361fa32a77c0c1eb142",
+            "services/transport_collection.py": "31b13f15a7dbd546fbcca28ed6e77a4522638433ef089f85b39940129196a333",
+            "services/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "services/address_refresh.py": "9bd7052a38845035fab8dec28fcff28ccc5243679a692da9403d58125a54bff7",
+            "services/fee_calculator.py": "30865627135d86e1ca649a61be708f2d7bdad35918158e9a0b902176120ac531",
+            "services/analytics.py": "58f9233b0bdaad7b3d36963daa852285c75c91f6eb044f53fbb10150d32382c0",
+            "services/bus_collection.py": "a3054a8c552264eb802a4b66fc6ef45287f807628f6fc820b4b61e02b6ac5aba",
+            "services/analytics_cache.py": "a4b5cb15dd53a8bd63c1dcb96114b47412a9f1bd91181a7c5103e91074abeb45",
+            "services/holidays.py": "9b201b86484738d61331dd7e4a000381126d9431740315837985149852924713",
+            "services/parsers.py": "16b09501a7369e57468c1be1b9ca8967ea9c8df329489ecb6ee249fe09b860f1",
+            "services/bus_timetable_storage.py": "e5ce209f28051e4437444a0cf83d64243b946fa7ad2dab9a0fa4fb37703e54f3",
+            "services/parking_history_cache.py": "6933ec052257cca36a0348c35e6f1085847c3d7ba99c6f6d25e0637e1f96714e",
+            "services/flight_status.py": "76eba7d73984ec3d2aa6e7df1efe6fde739f67654b3b876efe1078c640839fb8",
+            "services/rest_area_collection.py": "9c56affbc085264df2604b936b58c14a0967784c7a9acde524b3ef6b8542ef07",
+            "services/place_targets.py": "b49bfbcfb53172f3a737729c783b43c708e6dce2480e6ff21af272a64ea1f13a",
+            "services/sample_data.py": "f4044b6a90182d0c16c218a06a17b085c5ad040cd1b7acca3154070463d427eb",
+            "services/rail_timetable.py": "a6445683aac40843fc196aa102fb3cc2973d687203309bb774293238fdc69b9c",
+            "services/rail_maritime_collection.py": "47e0519c1afd92706003252eda339d91271c702bbd83f5bfdeb6fe246ad5d18c",
+            "services/provider_status.py": "16ade83ddd1f187ea4ac4430cd9a25970987d63a137f246b6dc204d2e54f8166"
+          },
+          "raw_utf8_bytes": 8713255,
+          "raw_sha256": "55b525e0dba7a37220b4e6443486649af8bfe9b103556f57fd6ff32a66eede16",
+          "measured": {
+            "cpu_s": 19.855968652,
+            "wall_s": 153.8673689510324,
+            "pg_cpu_before_usec": 21978644,
+            "pg_cpu_after_usec": 93108800,
+            "pg_store_cpu_s": 71.130156,
+            "worker_plus_pg_store_cpu_s": 90.986124652,
+            "memory": {
+              "VmHWM": 175243264,
+              "VmRSS": 149381120,
+              "memory.current": 137015296,
+              "memory.peak": 164192256,
+              "ru_maxrss_kib": 171136
+            },
+            "before_memory": {
+              "VmHWM": 127352832,
+              "VmRSS": 118083584,
+              "memory.current": 105938944,
+              "memory.peak": 115609600,
+              "ru_maxrss_kib": 124368
+            },
+            "prestorage_memory": {
+              "VmHWM": 127352832,
+              "VmRSS": 118919168,
+              "memory.current": 107401216,
+              "memory.peak": 115609600,
+              "ru_maxrss_kib": 124368
+            },
+            "db_calls_including_run_insert": 60,
+            "db_wall_s_including_run_insert": 140.84218755131587,
+            "counts": [
+              11885,
+              59425
+            ]
+          },
+          "persisted_digest": {
+            "fuel_stations": "ae574ac0e665a1f01e20cd87a5b970e1",
+            "fuel_price_snapshots": "9f2e274ff12590ac9b325cee8ebdfdb8",
+            "fuel_latest_prices": "b2471364a227bf0b5fa9361a3d31e6c4"
+          },
+          "idempotence_counts": [
+            0,
+            0
+          ],
+          "scope": "CPU/wall: complete store+commit; peak memory through commit includes imports/schema/prebuilt snapshot; verification excluded; provider/browser excluded; owned PG CPU same store window includes PG background activity; PG RSS excluded"
+        },
+        "network": "none; PostgreSQL Unix socket only",
+        "measured": "worker memory; worker+owned PG CPU aligned to initial store; PG memory excluded"
+      },
+      "cleanup": [
+        {
+          "name": "transport-memory-0aaf45707e05-worker",
+          "status": "removed",
+          "stderr": ""
+        },
+        {
+          "name": "transport-memory-0aaf45707e05-pg",
+          "status": "removed",
+          "stderr": ""
+        },
+        {
+          "name": "transport-memory-0aaf45707e05-socket",
+          "status": "removed",
+          "stderr": ""
+        }
+      ],
+      "foreign": {
+        "unchanged": true
+      }
+    },
+    {
+      "phase": "PASS_SAMPLE",
+      "index": 5,
+      "variant": "candidate",
+      "path": "/mnt/media/kor-travel/build/transport89-arm-pg-series-92442a58-8816-45eb-abca-a6625e819f7c/transport-memory-7ca7b1693f34",
+      "report": {
+        "worker_image": "sha256:f4c488b21bcc1b989dfaf4d2ae4c6723f4f568f460647bc849eae5d7ad6af912",
+        "postgres_image": "sha256:c47285045a2a82d706d083de13065be97aaca0978782c4e37c05226228ba0509",
+        "variant": "candidate",
+        "exit": 0,
+        "oom": false,
+        "terminal": {
+          "status": "PASS_FIXTURE_ONLY",
+          "variant": "candidate",
+          "source_files": {
+            "main.py": "9e3636bc26cdb17a70888cb018de64d698e3840e7719678d281ee8777aca6a82",
+            "service_exports.py": "68ef358ca220c1a5f574dd64d55b0758b787ad72dadc849d9f708e631c83feb9",
+            "__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "models.py": "a7919bc474961b895d0430bfed7b97059ade4c11ab007f8224c3531642908ad9",
+            "schemas.py": "657bca9fe4a6d4e3278187b87e727d8690f74dffd3f8f2483d8d8034e4267710",
+            "dagster/__init__.py": "a8d5c32413a21e992f96dcf841cca92ca6e0daabfb76d3a6d5f6e388531eecec",
+            "dagster/address_refresh.py": "b35d22481f934fd5167952bf209b845b4cd7ff1d398263a6990065ad2063940f",
+            "dagster/definitions.py": "82edf50a11399cbf7cb7638831c0f7d7b9e9017768298d79c1d43884e12d15bd",
+            "dagster/recovery.py": "45fe440f0a50c528267792fab0c88e0ccab1e1a123887965f04d1cbe21e9f1cc",
+            "db/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "db/session.py": "6c1fdaf1dadfd98ed0021770f7c1d0d05e74825384c086e664728070987c3feb",
+            "core/time_utils.py": "042e7dccc0cddb7499450cb5b88ebe3d6012b92e19988bcdf9aed0e3f2aca843",
+            "core/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "core/config.py": "113a3ef4f03409d651bfacd1228720a7e2bf77bce280bf00011949f97d1a13d6",
+            "services/place_locations.py": "e9b2a4da60c19b40887d6f703940eff50d988c4cc888987a2ff5502f7be51932",
+            "services/kric_collection.py": "a6f67f88d7f20487874e072a39061bf7f0e937f905553c92393bafdb15977910",
+            "services/backup_restore.py": "5b2b58ec0e9804929a28788c7f7f1517ee2c38366067a9d212df764871d1ee1e",
+            "services/kakao_place_locations.py": "4a052812fc366bae79c3f382223330d73c3ed28cc2328b52e56962d85b27710c",
+            "services/collection.py": "426e96a5a0649bfa7ee4d93f720ba7f3389032c4d144e361fa32a77c0c1eb142",
+            "services/transport_collection.py": "cf11e6f382cce31e3cabe770330d87fe5cfe0574f0c775e30bd228d676fea996",
+            "services/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "services/address_refresh.py": "9bd7052a38845035fab8dec28fcff28ccc5243679a692da9403d58125a54bff7",
+            "services/fee_calculator.py": "30865627135d86e1ca649a61be708f2d7bdad35918158e9a0b902176120ac531",
+            "services/analytics.py": "58f9233b0bdaad7b3d36963daa852285c75c91f6eb044f53fbb10150d32382c0",
+            "services/bus_collection.py": "a3054a8c552264eb802a4b66fc6ef45287f807628f6fc820b4b61e02b6ac5aba",
+            "services/analytics_cache.py": "a4b5cb15dd53a8bd63c1dcb96114b47412a9f1bd91181a7c5103e91074abeb45",
+            "services/holidays.py": "9b201b86484738d61331dd7e4a000381126d9431740315837985149852924713",
+            "services/parsers.py": "16b09501a7369e57468c1be1b9ca8967ea9c8df329489ecb6ee249fe09b860f1",
+            "services/bus_timetable_storage.py": "e5ce209f28051e4437444a0cf83d64243b946fa7ad2dab9a0fa4fb37703e54f3",
+            "services/parking_history_cache.py": "6933ec052257cca36a0348c35e6f1085847c3d7ba99c6f6d25e0637e1f96714e",
+            "services/flight_status.py": "76eba7d73984ec3d2aa6e7df1efe6fde739f67654b3b876efe1078c640839fb8",
+            "services/rest_area_collection.py": "9c56affbc085264df2604b936b58c14a0967784c7a9acde524b3ef6b8542ef07",
+            "services/place_targets.py": "b49bfbcfb53172f3a737729c783b43c708e6dce2480e6ff21af272a64ea1f13a",
+            "services/sample_data.py": "f4044b6a90182d0c16c218a06a17b085c5ad040cd1b7acca3154070463d427eb",
+            "services/rail_timetable.py": "a6445683aac40843fc196aa102fb3cc2973d687203309bb774293238fdc69b9c",
+            "services/rail_maritime_collection.py": "47e0519c1afd92706003252eda339d91271c702bbd83f5bfdeb6fe246ad5d18c",
+            "services/provider_status.py": "16ade83ddd1f187ea4ac4430cd9a25970987d63a137f246b6dc204d2e54f8166"
+          },
+          "raw_utf8_bytes": 8713255,
+          "raw_sha256": "55b525e0dba7a37220b4e6443486649af8bfe9b103556f57fd6ff32a66eede16",
+          "measured": {
+            "cpu_s": 19.939923148000002,
+            "wall_s": 154.59440772194648,
+            "pg_cpu_before_usec": 22000404,
+            "pg_cpu_after_usec": 93365388,
+            "pg_store_cpu_s": 71.364984,
+            "worker_plus_pg_store_cpu_s": 91.30490714800001,
+            "memory": {
+              "VmHWM": 166985728,
+              "VmRSS": 145522688,
+              "memory.current": 131944448,
+              "memory.peak": 154791936,
+              "ru_maxrss_kib": 163072
+            },
+            "before_memory": {
+              "VmHWM": 127193088,
+              "VmRSS": 118095872,
+              "memory.current": 104673280,
+              "memory.peak": 114438144,
+              "ru_maxrss_kib": 124212
+            },
+            "prestorage_memory": {
+              "VmHWM": 127193088,
+              "VmRSS": 118927360,
+              "memory.current": 105459712,
+              "memory.peak": 114438144,
+              "ru_maxrss_kib": 124212
+            },
+            "db_calls_including_run_insert": 60,
+            "db_wall_s_including_run_insert": 141.5401909747743,
+            "counts": [
+              11885,
+              59425
+            ]
+          },
+          "persisted_digest": {
+            "fuel_stations": "ae574ac0e665a1f01e20cd87a5b970e1",
+            "fuel_price_snapshots": "9f2e274ff12590ac9b325cee8ebdfdb8",
+            "fuel_latest_prices": "b2471364a227bf0b5fa9361a3d31e6c4"
+          },
+          "idempotence_counts": [
+            0,
+            0
+          ],
+          "scope": "CPU/wall: complete store+commit; peak memory through commit includes imports/schema/prebuilt snapshot; verification excluded; provider/browser excluded; owned PG CPU same store window includes PG background activity; PG RSS excluded"
+        },
+        "network": "none; PostgreSQL Unix socket only",
+        "measured": "worker memory; worker+owned PG CPU aligned to initial store; PG memory excluded"
+      },
+      "cleanup": [
+        {
+          "name": "transport-memory-7ca7b1693f34-worker",
+          "status": "removed",
+          "stderr": ""
+        },
+        {
+          "name": "transport-memory-7ca7b1693f34-pg",
+          "status": "removed",
+          "stderr": ""
+        },
+        {
+          "name": "transport-memory-7ca7b1693f34-socket",
+          "status": "removed",
+          "stderr": ""
+        }
+      ],
+      "foreign": {
+        "unchanged": true
+      }
+    }
+  ],
+  "scope": "CPU/wall: complete store+commit; peak memory through commit includes imports/schema/prebuilt snapshot; verification excluded; provider/browser excluded; owned PG CPU same store window includes PG background activity; PG RSS excluded",
+  "synthetic_stations": 11885,
+  "synthetic_prices": 59425,
+  "raw_utf8_bytes": 8713255,
+  "source37_all_exact": true,
+  "digests_all_equal": true,
+  "replay_all_zero": true,
+  "cleanup_all_removed": true,
+  "foreign_unchanged_all": true,
+  "daemon_off": true
+}
