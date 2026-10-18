@@ -1,6 +1,6 @@
-name: kor-travel-transport-admin
+name: kor-travel-transport
 
-# 기본 `kor-travel-transport` Compose와 독립된 host-network UI/gateway 스택이다. backend,
+# 기본 `kor-travel-transport` project의 host-network UI/gateway 서비스다. backend,
 # Dagster webserver를 재기동하거나 포트를 변경하지 않고 loopback upstream만 읽는다.
 #
 # Dagster는 공용 제어 평면(kor-travel-docker-manager ADR-54)이다. UI는 공용 webserver
@@ -14,8 +14,10 @@ services:
     network_mode: host
     environment:
       TRANSPORT_PUBLIC_API_PORT: "${TRANSPORT_PUBLIC_API_PORT:-12301}"
+      TRANSPORT_EXPORT_CONSUMER_CIDR: "${TRANSPORT_EXPORT_CONSUMER_CIDR:-}"
     volumes:
       - ./deploy/transport-admin/api-gateway.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./deploy/transport-admin/19-export-allowlist.sh:/docker-entrypoint.d/19-export-allowlist.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${TRANSPORT_PUBLIC_API_PORT:-12301}/health >/dev/null"]
       interval: 45s
@@ -33,7 +35,7 @@ services:
     restart: unless-stopped
     network_mode: host
     environment:
-      TRANSPORT_API_INTERNAL_URL: "${TRANSPORT_API_INTERNAL_URL:-http://127.0.0.1:14001}"
+      TRANSPORT_API_INTERNAL_URL: "${TRANSPORT_API_INTERNAL_URL:-http://127.0.0.1:12302}"
       # 공용 Dagster webserver의 loopback(인증 없음). 옛 전용 webserver(14004)는 legacy-dagster로 내려갔다.
       TRANSPORT_DAGSTER_INTERNAL_URL: "${TRANSPORT_DAGSTER_INTERNAL_URL:-http://127.0.0.1:11002}"
       TRANSPORT_UI_USER: "${TRANSPORT_UI_USER:-admin}"

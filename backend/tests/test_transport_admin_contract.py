@@ -22,21 +22,21 @@ def iter_typescript_sources(root: Path):
                 yield Path(directory) / filename
 
 
-def test_transport_admin_is_a_separate_host_network_stack() -> None:
+def test_transport_admin_uses_shared_project_but_separate_service_scope() -> None:
     compose = (ROOT / "docker-compose.transport-admin.yml").read_text(encoding="utf-8")
 
-    assert "name: kor-travel-transport-admin" in compose
+    assert "name: kor-travel-transport\n" in compose
     assert compose.count("network_mode: host") == 2
     assert "TRANSPORT_PUBLIC_API_PORT:-12301" in compose
     assert "TRANSPORT_PUBLIC_WEB_PORT:-12305" in compose
-    assert "http://127.0.0.1:14001" in compose
+    assert "http://127.0.0.1:12302" in compose
     # Dagster는 공용 제어 평면이다(Manager ADR-54) — 공용 webserver의 loopback을 부르고, 옛 전용
     # webserver(14004)와 그 앞의 12302 gateway는 없다.
     assert 'TRANSPORT_DAGSTER_INTERNAL_URL: "${TRANSPORT_DAGSTER_INTERNAL_URL:-http://127.0.0.1:11002}"' in compose
     assert "127.0.0.1:14004" not in compose
     assert "\n  transport-dagster-gateway:" not in compose  # 서비스 정의가 없다(주석의 언급은 무관)
     assert "TRANSPORT_DAGSTER_PORT" not in compose
-    assert "기본 `kor-travel-transport` Compose와 독립된" in compose
+    assert "project의 host-network UI/gateway 서비스다" in compose
 
 
 def test_provider_status_and_worker_share_bus_collection_switch() -> None:
@@ -92,7 +92,7 @@ def test_transport_gateway_contract_has_bounded_upstreams() -> None:
     proxy = (ROOT / "packages/kor-travel-transport-admin/frontend/app/api/transport/[...path]/route.ts").read_text(encoding="utf-8")
     upstream = (ROOT / "packages/kor-travel-transport-admin/frontend/lib/upstream.ts").read_text(encoding="utf-8")
 
-    assert "proxy_pass http://127.0.0.1:14001" in api_gateway
+    assert "proxy_pass http://127.0.0.1:12302" in api_gateway
     assert "location ~ ^/v1/transport/" in api_gateway
     assert "features/places" in api_gateway
     assert "bus/(terminals|timetable)" in api_gateway

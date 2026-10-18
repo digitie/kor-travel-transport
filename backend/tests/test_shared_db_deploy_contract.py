@@ -36,7 +36,7 @@ def test_deploy_binds_both_shared_database_names() -> None:
     assert "DEPLOY_STAGE_ONLY" in script
     assert '--exclude=".env.prod.legacy"' in script
     assert "Candidate ${CANDIDATE_SHA} staged on ${REMOTE_HOST}; no containers were changed." in script
-    assert "require_exact BACKEND_INTERNAL_URL http://127.0.0.1:14001" in remote_script
+    assert "require_exact BACKEND_INTERNAL_URL http://127.0.0.1:12302" in remote_script
     assert "git rev-parse" not in remote_script
     assert "staged release manifest does not match candidate" in remote_script
 

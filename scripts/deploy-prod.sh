@@ -46,19 +46,27 @@ fi
 ssh "${REMOTE_USER}@${REMOTE_HOST}" "python3 - --host '${REMOTE_HOST}' --env-file '${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}'" < "${SCRIPT_DIR}/validate-deploy-host.py"
 
 ARCHIVE_PATH="$(mktemp -p /tmp kor-travel-transport-prod.XXXXXX.tgz)"
-REMOTE_ARCHIVE="/tmp/$(basename "${ARCHIVE_PATH}")"
-
+REMOTE_STAGE=""
 cleanup() {
-  rm -f "${ARCHIVE_PATH}"
+  rm -f -- "${ARCHIVE_PATH}"
+  if [[ "${REMOTE_STAGE}" =~ ^/mnt/media/kor-travel/build/transport/transport-deploy\.[A-Za-z0-9_]+$ ]]; then
+    # 원격 본문 전 scp/lock 실패는 archive와 빈 소유 디렉터리만 정리한다.
+    ssh "${REMOTE_USER}@${REMOTE_HOST}" "rm -f -- '${REMOTE_STAGE}/archive.tgz'; rmdir -- '${REMOTE_STAGE}' 2>/dev/null || true" || true
+  fi
 }
 trap cleanup EXIT
+
+REMOTE_STAGE="$(ssh "${REMOTE_USER}@${REMOTE_HOST}" "python3 - --app-dir '${REMOTE_APP_DIR}'" < "${SCRIPT_DIR}/prepare-deploy-storage.py")"
+[[ "${REMOTE_STAGE}" =~ ^/mnt/media/kor-travel/build/transport/transport-deploy\.[A-Za-z0-9_]+$ ]] || { echo "Refusing deployment: invalid owned NVMe stage." >&2; exit 2; }
+REMOTE_ARCHIVE="${REMOTE_STAGE}/archive.tgz"
+
 
 git archive --format=tar.gz --output="${ARCHIVE_PATH}" HEAD
 
 ssh "${REMOTE_USER}@${REMOTE_HOST}" "mkdir -p '${REMOTE_APP_DIR}'"
 scp "${ARCHIVE_PATH}" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_ARCHIVE}"
 ssh "${REMOTE_USER}@${REMOTE_HOST}" \
-  "REMOTE_HOST='${REMOTE_HOST}' REMOTE_APP_DIR='${REMOTE_APP_DIR}' REMOTE_ARCHIVE='${REMOTE_ARCHIVE}' REMOTE_ENV_FILE='${REMOTE_ENV_FILE}' COMPOSE_PROJECT_NAME='${COMPOSE_PROJECT_NAME}' CANDIDATE_SHA='${CANDIDATE_SHA}' DEPLOY_STAGE_ONLY='${DEPLOY_STAGE_ONLY}' DEPLOY_MODE='${DEPLOY_MODE}' bash -s" <<'REMOTE_SCRIPT'
+  "REMOTE_HOST='${REMOTE_HOST}' REMOTE_APP_DIR='${REMOTE_APP_DIR}' REMOTE_ARCHIVE='${REMOTE_ARCHIVE}' REMOTE_ENV_FILE='${REMOTE_ENV_FILE}' COMPOSE_PROJECT_NAME='${COMPOSE_PROJECT_NAME}' CANDIDATE_SHA='${CANDIDATE_SHA}' REMOTE_STAGE='${REMOTE_STAGE}' DEPLOY_STAGE_ONLY='${DEPLOY_STAGE_ONLY}' DEPLOY_MODE='${DEPLOY_MODE}' bash -s" <<'REMOTE_SCRIPT'
 set -euo pipefail
 if ! command -v rsync >/dev/null 2>&1; then
   echo "Refusing deployment: rsync is required to remove stale candidate files safely." >&2
@@ -70,16 +78,20 @@ if [[ ! -f "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" || ! -r "${REMOTE_APP_DIR}/${R
 fi
 # 관리자 배포·Dagster 긴급 교체와 같은 checkout의 동시 변경을 막는다.
 # FD 9는 아래 remote 배포 자식에도 상속되어 빌드가 끝날 때까지 잠금을 유지한다.
-RELEASE_LOCK_PATH="/home/digitie/apps/.kor-travel-transport-deploy.lock"
+RELEASE_LOCK_PATH="/mnt/media/kor-travel/build/transport/.kor-travel-transport-deploy.lock"
+[[ ! -L "${RELEASE_LOCK_PATH}" ]] || { echo "Refusing deployment: symlink lock." >&2; exit 2; }
 exec 9>"${RELEASE_LOCK_PATH}"
 flock -n 9 || { echo "Refusing deployment: shared checkout is being changed." >&2; exit 2; }
 
-REMOTE_STAGE="$(mktemp -d /tmp/kor-travel-transport-release.XXXXXX)"
+[[ "${REMOTE_STAGE}" =~ ^/mnt/media/kor-travel/build/transport/transport-deploy\.[A-Za-z0-9_]+$ && ! -L "${REMOTE_STAGE}" ]] || { echo "Invalid owned NVMe stage." >&2; exit 2; }
+[[ "${REMOTE_ARCHIVE}" == "${REMOTE_STAGE}/archive.tgz" ]] || { echo "Invalid stage archive." >&2; exit 2; }
+REMOTE_SOURCE="${REMOTE_STAGE}/source"
+mkdir -m 700 "${REMOTE_SOURCE}"
 cleanup_remote() {
   rm -rf -- "${REMOTE_STAGE}" "${REMOTE_ARCHIVE}"
 }
 trap cleanup_remote EXIT
-tar -xzf "${REMOTE_ARCHIVE}" -C "${REMOTE_STAGE}"
+tar -xzf "${REMOTE_ARCHIVE}" -C "${REMOTE_SOURCE}"
 # 이 receipt는 현재 배포된 SHA와 달리, 공유 checkout의 복사가 끝났다는 증거다.
 # 복사 중 끊기면 이전 receipt로 혼합 소스를 배포하지 못하도록 먼저 무효화한다.
 STAGE_MARKER="${REMOTE_APP_DIR}/.staged-release-sha"
@@ -94,7 +106,7 @@ rsync -a --delete \
   --exclude=".release-sha" \
   --exclude=".env.prod.shared-dagster-cutover" \
   --exclude="backups/" \
-  "${REMOTE_STAGE}/" "${REMOTE_APP_DIR}/"
+  "${REMOTE_SOURCE}/" "${REMOTE_APP_DIR}/"
 cd "${REMOTE_APP_DIR}"
 printf '%s\n' "${CANDIDATE_SHA}" > "${REMOTE_APP_DIR}/.release-sha"
 chmod 600 "${REMOTE_APP_DIR}/.release-sha"

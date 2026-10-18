@@ -89,6 +89,7 @@ if name=='git':
 if name=='ssh':
  args=shlex.split(sys.argv[2])
  if args[:2]!=['python3','-']:raise SystemExit(97)
+ if '--app-dir' in args:raise SystemExit(97)
  args[args.index('--env-file')+1]=os.environ['OWN_ENV']
  result=subprocess.run(args,input=sys.stdin.buffer.read())
  raise SystemExit(result.returncode)
@@ -235,7 +236,7 @@ def test_backend_sync_preserves_old_and_new_environment_artifacts(tmp_path):
     (source / "candidate.txt").write_text("owned candidate")
     result = subprocess.run(
         ["bash", "-c", "set -euo pipefail\n" + block],
-        env={"PATH": "/usr/bin:/bin", "REMOTE_ENV_FILE": ".env.prod", "REMOTE_STAGE": str(source), "REMOTE_APP_DIR": str(destination)},
+        env={"PATH": "/usr/bin:/bin", "REMOTE_ENV_FILE": ".env.prod", "REMOTE_SOURCE": str(source), "REMOTE_APP_DIR": str(destination)},
         capture_output=True, text=True, check=False,
     )
     assert result.returncode == 0, result.stderr

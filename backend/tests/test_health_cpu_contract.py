@@ -42,7 +42,7 @@ def test_production_and_legacy_health_intervals_only_triple(filename, name, expe
 
 @pytest.mark.parametrize(
     ("filename", "port"),
-    [("docker-compose.yml", "8000"), ("docker-compose.shared.yml", "${PUBLIC_API_PORT:-14001}")],
+    [("docker-compose.yml", "8000"), ("docker-compose.shared.yml", "${PUBLIC_API_PORT:-12302}")],
 )
 def test_api_health_uses_explicit_loopback_cli_and_port(filename, port):
     assert _services(filename)["backend"]["healthcheck"]["test"] == [
