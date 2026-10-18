@@ -31,6 +31,7 @@ from app.db.session import create_engine_and_session_factory, init_database
 from app.main import cached_transport_statistics, create_app
 from app.models import (
     CollectionRun,
+    FuelLatestPrice,
     FuelPriceSnapshot,
     FuelStation,
     HighwayIncidentSnapshot,
@@ -1416,3 +1417,39 @@ def test_safe_error_keeps_messages_and_locates_empty_ones() -> None:
         located = _safe_error(exc, settings)
     assert located.startswith("TimeoutError at tests/test_transport_collection.py:")
     assert located.endswith("in raise_empty")
+
+def test_fuel_store_retries_same_snapshot_after_price_write_rollback(tmp_path: Path, monkeypatch) -> None:
+    """가격 INSERT까지 실행된 실패도 주유소·가격을 되돌리고 원본으로 재시도한다."""
+    execute = AsyncSession.execute
+    price_writes = []
+    snapshots = []
+    empty_on_entry = []
+
+    async def fail_first_price_write(session, statement, *args, **kwargs):
+        result = await execute(session, statement, *args, **kwargs)
+        if getattr(getattr(statement, "table", None), "name", None) == "fuel_price_snapshots":
+            price_writes.append(1)
+            if len(price_writes) == 1:
+                raise TimeoutError("after fixture price write")
+        return result
+
+    monkeypatch.setattr(AsyncSession, "execute", fail_first_price_write)
+
+    async def observe_store(original, session, run_id, snapshot):
+        snapshots.append((id(snapshot), repr(snapshot)))
+        empty_on_entry.append((
+            await session.scalar(select(func.count()).select_from(FuelStation)),
+            await session.scalar(select(func.count()).select_from(FuelPriceSnapshot)),
+            await session.scalar(select(func.count()).select_from(FuelLatestPrice)),
+        ))
+        return await original(session, run_id, snapshot)
+
+    result, run_row, state, collect_fuel = _run_fuel_with_store(tmp_path, observe_store)
+    assert empty_on_entry == [(0, 0, 0), (0, 0, 0)]
+    assert len(snapshots) == 2 and snapshots[0] == snapshots[1]
+    assert len(price_writes) == 2
+    collect_fuel.assert_awaited_once()
+    assert result["status"] == "success"
+    assert result["fuel_price_count"] == 1
+    assert run_row.error_message is None
+    assert state.last_success_at is not None and state.last_error is None

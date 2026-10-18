@@ -514,3 +514,18 @@ def test_chunked_preserves_iterator_failure() -> None:
     assert next(chunks) == [1, 2]
     with pytest.raises(RuntimeError, match="fixture iterator failure"):
         next(chunks)
+
+def test_empty_fuel_snapshot_keeps_empty_store(client) -> None:
+    service = client.app.state.transport_collection_service
+    factory = client.app.state.session_factory
+
+    async def run():
+        async with factory() as session:
+            counts = await service._store_fuel_snapshot(session, await new_run(session), make_snapshot(T0, []))
+            state = await dump_fuel_state(session, {})
+            await session.rollback()
+            return counts, state
+
+    counts, state = asyncio.run(run())
+    assert counts == (0, 0)
+    assert state == {"stations": {}, "prices": {}, "latest": {}}
