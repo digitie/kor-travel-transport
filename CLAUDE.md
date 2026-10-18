@@ -31,8 +31,8 @@ OpenAPI와 내부 통계로 즉시 제공한다. 현재 `parking-radar`는 그�
 - 실행: Docker Compose
 - 타임존: 저장·API는 UTC aware timestamp, 화면 표시는 `Asia/Seoul`
 - 수집: 운영 기본 5분. 외부 API rate limit과 실제 관측 시각을 함께 확인한다.
-- 새 운영 호스트: `digitie@192.168.1.14` (별칭 `n150`)
-- 기존 호스트: `digitie@192.168.1.13` — 데이터 확인 외 Docker 조작 금지
+- 운영 호스트: Manager 정본의 `odroid` (사용자 승인 이전 완료)
+- Odroid 작업: 현재 배포 런북·ADR-014를 따르고 빌드·이미지·앱·DB는 NVMe에 둔다.
 - GitHub 정본: `origin` → `github.com/digitie/kor-travel-transport` (옛 이름
   `kor-travel-airport`, ADR-008·010·011 — 배포되는 웹앱 화면 브랜드는 계속
   `parking-radar`다. §1 참고).
@@ -65,7 +65,7 @@ OpenAPI와 내부 통계로 즉시 제공한다. 현재 `parking-radar`는 그�
 ## 5. 절대 금지 (가장 중요한 5개)
 
 1. `main` 직접 push 금지 — feature branch + Draft PR + CI + 리뷰 후 머지한다.
-2. 192.168.1.13에서 Docker stop/up/build 금지.
+2. Odroid 작업은 `docs/runbooks/deployment.md` 현재 절차와 ADR-014만 따른다.
 3. 백업 파일·SQLite·`.env`·API key를 git에 추가하지 않는다.
 4. 인증 없는 백업 UI는 내부망 전제임을 문서·운영 설정에 남긴다(`docs/adr/003-*.md`).
 5. `python-krairport-api` 같은 형제 provider 라이브러리 기능을 backend 안에 다시

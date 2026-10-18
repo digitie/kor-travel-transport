@@ -74,8 +74,8 @@
 - **D3**: 공휴일/비행편 데이터를 `parking_snapshots`에 섞어 저장하거나 최근 7일 주차
   시계열에 비행편을 함께 그리지 않는다. 비행편은 항상 별도 하루 흐름 오버레이 차트에만
   표시한다(`CLAUDE.md` §1, `AGENTS.md`).
-- **D4**: 192.168.1.13에서는 Docker start/stop/build를 실행하지 않는다. 새 Docker 운영은
-  192.168.1.14에서만 한다(`CLAUDE.md` §2, `AGENTS.md`).
+- **D4**: Odroid 작업은 현재 배포 런북·ADR-014의 Manager 대상 승인과 NVMe 검사를 통과한다.
+  사용자 승인 밖의 서비스 변경이나 daemon 재개를 수행하지 않는다(`CLAUDE.md` §2, `AGENTS.md`).
 - **D5**: 무인증 backup/restore API의 네트워크 경계(`TRUSTED_HOSTS_CSV`, CORS)를 건드릴 때는
   이 결정이 [ADR-003](../adr/003-unauthenticated-backup-network-restriction.md)에
   근거한 의도된 설계임을 먼저 확인한다. "인증이 없으니 위험하다"고 판단해 임의로 인증을

@@ -39,7 +39,7 @@
     `14004`·gateway `14003`은 `legacy-dagster` profile(되돌리기용)이다 — [shared-db-dagster.md](shared-db-dagster.md)
 - live E2E 기준 origin: `https://pr.digitie.mywire.org`
 - 외부 API 기준 origin: `https://pr-api.digitie.mywire.org`
-- `192.168.1.13`은 cutover 전까지 read-only source/rollback 기준으로 유지
+- 현재 Transport는 Manager의 Odroid 대상과 NVMe 정본을 사용한다. 과거 n150 배포는 이력이며 현재 절차는 배포 런북·ADR-014를 따른다.
 
 ## 수집 흐름
 

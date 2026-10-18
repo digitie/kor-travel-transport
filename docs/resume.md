@@ -1,5 +1,15 @@
 # resume.md — 현재 인수인계
 
+
+## 2026-10-19 현재 Track2 다음 작업
+
+PR90은 cbbfb840으로 머지되었고 gateway 전환·실제 Map GET15·UI34를 통과했다.
+PR91은 문서 전용으로 T-TRN-02/03a/04를 현재 운영 근거와 정렬한다. ADR014 accepted는
+역사적 최초 load-error 증거를 회수했다는 뜻이 아니며 현재 정상 location·중복 실행 없음과
+실제 소비자 수용에 근거한다. 다음은 M6 자산 은퇴(03b)와 실 Opinet 계측 후5role
+memory==memswap 수용(05)이다. daemon OFF를 유지하며 아래 과거 상태는 당시 기록이다.
+
+
 ## 2026-10-19 PR90 운영 배포 계약 수용
 
 포트12302/12303·NVMe staging·단일 project와 소비자 제한 export를 정본화했다.

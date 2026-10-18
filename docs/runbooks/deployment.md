@@ -20,10 +20,26 @@ DSN의 loopback11000/DB 이름, 공용 Dagster 버전, location absent 거절·P
 
 예전 n150/파일명으로 적힌 아래 절은 당시 이력이다. 현재 명령에는 위 prod entry·--host·.env.prod를 적용하고, 이전 정책 문구·실제 source 배포/ARM/live 수용은 T-TRN-03a/04에서 별도로 정산한다. 현재 source의 tracked-file/효과 검사 적용과 runtime image 재빌드·전체 cutover는 별개다.
 
-> 현재 기준 배포 대상은 `192.168.1.14`이며 Docker/PostgreSQL은 n150에서만 실행한다. 13번은 source API와 rollback 기준으로 읽기만 한다. 새 배포는 [migration.md](migration.md)와 [`scripts/deploy-server14.sh`](../../scripts/deploy-server14.sh)를 우선 사용한다. 이 문서의 기존 ODROID 절차는 historical reference다.
-> **계획**: transport 스택을 odroid(`192.168.1.13`)로 옮기는 절차는 아래 "[odroid 배포 계획(ADR-014)](#odroid-배포-계획adr-014-proposed-미구현)" 절에 있다 — proposed·미구현이며 그때까지 이 머리말이 현재 운영이다.
+## 현재 Odroid 정본(2026-10-19)
 
-## n150 현재 운영 절차
+사용자 승인에 따라 현재 대상은 Manager가 지정한 Odroid다. project는
+`kor-travel-transport` 하나이며 API12302/web12303/gateway12301/admin12305/CS12306을 사용한다.
+앱·이미지·빌드·DB·환경 파일의 실제 장치는 NVMe여야 한다. staging과 공유 checkout 잠금은
+`/mnt/media/kor-travel/build/transport` 아래에 두며 이 디렉터리는 digitie 소유0700이다.
+상위 디렉터리의 권한을 확대하지 않는다. 부팅 조건을 추가하지 않는다.
+
+앱 `/home/digitie/apps/kor-travel-transport`와 중앙 환경
+`/opt/kor-travel-odroid/transport.env`·Manager override를 함께 확인한다.
+관리자 배포는 같은 project의 gateway/admin 두 역할만 선택하며 다른 역할을 제거하지 않는다.
+소비자 export는 GET과 기존 승인 IP/CIDR에 한정하고 빈 설정은 모두 거부한다.
+기존 env 보호 exclude를 지우거나 HAProxy를 직접 수정하지 않는다. daemon OFF를 유지한다.
+
+아래 n150 절과 이전 계획의 당시 미완 항목은 역사다. 최신 수용 증거는
+[운영 계약 검증](../reviews/2026-10-19-track2-runtime-contract.md)와
+[ARM 관리자 번들 수용](../audits/2026-10-19-admin-bundle-acceptance.md)을 따른다.
+ADR accepted 여부는 별도 증거 정산 후 표시한다.
+
+## 과거 n150 운영 절차
 
 1. n150에 `/home/digitie/apps/kor-travel-transport/.env.server14`를 만들고
    [`.env.server14.example`](../../.env.server14.example)의 실제 DB 비밀번호와 운영
@@ -682,11 +698,8 @@ PR에 수록, 머지 예정)다. Manager ADR-58 본문은 절차를 그 런북�
 
 ## Historical: 기존 13번/ODROID 설정 (실행 금지)
 
-아래 내용은 13번의 기존 SQLite/10분 운영을 보존하기 위한 참고 기록이다. 13번에서
-Docker를 실행·중지·재생성하지 않는다. 현재 운영 배포에는 사용하지 말고, source API와
-rollback 상태를 확인할 때만 읽는다. (이 금지 **문구**는 [ADR-014](../adr/014-odroid-host-and-deploy-host-flag.md) 결정 6에 따라
-소유자 §14-2(legacy 폐기 범위) 결정 직후·odroid 배포 4b **전**에 T-TRN-03a가 "odroid 작업은 위 계획 절·ADR-014 절차만 따른다"로
-교체하고, 아래 fail-closed 마커 파일들과 legacy 자산(ADR-014 집합 M)은 배포 게이트가 전부 초록인 뒤 T-TRN-03b가 삭제한다 — 그때까지 유효하다.)
+아래는 과거 SQLite/10분 운영의 참고 기록이며 현재 실행 절차가 아니다.
+현재 Odroid 작업은 위 현재 정본 절·ADR-014를 따른다. legacy M6 삭제와 실제 서비스·볼륨의 은퇴는 구분한다.
 
 이 절의 환경변수·포트·스크립트는 과거 기록이다. `scripts/deploy-odroid.ps1`와
 `deploy/odroid/remote-deploy.sh`는 현재 fail-closed 차단 파일이며 Docker 명령을 실행하지 않는다.
@@ -796,10 +809,9 @@ ODROID 배포 절차는 폐기되었으며 실행하지 않는다.
 
 Windows 로컬 PowerShell 테스트만으로 ODROID에 배포하지 않는다. PowerShell은 배포 스크립트 실행과 원격 상태 확인 보조 도구로만 사용한다.
 
-`.\scripts\deploy-odroid.ps1`는 실행 시 즉시 종료된다. Docker는 13번에서 절대 실행하지 않는다.
+`.\scripts\deploy-odroid.ps1`는 실행 시 즉시 종료된다. 현재 운영에는 위 현재 정본 절·ADR-014 절차를 사용한다.
 
-실제 운영 배포는 [n150 현재 운영 절차](#n150-현재-운영-절차)의
-`scripts/deploy-server14.sh`만 사용한다.
+이 절은 당시 n150 배포의 역사적 기록이다. 현재 운영은 위 [현재 Odroid 정본](#현재-odroid-정본2026-10-19)과 scripts/deploy-prod.sh를 따른다.
 
 호환성 메모:
 

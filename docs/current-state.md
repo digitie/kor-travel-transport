@@ -1,5 +1,15 @@
 # 현재 상태 요약
 
+## 2026-10-19 현재 Track2 수용 증거
+
+- 실제 ARM64 native backend 이미지 `5942696b548f`(소스 `a0b789df`)의 설치 Python37파일을 검증했다. 해당 이미지 빌드에서 Playwright Chromium 설치가 성공했으며 별도 headless 로컬 HTML/title/canvas/screenshot smoke도 exit0/OOM0으로 통과했다.
+- `OPINET_BROWSER_ENABLED=true` 및 전체 수집 enabled 설정을 읽기 전용 inventory에서 확인했다. browser 실패를 이유로 유가 수집을 끄는 fallback은 적용하지 않았다.
+- browser smoke는 네트워크가 없는 단일 fixture이며 cgroup peak434700288bytes(약414.56MiB)다. 실제 Opinet 전체 job의 최대 메모리나 실행시간을 증명하지 않는다. 앞선 r1/r2 fixture/fence 실패는 원문으로 보존했고 r3에서만 PASS했다.
+- 현재 양 호스트 Dagster active run0·daemon OFF·조회 전후 container 상태 불변을 확인했다. Odroid Transport5역할 모두 healthy, Transport repository location 정상이다. n150에는 현재 Transport/parking-radar 컨테이너가 없으며 Transport location도 없다. 옛 backend가 현재 `exited`라고 바꿔 쓰지 않는다.
+- PR90에서 실제 n150 Map 소비자의 Odroid export GET200/15공항 및 UI34를 통과했다. 현재 증거는 [runtime 요약](audits/2026-10-19-track2-current-runtime.json), [PR90 수용](audits/2026-10-19-transport90-deployment.json), [ARM 관리자 번들](audits/2026-10-19-admin-bundle-acceptance.md)을 따른다.
+- 최초 workspace load-error→정상으로 바뀐 시점의 영수증은 아직 회수되지 않았다. 현재 정상 location 조회와 구분하며 그 증거를 만들기 위해 운영을 손상시키지 않는다. 실제 Opinet·5role memory==memswap 수용은 T-TRN-05에서 남아 있다.
+
+
 이 문서는 `parking-radar`의 현재 구현 상태와 운영 시 알아야 할 결정을 한 곳에 모아둔 문서다.  
 세부 기능 문서가 흩어져 있을 때 먼저 이 문서를 읽고, 필요하면 링크된 개별 문서로 내려가는 것을 권장한다.
 
@@ -398,3 +408,11 @@ backend가 `.13`으로, 옛 `pr2` host와 odroid의 legacy `parking-radar` 스�
 - `15056803` 카탈로그에는 개발계정 `5,000` 트래픽이 보이지만, `2026-04-28` 실측에서는 100회 성공 후 101번째부터 `LIMITED NUMBER OF SERVICE REQUESTS EXCEEDS ERROR.`가 발생했다.
 - 중복 수집기를 제거한 현재 기준으로는 n150 live 프로파일이 5분 configured 주기와
   5분 수동 수집 제한 계약을 사용한다.
+
+## 2026-10-19 현재 호스트와 ARM 번들 증거
+
+현재 운영 정본은 Manager의 Odroid/NVMe 대상과 단일 kor-travel-transport project다.
+관리자 번들의 canonical Dagster URL은 실제 ARM64 build와 정적 chunk 검사에서
+확인했고, 같은14e8c212 이미지를 운영 UI34가 검증했다.
+[정적 빌드와 설치 세대 연결](audits/2026-10-19-admin-bundle-acceptance.md)을 따른다.
+과거 n150/SQLite 설명은 이전 세대의 이력이다. daemon OFF는 유지한다.

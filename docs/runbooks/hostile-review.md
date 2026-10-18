@@ -79,7 +79,7 @@ James/Popper 각각을 별도 Agent 호출로 독립 실행한다(예: Claude Co
 ## 실제 사례
 
 - T-021: Alembic lineage, source lag verifier, proxy timeout, backup pre-restore receipt,
-  접근성, stable legacy lot identity, PostgreSQL 테스트, 13번 Docker 금지 guard 등 P0/P1
+  접근성, stable legacy lot identity, PostgreSQL 테스트, 13번 Docker 금지 guard(현재 ADR-014 절차로 교체됨) 등 P0/P1
   지적을 반영했다.
 - T-025: Hallmark 후속 정리에서 재리뷰 blocker를 해소했다.
 - ADR-003: 무인증 backup/restore API 노출이 P0/P1 지적 대상이었지만, gateway/private

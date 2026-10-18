@@ -79,8 +79,8 @@ n150의 비추적 환경 파일에만 둔다.
 
 공용 Dagster 제어 평면 합류(아래 절) 뒤 `kor_travel_transport_dagster`는 **legacy-dagster profile만 쓰는 옛
 DB**다 — 활성 code-server는 공용 instance(`dagster_shared`)를 쓰고 이 DSN을 받지 않는다
-(`docker-compose.shared.yml:291`). 호스트 이전 계획([ADR-014](../adr/014-odroid-host-and-deploy-host-flag.md)
-proposed, 미구현)에서는 odroid의 PG에 이 DB를 **만들지 않는다**(Manager db-init이 만들지 않고 backend 코드가 읽지
+(`docker-compose.shared.yml:291`). 호스트 이전 결정([ADR-014](../adr/014-odroid-host-and-deploy-host-flag.md)
+accepted)에서는 odroid의 PG에 이 DB를 **만들지 않는다**(Manager db-init이 만들지 않고 backend 코드가 읽지
 않는다); `DAGSTER_POSTGRES_URL` env는 compose의 `:?` 필수 보간(`docker-compose.shared.yml:18`)과 배포 스크립트의
 모양 검사(`scripts/deploy-server14-remote.sh:81-84`) 때문에 **값만 남는다**. 그때부터 "두 DB 분리 유지"는
 "env 두 개 분리 유지, 실체는 하나"로 읽는다.
@@ -256,7 +256,20 @@ digest env가 달라진다. 각자 다음 compose `up`·재구축 때 한 번 �
 DB(`kor_travel_transport_dagster`)는 지우지 않고 남는다(30일). Manager 창 스크립트의 `rollback` 모드는 이 형제
 프로젝트에 대해 검증하지 않았다(이전 release의 code-server는 `--location-name`이 없어 선언과의 대조에서 멈춘다).
 
-### 호스트·plane 변경 계획(ADR-014 proposed, 미구현)
+### 현재 호스트·plane 계약(ADR-014 accepted)
+
+Transport는 Odroid의 공용 PG와 호스트 Dagster plane을 사용한다. 현재5역할 healthy와
+Transport location 정상, n150 Transport 컨테이너/location 부재, 양 호스트 active run0을
+읽기 전용으로 확인했다. daemon은 사용자 지시대로 OFF다.
+[현재 runtime 증거](../audits/2026-10-19-track2-current-runtime.json)를 따른다.
+
+Manager 정본 §9.2②에 따라 같은 설치 SHA·workspace digest·targets validate 뒤
+dagster-plane converge --dry-run/--confirm으로 plane/workspace를 먼저 반영한다.
+공용 PG를 포함하는 옛 ensure dagster 명령을 재실행하지 않는다. 앱 배포의 location 존재
+효과 검사와 CS/plane 버전 계약은 유지한다. legacy-dagster profile을 호스트 plane으로
+재사용하지 않는다. 최초 load-error 전환 순간의 원문 미회수와 현재 정상 상태는 구분한다.
+
+### 과거 2026-10-13 호스트·plane 설계 기록
 
 [ADR-014](../adr/014-odroid-host-and-deploy-host-flag.md)·Manager ADR-58(proposed)은 transport를 odroid
 (`192.168.1.13`)로 옮기고 그 호스트에 **자체 공용 plane**(같은 Manager compose의 `dagster` target: daemon·webserver
