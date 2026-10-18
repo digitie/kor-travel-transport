@@ -16,7 +16,8 @@ backend/admin 배포 검사 값을 현재12302/12303으로 맞췄다. 관련66�
 
 원격 archive·압축 해제 디렉터리·배포 잠금은 /mnt/media/kor-travel/build를 사용한다.
 승인된 checkout과 .env.prod, staging의 실제 장치가 NVMe와 같고 rootfs와 다르며
-findmnt SOURCE가 NVMe인지 확인한다. symlink와 bind mount는 실제 장치 증거로
+findmnt SOURCE가 NVMe인지 확인한다. 로컬 archive의 /tmp는 WSL 실행 호스트에만
+생성하며 Odroid로 전송한 archive와 압축 해제 파일은 모두 NVMe에 둔다. symlink와 bind mount는 실제 장치 증거로
 판단한다. 이 검사는 배포 시에만 수행하며 부팅 조건을 추가하지 않는다.
 
 관리자 배포는 현재 kor-travel-transport project에서 transport-api-gateway와
@@ -51,3 +52,7 @@ HOME 변경을 확정 원인으로 표현하지 않는다. 두 실패를 성공 
 - daemon OFF, HAProxy 직접 접속 금지 유지. 원본 dirty checkout은 수정하지 않았다.
 
 전체 WSL/Docker 회귀·두 독립 리뷰·이번 후보의 최종 live UI 수용은 아직 후속이다.
+
+독립 리뷰에서 symlink build 경로의 상속 lock 비교 불일치를 재현했다. 부모가 잠금을
+유지할 때 기존 블록 exit2, 양쪽 canonical 경로 비교 뒤 exit0으로 확인했다.
+이전 b6301aa 전체 회귀는 수정 전 후보의 INTERRUPTED 이력으로 보존한다.

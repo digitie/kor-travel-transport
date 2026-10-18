@@ -139,3 +139,24 @@ def test_bind_mount_checkout_outside_nvme_prefix_is_accepted(storage, tmp_path):
     app.symlink_to(bound, target_is_directory=True)
     assert module.validate_storage(app, nvme, build) == build
 
+
+@pytest.mark.parametrize("linked", [False, True])
+def test_actual_remote_lock_block_preserves_parent_lock(tmp_path, linked):
+    source = (ROOT / "scripts/deploy-prod-remote.sh").read_text()
+    start = source.index('if [[ "$(readlink -f "/proc/')
+    end = source.index("\n", source.index("flock -n 9", start))
+    block = source[start:end]
+    real = tmp_path / "actual"
+    real.mkdir()
+    build = tmp_path / "build"
+    if linked:
+        build.symlink_to(real, target_is_directory=True)
+    else:
+        build.mkdir()
+    lock = build / ".lock"
+    child = tmp_path / "child.sh"
+    child.write_text('release_lock_path="$1"\n' + block + "\n")
+    # 자식 실행 뒤 status를 읽어 부모 shell이 exec 최적화로 사라지지 않게 한다.
+    command = 'exec 9>"$1"; flock -n 9 || exit 91; bash "$2" "$1"; status=$?; exit "$status"'
+    result = subprocess.run(["bash", "-c", command, "_", str(lock), str(child)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr

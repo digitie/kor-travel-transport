@@ -40,7 +40,7 @@ python3 "${SCRIPT_DIR}/prepare-deploy-storage.py" --app-dir "${REMOTE_APP_DIR}" 
 # 수동 실행이면 여기서 동일 lock을 새로 잡는다. 경로가 다른 FD는 재사용하지 않는다.
 release_lock_path="/mnt/media/kor-travel/build/.kor-travel-transport-deploy.lock"
 [[ ! -L "${release_lock_path}" ]] || { echo "Refusing deployment: symlink lock." >&2; exit 2; }
-if [[ "$(readlink -f "/proc/$$/fd/9" 2>/dev/null || true)" != "${release_lock_path}" ]]; then
+if [[ "$(readlink -f "/proc/$$/fd/9" 2>/dev/null || true)" != "$(realpath -m -- "${release_lock_path}")" ]]; then
   exec 9>"${release_lock_path}"
 fi
 flock -n 9 || { echo "Refusing production deployment: shared checkout is being changed." >&2; exit 2; }
