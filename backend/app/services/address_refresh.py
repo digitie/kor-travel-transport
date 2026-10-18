@@ -64,7 +64,8 @@ def run_address_refresh(settings, *, force=False, resolver=None):
         )
         try:
             return refresh_reverse_addresses(
-                source.store, client, source.page, source.lookup,
+                source.store, client, source.page, source.retries,
+                pending_failures=source.pending_failures,
                 batch_size=settings.address_refresh_batch_size, force=force,
             )
         finally:
