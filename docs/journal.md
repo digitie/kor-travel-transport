@@ -1,5 +1,12 @@
 ## 2026-10-18 주소 갱신 최종 소스 검증
 
+## 2026-10-18 주소 갱신 운영 배포·UI 수용 진행
+
+#86 source2c9b416c/네 역할 배포와 migration0025, 실제 VWorld 단일 대상 및 원천 5표 보존을 확인했다.
+기존 UI는33/34이며 Dagster 링크 origin 수정·관리자 단독 재배포가 남았다.
+[운영 결과와 남은 검증](reviews/2026-10-18-address-live-deployment.md)을 따른다. Daemon OFF를 유지한다.
+
+
 최신 Common pin은 89291f36d731ab906161b96757522e1cd833b4ef다.
 [최종 리뷰·검증 범위](reviews/2026-10-18-native-address-final.md)에 두 독립 PASS와
 집중23개·Docker23개·실제 native 연동 UI17개 및 지연 재시도1개 통과를 정리했다.
