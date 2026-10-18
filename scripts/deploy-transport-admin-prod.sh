@@ -42,7 +42,7 @@ fi
 unset dagster_url
 write_token="$(grep -E '^TRANSPORT_ADMIN_WRITE_TOKEN=' "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" | tail -n 1 | cut -d= -f2-)"
 [[ ${#write_token} -ge 32 ]] || { echo "TRANSPORT_ADMIN_WRITE_TOKEN은 32자 이상이어야 합니다." >&2; exit 2; }
-capability="$(curl --fail --silent --show-error --max-time 5 -H @- http://127.0.0.1:14001/v1/transport/admin/place-locations/capability <<<"X-Transport-Admin-Token: ${write_token}")" || {
+capability="$(curl --fail --silent --show-error --max-time 5 -H @- http://127.0.0.1:12302/v1/transport/admin/place-locations/capability <<<"X-Transport-Admin-Token: ${write_token}")" || {
   echo "좌표 보정 기능이 있는 backend를 먼저 배포해야 합니다." >&2; exit 2;
 }
 unset write_token

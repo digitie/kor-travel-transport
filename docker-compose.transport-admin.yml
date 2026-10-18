@@ -33,7 +33,7 @@ services:
     restart: unless-stopped
     network_mode: host
     environment:
-      TRANSPORT_API_INTERNAL_URL: "${TRANSPORT_API_INTERNAL_URL:-http://127.0.0.1:14001}"
+      TRANSPORT_API_INTERNAL_URL: "${TRANSPORT_API_INTERNAL_URL:-http://127.0.0.1:12302}"
       # 공용 Dagster webserver의 loopback(인증 없음). 옛 전용 webserver(14004)는 legacy-dagster로 내려갔다.
       TRANSPORT_DAGSTER_INTERNAL_URL: "${TRANSPORT_DAGSTER_INTERNAL_URL:-http://127.0.0.1:11002}"
       TRANSPORT_UI_USER: "${TRANSPORT_UI_USER:-admin}"

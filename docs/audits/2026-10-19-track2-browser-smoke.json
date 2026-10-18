@@ -1,0 +1,32 @@
+{
+  "status": "PASS",
+  "error_class": null,
+  "image": "sha256:5942696b548fad24eeae2943925c84387ff216fdcc46f31c536a8a4a865feb47",
+  "name": "transport-track2-browser-6f6071d45d85",
+  "source": "a0b789df0e3f6eab2fab48e7ec58ab995d0e33dd",
+  "architecture": "arm64",
+  "boot_id": "865cf54c-f6cc-414e-becd-12b9a0784a71",
+  "memory_peak_bytes": 434700288,
+  "memory_samples": 26,
+  "proof": {
+    "status": "PASS_ARM_CHROMIUM_LOCAL_RENDER",
+    "browser_version": "156.0.8078.4",
+    "png_bytes": 4371,
+    "pixel": [
+      12,
+      34,
+      56,
+      255
+    ]
+  },
+  "terminal_exit": 0,
+  "oom": false,
+  "owned_removed": true,
+  "foreign_unchanged": true,
+  "boot_unchanged": true,
+  "diff": {},
+  "evidence_path": "/mnt/media/kor-travel/build/transport-track2-browser-r3-6dbaeb047e31413bba0fd90563f315fc",
+  "daemon_off": true,
+  "network": "none",
+  "scope": "local HTML title/canvas/screenshot; no Opinet provider request or full run"
+}

@@ -63,8 +63,8 @@ require_exact() {
   fi
 }
 
-require_exact PUBLIC_API_PORT 14001
-require_exact PUBLIC_WEB_PORT 14002
+require_exact PUBLIC_API_PORT 12302
+require_exact PUBLIC_WEB_PORT 12303
 require_exact ENABLE_SCHEDULER true
 require_exact SCHEDULER_MODE dagster
 require_exact ENABLE_MANUAL_COLLECT false
@@ -77,7 +77,7 @@ if [[ "${SCHEDULER_SAFETY_BUFFER_SECONDS:-}" != "120" ]]; then
   exit 2
 fi
 require_exact MANUAL_COLLECT_MIN_INTERVAL_SECONDS 300
-require_exact BACKEND_INTERNAL_URL http://127.0.0.1:14001
+require_exact BACKEND_INTERNAL_URL http://127.0.0.1:12302
 require_exact BACKUP_DIR /app/backups
 if [[ -n "${NEXT_PUBLIC_API_BASE_URL:-}" ]]; then
   echo "Refusing production deployment: NEXT_PUBLIC_API_BASE_URL must be empty for same-origin proxying." >&2
@@ -265,7 +265,7 @@ wait_code_server_health
 wait_location_loaded
 health_payload=""
 for attempt in $(seq 1 30); do
-  if health_payload="$(curl -fsS "http://127.0.0.1:${PUBLIC_API_PORT:-14001}/health" 2>/dev/null)"; then
+  if health_payload="$(curl -fsS "http://127.0.0.1:${PUBLIC_API_PORT:-12302}/health" 2>/dev/null)"; then
     break
   fi
   if [[ "${attempt}" == "30" ]]; then
@@ -279,7 +279,7 @@ if ! grep -Fq "\"release_sha\":\"${CANDIDATE_SHA}\"" <<<"${health_payload}"; the
   exit 1
 fi
 for attempt in $(seq 1 30); do
-  if curl -fsS "http://127.0.0.1:${PUBLIC_WEB_PORT:-14002}/" >/dev/null; then
+  if curl -fsS "http://127.0.0.1:${PUBLIC_WEB_PORT:-12303}/" >/dev/null; then
     break
   fi
   if [[ "${attempt}" == "30" ]]; then

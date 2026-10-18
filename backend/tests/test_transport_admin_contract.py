@@ -29,7 +29,7 @@ def test_transport_admin_is_a_separate_host_network_stack() -> None:
     assert compose.count("network_mode: host") == 2
     assert "TRANSPORT_PUBLIC_API_PORT:-12301" in compose
     assert "TRANSPORT_PUBLIC_WEB_PORT:-12305" in compose
-    assert "http://127.0.0.1:14001" in compose
+    assert "http://127.0.0.1:12302" in compose
     # Dagster는 공용 제어 평면이다(Manager ADR-54) — 공용 webserver의 loopback을 부르고, 옛 전용
     # webserver(14004)와 그 앞의 12302 gateway는 없다.
     assert 'TRANSPORT_DAGSTER_INTERNAL_URL: "${TRANSPORT_DAGSTER_INTERNAL_URL:-http://127.0.0.1:11002}"' in compose
@@ -92,7 +92,7 @@ def test_transport_gateway_contract_has_bounded_upstreams() -> None:
     proxy = (ROOT / "packages/kor-travel-transport-admin/frontend/app/api/transport/[...path]/route.ts").read_text(encoding="utf-8")
     upstream = (ROOT / "packages/kor-travel-transport-admin/frontend/lib/upstream.ts").read_text(encoding="utf-8")
 
-    assert "proxy_pass http://127.0.0.1:14001" in api_gateway
+    assert "proxy_pass http://127.0.0.1:12302" in api_gateway
     assert "location ~ ^/v1/transport/" in api_gateway
     assert "features/places" in api_gateway
     assert "bus/(terminals|timetable)" in api_gateway
