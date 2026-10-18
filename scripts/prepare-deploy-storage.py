@@ -11,7 +11,7 @@ import sys
 
 APP = Path("/home/digitie/apps/kor-travel-transport")
 NVME = Path("/mnt/media")
-BUILD = NVME / "kor-travel/build"
+BUILD = NVME / "kor-travel/build/transport"
 
 
 def validate_storage(app: Path, nvme: Path, build: Path) -> Path:
@@ -20,6 +20,9 @@ def validate_storage(app: Path, nvme: Path, build: Path) -> Path:
     stage_root = build.resolve(strict=True)
     if not resolved.is_dir() or not stage_root.is_dir():
         raise ValueError("required directories absent")
+    metadata = stage_root.stat()
+    if metadata.st_uid != os.getuid() or metadata.st_mode & 0o777 != 0o700:
+        raise ValueError("unsafe staging owner or mode")
     environment = (resolved / ".env.prod").resolve(strict=True)
     if not environment.is_file():
         raise ValueError("environment absent")

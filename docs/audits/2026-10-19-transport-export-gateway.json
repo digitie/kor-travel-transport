@@ -1,0 +1,57 @@
+{
+  "image": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+  "cases": [
+    {
+      "value_kind": "allow",
+      "export_status": 200,
+      "post": 403,
+      "public_read": 200,
+      "admin": 404,
+      "other_service": 404,
+      "xff_cleared": true,
+      "missing_slash": 301,
+      "sibling_and_encoded_escape": 404
+    },
+    {
+      "value_kind": "allow",
+      "export_status": 200,
+      "post": 403,
+      "public_read": 200,
+      "admin": 404,
+      "other_service": 404,
+      "xff_cleared": true,
+      "missing_slash": 301,
+      "sibling_and_encoded_escape": 404
+    },
+    {
+      "value_kind": "nonmatching",
+      "export_status": 403,
+      "post": 403,
+      "public_read": 200,
+      "admin": 404,
+      "other_service": 404,
+      "xff_cleared": false,
+      "missing_slash": 301,
+      "sibling_and_encoded_escape": 404
+    },
+    {
+      "value_kind": "empty",
+      "export_status": 403,
+      "post": 403,
+      "public_read": 200,
+      "admin": 404,
+      "other_service": 404,
+      "xff_cleared": false,
+      "missing_slash": 301,
+      "sibling_and_encoded_escape": 404
+    },
+    {
+      "value_kind": "injection",
+      "rejected": true,
+      "exit": 2
+    }
+  ],
+  "pass": true,
+  "owned_containers_removed": true,
+  "scope": "local WSL Docker isolated nginx; no production connection"
+}

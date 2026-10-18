@@ -49,7 +49,7 @@ ARCHIVE_PATH="$(mktemp -p /tmp kor-travel-transport-prod.XXXXXX.tgz)"
 REMOTE_STAGE=""
 cleanup() {
   rm -f -- "${ARCHIVE_PATH}"
-  if [[ "${REMOTE_STAGE}" =~ ^/mnt/media/kor-travel/build/transport-deploy\.[A-Za-z0-9_]+$ ]]; then
+  if [[ "${REMOTE_STAGE}" =~ ^/mnt/media/kor-travel/build/transport/transport-deploy\.[A-Za-z0-9_]+$ ]]; then
     # 원격 본문 전 scp/lock 실패는 archive와 빈 소유 디렉터리만 정리한다.
     ssh "${REMOTE_USER}@${REMOTE_HOST}" "rm -f -- '${REMOTE_STAGE}/archive.tgz'; rmdir -- '${REMOTE_STAGE}' 2>/dev/null || true" || true
   fi
@@ -57,7 +57,7 @@ cleanup() {
 trap cleanup EXIT
 
 REMOTE_STAGE="$(ssh "${REMOTE_USER}@${REMOTE_HOST}" "python3 - --app-dir '${REMOTE_APP_DIR}'" < "${SCRIPT_DIR}/prepare-deploy-storage.py")"
-[[ "${REMOTE_STAGE}" =~ ^/mnt/media/kor-travel/build/transport-deploy\.[A-Za-z0-9_]+$ ]] || { echo "Refusing deployment: invalid owned NVMe stage." >&2; exit 2; }
+[[ "${REMOTE_STAGE}" =~ ^/mnt/media/kor-travel/build/transport/transport-deploy\.[A-Za-z0-9_]+$ ]] || { echo "Refusing deployment: invalid owned NVMe stage." >&2; exit 2; }
 REMOTE_ARCHIVE="${REMOTE_STAGE}/archive.tgz"
 
 
@@ -78,12 +78,12 @@ if [[ ! -f "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" || ! -r "${REMOTE_APP_DIR}/${R
 fi
 # 관리자 배포·Dagster 긴급 교체와 같은 checkout의 동시 변경을 막는다.
 # FD 9는 아래 remote 배포 자식에도 상속되어 빌드가 끝날 때까지 잠금을 유지한다.
-RELEASE_LOCK_PATH="/mnt/media/kor-travel/build/.kor-travel-transport-deploy.lock"
+RELEASE_LOCK_PATH="/mnt/media/kor-travel/build/transport/.kor-travel-transport-deploy.lock"
 [[ ! -L "${RELEASE_LOCK_PATH}" ]] || { echo "Refusing deployment: symlink lock." >&2; exit 2; }
 exec 9>"${RELEASE_LOCK_PATH}"
 flock -n 9 || { echo "Refusing deployment: shared checkout is being changed." >&2; exit 2; }
 
-[[ "${REMOTE_STAGE}" =~ ^/mnt/media/kor-travel/build/transport-deploy\.[A-Za-z0-9_]+$ && ! -L "${REMOTE_STAGE}" ]] || { echo "Invalid owned NVMe stage." >&2; exit 2; }
+[[ "${REMOTE_STAGE}" =~ ^/mnt/media/kor-travel/build/transport/transport-deploy\.[A-Za-z0-9_]+$ && ! -L "${REMOTE_STAGE}" ]] || { echo "Invalid owned NVMe stage." >&2; exit 2; }
 [[ "${REMOTE_ARCHIVE}" == "${REMOTE_STAGE}/archive.tgz" ]] || { echo "Invalid stage archive." >&2; exit 2; }
 REMOTE_SOURCE="${REMOTE_STAGE}/source"
 mkdir -m 700 "${REMOTE_SOURCE}"

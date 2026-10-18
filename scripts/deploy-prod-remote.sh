@@ -38,7 +38,7 @@ python3 "${SCRIPT_DIR}/prepare-deploy-storage.py" --app-dir "${REMOTE_APP_DIR}" 
 
 # deploy-prod.sh의 자식이면 FD 9의 열린 파일 설명과 lock을 상속한다.
 # 수동 실행이면 여기서 동일 lock을 새로 잡는다. 경로가 다른 FD는 재사용하지 않는다.
-release_lock_path="/mnt/media/kor-travel/build/.kor-travel-transport-deploy.lock"
+release_lock_path="/mnt/media/kor-travel/build/transport/.kor-travel-transport-deploy.lock"
 [[ ! -L "${release_lock_path}" ]] || { echo "Refusing deployment: symlink lock." >&2; exit 2; }
 if [[ "$(readlink -f "/proc/$$/fd/9" 2>/dev/null || true)" != "$(realpath -m -- "${release_lock_path}")" ]]; then
   exec 9>"${release_lock_path}"

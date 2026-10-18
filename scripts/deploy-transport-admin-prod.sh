@@ -70,14 +70,14 @@ archive="$(mktemp -p /tmp kor-travel-transport-admin.XXXXXX.tgz)"
 remote_stage=""
 cleanup_local() {
   rm -f -- "${archive}"
-  if [[ "${remote_stage}" =~ ^/mnt/media/kor-travel/build/transport-deploy\.[A-Za-z0-9_]+$ ]]; then
+  if [[ "${remote_stage}" =~ ^/mnt/media/kor-travel/build/transport/transport-deploy\.[A-Za-z0-9_]+$ ]]; then
     ssh "${REMOTE_USER}@${REMOTE_HOST}" "rm -f -- '${remote_stage}/archive.tgz'; rmdir -- '${remote_stage}' 2>/dev/null || true" || true
   fi
 }
 trap cleanup_local EXIT
 
 remote_stage="$(ssh "${REMOTE_USER}@${REMOTE_HOST}" "python3 - --app-dir '${REMOTE_APP_DIR}'" < "${SCRIPT_DIR}/prepare-deploy-storage.py")"
-[[ "${remote_stage}" =~ ^/mnt/media/kor-travel/build/transport-deploy\.[A-Za-z0-9_]+$ ]] || { echo "잘못된 NVMe staging 경로입니다." >&2; exit 2; }
+[[ "${remote_stage}" =~ ^/mnt/media/kor-travel/build/transport/transport-deploy\.[A-Za-z0-9_]+$ ]] || { echo "잘못된 NVMe staging 경로입니다." >&2; exit 2; }
 remote_archive="${remote_stage}/archive.tgz"
 git archive --format=tar.gz --output="${archive}" HEAD
 ssh "${REMOTE_USER}@${REMOTE_HOST}" "mkdir -p '${REMOTE_APP_DIR}'"
@@ -88,7 +88,7 @@ ssh "${REMOTE_USER}@${REMOTE_HOST}" \
 set -euo pipefail
 [[ -f "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" && -r "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" ]] || { echo "운영 환경 파일이 없습니다." >&2; exit 2; }
 # backend 동기화·빌드와 Dagster Compose 교체가 끝날 때까지 같은 checkout을 건드리지 않는다.
-release_lock_path="/mnt/media/kor-travel/build/.kor-travel-transport-deploy.lock"
+release_lock_path="/mnt/media/kor-travel/build/transport/.kor-travel-transport-deploy.lock"
 [[ ! -L "${release_lock_path}" ]] || { echo "Refusing deployment: symlink lock." >&2; exit 2; }
 exec 9>"${release_lock_path}"
 flock -n 9 || { echo "공유 checkout을 다른 배포가 변경 중입니다." >&2; exit 2; }
@@ -98,7 +98,7 @@ port_from_env() {
   value="$(printf '%s\n' "${line}" | tail -n 1 | cut -d= -f2-)"
   printf '%s' "${value:-${fallback}}"
 }
-[[ "${REMOTE_STAGE}" =~ ^/mnt/media/kor-travel/build/transport-deploy\.[A-Za-z0-9_]+$ && ! -L "${REMOTE_STAGE}" ]] || { echo "잘못된 NVMe staging 경로입니다." >&2; exit 2; }
+[[ "${REMOTE_STAGE}" =~ ^/mnt/media/kor-travel/build/transport/transport-deploy\.[A-Za-z0-9_]+$ && ! -L "${REMOTE_STAGE}" ]] || { echo "잘못된 NVMe staging 경로입니다." >&2; exit 2; }
 [[ "${REMOTE_ARCHIVE}" == "${REMOTE_STAGE}/archive.tgz" ]] || { echo "잘못된 staging archive입니다." >&2; exit 2; }
 stage="${REMOTE_STAGE}/source"
 mkdir -m 700 "${stage}"

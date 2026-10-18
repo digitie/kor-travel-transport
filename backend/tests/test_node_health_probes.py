@@ -19,7 +19,7 @@ NODE = shutil.which("node")
 FIXTURE = Path(__file__).parent / "fixtures" / "node-health-server.mjs"
 CASES = [
     ("base", "docker-compose.yml", "frontend", "http://127.0.0.1:3000/"),
-    ("shared", "docker-compose.shared.yml", "frontend", "http://127.0.0.1:${PUBLIC_WEB_PORT:-14002}/"),
+    ("shared", "docker-compose.shared.yml", "frontend", "http://127.0.0.1:${PUBLIC_WEB_PORT:-12303}/"),
     ("admin", "docker-compose.transport-admin.yml", "transport-admin-web",
      "http://127.0.0.1:${TRANSPORT_PUBLIC_WEB_PORT:-12305}/login"),
 ]

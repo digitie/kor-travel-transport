@@ -1,0 +1,43 @@
+{
+  "scope": "read-only live provider calls at public coordinate; primary timeout injected only for fallback case; no DB writes or scheduled run",
+  "cases": [
+    {
+      "mode": "vworld_live",
+      "status": "PASS",
+      "provider": "vworld",
+      "address_present": true,
+      "road_present": true,
+      "region_present": true,
+      "elapsed_seconds": 0.4142385410013958,
+      "expected_provider": "vworld"
+    },
+    {
+      "mode": "controlled_vworld_failure_kakao_live",
+      "status": "PASS",
+      "provider": "kakao",
+      "address_present": true,
+      "road_present": true,
+      "region_present": true,
+      "elapsed_seconds": 1.0271357069977967,
+      "controlled_primary_failures": 1,
+      "expected_provider": "kakao"
+    },
+    {
+      "mode": "restored_normal_live",
+      "status": "PASS",
+      "provider": "vworld",
+      "address_present": true,
+      "road_present": true,
+      "region_present": true,
+      "elapsed_seconds": 0.11632148400167353,
+      "expected_provider": "vworld"
+    }
+  ],
+  "pass": true,
+  "runtime_unchanged": true,
+  "runtime": {
+    "image": "sha256:5942696b548fad24eeae2943925c84387ff216fdcc46f31c536a8a4a865feb47",
+    "revision": "a0b789df0e3f6eab2fab48e7ec58ab995d0e33dd",
+    "daemon_off": true
+  }
+}

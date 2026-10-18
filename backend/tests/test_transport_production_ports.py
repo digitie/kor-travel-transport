@@ -22,7 +22,7 @@ def test_prod_deployment_and_env_use_current_backend_and_frontend_ports():
 def test_gateway_and_admin_capability_use_current_api_port():
     gateway = (ROOT / "deploy/transport-admin/api-gateway.conf.template").read_text()
     admin = (SCRIPTS / "deploy-transport-admin-prod.sh").read_text()
-    assert gateway.count("proxy_pass http://127.0.0.1:12302;") == 2
+    assert gateway.count("proxy_pass http://127.0.0.1:12302;") == 3
     assert "http://127.0.0.1:12302/v1/transport/admin/place-locations/capability" in admin
     assert "127.0.0.1:14001" not in gateway + admin
 

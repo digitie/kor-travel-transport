@@ -18,7 +18,7 @@ def storage(tmp_path, monkeypatch):
     app = nvme / "app"
     build = nvme / "build"
     app.mkdir(parents=True)
-    build.mkdir()
+    build.mkdir(mode=0o700)
     (app / ".env.prod").write_text("FIXTURE=1\n")
     link = tmp_path / "approved"
     link.symlink_to(app, target_is_directory=True)
@@ -44,7 +44,7 @@ def test_nvme_symlink_checkout_is_accepted(storage):
 def test_other_device_is_rejected(storage, tmp_path, monkeypatch, escape):
     app, nvme, build = storage
     outside = tmp_path / "outside"
-    outside.mkdir()
+    outside.mkdir(mode=0o700)
     (outside / ".env.prod").write_text("FIXTURE=1")
     original = Path.stat
     def other_device(path, *args, **kwargs):
@@ -128,7 +128,7 @@ def test_remote_archive_and_extract_never_use_system_tmp():
     assert 'remote_archive="/tmp/' not in admin
     assert "mktemp -d /tmp/" not in backend + admin
     assert "prepare-deploy-storage.py" in backend and "prepare-deploy-storage.py" in admin
-    assert "/mnt/media/kor-travel/build/transport-deploy" in backend + admin
+    assert "/mnt/media/kor-travel/build/transport/transport-deploy" in backend + admin
 
 def test_bind_mount_checkout_outside_nvme_prefix_is_accepted(storage, tmp_path):
     app, nvme, build = storage
@@ -152,7 +152,7 @@ def test_actual_remote_lock_block_preserves_parent_lock(tmp_path, linked):
     if linked:
         build.symlink_to(real, target_is_directory=True)
     else:
-        build.mkdir()
+        build.mkdir(mode=0o700)
     lock = build / ".lock"
     child = tmp_path / "child.sh"
     child.write_text('release_lock_path="$1"\n' + block + "\n")
@@ -160,3 +160,14 @@ def test_actual_remote_lock_block_preserves_parent_lock(tmp_path, linked):
     command = 'exec 9>"$1"; flock -n 9 || exit 91; bash "$2" "$1"; status=$?; exit "$status"'
     result = subprocess.run(["bash", "-c", command, "_", str(lock), str(child)], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+@pytest.mark.parametrize("mode", [0o755, 0o770])
+def test_shared_or_public_staging_root_is_rejected(storage, mode):
+    storage[2].chmod(mode)
+    with pytest.raises(ValueError, match="owner or mode"):
+        module.validate_storage(*storage)
+
+def test_foreign_owned_staging_root_is_rejected(storage, monkeypatch):
+    monkeypatch.setattr(module.os, "getuid", lambda: storage[2].stat().st_uid + 1)
+    with pytest.raises(ValueError, match="owner or mode"):
+        module.validate_storage(*storage)
