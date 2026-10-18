@@ -5,7 +5,8 @@ from unittest.mock import patch
 
 import pytest
 from sqlalchemy import event, select, func
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.exc import IntegrityError
 
 from app.core.config import Settings
 from app.models import Base, Airport, ParkingSnapshot
@@ -80,5 +81,34 @@ def test_failed_batch_rollback_does_not_reuse_airport_in_next_call():
             assert await service._store_observations(session, 2, [observation(1)]) == 1
             assert await session.scalar(select(func.count()).select_from(Airport)) == 1
             assert await session.scalar(select(func.count()).select_from(ParkingSnapshot)) == 1
+        await engine.dispose()
+    asyncio.run(run())
+
+
+def test_snapshot_savepoint_conflict_keeps_cached_airport_valid():
+    class ConflictOnceSession(AsyncSession):
+        conflicted = False
+
+        async def flush(self, objects=None):
+            if not self.conflicted and any(isinstance(obj, ParkingSnapshot) for obj in self.new):
+                self.conflicted = True
+                raise IntegrityError("fixture", {}, RuntimeError("snapshot conflict"))
+            return await super().flush(objects)
+
+    async def run():
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        factory = async_sessionmaker(engine, class_=ConflictOnceSession, expire_on_commit=False)
+        service = CollectionService(Settings(), client=FixturePublicDataClient())
+        async with factory() as session:
+            assert await service._store_observations(session, 1, [observation(0), observation(1)]) == 1
+            airport = await session.scalar(select(Airport))
+            assert airport.name_ko == "공항-1"
+            assert airport.name_en is None
+            assert await session.scalar(select(func.count()).select_from(Airport)) == 1
+            snapshot = await session.scalar(select(ParkingSnapshot))
+            assert snapshot.raw_item_json == {"index": 1}
+            await session.commit()
         await engine.dispose()
     asyncio.run(run())

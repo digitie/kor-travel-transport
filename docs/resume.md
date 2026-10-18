@@ -5,7 +5,7 @@
 최신 main f3be717에서 공항 조회를 저장 호출별로 재사용했다. 신규/기존 공항,
 중복 관측 메타데이터 정정과 실패 rollback 뒤 재호출을 검증한다.
 [실측 및 한계](architecture/performance.md#공항-주차-수집의-반복-조회-감소-2026-10-18)를 참고한다.
-집중 Python22 PASS. 전체 Python·CI·두 독립 리뷰·운영 검증은 별도 진행 중이다.
+집중 Python23 PASS(snapshot savepoint 충돌 후 같은 공항 재사용 포함). 전체 Python·CI·두 독립 리뷰·운영 검증은 별도 진행 중이다.
 다음 작업은 이 후보의 검증/리뷰 후 배포 전후 실측이며 daemon OFF를 유지한다.
 
 
