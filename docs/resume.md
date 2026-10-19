@@ -5,7 +5,7 @@
 
 `codex/transport-map-viewport-20261019`에서 `/map`은 교통 6종만, `/fuel`은 주유소·유가만 조회하도록 분리했다. Map Feature 구조의 필터 툴바·지도/목록 탭·viewport 정보를 반영했다. API는 bbox·zoom 일괄 요청, debounce/양자화, 20초·8개 응답 캐시, 저배율 서버 셀 요약, 좌표/돌발 인덱스 migration 0026을 사용한다.
 
-검증은 backend 891 PASS/10 SKIP(lock 정합 venv), frontend unit 215 PASS, map-combobox Chromium E2E 21/21, production build, OpenAPI check, Ruff F 검사 PASS다. 독립 API/UI 적대 리뷰 2건 반영 완료. E2E는 로컬 UI/mock API 기준이며 아직 운영 배포/live E2E가 아니다. 다음 단계는 feature branch commit 후 Draft PR과 CI 확인이다.
+검증은 backend 891 PASS/10 SKIP(lock 정합 venv), frontend unit 215 PASS, map-combobox Chromium E2E 21/21, production build, OpenAPI check, Ruff F 검사 PASS다. 독립 API/UI 적대 리뷰 2건 반영 완료. E2E는 로컬 UI/mock API 기준이며 아직 운영 배포/live E2E가 아니다. Draft PR #94가 열려 있으며 CI 결과 확인이 다음 단계다.
 
 
 ## 2026-10-19 M6 은퇴 후 다음 작업

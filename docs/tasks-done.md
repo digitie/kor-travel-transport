@@ -7,7 +7,7 @@
 - bbox와 zoom을 묶어 요청하고 이동 요청을 지연·좌표 양자화했으며, 최근 응답 8개를 20초 캐시한다. 낮은 zoom에서는 서버가 셀별 위치·종류 개수만 반환하고, 높은 zoom에서는 현재 viewport 상세만 반환한다.
 - 유효 좌표 partial index와 돌발 최신 관측 인덱스를 0026 migration으로 추가하고 PostgreSQL에서는 concurrent index build를 사용한다. Runtime schema guard와 OpenAPI를 같이 갱신했다.
 - 백엔드 전체 `891 passed, 10 skipped`; 프런트 단위 215개, Playwright map-combobox 21개, production build 및 OpenAPI 검사를 통과했다. 독립 API·UI 적대 리뷰 2건의 actionable finding을 반영했다.
-- Playwright는 로컬 UI와 mock API 기준이며, 운영 배포 후 live E2E는 이 수용 범위에 포함하지 않는다.
+- Draft PR #94를 열었다. Playwright는 로컬 UI와 mock API 기준이며, 운영 배포 후 live E2E는 이 수용 범위에 포함하지 않는다.
 
 
 ## 2026-10-19 — T-TRN-03b 옛 배포 자산 은퇴

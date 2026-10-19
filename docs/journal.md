@@ -4,7 +4,7 @@
 
 지도 이동은 250ms debounce와 zoom별 bbox 양자화를 적용하고 최근 8개 결과를 20초 재사용한다. 저배율 응답은 셀 요약으로 줄이고 상세 요청은 현재 viewport만 가져온다. 좌표 partial index와 돌발 관측 시각 index를 0026으로 추가했다.
 
-검증: backend 전체 891 PASS/10 SKIP(uv.lock 기준 venv), frontend unit 215 PASS, map-combobox Playwright 21 PASS, production build, OpenAPI check, 변경 Python 파일 Ruff F 검사 PASS. API/UI 적대 리뷰에서 발견한 화면 종류 필터 누락과 schema guard 누락을 보완했다. Playwright는 로컬 UI/mock API 기준이다.
+검증: backend 전체 891 PASS/10 SKIP(uv.lock 기준 venv), frontend unit 215 PASS, map-combobox Playwright 21 PASS, production build, OpenAPI check, 변경 Python 파일 Ruff F 검사 PASS. API/UI 적대 리뷰에서 발견한 화면 종류 필터 누락과 schema guard 누락을 보완했다. Playwright는 로컬 UI/mock API 기준이다. Draft PR #94를 열었다.
 
 ## 2026-10-19 M6 소스 자산 은퇴
 
