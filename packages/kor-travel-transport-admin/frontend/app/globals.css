@@ -353,6 +353,7 @@ h1, h2, h3 { color: var(--text-primary); }
 .table-wrap th { background: var(--surface-subtle); font-size: .75rem; }
 .table-wrap th, .table-wrap td { padding: .75rem; }
 .transport-map-layout { gap: var(--layout-gutter); grid-template-columns: minmax(0, 1fr) 22rem; }
+.transport-map-layout-unselected { grid-template-columns: minmax(0, 1fr); }
 .inspector-heading, .inspector-section, .weather-inspector .transport-map-picker { padding: var(--panel-padding); }
 .weather-inspector > [data-slot="field-group"] { padding: var(--panel-padding); margin-bottom: 0; border-bottom: 1px solid var(--surface-muted); }
 .inspector-heading p { font-family: var(--font-mono); font-size: .6875rem; }

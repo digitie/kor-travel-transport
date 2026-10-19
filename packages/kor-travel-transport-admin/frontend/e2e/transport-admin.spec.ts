@@ -137,15 +137,19 @@ test("지도는 최신 유가 읽기 모델 지연을 유종 필터와 함께 �
     const params = new URL(route.request().url()).searchParams;
     if (!params.get("kinds")?.split(",").includes("fuel_station") && params.get("kind") !== "fuel_station") return route.fallback();
     return route.fulfill({ json: {
-    generated_at: "2026-09-30T09:00:00Z", kind: "fuel_station", total: 0, truncated: false,
+    generated_at: "2026-09-30T09:00:00Z", kind: "fuel_station", total: 10, truncated: true,
+    kind_totals: { fuel_station: 10 },
     items: [], available_sources: [], fuel_prices_stale: true,
     fuel_prices_last_refreshed_at: "2026-09-30T08:00:00Z",
     } });
   });
   await login(page);
   await page.goto("/fuel");
-  await expect(page.getByText(/최신 유가 반영이 지연되고 있습니다/)).toBeVisible();
-  await expect(page.getByText(/현재 판매 여부와 다를 수 있습니다/)).toBeVisible();
+  const guidance = page.locator(".map-guidance");
+  await expect(guidance.getByText(/유가 갱신 지연 · 유종·가격은 .* 기준이며 판매 여부도 다를 수 있습니다\./)).toBeVisible();
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
+  await expect(guidance.getByText(/주유소 일부만 표시/)).toBeVisible();
+  await expect(guidance.getByText(/유가 갱신 지연/)).toBeVisible();
 });
 
 test("지도는 정상 가격도 마지막 반영 시각을 함께 알린다", async ({ page }) => {
@@ -160,8 +164,42 @@ test("지도는 정상 가격도 마지막 반영 시각을 함께 알린다", a
   });
   await login(page);
   await page.goto("/fuel");
-  await expect(page.getByText(/주유소별 가격은 .* 갱신본입니다/)).toBeVisible();
-  await expect(page.getByText(/늦게 저장된 원본은 다음 수집 작업에서 반영될 수 있습니다/)).toBeVisible();
+  const guidance = page.locator(".map-guidance");
+  await expect(guidance.getByText(/유가 .* 갱신 · 지연분은 다음 수집에 반영됩니다\./)).toBeVisible();
+  const mapBox = await page.locator(".map-primary").boundingBox();
+  const guidanceBox = await guidance.boundingBox();
+  expect(mapBox).not.toBeNull();
+  expect(guidanceBox).not.toBeNull();
+  expect(guidanceBox!.y).toBeGreaterThanOrEqual(mapBox!.y + mapBox!.height);
+});
+
+test("교통 지도 안내는 짧게 지도 아래에 표시한다", async ({ page }) => {
+  await page.route("**/api/transport/transport/features/places?**", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    const kind = params.get("kind");
+    return route.fulfill({ json: {
+      generated_at: "2026-09-30T09:00:00Z", kind, total: kind === "ferry_port" ? 2 : 0,
+      truncated: kind === "ferry_port", kind_totals: { ferry_port: 2 }, items: [], available_sources: [],
+    } });
+  });
+  await login(page);
+  await page.goto("/map");
+  const guidance = page.locator(".map-guidance");
+  await expect(guidance).toHaveAttribute("role", "status");
+  await expect(guidance.getByText("검증 좌표만 표시 · 미확인 항구·터미널은 목록에서 검색", { exact: true })).toBeVisible();
+  await expect(guidance.getByText("도로 돌발: 24시간 내 최신 저장 관측 · 통제·처리 시각은 상세 확인", { exact: true })).toBeVisible();
+  const [mapBox, guidanceBox] = await Promise.all([
+    page.locator(".map-primary").boundingBox(),
+    guidance.boundingBox(),
+  ]);
+  expect(mapBox).not.toBeNull();
+  expect(guidanceBox).not.toBeNull();
+  expect(guidanceBox!.y).toBeGreaterThanOrEqual(mapBox!.y + mapBox!.height);
+  const gridColumns = await page.locator(".transport-map-layout").evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(/\s+/).filter(Boolean).length);
+  expect(gridColumns).toBe(1);
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
+  await expect(guidance.getByText("검증 좌표만 표시 · 미확인 항구·터미널은 목록에서 검색", { exact: true })).toBeVisible();
+  await expect(guidance.getByText(/항구 일부만 표시/)).toBeVisible();
 });
 
 test("로그아웃 처리 중 늦게 저장된 통계 캐시도 로그인 화면에서 제거한다", async ({ page }) => {
@@ -259,6 +297,16 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
     });
     await mapPage.goto("/map");
     await expect(mapPage.getByLabel("교통 장소 지도")).toBeVisible();
+    const guidance = mapPage.locator(".map-guidance");
+    await expect(guidance.getByText("검증 좌표만 표시 · 미확인 항구·터미널은 목록에서 검색", { exact: true })).toBeVisible();
+    const [mapBox, guidanceBox] = await Promise.all([
+      mapPage.locator(".map-primary").boundingBox(),
+      guidance.boundingBox(),
+    ]);
+    expect(mapBox).not.toBeNull();
+    expect(guidanceBox).not.toBeNull();
+    expect(guidanceBox!.y).toBeGreaterThanOrEqual(mapBox!.y + mapBox!.height);
+    await expect(mapPage.getByText("지도나 목록에서 장소를 선택하면 가격·노선·출도착·편의정보를 확인할 수 있습니다.", { exact: true })).toHaveCount(0);
     await expect(mapPage.getByLabel("데이터 출처")).toHaveAttribute("role", "combobox");
     await expect(mapPage.getByLabel("장소 목록에서 선택")).toHaveCount(0);
     await expect(mapPage.locator("canvas.maplibregl-canvas")).toBeVisible({ timeout: 20_000 });
