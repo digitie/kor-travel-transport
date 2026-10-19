@@ -4,7 +4,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0026_transport_map_coordinate_indexes"
+revision = "0026_transport_map_indexes"
 down_revision = "0025_reverse_addresses"
 branch_labels = None
 depends_on = None

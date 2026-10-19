@@ -11,7 +11,7 @@ API·legacy 실행의 NULL 소유권은 자동 회수 대상에서 제외한다.
 
 ## 핵심 테이블
 
-### 지도 좌표·돌발 최신 조회 인덱스 (`0026_transport_map_coordinate_indexes`)
+### 지도 좌표·돌발 최신 조회 인덱스 (`0026_transport_map_indexes`)
 
 `fuel_stations`와 `rail_station_references`는 유효한 좌표 쌍만 포함하는 부분 B-tree
 인덱스 `(longitude, latitude)`를 둔다. bbox 지도 조회와 저배율 좌표 집계가 상세 행 전체를
