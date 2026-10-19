@@ -116,7 +116,7 @@ test("유가 현황에서도 최신 가격 반영 지연을 알린다", async ({
       next_due_at: "2026-09-30T09:05:00Z", last_error: "collection_failed" }],
   } }));
   await login(page);
-  await page.goto("/fuel");
+  await page.goto("/transport");
   const alert = page.getByRole("alert").filter({ hasText: "주유소별 최신 가격 반영 지연" });
   await expect(alert).toContainText("저장된 유가 원본과 주유소별 가격 지도가 다를 수 있습니다.");
   await expect(alert.getByRole("link", { name: "수집 상태 확인" })).toHaveAttribute("href", "/collections");
@@ -128,30 +128,38 @@ test("읽기 모델 상태 행이 없어도 유가 현황에 지연을 알린다
     fuel_prices_stale: true, sources: [],
   } }));
   await login(page);
-  await page.goto("/fuel");
+  await page.goto("/transport");
   await expect(page.getByRole("alert").filter({ hasText: "주유소별 최신 가격 반영 지연" })).toBeVisible();
 });
 
 test("지도는 최신 유가 읽기 모델 지연을 유종 필터와 함께 경고한다", async ({ page }) => {
-  await page.route("**/api/transport/transport/features/places?kind=fuel_station*", (route) => route.fulfill({ json: {
+  await page.route("**/api/transport/transport/features/places?**", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    if (!params.get("kinds")?.split(",").includes("fuel_station") && params.get("kind") !== "fuel_station") return route.fallback();
+    return route.fulfill({ json: {
     generated_at: "2026-09-30T09:00:00Z", kind: "fuel_station", total: 0, truncated: false,
     items: [], available_sources: [], fuel_prices_stale: true,
     fuel_prices_last_refreshed_at: "2026-09-30T08:00:00Z",
-  } }));
+    } });
+  });
   await login(page);
-  await page.goto("/map");
+  await page.goto("/fuel");
   await expect(page.getByText(/최신 유가 반영이 지연되고 있습니다/)).toBeVisible();
   await expect(page.getByText(/현재 판매 여부와 다를 수 있습니다/)).toBeVisible();
 });
 
 test("지도는 정상 가격도 마지막 반영 시각을 함께 알린다", async ({ page }) => {
-  await page.route("**/api/transport/transport/features/places?kind=fuel_station*", (route) => route.fulfill({ json: {
+  await page.route("**/api/transport/transport/features/places?**", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    if (!params.get("kinds")?.split(",").includes("fuel_station") && params.get("kind") !== "fuel_station") return route.fallback();
+    return route.fulfill({ json: {
     generated_at: "2026-09-30T09:00:00Z", kind: "fuel_station", total: 0, truncated: false,
     items: [], available_sources: [], fuel_prices_stale: false,
     fuel_prices_last_refreshed_at: "2026-09-30T08:00:00Z",
-  } }));
+    } });
+  });
   await login(page);
-  await page.goto("/map");
+  await page.goto("/fuel");
   await expect(page.getByText(/주유소별 가격은 .* 갱신본입니다/)).toBeVisible();
   await expect(page.getByText(/늦게 저장된 원본은 다음 수집 작업에서 반영될 수 있습니다/)).toBeVisible();
 });
@@ -215,7 +223,7 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
     });
   }
 
-  for (const [path, heading] of [["/transport", "교통·유가 현황"], ["/fuel", "교통·유가 현황"], ["/rail", "열차·도시철도"], ["/ferry", "배편"], ["/map", "교통 지도"], ["/api-test", "API 점검"], ["/admin/dagster", "Dagster"]] as const) {
+  for (const [path, heading] of [["/transport", "교통·유가 현황"], ["/fuel", "유가 지도"], ["/rail", "열차·도시철도"], ["/ferry", "배편"], ["/map", "교통 지도"], ["/api-test", "API 점검"], ["/admin/dagster", "Dagster"]] as const) {
     test(`navigation ${path}`, async () => {
       await page.goto(path);
       await expect(page.getByRole("heading", { name: heading })).toBeVisible();
@@ -227,7 +235,7 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
       const mobileContext = await browser.newContext({ baseURL: webBase, viewport: { width, height: 900 } });
       const mobilePage = await mobileContext.newPage();
       await login(mobilePage);
-      for (const [path, heading] of [["/transport", "교통·유가 현황"], ["/rail", "열차·도시철도"], ["/ferry", "배편"], ["/map", "교통 지도"]] as const) {
+      for (const [path, heading] of [["/transport", "교통·유가 현황"], ["/rail", "열차·도시철도"], ["/ferry", "배편"], ["/map", "교통 지도"], ["/fuel", "유가 지도"]] as const) {
         await mobilePage.goto(path);
         await expect(mobilePage.getByRole("heading", { name: heading })).toBeVisible();
         expect(await mobilePage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -244,9 +252,9 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
     const mapPlaceRequests = new Map<string, URL>();
     mapPage.on("request", (request) => {
       if (request.url().includes("/timetable")) timetableRequests.push(request.url());
-      if (request.url().includes("/api/transport/transport/features/places?kind=")) {
+      if (request.url().includes("/api/transport/transport/features/places?kinds=")) {
         const url = new URL(request.url());
-        mapPlaceRequests.set(url.searchParams.get("kind") ?? "", url);
+        mapPlaceRequests.set(url.searchParams.get("kinds") ?? "", url);
       }
     });
     await mapPage.goto("/map");
@@ -254,15 +262,19 @@ test.describe("인증된 관리 proxy 행렬과 UI", () => {
     await expect(mapPage.getByLabel("데이터 출처")).toHaveAttribute("role", "combobox");
     await expect(mapPage.getByLabel("장소 목록에서 선택")).toHaveCount(0);
     await expect(mapPage.locator("canvas.maplibregl-canvas")).toBeVisible({ timeout: 20_000 });
-    await expect.poll(() => [...mapPlaceRequests.keys()].sort()).toEqual(["airport", "bus_terminal", "ferry_port", "fuel_station", "highway_incident", "rail_station", "rest_area"]);
-    expect([...mapPlaceRequests.values()].every((url) => url.searchParams.get("limit") === "128" && ["min_longitude", "min_latitude", "max_longitude", "max_latitude"].every((key) => url.searchParams.has(key)))).toBe(true);
+    await expect.poll(() => mapPlaceRequests.size).toBe(1);
+    const mapRequest = [...mapPlaceRequests.values()][0];
+    expect(mapRequest.searchParams.get("kinds")).toBe("rail_station,ferry_port,bus_terminal,airport,rest_area,highway_incident");
+    expect(mapRequest.searchParams.get("zoom")).toBeTruthy();
+    expect(mapRequest.searchParams.get("limit")).toBe("900");
+    expect(["min_longitude", "min_latitude", "max_longitude", "max_latitude"].every((key) => mapRequest.searchParams.has(key))).toBe(true);
     await mapPage.waitForTimeout(2_000);
     const tileError = mapPage.getByText("VWorld 지도 타일을 불러오지 못했습니다.", { exact: false });
     if (await tileError.isVisible()) {
       await expect(tileError).toContainText("목록 보기에서 장소를 확인할 수 있습니다.");
     }
     await expect.poll(() => timetableRequests).toEqual([]);
-    await mapPage.getByRole("button", { name: "목록", exact: true }).click();
+    await mapPage.getByRole("tab", { name: "목록", exact: true }).click();
     const placeRows = mapPage.locator(".map-place-list").getByRole("button");
     await expect.poll(() => placeRows.count()).toBeGreaterThan(0);
     await placeRows.first().click();

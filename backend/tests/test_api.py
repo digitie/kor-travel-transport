@@ -221,6 +221,32 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
     bounded = client.get("/v1/transport/features/places?kind=fuel_station&min_longitude=127.0&min_latitude=37.4&max_longitude=127.15&max_latitude=37.55")
     assert bounded.status_code == 200
     assert bounded.json()["total"] == 1
+    clustered = client.get("/v1/transport/features/places", params={
+        "kinds": "fuel_station,rail_station,ferry_port", "zoom": 7, "include_sources": "false",
+        "min_longitude": 124, "min_latitude": 32, "max_longitude": 132, "max_latitude": 39,
+    })
+    assert clustered.status_code == 200
+    cluster_payload = clustered.json()
+    assert cluster_payload["clustered"] is True
+    assert cluster_payload["items"] == []
+    assert cluster_payload["kind_totals"] == {"fuel_station": 1, "rail_station": 1, "ferry_port": 1}
+    assert sum(item["count"] for item in cluster_payload["clusters"]) == 3
+    assert sum(sum(item["kind_counts"].values()) for item in cluster_payload["clusters"]) == 3
+    unlocated_cluster_payload = client.get("/v1/transport/features/places", params={
+        "kinds": "fuel_station,rail_station,ferry_port", "zoom": 7, "include_unlocated": "true",
+        "min_longitude": 124, "min_latitude": 32, "max_longitude": 132, "max_latitude": 39,
+    }).json()
+    assert unlocated_cluster_payload["clustered"] is True
+    assert unlocated_cluster_payload["items"] == []
+    detailed = client.get("/v1/transport/features/places", params={
+        "kinds": "fuel_station,rail_station,ferry_port", "zoom": 12,
+        "min_longitude": 124, "min_latitude": 32, "max_longitude": 132, "max_latitude": 39,
+    }).json()
+    assert detailed["clustered"] is False
+    assert {item["kind"] for item in detailed["items"]} == {"fuel_station", "rail_station", "ferry_port"}
+    assert client.get("/v1/transport/features/places?kinds=fuel_station,rail_station&kind=fuel_station").status_code == 422
+    assert client.get("/v1/transport/features/places?kinds=unknown&min_longitude=124&min_latitude=32&max_longitude=132&max_latitude=39&zoom=7").status_code == 422
+    assert client.get("/v1/transport/features/places?kinds=fuel_station&zoom=7").status_code == 422
     assert client.get("/v1/transport/features/places?kind=fuel_station&source=opinet&query=테스트&product_code=D047&limit=1").json()["total"] == 1
     assert client.get("/v1/transport/features/places?kind=fuel_station&query=%25").json()["total"] == 0
     assert client.get("/v1/transport/features/places?kind=fuel_station&product_code=K015").json()["total"] == 0

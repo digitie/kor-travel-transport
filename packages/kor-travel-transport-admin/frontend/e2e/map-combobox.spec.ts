@@ -13,7 +13,7 @@ test("지도는 휴게소와 돌발 정보를 각각 조회하고 상세·출처
     return route.fulfill({ json: { total: rows.length, items: rows, available_sources: rows.map((row) => row.source), truncated: false } });
   });
   await page.goto("/map");
-  await page.getByRole("button", { name: "목록", exact: true }).click();
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
   await page.locator(".map-place-list").getByRole("button", { name: /시험휴게소/ }).click();
   await expect(page.getByLabel("선택 장소 상세").getByText("편의시설 · 주차장")).toBeVisible();
   await page.getByRole("button", { name: "장소 상세 닫기" }).click();
@@ -30,7 +30,8 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel("비밀번호").fill(process.env.E2E_TRANSPORT_UI_PASSWORD!);
   await page.getByRole("button", { name: "로그인", exact: true }).click();
-  await expect(page).toHaveURL(/\/$/);
+  // 첫 Next dev 컴파일 때 인증 응답과 홈 경로 컴파일이 겹칠 수 있어 기본 5초보다 여유를 둔다.
+  await expect(page).toHaveURL(/\/$/, { timeout: 15_000 });
   await page.route("**://*.vworld.kr/**", (route) => route.abort());
 });
 
@@ -48,7 +49,7 @@ test("좌표 미확인 항구·버스 터미널은 지도 대신 검색 목록�
       available_sources: rows.map((row) => row.source), truncated: false } });
   });
   await page.goto("/map");
-  await page.getByRole("button", { name: "목록", exact: true }).click();
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
   await expect(page.locator(".map-place-list").getByRole("button", { name: /백야도/ })).toBeVisible();
   await expect(page.locator(".map-place-list").getByRole("button", { name: /강릉/ })).toBeVisible();
   await expect(page.locator(".map-place-list").getByRole("button", { name: /백야도/ })).toContainText("항구 코드 SEA97580");
@@ -72,8 +73,49 @@ test("잘린 목록은 확대 대신 이름·코드 검색을 안내한다", asy
       truncated: kind === "ferry_port", available_sources: [] } });
   });
   await page.goto("/map");
-  await page.getByRole("button", { name: "목록", exact: true }).click();
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
   await expect(page.getByText(/항구 일부만 표시합니다\. 이름·코드 검색으로 범위를 좁혀 주세요/)).toBeVisible();
+});
+
+test("교통 지도와 유가 지도는 각각 허용된 종류만 조회한다", async ({ page }) => {
+  const mapQueries: URLSearchParams[] = [];
+  await page.route("**/transport/features/places?**", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    if (params.has("kinds")) mapQueries.push(params);
+    return route.fulfill({ json: { items: [], clusters: [], kind_totals: {}, total: 0, truncated: false, clustered: params.has("zoom"), available_sources: [] } });
+  });
+
+  await page.goto("/map");
+  await expect.poll(() => mapQueries.at(-1)?.get("kinds")).toBe("rail_station,ferry_port,bus_terminal,airport,rest_area,highway_incident");
+  expect(mapQueries.at(-1)?.get("zoom")).toBeTruthy();
+  expect(["min_longitude", "min_latitude", "max_longitude", "max_latitude"].every((key) => mapQueries.at(-1)?.has(key))).toBe(true);
+  await expect(page.getByLabel("표시 유종")).toHaveCount(0);
+
+  await page.goto("/fuel");
+  await expect.poll(() => mapQueries.at(-1)?.get("kinds")).toBe("fuel_station");
+  await expect(page.getByLabel("표시 유종")).toHaveAttribute("role", "combobox");
+});
+
+test("교통 지도는 종류별 필터를 제공하고 유가 지도에는 교통 종류를 노출하지 않는다", async ({ page }) => {
+  const mapQueries: URLSearchParams[] = [];
+  await page.route("**/transport/features/places?**", (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    if (params.has("kinds")) mapQueries.push(params);
+    return route.fulfill({ json: { items: [], clusters: [], kind_totals: {}, total: 0, truncated: false, clustered: params.has("zoom"), available_sources: [] } });
+  });
+
+  await page.goto("/map");
+  const kindFilters = page.getByLabel("교통 종류");
+  await expect(kindFilters).toBeVisible();
+  await expect(kindFilters.getByRole("button", { name: "철도역", exact: true })).toHaveAttribute("aria-pressed", "true");
+  for (const kind of ["항구", "버스터미널", "공항", "휴게소", "도로 돌발"]) {
+    await kindFilters.getByRole("button", { name: kind, exact: true }).click();
+  }
+  await expect.poll(() => mapQueries.at(-1)?.get("kinds")).toBe("rail_station");
+
+  await page.goto("/fuel");
+  await expect(page.getByLabel("교통 종류")).toHaveCount(0);
+  await expect(page.getByLabel("표시 유종")).toHaveAttribute("role", "combobox");
 });
 
 for (const width of [320, 375, 768, 1440]) {
@@ -85,7 +127,7 @@ for (const width of [320, 375, 768, 1440]) {
       requests.push(params);
       return route.fulfill({ json: { available_sources: ["opinet_browser", "second-source"], items: params.get("kind") === "fuel_station" ? [place] : [], total: 1, truncated: false } });
     });
-    await page.goto("/map");
+    await page.goto("/fuel");
     await expect(page.getByLabel("장소 목록에서 선택")).toHaveCount(0);
     const products = page.getByRole("combobox", { name: "표시 유종" });
     await products.fill("휘발유");
@@ -104,7 +146,7 @@ for (const width of [320, 375, 768, 1440]) {
     await page.keyboard.press("Escape");
     await expect(page.getByRole("button", { name: "휘발유 선택 해제", exact: true })).toBeVisible();
     await expect.poll(() => requests.some((params) => params.get("sources") === "second-source,opinet_browser")).toBe(true);
-    await page.getByRole("button", { name: "목록", exact: true }).click();
+    await page.getByRole("tab", { name: "목록", exact: true }).click();
     await page.locator(".map-place-list").getByRole("button", { name: /다중필터 시험주유소/ }).click();
     await page.getByRole("button", { name: "장소 상세 닫기" }).click();
     await expect(page.getByLabel("장소 검색")).toBeFocused();
@@ -123,7 +165,7 @@ for (const width of [320, 375, 768, 1440]) {
   test(`지도 유종 키보드 다중 선택 ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.route("**/transport/features/places?**", (route) => route.fulfill({ json: { items: [], total: 0, truncated: false } }));
-    await page.goto("/map");
+    await page.goto("/fuel");
     const input = page.getByRole("combobox", { name: "표시 유종" });
     await input.fill("LPG");
     await input.press("ArrowDown");
@@ -143,8 +185,8 @@ test("유종은 OR로 표시하고 새 조회 실패 시 이전 장소를 숨긴
     const params = new URL(route.request().url()).searchParams;
     return params.has("query") ? route.fulfill({ status: 503, json: {} }) : route.fulfill({ json: { items: params.get("kind") === "fuel_station" ? rows : [], total: 3, truncated: false } });
   });
-  await page.goto("/map");
-  await page.getByRole("button", { name: "목록", exact: true }).click();
+  await page.goto("/fuel");
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
   const input = page.getByRole("combobox", { name: "표시 유종" });
   for (const name of ["휘발유", "경유"]) {
     await input.fill(name);
@@ -156,14 +198,14 @@ test("유종은 OR로 표시하고 새 조회 실패 시 이전 장소를 숨긴
   await expect(list.getByRole("button", { name: /D047/ })).toBeVisible();
   await expect(list.getByRole("button", { name: /K015/ })).toHaveCount(0);
   await page.getByLabel("장소 검색").fill("새로운 조건");
-  await expect(page.getByText("주유소·철도역·항구·버스터미널·공항·휴게소·도로 돌발 조회 실패")).toBeVisible();
+  await expect(page.getByText("주유소 조회 실패")).toBeVisible();
   await expect(list.getByRole("button")).toHaveCount(0);
 });
 
 test("작은 가로 화면에서도 combobox 마지막 항목까지 스크롤한다", async ({ page }) => {
   await page.setViewportSize({ width: 640, height: 280 });
   await page.route("**/transport/features/places?**", (route) => route.fulfill({ json: { items: [], total: 0, truncated: false } }));
-  await page.goto("/map");
+  await page.goto("/fuel");
   await page.getByRole("combobox", { name: "표시 유종" }).click();
   const list = page.getByRole("listbox");
   await expect(list).toBeVisible();
@@ -187,8 +229,8 @@ test("고급유 필터는 최신 가격이 없는 주유소를 제외하고 복�
     items: new URL(route.request().url()).searchParams.get("kind") === "fuel_station" ? rows : [],
     total: rows.length, truncated: false,
   } }));
-  await page.goto("/map");
-  await page.getByRole("button", { name: "목록", exact: true }).click();
+  await page.goto("/fuel");
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
   const input = page.getByRole("combobox", { name: "표시 유종" });
   await input.fill("고급유");
   await page.getByRole("option", { name: "고급유", exact: true }).click();
@@ -208,8 +250,8 @@ test("검색 debounce 중 선택한 이전 장소가 새 빈 결과에 남지 �
     const params = new URL(route.request().url()).searchParams;
     return route.fulfill({ json: { items: !params.has("query") && params.get("kind") === "fuel_station" ? [place] : [], total: 0, truncated: false } });
   });
-  await page.goto("/map");
-  await page.getByRole("button", { name: "목록", exact: true }).click();
+  await page.goto("/fuel");
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
   const row = page.locator(".map-place-list").getByRole("button", { name: /다중필터 시험주유소/ });
   await expect(row).toBeVisible();
   await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
@@ -224,7 +266,7 @@ test("검색 debounce 중 선택한 이전 장소가 새 빈 결과에 남지 �
 test("출처 10개 선택 제한과 해제 후 재선택을 제공한다", async ({ page }) => {
   const sources = Array.from({ length: 11 }, (_, index) => `source-${String(index).padStart(2, "0")}`);
   await page.route("**/transport/features/places?**", (route) => route.fulfill({ json: { available_sources: sources, items: [], total: 0, truncated: false } }));
-  await page.goto("/map");
+  await page.goto("/fuel");
   const input = page.getByRole("combobox", { name: "데이터 출처" });
   for (const name of sources.slice(0, 10)) {
     await input.fill(name);
@@ -243,7 +285,7 @@ test.describe("다중 선택 터치 해제", () => {
   test.use({ hasTouch: true, viewport: { width: 375, height: 900 } });
   test("칩 해제 버튼도 44px 터치 영역을 제공한다", async ({ page }) => {
     await page.route("**/transport/features/places?**", (route) => route.fulfill({ json: { items: [], total: 0, truncated: false } }));
-    await page.goto("/map");
+    await page.goto("/fuel");
     const input = page.getByRole("combobox", { name: "표시 유종" });
     await input.fill("휘발유");
     await page.getByRole("option", { name: "휘발유", exact: true }).click();
@@ -262,7 +304,7 @@ test("낮은 화면에서 휠 스크롤만으로 마지막 옵션 전체를 표�
   await page.setViewportSize({ width: 640, height: 280 });
   const sources = Array.from({ length: 11 }, (_, index) => `source-${String(index).padStart(2, "0")}`);
   await page.route("**/transport/features/places?**", (route) => route.fulfill({ json: { available_sources: sources, items: [], total: 0, truncated: false } }));
-  await page.goto("/map");
+    await page.goto("/fuel");
   await page.getByRole("combobox", { name: "데이터 출처" }).click();
   await expect(page.locator('[data-slot="combobox-empty"]')).toHaveCSS("display", "block");
   const list = page.getByRole("listbox");
@@ -282,7 +324,7 @@ test("모바일에서 긴 출처 옵션의 전체 이름을 줄바꿈한다", as
   await page.setViewportSize({ width: 320, height: 900 });
   const source = "long-source-" + "a".repeat(57);
   await page.route("**/transport/features/places?**", (route) => route.fulfill({ json: { available_sources: [source], items: [], total: 0, truncated: false } }));
-  await page.goto("/map");
+  await page.goto("/fuel");
   await page.getByRole("combobox", { name: "데이터 출처" }).click();
   const option = page.getByRole("option", { name: source, exact: true });
   await expect(option).toBeVisible();

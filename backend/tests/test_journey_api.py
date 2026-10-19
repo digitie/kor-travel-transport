@@ -38,6 +38,12 @@ def test_map_incidents_use_latest_saved_observation_and_rest_areas_remain_visibl
     bounded = client.get(path, params={"kind": "highway_incident", "min_longitude": 126,
         "max_longitude": 128, "min_latitude": 36, "max_latitude": 38, "product_codes": "B034"}).json()
     assert bounded["total"] == 1  # 범위 안의 오래된 moved 행을 되살리지 않는다.
+    clustered = client.get(path, params={"kinds": "highway_incident,rest_area", "zoom": 7,
+        "min_longitude": 126, "max_longitude": 128, "min_latitude": 36, "max_latitude": 38}).json()
+    assert clustered["clustered"] is True
+    assert clustered["items"] == []
+    assert clustered["kind_totals"] == {"highway_incident": 1, "rest_area": 1}
+    assert sum(row["count"] for row in clustered["clusters"]) == 2
     assert client.get(path, params={"kind": "highway_incident", "include_unlocated": True}).json()["total"] == 3
     assert client.get(path, params={"kind": "highway_incident", "query": "0010", "limit": 1}).json()["truncated"] is True
     assert client.get(path, params={"kind": "highway_incident", "sources": "absent"}).json()["total"] == 0

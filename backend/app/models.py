@@ -219,6 +219,7 @@ class HighwayIncidentSnapshot(Base):
         Index("ix_highway_incidents_collection_run_id", "collection_run_id"),
         # 마지막 성공 수집이 재관측한 활성 집합(service export)을 찾는다.
         Index("ix_highway_incidents_source_collected", "source", "collected_at"),
+        Index("ix_highway_incidents_collected_at", "collected_at"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -254,6 +255,13 @@ class FuelStation(Base):
         UniqueConstraint("source", "identity_key", name="uq_fuel_station_identity"),
         Index("ix_fuel_stations_last_seen", "last_seen_at"),
         Index("ix_fuel_stations_region", "sido_value", "sigungu_value"),
+        Index(
+            "ix_fuel_stations_map_coordinates",
+            "longitude",
+            "latitude",
+            postgresql_where=text("longitude BETWEEN -180 AND 180 AND latitude BETWEEN -90 AND 90"),
+            sqlite_where=text("longitude BETWEEN -180 AND 180 AND latitude BETWEEN -90 AND 90"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -393,6 +401,13 @@ class RailStationReference(Base):
         UniqueConstraint("source", "identity_key", name="uq_rail_station_reference_identity"),
         Index("ix_rail_station_reference_operator_line", "rail_operator_name", "operating_line_name"),
         Index("ix_rail_station_reference_last_seen", "last_seen_at"),
+        Index(
+            "ix_rail_station_reference_map_coordinates",
+            "longitude",
+            "latitude",
+            postgresql_where=text("longitude BETWEEN -180 AND 180 AND latitude BETWEEN -90 AND 90"),
+            sqlite_where=text("longitude BETWEEN -180 AND 180 AND latitude BETWEEN -90 AND 90"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

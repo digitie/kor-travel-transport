@@ -147,7 +147,7 @@ export function TransportDashboard() {
         </> : null}
         <Card className={cn(CARD_CLASS_NAME, "wide")}>
           <CardHeader className="grid-cols-1"><CardTitle><h2 className="m-0">교통정보 찾아보기</h2></CardTitle></CardHeader>
-          <CardContent><p className="m-0"><Link href="/map">주유소별 가격 지도 →</Link> · <Link href="/highways">고속도로 구간·돌발 검색 →</Link> · <Link href="/collections">제공기관별 수집 상태 →</Link></p></CardContent>
+          <CardContent><p className="m-0"><Link href="/fuel">주유소별 가격 지도 →</Link> · <Link href="/map">교통 장소 지도 →</Link> · <Link href="/highways">고속도로 구간·돌발 검색 →</Link> · <Link href="/collections">제공기관별 수집 상태 →</Link></p></CardContent>
         </Card>
       </div> : null}
     </TabsContent>)}

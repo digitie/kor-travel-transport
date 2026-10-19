@@ -10,9 +10,10 @@ const fuel = { ...base, id: 4, kind: "fuel_station", name: "시험주유소", br
 
 async function selectPlace(page: Page, id: string) {
   const item = [port, airport, rail, fuel].find((place) => `${place.kind}:${place.id}` === id)!;
-  await page.getByRole("button", { name: "목록", exact: true }).click();
+  if (item.kind === "fuel_station" && !page.url().endsWith("/fuel")) await page.goto("/fuel");
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
   await page.locator(".map-place-list").getByRole("button", { name: new RegExp(item.name) }).click();
-  await page.getByRole("button", { name: "지도", exact: true }).click();
+  await page.getByRole("tab", { name: "지도", exact: true }).click();
 }
 
 async function places(page: Page) {

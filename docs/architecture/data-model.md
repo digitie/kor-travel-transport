@@ -11,6 +11,16 @@ API·legacy 실행의 NULL 소유권은 자동 회수 대상에서 제외한다.
 
 ## 핵심 테이블
 
+### 지도 좌표·돌발 최신 조회 인덱스 (`0026_transport_map_coordinate_indexes`)
+
+`fuel_stations`와 `rail_station_references`는 유효한 좌표 쌍만 포함하는 부분 B-tree
+인덱스 `(longitude, latitude)`를 둔다. bbox 지도 조회와 저배율 좌표 집계가 상세 행 전체를
+읽는 일을 줄인다. PostgreSQL에서는 수집 쓰기를 오래 막지 않도록 `CREATE INDEX CONCURRENTLY`로
+추가하고, SQLite 테스트에서는 일반 인덱스로 만든다. 나머지 교통 좌표 테이블은 기존 좌표
+인덱스를 사용한다. `highway_incident_snapshots(collected_at)`는 최근 24시간 돌발 관측만
+가져오는 지도 쿼리가 오래된 이력을 반복 스캔하지 않도록 한다. 동시 인덱스 생성이 중단돼도
+유효한 기존 인덱스는 재사용하고 invalid 인덱스는 제거한 뒤 재시도한다.
+
 ### 최신 유가 테이블 (`0022_fuel_latest_prices_table`)
 
 `fuel_latest_prices`는 `(fuel_station_id, product_code)` PK의 일반 테이블이다. 원본

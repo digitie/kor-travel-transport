@@ -1,6 +1,15 @@
 # tasks-done.md — 완료 작업 아카이브
 
 
+## 2026-10-19 — 교통/유가 지도 분리 및 viewport 조회 최적화
+
+- `/map`은 교통 종류만, `/fuel`은 주유소·유가만 조회하도록 페이지와 관리자 메뉴를 분리했다. Map Feature 화면 패턴의 필터 툴바, 지도/목록 탭, viewport 상태 표시를 사용한다.
+- bbox와 zoom을 묶어 요청하고 이동 요청을 지연·좌표 양자화했으며, 최근 응답 8개를 20초 캐시한다. 낮은 zoom에서는 서버가 셀별 위치·종류 개수만 반환하고, 높은 zoom에서는 현재 viewport 상세만 반환한다.
+- 유효 좌표 partial index와 돌발 최신 관측 인덱스를 0026 migration으로 추가하고 PostgreSQL에서는 concurrent index build를 사용한다. Runtime schema guard와 OpenAPI를 같이 갱신했다.
+- 백엔드 전체 `891 passed, 10 skipped`; 프런트 단위 215개, Playwright map-combobox 21개, production build 및 OpenAPI 검사를 통과했다. 독립 API·UI 적대 리뷰 2건의 actionable finding을 반영했다.
+- Playwright는 로컬 UI와 mock API 기준이며, 운영 배포 후 live E2E는 이 수용 범위에 포함하지 않는다.
+
+
 ## 2026-10-19 — T-TRN-03b 옛 배포 자산 은퇴
 
 - [x] 빈 Compose·거부 wrapper·옛 bootstrap/status 및 안내 문서의 M6 경로를 삭제했다. 현재 공식 배포·테스트·CI가 이 파일을 호출하지 않음을 확인했다.

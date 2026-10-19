@@ -100,8 +100,8 @@ test("유가 지도는 모든 유종 상세·출처 필터·목록 대체 보기
     const fuel = new URL(route.request().url()).searchParams.get("kind") === "fuel_station";
     return route.fulfill({ json: { total: fuel ? 1 : 0, truncated: false, items: fuel ? [{ id: 1, kind: "fuel_station", source: "opinet_browser", name: "검증 주유소 고속도로 복합휴게소 셀프 충전소 긴 실제 장소명", brand_name: "SK에너지", longitude: 127, latitude: 37, line_names: [], facilities: ["셀프", "세차"], updated_at: "2026-09-27T00:00:00Z", prices: [{ product_code: "B027", price: 1710, observed_at: "2026-09-27T00:00:00Z" }, { product_code: "D047", price: 1610, observed_at: "2026-09-27T00:00:00Z" }] }] : [] } });
   });
-  await page.goto("/map");
-  await page.getByRole("button", { name: "목록", exact: true }).click();
+  await page.goto("/fuel");
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
   await page.getByRole("button", { name: /검증 주유소/ }).click();
   const detail = page.locator(".transport-map-detail");
   await expect(detail.getByText("1,710원/L", { exact: true })).toBeVisible();
@@ -143,7 +143,7 @@ test("지도는 상한 밖 출처와 공항 코드·영문명 서버 검색 결�
     return route.fulfill({ json: { total: airport ? 1 : 0, truncated: false, available_sources: ["hidden-source"], items: airport ? [{ id: 1, provider_id: "GMP", kind: "airport", source: "airport", name: "김포공항", subtitle: "Gimpo", line_names: [], longitude: 126.8, latitude: 37.5, prices: [], facilities: [], updated_at: new Date().toISOString() }] : [] } });
   });
   await page.goto("/map");
-  await page.getByRole("button", { name: "목록", exact: true }).click();
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
   await page.getByLabel("데이터 출처").click();
   await expect(page.getByRole("option", { name: "hidden-source" })).toBeVisible();
   await page.keyboard.press("Escape");
