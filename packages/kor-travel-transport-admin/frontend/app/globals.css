@@ -263,7 +263,6 @@ button:active:not(:disabled), .secondary:active { transform: translateY(1px); }
 .page-header > div { min-width: 0; }
 .page-header-actions { display: flex; gap: var(--space-sm); flex-wrap: wrap; }
 .transport-map-layout { background: transparent; border: 0; border-radius: 0; overflow: visible; gap: var(--space-lg); grid-template-columns: minmax(0, 1fr) minmax(320px, 380px); align-items: start; }
-.transport-map-layout-unselected { grid-template-columns: minmax(0, 1fr); }
 .map-primary { min-width: 0; overflow: clip; border: 1px solid var(--color-rule); border-radius: var(--radius-panel); }
 .weather-inspector { min-width: 0; background: var(--color-panel); border: 1px solid var(--color-rule); border-radius: var(--radius-panel); padding: 0; gap: 0; }
 .weather-inspector:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
@@ -354,6 +353,7 @@ h1, h2, h3 { color: var(--text-primary); }
 .table-wrap th { background: var(--surface-subtle); font-size: .75rem; }
 .table-wrap th, .table-wrap td { padding: .75rem; }
 .transport-map-layout { gap: var(--layout-gutter); grid-template-columns: minmax(0, 1fr) 22rem; }
+.transport-map-layout-unselected { grid-template-columns: minmax(0, 1fr); }
 .inspector-heading, .inspector-section, .weather-inspector .transport-map-picker { padding: var(--panel-padding); }
 .weather-inspector > [data-slot="field-group"] { padding: var(--panel-padding); margin-bottom: 0; border-bottom: 1px solid var(--surface-muted); }
 .inspector-heading p { font-family: var(--font-mono); font-size: .6875rem; }

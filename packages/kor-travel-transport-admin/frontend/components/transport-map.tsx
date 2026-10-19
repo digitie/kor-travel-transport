@@ -309,7 +309,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
     <div className="mb-3 flex items-center justify-between"><TabsList aria-label="장소 보기"><TabsTrigger value="map">지도</TabsTrigger><TabsTrigger value="list">목록</TabsTrigger></TabsList><span className="text-sm text-muted-foreground">{Math.floor(zoom)}단계 · {serverClustered ? "요약 표시" : `${visiblePoints.length}곳`}</span></div>
     <div className="map-feedback" role="status">
       {pending.length ? <span>{pending.map(placeKindLabel).join("·")} 조회 중… </span> : null}
-      {serverClustered ? <span>{serverClusters.reduce((sum, item) => sum + item.count, 0)}곳 · 요약</span> : cluster ? <span>밀도별 묶음</span> : null}
+      {cluster ? <span>밀도별 묶음</span> : null}
       {failed.length ? <p className="error">{failed.map(placeKindLabel).join("·")} 조회 실패 <Button variant="outline" type="button" onClick={() => setReload((value) => value + 1)}>다시 조회</Button></p> : null}
       {basemap.basemapFailed && view === "map" ? <p className="error">VWorld 지도 타일을 불러오지 못했습니다. 목록 보기에서 장소를 확인할 수 있습니다.</p> : null}
       {!items.length && !serverClusters.length && !pending.length ? <p>표시할 장소가 없습니다. 종류·출처·검색 조건을 확인해 주세요.</p> : null}
@@ -352,15 +352,15 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
           <OverlapList places={clusterPlaces} onSelect={selectPlace} listRef={clusterList} />
         </OverlapPopup> : null}
       </VWorldMapView></div>
-      {!embedded ? <div className="map-feedback map-guidance">
-        {kinds.includes("fuel_station") && loaded.fuel_station?.fuel_prices_stale ? <p className="error">유가 갱신 지연 · 유종·가격은 {dateTime(loaded.fuel_station.fuel_prices_last_refreshed_at)} 기준이며 판매 여부도 다를 수 있습니다.</p> : null}
-        {kinds.includes("fuel_station") && loaded.fuel_station?.fuel_prices_last_refreshed_at && !loaded.fuel_station.fuel_prices_stale ? <p>유가 {dateTime(loaded.fuel_station.fuel_prices_last_refreshed_at)} 갱신 · 지연분은 다음 수집에 반영됩니다.</p> : null}
-        {(kinds.includes("ferry_port") || kinds.includes("bus_terminal")) ? <p>검증 좌표만 표시 · 미확인 항구·터미널은 목록에서 검색</p> : null}
-        {kinds.includes("highway_incident") ? <p>도로 돌발: 24시간 내 관측 · 통제는 상세 확인</p> : null}
-        {truncated.length ? <p>{truncated.join("·")} 일부만 표시 · 확대하거나 목록에서 이름·코드 검색. 묶음은 불러온 장소 기준.</p> : null}
-      </div> : null}
     </TabsContent>
     <TabsContent className="min-h-0" value="list"><div className="map-primary"><div className="map-place-list">{items.map((place) => <button type="button" className="place-row" key={keyOf(place)} aria-pressed={current ? keyOf(current) === keyOf(place) : false} onClick={() => selectPlace(place)}><PlaceIcon kind={place.kind} /><span><strong>{place.name}</strong><small>{place.line_names.join(" · ") || place.brand_name || place.subtitle || placeKindLabel(place.kind)}</small>{(place.kind === "ferry_port" || place.kind === "bus_terminal") && place.provider_id ? <small>{place.kind === "ferry_port" ? "항구" : "터미널"} 코드 {place.provider_id}</small> : null}{!hasCoordinates(place) ? <small>좌표 미등록</small> : null}</span></button>)}</div></div></TabsContent>
+    {!embedded ? <div className="map-feedback map-guidance" role="status">
+      {kinds.includes("fuel_station") && loaded.fuel_station?.fuel_prices_stale ? <p className="error">유가 갱신 지연 · 유종·가격은 {dateTime(loaded.fuel_station.fuel_prices_last_refreshed_at)} 기준이며 판매 여부도 다를 수 있습니다.</p> : null}
+      {kinds.includes("fuel_station") && loaded.fuel_station?.fuel_prices_last_refreshed_at && !loaded.fuel_station.fuel_prices_stale ? <p>유가 {dateTime(loaded.fuel_station.fuel_prices_last_refreshed_at)} 갱신 · 지연분은 다음 수집에 반영됩니다.</p> : null}
+      {(kinds.includes("ferry_port") || kinds.includes("bus_terminal")) ? <p>검증 좌표만 표시 · 미확인 항구·터미널은 목록에서 검색</p> : null}
+      {kinds.includes("highway_incident") ? <p>도로 돌발: 24시간 내 최신 저장 관측 · 통제·처리 시각은 상세 확인</p> : null}
+      {truncated.length ? <p>{truncated.join("·")} 일부만 표시 · {view === "list" ? "이름·코드로 검색" : "확대하거나 목록에서 검색"}. 묶음은 불러온 장소 기준.</p> : null}
+    </div> : null}
     </Tabs>
     {detailPanel}
     </div>
