@@ -5223,6 +5223,42 @@
         "title": "TransportCollectorStatus",
         "type": "object"
       },
+      "TransportPlaceMapCluster": {
+        "description": "저배율 지도에서 좌표별 장소 요약으로 쓰는 클러스터.",
+        "properties": {
+          "count": {
+            "minimum": 1.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "kind_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Kind Counts",
+            "type": "object"
+          },
+          "latitude": {
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Longitude",
+            "type": "number"
+          }
+        },
+        "required": [
+          "longitude",
+          "latitude",
+          "count"
+        ],
+        "title": "TransportPlaceMapCluster",
+        "type": "object"
+      },
       "TransportPlaceMapItem": {
         "description": "kor-travel-map·PinVi가 지도 marker로 바로 소비할 저장 장소 요약.",
         "properties": {
@@ -5453,6 +5489,18 @@
             "title": "Available Sources",
             "type": "array"
           },
+          "clustered": {
+            "default": false,
+            "title": "Clustered",
+            "type": "boolean"
+          },
+          "clusters": {
+            "items": {
+              "$ref": "#/components/schemas/TransportPlaceMapCluster"
+            },
+            "title": "Clusters",
+            "type": "array"
+          },
           "fuel_prices_last_refreshed_at": {
             "anyOf": [
               {
@@ -5494,6 +5542,13 @@
               }
             ],
             "title": "Kind"
+          },
+          "kind_totals": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Kind Totals",
+            "type": "object"
           },
           "total": {
             "default": 0,
@@ -8224,6 +8279,25 @@
             }
           },
           {
+            "description": "지도 종류를 쉼표로 구분해 한 요청으로 조회",
+            "in": "query",
+            "name": "kinds",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 280,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "지도 종류를 쉼표로 구분해 한 요청으로 조회",
+              "title": "Kinds"
+            }
+          },
+          {
             "in": "query",
             "name": "limit",
             "required": false,
@@ -8233,6 +8307,38 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "description": "지도 축척. 0~11은 상세 행 대신 셀별 장소 수를 반환",
+            "in": "query",
+            "name": "zoom",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 22,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "지도 축척. 0~11은 상세 행 대신 셀별 장소 수를 반환",
+              "title": "Zoom"
+            }
+          },
+          {
+            "description": "출처 필터 선택지를 포함. 반복 지도 조회에서는 false로 생략 가능",
+            "in": "query",
+            "name": "include_sources",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "출처 필터 선택지를 포함. 반복 지도 조회에서는 false로 생략 가능",
+              "title": "Include Sources",
+              "type": "boolean"
             }
           },
           {

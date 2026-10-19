@@ -20,7 +20,7 @@ test("운영 Kakao 좌표가 저장 API와 지도 목록·상세에 반영된다
     expect(selected, `${kind}의 Kakao 저장 좌표가 있어야 합니다.`).toBeDefined();
 
     await page.goto("/map");
-    await page.getByRole("button", { name: "목록", exact: true }).click();
+    await page.getByRole("tab", { name: "목록", exact: true }).click();
     await page.getByLabel("장소 검색").fill(selected!.name);
     const row = page.locator(".map-place-list button").filter({ hasText: selected!.provider_id! }).first();
     await expect(row).toBeVisible();

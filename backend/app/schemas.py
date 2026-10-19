@@ -233,11 +233,23 @@ class TransportPlaceMapItem(BaseModel):
         return self
 
 
+class TransportPlaceMapCluster(BaseModel):
+    """저배율 지도에서 좌표별 장소 요약으로 쓰는 클러스터."""
+
+    longitude: float = Field(ge=-180, le=180, allow_inf_nan=False)
+    latitude: float = Field(ge=-90, le=90, allow_inf_nan=False)
+    count: int = Field(ge=1)
+    kind_counts: dict[str, int] = Field(default_factory=dict)
+
+
 class TransportPlaceMapResponse(BaseModel):
     generated_at: datetime
     kind: str | None = None
     total: int = 0
     truncated: bool = False
+    clustered: bool = False
+    kind_totals: dict[str, int] = Field(default_factory=dict)
+    clusters: list[TransportPlaceMapCluster] = Field(default_factory=list)
     fuel_prices_stale: bool = Field(default=False, description="확인된 최신 유가 읽기 모델 지연 여부. false는 직후 발생한 늦은 원본 커밋까지 보증하지 않습니다.")
     fuel_prices_last_refreshed_at: datetime | None = Field(default=None, description="주유소별 가격 읽기 모델의 마지막 성공 갱신 시각(UTC).")
     available_sources: list[str] = Field(default_factory=list)

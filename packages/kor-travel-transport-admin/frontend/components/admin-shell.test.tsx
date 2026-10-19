@@ -11,6 +11,7 @@ test.each([
   ["/", "/"],
   ["/map", "/map"],
   ["/map/place/1", "/map"],
+  ["/fuel", "/fuel"],
   ["/admin/dagster", "/admin/dagster"],
   ["/admin/dagster/runs/example", "/admin/dagster"],
   ["/bus/express/terminal/1", "/bus/express"],

@@ -20,7 +20,7 @@ from functools import wraps
 from http import HTTPStatus
 from math import isfinite
 from types import SimpleNamespace
-from typing import Literal
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
@@ -31,7 +31,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic_core import to_json
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from sqlalchemy import DateTime, Integer, and_, bindparam, case, exists, func, or_, select, text as sql_text, true
+from sqlalchemy import DateTime, Integer, and_, bindparam, case, exists, func, or_, select, text as sql_text, true, union_all
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import defer, selectinload
@@ -116,6 +116,7 @@ from app.schemas import (
     TimeSeriesPoint,
     TransportCollectorStatus,
     TransportPlaceMapItem,
+    TransportPlaceMapCluster,
     TransportPlaceMapResponse,
     TransportStatisticsResponse,
     RailTimetableResponse,
@@ -138,6 +139,11 @@ from app.services.analytics import (
 from app.services.provider_status import provider_status
 from app.services.bus_timetable_storage import save_bus_timetable, stored_bus_timetable
 from app.services.rail_timetable import stored_rail_timetables
+from app.services.transport_map_clusters import (
+    cluster_cell,
+    coordinate_cluster_select,
+    viewport_cluster_grid_size,
+)
 from app.services.analytics_cache import (
     DEFAULT_THRESHOLD_EVENTS_DAYS,
     DEFAULT_THRESHOLD_EVENTS_LIMIT,
@@ -1080,7 +1086,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @router.get("/transport/features/places", response_model=TransportPlaceMapResponse)
     async def transport_place_features(
         kind: str | None = Query(default=None, description="fuel_station, rail_station, ferry_port, bus_terminal, airport, rest_area, highway_incident 중 하나. 돌발은 최근 24시간 최신 저장 관측"),
+        kinds: str | None = Query(default=None, max_length=280, description="지도 종류를 쉼표로 구분해 한 요청으로 조회"),
         limit: int = Query(default=1000, ge=1, le=5000),
+        zoom: int | None = Query(default=None, ge=0, le=22, description="지도 축척. 0~11은 상세 행 대신 셀별 장소 수를 반환"),
+        include_sources: bool = Query(default=True, description="출처 필터 선택지를 포함. 반복 지도 조회에서는 false로 생략 가능"),
         include_unlocated: bool = Query(default=False, description="좌표 없는 기준정보도 검색 목록에 포함"),
         source: str | None = Query(default=None, max_length=80),
         sources: str | None = Query(default=None, max_length=809, description="쉼표로 구분한 출처 최대 10개. source와 동시 지정 불가"),
@@ -1106,19 +1115,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         selected_sources = filter_values(source, sources, 10, 80)
         selected_products = filter_values(product_code, product_codes, 5, 20)
+        if kind is not None and kinds is not None:
+            raise HTTPException(status_code=422, detail="kind와 kinds는 함께 지정할 수 없습니다.")
         if selected_kind is not None and selected_kind not in supported:
+            raise HTTPException(status_code=422, detail="지원하지 않는 교통 장소 종류입니다.")
+        selected_kinds = filter_values(None, kinds, 7, 32)
+        if any(value not in supported for value in selected_kinds):
             raise HTTPException(status_code=422, detail="지원하지 않는 교통 장소 종류입니다.")
         bounds = (min_longitude, min_latitude, max_longitude, max_latitude)
         if any(value is not None for value in bounds) and any(value is None for value in bounds):
             raise HTTPException(status_code=422, detail="지도 범위는 최소·최대 경도와 위도를 모두 지정해야 합니다.")
         if min_longitude is not None and (min_longitude >= max_longitude or min_latitude >= max_latitude):
             raise HTTPException(status_code=422, detail="지도 범위의 최소 좌표는 최대 좌표보다 작아야 합니다.")
-        requested_kinds = (selected_kind,) if selected_kind else tuple(sorted(supported))
+        if zoom is not None and min_longitude is None:
+            raise HTTPException(status_code=422, detail="축척별 지도 조회에는 지도 범위가 필요합니다.")
+        requested_kinds = tuple(sorted(selected_kinds)) if selected_kinds else (selected_kind,) if selected_kind else tuple(sorted(supported))
         # 전체 지도는 한 종류가 limit을 모두 소모하지 않도록 균등하게 읽는다. 프런트가
         # 수천 개의 DOM marker를 만들지 않게 하는 API 경계이기도 하다.
         per_kind_limit = (limit + len(requested_kinds) - 1) // len(requested_kinds)
         items: list[TransportPlaceMapItem] = []
         total = 0
+        kind_totals: dict[str, int] = {}
 
         def coordinate_conditions(model) -> list[Any]:
             conditions = [] if include_unlocated else [
@@ -1155,9 +1172,161 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ))
             return conditions
 
-        if selected_kind in (None, "fuel_station"):
+        # 낮은 축척에서는 marker별 설명·가격 payload를 싣지 않고 좌표 셀별 개수만 반환한다.
+        # map admin처럼 bbox를 기준으로 조회하되, 한 종류마다 별도 API를 호출하지 않도록
+        # 선택한 종류의 집계를 한 SQL union으로 묶는다.
+        if zoom is not None and zoom < 12 and min_longitude is not None:
+            grid_size = viewport_cluster_grid_size(
+                min_longitude=min_longitude,
+                min_latitude=min_latitude,
+                max_longitude=max_longitude,
+                max_latitude=max_latitude,
+                zoom=zoom,
+            )
+            cluster_cells: dict[tuple[int, int], dict[str, Any]] = {}
+
+            def add_cluster(kind_name: str, cell: tuple[int, int], count: int, lon: float, lat: float) -> None:
+                summary = cluster_cells.setdefault(
+                    cell,
+                    {"count": 0, "longitude_sum": 0.0, "latitude_sum": 0.0, "kind_counts": {}},
+                )
+                summary["count"] += count
+                summary["longitude_sum"] += lon * count
+                summary["latitude_sum"] += lat * count
+                summary["kind_counts"][kind_name] = summary["kind_counts"].get(kind_name, 0) + count
+
+            cluster_models = {
+                "fuel_station": FuelStation,
+                "rail_station": RailStationReference,
+                "ferry_port": FerryPort,
+                "bus_terminal": BusTerminalReference,
+                "rest_area": RestAreaReference,
+            }
+            cluster_queries = []
+            for requested_kind in requested_kinds:
+                model = cluster_models.get(requested_kind)
+                if model is None:
+                    continue
+                conditions = coordinate_conditions(model)
+                if model is FerryPort:
+                    conditions.append(or_(FerryPort.location_source.is_(None), FerryPort.location_source != "data_go_kr_port_guideline"))
+                cluster_queries.append(coordinate_cluster_select(
+                    kind=requested_kind,
+                    longitude=model.longitude,
+                    latitude=model.latitude,
+                    conditions=conditions,
+                    grid_size=grid_size,
+                ))
+
+            if "highway_incident" in requested_kinds:
+                observed_until = now_utc()
+                ranked_incidents = select(
+                    HighwayIncidentSnapshot.id.label("id"),
+                    func.row_number().over(
+                        partition_by=(HighwayIncidentSnapshot.source, HighwayIncidentSnapshot.identity_key),
+                        order_by=(HighwayIncidentSnapshot.observed_at.desc(), HighwayIncidentSnapshot.collected_at.desc(), HighwayIncidentSnapshot.id.desc()),
+                    ).label("rank"),
+                ).where(HighwayIncidentSnapshot.collected_at.between(observed_until - timedelta(days=1), observed_until)).subquery()
+                incident_rows = select(
+                    HighwayIncidentSnapshot.source.label("source"),
+                    HighwayIncidentSnapshot.identity_key.label("identity_key"),
+                    HighwayIncidentSnapshot.point_name.label("point_name"),
+                    HighwayIncidentSnapshot.route_no.label("route_no"),
+                    HighwayIncidentSnapshot.route_name.label("route_name"),
+                    HighwayIncidentSnapshot.incident_type.label("incident_type"),
+                    HighwayIncidentSnapshot.message.label("message"),
+                    HighwayIncidentSnapshot.longitude.label("longitude"),
+                    HighwayIncidentSnapshot.latitude.label("latitude"),
+                ).join(ranked_incidents, HighwayIncidentSnapshot.id == ranked_incidents.c.id).where(ranked_incidents.c.rank == 1).subquery()
+                incident_conditions = [
+                    incident_rows.c.latitude.between(-90, 90),
+                    incident_rows.c.longitude.between(-180, 180),
+                    incident_rows.c.longitude >= min_longitude,
+                    incident_rows.c.longitude <= max_longitude,
+                    incident_rows.c.latitude >= min_latitude,
+                    incident_rows.c.latitude <= max_latitude,
+                ]
+                if selected_sources:
+                    incident_conditions.append(incident_rows.c.source.in_(selected_sources))
+                if query and query.strip():
+                    incident_conditions.append(or_(*(
+                        field.icontains(query.strip(), autoescape=True)
+                        for field in (incident_rows.c.point_name, incident_rows.c.route_no, incident_rows.c.route_name, incident_rows.c.message)
+                    )))
+                cluster_queries.append(coordinate_cluster_select(
+                    kind="highway_incident",
+                    longitude=incident_rows.c.longitude,
+                    latitude=incident_rows.c.latitude,
+                    conditions=incident_conditions,
+                    grid_size=grid_size,
+                    from_clause=incident_rows,
+                ))
+
+            if cluster_queries:
+                combined_clusters = cluster_queries[0] if len(cluster_queries) == 1 else union_all(*cluster_queries)
+                rows = (await session.execute(combined_clusters)).all()
+                for row in rows:
+                    count = int(row.point_count)
+                    kind_totals[row.kind] = kind_totals.get(row.kind, 0) + count
+                    add_cluster(row.kind, (int(row.cell_x), int(row.cell_y)), count, float(row.longitude), float(row.latitude))
+
+            # 공항 좌표는 krairport의 검증 번들에서 오므로 소수의 점만 같은 격자에 결합한다.
+            if "airport" in requested_kinds:
+                airports = (await session.scalars(select(Airport).order_by(Airport.code))).all()
+                for airport in airports:
+                    metadata = get_airport_or_none(airport.code)
+                    coordinate = metadata.coordinate if metadata else None
+                    if coordinate is None or (selected_sources and airport.source not in selected_sources):
+                        continue
+                    if query and query.strip().casefold() not in f"{airport.name_ko} {airport.name_en or ''} {airport.code}".casefold():
+                        continue
+                    if not (min_longitude <= coordinate.lon <= max_longitude and min_latitude <= coordinate.lat <= max_latitude):
+                        continue
+                    kind_totals["airport"] = kind_totals.get("airport", 0) + 1
+                    add_cluster("airport", cluster_cell(coordinate.lon, coordinate.lat, grid_size), 1, coordinate.lon, coordinate.lat)
+
+            for requested_kind in requested_kinds:
+                kind_totals.setdefault(requested_kind, 0)
+            cluster_items = [
+                TransportPlaceMapCluster(
+                    longitude=summary["longitude_sum"] / summary["count"],
+                    latitude=summary["latitude_sum"] / summary["count"],
+                    count=summary["count"],
+                    kind_counts=summary["kind_counts"],
+                )
+                for summary in cluster_cells.values()
+            ]
+            cluster_items.sort(key=lambda item: (-item.count, item.longitude, item.latitude))
+            total = sum(kind_totals.values())
+            available_sources: set[str] = set()
+            if include_sources:
+                source_models = {
+                    "fuel_station": FuelStation, "rail_station": RailStationReference,
+                    "ferry_port": FerryPort, "bus_terminal": BusTerminalReference,
+                    "airport": Airport, "rest_area": RestAreaReference,
+                    "highway_incident": HighwayIncidentSnapshot,
+                }
+                for requested_kind in requested_kinds:
+                    available_sources.update((await session.scalars(select(source_models[requested_kind].source).distinct())).all())
+            fuel_prices_stale = False
+            fuel_prices_last_refreshed_at = None
+            if "fuel_station" in requested_kinds:
+                fuel_prices_stale, read_model = await fuel_read_model_freshness(session)
+                fuel_prices_last_refreshed_at = (
+                    serialize_utc(read_model.last_success_at) if read_model and read_model.last_success_at else None
+                )
+            result = TransportPlaceMapResponse(
+                generated_at=now_utc(), kind=selected_kind, total=total, truncated=False,
+                clustered=True, kind_totals=kind_totals, clusters=cluster_items, items=[],
+                available_sources=sorted(available_sources), fuel_prices_stale=fuel_prices_stale,
+                fuel_prices_last_refreshed_at=fuel_prices_last_refreshed_at,
+            )
+            return Response(content=result.model_dump_json(), media_type="application/json")
+
+        if "fuel_station" in requested_kinds:
             conditions = coordinate_conditions(FuelStation)
-            total += int(await session.scalar(select(func.count()).select_from(FuelStation).where(*conditions)) or 0)
+            kind_totals["fuel_station"] = int(await session.scalar(select(func.count()).select_from(FuelStation).where(*conditions)) or 0)
+            total += kind_totals["fuel_station"]
             stations = (await session.execute(
                 select(
                     FuelStation.id, FuelStation.source, FuelStation.name,
@@ -1194,9 +1363,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     facilities=[label for field, label in (("is_self", "셀프"), ("is_24h", "24시간"), ("has_carwash", "세차"), ("has_maintenance", "정비"), ("has_cvs", "편의점")) if getattr(station, field) is True],
                     updated_at=serialize_utc(station.last_seen_at),
                 ))
-        if selected_kind in (None, "rail_station"):
+        if "rail_station" in requested_kinds:
             conditions = coordinate_conditions(RailStationReference)
-            total += int(await session.scalar(select(func.count()).select_from(RailStationReference).where(*conditions)) or 0)
+            kind_totals["rail_station"] = int(await session.scalar(select(func.count()).select_from(RailStationReference).where(*conditions)) or 0)
+            total += kind_totals["rail_station"]
             rows = (await session.execute(
                 select(RailStationReference).where(*conditions)
                 .order_by(RailStationReference.last_seen_at.desc(), RailStationReference.id.desc()).limit(per_kind_limit)
@@ -1209,11 +1379,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     phone=station.station_phone_number, station_type=station.station_type,
                     address=station.road_address or station.lot_address, updated_at=serialize_utc(station.last_seen_at),
                 ))
-        if selected_kind in (None, "ferry_port"):
+        if "ferry_port" in requested_kinds:
             conditions = coordinate_conditions(FerryPort)
             if not include_unlocated or min_longitude is not None:
                 conditions.append(or_(FerryPort.location_source.is_(None), FerryPort.location_source != "data_go_kr_port_guideline"))
-            total += int(await session.scalar(select(func.count()).select_from(FerryPort).where(*conditions)) or 0)
+            kind_totals["ferry_port"] = int(await session.scalar(select(func.count()).select_from(FerryPort).where(*conditions)) or 0)
+            total += kind_totals["ferry_port"]
             rows = (await session.execute(
                 select(FerryPort).where(*conditions)
                 .order_by(FerryPort.last_seen_at.desc(), FerryPort.id.desc()).limit(per_kind_limit)
@@ -1232,9 +1403,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     manual_location_revision=((port.raw_item_json or {}).get("_manual_location") or {}).get("revision") if port.location_source == "admin_manual" else None,
                     location_point_count=port.location_point_count,
                 ))
-        if selected_kind in (None, "rest_area"):
+        if "rest_area" in requested_kinds:
             conditions = coordinate_conditions(RestAreaReference)
-            total += int(await session.scalar(select(func.count()).select_from(RestAreaReference).where(*conditions)) or 0)
+            kind_totals["rest_area"] = int(await session.scalar(select(func.count()).select_from(RestAreaReference).where(*conditions)) or 0)
+            total += kind_totals["rest_area"]
             rows = (await session.scalars(select(RestAreaReference).where(*conditions).order_by(RestAreaReference.name, RestAreaReference.id).limit(per_kind_limit))).all()
             for row in rows:
                 items.append(TransportPlaceMapItem(id=row.id, kind="rest_area", source=row.source, name=row.name,
@@ -1242,7 +1414,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     line_names=[row.route_name] if row.route_name else [], phone=row.phone_number,
                     facilities=[label for field, label in (("has_gas_station", "주유소"), ("has_lpg_station", "LPG 충전"), ("has_ev_charger", "전기차 충전")) if getattr(row, field) is True],
                     updated_at=serialize_utc(row.last_seen_at)))
-        if selected_kind in (None, "highway_incident"):
+        if "highway_incident" in requested_kinds:
             observed_until = now_utc()
             ranked_incidents = select(
                 HighwayIncidentSnapshot.id.label("id"),
@@ -1253,7 +1425,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ).where(HighwayIncidentSnapshot.collected_at.between(observed_until - timedelta(days=1), observed_until)).subquery()
             conditions = [ranked_incidents.c.rank == 1, *coordinate_conditions(HighwayIncidentSnapshot)]
             latest_incidents = select(HighwayIncidentSnapshot).join(ranked_incidents, HighwayIncidentSnapshot.id == ranked_incidents.c.id).where(*conditions)
-            total += int(await session.scalar(select(func.count()).select_from(latest_incidents.subquery())) or 0)
+            kind_totals["highway_incident"] = int(await session.scalar(select(func.count()).select_from(latest_incidents.subquery())) or 0)
+            total += kind_totals["highway_incident"]
             rows = (await session.scalars(latest_incidents.order_by(HighwayIncidentSnapshot.observed_at.desc(), HighwayIncidentSnapshot.id.desc()).limit(per_kind_limit))).all()
             for row in rows:
                 route = " · ".join(value for value in [row.route_no, row.route_name] if value)
@@ -1264,9 +1437,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     subtitle=" · ".join(value for value in [row.incident_type, row.process_status, row.direction] if value),
                     address=row.message, updated_at=serialize_utc(row.collected_at),
                 ))
-        if selected_kind in (None, "bus_terminal"):
+        if "bus_terminal" in requested_kinds:
             conditions = coordinate_conditions(BusTerminalReference)
-            total += int(await session.scalar(select(func.count()).select_from(BusTerminalReference).where(*conditions)) or 0)
+            kind_totals["bus_terminal"] = int(await session.scalar(select(func.count()).select_from(BusTerminalReference).where(*conditions)) or 0)
+            total += kind_totals["bus_terminal"]
             rows = (await session.scalars(select(BusTerminalReference).where(*conditions)
                 .order_by(BusTerminalReference.last_seen_at.desc(), BusTerminalReference.id.desc())
                 .limit(per_kind_limit))).all()
@@ -1281,7 +1455,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     location_source=terminal.location_source, updated_at=serialize_utc(terminal.last_seen_at),
                     manual_location_revision=((terminal.raw_item_json or {}).get("_manual_location") or {}).get("revision") if terminal.location_source == "admin_manual" else None,
                 ))
-        if selected_kind in (None, "airport"):
+        if "airport" in requested_kinds:
             airports = (await session.scalars(select(Airport).order_by(Airport.code))).all()
             airport_items = []
             for airport in airports:
@@ -1299,13 +1473,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     provider_id=airport.code, name=airport.name_ko, longitude=coordinate.lon if coordinate else None,
                     latitude=coordinate.lat if coordinate else None, subtitle=airport.name_en,
                     location_source=metadata.source if metadata else None, updated_at=serialize_utc(airport.updated_at)))
-            total += len(airport_items)
+            kind_totals["airport"] = len(airport_items)
+            total += kind_totals["airport"]
             items.extend(airport_items[:per_kind_limit])
         visible_items = items[:limit]
         source_models = {"fuel_station": FuelStation, "rail_station": RailStationReference, "ferry_port": FerryPort, "bus_terminal": BusTerminalReference, "airport": Airport, "rest_area": RestAreaReference, "highway_incident": HighwayIncidentSnapshot}
         available_sources: set[str] = set()
-        for requested_kind in requested_kinds:
-            available_sources.update((await session.scalars(select(source_models[requested_kind].source).distinct())).all())
+        if include_sources:
+            for requested_kind in requested_kinds:
+                available_sources.update((await session.scalars(select(source_models[requested_kind].source).distinct())).all())
         fuel_prices_stale = False
         fuel_prices_last_refreshed_at = None
         if "fuel_station" in requested_kinds:
@@ -1315,7 +1491,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         result = TransportPlaceMapResponse(
             generated_at=now_utc(), kind=selected_kind, total=total,
-            truncated=total > len(visible_items), items=visible_items, available_sources=sorted(available_sources),
+            truncated=total > len(visible_items), kind_totals=kind_totals,
+            items=visible_items, available_sources=sorted(available_sources),
             fuel_prices_stale=fuel_prices_stale, fuel_prices_last_refreshed_at=fuel_prices_last_refreshed_at,
         )
         # 대량 지도 응답은 이미 검증된 Pydantic 모델을 FastAPI가 다시 순회하지 않게 한다.

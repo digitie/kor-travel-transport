@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, Bus, ChartNoAxesCombined, Database, LogOut, Map, Plane, Route, ShipWheel, TrainFront } from "lucide-react";
+import { Activity, Bus, ChartNoAxesCombined, Database, Fuel, LogOut, Map, Plane, Route, ShipWheel, TrainFront } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
@@ -8,8 +8,9 @@ import { AppMenu } from "@kor-travel/ui";
 
 const items = [
   ["/", "현황", Activity],
-  ["/map", "지도", Map],
-  ["/transport", "교통·유가", Route],
+  ["/map", "교통 지도", Map],
+  ["/fuel", "유가 지도", Fuel],
+  ["/transport", "교통·유가 현황", Route],
   ["/rail", "열차·도시철도", TrainFront],
   ["/ferry", "배편", ShipWheel],
   ["/bus/express", "고속버스", Bus],

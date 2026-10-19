@@ -28,7 +28,7 @@ for (const width of [375, 1440]) for (const entry of sample) {
       return route.fulfill({ json: place() });
     });
     await page.goto("/map");
-    await page.getByRole("button", { name: "목록", exact: true }).click();
+    await page.getByRole("tab", { name: "목록", exact: true }).click();
     await page.locator(".map-place-list button").filter({ hasText: entry.provider_id }).click();
     const editor = page.getByRole("region", { name: "좌표 수동 보정" });
     await expect(editor).toContainText(entry.provider_id);
@@ -85,7 +85,7 @@ test("다른 관리자 보정과 충돌하면 목록을 다시 조회한다", as
   await page.route("**/api/admin/place-locations", (route) => route.fulfill({ status: 409,
     json: { detail: "다른 좌표가 먼저 저장됐습니다. 새로 조회한 뒤 다시 시도해 주세요." } }));
   await page.goto("/map");
-  await page.getByRole("button", { name: "목록", exact: true }).click();
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
   await page.locator(".map-place-list button").filter({ hasText: "PORT91" }).click();
   const editor = page.getByRole("region", { name: "좌표 수동 보정" });
   await editor.getByLabel("위도").fill("34.2345");
