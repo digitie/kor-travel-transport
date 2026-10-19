@@ -1,6 +1,14 @@
 # resume.md — 현재 인수인계
 
 
+## 2026-10-19 M6 은퇴 후 다음 작업
+
+T-TRN-03b는 소스6개 삭제 및 참조 정리로 완료했다. 현재 공식 배포 도구·비밀 보존
+exclude는 유지하며 운영 서비스를 재배포하지 않는다. 다음은 T-TRN-05의 실제 Opinet
+계측과5role memory==memswap 정책 수용이다. daemon OFF는 유지한다.
+
+
+
 ## 2026-10-19 현재 Track2 다음 작업
 
 PR90은 cbbfb840으로 머지되었고 gateway 전환·실제 Map GET15·UI34를 통과했다.

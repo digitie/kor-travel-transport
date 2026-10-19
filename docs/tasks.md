@@ -162,9 +162,6 @@ T-TRN-01은 M을 건드리지 않고(제외), T-TRN-03b가 M 부재를 단언한
       --glob '!deploy/odroid/**' --glob '!scripts/deploy-odroid.ps1' --glob '!scripts/odroid-status.ps1'` 보호용 구 env3개 exact exclude와 해당 보존 회귀를 제외하고 0건(M 제외 — head에서는
       `scripts/deploy-odroid.ps1:6`이 걸리므로 제외 없이는 T-TRN-03b 전에 초록이 될 수 없다). 문서: `docs/runbooks/deployment.md`
       (계획 절 → 현재 절차), `README.md`·`docs/current-state.md` 배포 명령.
-- [ ] **T-TRN-03b** legacy 자산 집합 M 삭제(odroid 배포 게이트 전부 초록 뒤; `docs/current-state.md` 자산 목록의 M 행도 지운다). 수용(효과): M의 6개 경로 부재;
-      `rg -n "deploy-server14|env\.server14" --glob '!docs/**'` 0건(T-TRN-01의 M 제외가 풀린다 — `scripts/deploy-odroid.ps1:6`이
-      그때 함께 사라진다).
 - [ ] **T-TRN-05** compose 메모리·swap 한도(ADR-014 결정 11·B11, 설계 §3.2·실측 반영 #20; 규모 S). 수정 파일: `docker-compose.shared.yml`
       (`backend` `mem_limit: 0.8g`, `dagster-code-server` `mem_limit: 1g`, `frontend`), `docker-compose.transport-admin.yml`
       (`transport-admin-web`, `transport-api-gateway`) — frontend·admin web·gateway는 합 0.3g를 n150 `docker stats` 실측으로 분배;
