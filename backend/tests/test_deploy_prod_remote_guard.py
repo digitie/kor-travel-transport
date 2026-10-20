@@ -346,6 +346,7 @@ def test_release_lock_is_inherited_by_remote_deploy_child(tmp_path: Path) -> Non
 def test_remote_stage_guard_refuses_interrupted_or_superseded_sync(tmp_path: Path) -> None:
     verifier = _SCRIPTS / "verify-release-stage.sh"
     marker = tmp_path / ".staged-release-sha"
+    override = tmp_path / "transport.override.yml"
 
     def verify() -> subprocess.CompletedProcess[str]:
         return subprocess.run(
@@ -359,6 +360,7 @@ def test_remote_stage_guard_refuses_interrupted_or_superseded_sync(tmp_path: Pat
     assert verify().returncode == 2
     marker.write_text("a" * 40 + "\n", encoding="ascii")
     assert verify().returncode == 2
+    override.write_text("services: {}\n", encoding="utf-8")
     marker.write_text(_SHA + "\n", encoding="ascii")
     assert verify().returncode == 0
     marker.unlink()
@@ -395,7 +397,7 @@ def test_admin_deploy_prunes_only_listed_retired_files_absent_from_the_release(t
     (app / retired[1]).symlink_to(target)
 
     result = subprocess.run(["bash", "-c", "set -euo pipefail\n" + _retired_file_prune_block()],
-                            env={**os.environ, "stage": str(stage), "REMOTE_APP_DIR": str(app)}, capture_output=True, text=True)
+                            check=False, env={**os.environ, "stage": str(stage), "REMOTE_APP_DIR": str(app)}, capture_output=True, text=True)
 
     assert result.returncode == 0, result.stderr
     assert not (app / retired[0]).exists()

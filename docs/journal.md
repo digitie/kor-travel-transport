@@ -1,3 +1,13 @@
+## 2026-10-20 — Odroid Dagster override 누락 방지와 location 복구
+
+배포 `rel-5916b0a8` 때 공식 Compose 호출에 `/opt/kor-travel-odroid/transport/transport.override.yml`가 포함되지 않아 code-server가 기본 14005로 시작했다. Manager 공용 workspace/registry는 12306을 참조해 Transport location을 불러오지 못했고 schedule·sensor가 정지한 상태였다. 파일은 호스트에 남아 있었지만 오래된 `codex-local` backend/frontend image pin을 담고 있어 그대로 사용하지 않았다.
+
+저장소 정본 `transport.override.yml`을 image pin 없는 포트 전용 overlay로 추가했다. 배포 스크립트는 Git 추적 상태와 archive 내용, 전송 stage의 regular file 여부를 확인한다. 원격은 지정된 override 경로가 NVMe인지 검증한 뒤 root 소유 0644 임시 파일에서 atomic rename하고, Compose에 매번 명시한다. 이미지 build 전에 렌더된 command와 healthcheck가 loopback 12306, `kor-travel-transport`, health RPC를 사용하는지 검사한다. release stage 검증도 overlay 누락을 거부한다. 기본 `docker-compose.shared.yml`의 14005는 기존 n150 기본값으로 보존한다.
+
+최초 복구 시 stale override를 사용한 Compose 호출이 `migrate`를 `latest` 이미지로 다시 만들었고, 해당 이미지가 Alembic revision `0026_transport_map_indexes`를 몰라 exit 255로 실패했다. 이를 확인한 뒤 새 overlay와 검증된 backend image `kor-travel-transport-backend:rel-5916b0a8bde7`을 지정하고 `--no-deps --no-build`로 code-server만 다시 올렸다. DB migration은 실행하지 않았다. `/health`는 원래 release SHA `5916b0a8bde7057dd108680345051131cfe29dc3`로 유지된다. code-server는 12306에서 healthy이며 Manager GraphQL에 `RepositoryLocation`으로 돌아왔고 schedules 12/12와 sensors 5/5가 `RUNNING`이다. 운영 DB schema 변경은 없다.
+
+집중 WSL 테스트 57 PASS, 대상 Ruff 검사와 세 배포 shell의 `bash -n`이 통과했다. 전체 backend·frontend 테스트는 이번 배포 스크립트 변경 범위에 포함하지 않았다. Draft PR/CI, James·Popper 독립 리뷰, 공개 UI 확인, merged source를 이용한 공식 배포는 후속 게이트다. 초기 stale-overlay `migrate` 실패를 성공으로 합산하지 않는다.
+
 ## 2026-10-19 — 교통/유가 지도 분리 및 viewport 응답 축약
 
 `/map`에서 주유소를 제거하고 `/fuel`을 주유소·유가 전용 지도로 분리했다. 교통 페이지에는 철도역·항구·버스터미널·공항·휴게소·돌발 필터를 제공하며, 종류 하나만 남겨도 요청이 해당 종류로 축소된다. Map Feature 스타일의 지도/목록 탭과 viewport 상태 표시를 적용했다.

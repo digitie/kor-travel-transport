@@ -131,6 +131,8 @@ ADR-014 "후속" 교차 저장소 계약) 머지 뒤; T-TRN-02·05는 소유자 
 `docker-compose.odroid.yml`·`remote-deploy.sh`·`deploy-odroid.ps1` 셋; 나머지는 n150 전용 설치 스크립트·legacy 상태 프로브·README) —
 T-TRN-01은 M을 건드리지 않고(제외), T-TRN-03b가 M 부재를 단언한다.
 
+> 2026-10-20 Dagster override 운영 장애 후속: release `5916b0a8`의 배포에서 Compose가 tracked override를 읽지 않아 14005로 기동했고 Manager registry의 12306 location이 unavailable 상태가 됐다. 포트 전용 overlay와 archive/stage/NVMe atomic install/Compose effect guard를 추가했다. 현 운영 code-server·location·12 schedules·5 sensors는 복구됐다. 테스트·review·live UI·공식 merged-release 배포가 끝나면 이 후속을 `tasks-done.md`로 옮긴다.
+
 > 2026-10-17 PR84 이번 범위 수용: 필수 --host/Manager530 addr 효과/.env.prod source 정렬, 독립 A/C 리뷰, af8a source CI 6 SUCCESS·live 2 SKIP, WSL 배포 계약 95 PASS와 로컬 Docker 95 PASS·0 SKIP를 확인했다. root는 운영 tracked source를 af8a로 전진시키고 중앙 env와 동일한 .env.prod(0600/UID1001), 실제 승인/비로컬/env 없음 3종 효과 검사 및 기존 34개 live UI 기준 34 PASS를 확인했다. 77개 컨테이너·16 running·보호 파일11개·daemon OFF를 보존했고 build/recreate는 0이다. Manager530 제품의 설치 수용과 PR530의 머지는 별개이며 PR530은 아직 미머지다. 전체 ARM 빌드·새 번들의 env 전달 재현·첫 전체 cutover는 NOT_RUN이므로 T-TRN-01/02 전체 체크와 T-TRN-03 이후 항목은 유지한다. 자세한 실패 이력·범위는 journal 같은 날짜.
 
 - [ ] **T-TRN-01** 배포 스크립트 두 개 개명 + `--host <addr>` 필수(기본값·host 목록 파일·스크립트 안 키→주소 표 없음):

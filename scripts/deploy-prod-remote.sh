@@ -97,6 +97,9 @@ fi
 RUNTIME_ENV_FILE="$(mktemp "${REMOTE_APP_DIR}/.env.prod.runtime.XXXXXX")"
 cleanup_remote() {
   rm -f -- "${RUNTIME_ENV_FILE}"
+  if [[ -n "${TRANSPORT_OVERRIDE_TMP:-}" ]]; then
+    sudo -n rm -f -- "${TRANSPORT_OVERRIDE_TMP}" || true
+  fi
 }
 trap cleanup_remote EXIT
 awk '!/^(RELEASE_SHA|BACKEND_RUNTIME_IMAGE)=/' "${REMOTE_ENV_FILE}" > "${RUNTIME_ENV_FILE}"
@@ -127,9 +130,46 @@ if [[ "${DEPLOY_MODE}" != "deploy" && "${DEPLOY_MODE}" != "prepare-shared-dagste
   exit 2
 fi
 CUTOVER_ENV_FILE="${REMOTE_APP_DIR}/.env.prod.shared-dagster-cutover"
+TRANSPORT_OVERRIDE_SOURCE="${REMOTE_APP_DIR}/transport.override.yml"
+TRANSPORT_OVERRIDE_DIR="/opt/kor-travel-odroid/transport"
+TRANSPORT_OVERRIDE_FILE="${TRANSPORT_OVERRIDE_DIR}/transport.override.yml"
+TRANSPORT_OVERRIDE_TMP=""
 
 compose() {
-  docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${RUNTIME_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml "$@"
+  docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${RUNTIME_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml -f "${TRANSPORT_OVERRIDE_FILE}" "$@"
+}
+
+install_transport_override() {
+  if [[ ! -f "${TRANSPORT_OVERRIDE_SOURCE}" || -L "${TRANSPORT_OVERRIDE_SOURCE}" ]]; then
+    echo "Refusing production deployment: staged release is missing a regular transport.override.yml." >&2
+    return 2
+  fi
+  if [[ ! -d "${TRANSPORT_OVERRIDE_DIR}" || -L "${TRANSPORT_OVERRIDE_DIR}" ]] \
+    || ! sudo -n test -d "${TRANSPORT_OVERRIDE_DIR}" \
+    || sudo -n test -L "${TRANSPORT_OVERRIDE_FILE}"; then
+    echo "Refusing production deployment: the approved Odroid transport override directory/file is unavailable or unsafe." >&2
+    return 2
+  fi
+  local mount_source
+  mount_source="$(findmnt -T "${TRANSPORT_OVERRIDE_DIR}" -n -o SOURCE)" || {
+    echo "Refusing production deployment: cannot verify the transport override storage device." >&2
+    return 2
+  }
+  if [[ "${mount_source}" != /dev/nvme* ]]; then
+    echo "Refusing production deployment: transport.override.yml must be stored on NVMe." >&2
+    return 2
+  fi
+  TRANSPORT_OVERRIDE_TMP="${TRANSPORT_OVERRIDE_DIR}/.transport.override.yml.${CANDIDATE_SHA:0:12}.$$"
+  if sudo -n test -e "${TRANSPORT_OVERRIDE_TMP}" || sudo -n test -L "${TRANSPORT_OVERRIDE_TMP}"; then
+    echo "Refusing production deployment: a transport override staging file already exists." >&2
+    return 2
+  fi
+  sudo -n install -o root -g root -m 0644 -- "${TRANSPORT_OVERRIDE_SOURCE}" "${TRANSPORT_OVERRIDE_TMP}" \
+    && sudo -n mv -fT -- "${TRANSPORT_OVERRIDE_TMP}" "${TRANSPORT_OVERRIDE_FILE}" || {
+      echo "Refusing production deployment: could not atomically install transport.override.yml." >&2
+      return 2
+    }
+  TRANSPORT_OVERRIDE_TMP=""
 }
 
 shared_dagster_graphql_url="http://127.0.0.1:11002/graphql"
@@ -147,7 +187,11 @@ database_at_release_head() {
   compose run --rm --no-deps -T migrate alembic current 2>/dev/null | grep -q '(head)'
 }
 
+# The manager workspace and registry pin this location to 12306. Validate the tracked overlay and its
+# rendered effect before any image build or container replacement; a missing overlay cannot fall back to 14005.
+install_transport_override
 compose config -q
+compose config --format json | python3 ./scripts/verify-transport-override.py
 # 이미지를 만드는 동안에는 기존 수집기를 계속 운영한다.
 compose build
 
