@@ -202,6 +202,27 @@ test("교통 지도 안내는 짧게 지도 아래에 표시한다", async ({ pa
   await expect(guidance.getByText(/항구 일부만 표시/)).toBeVisible();
 });
 
+test("지도 조회 상태는 단계 요약 옆에 간결하게 표시한다", async ({ page }) => {
+  let finishRequest: (() => void) | undefined;
+  const requestGate = new Promise<void>((resolve) => { finishRequest = resolve; });
+  await page.route("**/api/transport/transport/features/places?**", async (route) => {
+    await requestGate;
+    return route.fulfill({ json: {
+      generated_at: "2026-09-30T09:00:00Z", total: 0, kind_totals: {}, items: [], available_sources: [],
+    } });
+  });
+  await login(page);
+  await page.goto("/map");
+  const status = page.locator(".map-workbench .mb-3.flex.items-center.justify-between").getByRole("status");
+  try {
+    await expect(status).toHaveText(/^\d+단계 · (?:요약 표시|\d+곳) · 조회 중…$/);
+    await expect(page.locator(".map-feedback:not(.map-guidance)").getByText(/조회 중/)).toHaveCount(0);
+  } finally {
+    finishRequest?.();
+  }
+  await expect(status).not.toContainText("조회 중");
+});
+
 test("로그아웃 처리 중 늦게 저장된 통계 캐시도 로그인 화면에서 제거한다", async ({ page }) => {
   await login(page);
   await expect(page.getByRole("heading", { name: "교통정보 찾아보기" })).toBeVisible();
