@@ -1,3 +1,33 @@
+## 2026-10-21 — 회수 sensor tick 예산·정체 경보와 서버 statement_timeout (Map ADR-112 교훈)
+
+브랜치 `feat/recovery-sensor-budget-stall`. 소유자 요청으로 Map ADR-112의 교훈을 odroid tenant에 적용했다.
+
+- **Common 재핀**: 옛 pin `89291f3`은 common main의 조상이 아니었다. main `e746e4b8`(6c275a04의
+  `reconciliation_sensor` 예산·`on_stall`·`stall`·`pg_errors` + #43 시계 역행 리셋)로 옮겼다.
+  `http_health.py`·`build_bytecode.py` digest는 그대로다.
+- **회수 sensor**: `transport_worker_recovery`가 매 tick cursor 0부터 다시 읽고 tick 전체 상한·정체
+  경보가 없었다. common `reconciliation_sensor(budget_seconds=45, on_stall=...)`로 바꿨다. keyset 위치는
+  code-server 프로세스(`ScanPosition`)에 두고(cursor는 정체 시계 소유), 남은 예산이 한 단계(25초)보다
+  적으면 위치를 저장하고 끝낸다. metadata 장애는 조용한 0건 대신 `RecoveryMetadataUnavailable`로
+  정체 시계가 센다. 경보는 경보 테이블·채널이 없어 `transport_worker_recovery.stalled` 한 줄을 sensor
+  tick 로그와 프로세스 로그에 남긴다.
+- **incident 대응**: 2026-09-27 정지는 dequeue된 실행이 `StartRun` timeout으로 실패해 새
+  `CollectionRun`이 생기지 않는 모양이었다. 회수만 보는 sensor는 이를 못 본다. 공항·고속도로 5분
+  수집의 마지막 시작이 20분보다 오래되면 `CollectionStalled`로 정체 시계에 넣어 마지막 시작 뒤 약
+  35분에 경보한다. 단 code-server gRPC가 완전히 멈춘 구간(11:53Z~)에는 sensor 평가도 같은 프로세스라
+  경보할 주체가 없다. 그 구간의 회복 경로는 이미 있는 code-server probe의 PID 1 종료(연속 timeout
+  300초, 실행 중 run이 있으면 7200초)다. runbook에 이 한계를 적었다.
+- **서버 statement_timeout**: runbook은 "statement 60초"라 했지만 수집 엔진은 클라이언트
+  `command_timeout`만 있었고 API 엔진은 상한이 없었다. 수집 60초(클라이언트와 같은 값이라 지금
+  통과하는 문장을 새로 끊지 않는다), API 120초(최장 실측 읽기 2.8초, 요청 경로 25~30초 deadline),
+  회수 sensor 엔진 5초(접속·command 포함)를 `server_settings`로 둔다.
+- **리뷰**: 독립 적대 리뷰 1명(읽기 전용) — P0/P1 없음, P2 4건. (1) 테스트가 trigger 상수를 자기
+  자신으로 검증 → 실제 op·서비스 경로로 저장 trigger를 대조하는 테스트 추가, 상수 단일화.
+  (2) `context.log`만으로는 UI tick 로그에만 남음 → logger `app.dagster.recovery`에도 기록.
+  (3) 단계 예약이 접속·COMMIT을 빼 과소 → 5초 상한 + 예약 25초 + 예산 45초. (4) 위치를 DB가 아닌
+  프로세스에 둠 → 누락이 없는 근거와 함께 runbook에 명시.
+- 검증은 아래 "검증" 줄과 PR 본문을 따른다. 머지·배포하지 않았다(odroid 배포는 codex 소유).
+
 ## 2026-10-20 — Odroid Dagster override 누락 방지와 location 복구
 
 배포 `rel-5916b0a8` 때 공식 Compose 호출에 `/opt/kor-travel-odroid/transport/transport.override.yml`가 포함되지 않아 code-server가 기본 14005로 시작했다. Manager 공용 workspace/registry는 12306을 참조해 Transport location을 불러오지 못했고 schedule·sensor가 정지한 상태였다. 파일은 호스트에 남아 있었지만 오래된 `codex-local` backend/frontend image pin을 담고 있어 그대로 사용하지 않았다.
