@@ -307,12 +307,11 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
       </FieldGroup>
     </div> : null}
     <div className="mb-3 flex items-center justify-between"><TabsList aria-label="장소 보기"><TabsTrigger value="map">지도</TabsTrigger><TabsTrigger value="list">목록</TabsTrigger></TabsList><span className="text-sm text-muted-foreground" role="status">{Math.floor(zoom)}단계 · {serverClustered ? "요약 표시" : `${visiblePoints.length}곳`}{pending.length ? " · 조회 중…" : ""}</span></div>
-    <div className="map-feedback" role="status">
+    {cluster || failed.length > 0 || (basemap.basemapFailed && view === "map") ? <div className="map-feedback" role="status">
       {cluster ? <span>밀도별 묶음</span> : null}
       {failed.length ? <p className="error">{failed.map(placeKindLabel).join("·")} 조회 실패 <Button variant="outline" type="button" onClick={() => setReload((value) => value + 1)}>다시 조회</Button></p> : null}
       {basemap.basemapFailed && view === "map" ? <p className="error">VWorld 지도 타일을 불러오지 못했습니다. 목록 보기에서 장소를 확인할 수 있습니다.</p> : null}
-      {!items.length && !serverClusters.length && !pending.length ? <p>표시할 장소가 없습니다. 종류·출처·검색 조건을 확인해 주세요.</p> : null}
-    </div>
+    </div> : null}
     <TabsContent className="min-h-0" value="map"><div className="map-primary" ref={mapContainer}><VWorldMapView apiKey={VWORLD_KEY} center={[127.8, 36.2]} zoom={7} minZoom={5}
         className="transport-map-canvas" layerType="Base" navigation={false} geolocate={false} scale
         loadingSkeleton={<p className="loading">지도를 준비하는 중입니다…</p>} fallback={(info) => <MapUnavailable info={info} />}
