@@ -30,6 +30,11 @@ DSN의 loopback11000/DB 이름, 공용 Dagster 버전, location absent 거절·P
 
 앱 `/home/digitie/apps/kor-travel-transport`와 중앙 환경
 `/opt/kor-travel-odroid/transport.env`·Manager override를 함께 확인한다.
+Dagster code-server의 Odroid 포트는 공용 workspace/Manager registry와 같은 12306이다. 정본
+[`transport.override.yml`](../../transport.override.yml)은 release archive에 포함되며, 배포 도구가
+`/opt/kor-travel-odroid/transport/transport.override.yml`에 NVMe 저장 여부를 확인해 원자적으로 설치하고
+Compose에 명시적으로 추가한다. 렌더된 command와 healthcheck가 모두 12306인지 검증하기 전에는 이미지 빌드나
+컨테이너 교체를 시작하지 않는다. 기본 compose의 14005는 n150 호환 기본값으로만 유지한다.
 관리자 배포는 같은 project의 gateway/admin 두 역할만 선택하며 다른 역할을 제거하지 않는다.
 소비자 export는 GET과 기존 승인 IP/CIDR에 한정하고 빈 설정은 모두 거부한다.
 기존 env 보호 exclude를 지우거나 HAProxy를 직접 수정하지 않는다. daemon OFF를 유지한다.

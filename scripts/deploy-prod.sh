@@ -16,6 +16,13 @@ DEPLOY_STAGE_ONLY="${DEPLOY_STAGE_ONLY:-false}"
 DEPLOY_MODE="${DEPLOY_MODE:-deploy}"
 CANDIDATE_SHA="$(git rev-parse HEAD)"
 
+# Odroid's shared Dagster workspace expects the transport location on gRPC 12306.
+# Keep the overlay tracked so git archive cannot silently omit it like a local runtime file.
+if ! git ls-files --error-unmatch -- transport.override.yml >/dev/null 2>&1; then
+  echo "Refusing deployment: transport.override.yml must be tracked in the release." >&2
+  exit 2
+fi
+
 if [[ ! "${CANDIDATE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
   echo "Refusing deployment: unable to resolve a full git candidate SHA." >&2
   exit 2
@@ -62,6 +69,10 @@ REMOTE_ARCHIVE="${REMOTE_STAGE}/archive.tgz"
 
 
 git archive --format=tar.gz --output="${ARCHIVE_PATH}" HEAD
+if ! tar -tzf "${ARCHIVE_PATH}" | grep -x 'transport.override.yml' >/dev/null; then
+  echo "Refusing deployment: release archive does not contain transport.override.yml." >&2
+  exit 2
+fi
 
 ssh "${REMOTE_USER}@${REMOTE_HOST}" "mkdir -p '${REMOTE_APP_DIR}'"
 scp "${ARCHIVE_PATH}" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_ARCHIVE}"
@@ -92,6 +103,10 @@ cleanup_remote() {
 }
 trap cleanup_remote EXIT
 tar -xzf "${REMOTE_ARCHIVE}" -C "${REMOTE_SOURCE}"
+if [[ ! -f "${REMOTE_SOURCE}/transport.override.yml" || -L "${REMOTE_SOURCE}/transport.override.yml" ]]; then
+  echo "Refusing deployment: received release archive is missing a regular transport.override.yml." >&2
+  exit 2
+fi
 # 이 receipt는 현재 배포된 SHA와 달리, 공유 checkout의 복사가 끝났다는 증거다.
 # 복사 중 끊기면 이전 receipt로 혼합 소스를 배포하지 못하도록 먼저 무효화한다.
 STAGE_MARKER="${REMOTE_APP_DIR}/.staged-release-sha"

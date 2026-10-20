@@ -1,6 +1,23 @@
 # resume.md — 현재 인수인계
 
 
+## 2026-10-20 Odroid Dagster override 누락 복구
+
+Transport release `rel-5916b0a8` 배포에서 공식 Compose 호출에
+`/opt/kor-travel-odroid/transport/transport.override.yml`가 빠져 code-server가
+기본 14005로 뜨고 Manager workspace가 `kor-travel-transport` location을 불러오지
+못했다. 포트 전용 tracked overlay를 추가하고 archive·stage·NVMe 원자 설치·최종 Compose
+command/healthcheck 12306 효과 검사를 배포 도구에 넣었다. 기존 앱 release의 override에는
+오래된 `codex-local` image pin이 있어 재사용하지 않았다.
+
+운영은 release SHA `5916b0a8bde7057dd108680345051131cfe29dc3`를 유지해 code-server만
+12306으로 복구했다. Dagster location은 `RepositoryLocation`으로 로드되고 12 schedules와
+5 sensors가 모두 `RUNNING`이다. 집중 WSL 검증은 57 PASS, Ruff·shell syntax도 통과했다.
+Draft PR, CI, 독립 적대 리뷰 2건, 공개 UI 확인, 공식 merged-release 배포가 남아 있다.
+복구 중 stale override로 `latest` migrate가 실패한 기록이 있으나 DB migration은 재실행하지
+않았고, 현재 app `/health` release SHA와 DB schema는 그대로다. 상세는 다음 journal 항목을 따른다.
+
+
 ## 2026-10-19 Transport 교통/유가 지도 분리
 
 `codex/transport-map-viewport-20261019`에서 `/map`은 교통 6종만, `/fuel`은 주유소·유가만 조회하도록 분리했다. Map Feature 구조의 필터 툴바·지도/목록 탭·viewport 정보를 반영했다. API는 bbox·zoom 일괄 요청, debounce/양자화, 20초·8개 응답 캐시, 저배율 서버 셀 요약, 좌표/돌발 인덱스 migration 0026을 사용한다.

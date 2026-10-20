@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -85,6 +85,7 @@ name=Path(sys.argv[0]).name
 with open(os.environ['CALLS'],'a')as f:f.write(json.dumps([name,*sys.argv[1:]])+'\n')
 if name=='git':
  if sys.argv[1:]==['rev-parse','HEAD']:print('a'*40);raise SystemExit(0)
+ if sys.argv[1:]==['ls-files','--error-unmatch','--','transport.override.yml']:print('transport.override.yml');raise SystemExit(0)
  raise SystemExit(97)
 if name=='ssh':
  args=shlex.split(sys.argv[2])
@@ -126,6 +127,7 @@ def run_entry(tmp_path, script, args, **changes):
         capture_output=True,
         text=True,
         timeout=10,
+        check=False,
     )
     return result, [
         json.loads(line) for line in calls.read_text().splitlines()
