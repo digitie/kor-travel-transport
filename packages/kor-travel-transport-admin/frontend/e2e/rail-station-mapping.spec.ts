@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import { expect, test } from "@playwright/test";
 
 const initial = {
@@ -61,7 +63,11 @@ test("역명 차이를 관리자 수동 매핑하고 JSON으로 내보낸다", a
 
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "JSON 내보내기" }).click();
-  expect((await download).suggestedFilename()).toBe("kric-rail-station-mappings.json");
+  const file = await download;
+  expect(file.suggestedFilename()).toBe("kric-rail-station-mappings.json");
+  const exported = JSON.parse(await readFile((await file.path())!, "utf8")) as Record<string, unknown>;
+  expect(exported).toMatchObject({ schema_version: 1, stations: [{ operator_code: "S", line_code: "1",
+    station_code: "0150", station_name: "서울역" }], manual_mappings: [{ rail_station_identity_key: "rail_station:kric:0150" }] });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
