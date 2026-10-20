@@ -1,7 +1,6 @@
 from types import SimpleNamespace
 
 import pytest
-
 from app.services.rail_station_mapping import (
     automatic_station_mappings,
     catalog_digest,
