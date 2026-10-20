@@ -47,7 +47,7 @@ test("역명 차이를 관리자 수동 매핑하고 JSON으로 내보낸다", a
     return route.fulfill({ json: updated });
   });
 
-  await page.goto("/rail/mapping");
+  await page.goto("/rail/mapping", { waitUntil: "domcontentloaded" });
   const editor = page.getByRole("region", { name: "서울역 역 매핑 편집" });
   await expect(editor).toBeVisible();
   await page.getByLabel("연결할 KRIC 기준 역 검색").fill("서울역");
@@ -77,7 +77,7 @@ test("다른 변경이 먼저 저장되면 오래된 매핑을 덮지 않는다"
     if (route.request().method() === "GET") return route.fulfill({ json: initial });
     return route.fulfill({ status: 409, json: { detail: "역 코드나 매핑이 변경됐습니다. 새로고침 후 다시 저장해 주세요." } });
   });
-  await page.goto("/rail/mapping");
+  await page.goto("/rail/mapping", { waitUntil: "domcontentloaded" });
   await page.getByLabel("연결할 KRIC 기준 역 검색").fill("서울역");
   await page.getByRole("listbox", { name: "역 검색 결과" }).getByRole("option", { name: /서울역/ }).click();
   await page.getByRole("button", { name: "수동으로 연결" }).click();
