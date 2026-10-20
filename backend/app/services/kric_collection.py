@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import heapq
 import json
-from collections import Counter, defaultdict
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -16,7 +15,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.time_utils import now_utc, to_seoul
-from app.models import CollectionRun, KricStationCode, KricTimetableSnapshot, RailServiceDay, RailStationReference, RawApiResponse
+from app.models import (
+    CollectionRun, KricStationCode, KricStationMappingRegistry, KricTimetableSnapshot,
+    RailServiceDay, RailStationReference, RawApiResponse,
+)
+from app.services.rail_station_mapping import (
+    automatic_station_mappings,
+    catalog_digest,
+    effective_station_mappings,
+    station_catalog,
+)
 from app.services.holidays import HolidayService
 
 TRIGGER = "dagster_kric_timetable"
@@ -142,26 +150,48 @@ class KricTimetableCollectionService:
             raise ValueError("KRIC station code file is empty, incomplete or has duplicate identities")
         if any(not all((row.rail_operator_name, row.line_name, row.station_name)) for row in codes):
             raise ValueError("KRIC station code file has incomplete names")
-        places: dict[tuple[str | None, str | None, str | None], list[int]] = defaultdict(list)
-        for place in (await session.scalars(select(RailStationReference).where(RailStationReference.source == "kric_public_file"))).all():
-            places[(place.rail_operator_name, place.operating_line_name, place.station_name)].append(place.id)
-        names = Counter((row.rail_operator_name, row.line_name, row.station_name) for row in codes)
-        old = {(row.operator_code, row.line_code, row.station_code): row for row in (await session.scalars(select(KricStationCode))).all()}
-        # 명칭 변경·중복에 따른 이전 연결을 먼저 해제한다. 이름 하나만으로 연결하지 않는다.
+        place_rows = (await session.scalars(
+            select(RailStationReference).where(RailStationReference.source == "kric_public_file")
+        )).all()
+        registry = await session.scalar(
+            select(KricStationMappingRegistry).where(KricStationMappingRegistry.id == 1).with_for_update()
+        )
+        if registry is None:
+            registry = KricStationMappingRegistry(
+                id=1, catalog_json=[], automatic_mappings_json=[], manual_mappings_json=[], updated_at=now_utc(),
+            )
+            session.add(registry)
+        catalog = station_catalog(codes)
+        automatic = automatic_station_mappings(codes, place_rows)
+        effective = effective_station_mappings(
+            codes, place_rows, automatic, registry.manual_mappings_json or [],
+        )
+        old = {
+            (row.operator_code, row.line_code, row.station_code): row
+            for row in (await session.scalars(select(KricStationCode))).all()
+        }
+        # KRIC 코드 목록 JSON과 수동 연결 JSON을 함께 저장한다. 새 코드 목록이 올 때
+        # 관리자가 고친 매핑은 유지하고, 유일한 코드·역번호·역명 대조만 자동 적용한다.
         await session.execute(update(KricStationCode).values(active=False, rail_station_id=None))
         result = []
         seen_at = now_utc()
+        place_ids = {str(place.identity_key): place.id for place in place_rows}
         for item, key in zip(codes, keys, strict=True):
             name = (item.rail_operator_name, item.line_name, item.station_name)
-            matches = places.get(name, [])
             station = old.get(key)
             if station is None:
                 station = KricStationCode(operator_code=key[0], line_code=key[1], station_code=key[2])
                 session.add(station)
             station.operator_name, station.line_name, station.station_name = name
-            station.rail_station_id = matches[0] if len(matches) == 1 and names[name] == 1 else None
+            resolved = effective.get(key)
+            station.rail_station_id = place_ids.get(resolved[0]) if resolved else None
             station.active, station.last_seen_at = True, seen_at
             result.append(station)
+        registry.catalog_json = catalog
+        registry.automatic_mappings_json = automatic
+        registry.catalog_sha256 = catalog_digest(catalog)
+        registry.catalog_updated_at = seen_at
+        registry.updated_at = seen_at
         await session.flush()
         return result
 

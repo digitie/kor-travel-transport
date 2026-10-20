@@ -59,6 +59,8 @@ from app.models import (
     HighwayIncidentSnapshot,
     HighwayTrafficFiveMinuteStatistic,
     HighwayTrafficSnapshot,
+    KricStationCode,
+    KricStationMappingRegistry,
     ParkingFeeRule,
     ParkingLot,
     ParkingSnapshot,
@@ -102,6 +104,11 @@ from app.schemas import (
     HolidayPatternResponse,
     HolidaySummaryResponse,
     ManualPlaceLocationRequest,
+    KricStationMappingCode,
+    KricStationManualMapping,
+    KricStationPlaceOption,
+    KricStationMappingResponse,
+    KricStationMappingSaveRequest,
     HourlyBucket,
     ParkingCurrentResponse,
     ParkingHistoryResponse,
@@ -137,6 +144,16 @@ from app.services.analytics import (
     detect_threshold_events,
 )
 from app.services.provider_status import provider_status
+from app.services.rail_station_mapping import (
+    catalog_digest,
+    effective_station_mappings,
+    lock_rail_station_reference_catalog,
+    mapping_revision,
+    provider_key,
+    reference_catalog_digest,
+    station_catalog,
+    validate_manual_mappings,
+)
 from app.services.bus_timetable_storage import save_bus_timetable, stored_bus_timetable
 from app.services.rail_timetable import stored_rail_timetables
 from app.services.transport_map_clusters import (
@@ -796,6 +813,164 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     router = APIRouter()
 
     from app.services.address_refresh import address_summary
+
+    async def load_kric_station_mapping(session: AsyncSession):
+        registry = await session.get(KricStationMappingRegistry, 1)
+        codes = (await session.scalars(
+            select(KricStationCode)
+            .where(KricStationCode.active.is_(True))
+            .order_by(KricStationCode.operator_code, KricStationCode.line_code, KricStationCode.station_code)
+        )).all()
+        places = (await session.scalars(
+            select(RailStationReference)
+            .where(RailStationReference.source == "kric_public_file")
+            .order_by(RailStationReference.rail_operator_name, RailStationReference.operating_line_name,
+                      RailStationReference.station_name, RailStationReference.identity_key)
+        )).all()
+        catalog = (registry.catalog_json if registry and registry.catalog_json else station_catalog(codes))
+        catalog_sha256 = (registry.catalog_sha256 if registry and registry.catalog_sha256 else catalog_digest(catalog))
+        automatic = list(registry.automatic_mappings_json or []) if registry else []
+        if codes and not automatic:
+            from app.services.rail_station_mapping import automatic_station_mappings
+            automatic = automatic_station_mappings(codes, places)
+        manual_raw = list(registry.manual_mappings_json or []) if registry else []
+        effective = effective_station_mappings(codes, places, automatic, manual_raw)
+        return registry, codes, places, catalog_sha256, automatic, manual_raw, effective
+
+    @router.get(
+        "/transport/admin/rail-station-mappings",
+        response_model=KricStationMappingResponse,
+        dependencies=[Depends(require_admin_token)],
+    )
+    async def get_rail_station_mappings(session: AsyncSession = Depends(get_db)) -> KricStationMappingResponse:
+        registry, codes, places, catalog_sha256, automatic, manual_raw, effective = await load_kric_station_mapping(session)
+        catalog_keys = {provider_key(row) for row in codes}
+        place_groups: dict[str, list[RailStationReference]] = {}
+        for place in places:
+            place_groups.setdefault(place.identity_key, []).append(place)
+        visible_manual: list[dict[str, str]] = []
+        for item in manual_raw:
+            try:
+                valid = validate_manual_mappings([item], catalog_keys)
+            except (TypeError, ValueError):
+                continue
+            if valid and len(place_groups.get(valid[0]["rail_station_identity_key"], [])) == 1:
+                visible_manual.extend(valid)
+        auto_by_key = {
+            (item["operator_code"], item["line_code"], item["station_code"]): item
+            for item in automatic
+        }
+        place_by_identity = {place.identity_key: place for place in places}
+        stations = []
+        for row in codes:
+            key = provider_key(row)
+            linked = effective.get(key)
+            method = "unmatched"
+            target = linked[0] if linked else None
+            if linked and linked[1] == "manual":
+                method = "manual"
+            elif linked:
+                method = auto_by_key.get(key, {}).get("match_method", "exact_identity")
+            linked_place = place_by_identity.get(target) if target else None
+            stations.append(KricStationMappingCode(
+                operator_code=row.operator_code,
+                operator_name=row.operator_name,
+                line_code=row.line_code,
+                line_name=row.line_name,
+                station_code=row.station_code,
+                station_name=row.station_name,
+                rail_station_id=linked_place.id if linked_place else None,
+                rail_station_identity_key=target,
+                match_method=method,
+            ))
+        response_manual = [
+            KricStationManualMapping(**item) for item in sorted(
+                visible_manual,
+                key=lambda item: (item["operator_code"], item["line_code"], item["station_code"]),
+            )
+        ]
+        return KricStationMappingResponse(
+            revision=mapping_revision(
+                catalog_sha256, automatic, manual_raw, reference_catalog_digest(places),
+            ),
+            catalog_sha256=catalog_sha256,
+            catalog_updated_at=registry.catalog_updated_at if registry else None,
+            mappings_updated_at=registry.mappings_updated_at if registry else None,
+            station_count=len(codes),
+            mapped_count=len(effective),
+            automatic_mapped_count=sum(1 for value in effective.values() if value[1] == "automatic"),
+            manual_mapped_count=sum(1 for value in effective.values() if value[1] == "manual"),
+            unmatched_count=len(codes) - len(effective),
+            stations=stations,
+            places=[KricStationPlaceOption(
+                id=place.id, identity_key=place.identity_key,
+                operator_name=place.rail_operator_name, line_name=place.operating_line_name,
+                station_number=place.station_number, station_name=place.station_name,
+            ) for place in places],
+            mappings=response_manual,
+        )
+
+    @router.post(
+        "/transport/admin/rail-station-mappings",
+        response_model=KricStationMappingResponse,
+        dependencies=[Depends(require_admin_token)],
+    )
+    async def save_rail_station_mappings(
+        payload: KricStationMappingSaveRequest,
+        session: AsyncSession = Depends(get_db),
+    ) -> KricStationMappingResponse:
+        await lock_rail_station_reference_catalog(session)
+        registry = await session.scalar(
+            select(KricStationMappingRegistry)
+            .where(KricStationMappingRegistry.id == 1)
+            .with_for_update()
+        )
+        if registry is None:
+            registry = KricStationMappingRegistry(
+                id=1, catalog_json=[], automatic_mappings_json=[], manual_mappings_json=[], updated_at=now_utc(),
+            )
+            session.add(registry)
+            await session.flush()
+        registry, codes, places, catalog_sha256, automatic, manual_raw, _ = await load_kric_station_mapping(session)
+        current_revision = mapping_revision(
+            catalog_sha256, automatic, manual_raw, reference_catalog_digest(places),
+        )
+        if payload.expected_revision != current_revision:
+            raise HTTPException(status_code=409, detail="역 코드나 매핑이 변경됐습니다. 새로고침 후 다시 저장해 주세요.")
+        catalog_keys = {provider_key(row) for row in codes}
+        try:
+            mappings = validate_manual_mappings(
+                [item.model_dump() for item in payload.mappings], catalog_keys,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        place_groups: dict[str, list[RailStationReference]] = {}
+        for place in places:
+            place_groups.setdefault(place.identity_key, []).append(place)
+        if any(len(place_groups.get(item["rail_station_identity_key"], [])) != 1 for item in mappings):
+            raise HTTPException(status_code=422, detail="현재 KRIC 기준정보에 없는 역입니다.")
+
+        for row in codes:
+            row.rail_station_id = None
+        await session.flush()  # unique rail_station_id를 안전하게 재배치한다.
+        effective = effective_station_mappings(codes, places, automatic, mappings)
+        place_ids = {place.identity_key: place.id for place in places}
+        for row in codes:
+            key = provider_key(row)
+            linked = effective.get(key)
+            row.rail_station_id = place_ids.get(linked[0]) if linked else None
+        registry.manual_mappings_json = mappings
+        changed_at = now_utc()
+        if not registry.catalog_json:
+            registry.catalog_json = station_catalog(codes)
+            registry.catalog_sha256 = catalog_digest(registry.catalog_json)
+            registry.catalog_updated_at = changed_at
+        if not registry.automatic_mappings_json:
+            registry.automatic_mappings_json = automatic
+        registry.mappings_updated_at = changed_at
+        registry.updated_at = changed_at
+        await session.commit()
+        return await get_rail_station_mappings(session)
 
     @router.get("/transport/admin/address-refresh", response_model=AddressRefreshSummary,
                 dependencies=[Depends(require_admin_token)])

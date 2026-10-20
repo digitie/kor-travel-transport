@@ -1,5 +1,14 @@
 # resume.md — 현재 인수인계
 
+## 2026-10-20 KRIC 역 코드·이름 매핑 (진행 중)
+
+`codex/rail-station-code-mapping`에서 KRIC 자료실 역 코드와 위치 파일을 번호·역명으로
+보수적으로 연결하고, 전체 코드/이름과 자동·수동 연결을 DB JSONB로 저장한다. 관리자
+`/rail/mapping`에서 미연결 역 검색, 수동 연결/해제, JSON 내보내기를 제공한다. 표본 1,108개 중
+자동 연결 923개, 미연결 185개 기준을 만들었다. backend API, Alembic 0027, BFF, UI와 집중
+테스트를 구현 중이다. 다음은 WSL backend/frontend 테스트, OpenAPI/docs 갱신, 전체 테스트,
+Draft PR, CI와 독립 적대 리뷰 2명, live UI E2E 순이다. 제품 변경은 아직 merge/deploy하지 않았다.
+
 
 ## 2026-10-20 Odroid Dagster override 누락 복구
 

@@ -107,6 +107,52 @@ button, input { font: inherit; }
 .transport-map-picker { display: grid; font-size: 13px; font-weight: 700; gap: 6px; margin-bottom: 20px; }
 .transport-map-picker select { background: white; border: 1px solid #b9c4bd; border-radius: 7px; min-height: 40px; padding: 8px; }
 .timetable-result { white-space: pre-wrap; }
+.rail-map-workbench { display: grid; gap: var(--space-lg); min-width: 0; }
+.rail-map-toolbar, .rail-map-toolbar-actions, .rail-map-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; }
+.rail-map-toolbar p { margin: 4px 0 0; }
+.rail-map-metrics { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.rail-map-metrics > div { background: var(--card); border: 1px solid var(--surface-muted); border-radius: var(--radius-panel); display: grid; gap: 7px; padding: 15px 18px; }
+.rail-map-metrics span, .rail-map-current span { color: var(--muted); font-size: 12px; }
+.rail-map-metrics strong { font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+.rail-map-layout { align-items: start; display: grid; gap: var(--space-lg); grid-template-columns: minmax(260px, .85fr) minmax(0, 1.5fr); }
+.rail-map-list, .rail-map-editor { background: var(--card); border: 1px solid var(--surface-muted); border-radius: var(--radius-panel); min-width: 0; padding: var(--panel-padding); }
+.rail-map-list-tools { display: grid; gap: 9px; }
+.rail-map-list-tools label, .rail-map-search-label { font-size: 13px; font-weight: 650; }
+.rail-map-list-tools input[type=search], .rail-map-editor input:not([type=checkbox]) { background: var(--card); border: 1px solid var(--control-line); border-radius: var(--radius-control); color: var(--text-primary); min-height: 42px; padding: 9px 11px; width: 100%; }
+.rail-map-checkbox { align-items: center; display: flex; gap: 8px; }
+.rail-map-checkbox input { accent-color: var(--brand); height: 18px; width: 18px; }
+.rail-map-list-tools .quiet { margin: 0; }
+.rail-map-station-list { display: grid; gap: 4px; margin-top: 12px; max-height: min(68vh, 760px); overflow: auto; }
+.rail-map-station-list > button { align-items: center; background: transparent; border: 1px solid transparent; border-radius: var(--radius-control); color: var(--text-primary); cursor: pointer; display: flex; gap: 12px; justify-content: space-between; min-height: 52px; padding: 8px 10px; text-align: left; }
+.rail-map-station-list > button:hover, .rail-map-station-list > button.is-selected { background: var(--surface-subtle); border-color: var(--control-line); }
+.rail-map-station-list > button > span:first-child { display: grid; gap: 3px; min-width: 0; }
+.rail-map-station-list strong, .rail-map-station-list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rail-map-station-list small { color: var(--muted); font-size: 12px; }
+.rail-map-dot { background: var(--success); border-radius: 50%; flex: 0 0 auto; height: 9px; width: 9px; }
+.rail-map-dot.is-unmatched { background: var(--warning); }
+.rail-map-editor { display: grid; gap: 15px; }
+.rail-map-editor-heading { align-items: start; display: flex; gap: 12px; justify-content: space-between; }
+.rail-map-editor-heading .eyebrow, .rail-map-editor-heading h2 { margin: 0; }
+.rail-map-editor-heading h2 { margin-top: 5px; }
+.rail-map-badge { background: var(--success-tint); border-radius: 999px; color: var(--success); font-size: 12px; font-weight: 650; padding: 5px 9px; }
+.rail-map-badge.is-unmatched { background: var(--warning-tint); color: var(--warning); }
+.rail-map-code-grid { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; }
+.rail-map-code-grid > div { background: var(--surface-subtle); border-radius: var(--radius-control); min-width: 0; padding: 10px; }
+.rail-map-code-grid dt { color: var(--muted); font-size: 11px; }
+.rail-map-code-grid dd { font-size: 13px; font-weight: 600; margin: 4px 0 0; overflow-wrap: anywhere; }
+.rail-map-current { border-left: 3px solid var(--brand); display: grid; gap: 5px; padding-left: 12px; }
+.rail-map-search-label { margin-bottom: -9px; }
+.rail-map-candidates { border: 1px solid var(--control-line); border-radius: var(--radius-control); display: grid; max-height: 300px; overflow: auto; }
+.rail-map-candidates button { background: var(--card); border: 0; border-bottom: 1px solid var(--surface-muted); color: var(--text-primary); cursor: pointer; display: grid; gap: 4px; padding: 11px; text-align: left; }
+.rail-map-candidates button:last-child { border-bottom: 0; }
+.rail-map-candidates button:hover, .rail-map-candidates button.is-selected { background: var(--surface-subtle); }
+.rail-map-candidates span { color: var(--muted); font-size: 12px; }
+.rail-map-candidates p { margin: 0; padding: 12px; }
+.rail-map-note { display: grid; gap: 7px; font-size: 13px; font-weight: 650; }
+.rail-map-actions { justify-content: flex-start; }
+.rail-map-notice { background: var(--success-tint); border-radius: var(--radius-control); color: var(--success); margin: 0; padding: 11px 14px; }
+@media (max-width: 900px) { .rail-map-layout { grid-template-columns: minmax(0, 1fr); } .rail-map-station-list { max-height: 340px; } }
+@media (max-width: 560px) { .rail-map-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .rail-map-toolbar { align-items: stretch; } .rail-map-toolbar-actions { justify-content: flex-start; width: 100%; } .rail-map-code-grid { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .transport-map-layout { grid-template-columns: 1fr; min-height: 0; } .transport-map-canvas { min-height: 440px; } .transport-map-detail { border-left: 0; border-top: 1px solid var(--line); } }
 @media (max-width: 760px) { .admin-layout { grid-template-columns: 1fr; } .rail { padding: 18px; } .brand { margin-bottom: 15px; } .nav { grid-template-columns: repeat(3, minmax(0, 1fr)); } .nav-label { display: none; } .sign-out { margin-top: 18px; } .main { padding: 28px 20px; } .grid:not([data-slot]), .reference-list { grid-template-columns: 1fr; } .wide { grid-column: span 1; } .reference-toolbar { align-items: stretch; flex-direction: column; gap: 8px; } }
 

@@ -460,6 +460,22 @@ class KricStationCode(Base):
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class KricStationMappingRegistry(Base):
+    """KRIC 코드 카탈로그와 역 연결 규칙의 JSONB 정본."""
+
+    __tablename__ = "kric_station_mapping_registry"
+    __table_args__ = (CheckConstraint("id = 1", name="ck_kric_station_mapping_registry_singleton"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    catalog_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON_TYPE, default=list)
+    automatic_mappings_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON_TYPE, default=list)
+    manual_mappings_json: Mapped[list[dict[str, Any]]] = mapped_column(JSON_TYPE, default=list)
+    catalog_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    catalog_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    mappings_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class KricTimetableSnapshot(Base):
     """역·요일별 마지막 정상 예정 시간표. 빈 성공 응답도 수집 시각을 가진다."""
 
