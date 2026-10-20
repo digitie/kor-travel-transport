@@ -23,10 +23,33 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.CheckConstraint("id = 1", name="ck_kric_station_mapping_registry_singleton"),
     )
-    op.execute(sa.text(
-        "INSERT INTO kric_station_mapping_registry (id, catalog_json, automatic_mappings_json, "
-        "manual_mappings_json, updated_at) VALUES (1, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, CURRENT_TIMESTAMP)"
-    ))
+    op.execute(sa.text("""
+        INSERT INTO kric_station_mapping_registry (
+            id, catalog_json, automatic_mappings_json, manual_mappings_json,
+            catalog_updated_at, updated_at
+        )
+        SELECT
+            1,
+            COALESCE(
+                jsonb_agg(
+                    jsonb_build_object(
+                        'operator_code', operator_code,
+                        'operator_name', operator_name,
+                        'line_code', line_code,
+                        'line_name', line_name,
+                        'station_code', station_code,
+                        'station_name', station_name
+                    ) ORDER BY operator_code, line_code, station_code
+                ),
+                '[]'::jsonb
+            ),
+            '[]'::jsonb,
+            '[]'::jsonb,
+            MAX(last_seen_at),
+            CURRENT_TIMESTAMP
+        FROM kric_station_codes
+        WHERE active IS TRUE
+    """))
 
 
 def downgrade() -> None:
