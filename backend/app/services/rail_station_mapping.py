@@ -66,8 +66,7 @@ def normalized_station_name(value: str | None) -> str:
     name = unicodedata.normalize("NFKC", (value or "").strip())
     # 괄호 안 부역명·병기 시설명은 역 코드가 같은 후보를 좁히는 데만 제외한다.
     name = re.sub(r"[（(][^（）()]*[）)]", "", name).strip()
-    if name.endswith("역"):
-        name = name[:-1]
+    name = name.removesuffix("역")
     return re.sub(r"\s+", "", name)
 
 
@@ -142,13 +141,13 @@ def automatic_station_mappings(
 
 def validate_manual_mappings(mappings: Any, catalog_keys: set[tuple[str, str, str]]) -> list[dict[str, str]]:
     if not isinstance(mappings, list):
-        raise ValueError("매핑 JSON은 배열이어야 합니다.")
+        raise TypeError("매핑 JSON은 배열이어야 합니다.")
     validated: list[dict[str, str]] = []
     keys: set[tuple[str, str, str]] = set()
     targets: set[str] = set()
     for item in mappings:
         if not isinstance(item, Mapping):
-            raise ValueError("매핑 항목은 JSON 객체여야 합니다.")
+            raise TypeError("매핑 항목은 JSON 객체여야 합니다.")
         code = tuple(str(item.get(field, "")).strip() for field in ("operator_code", "line_code", "station_code"))
         target = str(item.get("rail_station_identity_key", "")).strip()
         note = str(item.get("note", "")).strip()
