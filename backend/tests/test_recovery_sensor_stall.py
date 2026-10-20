@@ -171,7 +171,9 @@ async def test_metadata_failure_keeps_position_before_failed_row_and_recovers_no
 
 def test_step_reserve_keeps_every_step_inside_the_tick_budget():
     # 한 단계(metadata 10초 + 문장 10초)를 시작할 때 예산이 남아 있어야 끊긴 thread가 생기지 않는다.
-    assert recovery.STEP_RESERVE_SECONDS == recovery.METADATA_TIMEOUT_SECONDS + recovery.RECOVERY_STATEMENT_TIMEOUT_SECONDS
+    # 가장 긴 단계: metadata + 새 session 접속 + UPDATE + COMMIT. 접속 상한은 문장 상한을 넘지 않는다.
+    assert recovery.STEP_RESERVE_SECONDS == (
+        recovery.METADATA_TIMEOUT_SECONDS + 3 * recovery.RECOVERY_STATEMENT_TIMEOUT_SECONDS)
     assert recovery.STEP_RESERVE_SECONDS < recovery.RECOVERY_BUDGET_SECONDS
     # 문장 상한은 예산보다 짧고, 예산은 Dagster sensor 평가 상한(60초)보다 짧다.
     assert recovery.RECOVERY_STATEMENT_TIMEOUT_SECONDS < recovery.RECOVERY_BUDGET_SECONDS < 60
@@ -361,7 +363,7 @@ def test_metadata_outage_alerts(monkeypatch, sensor_env, test_settings):
     assert [stall.last_failure for stall, _ in sensor_env.alerts] == ["RecoveryMetadataUnavailable"]
 
 
-def test_alert_writer_logs_stable_event_without_raw_text():
+def test_alert_writer_logs_stable_event_without_raw_text(caplog):
     errors: list[str] = []
     context = SimpleNamespace(log=SimpleNamespace(error=errors.append))
     clock = StallClock(key="transport_worker_recovery", first_failed_at=T0, last_failure="OperationalError:57P01")
@@ -369,6 +371,8 @@ def test_alert_writer_logs_stable_event_without_raw_text():
     assert len(errors) == 1
     assert errors[0].startswith(f"{STALL_EVENT} key=transport_worker_recovery first_failed_at=")
     assert errors[0].endswith("last_failure=OperationalError:57P01")
+    # Dagster UI tick 로그만이 아니라 프로세스 로그(컨테이너 stderr)에도 같은 줄이 나간다.
+    assert [r.getMessage() for r in caplog.records if r.name == "app.dagster.recovery"] == errors
     assert format_stall_alert(clock, now=T0 - 5).count("stalled_seconds=0") == 1
 
 
@@ -384,6 +388,10 @@ def test_alert_writer_logs_stable_event_without_raw_text():
         ({"collector": True, "statement_timeout_seconds": 10},
          {"timeout": 10, "command_timeout": 10,
           "server_settings": {"lock_timeout": "5s", "statement_timeout": "10s"}}),
+        # 회수 sensor 엔진: 접속 상한도 문장 상한(5초)으로 줄어든다.
+        ({"collector": True, "statement_timeout_seconds": recovery.RECOVERY_STATEMENT_TIMEOUT_SECONDS},
+         {"timeout": 5, "command_timeout": 5,
+          "server_settings": {"lock_timeout": "5s", "statement_timeout": "5s"}}),
         ({}, {"server_settings": {"statement_timeout": "120s"}}),
     ],
 )
@@ -437,5 +445,54 @@ async def test_postgres_server_cancels_statement_past_timeout(test_settings):
                 await session.execute(text("SELECT pg_sleep(3)"))
         info = pg_error_info(raised.value)
         assert info is not None and info.sqlstate == "57014"
+    finally:
+        await engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# 신선도 판정이 보는 trigger가 실제 op·서비스가 저장하는 값과 같은가
+
+
+async def test_five_minute_triggers_match_what_ops_and_services_store(monkeypatch, test_settings):
+    """trigger 이름이 바뀌면 판정은 '행 없음'으로 조용히 꺼진다. 실제 op와 서비스 경로로 대조한다."""
+    import asyncio
+
+    from dagster import DagsterInstance
+
+    from app.services.collection import CollectionService
+    from app.services.transport_collection import TransportCollectionService
+
+    engine, factory = await _database(test_settings)
+    try:
+        captured: list[tuple[str, str | None]] = []
+
+        async def fake_run_with_session(_settings, collect, **kwargs):
+            captured.append((kwargs["trigger"], kwargs.get("scope")))
+            return {"status": "success", "collection_run_id": 1}
+
+        monkeypatch.setattr(dagster_definitions, "_settings", lambda: test_settings)
+        monkeypatch.setattr(dagster_definitions, "_run_with_session", fake_run_with_session)
+
+        def run_jobs():
+            with DagsterInstance.ephemeral() as instance:
+                for job in (dagster_definitions.airport_collection_job, dagster_definitions.highway_collection_job):
+                    assert job.execute_in_process(instance=instance).success
+
+        await asyncio.to_thread(run_jobs)
+        (airport_trigger, _), (highway_trigger, scope) = captured
+        assert scope == "highway"
+
+        disabled = test_settings.model_copy(update={"transport_collection_enabled": False})
+        async with factory() as session:
+            await CollectionService(test_settings).collect(session, trigger=airport_trigger)
+        service = TransportCollectionService(disabled)
+        try:
+            async with factory() as session:
+                await service.collect(session, trigger=highway_trigger, scope="highway")
+        finally:
+            await service.close()
+        async with factory() as session:
+            stored = set((await session.scalars(select(CollectionRun.trigger))).all())
+        assert stored == set(FIVE_MINUTE_TRIGGERS)
     finally:
         await engine.dispose()

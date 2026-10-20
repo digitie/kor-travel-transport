@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import logging
 import re
 import sys
 import time
@@ -21,7 +22,7 @@ from sqlalchemy.engine import make_url
 from kortravelcommon.dagster import RecoveryPolicy, coalescing_schedule, infrastructure_retry_sensor, reconciliation_sensor
 
 from app.dagster.recovery import (
-    OWNER, RECOVERY_BUDGET_SECONDS, RECOVERY_STATEMENT_TIMEOUT_SECONDS, CollectionLeaseLost, ScanPosition,
+    AIRPORT_TRIGGER, OWNER, RECOVERY_BUDGET_SECONDS, RECOVERY_STATEMENT_TIMEOUT_SECONDS, CollectionLeaseLost, ScanPosition,
     collection_owner, ensure_collection_owner_active, format_stall_alert, owned_session_factory,
     run_recovery_tick,
 )
@@ -212,7 +213,7 @@ def _settings() -> Settings:
 def collect_airport_parking(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         settings = _settings()
-        result = asyncio.run(_run_with_session(settings, CollectionService(settings).collect, trigger="dagster_airport"))
+        result = asyncio.run(_run_with_session(settings, CollectionService(settings).collect, trigger=AIRPORT_TRIGGER))
         if result.get("status") in {"failed", "partial_success"}:
             raise Failure(description="공항 수집의 성공분은 저장했지만 일부 수집이 실패했습니다.",
                           metadata={"run_id": result["collection_run_id"], "status": result["status"]},
@@ -224,6 +225,7 @@ async def _collect_transport_in_one_loop(settings: Settings, scope: CollectionSc
     """HTTP client의 생성·수집·종료를 하나의 event loop에서 끝낸다."""
     service = TransportCollectionService(settings)
     try:
+        # highway의 trigger(`dagster_highway`)는 회수 sensor의 신선도 판정이 본다(`recovery.HIGHWAY_TRIGGER`).
         return await _run_with_session(settings, service.collect, trigger=f"dagster_{scope}", scope=scope)
     finally:
         await asyncio.wait_for(service.close(), timeout=10)
@@ -575,9 +577,17 @@ def _reconcile_tick(context, remaining) -> int:
     return asyncio.run(_reconcile_workers(instance, remaining))
 
 
+_STALL_LOGGER = logging.getLogger("app.dagster.recovery")
+
+
 def _alert_stall(context, clock) -> None:
-    """정체 경보. 별도 경보 테이블·채널이 없어 sensor tick 로그에 고정 event 이름으로 남긴다."""
-    context.log.error(format_stall_alert(clock, now=time.time()))
+    """정체 경보. 별도 경보 테이블·채널이 없어 고정 event 이름 한 줄로 두 곳에 남긴다.
+
+    sensor tick 로그(Dagster UI)와 code-server 프로세스 stderr(컨테이너 로그, `docker logs`·로그 수집기).
+    """
+    line = format_stall_alert(clock, now=time.time())
+    context.log.error(line)
+    _STALL_LOGGER.error(line)
 
 
 worker_recovery = reconciliation_sensor(

@@ -31,7 +31,8 @@ def create_engine_and_session_factory(
     """PostgreSQL 엔진은 서버 측 `statement_timeout`을 갖는다.
 
     `statement_timeout_seconds`는 기본 상한(수집 60초, API 120초)을 줄일 때만 쓴다. 회수 sensor처럼
-    tick 예산보다 짧은 상한이 필요한 호출자가 쓴다. 수집 엔진은 같은 값을 `command_timeout`에도 둔다.
+    tick 예산보다 짧은 상한이 필요한 호출자가 쓴다. 수집 엔진은 같은 값을 `command_timeout`에도 두고,
+    접속 timeout(기본 10초)도 그 값을 넘지 않게 줄인다.
     """
     if statement_timeout_seconds is not None and (
         isinstance(statement_timeout_seconds, bool)
@@ -60,7 +61,7 @@ def create_engine_and_session_factory(
         statement_timeout = statement_timeout_seconds or default_timeout
         if collector:
             engine_options["connect_args"] = {
-                "timeout": 10, "command_timeout": statement_timeout,
+                "timeout": min(10, statement_timeout), "command_timeout": statement_timeout,
                 "server_settings": {"lock_timeout": "5s", "statement_timeout": f"{statement_timeout}s"},
             }
         else:

@@ -24,25 +24,28 @@ owner 생존을 10초 상한으로 확인하며 조회 장애는 provider 호출
 running 수집 기록을 failed로 회수하고, 없는 run은 5시간 grace·heartbeat CAS로 확인한다.
 metadata 장애는 회수 사유가 아니다. legacy NULL owner 행은 자동 변경하지 않는다.
 
-## 회수 sensor의 tick 예산과 정체 경보 (common 6c275a04 §19)
+## 회수 sensor의 tick 예산과 정체 경보 (common e746e4b §19)
 
-`transport_worker_recovery`는 common `reconciliation_sensor(budget_seconds=40, on_stall=...)`다.
+`transport_worker_recovery`는 common `reconciliation_sensor(budget_seconds=45, on_stall=...)`다.
 
-- **예산**: 한 tick은 40초 안에서 끝난다. 다음 단계(page 조회, 또는 한 행의 metadata 확인+갱신)를
-  시작하려면 20초(metadata 10초 + 문장 10초)가 남아 있어야 하고, 모자라면 위치를 저장하고 정상
-  종료한다. sensor 전용 엔진은 서버 `statement_timeout`·`command_timeout` 10초다. 예산을 넘겨
-  끊긴 thread는 `context`를 더 쓰지 않고 metadata도 더 부르지 않는다.
+- **예산**: 한 tick은 45초 안에서 끝난다. 다음 단계를 시작하려면 25초(가장 긴 단계인 한 행의
+  metadata 10초 + 새 session 접속 5초 + UPDATE 5초 + COMMIT 5초)가 남아 있어야 하고, 모자라면 위치를
+  저장하고 정상 종료한다. sensor 전용 엔진은 서버 `statement_timeout`·`command_timeout`·접속
+  timeout 모두 5초다. 예산을 넘겨 끊긴 thread는 `context`를 더 쓰지 않고 metadata도 더 부르지 않는다.
 - **위치**: keyset 위치는 code-server 프로세스 안(`ScanPosition`)에 둔다. sensor cursor는 common
   정체 시계(`stall:` JSON)가 소유하므로 쓰지 않는다. 재시작으로 위치를 잃으면 처음부터 다시 볼 뿐
-  행을 건너뛰지 않고, 끝까지 보면 0으로 돌아가 위치 앞의 행도 다음 바퀴에 본다.
+  행을 건너뛰지 않고, 끝까지 보면 0으로 돌아가 위치 앞의 행도 다음 바퀴에 본다. common §19는 위치를
+  소비자 DB에 두라고 하지만, 대상이 running 행뿐이고(평소 수 건) ID가 단조 증가해 잃어도 누락이
+  없으므로 새 테이블을 만들지 않았다.
 - **정체로 세는 것**: (1) DB 오류(서명은 예외 형식 이름과 SQLSTATE), (2) Dagster metadata 장애
   (`RecoveryMetadataUnavailable` — 예전에는 조용히 0건 반환), (3) 공항(`dagster_airport`)·고속도로
   (`transport_dagster_highway`) 5분 수집의 마지막 `CollectionRun` 시작이 20분보다 오래됨
   (`CollectionStalled`), (4) 콜백이 예산을 넘김(`DeadlineExceeded`). 신선도 판정은 회수보다 먼저
   매 tick 한다. 행이 하나도 없는 trigger는 판단하지 않는다.
-- **경보**: 첫 실패 뒤 900초에 `context.log.error`로 한 줄을 남기고 3600초마다 다시 남긴다. 성공한
-  tick이 시계를 지운다. 이 저장소에는 경보 테이블·채널이 없어 Dagster sensor tick 로그가 기록
-  위치다. 형식(검색 기준):
+- **경보**: 첫 실패 뒤 900초에 한 줄을 남기고 3600초마다 다시 남긴다. 성공한 tick이 시계를 지운다.
+  이 저장소에는 경보 테이블·채널이 없어 같은 줄을 Dagster sensor tick 로그(`context.log.error`)와
+  code-server 프로세스 로그(logger `app.dagster.recovery`, 컨테이너 stderr → `docker logs`)에 남긴다.
+  형식(검색 기준):
 
   ```text
   transport_worker_recovery.stalled key=transport_worker_recovery first_failed_at=<UTC ISO> stalled_seconds=<n> last_failure=<형식이름[:SQLSTATE]>
@@ -50,6 +53,8 @@ metadata 장애는 회수 사유가 아니다. legacy NULL owner 행은 자동 �
 
   예외 원문은 경보 줄과 cursor에 없다(traceback은 기존 tick 실패처럼 `context.log`에 남는다).
   5분 수집 schedule을 일부러 멈추면 같은 경보가 난다(수집이 실제로 멈췄으므로 의도된 동작).
+  실패 중에 sensor를 오래 멈췄다가 다시 켜면 옛 `first_failed_at` 때문에 첫 실패에 바로 경보할 수
+  있다. 원치 않으면 다시 켜기 전에 sensor cursor를 지운다(UI 또는 `dagster sensor cursor --delete`).
 - **이 경보가 다루지 못하는 것**: code-server gRPC 자체가 멈추면(2026-09-27 11:53Z~19:51Z 정지)
   sensor 평가도 같은 프로세스에서 하므로 경보할 주체가 없다. 그 경우는 code-server healthcheck
   probe가 연속 timeout 300초(실행 중인 run worker가 있으면 7200초) 뒤 PID 1을 종료해 재시작시키는 것이 회복 경로다

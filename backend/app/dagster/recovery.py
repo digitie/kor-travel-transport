@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.core.time_utils import now_utc, serialize_utc
 from app.models import CollectionRun
+from app.services.transport_collection import TRANSPORT_TRIGGER_PREFIX
 
 OWNER: ContextVar[str | None] = ContextVar("transport_dagster_owner", default=None)
 
@@ -36,17 +37,23 @@ MISSING_RUN_GRACE = timedelta(hours=5)  # 기존 4시간 실행 상한보다 길
 PAGE_SIZE = 100
 
 #: 회수 sensor 한 tick의 예산(초). Dagster sensor 평가 상한(기본 60초) 안에 경보 기록까지 끝나게 둔다.
-RECOVERY_BUDGET_SECONDS = 40
-#: 회수 sensor 전용 엔진의 문장 상한(초). 예산이 끊은 뒤에도 남는 thread의 DB 문장이 오래 돌지 않게
-#: 예산보다 짧게 둔다. 조회는 running 행 keyset 100행, 갱신은 PK 한 행이다.
-RECOVERY_STATEMENT_TIMEOUT_SECONDS = 10
+RECOVERY_BUDGET_SECONDS = 45
+#: 회수 sensor 전용 엔진의 문장 상한(초)이자 접속 상한. 예산이 끊은 뒤에도 남는 thread의 DB 문장이
+#: 오래 돌지 않게 예산보다 짧게 둔다. 조회는 running 행 keyset 100행, 갱신은 PK 한 행이다.
+RECOVERY_STATEMENT_TIMEOUT_SECONDS = 5
 #: Dagster metadata(`get_run_by_id`) 한 건의 대기 상한(초). 기존 값과 같다.
 METADATA_TIMEOUT_SECONDS = 10
-#: 다음 단계(page 조회 또는 한 행 확인+갱신)를 시작하는 데 필요한 남은 예산(초). 이보다 적으면 위치를
-#: 저장하고 tick을 정상 종료한다(다음 tick이 이어서 본다). 예산 초과 timeout은 실제 정체에만 남긴다.
-STEP_RESERVE_SECONDS = METADATA_TIMEOUT_SECONDS + RECOVERY_STATEMENT_TIMEOUT_SECONDS
-#: 5분 주기 수집(공항·고속도로)의 `CollectionRun.trigger`. 실행이 시작되면 행이 생긴다(건너뜀 포함).
-FIVE_MINUTE_TRIGGERS = ("dagster_airport", "transport_dagster_highway")
+#: 다음 단계를 시작하는 데 필요한 남은 예산(초). 가장 긴 단계는 한 행의 metadata 확인 + 새 session
+#: 접속 + UPDATE + COMMIT이다(10 + 5 + 5 + 5). 이보다 적으면 위치를 저장하고 tick을 정상 종료한다
+#: (다음 tick이 이어서 본다). 그래서 예산 초과(`DeadlineExceeded`)는 각 상한이 모두 걸릴 만큼 느린 경우에만 남는다.
+STEP_RESERVE_SECONDS = METADATA_TIMEOUT_SECONDS + 3 * RECOVERY_STATEMENT_TIMEOUT_SECONDS
+#: 5분 주기 수집 op가 서비스에 넘기는 trigger. definitions.py가 이 상수를 그대로 쓴다.
+AIRPORT_TRIGGER = "dagster_airport"
+HIGHWAY_TRIGGER = "dagster_highway"
+#: 저장되는 `CollectionRun.trigger`. 교통 서비스는 접두를 붙여 저장한다(`TransportCollectionService.collect`).
+#: 실행이 시작되면 행이 생긴다(건너뜀 포함). 예외: 공항 수집의 advisory lease 경합은 행 없이 돌아오지만
+#: 그 경합이 20분 넘게 이어지면 그 자체로 정체다.
+FIVE_MINUTE_TRIGGERS = (AIRPORT_TRIGGER, f"{TRANSPORT_TRIGGER_PREFIX}{HIGHWAY_TRIGGER}")
 #: 마지막 시작이 이보다 오래되면 5분 수집 정체로 본다(4주기 누락). 정체 시계가 이어서
 #: `stall_after_seconds`(900초)를 더 기다린 뒤 경보하므로 마지막 시작 뒤 약 35분에 첫 경보가 난다.
 COLLECTION_STALE_AFTER = timedelta(minutes=20)

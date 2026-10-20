@@ -10,6 +10,12 @@
 
 ## 진행 중인 작업 인덱스
 
+- [ ] 회수 sensor tick 예산·정체 경보·서버 statement_timeout(`feat/recovery-sensor-budget-stall`,
+  Map ADR-112 교훈 적용): PR CI green 뒤 머지, 그 다음 odroid 재배포(codex 소유). 재배포 Compose
+  호출에 `/opt/kor-travel-odroid/transport/transport.override.yml`를 반드시 포함해 code-server gRPC
+  12306을 유지한다. 배포 뒤 sensor tick 로그에 `transport_worker_recovery.stalled`가 없는지와
+  cursor가 `stall:null`인지 확인한다.
+
 2026-10-20 KRIC 역 이름·코드 crosswalk 기능을 진행한다. KRIC 파일의 역 코드와 위치 파일의
 역 번호를 확인하고 이름을 보수적으로 정규화해 자동 연결하며, 모호한 항목은 관리 UI 수동
 보정 대상으로 남긴다. 데이터 모델·검증·Draft PR 후속은 `docs/resume.md`를 따른다.
