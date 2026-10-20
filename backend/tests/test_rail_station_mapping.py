@@ -5,6 +5,7 @@ from app.services.rail_station_mapping import (
     automatic_station_mappings,
     catalog_digest,
     effective_station_mappings,
+    mapping_revision,
     normalized_station_name,
     station_catalog,
     validate_manual_mappings,
@@ -27,6 +28,14 @@ def test_catalog_serializes_complete_kric_code_identity_and_source_labels():
     assert catalog == [{"operator_code": "OP", "operator_name": "운영사", "line_code": "L1",
         "line_name": "1호선", "station_code": "A01", "station_name": "서울역"}]
     assert len(catalog_digest(catalog)) == 64
+
+
+def test_mapping_revision_does_not_depend_on_provider_row_order():
+    first = {"operator_code": "O1", "line_code": "L1", "station_code": "S1",
+        "rail_station_identity_key": "line|one", "match_method": "exact_identity"}
+    second = {"operator_code": "O2", "line_code": "L2", "station_code": "S2",
+        "rail_station_identity_key": "line|two", "match_method": "station_number_and_name"}
+    assert mapping_revision("a" * 64, [first, second], []) == mapping_revision("a" * 64, [second, first], [])
 
 
 @pytest.mark.parametrize(("value", "expected"), [

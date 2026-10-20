@@ -56,7 +56,14 @@ def mapping_revision(
     automatic: list[dict[str, str]],
     manual: list[dict[str, str]],
 ) -> str:
-    document = {"catalog_sha256": catalog_sha256, "automatic": automatic, "manual": manual}
+    def sort_by_code(item: dict[str, str]) -> tuple[str, str, str]:
+        return item["operator_code"], item["line_code"], item["station_code"]
+
+    document = {
+        "catalog_sha256": catalog_sha256,
+        "automatic": sorted(automatic, key=sort_by_code),
+        "manual": sorted(manual, key=sort_by_code),
+    }
     encoded = json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
