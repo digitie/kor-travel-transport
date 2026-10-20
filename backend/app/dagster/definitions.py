@@ -6,6 +6,7 @@ import asyncio
 import functools
 import re
 import sys
+import time
 import traceback
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -20,8 +21,9 @@ from sqlalchemy.engine import make_url
 from kortravelcommon.dagster import RecoveryPolicy, coalescing_schedule, infrastructure_retry_sensor, reconciliation_sensor
 
 from app.dagster.recovery import (
-    OWNER, CollectionLeaseLost, collection_owner, ensure_collection_owner_active,
-    owned_session_factory, reconcile_collection_runs,
+    OWNER, RECOVERY_BUDGET_SECONDS, RECOVERY_STATEMENT_TIMEOUT_SECONDS, CollectionLeaseLost, ScanPosition,
+    collection_owner, ensure_collection_owner_active, format_stall_alert, owned_session_factory,
+    run_recovery_tick,
 )
 
 from app.core.config import Settings, get_settings
@@ -553,20 +555,35 @@ def kakao_place_location_collection_job() -> None:
     collect_kakao_place_locations()
 
 
-async def _reconcile_workers(instance) -> int:
-    engine, factory = create_engine_and_session_factory(_settings().database_url, collector=True)
+#: 회수 keyset 위치. sensor cursor는 common 정체 시계가 소유하므로 code-server 프로세스에 둔다.
+_RECOVERY_POSITION = ScanPosition()
+
+
+async def _reconcile_workers(instance, remaining) -> int:
+    engine, factory = create_engine_and_session_factory(
+        _settings().database_url, collector=True, statement_timeout_seconds=RECOVERY_STATEMENT_TIMEOUT_SECONDS,
+    )
     try:
-        return await reconcile_collection_runs(factory, instance)
+        return await run_recovery_tick(factory, instance, position=_RECOVERY_POSITION, remaining=remaining)
     finally:
         await engine.dispose()
 
 
-def _reconcile_tick(context) -> int:
-    return asyncio.run(_reconcile_workers(context.instance))
+def _reconcile_tick(context, remaining) -> int:
+    # 예산을 넘겨 끊긴 thread는 tick 뒤에도 돌 수 있다. context는 여기서 instance만 꺼내고 더 쓰지 않는다.
+    instance = context.instance
+    return asyncio.run(_reconcile_workers(instance, remaining))
 
 
-worker_recovery = reconciliation_sensor(name="transport_worker_recovery", reconcile=_reconcile_tick,
-                                       required_resource_keys=set())
+def _alert_stall(context, clock) -> None:
+    """정체 경보. 별도 경보 테이블·채널이 없어 sensor tick 로그에 고정 event 이름으로 남긴다."""
+    context.log.error(format_stall_alert(clock, now=time.time()))
+
+
+worker_recovery = reconciliation_sensor(
+    name="transport_worker_recovery", reconcile=_reconcile_tick, required_resource_keys=set(),
+    budget_seconds=RECOVERY_BUDGET_SECONDS, on_stall=_alert_stall,
+)
 
 
 definitions = Definitions(

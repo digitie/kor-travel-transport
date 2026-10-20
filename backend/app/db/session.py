@@ -13,8 +13,32 @@ from app.models import Base
 
 ALEMBIC_HEAD = "0027_kric_station_mapping_json"
 
+#: 수집 엔진의 문장 상한(초). 이미 쓰던 asyncpg `command_timeout`(클라이언트 측)과 같은 값을 서버
+#: `statement_timeout`에도 둔다. 서버 측 실행 시간은 클라이언트 왕복보다 길 수 없으므로 지금 통과하는
+#: 문장을 새로 끊지 않는다. 클라이언트가 멈추거나 끊긴 뒤에도 서버가 문장을 끝까지 돌리지 않게 하는
+#: 것이 목적이다(유가 bulk 묶음 크기도 이 60초에 맞춰 정했다 — `transport_collection.py`).
+COLLECTOR_STATEMENT_TIMEOUT_SECONDS = 60
+#: API 엔진의 서버 측 문장 상한(초). 지금까지는 상한이 없었다. 요청 경로는 앱 deadline(통계 25초)과
+#: 관리 프록시(30초) 안에 끝나고, 가장 긴 실측 읽기는 n150 30일 전체 주차 이력 약 52만 행 DB 읽기
+#: 2.0~2.8초다(journal 2026-10-01). in_process 수집(개발 기본값)의 유가 bulk 묶음은 수집 엔진의 60초에
+#: 맞춰 있다. 120초는 이들보다 넉넉한 backstop이며 취소된 요청의 문장이 서버에 남는 것만 막는다.
+API_STATEMENT_TIMEOUT_SECONDS = 120
 
-def create_engine_and_session_factory(database_url: str, *, collector: bool = False) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
+
+def create_engine_and_session_factory(
+    database_url: str, *, collector: bool = False, statement_timeout_seconds: int | None = None,
+) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
+    """PostgreSQL 엔진은 서버 측 `statement_timeout`을 갖는다.
+
+    `statement_timeout_seconds`는 기본 상한(수집 60초, API 120초)을 줄일 때만 쓴다. 회수 sensor처럼
+    tick 예산보다 짧은 상한이 필요한 호출자가 쓴다. 수집 엔진은 같은 값을 `command_timeout`에도 둔다.
+    """
+    if statement_timeout_seconds is not None and (
+        isinstance(statement_timeout_seconds, bool)
+        or not isinstance(statement_timeout_seconds, int)
+        or statement_timeout_seconds <= 0
+    ):
+        raise ValueError("statement_timeout_seconds는 양의 정수여야 합니다.")
     if database_url.startswith("postgres://"):
         database_url = "postgresql+asyncpg://" + database_url.removeprefix("postgres://")
     elif database_url.startswith("postgresql://"):
@@ -32,9 +56,17 @@ def create_engine_and_session_factory(database_url: str, *, collector: bool = Fa
         "pool_recycle": 1800,
     }
     if database_url.startswith("postgresql"):
+        default_timeout = COLLECTOR_STATEMENT_TIMEOUT_SECONDS if collector else API_STATEMENT_TIMEOUT_SECONDS
+        statement_timeout = statement_timeout_seconds or default_timeout
         if collector:
-            engine_options["connect_args"] = {"timeout": 10, "command_timeout": 60,
-                                               "server_settings": {"lock_timeout": "5s"}}
+            engine_options["connect_args"] = {
+                "timeout": 10, "command_timeout": statement_timeout,
+                "server_settings": {"lock_timeout": "5s", "statement_timeout": f"{statement_timeout}s"},
+            }
+        else:
+            engine_options["connect_args"] = {
+                "server_settings": {"statement_timeout": f"{statement_timeout}s"},
+            }
         if os.getenv("KOR_TRAVEL_TRANSPORT_TEST_DATABASE") == "1":
             engine_options["poolclass"] = NullPool
         else:
