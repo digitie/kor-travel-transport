@@ -11,6 +11,9 @@ from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
+from kortravelcommon.stall import StallClock
+from sqlalchemy import select
+
 from app.core.time_utils import now_utc
 from app.dagster import definitions as dagster_definitions
 from app.dagster import recovery
@@ -27,8 +30,6 @@ from app.dagster.recovery import (
 from app.db import session as db_session
 from app.db.session import create_engine_and_session_factory
 from app.models import Base, CollectionRun
-from kortravelcommon.stall import StallClock
-from sqlalchemy import select
 
 T0 = 1_800_000_000.0
 
@@ -83,7 +84,7 @@ async def test_budget_stops_scan_and_next_tick_resumes_without_losing_rows(test_
     try:
         now = now_utc()
         await _add_runs(factory, [
-            dict(started_at=now, heartbeat_at=now, status="running", trigger="t", orchestrator_run_id=f"r{i}")
+            {"started_at": now, "heartbeat_at": now, "status": "running", "trigger": "t", "orchestrator_run_id": f"r{i}"}
             for i in range(5)
         ])
         position = ScanPosition()
@@ -117,7 +118,7 @@ async def test_live_row_behind_position_is_recovered_on_the_next_lap(test_settin
     try:
         now = now_utc()
         await _add_runs(factory, [
-            dict(started_at=now, heartbeat_at=now, status="running", trigger="t", orchestrator_run_id=owner)
+            {"started_at": now, "heartbeat_at": now, "status": "running", "trigger": "t", "orchestrator_run_id": owner}
             for owner in ("early", "late1", "late2")
         ])
         position = ScanPosition()
@@ -144,7 +145,7 @@ async def test_metadata_failure_keeps_position_before_failed_row_and_recovers_no
     try:
         now = now_utc()
         await _add_runs(factory, [
-            dict(started_at=now, heartbeat_at=now, status="running", trigger="t", orchestrator_run_id=owner)
+            {"started_at": now, "heartbeat_at": now, "status": "running", "trigger": "t", "orchestrator_run_id": owner}
             for owner in ("done", "broken", "after")
         ])
 
@@ -187,11 +188,11 @@ async def test_stale_five_minute_triggers_only_flag_old_last_starts(test_setting
         assert await stale_five_minute_triggers(factory, now=now) == []  # 새 DB는 판단하지 않는다.
         airport, highway = FIVE_MINUTE_TRIGGERS
         await _add_runs(factory, [
-            dict(started_at=now - timedelta(minutes=40), status="success", trigger=airport),
-            dict(started_at=now - timedelta(minutes=25), status="skipped", trigger=airport),
-            dict(started_at=now - timedelta(minutes=3), status="running", trigger=highway),
+            {"started_at": now - timedelta(minutes=40), "status": "success", "trigger": airport},
+            {"started_at": now - timedelta(minutes=25), "status": "skipped", "trigger": airport},
+            {"started_at": now - timedelta(minutes=3), "status": "running", "trigger": highway},
             # 다른 job의 새 행은 5분 수집의 신선도를 대신하지 않는다.
-            dict(started_at=now, status="success", trigger="transport_dagster_fuel"),
+            {"started_at": now, "status": "success", "trigger": "transport_dagster_fuel"},
         ])
         assert await stale_five_minute_triggers(factory, now=now) == [(airport, 25)]
         assert await stale_five_minute_triggers(factory, now=now - timedelta(minutes=10)) == []
@@ -254,7 +255,7 @@ async def test_incident_replay_collection_stop_raises_stall_alert(test_settings,
     try:
         last_start = now_utc() - timedelta(minutes=25)
         await _add_runs(factory, [
-            dict(started_at=last_start, finished_at=last_start, status="success", trigger=trigger)
+            {"started_at": last_start, "finished_at": last_start, "status": "success", "trigger": trigger}
             for trigger in FIVE_MINUTE_TRIGGERS
         ])
         # sensor는 1분마다 돈다. 첫 실패 뒤 900초 전에는 경보하지 않는다.
@@ -278,7 +279,7 @@ async def test_incident_replay_collection_stop_raises_stall_alert(test_settings,
         # 수집이 다시 시작되면 다음 tick이 정체 시계를 지운다.
         now = now_utc()
         await _add_runs(factory, [
-            dict(started_at=now, status="running", trigger=trigger) for trigger in FIVE_MINUTE_TRIGGERS
+            {"started_at": now, "status": "running", "trigger": trigger} for trigger in FIVE_MINUTE_TRIGGERS
         ])
         result = sensor_env.tick(T0 + 900 + 3660)
         assert result.cursor == "stall:null"
@@ -293,7 +294,7 @@ async def test_healthy_five_minute_collection_never_alerts(test_settings, sensor
     try:
         now = now_utc()
         await _add_runs(factory, [
-            dict(started_at=now - timedelta(minutes=3), status="success", trigger=trigger)
+            {"started_at": now - timedelta(minutes=3), "status": "success", "trigger": trigger}
             for trigger in FIVE_MINUTE_TRIGGERS
         ])
         for minute in range(20):
@@ -340,8 +341,8 @@ def test_metadata_outage_alerts(monkeypatch, sensor_env, test_settings):
         try:
             now = now_utc()
             await _add_runs(factory, [
-                dict(started_at=now, heartbeat_at=now, status="running", trigger="t", orchestrator_run_id="x"),
-                *[dict(started_at=now, status="success", trigger=t) for t in FIVE_MINUTE_TRIGGERS],
+                {"started_at": now, "heartbeat_at": now, "status": "running", "trigger": "t", "orchestrator_run_id": "x"},
+                *[{"started_at": now, "status": "success", "trigger": t} for t in FIVE_MINUTE_TRIGGERS],
             ])
         finally:
             await engine.dispose()

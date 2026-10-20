@@ -298,7 +298,7 @@ async def reconcile_collection_runs(
                     lambda owner=row.orchestrator_run_id: instance.get_run_by_id(owner),
                     timeout_seconds=METADATA_TIMEOUT_SECONDS,
                 )
-            except Exception as exc:  # noqa: BLE001 — metadata 장애에서는 소유권을 회수하지 않는다.
+            except Exception as exc:  # metadata 장애에서는 소유권을 회수하지 않는다.
                 # 전체 tick을 멈춘다. per-row 반복 timeout도 만들지 않는다. 이 행부터 다시 본다.
                 save(cursor)
                 raise RecoveryMetadataUnavailable(
