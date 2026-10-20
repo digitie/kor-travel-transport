@@ -256,6 +256,56 @@ class TransportPlaceMapResponse(BaseModel):
     items: list[TransportPlaceMapItem]
 
 
+class KricStationMappingCode(BaseModel):
+    operator_code: str = Field(min_length=1, max_length=80)
+    operator_name: str = Field(min_length=1, max_length=160)
+    line_code: str = Field(min_length=1, max_length=80)
+    line_name: str = Field(min_length=1, max_length=160)
+    station_code: str = Field(min_length=1, max_length=80)
+    station_name: str = Field(min_length=1, max_length=160)
+    rail_station_id: int | None = None
+    rail_station_identity_key: str | None = None
+    match_method: Literal["manual", "exact_identity", "station_number_and_name", "unmatched"]
+
+
+class KricStationPlaceOption(BaseModel):
+    id: int
+    identity_key: str
+    operator_name: str | None = None
+    line_name: str | None = None
+    station_number: str | None = None
+    station_name: str | None = None
+
+
+class KricStationManualMapping(BaseModel):
+    operator_code: str = Field(min_length=1, max_length=80)
+    line_code: str = Field(min_length=1, max_length=80)
+    station_code: str = Field(min_length=1, max_length=80)
+    rail_station_identity_key: str = Field(min_length=1, max_length=400)
+    note: str = Field(default="", max_length=500)
+
+
+class KricStationMappingResponse(BaseModel):
+    schema_version: Literal[1] = 1
+    revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+    catalog_sha256: str | None = None
+    catalog_updated_at: datetime | None = None
+    mappings_updated_at: datetime | None = None
+    station_count: int
+    mapped_count: int
+    automatic_mapped_count: int
+    manual_mapped_count: int
+    unmatched_count: int
+    stations: list[KricStationMappingCode]
+    places: list[KricStationPlaceOption]
+    mappings: list[KricStationManualMapping]
+
+
+class KricStationMappingSaveRequest(BaseModel):
+    expected_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+    mappings: list[KricStationManualMapping] = Field(max_length=1108)
+
+
 class RailDepartureItem(BaseModel):
     train_number: str | None = None
     departure_time: str | None = None

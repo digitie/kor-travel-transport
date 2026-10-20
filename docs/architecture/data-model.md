@@ -21,6 +21,17 @@ API·legacy 실행의 NULL 소유권은 자동 회수 대상에서 제외한다.
 가져오는 지도 쿼리가 오래된 이력을 반복 스캔하지 않도록 한다. 동시 인덱스 생성이 중단돼도
 유효한 기존 인덱스는 재사용하고 invalid 인덱스는 제거한 뒤 재시도한다.
 
+### KRIC 역 코드·매핑 JSON (`0027_kric_station_mapping_json`)
+
+`kric_station_mapping_registry`는 `id=1` 단일 행으로 KRIC 코드 파일 전체를 `catalog_json`에,
+안전한 자동 연결을 `automatic_mappings_json`에, 관리자 보정을 `manual_mappings_json`에
+보관한다. SHA-256 지문과 자료·매핑 갱신 시각으로 화면의 동시 편집을 감지한다. JSON 카탈로그는
+운영기관·노선·역 이름과 각 코드를 모두 포함하며, `kric_station_codes`는 API 요청 코드와
+시간표 수집에 사용하는 관계형 형태를 유지한다. 고유 `rail_station_id` 제약은 한 기준 역을
+여러 KRIC 코드가 중복 점유하지 못하게 한다. 수동 매핑은 관리 API에서 현재 코드와 기준 역을
+확인한 뒤 같은 트랜잭션에서 적용한다. 기준정보 전체를 다시 수집하면 자동 연결은 재계산하고
+유효한 수동 연결은 코드 기준으로 다시 적용한다.
+
 ### 최신 유가 테이블 (`0022_fuel_latest_prices_table`)
 
 `fuel_latest_prices`는 `(fuel_station_id, product_code)` PK의 일반 테이블이다. 원본

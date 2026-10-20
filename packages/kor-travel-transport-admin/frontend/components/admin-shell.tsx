@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, Bus, ChartNoAxesCombined, Database, Fuel, LogOut, Map, Plane, Route, ShipWheel, TrainFront } from "lucide-react";
+import { Activity, Bus, ChartNoAxesCombined, Database, Fuel, LogOut, Map, Plane, Route, ShipWheel, TrainFront, Waypoints } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
@@ -12,6 +12,7 @@ const items = [
   ["/fuel", "유가 지도", Fuel],
   ["/transport", "교통·유가 현황", Route],
   ["/rail", "열차·도시철도", TrainFront],
+  ["/rail/mapping", "역 코드 매핑", Waypoints],
   ["/ferry", "배편", ShipWheel],
   ["/bus/express", "고속버스", Bus],
   ["/bus/intercity", "시외버스", Bus],

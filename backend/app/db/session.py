@@ -11,7 +11,7 @@ from sqlalchemy.pool import NullPool
 
 from app.models import Base
 
-ALEMBIC_HEAD = "0026_transport_map_indexes"
+ALEMBIC_HEAD = "0027_kric_station_mapping_json"
 
 
 def create_engine_and_session_factory(database_url: str, *, collector: bool = False) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:

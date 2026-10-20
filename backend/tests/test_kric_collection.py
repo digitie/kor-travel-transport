@@ -7,7 +7,7 @@ from kric import StationCodeInfo
 from sqlalchemy import func, select
 
 from app.db.session import create_engine_and_session_factory, init_database
-from app.models import CollectionRun, KricStationCode, KricTimetableSnapshot, RailServiceDay, RailStationReference
+from app.models import CollectionRun, KricStationCode, KricStationMappingRegistry, KricTimetableSnapshot, RailServiceDay, RailStationReference
 from app.services.kric_collection import KricTimetableCollectionService, TRIGGER
 from app.services.rail_timetable import stored_rail_timetables
 
@@ -121,6 +121,40 @@ async def test_bad_code_file_cannot_clear_existing_mapping(test_settings, rows):
         with pytest.raises(ValueError):
             await service._sync_codes(session, rows)
         assert (await session.scalar(select(KricStationCode))).active
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_station_sync_persists_full_json_catalog_and_reapplies_manual_mapping(test_settings):
+    engine, factory = create_engine_and_session_factory(test_settings.database_url)
+    await init_database(engine)
+    now = datetime.now(UTC)
+    codes = (code("001", "서울역"), code("002", "새역", line="02"))
+    async with factory() as session:
+        exact = place(now, "서울역")
+        manual_target = RailStationReference(source="kric_public_file", identity_key="manual/새역", rail_operator_name="다른운영사",
+            operating_line_name="지선", station_number="999", station_name="환승역", first_seen_at=now, last_seen_at=now)
+        session.add_all([exact, manual_target])
+        await session.flush()
+        service = KricTimetableCollectionService(test_settings)
+        await service._sync_codes(session, codes)
+        registry = await session.get(KricStationMappingRegistry, 1)
+        assert registry is not None
+        catalog_by_station = {row["station_code"]: row for row in registry.catalog_json}
+        assert catalog_by_station["001"]["station_name"] == "서울역"
+        assert catalog_by_station["002"]["station_name"] == "새역"
+        assert {row["operator_code"] for row in registry.catalog_json} == {"S1"}
+        assert {row["station_code"] for row in registry.automatic_mappings_json} == {"001"}
+        registry.manual_mappings_json = [{"operator_code": "S1", "line_code": "02", "station_code": "002",
+            "rail_station_identity_key": manual_target.identity_key, "note": "기관 자료 확인"}]
+        await session.commit()
+
+        rows = await service._sync_codes(session, codes)
+        await session.commit()
+        assert rows[0].rail_station_id == exact.id
+        assert rows[1].rail_station_id == manual_target.id
+        refreshed = await session.get(KricStationMappingRegistry, 1)
+        assert refreshed is not None and refreshed.manual_mappings_json[0]["station_code"] == "002"
     await engine.dispose()
 
 
