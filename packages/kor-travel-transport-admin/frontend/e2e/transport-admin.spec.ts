@@ -166,6 +166,7 @@ test("지도는 정상 가격도 마지막 반영 시각을 함께 알린다", a
   await page.goto("/fuel");
   const guidance = page.locator(".map-guidance");
   await expect(guidance.getByText(/유가 .* 갱신 · 지연분은 다음 수집에 반영됩니다\./)).toBeVisible();
+  await expect(page.getByText("표시할 장소가 없습니다. 종류·출처·검색 조건을 확인해 주세요.", { exact: true })).toHaveCount(0);
   const mapBox = await page.locator(".map-primary").boundingBox();
   const guidanceBox = await guidance.boundingBox();
   expect(mapBox).not.toBeNull();
@@ -221,6 +222,7 @@ test("지도 조회 상태는 단계 요약 옆에 간결하게 표시한다", a
     finishRequest?.();
   }
   await expect(status).not.toContainText("조회 중");
+  await expect(page.getByText("표시할 장소가 없습니다. 종류·출처·검색 조건을 확인해 주세요.", { exact: true })).toHaveCount(0);
 });
 
 test("로그아웃 처리 중 늦게 저장된 통계 캐시도 로그인 화면에서 제거한다", async ({ page }) => {
