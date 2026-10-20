@@ -156,6 +156,116 @@ def test_shared_plane_deploy_drains_this_location_without_stopping_the_shared_da
     assert "14004" not in text
 
 
+def test_failed_code_server_release_rolls_back_to_the_previous_verified_image(tmp_path: Path) -> None:
+    text = _REMOTE.read_text(encoding="utf-8")
+    rollback = _function(text, "rollback_dagster_code_server")
+    runtime_env = tmp_path / ".env.prod"
+    runtime_env.write_text(
+        "RELEASE_SHA=" + _SHA + "\nBACKEND_RUNTIME_IMAGE=candidate-image\nPUBLIC_API_PORT=12302\n",
+        encoding="utf-8",
+    )
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    docker_log = tmp_path / "docker.json"
+    docker = bin_dir / "docker"
+    docker.write_text(
+        f"#!{sys.executable}\nimport json,os,sys\n"
+        "open(os.environ['FAKE_DOCKER_LOG'],'w').write(json.dumps([sys.argv[1:], os.environ.get('RELEASE_SHA'), os.environ.get('BACKEND_RUNTIME_IMAGE')]))\n",
+        encoding="utf-8",
+    )
+    docker.chmod(0o755)
+
+    script = (
+        "set -euo pipefail\n"
+        + rollback
+        + f"REMOTE_APP_DIR={str(tmp_path)!r}\n"
+        + f"REMOTE_ENV_FILE={str(runtime_env)!r}\n"
+        + "COMPOSE_PROJECT_NAME=kor-travel-transport\n"
+        + "ROLLBACK_RUNTIME_ENV_FILE=''\n"
+        + "PREVIOUS_CODE_SERVER_TAG='" + "a" * 12 + "'\n"
+        + "PREVIOUS_CODE_SERVER_IMAGE=kor-travel-transport-backend:rel-aaaaaaaaaaaa\n"
+        + "TRANSPORT_OVERRIDE_FILE=/opt/kor-travel-odroid/transport/transport.override.yml\n"
+        + "wait_code_server_health() { echo healthy; }\n"
+        + "wait_location_loaded() { echo RepositoryLocation; }\n"
+        + "rollback_dagster_code_server\n"
+    )
+    result = subprocess.run(
+        ["bash", "-c", script],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={
+            **os.environ,
+            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "FAKE_DOCKER_LOG": str(docker_log),
+            "RELEASE_SHA": _SHA,
+            "BACKEND_RUNTIME_IMAGE": "candidate-image",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    args, release_sha, runtime_image = json.loads(docker_log.read_text(encoding="utf-8"))
+    assert args[-5:] == ["up", "-d", "--no-deps", "--no-build", "dagster-code-server"]
+    assert args[0] == "compose"
+    assert args[args.index("--env-file") + 1] != str(runtime_env)
+    assert release_sha is None and runtime_image is None
+    rollback_env = Path(args[args.index("--env-file") + 1]).read_text(encoding="utf-8")
+    assert "BACKEND_RUNTIME_IMAGE=kor-travel-transport-backend:rel-" + "a" * 12 in rollback_env
+    assert "candidate-image" not in rollback_env and _SHA not in rollback_env
+
+
+def test_release_replacement_is_guarded_by_rollback_capture_and_exit_recovery() -> None:
+    text = _REMOTE.read_text(encoding="utf-8")
+    cleanup = _function(text, "cleanup_remote")
+    capture = text.index("capture_previous_code_server_image\n")
+    replacement_started = text.index("DEPLOYMENT_REPLACEMENT_STARTED=true\n", capture)
+    up = text.index("\ncompose up -d --no-build\n", replacement_started)
+    verified = text.index("DEPLOYMENT_VERIFIED=true\n", up)
+    assert capture < replacement_started < up < verified
+    assert text.index('grep -Fq "\\"release_sha\\":\\"${CANDIDATE_SHA}\\""', up) < verified
+    assert text.index('frontend did not become ready within 60 seconds', up) < verified
+    assert 'if [[ "${DEPLOYMENT_REPLACEMENT_STARTED}" == true && "${DEPLOYMENT_VERIFIED}" != true ]]; then' in cleanup
+    assert "rollback_dagster_code_server" in cleanup
+    assert "wait_code_server_health && wait_location_loaded" in _function(text, "rollback_dagster_code_server")
+
+
+@pytest.mark.parametrize(
+    ("replacement_started", "deployment_verified", "should_rollback"),
+    [("true", "false", True), ("false", "false", False), ("true", "true", False)],
+)
+def test_exit_trap_rolls_back_only_an_unverified_replacement(
+    tmp_path: Path, replacement_started: str, deployment_verified: str, should_rollback: bool
+) -> None:
+    cleanup = _function(_REMOTE.read_text(encoding="utf-8"), "cleanup_remote")
+    rollback_log = tmp_path / "rollback.log"
+    script = (
+        "set -euo pipefail\n"
+        + cleanup
+        + "rollback_dagster_code_server() { printf 'rollback\\n' >> \"$FAKE_ROLLBACK_LOG\"; }\n"
+        + f"RUNTIME_ENV_FILE={str(tmp_path / '.env.prod.runtime')!r}\n"
+        + "ROLLBACK_RUNTIME_ENV_FILE=''\nTRANSPORT_OVERRIDE_TMP=''\n"
+        + f"DEPLOYMENT_REPLACEMENT_STARTED={replacement_started}\n"
+        + f"DEPLOYMENT_VERIFIED={deployment_verified}\n"
+        + "trap cleanup_remote EXIT\nexit 17\n"
+    )
+    result = subprocess.run(
+        ["bash", "-c", script],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "FAKE_ROLLBACK_LOG": str(rollback_log)},
+    )
+    assert result.returncode == 17
+    assert rollback_log.exists() is should_rollback
+
+
+def test_shared_dagster_runbook_uses_the_override_aware_release_entry() -> None:
+    text = (_SCRIPTS.parent / "docs/architecture/shared-db-dagster.md").read_text(encoding="utf-8")
+    assert "DEPLOY_MODE=deploy ./scripts/deploy-prod.sh --host 192.168.1.13" in text
+    assert "transport.override.yml" in text
+    assert "docker compose -f docker-compose.yml -f docker-compose.shared.yml up -d --build" not in text
+
+
 def test_runs_query_is_valid_json_scoped_to_the_location() -> None:
     text = _REMOTE.read_text(encoding="utf-8")
     line = next(line for line in text.splitlines() if line.startswith("dagster_runs_query="))

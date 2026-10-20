@@ -159,12 +159,17 @@ Manager가 공용 DB/네트워크와 전용 role·RustFS bucket을 provision한 
 5. health와 live E2E가 성공할 때까지 legacy DB volume, `.env.server14.legacy`, 두 dump를
    보존한다. 실패 시 shared compose를 내리고 legacy 환경으로 backend만 재기동해 rollback한다.
 
-전환 검증을 건너뛰는 `docker compose up`은 금지한다. cutover가 아닌 이후의 검증된 배포만
-receipt-gated deployment script를 사용한다.
+전환 검증을 건너뛰는 `docker compose up`은 금지한다. 일반 배포는 receipt-gated 배포 스크립트만
+사용한다. Odroid에서는 Manager workspace가 Transport code-server를 12306에 연결하므로,
+수동 Compose 기동은 override 누락 시 기본값 14005를 적용해 location을 내릴 수 있다.
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.shared.yml up -d --build
+DEPLOY_MODE=deploy ./scripts/deploy-prod.sh --host 192.168.1.13
 ```
+
+배포 도구는 `transport.override.yml`을 archive에 포함하고 NVMe의
+`/opt/kor-travel-odroid/transport/transport.override.yml`에 설치한 뒤, 이 파일을 포함한 최종
+Compose 설정이 12306을 사용하는지 확인하고 서비스를 교체한다.
 
 외부 Dagster UI는 Manager 공용 gateway(`https://dagster.digitie.mywire.org`, 11001)다. 운영 값은 최소한
 `DATABASE_URL`, `KOR_TRAVEL_DAGSTER_SHARED_APP_PASSWORD`, 그리고 legacy-dagster 서비스의 보간을 위한

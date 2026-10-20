@@ -95,11 +95,29 @@ if [[ ! "${DAGSTER_POSTGRES_URL:-}" =~ ^postgresql(\+psycopg2)?://[^@]+@127\.0\.
 fi
 
 RUNTIME_ENV_FILE="$(mktemp "${REMOTE_APP_DIR}/.env.prod.runtime.XXXXXX")"
+ROLLBACK_RUNTIME_ENV_FILE=""
+PREVIOUS_CODE_SERVER_IMAGE=""
+PREVIOUS_CODE_SERVER_TAG=""
+DEPLOYMENT_REPLACEMENT_STARTED=false
+DEPLOYMENT_VERIFIED=false
 cleanup_remote() {
+  local exit_status=$?
+  set +e
+  if [[ "${DEPLOYMENT_REPLACEMENT_STARTED}" == true && "${DEPLOYMENT_VERIFIED}" != true ]]; then
+    if rollback_dagster_code_server; then
+      echo "배포 검증 실패: 이전 Dagster code-server release로 복구했다." >&2
+    else
+      echo "배포 검증과 Dagster code-server 복구가 모두 실패했다. Manager에서 ${dagster_location:-kor-travel-transport} location을 확인해야 한다." >&2
+    fi
+  fi
   rm -f -- "${RUNTIME_ENV_FILE}"
+  if [[ -n "${ROLLBACK_RUNTIME_ENV_FILE}" ]]; then
+    rm -f -- "${ROLLBACK_RUNTIME_ENV_FILE}"
+  fi
   if [[ -n "${TRANSPORT_OVERRIDE_TMP:-}" ]]; then
     sudo -n rm -f -- "${TRANSPORT_OVERRIDE_TMP}" || true
   fi
+  exit "${exit_status}"
 }
 trap cleanup_remote EXIT
 awk '!/^(RELEASE_SHA|BACKEND_RUNTIME_IMAGE)=/' "${REMOTE_ENV_FILE}" > "${RUNTIME_ENV_FILE}"
@@ -271,6 +289,46 @@ wait_location_loaded() {
     sleep 5
   done
 }
+capture_previous_code_server_image() {
+  PREVIOUS_CODE_SERVER_IMAGE="$(docker inspect -f '{{.Config.Image}}' "${dagster_code_server}" 2>/dev/null)" || {
+    echo "Refusing production deployment: cannot capture the current Dagster code-server image for rollback." >&2
+    return 2
+  }
+  if [[ "${PREVIOUS_CODE_SERVER_IMAGE}" =~ ^kor-travel-transport-backend:rel-([0-9a-f]{12})$ ]]; then
+    PREVIOUS_CODE_SERVER_TAG="${BASH_REMATCH[1]}"
+  else
+    echo "Refusing production deployment: current Dagster code-server does not use a rollback-safe immutable release image tag." >&2
+    return 2
+  fi
+  docker image inspect "${PREVIOUS_CODE_SERVER_IMAGE}" >/dev/null || {
+    echo "Refusing production deployment: previous Dagster code-server image is no longer available for rollback." >&2
+    return 2
+  }
+}
+rollback_dagster_code_server() {
+  if [[ ! "${PREVIOUS_CODE_SERVER_TAG}" =~ ^[0-9a-f]{12}$ ]] \
+    || [[ "${PREVIOUS_CODE_SERVER_IMAGE}" != "kor-travel-transport-backend:rel-${PREVIOUS_CODE_SERVER_TAG}" ]]; then
+    echo "Cannot roll back Dagster code-server: previous immutable image tag was not captured." >&2
+    return 2
+  fi
+  if [[ -z "${ROLLBACK_RUNTIME_ENV_FILE}" ]]; then
+    ROLLBACK_RUNTIME_ENV_FILE="$(mktemp "${REMOTE_APP_DIR}/.env.prod.runtime.rollback.XXXXXX")" || return 1
+    awk '!/^(RELEASE_SHA|BACKEND_RUNTIME_IMAGE)=/' "${REMOTE_ENV_FILE}" > "${ROLLBACK_RUNTIME_ENV_FILE}" || return 1
+    printf 'BACKEND_RUNTIME_IMAGE=%s\n' \
+      "${PREVIOUS_CODE_SERVER_IMAGE}" >> "${ROLLBACK_RUNTIME_ENV_FILE}" || return 1
+    chmod 600 "${ROLLBACK_RUNTIME_ENV_FILE}" || return 1
+  fi
+  echo "Dagster code-server 배포 실패 — ${PREVIOUS_CODE_SERVER_IMAGE}로 복구를 시도한다." >&2
+  if ! env -u RELEASE_SHA -u BACKEND_RUNTIME_IMAGE docker compose \
+    --project-name "${COMPOSE_PROJECT_NAME}" \
+    --env-file "${ROLLBACK_RUNTIME_ENV_FILE}" \
+    -f docker-compose.yml -f docker-compose.shared.yml -f "${TRANSPORT_OVERRIDE_FILE}" \
+    up -d --no-deps --no-build dagster-code-server; then
+    echo "이전 Dagster code-server 컨테이너 복구 명령이 실패했다." >&2
+    return 1
+  fi
+  wait_code_server_health && wait_location_loaded
+}
 
 # 공용 plane에 합류하기 전에는 이 배포가 code-server를 옮기면 안 된다 — 옛 daemon이 아직 schedule을 쏘는데
 # code-server만 공용 instance로 가고, Manager 전환 스크립트의 펜스·검증을 건너뛴다. 합류 여부는 실제 상태로 본다.
@@ -304,6 +362,8 @@ while :; do
   fi
   sleep 15
 done
+capture_previous_code_server_image
+DEPLOYMENT_REPLACEMENT_STARTED=true
 compose up -d --no-build
 compose ps
 # Compose가 컨테이너를 만들었다는 것과 공용 plane이 이 location을 다시 싣는 것은 다르다.
@@ -334,3 +394,4 @@ for attempt in $(seq 1 30); do
   fi
   sleep 2
 done
+DEPLOYMENT_VERIFIED=true
