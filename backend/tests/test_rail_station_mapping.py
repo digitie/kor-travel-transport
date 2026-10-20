@@ -1,15 +1,40 @@
+import asyncio
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from app.services.rail_station_mapping import (
     automatic_station_mappings,
     catalog_digest,
     effective_station_mappings,
+    lock_rail_station_reference_catalog,
     mapping_revision,
     normalized_station_name,
+    reference_catalog_digest,
     station_catalog,
     validate_manual_mappings,
 )
+
+
+def test_reference_catalog_lock_is_postgresql_transaction_scoped_and_shared():
+    async def exercise():
+        postgres = SimpleNamespace(
+            bind=SimpleNamespace(dialect=SimpleNamespace(name="postgresql")),
+            execute=AsyncMock(),
+        )
+        await lock_rail_station_reference_catalog(postgres)
+        statement, params = postgres.execute.await_args.args
+        assert str(statement) == "SELECT pg_advisory_xact_lock(:lock_key)"
+        assert params == {"lock_key": 420054}
+
+        sqlite = SimpleNamespace(
+            bind=SimpleNamespace(dialect=SimpleNamespace(name="sqlite")),
+            execute=AsyncMock(),
+        )
+        await lock_rail_station_reference_catalog(sqlite)
+        sqlite.execute.assert_not_awaited()
+
+    asyncio.run(exercise())
 
 
 def code(operator: str, line: str, station: str, name: str, *, line_name: str = "1호선"):
@@ -36,6 +61,14 @@ def test_mapping_revision_does_not_depend_on_provider_row_order():
     second = {"operator_code": "O2", "line_code": "L2", "station_code": "S2",
         "rail_station_identity_key": "line|two", "match_method": "station_number_and_name"}
     assert mapping_revision("a" * 64, [first, second], []) == mapping_revision("a" * 64, [second, first], [])
+
+
+def test_reference_catalog_digest_is_order_independent_and_tracks_mapping_identity():
+    first = place("rail|first", "001", "서울역")
+    second = place("rail|second", "002", "시청역")
+    assert reference_catalog_digest([first, second]) == reference_catalog_digest([second, first])
+    renamed = place("rail|second", "002", "시청역(개명)")
+    assert reference_catalog_digest([first, second]) != reference_catalog_digest([first, renamed])
 
 
 @pytest.mark.parametrize(("value", "expected"), [

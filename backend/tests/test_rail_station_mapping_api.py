@@ -52,6 +52,18 @@ def test_admin_mapping_api_lists_catalog_saves_manual_links_and_rejects_stale_up
         assert len(initial["stations"]) == 2
         assert initial["stations"][0]["station_name"] == "서울역"
 
+        async def add_updated_reference():
+            async with client.app.state.session_factory() as session:
+                session.add(reference("rail|line-1|renamed", "001", "서울역(개명)"))
+                await session.commit()
+        asyncio.run(add_updated_reference())
+        stale_target = [{"operator_code": "OP", "line_code": "L2", "station_code": "002",
+            "rail_station_identity_key": "rail|line-1|exact", "note": "이전 기준정보"}]
+        stale_place_catalog = client.post(path, headers=ADMIN_HEADERS,
+            json={"expected_revision": initial["revision"], "mappings": stale_target})
+        assert stale_place_catalog.status_code == 409
+        initial = client.get(path, headers=ADMIN_HEADERS).json()
+
         manual = [{"operator_code": "OP", "line_code": "L2", "station_code": "002",
             "rail_station_identity_key": "rail|line-2|manual", "note": "노선 코드와 운영기관 자료 확인"}]
         saved = client.post(path, headers=ADMIN_HEADERS, json={"expected_revision": initial["revision"], "mappings": manual})

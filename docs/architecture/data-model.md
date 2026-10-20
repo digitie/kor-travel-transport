@@ -25,7 +25,10 @@ API·legacy 실행의 NULL 소유권은 자동 회수 대상에서 제외한다.
 
 `kric_station_mapping_registry`는 `id=1` 단일 행으로 KRIC 코드 파일 전체를 `catalog_json`에,
 안전한 자동 연결을 `automatic_mappings_json`에, 관리자 보정을 `manual_mappings_json`에
-보관한다. SHA-256 지문과 자료·매핑 갱신 시각으로 화면의 동시 편집을 감지한다. JSON 카탈로그는
+보관한다. SHA-256 지문에는 코드 카탈로그와 현재 기준 역의 ID·identity·운영기관·노선·역번호·역명이
+포함되어, 자료 수집 중 기준 역 목록이 바뀌면 오래 열린 화면의 저장을 거절한다. 자료·매핑 갱신 시각도
+함께 제공한다. PostgreSQL에서는 기준 역 수집의 DB 반영과 관리자 매핑 저장이 동일한 트랜잭션 advisory lock을
+사용해 동시에 진행되지 않도록 한다. JSON 카탈로그는
 운영기관·노선·역 이름과 각 코드를 모두 포함하며, `kric_station_codes`는 API 요청 코드와
 시간표 수집에 사용하는 관계형 형태를 유지한다. 0027은 현재 활성 역 코드를 JSON으로 backfill하고
 이후 KRIC 자료 수집 때 카탈로그를 갱신한다. 고유 `rail_station_id` 제약은 한 기준 역을

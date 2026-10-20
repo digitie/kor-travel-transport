@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Station = {
   operator_code: string; operator_name: string; line_code: string; line_name: string;
@@ -19,7 +19,7 @@ type MappingDocument = {
 };
 
 function stationKey(item: Pick<Station, "operator_code" | "line_code" | "station_code">) {
-  return `${item.operator_code}\u0000${item.line_code}\u0000${item.station_code}`;
+  return JSON.stringify([item.operator_code, item.line_code, item.station_code]);
 }
 function formatDate(value: string | null) {
   return value ? new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Seoul" }).format(new Date(value)) : "아직 수집 전";
@@ -38,6 +38,11 @@ function StationEditor({
   const [query, setQuery] = useState("");
   const [target, setTarget] = useState(station.rail_station_identity_key ?? "");
   const [note, setNote] = useState(manualMapping?.note ?? "");
+  useEffect(() => {
+    setTarget(station.rail_station_identity_key ?? "");
+    setNote(manualMapping?.note ?? "");
+  }, [station.operator_code, station.line_code, station.station_code,
+    station.rail_station_identity_key, manualMapping?.note]);
   const candidates = useMemo(() => {
     const terms = query.trim().toLocaleLowerCase("ko-KR").split(/\s+/).filter(Boolean);
     if (!terms.length) return [];
@@ -91,15 +96,22 @@ export function RailStationMapping() {
   const [unmatchedOnly, setUnmatchedOnly] = useState(true);
   const [selectedKey, setSelectedKey] = useState("");
   const [reload, setReload] = useState(0);
+  const requestSequence = useRef(0);
+  const noticeRef = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    if (notice) noticeRef.current?.focus();
+  }, [notice]);
 
   useEffect(() => {
     const controller = new AbortController();
+    const requestId = ++requestSequence.current;
     setLoading(true); setError("");
     fetch("/api/admin/rail-station-mappings", { cache: "no-store", signal: controller.signal })
       .then(async (response) => { if (!response.ok) throw new Error(await responseError(response)); return response.json() as Promise<MappingDocument>; })
-      .then((value) => { if (!controller.signal.aborted) { setData(value); setError(""); } })
-      .catch((reason: unknown) => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "역 목록을 불러오지 못했습니다."); })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      .then((value) => { if (!controller.signal.aborted && requestSequence.current === requestId) { setData(value); setError(""); } })
+      .catch((reason: unknown) => { if (!controller.signal.aborted && requestSequence.current === requestId) setError(reason instanceof Error ? reason.message : "역 목록을 불러오지 못했습니다."); })
+      .finally(() => { if (!controller.signal.aborted && requestSequence.current === requestId) setLoading(false); });
     return () => controller.abort();
   }, [reload]);
 
@@ -116,12 +128,23 @@ export function RailStationMapping() {
     });
   }, [data, query, unmatchedOnly]);
 
-  const selected = data?.stations.find((station) => stationKey(station) === selectedKey) ?? filtered[0];
+  const visibleStations = useMemo(() => filtered.slice(0, 100), [filtered]);
+
+  useEffect(() => {
+    if (visibleStations.some((station) => stationKey(station) === selectedKey)) return;
+    setSelectedKey(visibleStations[0] ? stationKey(visibleStations[0]) : "");
+  }, [visibleStations, selectedKey]);
+
+  const selected = visibleStations.find((station) => stationKey(station) === selectedKey) ?? visibleStations[0];
   const currentPlace = selected?.rail_station_identity_key ? data?.places.find((place) => place.identity_key === selected.rail_station_identity_key) : undefined;
   const manualMapping = selected ? data?.mappings.find((item) => stationKey(item) === stationKey(selected)) : undefined;
 
   async function save(target: string | null, note: string) {
     if (!data || !selected) return;
+    setSelectedKey(stationKey(selected));
+    // 진행 중인 GET이 저장 응답보다 늦게 도착해 새 revision을 덮지 않게 무효화한다.
+    requestSequence.current += 1;
+    setLoading(false);
     setSaving(true); setError(""); setNotice("");
     const mappings = data.mappings.filter((item) => stationKey(item) !== stationKey(selected));
     if (target) mappings.push({ operator_code: selected.operator_code, line_code: selected.line_code,
@@ -139,8 +162,8 @@ export function RailStationMapping() {
 
   function exportJson() {
     if (!data) return;
-    const body = JSON.stringify({ schema_version: data.schema_version, exported_at: new Date().toISOString(),
-      catalog_sha256: data.catalog_sha256, stations: data.stations, manual_mappings: data.mappings }, null, 2);
+    const { mappings, ...catalog } = data;
+    const body = JSON.stringify({ ...catalog, exported_at: new Date().toISOString(), manual_mappings: mappings }, null, 2);
     const url = URL.createObjectURL(new Blob([body], { type: "application/json" }));
     const anchor = document.createElement("a"); anchor.href = url; anchor.download = "kric-rail-station-mappings.json"; anchor.click();
     URL.revokeObjectURL(url);
@@ -150,7 +173,7 @@ export function RailStationMapping() {
     <div className="rail-map-toolbar">
       <div><p className="eyebrow">KRIC · 역 코드 카탈로그</p><p className="quiet">최근 확인 {formatDate(data?.catalog_updated_at ?? null)} · 지문 {data?.catalog_sha256?.slice(0, 12) ?? "—"}</p></div>
       <div className="rail-map-toolbar-actions">
-        <button className="secondary" type="button" disabled={loading} onClick={() => setReload((value) => value + 1)}>새로고침</button>
+        <button className="secondary" type="button" disabled={loading || saving} onClick={() => setReload((value) => value + 1)}>새로고침</button>
         <button className="secondary" type="button" disabled={!data} onClick={exportJson}>JSON 내보내기</button>
       </div>
     </div>
@@ -162,7 +185,7 @@ export function RailStationMapping() {
     </div> : null}
     {loading && !data ? <p className="loading" role="status">KRIC 역 코드와 매핑을 불러오는 중입니다…</p> : null}
     {error ? <p className="error" role="alert">{error}</p> : null}
-    {notice ? <p className="rail-map-notice" role="status">{notice}</p> : null}
+    {notice ? <p className="rail-map-notice" role="status" tabIndex={-1} ref={noticeRef}>{notice}</p> : null}
     {data ? <div className="rail-map-layout">
       <section className="rail-map-list" aria-label="KRIC 역 목록">
         <div className="rail-map-list-tools">
@@ -172,7 +195,7 @@ export function RailStationMapping() {
           <p className="quiet">{filtered.length.toLocaleString("ko-KR")}개 결과 · 목록 최대 100개 표시</p>
         </div>
         <div className="rail-map-station-list" role="listbox" aria-label="역 선택">
-          {filtered.slice(0, 100).map((station) => <button key={stationKey(station)} type="button" role="option"
+          {visibleStations.map((station) => <button key={stationKey(station)} type="button" role="option"
             aria-selected={selected ? stationKey(selected) === stationKey(station) : false}
             className={selected && stationKey(selected) === stationKey(station) ? "is-selected" : ""}
             onClick={() => setSelectedKey(stationKey(station))}>
@@ -182,7 +205,7 @@ export function RailStationMapping() {
           {!filtered.length ? <p className="quiet">조건에 맞는 역이 없습니다.</p> : null}
         </div>
       </section>
-      {selected ? <StationEditor key={`${stationKey(selected)}:${data.revision}`} station={selected} currentPlace={currentPlace}
+      {selected ? <StationEditor key={stationKey(selected)} station={selected} currentPlace={currentPlace}
         manualMapping={manualMapping} places={data.places} saving={saving} onSave={save} /> : <div className="rail-map-editor"><p className="quiet">연결할 역을 선택해 주세요.</p></div>}
     </div> : null}
   </section>;

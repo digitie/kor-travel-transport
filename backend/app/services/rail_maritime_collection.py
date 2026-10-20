@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import UTC, timedelta
 from collections.abc import Awaitable, Callable, Mapping
+from datetime import UTC, timedelta
 from typing import Any
 
 from kric import (
@@ -15,11 +15,11 @@ from kric import (
     FerryShipType,
     FerryTerminal,
     FileStationInfo,
-    PortGuidelineFileClient,
-    PortGuidelineLocation,
-    PortCall,
     KricFileClient,
     KricNetworkError,
+    PortCall,
+    PortGuidelineFileClient,
+    PortGuidelineLocation,
     RustfsObjectStore,
     StoredObject,
 )
@@ -39,6 +39,7 @@ from app.models import (
     RailStationReference,
     RawApiResponse,
 )
+from app.services.rail_station_mapping import lock_rail_station_reference_catalog
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +114,8 @@ class RailMaritimeCollectionService:
         run = await self._start_run(session, trigger)
         try:
             stations, archive = await self._fetch_rail_stations()
+            # 파일 다운로드는 잠금 밖에서 끝내고, 기준 역 DB 반영 동안만 매핑 저장과 직렬화한다.
+            await lock_rail_station_reference_catalog(session)
             collected_at = now_utc()
             stored = 0
             for station in stations:

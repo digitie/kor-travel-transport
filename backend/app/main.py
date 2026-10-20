@@ -147,8 +147,10 @@ from app.services.provider_status import provider_status
 from app.services.rail_station_mapping import (
     catalog_digest,
     effective_station_mappings,
+    lock_rail_station_reference_catalog,
     mapping_revision,
     provider_key,
+    reference_catalog_digest,
     station_catalog,
     validate_manual_mappings,
 )
@@ -888,7 +890,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         ]
         return KricStationMappingResponse(
-            revision=mapping_revision(catalog_sha256, automatic, manual_raw),
+            revision=mapping_revision(
+                catalog_sha256, automatic, manual_raw, reference_catalog_digest(places),
+            ),
             catalog_sha256=catalog_sha256,
             catalog_updated_at=registry.catalog_updated_at if registry else None,
             mappings_updated_at=registry.mappings_updated_at if registry else None,
@@ -915,6 +919,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         payload: KricStationMappingSaveRequest,
         session: AsyncSession = Depends(get_db),
     ) -> KricStationMappingResponse:
+        await lock_rail_station_reference_catalog(session)
         registry = await session.scalar(
             select(KricStationMappingRegistry)
             .where(KricStationMappingRegistry.id == 1)
@@ -927,7 +932,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             session.add(registry)
             await session.flush()
         registry, codes, places, catalog_sha256, automatic, manual_raw, _ = await load_kric_station_mapping(session)
-        current_revision = mapping_revision(catalog_sha256, automatic, manual_raw)
+        current_revision = mapping_revision(
+            catalog_sha256, automatic, manual_raw, reference_catalog_digest(places),
+        )
         if payload.expected_revision != current_revision:
             raise HTTPException(status_code=409, detail="역 코드나 매핑이 변경됐습니다. 새로고침 후 다시 저장해 주세요.")
         catalog_keys = {provider_key(row) for row in codes}

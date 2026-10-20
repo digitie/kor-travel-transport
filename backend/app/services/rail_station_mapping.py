@@ -9,6 +9,21 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from sqlalchemy import text
+
+RAIL_STATION_REFERENCE_LOCK_KEY = 420054
+
+
+async def lock_rail_station_reference_catalog(session: Any) -> None:
+    """기준 역 수집과 관리자 매핑 저장을 하나의 PostgreSQL 트랜잭션 잠금으로 직렬화한다."""
+    bind = getattr(session, "bind", None)
+    if getattr(getattr(bind, "dialect", None), "name", None) != "postgresql":
+        return
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(:lock_key)"),
+        {"lock_key": RAIL_STATION_REFERENCE_LOCK_KEY},
+    )
+
 
 def provider_key(row: Any) -> tuple[str, str, str]:
     return (
@@ -51,16 +66,35 @@ def catalog_digest(catalog: list[dict[str, str]]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def reference_catalog_digest(places: Iterable[Any]) -> str:
+    """수동 연결 대상의 식별·표시 필드만 정렬해 동시성 지문을 만든다."""
+    catalog = sorted(
+        ({
+            "id": int(getattr(place, "id", 0) or 0),
+            "identity_key": str(place.identity_key),
+            "operator_name": getattr(place, "rail_operator_name", None),
+            "line_name": getattr(place, "operating_line_name", None),
+            "station_number": getattr(place, "station_number", None),
+            "station_name": getattr(place, "station_name", None),
+        } for place in places),
+        key=lambda item: (item["identity_key"], item["id"]),
+    )
+    encoded = json.dumps(catalog, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def mapping_revision(
     catalog_sha256: str | None,
     automatic: list[dict[str, str]],
     manual: list[dict[str, str]],
+    reference_sha256: str | None = None,
 ) -> str:
     def sort_by_code(item: dict[str, str]) -> tuple[str, str, str]:
         return item["operator_code"], item["line_code"], item["station_code"]
 
     document = {
         "catalog_sha256": catalog_sha256,
+        "reference_sha256": reference_sha256,
         "automatic": sorted(automatic, key=sort_by_code),
         "manual": sorted(manual, key=sort_by_code),
     }
