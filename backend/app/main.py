@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.services.fuel_statistics import fuel_statistics_page, viewport_fuel_statistics
+
 from app.schemas import AddressRefreshSummary
 
 import asyncio
@@ -125,6 +127,7 @@ from app.schemas import (
     TransportPlaceMapItem,
     TransportPlaceMapCluster,
     TransportPlaceMapResponse,
+    FuelStatisticsResponse,
     TransportStatisticsResponse,
     RailTimetableResponse,
     RailDepartureSummaryResponse,
@@ -1258,6 +1261,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             items=items,
         )
 
+    @router.get("/transport/fuel/statistics", response_model=FuelStatisticsResponse)
+    async def transport_fuel_statistics(
+        scope: str = Query(default="nationwide", pattern="^(nationwide|sido|sigungu|highways|highway|highway_direction)$"),
+        product_code: str = Query(default="B027", min_length=1, max_length=20),
+        scope_key: str | None = Query(default=None, max_length=240),
+        session: AsyncSession = Depends(get_db),
+    ) -> dict:
+        return await fuel_statistics_page(session, scope, product_code, scope_key)
+
     @router.get("/transport/features/places", response_model=TransportPlaceMapResponse)
     async def transport_place_features(
         kind: str | None = Query(default=None, description="fuel_station, rail_station, ferry_port, bus_terminal, airport, rest_area, highway_incident 중 하나. 돌발은 최근 24시간 최신 저장 관측"),
@@ -1265,6 +1277,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         limit: int = Query(default=1000, ge=1, le=5000),
         zoom: int | None = Query(default=None, ge=0, le=22, description="지도 축척. 0~11은 상세 행 대신 셀별 장소 수를 반환"),
         include_sources: bool = Query(default=True, description="출처 필터 선택지를 포함. 반복 지도 조회에서는 false로 생략 가능"),
+        include_fuel_statistics: bool = Query(default=False, description="현재 지도 범위 전체의 유종별 통계 포함"),
         include_unlocated: bool = Query(default=False, description="좌표 없는 기준정보도 검색 목록에 포함"),
         source: str | None = Query(default=None, max_length=80),
         sources: str | None = Query(default=None, max_length=809, description="쉼표로 구분한 출처 최대 10개. source와 동시 지정 불가"),
@@ -1305,6 +1318,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if zoom is not None and min_longitude is None:
             raise HTTPException(status_code=422, detail="축척별 지도 조회에는 지도 범위가 필요합니다.")
         requested_kinds = tuple(sorted(selected_kinds)) if selected_kinds else (selected_kind,) if selected_kind else tuple(sorted(supported))
+        fuel_statistics = []
+        if include_fuel_statistics and "fuel_station" in requested_kinds and min_longitude is not None:
+            fuel_statistics = await viewport_fuel_statistics(session, bounds, selected_sources, selected_products, query)
         # 전체 지도는 한 종류가 limit을 모두 소모하지 않도록 균등하게 읽는다. 프런트가
         # 수천 개의 DOM marker를 만들지 않게 하는 API 경계이기도 하다.
         per_kind_limit = (limit + len(requested_kinds) - 1) // len(requested_kinds)
@@ -1492,7 +1508,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             result = TransportPlaceMapResponse(
                 generated_at=now_utc(), kind=selected_kind, total=total, truncated=False,
-                clustered=True, kind_totals=kind_totals, clusters=cluster_items, items=[],
+                fuel_statistics=fuel_statistics, clustered=True, kind_totals=kind_totals, clusters=cluster_items, items=[],
                 available_sources=sorted(available_sources), fuel_prices_stale=fuel_prices_stale,
                 fuel_prices_last_refreshed_at=fuel_prices_last_refreshed_at,
             )
@@ -1666,7 +1682,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         result = TransportPlaceMapResponse(
             generated_at=now_utc(), kind=selected_kind, total=total,
-            truncated=total > len(visible_items), kind_totals=kind_totals,
+            fuel_statistics=fuel_statistics, truncated=total > len(visible_items), kind_totals=kind_totals,
             items=visible_items, available_sources=sorted(available_sources),
             fuel_prices_stale=fuel_prices_stale, fuel_prices_last_refreshed_at=fuel_prices_last_refreshed_at,
         )

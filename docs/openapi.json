@@ -2181,6 +2181,57 @@
         "title": "FlightStatusResponse",
         "type": "object"
       },
+      "FuelCheapestStation": {
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "station_key": {
+            "title": "Station Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "station_key",
+          "name"
+        ],
+        "title": "FuelCheapestStation",
+        "type": "object"
+      },
       "FuelPriceItem": {
         "properties": {
           "collected_at": {
@@ -2846,6 +2897,241 @@
           "items"
         ],
         "title": "FuelStationResponse",
+        "type": "object"
+      },
+      "FuelStatisticsGroup": {
+        "properties": {
+          "average_price": {
+            "title": "Average Price",
+            "type": "number"
+          },
+          "cheapest_station": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FuelCheapestStation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cheapest_station_count": {
+            "title": "Cheapest Station Count",
+            "type": "integer"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "maximum_price": {
+            "title": "Maximum Price",
+            "type": "number"
+          },
+          "minimum_price": {
+            "title": "Minimum Price",
+            "type": "number"
+          },
+          "price_spread": {
+            "title": "Price Spread",
+            "type": "number"
+          },
+          "saving_50l": {
+            "title": "Saving 50L",
+            "type": "number"
+          },
+          "scope_key": {
+            "title": "Scope Key",
+            "type": "string"
+          },
+          "standard_deviation": {
+            "title": "Standard Deviation",
+            "type": "number"
+          },
+          "station_count": {
+            "title": "Station Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "station_count",
+          "average_price",
+          "minimum_price",
+          "maximum_price",
+          "price_spread",
+          "standard_deviation",
+          "saving_50l",
+          "cheapest_station_count",
+          "scope_key",
+          "label",
+          "generated_at"
+        ],
+        "title": "FuelStatisticsGroup",
+        "type": "object"
+      },
+      "FuelStatisticsHistory": {
+        "properties": {
+          "average_price": {
+            "title": "Average Price",
+            "type": "number"
+          },
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "station_count": {
+            "title": "Station Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "day",
+          "generated_at",
+          "average_price",
+          "station_count"
+        ],
+        "title": "FuelStatisticsHistory",
+        "type": "object"
+      },
+      "FuelStatisticsResponse": {
+        "properties": {
+          "generated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/FuelStatisticsHistory"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "history_scope_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "History Scope Key"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FuelStatisticsGroup"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "product_code": {
+            "title": "Product Code",
+            "type": "string"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "update_pending": {
+            "default": false,
+            "title": "Update Pending",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "scope",
+          "product_code",
+          "items",
+          "history"
+        ],
+        "title": "FuelStatisticsResponse",
+        "type": "object"
+      },
+      "FuelViewportStatistics": {
+        "properties": {
+          "average_price": {
+            "title": "Average Price",
+            "type": "number"
+          },
+          "cheapest_station": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FuelCheapestStation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cheapest_station_count": {
+            "title": "Cheapest Station Count",
+            "type": "integer"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "maximum_price": {
+            "title": "Maximum Price",
+            "type": "number"
+          },
+          "minimum_price": {
+            "title": "Minimum Price",
+            "type": "number"
+          },
+          "price_spread": {
+            "title": "Price Spread",
+            "type": "number"
+          },
+          "product_code": {
+            "title": "Product Code",
+            "type": "string"
+          },
+          "saving_50l": {
+            "title": "Saving 50L",
+            "type": "number"
+          },
+          "standard_deviation": {
+            "title": "Standard Deviation",
+            "type": "number"
+          },
+          "station_count": {
+            "title": "Station Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "station_count",
+          "average_price",
+          "minimum_price",
+          "maximum_price",
+          "price_spread",
+          "standard_deviation",
+          "saving_50l",
+          "cheapest_station_count",
+          "product_code",
+          "generated_at"
+        ],
+        "title": "FuelViewportStatistics",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -5834,6 +6120,13 @@
             "title": "Fuel Prices Stale",
             "type": "boolean"
           },
+          "fuel_statistics": {
+            "items": {
+              "$ref": "#/components/schemas/FuelViewportStatistics"
+            },
+            "title": "Fuel Statistics",
+            "type": "array"
+          },
           "generated_at": {
             "format": "date-time",
             "title": "Generated At",
@@ -8730,6 +9023,18 @@
             }
           },
           {
+            "description": "현재 지도 범위 전체의 유종별 통계 포함",
+            "in": "query",
+            "name": "include_fuel_statistics",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "현재 지도 범위 전체의 유종별 통계 포함",
+              "title": "Include Fuel Statistics",
+              "type": "boolean"
+            }
+          },
+          {
             "description": "좌표 없는 기준정보도 검색 목록에 포함",
             "in": "query",
             "name": "include_unlocated",
@@ -9052,6 +9357,86 @@
           }
         },
         "summary": "Transport Fuel Stations"
+      }
+    },
+    "/v1/transport/fuel/statistics": {
+      "get": {
+        "operationId": "transport_fuel_statistics_v1_transport_fuel_statistics_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "nationwide",
+              "pattern": "^(nationwide|sido|sigungu|highways|highway|highway_direction)$",
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "product_code",
+            "required": false,
+            "schema": {
+              "default": "B027",
+              "maxLength": 20,
+              "minLength": 1,
+              "title": "Product Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 240,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FuelStatisticsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Transport Fuel Statistics"
       }
     },
     "/v1/transport/highways/incidents": {

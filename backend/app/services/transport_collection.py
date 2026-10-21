@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.services.fuel_statistics import lock_fuel_statistics, try_publish_fuel_statistics
+
 import asyncio
 import hashlib
 import json
@@ -471,10 +473,12 @@ class TransportCollectionService:
                     try:
                         snapshot = await self._collect_fuel(session, run_id, errors, fuel_result)
                         if snapshot is not None:
+                            await lock_fuel_statistics(session, OPINET_SOURCE)
                             fuel_station_count, fuel_price_count = await self._store_fuel_snapshot(
                                 session, run_id, snapshot,
                             )
                             await self._mark_fuel_success(session, snapshot.collected_at)
+                            await try_publish_fuel_statistics(session, OPINET_SOURCE, snapshot.collected_at)
                         await session.commit()
                         break
                     except Exception as exc:

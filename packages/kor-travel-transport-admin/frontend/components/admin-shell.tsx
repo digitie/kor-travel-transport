@@ -10,6 +10,7 @@ const items = [
   ["/", "현황", Activity],
   ["/map", "교통 지도", Map],
   ["/fuel", "유가 지도", Fuel],
+  ["/fuel/statistics", "유가 통계", ChartNoAxesCombined],
   ["/transport", "교통·유가 현황", Route],
   ["/rail", "열차·도시철도", TrainFront],
   ["/rail/mapping", "역 코드 매핑", Waypoints],
