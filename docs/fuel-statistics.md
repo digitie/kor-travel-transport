@@ -19,3 +19,7 @@
 검증은 `backend/tests/test_fuel_statistics.py`와 admin의 `fuel-statistics.test.tsx`에서 가격/동률/보관/실패 격리를 확인한다. 격리 브라우저는 `E2E_FUEL_STATISTICS=true`, 실제 로그인/API/DB 검증은 `E2E_FUEL_STATISTICS_LIVE=true E2E_TRANSPORT_UI_PASSWORD=... E2E_BASE_URL=... npx playwright test e2e/fuel-statistics-live.spec.ts`로 실행한다. 실제 검증은 API 응답을 대체하지 않으며 조회와 로그인만 수행한다.
 
 현재 범주 목록과 선택 범주의 이력은 한 SQL snapshot에서 읽어 동시 발행 시에도 세대가 일치한다. 지도 응답의 각 유종 `update_pending`은 현재 원본 수집이 통계보다 앞선 경우 true이며 캐시와 별도로 매 요청 계산한다. 같은 범위/유종의 추이 범주 변경은 선택 UI와 비교표를 유지해 키보드 포커스를 보존한다. 결측 날짜는 실제 날짜 간격을 유지하며 차트 선을 연결하지 않는다. 운영 브라우저 검증에 `E2E_FUEL_MAP_CAMERA=true`를 추가하면 실제 VWorld 지도 확대2회·키보드 이동에 따른 bbox 재조회까지 검증한다.
+
+## 원본 가격의 품질
+
+집계는 양수인 원본 가격을 보존하며 임의의 정상 가격 구간으로 잘라내지 않는다. 2026-10-21 운영 대조에서 EX `B00067` 사천(부산)주유소의 휘발유 가격은 저장값184, `raw_item_json.gasolinePrice`도 `184원`이었다(관측03:32:56 UTC). 공급자 이상값은 최저가·가격 차이·50L 절감액에 영향을 준다. 이를 집계나 provider 파서의 오류로 단정하거나1840원으로 자동 보정하지 않는다. 원천 정정 추적은 별도 백로그에 남긴다.

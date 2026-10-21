@@ -12,6 +12,8 @@
 
 - [ ] 유가 수집 완료 통계 PR #101: 전체 회귀, 독립2인 리뷰, UI E2E, 배포 및 Odroid 조회 실측.
 
+- [ ] EX 유가 원천 이상값 정정 추적: 2026-10-21 `B00067` 사천(부산)주유소의 휘발유 저장값184와 원본 `gasolinePrice="184원"`이 일치한다. 공급자 정정 여부를 확인하고 최신 정상 수집 뒤 최저가·절감액을 재대조한다. 임의의1840원 보정이나 통계에서의 무근거 제외는 하지 않는다.
+
 
 - [ ] 회수 sensor tick 예산·정체 경보·서버 statement_timeout(`feat/recovery-sensor-budget-stall`,
   Map ADR-112 교훈 적용): PR CI green 뒤 머지, 그 다음 odroid 재배포(codex 소유). 재배포 Compose
