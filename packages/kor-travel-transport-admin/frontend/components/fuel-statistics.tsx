@@ -32,10 +32,10 @@ export function FuelStatisticsCard({ metrics, title }: { metrics: FuelMetrics; t
   </article>;
 }
 
-export function FuelViewportSummary({ items, pending }: { items: FuelViewportStatistics[]; pending: boolean }) {
+export function FuelViewportSummary({ items, pending, failed = false }: { items: FuelViewportStatistics[]; pending: boolean; failed?: boolean }) {
   return <section className="fuel-stat-section" aria-label="현재 지도 범위 유가 통계" aria-busy={pending}>
     <h2>현재 지도 범위</h2>
-    {pending ? <p role="status">통계 조회 중…</p> : items.length ? <div className="fuel-stat-grid">{items.map((item) => <FuelStatisticsCard key={item.product_code} title={fuelProductLabel(item.product_code)} metrics={item} />)}</div> : <p>통계 없음 · 수집 완료 후 반영됩니다.</p>}
+    {pending ? <p role="status">통계 조회 중…</p> : failed ? <p role="alert">통계를 불러오지 못했습니다.</p> : items.length ? <div className="fuel-stat-grid">{items.map((item) => <FuelStatisticsCard key={item.product_code} title={fuelProductLabel(item.product_code)} metrics={item} />)}</div> : <p>통계 없음 · 수집 완료 후 반영됩니다.</p>}
   </section>;
 }
 
@@ -70,7 +70,7 @@ export function FuelStatisticsPage() {
     }).catch(() => { if (!controller.signal.aborted) { setError(true); setPending(false); } });
     return () => controller.abort();
   }, [scope, product, scopeKey, reload]);
-  const selected = data?.items.find((row) => row.scope_key === (scopeKey || data.history_scope_key));
+  const selected = data?.items.find((row) => row.scope_key === data.history_scope_key);
   return <section className="fuel-stat-section" aria-label="유가 통계" aria-busy={pending}>
     <div className="fuel-stat-filters">
       <label>범위<select value={scope} onChange={(event) => { setScope(event.target.value); setScopeKey(""); }} >{scopes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>

@@ -9,6 +9,14 @@ API·legacy 실행의 NULL 소유권은 자동 회수 대상에서 제외한다.
 실행의 늦은 게시를 거절한다. metadata 유실은 5시간 heartbeat grace와 CAS로 확인한다.
 기존 원천 응답·성공 부분·provider receipt는 삭제하거나 재생성하지 않는다.
 
+## 수집 완료 유가 통계 (`0028_fuel_statistics`)
+
+원천별 발행 포인터 `fuel_statistics_states`, 최신 지도 가격 `fuel_statistics_points`,
+KST 일별 범주/유종 집계 `fuel_statistics_daily`를 분리한다. 원본 이력은 보존하고
+조회 시에는 읽지 않는다. 지도 가격은 bbox 인덱스를 사용하며 일별 집계는 오늘 포함
+7일만 남긴다. 원천 잠금·savepoint로 원본 성공과 통계 발행 실패를 분리한다.
+지표·원천·초기 기록 기준은 [유가 통계](../fuel-statistics.md)를 따른다.
+
 ## 핵심 테이블
 
 ### 지도 좌표·돌발 최신 조회 인덱스 (`0026_transport_map_indexes`)

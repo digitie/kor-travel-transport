@@ -9,7 +9,7 @@ from collections import OrderedDict
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import Float, and_, case, cast, delete, func, insert, or_, select, text
+from sqlalchemy import Float, and_, cast, delete, func, insert, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.time_utils import serialize_utc
@@ -90,7 +90,10 @@ async def publish_fuel_statistics(session: AsyncSession, source: str, collected_
     async def consume(point: dict, scopes: list[tuple[str, str, str]]) -> None:
         pending.append(point)
         for scope, scope_key, label in scopes:
-            group = groups.setdefault((scope, scope_key, point["product_code"]), _Accumulator(label))
+            key = (scope, scope_key, point["product_code"])
+            group = groups.get(key)
+            if group is None:
+                group = groups[key] = _Accumulator(label)
             group.add(point)
         if len(pending) >= 500:
             await session.execute(insert(FuelStatisticsPoint), pending)
@@ -115,7 +118,7 @@ async def publish_fuel_statistics(session: AsyncSession, source: str, collected_
                 scopes.append(("sido", _key(row.sido_value), row.sido_name or "시도 미제공"))
             if row.sido_value and row.sigungu_value:
                 scopes.append(("sigungu", _key(row.sido_value, row.sigungu_value),
-                               f"{row.sido_name} {row.sigungu_name}".strip()))
+                               f"{row.sido_name or row.sido_value} {row.sigungu_name or row.sigungu_value}".strip()))
             await consume(point, scopes)
     elif source == HIGHWAY:
         stream = await session.stream(select(RestAreaFuelPrice).where(
@@ -175,7 +178,8 @@ async def fuel_statistics_page(session: AsyncSession, scope: str, product_code: 
         FuelStatisticsDaily.generated_at == FuelStatisticsState.generated_at,
     )).where(FuelStatisticsDaily.source == source, FuelStatisticsDaily.scope == scope,
              FuelStatisticsDaily.product_code == product_code).order_by(FuelStatisticsDaily.scope_key))).scalars().all()
-    selected_key = scope_key if scope_key is not None else (current[0].scope_key if current else None)
+    current_keys = {row.scope_key for row in current}
+    selected_key = scope_key if scope_key in current_keys else (current[0].scope_key if current else None)
     history = []
     if current and selected_key is not None:
         end = current[0].day
@@ -219,22 +223,27 @@ async def viewport_fuel_statistics(session: AsyncSession, bounds: tuple[float, f
     if query and query.strip():
         conditions.append(or_(*(column.icontains(query.strip(), autoescape=True)
                                 for column in (p.name, p.brand_name, p.address))))
-    ranked = select(
-        p.product_code, p.price, p.station_key, p.name, p.address, p.longitude, p.latitude, p.generated_at,
-        func.row_number().over(partition_by=p.product_code, order_by=(p.price, p.station_key)).label("rn"),
-        func.min(p.price).over(partition_by=p.product_code).label("lowest"),
-    ).join(FuelStatisticsState, and_(p.source == FuelStatisticsState.source,
-                                   p.generated_at == FuelStatisticsState.generated_at)).where(*conditions).subquery()
-    r = ranked.c
-    cheapest = [func.max(case((r.rn == 1, r[name]))).label(name)
-                for name in ("station_key", "name", "address", "longitude", "latitude")]
+    # 가격·코드만 물질화해 큰 문자열 정렬과 전체 행 row_number를 피한다.
+    candidates = select(p.product_code, p.price, p.station_key).join(FuelStatisticsState, and_(
+        p.source == FuelStatisticsState.source, p.generated_at == FuelStatisticsState.generated_at,
+    )).where(*conditions).cte("fuel_candidates")
+    c = candidates.c
+    aggregates = select(
+        c.product_code, func.count().label("count"), func.avg(c.price).label("average"),
+        func.min(c.price).label("minimum"), func.max(c.price).label("maximum"),
+        func.avg(cast(c.price, Float) * cast(c.price, Float)).label("mean_square"),
+    ).group_by(c.product_code).cte("fuel_aggregates")
+    a = aggregates.c
+    cheapest = select(c.product_code, func.min(c.station_key).label("station_key"),
+                      func.count().label("cheapest_count")).join(aggregates, and_(
+        c.product_code == a.product_code, c.price == a.minimum,
+    )).group_by(c.product_code).cte("fuel_cheapest")
     rows = (await session.execute(select(
-        r.product_code, func.count().label("count"), func.avg(r.price).label("average"),
-        func.min(r.price).label("minimum"), func.max(r.price).label("maximum"),
-        func.avg(cast(r.price, Float) * cast(r.price, Float)).label("mean_square"),
-        func.sum(case((r.price == r.lowest, 1), else_=0)).label("cheapest_count"),
-        func.max(r.generated_at).label("generated_at"), *cheapest,
-    ).group_by(r.product_code).order_by(r.product_code))).mappings()
+        a, cheapest.c.cheapest_count, p.generated_at,
+        p.station_key, p.name, p.address, p.longitude, p.latitude,
+    ).join(cheapest, cheapest.c.product_code == a.product_code).join(p, and_(
+        p.source == OPINET, p.product_code == a.product_code, p.station_key == cheapest.c.station_key,
+    )).order_by(a.product_code))).mappings()
     result = [{"product_code": row["product_code"], "generated_at": row["generated_at"],
                **_metrics(row["count"], float(row["average"]), float(row["minimum"]), float(row["maximum"]),
                           float(row["mean_square"]), {name: row[name] for name in

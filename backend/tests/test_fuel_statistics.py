@@ -3,7 +3,6 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
-import pytest
 from sqlalchemy import func, select
 
 from app.models import FuelPriceSnapshot, FuelStation, FuelStatisticsDaily, RestAreaFuelPrice
@@ -57,6 +56,14 @@ def test_summary_and_viewport_ignore_marker_limit(client):
         assert viewport["saving_50l"] == 5000
         assert viewport["cheapest_station"]["name"] == "주유소0"
     assert client.get("/v1/transport/fuel/statistics", params={"scope": "bad"}).status_code == 422
+    absent = client.get("/v1/transport/fuel/statistics", params={"scope_key": "removed"}).json()
+    assert absent["history_scope_key"] == "all"
+    filtered = client.get("/v1/transport/features/places", params={
+        "kind": "fuel_station", "include_fuel_statistics": True, "query": "주유소1",
+        "min_longitude": 124, "max_longitude": 132, "min_latitude": 32, "max_latitude": 39,
+    }).json()
+    assert filtered["fuel_statistics"][0]["station_count"] == 1
+    assert filtered["fuel_statistics"][0]["average_price"] == 1800
 
 
 def test_kst_retention_same_day_replace_and_atomic_failure(client):

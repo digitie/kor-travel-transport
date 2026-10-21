@@ -1,5 +1,14 @@
 ## 2026-10-21 — 회수 sensor tick 예산·정체 경보와 서버 statement_timeout (Map ADR-112 교훈)
 
+
+## 2026-10-21 유가 사전 집계·지도 범위 통계 (PR #101 진행 중)
+
+- 전국/시도/시군구와 고속도로 전체/노선/방향별 유종 통계, 최저가 주유소·7일 일별 추이를 추가했다.
+- 가격 차이·표준편차·50L 평균 대비 최저가 절감액을 제공한다. 지도는 마커 제한/요약과 무관하게 bbox 전체를 같은 요청에서 집계한다.
+- PostgreSQL 합성 12,000곳/60,000가격/235시군구 실측: 지도 무캐시 중앙값 약43ms(기존 창 정렬171ms), 캐시 약1.5ms, 시군구 목록 중앙값 약8ms. 집계 Python 추적 최대 약3.2MiB. 개발 PC 수치이며 Odroid 미측정.
+- 신규 SQLite/PG API 테스트 각각3 PASS, admin WSL/Docker 컴포넌트223 PASS. 전체 suite·브라우저·리뷰·운영 검증은 진행 중이다.
+- 설치 이전 이력을 자동 전수 스캔하지 않는다. 최초 최신 통계는 `scripts/rebuild-fuel-statistics.py`로 공급자 호출 없이 초기화하고, 일별 기록은 이후 정상 수집에서 축적한다.
+
 브랜치 `feat/recovery-sensor-budget-stall`. 소유자 요청으로 Map ADR-112의 교훈을 odroid tenant에 적용했다.
 
 - **Common 재핀**: 옛 pin `89291f3`은 common main의 조상이 아니었다. main `e746e4b8`(6c275a04의

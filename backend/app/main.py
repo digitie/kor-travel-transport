@@ -1265,7 +1265,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def transport_fuel_statistics(
         scope: str = Query(default="nationwide", pattern="^(nationwide|sido|sigungu|highways|highway|highway_direction)$"),
         product_code: str = Query(default="B027", min_length=1, max_length=20),
-        scope_key: str | None = Query(default=None, max_length=240),
+        scope_key: str | None = Query(default=None, max_length=512),
         session: AsyncSession = Depends(get_db),
     ) -> dict:
         return await fuel_statistics_page(session, scope, product_code, scope_key)

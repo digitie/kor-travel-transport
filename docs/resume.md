@@ -1,5 +1,12 @@
 # resume.md — 현재 인수인계
 
+
+## 2026-10-21 유가 통계 (PR #101)
+
+`codex/fuel-statistics`: 수집 완료 사전집계, bbox 전체 통계, `/fuel/statistics`를 구현했다.
+[분석 기준/초기화](fuel-statistics.md). 신규 SQLite/PG 테스트, WSL/Docker admin 테스트 통과.
+다음은 전체 회귀·브라우저·James/Popper 독립 리뷰와 배포 후 통계 초기화·실측이다.
+
 ## 2026-10-21 회수 sensor tick 예산·정체 경보 (PR 대기)
 
 `feat/recovery-sensor-budget-stall`: Common pin `e746e4b8`, `transport_worker_recovery`에 tick 예산 45초·

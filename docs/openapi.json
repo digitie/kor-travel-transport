@@ -9393,7 +9393,7 @@
             "schema": {
               "anyOf": [
                 {
-                  "maxLength": 240,
+                  "maxLength": 512,
                   "type": "string"
                 },
                 {

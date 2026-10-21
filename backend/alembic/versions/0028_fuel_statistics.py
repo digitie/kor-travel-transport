@@ -28,7 +28,7 @@ def upgrade() -> None:
     op.create_table("fuel_statistics_daily",
         sa.Column("source", sa.String(40), primary_key=True),
         sa.Column("scope", sa.String(24), primary_key=True),
-        sa.Column("scope_key", sa.String(240), primary_key=True),
+        sa.Column("scope_key", sa.String(512), primary_key=True),
         sa.Column("product_code", sa.String(20), primary_key=True),
         sa.Column("day", sa.Date(), primary_key=True),
         sa.Column("generated_at", sa.DateTime(timezone=True), nullable=False),

@@ -409,7 +409,7 @@ class FuelStatisticsDaily(Base):
     __tablename__ = "fuel_statistics_daily"
     source: Mapped[str] = mapped_column(String(40), primary_key=True)
     scope: Mapped[str] = mapped_column(String(24), primary_key=True)
-    scope_key: Mapped[str] = mapped_column(String(240), primary_key=True)
+    scope_key: Mapped[str] = mapped_column(String(512), primary_key=True)
     product_code: Mapped[str] = mapped_column(String(20), primary_key=True)
     day: Mapped[date] = mapped_column(Date, primary_key=True)
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
