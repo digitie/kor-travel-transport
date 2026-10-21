@@ -5,7 +5,10 @@ from unittest.mock import patch
 
 from sqlalchemy import func, select
 
-from app.models import FuelPriceSnapshot, FuelStation, FuelStatisticsDaily, RestAreaFuelPrice
+from app.models import (
+    FuelLatestPrice, FuelPriceSnapshot, FuelStation, FuelStatisticsDaily, RestAreaFuelPrice,
+    TransportCollectionState,
+)
 from app.services.fuel_statistics import (
     HIGHWAY, OPINET, fuel_statistics_page, publish_fuel_statistics, try_publish_fuel_statistics,
 )
@@ -14,7 +17,7 @@ from app.services.transport_collection import upsert_latest_fuel_prices
 
 async def seed(session, stamp):
     for index, (price, longitude) in enumerate(((1600, 127), (1800, 127.01), (1600, 128))):
-        station = FuelStation(source=OPINET, identity_key=str(index), name=f"주유소{index}",
+        station = FuelStation(id=(2, 3, 10)[index], source=OPINET, identity_key=str(index), name=f"주유소{index}",
             address=f"서울 도로{index}", query_level="sigungu", source_kinds=[],
             sido_value="11", sido_name="서울", sigungu_value="110", sigungu_name="종로",
             longitude=longitude, latitude=37.5, first_seen_at=stamp, last_seen_at=stamp)
@@ -43,7 +46,8 @@ def test_summary_and_viewport_ignore_marker_limit(client):
     assert summary["price_spread"] == 200
     assert summary["saving_50l"] == 3333.33
     assert summary["cheapest_station_count"] == 2
-    assert summary["cheapest_station"]["name"] == "주유소0"
+    # 전국 집계와 지도 SQL은 같은 문자열 station_key 순서로 동률 대표를 고른다.
+    assert summary["cheapest_station"]["name"] == "주유소2"
     for zoom in (7, 15):
         response = client.get("/v1/transport/features/places", params={
             "kind": "fuel_station", "limit": 1, "zoom": zoom, "include_fuel_statistics": True,
@@ -82,10 +86,17 @@ def test_kst_retention_same_day_replace_and_atomic_failure(client):
             assert str(page["history"][-1]["day"]) == "2026-10-20"
             assert await session.scalar(select(func.count()).select_from(FuelStatisticsDaily)) == 21
             # 통계 도중 실패해도 기존 세대가 보이고 원본 트랜잭션은 계속 사용 가능하다.
+            raw_price = await session.get(FuelLatestPrice, (2, "B027"))
+            raw_price.price = 1900
+            session.add(TransportCollectionState(source=OPINET, last_success_at=latest + timedelta(hours=1),
+                updated_at=latest + timedelta(hours=1)))
             with patch("app.services.fuel_statistics._Accumulator.metrics", side_effect=RuntimeError("failed")):
                 await try_publish_fuel_statistics(session, OPINET, latest + timedelta(hours=1))
             await session.commit()
-            assert (await fuel_statistics_page(session, "nationwide", "B027"))["items"] == page["items"]
+            after = await fuel_statistics_page(session, "nationwide", "B027")
+            assert after["items"] == page["items"]
+            assert after["update_pending"] is True
+            assert float((await session.get(FuelLatestPrice, (2, "B027"))).price) == 1900
     asyncio.run(exercise())
 
 

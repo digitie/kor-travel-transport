@@ -15,3 +15,5 @@
 관리 UI `/fuel`은 지도 범위 통계, `/fuel/statistics`는 범주 비교표·7일 추이·최저가 주유소를 제공한다. 필터 요청 중에는 이전 범주의 지표를 숨기며 차트는 별도 라이브러리 없이 SVG와 접근 가능한 표로 표시한다.
 
 배포 후 `python scripts/rebuild-fuel-statistics.py`를 backend 컨테이너 안에서 실행하면 원천별 마지막 정상 수집 시각으로 최신 통계를 초기화한다. DB 마이그레이션 이후 실행하며 공급자를 재호출하지 않는다. 이미 같은 시각 또는 더 최신 통계가 있으면 덮어쓰지 않는다. 특정 원천만 처리하려면 `--source opinet_browser` 또는 `--source krex_rest_area_fuel`을 지정한다.
+
+검증은 `backend/tests/test_fuel_statistics.py`와 admin의 `fuel-statistics.test.tsx`에서 가격/동률/보관/실패 격리를 확인한다. 격리 브라우저는 `E2E_FUEL_STATISTICS=true`, 실제 로그인/API/DB 검증은 `E2E_FUEL_STATISTICS_LIVE=true E2E_TRANSPORT_UI_PASSWORD=... E2E_BASE_URL=... npx playwright test e2e/fuel-statistics-live.spec.ts`로 실행한다. 실제 검증은 API 응답을 대체하지 않으며 조회와 로그인만 수행한다.

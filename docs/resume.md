@@ -5,13 +5,14 @@
 
 `codex/fuel-statistics`: 수집 완료 사전집계, bbox 전체 통계, `/fuel/statistics`를 구현했다.
 [분석 기준/초기화](fuel-statistics.md). 신규 SQLite/PG 테스트, WSL/Docker admin 테스트 통과.
-다음은 전체 회귀·브라우저·James/Popper 독립 리뷰와 배포 후 통계 초기화·실측이다.
+WSL/Docker backend 각각939 PASS·14 SKIP, admin 각각223 PASS, 격리 UI4와 실제 로컬 PG/API/BFF UI1 PASS.
+다음은 CI·James/Popper 독립 리뷰, Odroid 배포 및 통계 초기화·실측이다.
 
-## 2026-10-21 회수 sensor tick 예산·정체 경보 (PR 대기)
+## 2026-10-21 회수 sensor tick 예산·정체 경보 (PR #100 머지·배포 대기)
 
 `feat/recovery-sensor-budget-stall`: Common pin `e746e4b8`, `transport_worker_recovery`에 tick 예산 45초·
 프로세스 내 keyset 위치·정체 경보(`transport_worker_recovery.stalled`)·5분 수집 신선도 판정, PostgreSQL
-서버 `statement_timeout`(수집 60초·API 120초·회수 5초). 다음은 CI green 확인 뒤 머지, 그 뒤 odroid
+서버 `statement_timeout`(수집 60초·API 120초·회수 5초). PR #100은 main `1b0d719`에 머지되었다. 다음은 유가 통계와 함께 odroid
 재배포(codex). 재배포 Compose에는 `/opt/kor-travel-odroid/transport/transport.override.yml`를 반드시
 포함한다(code-server gRPC 12306). 상세는 journal 2026-10-21 항목.
 

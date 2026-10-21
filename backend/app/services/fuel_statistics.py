@@ -56,6 +56,8 @@ class _Accumulator:
             self.cheapest = {k: point[k] for k in ("station_key", "name", "address", "longitude", "latitude")}
         elif price == self.minimum:
             self.cheapest_count += 1
+            if self.cheapest is not None and point["station_key"] < self.cheapest["station_key"]:
+                self.cheapest = {k: point[k] for k in ("station_key", "name", "address", "longitude", "latitude")}
 
     def metrics(self) -> dict:
         average = self.total / self.count
