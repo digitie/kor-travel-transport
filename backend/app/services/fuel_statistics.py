@@ -174,36 +174,44 @@ async def try_publish_fuel_statistics(session: AsyncSession, source: str, collec
 async def fuel_statistics_page(session: AsyncSession, scope: str, product_code: str,
                                scope_key: str | None = None) -> dict:
     source = OPINET if scope in {"nationwide", "sido", "sigungu"} else HIGHWAY
-    current = (await session.execute(select(FuelStatisticsDaily).join(FuelStatisticsState, and_(
-        FuelStatisticsDaily.source == FuelStatisticsState.source,
-        FuelStatisticsDaily.day == FuelStatisticsState.day,
-        FuelStatisticsDaily.generated_at == FuelStatisticsState.generated_at,
-    )).where(FuelStatisticsDaily.source == source, FuelStatisticsDaily.scope == scope,
-             FuelStatisticsDaily.product_code == product_code).order_by(FuelStatisticsDaily.scope_key))).scalars().all()
-    current_keys = {row.scope_key for row in current}
-    selected_key = scope_key if scope_key in current_keys else (current[0].scope_key if current else None)
-    history = []
-    if current and selected_key is not None:
-        end = current[0].day
-        rows = (await session.execute(select(FuelStatisticsDaily).where(
-            FuelStatisticsDaily.source == source, FuelStatisticsDaily.scope == scope,
-            FuelStatisticsDaily.product_code == product_code, FuelStatisticsDaily.scope_key == selected_key,
-            FuelStatisticsDaily.day.between(end - timedelta(days=6), end),
-            FuelStatisticsDaily.generated_at <= current[0].generated_at,
-        ).order_by(FuelStatisticsDaily.day))).scalars()
-        history = [{"day": row.day, "generated_at": row.generated_at,
-                    "average_price": row.metrics_json["average_price"],
-                    "station_count": row.metrics_json["station_count"]} for row in rows]
-    state = await session.get(FuelStatisticsState, source)
+    d, state = FuelStatisticsDaily, FuelStatisticsState
+    current_keys = select(d.scope_key).join(state, and_(
+        d.source == state.source, d.day == state.day, d.generated_at == state.generated_at,
+    )).where(d.source == source, d.scope == scope, d.product_code == product_code).cte("fuel_current_keys")
+    chosen = func.coalesce(
+        select(current_keys.c.scope_key).where(current_keys.c.scope_key == scope_key).scalar_subquery(),
+        select(func.min(current_keys.c.scope_key)).scalar_subquery(),
+    )
+    day_start = func.date(state.day, "-6 days") if session.bind.dialect.name == "sqlite" else state.day - 6
+    # 현재 범주와 선택 범주의 7일 이력을 한 SQL snapshot에서 읽는다.
+    # 발행의 delete/insert 사이 또는 자정 보관 정리 사이를 섞어 읽지 않는다.
+    rows = (await session.execute(select(d, state.generated_at, state.day, chosen).select_from(state).outerjoin(d, and_(
+        d.source == state.source, d.scope == scope, d.product_code == product_code,
+        d.day.between(day_start, state.day), d.generated_at <= state.generated_at,
+        or_(and_(d.day == state.day, d.generated_at == state.generated_at), d.scope_key == chosen),
+    )).where(state.source == source).order_by(d.scope_key, d.day))).all()
+    generated_at = rows[0][1] if rows else None
+    selected_key = rows[0][3] if rows else None
+    current = [row[0] for row in rows if row[0] is not None and row[0].day == row[2]
+               and serialize_utc(row[0].generated_at) == serialize_utc(row[1])]
+    history = [{"day": row[0].day, "generated_at": row[0].generated_at,
+                "average_price": row[0].metrics_json["average_price"],
+                "station_count": row[0].metrics_json["station_count"]}
+               for row in rows if row[0] is not None and row[0].scope_key == selected_key]
     collection = await session.scalar(select(TransportCollectionState).where(TransportCollectionState.source == source))
-    # 집계 SELECT와 뒤의 상태 SELECT 사이 발행이 커밋되어도 헤더는 실제 반환 행의 세대다.
-    generated_at = current[0].generated_at if current else state.generated_at if state else None
     pending = bool(collection and collection.last_success_at and (
         generated_at is None or serialize_utc(collection.last_success_at) > serialize_utc(generated_at)))
     return {"scope": scope, "product_code": product_code, "history_scope_key": selected_key,
             "generated_at": generated_at, "update_pending": pending,
             "items": [{"scope_key": row.scope_key, "label": row.label, "generated_at": row.generated_at,
                        **row.metrics_json} for row in current], "history": history}
+
+
+def with_publication_status(items: list[dict], last_success_at: datetime | None) -> list[dict]:
+    # 가격 원본이 먼저 성공한 경우도 매 요청 확인한다. 캐시된 통계 값은 수정하지 않는다.
+    return [{**item, "update_pending": bool(last_success_at and
+             serialize_utc(last_success_at) > serialize_utc(item["generated_at"]))} for item in items]
+
 
 
 async def viewport_fuel_statistics(session: AsyncSession, bounds: tuple[float, float, float, float],

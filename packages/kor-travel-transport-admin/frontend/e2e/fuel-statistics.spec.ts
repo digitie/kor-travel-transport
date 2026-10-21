@@ -56,3 +56,40 @@ test("지도 요약 마커 수와 독립된 범위 통계를 같은 요청으로
   await expect(summary.getByText("12,000개 주유소")).toBeVisible();
   await expect(summary.getByText("최저가 시험주유소", { exact: true })).toBeVisible();
 });
+
+test("추이 범주와 비교표는 지연 응답 중에도 키보드 포커스를 유지한다", async ({ page }) => {
+  let gate: Promise<void> | null = null;
+  let release = () => {};
+  let started = () => {};
+  let requested: Promise<void>;
+  const hold = () => {
+    gate = new Promise<void>((resolve) => { release = resolve; });
+    requested = new Promise<void>((resolve) => { started = resolve; });
+  };
+  await page.route("**/api/transport/transport/fuel/statistics?*", async (route) => {
+    const selected = new URL(route.request().url()).searchParams.get("scope_key") ?? "first";
+    if (gate) { const waiting = gate; started(); await waiting; }
+    return route.fulfill({ json: { generated_at: metrics.generated_at, update_pending: false,
+      history_scope_key: selected, items: ["first", "second"].map((scope_key, i) => ({ ...metrics, scope_key, label: i ? "둘째" : "첫째" })),
+      history: [{ day: "2026-10-21", average_price: 1700, station_count: 12000 }] } });
+  });
+  await page.goto("/fuel/statistics");
+  const category = page.getByLabel("추이 범주", { exact: true });
+  await expect(category).toBeVisible();
+  hold();
+  await category.focus();
+  await category.selectOption("second");
+  await requested!;
+  await expect(category).toBeFocused();
+  gate = null; release();
+  await expect(page.getByRole("article", { name: "둘째 · 휘발유" })).toBeVisible();
+  await expect(category).toBeFocused();
+  hold();
+  const row = page.getByRole("button", { name: "첫째", exact: true });
+  await row.click();
+  await requested!;
+  await expect(row).toBeFocused();
+  gate = null; release();
+  await expect(page.getByRole("article", { name: "첫째 · 휘발유" })).toBeVisible();
+  await expect(row).toBeFocused();
+});

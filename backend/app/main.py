@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.services.fuel_statistics import fuel_statistics_page, viewport_fuel_statistics
+from app.services.fuel_statistics import fuel_statistics_page, viewport_fuel_statistics, with_publication_status
 
 from app.schemas import AddressRefreshSummary
 
@@ -1508,7 +1508,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             result = TransportPlaceMapResponse(
                 generated_at=now_utc(), kind=selected_kind, total=total, truncated=False,
-                fuel_statistics=fuel_statistics, clustered=True, kind_totals=kind_totals, clusters=cluster_items, items=[],
+                fuel_statistics=with_publication_status(fuel_statistics, fuel_prices_last_refreshed_at), clustered=True, kind_totals=kind_totals, clusters=cluster_items, items=[],
                 available_sources=sorted(available_sources), fuel_prices_stale=fuel_prices_stale,
                 fuel_prices_last_refreshed_at=fuel_prices_last_refreshed_at,
             )
@@ -1682,7 +1682,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         result = TransportPlaceMapResponse(
             generated_at=now_utc(), kind=selected_kind, total=total,
-            fuel_statistics=fuel_statistics, truncated=total > len(visible_items), kind_totals=kind_totals,
+            fuel_statistics=with_publication_status(fuel_statistics, fuel_prices_last_refreshed_at), truncated=total > len(visible_items), kind_totals=kind_totals,
             items=visible_items, available_sources=sorted(available_sources),
             fuel_prices_stale=fuel_prices_stale, fuel_prices_last_refreshed_at=fuel_prices_last_refreshed_at,
         )

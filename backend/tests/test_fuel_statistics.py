@@ -3,7 +3,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.models import (
     FuelLatestPrice, FuelPriceSnapshot, FuelStation, FuelStatisticsDaily, RestAreaFuelPrice,
@@ -99,6 +99,13 @@ def test_kst_retention_same_day_replace_and_atomic_failure(client):
             assert float((await session.get(FuelLatestPrice, (2, "B027"))).price) == 1900
     asyncio.run(exercise())
 
+    response = client.get("/v1/transport/features/places", params={
+        "kind": "fuel_station", "include_fuel_statistics": True,
+        "min_longitude": 124, "max_longitude": 132, "min_latitude": 32, "max_latitude": 39,
+    })
+    assert response.status_code == 200
+    assert response.json()["fuel_statistics"][0]["update_pending"] is True
+
 
 def test_highway_direction_and_old_station_exclusion(client):
     async def exercise():
@@ -115,4 +122,33 @@ def test_highway_direction_and_old_station_exclusion(client):
             assert total["items"][0]["station_count"] == 2
             directions = await fuel_statistics_page(session, "highway_direction", "B027")
             assert {row["label"] for row in directions["items"]} == {"경부선 · 상행", "경부선 · 하행"}
+    asyncio.run(exercise())
+
+
+def test_publication_between_reads_keeps_current_day_history(client):
+    async def exercise():
+        async with client.app.state.session_factory() as session:
+            stamp = datetime.now(timezone.utc)
+            await seed(session, stamp)
+            await publish_fuel_statistics(session, OPINET, stamp - timedelta(days=1))
+            await publish_fuel_statistics(session, OPINET, stamp)
+            await session.commit()
+            execute = session.execute
+            changed = False
+
+            async def interleaved(statement, *args, **kwargs):
+                nonlocal changed
+                result = await execute(statement, *args, **kwargs)
+                if not changed and statement.is_select and "fuel_statistics_daily" in str(statement):
+                    changed = True
+                    await execute(update(FuelLatestPrice).values(price=2100))
+                    await publish_fuel_statistics(session, OPINET, stamp + timedelta(hours=1))
+                    await session.commit()
+                return result
+
+            with patch.object(session, "execute", side_effect=interleaved):
+                page = await fuel_statistics_page(session, "nationwide", "B027")
+            assert changed
+            assert len(page["history"]) == 2
+            assert page["history"][-1]["average_price"] == page["items"][0]["average_price"] == 1666.67
     asyncio.run(exercise())

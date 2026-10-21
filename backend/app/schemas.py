@@ -263,6 +263,7 @@ class FuelStatisticsMetrics(BaseModel):
 
 
 class FuelViewportStatistics(FuelStatisticsMetrics):
+    update_pending: bool = False
     product_code: str
     generated_at: datetime
 

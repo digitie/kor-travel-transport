@@ -40,6 +40,35 @@ test("실제 로그인·통계 API·지도 범위·모바일/데스크톱 화면
   const viewport = page.getByRole("region", { name: "현재 지도 범위 유가 통계" });
   await expect(viewport.getByRole("article").first()).toBeVisible({ timeout: 30_000 });
   await expect(viewport).toHaveAttribute("aria-busy", "false");
+  if (process.env.E2E_FUEL_MAP_CAMERA === "true") {
+    const endpoint = "/api/transport/transport/features/places";
+    const observation: { latest?: URL } = {};
+    page.on("request", (req) => { const url = new URL(req.url()); if (url.pathname === endpoint) observation.latest = url; });
+    const canvas = page.locator(".maplibregl-canvas");
+    await expect(canvas).toBeVisible();
+    for (let i = 0; i < 2; i += 1) {
+      const zoom = Number(observation.latest?.searchParams.get("zoom") ?? 7);
+      const changed = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return url.pathname === endpoint && Number(url.searchParams.get("zoom")) > zoom;
+      });
+      await page.locator(".maplibregl-ctrl-zoom-in").click();
+      expect((await changed).status()).toBe(200);
+      await expect(viewport).toHaveAttribute("aria-busy", "false");
+    }
+    const beforePan = observation.latest?.searchParams.get("min_longitude");
+    const panned = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname === endpoint && url.searchParams.get("min_longitude") !== beforePan;
+    });
+    await canvas.focus(); await page.keyboard.press("ArrowRight");
+    const response = await panned;
+    const result = await response.json();
+    expect(response.status()).toBe(200);
+    expect(result.fuel_statistics.length).toBeGreaterThan(0);
+    for (const item of result.fuel_statistics) expect(item.station_count).toBeLessThanOrEqual(result.total);
+    await expect(viewport).toHaveAttribute("aria-busy", "false");
+  }
   await page.screenshot({ path: test.info().outputPath("fuel-map-statistics.png"), fullPage: true });
   await test.info().attach("실제 유가 API 응답 시간", { body: JSON.stringify(timings, null, 2), contentType: "application/json" });
 });

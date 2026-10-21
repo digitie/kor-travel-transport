@@ -17,3 +17,5 @@
 배포 후 `python scripts/rebuild-fuel-statistics.py`를 backend 컨테이너 안에서 실행하면 원천별 마지막 정상 수집 시각으로 최신 통계를 초기화한다. DB 마이그레이션 이후 실행하며 공급자를 재호출하지 않는다. 이미 같은 시각 또는 더 최신 통계가 있으면 덮어쓰지 않는다. 특정 원천만 처리하려면 `--source opinet_browser` 또는 `--source krex_rest_area_fuel`을 지정한다.
 
 검증은 `backend/tests/test_fuel_statistics.py`와 admin의 `fuel-statistics.test.tsx`에서 가격/동률/보관/실패 격리를 확인한다. 격리 브라우저는 `E2E_FUEL_STATISTICS=true`, 실제 로그인/API/DB 검증은 `E2E_FUEL_STATISTICS_LIVE=true E2E_TRANSPORT_UI_PASSWORD=... E2E_BASE_URL=... npx playwright test e2e/fuel-statistics-live.spec.ts`로 실행한다. 실제 검증은 API 응답을 대체하지 않으며 조회와 로그인만 수행한다.
+
+현재 범주 목록과 선택 범주의 이력은 한 SQL snapshot에서 읽어 동시 발행 시에도 세대가 일치한다. 지도 응답의 각 유종 `update_pending`은 현재 원본 수집이 통계보다 앞선 경우 true이며 캐시와 별도로 매 요청 계산한다. 같은 범위/유종의 추이 범주 변경은 선택 UI와 비교표를 유지해 키보드 포커스를 보존한다. 결측 날짜는 실제 날짜 간격을 유지하며 차트 선을 연결하지 않는다. 운영 브라우저 검증에 `E2E_FUEL_MAP_CAMERA=true`를 추가하면 실제 VWorld 지도 확대2회·키보드 이동에 따른 bbox 재조회까지 검증한다.

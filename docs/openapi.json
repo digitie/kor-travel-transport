@@ -3117,6 +3117,11 @@
           "station_count": {
             "title": "Station Count",
             "type": "integer"
+          },
+          "update_pending": {
+            "default": false,
+            "title": "Update Pending",
+            "type": "boolean"
           }
         },
         "required": [
