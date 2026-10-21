@@ -10,6 +10,9 @@
 
 ## 진행 중인 작업 인덱스
 
+- [ ] 유가 수집 완료 통계 PR #101: 전체 회귀, 독립2인 리뷰, UI E2E, 배포 및 Odroid 조회 실측.
+
+
 - [ ] 회수 sensor tick 예산·정체 경보·서버 statement_timeout(`feat/recovery-sensor-budget-stall`,
   Map ADR-112 교훈 적용): PR CI green 뒤 머지, 그 다음 odroid 재배포(codex 소유). 재배포 Compose
   호출에 `/opt/kor-travel-odroid/transport/transport.override.yml`를 반드시 포함해 code-server gRPC

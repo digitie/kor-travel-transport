@@ -457,3 +457,26 @@ h1, h2, h3 { color: var(--text-primary); }
   .common-menu [data-slot="app-menu-group"] { flex-shrink: 0; }
   .common-menu [data-slot="app-menu-link"] { width: auto; }
 }
+
+/* 유가 통계는 가벼운 SVG와 표를 함께 제공한다. */
+.fuel-stat-section { display: grid; gap: 1rem; margin-block: 1rem; min-width: 0; }
+.fuel-stat-section h2 { font-size: 1.1rem; font-weight: 650; }
+.fuel-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 1rem; }
+.fuel-stat-card { border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--panel); padding: 1rem; min-width: 0; }
+.fuel-stat-card header { display: flex; justify-content: space-between; gap: .5rem; flex-wrap: wrap; }
+.fuel-stat-card h3 { font-weight: 650; }
+.fuel-stat-card p { overflow-wrap: anywhere; margin-block: .4rem; }
+.fuel-stat-card small, .fuel-stat-card header span { color: var(--muted); font-size: .8rem; }
+.fuel-stat-values { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1rem; margin-block: 1rem; }
+.fuel-stat-values dt { font-size: .8rem; color: var(--muted); }
+.fuel-stat-values dd { font-size: 1.3rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.fuel-stat-values small { font-weight: 400; margin-left: .3rem; }
+.fuel-stat-filters { display: flex; align-items: end; flex-wrap: wrap; gap: 1rem; }
+.fuel-stat-filters label, .fuel-stat-category { display: grid; gap: .35rem; max-width: 100%; }
+.fuel-stat-section select, .fuel-stat-filters button { padding: .5rem; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--panel); min-width: 0; max-width: 100%; }
+.fuel-stat-trend { width: 100%; max-width: 900px; color: var(--accent); }
+.fuel-stat-table { overflow-x: auto; max-width: 100%; }
+.fuel-stat-table table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.fuel-stat-table th, .fuel-stat-table td { text-align: left; padding: .6rem; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.fuel-stat-table caption { text-align: left; padding-block: .6rem; }
+.fuel-stat-table button { text-decoration: underline; text-underline-offset: .2rem; }

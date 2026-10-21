@@ -242,12 +242,62 @@ class TransportPlaceMapCluster(BaseModel):
     kind_counts: dict[str, int] = Field(default_factory=dict)
 
 
+class FuelCheapestStation(BaseModel):
+    station_key: str
+    name: str
+    address: str | None = None
+    longitude: float | None = None
+    latitude: float | None = None
+
+
+class FuelStatisticsMetrics(BaseModel):
+    station_count: int
+    average_price: float
+    minimum_price: float
+    maximum_price: float
+    price_spread: float
+    standard_deviation: float
+    saving_50l: float
+    cheapest_station: FuelCheapestStation | None = None
+    cheapest_station_count: int
+
+
+class FuelViewportStatistics(FuelStatisticsMetrics):
+    update_pending: bool = False
+    product_code: str
+    generated_at: datetime
+
+
+class FuelStatisticsGroup(FuelStatisticsMetrics):
+    scope_key: str
+    label: str
+    generated_at: datetime
+
+
+class FuelStatisticsHistory(BaseModel):
+    day: date
+    generated_at: datetime
+    average_price: float
+    station_count: int
+
+
+class FuelStatisticsResponse(BaseModel):
+    scope: str
+    product_code: str
+    history_scope_key: str | None = None
+    generated_at: datetime | None = None
+    update_pending: bool = False
+    items: list[FuelStatisticsGroup]
+    history: list[FuelStatisticsHistory]
+
+
 class TransportPlaceMapResponse(BaseModel):
     generated_at: datetime
     kind: str | None = None
     total: int = 0
     truncated: bool = False
     clustered: bool = False
+    fuel_statistics: list[FuelViewportStatistics] = Field(default_factory=list)
     kind_totals: dict[str, int] = Field(default_factory=dict)
     clusters: list[TransportPlaceMapCluster] = Field(default_factory=list)
     fuel_prices_stale: bool = Field(default=False, description="확인된 최신 유가 읽기 모델 지연 여부. false는 직후 발생한 늦은 원본 커밋까지 보증하지 않습니다.")

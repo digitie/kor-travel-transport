@@ -5,6 +5,7 @@ export const TRANSPORT_ENDPOINTS = [
   "transport/highways/traffic",
   "transport/highways/incidents",
   "transport/fuel/stations",
+  "transport/fuel/statistics",
   "transport/features/places",
   "transport/bus/terminals",
   "transport/bus/timetable",
