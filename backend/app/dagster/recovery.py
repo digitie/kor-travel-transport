@@ -47,6 +47,10 @@ METADATA_TIMEOUT_SECONDS = 10
 #: 접속 + UPDATE + COMMIT이다(10 + 5 + 5 + 5). 이보다 적으면 위치를 저장하고 tick을 정상 종료한다
 #: (다음 tick이 이어서 본다). 그래서 예산 초과(`DeadlineExceeded`)는 각 상한이 모두 걸릴 만큼 느린 경우에만 남는다.
 STEP_RESERVE_SECONDS = METADATA_TIMEOUT_SECONDS + 3 * RECOVERY_STATEMENT_TIMEOUT_SECONDS
+#: 예산 끝에 남겨 두는 정리 시간(초). 작업 전체(첫 접속의 dialect 초기화 문장, 빈 page 확인 포함)는
+#: `asyncio.timeout`으로 `예산 - 이 값`에서 끊고, 엔진 dispose는 이 안에서 끝나게 상한을 둔다
+#: (`app.dagster.definitions._reconcile_workers`). 그래서 콜백 thread는 느린 DB에서도 예산 안에 돌아온다.
+CLEANUP_RESERVE_SECONDS = 5
 #: 5분 주기 수집 op가 서비스에 넘기는 trigger. definitions.py가 이 상수를 그대로 쓴다.
 AIRPORT_TRIGGER = "dagster_airport"
 HIGHWAY_TRIGGER = "dagster_highway"
@@ -345,13 +349,23 @@ async def run_recovery_tick(
     *,
     position: ScanPosition,
     remaining: Callable[[], float] | None = None,
+    collection_scheduled: Callable[[str], bool] | None = None,
+    paused: list[str] | None = None,
 ) -> int:
     """회수 sensor 한 tick.
 
     수집 신선도를 먼저 본다(회수가 예산을 다 써도 정체 판단은 매 tick 한다). 이어서 회수를 예산 안에서
     이어 하고, 정체면 `CollectionStalled`로 정체 시계에 알린다.
+
+    `collection_scheduled(trigger)`가 False인 trigger(예: 점검으로 schedule을 STOPPED)는 수집이 멈춘 것이
+    의도이므로 정체로 세지 않고 `paused`에 담는다. 판정은 오래된 trigger가 있을 때만 부른다.
     """
     stale = await stale_five_minute_triggers(session_factory)
+    if stale and collection_scheduled is not None:
+        scheduled = [(trigger, minutes) for trigger, minutes in stale if collection_scheduled(trigger)]
+        if paused is not None:
+            paused.extend(trigger for trigger, minutes in stale if (trigger, minutes) not in scheduled)
+        stale = scheduled
     recovered = await reconcile_collection_runs(
         session_factory, instance, position=position, remaining=remaining
     )

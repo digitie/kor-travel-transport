@@ -169,14 +169,117 @@ async def test_metadata_failure_keeps_position_before_failed_row_and_recovers_no
         await engine.dispose()
 
 
-def test_step_reserve_keeps_every_step_inside_the_tick_budget():
-    # 한 단계(metadata 10초 + 문장 10초)를 시작할 때 예산이 남아 있어야 끊긴 thread가 생기지 않는다.
-    # 가장 긴 단계: metadata + 새 session 접속 + UPDATE + COMMIT. 접속 상한은 문장 상한을 넘지 않는다.
-    assert recovery.STEP_RESERVE_SECONDS == (
-        recovery.METADATA_TIMEOUT_SECONDS + 3 * recovery.RECOVERY_STATEMENT_TIMEOUT_SECONDS)
-    assert recovery.STEP_RESERVE_SECONDS < recovery.RECOVERY_BUDGET_SECONDS
-    # 문장 상한은 예산보다 짧고, 예산은 Dagster sensor 평가 상한(60초)보다 짧다.
-    assert recovery.RECOVERY_STATEMENT_TIMEOUT_SECONDS < recovery.RECOVERY_BUDGET_SECONDS < 60
+class _SlowDb:
+    """느린 DB 대역. 모든 문장(신선도 조회·page 조회·UPDATE·COMMIT)과 dispose가 `delay`초 걸린다.
+
+    `hang_on`번째 문장부터는 `hang`초 멈춘다(디스크 대기·잠금 대기 모사).
+    """
+
+    def __init__(self, delay: float, *, hang_on: int | None = None, hang: float = 30.0, dispose: float = 0.0):
+        self.delay, self.hang_on, self.hang, self.dispose_delay = delay, hang_on, hang, dispose
+        self.statements = 0
+        self.next_id = 0
+        self.disposed = False
+
+    async def _wait(self) -> None:
+        import asyncio
+
+        self.statements += 1
+        hanging = self.hang_on is not None and self.statements >= self.hang_on
+        await asyncio.sleep(self.hang if hanging else self.delay)
+
+    def engine(self):
+        db = self
+
+        class Engine:
+            async def dispose(self):
+                import asyncio
+
+                await asyncio.sleep(db.dispose_delay)
+                db.disposed = True
+
+        return Engine()
+
+    def factory(self):
+        db = self
+
+        class Session:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_exc):
+                return False
+
+            async def scalar(self, _statement):
+                await db._wait()
+                # 5분 수집 행 없음 → 신선도 판정 생략
+
+            async def execute(self, statement):
+                await db._wait()
+                if getattr(statement, "is_select", False):
+                    rows = []
+                    for _ in range(3):
+                        db.next_id += 1
+                        now = now_utc()
+                        rows.append(SimpleNamespace(id=db.next_id, orchestrator_run_id=f"r{db.next_id}",
+                                                    heartbeat_at=now, started_at=now))
+                    return SimpleNamespace(all=lambda: rows)
+                return SimpleNamespace(rowcount=1)
+
+            async def commit(self):
+                await db._wait()
+
+        return Session
+
+
+@pytest.fixture
+def budget_sensor(monkeypatch):
+    """실제 `_reconcile_tick`을 common `reconciliation_sensor`의 짧은 예산(3초)으로 돌린다."""
+    import time as real_time
+
+    from dagster import DagsterInstance, build_sensor_context
+    from kortravelcommon.dagster import reconciliation_sensor
+
+    # 운영 상수(예산 45, 단계 25, 정리 5, metadata 10)를 같은 비율로 줄인다.
+    monkeypatch.setattr(recovery, "METADATA_TIMEOUT_SECONDS", 0.4)
+    monkeypatch.setattr(recovery, "STEP_RESERVE_SECONDS", 0.8)
+    monkeypatch.setattr(recovery, "CLEANUP_RESERVE_SECONDS", 1.0)
+    monkeypatch.setattr(dagster_definitions, "_settings", lambda: SimpleNamespace(database_url="x"))
+    monkeypatch.setattr(dagster_definitions, "_RECOVERY_POSITION", ScanPosition())
+    sensor = reconciliation_sensor(
+        name="transport_worker_recovery_budget_test", reconcile=dagster_definitions._reconcile_tick,
+        required_resource_keys=set(), budget_seconds=3, on_stall=lambda *_: None,
+    )
+
+    def run(db: _SlowDb):
+        monkeypatch.setattr(dagster_definitions, "create_engine_and_session_factory",
+                            lambda *_a, **_k: (db.engine(), db.factory()))
+        with DagsterInstance.ephemeral() as instance:
+            started = real_time.monotonic()
+            result = sensor(build_sensor_context(instance=instance))
+            return result, real_time.monotonic() - started
+
+    return run
+
+
+def test_slow_but_working_db_stops_gracefully_inside_budget(budget_sensor):
+    db = _SlowDb(0.15, dispose=0.3)
+    result, elapsed = budget_sensor(db)
+    assert result.cursor == "stall:null"  # 예산 초과·timeout이 아니라 정상 종료
+    assert elapsed < 3
+    assert db.disposed
+    position = dagster_definitions._RECOVERY_POSITION.get()
+    assert 0 < position <= db.next_id  # 끝(빈 page)까지 가지 않고 위치를 남겼다(다음 tick이 이어 본다)
+
+
+def test_hung_statement_and_dispose_end_before_budget_as_timeout_not_deadline(budget_sensor):
+    db = _SlowDb(0.05, hang_on=2, dispose=30.0)
+    result, elapsed = budget_sensor(db)
+    reason = _skip(result)
+    # common의 예산 끊김(DeadlineExceeded, thread 누수) 전에 콜백 스스로 끝난다.
+    assert reason == "회수 실패 기록: TimeoutError", reason
+    assert elapsed < 3
+    assert not db.disposed  # dispose는 정리 상한에서 포기했다
 
 
 # ---------------------------------------------------------------------------
@@ -240,7 +343,7 @@ def sensor_env(monkeypatch, test_settings):
         state.results.append(result)
         return result
 
-    yield SimpleNamespace(tick=tick, alerts=alerts, state=state)
+    yield SimpleNamespace(tick=tick, alerts=alerts, state=state, instance=instance)
     instance_cm.__exit__(None, None, None)
 
 
@@ -494,5 +597,69 @@ async def test_five_minute_triggers_match_what_ops_and_services_store(monkeypatc
         async with factory() as session:
             stored = set((await session.scalars(select(CollectionRun.trigger))).all())
         assert stored == set(FIVE_MINUTE_TRIGGERS)
+    finally:
+        await engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# schedule을 일부러 멈춘 경우(점검)는 정체가 아니다
+
+
+def _set_schedule_state(instance, schedule_name: str, status_name: str, location: str = "kor-travel-transport"):
+    from dagster._core.remote_origin import (
+        RegisteredCodeLocationOrigin,
+        RemoteInstigatorOrigin,
+        RemoteRepositoryOrigin,
+    )
+    from dagster._core.scheduler.instigation import (
+        InstigatorState,
+        InstigatorStatus,
+        InstigatorType,
+    )
+
+    origin = RemoteInstigatorOrigin(
+        repository_origin=RemoteRepositoryOrigin(
+            code_location_origin=RegisteredCodeLocationOrigin(location), repository_name="__repository__"),
+        instigator_name=schedule_name,
+    )
+    instance.add_instigator_state(
+        InstigatorState(origin, InstigatorType.SCHEDULE, InstigatorStatus[status_name]))
+
+
+def test_stopped_schedules_reads_only_this_location_and_needs_every_state_stopped():
+    from dagster import DagsterInstance
+
+    with DagsterInstance.ephemeral() as instance:
+        assert dagster_definitions._stopped_schedules(instance) == set()
+        _set_schedule_state(instance, "airport_collection_job_schedule", "STOPPED")
+        _set_schedule_state(instance, "highway_collection_job_schedule", "STOPPED", location="other-tenant")
+        assert dagster_definitions._stopped_schedules(instance) == {"airport_collection_job_schedule"}
+
+
+@pytest.mark.parametrize(("stopped", "alerts"), [
+    (("airport_collection_job_schedule", "highway_collection_job_schedule"), 0),
+    (("airport_collection_job_schedule",), 1),  # 고속도로는 여전히 예약 중인데 멈췄다
+])
+async def test_stopped_schedule_is_not_a_stall_but_running_one_still_alerts(
+    test_settings, sensor_env, stopped, alerts,
+):
+    engine, factory = await _database(test_settings)
+    try:
+        last_start = now_utc() - timedelta(minutes=25)
+        await _add_runs(factory, [
+            {"started_at": last_start, "finished_at": last_start, "status": "success", "trigger": trigger}
+            for trigger in FIVE_MINUTE_TRIGGERS
+        ])
+        for name in stopped:
+            _set_schedule_state(sensor_env.instance, name, "STOPPED")
+        for minute in range(16):
+            sensor_env.tick(T0 + 60 * minute)
+        assert len(sensor_env.alerts) == alerts
+        if not alerts:
+            # 회수는 그대로 돌고 시계는 비어 있다(경보도 traceback도 없음).
+            assert sensor_env.state.cursor == "stall:null"
+            assert all(_skip(r) == "중단된 실행 기록 0건 회수" for r in sensor_env.state.results)
+        else:
+            assert sensor_env.alerts[0][0].last_failure == "CollectionStalled"
     finally:
         await engine.dispose()
