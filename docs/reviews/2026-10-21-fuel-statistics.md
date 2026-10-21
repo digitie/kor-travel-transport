@@ -13,9 +13,11 @@ PR #101의 초기 리뷰 후보는 `19f84e0`이다. James(UI/UX/접근성)와 Po
 
 ## 검증 상태
 
-- 이전 전체 WSL/Docker backend 각각939 PASS·14 조건부 SKIP. 리뷰 수정 후 전체 재검증 중.
+- 최종 `2c2474d` 전체 WSL/Docker backend 각각940 PASS·14 조건부 SKIP.
 - 리뷰 수정 후 PostgreSQL 통계 API/보관/실패격리/발행 경합4 PASS.
 - admin WSL/Docker 각각225 PASS, production build 통과.
 - 실제 로컬 PG/API/BFF/로그인 UI1 + 격리 UI5 = 브라우저6 PASS. 390/1440px, 실패/재시도, 범주/유종, 포커스, 지도 전체 통계가 포함된다.
-- VWorld 키가 없는 로컬 캡처는 실제 지도 카메라 동작 증거가 아니다. 운영 배포 후 `E2E_FUEL_MAP_CAMERA=true`로 확대2회·키보드 이동·bbox 통계를 확인해야 한다.
-- 최신 CI, 수정 재리뷰, Odroid runtime 배포/초기화/실측은 진행 중이다. `19f84e0` stage-only 복사까지 완료했으며 이 단계에서 컨테이너는 변경하지 않았다.
+- VWorld 키가 없는 로컬 캡처는 실제 지도 카메라 동작 증거가 아니다. 운영 배포 후 `E2E_FUEL_MAP_CAMERA=true`로 실제 확대2회·키보드 이동·bbox 통계를 검증해 PASS했다.
+- 최종 GitHub push/PR CI의 backend·frontend·transport-admin 6개가 모두 SUCCESS다. 자동 live-e2e 2개는 명시적 실행 대상이라 SKIP이며, 위 실제 브라우저 실행을 별도로 수행했다.
+- James/Popper가 `2c2474d`를 독립 재리뷰해 기존 지적 해결 및 추가 P0/P1/P2 없음으로 확인했다. Popper는 독립 SQLite 발행/결측/경합/캐시 불변 검사도 통과했다.
+- PR #101은 main/runtime `86398267fc32c8558f8fa2f2ae40310fd46e5c00`으로 머지·Odroid 배포했다. 현재 통계 초기화·원본 대조·운영 UI1 PASS·내부/공개 속도 실측을 완료했다. [운영 결과와 한계](../reports/2026-10-21-fuel-statistics-live.md).
