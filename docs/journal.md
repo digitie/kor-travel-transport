@@ -26,7 +26,12 @@
   (2) `context.log`만으로는 UI tick 로그에만 남음 → logger `app.dagster.recovery`에도 기록.
   (3) 단계 예약이 접속·COMMIT을 빼 과소 → 5초 상한 + 예약 25초 + 예산 45초. (4) 위치를 DB가 아닌
   프로세스에 둠 → 누락이 없는 근거와 함께 runbook에 명시.
-- 검증은 아래 "검증" 줄과 PR 본문을 따른다. 머지·배포하지 않았다(odroid 배포는 codex 소유).
+- **2차 리뷰(P3 2건) 반영**: (1) 점검으로 5분 schedule을 STOPPED로 둔 경우 매 tick 경보·traceback이
+  나던 문제 — Dagster instance의 schedule 상태가 이 location에서 STOPPED이면 그 trigger는 정체로 세지
+  않고 경고 한 줄만 남긴다(회수는 계속). (2) 단계 예약이 첫 접속 초기화·빈 page·dispose를 세지 않던
+  문제 — 작업 전체를 `asyncio.timeout(예산-5초)`로 끊고 dispose를 4초에서 포기한다. 상수 산술 테스트를
+  느린/멈춘 DB로 실제 예산을 돌리는 테스트로 바꿨다. n150 대상 102 passed, SQLite 모드 31 passed/4 skipped.
+- 배포하지 않았다(odroid 배포는 codex 소유).
 
 ## 2026-10-20 — Odroid Dagster override 누락 방지와 location 복구
 
