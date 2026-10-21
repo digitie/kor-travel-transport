@@ -3,10 +3,12 @@
 
 ## 2026-10-21 유가 통계 (PR #101)
 
-`codex/fuel-statistics`: 수집 완료 사전집계, bbox 전체 통계, `/fuel/statistics`를 구현했다.
-[분석 기준/초기화](fuel-statistics.md). 신규 SQLite/PG 테스트, WSL/Docker admin 테스트 통과.
-WSL/Docker backend 각각939 PASS·14 SKIP, admin 각각223 PASS, 격리 UI4와 실제 로컬 PG/API/BFF UI1 PASS.
-다음은 CI·James/Popper 독립 리뷰, Odroid 배포 및 통계 초기화·실측이다.
+PR #101은 main `8639826`으로 머지했다. 수집 완료 사전집계, bbox 전체 통계,
+`/fuel/statistics`를 제공한다. [분석 기준/초기화](fuel-statistics.md).
+WSL/Docker backend 각각940 PASS·14 조건부 SKIP, admin 각각225 PASS, production build,
+PostgreSQL 집중4 PASS, 격리 UI5와 실제 로컬 PG/API/BFF/로그인 UI1 PASS다.
+최종 CI 6개 SUCCESS와 James/Popper 독립 재리뷰(추가 P0/P1/P2 없음)를 확인했다.
+다음은 Odroid 배포, 현재 가격 통계 초기화·원본 대조·실제 지도 카메라 E2E·조회 실측이다.
 
 ## 2026-10-21 회수 sensor tick 예산·정체 경보 (PR #100 머지·배포 대기)
 

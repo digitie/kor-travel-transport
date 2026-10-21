@@ -1,16 +1,15 @@
-## 2026-10-21 — 회수 sensor tick 예산·정체 경보와 서버 statement_timeout (Map ADR-112 교훈)
+## 2026-10-21 유가 사전 집계·지도 범위 통계 (PR #101 머지)
 
-
-## 2026-10-21 유가 사전 집계·지도 범위 통계 (PR #101 진행 중)
-
-- James/Popper 독립 리뷰에서 P1 포커스1건과 P2 날짜축·지도 통계 지연·동시 발행 이력 누락3건을 반영했다. 실패 재현 후 PG4·UI225·브라우저6 검증이 통과했다. [상세 리뷰/재현](reviews/2026-10-21-fuel-statistics.md). 최신 전체 회귀·CI·재리뷰와 운영 검증은 진행 중이다.
+- James/Popper 독립 리뷰에서 P1 포커스1건과 P2 날짜축·지도 통계 지연·동시 발행 이력 누락3건을 반영했다. 실패 재현 후 PG4·UI225·브라우저6 검증이 통과했다. 최종 `2c2474d` 독립 재리뷰에서 추가 P0/P1/P2 없음과 CI 6개 SUCCESS를 확인해 main `8639826`으로 머지했다. [상세 리뷰/재현](reviews/2026-10-21-fuel-statistics.md).
 
 - 전국/시도/시군구와 고속도로 전체/노선/방향별 유종 통계, 최저가 주유소·7일 일별 추이를 추가했다.
 - 가격 차이·표준편차·50L 평균 대비 최저가 절감액을 제공한다. 지도는 마커 제한/요약과 무관하게 bbox 전체를 같은 요청에서 집계한다.
 - PostgreSQL 합성 12,000곳/60,000가격/235시군구 실측: 지도 무캐시 중앙값 약43ms(기존 창 정렬171ms), 캐시 약1.5ms, 시군구 목록 중앙값 약8ms. 집계 Python 추적 최대 약3.2MiB. 개발 PC 수치이며 Odroid 미측정.
-- WSL/Docker 전체 backend 각각939 PASS·14 조건부 SKIP, admin WSL/Docker 각각223 PASS와 production build 통과. PostgreSQL 신규 API/실패 격리3 PASS, 마이그레이션 downgrade/upgrade/check 통과. 격리 브라우저4 PASS와 실제 로컬 PG/API/BFF/로그인 UI1 PASS(390/1440px). GitHub CI·독립 리뷰·운영 검증은 진행 중이다.
+- 최종 WSL/Docker 전체 backend 각각940 PASS·14 조건부 SKIP, admin 각각225 PASS와 production build 통과. PostgreSQL 집중4 PASS, 마이그레이션 downgrade/upgrade/check 통과. 격리 브라우저5 PASS와 실제 로컬 PG/API/BFF/로그인 UI1 PASS(390/1440px). 운영 검증은 진행 중이다.
 - 동시 회귀 부하가 있는 두 번째 실측: 사전 집계5.8초, 지도 무캐시 중앙값92ms·캐시2ms·시군구12ms, Python 추적 최대3.2MiB. 정상 부하 첫 실측43ms와 환경을 구분한다.
 - 설치 이전 이력을 자동 전수 스캔하지 않는다. 최초 최신 통계는 `scripts/rebuild-fuel-statistics.py`로 공급자 호출 없이 초기화하고, 일별 기록은 이후 정상 수집에서 축적한다.
+
+## 2026-10-21 — 회수 sensor tick 예산·정체 경보와 서버 statement_timeout (Map ADR-112 교훈)
 
 브랜치 `feat/recovery-sensor-budget-stall`. 소유자 요청으로 Map ADR-112의 교훈을 odroid tenant에 적용했다.
 
