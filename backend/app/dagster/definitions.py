@@ -578,6 +578,8 @@ def _stopped_schedules(instance) -> set[str]:
     것으로 본다(애매하면 경보 쪽)."""
     from dagster._core.scheduler.instigation import InstigatorStatus, InstigatorType
 
+    if getattr(instance, "schedule_storage", None) is None:
+        return set()  # schedule 저장소가 없는 instance(ephemeral)는 저장된 상태가 없다 = 코드 기본값
     statuses: dict[str, set[Any]] = {}
     for state in instance.all_instigator_state(instigator_type=InstigatorType.SCHEDULE):
         try:
@@ -619,7 +621,7 @@ async def _reconcile_workers(instance, remaining, paused: list[str] | None = Non
     finally:
         # dispose도 정리 시간 안에서 끝낸다. 넘으면 연결 정리를 포기한다(프로세스가 GC로 닫는다).
         with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(engine.dispose(), timeout=max(0.1, recovery.CLEANUP_RESERVE_SECONDS - 1))
+            await asyncio.wait_for(engine.dispose(), timeout=0.8 * recovery.CLEANUP_RESERVE_SECONDS)
 
 
 def _reconcile_tick(context, remaining) -> int:

@@ -331,7 +331,7 @@ def sensor_env(monkeypatch, test_settings):
     monkeypatch.setattr(dagster_definitions, "_settings", lambda: test_settings)
     monkeypatch.setattr(dagster_definitions, "_RECOVERY_POSITION", ScanPosition())
 
-    instance_cm = DagsterInstance.ephemeral()
+    instance_cm = DagsterInstance.local_temp()
     instance = instance_cm.__enter__()
     state = SimpleNamespace(cursor=None, results=[])
 
@@ -460,7 +460,7 @@ def test_metadata_outage_alerts(monkeypatch, sensor_env, test_settings):
 
     original = dagster_definitions._reconcile_workers
     monkeypatch.setattr(dagster_definitions, "_reconcile_workers",
-                        lambda _instance, remaining: original(Broken(), remaining))
+                        lambda _instance, remaining, *rest: original(Broken(), remaining, *rest))
     for minute in range(16):
         sensor_env.tick(T0 + 60 * minute)
     assert [stall.last_failure for stall, _ in sensor_env.alerts] == ["RecoveryMetadataUnavailable"]
@@ -605,7 +605,8 @@ async def test_five_minute_triggers_match_what_ops_and_services_store(monkeypatc
 # schedule을 일부러 멈춘 경우(점검)는 정체가 아니다
 
 
-def _set_schedule_state(instance, schedule_name: str, status_name: str, location: str = "kor-travel-transport"):
+def _set_schedule_state(instance, schedule_name: str, status_name: str, location: str = "kor-travel-transport",
+                        repository_name: str = "__repository__"):
     from dagster._core.remote_origin import (
         RegisteredCodeLocationOrigin,
         RemoteInstigatorOrigin,
@@ -615,25 +616,32 @@ def _set_schedule_state(instance, schedule_name: str, status_name: str, location
         InstigatorState,
         InstigatorStatus,
         InstigatorType,
+        ScheduleInstigatorData,
     )
 
     origin = RemoteInstigatorOrigin(
         repository_origin=RemoteRepositoryOrigin(
-            code_location_origin=RegisteredCodeLocationOrigin(location), repository_name="__repository__"),
+            code_location_origin=RegisteredCodeLocationOrigin(location), repository_name=repository_name),
         instigator_name=schedule_name,
     )
     instance.add_instigator_state(
-        InstigatorState(origin, InstigatorType.SCHEDULE, InstigatorStatus[status_name]))
+        InstigatorState(origin, InstigatorType.SCHEDULE, InstigatorStatus[status_name],
+                        ScheduleInstigatorData("*/5 * * * *")))
 
 
 def test_stopped_schedules_reads_only_this_location_and_needs_every_state_stopped():
     from dagster import DagsterInstance
 
-    with DagsterInstance.ephemeral() as instance:
+    with DagsterInstance.ephemeral() as instance:  # schedule 저장소 없음 → 저장된 상태 없음
+        assert dagster_definitions._stopped_schedules(instance) == set()
+    with DagsterInstance.local_temp() as instance:
         assert dagster_definitions._stopped_schedules(instance) == set()
         _set_schedule_state(instance, "airport_collection_job_schedule", "STOPPED")
         _set_schedule_state(instance, "highway_collection_job_schedule", "STOPPED", location="other-tenant")
         assert dagster_definitions._stopped_schedules(instance) == {"airport_collection_job_schedule"}
+        # 같은 이름의 다른 상태가 RUNNING이면 멈춘 것으로 보지 않는다(애매하면 경보 쪽).
+        _set_schedule_state(instance, "airport_collection_job_schedule", "RUNNING", repository_name="old_repo")
+        assert dagster_definitions._stopped_schedules(instance) == set()
 
 
 @pytest.mark.parametrize(("stopped", "alerts"), [

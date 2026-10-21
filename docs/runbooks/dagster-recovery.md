@@ -31,7 +31,10 @@ metadata 장애는 회수 사유가 아니다. legacy NULL owner 행은 자동 �
 - **예산**: 한 tick은 45초 안에서 끝난다. 다음 단계를 시작하려면 25초(가장 긴 단계인 한 행의
   metadata 10초 + 새 session 접속 5초 + UPDATE 5초 + COMMIT 5초)가 남아 있어야 하고, 모자라면 위치를
   저장하고 정상 종료한다. sensor 전용 엔진은 서버 `statement_timeout`·`command_timeout`·접속
-  timeout 모두 5초다. 예산을 넘겨 끊긴 thread는 `context`를 더 쓰지 않고 metadata도 더 부르지 않는다.
+  timeout 모두 5초다. 단계 예약이 세지 않는 시간(첫 접속의 dialect 초기화 문장, 마지막 빈 page 확인)은
+  작업 전체에 건 `asyncio.timeout(예산 - 정리 5초)`이 끊고, 엔진 dispose는 정리 5초 중 4초에서 포기한다.
+  그래서 느린 DB에서도 콜백이 예산 안에 `TimeoutError`로 돌아오며 common의 예산 끊김(thread 누수)에
+  이르지 않는다. 예산을 넘겨 끊긴 thread는 `context`를 더 쓰지 않고 metadata도 더 부르지 않는다.
 - **위치**: keyset 위치는 code-server 프로세스 안(`ScanPosition`)에 둔다. sensor cursor는 common
   정체 시계(`stall:` JSON)가 소유하므로 쓰지 않는다. 재시작으로 위치를 잃으면 처음부터 다시 볼 뿐
   행을 건너뛰지 않고, 끝까지 보면 0으로 돌아가 위치 앞의 행도 다음 바퀴에 본다. common §19는 위치를
@@ -52,7 +55,9 @@ metadata 장애는 회수 사유가 아니다. legacy NULL owner 행은 자동 �
   ```
 
   예외 원문은 경보 줄과 cursor에 없다(traceback은 기존 tick 실패처럼 `context.log`에 남는다).
-  5분 수집 schedule을 일부러 멈추면 같은 경보가 난다(수집이 실제로 멈췄으므로 의도된 동작).
+  5분 수집 schedule을 일부러 멈추면(점검, Dagster instance의 schedule 상태 STOPPED) 그 trigger는 정체로
+  세지 않는다. tick마다 경고 한 줄만 남기고(traceback 없음) 회수는 계속 돈다. 같은 이름의 상태가 여럿이면
+  모두 STOPPED일 때만 멈춘 것으로 본다. schedule은 RUNNING인데 실행이 시작되지 않으면 경보한다.
   실패 중에 sensor를 오래 멈췄다가 다시 켜면 옛 `first_failed_at` 때문에 첫 실패에 바로 경보할 수
   있다. 원치 않으면 다시 켜기 전에 sensor cursor를 지운다(UI 또는 `dagster sensor cursor --delete`).
 - **이 경보가 다루지 못하는 것**: code-server gRPC 자체가 멈추면(2026-09-27 11:53Z~19:51Z 정지)
