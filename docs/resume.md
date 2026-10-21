@@ -1,5 +1,14 @@
 # resume.md — 현재 인수인계
 
+## 2026-10-21 회수 sensor tick 예산·정체 경보 (PR 대기)
+
+`feat/recovery-sensor-budget-stall`: Common pin `e746e4b8`, `transport_worker_recovery`에 tick 예산 45초·
+프로세스 내 keyset 위치·정체 경보(`transport_worker_recovery.stalled`)·5분 수집 신선도 판정, PostgreSQL
+서버 `statement_timeout`(수집 60초·API 120초·회수 5초). 다음은 CI green 확인 뒤 머지, 그 뒤 odroid
+재배포(codex). 재배포 Compose에는 `/opt/kor-travel-odroid/transport/transport.override.yml`를 반드시
+포함한다(code-server gRPC 12306). 상세는 journal 2026-10-21 항목.
+
+
 ## 2026-10-20 KRIC 역 코드·이름 매핑 (진행 중)
 
 `codex/rail-station-code-mapping`에서 KRIC 자료실 역 코드와 위치 파일을 번호·역명으로

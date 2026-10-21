@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import functools
+import logging
 import re
 import sys
+import time
 import traceback
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -17,11 +20,14 @@ from dagster import (
     DagsterExecutionInterruptedError, DefaultScheduleStatus, Definitions, Failure, multiprocess_executor, job, op,
 )
 from sqlalchemy.engine import make_url
+from kortravelcommon.deadline import call_with_deadline
 from kortravelcommon.dagster import RecoveryPolicy, coalescing_schedule, infrastructure_retry_sensor, reconciliation_sensor
 
+from app.dagster import recovery
 from app.dagster.recovery import (
-    OWNER, CollectionLeaseLost, collection_owner, ensure_collection_owner_active,
-    owned_session_factory, reconcile_collection_runs,
+    AIRPORT_TRIGGER, OWNER, RECOVERY_BUDGET_SECONDS, CollectionLeaseLost, ScanPosition,
+    collection_owner, ensure_collection_owner_active, format_stall_alert, owned_session_factory,
+    run_recovery_tick,
 )
 
 from app.core.config import Settings, get_settings
@@ -210,7 +216,7 @@ def _settings() -> Settings:
 def collect_airport_parking(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         settings = _settings()
-        result = asyncio.run(_run_with_session(settings, CollectionService(settings).collect, trigger="dagster_airport"))
+        result = asyncio.run(_run_with_session(settings, CollectionService(settings).collect, trigger=AIRPORT_TRIGGER))
         if result.get("status") in {"failed", "partial_success"}:
             raise Failure(description="공항 수집의 성공분은 저장했지만 일부 수집이 실패했습니다.",
                           metadata={"run_id": result["collection_run_id"], "status": result["status"]},
@@ -222,6 +228,7 @@ async def _collect_transport_in_one_loop(settings: Settings, scope: CollectionSc
     """HTTP client의 생성·수집·종료를 하나의 event loop에서 끝낸다."""
     service = TransportCollectionService(settings)
     try:
+        # highway의 trigger(`dagster_highway`)는 회수 sensor의 신선도 판정이 본다(`recovery.HIGHWAY_TRIGGER`).
         return await _run_with_session(settings, service.collect, trigger=f"dagster_{scope}", scope=scope)
     finally:
         await asyncio.wait_for(service.close(), timeout=10)
@@ -553,20 +560,99 @@ def kakao_place_location_collection_job() -> None:
     collect_kakao_place_locations()
 
 
-async def _reconcile_workers(instance) -> int:
-    engine, factory = create_engine_and_session_factory(_settings().database_url, collector=True)
+#: 회수 keyset 위치. sensor cursor는 common 정체 시계가 소유하므로 code-server 프로세스에 둔다.
+_RECOVERY_POSITION = ScanPosition()
+
+
+#: 5분 수집 trigger → 그 수집을 예약하는 schedule 이름(common `coalescing_schedule`은 `<job>_schedule`).
+_TRIGGER_SCHEDULES = {
+    recovery.FIVE_MINUTE_TRIGGERS[0]: f"{airport_collection_job.name}_schedule",
+    recovery.FIVE_MINUTE_TRIGGERS[1]: f"{highway_collection_job.name}_schedule",
+}
+_LOCATION_NAME = "kor-travel-transport"
+
+
+def _stopped_schedules(instance) -> set[str]:
+    """이 location에서 사용자가 STOPPED로 바꾼 schedule 이름. 상태 행이 없거나 RUNNING/DECLARED_IN_CODE면
+    코드 기본값(RUNNING)이다. 같은 이름의 상태가 여럿이면(옛 repository origin) 모두 STOPPED일 때만 멈춘
+    것으로 본다(애매하면 경보 쪽)."""
+    from dagster._core.scheduler.instigation import InstigatorStatus, InstigatorType
+
+    if getattr(instance, "schedule_storage", None) is None:
+        return set()  # schedule 저장소가 없는 instance(ephemeral)는 저장된 상태가 없다 = 코드 기본값
+    statuses: dict[str, set[Any]] = {}
+    for state in instance.all_instigator_state(instigator_type=InstigatorType.SCHEDULE):
+        try:
+            location = state.origin.repository_origin.code_location_origin.location_name
+        except AttributeError:
+            continue
+        if location == _LOCATION_NAME and state.instigator_name in _TRIGGER_SCHEDULES.values():
+            statuses.setdefault(state.instigator_name, set()).add(state.status)
+    return {name for name, seen in statuses.items() if seen == {InstigatorStatus.STOPPED}}
+
+
+async def _reconcile_workers(instance, remaining, paused: list[str] | None = None) -> int:
+    def work_remaining() -> float:
+        return remaining() - recovery.CLEANUP_RESERVE_SECONDS
+
+    stopped_cache: list[set[str]] = []
+
+    def collection_scheduled(trigger: str) -> bool:
+        if not stopped_cache:
+            if work_remaining() <= recovery.METADATA_TIMEOUT_SECONDS:
+                raise recovery.RecoveryMetadataUnavailable("schedule 상태를 확인할 예산이 남지 않았습니다.")
+            try:
+                stopped_cache.append(call_with_deadline(
+                    lambda: _stopped_schedules(instance), timeout_seconds=recovery.METADATA_TIMEOUT_SECONDS))
+            except Exception as exc:
+                raise recovery.RecoveryMetadataUnavailable("schedule 상태를 확인하지 못했습니다.") from exc
+        return _TRIGGER_SCHEDULES[trigger] not in stopped_cache[0]
+
+    engine, factory = create_engine_and_session_factory(
+        _settings().database_url, collector=True, statement_timeout_seconds=recovery.RECOVERY_STATEMENT_TIMEOUT_SECONDS,
+    )
     try:
-        return await reconcile_collection_runs(factory, instance)
+        # 첫 접속의 dialect 초기화·빈 page 확인까지 포함한 작업 전체를 정리 시간 앞에서 끊는다.
+        async with asyncio.timeout(max(0.0, work_remaining())):
+            return await run_recovery_tick(
+                factory, instance, position=_RECOVERY_POSITION, remaining=work_remaining,
+                collection_scheduled=collection_scheduled, paused=paused,
+            )
     finally:
-        await engine.dispose()
+        # dispose도 정리 시간 안에서 끝낸다. 넘으면 연결 정리를 포기한다(프로세스가 GC로 닫는다).
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(engine.dispose(), timeout=0.8 * recovery.CLEANUP_RESERVE_SECONDS)
 
 
-def _reconcile_tick(context) -> int:
-    return asyncio.run(_reconcile_workers(context.instance))
+def _reconcile_tick(context, remaining) -> int:
+    # 예산을 넘겨 끊긴 thread는 tick 뒤에도 돌 수 있다. context는 instance를 꺼낸 뒤에는 예산이 남아 있을
+    # 때만 쓴다(common 계약).
+    instance = context.instance
+    paused: list[str] = []
+    recovered = asyncio.run(_reconcile_workers(instance, remaining, paused))
+    if paused and remaining() > 0:
+        # 점검으로 멈춘 schedule은 정체가 아니다. traceback 없이 한 줄만 남긴다.
+        context.log.warning("5분 수집 schedule이 STOPPED라 신선도 판정에서 제외합니다: " + ", ".join(sorted(paused)))
+    return recovered
 
 
-worker_recovery = reconciliation_sensor(name="transport_worker_recovery", reconcile=_reconcile_tick,
-                                       required_resource_keys=set())
+_STALL_LOGGER = logging.getLogger("app.dagster.recovery")
+
+
+def _alert_stall(context, clock) -> None:
+    """정체 경보. 별도 경보 테이블·채널이 없어 고정 event 이름 한 줄로 두 곳에 남긴다.
+
+    sensor tick 로그(Dagster UI)와 code-server 프로세스 stderr(컨테이너 로그, `docker logs`·로그 수집기).
+    """
+    line = format_stall_alert(clock, now=time.time())
+    context.log.error(line)
+    _STALL_LOGGER.error(line)
+
+
+worker_recovery = reconciliation_sensor(
+    name="transport_worker_recovery", reconcile=_reconcile_tick, required_resource_keys=set(),
+    budget_seconds=RECOVERY_BUDGET_SECONDS, on_stall=_alert_stall,
+)
 
 
 definitions = Definitions(

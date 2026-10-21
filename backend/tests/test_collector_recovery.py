@@ -5,6 +5,7 @@ import pytest
 from app.core.time_utils import now_utc
 from app.dagster.recovery import (
     CollectionLeaseLost,
+    RecoveryMetadataUnavailable,
     collection_owner,
     owned_session_factory,
     reconcile_collection_runs,
@@ -206,7 +207,12 @@ async def test_reconciliation_scans_live_first_page_and_preserves_unknown_or_liv
             def get_run_by_id(self, owner):
                 raise ConnectionError("metadata unavailable")
 
-        assert await reconcile_collection_runs(factory, Broken(), page_size=1) == 0
+        # metadata 장애는 회수 사유가 아니지만 정체 시계가 세도록 예외로 알린다(조용한 0 반환 금지).
+        with pytest.raises(RecoveryMetadataUnavailable):
+            await reconcile_collection_runs(factory, Broken(), page_size=1)
+        async with factory() as session:
+            rows = (await session.scalars(select(CollectionRun).order_by(CollectionRun.id))).all()
+            assert [row.status for row in rows] == ["running", "failed", "failed", "running", "running"]
     finally:
         await engine.dispose()
 

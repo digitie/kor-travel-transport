@@ -8,8 +8,11 @@ Weather PR #72의 개선과 common PR #24·#25 Python 코어를 채택한다.
 각 job은 4시간 실행 상한, step 동시성 1을 유지한다. common의 project/job 태그와
 coalescing schedule은 같은 location의 pending/active 실행이 있으면 새 예약을 합친다.
 collector pool은 2 connections와 overflow 0으로 제한한다. 한 connection은 기존 session
-advisory lease, 다른 하나는 부분 게시 transaction에 필요하다. DB 접속 10초, statement 60초,
+advisory lease, 다른 하나는 부분 게시 transaction에 필요하다. DB 접속 10초, 문장 60초
+(asyncpg `command_timeout` 클라이언트 측 + 서버 `statement_timeout` 60초, 2026-10-21부터 둘 다),
 lock 5초와 async action 14340초 제한을 적용한다. provider public cancellation 계약을 사용한다.
+API 엔진은 서버 `statement_timeout` 120초만 둔다(클라이언트 timeout 없음). 근거와 값은
+`backend/app/db/session.py` 상수 주석이 정본이다.
 
 `0024` migration 뒤 worker는 `CollectionRun`을 외부 호출 전에 commit하여 소유권을 남긴다.
 소유 session은 ORM flush와 bulk SQL commit에서 기존 running/owner를 잠그고 heartbeat를
@@ -20,6 +23,48 @@ owner 생존을 10초 상한으로 확인하며 조회 장애는 provider 호출
 회수 sensor는 외부 provider 없이 stable ID keyset 100행씩 확인한다. Dagster terminal은
 running 수집 기록을 failed로 회수하고, 없는 run은 5시간 grace·heartbeat CAS로 확인한다.
 metadata 장애는 회수 사유가 아니다. legacy NULL owner 행은 자동 변경하지 않는다.
+
+## 회수 sensor의 tick 예산과 정체 경보 (common e746e4b §19)
+
+`transport_worker_recovery`는 common `reconciliation_sensor(budget_seconds=45, on_stall=...)`다.
+
+- **예산**: 한 tick은 45초 안에서 끝난다. 다음 단계를 시작하려면 25초(가장 긴 단계인 한 행의
+  metadata 10초 + 새 session 접속 5초 + UPDATE 5초 + COMMIT 5초)가 남아 있어야 하고, 모자라면 위치를
+  저장하고 정상 종료한다. sensor 전용 엔진은 서버 `statement_timeout`·`command_timeout`·접속
+  timeout 모두 5초다. 단계 예약이 세지 않는 시간(첫 접속의 dialect 초기화 문장, 마지막 빈 page 확인)은
+  작업 전체에 건 `asyncio.timeout(예산 - 정리 5초)`이 끊고, 엔진 dispose는 정리 5초 중 4초에서 포기한다.
+  그래서 느린 DB에서도 콜백이 예산 안에 `TimeoutError`로 돌아오며 common의 예산 끊김(thread 누수)에
+  이르지 않는다. 예산을 넘겨 끊긴 thread는 `context`를 더 쓰지 않고 metadata도 더 부르지 않는다.
+- **위치**: keyset 위치는 code-server 프로세스 안(`ScanPosition`)에 둔다. sensor cursor는 common
+  정체 시계(`stall:` JSON)가 소유하므로 쓰지 않는다. 재시작으로 위치를 잃으면 처음부터 다시 볼 뿐
+  행을 건너뛰지 않고, 끝까지 보면 0으로 돌아가 위치 앞의 행도 다음 바퀴에 본다. common §19는 위치를
+  소비자 DB에 두라고 하지만, 대상이 running 행뿐이고(평소 수 건) ID가 단조 증가해 잃어도 누락이
+  없으므로 새 테이블을 만들지 않았다.
+- **정체로 세는 것**: (1) DB 오류(서명은 예외 형식 이름과 SQLSTATE), (2) Dagster metadata 장애
+  (`RecoveryMetadataUnavailable` — 예전에는 조용히 0건 반환), (3) 공항(`dagster_airport`)·고속도로
+  (`transport_dagster_highway`) 5분 수집의 마지막 `CollectionRun` 시작이 20분보다 오래됨
+  (`CollectionStalled`), (4) 콜백이 예산을 넘김(`DeadlineExceeded`). 신선도 판정은 회수보다 먼저
+  매 tick 한다. 행이 하나도 없는 trigger는 판단하지 않는다.
+- **경보**: 첫 실패 뒤 900초에 한 줄을 남기고 3600초마다 다시 남긴다. 성공한 tick이 시계를 지운다.
+  이 저장소에는 경보 테이블·채널이 없어 같은 줄을 Dagster sensor tick 로그(`context.log.error`)와
+  code-server 프로세스 로그(logger `app.dagster.recovery`, 컨테이너 stderr → `docker logs`)에 남긴다.
+  형식(검색 기준):
+
+  ```text
+  transport_worker_recovery.stalled key=transport_worker_recovery first_failed_at=<UTC ISO> stalled_seconds=<n> last_failure=<형식이름[:SQLSTATE]>
+  ```
+
+  예외 원문은 경보 줄과 cursor에 없다(traceback은 기존 tick 실패처럼 `context.log`에 남는다).
+  5분 수집 schedule을 일부러 멈추면(점검, Dagster instance의 schedule 상태 STOPPED) 그 trigger는 정체로
+  세지 않는다. tick마다 경고 한 줄만 남기고(traceback 없음) 회수는 계속 돈다. 같은 이름의 상태가 여럿이면
+  모두 STOPPED일 때만 멈춘 것으로 본다. schedule은 RUNNING인데 실행이 시작되지 않으면 경보한다.
+  실패 중에 sensor를 오래 멈췄다가 다시 켜면 옛 `first_failed_at` 때문에 첫 실패에 바로 경보할 수
+  있다. 원치 않으면 다시 켜기 전에 sensor cursor를 지운다(UI 또는 `dagster sensor cursor --delete`).
+- **이 경보가 다루지 못하는 것**: code-server gRPC 자체가 멈추면(2026-09-27 11:53Z~19:51Z 정지)
+  sensor 평가도 같은 프로세스에서 하므로 경보할 주체가 없다. 그 경우는 code-server healthcheck
+  probe가 연속 timeout 300초(실행 중인 run worker가 있으면 7200초) 뒤 PID 1을 종료해 재시작시키는 것이 회복 경로다
+  (`docker-compose.shared.yml`·`transport.override.yml`의 `x-dagster-code-server-probe`).
+  재시작 뒤 수집이 돌아오지 않으면 이 sensor가 20분+900초 뒤 경보한다.
 
 공항 일부 실패도 성공분을 commit한 뒤 Dagster FAILURE로 표시한다. 자동 인프라 재시도
 1회는 공항·고속도로·휴게소 기준정보만 허용한다. provider 실패·KRIC 마지막 시도 48시간·
