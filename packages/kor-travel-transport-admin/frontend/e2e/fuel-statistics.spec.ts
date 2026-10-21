@@ -37,7 +37,7 @@ test("조회 실패와 재시도", async ({ page }) => {
     return route.fulfill({ json: { generated_at: null, update_pending: true, history_scope_key: null, items: [], history: [] } });
   });
   await page.goto("/fuel/statistics");
-  await expect(page.getByRole("alert")).toContainText("불러오지 못했습니다");
+  await expect(page.getByRole("region", { name: "유가 통계", exact: true }).getByRole("alert")).toContainText("불러오지 못했습니다");
   fail = false;
   await page.getByRole("button", { name: "새로고침", exact: true }).click();
   await expect(page.getByText("첫 수집 완료 후 통계가 생성됩니다.", { exact: false })).toBeVisible();

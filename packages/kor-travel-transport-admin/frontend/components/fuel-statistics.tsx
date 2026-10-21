@@ -73,14 +73,14 @@ export function FuelStatisticsPage() {
   const selected = data?.items.find((row) => row.scope_key === data.history_scope_key);
   return <section className="fuel-stat-section" aria-label="유가 통계" aria-busy={pending}>
     <div className="fuel-stat-filters">
-      <label>범위<select value={scope} onChange={(event) => { setScope(event.target.value); setScopeKey(""); }} >{scopes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-      <label>유종<select value={product} onChange={(event) => { setProduct(event.target.value); setScopeKey(""); }}>{["B027", "D047", "K015", "B034", "C004"].map((code) => <option key={code} value={code}>{fuelProductLabel(code)}</option>)}</select></label>
+      <label>범위<select aria-label="범위" value={scope} onChange={(event) => { setScope(event.target.value); setScopeKey(""); }} >{scopes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <label>유종<select aria-label="유종" value={product} onChange={(event) => { setProduct(event.target.value); setScopeKey(""); }}>{["B027", "D047", "K015", "B034", "C004"].map((code) => <option key={code} value={code}>{fuelProductLabel(code)}</option>)}</select></label>
       <button type="button" onClick={() => setReload((value) => value + 1)}>새로고침</button>
     </div>
     {pending ? <p role="status">통계 조회 중…</p> : error ? <p role="alert">통계를 불러오지 못했습니다. 새로고침해 주세요.</p> : data ? <>
       <p>{data.generated_at ? `수집 기준 ${dateTime(data.generated_at)}` : "첫 수집 완료 후 통계가 생성됩니다."}{data.update_pending ? " · 최신 수집 통계 반영 대기" : ""}</p>
       {data.items.length ? <>
-        <label className="fuel-stat-category">추이 범주<select value={selected?.scope_key ?? ""} onChange={(event) => setScopeKey(event.target.value)}>{data.items.map((row) => <option key={row.scope_key} value={row.scope_key}>{row.label}</option>)}</select></label>
+        <label className="fuel-stat-category">추이 범주<select aria-label="추이 범주" value={selected?.scope_key ?? ""} onChange={(event) => setScopeKey(event.target.value)}>{data.items.map((row) => <option key={row.scope_key} value={row.scope_key}>{row.label}</option>)}</select></label>
         {selected ? <FuelStatisticsCard title={`${selected.label} · ${fuelProductLabel(product)}`} metrics={selected} /> : null}
         <h2>최근 7일 평균 유가 · {selected?.label}</h2><Trend rows={data.history} />
         <p className="text-muted-foreground">KST 일별 마지막 정상 수집 기준 · 수집 기록이 있는 날짜만 표시</p>
