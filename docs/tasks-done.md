@@ -1,5 +1,12 @@
 # tasks-done.md — 완료 작업 아카이브
 
+## 2026-10-21 — 유가 사전집계·지도 범위 통계
+
+- [x] PR #101을 main/runtime `8639826`으로 머지·Odroid backend/admin 배포했다. 전국/시도/시군구·고속도로 전체/노선/방향별 유종 통계, 최저가 주유소·7일 일별 기록, 가격 차이·표준편차·50L 절감액을 제공한다.
+- [x] 지도 bbox 전체 통계는 마커 limit/클러스터와 독립이며 같은 요청·짧은 캐시를 활용한다. 수집 후 배치 발행·실패 격리·다음 수집 재시도·수동 초기화와 단일 SQL 이력 snapshot을 적용했다.
+- [x] WSL/Docker backend 각940 PASS/14 조건부 SKIP, admin 각225 PASS, PG4·격리 UI5·실제 로컬 UI1·운영 HTTPS UI1 PASS. 독립2인 지적4건을 재현·수정하고 재리뷰·최종 CI6개 SUCCESS를 확인했다.
+- [x] 현재 가격 초기화·원본 대조와 실제 VWorld 확대/이동, NVMe·gRPC12306·location·schedule12/sensor5 RUNNING을 확인했다. 내부 통계 중앙값121~759ms·지도392~816ms, 공개 HTTPS 약1.2~1.7초다. [실측과 원본 이상값/한계](reports/2026-10-21-fuel-statistics-live.md)를 따른다. 첫 발행 이전7일 재구성·공개 경로 고부하1초 수용·공급자184원 정정은 완료 범위가 아니다.
+
 
 ## 2026-10-19 — 교통/유가 지도 분리 및 viewport 조회 최적화
 

@@ -8,7 +8,11 @@ PR #101은 main `8639826`으로 머지했다. 수집 완료 사전집계, bbox �
 WSL/Docker backend 각각940 PASS·14 조건부 SKIP, admin 각각225 PASS, production build,
 PostgreSQL 집중4 PASS, 격리 UI5와 실제 로컬 PG/API/BFF/로그인 UI1 PASS다.
 최종 CI 6개 SUCCESS와 James/Popper 독립 재리뷰(추가 P0/P1/P2 없음)를 확인했다.
-다음은 Odroid 배포, 현재 가격 통계 초기화·원본 대조·실제 지도 카메라 E2E·조회 실측이다.
+Odroid backend·admin 배포와 현재 가격 초기화·원본 대조를 완료했다. 공개 HTTPS 실제 UI1 PASS
+(로그인·6범주·390/1440px·VWorld 확대2회·키보드 이동)다. 내부 통계 중앙값121~759ms,
+지도392~816ms이며 공개 HTTPS는약1.2~1.7초로 고부하 지연을 별도로 기록했다.
+[운영 근거/제한](reports/2026-10-21-fuel-statistics-live.md). 7일 추이는 최초 발행부터 누적하고,
+EX 원본184원 이상값은 임의 보정하지 않는다. 후속 문서 PR #102는 사용자 지시대로 CI를 생략한다.
 
 ## 2026-10-21 회수 sensor tick 예산·정체 경보 (PR #100 머지·배포 대기)
 

@@ -5,7 +5,8 @@
 - 전국/시도/시군구와 고속도로 전체/노선/방향별 유종 통계, 최저가 주유소·7일 일별 추이를 추가했다.
 - 가격 차이·표준편차·50L 평균 대비 최저가 절감액을 제공한다. 지도는 마커 제한/요약과 무관하게 bbox 전체를 같은 요청에서 집계한다.
 - PostgreSQL 합성 12,000곳/60,000가격/235시군구 실측: 지도 무캐시 중앙값 약43ms(기존 창 정렬171ms), 캐시 약1.5ms, 시군구 목록 중앙값 약8ms. 집계 Python 추적 최대 약3.2MiB. 개발 PC 수치이며 Odroid 미측정.
-- 최종 WSL/Docker 전체 backend 각각940 PASS·14 조건부 SKIP, admin 각각225 PASS와 production build 통과. PostgreSQL 집중4 PASS, 마이그레이션 downgrade/upgrade/check 통과. 격리 브라우저5 PASS와 실제 로컬 PG/API/BFF/로그인 UI1 PASS(390/1440px). 운영 검증은 진행 중이다.
+- 최종 WSL/Docker 전체 backend 각각940 PASS·14 조건부 SKIP, admin 각각225 PASS와 production build 통과. PostgreSQL 집중4 PASS, 마이그레이션 downgrade/upgrade/check 통과. 격리 브라우저5 PASS와 실제 로컬 PG/API/BFF/로그인 UI1 PASS(390/1440px).
+- Odroid backend/admin 공식 배포·0028·현재 통계 초기화·원본 가격 대조·공개 HTTPS 실제 UI1 PASS를 완료했다. UI는 모바일/PC와 실제 VWorld 확대2회·키보드 이동을 포함한다. 내부 통계 중앙값121~759ms·지도392~816ms이며 공개 HTTPS 약1.2~1.7초의 잔여 지연도 기록했다. [실측·배포·ANALYZE 취소와 원본184원 한계](reports/2026-10-21-fuel-statistics-live.md).
 - 동시 회귀 부하가 있는 두 번째 실측: 사전 집계5.8초, 지도 무캐시 중앙값92ms·캐시2ms·시군구12ms, Python 추적 최대3.2MiB. 정상 부하 첫 실측43ms와 환경을 구분한다.
 - 설치 이전 이력을 자동 전수 스캔하지 않는다. 최초 최신 통계는 `scripts/rebuild-fuel-statistics.py`로 공급자 호출 없이 초기화하고, 일별 기록은 이후 정상 수집에서 축적한다.
 
