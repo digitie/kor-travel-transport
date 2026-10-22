@@ -12,7 +12,7 @@ from sqlalchemy import select  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
 from app.db.session import create_engine_and_session_factory  # noqa: E402
 from app.models import TransportCollectionState  # noqa: E402
-from app.services.fuel_statistics import HIGHWAY, OPINET, lock_fuel_statistics, publish_fuel_statistics  # noqa: E402
+from app.services.fuel_statistics import HIGHWAY, OPINET, cleanup_fuel_statistics, publish_fuel_statistics  # noqa: E402
 
 
 async def rebuild(source: str | None) -> None:
@@ -20,13 +20,13 @@ async def rebuild(source: str | None) -> None:
     try:
         for name in [source] if source else [OPINET, HIGHWAY]:
             async with factory() as session:
-                await lock_fuel_statistics(session, name)
                 state = await session.scalar(select(TransportCollectionState).where(TransportCollectionState.source == name))
                 if state is None or state.last_success_at is None:
                     print(f"{name}: 정상 수집 기록 없음")
                     continue
                 await publish_fuel_statistics(session, name, state.last_success_at)
                 await session.commit()
+                await cleanup_fuel_statistics(session, name)
                 print(f"{name}: {state.last_success_at.isoformat()} 기준 통계 발행 완료")
     finally:
         await engine.dispose()
