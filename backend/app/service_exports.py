@@ -20,7 +20,7 @@ from collections.abc import AsyncIterator, Callable
 from datetime import datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from krairport import KrairportClient
 from sqlalchemy import false, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +30,7 @@ from app.core.time_utils import now_utc, serialize_utc
 from app.models import (
     Airport,
     FuelLatestPrice,
+    FuelPriceSnapshot,
     FuelStation,
     HighwayIncidentSnapshot,
     ParkingLot,
@@ -42,10 +43,12 @@ from app.schemas import (
     ExportAirport,
     ExportCollectionState,
     ExportFuelPrice,
+    ExportFuelPriceHistoryPoint,
     ExportFuelStation,
     ExportHighwayIncident,
     ExportRestArea,
     ExportRestAreaFuelPrice,
+    FuelPriceHistoryResponse,
     FuelStationExportPage,
     HighwayIncidentActiveSet,
     RestAreaExportPage,
@@ -134,6 +137,56 @@ def build_service_export_router(
         return FuelStationExportPage(
             generated_at=now_utc(), collection=collection, items=items,
             next_cursor=str(page[-1].id) if has_more else None, has_more=has_more,
+        )
+
+    @router.get("/fuel-stations/{natural_key}/price-history", response_model=FuelPriceHistoryResponse)
+    async def export_fuel_station_price_history(
+        natural_key: str = Path(min_length=1, max_length=80),
+        product_code: str | None = Query(default=None, min_length=1, max_length=20),
+        since: datetime | None = Query(default=None, description="이 시각 이상(observed_at). timezone 필수"),
+        until: datetime | None = Query(default=None, description="이 시각 이하(observed_at). timezone 필수"),
+        limit: int = Query(default=500, ge=1, le=MAX_PAGE_SIZE),
+        session: AsyncSession = Depends(get_db),
+    ) -> FuelPriceHistoryResponse:
+        """주유소 한 곳의 유종별 가격 이력(`fuel_price_snapshots`, 가격이 바뀐 때마다 1행).
+
+        Map은 transport 출처 가격의 이력을 보관하지 않고 추이를 여기서 읽는다(Map ADR-114). 행은
+        `observed_at`(오피넷 갱신시각, 없으면 수집 시각) 내림차순이다. `collected_at`은 같은 가격을 마지막으로
+        다시 확인한 수집 시각이라 뒤로 갱신된다 — 이 응답으로 "그때 알려진 값"을 재현할 수는 없다.
+
+        이력은 현재 수집의 신선도와 무관한 과거 사실이라 수집이 stale이어도 503을 내지 않는다. 모르는
+        주유소는 빈 목록이다(404는 토큰·peer fence가 경로를 숨길 때만 쓴다 — 둘을 섞지 않는다).
+        """
+        for name, value in (("since", since), ("until", until)):
+            if value is not None and value.utcoffset() is None:
+                raise HTTPException(status_code=422, detail=f"{name}에는 timezone이 있어야 합니다.")
+        if since is not None and until is not None and since > until:
+            raise HTTPException(status_code=422, detail="since는 until보다 늦을 수 없습니다.")
+        query = (
+            select(FuelPriceSnapshot)
+            .join(FuelStation, FuelStation.id == FuelPriceSnapshot.fuel_station_id)
+            .where(FuelStation.source == OPINET_SOURCE, FuelStation.source_station_id == natural_key,
+                   FuelPriceSnapshot.source == OPINET_SOURCE)
+        )
+        if product_code is not None:
+            query = query.where(FuelPriceSnapshot.product_code == product_code)
+        if since is not None:
+            query = query.where(FuelPriceSnapshot.observed_at >= since)
+        if until is not None:
+            query = query.where(FuelPriceSnapshot.observed_at <= until)
+        rows = list((await session.scalars(
+            query.order_by(FuelPriceSnapshot.observed_at.desc(), FuelPriceSnapshot.id.desc()).limit(limit + 1)
+        )).all())
+        page = rows[:limit]
+        items = [ExportFuelPriceHistoryPoint(
+            product_code=row.product_code,
+            price=float(row.price) if row.price is not None else None,
+            provider_updated_at=serialize_utc(row.provider_updated_at) if row.provider_updated_at else None,
+            observed_at=serialize_utc(row.observed_at),
+            collected_at=serialize_utc(row.collected_at),
+        ) for row in page]
+        return FuelPriceHistoryResponse(
+            generated_at=now_utc(), natural_key=natural_key, items=items, truncated=len(rows) > limit,
         )
 
     @router.get("/rest-areas", response_model=RestAreaExportPage)

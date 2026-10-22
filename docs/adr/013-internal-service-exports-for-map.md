@@ -84,3 +84,22 @@ provider 원본을 숨기며, 돌발은 "최근 24시간"이라 "지금 활성�
   새 값처럼 적재하지는 않는다).
 - 토큰 하나가 export 전체 권한이다(읽기 전용). 범위별 토큰은 소비자가 둘 이상이 될 때 다시 본다.
 - OpiNet 정본이 브라우저 수집(`opinet.experimental`)이라 공식 API보다 원천 변화에 약하다.
+
+### 추가 (2026-10-23): 주유소 가격 이력 export — Map ADR-114
+
+Map은 transport 출처 데이터의 이력을 더 보관하지 않는다(Map ADR-114, 소유자 결정 2026-10-23). 가격 추이는
+Map DB가 아니라 transport가 이미 가진 `fuel_price_snapshots`에서 읽는다. 그래서 additive 경로 하나를 더한다:
+
+- `GET /v1/service/exports/fuel-stations/{natural_key}/price-history?product_code&since&until&limit`
+  (`natural_key` = 오피넷 `uni_id` = `fuel_stations.source_station_id`). 같은 토큰·peer fence, 같은 gateway
+  `location ^~ /v1/service/exports/`를 탄다(gateway·allowlist 변경 없음).
+- 행은 `fuel_price_snapshots` 그대로(가격이 바뀐 때마다 1행), `observed_at DESC, id DESC`, `limit` 상한 1000,
+  넘으면 `truncated=true`. `since`/`until`은 timezone이 있어야 한다.
+- 이력은 과거 사실이므로 **수집 신선도 503을 적용하지 않는다**. 모르는 주유소는 빈 목록이다 — 404는
+  fence가 경로를 숨길 때만 쓴다.
+- `collected_at`은 같은 가격을 다시 볼 때마다 앞으로 갱신된다. 이 응답으로 "그 시점에 알려진 값"(knowledge
+  time)을 재현할 수는 없다 — Map ADR-114가 그 손실을 기록한다.
+- 기존 표·수집·export는 바꾸지 않는다. 휴게소 유가(`rest_area_fuel_prices`)는 휴게소당 최신 1행이라 이력
+  export를 줄 수 없다 — 이력 표를 더하는 것은 기능 변경이라 이 추가의 범위가 아니다(Map ADR-114가 소유자
+  확인 사항으로 남긴다).
+

@@ -909,6 +909,23 @@ class FuelStationExportPage(BaseModel):
     has_more: bool
 
 
+class ExportFuelPriceHistoryPoint(BaseModel):
+    product_code: str = Field(description="오피넷 유종 코드(B027 휘발유·D047 경유·B034 고급휘발유·C004 등유·K015 LPG)")
+    price: float | None = None
+    provider_updated_at: datetime | None = None
+    observed_at: datetime = Field(description="오피넷 가격 갱신시각. 없으면 그 가격을 처음 본 수집 시각")
+    collected_at: datetime = Field(description="이 가격을 마지막으로 다시 확인한 수집 시각(재관측마다 앞으로 갱신)")
+
+
+class FuelPriceHistoryResponse(BaseModel):
+    """주유소 한 곳의 가격 이력. Map ADR-114 — Map은 transport 출처 이력을 보관하지 않고 여기서 읽는다."""
+
+    generated_at: datetime
+    natural_key: str = Field(description="오피넷 주유소 ID(uni_id)")
+    items: list[ExportFuelPriceHistoryPoint] = Field(description="observed_at 내림차순")
+    truncated: bool = Field(description="limit을 넘는 행이 더 있다")
+
+
 class ExportRestArea(BaseModel):
     natural_key: str = Field(description="`name::route_name::direction`(strip→lower). 원천에 안정 ID가 없다")
     source: str

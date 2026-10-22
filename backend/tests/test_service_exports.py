@@ -71,6 +71,7 @@ async def _set_state(session, source: str, **values) -> None:
     "/v1/service/exports/rest-area-fuel-prices",
     "/v1/service/exports/highway-incidents/active",
     "/v1/service/exports/airports",
+    "/v1/service/exports/fuel-stations/A0000001/price-history",
 ])
 def test_exports_hide_without_token_or_from_a_remote_peer(test_settings: Settings, path: str) -> None:
     test_settings.transport_service_export_token = TOKEN
@@ -166,6 +167,59 @@ def test_fuel_station_export_pages_stable_ids_with_latest_prices(export_client: 
     assert second["has_more"] is False and second["next_cursor"] is None
     bad = export_client.get("/v1/service/exports/fuel-stations", params={"cursor": "abc"}, headers=HEADERS)
     assert bad.status_code == 422
+
+
+def test_fuel_price_history_returns_change_rows_newest_first(export_client: TestClient) -> None:
+    """Map ADR-114: Map은 transport 출처 가격 이력을 두지 않고 여기서 추이를 읽는다."""
+    base = now_utc().replace(microsecond=0)
+
+    async def seed(session) -> None:
+        stations = []
+        for index, station_id in enumerate(["A0000001", "A0000002"]):
+            station = FuelStation(
+                source=OPINET_SOURCE, identity_key=f"station:{station_id}", source_station_id=station_id,
+                name=f"주유소{index}", query_level="sigungu", sido_value="11", sido_name="서울",
+                sigungu_value="110", sigungu_name="종로", source_kinds=["station"], latitude=37.5,
+                longitude=127.0, first_seen_at=base, last_seen_at=base, raw_item_json={"UNI_ID": station_id},
+            )
+            session.add(station)
+            stations.append(station)
+        await session.flush()
+        for days, product, price in [(3, "B027", 1690), (2, "B027", 1700), (1, "B027", 1710), (2, "D047", 1550)]:
+            observed = base - timedelta(days=days)
+            session.add(FuelPriceSnapshot(fuel_station_id=stations[0].id, source=OPINET_SOURCE, product_code=product,
+                                          price=price, provider_updated_at=observed, observed_at=observed,
+                                          collected_at=base))
+        # 다른 주유소의 행은 섞이지 않는다.
+        session.add(FuelPriceSnapshot(fuel_station_id=stations[1].id, source=OPINET_SOURCE, product_code="B027",
+                                      price=1800, observed_at=base, collected_at=base))
+        # 수집이 stale이어도 이력은 낸다(이력은 과거 사실이다).
+        await _set_state(session, OPINET_SOURCE, last_success_at=base - timedelta(days=5), last_error="timeout")
+
+    _run(export_client, seed)
+    path = "/v1/service/exports/fuel-stations/A0000001/price-history"
+    body = export_client.get(path, headers=HEADERS).json()
+    assert body["natural_key"] == "A0000001" and body["truncated"] is False
+    assert [(item["product_code"], item["price"]) for item in body["items"]] == [
+        ("B027", 1710.0), ("D047", 1550.0), ("B027", 1700.0), ("B027", 1690.0),
+    ]
+    only = export_client.get(path, params={"product_code": "D047"}, headers=HEADERS).json()
+    assert [item["price"] for item in only["items"]] == [1550.0]
+    limited = export_client.get(path, params={"limit": 2}, headers=HEADERS).json()
+    assert len(limited["items"]) == 2 and limited["truncated"] is True
+    window = export_client.get(path, params={
+        "since": (base - timedelta(days=2, hours=1)).isoformat(),
+        "until": (base - timedelta(days=1, hours=12)).isoformat(),
+    }, headers=HEADERS).json()
+    assert sorted(item["price"] for item in window["items"]) == [1550.0, 1700.0]
+    unknown = export_client.get("/v1/service/exports/fuel-stations/NOPE/price-history", headers=HEADERS)
+    assert unknown.status_code == 200 and unknown.json()["items"] == []
+    naive = export_client.get(path, params={"since": "2026-10-01T00:00:00"}, headers=HEADERS)
+    assert naive.status_code == 422
+    inverted = export_client.get(path, params={
+        "since": base.isoformat(), "until": (base - timedelta(days=1)).isoformat(),
+    }, headers=HEADERS)
+    assert inverted.status_code == 422
 
 
 @pytest.mark.parametrize("state", [

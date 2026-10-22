@@ -1,3 +1,13 @@
+## 2026-10-23 — 주유소 가격 이력 service export (Map ADR-114)
+
+브랜치 `feat/service-price-history`. 소유자 결정(2026-10-23): Map은 transport 출처 데이터의 이력을 보관하지
+않고 가격 추이는 transport에서 직접 읽는다. transport 기능은 바꾸지 않고 additive export 하나만 더했다.
+
+- `GET /v1/service/exports/fuel-stations/{natural_key}/price-history` — `fuel_price_snapshots`를 주유소
+  자연키(uni_id)로, `observed_at DESC`, `limit≤1000`+`truncated`, `product_code`·`since`·`until` 필터.
+  신선도 503 없음(과거 사실), 모르는 주유소는 빈 목록. ADR-013 "추가(2026-10-23)" 절.
+- 휴게소 유가는 휴게소당 최신 1행만 있어 이력 export를 줄 수 없다(범위 밖, Map ADR-114가 소유자 확인으로 남김).
+
 ## 2026-10-21 유가 사전 집계·지도 범위 통계 (PR #101 머지)
 
 - James/Popper 독립 리뷰에서 P1 포커스1건과 P2 날짜축·지도 통계 지연·동시 발행 이력 누락3건을 반영했다. 실패 재현 후 PG4·UI225·브라우저6 검증이 통과했다. 최종 `2c2474d` 독립 재리뷰에서 추가 P0/P1/P2 없음과 CI 6개 SUCCESS를 확인해 main `8639826`으로 머지했다. [상세 리뷰/재현](reviews/2026-10-21-fuel-statistics.md).
