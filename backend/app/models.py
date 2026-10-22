@@ -378,7 +378,7 @@ class FuelLatestPrice(Base):
 
 
 class FuelStatisticsState(Base):
-    """유가 원본과 같은 트랜잭션에서 발행하는 통계 세대."""
+    """준비가 끝난 통계의 공개 세대. 원본 저장과 별도로 전환한다."""
 
     __tablename__ = "fuel_statistics_states"
     source: Mapped[str] = mapped_column(String(40), primary_key=True)
@@ -387,14 +387,17 @@ class FuelStatisticsState(Base):
 
 
 class FuelStatisticsPoint(Base):
-    """지도 통계 전용 최신 가격만 보관한다. 과거 원본 이력을 조회하지 않는다."""
+    """지도 통계 전용 가격 세대. 공개 포인터와 일치하는 완성 세대만 조회한다."""
 
     __tablename__ = "fuel_statistics_points"
-    __table_args__ = (Index("ix_fuel_statistics_points_bbox", "longitude", "latitude"),)
+    __table_args__ = (
+        Index("ix_fuel_statistics_points_bbox", "longitude", "latitude"),
+        Index("ix_fuel_statistics_points_generation", "source", "generated_at"),
+    )
     source: Mapped[str] = mapped_column(String(40), primary_key=True)
     station_key: Mapped[str] = mapped_column(String(80), primary_key=True)
     product_code: Mapped[str] = mapped_column(String(20), primary_key=True)
-    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
     address: Mapped[str | None] = mapped_column(String(300), nullable=True)
     brand_name: Mapped[str | None] = mapped_column(String(120), nullable=True)

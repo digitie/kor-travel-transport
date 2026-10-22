@@ -12,7 +12,7 @@
 
 from __future__ import annotations
 
-from app.services.fuel_statistics import lock_fuel_statistics, try_publish_fuel_statistics
+from app.services.fuel_statistics import cleanup_fuel_statistics, try_publish_fuel_statistics
 
 import asyncio
 import json
@@ -109,6 +109,7 @@ class RestAreaCollectionService:
         state.updated_at = now_utc()
         await session.commit()
         run_id = run.id
+        raw_committed = False
         try:
             client = self._client_factory(
                 ex_api_key=self.settings.kex_ex_api_key,
@@ -120,8 +121,6 @@ class RestAreaCollectionService:
             finally:
                 await client.aclose()
             collected_at = now_utc()
-            if source == REST_AREA_FUEL_SOURCE:
-                await lock_fuel_statistics(session, source)
             stored = await store(session, items, collected_at)
             if stored == 0:
                 raise EmptyRestAreaCollectionError(f"{source}: received {len(items)}, stored 0")
@@ -133,11 +132,16 @@ class RestAreaCollectionService:
             ))
             state = await get_or_create_state(session, source)
             state.last_success_at = collected_at
-            if source == REST_AREA_FUEL_SOURCE:
-                await try_publish_fuel_statistics(session, source, collected_at)
             state.last_error = None
             state.next_due_at = None
             state.updated_at = now_utc()
+            # 원본 저장을 먼저 확정하고, 아직 running인 실행의 소유권 아래 통계를 게시한다.
+            await session.commit()
+            raw_committed = True
+            if source == REST_AREA_FUEL_SOURCE:
+                await try_publish_fuel_statistics(session, source, collected_at)
+                await session.commit()
+                await cleanup_fuel_statistics(session, source)
             stored_run = await session.get(CollectionRun, run_id)
             stored_run.status = "success"
             stored_run.finished_at = now_utc()
@@ -149,12 +153,15 @@ class RestAreaCollectionService:
             message = type(exc).__name__
             stored_run = await session.get(CollectionRun, run_id)
             if stored_run is not None:
-                stored_run.status = "failed"
+                stored_run.status = "partial_success" if raw_committed else "failed"
                 stored_run.finished_at = now_utc()
                 stored_run.error_message = message
-            state = await get_or_create_state(session, source)
-            state.last_error = message
-            state.updated_at = now_utc()
+            if not raw_committed:
+                state = await get_or_create_state(session, source)
+                state.last_error = message
+                state.updated_at = now_utc()
+            # 파생 통계/정리 취소가 이미 확정된 원천 성공을 실패로 바꿔 export를 막지 않는다.
+            # 실행은 부분 성공으로 기록하고 원래 예외/취소는 Dagster로 전달한다.
             await session.commit()
             raise
 
