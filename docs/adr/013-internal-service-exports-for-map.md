@@ -93,8 +93,9 @@ Map DB가 아니라 transport가 이미 가진 `fuel_price_snapshots`에서 읽�
 - `GET /v1/service/exports/fuel-stations/{natural_key}/price-history?product_code&since&until&limit`
   (`natural_key` = 오피넷 `uni_id` = `fuel_stations.source_station_id`). 같은 토큰·peer fence, 같은 gateway
   `location ^~ /v1/service/exports/`를 탄다(gateway·allowlist 변경 없음).
-- 행은 `fuel_price_snapshots` 그대로(가격이 바뀐 때마다 1행), `observed_at DESC, id DESC`, `limit` 상한 1000,
-  넘으면 `truncated=true`. `since`/`until`은 timezone이 있어야 한다.
+- 행은 `fuel_price_snapshots` 그대로(키 `(주유소, 유종, observed_at)` — 오피넷 갱신시각이 있으면 가격이 바뀐
+  때마다 1행, 없으면 수집마다 1행), `observed_at DESC, id DESC`. `limit`(상한 1000)은 **유종마다** 걸고 어느
+  유종이든 넘으면 `truncated=true`. `price`가 빈 행도 그대로 낸다. `since`/`until`은 timezone이 있어야 한다.
 - 이력은 과거 사실이므로 **수집 신선도 503을 적용하지 않는다**. 모르는 주유소는 빈 목록이다 — 404는
   fence가 경로를 숨길 때만 쓴다.
 - `collected_at`은 같은 가격을 다시 볼 때마다 앞으로 갱신된다. 이 응답으로 "그 시점에 알려진 값"(knowledge
