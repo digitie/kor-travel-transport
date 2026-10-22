@@ -1453,3 +1453,62 @@ def test_fuel_store_retries_same_snapshot_after_price_write_rollback(tmp_path: P
     assert result["fuel_price_count"] == 1
     assert run_row.error_message is None
     assert state.last_success_at is not None and state.last_error is None
+
+
+def test_fuel_fetch_timeout_fits_inside_job_budget() -> None:
+    """2026-10-23 소유자 결정: odroid 성공 수집 5,946~6,371초, 7,200초 상한에서 시간 초과 반복 → 12,600초.
+
+    유가 수집 상한과 저장 여유(최소 20분)가 job 전체 상한(`MAX_RUNTIME_SECONDS - 60`)과 Dagster run 상한 안에
+    들어야 한다. 그렇지 않으면 수집이 끝나기 전에 job이 끊겨 실패가 durable하게 남지 않는다.
+    """
+    from app.dagster.definitions import MAX_RUNTIME_SECONDS
+    from app.services import transport_collection
+
+    assert transport_collection.FUEL_FETCH_TIMEOUT_SECONDS == 12_600
+    assert MAX_RUNTIME_SECONDS <= 14_400
+    assert transport_collection.FUEL_FETCH_TIMEOUT_SECONDS + 20 * 60 <= MAX_RUNTIME_SECONDS - 60
+
+
+def test_fuel_fetch_timeout_is_enforced_and_logged(tmp_path: Path, monkeypatch, caplog) -> None:
+    """상한을 넘긴 브라우저 수집은 실패로 남고, 시작·끝·경과 시간이 진행 로그에 남는다."""
+    from app.services import transport_collection
+
+    monkeypatch.setattr(transport_collection, "FUEL_FETCH_TIMEOUT_SECONDS", 0.05)
+    settings = build_settings(tmp_path)
+    provider = FakeTransportProvider()
+
+    async def slow_fuel():
+        await asyncio.sleep(5)
+
+    provider.collect_fuel = AsyncMock(side_effect=slow_fuel)
+
+    async def run():
+        engine, factory = create_engine_and_session_factory(settings.database_url)
+        await init_database(engine)
+        service = TransportCollectionService(settings, provider)
+        async with factory() as session:
+            result = await service.collect(session, trigger="test", scope="fuel")
+            state = await session.scalar(select(TransportCollectionState).where(
+                TransportCollectionState.source == OPINET_SOURCE))
+        await service.close()
+        await engine.dispose()
+        return result, state
+
+    with caplog.at_level("INFO", logger="app.services.transport_collection"):
+        result, state = asyncio.run(run())
+    assert result["status"] == "failed"
+    assert state.last_success_at is None and state.last_error
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(m.startswith("fuel browser collection started run_id=") and "timeout=0.05s" in m for m in messages)
+    assert any(m.startswith("fuel browser collection failed run_id=") and "elapsed=" in m for m in messages)
+    assert any(m.startswith("fuel snapshot store skipped run_id=") for m in messages)
+
+
+def test_fuel_success_logs_fetch_and_store_progress(tmp_path: Path, caplog) -> None:
+    with caplog.at_level("INFO", logger="app.services.transport_collection"):
+        result, _run_row, _state, _collect = _run_fuel_with_store(
+            tmp_path, lambda original, *args: original(*args))
+    assert result["status"] == "success"
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(m.startswith("fuel browser collection finished run_id=") for m in messages)
+    assert any(m.startswith("fuel snapshot store finished run_id=") and "prices=1" in m for m in messages)
