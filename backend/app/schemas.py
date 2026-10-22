@@ -923,7 +923,7 @@ class FuelPriceHistoryResponse(BaseModel):
     generated_at: datetime
     natural_key: str = Field(description="오피넷 주유소 ID(uni_id)")
     items: list[ExportFuelPriceHistoryPoint] = Field(description="observed_at 내림차순")
-    truncated: bool = Field(description="limit을 넘는 행이 더 있다")
+    truncated: bool = Field(description="어느 유종이든 limit을 넘는 행이 더 있다")
 
 
 class ExportRestArea(BaseModel):

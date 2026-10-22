@@ -4,7 +4,7 @@
 않고 가격 추이는 transport에서 직접 읽는다. transport 기능은 바꾸지 않고 additive export 하나만 더했다.
 
 - `GET /v1/service/exports/fuel-stations/{natural_key}/price-history` — `fuel_price_snapshots`를 주유소
-  자연키(uni_id)로, `observed_at DESC`, `limit≤1000`+`truncated`, `product_code`·`since`·`until` 필터.
+  자연키(uni_id)로, `observed_at DESC`, 유종마다 `limit≤1000`+`truncated`, `product_code`·`since`·`until` 필터.
   신선도 503 없음(과거 사실), 모르는 주유소는 빈 목록. ADR-013 "추가(2026-10-23)" 절.
 - 휴게소 유가는 휴게소당 최신 1행만 있어 이력 export를 줄 수 없다(범위 밖, Map ADR-114가 소유자 확인으로 남김).
 

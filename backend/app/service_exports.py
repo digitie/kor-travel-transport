@@ -145,10 +145,13 @@ def build_service_export_router(
         product_code: str | None = Query(default=None, min_length=1, max_length=20),
         since: datetime | None = Query(default=None, description="이 시각 이상(observed_at). timezone 필수"),
         until: datetime | None = Query(default=None, description="이 시각 이하(observed_at). timezone 필수"),
-        limit: int = Query(default=500, ge=1, le=MAX_PAGE_SIZE),
+        limit: int = Query(default=500, ge=1, le=MAX_PAGE_SIZE, description="유종마다의 최대 행 수"),
         session: AsyncSession = Depends(get_db),
     ) -> FuelPriceHistoryResponse:
-        """주유소 한 곳의 유종별 가격 이력(`fuel_price_snapshots`, 가격이 바뀐 때마다 1행).
+        """주유소 한 곳의 유종별 가격 이력(`fuel_price_snapshots`).
+
+        행 키는 `(주유소, 유종, observed_at)`이고 `observed_at`은 오피넷 갱신시각이다 — 갱신시각이 있으면 가격이
+        바뀐 때마다 1행, 없으면 수집마다 1행이다. `price`가 비어 있는 행도 그대로 낸다.
 
         Map은 transport 출처 가격의 이력을 보관하지 않고 추이를 여기서 읽는다(Map ADR-114). 행은
         `observed_at`(오피넷 갱신시각, 없으면 수집 시각) 내림차순이다. `collected_at`은 같은 가격을 마지막으로
@@ -162,22 +165,41 @@ def build_service_export_router(
                 raise HTTPException(status_code=422, detail=f"{name}에는 timezone이 있어야 합니다.")
         if since is not None and until is not None and since > until:
             raise HTTPException(status_code=422, detail="since는 until보다 늦을 수 없습니다.")
-        query = (
-            select(FuelPriceSnapshot)
-            .join(FuelStation, FuelStation.id == FuelPriceSnapshot.fuel_station_id)
-            .where(FuelStation.source == OPINET_SOURCE, FuelStation.source_station_id == natural_key,
-                   FuelPriceSnapshot.source == OPINET_SOURCE)
-        )
+        conditions = [FuelStation.source == OPINET_SOURCE, FuelStation.source_station_id == natural_key,
+                      FuelPriceSnapshot.source == OPINET_SOURCE]
         if product_code is not None:
-            query = query.where(FuelPriceSnapshot.product_code == product_code)
+            conditions.append(FuelPriceSnapshot.product_code == product_code)
         if since is not None:
-            query = query.where(FuelPriceSnapshot.observed_at >= since)
+            conditions.append(FuelPriceSnapshot.observed_at >= since)
         if until is not None:
-            query = query.where(FuelPriceSnapshot.observed_at <= until)
+            conditions.append(FuelPriceSnapshot.observed_at <= until)
+        # `limit`은 유종마다 따로 건다 — 한 유종의 잦은 변경이 다른 유종의 이력을 밀어내지 않게.
+        ranked = (
+            select(
+                FuelPriceSnapshot.id.label("id"),
+                func.row_number().over(
+                    partition_by=FuelPriceSnapshot.product_code,
+                    order_by=(FuelPriceSnapshot.observed_at.desc(), FuelPriceSnapshot.id.desc()),
+                ).label("rank"),
+            )
+            .join(FuelStation, FuelStation.id == FuelPriceSnapshot.fuel_station_id)
+            .where(*conditions)
+            .subquery()
+        )
         rows = list((await session.scalars(
-            query.order_by(FuelPriceSnapshot.observed_at.desc(), FuelPriceSnapshot.id.desc()).limit(limit + 1)
+            select(FuelPriceSnapshot).join(ranked, FuelPriceSnapshot.id == ranked.c.id)
+            .where(ranked.c.rank <= limit + 1)
+            .order_by(FuelPriceSnapshot.observed_at.desc(), FuelPriceSnapshot.id.desc())
         )).all())
-        page = rows[:limit]
+        seen: dict[str, int] = {}
+        page = []
+        truncated = False
+        for row in rows:
+            seen[row.product_code] = seen.get(row.product_code, 0) + 1
+            if seen[row.product_code] > limit:
+                truncated = True
+                continue
+            page.append(row)
         items = [ExportFuelPriceHistoryPoint(
             product_code=row.product_code,
             price=float(row.price) if row.price is not None else None,
@@ -186,7 +208,7 @@ def build_service_export_router(
             collected_at=serialize_utc(row.collected_at),
         ) for row in page]
         return FuelPriceHistoryResponse(
-            generated_at=now_utc(), natural_key=natural_key, items=items, truncated=len(rows) > limit,
+            generated_at=now_utc(), natural_key=natural_key, items=items, truncated=truncated,
         )
 
     @router.get("/rest-areas", response_model=RestAreaExportPage)

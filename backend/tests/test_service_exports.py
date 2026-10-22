@@ -205,8 +205,14 @@ def test_fuel_price_history_returns_change_rows_newest_first(export_client: Test
     ]
     only = export_client.get(path, params={"product_code": "D047"}, headers=HEADERS).json()
     assert [item["price"] for item in only["items"]] == [1550.0]
-    limited = export_client.get(path, params={"limit": 2}, headers=HEADERS).json()
-    assert len(limited["items"]) == 2 and limited["truncated"] is True
+    # limit은 유종마다 건다 — 휘발유 변경이 잦아도 경유 이력이 밀려나지 않는다.
+    limited = export_client.get(path, params={"limit": 1}, headers=HEADERS).json()
+    assert [(item["product_code"], item["price"]) for item in limited["items"]] == [
+        ("B027", 1710.0), ("D047", 1550.0),
+    ]
+    assert limited["truncated"] is True
+    exact = export_client.get(path, params={"limit": 3}, headers=HEADERS).json()
+    assert len(exact["items"]) == 4 and exact["truncated"] is False
     window = export_client.get(path, params={
         "since": (base - timedelta(days=2, hours=1)).isoformat(),
         "until": (base - timedelta(days=1, hours=12)).isoformat(),
