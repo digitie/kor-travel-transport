@@ -1,6 +1,12 @@
 # resume.md — 현재 인수인계
 
 
+## 2026-10-23 유가 수집 상한·진행 로그·참조 export 유예 (PR 진행 중)
+
+`fix/fuel-timeout-and-export-grace`: 유가 수집 상한 12,600초, 단계별 진행 로그(python-opinet-api 재핀),
+참조 export는 마지막 성공이 stale 기준 안이면 실패 뒤에도 200(`last_attempt_failed`). ADR-013 개정.
+배포는 하지 않았다 — 다음 odroid 배포에서 함께 나간다. 상세는 journal 같은 날.
+
 ## 2026-10-21 유가 통계 (PR #101)
 
 PR #101은 main `8639826`으로 머지했다. 수집 완료 사전집계, bbox 전체 통계,

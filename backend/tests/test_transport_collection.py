@@ -1464,9 +1464,13 @@ def test_fuel_fetch_timeout_fits_inside_job_budget() -> None:
     from app.dagster.definitions import MAX_RUNTIME_SECONDS
     from app.services import transport_collection
 
-    assert transport_collection.FUEL_FETCH_TIMEOUT_SECONDS == 12_600
+    # odroid 성공 수집 최댓값(6,371초)의 거의 두 배를 넘겨야 상한이 다시 실패 원인이 되지 않는다.
+    assert transport_collection.FUEL_FETCH_TIMEOUT_SECONDS >= 12_600
     assert MAX_RUNTIME_SECONDS <= 14_400
-    assert transport_collection.FUEL_FETCH_TIMEOUT_SECONDS + 20 * 60 <= MAX_RUNTIME_SECONDS - 60
+    # step 기동(spawn·import) 여유를 더 빼도 저장 여유 20분이 남아야 한다.
+    step_startup_reserve = 120
+    assert (transport_collection.FUEL_FETCH_TIMEOUT_SECONDS + 20 * 60 + step_startup_reserve
+            <= MAX_RUNTIME_SECONDS - 60)
 
 
 def test_fuel_fetch_timeout_is_enforced_and_logged(tmp_path: Path, monkeypatch, caplog) -> None:

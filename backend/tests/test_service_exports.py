@@ -286,6 +286,45 @@ def test_fuel_station_export_grace_follows_a_real_failed_collection(export_clien
     assert export_client.get("/v1/service/exports/fuel-stations", headers=HEADERS).status_code == 503
 
 
+def test_fuel_export_grace_is_not_polluted_by_a_store_that_failed_after_writing(export_client: TestClient) -> None:
+    """가장 위험한 경로: provider는 새 주유소를 담은 스냅샷을 돌려주고, 저장이 행을 쓴 **뒤** 두 번 실패한다.
+
+    유예 구간의 200은 마지막 성공 집합 그대로여야 한다 — 새 주유소는 없고, 기존 주유소의 `last_seen_at`과
+    가격도 옮겨지지 않는다(저장 transaction rollback).
+    """
+    from test_transport_collection import FakeTransportProvider
+
+    service = export_client.app.state.transport_collection_service
+    success_at = now_utc() - timedelta(hours=9)
+
+    async def seed(session) -> None:
+        await _seed_fuel_station(session, seen_at=success_at)
+        await _set_state(session, OPINET_SOURCE, last_success_at=success_at, last_error=None, next_due_at=None)
+
+    _run(export_client, seed)
+    service.provider = FakeTransportProvider()  # 새 주유소 "S-1"(1700.5원)을 돌려준다
+    original_store = service._store_fuel_snapshot
+
+    async def store_then_fail(*args):
+        await original_store(*args)  # 행을 실제로 쓴 뒤
+        raise ValueError("deterministic store failure after upsert")
+
+    service._store_fuel_snapshot = store_then_fail
+    result = _run(export_client, lambda session: service.collect(session, scope="fuel", trigger="export_test"))
+    assert result["status"] == "failed"
+
+    async def stations(session):
+        rows = (await session.scalars(select(FuelStation).where(FuelStation.source == OPINET_SOURCE))).all()
+        return {row.source_station_id: row.last_seen_at for row in rows}
+    stored = _run(export_client, stations)
+    assert set(stored) == {"A0000001"}
+    body = export_client.get("/v1/service/exports/fuel-stations", headers=HEADERS).json()
+    assert [item["natural_key"] for item in body["items"]] == ["A0000001"]
+    assert body["items"][0]["prices"][0]["price"] == 1700.0
+    assert body["items"][0]["last_seen_at"] == body["collection"]["last_success_at"]
+    assert body["collection"]["last_attempt_failed"] is True and body["collection"]["failed"] is False
+
+
 def test_rest_area_export_refuses_once_the_reference_is_older_than_three_days(export_client: TestClient) -> None:
     _run(export_client, lambda session: _set_state(
         session, REST_AREA_SOURCE, last_success_at=now_utc() - timedelta(days=3, minutes=1)))
