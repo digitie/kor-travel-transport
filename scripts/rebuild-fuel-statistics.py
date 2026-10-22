@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 from sqlalchemy import select  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
 from app.db.session import create_engine_and_session_factory  # noqa: E402
-from app.models import TransportCollectionState  # noqa: E402
+from app.models import FuelStatisticsState, TransportCollectionState  # noqa: E402
 from app.services.fuel_statistics import HIGHWAY, OPINET, cleanup_fuel_statistics, publish_fuel_statistics  # noqa: E402
 
 
@@ -24,10 +24,16 @@ async def rebuild(source: str | None) -> None:
                 if state is None or state.last_success_at is None:
                     print(f"{name}: 정상 수집 기록 없음")
                     continue
-                await publish_fuel_statistics(session, name, state.last_success_at)
+                requested_at = state.last_success_at
+                await publish_fuel_statistics(session, name, requested_at)
                 await session.commit()
+                published_at = await session.scalar(select(FuelStatisticsState.generated_at).where(
+                    FuelStatisticsState.source == name,
+                ))
+                # cleanup rollback은 ORM을 만료시키므로 출력에는 이미 읽은 스칼라만 쓴다.
                 await cleanup_fuel_statistics(session, name)
-                print(f"{name}: {state.last_success_at.isoformat()} 기준 통계 발행 완료")
+                current = published_at.isoformat() if published_at is not None else "없음(갱신 보류)"
+                print(f"{name}: 공개 통계 {current} (요청 원본 {requested_at.isoformat()})")
     finally:
         await engine.dispose()
 
