@@ -65,6 +65,12 @@ HIGHWAY_FETCH_TIMEOUT_SECONDS = 120
 #: 올린다. 저장·정리 여유를 두고 job 전체 상한(`definitions.MAX_RUNTIME_SECONDS - 60` = 14,340초)과
 #: Dagster run 상한(14,400초) 안에 들어야 한다 — `test_fuel_fetch_timeout_fits_inside_job_budget`이 지킨다.
 FUEL_FETCH_TIMEOUT_SECONDS = 12_600
+#: 성공한 유가 수집의 다음 예정은 수집 **시작** + 주기(8시간)에서 이만큼 당긴다. 정기 schedule은 8시간 정각마다
+#: tick하고 run의 실제 시작은 tick보다 큐·기동 지연만큼 늦는데, 그 지연은 run마다 다르다. 시작 + 8시간을 그대로
+#: 쓰면 다음 run의 지연이 조금만 짧아도 다음 tick이 "아직 이르다"로 건너뛰어 실제 주기가 16시간이 된다
+#: (2026-10-23 소유자 결정, ADR-013 개정). 당기는 폭은 지연의 흔들림만 덮는 크기라, 연속 정기 실행 사이는
+#: 여전히 8시간 tick 간격이다(하루 3 tick).
+FUEL_NEXT_DUE_START_SLACK = timedelta(minutes=15)
 #: 유가 스냅샷 upsert 한 문장에 싣는 행 수. bind 파라미터 상한(PostgreSQL·SQLite 32,767)과 수집 엔진의
 #: 문장당 `command_timeout`(60초) 안에 들도록 정한다. 주유소 41열 x 500 = 20,500개, 유가 9열 x 2,000 = 18,000개.
 FUEL_STATION_UPSERT_BATCH = 500
@@ -1040,9 +1046,15 @@ class TransportCollectionService:
         return now_utc() >= serialize_utc(next_due_at)
 
     async def _mark_fuel_success(self, session: AsyncSession, collected_at: datetime) -> None:
+        """다음 예정은 수집 완료가 아니라 이번 수집의 **시작**(`last_started_at`)에서 잰다.
+
+        완료 + 8시간은 수집이 1~2시간 걸리는 동안 다음 8시간 tick을 늘 건너뛰게 해 실제 주기가 16시간이었다.
+        실패 경로(`_mark_fuel_failure`, 실패 시각 + 주기)는 바꾸지 않는다.
+        """
         state = await self._get_or_create_state(session, OPINET_SOURCE)
         state.last_success_at = collected_at
-        state.next_due_at = collected_at + self.provider.next_fuel_interval()
+        started_at = serialize_utc(state.last_started_at) if state.last_started_at else serialize_utc(collected_at)
+        state.next_due_at = started_at + self.provider.next_fuel_interval() - FUEL_NEXT_DUE_START_SLACK
         state.last_error = None
         state.updated_at = now_utc()
         await session.flush()

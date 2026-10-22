@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections import OrderedDict
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -1453,6 +1453,110 @@ def test_fuel_store_retries_same_snapshot_after_price_write_rollback(tmp_path: P
     assert result["fuel_price_count"] == 1
     assert run_row.error_message is None
     assert state.last_success_at is not None and state.last_error is None
+
+
+def _fuel_state(tmp_path: Path, provider):
+    """유가 수집을 한 번 돌리고 오피넷 상태를 돌려준다."""
+    settings = build_settings(tmp_path)
+
+    async def run():
+        engine, factory = create_engine_and_session_factory(settings.database_url)
+        await init_database(engine)
+        service = TransportCollectionService(settings, provider)
+        async with factory() as session:
+            started = now_utc()
+            result = await service.collect(session, trigger="test", scope="fuel")
+            state = await session.scalar(select(TransportCollectionState).where(
+                TransportCollectionState.source == OPINET_SOURCE))
+        await service.close()
+        await engine.dispose()
+        return result, state, started
+
+    return asyncio.run(run())
+
+
+def test_fuel_next_due_is_measured_from_the_collection_start(tmp_path: Path) -> None:
+    """2026-10-23 소유자 결정: 성공한 유가 수집의 다음 예정은 시작 + 주기(조금 당김)다. 수집이 1~2시간 걸려도
+    다음 8시간 tick을 건너뛰지 않는다(옛 규칙은 완료 + 주기라 실제 주기가 16시간이었다)."""
+    from app.services.transport_collection import FUEL_NEXT_DUE_START_SLACK
+
+    provider = FakeTransportProvider()
+    result, state, started = _fuel_state(tmp_path, provider)
+    assert result["status"] == "success"
+    interval = provider.next_fuel_interval()
+    started_at = serialize_utc(state.last_started_at)
+    assert started <= started_at <= now_utc()
+    assert serialize_utc(state.next_due_at) == started_at + interval - FUEL_NEXT_DUE_START_SLACK
+    assert timedelta(0) < FUEL_NEXT_DUE_START_SLACK <= timedelta(minutes=30)
+
+
+def test_fuel_failure_next_due_is_unchanged(tmp_path: Path) -> None:
+    """실패 경로는 그대로다: 실패 시각 + 주기."""
+    provider = FakeTransportProvider()
+    provider.collect_fuel = AsyncMock(side_effect=RuntimeError("opinet down"))
+    result, state, _started = _fuel_state(tmp_path, provider)
+    assert result["status"] == "failed"
+    due = serialize_utc(state.next_due_at)
+    interval = provider.next_fuel_interval()
+    assert now_utc() + interval - timedelta(minutes=1) <= due <= now_utc() + interval
+
+
+def test_eight_hourly_ticks_keep_one_failure_inside_the_export_grace(tmp_path: Path) -> None:
+    """8시간 tick 타임라인: 00:00 tick 성공(완료 01:40) → 08:00 tick이 건너뛰지 않고 돈다 → 시간 초과 실패 →
+    16:00 tick은 실패 + 8시간 예약으로 건너뜀 → 다음 00:00 tick이 마지막 성공에서 24시간 안에 다시 돈다.
+
+    시작 지연은 run마다 다르다(00:00 tick은 5분, 08:00 tick은 30초). 그래도 08:00 tick이 due여야 한다.
+    """
+    from app.service_exports import REFERENCE_STALE_AFTER
+    from app.services import transport_collection
+
+    day = datetime(2026, 10, 23, 15, 0, tzinfo=timezone.utc)  # 00:00 KST tick
+    clock = {"now": day}
+    original_now = transport_collection.now_utc
+    transport_collection.now_utc = lambda: clock["now"]
+    settings = build_settings(tmp_path)
+    provider = FakeTransportProvider()
+    provider.next_fuel_interval = lambda: timedelta(hours=8)  # 운영 provider 기본값
+    try:
+        async def run():
+            engine, factory = create_engine_and_session_factory(settings.database_url)
+            await init_database(engine)
+            service = TransportCollectionService(settings, provider)
+
+            async def state(session):
+                return await session.scalar(select(TransportCollectionState).where(
+                    TransportCollectionState.source == OPINET_SOURCE))
+
+            async with factory() as session:
+                # 00:00 tick, 5분 늦게 시작, 01:40에 수집 완료 → 성공.
+                clock["now"] = day + timedelta(minutes=5)
+                provider.observed_at = day + timedelta(hours=1, minutes=40)
+                assert (await service.collect(session, trigger="test", scope="fuel"))["status"] == "success"
+                success_at = serialize_utc((await state(session)).last_success_at)
+
+                # 08:00 tick, 30초 늦게 시작 → due여야 한다(옛 규칙이면 09:40까지 건너뜀).
+                clock["now"] = day + timedelta(hours=8, seconds=30)
+                assert await service._fuel_is_due(session)
+
+                async def timeout_at_1130():
+                    clock["now"] = day + timedelta(hours=11, minutes=30)
+                    raise TimeoutError()
+                provider.collect_fuel = timeout_at_1130
+                assert (await service.collect(session, trigger="test", scope="fuel"))["status"] == "failed"
+
+                # 16:00 tick은 실패 + 8시간 예약(19:30) 때문에 건너뛴다 — 실패 경로는 그대로다.
+                clock["now"] = day + timedelta(hours=16, seconds=30)
+                assert not await service._fuel_is_due(session)
+                # 다음 00:00 tick은 due이고, 그때 마지막 성공은 아직 export 유예(24시간) 안이다.
+                clock["now"] = day + timedelta(hours=24, seconds=30)
+                assert await service._fuel_is_due(session)
+                assert clock["now"] - success_at < REFERENCE_STALE_AFTER[OPINET_SOURCE]
+            await service.close()
+            await engine.dispose()
+
+        asyncio.run(run())
+    finally:
+        transport_collection.now_utc = original_now
 
 
 def test_fuel_fetch_timeout_fits_inside_job_budget() -> None:
