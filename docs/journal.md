@@ -6,7 +6,7 @@
   코드 상한 7,200초 근처(~7,295초)에서 시간 초과로 실패했다. `FUEL_FETCH_TIMEOUT_SECONDS`를 12,600초로
   올렸다. job 전체 상한(`MAX_RUNTIME_SECONDS - 60` = 14,340초)과 Dagster run 상한(14,400초) 안에 저장
   여유 20분 이상이 남는지 `test_fuel_fetch_timeout_fits_inside_job_budget`이 지킨다.
-- **진행 로그**: python-opinet-api(`feat/browser-progress-logging`)가 지역 탐색의 시도별 진행·완료, 탭
+- **진행 로그**: python-opinet-api(PR #23, `8846b28` 재핀)가 지역 탐색의 시도별 진행·완료, 탭
   시작·끝, 탭 안의 시도 단위 진행(`done=i/N`, 누적 주유소, 재시도)과 경과 시간을 INFO로 남긴다. 수집
   서비스는 브라우저 수집·저장 경과 시간을 남긴다. code-server는 logging을 설정하지 않아 INFO가 버려지므로
   유가 op 동안 두 logger를 가린 뒤 Dagster event log로 넘긴다(`_forward_progress_logs`).
