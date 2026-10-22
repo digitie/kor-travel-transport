@@ -79,6 +79,11 @@ KRIC 자료실 역 코드와 전국 위치 파일을 교차 대조하는 규칙,
 
 ## 2026-10-19 PR91 현재 Track2 문서 수용
 
+## 2026-10-19 운영 메모리 한도 후보
+
+5역할 memory==memswap 합계4032MiB 후보를 준비한다. 실제 cap 적용 후 CS native fuel1회 수용이 남았다.
+[검증 순서](reviews/2026-10-19-runtime-memory.md)를 따른다. daemon OFF를 유지한다.
+
 PR90 머지 뒤 현재 ARM 이미지·번들·브라우저 및 실소비자/UI 증거를 연결했다.
 T-TRN-02/03a/04를 정산하고 ADR014의 현재 운영 결정을 accepted로 기록했다.
 최초 load-error 순간 원문은 미회수로 보존하며 현재 정상 location 조회와 구분한다.
