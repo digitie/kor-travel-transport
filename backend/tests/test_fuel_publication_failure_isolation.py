@@ -48,7 +48,10 @@ def test_rest_area_derived_interruption_keeps_raw_source_success(client, test_se
 
 
 def test_rebuild_cleanup_rollback_does_not_expire_print_or_skip_next_source(client, test_settings):
-    spec = importlib.util.spec_from_file_location("fuel_rebuild", Path(__file__).parents[2] / "scripts/rebuild-fuel-statistics.py")
+    script = next(root / "scripts/rebuild-fuel-statistics.py"
+                  for root in (Path(__file__).parents[2], Path(__file__).parents[1])
+                  if (root / "scripts/rebuild-fuel-statistics.py").is_file())
+    spec = importlib.util.spec_from_file_location("fuel_rebuild", script)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     stamp = datetime.now(timezone.utc)
