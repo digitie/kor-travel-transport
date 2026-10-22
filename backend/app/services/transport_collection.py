@@ -68,8 +68,9 @@ FUEL_FETCH_TIMEOUT_SECONDS = 12_600
 #: 성공한 유가 수집의 다음 예정은 수집 **시작** + 주기(8시간)에서 이만큼 당긴다. 정기 schedule은 8시간 정각마다
 #: tick하고 run의 실제 시작은 tick보다 큐·기동 지연만큼 늦는데, 그 지연은 run마다 다르다. 시작 + 8시간을 그대로
 #: 쓰면 다음 run의 지연이 조금만 짧아도 다음 tick이 "아직 이르다"로 건너뛰어 실제 주기가 16시간이 된다
-#: (2026-10-23 소유자 결정, ADR-013 개정). 당기는 폭은 지연의 흔들림만 덮는 크기라, 연속 정기 실행 사이는
-#: 여전히 8시간 tick 간격이다(하루 3 tick).
+#: (2026-10-23 소유자 결정, ADR-013 개정). 당기는 폭은 지연의 흔들림만 덮는 크기라, Dagster 정기 실행은 여전히
+#: 8시간 tick마다다(KST 00·08·16시, 하루 3 tick). tick 없이 예정 시각까지 자는 in-process scheduler는 이 폭을
+#: 되돌려 기다린다(`next_collection_delay`) — 그렇지 않으면 7시간 45분마다 돈다.
 FUEL_NEXT_DUE_START_SLACK = timedelta(minutes=15)
 #: 유가 스냅샷 upsert 한 문장에 싣는 행 수. bind 파라미터 상한(PostgreSQL·SQLite 32,767)과 수집 엔진의
 #: 문장당 `command_timeout`(60초) 안에 들도록 정한다. 주유소 41열 x 500 = 20,500개, 유가 9열 x 2,000 = 18,000개.
@@ -1052,9 +1053,11 @@ class TransportCollectionService:
         실패 경로(`_mark_fuel_failure`, 실패 시각 + 주기)는 바꾸지 않는다.
         """
         state = await self._get_or_create_state(session, OPINET_SOURCE)
+        if state.last_started_at is None:  # claim(`_mark_source_started`)을 거치지 않은 호출은 버그다.
+            raise RuntimeError("fuel success recorded without a claimed start")
         state.last_success_at = collected_at
-        started_at = serialize_utc(state.last_started_at) if state.last_started_at else serialize_utc(collected_at)
-        state.next_due_at = started_at + self.provider.next_fuel_interval() - FUEL_NEXT_DUE_START_SLACK
+        state.next_due_at = (serialize_utc(state.last_started_at) + self.provider.next_fuel_interval()
+                             - FUEL_NEXT_DUE_START_SLACK)
         state.last_error = None
         state.updated_at = now_utc()
         await session.flush()
@@ -1117,6 +1120,10 @@ class TransportCollectionService:
         if not due_dates or any(value is None for value in due_dates):
             return float(interval)
         remaining = min((serialize_utc(value) - now_utc()).total_seconds() for value in due_dates)
+        if scope == "fuel":
+            # 성공 예정은 tick 지연 흡수를 위해 당겨져 있다. tick 없이 예정까지 자는 scheduler는 그 폭을 되돌려
+            # 시작 간격 8시간 이상을 지킨다.
+            remaining += FUEL_NEXT_DUE_START_SLACK.total_seconds()
         return max(1.0, remaining)
 
     async def status(self, session: AsyncSession) -> dict[str, Any]:
