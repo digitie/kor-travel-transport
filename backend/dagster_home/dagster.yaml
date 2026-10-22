@@ -21,7 +21,7 @@ scheduler:
   class: DagsterDaemonScheduler
 
 # code-server container 교체로 process가 사라진 run이 영구 STARTED로 남지 않게
-# 한다. 장시간 Playwright 유가 수집의 정상 상한(2시간)보다 여유 있게 둔다.
+# 한다. 장시간 Playwright 유가 수집의 상한(3.5시간, `FUEL_FETCH_TIMEOUT_SECONDS`)보다 여유 있게 둔다.
 run_monitoring:
   enabled: true
   start_timeout_seconds: 300

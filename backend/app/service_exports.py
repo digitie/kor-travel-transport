@@ -6,9 +6,16 @@ kor-travel-map이 OpiNet·KREX·공항 데이터를 provider에 직접 묻지 �
 자체를 숨긴다(404) — 관리자 좌표 보정 경로와 같은 관례다. `Host` 헤더는 호출자가 마음대로 정하는
 값이라 판정에 쓰지 않는다(backend는 host network라 `request.client`가 실제 peer 주소다).
 
-모든 dataset은 같은 신선도 계약을 따른다: 수집 이력이 없거나, 마지막 수집이 실패했거나, stale
-기준을 넘었으면 503이다. 200이면 그 응답의 집합은 "마지막 성공 수집의 현재 집합"이라는 뜻이고,
-소비자는 거기 없는 행을 사라진 것으로 다뤄도 된다. 한 응답 안의 상태 행과 데이터 행은
+모든 dataset은 같은 원칙을 따른다: 200이면 그 응답의 집합은 "마지막 성공 수집의 현재 집합"이라는
+뜻이고, 소비자는 거기 없는 행을 사라진 것으로 다뤄도 된다. 그 전제가 서지 않으면 503이다.
+
+- 참조 데이터(주유소·휴게소·휴게소 유가)는 **마지막 성공 수집 시각**으로만 판정한다. 성공이 stale
+  기준(`REFERENCE_STALE_AFTER`) 안이면 그 뒤의 시도가 실패했어도 마지막 성공 수집의 집합을 200으로
+  낸다(실패한 시도는 저장 transaction을 되돌려 그 집합을 바꾸지 않는다). 그 사실은
+  `collection.last_attempt_failed`로 알린다. 성공이 없거나 기준을 넘었으면 503이다.
+- 돌발 활성 집합은 "지금"의 집합이라 마지막 수집이 실패했거나 30분을 넘으면 503이다.
+
+200 본문의 `collection.failed`·`stale`은 언제나 false다. 한 응답 안의 상태 행과 데이터 행은
 REPEATABLE READ 한 snapshot에서 읽는다.
 """
 
@@ -65,8 +72,9 @@ MIN_SERVICE_TOKEN_LENGTH = 32
 CURRENT_SET_WINDOW = timedelta(days=3)
 #: 돌발 활성 집합은 5분 수집이 이보다 오래 성공하지 못하면 내주지 않는다(소비자가 해소로 오판).
 INCIDENT_ACTIVE_SET_MAX_AGE = timedelta(minutes=30)
-#: 참조 데이터 stale 기준(넘으면 503). 정기 주기(유가 8시간·휴게소 1일·휴게소 유가 4시간)의 약 3배.
-#: 오피넷은 공개 API의 유가 신선도(`FUEL_STALE_AFTER`)와 같은 값을 쓴다.
+#: 참조 데이터 stale 기준 — 마지막 **성공** 수집에서 이만큼 지나면 503(그 사이의 실패한 시도는 503 사유가
+#: 아니다). 정기 주기(유가 8시간·휴게소 1일·휴게소 유가 4시간)의 약 3배. 오피넷은 공개 API의 유가
+#: 신선도(`FUEL_STALE_AFTER`)와 같은 값을 쓴다.
 REFERENCE_STALE_AFTER = {
     OPINET_SOURCE: FUEL_STALE_AFTER,
     REST_AREA_SOURCE: timedelta(days=3),
@@ -286,7 +294,7 @@ async def _begin_snapshot(session: AsyncSession) -> None:
 
 
 def _require_current(collection: ExportCollectionState) -> ExportCollectionState:
-    """수집 이력이 없거나 실패했거나 stale이면 503 — 소비자가 빈·낡은 집합을 삭제로 읽지 않게."""
+    """집합을 낼 수 없으면(이력 없음·`failed`·`stale`) 503 — 소비자가 빈·낡은 집합을 삭제로 읽지 않게."""
     if collection.last_success_at is None or collection.failed or collection.stale:
         raise HTTPException(
             status_code=503, detail=f"{collection.source} 수집이 최근에 성공하지 않았습니다.",
@@ -313,17 +321,29 @@ def _current_set(query: Any, last_seen_column: Any, state: TransportCollectionSt
     return query.where(last_seen_column >= serialize_utc(state.last_success_at) - CURRENT_SET_WINDOW)
 
 
-def _collection(source: str, state: TransportCollectionState | None, stale: bool) -> ExportCollectionState:
+def _collection(
+    source: str, state: TransportCollectionState | None, stale: bool, *, failed: bool | None = None,
+) -> ExportCollectionState:
+    """`failed`는 "실패 때문에 집합을 낼 수 없다"(503 사유), `last_attempt_failed`는 마지막 시도의 사실이다.
+
+    `failed`를 주지 않으면 마지막 시도의 실패가 곧 503 사유다(돌발 활성 집합).
+    """
+    last_attempt_failed = bool(state and state.last_error)
     return ExportCollectionState(
         source=source,
         last_success_at=serialize_utc(state.last_success_at) if state and state.last_success_at else None,
-        failed=bool(state and state.last_error),
+        failed=last_attempt_failed if failed is None else failed,
         stale=stale,
+        last_attempt_failed=last_attempt_failed,
     )
 
 
 def _reference_collection(source: str, state: TransportCollectionState | None) -> ExportCollectionState:
+    """참조 데이터는 마지막 성공 수집의 나이로만 판정한다(ADR-013 결정 3).
+
+    실패한 시도는 저장 transaction을 되돌리므로 마지막 성공 수집의 집합이 그대로 남는다. 성공이 stale 기준
+    안이면 그 집합을 내고(`failed=false`, `last_attempt_failed=true`), 기준을 넘으면 `stale`로 503이다.
+    """
     last_success: datetime | None = serialize_utc(state.last_success_at) if state and state.last_success_at else None
-    stale = (last_success is None or bool(state and state.last_error)
-             or now_utc() - last_success > REFERENCE_STALE_AFTER[source])
-    return _collection(source, state, stale)
+    stale = last_success is None or now_utc() - last_success > REFERENCE_STALE_AFTER[source]
+    return _collection(source, state, stale, failed=False)

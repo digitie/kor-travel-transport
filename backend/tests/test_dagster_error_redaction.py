@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from dagster import DagsterEventType
+from dagster import DagsterEventType, DagsterInstance
 
 from app.core.config import Settings
 from app.dagster import definitions as dagster_definitions
@@ -457,3 +457,34 @@ def _wrapped_call(target):
         target()
 
     return body
+
+
+def test_fuel_op_forwards_progress_logs_to_the_event_log_redacted(monkeypatch):
+    """유가 op는 오피넷 수집기·수집 서비스의 진행 로그(INFO)를 가린 뒤 event log로 넘기고, 끝나면 되돌린다."""
+    import logging
+
+    browser_logger = logging.getLogger("opinet.experimental.browser")
+    service_logger = logging.getLogger("app.services.transport_collection")
+    before = [(item.level, list(item.handlers)) for item in (browser_logger, service_logger)]
+
+    async def run_with_progress(*_args: Any, **_kwargs: Any):
+        browser_logger.info("Opinet browser tab progress: kind=station sido=11 done=2/3 elapsed=12s")
+        service_logger.info("fuel browser collection finished run_id=1 elapsed=99s key=%s", KEX_KEY)
+        service_logger.warning("GET https://x/?serviceKey=%s&pageNo=1 slow", URL_ONLY_KEY)
+        logging.getLogger("unrelated.library").info("must not be forwarded")
+        return {"status": "success", "collection_run_id": 1}
+
+    _patch_services(monkeypatch)
+    monkeypatch.setattr(dagster_definitions, "_run_with_session", run_with_progress)
+    with DagsterInstance.ephemeral() as instance:
+        result = dagster_definitions.fuel_collection_job.execute_in_process(raise_on_error=False, instance=instance)
+        assert result.success is True
+        texts = [entry.user_message for entry in instance.all_logs(result.run_id) if entry.dagster_event is None]
+    joined = "\n".join(texts)
+    assert "[opinet.experimental.browser] Opinet browser tab progress: kind=station sido=11 done=2/3" in joined
+    assert "[app.services.transport_collection] fuel browser collection finished run_id=1 elapsed=99s" in joined
+    assert "[app.services.transport_collection] GET https://x/?serviceKey=" in joined
+    assert "must not be forwarded" not in joined
+    _assert_no_secret(texts)
+    # op가 끝나면 logger 상태(수준·handler)는 원래대로다.
+    assert [(item.level, list(item.handlers)) for item in (browser_logger, service_logger)] == before

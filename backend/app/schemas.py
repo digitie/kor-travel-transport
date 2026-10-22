@@ -864,12 +864,18 @@ class DashboardAnalyticsResponse(BaseModel):
 
 
 class ExportCollectionState(BaseModel):
-    """이 export가 근거로 삼는 transport 수집의 상태. 오류 문구는 노출하지 않는다."""
+    """이 export가 근거로 삼는 transport 수집의 상태. 오류 문구는 노출하지 않는다.
+
+    `failed`·`stale`은 "이 집합을 낼 수 없다"는 503 사유라 200 본문에서는 언제나 false다.
+    `last_attempt_failed`는 마지막 수집 시도가 실패했는지의 사실이다 — 참조 데이터는 마지막 성공이 stale
+    기준 안이면 그 뒤 시도가 실패해도 마지막 성공 수집의 집합을 200으로 내고 이 값을 true로 둔다(ADR-013).
+    """
 
     source: str
     last_success_at: datetime | None = None
     failed: bool
     stale: bool
+    last_attempt_failed: bool
 
 
 class ExportFuelPrice(BaseModel):

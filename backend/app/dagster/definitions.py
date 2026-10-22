@@ -43,8 +43,9 @@ from app.services.rest_area_collection import RestAreaCollectionService
 from app.services.transport_collection import CollectionScope, TransportCollectionService
 
 #: 실행 상한(초). 공용 Dagster instance의 전역 상한(6시간, Manager `config/dagster-shared/dagster.yaml`)은
-#: 다른 테넌트의 값이라, 옛 전용 instance의 상한(4시간 — 유가 Playwright 수집의 정상 상한 2시간에 여유를 둔
-#: 값)을 job마다 tag로 단다. run monitoring이 이 tag를 읽어 넘긴 run을 실패로 끝낸다.
+#: 다른 테넌트의 값이라, 옛 전용 instance의 상한(4시간)을 job마다 tag로 단다. run monitoring이 이 tag를 읽어
+#: 넘긴 run을 실패로 끝낸다. 유가 Playwright 수집의 상한(`FUEL_FETCH_TIMEOUT_SECONDS`, 3.5시간)과 저장 여유가
+#: 이 안(`- 60`초)에 들어야 한다.
 MAX_RUNTIME_SECONDS = 14400
 
 
@@ -290,10 +291,55 @@ def collect_highway_transport(context) -> dict[str, Any]:
         return _collect_transport("highway")
 
 
+#: 유가 op 동안 Dagster event log로 넘기는 logger. 오피넷 수집기의 단계별 진행(지역 탐색, 탭별 시도 진행,
+#: 경과 시간)과 수집 서비스의 수집·저장 경과 시간이다. code-server는 logging을 설정하지 않아 INFO가 버려진다.
+FUEL_PROGRESS_LOGGERS = ("opinet.experimental.browser", "app.services.transport_collection")
+#: event log에 싣는 진행 로그 한 줄의 상한.
+MAX_FORWARDED_LOG_CHARS = 1000
+
+
+class _DagsterLogForwarder(logging.Handler):
+    """Python logging 레코드를 가린 뒤 op의 `context.log`로 넘긴다(공용 event log라 비밀값을 먼저 가린다)."""
+
+    def __init__(self, context: Any, forms: list[str]) -> None:
+        super().__init__(level=logging.INFO)
+        self._context = context
+        self._forms = forms
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            text = _redact_text(sanitize_upstream_error(record.getMessage(), None), self._forms)
+            text = " ".join(text.split())
+            if len(text) > MAX_FORWARDED_LOG_CHARS:
+                text = text[: MAX_FORWARDED_LOG_CHARS - 3] + "..."
+            log = self._context.log.warning if record.levelno >= logging.WARNING else self._context.log.info
+            log(f"[{record.name}] {text}")
+        except Exception:  # noqa: BLE001 — 진행 로그 전달의 실패가 수집을 멈추면 안 된다.
+            pass
+
+
+@contextlib.contextmanager
+def _forward_progress_logs(context: Any, names: tuple[str, ...] = FUEL_PROGRESS_LOGGERS) -> Any:
+    """op 동안 `names` logger의 INFO 이상을 Dagster event log로 넘기고, 끝나면 원래 상태로 되돌린다."""
+    handler = _DagsterLogForwarder(context, _secret_forms())
+    loggers = [logging.getLogger(name) for name in names]
+    previous_levels = [item.level for item in loggers]
+    for item in loggers:
+        item.addHandler(handler)
+        if item.getEffectiveLevel() > logging.INFO:
+            item.setLevel(logging.INFO)
+    try:
+        yield
+    finally:
+        for item, level in zip(loggers, previous_levels):
+            item.removeHandler(handler)
+            item.setLevel(level)
+
+
 @op
 @_redact_op_errors
 def collect_fuel_transport(context) -> dict[str, Any]:
-    with collection_owner(context.run_id, context.instance):
+    with collection_owner(context.run_id, context.instance), _forward_progress_logs(context):
         return _collect_transport("fuel")
 
 

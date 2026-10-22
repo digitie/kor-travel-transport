@@ -171,11 +171,12 @@ def test_fuel_station_export_pages_stable_ids_with_latest_prices(export_client: 
 @pytest.mark.parametrize("state", [
     None,
     {"last_success_at": None},
-    {"last_error": "collection_failed"},
+    {"last_success_at": None, "last_error": "collection_failed"},
     {"last_success_at_age": timedelta(hours=25)},
+    {"last_success_at_age": timedelta(hours=24, minutes=1), "last_error": "collection_failed"},
 ])
 def test_fuel_station_export_refuses_without_a_current_collection(export_client: TestClient, state) -> None:
-    """이력 없음·실패·24시간 초과면 503 — 빈·낡은 집합을 현재로 주지 않는다(ADR-013)."""
+    """이력 없음·마지막 성공이 24시간 초과면 503 — 빈·낡은 집합을 현재로 주지 않는다(ADR-013)."""
     async def seed(session) -> None:
         if state is None:
             return
@@ -187,6 +188,141 @@ def test_fuel_station_export_refuses_without_a_current_collection(export_client:
     _run(export_client, seed)
     response = export_client.get("/v1/service/exports/fuel-stations", headers=HEADERS)
     assert response.status_code == 503
+
+
+async def _seed_fuel_station(session, *, seen_at) -> None:
+    station = FuelStation(
+        source=OPINET_SOURCE, identity_key="station:A0000001", source_station_id="A0000001",
+        name="주유소", query_level="sigungu", sido_value="11", sido_name="서울", sigungu_value="110",
+        sigungu_name="종로", source_kinds=["station"], latitude=37.5, longitude=127.0,
+        first_seen_at=seen_at, last_seen_at=seen_at, raw_item_json={"UNI_ID": "A0000001"},
+    )
+    session.add(station)
+    await session.flush()
+    session.add(FuelPriceSnapshot(fuel_station_id=station.id, source=OPINET_SOURCE, product_code="B027",
+                                  price=1700, observed_at=seen_at, collected_at=seen_at))
+    await session.flush()
+    await upsert_latest_fuel_prices(session)
+
+
+@pytest.mark.parametrize("age", [timedelta(hours=1), timedelta(hours=23, minutes=50)])
+def test_fuel_station_export_keeps_serving_the_last_success_after_a_failed_attempt(
+    export_client: TestClient, age: timedelta,
+) -> None:
+    """2026-10-23 소유자 결정: 마지막 성공이 24시간 안이면 그 뒤 시도가 실패해도 마지막 성공 수집의 집합을
+    200으로 낸다(옛 계약은 실패 즉시 503 → 다음 시도까지 약 32시간 공백). 실패 사실은 `last_attempt_failed`로
+    알리고, Map이 다시 확인하는 `failed`·`stale`은 false다."""
+    success_at = now_utc() - age
+
+    async def seed(session) -> None:
+        await _seed_fuel_station(session, seen_at=success_at)
+        await _set_state(session, OPINET_SOURCE, last_success_at=success_at,
+                         last_error="TimeoutError: fuel browser collection timed out")
+
+    _run(export_client, seed)
+    response = export_client.get("/v1/service/exports/fuel-stations", headers=HEADERS)
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["natural_key"] for item in body["items"]] == ["A0000001"]
+    assert body["items"][0]["prices"][0]["price"] == 1700.0
+    assert body["collection"] == {
+        "source": OPINET_SOURCE, "last_success_at": body["collection"]["last_success_at"],
+        "failed": False, "stale": False, "last_attempt_failed": True,
+    }
+    assert body["collection"]["last_success_at"] is not None
+    # 오류 문구는 내보내지 않는다.
+    assert "TimeoutError" not in response.text
+
+    # 성공하면 실패 표시는 걷힌다.
+    _run(export_client, lambda session: _set_state(session, OPINET_SOURCE, last_error=None))
+    assert export_client.get("/v1/service/exports/fuel-stations",
+                             headers=HEADERS).json()["collection"]["last_attempt_failed"] is False
+
+
+class _TimingOutFuelProvider:
+    mode = "fixture"
+    enabled_sources = (OPINET_SOURCE,)
+
+    async def collect_highway(self, *, sources=()) -> HighwayPayload:
+        return HighwayPayload(traffic=None, incidents=None)
+
+    async def collect_fuel(self):
+        raise TimeoutError()
+
+    def next_fuel_interval(self) -> timedelta:
+        return timedelta(hours=8)
+
+    async def aclose(self) -> None:
+        return None
+
+
+def test_fuel_station_export_grace_follows_a_real_failed_collection(export_client: TestClient) -> None:
+    """수집 서비스 경로 회귀: 성공 → 시간 초과 실패 뒤에도 export는 마지막 성공 집합을 200으로 낸다."""
+    service = export_client.app.state.transport_collection_service
+    success_at = now_utc() - timedelta(hours=9)
+
+    async def seed(session) -> None:
+        await _seed_fuel_station(session, seen_at=success_at)
+        await _set_state(session, OPINET_SOURCE, last_success_at=success_at, last_error=None, next_due_at=None)
+
+    _run(export_client, seed)
+    service.provider = _TimingOutFuelProvider()
+    result = _run(export_client, lambda session: service.collect(session, scope="fuel", trigger="export_test"))
+    assert result["status"] == "failed"
+
+    async def opinet_error(session):
+        state = await session.scalar(select(TransportCollectionState).where(
+            TransportCollectionState.source == OPINET_SOURCE))
+        return state.last_error
+    assert _run(export_client, opinet_error)  # 실패는 상태에 남는다
+    body = export_client.get("/v1/service/exports/fuel-stations", headers=HEADERS).json()
+    assert [item["natural_key"] for item in body["items"]] == ["A0000001"]
+    assert body["collection"]["last_attempt_failed"] is True
+    assert body["collection"]["failed"] is False and body["collection"]["stale"] is False
+
+    # 마지막 성공에서 24시간이 지나면 예전처럼 503이다.
+    _run(export_client, lambda session: _set_state(
+        session, OPINET_SOURCE, last_success_at=now_utc() - timedelta(hours=24, minutes=1)))
+    assert export_client.get("/v1/service/exports/fuel-stations", headers=HEADERS).status_code == 503
+
+
+def test_fuel_export_grace_is_not_polluted_by_a_store_that_failed_after_writing(export_client: TestClient) -> None:
+    """가장 위험한 경로: provider는 새 주유소를 담은 스냅샷을 돌려주고, 저장이 행을 쓴 **뒤** 두 번 실패한다.
+
+    유예 구간의 200은 마지막 성공 집합 그대로여야 한다 — 새 주유소는 없고, 기존 주유소의 `last_seen_at`과
+    가격도 옮겨지지 않는다(저장 transaction rollback).
+    """
+    from test_transport_collection import FakeTransportProvider
+
+    service = export_client.app.state.transport_collection_service
+    success_at = now_utc() - timedelta(hours=9)
+
+    async def seed(session) -> None:
+        await _seed_fuel_station(session, seen_at=success_at)
+        await _set_state(session, OPINET_SOURCE, last_success_at=success_at, last_error=None, next_due_at=None)
+
+    _run(export_client, seed)
+    service.provider = FakeTransportProvider()  # 새 주유소 "S-1"(1700.5원)을 돌려준다
+    original_store = service._store_fuel_snapshot
+
+    async def store_then_fail(*args):
+        await original_store(*args)  # 행을 실제로 쓴 뒤
+        raise ValueError("deterministic store failure after upsert")
+
+    service._store_fuel_snapshot = store_then_fail
+    result = _run(export_client, lambda session: service.collect(session, scope="fuel", trigger="export_test"))
+    assert result["status"] == "failed"
+
+    async def stations(session):
+        rows = (await session.scalars(select(FuelStation).where(FuelStation.source == OPINET_SOURCE))).all()
+        return {row.source_station_id: row.last_seen_at for row in rows}
+    stored = _run(export_client, stations)
+    assert set(stored) == {"A0000001"}
+    body = export_client.get("/v1/service/exports/fuel-stations", headers=HEADERS).json()
+    assert [item["natural_key"] for item in body["items"]] == ["A0000001"]
+    assert body["items"][0]["prices"][0]["price"] == 1700.0
+    assert body["items"][0]["last_seen_at"] == body["collection"]["last_success_at"]
+    assert body["collection"]["last_attempt_failed"] is True and body["collection"]["failed"] is False
 
 
 def test_rest_area_export_refuses_once_the_reference_is_older_than_three_days(export_client: TestClient) -> None:
@@ -263,17 +399,27 @@ def test_rest_area_collection_and_exports(export_client: TestClient) -> None:
     fake.fuel_prices = boom
     with pytest.raises(RuntimeError):
         _run(export_client, service.collect_fuel_prices)
-    # 실패한 수집 뒤에는 503이다 — 소비자가 낡은 집합을 현재로, 빈 집합을 삭제로 읽지 않게(ADR-013).
+    # 실패한 시도는 저장을 되돌리므로, 마지막 성공(12시간 기준 안)의 집합을 그대로 낸다. 실패 사실은
+    # `last_attempt_failed`로만 알리고 오류 문구는 내지 않는다(ADR-013).
     failed = export_client.get("/v1/service/exports/rest-area-fuel-prices", headers=HEADERS)
-    assert failed.status_code == 503
+    assert failed.status_code == 200
+    assert failed.json()["items"][0]["gasoline_price"] == 1750
+    assert failed.json()["collection"] == {**failed.json()["collection"], "failed": False, "stale": False,
+                                           "last_attempt_failed": True}
     assert "secret-url" not in failed.text
+    _run(export_client, lambda session: _set_state(
+        session, REST_AREA_FUEL_SOURCE, last_success_at=now_utc() - timedelta(hours=12, minutes=1)))
+    assert export_client.get("/v1/service/exports/rest-area-fuel-prices", headers=HEADERS).status_code == 503
     status = {row["source"]: row for row in export_client.get("/v1/transport/providers").json()["items"]}
     assert status[REST_AREA_FUEL_SOURCE]["status"] == "failed"
     assert "secret-url" not in export_client.get("/v1/transport/providers").text
 
 
 def test_an_empty_rest_area_collection_fails_so_the_export_goes_503(export_client: TestClient) -> None:
-    """전국 집합이 0건이면 성공이 아니다 — 3일 창이 지난 뒤 빈 200(전량 삭제로 읽힘)을 내지 않게 실패로 남긴다."""
+    """전국 집합이 0건이면 성공이 아니다 — 빈 200(전량 삭제로 읽힘)을 내지 않게 실패로 남긴다.
+
+    실패는 마지막 성공 시각을 옮기지 않으므로 export는 그 성공의 집합을 stale 기준까지 내고, 그 뒤 503이다.
+    """
     settings = export_client.app.state.settings
     settings.rest_area_collection_enabled = True
     settings.data_go_kr_service_key = "go-key"
@@ -288,11 +434,22 @@ def test_an_empty_rest_area_collection_fails_so_the_export_goes_503(export_clien
         fake.rest_areas = rest_areas
         with pytest.raises(EmptyRestAreaCollectionError):
             _run(export_client, service.collect_references)
-        assert export_client.get("/v1/service/exports/rest-areas", headers=HEADERS).status_code == 503
+        served = export_client.get("/v1/service/exports/rest-areas", headers=HEADERS).json()
+        assert [item["natural_key"] for item in served["items"]] == ["행담도휴게소::서해안고속도로::목포방향"]
+        assert served["collection"]["last_attempt_failed"] is True
     fake.fuel = []
     with pytest.raises(EmptyRestAreaCollectionError):
         _run(export_client, service.collect_fuel_prices)
-    assert export_client.get("/v1/service/exports/rest-area-fuel-prices", headers=HEADERS).status_code == 503
+    served = export_client.get("/v1/service/exports/rest-area-fuel-prices", headers=HEADERS).json()
+    assert [item["service_area_code"] for item in served["items"]] == ["A00001"]
+    assert served["collection"]["last_attempt_failed"] is True
+    for source, path, age in (
+        (REST_AREA_SOURCE, "/v1/service/exports/rest-areas", timedelta(days=3, minutes=1)),
+        (REST_AREA_FUEL_SOURCE, "/v1/service/exports/rest-area-fuel-prices", timedelta(hours=12, minutes=1)),
+    ):
+        _run(export_client, lambda session, source=source, age=age: _set_state(
+            session, source, last_success_at=now_utc() - age))
+        assert export_client.get(path, headers=HEADERS).status_code == 503
 
     async def states(session):
         rows = (await session.scalars(select(TransportCollectionState).where(
@@ -360,6 +517,8 @@ def test_active_incident_set_reflects_only_the_last_successful_collection(export
     _run(export_client, collect)
     assert export_client.get(path, headers=HEADERS).json()["items"] == []
 
+    assert export_client.get(path, headers=HEADERS).json()["collection"]["last_attempt_failed"] is False
+    # 돌발 활성 집합은 "지금"의 집합이라 참조 데이터와 달리 실패 즉시 503이다.
     _run(export_client, lambda session: _set_state(session, INCIDENT_SOURCE, last_error="provider failed"))
     assert export_client.get(path, headers=HEADERS).status_code == 503
     _run(export_client, lambda session: _set_state(

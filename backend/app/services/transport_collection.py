@@ -9,6 +9,7 @@ import hashlib
 import json
 import logging
 import re
+import time
 import traceback
 from collections.abc import Awaitable, Callable, Iterable, Iterator, Mapping
 from contextlib import AsyncExitStack
@@ -59,7 +60,11 @@ KREX_MAX_FILTER_VALUES = 20
 TRANSPORT_COLLECTION_ADVISORY_LOCK_KEY = 420040
 TRANSPORT_TRIGGER_PREFIX = "transport_"
 HIGHWAY_FETCH_TIMEOUT_SECONDS = 120
-FUEL_FETCH_TIMEOUT_SECONDS = 7200
+#: 유가 브라우저 수집(Playwright로 오피넷 화면 조회)의 상한. odroid(ARM, CPU 포화)에서 성공한 수집이
+#: 5,946~6,371초 걸리고 옛 상한 7,200초 근처에서 시간 초과가 반복돼(2026-10-23 소유자 결정) 3.5시간으로
+#: 올린다. 저장·정리 여유를 두고 job 전체 상한(`definitions.MAX_RUNTIME_SECONDS - 60` = 14,340초)과
+#: Dagster run 상한(14,400초) 안에 들어야 한다 — `test_fuel_fetch_timeout_fits_inside_job_budget`이 지킨다.
+FUEL_FETCH_TIMEOUT_SECONDS = 12_600
 #: 유가 스냅샷 upsert 한 문장에 싣는 행 수. bind 파라미터 상한(PostgreSQL·SQLite 32,767)과 수집 엔진의
 #: 문장당 `command_timeout`(60초) 안에 들도록 정한다. 주유소 41열 x 500 = 20,500개, 유가 9열 x 2,000 = 18,000개.
 FUEL_STATION_UPSERT_BATCH = 500
@@ -432,11 +437,18 @@ class TransportCollectionService:
                 except Exception as exc:
                     highway_result = exc
             if fuel_due:
+                fuel_started = time.monotonic()
+                logger.info("fuel browser collection started run_id=%s timeout=%ss", run_id, FUEL_FETCH_TIMEOUT_SECONDS)
                 try:
                     async with asyncio.timeout(FUEL_FETCH_TIMEOUT_SECONDS):
                         fuel_result = await self.provider.collect_fuel()
                 except Exception as exc:
                     fuel_result = exc
+                logger.info(
+                    "fuel browser collection %s run_id=%s elapsed=%.0fs timeout=%ss",
+                    "failed" if isinstance(fuel_result, Exception) else "finished",
+                    run_id, time.monotonic() - fuel_started, FUEL_FETCH_TIMEOUT_SECONDS,
+                )
 
             if highway_due:
                 for source, field, store in (
@@ -468,6 +480,7 @@ class TransportCollectionService:
                             incident_count += count
 
             if fuel_due:
+                store_started = time.monotonic()
                 error_mark = len(errors)
                 for attempt in range(1, FUEL_STORE_ATTEMPTS + 1):
                     try:
@@ -499,6 +512,11 @@ class TransportCollectionService:
                         fuel_station_count = fuel_price_count = 0
                         break
                 persisted_sources.add(OPINET_SOURCE)
+                logger.info(
+                    "fuel snapshot store %s run_id=%s stations=%s prices=%s elapsed=%.0fs",
+                    "finished" if snapshot is not None else "skipped",
+                    run_id, fuel_station_count, fuel_price_count, time.monotonic() - store_started,
+                )
                 if snapshot is not None:
                     collected_source = True
                     raw_count += 1

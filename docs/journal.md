@@ -1,3 +1,22 @@
+## 2026-10-23 — 유가 수집 상한 12,600초·단계별 진행 로그, 참조 export 마지막 성공 유예 (소유자 결정)
+
+브랜치 `fix/fuel-timeout-and-export-grace`. 배포하지 않았다(소유자 지시).
+
+- **상한**: odroid(ARM, CPU 포화)의 유가 브라우저 수집은 성공 시 5,946~6,371초였고 최근 4회가
+  코드 상한 7,200초 근처(~7,295초)에서 시간 초과로 실패했다. `FUEL_FETCH_TIMEOUT_SECONDS`를 12,600초로
+  올렸다. job 전체 상한(`MAX_RUNTIME_SECONDS - 60` = 14,340초)과 Dagster run 상한(14,400초) 안에 저장
+  여유 20분 이상이 남는지 `test_fuel_fetch_timeout_fits_inside_job_budget`이 지킨다.
+- **진행 로그**: python-opinet-api(PR #23, `8846b28` 재핀)가 지역 탐색의 시도별 진행·완료, 탭
+  시작·끝, 탭 안의 시도 단위 진행(`done=i/N`, 누적 주유소, 재시도)과 경과 시간을 INFO로 남긴다. 수집
+  서비스는 브라우저 수집·저장 경과 시간을 남긴다. code-server는 logging을 설정하지 않아 INFO가 버려지므로
+  유가 op 동안 두 logger를 가린 뒤 Dagster event log로 넘긴다(`_forward_progress_logs`).
+- **export 유예**: 옛 계약은 마지막 시도가 실패하면 503이라, 실패 뒤 다음 시도(약 8시간 뒤)까지와 연속
+  실패 동안 Map 적재가 약 32시간 끊겼다. 참조 데이터(주유소·휴게소·휴게소 유가)는 이제 마지막 성공이
+  stale 기준(24시간·3일·12시간) 안이면 마지막 성공 집합을 200으로 내고 `collection.last_attempt_failed`
+  (가산 필드)로 실패를 알린다. `failed`·`stale`은 503 사유로 좁혀 200에서는 계속 false다 — Map의
+  `require_current_collection`은 그대로 통과하고 모르는 필드는 읽지 않아 Map 변경이 없다. 돌발 활성
+  집합은 그대로 실패 즉시 503. ADR-013 개정.
+
 ## 2026-10-21 유가 사전 집계·지도 범위 통계 (PR #101 머지)
 
 - James/Popper 독립 리뷰에서 P1 포커스1건과 P2 날짜축·지도 통계 지연·동시 발행 이력 누락3건을 반영했다. 실패 재현 후 PG4·UI225·브라우저6 검증이 통과했다. 최종 `2c2474d` 독립 재리뷰에서 추가 P0/P1/P2 없음과 CI 6개 SUCCESS를 확인해 main `8639826`으로 머지했다. [상세 리뷰/재현](reviews/2026-10-21-fuel-statistics.md).
