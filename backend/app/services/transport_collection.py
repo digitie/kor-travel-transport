@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.services.fuel_statistics import lock_fuel_statistics, try_publish_fuel_statistics
+from app.services.fuel_statistics import cleanup_fuel_statistics, try_publish_fuel_statistics
 
 import asyncio
 import hashlib
@@ -486,12 +486,10 @@ class TransportCollectionService:
                     try:
                         snapshot = await self._collect_fuel(session, run_id, errors, fuel_result)
                         if snapshot is not None:
-                            await lock_fuel_statistics(session, OPINET_SOURCE)
                             fuel_station_count, fuel_price_count = await self._store_fuel_snapshot(
                                 session, run_id, snapshot,
                             )
                             await self._mark_fuel_success(session, snapshot.collected_at)
-                            await try_publish_fuel_statistics(session, OPINET_SOURCE, snapshot.collected_at)
                         await session.commit()
                         break
                     except Exception as exc:
@@ -518,6 +516,11 @@ class TransportCollectionService:
                     run_id, fuel_station_count, fuel_price_count, time.monotonic() - store_started,
                 )
                 if snapshot is not None:
+                    # 원본·최신 가격·성공 상태는 이미 원자적으로 확정됐다.
+                    # 통계 실패는 이 성공을 취소하거나 비싼 브라우저 재수집을 유발하지 않는다.
+                    await try_publish_fuel_statistics(session, OPINET_SOURCE, snapshot.collected_at)
+                    await session.commit()
+                    await cleanup_fuel_statistics(session, OPINET_SOURCE)
                     collected_source = True
                     raw_count += 1
             # rollback은 ORM 객체를 만료시키므로 async get으로 명시적으로 다시 읽는다.

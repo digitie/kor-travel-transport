@@ -12,7 +12,7 @@
 
 from __future__ import annotations
 
-from app.services.fuel_statistics import lock_fuel_statistics, try_publish_fuel_statistics
+from app.services.fuel_statistics import cleanup_fuel_statistics, try_publish_fuel_statistics
 
 import asyncio
 import json
@@ -120,8 +120,6 @@ class RestAreaCollectionService:
             finally:
                 await client.aclose()
             collected_at = now_utc()
-            if source == REST_AREA_FUEL_SOURCE:
-                await lock_fuel_statistics(session, source)
             stored = await store(session, items, collected_at)
             if stored == 0:
                 raise EmptyRestAreaCollectionError(f"{source}: received {len(items)}, stored 0")
@@ -133,11 +131,15 @@ class RestAreaCollectionService:
             ))
             state = await get_or_create_state(session, source)
             state.last_success_at = collected_at
-            if source == REST_AREA_FUEL_SOURCE:
-                await try_publish_fuel_statistics(session, source, collected_at)
             state.last_error = None
             state.next_due_at = None
             state.updated_at = now_utc()
+            # 원본 저장을 먼저 확정하고, 아직 running인 실행의 소유권 아래 통계를 게시한다.
+            await session.commit()
+            if source == REST_AREA_FUEL_SOURCE:
+                await try_publish_fuel_statistics(session, source, collected_at)
+                await session.commit()
+                await cleanup_fuel_statistics(session, source)
             stored_run = await session.get(CollectionRun, run_id)
             stored_run.status = "success"
             stored_run.finished_at = now_utc()

@@ -9,7 +9,7 @@ from collections import OrderedDict
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import Float, and_, cast, delete, func, insert, or_, select, text
+from sqlalchemy import Float, and_, cast, delete, func, insert, or_, select, text, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.time_utils import serialize_utc
@@ -78,14 +78,27 @@ def _metrics(count: int, average: float, minimum: float, maximum: float,
 
 
 async def publish_fuel_statistics(session: AsyncSession, source: str, collected_at: datetime) -> None:
-    """호출자의 트랜잭션/원천 잠금을 공유한다. 원본 이력은 읽지 않고 배치 500개만 메모리에 둔다."""
+    """세대별로 준비하고 마지막에만 원천 잠금을 잡아 공개 포인터를 전환한다."""
     await session.flush()
-    state = await session.get(FuelStatisticsState, source)
     stamp = serialize_utc(collected_at)
+    if session.bind.dialect.name == "postgresql":
+        # 같은 세대의 중복 재시도만 직렬화한다. 다른 세대·원천의 준비는 병행한다.
+        await session.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:generation, 0))"),
+                              {"generation": f"fuel-statistics:{source}:{stamp.isoformat()}"})
+    state = await session.get(FuelStatisticsState, source, populate_existing=True)
     if state is not None and serialize_utc(state.generated_at) >= stamp:
         return
+    collection = await session.scalar(select(TransportCollectionState).where(
+        TransportCollectionState.source == source,
+    ).execution_options(populate_existing=True))
+    if collection and collection.last_success_at and serialize_utc(collection.last_success_at) != stamp:
+        return
     day = stamp.astimezone(ZoneInfo("Asia/Seoul")).date()
-    await session.execute(delete(FuelStatisticsPoint).where(FuelStatisticsPoint.source == source))
+    # 원본 저장 트랜잭션은 호출자가 먼저 확정한다. 같은 collected_at 재시도도
+    # savepoint 안에서 준비 세대만 교체하며 공개 세대에는 손대지 않는다.
+    await session.execute(delete(FuelStatisticsPoint).where(
+        FuelStatisticsPoint.source == source, FuelStatisticsPoint.generated_at == stamp,
+    ))
     groups: dict[tuple[str, str, str], _Accumulator] = {}
     pending: list[dict] = []
 
@@ -145,14 +158,30 @@ async def publish_fuel_statistics(session: AsyncSession, source: str, collected_
         raise ValueError("지원하지 않는 유가 원천입니다.")
     if pending:
         await session.execute(insert(FuelStatisticsPoint), pending)
-    # 같은 KST 일자는 마지막 정상 수집만 남긴다. 사라진 범주의 당일 값도 남기지 않는다.
+    rows = [{"source": source, "scope": scope, "scope_key": key, "product_code": product,
+             "day": day, "generated_at": stamp, "label": group.label, "metrics_json": group.metrics()}
+            for (scope, key, product), group in groups.items()]
+    # 원본 조회·정규화·point insert 중에는 이 잠금을 보유하지 않는다.
+    await lock_fuel_statistics(session, source)
+    # 다른 게시자가 먼저 끝났을 수 있다. identity map의 오래된 state를 재사용하지 않는다.
+    state = await session.scalar(select(FuelStatisticsState).where(
+        FuelStatisticsState.source == source,
+    ).execution_options(populate_existing=True))
+    collection = await session.scalar(select(TransportCollectionState).where(
+        TransportCollectionState.source == source,
+    ).execution_options(populate_existing=True))
+    superseded = bool(collection and collection.last_success_at and
+                      serialize_utc(collection.last_success_at) != stamp)
+    if superseded or (state is not None and serialize_utc(state.generated_at) >= stamp):
+        await session.execute(delete(FuelStatisticsPoint).where(
+            FuelStatisticsPoint.source == source, FuelStatisticsPoint.generated_at == stamp,
+        ))
+        return
+    # 작은 일별 집계와 공개 포인터만 같은 짧은 transaction 말미에서 전환한다.
     await session.execute(delete(FuelStatisticsDaily).where(
         FuelStatisticsDaily.source == source,
         or_(FuelStatisticsDaily.day == day, FuelStatisticsDaily.day < day - timedelta(days=6)),
     ))
-    rows = [{"source": source, "scope": scope, "scope_key": key, "product_code": product,
-             "day": day, "generated_at": stamp, "label": group.label, "metrics_json": group.metrics()}
-            for (scope, key, product), group in groups.items()]
     for offset in range(0, len(rows), 250):
         await session.execute(insert(FuelStatisticsDaily), rows[offset:offset + 250])
     if state is None:
@@ -169,6 +198,39 @@ async def try_publish_fuel_statistics(session: AsyncSession, source: str, collec
             await publish_fuel_statistics(session, source, collected_at)
     except Exception as exc:
         logger.warning("fuel statistics publication deferred source=%s error=%s", source, type(exc).__name__)
+
+
+async def prune_fuel_statistics(session: AsyncSession, source: str) -> int:
+    """이전 공개 세대만 최대 2,000행씩 정리한다. 준비 중이거나 최신인 세대는 보존한다."""
+    p = FuelStatisticsPoint
+    stamp = select(FuelStatisticsState.generated_at).where(FuelStatisticsState.source == source).scalar_subquery()
+    # 공개 전환과 별도 트랜잭션이다. 취소/실패하면 다음 수집이 이어서 정리한다.
+    candidates = select(p.source, p.station_key, p.product_code, p.generated_at).where(
+        p.source == source, p.generated_at < stamp,
+    ).limit(2_000)
+    if session.bind.dialect.name == "postgresql":
+        candidates = candidates.with_for_update(skip_locked=True)
+    keys = list((await session.execute(candidates)).all())
+    if not keys:
+        return 0
+    await session.execute(delete(p).where(
+        tuple_(p.source, p.station_key, p.product_code, p.generated_at).in_(keys),
+    ))
+    return len(keys)
+
+
+async def cleanup_fuel_statistics(session: AsyncSession, source: str) -> None:
+    """공개 잠금 없이 짧은 정리 트랜잭션을 반복한다. 실패는 수집 성공과 분리한다."""
+    deadline = time.monotonic() + 15
+    try:
+        while time.monotonic() < deadline:
+            count = await prune_fuel_statistics(session, source)
+            await session.commit()
+            if count < 2_000:
+                return
+    except Exception as exc:
+        await session.rollback()
+        logger.warning("fuel statistics cleanup deferred source=%s error=%s", source, type(exc).__name__)
 
 
 async def fuel_statistics_page(session: AsyncSession, scope: str, product_code: str,
@@ -252,7 +314,10 @@ async def viewport_fuel_statistics(session: AsyncSession, bounds: tuple[float, f
         a, cheapest.c.cheapest_count, p.generated_at,
         p.station_key, p.name, p.address, p.longitude, p.latitude,
     ).join(cheapest, cheapest.c.product_code == a.product_code).join(p, and_(
-        p.source == OPINET, p.product_code == a.product_code, p.station_key == cheapest.c.station_key,
+        p.source == OPINET, p.generated_at == select(FuelStatisticsState.generated_at).where(
+            FuelStatisticsState.source == OPINET,
+        ).scalar_subquery(),
+        p.product_code == a.product_code, p.station_key == cheapest.c.station_key,
     )).order_by(a.product_code))).mappings()
     result = [{"product_code": row["product_code"], "generated_at": row["generated_at"],
                **_metrics(row["count"], float(row["average"]), float(row["minimum"]), float(row["maximum"]),
