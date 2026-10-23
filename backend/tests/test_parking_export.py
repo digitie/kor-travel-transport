@@ -26,6 +26,7 @@ class Fixture(FixturePublicDataClient):
     subset = None
     bad_source = None
     bad_kind = None
+    timestamp_variant = None
 
     def __init__(self):
         self.moment = now_utc() + timedelta(hours=9)
@@ -56,6 +57,8 @@ class Fixture(FixturePublicDataClient):
         now = self.moment
         for row in rows:
             row["datetm"] = now.strftime("%Y-%m-%d %H:%M")
+            if self.timestamp_variant is not None:
+                row["datetm"] = now.replace(second=20).strftime(self.timestamp_variant)
         if self.bad_source == "incheon_parking":
             rows[0]["parking" if self.bad_kind == "count" else "datetm"] = "upstream error"
         return replace(response, body_text=json.dumps(rows))
@@ -247,3 +250,29 @@ def test_live_blocked_runs_keep_marker_and_never_call_kac_twice(export_client):
             return (await collector.get_upstream_rate_limit_state(s)).is_blocked
         assert _run(c, blocked)
     assert client.calls == 0
+
+
+@pytest.mark.parametrize("format", ["%Y%m%d%H%M%S", "%Y-%m-%d %H:%M:%S"])
+def test_current_uses_canonical_seconds_while_legacy_history_stays_unchanged(export_client, format):
+    c = export_client
+    client = Fixture()
+    client.timestamp_variant = format
+    collector = service(c, client)
+    result = _run(c, lambda s: collector.collect(s))
+    assert result["status"] == "success", result
+    async def clocks(s):
+        current = list((await s.scalars(select(ParkingCurrent.observed_at).where(
+            ParkingCurrent.source == "incheon_parking"))).all())
+        history = list((await s.scalars(select(ParkingSnapshot.observed_at).where(
+            ParkingSnapshot.collection_run_id == result["collection_run_id"],
+            ParkingSnapshot.source == "incheon_parking"))).all())
+        return current, history
+    current, history = _run(c, clocks)
+    assert len(current) == len(history) == 2
+    assert all(value.second == 20 for value in current)
+    assert all(value.second == 0 for value in history)
+    page = c.get(PATH, headers=HEADERS)
+    assert page.status_code == 200, page.text
+    from datetime import datetime
+    assert all(datetime.fromisoformat(item["observed_at"]).second == 20
+               for item in page.json()["items"] if item["source"] == "incheon_parking")

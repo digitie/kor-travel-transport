@@ -847,10 +847,10 @@ class CollectionService:
                 response = None
                 try:
                     response = await fetch()
-                    rows = validate_parking_payload(self.settings, source, response)
+                    history_rows, rows = validate_parking_payload(self.settings, source, response)
                     if not rows or len(rows) * 4 < previous[source]:
                         raise ValueError("주차장 빈/급감 집합은 재확인이 필요합니다")
-                    fetched.append((source, response, rows))
+                    fetched.append((source, response, history_rows, rows))
                     break
                 except Exception as exc:
                     last_error = self._redact(str(exc))
@@ -866,7 +866,7 @@ class CollectionService:
                         endpoint=response.endpoint, request_params_json=redact_request_params(response.request_params),
                         status_code=response.status_code, body_text=response.body_text,
                         received_at=now_utc(), parse_status="failed", parse_error=error))
-        for source, response, rows in fetched:
+        for source, response, history_rows, rows in fetched:
             async def already_fetched(value=response):
                 return value
             stored = await self._safe_fetch(session, run, already_fetched, errors)
@@ -875,7 +875,7 @@ class CollectionService:
                 continue
             raw_count += 1
             lot_ids = {}
-            snapshot_count += await self._store_observations(session, run_id, rows, lot_ids=lot_ids)
+            snapshot_count += await self._store_observations(session, run_id, history_rows, lot_ids=lot_ids)
             await store_parking_current(session, self.settings, source=source, run_id=run_id,
                                         observations=rows, proof=response.completion, lot_ids=lot_ids)
         for source, message in failures:
