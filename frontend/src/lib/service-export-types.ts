@@ -108,3 +108,32 @@ export type FerryPortExportPage = {
   next_cursor: string | null;
   has_more: boolean;
 };
+
+
+export type RailStationExportPage = {
+  meta: ServiceExportMeta;
+  snapshot_id: string;
+  snapshot_expires_at: string;
+  total_count: number;
+  items: {
+    natural_key: string;
+    source: string;
+    name: string;
+    operator_name: string | null;
+    line_name: string | null;
+    station_number: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    operator_code: string | null;
+    line_code: string | null;
+    station_code: string | null;
+    code_station_name: string | null;
+    code_collected_at: string | null;
+    code_active: boolean;
+    mapping_method: string | null;
+    mapping_revision: string;
+    admin: ExportAdminAddress | null;
+  }[];
+  next_cursor: string | null;
+  has_more: boolean;
+};

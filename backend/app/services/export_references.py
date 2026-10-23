@@ -21,10 +21,11 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.core.config import Settings
 from app.core.time_utils import now_utc, serialize_utc
-from app.models import BusTerminalReference, FerryPort, ReferenceExportState, ServiceExportSnapshot, ServiceExportSnapshotItem
-from app.schemas import BusTerminalExportPage, FerryPortExportPage, ServiceExportMeta
+from app.models import BusTerminalReference, FerryPort, RailStationReference, ReferenceExportState, ServiceExportSnapshot, ServiceExportSnapshotItem
+from app.schemas import BusTerminalExportPage, FerryPortExportPage, RailStationExportPage, ServiceExportMeta
 from app.services.bus_collection import TAGO_BUS_SOURCE
-from app.services.rail_maritime_collection import MARITIME_SOURCE, PORT_GUIDELINE_SOURCE
+from app.services.rail_maritime_collection import KRIC_FILE_SOURCE, MARITIME_SOURCE, PORT_GUIDELINE_SOURCE
+from app.services.rail_station_mapping import persisted_mapping_context, persisted_station_links
 from app.services.export_addresses import export_admin_addresses
 from app.services.export_current import BATCH_SIZE, MAX_SNAPSHOT_BYTES, MAX_SNAPSHOT_ITEMS, SNAPSHOT_TTL, SnapshotRace, cache_generation, _snapshot_transaction, expire_snapshots
 from app.services.export_price_history import _decode_cursor, _encode_cursor, _response
@@ -123,6 +124,55 @@ async def _ferry_payload_batches(session, heads):
                 "location_source": row.location_source, "location_point_count": row.location_point_count,
                 "manual_location_revision": row.manual_revision if row.location_source == "admin_manual" else None,
                 "admin": address.model_dump(mode="json") if address else None,
+            })
+        yield payloads
+
+
+async def _rail_payload_batches(session, heads):
+    head = heads[0]
+    ids = sorted(head.member_ids)
+    try:
+        context = await persisted_mapping_context(session)
+    except ValueError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    fields = ("id", "source", "identity_key", "station_name", "rail_operator_name", "operating_line_name",
+              "station_number", "latitude", "longitude")
+    for offset in range(0, len(ids), BATCH_SIZE):
+        selected = ids[offset:offset + BATCH_SIZE]
+        rows = list((await session.execute(select(*(getattr(RailStationReference, field) for field in fields))
+                    .where(RailStationReference.id.in_(selected), RailStationReference.source == KRIC_FILE_SOURCE,
+                           RailStationReference.last_seen_at == head.confirmed_at)
+                    .order_by(RailStationReference.id))).mappings())
+        if len(rows) != len(selected):
+            raise HTTPException(503, "역사 source 성공 membership이 일치하지 않습니다.")
+        try:
+            links = await persisted_station_links(session, selected, context)
+        except ValueError as exc:
+            raise HTTPException(503, str(exc)) from exc
+        projected = []
+        for row in rows:
+            item = dict(row)
+            lon, lat = item["longitude"], item["latitude"]
+            if (lon is None or lat is None or not math.isfinite(lon) or not math.isfinite(lat)
+                    or not 124 <= lon <= 132 or not 32 <= lat <= 39.5):
+                item.update(latitude=None, longitude=None)
+            projected.append(SimpleNamespace(**item))
+        addresses = await export_admin_addresses(session, "rail_station", projected)
+        payloads = []
+        for row in projected:
+            if not row.station_name:
+                raise HTTPException(503, "확인된 역명이 없습니다.")
+            link = links.get(row.id, {})
+            address = addresses.get(row.id)
+            payloads.append({
+                "natural_key": row.identity_key, "source": row.source, "name": row.station_name,
+                "operator_name": row.rail_operator_name, "line_name": row.operating_line_name,
+                "station_number": row.station_number, "latitude": row.latitude, "longitude": row.longitude,
+                "operator_code": link.get("operator_code"), "line_code": link.get("line_code"),
+                "station_code": link.get("station_code"), "code_station_name": link.get("code_station_name"),
+                "code_collected_at": serialize_utc(link["code_collected_at"]).isoformat() if link else None,
+                "code_active": bool(link), "mapping_method": link.get("mapping_method"),
+                "mapping_revision": context["revision"], "admin": address.model_dump(mode="json") if address else None,
             })
         yield payloads
 
@@ -254,6 +304,9 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
         ReferenceSpec("/ferry-ports", "ferry-ports-v1", "ferry-port",
                       hashlib.sha256(b"ferry-ports:all:v1").hexdigest(),
                       ("ports",), timedelta(days=9), FerryPortExportPage, _ferry_payload_batches),
+        ReferenceSpec("/rail-stations", "rail-stations-v1", "rail-station",
+                      hashlib.sha256(b"rail-stations:nationwide:v1").hexdigest(),
+                      ("nationwide",), timedelta(days=6), RailStationExportPage, _rail_payload_batches),
     )
     for spec in specs:
         router.add_api_route(spec.path, endpoint_for(spec), methods=["GET"], response_model=spec.page_model,

@@ -1,3 +1,9 @@
+## 2026-10-23 — Map T3 철도 참조 구현 중
+
+`codex/map-rail-reference-export`는 PR116 후속이다. 검증XLSX/성공membership와
+active persisted FK/registry를 같은RR로내보낸다. admin순수reader추출·원천/매핑역할을구분한다.
+[계약·미완gate](map-rail-reference-export.md).
+
 ## 2026-10-23 — Map T3 항구 참조 구현 중
 
 `codex/map-ferry-reference-export`는 PR115 위의 별도후속이다. core 항구와 부차좌표 성공을

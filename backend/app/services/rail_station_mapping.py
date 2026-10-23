@@ -9,7 +9,8 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import select, text
+from app.models import KricStationCode, KricStationMappingRegistry, RailStationReference
 
 RAIL_STATION_REFERENCE_LOCK_KEY = 420054
 
@@ -252,3 +253,80 @@ def effective_station_mappings(
             effective[key] = (target, "automatic")
             reserved.add(target)
     return effective
+
+
+async def load_kric_station_mapping(session: AsyncSession):
+    registry = await session.get(KricStationMappingRegistry, 1)
+    codes = (await session.scalars(
+        select(KricStationCode)
+        .where(KricStationCode.active.is_(True))
+        .order_by(KricStationCode.operator_code, KricStationCode.line_code, KricStationCode.station_code)
+    )).all()
+    places = (await session.scalars(
+        select(RailStationReference)
+        .where(RailStationReference.source == "kric_public_file")
+        .order_by(RailStationReference.rail_operator_name, RailStationReference.operating_line_name,
+                  RailStationReference.station_name, RailStationReference.identity_key)
+    )).all()
+    catalog = (registry.catalog_json if registry and registry.catalog_json else station_catalog(codes))
+    catalog_sha256 = (registry.catalog_sha256 if registry and registry.catalog_sha256 else catalog_digest(catalog))
+    automatic = list(registry.automatic_mappings_json or []) if registry else []
+    if codes and not automatic:
+        from app.services.rail_station_mapping import automatic_station_mappings
+        automatic = automatic_station_mappings(codes, places)
+    manual_raw = list(registry.manual_mappings_json or []) if registry else []
+    effective = effective_station_mappings(codes, places, automatic, manual_raw)
+    return registry, codes, places, catalog_sha256, automatic, manual_raw, effective
+
+
+
+async def persisted_mapping_context(session):
+    """export는 저장된 registry만 읽고 자동 이름 매칭을 재실행하지 않는다."""
+    row = (await session.execute(select(
+        KricStationMappingRegistry.catalog_sha256,
+        KricStationMappingRegistry.automatic_mappings_json,
+        KricStationMappingRegistry.manual_mappings_json,
+    ).where(KricStationMappingRegistry.id == 1))).one_or_none()
+    automatic = list(row.automatic_mappings_json or []) if row else []
+    manual = list(row.manual_mappings_json or []) if row else []
+    if len(automatic) > 10000 or len(manual) > 10000:
+        raise ValueError("저장된 mapping registry가 export 상한을 초과했습니다")
+    def index(items):
+        result = {}
+        for item in items:
+            if not isinstance(item, dict):
+                raise ValueError("저장된 mapping registry가 유효하지 않습니다")
+            key = tuple(str(item.get(field, "")) for field in ("operator_code", "line_code", "station_code"))
+            if not all(key) or key in result:
+                raise ValueError("저장된 mapping code가 누락·중복되었습니다")
+            result[key] = item
+        return result
+    return {"automatic": index(automatic), "manual": index(manual),
+            "revision": mapping_revision(row.catalog_sha256 if row else None, automatic, manual)}
+
+
+async def persisted_station_links(session, ids, context):
+    """active FK와 registry를 같은 RR에서 검증한다. 시각표·provider는 읽지 않는다."""
+    rows = (await session.execute(select(
+        KricStationCode.rail_station_id, KricStationCode.operator_code, KricStationCode.line_code,
+        KricStationCode.station_code, KricStationCode.station_name, KricStationCode.last_seen_at,
+        RailStationReference.identity_key,
+    ).join(RailStationReference, KricStationCode.rail_station_id == RailStationReference.id)
+        .where(KricStationCode.active.is_(True), KricStationCode.rail_station_id.in_(ids)))).all()
+    result = {}
+    for row in rows:
+        key = (row.operator_code, row.line_code, row.station_code)
+        manual = context["manual"].get(key)
+        automatic = context["automatic"].get(key)
+        mapping = manual or automatic
+        method = "persisted"
+        if mapping:
+            if mapping.get("rail_station_identity_key") != row.identity_key:
+                raise ValueError("저장된 FK와 mapping registry 대상이 일치하지 않습니다")
+            method = "manual" if manual else automatic.get("match_method", "automatic")
+        if row.rail_station_id in result:
+            raise ValueError("같은 역사에 active code가 중복되었습니다")
+        result[row.rail_station_id] = {"operator_code": row.operator_code, "line_code": row.line_code,
+                                      "station_code": row.station_code, "code_station_name": row.station_name,
+                                      "code_collected_at": row.last_seen_at, "mapping_method": method}
+    return result

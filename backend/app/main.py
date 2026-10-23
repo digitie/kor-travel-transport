@@ -152,6 +152,7 @@ from app.services.rail_station_mapping import (
     effective_station_mappings,
     lock_rail_station_reference_catalog,
     mapping_revision,
+    load_kric_station_mapping,
     provider_key,
     reference_catalog_digest,
     station_catalog,
@@ -827,29 +828,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     router = APIRouter()
 
     from app.services.address_refresh import address_summary
-
-    async def load_kric_station_mapping(session: AsyncSession):
-        registry = await session.get(KricStationMappingRegistry, 1)
-        codes = (await session.scalars(
-            select(KricStationCode)
-            .where(KricStationCode.active.is_(True))
-            .order_by(KricStationCode.operator_code, KricStationCode.line_code, KricStationCode.station_code)
-        )).all()
-        places = (await session.scalars(
-            select(RailStationReference)
-            .where(RailStationReference.source == "kric_public_file")
-            .order_by(RailStationReference.rail_operator_name, RailStationReference.operating_line_name,
-                      RailStationReference.station_name, RailStationReference.identity_key)
-        )).all()
-        catalog = (registry.catalog_json if registry and registry.catalog_json else station_catalog(codes))
-        catalog_sha256 = (registry.catalog_sha256 if registry and registry.catalog_sha256 else catalog_digest(catalog))
-        automatic = list(registry.automatic_mappings_json or []) if registry else []
-        if codes and not automatic:
-            from app.services.rail_station_mapping import automatic_station_mappings
-            automatic = automatic_station_mappings(codes, places)
-        manual_raw = list(registry.manual_mappings_json or []) if registry else []
-        effective = effective_station_mappings(codes, places, automatic, manual_raw)
-        return registry, codes, places, catalog_sha256, automatic, manual_raw, effective
 
     @router.get(
         "/transport/admin/rail-station-mappings",
