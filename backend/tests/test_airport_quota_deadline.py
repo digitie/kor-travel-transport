@@ -125,3 +125,20 @@ def test_new_success_fence_rejects_old_quota_failure(export_client, prior_failur
         assert row.next_due_at is None and row.last_error is None
         assert serialize_utc(row.last_started_at) == origin + timedelta(seconds=80)
     _run(c, check)
+
+
+def test_legacy_private_error_is_redacted_before_source_state_copy(export_client):
+    from app.services.collection import UpstreamRateLimitState
+    c = export_client
+    collector = service(c, LiveQuotaFixture())
+    collector.settings.data_go_kr_service_key = "private-fixture-key"
+    async def check(s):
+        await collector._retain_quota_deadline(s, UpstreamRateLimitState(
+            is_blocked=True, blocked_until=now_utc() + timedelta(seconds=60), source="kac_parking",
+            error_message=f"{UPSTREAM_RATE_LIMIT_MARKER} https://fixture.invalid?serviceKey=private-fixture-key",
+        ))
+        await s.flush()
+        row = await s.scalar(select(TransportCollectionState).where(TransportCollectionState.source == KAC_QUOTA_SOURCE))
+        assert "private-fixture-key" not in row.last_error
+        assert UPSTREAM_RATE_LIMIT_MARKER in row.last_error
+    _run(c, check)

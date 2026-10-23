@@ -417,7 +417,7 @@ class CollectionService:
             session.add(TransportCollectionState(
                 source=KAC_QUOTA_SOURCE, next_due_at=state.blocked_until,
                 last_started_at=serialize_utc(state.blocked_until) - timedelta(seconds=max(self.settings.upstream_rate_limit_backoff_seconds, 0)),
-                last_error=normalize_upstream_rate_limit_error(state.error_message), updated_at=now_utc(),
+                last_error=self._redact(normalize_upstream_rate_limit_error(state.error_message)), updated_at=now_utc(),
             ))
 
     async def _record_quota_outcome(self, session, *, started_at, was_blocked, messages):
@@ -447,7 +447,7 @@ class CollectionService:
             session.add(row)
         row.last_started_at = started_at
         row.next_due_at = compute_upstream_rate_limit_retry_at(started_at, self.settings.upstream_rate_limit_backoff_seconds)
-        row.last_error = normalize_upstream_rate_limit_error(error)
+        row.last_error = self._redact(normalize_upstream_rate_limit_error(error))
         row.updated_at = now_utc()
 
     async def collect(self, session: AsyncSession, trigger: str = "manual") -> dict[str, Any]:
