@@ -1,5 +1,8 @@
 # 현재 상태 요약
 
+> 2026-10-23 최신 배포: #103~#106 `af415b3`, schema29·CS12306·실제 KREX 수집·공개 UI15개 PASS. host CPU99.92% 단일 표본으로 전체 CPU/RAM 감소는 미입증이다. [운영 수용 기록](reports/2026-10-23-fuel-concurrency-rollout.md).
+
+
 > 최신 운영 방침: 공용 daemon RUNNING을 유지한다. 아래 10월 19일의 run0·OFF는 당시 관측이다.
 > 유가 개선의 최신 검증·배포 상태는 [10월 23일 기록](reports/2026-10-23-fuel-concurrency-rollout.md)을 따른다.
 

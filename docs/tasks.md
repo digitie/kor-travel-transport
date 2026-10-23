@@ -10,13 +10,6 @@
 
 ## 진행 중인 작업 인덱스
 
-- [ ] 유가 in-process 진입·대기 예정 정합: 성공 tick 여유만 복원, 재기동·실패/claim 경계,
-  통합 CI·독립 2리뷰 뒤 #103/#104/#105와 함께 Odroid 배포.
-
-- [ ] 유가 통계 세대별 준비·짧은 공개 잠금: PostgreSQL 동시성/마이그레이션 검증, 전체 회귀,
-  두 적대적 리뷰, live UI, Odroid API/code-server 배포와 CPU/RAM/잠금 실측.
-
-
 - [ ] 수집 CPU/RAM 후속: 기존 Track 1·2 수용 뒤 동일 입력으로 fetch/raw 변환/traffic 저장/통계/commit을 계측한다. 현재 traffic 8,300개에 약16,600개 SELECT·write 문장이 필요한 구조와 매번 최근2시간 재집계는 코드 조사 결과이며 실측 기여율은 미확인이다. bounded 배치 저장→변경 bucket만 재집계→incident 배치 저장을 각각 작은 PR로 검증하고, 원본·정정·삽입 수·소유권·통계 동등성을 보존한다. 단일 op executor의 프로세스 절감과 draft PR93 메모리 수용도 실제 run 증거 전에는 완료 처리하지 않는다.
 
 - [ ] 배포 사전 검증·캐시 후속: Manager CLI의 약28초 startup/검증 비용과 현재30초 제한을 계측해 안정 여유를 정하고, 사전/공식 staging의 파일 metadata를 일치시킨다. 검증 우회나 실행 중 context 변경으로 해결하지 않는다.

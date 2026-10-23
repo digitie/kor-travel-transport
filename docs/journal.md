@@ -1,10 +1,10 @@
-## 2026-10-23 — 유가 통합 개선 머지·최종 검증·운영 전환 진행
+## 2026-10-23 — 유가 통합 개선 운영 수용 완료
 
-- #103/#104/#105/#106 통합 source `af415b3`는 검증 HEAD `97abbc9`와 tree가 같다. 제품 두 독립 리뷰, WSL980/Docker977, 두 CI 전체가 통과했다.
-- 최종 소스의 공식 NVMe stage 완료. ARM 이미지 내보내기와 운영 전환·실제 수집·배포 후 UI는 아직 진행 중이며 완료로 정산하지 않는다.
-- 공용 PG의 미확인 pause를 같은 container의 unpause만으로 복구했고 API·daemon·실행 목록 조회가 돌아왔다. 배포 절차에서 pause한 것이 아니며 원인은 미확인이다.
-- 최신 사용자 지시인 공용 daemon RUNNING을 현재 지침에 반영한다. 과거 OFF 관측은 당시 기록으로 보존한다.
-- [상세 검증과 미완료 게이트](reports/2026-10-23-fuel-concurrency-rollout.md). 전체 수집 CPU/RAM 감소는 아직 미입증이다.
+- #103~#106 통합 source `af415b3`: 두 독립 제품 리뷰·WSL980/Docker977·최종 CI를 통과해 Odroid NVMe에 배포했다. API/CS release·schema29·gRPC12306·location·frontend 정상, 타 컨테이너8개 보존·schedule12/sensor5 복원을 확인했다.
+- 실제 KREX Dagster run SUCCESS: 원본226건·공개 point581개·자기 세대 일치, 서비스10.35초. 공개 HTTPS UI14개와 발행 후 새 세대 표시1개, 합계15개 PASS다.
+- 빌더 중지 후 host CPU15.81초 표본99.92%: 전체 CPU/RAM 감소는 미입증이다. 새12,600초 상한의 Opinet 성공도 아직 미검증이며 구 상한7,200초 실패와 구분한다.
+- 공용 PG의 원인 미확인 pause는 같은 container unpause만으로 복구했다. 현재 공용 daemon RUNNING을 유지하며 과거 OFF 관측은 당시 기록이다.
+- [배포 재시도·실측·수용 근거와 한계](reports/2026-10-23-fuel-concurrency-rollout.md). 다음 우선 작업은 Weather·Transport의 Map service API이며 전체 Track1·2와 CPU/RAM 후속을 일괄 완료 처리하지 않는다.
 
 ## 2026-10-23 — 유가 대체 scheduler의 진입·대기 예정 정합 (검증 중)
 

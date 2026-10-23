@@ -1,6 +1,6 @@
 # 2026-10-23 유가 동시성 개선 배포·검증 기록
 
-상태: **배포 진행 중**. 코드 머지·회귀 검증·공식 NVMe stage와 백엔드 이미지 적재는 완료했고, 공식 빌드·전환은 RUNNING이다. 실제 수집과 배포 후 UI는 아직 NOT_RUN이다.
+상태: **머지·배포·실제 수집·공개 UI 수용 완료**. 제품 source는 `af415b3207383b08c560128879168e2663629596`이며 전체 수집 CPU/RAM 감소와 새 상한의 Opinet 성공은 아직 입증하지 않았다.
 
 ## 코드와 검증
 
@@ -30,19 +30,28 @@
 
 두 번째 시도는 preflight를 통과했으나 사전 tar 추출과 공식 staging의 파일 mode 차이(644↔664, 755↔775)로 backend COPY·의존성 캐시가 깨졌다. 같은 내용이라는 이유만으로 캐시 재사용을 가정하지 않는다. 아직 `compose build`인 정확한 PID·시작 시각을 pidfd로 고정해 중복 빌드만 취소했다. 공식 스크립트의 실패 종료, controller `ROLLED_BACK`·instigator `RESTORED`, 해당 BuildKit 두 solve 종료와 기존 앱 ID 불변을 확인한 뒤에만 다음 단계로 갔다.
 
-Manager global lock→공식 Transport release lock 순서로 확보하고, Docker COPY 입력에 속하는 tracked 일반 파일 339개의 사전/공식 SHA와 실행 비트·경로를 검증했다. 파일 mode만 644/755로 맞췄으며 bytes·uid/gid·mtime·디렉터리 metadata·보호 env와 기존 runtime ID는 유지했다. untracked·symlink·DB·node_modules·최상위 frontend는 변경하지 않았다. 정리 뒤 stage receipt를 검증하고 같은 제품 source로 재시도해 backend 19단계 CACHED와 레이어 내보내기 0.1초를 확인했다. 첫·두 번째 시도의 root 전용 기록은 각각 attempt-1/attempt-2에 보존했다.
+Manager global lock→공식 Transport release lock 순서로 확보하고, Docker COPY 입력에 속하는 tracked 일반 파일 339개의 사전/공식 SHA와 실행 비트·경로를 검증했다. 파일 mode만 644/755로 맞췄으며 bytes·uid/gid·mtime·디렉터리 metadata·보호 env와 기존 runtime ID는 유지했다. untracked·symlink·DB·node_modules·최상위 frontend는 변경하지 않았다. 정리 뒤 stage receipt를 검증하고 같은 제품 source로 재시도해 backend 17단계·frontend 2단계 CACHED와 레이어 내보내기 0.1초를 확인했다. 첫·두 번째 시도의 root 전용 기록은 각각 attempt-1/attempt-2에 보존했다.
 
 마지막 옛 Opinet 실행은 7,200초 제한으로 01:03:28 UTC에 실패했다. 새로운 12,600초 상한의 실제 Opinet 성공은 아직 검증하지 않았으며, 실제 KREX 검증과 혼동하지 않는다.
 
 ## 운영 수용 게이트
 
-- 공식 `DEPLOY_STAGE_ONLY=true`, Manager target·NVMe·tracked override 검증: PASS. 최종 merge 소스만 stage했고 runtime은 아직 교체하지 않았다.
-- 배포 전 API/CS: `rel-86398267fc32`, schema `0028_fuel_statistics`.
-- ARM 사전 이미지 완료: PASS. 공식 최종 source의 backend 캐시 재사용·이미지 적재: PASS. frontend 빌드·운영 전환: RUNNING.
-- schema `0029_fuel_statistics_generations`, API/CS 이미지·release SHA, frontend HTTP, gRPC 12306·정상 location: NOT_RUN.
-- 공용 PG·daemon·Weather·Geo container 보존, Transport instigator 원래 상태 복원: NOT_RUN.
-- 실제 `rest_area_fuel_price_collection_job`의 Dagster SUCCESS·원본 CollectionRun·공개 세대 연결: NOT_RUN.
-- 배포 후 공개 HTTPS UI 14개: NOT_RUN. 배포 전에는 14 PASS, JS/HTTP 오류 0, 실제 VWorld 요청 51 성공/0 실패를 확인했다.
+- 공식 `DEPLOY_STAGE_ONLY=true`, Manager target·NVMe·tracked override 검증: PASS. 최종 merge 소스만 stage했다.
+- 배포 전 API/CS: `rel-86398267fc32`, schema `0028_fuel_statistics`. 최종 공식 전환 controller: PASS.
+- API/CS: `kor-travel-transport-backend:rel-af415b320738`, `/health`의 전체 release SHA 일치, schema `0029_fuel_statistics_generations`: PASS. frontend rebuild·HTTP, gRPC 12306·정상 location: PASS.
+- 공용 PG·daemon·Weather·Geo 등 타 컨테이너 8개 ID 및 running/not-paused 보존: PASS. Transport schedule 12개·sensor 5개의 원래 상태 복원: PASS. 빌더는 실행 중 solve가 없음을 확인한 뒤 중지했다.
+- 최종 읽기 전용 점검: 실제 이미지의 유가 상한 12,600초·CS healthy/not-paused·포트 12306·schema29 확인. `collection_runs`에서 5시간 넘게 running인 행은 0개였다. 이것만으로 모든 종류의 고아 worker가 없다고 단정하지 않는다.
+- 실제 `rest_area_fuel_price_collection_job`: Dagster run `01bf2d0f-5f7e-5bb6-a80b-c96e9c84df55` SUCCESS, CollectionRun1524 success. 원본 received/stored 각226건, 공개 point581개, 자기 실행의 세대 `2026-10-23T02:04:38.738843Z`와 원천 성공 시각 일치: PASS.
+- CollectionRun 서비스 구간은 02:04:35.832403~02:04:46.186431 UTC, 10.354028초다. 관찰 전체 약297초에는 queue·프로세스 import가 포함되므로 서비스 소요 시간과 구분한다.
+- 배포 후 공개 HTTPS UI 14개 PASS: 실제 로그인·권한 거부·통계 6범주·390/1440px 차트·지도 zoom/pan/통계. JS/HTTP 오류0, 실제 VWorld 요청51 성공/0 실패, 31.77초. API/mock route를 대체하지 않았다. 모바일/지도 스크린샷도 시각 확인했다.
+- 수집 발행 후 추가 UI 1개 PASS: 실제 공개 API의 세대와 UI의 KST11:04가 위 새 세대와 일치, 고속도로213곳·`update_pending=false`. 5.93초, JS 오류0. 합계15개이며 앞14개는 발행 전, 마지막1개는 발행 후 검증이다.
+- 공개 통계 단일 요청은 전국957/시도875/시군구1562/고속도로전체439/노선682/방향577ms였다. 반복 중앙값이나 모든 부하에서의 지연 보장이 아니다.
+
+## 배포 후 자원 실측과 남은 범위
+
+빌더 중지 뒤 02:07:13 UTC의 15.81초 표본에서 host CPU는 **99.92%**였다. Transport CS105.22%, Weather CS97.93%, Geo CS15.85%, PG89.23%, daemon13.21%는 각각 한 코어 기준이며 전부 healthy였다. cgroup memory.current는 각각795.80/759.31/109.48/2368.18/200.87 MiB였다. PG 수치는 파일 cache를 포함하며 heap/RSS가 아니다. 정상 정기 수집이 겹친 단일 표본이라 전후 감소 효과나 특정 작업의 기여율을 입증하지 않는다.
+
+실제 수집 관찰 중 Transport CS cgroup은 285.20초 평균 한 코어113.42%, 최대871.86 MiB·종료705.89 MiB였다. 다른 교통 수집도 포함하므로 KREX worker 단독 사용량이 아니다. 전체 CPU 포화·traffic 저장/재집계·executor·PR93 메모리 수용은 후속으로 남긴다. 새 12,600초 상한의 Opinet 성공도 별도 자연 실행에서 확인해야 한다.
 
 배포 controller와 실제 수집 검증 스크립트도 두 독립 리뷰를 거쳤다. DB/외부 명령에 상한을 두고, 배포 timeout의 하위 작업 종료가 불명확하면 `OPERATION_TIMEOUT_UNKNOWN`으로 pause를 유지한다. 종료를 증명하지 못한 정방향 작업과 자동 rollback을 겹치지 않는다. 실제 수집 관찰 시간 초과가 worker를 강제로 죽였다는 뜻도 아니다.
 
