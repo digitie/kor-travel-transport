@@ -584,7 +584,9 @@ def test_unconfirmed_empty_cannot_close_106_incidents_but_confirmed_empty_can(ex
     ("fuel_station", "/v1/service/exports/fuel-stations"),
     ("rest_area", "/v1/service/exports/rest-areas"),
 ])
-@pytest.mark.parametrize("variant", ["valid", "moved", "missing", "invalid_code", "wrong_provider", "retained_error"])
+@pytest.mark.parametrize("variant", [
+    "valid", "moved", "missing", "invalid_code", "wrong_provider", "retained_error", "retained_not_found",
+])
 def test_reference_export_admin_uses_only_the_current_coordinate(
     export_client, kind, path, variant,
 ):
@@ -614,7 +616,9 @@ def test_reference_export_admin_uses_only_the_current_coordinate(
         await session.execute(entries.insert().values(
             provider_id=VworldKakaoAddressResolver.provider_id, target_key=key,
             coordinate_key=coordinate.coordinate_key, longitude=row.longitude, latitude=row.latitude,
-            status="error" if variant == "retained_error" else "ok", failures=1 if variant == "retained_error" else 0,
+            status=("error" if variant == "retained_error" else
+                    "not_found" if variant == "retained_not_found" else "ok"),
+            failures=1 if variant == "retained_error" else 0,
             checked_at=now, resolved_at=now,
             payload={"provider": [] if variant == "wrong_provider" else "vworld",
                      "address": {"legal_dong_code": "123" if variant == "invalid_code" else "0123456789",
@@ -632,7 +636,7 @@ def test_reference_export_admin_uses_only_the_current_coordinate(
     assert response.status_code == 200
     item = response.json()["items"][0]
     address = item["admin"]
-    if variant in {"missing", "moved", "wrong_provider"}:
+    if variant in {"missing", "moved", "wrong_provider", "retained_not_found"}:
         assert address is None
     else:
         assert address["legal_dong_code"] == (None if variant == "invalid_code" else "0123456789")

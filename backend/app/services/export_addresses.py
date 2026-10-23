@@ -38,6 +38,7 @@ async def export_admin_addresses(
     query = select(entries.c.target_key, entries.c.coordinate_key,
                    entries.c.payload, entries.c.resolved_at).where(
         entries.c.provider_id == VworldKakaoAddressResolver.provider_id,
+        entries.c.status.in_(("ok", "error")),
         entries.c.target_key.in_(targets),
     )
     result: dict[int, ExportAdminAddress] = {}
