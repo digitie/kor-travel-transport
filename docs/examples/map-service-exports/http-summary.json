@@ -1,0 +1,43 @@
+{
+  "source_head": "2f52aed559934370593e62a540d92f44a00bf7c0",
+  "database": "isolated PostgreSQL",
+  "network": "actual loopback HTTP uvicorn",
+  "operational_deploy": false,
+  "requests": [
+    {
+      "path": "/v1/service/exports/highway-traffic/current",
+      "status": 200,
+      "content_encoding": "gzip",
+      "etag": "W/\"19804124494634e54ecbf9b1941612ee76a243c847c16cc3a07487e8bda38604\"",
+      "fixture": "highway-traffic-current.json"
+    },
+    {
+      "path": "/v1/service/exports/parking/current",
+      "status": 200,
+      "content_encoding": "gzip",
+      "etag": "W/\"23a99bd1dd49c8c1fb1b862ab6ab0dbeee8a462bfd275d5436fd4b7ab4d73b3e\"",
+      "fixture": "parking-current.json"
+    },
+    {
+      "path": "/v1/service/exports/bus-terminals",
+      "status": 200,
+      "content_encoding": "gzip",
+      "etag": "W/\"c080ccf892fcc4fed9fb9cb768c419981cb1afb1e57951ec00bcd82edb05fc3a\"",
+      "fixture": "bus-terminals.json"
+    },
+    {
+      "path": "/v1/service/exports/ferry-ports",
+      "status": 200,
+      "content_encoding": "gzip",
+      "etag": "W/\"f4b71d42f8a137cb6c3e63a2246eb3171152ec52ec8c7464bad38695f7c717ea\"",
+      "fixture": "ferry-ports.json"
+    },
+    {
+      "path": "/v1/service/exports/rail-stations",
+      "status": 200,
+      "content_encoding": "gzip",
+      "etag": "W/\"25d17ef8f40cd241af8454d093bdcb398cd756618769875b55ab4c0a16fe1556\"",
+      "fixture": "rail-stations.json"
+    }
+  ]
+}

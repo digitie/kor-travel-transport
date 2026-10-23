@@ -853,6 +853,24 @@ class AnalyticsCache(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class ParkingCurrent(Base):
+    """Map 현재 상태용 작은 typed 표. 이력 FK나 raw payload는 보관하지 않는다."""
+
+    __tablename__ = "parking_current"
+    source: Mapped[str] = mapped_column(String(40), primary_key=True)
+    scope_key: Mapped[str] = mapped_column(String(80), primary_key=True)
+    parking_lot_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    generation: Mapped[str] = mapped_column(String(36))
+    airport_code: Mapped[str] = mapped_column(String(10))
+    lot_code: Mapped[str] = mapped_column(String(120))
+    name: Mapped[str] = mapped_column(String(120))
+    total_spaces: Mapped[int] = mapped_column(Integer)
+    occupied_spaces: Mapped[int] = mapped_column(Integer)
+    available_spaces: Mapped[int] = mapped_column(Integer)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class ParkingFeeRule(Base):
     __tablename__ = "parking_fee_rules"
     __table_args__ = (

@@ -1,3 +1,9 @@
+## 현재 작업 — Map T2 parking/current
+
+PR117 후속으로 SDK10 public완결receipt/typed current/schema33/REST를 구현중이다.
+SQLite집중28PASS·OpenAPI/TS갱신, PG/Compose/API/CI/두리뷰는 진행중이다.
+[인계·운영경계](map-parking-current-export.md). 다음작업은 정확SHA검증과남은gate마감이다.
+
 ## 2026-10-23 — Map T3 철도 참조 구현 중
 
 `codex/map-rail-reference-export`는 PR116 후속이다. 검증XLSX/성공membership와

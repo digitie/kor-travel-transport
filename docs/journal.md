@@ -1,3 +1,15 @@
+## 2026-10-23 — 주차장 current의 canonical 초단위 시각 보존
+
+적대 리뷰의 정상입력 회귀를 반영해 새 current는 SDK 정본 관측시각/수치를 직접 쓴다.
+기존 이력의 분단위 parser 결과는 바꾸지 않는다. 정상14자리/공백형 초20 시각의 current와
+기존이력을 함께 검증한다.
+
+## 2026-10-23 — Map T2 주차장 완결 current 구현 중
+
+SDK10 public complete receipt와 작은typed current/schema33을 연결한다. source별 빈/급감
+재확인·부분성공·pool반환·고정REST를 추가하며 기존이력/요금/API는 유지한다.
+[계약·남은게이트](map-parking-current-export.md).
+
 ## 2026-10-23 — 역 매핑 정적 타입 검증 보강
 
 - 적대 리뷰에서 지적한 AsyncSession 타입 import 누락을 수정했다. 공개 helper의 타입 힌트 해석과 F821 정적 검사를 함께 확인한다.

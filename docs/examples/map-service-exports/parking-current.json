@@ -1,0 +1,30 @@
+{
+  "meta": {
+    "generated_at": "2026-10-23T09:53:44.506531Z",
+    "source_collected_at": "2026-10-23T09:53:00Z",
+    "source_status": "ok",
+    "item_count": 1
+  },
+  "snapshot_id": "7cb01c16-c2a1-464d-bf7d-e20d7ac0b7b0",
+  "snapshot_expires_at": "2026-10-23T10:08:44.498272Z",
+  "total_count": 12,
+  "items": [
+    {
+      "natural_key": "kac_parking:GMP:gmp-domestic-1",
+      "source": "kac_parking",
+      "airport_code": "GMP",
+      "lot_code": "gmp-domestic-1",
+      "name": "국내선 제1주차장",
+      "latitude": 37.5583,
+      "longitude": 126.791,
+      "location_source": "airport_anchor",
+      "total_spaces": 2279,
+      "occupied_spaces": 2046,
+      "available_spaces": 233,
+      "observed_at": "2026-10-23T09:53:44Z",
+      "collected_at": "2026-10-23T09:53:44.307974Z"
+    }
+  ],
+  "next_cursor": "NThjMGVhZDlhM2FiNTczZGEyMmM1ZjAzYjQ5OGI5NjQ4NTliYmFlNTgwNjc0YWJmZjExMjRmNGNhNWY2MWZiZi57ImFmdGVyIjoxLCJraW5kIjoicGFya2luZy1jdXJyZW50LXYxIiwibGltaXQiOjEsInNjb3BlIjoiMTNhNDc4ZTcwYzkzYTQzODhiYThiZjgzNDkzZmFmMjMyOWMxNDQzMzgzMGM0YjkyYTIwM2UxY2MwNDk0MmQyZiIsInNuYXBzaG90IjoiN2NiMDFjMTYtYzJhMS00NjRkLWJmN2QtZTIwZDdhYzBiN2IwIiwidiI6MX0",
+  "has_more": true
+}
