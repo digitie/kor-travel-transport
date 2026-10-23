@@ -48,7 +48,7 @@ freeze 경쟁, 승인된 정상0 처리, 늦은 실패의 새 head 오염, 원�
 - 실제 TCP HTTP fixture: traffic8300행9건, bus1000행12건,
   ferry/rail각1000행20건, 최종 parking12개13건, 최종 admin collect/quota8건 PASS다.
   이는 격리 PG와 live-mode fake provider를 사용한 API 수용이며 운영 source 건수/수집 성공이 아니다.
-- 기존 운영 HTTPS UI16건은 모바일/데스크톱 지도·목록·통계·타일을 읽기 전용 확인했다.
+- 기존 운영 HTTPS UI16건은 모바일/데스크톱 지도·통계·타일을 읽기 전용 확인했다.
   새 T2/T3 Map reader UI는 아직 수용하지 않았다. CI `live-e2e=SKIPPED`를 PASS로 세지 않는다.
 - snapshot API의 provider 호출·이력/raw SELECT0, pool 반환 뒤 직렬화,
   TTL410/재시작·서명 cursor·ETag304/gzip·권한 거부·source stale 보존을 확인했다.
