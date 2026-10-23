@@ -1,3 +1,13 @@
+## 2026-10-23 — 항구 SDK 완결성 문서 정정
+
+- 적대 리뷰에 따라 항구 iter_ports의 필수 total 계약을 고정 SDK와 일치시켰다. terminal/ship-type의 total 없는 단일응답 모드와 구분한다. 제품 코드 변경은 없다.
+
+## 2026-10-23 — Map T3 항구 source guard와 공통 참조 snapshot 구현 중
+
+`codex/map-ferry-reference-export`는 PR115 위의 별도후속이다. core 항구와 부차좌표 성공을
+분리하고 bounded 공통snapshot/기존인증을 사용한다. 운영OFF·검증진행중이다.
+[계약·검증한계](map-ferry-reference-export.md).
+
 ## 2026-10-23 — Map T3 bus source proof와 고정 참조 구현 중
 
 provider public page 완결·빈/급감 재확인, source membership와 실패 보존, bus 실제 snapshot route를 추가한다.

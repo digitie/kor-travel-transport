@@ -38,8 +38,10 @@ from app.models import (
     FerryTimetableSnapshot,
     RailStationReference,
     RawApiResponse,
+    ReferenceExportState,
 )
 from app.services.rail_station_mapping import lock_rail_station_reference_catalog
+from app.services.reference_exports import mark_reference_failure, promote_reference
 
 logger = logging.getLogger(__name__)
 
@@ -152,20 +154,21 @@ class RailMaritimeCollectionService:
             return {"status": "skipped", "reason": "DATA_GO_KR_SERVICE_KEY is required"}
 
         run = await self._start_run(session, trigger)
+        run_id = run.id
         try:
-            summary = await self._collect_maritime_data(session, run.id)
+            summary = await self._collect_maritime_data(session, run_id)
             await self._store_summary_response(
-                session, run.id, MARITIME_SOURCE, "data.go.kr:maritime-reference", summary
+                session, run_id, MARITIME_SOURCE, "data.go.kr:maritime-reference", summary
             )
             status = "partial_success" if summary["port_location_failed_calls"] or summary["port_location_deferred_count"] else "success"
-            await self._finish_run(session, run.id, status)
-            logger.info("maritime reference collection finished run_id=%s summary=%s", run.id, summary)
-            return {"status": status, "run_id": run.id, **summary}
+            await self._finish_run(session, run_id, status)
+            logger.info("maritime reference collection finished run_id=%s summary=%s", run_id, summary)
+            return {"status": status, "run_id": run_id, **summary}
         except asyncio.CancelledError as exc:
-            await self._fail_run(session, run.id, exc)
+            await self._fail_run(session, run_id, exc, reference_kind="ferry-port")
             raise
         except Exception as exc:
-            await self._fail_run(session, run.id, exc)
+            await self._fail_run(session, run_id, exc, reference_kind="ferry-port")
             raise
 
     async def collect_ferry_timetables(
@@ -332,10 +335,33 @@ class RailMaritimeCollectionService:
         ) as store, KricFileClient(timeout=self.settings.api_timeout_seconds) as client:
             return await client.get_nationwide_station_info_to_rustfs(store)
 
+    @staticmethod
+    def _port_keys(ports):
+        keys = [(p.port_id, p.port_name) for p in ports]
+        if (not keys or len(keys) > 2000 or any(not key[0] or not key[1] for key in keys)
+                or len({key[0] for key in keys}) != len(keys)):
+            raise ValueError("빈 항구 목록·이름/코드 누락·중복은 승인할 수 없습니다")
+        return sorted(keys)
+
+    async def _confirmed_ports(self, client):
+        for attempt in range(2):
+            ports = tuple([item async for item in client.iter_ports(page_size=100, max_pages=20)])
+            try:
+                self._port_keys(ports)
+                return ports
+            except ValueError:
+                if attempt:
+                    raise
+        raise AssertionError("unreachable")
+
     async def _collect_maritime_data(self, session: AsyncSession, run_id: int) -> dict[str, int]:
         key = self.settings.data_go_kr_service_key
         assert key is not None
-        collected_at = now_utc()
+        previous = await session.get(ReferenceExportState, ("ferry-port", "ports"))
+        previous_count = len(previous.member_ids) if previous else await session.scalar(
+            select(func.count()).select_from(FerryPort).where(FerryPort.source == MARITIME_SOURCE),
+        )
+        await session.rollback()
         _guidelines, archive = await self._fetch_port_guidelines()
         # 항만가이드라인은 항로 안내 자료로만 보관한다. 어느 한 점도 승선 항구로 쓰지 않는다.
         locations: dict[str, tuple[PortCall | None, bool]] = {}
@@ -343,13 +369,24 @@ class RailMaritimeCollectionService:
             # 공공데이터 호출량을 예측 가능하게 유지하려고 동시에 세 요청을 보내지 않는다.
             # Provider iterator는 page budget을 넘기면 오류로 끝나므로 첫 페이지 하나만
             # 성공으로 저장하는 일을 막는다. 실시간 운항시간표에는 사용하지 않는다.
-            ports = tuple([item async for item in client.iter_ports(page_size=100, max_pages=20)])
+            ports = await self._confirmed_ports(client)
+            if previous_count and len(ports) < previous_count * 0.25:
+                ports = await self._confirmed_ports(client)
+                if len(ports) < previous_count * 0.25:
+                    raise ValueError("항구 급감 집합을 권위 있는 total receipt 없이 승인하지 않습니다")
+            collected_at = now_utc()
             terminals = tuple([item async for item in client.iter_ferry_terminals(page_size=100, max_pages=20)])
             ship_types = tuple([item async for item in client.iter_ferry_ship_types(page_size=100, max_pages=20)])
             for port in ports:
                 target = PORT_CALL_TARGETS.get(port.port_id or "")
                 if target and port.port_name == target[0]:
                     locations[port.port_id] = await self._port_call_location(session, run_id, client, port.port_id, target)
+            # 좌표 보충의 별도 receipt commit이 모두 끝난 뒤 마지막 성공 범위를 다시 잠근다.
+            current_head = await session.scalar(select(ReferenceExportState).where(
+                ReferenceExportState.kind == "ferry-port", ReferenceExportState.scope_key == "ports",
+            ).with_for_update())
+            if current_head and len(ports) < len(current_head.member_ids) * 0.25:
+                raise ValueError("최근 성공집합보다 급감한 항구 목록은 보존합니다")
             for port in ports:
                 if port.port_id:
                     location, verified = locations.get(port.port_id, (None, False))
@@ -361,6 +398,20 @@ class RailMaritimeCollectionService:
                 if ship_type.ship_type_id:
                     await self._upsert_ship_type(session, ship_type, collected_at)
 
+        if self.settings.transport_map_current_enabled:
+            await session.flush()
+            ids = list((await session.scalars(select(FerryPort.id).where(
+                FerryPort.source == MARITIME_SOURCE, FerryPort.port_id.in_([p.port_id for p in ports]),
+            ))).all())
+            if len(ids) != len(ports):
+                raise ValueError("저장된 항구 membership이 일치하지 않습니다")
+            await promote_reference(session, kind="ferry-port", scope="ports", run_id=run_id,
+                                    confirmed_at=collected_at, member_ids=ids,
+                                    proof={"complete": True, "item_count": len(ports),
+                                           "contract": "python-kric-api:iter_ports:bounded-full-list-v1",
+                                           "wire_total_receipt": False,
+                                           "coordinate_count": sum(location is not None for location, _ in locations.values()),
+                                           "coordinate_deferred": sum(not verified for _, verified in locations.values())})
         return {
             "port_count": len(ports),
             "terminal_count": len(terminals),
@@ -480,8 +531,10 @@ class RailMaritimeCollectionService:
         run.finished_at = now_utc()
         await session.commit()
 
-    async def _fail_run(self, session: AsyncSession, run_id: int, exc: BaseException) -> None:
+    async def _fail_run(self, session: AsyncSession, run_id: int, exc: BaseException, *, reference_kind: str | None = None) -> None:
         await session.rollback()
+        if reference_kind:
+            await mark_reference_failure(session, kind=reference_kind, run_id=run_id, error=type(exc).__name__)
         run = await session.get(CollectionRun, run_id)
         if run is not None:
             run.status = "failed"

@@ -1116,3 +1116,26 @@ class BusTerminalExportPage(BaseModel):
     items: list[ExportBusTerminalReference]
     next_cursor: str | None
     has_more: bool
+
+
+class ExportFerryPortReference(BaseModel):
+    natural_key: str
+    source: str
+    port_id: str
+    name: str
+    latitude: float | None
+    longitude: float | None
+    location_source: str | None
+    location_point_count: int
+    manual_location_revision: str | None
+    admin: ExportAdminAddress | None
+
+
+class FerryPortExportPage(BaseModel):
+    meta: ServiceExportMeta
+    snapshot_id: str
+    snapshot_expires_at: datetime
+    total_count: int
+    items: list[ExportFerryPortReference]
+    next_cursor: str | None
+    has_more: bool

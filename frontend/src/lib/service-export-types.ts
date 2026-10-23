@@ -86,3 +86,25 @@ export type BusTerminalExportPage = {
   next_cursor: string | null;
   has_more: boolean;
 };
+
+
+export type FerryPortExportPage = {
+  meta: ServiceExportMeta;
+  snapshot_id: string;
+  snapshot_expires_at: string;
+  total_count: number;
+  items: {
+    natural_key: string;
+    source: string;
+    port_id: string;
+    name: string;
+    latitude: number | null;
+    longitude: number | null;
+    location_source: string | null;
+    location_point_count: number;
+    manual_location_revision: string | null;
+    admin: ExportAdminAddress | null;
+  }[];
+  next_cursor: string | null;
+  has_more: boolean;
+};

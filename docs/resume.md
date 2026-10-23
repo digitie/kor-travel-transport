@@ -1,3 +1,9 @@
+## 2026-10-23 — Map T3 항구 참조 구현 중
+
+`codex/map-ferry-reference-export`는 PR115 위의 별도후속이다. core 항구와 부차좌표 성공을
+분리하고 bounded 공통snapshot/기존인증을 사용한다. 운영OFF·검증진행중이다.
+[계약·검증한계](map-ferry-reference-export.md).
+
 ## 2026-10-23 — Map T3 bus 구현 중
 
 `codex/map-bus-export-proof`는 PR114 위의 별도 후속이다. source proof·membership·고정 bus route, WSL 집중14 PASS. 전체 gate/운영은 아직 진행 중이다.
