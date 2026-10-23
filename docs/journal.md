@@ -3,7 +3,7 @@
 - parking-radar의 Next.js 16.3.2와 운영 관리자 앱의 Next.js/eslint-config-next 16.3.5를 모두 `16.4.3`으로 정확히 고정하고 각 잠금 파일을 재생성했다.
 - 앱 코드와 API 계약 변경 없이 package.json·package-lock.json의 Next.js 및 해당 전이 의존성을 갱신했다. 관리자 앱의 새 Compiler 규칙은 기존 오류가 있는 두 파일에만 한정해 비활성화하고 기존 Hooks 규칙과 다른 파일의 설정을 유지했다.
 - WSL Linux Node 22.22.2에서 parking-radar 기존 테스트 130건·build PASS, 관리자 앱 기존 테스트 225건·lint(오류 0/기존 경고 1)·type-check·build PASS. 다섯 Next.js 앱의 manifest·잠금 파일·env/SWC 버전과 audit Next 항목 0을 전수 대조했다.
-- WSL Docker에서 실제 프론트엔드 이미지를 새로 빌드하고 `docker compose -p next1643-transport run --rm --no-deps frontend npm run test -- --run` 130건 PASS. 백엔드 WSL 검증은 진행 중이다. 기본 backend 이미지의 `/scripts/validate-deploy-host.py` 경로 누락으로 수집 오류가 발생해 저장소를 읽기 전용 `/workspace`로 mount한 별도 컨테이너 검증을 진행 중이며, 최초 실패를 PASS로 바꾸어 세지 않는다.
+- WSL Docker에서 실제 프론트엔드 이미지를 새로 빌드하고 `docker compose -p next1643-transport run --rm --no-deps frontend npm run test -- --run` 130건 PASS. 백엔드 전체 WSL·Docker 재검증은 미완료다. 기본 backend 이미지의 `/scripts/validate-deploy-host.py` 경로 누락으로 수집 오류가 발생했다. 읽기 전용 `/workspace` mount로 수집 경로를 보완해 추가 실행했지만 전체가 끝나지 않았고, 이번 프론트엔드 검증 종료 시 소유한 장기 실행만 중단했다. 최초 오류·중단을 PASS로 세지 않는다. 백엔드 제품 코드는 변경하지 않았으며 전체 CI와 운영 UI는 별도 게이트다.
 - 같은 시점 `npm audit` 전체 보고: 총 16→14건, critical 2→1건. `next` 항목은 제거됐지만 다른 패키지 취약점은 남아 있다. 강제 자동 수정이나 요청 외 major 의존성 갱신은 하지 않았다.
 - 운영 관리자 앱도 새 Docker builder 이미지에서 최종 Vitest 225건 PASS. 첫 wrapper는 실행 중 파일 갱신으로 불필요한 끝부분 명령 오류가 났으므로, 같은 최종 이미지에서 직접 재실행해 종료 코드 0과 225 PASS를 확인했다.
 - 운영 관리자 앱의 `npm audit`은 별도로 총 8→6건, critical 3→2건이며 Next 항목 0이다. parking-radar의 아래 수치와 합산하거나 혼동하지 않는다.
