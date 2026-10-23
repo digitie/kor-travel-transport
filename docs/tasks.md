@@ -10,6 +10,10 @@
 
 ## 진행 중인 작업 인덱스
 
+- [ ] Map T2 traffic current: 기본OFF·source/filter head/typed pointer·같은 source transaction hook/schema0030 구현 중. [진척·남은 gate](reports/2026-10-23-traffic-current-pointer.md). 실제 REST/페이지 snapshot/주차/T3·운영 활성화는 후속이다.
+
+- [ ] Map service API T5: 빈/급감 재확인·이전 성공 보존 guard 구현 중. PG/전체회귀·Docker·CI·2리뷰·live·배포를 수용한 뒤 T1/admin·T2/current·T3/reference·T4/history와 공통 snapshot/ETag/gzip을 순차 구현한다. 기존 export의 인증·실패 계약을 보존한다. [구현 기록](reports/2026-10-23-map-export-empty-guard.md).
+
 - [ ] Map service API: T5 PR108·T1 PR109·T4 PR110은 머지/검증 완료, 운영 배포·API/UI 수용 진행 중. T2 현재 교통/주차·T3 참조 및 공통 frozen snapshot/status/cursor는 미구현이다. 다음은 traffic pointer부터 작은 PR로 진행한다. [구현 순서](design/map-current-reference-exports.md).
 
 

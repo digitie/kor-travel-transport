@@ -1,5 +1,10 @@
 # resume.md — 현재 인수인계
 
+## 2026-10-23 — Map T2 교통 current 선행 구현 중
+
+- 기본OFF의 작은 source/filter current head와 typed 최신 pointer를 같은 source transaction에서 갱신한다. 이력 backfill·raw 복사·T2 REST 활성화는 없다. [설계·검증 범위](reports/2026-10-23-traffic-current-pointer.md).
+- 초기 SQLite/PG7·migration/check PASS. 추가 failure/fence·Docker/전체/CI/2리뷰/비용·운영은 아직이다. 별도 schema0030 후보로 T1/T4/T5 배포(schema29)에 섞지 않는다.
+
 ## 2026-10-23 — Map API 머지 상태와 다음 구현
 
 - T5 PR108, T1 PR109, T4 PR110은 main `e01f8e9c12929d226872ac4b44996a89d603e9f7`에 머지됐다. 최종 각 두 적대 리뷰·CI와 격리 HTTP 검증을 통과했다. 아래 구현 중/CI 대기 절은 당시 기록이다.

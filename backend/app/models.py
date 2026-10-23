@@ -170,6 +170,41 @@ class HighwayTrafficSnapshot(Base):
     raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
 
 
+class HighwayTrafficCurrentState(Base):
+    """정상 완결된 source/filter 집합의 작은 포인터다. 이력 보존과 분리한다."""
+
+    __tablename__ = "highway_traffic_current_states"
+    source: Mapped[str] = mapped_column(String(40), primary_key=True)
+    scope_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    generation: Mapped[str] = mapped_column(String(36))
+    attempt_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    attempt_order: Mapped[int] = mapped_column(Integer)
+    confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    member_count: Mapped[int] = mapped_column(Integer)
+
+
+class HighwayTrafficCurrent(Base):
+    __tablename__ = "highway_traffic_current"
+    __table_args__ = (
+        Index("ix_highway_traffic_current_members", "source", "scope_key", "generation", "identity_key"),
+    )
+    source: Mapped[str] = mapped_column(String(40), primary_key=True)
+    scope_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    identity_key: Mapped[str] = mapped_column(String(240), primary_key=True)
+    snapshot_id: Mapped[int] = mapped_column(ForeignKey("highway_traffic_snapshots.id", ondelete="CASCADE"))
+    generation: Mapped[str] = mapped_column(String(36))
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    route_no: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    route_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    conzone_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    conzone_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    direction: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    speed: Mapped[float | None] = mapped_column(Float, nullable=True)
+    free_flow_speed: Mapped[float | None] = mapped_column(Float, nullable=True)
+    congestion_level: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+
 class HighwayTrafficFiveMinuteStatistic(Base):
     """원본 교통 관측을 보존한 채 통계 API가 읽는 5분 사전 집계다."""
 
