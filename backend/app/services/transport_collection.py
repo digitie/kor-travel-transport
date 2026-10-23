@@ -156,10 +156,17 @@ async def upsert_latest_fuel_prices(
     source_rows = select(*(ranked_subquery.c[name] for name in columns)).where(ranked_subquery.c.rank == 1)
     insert = postgresql_insert if session.bind.dialect.name == "postgresql" else sqlite_insert
     statement = insert(FuelLatestPrice).from_select(list(columns), source_rows)
+    await session.execute(_latest_fuel_price_upsert(statement))
+
+
+def _latest_fuel_price_upsert(statement: Any) -> Any:
+    """원본의 (수집 시각, id) 순서를 보존하는 최신 유가 upsert."""
     table = FuelLatestPrice.__table__
-    statement = statement.on_conflict_do_update(
+    return statement.on_conflict_do_update(
         index_elements=["fuel_station_id", "product_code"],
-        set_={name: statement.excluded[name] for name in columns[2:]},
+        set_={name: statement.excluded[name] for name in (
+            "snapshot_id", "price", "provider_updated_at", "observed_at", "collected_at",
+        )},
         where=or_(
             statement.excluded.collected_at > table.c.collected_at,
             and_(
@@ -168,7 +175,6 @@ async def upsert_latest_fuel_prices(
             ),
         ),
     )
-    await session.execute(statement)
 
 
 def highway_scope_key(settings: Settings, source: str) -> str:
@@ -257,6 +263,7 @@ class LiveTransportProvider:
                 query_level=settings.opinet_query_level,
                 browser_channel=settings.opinet_browser_channel or None,
                 timeout_ms=settings.opinet_browser_timeout_ms,
+                checkpoint_path=settings.opinet_checkpoint_path,
             )
             if settings.opinet_browser_enabled
             else None
@@ -315,6 +322,13 @@ class LiveTransportProvider:
         if self.opinet is None:
             return None
         return await self.opinet.collect_once()
+
+    async def pending_fuel_snapshot(self) -> OpinetBrowserSnapshot | None:
+        return await self.opinet.pending_snapshot() if self.opinet is not None else None
+
+    def acknowledge_fuel_snapshot(self, snapshot: OpinetBrowserSnapshot) -> None:
+        if self.opinet is not None:
+            self.opinet.acknowledge_snapshot(snapshot)
 
     def next_fuel_interval(self) -> timedelta:
         if self.opinet is None:
@@ -434,7 +448,11 @@ class TransportCollectionService:
                     due_highway_sources.append(source)
         highway_sources = tuple(due_highway_sources)
         highway_due = bool(highway_sources)
-        fuel_due = scope != "highway" and OPINET_SOURCE in self.provider.enabled_sources and await self._fuel_is_due(session)
+        fuel_enabled = scope != "highway" and OPINET_SOURCE in self.provider.enabled_sources
+        pending_fuel = None
+        if fuel_enabled and (pending := getattr(self.provider, "pending_fuel_snapshot", None)) is not None:
+            pending_fuel = await pending()
+        fuel_due = fuel_enabled and (pending_fuel is not None or await self._fuel_is_due(session))
         # 이미 성공 저장된 원천의 개수만 비교한다. 큰 raw 본문은 Python으로 가져오지 않는다.
         highway_baselines = {
             source: await self._highway_success_count(session, source) for source in highway_sources
@@ -445,8 +463,14 @@ class TransportCollectionService:
         if fuel_due:
             claimed_sources.append(OPINET_SOURCE)
         for source in claimed_sources:
-            await self._mark_source_started(session, source)
             state = await self._get_or_create_state(session, source)
+            if source == OPINET_SOURCE and pending_fuel is not None:
+                # 이미 완료된 브라우저 결과의 저장만 재개한다. 외부 요청 예약은 유지한다.
+                if state.last_started_at is None:
+                    state.last_started_at = started_at
+                    state.next_due_at = started_at + self.provider.next_fuel_interval()
+                continue
+            await self._mark_source_started(session, source)
             # 외부 요청 전에 예약을 확정한다. 재시작/취소도 provider 호출 예산을 되돌리지 않는다.
             reservation = (
                 self.provider.next_fuel_interval() if source == OPINET_SOURCE
@@ -475,8 +499,12 @@ class TransportCollectionService:
                 fuel_started = time.monotonic()
                 logger.info("fuel browser collection started run_id=%s timeout=%ss", run_id, FUEL_FETCH_TIMEOUT_SECONDS)
                 try:
-                    async with asyncio.timeout(FUEL_FETCH_TIMEOUT_SECONDS):
-                        fuel_result = await self.provider.collect_fuel()
+                    if pending_fuel is not None:
+                        fuel_result = pending_fuel
+                        logger.info("fuel completed checkpoint resumed without browser requests run_id=%s", run_id)
+                    else:
+                        async with asyncio.timeout(FUEL_FETCH_TIMEOUT_SECONDS):
+                            fuel_result = await self.provider.collect_fuel()
                 except Exception as exc:
                     fuel_result = exc
                 logger.info(
@@ -524,7 +552,7 @@ class TransportCollectionService:
                             fuel_station_count, fuel_price_count = await self._store_fuel_snapshot(
                                 session, run_id, snapshot,
                             )
-                            await self._mark_fuel_success(session, snapshot.collected_at)
+                            await self._mark_fuel_success(session, snapshot.collected_at, preserve_due=pending_fuel is not None)
                         await session.commit()
                         break
                     except Exception as exc:
@@ -551,6 +579,13 @@ class TransportCollectionService:
                     run_id, fuel_station_count, fuel_price_count, time.monotonic() - store_started,
                 )
                 if snapshot is not None:
+                    acknowledge = getattr(self.provider, "acknowledge_fuel_snapshot", None)
+                    if acknowledge is not None:
+                        try:
+                            acknowledge(snapshot)
+                        except Exception as exc:
+                            # 원본 commit 이후의 파일 실패는 이미 확정한 성공을 취소하지 않는다.
+                            logger.warning("fuel checkpoint acknowledgement failed: %s", _safe_error(exc, self.settings))
                     # 원본·최신 가격·성공 상태는 이미 원자적으로 확정됐다.
                     # 통계 실패는 이 성공을 취소하거나 비싼 브라우저 재수집을 유발하지 않는다.
                     await try_publish_fuel_statistics(session, OPINET_SOURCE, snapshot.collected_at)
@@ -598,7 +633,7 @@ class TransportCollectionService:
             fuel_price_count,
             len(errors),
         )
-        return self._summary(
+        summary = self._summary(
             run,
             client_mode=self.client_mode,
             raw_count=raw_count,
@@ -608,6 +643,17 @@ class TransportCollectionService:
             fuel_price_count=fuel_price_count,
             errors=errors,
         )
+        if scope == "fuel" and fuel_enabled:
+            state = await self._get_or_create_state(session, OPINET_SOURCE)
+            summary.update({
+                "fuel_ready": (state.last_success_at is not None and state.last_error is None
+                               and now_utc() - serialize_utc(state.last_success_at) <= FUEL_STALE_AFTER),
+                "next_fuel_due_at": serialize_utc(state.next_due_at).isoformat() if state.next_due_at else None,
+                "last_fuel_success_at": serialize_utc(state.last_success_at).isoformat() if state.last_success_at else None,
+            })
+            if run.status == "skipped" and state.last_error:
+                summary["errors"] = [state.last_error]
+        return summary
 
     def _highway_scope_key(self, source: str) -> str:
         return highway_scope_key(self.settings, source)
@@ -735,7 +781,7 @@ class TransportCollectionService:
                 raise result
             snapshot = result
             if snapshot is None:
-                return None
+                raise ValueError("python-opinet-api returned no browser snapshot")
             if not snapshot.regions or not snapshot.stations:
                 raise ValueError(
                     "python-opinet-api returned an empty browser snapshot; refusing to mark fuel data fresh"
@@ -1122,15 +1168,27 @@ class TransportCollectionService:
                     name: price_statement.excluded[name]
                     for name in ("price", "provider_updated_at", "collected_at", "raw_item_json")
                 },
+            ).returning(
+                price_table.c.id.label("snapshot_id"), price_table.c.fuel_station_id,
+                price_table.c.product_code, price_table.c.price, price_table.c.provider_updated_at,
+                price_table.c.observed_at, price_table.c.collected_at,
             )
             for chunk in _chunked(price_rows.values(), FUEL_PRICE_UPSERT_BATCH):
-                await session.execute(
+                result = await session.execute(
                     price_statement.execution_options(insertmanyvalues_page_size=len(chunk)), chunk,
                 )
+                # 방금 쓴 원본 id를 그대로 사용한다. 전체 이력을 재검색·정렬하지 않으며
+                # 기존 행의 재확인·정정도 실제 원본 id로 갱신한다.
+                latest_rows: dict[tuple[int, str], dict[str, Any]] = {}
+                for row in result.mappings():
+                    key = (row["fuel_station_id"], row["product_code"])
+                    previous = latest_rows.get(key)
+                    if previous is None or row["snapshot_id"] > previous["snapshot_id"]:
+                        latest_rows[key] = dict(row)
+                await session.execute(
+                    _latest_fuel_price_upsert(insert(FuelLatestPrice.__table__).values(list(latest_rows.values())))
+                )
         price_count = await self._count_run_fuel_prices(session, collection_run_id) - prices_before
-
-        # 이 배치가 새로 쓰거나 다시 확인한 행은 모두 같은 collected_at을 갖는다.
-        await upsert_latest_fuel_prices(session, collected_at=collected_at)
         return station_count, price_count
 
     @staticmethod
@@ -1173,25 +1231,29 @@ class TransportCollectionService:
             due += FUEL_NEXT_DUE_START_SLACK
         return due
 
-    async def _mark_fuel_success(self, session: AsyncSession, collected_at: datetime) -> None:
+    async def _mark_fuel_success(self, session: AsyncSession, collected_at: datetime, *, preserve_due: bool = False) -> None:
         """다음 예정은 수집 완료가 아니라 이번 수집의 **시작**(`last_started_at`)에서 잰다.
 
         완료 + 8시간은 수집이 1~2시간 걸리는 동안 다음 8시간 tick을 늘 건너뛰게 해 실제 주기가 16시간이었다.
-        실패 경로(`_mark_fuel_failure`, 실패 시각 + 주기)는 바꾸지 않는다.
+        실패 경로도 claim 때 확정한 시작 기준 예약을 보존한다.
         """
         state = await self._get_or_create_state(session, OPINET_SOURCE)
         if state.last_started_at is None:  # claim(`_mark_source_started`)을 거치지 않은 호출은 버그다.
             raise RuntimeError("fuel success recorded without a claimed start")
         state.last_success_at = collected_at
-        state.next_due_at = (serialize_utc(state.last_started_at) + self.provider.next_fuel_interval()
-                             - FUEL_NEXT_DUE_START_SLACK)
+        if not preserve_due:
+            state.next_due_at = (serialize_utc(state.last_started_at) + self.provider.next_fuel_interval()
+                                 - FUEL_NEXT_DUE_START_SLACK)
         state.last_error = None
         state.updated_at = now_utc()
         await session.flush()
 
     async def _mark_fuel_failure(self, session: AsyncSession, message: str) -> None:
         state = await self._get_or_create_state(session, OPINET_SOURCE)
-        state.next_due_at = now_utc() + self.provider.next_fuel_interval()
+        # 비싼 수집·저장 뒤 실패한 시각에서 8시간을 다시 더하면 다음 정기 tick까지
+        # 건너뛴다. 외부 조회 전에 확정한 예약은 실패·재시작에도 늘리지 않는다.
+        if state.next_due_at is None:
+            state.next_due_at = serialize_utc(state.last_started_at or now_utc()) + self.provider.next_fuel_interval()
         state.last_error = message
         state.updated_at = now_utc()
         await session.flush()
@@ -1582,7 +1644,13 @@ def _is_transient_database_error(error: BaseException) -> bool:
     """
     if isinstance(error, (TimeoutError, ConnectionError)):
         return True
-    return isinstance(error, DBAPIError) and bool(error.connection_invalidated)
+    if not isinstance(error, DBAPIError):
+        return False
+    # asyncpg의 서버 statement_timeout은 내장 TimeoutError가 아닌 SQLSTATE 57014다.
+    # lock_timeout·직렬화 실패·교착도 같은 스냅샷으로 제한된 저장 재시도가 가능하다.
+    return bool(error.connection_invalidated) or getattr(error.orig, "sqlstate", None) in {
+        "57014", "55P03", "40001", "40P01",
+    }
 
 
 #: `app` 패키지 디렉터리. 우리 코드 frame을 경로 모양이 아니라 실제 위치로 가린다.

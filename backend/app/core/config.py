@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     opinet_query_level: str = "sigungu"
     opinet_browser_channel: str | None = None
     opinet_browser_timeout_ms: int = Field(default=60_000, gt=0)
+    opinet_checkpoint_path: str | None = None
     rail_reference_collection_enabled: bool = False
     maritime_reference_collection_enabled: bool = False
     bus_reference_collection_enabled: bool = False

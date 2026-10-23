@@ -152,6 +152,9 @@ SQLite dialect를 허용한다.
 - 최신 `python-opinet-api` Playwright collector의 지역, 주유소 식별자, 주소/좌표,
   브랜드, 셀프/24시간/품질인증/세차/정비/편의점/이벤트 플래그를 `fuel_stations`에 저장
 - 유종별 가격과 provider 갱신 시각은 `fuel_price_snapshots`에 저장
+- 최신 가격은 해당 원본 upsert의 RETURNING으로 받은 id와 값을 작은 묶음으로 반영한다.
+  원본·최신 가격·소스 성공 상태를 같은 transaction에서 commit하며 전체 이력을 재검색하지 않는다.
+  Provider 체크포인트는 재생 가능한 외부 조회 임시 상태이며 PostgreSQL 정본·API 원본을 대체하지 않는다.
 - 가격은 금액 의미를 보존하기 위해 PostgreSQL `NUMERIC(10,2)`를 사용하고 음수를 막음
 - 주유소 identity와 `(station, source, product_code, observed_at)` unique로 upsert/중복 방지
 - provider는 서로 다른 검색지역의 동일 UID를 전역 병합한 뒤 저장 계층에 전달한다.

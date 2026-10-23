@@ -70,6 +70,7 @@ x-dagster-execution-environment: &dagster-execution-environment
   OPINET_QUERY_LEVEL: "${OPINET_QUERY_LEVEL:-sigungu}"
   OPINET_BROWSER_CHANNEL: "${OPINET_BROWSER_CHANNEL:-}"
   OPINET_BROWSER_TIMEOUT_MS: "${OPINET_BROWSER_TIMEOUT_MS:-60000}"
+  OPINET_CHECKPOINT_PATH: "${OPINET_CHECKPOINT_PATH:-/app/collector-state/opinet.sqlite3}"
   RAIL_REFERENCE_COLLECTION_ENABLED: "${RAIL_REFERENCE_COLLECTION_ENABLED:-false}"
   KRIC_SERVICE_KEY: "${KRIC_SERVICE_KEY:-}"
   KRIC_TIMETABLE_COLLECTION_ENABLED: "${KRIC_TIMETABLE_COLLECTION_ENABLED:-false}"
@@ -310,6 +311,7 @@ services:
       DAGSTER_GRPC_PROXY_HEARTBEAT_TTL_SECONDS: "600"
     volumes:
       - "${KOR_TRAVEL_DAGSTER_SHARED_INSTANCE_CONFIG:-/opt/kor-travel-docker-manager/config/dagster-shared/dagster.yaml}:/app/dagster_home/dagster.yaml:ro"
+      - opinet-checkpoints:/app/collector-state
     extra_hosts: !reset []
     command: ["dagster", "code-server", "start", "-h", "127.0.0.1", "-p", "14005", "-m", "app.dagster.definitions", "--location-name", "kor-travel-transport", "--inject-env-vars-from-instance"]
     # PID 1인 dagster는 healthcheck·exec가 남긴 고아를 거두지 않는다. init이 PID 1이 되어 거둔다

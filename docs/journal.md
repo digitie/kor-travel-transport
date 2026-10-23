@@ -1,3 +1,11 @@
+## 2026-10-24 — 오피넷 수집·저장 재개 보완 중
+
+사용자 장애 제보로 실제 run1645의 브라우저 약3시간 뒤 최신 가격 SQL timeout·전체
+롤백과 이후 skipped/SUCCESS를 확인했다. 두 서브에이전트는 전국 순차 조회와 불필요한
+읍면동 탐색·호스트 CPU 경쟁·운영 INFO 필터 누락을 조사했다. Provider 영속 체크포인트,
+완료 결과 저장 재개, RETURNING 기반 최신 유가 묶음 갱신, 시작 기준 실패 예약과 가린
+진행 로그를 구현·검증 중이다. [상세 점검과 미완 검증](reports/2026-10-24-opinet-resume-review.md).
+
 ## 2026-10-23 — KAC quota deadline 영구 연장 후속 수정
 
 운영 rollout 전 필수 후속으로 기존 source state에 실제 quota origin/until을 보존한다.

@@ -1,4 +1,12 @@
-# 현재 상태 — 2026-10-23 Map T2/T3 제품 수용 정산
+# 현재 상태 — 2026-10-24 오피넷 수집·저장 재개 보완 중
+
+운영 run1645의 약3시간 브라우저 수집 뒤 최신 가격 SQL timeout과 실패 뒤8시간 유예
+재설정을 확인했다. Provider PR24의 지역별 영속 체크포인트·시군구 탐색 최적화와
+Transport의 RETURNING 기반 최신 가격 갱신·외부 조회 없는 저장 재개를 검증 중이다.
+다음 한 작업은 두 독립 리뷰와 WSL/Docker 검증을 마친 뒤 승인된 Odroid 절차로 적용하고
+실제 정상 소스 시각·집합·export200을 확인하는 것이다. [점검·검증 상태](reports/2026-10-24-opinet-resume-review.md).
+
+## 2026-10-23 Map T2/T3 제품 수용 정산
 
 PR114~119는 고정 snapshot·traffic/parking 현재 상태·bus/ferry/rail 참조와 KAC quota 복구를 구현·머지했다. 최종 main은 `a0f9b72325281fdba3c0644b0592426e70afce86`이다.
 정확 최종 SHA의 두 적대 리뷰·CI·격리 PG/Compose·실제 TCP 근거와 머지 상태는
