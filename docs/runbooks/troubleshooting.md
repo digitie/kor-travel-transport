@@ -1,6 +1,6 @@
 # 트러블슈팅
 
-> 현재 운영은 Manager가 승인한 Odroid/NVMe 정본이며 daemon은 사용자 지시로 OFF다.
+> 현재 운영은 Manager가 승인한 Odroid/NVMe 정본이며 공용 daemon은 최신 사용자 지시로 RUNNING을 유지한다.
 > 현재 작업은 배포 런북·ADR-014를 따른다. 아래 옛 n150·SQLite·scheduler 수치는
 > 당시 장애 분석 이력이며 현재 수집 재개나 호스트 변경 지시가 아니다.
 

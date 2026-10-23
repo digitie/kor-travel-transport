@@ -39,7 +39,7 @@
 수용했다. 실패·수정 집중검증은 [기록](reviews/2026-10-19-track2-runtime-contract.md)을 따른다.
 전체 T-TRN-01~05를 일괄 완료 처리하지 않으며 03/04 문서·legacy와05 메모리 수용은 후속이다.
 
-> **2026-10-17 최신 정산:** [Transport 남은 작업 감사](audits/2026-10-17-remaining-work.md)가 source 완료·실환경 잔여·낡은 체크박스를 구분한다. PR84는 main d1593ecc로 머지됐고 기존 UI34/호스트 효과/Docker95는 수용됐다. 전체 ARM build·새 URL bundle·첫 전체 cutover/T05는 별개라 T-TRN-01/02 전체 체크는 유지한다. 사용자 지시로 daemon OFF이며 감사가 수집 재개를 뜻하지 않는다. T-040/041/043의 오래된 묶음 체크는 새 제품 구현 목록으로 그대로 재실행하지 않는다.
+> **2026-10-17 당시 정산:** [Transport 남은 작업 감사](audits/2026-10-17-remaining-work.md)가 source 완료·실환경 잔여·낡은 체크박스를 구분한다. PR84는 main d1593ecc로 머지됐고 기존 UI34/호스트 효과/Docker95는 수용됐다. 전체 ARM build·새 URL bundle·첫 전체 cutover/T05는 별개라 T-TRN-01/02 전체 체크는 유지한다. 사용자 지시로 daemon OFF이며 감사가 수집 재개를 뜻하지 않는다. T-040/041/043의 오래된 묶음 체크는 새 제품 구현 목록으로 그대로 재실행하지 않는다.
 
 - [ ] 통합 교통 통계 캐시 미적중 지연 조사: n150 운영에서
       `/v1/transport/statistics?days=2` 공개 요청이 간헐적으로 10초 프록시

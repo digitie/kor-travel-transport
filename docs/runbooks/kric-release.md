@@ -1,5 +1,7 @@
 # KRIC 저장 시간표 배포 게이트
 
+> 이 문서는 당시 PR42 전환 이력이다. 현재 Odroid 배포·공용 daemon RUNNING 정책은 [현재 배포 런북](deployment.md)을 따른다. 아래 전용 daemon 절차를 현재 공용 plane에 그대로 실행하지 않는다.
+
 ## 적용 범위
 
 PR #42의 `0014_kric_timetables`는 새 테이블 세 개를 추가한다. 기존 교통/주차 테이블의

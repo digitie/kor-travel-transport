@@ -263,10 +263,10 @@ DB(`kor_travel_transport_dagster`)는 지우지 않고 남는다(30일). Manager
 
 ### 현재 호스트·plane 계약(ADR-014 accepted)
 
-Transport는 Odroid의 공용 PG와 호스트 Dagster plane을 사용한다. 현재5역할 healthy와
-Transport location 정상, n150 Transport 컨테이너/location 부재, 양 호스트 active run0을
-읽기 전용으로 확인했다. daemon은 사용자 지시대로 OFF다.
-[현재 runtime 증거](../audits/2026-10-19-track2-current-runtime.json)를 따른다.
+Transport는 Odroid의 공용 PG와 호스트 Dagster plane을 사용한다. 2026-10-19에는 5역할 healthy·
+정상 Transport location·n150 Transport 부재·양 호스트 active run0·daemon OFF를 관측했다.
+[당시 runtime 증거](../audits/2026-10-19-track2-current-runtime.json)를 보존한다.
+현재는 최신 사용자 지시대로 공용 daemon RUNNING을 유지하고 Transport instigator만 배포 때 일시 중지·복원한다.
 
 Manager 정본 §9.2②에 따라 같은 설치 SHA·workspace digest·targets validate 뒤
 dagster-plane converge --dry-run/--confirm으로 plane/workspace를 먼저 반영한다.
