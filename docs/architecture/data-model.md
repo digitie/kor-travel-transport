@@ -289,3 +289,11 @@ Alembic migration이 PostgreSQL 인덱스를 생성한다. SQLite 테스트에�
 (snapshot_id,ordinal)이고 payload에는 raw 없이 작은 typed DTO만 저장한다. 부모삭제는
 CASCADE이다. 최초 freeze만 typed current를 읽고 이후 페이지는 이 복합PK index를 쓴다.
 원천/이력/통계 정본으로 쓰거나 기존 보존정책과 연동하지 않는다.
+
+
+## 기준정보 성공 membership (migration0032)
+
+`reference_export_states(kind,scope_key)`는 source별 성공 generation·native run 순서·
+실제확인시각·작은 member PK 목록과 완결 proof, 최근 실패를 저장한다. 원천 row/upsert와
+같은 transaction으로 확정한다. 실패 뒤 성공 집합·확인시각은 유지한다. 초도 backfill 없이
+새 완결 수집부터 생성하고 API는 이 목록의 명시된 PK만 읽는다.

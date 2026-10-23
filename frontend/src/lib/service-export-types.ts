@@ -63,3 +63,26 @@ export type HighwayTrafficCurrentExportPage = {
   next_cursor: string | null;
   has_more: boolean;
 };
+
+
+export type BusTerminalExportPage = {
+  meta: ServiceExportMeta;
+  snapshot_id: string;
+  snapshot_expires_at: string;
+  total_count: number;
+  items: {
+    natural_key: string;
+    source: string;
+    service_type: string;
+    terminal_id: string;
+    name: string;
+    city_name: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    location_source: string | null;
+    manual_location_revision: string | null;
+    admin: ExportAdminAddress | null;
+  }[];
+  next_cursor: string | null;
+  has_more: boolean;
+};

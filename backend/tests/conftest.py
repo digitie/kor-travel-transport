@@ -35,7 +35,7 @@ def test_settings(tmp_path: Path) -> Settings:
             async with engine.begin() as connection:
                 await connection.execute(
                     text(
-                        "TRUNCATE TABLE service_export_snapshot_items, service_export_snapshots, highway_traffic_current, highway_traffic_current_states, reverse_address_entries, reverse_address_control, fuel_statistics_states, fuel_statistics_points, fuel_statistics_daily, bus_timetable_snapshots, rail_service_days, kric_timetable_snapshots, kric_station_codes, kric_station_mapping_registry, bus_terminal_references, ferry_timetable_snapshots, ferry_ship_type_references, ferry_terminal_references, "
+                        "TRUNCATE TABLE reference_export_states, service_export_snapshot_items, service_export_snapshots, highway_traffic_current, highway_traffic_current_states, reverse_address_entries, reverse_address_control, fuel_statistics_states, fuel_statistics_points, fuel_statistics_daily, bus_timetable_snapshots, rail_service_days, kric_timetable_snapshots, kric_station_codes, kric_station_mapping_registry, bus_terminal_references, ferry_timetable_snapshots, ferry_ship_type_references, ferry_terminal_references, "
                         "ferry_ports, rail_station_references, rest_area_references, rest_area_fuel_prices, "
                         "fuel_latest_prices, fuel_price_snapshots, highway_incident_snapshots, "
                         "highway_traffic_five_minute_statistics, highway_traffic_snapshots, "
