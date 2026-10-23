@@ -1,3 +1,9 @@
+## 2026-10-23 — Map T2 traffic 고정 snapshot 구현 중
+
+`codex/map-current-reference-api`: PR112 typed current를 bounded DTO snapshot으로 동결하는
+실제 service route·migration0031·cursor/TTL/ETag/gzip을 구현 중이다. 기본OFF 유지.
+[계약과 미완 gate](map-traffic-current-export.md). parking/T3는 후속이며 전체 완료가 아니다.
+
 # resume.md — 현재 인수인계
 
 ## 2026-10-23 — Map T1/T4/T5 배포·T2 포인터 머지 정산

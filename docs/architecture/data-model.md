@@ -280,3 +280,12 @@ Alembic migration이 PostgreSQL 인덱스를 생성한다. SQLite 테스트에�
 현재 표는 raw JSON을 복사하지 않는다. 가변 history가 나중에 정정되더라도 승인 current 값이 바뀌지 않도록 작은 DTO 열을 별도로 보존한다. `snapshot_id`는 nullable FK/SET NULL lineage이고, 원래 PK 순서인 `snapshot_order`는 유지한다. 원본 이력을 정리해도 typed current/membership/성공 개수는 사라지지 않는다. current와 이전 membership의 GC·frozen snapshot 보존은 후속이며 기존 이력 보존 정책을 변경하지 않는다.
 
 수집 raw·성공 상태·history·current·통계는 같은 source transaction에서 확정하고 기존 owned worker fence를 유지한다. 늦은 옛 run의 membership 전진은 DB run ID로 거부한다. 정상0/급감은 T5의 provider 완결 guard를 통과한 경우에만 입력한다. rollback은 head/point도 함께 되돌리고 초도 backfill은 새 정상 수집에서만 만든다. `TRANSPORT_MAP_CURRENT_ENABLED=false`가 기본이며 비용/완결/복구 수용 뒤 명시 opt-in한다. 이 모델은 아직 REST·frozen HTTP 페이지·주차/T3 구현을 뜻하지 않는다.
+
+
+## Map service export 고정 snapshot (migration0031)
+
+`service_export_snapshots`는 UUID handle·kind/scope/source generation·실제 원천확인시각·
+15분TTL·건수·DTO SHA256을 보존한다. `service_export_snapshot_items`의 복합PK는
+(snapshot_id,ordinal)이고 payload에는 raw 없이 작은 typed DTO만 저장한다. 부모삭제는
+CASCADE이다. 최초 freeze만 typed current를 읽고 이후 페이지는 이 복합PK index를 쓴다.
+원천/이력/통계 정본으로 쓰거나 기존 보존정책과 연동하지 않는다.

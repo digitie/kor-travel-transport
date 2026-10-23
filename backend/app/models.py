@@ -903,3 +903,31 @@ class ParkingFeeRule(Base):
     daily_max_fee: Mapped[int] = mapped_column(Integer)
     source_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
+
+
+class ServiceExportSnapshot(Base):
+    """유한 수명의 immutable DTO. 원천·이력 정본과 독립적인 HTTP 탐색 자료다."""
+
+    __tablename__ = "service_export_snapshots"
+    __table_args__ = (
+        Index("ix_service_export_snapshot_expires", "expires_at"),
+        Index("ix_service_export_snapshot_generation", "kind", "scope_key", "generation", "expires_at"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(40))
+    scope_key: Mapped[str] = mapped_column(String(64))
+    generation: Mapped[str] = mapped_column(String(36))
+    source_collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    item_count: Mapped[int] = mapped_column(Integer)
+    content_digest: Mapped[str] = mapped_column(String(64))
+
+
+class ServiceExportSnapshotItem(Base):
+    __tablename__ = "service_export_snapshot_items"
+    snapshot_id: Mapped[str] = mapped_column(
+        ForeignKey("service_export_snapshots.id", ondelete="CASCADE"), primary_key=True,
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, primary_key=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)

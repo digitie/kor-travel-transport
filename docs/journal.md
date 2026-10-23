@@ -1,3 +1,9 @@
+## 2026-10-23 — Map T2 traffic 고정 HTTP snapshot 구현 중
+
+PR112 typed current 위에 immutable DTO snapshot·15분TTL·signed cursor·ETag/gzip·
+현재 health 보존 route를 추가한다. schema0031이며 운영 적용 전이다.
+[계약/검증 범위](map-traffic-current-export.md). 전체회귀/CI/2리뷰/비용/운영 gate는 진행 중이다.
+
 ## 2026-10-23 — Map T1/T4/T5 배포·T2 포인터 머지 정산
 
 - 운영 e01f8e9는 schema29/API·CS/gRPC12306/location·기존instigator복원/공용daemonON·다른8container보존 및 UI16 PASS. API계약7 PASS지만 오래된 OpiNet 주유소참조503으로 fresh-readiness는false다. 정규유가복구job1회 등록은 수집성공이 아니다. [배포·원천미완·후속](reports/2026-10-23-map-exports-deployment.md).
