@@ -38,3 +38,12 @@ source/DTO revision+TTL epoch의DB unique admission과새RR최대1회재시도�
 
 현재 WSL 집중14 PASS이며 전체PG/CI/Docker/2리뷰/실제API/UI/비용·운영 수용은 진행 중이다.
 이 문서와 PR은 parking/ferry/rail T2/T3 완료를 선언하지 않는다.
+
+
+## 선행 적대리뷰 반영
+
+오래된 실패는 Python에서 읽었던 run 순서로 ORM 전체PK UPDATE를 하지 않는다.
+DB 조건부 UPDATE의 `attempt_order <= failed_run_id`로 최신 성공 뒤의 실패 덮어쓰기를 막는다.
+첫 freeze는 memberPK와 각 source row.last_seen_at==head.confirmed_at을 함께 검증한다.
+flagOFF legacy 수집이 source 참조를 갱신한 뒤 옛 head를 재사용하려 하면503이다.
+관리자 좌표/파생주소 수정은 source last_seen_at을 바꾸지 않으므로 새DTO에 계속 반영된다.

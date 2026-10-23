@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.core.time_utils import now_utc
 from app.models import BusTerminalReference, CollectionRun, RawApiResponse, ReferenceExportState
-from app.services.reference_exports import MAX_REFERENCE_MEMBERS, promote_reference
+from app.services.reference_exports import MAX_REFERENCE_MEMBERS, mark_reference_failure, promote_reference
 
 TAGO_BUS_SOURCE = "data_go_kr_tago"
 
@@ -261,12 +261,7 @@ class BusReferenceCollectionService:
     async def _fail(self, session: AsyncSession, run_id: int, exc: BaseException) -> None:
         await session.rollback()
         stored_run = await session.get(CollectionRun, run_id)
-        for state in (await session.scalars(select(ReferenceExportState).where(
-            ReferenceExportState.kind == "bus-terminal",
-        ))).all():
-            if state.attempt_order <= run_id:
-                state.last_error = type(exc).__name__
-                state.last_attempt_at = now_utc()
+        await mark_reference_failure(session, kind="bus-terminal", run_id=run_id, error=type(exc).__name__)
         if stored_run is not None:
             stored_run.status = "failed"
             stored_run.finished_at = now_utc()

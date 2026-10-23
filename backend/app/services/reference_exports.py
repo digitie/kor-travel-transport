@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import CollectionRun, ReferenceExportState
@@ -38,3 +38,11 @@ async def promote_reference(
     state.last_error = None
     state.member_ids = sorted(member_ids)
     state.proof = proof
+
+
+async def mark_reference_failure(session: AsyncSession, *, kind: str, run_id: int, error: str) -> None:
+    """옛 실패가 새 성공을 stale로 덮지 못하게 DB 문장의 조건으로 순서를 검증한다."""
+    from app.core.time_utils import now_utc
+    await session.execute(update(ReferenceExportState).where(
+        ReferenceExportState.kind == kind, ReferenceExportState.attempt_order <= run_id,
+    ).values(last_error=error, last_attempt_at=now_utc()).execution_options(synchronize_session=False))

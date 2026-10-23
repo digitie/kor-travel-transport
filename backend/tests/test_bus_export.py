@@ -80,7 +80,7 @@ def test_reference_snapshot_updates_manual_data_without_source_recollection(expo
                  params={"limit": 1}).status_code == 304
     async def manual(s):
         await s.execute(update(BusTerminalReference).where(BusTerminalReference.service_type == "intercity")
-                        .values(terminal_name="변경역", latitude=37, longitude=127, location_source="admin_manual",
+                        .values(latitude=37, longitude=127, location_source="admin_manual",
                                 raw_item_json={"_manual_location": {"revision": "manual-1"}}))
         await s.execute(update(ReferenceExportState).values(last_error="provider failure"))
     _run(c, manual)
@@ -90,7 +90,7 @@ def test_reference_snapshot_updates_manual_data_without_source_recollection(expo
     assert old.json()["meta"]["source_status"] == "stale"
     new = c.get(PATH, headers=HEADERS, params={"limit": 2})
     assert new.status_code == 200, new.text
-    assert new.json()["items"][1]["name"] == "변경역"
+    assert new.json()["items"][1]["latitude"] == 37
     assert new.json()["items"][1]["manual_location_revision"] == "manual-1"
     assert new.json()["snapshot_id"] != data["snapshot_id"]
 
@@ -203,3 +203,52 @@ def test_late_store_failure_rolls_back_refs_and_heads_without_expired_run_access
         run = await s.scalar(select(CollectionRun).where(CollectionRun.trigger == "second"))
         assert run.status == "failed" and run.error_message == "RuntimeError"
     _run(c, second)
+
+
+def test_unapproved_off_mode_source_row_cannot_reuse_old_success(export_client):
+    from datetime import timedelta
+    c = export_client
+    c.app.state.settings.transport_map_current_enabled = True
+    _run(c, seed)
+    first = c.get(PATH, headers=HEADERS)
+    assert first.status_code == 200
+    async def off_mode_source(s):
+        await s.execute(update(BusTerminalReference).values(
+            terminal_name="미승인 원천 변경", city_name="새 도시", last_seen_at=now_utc() + timedelta(seconds=1),
+        ))
+    _run(c, off_mode_source)
+    assert c.get(PATH, headers={**HEADERS, "If-None-Match": first.headers["etag"]}).status_code == 503
+
+
+def test_postgres_old_failure_cannot_mark_new_success_stale(export_client):
+    from app.models import CollectionRun
+    from app.services.reference_exports import mark_reference_failure
+    c = export_client
+    if c.app.state.engine.dialect.name != "postgresql":
+        pytest.skip("실제 PostgreSQL 조건부 UPDATE interleave 회귀")
+    _run(c, seed)
+    async def race():
+        paused, committed = asyncio.Event(), asyncio.Event()
+        async with c.app.state.session_factory() as old, c.app.state.session_factory() as newer:
+            original_execute = old.execute
+            async def pause_old_update(statement, *args, **kwargs):
+                if getattr(statement, "is_update", False):
+                    paused.set()
+                    await committed.wait()
+                return await original_execute(statement, *args, **kwargs)
+            old.execute = pause_old_update
+            async def fail_old():
+                await mark_reference_failure(old, kind="bus-terminal", run_id=1, error="OldFailure")
+                await old.commit()
+            task = asyncio.create_task(fail_old())
+            await asyncio.wait_for(paused.wait(), 5)
+            await newer.execute(update(ReferenceExportState).values(
+                attempt_order=2, generation="new-success", last_error=None,
+            ))
+            await newer.commit()
+            committed.set()
+            await asyncio.wait_for(task, 10)
+        async with c.app.state.session_factory() as session:
+            states = list((await session.scalars(select(ReferenceExportState))).all())
+            assert all(h.attempt_order == 2 and h.generation == "new-success" and h.last_error is None for h in states)
+    asyncio.run(race())

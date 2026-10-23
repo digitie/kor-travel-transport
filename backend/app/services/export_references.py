@@ -56,7 +56,8 @@ async def _bus_payload_batches(session, heads):
                 BusTerminalReference.raw_item_json["_manual_location"]["revision"].as_string().label("manual_revision"),
             ).where(BusTerminalReference.id.in_(selected),
                     BusTerminalReference.source == TAGO_BUS_SOURCE,
-                    BusTerminalReference.service_type == head.scope_key).order_by(BusTerminalReference.id))).mappings())
+                    BusTerminalReference.service_type == head.scope_key,
+                    BusTerminalReference.last_seen_at == head.confirmed_at).order_by(BusTerminalReference.id))).mappings())
             if len(rows) != len(selected):
                 raise HTTPException(503, "터미널 성공 membership이 일치하지 않습니다.")
             addresses = await export_admin_addresses(session, "bus_terminal", [SimpleNamespace(**row) for row in rows])
