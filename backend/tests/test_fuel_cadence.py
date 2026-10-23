@@ -1,0 +1,67 @@
+"""유가 성공 tick 여유와 실패/기동 예약을 실제 진입·대기 경계에서 구분한다."""
+import asyncio
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from app.db.session import create_engine_and_session_factory, init_database
+from app.models import TransportCollectionState
+from app.services import transport_collection
+from app.services.transport_collection import OPINET_SOURCE, TransportCollectionService
+from test_transport_collection import FakeTransportProvider, build_settings
+
+
+@pytest.mark.parametrize("mode", ["in_process", "dagster"])
+@pytest.mark.parametrize("reservation", ["success", "replayed_success", "failure", "claim", "legacy_success"])
+def test_fuel_entry_and_sleep_share_the_effective_due(tmp_path, monkeypatch, mode, reservation):
+    start = datetime(2026, 10, 23, tzinfo=timezone.utc)
+    clock = {"now": start + timedelta(hours=7, minutes=50)}
+    monkeypatch.setattr(transport_collection, "now_utc", lambda: clock["now"])
+    settings = build_settings(tmp_path)
+    settings.scheduler_mode = mode
+    provider = FakeTransportProvider()
+    provider.next_fuel_interval = lambda: timedelta(hours=8)
+    success = start + timedelta(hours=1)
+    due = start + timedelta(hours=7, minutes=45)
+    error = None
+    expected = start + timedelta(hours=8) if mode == "in_process" else due
+    if reservation == "replayed_success":
+        success = start - timedelta(hours=1)  # 검증한 원천 수집 시각은 이번 재생 시작보다 이를 수 있다.
+    elif reservation == "failure":
+        success = start - timedelta(days=1)
+        due = start + timedelta(hours=10)  # 02시 실패 + 8시간
+        error = "TimeoutError"
+        clock["now"] = start + timedelta(hours=2)
+        expected = due
+    elif reservation == "claim":
+        success = start - timedelta(days=1)
+        due = start + timedelta(hours=12)
+        expected = due
+    elif reservation == "legacy_success":
+        due = success + timedelta(hours=8)
+        expected = due
+
+    async def exercise():
+        engine, factory = create_engine_and_session_factory(settings.database_url)
+        await init_database(engine)
+        service = TransportCollectionService(settings, provider)
+        try:
+            async with factory() as session:
+                session.add(TransportCollectionState(
+                    source=OPINET_SOURCE, last_started_at=start, last_success_at=success,
+                    next_due_at=due, last_error=error, updated_at=start,
+                ))
+                await session.commit()
+                # 재기동으로 sleep을 거치지 않고 수집부터 시작해도 같은 경계를 지킨다.
+                assert await service._fuel_is_due(session) is (clock["now"] >= expected)
+                assert await service.next_collection_delay(session, "fuel") == max(
+                    1.0, (expected - clock["now"]).total_seconds())
+                clock["now"] = expected - timedelta(microseconds=1)
+                assert not await service._fuel_is_due(session)
+                clock["now"] = expected
+                assert await service._fuel_is_due(session)
+        finally:
+            await service.close()
+            await engine.dispose()
+
+    asyncio.run(exercise())

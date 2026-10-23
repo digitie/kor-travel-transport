@@ -1044,10 +1044,20 @@ class TransportCollectionService:
         state = await session.scalar(
             select(TransportCollectionState).where(TransportCollectionState.source == OPINET_SOURCE)
         )
+        next_due_at = self._effective_fuel_due_at(state)
+        return next_due_at is None or now_utc() >= next_due_at
+
+    def _effective_fuel_due_at(self, state: TransportCollectionState | None) -> datetime | None:
+        """수집 진입과 대기는 같은 예정 시각을 사용한다. 성공 예약의 tick 여유만 되돌린다."""
         if state is None or state.next_due_at is None:
-            return True
-        next_due_at = state.next_due_at
-        return now_utc() >= serialize_utc(next_due_at)
+            return None
+        due = serialize_utc(state.next_due_at)
+        if (self.settings.scheduler_mode == "in_process" and state.last_error is None
+                and state.last_started_at is not None and state.last_success_at is not None
+                and due == (serialize_utc(state.last_started_at) + self.provider.next_fuel_interval()
+                            - FUEL_NEXT_DUE_START_SLACK)):
+            due += FUEL_NEXT_DUE_START_SLACK
+        return due
 
     async def _mark_fuel_success(self, session: AsyncSession, collected_at: datetime) -> None:
         """다음 예정은 수집 완료가 아니라 이번 수집의 **시작**(`last_started_at`)에서 잰다.
@@ -1113,20 +1123,21 @@ class TransportCollectionService:
 
     async def next_collection_delay(self, session: AsyncSession, scope: CollectionScope) -> float:
         """고정 tick과 DB 예정 시각의 미세한 차이 때문에 한 주기를 건너뛰지 않는다."""
-        sources = (OPINET_SOURCE,) if scope == "fuel" else (TRAFFIC_SOURCE, INCIDENT_SOURCE)
+        interval = self.settings.transport_collect_interval_seconds
+        if scope == "fuel":
+            state = await session.scalar(select(TransportCollectionState).where(
+                TransportCollectionState.source == OPINET_SOURCE))
+            due = self._effective_fuel_due_at(state)
+            return float(interval) if due is None else max(1.0, (due - now_utc()).total_seconds())
+        sources = (TRAFFIC_SOURCE, INCIDENT_SOURCE)
         due_dates = (await session.scalars(
             select(TransportCollectionState.next_due_at).where(
                 TransportCollectionState.source.in_(sources)
             )
         )).all()
-        interval = self.settings.transport_collect_interval_seconds
         if not due_dates or any(value is None for value in due_dates):
             return float(interval)
         remaining = min((serialize_utc(value) - now_utc()).total_seconds() for value in due_dates)
-        if scope == "fuel":
-            # 성공 예정은 tick 지연 흡수를 위해 당겨져 있다. tick 없이 예정까지 자는 scheduler는 그 폭을 되돌려
-            # 시작 간격 8시간 이상을 지킨다.
-            remaining += FUEL_NEXT_DUE_START_SLACK.total_seconds()
         return max(1.0, remaining)
 
     async def status(self, session: AsyncSession) -> dict[str, Any]:

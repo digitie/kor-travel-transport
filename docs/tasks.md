@@ -10,6 +10,9 @@
 
 ## 진행 중인 작업 인덱스
 
+- [ ] 유가 in-process 진입·대기 예정 정합: 성공 tick 여유만 복원, 재기동·실패/claim 경계,
+  통합 CI·독립 2리뷰 뒤 #103/#104/#105와 함께 Odroid 배포.
+
 - [ ] 유가 통계 세대별 준비·짧은 공개 잠금: PostgreSQL 동시성/마이그레이션 검증, 전체 회귀,
   두 적대적 리뷰, live UI, Odroid API/code-server 배포와 CPU/RAM/잠금 실측.
 

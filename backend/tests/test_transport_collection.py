@@ -1537,6 +1537,7 @@ def test_eight_hourly_ticks_keep_one_failure_inside_the_export_grace(tmp_path: P
     clock = {"now": day}
     monkeypatch.setattr(transport_collection, "now_utc", lambda: clock["now"])
     settings = build_settings(tmp_path)
+    settings.scheduler_mode = "dagster"
     provider = FakeTransportProvider()
     provider.next_fuel_interval = lambda: timedelta(hours=8)  # 운영 provider 기본값
 
