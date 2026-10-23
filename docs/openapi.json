@@ -865,6 +865,119 @@
         "title": "DashboardBootstrapResponse",
         "type": "object"
       },
+      "ExportAdminAddress": {
+        "description": "현재 좌표와 일치하는 마지막 reverse 주소. resolved_at은 실제 확인 시각이다.",
+        "properties": {
+          "admin_dong_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admin Dong Code"
+          },
+          "legal_dong_code": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9]{10}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legal Dong Code"
+          },
+          "legal_dong_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legal Dong Name"
+          },
+          "parcel_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parcel Address"
+          },
+          "postal_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postal Code"
+          },
+          "provider": {
+            "enum": [
+              "vworld",
+              "kakao"
+            ],
+            "title": "Provider",
+            "type": "string"
+          },
+          "resolved_at": {
+            "format": "date-time",
+            "title": "Resolved At",
+            "type": "string"
+          },
+          "road_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Road Address"
+          },
+          "sido_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sido Name"
+          },
+          "sigungu_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sigungu Name"
+          }
+        },
+        "required": [
+          "provider",
+          "resolved_at"
+        ],
+        "title": "ExportAdminAddress",
+        "type": "object"
+      },
       "ExportAirport": {
         "properties": {
           "airport_type": {
@@ -1069,6 +1182,16 @@
               }
             ],
             "title": "Address"
+          },
+          "admin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExportAdminAddress"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "brand_code": {
             "anyOf": [
@@ -1445,6 +1568,16 @@
       },
       "ExportRestArea": {
         "properties": {
+          "admin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExportAdminAddress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "data_reference_date": {
             "anyOf": [
               {
