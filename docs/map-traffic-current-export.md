@@ -36,7 +36,9 @@ JSON/gzip(level1)은 DB commit/pool 반환 뒤에 생성한다. gzip 협상은 �
 DB UNIQUE(kind,scope,cache generation)가 항목 저장 전 admission을 보장한다. RR에서
 보이지 않는 경쟁 freeze가 먼저 확정됐으면 rollback 후 새 RR로 최대1회 재시도하여 같은
 snapshot을 읽는다. 추가 물질화는 하지 않는다. 연속 충돌/락대기2초 초과는503이다.
-전역/원천 writer 잠금은 추가하지 않으며 statement_timeout10초·freeze wall15초다.
+전역/원천 writer 잠금은 추가하지 않으며 statement_timeout10초다.
+GC/admission 이후 항목 partition 경계에서15초 경과를 검사한다. 마지막 INSERT/commit을
+포함한 요청 전체15초 hard deadline은 아니며 개별 DB 문장 제한과 구분한다.
 만료 snapshot GC는 새 freeze 때 최대1개(한 snapshot 최대20,000항목)만 삭제한다.
 페이지 reader는 동일 RR transaction에서 snapshot와 항목을 읽으므로 PostgreSQL MVCC가
 동시 GC로부터 해당 읽기를 보호한다. 미만료 snapshot은 지우지 않는다.
