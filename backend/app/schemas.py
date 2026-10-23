@@ -1139,3 +1139,33 @@ class FerryPortExportPage(BaseModel):
     items: list[ExportFerryPortReference]
     next_cursor: str | None
     has_more: bool
+
+
+class ExportRailStationReference(BaseModel):
+    natural_key: str
+    source: str
+    name: str
+    operator_name: str | None
+    line_name: str | None
+    station_number: str | None
+    latitude: float | None
+    longitude: float | None
+    operator_code: str | None
+    line_code: str | None
+    station_code: str | None
+    code_station_name: str | None
+    code_collected_at: datetime | None
+    code_active: bool
+    mapping_method: str | None
+    mapping_revision: str
+    admin: ExportAdminAddress | None
+
+
+class RailStationExportPage(BaseModel):
+    meta: ServiceExportMeta
+    snapshot_id: str
+    snapshot_expires_at: datetime
+    total_count: int
+    items: list[ExportRailStationReference]
+    next_cursor: str | None
+    has_more: bool

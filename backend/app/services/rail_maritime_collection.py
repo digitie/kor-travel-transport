@@ -113,19 +113,48 @@ class RailMaritimeCollectionService:
                 latest_success = latest_success.replace(tzinfo=UTC)
             if now_utc() - latest_success < timedelta(days=2):
                 return {"status": "skipped", "reason": "KRIC rail reference is not due for 48 hours"}
+        previous = await session.get(ReferenceExportState, ("rail-station", "nationwide"))
+        previous_count = len(previous.member_ids) if previous else await session.scalar(
+            select(func.count()).select_from(RailStationReference).where(RailStationReference.source == KRIC_FILE_SOURCE),
+        )
         run = await self._start_run(session, trigger)
+        run_id = run.id
         try:
-            stations, archive = await self._fetch_rail_stations()
+            stations, archive = await self._confirmed_rail_stations()
+            if previous_count and len(stations) < previous_count * 0.25:
+                stations, archive = await self._confirmed_rail_stations()
+                if len(stations) < previous_count * 0.25:
+                    raise ValueError("철도 위치파일 급감 목록은 이전 성공집합을 보존합니다")
             # 파일 다운로드는 잠금 밖에서 끝내고, 기준 역 DB 반영 동안만 매핑 저장과 직렬화한다.
             await lock_rail_station_reference_catalog(session)
+            current_head = await session.scalar(select(ReferenceExportState).where(
+                ReferenceExportState.kind == "rail-station", ReferenceExportState.scope_key == "nationwide",
+            ).with_for_update())
+            if current_head and len(stations) < len(current_head.member_ids) * 0.25:
+                raise ValueError("최근 성공집합보다 급감한 철도 위치파일은 승인하지 않습니다")
             collected_at = now_utc()
             stored = 0
             for station in stations:
                 await self._upsert_rail_station(session, station, collected_at)
                 stored += 1
+            if self.settings.transport_map_current_enabled:
+                await session.flush()
+                keys = self._rail_keys(stations)
+                ids = list((await session.scalars(select(RailStationReference.id).where(
+                    RailStationReference.source == KRIC_FILE_SOURCE, RailStationReference.identity_key.in_(keys),
+                ))).all())
+                if len(ids) != len(keys):
+                    raise ValueError("저장된 역사 source membership이 일치하지 않습니다")
+                await promote_reference(session, kind="rail-station", scope="nationwide", run_id=run_id,
+                                        confirmed_at=collected_at, member_ids=ids,
+                                        proof={"complete": True, "item_count": len(ids),
+                                               "contract": "python-kric-api:dataset1294:validated-xlsx-v1",
+                                               "artifact_sha256": archive.checksum_sha256 if archive else None,
+                                               "artifact_bytes": archive.byte_size if archive else None,
+                                               "injected_fixture": self._rail_fetcher is not None})
             await self._store_summary_response(
                 session,
-                run.id,
+                run_id,
                 KRIC_FILE_SOURCE,
                 "data.kric.go.kr:dataset-1294",
                 {
@@ -135,14 +164,14 @@ class RailMaritimeCollectionService:
                     "rustfs_checksum_sha256": archive.checksum_sha256 if archive else None,
                 },
             )
-            await self._finish_run(session, run.id, "success")
-            logger.info("rail reference collection finished run_id=%s station_count=%s", run.id, stored)
-            return {"status": "success", "run_id": run.id, "station_count": stored}
+            await self._finish_run(session, run_id, "success")
+            logger.info("rail reference collection finished run_id=%s station_count=%s", run_id, stored)
+            return {"status": "success", "run_id": run_id, "station_count": stored}
         except asyncio.CancelledError as exc:
-            await self._fail_run(session, run.id, exc)
+            await self._fail_run(session, run_id, exc, reference_kind="rail-station")
             raise
         except Exception as exc:
-            await self._fail_run(session, run.id, exc)
+            await self._fail_run(session, run_id, exc, reference_kind="rail-station")
             raise
 
     async def collect_maritime_reference(
@@ -315,6 +344,30 @@ class RailMaritimeCollectionService:
             "operation_count": operation_count,
             "deferred_snapshot_count": deferred_snapshot_count,
         }
+
+    @staticmethod
+    def _rail_keys(stations):
+        keys = [_identity(s.rail_operator_name, s.operating_line_name, s.station_number, s.station_name) for s in stations]
+        if (not stations or len(stations) > 10000 or any(not s.station_name for s in stations)
+                or len(set(keys)) != len(keys)):
+            raise ValueError("철도 위치파일의 빈 목록·누락 역명·중복 identity는 승인하지 않습니다")
+        return keys
+
+    async def _confirmed_rail_stations(self):
+        for attempt in range(2):
+            stations, archive = await self._fetch_rail_stations()
+            try:
+                self._rail_keys(stations)
+                if archive is None and self._rail_fetcher is None:
+                    raise ValueError("검증된 XLSX 보관 receipt가 없습니다")
+                if archive is not None and (archive.byte_size <= 0 or len(archive.checksum_sha256) != 64
+                        or any(c not in "0123456789abcdef" for c in archive.checksum_sha256.lower())):
+                    raise ValueError("XLSX 보관 receipt가 유효하지 않습니다")
+                return stations, archive
+            except ValueError:
+                if attempt:
+                    raise
+        raise AssertionError("unreachable")
 
     async def _fetch_rail_stations(self) -> tuple[tuple[FileStationInfo, ...], StoredObject | None]:
         if self._rail_fetcher is not None:

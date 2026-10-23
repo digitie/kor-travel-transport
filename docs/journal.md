@@ -1,3 +1,13 @@
+## 2026-10-23 — 역 매핑 정적 타입 검증 보강
+
+- 적대 리뷰에서 지적한 AsyncSession 타입 import 누락을 수정했다. 공개 helper의 타입 힌트 해석과 F821 정적 검사를 함께 확인한다.
+
+## 2026-10-23 — Map T3 철도 위치파일 source guard·고정 참조 구현 중
+
+`codex/map-rail-reference-export`는 PR116 후속이다. 검증XLSX/성공membership와
+active persisted FK/registry를 같은RR로내보낸다. admin순수reader추출·원천/매핑역할을구분한다.
+[계약·미완gate](map-rail-reference-export.md).
+
 ## 2026-10-23 — 항구 SDK 완결성 문서 정정
 
 - 적대 리뷰에 따라 항구 iter_ports의 필수 total 계약을 고정 SDK와 일치시켰다. terminal/ship-type의 total 없는 단일응답 모드와 구분한다. 제품 코드 변경은 없다.
