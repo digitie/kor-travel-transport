@@ -80,3 +80,12 @@
   이 결정이 [ADR-003](../adr/003-unauthenticated-backup-network-restriction.md)에
   근거한 의도된 설계임을 먼저 확인한다. "인증이 없으니 위험하다"고 판단해 임의로 인증을
   추가하기 전에 ADR을 먼저 갱신한다.
+
+
+## 임시 Docker 검증망과 LAN 겹침 (2026-10-23 실제 사례)
+
+별도 project/name만 설정하고 IPAM을 생략한 Compose test망이192.168.0.0/20을 배정받아
+WSL에서 Odroid192.168.1.13으로 가는 경로를 가로챘다. 실제 호스트 장애가 아니었다.
+실행 중 검증은 유지하고 해당 IP의 임시 /32 route로 복구했다. 이후 새 test망은 기존
+Docker/호스트 route와 겹치지 않는 명시IPAM을 검증해 사용하고, 종료 후 owned Compose
+project만 down해 정리한다. 이번 임시 route는 해당 test망 종료 후 원 작업자가 제거한다.
