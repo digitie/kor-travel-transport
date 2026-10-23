@@ -774,7 +774,8 @@ class CollectionService:
         failed_responses = []
         for source in sources:
             if source == "kac_parking" and rate_limit_state.is_blocked:
-                failures.append((source, "upstream rate limit active"))
+                failures.append((source, normalize_upstream_rate_limit_error(rate_limit_state.error_message)
+                                 or f"kac_parking API error 99: {UPSTREAM_RATE_LIMIT_MARKER}"))
                 continue
             fetch = self.client.fetch_kac_parking if source == "kac_parking" else self.client.fetch_incheon_parking
             last_error = None

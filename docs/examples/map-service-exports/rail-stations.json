@@ -1,0 +1,34 @@
+{
+  "meta": {
+    "generated_at": "2026-10-23T09:53:44.768433Z",
+    "source_collected_at": "2026-10-23T09:53:44.140837Z",
+    "source_status": "ok",
+    "item_count": 1
+  },
+  "snapshot_id": "db96b6f3-a4e8-40dc-87b9-d5a01bfd8bca",
+  "snapshot_expires_at": "2026-10-23T10:08:44.761051Z",
+  "total_count": 2,
+  "items": [
+    {
+      "natural_key": "rail-0",
+      "source": "kric_public_file",
+      "name": "중앙",
+      "operator_name": "운영사-0",
+      "line_name": "노선-0",
+      "station_number": "000",
+      "latitude": 37.5,
+      "longitude": 127.1,
+      "operator_code": "00",
+      "line_code": "01",
+      "station_code": "001",
+      "code_station_name": "중앙역",
+      "code_collected_at": "2026-10-23T09:53:44.140837Z",
+      "code_active": true,
+      "mapping_method": "manual",
+      "mapping_revision": "a7b0f5aa3ad7e0d5b8b7c9fbcbe67f7aa91b6ba2f8b36d6a81c4dbecbfec59d4",
+      "admin": null
+    }
+  ],
+  "next_cursor": "ZDY2YTQ1MmRkM2Q2NGIxNjYzOGYxNjczZTEzYzRiN2FkNDNlOTRiMWQzNzY0ZWE3YjkwYTg0YjhhMzgxNjdiZC57ImFmdGVyIjoxLCJraW5kIjoicmFpbC1zdGF0aW9ucy12MSIsImxpbWl0IjoxLCJzY29wZSI6IjA2ODhlZjIwNWZhYTM0MzViOTE4ZDNkNmFmMTkzN2NlOWNhOTYwZjFjMjE3YjExMWY3MjQzZDU3OGMwODI3YTciLCJzbmFwc2hvdCI6ImRiOTZiNmYzLWE0ZTgtNDBkYy04N2I5LWQ1YTAxYmZkOGJjYSIsInYiOjF9",
+  "has_more": true
+}

@@ -1,0 +1,28 @@
+{
+  "meta": {
+    "generated_at": "2026-10-23T09:53:44.595030Z",
+    "source_collected_at": "2026-10-23T09:53:44.131979Z",
+    "source_status": "ok",
+    "item_count": 1
+  },
+  "snapshot_id": "f21f6d55-90f8-4ece-b278-6863a06e76d8",
+  "snapshot_expires_at": "2026-10-23T10:08:44.587490Z",
+  "total_count": 2,
+  "items": [
+    {
+      "natural_key": "data_go_kr_tago:express:001",
+      "source": "data_go_kr_tago",
+      "service_type": "express",
+      "terminal_id": "001",
+      "name": "express",
+      "city_name": "서울",
+      "latitude": null,
+      "longitude": null,
+      "location_source": null,
+      "manual_location_revision": null,
+      "admin": null
+    }
+  ],
+  "next_cursor": "OTA3N2I3NjVjMGI0ZjAwYWZkODMxY2EwYjc0Zjg0ZjdjODQyMWQ5NjFmMmE0ZWVkYjA5NWJhNzI5NGVhMjhkNS57ImFmdGVyIjoxLCJraW5kIjoiYnVzLXRlcm1pbmFscy12MSIsImxpbWl0IjoxLCJzY29wZSI6IjhhN2ViZDdmMDFhMWQ3MjU4MDc3MTYwMDgxNmVhNWE5N2ExNzVhNTM1MTUxOWQ3ZTczZTY0MTJhMjMzNGFjNGQiLCJzbmFwc2hvdCI6ImYyMWY2ZDU1LTkwZjgtNGVjZS1iMjc4LTY4NjNhMDZlNzZkOCIsInYiOjF9",
+  "has_more": true
+}

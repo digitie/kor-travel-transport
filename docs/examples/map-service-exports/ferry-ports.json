@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "generated_at": "2026-10-23T09:53:44.679242Z",
+    "source_collected_at": "2026-10-23T09:53:44.137409Z",
+    "source_status": "ok",
+    "item_count": 1
+  },
+  "snapshot_id": "33a280fe-eafb-4851-8d42-fb38365427c1",
+  "snapshot_expires_at": "2026-10-23T10:08:44.673151Z",
+  "total_count": 2,
+  "items": [
+    {
+      "natural_key": "data_go_kr_maritime:P000",
+      "source": "data_go_kr_maritime",
+      "port_id": "P000",
+      "name": "시험항-0",
+      "latitude": 37.0,
+      "longitude": 127.0,
+      "location_source": "admin_manual",
+      "location_point_count": 1,
+      "manual_location_revision": null,
+      "admin": null
+    }
+  ],
+  "next_cursor": "M2JiMmZjNzZlZjJmYjgzMDA4ZGUzYTk0NTIwNWM3MmQzYTBlODhkZWE1Mzc1ZmVhNWY1NDI5NTAyM2JmNGIzNi57ImFmdGVyIjoxLCJraW5kIjoiZmVycnktcG9ydHMtdjEiLCJsaW1pdCI6MSwic2NvcGUiOiJiMjZkNTFmOTllZmIyOTQyMzllNjNjZTU3NDIyNDE1Y2FhZDBkNDEzZjBlZjg1YTJmNjM0YmIwYzNiYWYwODY5Iiwic25hcHNob3QiOiIzM2EyODBmZS1lYWZiLTQ4NTEtOGQ0Mi1mYjM4MzY1NDI3YzEiLCJ2IjoxfQ",
+  "has_more": true
+}

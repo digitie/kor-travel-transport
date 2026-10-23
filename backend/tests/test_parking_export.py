@@ -24,6 +24,8 @@ class Fixture(FixturePublicDataClient):
     calls = 0
     pool = None
     subset = None
+    bad_source = None
+    bad_kind = None
 
     def __init__(self):
         self.moment = now_utc() + timedelta(hours=9)
@@ -39,6 +41,8 @@ class Fixture(FixturePublicDataClient):
         for row in rows:
             row["parkingGetdate"] = now.strftime("%Y-%m-%d")
             row["parkingGettime"] = now.strftime("%H:%M:%S")
+        if self.bad_source == "kac_parking":
+            rows[0]["parkingIstay" if self.bad_kind == "count" else "parkingGetdate"] = "upstream error"
         if self.subset is not None:
             rows = rows[:self.subset]
         if self.empty_kac:
@@ -52,6 +56,8 @@ class Fixture(FixturePublicDataClient):
         now = self.moment
         for row in rows:
             row["datetm"] = now.strftime("%Y-%m-%d %H:%M")
+        if self.bad_source == "incheon_parking":
+            rows[0]["parking" if self.bad_kind == "count" else "datetm"] = "upstream error"
         return replace(response, body_text=json.dumps(rows))
 
 
@@ -190,3 +196,54 @@ def test_map_collector_consumes_public_sdk_complete_receipt(test_settings):
     mock.__aenter__.return_value.parking_raw_set.assert_awaited_once_with(
         provider="iiac", page_size=100, max_pages=20,
     )
+
+
+import pytest
+
+
+@pytest.mark.parametrize("source", ["kac_parking", "incheon_parking"])
+@pytest.mark.parametrize("kind", ["count", "timestamp"])
+def test_bad_source_values_retry_then_preserve_head_and_failed_raw(export_client, source, kind):
+    from app.models import RawApiResponse
+    c = export_client
+    client = Fixture()
+    collector = service(c, client)
+    _run(c, lambda s: collector.collect(s))
+    async def head_generation(s):
+        head = await s.get(ReferenceExportState, (KIND, parking_scope(c.app.state.settings, source)))
+        return head.generation
+    before = _run(c, head_generation)
+    client.bad_source, client.bad_kind = source, kind
+    result = _run(c, lambda s: collector.collect(s))
+    assert result["status"] == "partial_success"
+    assert _run(c, head_generation) == before
+    page = c.get(PATH, headers=HEADERS)
+    assert page.status_code == 200 and page.json()["total_count"] == 12
+    assert page.json()["meta"]["source_status"] == "stale"
+    async def raw_count(s):
+        return await s.scalar(select(func.count()).select_from(RawApiResponse).where(
+            RawApiResponse.source == source, RawApiResponse.parse_status == "failed"))
+    assert _run(c, raw_count) == 2
+
+
+def test_live_blocked_runs_keep_marker_and_never_call_kac_twice(export_client):
+    from app.services.collection import KrairportPublicDataClient, UPSTREAM_RATE_LIMIT_MARKER
+    class LiveFixture(Fixture, KrairportPublicDataClient):
+        pass
+    c = export_client
+    client = LiveFixture()
+    collector = service(c, client)
+    assert collector.client_mode == "live"
+    async def previous_failure(s):
+        now = now_utc()
+        s.add(CollectionRun(started_at=now, finished_at=now, status="partial_success", trigger="fixture",
+                            error_message=f"kac_parking API error 99: {UPSTREAM_RATE_LIMIT_MARKER}"))
+    _run(c, previous_failure)
+    for _ in range(2):
+        result = _run(c, lambda s: collector.collect(s))
+        assert result["status"] == "partial_success"
+        assert UPSTREAM_RATE_LIMIT_MARKER in " ".join(result["errors"])
+        async def blocked(s):
+            return (await collector.get_upstream_rate_limit_state(s)).is_blocked
+        assert _run(c, blocked)
+    assert client.calls == 0

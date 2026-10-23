@@ -1,0 +1,29 @@
+{
+  "meta": {
+    "generated_at": "2026-10-23T09:53:44.460010Z",
+    "source_collected_at": "2026-10-23T09:53:44.144193Z",
+    "source_status": "ok",
+    "item_count": 1
+  },
+  "snapshot_id": "3e639189-7f75-40f6-ae47-de2c29eaa5be",
+  "snapshot_expires_at": "2026-10-23T10:08:44.442889Z",
+  "total_count": 3,
+  "items": [
+    {
+      "identity_key": "road-0",
+      "source": "krex_traffic_flow",
+      "route_no": "001",
+      "route_name": "경부",
+      "conzone_id": "0",
+      "conzone_name": "서울",
+      "direction": "up",
+      "speed": 80.0,
+      "free_flow_speed": 100.0,
+      "congestion_level": "smooth",
+      "observed_at": "2026-10-23T09:53:44.144193Z",
+      "collected_at": "2026-10-23T09:53:44.144193Z"
+    }
+  ],
+  "next_cursor": "ZDQxNGQxYTRkN2Y0Yjk3NTdmZmRlMTZhZmUxNzY0NjE4ZDQxNjY3YTkzOTI1MWNmYTIxNjVhY2E5MGFlZTFiMi57ImFmdGVyIjoxLCJraW5kIjoiaGlnaHdheS10cmFmZmljLWN1cnJlbnQtdjEiLCJsaW1pdCI6MSwic2NvcGUiOiI2NDNkNTQzNzEwNDI5NmUyMWQ5MDZlY2IxNWIyYzk2YWQyNzhmMjBjZmM0YWY1M2IxMmJiNjA2OWJkODUzNzI2Iiwic25hcHNob3QiOiIzZTYzOTE4OS03Zjc1LTQwZjYtYWU0Ny1kZTJjMjllYWE1YmUiLCJ2IjoxfQ",
+  "has_more": true
+}

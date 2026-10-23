@@ -11,9 +11,12 @@ python-krairport-api PR10의 public `parking_raw_set(provider=...,page_size=100,
 직접 호출한다. Transport에서 HTTP·원천 total/page 파싱/페이지 순회를 다시 만들지 않는다.
 기존 raw/status/fee API와 기본 flagOFF collector는 유지한다. SDK total 필수/고정total,
 페이지수신량/반복페이지/byte상한과 Transport의 업무 identity·필수값·중복·미래시각을 검증한다.
+SDK PR11의 `parse_parking_snapshot_values`로 원문 숫자·실제 KST 시각을 엄격히 검증하고
+legacy 업무 변환과 canonical 값이 대응하는지 확인한다. 오류문자열을 0/현재시각으로 승인하지 않는다.
 전체raw에서 해석되지 않은 행이 있으면 보류한다. KAC는 설정 공항으로 필터한 source scope를
 hash하고 ICN scope와 분리한다. 빈/오류/이전성공25%미만은1회 다시받고 미확인 시 이전집합을
-보존한다. 서로 다른 source의 성공과 요금수집 성공은 분리한다.
+보존한다. 서로 다른 source의 성공과 요금수집 성공은 분리한다. blocked KAC도 기존 quota marker를
+정규화해 보존하므로 다음 native run의 cooldown 판정이 원천 재호출로 우회되지 않는다.
 
 native run을 먼저 commit하고 이전head scalar를 읽은 다음 session.rollback하여 모든 원천
 network 대기 전에 업무 DB pool을 반환한다. PG advisory owner lease 한 연결은 정상 수집

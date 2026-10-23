@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Sequence
 
+from krairport import parse_parking_snapshot_values
 from sqlalchemy import delete, select
 
 from app.core.time_utils import now_utc, serialize_utc
@@ -41,13 +42,18 @@ def validate_parking_payload(settings, source, response):
     required = ("aprKor", "parkingAirportCodeName", "parkingGetdate", "parkingGettime", "parkingFullSpace", "parkingIstay") if source == "kac_parking" else ("floor", "datetm", "parkingarea", "parking")
     if any(not isinstance(item, dict) or any(item.get(key) in (None, "") for key in required) for item in raw_items):
         raise ValueError("주차장 원천 필수 필드가 누락되었습니다")
+    canonical = [parse_parking_snapshot_values(item, provider="kac" if source == "kac_parking" else "iiac")
+                 for item in raw_items]
     rows = parse_kac_parking(response.body_text) if source == "kac_parking" else parse_incheon_parking(response.body_text)
     if len(rows) != len(raw_items):
         raise ValueError("해석되지 않은 주차장 원천 행이 있습니다")
     identities = [(row.airport_code, row.lot_id) for row in rows]
     if len(set(identities)) != len(rows):
         raise ValueError("주차장 원천 identity가 중복됩니다")
-    for row in rows:
+    for row, value in zip(rows, canonical, strict=True):
+        if (row.total_spaces != value.total_spaces or row.occupied_spaces != value.occupied_spaces
+                or serialize_utc(row.observed_at) != serialize_utc(value.observed_at)):
+            raise ValueError("주차장 원천 canonical 값과 업무 변환이 일치하지 않습니다")
         if (row.source != source or not row.lot_name or not row.lot_id
                 or row.total_spaces <= 0 or row.occupied_spaces < 0
                 or row.observed_at.tzinfo is None):
