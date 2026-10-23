@@ -1,3 +1,8 @@
+## 2026-10-24 — Map service API 문서 독립 정합성 감사
+
+- T2/T3 인계에 기존 service 인증 헤더명과 schema0030~0033 전체 순서를 명시했다. 기존 T1의 coordinate/admin null과 새 고정 snapshot, T4 product/from/to·전체 페이지 limit·409/501 및 제품 완료/Map 소비 후속을 구분한다.
+- 문서만 수정하며 API·OpenAPI 생성물·수집·DB·운영을 변경하지 않는다. producer 구현 완료와 실제 source bootstrap·Map 소비/ARM 비용 수용은 별도다. 고정 DTO/예시8개와 OpenAPI query/status 및 문서 전용 경계를 오프라인13개 확인했다(Weather·Transport 합계, HTTP/DB0).
+
 ## 2026-10-23 — KAC quota deadline 영구 연장 후속 수정
 
 운영 rollout 전 필수 후속으로 기존 source state에 실제 quota origin/until을 보존한다.

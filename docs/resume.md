@@ -1,6 +1,6 @@
 # 현재 상태 — 2026-10-23 Map T2/T3 제품 수용 정산
 
-PR114~119는 고정 snapshot·traffic/parking 현재 상태·bus/ferry/rail 참조와 KAC quota 복구를 구현·머지했다. 최종 main은 `a0f9b72325281fdba3c0644b0592426e70afce86`이다.
+PR114~119는 고정 snapshot·traffic/parking 현재 상태·bus/ferry/rail 참조와 KAC quota 복구를 구현·머지했다. 제품 머지 기준은 `a0f9b72325281fdba3c0644b0592426e70afce86`, 이 감사의 main 기준은 문서 PR120의 `9974d2592a49cf8f9b5e59dffc0e3816df09d226`이다.
 정확 최종 SHA의 두 적대 리뷰·CI·격리 PG/Compose·실제 TCP 근거와 머지 상태는
 [수용 정산](reports/2026-10-23-map-t2-t3-acceptance.md)에 모은다.
 
@@ -10,11 +10,11 @@ CPU/RAM 저감도 미입증이다. 아래 구현 중·대기·과거 운영 rele
 
 ---
 
-## 운영 rollout 전 필수 — KAC quota 원래 deadline 보존
+## 당시 구현 기록 — KAC quota 원래 deadline 보존(PR119 제품 완료)
 
-`codex/parking-quota-deadline`는 PR118 고정 리뷰와 별도 후속이다. 기존 source next_due_at을
-활용하여 blocked run의 대기기간 연장을 막고 원래 만료 뒤 재시도한다. 회귀/PG/CI/두 리뷰
-마감 전 완료 처리하지 않는다. [설계·수용](airport-quota-deadline.md).
+PR119는 기존 source next_due_at으로 blocked 관찰이 대기를 영구 연장하지 않게 하고
+원래 만료 뒤 재시도하도록 구현·머지됐다. [설계·수용](airport-quota-deadline.md).
+실제 KAC quota 만료 뒤 운영 재시도는 아직 별도 rollout gate다. 아래 구현 중 절은 당시 이력이다.
 
 ## 현재 작업 — Map T2 parking/current
 
