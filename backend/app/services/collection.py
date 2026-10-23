@@ -433,10 +433,14 @@ class CollectionService:
             if row.next_due_at is not None and serialize_utc(row.next_due_at) > started_at:
                 return  # 이미 유효한 원래 quota deadline을 실제 중복 실패도 연장하지 않는다.
         if error is None:
-            if row is not None:
-                row.next_due_at = None
-                row.last_error = None
-                row.updated_at = now_utc()
+            if row is None:
+                row = TransportCollectionState(source=KAC_QUOTA_SOURCE)
+                session.add(row)
+            # 초기 성공도 원장/fence를 남겨 늦은 옛 quota 실패가 새 대기를 만들지 못하게 한다.
+            row.last_started_at = started_at
+            row.next_due_at = None
+            row.last_error = None
+            row.updated_at = now_utc()
             return
         if row is None:
             row = TransportCollectionState(source=KAC_QUOTA_SOURCE)

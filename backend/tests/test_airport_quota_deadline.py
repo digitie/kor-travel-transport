@@ -101,3 +101,27 @@ def test_old_outcome_cannot_clear_newer_quota_deadline(export_client):
         from app.core.time_utils import serialize_utc
         return serialize_utc(row.next_due_at)
     assert _run(c, check) == origin + timedelta(seconds=collector.settings.upstream_rate_limit_backoff_seconds)
+
+
+@pytest.mark.parametrize("prior_failure", [False, True])
+def test_new_success_fence_rejects_old_quota_failure(export_client, prior_failure):
+    c = export_client
+    collector = service(c, LiveQuotaFixture())
+    collector.settings.upstream_rate_limit_backoff_seconds = 60
+    origin = now_utc()
+    async def check(s):
+        if prior_failure:
+            await collector._record_quota_outcome(s, started_at=origin, was_blocked=False,
+                                                  messages=[UPSTREAM_RATE_LIMIT_MARKER])
+            await s.flush()
+        await collector._record_quota_outcome(s, started_at=origin + timedelta(seconds=80),
+                                              was_blocked=False, messages=[])
+        await s.flush()
+        await collector._record_quota_outcome(s, started_at=origin + timedelta(seconds=70),
+                                              was_blocked=False, messages=[UPSTREAM_RATE_LIMIT_MARKER])
+        await s.flush()
+        row = await s.scalar(select(TransportCollectionState).where(TransportCollectionState.source == KAC_QUOTA_SOURCE))
+        from app.core.time_utils import serialize_utc
+        assert row.next_due_at is None and row.last_error is None
+        assert serialize_utc(row.last_started_at) == origin + timedelta(seconds=80)
+    _run(c, check)

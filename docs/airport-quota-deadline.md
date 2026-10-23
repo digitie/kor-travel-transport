@@ -12,7 +12,8 @@ ICN 수집이 정상이어도 KAC가 quota 대기 중이면 native partial_succe
 
 원래 until이 지나면 provider를 정상 재시도하며 실제 새 quota 실패만 새 deadline을 만든다.
 실제 nonquota 결과는 만료된 deadline을 해제한다. 오래된 worker의 정리/실패는 source행 잠금과
-origin 비교로 새 deadline을 지울 수 없다. 표의 last_success_at은 임의로 KAC 성공을 주장하지 않는다.
+origin 비교로 새 deadline을 지울 수 없다. 초기 비quota 성공도 원장행과 origin fence를
+전진시켜 새성공 뒤에 도착한 옛 quota 실패가 대기를 다시 만들지 못하게 한다. 표의 last_success_at은 임의로 KAC 성공을 주장하지 않는다.
 Map flagON/OFF 모두 공항 collector의 기존 live quota 판정을 사용한다. source raw/provider 파싱과
 기존 이력·API계약은 그대로다. 즉시 quota를 반복 호출하거나 남은 KAC fee 순회를 계속하지 않는다.
 ICN 수집은 계속된다.
