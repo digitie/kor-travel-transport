@@ -22,6 +22,8 @@ item은 identity/source/route/conzone/direction/speed/free_flow_speed/congestion
 observed_at/collected_at이다. 시간은 UTC aware이고 코드는 문자열로 유지한다.
 마지막 실패 또는30분 초과 원천은 이전 성공 집합과 `source_status=stale`을 반환한다.
 초도 미확정·membership 불일치는503이며 미확정 빈 집합을 성공 처리하지 않는다.
+기존 T5가 같은scope에서 두 번의 명시total0·완결 증거로 승인한 head가0건이면,
+확인된 정상0건 snapshot(total0/items[]/has_more=false)을 제공하여 기존 장소 퇴역을 전달한다.
 
 `limit`은1~5,000이고 cursor는 경로·scope·limit·snapshot·ordinal을 HMAC으로 묶는다.
 위조/범위 변경은422, 만료/GC된 정상 handle은410이다. 첫 페이지부터 재시작한다.
@@ -30,9 +32,11 @@ JSON/gzip(level1)은 DB commit/pool 반환 뒤에 생성한다. gzip 협상은 �
 
 ## 보존·동시성
 
-같은 성공 generation의 미만료 snapshot은 재사용한다. freeze advisory lock은 해당
-export/scope만 짧게 잠그고 수집 writer나 전체 서비스 lock을 잡지 않는다. 경쟁 요청은
-즉시503으로 재시도하며 대기하지 않는다. DB lock_timeout2초/statement_timeout10초다.
+같은 source 성공 generation과15분TTL epoch의 미만료 snapshot을 재사용한다.
+DB UNIQUE(kind,scope,cache generation)가 항목 저장 전 admission을 보장한다. RR에서
+보이지 않는 경쟁 freeze가 먼저 확정됐으면 rollback 후 새 RR로 최대1회 재시도하여 같은
+snapshot을 읽는다. 추가 물질화는 하지 않는다. 연속 충돌/락대기2초 초과는503이다.
+전역/원천 writer 잠금은 추가하지 않으며 statement_timeout10초·freeze wall15초다.
 만료 snapshot GC는 새 freeze 때 최대1개(한 snapshot 최대20,000항목)만 삭제한다.
 페이지 reader는 동일 RR transaction에서 snapshot와 항목을 읽으므로 PostgreSQL MVCC가
 동시 GC로부터 해당 읽기를 보호한다. 미만료 snapshot은 지우지 않는다.

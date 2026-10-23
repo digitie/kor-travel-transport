@@ -23,6 +23,7 @@ def upgrade() -> None:
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("item_count", sa.Integer(), nullable=False),
         sa.Column("content_digest", sa.String(64), nullable=False),
+        sa.UniqueConstraint("kind", "scope_key", "generation", name="uq_service_export_snapshot_generation"),
     )
     op.create_index("ix_service_export_snapshot_expires", "service_export_snapshots", ["expires_at"])
     op.create_index("ix_service_export_snapshot_generation", "service_export_snapshots",

@@ -1,3 +1,10 @@
+## 2026-10-23 — T2 traffic freeze 경쟁 admission 보강 중
+
+선행 적대리뷰의 RR cache miss 경합을 반영해 source generation/TTL epoch의 DB unique
+admission을 항목 materialize 전에 둔다. invisible conflict는 새RR로 최대1회 재시도한다.
+기존 c74ac14의 실제TCP8300행×3쌍은 freeze450~539ms/30458~59ms였다. WSL fixture이며
+Odroid 비용/CPU 저감 증거가 아니다. 수정 후보의 재측정·최종 리뷰/전체 gate는 진행 중이다.
+
 ## 2026-10-23 — Map T2 traffic 고정 HTTP snapshot 구현 중
 
 PR112 typed current 위에 immutable DTO snapshot·15분TTL·signed cursor·ETag/gzip·
