@@ -500,8 +500,9 @@ class TransportCollectionService:
             ).where(TransportCollectionState.source == OPINET_SOURCE))).one_or_none()
             if row is None or row.last_success_at is None:
                 return False
-            if isinstance(fuel_result, OpinetBrowserSnapshot):
-                return serialize_utc(row.last_success_at) >= serialize_utc(fuel_result.collected_at)
+            candidate = fuel_result if isinstance(fuel_result, OpinetBrowserSnapshot) else pending_fuel
+            if candidate is not None:
+                return serialize_utc(row.last_success_at) >= serialize_utc(candidate.collected_at)
             return (fuel_storage_only and row.last_error is None
                     and serialize_utc(row.updated_at) > started_at)
 

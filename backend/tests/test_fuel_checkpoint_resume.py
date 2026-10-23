@@ -175,3 +175,39 @@ def test_pending_file_error_is_durable_and_keeps_existing_request_reservation(tm
         finally:
             await engine.dispose()
     asyncio.run(exercise())
+
+
+def test_all_scope_cancel_before_fuel_step_preserves_newer_fuel_success(tmp_path):
+    async def exercise():
+        settings = build_settings(tmp_path)
+        provider = FakeTransportProvider()
+        current = await provider.collect_fuel()
+        old = replace(current, collected_at=current.collected_at - timedelta(hours=8))
+        provider.pending_fuel_snapshot = AsyncMock(side_effect=[None, old])
+        entered = asyncio.Event()
+        async def highway(**kwargs):
+            entered.set()
+            await asyncio.Event().wait()
+        provider.collect_highway = highway
+        engine, factory = create_engine_and_session_factory(settings.database_url)
+        await init_database(engine)
+        try:
+            service = TransportCollectionService(settings, provider)
+            async with factory() as session:
+                assert (await service.collect(session, scope="fuel"))["status"] == "success"
+            async def collect_all():
+                async with factory() as session:
+                    await TransportCollectionService(settings, provider).collect(session, scope="all")
+            task = asyncio.create_task(collect_all())
+            await asyncio.wait_for(entered.wait(), timeout=15)
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            async with factory() as session:
+                state = await session.scalar(select(TransportCollectionState).where(
+                    TransportCollectionState.source == OPINET_SOURCE))
+                assert serialize_utc(state.last_success_at) == serialize_utc(current.collected_at)
+                assert state.last_error is None
+        finally:
+            await engine.dispose()
+    asyncio.run(exercise())
