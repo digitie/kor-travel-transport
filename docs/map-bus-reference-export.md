@@ -6,7 +6,10 @@
 대체하지 않는다. `transport_map_current_enabled` 기본OFF 유지, migration0032이며 backfill 없음.
 
 source별 총건수·page순서·page크기·각page 실제행수·고유코드를 provider public typed page
-API에서 확인한다. 잘못된/빈 응답은 최대1회 재확인하고 실패하면 이전 성공집합을 유지한다.
+API에서 확인한다. SDK의 `OpenApiPage.total_count`가 없으면fail-closed한다.
+`page_no/num_of_rows`는SDK가원문누락시요청값으로기본화하므로, 이증거는원문pageecho자체의
+receipt를증명하지않는다. HTTP/원문파싱·다음page호출루프는SDK가소유하고, Transport는
+소비한typed page수량/고유identity를검증한다. 잘못된/빈 응답은 최대1회 재확인하고 실패하면 이전 성공집합을 유지한다.
 이전 성공25% 미만은 두 번의 완결 metadata와 동일 identity 집합이 확인된 nonempty만 승인한다.
 이름/코드 누락·중복은 성공으로 내보내지 않는다. 고속/시외 전체 fetch와 보조기준정보 fetch를
 마친 뒤 reference rows+source head/memberIDs+native success를 하나의 transaction에 확정한다.
@@ -22,13 +25,16 @@ memberPK/완결 receipt/최근실패를 보존한다. generic kind/scope 키이�
 raw 전체를 Python에 싣지 않고 manual revision만 SQL projection으로 읽는다. 수동좌표/주소
 변경도 다음 첫 snapshot에 즉시 반영하도록 DTO content digest를 계산한다. 재사용 판단을
 source last_seen만으로 하지 않는다. 동일 RR에서 두 번째 bounded pass로 item을 저장하므로
-전체 DTO 목록을 메모리에 유지하지 않는다. 최대20,000개/16MiB/15초,15분TTL이다.
+전체 DTO 목록을 메모리에 유지하지 않는다. 최대20,000개/16MiB,15분TTL이다.
+partition 경계에서15초 경과를 검사하며, 마지막 INSERT/commit을 포함한 요청전체의
+15초 hard deadline을 보장하는 것은 아니다. 개별 statement_timeout은10초다.
 
 응답은 공통 meta와 snapshot_id/expires/total_count/items/next_cursor/has_more다.
 identity는 source+service_type+terminal_id로 고속/시외 같은코드가 충돌하지 않는다.
 null 좌표를0,0으로 바꾸지 않는다. 실제좌표와 reverse coordinate_key가 같은 경우에만 admin을
 붙인다. source실패 또는9일 초과는 이전집합+stale이며 이전 HTTP 페이지의 DTO는 유지한다.
 limit1~5000·HMAC cursor·410/422·gzip/ETag·DB 반환 후 압축은 traffic과 같은 계약이다.
+source/DTO revision+TTL epoch의DB unique admission과새RR최대1회재시도역시공유한다.
 
 현재 WSL 집중14 PASS이며 전체PG/CI/Docker/2리뷰/실제API/UI/비용·운영 수용은 진행 중이다.
 이 문서와 PR은 parking/ferry/rail T2/T3 완료를 선언하지 않는다.

@@ -11,8 +11,11 @@ from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from sqlalchemy import insert, select, text
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.core.config import Settings
 from app.core.time_utils import now_utc, serialize_utc
@@ -20,7 +23,7 @@ from app.models import BusTerminalReference, ReferenceExportState, ServiceExport
 from app.schemas import BusTerminalExportPage, ServiceExportMeta
 from app.services.bus_collection import TAGO_BUS_SOURCE
 from app.services.export_addresses import export_admin_addresses
-from app.services.export_current import BATCH_SIZE, MAX_SNAPSHOT_BYTES, MAX_SNAPSHOT_ITEMS, SNAPSHOT_TTL, _snapshot_transaction, expire_snapshots
+from app.services.export_current import BATCH_SIZE, MAX_SNAPSHOT_BYTES, MAX_SNAPSHOT_ITEMS, SNAPSHOT_TTL, SnapshotRace, cache_generation, _snapshot_transaction, expire_snapshots
 from app.services.export_price_history import _decode_cursor, _encode_cursor, _response
 
 KIND = "bus-terminals-v1"
@@ -89,27 +92,27 @@ async def _freeze_bus(session, heads):
             digest.update(body + b"\n")
     content = digest.hexdigest()
     namespace = json.dumps([[h.generation, serialize_utc(h.confirmed_at).isoformat()] for h in heads]) + content
-    generation = hashlib.sha256(namespace.encode()).hexdigest()[:32]
+    generation = cache_generation(hashlib.sha256(namespace.encode()).hexdigest())
     cached = await session.scalar(select(ServiceExportSnapshot).where(
         ServiceExportSnapshot.kind == KIND, ServiceExportSnapshot.scope_key == SCOPE,
         ServiceExportSnapshot.generation == generation,
-        ServiceExportSnapshot.expires_at > now_utc() + timedelta(minutes=1),
+        ServiceExportSnapshot.expires_at > now_utc(),
     ).order_by(ServiceExportSnapshot.created_at.desc()).limit(1))
     if cached:
         return cached
-    if session.bind.dialect.name == "postgresql":
-        lock_key = int.from_bytes(hashlib.sha256(KIND.encode()).digest()[:8], "big", signed=True)
-        if not await session.scalar(text("SELECT pg_try_advisory_xact_lock(:key)"), {"key": lock_key}):
-            raise HTTPException(503, "터미널 snapshot을 준비 중입니다.")
     await expire_snapshots(session)
     now = now_utc()
-    snapshot = ServiceExportSnapshot(
-        id=str(uuid4()), kind=KIND, scope_key=SCOPE, generation=generation,
+    table = ServiceExportSnapshot.__table__
+    factory = pg_insert if session.bind.dialect.name == "postgresql" else sqlite_insert
+    snapshot_id = str(uuid4())
+    admitted = await session.scalar(factory(table).values(
+        id=snapshot_id, kind=KIND, scope_key=SCOPE, generation=generation,
         source_collected_at=min(serialize_utc(h.confirmed_at) for h in heads),
         created_at=now, expires_at=now + SNAPSHOT_TTL, item_count=count, content_digest=content,
-    )
-    session.add(snapshot)
-    await session.flush()
+    ).on_conflict_do_nothing(index_elements=["kind", "scope_key", "generation"]).returning(table.c.id))
+    if admitted is None:
+        raise SnapshotRace()
+    snapshot = await session.get(ServiceExportSnapshot, snapshot_id)
     ordinal = 0
     async for batch in _bus_payload_batches(session, heads):
         if monotonic() - started > 15:
@@ -135,6 +138,20 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
                             session: AsyncSession = Depends(get_db)) -> Response:
         if not settings.transport_map_current_enabled:
             raise HTTPException(503, "터미널 export가 활성화되지 않았습니다.")
+        for attempt in range(2):
+            try:
+                page, revision = await read_page(session, limit, cursor)
+                break
+            except (SnapshotRace, DBAPIError) as exc:
+                await session.rollback()
+                code = getattr(getattr(exc, "orig", None), "sqlstate", None)
+                if isinstance(exc, DBAPIError) and code not in {"40001", "55P03"}:
+                    raise
+                if attempt or code == "55P03":
+                    raise HTTPException(503, "snapshot 준비가 겹쳤습니다. 잠시 후 다시 요청하세요.") from exc
+        return _response(page, request, cursor_epoch=None, cursor_revision=revision)
+
+    async def read_page(session, limit, cursor):
         await _snapshot_transaction(session)
         heads = await _bus_heads(session)
         after = 0
@@ -176,6 +193,6 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
         )
         revision = snapshot.content_digest
         await session.commit()
-        return _response(page, request, cursor_epoch=None, cursor_revision=revision)
+        return page, revision
 
     return router
