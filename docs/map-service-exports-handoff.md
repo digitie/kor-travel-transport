@@ -17,7 +17,7 @@ Map PR1355의 기존 consumer는 T1의 `collection/has_more/next_cursor` 페이�
 
 [제품 검증·머지/운영 잔여 gate 정산](reports/2026-10-23-map-t2-t3-acceptance.md). KAC quota 복구 PR119도 운영 rollout 전에 포함한다.
 
-모든 경로는 `/v1/service/exports/` 아래이며 기존 service token header/peer 허용 규칙을 사용한다.
+모든 경로는 `/v1/service/exports/` 아래이며 기존 `X-Kor-Travel-Transport-Service-Token` header/peer 허용 규칙을 사용한다.
 새 인증 방식이나 브라우저 토큰을 만들지 않는다. 배포 및 source flag 활성화는 운영 수집 run과
 조율하는 별도 gate이며 본 문서의 fixture 응답을 운영 검증으로 해석하면 안 된다.
 
@@ -60,7 +60,7 @@ Map PR1355의 기존 consumer는 T1의 `collection/has_more/next_cursor` 페이�
 
 ## 배포 및 초기 승인
 
-API 이미지와 collector code 모두 새 코드를 사용해야 한다. migration31/32/33을 현재 head까지
+API 이미지와 collector code 모두 새 코드를 사용해야 한다. migration0030~0033을 현재 head까지
 적용한다. `TRANSPORT_MAP_CURRENT_ENABLED` 하나가 새 T2/T3 API와 collector 모두를 제어하며
 source별 개별 flag가 아니다. 기본값은 false이고 API·CS 환경을 일치시켜야 한다. 활성화 뒤
 승인된 정상수집 순서로 scope별 head를 채운다. 이력 전체 backfill은 하지 않는다.
