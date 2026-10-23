@@ -127,6 +127,9 @@ def test_history_failure_revalidates_as_stale_instead_of_304(history_client):
     _run(history_client, lambda session: _set_state(session, OPINET_SOURCE, last_success_at=None))
     unavailable = history_client.get(PATH, headers={**HEADERS, "If-None-Match": "*"})
     assert unavailable.status_code == 503 and "etag" not in unavailable.headers
+    assert unavailable.json()["meta"]["source_status"] == "failed"
+    assert unavailable.json()["meta"]["source_collected_at"] is None
+    assert unavailable.json()["meta"]["item_count"] == 0
 
 
 @pytest.mark.parametrize("path", [PATH, REST])

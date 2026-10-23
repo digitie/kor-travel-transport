@@ -29,3 +29,13 @@ export type FuelPriceHistoryExportPage = {
   next_cursor: string | null;
   has_more: boolean;
 };
+
+
+export type ServiceExportProblemDetails = {
+  type: string;
+  title: string;
+  status: number;
+  detail: string;
+  instance: string;
+  meta: ServiceExportMeta;
+};

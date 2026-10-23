@@ -11,6 +11,7 @@ from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -122,7 +123,12 @@ def build_price_history_router(
             TransportCollectionState.source == OPINET_SOURCE,
         ))
         if state is None or state.last_success_at is None:
-            raise HTTPException(503, "성공한 유가 수집 이력이 없습니다.")
+            return JSONResponse(status_code=503, media_type="application/problem+json", content={
+                "type": "about:blank", "title": "Service Unavailable", "status": 503,
+                "detail": "성공한 유가 수집 이력이 없습니다.", "instance": request.url.path,
+                "meta": ServiceExportMeta(generated_at=now_utc(), source_collected_at=None,
+                                          source_status="failed", item_count=0).model_dump(mode="json"),
+            }, headers={"Cache-Control": "private, no-cache"})
         now = now_utc()
         revision = _revision(state)
         after_at = None

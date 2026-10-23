@@ -5682,6 +5682,24 @@
         "title": "ServiceExportMeta",
         "type": "object"
       },
+      "ServiceExportProblemDetails": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ProblemDetails"
+          },
+          {
+            "properties": {
+              "meta": {
+                "$ref": "#/components/schemas/ServiceExportMeta"
+              }
+            },
+            "required": [
+              "meta"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "ThresholdDateHistoryItem": {
         "properties": {
           "available_spaces": {
@@ -8666,7 +8684,7 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
+                  "$ref": "#/components/schemas/ServiceExportProblemDetails"
                 }
               }
             },

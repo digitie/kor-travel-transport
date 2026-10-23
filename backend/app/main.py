@@ -757,6 +757,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ("/v1/service/exports/highway-incidents/active", "get"): (404, 503),
             ("/v1/service/exports/airports", "get"): (404,),
         }
+        components["ServiceExportProblemDetails"] = {
+            "allOf": [{"$ref": "#/components/schemas/ProblemDetails"}, {
+                "type": "object", "required": ["meta"], "properties": {
+                    "meta": {"$ref": "#/components/schemas/ServiceExportMeta"},
+                },
+            }],
+        }
         for path, path_item in schema.get("paths", {}).items():
             for method, operation in path_item.items():
                 if not isinstance(operation, dict) or "responses" not in operation:
@@ -765,11 +772,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 codes.extend(str(code) for code in documented_errors.get((path, method), ()))
                 codes.append("500")
                 for code in codes:
+                    problem_schema = "ServiceExportProblemDetails" if (
+                        path == "/v1/service/exports/fuel-stations/{station_key}/price-history"
+                        and code == "503"
+                    ) else "ProblemDetails"
                     operation["responses"][code] = {
                         "description": "요청 검증 오류" if code == "422" else "애플리케이션 오류",
                         "content": {
                             "application/problem+json": {
-                                "schema": {"$ref": "#/components/schemas/ProblemDetails"}
+                                "schema": {"$ref": f"#/components/schemas/{problem_schema}"}
                             }
                         },
                     }
