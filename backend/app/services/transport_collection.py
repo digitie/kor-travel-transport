@@ -171,6 +171,14 @@ async def upsert_latest_fuel_prices(
     await session.execute(statement)
 
 
+def highway_scope_key(settings: Settings, source: str) -> str:
+    """수집과 export가 같은 원천 필터 범위를 사용한다."""
+    if source == INCIDENT_SOURCE:
+        return "incidents:all:v1"
+    filters = [sorted(settings.transport_route_nos), sorted(settings.transport_conzone_ids)]
+    return hashlib.sha256(json.dumps(filters, separators=(",", ":")).encode()).hexdigest()
+
+
 @dataclass(frozen=True, slots=True)
 class HighwayPayload:
     traffic: tuple[TrafficFlow, ...] | Exception | None
@@ -602,10 +610,7 @@ class TransportCollectionService:
         )
 
     def _highway_scope_key(self, source: str) -> str:
-        if source == INCIDENT_SOURCE:
-            return "incidents:all:v1"
-        filters = [sorted(self.settings.transport_route_nos), sorted(self.settings.transport_conzone_ids)]
-        return hashlib.sha256(json.dumps(filters, separators=(",", ":")).encode()).hexdigest()
+        return highway_scope_key(self.settings, source)
 
     async def _highway_success_count(self, session: AsyncSession, source: str) -> int | None:
         latest = (select(RawApiResponse.body_text).where(

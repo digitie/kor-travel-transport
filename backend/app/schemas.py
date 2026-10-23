@@ -1067,3 +1067,28 @@ class FuelPriceHistoryExportPage(BaseModel):
     items: list[ExportPriceHistoryItem]
     next_cursor: str | None = None
     has_more: bool
+
+
+class ExportHighwayTrafficCurrent(BaseModel):
+    identity_key: str
+    source: str
+    route_no: str | None
+    route_name: str | None
+    conzone_id: str | None
+    conzone_name: str | None
+    direction: str | None
+    speed: float | None
+    free_flow_speed: float | None
+    congestion_level: str | None
+    observed_at: datetime
+    collected_at: datetime
+
+
+class HighwayTrafficCurrentExportPage(BaseModel):
+    meta: ServiceExportMeta
+    snapshot_id: str
+    snapshot_expires_at: datetime
+    total_count: int
+    items: list[ExportHighwayTrafficCurrent]
+    next_cursor: str | None
+    has_more: bool

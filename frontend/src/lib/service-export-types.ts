@@ -39,3 +39,27 @@ export type ServiceExportProblemDetails = {
   instance: string;
   meta: ServiceExportMeta;
 };
+
+
+export type HighwayTrafficCurrentExportPage = {
+  meta: ServiceExportMeta;
+  snapshot_id: string;
+  snapshot_expires_at: string;
+  total_count: number;
+  items: {
+    identity_key: string;
+    source: string;
+    route_no: string | null;
+    route_name: string | null;
+    conzone_id: string | null;
+    conzone_name: string | null;
+    direction: string | null;
+    speed: number | null;
+    free_flow_speed: number | null;
+    congestion_level: string | null;
+    observed_at: string;
+    collected_at: string;
+  }[];
+  next_cursor: string | null;
+  has_more: boolean;
+};

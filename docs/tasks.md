@@ -10,10 +10,10 @@
 
 ## 진행 중인 작업 인덱스
 
-- [ ] Map T2 traffic current: source/filter head·typed pointer·같은 source transaction hook은 PR112 머지/검증 완료다. schema0030/defaultOFF로 운영 미배포이며 비용·운영 수용은 남았다. [진척·남은 gate](reports/2026-10-23-traffic-current-pointer.md). 실제 REST/페이지 snapshot/주차/T3·운영 활성화는 후속이다.
+- [ ] Map T2 traffic current: source/filter head·typed pointer·같은 source transaction hook은 PR112 머지/검증 완료다. schema0030/defaultOFF로 운영 미배포이며 비용·운영 수용은 남았다. [진척·남은 gate](reports/2026-10-23-traffic-current-pointer.md). 실제 traffic REST/고정 snapshot은 `codex/map-current-reference-api`에서 검증 중이다. 주차/T3·운영 활성화는 후속이다.
 
 
-- [ ] Map service API: T5 PR108·T1 PR109·T4 PR110의 운영배포·API계약7/기존UI16 수용은 완료다. 오래된 OpiNet의 T1fuel200/admin·최신수집/Map 소비자 수용은 미완이다. T2 traffic current는 PR112 머지/defaultOFF/운영미배포이며, T2 REST/주차·T3 참조와 공통 frozen snapshot/status/cursor는 미구현이다. [구현 순서](design/map-current-reference-exports.md).
+- [ ] Map service API: T5 PR108·T1 PR109·T4 PR110의 운영배포·API계약7/기존UI16 수용은 완료다. 오래된 OpiNet의 T1fuel200/admin·최신수집/Map 소비자 수용은 미완이다. T2 traffic current는 PR112 머지/defaultOFF/운영미배포이며, T2 traffic REST와 공통 frozen snapshot/status/cursor는 구현·검증 중이며 주차·T3 참조는 미구현이다. [구현 순서](design/map-current-reference-exports.md).
 
 
 - [ ] 수집 CPU/RAM 후속: 기존 Track 1·2 수용 뒤 동일 입력으로 fetch/raw 변환/traffic 저장/통계/commit을 계측한다. 현재 traffic 8,300개에 약16,600개 SELECT·write 문장이 필요한 구조와 매번 최근2시간 재집계는 코드 조사 결과이며 실측 기여율은 미확인이다. bounded 배치 저장→변경 bucket만 재집계→incident 배치 저장을 각각 작은 PR로 검증하고, 원본·정정·삽입 수·소유권·통계 동등성을 보존한다. 단일 op executor의 프로세스 절감과 draft PR93 메모리 수용도 실제 run 증거 전에는 완료 처리하지 않는다.

@@ -1,3 +1,16 @@
+## 2026-10-23 — T2 traffic freeze 경쟁 admission 보강 중
+
+선행 적대리뷰의 RR cache miss 경합을 반영해 source generation/TTL epoch의 DB unique
+admission을 항목 materialize 전에 둔다. invisible conflict는 새RR로 최대1회 재시도한다.
+기존 c74ac14의 실제TCP8300행×3쌍은 freeze450~539ms/30458~59ms였다. WSL fixture이며
+Odroid 비용/CPU 저감 증거가 아니다. 수정 후보의 재측정·최종 리뷰/전체 gate는 진행 중이다.
+
+## 2026-10-23 — Map T2 traffic 고정 HTTP snapshot 구현 중
+
+PR112 typed current 위에 immutable DTO snapshot·15분TTL·signed cursor·ETag/gzip·
+현재 health 보존 route를 추가한다. schema0031이며 운영 적용 전이다.
+[계약/검증 범위](map-traffic-current-export.md). 전체회귀/CI/2리뷰/비용/운영 gate는 진행 중이다.
+
 ## 2026-10-23 — Map T1/T4/T5 배포·T2 포인터 머지 정산
 
 - 운영 e01f8e9는 schema29/API·CS/gRPC12306/location·기존instigator복원/공용daemonON·다른8container보존 및 UI16 PASS. API계약7 PASS지만 오래된 OpiNet 주유소참조503으로 fresh-readiness는false다. 정규유가복구job1회 등록은 수집성공이 아니다. [배포·원천미완·후속](reports/2026-10-23-map-exports-deployment.md).
