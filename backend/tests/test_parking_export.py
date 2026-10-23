@@ -170,3 +170,23 @@ def test_late_history_failure_rolls_back_pointer_and_success_head(export_client)
         _run(c, lambda s: collector.collect(s))
     assert _run(c, generation) == before
     assert c.get(PATH, headers=HEADERS).json()["total_count"] == 12
+
+
+def test_map_collector_consumes_public_sdk_complete_receipt(test_settings):
+    import asyncio
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    from app.services.collection import KrairportPublicDataClient
+    from test_collection_service import _mock_krairport_client
+    test_settings.transport_map_current_enabled = True
+    test_settings.data_go_kr_service_key = "fixture"
+    mock = _mock_krairport_client(parking_raw_set=SimpleNamespace(
+        items=({"floor": "시험"},), total_count=1, page_count=1,
+        page_size=100, wire_page_metadata=True,
+    ))
+    with patch("app.services.collection.KrairportClient", return_value=mock):
+        response = asyncio.run(KrairportPublicDataClient(test_settings).fetch_incheon_parking())
+    assert response.completion["complete"] and response.completion["item_count"] == 1
+    mock.__aenter__.return_value.parking_raw_set.assert_awaited_once_with(
+        provider="iiac", page_size=100, max_pages=20,
+    )
