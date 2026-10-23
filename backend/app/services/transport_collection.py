@@ -871,6 +871,13 @@ class TransportCollectionService:
             )
             stored += 1
         await session.flush()
+        if self.settings.transport_map_current_enabled:
+            from app.services.traffic_current import update_traffic_current
+
+            await update_traffic_current(
+                session, source=TRAFFIC_SOURCE, scope_key=self._highway_scope_key(TRAFFIC_SOURCE),
+                collection_run_id=collection_run_id, pairs=seen_keys, confirmed_at=collected_at,
+            )
         return stored
 
     async def _refresh_recent_traffic_statistics(

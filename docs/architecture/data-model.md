@@ -271,3 +271,12 @@ Alembic migration이 PostgreSQL 인덱스를 생성한다. SQLite 테스트에�
 `provider_id`·`target_key` 복합 식별자로 현재 좌표의 주소·행정구역·확인일·다음 갱신일과 오류/backoff를 분리 보관하고,
 제어 행은 수동 cycle·커서·만료 lease를 보관한다. 원천 주소·좌표·관리자 설정과 과거 관측은 변경하지 않는다.
 달력 6개월 갱신, VWorld 우선·Kakao fallback, 수동 실행과 복구 계약은 [구현 가이드](../reverse-address-refresh.md)를 따른다.
+
+
+## Map T2 교통 current 후보 (0030, 기본 OFF)
+
+`highway_traffic_current_states`는 `(source,scope_key)`별 정상 완결 generation·DB run 순서·확인 시각·member_count를 보존한다. `scope_key`는 route/conzone 설정 fingerprint이며 다른 필터 집합을 섞지 않는다. `highway_traffic_current`는 같은 source/scope/identity의 typed 최신 값과 generation membership을 보존한다. 데이터 winner는 `(observed_at,collected_at,snapshot_order)`다. 같은 관측의 정상 재수집 INSERT0도 확인 generation을 전진시킨다.
+
+현재 표는 raw JSON을 복사하지 않는다. 가변 history가 나중에 정정되더라도 승인 current 값이 바뀌지 않도록 작은 DTO 열을 별도로 보존한다. `snapshot_id`는 nullable FK/SET NULL lineage이고, 원래 PK 순서인 `snapshot_order`는 유지한다. 원본 이력을 정리해도 typed current/membership/성공 개수는 사라지지 않는다. current와 이전 membership의 GC·frozen snapshot 보존은 후속이며 기존 이력 보존 정책을 변경하지 않는다.
+
+수집 raw·성공 상태·history·current·통계는 같은 source transaction에서 확정하고 기존 owned worker fence를 유지한다. 늦은 옛 run의 membership 전진은 DB run ID로 거부한다. 정상0/급감은 T5의 provider 완결 guard를 통과한 경우에만 입력한다. rollback은 head/point도 함께 되돌리고 초도 backfill은 새 정상 수집에서만 만든다. `TRANSPORT_MAP_CURRENT_ENABLED=false`가 기본이며 비용/완결/복구 수용 뒤 명시 opt-in한다. 이 모델은 아직 REST·frozen HTTP 페이지·주차/T3 구현을 뜻하지 않는다.

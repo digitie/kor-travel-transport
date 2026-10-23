@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     kric_timetable_max_calls: int = Field(default=500, ge=1, le=4000)
     kric_timetable_request_interval_seconds: int = Field(default=5, ge=5, le=60)
     transport_collection_enabled: bool = False
+    # Map current read model은 비용/완결 수용 전 명시 opt-in만 허용한다.
+    transport_map_current_enabled: bool = False
     transport_collect_interval_seconds: int = Field(default=300, ge=300)
     transport_quota_backoff_seconds: int = Field(default=3600, ge=300)
     transport_route_nos_csv: str = ""
