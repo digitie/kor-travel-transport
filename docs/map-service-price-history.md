@@ -23,3 +23,6 @@
 
 
 첫 적대 리뷰에서 TTL·수집 mutation revision이 ETag에서 빠져 만료 cursor를304로 고정하는 문제와 같은 원천시각 교정을 감지하지 못하는 문제를 확인했다. has_more 응답의 ETag에15분 bucket+mutation revision을 포함하고 state.updated_at을 revision에 반영했다. 원천값이 같은 새 성공·첫 페이지 밖 같은 source-clock 교정·16분 경과 후 조건부 재조회 모두 사용 가능한 cursor를200으로 다시 받는 회귀를 추가했다. station은 id열만 읽으며 휴게소OpenAPI도 기본501·미인증404로 맞춘다. 최초SQLite18 PASS208.92초, TTL추가1 PASS12.46초. 최종회귀·PG·리뷰는 수정HEAD로 다시 확인한다.
+
+
+최종 실제 PostgreSQL21 PASS291.75초와 격리 실제HTTP8개(304/8건전체keyset/gzip/인증·입력/실패stale·cursor409/휴게소501)를 확인했다. Docker는20 PASS·1실패였으며 `Vary: Accept-Encoding, Origin`의 합법적인 CORS 추가값을 exact equality로 거부한 테스트 전제 문제다. required token 포함 검사로 고쳤고 해당 Docker 회귀를 다시 실행한다. 제품 응답을 CORS에 맞춰 약화하지 않는다. 전체CI/통합full/실제PG계획·운영수용은 남아 있다.

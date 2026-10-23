@@ -82,7 +82,7 @@ def test_history_gzip_and_identity_share_weak_etag(history_client):
     assert "content-encoding" not in plain.headers
     assert plain.json()["items"] == zipped.json()["items"]
     assert plain.headers["etag"] == zipped.headers["etag"]
-    assert plain.headers["vary"] == "Accept-Encoding"
+    assert "accept-encoding" in {value.strip().lower() for value in plain.headers["vary"].split(",")}
     assert plain.headers["cache-control"] == "private, no-cache"
     conditional = history_client.get(PATH, headers={**HEADERS, "If-None-Match": '"other", '+plain.headers["etag"][2:]})
     assert conditional.status_code == 304
