@@ -1,9 +1,20 @@
+## 2026-10-23 — Map API 머지 상태와 다음 구현
 
+- T5 PR108, T1 PR109, T4 PR110은 main `e01f8e9c12929d226872ac4b44996a89d603e9f7`에 머지됐다. 최종 각 두 적대 리뷰·CI와 격리 HTTP 검증을 통과했다. 아래 구현 중/CI 대기 절은 당시 기록이다.
+- T1 전체 PG1010 PASS/2 SKIP·Docker993 PASS/19 SKIP·격리 HTTP8 PASS, T4 집중 PG21 및 최종503 delta PG/Docker 각1·격리 HTTP9 PASS다. T4 Docker의 Vary exact 비교 실패1은 정당한 Origin을 허용해 해당1 PASS로 정정했다. CI live-e2e SKIPPED를 PASS로 세지 않는다.
+- 새 T1/T4/T5 운영 배포·실제 API/UI 수용은 진행 중이며 아직 완료가 아니다. schema29에 새 migration은 없고 daemon ON·NVMe·gRPC12306을 보존한다.
+- T2/T3는 여전히 설계만 있다. 다음 작은 제품 PR은 traffic latest pointer·같은 source transaction hook·replay/rollback/fencing 검증이다. 이후 parking 완결 증거·pointer → frozen snapshot/status/cursor → T2 API → T3 참조를 분리한다.
+- CPU/RAM 저감 완료나 실제 Opinet 새 상한 완주를 선언하지 않는다. [T2/T3 설계·비용·수용 gate](design/map-current-reference-exports.md).
 
 ## 2026-10-23 — Map 가격 이력 API T4 구현 중
 
 - 기존 주유소 이력에 station/기간·최대5000 제한, keyset cursor·revision 충돌409, 공통meta·ETag·gzip을 추가한다. 원천·기존이력/수집/통계는 변경하지 않는다. 휴게소 이력은501이며 표를 만들지 않는다.
 - T1 PR109 위의 별도 변경이다. [계약·예시·미완 gate](map-service-price-history.md). 검증 중이며 운영 적용/완료를 선언하지 않는다.
+
+## 2026-10-23 — Map T2/T3 구현 선행 조사
+
+- 현재/참조 export의 pointer·source완결·고정HTTP snapshot·기관/노선/수동좌표·매핑/주소 revision 경계를 조사했다. [구현 순서·회귀·실측 gate](design/map-current-reference-exports.md). 문서만으로 T2/T3 구현·운영 완료를 선언하지 않는다.
+- T5 PR108 main567fa6a 머지(검토·CI·WSL996/Docker979·격리실제HTTP7·기존운영UI14 PASS), 아직 새배포 전이다. T1PR109와 T4PR110은 각 최종 통합 검증/CI 진행 중이며 이 문서는 제품 변경을 포함하지 않는다.
 ## 2026-10-23 — Map service API 우선: T5 빈 응답 보호 구현 중
 
 - 사용자 최신 우선순위로 Weather·Transport service API를 먼저 진행한다. T5는 빈/이전 성공25% 미만 응답을 source별로 한 번 재확인하고, 완결 확인이 안 되면 이전 성공 집합·시각을 유지한다. 명시 총건수와 전체 페이지의 완결 증거가 반복 확인된 정상0건은 허용한다.

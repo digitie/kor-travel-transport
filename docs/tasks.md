@@ -10,7 +10,7 @@
 
 ## 진행 중인 작업 인덱스
 
-- [ ] Map service API T5: 빈/급감 재확인·이전 성공 보존 guard 구현 중. PG/전체회귀·Docker·CI·2리뷰·live·배포를 수용한 뒤 T1/admin·T2/current·T3/reference·T4/history와 공통 snapshot/ETag/gzip을 순차 구현한다. 기존 export의 인증·실패 계약을 보존한다. [구현 기록](reports/2026-10-23-map-export-empty-guard.md).
+- [ ] Map service API: T5 PR108·T1 PR109·T4 PR110은 머지/검증 완료, 운영 배포·API/UI 수용 진행 중. T2 현재 교통/주차·T3 참조 및 공통 frozen snapshot/status/cursor는 미구현이다. 다음은 traffic pointer부터 작은 PR로 진행한다. [구현 순서](design/map-current-reference-exports.md).
 
 
 - [ ] 수집 CPU/RAM 후속: 기존 Track 1·2 수용 뒤 동일 입력으로 fetch/raw 변환/traffic 저장/통계/commit을 계측한다. 현재 traffic 8,300개에 약16,600개 SELECT·write 문장이 필요한 구조와 매번 최근2시간 재집계는 코드 조사 결과이며 실측 기여율은 미확인이다. bounded 배치 저장→변경 bucket만 재집계→incident 배치 저장을 각각 작은 PR로 검증하고, 원본·정정·삽입 수·소유권·통계 동등성을 보존한다. 단일 op executor의 프로세스 절감과 draft PR93 메모리 수용도 실제 run 증거 전에는 완료 처리하지 않는다.
@@ -371,4 +371,6 @@ dark-mode 차트/톤 팔레트 미토큰화, `globals.css` 전반의 desktop-fir
 - 백업/복원 API에는 별도 인증이 없다. 인터넷에 직접 노출하지 않고 내부망 또는 외부
   게이트웨이에서 접근을 제한해야 한다.
 
-- [ ] Map T4 가격 이력: 주유소 bounded 조회·공통meta·ETag/gzip·cursor/revision, 휴게소501 구현 중. WSL/Docker·CI·2리뷰·live·Map예시 인계·운영 gate를 통과한 뒤 완료로 옮긴다. [계약](map-service-price-history.md).
+- [ ] Map T4 가격 이력: PR110 구현·검증·머지 완료(주유소 bounded 조회·공통meta·ETag/gzip·cursor/revision, 휴게소501). Map 예시 인계 댓글은 게시했으며 소비자 수용·운영 배포/API/UI 검증이 남았다. 이를 통과한 뒤 완료로 옮긴다. [계약](map-service-price-history.md).
+
+- [ ] Map T2/T3 후속: [작은 PR 순서/회귀/비용 gate](design/map-current-reference-exports.md)에 따라 traffic pointer부터 진행한다. source별 완결·고정snapshot을 검증한 뒤 새API를 공개한다. 설계만 작성됐으며 코드/운영은 미완이다.
