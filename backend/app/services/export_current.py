@@ -12,6 +12,9 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import delete, insert, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.core.config import Settings
 from app.core.time_utils import now_utc, serialize_utc
@@ -29,6 +32,16 @@ MAX_SNAPSHOT_ITEMS = 20000
 MAX_SNAPSHOT_BYTES = 16 * 1024 * 1024
 BATCH_SIZE = 400
 KIND = "highway-traffic-current-v1"
+
+
+class SnapshotRace(Exception):
+    """별도 reader가 같은 generation/TTL epoch를 먼저 확정했다. 새 RR로 한 번 재시도한다."""
+
+
+def cache_generation(generation: str) -> str:
+    epoch = int(now_utc().timestamp()) // int(SNAPSHOT_TTL.total_seconds())
+    return hashlib.sha256(f"{generation}:{epoch}".encode()).hexdigest()[:32]
+
 _FIELDS = (
     "identity_key", "source", "route_no", "route_name", "conzone_id", "conzone_name",
     "direction", "speed", "free_flow_speed", "congestion_level", "observed_at", "collected_at",
@@ -61,29 +74,28 @@ async def _freeze_traffic(
     session: AsyncSession, scope: str, head: HighwayTrafficCurrentState,
 ) -> ServiceExportSnapshot:
     now = now_utc()
+    generation = cache_generation(head.generation)
     cached = await session.scalar(select(ServiceExportSnapshot).where(
         ServiceExportSnapshot.kind == KIND, ServiceExportSnapshot.scope_key == scope,
-        ServiceExportSnapshot.generation == head.generation,
-        ServiceExportSnapshot.expires_at > now + timedelta(minutes=1),
+        ServiceExportSnapshot.generation == generation,
+        ServiceExportSnapshot.expires_at > now,
     ).order_by(ServiceExportSnapshot.created_at.desc()).limit(1))
     if cached:
         return cached
-    if not 1 <= head.member_count <= MAX_SNAPSHOT_ITEMS:
+    if not 0 <= head.member_count <= MAX_SNAPSHOT_ITEMS:
         raise HTTPException(503, "확인된 교통 집합의 크기가 export 상한을 벗어났습니다.")
-    # source/scope에 대한 짧은 freeze만 직렬화한다. 원천 writer/global lock을 잡지 않는다.
-    if session.bind.dialect.name == "postgresql":
-        lock_key = int.from_bytes(hashlib.sha256((KIND + scope).encode()).digest()[:8], "big", signed=True)
-        if not await session.scalar(text("SELECT pg_try_advisory_xact_lock(:key)"), {"key": lock_key}):
-            raise HTTPException(503, "교통 snapshot을 준비 중입니다. 잠시 후 다시 요청하세요.")
     await expire_snapshots(session)
     snapshot_id = str(uuid4())
-    snapshot = ServiceExportSnapshot(
-        id=snapshot_id, kind=KIND, scope_key=scope, generation=head.generation,
+    table = ServiceExportSnapshot.__table__
+    factory = pg_insert if session.bind.dialect.name == "postgresql" else sqlite_insert
+    admitted = await session.scalar(factory(table).values(
+        id=snapshot_id, kind=KIND, scope_key=scope, generation=generation,
         source_collected_at=head.confirmed_at, created_at=now, expires_at=now + SNAPSHOT_TTL,
         item_count=head.member_count, content_digest="pending",
-    )
-    session.add(snapshot)
-    await session.flush()
+    ).on_conflict_do_nothing(index_elements=["kind", "scope_key", "generation"]).returning(table.c.id))
+    if admitted is None:
+        raise SnapshotRace()
+    snapshot = await session.get(ServiceExportSnapshot, snapshot_id)
     started = monotonic()
     count = size = 0
     digest = hashlib.sha256()
@@ -136,6 +148,20 @@ def build_current_export_router(
         """완결 성공 current만 고정한다. 페이지 사이 재수집에도 최초 DTO는 만료까지 유지된다."""
         if not settings.transport_map_current_enabled:
             raise HTTPException(503, "교통 current export가 활성화되지 않았습니다.")
+        for attempt in range(2):
+            try:
+                page, revision = await read_page(session, limit, cursor)
+                break
+            except (SnapshotRace, DBAPIError) as exc:
+                await session.rollback()
+                code = getattr(getattr(exc, "orig", None), "sqlstate", None)
+                if isinstance(exc, DBAPIError) and code not in {"40001", "55P03"}:
+                    raise
+                if attempt or code == "55P03":
+                    raise HTTPException(503, "snapshot 준비가 겹쳤습니다. 잠시 후 다시 요청하세요.") from exc
+        return _response(page, request, cursor_epoch=None, cursor_revision=revision)
+
+    async def read_page(session, limit, cursor):
         await _snapshot_transaction(session)
         scope = highway_scope_key(settings, TRAFFIC_SOURCE)
         head = await session.get(HighwayTrafficCurrentState, (TRAFFIC_SOURCE, scope))
@@ -174,8 +200,6 @@ def build_current_export_router(
         if len(rows) != expected or any(row.ordinal != after + i + 1 for i, row in enumerate(rows)):
             raise HTTPException(503, "snapshot 항목의 순서·개수가 일치하지 않습니다.")
         items, has_more = [row.payload for row in rows[:limit]], len(rows) > limit
-        if not items:
-            raise HTTPException(503, "snapshot 항목이 없어 성공으로 내보낼 수 없습니다.")
         next_cursor = _encode_cursor({
             "v": 1, "kind": KIND, "scope": scope, "snapshot": snapshot.id,
             "after": after + len(items), "limit": limit,
@@ -189,6 +213,6 @@ def build_current_export_router(
         revision = snapshot.content_digest
         # RR transaction/pool 연결을 반환한 다음에만 JSON/gzip을 만든다.
         await session.commit()
-        return _response(page, request, cursor_epoch=None, cursor_revision=revision)
+        return page, revision
 
     return router

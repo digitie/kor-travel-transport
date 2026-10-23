@@ -911,6 +911,7 @@ class ServiceExportSnapshot(Base):
     __tablename__ = "service_export_snapshots"
     __table_args__ = (
         Index("ix_service_export_snapshot_expires", "expires_at"),
+        UniqueConstraint("kind", "scope_key", "generation", name="uq_service_export_snapshot_generation"),
         Index("ix_service_export_snapshot_generation", "kind", "scope_key", "generation", "expires_at"),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
