@@ -90,7 +90,7 @@
 ## 4. 성공 head·snapshot·status·cursor
 
 - T2/T3 새 endpoint는 공통 snapshot 계약을 먼저 가진 뒤 공개한다. 이미 있는 legacy export의503 의미는 바꾸지 않는다. 같은 기존 path를 확장할 때는 `snapshot=true` opt-in으로 새 envelope/status를 분리한다.
-- source scope별 `last_success`와 `last_attempt`를 따로 보존한다. 초도 미확정은503. 마지막 성공 뒤 실패/불확실 empty는 이전 세대+stale metadata, 새 정상 generation 승격 금지. 실제 새 데이터가 없는데 success clock만 앞으로 찍지 않는다.
+- source scope별 `last_success`와 `last_attempt`를 따로 보존한다. 초도 미확정은503. 마지막 성공 뒤 실패/불확실 empty는 이전 세대+stale metadata, 새 정상 generation 승격 금지. 이번 실제 정상 재관측·완결 증거 없이 success clock을 갱신하지 않는다. 동일값 replay0이어도 실제 재관측 시각은 전진한다.
 - rail 위치파일, KRIC code catalog, mapping, 버스 service_type, 항구 목록과 좌표 coverage의 범위를 metadata에 드러낸다. 시간표/요금/부차 좌표 실패로 core 목록 전체를 지우지 않는다. worst-status와 coverage는 canonical 설계대로 고정한다.
 - parking 좌표는 lot 실측 좌표가 없으므로 검증된 krairport airport metadata를 로컬로 재사용하되 `coordinate_source=airport_metadata`, `coordinate_precision=airport_anchor`를 명시한다. request에서 네트워크 provider 호출을 하지 않는다. anchor가 없으면null이다.
 - 권장 최소 HTTP snapshot: 검증된 current/reference read model만 짧은 REPEATABLE READ로 읽고, raw 제외한 bounded DTO 값+좌표/admin/mapping revision을 불변 snapshot item/chunk로 고정한다. mutable history PK만 보관하는 manifest는 불충분하다. source/reference publisher와 같은 session에서 이미 존재하는 성공 head를 검증한다.
