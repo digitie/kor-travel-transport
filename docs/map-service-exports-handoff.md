@@ -13,7 +13,7 @@ Map PR1355의 기존 consumer는 T1의 `collection/has_more/next_cursor` 페이�
 | T3 | bus-terminals | 115 | 머지됨, 새 API 미배포·flagOFF |
 | T3 | ferry-ports | 116 | 머지됨, 새 API 미배포·flagOFF |
 | T3 | rail-stations | 117 | 머지됨, 새 API 미배포·flagOFF |
-| T2 | parking/current | 118 | 구현·두 리뷰 PASS, 최종 CI 대기·새 API 미배포 |
+| T2 | parking/current | 118 | 머지됨, 새 API 미배포·flagOFF |
 
 [제품 검증·머지/운영 잔여 gate 정산](reports/2026-10-23-map-t2-t3-acceptance.md). KAC quota 복구 PR119도 운영 rollout 전에 포함한다.
 
@@ -61,7 +61,9 @@ Map PR1355의 기존 consumer는 T1의 `collection/has_more/next_cursor` 페이�
 ## 배포 및 초기 승인
 
 API 이미지와 collector code 모두 새 코드를 사용해야 한다. migration31/32/33을 현재 head까지
-적용한 다음 source 정상수집으로 scope별 head를 채운다. 이력 전체 backfill은 하지 않는다.
+적용한다. `TRANSPORT_MAP_CURRENT_ENABLED` 하나가 새 T2/T3 API와 collector 모두를 제어하며
+source별 개별 flag가 아니다. 기본값은 false이고 API·CS 환경을 일치시켜야 한다. 활성화 뒤
+승인된 정상수집 순서로 scope별 head를 채운다. 이력 전체 backfill은 하지 않는다.
 BUS express/intercity, KAC/ICN처럼 설정에 활성인 source의 head가 모두 준비되기 전에는503이다.
 API가 먼저 flagON되어도 미승인·구버전 행을 추정해 export하지 않는다.
 

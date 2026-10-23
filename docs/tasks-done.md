@@ -1,5 +1,13 @@
 # tasks-done.md — 완료 작업 아카이브
 
+## 2026-10-23 — Map 현재 상태·참조 API 제품 구현
+
+- [x] PR112/114~118: traffic·parking typed current/schema33, 고정 DTO snapshot/schema31, source별 승인 membership/schema32, bus/ferry/rail REST를 구현·머지했다. 두 독립 리뷰·정확 CI·PG/Compose·실제 TCP와 각 최종 SHA는 [수용 정산](reports/2026-10-23-map-t2-t3-acceptance.md)을 따른다.
+- [x] provider SDK10/11: 명시 성공·bounded 완결 receipt와 엄격한 주차 수치/KST 시각 public API를 각각 두 리뷰·정확 CI 후 머지했다. 기존 HTTP/legacy parser는 유지한다.
+- [x] PR119: 실제 KAC quota origin/until 보존·blocked 관찰 비연장·만료 뒤 재시도·역방향 늦은 실패 fence·비밀정보 제거를 두 리뷰·정확 CI PG1091/2 SKIP·집중 PG8/Compose8·실제 TCP8 후 머지했다.
+- 운영 미배포/defaultOFF·Map 새 reader·실제 source bootstrap·ARM CPU/RAM 및 PG WAL 비용 비교는 완료 범위 밖이며 [backlog](tasks.md)에 남겼다.
+
+
 ## 2026-10-23 — 유가 예약 정합·짧은 공개 잠금 운영 수용
 
 - [x] #103~#106: 성공 예약의 진입/대기 정합과 실패/claim 경계를 검증하고, 원본 원자 저장·세대별 통계 준비·짧은 원천 공개 잠금·역전/실패 보호를 적용했다.

@@ -18,8 +18,8 @@ T1 행정주소·T4 가격이력·T5 빈 응답 보호(PR108~110)는 먼저 배�
 | [115](https://github.com/digitie/kor-travel-transport/pull/115) | bus membership/schema32·참조 | e8ab14a771e0ac51c806d2f444751b4f8e140246 | 7b2f2a8598bbcd4d200762a2d868f9279452aa70 |
 | [116](https://github.com/digitie/kor-travel-transport/pull/116) | ferry 참조·core/좌표 성공 분리 | 8ade282470d52cef041843156e1dceede9dbb3dc | 933cac6f59639eecc3f64ef1cd6e775557372641 |
 | [117](https://github.com/digitie/kor-travel-transport/pull/117) | rail 참조·기존 persisted mapping 정본 | 4ab0ed2d5a8554de54a15f6efc024cc0bfb9da46 | 488d85b8d8332eaab68f682f92d0a26087d01e2d |
-| [118](https://github.com/digitie/kor-travel-transport/pull/118) | parking/current/schema33·SDK 엄격 승인 | 7c62c7ff2189711218021a7e62b59fa3513a6ebd | 최종 CI 대기 |
-| [119](https://github.com/digitie/kor-travel-transport/pull/119) | 원래 KAC quota deadline·복구 fence·비밀정보 제거 | bd1d945e2fe3d8c8f00af72e181307e5911a8d10 | 최종 CI 대기 |
+| [118](https://github.com/digitie/kor-travel-transport/pull/118) | parking/current/schema33·SDK 엄격 승인 | 7c62c7ff2189711218021a7e62b59fa3513a6ebd | 07cf35fb5b59118827efa4d63099270ad6a7fe47 |
+| [119](https://github.com/digitie/kor-travel-transport/pull/119) | 원래 KAC quota deadline·복구 fence·비밀정보 제거 | bd1d945e2fe3d8c8f00af72e181307e5911a8d10 | a0f9b72325281fdba3c0644b0592426e70afce86 |
 
 각 최종 SHA는 James/Popper 두 독립 적대 리뷰 PASS/OPEN0이다. 최초 발견한
 freeze 경쟁, 승인된 정상0 처리, 늦은 실패의 새 head 오염, 원천 clock 불일치,
@@ -40,9 +40,10 @@ freeze 경쟁, 승인된 정상0 처리, 늦은 실패의 새 head 오염, 원�
   최종 경쟁/원천 clock delta PG5 PASS·집중23 PASS와 Compose23/2 SKIP를 더해 확인했다.
 - PR116 정확 CI PG1066 PASS/2 SKIP, PR117 정확 CI PG1070 PASS/2 SKIP.
   집중 PG42/40 PASS, 공통 Compose55 PASS/1 PG조건 SKIP다.
-- PR118 최종7c62 PR CI의 전체 PG1083 PASS/2 SKIP(2023.69초), 정상 초단위/비정상 수치·시각 delta PG6 PASS와 Compose6 PASS,
+- PR118 최종7c62 정확 push/PR CI 성공, 전체 PG1083 PASS/2 SKIP(2023.69초), 정상 초단위/비정상 수치·시각 delta PG6 PASS와 Compose6 PASS,
   기존 source/current/API 집중 PG39 PASS, schema33 check/down32/up33/check를 통과했다.
-- PR119 최종bd1의 Map flagON/OFF·blocked 연속 관찰·원래 만료 후 재시도·역방향 quota
+- PR119 최종bd1 정확 push/PR 전체 CI 성공, PG1091 PASS/2 SKIP(2200.64초)다.
+  Map flagON/OFF·blocked 연속 관찰·원래 만료 후 재시도·역방향 quota
   실패·원장 초도 성공·비밀정보 제거를 PG8 PASS/Compose8 PASS로 검증했다.
 - 실제 TCP HTTP fixture: traffic8300행9건, bus1000행12건,
   ferry/rail각1000행20건, 최종 parking12개13건, 최종 admin collect/quota8건 PASS다.
@@ -51,6 +52,11 @@ freeze 경쟁, 승인된 정상0 처리, 늦은 실패의 새 head 오염, 원�
   새 T2/T3 Map reader UI는 아직 수용하지 않았다. CI `live-e2e=SKIPPED`를 PASS로 세지 않는다.
 - snapshot API의 provider 호출·이력/raw SELECT0, pool 반환 뒤 직렬화,
   TTL410/재시작·서명 cursor·ETag304/gzip·권한 거부·source stale 보존을 확인했다.
+
+PR118의 현재 main 기반 merge-tree는 검토한 head tree59a21063과 같고,
+PR119를 main으로 옮긴 뒤 merge-tree도 head tree0c0f721b와 같음을 확인했다.
+최종 수용 댓글은 [118](https://github.com/digitie/kor-travel-transport/pull/118#issuecomment-6363562368),
+[119](https://github.com/digitie/kor-travel-transport/pull/119#issuecomment-6363574981)이다.
 
 실제 TCP 보고서는 작업 환경 `F:/dev/audit-reports/2026-10-23-remaining`의
 transport114/115/117/118/119-http-report.json에 보관했다. fixture JSON과 소비자 절차는
@@ -61,7 +67,8 @@ Odroid ARM CPU/RAM·PG WAL 개선 수치로 환산하지 않는다.
 
 1. root가 실제 수집 run 종료를 확인한 뒤 공식 Manager/NVMe 배포 절차로 API·CS·schema를
    적용한다. 공용 daemon ON, gRPC12306, 타 서비스/instigator 복원을 지킨다.
-2. source별 정상 완결 수집으로 head를 준비하고 flag를 단계적으로 켠다. 초도503을
+2. API·CS의 단일 `TRANSPORT_MAP_CURRENT_ENABLED` flag를 일치시켜 켜고 승인된 source별
+   정상 완결 수집 순서로 head를 준비한다(source별 별도 flag 없음). 초도503을
    Map 빈 성공으로 바꾸지 않으며 실패 시 이전 성공 집합/stale을 유지한다.
 3. Map은 기존 T1 `collection` parser와 별도로 새 `meta/snapshot_id` reader를 적용한다.
    limit 고정·cursor 완독·TTL410 첫 페이지 재시작·stale/정상 traffic0건을 실제 UI로 검증한다.

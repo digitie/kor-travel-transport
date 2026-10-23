@@ -10,7 +10,7 @@
 
 ## 진행 중인 작업 인덱스
 
-- [ ] Map T2/T3 운영 수용: schema0030~0033와 API/CS를 승인된 drain 뒤 배포하고 source별 정상 성공 head를 준비한다. defaultOFF를 단계 활성화한 뒤 실제 HTTPS·Map 새 frozen reader·UI·TTL/실패 복구를 검증한다. KAC quota PR119를 배포에 포함하며 원래 deadline 만료 뒤 재시도를 확인한다. [구현·검증 정산](reports/2026-10-23-map-t2-t3-acceptance.md).
+- [ ] Map T2/T3 운영 수용: schema0030~0033와 API/CS를 승인된 drain 뒤 배포하고 source별 정상 성공 head를 준비한다. API·CS의 단일 defaultOFF flag를 일치시켜 활성화하고 승인된 수집 순서로 bootstrap한 뒤 실제 HTTPS·Map 새 frozen reader·UI·TTL/실패 복구를 검증한다. KAC quota PR119를 배포에 포함하며 원래 deadline 만료 뒤 재시도를 확인한다. [구현·검증 정산](reports/2026-10-23-map-t2-t3-acceptance.md).
 
 
 

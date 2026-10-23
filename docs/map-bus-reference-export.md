@@ -36,8 +36,9 @@ null 좌표를0,0으로 바꾸지 않는다. 실제좌표와 reverse coordinate_
 limit1~5000·HMAC cursor·410/422·gzip/ETag·DB 반환 후 압축은 traffic과 같은 계약이다.
 source/DTO revision+TTL epoch의DB unique admission과새RR최대1회재시도역시공유한다.
 
-현재 WSL 집중14 PASS이며 전체PG/CI/Docker/2리뷰/실제API/UI/비용·운영 수용은 진행 중이다.
-이 문서와 PR은 parking/ferry/rail T2/T3 완료를 선언하지 않는다.
+PR115의 두 리뷰·정확 CI·PG/Compose·실제 TCP와 후속 ferry/rail/parking 구현은
+[수용 정산](reports/2026-10-23-map-t2-t3-acceptance.md)에 기록했다. 운영 미배포/defaultOFF이며
+실제 source bootstrap·Map consumer UI·ARM 비용 수용은 남았다.
 
 
 ## 선행 적대리뷰 반영

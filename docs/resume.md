@@ -1,6 +1,6 @@
 # 현재 상태 — 2026-10-23 Map T2/T3 제품 수용 정산
 
-PR114~119는 고정 snapshot·traffic/parking 현재 상태·bus/ferry/rail 참조와 KAC quota 복구를 구현했다.
+PR114~119는 고정 snapshot·traffic/parking 현재 상태·bus/ferry/rail 참조와 KAC quota 복구를 구현·머지했다. 최종 main은 `a0f9b72325281fdba3c0644b0592426e70afce86`이다.
 정확 최종 SHA의 두 적대 리뷰·CI·격리 PG/Compose·실제 TCP 근거와 머지 상태는
 [수용 정산](reports/2026-10-23-map-t2-t3-acceptance.md)에 모은다.
 
