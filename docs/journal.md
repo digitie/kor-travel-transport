@@ -1,3 +1,9 @@
+## 2026-10-23 — KAC quota deadline 영구 연장 후속 수정
+
+운영 rollout 전 필수 후속으로 기존 source state에 실제 quota origin/until을 보존한다.
+ICN 병행 blocked 관찰은 대기를 연장하지 않고 만료 뒤 정상 재시도한다. schema/문자열파싱
+추가 없이 별도 소형 PR로 구현·검증한다. [계약](airport-quota-deadline.md).
+
 ## 2026-10-23 — Map T2 주차장 완결 current 구현 중
 
 SDK10 public complete receipt와 작은typed current/schema33을 연결한다. source별 빈/급감

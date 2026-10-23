@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.time_utils import now_utc, serialize_utc
-from app.models import Airport, CollectionRun, ParkingFeeRule, ParkingLot, ParkingSnapshot, RawApiResponse
+from app.models import Airport, CollectionRun, ParkingFeeRule, ParkingLot, ParkingSnapshot, RawApiResponse, TransportCollectionState
 from app.services.flight_status import sanitize_upstream_error
 from app.services.parsers import (
     ParsedFeeRule,
@@ -28,6 +28,8 @@ from app.services.parsers import (
     parse_kac_parking,
 )
 
+
+KAC_QUOTA_SOURCE = "airport_kac_quota"
 
 KAC_PARKING_ENDPOINT = "http://openapi.airport.co.kr/service/rest/AirportParking/airportparkingRT"
 INCHEON_PARKING_ENDPOINT = "http://apis.data.go.kr/B551177/StatusOfParking/getTrackingParking"
@@ -373,6 +375,16 @@ class CollectionService:
         if self.client_mode != "live":
             return UpstreamRateLimitState(is_blocked=False)
 
+        quota = await session.scalar(select(TransportCollectionState).where(
+            TransportCollectionState.source == KAC_QUOTA_SOURCE,
+        ))
+        if quota is not None:
+            # 한 번 명시 deadline을 만든 뒤에는 blocked 관찰 run의 started_at으로 재계산하지 않는다.
+            due = serialize_utc(quota.next_due_at) if quota.next_due_at is not None else None
+            return UpstreamRateLimitState(
+                is_blocked=due is not None and now_utc() < due,
+                blocked_until=due, source="kac_parking", error_message=quota.last_error,
+            )
         latest_run = await session.scalar(
             select(CollectionRun)
             .where(CollectionRun.status != "skipped")
@@ -395,6 +407,44 @@ class CollectionService:
             source="kac_parking",
             error_message=normalize_upstream_rate_limit_error(latest_run.error_message),
         )
+
+    async def _retain_quota_deadline(self, session, state):
+        """이전 배포의 native 오류를 한 번만 명시 deadline으로 채택한다."""
+        row = await session.scalar(select(TransportCollectionState).where(
+            TransportCollectionState.source == KAC_QUOTA_SOURCE,
+        ).with_for_update())
+        if row is None and state.blocked_until is not None:
+            session.add(TransportCollectionState(
+                source=KAC_QUOTA_SOURCE, next_due_at=state.blocked_until,
+                last_started_at=serialize_utc(state.blocked_until) - timedelta(seconds=max(self.settings.upstream_rate_limit_backoff_seconds, 0)),
+                last_error=normalize_upstream_rate_limit_error(state.error_message), updated_at=now_utc(),
+            ))
+
+    async def _record_quota_outcome(self, session, *, started_at, was_blocked, messages):
+        if self.client_mode != "live" or was_blocked:
+            return
+        error = next((item for item in messages if is_upstream_rate_limit_error(item)), None)
+        row = await session.scalar(select(TransportCollectionState).where(
+            TransportCollectionState.source == KAC_QUOTA_SOURCE,
+        ).with_for_update())
+        if row is not None:
+            if row.last_started_at is not None and serialize_utc(row.last_started_at) > started_at:
+                return
+            if row.next_due_at is not None and serialize_utc(row.next_due_at) > started_at:
+                return  # 이미 유효한 원래 quota deadline을 실제 중복 실패도 연장하지 않는다.
+        if error is None:
+            if row is not None:
+                row.next_due_at = None
+                row.last_error = None
+                row.updated_at = now_utc()
+            return
+        if row is None:
+            row = TransportCollectionState(source=KAC_QUOTA_SOURCE)
+            session.add(row)
+        row.last_started_at = started_at
+        row.next_due_at = compute_upstream_rate_limit_retry_at(started_at, self.settings.upstream_rate_limit_backoff_seconds)
+        row.last_error = normalize_upstream_rate_limit_error(error)
+        row.updated_at = now_utc()
 
     async def collect(self, session: AsyncSession, trigger: str = "manual") -> dict[str, Any]:
         async with self.operation_lock:
@@ -446,6 +496,8 @@ class CollectionService:
     async def _collect_unlocked(self, session: AsyncSession, trigger: str = "manual") -> dict[str, Any]:
         rate_limit_state = await self.get_upstream_rate_limit_state(session)
         can_collect_incheon = self.settings.enable_incheon_collection or self.settings.enable_incheon_fee_collection
+        if rate_limit_state.is_blocked:
+            await self._retain_quota_deadline(session, rate_limit_state)
         if rate_limit_state.is_blocked and rate_limit_state.blocked_until is not None and not can_collect_incheon:
             return await self._store_rate_limit_skip(session, trigger, rate_limit_state)
 
@@ -492,7 +544,8 @@ class CollectionService:
                         parsed = parse_incheon_parking(response.body_text)
                         snapshot_count += await self._store_observations(session, run.id, parsed)
 
-            if self.settings.enable_fee_collection and not rate_limit_state.is_blocked:
+            if (self.settings.enable_fee_collection and not rate_limit_state.is_blocked
+                    and not any(is_upstream_rate_limit_error(message) for message in errors)):
                 for airport_code in self.settings.supported_airport_codes:
                     if airport_code == "ICN":
                         continue
@@ -503,6 +556,8 @@ class CollectionService:
                         errors,
                     )
                     if response is None:
+                        if any(is_upstream_rate_limit_error(message) for message in errors):
+                            break
                         continue
                     raw_count += 1
                     parsed_rules = parse_kac_fee(response.body_text, airport_code)
@@ -525,6 +580,9 @@ class CollectionService:
             failed_at = now_utc()
             error_message = self._redact(str(exc))
             await session.rollback()
+            await self._record_quota_outcome(session, started_at=started_at,
+                                             was_blocked=rate_limit_state.is_blocked,
+                                             messages=[*errors, error_message])
             if self.settings.transport_map_current_enabled and owner_run_id is not None:
                 from app.services.parking_exports import KIND, parking_scope, parking_sources
                 from app.services.reference_exports import mark_reference_failure
@@ -552,6 +610,8 @@ class CollectionService:
         else:
             run.finished_at = now_utc()
             run.error_message = "\n".join(errors) if errors else None
+            await self._record_quota_outcome(session, started_at=started_at,
+                                             was_blocked=rate_limit_state.is_blocked, messages=errors)
             await session.commit()
             if errors:
                 # 공개 collector-status는 오류 코드만 낸다. 원문은 서버 로그(키는 가림)와 DB에만 둔다.
@@ -792,8 +852,9 @@ class CollectionService:
                     last_error = self._redact(str(exc))
                     if response is not None:
                         failed_responses.append((response, last_error))
-                    if attempt:
+                    if attempt or is_upstream_rate_limit_error(last_error):
                         failures.append((source, last_error))
+                        break
         raw_count = snapshot_count = 0
         run = await session.get(CollectionRun, run_id)
         for response, error in failed_responses:

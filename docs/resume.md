@@ -1,3 +1,9 @@
+## 운영 rollout 전 필수 — KAC quota 원래 deadline 보존
+
+`codex/parking-quota-deadline`는 PR118 고정 리뷰와 별도 후속이다. 기존 source next_due_at을
+활용하여 blocked run의 대기기간 연장을 막고 원래 만료 뒤 재시도한다. 회귀/PG/CI/두 리뷰
+마감 전 완료 처리하지 않는다. [설계·수용](airport-quota-deadline.md).
+
 ## 현재 작업 — Map T2 parking/current
 
 PR117 후속으로 SDK10 public완결receipt/typed current/schema33/REST를 구현중이다.
