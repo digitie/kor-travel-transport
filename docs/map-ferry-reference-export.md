@@ -38,6 +38,6 @@ batch·15분TTL·unique admission·새RR최대1회재시도를 공유한다. par
 
 ## 검증 상태
 
-기존 bus/rail-maritime 집중41 PASS/1PG전용SKIP, 새ferry포함39 PASS/1SKIP를 확인했다.
-축소/후기저장실패 추가회귀·전용PG/실제API/CI/두적대리뷰/운영 gate는 진행중이다.
-rail/parking과 전체T2/T3, CPU/RAM 저감 완료를 선언하지 않는다.
+PR116 두 독립 리뷰·정확 CI PG1066 PASS/2 SKIP, 집중 PG42 PASS와 실제 TCP 결과는
+[수용 정산](reports/2026-10-23-map-t2-t3-acceptance.md)에 기록했다. 운영 미배포/defaultOFF이며
+실제 source bootstrap·Map consumer UI·ARM CPU/RAM 실측은 남았다.

@@ -20,3 +20,7 @@ ICN 수집은 계속된다.
 
 두 독립 리뷰/정확CI/로컬PG·Compose 검증 전 운영 배포하지 않는다. 공유 daemon과 활성수집은
 root 조율 아래 유지한다. 이 문서의 구현은 PR118 고정 범위와 분리한다.
+
+PR119는 두 독립 최종 리뷰·정확 CI PG1091 PASS/2 SKIP·집중 PG8/Compose8·실제 TCP8 후
+머지됐다. [최종 SHA·원본 근거·운영 잔여](reports/2026-10-23-map-t2-t3-acceptance.md)를 따른다.
+운영 미배포이며 실제 KAC quota 만료 뒤 복구는 root의 rollout 단계에서 별도 확인한다.

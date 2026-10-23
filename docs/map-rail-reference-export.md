@@ -39,6 +39,6 @@ DTO digest에 반영하고 기존 페이지는 만료까지 고정한다. source
 
 ## 검증 상태
 
-기존 rail/mapping36 PASS, 신규rail API/빈·중복파일/leading0/manual/inactive/registry 불일치/
-fetch pool0·옛페이지 보존 포함40 PASS를 WSL SQLite에서 확인했다. 전용PG/CI/두 적대리뷰/
-실제API/비용·운영 gate는 진행중이며 parking·전체T2/T3·CPU/RAM 완료를 선언하지 않는다.
+PR117 두 독립 리뷰·정확 CI PG1070 PASS/2 SKIP, 집중 PG40 PASS와 실제 TCP 결과는
+[수용 정산](reports/2026-10-23-map-t2-t3-acceptance.md)에 기록했다. 운영 미배포/defaultOFF이며
+실제 source bootstrap·Map consumer UI·ARM CPU/RAM 실측은 남았다.

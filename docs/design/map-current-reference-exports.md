@@ -1,11 +1,18 @@
 # Transport T2/T3 구현 선행 조사와 작은 PR 순서
 
 - 조사 정본: `/mnt/f/dev/kor-travel-transport-map-exports`, HEAD `d697dd7832bf382bf1059f10634a689f13ea11ec`.
-- 상태: 구현 선행 설계/코드 조사. T2/T3 제품·DB·운영·테스트·벤치 변경은 없으며 아래 모델/route는 아직 구현되지 않았다.
-- 계약 정본: Weather `docs/design/map-service-exports.md`의 공통 성공 snapshot/상태/§T1~T3. T4 PR110은 다른 WT에서 검증 중이므로 해당 파일을 수정하지 않는다. 구현 착수 시 실제 main과 PR109/110 머지 상태를 다시 확인한다.
+- 문서 성격: 최초 조사 당시의 설계 근거를 보존한다. 현재 구현·머지·검증 상태는 아래 갱신 절과 [Map 인계](../map-service-exports-handoff.md), [수용 정산](../reports/2026-10-23-map-t2-t3-acceptance.md)을 따른다. 과거형 코드 조사는 현재 미구현 목록이 아니다.
+- 최초 계약 기준: Weather `docs/design/map-service-exports.md`의 공통 성공 snapshot/상태/§T1~T3. 현재 Transport의 확정 응답은 각 route 문서와 OpenAPI를 따른다. T1/T4/T5는 PR108~110에서 별도로 머지·배포됐다.
 - 8,300 traffic·44 parking은 부모가 제공한 규모이며 이번에 DB에서 새로 계수한 실측값이 아니다. 아래 비용은 코드 구조의 분석이고 CPU/메모리 감소 실측이 아니다.
 
-## 먼저 정할 결론
+## 2026-10-23 구현 상태 갱신
+
+- PR112의 traffic pointer 뒤 PR114가 고정 DTO snapshot과 traffic REST를 구현했다. PR115 버스, PR116 항구, PR117 철도, PR118 주차 현재 상태가 같은 bounded snapshot 엔진을 사용한다. schema 정본은 0033이며, 0030은 traffic 선행 단계다.
+- PG snapshot 본문/항목 표, 15분 TTL, 서명 cursor, 페이지 최대 5,000개, ETag/gzip, DB pool 반환 후 직렬화를 적용했다. source·scope 성공 membership/세대와 현재 원천 clock 일치를 확인한다. head 없는 집합은503이며 검증된 traffic 정상0건만 빈 성공 집합을 허용한다.
+- provider 완결 receipt와 엄격한 주차 숫자·시각은 SDK PR10/11 public API를 소비한다. PR119는 KAC quota의 실제 실패 deadline을 유지하고, ICN 병행 blocked 관찰로 대기를 연장하지 않도록 분리했다.
+- 위 제품 구현과 운영 활성화는 별개다. 현재 새 T2/T3는 운영 미배포/defaultOFF이고, 실제 source bootstrap·Map 새 reader·운영 API/UI 수용 및 ARM CPU/RAM·PG WAL 비교는 남았다. 아래 6절의 비용 항목을 충족했다고 보고하지 않는다.
+
+## 최초 설계 결론
 
 1. T2는 history 전체 DISTINCT를 API에 추가하지 않는다. source 저장 transaction 안에서 traffic/parking의 작은 latest pointer를 갱신하고, API는 pointer→snapshot PK join만 읽는다.
 2. pointer만으로 HTTP 페이지 snapshot이 생기지는 않는다. traffic history의 같은 PK 값은 재관측 때 UPDATE되며 참조·수동좌표도 가변이다. HTTP 요청 사이 고정 PG transaction이나 pointer PK 목록만 유지해서 완결 snapshot이라고 표시하면 안 된다.
@@ -132,6 +139,6 @@
 - snapshot: 페이지 사이 source 재수집·같은 PK UPDATE·mapping/좌표/address 변경에도 최초 snapshot 값은 고정, 신규 snapshot은 새 revision. stale/failed health는304로 숨기지 않음. TTL/GC reader lease/filter/limit 변경/위조 handle/point-byte cap/empty page/취소·풀 반환 후 gzip.
 - 모든 새 경로 token/peer fail-closed, 무권한404, provider 호출0, history fullscan0 및 source raw Python 로딩0. 기존 public/legacy exports/수집/통계 전체 회귀도 보존한다.
 
-## 아직 결정·실측되지 않은 것
+## 남은 운영 실측
 
-source별 stale age·정상0의 authoritative evidence, source 범위별 partial 표시와 worst-status, Transport snapshot의 DB row/파일 매체·TTL/active-reader 실제 정책, membership 보존량/GC 및 최초 freeze 비용은 후속 작은 설계·실측에서 고정해야 한다. 이 조사만으로 T2/T3 구현·운영 수용이 완료된 것은 아니다.
+source별 stale/정상0 증빙과 PG DTO snapshot/TTL/GC 정책은 PR114~118의 각 계약으로 확정했다. 격리 PG/실제 TCP fixture 수용은 [정산](../reports/2026-10-23-map-t2-t3-acceptance.md)에 남긴다. 운영 source head bootstrap, Map의 별도 frozen reader, 실제 운영 API/UI 및 동일 입력 최소3쌍 ARM CPU/RAM·PG WAL 비교는 아직 수행 전이다. 격리 fixture 속도를 Odroid 개선 수치로 대신하지 않는다.

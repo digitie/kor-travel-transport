@@ -48,5 +48,6 @@ Map은 첫 응답의 snapshot_id/next_cursor/limit을 유지해 끝까지 읽는
 마이그레이션33 후 source의 정상 complete 수집과 flagON 검증이 필요하다. 운영 적용은 root가
 활성 수집 run 종료/worker확인·Transport instigator보존 절차와 조율한다. 이 PR은 자동 배포하지 않는다.
 
-검증 진행중: SQLite source/API 및 기존collector28PASS, OpenAPI/TS갱신. schema왕복/PG집중,
-실제TCP/Compose/최종CI/두적대리뷰가 남아 있으므로 운영성공·CPU/RAM개선완료를 선언하지 않는다.
+PR118의 최종 두 리뷰·CI PG1083 PASS/2 SKIP, schema왕복·PG집중·Compose·실제TCP와
+KAC quota 후속 PR119의 검증은 [수용 정산](reports/2026-10-23-map-t2-t3-acceptance.md)을 따른다.
+운영 미배포/defaultOFF이며 실제 source bootstrap·Map consumer UI·ARM CPU/RAM 실측은 남았다.

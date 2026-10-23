@@ -43,9 +43,8 @@ GC/admission 이후 항목 partition 경계에서15초 경과를 검사한다. �
 페이지 reader는 동일 RR transaction에서 snapshot와 항목을 읽으므로 PostgreSQL MVCC가
 동시 GC로부터 해당 읽기를 보호한다. 미만료 snapshot은 지우지 않는다.
 
-## 미완 게이트
+## 검증 정산과 운영 잔여
 
-migration0031은 신규 작은 표만 만들고 이력 backfill을 수행하지 않는다. 실제 전용PG
-upgrade/downgrade/check, 비용3쌍·8300개 p50/p95/CPU·peakRAM, 전체 회귀·CI·2인 리뷰·
-실제 API/UI 및 운영 수용은 결과가 확보될 때 별도로 기록한다. 이 문서는 이들 PASS를
-선언하지 않는다. parking current와 T3의 source별 성공증거·고정DTO export는 후속이다.
+migration0031은 신규 작은 표만 만들고 이력 backfill을 수행하지 않는다. PR114의 두 리뷰·
+정확 CI/PG·Compose·실제 TCP와 후속 parking/T3 구현 상태는 [수용 정산](reports/2026-10-23-map-t2-t3-acceptance.md)에 모았다.
+운영 미배포/defaultOFF이며 source bootstrap·Map consumer UI·비용3쌍/ARM CPU·peakRAM은 남았다.

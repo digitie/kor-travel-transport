@@ -1,3 +1,15 @@
+# 현재 상태 — 2026-10-23 Map T2/T3 제품 수용 정산
+
+PR114~119는 고정 snapshot·traffic/parking 현재 상태·bus/ferry/rail 참조와 KAC quota 복구를 구현·머지했다. 최종 main은 `a0f9b72325281fdba3c0644b0592426e70afce86`이다.
+정확 최종 SHA의 두 적대 리뷰·CI·격리 PG/Compose·실제 TCP 근거와 머지 상태는
+[수용 정산](reports/2026-10-23-map-t2-t3-acceptance.md)에 모은다.
+
+다음 작업은 운영 수집 run drain과 조율한 schema0030~0033/API·CS 배포, source별 정상 head
+bootstrap, 새 T2/T3 reader를 통한 Map 소비자 수용이다. 새 API는 아직 운영 미배포/defaultOFF이며
+CPU/RAM 저감도 미입증이다. 아래 구현 중·대기·과거 운영 release 표시는 당시 기록이다.
+
+---
+
 ## 운영 rollout 전 필수 — KAC quota 원래 deadline 보존
 
 `codex/parking-quota-deadline`는 PR118 고정 리뷰와 별도 후속이다. 기존 source next_due_at을
