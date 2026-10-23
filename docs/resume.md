@@ -1,5 +1,10 @@
 # 현재 상태 — 2026-10-23 Map T2/T3 제품 수용 정산
 
+## 2026-10-24 — 현재 상태: Next.js 보안 갱신 후보
+
+- `next`를 `16.4.3`으로 고정했다. WSL 프론트엔드 테스트 130건·build PASS. 변경 범위와 남은 취약점은 [작업 기록](journal.md)을 따른다.
+- 다음 한 작업: Draft PR의 CI와 독립 리뷰를 확인한다. 운영 배포·실제 서비스 UI 수용은 별도이며 기존 운영 과제는 아래 기록을 보존한다.
+
 PR114~119는 고정 snapshot·traffic/parking 현재 상태·bus/ferry/rail 참조와 KAC quota 복구를 구현·머지했다. 제품 머지 기준은 `a0f9b72325281fdba3c0644b0592426e70afce86`, 이 감사의 main 기준은 문서 PR120의 `9974d2592a49cf8f9b5e59dffc0e3816df09d226`이다.
 정확 최종 SHA의 두 적대 리뷰·CI·격리 PG/Compose·실제 TCP 근거와 머지 상태는
 [수용 정산](reports/2026-10-23-map-t2-t3-acceptance.md)에 모은다.

@@ -1,3 +1,12 @@
+## 2026-10-24 — Next.js 16.4.3 보안 의존성 갱신
+
+- Next.js 16.3.2에서 `16.4.3`으로 정확히 고정하고 잠금 파일을 재생성했다.
+- 앱 코드와 API 계약 변경 없이 package.json·package-lock.json의 Next.js 및 해당 전이 의존성을 갱신했다. Docker와 백엔드 추가 검증 결과는 아래에 구분해 기록한다.
+- WSL Linux Node 22.22.2에서 프론트엔드 기존 테스트 130건과 build PASS. 기존 Next.js 16 설정을 보존했다.
+- WSL Docker에서 실제 프론트엔드 이미지를 새로 빌드하고 `docker compose -p next1643-transport run --rm --no-deps frontend npm run test -- --run` 130건 PASS. 백엔드 WSL·Docker 검증은 진행 중이다.
+- 같은 시점 `npm audit` 전체 보고: 총 16→14건, critical 2→1건. `next` 항목은 제거됐지만 다른 패키지 취약점은 남아 있다. 강제 자동 수정이나 요청 외 major 의존성 갱신은 하지 않았다.
+- 기존 작업 트리는 보존하고 Linux 격리 작업 공간의 `codex/next-16.4.3-security`에서 변경했다. CI·독립 리뷰·운영 배포·실제 서비스 UI 수용은 아직 별도이며, 이 기록을 운영 반영 완료로 세지 않는다.
+
 ## 2026-10-24 — Map service API 문서 독립 정합성 감사
 
 - T2/T3 인계에 기존 service 인증 헤더명과 schema0030~0033 전체 순서를 명시했다. 기존 T1의 coordinate/admin null과 새 고정 snapshot, T4 product/from/to·전체 페이지 limit·409/501 및 제품 완료/Map 소비 후속을 구분한다.
