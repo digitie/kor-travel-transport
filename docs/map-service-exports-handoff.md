@@ -38,7 +38,15 @@ Map PR1355의 기존 consumer는 T1의 `collection/has_more/next_cursor` 페이�
 승인집합의 가장 이른 원천 관측시각을 쓴다. source_status는 ok/stale이며 item_count는 페이지의
 행수, total_count는 고정 집합 전체행수다. 메타 없는/급감미확인 첫집합은503으로 닫는다.
 철도 코드의 선행0과 nullable code/coords, parking의 airport_anchor, 항구 guideline 좌표null을
-그대로 보존한다. admin block의10자리 법정동코드를 직접 쓰고 geo를 재호출하지 않는다.
+그대로 보존한다. T1 fuel/rest-area 및 T3 참조의 admin은 현재 좌표의 coordinate_key와
+reverse_address_entries가 일치할 때만 싣고, 없거나 불일치하면 null이다. 주소 provider는
+vworld/kakao이며 nullable code/주소 필드를 보존한다. 검증된10자리 legal_dong_code를
+직접 쓰고 geo를 재호출하지 않는다. 기존 Map T1 consumer의 admin 소비는 별도 후속이다.
+
+T4는 [별도 가격 이력 계약](map-service-price-history.md)을 따른다. query는 product/from/to,
+limit은 전체 페이지 행수, cursor revision/만료는409다. 위 T2/T3의410과 혼동하지 않는다.
+휴게소 가격 이력은501이며 이력 표를 새로 만들지 않는다. Map의 기존 T4 query/parser와
+producer 응답 사이 호환 수정은 Map 소유 후속이다.
 
 ## Map reader 처리 순서
 
