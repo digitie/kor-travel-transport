@@ -39,6 +39,12 @@ Compose에 명시적으로 추가한다. 렌더된 command와 healthcheck가 모
 소비자 export는 GET과 기존 승인 IP/CIDR에 한정하고 빈 설정은 모두 거부한다.
 기존 env 보호 exclude를 지우거나 HAProxy를 직접 수정하지 않는다. 공용 daemon RUNNING을 유지한다. DB 조회·worker 확인에 상한을 두고, 배포 시간 초과로 하위 작업의 종료가 불명확하면 pause를 유지한 채 별도 정산한다. 종료를 증명하기 전에 자동 rollback과 정방향 배포를 겹치지 않는다.
 
+### 사전 빌드와 공식 staging의 metadata
+
+사전 빌드는 가능하면 공식 `DEPLOY_STAGE_ONLY=true`로 준비한 같은 staging과 같은 사용자·파일 metadata를 사용한다. 별도 Python tar 추출의 `filter=data`는 group write를 제거하므로 GNU tar staging과 Git tree/내용이 같아도 COPY 캐시가 달라질 수 있다. 캐시 재사용은 실제 build 로그로 확인하며 동일 tree만으로 단정하지 않는다. BuildKit의 자원 상한과 Docker daemon 이미지 적재의 자원 사용도 구분한다.
+
+실행 중인 배포의 source mode를 바꾸지 않는다. 불필요한 build를 취소해야 한다면 정확한 소유 PID뿐 아니라 공식 script/controller와 BuildKit solve의 종료, 기존 앱/schema 및 instigator 복원을 확인한다. 그 뒤 Manager global lock→Transport release lock 순으로 확보하고 tracked 일반 파일의 hash·실행 비트·경로와 보호 파일 보존을 확인한 경우에만 metadata를 정리한다. 종료가 불명확하면 재시도와 겹치지 않는다.
+
 아래 n150 절과 이전 계획의 당시 미완 항목은 역사다. 최신 수용 증거는
 [운영 계약 검증](../reviews/2026-10-19-track2-runtime-contract.md)와
 [ARM 관리자 번들 수용](../audits/2026-10-19-admin-bundle-acceptance.md)을 따른다.
