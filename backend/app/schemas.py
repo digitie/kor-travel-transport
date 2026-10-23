@@ -1046,3 +1046,24 @@ class AddressRefreshSummary(BaseModel):
     configured: bool
     auto_enabled: bool
     items: list[dict[str, Any]]
+
+
+class ServiceExportMeta(BaseModel):
+    generated_at: datetime
+    source_collected_at: datetime | None
+    source_status: Literal["ok", "stale", "failed"]
+    item_count: int
+
+
+class ExportPriceHistoryItem(BaseModel):
+    product_code: str
+    observed_at: datetime
+    price: float | None
+
+
+class FuelPriceHistoryExportPage(BaseModel):
+    meta: ServiceExportMeta
+    station_key: str
+    items: list[ExportPriceHistoryItem]
+    next_cursor: str | None = None
+    has_more: bool

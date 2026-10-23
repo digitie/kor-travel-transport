@@ -1566,6 +1566,37 @@
         "title": "ExportHighwayIncident",
         "type": "object"
       },
+      "ExportPriceHistoryItem": {
+        "properties": {
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price"
+          },
+          "product_code": {
+            "title": "Product Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_code",
+          "observed_at",
+          "price"
+        ],
+        "title": "ExportPriceHistoryItem",
+        "type": "object"
+      },
       "ExportRestArea": {
         "properties": {
           "admin": {
@@ -2368,6 +2399,47 @@
           "name"
         ],
         "title": "FuelCheapestStation",
+        "type": "object"
+      },
+      "FuelPriceHistoryExportPage": {
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExportPriceHistoryItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ServiceExportMeta"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "station_key": {
+            "title": "Station Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "meta",
+          "station_key",
+          "items",
+          "has_more"
+        ],
+        "title": "FuelPriceHistoryExportPage",
         "type": "object"
       },
       "FuelPriceItem": {
@@ -5568,6 +5640,48 @@
         "title": "RestAreaFuelPriceExportPage",
         "type": "object"
       },
+      "ServiceExportMeta": {
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "source_collected_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Collected At"
+          },
+          "source_status": {
+            "enum": [
+              "ok",
+              "stale",
+              "failed"
+            ],
+            "title": "Source Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "generated_at",
+          "source_collected_at",
+          "source_status",
+          "item_count"
+        ],
+        "title": "ServiceExportMeta",
+        "type": "object"
+      },
       "ThresholdDateHistoryItem": {
         "properties": {
           "available_spaces": {
@@ -8381,6 +8495,176 @@
         ]
       }
     },
+    "/v1/service/exports/fuel-stations/{station_key}/price-history": {
+      "get": {
+        "description": "주유소 자연키의 유종별 과거 가격. 기본 최근30일·최대366일·한 페이지5000건이다.\n\ncursor는15분 동안 창·필터·성공 수집 revision을 고정한다. 수집 revision이 바뀌면409로\n처음부터 다시 읽는다. 휴게소 가격 이력 표는 만들지 않으며 별도 경로는501이다.",
+        "operationId": "price_history_v1_service_exports_fuel_stations__station_key__price_history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "station_key",
+            "required": true,
+            "schema": {
+              "maxLength": 80,
+              "minLength": 1,
+              "title": "Station Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "product",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 20,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Product"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 1000,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FuelPriceHistoryExportPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "304": {
+            "description": "집합·상태가 동일함"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Price History",
+        "tags": [
+          "service-exports"
+        ]
+      }
+    },
     "/v1/service/exports/highway-incidents/active": {
       "get": {
         "description": "마지막 성공 돌발 수집의 활성 사건 전체(페이지 없음).\n\n수집이 실패했거나 30분 넘게 성공하지 못했으면 503이다 — 오래된 집합을 주면 소비자가\n사라진 사건을 해소로 오판한다. 빈 목록은 \"현재 돌발 없음\"이라는 확인된 사실이다.",
@@ -8521,6 +8805,69 @@
           }
         },
         "summary": "Export Rest Area Fuel Prices",
+        "tags": [
+          "service-exports"
+        ]
+      }
+    },
+    "/v1/service/exports/rest-area-fuel-prices/{station_key}/price-history": {
+      "get": {
+        "description": "휴게소 유가 이력은 저장하지 않아 지원하지 않는다. 현재 가격 export를 사용한다.",
+        "operationId": "rest_area_history_v1_service_exports_rest_area_fuel_prices__station_key__price_history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "station_key",
+            "required": true,
+            "schema": {
+              "maxLength": 240,
+              "minLength": 1,
+              "title": "Station Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
+          "501": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Rest Area History",
         "tags": [
           "service-exports"
         ]

@@ -13,3 +13,19 @@ export type ExportAdminAddress = {
 };
 
 export type ExportAddressBlock = { admin?: ExportAdminAddress | null };
+
+
+export type ServiceExportMeta = {
+  generated_at: string;
+  source_collected_at: string | null;
+  source_status: "ok" | "stale" | "failed";
+  item_count: number;
+};
+
+export type FuelPriceHistoryExportPage = {
+  meta: ServiceExportMeta;
+  station_key: string;
+  items: { product_code: string; observed_at: string; price: number | null }[];
+  next_cursor: string | null;
+  has_more: boolean;
+};
