@@ -10,13 +10,12 @@
 
 ## 진행 중인 작업 인덱스
 
-- [ ] 운영 rollout 전 필수: 공항 KAC quota의 실제 실패 origin/until을 기존 source state.next_due_at에 유지한다. ICN 병행 blocked 관찰은 기간을 연장하지 않고 원래 만료 뒤 정상 재시도해야 한다. `codex/parking-quota-deadline`에서 별도 소형 PR로 구현/회귀/두 리뷰/CI를 마감한다. 118 고정 리뷰 범위와 분리한다.
+- [ ] Map T2/T3 운영 수용: schema0030~0033와 API/CS를 승인된 drain 뒤 배포하고 source별 정상 성공 head를 준비한다. defaultOFF를 단계 활성화한 뒤 실제 HTTPS·Map 새 frozen reader·UI·TTL/실패 복구를 검증한다. KAC quota PR119를 배포에 포함하며 원래 deadline 만료 뒤 재시도를 확인한다. [구현·검증 정산](reports/2026-10-23-map-t2-t3-acceptance.md).
 
 
-- [ ] Map T2 traffic current: source/filter head·typed pointer·같은 source transaction hook은 PR112 머지/검증 완료다. schema0030/defaultOFF로 운영 미배포이며 비용·운영 수용은 남았다. [진척·남은 gate](reports/2026-10-23-traffic-current-pointer.md). 실제 traffic REST/고정 snapshot은 `codex/map-current-reference-api`에서 검증 중이다. 주차/T3·운영 활성화는 후속이다.
 
 
-- [ ] Map service API: T5 PR108·T1 PR109·T4 PR110의 운영배포·API계약7/기존UI16 수용은 완료다. 오래된 OpiNet의 T1fuel200/admin·최신수집/Map 소비자 수용은 미완이다. T2 traffic current는 PR112 머지/defaultOFF/운영미배포이며, T2 traffic REST와 공통 frozen snapshot/status/cursor는 구현·검증 중이며 주차·T3 참조는 미구현이다. [구현 순서](design/map-current-reference-exports.md).
+- [ ] Map service API 후속: T1/T4/T5 PR108~110은 운영 배포·계약7/기존UI16 수용을 마쳤다. 오래된 OpiNet의 T1 fuel200/admin·최신 수집·Map 소비자 수용은 별도 미완이다. T2/T3 제품 구현은 PR112/114~118로 정산하고, 운영 수용은 위 별도 task에서 추적한다. [Map 인계](map-service-exports-handoff.md).
 
 
 - [ ] 수집 CPU/RAM 후속: 기존 Track 1·2 수용 뒤 동일 입력으로 fetch/raw 변환/traffic 저장/통계/commit을 계측한다. 현재 traffic 8,300개에 약16,600개 SELECT·write 문장이 필요한 구조와 매번 최근2시간 재집계는 코드 조사 결과이며 실측 기여율은 미확인이다. bounded 배치 저장→변경 bucket만 재집계→incident 배치 저장을 각각 작은 PR로 검증하고, 원본·정정·삽입 수·소유권·통계 동등성을 보존한다. 단일 op executor의 프로세스 절감과 draft PR93 메모리 수용도 실제 run 증거 전에는 완료 처리하지 않는다.
@@ -378,5 +377,3 @@ dark-mode 차트/톤 팔레트 미토큰화, `globals.css` 전반의 desktop-fir
   게이트웨이에서 접근을 제한해야 한다.
 
 - [ ] Map T4 가격 이력: PR110 구현·검증·머지 완료(주유소 bounded 조회·공통meta·ETag/gzip·cursor/revision, 휴게소501). 운영배포·stale 이력/304/gzip/페이지 계약·기존UI16 수용은 완료다. Map 예시 인계 댓글은 게시했고 소비자 수용·실수집 최신성 회복 뒤 추가 확인이 남았다. T1fuel200/admin 정상자료도 별도 미완이다. [계약](map-service-price-history.md).
-
-- [ ] Map T2/T3 후속: traffic pointer는 PR112에 머지했고 기본OFF/운영미배포다. 이후 parking 완결 증거/current·frozen snapshot/status/cursor·T2 REST·T3 참조는 [작은 PR 순서/회귀/비용 gate](design/map-current-reference-exports.md)에 따른 설계 단계다. source별 완결·고정snapshot·비용 검증 후 공개하며 운영은 미완이다.

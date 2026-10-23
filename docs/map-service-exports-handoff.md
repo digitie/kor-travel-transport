@@ -11,9 +11,11 @@ Map PR1355의 기존 consumer는 T1의 `collection/has_more/next_cursor` 페이�
 | --- | --- | --- | --- |
 | T2 | highway-traffic/current | 114 | 머지됨, 새 API 미배포·flagOFF |
 | T3 | bus-terminals | 115 | 머지됨, 새 API 미배포·flagOFF |
-| T3 | ferry-ports | 116 | 최종CI/머지 마감중, 새 API 미배포 |
-| T3 | rail-stations | 117 | 최종CI/머지 마감중, 새 API 미배포 |
-| T2 | parking/current | 118 | 구현·적대리뷰/CI 진행중, 새 API 미배포 |
+| T3 | ferry-ports | 116 | 머지됨, 새 API 미배포·flagOFF |
+| T3 | rail-stations | 117 | 머지됨, 새 API 미배포·flagOFF |
+| T2 | parking/current | 118 | 구현·두 리뷰 PASS, 최종 CI 대기·새 API 미배포 |
+
+[제품 검증·머지/운영 잔여 gate 정산](reports/2026-10-23-map-t2-t3-acceptance.md). KAC quota 복구 PR119도 운영 rollout 전에 포함한다.
 
 모든 경로는 `/v1/service/exports/` 아래이며 기존 service token header/peer 허용 규칙을 사용한다.
 새 인증 방식이나 브라우저 토큰을 만들지 않는다. 배포 및 source flag 활성화는 운영 수집 run과

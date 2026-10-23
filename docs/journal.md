@@ -443,6 +443,13 @@ PR82 위 Common37 핀·최종 stdlib 사전 컴파일·API HTTP CLI·전체 운�
 
 # journal.md — 작업 일지
 
+## 2026-10-23 — Map T2/T3 구현·운영 수용 문서 정합화
+
+- 과거 설계의 "미구현" 설명과 현재 task 인덱스를 고정 snapshot/traffic·parking·bus·ferry·rail 구현 상태에 맞췄다. PR114~119의 정확 SHA·두 리뷰·CI/PG·Compose·실제 TCP fixture와 기존 운영 UI 근거를 한 정산 문서로 연결한다.
+- 운영 미배포/defaultOFF·실제 source head bootstrap·Map 별도 reader·ARM CPU/RAM/PG WAL 실측을 미완으로 유지한다. CI의 live-e2e SKIPPED는 PASS가 아니다.
+- Markdown만 변경하며 제품 파일/환경/운영에는 변경이 없다. 상대 링크·diff 공백 검사와 문서 두 적대 리뷰를 gate로 삼고 사용자 지시에 따라 문서 PR CI는 생략한다.
+
+
 ## 2026-10-14 — Odroid 장애로 운영 E2E 미실행, 사용자 지시에 따른 머지
 
 - 사용자 보고로 운영 Odroid 중단을 확인했다. live E2E·UI E2E는 실행하지 못했으며 PASS로 표시하지 않는다. 사용자가 현재 PR의 E2E 선행 조건을 명시적으로 유예하고 머지 후 남은 작업을 계속하도록 지시했다.
