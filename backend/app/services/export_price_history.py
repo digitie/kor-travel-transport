@@ -33,7 +33,8 @@ def _aware(value: datetime) -> datetime:
 
 
 def _revision(state: TransportCollectionState) -> str:
-    value = [serialize_utc(state.last_success_at).isoformat(), bool(state.last_error)]
+    value = [serialize_utc(state.last_success_at).isoformat(), bool(state.last_error),
+             serialize_utc(state.updated_at).isoformat()]
     return hashlib.sha256(json.dumps(value).encode()).hexdigest()
 
 
@@ -58,11 +59,18 @@ def _decode_cursor(value: str, key: bytes) -> dict:
         raise HTTPException(422, "cursor는 이전 응답의 next_cursor를 그대로 사용해야 합니다.") from exc
 
 
-def _response(page: FuelPriceHistoryExportPage, request: Request) -> Response:
+def _response(
+    page: FuelPriceHistoryExportPage, request: Request, *, cursor_epoch: int | None,
+    cursor_revision: str | None,
+) -> Response:
     payload = page.model_dump(mode="json")
     semantic = {**payload, "meta": {k: v for k, v in payload["meta"].items() if k != "generated_at"}}
     # cursor는 같은 집합/페이지의 다른 발급시각이어도 같은 탐색을 제공한다.
     semantic.pop("next_cursor")
+    # TTL보다 먼저 바뀌는 고정 bucket을 ETag에 넣어 304가 만료 cursor만
+    # 영구 재사용하게 만들지 않는다. 같은 bucket 안의 cursor는 모두 유효하다.
+    semantic["cursor_epoch"] = cursor_epoch
+    semantic["cursor_revision"] = cursor_revision
     digest = hashlib.sha256(json.dumps(semantic, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     etag = f'W/"{digest}"'
     headers = {"ETag": etag, "Vary": "Accept-Encoding", "Cache-Control": "private, no-cache"}
@@ -84,7 +92,10 @@ def build_price_history_router(
     cursor_key = hashlib.sha256((settings.transport_service_export_token or "").encode()).digest()
 
     @router.get("/fuel-stations/{station_key}/price-history", response_model=FuelPriceHistoryExportPage,
-                responses={304: {"description": "집합·상태가 동일함"}, 404: {}, 409: {}, 503: {}})
+                responses={200: {"headers": {
+                    "ETag": {"schema": {"type": "string"}, "description": "데이터·상태·cursor 유효성의 weak ETag"},
+                    "Content-Encoding": {"schema": {"type": "string"}, "description": "요청 시 gzip 지원"},
+                }}, 304: {"description": "집합·상태·cursor 유효성이 동일함"}, 404: {}, 409: {}, 503: {}})
     async def price_history(
         request: Request,
         station_key: str = Path(min_length=1, max_length=80),
@@ -102,10 +113,10 @@ def build_price_history_router(
         """
         if session.bind.dialect.name == "postgresql":
             await session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
-        station = await session.scalar(select(FuelStation).where(
+        station_id = await session.scalar(select(FuelStation.id).where(
             FuelStation.source == OPINET_SOURCE, FuelStation.source_station_id == station_key,
         ).order_by(FuelStation.id).limit(1))
-        if station is None:
+        if station_id is None:
             raise HTTPException(404, "주유소 자연키를 찾을 수 없습니다.")
         state = await session.scalar(select(TransportCollectionState).where(
             TransportCollectionState.source == OPINET_SOURCE,
@@ -144,7 +155,7 @@ def build_price_history_router(
             raise HTTPException(422, "이력 시각·창·cursor 조건이 올바르지 않습니다.") from exc
         query = select(FuelPriceSnapshot.product_code, FuelPriceSnapshot.observed_at,
                        FuelPriceSnapshot.price, FuelPriceSnapshot.collected_at, FuelPriceSnapshot.id).where(
-            FuelPriceSnapshot.fuel_station_id == station.id,
+            FuelPriceSnapshot.fuel_station_id == station_id,
             FuelPriceSnapshot.source == OPINET_SOURCE,
             FuelPriceSnapshot.observed_at >= start, FuelPriceSnapshot.observed_at <= end,
         )
@@ -177,9 +188,14 @@ def build_price_history_router(
         )
         # gzip/JSON CPU 작업 중에는 DB snapshot을 잡지 않는다.
         await session.rollback()
-        return _response(result, request)
+        return _response(
+            result, request,
+            cursor_epoch=int(issued.timestamp()) // int(CURSOR_TTL.total_seconds()) if has_more else None,
+            cursor_revision=revision if has_more else None,
+        )
 
-    @router.get("/rest-area-fuel-prices/{station_key}/price-history", responses={501: {}})
+    @router.get("/rest-area-fuel-prices/{station_key}/price-history", status_code=501,
+                responses={404: {}, 501: {}})
     async def rest_area_history(station_key: str = Path(min_length=1, max_length=240)) -> Response:
         """휴게소 유가 이력은 저장하지 않아 지원하지 않는다. 현재 가격 export를 사용한다."""
         raise HTTPException(501, "휴게소 유가 이력은 저장하지 않아 지원하지 않습니다.")

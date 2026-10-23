@@ -142,3 +142,51 @@ def test_history_missing_station_and_unsupported_rest_area_are_problems(history_
     assert rest.status_code == 501
     assert rest.headers["content-type"].startswith("application/problem+json")
     assert "이력" in rest.json()["detail"]
+
+
+
+def test_history_revalidation_renews_cursor_before_expiry(history_client, monkeypatch):
+    from app.services import export_price_history
+
+    first_time = now_utc().replace(minute=2, second=0, microsecond=0) + timedelta(hours=1)
+    clock = [first_time]
+    monkeypatch.setattr(export_price_history, "now_utc", lambda: clock[0])
+    first = history_client.get(PATH, headers=HEADERS, params={"limit": 1})
+    assert first.status_code == 200 and first.json()["has_more"]
+    clock[0] += timedelta(minutes=16)
+    refreshed = history_client.get(PATH, headers={**HEADERS, "If-None-Match": first.headers["etag"]}, params={"limit": 1})
+    assert refreshed.status_code == 200
+    assert refreshed.headers["etag"] != first.headers["etag"]
+    old = history_client.get(PATH, headers=HEADERS, params={"cursor": first.json()["next_cursor"]})
+    assert old.status_code == 409
+    fresh = history_client.get(PATH, headers=HEADERS, params={"cursor": refreshed.json()["next_cursor"]})
+    assert fresh.status_code == 200
+
+
+@pytest.mark.parametrize("change", ["new_success", "same_clock_correction"])
+def test_history_mutation_invalidates_old_cursor_and_revalidation(history_client, change):
+    from app.models import TransportCollectionState
+
+    first = history_client.get(PATH, headers=HEADERS, params={"limit": 1})
+    async def mutate(session):
+        state = await session.scalar(select(TransportCollectionState).where(
+            TransportCollectionState.source == OPINET_SOURCE,
+        ))
+        if change == "new_success":
+            state.last_success_at = now_utc()
+        else:
+            # 첫 페이지 밖의 row 교정: 첫 페이지 값과 원천 시각만으로는 잡을 수 없다.
+            row = await session.scalar(select(FuelPriceSnapshot).order_by(
+                FuelPriceSnapshot.observed_at.asc(),
+            ).limit(1))
+            row.price = 1501
+        state.updated_at = now_utc() + timedelta(microseconds=1)
+    _run(history_client, mutate)
+    refreshed = history_client.get(PATH, headers={**HEADERS, "If-None-Match": first.headers["etag"]}, params={"limit": 1})
+    assert refreshed.status_code == 200
+    assert refreshed.headers["etag"] != first.headers["etag"]
+    assert refreshed.json()["items"] == first.json()["items"]
+    old = history_client.get(PATH, headers=HEADERS, params={"cursor": first.json()["next_cursor"]})
+    assert old.status_code == 409
+    fresh = history_client.get(PATH, headers=HEADERS, params={"cursor": refreshed.json()["next_cursor"]})
+    assert fresh.status_code == 200

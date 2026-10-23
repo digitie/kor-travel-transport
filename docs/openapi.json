@@ -8603,10 +8603,24 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "Successful Response",
+            "headers": {
+              "Content-Encoding": {
+                "description": "요청 시 gzip 지원",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "데이터·상태·cursor 유효성의 weak ETag",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "304": {
-            "description": "집합·상태가 동일함"
+            "description": "집합·상태·cursor 유효성이 동일함"
           },
           "404": {
             "content": {
@@ -8828,13 +8842,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "404": {
             "content": {
-              "application/json": {
-                "schema": {}
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "애플리케이션 오류"
           },
           "422": {
             "content": {
