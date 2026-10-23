@@ -13,7 +13,7 @@ receipt를증명하지않는다. HTTP/원문파싱·다음page호출루프는SDK
 이전 성공25% 미만은 두 번의 완결 metadata와 동일 identity 집합이 확인된 nonempty만 승인한다.
 이름/코드 누락·중복은 성공으로 내보내지 않는다. 고속/시외 전체 fetch와 보조기준정보 fetch를
 마친 뒤 reference rows+source head/memberIDs+native success를 하나의 transaction에 확정한다.
-외부 fetch 동안 DB pool을 반환한다. 후기 저장 실패는 rollback하고 scalar native run ID로
+외부 fetch 동안 저장 session의 DB 연결을 반환한다. PostgreSQL의 기존 전용 session advisory lease 연결1개는 소유권을 위해 유지한다. 후기 저장 실패는 rollback하고 scalar native run ID로
 실패를 기록한다. 만료 ORM run.id 재접근을 하지 않는다.
 
 작은 `reference_export_states`는 source별 generation/run순서/실제확인시각/최대10,000개

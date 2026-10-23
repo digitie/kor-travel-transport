@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 from datagokr import OpenApiPage, TagoBusTerminal
-from sqlalchemy import select, update
+from sqlalchemy import event, select, update
 
 from app.core.time_utils import now_utc
 from app.models import BusTerminalReference, ReferenceExportState
@@ -95,6 +95,20 @@ def test_reference_snapshot_updates_manual_data_without_source_recollection(expo
     assert new.json()["snapshot_id"] != data["snapshot_id"]
 
 
+class PoolCounter:
+    def __init__(self, engine):
+        self.count = 0
+        self.expected = 1 if engine.dialect.name == "postgresql" else 0
+        event.listen(engine.sync_engine, "checkout", lambda *args: self.change(1))
+        event.listen(engine.sync_engine, "checkin", lambda *args: self.change(-1))
+
+    def change(self, delta):
+        self.count += delta
+
+    def checkedout(self):
+        return self.count
+
+
 class CompleteProvider:
     def __init__(self, scope, pool, *, empty=False):
         self.scope, self.pool, self.empty = scope, pool, empty
@@ -102,7 +116,7 @@ class CompleteProvider:
         self.calls = 0
 
     async def iter_pages(self, **kwargs):
-        assert self.pool.checkedout() == 0, "fetch 동안 DB 연결을 보유했습니다"
+        assert self.pool.checkedout() == self.pool.expected, "fetch 동안 저장 session 연결을 보유했습니다"
         self.calls += 1
         items = [] if self.empty else [TagoBusTerminal(terminalId="001", terminalNm=self.scope, cityName="서울")]
         yield OpenApiPage(total_count=len(items), page_no=1, num_of_rows=100, items=items)
@@ -134,9 +148,10 @@ def test_source_complete_and_empty_failure_keeps_success(export_client):
     settings.bus_reference_collection_enabled = True
     settings.data_go_kr_service_key = "fixture"
     engine = c.app.state.engine
+    pool = PoolCounter(engine)
     providers = []
     def client_factory(**kwargs):
-        value = CompleteClient(engine.pool, empty=len(providers) > 0)
+        value = CompleteClient(pool, empty=len(providers) > 0)
         providers.append(value)
         return value
     service = BusReferenceCollectionService(settings, client_factory=client_factory)
@@ -166,7 +181,8 @@ def test_late_store_failure_rolls_back_refs_and_heads_without_expired_run_access
     settings.transport_map_current_enabled = True
     settings.bus_reference_collection_enabled = True
     settings.data_go_kr_service_key = "fixture"
-    factory = lambda **kwargs: CompleteClient(c.app.state.engine.pool)
+    pool = PoolCounter(c.app.state.engine)
+    factory = lambda **kwargs: CompleteClient(pool)
     service = BusReferenceCollectionService(settings, client_factory=factory)
     async def first(s):
         await service.collect(s, trigger="first")
