@@ -578,3 +578,72 @@ def test_unconfirmed_empty_cannot_close_106_incidents_but_confirmed_empty_can(ex
     assert _run(export_client, collect)["status"] == "success"
     recovered = export_client.get(path, headers=HEADERS)
     assert recovered.status_code == 200 and recovered.json()["items"] == []
+
+
+@pytest.mark.parametrize("kind,path", [
+    ("fuel_station", "/v1/service/exports/fuel-stations"),
+    ("rest_area", "/v1/service/exports/rest-areas"),
+])
+@pytest.mark.parametrize("variant", [
+    "valid", "moved", "missing", "invalid_code", "wrong_provider", "retained_error", "retained_not_found",
+])
+def test_reference_export_admin_uses_only_the_current_coordinate(
+    export_client, kind, path, variant,
+):
+    from kortravelcommon.address_providers import VworldKakaoAddressResolver
+    from kortravelcommon.reverse_address import AddressTarget, reverse_address_tables
+    from app.models import Base, RestAreaReference
+
+    async def seed(session):
+        now = now_utc()
+        if kind == "fuel_station":
+            await _seed_fuel_station(session, seen_at=now)
+            row = await session.scalar(select(FuelStation).where(FuelStation.source == OPINET_SOURCE))
+            source = OPINET_SOURCE
+        else:
+            row = RestAreaReference(source=REST_AREA_SOURCE, identity_key="휴게소::노선::방향",
+                                    name="휴게소", longitude=127.0, latitude=37.5,
+                                    first_seen_at=now, last_seen_at=now)
+            session.add(row)
+            await session.flush()
+            source = REST_AREA_SOURCE
+        await _set_state(session, source, last_success_at=now)
+        if variant == "missing":
+            return
+        key = f"{kind}:{row.id}"
+        coordinate = AddressTarget(key, row.longitude, row.latitude)
+        entries, _ = reverse_address_tables(Base.metadata)
+        await session.execute(entries.insert().values(
+            provider_id=VworldKakaoAddressResolver.provider_id, target_key=key,
+            coordinate_key=coordinate.coordinate_key, longitude=row.longitude, latitude=row.latitude,
+            status=("error" if variant == "retained_error" else
+                    "not_found" if variant == "retained_not_found" else "ok"),
+            failures=1 if variant == "retained_error" else 0,
+            checked_at=now, resolved_at=now,
+            payload={"provider": [] if variant == "wrong_provider" else "vworld",
+                     "address": {"legal_dong_code": "123" if variant == "invalid_code" else "0123456789",
+                                 "admin_dong_code": "0012345678", "road_address": "도로 주소",
+                                 "parcel_address": "지번 주소", "postal_code": "01234"},
+                     "region": {"sido": "시도", "sigungu": "시군구", "legal_dong": "법정동"},
+                     "private_extra": "must-not-export"},
+        ))
+        if variant == "moved":
+            # 같은 표시 반올림 좌표여도 exact coordinate_key는 달라야 한다.
+            row.longitude += 0.00000001
+
+    _run(export_client, seed)
+    response = export_client.get(path, headers=HEADERS)
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    address = item["admin"]
+    if variant in {"missing", "moved", "wrong_provider", "retained_not_found"}:
+        assert address is None
+    else:
+        assert address["legal_dong_code"] == (None if variant == "invalid_code" else "0123456789")
+        assert address["admin_dong_code"] == "0012345678"
+        assert address["postal_code"] == "01234"
+        assert address["sido_name"] == "시도" and address["sigungu_name"] == "시군구"
+        assert address["legal_dong_name"] == "법정동"
+        assert address["road_address"] == "도로 주소" and address["parcel_address"] == "지번 주소"
+        assert address["provider"] == "vworld" and address["resolved_at"]
+        assert "private_extra" not in address

@@ -5,6 +5,12 @@
 - 기존 legacy export의 실패503 의미와 유가#103~#106을 유지한다. schema 변경0, 새 원천/이력 전체 조회0, 정상 응답 추가 HTTP0이다. 최종 테스트·2리뷰·CI·live·배포는 아직 대기다.
 - [설계·검증 범위](reports/2026-10-23-map-export-empty-guard.md). T1/admin·T2/현재 상태·T3/참조·T4/이력과 snapshot/ETag/gzip은 후속이다.
 
+
+## 2026-10-23 — Map service API T1 행정주소 가산 구현 중
+
+- 주유소·휴게소 export에 현재 exact 좌표와 일치하는 Common 파생주소의 `admin` 블록을 붙인다. 한 페이지를 async DB snapshot 안에서 일괄 읽고 외부 주소 API를 호출하지 않는다. 새 field 외 기존 인증/필드/실패 의미는 유지한다.
+- 집중SQLite12 PASS. OpenAPI·TS를 함께 갱신한다. 전체PG/CI/2리뷰/live/운영 수용은 아직 대기다. [계약·예시](map-service-admin-address.md). T5 guard PR108과 분리했으며 T3는 이후 같은 helper를 사용한다.
+
 ## 2026-10-23 — 유가 통합 개선 운영 수용 완료
 
 - #103~#106 통합 source `af415b3`: 두 독립 제품 리뷰·WSL980/Docker977·최종 CI를 통과해 Odroid NVMe에 배포했다. API/CS release·schema29·gRPC12306·location·frontend 정상, 타 컨테이너8개 보존·schedule12/sensor5 복원을 확인했다.

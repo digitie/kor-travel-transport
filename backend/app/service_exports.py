@@ -58,6 +58,7 @@ from app.schemas import (
     RestAreaExportPage,
     RestAreaFuelPriceExportPage,
 )
+from app.services.export_addresses import export_admin_addresses
 from app.services.rest_area_collection import REST_AREA_FUEL_SOURCE, REST_AREA_SOURCE
 from app.services.transport_collection import (
     FUEL_STALE_AFTER,
@@ -131,13 +132,14 @@ def build_service_export_router(
                     observed_at=serialize_utc(row.observed_at),
                     collected_at=serialize_utc(row.collected_at),
                 ))
+        addresses = await export_admin_addresses(session, "fuel_station", page)
         items = [ExportFuelStation(
             natural_key=row.source_station_id, source=row.source, name=row.name,
             brand_code=row.brand_code, brand_name=row.brand_name, phone=row.phone, address=row.address,
             longitude=row.longitude, latitude=row.latitude, is_self=row.is_self, is_24h=row.is_24h,
             has_carwash=row.has_carwash, has_maintenance=row.has_maintenance, has_cvs=row.has_cvs,
             first_seen_at=serialize_utc(row.first_seen_at), last_seen_at=serialize_utc(row.last_seen_at),
-            prices=prices.get(row.id, []), raw=row.raw_item_json,
+            prices=prices.get(row.id, []), admin=addresses.get(row.id), raw=row.raw_item_json,
         ) for row in page]
         return FuelStationExportPage(
             generated_at=now_utc(), collection=collection, items=items,
@@ -161,13 +163,15 @@ def build_service_export_router(
         )
         rows = list((await session.scalars(_current_set(query, RestAreaReference.last_seen_at, state))).all())
         page, has_more = rows[:limit], len(rows) > limit
+        addresses = await export_admin_addresses(session, "rest_area", page)
         items = [ExportRestArea(
             natural_key=row.identity_key, source=row.source, name=row.name, route_name=row.route_name,
             direction=row.direction, longitude=row.longitude, latitude=row.latitude,
             has_gas_station=row.has_gas_station, has_lpg_station=row.has_lpg_station,
             has_ev_charger=row.has_ev_charger, phone_number=row.phone_number,
             data_reference_date=row.data_reference_date, first_seen_at=serialize_utc(row.first_seen_at),
-            last_seen_at=serialize_utc(row.last_seen_at), raw=row.raw_item_json,
+            last_seen_at=serialize_utc(row.last_seen_at), admin=addresses.get(row.id),
+            raw=row.raw_item_json,
         ) for row in page]
         return RestAreaExportPage(
             generated_at=now_utc(), collection=collection, items=items,

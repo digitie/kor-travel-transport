@@ -886,6 +886,21 @@ class ExportFuelPrice(BaseModel):
     collected_at: datetime
 
 
+class ExportAdminAddress(BaseModel):
+    """현재 좌표와 일치하는 마지막 reverse 주소. resolved_at은 실제 확인 시각이다."""
+
+    legal_dong_code: str | None = Field(default=None, pattern=r"^[0-9]{10}$")
+    admin_dong_code: str | None = None
+    sido_name: str | None = None
+    sigungu_name: str | None = None
+    legal_dong_name: str | None = None
+    road_address: str | None = None
+    parcel_address: str | None = None
+    postal_code: str | None = None
+    provider: Literal["vworld", "kakao"]
+    resolved_at: datetime
+
+
 class ExportFuelStation(BaseModel):
     natural_key: str = Field(description="오피넷 주유소 ID(uni_id). 안정 자연키")
     source: str
@@ -904,6 +919,7 @@ class ExportFuelStation(BaseModel):
     first_seen_at: datetime
     last_seen_at: datetime
     prices: list[ExportFuelPrice]
+    admin: ExportAdminAddress | None = None
     raw: dict | None = None
 
 
@@ -930,6 +946,7 @@ class ExportRestArea(BaseModel):
     data_reference_date: str | None = None
     first_seen_at: datetime
     last_seen_at: datetime
+    admin: ExportAdminAddress | None = None
     raw: dict | None = None
 
 
