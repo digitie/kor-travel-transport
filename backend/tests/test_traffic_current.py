@@ -356,3 +356,39 @@ def test_unconfirmed_empty_source_keeps_previous_current_and_success_clock(
             ).generation == before
 
     _execute(test_settings, check)
+
+
+def test_history_retention_preserves_typed_members_and_stable_tie_order(test_settings):
+    from sqlalchemy import delete
+
+    test_settings.transport_map_current_enabled = True
+
+    async def check(factory, _engine):
+        service = TransportCollectionService(test_settings, FakeTransportProvider())
+        flow = await _flow()
+        async with factory() as session:
+            run_id = await _run(session)
+            await service._store_traffic(session, run_id, (flow,))
+            await session.commit()
+            current = await session.scalar(select(HighwayTrafficCurrent))
+            old_id, generation = current.snapshot_id, current.generation
+            await session.execute(
+                delete(HighwayTrafficSnapshot).where(
+                    HighwayTrafficSnapshot.id == old_id
+                )
+            )
+            await session.commit()
+            await session.refresh(current)
+            assert current.snapshot_id is None and current.snapshot_order == old_id
+            assert current.speed == flow.speed and current.generation == generation
+            state = await _state(session, service)
+            assert state.generation == generation and state.member_count == 1
+            await session.rollback()
+            run_id = await _run(session)
+            await service._store_traffic(session, run_id, (replace(flow, speed=45.0),))
+            await session.commit()
+            await session.refresh(current)
+            assert current.snapshot_id is not None and current.speed == 45.0
+            assert current.snapshot_order == current.snapshot_id
+
+    _execute(test_settings, check)

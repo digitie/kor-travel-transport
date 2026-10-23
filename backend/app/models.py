@@ -187,11 +187,15 @@ class HighwayTrafficCurrent(Base):
     __tablename__ = "highway_traffic_current"
     __table_args__ = (
         Index("ix_highway_traffic_current_members", "source", "scope_key", "generation", "identity_key"),
+        Index("ix_highway_traffic_current_snapshot", "snapshot_id"),
     )
     source: Mapped[str] = mapped_column(String(40), primary_key=True)
     scope_key: Mapped[str] = mapped_column(String(64), primary_key=True)
     identity_key: Mapped[str] = mapped_column(String(240), primary_key=True)
-    snapshot_id: Mapped[int] = mapped_column(ForeignKey("highway_traffic_snapshots.id", ondelete="CASCADE"))
+    snapshot_id: Mapped[int | None] = mapped_column(
+        ForeignKey("highway_traffic_snapshots.id", ondelete="SET NULL"), nullable=True,
+    )
+    snapshot_order: Mapped[int] = mapped_column(Integer)
     generation: Mapped[str] = mapped_column(String(36))
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

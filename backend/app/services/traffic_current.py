@@ -128,6 +128,7 @@ async def update_traffic_current(
                     "source": source,
                     "scope_key": scope_key,
                     "generation": generation,
+                    "snapshot_order": row["snapshot_id"],
                 }
                 for row in rows
             ]
@@ -142,7 +143,7 @@ async def update_traffic_current(
             and_(
                 excluded.observed_at == table.c.observed_at,
                 excluded.collected_at == table.c.collected_at,
-                excluded.snapshot_id >= table.c.snapshot_id,
+                excluded.snapshot_order >= table.c.snapshot_order,
             ),
         )
         await session.execute(
@@ -155,7 +156,7 @@ async def update_traffic_current(
                             (newer, getattr(excluded, field)),
                             else_=getattr(table.c, field),
                         )
-                        for field in ("snapshot_id", *_FIELDS)
+                        for field in ("snapshot_id", "snapshot_order", *_FIELDS)
                     },
                 },
             )

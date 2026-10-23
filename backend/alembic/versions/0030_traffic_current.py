@@ -29,9 +29,10 @@ def upgrade() -> None:
         sa.Column(
             "snapshot_id",
             sa.Integer(),
-            sa.ForeignKey("highway_traffic_snapshots.id", ondelete="CASCADE"),
-            nullable=False,
+            sa.ForeignKey("highway_traffic_snapshots.id", ondelete="SET NULL"),
+            nullable=True,
         ),
+        sa.Column("snapshot_order", sa.Integer(), nullable=False),
         sa.Column("generation", sa.String(36), nullable=False),
         sa.Column("observed_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("collected_at", sa.DateTime(timezone=True), nullable=False),
@@ -50,9 +51,18 @@ def upgrade() -> None:
         ["source", "scope_key", "generation", "identity_key"],
     )
 
+    op.create_index(
+        "ix_highway_traffic_current_snapshot",
+        "highway_traffic_current",
+        ["snapshot_id"],
+    )
+
 
 def downgrade() -> None:
     op.execute("SET LOCAL lock_timeout = '5s'")
+    op.drop_index(
+        "ix_highway_traffic_current_snapshot", table_name="highway_traffic_current"
+    )
     op.drop_index(
         "ix_highway_traffic_current_members", table_name="highway_traffic_current"
     )
