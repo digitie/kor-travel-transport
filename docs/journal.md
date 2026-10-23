@@ -1,3 +1,10 @@
+
+## 2026-10-23 — Map service API 우선: T5 빈 응답 보호 구현 중
+
+- 사용자 최신 우선순위로 Weather·Transport service API를 먼저 진행한다. T5는 빈/이전 성공25% 미만 응답을 source별로 한 번 재확인하고, 완결 확인이 안 되면 이전 성공 집합·시각을 유지한다. 명시 총건수와 전체 페이지의 완결 증거가 반복 확인된 정상0건은 허용한다.
+- 기존 legacy export의 실패503 의미와 유가#103~#106을 유지한다. schema 변경0, 새 원천/이력 전체 조회0, 정상 응답 추가 HTTP0이다. 최종 테스트·2리뷰·CI·live·배포는 아직 대기다.
+- [설계·검증 범위](reports/2026-10-23-map-export-empty-guard.md). T1/admin·T2/현재 상태·T3/참조·T4/이력과 snapshot/ETag/gzip은 후속이다.
+
 ## 2026-10-23 — 유가 통합 개선 운영 수용 완료
 
 - #103~#106 통합 source `af415b3`: 두 독립 제품 리뷰·WSL980/Docker977·최종 CI를 통과해 Odroid NVMe에 배포했다. API/CS release·schema29·gRPC12306·location·frontend 정상, 타 컨테이너8개 보존·schedule12/sensor5 복원을 확인했다.

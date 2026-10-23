@@ -10,6 +10,9 @@
 
 ## 진행 중인 작업 인덱스
 
+- [ ] Map service API T5: 빈/급감 재확인·이전 성공 보존 guard 구현 중. PG/전체회귀·Docker·CI·2리뷰·live·배포를 수용한 뒤 T1/admin·T2/current·T3/reference·T4/history와 공통 snapshot/ETag/gzip을 순차 구현한다. 기존 export의 인증·실패 계약을 보존한다. [구현 기록](reports/2026-10-23-map-export-empty-guard.md).
+
+
 - [ ] 수집 CPU/RAM 후속: 기존 Track 1·2 수용 뒤 동일 입력으로 fetch/raw 변환/traffic 저장/통계/commit을 계측한다. 현재 traffic 8,300개에 약16,600개 SELECT·write 문장이 필요한 구조와 매번 최근2시간 재집계는 코드 조사 결과이며 실측 기여율은 미확인이다. bounded 배치 저장→변경 bucket만 재집계→incident 배치 저장을 각각 작은 PR로 검증하고, 원본·정정·삽입 수·소유권·통계 동등성을 보존한다. 단일 op executor의 프로세스 절감과 draft PR93 메모리 수용도 실제 run 증거 전에는 완료 처리하지 않는다.
 
 - [ ] 배포 사전 검증·캐시 후속: Manager CLI의 약28초 startup/검증 비용과 현재30초 제한을 계측해 안정 여유를 정하고, 사전/공식 staging의 파일 metadata를 일치시킨다. 검증 우회나 실행 중 context 변경으로 해결하지 않는다.
