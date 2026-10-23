@@ -137,3 +137,15 @@ export type RailStationExportPage = {
   next_cursor: string | null;
   has_more: boolean;
 };
+
+
+export type ExportParkingCurrent = {
+  natural_key: string; source: string; airport_code: string; lot_code: string; name: string;
+  latitude: number | null; longitude: number | null; location_source: "airport_anchor";
+  total_spaces: number; occupied_spaces: number; available_spaces: number;
+  observed_at: string; collected_at: string;
+};
+export type ParkingCurrentExportPage = {
+  meta: ServiceExportMeta; snapshot_id: string; snapshot_expires_at: string; total_count: number;
+  items: ExportParkingCurrent[]; next_cursor: string | null; has_more: boolean;
+};

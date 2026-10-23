@@ -40,9 +40,10 @@ async def promote_reference(
     state.proof = proof
 
 
-async def mark_reference_failure(session: AsyncSession, *, kind: str, run_id: int, error: str) -> None:
+async def mark_reference_failure(session: AsyncSession, *, kind: str, run_id: int, error: str, scope: str | None = None) -> None:
     """옛 실패가 새 성공을 stale로 덮지 못하게 DB 문장의 조건으로 순서를 검증한다."""
     from app.core.time_utils import now_utc
-    await session.execute(update(ReferenceExportState).where(
-        ReferenceExportState.kind == kind, ReferenceExportState.attempt_order <= run_id,
-    ).values(last_error=error, last_attempt_at=now_utc()).execution_options(synchronize_session=False))
+    condition = [ReferenceExportState.kind == kind, ReferenceExportState.attempt_order <= run_id]
+    if scope is not None:
+        condition.append(ReferenceExportState.scope_key == scope)
+    await session.execute(update(ReferenceExportState).where(*condition).values(last_error=error, last_attempt_at=now_utc()).execution_options(synchronize_session=False))

@@ -120,6 +120,7 @@ class SourceResponse:
     request_params: dict[str, Any]
     status_code: int
     body_text: str
+    completion: dict[str, Any] | None = None
 
 
 @dataclass(slots=True)
@@ -152,6 +153,7 @@ class FixturePublicDataClient(PublicDataClient):
             request_params={"scope": "all"},
             status_code=200,
             body_text=json.dumps(SAMPLE_KAC_PARKING_ITEMS, ensure_ascii=False),
+            completion={"complete": True, "item_count": len(SAMPLE_KAC_PARKING_ITEMS), "fixture": True},
         )
 
     async def fetch_incheon_parking(self) -> SourceResponse:
@@ -161,6 +163,7 @@ class FixturePublicDataClient(PublicDataClient):
             request_params={"type": "json"},
             status_code=200,
             body_text=json.dumps(SAMPLE_INCHEON_ITEMS, ensure_ascii=False),
+            completion={"complete": True, "item_count": len(SAMPLE_INCHEON_ITEMS), "fixture": True},
         )
 
     async def fetch_incheon_fee(self) -> SourceResponse:
@@ -221,7 +224,15 @@ class KrairportPublicDataClient(PublicDataClient):
             iiac_service_key=self.settings.data_go_kr_service_key,
             timeout=self.settings.api_timeout_seconds,
         ) as client:
-            if provider == "kac":
+            completion = None
+            if self.settings.transport_map_current_enabled and source in {"kac_parking", "incheon_parking"}:
+                receipt = await client.parking_raw_set(provider=provider, page_size=100, max_pages=20)
+                items = list(receipt.items)
+                completion = {"complete": True, "item_count": receipt.total_count,
+                              "page_count": receipt.page_count, "page_size": receipt.page_size,
+                              "wire_page_metadata": receipt.wire_page_metadata,
+                              "contract": "python-krairport-api:parking_raw_set:v1"}
+            elif provider == "kac":
                 items = await client.kac_raw_items(service, operation, params)
             else:
                 items = await client.iiac_raw_items(service, operation, params)
@@ -231,6 +242,7 @@ class KrairportPublicDataClient(PublicDataClient):
             request_params=params,
             status_code=200,
             body_text=json.dumps(items, ensure_ascii=False),
+            completion=completion,
         )
 
     async def fetch_kac_parking(self) -> SourceResponse:
@@ -442,7 +454,7 @@ class CollectionService:
         session.add(run)
         await session.flush()
 
-        owner_run_id = run.id if session.info.get("collector_owner") else None
+        owner_run_id = run.id if session.info.get("collector_owner") or self.settings.transport_map_current_enabled else None
         if owner_run_id is not None:
             await session.commit()  # worker 강제 종료 전에도 소유권 기록을 남긴다.
 
@@ -452,29 +464,33 @@ class CollectionService:
         fee_rule_count = 0
 
         try:
-            if rate_limit_state.is_blocked:
-                errors.append(
-                    normalize_upstream_rate_limit_error(rate_limit_state.error_message)
-                    or f"kac_parking API error 99: {UPSTREAM_RATE_LIMIT_MARKER}"
-                )
+            if self.settings.transport_map_current_enabled:
+                raw_count, snapshot_count = await self._collect_map_parking(session, run.id, rate_limit_state, errors)
+                run = await session.get(CollectionRun, owner_run_id)
             else:
-                response = await self._safe_fetch(session, run, self.client.fetch_kac_parking, errors)
-                if response is not None:
-                    raw_count += 1
-                    parsed = parse_kac_parking(
-                        response.body_text,
-                        allowed_airport_codes=self.settings.supported_airport_codes,
+                if rate_limit_state.is_blocked:
+                    errors.append(
+                        normalize_upstream_rate_limit_error(rate_limit_state.error_message)
+                        or f"kac_parking API error 99: {UPSTREAM_RATE_LIMIT_MARKER}"
                     )
-                    snapshot_count += await self._store_observations(session, run.id, parsed)
-
-            if self.settings.enable_incheon_collection:
-                response = await self._safe_fetch(session, run, self.client.fetch_incheon_parking, errors)
-                if response is None:
-                    pass
                 else:
-                    raw_count += 1
-                    parsed = parse_incheon_parking(response.body_text)
-                    snapshot_count += await self._store_observations(session, run.id, parsed)
+                    response = await self._safe_fetch(session, run, self.client.fetch_kac_parking, errors)
+                    if response is not None:
+                        raw_count += 1
+                        parsed = parse_kac_parking(
+                            response.body_text,
+                            allowed_airport_codes=self.settings.supported_airport_codes,
+                        )
+                        snapshot_count += await self._store_observations(session, run.id, parsed)
+
+                if self.settings.enable_incheon_collection:
+                    response = await self._safe_fetch(session, run, self.client.fetch_incheon_parking, errors)
+                    if response is None:
+                        pass
+                    else:
+                        raw_count += 1
+                        parsed = parse_incheon_parking(response.body_text)
+                        snapshot_count += await self._store_observations(session, run.id, parsed)
 
             if self.settings.enable_fee_collection and not rate_limit_state.is_blocked:
                 for airport_code in self.settings.supported_airport_codes:
@@ -509,6 +525,12 @@ class CollectionService:
             failed_at = now_utc()
             error_message = self._redact(str(exc))
             await session.rollback()
+            if self.settings.transport_map_current_enabled and owner_run_id is not None:
+                from app.services.parking_exports import KIND, parking_scope, parking_sources
+                from app.services.reference_exports import mark_reference_failure
+                for source in parking_sources(self.settings):
+                    await mark_reference_failure(session, kind=KIND, scope=parking_scope(self.settings, source),
+                                                 run_id=owner_run_id, error=type(exc).__name__)
             if owner_run_id is not None:
                 stored_run = await session.get(CollectionRun, owner_run_id)
                 if stored_run is not None:
@@ -737,11 +759,71 @@ class CollectionService:
             lot.updated_at = timestamp
         return lot
 
+    async def _collect_map_parking(self, session, run_id, rate_limit_state, errors):
+        from app.models import ReferenceExportState
+        from app.services.parking_exports import KIND, parking_scope, parking_sources, store_parking_current, validate_parking_payload
+        from app.services.reference_exports import mark_reference_failure
+        sources = parking_sources(self.settings)
+        previous = {}
+        for source in sources:
+            head = await session.get(ReferenceExportState, (KIND, parking_scope(self.settings, source)))
+            previous[source] = len(head.member_ids) if head else 0
+        await session.rollback()  # 모든 원천의 network 대기 전에 pool을 반환한다.
+        fetched = []
+        failures = []
+        failed_responses = []
+        for source in sources:
+            if source == "kac_parking" and rate_limit_state.is_blocked:
+                failures.append((source, "upstream rate limit active"))
+                continue
+            fetch = self.client.fetch_kac_parking if source == "kac_parking" else self.client.fetch_incheon_parking
+            last_error = None
+            for attempt in range(2):
+                response = None
+                try:
+                    response = await fetch()
+                    rows = validate_parking_payload(self.settings, source, response)
+                    if not rows or len(rows) * 4 < previous[source]:
+                        raise ValueError("주차장 빈/급감 집합은 재확인이 필요합니다")
+                    fetched.append((source, response, rows))
+                    break
+                except Exception as exc:
+                    last_error = self._redact(str(exc))
+                    if response is not None:
+                        failed_responses.append((response, last_error))
+                    if attempt:
+                        failures.append((source, last_error))
+        raw_count = snapshot_count = 0
+        run = await session.get(CollectionRun, run_id)
+        for response, error in failed_responses:
+            session.add(RawApiResponse(collection_run_id=run_id, source=response.source,
+                        endpoint=response.endpoint, request_params_json=redact_request_params(response.request_params),
+                        status_code=response.status_code, body_text=response.body_text,
+                        received_at=now_utc(), parse_status="failed", parse_error=error))
+        for source, response, rows in fetched:
+            async def already_fetched(value=response):
+                return value
+            stored = await self._safe_fetch(session, run, already_fetched, errors)
+            if stored is None:
+                failures.append((source, "source response validation failed"))
+                continue
+            raw_count += 1
+            lot_ids = {}
+            snapshot_count += await self._store_observations(session, run_id, rows, lot_ids=lot_ids)
+            await store_parking_current(session, self.settings, source=source, run_id=run_id,
+                                        observations=rows, proof=response.completion, lot_ids=lot_ids)
+        for source, message in failures:
+            errors.append(message)
+            await mark_reference_failure(session, kind=KIND, scope=parking_scope(self.settings, source),
+                                         run_id=run_id, error="source_failed")
+        return raw_count, snapshot_count
+
     async def _store_observations(
         self,
         session: AsyncSession,
         collection_run_id: int,
         observations: list[ParsedParkingObservation],
+        *, lot_ids: dict[tuple[str, str], int] | None = None,
     ) -> int:
         stored = 0
         # 같은 저장 호출 안에서만 재사용한다. rollback/다음 수집으로 ORM 객체를 넘기지 않는다.
@@ -765,6 +847,8 @@ class CollectionService:
                 observation.total_spaces,
             )
 
+            if lot_ids is not None:
+                lot_ids[(observation.airport_code, observation.lot_id)] = lot.id
             existing = await session.scalar(
                 select(ParkingSnapshot).where(
                     ParkingSnapshot.parking_lot_id == lot.id,

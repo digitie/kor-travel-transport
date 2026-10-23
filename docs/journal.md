@@ -1,3 +1,9 @@
+## 2026-10-23 — Map T2 주차장 완결 current 구현 중
+
+SDK10 public complete receipt와 작은typed current/schema33을 연결한다. source별 빈/급감
+재확인·부분성공·pool반환·고정REST를 추가하며 기존이력/요금/API는 유지한다.
+[계약·남은게이트](map-parking-current-export.md).
+
 ## 2026-10-23 — 역 매핑 정적 타입 검증 보강
 
 - 적대 리뷰에서 지적한 AsyncSession 타입 import 누락을 수정했다. 공개 helper의 타입 힌트 해석과 F821 정적 검사를 함께 확인한다.

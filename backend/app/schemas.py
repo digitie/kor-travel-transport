@@ -1169,3 +1169,29 @@ class RailStationExportPage(BaseModel):
     items: list[ExportRailStationReference]
     next_cursor: str | None
     has_more: bool
+
+
+class ExportParkingCurrent(BaseModel):
+    natural_key: str
+    source: str
+    airport_code: str
+    lot_code: str
+    name: str
+    latitude: float | None
+    longitude: float | None
+    location_source: Literal["airport_anchor"]
+    total_spaces: int
+    occupied_spaces: int
+    available_spaces: int
+    observed_at: datetime
+    collected_at: datetime
+
+
+class ParkingCurrentExportPage(BaseModel):
+    meta: ServiceExportMeta
+    snapshot_id: str
+    snapshot_expires_at: datetime
+    total_count: int
+    items: list[ExportParkingCurrent]
+    next_cursor: str | None
+    has_more: bool

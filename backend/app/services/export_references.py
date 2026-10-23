@@ -12,6 +12,8 @@ from time import monotonic
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
+from krairport import get_airport_or_none
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,11 +23,12 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.core.config import Settings
 from app.core.time_utils import now_utc, serialize_utc
-from app.models import BusTerminalReference, FerryPort, RailStationReference, ReferenceExportState, ServiceExportSnapshot, ServiceExportSnapshotItem
-from app.schemas import BusTerminalExportPage, FerryPortExportPage, RailStationExportPage, ServiceExportMeta
+from app.models import BusTerminalReference, FerryPort, RailStationReference, ParkingCurrent, ReferenceExportState, ServiceExportSnapshot, ServiceExportSnapshotItem
+from app.schemas import BusTerminalExportPage, FerryPortExportPage, RailStationExportPage, ParkingCurrentExportPage, ServiceExportMeta
 from app.services.bus_collection import TAGO_BUS_SOURCE
 from app.services.rail_maritime_collection import KRIC_FILE_SOURCE, MARITIME_SOURCE, PORT_GUIDELINE_SOURCE
 from app.services.rail_station_mapping import persisted_mapping_context, persisted_station_links
+from app.services.parking_exports import parking_scope, parking_sources
 from app.services.export_addresses import export_admin_addresses
 from app.services.export_current import BATCH_SIZE, MAX_SNAPSHOT_BYTES, MAX_SNAPSHOT_ITEMS, SNAPSHOT_TTL, SnapshotRace, cache_generation, _snapshot_transaction, expire_snapshots
 from app.services.export_price_history import _decode_cursor, _encode_cursor, _response
@@ -54,7 +57,7 @@ async def _reference_heads(session, spec):
 
 
 def _valid_heads(heads, spec):
-    return (len(heads) == len(spec.scope_keys) and {h.scope_key for h in heads} == set(spec.scope_keys)
+    return (bool(spec.scope_keys) and len(heads) == len(spec.scope_keys) and {h.scope_key for h in heads} == set(spec.scope_keys)
             and all(h.proof.get("complete") and 0 < len(h.member_ids) <= 10000
                     and len(set(h.member_ids)) == len(h.member_ids) for h in heads))
 
@@ -175,6 +178,37 @@ async def _rail_payload_batches(session, heads):
                 "mapping_revision": context["revision"], "admin": address.model_dump(mode="json") if address else None,
             })
         yield payloads
+
+
+async def _parking_payload_batches(session, heads):
+    for head in heads:
+        source = head.proof.get("source")
+        if source not in {"kac_parking", "incheon_parking"}:
+            raise HTTPException(503, "주차장 source 확인이 필요합니다.")
+        ids = sorted(head.member_ids)
+        for offset in range(0, len(ids), BATCH_SIZE):
+            selected = ids[offset:offset + BATCH_SIZE]
+            rows = list((await session.scalars(select(ParkingCurrent).where(
+                ParkingCurrent.source == source, ParkingCurrent.scope_key == head.scope_key,
+                ParkingCurrent.generation == head.generation, ParkingCurrent.parking_lot_id.in_(selected),
+            ).order_by(ParkingCurrent.parking_lot_id))).all())
+            if len(rows) != len(selected):
+                raise HTTPException(503, "주차장 current 성공 membership이 일치하지 않습니다.")
+            payloads = []
+            for row in rows:
+                airport = get_airport_or_none(row.airport_code)
+                point = airport.coordinate if airport else None
+                payloads.append({
+                    "natural_key": f"{row.source}:{row.airport_code}:{row.lot_code}",
+                    "source": row.source, "airport_code": row.airport_code, "lot_code": row.lot_code,
+                    "name": row.name, "latitude": point.lat if point else None,
+                    "longitude": point.lon if point else None, "location_source": "airport_anchor",
+                    "total_spaces": row.total_spaces, "occupied_spaces": row.occupied_spaces,
+                    "available_spaces": row.available_spaces,
+                    "observed_at": serialize_utc(row.observed_at).isoformat(),
+                    "collected_at": serialize_utc(row.collected_at).isoformat(),
+                })
+            yield payloads
 
 
 async def _freeze_reference(session, heads, spec):
@@ -308,6 +342,11 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
                       hashlib.sha256(b"rail-stations:nationwide:v1").hexdigest(),
                       ("nationwide",), timedelta(days=6), RailStationExportPage, _rail_payload_batches),
     )
+    sources = parking_sources(settings)
+    scopes = tuple(parking_scope(settings, source) for source in sources)
+    specs += (ReferenceSpec("/parking/current", "parking-current-v1", "parking-current",
+                            hashlib.sha256(("parking:" + ",".join(scopes)).encode()).hexdigest(),
+                            scopes, timedelta(minutes=15), ParkingCurrentExportPage, _parking_payload_batches),)
     for spec in specs:
         router.add_api_route(spec.path, endpoint_for(spec), methods=["GET"], response_model=spec.page_model,
                              name=spec.path.strip("/").replace("-", "_"), responses={304: {}, 404: {}, 410: {}, 422: {}, 503: {}})
