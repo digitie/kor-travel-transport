@@ -1,5 +1,13 @@
 # 고정 패키지 정보
 
+## Firefox 타일 protocol 수정 (2026-10-24)
+
+현재 web은 `maplibre-vworld-react@3c09359fa3dea4f65ec14b9db3814cfd410bc104`의
+`vworld-map-web-1.0.1.tgz`다. SHA-256:
+`f3686f762938cd4489ab66cbe5188a47ba89253f0adb18d0f0acf526206ccf43`.
+비표준 scheme을 파싱 전에 HTTPS로 바꾸며 내부 fallback 인자는 실제 요청에서 제거한다.
+core와 아래 과거 패키지는 그대로 보존한다. [검증 기록](../../../../docs/reports/2026-10-24-firefox-vworld-tiles.md).
+
 ## VWorld React 패키지 고정 정보 (2026-10-09 복원)
 
 소유자 결정(2026-10-09): 교통 지도는 [`digitie/maplibre-vworld-react`](https://github.com/digitie/maplibre-vworld-react)

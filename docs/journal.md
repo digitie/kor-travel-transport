@@ -1,3 +1,9 @@
+## 2026-10-24 — Firefox VWorld 타일 긴급 수정
+
+Firefox에서 타일 0건을 재현하고 라이브러리 원본의 비표준 protocol→HTTPS 변환을 고쳤다.
+web1.0.1·정확 source pin·lock을 채택하고 Firefox 실제 타일·확대 회귀를 추가했다.
+사용자가 현재 운영 호스트의 관리자 웹만 교체하도록 승인했다. [검증·배포 기록](reports/2026-10-24-firefox-vworld-tiles.md).
+
 ## 2026-10-23 — KAC quota deadline 영구 연장 후속 수정
 
 운영 rollout 전 필수 후속으로 기존 source state에 실제 quota origin/until을 보존한다.

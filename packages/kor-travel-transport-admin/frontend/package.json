@@ -9,7 +9,7 @@
     "type-check": "next typegen && tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests",
-    "e2e:install": "playwright install --with-deps chromium",
+    "e2e:install": "playwright install --with-deps chromium firefox",
     "test:e2e": "playwright test"
   },
   "dependencies": {
@@ -26,7 +26,7 @@
     "react-dom": "19.3.0",
     "tailwind-merge": "^3.7.0",
     "vworld-map-core": "file:vendor/vworld-map-core-1.0.0.tgz",
-    "vworld-map-web": "file:vendor/vworld-map-web-1.0.0.tgz"
+    "vworld-map-web": "file:vendor/vworld-map-web-1.0.1.tgz"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.6",
