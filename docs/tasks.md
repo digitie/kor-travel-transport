@@ -371,6 +371,6 @@ dark-mode 차트/톤 팔레트 미토큰화, `globals.css` 전반의 desktop-fir
 - 백업/복원 API에는 별도 인증이 없다. 인터넷에 직접 노출하지 않고 내부망 또는 외부
   게이트웨이에서 접근을 제한해야 한다.
 
-- [ ] Map T4 가격 이력: 주유소 bounded 조회·공통meta·ETag/gzip·cursor/revision, 휴게소501 구현 중. WSL/Docker·CI·2리뷰·live·Map예시 인계·운영 gate를 통과한 뒤 완료로 옮긴다. [계약](map-service-price-history.md).
+- [ ] Map T4 가격 이력: PR110 구현·검증·머지 완료(주유소 bounded 조회·공통meta·ETag/gzip·cursor/revision, 휴게소501). Map 예시 인계 댓글은 게시했으며 소비자 수용·운영 배포/API/UI 검증이 남았다. 이를 통과한 뒤 완료로 옮긴다. [계약](map-service-price-history.md).
 
 - [ ] Map T2/T3 후속: [작은 PR 순서/회귀/비용 gate](design/map-current-reference-exports.md)에 따라 traffic pointer부터 진행한다. source별 완결·고정snapshot을 검증한 뒤 새API를 공개한다. 설계만 작성됐으며 코드/운영은 미완이다.
