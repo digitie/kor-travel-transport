@@ -20,4 +20,5 @@
 
 -106→빈/급감 후 재확인 실패, 마지막 성공·원본 보존, 초도 불확실 빈 집합 거부, 재조회 정상 복구, 정상0건 수용·급감 크기 불일치 거부, 필터 변경, source 독립 실패와404 변환 경계를 테스트한다.
 - 실제 저장→legacy export에서106개200→불확실 빈 응답503→완결 확인된0개200을 확인한다.
+- James 리뷰의P1을 재현·수정했다. 두 source가 동시에 의심 대상일 때 retry outer timeout이 provider 내부 source별 timeout과 같으면, 한 source 지연이 먼저 복구된 peer까지 실패시켰다. 최초 조회와 같은2배 outer 상한으로 개별 결과 반환 여유를 두고 실제 LiveProvider의30ms 축소 회귀를 추가했다. malformed empty가 SDK의KrexParseError로 변환된 경우도 한 번 재확인한다. 집중2개 PASS다.
 - 전용 PostgreSQL·전체 회귀·Docker·CI·두 독립 적대 리뷰·live API/UI·운영 배포가 남아 있다. 원천 API를 부하 검증 목적으로 무제한 재조회하지 않는다.

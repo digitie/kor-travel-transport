@@ -1809,3 +1809,47 @@ def test_flow_not_found_converted_to_empty_is_not_complete_evidence(tmp_path):
         assert provider.krex.traffic.flow_all.await_count == 2
         await provider.aclose()
     asyncio.run(run())
+
+
+def test_highway_retry_source_timeout_does_not_discard_recovered_peer(tmp_path, monkeypatch):
+    import app.services.transport_collection as module
+
+    async def run():
+        monkeypatch.setattr(module, "HIGHWAY_FETCH_TIMEOUT_SECONDS", 0.03)
+        original = await FakeTransportProvider().collect_highway()
+        provider = LiveTransportProvider(build_settings(tmp_path))
+        await provider.krex.aclose()
+        async def stall(**kwargs):
+            await asyncio.sleep(1)
+        provider.krex = SimpleNamespace(traffic=SimpleNamespace(
+            flow_all=AsyncMock(return_value=SimpleNamespace(items=original.traffic)),
+            incident=stall,
+        ), aclose=AsyncMock())
+        service = TransportCollectionService(build_settings(tmp_path), provider)
+        result = await service._confirm_highway_payload(
+            HighwayPayload(traffic=(), incidents=()), (TRAFFIC_SOURCE, INCIDENT_SOURCE),
+            {TRAFFIC_SOURCE: None, INCIDENT_SOURCE: None},
+        )
+        assert result.traffic == original.traffic
+        assert isinstance(result.incidents, TimeoutError)
+        await provider.aclose()
+    asyncio.run(run())
+
+
+def test_highway_malformed_empty_parse_error_is_reconfirmed_once(tmp_path):
+    from krex import KrexParseError
+
+    async def run():
+        provider = FakeTransportProvider()
+        original = await provider.collect_highway()
+        original = replace(original, incidents=tuple(
+            original.incidents[0].model_copy(update={"series_no": index}) for index in range(106)))
+        provider.collect_highway = AsyncMock(return_value=original)
+        service = TransportCollectionService(build_settings(tmp_path), provider)
+        result = await service._confirm_highway_payload(
+            replace(original, incidents=KrexParseError("missing complete envelope")),
+            (INCIDENT_SOURCE,), {INCIDENT_SOURCE: 106},
+        )
+        assert result.incidents == original.incidents
+        provider.collect_highway.assert_awaited_once_with(sources=(INCIDENT_SOURCE,))
+    asyncio.run(run())

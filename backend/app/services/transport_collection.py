@@ -20,7 +20,7 @@ from itertools import islice
 from pathlib import Path
 from typing import Any, Literal, Protocol, TypeVar
 
-from krex import Incident, KrexClient, KrexQuotaExceededError, TrafficFlow
+from krex import Incident, KrexClient, KrexParseError, KrexQuotaExceededError, TrafficFlow
 from opinet.experimental import (
     BrowserStation,
     OpinetBrowserCollector,
@@ -279,7 +279,7 @@ class LiveTransportProvider:
                         page = await self.krex.traffic.flow_all()
                         total_count = getattr(page, "total_count", None)
                         if total_count is not None and total_count != len(page.items):
-                            raise ValueError("traffic.flow returned an incomplete total_count")
+                            raise KrexParseError("traffic.flow returned an incomplete total_count")
                         raw = getattr(page, "raw", None)
                         if (isinstance(raw, Mapping) and ("count" in raw or "totalCount" in raw)
                                 and getattr(page, "total_count", None) == len(page.items)):
@@ -647,16 +647,18 @@ class TransportCollectionService:
             return payload
         fields = {TRAFFIC_SOURCE: "traffic", INCIDENT_SOURCE: "incidents"}
         suspicious = tuple(source for source in sources
-                           if isinstance(getattr(payload, fields[source]), tuple)
-                           and self._highway_result_suspicious(
-                               getattr(payload, fields[source]), baselines[source],
-                           ))
+                           if isinstance(getattr(payload, fields[source]), KrexParseError)
+                           or (isinstance(getattr(payload, fields[source]), tuple)
+                               and self._highway_result_suspicious(
+                                   getattr(payload, fields[source]), baselines[source],
+                               )))
         if not suspicious:
             return payload
         # 재확인도 provider의 source 격리·기존 상한 안에서 한 번만 한다.
         # 호출 동안 DB transaction/connection은 앞선 claim commit으로 반환돼 있다.
         try:
-            async with asyncio.timeout(HIGHWAY_FETCH_TIMEOUT_SECONDS):
+            # source별 timeout이 gather 결과로 돌아오게 최초조회와 같은 여유를 둔다.
+            async with asyncio.timeout(2 * HIGHWAY_FETCH_TIMEOUT_SECONDS):
                 retried = await self.provider.collect_highway(sources=suspicious)
         except Exception as exc:
             retried = exc
@@ -669,7 +671,7 @@ class TransportCollectionService:
                 recovered = not self._highway_result_suspicious(result, baselines[source])
                 # 빈200의 반복만으로 완결로 인정하지 않는다. 두 응답 모두 명시한 total_count를
                 # 전체 페이지와 대조했고 같은 개수일 때만 정상 소멸/급감을 수용한다.
-                confirmed = (not isinstance(retried, Exception)
+                confirmed = (isinstance(first, tuple) and not isinstance(retried, Exception)
                              and source in payload.complete_sources
                              and source in retried.complete_sources and len(first) == len(result))
                 if not recovered and not confirmed:
