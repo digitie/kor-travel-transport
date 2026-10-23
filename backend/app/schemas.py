@@ -1092,3 +1092,27 @@ class HighwayTrafficCurrentExportPage(BaseModel):
     items: list[ExportHighwayTrafficCurrent]
     next_cursor: str | None
     has_more: bool
+
+
+class ExportBusTerminalReference(BaseModel):
+    natural_key: str
+    source: str
+    service_type: str
+    terminal_id: str
+    name: str
+    city_name: str | None
+    latitude: float | None
+    longitude: float | None
+    location_source: str | None
+    manual_location_revision: str | None
+    admin: ExportAdminAddress | None
+
+
+class BusTerminalExportPage(BaseModel):
+    meta: ServiceExportMeta
+    snapshot_id: str
+    snapshot_expires_at: datetime
+    total_count: int
+    items: list[ExportBusTerminalReference]
+    next_cursor: str | None
+    has_more: bool

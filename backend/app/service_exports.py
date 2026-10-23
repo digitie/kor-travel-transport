@@ -60,6 +60,7 @@ from app.schemas import (
 )
 from app.services.export_addresses import export_admin_addresses
 from app.services.export_current import build_current_export_router
+from app.services.export_references import build_reference_export_router
 from app.services.export_price_history import build_price_history_router
 from app.services.rest_area_collection import REST_AREA_FUEL_SOURCE, REST_AREA_SOURCE
 from app.services.transport_collection import (
@@ -275,6 +276,7 @@ def build_service_export_router(
         return AirportExportResponse(generated_at=now_utc(), items=items)
 
     router.include_router(build_current_export_router(settings, get_db))
+    router.include_router(build_reference_export_router(settings, get_db))
     router.include_router(build_price_history_router(settings, get_db))
     return router
 

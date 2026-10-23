@@ -931,3 +931,18 @@ class ServiceExportSnapshotItem(Base):
     )
     ordinal: Mapped[int] = mapped_column(Integer, primary_key=True)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
+class ReferenceExportState(Base):
+    """저변동 source 범위별 마지막 완결 성공과 실패 상태. native run 전체와 구분한다."""
+
+    __tablename__ = "reference_export_states"
+    kind: Mapped[str] = mapped_column(String(40), primary_key=True)
+    scope_key: Mapped[str] = mapped_column(String(80), primary_key=True)
+    generation: Mapped[str] = mapped_column(String(36))
+    attempt_order: Mapped[int] = mapped_column(Integer)
+    confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    member_ids: Mapped[list[int]] = mapped_column(JSON_TYPE)
+    proof: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    last_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(String(120), nullable=True)

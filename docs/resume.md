@@ -1,3 +1,8 @@
+## 2026-10-23 — Map T3 bus 구현 중
+
+`codex/map-bus-export-proof`는 PR114 위의 별도 후속이다. source proof·membership·고정 bus route, WSL 집중14 PASS. 전체 gate/운영은 아직 진행 중이다.
+[계약과 미완 gate](map-bus-reference-export.md).
+
 ## 2026-10-23 — Map T2 traffic 고정 snapshot 구현 중
 
 `codex/map-current-reference-api`: PR112 typed current를 bounded DTO snapshot으로 동결하는

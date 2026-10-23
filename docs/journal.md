@@ -1,3 +1,8 @@
+## 2026-10-23 — Map T3 bus source proof와 고정 참조 구현 중
+
+provider public page 완결·빈/급감 재확인, source membership와 실패 보존, bus 실제 snapshot route를 추가한다.
+[계약과 미완 gate](map-bus-reference-export.md).
+
 ## 2026-10-23 — Map T2 traffic 고정 HTTP snapshot 구현 중
 
 PR112 typed current 위에 immutable DTO snapshot·15분TTL·signed cursor·ETag/gzip·
