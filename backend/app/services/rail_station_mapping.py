@@ -10,6 +10,7 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import KricStationCode, KricStationMappingRegistry, RailStationReference
 
 RAIL_STATION_REFERENCE_LOCK_KEY = 420054

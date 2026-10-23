@@ -9,8 +9,8 @@ snapshot/cursor/TTL/gzip/ETag를 사용한다. Bus와 source projection만 다�
 
 항구 목록과 KOMSA 좌표 보충의 성공은 별개다. provider public
 `DataGoKrMaritimeClient.iter_ports(page_size=100,max_pages=20)`의 정상종료를 사용한다.
-SDK는 명시total이 있으면 고정total/전체수량/고유ID/중간빈page/호출상한을 검증한다.
-첫 응답total이 없으면 SDK의 문서화된 전량 단일응답 모드를 따른다. Transport는
+고정 SDK는 항구 목록에서 total 누락을 거부하고 고정total/전체수량/고유ID/중간빈page/
+호출상한을 검증한다. terminal/ship-type의 단일응답 허용 규칙을 항구에 적용하지 않는다. Transport는
 HTTP/원문파싱/다음page 호출을 다시 구현하지 않는다. public wire receipt가 없으므로
 proof에 `wire_total_receipt=false`를 남겨 원문total 증명으로 오인하지 않게 한다.
 
