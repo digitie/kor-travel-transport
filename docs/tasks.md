@@ -10,10 +10,10 @@
 
 ## 진행 중인 작업 인덱스
 
-- [ ] Map T2 traffic current: 기본OFF·source/filter head/typed pointer·같은 source transaction hook/schema0030 구현 중. [진척·남은 gate](reports/2026-10-23-traffic-current-pointer.md). 실제 REST/페이지 snapshot/주차/T3·운영 활성화는 후속이다.
+- [ ] Map T2 traffic current: source/filter head·typed pointer·같은 source transaction hook은 PR112 머지/검증 완료다. schema0030/defaultOFF로 운영 미배포이며 비용·운영 수용은 남았다. [진척·남은 gate](reports/2026-10-23-traffic-current-pointer.md). 실제 REST/페이지 snapshot/주차/T3·운영 활성화는 후속이다.
 
 
-- [ ] Map service API: T5 PR108·T1 PR109·T4 PR110은 머지/검증 완료, 운영 배포·API/UI 수용 진행 중. T2 traffic current는 PR112의 기본OFF 후보이며, T2 REST/주차·T3 참조와 공통 frozen snapshot/status/cursor는 미구현이다. [구현 순서](design/map-current-reference-exports.md).
+- [ ] Map service API: T5 PR108·T1 PR109·T4 PR110의 운영배포·API계약7/기존UI16 수용은 완료다. 오래된 OpiNet의 T1fuel200/admin·최신수집/Map 소비자 수용은 미완이다. T2 traffic current는 PR112 머지/defaultOFF/운영미배포이며, T2 REST/주차·T3 참조와 공통 frozen snapshot/status/cursor는 미구현이다. [구현 순서](design/map-current-reference-exports.md).
 
 
 - [ ] 수집 CPU/RAM 후속: 기존 Track 1·2 수용 뒤 동일 입력으로 fetch/raw 변환/traffic 저장/통계/commit을 계측한다. 현재 traffic 8,300개에 약16,600개 SELECT·write 문장이 필요한 구조와 매번 최근2시간 재집계는 코드 조사 결과이며 실측 기여율은 미확인이다. bounded 배치 저장→변경 bucket만 재집계→incident 배치 저장을 각각 작은 PR로 검증하고, 원본·정정·삽입 수·소유권·통계 동등성을 보존한다. 단일 op executor의 프로세스 절감과 draft PR93 메모리 수용도 실제 run 증거 전에는 완료 처리하지 않는다.
@@ -374,6 +374,6 @@ dark-mode 차트/톤 팔레트 미토큰화, `globals.css` 전반의 desktop-fir
 - 백업/복원 API에는 별도 인증이 없다. 인터넷에 직접 노출하지 않고 내부망 또는 외부
   게이트웨이에서 접근을 제한해야 한다.
 
-- [ ] Map T4 가격 이력: PR110 구현·검증·머지 완료(주유소 bounded 조회·공통meta·ETag/gzip·cursor/revision, 휴게소501). Map 예시 인계 댓글은 게시했으며 소비자 수용·운영 배포/API/UI 검증이 남았다. 이를 통과한 뒤 완료로 옮긴다. [계약](map-service-price-history.md).
+- [ ] Map T4 가격 이력: PR110 구현·검증·머지 완료(주유소 bounded 조회·공통meta·ETag/gzip·cursor/revision, 휴게소501). 운영배포·stale 이력/304/gzip/페이지 계약·기존UI16 수용은 완료다. Map 예시 인계 댓글은 게시했고 소비자 수용·실수집 최신성 회복 뒤 추가 확인이 남았다. T1fuel200/admin 정상자료도 별도 미완이다. [계약](map-service-price-history.md).
 
-- [ ] Map T2/T3 후속: traffic pointer는 PR112의 기본OFF 후보로 구현했다. 이후 parking 완결 증거/current·frozen snapshot/status/cursor·T2 REST·T3 참조는 [작은 PR 순서/회귀/비용 gate](design/map-current-reference-exports.md)에 따른 설계 단계다. source별 완결·고정snapshot·비용 검증 후 공개하며 운영은 미완이다.
+- [ ] Map T2/T3 후속: traffic pointer는 PR112에 머지했고 기본OFF/운영미배포다. 이후 parking 완결 증거/current·frozen snapshot/status/cursor·T2 REST·T3 참조는 [작은 PR 순서/회귀/비용 gate](design/map-current-reference-exports.md)에 따른 설계 단계다. source별 완결·고정snapshot·비용 검증 후 공개하며 운영은 미완이다.
