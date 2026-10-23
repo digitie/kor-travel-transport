@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 from app.core.config import Settings
-from app.core.time_utils import now_utc
+from app.core.time_utils import now_utc, serialize_utc
 from app.dagster.definitions import definitions
 from app.main import create_app
 from app.models import FuelPriceSnapshot, FuelStation, TransportCollectionState
@@ -467,9 +467,12 @@ class IncidentProvider:
 
     def __init__(self) -> None:
         self.incidents: list[Incident] = []
+        # 이 fixture는 원천의 명시 total_count까지 검증된 완결 집합을 나타낸다.
+        self.complete = True
 
     async def collect_highway(self, *, sources=()) -> HighwayPayload:
-        return HighwayPayload(traffic=None, incidents=tuple(self.incidents))
+        return HighwayPayload(traffic=None, incidents=tuple(self.incidents),
+                              complete_sources=(INCIDENT_SOURCE,) if self.complete else ())
 
     async def collect_fuel(self):
         return None
@@ -544,3 +547,34 @@ def test_rest_area_jobs_are_scheduled_and_running() -> None:
         assert schedule.cron_schedule == cron
         assert schedule.execution_timezone == "Asia/Seoul"
         assert schedule.default_status.name == "RUNNING"
+
+
+def test_unconfirmed_empty_cannot_close_106_incidents_but_confirmed_empty_can(export_client):
+    path = "/v1/service/exports/highway-incidents/active"
+    service = export_client.app.state.transport_collection_service
+    provider = IncidentProvider()
+    provider.incidents = [_incident(index, f"사건{index}") for index in range(106)]
+    service.provider = provider
+
+    async def collect(session):
+        await _set_state(session, INCIDENT_SOURCE, next_due_at=None)
+        return await service.collect(session, scope="highway", trigger="empty_guard_test")
+
+    assert _run(export_client, collect)["status"] == "success"
+    first = export_client.get(path, headers=HEADERS).json()
+    assert len(first["items"]) == 106
+    provider.incidents = []
+    provider.complete = False
+    assert _run(export_client, collect)["status"] == "failed"
+    # legacy 소비자는 503이면 이전 집합을 유지한다. 빈200으로 전량 종료하지 않는다.
+    assert export_client.get(path, headers=HEADERS).status_code == 503
+
+    async def last_success(session):
+        state = await session.scalar(select(TransportCollectionState).where(
+            TransportCollectionState.source == INCIDENT_SOURCE))
+        return serialize_utc(state.last_success_at)
+    assert _run(export_client, last_success).isoformat().replace("+00:00", "Z") == first["collected_at"]
+    provider.complete = True
+    assert _run(export_client, collect)["status"] == "success"
+    recovered = export_client.get(path, headers=HEADERS)
+    assert recovered.status_code == 200 and recovered.json()["items"] == []

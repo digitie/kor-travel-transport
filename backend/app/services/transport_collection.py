@@ -13,21 +13,20 @@ import time
 import traceback
 from collections.abc import Awaitable, Callable, Iterable, Iterator, Mapping
 from contextlib import AsyncExitStack
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from itertools import islice
 from pathlib import Path
 from typing import Any, Literal, Protocol, TypeVar
-from zoneinfo import ZoneInfo
 
-from krex import Incident, KrexClient, KrexQuotaExceededError, TrafficFlow
+from krex import Incident, KrexClient, KrexParseError, KrexQuotaExceededError, TrafficFlow
 from opinet.experimental import (
     BrowserStation,
     OpinetBrowserCollector,
     OpinetBrowserSnapshot,
 )
-from sqlalchemy import and_, func, or_, select, text, update
+from sqlalchemy import JSON, Integer, and_, cast, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import DBAPIError
@@ -41,7 +40,6 @@ from app.models import (
     FuelPriceSnapshot,
     FuelStation,
     HighwayIncidentSnapshot,
-    HighwayTrafficFiveMinuteStatistic,
     HighwayTrafficSnapshot,
     RawApiResponse,
     TransportCollectionState,
@@ -60,6 +58,8 @@ KREX_MAX_FILTER_VALUES = 20
 TRANSPORT_COLLECTION_ADVISORY_LOCK_KEY = 420040
 TRANSPORT_TRIGGER_PREFIX = "transport_"
 HIGHWAY_FETCH_TIMEOUT_SECONDS = 120
+# 직전 동일 scope 성공 집합의 25% 미만은 완결 증거를 재확인한다.
+HIGHWAY_ABNORMAL_DROP_FACTOR = 4
 #: 유가 브라우저 수집(Playwright로 오피넷 화면 조회)의 상한. odroid(ARM, CPU 포화)에서 성공한 수집이
 #: 5,946~6,371초 걸리고 옛 상한 7,200초 근처에서 시간 초과가 반복돼(2026-10-23 소유자 결정) 3.5시간으로
 #: 올린다. 저장·정리 여유를 두고 job 전체 상한(`definitions.MAX_RUNTIME_SECONDS - 60` = 14,340초)과
@@ -175,6 +175,8 @@ async def upsert_latest_fuel_prices(
 class HighwayPayload:
     traffic: tuple[TrafficFlow, ...] | Exception | None
     incidents: tuple[Incident, ...] | Exception | None
+    # 완결된 total_count와 실제 페이지 수가 일치한 source만 넣는다.
+    complete_sources: tuple[str, ...] = ()
 
 
 class TransportProvider(Protocol):
@@ -265,6 +267,8 @@ class LiveTransportProvider:
                 f"{KREX_MAX_FILTER_VALUES} values"
             )
 
+        complete_sources: set[str] = set()
+
         async def fetch(source: str):
             if source not in sources:
                 return None
@@ -273,6 +277,13 @@ class LiveTransportProvider:
                     if source == TRAFFIC_SOURCE:
                         # 0405는 서버 페이지/필터가 없다. 전체 응답 한 번만 읽는다.
                         page = await self.krex.traffic.flow_all()
+                        total_count = getattr(page, "total_count", None)
+                        if total_count is not None and total_count != len(page.items):
+                            raise KrexParseError("traffic.flow returned an incomplete total_count")
+                        raw = getattr(page, "raw", None)
+                        if (isinstance(raw, Mapping) and ("count" in raw or "totalCount" in raw)
+                                and getattr(page, "total_count", None) == len(page.items)):
+                            complete_sources.add(source)
                         return tuple(
                             item for item in page.items
                             if (not route_nos or item.route_no in route_nos)
@@ -282,13 +293,15 @@ class LiveTransportProvider:
                         lambda page_no: self.krex.traffic.incident(
                             num_of_rows=KREX_PAGE_SIZE, page_no=page_no,
                         ), "traffic.incident",
+                        on_complete=lambda _count: complete_sources.add(source),
                     )
             except Exception as exc:
                 return exc
 
         # 한 소스의 timeout/quota가 이미 조회한 다른 소스를 버리지 않는다.
         traffic, incidents = await asyncio.gather(fetch(TRAFFIC_SOURCE), fetch(INCIDENT_SOURCE))
-        return HighwayPayload(traffic=traffic, incidents=incidents)
+        return HighwayPayload(traffic=traffic, incidents=incidents,
+                              complete_sources=tuple(sorted(complete_sources)))
 
     async def collect_fuel(self) -> OpinetBrowserSnapshot | None:
         if self.opinet is None:
@@ -414,6 +427,10 @@ class TransportCollectionService:
         highway_sources = tuple(due_highway_sources)
         highway_due = bool(highway_sources)
         fuel_due = scope != "highway" and OPINET_SOURCE in self.provider.enabled_sources and await self._fuel_is_due(session)
+        # 이미 성공 저장된 원천의 개수만 비교한다. 큰 raw 본문은 Python으로 가져오지 않는다.
+        highway_baselines = {
+            source: await self._highway_success_count(session, source) for source in highway_sources
+        }
         claimed_sources = []
         if highway_due:
             claimed_sources.extend(highway_sources)
@@ -443,6 +460,9 @@ class TransportCollectionService:
                         highway_result = await self.provider.collect_highway(sources=highway_sources)
                 except Exception as exc:
                     highway_result = exc
+                highway_result = await self._confirm_highway_payload(
+                    highway_result, highway_sources, highway_baselines,
+                )
             if fuel_due:
                 fuel_started = time.monotonic()
                 logger.info("fuel browser collection started run_id=%s timeout=%ss", run_id, FUEL_FETCH_TIMEOUT_SECONDS)
@@ -581,6 +601,86 @@ class TransportCollectionService:
             errors=errors,
         )
 
+    def _highway_scope_key(self, source: str) -> str:
+        if source == INCIDENT_SOURCE:
+            return "incidents:all:v1"
+        filters = [sorted(self.settings.transport_route_nos), sorted(self.settings.transport_conzone_ids)]
+        return hashlib.sha256(json.dumps(filters, separators=(",", ":")).encode()).hexdigest()
+
+    async def _highway_success_count(self, session: AsyncSession, source: str) -> int | None:
+        latest = (select(RawApiResponse.body_text).where(
+            RawApiResponse.source == source, RawApiResponse.status_code == 200,
+            RawApiResponse.parse_status == "received",
+        ).order_by(RawApiResponse.id.desc()).limit(1).subquery())
+        body = latest.c.body_text
+        if session.bind.dialect.name == "postgresql":
+            document = cast(body, JSON)
+            scope = func.json_extract_path_text(document, "_collection_guard", "scope_key")
+            count = func.coalesce(
+                cast(func.json_extract_path_text(document, "_collection_guard", "item_count"), Integer),
+                func.json_array_length(func.json_extract_path(document, "items")),
+            )
+        else:
+            scope = func.json_extract(body, "$._collection_guard.scope_key")
+            count = func.coalesce(func.json_extract(body, "$._collection_guard.item_count"),
+                                  func.json_array_length(body, "$.items"))
+        previous = (await session.execute(select(scope, count).select_from(latest))).first()
+        if previous is None:
+            return None
+        previous_scope, previous_count = previous
+        # 옛 traffic raw에는 필터가 없어 다른 scope의 크기와 비교하면 안 된다.
+        if previous_scope != self._highway_scope_key(source) and not (
+            previous_scope is None and source == INCIDENT_SOURCE
+        ):
+            return None
+        return previous_count if isinstance(previous_count, int) and previous_count >= 0 else None
+
+    @staticmethod
+    def _highway_result_suspicious(result: tuple, baseline: int | None) -> bool:
+        return not result or (baseline is not None and len(result) * HIGHWAY_ABNORMAL_DROP_FACTOR < baseline)
+
+    async def _confirm_highway_payload(
+        self, payload: HighwayPayload | Exception, sources: tuple[str, ...],
+        baselines: dict[str, int | None],
+    ) -> HighwayPayload | Exception:
+        if isinstance(payload, Exception):
+            return payload
+        fields = {TRAFFIC_SOURCE: "traffic", INCIDENT_SOURCE: "incidents"}
+        suspicious = tuple(source for source in sources
+                           if isinstance(getattr(payload, fields[source]), KrexParseError)
+                           or (isinstance(getattr(payload, fields[source]), tuple)
+                               and self._highway_result_suspicious(
+                                   getattr(payload, fields[source]), baselines[source],
+                               )))
+        if not suspicious:
+            return payload
+        # 재확인도 provider의 source 격리·기존 상한 안에서 한 번만 한다.
+        # 호출 동안 DB transaction/connection은 앞선 claim commit으로 반환돼 있다.
+        try:
+            # source별 timeout이 gather 결과로 돌아오게 최초조회와 같은 여유를 둔다.
+            async with asyncio.timeout(2 * HIGHWAY_FETCH_TIMEOUT_SECONDS):
+                retried = await self.provider.collect_highway(sources=suspicious)
+        except Exception as exc:
+            retried = exc
+        updates: dict[str, Any] = {}
+        for source in suspicious:
+            field = fields[source]
+            first = getattr(payload, field)
+            result = retried if isinstance(retried, Exception) else getattr(retried, field)
+            if isinstance(result, tuple):
+                recovered = not self._highway_result_suspicious(result, baselines[source])
+                # 빈200의 반복만으로 완결로 인정하지 않는다. 두 응답 모두 명시한 total_count를
+                # 전체 페이지와 대조했고 같은 개수일 때만 정상 소멸/급감을 수용한다.
+                confirmed = (isinstance(first, tuple) and not isinstance(retried, Exception)
+                             and source in payload.complete_sources
+                             and source in retried.complete_sources and len(first) == len(result))
+                if not recovered and not confirmed:
+                    result = ValueError(
+                        f"{source}: unconfirmed empty or reduced response; keeping last successful set"
+                    )
+            updates[field] = result
+        return replace(payload, **updates)
+
     async def _collect_highway_source(
         self,
         session: AsyncSession,
@@ -611,7 +711,9 @@ class TransportCollectionService:
         # 저장 예외는 provider 실패와 구분해 바깥의 durable 실패 처리로 전달한다.
         await self._store_raw_response(
             session, collection_run_id=collection_run_id, source=source, endpoint=endpoint,
-            body={"items": [_provider_json(item) for item in result]},
+            body={"items": [_provider_json(item) for item in result], "_collection_guard": {
+                "scope_key": self._highway_scope_key(source), "item_count": len(result),
+            }},
         )
         await self._mark_source_success(session, source, now_utc())
         return result
@@ -1234,6 +1336,8 @@ class TransportCollectionService:
 async def _collect_krex_pages(
     fetch: Callable[[int], Awaitable[Any]],
     endpoint: str,
+    *,
+    on_complete: Callable[[int], None] | None = None,
 ) -> tuple[T, ...]:
     """페이지 전체를 읽고 provider가 보고한 total_count와 대조한다."""
     items: list[T] = []
@@ -1268,6 +1372,8 @@ async def _collect_krex_pages(
         if page_no >= KREX_MAX_PAGES:
             raise RuntimeError(f"{endpoint} exceeded the {KREX_MAX_PAGES}-page safety limit")
         page_no += 1
+    if expected_count is not None and on_complete is not None:
+        on_complete(expected_count)
     return tuple(items)
 
 

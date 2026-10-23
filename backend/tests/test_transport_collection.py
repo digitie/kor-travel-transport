@@ -1641,3 +1641,215 @@ def test_fuel_success_logs_fetch_and_store_progress(tmp_path: Path, caplog) -> N
     messages = [record.getMessage() for record in caplog.records]
     assert any(m.startswith("fuel browser collection finished run_id=") for m in messages)
     assert any(m.startswith("fuel snapshot store finished run_id=") and "prices=1" in m for m in messages)
+
+
+@pytest.mark.parametrize("first_size,next_size,complete,status", [
+    (0, 0, False, "failed"), (1, 1, False, "failed"), (106, 106, False, "success"),
+    (0, 106, False, "success"), (0, 0, True, "success"), (1, 1, True, "success"),
+    (0, 1, True, "failed"),
+])
+def test_highway_empty_or_reduced_response_is_reconfirmed_before_success(
+    client, first_size, next_size, complete, status,
+):
+    from app.models import RawApiResponse
+
+    service = client.app.state.transport_collection_service
+    provider = FakeTransportProvider()
+    provider.enabled_sources = (INCIDENT_SOURCE,)
+    service.provider = provider
+
+    async def run():
+        original = await FakeTransportProvider().collect_highway()
+        all_items = tuple(original.incidents[0].model_copy(update={"series_no": index})
+                          for index in range(106))
+        good = HighwayPayload(traffic=None, incidents=all_items)
+        candidate = HighwayPayload(traffic=None, incidents=all_items[:next_size],
+                                   complete_sources=(INCIDENT_SOURCE,) if complete else ())
+        first_candidate = replace(candidate, incidents=all_items[:first_size])
+        provider.collect_highway = AsyncMock(side_effect=[good, first_candidate, candidate])
+        async with client.app.state.session_factory() as session:
+            first = await service.collect(session, scope="highway")
+            assert first["status"] == "success"
+            state = await session.scalar(select(TransportCollectionState).where(
+                TransportCollectionState.source == INCIDENT_SOURCE))
+            previous_success = state.last_success_at
+            state.next_due_at = now_utc() - timedelta(seconds=1)
+            await session.commit()
+            second = await service.collect(session, scope="highway")
+            assert second["status"] == status
+            await session.refresh(state)
+            if status == "failed":
+                assert state.last_success_at == previous_success
+                assert "unconfirmed" in state.last_error
+                retained = await session.scalar(select(func.count()).select_from(
+                    HighwayIncidentSnapshot).where(
+                        HighwayIncidentSnapshot.collected_at == previous_success))
+                assert retained == 106
+            else:
+                assert state.last_error is None
+                assert state.last_success_at >= previous_success
+            successful_raw = list((await session.scalars(select(RawApiResponse).where(
+                RawApiResponse.source == INCIDENT_SOURCE, RawApiResponse.status_code == 200,
+            ))).all())
+            assert len(successful_raw) == (1 if status == "failed" else 2)
+        assert provider.collect_highway.await_count == (2 if first_size == 106 else 3)
+        assert provider.collect_highway.await_args.kwargs["sources"] == (INCIDENT_SOURCE,)
+
+    client.portal.call(run)
+
+
+def test_highway_first_empty_without_complete_evidence_is_not_success(client):
+    service = client.app.state.transport_collection_service
+    provider = FakeTransportProvider()
+    provider.enabled_sources = (INCIDENT_SOURCE,)
+    provider.collect_highway = AsyncMock(return_value=HighwayPayload(traffic=None, incidents=()))
+    service.provider = provider
+
+    async def run():
+        async with client.app.state.session_factory() as session:
+            result = await service.collect(session, scope="highway")
+            assert result["status"] == "failed"
+            state = await session.scalar(select(TransportCollectionState).where(
+                TransportCollectionState.source == INCIDENT_SOURCE))
+            assert state.last_success_at is None
+            assert state.last_error
+        assert provider.collect_highway.await_count == 2
+
+    client.portal.call(run)
+
+
+def test_krex_only_explicit_complete_total_provides_empty_confirmation():
+    async def run():
+        for total, expected in ((None, []), (0, [0])):
+            complete = []
+            async def fetch(_page):
+                return SimpleNamespace(items=(), total_count=total, num_of_rows=1000)
+            assert await _collect_krex_pages(fetch, "incident", on_complete=complete.append) == ()
+            assert complete == expected
+    asyncio.run(run())
+
+
+def test_live_highway_marks_only_validated_incident_totals_complete(tmp_path):
+    async def run():
+        provider = LiveTransportProvider(build_settings(tmp_path))
+        await provider.krex.aclose()
+        provider.krex = SimpleNamespace(
+            traffic=SimpleNamespace(incident=AsyncMock(return_value=SimpleNamespace(
+                items=(), total_count=None, num_of_rows=1000))), aclose=AsyncMock(),
+        )
+        unknown = await provider.collect_highway(sources=(INCIDENT_SOURCE,))
+        assert unknown.complete_sources == ()
+        provider.krex.traffic.incident.return_value.total_count = 0
+        confirmed = await provider.collect_highway(sources=(INCIDENT_SOURCE,))
+        assert confirmed.complete_sources == (INCIDENT_SOURCE,)
+        await provider.aclose()
+    asyncio.run(run())
+
+
+def test_highway_retry_failure_keeps_independent_traffic_success(client):
+    service = client.app.state.transport_collection_service
+    provider = FakeTransportProvider()
+    provider.enabled_sources = (TRAFFIC_SOURCE, INCIDENT_SOURCE)
+    service.provider = provider
+
+    async def run():
+        original = await FakeTransportProvider().collect_highway()
+        provider.collect_highway = AsyncMock(side_effect=[
+            replace(original, incidents=()), TimeoutError("bounded reconfirm timeout"),
+        ])
+        async with client.app.state.session_factory() as session:
+            result = await service.collect(session, scope="highway")
+            assert result["status"] == "partial_success"
+            assert result["traffic_snapshot_count"] == 1
+            state = await session.scalar(select(TransportCollectionState).where(
+                TransportCollectionState.source == TRAFFIC_SOURCE))
+            assert state.last_success_at is not None and state.last_error is None
+        assert provider.collect_highway.await_args.kwargs["sources"] == (INCIDENT_SOURCE,)
+    client.portal.call(run)
+
+
+def test_highway_comparison_does_not_reuse_another_filter_scope(client):
+    service = client.app.state.transport_collection_service
+    provider = FakeTransportProvider()
+    provider.enabled_sources = (TRAFFIC_SOURCE,)
+    service.provider = provider
+
+    async def run():
+        original = await FakeTransportProvider().collect_highway()
+        many = tuple(original.traffic[0].model_copy(update={"vds_id": str(index)})
+                     for index in range(12))
+        provider.collect_highway = AsyncMock(side_effect=[
+            HighwayPayload(traffic=many, incidents=None),
+            HighwayPayload(traffic=original.traffic, incidents=None),
+        ])
+        async with client.app.state.session_factory() as session:
+            assert (await service.collect(session, scope="highway"))["status"] == "success"
+            state = await session.scalar(select(TransportCollectionState).where(
+                TransportCollectionState.source == TRAFFIC_SOURCE))
+            state.next_due_at = now_utc() - timedelta(seconds=1)
+            await session.commit()
+            service.settings.transport_route_nos_csv = "new-scope"
+            assert (await service.collect(session, scope="highway"))["status"] == "success"
+        assert provider.collect_highway.await_count == 2
+    client.portal.call(run)
+
+
+def test_flow_not_found_converted_to_empty_is_not_complete_evidence(tmp_path):
+    async def run():
+        provider = LiveTransportProvider(build_settings(tmp_path))
+        await provider.krex.aclose()
+        provider.krex = SimpleNamespace(traffic=SimpleNamespace(flow_all=AsyncMock(
+            return_value=SimpleNamespace(items=(), total_count=0, raw=None))), aclose=AsyncMock())
+        payload = await provider.collect_highway(sources=(TRAFFIC_SOURCE,))
+        assert payload.complete_sources == ()
+        service = TransportCollectionService(build_settings(tmp_path), provider)
+        confirmed = await service._confirm_highway_payload(payload, (TRAFFIC_SOURCE,),
+                                                            {TRAFFIC_SOURCE: None})
+        assert isinstance(confirmed.traffic, ValueError)
+        assert provider.krex.traffic.flow_all.await_count == 2
+        await provider.aclose()
+    asyncio.run(run())
+
+
+def test_highway_retry_source_timeout_does_not_discard_recovered_peer(tmp_path, monkeypatch):
+    import app.services.transport_collection as module
+
+    async def run():
+        monkeypatch.setattr(module, "HIGHWAY_FETCH_TIMEOUT_SECONDS", 0.03)
+        original = await FakeTransportProvider().collect_highway()
+        provider = LiveTransportProvider(build_settings(tmp_path))
+        await provider.krex.aclose()
+        async def stall(**kwargs):
+            await asyncio.sleep(1)
+        provider.krex = SimpleNamespace(traffic=SimpleNamespace(
+            flow_all=AsyncMock(return_value=SimpleNamespace(items=original.traffic)),
+            incident=stall,
+        ), aclose=AsyncMock())
+        service = TransportCollectionService(build_settings(tmp_path), provider)
+        result = await service._confirm_highway_payload(
+            HighwayPayload(traffic=(), incidents=()), (TRAFFIC_SOURCE, INCIDENT_SOURCE),
+            {TRAFFIC_SOURCE: None, INCIDENT_SOURCE: None},
+        )
+        assert result.traffic == original.traffic
+        assert isinstance(result.incidents, TimeoutError)
+        await provider.aclose()
+    asyncio.run(run())
+
+
+def test_highway_malformed_empty_parse_error_is_reconfirmed_once(tmp_path):
+    from krex import KrexParseError
+
+    async def run():
+        provider = FakeTransportProvider()
+        original = await provider.collect_highway()
+        original = replace(original, incidents=tuple(
+            original.incidents[0].model_copy(update={"series_no": index}) for index in range(106)))
+        provider.collect_highway = AsyncMock(return_value=original)
+        service = TransportCollectionService(build_settings(tmp_path), provider)
+        result = await service._confirm_highway_payload(
+            replace(original, incidents=KrexParseError("missing complete envelope")),
+            (INCIDENT_SOURCE,), {INCIDENT_SOURCE: 106},
+        )
+        assert result.incidents == original.incidents
+        provider.collect_highway.assert_awaited_once_with(sources=(INCIDENT_SOURCE,))
+    asyncio.run(run())
