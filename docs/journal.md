@@ -4,6 +4,11 @@
 
 - 기존 주유소 이력에 station/기간·최대5000 제한, keyset cursor·revision 충돌409, 공통meta·ETag·gzip을 추가한다. 원천·기존이력/수집/통계는 변경하지 않는다. 휴게소 이력은501이며 표를 만들지 않는다.
 - T1 PR109 위의 별도 변경이다. [계약·예시·미완 gate](map-service-price-history.md). 검증 중이며 운영 적용/완료를 선언하지 않는다.
+
+## 2026-10-23 — Map T2/T3 구현 선행 조사
+
+- 현재/참조 export의 pointer·source완결·고정HTTP snapshot·기관/노선/수동좌표·매핑/주소 revision 경계를 조사했다. [구현 순서·회귀·실측 gate](design/map-current-reference-exports.md). 문서만으로 T2/T3 구현·운영 완료를 선언하지 않는다.
+- T5 PR108 main567fa6a 머지(검토·CI·WSL996/Docker979·격리실제HTTP7·기존운영UI14 PASS), 아직 새배포 전이다. T1PR109와 T4PR110은 각 최종 통합 검증/CI 진행 중이며 이 문서는 제품 변경을 포함하지 않는다.
 ## 2026-10-23 — Map service API 우선: T5 빈 응답 보호 구현 중
 
 - 사용자 최신 우선순위로 Weather·Transport service API를 먼저 진행한다. T5는 빈/이전 성공25% 미만 응답을 source별로 한 번 재확인하고, 완결 확인이 안 되면 이전 성공 집합·시각을 유지한다. 명시 총건수와 전체 페이지의 완결 증거가 반복 확인된 정상0건은 허용한다.
