@@ -2,6 +2,7 @@
 import asyncio
 from datetime import timedelta
 from unittest.mock import AsyncMock, Mock
+from dataclasses import replace
 
 import pytest
 from sqlalchemy import select
@@ -9,7 +10,7 @@ from sqlalchemy.exc import DBAPIError
 
 from app.core.time_utils import now_utc, serialize_utc
 from app.db.session import create_engine_and_session_factory, init_database
-from app.models import FuelLatestPrice, TransportCollectionState
+from app.models import CollectionRun, FuelLatestPrice, FuelPriceSnapshot, FuelStation, TransportCollectionState
 from app.services.transport_collection import OPINET_SOURCE, TransportCollectionService, _is_transient_database_error
 from test_transport_collection import FakeTransportProvider, build_settings
 
@@ -71,6 +72,106 @@ def test_empty_provider_result_is_failure_and_unhealthy_skip_stays_visible(tmp_p
                 assert result["status"] == "skipped"
                 assert result["fuel_ready"] is False
                 assert "no browser snapshot" in result["errors"][0]
+        finally:
+            await engine.dispose()
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("interruption", ["delayed", "error", "cancel"])
+def test_late_resume_cannot_regress_new_source_history_or_latest(test_settings, interruption):
+    async def exercise():
+        provider = FakeTransportProvider()
+        original = await provider.collect_fuel()
+        stamp = now_utc()
+        old_price = replace(original.stations[0].prices[0], updated_at=stamp - timedelta(hours=8))
+        old_station = replace(original.stations[0], name="old", prices=(old_price,))
+        old = replace(original, collected_at=stamp - timedelta(hours=8), stations=(old_station,))
+        new = replace(old, collected_at=stamp, stations=(replace(old_station, name="new",
+            prices=(replace(old_price, price=1800.5),)),))
+        pending = {"snapshot": old}
+        async def read_pending():
+            return pending["snapshot"]
+        def acknowledge(snapshot):
+            if pending["snapshot"] is snapshot:
+                pending["snapshot"] = None
+        provider.pending_fuel_snapshot = read_pending
+        provider.acknowledge_fuel_snapshot = acknowledge
+        provider.collect_fuel = AsyncMock(return_value=new)
+        engine, factory = create_engine_and_session_factory(test_settings.database_url)
+        await init_database(engine)
+        a, b, c = [TransportCollectionService(test_settings, provider) for _ in range(3)]
+        blocked, release = asyncio.Event(), asyncio.Event()
+        original_lock = a._acquire_database_lock
+        calls = 0
+        async def gate(session, group):
+            nonlocal calls
+            calls += 1
+            if calls == (3 if interruption == "error" else 2):
+                blocked.set()
+                await release.wait()
+            await original_lock(session, group)
+        a._acquire_database_lock = gate
+        if interruption == "error":
+            a._store_fuel_snapshot = AsyncMock(side_effect=RuntimeError("storage failed"))
+        async def collect(service):
+            async with factory() as session:
+                return await service.collect(session, scope="fuel")
+        try:
+            async with factory() as session:
+                session.add(TransportCollectionState(source=OPINET_SOURCE, last_started_at=stamp - timedelta(hours=9),
+                    next_due_at=stamp - timedelta(hours=1), updated_at=stamp - timedelta(hours=9)))
+                await session.commit()
+            task = asyncio.create_task(collect(a))
+            await asyncio.wait_for(blocked.wait(), timeout=15)
+            assert (await collect(b))["status"] == "success"
+            assert (await collect(c))["status"] == "success"
+            if interruption == "cancel":
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+            else:
+                release.set()
+                result = await task
+                assert result["status"] == "skipped" and result["fuel_ready"] is True
+            async with factory() as session:
+                state = await session.scalar(select(TransportCollectionState).where(
+                    TransportCollectionState.source == OPINET_SOURCE))
+                assert serialize_utc(state.last_success_at) == stamp
+                assert state.last_error is None
+                assert (await session.scalar(select(FuelStation))).name == "new"
+                latest = await session.scalar(select(FuelLatestPrice))
+                raw = await session.get(FuelPriceSnapshot, latest.snapshot_id)
+                assert float(latest.price) == float(raw.price) == 1800.5
+            provider.collect_fuel.assert_awaited_once()
+        finally:
+            release.set()
+            await engine.dispose()
+    asyncio.run(exercise())
+
+
+def test_pending_file_error_is_durable_and_keeps_existing_request_reservation(tmp_path):
+    async def exercise():
+        settings = build_settings(tmp_path)
+        provider = FakeTransportProvider()
+        provider.pending_fuel_snapshot = AsyncMock(side_effect=OSError("checkpoint unreadable"))
+        provider.collect_fuel = AsyncMock()
+        engine, factory = create_engine_and_session_factory(settings.database_url)
+        await init_database(engine)
+        try:
+            stamp = now_utc()
+            due = stamp + timedelta(hours=4)
+            async with factory() as session:
+                session.add(TransportCollectionState(source=OPINET_SOURCE, last_started_at=stamp,
+                    next_due_at=due, updated_at=stamp))
+                await session.commit()
+                result = await TransportCollectionService(settings, provider).collect(session, scope="fuel")
+                assert result["status"] == "failed"
+                state = await session.scalar(select(TransportCollectionState).where(
+                    TransportCollectionState.source == OPINET_SOURCE))
+                assert "checkpoint unreadable" in state.last_error
+                assert serialize_utc(state.next_due_at) == due
+                assert (await session.get(CollectionRun, result["collection_run_id"])).status == "failed"
+            provider.collect_fuel.assert_not_awaited()
         finally:
             await engine.dispose()
     asyncio.run(exercise())

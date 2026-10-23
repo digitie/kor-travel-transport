@@ -1522,9 +1522,8 @@ def test_fuel_failure_keeps_the_claimed_start_reservation(tmp_path: Path) -> Non
     assert result["status"] == "failed"
     due = serialize_utc(state.next_due_at)
     interval = provider.next_fuel_interval()
-    assert due == serialize_utc(state.last_started_at) + interval or abs(
-        due - serialize_utc(state.last_started_at) - interval
-    ) < timedelta(seconds=1)
+    from app.services.transport_collection import FUEL_NEXT_DUE_START_SLACK
+    assert due == serialize_utc(state.last_started_at) + interval - FUEL_NEXT_DUE_START_SLACK
 
 
 def test_eight_hourly_ticks_keep_one_failure_inside_the_export_grace(tmp_path: Path, monkeypatch) -> None:
