@@ -1,6 +1,6 @@
 # tasks.md — parking-radar 백로그
 
-- [ ] **Next.js 보안 갱신 — Next.js 16.4.3**. 의존성·잠금 파일과 필요한 호환 설정을 갱신하고 WSL 프론트엔드 검증을 통과했다. PR CI·독립 리뷰와 운영 반영은 별도다. [검증·잔여 취약점](journal.md).
+- [ ] **Next.js 보안 갱신 — Next.js 16.4.3**. parking-radar와 운영 관리자 앱 두 곳의 의존성·잠금 파일을 갱신하고 WSL 130+225 회귀·build 및 관리자 lint/type-check를 통과했다. 두 독립 사전 리뷰에서 관리자 누락을 수정했고 CI·추가 검증·운영 반영은 별도다. [검증·잔여 취약점](journal.md).
 
 진행 중/예정(`[ ]`) task만 두는 백로그다. 완료 항목은
 [`docs/tasks-done.md`](tasks-done.md)에 이동하고, 현재 진척과 다음 작업은

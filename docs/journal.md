@@ -1,11 +1,14 @@
 ## 2026-10-24 — Next.js 16.4.3 보안 의존성 갱신
 
-- Next.js 16.3.2에서 `16.4.3`으로 정확히 고정하고 잠금 파일을 재생성했다.
-- 앱 코드와 API 계약 변경 없이 package.json·package-lock.json의 Next.js 및 해당 전이 의존성을 갱신했다. Docker와 백엔드 추가 검증 결과는 아래에 구분해 기록한다.
-- WSL Linux Node 22.22.2에서 프론트엔드 기존 테스트 130건과 build PASS. 기존 Next.js 16 설정을 보존했다.
-- WSL Docker에서 실제 프론트엔드 이미지를 새로 빌드하고 `docker compose -p next1643-transport run --rm --no-deps frontend npm run test -- --run` 130건 PASS. 백엔드 WSL·Docker 검증은 진행 중이다.
+- parking-radar의 Next.js 16.3.2와 운영 관리자 앱의 Next.js/eslint-config-next 16.3.5를 모두 `16.4.3`으로 정확히 고정하고 각 잠금 파일을 재생성했다.
+- 앱 코드와 API 계약 변경 없이 package.json·package-lock.json의 Next.js 및 해당 전이 의존성을 갱신했다. 관리자 앱의 새 Compiler 규칙은 기존 오류가 있는 두 파일에만 한정해 비활성화하고 기존 Hooks 규칙과 다른 파일의 설정을 유지했다.
+- WSL Linux Node 22.22.2에서 parking-radar 기존 테스트 130건·build PASS, 관리자 앱 기존 테스트 225건·lint(오류 0/기존 경고 1)·type-check·build PASS. 다섯 Next.js 앱의 manifest·잠금 파일·env/SWC 버전과 audit Next 항목 0을 전수 대조했다.
+- WSL Docker에서 실제 프론트엔드 이미지를 새로 빌드하고 `docker compose -p next1643-transport run --rm --no-deps frontend npm run test -- --run` 130건 PASS. 백엔드 WSL 검증은 진행 중이다. 기본 backend 이미지의 `/scripts/validate-deploy-host.py` 경로 누락으로 수집 오류가 발생해 저장소를 읽기 전용 `/workspace`로 mount한 별도 컨테이너 검증을 진행 중이며, 최초 실패를 PASS로 바꾸어 세지 않는다.
 - 같은 시점 `npm audit` 전체 보고: 총 16→14건, critical 2→1건. `next` 항목은 제거됐지만 다른 패키지 취약점은 남아 있다. 강제 자동 수정이나 요청 외 major 의존성 갱신은 하지 않았다.
-- 기존 작업 트리는 보존하고 Linux 격리 작업 공간의 `codex/next-16.4.3-security`에서 변경했다. CI·독립 리뷰·운영 배포·실제 서비스 UI 수용은 아직 별도이며, 이 기록을 운영 반영 완료로 세지 않는다.
+- 운영 관리자 앱도 새 Docker builder 이미지에서 최종 Vitest 225건 PASS. 첫 wrapper는 실행 중 파일 갱신으로 불필요한 끝부분 명령 오류가 났으므로, 같은 최종 이미지에서 직접 재실행해 종료 코드 0과 225 PASS를 확인했다.
+- 운영 관리자 앱의 `npm audit`은 별도로 총 8→6건, critical 3→2건이며 Next 항목 0이다. parking-radar의 아래 수치와 합산하거나 혼동하지 않는다.
+- James/Popper 독립 사전 리뷰는 관리자 앱 누락 P1을 발견했고, manifest·lock과 225 회귀 검증을 추가한 뒤 두 재리뷰에서 해소·새 P0/P1 없음으로 확인했다. 운영 UI와 CI 이후 머지 게이트를 대체하지 않는다.
+- 기존 작업 트리는 보존하고 Linux 격리 작업 공간의 `codex/next-16.4.3-security`에서 변경했다. CI·운영 배포·실제 서비스 UI 수용은 아직 별도이며, 이 기록을 운영 반영 완료로 세지 않는다.
 
 ## 2026-10-24 — Map service API 문서 독립 정합성 감사
 
