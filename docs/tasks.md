@@ -10,6 +10,9 @@
 
 ## 진행 중인 작업 인덱스
 
+- [ ] 운영 rollout 전 필수: 공항 KAC quota의 실제 실패 origin/until을 기존 source state.next_due_at에 유지한다. ICN 병행 blocked 관찰은 기간을 연장하지 않고 원래 만료 뒤 정상 재시도해야 한다. `codex/parking-quota-deadline`에서 별도 소형 PR로 구현/회귀/두 리뷰/CI를 마감한다. 118 고정 리뷰 범위와 분리한다.
+
+
 - [ ] Map T2 traffic current: source/filter head·typed pointer·같은 source transaction hook은 PR112 머지/검증 완료다. schema0030/defaultOFF로 운영 미배포이며 비용·운영 수용은 남았다. [진척·남은 gate](reports/2026-10-23-traffic-current-pointer.md). 실제 traffic REST/고정 snapshot은 `codex/map-current-reference-api`에서 검증 중이다. 주차/T3·운영 활성화는 후속이다.
 
 
