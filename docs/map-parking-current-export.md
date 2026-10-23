@@ -12,7 +12,9 @@ python-krairport-api PR10의 public `parking_raw_set(provider=...,page_size=100,
 기존 raw/status/fee API와 기본 flagOFF collector는 유지한다. SDK total 필수/고정total,
 페이지수신량/반복페이지/byte상한과 Transport의 업무 identity·필수값·중복·미래시각을 검증한다.
 SDK PR11의 `parse_parking_snapshot_values`로 원문 숫자·실제 KST 시각을 엄격히 검증하고
-legacy 업무 변환과 canonical 값이 대응하는지 확인한다. 오류문자열을 0/현재시각으로 승인하지 않는다.
+Map current에는 SDK canonical 시각·수치를 직접 사용하고 기존 이력은 기존 parser 결과를
+유지한다. 정상 IIAC 초단위 시각을 분 단위 이력과 비교해 거부하지 않는다. 오류문자열을
+0/현재시각으로 승인하지 않는다.
 전체raw에서 해석되지 않은 행이 있으면 보류한다. KAC는 설정 공항으로 필터한 source scope를
 hash하고 ICN scope와 분리한다. 빈/오류/이전성공25%미만은1회 다시받고 미확인 시 이전집합을
 보존한다. 서로 다른 source의 성공과 요금수집 성공은 분리한다. blocked KAC도 기존 quota marker를

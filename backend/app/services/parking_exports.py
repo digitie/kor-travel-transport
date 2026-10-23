@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import replace
 from collections.abc import Sequence
 
 from krairport import parse_parking_snapshot_values
@@ -50,10 +51,11 @@ def validate_parking_payload(settings, source, response):
     identities = [(row.airport_code, row.lot_id) for row in rows]
     if len(set(identities)) != len(rows):
         raise ValueError("주차장 원천 identity가 중복됩니다")
-    for row, value in zip(rows, canonical, strict=True):
-        if (row.total_spaces != value.total_spaces or row.occupied_spaces != value.occupied_spaces
-                or serialize_utc(row.observed_at) != serialize_utc(value.observed_at)):
-            raise ValueError("주차장 원천 canonical 값과 업무 변환이 일치하지 않습니다")
+    current_rows = []
+    for legacy_row, value in zip(rows, canonical, strict=True):
+        # 기존 이력 parser의 분 단위 변환은 그대로 보존하고 Map current는 SDK 정본을 직접 쓴다.
+        row = replace(legacy_row, total_spaces=value.total_spaces,
+                      occupied_spaces=value.occupied_spaces, observed_at=value.observed_at)
         if (row.source != source or not row.lot_name or not row.lot_id
                 or row.total_spaces <= 0 or row.occupied_spaces < 0
                 or row.observed_at.tzinfo is None):
@@ -61,7 +63,10 @@ def validate_parking_payload(settings, source, response):
         # 현재 API가 미래 시각을 성공으로 승인하지 않는다. 기존 이력 parser는 변경하지 않는다.
         if (serialize_utc(row.observed_at) - now_utc()).total_seconds() > 300:
             raise ValueError("주차장 관측시각이 미래입니다")
-    return [row for row in rows if source == "incheon_parking" or row.airport_code in settings.supported_airport_codes]
+        current_rows.append(row)
+    def selected(values):
+        return [row for row in values if source == "incheon_parking" or row.airport_code in settings.supported_airport_codes]
+    return selected(rows), selected(current_rows)
 
 
 async def store_parking_current(session, settings, *, source, run_id, observations: Sequence, proof, lot_ids):
