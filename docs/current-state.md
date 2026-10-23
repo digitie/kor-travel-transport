@@ -1,5 +1,11 @@
 # 현재 상태 요약
 
+> 2026-10-23 최신 배포: #103~#106 `af415b3`, schema29·CS12306·실제 KREX 수집·공개 UI15개 PASS. host CPU99.92% 단일 표본으로 전체 CPU/RAM 감소는 미입증이다. [운영 수용 기록](reports/2026-10-23-fuel-concurrency-rollout.md).
+
+
+> 최신 운영 방침: 공용 daemon RUNNING을 유지한다. 아래 10월 19일의 run0·OFF는 당시 관측이다.
+> 유가 개선의 최신 검증·배포 상태는 [10월 23일 기록](reports/2026-10-23-fuel-concurrency-rollout.md)을 따른다.
+
 ## 2026-10-19 현재 Track2 수용 증거
 
 - 실제 ARM64 native backend 이미지 `5942696b548f`(소스 `a0b789df`)의 설치 Python37파일을 검증했다. 해당 이미지 빌드에서 Playwright Chromium 설치가 성공했으며 별도 headless 로컬 HTML/title/canvas/screenshot smoke도 exit0/OOM0으로 통과했다.
@@ -412,4 +418,4 @@ backend가 `.13`으로, 옛 `pr2` host와 odroid의 legacy `parking-radar` 스�
 관리자 번들의 canonical Dagster URL은 실제 ARM64 build와 정적 chunk 검사에서
 확인했고, 같은14e8c212 이미지를 운영 UI34가 검증했다.
 [정적 빌드와 설치 세대 연결](audits/2026-10-19-admin-bundle-acceptance.md)을 따른다.
-과거 n150/SQLite 설명은 이전 세대의 이력이다. daemon OFF는 유지한다.
+과거 n150/SQLite 설명과 daemon OFF 관측은 이전 세대의 이력이다. 현재는 공용 daemon RUNNING을 유지한다.

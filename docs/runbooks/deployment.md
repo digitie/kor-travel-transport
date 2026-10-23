@@ -16,7 +16,7 @@
 
 2026-10-17 root는 최초 CLI 부재 거절을 보존하고 이 root 소유 진입점 준비 뒤 실제 승인/비로컬/env 없음 효과 검사를 각각 exit0/2/2로 확인했다. tracked source와 env 정렬·기존 UI34 수용을 완료했지만 runtime build/recreate는 0이다. 전체 ARM build·새 bundle·첫 full cutover 및 아래 역사적 정책의 정산은 T-TRN-01/02 후속과 T-TRN-03a/04에서 구분한다. Manager530 제품의 실제 설치를 PR530 머지 완료로 해석하지 않는다.
 
-DSN의 loopback11000/DB 이름, 공용 Dagster 버전, location absent 거절·PythonError 재로드 대기, 이 location의 run/worker drain·release lock은 바꾸지 않았다. 공용 daemon을 시작하거나 복구하지 않는다. 사용자의 daemon OFF 지시가 유지되는 동안에도 이를 자동 해제하지 않는다.
+DSN의 loopback11000/DB 이름, 공용 Dagster 버전, location absent 거절·PythonError 재로드 대기, 이 location의 run/worker drain·release lock은 바꾸지 않았다. 최신 사용자 지시에 따라 공용 daemon은 RUNNING을 유지한다. Transport 배포에서는 이 location의 schedule·sensor 원래 상태를 저장한 뒤 일시 중지하고, queued/run과 실제 worker의 자연 종료를 모두 확인한다. 검증된 전환 또는 복구 뒤 원래 instigator 상태를 복원한다. 공용 PG·daemon·다른 테넌트를 함께 재생성하지 않는다.
 
 예전 n150/파일명으로 적힌 아래 절은 당시 이력이다. 현재 명령에는 위 prod entry·--host·.env.prod를 적용하고, 이전 정책 문구·실제 source 배포/ARM/live 수용은 T-TRN-03a/04에서 별도로 정산한다. 현재 source의 tracked-file/효과 검사 적용과 runtime image 재빌드·전체 cutover는 별개다.
 
@@ -37,7 +37,13 @@ Compose에 명시적으로 추가한다. 렌더된 command와 healthcheck가 모
 컨테이너 교체를 시작하지 않는다. 기본 compose의 14005는 n150 호환 기본값으로만 유지한다.
 관리자 배포는 같은 project의 gateway/admin 두 역할만 선택하며 다른 역할을 제거하지 않는다.
 소비자 export는 GET과 기존 승인 IP/CIDR에 한정하고 빈 설정은 모두 거부한다.
-기존 env 보호 exclude를 지우거나 HAProxy를 직접 수정하지 않는다. daemon OFF를 유지한다.
+기존 env 보호 exclude를 지우거나 HAProxy를 직접 수정하지 않는다. 공용 daemon RUNNING을 유지한다. DB 조회·worker 확인에 상한을 두고, 배포 시간 초과로 하위 작업의 종료가 불명확하면 pause를 유지한 채 별도 정산한다. 종료를 증명하기 전에 자동 rollback과 정방향 배포를 겹치지 않는다.
+
+### 사전 빌드와 공식 staging의 metadata
+
+사전 빌드는 가능하면 공식 `DEPLOY_STAGE_ONLY=true`로 준비한 같은 staging과 같은 사용자·파일 metadata를 사용한다. 별도 Python tar 추출의 `filter=data`는 group write를 제거하므로 GNU tar staging과 Git tree/내용이 같아도 COPY 캐시가 달라질 수 있다. 캐시 재사용은 실제 build 로그로 확인하며 동일 tree만으로 단정하지 않는다. BuildKit의 자원 상한과 Docker daemon 이미지 적재의 자원 사용도 구분한다.
+
+실행 중인 배포의 source mode를 바꾸지 않는다. 불필요한 build를 취소해야 한다면 정확한 소유 PID뿐 아니라 공식 script/controller와 BuildKit solve의 종료, 기존 앱/schema 및 instigator 복원을 확인한다. 그 뒤 Manager global lock→Transport release lock 순으로 확보하고 tracked 일반 파일의 hash·실행 비트·경로와 보호 파일 보존을 확인한 경우에만 metadata를 정리한다. 종료가 불명확하면 재시도와 겹치지 않는다.
 
 아래 n150 절과 이전 계획의 당시 미완 항목은 역사다. 최신 수용 증거는
 [운영 계약 검증](../reviews/2026-10-19-track2-runtime-contract.md)와

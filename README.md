@@ -113,7 +113,7 @@ gateway12301/admin12305/code-server12306이며 project는 `kor-travel-transport`
 `/opt/kor-travel-odroid/transport.env`와 동일 내용의 앱 `.env.prod`다.
 실제 경로가 NVMe 장치인지 확인하고 staging은 `/mnt/media/kor-travel/build/transport`를 사용한다.
 [ADR-014](docs/adr/014-odroid-host-and-deploy-host-flag.md)와 현재 배포 런북의
-잠금·현재 세대·서비스 보존 절차를 따른다. daemon OFF를 유지한다.
+잠금·현재 세대·서비스 보존 절차를 따른다. 최신 사용자 지시에 따라 공용 daemon은 RUNNING을 유지한다.
 
 ```bash
 REMOTE_APP_DIR=/home/digitie/apps/kor-travel-transport \

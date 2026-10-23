@@ -30,7 +30,8 @@
 - main에 직접 push하지 않고 `codex/` feature branch와 Draft PR을 사용한다. CI,
   두 명의 적대적 리뷰, live E2E UI 검증이 끝난 뒤에만 머지한다.
 - Odroid 운영 작업은 `docs/runbooks/deployment.md`의 현재 절차와 ADR-014를 따른다.
-  빌드·이미지·앱·DB 파일은 NVMe를 사용하며 daemon OFF와 승인된 서비스 범위를 유지한다.
+  빌드·이미지·앱·DB 파일은 NVMe를 사용하며 공용 daemon RUNNING과 승인된 서비스 범위를 유지한다.
+  배포 때에는 Transport instigator만 일시 중지하고 run·worker 종료 확인 후 원래 상태로 복구한다.
 
 ## 문서 언어 정책
 

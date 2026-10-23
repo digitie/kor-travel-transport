@@ -14,7 +14,11 @@
   §9·`test_transport_shared_bootstrap_contract.py`)은 Manager origin/main `094d397` + Track 2 문서 PR(머지 예정) 기준이며, 그 PR 머지 뒤
   절 번호를 한 번 대조한다(T-TRN-04).
 
-### 2026-10-19 현재 운영 정합
+### 2026-10-23 운영 방침 갱신
+
+최신 사용자 지시에 따라 공용 daemon RUNNING을 유지한다. 아래 10월 19일의 OFF·active run0은 당시 관측으로 보존한다. Transport 배포의 일시 중지는 이 location의 instigator에만 적용하며, 전환/복구 검증 뒤 원래 상태로 되돌린다.
+
+### 2026-10-19 당시 운영 정합
 
 아래 컨텍스트·파일 줄 번호·명령은 2026-10-13 설계 시점의 기록이다. 현재 배포는
 [현재 런북](../runbooks/deployment.md)과 [Manager 대조](../audits/2026-10-19-manager-contract-alignment.md)를 따른다.
