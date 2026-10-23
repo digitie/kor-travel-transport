@@ -1,5 +1,10 @@
 # resume.md — 현재 인수인계
 
+## 2026-10-23 — Map T1/T4/T5 배포·T2 포인터 머지 정산
+
+- 운영 e01f8e9는 schema29/API·CS/gRPC12306/location·기존instigator복원/공용daemonON·다른8container보존 및 UI16 PASS. API계약7 PASS지만 오래된 OpiNet 주유소참조503으로 fresh-readiness는false다. 정규유가복구job1회 등록은 수집성공이 아니다. [배포·원천미완·후속](reports/2026-10-23-map-exports-deployment.md).
+- PR112는 최종9da49c58의2리뷰/정확CI·새PG전체1041/2skip·격리API10/UI9 후 main1a62c748에 머지했다. schema30/defaultOFF이며 이번운영에포함하지않았다. T2/T3 REST/frozen/비용/GC·CPU/RAM 실측은 남았다.
+
 ## 2026-10-23 — Map T2 교통 current 선행 구현 중
 
 - 기본OFF의 작은 source/filter current head와 typed 최신 pointer를 같은 source transaction에서 갱신한다. 이력 backfill·raw 복사·T2 REST 활성화는 없다. [설계·검증 범위](reports/2026-10-23-traffic-current-pointer.md).

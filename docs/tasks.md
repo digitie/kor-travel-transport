@@ -377,3 +377,9 @@ dark-mode 차트/톤 팔레트 미토큰화, `globals.css` 전반의 desktop-fir
 - [ ] Map T4 가격 이력: PR110 구현·검증·머지 완료(주유소 bounded 조회·공통meta·ETag/gzip·cursor/revision, 휴게소501). Map 예시 인계 댓글은 게시했으며 소비자 수용·운영 배포/API/UI 검증이 남았다. 이를 통과한 뒤 완료로 옮긴다. [계약](map-service-price-history.md).
 
 - [ ] Map T2/T3 후속: traffic pointer는 PR112의 기본OFF 후보로 구현했다. 이후 parking 완결 증거/current·frozen snapshot/status/cursor·T2 REST·T3 참조는 [작은 PR 순서/회귀/비용 gate](design/map-current-reference-exports.md)에 따른 설계 단계다. source별 완결·고정snapshot·비용 검증 후 공개하며 운영은 미완이다.
+
+## 2026-10-23 — Map T1/T4/T5 배포·T2 포인터 머지 정산
+
+- 운영 e01f8e9는 schema29/API·CS/gRPC12306/location·기존instigator복원/공용daemonON·다른8container보존 및 UI16 PASS. API계약7 PASS지만 오래된 OpiNet 주유소참조503으로 fresh-readiness는false다. 정규유가복구job1회 등록은 수집성공이 아니다. [배포·원천미완·후속](reports/2026-10-23-map-exports-deployment.md).
+- PR112는 최종9da49c58의2리뷰/정확CI·새PG전체1041/2skip·격리API10/UI9 후 main1a62c748에 머지했다. schema30/defaultOFF이며 이번운영에포함하지않았다. T2/T3 REST/frozen/비용/GC·CPU/RAM 실측은 남았다.
+
