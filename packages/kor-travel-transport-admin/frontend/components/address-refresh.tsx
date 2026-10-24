@@ -31,6 +31,7 @@ export function AddressRefresh() {
       if (!current.signal.aborted) setLoadError("주소 갱신 상태를 읽지 못했습니다. 상태 새로고침으로 재시도하세요.");
     }
   }, []);
+  // 최초 서버 조회와 그 취소를 하나의 수명 주기로 관리한다.
   useEffect(() => { void load(); return () => controller.current?.abort(); }, [load]);
   async function launch() {
     if (busy) return;

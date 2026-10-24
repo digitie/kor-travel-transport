@@ -5,7 +5,13 @@
 @import "tw-animate-css";
 @import "@kor-travel/tokens/theme.css";
 @import "@kor-travel/ui/dagster.css";
+@import "@kor-travel/ui/map-controls.css";
 @source "../node_modules/@kor-travel/ui/dist";
+
+.transport-map-workspace { min-width: 0; }
+.transport-map-workspace .map-primary, .transport-map-workspace .transport-map-canvas { height: 70dvh; min-height: 28rem; }
+.transport-map-workspace .map-place-list { max-height: 70dvh; min-height: 28rem; overflow-y: auto; }
+.transport-map-workspace .kt-map-detail { display: block; padding: 0; border: 1px solid var(--kt-border); }
 
 /* 기존 색상 변수 이름과 shadcn의 muted/accent 의미 충돌을 피한다. */
 @theme inline {
@@ -480,3 +486,95 @@ h1, h2, h3 { color: var(--text-primary); }
 .fuel-stat-table th, .fuel-stat-table td { text-align: left; padding: .6rem; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .fuel-stat-table caption { text-align: left; padding-block: .6rem; }
 .fuel-stat-table button { text-decoration: underline; text-underline-offset: .2rem; }
+
+/* Map 운영 홈의 요약 띠·실행 표·우측 상태 패널 */
+.operations-home { font-family: var(--kt-font-sans); }
+.operations-table { width: 100%; border-collapse: collapse; text-align: left; font-size: var(--text-kt-xs); }
+.operations-table th { color: var(--kt-text-secondary); font-weight: 500; }
+.operations-table th, .operations-table td { border-bottom: 1px solid var(--kt-border); padding: .625rem .5rem; white-space: nowrap; }
+.operations-table td:first-child, .operations-table th:first-child { padding-left: 0; }
+.operations-table a { display: inline-flex; align-items: center; gap: .25rem; }
+.operation-state { display: inline-flex; align-items: center; border-radius: var(--kt-radius-control); padding: .125rem .375rem; color: var(--kt-text-secondary); background: var(--kt-surface-subtle); font-size: var(--text-kt-2xs); }
+.operation-state.failed { color: var(--kt-destructive); background: var(--kt-destructive-tint); }
+.operation-state.success { color: var(--kt-success); background: var(--kt-success-tint); }
+.operations-issues { list-style: none; margin: 0; padding: 0; }
+.operations-issues li { padding: .75rem 0; border-bottom: 1px solid var(--kt-border); }
+.operations-issues li:last-child { border-bottom: 0; }
+.operations-issues li > div { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
+.operations-issues p { margin-top: .25rem; color: var(--kt-text-secondary); font-size: var(--text-kt-2xs); }
+.operations-status { margin: 0; font-size: var(--text-kt-xs); }
+.operations-status > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .375rem; padding: .5rem 0; }
+.operations-status dt { color: var(--kt-text-secondary); }
+.operations-status dd { margin: 0; font-variant-numeric: tabular-nums; }
+.operations-links { display: flex; flex-direction: column; gap: .75rem; font-size: var(--text-kt-xs); }
+.operations-links a { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .25rem; }
+.operations-links span { color: var(--kt-text-secondary); font-size: var(--text-kt-2xs); }
+.common-menu [data-slot="app-menu-group-label"] { margin-top: .75rem; margin-bottom: .25rem; font-size: var(--text-kt-2xs); }
+.driver-stats { grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); row-gap: 1.5rem; }
+.journey-data-grid { display: grid; min-width: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; }
+.station-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); max-height: 13rem; overflow-y: auto; gap: .25rem; }
+.station-results button { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: .25rem; padding: .5rem .75rem; border-radius: var(--kt-radius-control); text-align: left; }
+.station-results button:hover, .station-results button[aria-pressed="true"] { background: var(--kt-surface-subtle); }
+.station-results small, .station-detail h2 small { color: var(--kt-text-secondary); font-size: var(--text-kt-2xs); font-weight: 400; }
+.station-detail h2 { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; }
+.station-detail h2 { font-size: var(--text-kt-lg); font-weight: 600; }
+.rail-journey .kt-map-detail, .bus-journey .kt-map-detail { bottom: auto; max-height: calc(100% - 7rem); }
+.journey-detail-header { display: flex; justify-content: flex-end; }
+.station-address { font-size: var(--text-kt-2xs); text-align: left; white-space: normal; }
+.rail-journey .embedded-map .map-primary, .rail-journey .embedded-map .transport-map-canvas,
+.highway-journey .embedded-map .map-primary, .highway-journey .embedded-map .transport-map-canvas,
+.bus-journey .embedded-map .map-primary, .bus-journey .embedded-map .transport-map-canvas { height: 64dvh; min-height: 28rem; }
+.inline-checkbox { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .375rem; font-size: var(--text-kt-2xs); }
+.inline-checkbox input { width: 1rem; height: 1rem; min-height: 0; margin: 0; }
+.train-station-search { min-width: 0; border: 0; padding: 0; }
+.train-station-search legend { font-weight: 600; margin-bottom: .75rem; }
+.incident-row { display: flex; flex-direction: column; width: 100%; align-items: flex-start; text-align: left; gap: .375rem; padding: .75rem 0; border-bottom: 1px solid var(--kt-border); }
+.incident-row small { color: var(--kt-text-secondary); }
+.parking-lots { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 1rem; }
+.parking-lots article { border-top: 1px solid var(--kt-border); padding-top: .75rem; }
+.parking-lots article > span { margin-left: .5rem; color: var(--kt-text-secondary); font-size: var(--text-kt-2xs); }
+.parking-lots small { color: var(--kt-text-secondary); font-size: var(--text-kt-2xs); }
+.arrival-time { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; font-size: var(--text-kt-xs); }
+.arrival-time input { width: auto; max-width: 100%; }
+@media (max-width: 760px) { .journey-data-grid { grid-template-columns: minmax(0, 1fr); } .driver-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* 제목 옆 안내는 포털로 열어 지도와 모바일 화면 밖으로 잘리지 않게 한다. */
+.section-title-row { display: flex; align-items: center; gap: .375rem; min-width: 0; }
+.info-button { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border-radius: 50%; color: var(--kt-text-secondary); background: transparent; cursor: pointer; }
+.info-button:hover { background: var(--kt-surface-subtle); }
+.info-button:focus-visible { outline: 2px solid var(--kt-accent); outline-offset: 2px; }
+.info-positioner { z-index: 100; }
+.info-popup { width: min(22rem, calc(100vw - 24px)); max-height: min(24rem, 70dvh); overflow-y: auto; padding: .75rem; border: 1px solid var(--kt-border); border-radius: var(--kt-radius-control); background: var(--color-panel); color: var(--color-ink); box-shadow: var(--shadow-map); font-size: var(--text-sm); line-height: 1.6; }
+.info-popup-heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: .375rem; font-weight: 600; }
+.journey-shortcuts { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; font-size: var(--text-sm); }
+.journey-shortcuts a { color: var(--kt-text-secondary); text-decoration: underline; text-underline-offset: 3px; }
+.journey-map-target, #station-timetable, #bus-departures { min-width: 0; scroll-margin-top: 1rem; }
+.flight-journey .embedded-map .map-primary, .flight-journey .embedded-map .transport-map-canvas { height: 64dvh; min-height: 28rem; }
+@media (max-width: 760px) {
+  .journey-workbench { gap: .75rem; }
+  .rail-journey .station-results, .bus-journey .station-results { max-height: 6rem; }
+  .bus-journey > .journey-data-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
+  .terminal-search .kt-map-filter-field { width: 100%; }
+  .terminal-search .station-results { grid-template-columns: minmax(0, 1fr); }
+  .rail-journey .embedded-map .map-primary, .rail-journey .embedded-map .transport-map-canvas,
+  .bus-journey .embedded-map .map-primary, .bus-journey .embedded-map .transport-map-canvas,
+  .highway-journey .embedded-map .map-primary, .highway-journey .embedded-map .transport-map-canvas,
+  .flight-journey .embedded-map .map-primary, .flight-journey .embedded-map .transport-map-canvas { height: 64dvh; min-height: 22rem; }
+}
+
+.mobile-menu-button { display: none; }
+@media (max-width: 760px) {
+  .rail-shell { position: relative; }
+  .mobile-menu-button { display: inline-flex; align-items: center; gap: .375rem; position: absolute; right: 7rem; top: 1.25rem; height: 40px; padding: .375rem; border-radius: var(--kt-radius-control); font-size: var(--text-sm); }
+  .rail-nav.common-menu:not(.is-open) { display: none; }
+  .rail-nav.common-menu.is-open { display: block; position: absolute; z-index: 50; top: 4.5rem; right: .75rem; width: min(20rem, calc(100vw - 1.5rem)); max-height: 70dvh; overflow-y: auto; padding: .75rem; background: var(--color-panel); border: 1px solid var(--kt-border); border-radius: var(--kt-radius-control); box-shadow: var(--shadow-map); }
+  .rail-nav.common-menu.is-open nav, .rail-nav.common-menu.is-open ul { display: grid; }
+  .rail-nav.common-menu.is-open ul { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* 기존 항구 화면도 모바일에서 지도 뒤로 상세를 배치한다. */
+@media (max-width: 760px) {
+  .journey-layout .journey-map { grid-row: 2; }
+  .journey-layout .journey-inspector { grid-row: 3; }
+  .bus-journey .multi-search [data-slot="field-group"].max-h-64 { max-height: 8rem; }
+}

@@ -47,6 +47,19 @@ f58a879 최종 James/Popper 독립 재리뷰 P0/P1/P2 없음으로 PR27을 머�
 추가9개 probe도 취소·인증·요청 제한 오류 보존과 바깥 종료 도달을 확인했다.
 같은 provider의 앱 최종 집중 PostgreSQL128 PASS·uv lock check PASS다.
 
+## 2026-10-24 — 기존 API 호환 UI 선행 배포 준비
+
+사용자 지시로 ITS와 별도 UI 후보를 준비한다. 운영 API e01f8e9 호환 범위만 선별하며 관리자 웹만 교체한다. [검증·범위](reports/2026-10-24-ui-first-release.md).
+
+## 2026-10-24 — 공통 지도 작업면 채택 후보
+
+Map 기준 필터/종류 아이콘/보기 탭/건수+실제 좌표·줌/지도 위 상세를 common dev.7로 연결했다. 교통지도 안내 문단을 사용자6번에 따라 삭제했다. Transport225·공용54·반응형UI2 PASS, 독립 리뷰 반영. Firefox 운영 실제 타일·확대 PASS를 정산했다. 배포용 빌드는 사용자 지시로 중단했고, [6~11번 개선](transport-user-journeys-2026-10-24.md)을 이어간다. [검증](reports/2026-10-24-shared-map-ui.md).
+
+## 2026-10-24 — Firefox VWorld 타일 긴급 수정
+
+Firefox에서 타일 0건을 재현하고 라이브러리 원본의 비표준 protocol→HTTPS 변환을 고쳤다.
+web1.0.1·정확 source pin·lock을 채택하고 Firefox 실제 타일·확대 회귀를 추가했다.
+사용자가 현재 운영 호스트의 관리자 웹만 교체하도록 승인했다. [검증·배포 기록](reports/2026-10-24-firefox-vworld-tiles.md).
 ## 2026-10-24 — 여섯 프로젝트 npm 보안·버전 정합
 
 - 이 저장소의 기존 프론트엔드/공용 테스트 355개와 타입·린트·빌드 PASS. [버전·예외·검증 범위](npm-security-alignment-2026-10-24.md).

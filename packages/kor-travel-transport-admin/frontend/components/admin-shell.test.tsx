@@ -55,6 +55,7 @@ test("페이지 헤더는 현재 경로·전달된 제목·액션을 보존한�
   expect(html).toMatch(/class="[^"]*\bpage-header-wrap\b/);
   expect(html).toMatch(/class="[^"]*\bpage-path\b[^"]*">\/admin\/dagster</);
   expect(html).toContain("<h1>전달된 제목</h1>");
-  expect(html).toContain("전달된 설명");
+  expect(html).toContain('aria-label="전달된 제목 안내"');
+  expect(html).not.toContain("전달된 설명");
   expect(html).toMatch(/class="page-header-actions"><button[^>]*>동작<\/button>/);
 });

@@ -125,6 +125,10 @@ export function dagsterRunUrl(runId: string): string {
   return `${DAGSTER_UI_BASE}/runs/${encodeURIComponent(runId)}`;
 }
 
+export function dagsterJobRunsUrl(jobName: string): string {
+  return dagsterLocationUrl(`/jobs/${encodeURIComponent(jobName)}/runs`);
+}
+
 
 // 관리자 수동 주소 갱신 BFF 전용. 일반 readonly operation allowlist에는 등록하지 않는다.
 export const ADDRESS_REFRESH_PREVIOUS_QUERY = 'query PreviousAddressRefresh($location: String!, $requestId: String!) { runsOrError(limit: 1, filter: { pipelineName: "address_refresh_job", tags: [{key: "dagster/code_location", value: $location}, {key: "kortravel/address-request", value: $requestId}] }) { __typename ... on Runs { results { runId status } } } }';

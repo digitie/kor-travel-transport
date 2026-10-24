@@ -110,12 +110,12 @@ function ManualLocationEditor({ place, onSaved, onReload }: { place: Place; onSa
   </section>;
 }
 
-export function PlaceInspector({ place, onClose, onSaved, onReload }: { place: Place; onClose: () => void; onSaved?: (updated: Place) => void; onReload?: () => void }) {
+export function PlaceInspector({ place, onClose, onSaved, onReload, onShowMap }: { place: Place; onClose: () => void; onSaved?: (updated: Place) => void; onReload?: () => void; onShowMap?: () => void }) {
   return <>
     <header className="inspector-heading"><div><span className="place-title"><PlaceIcon kind={place.kind} />{placeKindLabel(place.kind)}</span><h2>{place.name}</h2><p>{collectionSourceLabel(place.source)}</p><p>기준정보 반영 {dateTime(place.updated_at)}</p></div><Button type="button" variant="outline" size="icon" aria-label="장소 상세 닫기" onClick={onClose}><X data-icon="inline-start" aria-hidden="true" /></Button></header>
     {place.kind === "ferry_port" ? <PortDepartures key={place.id} place={place} /> : null}
     {place.kind === "airport" ? <AirportDetails key={place.id} place={place} /> : null}
-    <section className="inspector-section" aria-label="장소 정보"><PlaceDetails place={place} showHeading={false} /></section>
+    <section className="inspector-section" aria-label="장소 정보"><PlaceDetails place={place} showHeading={false} onShowMap={onShowMap} /></section>
     {((place.kind === "ferry_port" && place.source === "data_go_kr_maritime") ||
       (place.kind === "bus_terminal" && place.source === "data_go_kr_tago")) && place.provider_id && onSaved
       ? <ManualLocationEditor key={`${place.kind}:${place.id}`} place={place} onSaved={onSaved} onReload={onReload ?? onClose} /> : null}

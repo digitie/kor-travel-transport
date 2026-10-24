@@ -381,3 +381,7 @@ dark-mode 차트/톤 팔레트 미토큰화, `globals.css` 전반의 desktop-fir
   게이트웨이에서 접근을 제한해야 한다.
 
 - [ ] Map T4 가격 이력: PR110 구현·검증·머지 완료(주유소 bounded 조회·공통meta·ETag/gzip·cursor/revision, 휴게소501). 운영배포·stale 이력/304/gzip/페이지 계약·기존UI16 수용은 완료다. Map 예시 인계 댓글은 게시했고 소비자 수용·실수집 최신성 회복 뒤 추가 확인이 남았다. T1fuel200/admin 정상자료도 별도 미완이다. [계약](map-service-price-history.md).
+
+## UI 선행 반영(2026-10-24)
+
+- [ ] 기존 API 호환 관리자 UI의 검증·두 독립 리뷰·관리자 웹 단독 배포와 운영 반응형 수용. [범위](reports/2026-10-24-ui-first-release.md).

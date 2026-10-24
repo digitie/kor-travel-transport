@@ -1,3 +1,6 @@
+import type { ReactNode } from "react";
+import { vi } from "vitest";
+vi.mock("./info-button", () => ({ InfoButton: ({ children }: { children: ReactNode }) => <aside>{children}</aside> }));
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { PlaceDetails } from "./journey-controls";
