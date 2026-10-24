@@ -3,6 +3,8 @@ export const TRANSPORT_ENDPOINTS = [
   "transport/providers",
   "transport/statistics",
   "transport/highways/traffic",
+  "transport/highways/roads",
+  "transport/highways/road-traffic",
   "transport/highways/incidents",
   "transport/fuel/stations",
   "transport/fuel/statistics",

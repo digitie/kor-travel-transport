@@ -967,6 +967,7 @@ dependencies = [
     { name = "python-krairport-api" },
     { name = "python-krex-api" },
     { name = "python-kric-api" },
+    { name = "python-krits-api" },
     { name = "python-multipart" },
     { name = "python-opinet-api", extra = ["browser"] },
     { name = "python-vworld-api" },
@@ -1005,6 +1006,7 @@ requires-dist = [
     { name = "python-krairport-api", git = "https://github.com/digitie/python-krairport-api?rev=6c9aa9ae2ad77cbef3fb538d23f5da1f362e0482" },
     { name = "python-krex-api", git = "https://github.com/digitie/python-krex-api?rev=1a37a0108fa837351aa6bb6644052f325ae76daf" },
     { name = "python-kric-api", git = "https://github.com/digitie/python-kric-api?rev=5bf0e61604443fa0e0bd4b1255720fca2bcc993f" },
+    { name = "python-krits-api", git = "https://github.com/digitie/python-krits-api?rev=417e3d5dc1a897f770e9c832eb39d8ff9c40e92a" },
     { name = "python-multipart", specifier = ">=0.0.32,<1.0" },
     { name = "python-opinet-api", extras = ["browser"], git = "https://github.com/digitie/python-opinet-api?rev=8846b288f04b0e428d1d6c21ce817e7cbcc9203d" },
     { name = "python-vworld-api", git = "https://github.com/digitie/python-vworld-api?rev=3b174abea1a1e734c60a9c2522b2844474a1ec71" },
@@ -1814,6 +1816,14 @@ dependencies = [
     { name = "boto3" },
     { name = "httpx" },
     { name = "openpyxl" },
+]
+
+[[package]]
+name = "python-krits-api"
+version = "0.1.0"
+source = { git = "https://github.com/digitie/python-krits-api?rev=417e3d5dc1a897f770e9c832eb39d8ff9c40e92a#417e3d5dc1a897f770e9c832eb39d8ff9c40e92a" }
+dependencies = [
+    { name = "playwright" },
 ]
 
 [[package]]

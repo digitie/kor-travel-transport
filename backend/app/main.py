@@ -47,6 +47,7 @@ from app.core.time_utils import align_to_interval, now_utc, serialize_utc, to_se
 from app.db.session import create_engine_and_session_factory, init_database
 from app.service_exports import build_service_export_router
 from app.general_rail_routes import build_general_rail_router
+from app.highway_map_routes import build_highway_map_router
 from app.services.parking_history_cache import (
     BoundedHistoryResponse, ParkingHistoryReadCache, encode_response, run_history_cpu,
 )
@@ -3452,8 +3453,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # `/health` stays unversioned (kor-travel-map convention: health/version are
     # fixed, everything else is versioned). All other routes live under `/v1`
     # (ADR-005) -- a clean-cut, no legacy unprefixed alias.
-    app.include_router(build_general_rail_router(get_db), prefix="/v1")
     app.include_router(router, prefix="/v1")
+    app.include_router(build_general_rail_router(get_db), prefix="/v1")
+    app.include_router(build_highway_map_router(), prefix="/v1")
     # 내부 서비스 일괄 export(ADR-013) — 서비스 토큰과 접속한 쪽의 주소(peer, 기본 loopback)로 닫힌다.
     app.include_router(build_service_export_router(resolved_settings, get_db), prefix="/v1")
 

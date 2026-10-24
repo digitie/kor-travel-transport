@@ -4815,6 +4815,119 @@
         "title": "HighwayIncidentStatistics",
         "type": "object"
       },
+      "HighwayRoad": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "road_id": {
+            "title": "Road Id",
+            "type": "string"
+          },
+          "road_number": {
+            "title": "Road Number",
+            "type": "string"
+          }
+        },
+        "required": [
+          "road_id",
+          "road_number",
+          "name"
+        ],
+        "title": "HighwayRoad",
+        "type": "object"
+      },
+      "HighwayRoadCatalog": {
+        "properties": {
+          "fetched_at": {
+            "format": "date-time",
+            "title": "Fetched At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/HighwayRoad"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          },
+          "stale": {
+            "default": false,
+            "title": "Stale",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "fetched_at",
+          "source_url",
+          "items"
+        ],
+        "title": "HighwayRoadCatalog",
+        "type": "object"
+      },
+      "HighwayRoadTraffic": {
+        "properties": {
+          "complete": {
+            "const": false,
+            "default": false,
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "direction": {
+            "title": "Direction",
+            "type": "string"
+          },
+          "fetched_at": {
+            "format": "date-time",
+            "title": "Fetched At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/HighwayTrafficLink"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "road_id": {
+            "title": "Road Id",
+            "type": "string"
+          },
+          "road_name": {
+            "title": "Road Name",
+            "type": "string"
+          },
+          "road_number": {
+            "title": "Road Number",
+            "type": "string"
+          },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          },
+          "stale": {
+            "default": false,
+            "title": "Stale",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "fetched_at",
+          "source_url",
+          "road_id",
+          "road_number",
+          "road_name",
+          "direction",
+          "items"
+        ],
+        "title": "HighwayRoadTraffic",
+        "type": "object"
+      },
       "HighwayTrafficCurrentExportPage": {
         "properties": {
           "has_more": {
@@ -4984,6 +5097,69 @@
           "collected_at"
         ],
         "title": "HighwayTrafficItem",
+        "type": "object"
+      },
+      "HighwayTrafficLink": {
+        "properties": {
+          "direction": {
+            "title": "Direction",
+            "type": "string"
+          },
+          "length_m": {
+            "title": "Length M",
+            "type": "number"
+          },
+          "link_id": {
+            "title": "Link Id",
+            "type": "string"
+          },
+          "path": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "maxItems": 20000,
+            "title": "Path",
+            "type": "array"
+          },
+          "section_id": {
+            "title": "Section Id",
+            "type": "string"
+          },
+          "section_name": {
+            "title": "Section Name",
+            "type": "string"
+          },
+          "speed_kmh": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speed Kmh"
+          }
+        },
+        "required": [
+          "link_id",
+          "section_id",
+          "section_name",
+          "direction",
+          "speed_kmh",
+          "length_m"
+        ],
+        "title": "HighwayTrafficLink",
         "type": "object"
       },
       "HighwayTrafficResponse": {
@@ -12146,6 +12322,98 @@
           }
         },
         "summary": "Transport Highway Incidents"
+      }
+    },
+    "/v1/transport/highways/road-traffic": {
+      "get": {
+        "operationId": "road_traffic_v1_transport_highways_road_traffic_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "road_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9]{4}$",
+              "title": "Road Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "default": "1",
+              "enum": [
+                "1",
+                "2"
+              ],
+              "title": "Direction",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HighwayRoadTraffic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Road Traffic"
+      }
+    },
+    "/v1/transport/highways/roads": {
+      "get": {
+        "operationId": "roads_v1_transport_highways_roads_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HighwayRoadCatalog"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Roads"
       }
     },
     "/v1/transport/highways/traffic": {

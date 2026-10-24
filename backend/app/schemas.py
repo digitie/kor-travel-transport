@@ -474,6 +474,41 @@ class BusTimetableResponse(BaseModel):
     items: list[BusTimetableItem]
 
 
+class HighwayRoad(BaseModel):
+    road_id: str
+    road_number: str
+    name: str
+
+
+class HighwayRoadCatalog(BaseModel):
+    fetched_at: datetime
+    source_url: str
+    stale: bool = False
+    items: list[HighwayRoad]
+
+
+class HighwayTrafficLink(BaseModel):
+    link_id: str
+    section_id: str
+    section_name: str
+    direction: str
+    speed_kmh: float | None
+    length_m: float
+    path: list[tuple[float, float]] = Field(default_factory=list, max_length=20_000)
+
+
+class HighwayRoadTraffic(BaseModel):
+    fetched_at: datetime
+    source_url: str
+    stale: bool = False
+    road_id: str
+    road_number: str
+    road_name: str
+    direction: str
+    complete: Literal[False] = False
+    items: list[HighwayTrafficLink]
+
+
 class GeneralRailCode(BaseModel):
     code: str
     name: str

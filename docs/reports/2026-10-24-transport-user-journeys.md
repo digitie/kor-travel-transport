@@ -37,6 +37,12 @@
 - `GET /v1/transport/rail/general/{catalog,stations,timetable,guide}`
 - `GET /v1/transport/bus/connections`: `direction=departure|arrival`, `coverage=stored_routes`.
 - `GET /v1/parking/outlook`: timezone 포함 `arrival_at`, 과거 7~60일, 기본 28일.
+- `GET /v1/transport/highways/roads`, `/road-traffic?road_id=0010&direction=1`:
+  키 없는 `python-krits-api@417e3d5`의 검증된 선택 도로 경로·속도를 직접 소비한다.
+  도로 ID와 표시 노선번호는 구분하며 KREX 코드와 결합하지 않는다. 조회 시각은 원본 관측 시각이 아니다.
+  worker별 catalog24시간·소통5분·캐시9개·하루96회 miss·공유1RPS·실패15분 보호를 둔다.
+  catalog를 포함한 전체 조회25초, 응답5,000링크/100,000점 상한이며 실패를 정상 빈 응답으로 바꾸지 않는다.
+  별도 DB·마이그레이션·전국 수집은 추가하지 않는다. 개발용 `ITS_CHROMIUM_EXECUTABLE_PATH`만 선택 설정이다.
 - 미배포 migration0034는 `general_rail_query_snapshots`에 마지막 정상 응답만 저장한다.
   PK(operation,request_key), fetched_at index, operation CHECK, JSONB이며 32일 경과 캐시를 정리한다.
   기준정보·공개 안내 24시간, TAGO 시간표 15분 재사용; 실패 뒤 이전 저장본은 stale 표시다.
@@ -60,8 +66,8 @@
 ## 미완료 수용
 
 1. 전국 버스 전체 연결 원천과 미확인 터미널 좌표. 현재 저장 연결만 제공하며 미조회 노선을 미운행으로 확정하지 않는다.
-2. 고속도로 선형·표준노드링크 기반 속도 지도. 현재 돌발 좌표 지도와 구간 속도 표·통계는 구현됐으나 선로형 소통 지도는 아니다.
-   별도 `python-krits-api` 진행 작업과 좌표계·링크 ID 계약을 맞춰야 하며 KREX conzone과 ITS link를 이름으로 추정 결합하지 않는다.
+2. 고속도로 선택 노선 선형 속도 지도는 SDK의 같은 LINK_INFO 경로·속도로 구현하고 실제 UI까지 검증했다.
+   전국 완전성·SHP 전국 오프라인 운영·KREX와 ITS 코드 교차표는 제공하지 않으며 이름으로 추정 결합하지 않는다.
 3. 최종 전체 CI·James/Popper·격리 PostgreSQL/Compose·통합 담당의 빌드·운영 배포와 실화면 수용.
    운영 반영 전에는 새 시간표 수집량·전국 범위·성능 향상을 달성했다고 표시하지 않는다.
 
@@ -81,3 +87,31 @@
 - Dagster job 실행 이력 링크는 공식 UI의 `/locations/<location>/jobs/<job>/runs` 계약을 사용한다.
   [공식 경로](https://github.com/dagster-io/dagster/blob/master/js_modules/ui-core/src/pipelines/PipelineRoot.tsx)를 대조했다.
 - 전체 CI/정확 최종SHA 재리뷰·수용은 진행 중이며 운영 빌드·배포를 재개하지 않는다.
+
+## ITS 선택 도로 지도와 후속 검증
+
+- 공개 ITS `polylineOl.js`의 EPSG:4326 사용을 대조했고 파싱·좌표 검증은 SDK PR4에 추가했다.
+  [SDK PR4](https://github.com/digitie/python-krits-api/pull/4)는 offline157개·live12개·strict mypy와
+  Python3.11~3.14/패키징 CI PASS다. 독립 James/Popper 리뷰의 잔여 P0/P1/P2는 없다.
+- 실제 새 로컬 API로73개 고속도로와 경부361링크/361경로를 받았다. 원문과 동일한 링크별 속도를 색으로 표시하고,
+  경로 미제공 항목도 목록에 남긴다. 지도 건수는 실제 렌더된 링크를 중복 없이 센다.
+- 375/1440px 실제 ITS→API→브라우저2개 PASS(32.1초): 지도 선 렌더, 모바일 지도 시작 높이·면적,
+  Enter 상세 진입·Escape/포커스 복원·목록 선택→지도 이동·i 설명·가로 넘침을 검증했다.
+- GeoJSON source가 영구 pending인 문제를 실제 브라우저에서 발견했다. Map의 기존 worker/shared 정적 파일 복사와
+  setWorkerUrl 배선을 재사용하고 Docker runner의 public 복사를 보강했다. 설치본 파일 생성까지4개 회귀로 검사한다.
+  [MapLibre 공식 worker 설정](https://maplibre.org/maplibre-gl-js/docs/#esm)을 함께 대조했다.
+- 최종 WSL 관리자 타입·lint·235 Vitest PASS, 신규 ITS API5개와 일반철도/startup12개 합계17개 PASS다.
+  cache 재사용·membership·0속도·stale/오류 구분·상한·timeout cleanup/backoff·한국 날짜 예산 복원을 검사했다.
+- 이전 전체 SQLite 검사는 /tmp RAM tmpfs 용량 부족으로 실패했으므로 성공 근거에서 제외했다.
+  소유한 미사용 mirror와 테스트 데이터를 /var/tmp로 보존 이동하고 새 전체 검사를 디스크에서 진행한다.
+- 사용자가 순수 UI를 먼저 서브에이전트로 완료·배포하도록 추가 지시했다. 별도 worktree에서 기존 운영 API와
+  호환되는 UI만 선별하고 승인된 관리자 웹만 교체한다. 이 ITS API/선형 지도와 미배포 schema0034는 별도 통합 대상이다.
+- 이후 사용자가 빌드 담당을 위해 main 머지를 먼저 요청했다. UI PR127을 main `34f8fab120dc5013a74c4b8759883e8357ba86e9`로 머지했다.
+  순수 UI의 WSL/Docker241·UI10·Firefox1·두 리뷰와 최종 head UI CI를 확인했고 동일 backend tree의 성공 main CI를 재사용했다.
+  이 문서의 신규 backend/ITS는 PR126에 남기며 UI의 운영 교체 완료를 뜻하지 않는다.
+- PR124의 보안 정합을 관리자 소비자에도 보존했다. Next16.4.3/React19.3.1/MapLibre6.15 등 새 잠금에서
+  WSL242·타입/lint, 실제 ITS UI2(55.5초)와 교통 이용 흐름7(49초) PASS다. 격리 Docker PostgreSQL 집중23개 PASS다.
+- 같은 소통 구간 재선택의 카메라/포커스 실패를 재현해 요청 번호를 분리했다. 목록→지도 준비 전에 상세를 닫아도
+  마지막 카메라 요청을 보존하고, 상세 ref는 활성 탭에만 붙인다. 두 뷰포트에서 최종 위치·줌·재선택까지 검사했다.
+- 전체 SQLite에서 세 SQL 단언의 첫 router 가정 회귀를 발견했다. 기존 router를 먼저 등록해 원래 순서를 보존했고
+  해당3개를 WSL과 PostgreSQL에서 재검증했다. 이전 source의 전체 실행은 이 실패를 포함하므로 PASS로 세지 않는다.
