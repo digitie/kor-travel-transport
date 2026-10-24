@@ -1,5 +1,13 @@
 # 2026-10-24 — 이용 목적 중심 교통 관리자와 모바일 지도 점검
 
+- 최종 실행 소스 `19cabb8d602643ee77515169276bc0c47532b84f`의 CI40058502811에서 backend1108개·2skip,
+  기존 웹/관리자 UI가 모두 통과했다. James(화면/포커스)와 Popper(DB/호출 보호/운영)의 독립 최종 리뷰에서
+  잔여 P0/P1/P2는 없다. WSL 관리자243·ITS6·관련 회귀25(1skip), Docker 관리자243·PG집중24도 통과했다.
+- 순수 UI는 PR127/main34f8fab이며 통합 담당이 빌드한다. Common PR45와 krits PR4도 main에 머지했다.
+  신규 API/ITS는 schema0034와 함께 소비해야 하며 이 작업에서 운영 API·DB·수집기를 교체하지 않았다.
+- WSL 종료로 중단된 로컬 전체 검사는 성공으로 세지 않는다. Docker 전체 검사도 새 QA DB의0034 migration을
+  먼저 적용하는 순서로 보완했다. 전국 버스 전체 연결/미확인 터미널 좌표와 실제 운영 수용은 미완료다.
+
 - ITS 선택 노선 경로/속도는 `python-krits-api`에서 검증하고 API/지도/목록/상세로 연결했다.
   실제73도로·경부361경로와375/1440px UI2개, 관리자235개·ITS/철도/startup17개 PASS다.
 - GeoJSON worker 영구 pending을 재현해 Map의 worker/shared 배선을 재사용하고 Docker public 복사를 보강했다.

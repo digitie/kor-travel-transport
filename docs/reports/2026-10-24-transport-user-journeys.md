@@ -118,3 +118,16 @@
 - main34f8fab 통합 후 타입/lint·관리자243개와 ITS API6개 PASS다. 이전 CI의 실패7개는 같은 router 순서 가정6개와
   Firefox 수정 라이브러리1.0.1을 반영하지 않은 계약 테스트1개였다. 계약 기대값도 실제 소비 버전으로 갱신했다.
   전체 CI를 다시 확인하며, 통과 전 신규 API/ITS의 main 머지·운영 배포 완료로 보고하지 않는다.
+
+## 최종 실행 소스와 통합 게이트
+
+- 실행 소스 `19cabb8d602643ee77515169276bc0c47532b84f`의 CI40058502811은 backend **1108 PASS·2skip**,
+  기존 웹과 관리자 UI 모두 PASS다. migration0034 upgrade/check와 OpenAPI 계약도 같은 CI에서 통과했다.
+- James는 카메라/재선택/상세 포커스와 여정별 상태, Popper는 schema/정상 캐시/공유 호출 보호/버스 범위/
+  주차 동일 날짜 비중/ITS 상한·취소를 독립 재검토했다. 최종 소스의 잔여 P0/P1/P2는 없다.
+- main 통합 후 WSL 타입/lint·관리자243개, ITS6개와 관련 회귀25개(1skip), Docker 관리자243개와
+  PostgreSQL 집중24개가 통과했다. 실제 ITS UI2·기존 이용 흐름 UI7의 소스 기능은 보존됐다.
+- WSL 종료로 중단된 로컬 전체 검사와 migration 전 새 QA DB의 Docker 실행은 성공 근거에서 제외한다.
+  실행 로그를 보존하고 로컬/Compose 전체 회귀를 별도 DB에서 진행한다. 운영 API/DB/수집기 교체는 없다.
+- Common PR45는 main `a330315`, krits PR4는 main `65fdf78`에 머지했다. 소비자 고정 tarball/SDK 소스는
+  같은 실행 내용을 유지한다. 순수 UI는 PR127/main34f8fab이고 신규 API/ITS는 PR126 통합 대상이다.
