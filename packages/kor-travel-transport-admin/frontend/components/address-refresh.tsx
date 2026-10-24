@@ -32,7 +32,6 @@ export function AddressRefresh() {
     }
   }, []);
   // 최초 서버 조회와 그 취소를 하나의 수명 주기로 관리한다.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load(); return () => controller.current?.abort(); }, [load]);
   async function launch() {
     if (busy) return;

@@ -1,9 +1,9 @@
-FROM node:22-alpine AS dependencies
+FROM node:22.23.1-alpine AS dependencies
 WORKDIR /app
 COPY packages/kor-travel-transport-admin/frontend/package.json \
      packages/kor-travel-transport-admin/frontend/package-lock.json ./
 COPY packages/kor-travel-transport-admin/frontend/vendor ./vendor
-RUN npm ci --ignore-scripts --no-audit --no-fund
+RUN npx --yes npm@12.0.1 ci --ignore-scripts --no-audit --no-fund
 
 FROM dependencies AS builder
 ARG NEXT_PUBLIC_TRANSPORT_DAGSTER_URL=https://dagster.digitie.mywire.org
@@ -13,7 +13,7 @@ ENV NEXT_PUBLIC_VWORLD_API_KEY=${NEXT_PUBLIC_VWORLD_API_KEY}
 COPY packages/kor-travel-transport-admin/frontend ./
 RUN npm run build
 
-FROM node:22-alpine AS runner
+FROM node:22.23.1-alpine AS runner
 WORKDIR /app
 ARG TRANSPORT_ADMIN_RELEASE_SHA=unknown
 ENV NODE_ENV=production \

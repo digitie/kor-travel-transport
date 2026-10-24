@@ -11,6 +11,29 @@ Map 기준 필터/종류 아이콘/보기 탭/건수+실제 좌표·줌/지도 �
 Firefox에서 타일 0건을 재현하고 라이브러리 원본의 비표준 protocol→HTTPS 변환을 고쳤다.
 web1.0.1·정확 source pin·lock을 채택하고 Firefox 실제 타일·확대 회귀를 추가했다.
 사용자가 현재 운영 호스트의 관리자 웹만 교체하도록 승인했다. [검증·배포 기록](reports/2026-10-24-firefox-vworld-tiles.md).
+## 2026-10-24 — 여섯 프로젝트 npm 보안·버전 정합
+
+- 이 저장소의 기존 프론트엔드/공용 테스트 355개와 타입·린트·빌드 PASS. [버전·예외·검증 범위](npm-security-alignment-2026-10-24.md).
+- 직접/전이 npm 의존성과 잠금 파일을 갱신하고 여섯 프로젝트의 공통 버전을 맞췄다.
+- 호환성 예외·미수정 상류 권고·검증 범위는 [정합 기록](npm-security-alignment-2026-10-24.md)을 따른다.
+- 소스·잠금 파일 정합과 WSL 검증을 완료했다. 최종 CI·두 독립 확인·N150 후보 UI 게이트와 머지 상태는 [PR](https://github.com/digitie/kor-travel-transport/pull/124)에서 정산하며 통과 확인 전 머지하지 않는다.
+
+## 2026-10-24 — Next.js 16.4.3 보안 의존성 갱신
+
+- parking-radar의 Next.js 16.3.2와 운영 관리자 앱의 Next.js/eslint-config-next 16.3.5를 모두 `16.4.3`으로 정확히 고정하고 각 잠금 파일을 재생성했다.
+- 앱 코드와 API 계약 변경 없이 package.json·package-lock.json의 Next.js 및 해당 전이 의존성을 갱신했다. 관리자 앱의 새 Compiler 규칙은 기존 오류가 있는 두 파일에만 한정해 비활성화하고 기존 Hooks 규칙과 다른 파일의 설정을 유지했다.
+- WSL Linux Node 22.22.2에서 parking-radar 기존 테스트 130건·build PASS, 관리자 앱 기존 테스트 225건·lint(오류 0/기존 경고 1)·type-check·build PASS. 다섯 Next.js 앱의 manifest·잠금 파일·env/SWC 버전과 audit Next 항목 0을 전수 대조했다.
+- WSL Docker에서 실제 프론트엔드 이미지를 새로 빌드하고 `docker compose -p next1643-transport run --rm --no-deps frontend npm run test -- --run` 130건 PASS. 백엔드 전체 WSL·Docker 재검증은 미완료다. 기본 backend 이미지의 `/scripts/validate-deploy-host.py` 경로 누락으로 수집 오류가 발생했다. 읽기 전용 `/workspace` mount로 수집 경로를 보완해 추가 실행했지만 전체가 끝나지 않았고, 이번 프론트엔드 검증 종료 시 소유한 장기 실행만 중단했다. 최초 오류·중단을 PASS로 세지 않는다. 백엔드 제품 코드는 변경하지 않았으며 전체 CI와 운영 UI는 별도 게이트다.
+- 같은 시점 `npm audit` 전체 보고: 총 16→14건, critical 2→1건. `next` 항목은 제거됐지만 다른 패키지 취약점은 남아 있다. 강제 자동 수정이나 요청 외 major 의존성 갱신은 하지 않았다.
+- 운영 관리자 앱도 새 Docker builder 이미지에서 최종 Vitest 225건 PASS. 첫 wrapper는 실행 중 파일 갱신으로 불필요한 끝부분 명령 오류가 났으므로, 같은 최종 이미지에서 직접 재실행해 종료 코드 0과 225 PASS를 확인했다.
+- 운영 관리자 앱의 `npm audit`은 별도로 총 8→6건, critical 3→2건이며 Next 항목 0이다. parking-radar의 아래 수치와 합산하거나 혼동하지 않는다.
+- James/Popper 독립 사전 리뷰는 관리자 앱 누락 P1을 발견했고, manifest·lock과 225 회귀 검증을 추가한 뒤 두 재리뷰에서 해소·새 P0/P1 없음으로 확인했다. 운영 UI와 CI 이후 머지 게이트를 대체하지 않는다.
+- 기존 작업 트리는 보존하고 Linux 격리 작업 공간의 `codex/next-16.4.3-security`에서 변경했다. CI·운영 배포·실제 서비스 UI 수용은 아직 별도이며, 이 기록을 운영 반영 완료로 세지 않는다.
+
+## 2026-10-24 — Map service API 문서 독립 정합성 감사
+
+- T2/T3 인계에 기존 service 인증 헤더명과 schema0030~0033 전체 순서를 명시했다. 기존 T1의 coordinate/admin null과 새 고정 snapshot, T4 product/from/to·전체 페이지 limit·409/501 및 제품 완료/Map 소비 후속을 구분한다.
+- 문서만 수정하며 API·OpenAPI 생성물·수집·DB·운영을 변경하지 않는다. producer 구현 완료와 실제 source bootstrap·Map 소비/ARM 비용 수용은 별도다. 고정 DTO/예시8개와 OpenAPI query/status 및 문서 전용 경계를 오프라인13개 확인했다(Weather·Transport 합계, HTTP/DB0).
 
 ## 2026-10-23 — KAC quota deadline 영구 연장 후속 수정
 

@@ -11,6 +11,17 @@ Firefox 타일 긴급 수정은 운영 관리자 healthy·운영 Firefox 실제 
 다음은 사용자 6~11번의 홈/메뉴·실제 이용 목적 중심 철도/버스/공항·지도 결합 고속도로 개선이다. [범위 원장](transport-user-journeys-2026-10-24.md). 빌드/배포는 다른 통합 에이전트가 담당하므로 자체 배포용 빌드를 재개하지 않는다.
 
 PR114~119는 고정 snapshot·traffic/parking 현재 상태·bus/ferry/rail 참조와 KAC quota 복구를 구현·머지했다. 최종 main은 `a0f9b72325281fdba3c0644b0592426e70afce86`이다.
+## 2026-10-24 — 여섯 프로젝트 npm 보안·버전 정합
+
+- 현재 상태: npm 보안·공통 버전 소스 정합 및 WSL 검증 완료. [버전과 예외](npm-security-alignment-2026-10-24.md). 최종 CI·UI·머지 상태의 정본은 [PR](https://github.com/digitie/kor-travel-transport/pull/124)이다.
+- 다음 한 작업: 운영 반영을 요청받으면 Manager 정본과 현재 배포 런북에 따라 릴리스를 적용한다. 소스 머지와 운영 배포는 구분한다.
+
+## 2026-10-24 — 현재 상태: Next.js 보안 갱신 후보
+
+- parking-radar와 운영 관리자 앱의 `next` 및 사용하는 `eslint-config-next`를 `16.4.3`으로 고정했다. WSL 프론트엔드 테스트 130+225건·두 앱 build와 관리자 lint/type-check PASS. 변경 범위와 남은 취약점은 [작업 기록](journal.md)을 따른다.
+- 다음 한 작업: Draft PR124의 CI와 미완료 백엔드 전체 검증을 확인한다. James/Popper의 관리자 누락 P1은 수정·재리뷰로 해소했다. 운영 배포·실제 서비스 UI 수용은 별도이며 기존 운영 과제는 아래 기록을 보존한다.
+
+PR114~119는 고정 snapshot·traffic/parking 현재 상태·bus/ferry/rail 참조와 KAC quota 복구를 구현·머지했다. 제품 머지 기준은 `a0f9b72325281fdba3c0644b0592426e70afce86`, 이 감사의 main 기준은 문서 PR120의 `9974d2592a49cf8f9b5e59dffc0e3816df09d226`이다.
 정확 최종 SHA의 두 적대 리뷰·CI·격리 PG/Compose·실제 TCP 근거와 머지 상태는
 [수용 정산](reports/2026-10-23-map-t2-t3-acceptance.md)에 모은다.
 
@@ -20,11 +31,11 @@ CPU/RAM 저감도 미입증이다. 아래 구현 중·대기·과거 운영 rele
 
 ---
 
-## 운영 rollout 전 필수 — KAC quota 원래 deadline 보존
+## 당시 구현 기록 — KAC quota 원래 deadline 보존(PR119 제품 완료)
 
-`codex/parking-quota-deadline`는 PR118 고정 리뷰와 별도 후속이다. 기존 source next_due_at을
-활용하여 blocked run의 대기기간 연장을 막고 원래 만료 뒤 재시도한다. 회귀/PG/CI/두 리뷰
-마감 전 완료 처리하지 않는다. [설계·수용](airport-quota-deadline.md).
+PR119는 기존 source next_due_at으로 blocked 관찰이 대기를 영구 연장하지 않게 하고
+원래 만료 뒤 재시도하도록 구현·머지됐다. [설계·수용](airport-quota-deadline.md).
+실제 KAC quota 만료 뒤 운영 재시도는 아직 별도 rollout gate다. 아래 구현 중 절은 당시 이력이다.
 
 ## 현재 작업 — Map T2 parking/current
 
