@@ -5,6 +5,12 @@
 DB 조회 전용 API·출처/시점/결측 상태·검색/페이지 UI와 migration0035를 추가했다.
 최종 검증·리뷰·머지·배포는 [원장](reports/2026-10-24-vadahub-ferry.md)에 기록한다.
 
+WSL PostgreSQL 전체1171개/2skip과 관리자246개·기존 웹130개/Docker130개·실제
+375/1440px2개를 확인했다. 실제 Dagster 합성 실패에서도 정상3개 commit·native Failure·
+orchestrator ID 연결을 검증했다. Docker가 lock을 무시하던 의존성 설치를 고정 export로
+바꾸고 GDAL native 층을 소스 변경 캐시와 나눴다. 운영은 아직 교체 전이며 최종 수용은
+[PR129](https://github.com/digitie/kor-travel-transport/pull/129)에 이어 기록한다.
+
 # 2026-10-24 — 이용 목적 중심 교통 관리자와 모바일 지도 점검
 
 - 최종 실행 소스 `19cabb8d602643ee77515169276bc0c47532b84f`의 CI40058502811에서 backend1108개·2skip,

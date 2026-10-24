@@ -126,3 +126,36 @@ def test_ferry_reference_api_reads_saved_data_without_provider(client):
     assert items[0]["data"]["items"][0]["record_id"] == "001"
     assert items[0]["last_error"] == "NetworkError"
     assert items[1]["data"] is None
+
+
+def test_native_job_reports_failure_after_committing_healthy_sources(tmp_path, monkeypatch):
+    from app.dagster import definitions as dagster_definitions
+
+    async def prepare():
+        settings, engine, _ = await database(tmp_path)
+        await engine.dispose()
+        return settings
+    settings = asyncio.run(prepare())
+
+    async def fetch(key):
+        if key == "passenger_routes":
+            raise RuntimeError("upstream unavailable")
+        return payload(key)
+    service = VadaHubCollectionService(settings, fetcher=fetch)
+    monkeypatch.setattr(dagster_definitions, "_settings", lambda: settings)
+    monkeypatch.setattr(dagster_definitions, "VadaHubCollectionService", lambda _settings: service)
+    result = dagster_definitions.vadahub_reference_collection_job.execute_in_process(raise_on_error=False)
+    assert not result.success
+    failure = result.failure_data_for_node("collect_vadahub_reference")
+    assert "일부 배편 기준자료" in failure.user_failure_data.description
+
+    async def verify():
+        engine, factory = create_engine_and_session_factory(settings.database_url)
+        async with factory() as session:
+            rows = (await session.scalars(select(FerryReferenceSnapshot))).all()
+            assert sum(row.response_json is not None for row in rows) == 3
+            run = await session.scalar(select(CollectionRun))
+            assert run.status == "partial_success" and run.finished_at is not None
+            assert run.orchestrator_run_id == result.run_id
+        await engine.dispose()
+    asyncio.run(verify())

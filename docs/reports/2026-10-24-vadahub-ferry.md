@@ -58,3 +58,11 @@ ARM 사전 빌드는 NVMe와 전용 BuildKit(메모리1536MiB·swap 포함2048Mi
 검사·export하고 전체 의존성을 버전 고정 설치한 뒤 backend를 `--no-deps`로 설치한다.
 `pip check`도 이미지 빌드 게이트에 포함한다. native GDAL만 시스템 ABI와 같은
 별도 패키지이며 SDK의 VCS commit도 lock 그대로 유지한다.
+
+WSL PostgreSQL 전체 회귀는1171개 통과·2개 건너뜀(57분22초)이었다.
+이후 애플리케이션 Python·migration·의존성 lock 변경 없이 실제 Dagster in-process 실행을
+추가해, 1개 원천 실패 때 정상3개가 commit되고 native run은 Failure이며 앱 실행의
+orchestrator ID가 같은 것을 확인했다. VadaHub 대상7개가 통과했다.
+최종 관리자246개·타입·빌드와375/1440px 실제 DB 조회·로그아웃2개도 통과했다.
+최종 CI·Docker 및 운영 수용 증거는 [PR129](https://github.com/digitie/kor-travel-transport/pull/129)의
+검증·배포 원장과 함께 읽는다. 소스 머지와 운영 교체를 같은 상태로 간주하지 않는다.
