@@ -9,15 +9,17 @@ RUN apt-get update \
     && apt-get install --no-install-recommends -y git postgresql-client libgdal-dev g++ \
     && rm -rf /var/lib/apt/lists/*
 
+# GDAL binding은 시스템 ABI에 맞추되 소스 변경마다 native 재컴파일하지 않는다.
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir "GDAL==$(gdal-config --version)"
+
 COPY backend /app
 COPY scripts /app/scripts
 # Backend regression container also verifies the committed shared Dagster environment contract.
 # This file contains no credentials; runtime secrets stay in the host-only env file.
 COPY docker-compose.shared.yml /app/compose-contract/docker-compose.shared.yml
 
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir "GDAL==$(gdal-config --version)" \
-    && pip install --no-cache-dir -e ".[dev]"
+RUN pip install --no-cache-dir -e ".[dev]"
 
 # Opinet의 실험적 지역별 화면 수집기가 사용하는 Chromium과 Linux 런타임을
 # 이미지에 포함한다. 수집기는 TRANSPORT_COLLECTION_ENABLED=true일 때만 실행된다.

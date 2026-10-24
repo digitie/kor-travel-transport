@@ -25,6 +25,15 @@ for (const width of [375, 1440]) test(`실제 저장 배편 기준자료를 검�
   await expect(references.getByText("검색 결과 없음", { exact: true })).toHaveCount(4);
   await references.getByLabel("항로·시설 검색").clear();
   await expect(references.getByRole("link", { name: /원문 출처/ })).toHaveCount(4);
+  if (process.env.E2E_FERRY_TIMETABLE_PORT) {
+    const timetable = page.waitForResponse((r) => r.url().includes("/transport/ports/timetables?") && r.status() === 200);
+    await page.goto(`/ferry?port=${encodeURIComponent(process.env.E2E_FERRY_TIMETABLE_PORT)}`);
+    const saved = await (await timetable).json();
+    expect(saved.items.some((item: {items: unknown[]}) => item.items.length > 0)).toBe(true);
+    await expect(page.getByRole("heading", { name: "오늘 운항 비교" })).toBeVisible();
+  }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: `test-results/vadahub-ferry-${width}.png`, fullPage: true });
+  await page.getByRole("button", { name: "로그아웃", exact: true }).click();
+  await expect(page).toHaveURL(/\/login/);
 });
