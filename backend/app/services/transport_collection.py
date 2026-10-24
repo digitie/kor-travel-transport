@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Literal, Protocol, TypeVar
 
 from krex import Incident, KrexClient, KrexParseError, KrexQuotaExceededError, TrafficFlow
+from opinet import OpinetCheckpointBusyError
 from opinet.experimental import (
     BrowserStation,
     OpinetBrowserCollector,
@@ -455,14 +456,18 @@ class TransportCollectionService:
         fuel_enabled = scope != "highway" and OPINET_SOURCE in self.provider.enabled_sources
         pending_fuel = None
         pending_fuel_error = None
+        fuel_checkpoint_busy = False
         if fuel_enabled and (pending := getattr(self.provider, "pending_fuel_snapshot", None)) is not None:
             try:
                 pending_fuel = await pending()
+            except OpinetCheckpointBusyError:
+                # 다른 작성자의 정상 수집 중에는 source 오류·성공·예약을 바꾸지 않는다.
+                fuel_checkpoint_busy = True
             except Exception as exc:
                 # 로컬 체크포인트의 잠금·손상·파일 오류도 원장과 source 상태에 남긴다.
                 pending_fuel_error = exc
         fuel_storage_only = pending_fuel is not None or pending_fuel_error is not None
-        fuel_due = fuel_enabled and (fuel_storage_only or await self._fuel_is_due(session))
+        fuel_due = fuel_enabled and not fuel_checkpoint_busy and (fuel_storage_only or await self._fuel_is_due(session))
         # 이미 성공 저장된 원천의 개수만 비교한다. 큰 raw 본문은 Python으로 가져오지 않는다.
         highway_baselines = {
             source: await self._highway_success_count(session, source) for source in highway_sources
@@ -711,8 +716,12 @@ class TransportCollectionService:
             })
             if not fuel_enabled:
                 summary["errors"] = [f"OpiNet browser collection is unavailable (provider={self.client_mode})."]
-            elif run.status == "skipped" and state.last_error:
+            elif run.status == "skipped" and state is not None and state.last_error:
                 summary["errors"] = [state.last_error]
+            if fuel_checkpoint_busy:
+                summary["skip_reason"] = "collector_busy"
+                if not summary["errors"]:
+                    summary["errors"] = ["OpiNet browser collection is already in progress."]
         return summary
 
     def _highway_scope_key(self, source: str) -> str:

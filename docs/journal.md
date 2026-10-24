@@ -13,6 +13,9 @@
 사전 적대 리뷰에서 fixture/disabled 미수집의 SUCCESS와 fresh/재개 저장 경합의 tick 여유
 누락을 추가로 재현·수정했다. 만료 예약의 저장 실패1초 반복도 기본 간격 backoff로 줄였다.
 실제 service/Dagster·경합·backoff 집중20 PASS이며 최종 전체 검증을 다시 수행한다.
+후속 리뷰에서 정상 체크포인트 소유권 경합이 기존 원천을 실패/stale로 오염시키는P1도
+재현했다. Provider는 실제 SQLite BUSY/LOCKED만 typed 오류로 구분하고 앱은 경합 시
+기존 성공·오류·예약을 보존한다. 실제 파일 잠금과 PG 회귀를 포함한 집중125 PASS다.
 
 ## 2026-10-24 — 여섯 프로젝트 npm 보안·버전 정합
 

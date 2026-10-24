@@ -355,9 +355,12 @@ def collect_fuel_transport(context) -> dict[str, Any]:
         result = _collect_transport("fuel")
         context.add_output_metadata({key: value for key, value in result.items()
                                      if key in {"status", "collection_run_id", "fuel_station_count", "fuel_price_count",
-                                                "fuel_ready", "next_fuel_due_at", "last_fuel_success_at"}})
+                                                "fuel_ready", "next_fuel_due_at", "last_fuel_success_at", "skip_reason"}})
         if result.get("status") == "skipped":
-            context.log.warning("유가 수집은 호출 유예 중이어서 실행하지 않았습니다(status=skipped).")
+            if result.get("skip_reason") == "collector_busy":
+                context.log.warning("유가 수집은 다른 수집기가 체크포인트를 사용 중이어서 실행하지 않았습니다(status=skipped).")
+            else:
+                context.log.warning("유가 수집은 호출 유예 중이어서 실행하지 않았습니다(status=skipped).")
         return result
 
 

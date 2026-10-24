@@ -5,8 +5,10 @@
 Transport의 RETURNING 기반 최신 가격 갱신·외부 조회 없는 저장 재개를 검증 중이다.
 추가 요청으로 Provider PR25에서 클릭 간격의 랜덤성을0.05~0.15초로 유지하며 줄이고,
 시군구 선택의 자동 결과를 검증해 중복 조회를 줄인다. 문서 완료 검증은 유지하고
-image/font/media만 제외한다. Provider166dc6d WSL340 PASS·Chromium26 PASS·mypy PASS,
-앱 연동과 최종 검증은 진행 중이다. 전국30분은 실측 전 목표다.
+image/font/media만 제외한다. Provider e160068은 실제 SQLite 작성자 경합도 별도 타입으로
+구분하며 WSL349 PASS·Chromium26 PASS·mypy PASS다. 경합은 기존 원천 성공·오류·예약을
+바꾸지 않고 skipped로 남긴다. 앱 집중125 PASS, 전체/최종 CI는 진행 중이다.
+전국30분은 실측 전 목표다.
 다음 한 작업은 두 독립 리뷰와 WSL/Docker 검증을 마친 뒤 승인된 Odroid 절차로 적용하고
 실제 정상 소스 시각·집합·export200을 확인하는 것이다. [점검·검증 상태](reports/2026-10-24-opinet-resume-review.md).
 

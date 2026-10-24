@@ -121,6 +121,14 @@ Popper는 fresh 실행보다 pending 저장이 먼저 끝나면 최초8시간 �
 만료 예약의 저장 재개가 계속 실패해1초 반복하던P2는 fuel in-process 실패 대기에
 기본 transport 간격 이상의 backoff를 적용했다. 변경 전 경합2 FAIL, backoff2 FAIL/2 PASS,
 변경 후 실제 service/Dagster·경합·backoff·가림 집중20 PASS를 확인했다. 최종 전체검증은 재실행한다.
+추가 독립 재현에서 작성자 잠금이 잡힌 체크포인트를 읽은 별도 실행이 기존 원천의
+last_error를 게시해 공개 stale·last_attempt_failed를 오염시켰다. 참조 주유소 export는
+성공 시각 기준이므로 이 경합만으로503이 된다고 해석하지 않는다. Provider e160068의
+OpinetCheckpointBusyError는 실제 SQLite BUSY/LOCKED(확장 코드 포함)만 구분한다.
+앱은 해당 경합에서 브라우저를 열거나 기존 원천 성공·오류·예약을 쓰지 않고 건너뛴다.
+기존 실패와 미수집 원천은 준비된 상태로 숨기지 않는다. 같은 문구의 일반 오류·I/O·손상은
+여전히 실패로 남긴다. Provider349 PASS/4 live SKIP·coverage93.87%·Chromium26 PASS·mypy PASS,
+실제 파일 잠금과 PostgreSQL의 fresh/failed/missing×fuel/all 회귀 포함 앱125 PASS를 확인했다.
 Transport ea51470 CI는1107 PASS/2 SKIP 뒤 fixture에서 유가 소스를 제외한 변경과
 충돌한 scheduler 종료 테스트1건이 실패했다. 해당 테스트에 실제 유가 지원 fake를
 명시하고 WSL 회귀1 PASS로 확인했다(cac391a). 전체 CI는 다시 실행 중이다.

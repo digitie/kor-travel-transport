@@ -506,3 +506,16 @@ def test_fuel_unhealthy_skip_does_not_report_dagster_success(monkeypatch, readin
     failures = [event for event in result.all_events if event.is_step_failure]
     assert "status=skipped" in failures[0].step_failure_data.user_failure_data.description
     _assert_no_secret(_error_texts(failures[0].step_failure_data.error))
+
+
+def test_fuel_busy_skip_exposes_ownership_reason_when_source_is_healthy(monkeypatch):
+    async def skipped(*_args, **_kwargs):
+        return {"status": "skipped", "collection_run_id": 10, "fuel_ready": True,
+                "skip_reason": "collector_busy", "errors": []}
+    _patch_services(monkeypatch)
+    monkeypatch.setattr(dagster_definitions, "_run_with_session", skipped)
+    result = dagster_definitions.fuel_collection_job.execute_in_process(raise_on_error=False)
+    assert result.success
+    output = next(event.step_output_data for event in result.all_events if event.event_type_value == "STEP_OUTPUT")
+    assert output.metadata["skip_reason"].value == "collector_busy"
+    assert output.metadata["fuel_ready"].value is True

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock
 from dataclasses import replace
 
 import pytest
+from opinet import OpinetServerError
 from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError
 
@@ -46,6 +47,59 @@ def test_failed_store_resumes_without_provider_requests_or_extending_reservation
             provider.collect_fuel.assert_awaited_once()
             provider.acknowledge_fuel_snapshot.assert_called_once_with(snapshot)
         finally:
+            await engine.dispose()
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("source_status", ["fresh", "failed", "missing"])
+@pytest.mark.parametrize("scope", ["fuel", "all"])
+def test_active_checkpoint_owner_does_not_publish_false_source_failure(test_settings, tmp_path, source_status, scope):
+    from opinet.experimental import OpinetBrowserCollector
+    from opinet.experimental._browser_checkpoint import BrowserCheckpoint
+    from app.services.transport_collection import fuel_read_model_freshness
+
+    async def exercise():
+        provider = FakeTransportProvider()
+        engine, factory = create_engine_and_session_factory(test_settings.database_url)
+        await init_database(engine)
+        collector = OpinetBrowserCollector(checkpoint_path=tmp_path / "active.sqlite3")
+        owner = BrowserCheckpoint(collector.checkpoint_path, url=collector.url, query_level=collector.query_level,
+                                  max_age=collector.checkpoint_max_age)
+        def values(state):
+            if state is None:
+                return None
+            return tuple(serialize_utc(getattr(state, name)) if getattr(state, name) else None for name in
+                         ("last_started_at", "last_success_at", "next_due_at", "updated_at")) + (state.last_error,)
+        try:
+            async with factory() as session:
+                if source_status != "missing":
+                    assert (await TransportCollectionService(test_settings, provider).collect(session, scope="fuel"))["status"] == "success"
+                    state = await session.scalar(select(TransportCollectionState).where(
+                        TransportCollectionState.source == OPINET_SOURCE))
+                    state.next_due_at = now_utc() + timedelta(hours=4)
+                    if source_status == "failed":
+                        state.last_error = "previous storage failure"
+                    await session.commit()
+                state = await session.scalar(select(TransportCollectionState).where(
+                    TransportCollectionState.source == OPINET_SOURCE))
+                before = values(state)
+                stale_before, _ = await fuel_read_model_freshness(session)
+            provider.pending_fuel_snapshot = collector.pending_snapshot
+            provider.collect_fuel = AsyncMock(side_effect=AssertionError("must not open a competing browser"))
+            async with factory() as session:
+                result = await TransportCollectionService(test_settings, provider).collect(session, scope=scope)
+                assert result["status"] == ("skipped" if scope == "fuel" else "success")
+                if scope == "fuel":
+                    assert result["fuel_ready"] is (source_status == "fresh")
+                    assert result["skip_reason"] == "collector_busy"
+                state = await session.scalar(select(TransportCollectionState).where(
+                    TransportCollectionState.source == OPINET_SOURCE))
+                assert values(state) == before
+                stale_after, _ = await fuel_read_model_freshness(session)
+                assert stale_after is stale_before
+            provider.collect_fuel.assert_not_awaited()
+        finally:
+            owner.close()
             await engine.dispose()
     asyncio.run(exercise())
 
@@ -149,11 +203,13 @@ def test_late_resume_cannot_regress_new_source_history_or_latest(test_settings, 
     asyncio.run(exercise())
 
 
-def test_pending_file_error_is_durable_and_keeps_existing_request_reservation(tmp_path):
+@pytest.mark.parametrize("error", [OSError("checkpoint unreadable"),
+                                 OpinetServerError("Opinet checkpoint is already in use")])
+def test_pending_file_error_is_durable_and_keeps_existing_request_reservation(tmp_path, error):
     async def exercise():
         settings = build_settings(tmp_path)
         provider = FakeTransportProvider()
-        provider.pending_fuel_snapshot = AsyncMock(side_effect=OSError("checkpoint unreadable"))
+        provider.pending_fuel_snapshot = AsyncMock(side_effect=error)
         provider.collect_fuel = AsyncMock()
         engine, factory = create_engine_and_session_factory(settings.database_url)
         await init_database(engine)
@@ -168,7 +224,7 @@ def test_pending_file_error_is_durable_and_keeps_existing_request_reservation(tm
                 assert result["status"] == "failed"
                 state = await session.scalar(select(TransportCollectionState).where(
                     TransportCollectionState.source == OPINET_SOURCE))
-                assert "checkpoint unreadable" in state.last_error
+                assert str(error) in state.last_error
                 assert serialize_utc(state.next_due_at) == due
                 assert (await session.get(CollectionRun, result["collection_run_id"])).status == "failed"
             provider.collect_fuel.assert_not_awaited()
