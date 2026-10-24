@@ -109,6 +109,22 @@ PR27을 머지했고 같은 provider의 앱 집중 PostgreSQL128 PASS·uv lock c
   원문 root 중복 전달을 막고 가린 메시지만 전송한다. Provider는 지역 선택·응답·결과
   준비 누적 시간을 기록한다. 공용 Dagster 설정은 변경하지 않는다.
 
+## 후속 사전 리뷰 — 작성자 획득·완료 반환 전 경합
+
+pending 확인 뒤 실제 collect_fuel 진입까지의 경합은 앞선 경합 처리 밖에 있었다.
+이제 실제 typed busy도 별도 처리한다. 외부 요청이 없던 claim의 시작·성공·예약·오류·
+갱신 시각이 아직 본인 버전일 때만 원래 상태를 복원하며 타인이 갱신한 상태는 쓰지 않는다.
+처음 생성한 claim도 그대로이면 제거한다. in-process busy의 과거 예약1초 반복도 막는다.
+
+실제 collector는 정리까지 sidecar 잠금을 유지한다. 그러나 완료 checkpoint 작성 뒤 취소가
+나면 잠금을 해제하고, 앱이 취소 실패를 게시하는 await 사이에 다른 실행이 저장할 수 있다.
+후행 실행이 새 성공을 확정하면 아직 결과 객체를 받지 못한 fresh 실행의 오류도 이를
+덮지 않도록 fencing한다. 실제 잠금·완료·취소/오류·다른 세션 저장으로 회귀를 검증했다.
+
+unhealthy busy는 실패 표시를 유지하되 Failure의 설명·metadata에도 collector_busy를 남긴다.
+수정 전 실제 경합9 FAIL/6 PASS·수정 후15 PASS, busy 대기는 수정 전1 FAIL/6 PASS였다.
+7d254cc의 집중 SQLite141·PostgreSQL141 PASS이며 최종 Docker·CI·공식 리뷰는 PR123에서 정산한다.
+
 ## 운영 설치
 
 `OPINET_CHECKPOINT_PATH=/app/collector-state/opinet.sqlite3`이며 backend와 code-server는

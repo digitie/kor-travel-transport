@@ -3,6 +3,12 @@
 사용자 최종 지시로 배포는 대기하고 다른 에이전트의 일괄 배포에 인계한다.
 운영 staging·빌드·컨테이너·instigator 변경은0이다. [배포 인계](reports/2026-10-24-opinet-deployment-handoff.md)에
 최종 provider·코드 SHA·volume·원래 스케줄 상태 미확정·검증 경계를 정리했다.
+후속 사전 리뷰에서 pending 확인 뒤의 작성자 경합과 완료 결과 반환 전 취소/오류가
+다른 실행의 저장 성공을 덮는 두P1, unhealthy busy 설명 누락P2를 재현했다.
+실제 SQLite sidecar의 양쪽 경계와 실제 collector.complete 후 취소/오류를 포함해
+수정 전9 FAIL/6 PASS·수정 후15 PASS다. 외부 요청 없는 claim만5필드 비교 뒤 복원하고
+새 성공을 fencing한다. busy1초 반복도 재현·보완했다(수정 전1 FAIL/6 PASS).
+코드7d254cc의 집중 SQLite141·PostgreSQL141 PASS이며 최종 Docker·CI·두 리뷰는 PR123에서 정산한다.
 
 사용자 장애 제보로 실제 run1645의 브라우저 약3시간 뒤 최신 가격 SQL timeout·전체
 롤백과 이후 skipped/SUCCESS를 확인했다. 두 서브에이전트는 전국 순차 조회와 불필요한

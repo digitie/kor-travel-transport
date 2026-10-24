@@ -12,10 +12,13 @@ image/font/media만 제외한다. 후속 Provider PR27의f58a879는 Chromium CDP
 차단해 HTTP 캐시를 유지한다. WSL355 PASS/4 live SKIP·coverage93.96%·mypy·CI5개 PASS이며
 실제 Chromium의 반복 POST 캐시와 종료 경합을 검증했다. 실제 SQLite 작성자 경합은
 별도 타입으로 구분한다(PR26 머지). 경합은 기존 원천 성공·오류·예약을 바꾸지 않고
-skipped로 남긴다. 앱 집중 WSL127·Docker PG127 PASS, 최종 pin 검증·CI는 진행 중이다.
+skipped로 남긴다. 앱7d254cc 집중 SQLite141·PostgreSQL141 PASS, 직전361후보 Docker128·UI12 PASS다.
 150~850ms 최종 지연과 무응답 CDP 종료5초 상한·원래 취소/인증 오류 보존을 포함한
 f58a879를 고정한다. 반복 수집기도 취소 뒤 일반 실패 대기로 넘어가지 않고 종료한다.
-Provider 최종 CI와 James/Popper 독립 재리뷰를 통과해 PR27을 머지했다. 앱 최종 PG128 PASS다.
+Provider 최종 CI와 James/Popper 독립 재리뷰를 통과해 PR27을 머지했다.
+이후 코드7d254cc에서 실제 수집 진입의 작성자 경합·완료 결과 반환 전 취소 경쟁도 보완했다.
+자기 unused claim만 비교 후 복원하고 다른 실행의 성공을 유지한다. unhealthy busy의
+Failure metadata와 in-process backoff를 보완했다. 최종 Docker·CI·공식 리뷰 정본은 PR123이다.
 전국30분은 실측 전 목표다.
 다음 한 작업은 최종 CI·앱 독립 리뷰·격리 UI 검증을 마치고 PR123을 정산하는 것이다.
 운영 정상 소스·export200·전국 시간 수용은 일괄 배포 담당자에게 인계한다.

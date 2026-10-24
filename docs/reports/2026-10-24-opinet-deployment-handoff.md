@@ -8,8 +8,8 @@
 
 제품 변경은 [Transport PR123](https://github.com/digitie/kor-travel-transport/pull/123),
 최종 CI·리뷰·머지 여부도 같은 PR을 정본으로 확인한다. 코드 후보는
-`3615687e217f5e7635aeffd1fb2f008cca27c435`이고 backend tree는
-`17d9cc76d92f9b9997b147f6dc1ae28855766a3f`다. 후속 문서 변경과 구분한다.
+`7d254ccf879881e19d692e48a6fe96a91a2bcfae`이고 backend tree는
+`a8cbf813bea3469d7d16a5fb6644eaae6d8c4db7`다. 후속 문서 변경과 구분한다.
 일괄 배포할 때는 PR123 머지 결과와 그 뒤 승인된 다른 변경을 포함한 최신 후보를 사용한다.
 이 후보는 main50537f6의 npm 보안 갱신을 포함한다.
 
@@ -59,6 +59,11 @@ Transport instigator17개는 모두 STOPPED, 활성 run·worker는0이었다. **
   소비 완료를 기록한다. 과거 실패 run1645의 롤백된 메모리는 새 파일로 복원할 수 없다.
 - 기존8시간 간격과 요청 예산을 유지한다. 저장 재개는 기존 예약을 임의 연장하지 않는다.
   운영 수용을 위해 예약·최근 실행 제한을 우회한 강제 전국 수집을 추가하지 않는다.
+- pending 확인 직후 생긴 실제 작성자 경합도 실패로 기록하지 않는다. 외부 요청이 없던
+  자기 claim만 이전 상태로 되돌리고, 타인이 변경한 성공·오류·예약은 보존한다.
+  완료 checkpoint를 전달받기 전 취소/오류가 나도 이후 다른 실행이 확정한 성공을 덮지 않는다.
+  unhealthy busy의 실패 설명·metadata에도 `collector_busy`를 남긴다. in-process busy는
+  기존 예약을 유지하면서 기본 수집 간격 이상의 대기를 적용한다.
 - API health의 정확한 release SHA, CS의 같은 이미지·gRPC12306·공용 Dagster 버전,
   양쪽 체크포인트 경로·동일 volume·NVMe 저장을 확인한다.
 - 정상 예약 실행의 실제 collection run·원천 성공 시각·주유소/유가 건수·최신 가격과
@@ -72,8 +77,9 @@ Transport instigator17개는 모두 STOPPED, 활성 run·worker는0이었다. **
 
 Provider f58a879는 WSL355 PASS/4 live SKIP·coverage93.96%·mypy20파일·CI5개 PASS,
 실제 Chromium29개와 James/Popper 최종 독립 재리뷰를 통과했다. 정리 상한과 원래 취소·
-인증·요청 제한 오류 보존을 검증했다. 같은 provider의 앱 집중 PostgreSQL128·Docker128 PASS,
-uv lock check PASS다. 프론트엔드 WSL130·Docker130 및 두 build도 통과했다.
+인증·요청 제한 오류 보존을 검증했다. 신규 경합 보완의 앱 집중 SQLite141·PostgreSQL141 PASS다.
+직전361후보는 PostgreSQL128·Docker128·격리 실제 UI12 PASS, uv lock check PASS다.
+프론트엔드 WSL130·Docker130 및 두 build도 통과했다. 새 후보 PG·Docker·UI 결과는 PR123에서 확인한다.
 
 전체 앱 회귀·최종 CI·격리 UI·앱 공식 독립 리뷰의 최종 결과는 PR123에서 확인한다.
 이전 c23 후보의 장기 전체 회귀 결과를 최종 SHA 전체 통과로 합산하지 않는다.
