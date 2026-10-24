@@ -68,3 +68,18 @@ for (const mode of ["fuel", "transport"] as const) describe(`${mode} 목록 상�
     }
   });
 });
+
+
+it("추가 목록 건수와 일부 표시 안내가 하나의 합계로 함께 표시된다", async () => {
+  mocks.get.mockResolvedValue({ items: [{ id: 1, kind: "fuel_station", source: "fixture", name: "시험 장소",
+    longitude: 127, latitude: 37, line_names: [], prices: [], facilities: [], updated_at: "2026-10-24T00:00:00Z" }],
+    total: 2, truncated: true, available_sources: ["fixture"] });
+  await act(async () => { root.render(<TransportMap mode="fuel" listFeatureCount={2} />); });
+  const list = [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+    .find((button) => button.textContent === "목록")!;
+  await act(async () => { list.click(); });
+  expect(container.querySelectorAll(".kt-map-count")).toHaveLength(1);
+  expect(container.querySelector(".kt-map-count")?.textContent).toBe("3건 표시");
+  expect(container.querySelector('button[aria-label="목록 일부 표시 안내"]')).not.toBeNull();
+  expect(mocks.get).toHaveBeenCalledTimes(2);
+});

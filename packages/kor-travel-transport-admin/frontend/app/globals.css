@@ -549,6 +549,10 @@ h1, h2, h3 { color: var(--text-primary); }
 .journey-shortcuts { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; font-size: var(--text-sm); }
 .journey-shortcuts a { color: var(--kt-text-secondary); text-decoration: underline; text-underline-offset: 3px; }
 .journey-map-target, #station-timetable, #bus-departures { min-width: 0; scroll-margin-top: 1rem; }
+.highway-map-summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm) var(--space-md); font-size: var(--text-sm); }
+.highway-speed-key { white-space: nowrap; }
+.highway-speed-dot { display: inline-block; width: .65rem; height: .65rem; border-radius: 50%; margin-right: var(--space-sm); }
+.highway-link-list { max-height: 24rem; overflow-y: auto; }
 .flight-journey .embedded-map .map-primary, .flight-journey .embedded-map .transport-map-canvas { height: 64dvh; min-height: 28rem; }
 @media (max-width: 760px) {
   .journey-workbench { gap: .75rem; }

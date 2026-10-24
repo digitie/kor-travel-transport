@@ -53,12 +53,14 @@ async def stored_rail_timetables(session: AsyncSession, places: list[RailStation
                 current_clock = local.strftime("%H%M%S")
                 # 날짜가 없는 계획 시각은 같은 한국 날짜의 05~23시 범위만 다음 열차로 표시한다.
                 # 원문이 확정 범위 밖이면 전체 시간표에는 남기되 다음 열차로 추정하지 않는다.
-                next_row = min((row for row in snapshot.items_json
+                upcoming = sorted((row for row in snapshot.items_json
                     if isinstance(value := row.get("departure_time"), str)
                     and len(value) == 6 and value.isascii() and value.isdecimal()
                     and "05" <= value[:2] <= "23" and value[2:4] < "60"
                     and value[4:] < "60" and value >= current_clock),
-                    key=lambda row: row["departure_time"], default=None)
-                item.next_departure = departure(next_row) if next_row else None
+                    key=lambda row: row["departure_time"])
+                item.next_departure = departure(upcoming[0]) if upcoming else None
+                if not summary_only:
+                    item.upcoming_departures = [departure(row) for row in upcoming[:12]]
         result.append(item)
     return RailTimetableResponse(generated_at=now, day_code=day_code, basis=basis, items=result)

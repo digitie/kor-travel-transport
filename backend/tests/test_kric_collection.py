@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from kric import StationCodeInfo
+from kric import StationCodeInfo, KricAuthError, KricRateLimitError, KricServerError
 from sqlalchemy import func, select
 
 from app.db.session import create_engine_and_session_factory, init_database
@@ -42,6 +42,55 @@ class FakeClient:
         if self.wrong_identity:
             return [SimpleNamespace(rail_operator_code="OTHER", line_code="03", station_code="0312", day_code=params["day_code"])]
         return []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("errors,expected_status,expected_calls,stored", [
+    ({2: KricServerError("private-provider-message")}, "partial", 3, 2),
+    ({1: KricServerError("a"), 2: KricServerError("b"), 3: KricServerError("c")}, "failed", 3, 0),
+])
+async def test_station_server_failure_is_isolated_and_three_consecutive_failures_stop_batch(test_settings, errors, expected_status, expected_calls, stored):
+    settings = test_settings.model_copy(update={"kric_timetable_collection_enabled": True, "kric_service_key": "fake", "kric_timetable_max_calls": 6})
+    fake = FakeClient()
+    original = fake.get_station_timetable
+    async def get(**params):
+        if len(fake.calls) + 1 in errors:
+            fake.calls.append(params)
+            raise errors[len(fake.calls)]
+        return await original(**params)
+    fake.get_station_timetable = get
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+    await init_database(engine)
+    service = KricTimetableCollectionService(settings, code_fetcher=AsyncMock(return_value=((code(),), None)), client_factory=lambda *a, **kw: fake, sleep=AsyncMock())
+    async with factory() as session:
+        result = await service.collect(session)
+        assert result["status"] == expected_status
+        assert result["attempted_snapshot_count"] == expected_calls
+        assert result["stored_snapshot_count"] == stored
+        assert await session.scalar(select(func.count()).select_from(KricTimetableSnapshot)) == stored
+        run = await session.scalar(select(CollectionRun).where(CollectionRun.trigger == TRIGGER))
+        assert "private-provider" not in (run.error_message or "")
+        assert (await service.collect(session))["status"] == "skipped"
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [KricAuthError("secret"), KricRateLimitError("secret")])
+async def test_station_auth_and_quota_errors_stop_without_trying_another_station(test_settings, failure):
+    settings = test_settings.model_copy(update={"kric_timetable_collection_enabled": True, "kric_service_key": "fake"})
+    fake = FakeClient()
+    async def get(**params):
+        fake.calls.append(params)
+        raise failure
+    fake.get_station_timetable = get
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+    await init_database(engine)
+    service = KricTimetableCollectionService(settings, code_fetcher=AsyncMock(return_value=((code(),), None)), client_factory=lambda *a, **kw: fake, sleep=AsyncMock())
+    async with factory() as session:
+        with pytest.raises(RuntimeError):
+            await service.collect(session)
+        assert len(fake.calls) == 1
+    await engine.dispose()
 
 
 @pytest.mark.asyncio

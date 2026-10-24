@@ -376,6 +376,7 @@ class RailDepartureSummary(BaseModel):
 
 
 class RailTimetableItem(RailDepartureSummary):
+    upcoming_departures: list[RailDepartureItem] = Field(default_factory=list)
     items: list[RailDepartureItem] = Field(default_factory=list)
 
 
@@ -449,6 +450,16 @@ class BusTimetableItem(BaseModel):
     adult_fare: int | None = None
 
 
+class BusConnectionsResponse(BaseModel):
+    service_type: Literal["express", "intercity"]
+    terminal_id: str
+    direction: Literal["departure", "arrival"]
+    service_date: date
+    coverage: Literal["stored_routes"] = "stored_routes"
+    truncated: bool = False
+    items: list[BusTerminalItem]
+
+
 class BusTimetableResponse(BaseModel):
     service_type: Literal["express", "intercity"]
     departure_terminal_id: str
@@ -461,6 +472,106 @@ class BusTimetableResponse(BaseModel):
     stale: bool = False
     refresh_status: Literal["stored_only", "rate_limited", "not_configured", "upstream_error"] | None = None
     items: list[BusTimetableItem]
+
+
+class HighwayRoad(BaseModel):
+    road_id: str
+    road_number: str
+    name: str
+
+
+class HighwayRoadCatalog(BaseModel):
+    fetched_at: datetime
+    source_url: str
+    stale: bool = False
+    items: list[HighwayRoad]
+
+
+class HighwayTrafficLink(BaseModel):
+    link_id: str
+    section_id: str
+    section_name: str
+    direction: str
+    speed_kmh: float | None
+    length_m: float
+    path: list[tuple[float, float]] = Field(default_factory=list, max_length=20_000)
+
+
+class HighwayRoadTraffic(BaseModel):
+    fetched_at: datetime
+    source_url: str
+    stale: bool = False
+    road_id: str
+    road_number: str
+    road_name: str
+    direction: str
+    complete: Literal[False] = False
+    items: list[HighwayTrafficLink]
+
+
+class GeneralRailCode(BaseModel):
+    code: str
+    name: str
+
+
+class GeneralRailStation(BaseModel):
+    station_id: str
+    station_name: str
+
+
+class GeneralRailCatalogResponse(BaseModel):
+    fetched_at: datetime
+    stale: bool = False
+    cities: list[GeneralRailCode]
+    train_classes: list[GeneralRailCode]
+
+
+class GeneralRailStationsResponse(BaseModel):
+    fetched_at: datetime
+    stale: bool = False
+    city_code: str
+    items: list[GeneralRailStation]
+
+
+class GeneralRailGuideStation(BaseModel):
+    provider_id: str
+    station_code: str | None = None
+    station_name: str
+    address: str | None = None
+    phone: str | None = None
+    longitude: float | None = None
+    latitude: float | None = None
+
+
+class GeneralRailGuideResponse(BaseModel):
+    fetched_at: datetime
+    stale: bool = False
+    kind: Literal["ktx", "main"]
+    category_code: str
+    categories: list[GeneralRailCode]
+    total: int
+    items: list[GeneralRailGuideStation]
+
+
+class GeneralRailTrip(BaseModel):
+    train_number: str | None = None
+    departure_station_name: str | None = None
+    arrival_station_name: str | None = None
+    departure_planned_time: str | None = None
+    arrival_planned_time: str | None = None
+    grade_name: str | None = None
+    adult_fare: int | None = None
+
+
+class GeneralRailTimetableResponse(BaseModel):
+    fetched_at: datetime
+    stale: bool = False
+    service_date: date
+    departure_station_id: str
+    arrival_station_id: str
+    total: int | None = None
+    truncated: bool = False
+    items: list[GeneralRailTrip]
 
 
 class ProviderCollectionStatus(BaseModel):
@@ -623,6 +734,31 @@ class FlightStatusResponse(BaseModel):
     status: str
     error_message: str | None = None
     items: list[FlightStatusItem]
+
+
+class ParkingOutlookLot(BaseModel):
+    parking_lot_id: int
+    parking_lot_name: str
+    sample_days: int
+    observations: int
+    average_available_spaces: float
+    minimum_available_spaces: int
+    maximum_available_spaces: int
+    full_days: int
+    full_day_ratio: float
+    minimum_capacity: int
+    maximum_capacity: int
+    latest_observed_at: datetime
+
+
+class ParkingOutlookResponse(BaseModel):
+    generated_at: datetime
+    airport_code: str
+    arrival_at: datetime
+    history_days: int
+    weekday: int
+    hour: int
+    items: list[ParkingOutlookLot]
 
 
 class HourlyBucket(BaseModel):
