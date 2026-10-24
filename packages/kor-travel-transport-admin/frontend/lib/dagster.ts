@@ -15,6 +15,7 @@ JOB_LABELS.place_location_collection_job = "시설 좌표 보강 (VWorld)";
 JOB_LABELS.kakao_place_location_collection_job = "시설 좌표 보강 (Kakao)";
 JOB_LABELS.rest_area_reference_collection_job = "휴게소 기준정보";
 JOB_LABELS.rest_area_fuel_price_collection_job = "휴게소 유가";
+JOB_LABELS.vadahub_reference_collection_job = "배편 항로·시설 기준자료";
 export function jobBudgetSeconds(job: string) { return ["ferry_timetable_collection_job", "kric_timetable_collection_job"].includes(job) ? 4 * 3600 : job === "fuel_collection_job" ? 2 * 3600 + 600 : job.includes("reference") ? 3600 : 600; }
 export function scheduleDescription(cron: string) {
   const [minute, hour, day, month, weekday] = cron.split(" ");

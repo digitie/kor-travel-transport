@@ -1,5 +1,7 @@
 # tasks.md — parking-radar 백로그
 
+- [ ] **T-VADAHUB-01** — VadaHub 항로·시설·공식터미널 통합 및 최신 Transport 배포. [범위·검증 원장](reports/2026-10-24-vadahub-ferry.md).
+
 진행 중/예정(`[ ]`) task만 두는 백로그다. 완료 항목은
 [`docs/tasks-done.md`](tasks-done.md)에 이동하고, 현재 진척과 다음 작업은
 [`docs/resume.md`](resume.md)에 기록한다. 작성 규칙은 [`docs/tasks-rule.md`](tasks-rule.md)를

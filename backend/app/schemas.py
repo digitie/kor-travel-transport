@@ -394,6 +394,43 @@ class RailDepartureSummaryResponse(BaseModel):
     items: list[RailDepartureSummary]
 
 
+class FerryReferenceRow(BaseModel):
+    record_id: str
+    kind: Literal["route", "facility", "terminal"]
+    name: str | None = None
+    departure: str | None = None
+    arrival: str | None = None
+    calls: str | None = None
+    segment: str | None = None
+    address: str | None = None
+    telephone: str | None = None
+    source_year: str | None = None
+    attributes: dict[str, Any] = Field(default_factory=dict)
+
+
+class FerryReferenceData(BaseModel):
+    dataset: Literal["passenger_routes", "ferry_routes", "ferry_facilities", "official_terminals"]
+    title: str
+    source: str
+    source_url: str
+    source_version: str
+    source_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    collected_at: datetime
+    items: list[FerryReferenceRow]
+
+
+class FerryReferenceState(BaseModel):
+    dataset: str
+    title: str
+    last_attempt_at: datetime | None = None
+    last_error: str | None = None
+    data: FerryReferenceData | None = None
+
+
+class FerryReferenceResponse(BaseModel):
+    items: list[FerryReferenceState]
+
+
 class FerryOperationItem(BaseModel):
     vessel_name: str | None = None
     departure_port_name: str | None = None

@@ -302,7 +302,14 @@ CASCADE이다. 최초 freeze만 typed current를 읽고 이후 페이지는 이 
 새 완결 수집부터 생성하고 API는 이 목록의 명시된 PK만 읽는다.
 
 
-## 일반철도 조회 캐시 (미배포 migration0034)
+## 배편 원천별 정상 저장본 (migration0035)
+
+`ferry_reference_snapshots`는 dataset PK(4개 원천 CHECK), nullable JSONB 정상 응답,
+TIMESTAMPTZ 최근 시도, nullable 실패 종류를 보존한다. 원천별 bounded 응답을 원자 교체하며
+항구·운항시간표 natural key에 합치지 않는다. 실패와 취소는 이전 성공 응답을 지우지 않는다.
+상세는 [VadaHub 통합 계약](../reports/2026-10-24-vadahub-ferry.md)을 따른다.
+
+## 일반철도 조회 캐시 (migration0034)
 
 `general_rail_query_snapshots`는 `(operation,request_key)` PK와 fetched_at index, JSONB 정상 응답을 보존한다.
 operation은 catalog/stations/timetable/station_guide CHECK로 제한한다. TAGO와 코레일 공개 안내의

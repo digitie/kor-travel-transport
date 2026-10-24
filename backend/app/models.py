@@ -666,6 +666,19 @@ class GeneralRailQuerySnapshot(Base):
     response_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
 
 
+class FerryReferenceSnapshot(Base):
+    """원천별 마지막 정상 배편 기준자료. 실패는 성공 응답을 교체하지 않는다."""
+
+    __tablename__ = "ferry_reference_snapshots"
+    __table_args__ = (
+        CheckConstraint("dataset IN ('passenger_routes', 'ferry_routes', 'ferry_facilities', 'official_terminals')", name="ck_ferry_reference_dataset"),
+    )
+    dataset: Mapped[str] = mapped_column(Text, primary_key=True)
+    response_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
+    last_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class FerryPort(Base):
     __tablename__ = "ferry_ports"
     __table_args__ = (

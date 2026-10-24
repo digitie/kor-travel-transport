@@ -29,6 +29,7 @@ dependencies = [
   "python-krex-api @ git+https://github.com/digitie/python-krex-api@1a37a0108fa837351aa6bb6644052f325ae76daf",
   "python-opinet-api[browser] @ git+https://github.com/digitie/python-opinet-api@f58a879676f8d2c6d8de26e3daaf7eb154fd9ad2",
   "python-vworld-api @ git+https://github.com/digitie/python-vworld-api@3b174abea1a1e734c60a9c2522b2844474a1ec71",
+  "python-vadahub-api @ git+https://github.com/digitie/python-vadahub-api@4bc0164e48799bba5488f91ea1a06b5e2e86de78",
   "python-multipart>=0.0.32,<1.0",
   "pydantic-settings>=2.15,<3.0",
   "psycopg2-binary>=2.9,<3.0",

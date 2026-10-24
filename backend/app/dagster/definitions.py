@@ -39,6 +39,7 @@ from app.services.kric_collection import KricTimetableCollectionService
 from app.services.kakao_place_locations import KakaoPlaceCollectionService
 from app.services.place_locations import PlaceLocationCollectionService
 from app.services.rail_maritime_collection import RailMaritimeCollectionService
+from app.services.vadahub_collection import VadaHubCollectionService
 from app.services.rest_area_collection import RestAreaCollectionService
 from app.services.transport_collection import CollectionScope, TransportCollectionService
 
@@ -619,6 +620,24 @@ def ferry_timetable_collection_job() -> None:
     collect_ferry_timetable()
 
 
+@op
+@_redact_op_errors
+def collect_vadahub_reference(context) -> dict[str, Any]:
+    with collection_owner(context.run_id, context.instance):
+        settings = _settings()
+        result = asyncio.run(_run_with_session(settings, VadaHubCollectionService(settings).collect))
+        if result["status"] == "partial_success":
+            raise Failure(description="일부 배편 기준자료 수집에 실패했습니다. 마지막 정상 자료를 유지합니다.",
+                          metadata={"failed_datasets": ", ".join(result["failed_datasets"])}, allow_retries=False)
+        context.log.info("VadaHub 배편 기준자료: %s", result)
+        return result
+
+
+@job(tags=_job_tags("reference", "vadahub_reference_collection_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
+def vadahub_reference_collection_job() -> None:
+    collect_vadahub_reference()
+
+
 @job(tags=_job_tags("reference", "bus_reference_collection_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
 def bus_reference_collection_job() -> None:
     enrich_new_reference_locations(collect_bus_reference())
@@ -745,6 +764,7 @@ definitions = Definitions(
         fuel_collection_job,
         rail_reference_collection_job,
         maritime_reference_collection_job,
+        vadahub_reference_collection_job,
         ferry_timetable_collection_job,
         bus_reference_collection_job,
         place_location_collection_job,
@@ -760,6 +780,8 @@ definitions = Definitions(
         # 매일 due를 평가하되 service가 마지막 성공 뒤 48시간 전에는 provider를 호출하지 않는다.
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=rail_reference_collection_job, cron_schedule="0 3 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=maritime_reference_collection_job, cron_schedule="0 3 */3 * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
+        # 매일 누락/실패 원천만 보충하고 정상 자료는 7일간 재호출하지 않는다.
+        coalescing_schedule(project="transport", location_name="kor-travel-transport", job=vadahub_reference_collection_job, cron_schedule="15 3 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         # 한 run의 provider 호출 예산을 지키면서 오늘 포함 10일 범위의 초기 backfill을 재개한다.
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=ferry_timetable_collection_job, cron_schedule="45 */4 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         # 매일 due를 평가하되 service가 마지막 성공 뒤 72시간 전에는 provider를 호출하지 않는다.
