@@ -1,5 +1,9 @@
 # tasks-done.md — 완료 작업 아카이브
 
+## 2026-10-24 — npm 보안·버전 정합 소스 완료
+
+- [x] **Next.js 보안 갱신 — Next.js 16.4.3**. npm 직접/전이 보안 패치와 공통 버전 정합, 이 저장소 기존 테스트 355개·타입·린트·빌드 검증을 반영했다. 최종 게이트와 머지 상태는 [PR](https://github.com/digitie/kor-travel-transport/pull/124), 잔여 상류 권고와 범위는 [정합 기록](npm-security-alignment-2026-10-24.md)을 따른다.
+
 ## 2026-10-23 — Map 현재 상태·참조 API 제품 구현
 
 - [x] PR112/114~118: traffic·parking typed current/schema33, 고정 DTO snapshot/schema31, source별 승인 membership/schema32, bus/ferry/rail REST를 구현·머지했다. 두 독립 리뷰·정확 CI·PG/Compose·실제 TCP와 각 최종 SHA는 [수용 정산](reports/2026-10-23-map-t2-t3-acceptance.md)을 따른다.
