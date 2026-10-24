@@ -13,22 +13,24 @@ RUN apt-get update \
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir "GDAL==$(gdal-config --version)"
 
+COPY --chmod=0644 backend/pyproject.toml backend/uv.lock /app/
+
+RUN pip install --no-cache-dir "uv==0.11.21" \
+    && uv export --locked --extra dev --no-emit-project --no-hashes \
+        --format requirements.txt --output-file /tmp/backend-requirements.txt \
+    && pip install --no-cache-dir --no-deps -r /tmp/backend-requirements.txt
+
+# Opinet의 실험적 지역별 화면 수집기가 사용하는 Chromium과 Linux 런타임을
+# 이미지에 포함한다. 수집기는 TRANSPORT_COLLECTION_ENABLED=true일 때만 실행된다.
+RUN playwright install --with-deps chromium
+
 COPY backend /app
 COPY scripts /app/scripts
 # Backend regression container also verifies the committed shared Dagster environment contract.
 # This file contains no credentials; runtime secrets stay in the host-only env file.
 COPY docker-compose.shared.yml /app/compose-contract/docker-compose.shared.yml
 
-RUN pip install --no-cache-dir "uv==0.11.21" \
-    && uv export --locked --extra dev --no-emit-project --no-hashes \
-        --format requirements.txt --output-file /tmp/backend-requirements.txt \
-    && pip install --no-cache-dir --no-deps -r /tmp/backend-requirements.txt \
-    && pip install --no-cache-dir -e ".[dev]" --no-deps \
-    && pip check
-
-# Opinet의 실험적 지역별 화면 수집기가 사용하는 Chromium과 Linux 런타임을
-# 이미지에 포함한다. 수집기는 TRANSPORT_COLLECTION_ENABLED=true일 때만 실행된다.
-RUN playwright install --with-deps chromium
+RUN pip install --no-cache-dir -e ".[dev]" --no-deps && pip check
 
 # 최종 인터프리터의 stdlib을 root 권한에서 미리 컴파일한다. 런타임에서 이 helper를 호출하지 않는다(무효 cache의 암묵적 컴파일은 별도).
 RUN python -I -m kortravelcommon.build_bytecode --stdlib

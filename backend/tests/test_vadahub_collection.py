@@ -2,6 +2,7 @@ import asyncio
 from datetime import timedelta
 
 import pytest
+from types import SimpleNamespace
 from sqlalchemy import select
 
 from app.core.config import Settings
@@ -159,3 +160,53 @@ def test_native_job_reports_failure_after_committing_healthy_sources(tmp_path, m
             assert run.orchestrator_run_id == result.run_id
         await engine.dispose()
     asyncio.run(verify())
+
+
+@pytest.mark.parametrize("previous_failure", [True, False])
+def test_failed_archive_is_refetched_but_storage_only_resume_reuses_it(tmp_path, monkeypatch, previous_failure):
+    from app.services import vadahub_collection as module
+    now = now_utc()
+    layer = SimpleNamespace(layer_id="500059", table_name="psnr_rute_l", history_date="2019-12-10")
+    cached = SimpleNamespace(local_path=tmp_path / "cached.zip", collected_at=now,
+        source_url="https://vadahub.go.kr/renew/spaceData/index.do", sha256="b" * 64)
+    downloads = []
+    class Store:
+        def __init__(self, root): pass
+        async def recover(self): pass
+        async def versions(self, _layer): return (SimpleNamespace(receipt=cached),)
+        async def put(self, receipt): return SimpleNamespace(receipt=receipt)
+    class Client:
+        def __init__(self, **options): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def list_datasets(self): return (SimpleNamespace(dataset_id="63"),)
+        async def list_layers(self, dataset): return (layer,)
+        async def download(self, _layer, destination):
+            downloads.append(destination)
+            return SimpleNamespace(local_path=destination, collected_at=now,
+                source_url=cached.source_url, sha256="a" * 64)
+        async def load_file(self, path, **options):
+            if previous_failure and path == cached.local_path:
+                raise ValueError("cached archive still contains the broken schema")
+            return [SimpleNamespace(record_id="001", layer=layer,
+                attributes={"strpnt_nm": "목포", "dstntn_nm": "제주"})]
+    monkeypatch.setattr(module, "LocalArchiveStore", Store)
+    monkeypatch.setattr(module, "VadaHubFileClient", Client)
+
+    async def run():
+        settings, engine, factory = await database(tmp_path)
+        async with factory() as session:
+            for key in SOURCES:
+                if key != "passenger_routes":
+                    session.add(FerryReferenceSnapshot(dataset=key, response_json=payload(key).model_dump(mode="json"), last_attempt_at=now))
+            if previous_failure:
+                session.add(FerryReferenceSnapshot(dataset="passenger_routes", response_json=None, last_attempt_at=now, last_error="SchemaError"))
+            await session.commit()
+            result = await VadaHubCollectionService(settings).collect(session)
+            assert result["status"] == "success"
+            assert len(downloads) == int(previous_failure)
+            row = await session.get(FerryReferenceSnapshot, "passenger_routes")
+            assert row.last_error is None
+            assert row.response_json["source_sha256"] == ("a" if previous_failure else "b") * 64
+        await engine.dispose()
+    asyncio.run(run())

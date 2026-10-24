@@ -26,9 +26,9 @@ REFRESH_INTERVAL = timedelta(days=7)
 class VadaHubCollectionService:
     def __init__(self, settings, *, fetcher=None):
         self.settings = settings
-        self.fetcher = fetcher or self._fetch
+        self.fetcher = fetcher
 
-    async def _fetch(self, key: str) -> FerryReferenceData:
+    async def _fetch(self, key: str, *, reuse_archive: bool = True) -> FerryReferenceData:
         title, dataset_id, layer_id, table = SOURCES[key]
         root = Path(self.settings.vadahub_archive_directory)
         store = LocalArchiveStore(root / "archives")
@@ -55,7 +55,7 @@ class VadaHubCollectionService:
                 if len(layers) != 1:
                     raise ValueError("VadaHub layer identity changed")
                 layer = layers[0]
-                versions = await store.versions(layer)
+                versions = await store.versions(layer) if reuse_archive else ()
                 recent = [v for v in versions if now_utc() - v.receipt.collected_at < REFRESH_INTERVAL]
                 receipt = recent[-1].receipt if recent else (await store.put(await client.download(layer, Path(temporary) / "source.zip"))).receipt
                 features = await client.load_file(receipt.local_path, layer=layer, receipt=receipt, max_features=5000)
@@ -109,7 +109,11 @@ class VadaHubCollectionService:
                     await session.commit()  # 브라우저 대기 중 DB transaction을 잡지 않는다.
                     attempted_at = now_utc()
                     try:
-                        data = FerryReferenceData.model_validate(await self.fetcher(key))
+                        # 파싱 실패한 ZIP을 7일간 계속 재사용하지 않는다. 원천 오류가 없는
+                        # 저장 재시도는 이미 확보한 원문을 다시 읽어 다운로드 비용을 줄인다.
+                        value = (await self.fetcher(key) if self.fetcher is not None else
+                                 await self._fetch(key, reuse_archive=not bool(old and old.last_error)))
+                        data = FerryReferenceData.model_validate(value)
                         if data.dataset != key or not data.items or len(data.items) > 5000:
                             raise ValueError("VadaHub incomplete or mismatched dataset")
                         if len({r.record_id for r in data.items}) != len(data.items):
