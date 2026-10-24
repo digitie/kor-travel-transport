@@ -71,8 +71,8 @@ describe("maplibre worker 배선", () => {
       for (const file of copiedFileNames()) {
         expect(existsSync(path.join(workdir, "public", "maplibre", file))).toBe(true);
       }
-    } finally {
-      rmSync(workdir, { recursive: true, force: true });
-    }
+    } finally { rmSync(workdir, { recursive: true, force: true }); }
   });
 });
+
+ it("운영 runner에 worker 공개 파일을 포함한다", () => { expect(readFileSync(path.join(FRONTEND_ROOT, "Dockerfile"), "utf8")).toContain("COPY --from=builder /app/public ./public"); });

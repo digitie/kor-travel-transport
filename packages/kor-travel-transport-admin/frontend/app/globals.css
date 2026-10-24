@@ -575,3 +575,10 @@ h1, h2, h3 { color: var(--text-primary); }
   .rail-nav.common-menu.is-open nav, .rail-nav.common-menu.is-open ul { display: grid; }
   .rail-nav.common-menu.is-open ul { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* 기존 항구 화면도 모바일에서 지도 뒤로 상세를 배치한다. */
+@media (max-width: 760px) {
+  .journey-layout .journey-map { grid-row: 2; }
+  .journey-layout .journey-inspector { grid-row: 3; }
+  .bus-journey .multi-search [data-slot="field-group"].max-h-64 { max-height: 8rem; }
+}

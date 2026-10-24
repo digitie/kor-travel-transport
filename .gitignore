@@ -27,5 +27,7 @@ packages/kor-travel-transport-admin/frontend/test-results/
 packages/kor-travel-transport-admin/frontend/playwright-report/
 packages/kor-travel-transport-admin/frontend/public/maplibre/
 .playwright-mcp/
-# predev/prebuild가 설치본에서 생성하는 MapLibre worker와 상대 import 파일.
-/packages/kor-travel-transport-admin/frontend/public/maplibre/
+
+# MapLibre worker는 npm hook에서 설치된 패키지로부터 생성한다.
+packages/kor-travel-transport-admin/frontend/public/maplibre/
+.codex_tmp/

@@ -1,4 +1,4 @@
-FROM node:22-alpine
+FROM node:22.23.1-alpine
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ ENV BACKEND_INTERNAL_URL=http://localhost:8000
 
 COPY frontend /app
 
-RUN npm ci
+RUN npx --yes npm@12.0.1 ci
 RUN npm run build
 
 EXPOSE 3000

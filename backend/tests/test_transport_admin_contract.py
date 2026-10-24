@@ -79,7 +79,7 @@ def test_transport_admin_builds_the_vworld_browser_key_into_the_map_bundle() -> 
     assert "process.env.NEXT_PUBLIC_VWORLD_API_KEY" in map_view
     assert 'from "vworld-map-web"' in map_view
     assert "unsupportedTileFallback" in map_view
-    assert '"vworld-map-web": "file:vendor/vworld-map-web-1.0.0.tgz"' in package
+    assert '"vworld-map-web": "file:vendor/vworld-map-web-1.0.1.tgz"' in package
     assert '"vworld-map-core": "file:vendor/vworld-map-core-1.0.0.tgz"' in package
     assert '"maplibre-gl"' in package
     assert "https://github.com/digitie/maplibre-vworld-react.git" in gitmodules

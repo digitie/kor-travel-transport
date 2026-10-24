@@ -17,7 +17,7 @@ Map PR1355의 기존 consumer는 T1의 `collection/has_more/next_cursor` 페이�
 
 [제품 검증·머지/운영 잔여 gate 정산](reports/2026-10-23-map-t2-t3-acceptance.md). KAC quota 복구 PR119도 운영 rollout 전에 포함한다.
 
-모든 경로는 `/v1/service/exports/` 아래이며 기존 service token header/peer 허용 규칙을 사용한다.
+모든 경로는 `/v1/service/exports/` 아래이며 기존 `X-Kor-Travel-Transport-Service-Token` header/peer 허용 규칙을 사용한다.
 새 인증 방식이나 브라우저 토큰을 만들지 않는다. 배포 및 source flag 활성화는 운영 수집 run과
 조율하는 별도 gate이며 본 문서의 fixture 응답을 운영 검증으로 해석하면 안 된다.
 
@@ -38,7 +38,15 @@ Map PR1355의 기존 consumer는 T1의 `collection/has_more/next_cursor` 페이�
 승인집합의 가장 이른 원천 관측시각을 쓴다. source_status는 ok/stale이며 item_count는 페이지의
 행수, total_count는 고정 집합 전체행수다. 메타 없는/급감미확인 첫집합은503으로 닫는다.
 철도 코드의 선행0과 nullable code/coords, parking의 airport_anchor, 항구 guideline 좌표null을
-그대로 보존한다. admin block의10자리 법정동코드를 직접 쓰고 geo를 재호출하지 않는다.
+그대로 보존한다. T1 fuel/rest-area 및 T3 참조의 admin은 현재 좌표의 coordinate_key와
+reverse_address_entries가 일치할 때만 싣고, 없거나 불일치하면 null이다. 주소 provider는
+vworld/kakao이며 nullable code/주소 필드를 보존한다. 검증된10자리 legal_dong_code를
+직접 쓰고 geo를 재호출하지 않는다. 기존 Map T1 consumer의 admin 소비는 별도 후속이다.
+
+T4는 [별도 가격 이력 계약](map-service-price-history.md)을 따른다. query는 product/from/to,
+limit은 전체 페이지 행수, cursor revision/만료는409다. 위 T2/T3의410과 혼동하지 않는다.
+휴게소 가격 이력은501이며 이력 표를 새로 만들지 않는다. Map의 기존 T4 query/parser와
+producer 응답 사이 호환 수정은 Map 소유 후속이다.
 
 ## Map reader 처리 순서
 
@@ -60,7 +68,7 @@ Map PR1355의 기존 consumer는 T1의 `collection/has_more/next_cursor` 페이�
 
 ## 배포 및 초기 승인
 
-API 이미지와 collector code 모두 새 코드를 사용해야 한다. migration31/32/33을 현재 head까지
+API 이미지와 collector code 모두 새 코드를 사용해야 한다. migration0030~0033을 현재 head까지
 적용한다. `TRANSPORT_MAP_CURRENT_ENABLED` 하나가 새 T2/T3 API와 collector 모두를 제어하며
 source별 개별 flag가 아니다. 기본값은 false이고 API·CS 환경을 일치시켜야 한다. 활성화 뒤
 승인된 정상수집 순서로 scope별 head를 채운다. 이력 전체 backfill은 하지 않는다.

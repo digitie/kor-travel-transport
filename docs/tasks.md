@@ -10,7 +10,7 @@
 
 ## 진행 중인 작업 인덱스
 
-- [ ] 이용 목적 중심 관리자 7~11번 수용: 홈/분류 메뉴·12지표·일반/도시철도·버스·공항·정보 버튼/모바일 지도·ITS 선택 노선 선형 지도 구현의 최종 PG/Compose/CI/독립 리뷰를 마감한다. 전국 버스 전체 연결·미확인 터미널 좌표는 별도 미완료다. 추가 사용자 지시로 순수 UI 호환분은 서브에이전트가 먼저 검증·배포하며 API/schema/수집기는 통합 담당 범위다. [검증 원장](reports/2026-10-24-transport-user-journeys.md).
+- [ ] 이용 목적 중심 관리자 7~11번 수용: 홈/분류 메뉴·12지표·일반/도시철도·버스·공항·정보 버튼/모바일 지도·ITS 선택 노선 선형 지도 구현의 최종 PG/Compose/CI/독립 리뷰를 마감한다. 전국 버스 전체 연결·미확인 터미널 좌표는 별도 미완료다. 순수 UI 호환분은 PR127로 main34f8fab에 머지했고 빌드·배포는 다른 담당이 진행한다. API/schema/ITS는 PR126에서 별도 검증한다. [검증 원장](reports/2026-10-24-transport-user-journeys.md).
 
 
 - [ ] Map T2/T3 운영 수용: schema0030~0033와 API/CS를 승인된 drain 뒤 배포하고 source별 정상 성공 head를 준비한다. API·CS의 단일 defaultOFF flag를 일치시켜 활성화하고 승인된 수집 순서로 bootstrap한 뒤 실제 HTTPS·Map 새 frozen reader·UI·TTL/실패 복구를 검증한다. KAC quota PR119를 배포에 포함하며 원래 deadline 만료 뒤 재시도를 확인한다. [구현·검증 정산](reports/2026-10-23-map-t2-t3-acceptance.md).
@@ -47,7 +47,7 @@
 수용했다. 실패·수정 집중검증은 [기록](reviews/2026-10-19-track2-runtime-contract.md)을 따른다.
 전체 T-TRN-01~05를 일괄 완료 처리하지 않으며 03/04 문서·legacy와05 메모리 수용은 후속이다.
 
-> **2026-10-17 당시 정산:** [Transport 남은 작업 감사](audits/2026-10-17-remaining-work.md)가 source 완료·실환경 잔여·낡은 체크박스를 구분한다. PR84는 main d1593ecc로 머지됐고 기존 UI34/호스트 효과/Docker95는 수용됐다. 전체 ARM build·새 URL bundle·첫 전체 cutover/T05는 별개라 T-TRN-01/02 전체 체크는 유지한다. 사용자 지시로 daemon OFF이며 감사가 수집 재개를 뜻하지 않는다. T-040/041/043의 오래된 묶음 체크는 새 제품 구현 목록으로 그대로 재실행하지 않는다.
+> **2026-10-17 당시 정산:** [Transport 남은 작업 감사](audits/2026-10-17-remaining-work.md)가 source 완료·실환경 잔여·낡은 체크박스를 구분한다. PR84는 main d1593ecc로 머지됐고 기존 UI34/호스트 효과/Docker95는 수용됐다. 전체 ARM build·새 URL bundle·첫 전체 cutover/T05는 별개라 T-TRN-01/02 전체 체크는 유지한다. 당시 daemon OFF 기록은 현재 지시가 아니다. 현재 사용자 정책은 공용 daemon RUNNING이며 배포 시 Transport instigator만 일시 pause/drain/원상 복원한다. T-040/041/043의 오래된 묶음 체크는 새 제품 구현 목록으로 그대로 재실행하지 않는다.
 
 - [ ] 통합 교통 통계 캐시 미적중 지연 조사: n150 운영에서
       `/v1/transport/statistics?days=2` 공개 요청이 간헐적으로 10초 프록시
@@ -380,3 +380,7 @@ dark-mode 차트/톤 팔레트 미토큰화, `globals.css` 전반의 desktop-fir
   게이트웨이에서 접근을 제한해야 한다.
 
 - [ ] Map T4 가격 이력: PR110 구현·검증·머지 완료(주유소 bounded 조회·공통meta·ETag/gzip·cursor/revision, 휴게소501). 운영배포·stale 이력/304/gzip/페이지 계약·기존UI16 수용은 완료다. Map 예시 인계 댓글은 게시했고 소비자 수용·실수집 최신성 회복 뒤 추가 확인이 남았다. T1fuel200/admin 정상자료도 별도 미완이다. [계약](map-service-price-history.md).
+
+## UI 선행 반영(2026-10-24)
+
+- [ ] 기존 API 호환 관리자 UI의 검증·두 독립 리뷰·관리자 웹 단독 배포와 운영 반응형 수용. [범위](reports/2026-10-24-ui-first-release.md).
