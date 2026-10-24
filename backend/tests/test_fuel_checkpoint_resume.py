@@ -6,7 +6,7 @@ from dataclasses import replace
 
 import pytest
 from opinet import OpinetServerError
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError
 
 from app.core.time_utils import now_utc, serialize_utc
@@ -14,6 +14,95 @@ from app.db.session import create_engine_and_session_factory, init_database
 from app.models import CollectionRun, FuelLatestPrice, FuelPriceSnapshot, FuelStation, TransportCollectionState
 from app.services.transport_collection import OPINET_SOURCE, TransportCollectionService, _is_transient_database_error
 from test_transport_collection import FakeTransportProvider, build_settings
+
+
+@pytest.mark.parametrize("scheduler_mode", ["dagster", "in_process"])
+@pytest.mark.parametrize("interruption", ["store_timeout", "cancelled_fetch"])
+@pytest.mark.parametrize("lock_kind", ["injected", "postgres"])
+def test_source_lock_failure_keeps_terminal_run_and_checkpoint_resume(
+    test_settings, scheduler_mode, interruption, lock_kind,
+):
+    if lock_kind == "postgres" and not test_settings.database_url.startswith("postgresql"):
+        pytest.skip("실제 advisory lock 경쟁은 전용 PostgreSQL 테스트에서 실행합니다.")
+
+    async def exercise():
+        test_settings.scheduler_mode = scheduler_mode
+        provider = FakeTransportProvider()
+        snapshot = await provider.collect_fuel()
+        pending = {"snapshot": None}
+        provider.pending_fuel_snapshot = AsyncMock(side_effect=lambda: pending["snapshot"])
+        provider.acknowledge_fuel_snapshot = Mock(
+            side_effect=lambda _: pending.update(snapshot=None),
+        )
+        engine, factory = create_engine_and_session_factory(test_settings.database_url)
+        await init_database(engine)
+        service = TransportCollectionService(test_settings, provider)
+        real_lock = service._acquire_database_lock
+        calls = 0
+
+        class LockTimeout(Exception):
+            sqlstate = "55P03"
+
+        async def contended_lock(session, group):
+            nonlocal calls
+            calls += 1
+            if calls > 1:
+                if lock_kind == "injected":
+                    raise DBAPIError("SELECT pg_advisory_xact_lock", {}, LockTimeout("source lock timeout"))
+                await session.execute(text("SET LOCAL lock_timeout = '50ms'"))
+            await real_lock(session, group)
+
+        service._acquire_database_lock = contended_lock
+        try:
+            async with factory() as holder:
+                async def collect_fuel():
+                    pending["snapshot"] = snapshot
+                    if lock_kind == "postgres":
+                        # 최초 claim commit 뒤 다른 세션이 실제 source 잠금을 계속 보유한다.
+                        await real_lock(holder, "fuel")
+                    if interruption == "cancelled_fetch":
+                        raise asyncio.CancelledError("cancel after checkpoint completion")
+                    return snapshot
+
+                provider.collect_fuel = AsyncMock(side_effect=collect_fuel)
+                async with factory() as session:
+                    task = asyncio.create_task(service.collect(session, scope="fuel"))
+                    expected = asyncio.CancelledError if interruption == "cancelled_fetch" else DBAPIError
+                    with pytest.raises(expected):
+                        await task
+                    assert task.cancelled() is (interruption == "cancelled_fetch")
+                    assert (await session.execute(text("SELECT 1"))).scalar_one() == 1
+                assert calls <= 5
+                async with factory() as session:
+                    run = await session.scalar(select(CollectionRun))
+                    assert run.status == "failed" and run.finished_at is not None
+                    assert run.error_message
+                    if interruption == "cancelled_fetch":
+                        assert run.error_message == "collection cancelled"
+                    state = await session.scalar(select(TransportCollectionState).where(
+                        TransportCollectionState.source == OPINET_SOURCE))
+                    due = serialize_utc(state.next_due_at)
+                    assert state.last_error is None  # source 잠금 없이 실패 상태를 쓰지 않는다.
+                    assert await session.scalar(select(FuelLatestPrice).limit(1)) is None
+                provider.acknowledge_fuel_snapshot.assert_not_called()
+                assert pending["snapshot"] is snapshot
+                await holder.rollback()
+
+            service._acquire_database_lock = real_lock
+            async with factory() as session:
+                result = await service.collect(session, scope="fuel")
+                assert result["status"] == "success"
+                state = await session.scalar(select(TransportCollectionState).where(
+                    TransportCollectionState.source == OPINET_SOURCE))
+                assert serialize_utc(state.next_due_at) == due
+                assert serialize_utc(state.last_success_at) == serialize_utc(snapshot.collected_at)
+                assert state.last_error is None
+                assert await session.scalar(select(FuelLatestPrice).limit(1)) is not None
+            provider.collect_fuel.assert_awaited_once()
+            provider.acknowledge_fuel_snapshot.assert_called_once_with(snapshot)
+        finally:
+            await engine.dispose()
+    asyncio.run(exercise())
 
 
 def test_failed_store_resumes_without_provider_requests_or_extending_reservation(tmp_path):

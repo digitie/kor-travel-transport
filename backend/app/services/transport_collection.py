@@ -699,23 +699,36 @@ class TransportCollectionService:
             run.error_message = "\n".join(errors) if errors else None
             await session.commit()
         except (Exception, asyncio.CancelledError) as exc:
-            await session.rollback()
-            failed_run = await session.get(CollectionRun, run_id)
-            failed_run.status = "failed"
-            failed_run.finished_at = now_utc()
             message = "collection cancelled" if isinstance(exc, asyncio.CancelledError) else _safe_error(exc, self.settings)
-            failed_run.error_message = message
-            for source in claimed_sources:
-                if source in persisted_sources:
-                    continue
-                if source == OPINET_SOURCE:
-                    await self._acquire_database_lock(session, "fuel")
-                    if await fuel_checkpoint_was_superseded():
+            try:
+                await session.rollback()
+                failed_run = await session.get(CollectionRun, run_id)
+                failed_run.status = "failed"
+                failed_run.finished_at = now_utc()
+                failed_run.error_message = message
+                # 자기 실행의 종료는 source 잠금과 독립적이다. source 게시가 계속 막혀도
+                # in-process 실행까지 running으로 남기지 않는다.
+                await session.commit()
+                for source in claimed_sources:
+                    if source in persisted_sources:
                         continue
-                state = await self._get_or_create_state(session, source)
-                state.last_error = message
-                state.updated_at = now_utc()
-            await session.commit()
+                    if source == OPINET_SOURCE:
+                        await self._acquire_database_lock(session, "fuel")
+                        if await fuel_checkpoint_was_superseded():
+                            continue
+                    state = await self._get_or_create_state(session, source)
+                    state.last_error = message
+                    state.updated_at = now_utc()
+                await session.commit()
+            except Exception as recording_error:
+                try:
+                    await session.rollback()
+                except Exception:
+                    logger.warning("transport failure state rollback failed run_id=%s", run_id)
+                logger.warning("transport failure state publication failed run_id=%s: %s",
+                               run_id, _safe_error(recording_error, self.settings))
+                # 후행 DB 오류가 원래 취소를 일반 실패로 바꿔 scheduler 종료를 막지 않는다.
+                raise exc from recording_error
             raise
 
         logger.info(
