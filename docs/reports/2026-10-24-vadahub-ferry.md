@@ -52,3 +52,9 @@ GDAL binding은 이미지의 `gdal-config --version`과 같은 버전을 native 
 이 비용이 매 소스 변경마다 반복되지 않도록 COPY 이전의 별도 이미지 cache 층에 둔다.
 ARM 사전 빌드는 NVMe와 전용 BuildKit(메모리1536MiB·swap 포함2048MiB·CPU1.5개 상한)에서
 진행하며 운영 컨테이너·공용 daemon은 교체하지 않는다.
+
+기존 Dockerfile의 범위 의존성 설치가 lock과 다른 FastAPI0.162/SQLAlchemy2.1을
+선택하는 것을 사전 빌드에서 발견했다. 고정 uv0.11.21로 committed lock을
+검사·export하고 전체 의존성을 버전 고정 설치한 뒤 backend를 `--no-deps`로 설치한다.
+`pip check`도 이미지 빌드 게이트에 포함한다. native GDAL만 시스템 ABI와 같은
+별도 패키지이며 SDK의 VCS commit도 lock 그대로 유지한다.

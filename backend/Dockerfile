@@ -19,7 +19,12 @@ COPY scripts /app/scripts
 # This file contains no credentials; runtime secrets stay in the host-only env file.
 COPY docker-compose.shared.yml /app/compose-contract/docker-compose.shared.yml
 
-RUN pip install --no-cache-dir -e ".[dev]"
+RUN pip install --no-cache-dir "uv==0.11.21" \
+    && uv export --locked --extra dev --no-emit-project --no-hashes \
+        --format requirements.txt --output-file /tmp/backend-requirements.txt \
+    && pip install --no-cache-dir --no-deps -r /tmp/backend-requirements.txt \
+    && pip install --no-cache-dir -e ".[dev]" --no-deps \
+    && pip check
 
 # Opinet의 실험적 지역별 화면 수집기가 사용하는 Chromium과 Linux 런타임을
 # 이미지에 포함한다. 수집기는 TRANSPORT_COLLECTION_ENABLED=true일 때만 실행된다.
