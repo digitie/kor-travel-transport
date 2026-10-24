@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getDagsterOverview, JOB_LABELS, statusLabel, type DagsterOverview } from "@/lib/dagster";
 import { dagsterLocationUrl, dagsterRunUrl, dagsterJobRunsUrl } from "@/lib/dagster-scope";
+import { needsProviderAttention } from "@/lib/provider-status";
 import { dateTime, transportGet } from "@/lib/journey";
 
 type Provider = {
@@ -50,7 +51,7 @@ export function OperationsHome() {
     setProviders(null); setDagster(null); setErrors({}); setLoading(true); setReload((value) => value + 1);
   }
   const activeProviders = providers?.items.filter((item) => item.enabled && item.mode === "scheduled");
-  const attention = providers?.items.filter((item) => item.enabled && (item.error_code || ["failed", "upstream_error", "not_collected"].includes(item.status)));
+  const attention = providers?.items.filter(needsProviderAttention);
   const coverage = providers?.kric_coverage;
   const activeRuns = dagster?.activeRuns;
   const recentRuns = dagster?.runs ?? [];
