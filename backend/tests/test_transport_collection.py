@@ -201,6 +201,7 @@ def test_lifespan_cancels_both_transport_tasks_before_closing_provider(tmp_path:
 
     monkeypatch.setattr("app.main._run_scheduler", parking_scheduler)
     monkeypatch.setattr("app.main._run_transport_scheduler", transport_scheduler)
+    monkeypatch.setattr("app.services.transport_collection.build_transport_provider", lambda _settings: FakeTransportProvider())
     monkeypatch.setattr(TransportCollectionService, "close", close)
     with TestClient(create_app(settings)) as client:
         client.portal.call(asyncio.wait_for, ready.wait(), 5)
