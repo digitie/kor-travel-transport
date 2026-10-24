@@ -269,16 +269,20 @@ def _collect_transport(scope: CollectionScope) -> dict[str, Any]:
     # 성공분·실패 상태를 커밋하고 provider를 닫은 뒤 Dagster에도 실패를 전달한다.
     # 원인은 가린 한 줄로 설명에 싣는다(다음 진단이 DB를 보지 않아도 되게). 기존 호출 유예를 자동 재시도로
     # 우회하지 않는다.
-    if result.get("status") in {"failed", "partial_success"}:
+    if result.get("status") in {"failed", "partial_success"} or (
+        scope == "fuel" and result.get("status") == "skipped" and result.get("fuel_ready") is not True
+    ):
         errors = result.get("errors")
-        description = (f"교통정보 수집에 실패했습니다(status={result['status']}): {_redacted_causes(errors)}. "
+        reason = ", skip_reason=collector_busy" if result.get("skip_reason") == "collector_busy" else ""
+        description = (f"교통정보 수집에 실패했습니다(status={result['status']}{reason}): {_redacted_causes(errors)}. "
                        "저장된 성공분과 호출 유예는 유지합니다.")
         if len(description) > MAX_FAILURE_DESCRIPTION_CHARS:
             description = description[: MAX_FAILURE_DESCRIPTION_CHARS - 3] + "..."
         raise Failure(
             description=description,
             metadata={"run_id": result["collection_run_id"], "status": result["status"], "scope": scope,
-                      "error_count": len(errors) if isinstance(errors, (list, tuple)) else 0},
+                      "error_count": len(errors) if isinstance(errors, (list, tuple)) else 0,
+                      **({"skip_reason": "collector_busy"} if reason else {})},
             allow_retries=False,
         )
     return result
@@ -324,23 +328,42 @@ def _forward_progress_logs(context: Any, names: tuple[str, ...] = FUEL_PROGRESS_
     handler = _DagsterLogForwarder(context, _secret_forms())
     loggers = [logging.getLogger(name) for name in names]
     previous_levels = [item.level for item in loggers]
+    previous_propagation = [item.propagate for item in loggers]
+    previous_context_level = context.log.level
+    if context.log.getEffectiveLevel() > logging.INFO:
+        # 공용 instance의 python_log_level=WARNING도 이 op 안에서만 완화한다.
+        # provider logger만 낮추면 최종 context.log.info에서 진행 로그가 버려진다.
+        context.log.setLevel(logging.INFO)
     for item in loggers:
         item.addHandler(handler)
+        # 공용 root capture가 원문을 중복 기록하지 않도록 가린 전달 경로만 사용한다.
+        item.propagate = False
         if item.getEffectiveLevel() > logging.INFO:
             item.setLevel(logging.INFO)
     try:
         yield
     finally:
-        for item, level in zip(loggers, previous_levels):
+        for item, level, propagate in zip(loggers, previous_levels, previous_propagation):
             item.removeHandler(handler)
             item.setLevel(level)
+            item.propagate = propagate
+        context.log.setLevel(previous_context_level)
 
 
 @op
 @_redact_op_errors
 def collect_fuel_transport(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance), _forward_progress_logs(context):
-        return _collect_transport("fuel")
+        result = _collect_transport("fuel")
+        context.add_output_metadata({key: value for key, value in result.items()
+                                     if key in {"status", "collection_run_id", "fuel_station_count", "fuel_price_count",
+                                                "fuel_ready", "next_fuel_due_at", "last_fuel_success_at", "skip_reason"}})
+        if result.get("status") == "skipped":
+            if result.get("skip_reason") == "collector_busy":
+                context.log.warning("유가 수집은 다른 수집기가 체크포인트를 사용 중이어서 실행하지 않았습니다(status=skipped).")
+            else:
+                context.log.warning("유가 수집은 호출 유예 중이어서 실행하지 않았습니다(status=skipped).")
+        return result
 
 
 def _place_collection_error(result: dict[str, Any]) -> bool:

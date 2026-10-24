@@ -21,6 +21,43 @@ Firefox 수정본1.0.1을 소비하면서 옛1.0.0을 요구하던 계약 테스
 James/Popper 최종 독립 리뷰의 잔여 P0/P1/P2는 없다. Common PR45/krits PR4도 main에 머지했다.
 이후 문서 증빙 변경은 실행 소스를 바꾸지 않는다. 실제 운영 수용과 미완료 범위는 [정산](reports/2026-10-24-transport-user-journeys.md)을 따른다.
 
+# 현재 상태 — 2026-10-24 오피넷 수집·저장 재개 보완 중
+
+43b20f1은 main PR126/fbdcd98의 ITS·철도와 schema0034를 보존한 통합 후보다.
+집중 검증은 고정 archive에서 다시 실행하며 최종 결과·두 재리뷰는 PR123에서 확인한다.
+
+**배포 대기:** 사용자 지시로 운영 staging·빌드·컨테이너·스케줄 변경을 수행하지 않는다.
+다른 에이전트가 일괄 배포한다. [최종 SHA·설정·운영 확인 인계](reports/2026-10-24-opinet-deployment-handoff.md).
+
+43bde97 전체 CI1140 PASS/2 SKIP 뒤 공식 리뷰에서 source 잠금 timeout이 자기 실행
+종료까지 막는P2가 재현됐다. 원래 취소가 후행 DB 오류로 바뀌는 경계도 추가 확인했다.
+b089c26은 실행 원장 종료를 먼저 확정하고 source fencing·원래 취소·완료 결과를 보존한다.
+실제 PostgreSQL의 다른 세션 advisory lock 보유를 포함한8 FAIL→8 PASS다.
+이전 후보의 리뷰 통과를 새 후보의 승인으로 세지 않으며 최종 정본은 PR123이다.
+
+운영 run1645의 약3시간 브라우저 수집 뒤 최신 가격 SQL timeout과 실패 뒤8시간 유예
+재설정을 확인했다. Provider PR24의 지역별 영속 체크포인트·시군구 탐색 최적화와
+Transport의 RETURNING 기반 최신 가격 갱신·외부 조회 없는 저장 재개를 검증 중이다.
+사용자 최종 요청에 따라 클릭별 랜덤 지연은0.15~0.85초(평균0.50초)로 조정한다.
+시군구 선택의 자동 결과를 검증해 중복 조회를 줄인다. 문서 완료 검증은 유지하고
+image/font/media만 제외한다. 후속 Provider PR27의f58a879는 Chromium CDP로 시각 자원만
+차단해 HTTP 캐시를 유지한다. WSL355 PASS/4 live SKIP·coverage93.96%·mypy·CI5개 PASS이며
+실제 Chromium의 반복 POST 캐시와 종료 경합을 검증했다. 실제 SQLite 작성자 경합은
+별도 타입으로 구분한다(PR26 머지). 경합은 기존 원천 성공·오류·예약을 바꾸지 않고
+skipped로 남긴다. 앱7d254cc 집중 SQLite141·PostgreSQL141 PASS, 직전361후보 Docker128·UI12 PASS다.
+150~850ms 최종 지연과 무응답 CDP 종료5초 상한·원래 취소/인증 오류 보존을 포함한
+f58a879를 고정한다. 반복 수집기도 취소 뒤 일반 실패 대기로 넘어가지 않고 종료한다.
+Provider 최종 CI와 James/Popper 독립 재리뷰를 통과해 PR27을 머지했다.
+이후 코드7d254cc에서 실제 수집 진입의 작성자 경합·완료 결과 반환 전 취소 경쟁도 보완했다.
+자기 unused claim만 비교 후 복원하고 다른 실행의 성공을 유지한다. unhealthy busy의
+Failure metadata와 in-process backoff를 보완했다. 최종 Docker·CI·공식 리뷰 정본은 PR123이다.
+전국30분은 실측 전 목표다.
+다음 한 작업은 최종 CI·앱 독립 리뷰·격리 UI 검증을 마치고 PR123을 정산하는 것이다.
+운영 정상 소스·export200·전국 시간 수용은 일괄 배포 담당자에게 인계한다.
+[점검·검증 상태](reports/2026-10-24-opinet-resume-review.md).
+운영은11:33 KST 기준 API/CS e01f8e9이며 staging50537f6과 다르다. 다른 작업이 남긴
+Transport instigator17개 STOPPED와 활성 run/worker0을 확인했으며 임의 복원하지 않았다.
+
 # 현재 상태 — 2026-10-23 Map T2/T3 제품 수용 정산
 
 ## 2026-10-24 — 공통 지도 UI와 이용 목적 개선

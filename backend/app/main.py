@@ -3558,6 +3558,10 @@ async def _run_transport_scheduler(app: FastAPI, scope: CollectionScope = "highw
                     summary["fuel_price_count"],
                 )
                 delay = await service.next_collection_delay(session, scope)
+                if scope == "fuel" and (summary["status"] in {"failed", "partial_success"}
+                                        or summary.get("skip_reason") == "collector_busy"):
+                    # 기존 예약은 보존하되 저장 실패·다른 작성자 대기를 1초마다 반복하지 않는다.
+                    delay = max(delay, float(settings.transport_collect_interval_seconds))
             except Exception:
                 await session.rollback()
                 logger.exception("transport scheduler tick failed")

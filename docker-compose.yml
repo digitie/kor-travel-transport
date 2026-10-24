@@ -63,6 +63,7 @@ services:
       OPINET_QUERY_LEVEL: "${OPINET_QUERY_LEVEL:-sigungu}"
       OPINET_BROWSER_CHANNEL: "${OPINET_BROWSER_CHANNEL:-}"
       OPINET_BROWSER_TIMEOUT_MS: "${OPINET_BROWSER_TIMEOUT_MS:-60000}"
+      OPINET_CHECKPOINT_PATH: "${OPINET_CHECKPOINT_PATH:-/app/collector-state/opinet.sqlite3}"
       PORT_GUIDELINE_COLLECTION_ENABLED: "${PORT_GUIDELINE_COLLECTION_ENABLED:-true}"
       FERRY_TIMETABLE_COLLECTION_ENABLED: "${FERRY_TIMETABLE_COLLECTION_ENABLED:-false}"
       FERRY_TIMETABLE_STORAGE_DAYS: "${FERRY_TIMETABLE_STORAGE_DAYS:-10}"
@@ -85,6 +86,7 @@ services:
       BACKUP_STORAGE_LIMIT_BYTES: "${BACKUP_STORAGE_LIMIT_BYTES:-8589934592}"
     volumes:
       - ./backups:/app/backups
+      - opinet-checkpoints:/app/collector-state
     networks:
       - kor-travel-transport-net
     ports:
@@ -125,3 +127,6 @@ services:
 networks:
   kor-travel-transport-net:
     external: true
+
+volumes:
+  opinet-checkpoints:

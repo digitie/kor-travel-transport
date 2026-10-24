@@ -459,7 +459,8 @@ def _wrapped_call(target):
     return body
 
 
-def test_fuel_op_forwards_progress_logs_to_the_event_log_redacted(monkeypatch):
+@pytest.mark.parametrize("log_level", ["INFO", "WARNING"])
+def test_fuel_op_forwards_progress_logs_to_the_event_log_redacted(monkeypatch, log_level):
     """유가 op는 오피넷 수집기·수집 서비스의 진행 로그(INFO)를 가린 뒤 event log로 넘기고, 끝나면 되돌린다."""
     import logging
 
@@ -476,7 +477,7 @@ def test_fuel_op_forwards_progress_logs_to_the_event_log_redacted(monkeypatch):
 
     _patch_services(monkeypatch)
     monkeypatch.setattr(dagster_definitions, "_run_with_session", run_with_progress)
-    with DagsterInstance.ephemeral() as instance:
+    with DagsterInstance.local_temp(overrides={"python_logs": {"python_log_level": log_level}}) as instance:
         result = dagster_definitions.fuel_collection_job.execute_in_process(raise_on_error=False, instance=instance)
         assert result.success is True
         texts = [entry.user_message for entry in instance.all_logs(result.run_id) if entry.dagster_event is None]
@@ -488,3 +489,47 @@ def test_fuel_op_forwards_progress_logs_to_the_event_log_redacted(monkeypatch):
     _assert_no_secret(texts)
     # op가 끝나면 logger 상태(수준·handler)는 원래대로다.
     assert [(item.level, list(item.handlers)) for item in (browser_logger, service_logger)] == before
+
+
+@pytest.mark.parametrize("readiness", [False, None, "missing"])
+def test_fuel_unhealthy_skip_does_not_report_dagster_success(monkeypatch, readiness):
+    async def skipped(*_args, **_kwargs):
+        result = {"status": "skipped", "collection_run_id": 10,
+                  "errors": [f"previous storage failure {KEX_KEY}"]}
+        if readiness != "missing":
+            result["fuel_ready"] = readiness
+        return result
+    _patch_services(monkeypatch)
+    monkeypatch.setattr(dagster_definitions, "_run_with_session", skipped)
+    result = dagster_definitions.fuel_collection_job.execute_in_process(raise_on_error=False)
+    assert not result.success
+    failures = [event for event in result.all_events if event.is_step_failure]
+    assert "status=skipped" in failures[0].step_failure_data.user_failure_data.description
+    _assert_no_secret(_error_texts(failures[0].step_failure_data.error))
+
+
+def test_fuel_busy_skip_exposes_ownership_reason_when_source_is_healthy(monkeypatch):
+    async def skipped(*_args, **_kwargs):
+        return {"status": "skipped", "collection_run_id": 10, "fuel_ready": True,
+                "skip_reason": "collector_busy", "errors": []}
+    _patch_services(monkeypatch)
+    monkeypatch.setattr(dagster_definitions, "_run_with_session", skipped)
+    result = dagster_definitions.fuel_collection_job.execute_in_process(raise_on_error=False)
+    assert result.success
+    output = next(event.step_output_data for event in result.all_events if event.event_type_value == "STEP_OUTPUT")
+    assert output.metadata["skip_reason"].value == "collector_busy"
+    assert output.metadata["fuel_ready"].value is True
+
+
+def test_unhealthy_busy_skip_keeps_ownership_reason_on_dagster_failure(monkeypatch):
+    async def skipped(*_args, **_kwargs):
+        return {"status": "skipped", "collection_run_id": 10, "fuel_ready": False,
+                "skip_reason": "collector_busy", "errors": ["previous storage failure"]}
+    _patch_services(monkeypatch)
+    monkeypatch.setattr(dagster_definitions, "_run_with_session", skipped)
+    result = dagster_definitions.fuel_collection_job.execute_in_process(raise_on_error=False)
+    assert not result.success
+    failure = next(event.step_failure_data.user_failure_data for event in result.all_events if event.is_step_failure)
+    assert failure.metadata["skip_reason"].value == "collector_busy"
+    assert "collector_busy" in failure.description
+    assert "previous storage failure" in failure.description

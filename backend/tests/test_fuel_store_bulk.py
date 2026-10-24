@@ -411,8 +411,8 @@ def test_bulk_store_issues_bounded_statements(client, monkeypatch) -> None:
 
     station_count, price_count = asyncio.run(run())
     assert (station_count, price_count) == (200, 1000)
-    # 주유소 4묶음 + 유가 10묶음 + 최신 유가 1 (+ 개수 확인용 scalar는 execute를 거치지 않는다).
-    assert calls == 4 + 10 + 1
+    # 주유소 4묶음 + 유가 10묶음 + 최신 유가 10묶음. 전체 이력 재검색은 없다.
+    assert calls == 4 + 10 + 10
 
 
 @pytest.mark.skipif(os.getenv("KOR_TRAVEL_TRANSPORT_FUEL_STORE_BENCH") != "1",

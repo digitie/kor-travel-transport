@@ -201,6 +201,7 @@ def test_lifespan_cancels_both_transport_tasks_before_closing_provider(tmp_path:
 
     monkeypatch.setattr("app.main._run_scheduler", parking_scheduler)
     monkeypatch.setattr("app.main._run_transport_scheduler", transport_scheduler)
+    monkeypatch.setattr("app.services.transport_collection.build_transport_provider", lambda _settings: FakeTransportProvider())
     monkeypatch.setattr(TransportCollectionService, "close", close)
     with TestClient(create_app(settings)) as client:
         client.portal.call(asyncio.wait_for, ready.wait(), 5)
@@ -1053,6 +1054,16 @@ def test_opinet_latest_wait_policy_is_explicitly_forwarded(tmp_path, monkeypatch
     asyncio.run(provider.aclose())
 
 
+def test_live_opinet_provider_keeps_requested_random_action_delays(tmp_path):
+    provider = LiveTransportProvider(build_settings(tmp_path))
+    try:
+        assert provider.opinet is not None
+        assert provider.opinet.throttle.action_min_seconds == 0.15
+        assert provider.opinet.throttle.action_max_seconds == 0.85
+    finally:
+        asyncio.run(provider.aclose())
+
+
 def test_transport_statistics_cache_coalesces_and_evicts_lru_entries() -> None:
     calls = 0
     state = SimpleNamespace(
@@ -1418,7 +1429,8 @@ def test_safe_error_keeps_messages_and_locates_empty_ones() -> None:
     assert located.startswith("TimeoutError at tests/test_transport_collection.py:")
     assert located.endswith("in raise_empty")
 
-def test_fuel_store_retries_same_snapshot_after_price_write_rollback(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize("failed_table", ["fuel_price_snapshots", "fuel_latest_prices"])
+def test_fuel_store_retries_same_snapshot_after_price_write_rollback(tmp_path: Path, monkeypatch, failed_table) -> None:
     """가격 INSERT까지 실행된 실패도 주유소·가격을 되돌리고 원본으로 재시도한다."""
     execute = AsyncSession.execute
     price_writes = []
@@ -1427,7 +1439,7 @@ def test_fuel_store_retries_same_snapshot_after_price_write_rollback(tmp_path: P
 
     async def fail_first_price_write(session, statement, *args, **kwargs):
         result = await execute(session, statement, *args, **kwargs)
-        if getattr(getattr(statement, "table", None), "name", None) == "fuel_price_snapshots":
+        if getattr(getattr(statement, "table", None), "name", None) == failed_table:
             price_writes.append(1)
             if len(price_writes) == 1:
                 raise TimeoutError("after fixture price write")
@@ -1513,15 +1525,16 @@ def test_in_process_fuel_scheduler_still_waits_a_full_interval(tmp_path: Path) -
     asyncio.run(run())
 
 
-def test_fuel_failure_next_due_is_unchanged(tmp_path: Path) -> None:
-    """실패 경로는 그대로다: 실패 시각 + 주기."""
+def test_fuel_failure_keeps_the_claimed_start_reservation(tmp_path: Path) -> None:
+    """실패 후 시작 기준 예약을 보존해 다음 8시간 tick을 건너뛰지 않는다."""
     provider = FakeTransportProvider()
     provider.collect_fuel = AsyncMock(side_effect=RuntimeError("opinet down"))
     result, state, _started = _fuel_state(tmp_path, provider)
     assert result["status"] == "failed"
     due = serialize_utc(state.next_due_at)
     interval = provider.next_fuel_interval()
-    assert now_utc() + interval - timedelta(minutes=1) <= due <= now_utc() + interval
+    from app.services.transport_collection import FUEL_NEXT_DUE_START_SLACK
+    assert due == serialize_utc(state.last_started_at) + interval - FUEL_NEXT_DUE_START_SLACK
 
 
 def test_eight_hourly_ticks_keep_one_failure_inside_the_export_grace(tmp_path: Path, monkeypatch) -> None:
@@ -1567,9 +1580,9 @@ def test_eight_hourly_ticks_keep_one_failure_inside_the_export_grace(tmp_path: P
             provider.collect_fuel = timeout_at_1130
             assert (await service.collect(session, trigger="test", scope="fuel"))["status"] == "failed"
 
-            # 16:00 tick은 실패 + 8시간 예약(19:30) 때문에 건너뛴다 — 실패 경로는 그대로다.
+            # 16:00 tick은 원래 시작 + 8시간 예약으로 재시도할 수 있다.
             clock["now"] = day + timedelta(hours=16, seconds=30)
-            assert not await service._fuel_is_due(session)
+            assert await service._fuel_is_due(session)
             # 다음 00:00 tick은 due이고, 그때 마지막 성공은 아직 export 유예(24시간) 안이다.
             clock["now"] = day + timedelta(hours=24, seconds=30)
             assert await service._fuel_is_due(session)

@@ -35,6 +35,73 @@ Map 기준 필터/종류 아이콘/보기 탭/건수+실제 좌표·줌/지도 �
 Firefox에서 타일 0건을 재현하고 라이브러리 원본의 비표준 protocol→HTTPS 변환을 고쳤다.
 web1.0.1·정확 source pin·lock을 채택하고 Firefox 실제 타일·확대 회귀를 추가했다.
 사용자가 현재 운영 호스트의 관리자 웹만 교체하도록 승인했다. [검증·배포 기록](reports/2026-10-24-firefox-vworld-tiles.md).
+## 2026-10-24 — 오피넷 수집·저장 재개 보완 중
+
+main PR126/fbdcd98의 ITS·철도·schema0034를43b20f1에 일반 merge해 보존했다.
+작업트리 갱신과 겹친 집중 검증은 부분 결과를 폐기한다. 새 provider 의존성을 uv.lock에
+맞추고 자체 테스트 DB만0034로 전진한 뒤 고정 archive·새 이미지로 다시 검증한다.
+운영 DB·컨테이너·스케줄은 변경하지 않는다.
+
+43bde97 전체 CI1140 PASS/2 SKIP 뒤 James 공식 리뷰는 지적 없음, Popper는 저장 잠금의
+연속 timeout이 자기 실행 종료까지 롤백하는P2를 재현했다. 부모는 원래 취소가 후행
+DB 오류로 바뀌는 경계도 추가 재현했다. SQLite4 FAIL/4 PG SKIP, 실제 PostgreSQL의
+독립 잠금 보유를 포함한8 FAIL을 확인하고 b089c26에서 실행 종료를 먼저 확정한다.
+source 잠금·후속 성공 fencing은 유지하며 원래 오류/취소를 보존한다. PostgreSQL8 PASS,
+완료 결과의 provider 재호출0·예약 유지·잠금 해제 뒤 저장 재개를 확인했다.
+최종 집중 회귀·Docker·UI·전체 CI·두 독립 재리뷰는 PR123에서 정산한다.
+
+main의 UI 선행 머지를 통합한 f1d13b7 전체 CI는1139 PASS/2 SKIP/1 FAIL이었다.
+실패는 이미1.0.1로 갱신한 VWorld web tarball을 기존 backend 계약 테스트가1.0.0으로
+기대하던 불일치다. WSL에서1 FAIL을 재현하고 기대값만 정합해 해당 모듈11 PASS를 확인했다.
+수집 runtime·provider·UI 패키지 고정은 바꾸지 않으며 최종 전체 CI·두 리뷰는 PR123에서 정산한다.
+
+사용자 최종 지시로 배포는 대기하고 다른 에이전트의 일괄 배포에 인계한다.
+운영 staging·빌드·컨테이너·instigator 변경은0이다. [배포 인계](reports/2026-10-24-opinet-deployment-handoff.md)에
+최종 provider·코드 SHA·volume·원래 스케줄 상태 미확정·검증 경계를 정리했다.
+후속 사전 리뷰에서 pending 확인 뒤의 작성자 경합과 완료 결과 반환 전 취소/오류가
+다른 실행의 저장 성공을 덮는 두P1, unhealthy busy 설명 누락P2를 재현했다.
+실제 SQLite sidecar의 양쪽 경계와 실제 collector.complete 후 취소/오류를 포함해
+수정 전9 FAIL/6 PASS·수정 후15 PASS다. 외부 요청 없는 claim만5필드 비교 뒤 복원하고
+새 성공을 fencing한다. busy1초 반복도 재현·보완했다(수정 전1 FAIL/6 PASS).
+코드7d254cc의 집중 SQLite141·PostgreSQL141 PASS이며 최종 Docker·CI·두 리뷰는 PR123에서 정산한다.
+
+사용자 장애 제보로 실제 run1645의 브라우저 약3시간 뒤 최신 가격 SQL timeout·전체
+롤백과 이후 skipped/SUCCESS를 확인했다. 두 서브에이전트는 전국 순차 조회와 불필요한
+읍면동 탐색·호스트 CPU 경쟁·운영 INFO 필터 누락을 조사했다. Provider 영속 체크포인트,
+완료 결과 저장 재개, RETURNING 기반 최신 유가 묶음 갱신, 시작 기준 실패 예약과 가린
+진행 로그를 구현·검증 중이다. [상세 점검과 미완 검증](reports/2026-10-24-opinet-resume-review.md).
+추가로 사용자의30분 목표·랜덤성 유지 요청을 받아 provider의 기본 조작 대기를
+초기0.05~0.15초에서 최종 요청의0.15~0.85초 무작위로 조정하고 시군구 정상 자동 POST의 중복 조회를
+제거했다. 문서 완료와 지역·탭 검증은 유지하며 image/font/media만 제외한다.
+최종 provider166dc6d의 WSL340 PASS·Chromium26 PASS·mypy PASS를 확인했다.
+실제 운영 전국30분 수집은 아직 확인하지 않았다.
+사전 적대 리뷰에서 fixture/disabled 미수집의 SUCCESS와 fresh/재개 저장 경합의 tick 여유
+누락을 추가로 재현·수정했다. 만료 예약의 저장 실패1초 반복도 기본 간격 backoff로 줄였다.
+실제 service/Dagster·경합·backoff 집중20 PASS이며 최종 전체 검증을 다시 수행한다.
+후속 리뷰에서 정상 체크포인트 소유권 경합이 기존 원천을 실패/stale로 오염시키는P1도
+재현했다. Provider는 실제 SQLite BUSY/LOCKED만 typed 오류로 구분하고 앱은 경합 시
+기존 성공·오류·예약을 보존한다. 실제 파일 잠금과 PG 회귀를 포함한 집중125 PASS다.
+후속으로 Playwright 요청 라우팅이 JS·CSS 캐시를 끄는 것을 로컬 HTTP 서버와 실제
+Chromium으로 재현했다. Provider PR27 ce801cd는 CDP의 Image·Font·Media만 차단한다.
+초기 GET·동일 페이지 POST2회의 JS·CSS 최초1회 다운로드·가격 fetch·스타일·스크립트와
+진행 중 차단의 페이지 종료 경합을 검증했다. Provider346 PASS/4 live SKIP·coverage93.93%·
+mypy PASS다. 앱은 이 SHA를 고정하며 WSL127·Docker PG127 PASS, 최종 CI는 진행 중이다.
+격리 PG 합성40000행은 실제 수집 서비스 저장13.531초·동일 완료 결과 재개0.026초였고
+브라우저 호출은1회다. 운영 성능과 전국30분을 증명하는 수치로 해석하지 않는다.
+main50537f6의 npm 보안 갱신을 통합한 프론트엔드 WSL130·Docker130·두 build를 확인했다.
+후속 사용자 요청으로 최종 클릭별 지연을150~850ms(평균500ms)로 조정한다.
+독립 Popper 리뷰의 CDP 무응답 종료 정체P1을3경로에서 재현하고5초 정리 상한으로 보완했다.
+수정 전3 FAIL, 수정 후 무응답·종료·랜덤 지연 집중7 PASS다. 최종 전체·pin·CI는 다시 검증한다.
+최종 provider95b6eec는349 PASS/4 live SKIP·coverage93.94%·mypy PASS이며 앱 pin·lock을
+갱신했다. 최종 CI와 독립 재리뷰·운영 수용은 진행 중이다.
+정리 timeout이 원래 취소·인증 오류를 덮는 후속P1도6경로에서 재현했다. 원래 예외를
+보존해 반복 수집기가 취소 후 대기로 돌아가지 않도록 수정했다. 실제 run_forever의
+오류callback0·cancelled=true3경로를 포함한 provider f58a879는355 PASS/4 live SKIP·
+coverage93.96%·mypy·CI5개 PASS이며 최종 두 리뷰를 다시 확인한다.
+f58a879 최종 James/Popper 독립 재리뷰 P0/P1/P2 없음으로 PR27을 머지했다. Popper의
+추가9개 probe도 취소·인증·요청 제한 오류 보존과 바깥 종료 도달을 확인했다.
+같은 provider의 앱 최종 집중 PostgreSQL128 PASS·uv lock check PASS다.
+
 ## 2026-10-24 — 여섯 프로젝트 npm 보안·버전 정합
 
 - 이 저장소의 기존 프론트엔드/공용 테스트 355개와 타입·린트·빌드 PASS. [버전·예외·검증 범위](npm-security-alignment-2026-10-24.md).

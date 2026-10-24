@@ -13,6 +13,10 @@
 - [ ] 이용 목적 중심 관리자 7~11번 수용: 홈/분류 메뉴·12지표·일반/도시철도·버스·공항·정보 버튼/모바일 지도·ITS 선택 노선 선형 지도 구현의 최종 PG/Compose/CI/독립 리뷰를 마감한다. 전국 버스 전체 연결·미확인 터미널 좌표는 별도 미완료다. 순수 UI 호환분은 PR127로 main34f8fab에 머지했고 빌드·배포는 다른 담당이 진행한다. API/schema/ITS는 PR126에서 별도 검증한다. [검증 원장](reports/2026-10-24-transport-user-journeys.md).
 
 
+- [ ] 오피넷 수집·저장 복구: 지역별 체크포인트·완료 결과 저장 재개·최신 가격 SQL 병목·실패 뒤 예약·진행 로그 필터를 검증한다. 배포는 사용자 지시로 대기하고 다른 에이전트의 일괄 배포에 [인계](reports/2026-10-24-opinet-deployment-handoff.md)한다. 새 후보의 실제 최신 source·export200·전국30분 실측은 운영 수용 후 정산한다. [상세 점검](reports/2026-10-24-opinet-resume-review.md).
+
+- [ ] 오피넷 작업 완료 뒤 Dagster 공통 개선: 사용자 2026-10-24 지시에 따라 진행 로그 필터·가림·op 범위 복구를 공통 라이브러리/Manager 계약으로 옮기고 모든 프로젝트 소비를 검증한다. 공용 daemon과 다른 실행은 유지한다.
+
 - [ ] Map T2/T3 운영 수용: schema0030~0033와 API/CS를 승인된 drain 뒤 배포하고 source별 정상 성공 head를 준비한다. API·CS의 단일 defaultOFF flag를 일치시켜 활성화하고 승인된 수집 순서로 bootstrap한 뒤 실제 HTTPS·Map 새 frozen reader·UI·TTL/실패 복구를 검증한다. KAC quota PR119를 배포에 포함하며 원래 deadline 만료 뒤 재시도를 확인한다. [구현·검증 정산](reports/2026-10-23-map-t2-t3-acceptance.md).
 
 
