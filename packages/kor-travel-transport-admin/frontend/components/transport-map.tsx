@@ -134,6 +134,24 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
   const selectedPoint = points.find((point) => current && point.id === keyOf(current))
     ?? (current && hasCoordinates(current) ? { id: keyOf(current), lngLat: [current.longitude, current.latitude] as [number, number], place: current } : undefined);
   const detail = useRef<HTMLElement | null>(null);
+  const detailOpener = useRef<HTMLElement | null>(null);
+  const selectedKey = current ? keyOf(current) : "";
+  const hasEmbeddedDetails = embedded && details !== undefined;
+  useEffect(() => {
+    if (!hasEmbeddedDetails || !selectedKey) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && !detail.current?.contains(active)) detailOpener.current = active;
+    detail.current?.focus({ preventScroll: true });
+  }, [hasEmbeddedDetails, selectedKey, focusRevision, cameraRequest]);
+  const dismissEmbeddedDetail = () => {
+    onCloseDetails?.();
+    const opener = detailOpener.current;
+    detailOpener.current = null;
+    requestAnimationFrame(() => {
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
+      else mapContainer.current?.querySelector<HTMLElement>(".maplibregl-canvas")?.focus({ preventScroll: true });
+    });
+  };
   // 겹친 지점 팝업을 연 묶음 원. 닫기(×·Escape) 뒤 포커스를 그 자리로 돌려준다. 장소를 고르면 상세로 간다.
   const overlapOpener = useRef<HTMLElement | null>(null);
   const closeOverlap = () => {
@@ -307,8 +325,8 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
     : current && hasCoordinates(current) ? { center: [current.longitude, current.latitude], zoom: Math.max(zoom, 11), id: `${keyOf(current)}:${cameraRequest}:${focusRevision}` } : undefined,
   [current, clusterCamera, cameraRequest, focusRevision]); // eslint-disable-line react-hooks/exhaustive-deps
   const closeDetail = () => { setSelected(null); queryInput.current?.focus(); };
-  const detailPanel = embedded && details ? <MapDetailOverlay className="transport-map-detail" aria-label="선택 장소 상세" onDismiss={onCloseDetails}>
-    <div className="journey-detail-header"><Button type="button" size="icon" variant="ghost" aria-label="상세 닫기" onClick={onCloseDetails}><X aria-hidden="true" size={16} /></Button></div>{details}
+  const detailPanel = embedded && details ? <MapDetailOverlay ref={detail} className="transport-map-detail" aria-label="선택 장소 상세" onDismiss={dismissEmbeddedDetail}>
+    <div className="journey-detail-header"><Button type="button" size="icon" variant="ghost" aria-label="상세 닫기" onClick={dismissEmbeddedDetail}><X aria-hidden="true" size={16} /></Button></div>{details}
   </MapDetailOverlay> : !embedded && current ? <MapDetailOverlay className="transport-map-detail weather-inspector" ref={detail} aria-label="선택 장소 상세" onDismiss={closeDetail}>
     <PlaceInspector key={keyOf(current)} place={current} onShowMap={() => { setView("map"); setCameraRequest((value) => value + 1); requestAnimationFrame(() => mapContainer.current?.scrollIntoView({ block: "start" })); }} onClose={() => { setSelected(null); queryInput.current?.focus(); }} onSaved={(updated) => { setSelected(updated); setReload((value) => value + 1); }} onReload={() => { setSelected(null); setReload((value) => value + 1); queryInput.current?.focus(); }} />
   </MapDetailOverlay> : null;

@@ -64,3 +64,20 @@
    별도 `python-krits-api` 진행 작업과 좌표계·링크 ID 계약을 맞춰야 하며 KREX conzone과 ITS link를 이름으로 추정 결합하지 않는다.
 3. 최종 전체 CI·James/Popper·격리 PostgreSQL/Compose·통합 담당의 빌드·운영 배포와 실화면 수용.
    운영 반영 전에는 새 시간표 수집량·전국 범위·성능 향상을 달성했다고 표시하지 않는다.
+
+## 독립 리뷰 후속과 격리 검증
+
+- James 지적: 취소한 철도 조회의 pending 복귀, embedded 상세의 키보드 진입/닫기 복원을 수정했다.
+  버스 목록의 대기/실패와 정상 빈 결과도 구분한다. 375/1440px 조건 왕복·Enter/Escape·포커스 복원과
+  버스 대기/오류 회귀를 포함한 E2E **7개 PASS**다.
+- Popper 지적: TAGO cache miss마다 초기화하던 버킷을 router/worker의 `AsyncTokenBucket`으로 공유한다.
+  서로 다른 miss 사이 1초 간격 회귀와 catalog city membership 검증을 추가했다. 일반철도·startup guard 집중 **12개 PASS**다.
+- 격리 WSL Docker PostgreSQL16에서 migration0034 upgrade와 alembic check PASS,
+  rail/bus/parking/KRIC/lifespan 집중 **53개 PASS**다. Docker 관리자229개도 test 환경에서 PASS다.
+- 새 schema를 올린 PG 검사에서 startup의 옛 head0033 불일치를 발견해0034로 맞췄다. 보호를 제거하지 않았다.
+- 첫 전체 SQLite 검사는 백엔드의 비어 있는 scripts 캐시 디렉터리 때문에 fixture 루트 탐지가 실패했다.
+  원본 코드는 바꾸지 않고 격리 mirror의 빈 디렉터리를 제거한 뒤 전체 회귀를 계속 실행 중이다.
+- SDK PR12의 Python3.11/3.12/3.13·typecheck CI와 최종5bf0e616 James/Popper 재리뷰에서 잔여P0/P1/P2없음.
+- Dagster job 실행 이력 링크는 공식 UI의 `/locations/<location>/jobs/<job>/runs` 계약을 사용한다.
+  [공식 경로](https://github.com/dagster-io/dagster/blob/master/js_modules/ui-core/src/pipelines/PipelineRoot.tsx)를 대조했다.
+- 전체 CI/정확 최종SHA 재리뷰·수용은 진행 중이며 운영 빌드·배포를 재개하지 않는다.

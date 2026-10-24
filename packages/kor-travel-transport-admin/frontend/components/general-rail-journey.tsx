@@ -60,7 +60,12 @@ export function GeneralRailJourney() {
       .catch((reason: unknown) => { if (!controller.signal.aborted) setCatalogError(reason instanceof Error ? reason.message : "철도 기준정보 조회 실패"); });
     return () => controller.abort();
   }, [reload]);
-  useEffect(() => { pending.current?.abort(); }, [key]);
+  useEffect(() => {
+    pending.current?.abort(); pending.current = null;
+    // 조건 변경으로 취소한 요청의 pending 상태가 같은 조건으로 복귀했을 때 살아나지 않게 한다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setResponse((previous) => previous.pending ? { key: "" } : previous);
+  }, [key]);
   useEffect(() => () => pending.current?.abort(), []);
   useEffect(() => { const timer = setInterval(() => setClock(Date.now()), 30_000); return () => clearInterval(timer); }, []);
   async function load() {

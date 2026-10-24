@@ -52,6 +52,15 @@ for (const width of [375, 1440]) test(`운영 홈·노선 중심 도시철도·�
   await expect(page.getByLabel("지금 이후 예정 출발")).toContainText("14:10");
   await page.screenshot({ path: `test-results/metro-journey-${width}.png`, fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(overlay).toHaveCount(0);
+  const stationButton = page.locator(".station-results").getByRole("button", { name: /구성/ });
+  await stationButton.focus();
+  await stationButton.press("Enter");
+  await expect(overlay).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(overlay).toHaveCount(0);
+  await expect(stationButton).toBeFocused();
 });
 
 for (const width of [375, 1440]) test(`일반철도 종류·역 검색과 실제 형태의 운행편 ${width}px`, async ({ page }) => {
@@ -63,7 +72,12 @@ for (const width of [375, 1440]) test(`일반철도 종류·역 검색과 실제
     return route.fulfill({ json: { fetched_at: now(), kind: "ktx", category_code: category, total: 1, categories: [{ code: "ktx1", name: "경부선" }], items: category ? [{ provider_id: "10281321", station_name: "서울", address: "서울특별시 용산구", phone: "1588-7788", latitude: 37.55, longitude: 126.97 }] : [] } });
   });
   await page.route("**/transport/rail/general/stations?**", (route) => route.fulfill({ json: { fetched_at: now(), city_code: "11", items: [{ station_id: "NAT010000", station_name: "서울" }, { station_id: "NAT014445", station_name: "부산" }] } }));
-  await page.route("**/transport/rail/general/timetable?**", (route) => {
+  let requestCount = 0;
+  let releaseFirst: () => void = () => undefined;
+  const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+  await page.route("**/transport/rail/general/timetable?**", async (route) => {
+    requestCount += 1;
+    if (requestCount === 1) await firstGate;
     expect(new URL(route.request().url()).searchParams.get("train_grade_code")).toBe("0A");
     return route.fulfill({ json: { fetched_at: now(), service_date: day(), total: 2, truncated: false, items: [{ train_number: "001", grade_name: "KTX-산천", departure_station_name: "서울", arrival_station_name: "부산", departure_planned_time: stamp(3600_000), arrival_planned_time: stamp(3 * 3600_000), adult_fare: 59800 }, { train_number: "PAST", grade_name: "KTX", departure_planned_time: stamp(-3600_000), arrival_planned_time: stamp(0) }] } });
   });
@@ -82,11 +96,35 @@ for (const width of [375, 1440]) test(`일반철도 종류·역 검색과 실제
   await to.getByLabel("도착역 검색").fill("부산");
   await to.getByRole("button", { name: /부산 NAT014445/ }).click();
   await page.getByRole("button", { name: "예정 운행편 조회" }).click();
+  await expect.poll(() => requestCount).toBe(1);
+  await page.getByLabel("열차 종류", { exact: true }).selectOption("17");
+  await page.getByLabel("열차 종류", { exact: true }).selectOption("0A");
+  await expect(page.getByRole("button", { name: "예정 운행편 조회" })).toBeEnabled();
+  releaseFirst();
+  await page.getByRole("button", { name: "예정 운행편 조회" }).click();
   await expect(page.getByText("59,800원", { exact: true })).toBeVisible();
   await expect(page.getByText("PAST", { exact: false })).toHaveCount(0);
   await page.getByLabel("지금 이후만").uncheck();
   await expect(page.getByText("KTX PAST", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("터미널 목록 대기와 연결 조회 실패를 정상 빈 목록으로 표시하지 않는다", async ({ page }) => {
+  test.setTimeout(90_000); test.skip(!password, "로그인 암호 필요"); await login(page);
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  await page.route("**/transport/bus/terminals?**", async (route) => { await gate; await route.fulfill({ json: { items: terminals, next_offset: null } }); });
+  await page.route("**/transport/bus/connections?**", (route) => route.fulfill({ status: 502, json: { detail: "조회 실패" } }));
+  await page.goto("/bus/express");
+  const from = page.locator(".terminal-search").first();
+  await from.getByLabel("출발 터미널", { exact: true }).fill("서울");
+  await expect(from.getByRole("status")).toContainText("터미널 목록 조회 중");
+  await expect(from.getByText("조건에 맞는 터미널이 없습니다.")).toHaveCount(0);
+  release();
+  await from.getByRole("button", { name: /서울 시험터미널/ }).click();
+  const to = page.locator(".terminal-search").nth(1);
+  await expect(to.getByRole("alert")).toContainText("연결 정보를 확인하지 못했습니다");
+  await expect(to.getByText("조건에 맞는 터미널이 없습니다.")).toHaveCount(0);
 });
 
 test("버스 출발·도착 양방향 저장 연결과 이후 출발", async ({ page }) => {

@@ -5,7 +5,7 @@ from typing import Literal
 from kric import KorailPublicClient
 from datetime import date, timedelta
 
-from datagokr import DataGoKrClient
+from datagokr import AsyncTokenBucket, DataGoKrClient
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +24,7 @@ def build_general_rail_router(get_db) -> APIRouter:
     # 한 API worker의 동시 cache miss를 합친다. 성공만 DB에 저장하고 403/429/파싱 실패는
     # 빈 시간표로 만들지 않는다. 다른 provider의 KRIC/버스 보호 상태는 건드리지 않는다.
     states = {name: {"lock": asyncio.Lock(), "blocked_until": None, "day": None, "attempts": 0} for name in ("tago", "guide")}
+    tago_limiter = AsyncTokenBucket(max_rps=1, capacity=1)
 
     async def query(request, session, operation, key, response_type, fetch, *, ttl_hours, public=False):
         state = states["guide" if public else "tago"]
@@ -53,7 +54,7 @@ def build_general_rail_router(get_db) -> APIRouter:
                 raise HTTPException(status_code=429, detail="일반철도 제공기관 호출 보호 중입니다. 잠시 후 다시 조회해 주세요.", headers={"Retry-After": str(max(1, int((blocked_until - now).total_seconds()))) if blocked_until and now < blocked_until else "3600"})
             state["attempts"] += 1
             try:
-                context = KorailPublicClient(timeout=settings.api_timeout_seconds) if public else DataGoKrClient(api_key=settings.data_go_kr_service_key, timeout=settings.api_timeout_seconds, max_rps=1)
+                context = KorailPublicClient(timeout=settings.api_timeout_seconds) if public else DataGoKrClient(api_key=settings.data_go_kr_service_key, timeout=settings.api_timeout_seconds, max_rps=1, rate_limiter=tago_limiter)
                 async with context as client:
                     response = await fetch(client)
             except HTTPException:
@@ -82,6 +83,10 @@ def build_general_rail_router(get_db) -> APIRouter:
 
     @router.get("/stations", response_model=GeneralRailStationsResponse)
     async def stations(request: Request, city_code: str = Query(pattern=r"^\d{1,4}$"), session: AsyncSession = Depends(get_db)):
+        saved_catalog = await session.get(GeneralRailQuerySnapshot, ("catalog", "all"))
+        cities = GeneralRailCatalogResponse.model_validate(saved_catalog.response_json).cities if saved_catalog else []
+        if city_code not in {row.code for row in cities}:
+            raise HTTPException(status_code=422, detail="일반철도 지역 목록에서 지역을 다시 선택해 주세요.")
         async def fetch(client):
             page = await client.train.station_list(city_code=city_code, num_of_rows=1000)
             if page.total_count is None or page.total_count > len(page.items):

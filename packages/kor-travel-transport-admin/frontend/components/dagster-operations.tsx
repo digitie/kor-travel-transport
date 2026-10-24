@@ -4,7 +4,7 @@ import { DagsterOperations as CommonDagsterOperations, type DagsterSnapshot } fr
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHeader } from "./admin-shell";
 import { getDagsterOverview, getRunFailure, jobBudgetSeconds, JOB_LABELS, statusLabel, type DagsterOverview, type DagsterRunFailureDetail } from "@/lib/dagster";
-import { DAGSTER_LOCATION_NAME, DAGSTER_REPOSITORY_NAME, dagsterLocationUrl, dagsterRunUrl } from "@/lib/dagster-scope";
+import { DAGSTER_LOCATION_NAME, DAGSTER_REPOSITORY_NAME, dagsterLocationUrl, dagsterRunUrl, dagsterJobRunsUrl } from "@/lib/dagster-scope";
 
 export function commonSnapshot(snapshot: DagsterOverview): DagsterSnapshot {
   const runs = new Map(snapshot.runs.map(run => [run.runId, run]));
@@ -107,7 +107,7 @@ export function DagsterOperations() {
       error={error || snapshot?.warning} loading={loading} onRefresh={load} locationUrl={dagsterLocationUrl()}
       showRunDetails selectedRunId={selectedRunId} onSelectRun={selectRun}
       renderRunDetail={run => !run ? <p className="empty">실행을 선택하면 상세를 확인할 수 있습니다.</p> : <div className="dagster-detail-body">
-        <h3>{props.jobLabel(run.jobName)}</h3><code>{run.runId}</code><p>{statusLabel(run.status)}</p>
+        <h3><a className="inline-link" href={dagsterJobRunsUrl(run.jobName)} target="_blank" rel="noreferrer">{props.jobLabel(run.jobName)} · 작업 실행 이력 ↗</a></h3><code>{run.runId}</code><p>{statusLabel(run.status)}</p>
         {run.status === "FAILURE" ? <div aria-busy={detail?.loading ?? false}>
           {detail?.runId !== run.runId ? <p>실패 원인 미조회</p> : detail.loading ? <p role="status">실패 원인 조회 중…</p> : detail.error ? <div role="alert"><p>{detail.error}</p><button type="button" onClick={() => selectRun(run.runId)}>실패 원인 다시 조회</button></div>
             : <><p className="dagster-run-error">{detail.result?.message ?? (detail.result?.complete ? "실패 이벤트가 없습니다." : "조회 범위에서 실패 원인을 찾지 못했습니다.")}</p>

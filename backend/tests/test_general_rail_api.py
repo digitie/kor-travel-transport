@@ -17,7 +17,7 @@ class FakeTrain:
         self.calls.append("cities")
         if self.failure:
             raise self.failure
-        return SimpleNamespace(items=[SimpleNamespace(city_code="11", city_name="서울")])
+        return SimpleNamespace(items=[SimpleNamespace(city_code="11", city_name="서울"), SimpleNamespace(city_code="21", city_name="부산")])
 
     async def class_list(self):
         self.calls.append("classes")
@@ -52,6 +52,8 @@ def test_train_catalog_stations_and_timetable_persist_and_reuse_success(test_set
         assert catalog.status_code == 200
         assert catalog.json()["train_classes"] == [{"code": "00", "name": "KTX"}, {"code": "0A", "name": "KTX-산천"}]
         assert client.get("/v1/transport/rail/general/catalog").json() == catalog.json()
+        assert train.calls == ["cities", "classes"]
+        assert client.get("/v1/transport/rail/general/stations", params={"city_code": "9999"}).status_code == 422
         assert train.calls == ["cities", "classes"]
         stations = client.get("/v1/transport/rail/general/stations", params={"city_code": "11"})
         assert stations.status_code == 200 and len(stations.json()["items"]) == 2
@@ -114,3 +116,31 @@ def test_public_station_guide_is_keyless_and_independent_of_tago_denial(test_set
         assert len(calls) == before
         assert client.get("/v1/transport/rail/general/guide", params={"category_code": "unknown"}).status_code == 422
         assert client.get("/v1/transport/rail/general/guide", params={"kind": "metro"}).status_code == 422
+
+
+
+def test_separate_cache_misses_share_one_provider_rate_limiter(test_settings, monkeypatch):
+    import time
+    timestamps = []
+    limiters = []
+    class LimitedTrain(FakeTrain):
+        def __init__(self, limiter):
+            super().__init__()
+            self.limiter = limiter
+        async def station_list(self, **params):
+            await self.limiter.acquire()
+            timestamps.append(time.monotonic())
+            return await super().station_list(**params)
+    class Client:
+        def __init__(self, *, rate_limiter, **kwargs):
+            limiters.append(rate_limiter)
+            self.train = LimitedTrain(rate_limiter)
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_): pass
+    monkeypatch.setattr("app.general_rail_routes.DataGoKrClient", Client)
+    with TestClient(create_app(test_settings.model_copy(update={"seed_sample_data": False, "data_go_kr_service_key": "fake"}))) as client:
+        assert client.get("/v1/transport/rail/general/catalog").status_code == 200
+        for city in ("11", "21"):
+            assert client.get("/v1/transport/rail/general/stations", params={"city_code": city}).status_code == 200
+    assert len(limiters) == 3 and all(value is limiters[0] for value in limiters)
+    assert timestamps[1] - timestamps[0] >= .95

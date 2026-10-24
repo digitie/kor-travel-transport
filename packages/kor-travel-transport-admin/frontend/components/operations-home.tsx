@@ -13,7 +13,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getDagsterOverview, JOB_LABELS, statusLabel, type DagsterOverview } from "@/lib/dagster";
-import { dagsterLocationUrl, dagsterRunUrl } from "@/lib/dagster-scope";
+import { dagsterLocationUrl, dagsterRunUrl, dagsterJobRunsUrl } from "@/lib/dagster-scope";
 import { dateTime, transportGet } from "@/lib/journey";
 
 type Provider = {
@@ -75,7 +75,7 @@ export function OperationsHome() {
         <div className="min-w-0 space-y-6">
           <SectionCard title="최근 실행" description="이 Transport 코드 위치의 최근 실행입니다." actions={<Link href="/admin/dagster" className="inline-link">전체 실행</Link>}>
             <div className="overflow-x-auto"><table className="operations-table"><thead><tr><th>작업</th><th>상태</th><th>시작 시각</th><th>실행</th></tr></thead><tbody>
-              {recentRuns.slice(0, 8).map((run) => <tr key={run.runId}><td>{JOB_LABELS[run.jobName] ?? run.jobName}</td><td><span className={`operation-state ${run.status === "FAILURE" ? "failed" : run.status === "SUCCESS" ? "success" : ""}`}>{statusLabel(run.status)}</span></td><td>{dateTime(run.startTime ? new Date(run.startTime * 1000).toISOString() : null)}</td><td><a className="inline-link" href={dagsterRunUrl(run.runId)} target="_blank" rel="noreferrer">상세<ExternalLink aria-hidden="true" size={12} /></a></td></tr>)}
+              {recentRuns.slice(0, 8).map((run) => <tr key={run.runId}><td><a className="inline-link" href={dagsterJobRunsUrl(run.jobName)} target="_blank" rel="noreferrer">{JOB_LABELS[run.jobName] ?? run.jobName}</a></td><td><span className={`operation-state ${run.status === "FAILURE" ? "failed" : run.status === "SUCCESS" ? "success" : ""}`}>{statusLabel(run.status)}</span></td><td>{dateTime(run.startTime ? new Date(run.startTime * 1000).toISOString() : null)}</td><td><a className="inline-link" href={dagsterRunUrl(run.runId)} target="_blank" rel="noreferrer">상세<ExternalLink aria-hidden="true" size={12} /></a></td></tr>)}
             </tbody></table></div>
             {!dagster ? <p className="quiet">{loading ? "최근 실행을 확인하는 중입니다…" : "최근 실행을 확인하지 못했습니다."}</p> : !recentRuns.length ? <p className="empty-state">최근 실행 기록이 없습니다.</p> : null}
             {dagster?.warning ? <p role="status">{dagster.warning}</p> : null}
