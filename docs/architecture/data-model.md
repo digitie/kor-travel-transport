@@ -297,3 +297,12 @@ CASCADE이다. 최초 freeze만 typed current를 읽고 이후 페이지는 이 
 실제확인시각·작은 member PK 목록과 완결 proof, 최근 실패를 저장한다. 원천 row/upsert와
 같은 transaction으로 확정한다. 실패 뒤 성공 집합·확인시각은 유지한다. 초도 backfill 없이
 새 완결 수집부터 생성하고 API는 이 목록의 명시된 PK만 읽는다.
+
+
+## 일반철도 조회 캐시 (미배포 migration0034)
+
+`general_rail_query_snapshots`는 `(operation,request_key)` PK와 fetched_at index, JSONB 정상 응답을 보존한다.
+operation은 catalog/stations/timetable/station_guide CHECK로 제한한다. TAGO와 코레일 공개 안내의
+source 식별자를 섞지 않으며 실패·인증키·원문 오류는 저장하지 않는다. 32일 경과 캐시만 정리하고
+수집 원천/이력과 분리한다. 주차 패턴 집계는 기존 airport_id/observed_at cover index를 이용해
+선택 요일·시간대만 읽는다. 상세 TTL·표본 기준은 [검증 원장](../reports/2026-10-24-transport-user-journeys.md)을 따른다.

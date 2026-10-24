@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { InfoButton } from "./info-button";
 import { Anchor, Bus, Fuel, Plane, TrainFront, Coffee, MapPin, TriangleAlert, X } from "lucide-react";
 import { useId } from "react";
 import { dateTime, hasCoordinates, money, serviceTime, type FerryTimetable, type Place } from "@/lib/journey";
@@ -48,21 +50,21 @@ export function MultiSearch({ label, query, onQuery, options, selected, onSelect
   </section>;
 }
 
-export function PlaceDetails({ place, showRailTimetable = true, showHeading = true }: { place: Place; showRailTimetable?: boolean; showHeading?: boolean }) {
+export function PlaceDetails({ place, showRailTimetable = true, showHeading = true, onShowMap }: { place: Place; showRailTimetable?: boolean; showHeading?: boolean; onShowMap?: () => void }) {
   return <div className="place-details">
     {showHeading ? <><div className="place-title"><PlaceIcon kind={place.kind} /><span>{placeKindLabel(place.kind)}</span></div><h2>{place.name}</h2></> : null}
     {place.brand_name ? <p>{place.brand_name}</p> : null}
     {place.line_names.length ? <div className="flex flex-wrap gap-2">{place.line_names.map((line) => <Badge variant="secondary" key={line}>{line}</Badge>)}</div> : null}
     {place.subtitle ? <p>{place.subtitle}</p> : null}
     {place.prices?.length ? <dl className="price-grid">{place.prices.map((price) => <div key={price.product_code}><dt>{fuelProductLabel(price.product_code)}</dt><dd>{money(price.price, "원/L")}</dd><small>{dateTime(price.provider_updated_at ?? price.observed_at)}</small></div>)}</dl> : place.kind === "fuel_station" ? <p className="quiet">등록된 유가가 없습니다.</p> : null}
-    {place.address ? <p>{place.address}</p> : null}
-    {place.phone ? <p>전화 {place.phone}</p> : null}
-    {place.kind === "ferry_port" ? <p className="quiet">항구 코드 {place.provider_id ?? "미제공"} · 항구명만으로 서로 다른 항구를 합치지 않습니다.</p> : null}
-    {place.kind === "bus_terminal" ? <p className="quiet">터미널 코드 {place.provider_id ?? "미제공"} · 지도 위치는 검증된 터미널만 표시합니다.</p> : null}
+    {place.address ? <p>{hasCoordinates(place) ? onShowMap ? <button type="button" className="inline-link" onClick={onShowMap}>{place.address} · 지도에서 보기</button> : <Link className="inline-link" href={`/map?longitude=${place.longitude}&latitude=${place.latitude}`}>{place.address} · 지도에서 보기</Link> : place.address}</p> : null}
+    {place.phone ? <p>전화 <a className="inline-link" href={`tel:${place.phone.replace(/[^+\d]/g, "")}`}>{place.phone}</a></p> : null}
+    {place.kind === "ferry_port" ? <p className="quiet">항구 코드 {place.provider_id ?? "미제공"}</p> : null}
+    {place.kind === "bus_terminal" ? <p className="quiet">터미널 코드 {place.provider_id ?? "미제공"}</p> : null}
     {place.facilities?.length ? <p>편의시설 · {place.facilities.join(" · ")}</p> : null}
     {place.kind === "rail_station" && showRailTimetable ? <RailTimetables placeIds={[place.id]} /> : null}
-    {place.kind === "ferry_port" ? <p className="data-caveat">{hasCoordinates(place) ? place.location_source === "admin_manual" ? "관리자가 근거를 대조해 보정한 항구 위치입니다. 실제 승선 부두는 운항사에 확인해 주세요." : place.location_source === "komsa_port_call" ? "한국해양교통안전공단 기항지 위치입니다. 승선 부두·탑승구는 운항사에 확인해 주세요." : "지도 검색에서 확인한 항만 시설입니다. 실제 승선 장소는 운항사에 확인해 주세요." : "좌표 미등록 · 목록에서 운항 정보를 확인할 수 있습니다."}</p> : null}
-    {place.kind === "bus_terminal" ? <p className="data-caveat">{hasCoordinates(place) ? place.location_source === "admin_manual" ? "관리자가 근거를 대조해 보정한 터미널 위치입니다. 실제 승차 홈은 운송사에 확인해 주세요." : place.location_source === "vworld_place" ? "VWorld 시설 검색으로 확인한 터미널 위치입니다. 실제 승차 홈은 운송사에 확인해 주세요." : place.location_source === "kakao_place" ? "카카오맵 장소 검색으로 확인한 터미널 위치입니다. 실제 승차 홈은 운송사에 확인해 주세요." : "지도에서 확인한 터미널 위치입니다. 실제 승차 홈은 운송사에 확인해 주세요." : "좌표 미등록 · 터미널 이름과 코드로 검색할 수 있습니다."}</p> : null}
+    {place.kind === "ferry_port" ? <InfoButton label="장소 위치의 근거">{hasCoordinates(place) ? place.location_source === "admin_manual" ? "관리자가 근거를 대조해 보정한 항구 위치입니다. 실제 승선 부두는 운항사에 확인해 주세요." : place.location_source === "komsa_port_call" ? "한국해양교통안전공단 기항지 위치입니다. 승선 부두·탑승구는 운항사에 확인해 주세요." : "지도 검색에서 확인한 항만 시설입니다. 실제 승선 장소는 운항사에 확인해 주세요." : "좌표 미등록 · 목록에서 운항 정보를 확인할 수 있습니다."}</InfoButton> : null}
+    {place.kind === "bus_terminal" ? <InfoButton label="장소 위치의 근거">{hasCoordinates(place) ? place.location_source === "admin_manual" ? "관리자가 근거를 대조해 보정한 터미널 위치입니다. 실제 승차 홈은 운송사에 확인해 주세요." : place.location_source === "vworld_place" ? "VWorld 시설 검색으로 확인한 터미널 위치입니다. 실제 승차 홈은 운송사에 확인해 주세요." : place.location_source === "kakao_place" ? "카카오맵 장소 검색으로 확인한 터미널 위치입니다. 실제 승차 홈은 운송사에 확인해 주세요." : "지도에서 확인한 터미널 위치입니다. 실제 승차 홈은 운송사에 확인해 주세요." : "좌표 미등록 · 터미널 이름과 코드로 검색할 수 있습니다."}</InfoButton> : null}
     <p className="quiet">출처 {collectionSourceLabel(place.source)} · 기준정보 반영 {dateTime(place.updated_at)}</p>
   </div>;
 }

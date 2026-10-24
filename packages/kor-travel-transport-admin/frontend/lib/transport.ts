@@ -9,12 +9,17 @@ export const TRANSPORT_ENDPOINTS = [
   "transport/features/places",
   "transport/bus/terminals",
   "transport/bus/timetable",
+  "transport/bus/connections",
   "transport/ports/timetables",
   "transport/rail/timetables",
   "transport/rail/departures",
+  "transport/rail/general/catalog", "transport/rail/general/guide",
+  "transport/rail/general/stations",
+  "transport/rail/general/timetable",
   "airports",
   "flights/status",
   "parking/current",
+  "parking/outlook",
 ] as const;
 
 export function isAllowedTransportPath(path: string[]) {

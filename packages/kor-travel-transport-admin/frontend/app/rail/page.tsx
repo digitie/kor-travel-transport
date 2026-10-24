@@ -1,4 +1,4 @@
 import { PageHeader } from "@/components/admin-shell";
-import { TransportReferenceList } from "@/components/transport-reference-list";
+import { GeneralRailJourney } from "@/components/general-rail-journey";
 
-export default function RailPage() { return <><PageHeader title="열차·도시철도" description="저장된 역·노선과 도시철도 예정 시간표를 비교합니다. 일반철도 운행편은 별도 연동 대상입니다." /><TransportReferenceList kind="rail_station" /></>; }
+export default function RailPage() { return <><PageHeader title="철도" description="열차 종류와 출발·도착역을 선택해 일반철도 예정 시간표와 요금을 확인합니다." /><GeneralRailJourney /></>; }

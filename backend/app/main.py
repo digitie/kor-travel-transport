@@ -39,19 +39,21 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import defer, selectinload
 from datagokr import DataGoKrClient
 from datagokr.exceptions import ApiErrorResponse
-from kric import DataGoKrMaritimeClient, KricRateLimitError
+from kric import DataGoKrMaritimeClient, KricRateLimitError, parse_station_file_facilities
 from krairport import get_airport_or_none
 
 from app.core.config import Settings, get_settings
 from app.core.time_utils import align_to_interval, now_utc, serialize_utc, to_seoul
 from app.db.session import create_engine_and_session_factory, init_database
 from app.service_exports import build_service_export_router
+from app.general_rail_routes import build_general_rail_router
 from app.services.parking_history_cache import (
     BoundedHistoryResponse, ParkingHistoryReadCache, encode_response, run_history_cpu,
 )
 from app.models import (
     Airport,
     BusTerminalReference,
+    BusTimetableSnapshot,
     CollectionRun,
     FuelLatestPrice,
     FuelPriceSnapshot,
@@ -77,6 +79,7 @@ from app.schemas import (
     BackupRestoreResponse,
     BusTerminalItem,
     BusTerminalResponse,
+    BusConnectionsResponse,
     BusTimetableItem,
     BusTimetableResponse,
     CollectionSummary,
@@ -113,6 +116,7 @@ from app.schemas import (
     KricStationMappingSaveRequest,
     HourlyBucket,
     ParkingCurrentResponse,
+    ParkingOutlookResponse,
     ParkingHistoryResponse,
     ParkingLotSummary,
     ParkingStatus,
@@ -160,6 +164,7 @@ from app.services.rail_station_mapping import (
 )
 from app.services.bus_timetable_storage import save_bus_timetable, stored_bus_timetable
 from app.services.rail_timetable import stored_rail_timetables
+from app.services.parking_outlook import parking_outlook
 from app.services.transport_map_clusters import (
     cluster_cell,
     coordinate_cluster_select,
@@ -1557,6 +1562,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     longitude=station.longitude, latitude=station.latitude, subtitle=station.rail_operator_name,
                     line_names=[station.operating_line_name] if station.operating_line_name else [],
                     phone=station.station_phone_number, station_type=station.station_type,
+                    facilities=list(parse_station_file_facilities(station.raw_item_json or {})),
                     address=station.road_address or station.lot_address, updated_at=serialize_utc(station.last_seen_at),
                 ))
         if "ferry_port" in requested_kinds:
@@ -1883,7 +1889,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         service_type: Literal["express", "intercity"] = Query(alias="service_type"),
         query: str | None = Query(default=None, max_length=100),
         offset: int = Query(default=0, ge=0),
-        limit: int = Query(default=50, ge=1, le=100),
+        limit: int = Query(default=50, ge=1, le=1000),
         session: AsyncSession = Depends(get_db),
     ) -> BusTerminalResponse:
         """저장된 TAGO 터미널을 조회한다. 시간표 provider를 호출하지 않는다."""
@@ -1928,6 +1934,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 for row in rows
             ],
         )
+
+    @router.get("/transport/bus/connections", response_model=BusConnectionsResponse)
+    async def transport_bus_connections(
+        service_type: Literal["express", "intercity"], terminal_id: str = Query(min_length=1, max_length=120),
+        direction: Literal["departure", "arrival"] = "departure",
+        service_date: date = Query(default_factory=lambda: to_seoul(now_utc()).date(), alias="date"),
+        session: AsyncSession = Depends(get_db),
+    ) -> BusConnectionsResponse:
+        # TAGO 시간표의 양 끝이 확인된 정상 저장본만 연결 근거로 사용한다. 미조회 노선을
+        # 미운행으로 판정하지 않으며 전국 완전한 노선 카탈로그라고 표시하지 않는다.
+        anchor = BusTimetableSnapshot.departure_terminal_id if direction == "departure" else BusTimetableSnapshot.arrival_terminal_id
+        rows = (await session.scalars(select(BusTimetableSnapshot).where(
+            BusTimetableSnapshot.service_type == service_type, BusTimetableSnapshot.service_date == service_date,
+            anchor == terminal_id,
+        ).order_by(BusTimetableSnapshot.fetched_at.desc()).limit(2001))).all()
+        connected = {row.arrival_terminal_id if direction == "departure" else row.departure_terminal_id
+            for row in rows[:2000] if BusTimetableResponse.model_validate(row.response_json).items}
+        terminals = (await session.scalars(select(BusTerminalReference).where(
+            BusTerminalReference.source == "data_go_kr_tago", BusTerminalReference.service_type == service_type,
+            BusTerminalReference.terminal_id.in_(connected),
+        ).order_by(BusTerminalReference.terminal_name, BusTerminalReference.terminal_id))).all()
+        return BusConnectionsResponse(service_type=service_type, terminal_id=terminal_id, direction=direction,
+            service_date=service_date, truncated=len(rows) > 2000, items=[BusTerminalItem(
+                id=row.id, service_type=row.service_type, terminal_id=row.terminal_id, terminal_name=row.terminal_name,
+                city_name=row.city_name, longitude=row.longitude, latitude=row.latitude, location_source=row.location_source,
+                updated_at=row.last_seen_at,
+            ) for row in terminals])
 
     @router.get("/transport/bus/timetable", response_model=BusTimetableResponse)
     async def transport_bus_timetable(
@@ -2291,6 +2324,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ]
         items.sort(key=lambda item: (item.airport_code, item.available_spaces))
         return ParkingCurrentResponse(generated_at=now_utc(), items=items)
+
+    @router.get("/parking/outlook", response_model=ParkingOutlookResponse)
+    async def parking_arrival_outlook(
+        airport_code: str = Query(min_length=3, max_length=10),
+        arrival_at: datetime | None = Query(default=None),
+        days: int = Query(default=28, ge=7, le=60),
+        session: AsyncSession = Depends(get_db),
+    ) -> ParkingOutlookResponse:
+        arrival = arrival_at or now_utc()
+        if arrival.tzinfo is None or arrival.utcoffset() is None:
+            raise HTTPException(status_code=422, detail="입차 예정 시각에 시간대를 포함해 주세요.")
+        airport = await session.scalar(select(Airport).where(Airport.code == airport_code.upper()))
+        if airport is None:
+            raise HTTPException(status_code=404, detail="저장된 공항을 찾을 수 없습니다.")
+        return await parking_outlook(session, airport, arrival, days)
 
     @router.get("/parking/history", response_model=ParkingHistoryResponse)
     async def parking_history(
@@ -3404,6 +3452,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # `/health` stays unversioned (kor-travel-map convention: health/version are
     # fixed, everything else is versioned). All other routes live under `/v1`
     # (ADR-005) -- a clean-cut, no legacy unprefixed alias.
+    app.include_router(build_general_rail_router(get_db), prefix="/v1")
     app.include_router(router, prefix="/v1")
     # 내부 서비스 일괄 export(ADR-013) — 서비스 토큰과 접속한 쪽의 주소(peer, 기본 loopback)로 닫힌다.
     app.include_router(build_service_export_router(resolved_settings, get_db), prefix="/v1")

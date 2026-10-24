@@ -652,6 +652,20 @@ class BusTimetableSnapshot(Base):
     response_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
 
 
+class GeneralRailQuerySnapshot(Base):
+    """TAGO 일반철도 기준정보·운행일별 정상 응답. 인증키·실패 원문은 저장하지 않는다."""
+
+    __tablename__ = "general_rail_query_snapshots"
+    __table_args__ = (
+        CheckConstraint("operation IN ('catalog', 'stations', 'timetable', 'station_guide')", name="ck_general_rail_operation"),
+        Index("ix_general_rail_query_fetched", "fetched_at"),
+    )
+    operation: Mapped[str] = mapped_column(Text, primary_key=True)
+    request_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    response_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
 class FerryPort(Base):
     __tablename__ = "ferry_ports"
     __table_args__ = (

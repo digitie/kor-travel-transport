@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type RefObject, type ReactNode } from "react";
 import { ClusterLayer, VWorldMapView, type ClusterPoint, type MapLibreMap } from "vworld-map-web";
 import { clusterAtScale, dateTime, hasCoordinates, hasFuelPrice, transportGet, type Place, type PlaceKind } from "@/lib/journey";
 import { collectionSourceLabel, fuelProductLabel, placeKindLabel } from "@/lib/transport-presentation";
@@ -14,6 +14,7 @@ import { MapDetailOverlay, MapFilterBar, MapFilterField, MapKindFilter, MapTabs 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { FilterCombobox } from "./filter-combobox";
+import { X } from "lucide-react";
 
 type MapPoint = { id: string; lngLat: [number, number]; place: Place };
 type Viewport = { min_longitude: string; min_latitude: string; max_longitude: string; max_latitude: string };
@@ -68,7 +69,7 @@ function OverlapList({ places, onSelect, listRef }: { places: Place[]; onSelect:
   </section>;
 }
 
-export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all" }: { places?: Place[]; selectedPlace?: Place | null; onSelectPlace?: (place: Place) => void; mode?: "all" | "transport" | "fuel" }) {
+export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all", details, onCloseDetails, focusRevision = 0, layers }: { places?: Place[]; selectedPlace?: Place | null; onSelectPlace?: (place: Place) => void; mode?: "all" | "transport" | "fuel"; details?: ReactNode; onCloseDetails?: () => void; focusRevision?: number; layers?: ReactNode }) {
   const controlId = useId();
   const embedded = places !== undefined;
   const allowedKinds = mode === "fuel" ? ["fuel_station"] as PlaceKind[] : mode === "transport" ? TRANSPORT_KINDS : KINDS;
@@ -103,6 +104,18 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
   const lastReload = useRef(reload);
   const mapFilterSignature = useRef("");
   const knownSourcesReady = useRef(false);
+  useEffect(() => {
+    if (embedded) return;
+    const search = new URLSearchParams(window.location.search);
+    if (!search.has("longitude") || !search.has("latitude")) return;
+    const longitude = Number(search.get("longitude")), latitude = Number(search.get("latitude"));
+    if (!Number.isFinite(longitude) || !Number.isFinite(latitude) || longitude < 124 || longitude > 132 || latitude < 32 || latitude > 39.5) return;
+    // URL이 지정한 지도 위치는 최초 문서에서만 복원한다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setClusterCamera({ center: [longitude, latitude], zoom: 15 });
+    setViewport({ min_longitude: String(longitude - .015), max_longitude: String(longitude + .015), min_latitude: String(latitude - .015), max_latitude: String(latitude + .015) });
+    setZoom(15);
+  }, [embedded]);
   const current = selectedPlace === undefined ? selected : selectedPlace;
   const kindsKey = kinds.join(",");
   const sourcesKey = selectedSources.join(",");
@@ -171,7 +184,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
     // 검색 조건을 바꾸거나 명시적으로 선택/닫기한 경우에만 목록을 닫는다.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setClusterPlaces([]);
-  }, [kindsKey, sourcesKey, searchQuery, productsKey, view]);
+  }, [kindsKey, sourcesKey, searchQuery, productsKey, view, mode]);
 
   useEffect(() => {
     if (embedded) return;
@@ -268,7 +281,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
         .finally(() => { if (!controller.signal.aborted) setPending((value) => value.filter((entry) => entry !== kind)); });
     });
     return () => controller.abort();
-  }, [embedded, kindsKey, perKindLimit, viewport, zoom, reload, sourcesKey, searchQuery, productsKey, view]);
+  }, [embedded, kindsKey, perKindLimit, viewport, zoom, reload, sourcesKey, searchQuery, productsKey, view, mode]);
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
@@ -291,11 +304,13 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
   // 카메라 요청 정체: 장소 key(부모가 선택을 바꾼 경우)와 요청 번호(같은 묶음·장소를 다시 누른 경우).
   // 현재 zoom은 이동 목표 계산에만 쓰고 정체에는 넣지 않는다 — 넣으면 손으로 확대할 때마다 다시 끌려간다.
   const camera = useMemo<CameraTarget | undefined>(() => clusterCamera ? { ...clusterCamera, id: `cluster:${cameraRequest}` }
-    : current && hasCoordinates(current) ? { center: [current.longitude, current.latitude], zoom: Math.max(zoom, 11), id: `${keyOf(current)}:${cameraRequest}` } : undefined,
-  [current, clusterCamera, cameraRequest]); // eslint-disable-line react-hooks/exhaustive-deps
+    : current && hasCoordinates(current) ? { center: [current.longitude, current.latitude], zoom: Math.max(zoom, 11), id: `${keyOf(current)}:${cameraRequest}:${focusRevision}` } : undefined,
+  [current, clusterCamera, cameraRequest, focusRevision]); // eslint-disable-line react-hooks/exhaustive-deps
   const closeDetail = () => { setSelected(null); queryInput.current?.focus(); };
-  const detailPanel = !embedded && current ? <MapDetailOverlay className="transport-map-detail weather-inspector" ref={detail} aria-label="선택 장소 상세" onDismiss={closeDetail}>
-    <PlaceInspector key={keyOf(current)} place={current} onClose={() => { setSelected(null); queryInput.current?.focus(); }} onSaved={(updated) => { setSelected(updated); setReload((value) => value + 1); }} onReload={() => { setSelected(null); setReload((value) => value + 1); queryInput.current?.focus(); }} />
+  const detailPanel = embedded && details ? <MapDetailOverlay className="transport-map-detail" aria-label="선택 장소 상세" onDismiss={onCloseDetails}>
+    <div className="journey-detail-header"><Button type="button" size="icon" variant="ghost" aria-label="상세 닫기" onClick={onCloseDetails}><X aria-hidden="true" size={16} /></Button></div>{details}
+  </MapDetailOverlay> : !embedded && current ? <MapDetailOverlay className="transport-map-detail weather-inspector" ref={detail} aria-label="선택 장소 상세" onDismiss={closeDetail}>
+    <PlaceInspector key={keyOf(current)} place={current} onShowMap={() => { setView("map"); setCameraRequest((value) => value + 1); requestAnimationFrame(() => mapContainer.current?.scrollIntoView({ block: "start" })); }} onClose={() => { setSelected(null); queryInput.current?.focus(); }} onSaved={(updated) => { setSelected(updated); setReload((value) => value + 1); }} onReload={() => { setSelected(null); setReload((value) => value + 1); queryInput.current?.focus(); }} />
   </MapDetailOverlay> : null;
 
   return <section className="map-workbench" aria-label={mode === "fuel" ? "유가 지도" : "교통 장소 지도"}>
@@ -320,6 +335,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
         onError={basemap.onError} onIdle={basemap.onIdle} onLoad={moved} onMoveEnd={(event) => moved(event.target)}>
         <ZoomButtons />
         <CameraRequest target={camera} />
+        {layers}
         {serverClustered ? serverClusters.map((item, index) => <MapMarkerButton key={`${item.longitude}:${item.latitude}:${index}`} lngLat={[item.longitude, item.latitude]} ariaLabel={`${item.count}개 장소 요약 묶음 확대`} interactionId={`server-cluster:${item.longitude.toFixed(6)},${item.latitude.toFixed(6)}`} className="map-cluster" zIndex={3} isCluster onClick={() => {
           setClusterPlaces([]); setClusterCamera({ center: [item.longitude, item.latitude], zoom: Math.min(19, Math.max(12, Math.ceil(zoom) + 2)) });
           setCameraRequest((value) => value + 1);

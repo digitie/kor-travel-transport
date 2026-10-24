@@ -210,6 +210,62 @@
         "title": "Body_admin_restore_backup_v1_admin_backups_restore_post",
         "type": "object"
       },
+      "BusConnectionsResponse": {
+        "properties": {
+          "coverage": {
+            "const": "stored_routes",
+            "default": "stored_routes",
+            "title": "Coverage",
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "departure",
+              "arrival"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BusTerminalItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "service_date": {
+            "format": "date",
+            "title": "Service Date",
+            "type": "string"
+          },
+          "service_type": {
+            "enum": [
+              "express",
+              "intercity"
+            ],
+            "title": "Service Type",
+            "type": "string"
+          },
+          "terminal_id": {
+            "title": "Terminal Id",
+            "type": "string"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "service_type",
+          "terminal_id",
+          "direction",
+          "service_date",
+          "items"
+        ],
+        "title": "BusConnectionsResponse",
+        "type": "object"
+      },
       "BusTerminalExportPage": {
         "properties": {
           "has_more": {
@@ -4044,6 +4100,378 @@
         "title": "FuelViewportStatistics",
         "type": "object"
       },
+      "GeneralRailCatalogResponse": {
+        "properties": {
+          "cities": {
+            "items": {
+              "$ref": "#/components/schemas/GeneralRailCode"
+            },
+            "title": "Cities",
+            "type": "array"
+          },
+          "fetched_at": {
+            "format": "date-time",
+            "title": "Fetched At",
+            "type": "string"
+          },
+          "stale": {
+            "default": false,
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "train_classes": {
+            "items": {
+              "$ref": "#/components/schemas/GeneralRailCode"
+            },
+            "title": "Train Classes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "fetched_at",
+          "cities",
+          "train_classes"
+        ],
+        "title": "GeneralRailCatalogResponse",
+        "type": "object"
+      },
+      "GeneralRailCode": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "title": "GeneralRailCode",
+        "type": "object"
+      },
+      "GeneralRailGuideResponse": {
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/GeneralRailCode"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "category_code": {
+            "title": "Category Code",
+            "type": "string"
+          },
+          "fetched_at": {
+            "format": "date-time",
+            "title": "Fetched At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GeneralRailGuideStation"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "ktx",
+              "main"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "stale": {
+            "default": false,
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fetched_at",
+          "kind",
+          "category_code",
+          "categories",
+          "total",
+          "items"
+        ],
+        "title": "GeneralRailGuideResponse",
+        "type": "object"
+      },
+      "GeneralRailGuideStation": {
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "provider_id": {
+            "title": "Provider Id",
+            "type": "string"
+          },
+          "station_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Station Code"
+          },
+          "station_name": {
+            "title": "Station Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider_id",
+          "station_name"
+        ],
+        "title": "GeneralRailGuideStation",
+        "type": "object"
+      },
+      "GeneralRailStation": {
+        "properties": {
+          "station_id": {
+            "title": "Station Id",
+            "type": "string"
+          },
+          "station_name": {
+            "title": "Station Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "station_id",
+          "station_name"
+        ],
+        "title": "GeneralRailStation",
+        "type": "object"
+      },
+      "GeneralRailStationsResponse": {
+        "properties": {
+          "city_code": {
+            "title": "City Code",
+            "type": "string"
+          },
+          "fetched_at": {
+            "format": "date-time",
+            "title": "Fetched At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GeneralRailStation"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "stale": {
+            "default": false,
+            "title": "Stale",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "fetched_at",
+          "city_code",
+          "items"
+        ],
+        "title": "GeneralRailStationsResponse",
+        "type": "object"
+      },
+      "GeneralRailTimetableResponse": {
+        "properties": {
+          "arrival_station_id": {
+            "title": "Arrival Station Id",
+            "type": "string"
+          },
+          "departure_station_id": {
+            "title": "Departure Station Id",
+            "type": "string"
+          },
+          "fetched_at": {
+            "format": "date-time",
+            "title": "Fetched At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GeneralRailTrip"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "service_date": {
+            "format": "date",
+            "title": "Service Date",
+            "type": "string"
+          },
+          "stale": {
+            "default": false,
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "truncated": {
+            "default": false,
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "fetched_at",
+          "service_date",
+          "departure_station_id",
+          "arrival_station_id",
+          "items"
+        ],
+        "title": "GeneralRailTimetableResponse",
+        "type": "object"
+      },
+      "GeneralRailTrip": {
+        "properties": {
+          "adult_fare": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adult Fare"
+          },
+          "arrival_planned_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arrival Planned Time"
+          },
+          "arrival_station_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arrival Station Name"
+          },
+          "departure_planned_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Departure Planned Time"
+          },
+          "departure_station_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Departure Station Name"
+          },
+          "grade_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade Name"
+          },
+          "train_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Train Number"
+          }
+        },
+        "title": "GeneralRailTrip",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -5649,6 +6077,123 @@
         "title": "ParkingLotSummary",
         "type": "object"
       },
+      "ParkingOutlookLot": {
+        "properties": {
+          "average_available_spaces": {
+            "title": "Average Available Spaces",
+            "type": "number"
+          },
+          "full_day_ratio": {
+            "title": "Full Day Ratio",
+            "type": "number"
+          },
+          "full_days": {
+            "title": "Full Days",
+            "type": "integer"
+          },
+          "latest_observed_at": {
+            "format": "date-time",
+            "title": "Latest Observed At",
+            "type": "string"
+          },
+          "maximum_available_spaces": {
+            "title": "Maximum Available Spaces",
+            "type": "integer"
+          },
+          "maximum_capacity": {
+            "title": "Maximum Capacity",
+            "type": "integer"
+          },
+          "minimum_available_spaces": {
+            "title": "Minimum Available Spaces",
+            "type": "integer"
+          },
+          "minimum_capacity": {
+            "title": "Minimum Capacity",
+            "type": "integer"
+          },
+          "observations": {
+            "title": "Observations",
+            "type": "integer"
+          },
+          "parking_lot_id": {
+            "title": "Parking Lot Id",
+            "type": "integer"
+          },
+          "parking_lot_name": {
+            "title": "Parking Lot Name",
+            "type": "string"
+          },
+          "sample_days": {
+            "title": "Sample Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "parking_lot_id",
+          "parking_lot_name",
+          "sample_days",
+          "observations",
+          "average_available_spaces",
+          "minimum_available_spaces",
+          "maximum_available_spaces",
+          "full_days",
+          "full_day_ratio",
+          "minimum_capacity",
+          "maximum_capacity",
+          "latest_observed_at"
+        ],
+        "title": "ParkingOutlookLot",
+        "type": "object"
+      },
+      "ParkingOutlookResponse": {
+        "properties": {
+          "airport_code": {
+            "title": "Airport Code",
+            "type": "string"
+          },
+          "arrival_at": {
+            "format": "date-time",
+            "title": "Arrival At",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "history_days": {
+            "title": "History Days",
+            "type": "integer"
+          },
+          "hour": {
+            "title": "Hour",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ParkingOutlookLot"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "weekday": {
+            "title": "Weekday",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "generated_at",
+          "airport_code",
+          "arrival_at",
+          "history_days",
+          "weekday",
+          "hour",
+          "items"
+        ],
+        "title": "ParkingOutlookResponse",
+        "type": "object"
+      },
       "ParkingStatus": {
         "properties": {
           "airport_code": {
@@ -6351,6 +6896,13 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "upcoming_departures": {
+            "items": {
+              "$ref": "#/components/schemas/RailDepartureItem"
+            },
+            "title": "Upcoming Departures",
+            "type": "array"
           }
         },
         "required": [
@@ -9232,6 +9784,86 @@
         "summary": "Parking History"
       }
     },
+    "/v1/parking/outlook": {
+      "get": {
+        "operationId": "parking_arrival_outlook_v1_parking_outlook_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "airport_code",
+            "required": true,
+            "schema": {
+              "maxLength": 10,
+              "minLength": 3,
+              "title": "Airport Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "arrival_at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Arrival At"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 28,
+              "maximum": 60,
+              "minimum": 7,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParkingOutlookResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Parking Arrival Outlook"
+      }
+    },
     "/v1/service/exports/airports": {
       "get": {
         "description": "운영 중인 국내 공항 전체(krairport 번들 메타데이터, 주차 수집 여부와 무관).",
@@ -10568,6 +11200,94 @@
         "summary": "Save Rail Station Mappings"
       }
     },
+    "/v1/transport/bus/connections": {
+      "get": {
+        "operationId": "transport_bus_connections_v1_transport_bus_connections_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "service_type",
+            "required": true,
+            "schema": {
+              "enum": [
+                "express",
+                "intercity"
+              ],
+              "title": "Service Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "terminal_id",
+            "required": true,
+            "schema": {
+              "maxLength": 120,
+              "minLength": 1,
+              "title": "Terminal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "default": "departure",
+              "enum": [
+                "departure",
+                "arrival"
+              ],
+              "title": "Direction",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "title": "Date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BusConnectionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Transport Bus Connections"
+      }
+    },
     "/v1/transport/bus/terminals": {
       "get": {
         "description": "저장된 TAGO 터미널을 조회한다. 시간표 provider를 호출하지 않는다.",
@@ -10620,7 +11340,7 @@
             "required": false,
             "schema": {
               "default": 50,
-              "maximum": 100,
+              "maximum": 1000,
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
@@ -11718,6 +12438,236 @@
           }
         },
         "summary": "Transport Rail Departures"
+      }
+    },
+    "/v1/transport/rail/general/catalog": {
+      "get": {
+        "operationId": "catalog_v1_transport_rail_general_catalog_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeneralRailCatalogResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Catalog"
+      }
+    },
+    "/v1/transport/rail/general/guide": {
+      "get": {
+        "operationId": "guide_v1_transport_rail_general_guide_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "default": "ktx",
+              "enum": [
+                "ktx",
+                "main"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category_code",
+            "required": false,
+            "schema": {
+              "default": "",
+              "pattern": "^[A-Za-z0-9_]{0,40}$",
+              "title": "Category Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeneralRailGuideResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Guide"
+      }
+    },
+    "/v1/transport/rail/general/stations": {
+      "get": {
+        "operationId": "stations_v1_transport_rail_general_stations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "city_code",
+            "required": true,
+            "schema": {
+              "pattern": "^\\d{1,4}$",
+              "title": "City Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeneralRailStationsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Stations"
+      }
+    },
+    "/v1/transport/rail/general/timetable": {
+      "get": {
+        "operationId": "timetable_v1_transport_rail_general_timetable_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "departure_station_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9]{1,40}$",
+              "title": "Departure Station Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "arrival_station_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9]{1,40}$",
+              "title": "Arrival Station Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "train_grade_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9]{1,4}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Train Grade Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeneralRailTimetableResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Timetable"
       }
     },
     "/v1/transport/rail/timetables": {

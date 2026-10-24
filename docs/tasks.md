@@ -10,6 +10,9 @@
 
 ## 진행 중인 작업 인덱스
 
+- [ ] 이용 목적 중심 관리자 7~11번 수용: 홈/분류 메뉴·12지표·일반/도시철도·버스·공항·정보 버튼/모바일 지도 구현의 최종 PG/Compose/CI/독립 리뷰를 마감한다. 전국 버스 전체 연결·미확인 터미널 좌표와 ITS 선형 소통 지도는 별도 미완료다. 통합 담당 에이전트가 빌드/배포한다. [검증 원장](reports/2026-10-24-transport-user-journeys.md).
+
+
 - [ ] Map T2/T3 운영 수용: schema0030~0033와 API/CS를 승인된 drain 뒤 배포하고 source별 정상 성공 head를 준비한다. API·CS의 단일 defaultOFF flag를 일치시켜 활성화하고 승인된 수집 순서로 bootstrap한 뒤 실제 HTTPS·Map 새 frozen reader·UI·TTL/실패 복구를 검증한다. KAC quota PR119를 배포에 포함하며 원래 deadline 만료 뒤 재시도를 확인한다. [구현·검증 정산](reports/2026-10-23-map-t2-t3-acceptance.md).
 
 
