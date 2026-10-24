@@ -127,6 +127,23 @@ unhealthy busy는 실패 표시를 유지하되 Failure의 설명·metadata에�
 
 ## 운영 설치
 
+### 후속 공식 리뷰 — 잠금 오류 중 실행 종료·취소 보존
+
+43bde97 전체 CI1140 PASS/2 SKIP 뒤 James 공식 리뷰는 지적 없음, Popper는 실패 게시가
+source 잠금을 재획득하지 못하면 실행 원장의 종료까지 롤백되는P2를 재현했다.
+부모는 완료 결과 반환 전 취소 뒤의 같은 잠금 오류가 원래 CancelledError를 일반 DB
+오류로 바꾸는 경계도 재현했다. in-process scheduler 종료를 방해할 수 있어 함께 수정한다.
+
+b089c26은 자기 실행 원장의 실패·종료 시각을 먼저 commit한다. source 실패 게시에는
+여전히 advisory lock과 후속 성공 fencing을 요구하며, 게시 오류는 가려서 기록하고 원래
+오류/취소를 전달한다. 새 취소는 삼키지 않는다. source 잠금 없이 상태를 강제로 쓰거나
+완료 결과를 ack하지 않는다. 잠금이 풀리면 같은 결과로 저장만 재개한다.
+
+SQLite4 FAIL/4 PG SKIP와 실제 PostgreSQL의 독립 세션 advisory lock 보유·SQLSTATE55P03을
+포함한8 FAIL을 확인했다. 수정 후 PostgreSQL8 PASS이며 원장 terminal·원래 취소·정상
+세션 rollback·예약 유지·완료 결과 저장 재개·provider 추가 호출0을 확인했다.
+최종 집중 회귀·Docker·UI·전체 CI·두 독립 재리뷰는 PR123에서 확인한다.
+
 `OPINET_CHECKPOINT_PATH=/app/collector-state/opinet.sqlite3`이며 backend와 code-server는
 같은 `opinet-checkpoints` named volume을 사용한다. Docker root와 volume 실제 경로가
 승인된 NVMe인지 배포 전 확인한다. 영속 파일은 Git·이미지·원본 DB에 넣지 않는다.

@@ -1,5 +1,13 @@
 ## 2026-10-24 — 오피넷 수집·저장 재개 보완 중
 
+43bde97 전체 CI1140 PASS/2 SKIP 뒤 James 공식 리뷰는 지적 없음, Popper는 저장 잠금의
+연속 timeout이 자기 실행 종료까지 롤백하는P2를 재현했다. 부모는 원래 취소가 후행
+DB 오류로 바뀌는 경계도 추가 재현했다. SQLite4 FAIL/4 PG SKIP, 실제 PostgreSQL의
+독립 잠금 보유를 포함한8 FAIL을 확인하고 b089c26에서 실행 종료를 먼저 확정한다.
+source 잠금·후속 성공 fencing은 유지하며 원래 오류/취소를 보존한다. PostgreSQL8 PASS,
+완료 결과의 provider 재호출0·예약 유지·잠금 해제 뒤 저장 재개를 확인했다.
+최종 집중 회귀·Docker·UI·전체 CI·두 독립 재리뷰는 PR123에서 정산한다.
+
 main의 UI 선행 머지를 통합한 f1d13b7 전체 CI는1139 PASS/2 SKIP/1 FAIL이었다.
 실패는 이미1.0.1로 갱신한 VWorld web tarball을 기존 backend 계약 테스트가1.0.0으로
 기대하던 불일치다. WSL에서1 FAIL을 재현하고 기대값만 정합해 해당 모듈11 PASS를 확인했다.

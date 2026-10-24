@@ -3,6 +3,12 @@
 **배포 대기:** 사용자 지시로 운영 staging·빌드·컨테이너·스케줄 변경을 수행하지 않는다.
 다른 에이전트가 일괄 배포한다. [최종 SHA·설정·운영 확인 인계](reports/2026-10-24-opinet-deployment-handoff.md).
 
+43bde97 전체 CI1140 PASS/2 SKIP 뒤 공식 리뷰에서 source 잠금 timeout이 자기 실행
+종료까지 막는P2가 재현됐다. 원래 취소가 후행 DB 오류로 바뀌는 경계도 추가 확인했다.
+b089c26은 실행 원장 종료를 먼저 확정하고 source fencing·원래 취소·완료 결과를 보존한다.
+실제 PostgreSQL의 다른 세션 advisory lock 보유를 포함한8 FAIL→8 PASS다.
+이전 후보의 리뷰 통과를 새 후보의 승인으로 세지 않으며 최종 정본은 PR123이다.
+
 운영 run1645의 약3시간 브라우저 수집 뒤 최신 가격 SQL timeout과 실패 뒤8시간 유예
 재설정을 확인했다. Provider PR24의 지역별 영속 체크포인트·시군구 탐색 최적화와
 Transport의 RETURNING 기반 최신 가격 갱신·외부 조회 없는 저장 재개를 검증 중이다.

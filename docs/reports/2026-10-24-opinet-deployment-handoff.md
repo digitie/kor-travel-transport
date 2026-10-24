@@ -8,10 +8,12 @@
 
 제품 변경은 [Transport PR123](https://github.com/digitie/kor-travel-transport/pull/123),
 최종 CI·리뷰·머지 여부도 같은 PR을 정본으로 확인한다. 코드 후보는
-`7d254ccf879881e19d692e48a6fe96a91a2bcfae`이고 backend tree는
-`a8cbf813bea3469d7d16a5fb6644eaae6d8c4db7`다. 후속 문서·UI 계약 테스트 정합과 구분한다.
-main UI 선행 머지의 VWorld1.0.1에 맞춰 기존 backend 테스트의1.0.0 기대값만 고쳤으며,
-이 후속 변경은 수집 runtime과 provider 고정을 바꾸지 않는다.
+`b089c260d7df0614f7fdd9ebea5fc3a58a86a545`이고 backend tree는
+`1b9f77fd386da6c62d0fa5af2822cecae31e69b8`다. 후속 문서 변경과 구분한다.
+main UI 선행 머지의 VWorld1.0.1과 backend 계약 테스트 기대값 정합도 포함한다.
+이전43bde97의 전체 CI1140 PASS/2 SKIP 뒤 공식 리뷰의 잠금 경합P2와 추가 취소 보존
+경계를 수정했다. 실제 PostgreSQL advisory lock의 다른 세션 보유를 포함한 새8개는
+수정 전8 FAIL·수정 후8 PASS다. 최종 전체 CI·두 독립 재리뷰는 PR123을 확인한다.
 일괄 배포할 때는 PR123 머지 결과와 그 뒤 승인된 다른 변경을 포함한 최신 후보를 사용한다.
 이 후보는 main50537f6의 npm 보안 갱신을 포함한다.
 
@@ -66,6 +68,9 @@ Transport instigator17개는 모두 STOPPED, 활성 run·worker는0이었다. **
   완료 checkpoint를 전달받기 전 취소/오류가 나도 이후 다른 실행이 확정한 성공을 덮지 않는다.
   unhealthy busy의 실패 설명·metadata에도 `collector_busy`를 남긴다. in-process busy는
   기존 예약을 유지하면서 기본 수집 간격 이상의 대기를 적용한다.
+- 저장 잠금이 계속 막혀도 자기 실행 원장의 실패·종료는 source 잠금과 독립적으로
+  확정한다. 잠금 없는 source 쓰기는 하지 않으며, 후행 실패 게시 오류가 원래 취소를
+  일반 오류로 바꾸지 않는다. 완료 결과는 ack하지 않아 잠금 해제 뒤 저장만 재개한다.
 - API health의 정확한 release SHA, CS의 같은 이미지·gRPC12306·공용 Dagster 버전,
   양쪽 체크포인트 경로·동일 volume·NVMe 저장을 확인한다.
 - 정상 예약 실행의 실제 collection run·원천 성공 시각·주유소/유가 건수·최신 가격과
