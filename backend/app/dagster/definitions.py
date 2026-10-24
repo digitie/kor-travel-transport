@@ -273,14 +273,16 @@ def _collect_transport(scope: CollectionScope) -> dict[str, Any]:
         scope == "fuel" and result.get("status") == "skipped" and result.get("fuel_ready") is not True
     ):
         errors = result.get("errors")
-        description = (f"교통정보 수집에 실패했습니다(status={result['status']}): {_redacted_causes(errors)}. "
+        reason = ", skip_reason=collector_busy" if result.get("skip_reason") == "collector_busy" else ""
+        description = (f"교통정보 수집에 실패했습니다(status={result['status']}{reason}): {_redacted_causes(errors)}. "
                        "저장된 성공분과 호출 유예는 유지합니다.")
         if len(description) > MAX_FAILURE_DESCRIPTION_CHARS:
             description = description[: MAX_FAILURE_DESCRIPTION_CHARS - 3] + "..."
         raise Failure(
             description=description,
             metadata={"run_id": result["collection_run_id"], "status": result["status"], "scope": scope,
-                      "error_count": len(errors) if isinstance(errors, (list, tuple)) else 0},
+                      "error_count": len(errors) if isinstance(errors, (list, tuple)) else 0,
+                      **({"skip_reason": "collector_busy"} if reason else {})},
             allow_retries=False,
         )
     return result

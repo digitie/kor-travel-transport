@@ -53,7 +53,8 @@ def test_failed_store_resumes_without_provider_requests_or_extending_reservation
 
 @pytest.mark.parametrize("source_status", ["fresh", "failed", "missing"])
 @pytest.mark.parametrize("scope", ["fuel", "all"])
-def test_active_checkpoint_owner_does_not_publish_false_source_failure(test_settings, tmp_path, source_status, scope):
+@pytest.mark.parametrize("busy_phase", ["pending", "collection"])
+def test_active_checkpoint_owner_does_not_publish_false_source_failure(test_settings, tmp_path, source_status, scope, busy_phase):
     from opinet.experimental import OpinetBrowserCollector
     from opinet.experimental._browser_checkpoint import BrowserCheckpoint
     from app.services.transport_collection import fuel_read_model_freshness
@@ -63,8 +64,8 @@ def test_active_checkpoint_owner_does_not_publish_false_source_failure(test_sett
         engine, factory = create_engine_and_session_factory(test_settings.database_url)
         await init_database(engine)
         collector = OpinetBrowserCollector(checkpoint_path=tmp_path / "active.sqlite3")
-        owner = BrowserCheckpoint(collector.checkpoint_path, url=collector.url, query_level=collector.query_level,
-                                  max_age=collector.checkpoint_max_age)
+        owner = (BrowserCheckpoint(collector.checkpoint_path, url=collector.url, query_level=collector.query_level,
+                                   max_age=collector.checkpoint_max_age) if busy_phase == "pending" else None)
         def values(state):
             if state is None:
                 return None
@@ -76,7 +77,7 @@ def test_active_checkpoint_owner_does_not_publish_false_source_failure(test_sett
                     assert (await TransportCollectionService(test_settings, provider).collect(session, scope="fuel"))["status"] == "success"
                     state = await session.scalar(select(TransportCollectionState).where(
                         TransportCollectionState.source == OPINET_SOURCE))
-                    state.next_due_at = now_utc() + timedelta(hours=4)
+                    state.next_due_at = now_utc() + (timedelta(hours=4) if busy_phase == "pending" else -timedelta(seconds=1))
                     if source_status == "failed":
                         state.last_error = "previous storage failure"
                     await session.commit()
@@ -84,8 +85,16 @@ def test_active_checkpoint_owner_does_not_publish_false_source_failure(test_sett
                     TransportCollectionState.source == OPINET_SOURCE))
                 before = values(state)
                 stale_before, _ = await fuel_read_model_freshness(session)
-            provider.pending_fuel_snapshot = collector.pending_snapshot
-            provider.collect_fuel = AsyncMock(side_effect=AssertionError("must not open a competing browser"))
+            async def acquire_after_pending_check():
+                nonlocal owner
+                result = await collector.pending_snapshot()
+                assert result is None
+                owner = BrowserCheckpoint(collector.checkpoint_path, url=collector.url, query_level=collector.query_level,
+                                          max_age=collector.checkpoint_max_age)
+                return result
+            collector._collect_browser = AsyncMock(side_effect=AssertionError("must not open a competing browser"))
+            provider.pending_fuel_snapshot = collector.pending_snapshot if busy_phase == "pending" else acquire_after_pending_check
+            provider.collect_fuel = AsyncMock(side_effect=collector.collect_once)
             async with factory() as session:
                 result = await TransportCollectionService(test_settings, provider).collect(session, scope=scope)
                 assert result["status"] == ("skipped" if scope == "fuel" else "success")
@@ -97,9 +106,121 @@ def test_active_checkpoint_owner_does_not_publish_false_source_failure(test_sett
                 assert values(state) == before
                 stale_after, _ = await fuel_read_model_freshness(session)
                 assert stale_after is stale_before
-            provider.collect_fuel.assert_not_awaited()
+            assert provider.collect_fuel.await_count == (1 if busy_phase == "collection" else 0)
+            collector._collect_browser.assert_not_awaited()
         finally:
-            owner.close()
+            if owner is not None:
+                owner.close()
+            await engine.dispose()
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("interruption", ["cancel", "error"])
+def test_fresh_checkpoint_completion_survives_failure_before_result_return(test_settings, tmp_path, interruption):
+    from opinet import OpinetCheckpointBusyError
+    from opinet.experimental import OpinetBrowserCollector
+    from app.services.transport_collection import fuel_read_model_freshness
+
+    async def exercise():
+        provider = FakeTransportProvider()
+        original = await provider.collect_fuel()
+        collector = OpinetBrowserCollector(checkpoint_path=tmp_path / "completed-before-return.sqlite3")
+        completed, fail, error_lock, release = [asyncio.Event() for _ in range(4)]
+        async def finish_before_cleanup(checkpoint):
+            checkpoint.save_regions(list(original.regions))
+            for region in original.regions:
+                checkpoint.save(checkpoint.key("station", region), original.stations)
+                checkpoint.save(checkpoint.key("lpg", region), ())
+            checkpoint.complete()
+            completed.set()
+            await fail.wait()
+            raise RuntimeError("browser cleanup failed")
+        collector._collect_browser = finish_before_cleanup
+        provider.collect_fuel = collector.collect_once
+        provider.pending_fuel_snapshot = collector.pending_snapshot
+        provider.acknowledge_fuel_snapshot = collector.acknowledge_snapshot
+        engine, factory = create_engine_and_session_factory(test_settings.database_url)
+        await init_database(engine)
+        fresh = TransportCollectionService(test_settings, provider)
+        original_lock = fresh._acquire_database_lock
+        calls = 0
+        async def gate(session, group):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                error_lock.set()
+                await release.wait()
+            await original_lock(session, group)
+        fresh._acquire_database_lock = gate
+        async def collect(service):
+            async with factory() as session:
+                return await service.collect(session, scope="fuel")
+        task = asyncio.create_task(collect(fresh))
+        try:
+            await asyncio.wait_for(completed.wait(), 15)
+            with pytest.raises(OpinetCheckpointBusyError):
+                await collector.pending_snapshot()
+            if interruption == "cancel":
+                task.cancel()
+            else:
+                fail.set()
+            await asyncio.wait_for(error_lock.wait(), 15)
+            assert (await collect(TransportCollectionService(test_settings, provider)))["status"] == "success"
+            release.set()
+            if interruption == "cancel":
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+            else:
+                assert (await task)["fuel_ready"] is True
+            async with factory() as session:
+                state = await session.scalar(select(TransportCollectionState).where(TransportCollectionState.source == OPINET_SOURCE))
+                assert state.last_error is None
+                assert (await fuel_read_model_freshness(session))[0] is False
+                latest = await session.scalar(select(FuelLatestPrice))
+                assert latest is not None
+                assert float(latest.price) == 1700.5
+        finally:
+            fail.set()
+            release.set()
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            await engine.dispose()
+    asyncio.run(exercise())
+
+
+def test_busy_claim_rollback_preserves_a_competing_committed_snapshot(test_settings):
+    from opinet import OpinetCheckpointBusyError
+
+    async def exercise():
+        provider = FakeTransportProvider()
+        original = await provider.collect_fuel()
+        pending = {"snapshot": None}
+        committed = {}
+        engine, factory = create_engine_and_session_factory(test_settings.database_url)
+        await init_database(engine)
+        async def read_pending():
+            return pending["snapshot"]
+        async def competing_success_then_busy():
+            pending["snapshot"] = replace(original, collected_at=now_utc(), stations=(
+                replace(original.stations[0], prices=(replace(original.stations[0].prices[0], price=1900.5),)),))
+            async with factory() as session:
+                assert (await TransportCollectionService(test_settings, provider).collect(session, scope="fuel"))["status"] == "success"
+                state = await session.scalar(select(TransportCollectionState).where(TransportCollectionState.source == OPINET_SOURCE))
+                committed.update({name: getattr(state, name) for name in
+                                  ("last_started_at", "last_success_at", "next_due_at", "last_error", "updated_at")})
+            raise OpinetCheckpointBusyError("another collector owns checkpoint")
+        try:
+            provider.pending_fuel_snapshot = read_pending
+            provider.collect_fuel = competing_success_then_busy
+            async with factory() as session:
+                result = await TransportCollectionService(test_settings, provider).collect(session, scope="fuel")
+                assert result["status"] == "skipped" and result["fuel_ready"] is True
+                assert result["skip_reason"] == "collector_busy"
+                state = await session.scalar(select(TransportCollectionState).where(TransportCollectionState.source == OPINET_SOURCE))
+                assert {name: getattr(state, name) for name in committed} == committed
+                assert float((await session.scalar(select(FuelLatestPrice))).price) == 1900.5
+        finally:
             await engine.dispose()
     asyncio.run(exercise())
 

@@ -12,10 +12,12 @@ from test_transport_collection import FakeTransportProvider, build_settings
 from unittest.mock import AsyncMock
 
 
-@pytest.mark.parametrize("status,next_delay,expected", [
-    ("failed", 1, 300), ("partial_success", 1, 300), ("failed", 7200, 7200), ("success", 1, 1),
+@pytest.mark.parametrize("status,skip_reason,next_delay,expected", [
+    ("failed", None, 1, 300), ("partial_success", None, 1, 300), ("failed", None, 7200, 7200),
+    ("success", None, 1, 1), ("skipped", "collector_busy", 1, 300),
+    ("skipped", "collector_busy", 7200, 7200), ("skipped", None, 1, 1),
 ])
-def test_pending_store_failure_has_scheduler_backoff(tmp_path, monkeypatch, status, next_delay, expected):
+def test_pending_store_failure_has_scheduler_backoff(tmp_path, monkeypatch, status, skip_reason, next_delay, expected):
     from contextlib import asynccontextmanager
     from types import SimpleNamespace
     from app.main import _run_transport_scheduler
@@ -28,6 +30,7 @@ def test_pending_store_failure_has_scheduler_backoff(tmp_path, monkeypatch, stat
     service = SimpleNamespace(
         collect=AsyncMock(return_value={
             "collection_run_id": 1, "status": status, "client_mode": "live",
+            "skip_reason": skip_reason,
             "traffic_snapshot_count": 0, "incident_snapshot_count": 0,
             "fuel_station_count": 0, "fuel_price_count": 0,
         }),

@@ -477,7 +477,20 @@ class TransportCollectionService:
             claimed_sources.extend(highway_sources)
         if fuel_due:
             claimed_sources.append(OPINET_SOURCE)
+        fuel_claim_fields = ("last_started_at", "last_success_at", "next_due_at", "last_error", "updated_at")
+        fuel_claim_before: dict[str, Any] | None = None
+        fuel_claim_after: tuple[Any, ...] | None = None
+
+        def fuel_state_version(state: TransportCollectionState) -> tuple[Any, ...]:
+            values = (getattr(state, name) for name in fuel_claim_fields)
+            return tuple(serialize_utc(value) if isinstance(value, datetime) else value for value in values)
+
         for source in claimed_sources:
+            if source == OPINET_SOURCE and not fuel_storage_only:
+                previous = await session.scalar(select(TransportCollectionState).where(
+                    TransportCollectionState.source == source).execution_options(populate_existing=True))
+                if previous is not None:
+                    fuel_claim_before = {name: getattr(previous, name) for name in fuel_claim_fields}
             state = await self._get_or_create_state(session, source)
             if source == OPINET_SOURCE and fuel_storage_only:
                 # 이미 완료된 브라우저 결과의 저장만 재개한다. 외부 요청 예약은 유지한다.
@@ -497,6 +510,7 @@ class TransportCollectionService:
             state.next_due_at = serialize_utc(state.last_started_at) + reservation
             if source == OPINET_SOURCE:
                 state.next_due_at -= FUEL_NEXT_DUE_START_SLACK
+                fuel_claim_after = fuel_state_version(state)
         await session.commit()
         run_id = run.id
 
@@ -505,6 +519,20 @@ class TransportCollectionService:
         highway_result: HighwayPayload | Exception | None = None
         fuel_result: OpinetBrowserSnapshot | Exception | None = None
         persisted_sources: set[str] = set()
+
+        async def restore_unused_fuel_claim() -> None:
+            # pending 확인과 실제 작성자 잠금 획득 사이의 경합은 외부 요청이 아니다.
+            # 아직 우리 claim 그대로일 때만 되돌려 다른 실행의 성공·오류·예약은 보존한다.
+            await self._acquire_database_lock(session, "fuel")
+            state = await session.scalar(select(TransportCollectionState).where(
+                TransportCollectionState.source == OPINET_SOURCE).execution_options(populate_existing=True))
+            if state is not None and fuel_state_version(state) == fuel_claim_after:
+                if fuel_claim_before is None:
+                    await session.delete(state)
+                else:
+                    for name, value in fuel_claim_before.items():
+                        setattr(state, name, value)
+            await session.commit()
 
         async def fuel_checkpoint_was_superseded() -> bool:
             # 저장 잠금 안에서만 호출한다. state ORM identity cache에 의존하지 않는다.
@@ -517,8 +545,10 @@ class TransportCollectionService:
             candidate = fuel_result if isinstance(fuel_result, OpinetBrowserSnapshot) else pending_fuel
             if candidate is not None:
                 return serialize_utc(row.last_success_at) >= serialize_utc(candidate.collected_at)
-            return (fuel_storage_only and row.last_error is None
-                    and serialize_utc(row.updated_at) > started_at)
+            return row.last_error is None and (
+                serialize_utc(row.last_success_at) >= started_at
+                or (fuel_storage_only and serialize_utc(row.updated_at) > started_at)
+            )
 
         try:
             if highway_due:
@@ -542,11 +572,16 @@ class TransportCollectionService:
                     else:
                         async with asyncio.timeout(FUEL_FETCH_TIMEOUT_SECONDS):
                             fuel_result = await self.provider.collect_fuel()
+                except OpinetCheckpointBusyError:
+                    fuel_checkpoint_busy = True
+                    fuel_due = False
+                    persisted_sources.add(OPINET_SOURCE)
+                    await restore_unused_fuel_claim()
                 except Exception as exc:
                     fuel_result = exc
                 logger.info(
                     "fuel browser collection %s run_id=%s elapsed=%.0fs timeout=%ss",
-                    "failed" if isinstance(fuel_result, Exception) else "finished",
+                    "busy" if fuel_checkpoint_busy else "failed" if isinstance(fuel_result, Exception) else "finished",
                     run_id, time.monotonic() - fuel_started, FUEL_FETCH_TIMEOUT_SECONDS,
                 )
 
