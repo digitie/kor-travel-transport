@@ -53,8 +53,9 @@ export function ReferenceDataset({ state, query }: { state: ReferenceState; quer
     [row.name, row.departure, row.arrival, row.segment, row.calls, row.address, row.record_id].join(" ").includes(term))) ?? [];
   // 검색 조건이 바뀌면 별도 key로 페이지를 초기화한다.
   return <Card className="min-w-0">
-    <CardHeader><CardTitle>{state.title}</CardTitle><CardDescription>
-      {state.data ? `${rows.length.toLocaleString("ko-KR")}건 · 원천 이력/기준일 ${state.data.source_version} · 수집 ${dateTime(state.data.collected_at)}` : "아직 저장된 자료가 없습니다."}
+    <CardHeader><CardTitle role="heading" aria-level={3}>{state.title}</CardTitle><CardDescription>
+      {state.data ? <><p>{rows.length.toLocaleString("ko-KR")}건 · 원천 이력/기준일 {state.data.source_version}</p>
+        <p>원문 수집 {dateTime(state.data.collected_at)} · 최근 확인 {state.last_attempt_at ? dateTime(state.last_attempt_at) : "미확인"}</p></> : "아직 저장된 자료가 없습니다."}
     </CardDescription></CardHeader>
     <CardContent className="min-w-0">
       {state.last_error ? <Alert><AlertDescription>최근 수집에 실패했습니다. {state.data ? "마지막 정상 저장본을 표시합니다." : "다음 정기 수집에서 다시 확인합니다."}</AlertDescription></Alert> : null}
@@ -75,7 +76,7 @@ function DatasetRows({ rows }: { rows: ReferenceRow[] }) {
   return <div className="flex min-w-0 flex-col gap-4">
     <ul className="flex min-w-0 flex-col gap-3">
       {rows.slice(current * 20, current * 20 + 20).map((row) => <li key={row.record_id} className="min-w-0 break-words">
-        <strong>{row.name || (row.departure || row.arrival ? `${row.departure ?? "출발지 미제공"} → ${row.arrival ?? "도착지 미제공"}` : `원천 항로 ${row.record_id}`)}</strong>
+        <strong>{row.name || (row.departure || row.arrival ? `${row.departure ?? "출발지 미제공"} → ${row.arrival ?? "도착지 미제공"}` : `${row.kind === "route" ? "원천 항로" : "이름 미제공 시설"} ${row.record_id}`)}</strong>
         {row.kind === "route" ? <p>{row.departure ?? "출발지 미제공"} → {row.arrival ?? "도착지 미제공"}{row.segment ? ` · 구간 ${row.segment}` : ""}{row.calls ? ` · 기항 ${row.calls}` : ""}</p> : <p>{row.address ?? "주소 미제공"}{row.telephone ? ` · ${row.telephone}` : ""}{row.source_year ? ` · 조사 ${row.source_year}년` : ""}</p>}
         <small className="quiet">원천 ID {row.record_id}{row.kind === "facility" ? " · 시설 자료(승선 선착장 미확정)" : ""}</small>
       </li>)}
