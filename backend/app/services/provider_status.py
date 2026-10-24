@@ -31,6 +31,7 @@ async def provider_status(session: AsyncSession, settings: Settings) -> Provider
         ("krex_rest_area", "휴게소 기준정보", "rest_area_reference_collection_job", "dagster_rest_area_reference", keyed and settings.rest_area_collection_enabled, 86400),
         ("krex_rest_area_fuel", "휴게소 주유소 유가", "rest_area_fuel_price_collection_job", "dagster_rest_area_fuel", settings.rest_area_collection_enabled and bool(settings.kex_ex_api_key), 14400),
     ]
+    catalog.append(("vadahub", "배편 항로·시설 기준자료", "vadahub_reference_collection_job", "dagster_vadahub", settings.vadahub_collection_enabled, 604800))
     triggers = {row[3] for row in catalog}
     ranked = select(CollectionRun.id, func.row_number().over(partition_by=CollectionRun.trigger, order_by=(CollectionRun.started_at.desc(), CollectionRun.id.desc())).label("rank")).where(CollectionRun.trigger.in_(triggers), CollectionRun.status != "skipped").subquery()
     runs = (await session.scalars(select(CollectionRun).join(ranked, CollectionRun.id == ranked.c.id).where(ranked.c.rank == 1))).all()

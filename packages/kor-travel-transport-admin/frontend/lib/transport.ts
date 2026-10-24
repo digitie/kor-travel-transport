@@ -13,6 +13,7 @@ export const TRANSPORT_ENDPOINTS = [
   "transport/bus/timetable",
   "transport/bus/connections",
   "transport/ports/timetables",
+  "transport/ferry/reference",
   "transport/rail/timetables",
   "transport/rail/departures",
   "transport/rail/general/catalog", "transport/rail/general/guide",

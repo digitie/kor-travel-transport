@@ -1,3 +1,12 @@
+## 2026-10-24 — VadaHub 배편 통합·최신 소스 배포 진행
+
+최신 사용자 요청으로 Transport 배포 보류를 해제했다. `codex/vadahub-ferry-integration`에서
+SDK의 항로·시설·공식터미널을 저장/API/배편 UI에 연결했다.
+실제 공개 수집643행·실패/취소/재개 대상90개 검증을 통과했다.
+다음 한 작업은 최종 CI·리뷰2·Docker/반응형 검증 후 머지하고 Manager 정본 Odroid에
+Transport instigator만 일시 중지·자연 drain·복원 절차로 배포하는 것이다.
+[계약·검증·배포 원장](reports/2026-10-24-vadahub-ferry.md).
+
 ## 2026-10-24 — 홈·교통 이용 흐름과 최종 UI 점검
 
 `codex/transport-user-journeys`에서 운영 홈·분류 메뉴·고속도로/유가12지표·노선/역 지도·일반철도 실시간표·
