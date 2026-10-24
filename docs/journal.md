@@ -16,6 +16,14 @@
 후속 리뷰에서 정상 체크포인트 소유권 경합이 기존 원천을 실패/stale로 오염시키는P1도
 재현했다. Provider는 실제 SQLite BUSY/LOCKED만 typed 오류로 구분하고 앱은 경합 시
 기존 성공·오류·예약을 보존한다. 실제 파일 잠금과 PG 회귀를 포함한 집중125 PASS다.
+후속으로 Playwright 요청 라우팅이 JS·CSS 캐시를 끄는 것을 로컬 HTTP 서버와 실제
+Chromium으로 재현했다. Provider PR27 ce801cd는 CDP의 Image·Font·Media만 차단한다.
+초기 GET·동일 페이지 POST2회의 JS·CSS 최초1회 다운로드·가격 fetch·스타일·스크립트와
+진행 중 차단의 페이지 종료 경합을 검증했다. Provider346 PASS/4 live SKIP·coverage93.93%·
+mypy PASS다. 앱은 이 SHA를 고정하며 WSL127·Docker PG127 PASS, 최종 CI는 진행 중이다.
+격리 PG 합성40000행은 실제 수집 서비스 저장13.531초·동일 완료 결과 재개0.026초였고
+브라우저 호출은1회다. 운영 성능과 전국30분을 증명하는 수치로 해석하지 않는다.
+main50537f6의 npm 보안 갱신을 통합한 프론트엔드 WSL130·Docker130·두 build를 확인했다.
 
 ## 2026-10-24 — 여섯 프로젝트 npm 보안·버전 정합
 

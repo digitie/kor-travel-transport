@@ -31,7 +31,7 @@ Provider PR25는 조작별 대기를 기존0.25~1.25초에서0.05~0.15초의 독
 server/load 결과의 부분 완료와 지연된 하위 목록 경쟁이 재현됐다. 아직 운영에
 적용하지 않은 조기 HTML 파싱 경로는 제거하고 문서 완료 확인을 유지한다.
 가격 파싱에 쓰지 않는 image/font/media 요청만 제외하고 스크립트·CSS·XHR·fetch와
-DOM의 alt 속성은 유지한다. HTTP 캐시 비활성화 비용까지 포함한 실측이 필요하다.
+DOM의 alt 속성은 유지한다. 후속 캐시 보완은 아래 별도 검증을 따른다.
 
 이후 실제 기본 Chromium의 정상 초기 진입으로 공개 화면과 handler를 확인했다.
 시군구 선택은 이미 결과 문서 POST를 보내므로 시군구 모드에서 main-frame·지역·
@@ -50,7 +50,20 @@ coverage93.86%·mypy20파일 PASS이며 실제 Chromium26개를 포함한다. �
 잘못된 지역/탭, 지연 옵션 교체, 자동 POST 재사용과 필터·동일 지역 fallback을 검증했다.
 CI5개가 통과한 뒤 James/Popper 공식 독립 재검토에서 P0/P1 없음, Popper P2는
 예산이 탭별 지역 조회 시도이며 전체 HTTP 상한이 아니라는 문서 명시로 해소했다.
-문서 전용 c422283 delta도 두 리뷰를 마쳤다. 앱은 검증한 코드166dc6d를 고정한다.
+문서 전용 c422283 delta도 두 리뷰를 마쳤다. 이후 작성자 경합과 캐시 보존 보완을
+포함한 ce801cd를 앱에 고정하며, 최종 CI·독립 리뷰는 아직 진행 중이다.
+
+### 후속 — 캐시를 유지하는 시각 자원 차단
+
+Playwright 요청 라우팅은 이미지 URL 패턴만 좁혀도 HTTP 캐시를 비활성화한다.
+로컬 HTTP 서버·실제 Chromium의 초기 GET·동일 페이지 form POST2회에서 기존 방식은
+JS·CSS를 매회 다운로드하고, CDP Fetch의 Image·Font·Media 한정 차단은 각각 최초1회만
+다운로드하는 것을 재현했다. PR27 ce801cd는 이 CDP 방식으로 바꾸고 비동기 차단 작업을
+정리한다. 스크립트·스타일·가격 fetch·문서 완료와 기존 지역·탭 검증은 유지한다.
+열린 페이지의 차단 오류는 숨기지 않고, 페이지 종료와 차단 응답의 경합은 미처리 task
+예외를 남기지 않는다. 기존 Chromium26개에 캐시2개·종료 경합1개를 추가해 실제29개,
+WSL전체346 PASS/4 live SKIP·coverage93.93%·mypy20파일 PASS다. 0.05~0.15초의
+조작별 랜덤성은 유지한다. 운영 CPU·전국30분 달성으로 확대 해석하지 않는다.
 
 ### 저장·재개 보완
 
@@ -129,6 +142,11 @@ OpinetCheckpointBusyError는 실제 SQLite BUSY/LOCKED(확장 코드 포함)만 
 기존 실패와 미수집 원천은 준비된 상태로 숨기지 않는다. 같은 문구의 일반 오류·I/O·손상은
 여전히 실패로 남긴다. Provider349 PASS/4 live SKIP·coverage93.87%·Chromium26 PASS·mypy PASS,
 실제 파일 잠금과 PostgreSQL의 fresh/failed/missing×fuel/all 회귀 포함 앱125 PASS를 확인했다.
+같은 문구의 일반 서버 오류와 실제 Dagster collector_busy metadata를 더해 WSL127 PASS·
+Docker PG127 PASS를 확인했다. ce801cd 최종 provider pin으로 재검증·CI를 진행한다.
+격리 PostgreSQL의 합성10000주유소·4유종40000행은 실제 service.collect 저장13.531초,
+동일 완료 스냅샷의 저장 재개0.026초였다. 원본/최신40000행과 provider 호출1회를 확인했다.
+이는 외부 수집 없는 저장 경로 검증이며 운영 속도 수용을 대신하지 않는다.
 Transport ea51470 CI는1107 PASS/2 SKIP 뒤 fixture에서 유가 소스를 제외한 변경과
 충돌한 scheduler 종료 테스트1건이 실패했다. 해당 테스트에 실제 유가 지원 fake를
 명시하고 WSL 회귀1 PASS로 확인했다(cac391a). 전체 CI는 다시 실행 중이다.
