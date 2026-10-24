@@ -69,7 +69,7 @@ export function FlightJourney() {
     {errors.map((error) => <p key={error} role="alert">{error}</p>)}
     <SectionCard title="지금 주차할 곳" description={`${selected?.name ?? "공항"} · 최근 15분 관측만 현재 잔여 합계에 포함합니다.`}>
       <StatStrip items={[
-        { label: "확인된 잔여 주차면", value: freshParking?.length ? freshParking.reduce((sum, row) => sum + row.available_spaces, 0) : null, unit: "면", caption: freshParking ? `${freshParking.length}개 주차장 기준` : airport ? "조회 중" : unavailable },
+        { label: "확인된 잔여 주차면", value: freshParking?.length ? freshParking.reduce((sum, row) => sum + row.available_spaces, 0) : null, unit: "면", caption: freshParking ? `${freshParking.length}개 주차장 기준` : parkingState.key === key && parkingState.error ? "조회 실패" : airport ? "조회 중" : unavailable },
         { label: "오늘 이후 출발", value: flights && ["success", "sample"].includes(flights.status) ? flights.items.filter((row) => row.direction === "departure" && flightMoment(row) >= clock).length : null, unit: "편" },
         { label: "오늘 이후 도착", value: flights && ["success", "sample"].includes(flights.status) ? flights.items.filter((row) => row.direction === "arrival" && flightMoment(row) >= clock).length : null, unit: "편" },
       ]} />

@@ -14,7 +14,7 @@ async function login(page: Page) {
   await expect(page).toHaveURL(/\/$/);
 }
 
-for (const width of [375, 1440]) test(`운영 홈·노선 중심 도시철도·이후 시간표 ${width}px`, async ({ page }) => {
+for (const width of [320, 375, 414, 768, 1440]) test(`운영 홈·노선 중심 도시철도·이후 시간표 ${width}px`, async ({ page }) => {
   test.setTimeout(90_000); test.skip(!password, "로그인 암호 필요");
   await page.setViewportSize({ width, height: 1000 });
   await login(page);
@@ -86,4 +86,26 @@ for (const failure of [false, true]) test(`공항 목록 ${failure ? "실패" : 
   await expect(page.getByText("주차 현황을 확인하는 중입니다…", {exact: true})).toHaveCount(0);
   await expect(page.getByText("항공편을 확인하는 중입니다…", {exact: true})).toHaveCount(0);
   expect(requests).toEqual([]);
+});
+
+test("버스는 입력 전 목록 요청을 하지 않고 이름 검색으로 시작한다", async ({page}) => {
+  test.skip(!password, "로그인 암호 필요"); await login(page);
+  const queries: string[] = [];
+  await page.route("**/transport/bus/terminals?**", (route) => { queries.push(new URL(route.request().url()).searchParams.get("query") ?? ""); return route.fulfill({json: {items: [{terminal_id: "T1", terminal_name: "서울 시험터미널", city_name: "서울"}]}}); });
+  await page.goto("/bus/express");
+  await expect(page.getByRole("button", {name: "운행편 조회", exact: true})).toBeDisabled();
+  expect(queries).toEqual([]);
+  await page.getByLabel("출발 터미널", {exact: true}).fill("서울");
+  await expect(page.getByRole("checkbox", {name: /서울 시험터미널/})).toBeVisible();
+  expect(queries).toEqual(["서울"]);
+});
+
+test("공항 주차 조회 실패 후 KPI가 조회 중으로 남지 않는다", async ({page}) => {
+  test.skip(!password, "로그인 암호 필요"); await login(page);
+  await page.route("**/transport/features/places?**", (route) => route.fulfill({json: {items: [airport]}}));
+  await page.route("**/parking/current?**", (route) => route.fulfill({status: 502, json: {detail: "오류"}}));
+  await page.route("**/flights/status?**", (route) => route.fulfill({json: {status: "success", items: []}}));
+  await page.goto("/flights");
+  await expect(page.getByText("조회 실패", {exact: true})).toBeVisible();
+  await expect(page.getByText("조회 중", {exact: true})).toHaveCount(0);
 });
