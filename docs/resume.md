@@ -5,12 +5,14 @@
 Transport의 RETURNING 기반 최신 가격 갱신·외부 조회 없는 저장 재개를 검증 중이다.
 사용자 최종 요청에 따라 클릭별 랜덤 지연은0.15~0.85초(평균0.50초)로 조정한다.
 시군구 선택의 자동 결과를 검증해 중복 조회를 줄인다. 문서 완료 검증은 유지하고
-image/font/media만 제외한다. 후속 Provider PR27의95b6eec는 Chromium CDP로 시각 자원만
-차단해 HTTP 캐시를 유지한다. WSL349 PASS/4 live SKIP·coverage93.94%·mypy PASS이며
+image/font/media만 제외한다. 후속 Provider PR27의f58a879는 Chromium CDP로 시각 자원만
+차단해 HTTP 캐시를 유지한다. WSL355 PASS/4 live SKIP·coverage93.96%·mypy·CI5개 PASS이며
 실제 Chromium의 반복 POST 캐시와 종료 경합을 검증했다. 실제 SQLite 작성자 경합은
 별도 타입으로 구분한다(PR26 머지). 경합은 기존 원천 성공·오류·예약을 바꾸지 않고
 skipped로 남긴다. 앱 집중 WSL127·Docker PG127 PASS, 최종 pin 검증·CI는 진행 중이다.
-150~850ms 최종 지연과 무응답 CDP 종료5초 상한을 포함한95b6eec를 고정한다.
+150~850ms 최종 지연과 무응답 CDP 종료5초 상한·원래 취소/인증 오류 보존을 포함한
+f58a879를 고정한다. 반복 수집기도 취소 뒤 일반 실패 대기로 넘어가지 않고 종료한다.
+Provider 최종 CI와 James/Popper 독립 재리뷰를 통과해 PR27을 머지했다. 앱 최종 PG128 PASS다.
 전국30분은 실측 전 목표다.
 다음 한 작업은 두 독립 리뷰와 WSL/Docker 검증을 마친 뒤 승인된 Odroid 절차로 적용하고
 실제 정상 소스 시각·집합·export200을 확인하는 것이다. [점검·검증 상태](reports/2026-10-24-opinet-resume-review.md).

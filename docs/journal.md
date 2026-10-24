@@ -29,6 +29,13 @@ main50537f6의 npm 보안 갱신을 통합한 프론트엔드 WSL130·Docker130�
 수정 전3 FAIL, 수정 후 무응답·종료·랜덤 지연 집중7 PASS다. 최종 전체·pin·CI는 다시 검증한다.
 최종 provider95b6eec는349 PASS/4 live SKIP·coverage93.94%·mypy PASS이며 앱 pin·lock을
 갱신했다. 최종 CI와 독립 재리뷰·운영 수용은 진행 중이다.
+정리 timeout이 원래 취소·인증 오류를 덮는 후속P1도6경로에서 재현했다. 원래 예외를
+보존해 반복 수집기가 취소 후 대기로 돌아가지 않도록 수정했다. 실제 run_forever의
+오류callback0·cancelled=true3경로를 포함한 provider f58a879는355 PASS/4 live SKIP·
+coverage93.96%·mypy·CI5개 PASS이며 최종 두 리뷰를 다시 확인한다.
+f58a879 최종 James/Popper 독립 재리뷰 P0/P1/P2 없음으로 PR27을 머지했다. Popper의
+추가9개 probe도 취소·인증·요청 제한 오류 보존과 바깥 종료 도달을 확인했다.
+같은 provider의 앱 최종 집중 PostgreSQL128 PASS·uv lock check PASS다.
 
 ## 2026-10-24 — 여섯 프로젝트 npm 보안·버전 정합
 

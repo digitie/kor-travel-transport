@@ -53,7 +53,7 @@ coverage93.86%·mypy20파일 PASS이며 실제 Chromium26개를 포함한다. �
 CI5개가 통과한 뒤 James/Popper 공식 독립 재검토에서 P0/P1 없음, Popper P2는
 예산이 탭별 지역 조회 시도이며 전체 HTTP 상한이 아니라는 문서 명시로 해소했다.
 문서 전용 c422283 delta도 두 리뷰를 마쳤다. 이후 작성자 경합과 캐시 보존 보완을
-포함한95b6eec를 앱에 고정하며, 최종 CI·독립 리뷰는 아직 진행 중이다.
+포함한f58a879를 앱에 고정하며, 최종 앱 CI·독립 리뷰는 아직 진행 중이다.
 
 ### 후속 — 캐시를 유지하는 시각 자원 차단
 
@@ -71,6 +71,14 @@ WSL전체346 PASS/4 live SKIP·coverage93.93%·mypy20파일 PASS다. 최종 지�
 수정 전3 FAIL·수정 후 정리/랜덤 지연7 PASS다. 최종 CI 뒤 두 리뷰를 다시 확인한다.
 사용자 최종 지연과5초 상한을 포함한 provider95b6eec의 전체349 PASS/4 live SKIP·
 coverage93.94%·mypy PASS를 확인했다. 앱의 실제 collector 기본값도150~850ms인지 검증한다.
+후속 독립 재리뷰에서 정리 timeout이 원래 취소·인증 오류를 덮는P1도 재현됐다.
+원래 BaseException이 있으면 정리 실패가 이를 대체하지 않게 보완했다. 수정 전6 FAIL·
+수정 후 해당 집중10 PASS이며, 실제 run_forever의 취소 뒤 오류callback0·cancelled=true
+검증3개도 추가했다. f58a879의 전체355 PASS/4 live SKIP·coverage93.96%·mypy20파일·
+CI5개 PASS다. 최종 두 독립 재리뷰 뒤에만 이 버전을 운영 후보로 확정한다.
+f58a879의 최종 James/Popper 공식 독립 재리뷰는 P0/P1/P2 없음이다. Popper의 별도9개
+probe도 취소·인증·요청 제한 오류를3개의 무응답 정리 경로에서 보존하는 것을 확인했다.
+PR27을 머지했고 같은 provider의 앱 집중 PostgreSQL128 PASS·uv lock check PASS다.
 
 ### 저장·재개 보완
 
