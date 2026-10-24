@@ -37,6 +37,11 @@ web1.0.1·정확 source pin·lock을 채택하고 Firefox 실제 타일·확대 
 사용자가 현재 운영 호스트의 관리자 웹만 교체하도록 승인했다. [검증·배포 기록](reports/2026-10-24-firefox-vworld-tiles.md).
 ## 2026-10-24 — 오피넷 수집·저장 재개 보완 중
 
+main PR126/fbdcd98의 ITS·철도·schema0034를43b20f1에 일반 merge해 보존했다.
+작업트리 갱신과 겹친 집중 검증은 부분 결과를 폐기한다. 새 provider 의존성을 uv.lock에
+맞추고 자체 테스트 DB만0034로 전진한 뒤 고정 archive·새 이미지로 다시 검증한다.
+운영 DB·컨테이너·스케줄은 변경하지 않는다.
+
 43bde97 전체 CI1140 PASS/2 SKIP 뒤 James 공식 리뷰는 지적 없음, Popper는 저장 잠금의
 연속 timeout이 자기 실행 종료까지 롤백하는P2를 재현했다. 부모는 원래 취소가 후행
 DB 오류로 바뀌는 경계도 추가 재현했다. SQLite4 FAIL/4 PG SKIP, 실제 PostgreSQL의

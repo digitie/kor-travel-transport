@@ -23,6 +23,9 @@ James/Popper 최종 독립 리뷰의 잔여 P0/P1/P2는 없다. Common PR45/krit
 
 # 현재 상태 — 2026-10-24 오피넷 수집·저장 재개 보완 중
 
+43b20f1은 main PR126/fbdcd98의 ITS·철도와 schema0034를 보존한 통합 후보다.
+집중 검증은 고정 archive에서 다시 실행하며 최종 결과·두 재리뷰는 PR123에서 확인한다.
+
 **배포 대기:** 사용자 지시로 운영 staging·빌드·컨테이너·스케줄 변경을 수행하지 않는다.
 다른 에이전트가 일괄 배포한다. [최종 SHA·설정·운영 확인 인계](reports/2026-10-24-opinet-deployment-handoff.md).
 

@@ -8,8 +8,10 @@
 
 제품 변경은 [Transport PR123](https://github.com/digitie/kor-travel-transport/pull/123),
 최종 CI·리뷰·머지 여부도 같은 PR을 정본으로 확인한다. 코드 후보는
-`b089c260d7df0614f7fdd9ebea5fc3a58a86a545`이고 backend tree는
-`1b9f77fd386da6c62d0fa5af2822cecae31e69b8`다. 후속 문서 변경과 구분한다.
+`43b20f1f5a6206d21e53f115861189a87e2ce340`이고 backend tree는
+`f12d805d864296ca638b9dfced1bb2cabef2542c`다. 후속 문서 변경과 구분한다.
+main fbdcd98의 ITS·철도 변경과 schema0034를 일반 merge해 보존했다. 실행 중인
+작업트리를 갱신한 집중 검증의 부분 결과는 폐기하고 고정 archive에서 다시 실행한다.
 main UI 선행 머지의 VWorld1.0.1과 backend 계약 테스트 기대값 정합도 포함한다.
 이전43bde97의 전체 CI1140 PASS/2 SKIP 뒤 공식 리뷰의 잠금 경합P2와 추가 취소 보존
 경계를 수정했다. 실제 PostgreSQL advisory lock의 다른 세션 보유를 포함한 새8개는
@@ -36,7 +38,7 @@ Provider는 `f58a879676f8d2c6d8de26e3daaf7eb154fd9ad2`로 고정했다.
   `opinet-checkpoints:/app/collector-state` named volume을 적용한다. volume 실제 저장 장치도
   NVMe인지 확인한다. 파일 하나만 공유하지 않고 잠금·SQLite 부속 파일을 포함한 디렉터리를 공유한다.
 - 이 기능 자체는 PostgreSQL migration을 추가하지 않았다. 일괄 배포에 포함된 main의
-  schema0030~0033 적용 여부는 운영의 현재 revision과 대조해 별도로 처리한다.
+  schema0030~0034 적용 여부는 운영의 현재 revision과 대조해 별도로 처리한다.
 - Transport의 원래 schedule·sensor 상태를 저장하고 해당 location만 일시 중지한다.
   queued/run과 실제 worker의 자연 종료를 모두 확인한 뒤 전환하고 원래 상태를 복원한다.
   공용 DB·daemon·다른 프로젝트 컨테이너를 함께 재생성하지 않는다.
