@@ -15,6 +15,7 @@ import { MapDetailOverlay, MapFilterBar, MapFilterField, MapKindFilter, MapTabs 
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { FilterCombobox } from "./filter-combobox";
+import { InfoButton } from "./info-button";
 import { X } from "lucide-react";
 
 type MapPoint = { id: string; lngLat: [number, number]; place: Place };
@@ -123,6 +124,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
   const sourcesKey = selectedSources.join(",");
   const productsKey = products.join(",");
   const perKindLimit = Math.min(300, Math.floor(900 / Math.max(1, kinds.length)));
+  const partialListKinds = !embedded && view === "list" ? kinds.filter((kind) => loaded[kind]?.truncated === true) : [];
   const sources = useMemo(() => [...new Set([...knownSources, ...(places ?? []).map((item) => item.source)])], [places, knownSources]);
   const all = useMemo(() => places ?? kinds.flatMap((kind) => loaded[kind]?.items ?? []), [places, kinds, loaded]);
   const items = useMemo(() => all.filter((item) => (!selectedSources.length || selectedSources.includes(item.source)) && (!embedded || !query || [item.name, item.brand_name, item.address, item.subtitle, item.provider_id, ...item.line_names].join(" ").toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) && (!products.length || item.kind !== "fuel_station" || item.prices?.some((row) => hasFuelPrice(row) && products.includes(row.product_code)))), [all, embedded, selectedSources, query, products]);
@@ -342,7 +344,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
       <MapFilterField htmlFor={`${controlId}-source`} label="데이터 출처"><FilterCombobox compact id={`${controlId}-source`} value={selectedSources} onChange={(values) => { setSelectedSources(values); setSelected(null); }} placeholder="모든 출처" options={sources.map((value) => ({ value, label: collectionSourceLabel(value) }))} /></MapFilterField>
       {kinds.includes("fuel_station") ? <MapFilterField htmlFor={`${controlId}-product`} label="표시 유종"><FilterCombobox compact id={`${controlId}-product`} value={products} onChange={(values) => { setProducts(values); setSelected(null); }} placeholder="전체 유종" options={["B027", "D047", "B034", "K015", "C004"].map((value) => ({ value, label: fuelProductLabel(value) }))} /></MapFilterField> : null}
     </MapFilterBar> : null}
-    <MapViewTabs ariaLabel="장소 보기" viewport={mapViewport} count={view === "list" ? items.length : serverClustered ? serverClusters.reduce((sum, item) => sum + item.count, 0) : visiblePoints.length} status={pending.length ? "조회 중…" : undefined} />
+    <MapViewTabs ariaLabel="장소 보기" viewport={mapViewport} count={view === "list" ? items.length : serverClustered ? serverClusters.reduce((sum, item) => sum + item.count, 0) : visiblePoints.length} status={pending.length ? "조회 중…" : partialListKinds.length ? <span className="inline-flex items-center gap-1"><span className="kt-map-count">{items.length.toLocaleString("ko-KR")}건 표시</span><InfoButton label="목록 일부 표시">일부 결과만 조회했습니다. {partialListKinds.map((kind) => `${placeKindLabel(kind)} 최대 ${((kind === "ferry_port" || kind === "bus_terminal") && searchQuery.trim() ? 5000 : perKindLimit).toLocaleString("ko-KR")}건`).join(" · ")}. 검색 조건을 좁혀 주세요.</InfoButton></span> : undefined} />
     {cluster || failed.length > 0 || (basemap.basemapFailed && view === "map") ? <div className="map-feedback" role="status">
       {cluster && visiblePoints.length > 0 ? <span>밀도별 묶음</span> : null}
       {failed.length ? <p className="error">{failed.map(placeKindLabel).join("·")} 조회 실패 <Button variant="outline" type="button" onClick={() => setReload((value) => value + 1)}>다시 조회</Button></p> : null}
