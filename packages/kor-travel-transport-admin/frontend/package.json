@@ -10,7 +10,9 @@
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests",
     "e2e:install": "playwright install --with-deps chromium firefox",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "predev": "node ./scripts/copy-maplibre-worker.mjs",
+    "prebuild": "node ./scripts/copy-maplibre-worker.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

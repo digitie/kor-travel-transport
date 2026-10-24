@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { DAGSTER_LOCATION_NAME, dagsterLocationUrl, dagsterRunUrl, scopedDagsterRequest } from "./dagster-scope";
+import { DAGSTER_LOCATION_NAME, dagsterLocationUrl, dagsterRunUrl, dagsterJobRunsUrl, scopedDagsterRequest } from "./dagster-scope";
 
 test("실패 상세도 소유 location 태그로 제한하고 scope 변수를 거절한다", () => {
   const runId = "00000000-0000-0000-0000-000000000001";
@@ -49,4 +49,6 @@ test.each([
 test("Dagster UI 링크는 공용 gateway의 공개 host와 이 location을 쓴다", () => {
   expect(dagsterLocationUrl("/schedules")).toBe("https://dagster.digitie.mywire.org/locations/kor-travel-transport/schedules");
   expect(dagsterRunUrl("abc")).toBe("https://dagster.digitie.mywire.org/runs/abc");
+  expect(dagsterJobRunsUrl("kric_collection_job")).toBe("https://dagster.digitie.mywire.org/locations/kor-travel-transport/jobs/kric_collection_job/runs");
+  expect(dagsterJobRunsUrl("name/with space")).toContain("/jobs/name%2Fwith%20space/runs");
 });

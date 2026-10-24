@@ -28,6 +28,21 @@ export function serviceTime(value: string | null | undefined, referenceDate?: st
   }
   return `${days === 1 ? "익일 " : days > 1 ? `${days}일 뒤 ` : days < 0 ? "전일 " : ""}${String(hour % 24).padStart(2, "0")}:${match[2]}`;
 }
+/** TAGO의 한국 운행 날짜·시각을 비교용 시각으로 바꾼다. 날짜 없는 시각은 운행일이 필요하다. */
+export function serviceInstant(value: string | null | undefined, serviceDate: string): number | null {
+  if (!value) return null;
+  const full = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})?$/.exec(value);
+  const time = /^(\d{2})(\d{2})(\d{2})?$/.exec(value) ?? /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(value);
+  const day = full ? `${full[1]}-${full[2]}-${full[3]}` : serviceDate;
+  const date = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!date || !full && !time) return null;
+  const year = Number(date[1]), month = Number(date[2]), dateOfMonth = Number(date[3]);
+  const base = new Date(Date.UTC(year, month - 1, dateOfMonth));
+  if (base.getUTCFullYear() !== year || base.getUTCMonth() !== month - 1 || base.getUTCDate() !== dateOfMonth) return null;
+  const hour = Number(full ? full[4] : time![1]), minute = Number(full ? full[5] : time![2]), second = Number(full ? full[6] ?? "0" : time![3] ?? "0");
+  return hour <= 29 && minute <= 59 && second <= 59 ? base.getTime() + (hour - 9) * 3600_000 + minute * 60_000 + second * 1000 : null;
+}
+
 export function money(value: string | number | null | undefined, suffix = "원") {
   if (value == null || value === "") return "요금 미제공";
   const numeric = Number(String(value).replace(/[,원\s]/g, ""));

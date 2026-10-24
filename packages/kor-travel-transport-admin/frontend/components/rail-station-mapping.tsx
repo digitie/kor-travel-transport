@@ -39,6 +39,8 @@ function StationEditor({
   const [target, setTarget] = useState(station.rail_station_identity_key ?? "");
   const [note, setNote] = useState(manualMapping?.note ?? "");
   useEffect(() => {
+    // 선택 역 또는 저장된 연결이 바뀌면 편집 초안을 해당 서버 값으로 복원한다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTarget(station.rail_station_identity_key ?? "");
     setNote(manualMapping?.note ?? "");
   }, [station.operator_code, station.line_code, station.station_code,
@@ -106,6 +108,8 @@ export function RailStationMapping() {
   useEffect(() => {
     const controller = new AbortController();
     const requestId = ++requestSequence.current;
+    // 새 서버 조회마다 대기/오류 상태를 초기화한다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true); setError("");
     fetch("/api/admin/rail-station-mappings", { cache: "no-store", signal: controller.signal })
       .then(async (response) => { if (!response.ok) throw new Error(await responseError(response)); return response.json() as Promise<MappingDocument>; })
@@ -132,6 +136,8 @@ export function RailStationMapping() {
 
   useEffect(() => {
     if (visibleStations.some((station) => stationKey(station) === selectedKey)) return;
+    // 필터로 선택 행이 사라지면 실제 보이는 첫 행으로 상세 대상을 맞춘다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedKey(visibleStations[0] ? stationKey(visibleStations[0]) : "");
   }, [visibleStations, selectedKey]);
 

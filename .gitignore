@@ -27,3 +27,7 @@ packages/kor-travel-transport-admin/frontend/test-results/
 packages/kor-travel-transport-admin/frontend/playwright-report/
 packages/kor-travel-transport-admin/frontend/public/maplibre/
 .playwright-mcp/
+
+# MapLibre worker는 npm hook에서 설치된 패키지로부터 생성한다.
+packages/kor-travel-transport-admin/frontend/public/maplibre/
+.codex_tmp/
