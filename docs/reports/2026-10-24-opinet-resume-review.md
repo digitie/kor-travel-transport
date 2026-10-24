@@ -107,6 +107,20 @@ Transport 사전 리뷰의 미기록 파일 오류·빠른 다음 tick·오래�
 2시간27분22초 뒤 success였다. last_success_at은10:27:19 KST이고 last_error는 없다.
 앱 running·Dagster 활성 Transport run·code-server 실행 worker는 모두0이다.
 이는 새 후보 적용 전의 회복이며 export 응답과 새 후보 전국 실행 시간은 별도 확인한다.
+10:40 KST 실제 TCP loopback12302의 fuel-stations?limit=1은HTTP200·items1이며
+failed/stale/last_attempt_failed=false였다. 실제 소비자 경로 E2E와 새 후보 검증은 별도다.
+Manager transport 대상은odroid192.168.1.13, Docker root는NVMe로 확인했다.
+현재 운영 API/CS의 체크포인트 설정·마운트·named volume은 없으므로 새 배포에서 확인한다.
+
+f0d1621 사전 적대 리뷰의 추가 경계도 재현했다. James는 fixture/disabled의 fuel_ready
+누락으로 미수집이 Dagster SUCCESS가 되는P1을 재현했다. 모든 fuel 요약에 준비 여부와
+비활성 원인을 명시하고 skipped는 명시적인 fuel_ready=true일 때만 정상 유예로 인정한다.
+Popper는 fresh 실행보다 pending 저장이 먼저 끝나면 최초8시간 예약이 정규화되지 않는P1을
+재현했다. 새 claim부터 동일 last_started_at 기준의15분 tick 여유를 확정해 저장 순서에
+의존하지 않는다. 기존 예약의 재개는 그대로 보존하며 in-process는 여유를 되돌린다.
+만료 예약의 저장 재개가 계속 실패해1초 반복하던P2는 fuel in-process 실패 대기에
+기본 transport 간격 이상의 backoff를 적용했다. 변경 전 경합2 FAIL, backoff2 FAIL/2 PASS,
+변경 후 실제 service/Dagster·경합·backoff·가림 집중20 PASS를 확인했다. 최종 전체검증은 재실행한다.
 Transport ea51470 CI는1107 PASS/2 SKIP 뒤 fixture에서 유가 소스를 제외한 변경과
 충돌한 scheduler 종료 테스트1건이 실패했다. 해당 테스트에 실제 유가 지원 fake를
 명시하고 WSL 회귀1 PASS로 확인했다(cac391a). 전체 CI는 다시 실행 중이다.

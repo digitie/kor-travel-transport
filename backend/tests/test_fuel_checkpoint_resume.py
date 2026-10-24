@@ -211,3 +211,62 @@ def test_all_scope_cancel_before_fuel_step_preserves_newer_fuel_success(tmp_path
         finally:
             await engine.dispose()
     asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("scheduler_mode", ["dagster", "in_process"])
+def test_pending_store_winning_fresh_collection_keeps_next_tick(tmp_path, scheduler_mode):
+    async def exercise():
+        from app.services.transport_collection import FUEL_NEXT_DUE_START_SLACK
+
+        settings = build_settings(tmp_path)
+        settings.scheduler_mode = scheduler_mode
+        provider = FakeTransportProvider()
+        provider.next_fuel_interval = lambda: timedelta(hours=8)
+        pending = {"snapshot": None}
+        async def read_pending():
+            return pending["snapshot"]
+        original_collect = provider.collect_fuel
+        async def collect_fuel():
+            pending["snapshot"] = await original_collect()
+            return pending["snapshot"]
+        provider.pending_fuel_snapshot = read_pending
+        provider.collect_fuel = AsyncMock(side_effect=collect_fuel)
+        provider.acknowledge_fuel_snapshot = Mock()
+        engine, factory = create_engine_and_session_factory(settings.database_url)
+        await init_database(engine)
+        fresh, resume = [TransportCollectionService(settings, provider) for _ in range(2)]
+        entered, release = asyncio.Event(), asyncio.Event()
+        original_lock = fresh._acquire_database_lock
+        calls = 0
+        async def gate(session, group):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                entered.set()
+                await release.wait()
+            await original_lock(session, group)
+        fresh._acquire_database_lock = gate
+        async def collect(service):
+            async with factory() as session:
+                return await service.collect(session, scope="fuel")
+        task = asyncio.create_task(collect(fresh))
+        try:
+            await asyncio.wait_for(entered.wait(), timeout=15)
+            assert (await collect(resume))["status"] == "success"
+            release.set()
+            assert (await task)["status"] == "skipped"
+            async with factory() as session:
+                state = await session.scalar(select(TransportCollectionState).where(
+                    TransportCollectionState.source == OPINET_SOURCE))
+                start = serialize_utc(state.last_started_at)
+                due = start + timedelta(hours=8) - FUEL_NEXT_DUE_START_SLACK
+                assert serialize_utc(state.next_due_at) == due
+                assert fresh._effective_fuel_due_at(state) == (
+                    start + timedelta(hours=8) if scheduler_mode == "in_process" else due)
+            provider.collect_fuel.assert_awaited_once()
+        finally:
+            release.set()
+            if not task.done():
+                await task
+            await engine.dispose()
+    asyncio.run(exercise())

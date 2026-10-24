@@ -13,6 +13,41 @@ from app.dagster.definitions import definitions
 from app.services.transport_collection import TransportCollectionService
 
 
+@pytest.mark.parametrize("provider_mode", ["sample", "disabled"])
+def test_real_unavailable_fuel_service_fails_dagster(tmp_path, monkeypatch, provider_mode):
+    from app.db.session import create_engine_and_session_factory, init_database
+    from app.services.transport_collection import DisabledTransportProvider, FixtureTransportProvider
+    from test_transport_collection import build_settings
+
+    settings = build_settings(tmp_path)
+    settings.scheduler_mode = "dagster"
+    provider = FixtureTransportProvider() if provider_mode == "sample" else DisabledTransportProvider()
+    summaries = []
+    async def run_with_session(settings, action, *args, **kwargs):
+        engine, factory = create_engine_and_session_factory(settings.database_url)
+        try:
+            await init_database(engine)
+            async with factory() as session:
+                summary = await action(session, *args, **kwargs)
+                summaries.append(summary)
+                return summary
+        finally:
+            await engine.dispose()
+
+    monkeypatch.setattr(dagster_definitions, "_settings", lambda: settings)
+    monkeypatch.setattr(dagster_definitions, "get_settings", lambda: settings)
+    monkeypatch.setattr(dagster_definitions, "_run_with_session", run_with_session)
+    monkeypatch.setattr(dagster_definitions, "TransportCollectionService",
+                        lambda settings: TransportCollectionService(settings, provider))
+    result = dagster_definitions.fuel_collection_job.execute_in_process(raise_on_error=False)
+    assert summaries[0]["status"] == "skipped"
+    assert summaries[0]["fuel_ready"] is False
+    assert not result.success
+    failure = result.failure_data_for_node("collect_fuel_transport").user_failure_data
+    assert f"provider={provider_mode}" in failure.description
+    assert not any(event.is_step_up_for_retry for event in result.all_events)
+
+
 def test_native_disabled_retry_sensors_target_only_three_idempotent_jobs():
     from dagster import Definitions
 
@@ -38,13 +73,16 @@ def test_transport_failure_is_visible_after_commit_without_retry(monkeypatch, sc
         async def collect(self, session, **kwargs):
             # 손으로 쓴 dict가 아니라 실제 서비스의 요약 함수로 만든다. 예전 대역은 `run_id`를 돌려줘
             # 실제 키(`collection_run_id`)와 어긋난 채 통과했고, 운영에서는 실패마다 KeyError가 났다.
-            return TransportCollectionService._summary(
+            result = TransportCollectionService._summary(
                 SimpleNamespace(id=19387, status=status), client_mode="live", raw_count=0,
                 traffic_count=0, incident_count=0, fuel_station_count=0, fuel_price_count=0,
                 errors=["Opinet browser action failed: phase=search:station:region=경기도/용인시수지구:attempt=2; cause=TimeoutError",
                         "GET https://api.example/x?serviceKey=raw-service-key&page=1 secret-provider-detail",
                         "Opinet browser action failed: phase=search:station:region=경기도/용인시수지구:attempt=2; cause=TimeoutError"],
             )
+            if scope == "fuel" and status == "skipped":
+                result["fuel_ready"] = True  # 정상 호출 유예만 성공으로 표시한다.
+            return result
 
         async def close(self):
             lifecycle.append("closed")

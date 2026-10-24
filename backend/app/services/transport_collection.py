@@ -430,7 +430,7 @@ class TransportCollectionService:
             run.status = "skipped"
             run.finished_at = now_utc()
             await session.commit()
-            return self._summary(
+            summary = self._summary(
                 run,
                 client_mode=self.client_mode,
                 raw_count=0,
@@ -440,6 +440,10 @@ class TransportCollectionService:
                 fuel_price_count=0,
                 errors=[],
             )
+            if scope == "fuel":
+                summary.update(fuel_ready=False, next_fuel_due_at=None, last_fuel_success_at=None,
+                               errors=["OpiNet browser collection is unavailable (provider=disabled)."])
+            return summary
 
         due_highway_sources = []
         if scope != "fuel":
@@ -474,7 +478,8 @@ class TransportCollectionService:
                 # 이미 완료된 브라우저 결과의 저장만 재개한다. 외부 요청 예약은 유지한다.
                 if state.last_started_at is None:
                     state.last_started_at = started_at
-                    state.next_due_at = started_at + self.provider.next_fuel_interval()
+                    state.next_due_at = (started_at + self.provider.next_fuel_interval()
+                                         - FUEL_NEXT_DUE_START_SLACK)
                 continue
             await self._mark_source_started(session, source)
             # 외부 요청 전에 예약을 확정한다. 재시작/취소도 provider 호출 예산을 되돌리지 않는다.
@@ -482,7 +487,11 @@ class TransportCollectionService:
                 self.provider.next_fuel_interval() if source == OPINET_SOURCE
                 else timedelta(seconds=(FUEL_FETCH_TIMEOUT_SECONDS if fuel_due else 0) + 2 * HIGHWAY_FETCH_TIMEOUT_SECONDS + 900)
             )
-            state.next_due_at = started_at + reservation
+            # 완료 checkpoint를 다른 실행이 먼저 저장해도 같은 정규 예약을 보존한다.
+            # in-process는 이 tick 여유를 되돌려 실제 최소 수집 간격을 지킨다.
+            state.next_due_at = serialize_utc(state.last_started_at) + reservation
+            if source == OPINET_SOURCE:
+                state.next_due_at -= FUEL_NEXT_DUE_START_SLACK
         await session.commit()
         run_id = run.id
 
@@ -690,16 +699,19 @@ class TransportCollectionService:
             fuel_price_count=fuel_price_count,
             errors=errors,
         )
-        if scope == "fuel" and fuel_enabled:
-            state = await session.scalar(select(TransportCollectionState).where(
+        if scope == "fuel":
+            state = (await session.scalar(select(TransportCollectionState).where(
                 TransportCollectionState.source == OPINET_SOURCE).execution_options(populate_existing=True))
+                     if fuel_enabled else None)
             summary.update({
-                "fuel_ready": (state.last_success_at is not None and state.last_error is None
+                "fuel_ready": (state is not None and state.last_success_at is not None and state.last_error is None
                                and now_utc() - serialize_utc(state.last_success_at) <= FUEL_STALE_AFTER),
-                "next_fuel_due_at": serialize_utc(state.next_due_at).isoformat() if state.next_due_at else None,
-                "last_fuel_success_at": serialize_utc(state.last_success_at).isoformat() if state.last_success_at else None,
+                "next_fuel_due_at": serialize_utc(state.next_due_at).isoformat() if state and state.next_due_at else None,
+                "last_fuel_success_at": serialize_utc(state.last_success_at).isoformat() if state and state.last_success_at else None,
             })
-            if run.status == "skipped" and state.last_error:
+            if not fuel_enabled:
+                summary["errors"] = [f"OpiNet browser collection is unavailable (provider={self.client_mode})."]
+            elif run.status == "skipped" and state.last_error:
                 summary["errors"] = [state.last_error]
         return summary
 

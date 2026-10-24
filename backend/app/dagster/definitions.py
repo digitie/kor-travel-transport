@@ -270,7 +270,7 @@ def _collect_transport(scope: CollectionScope) -> dict[str, Any]:
     # 원인은 가린 한 줄로 설명에 싣는다(다음 진단이 DB를 보지 않아도 되게). 기존 호출 유예를 자동 재시도로
     # 우회하지 않는다.
     if result.get("status") in {"failed", "partial_success"} or (
-        scope == "fuel" and result.get("status") == "skipped" and result.get("fuel_ready") is False
+        scope == "fuel" and result.get("status") == "skipped" and result.get("fuel_ready") is not True
     ):
         errors = result.get("errors")
         description = (f"교통정보 수집에 실패했습니다(status={result['status']}): {_redacted_causes(errors)}. "

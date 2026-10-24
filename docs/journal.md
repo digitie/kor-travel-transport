@@ -10,6 +10,9 @@
 제거했다. 문서 완료와 지역·탭 검증은 유지하며 image/font/media만 제외한다.
 최종 provider166dc6d의 WSL340 PASS·Chromium26 PASS·mypy PASS를 확인했다.
 실제 운영 전국30분 수집은 아직 확인하지 않았다.
+사전 적대 리뷰에서 fixture/disabled 미수집의 SUCCESS와 fresh/재개 저장 경합의 tick 여유
+누락을 추가로 재현·수정했다. 만료 예약의 저장 실패1초 반복도 기본 간격 backoff로 줄였다.
+실제 service/Dagster·경합·backoff 집중20 PASS이며 최종 전체 검증을 다시 수행한다.
 
 ## 2026-10-23 — KAC quota deadline 영구 연장 후속 수정
 

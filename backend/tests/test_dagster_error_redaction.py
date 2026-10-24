@@ -491,10 +491,14 @@ def test_fuel_op_forwards_progress_logs_to_the_event_log_redacted(monkeypatch, l
     assert [(item.level, list(item.handlers)) for item in (browser_logger, service_logger)] == before
 
 
-def test_fuel_unhealthy_skip_does_not_report_dagster_success(monkeypatch):
+@pytest.mark.parametrize("readiness", [False, None, "missing"])
+def test_fuel_unhealthy_skip_does_not_report_dagster_success(monkeypatch, readiness):
     async def skipped(*_args, **_kwargs):
-        return {"status": "skipped", "collection_run_id": 10, "fuel_ready": False,
-                "errors": [f"previous storage failure {KEX_KEY}"]}
+        result = {"status": "skipped", "collection_run_id": 10,
+                  "errors": [f"previous storage failure {KEX_KEY}"]}
+        if readiness != "missing":
+            result["fuel_ready"] = readiness
+        return result
     _patch_services(monkeypatch)
     monkeypatch.setattr(dagster_definitions, "_run_with_session", skipped)
     result = dagster_definitions.fuel_collection_job.execute_in_process(raise_on_error=False)

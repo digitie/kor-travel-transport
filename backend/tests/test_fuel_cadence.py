@@ -12,6 +12,36 @@ from test_transport_collection import FakeTransportProvider, build_settings
 from unittest.mock import AsyncMock
 
 
+@pytest.mark.parametrize("status,next_delay,expected", [
+    ("failed", 1, 300), ("partial_success", 1, 300), ("failed", 7200, 7200), ("success", 1, 1),
+])
+def test_pending_store_failure_has_scheduler_backoff(tmp_path, monkeypatch, status, next_delay, expected):
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+    from app.main import _run_transport_scheduler
+
+    @asynccontextmanager
+    async def session_factory():
+        yield SimpleNamespace(rollback=AsyncMock())
+
+    settings = build_settings(tmp_path)
+    service = SimpleNamespace(
+        collect=AsyncMock(return_value={
+            "collection_run_id": 1, "status": status, "client_mode": "live",
+            "traffic_snapshot_count": 0, "incident_snapshot_count": 0,
+            "fuel_station_count": 0, "fuel_price_count": 0,
+        }),
+        next_collection_delay=AsyncMock(return_value=next_delay),
+    )
+    app = SimpleNamespace(state=SimpleNamespace(
+        session_factory=session_factory, settings=settings, transport_collection_service=service))
+    sleep = AsyncMock(side_effect=asyncio.CancelledError)
+    monkeypatch.setattr("app.main.asyncio.sleep", sleep)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(_run_transport_scheduler(app, "fuel"))
+    sleep.assert_awaited_once_with(expected)
+
+
 @pytest.mark.parametrize("mode", ["in_process", "dagster"])
 @pytest.mark.parametrize("reservation", ["success", "replayed_success", "failure", "claim", "legacy_success"])
 def test_fuel_entry_and_sleep_share_the_effective_due(tmp_path, monkeypatch, mode, reservation):
