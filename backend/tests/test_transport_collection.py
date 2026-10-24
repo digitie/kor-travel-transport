@@ -1054,12 +1054,12 @@ def test_opinet_latest_wait_policy_is_explicitly_forwarded(tmp_path, monkeypatch
     asyncio.run(provider.aclose())
 
 
-def test_live_opinet_provider_keeps_short_random_action_delays(tmp_path):
+def test_live_opinet_provider_keeps_requested_random_action_delays(tmp_path):
     provider = LiveTransportProvider(build_settings(tmp_path))
     try:
         assert provider.opinet is not None
-        assert provider.opinet.throttle.action_min_seconds == 0.05
-        assert provider.opinet.throttle.action_max_seconds == 0.15
+        assert provider.opinet.throttle.action_min_seconds == 0.15
+        assert provider.opinet.throttle.action_max_seconds == 0.85
     finally:
         asyncio.run(provider.aclose())
 
