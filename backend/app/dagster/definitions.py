@@ -550,7 +550,12 @@ def enrich_new_reference_locations(context, reference_result: dict[str, Any]) ->
 def collect_kric_timetable(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         settings = _settings()
-        return asyncio.run(_run_with_session(settings, KricTimetableCollectionService(settings).collect))
+        result = asyncio.run(_run_with_session(settings, KricTimetableCollectionService(settings).collect))
+        if result.get("status") in {"partial", "failed"}:
+            raise Failure(description="도시철도 시간표 일부 조회에 실패했습니다. 정상 저장분은 유지했습니다.",
+                metadata={name: result.get(name, 0) for name in ("stored_snapshot_count", "failed_snapshot_count", "attempted_snapshot_count", "deferred_snapshot_count")},
+                allow_retries=False)
+        return result
 
 
 @op

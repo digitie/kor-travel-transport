@@ -1,3 +1,26 @@
+## 2026-10-24 — 홈·교통 이용 흐름과 최종 UI 점검
+
+`codex/transport-user-journeys`에서 운영 홈·분류 메뉴·고속도로/유가12지표·노선/역 지도·일반철도 실시간표·
+버스 저장 연결·공항 주차 패턴을 구현했다. [구현·검증·남은 범위](reports/2026-10-24-transport-user-journeys.md).
+제목 옆 정보 버튼, 모바일 접는 메뉴와 큰 지도, 주소/실행/스케줄 링크를 추가했다.
+기존 키의 TAGO 승인 뒤 도시·열차종류·서울→부산89편 정상과 실제 새 API/DB/UI를 확인했다.
+코레일 경부선19역 주소·전화와18좌표도 확인했다. SDK PR11/12가 필요하며 migration0034는 운영 미적용이다.
+
+ITS 선택 도로 선형 소통 지도는 python-krits-api PR4의 경로/속도로 연결했고 실제 API73도로·경부361경로,
+375/1440px 실제 UI2개·관리자235개·ITS/철도/startup17개 검증을 통과했다. 전국 완전성은 보장하지 않는다.
+다음 한 작업은 최종 검증을 마감하고 통합 후보를 main에 반영하는 것이다. 전국 버스 연결/미확인 좌표는 미완료다.
+순수 UI는 격리 worktree에서 기존 운영 API 호환분을 선별해 완료했다.
+ITS API·schema0034·수집기는 UI PR127에 포함하지 않는다.
+
+사용자가 main 머지를 먼저 요청해 순수 UI PR127은 main `34f8fab120dc5013a74c4b8759883e8357ba86e9`에 머지했다.
+빌드 담당은 이 SHA를 사용한다. 현재 branch의 신규 backend/ITS는 PR126에서 별도 검증·통합한다.
+보안 의존성 정합 후 관리자242·실제ITS UI2·기존여정UI7, 격리PostgreSQL23개가 통과했다.
+최신 main 통합 후 관리자 타입/lint·243개와 ITS API6개가 통과했다. 이전 CI의 router 순서 회귀를 수정했고,
+Firefox 수정본1.0.1을 소비하면서 옛1.0.0을 요구하던 계약 테스트를 갱신했다. 전체 CI는 재검증 대상이다.
+실행 소스19cabb8의 최종CI40058502811은 backend1108개·2skip과 기존 웹/관리자까지 모두 통과했다.
+James/Popper 최종 독립 리뷰의 잔여 P0/P1/P2는 없다. Common PR45/krits PR4도 main에 머지했다.
+이후 문서 증빙 변경은 실행 소스를 바꾸지 않는다. 실제 운영 수용과 미완료 범위는 [정산](reports/2026-10-24-transport-user-journeys.md)을 따른다.
+
 # 현재 상태 — 2026-10-24 오피넷 수집·저장 재개 보완 중
 
 **배포 대기:** 사용자 지시로 운영 staging·빌드·컨테이너·스케줄 변경을 수행하지 않는다.
@@ -31,9 +54,6 @@ Failure metadata와 in-process backoff를 보완했다. 최종 Docker·CI·공�
 [점검·검증 상태](reports/2026-10-24-opinet-resume-review.md).
 운영은11:33 KST 기준 API/CS e01f8e9이며 staging50537f6과 다르다. 다른 작업이 남긴
 Transport instigator17개 STOPPED와 활성 run/worker0을 확인했으며 임의 복원하지 않았다.
-## 2026-10-24 — 순수 UI 선행 반영 진행 중
-
-사용자 지시로 ITS와 별도 UI 후보를 준비한다. 운영 API e01f8e9 호환 범위만 선별하며 관리자 웹만 교체한다. [검증·범위](reports/2026-10-24-ui-first-release.md).
 
 # 현재 상태 — 2026-10-23 Map T2/T3 제품 수용 정산
 
@@ -44,19 +64,6 @@ Firefox 타일 긴급 수정은 운영 관리자 healthy·운영 Firefox 실제 
 다음은 사용자 6~11번의 홈/메뉴·실제 이용 목적 중심 철도/버스/공항·지도 결합 고속도로 개선이다. [범위 원장](transport-user-journeys-2026-10-24.md). 빌드/배포는 다른 통합 에이전트가 담당하므로 자체 배포용 빌드를 재개하지 않는다.
 
 PR114~119는 고정 snapshot·traffic/parking 현재 상태·bus/ferry/rail 참조와 KAC quota 복구를 구현·머지했다. 최종 main은 `a0f9b72325281fdba3c0644b0592426e70afce86`이다.
-## 2026-10-24 — 여섯 프로젝트 npm 보안·버전 정합
-
-- 현재 상태: npm 보안·공통 버전 소스 정합 및 WSL 검증 완료. [버전과 예외](npm-security-alignment-2026-10-24.md). 최종 CI·UI·머지 상태의 정본은 [PR](https://github.com/digitie/kor-travel-transport/pull/124)이다.
-- 다음 한 작업: 운영 반영을 요청받으면 Manager 정본과 현재 배포 런북에 따라 릴리스를 적용한다. 소스 머지와 운영 배포는 구분한다.
-
-## 2026-10-24 — 현재 상태: Next.js 보안 갱신 후보
-
-- parking-radar와 운영 관리자 앱의 `next` 및 사용하는 `eslint-config-next`를 `16.4.3`으로 고정했다. WSL 프론트엔드 테스트 130+225건·두 앱 build와 관리자 lint/type-check PASS. 변경 범위와 남은 취약점은 [작업 기록](journal.md)을 따른다.
-- 다음 한 작업: Draft PR124의 CI와 미완료 백엔드 전체 검증을 확인한다. James/Popper의 관리자 누락 P1은 수정·재리뷰로 해소했다. 운영 배포·실제 서비스 UI 수용은 별도이며 기존 운영 과제는 아래 기록을 보존한다.
-
-## 2026-10-23 Map T2/T3 제품 수용 정산
-
-PR114~119는 고정 snapshot·traffic/parking 현재 상태·bus/ferry/rail 참조와 KAC quota 복구를 구현·머지했다. 제품 머지 기준은 `a0f9b72325281fdba3c0644b0592426e70afce86`, 이 감사의 main 기준은 문서 PR120의 `9974d2592a49cf8f9b5e59dffc0e3816df09d226`이다.
 정확 최종 SHA의 두 적대 리뷰·CI·격리 PG/Compose·실제 TCP 근거와 머지 상태는
 [수용 정산](reports/2026-10-23-map-t2-t3-acceptance.md)에 모은다.
 
@@ -66,11 +73,11 @@ CPU/RAM 저감도 미입증이다. 아래 구현 중·대기·과거 운영 rele
 
 ---
 
-## 당시 구현 기록 — KAC quota 원래 deadline 보존(PR119 제품 완료)
+## 운영 rollout 전 필수 — KAC quota 원래 deadline 보존
 
-PR119는 기존 source next_due_at으로 blocked 관찰이 대기를 영구 연장하지 않게 하고
-원래 만료 뒤 재시도하도록 구현·머지됐다. [설계·수용](airport-quota-deadline.md).
-실제 KAC quota 만료 뒤 운영 재시도는 아직 별도 rollout gate다. 아래 구현 중 절은 당시 이력이다.
+`codex/parking-quota-deadline`는 PR118 고정 리뷰와 별도 후속이다. 기존 source next_due_at을
+활용하여 blocked run의 대기기간 연장을 막고 원래 만료 뒤 재시도한다. 회귀/PG/CI/두 리뷰
+마감 전 완료 처리하지 않는다. [설계·수용](airport-quota-deadline.md).
 
 ## 현재 작업 — Map T2 parking/current
 

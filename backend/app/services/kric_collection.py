@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from kric import KricClient, KricFileClient, RustfsObjectStore, StationCodeInfo, StoredObject
+from kric import KricClient, KricFileClient, KricNetworkError, KricServerError, RustfsObjectStore, StationCodeInfo, StoredObject
 from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -105,17 +105,38 @@ class KricTimetableCollectionService:
                     pair[0].rail_station_id is None, pair[1] != preferred_day, pair[0].id, pair[1],
                 ))
                 count = 0
+                attempted = 0
+                failures = 0
+                consecutive_failures = 0
                 async with self.client_factory(self.settings.kric_service_key, timeout=self.settings.api_timeout_seconds) as client:
                     for station, day in candidates:
                         # 4시간 Dagster 상한보다 일찍 종료하고 다음 48시간 batch에서 재개한다.
                         if now_utc() - aware(run.started_at) >= timedelta(hours=3):
                             break
-                        if count:
+                        if attempted:
                             await self.sleep(self.settings.kric_timetable_request_interval_seconds)
                         if now_utc() - aware(run.started_at) >= timedelta(hours=3):
                             break
-                        rows = await client.get_station_timetable(rail_operator_code=station.operator_code,
-                            line_code=station.line_code, station_code=station.station_code, day_code=day)
+                        attempted += 1
+                        try:
+                            rows = await client.get_station_timetable(rail_operator_code=station.operator_code,
+                                line_code=station.line_code, station_code=station.station_code, day_code=day)
+                        except (KricNetworkError, KricServerError) as exc:
+                            # 개별 역의 서버/스키마 실패가 뒤의 모든 역을 48시간 막지 않게 한다.
+                            # 인증·할당량 오류와 응답 정체 불일치는 기존처럼 배치를 즉시 중단한다.
+                            failures += 1
+                            consecutive_failures += 1
+                            session.add(RawApiResponse(collection_run_id=run_id, source="kric_timetable",
+                                endpoint="convenientInfo/stationTimetable", status_code=0,
+                                request_params_json={"operator_code": station.operator_code, "line_code": station.line_code,
+                                    "station_code": station.station_code, "day_code": day},
+                                received_at=now_utc(), parse_status="error", parse_error=type(exc).__name__,
+                                body_text=json.dumps({"error_type": type(exc).__name__})))
+                            await session.commit()
+                            if consecutive_failures >= 3:
+                                break
+                            continue
+                        consecutive_failures = 0
                         if any((row.rail_operator_code, row.line_code, row.station_code, str(row.day_code)) !=
                                (station.operator_code, station.line_code, station.station_code, day) for row in rows):
                             raise ValueError("KRIC timetable response identity does not match requested station/day")
@@ -128,11 +149,15 @@ class KricTimetableCollectionService:
                             await session.execute(update(KricTimetableSnapshot).where(KricTimetableSnapshot.id == snapshot.id).values(collected_at=now_utc(), items_json=items))
                         await session.commit()  # 다음 역 실패가 앞서 검증한 정상 저장본을 없애지 않는다.
                         count += 1
-                run.status, run.finished_at = "success", now_utc()
+                run.status = "partial" if failures and count else "failed" if failures else "success"
+                run.finished_at = now_utc()
+                run.error_message = json.dumps({"failed_snapshot_count": failures,
+                    "stopped_after_consecutive_failures": consecutive_failures >= 3}) if failures else None
                 await session.commit()
-                return {"status": "success", "run_id": run_id, "station_count": len(stations),
+                return {"status": run.status, "run_id": run_id, "station_count": len(stations),
                         "linked_station_count": sum(station.rail_station_id is not None for station in stations),
-                        "stored_snapshot_count": count, "deferred_snapshot_count": candidate_count - count}
+                        "stored_snapshot_count": count, "failed_snapshot_count": failures,
+                        "attempted_snapshot_count": attempted, "deferred_snapshot_count": candidate_count - attempted}
             except (Exception, asyncio.CancelledError) as exc:
                 await session.rollback()
                 stored_run = await session.get(CollectionRun, run_id)

@@ -34,6 +34,6 @@
 ## 현재 상태
 
 - Firefox VWorld 장애는 운영 관리자 웹만 교체했고 운영 Firefox 실제 타일·확대 PASS다.
-- 공통 지도 UI와 Weather 종류 API는 구현·검증 중이다. Transport 225 / Weather frontend250 /
+- 공통 지도 UI와 Weather 종류 API는 Draft PR로 제공했다. Transport 225 / Weather frontend250 /
   Common UI54 / Weather 종류 PostgreSQL12 테스트 PASS를 확보했다.
-- 6~11번 후속의 상세 구현과 실제 데이터 수용은 진행 전/진행 중으로 구분해 갱신한다.
+- 6~11번 상세 구현·최신 UI 점검·실제 데이터 검증과 남은 범위는 [후속 원장](reports/2026-10-24-transport-user-journeys.md)에 기록한다.

@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     manual_collect_min_interval_seconds: int = Field(default=300, ge=0)
     upstream_rate_limit_backoff_seconds: int = Field(default=3600, ge=0)
     api_timeout_seconds: int = Field(default=15, gt=0)
+    # ITS 공개 지도는 SDK의 기본 Chromium을 사용한다. 개발/테스트에서만 명시 경로를 지정할 수 있다.
+    its_chromium_executable_path: str | None = None
     data_go_kr_service_key: str | None = None
     vworld_api_key: str | None = None
     place_location_collection_enabled: bool = False

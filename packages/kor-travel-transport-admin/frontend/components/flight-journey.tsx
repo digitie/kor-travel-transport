@@ -12,7 +12,9 @@ const TransportMap = dynamic(() => import("./transport-map").then((module) => mo
 type Flight = { flight_number: string; direction: string; airline: string | null; scheduled_at: string; estimated_at: string | null; origin_airport: string; destination_airport: string; status: string | null };
 type Flights = { items: Flight[]; status: string; error_message: string | null };
 type Parking = { parking_lot_id: number; parking_lot_name: string; available_spaces: number; total_spaces: number; observed_at: string; terminal?: string | null };
+type Outlook = { generated_at: string; weekday: number; hour: number; items: { parking_lot_id: number; parking_lot_name: string; sample_days: number; observations: number; average_available_spaces: number; minimum_available_spaces: number; maximum_available_spaces: number; full_days: number; full_day_ratio: number; minimum_capacity: number; maximum_capacity: number; latest_observed_at: string }[] };
 type Resource<T> = { key: string; data?: T; error?: string };
+const plannedClock = () => new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 16);
 const flightMoment = (row: Flight) => Date.parse(row.estimated_at ?? row.scheduled_at);
 export function FlightJourney() {
   const id = useId();
@@ -23,13 +25,16 @@ export function FlightJourney() {
   const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [flightState, setFlights] = useState<Resource<Flights>>({ key: "" });
   const [parkingState, setParking] = useState<Resource<Parking[]>>({ key: "" });
+  const [outlookState, setOutlook] = useState<Resource<Outlook>>({ key: "" });
   const [direction, setDirection] = useState("");
   const [filter, setFilter] = useState("");
   const [futureOnly, setFutureOnly] = useState(true);
+  const [arrival, setArrival] = useState(plannedClock);
   const [reload, setReload] = useState(0);
   const [clock, setClock] = useState(() => Date.now());
   const airport = selected?.provider_id ?? "";
   const key = `${airport}/${today}/${reload}`;
+  const outlookKey = `${airport}/${arrival}/${reload}`;
   useEffect(() => {
     const timer = setInterval(() => setClock(Date.now()), 30_000);
     return () => clearInterval(timer);
@@ -56,15 +61,26 @@ export function FlightJourney() {
       .catch(() => { if (!controller.signal.aborted) setFlights({ key, error: "항공편 정보를 불러오지 못했습니다." }); });
     return () => controller.abort();
   }, [airport, today, key]);
+  useEffect(() => {
+    if (!airport || !arrival || !Number.isFinite(Date.parse(`${arrival}:00+09:00`))) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      transportGet<Outlook>(`parking/outlook?${new URLSearchParams({ airport_code: airport, arrival_at: `${arrival}:00+09:00`, days: "28" })}`, controller.signal)
+        .then((data) => { if (!controller.signal.aborted) setOutlook({ key: outlookKey, data }); })
+        .catch(() => { if (!controller.signal.aborted) setOutlook({ key: outlookKey, error: "과거 주차 패턴을 불러오지 못했습니다." }); });
+    }, 250);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [airport, arrival, outlookKey]);
   function select(place: Place) { setSelected(place); try { window.localStorage.setItem("transport-last-airport", place.provider_id ?? ""); } catch { /* 선택을 메모리에 유지한다. */ } }
   const unavailable = catalogError ? "공항 목록을 확인하지 못했습니다." : catalogLoaded ? "저장된 공항이 없습니다." : "공항 목록을 확인하는 중입니다…";
   const parking = parkingState.key === key ? parkingState.data : undefined;
   const flights = flightState.key === key ? flightState.data : undefined;
+  const outlook = outlookState.key === outlookKey ? outlookState.data : undefined;
   const rows = flights?.items.filter((row) => (!direction || row.direction === direction) && (!futureOnly || flightMoment(row) >= clock) && [row.flight_number, row.airline, row.origin_airport, row.destination_airport].join(" ").toLocaleLowerCase().includes(filter.toLocaleLowerCase())).sort((a, b) => flightMoment(a) - flightMoment(b));
   const freshParking = parking?.filter((row) => clock - Date.parse(row.observed_at) >= 0 && clock - Date.parse(row.observed_at) <= 15 * 60_000);
-  const errors = [catalogError, parkingState.key === key ? parkingState.error : null, flightState.key === key ? flightState.error : null].filter(Boolean);
+  const errors = [catalogError, parkingState.key === key ? parkingState.error : null, flightState.key === key ? flightState.error : null, outlookState.key === outlookKey ? outlookState.error : null].filter(Boolean);
   return <section className="journey-workbench flight-journey">
-    <nav className="journey-shortcuts" aria-label="공항 화면 바로가기"><a href="#airport-map">공항 지도</a><a href="#airport-flights">이후 항공편</a></nav>
+    <nav className="journey-shortcuts" aria-label="공항 화면 바로가기"><a href="#airport-map">공항 지도</a><a href="#airport-flights">이후 항공편</a><a href="#parking-pattern">주차 패턴</a></nav>
     <MapFilterBar><MapFilterField label="공항" htmlFor={`${id}-airport`}><select id={`${id}-airport`} value={selected?.id ?? ""} onChange={(event) => { const place = items.find((item) => item.id === Number(event.target.value)); if (place) select(place); }}>{!selected ? <option value="">공항 선택</option> : null}{items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></MapFilterField><button type="button" className="secondary" onClick={() => setReload((value) => value + 1)}>주차·항공편 새로고침</button></MapFilterBar>
     {errors.map((error) => <p key={error} role="alert">{error}</p>)}
     <SectionCard title="지금 주차할 곳" description={`${selected?.name ?? "공항"} · 최근 15분 관측만 현재 잔여 합계에 포함합니다.`}>
@@ -79,6 +95,10 @@ export function FlightJourney() {
       <MapFilterBar><MapFilterField label="방향" htmlFor={`${id}-direction`}><select id={`${id}-direction`} value={direction} onChange={(event) => setDirection(event.target.value)}><option value="">출발·도착 전체</option><option value="departure">출발</option><option value="arrival">도착</option></select></MapFilterField><MapFilterField label="항공편 검색" htmlFor={`${id}-flight`}><Input id={`${id}-flight`} type="search" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="편명·항공사·목적지" /></MapFilterField><label className="inline-checkbox"><input type="checkbox" checked={futureOnly} onChange={(event) => setFutureOnly(event.target.checked)} />지금 이후만</label></MapFilterBar>
       {flights?.status === "sample" ? <p role="status">예시 항공편 자료입니다. 실제 운항편이 아닙니다.</p> : null}
       {flights && (!["success", "sample"].includes(flights.status) || flights.error_message) ? <p role="alert">{{ disabled: "항공편 조회가 비활성화되어 있습니다.", config_error: "항공편 조회 설정을 확인해야 합니다.", rate_limited: "제공기관 호출 제한으로 조회를 보류했습니다.", upstream_error: "제공기관의 항공편 정보를 확인하지 못했습니다." }[flights.status] ?? "항공편 응답을 확인하지 못했습니다."}</p> : flights ? <div aria-live="polite">{rows?.map((row, index) => <article className="departure-row" key={index}><div className="departure-time"><strong>{new Date(row.estimated_at ?? row.scheduled_at).toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false })}</strong><span>{row.flight_number} · {row.direction === "arrival" ? "도착" : "출발"}</span></div><div className="departure-route"><strong>{row.origin_airport} → {row.destination_airport}</strong><small>{row.airline}</small></div><div className="departure-meta"><strong>{row.status ?? "상태 미제공"}</strong><small>예정 {dateTime(row.scheduled_at)}</small></div></article>)}{!rows?.length ? <p className="empty-state">조건에 맞는 이후 항공편이 없습니다.</p> : null}</div> : flightState.key === key && flightState.error ? null : <p role="status">{airport ? "항공편을 확인하는 중입니다…" : unavailable}</p>}
+    </SectionCard></div>
+    <div id="parking-pattern" className="journey-map-target"><SectionCard title="입차 예정 시각의 과거 패턴" description="최근 28일의 같은 요일·시간대 관측입니다. 평균은 날짜별 평균의 동일 비중 평균입니다. 만차 관측일은 잔여 0면이 한 번 이상 기록된 날이며, 관측이 없는 날은 제외합니다. 오늘의 입차 가능성을 보장하는 예측값은 아닙니다.">
+      <label className="arrival-time">주차장 도착 예정(KST)<input type="datetime-local" value={arrival} onChange={(event) => setArrival(event.target.value)} /></label>
+      {outlook ? <><div className="overflow-x-auto"><table className="operations-table"><thead><tr><th>주차장</th><th>평균 잔여</th><th>최소~최대</th><th>만차 관측일</th><th>표본</th></tr></thead><tbody>{outlook.items.map((row) => <tr key={row.parking_lot_id}><th>{row.parking_lot_name}{row.minimum_capacity !== row.maximum_capacity ? <small> · 수용 규모 변경 있음</small> : null}</th><td>{row.average_available_spaces.toLocaleString()}면</td><td>{row.minimum_available_spaces}~{row.maximum_available_spaces}면</td><td>{row.full_days}/{row.sample_days}일 ({row.full_day_ratio}%)</td><td>{row.observations}건{row.sample_days < 3 ? " · 표본 부족" : ""}</td></tr>)}</tbody></table></div>{!outlook.items.length ? <p>같은 요일·시간대의 과거 관측이 없습니다.</p> : null}<small className="quiet">{dateTime(outlook.generated_at)} 조회</small></> : outlookState.key === outlookKey && outlookState.error ? null : !airport ? <p role="status">{unavailable}</p> : arrival ? <p role="status">주차 패턴을 확인하는 중입니다…</p> : <p>입차 예정 시각을 선택하세요.</p>}
     </SectionCard></div>
     <div id="airport-map" className="journey-map-target" tabIndex={-1}><TransportMap places={items} selectedPlace={selected} onSelectPlace={select} /></div>
   </section>;
