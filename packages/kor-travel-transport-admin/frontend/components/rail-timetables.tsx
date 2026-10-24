@@ -40,7 +40,7 @@ export function RailTimetables({ placeIds }: { placeIds: number[] }) {
   const pending = current?.key !== key;
   const data = current?.data;
   return <section aria-label="도시철도 예정 시간표" aria-busy={pending}>
-    <div className="journey-toolbar"><div className="section-title-row"><h3>예정 시간표</h3><InfoButton label="예정 시간표">KRIC 제공 예정 시각입니다. 실시간 도착·변경·지연 정보는 반영되지 않을 수 있습니다. 오늘 기준으로 확인 가능한 다음 출발과 전체 계획을 표시합니다.</InfoButton></div><label>시간표 기준<select value={period} onChange={(event) => setPeriod(event.target.value)}><option value="">오늘 · 공휴일 확인</option><option value="8">평일</option><option value="7">토요일</option><option value="9">휴일</option></select></label>
+    <div className="journey-toolbar"><div className="section-title-row"><h3>예정 시간표</h3><InfoButton label="예정 시간표">KRIC 제공 예정 시각입니다. 실시간 도착·변경·지연 정보는 반영되지 않을 수 있습니다. 오늘 기준으로 확인 가능한 이후 출발부터 표시합니다.</InfoButton></div><label>시간표 기준<select value={period} onChange={(event) => setPeriod(event.target.value)}><option value="">오늘 · 공휴일 확인</option><option value="8">평일</option><option value="7">토요일</option><option value="9">휴일</option></select></label>
       <button type="button" className="secondary" disabled={pending} onClick={() => setReload((value) => value + 1)}>시간표 새로고침</button></div>
     {pending ? <p role="status">{data ? "최신 예정 시각을 확인하는 중입니다…" : "저장된 예정 시간표를 확인하는 중입니다…"}</p> : null}
     {current?.error && !pending ? <p className="error" role="alert">{data ? "최신 조회에 실패해 이전 저장 조회 결과를 표시합니다. 다음 예정 시각은 다시 확인해 주세요." : "시간표를 불러오지 못했습니다. 시간표 새로고침으로 다시 확인해 주세요."}</p> : null}

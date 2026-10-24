@@ -62,7 +62,7 @@ async def provider_status(session: AsyncSession, settings: Settings) -> Provider
             last_success_at=serialize_utc(last_success) if last_success else None,
             next_due_at=serialize_utc(next_due) if next_due else None,
             error_code="collection_failed" if failed else None))
-    for source, name, enabled in [("flights", "공항 출도착", keyed and settings.enable_flight_status_markers), ("bus_timetable", "TAGO 버스 시간표", keyed)]:
+    for source, name, enabled in [("flights", "공항 출도착", keyed and settings.enable_flight_status_markers), ("bus_timetable", "TAGO 버스 시간표", keyed), ("general_rail", "TAGO 일반철도 시간표", keyed)]:
         items.append(ProviderCollectionStatus(source=source, name=name, mode="on_demand", enabled=enabled, status="on_demand" if enabled else "disabled"))
     for source, name in [("seoulgokr", "서울 교통정보")]:
         items.append(ProviderCollectionStatus(source=source, name=name, mode="unconnected", enabled=False, status="unconnected"))
