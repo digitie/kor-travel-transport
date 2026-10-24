@@ -9,7 +9,9 @@
 제품 변경은 [Transport PR123](https://github.com/digitie/kor-travel-transport/pull/123),
 최종 CI·리뷰·머지 여부도 같은 PR을 정본으로 확인한다. 코드 후보는
 `7d254ccf879881e19d692e48a6fe96a91a2bcfae`이고 backend tree는
-`a8cbf813bea3469d7d16a5fb6644eaae6d8c4db7`다. 후속 문서 변경과 구분한다.
+`a8cbf813bea3469d7d16a5fb6644eaae6d8c4db7`다. 후속 문서·UI 계약 테스트 정합과 구분한다.
+main UI 선행 머지의 VWorld1.0.1에 맞춰 기존 backend 테스트의1.0.0 기대값만 고쳤으며,
+이 후속 변경은 수집 runtime과 provider 고정을 바꾸지 않는다.
 일괄 배포할 때는 PR123 머지 결과와 그 뒤 승인된 다른 변경을 포함한 최신 후보를 사용한다.
 이 후보는 main50537f6의 npm 보안 갱신을 포함한다.
 

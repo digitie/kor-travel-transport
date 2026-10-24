@@ -1,5 +1,10 @@
 ## 2026-10-24 — 오피넷 수집·저장 재개 보완 중
 
+main의 UI 선행 머지를 통합한 f1d13b7 전체 CI는1139 PASS/2 SKIP/1 FAIL이었다.
+실패는 이미1.0.1로 갱신한 VWorld web tarball을 기존 backend 계약 테스트가1.0.0으로
+기대하던 불일치다. WSL에서1 FAIL을 재현하고 기대값만 정합해 해당 모듈11 PASS를 확인했다.
+수집 runtime·provider·UI 패키지 고정은 바꾸지 않으며 최종 전체 CI·두 리뷰는 PR123에서 정산한다.
+
 사용자 최종 지시로 배포는 대기하고 다른 에이전트의 일괄 배포에 인계한다.
 운영 staging·빌드·컨테이너·instigator 변경은0이다. [배포 인계](reports/2026-10-24-opinet-deployment-handoff.md)에
 최종 provider·코드 SHA·volume·원래 스케줄 상태 미확정·검증 경계를 정리했다.
