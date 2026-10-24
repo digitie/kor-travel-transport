@@ -1,5 +1,9 @@
 ## 2026-10-24 — 오피넷 수집·저장 재개 보완 중
 
+사용자 최종 지시로 배포는 대기하고 다른 에이전트의 일괄 배포에 인계한다.
+운영 staging·빌드·컨테이너·instigator 변경은0이다. [배포 인계](reports/2026-10-24-opinet-deployment-handoff.md)에
+최종 provider·코드 SHA·volume·원래 스케줄 상태 미확정·검증 경계를 정리했다.
+
 사용자 장애 제보로 실제 run1645의 브라우저 약3시간 뒤 최신 가격 SQL timeout·전체
 롤백과 이후 skipped/SUCCESS를 확인했다. 두 서브에이전트는 전국 순차 조회와 불필요한
 읍면동 탐색·호스트 CPU 경쟁·운영 INFO 필터 누락을 조사했다. Provider 영속 체크포인트,

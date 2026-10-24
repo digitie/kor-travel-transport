@@ -1,5 +1,8 @@
 # 현재 상태 — 2026-10-24 오피넷 수집·저장 재개 보완 중
 
+**배포 대기:** 사용자 지시로 운영 staging·빌드·컨테이너·스케줄 변경을 수행하지 않는다.
+다른 에이전트가 일괄 배포한다. [최종 SHA·설정·운영 확인 인계](reports/2026-10-24-opinet-deployment-handoff.md).
+
 운영 run1645의 약3시간 브라우저 수집 뒤 최신 가격 SQL timeout과 실패 뒤8시간 유예
 재설정을 확인했다. Provider PR24의 지역별 영속 체크포인트·시군구 탐색 최적화와
 Transport의 RETURNING 기반 최신 가격 갱신·외부 조회 없는 저장 재개를 검증 중이다.
@@ -14,8 +17,9 @@ skipped로 남긴다. 앱 집중 WSL127·Docker PG127 PASS, 최종 pin 검증·C
 f58a879를 고정한다. 반복 수집기도 취소 뒤 일반 실패 대기로 넘어가지 않고 종료한다.
 Provider 최종 CI와 James/Popper 독립 재리뷰를 통과해 PR27을 머지했다. 앱 최종 PG128 PASS다.
 전국30분은 실측 전 목표다.
-다음 한 작업은 두 독립 리뷰와 WSL/Docker 검증을 마친 뒤 승인된 Odroid 절차로 적용하고
-실제 정상 소스 시각·집합·export200을 확인하는 것이다. [점검·검증 상태](reports/2026-10-24-opinet-resume-review.md).
+다음 한 작업은 최종 CI·앱 독립 리뷰·격리 UI 검증을 마치고 PR123을 정산하는 것이다.
+운영 정상 소스·export200·전국 시간 수용은 일괄 배포 담당자에게 인계한다.
+[점검·검증 상태](reports/2026-10-24-opinet-resume-review.md).
 운영은11:33 KST 기준 API/CS e01f8e9이며 staging50537f6과 다르다. 다른 작업이 남긴
 Transport instigator17개 STOPPED와 활성 run/worker0을 확인했으며 임의 복원하지 않았다.
 
