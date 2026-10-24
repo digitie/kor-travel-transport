@@ -1,5 +1,16 @@
+## 2026-10-24 — 순수 UI 선행 반영 진행 중
+
+사용자 지시로 ITS와 별도 UI 후보를 준비한다. 운영 API e01f8e9 호환 범위만 선별하며 관리자 웹만 교체한다. [검증·범위](reports/2026-10-24-ui-first-release.md).
+
 # 현재 상태 — 2026-10-23 Map T2/T3 제품 수용 정산
 
+## 2026-10-24 — 공통 지도 UI와 이용 목적 개선
+
+Firefox 타일 긴급 수정은 운영 관리자 healthy·운영 Firefox 실제 교통/유가 타일·확대 PASS다. 공용 지도 UI는 Common PR45 후보를 Map/Transport/Weather가 채택한다. Transport225·공용UI54·Weather250/종류PG12·Transport375/1440px UI2 PASS를 확보했다. [검증](reports/2026-10-24-shared-map-ui.md).
+
+다음은 사용자 6~11번의 홈/메뉴·실제 이용 목적 중심 철도/버스/공항·지도 결합 고속도로 개선이다. [범위 원장](transport-user-journeys-2026-10-24.md). 빌드/배포는 다른 통합 에이전트가 담당하므로 자체 배포용 빌드를 재개하지 않는다.
+
+PR114~119는 고정 snapshot·traffic/parking 현재 상태·bus/ferry/rail 참조와 KAC quota 복구를 구현·머지했다. 최종 main은 `a0f9b72325281fdba3c0644b0592426e70afce86`이다.
 ## 2026-10-24 — 여섯 프로젝트 npm 보안·버전 정합
 
 - 현재 상태: npm 보안·공통 버전 소스 정합 및 WSL 검증 완료. [버전과 예외](npm-security-alignment-2026-10-24.md). 최종 CI·UI·머지 상태의 정본은 [PR](https://github.com/digitie/kor-travel-transport/pull/124)이다.

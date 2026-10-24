@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type RefObject, type ReactNode } from "react";
+import { setWorkerUrl } from "maplibre-gl";
 import { ClusterLayer, VWorldMapView, type ClusterPoint, type MapLibreMap } from "vworld-map-web";
 import { clusterAtScale, dateTime, hasCoordinates, hasFuelPrice, transportGet, type Place, type PlaceKind } from "@/lib/journey";
 import { collectionSourceLabel, fuelProductLabel, placeKindLabel } from "@/lib/transport-presentation";
@@ -10,12 +11,11 @@ import { MAP_FALLBACK_IMAGE } from "@/lib/map-fallback";
 import { CameraRequest, ClusterBubble, MapMarkerButton, MapUnavailable, MarkerBadge, OverlapPopup, useVWorldBasemapHealth, vworldApiKey, ZoomButtons, type CameraTarget } from "./map-overlays";
 import { PlaceIcon } from "./journey-controls";
 import { PlaceInspector } from "./place-inspector";
+import { MapDetailOverlay, MapFilterBar, MapFilterField, MapKindFilter, MapTabs as Tabs, MapTabPanel as TabsContent, MapViewTabs, type MapViewportReadout } from "@kor-travel/ui/map-controls";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { FilterCombobox } from "./filter-combobox";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { X } from "lucide-react";
 
 type MapPoint = { id: string; lngLat: [number, number]; place: Place };
 type Viewport = { min_longitude: string; min_latitude: string; max_longitude: string; max_latitude: string };
@@ -41,6 +41,7 @@ function quantizeViewport(bounds: { min_longitude: number; min_latitude: number;
 }
 
 // Next.js는 정적 참조만 번들에 넣는다. 빈 값·자리표시자는 라이브러리 `missing-api-key` 대체 화면으로 간다.
+setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
 const VWORLD_KEY = vworldApiKey(process.env.NEXT_PUBLIC_VWORLD_API_KEY);
 
 // Map 지도와 같은 마커: 24px 원형 배지(maki 글리프 + 팔레트 색). 이름은 배지에 쓰지 않고 hover 제목과
@@ -70,7 +71,7 @@ function OverlapList({ places, onSelect, listRef }: { places: Place[]; onSelect:
   </section>;
 }
 
-export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all" }: { places?: Place[]; selectedPlace?: Place | null; onSelectPlace?: (place: Place) => void; mode?: "all" | "transport" | "fuel" }) {
+export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all", details, onCloseDetails, focusRevision = 0, layers }: { places?: Place[]; selectedPlace?: Place | null; onSelectPlace?: (place: Place) => void; mode?: "all" | "transport" | "fuel"; details?: ReactNode; onCloseDetails?: () => void; focusRevision?: number; layers?: ReactNode }) {
   const controlId = useId();
   const embedded = places !== undefined;
   const allowedKinds = mode === "fuel" ? ["fuel_station"] as PlaceKind[] : mode === "transport" ? TRANSPORT_KINDS : KINDS;
@@ -92,6 +93,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
   const [selected, setSelected] = useState<Place | null>(null);
   const [viewport, setViewport] = useState(DEFAULT_VIEWPORT);
   const [zoom, setZoom] = useState(7);
+  const [mapViewport, setMapViewport] = useState<MapViewportReadout | null>(null);
   const [mapSize, setMapSize] = useState({ width: 800, height: 540 });
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const queryInput = useRef<HTMLInputElement | null>(null);
@@ -104,6 +106,18 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
   const lastReload = useRef(reload);
   const mapFilterSignature = useRef("");
   const knownSourcesReady = useRef(false);
+  useEffect(() => {
+    if (embedded) return;
+    const search = new URLSearchParams(window.location.search);
+    if (!search.has("longitude") || !search.has("latitude")) return;
+    const longitude = Number(search.get("longitude")), latitude = Number(search.get("latitude"));
+    if (!Number.isFinite(longitude) || !Number.isFinite(latitude) || longitude < 124 || longitude > 132 || latitude < 32 || latitude > 39.5) return;
+    // URL이 지정한 지도 위치는 최초 문서에서만 복원한다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setClusterCamera({ center: [longitude, latitude], zoom: 15 });
+    setViewport({ min_longitude: String(longitude - .015), max_longitude: String(longitude + .015), min_latitude: String(latitude - .015), max_latitude: String(latitude + .015) });
+    setZoom(15);
+  }, [embedded]);
   const current = selectedPlace === undefined ? selected : selectedPlace;
   const kindsKey = kinds.join(",");
   const sourcesKey = selectedSources.join(",");
@@ -122,6 +136,24 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
   const selectedPoint = points.find((point) => current && point.id === keyOf(current))
     ?? (current && hasCoordinates(current) ? { id: keyOf(current), lngLat: [current.longitude, current.latitude] as [number, number], place: current } : undefined);
   const detail = useRef<HTMLElement | null>(null);
+  const detailOpener = useRef<HTMLElement | null>(null);
+  const selectedKey = current ? keyOf(current) : "";
+  const hasEmbeddedDetails = embedded && details !== undefined;
+  useEffect(() => {
+    if (!hasEmbeddedDetails || !selectedKey) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && !detail.current?.contains(active)) detailOpener.current = active;
+    detail.current?.focus({ preventScroll: true });
+  }, [hasEmbeddedDetails, selectedKey, focusRevision, cameraRequest]);
+  const dismissEmbeddedDetail = () => {
+    onCloseDetails?.();
+    const opener = detailOpener.current;
+    detailOpener.current = null;
+    requestAnimationFrame(() => {
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
+      else mapContainer.current?.querySelector<HTMLElement>(".maplibregl-canvas")?.focus({ preventScroll: true });
+    });
+  };
   // 겹친 지점 팝업을 연 묶음 원. 닫기(×·Escape) 뒤 포커스를 그 자리로 돌려준다. 장소를 고르면 상세로 간다.
   const overlapOpener = useRef<HTMLElement | null>(null);
   const closeOverlap = () => {
@@ -151,7 +183,6 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
     setSelected(place); onSelectPlace?.(place);
     if (!embedded) requestAnimationFrame(() => {
       detail.current?.focus({ preventScroll: true });
-      if (window.matchMedia("(max-width: 62rem)").matches) detail.current?.scrollIntoView({ block: "start", behavior: "smooth" });
     });
   };
 
@@ -173,7 +204,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
     // 검색 조건을 바꾸거나 명시적으로 선택/닫기한 경우에만 목록을 닫는다.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setClusterPlaces([]);
-  }, [kindsKey, sourcesKey, searchQuery, productsKey, view]);
+  }, [kindsKey, sourcesKey, searchQuery, productsKey, view, mode]);
 
   useEffect(() => {
     if (embedded) return;
@@ -270,16 +301,18 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
         .finally(() => { if (!controller.signal.aborted) setPending((value) => value.filter((entry) => entry !== kind)); });
     });
     return () => controller.abort();
-  }, [embedded, kindsKey, perKindLimit, viewport, zoom, reload, sourcesKey, searchQuery, productsKey, view]);
+  }, [embedded, kindsKey, perKindLimit, viewport, zoom, reload, sourcesKey, searchQuery, productsKey, view, mode]);
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
   const moved = useCallback((map: MapLibreMap) => {
     const bounds = map.getBounds();
     const nextZoom = map.getZoom();
+    const center = map.getCenter();
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       setZoom(nextZoom);
+      setMapViewport({ longitude: center.lng, latitude: center.lat, zoom: nextZoom });
       setViewport((previous) => {
       const next = quantizeViewport({ min_longitude: bounds.getWest(), min_latitude: bounds.getSouth(), max_longitude: bounds.getEast(), max_latitude: bounds.getNorth() }, nextZoom);
       // 패널 높이/스크롤 변화로 같은 bounds의 moveend가 와도 선택 목록을 지우거나
@@ -288,39 +321,41 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
       });
     }, 250);
   }, []);
-  const truncated = Object.entries(loaded).filter(([, row]) => row.truncated).map(([kind]) => placeKindLabel(kind));
   // 카메라 요청 정체: 장소 key(부모가 선택을 바꾼 경우)와 요청 번호(같은 묶음·장소를 다시 누른 경우).
   // 현재 zoom은 이동 목표 계산에만 쓰고 정체에는 넣지 않는다 — 넣으면 손으로 확대할 때마다 다시 끌려간다.
   const camera = useMemo<CameraTarget | undefined>(() => clusterCamera ? { ...clusterCamera, id: `cluster:${cameraRequest}` }
-    : current && hasCoordinates(current) ? { center: [current.longitude, current.latitude], zoom: Math.max(zoom, 11), id: `${keyOf(current)}:${cameraRequest}` } : undefined,
-  [current, clusterCamera, cameraRequest]); // eslint-disable-line react-hooks/exhaustive-deps
-  const detailPanel = !embedded && current ? <aside className="transport-map-detail weather-inspector" ref={detail} tabIndex={-1} aria-label="선택 장소 상세">
-    <PlaceInspector key={keyOf(current)} place={current} onClose={() => { setSelected(null); queryInput.current?.focus(); }} onSaved={(updated) => { setSelected(updated); setReload((value) => value + 1); }} onReload={() => { setSelected(null); setReload((value) => value + 1); queryInput.current?.focus(); }} />
-  </aside> : null;
+    : current && hasCoordinates(current) ? { center: [current.longitude, current.latitude], zoom: Math.max(zoom, 11), id: `${keyOf(current)}:${cameraRequest}:${focusRevision}` } : undefined,
+  [current, clusterCamera, cameraRequest, focusRevision]); // eslint-disable-line react-hooks/exhaustive-deps
+  const closeDetail = () => { setSelected(null); queryInput.current?.focus(); };
+  const detailPanel = embedded && details ? <MapDetailOverlay ref={detail} className="transport-map-detail" aria-label="선택 장소 상세" onDismiss={dismissEmbeddedDetail}>
+    <div className="journey-detail-header"><Button type="button" size="icon" variant="ghost" aria-label="상세 닫기" onClick={dismissEmbeddedDetail}><X aria-hidden="true" size={16} /></Button></div>{details}
+  </MapDetailOverlay> : !embedded && current ? <MapDetailOverlay className="transport-map-detail weather-inspector" ref={detail} aria-label="선택 장소 상세" onDismiss={closeDetail}>
+    <PlaceInspector key={keyOf(current)} place={current} onShowMap={() => { setView("map"); setCameraRequest((value) => value + 1); requestAnimationFrame(() => mapContainer.current?.scrollIntoView({ block: "start" })); }} onClose={() => { setSelected(null); queryInput.current?.focus(); }} onSaved={(updated) => { setSelected(updated); setReload((value) => value + 1); }} onReload={() => { setSelected(null); setReload((value) => value + 1); queryInput.current?.focus(); }} />
+  </MapDetailOverlay> : null;
 
   return <section className="map-workbench" aria-label={mode === "fuel" ? "유가 지도" : "교통 장소 지도"}>
-    <div className={embedded ? "embedded-map" : current ? "transport-map-layout" : "transport-map-layout transport-map-layout-unselected"}>
+    <div className={embedded ? "embedded-map" : "transport-map-workspace"}>
     <Tabs value={view} onValueChange={(value) => { if (value === "map" || value === "list") setView(value); }} className="min-h-0">
-    {!embedded ? <div className="map-filter-bar">
-      {mode !== "fuel" ? <ToggleGroup multiple variant="outline" className="flex-wrap" aria-label={mode === "transport" ? "교통 종류" : "장소 종류"} value={kinds} onValueChange={(values) => { setKinds(values.filter((value): value is PlaceKind => allowedKinds.includes(value as PlaceKind))); setSelected(null); }}>{allowedKinds.map((kind) => <ToggleGroupItem key={kind} value={kind}><PlaceIcon kind={kind} />{placeKindLabel(kind)}</ToggleGroupItem>)}</ToggleGroup> : null}
-      <FieldGroup className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 xl:grid-cols-4"><Field><FieldLabel htmlFor={`${controlId}-query`}>장소 검색</FieldLabel><Input ref={queryInput} id={`${controlId}-query`} type="search" value={query} onChange={(event) => { setQuery(event.target.value); setSelected(null); }} placeholder="이름·브랜드·노선" /></Field>
-      <Field><FieldLabel htmlFor={`${controlId}-source`}>데이터 출처</FieldLabel><FilterCombobox id={`${controlId}-source`} value={selectedSources} onChange={(values) => { setSelectedSources(values); setSelected(null); }} placeholder="모든 출처" options={sources.map((value) => ({ value, label: collectionSourceLabel(value) }))} /></Field>
-      {kinds.includes("fuel_station") ? <Field><FieldLabel htmlFor={`${controlId}-product`}>표시 유종</FieldLabel><FilterCombobox id={`${controlId}-product`} value={products} onChange={(values) => { setProducts(values); setSelected(null); }} placeholder="전체 유종" options={["B027", "D047", "B034", "K015", "C004"].map((value) => ({ value, label: fuelProductLabel(value) }))} /></Field> : null}
-      </FieldGroup>
-    </div> : null}
-    <div className="mb-3 flex items-center justify-between"><TabsList aria-label="장소 보기"><TabsTrigger value="map">지도</TabsTrigger><TabsTrigger value="list">목록</TabsTrigger></TabsList><span className="text-sm text-muted-foreground" role="status">{Math.floor(zoom)}단계 · {serverClustered ? "요약 표시" : `${visiblePoints.length}곳`}{pending.length ? " · 조회 중…" : ""}</span></div>
+    {!embedded ? <MapFilterBar>
+      {mode !== "fuel" ? <MapKindFilter ariaLabel={mode === "transport" ? "교통 종류" : "장소 종류"} options={allowedKinds.map((kind) => ({ value: kind, label: placeKindLabel(kind), icon: <PlaceIcon kind={kind} /> }))} value={kinds} onToggle={(value) => { const kind = value as PlaceKind; setKinds((previous) => previous.includes(kind) ? previous.filter((entry) => entry !== kind) : [...previous, kind]); setSelected(null); }} /> : null}
+      <MapFilterField htmlFor={`${controlId}-query`} label="장소 검색"><Input ref={queryInput} id={`${controlId}-query`} type="search" value={query} onChange={(event) => { setQuery(event.target.value); setSelected(null); }} placeholder="이름·브랜드·노선" /></MapFilterField>
+      <MapFilterField htmlFor={`${controlId}-source`} label="데이터 출처"><FilterCombobox compact id={`${controlId}-source`} value={selectedSources} onChange={(values) => { setSelectedSources(values); setSelected(null); }} placeholder="모든 출처" options={sources.map((value) => ({ value, label: collectionSourceLabel(value) }))} /></MapFilterField>
+      {kinds.includes("fuel_station") ? <MapFilterField htmlFor={`${controlId}-product`} label="표시 유종"><FilterCombobox compact id={`${controlId}-product`} value={products} onChange={(values) => { setProducts(values); setSelected(null); }} placeholder="전체 유종" options={["B027", "D047", "B034", "K015", "C004"].map((value) => ({ value, label: fuelProductLabel(value) }))} /></MapFilterField> : null}
+    </MapFilterBar> : null}
+    <MapViewTabs ariaLabel="장소 보기" viewport={mapViewport} count={view === "list" ? items.length : serverClustered ? serverClusters.reduce((sum, item) => sum + item.count, 0) : visiblePoints.length} status={pending.length ? "조회 중…" : undefined} />
     {cluster || failed.length > 0 || (basemap.basemapFailed && view === "map") ? <div className="map-feedback" role="status">
-      {cluster ? <span>밀도별 묶음</span> : null}
+      {cluster && visiblePoints.length > 0 ? <span>밀도별 묶음</span> : null}
       {failed.length ? <p className="error">{failed.map(placeKindLabel).join("·")} 조회 실패 <Button variant="outline" type="button" onClick={() => setReload((value) => value + 1)}>다시 조회</Button></p> : null}
       {basemap.basemapFailed && view === "map" ? <p className="error">VWorld 지도 타일을 불러오지 못했습니다. 목록 보기에서 장소를 확인할 수 있습니다.</p> : null}
     </div> : null}
-    <TabsContent className="min-h-0" value="map"><div className="map-primary" ref={mapContainer}><VWorldMapView apiKey={VWORLD_KEY} center={[127.8, 36.2]} zoom={7} minZoom={5}
+    <TabsContent className="min-h-0" value="map"><div className="kt-map-stage"><div className="map-primary" ref={mapContainer}><VWorldMapView apiKey={VWORLD_KEY} center={[127.8, 36.2]} zoom={7} minZoom={5}
         className="transport-map-canvas" layerType="Base" navigation={false} geolocate={false} scale
         loadingSkeleton={<p className="loading">지도를 준비하는 중입니다…</p>} fallback={(info) => <MapUnavailable info={info} />}
         unsupportedTileFallback={{ imageUrl: MAP_FALLBACK_IMAGE }} transformRequest={basemap.transformRequest}
         onError={basemap.onError} onIdle={basemap.onIdle} onLoad={moved} onMoveEnd={(event) => moved(event.target)}>
         <ZoomButtons />
         <CameraRequest target={camera} />
+        {layers}
         {serverClustered ? serverClusters.map((item, index) => <MapMarkerButton key={`${item.longitude}:${item.latitude}:${index}`} lngLat={[item.longitude, item.latitude]} ariaLabel={`${item.count}개 장소 요약 묶음 확대`} interactionId={`server-cluster:${item.longitude.toFixed(6)},${item.latitude.toFixed(6)}`} className="map-cluster" zIndex={3} isCluster onClick={() => {
           setClusterPlaces([]); setClusterCamera({ center: [item.longitude, item.latitude], zoom: Math.min(19, Math.max(12, Math.ceil(zoom) + 2)) });
           setCameraRequest((value) => value + 1);
@@ -351,19 +386,15 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
         {clusterPlaces.length ? <OverlapPopup lngLat={clusterAnchor} onClose={closeOverlap}>
           <OverlapList places={clusterPlaces} onSelect={selectPlace} listRef={clusterList} />
         </OverlapPopup> : null}
-      </VWorldMapView></div>
+      </VWorldMapView></div>{detailPanel}</div>
     </TabsContent>
-    <TabsContent className="min-h-0" value="list"><div className="map-primary"><div className="map-place-list">{items.map((place) => <button type="button" className="place-row" key={keyOf(place)} aria-pressed={current ? keyOf(current) === keyOf(place) : false} onClick={() => selectPlace(place)}><PlaceIcon kind={place.kind} /><span><strong>{place.name}</strong><small>{place.line_names.join(" · ") || place.brand_name || place.subtitle || placeKindLabel(place.kind)}</small>{(place.kind === "ferry_port" || place.kind === "bus_terminal") && place.provider_id ? <small>{place.kind === "ferry_port" ? "항구" : "터미널"} 코드 {place.provider_id}</small> : null}{!hasCoordinates(place) ? <small>좌표 미등록</small> : null}</span></button>)}</div></div></TabsContent>
+    <TabsContent className="min-h-0" value="list"><div className="kt-map-stage"><div className="map-primary"><div className="map-place-list">{items.map((place) => <button type="button" className="place-row" key={keyOf(place)} aria-pressed={current ? keyOf(current) === keyOf(place) : false} onClick={() => selectPlace(place)}><PlaceIcon kind={place.kind} /><span><strong>{place.name}</strong><small>{place.line_names.join(" · ") || place.brand_name || place.subtitle || placeKindLabel(place.kind)}</small>{(place.kind === "ferry_port" || place.kind === "bus_terminal") && place.provider_id ? <small>{place.kind === "ferry_port" ? "항구" : "터미널"} 코드 {place.provider_id}</small> : null}{!hasCoordinates(place) ? <small>좌표 미등록</small> : null}</span></button>)}</div></div>{detailPanel}</div></TabsContent>
     {!embedded && mode === "fuel" && view === "map" ? <FuelViewportSummary items={loaded.fuel_station?.fuel_statistics ?? []} pending={pending.length > 0} failed={failed.length > 0} /> : null}
     {!embedded ? <div className="map-feedback map-guidance" role="status">
       {kinds.includes("fuel_station") && loaded.fuel_station?.fuel_prices_stale ? <p className="error">유가 갱신 지연 · 유종·가격은 {dateTime(loaded.fuel_station.fuel_prices_last_refreshed_at)} 기준이며 판매 여부도 다를 수 있습니다.</p> : null}
       {kinds.includes("fuel_station") && loaded.fuel_station?.fuel_prices_last_refreshed_at && !loaded.fuel_station.fuel_prices_stale ? <p>유가 {dateTime(loaded.fuel_station.fuel_prices_last_refreshed_at)} 갱신 · 지연분은 다음 수집에 반영됩니다.</p> : null}
-      {(kinds.includes("ferry_port") || kinds.includes("bus_terminal")) ? <p>검증 좌표만 표시 · 미확인 항구·터미널은 목록에서 검색</p> : null}
-      {kinds.includes("highway_incident") ? <p>도로 돌발: 24시간 내 최신 저장 관측 · 통제·처리 시각은 상세 확인</p> : null}
-      {truncated.length ? <p>{truncated.join("·")} 일부만 표시 · {view === "list" ? "이름·코드로 검색" : "확대하거나 목록에서 검색"}. 묶음은 불러온 장소 기준.</p> : null}
     </div> : null}
     </Tabs>
-    {detailPanel}
     </div>
   </section>;
 }

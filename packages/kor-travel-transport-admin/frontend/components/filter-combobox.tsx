@@ -3,12 +3,13 @@
 import { useRef } from "react";
 import { Combobox, ComboboxChip, ComboboxChips, ComboboxChipsInput, ComboboxContent, ComboboxEmpty, ComboboxItem, ComboboxList, ComboboxValue } from "@/components/ui/combobox";
 
-export function FilterCombobox({ id, options, value, onChange, placeholder }: {
+export function FilterCombobox({ id, options, value, onChange, placeholder, compact = false }: {
   id: string;
   options: { value: string; label: string }[];
   value: string[];
   onChange: (value: string[]) => void;
   placeholder: string;
+  compact?: boolean;
 }) {
   const anchor = useRef<HTMLDivElement | null>(null);
   const label = (value: string) => options.find((option) => option.value === value)?.label ?? value;
@@ -17,8 +18,9 @@ export function FilterCombobox({ id, options, value, onChange, placeholder }: {
     if (details.reason === "escape-key") details.cancel();
     else onChange(next);
   }} itemToStringLabel={label}>
-    <ComboboxChips ref={anchor}>
-      <ComboboxValue>{value.map((item) => <ComboboxChip key={item} label={label(item)}>{label(item)}</ComboboxChip>)}</ComboboxValue>
+    <ComboboxChips ref={anchor} className={compact ? "kt-map-combobox" : undefined}>
+      <ComboboxValue>{compact ? <div className="kt-map-selected-chips">{value.map((item) => <ComboboxChip key={item} label={label(item)}>{label(item)}</ComboboxChip>)}</div>
+        : value.map((item) => <ComboboxChip key={item} label={label(item)}>{label(item)}</ComboboxChip>)}</ComboboxValue>
       <ComboboxChipsInput id={id} placeholder={value.length ? "추가 선택" : placeholder} />
     </ComboboxChips>
     <ComboboxContent anchor={anchor}>

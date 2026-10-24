@@ -55,7 +55,8 @@ for (const width of [320, 375, 414, 768, 1440]) test(`Weather 우측 상세 · �
   expect(provider).toEqual([]);
   if (width === 1440) {
     const map = await page.locator(".map-primary").boundingBox(); const detail = await panel.boundingBox();
-    expect(detail!.x).toBeGreaterThanOrEqual(map!.x + map!.width);
+    expect(detail!.x).toBeGreaterThanOrEqual(map!.x);
+    expect(detail!.x + detail!.width).toBeLessThanOrEqual(map!.x + map!.width + 1);
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: `test-results/weather-inspector-${width}.png`, fullPage: true });

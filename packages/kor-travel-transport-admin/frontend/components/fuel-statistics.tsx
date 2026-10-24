@@ -1,13 +1,18 @@
 "use client";
 
+import Link from "next/link";
+import { InfoButton } from "./info-button";
 import { useEffect, useState } from "react";
 import { dateTime, transportGet } from "@/lib/journey";
 import { fuelProductLabel } from "@/lib/transport-presentation";
+import { fuelDrivingCosts } from "@/lib/driver-statistics";
+import { StatStrip } from "./stat-strip";
+import { SectionCard } from "./section-card";
 
 export type FuelMetrics = {
   update_pending?: boolean; station_count: number; average_price: number; minimum_price: number; maximum_price: number;
   price_spread: number; standard_deviation: number; saving_50l: number; cheapest_station_count: number;
-  cheapest_station: { name: string; address: string | null } | null; generated_at: string;
+  cheapest_station: { name: string; address: string | null; longitude?: number | null; latitude?: number | null } | null; generated_at: string;
 };
 export type FuelViewportStatistics = FuelMetrics & { product_code: string };
 type Group = FuelMetrics & { scope_key: string; label: string };
@@ -15,6 +20,31 @@ type History = { day: string; average_price: number; station_count: number };
 type Statistics = { generated_at: string | null; update_pending: boolean; history_scope_key: string | null; items: Group[]; history: History[] };
 const money = (value: number) => value.toLocaleString("ko-KR", { maximumFractionDigits: 2 });
 const scopes = [["nationwide", "전국"], ["sido", "시도"], ["sigungu", "시군구"], ["highways", "고속도로 전체"], ["highway", "고속도로별"], ["highway_direction", "고속도로·방향별"]];
+
+export function FuelDriverStatistics({ metrics }: { metrics: FuelMetrics }) {
+  const [liters, setLiters] = useState("50");
+  const [efficiency, setEfficiency] = useState("10");
+  const costs = fuelDrivingCosts(metrics, Number(liters), Number(efficiency));
+  const amount = (n: number | null) => n === null ? null : money(n);
+  return <SectionCard title="차량 운영비 비교" description="현재 선택한 범주의 유효 가격과 입력한 주유량·연비로 계산합니다. 주행 조건·할인·주유소까지의 이동 비용은 포함하지 않습니다.">
+    <div className="journey-toolbar"><label>주유량(L)<input aria-label="주유량(L)" type="number" min="1" max="1000" value={liters} onChange={(event) => setLiters(event.target.value)} /></label><label>차량 연비(km/L)<input aria-label="차량 연비(km/L)" type="number" min="0.1" max="100" step="0.1" value={efficiency} onChange={(event) => setEfficiency(event.target.value)} /></label></div>
+    <StatStrip ariaLabel="유가 운전 지표" className="driver-stats" items={[
+      { label: "평균 가격", value: money(metrics.average_price), unit: "원/L" },
+      { label: "최저 가격", value: money(metrics.minimum_price), unit: "원/L" },
+      { label: "최고 가격", value: money(metrics.maximum_price), unit: "원/L" },
+      { label: "최고·최저 가격 차이", value: money(metrics.price_spread), unit: "원/L" },
+      { label: "가격 표준편차", value: money(metrics.standard_deviation), unit: "원/L" },
+      { label: "평균가 주유 비용", value: amount(costs.averageFill), unit: "원", caption: `${liters || "—"}L 기준` },
+      { label: "최저가 주유 비용", value: amount(costs.minimumFill), unit: "원", caption: `${liters || "—"}L 기준` },
+      { label: "최고가 주유 비용", value: amount(costs.maximumFill), unit: "원", caption: `${liters || "—"}L 기준` },
+      { label: "평균 대비 절약액", value: amount(costs.saving), unit: "원", caption: "최저가 주유 시" },
+      { label: "평균 대비 절약률", value: amount(costs.savingPercent), unit: "%" },
+      { label: "100km 평균 연료비", value: amount(costs.costPer100Km), unit: "원", caption: `연비 ${efficiency || "—"}km/L 가정` },
+      { label: "100km 최저 연료비", value: amount(costs.minimumCostPer100Km), unit: "원", caption: "동일 연비·최저가 가정" },
+    ]} />
+
+  </SectionCard>;
+}
 
 export function FuelStatisticsCard({ metrics, title }: { metrics: FuelMetrics; title: string }) {
   return <article className="fuel-stat-card" aria-label={title}>
@@ -27,7 +57,7 @@ export function FuelStatisticsCard({ metrics, title }: { metrics: FuelMetrics; t
       <div><dt>50L 평균 대비 절감</dt><dd>{money(metrics.saving_50l)}<small>원</small></dd></div>
     </dl>
     <p>최저가 · <strong>{metrics.cheapest_station?.name ?? "정보 없음"}</strong>{metrics.cheapest_station_count > 1 ? ` 외 ${metrics.cheapest_station_count - 1}곳` : ""}</p>
-    {metrics.cheapest_station?.address ? <p className="text-muted-foreground">{metrics.cheapest_station.address}</p> : null}
+    {metrics.cheapest_station?.address ? <p className="text-muted-foreground">{metrics.cheapest_station.longitude != null && metrics.cheapest_station.latitude != null ? <Link className="inline-link" href={`/fuel?longitude=${metrics.cheapest_station.longitude}&latitude=${metrics.cheapest_station.latitude}`}>{metrics.cheapest_station.address} · 지도</Link> : metrics.cheapest_station.address}</p> : null}
     <small>수집 기준 {dateTime(metrics.generated_at)}</small>
     {metrics.update_pending ? <p role="status">최신 수집 통계 반영 대기</p> : null}
   </article>;
@@ -87,11 +117,12 @@ export function FuelStatisticsPage() {
     {pending ? <p role="status">통계 조회 중…</p> : error ? <p role="alert">통계를 불러오지 못했습니다. 새로고침해 주세요.</p> : shownData ? <>
       <p>{shownData.generated_at ? `수집 기준 ${dateTime(shownData.generated_at)}` : "첫 수집 완료 후 통계가 생성됩니다."}{shownData.update_pending ? " · 최신 수집 통계 반영 대기" : ""}</p>
       {shownData.items.length ? <>
+        {selected ? <FuelDriverStatistics metrics={selected} /> : null}
         {selected ? <FuelStatisticsCard title={`${selected.label} · ${fuelProductLabel(product)}`} metrics={selected} /> : null}
-        <h2>최근 7일 평균 유가 · {selected?.label}</h2><FuelPriceTrend rows={shownData.history} />
-        <p className="text-muted-foreground">KST 일별 마지막 정상 수집 기준 · 수집 기록이 있는 날짜만 표시</p>
+        <div className="section-title-row"><h2>최근 7일 평균 유가 · {selected?.label}</h2><InfoButton label="유가 집계 기준">KST 일별 마지막 정상 수집 기준이며 수집 기록이 있는 날짜만 표시합니다. 전국·지역은 오피넷, 고속도로는 한국도로공사 기준입니다. 유효 가격을 주유소별 동일 비중으로 집계합니다. 절감액은 범주 평균과 최저가의 차이입니다.</InfoButton></div><FuelPriceTrend rows={shownData.history} />
+
       </> : <p>선택한 유종의 통계가 없습니다.</p>}
-      <p className="text-muted-foreground">전국·지역은 오피넷, 고속도로는 한국도로공사 기준입니다. 유효 가격만 주유소별 동일 비중으로 집계합니다. 절감액은 범주 평균과 최저가의 차이입니다.</p>
+
     </> : null}
     {shownData?.items.length ? <div className="fuel-stat-table"><table><caption>전체 범주 비교 · {fuelProductLabel(product)} (원/L)</caption><thead><tr><th>범주</th><th>주유소</th><th>평균</th><th>최저</th><th>최저가 주유소</th><th>가격 차이</th><th>50L 절감(원)</th></tr></thead><tbody>{shownData.items.map((row) => <tr key={row.scope_key}><th><button type="button" onClick={() => setScopeKey(row.scope_key)}>{row.label}</button></th><td>{row.station_count}</td><td>{money(row.average_price)}</td><td>{money(row.minimum_price)}</td><td>{row.cheapest_station?.name}{row.cheapest_station_count > 1 ? ` 외 ${row.cheapest_station_count - 1}곳` : ""}</td><td>{money(row.price_spread)}</td><td>{money(row.saving_50l)}</td></tr>)}</tbody></table></div> : null}
   </section>;
