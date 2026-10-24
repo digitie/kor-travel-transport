@@ -20,6 +20,7 @@ export function FlightJourney() {
   const [items, setItems] = useState<Place[]>([]);
   const [selected, setSelected] = useState<Place | null>(null);
   const [catalogError, setCatalogError] = useState("");
+  const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [flightState, setFlights] = useState<Resource<Flights>>({ key: "" });
   const [parkingState, setParking] = useState<Resource<Parking[]>>({ key: "" });
   const [direction, setDirection] = useState("");
@@ -37,11 +38,11 @@ export function FlightJourney() {
     const controller = new AbortController();
     transportGet<{ items: Place[] }>("transport/features/places?kind=airport&include_unlocated=true", controller.signal).then((data) => {
       if (controller.signal.aborted) return;
-      setItems(data.items);
+      setItems(data.items); setCatalogLoaded(true);
       let preferred = new URLSearchParams(window.location.search).get("airport");
       try { preferred ??= window.localStorage.getItem("transport-last-airport"); } catch { /* 저장소 접근은 선택 사항이다. */ }
       setSelected(data.items.find((item) => item.provider_id === preferred) ?? data.items.find((item) => item.provider_id === "GMP") ?? data.items[0] ?? null);
-    }).catch(() => { if (!controller.signal.aborted) setCatalogError("공항 목록을 불러오지 못했습니다."); });
+    }).catch(() => { if (!controller.signal.aborted) { setCatalogLoaded(true); setCatalogError("공항 목록을 불러오지 못했습니다."); } });
     return () => controller.abort();
   }, []);
   useEffect(() => {
@@ -56,6 +57,7 @@ export function FlightJourney() {
     return () => controller.abort();
   }, [airport, today, key]);
   function select(place: Place) { setSelected(place); try { window.localStorage.setItem("transport-last-airport", place.provider_id ?? ""); } catch { /* 선택을 메모리에 유지한다. */ } }
+  const unavailable = catalogError ? "공항 목록을 확인하지 못했습니다." : catalogLoaded ? "저장된 공항이 없습니다." : "공항 목록을 확인하는 중입니다…";
   const parking = parkingState.key === key ? parkingState.data : undefined;
   const flights = flightState.key === key ? flightState.data : undefined;
   const rows = flights?.items.filter((row) => (!direction || row.direction === direction) && (!futureOnly || flightMoment(row) >= clock) && [row.flight_number, row.airline, row.origin_airport, row.destination_airport].join(" ").toLocaleLowerCase().includes(filter.toLocaleLowerCase())).sort((a, b) => flightMoment(a) - flightMoment(b));
@@ -67,16 +69,16 @@ export function FlightJourney() {
     {errors.map((error) => <p key={error} role="alert">{error}</p>)}
     <SectionCard title="지금 주차할 곳" description={`${selected?.name ?? "공항"} · 최근 15분 관측만 현재 잔여 합계에 포함합니다.`}>
       <StatStrip items={[
-        { label: "확인된 잔여 주차면", value: freshParking?.length ? freshParking.reduce((sum, row) => sum + row.available_spaces, 0) : null, unit: "면", caption: freshParking ? `${freshParking.length}개 주차장 기준` : "조회 중" },
+        { label: "확인된 잔여 주차면", value: freshParking?.length ? freshParking.reduce((sum, row) => sum + row.available_spaces, 0) : null, unit: "면", caption: freshParking ? `${freshParking.length}개 주차장 기준` : airport ? "조회 중" : unavailable },
         { label: "오늘 이후 출발", value: flights && ["success", "sample"].includes(flights.status) ? flights.items.filter((row) => row.direction === "departure" && flightMoment(row) >= clock).length : null, unit: "편" },
         { label: "오늘 이후 도착", value: flights && ["success", "sample"].includes(flights.status) ? flights.items.filter((row) => row.direction === "arrival" && flightMoment(row) >= clock).length : null, unit: "편" },
       ]} />
-      {parking ? parking.length ? <div className="parking-lots">{parking.map((row) => <article key={row.parking_lot_id}><strong>{row.parking_lot_name}</strong><span>{row.terminal}</span><p>잔여 <strong>{row.available_spaces.toLocaleString()}</strong> / {row.total_spaces.toLocaleString()}면</p><small>{clock - Date.parse(row.observed_at) > 15 * 60_000 ? "갱신 지연 · " : ""}{dateTime(row.observed_at)}</small></article>)}</div> : <p>저장된 주차 관측이 없습니다.</p> : parkingState.error && parkingState.key === key ? null : <p role="status">주차 현황을 확인하는 중입니다…</p>}
+      {parking ? parking.length ? <div className="parking-lots">{parking.map((row) => <article key={row.parking_lot_id}><strong>{row.parking_lot_name}</strong><span>{row.terminal}</span><p>잔여 <strong>{row.available_spaces.toLocaleString()}</strong> / {row.total_spaces.toLocaleString()}면</p><small>{clock - Date.parse(row.observed_at) > 15 * 60_000 ? "갱신 지연 · " : ""}{dateTime(row.observed_at)}</small></article>)}</div> : <p>저장된 주차 관측이 없습니다.</p> : parkingState.error && parkingState.key === key ? null : <p role="status">{airport ? "주차 현황을 확인하는 중입니다…" : unavailable}</p>}
     </SectionCard>
     <div id="airport-flights" className="journey-map-target"><SectionCard title="오늘 출도착 항공편" description="공항 선택 시 자동 조회합니다. 예정 시각보다 변경 예정 시각을 우선해 정렬합니다.">
       <MapFilterBar><MapFilterField label="방향" htmlFor={`${id}-direction`}><select id={`${id}-direction`} value={direction} onChange={(event) => setDirection(event.target.value)}><option value="">출발·도착 전체</option><option value="departure">출발</option><option value="arrival">도착</option></select></MapFilterField><MapFilterField label="항공편 검색" htmlFor={`${id}-flight`}><Input id={`${id}-flight`} type="search" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="편명·항공사·목적지" /></MapFilterField><label className="inline-checkbox"><input type="checkbox" checked={futureOnly} onChange={(event) => setFutureOnly(event.target.checked)} />지금 이후만</label></MapFilterBar>
       {flights?.status === "sample" ? <p role="status">예시 항공편 자료입니다. 실제 운항편이 아닙니다.</p> : null}
-      {flights && (!["success", "sample"].includes(flights.status) || flights.error_message) ? <p role="alert">{{ disabled: "항공편 조회가 비활성화되어 있습니다.", config_error: "항공편 조회 설정을 확인해야 합니다.", rate_limited: "제공기관 호출 제한으로 조회를 보류했습니다.", upstream_error: "제공기관의 항공편 정보를 확인하지 못했습니다." }[flights.status] ?? "항공편 응답을 확인하지 못했습니다."}</p> : flights ? <div aria-live="polite">{rows?.map((row, index) => <article className="departure-row" key={index}><div className="departure-time"><strong>{new Date(row.estimated_at ?? row.scheduled_at).toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false })}</strong><span>{row.flight_number} · {row.direction === "arrival" ? "도착" : "출발"}</span></div><div className="departure-route"><strong>{row.origin_airport} → {row.destination_airport}</strong><small>{row.airline}</small></div><div className="departure-meta"><strong>{row.status ?? "상태 미제공"}</strong><small>예정 {dateTime(row.scheduled_at)}</small></div></article>)}{!rows?.length ? <p className="empty-state">조건에 맞는 이후 항공편이 없습니다.</p> : null}</div> : flightState.key === key && flightState.error ? null : <p role="status">항공편을 확인하는 중입니다…</p>}
+      {flights && (!["success", "sample"].includes(flights.status) || flights.error_message) ? <p role="alert">{{ disabled: "항공편 조회가 비활성화되어 있습니다.", config_error: "항공편 조회 설정을 확인해야 합니다.", rate_limited: "제공기관 호출 제한으로 조회를 보류했습니다.", upstream_error: "제공기관의 항공편 정보를 확인하지 못했습니다." }[flights.status] ?? "항공편 응답을 확인하지 못했습니다."}</p> : flights ? <div aria-live="polite">{rows?.map((row, index) => <article className="departure-row" key={index}><div className="departure-time"><strong>{new Date(row.estimated_at ?? row.scheduled_at).toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false })}</strong><span>{row.flight_number} · {row.direction === "arrival" ? "도착" : "출발"}</span></div><div className="departure-route"><strong>{row.origin_airport} → {row.destination_airport}</strong><small>{row.airline}</small></div><div className="departure-meta"><strong>{row.status ?? "상태 미제공"}</strong><small>예정 {dateTime(row.scheduled_at)}</small></div></article>)}{!rows?.length ? <p className="empty-state">조건에 맞는 이후 항공편이 없습니다.</p> : null}</div> : flightState.key === key && flightState.error ? null : <p role="status">{airport ? "항공편을 확인하는 중입니다…" : unavailable}</p>}
     </SectionCard></div>
     <div id="airport-map" className="journey-map-target" tabIndex={-1}><TransportMap places={items} selectedPlace={selected} onSelectPlace={select} /></div>
   </section>;

@@ -1,6 +1,6 @@
 // 출처: digitie/kor-travel-map, GPL-3.0-or-later.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -66,10 +66,12 @@ describe("maplibre worker 배선", () => {
     // 선언이 아니라 **효과**를 센다 — 설치된 maplibre가 그 파일들을 더 이상 내보내지
     // 않으면(경로/이름 변경) 여기서 빨개진다. 그때는 배선 전체를 다시 봐야 한다.
     const workdir = mkdtempSync(path.join(tmpdir(), "maplibre-worker-"));
-    execFileSync(process.execPath, [SCRIPT], { cwd: workdir, stdio: "pipe" });
-    for (const file of copiedFileNames()) {
-      expect(existsSync(path.join(workdir, "public", "maplibre", file))).toBe(true);
-    }
+    try {
+      execFileSync(process.execPath, [SCRIPT], { cwd: workdir, stdio: "pipe" });
+      for (const file of copiedFileNames()) {
+        expect(existsSync(path.join(workdir, "public", "maplibre", file))).toBe(true);
+      }
+    } finally { rmSync(workdir, { recursive: true, force: true }); }
   });
 });
 

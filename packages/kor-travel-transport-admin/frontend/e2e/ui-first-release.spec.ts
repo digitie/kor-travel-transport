@@ -75,3 +75,15 @@ test("공항은 주차·항공편을 자동 조회하고 이후 편부터 표시
   await page.getByLabel("지금 이후만").uncheck();
   await expect(page.getByText("PAST999", { exact: false })).toBeVisible();
 });
+
+for (const failure of [false, true]) test(`공항 목록 ${failure ? "실패" : "빈 응답"}에서 하위 조회를 기다리지 않는다`, async ({page}) => {
+  test.skip(!password, "로그인 암호 필요"); await login(page);
+  const requests: string[] = [];
+  page.on("request", (request) => { if (/parking\/current|flights\/status/.test(request.url())) requests.push(request.url()); });
+  await page.route("**/transport/features/places?**", (route) => failure ? route.fulfill({status: 502, json: {detail: "오류"}}) : route.fulfill({json: {items: []}}));
+  await page.goto("/flights");
+  await expect(page.getByText(failure ? "공항 목록을 확인하지 못했습니다." : "저장된 공항이 없습니다.", {exact: true}).first()).toBeVisible();
+  await expect(page.getByText("주차 현황을 확인하는 중입니다…", {exact: true})).toHaveCount(0);
+  await expect(page.getByText("항공편을 확인하는 중입니다…", {exact: true})).toHaveCount(0);
+  expect(requests).toEqual([]);
+});
