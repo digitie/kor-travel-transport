@@ -1,10 +1,10 @@
 # 현재 상태 — 2026-10-23 Map T2/T3 제품 수용 정산
 
-## 2026-10-24 우선 작업
+## 2026-10-24 — 공통 지도 UI와 이용 목적 개선
 
-Firefox 타일 0건을 라이브러리 web1.0.1로 수정했다. 로컬 Firefox 교통·유가 실제 타일·확대 PASS,
-관리자 전체·Docker·운영 배포 검증 진행 중이다. [근거](reports/2026-10-24-firefox-vworld-tiles.md).
-다음 한 작업은 승인된 관리자 웹만 교체 후 운영 Firefox 확인이며, 이후 공통 지도 UI 작업을 재개한다.
+Firefox 타일 긴급 수정은 운영 관리자 healthy·운영 Firefox 실제 교통/유가 타일·확대 PASS다. 공용 지도 UI는 Common PR45 후보를 Map/Transport/Weather가 채택한다. Transport225·공용UI54·Weather250/종류PG12·Transport375/1440px UI2 PASS를 확보했다. [검증](reports/2026-10-24-shared-map-ui.md).
+
+다음은 사용자 6~11번의 홈/메뉴·실제 이용 목적 중심 철도/버스/공항·지도 결합 고속도로 개선이다. [범위 원장](transport-user-journeys-2026-10-24.md). 빌드/배포는 다른 통합 에이전트가 담당하므로 자체 배포용 빌드를 재개하지 않는다.
 
 PR114~119는 고정 snapshot·traffic/parking 현재 상태·bus/ferry/rail 참조와 KAC quota 복구를 구현·머지했다. 최종 main은 `a0f9b72325281fdba3c0644b0592426e70afce86`이다.
 정확 최종 SHA의 두 적대 리뷰·CI·격리 PG/Compose·실제 TCP 근거와 머지 상태는

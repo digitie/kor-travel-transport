@@ -1,3 +1,7 @@
+## 2026-10-24 — 공통 지도 작업면 채택 후보
+
+Map 기준 필터/종류 아이콘/보기 탭/건수+실제 좌표·줌/지도 위 상세를 common dev.7로 연결했다. 교통지도 안내 문단을 사용자6번에 따라 삭제했다. Transport225·공용54·반응형UI2 PASS, 독립 리뷰 반영. Firefox 운영 실제 타일·확대 PASS를 정산했다. 배포용 빌드는 사용자 지시로 중단했고, [6~11번 개선](transport-user-journeys-2026-10-24.md)을 이어간다. [검증](reports/2026-10-24-shared-map-ui.md).
+
 ## 2026-10-24 — Firefox VWorld 타일 긴급 수정
 
 Firefox에서 타일 0건을 재현하고 라이브러리 원본의 비표준 protocol→HTTPS 변환을 고쳤다.

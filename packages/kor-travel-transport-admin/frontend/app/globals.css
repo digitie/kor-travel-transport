@@ -5,7 +5,13 @@
 @import "tw-animate-css";
 @import "@kor-travel/tokens/theme.css";
 @import "@kor-travel/ui/dagster.css";
+@import "@kor-travel/ui/map-controls.css";
 @source "../node_modules/@kor-travel/ui/dist";
+
+.transport-map-workspace { min-width: 0; }
+.transport-map-workspace .map-primary, .transport-map-workspace .transport-map-canvas { height: 70dvh; min-height: 28rem; }
+.transport-map-workspace .map-place-list { max-height: 70dvh; min-height: 28rem; overflow-y: auto; }
+.transport-map-workspace .kt-map-detail { display: block; padding: 0; border: 1px solid var(--kt-border); }
 
 /* 기존 색상 변수 이름과 shadcn의 muted/accent 의미 충돌을 피한다. */
 @theme inline {

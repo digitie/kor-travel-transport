@@ -66,7 +66,7 @@ test("좌표 미확인 항구·버스 터미널은 지도 대신 검색 목록�
   expect(requests.some((params) => params.get("kind") === "ferry_port" && params.get("include_unlocated") === "true")).toBe(true);
 });
 
-test("잘린 목록은 확대 대신 이름·코드 검색을 안내한다", async ({ page }) => {
+test("잘린 목록에도 삭제 요청한 표시 제한 안내를 노출하지 않는다", async ({ page }) => {
   await page.route("**/transport/features/places?**", (route) => {
     const kind = new URL(route.request().url()).searchParams.get("kind");
     return route.fulfill({ json: { items: [], total: kind === "ferry_port" ? 749 : 0,
@@ -74,7 +74,7 @@ test("잘린 목록은 확대 대신 이름·코드 검색을 안내한다", asy
   });
   await page.goto("/map");
   await page.getByRole("tab", { name: "목록", exact: true }).click();
-  await expect(page.getByText(/항구 일부만 표시합니다\. 이름·코드 검색으로 범위를 좁혀 주세요/)).toBeVisible();
+  await expect(page.getByText(/일부만 표시|검증 좌표만 표시|도로 돌발: 24시간/)).toHaveCount(0);
 });
 
 test("교통 지도와 유가 지도는 각각 허용된 종류만 조회한다", async ({ page }) => {
