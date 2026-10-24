@@ -27,4 +27,9 @@ describe("배편 기준자료", () => {
     expect(renderToStaticMarkup(<ReferenceDataset state={state} query="001" />)).toContain("원천 항로 001");
     expect(renderToStaticMarkup(<ReferenceDataset state={state} query="없는 항로" />)).toContain("검색 결과 없음");
   });
+  it.each(["15995985", "2014"])("전화번호와 조사연도로 시설을 검색한다: %s", (query) => {
+    const facility = { ...state, data: { ...state.data!, items: [{ ...state.data!.items[0],
+      kind: "facility" as const, name: "인천연안여객선터미널", telephone: "15995985", source_year: "2014" }] } };
+    expect(renderToStaticMarkup(<ReferenceDataset state={facility} query={query} />)).toContain("인천연안여객선터미널");
+  });
 });

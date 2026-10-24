@@ -163,18 +163,22 @@ def test_native_job_reports_failure_after_committing_healthy_sources(tmp_path, m
 
 
 @pytest.mark.parametrize("previous_failure", [True, False])
-def test_failed_archive_is_refetched_but_storage_only_resume_reuses_it(tmp_path, monkeypatch, previous_failure):
+@pytest.mark.parametrize("publication_failure", [True, False])
+def test_failed_archive_is_refetched_but_storage_only_resume_reuses_it(tmp_path, monkeypatch, previous_failure, publication_failure):
     from app.services import vadahub_collection as module
     now = now_utc()
     layer = SimpleNamespace(layer_id="500059", table_name="psnr_rute_l", history_date="2019-12-10")
     cached = SimpleNamespace(local_path=tmp_path / "cached.zip", collected_at=now,
         source_url="https://vadahub.go.kr/renew/spaceData/index.do", sha256="b" * 64)
+    latest = [cached]
     downloads = []
     class Store:
         def __init__(self, root): pass
         async def recover(self): pass
-        async def versions(self, _layer): return (SimpleNamespace(receipt=cached),)
-        async def put(self, receipt): return SimpleNamespace(receipt=receipt)
+        async def versions(self, _layer): return (SimpleNamespace(receipt=latest[0]),)
+        async def put(self, receipt):
+            latest[0] = receipt
+            return SimpleNamespace(receipt=receipt)
     class Client:
         def __init__(self, **options): pass
         async def __aenter__(self): return self
@@ -202,11 +206,62 @@ def test_failed_archive_is_refetched_but_storage_only_resume_reuses_it(tmp_path,
             if previous_failure:
                 session.add(FerryReferenceSnapshot(dataset="passenger_routes", response_json=None, last_attempt_at=now, last_error="SchemaError"))
             await session.commit()
-            result = await VadaHubCollectionService(settings).collect(session)
+            original_commit = session.commit
+            fail_publication = publication_failure
+            async def commit():
+                nonlocal fail_publication
+                if fail_publication and any(isinstance(row, FerryReferenceSnapshot) and row.dataset == "passenger_routes"
+                    and row.response_json is not None and row.last_error is None for row in session.new.union(session.dirty)):
+                    fail_publication = False
+                    raise ConnectionError("database publication interrupted after parsing")
+                await original_commit()
+            monkeypatch.setattr(session, "commit", commit)
+            service = VadaHubCollectionService(settings)
+            if publication_failure:
+                with pytest.raises(ConnectionError):
+                    await service.collect(session)
+                assert len(downloads) == int(previous_failure)
+            result = await service.collect(session)
             assert result["status"] == "success"
             assert len(downloads) == int(previous_failure)
             row = await session.get(FerryReferenceSnapshot, "passenger_routes")
             assert row.last_error is None
             assert row.response_json["source_sha256"] == ("a" if previous_failure else "b") * 64
+        await engine.dispose()
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("recording_step", ["rollback", "get", "commit"])
+def test_cancel_survives_failure_recording_errors_and_releases_lock(tmp_path, monkeypatch, recording_step):
+    async def run():
+        settings, engine, factory = await database(tmp_path)
+        cancellation = asyncio.CancelledError("original cancellation")
+        cancelled = False
+        async def fetch(key):
+            nonlocal cancelled
+            if key == "ferry_routes":
+                cancelled = True
+                raise cancellation
+            return payload(key)
+        async with factory() as session:
+            original = getattr(session, recording_step)
+            injected = False
+            async def fail_recording(*args, **kwargs):
+                nonlocal injected
+                if cancelled and not injected:
+                    injected = True
+                    raise ConnectionError("failure recording unavailable")
+                return await original(*args, **kwargs)
+            with monkeypatch.context() as patch:
+                patch.setattr(session, recording_step, fail_recording)
+                with pytest.raises(asyncio.CancelledError) as caught:
+                    await VadaHubCollectionService(settings, fetcher=fetch).collect(session)
+                assert caught.value is cancellation
+                assert injected
+            assert (await session.get(FerryReferenceSnapshot, "passenger_routes")).response_json
+            calls = []
+            result = await VadaHubCollectionService(settings, fetcher=lambda key: fixed(key, calls)).collect(session)
+            assert result["status"] == "success"
+            assert "passenger_routes" not in calls
         await engine.dispose()
     asyncio.run(run())

@@ -50,7 +50,7 @@ export function FerryReference() {
 export function ReferenceDataset({ state, query }: { state: ReferenceState; query: string }) {
   const terms = query.trim().split(/\s+/).filter(Boolean);
   const rows = state.data?.items.filter((row) => terms.every((term) =>
-    [row.name, row.departure, row.arrival, row.segment, row.calls, row.address, row.record_id].join(" ").includes(term))) ?? [];
+    [row.name, row.departure, row.arrival, row.segment, row.calls, row.address, row.telephone, row.source_year, row.record_id].join(" ").includes(term))) ?? [];
   // 검색 조건이 바뀌면 별도 key로 페이지를 초기화한다.
   return <Card className="min-w-0">
     <CardHeader><CardTitle role="heading" aria-level={3}>{state.title}</CardTitle><CardDescription>

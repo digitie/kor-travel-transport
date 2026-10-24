@@ -1,6 +1,8 @@
 """VadaHub SDK의 배편 기준자료를 원천별 마지막 정상 저장본으로 제공한다."""
 from __future__ import annotations
 
+import asyncio
+import logging
 from datetime import UTC, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -21,6 +23,7 @@ SOURCES = {
     "official_terminals": ("공식 여객터미널 보완 자료", None, None, None),
 }
 REFRESH_INTERVAL = timedelta(days=7)
+logger = logging.getLogger(__name__)
 
 
 class VadaHubCollectionService:
@@ -28,7 +31,7 @@ class VadaHubCollectionService:
         self.settings = settings
         self.fetcher = fetcher
 
-    async def _fetch(self, key: str, *, reuse_archive: bool = True) -> FerryReferenceData:
+    async def _fetch(self, key: str, *, retry_failed_source: bool = False) -> FerryReferenceData:
         title, dataset_id, layer_id, table = SOURCES[key]
         root = Path(self.settings.vadahub_archive_directory)
         store = LocalArchiveStore(root / "archives")
@@ -55,24 +58,40 @@ class VadaHubCollectionService:
                 if len(layers) != 1:
                     raise ValueError("VadaHub layer identity changed")
                 layer = layers[0]
-                versions = await store.versions(layer) if reuse_archive else ()
+                versions = await store.versions(layer)
                 recent = [v for v in versions if now_utc() - v.receipt.collected_at < REFRESH_INTERVAL]
-                receipt = recent[-1].receipt if recent else (await store.put(await client.download(layer, Path(temporary) / "source.zip"))).receipt
-                features = await client.load_file(receipt.local_path, layer=layer, receipt=receipt, max_features=5000)
-                if key == "ferry_facilities":
-                    ports = ports_from_features(features)
-                    rows = [self._port_row(p, dict(p.feature.attributes)) for p in ports]
-                else:
-                    rows = []
-                    for feature in features:
-                        endpoints = route_endpoints(feature)
-                        rows.append(FerryReferenceRow(record_id=feature.record_id, kind="route",
-                            name=endpoints.route_name, departure=endpoints.departure, arrival=endpoints.arrival,
-                            calls=endpoints.calls_raw, segment=endpoints.segment_name,
-                            attributes=jsonable_encoder(dict(feature.attributes))))
-                return FerryReferenceData(dataset=key, title=title, source=f"vadahub:{table}",
-                    source_url=receipt.source_url, source_version=layer.history_date,
-                    source_sha256=receipt.sha256, collected_at=receipt.collected_at, items=rows)
+                async def load(receipt):
+                    features = await client.load_file(receipt.local_path, layer=layer, receipt=receipt, max_features=5000)
+                    if key == "ferry_facilities":
+                        ports = ports_from_features(features)
+                        rows = [self._port_row(p, dict(p.feature.attributes)) for p in ports]
+                    else:
+                        rows = []
+                        for feature in features:
+                            endpoints = route_endpoints(feature)
+                            rows.append(FerryReferenceRow(record_id=feature.record_id, kind="route",
+                                name=endpoints.route_name, departure=endpoints.departure, arrival=endpoints.arrival,
+                                calls=endpoints.calls_raw, segment=endpoints.segment_name,
+                                attributes=jsonable_encoder(dict(feature.attributes))))
+                    return self._validate(FerryReferenceData(dataset=key, title=title, source=f"vadahub:{table}",
+                        source_url=receipt.source_url, source_version=layer.history_date,
+                        source_sha256=receipt.sha256, collected_at=receipt.collected_at, items=rows), key)
+                if recent:
+                    try:
+                        return await load(recent[-1].receipt)
+                    except Exception:
+                        if not retry_failed_source:
+                            raise
+                receipt = (await store.put(await client.download(layer, Path(temporary) / "source.zip"))).receipt
+                return await load(receipt)
+
+    @staticmethod
+    def _validate(data: FerryReferenceData, key: str) -> FerryReferenceData:
+        if data.dataset != key or not data.items or len(data.items) > 5000:
+            raise ValueError("VadaHub incomplete or mismatched dataset")
+        if len({r.record_id for r in data.items}) != len(data.items):
+            raise ValueError("VadaHub duplicate source identities")
+        return data
 
     @staticmethod
     def _port_row(port, attributes):
@@ -109,15 +128,11 @@ class VadaHubCollectionService:
                     await session.commit()  # 브라우저 대기 중 DB transaction을 잡지 않는다.
                     attempted_at = now_utc()
                     try:
-                        # 파싱 실패한 ZIP을 7일간 계속 재사용하지 않는다. 원천 오류가 없는
-                        # 저장 재시도는 이미 확보한 원문을 다시 읽어 다운로드 비용을 줄인다.
+                        # 이전 오류가 있어도 정상 ZIP은 재사용한다. 최근 ZIP을 실제 검증해
+                        # 실패한 경우에만 새 원문을 내려받아 저장 실패 뒤의 비용을 줄인다.
                         value = (await self.fetcher(key) if self.fetcher is not None else
-                                 await self._fetch(key, reuse_archive=not bool(old and old.last_error)))
-                        data = FerryReferenceData.model_validate(value)
-                        if data.dataset != key or not data.items or len(data.items) > 5000:
-                            raise ValueError("VadaHub incomplete or mismatched dataset")
-                        if len({r.record_id for r in data.items}) != len(data.items):
-                            raise ValueError("VadaHub duplicate source identities")
+                                 await self._fetch(key, retry_failed_source=bool(old and old.last_error)))
+                        data = self._validate(FerryReferenceData.model_validate(value), key)
                     except Exception as exc:
                         failures.append(key)
                         row = await session.get(FerryReferenceSnapshot, key)
@@ -143,12 +158,19 @@ class VadaHubCollectionService:
                 run.error_message = ", ".join(failures) or None
                 await session.commit()
             except BaseException:
-                await session.rollback()
-                run = await session.get(CollectionRun, run_id)
-                run.status = "failed"
-                run.finished_at = now_utc()
-                run.error_message = "VadaHub collection interrupted; committed datasets retained"
-                await session.commit()
+                try:
+                    await session.rollback()
+                    run = await session.get(CollectionRun, run_id)
+                    run.status = "failed"
+                    run.finished_at = now_utc()
+                    run.error_message = "VadaHub collection interrupted; committed datasets retained"
+                    await session.commit()
+                except (Exception, asyncio.CancelledError) as recording_error:
+                    logger.warning("VadaHub failure recording failed run_id=%s type=%s", run_id, type(recording_error).__name__)
+                    try:
+                        await session.rollback()
+                    except (Exception, asyncio.CancelledError):
+                        logger.warning("VadaHub failure rollback failed run_id=%s", run_id)
                 raise
             return {"status": "partial_success" if failures else "success", "run_id": run_id, "counts": counts, "failed_datasets": failures}
         finally:
