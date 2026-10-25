@@ -1,3 +1,11 @@
+## 2026-10-25 — 관리자 UI 작은 수정 첫 묶음
+
+- 현재 상태: [PR131](https://github.com/digitie/kor-travel-transport/pull/131)에서 공용 토큰의 navy/light·dark 연결,
+  단일 지도 stage 테두리, 유가 상부 요약·주소/출처 팝업, 실제 유가 추이 우선 배치를 적용했다.
+  [작업/로컬 검증 기록](reports/2026-10-25-admin-ui-compact-batch.md).
+- 다음 한 작업: 최종 PR Checks·독립 리뷰와 Weather 병렬 묶음을 정산해 머지한다. 빌드/배포는 다른 담당이 진행한다.
+  Common 가용 지도 높이·철도/주차 데이터·주유소별 이력·브랜드 조건은 후속 작업으로 남긴다.
+
 ## 2026-10-25 — 웹·Android/iOS 조사와 후속 설계 문서
 
 - 현재 상태: 기존 admin 구조를 유지하는 범위로 [조사](research/2026-10-25-mobility-ux.md)와

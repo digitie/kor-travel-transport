@@ -5,12 +5,13 @@
   --surface-page: oklch(97.8% .003 250); --surface-subtle: oklch(96.7% .006 250);
   --surface-muted: oklch(92.5% .01 250); --card: oklch(99.2% .002 250);
   --text-primary: oklch(30% .025 255); --text-secondary: oklch(48% .04 255);
-  --text-tertiary: oklch(54% .04 255); --icon-default: var(--text-tertiary);
+  --text-tertiary: oklch(54% .04 255); --text-disabled: oklch(79% .025 255); --icon-default: var(--text-tertiary);
   --control-line: oklch(61% .035 255);
   --brand: oklch(47% .14 255); --brand-hover: oklch(41% .15 255);
   --brand-tint: oklch(95% .025 250); --brand-foreground: oklch(99% .002 250);
   --success: oklch(46.9% .087 149); --success-tint: oklch(95% .03 150);
   --warning: oklch(50.9% .103 71); --warning-tint: oklch(96% .035 80);
+  --info: oklch(50% .16 258); --info-tint: oklch(95.5% .025 255);
   --destructive: oklch(51.4% .167 27); --destructive-tint: oklch(96% .03 25);
   --focus: oklch(43% .13 255);
   --paper: var(--surface-page); --panel: var(--card); --ink: var(--text-primary);
@@ -32,6 +33,43 @@
   --ease-out: cubic-bezier(.16,1,.3,1); --dur-short: 100ms;
   --shadow-card: none; --shadow-map: 0 2px 8px oklch(30% .025 255 / .22);
   --shadow-elevated: 0 4px 12px oklch(30% .025 255 / .1);
+  --shadow-modal: 0 8px 24px oklch(30% .025 255 / .14);
+  --overlay: oklch(30% .025 255 / .45);
+}
+
+/* Common 소비 부품도 앱의 정본 팔레트를 따른다. 의미가 있는 마커/상태 색은 보존한다. */
+:root, .dark {
+  --kt-surface-page: var(--surface-page); --kt-surface-subtle: var(--surface-subtle);
+  --kt-surface-muted: var(--surface-muted); --kt-surface-card: var(--card);
+  --kt-text-primary: var(--text-primary); --kt-text-secondary: var(--text-secondary);
+  --kt-text-tertiary: var(--text-tertiary); --kt-text-disabled: var(--text-disabled);
+  --kt-text-strong: var(--text-primary); --kt-icon: var(--icon-default);
+  --kt-border: var(--surface-muted); --kt-control-line: var(--control-line);
+  --kt-brand: var(--brand); --kt-brand-hover: var(--brand-hover);
+  --kt-brand-tint: var(--brand-tint); --kt-brand-foreground: var(--brand-foreground);
+  --kt-focus: var(--focus); --kt-overlay: var(--overlay);
+  --kt-success: var(--success); --kt-success-tint: var(--success-tint);
+  --kt-warning: var(--warning); --kt-warning-tint: var(--warning-tint);
+  --kt-info: var(--info); --kt-info-tint: var(--info-tint);
+  --kt-destructive: var(--destructive); --kt-destructive-tint: var(--destructive-tint);
+  --kt-shadow-elevated: var(--shadow-elevated); --kt-shadow-modal: var(--shadow-modal);
+  --kt-font-sans: var(--font-body); --kt-font-mono: var(--font-mono);
+}
+
+/* Weather의 앱 팔레트와 같은 navy 다크 프로필. Common의 녹색 dark 값과 섞이지 않게 한다. */
+.dark {
+  --surface-page: oklch(19% .025 255); --surface-subtle: oklch(24% .03 255);
+  --surface-muted: oklch(31% .04 255); --card: oklch(23% .028 255);
+  --text-primary: oklch(93% .02 255); --text-secondary: oklch(78% .025 255);
+  --text-tertiary: oklch(68% .03 255); --text-disabled: oklch(52% .025 255);
+  --icon-default: oklch(70% .03 255); --control-line: oklch(58% .035 255);
+  --brand: oklch(76% .13 250); --brand-hover: oklch(81% .13 250);
+  --brand-tint: oklch(31% .06 250); --brand-foreground: oklch(20% .04 250);
+  --success: oklch(75% .09 149); --success-tint: oklch(28% .04 150);
+  --warning: oklch(77% .12 75); --warning-tint: oklch(30% .045 80);
+  --info: oklch(75% .11 258); --info-tint: oklch(30% .05 258);
+  --destructive: oklch(72% .14 27); --destructive-tint: oklch(30% .06 27);
+  --focus: oklch(80% .12 250); --overlay: oklch(10% .025 255 / .6);
 }
 
 @media (max-width: 62rem) { :root { --layout-gutter: 1rem; } }

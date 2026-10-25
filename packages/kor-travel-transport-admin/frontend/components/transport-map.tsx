@@ -6,7 +6,7 @@ import { setWorkerUrl } from "maplibre-gl";
 import { clusterAtScale, dateTime, hasCoordinates, hasFuelPrice, transportGet, type Place, type PlaceKind } from "@/lib/journey";
 import { collectionSourceLabel, fuelProductLabel, placeKindLabel } from "@/lib/transport-presentation";
 import { placeMarkerColor, placeMarkerStyle, priceMarkerLabel, priceSpeech } from "@/lib/place-marker-style";
-import { FuelViewportSummary, type FuelViewportStatistics } from "@/components/fuel-statistics";
+import { FuelPriceStatus, FuelViewportSummary, type FuelViewportStatistics } from "@/components/fuel-statistics";
 import { MAP_FALLBACK_IMAGE } from "@/lib/map-fallback";
 import { CameraRequest, ClusterBubble, MapMarkerButton, MapUnavailable, MarkerBadge, OverlapPopup, useVWorldBasemapHealth, vworldApiKey, ZoomButtons, type CameraTarget } from "./map-overlays";
 import { PlaceIcon } from "./journey-controls";
@@ -103,6 +103,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
   const [pending, setPending] = useState<string[]>([]);
   const [failed, setFailed] = useState<string[]>([]);
   const basemap = useVWorldBasemapHealth();
+  const [mapUnavailableMessage, setMapUnavailableMessage] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mapResponseCache = useRef(new Map<string, { expiresAt: number; payload: PlaceResponse }>());
@@ -334,6 +335,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
   const detailPanel = embedded && details ? <MapDetailOverlay ref={detail} className="transport-map-detail" aria-label="선택 장소 상세" onDismiss={dismissEmbeddedDetail}>
     <div className="journey-detail-header"><Button type="button" size="icon" variant="ghost" aria-label="상세 닫기" onClick={dismissEmbeddedDetail}><X aria-hidden="true" size={16} /></Button></div>{details}
   </MapDetailOverlay> : !embedded && current ? <MapDetailOverlay className="transport-map-detail weather-inspector" ref={detail} aria-label="선택 장소 상세" onDismiss={closeDetail}>
+    {current.kind === "fuel_station" && loaded.fuel_station?.fuel_prices_stale ? <div className="inspector-section"><FuelPriceStatus stale lastRefreshedAt={loaded.fuel_station.fuel_prices_last_refreshed_at} /></div> : null}
     <PlaceInspector key={keyOf(current)} place={current} onShowMap={() => { setView("map"); setCameraRequest((value) => value + 1); requestAnimationFrame(() => mapContainer.current?.scrollIntoView({ block: "start" })); }} onClose={() => { setSelected(null); queryInput.current?.focus(); }} onSaved={(updated) => { setSelected(updated); setReload((value) => value + 1); }} onReload={() => { setSelected(null); setReload((value) => value + 1); queryInput.current?.focus(); }} />
   </MapDetailOverlay> : null;
 
@@ -347,14 +349,15 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
       {kinds.includes("fuel_station") ? <MapFilterField htmlFor={`${controlId}-product`} label="표시 유종"><FilterCombobox compact id={`${controlId}-product`} value={products} onChange={(values) => { setProducts(values); setSelected(null); }} placeholder="전체 유종" options={["B027", "D047", "B034", "K015", "C004"].map((value) => ({ value, label: fuelProductLabel(value) }))} /></MapFilterField> : null}
     </MapFilterBar> : null}
     <MapViewTabs ariaLabel="장소 보기" viewport={mapViewport} count={view === "list" ? items.length + listFeatureCount : mapFeatureCount + (serverClustered ? serverClusters.reduce((sum, item) => sum + item.count, 0) : visiblePoints.length)} status={pending.length ? "조회 중…" : undefined} />
-    {(cluster && visiblePoints.length > 0) || failed.length > 0 || (basemap.basemapFailed && view === "map") ? <div className="map-feedback" role="status">
+    {(cluster && visiblePoints.length > 0) || failed.length > 0 || ((basemap.basemapFailed || mapUnavailableMessage) && view === "map") ? <div className="map-feedback" role="status">
       {cluster && visiblePoints.length > 0 ? <span>밀도별 묶음</span> : null}
       {failed.length ? <p className="error">{failed.map(placeKindLabel).join("·")} 조회 실패 <Button variant="outline" type="button" onClick={() => setReload((value) => value + 1)}>다시 조회</Button></p> : null}
       {basemap.basemapFailed && view === "map" ? <p className="error">VWorld 지도 타일을 불러오지 못했습니다. 목록 보기에서 장소를 확인할 수 있습니다.</p> : null}
+      {mapUnavailableMessage && view === "map" ? <p className="error" role="alert">{mapUnavailableMessage}</p> : null}
     </div> : null}
-    <TabsContent className="min-h-0" value="map"><div className="kt-map-stage"><div className="map-primary" ref={mapContainer}><VWorldMapView apiKey={VWORLD_KEY} center={[127.8, 36.2]} zoom={7} minZoom={5}
+    <TabsContent className="min-h-0" value="map"><div className={`kt-map-stage${!embedded && mode === "fuel" ? " fuel-map-stage" : ""}`}><div className="map-primary" ref={mapContainer}><VWorldMapView apiKey={VWORLD_KEY} center={[127.8, 36.2]} zoom={7} minZoom={5}
         className="transport-map-canvas" layerType="Base" navigation={false} geolocate={false} scale
-        loadingSkeleton={<p className="loading">지도를 준비하는 중입니다…</p>} fallback={(info) => <MapUnavailable info={info} />}
+        loadingSkeleton={<p className="loading">지도를 준비하는 중입니다…</p>} fallback={(info) => <MapUnavailable info={info} onMessage={setMapUnavailableMessage} />}
         unsupportedTileFallback={{ imageUrl: MAP_FALLBACK_IMAGE }} transformRequest={basemap.transformRequest}
         onError={basemap.onError} onIdle={basemap.onIdle} onLoad={moved} onMoveEnd={(event) => moved(event.target)}>
         <ZoomButtons />
@@ -390,13 +393,17 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
         {clusterPlaces.length ? <OverlapPopup lngLat={clusterAnchor} onClose={closeOverlap}>
           <OverlapList places={clusterPlaces} onSelect={selectPlace} listRef={clusterList} />
         </OverlapPopup> : null}
-      </VWorldMapView></div>{view === "map" ? detailPanel : null}</div>
+      </VWorldMapView></div>
+      {!embedded && mode === "fuel" && view === "map" ? <div className="fuel-map-overlays">
+        <FuelViewportSummary items={loaded.fuel_station?.fuel_statistics ?? []} pending={pending.length > 0} failed={failed.length > 0}
+          pricesStale={loaded.fuel_station?.fuel_prices_stale} pricesLastRefreshedAt={loaded.fuel_station?.fuel_prices_last_refreshed_at} />
+        {detailPanel}
+      </div> : view === "map" ? detailPanel : null}</div>
     </TabsContent>
     <TabsContent className="min-h-0" value="list"><div className="kt-map-stage"><div className="map-primary"><div className="map-place-list">{listContent}{items.map((place) => <button type="button" className="place-row" key={keyOf(place)} aria-pressed={current ? keyOf(current) === keyOf(place) : false} onClick={() => selectPlace(place)}><PlaceIcon kind={place.kind} /><span><strong>{place.name}</strong><small>{place.line_names.join(" · ") || place.brand_name || place.subtitle || placeKindLabel(place.kind)}</small>{(place.kind === "ferry_port" || place.kind === "bus_terminal") && place.provider_id ? <small>{place.kind === "ferry_port" ? "항구" : "터미널"} 코드 {place.provider_id}</small> : null}{!hasCoordinates(place) ? <small>좌표 미등록</small> : null}</span></button>)}</div></div>{view === "list" ? detailPanel : null}</div></TabsContent>
-    {!embedded && mode === "fuel" && view === "map" ? <FuelViewportSummary items={loaded.fuel_station?.fuel_statistics ?? []} pending={pending.length > 0} failed={failed.length > 0} /> : null}
-    {!embedded ? <div className="map-feedback map-guidance" role="status">
+    {!embedded && !(mode === "fuel" && view === "map") ? <div className="map-feedback map-guidance" role="status">
       {kinds.includes("fuel_station") && loaded.fuel_station?.fuel_prices_stale ? <p className="error">유가 갱신 지연 · 유종·가격은 {dateTime(loaded.fuel_station.fuel_prices_last_refreshed_at)} 기준이며 판매 여부도 다를 수 있습니다.</p> : null}
-      {kinds.includes("fuel_station") && loaded.fuel_station?.fuel_prices_last_refreshed_at && !loaded.fuel_station.fuel_prices_stale ? <p>유가 {dateTime(loaded.fuel_station.fuel_prices_last_refreshed_at)} 갱신 · 지연분은 다음 수집에 반영됩니다.</p> : null}
+      {kinds.includes("fuel_station") && loaded.fuel_station?.fuel_prices_last_refreshed_at && !loaded.fuel_station.fuel_prices_stale ? <p>유가 {dateTime(loaded.fuel_station.fuel_prices_last_refreshed_at)} 갱신</p> : null}
     </div> : null}
     </Tabs>
     </div>
