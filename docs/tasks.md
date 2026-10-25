@@ -1,6 +1,6 @@
 # tasks.md — parking-radar 백로그
 
-- [ ] **T-VADAHUB-01** — VadaHub 항로·시설·공식터미널 통합 및 최신 Transport 배포. [범위·검증 원장](reports/2026-10-24-vadahub-ferry.md).
+- [ ] **T-OPINET-30** — 클릭150~850ms 적용 후 전국 수집 약62분(2026-10-25 08:03~09:05 KST)의 추가 병목을 확인하고30분 목표를 검증한다. [관측·운영 원장](reports/2026-10-24-vadahub-ferry.md).
 
 진행 중/예정(`[ ]`) task만 두는 백로그다. 완료 항목은
 [`docs/tasks-done.md`](tasks-done.md)에 이동하고, 현재 진척과 다음 작업은

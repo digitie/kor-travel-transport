@@ -1,5 +1,12 @@
 # tasks-done.md — 완료 작업 아카이브
 
+## 2026-10-25 — VadaHub 배편 운영 수용
+
+- [x] **T-VADAHUB-01** — PR129/main a93dfba 배포, 운영 native SUCCESS·643건 저장,
+  실제 공개375/1440px 화면과 기존 운항시간표·로그아웃·release SHA 확인 완료.
+  CI1179/관리자248/웹130·Docker1175·독립 리뷰2와18개 instigator 복원·공용 plane 유지를 확인했다.
+  [계약·검증·복구 증빙](reports/2026-10-24-vadahub-ferry.md).
+
 ## 2026-10-24 — npm 보안·버전 정합 소스 완료
 
 - [x] **Next.js 보안 갱신 — Next.js 16.4.3**. npm 직접/전이 보안 패치와 공통 버전 정합, 이 저장소 기존 테스트 355개·타입·린트·빌드 검증을 반영했다. 최종 게이트와 머지 상태는 [PR](https://github.com/digitie/kor-travel-transport/pull/124), 잔여 상류 권고와 범위는 [정합 기록](npm-security-alignment-2026-10-24.md)을 따른다.
