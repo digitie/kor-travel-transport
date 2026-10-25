@@ -352,7 +352,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
       {failed.length ? <p className="error">{failed.map(placeKindLabel).join("·")} 조회 실패 <Button variant="outline" type="button" onClick={() => setReload((value) => value + 1)}>다시 조회</Button></p> : null}
       {basemap.basemapFailed && view === "map" ? <p className="error">VWorld 지도 타일을 불러오지 못했습니다. 목록 보기에서 장소를 확인할 수 있습니다.</p> : null}
     </div> : null}
-    <TabsContent className="min-h-0" value="map"><div className="kt-map-stage"><div className="map-primary" ref={mapContainer}><VWorldMapView apiKey={VWORLD_KEY} center={[127.8, 36.2]} zoom={7} minZoom={5}
+    <TabsContent className="min-h-0" value="map"><div className={`kt-map-stage${!embedded && mode === "fuel" ? " fuel-map-stage" : ""}`}><div className="map-primary" ref={mapContainer}><VWorldMapView apiKey={VWORLD_KEY} center={[127.8, 36.2]} zoom={7} minZoom={5}
         className="transport-map-canvas" layerType="Base" navigation={false} geolocate={false} scale
         loadingSkeleton={<p className="loading">지도를 준비하는 중입니다…</p>} fallback={(info) => <MapUnavailable info={info} />}
         unsupportedTileFallback={{ imageUrl: MAP_FALLBACK_IMAGE }} transformRequest={basemap.transformRequest}
@@ -390,13 +390,16 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
         {clusterPlaces.length ? <OverlapPopup lngLat={clusterAnchor} onClose={closeOverlap}>
           <OverlapList places={clusterPlaces} onSelect={selectPlace} listRef={clusterList} />
         </OverlapPopup> : null}
-      </VWorldMapView></div>{view === "map" ? detailPanel : null}</div>
+      </VWorldMapView></div>
+      {!embedded && mode === "fuel" && view === "map" ? <div className="fuel-map-overlays">
+        <FuelViewportSummary items={loaded.fuel_station?.fuel_statistics ?? []} pending={pending.length > 0} failed={failed.length > 0} />
+        {detailPanel}
+      </div> : view === "map" ? detailPanel : null}</div>
     </TabsContent>
     <TabsContent className="min-h-0" value="list"><div className="kt-map-stage"><div className="map-primary"><div className="map-place-list">{listContent}{items.map((place) => <button type="button" className="place-row" key={keyOf(place)} aria-pressed={current ? keyOf(current) === keyOf(place) : false} onClick={() => selectPlace(place)}><PlaceIcon kind={place.kind} /><span><strong>{place.name}</strong><small>{place.line_names.join(" · ") || place.brand_name || place.subtitle || placeKindLabel(place.kind)}</small>{(place.kind === "ferry_port" || place.kind === "bus_terminal") && place.provider_id ? <small>{place.kind === "ferry_port" ? "항구" : "터미널"} 코드 {place.provider_id}</small> : null}{!hasCoordinates(place) ? <small>좌표 미등록</small> : null}</span></button>)}</div></div>{view === "list" ? detailPanel : null}</div></TabsContent>
-    {!embedded && mode === "fuel" && view === "map" ? <FuelViewportSummary items={loaded.fuel_station?.fuel_statistics ?? []} pending={pending.length > 0} failed={failed.length > 0} /> : null}
     {!embedded ? <div className="map-feedback map-guidance" role="status">
       {kinds.includes("fuel_station") && loaded.fuel_station?.fuel_prices_stale ? <p className="error">유가 갱신 지연 · 유종·가격은 {dateTime(loaded.fuel_station.fuel_prices_last_refreshed_at)} 기준이며 판매 여부도 다를 수 있습니다.</p> : null}
-      {kinds.includes("fuel_station") && loaded.fuel_station?.fuel_prices_last_refreshed_at && !loaded.fuel_station.fuel_prices_stale ? <p>유가 {dateTime(loaded.fuel_station.fuel_prices_last_refreshed_at)} 갱신 · 지연분은 다음 수집에 반영됩니다.</p> : null}
+      {kinds.includes("fuel_station") && loaded.fuel_station?.fuel_prices_last_refreshed_at && !loaded.fuel_station.fuel_prices_stale ? <p>유가 {dateTime(loaded.fuel_station.fuel_prices_last_refreshed_at)} 갱신</p> : null}
     </div> : null}
     </Tabs>
     </div>

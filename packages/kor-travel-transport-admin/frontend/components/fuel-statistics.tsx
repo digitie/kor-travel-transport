@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { InfoButton } from "./info-button";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { dateTime, transportGet } from "@/lib/journey";
 import { fuelProductLabel } from "@/lib/transport-presentation";
 import { fuelDrivingCosts } from "@/lib/driver-statistics";
@@ -64,9 +64,25 @@ export function FuelStatisticsCard({ metrics, title }: { metrics: FuelMetrics; t
 }
 
 export function FuelViewportSummary({ items, pending, failed = false }: { items: FuelViewportStatistics[]; pending: boolean; failed?: boolean }) {
-  return <section className="fuel-stat-section" aria-label="현재 지도 범위 유가 통계" aria-busy={pending}>
-    <h2>현재 지도 범위</h2>
-    {pending ? <p role="status">통계 조회 중…</p> : failed ? <p role="alert">통계를 불러오지 못했습니다.</p> : items.length ? <div className="fuel-stat-grid">{items.map((item) => <FuelStatisticsCard key={item.product_code} title={fuelProductLabel(item.product_code)} metrics={item} />)}</div> : <p>통계 없음 · 수집 완료 후 반영됩니다.</p>}
+  const productId = useId();
+  const [product, setProduct] = useState("B027");
+  const selected = items.find((item) => item.product_code === product) ?? items[0];
+  return <section className="fuel-viewport-summary" aria-label="현재 지도 범위 유가 통계" aria-busy={pending}>
+    <header><h2>현재 지도 범위</h2>
+      {!pending && !failed && selected ? <>
+        {items.length > 1 ? <><label className="sr-only" htmlFor={productId}>지도 통계 유종</label><select id={productId} value={selected.product_code} onChange={(event) => setProduct(event.target.value)}>{items.map((item) => <option key={item.product_code} value={item.product_code}>{fuelProductLabel(item.product_code)}</option>)}</select></> : <span>{fuelProductLabel(selected.product_code)}</span>}
+        <InfoButton label="지도 범위 유가 통계">
+          <p>현재 지도 범위와 검색·출처·유종 조건에 맞는 전체 주유소의 유효 가격을 집계합니다. 묶음 마커 개수와는 다릅니다.</p>
+          <FuelStatisticsCard title={fuelProductLabel(selected.product_code)} metrics={selected} />
+          <Link className="inline-link" href="/fuel/statistics">지역·기간별 유가 통계</Link>
+        </InfoButton>
+      </> : null}
+    </header>
+    {pending ? <p role="status">통계 조회 중…</p> : failed ? <p role="alert">통계를 불러오지 못했습니다.</p> : selected ? <>
+      <dl><div><dt>평균</dt><dd>{money(selected.average_price)}<small>원/L</small></dd></div><div><dt>최저</dt><dd>{money(selected.minimum_price)}<small>원/L</small></dd></div></dl>
+      <p className="fuel-viewport-context"><span>{selected.station_count.toLocaleString()}개 주유소</span><span>수집 {dateTime(selected.generated_at)}</span></p>
+      {selected.update_pending ? <p role="status">최신 수집 통계 반영 대기</p> : null}
+    </> : <p>통계 없음 · 수집 완료 후 반영됩니다.</p>}
   </section>;
 }
 
@@ -117,7 +133,6 @@ export function FuelStatisticsPage() {
     {pending ? <p role="status">통계 조회 중…</p> : error ? <p role="alert">통계를 불러오지 못했습니다. 새로고침해 주세요.</p> : shownData ? <>
       <p>{shownData.generated_at ? `수집 기준 ${dateTime(shownData.generated_at)}` : "첫 수집 완료 후 통계가 생성됩니다."}{shownData.update_pending ? " · 최신 수집 통계 반영 대기" : ""}</p>
       {shownData.items.length ? <>
-        {selected ? <FuelDriverStatistics metrics={selected} /> : null}
         {selected ? <FuelStatisticsCard title={`${selected.label} · ${fuelProductLabel(product)}`} metrics={selected} /> : null}
         <div className="section-title-row"><h2>최근 7일 평균 유가 · {selected?.label}</h2><InfoButton label="유가 집계 기준">KST 일별 마지막 정상 수집 기준이며 수집 기록이 있는 날짜만 표시합니다. 전국·지역은 오피넷, 고속도로는 한국도로공사 기준입니다. 유효 가격을 주유소별 동일 비중으로 집계합니다. 절감액은 범주 평균과 최저가의 차이입니다.</InfoButton></div><FuelPriceTrend rows={shownData.history} />
 
@@ -125,5 +140,6 @@ export function FuelStatisticsPage() {
 
     </> : null}
     {shownData?.items.length ? <div className="fuel-stat-table"><table><caption>전체 범주 비교 · {fuelProductLabel(product)} (원/L)</caption><thead><tr><th>범주</th><th>주유소</th><th>평균</th><th>최저</th><th>최저가 주유소</th><th>가격 차이</th><th>50L 절감(원)</th></tr></thead><tbody>{shownData.items.map((row) => <tr key={row.scope_key}><th><button type="button" onClick={() => setScopeKey(row.scope_key)}>{row.label}</button></th><td>{row.station_count}</td><td>{money(row.average_price)}</td><td>{money(row.minimum_price)}</td><td>{row.cheapest_station?.name}{row.cheapest_station_count > 1 ? ` 외 ${row.cheapest_station_count - 1}곳` : ""}</td><td>{money(row.price_spread)}</td><td>{money(row.saving_50l)}</td></tr>)}</tbody></table></div> : null}
+    {!pending && !error && selected ? <details className="fuel-driving-details"><summary>차량 운영비 비교</summary><FuelDriverStatistics metrics={selected} /></details> : null}
   </section>;
 }

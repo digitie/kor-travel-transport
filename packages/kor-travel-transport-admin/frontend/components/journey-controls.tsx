@@ -51,13 +51,20 @@ export function MultiSearch({ label, query, onQuery, options, selected, onSelect
 }
 
 export function PlaceDetails({ place, showRailTimetable = true, showHeading = true, onShowMap }: { place: Place; showRailTimetable?: boolean; showHeading?: boolean; onShowMap?: () => void }) {
+  const address = place.address ? hasCoordinates(place) ? onShowMap
+    ? <button type="button" className="inline-link" onClick={onShowMap}>{place.address} · 지도에서 보기</button>
+    : <Link className="inline-link" href={`/${place.kind === "fuel_station" ? "fuel" : "map"}?longitude=${place.longitude}&latitude=${place.latitude}`}>{place.address} · 지도에서 보기</Link>
+    : place.address : null;
   return <div className="place-details">
     {showHeading ? <><div className="place-title"><PlaceIcon kind={place.kind} /><span>{placeKindLabel(place.kind)}</span></div><h2>{place.name}</h2></> : null}
-    {place.brand_name ? <p>{place.brand_name}</p> : null}
+    {place.brand_name && (showHeading || place.kind !== "fuel_station") ? <p>{place.brand_name}</p> : null}
     {place.line_names.length ? <div className="flex flex-wrap gap-2">{place.line_names.map((line) => <Badge variant="secondary" key={line}>{line}</Badge>)}</div> : null}
     {place.subtitle ? <p>{place.subtitle}</p> : null}
     {place.prices?.length ? <dl className="price-grid">{place.prices.map((price) => <div key={price.product_code}><dt>{fuelProductLabel(price.product_code)}</dt><dd>{money(price.price, "원/L")}</dd><small>{dateTime(price.provider_updated_at ?? price.observed_at)}</small></div>)}</dl> : place.kind === "fuel_station" ? <p className="quiet">등록된 유가가 없습니다.</p> : null}
-    {place.address ? <p>{hasCoordinates(place) ? onShowMap ? <button type="button" className="inline-link" onClick={onShowMap}>{place.address} · 지도에서 보기</button> : <Link className="inline-link" href={`/map?longitude=${place.longitude}&latitude=${place.latitude}`}>{place.address} · 지도에서 보기</Link> : place.address}</p> : null}
+    {place.kind === "fuel_station" ? <div className="place-metadata-actions">
+      {address ? <InfoButton label="주소" icon={<MapPin size={15} aria-hidden="true" />}>{address}</InfoButton> : null}
+      <InfoButton label="데이터 출처">{collectionSourceLabel(place.source)}<p>기준정보 반영 {dateTime(place.updated_at)}</p></InfoButton>
+    </div> : address ? <p>{address}</p> : null}
     {place.phone ? <p>전화 <a className="inline-link" href={`tel:${place.phone.replace(/[^+\d]/g, "")}`}>{place.phone}</a></p> : null}
     {place.kind === "ferry_port" ? <p className="quiet">항구 코드 {place.provider_id ?? "미제공"}</p> : null}
     {place.kind === "bus_terminal" ? <p className="quiet">터미널 코드 {place.provider_id ?? "미제공"}</p> : null}
@@ -65,7 +72,7 @@ export function PlaceDetails({ place, showRailTimetable = true, showHeading = tr
     {place.kind === "rail_station" && showRailTimetable ? <RailTimetables placeIds={[place.id]} /> : null}
     {place.kind === "ferry_port" ? <InfoButton label="장소 위치의 근거">{hasCoordinates(place) ? place.location_source === "admin_manual" ? "관리자가 근거를 대조해 보정한 항구 위치입니다. 실제 승선 부두는 운항사에 확인해 주세요." : place.location_source === "komsa_port_call" ? "한국해양교통안전공단 기항지 위치입니다. 승선 부두·탑승구는 운항사에 확인해 주세요." : "지도 검색에서 확인한 항만 시설입니다. 실제 승선 장소는 운항사에 확인해 주세요." : "좌표 미등록 · 목록에서 운항 정보를 확인할 수 있습니다."}</InfoButton> : null}
     {place.kind === "bus_terminal" ? <InfoButton label="장소 위치의 근거">{hasCoordinates(place) ? place.location_source === "admin_manual" ? "관리자가 근거를 대조해 보정한 터미널 위치입니다. 실제 승차 홈은 운송사에 확인해 주세요." : place.location_source === "vworld_place" ? "VWorld 시설 검색으로 확인한 터미널 위치입니다. 실제 승차 홈은 운송사에 확인해 주세요." : place.location_source === "kakao_place" ? "카카오맵 장소 검색으로 확인한 터미널 위치입니다. 실제 승차 홈은 운송사에 확인해 주세요." : "지도에서 확인한 터미널 위치입니다. 실제 승차 홈은 운송사에 확인해 주세요." : "좌표 미등록 · 터미널 이름과 코드로 검색할 수 있습니다."}</InfoButton> : null}
-    <p className="quiet">출처 {collectionSourceLabel(place.source)} · 기준정보 반영 {dateTime(place.updated_at)}</p>
+    {place.kind !== "fuel_station" ? <p className="quiet">출처 {collectionSourceLabel(place.source)} · 기준정보 반영 {dateTime(place.updated_at)}</p> : null}
   </div>;
 }
 

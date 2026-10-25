@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { renderToStaticMarkup } from "react-dom/server";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { expect, test } from "vitest";
 import { FuelPriceTrend, FuelStatisticsCard, FuelViewportSummary, type FuelViewportStatistics } from "./fuel-statistics";
 
@@ -37,4 +39,29 @@ test("수집 기록이 없는 날짜의 간격을 유지하고 선을 연결하�
 test("지도 통계가 최신 수집을 반영하지 못했으면 대기를 표시한다", () => {
   const html = renderToStaticMarkup(<FuelViewportSummary items={[{ ...metrics, update_pending: true }]} pending={false} />);
   expect(html).toContain("최신 수집 통계 반영 대기");
+});
+
+test("지도 통계 유종을 바꾸면 같은 서버 집계의 가격과 주유소 수가 함께 바뀐다", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<FuelViewportSummary items={[metrics, { ...metrics, product_code: "D047", average_price: 1550, minimum_price: 1450, station_count: 700 }]} pending={false} />));
+    const select = container.querySelector("select")!;
+    await act(async () => { select.value = "D047"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    expect(container.textContent).toContain("1,550");
+    expect(container.textContent).toContain("700개 주유소");
+    expect(container.textContent).not.toContain("1,700");
+    await act(async () => root.render(<FuelViewportSummary items={[metrics]} pending={false} />));
+    expect(container.textContent).toContain("1,700");
+    expect(container.textContent).toContain("1,000개 주유소");
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
+test("지도 통계 실패는 이전 응답의 가격이나 0원으로 표시하지 않는다", () => {
+  const html = renderToStaticMarkup(<FuelViewportSummary items={[metrics]} pending={false} failed />);
+  expect(html).toContain('role="alert"');
+  expect(html).toContain("통계를 불러오지 못했습니다");
+  expect(html).not.toContain("1,700");
 });
