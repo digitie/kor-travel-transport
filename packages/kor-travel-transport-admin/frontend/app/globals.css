@@ -232,13 +232,10 @@ button:active:not(:disabled), .secondary:active { transform: translateY(1px); }
  * isolation으로 쌓임 맥락을 만들어 필터 combobox 목록·skip link 같은 페이지 overlay를 덮지 않게 한다.
  * 라이브러리 Popup은 열 때마다 inline z-index를 2부터 올리므로 팝업만 !important로 5에 고정한다. */
 .transport-map-canvas { isolation: isolate; }
-/* SDK 코너 조작부는 마커(4)·겹친 지점(5) 위에 두되 지도 내부 쌓임에만 참여한다. */
-.transport-map-canvas :is(.maplibregl-ctrl-top-left, .maplibregl-ctrl-top-right, .maplibregl-ctrl-bottom-left, .maplibregl-ctrl-bottom-right) { z-index: 6; }
 .maplibregl-popup.map-overlap-popup { z-index: 5 !important; }
 /* 터치 화면에서는 보이는 크기(24px·36px)는 Map과 같게 두고 누르는 영역만 44px로 넓힌다. */
 @media (pointer: coarse) {
   .transport-map-marker::before, .map-cluster::before { content: ""; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); border-radius: 9999px; }
-  .transport-map-canvas .maplibregl-ctrl-group > button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; }
 }
 .map-marker-badge { display: contents; }
 .map-marker-price { position: absolute; left: calc(100% + 4px); top: 50%; transform: translateY(-50%); min-width: 58px; padding: 3px 6px; border-radius: 6px; background: rgba(255, 255, 255, .96); border: 1px solid var(--marker-color, #3b82f6); box-shadow: 0 1px 4px rgba(0, 0, 0, .24); color: #111827; font-size: 11px; font-weight: 700; line-height: 1.18; white-space: pre; text-align: left; pointer-events: none; font-variant-numeric: tabular-nums; }
@@ -612,6 +609,9 @@ h1, h2, h3 { color: var(--text-primary); }
 .map-workbench > .kt-map-workspace { flex: 1; min-block-size: 0; }
 .map-workbench .map-primary { position: absolute; inset: 0; min-height: 0; }
 .map-workbench .transport-map-canvas { width: 100%; height: 100%; min-height: 0; }
+/* SDK CSS는 unlayered다. 같은 영역에서 덮어써 마커(4)·팝업(5) 위, 공용 stage overlay 아래를 지킨다. */
+.transport-map-canvas :is(.maplibregl-ctrl-top-left, .maplibregl-ctrl-top-right, .maplibregl-ctrl-bottom-left, .maplibregl-ctrl-bottom-right) { z-index: 6; }
+@media (pointer: coarse) { .transport-map-canvas .maplibregl-ctrl-group > button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; } }
 .map-workbench .map-place-list { block-size: 100%; min-block-size: 0; max-height: none; overflow: auto; }
 .map-place-list .station-results { max-height: none; overflow: visible; }
 .map-feedback:empty { display: none; }
