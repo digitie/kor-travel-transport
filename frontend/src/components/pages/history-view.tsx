@@ -5,16 +5,16 @@ import { ko } from "date-fns/locale";
 import { useEffect, useRef, useState } from "react";
 import type { DateRange } from "react-day-picker";
 
-import { HistoryChart } from "@/components/history-chart";
-import { Alert } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
-import { Card } from "@/components/ui/card";
-import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
-import { useDashboard } from "@/lib/dashboard-context";
-import { historyLabel, summarizeTimeSeriesAvailability } from "@/lib/dashboard-view-helpers";
-import { seoulDateBoundary, toDateKey } from "@/lib/format";
-import type { ParkingTimeSeriesResponse } from "@/lib/types";
+import { HistoryChart } from "../history-chart";
+import { Alert } from "../ui/alert";
+import { Button } from "../ui/button";
+import { Calendar } from "../ui/calendar";
+import { Card } from "../ui/card";
+import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "../ui/popover";
+import { useDashboard } from "../../lib/dashboard-context";
+import { historyLabel, summarizeTimeSeriesAvailability } from "../../lib/dashboard-view-helpers";
+import { seoulDateBoundary, toDateKey } from "../../lib/format";
+import type { ParkingTimeSeriesResponse } from "../../lib/types";
 
 const DEFAULT_RELATIVE_DAYS = 7;
 
@@ -41,7 +41,7 @@ function pickIntervalMinutes(from: Date, to: Date): number {
   return 60;
 }
 
-export function HistoryView() {
+export function HistoryView({ active = true }: { active?: boolean }) {
   const {
     api,
     selectedAirportCode,
@@ -51,9 +51,11 @@ export function HistoryView() {
     holidaySummary,
     collectorStatus,
     dataVersion,
+    loading: dashboardLoading,
   } = useDashboard();
   const [range, setRange] = useState<DateRange | undefined>(undefined);
   const [timeSeries, setTimeSeries] = useState<ParkingTimeSeriesResponse | null>(null);
+  const [seriesScope, setSeriesScope] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -68,13 +70,15 @@ export function HistoryView() {
     : undefined;
   const today = seoulDateBoundary(new Date().toISOString());
   const hasCustomRange = Boolean(range?.from && range?.to);
+  const scopeKey = `${selectedAirportCode}/${selectedParkingLotId ?? "all"}/${range?.from && range?.to ? `${toDateKey(range.from)}/${toDateKey(range.to)}` : "7d"}`;
+  const visibleSeries = !dashboardLoading && seriesScope === scopeKey ? timeSeries : null;
 
   useEffect(() => {
-    if (!selectedAirportCode) {
+    if (!active || dashboardLoading || !selectedAirportCode) {
       return;
     }
 
-    let active = true;
+    let requestActive = true;
     setLoading(true);
     setError(null);
 
@@ -90,14 +94,15 @@ export function HistoryView() {
 
     request
       .then((response) => {
-        if (!active) {
+        if (!requestActive) {
           return;
         }
         setTimeSeries(response);
+        setSeriesScope(scopeKey);
         setLoading(false);
       })
       .catch((caughtError) => {
-        if (!active) {
+        if (!requestActive) {
           return;
         }
         setError(caughtError instanceof Error ? caughtError.message : "과거 자료를 불러오지 못했습니다.");
@@ -105,14 +110,14 @@ export function HistoryView() {
       });
 
     return () => {
-      active = false;
+      requestActive = false;
     };
     // range is read directly (not spread into primitives) - a new Date selection always
     // produces a new object, so this effect re-runs exactly when the user picks a new range.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, selectedAirportCode, selectedParkingLotId, dataVersion, range]);
+  }, [api, selectedAirportCode, selectedParkingLotId, dataVersion, range, active, dashboardLoading, scopeKey]);
 
-  const summary = timeSeries ? summarizeTimeSeriesAvailability(timeSeries.items) : null;
+  const summary = visibleSeries ? summarizeTimeSeriesAvailability(visibleSeries.items) : null;
 
   function resetToRelativeWindow() {
     setRange(undefined);
@@ -190,7 +195,7 @@ export function HistoryView() {
         </section>
       ) : null}
 
-      <HistoryChart holidays={holidaySummary?.items ?? []} series={timeSeries} scopeLabel={scopeLabel} />
+      {visibleSeries || (!loading && !error) ? <HistoryChart holidays={holidaySummary?.items ?? []} series={visibleSeries} scopeLabel={scopeLabel} /> : null}
     </div>
   );
 }

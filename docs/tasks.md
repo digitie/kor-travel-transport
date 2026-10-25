@@ -8,7 +8,8 @@
 - [ ] **C-MAP-01 / P0** — Common 담당: Map 기준 외곽/가용 높이·상세 슬롯·프로젝트 테마 계약과 Map 회귀·패키지 인계.
 - [ ] **T-MAP-01 / P0** — 모든 Transport 지도에 동일 작업면 적용, 모바일 접근·반복 안내·주소/외부 복귀·프로젝트 톤 수용.
   첫 작은 묶음에서 공용 navy/dark 토큰·단일 stage 테두리와 유가 요약/메타를 적용했다([PR131](https://github.com/digitie/kor-travel-transport/pull/131)).
-  후속 dev.8과 9경로 작업면/상세 슬롯을 적용 중이다. 320 기본 필수 정보 표시를 확인했으나 가로/문자 200%는 보완 중이다.
+  Common dev.8·9경로 작업면/상세 슬롯은 [PR132](https://github.com/digitie/kor-travel-transport/pull/132)의 main `1d807fd`에 머지했다.
+  275단위·74UI·실제 API/타일8개+무좌표2개·두 독립 리뷰와 전체 CI를 수용했다. Map 본체 소비자·실기기·운영 배포 등은 별도 미완료다.
   [전후 치수·검증 원장](reports/2026-10-25-map-workspace-layout.md). 최종 모든 소비자 수용 전까지 완료 처리하지 않는다.
 - [ ] **T-RAIL-01 / P0** — 일반/도시철도 실제 시간표 실패를 코드 연결·권한·참조·수집·요일·신선도로 분리 재현.
 - [ ] **T-RAIL-02 / P0** — 일반철도 참조 준비/정상 ID 조회와 지도 역→시간표 선택 연결, 실제 지원 구간·차종 수용.
@@ -33,6 +34,13 @@
 재감사/재설계 initiative(T-033~T-038)가 추가됐고, 2026-09-07 `T-038`(마지막 phase)
 완료로 이 initiative 전체가 끝났다. 계획 전체는
 `C:\Users\digit\.claude\plans\iridescent-finding-parasol.md`에 있다.
+
+## 2026-10-25 — 공항 주차장 관리자 뷰 이식
+
+- [ ] **T-PARK-UI-01 / P1** — 기존 parking-radar의 네 뷰·분석 네 탭·모든 상호작용을 관리자 `/parking`에
+  공용 소스로 연결하고 상단 선택·탭 상태·인증/계산·관측/빈값·모바일/PC·항공편/수집 이력 연계를 수용한다.
+  [범위와 검증 원장](reports/2026-10-25-admin-airport-parking.md). 네 뷰 구현과 WSL 단위/타입/웹 빌드·브라우저30개는 통과했으며 Docker·CI·두 독립 리뷰·
+  실제 API 대조와 머지는 미완료다. T-PARK-01/02의 수집·분석 복구를 이 UI 작업으로 완료 처리하지 않는다.
 
 ## 진행 중인 작업 인덱스
 

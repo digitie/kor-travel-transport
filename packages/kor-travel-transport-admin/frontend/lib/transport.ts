@@ -23,6 +23,10 @@ export const TRANSPORT_ENDPOINTS = [
   "flights/status",
   "parking/current",
   "parking/outlook",
+  "dashboard/bootstrap",
+  "dashboard/analytics",
+  "admin/collector-status",
+  "parking/analytics/timeseries",
 ] as const;
 
 export function isAllowedTransportPath(path: string[]) {

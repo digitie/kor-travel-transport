@@ -15,6 +15,16 @@
   C-MAP-01/T-MAP-01 전체 수용·CI/독립 리뷰는 아직 완료하지 않는다. 운영 빌드/배포는 다른 담당 범위다.
 - 별도 미완: 실제 일반/도시철도 시간표·주차 수집/분석 데이터, 주유소별 이력·브랜드/선호 조건/API 보완은 이 레이아웃 변경으로 완료 처리하지 않는다.
 
+## 2026-10-25 — 공항 주차장 관리자 뷰 이식
+
+- 현재 상태: `codex/admin-airport-parking`에서 parking-radar 네 뷰와 분석 네 탭을 `/parking`에 재사용했다.
+  내부 file 패키지·주차 범위 CSS·단일 공항/주차장 선택, 인증 읽기/요금 계산, 항공편·수집/Dagster 연결을 포함한다.
+  [범위·화면 대조·재현·검증 원장](reports/2026-10-25-admin-airport-parking.md).
+- 검증 상태: WSL 공개137개·관리자 단독 설치280개와 타입/lint·웹 빌드, Chromium/Firefox26개·coarse4개를 통과했다.
+  정상 빈 공항·bootstrap 실패·최초 분석 pending·실제0과 미관측, 달력200%·10/30/60분을 구분했다.
+- 다음 한 작업: PR132 main 위에 이 변경만 재배치하고 개발 모드와 후보 검사 결과를 정산한다.
+  이어 Docker 2차·전체 CI·독립 James/Popper·실제 API를 대조한다. 운영 빌드/배포와 분석 캐시 복구는 별도 담당 범위다.
+
 ## 2026-10-25 — 관리자 UI 작은 수정 첫 묶음
 
 - 현재 상태: [PR131](https://github.com/digitie/kor-travel-transport/pull/131)에서 공용 토큰의 navy/light·dark 연결,

@@ -174,6 +174,24 @@ describe("AnalyticsView", () => {
     apiClient.getDashboardAnalytics.mockResolvedValue(dashboardAnalyticsPayload);
   });
 
+  test("withholds empty results until the initial analytics request completes", async () => {
+    let resolveAnalytics!: (payload: DashboardAnalyticsResponse) => void;
+    apiClient.getDashboardAnalytics.mockImplementationOnce(() => new Promise((resolve) => { resolveAnalytics = resolve; }));
+    const user = userEvent.setup();
+    renderAnalytics();
+    await waitFor(() => expect(apiClient.getDashboardAnalytics).toHaveBeenCalled());
+
+    for (const name of ["요일별 패턴", "공휴일 패턴", "임계치", "일별 흐름"]) {
+      await user.click(screen.getByRole("tab", { name }));
+      expect(screen.getByRole("status")).toHaveTextContent("분석 자료를 불러오는 중입니다.");
+      expect(screen.queryAllByText(/데이터가 없습니다|충분한 기록이 없습니다|이벤트가 없습니다|달성 기록이 없습니다/)).toHaveLength(0);
+    }
+
+    resolveAnalytics(dashboardAnalyticsPayload);
+    expect(await screen.findByText("표시할 날짜별 시계열 데이터가 없습니다.")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
   test("fetches the analytics bundle once mounted", async () => {
     renderAnalytics();
 

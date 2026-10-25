@@ -208,6 +208,16 @@ describe("DashboardProvider + CurrentStatusView", () => {
     });
     apiClient.getDashboardAnalytics.mockResolvedValue(dashboardAnalyticsPayload);
   });
+  test("retries a failed initial bootstrap and distinguishes an unknown count from a real zero", async () => {
+    const user = userEvent.setup();
+    apiClient.getDashboardBootstrap.mockRejectedValueOnce(new Error("처음 조회 실패"));
+    const { container } = renderCurrentStatus();
+    await screen.findByText("처음 조회 실패");
+    expect(container.querySelector(".detail-card strong")?.textContent).toBe("—");
+    apiClient.getDashboardBootstrap.mockResolvedValue({ airports, current: { ...currentPayload, items: [{ ...currentPayload.items[0], available_spaces: 0 }] }, collector: buildCollectorStatus(), holidays: holidaySummaryPayload });
+    await user.click(screen.getByRole("button", { name: "새로고침" }));
+    await waitFor(() => expect(container.querySelector(".detail-card strong")?.textContent).toBe("0대"));
+  });
 
   test("restores the last selected airport and parking lot from localStorage", async () => {
     localStorage.setItem(

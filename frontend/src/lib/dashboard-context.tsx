@@ -12,11 +12,12 @@ import {
   type ReactNode,
 } from "react";
 
-import { buildApiClient } from "@/lib/api";
+import { buildApiClient } from "./api";
 import {
+  type StoredDashboardSelection,
   readStoredDashboardSelection,
   writeStoredDashboardSelection,
-} from "@/lib/dashboard-preferences";
+} from "./dashboard-preferences";
 import type {
   Airport,
   CollectorStatusResponse,
@@ -24,11 +25,13 @@ import type {
   HolidaySummaryResponse,
   ParkingLot,
   ParkingStatus,
-} from "@/lib/types";
+} from "./types";
 
 type DashboardProviderProps = {
   children: ReactNode;
   apiBaseUrl?: string;
+  apiClient?: ReturnType<typeof buildApiClient>;
+  initialSelection?: StoredDashboardSelection | null;
   autoRefreshIntervalMs?: number;
 };
 
@@ -66,9 +69,11 @@ const DashboardContext = createContext<DashboardContextValue | null>(null);
 export function DashboardProvider({
   children,
   apiBaseUrl,
+  apiClient,
+  initialSelection,
   autoRefreshIntervalMs = DASHBOARD_AUTO_REFRESH_INTERVAL_MS,
 }: DashboardProviderProps) {
-  const api = useMemo(() => buildApiClient(apiBaseUrl), [apiBaseUrl]);
+  const api = useMemo(() => apiClient ?? buildApiClient(apiBaseUrl), [apiBaseUrl, apiClient]);
   const mountedRef = useRef(false);
   const loadRequestIdRef = useRef(0);
   const latestBackendUpdateMarkerRef = useRef<string | null>(null);
@@ -82,6 +87,7 @@ export function DashboardProvider({
   const [dataVersion, setDataVersion] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [bootstrapRevision, setBootstrapRevision] = useState(0);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -134,6 +140,8 @@ export function DashboardProvider({
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setError(null);
 
     async function bootstrap() {
       try {
@@ -144,7 +152,7 @@ export function DashboardProvider({
         }
 
         setAirports(loadedAirports);
-        const storedSelection = readStoredDashboardSelection();
+        const storedSelection = initialSelection ?? readStoredDashboardSelection();
         const initialAirport =
           loadedAirports.find((airport) => airport.code === storedSelection?.airportCode) ?? loadedAirports[0] ?? null;
         const initialParkingLotId =
@@ -182,7 +190,7 @@ export function DashboardProvider({
     return () => {
       active = false;
     };
-  }, [api]);
+  }, [api, initialSelection, bootstrapRevision]);
 
   useEffect(() => {
     if (!selectedAirportCode) {
@@ -297,7 +305,7 @@ export function DashboardProvider({
     onRefresh: () => {
       if (selectedAirportCode) {
         void loadAirportData(selectedAirportCode, selectedParkingLotId);
-      }
+      } else setBootstrapRevision((revision) => revision + 1);
     },
   };
 

@@ -1,6 +1,21 @@
 import { buildApiClient } from "@/lib/api";
 
 describe("api client", () => {
+  test("uses the authenticated admin prefix without duplicating /v1", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+    const client = buildApiClient("/api/transport", "");
+    await client.getDashboardBootstrap("CJU"); await client.getCollectorStatus();
+    await client.getDashboardAnalytics("CJU", 12); await client.getTimeSeries("CJU");
+    await client.calculateFee({ airport_code: "CJU", parking_lot_id: 12, vehicle_size: "small", entry_at: "2026-10-25T00:00:00Z", exit_at: "2026-10-25T06:00:00Z" });
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/transport/dashboard/bootstrap?airport_code=CJU", "/api/transport/admin/collector-status",
+      "/api/transport/dashboard/analytics?airport_code=CJU&parking_lot_id=12",
+      "/api/transport/parking/analytics/timeseries?airport_code=CJU&days=7&interval_minutes=10&future_hours=0",
+      "/api/transport/fees/calculate",
+    ]);
+    expect(fetchMock.mock.calls.at(-1)?.[1]).toEqual(expect.objectContaining({ method: "POST", cache: "no-store" }));
+  });
   test("requests the airports endpoint", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

@@ -12,7 +12,8 @@
     "e2e:install": "playwright install --with-deps chromium firefox",
     "test:e2e": "playwright test",
     "predev": "node ./scripts/copy-maplibre-worker.mjs",
-    "prebuild": "node ./scripts/copy-maplibre-worker.mjs"
+    "prebuild": "node ./scripts/copy-maplibre-worker.mjs",
+    "test:e2e:parking": "playwright test --config playwright.parking.config.ts"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
@@ -28,7 +29,8 @@
     "react-dom": "19.3.1",
     "tailwind-merge": "3.7.0",
     "vworld-map-core": "file:vendor/vworld-map-core-1.0.0.tgz",
-    "vworld-map-web": "file:vendor/vworld-map-web-1.0.1.tgz"
+    "vworld-map-web": "file:vendor/vworld-map-web-1.0.1.tgz",
+    "@kor-travel/parking-ui": "file:../../../frontend/src"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",

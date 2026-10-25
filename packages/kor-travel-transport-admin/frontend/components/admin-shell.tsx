@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, Bus, ChartNoAxesCombined, Database, Fuel, Home, LogOut, Map, Menu, Plane, Route, ShipWheel, TrainFront, Waypoints } from "lucide-react";
+import { Activity, Bus, ChartNoAxesCombined, Database, Fuel, Home, LogOut, Map, Menu, ParkingCircle, Plane, Route, ShipWheel, TrainFront, Waypoints } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useState, type ReactNode } from "react";
@@ -14,7 +14,7 @@ const groups = [
   { id: "fuel", label: "유가", items: [["/fuel", "유가 지도", Fuel], ["/fuel/statistics", "유가 통계", ChartNoAxesCombined]] },
   { id: "trains", label: "기차", items: [["/rail", "철도", TrainFront], ["/rail/metro", "도시철도", TrainFront], ["/rail/mapping", "역 코드 매핑", Waypoints]] },
   { id: "buses", label: "버스", items: [["/bus/express", "고속버스", Bus], ["/bus/intercity", "시외버스", Bus]] },
-  { id: "air-sea", label: "항공·여객선", items: [["/flights", "비행·공항", Plane], ["/ferry", "배편", ShipWheel]] },
+  { id: "air-sea", label: "항공·여객선", items: [["/flights", "비행·공항", Plane], ["/parking", "공항 주차장", ParkingCircle], ["/ferry", "배편", ShipWheel]] },
   { id: "operations", label: "운영 관리", items: [["/collections", "수집 상태", Activity], ["/admin/dagster", "Dagster", Database], ["/api-test", "API 점검", ChartNoAxesCombined]] },
 ] as const;
 const hrefs = groups.flatMap((group) => group.items.map(([href]) => String(href)));
@@ -31,7 +31,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   if (pathname === "/login") return <>{children}</>;
   const activeHref = hrefs.filter((href) => href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`)).sort((a, b) => b.length - a.length)[0];
   return (
-    <div className="transport-shell" data-map-page={mapPages.has(pathname) || undefined}>
+    <div className="transport-shell" data-map-page={mapPages.has(pathname) || undefined} data-parking-page={pathname === "/parking" || undefined}>
       <a className="skip-link" href="#main-content">본문으로 건너뛰기</a>
       <div className="admin-layout" data-testid="admin-shell">
         <aside className="rail" aria-label="관리자 사이드바" data-slot="admin-shell-rail">

@@ -1,11 +1,13 @@
 "use client";
 
-import { FeeCalculator } from "@/components/fee-calculator";
-import { Alert } from "@/components/ui/alert";
-import { useDashboard } from "@/lib/dashboard-context";
+import type { ReactNode } from "react";
 
-export function FeesView() {
-  const { airports, selectedAirportCode, api, error } = useDashboard();
+import { FeeCalculator } from "../fee-calculator";
+import { Alert } from "../ui/alert";
+import { useDashboard } from "../../lib/dashboard-context";
+
+export function FeesView({ scopeControls = true, help }: { scopeControls?: boolean; help?: ReactNode }) {
+  const { airports, selectedAirportCode, selectedParkingLotId, onAirportChange, onParkingLotChange, api, error, loading } = useDashboard();
 
   if (airports.length === 0) {
     return (
@@ -14,7 +16,7 @@ export function FeesView() {
             region that arrives already-mounted with its final content - keep this
             announcer permanently mounted and let only its content change. */}
         <p className="sr-only" aria-live="polite">
-          {!error ? "공항 목록을 불러오는 중입니다." : ""}
+          {loading ? "공항 목록을 불러오는 중입니다." : ""}
         </p>
         {error ? (
           <Alert className="notice error" variant="destructive">
@@ -22,7 +24,7 @@ export function FeesView() {
           </Alert>
         ) : (
           <p className="notice" aria-hidden="true">
-            공항 목록을 불러오는 중입니다.
+            {loading ? "공항 목록을 불러오는 중입니다." : "저장된 공항이 없습니다."}
           </p>
         )}
       </div>
@@ -34,6 +36,11 @@ export function FeesView() {
       <FeeCalculator
         airports={airports}
         initialAirportCode={selectedAirportCode || airports[0].code}
+        initialParkingLotId={selectedParkingLotId}
+        onAirportChange={onAirportChange}
+        onParkingLotChange={onParkingLotChange}
+        scopeControls={scopeControls}
+        help={help}
         onCalculate={api.calculateFee}
       />
     </div>
