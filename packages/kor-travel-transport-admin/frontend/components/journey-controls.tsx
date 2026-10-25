@@ -27,22 +27,23 @@ export function ViewSwitch({ value, onChange }: { value: "map" | "list"; onChang
   </ToggleGroup>;
 }
 
-export function MultiSearch({ label, query, onQuery, options, selected, onSelect, max = 5, loading = false }: {
+export function MultiSearch({ label, query, onQuery, options, selected, onSelect, onInspect, max = 5, loading = false, scrollable = true }: {
   label: string; query: string; onQuery: (value: string) => void;
   options: { id: string; name: string; description?: string }[];
-  selected: { id: string; name: string }[]; onSelect: (id: string) => void; max?: number; loading?: boolean;
+  selected: { id: string; name: string }[]; onSelect: (id: string) => void; onInspect?: (id: string) => void; max?: number; loading?: boolean; scrollable?: boolean;
 }) {
   const id = useId();
   return <section className="multi-search">
     <FieldGroup><Field><FieldLabel htmlFor={id}>{label}</FieldLabel><Input id={id} type="search" value={query} onChange={(event) => onQuery(event.target.value)} placeholder="이름·지역으로 검색" autoComplete="off" /></Field></FieldGroup>
     {selected.length ? <div className="flex min-w-0 flex-wrap gap-2" aria-label="선택한 장소">{selected.map((item) => <Button className="max-w-full" variant="secondary" type="button" key={item.id} onClick={() => onSelect(item.id)} aria-label={`${item.name} 선택 해제`} title={item.name}><span className="min-w-0 truncate">{item.name}</span><X data-icon="inline-end" aria-hidden="true" /></Button>)}</div> : null}
     <p className="quiet" role="status">{loading ? "검색 중…" : `${options.length}개 결과 · ${selected.length}/${max}곳 선택`}</p>
-    <FieldSet><FieldLegend className="sr-only">{label} 검색 결과</FieldLegend><FieldGroup className="max-h-64 overflow-y-auto gap-2">{options.slice(0, 60).map((item) => {
+    <FieldSet><FieldLegend className="sr-only">{label} 검색 결과</FieldLegend><FieldGroup className={scrollable ? "max-h-64 overflow-y-auto gap-2" : "gap-2"}>{options.slice(0, 60).map((item) => {
       const checked = selected.some((value) => value.id === item.id);
       const disabled = max > 1 && selected.length >= max && !checked;
       return <Field orientation="horizontal" key={item.id} data-disabled={disabled} className="min-h-11">
         <Checkbox id={`${id}-${item.id}`} checked={checked} disabled={disabled} onCheckedChange={() => onSelect(item.id)} />
         <FieldLabel htmlFor={`${id}-${item.id}`} className="min-w-0 min-h-11 flex-1"><span className="flex min-w-0 flex-col gap-1"><strong>{item.name}</strong>{item.description ? <small>{item.description}</small> : null}</span></FieldLabel>
+        {onInspect ? <Button type="button" variant="outline" size="sm" className="shrink-0" aria-label={`${item.name} 상세 보기`} onClick={() => onInspect(item.id)}>상세</Button> : null}
       </Field>;
     })}</FieldGroup></FieldSet>
     {!loading && !options.length ? <Empty><EmptyHeader><EmptyDescription>검색 결과가 없습니다. 다른 이름이나 지역을 입력해 주세요.</EmptyDescription></EmptyHeader></Empty> : null}

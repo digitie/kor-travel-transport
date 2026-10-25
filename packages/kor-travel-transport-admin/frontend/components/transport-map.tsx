@@ -8,14 +8,14 @@ import { collectionSourceLabel, fuelProductLabel, placeKindLabel } from "@/lib/t
 import { placeMarkerColor, placeMarkerStyle, priceMarkerLabel, priceSpeech } from "@/lib/place-marker-style";
 import { FuelPriceStatus, FuelViewportSummary, type FuelViewportStatistics } from "@/components/fuel-statistics";
 import { MAP_FALLBACK_IMAGE } from "@/lib/map-fallback";
+import { cn } from "@/lib/utils";
 import { CameraRequest, ClusterBubble, MapMarkerButton, MapUnavailable, MarkerBadge, OverlapPopup, useVWorldBasemapHealth, vworldApiKey, ZoomButtons, type CameraTarget } from "./map-overlays";
 import { PlaceIcon } from "./journey-controls";
 import { PlaceInspector } from "./place-inspector";
-import { MapDetailOverlay, MapFilterBar, MapFilterField, MapKindFilter, MapTabs as Tabs, MapTabPanel as TabsContent, MapViewTabs, type MapViewportReadout } from "@kor-travel/ui/map-controls";
+import { MapDetailOverlay, MapFilterBar, MapFilterField, MapFilterPanel, MapKindFilter, MapStage, MapWorkspace, MapTabs as Tabs, MapTabPanel as TabsContent, MapViewTabs, type MapViewportReadout } from "@kor-travel/ui/map-controls";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { FilterCombobox } from "./filter-combobox";
-import { X } from "lucide-react";
 
 type MapPoint = { id: string; lngLat: [number, number]; place: Place };
 type Viewport = { min_longitude: string; min_latitude: string; max_longitude: string; max_latitude: string };
@@ -28,6 +28,7 @@ const MAP_CLUSTER_CACHE_MAX = 8;
 const CLUSTER_NUMBER_FORMATTER = new Intl.NumberFormat("ko-KR", { notation: "compact", maximumFractionDigits: 1 });
 const DEFAULT_VIEWPORT: Viewport = { min_longitude: "124", min_latitude: "32", max_longitude: "132", max_latitude: "39" };
 const keyOf = (place: Place) => `${place.kind}:${place.id}`;
+const canRestoreFocus = (element: HTMLElement | null): element is HTMLElement => Boolean(element?.isConnected && element !== document.body && element.getClientRects().length && !element.closest("[inert], [hidden]") && getComputedStyle(element).visibility !== "hidden");
 
 function quantizeViewport(bounds: { min_longitude: number; min_latitude: number; max_longitude: number; max_latitude: number }, zoom: number): Viewport {
   const precision = zoom >= 14 ? 4 : zoom >= 11 ? 3 : zoom >= 8 ? 2 : 1;
@@ -72,7 +73,7 @@ function OverlapList({ places, onSelect, listRef }: { places: Place[]; onSelect:
   </section>;
 }
 
-export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all", details, onCloseDetails, focusRevision = 0, layers, detailKey, mapFeatureCount = 0, listFeatureCount = 0, listContent, view: controlledView, onViewChange }: { places?: Place[]; selectedPlace?: Place | null; onSelectPlace?: (place: Place) => void; mode?: "all" | "transport" | "fuel"; details?: ReactNode; onCloseDetails?: () => void; focusRevision?: number; layers?: ReactNode; detailKey?: string; mapFeatureCount?: number; listFeatureCount?: number; listContent?: ReactNode; view?: "map" | "list"; onViewChange?: (view: "map" | "list") => void }) {
+export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all", details, detailTitle, onCloseDetails, focusRevision = 0, layers, detailKey, mapFeatureCount = 0, listFeatureCount = 0, listCount, listContent, listPlaces = true, toolbar, feedback, filterSummary, view: controlledView, onViewChange }: { places?: Place[]; selectedPlace?: Place | null; onSelectPlace?: (place: Place) => void; mode?: "all" | "transport" | "fuel"; details?: ReactNode; detailTitle?: ReactNode; onCloseDetails?: () => void; focusRevision?: number; layers?: ReactNode; detailKey?: string; mapFeatureCount?: number; listFeatureCount?: number; listCount?: number; listContent?: ReactNode; listPlaces?: boolean; toolbar?: ReactNode; feedback?: ReactNode; filterSummary?: string; view?: "map" | "list"; onViewChange?: (view: "map" | "list") => void }) {
   const controlId = useId();
   const embedded = places !== undefined;
   const allowedKinds = mode === "fuel" ? ["fuel_station"] as PlaceKind[] : mode === "transport" ? TRANSPORT_KINDS : KINDS;
@@ -100,6 +101,10 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
   const [mapSize, setMapSize] = useState({ width: 800, height: 540 });
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const queryInput = useRef<HTMLInputElement | null>(null);
+  const filterTrigger = useRef<HTMLButtonElement | null>(null);
+  const workspace = useRef<HTMLDivElement | null>(null);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [fuelDetailScopeExpanded, setFuelDetailScopeExpanded] = useState(false);
   const [pending, setPending] = useState<string[]>([]);
   const [failed, setFailed] = useState<string[]>([]);
   const basemap = useVWorldBasemapHealth();
@@ -139,24 +144,28 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
   const groupedPoints = useMemo(() => current ? markerPoints.filter((point) => point.id !== keyOf(current)) : markerPoints, [markerPoints, current]);
   const selectedPoint = points.find((point) => current && point.id === keyOf(current))
     ?? (current && hasCoordinates(current) ? { id: keyOf(current), lngLat: [current.longitude, current.latitude] as [number, number], place: current } : undefined);
-  const detail = useRef<HTMLElement | null>(null);
+  // 전환 중 이전 Panel이 잠시 남으므로 각 Panel의 ref를 분리한다. 이전 상세의
+  // 언마운트가 새 활성 상세의 ref를 비워 주소 이동 뒤 초점이 body로 빠지지 않게 한다.
+  const mapDetail = useRef<HTMLElement | null>(null);
+  const listDetail = useRef<HTMLElement | null>(null);
+  const detail = view === "map" ? mapDetail : listDetail;
   const detailOpener = useRef<HTMLElement | null>(null);
   const selectedKey = detailKey ?? (current ? keyOf(current) : "");
   const hasEmbeddedDetails = embedded && details !== undefined;
   useEffect(() => {
-    if (!hasEmbeddedDetails || !selectedKey) return;
+    if (!selectedKey || (embedded && !hasEmbeddedDetails)) return;
     const active = document.activeElement;
-    if (active instanceof HTMLElement && !detail.current?.contains(active)) detailOpener.current = active;
+    if (active instanceof HTMLElement && active !== document.body && !detail.current?.contains(active)) detailOpener.current = active;
     const frame = requestAnimationFrame(() => detail.current?.focus({ preventScroll: true }));
     return () => cancelAnimationFrame(frame);
-  }, [hasEmbeddedDetails, selectedKey, focusRevision, cameraRequest, view]);
+  }, [embedded, hasEmbeddedDetails, selectedKey, focusRevision, cameraRequest, view, detail]);
   const dismissEmbeddedDetail = () => {
     onCloseDetails?.();
     const opener = detailOpener.current;
     detailOpener.current = null;
     requestAnimationFrame(() => {
-      if (opener?.isConnected) opener.focus({ preventScroll: true });
-      else mapContainer.current?.querySelector<HTMLElement>(".maplibregl-canvas")?.focus({ preventScroll: true });
+      if (canRestoreFocus(opener)) opener.focus({ preventScroll: true });
+      else focusMapControl();
     });
   };
   // 겹친 지점 팝업을 연 묶음 원. 닫기(×·Escape) 뒤 포커스를 그 자리로 돌려준다. 장소를 고르면 상세로 간다.
@@ -314,10 +323,10 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
     const bounds = map.getBounds();
     const nextZoom = map.getZoom();
     const center = map.getCenter();
+    setMapViewport({ longitude: center.lng, latitude: center.lat, zoom: nextZoom });
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       setZoom(nextZoom);
-      setMapViewport({ longitude: center.lng, latitude: center.lat, zoom: nextZoom });
       setViewport((previous) => {
       const next = quantizeViewport({ min_longitude: bounds.getWest(), min_latitude: bounds.getSouth(), max_longitude: bounds.getEast(), max_latitude: bounds.getNorth() }, nextZoom);
       // 패널 높이/스크롤 변화로 같은 bounds의 moveend가 와도 선택 목록을 지우거나
@@ -331,31 +340,44 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
   const camera = useMemo<CameraTarget | undefined>(() => clusterCamera ? { ...clusterCamera, id: `cluster:${cameraRequest}` }
     : current && hasCoordinates(current) ? { center: [current.longitude, current.latitude], zoom: Math.max(zoom, 11), id: `${keyOf(current)}:${cameraRequest}:${focusRevision}` } : undefined,
   [current, clusterCamera, cameraRequest, focusRevision]); // eslint-disable-line react-hooks/exhaustive-deps
-  const closeDetail = () => { setSelected(null); queryInput.current?.focus(); };
-  const detailPanel = embedded && details ? <MapDetailOverlay ref={detail} className="transport-map-detail" aria-label="선택 장소 상세" onDismiss={dismissEmbeddedDetail}>
-    <div className="journey-detail-header"><Button type="button" size="icon" variant="ghost" aria-label="상세 닫기" onClick={dismissEmbeddedDetail}><X aria-hidden="true" size={16} /></Button></div>{details}
-  </MapDetailOverlay> : !embedded && current ? <MapDetailOverlay className="transport-map-detail weather-inspector" ref={detail} aria-label="선택 장소 상세" onDismiss={closeDetail}>
-    {current.kind === "fuel_station" && loaded.fuel_station?.fuel_prices_stale ? <div className="inspector-section"><FuelPriceStatus stale lastRefreshedAt={loaded.fuel_station.fuel_prices_last_refreshed_at} /></div> : null}
-    <PlaceInspector key={keyOf(current)} place={current} onShowMap={() => { setView("map"); setCameraRequest((value) => value + 1); requestAnimationFrame(() => mapContainer.current?.scrollIntoView({ block: "start" })); }} onClose={() => { setSelected(null); queryInput.current?.focus(); }} onSaved={(updated) => { setSelected(updated); setReload((value) => value + 1); }} onReload={() => { setSelected(null); setReload((value) => value + 1); queryInput.current?.focus(); }} />
+  const focusMapControl = () => (mapContainer.current?.querySelector<HTMLElement>(".maplibregl-canvas") ?? (filterTrigger.current?.getClientRects().length ? filterTrigger.current : workspace.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')))?.focus({ preventScroll: true });
+  const focusFilters = () => { if (queryInput.current?.getClientRects().length) queryInput.current.focus({ preventScroll: true }); else focusMapControl(); };
+  const closeDetail = () => { setSelected(null); requestAnimationFrame(() => { if (canRestoreFocus(detailOpener.current)) detailOpener.current.focus({ preventScroll: true }); else focusFilters(); }); };
+  const detailPanel = (panelView: "map" | "list") => embedded && details ? <MapDetailOverlay ref={panelView === "map" ? mapDetail : listDetail} className="transport-map-detail" aria-label="선택 장소 상세" header={<h2>{detailTitle ?? current?.name ?? "선택 장소 상세"}</h2>} collapsible onDismiss={dismissEmbeddedDetail}>
+    {details}
+  </MapDetailOverlay> : !embedded && current ? <MapDetailOverlay className={cn("transport-map-detail weather-inspector", current.kind === "fuel_station" && "fuel-inspector")} ref={panelView === "map" ? mapDetail : listDetail} aria-label="선택 장소 상세" header={current.kind === "fuel_station" ? <div className="fuel-detail-heading"><PlaceIcon kind={current.kind} /><h2>{current.name}</h2>{current.brand_name ? <small>{current.brand_name}</small> : null}</div> : <div><span className="place-title"><PlaceIcon kind={current.kind} />{current.brand_name ?? placeKindLabel(current.kind)}</span><h2>{current.name}</h2></div>} collapsible={current.kind !== "fuel_station"} onDismiss={closeDetail}>
+    {current.kind === "fuel_station" && loaded.fuel_station?.fuel_prices_stale ? <div className="inspector-section fuel-price-status"><FuelPriceStatus stale lastRefreshedAt={loaded.fuel_station.fuel_prices_last_refreshed_at} /></div> : null}
+    <PlaceInspector key={keyOf(current)} place={current} showHeader={false} onShowMap={() => { setView("map"); setCameraRequest((value) => value + 1); }} onClose={closeDetail} onSaved={(updated) => { setSelected(updated); setReload((value) => value + 1); }} onReload={() => { setSelected(null); setReload((value) => value + 1); focusFilters(); }} />
   </MapDetailOverlay> : null;
+  const status = <>
+    {feedback}
+    {failed.length ? <p className="error" role="alert">{failed.map(placeKindLabel).join("·")} 조회 실패 <Button variant="outline" type="button" onClick={() => setReload((value) => value + 1)}>다시 조회</Button></p> : null}
+    {basemap.basemapFailed && view === "map" ? <p className="error" role="alert">지도 타일 오류 · 목록 보기</p> : null}
+    {mapUnavailableMessage && view === "map" ? <p className="error" role="alert">{mapUnavailableMessage}</p> : null}
+  </>;
+  const summary = <>
+    <div className="map-feedback">{status}</div>
+    {!embedded && mode === "fuel" ? <FuelViewportSummary items={loaded.fuel_station?.fuel_statistics ?? []} pending={pending.length > 0} failed={failed.length > 0}
+      detailOpen={Boolean(current)} detailExpanded={fuelDetailScopeExpanded} onDetailExpandedChange={setFuelDetailScopeExpanded}
+      pricesStale={loaded.fuel_station?.fuel_prices_stale} pricesLastRefreshedAt={loaded.fuel_station?.fuel_prices_last_refreshed_at} /> : null}
+  </>;
 
   return <section className="map-workbench" aria-label={mode === "fuel" ? "유가 지도" : "교통 장소 지도"}>
-    <div className={embedded ? "embedded-map" : "transport-map-workspace"}>
-    <Tabs value={view} onValueChange={(value) => { if (value === "map" || value === "list") setView(value); }} className="min-h-0">
-    {!embedded ? <MapFilterBar>
+    <MapWorkspace expandable ref={workspace} className={embedded ? "embedded-map" : "transport-map-workspace"} onClickCapture={(event) => {
+      const opener = event.target instanceof Element ? event.target.closest<HTMLElement>("button, a") : null;
+      if (opener && !detail.current?.contains(opener) && (opener.closest(".map-place-list") || opener.closest("[data-interaction-id]"))) detailOpener.current = opener;
+    }}>
+    {toolbar || !embedded ? <MapFilterPanel label={filterSummary ?? ([query, selectedSources.length ? `${selectedSources.length}개 출처` : "", products.map(fuelProductLabel).join("·"), kinds.length !== allowedKinds.length ? `${kinds.length}종류` : ""].filter(Boolean).join(" · ") || "지도 필터")} expanded={filtersExpanded} onExpandedChange={setFiltersExpanded} triggerRef={filterTrigger}>
+    {toolbar ?? <MapFilterBar>
       {mode !== "fuel" ? <MapKindFilter ariaLabel={mode === "transport" ? "교통 종류" : "장소 종류"} options={allowedKinds.map((kind) => ({ value: kind, label: placeKindLabel(kind), icon: <PlaceIcon kind={kind} /> }))} value={kinds} onToggle={(value) => { const kind = value as PlaceKind; setKinds((previous) => previous.includes(kind) ? previous.filter((entry) => entry !== kind) : [...previous, kind]); setSelected(null); }} /> : null}
       <MapFilterField htmlFor={`${controlId}-query`} label="장소 검색"><Input ref={queryInput} id={`${controlId}-query`} type="search" value={query} onChange={(event) => { setQuery(event.target.value); setSelected(null); }} placeholder="이름·브랜드·노선" /></MapFilterField>
       <MapFilterField htmlFor={`${controlId}-source`} label="데이터 출처"><FilterCombobox compact id={`${controlId}-source`} value={selectedSources} onChange={(values) => { setSelectedSources(values); setSelected(null); }} placeholder="모든 출처" options={sources.map((value) => ({ value, label: collectionSourceLabel(value) }))} /></MapFilterField>
       {kinds.includes("fuel_station") ? <MapFilterField htmlFor={`${controlId}-product`} label="표시 유종"><FilterCombobox compact id={`${controlId}-product`} value={products} onChange={(values) => { setProducts(values); setSelected(null); }} placeholder="전체 유종" options={["B027", "D047", "B034", "K015", "C004"].map((value) => ({ value, label: fuelProductLabel(value) }))} /></MapFilterField> : null}
-    </MapFilterBar> : null}
-    <MapViewTabs ariaLabel="장소 보기" viewport={mapViewport} count={view === "list" ? items.length + listFeatureCount : mapFeatureCount + (serverClustered ? serverClusters.reduce((sum, item) => sum + item.count, 0) : visiblePoints.length)} status={pending.length ? "조회 중…" : undefined} />
-    {(cluster && visiblePoints.length > 0) || failed.length > 0 || ((basemap.basemapFailed || mapUnavailableMessage) && view === "map") ? <div className="map-feedback" role="status">
-      {cluster && visiblePoints.length > 0 ? <span>밀도별 묶음</span> : null}
-      {failed.length ? <p className="error">{failed.map(placeKindLabel).join("·")} 조회 실패 <Button variant="outline" type="button" onClick={() => setReload((value) => value + 1)}>다시 조회</Button></p> : null}
-      {basemap.basemapFailed && view === "map" ? <p className="error">VWorld 지도 타일을 불러오지 못했습니다. 목록 보기에서 장소를 확인할 수 있습니다.</p> : null}
-      {mapUnavailableMessage && view === "map" ? <p className="error" role="alert">{mapUnavailableMessage}</p> : null}
-    </div> : null}
-    <TabsContent className="min-h-0" value="map"><div className={`kt-map-stage${!embedded && mode === "fuel" ? " fuel-map-stage" : ""}`}><div className="map-primary" ref={mapContainer}><VWorldMapView apiKey={VWORLD_KEY} center={[127.8, 36.2]} zoom={7} minZoom={5}
+    </MapFilterBar>}
+    </MapFilterPanel> : null}
+    <Tabs value={view} onValueChange={(value) => { if (value === "map" || value === "list") { setView(value); setFiltersExpanded(false); } }} className="min-h-0">
+    <MapViewTabs ariaLabel="장소 보기" viewport={mapViewport} count={view === "list" ? listCount ?? ((listPlaces ? items.length : 0) + listFeatureCount) : mapFeatureCount + (serverClustered ? serverClusters.reduce((sum, item) => sum + item.count, 0) : visiblePoints.length)} status={pending.length ? <span className="kt-map-count">조회 중…</span> : undefined} />
+    <TabsContent className="min-h-0" value="map"><MapStage className={mode === "fuel" ? "fuel-map-stage" : undefined} summary={summary} detail={detailPanel("map")}><div className="map-primary" ref={mapContainer}><VWorldMapView apiKey={VWORLD_KEY} center={mapViewport ? [mapViewport.longitude, mapViewport.latitude] : [127.8, 36.2]} zoom={mapViewport?.zoom ?? 7} minZoom={5}
         className="transport-map-canvas" layerType="Base" navigation={false} geolocate={false} scale
         loadingSkeleton={<p className="loading">지도를 준비하는 중입니다…</p>} fallback={(info) => <MapUnavailable info={info} onMessage={setMapUnavailableMessage} />}
         unsupportedTileFallback={{ imageUrl: MAP_FALLBACK_IMAGE }} transformRequest={basemap.transformRequest}
@@ -394,18 +416,14 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
           <OverlapList places={clusterPlaces} onSelect={selectPlace} listRef={clusterList} />
         </OverlapPopup> : null}
       </VWorldMapView></div>
-      {!embedded && mode === "fuel" && view === "map" ? <div className="fuel-map-overlays">
-        <FuelViewportSummary items={loaded.fuel_station?.fuel_statistics ?? []} pending={pending.length > 0} failed={failed.length > 0}
-          pricesStale={loaded.fuel_station?.fuel_prices_stale} pricesLastRefreshedAt={loaded.fuel_station?.fuel_prices_last_refreshed_at} />
-        {detailPanel}
-      </div> : view === "map" ? detailPanel : null}</div>
+      </MapStage>
     </TabsContent>
-    <TabsContent className="min-h-0" value="list"><div className="kt-map-stage"><div className="map-primary"><div className="map-place-list">{listContent}{items.map((place) => <button type="button" className="place-row" key={keyOf(place)} aria-pressed={current ? keyOf(current) === keyOf(place) : false} onClick={() => selectPlace(place)}><PlaceIcon kind={place.kind} /><span><strong>{place.name}</strong><small>{place.line_names.join(" · ") || place.brand_name || place.subtitle || placeKindLabel(place.kind)}</small>{(place.kind === "ferry_port" || place.kind === "bus_terminal") && place.provider_id ? <small>{place.kind === "ferry_port" ? "항구" : "터미널"} 코드 {place.provider_id}</small> : null}{!hasCoordinates(place) ? <small>좌표 미등록</small> : null}</span></button>)}</div></div>{view === "list" ? detailPanel : null}</div></TabsContent>
+    <TabsContent className="min-h-0" value="list" keepMounted><MapStage view="list" detail={view === "list" ? detailPanel("list") : null}><div className="map-primary"><div className="map-place-list"><div className="map-feedback">{status}</div>{listContent}{listPlaces ? items.map((place) => <button type="button" className="place-row" key={keyOf(place)} aria-pressed={current ? keyOf(current) === keyOf(place) : false} onClick={() => selectPlace(place)}><PlaceIcon kind={place.kind} /><span><strong>{place.name}</strong><small>{place.line_names.join(" · ") || place.brand_name || place.subtitle || placeKindLabel(place.kind)}</small>{(place.kind === "ferry_port" || place.kind === "bus_terminal") && place.provider_id ? <small>{place.kind === "ferry_port" ? "항구" : "터미널"} 코드 {place.provider_id}</small> : null}{!hasCoordinates(place) ? <small>좌표 미등록</small> : null}</span></button>) : null}</div></div></MapStage></TabsContent>
     {!embedded && !(mode === "fuel" && view === "map") ? <div className="map-feedback map-guidance" role="status">
       {kinds.includes("fuel_station") && loaded.fuel_station?.fuel_prices_stale ? <p className="error">유가 갱신 지연 · 유종·가격은 {dateTime(loaded.fuel_station.fuel_prices_last_refreshed_at)} 기준이며 판매 여부도 다를 수 있습니다.</p> : null}
       {kinds.includes("fuel_station") && loaded.fuel_station?.fuel_prices_last_refreshed_at && !loaded.fuel_station.fuel_prices_stale ? <p>유가 {dateTime(loaded.fuel_station.fuel_prices_last_refreshed_at)} 갱신</p> : null}
     </div> : null}
     </Tabs>
-    </div>
+    </MapWorkspace>
   </section>;
 }

@@ -116,8 +116,8 @@ describe("지도 초기화 실패", () => {
     try {
       show();
       expect(onMessage).toHaveBeenCalledTimes(1);
-      expect(onMessage).toHaveBeenLastCalledWith(expect.stringContaining("지도를 표시하지 못합니다"));
-      expect(host.textContent).not.toContain("지도를 표시하지 못합니다");
+      expect(onMessage).toHaveBeenLastCalledWith(expect.stringContaining("목록 보기"));
+      expect(host.textContent).not.toContain("목록 보기");
       show();
       expect(onMessage).toHaveBeenCalledTimes(1);
       act(() => root.render(<p>다른 화면</p>));
@@ -128,7 +128,7 @@ describe("지도 초기화 실패", () => {
     state.throwOnCreate = true;
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(() => render()).not.toThrow();
-    expect(host.textContent).toContain("이 브라우저에서 지도를 표시하지 못합니다");
+    expect(host.textContent).toContain("지도 표시 불가");
     expect(host.querySelector("[data-testid=vworld-map-container]")).toBeNull();
     const logged = JSON.stringify(warn.mock.calls);
     expect(logged).not.toContain("SECRET-KEY");
@@ -138,7 +138,7 @@ describe("지도 초기화 실패", () => {
   it.each(["", "  ", "CHANGE_ME", "replace-with-vworld-browser-key", undefined])("키가 %j이면 지도를 만들지 않고 목록 보기로 안내한다", (key) => {
     render(undefined, vworldApiKey(key));
     expect(state.instances).toHaveLength(0);
-    expect(host.textContent).toContain("VWorld 지도 키가 없어");
+    expect(host.textContent).toContain("지도 키 없음");
   });
 });
 

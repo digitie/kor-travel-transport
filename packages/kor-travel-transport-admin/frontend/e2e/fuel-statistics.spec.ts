@@ -1,4 +1,9 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+async function openFilters(page: Page) {
+  const trigger = page.locator('[data-slot="map-filter-trigger"]');
+  if (await trigger.isVisible() && await trigger.getAttribute("aria-expanded") === "false") await trigger.click();
+}
 
 const metrics = { station_count: 12000, average_price: 1700, minimum_price: 1600, maximum_price: 1800,
   price_spread: 200, standard_deviation: 45, saving_50l: 5000, cheapest_station_count: 1,
@@ -56,8 +61,9 @@ test("지도 요약 마커 수와 독립된 범위 통계를 같은 요청으로
   });
   await page.goto("/fuel");
   const summary = page.getByRole("region", { name: "현재 지도 범위 유가 통계" });
-  await expect(summary.getByText("12,000개 주유소")).toBeVisible();
+  await expect(summary).toContainText("1,700");
   await summary.getByRole("button", { name: "지도 범위 유가 통계 안내" }).click();
+  await expect(page.getByRole("dialog")).toContainText("12,000개 주유소");
   await expect(page.getByRole("dialog").getByText("최저가 시험주유소", { exact: true })).toBeVisible();
 });
 
@@ -73,8 +79,8 @@ test("지도 초기화 오류는 범위 요약 바깥 위에 표시하고 목록
   await page.goto("/fuel");
   const error = page.locator(".map-feedback").getByRole("alert");
   const summary = page.getByRole("region", { name: "현재 지도 범위 유가 통계" });
-  await expect(error).toHaveText(/^(VWorld 지도 키가 없어|이 브라우저에서) 지도를 표시하지 못합니다\. 위의 목록 보기에서 장소를 선택해 주세요\.$/);
-  await expect(summary).toContainText("12,000개 주유소");
+  await expect(error).toHaveText(/^지도 (키 없음|표시 불가) · 목록 보기$/);
+  await expect(summary).toContainText("1,700");
   const errorBounds = await error.boundingBox();
   const summaryBounds = await summary.boundingBox();
   expect(errorBounds!.y + errorBounds!.height).toBeLessThanOrEqual(summaryBounds!.y);
@@ -108,8 +114,7 @@ for (const width of [375, 1440]) test(`${width}px 가격 갱신 지연은 요약
     await page.goto("/fuel");
     const summary = page.getByRole("region", { name: "현재 지도 범위 유가 통계" });
     const stale = summary.getByRole("status");
-    await expect(stale).toHaveText(/갱신 지연 · 가격 갱신 26\. 10\. 20\./);
-    await expect(summary.getByText(/^통계 기준/)).toContainText("26. 10. 21.");
+    await expect(stale).toHaveText("갱신 지연 26.10.20 12:10 KST");
     await expect(page.locator(".map-guidance")).toHaveCount(0);
     for (const theme of ["light", "dark"]) {
       await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
@@ -122,15 +127,17 @@ for (const width of [375, 1440]) test(`${width}px 가격 갱신 지연은 요약
     }
     await summary.getByRole("button", { name: "지도 범위 유가 통계 안내" }).click();
     await expect(page.getByRole("dialog")).toContainText("판매 여부");
+    await expect(page.getByRole("dialog").getByText(/^수집 기준/)).toContainText("26. 10. 21.");
     await page.keyboard.press("Escape");
     await page.getByRole("tab", { name: "목록", exact: true }).click();
     await expect(summary).toHaveCount(0);
     await expect(page.locator(".map-guidance")).toContainText("유가 갱신 지연");
     await page.locator(".map-place-list").getByRole("button", { name: /지연 시험주유소/ }).click();
     const detail = page.getByRole("complementary", { name: "선택 장소 상세" });
-    await expect(detail.getByRole("status")).toHaveText(/갱신 지연 · 가격 갱신 26\. 10\. 20\./);
+    await expect(detail.getByRole("status")).toHaveText("갱신 지연 26.10.20 12:10 KST");
     await page.getByRole("tab", { name: "지도", exact: true }).click();
     await expect(detail.getByRole("status")).toContainText("갱신 지연");
+    await openFilters(page);
     await page.getByLabel("장소 검색", { exact: true }).fill("pending");
     await requested;
     await expect(summary).toContainText("통계 조회 중");
@@ -140,8 +147,10 @@ for (const width of [375, 1440]) test(`${width}px 가격 갱신 지연은 요약
     await expect(summary.getByRole("alert")).toContainText("통계를 불러오지 못했습니다");
     await expect(summary).not.toContainText("갱신 지연");
     await page.getByLabel("장소 검색", { exact: true }).fill("unknown");
-    await expect(stale).toHaveText("갱신 지연 · 가격 갱신 확인되지 않음");
-    await expect(summary.getByText(/^통계 기준/)).toHaveText("통계 기준 확인되지 않음");
+    await expect(stale).toHaveText("갱신 지연 시각 미확인");
+    await summary.getByRole("button", { name: "지도 범위 유가 통계 안내" }).click();
+    await expect(page.getByRole("dialog").getByText(/^수집 기준/)).toHaveText("수집 기준 확인되지 않음");
+    await page.keyboard.press("Escape");
     await page.getByLabel("장소 검색", { exact: true }).fill("fresh");
     await expect(summary).toContainText("1,700");
     await expect(summary).not.toContainText("갱신 지연");
@@ -161,7 +170,7 @@ for (const width of [375, 1440]) test(`${width}px 가격 있는 장소와 빈 �
   const summary = page.getByRole("region", { name: "현재 지도 범위 유가 통계" });
   const stale = summary.getByRole("status");
   await expect(summary).toContainText("통계 없음 · 수집 완료 후 반영됩니다.");
-  await expect(stale).toHaveText(/갱신 지연 · 가격 갱신 26\. 10\. 20\./);
+  await expect(stale).toHaveText("갱신 지연 26.10.20 12:10 KST");
   await expect(page.locator(".kt-map-count")).toHaveText("1건 표시");
   await expect(summary.locator("dl")).toHaveCount(0);
   for (const theme of ["light", "dark"]) {
@@ -183,9 +192,11 @@ for (const width of [375, 1440]) test(`${width}px 가격 있는 장소와 빈 �
   await expect(detail).toContainText("1,705원/L");
   await expect(detail.getByRole("status")).toContainText("갱신 지연");
   await page.getByRole("tab", { name: "지도", exact: true }).click();
-  await expect(stale).toContainText("갱신 지연");
+  await expect(summary.locator("dl")).not.toBeVisible();
+  await expect(detail.getByRole("status")).toContainText("갱신 지연");
+  await openFilters(page);
   await page.getByLabel("장소 검색", { exact: true }).fill("unknown");
-  await expect(stale).toHaveText("갱신 지연 · 가격 갱신 확인되지 않음");
+  await expect(stale).toHaveText("갱신 지연 시각 미확인");
   await expect(summary).toContainText("통계 없음");
   await expect(summary).not.toContainText("통계 기준");
 });
@@ -259,7 +270,7 @@ for (const width of [320, 375, 1440]) test(`${width}px 지도 상부 유가 요�
     fuel_statistics: [{ ...metrics, product_code: "B027" }, { ...metrics, product_code: "D047", average_price: 1550 }] } }));
   await page.goto("/fuel");
   const summary = page.getByRole("region", { name: "현재 지도 범위 유가 통계" });
-  await expect(summary.getByText("12,000개 주유소")).toBeVisible();
+  await expect(summary).toContainText("1,700");
   await page.getByLabel("지도 통계 유종").selectOption("D047");
   await expect(summary).toContainText("1,550");
   await page.getByRole("tab", { name: "목록", exact: true }).click();

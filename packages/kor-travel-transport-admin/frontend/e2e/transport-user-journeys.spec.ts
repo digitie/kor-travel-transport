@@ -18,43 +18,52 @@ async function login(page: Page) {
   await expect(page).toHaveURL(/\/$/);
 }
 
+async function openMapFilters(page: Page) {
+  await expect(page.locator('[data-slot="map-workspace"]')).toBeVisible();
+  const trigger = page.locator('[data-slot="map-filter-trigger"]');
+  if (await trigger.isVisible() && await trigger.getAttribute("aria-expanded") === "false") await trigger.click();
+}
+
 for (const width of [375, 1440]) test(`운영 홈·노선 중심 도시철도·이후 시간표 ${width}px`, async ({ page }) => {
   test.setTimeout(90_000); test.skip(!password, "로그인 암호 필요");
   await page.setViewportSize({ width, height: 1000 });
   await login(page);
   await expect(page.getByRole("heading", { name: "운영 홈", exact: true })).toBeVisible();
+  await expect(page.getByTestId("home-stat-sources")).toContainText("1");
   if (width === 375) {
     await page.getByRole("button", { name: "주요 메뉴 열기" }).click();
     await expect(page.getByRole("link", { name: "도시철도", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "주요 메뉴 열기" }).click();
     await expect(page.getByRole("link", { name: "도시철도", exact: true })).not.toBeVisible();
   }
-  await expect(page.getByTestId("home-stat-sources")).toContainText("1");
   await expect(page.getByRole("link", { name: "통합", exact: true })).toHaveCount(0);
   await page.route("**/transport/features/places?**", (route) => route.fulfill({ json: { items: [metro] } }));
   await page.route("**/transport/rail/timetables?**", (route) => route.fulfill({ json: { generated_at: now(), basis: "calendar", day_code: "8", items: [{ place_id: metro.id, station_name: metro.name, line_name: "GTX-A", status: "stored", stale: false, collected_at: now(), next_departure: { departure_time: "140000", train_number: "A1", destination_name: "동탄" }, upcoming_departures: [{ departure_time: "140000", train_number: "A1", destination_name: "동탄" }, { departure_time: "141000", train_number: "A2", destination_name: "동탄" }], items: [{ departure_time: "140000", train_number: "A1", destination_name: "동탄" }] }] } }));
   await page.goto("/rail/metro");
   await expect(page.locator(".station-results")).toHaveCount(0);
+  await openMapFilters(page);
   await page.getByLabel("노선", { exact: true }).selectOption({ label: "GTX-A · 지티엑스에이운영" });
-  await page.locator(".station-results").getByRole("button", { name: /구성/ }).click();
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
+  await page.locator(".map-place-list").getByRole("button", { name: /구성/ }).click();
   await expect(page.getByRole("heading", { name: /구성 지티엑스에이운영/ })).toBeVisible();
   await expect(page.getByRole("link", { name: "031-000-0000" })).toHaveAttribute("href", "tel:0310000000");
   await expect(page.getByText("엘리베이터", { exact: false })).toBeVisible();
   const overlay = page.getByRole("complementary", { name: "선택 장소 상세" });
-  await expect(overlay).toHaveCSS("position", "absolute");
-  const stage = await page.locator(".embedded-map .map-primary").first().boundingBox();
+  const stage = await page.locator('[data-slot="map-stage"]').boundingBox();
   expect(stage!.width).toBeGreaterThan(width === 1440 ? 800 : 250);
   expect(stage!.height).toBeGreaterThan(500);
   if (width === 375) expect(stage!.y).toBeLessThan(600);
   const panel = await overlay.boundingBox();
   expect(panel!.height).toBeLessThan(stage!.height - 30);
   await page.getByRole("button", { name: /경기도 용인시 · 지도에서 보기/ }).click();
+  await expect(overlay).toBeFocused();
   await expect(page.getByLabel("지금 이후 예정 출발")).toContainText("14:10");
   await page.screenshot({ path: `test-results/metro-journey-${width}.png`, fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.keyboard.press("Escape");
   await expect(overlay).toHaveCount(0);
-  const stationButton = page.locator(".station-results").getByRole("button", { name: /구성/ });
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
+  const stationButton = page.locator(".map-place-list").getByRole("button", { name: /구성/ });
   await stationButton.focus();
   await stationButton.press("Enter");
   await expect(overlay).toBeFocused();
@@ -82,10 +91,13 @@ for (const width of [375, 1440]) test(`일반철도 종류·역 검색과 실제
     return route.fulfill({ json: { fetched_at: now(), service_date: day(), total: 2, truncated: false, items: [{ train_number: "001", grade_name: "KTX-산천", departure_station_name: "서울", arrival_station_name: "부산", departure_planned_time: stamp(3600_000), arrival_planned_time: stamp(3 * 3600_000), adult_fare: 59800 }, { train_number: "PAST", grade_name: "KTX", departure_planned_time: stamp(-3600_000), arrival_planned_time: stamp(0) }] } });
   });
   await page.goto("/rail");
+  await openMapFilters(page);
   await page.getByLabel("노선", { exact: true }).selectOption("ktx1");
-  await page.getByLabel("철도 역 검색 결과").getByRole("button", { name: /서울/ }).click();
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
+  await page.locator(".map-place-list").getByRole("button", { name: /서울/ }).click();
   await expect(page.getByRole("link", { name: "1588-7788" })).toHaveAttribute("href", "tel:15887788");
   await expect(page.getByRole("link", { name: "공식 역 안내" })).toHaveAttribute("href", /stationSeq=10281321/);
+  await page.getByRole("button", { name: "상세 닫기", exact: true }).click();
   await page.getByLabel("열차 종류", { exact: true }).selectOption("0A");
   const from = page.getByRole("group", { name: "출발역", exact: true });
   const to = page.getByRole("group", { name: "도착역", exact: true });
@@ -116,6 +128,7 @@ test("터미널 목록 대기와 연결 조회 실패를 정상 빈 목록으로
   await page.route("**/transport/bus/terminals?**", async (route) => { await gate; await route.fulfill({ json: { items: terminals, next_offset: null } }); });
   await page.route("**/transport/bus/connections?**", (route) => route.fulfill({ status: 502, json: { detail: "조회 실패" } }));
   await page.goto("/bus/express");
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
   const from = page.locator(".terminal-search").first();
   await from.getByLabel("출발 터미널", { exact: true }).fill("서울");
   await expect(from.getByRole("status")).toContainText("터미널 목록 조회 중");
@@ -137,10 +150,11 @@ test("버스 출발·도착 양방향 저장 연결과 이후 출발", async ({ 
   });
   await page.route("**/transport/bus/timetable?**", (route) => route.fulfill({ json: { fetched_at: now(), service_date: day(), total: 1, items: [{ departure_planned_time: stamp(3600_000), arrival_planned_time: stamp(4 * 3600_000), grade_name: "우등", adult_fare: 45000 }] } }));
   await page.goto("/bus/express");
-  await page.getByRole("link", { name: "지도 보기", exact: true }).click();
-  await expect(page.locator("#bus-map")).toBeInViewport();
+  await expect(page.locator('[data-slot="map-stage"][data-view="map"]')).toBeInViewport();
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
   await page.getByLabel("출발 터미널", { exact: true }).fill("서울");
   await page.getByRole("button", { name: /서울 시험터미널 시험 지역/ }).click();
+  await expect(page.getByRole("complementary", { name: "선택 장소 상세" })).toHaveCount(0);
   const to = page.locator(".terminal-search").nth(1);
   await expect(to.getByRole("button", { name: /부산 시험터미널/ })).toBeVisible();
   await expect(to.getByRole("button", { name: /대전 시험터미널/ })).toHaveCount(0);

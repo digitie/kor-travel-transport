@@ -18,6 +18,7 @@ const groups = [
   { id: "operations", label: "운영 관리", items: [["/collections", "수집 상태", Activity], ["/admin/dagster", "Dagster", Database], ["/api-test", "API 점검", ChartNoAxesCombined]] },
 ] as const;
 const hrefs = groups.flatMap((group) => group.items.map(([href]) => String(href)));
+const mapPages = new Set(["/map", "/fuel", "/highways", "/rail", "/rail/metro", "/bus/express", "/bus/intercity", "/flights", "/ferry"]);
 
 export function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -30,7 +31,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   if (pathname === "/login") return <>{children}</>;
   const activeHref = hrefs.filter((href) => href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`)).sort((a, b) => b.length - a.length)[0];
   return (
-    <div className="transport-shell">
+    <div className="transport-shell" data-map-page={mapPages.has(pathname) || undefined}>
       <a className="skip-link" href="#main-content">본문으로 건너뛰기</a>
       <div className="admin-layout" data-testid="admin-shell">
         <aside className="rail" aria-label="관리자 사이드바" data-slot="admin-shell-rail">
