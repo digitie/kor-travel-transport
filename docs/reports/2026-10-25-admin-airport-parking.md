@@ -1,5 +1,17 @@
 # 2026-10-25 — 공항 주차장 관리자 화면에 parking-radar 네 뷰 재사용
 
+## 2026-10-26 최종 코드 정산
+
+정확 소스 `ccfaa64dc8dc41aeb46cf95b02f41a6117fae89f`는 필수 CI와 James/Popper 최종 코드 PASS 뒤
+[PR135](https://github.com/digitie/kor-travel-transport/pull/135)로 main `213c048216d8313cf5ff7f3f7b5ca043f5d6cb53`에 머지됐다.
+backend CI1179통과/2건 건너뜀, 공개142·관리자282와 독립 Docker/타입, 단독 설치·빌드, 통제 응답 UI34·개발2를 확인했다.
+UI/빌드는 제품이 같은 `7d42d86`의 검증과 최종 시험/문서 변경의 동일성을 포함한다.
+
+실자료 전체 흐름은 5개 환경 조합 PASS이며 Firefox1440 최초 달력 opening 1개는 UNKNOWN으로 추적한다.
+320px/100·200% geometry6개·PNG56을 보존했다. 실제 항공편은 옛 운영 SDK의 오류 표시를 검증했으며
+새 SDK 성공 마커·공식 요금·성능·실기기/주소·전화와 자연 수집 시각 대조는 별도 운영 수용이다.
+[통합 소스·검증·인계 원장](2026-10-26-parking-admin-integration-acceptance.md)이 최종 정산을 모은다.
+
 ## 범위와 경계
 
 사용자 요청은 기존 parking-radar의 모든 조회 화면을 Transport 관리자의 공항 주차장 페이지에서 사용하는 것이다.
@@ -66,7 +78,7 @@ POST는 `fees/calculate` 하나만 허용한다. 세션·origin·JSON 매체 유
 4. 실제 375px·200% 글자에서 달력이 화면 밖으로 나갔다. 달력 칸 크기를 viewport에 맞게 제한하고
    Portal·기간 선택·닫기·초점을 실제 브라우저에서 재검증한다.
 
-## 검증 상태
+## 초기 후보 검증 기록
 
 WSL2 1차에서 동일한 주차 소스를 대조했다. 운영 API 수용은 별도 담당자의 조회 결과로만 정산하며 아래 통제된 응답 성공과 구분한다.
 
@@ -135,7 +147,7 @@ E2E_PARKING_ADMIN=true E2E_BASE_URL=http://127.0.0.1:12355 E2E_PUBLIC_PARKING_BA
 
 새 전체 UI는 `evidence/review-final/parking-ui.json`(34개), 개발 모드는 별도 `test-results/parking-ui.json`(2개)에 정산한다.
 `review-calendar-red`, `review-calendar-float`, `review-rapid-baseline`, `review-rapid-red`, `review-rapid-green`은
-원인·실패·중간 수용을 구분하는 증거다. 새 최종 SHA의 Docker/CI·독립 재리뷰·실제 API 수용은 부모 작업에서 다시 정산한다.
+원인·실패·중간 수용을 구분하는 증거다. 최종 Docker/CI·독립 리뷰·실자료 결과는 이 보고서 첫 절과 통합 원장을 따른다.
 
 ## Docker 주기 시험의 실제 시간 의존 제거
 
@@ -153,14 +165,13 @@ bootstrap 정확히1회를 검사하며, `finally`에서 화면을 해제하고 
 통과했다. 원본·정체 주입 실패·제어된 시계 성공 로그는 `/var/tmp/codex-parking-timer-qa-20261025/evidence`에 보존한다.
 처음 WSL 설치 모듈을 Docker에서 사용한 시도는 native binding 오류로 시험을 시작하지 못해 결과에서 제외했고,
 별도 Docker 설치 모듈을 복사한 독립 시험 폴더에서 위 재현·검증을 수행했다. 부모의 증거 폴더는 수정하지 않았다.
-새 최종 커밋의 독립 Docker·CI·두 리뷰·실제 API 수용은 계속 별도 게이트다.
+최종 커밋의 독립 Docker·CI·두 코드 리뷰 결과와 실제 UI의 미확정 경계는 통합 원장에 분리했다.
 
 ## 남은 수용
 
-- 같은 코드에 대한 WSL+Docker 2차 검증. 문서 정산 후에도 공개/관리자 frontend 전체 tree와 lock/vendor 해시를 유지한다.
-- PR132 main `1d807fd` 위 Draft PR, 전체 CI와 두 독립 적대적 리뷰.
 - 실제 운영 API·관측/집계 시각·제공기관 범위의 대조. 운영 자료가 비어 있으면 브라우저 fixture 성공으로 대체하지 않는다.
-- 수집→분석 캐시의 단절 복구는 별도 backend 작업의 검증·PR을 따른다.
+- 자연 수집→분석 캐시·새 SDK 항공편 성공 마커, 성능·공식 요금 지원 범위의 운영 수용.
+- Firefox1440 첫 달력 opening UNKNOWN 추적과 실기기/주소·전화 연계 확인. 다른 성공 환경으로 이 결과를 바꾸지 않는다.
 
 기존 Base UI/shadcn 구성과 [Tabs](https://ui.shadcn.com/docs/components/base/tabs),
 [Popover](https://ui.shadcn.com/docs/components/base/popover), [Calendar](https://ui.shadcn.com/docs/components/base/calendar)의

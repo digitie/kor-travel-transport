@@ -29,6 +29,8 @@
 공항 주차장 관리자의 `/parking`은 기존 `frontend/src`를 내부 `@kor-travel/parking-ui` file 패키지로 설치해
 같은 뷰·차트·API를 재사용한다. 공개 앱의 네 라우트는 유지하며, 인증 프록시·설치/스타일 경계는
 [공항 주차장 뷰 이식 원장](../reports/2026-10-25-admin-airport-parking.md)을 따른다.
+관리자·캐시 갱신·공동운항 SDK 소비의 최종 소스와 검증/운영 인계는
+[2026-10-26 통합 수용 기록](../reports/2026-10-26-parking-admin-integration-acceptance.md)에 모은다.
 
 2026-10-25 [웹·Android/iOS 조사](../research/2026-10-25-mobility-ux.md)와
 [지도·이용 흐름 설계](../design/2026-10-25-mobility-improvements.md)는 후속 계획이다.

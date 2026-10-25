@@ -1,5 +1,14 @@
 # 공항 주차 수집 뒤 분석 캐시 갱신 복구
 
+## 2026-10-26 최종 코드 정산
+
+정확 소스 `0a91260a2e7699de36403f4a94f2822ccca5896f`는 필수 CI와 James/Popper 최종 코드 PASS 뒤
+[PR134](https://github.com/digitie/kor-travel-transport/pull/134)의 main `f5f96efa010f3bb77c220b1da6aa33a5601d2381`에 머지됐고 tree가 같다.
+WSL1170통과/23건 건너뜀, backend CI1191통과/2건 건너뜀, 격리 PG 집중122개를 확인했다.
+PG 전체는 정확 컨테이너의 독립 exit0 증거가 있으나 stdout은 완료 표시919에서 끊겼고 최종 pytest 건수·wrapper `full.exit`는 미회수다.
+전체 건수를 다른 실행으로 추정하지 않는다. 원인 미확정과 운영 자연 tick의 대조는
+[통합 수용·인계 원장](2026-10-26-parking-admin-integration-acceptance.md)에 남겼다.
+
 ## 범위와 재현
 
 T-PARK-01/02의 코드 경로를 검증했다. 운영 DB의 원본·run·cache 시각은 아직 대조하지
@@ -49,8 +58,10 @@ WSL의 격리 DB에서 실제 Dagster job을 두 번 실행했다. 첫 관측의
 | 격리 PostgreSQL16 + Compose | 사전 리뷰 보완 후122건 통과. 신규12건은 실제 PG 모델로 검증했다. `/tmp/codex-parking-analytics-pg.3c3ogm/review-fixed-focused.log` |
 | PostgreSQL migration/check | 기존 head upgrade와 `alembic check` 통과. 같은 격리 project의 `migrate.log`, `alembic-check.log` |
 | OpenAPI 정본 | `scripts/export_openapi.py --check` 통과. API DTO·공개 경로 변경 없음. |
-| WSL·Compose 전체 백엔드 | 이전 소스의 실행을 사전 리뷰 보완으로 중단했다. 새 고정 후보로 재실행할 예정이며 이전 부분 통과를 최종 통과로 합산하지 않는다. |
-| CI·독립 리뷰·운영 시각 대조 | 미완료. 원본 주차 수집·운영 job 실행·스케줄 변경·배포를 하지 않았다. |
+| WSL 전체 백엔드 | 최종 소스1170통과/23건 건너뜀·exit0. `/var/tmp/codex-parking-analytics-final.94LKtZ/wsl-full.log`. 이전 중단 실행은 합산하지 않는다. |
+| Compose PG 전체 백엔드 | 정확 실행 컨테이너의 독립 wait exit0. 최종 pytest 건수/summary와 wrapper 종료 파일은 미회수이며 전체 건수는 기재하지 않는다. 같은 폴더 `pg-tools-final/readonly-diagnosis-20261025.json`. |
+| CI·독립 리뷰 | 최종 소스 CI1191통과/2건 건너뜀, James/Popper 최종 코드 PASS 뒤 PR134 머지. |
+| 운영 시각 대조 | 자연5분 job의 원본/run/cache/API 연결은 미수용. 코드 머지로 T-PARK-01/02를 완료하지 않는다. |
 
 격리 PG 테스트는 실제 `CollectionService`의 저장 flush 뒤 commit을 대기시켰다. 이때
 cache 잠금 시도는0건을 반환하고 이전 정상 캐시를 덮지 않았다. 원본 commit 직후에도

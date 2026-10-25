@@ -1,5 +1,22 @@
 # 공항 주차 분석용 항공편의 공동운항 조회 복구
 
+## 2026-10-26 최종 코드 정산
+
+정확 소스 `dd6b39a2ca238ad2c1bee868370ecc4648d7cd99`는 PR/push CI의 backend/frontend/관리자 SUCCESS와
+James/Popper 최종 코드 PASS 뒤 [PR136](https://github.com/digitie/kor-travel-transport/pull/136)으로
+main `1e50dbc93a86818285a9de22a983d9fb5aa7fb9d`에 머지됐다. 예상 통합 tree `60c7a5213ee25a5d21a578271fc146f66eb8173b`와 전체 diff0이다.
+
+WSL 전체1168통과/22건 건너뜀·3645.54초·exit0, PG 전체1182통과/2실패/6건 건너뜀·3102.83초·exit1을 회수했다.
+PG의 독립 container wait도1이다. 두 실패는 공유 pytest `.pyc`의 WSL 절대 `co_filename` 때문에 Docker `/repo`에서
+오류 위치가 basename으로 표시된 기존 assertion이다. 같은 소스·SDK·106개 의존성·원래 assertion/rewrite에서
+`PYTHONPYCACHEPREFIX`만 격리한 동일 두 사례는 2통과/0.45초·exit0이었다. 전체 PG 성공으로 바꾸지 않는다.
+두 리뷰는 이 환경 원인을 독립 확인했으며, 검증 종료/소유 PG 정리·잔여0과 원본 로그를 보존했다.
+
+정본은 `/var/tmp/codex-flight-consumer-final-v2.kUWMro/verification-final.json`과
+`pg/{full.log,pycache-path-inspection.json,path-isolated-focused.log,path-isolated-focused.exit}`다.
+실제6GET·473행과 최종 SDK/API 재생, 캐시와의 합성21개·25소스파일(`.py`24+`py.typed`1)/106버전 대조는
+[통합 소스·검증·운영 인계](2026-10-26-parking-admin-integration-acceptance.md)를 따른다.
+
 ## 문제와 책임 경계
 
 공항 주차장의 하루 흐름·출도착 조회가 김포 정상 공동운항을 중복 오류로 거부했다.
@@ -56,7 +73,7 @@ WSL 실제 SDK/XML의 4반례를 RED로 확인한 뒤 shared validator에 요청
 위 수용은 해당 공항/날짜의 제공 범위이며 전국 완전성·동일 시점 스냅샷을 보장하지 않는다.
 인증키·인증 URL·헤더는 argv·stdout·fixture·증빙에 기록하지 않았다.
 운영 DB·원본 수집 job·Dagster 스케줄·이미지 빌드·배포는 변경하지 않았다.
-공항 주차장 관리자 뷰와 분석 캐시 갱신은 별도 PR135/PR134의 소유 범위다.
+공항 주차장 관리자 뷰와 분석 캐시 갱신은 PR135/PR134로 반영됐으며 운영 원본/run/cache/API와 성공 항공편 마커는 별도 수용이다.
 최초 SDK 전제의 소비자 `234b670` 전체 WSL/PG 실행은 소유 검증 후 중단하고 원본·부분 로그·
 종료코드·대체 사유를 보존했다. 중단 중 pytest 정리 예외를 제품 실패나 전체 통과로 세지 않는다.
-이 소비자의 WSL 전체·격리 PostgreSQL/Compose·최종 CI·두 독립 리뷰는 고정 후보의 PR 본문에서 정산한다.
+최종 CI·리뷰와 전체/집중 검증의 차이는 이 보고서 첫 절과 통합 원장을 따른다.
