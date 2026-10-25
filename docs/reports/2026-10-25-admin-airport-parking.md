@@ -137,6 +137,24 @@ E2E_PARKING_ADMIN=true E2E_BASE_URL=http://127.0.0.1:12355 E2E_PUBLIC_PARKING_BA
 `review-calendar-red`, `review-calendar-float`, `review-rapid-baseline`, `review-rapid-red`, `review-rapid-green`은
 원인·실패·중간 수용을 구분하는 증거다. 새 최종 SHA의 Docker/CI·독립 재리뷰·실제 API 수용은 부모 작업에서 다시 정산한다.
 
+## Docker 주기 시험의 실제 시간 의존 제거
+
+부모의 정확한 `7d42d86`·1CPU Docker 실행은 공개 141통과/1실패였다. 실패는 기존 시험이 20ms 간격을
+실제 60ms 동안 두 번 이상 실행한다고 가정한 부분이다. 상태 조회는 실제1회였으며 이 결과를 통과로 계산하지 않는다.
+작성자 독립 Docker 복사본에서는 원본 13개와 전체142개가 통과했지만, 같은 시험의 대기 구간에 90ms 이벤트 루프
+정체를 주입하면 `actual1/expected>=2`가 재현됐다. 제품의 추가 bootstrap이나 잘못된 자료 반영은 관측하지 않았다.
+
+해당 시험 하나만 기본 15초 주기의 가상 시계를 `act` 안에서 30초 진행하도록 바꿨다. 상태 조회 정확히2회와
+bootstrap 정확히1회를 검사하며, `finally`에서 화면을 해제하고 잔여 timer를 지운 뒤 실제 시계로 복구한다.
+제품 소스·lock·vendor·브라우저 시험은 `7d42d86`과 동일하다. 이전 34UI·개발2개·관리자 단독 설치/웹 빌드는
+이 제품 동일성으로 유지하며 불필요하게 재실행하지 않았다.
+
+수정 뒤 WSL2 공개142개·테스트 타입을 통과했고, 작성자의 1CPU/network-none Docker에서도 공개142개·테스트 타입을
+통과했다. 원본·정체 주입 실패·제어된 시계 성공 로그는 `/var/tmp/codex-parking-timer-qa-20261025/evidence`에 보존한다.
+처음 WSL 설치 모듈을 Docker에서 사용한 시도는 native binding 오류로 시험을 시작하지 못해 결과에서 제외했고,
+별도 Docker 설치 모듈을 복사한 독립 시험 폴더에서 위 재현·검증을 수행했다. 부모의 증거 폴더는 수정하지 않았다.
+새 최종 커밋의 독립 Docker·CI·두 리뷰·실제 API 수용은 계속 별도 게이트다.
+
 ## 남은 수용
 
 - 같은 코드에 대한 WSL+Docker 2차 검증. 문서 정산 후에도 공개/관리자 frontend 전체 tree와 lock/vendor 해시를 유지한다.

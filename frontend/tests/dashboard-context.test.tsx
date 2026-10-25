@@ -405,12 +405,20 @@ describe("DashboardProvider + CurrentStatusView", () => {
   });
 
   test("skips full dashboard reloads while backend snapshots are unchanged", async () => {
-    renderCurrentStatus({ autoRefreshIntervalMs: 20 });
+    vi.useFakeTimers();
+    let view: ReturnType<typeof renderCurrentStatus> | undefined;
+    try {
+      await act(async () => { view = renderCurrentStatus(); });
+      expect(screen.getAllByText((_, element) => element?.textContent === "100/200대").length).toBeGreaterThan(0);
 
-    await screen.findAllByText((_, element) => element?.textContent === "100/200대");
-    await new Promise((resolve) => setTimeout(resolve, 60));
+      await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
 
-    expect(apiClient.getCollectorStatus.mock.calls.length).toBeGreaterThanOrEqual(2);
-    expect(apiClient.getDashboardBootstrap).toHaveBeenCalledTimes(1);
+      expect(apiClient.getCollectorStatus).toHaveBeenCalledTimes(2);
+      expect(apiClient.getDashboardBootstrap).toHaveBeenCalledTimes(1);
+    } finally {
+      view?.unmount();
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
 });
