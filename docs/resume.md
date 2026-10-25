@@ -1,41 +1,23 @@
-## 2026-10-25 — 공항 주차 분석 갱신 복구 진행
+## 2026-10-26 — 공항 주차장 통합 코드 수용과 운영 인계
 
-- 현재 상태: Dagster 원본 수집 뒤 current5/시계열 cache80인 단절을 정상·부분 성공에서 재현했다.
-  기존 job의 원본 commit 뒤 기본 분석 갱신·실패 분리·0건 정상 tick 복구와 캐시 신선도 검증을 적용 중이다.
-- 검증: 사전 리뷰 보완 후 WSL 집중102건/PG 전용1건 건너뜀·격리 PG Compose122건, 기존 migration/check를 통과했다. 실제 수집의 지연 commit과
-  재집계 경합·원본 보존을 확인했다. [증거와 제한](reports/2026-10-25-parking-analytics-refresh.md).
-- 다음 한 작업: WSL 전체 회귀와 격리 PG 비용 계측을 마감한 뒤 최종 소스의 CI·독립 리뷰를 정산한다.
-  운영 원본/run/cache 시각 대조는 미완이며 운영 실행·스케줄 변경·빌드/배포를 하지 않았다.
+- 현재 코드: SDK PR12와 Transport PR134·135·136은 정확 소스의 필수 CI·James/Popper 최종 코드 PASS 뒤 머지됐다.
+  통합 main은 `1e50dbc93a86818285a9de22a983d9fb5aa7fb9d`, SDK pin은 `d6a1285111883f6942ba2cedafd2efcdcbef037b`다.
+  관리자 네 뷰/분석 네 탭·기존5분 job의 분석 갱신·공동운항 보존을 포함한다.
+- 검증: [통합 원장](reports/2026-10-26-parking-admin-integration-acceptance.md)에서 각 소스의 전체/집중 검증을 구분한다.
+  소비자 PG 전체1182통과/2실패/6건 건너뜀·exit1과 같은2개 pycache 경로 격리2통과를 모두 보존했다.
+  캐시 PG 전체의 독립 exit0/최종 건수 미회수도 별개다. 실제 UI5 PASS/Firefox1440 첫 opening1 UNKNOWN은 그대로 추적한다.
+- 다음 한 작업: 통합 소스를 빌드 담당에게 인계하고 자연5분 tick의 원본/run/cache/API 시각과 실제 항공편 성공 마커를 대조한다.
+  성능·공식 요금·실기기/주소·전화와 T-PARK-01/02 운영 수용은 미완이다. 실제 배포 SHA·DB·instigator 기록은 유지한다.
+  T-PARK-UI-01 코드 이식만 완료 아카이브로 이동했으며 Map 전체 소비자·철도·유가 등 backlog는 열린 상태다.
 
-## 2026-10-25 — 공용 지도 작업면 적용 진행
+## 2026-10-26 — 공용 지도 작업면 코드 정산
 
-- 현재 상태: PR131은 main `c027aceacc865ebee09258b5feb87e7aa5ee2b08`에 머지됐다.
-  그 위의 [PR132](https://github.com/digitie/kor-travel-transport/pull/132)에서 Common dev.8과 Transport 9경로의 남은 높이/필터/상세 슬롯을 연결하고 있다.
-  [범위·전후 치수·검증과 제한](reports/2026-10-25-map-workspace-layout.md).
-- 현재 후보: 공용 a74ac80/정규 tarball71d9f6ce를 고정했다. 78efe의 지도 전환 초점 실패와 숨은 opener 반환을 재현·수정하고
-  WSL 타입/lint·268단위, 양 브라우저 최소 초점/주소8개를 확인했다. 실제 SDK의 coarse zoom29px·출처 마커 침범과 y259도 보완했다.
-- 후속 보완: 재조회 때 건수/조회 중 표시의4px 차이로 중심이 움직이는 경계와 SDK CSS layer 때문에 z6이 실제 z2로 남던 경계를
-  재현했다. `83cf7f1`에서 WSL 타입/lint·268단위와 작업면114·유가/도시철도36·기존여정24·실SDK16개를 확인했다.
-  이190개와 별도 실제 API/타일 검증은 해당 소스의 증거다.
-- 사전 독립 리뷰 반영: 좌표 없는 항구의 명시적 상세 진입, 비교 선택/지도 좌표 수와 독립된 목록 건수,
-  도시철도·일반철도의 정상 빈 검색 안내를 복원했다. 수정 전 실패 증거를 보존했고 후속 후보는
-  WSL 타입/lint·38파일272단위와 Chromium/Firefox 375/1440px 수정 경로16개를 통과했다.
-- 다음 한 작업: 후속 고정 후보의 영향 경로 회귀를 마감하고 PR132의 새 CI·Docker·James/Popper 재리뷰 판정을 정산한다.
-  C-MAP-01/T-MAP-01 전체 수용·CI/독립 리뷰는 아직 완료하지 않는다. 운영 빌드/배포는 다른 담당 범위다.
-- 별도 미완: 실제 일반/도시철도 시간표·주차 수집/분석 데이터, 주유소별 이력·브랜드/선호 조건/API 보완은 이 레이아웃 변경으로 완료 처리하지 않는다.
-
-## 2026-10-25 — 공항 주차장 관리자 뷰 이식
-
-- 현재 상태: `codex/admin-airport-parking`에서 parking-radar 네 뷰와 분석 네 탭을 `/parking`에 재사용했다.
-  내부 file 패키지·주차 범위 CSS·단일 공항/주차장 선택, 인증 읽기/요금 계산, 항공편·수집/Dagster 연결을 포함한다.
-  [범위·화면 대조·재현·검증 원장](reports/2026-10-25-admin-airport-parking.md).
-- 검증 상태: 독립 James의 d6aab36 지적 뒤 선택/배경 요청 경쟁, coarse320 달력과 스크롤 clamp를 재현·보완했다.
-  후속 WSL 공개142개·관리자 단독 설치282개/타입/lint/웹 빌드, 양 브라우저/coarse34UI·개발2개를 통과했다.
-  이전 source의137/30·Docker282/137은 새 소스의 수용으로 합산하지 않는다.
-  7d42의 부모 Docker에서 드러난 실제60ms 주기 시험 실패는 90ms 이벤트 루프 정체로 재현하고 해당 시험만 가상 시계로 보완했다.
-  제품·lock·vendor·UI 시험은 동일하며 후속 WSL/작성자1CPU Docker의 공개142개·테스트 타입이 통과했다. 독립 게이트는 새 커밋 기준이다.
-- 다음 한 작업: [PR135](https://github.com/digitie/kor-travel-transport/pull/135)의 새 후보를 고정해 Docker2차·CI·독립 재리뷰와 실제 API를 대조한다.
-  운영 빌드/배포와 분석 캐시 복구는 별도 담당 범위다.
+- 현재 코드: Common46 main `b7ef286`의 dev.8 정규 tarball, Weather170 main `5d7a6e1`,
+  Transport132 정확 `6553168`→main `1d807fd`는 필수 CI와 두 독립 최종 코드 리뷰 뒤 머지됐다.
+- 검증: Transport275단위·작성자 UI74·실제 API/타일8·좌표 없는 항구2, Weather253단위와 실제 API/provider/browser를 확인했다.
+  과거268/272단위·190UI는 중간 후보의 이력이며 [최종 지도 원장](reports/2026-10-25-map-workspace-layout.md)과 분리한다.
+- 다음 한 작업: Map 본체/다른 소비자·실기기·운영 배포 후 작업면 계약을 수용한다. C-MAP-01/T-MAP-01 상위 task와
+  실제 철도 시간표·주차 운영·주유소 이력/브랜드·선호 조건은 미완 상태를 유지한다.
 
 ## 2026-10-25 — 관리자 UI 작은 수정 첫 묶음
 
@@ -44,16 +26,6 @@
   [작업/로컬 검증 기록](reports/2026-10-25-admin-ui-compact-batch.md).
 - 머지 상태: 최종 PR Checks·독립 리뷰 뒤 main `c027aceacc865ebee09258b5feb87e7aa5ee2b08`에 머지했다.
   Common 가용 지도 높이는 위 다음 묶음에서 진행하며, 철도/주차 데이터·주유소별 이력·브랜드 조건은 별도 후속이다.
-
-## 2026-10-25 — 공항 주차 분석용 공동운항 SDK 소비
-
-- 현재 상태: 같은 `fid`의 공동운항 개별 편명이 SDK에서 거부되는 원인을 재현하고 SDK PR12를
-  요청 공항/방향 P2까지 보완한 `d6a1285111883f6942ba2cedafd2efcdcbef037b`로 소비한다. 기존 API/DTO/화면은 유지한다.
-- 검증: 최종 SDK 오프라인304개와 소비자 집중21개를 통과했다. 최초후보 실제 김포 하루6GET/473편을
-  최종 SDK/API로 외부GET추가없이 재생해353마커의 편명473개·방향/예정시각·원본 보존을 확인했다.
-  [범위·근거·미완료](reports/2026-10-25-parking-flight-codeshare.md).
-- 다음 한 작업: 고정 소비자 후보의 WSL 전체·격리Compose/PG·CI/두 독립 리뷰를 완료하고,
-  최초후보 전체 실행은 대체·보존했다. SDK main 포함은 완료됐으며 소비자 검증 후 머지한다. 운영·PR134/135는 별도다.
 
 ## 2026-10-25 — 웹·Android/iOS 조사와 후속 설계 문서
 

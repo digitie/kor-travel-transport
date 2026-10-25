@@ -1,5 +1,15 @@
 # tasks-done.md — 완료 작업 아카이브
 
+## 2026-10-26 — 공항 주차장 관리자 뷰 이식 코드
+
+- [x] **T-PARK-UI-01 / P1** — parking-radar 네 뷰·분석 네 탭을 관리자 `/parking`에 정본 소스로 재사용하고
+  단일 선택·상태 보존·인증 조회/요금 계산·항공편/수집/Dagster 연계를 연결했다.
+- 정확 `ccfaa64`의 독립 Docker 공개142/관리자282·타입, 단독 설치·빌드·34UI/개발2, 필수 CI와 James/Popper 최종 코드 PASS 뒤
+  [PR135](https://github.com/digitie/kor-travel-transport/pull/135)를 main `213c048`에 머지했다.
+- 실제 UI5 PASS/Firefox1440 첫 opening1 UNKNOWN과 미실행 실기기·주소/전화 확인은 후속으로 남긴다.
+  T-PARK-01/02 운영·성능/요금·Map 전체 소비자·철도/유가 backlog는 완료 범위 밖이다.
+  [통합 코드·검증·인계](reports/2026-10-26-parking-admin-integration-acceptance.md), [UI 상세 기록](reports/2026-10-25-admin-airport-parking.md).
+
 ## 2026-10-25 — 웹·Android/iOS 조사와 교통·날씨 설계 문서
 
 - [x] **T-UX-DOC-01 문서 작성·검토** — [조사](research/2026-10-25-mobility-ux.md)와

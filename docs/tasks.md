@@ -17,8 +17,9 @@
 - [ ] **T-PARK-01 / P0** — 기존 job/run·원본·이력·cache·outlook/API 시각 대조, 원시/파생 정지 원인 재현.
 - [ ] **T-PARK-02 / P0** — 확인된 수집→분석 단절 복구, watermark·부분 성공·멱등/재시작·캐시 신선도 수용.
   기존 Dagster 경로에서 current5/cache80 불일치를 정상·부분 성공으로 재현하고 원본 commit 뒤 갱신·신선도 검증을
-  적용 중이다. 사전 리뷰 보완 후 WSL 집중102건/PG 전용1건 건너뜀·격리 PG122건을 통과했으나 전체·CI·독립 리뷰와 운영 수용은 미완이다.
-  [재현·검증 원장](reports/2026-10-25-parking-analytics-refresh.md).
+  적용한 PR134는 main `f5f96ef`에 머지했다. 소스별 전체/집중 검증·CI·두 코드 리뷰는 완료했으나 운영 자연5분 tick의
+  원본/run/cache/API 시각·값 대조는 미완이다. 성능·공식 요금·Firefox 첫 opening UNKNOWN/실기기 확인도
+  [통합 인계](reports/2026-10-26-parking-admin-integration-acceptance.md)에 남겼다. [복구 검증 원장](reports/2026-10-25-parking-analytics-refresh.md).
 - [ ] **T-FUEL-01 / P1** — 지도 상부 작은 bbox 요약·compact 주유소 상세·주소/출처 i·동일 필터 집계.
 - [ ] **T-FUEL-02 / P1** — 기존 저장 이력 기반 7일 여러 유종 차트·최신 가격 직접 표시·결측/효력/모바일 표, 휴게소 이력 공백 별도 수용.
 - [ ] **T-FUEL-03 / P1** — 기존 품질/시설 flag 의미 확인·API 필터/투영·선호 저장·공식 조건에 맞는 브랜드 마커/상세 자산.
@@ -37,14 +38,6 @@
 재감사/재설계 initiative(T-033~T-038)가 추가됐고, 2026-09-07 `T-038`(마지막 phase)
 완료로 이 initiative 전체가 끝났다. 계획 전체는
 `C:\Users\digit\.claude\plans\iridescent-finding-parasol.md`에 있다.
-
-## 2026-10-25 — 공항 주차장 관리자 뷰 이식
-
-- [ ] **T-PARK-UI-01 / P1** — 기존 parking-radar의 네 뷰·분석 네 탭·모든 상호작용을 관리자 `/parking`에
-  공용 소스로 연결하고 상단 선택·탭 상태·인증/계산·관측/빈값·모바일/PC·항공편/수집 이력 연계를 수용한다.
-  [범위와 검증 원장](reports/2026-10-25-admin-airport-parking.md). 독립 리뷰 보완 뒤 WSL 공개142개·관리자282개/타입/웹 빌드·브라우저34개는 통과했으며 새 Docker·CI·두 독립 재리뷰·
-  실제 API 대조와 머지는 미완료다. 7d42의 Docker 실시간 주기 시험 실패를 재현해 시험만 가상 시계로 보완했고
-  WSL/작성자 Docker의 공개142개·테스트 타입은 통과했다. T-PARK-01/02의 수집·분석 복구를 이 UI 작업으로 완료 처리하지 않는다.
 
 ## 진행 중인 작업 인덱스
 

@@ -1,3 +1,18 @@
+# 2026-10-26 — 공항 주차장 통합 코드 수용과 검증 인계
+
+- SDK PR12와 Transport PR134·135·136의 검증 소스·CI·James/Popper 최종 코드 PASS와 머지를 정산했다.
+  통합 코드 정본은 main `1e50dbc93a86818285a9de22a983d9fb5aa7fb9d`이며 예상 통합 tree와 전체 diff0이다.
+  `/parking`의 네 뷰/분석 네 탭·기존5분 job의 분석 갱신·SDK 공동운항 보존을 [통합 원장](reports/2026-10-26-parking-admin-integration-acceptance.md)에 연결했다.
+- 소비자 WSL1168통과/22건 건너뜀·exit0, PG1182통과/2실패/6건 건너뜀·exit1을 원본 그대로 보존했다.
+  공유 pytest bytecode의 WSL `co_filename` 경로를 분리하고 같은 두 assertion을 pycache prefix만 격리해2통과시켰다.
+  전체 PG 성공으로 바꾸지 않았으며 캐시 PR134의 독립 exit0/최종 건수 미회수도 별개로 남겼다.
+- 실제 UI5 PASS/Firefox1440 첫 opening1 UNKNOWN, SDK 최초 실제6GET/473편과 최종 재생의 추가GET0·353마커를 구분했다.
+  소유 PG·미리보기만 정리됐고 로그·원본·스크린샷은 보존했다. 로그 회수와 WSL/Docker pycache 경로 격리를 실패 패턴에 추가했다.
+- T-PARK-UI-01의 코드 이식만 완료 아카이브로 이동했다. T-PARK-01/02의 자연 수집 시각/운영, 성능·공식 요금·실기기와
+  Map 전체 소비자·철도·유가 등은 열린 상태다. 실제 배포/DB/instigator 기록은 변경하지 않았다.
+- 기존 지도 현재 상태의 대기 문구를 Common46·Weather170·Transport132 최종 CI/두 리뷰·머지로 정정했다.
+  중간268/272/190은 이력으로 두고 Map/다른 소비자·실기기·운영 후속은 [지도 원장](reports/2026-10-25-map-workspace-layout.md)에 유지했다.
+
 # 2026-10-25 — 공항 Dagster 수집과 분석 캐시 연결 복구 진행
 
 - 실제 job 두 번 실행 뒤 current5/기본 시계열80의 불일치를 정상·부분 성공 모두 재현했다.

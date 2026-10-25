@@ -22,6 +22,12 @@
   빠진 채 검증될 수 있다. 이미지 이름만 보고 현재 후보라고 판단하지 않는다. 의존성 캐시를
   재사용하더라도 현재 후보의 backend·scripts·Compose·계약 파일을 다시 복사하고, 파일
   해시·의존성 검사·전체 테스트로 확인한다. 예전 이미지의 통과 수를 현재 후보 증적으로 쓰지 않는다.
+- **A5 (실제 사례, PR134/136)**: 장시간 PG 실행의 CLI 출력 부착이 끊기면 마지막 진행 표시만 남고 최종 summary나
+  wrapper 종료 파일을 잃을 수 있다. → 시작 시 정확 source/컨테이너 ID·명령·소유 label을 기록하고 stdout/최종 summary,
+  wrapper exit와 독립 `docker wait`의 컨테이너 종료값을 각각 회수한다. `docker wait` 명령 자체의 exit0과 출력된
+  컨테이너 exit1은 구분한다. 부착 출력이 끊겼다고 실행을 성공/실패로 단정하거나 다른 실행의 건수를 가져오지 않는다.
+  PR134는 독립 컨테이너 exit0이나 최종 건수 미회수이며 출력 미회수의 원인은 확정하지 않았다. PR136은 전체 exit1과 summary를 모두 회수했다.
+  원문·부분 로그·환경 분리 재검증을 보존하며 [통합 검증 원장](../reports/2026-10-26-parking-admin-integration-acceptance.md)을 따른다.
 
 ## B. Git / 브랜치 / 원격
 
@@ -58,6 +64,12 @@
   점유하면, WSL에서 새로 띄운 서버가 정상이어도 Windows 쪽 브라우저/curl은 이전 프로세스
   응답을 본다. `netstat -ano`(Windows)로 점유 PID를 확인해 `wslrelay`(정상)인지 실제
   `node.exe`(비정상, kill 필요)인지 구분한다.
+- **C5 (실제 사례, PR136)**: 같은 source를 WSL 절대 경로와 Docker `/repo`에서 공유하면 pytest assertion rewrite의
+  기존 `.pyc`에 WSL `co_filename`이 남아 오류 위치 formatter가 basename으로 표시될 수 있다. → 두 환경의
+  `PYTHONPYCACHEPREFIX`를 소유한 별도 경로로 격리한다. `PYTHONDONTWRITEBYTECODE`만으로 기존 cache 읽기가
+  차단된다고 가정하지 않는다. 실패 시 소스/bytecode 해시와 실행하지 않고 파싱한 `co_filename`, 원래 traceback을 보존한다.
+  assertion/rewrite·제품 formatter를 바꾸지 말고 같은 소스/의존성에서 최소 환경 차이로 집중 재검증한다.
+  PR136의 원래 PG 전체1182통과/2실패/6건 건너뜀·exit1은 그대로 두고, 경로 격리 뒤 같은2개 통과를 별도로 기록했다.
 
 ## D. 이 저장소의 도메인 계약 (재확인 없이 바꾸면 안 되는 것)
 

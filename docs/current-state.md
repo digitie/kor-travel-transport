@@ -6,6 +6,16 @@
 > 최신 운영 방침: 공용 daemon RUNNING을 유지한다. 아래 10월 19일의 run0·OFF는 당시 관측이다.
 > 유가 개선의 최신 검증·배포 상태는 [10월 23일 기록](reports/2026-10-23-fuel-concurrency-rollout.md)을 따른다.
 
+## 2026-10-26 공항 주차장 코드 정산
+
+공항 주차장 관리자 네 뷰·분석 네 탭, 기존5분 job의 분석 캐시 갱신, 최종 공동운항 SDK 소비는
+PR134·135·136을 포함한 main `1e50dbc93a86818285a9de22a983d9fb5aa7fb9d`의 코드 정본이다.
+각 정확 소스의 필수 CI·두 최종 코드 리뷰, 전체/집중 검증과 원본 실패는
+[통합 수용·인계](reports/2026-10-26-parking-admin-integration-acceptance.md)를 따른다.
+
+운영의 자연 tick 시각/캐시·실제 항공편 성공 마커·성능·공식 요금·실기기와 Firefox 첫 opening UNKNOWN은 후속이다.
+배포 SHA·DB·instigator 상태는 기존 운영 수용 기록의 관측 범위를 유지한다.
+
 ## 2026-10-19 현재 Track2 수용 증거
 
 - 실제 ARM64 native backend 이미지 `5942696b548f`(소스 `a0b789df`)의 설치 Python37파일을 검증했다. 해당 이미지 빌드에서 Playwright Chromium 설치가 성공했으며 별도 headless 로컬 HTML/title/canvas/screenshot smoke도 exit0/OOM0으로 통과했다.
