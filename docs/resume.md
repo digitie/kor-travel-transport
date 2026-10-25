@@ -15,6 +15,14 @@
   C-MAP-01/T-MAP-01 전체 수용·CI/독립 리뷰는 아직 완료하지 않는다. 운영 빌드/배포는 다른 담당 범위다.
 - 별도 미완: 실제 일반/도시철도 시간표·주차 수집/분석 데이터, 주유소별 이력·브랜드/선호 조건/API 보완은 이 레이아웃 변경으로 완료 처리하지 않는다.
 
+## 2026-10-25 — 관리자 UI 작은 수정 첫 묶음
+
+- 현재 상태: [PR131](https://github.com/digitie/kor-travel-transport/pull/131)에서 공용 토큰의 navy/light·dark 연결,
+  단일 지도 stage 테두리, 유가 상부 요약·주소/출처 팝업, 실제 유가 추이 우선 배치를 적용했다.
+  [작업/로컬 검증 기록](reports/2026-10-25-admin-ui-compact-batch.md).
+- 머지 상태: 최종 PR Checks·독립 리뷰 뒤 main `c027aceacc865ebee09258b5feb87e7aa5ee2b08`에 머지했다.
+  Common 가용 지도 높이는 위 다음 묶음에서 진행하며, 철도/주차 데이터·주유소별 이력·브랜드 조건은 별도 후속이다.
+
 ## 2026-10-25 — 공항 주차 분석용 공동운항 SDK 소비
 
 - 현재 상태: 같은 `fid`의 공동운항 개별 편명이 SDK에서 거부되는 원인을 재현하고 SDK PR12를
@@ -24,14 +32,6 @@
   [범위·근거·미완료](reports/2026-10-25-parking-flight-codeshare.md).
 - 다음 한 작업: 고정 소비자 후보의 WSL 전체·격리Compose/PG·CI/두 독립 리뷰를 완료하고,
   SDK SHA가 main에 포함된 뒤 소비자 PR을 머지한다. 운영 수집·이미지·배포와 PR134/135 작업은 별도다.
-
-## 2026-10-25 — 관리자 UI 작은 수정 첫 묶음
-
-- 현재 상태: [PR131](https://github.com/digitie/kor-travel-transport/pull/131)에서 공용 토큰의 navy/light·dark 연결,
-  단일 지도 stage 테두리, 유가 상부 요약·주소/출처 팝업, 실제 유가 추이 우선 배치를 적용했다.
-  [작업/로컬 검증 기록](reports/2026-10-25-admin-ui-compact-batch.md).
-- 머지 상태: 최종 PR Checks·독립 리뷰 뒤 main `c027aceacc865ebee09258b5feb87e7aa5ee2b08`에 머지했다.
-  Common 가용 지도 높이는 위 다음 묶음에서 진행하며, 철도/주차 데이터·주유소별 이력·브랜드 조건은 별도 후속이다.
 
 ## 2026-10-25 — 웹·Android/iOS 조사와 후속 설계 문서
 
