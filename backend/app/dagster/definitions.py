@@ -224,7 +224,7 @@ async def _collect_airport_with_analytics(session, *, settings: Settings, trigge
             await session.commit()
         except Exception as exc:
             await session.rollback()
-            result["analytics_cache_error"] = _redacted_causes([str(exc)])
+            result["analytics_cache_error"] = _redacted_causes([_sanitize_op_error(exc, _secret_forms())])
     return result
 
 
@@ -236,13 +236,13 @@ def collect_airport_parking(context) -> dict[str, Any]:
         result = asyncio.run(_run_with_session(
             settings, functools.partial(_collect_airport_with_analytics, settings=settings), trigger=AIRPORT_TRIGGER,
         ))
-        cache_error = result.get("analytics_cache_error")
-        cache_metadata = {"analytics_cache_error": cache_error} if cache_error else {}
+        cache_failed = "analytics_cache_error" in result
+        cache_metadata = {"analytics_cache_error": result["analytics_cache_error"]} if cache_failed else {}
         if result.get("status") in {"failed", "partial_success"}:
             raise Failure(description="공항 수집의 성공분은 저장했지만 일부 수집이 실패했습니다.",
                           metadata={"run_id": result["collection_run_id"], "status": result["status"], **cache_metadata},
                           allow_retries=False)
-        if cache_error:
+        if cache_failed:
             raise Failure(description="공항 관측은 저장했지만 주차 분석 캐시 갱신에 실패했습니다.",
                           metadata={"run_id": result["collection_run_id"], "status": result["status"], **cache_metadata},
                           allow_retries=False)

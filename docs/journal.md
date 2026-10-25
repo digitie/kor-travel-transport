@@ -3,7 +3,8 @@
 - 실제 job 두 번 실행 뒤 current5/기본 시계열80의 불일치를 정상·부분 성공 모두 재현했다.
   기존 job의 원본 commit 뒤 분석 갱신을 연결하고, 파생 실패 rollback·원본 보존·0건 정상 tick 복구를 검증한다.
 - 캐시는 scope의 새 collected_at/10분 만료를 확인하며 재집계는 기존 airport advisory key를 쓴다.
-  WSL 집중98건·격리 PostgreSQL Compose118건과 migration/check를 통과했다.
+  사전 리뷰의 실제 예외 종류 소실을 재현·보완한 뒤 WSL 집중102건/PG 전용1건 건너뜀과
+  격리 PostgreSQL Compose122건, 기존 migration/check를 통과했다.
   WSL 전체·CI·두 독립 리뷰·운영 시각 대조는 아직 완료하지 않는다.
 - [범위·실패 재현·동시 적재·검증 원장](reports/2026-10-25-parking-analytics-refresh.md).
   frontend·새 schema/provider·운영 수집/스케줄·빌드/배포는 변경하지 않았다.

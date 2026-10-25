@@ -2,7 +2,7 @@
 
 - 현재 상태: Dagster 원본 수집 뒤 current5/시계열 cache80인 단절을 정상·부분 성공에서 재현했다.
   기존 job의 원본 commit 뒤 기본 분석 갱신·실패 분리·0건 정상 tick 복구와 캐시 신선도 검증을 적용 중이다.
-- 검증: WSL 집중98건·격리 PG Compose118건, 기존 migration/check를 통과했다. 실제 수집의 지연 commit과
+- 검증: 사전 리뷰 보완 후 WSL 집중102건/PG 전용1건 건너뜀·격리 PG Compose122건, 기존 migration/check를 통과했다. 실제 수집의 지연 commit과
   재집계 경합·원본 보존을 확인했다. [증거와 제한](reports/2026-10-25-parking-analytics-refresh.md).
 - 다음 한 작업: WSL 전체 회귀와 격리 PG 비용 계측을 마감한 뒤 최종 소스의 CI·독립 리뷰를 정산한다.
   운영 원본/run/cache 시각 대조는 미완이며 운영 실행·스케줄 변경·빌드/배포를 하지 않았다.

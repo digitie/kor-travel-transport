@@ -45,10 +45,11 @@ WSL의 격리 DB에서 실제 Dagster job을 두 번 실행했다. 첫 관측의
 | 검증 | 결과·증거 |
 |---|---|
 | 수정 전 실제 job→DB→동일 API | 정상·부분 성공2건 실패. `/tmp/codex-parking-analytics-red.log` |
-| WSL 집중 회귀 |98건 통과. 실제 job→개별4개/묶음 API, 파생 rollback·원본 보존·0건 복구·만료·지연 관측. `/tmp/codex-parking-analytics-green.log` |
-| 격리 PostgreSQL16 + Compose |118건 통과. `/tmp/codex-parking-analytics-pg.3c3ogm/focused.log` |
+| WSL 집중 회귀 | 사전 리뷰 보완 후102건 통과·PG 전용1건 건너뜀. 실제 job→개별4개/묶음 API, 파생 rollback·원본 보존·0건 복구·만료·지연 관측. `/var/tmp/codex-parking-analytics-tests.9Hb7tN/review-fixed-focused.log` |
+| 격리 PostgreSQL16 + Compose | 사전 리뷰 보완 후122건 통과. 신규12건은 실제 PG 모델로 검증했다. `/tmp/codex-parking-analytics-pg.3c3ogm/review-fixed-focused.log` |
 | PostgreSQL migration/check | 기존 head upgrade와 `alembic check` 통과. 같은 격리 project의 `migrate.log`, `alembic-check.log` |
-| WSL 전체 백엔드 | 진행 중. `/tmp/codex-parking-analytics-local-full.log` |
+| OpenAPI 정본 | `scripts/export_openapi.py --check` 통과. API DTO·공개 경로 변경 없음. |
+| WSL·Compose 전체 백엔드 | 이전 소스의 실행을 사전 리뷰 보완으로 중단했다. 새 고정 후보로 재실행할 예정이며 이전 부분 통과를 최종 통과로 합산하지 않는다. |
 | CI·독립 리뷰·운영 시각 대조 | 미완료. 원본 주차 수집·운영 job 실행·스케줄 변경·배포를 하지 않았다. |
 
 격리 PG 테스트는 실제 `CollectionService`의 저장 flush 뒤 commit을 대기시켰다. 이때
@@ -57,9 +58,65 @@ cache 잠금 시도는0건을 반환하고 이전 정상 캐시를 덮지 않았
 API는 이전 캐시를 거부했다. 두 재집계의 경합, rollback 뒤 재획득도 확인했다.
 
 첫 Docker 시도의 실패1건은 source mount가 compose 계약 파일을 가린 검증 환경 문제였다.
-현재 전체 source를 읽기 전용으로 `/repo`에 마운트한 뒤 같은118건을 다시 통과했다.
+현재 전체 source를 읽기 전용으로 `/repo`에 마운트한 뒤 같은118건을 다시 통과했고,
+사전 리뷰 보완 뒤122건도 별도로 통과했다.
 임시 PG는 외부 port·새 bridge network 없이 `network_mode: none`으로 실행하고 테스트
 backend만 같은 network namespace를 사용한다. 다른 프로젝트의 프로세스·DB를 조작하지 않는다.
+
+첫 WSL 전체 실행의 backup 실패는 `/tmp` tmpfs의 여유851MiB가 기존 최소2GiB guard에
+걸린 환경 문제였다. 같은 소스를 `/var/tmp`의 별도 basetemp에서 실행하면 해당 단독 사례는
+통과했다. 실패/중단 로그는 보존하고 다른 에이전트 파일은 정리하지 않았다.
+
+## 사전 리뷰의 재현 구분
+
+Popper가 제기한 빈 `TimeoutError`의 Dagster 성공 오인 주장은 sanitizer를 단순 통과
+lambda로 바꾼 AST 재현이었다. 실제 sanitizer는 빈 문자열을 입력 class명으로 바꿔,
+같은 실제 job/DB의 정상·부분 성공6건에서는 실패 상태가 유지됐다. 이를 실제 P1 재현으로
+보고하지 않는다. 이 확인 로그는 `popper-p1-red.log`이며 결과는6건 통과다.
+
+대신 빈 `TimeoutError`·`RuntimeError`의 metadata가 모두 `str`이 되어 예외 종류를 잃는
+문제는 실제 job/DB4건에서 재현했다(`blank-cause-red.log`). 원래 예외 객체를 기존
+`_sanitize_op_error`에 넘겨 종류와 비밀값 가림을 보존한 뒤 길이를 제한한다. 실패 여부는
+표시 문자열의 truthiness와 분리해 오류 키 존재로 판단한다. 원본 commit·부분 성공 우선·
+재집계 rollback·0건 tick 복구 회귀와 함께102/122건을 다시 통과했다.
+위 두 로그도 같은 `/var/tmp/codex-parking-analytics-tests.9Hb7tN`에 보존한다.
+
+## 격리 PostgreSQL 비용
+
+초기 제품 후보 `b70e412`에서 PostgreSQL16·backend CPU1개 제한의 같은 임시 project에 두 공항 각125,000개,
+합계250,000개 스냅샷을 만들었다. 설치 의존성의 version·Git commit은 backend
+`uv.lock` SHA256 `162153de878256e723a91a7f94a1c067b698b972370b0ae74145df9973fa2a95`와
+일치했다. 이 표본은 운영 관측이나 운영 지연 달성 증거가 아니다.
+후속 예외 표시/실패 판정 보완은 캐시 SQL과 정상 계산 경로를 변경하지 않았다.
+
+| 단건 캐시 조회30회 | 이전 수용 조건 중위 | 신선도 검증 중위 / p95 |
+|---|---:|---:|
+| 새 적재 없음 |2.343ms |3.296ms /4.277ms |
+| 다른 공항의 새 적재62,500개 |2.481ms |8.368ms /10.324ms |
+
+`EXPLAIN ANALYZE`는 기존 `ix_parking_snapshots_collected_at`을 사용했다. 새 적재가
+없으면 원본0행 탐색, SQL 실행0.103ms였다. 두 번째 표본은 인덱스에서 새62,500행을
+검사해 다른 공항 행을 제외했고 SQL 실행8.454ms였다. 과거250,000행 전체를 순차 탐색하지
+않았으나 새 적재량에 따른 비용은 존재한다. 기존 인덱스로 측정한 결과이며 새 인덱스를 추가하지 않았다.
+16개 metric/scope 캐시의 생성은5.823초, 변경 뒤 복구는5.935초였다.
+
+실제 FastAPI `TestClient`로 API까지 호출한5회 표본의 중위는 다음과 같다. 각 경로의
+첫 요청은 워밍업으로 제외했다. 이전 조건은 메모리에서만 교체했고 소스를 변경하지 않았다.
+
+| 조회 경로 | 기존 캐시 수용 | 현행 캐시 검증 | 기존 직접 계산 강제 miss | 만료 검증 후 직접 계산 |
+|---|---:|---:|---:|---:|
+| `/v1/parking/analytics/timeseries` |21.4ms |18.2ms |78.1ms |89.7ms |
+| `/v1/dashboard/analytics` |323.3ms |246.6ms |2011.9ms |2047.4ms |
+
+워밍업·병행 검증 부하를 포함하므로 현행 캐시 경로가 더 빠르다는 인과 결론으로 사용하지
+않는다. 신선도 검증의 단건 SQL 비용과 전체 응답 비용을 구분한다. 정상 캐시 경로는 이 표본에서
+1초 이내였지만 직접 계산 fallback은 약2초로 지연 목표를 충족하지 못했다. 원본이 commit되고
+재집계가 끝나기 전 또는 캐시 재생성이 실패했을 때도 정확한 원본을 반환하는 대신 이 비용을
+지불한다. 응답을 빠르게 보이게 하려고 이전 캐시를 최신으로 수용하지 않는다.
+
+원시 계획·계측은 같은 project의 `benchmark.json`, `api-benchmark.json`에 보존한다.
+첫 표본 생성의 timestamp 형 추론 오류는 명시적 `timestamptz` cast로 고친 테스트 준비 문제이며
+제품 오류·통과 횟수에 합산하지 않는다.
 
 ## 남은 수용
 

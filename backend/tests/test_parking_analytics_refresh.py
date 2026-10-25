@@ -110,7 +110,9 @@ def test_dagster_new_observation_reaches_existing_analytics_api(test_settings, m
 
 
 @pytest.mark.parametrize("partial_success", [False, True])
-def test_cache_failure_keeps_committed_source_and_zero_snapshot_tick_repairs_it(test_settings, monkeypatch, partial_success):
+@pytest.mark.parametrize("cache_error", [RuntimeError("serviceKey=secret-refresh-key&phase=analytics"), TimeoutError(), RuntimeError("")],
+                         ids=["message", "timeout_without_message", "runtime_without_message"])
+def test_cache_failure_keeps_committed_source_and_zero_snapshot_tick_repairs_it(test_settings, monkeypatch, partial_success, cache_error):
     app, _settings, provider = parking_app(test_settings, monkeypatch, partial_success=partial_success)
     with TestClient(app) as client:
         assert dagster_definitions.airport_collection_job.execute_in_process(raise_on_error=False).success
@@ -119,7 +121,7 @@ def test_cache_failure_keeps_committed_source_and_zero_snapshot_tick_repairs_it(
             cached = await session.scalar(select(AnalyticsCache).where(AnalyticsCache.metric == "timeseries"))
             cached.payload_json = {"invalid": "rolled back"}
             await session.flush()
-            raise RuntimeError("serviceKey=secret-refresh-key&phase=analytics")
+            raise cache_error
 
         monkeypatch.setattr(dagster_definitions, "refresh_default_analytics_cache", broken_cache_refresh)
         provider.observed_at += timedelta(minutes=10)
@@ -132,6 +134,8 @@ def test_cache_failure_keeps_committed_source_and_zero_snapshot_tick_repairs_it(
         assert failure.metadata["status"].value == ("partial_success" if partial_success else "success")
         assert failure.description.startswith("공항 수집의 성공분은 저장했지만" if partial_success else "공항 관측은 저장했지만")
         assert "secret-refresh-key" not in failure.metadata["analytics_cache_error"].value
+        if not str(cache_error):
+            assert type(cache_error).__name__ in failure.metadata["analytics_cache_error"].value
         response = client.get("/v1/dashboard/analytics", params={"airport_code": "GMP"})
         assert response.status_code == 200
         assert response.json()["time_series"]["items"][-1]["available_spaces"] == 5
