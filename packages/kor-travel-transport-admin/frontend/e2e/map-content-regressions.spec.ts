@@ -20,6 +20,38 @@ test.beforeEach(async ({ page }) => {
 });
 
 for (const width of [375, 1440]) {
+  test(`버스 지도 왕복은 검색어·전체 검색·결과와 초점을 보존한다 ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const terminals = ["서울", "부산", "대전"].map((name, index) => ({ id: index + 1, terminal_id: `T${index + 1}`, terminal_name: `${name} 시험터미널`, city_name: "시험도시", longitude: 127.1, latitude: 37.3, updated_at: at }));
+    let catalogs = 0, connections = 0;
+    await page.route("**/api/**", (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith("/bus/terminals")) { catalogs++; return route.fulfill({ json: { items: terminals, next_offset: null } }); }
+      if (url.pathname.endsWith("/bus/connections")) { connections++; return route.fulfill({ json: { items: [terminals[1]] } }); }
+      return route.fulfill({ json: { items: [] } });
+    });
+    await page.goto("/bus/express"); const count = page.locator(".kt-map-count");
+    await expect(count).toHaveText("3건 표시"); const initialCatalogs = catalogs; expect(initialCatalogs).toBeGreaterThan(0); expect(connections).toBe(0);
+    await expect(page.getByLabel("출발 터미널", { exact: true })).toBeHidden();
+    await page.getByRole("tab", { name: "목록", exact: true }).click();
+    const from = page.locator(".terminal-search").first(), to = page.locator(".terminal-search").nth(1);
+    const fromQuery = from.getByLabel("출발 터미널", { exact: true }), toQuery = to.getByLabel("도착 터미널", { exact: true });
+    await fromQuery.fill("서울"); await from.getByRole("button", { name: /서울 시험터미널 시험도시/ }).click();
+    const connectedOnly = to.getByRole("checkbox", { name: /연결 확인된 터미널/ });
+    await expect(to.locator(".station-results button")).toHaveCount(1);
+    await connectedOnly.uncheck(); await toQuery.fill("시험터미널");
+    await expect(count).toHaveText("3건 표시"); expect(connections).toBe(1);
+    await page.getByRole("tab", { name: "지도", exact: true }).click();
+    await expect(fromQuery).toBeHidden(); await expect(toQuery).toBeHidden();
+    await expect(page.getByRole("tab", { name: "지도", exact: true })).toBeFocused();
+    await page.keyboard.press("Tab");
+    expect(await page.evaluate(() => document.activeElement?.closest("[hidden], .terminal-search") === null)).toBe(true);
+    await page.getByRole("tab", { name: "목록", exact: true }).click();
+    await expect(fromQuery).toHaveValue("서울"); await expect(toQuery).toHaveValue("시험터미널"); await expect(connectedOnly).not.toBeChecked();
+    await expect(from.locator(".station-results button")).toHaveCount(1); await expect(to.locator(".station-results button")).toHaveCount(2); await expect(count).toHaveText("3건 표시");
+    expect(catalogs).toBe(initialCatalogs); expect(connections).toBe(1);
+  });
+
   test(`도시철도 검색 전 숨긴 역은 목록 건수에 포함하지 않는다 ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     const station = { ...port, id: 71, kind: "rail_station", name: "시험역", source: "kric_public_file", subtitle: "시험기관", line_names: ["시험선"], longitude: 127.1, latitude: 37.3 };
@@ -91,6 +123,7 @@ for (const width of [375, 1440]) {
     ports = mixedPorts;
     await openFilters(page); await page.getByRole("button", { name: "저장 정보 새로고침", exact: true }).click();
     await expect(choices).toHaveCount(6);
+    await page.getByLabel("항구 검색", { exact: true }).fill("시험");
     for (let i = 1; i < 5; i++) await choices.nth(i).check();
     await expect(choices.nth(5)).toBeDisabled();
     const sixth = page.getByRole("button", { name: "시험항구6 상세 보기", exact: true });
@@ -99,6 +132,7 @@ for (const width of [375, 1440]) {
     await expect(page.locator(".multi-search").getByRole("status")).toContainText("5/5곳 선택");
     await page.keyboard.press("Escape"); await expect(sixth).toBeFocused();
     await page.getByRole("tab", { name: "지도", exact: true }).click(); await page.getByRole("tab", { name: "목록", exact: true }).click();
+    await expect(page.getByLabel("항구 검색", { exact: true })).toHaveValue("시험");
     for (let i = 0; i < 5; i++) await expect(choices.nth(i)).toBeChecked();
   });
 

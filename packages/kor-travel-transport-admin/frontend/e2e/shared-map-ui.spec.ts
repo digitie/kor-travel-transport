@@ -42,7 +42,7 @@ for (const width of [375, 1440]) test(`공통 지도 필터·좌표·상세 오�
   const detail = page.getByRole("complementary", { name: "선택 장소 상세" });
   await expect(detail).toBeVisible();
   await expect(detail).toHaveCSS("position", "absolute");
-  const stage = await page.locator(".kt-map-stage").boundingBox();
+  const stage = await page.locator(".kt-map-stage:visible").boundingBox();
   const overlay = await detail.boundingBox();
   expect(overlay!.x).toBeGreaterThanOrEqual(stage!.x);
   expect(overlay!.x + overlay!.width).toBeLessThanOrEqual(stage!.x + stage!.width + 1);

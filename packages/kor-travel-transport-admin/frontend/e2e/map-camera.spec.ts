@@ -28,7 +28,7 @@ test.describe("실제 SDK 터치 조작부", () => {
     }
     await expect.poll(() => canvas.evaluate((element) => { const map = (element as HTMLElement & { _maplibreMap: MapLibreMap })._maplibreMap; return map.loaded() && !map.isMoving(); })).toBe(true);
     await expect(page.locator(".kt-map-readout")).toContainText("0건 표시");
-    const stage = page.locator('[data-slot="map-stage"]');
+    const stage = page.locator('[data-slot="map-stage"][data-view="map"]');
     const before = (await stage.boundingBox())!;
     const viewportResponse = page.waitForResponse((response) => new URL(response.url()).searchParams.get("zoom") === "12");
     await canvas.evaluate((element) => (element as HTMLElement & { _maplibreMap: MapLibreMap })._maplibreMap.jumpTo({ center: [128.5316, 37.6031], zoom: 12.5 }));
@@ -55,7 +55,7 @@ test.describe("실제 SDK 터치 조작부", () => {
     const canvas = page.locator(".maplibregl-map");
     await expect(page.locator(".kt-map-coordinates")).toContainText("center");
     await expect(page.locator(".kt-map-readout")).not.toContainText("조회 중");
-    const stage = (await page.locator('[data-slot="map-stage"]').boundingBox())!;
+    const stage = (await page.locator('[data-slot="map-stage"][data-view="map"]').boundingBox())!;
     const zoom = page.locator(".maplibregl-ctrl-zoom-in");
     const zoomBox = (await zoom.boundingBox())!;
     const attribution = page.locator(".maplibregl-ctrl-attrib");

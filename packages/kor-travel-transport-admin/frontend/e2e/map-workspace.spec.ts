@@ -57,7 +57,7 @@ for (const width of [320, 375, 1440]) for (const path of routes) test(`${path} $
     await expect(page.locator('[data-slot="map-workspace"]')).toHaveCount(0);
     await page.getByRole("button", { name: "공항 지도", exact: true }).click();
   }
-  const stage = page.locator('[data-slot="map-stage"]');
+  const stage = page.locator('[data-slot="map-stage"]:visible');
   await expect(stage).toBeVisible();
   const bounds = (await stage.boundingBox())!;
   await testInfo.attach("작업면 치수", { body: JSON.stringify({ path, width, height, stage: bounds }), contentType: "application/json" });
@@ -85,7 +85,7 @@ for (const width of [414, 768]) for (const path of routes) test(`${path} ${width
   await page.setViewportSize({ width, height: 900 });
   await page.goto(path);
   if (path === "/flights") await page.getByRole("button", { name: "공항 지도", exact: true }).click();
-  const stage = page.locator('[data-slot="map-stage"]');
+  const stage = page.locator('[data-slot="map-stage"]:visible');
   await expect(stage).toBeVisible();
   const bounds = (await stage.boundingBox())!;
   expect(bounds.height).toBeGreaterThan(300);
@@ -111,7 +111,7 @@ test.describe("터치 지도 접근", () => {
     await page.goto("/fuel");
     const summary = page.getByRole("region", { name: "현재 지도 범위 유가 통계" });
     await expect(summary).toContainText("1,700");
-    if (width === 375) expect((await page.locator('[data-slot="map-stage"]').boundingBox())!.y).toBeLessThanOrEqual(240);
+    if (width === 375) expect((await page.locator('[data-slot="map-stage"]:visible').boundingBox())!.y).toBeLessThanOrEqual(240);
     for (const node of [summary.locator("header"), summary.locator("dl"), summary.getByRole("status"), page.locator(".map-feedback").getByRole("alert")]) expect(await clipping(node)).toMatchObject({ fullyVisible: true });
     for (const control of [page.locator('[data-slot="map-filter-trigger"]'), page.locator('[data-slot="map-workspace-expand"]'), page.getByRole("tab", { name: "지도", exact: true }), summary.getByRole("button", { name: "지도 범위 유가 통계 안내" })]) expect((await control.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -144,7 +144,7 @@ test.describe("터치 지도 접근", () => {
     await price.scrollIntoViewIfNeeded();
     expect(await clipping(price)).toMatchObject({ fullyVisible: true });
     expect(await clipping(page.getByRole("button", { name: "상세 닫기", exact: true }))).toMatchObject({ fullyVisible: true });
-    await testInfo.attach("확장 작업면 치수", { body: JSON.stringify({ variant, stage: await page.locator('[data-slot="map-stage"]').boundingBox(), summary: await summary.boundingBox() }), contentType: "application/json" });
+    await testInfo.attach("확장 작업면 치수", { body: JSON.stringify({ variant, stage: await page.locator('[data-slot="map-stage"]:visible').boundingBox(), summary: await summary.boundingBox() }), contentType: "application/json" });
     await page.screenshot({ path: `test-results/workspace-${testInfo.project.name}-${variant}-expanded.png`, animations: "disabled" });
     await detail.focus();
     await page.keyboard.press("Escape");
@@ -231,7 +231,7 @@ for (const [path, hash] of [["/rail", "#general-rail-timetable"], ["/rail/metro"
   }
   await page.getByRole("button", { name: "지도 크게 보기", exact: true }).click();
   if (await filter.getAttribute("aria-expanded") === "false") await filter.click();
-  const stage = page.locator('[data-slot="map-stage"]');
+  const stage = page.locator('[data-slot="map-stage"]:visible');
   const height = (await stage.boundingBox())!.height;
   await page.locator(`.kt-map-filter-panel-body a[href="${hash}"]`).click();
   const target = page.locator(hash);

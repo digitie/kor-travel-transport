@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, useState } from "react";
+import { act, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Place } from "@/lib/journey";
@@ -111,5 +111,36 @@ test("숨긴 기본 장소는 목록 건수에 넣지 않고 추가 목록 지�
     expect(container.querySelector(".kt-map-count")!.textContent).toBe("0건 표시");
     await act(async () => root.render(<TransportMap places={[station]} view="list" listPlaces={false} listFeatureCount={3} />));
     expect(container.querySelector(".kt-map-count")!.textContent).toBe("3건 표시");
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
+test("지도 왕복은 목록 내부 검색 상태를 언마운트하지 않는다", async () => {
+  function Search() { const [query, setQuery] = useState(""); return <input aria-label="목록 검색" value={query} onChange={(event) => setQuery(event.target.value)} />; }
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  const tab = (name: string) => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((node) => node.textContent?.includes(name))!;
+  try {
+    await act(async () => root.render(<TransportMap places={[station]} listPlaces={false} listContent={<Search />} />));
+    await act(async () => tab("목록").click());
+    const input = container.querySelector<HTMLInputElement>('[aria-label="목록 검색"]')!;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "서울"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(input.value).toBe("서울");
+    await act(async () => tab("지도").click());
+    await act(async () => tab("목록").click());
+    expect(container.querySelector<HTMLInputElement>('[aria-label="목록 검색"]')!.value).toBe("서울");
+    expect(container.querySelector('[aria-label="목록 검색"]')).toBe(input);
+    expect(fetch).not.toHaveBeenCalled();
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
+test("숨긴 목록에는 선택 상세를 중복 마운트하지 않는다", async () => {
+  const mounted = vi.fn(), unmounted = vi.fn();
+  function Inspector() { useEffect(() => { mounted(); return () => { unmounted(); }; }, []); return <p data-testid="inspector-probe">선택 장소 정보</p>; }
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  try {
+    await act(async () => root.render(<TransportMap places={[station]} selectedPlace={station} details={<Inspector />} />));
+    expect(mounted).toHaveBeenCalledTimes(1); expect(container.querySelectorAll('[data-testid="inspector-probe"]')).toHaveLength(1);
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((node) => node.textContent?.includes("목록"))!.click());
+    expect(mounted).toHaveBeenCalledTimes(2); expect(unmounted).toHaveBeenCalledTimes(1);
+    expect(container.querySelectorAll('[data-testid="inspector-probe"]')).toHaveLength(1);
   } finally { await act(async () => root.unmount()); container.remove(); }
 });
