@@ -133,7 +133,9 @@ def test_existing_api_serializes_real_sdk_codeshare_without_new_contract(client,
     assert calls == [("depart", "1"), ("arrival", "1")]
 
 
-@pytest.mark.parametrize("fault", ["duplicate", "invalid_master", "invalid_schedule"])
+@pytest.mark.parametrize("fault", [
+    "duplicate", "invalid_master", "invalid_schedule", "wrong_airport", "reversed_departure",
+])
 def test_sdk_integrity_errors_remain_upstream_errors_in_existing_api(client, sdk_replay, fault) -> None:
     public, calls = sdk_replay
     rows = public["departure"]
@@ -141,8 +143,12 @@ def test_sdk_integrity_errors_remain_upstream_errors_in_existing_api(client, sdk
         rows[1] = deepcopy(rows[0])
     elif fault == "invalid_master":
         rows[1]["masterflightid"] = "conflicting-master"
-    else:
+    elif fault == "invalid_schedule":
         rows[1]["scheduledatetime"] = "202610250610"
+    else:
+        for row in rows:
+            row["depAirportCode"] = "CJU"
+            row["arrvAirportCode"] = "PUS" if fault == "wrong_airport" else "GMP"
     client.app.state.flight_status_service = FlightStatusService(_settings())
     response = client.get("/v1/flights/status", params={"airport_code": "GMP", "local_date": "2026-10-25"})
     assert response.status_code == 200
@@ -153,3 +159,19 @@ def test_sdk_integrity_errors_remain_upstream_errors_in_existing_api(client, sdk
     assert "conflicting-master" not in response.text
     assert "offline-only-key" not in response.text
     assert calls == [("depart", "1")]
+
+
+def test_shared_arrival_route_rejects_wrong_requested_airport_in_api(client, sdk_replay) -> None:
+    public, calls = sdk_replay
+    for row in public["arrival"]:
+        row["depAirportCode"], row["arrAirportCode"] = "GMP", "CJU"
+        row.pop("arrvAirportCode", None)
+    client.app.state.flight_status_service = FlightStatusService(_settings())
+    response = client.get("/v1/flights/status", params={"airport_code": "GMP", "local_date": "2026-10-25"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "upstream_error"
+    assert payload["items"] == []
+    assert payload["error_message"]
+    assert "offline-only-key" not in response.text
+    assert calls == [("depart", "1"), ("arrival", "1")]
