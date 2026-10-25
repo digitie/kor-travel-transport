@@ -34,10 +34,19 @@ Popper 1명이 Transport `c2afaaf`/Weather `c4783d7`을 독립 읽기 전용 검
 ‘등록하지 않은 장소’가 즐겨찾기인지 DB location인지 모호하고 이름→좌표→저장 anchor·필터/부재 연결이 빠진 문제다.
 현재 nearby/resolve에는 provider/kind가 없음을 소스에서 재확인하고, Weather 설계·조사·W-UX-03에
 기존 Geo 검색 계약 검증/지도 지점 대안·대표성/부재·정렬/LIMIT 전 필터·자동등록/추가 수집 없음과 수용 시나리오를 보완했다.
-동일 리뷰어의 수정 재확인을 진행한다. 리뷰어는 파일·앱·빌드·서비스·외부 PR을 변경하지 않았다.
+동일 리뷰어가 Transport `10f37d8073a8b038498f3b7ef0e0f00a0fe5c29b`/Weather `abc05abe271188559c1255970691a5cc83c9c2ce`를
+재검토해 **PASS, 기존 P2 해소·잔여 P0/P1/P2 없음**을 확인했다. 리뷰어는 파일·앱·빌드·서비스·외부 PR을 변경하지 않았다.
+이후 변경은 이 결과·완료 원장·인수인계 정산뿐이며 기능 설계는 바꾸지 않았다.
 
 문서 Draft PR: [Transport #130](https://github.com/digitie/kor-travel-transport/pull/130),
 [Weather #168](https://github.com/digitie/kor-travel-weather/pull/168). 두 PR 모두 문서 변경만 포함한다.
+최종 머지 상태·SHA는 두 PR의 GitHub 메타데이터가 정본이다. 이번 문서 PR은 사용자 지시대로 CI 결과를 기다리지 않는다.
+
+## 최종 문서 검증
+
+신규 조사/설계/검토 문서에서 양쪽 각각 상대 링크 6개·교차 저장소 링크 3개를 검사해 대상 파일 존재를 확인했다.
+외부 참조 목록은 Transport 42개·Weather 16개이며 전체 URL 실시간 가용성 검사는 아니다.
+최종 정산은 양쪽 각각 Markdown 8개이며 기능/설정/잠금 파일이 없고 `git diff --check`를 통과했다.
 
 ## 실행하지 않은 검증
 

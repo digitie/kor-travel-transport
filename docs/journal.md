@@ -7,7 +7,9 @@
 - 주차 job 부재가 아니라 수집 경로별 분석 갱신 차이, 이미 존재하는 overlay·품질 flag·서비스 이력을 확인했다.
   실제 운영 원인 확정·기능 수정·DB/스케줄 변경·빌드/배포는 수행하지 않았다.
 - 사용자 지시의 문서 한정 예외: 두 차례 정리·독립 적대 리뷰 1명 후 CI 결과를 기다리지 않고 머지한다.
-  수행 결과는 [검토 기록](reports/2026-10-25-mobility-design-review.md)에 이어 정산한다.
+  두 차례 정리·Popper 1명의 Weather P2 수정·재검토 PASS(잔여 지적 없음)를 마쳤다.
+  [검토 기록](reports/2026-10-25-mobility-design-review.md), [Transport #130](https://github.com/digitie/kor-travel-transport/pull/130),
+  [Weather #168](https://github.com/digitie/kor-travel-weather/pull/168). 문서 작성/검토만 완료 처리하고 기능 작업은 백로그에 남겼다.
 
 # 2026-10-24 — VadaHub 배편 통합 진행
 

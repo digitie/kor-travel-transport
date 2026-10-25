@@ -3,8 +3,11 @@
 - 현재 상태: 기존 admin 구조를 유지하는 범위로 [조사](research/2026-10-25-mobility-ux.md)와
   [설계](design/2026-10-25-mobility-improvements.md)를 작성했다. 소비자처럼 조회하는 경험과 필요한 API 보완을 함께 다룬다.
   overlay·주차 job·품질 필드·주유소 서비스 이력은 이미 있는 구현을 재사용하고, 실제 시간표·주차 데이터 단절은 별도 재현한다.
-- 다음 한 작업: 양쪽 문서 두 차례 정합 점검 뒤 독립 적대 리뷰어 1명 검토·수정, 문서 Draft PR을 CI 결과 없이 머지한다.
-  [검토 기록](reports/2026-10-25-mobility-design-review.md). 이 문서 작업에서는 기능 코드·스키마·운영·빌드·배포를 변경하지 않는다.
+- 문서 검토 상태: 두 차례 정합 점검과 독립 Popper 1명의 P2 수정 재검토 PASS를 마쳤다.
+  [검토 기록](reports/2026-10-25-mobility-design-review.md). 최종 머지 상태는
+  [Transport #130](https://github.com/digitie/kor-travel-transport/pull/130)·[Weather #168](https://github.com/digitie/kor-travel-weather/pull/168)이 정본이다.
+- 다음 구현의 선행 작업: C-MAP-01의 실제 레이아웃/토큰 대조와 T-RAIL-01·T-PARK-01의 실패/데이터 단절 재현이다.
+  이번 문서 작업에서 기능 코드·스키마·운영·빌드·배포는 변경하지 않았다.
 - 기능 구현은 새 작업 ID C-MAP-01/T-MAP-01·T-RAIL·T-PARK·T-FUEL 등으로 추적한다. 아래 10/12지표·실시간표 등의
   과거 기록은 당시 구현/검증 이력이며, 실제 운영의 현재 유용성·정상 동작을 보장하지 않는다.
 
