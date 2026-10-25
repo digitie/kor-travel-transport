@@ -68,18 +68,22 @@ POST는 `fees/calculate` 하나만 허용한다. 세션·origin·JSON 매체 유
 
 ## 검증 상태
 
-WSL1차에서 동일한 주차 소스를 대조했다. 운영 API 수용은 별도 담당자의 조회 결과로만 정산하며 아래 통제된 응답 성공과 구분한다.
+WSL2 1차에서 동일한 주차 소스를 대조했다. 운영 API 수용은 별도 담당자의 조회 결과로만 정산하며 아래 통제된 응답 성공과 구분한다.
 
 - 공개 앱: 14파일 137개 단위, 테스트 타입, 프로덕션 웹 빌드 통과. 요금 6개는 KST·UTC 각각 통과했다.
 - 관리자 단독 설치: 공개 `frontend/node_modules`가 없는 별도 폴더에서 기본 `npm ci`를 실행했다.
   설치된 공용 패키지가 symlink가 아닌 실제 디렉터리이며, 배포 대상 25파일의 작업 소스·복사 소스·설치 결과가 모두 byte 단위로 같았다.
   `npm pack --dry-run --json`에 앱 라우트·환경 파일·테스트·생성물·`node_modules`가 포함되지 않았다.
 - 관리자: 단독 설치 환경의 38파일 280개 단위, 타입·lint 0·프로덕션 웹 빌드 통과.
+  PR132 main `1d807fd` 위에 본인 커밋만 재배치한 코드 후보 `4007a9d`에서 main의 추가 2개를 포함한 282개·타입/lint·빌드를 다시 통과했다.
+  저장소에 커밋한 단일 설정으로 전체 30개도 이 후보에서 다시 통과했다.
 - 실제 Chromium/Firefox: 320·375·414·768·1440px 네 뷰/분석 네 탭, 선택·탭 왕복·요금 POST,
   실패/미지원/빈 관측/실제0, 정상 `airports=[]`의 분석·과거조회·요금 종료, 초기 bootstrap 실패의 허위 pending 해제,
   375px/200% 달력 Portal·10/30/60분·미래 금지·Escape/초점, 공항/주차장 항공편 왕복·운영/정책 안내,
   15초 변경 표지 polling/숨은 분석 fanout 방지, 공개 앱 네 경로를 26/26 통과했다.
 - coarse pointer: Chromium·Firefox의 375px 네 뷰와 200% 달력 4/4 통과했다. 필터·새로고침·탭의 44px 실제 높이를 단언한다.
+- Turbopack 개발 모드: 같은 관리자 단독 설치에서 `next dev`를 실행하고 `http://localhost:12355`의 375px 네 뷰·분석 네 탭·요금 POST·탭 상태 1개 흐름을 통과했다.
+  처음 `0.0.0.0` 바인딩에 `127.0.0.1`로 접속한 실행은 Next의 dev HMR origin 거부로 hydration이 보류됐다. 이 환경 실패를 `evidence/dev-origin`에 보존하고, 허용 origin을 넓히는 코드 변경 없이 localhost로 검증했다.
 - 중간의 단순 DOM 통과만으로 최종 수용하지 않았다. 스크린샷에서 잘못 중첩한 CSS 범위 때문에 지표421.95px·SVG stroke 없음이 보였고
   같은 치수/stroke 단언으로 실패를 보존했다. `.parking-admin` 접두어만으로 범위를 제한하고 재검증했다.
   짧은 화면의 모바일 rail173.92px와 768px 메뉴179px도 재현해 기존 지도 페이지의 컴팩트 header/menu 규칙을 `/parking`에 재사용했다.
@@ -96,11 +100,12 @@ E2E_PARKING_ADMIN=true E2E_BASE_URL=http://127.0.0.1:12355 E2E_PUBLIC_PARKING_BA
 ```
 
 개인 WSL 증거는 `/home/digitie/dev/admin-parking-standalone-20261025`의 `evidence/`와 관리자 `test-results/`에 보존한다.
+전체 30개의 고정 코드 결과는 `evidence/final-4007/parking-ui.json`, 개발 모드 1개는 별도 후속 `test-results/parking-ui.json`이다.
 프로젝트 저장소에는 시험용 세션·생성된 웹 산출물·스크린샷을 넣지 않는다.
 
 ## 남은 수용
 
-- 최신 main으로 이 변경만 재배치한 후보의 검사 정산과 Turbopack 개발 모드, WSL+Docker 2차 검증.
+- 같은 코드에 대한 WSL+Docker 2차 검증. 문서 정산 후에도 공개/관리자 frontend 전체 tree와 lock/vendor 해시를 유지한다.
 - PR132 main `1d807fd` 위 Draft PR, 전체 CI와 두 독립 적대적 리뷰.
 - 실제 운영 API·관측/집계 시각·제공기관 범위의 대조. 운영 자료가 비어 있으면 브라우저 fixture 성공으로 대체하지 않는다.
 - 수집→분석 캐시의 단절 복구는 별도 backend 작업의 검증·PR을 따른다.
