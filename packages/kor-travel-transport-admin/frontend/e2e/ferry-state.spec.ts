@@ -18,6 +18,7 @@ test("배편 선택 해제는 로딩을 해제하고 딥링크 새로고침은 �
     await route.fulfill({ json: { service_date: params.get("date"), items: [], missing_port_ids: params.get("port_ids")!.split(",") } });
   });
   await page.goto("/ferry?port=A");
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
   await expect(page.getByRole("checkbox", { name: /A항구/ })).toBeChecked();
   await page.getByRole("checkbox", { name: /A항구/ }).uncheck();
   await expect(page.getByRole("button", { name: "저장 정보 새로고침" })).toBeEnabled();
@@ -26,7 +27,7 @@ test("배편 선택 해제는 로딩을 해제하고 딥링크 새로고침은 �
   await page.getByRole("checkbox", { name: /B항구/ }).check();
   await page.getByRole("button", { name: "저장 정보 새로고침" }).click();
   await expect(page.getByRole("checkbox", { name: /B항구/ })).toBeChecked();
-  await expect(page.getByText("2/5곳 선택", { exact: false })).toBeVisible();
+  await expect(page.locator(".multi-search").getByText("2/5곳 선택", { exact: false })).toBeVisible();
 });
 
 test("한국 자정 이후 배편 입력·제목·요청 날짜가 함께 전환된다", async ({ page }) => {
@@ -37,6 +38,8 @@ test("한국 자정 이후 배편 입력·제목·요청 날짜가 함께 전환
     return route.fulfill({ json: { service_date: date, items: [{ port_id: "A", service_date: date, fetched_at: "2026-09-27T00:00:00Z", items: [] }], missing_port_ids: [] } });
   });
   await page.goto("/ferry?port=A");
+  const filters = page.locator('[data-slot="map-filter-trigger"]');
+  if (await filters.isVisible()) await filters.click();
   await expect(page.getByLabel("운항일")).toHaveValue("2026-09-27");
   await expect.poll(() => dates).toContain("2026-09-27");
   await page.clock.runFor(31_000);
@@ -57,6 +60,7 @@ for (const width of [375, 1440]) test(`같은 이름의 항구는 코드로 선�
     return route.fulfill({ json: { service_date: params.get("date"), missing_port_ids: [], items: ids.map((code) => ({ port_id: code, port_name: "육도", service_date: params.get("date"), fetched_at: new Date().toISOString(), items: [{ vessel_name: code === codes[0] ? "첫째호" : "둘째호", departure_port_name: "육도", arrival_port_name: "검증항", departure_planned_time: "0900", arrival_planned_time: "1000", fare: "10000" }] })) } });
   });
   await page.goto(`/ferry?port=${codes[1]}`);
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
   await expect(page.getByRole("checkbox", { name: /육도 · SEA96540/ })).toBeChecked();
   await expect(page.getByRole("checkbox", { name: /육도 · SEA10070/ })).not.toBeChecked();
   await expect(page.getByText("둘째호", { exact: true })).toBeVisible();
@@ -78,7 +82,8 @@ test("알 수 없는 항구 코드 딥링크는 이름으로 임의 연결하지
   let calls = 0;
   await page.route("**/transport/ports/timetables?**", (route) => { calls++; return route.fulfill({ json: {} }); });
   await page.goto("/ferry?port=UNKNOWN");
-  await expect(page.locator("p[role=alert]")).toContainText("링크의 항구 코드");
+  await expect(page.getByRole("alert").filter({ hasText: "링크의 항구 코드" })).toBeVisible();
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
   expect(calls).toBe(0);
   await expect(page.getByRole("checkbox", { name: /A항구/ })).not.toBeChecked();
 });

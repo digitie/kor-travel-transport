@@ -80,9 +80,10 @@ export function GeneralRailJourney() {
   const current = response.key === key ? response : undefined;
   const trips = current?.data;
   const rows = trips?.items.filter((row) => !futureOnly || (serviceInstant(row.departure_planned_time, trips.service_date) ?? -Infinity) >= clock).sort((a, b) => (serviceInstant(a.departure_planned_time, trips!.service_date) ?? Infinity) - (serviceInstant(b.departure_planned_time, trips!.service_date) ?? Infinity));
-  return <section className="journey-workbench">
+  return <section className="journey-workbench map-route">
     <GeneralRailGuide />
-    <div id="general-rail-timetable" className="journey-map-target" tabIndex={-1} />
+    <div id="general-rail-timetable" className="journey-map-target map-route-followup" tabIndex={-1}>
+    <a className="inline-link" href="#general-rail-map">지도 작업면으로</a>
     {catalogError ? <p role="alert">{catalogError} <button type="button" className="inline-link" onClick={() => setReload((v) => v + 1)}>다시 조회</button></p> : !catalog ? <p role="status">열차 종류와 지역을 확인하는 중입니다…</p> : null}
     {catalog?.stale ? <p>갱신에 실패한 이전 기준정보입니다. 조회 기준 {dateTime(catalog.fetched_at)}</p> : null}
     <MapFilterBar><MapFilterField label="열차 종류" htmlFor={`${id}-grade`}><select id={`${id}-grade`} value={grade} onChange={(event) => setGrade(event.target.value)}><option value="">모든 열차</option>{catalog?.train_classes.map((row) => <option key={row.code} value={row.code}>{row.name}</option>)}</select></MapFilterField><MapFilterField label="출발일" htmlFor={`${id}-date`}><input id={`${id}-date`} type="date" min={today} max={seoulDate(9)} value={effectiveDate} onChange={(event) => setDate(event.target.value)} /></MapFilterField></MapFilterBar>
@@ -93,5 +94,6 @@ export function GeneralRailJourney() {
       <label className="inline-checkbox"><input type="checkbox" checked={futureOnly} onChange={(event) => setFutureOnly(event.target.checked)} />지금 이후만</label>
       {trips ? <><p className="quiet">{trips.service_date} · {dateTime(trips.fetched_at)} 조회{trips.stale ? " · 이전 저장 시간표" : ""}{trips.truncated ? " · 일부 결과" : ""}</p>{rows?.map((row, index) => <article className="departure-row" key={`${row.train_number}/${index}`}><div><strong>{serviceTime(row.departure_planned_time, trips.service_date)}</strong><p>{row.departure_station_name}</p></div><div><strong>{row.grade_name ?? "종류 미제공"} {row.train_number}</strong><p>{row.arrival_station_name} · 도착 {serviceTime(row.arrival_planned_time, row.departure_planned_time ?? trips.service_date)}</p></div><strong>{money(row.adult_fare)}</strong></article>)}{!rows?.length ? <p>{trips.items.length ? "지금 이후 조건에 맞는 운행편이 없습니다. 전체 시간표도 확인할 수 있습니다." : "정상 응답에 등록된 운행편이 없습니다. 미운행 확정은 아닙니다."}</p> : null}</> : <p className="quiet">출발·도착역을 선택하고 예정 운행편을 조회하세요.</p>}
     </SectionCard>
+    </div>
   </section>;
 }

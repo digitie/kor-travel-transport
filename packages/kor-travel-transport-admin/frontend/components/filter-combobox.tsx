@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Combobox, ComboboxChip, ComboboxChips, ComboboxChipsInput, ComboboxContent, ComboboxEmpty, ComboboxItem, ComboboxList, ComboboxValue } from "@/components/ui/combobox";
 
 export function FilterCombobox({ id, options, value, onChange, placeholder, compact = false }: {
@@ -12,8 +12,16 @@ export function FilterCombobox({ id, options, value, onChange, placeholder, comp
   compact?: boolean;
 }) {
   const anchor = useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open || !anchor.current) return;
+    // 접힌 필터의 포털이 0크기 anchor에 남지 않게 실제 레이아웃 가시성을 따른다.
+    const observer = new ResizeObserver(() => { if (!anchor.current?.getClientRects().length) setOpen(false); });
+    observer.observe(anchor.current);
+    return () => observer.disconnect();
+  }, [open]);
   const label = (value: string) => options.find((option) => option.value === value)?.label ?? value;
-  return <Combobox multiple items={options.map((option) => option.value)} value={value} onValueChange={(next, details) => {
+  return <Combobox multiple open={open} onOpenChange={setOpen} items={options.map((option) => option.value)} value={value} onValueChange={(next, details) => {
     // 검색창의 Escape는 목록/검색어만 닫는다. 필터 해제는 칩 삭제로 명시한다.
     if (details.reason === "escape-key") details.cancel();
     else onChange(next);

@@ -19,6 +19,13 @@ type Group = FuelMetrics & { scope_key: string; label: string };
 type History = { day: string; average_price: number; station_count: number };
 type Statistics = { generated_at: string | null; update_pending: boolean; history_scope_key: string | null; items: Group[]; history: History[] };
 const money = (value: number) => value.toLocaleString("ko-KR", { maximumFractionDigits: 2 });
+const priceTimeFormat = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Seoul", year: "2-digit", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+function priceTimestamp(value?: string | null) {
+  const instant = value ? new Date(value) : null;
+  if (!instant || !Number.isFinite(instant.getTime())) return null;
+  const parts = Object.fromEntries(priceTimeFormat.formatToParts(instant).map(({ type, value }) => [type, value]));
+  return `${parts.year}.${parts.month}.${parts.day} ${parts.hour}:${parts.minute} KST`;
+}
 const scopes = [["nationwide", "전국"], ["sido", "시도"], ["sigungu", "시군구"], ["highways", "고속도로 전체"], ["highway", "고속도로별"], ["highway_direction", "고속도로·방향별"]];
 
 export function FuelDriverStatistics({ metrics }: { metrics: FuelMetrics }) {
@@ -64,17 +71,23 @@ export function FuelStatisticsCard({ metrics, title }: { metrics: FuelMetrics; t
 }
 
 export function FuelPriceStatus({ stale, lastRefreshedAt }: { stale: boolean; lastRefreshedAt?: string | null }) {
-  return stale ? <p className="error" role="status">갱신 지연 · 가격 갱신 {dateTime(lastRefreshedAt)}</p>
-    : lastRefreshedAt ? <p className="fuel-viewport-context">가격 갱신 {dateTime(lastRefreshedAt)}</p> : null;
+  const timestamp = priceTimestamp(lastRefreshedAt);
+  const time = timestamp ? <time dateTime={lastRefreshedAt!} title={`가격 갱신 ${dateTime(lastRefreshedAt)} KST`}>{timestamp}</time> : "시각 미확인";
+  return stale ? <p className="error" role="status" aria-label={`유가 갱신 지연 · 가격 갱신 ${timestamp ?? "확인되지 않음"}`}>갱신 지연 {time}</p>
+    : timestamp ? <p className="fuel-viewport-context">가격 갱신 {time}</p> : null;
 }
 
-export function FuelViewportSummary({ items, pending, failed = false, pricesStale = false, pricesLastRefreshedAt }: { items: FuelViewportStatistics[]; pending: boolean; failed?: boolean; pricesStale?: boolean; pricesLastRefreshedAt?: string | null }) {
+export function FuelViewportSummary({ items, pending, failed = false, pricesStale = false, pricesLastRefreshedAt, detailOpen = false, detailExpanded, onDetailExpandedChange }: { items: FuelViewportStatistics[]; pending: boolean; failed?: boolean; pricesStale?: boolean; pricesLastRefreshedAt?: string | null; detailOpen?: boolean; detailExpanded?: boolean; onDetailExpandedChange?: (expanded: boolean) => void }) {
   const productId = useId();
+  const bodyId = useId();
   const [product, setProduct] = useState("B027");
+  const [localDetailExpanded, setLocalDetailExpanded] = useState(false);
+  const detailScopeExpanded = detailExpanded ?? localDetailExpanded;
+  const expanded = !detailOpen || detailScopeExpanded;
   const selected = items.find((item) => item.product_code === product) ?? items[0];
   return <section className="fuel-viewport-summary" aria-label="현재 지도 범위 유가 통계" aria-busy={pending}>
-    <header><h2>현재 지도 범위</h2>
-      {!pending && !failed && selected ? items.length > 1 ? <><label className="sr-only" htmlFor={productId}>지도 통계 유종</label><select id={productId} value={selected.product_code} onChange={(event) => setProduct(event.target.value)}>{items.map((item) => <option key={item.product_code} value={item.product_code}>{fuelProductLabel(item.product_code)}</option>)}</select></> : <span>{fuelProductLabel(selected.product_code)}</span> : null}
+    <header><h2>{detailOpen ? <button type="button" className="fuel-summary-toggle" aria-expanded={expanded} aria-controls={bodyId} onClick={() => { setLocalDetailExpanded(!detailScopeExpanded); onDetailExpandedChange?.(!detailScopeExpanded); }}>{expanded ? "범위 접기" : "현재 지도 범위"}</button> : "범위"}</h2>{expanded ? <small>원/L</small> : null}
+      {expanded && !pending && !failed && selected ? items.length > 1 ? <><label className="sr-only" htmlFor={productId}>지도 통계 유종</label><select id={productId} value={selected.product_code} onChange={(event) => setProduct(event.target.value)}>{items.map((item) => <option key={item.product_code} value={item.product_code}>{fuelProductLabel(item.product_code)}</option>)}</select></> : <span>{fuelProductLabel(selected.product_code)}</span> : null}
       <InfoButton label="지도 범위 유가 통계">
         {pending ? <p role="status">통계 조회 중…</p> : failed ? <p role="alert">통계를 불러오지 못했습니다.</p> : <>
           {selected ? <>
@@ -89,14 +102,16 @@ export function FuelViewportSummary({ items, pending, failed = false, pricesStal
         </>}
       </InfoButton>
     </header>
+    <div id={bodyId} className="fuel-summary-body" hidden={!expanded}>
     {pending ? <p role="status">통계 조회 중…</p> : failed ? <p role="alert">통계를 불러오지 못했습니다.</p> : <>
-      {selected ? <dl><div><dt>평균</dt><dd>{money(selected.average_price)}<small>원/L</small></dd></div><div><dt>최저</dt><dd>{money(selected.minimum_price)}<small>원/L</small></dd></div></dl> : null}
-      <FuelPriceStatus stale={pricesStale} lastRefreshedAt={pricesLastRefreshedAt} />
+      {detailOpen ? <FuelPriceStatus stale={pricesStale} lastRefreshedAt={pricesLastRefreshedAt} /> : null}
+      {selected ? <dl><div><dt>평균</dt><dd>{money(selected.average_price)}</dd></div><div><dt>최저</dt><dd>{money(selected.minimum_price)}</dd></div></dl> : null}
+      {!detailOpen ? <FuelPriceStatus stale={pricesStale} lastRefreshedAt={pricesLastRefreshedAt} /> : null}
       {selected ? <>
-      <p className="fuel-viewport-context"><span>{selected.station_count.toLocaleString()}개 주유소</span><span>통계 기준 {dateTime(selected.generated_at)}</span></p>
       {selected.update_pending ? <p role="status">최신 수집 통계 반영 대기</p> : null}
       </> : <p>통계 없음 · 수집 완료 후 반영됩니다.</p>}
     </>}
+    </div>
   </section>;
 }
 

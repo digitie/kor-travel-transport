@@ -190,8 +190,8 @@ export function ZoomButtons() {
 /** 초기화 불가(키 없음·WebGL 없음)는 기본 fallback으로 보이거나 소비자 오류 영역으로 전달한다. 로그는 키를 가린다. */
 export function MapUnavailable({ info, onMessage }: { info: VWorldMapFallbackInfo; onMessage?: (message: string | null) => void }) {
   const message = info.reason === "missing-api-key"
-    ? "VWorld 지도 키가 없어 지도를 표시하지 못합니다. 위의 목록 보기에서 장소를 선택해 주세요."
-    : "이 브라우저에서 지도를 표시하지 못합니다. 위의 목록 보기에서 장소를 선택해 주세요.";
+    ? "지도 키 없음 · 목록 보기"
+    : "지도 표시 불가 · 목록 보기";
   useEffect(() => {
     if (info.error) console.warn("[TransportMap] 지도를 초기화하지 못했습니다", redactVWorldText(info.error.message));
   }, [info.error]);

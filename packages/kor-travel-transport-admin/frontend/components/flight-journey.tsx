@@ -1,12 +1,13 @@
 "use client";
 import dynamic from "next/dynamic";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { MapFilterBar, MapFilterField } from "@kor-travel/ui/map-controls";
 import { dateTime, transportGet, type Place } from "@/lib/journey";
 import { useSeoulToday } from "@/lib/journey-hooks";
 import { StatStrip } from "./stat-strip";
 import { SectionCard } from "./section-card";
 import { Input } from "./ui/input";
+import { PlaceDetails } from "./journey-controls";
 const TransportMap = dynamic(() => import("./transport-map").then((module) => module.TransportMap), { ssr: false });
 
 type Flight = { flight_number: string; direction: string; airline: string | null; scheduled_at: string; estimated_at: string | null; origin_airport: string; destination_airport: string; status: string | null };
@@ -21,6 +22,10 @@ export function FlightJourney() {
   const today = useSeoulToday();
   const [items, setItems] = useState<Place[]>([]);
   const [selected, setSelected] = useState<Place | null>(null);
+  const [mapOpen, setMapOpen] = useState(false);
+  const [mapInspected, setMapInspected] = useState(false);
+  const [view, setView] = useState<"map" | "list">("map");
+  const mapOpener = useRef<HTMLButtonElement | null>(null);
   const [catalogError, setCatalogError] = useState("");
   const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [flightState, setFlights] = useState<Resource<Flights>>({ key: "" });
@@ -79,9 +84,17 @@ export function FlightJourney() {
   const rows = flights?.items.filter((row) => (!direction || row.direction === direction) && (!futureOnly || flightMoment(row) >= clock) && [row.flight_number, row.airline, row.origin_airport, row.destination_airport].join(" ").toLocaleLowerCase().includes(filter.toLocaleLowerCase())).sort((a, b) => flightMoment(a) - flightMoment(b));
   const freshParking = parking?.filter((row) => clock - Date.parse(row.observed_at) >= 0 && clock - Date.parse(row.observed_at) <= 15 * 60_000);
   const errors = [catalogError, parkingState.key === key ? parkingState.error : null, flightState.key === key ? flightState.error : null, outlookState.key === outlookKey ? outlookState.error : null].filter(Boolean);
+  const airportControls = <MapFilterBar><MapFilterField label="공항" htmlFor={`${id}-airport`}><select id={`${id}-airport`} value={selected?.id ?? ""} onChange={(event) => { const place = items.find((item) => item.id === Number(event.target.value)); if (place) select(place); }}>{!selected ? <option value="">공항 선택</option> : null}{items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></MapFilterField><button type="button" className="secondary" onClick={() => setReload((value) => value + 1)}>주차·항공편 새로고침</button></MapFilterBar>;
+  const closeMap = () => { setMapOpen(false); requestAnimationFrame(() => mapOpener.current?.focus({ preventScroll: true })); };
+  if (mapOpen) return <section className="journey-workbench flight-journey map-route">
+    <div id="airport-map" className="journey-map-target map-route-primary"><TransportMap places={items} selectedPlace={mapInspected ? selected : null} onSelectPlace={(place) => { select(place); setMapInspected(true); }} onCloseDetails={() => setMapInspected(false)} view={view} onViewChange={setView}
+      filterSummary={selected?.name ?? "공항 선택"} toolbar={<>{airportControls}<button type="button" className="secondary" onClick={closeMap}>주차·항공편 보기</button></>}
+      feedback={catalogError ? <p role="alert">{catalogError}</p> : null}
+      details={mapInspected && selected ? <><PlaceDetails place={selected} showHeading={false} onShowMap={() => setView("map")} />{freshParking?.length ? <p>최근 15분 관측 잔여 {freshParking.reduce((sum, row) => sum + row.available_spaces, 0).toLocaleString()}면</p> : null}<button type="button" className="secondary" onClick={closeMap}>주차·이후 항공편 확인</button></> : undefined} /></div>
+  </section>;
   return <section className="journey-workbench flight-journey">
-    <nav className="journey-shortcuts" aria-label="공항 화면 바로가기"><a href="#airport-map">공항 지도</a><a href="#airport-flights">이후 항공편</a><a href="#parking-pattern">주차 패턴</a></nav>
-    <MapFilterBar><MapFilterField label="공항" htmlFor={`${id}-airport`}><select id={`${id}-airport`} value={selected?.id ?? ""} onChange={(event) => { const place = items.find((item) => item.id === Number(event.target.value)); if (place) select(place); }}>{!selected ? <option value="">공항 선택</option> : null}{items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></MapFilterField><button type="button" className="secondary" onClick={() => setReload((value) => value + 1)}>주차·항공편 새로고침</button></MapFilterBar>
+    <nav className="journey-shortcuts" aria-label="공항 화면 바로가기"><button ref={mapOpener} type="button" className="secondary" onClick={() => { setView("map"); setMapInspected(Boolean(selected)); setMapOpen(true); }}>공항 지도</button><a href="#airport-flights">이후 항공편</a><a href="#parking-pattern">주차 패턴</a></nav>
+    {airportControls}
     {errors.map((error) => <p key={error} role="alert">{error}</p>)}
     <SectionCard title="지금 주차할 곳" description={`${selected?.name ?? "공항"} · 최근 15분 관측만 현재 잔여 합계에 포함합니다.`}>
       <StatStrip items={[
@@ -100,6 +113,5 @@ export function FlightJourney() {
       <label className="arrival-time">주차장 도착 예정(KST)<input type="datetime-local" value={arrival} onChange={(event) => setArrival(event.target.value)} /></label>
       {outlook ? <><div className="overflow-x-auto"><table className="operations-table"><thead><tr><th>주차장</th><th>평균 잔여</th><th>최소~최대</th><th>만차 관측일</th><th>표본</th></tr></thead><tbody>{outlook.items.map((row) => <tr key={row.parking_lot_id}><th>{row.parking_lot_name}{row.minimum_capacity !== row.maximum_capacity ? <small> · 수용 규모 변경 있음</small> : null}</th><td>{row.average_available_spaces.toLocaleString()}면</td><td>{row.minimum_available_spaces}~{row.maximum_available_spaces}면</td><td>{row.full_days}/{row.sample_days}일 ({row.full_day_ratio}%)</td><td>{row.observations}건{row.sample_days < 3 ? " · 표본 부족" : ""}</td></tr>)}</tbody></table></div>{!outlook.items.length ? <p>같은 요일·시간대의 과거 관측이 없습니다.</p> : null}<small className="quiet">{dateTime(outlook.generated_at)} 조회</small></> : outlookState.key === outlookKey && outlookState.error ? null : !airport ? <p role="status">{unavailable}</p> : arrival ? <p role="status">주차 패턴을 확인하는 중입니다…</p> : <p>입차 예정 시각을 선택하세요.</p>}
     </SectionCard></div>
-    <div id="airport-map" className="journey-map-target" tabIndex={-1}><TransportMap places={items} selectedPlace={selected} onSelectPlace={select} /></div>
   </section>;
 }
