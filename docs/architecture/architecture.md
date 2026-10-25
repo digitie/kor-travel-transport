@@ -26,6 +26,11 @@
 - React + TypeScript
 - 모바일 / 데스크톱 반응형 대시보드
 
+2026-10-25 [웹·Android/iOS 조사](../research/2026-10-25-mobility-ux.md)와
+[지도·이용 흐름 설계](../design/2026-10-25-mobility-improvements.md)는 후속 미구현 계획이다.
+기존 admin 메뉴/조회 구조를 유지하고 공용 Map 작업면·프로젝트 톤·필요한 API를 보완한다.
+소스 머지 이력과 실제 시간표/주차 데이터·운영 화면 수용을 구분한다.
+
 ### 실행 환경
 
 - Docker Compose 기준
