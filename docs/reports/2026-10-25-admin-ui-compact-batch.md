@@ -14,6 +14,9 @@
   나머지 통계·최저가 주유소 주소 링크·집계 설명은 제목 옆 `i`로 연다. 목록 보기에서는 이 요약을 표시하지 않는다.
 - 요약과 선택 상세는 같은 stage 안에서 내용 높이대로 쌓는다. 요약의 줄바꿈으로 상세가 덮이지 않고,
   짧은 상세가 남은 지도 높이만큼 불필요하게 커지지 않게 한다. 지도 자체의 크기는 줄이지 않는다.
+- 육안 리뷰에서 초기화 불가 안내가 요약 뒤에 가려지는 회귀를 수정했다. 키 없음/WebGL 초기화 불가는
+  기존 지도 위의 오류 영역으로 전달하고 목록에서는 표시하지 않는다. 지도 탭 복귀 때 재표시하고 fallback 언마운트 시 해제하며,
+  기존 타일/network 오류 안내와 콜백 없는 `MapUnavailable` 소비자의 기본 표시를 유지한다.
 - 주유소 상세의 주소/출처는 이름 있는 아이콘 팝업으로 모았다. 주소의 같은 지도 이동, 전화,
   유종별 가격·관측 시각·실패/갱신 지연 경고는 유지한다. 상세 header/footer의 출처 반복을 없앴다.
 - 유가 통계는 실제 가격·최근 7일 범주 평균 추이·전체 범주 비교를 먼저 보여준다. 기존 차량 운영비 가정 계산은 하단에서 펼친다.
@@ -33,10 +36,10 @@ Linux Node/npm으로 실행했다. `/mnt/c`의 느린 의존성 설치만 소유
 | 검증 | 결과와 경계 |
 |---|---|
 | `npm run type-check` | 통과 |
-| `npm run test` | 35파일·250개 통과. 유종 선택·모집단 유지·재조회/실패 회귀 포함 |
+| `npm run test` | 첫 런타임 후보 35파일·250개 통과. 유종 선택·모집단 유지·재조회/실패 회귀 포함. 초기화 오류 수정 후 관련 지도 단위 테스트 17개 통과(기존 15개와 콜백 안정성·fallback 언마운트 해제 2개). 실제 지도 복구 성공을 검증한 것은 아니다 |
 | `npm run lint` | 통과 |
-| Playwright 유가 통계/지도 fixture | Chromium 8개·Firefox 8개 통과 |
-| 화면 크기·주요 동작 | 320/375/1440px 지도, 390/1440px 통계. 유종·범주 변경, 가정 계산 접기/펼치기, 목록↔지도, 주소 이동, 팝업 Escape·초점 반환, 가로 넘침·요약/상세 비겹침 확인 |
+| Playwright fixture | 최종 단일 실행에서 Chromium 11개·Firefox 11개 통과. 각 유가 9개 + 기존 도시철도 삽입 지도 375/1440px 2개 |
+| 화면 크기·주요 동작 | 320/375/1440px 지도, 390/1440px 통계. 유종·범주 변경, 가정 계산 접기/펼치기, 목록↔지도, 주소 이동, 팝업 Escape·초점 반환, 가로 넘침·요약/상세 비겹침 확인. 초기화 오류의 요약 바깥 상단 표시와 목록/지도 복귀, 기존 삽입 지도의 상세/주소/초점 동작도 확인 |
 | 프로젝트 톤 | 밝은/어두운 KT 의미 토큰 일치와 실제 검색 Input의 최종 배경색 확인. CSS 색 전환 완료 후 캡처 |
 | 실제 VWorld 타일·운영 API | 미검증. 이 실행은 키 없는 지도 fallback과 주입한 API fixture의 UI 검증이다 |
 
@@ -44,10 +47,15 @@ QA 서버는 후보의 `next.config.ts` 원본으로 `next dev --hostname 127.0.
 초기 `0.0.0.0` 실행의 dev resource origin 차단은 loopback 호스트 일치로 해소했다.
 중간 QA 복제에만 두었던 `allowedDevOrigins` 보완은 최종 검증 전에 제거했으며 저장소에는 추가하지 않았다.
 Firefox 실행은 기본 config의 live 타일 제한을 확장한 **QA 복제 전용** `playwright.compact.config.ts`를 사용했다.
+기존 도시철도 fixture는 로컬 전용 로그인 설정과 loopback `TRANSPORT_UI_PUBLIC_ORIGINS`로 실행했다.
+처음 Origin403으로 로그인 전 단계에서 멈춘 실행은 통과 증적에서 제외한다. 제품 인증 코드는 변경하지 않았다.
+Firefox 375px 기존 fixture의 홈 메뉴 첫 열기가 한 차례 실패했으며, 제품 코드 변경 없이 같은 사례 단독 실행과
+최종 전체 22개 실행에서는 통과했다. 이 일회 실패를 실제 시간표·타일 오류의 재현으로 해석하지 않는다.
 주입한 API fixture를 실제 타일·운영 데이터 정상의 증거로 세지 않는다.
 
 스크린샷은 작업면의 `packages/kor-travel-transport-admin/frontend/test-results/compact-batch/`에 있으며,
 `compact-fuel-{chromium|firefox}-{320|375|1440}-{light|dark}.png`와 JSON 결과를 보존했다. 생성 파일은 커밋하지 않는다.
+초기화 오류 수정의 `compact-fuel-{chromium|firefox}-fallback-375.png`, 기존 fixture의 `metro-journey-{375|1440}.png`도 같은 경로에 보존했다.
 운영 이미지 빌드·배포는 사용자 지시에 따라 실행하지 않았다. Docker 2차 검증·CI·독립 리뷰와 최종 SHA는
 [PR Checks](https://github.com/digitie/kor-travel-transport/pull/131/checks) 및 PR의 최종 검토 기록을 정본으로 삼는다.
 

@@ -103,6 +103,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
   const [pending, setPending] = useState<string[]>([]);
   const [failed, setFailed] = useState<string[]>([]);
   const basemap = useVWorldBasemapHealth();
+  const [mapUnavailableMessage, setMapUnavailableMessage] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mapResponseCache = useRef(new Map<string, { expiresAt: number; payload: PlaceResponse }>());
@@ -347,14 +348,15 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
       {kinds.includes("fuel_station") ? <MapFilterField htmlFor={`${controlId}-product`} label="표시 유종"><FilterCombobox compact id={`${controlId}-product`} value={products} onChange={(values) => { setProducts(values); setSelected(null); }} placeholder="전체 유종" options={["B027", "D047", "B034", "K015", "C004"].map((value) => ({ value, label: fuelProductLabel(value) }))} /></MapFilterField> : null}
     </MapFilterBar> : null}
     <MapViewTabs ariaLabel="장소 보기" viewport={mapViewport} count={view === "list" ? items.length + listFeatureCount : mapFeatureCount + (serverClustered ? serverClusters.reduce((sum, item) => sum + item.count, 0) : visiblePoints.length)} status={pending.length ? "조회 중…" : undefined} />
-    {(cluster && visiblePoints.length > 0) || failed.length > 0 || (basemap.basemapFailed && view === "map") ? <div className="map-feedback" role="status">
+    {(cluster && visiblePoints.length > 0) || failed.length > 0 || ((basemap.basemapFailed || mapUnavailableMessage) && view === "map") ? <div className="map-feedback" role="status">
       {cluster && visiblePoints.length > 0 ? <span>밀도별 묶음</span> : null}
       {failed.length ? <p className="error">{failed.map(placeKindLabel).join("·")} 조회 실패 <Button variant="outline" type="button" onClick={() => setReload((value) => value + 1)}>다시 조회</Button></p> : null}
       {basemap.basemapFailed && view === "map" ? <p className="error">VWorld 지도 타일을 불러오지 못했습니다. 목록 보기에서 장소를 확인할 수 있습니다.</p> : null}
+      {mapUnavailableMessage && view === "map" ? <p className="error" role="alert">{mapUnavailableMessage}</p> : null}
     </div> : null}
     <TabsContent className="min-h-0" value="map"><div className={`kt-map-stage${!embedded && mode === "fuel" ? " fuel-map-stage" : ""}`}><div className="map-primary" ref={mapContainer}><VWorldMapView apiKey={VWORLD_KEY} center={[127.8, 36.2]} zoom={7} minZoom={5}
         className="transport-map-canvas" layerType="Base" navigation={false} geolocate={false} scale
-        loadingSkeleton={<p className="loading">지도를 준비하는 중입니다…</p>} fallback={(info) => <MapUnavailable info={info} />}
+        loadingSkeleton={<p className="loading">지도를 준비하는 중입니다…</p>} fallback={(info) => <MapUnavailable info={info} onMessage={setMapUnavailableMessage} />}
         unsupportedTileFallback={{ imageUrl: MAP_FALLBACK_IMAGE }} transformRequest={basemap.transformRequest}
         onError={basemap.onError} onIdle={basemap.onIdle} onLoad={moved} onMoveEnd={(event) => moved(event.target)}>
         <ZoomButtons />

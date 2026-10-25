@@ -2,7 +2,8 @@
 
 - Weather와 병렬로 Transport의 공용 토큰 navy/dark 연결과 단일 stage 테두리, 유가 상부 요약·선택 상세 압축,
   주소/출처 팝업, 실가격 추이 우선·가정 계산 접기를 적용했다. 서버 집계/기존 API와 Common dev.7은 유지한다.
-- WSL2 Linux Node에서 타입/lint·Vitest250개, Chromium/Firefox fixture UI16개를 확인했다.
+- WSL2 Linux Node에서 타입/lint·첫 후보 Vitest250개를 확인했다. 육안에서 요약이 초기화 오류를 가리던 회귀는
+  오류 영역 전달로 수정했고 관련 단위17개·최종 단일 실행의 Chromium/Firefox fixture UI22개(유가18·기존 삽입 도시철도4)를 확인했다.
   실제 타일/운영 API·운영 이미지 빌드/배포는 실행하지 않았다. 최종 CI/독립 리뷰는 PR 정본을 따른다.
 - [범위·검증·미완 항목](reports/2026-10-25-admin-ui-compact-batch.md),
   [PR131](https://github.com/digitie/kor-travel-transport/pull/131).

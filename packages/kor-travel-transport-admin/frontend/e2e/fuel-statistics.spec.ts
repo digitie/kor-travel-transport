@@ -61,6 +61,33 @@ test("지도 요약 마커 수와 독립된 범위 통계를 같은 요청으로
   await expect(page.getByRole("dialog").getByText("최저가 시험주유소", { exact: true })).toBeVisible();
 });
 
+test("지도 초기화 오류는 범위 요약 바깥 위에 표시하고 목록에서는 숨긴다", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.addInitScript(() => {
+    const original = HTMLCanvasElement.prototype.getContext;
+    Object.defineProperty(HTMLCanvasElement.prototype, "getContext", { value: function (contextId: string, ...args: unknown[]) {
+      return contextId === "webgl" || contextId === "webgl2" ? null : Reflect.apply(original, this, [contextId, ...args]);
+    } });
+  });
+  await page.route("**/api/transport/transport/features/places?*", (route) => route.fulfill({ json: { items: [], total: 0, truncated: false, fuel_statistics: [{ ...metrics, product_code: "B027" }] } }));
+  await page.goto("/fuel");
+  const error = page.locator(".map-feedback").getByRole("alert");
+  const summary = page.getByRole("region", { name: "현재 지도 범위 유가 통계" });
+  await expect(error).toHaveText(/^(VWorld 지도 키가 없어|이 브라우저에서) 지도를 표시하지 못합니다\. 위의 목록 보기에서 장소를 선택해 주세요\.$/);
+  await expect(summary).toContainText("12,000개 주유소");
+  const errorBounds = await error.boundingBox();
+  const summaryBounds = await summary.boundingBox();
+  expect(errorBounds!.y + errorBounds!.height).toBeLessThanOrEqual(summaryBounds!.y);
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
+  await expect(error).toHaveCount(0);
+  await expect(summary).toHaveCount(0);
+  await page.getByRole("tab", { name: "지도", exact: true }).click();
+  await expect(error).toHaveCount(1);
+  await expect(error).toBeVisible();
+  await expect(summary).toBeVisible();
+  await page.screenshot({ path: `test-results/compact-fuel-${testInfo.project.name}-fallback-375.png`, fullPage: true, animations: "disabled" });
+});
+
 for (const width of [320, 375, 1440]) test(`${width}px 지도 상부 유가 요약·메타 팝업·프로젝트 톤`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width, height: 812 });
   const place = { id: 1, kind: "fuel_station", source: "opinet_browser", name: "압축 시험주유소", brand_name: "시험 브랜드", address: "서울 시험 주소", latitude: 37.5, longitude: 127.1,

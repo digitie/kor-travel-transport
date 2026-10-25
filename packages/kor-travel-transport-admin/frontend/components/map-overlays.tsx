@@ -187,14 +187,19 @@ export function ZoomButtons() {
   return null;
 }
 
-/** 지도를 만들지 못했을 때(키 없음·WebGL 없음) 지도 자리에 보인다. 오류는 키를 가려 한 번 남긴다. */
-export function MapUnavailable({ info }: { info: VWorldMapFallbackInfo }) {
+/** 초기화 불가(키 없음·WebGL 없음)는 기본 fallback으로 보이거나 소비자 오류 영역으로 전달한다. 로그는 키를 가린다. */
+export function MapUnavailable({ info, onMessage }: { info: VWorldMapFallbackInfo; onMessage?: (message: string | null) => void }) {
+  const message = info.reason === "missing-api-key"
+    ? "VWorld 지도 키가 없어 지도를 표시하지 못합니다. 위의 목록 보기에서 장소를 선택해 주세요."
+    : "이 브라우저에서 지도를 표시하지 못합니다. 위의 목록 보기에서 장소를 선택해 주세요.";
   useEffect(() => {
     if (info.error) console.warn("[TransportMap] 지도를 초기화하지 못했습니다", redactVWorldText(info.error.message));
   }, [info.error]);
-  return <p className="empty-state">{info.reason === "missing-api-key"
-    ? "VWorld 지도 키가 없어 지도를 표시하지 못합니다. 위의 목록 보기에서 장소를 선택해 주세요."
-    : "이 브라우저에서 지도를 표시하지 못합니다. 위의 목록 보기에서 장소를 선택해 주세요."}</p>;
+  useEffect(() => {
+    onMessage?.(message);
+    return () => onMessage?.(null);
+  }, [message, onMessage]);
+  return onMessage ? null : <p className="empty-state">{message}</p>;
 }
 
 // 타일 정체는 `z/y/x`다. 요청 URL(`vworld://…?fallback=…`)·실패 URL(`https://…`)·MapLibre 타일 좌표에서 같은 값을 만든다.

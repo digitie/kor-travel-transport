@@ -107,6 +107,23 @@ describe("지도 카메라 요청", () => {
 });
 
 describe("지도 초기화 실패", () => {
+  it.each([{ name: "키 없음", throwOnCreate: false, apiKey: "" }, { name: "WebGL 생성 실패", throwOnCreate: true, apiKey: "test-key" }])("$name 안내를 외부에 전달하고 fallback 언마운트 때 해제하며 재렌더로 반복하지 않는다", ({ throwOnCreate, apiKey }) => {
+    state.throwOnCreate = throwOnCreate;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const onMessage = vi.fn();
+    const show = () => act(() => root.render(<VWorldMapView apiKey={apiKey} center={[127.8, 36.2]} zoom={7} navigation={false} geolocate={false} scale={false}
+      fallback={(info) => <MapUnavailable info={info} onMessage={onMessage} />} />));
+    try {
+      show();
+      expect(onMessage).toHaveBeenCalledTimes(1);
+      expect(onMessage).toHaveBeenLastCalledWith(expect.stringContaining("지도를 표시하지 못합니다"));
+      expect(host.textContent).not.toContain("지도를 표시하지 못합니다");
+      show();
+      expect(onMessage).toHaveBeenCalledTimes(1);
+      act(() => root.render(<p>다른 화면</p>));
+      expect(onMessage).toHaveBeenLastCalledWith(null);
+    } finally { warn.mockRestore(); }
+  });
   it("WebGL이 없어 생성자가 던지면 페이지를 깨지 않고 대체 안내를 보이며 키를 가려 남긴다", () => {
     state.throwOnCreate = true;
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
