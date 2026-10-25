@@ -33,6 +33,7 @@ from app.dagster.recovery import (
 from app.core.config import Settings, get_settings
 from app.db.session import create_engine_and_session_factory
 from app.services.collection import CollectionService
+from app.services.analytics_cache import refresh_default_analytics_cache
 from app.services.flight_status import sanitize_upstream_error
 from app.services.bus_collection import BusReferenceCollectionService
 from app.services.kric_collection import KricTimetableCollectionService
@@ -213,15 +214,37 @@ def _settings() -> Settings:
     return settings
 
 
+async def _collect_airport_with_analytics(session, *, settings: Settings, trigger: str) -> dict[str, Any]:
+    result = await CollectionService(settings).collect(session, trigger=trigger)
+    if result.get("snapshot_count", 0) > 0 or result.get("status") == "success":
+        try:
+            # collect는 성공분과 실행 상태를 이미 commit했다. 파생 결과 실패로 원본을 되돌리지 않는다.
+            # 중복 관측뿐인 정상 tick도 이전 실패·재시작으로 놓친 cache를 복구한다.
+            result["analytics_cache_count"] = await refresh_default_analytics_cache(session, settings)
+            await session.commit()
+        except Exception as exc:
+            await session.rollback()
+            result["analytics_cache_error"] = _redacted_causes([_sanitize_op_error(exc, _secret_forms())])
+    return result
+
+
 @op
 @_redact_op_errors
 def collect_airport_parking(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         settings = _settings()
-        result = asyncio.run(_run_with_session(settings, CollectionService(settings).collect, trigger=AIRPORT_TRIGGER))
+        result = asyncio.run(_run_with_session(
+            settings, functools.partial(_collect_airport_with_analytics, settings=settings), trigger=AIRPORT_TRIGGER,
+        ))
+        cache_failed = "analytics_cache_error" in result
+        cache_metadata = {"analytics_cache_error": result["analytics_cache_error"]} if cache_failed else {}
         if result.get("status") in {"failed", "partial_success"}:
             raise Failure(description="공항 수집의 성공분은 저장했지만 일부 수집이 실패했습니다.",
-                          metadata={"run_id": result["collection_run_id"], "status": result["status"]},
+                          metadata={"run_id": result["collection_run_id"], "status": result["status"], **cache_metadata},
+                          allow_retries=False)
+        if cache_failed:
+            raise Failure(description="공항 관측은 저장했지만 주차 분석 캐시 갱신에 실패했습니다.",
+                          metadata={"run_id": result["collection_run_id"], "status": result["status"], **cache_metadata},
                           allow_retries=False)
         return result
 

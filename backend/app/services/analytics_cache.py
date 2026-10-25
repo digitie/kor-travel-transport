@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -32,6 +32,8 @@ DEFAULT_THRESHOLD_EVENTS_DAYS = 14
 DEFAULT_THRESHOLD_EVENTS_LIMIT = 20
 DEFAULT_THRESHOLD_INSIGHTS_DAYS = 21
 DEFAULT_THRESHOLD_INSIGHTS_INTERVAL_MINUTES = 10
+# 5분 수집 두 주기를 넘긴 파생 결과는 원본으로 다시 계산한다.
+MAX_ANALYTICS_CACHE_AGE = timedelta(minutes=10)
 
 
 def build_analytics_scope_key(airport_code: str | None, parking_lot_id: int | None) -> str:
@@ -61,6 +63,16 @@ async def load_cached_analytics(
     limit: int = 0,
     future_hours: int = 0,
 ) -> Any | None:
+    checked_at = now_utc()
+    newer_snapshots = select(1).select_from(ParkingSnapshot).where(
+        ParkingSnapshot.collected_at > AnalyticsCache.generated_at,
+    )
+    if airport_code:
+        newer_snapshots = newer_snapshots.where(ParkingSnapshot.airport_id == (
+            select(Airport.id).where(Airport.code == airport_code.upper()).scalar_subquery()
+        ))
+    if parking_lot_id is not None:
+        newer_snapshots = newer_snapshots.where(ParkingSnapshot.parking_lot_id == parking_lot_id)
     cached = await session.scalar(
         select(AnalyticsCache).where(
             AnalyticsCache.metric == metric,
@@ -69,6 +81,10 @@ async def load_cached_analytics(
             AnalyticsCache.interval_minutes == interval_minutes,
             AnalyticsCache.limit == limit,
             AnalyticsCache.future_hours == future_hours,
+            AnalyticsCache.generated_at >= checked_at - MAX_ANALYTICS_CACHE_AGE,
+            AnalyticsCache.generated_at <= checked_at,
+            # observed_at이 더 오래된 지연 관측도 새 적재면 무효화한다.
+            ~newer_snapshots.correlate(AnalyticsCache).exists(),
         )
     )
     return cached.payload_json if cached else None
@@ -86,8 +102,9 @@ async def store_cached_analytics(
     future_hours: int = 0,
     source_observed_at: datetime | None,
     payload: Any,
+    generated_at: datetime | None = None,
 ) -> None:
-    generated_at = now_utc()
+    generated_at = generated_at or now_utc()
     scope_key = build_analytics_scope_key(airport_code, parking_lot_id)
     cached = await session.scalar(
         select(AnalyticsCache).where(
@@ -132,6 +149,15 @@ async def refresh_default_analytics_cache(
     settings: Settings,
     airport_codes: Iterable[str] | None = None,
 ) -> int:
+    if session.bind is not None and session.bind.dialect.name == "postgresql":
+        # CollectionService의 기존 전용 session lease와 같은 key다. 원본의 지연 commit과
+        # 다른 refresh가 조회 중간에 끼지 않게 하며, 경합 시 직접 조회 fallback을 유지한다.
+        acquired = await session.scalar(text(
+            "SELECT pg_try_advisory_xact_lock(hashtext('kor_travel_transport:airport_collection'))"
+        ))
+        if not acquired:
+            return 0
+    generated_at = now_utc()
     codes = [code.upper() for code in (airport_codes or settings.supported_airport_codes)]
     airports = (
         await session.execute(
@@ -151,7 +177,9 @@ async def refresh_default_analytics_cache(
             )
         ).scalars().all()
         for parking_lot_id in [None, *lot_ids]:
-            refreshed += await refresh_scope_analytics_cache(session, settings, airport, parking_lot_id)
+            refreshed += await refresh_scope_analytics_cache(
+                session, settings, airport, parking_lot_id, generated_at=generated_at,
+            )
     return refreshed
 
 
@@ -160,7 +188,11 @@ async def refresh_scope_analytics_cache(
     settings: Settings,
     airport: Airport,
     parking_lot_id: int | None,
+    *,
+    generated_at: datetime | None = None,
 ) -> int:
+    # 계산 종료 시각이 아닌 첫 원본 조회 전 시각을 watermark로 쓴다.
+    generated_at = generated_at or now_utc()
     refreshed = 0
     source_observed_at = await _load_latest_observed_at(session, airport.id, parking_lot_id)
 
@@ -180,8 +212,9 @@ async def refresh_scope_analytics_cache(
         interval_minutes=DEFAULT_TIMESERIES_INTERVAL_MINUTES,
         future_hours=DEFAULT_TIMESERIES_FUTURE_HOURS,
         source_observed_at=source_observed_at,
+        generated_at=generated_at,
         payload={
-            "generated_at": now_utc(),
+            "generated_at": generated_at,
             "airport_code": airport.code,
             "parking_lot_id": parking_lot_id,
             "days": DEFAULT_TIMESERIES_DAYS,
@@ -206,6 +239,7 @@ async def refresh_scope_analytics_cache(
         parking_lot_id=parking_lot_id,
         days=DEFAULT_WEEKDAY_HOUR_DAYS,
         source_observed_at=source_observed_at,
+        generated_at=generated_at,
         payload=build_weekday_hour_patterns(weekday_snapshots, tz_name=settings.app_timezone),
     )
     refreshed += 1
@@ -223,6 +257,7 @@ async def refresh_scope_analytics_cache(
         days=DEFAULT_THRESHOLD_EVENTS_DAYS,
         limit=DEFAULT_THRESHOLD_EVENTS_LIMIT,
         source_observed_at=source_observed_at,
+        generated_at=generated_at,
         payload=threshold_events,
     )
     refreshed += 1
@@ -249,8 +284,9 @@ async def refresh_scope_analytics_cache(
         days=DEFAULT_THRESHOLD_INSIGHTS_DAYS,
         interval_minutes=DEFAULT_THRESHOLD_INSIGHTS_INTERVAL_MINUTES,
         source_observed_at=source_observed_at,
+        generated_at=generated_at,
         payload={
-            "generated_at": now_utc(),
+            "generated_at": generated_at,
             "airport_code": airport.code,
             "parking_lot_id": parking_lot_id,
             "days": DEFAULT_THRESHOLD_INSIGHTS_DAYS,
