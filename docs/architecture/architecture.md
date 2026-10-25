@@ -55,6 +55,11 @@
 3. 파싱 결과는 `airports`, `parking_lots`, `parking_snapshots`에 반영한다.
 4. 분석 API는 `parking_snapshots`를 기반으로 계산한다.
 
+공항 Dagster 수집도 원본 commit 뒤 기존 기본 분석 캐시를 갱신한다. 부분 성공분은 유지하고
+캐시 실패는 원본과 별도 transaction으로 처리한다. 캐시는 scope별 새 적재가 있거나 생성10분을
+넘으면 직접 계산으로 돌아간다. 재집계는 기존 airport advisory key와 첫 조회 전 watermark를
+사용한다. [재현·동시 적재·검증 범위](../reports/2026-10-25-parking-analytics-refresh.md).
+
 통합 교통정보 흐름은 별도 `TransportCollectionService`가 담당한다.
 
 1. `python-krex-api`로 고속도로 소통(`traffic.flow`)과 돌발(`traffic.incident`)을
