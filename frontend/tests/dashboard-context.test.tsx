@@ -1,9 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { AppShell } from "@/components/app-shell";
 import { CurrentStatusView } from "@/components/pages/current-status-view";
-import { DashboardProvider } from "@/lib/dashboard-context";
+import { DashboardProvider, useDashboard } from "@/lib/dashboard-context";
 import {
   DASHBOARD_SELECTION_COOKIE_KEY,
   DASHBOARD_SELECTION_STORAGE_KEY,
@@ -208,6 +208,93 @@ describe("DashboardProvider + CurrentStatusView", () => {
     });
     apiClient.getDashboardAnalytics.mockResolvedValue(dashboardAnalyticsPayload);
   });
+  test.each(["focus", "poll"])("finishes the selected-airport request when a %s refresh discovers a new marker", async (trigger) => {
+    vi.useFakeTimers();
+    try {
+      let dashboard!: ReturnType<typeof useDashboard>;
+      function Probe() { dashboard = useDashboard(); return null; }
+      const marker = buildCollectorStatus({ latest_snapshot_collected_at: "2026-04-26T00:11:00.000Z" });
+      const pusPayload = { airports, current: { ...refreshedCurrentPayload, items: [{ ...refreshedCurrentPayload.items[0], airport_code: "PUS", airport_name: "Gimhae", parking_lot_id: 5 }] }, collector: marker, holidays: holidaySummaryPayload };
+      let resolveSelection!: (payload: typeof pusPayload) => void;
+      await act(async () => { render(<DashboardProvider><Probe /></DashboardProvider>); });
+      apiClient.getDashboardBootstrap.mockImplementationOnce(() => new Promise((resolve) => { resolveSelection = resolve; })).mockResolvedValue(pusPayload);
+      apiClient.getCollectorStatus.mockResolvedValue(marker);
+
+      await act(async () => { dashboard.onAirportChange("PUS"); });
+      expect(dashboard.loading).toBe(true);
+      await act(async () => {
+        if (trigger === "focus") window.dispatchEvent(new Event("focus"));
+        else await vi.advanceTimersByTimeAsync(15_000);
+      });
+      await act(async () => { resolveSelection(pusPayload); });
+      expect(dashboard.loading).toBe(false);
+      expect(dashboard.selectedAirportCode).toBe("PUS");
+      expect(dashboard.scopeItems.map((item) => [item.airport_code, item.available_spaces])).toEqual([["PUS", 64]]);
+      expect(apiClient.getDashboardBootstrap).toHaveBeenCalledTimes(2);
+      await act(async () => { window.dispatchEvent(new Event("focus")); });
+      expect(apiClient.getDashboardBootstrap).toHaveBeenCalledTimes(2);
+      expect(dashboard.error).toBeNull();
+    } finally { vi.useRealTimers(); }
+  });
+
+  test("rechecks a newer marker after the selected-airport response still carries an older observation", async () => {
+    let dashboard!: ReturnType<typeof useDashboard>;
+    function Probe() { dashboard = useDashboard(); return null; }
+    await act(async () => { render(<DashboardProvider><Probe /></DashboardProvider>); });
+    const marker = buildCollectorStatus({ latest_snapshot_collected_at: "2026-04-26T00:11:00.000Z" });
+    const oldPayload = { airports, current: { ...currentPayload, items: [{ ...currentPayload.items[0], airport_code: "PUS", parking_lot_id: 5 }] }, collector: buildCollectorStatus(), holidays: holidaySummaryPayload };
+    const newPayload = { ...oldPayload, current: { ...oldPayload.current, items: [{ ...oldPayload.current.items[0], available_spaces: 64 }] }, collector: marker };
+    let resolveSelection!: (payload: typeof oldPayload) => void;
+    apiClient.getDashboardBootstrap.mockImplementationOnce(() => new Promise((resolve) => { resolveSelection = resolve; })).mockResolvedValue(newPayload);
+    apiClient.getCollectorStatus.mockResolvedValue(marker);
+    await act(async () => { dashboard.onAirportChange("PUS"); });
+    await act(async () => { window.dispatchEvent(new Event("focus")); });
+    await act(async () => { resolveSelection(oldPayload); });
+    expect(dashboard.loading).toBe(false); expect(dashboard.scopeItems.map((item) => item.available_spaces)).toEqual([100]);
+    expect(apiClient.getDashboardBootstrap).toHaveBeenCalledTimes(2);
+    await act(async () => { window.dispatchEvent(new Event("focus")); });
+    expect(dashboard.scopeItems.map((item) => item.available_spaces)).toEqual([64]);
+    await act(async () => { window.dispatchEvent(new Event("focus")); });
+    expect(apiClient.getDashboardBootstrap).toHaveBeenCalledTimes(3);
+  });
+
+  test("keeps a background refresh owned until its response completes despite repeated focus events", async () => {
+    let dashboard!: ReturnType<typeof useDashboard>;
+    function Probe() { dashboard = useDashboard(); return null; }
+    await act(async () => { render(<DashboardProvider><Probe /></DashboardProvider>); });
+    const marker = buildCollectorStatus({ latest_snapshot_collected_at: "2026-04-26T00:11:00.000Z" });
+    apiClient.getCollectorStatus.mockResolvedValue(marker);
+    let resolveBackground!: (payload: Awaited<ReturnType<typeof apiClient.getDashboardBootstrap>>) => void;
+    apiClient.getDashboardBootstrap.mockImplementationOnce(() => new Promise((resolve) => { resolveBackground = resolve; }));
+    await act(async () => { window.dispatchEvent(new Event("focus")); });
+    await act(async () => { window.dispatchEvent(new Event("focus")); });
+    await act(async () => { window.dispatchEvent(new Event("focus")); });
+    expect(apiClient.getDashboardBootstrap).toHaveBeenCalledTimes(2);
+    await act(async () => { resolveBackground({ airports, current: refreshedCurrentPayload, collector: marker, holidays: holidaySummaryPayload }); });
+    expect(dashboard.loading).toBe(false); expect(dashboard.scopeItems.map((item) => item.available_spaces)).toEqual([64]);
+    await act(async () => { window.dispatchEvent(new Event("focus")); });
+    expect(apiClient.getDashboardBootstrap).toHaveBeenCalledTimes(2);
+  });
+
+  test("keeps the last selected scope and allows retry after an older selection resolves late", async () => {
+    let dashboard!: ReturnType<typeof useDashboard>;
+    function Probe() { dashboard = useDashboard(); return null; }
+    await act(async () => { render(<DashboardProvider><Probe /></DashboardProvider>); });
+    let resolveOld!: (payload: Awaited<ReturnType<typeof apiClient.getDashboardBootstrap>>) => void;
+    apiClient.getDashboardBootstrap.mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }));
+    await act(async () => { dashboard.onAirportChange("PUS"); });
+    apiClient.getDashboardBootstrap.mockRejectedValueOnce(new Error("선택 공항 조회 실패"));
+    await act(async () => { dashboard.onAirportChange("GMP"); });
+    expect(dashboard.loading).toBe(false); expect(dashboard.error).toBe("선택 공항 조회 실패");
+    await act(async () => { resolveOld({ airports, current: { ...refreshedCurrentPayload, items: [{ ...refreshedCurrentPayload.items[0], airport_code: "PUS", parking_lot_id: 5 }] }, collector: buildCollectorStatus(), holidays: holidaySummaryPayload }); });
+    expect(dashboard.selectedAirportCode).toBe("GMP"); expect(dashboard.error).toBe("선택 공항 조회 실패");
+    expect(dashboard.scopeItems.every((item) => item.airport_code === "GMP")).toBe(true);
+    apiClient.getDashboardBootstrap.mockResolvedValueOnce({ airports, current: refreshedCurrentPayload, collector: buildCollectorStatus(), holidays: holidaySummaryPayload });
+    await act(async () => { dashboard.onRefresh(); });
+    expect(dashboard.loading).toBe(false); expect(dashboard.error).toBeNull();
+    expect(dashboard.scopeItems.map((item) => item.available_spaces)).toEqual([64]);
+  });
+
   test("retries a failed initial bootstrap and distinguishes an unknown count from a real zero", async () => {
     const user = userEvent.setup();
     apiClient.getDashboardBootstrap.mockRejectedValueOnce(new Error("처음 조회 실패"));

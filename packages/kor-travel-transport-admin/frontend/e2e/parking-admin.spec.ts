@@ -12,11 +12,11 @@ function bundle(airport: string, lot: number | null) {
   const hourly = Array.from({ length: 24 }, (_, hour) => ({ hour, average_available_spaces: hour === 3 ? null : 50 + hour, average_occupied_spaces: 100, average_congestion_ratio: 50, observations: hour === 3 ? 0 : 5 }));
   return { threshold_events: [{ parking_lot_id: 2, parking_lot_name: lots[1].name, threshold: 50, crossed_at: observedAt, direction: "down", previous_available_spaces: 55, current_available_spaces: 45 }, { parking_lot_id: 2, parking_lot_name: lots[1].name, threshold: 50, crossed_at: observedAt, direction: "up", previous_available_spaces: 45, current_available_spaces: 55 }], threshold_insights: { generated_at: observedAt, airport_code: airport, parking_lot_id: lot, days: 21, interval_minutes: 10, weekday_items: [{ weekday: 0, weekday_name: "월", threshold: 50, typical_minutes_of_day: 600, sample_count: 2 }], history_items: [{ threshold: 50, local_date: "2026-10-24", weekday: 5, weekday_name: "토", crossed_at: observedAt, minutes_of_day: 600, available_spaces: 45 }] }, weekday_hour_patterns: Array.from({ length: 7 }, (_, weekday) => ({ weekday, weekday_name: ["월", "화", "수", "목", "금", "토", "일"][weekday], hourly_buckets: hourly })), holiday_patterns: { generated_at: observedAt, airport_code: airport, parking_lot_id: lot, source: "fixture", status: "success", error_message: null, items: [{ local_date: "2026-10-24", name: "시험 공휴일", weekday: 5, weekday_name: "토", hourly_buckets: hourly }] }, time_series: series(airport, lot) };
 }
-type FixtureState = { bootstrapError?: boolean; catalogEmpty?: boolean; empty?: boolean; analyticsError?: boolean; historyError?: boolean; available?: number; marker?: string; feeMode?: "success" | "unsupported" | "error" };
+type FixtureState = { bootstrapError?: boolean; catalogEmpty?: boolean; empty?: boolean; analyticsError?: boolean; historyError?: boolean; historyDelayMs?: number; available?: number; marker?: string; feeMode?: "success" | "unsupported" | "error" };
 async function fixture(page: Page, state: FixtureState = {}) {
   const requests: string[] = []; const fees: unknown[] = []; const historyQueries: string[] = [];
   await page.context().addCookies([{ name: "kor_travel_transport_admin_session", value: "isolated-parking-e2e", url: process.env.E2E_BASE_URL ?? "http://127.0.0.1:12305", httpOnly: true, sameSite: "Strict" }]);
-  await page.route("**/api/**", (route) => {
+  await page.route("**/api/**", async (route) => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname.replace(/^\/api\/(?:transport\/|backend\/v1\/)/, ""); requests.push(path);
     const airport = url.searchParams.get("airport_code") ?? "GMP", lot = Number(url.searchParams.get("parking_lot_id")) || null;
     const items = airports.flatMap((airport) => airport.parking_lots.map((lot) => ({ airport_code: airport.code, airport_name: airport.name_ko, parking_lot_id: lot.id, parking_lot_name: lot.name, terminal: lot.terminal, category: lot.category, observed_at: observedAt, collected_at: observedAt, occupied_spaces: 100, total_spaces: 200, available_spaces: state.available ?? 100, congestion_label: null, congestion_ratio: 50, status_level: "stable" })));
@@ -26,7 +26,7 @@ async function fixture(page: Page, state: FixtureState = {}) {
     if (path === "dashboard/bootstrap") return state.bootstrapError ? route.fulfill({ status: 503, json: { detail: "공항 조회 시험 오류" } }) : route.fulfill({ json: { airports: state.catalogEmpty ? [] : airports, current: { generated_at: observedAt, items: state.empty ? [] : items }, collector: { ...collector, latest_snapshot_collected_at: state.marker ?? observedAt }, holidays } });
     if (path === "admin/collector-status") return route.fulfill({ json: { ...collector, latest_snapshot_collected_at: state.marker ?? observedAt } });
     if (path === "dashboard/analytics") return state.analyticsError ? route.fulfill({ status: 503, json: { detail: "분석 조회 시험 오류" } }) : route.fulfill({ json: state.empty ? { ...bundle(airport, lot), threshold_events: [], threshold_insights: { ...bundle(airport, lot).threshold_insights, weekday_items: [], history_items: [] }, weekday_hour_patterns: [], holiday_patterns: { ...bundle(airport, lot).holiday_patterns, items: [] }, time_series: { ...series(airport, lot), items: [] } } : bundle(airport, lot) });
-    if (path === "parking/analytics/timeseries") { historyQueries.push(url.search); return state.historyError ? route.fulfill({ status: 503, json: { detail: "과거 조회 시험 오류" } }) : route.fulfill({ json: { ...series(airport, lot), ...(state.empty ? { items: [] } : {}), ...(url.searchParams.has("start_date") ? { start_date: url.searchParams.get("start_date"), end_date: url.searchParams.get("end_date"), days: null } : {}), interval_minutes: Number(url.searchParams.get("interval_minutes")) || 10 } }); }
+    if (path === "parking/analytics/timeseries") { historyQueries.push(url.search); if (state.historyDelayMs) await new Promise((resolve) => setTimeout(resolve, state.historyDelayMs)); return state.historyError ? route.fulfill({ status: 503, json: { detail: "과거 조회 시험 오류" } }) : route.fulfill({ json: { ...series(airport, lot), ...(state.empty ? { items: [] } : {}), ...(url.searchParams.has("start_date") ? { start_date: url.searchParams.get("start_date"), end_date: url.searchParams.get("end_date"), days: null } : {}), interval_minutes: Number(url.searchParams.get("interval_minutes")) || 10 } }); }
     if (path === "flights/status") return route.fulfill({ json: { generated_at: observedAt, airport_code: airport, local_date: "2026-10-25", source: "fixture", status: "success", error_message: null, items: ["departure", "arrival"].map((direction, index) => ({ airport_code: airport, direction, flight_number: index ? "OZ1002" : "KE1001", airline: "시험 항공", scheduled_at: observedAt, estimated_at: null, marker_at: observedAt, origin_airport: "김포", destination_airport: "제주", status: "예정", line_type: "국내" })) } });
     if (path === "fees/calculate") { fees.push(request.postDataJSON()); if (state.feeMode === "error") return route.fulfill({ status: 503, json: { detail: "요금 조회 시험 오류" } }); if (state.feeMode === "unsupported") return route.fulfill({ json: { supported: false, airport_code: "GMP", vehicle_size: "small", total_fee: null, currency: "KRW", message: "현재 주차장의 요금 계산을 지원하지 않습니다.", breakdown: [] } }); return route.fulfill({ json: { supported: true, airport_code: "GMP", vehicle_size: "small", total_fee: 12000, currency: "KRW", message: null, breakdown: [{ date: "2026-10-25", day_type: "holiday", duration_minutes: 360, applied_fee: 12000 }] } }); }
     return route.fulfill({ status: 404, json: { detail: "fixture가 정의되지 않은 경로" } });
@@ -126,15 +126,31 @@ for (const width of [375, 1440]) test(`실패·빈 자료·실제 0과 요금 �
 
 test("375px 달력 Portal·범위·자동 집계 간격·Escape·200% 글자", async ({ page }) => {
   await page.clock.install({ time: new Date("2026-10-25T02:00:00Z") });
-  await page.setViewportSize({ width: 375, height: 900 });
-  const { historyQueries } = await fixture(page); await page.goto("/parking?airport=GMP&view=history");
+  const { historyQueries } = await fixture(page);
   const parking = page.getByRole("region", { name: "공항 주차장", exact: true });
   const picker = parking.locator('[data-slot="popover-trigger"]');
-  await expect(page.getByTestId("history-chart")).toBeVisible();
-  await page.addStyleTag({ content: "html { font-size: 200% !important; }" });
-  await picker.click();
-  const calendar = page.locator('[data-slot="calendar"]'); await expect(calendar).toBeVisible();
-  expect(await calendar.evaluate((node) => { const r = node.getBoundingClientRect(); return r.x >= 0 && r.right <= window.innerWidth; })).toBe(true);
+  const calendar = page.locator('[data-slot="calendar"]');
+  for (const width of [320, 375]) for (const scale of [100, 200]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/parking?airport=GMP&view=history");
+    await expect(page.getByTestId("history-chart")).toBeVisible();
+    await page.addStyleTag({ content: `*,*::before,*::after { animation: none !important; transition: none !important; } html { font-size: ${scale}% !important; }` });
+    await picker.click(); await expect(calendar).toBeVisible();
+    const bounds = await calendar.evaluate((node) => {
+      const rect = (element: Element) => { const r = element.getBoundingClientRect(); return { x: r.x, right: r.right, y: r.y, bottom: r.bottom, width: r.width, height: r.height, cssWidth: parseFloat(getComputedStyle(element).width), cssHeight: parseFloat(getComputedStyle(element).height) }; };
+      return { root: rect(node), popup: rect(node.closest('[data-slot="popover-content"]')!), days: [...node.querySelectorAll('[data-day]')].map(rect), weekdays: [...node.querySelectorAll('.rdp-weekday')].map(rect), nav: [...node.querySelectorAll('.rdp-button_previous,.rdp-button_next')].map(rect), documentWidth: document.documentElement.scrollWidth, viewportWidth: innerWidth };
+    });
+    await test.info().attach(`calendar-${width}-${scale}`, { body: JSON.stringify(bounds), contentType: "application/json" });
+    for (const r of [bounds.root, bounds.popup, ...bounds.weekdays, ...bounds.days]) {
+      expect(r.x).toBeGreaterThanOrEqual(0); expect(r.right).toBeLessThanOrEqual(width); expect(r.y).toBeGreaterThanOrEqual(0); expect(r.bottom).toBeLessThanOrEqual(900);
+    }
+    expect(bounds.weekdays).toHaveLength(7);
+    expect(bounds.documentWidth).toBeLessThanOrEqual(width);
+    if (await page.evaluate(() => matchMedia("(pointer: coarse)").matches)) for (const r of [...bounds.days, ...bounds.nav]) { // Chromium의 변환 좌표 43.999996 같은 float 오차만 1/1000px로 정규화한다.
+      expect(Math.round(r.width * 1000)).toBeGreaterThanOrEqual(44_000); expect(Math.round(r.height * 1000)).toBeGreaterThanOrEqual(44_000); expect(r.cssWidth).toBeGreaterThanOrEqual(44); expect(r.cssHeight).toBeGreaterThanOrEqual(44); }
+    await page.keyboard.press("Escape"); await expect(calendar).not.toBeVisible(); await expect(picker).toBeFocused();
+  }
+  await picker.click(); await expect(calendar).toBeVisible();
   await expect(calendar.getByRole("button", { name: /26일/ })).toBeDisabled();
   await calendar.getByRole("button", { name: /20일/ }).click();
   await calendar.getByRole("button", { name: /23일/ }).click();
@@ -152,6 +168,58 @@ test("375px 달력 Portal·범위·자동 집계 간격·Escape·200% 글자", a
     await parking.getByRole("button", { name: "최근 7일 보기", exact: true }).click(); await expect(picker).toBeFocused();
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("375px 달력 빠른 날짜 연속 선택은 응답 지연과 관계없이 범위를 유지한다", async ({ page }) => {
+  await page.clock.install({ time: new Date("2026-10-25T02:00:00Z") });
+  await page.setViewportSize({ width: 375, height: 812 });
+  const state: FixtureState = {}; const { historyQueries } = await fixture(page, state);
+  let firstResult: "data" | "empty" | "error" = "data";
+  // 실제 QA와 같은 7일 1009버킷→첫날144버킷, 짧은 viewport와 탭 이동을 재현한다.
+  await page.route("**/api/transport/parking/analytics/timeseries?**", async (route) => {
+    const url = new URL(route.request().url()), from = url.searchParams.get("start_date"), to = url.searchParams.get("end_date");
+    historyQueries.push(url.search);
+    if (state.historyDelayMs) await new Promise((resolve) => setTimeout(resolve, state.historyDelayMs));
+    if (from === "2026-10-20" && to === from && firstResult === "error") return route.fulfill({ status: 503, json: { detail: "첫날 범위 조회 오류" } });
+    const count = from === "2026-10-20" && to === from && firstResult === "empty" ? 0 : from && to ? (Date.parse(to) - Date.parse(from)) / 86_400_000 * 144 + 144 : 1009;
+    const start = from ? Date.parse(`${from}T00:00:00+09:00`) : Date.parse("2026-10-18T02:00:00Z");
+    return route.fulfill({ json: { ...series("GMP", 1), ...(from ? { days: null, start_date: from, end_date: to } : {}), items: Array.from({ length: count }, (_, index) => ({ bucket_at: new Date(start + index * 600_000).toISOString(), available_spaces: 50 + index % 40, occupied_spaces: 100, total_spaces: 200, lot_observations: 1 })) } });
+  });
+  const cases = [
+    ...["normal", "off"].flatMap((motion) => [0, 800].flatMap((delay) => ["locator", "coordinates"].map((method) => ({ motion, delay, method, result: "data" as const })))),
+    ...(["empty", "error"] as const).map((result) => ({ motion: "normal", delay: 0, method: "coordinates", result })),
+  ];
+  for (const { motion, delay, method, result } of cases) {
+    firstResult = result;
+    state.historyDelayMs = 0;
+    await page.goto("/parking?airport=GMP&lot=1&view=analytics");
+    if (motion === "off") await page.addStyleTag({ content: "*,*::before,*::after { animation: none !important; transition: none !important; }" });
+    const parking = page.getByRole("region", { name: "공항 주차장", exact: true });
+    await expect(page.getByTestId("weekday-hour-heatmap")).toBeVisible();
+    await parking.getByRole("tab", { name: "일별 흐름", exact: true }).click();
+    await expect(page.getByTestId("daily-flight-overlay-chart")).toBeVisible();
+    await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+    await parking.getByRole("tab", { name: "과거조회", exact: true }).click();
+    await expect(page.getByTestId("history-chart")).toBeVisible();
+    const picker = parking.locator('[data-slot="popover-trigger"]'); await picker.click();
+    const calendar = page.locator('[data-slot="calendar"]'); await expect(calendar).toBeVisible();
+    const first = calendar.getByRole("button", { name: /20일/ }), second = calendar.getByRole("button", { name: /21일/ });
+    const before = { first: await first.boundingBox(), second: await second.boundingBox(), calendar: await calendar.boundingBox(), scrollY: await page.evaluate(() => scrollY) };
+    state.historyDelayMs = delay;
+    await first.click();
+    if (result === "empty") await expect(parking.getByText("표시할 과거 시계열 데이터가 없습니다.")).toBeVisible();
+    if (result === "error") await expect(parking.getByRole("alert")).toContainText("첫날 범위 조회 오류");
+    const afterFirst = { second: await second.boundingBox(), calendar: await calendar.boundingBox(), scrollY: await page.evaluate(() => scrollY) };
+    if (method === "locator") await second.click();
+    else await page.mouse.click(before.second!.x + before.second!.width / 2, before.second!.y + before.second!.height / 2);
+    expect(afterFirst.scrollY).toBe(before.scrollY);
+    await test.info().attach(`rapid-${result}-${motion}-${delay}-${method}`, { body: JSON.stringify({ before, afterFirst, afterSecond: await calendar.boundingBox(), label: await picker.textContent(), queries: historyQueries.slice(-3) }), contentType: "application/json" });
+    await expect(picker).toHaveText("2026-10-20 ~ 2026-10-21");
+    await expect(page.getByTestId("history-chart")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(calendar).not.toBeVisible();
+    expect(await parking.locator(".history-results").evaluate((node) => (node as HTMLElement).style.minHeight)).toBe("");
+  }
 });
 
 for (const width of [375, 1440]) test(`공항·주차장 선택으로 항공편과 왕복하고 운영·요금 안내를 연다 ${width}px`, async ({ page }) => {

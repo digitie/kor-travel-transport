@@ -20,10 +20,11 @@
 - 현재 상태: `codex/admin-airport-parking`에서 parking-radar 네 뷰와 분석 네 탭을 `/parking`에 재사용했다.
   내부 file 패키지·주차 범위 CSS·단일 공항/주차장 선택, 인증 읽기/요금 계산, 항공편·수집/Dagster 연결을 포함한다.
   [범위·화면 대조·재현·검증 원장](reports/2026-10-25-admin-airport-parking.md).
-- 검증 상태: WSL 공개137개·관리자 단독 설치와 최신 main 위282개와 타입/lint·웹 빌드, Chromium/Firefox26개·coarse4개를 통과했다.
-  정상 빈 공항·bootstrap 실패·최초 분석 pending·실제0과 미관측, 달력200%·10/30/60분을 구분했다.
-- 다음 한 작업: PR132 main 위 코드4007a9d의 저장소 설정30개·Turbopack 개발375px1개까지 정산한 Draft PR을 연다.
-  이어 Docker 2차·전체 CI·독립 James/Popper·실제 API를 대조한다. 운영 빌드/배포와 분석 캐시 복구는 별도 담당 범위다.
+- 검증 상태: 독립 James의 d6aab36 지적 뒤 선택/배경 요청 경쟁, coarse320 달력과 스크롤 clamp를 재현·보완했다.
+  후속 WSL 공개142개·관리자 단독 설치282개/타입/lint/웹 빌드, 양 브라우저/coarse34UI·개발2개를 통과했다.
+  이전 source의137/30·Docker282/137은 새 소스의 수용으로 합산하지 않는다.
+- 다음 한 작업: [PR135](https://github.com/digitie/kor-travel-transport/pull/135)의 새 후보를 고정해 Docker2차·CI·독립 재리뷰와 실제 API를 대조한다.
+  운영 빌드/배포와 분석 캐시 복구는 별도 담당 범위다.
 
 ## 2026-10-25 — 관리자 UI 작은 수정 첫 묶음
 

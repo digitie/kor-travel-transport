@@ -76,6 +76,7 @@ export function DashboardProvider({
   const api = useMemo(() => apiClient ?? buildApiClient(apiBaseUrl), [apiBaseUrl, apiClient]);
   const mountedRef = useRef(false);
   const loadRequestIdRef = useRef(0);
+  const foregroundRequestIdRef = useRef<number | null>(null);
   const latestBackendUpdateMarkerRef = useRef<string | null>(null);
   const backendRefreshInFlightRef = useRef(false);
   const [airports, setAirports] = useState<Airport[]>([]);
@@ -107,6 +108,7 @@ export function DashboardProvider({
       const showLoading = options.showLoading ?? true;
 
       if (showLoading) {
+        foregroundRequestIdRef.current = requestId;
         setLoading(true);
         setHolidaySummary(null);
       }
@@ -133,6 +135,8 @@ export function DashboardProvider({
         if (showLoading) {
           setLoading(false);
         }
+      } finally {
+        if (foregroundRequestIdRef.current === requestId) foregroundRequestIdRef.current = null;
       }
     },
     [api]
@@ -204,6 +208,7 @@ export function DashboardProvider({
         return;
       }
 
+      let ownsBackendRefresh = false;
       try {
         const status = await api.getCollectorStatus();
         if (!active || !mountedRef.current) {
@@ -219,16 +224,18 @@ export function DashboardProvider({
           return;
         }
 
-        if (nextMarker === previousMarker || backendRefreshInFlightRef.current) {
+        // 선택 조회가 끝나기 전에는 가벼운 상태 확인만 한다. 배경 요청이 최신 선택을 무효화하지 않는다.
+        if (nextMarker === previousMarker || backendRefreshInFlightRef.current || foregroundRequestIdRef.current !== null) {
           return;
         }
 
         backendRefreshInFlightRef.current = true;
+        ownsBackendRefresh = true;
         await loadAirportData(selectedAirportCode, selectedParkingLotId, { showLoading: false });
       } catch {
         // Keep the last known dashboard visible; the next poll or focus event will retry.
       } finally {
-        backendRefreshInFlightRef.current = false;
+        if (ownsBackendRefresh) backendRefreshInFlightRef.current = false;
       }
     }
 

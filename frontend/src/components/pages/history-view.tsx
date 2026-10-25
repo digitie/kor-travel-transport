@@ -59,6 +59,8 @@ export function HistoryView({ active = true }: { active?: boolean }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const [reservedResultsHeight, setReservedResultsHeight] = useState<number | null>(null);
 
   const scopeLabel = historyLabel(selectedParkingLotName, selectedAirport?.name_ko);
   // Both bounds must be read as Asia/Seoul calendar days, not the viewer's own timezone -
@@ -133,7 +135,11 @@ export function HistoryView({ active = true }: { active?: boolean }) {
       </header>
 
       <div className="action-stack">
-        <Popover>
+        <Popover onOpenChange={(open) => {
+          // 열린 달력 아래 결과가 로딩·빈 자료·실패로 짧아져도 문서 스크롤이 바뀌지 않게 한다.
+          // 닫으면 예약 공간을 풀며 다른 범위의 수치는 계속 표시하지 않는다.
+          setReservedResultsHeight(open ? resultsRef.current?.getBoundingClientRect().height ?? null : null);
+        }}>
           <PopoverTrigger ref={triggerRef} className="button secondary" type="button">
             {formatRangeLabel(range)}
           </PopoverTrigger>
@@ -178,24 +184,26 @@ export function HistoryView({ active = true }: { active?: boolean }) {
         </p>
       ) : null}
 
-      {summary && (summary.min !== null || summary.max !== null || summary.average !== null) ? (
-        <section className="detail-ribbon">
-          <Card className="metric-card detail-card">
-            <span>최소 잔여 주차면</span>
-            <strong>{summary.min}대</strong>
-          </Card>
-          <Card className="metric-card detail-card">
-            <span>평균 잔여 주차면</span>
-            <strong>{summary.average}대</strong>
-          </Card>
-          <Card className="metric-card detail-card">
-            <span>최대 잔여 주차면</span>
-            <strong>{summary.max}대</strong>
-          </Card>
-        </section>
-      ) : null}
+      <div className="history-results" ref={resultsRef} style={{ minHeight: reservedResultsHeight ?? undefined }}>
+        {summary && (summary.min !== null || summary.max !== null || summary.average !== null) ? (
+          <section className="detail-ribbon">
+            <Card className="metric-card detail-card">
+              <span>최소 잔여 주차면</span>
+              <strong>{summary.min}대</strong>
+            </Card>
+            <Card className="metric-card detail-card">
+              <span>평균 잔여 주차면</span>
+              <strong>{summary.average}대</strong>
+            </Card>
+            <Card className="metric-card detail-card">
+              <span>최대 잔여 주차면</span>
+              <strong>{summary.max}대</strong>
+            </Card>
+          </section>
+        ) : null}
 
-      {visibleSeries || (!loading && !error) ? <HistoryChart holidays={holidaySummary?.items ?? []} series={visibleSeries} scopeLabel={scopeLabel} /> : null}
+        {visibleSeries || (!loading && !error) ? <HistoryChart holidays={holidaySummary?.items ?? []} series={visibleSeries} scopeLabel={scopeLabel} /> : null}
+      </div>
     </div>
   );
 }

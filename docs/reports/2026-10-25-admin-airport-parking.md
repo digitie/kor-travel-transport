@@ -103,6 +103,40 @@ E2E_PARKING_ADMIN=true E2E_BASE_URL=http://127.0.0.1:12355 E2E_PUBLIC_PARKING_BA
 전체 30개의 고정 코드 결과는 `evidence/final-4007/parking-ui.json`, 개발 모드 1개는 별도 후속 `test-results/parking-ui.json`이다.
 프로젝트 저장소에는 시험용 세션·생성된 웹 산출물·스크린샷을 넣지 않는다.
 
+## 독립 리뷰 뒤 공용 달력·갱신 경쟁 보완
+
+아래는 `d6aab36` 이후의 코드 보완이다. 위 137단위/30UI와 부모가 수행한 WSL+Docker의 282/137 통과는
+기존 `4007a9d`·동등한 `d6aab36` 소스의 증거로 보존하며 새 코드 수용으로 합산하지 않는다.
+
+- James는 실제 React와 보류한 Promise 순서로 공항 변경 조회 중 focus/15초 poll이 새 관측 표지를 발견하면
+  배경 bootstrap이 선택 조회를 무효화하고 `loading=true`가 남는 P1을 재현했다. 작성자도 focus/poll 두 실패를 먼저 확인했다.
+  선택 조회의 request ID를 추적하고 그 동안은 상태 확인만 수행한다. 최신 선택끼리의 응답 순서 검사는 유지한다.
+  선택 응답이 옛 관측 표지를 가진 경우 다음 상태 확인에서 새 표지를 다시 조회하고, 오류 뒤 수동 재시도도 가능하다.
+- 같은 갱신 경계에서 배경 요청 진행 중 focus 세 번에 bootstrap 2회 기대/3회 실제 실패도 재현했다.
+  이미 갱신 중이라 돌아온 callback이 다른 요청의 잠금을 풀지 않도록, 자기 요청이 확보한 표지만 해제한다.
+- coarse 320px 달력은 오른쪽328.95px 넘침을 재현했다. 7칸×44px를 유지하면서 달력의 coarse 수평 padding만 없애고
+  날짜·이전/다음 월 버튼과 캡션의 최소 높이를 맞췄다. 320/375px·100/200%에서 달력 폭308px, 7개 요일·모든 날짜,
+  Portal의 상하좌우 viewport 포함과 날짜/월 이동의 CSS44px를 단언한다. Chromium의 변환 rect43.999996px는
+  1/1000px로만 정규화하고 CSS 계산값44px도 함께 검사한다. 터치 기준을 낮추지 않았다.
+- 기존 실제 QA 기록을 직접 대조했다. Firefox375는 높이812px·coarse·기본 글자/모션이고,
+  7일1009버킷에서 첫날144버킷으로 조회했다(첫날 HTTP200/70ms, 빈 응답 아님).
+  처음 직접 진입한 900px fixture의 빠른 네 조건은 정상이었다. 이후 같은812px·분석→일별→과거 이동과 스크롤을 맞추자
+  Chromium의 기존 좌표 클릭이 `14~20`/`7~20`으로 바뀌는 실패를 재현했다.
+  선택 전 `scrollY=31/달력y264`가 결과 제거 뒤 `scrollY=0/달력y295`로 바뀐 원인을 분리했다.
+- 달력이 열린 동안만 기존 결과 영역의 실제 높이를 예약한다. 다른 범위의 수치는 계속 숨기고, 첫 응답이 로딩·빈200·오류503이어도
+  두 번째 날짜를 고르는 동안 문서 높이가 줄지 않는다. 닫으면 `min-height`를 해제한다. 고정된 상시 빈 공간은 추가하지 않는다.
+  이 재현과 Firefox 실제 QA의 ‘두 번째 click은 focus만 됨’을 같은 원인이라고 단정하지 않는다.
+
+이 보완을 합친 소스의 WSL2 공개 앱 14파일142개·테스트 타입·웹 빌드, 관리자 단독 기본 `npm ci` 뒤
+38파일282개·타입·lint0·웹 빌드를 통과했다. Chromium/Firefox·coarse 전체34개도 skip/flaky0으로 통과했다.
+빠른 선택은 모션 기본/해제×즉시/800ms응답×locator/기존 좌표8조건에, 첫날 빈200·오류503 반영 뒤의 좌표 선택2조건을
+각 컨텍스트에서 대조했다. scrollY 유지·`20~21`·닫은 뒤 예약 높이 해제를 포함한다.
+같은 단독 설치의 Turbopack 개발 모드에서도 coarse 네 뷰와 320/375px·100/200% 달력2개 흐름을 통과했다.
+
+새 전체 UI는 `evidence/review-final/parking-ui.json`(34개), 개발 모드는 별도 `test-results/parking-ui.json`(2개)에 정산한다.
+`review-calendar-red`, `review-calendar-float`, `review-rapid-baseline`, `review-rapid-red`, `review-rapid-green`은
+원인·실패·중간 수용을 구분하는 증거다. 새 최종 SHA의 Docker/CI·독립 재리뷰·실제 API 수용은 부모 작업에서 다시 정산한다.
+
 ## 남은 수용
 
 - 같은 코드에 대한 WSL+Docker 2차 검증. 문서 정산 후에도 공개/관리자 frontend 전체 tree와 lock/vendor 해시를 유지한다.
