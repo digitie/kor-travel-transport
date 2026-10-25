@@ -75,8 +75,11 @@ test("갱신 지연과 가격 읽기 모델 갱신 시각을 통계 세대 기�
   expect(container.textContent).not.toContain("판매 여부");
 });
 
-test.each([{ pending: true, failed: false }, { pending: false, failed: true }])("조회 상태 $pending/$failed에서 이전 가격과 지연 경고를 함께 숨긴다", ({ pending, failed }) => {
-  const html = renderToStaticMarkup(<FuelViewportSummary items={[metrics]} pending={pending} failed={failed} pricesStale pricesLastRefreshedAt="2026-10-20T03:10:00Z" />);
+test.each([
+  { pending: true, failed: false, items: [metrics] }, { pending: false, failed: true, items: [metrics] },
+  { pending: true, failed: false, items: [] }, { pending: false, failed: true, items: [] },
+])("조회 상태 $pending/$failed에서 이전 가격과 지연 경고를 함께 숨긴다", ({ pending, failed, items }) => {
+  const html = renderToStaticMarkup(<FuelViewportSummary items={items} pending={pending} failed={failed} pricesStale pricesLastRefreshedAt="2026-10-20T03:10:00Z" />);
   expect(html).not.toContain("1,700");
   expect(html).not.toContain("갱신 지연");
   expect(html).not.toContain("26. 10. 20.");
@@ -87,6 +90,26 @@ test("갱신 시각과 통계 기준 시각이 없으면 확인되지 않음으�
   const container = document.createElement("div"); container.innerHTML = html;
   expect(container.textContent).toContain("갱신 지연 · 가격 갱신 확인되지 않음");
   expect(container.textContent).toContain("통계 기준 확인되지 않음");
+});
+
+test.each([
+  { lastRefreshedAt: "2026-10-20T03:10:00Z", expected: "26. 10. 20." },
+  { lastRefreshedAt: null, expected: "확인되지 않음" },
+])("빈 통계 정상 응답도 가격 갱신 지연과 $expected 시각을 표시한다", ({ lastRefreshedAt, expected }) => {
+  const html = renderToStaticMarkup(<FuelViewportSummary items={[]} pending={false} pricesStale pricesLastRefreshedAt={lastRefreshedAt} />);
+  const container = document.createElement("div"); container.innerHTML = html;
+  expect(container.querySelector('[role="status"]')?.textContent).toContain(`갱신 지연 · 가격 갱신 ${expected}`);
+  expect(container.textContent).toContain("통계 없음 · 수집 완료 후 반영됩니다.");
+  expect(container.querySelector("dl")).toBeNull();
+  expect(container.textContent).not.toContain("통계 기준");
+});
+
+test("빈 통계의 정상 가격 갱신 시각도 통계 기준 시각으로 대체하지 않는다", () => {
+  const html = renderToStaticMarkup(<FuelViewportSummary items={[]} pending={false} pricesLastRefreshedAt="2026-10-20T03:10:00Z" />);
+  expect(html).toContain("가격 갱신 26. 10. 20.");
+  expect(html).toContain("통계 없음 · 수집 완료 후 반영됩니다.");
+  expect(html).not.toContain("갱신 지연");
+  expect(html).not.toContain("통계 기준");
 });
 
 test("열어 둔 통계 안내는 재조회·실패에도 초점을 유지하고 이전 수치를 남기지 않는다", async () => {

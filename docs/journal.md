@@ -9,6 +9,10 @@
   James의 coarse 선택창30px/재조회 시 팝업 초점 소실 P2도 재현·수정했다. 최종 WSL 타입/lint·Vitest258개와
   Chromium/Firefox fixture32개를 확인했다. 기존 메뉴 fixture는 클라이언트 KPI 확인 후 클릭하도록 순서만 보강했다.
   실제 타일/운영 API·운영 이미지 빌드/배포는 실행하지 않았다. 최종 CI/독립 리뷰는 PR 정본을 따른다.
+- `606f582`의 James 사전 차이 리뷰에서 가격 있는 장소와 빈 통계가 함께 오면 지연 경고가 사라지는 경로를 찾았다.
+  유효/빈 가격 갱신 시각의 단위 실패2건을 재현하고 정상 응답의 가격 상태를 통계 항목 존재와 분리했다.
+  통계 없음·조회 중/실패의 이전 상태 숨김을 유지했다. WSL 타입/lint·Vitest263개와 Chromium/Firefox fixture36개를
+  단일 실행으로 다시 확인했다. 해당 후보의 CI·최종 독립 재리뷰를 통과로 세지 않는다.
 - [범위·검증·미완 항목](reports/2026-10-25-admin-ui-compact-batch.md),
   [PR131](https://github.com/digitie/kor-travel-transport/pull/131).
 

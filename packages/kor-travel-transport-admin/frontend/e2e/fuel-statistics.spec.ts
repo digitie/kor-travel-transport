@@ -148,6 +148,48 @@ for (const width of [375, 1440]) test(`${width}px 가격 갱신 지연은 요약
   } finally { release(); }
 });
 
+for (const width of [375, 1440]) test(`${width}px 가격 있는 장소와 빈 통계가 함께 와도 갱신 지연을 표시한다`, async ({ page }, testInfo) => {
+  await page.setViewportSize({ width, height: width === 375 ? 812 : 900 });
+  const priceAt = "2026-10-20T03:10:00Z";
+  const place = { id: 43, kind: "fuel_station", source: "opinet_browser", name: "통계 대기 시험주유소", latitude: 37.5, longitude: 127.1,
+    prices: [{ product_code: "B027", price: 1705, observed_at: priceAt }], line_names: [], facilities: [], updated_at: priceAt };
+  await page.route("**/api/transport/transport/features/places?*", (route) => route.fulfill({ json: {
+    items: [place], total: 1, truncated: false, clustered: false, fuel_statistics: [], fuel_prices_stale: true,
+    fuel_prices_last_refreshed_at: new URL(route.request().url()).searchParams.get("query") === "unknown" ? null : priceAt,
+  } }));
+  await page.goto("/fuel");
+  const summary = page.getByRole("region", { name: "현재 지도 범위 유가 통계" });
+  const stale = summary.getByRole("status");
+  await expect(summary).toContainText("통계 없음 · 수집 완료 후 반영됩니다.");
+  await expect(stale).toHaveText(/갱신 지연 · 가격 갱신 26\. 10\. 20\./);
+  await expect(page.locator(".kt-map-count")).toHaveText("1건 표시");
+  await expect(summary.locator("dl")).toHaveCount(0);
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
+    const warningBounds = (await stale.boundingBox())!;
+    expect(warningBounds.y + warningBounds.height).toBeLessThanOrEqual(width === 375 ? 812 : 900);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/compact-fuel-${testInfo.project.name}-empty-stale-${width}-${theme}.png`, fullPage: false, animations: "disabled" });
+  }
+  await summary.getByRole("button", { name: "지도 범위 유가 통계 안내" }).click();
+  await expect(page.getByRole("dialog")).toContainText("판매 여부");
+  await expect(page.getByRole("dialog")).toContainText("통계 없음");
+  await page.keyboard.press("Escape");
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
+  await expect(summary).toHaveCount(0);
+  await expect(page.locator(".map-guidance")).toContainText("유가 갱신 지연");
+  await page.locator(".map-place-list").getByRole("button", { name: /통계 대기 시험주유소/ }).click();
+  const detail = page.getByRole("complementary", { name: "선택 장소 상세" });
+  await expect(detail).toContainText("1,705원/L");
+  await expect(detail.getByRole("status")).toContainText("갱신 지연");
+  await page.getByRole("tab", { name: "지도", exact: true }).click();
+  await expect(stale).toContainText("갱신 지연");
+  await page.getByLabel("장소 검색", { exact: true }).fill("unknown");
+  await expect(stale).toHaveText("갱신 지연 · 가격 갱신 확인되지 않음");
+  await expect(summary).toContainText("통계 없음");
+  await expect(summary).not.toContainText("통계 기준");
+});
+
 test("안내를 키보드로 연 뒤 재조회·실패·성공에도 초점과 새 내용만 유지한다", async ({ page }) => {
   let release = () => {};
   let markRequested = () => {};
