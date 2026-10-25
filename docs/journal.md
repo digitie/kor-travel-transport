@@ -4,6 +4,10 @@
   주소/출처 팝업, 실가격 추이 우선·가정 계산 접기를 적용했다. 서버 집계/기존 API와 Common dev.7은 유지한다.
 - WSL2 Linux Node에서 타입/lint·첫 후보 Vitest250개를 확인했다. 육안에서 요약이 초기화 오류를 가리던 회귀는
   오류 영역 전달로 수정했고 관련 단위17개·최종 단일 실행의 Chromium/Firefox fixture UI22개(유가18·기존 삽입 도시철도4)를 확인했다.
+- 추가 지연 점검에서 가격은 첫 화면에 보이지만 하단 경고는 509/571px 떨어진 문제를 확인했다. 가격 바로 아래에
+  `갱신 지연`/가격 갱신 시각을 붙이고 통계 세대 기준·개별 가격 관측 시각을 구분했다. 판매 여부 설명은 `i`로 옮기고 목록 경고는 유지했다.
+  James의 coarse 선택창30px/재조회 시 팝업 초점 소실 P2도 재현·수정했다. 최종 WSL 타입/lint·Vitest258개와
+  Chromium/Firefox fixture32개를 확인했다. 기존 메뉴 fixture는 클라이언트 KPI 확인 후 클릭하도록 순서만 보강했다.
   실제 타일/운영 API·운영 이미지 빌드/배포는 실행하지 않았다. 최종 CI/독립 리뷰는 PR 정본을 따른다.
 - [범위·검증·미완 항목](reports/2026-10-25-admin-ui-compact-batch.md),
   [PR131](https://github.com/digitie/kor-travel-transport/pull/131).

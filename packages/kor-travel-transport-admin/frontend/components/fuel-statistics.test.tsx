@@ -2,7 +2,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { FuelPriceTrend, FuelStatisticsCard, FuelViewportSummary, type FuelViewportStatistics } from "./fuel-statistics";
 
 const metrics: FuelViewportStatistics = { product_code: "B027", station_count: 1000, average_price: 1700,
@@ -64,4 +64,74 @@ test("지도 통계 실패는 이전 응답의 가격이나 0원으로 표시하
   expect(html).toContain('role="alert"');
   expect(html).toContain("통계를 불러오지 못했습니다");
   expect(html).not.toContain("1,700");
+});
+
+test("갱신 지연과 가격 읽기 모델 갱신 시각을 통계 세대 기준과 구분한다", () => {
+  const html = renderToStaticMarkup(<FuelViewportSummary items={[metrics]} pending={false} pricesStale pricesLastRefreshedAt="2026-10-20T03:10:00Z" />);
+  const container = document.createElement("div"); container.innerHTML = html;
+  expect(container.querySelector(".error")?.textContent).toContain("갱신 지연 · 가격 갱신 26. 10. 20.");
+  expect(container.querySelector(".fuel-viewport-context")?.textContent).toContain("통계 기준 26. 10. 21.");
+  expect(container.textContent).toContain("1,700");
+  expect(container.textContent).not.toContain("판매 여부");
+});
+
+test.each([{ pending: true, failed: false }, { pending: false, failed: true }])("조회 상태 $pending/$failed에서 이전 가격과 지연 경고를 함께 숨긴다", ({ pending, failed }) => {
+  const html = renderToStaticMarkup(<FuelViewportSummary items={[metrics]} pending={pending} failed={failed} pricesStale pricesLastRefreshedAt="2026-10-20T03:10:00Z" />);
+  expect(html).not.toContain("1,700");
+  expect(html).not.toContain("갱신 지연");
+  expect(html).not.toContain("26. 10. 20.");
+});
+
+test("갱신 시각과 통계 기준 시각이 없으면 확인되지 않음으로 남긴다", () => {
+  const html = renderToStaticMarkup(<FuelViewportSummary items={[{ ...metrics, generated_at: "" }]} pending={false} pricesStale pricesLastRefreshedAt={null} />);
+  const container = document.createElement("div"); container.innerHTML = html;
+  expect(container.textContent).toContain("갱신 지연 · 가격 갱신 확인되지 않음");
+  expect(container.textContent).toContain("통계 기준 확인되지 않음");
+});
+
+test("열어 둔 통계 안내는 재조회·실패에도 초점을 유지하고 이전 수치를 남기지 않는다", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<FuelViewportSummary items={[metrics]} pending={false} />));
+    const trigger = container.querySelector<HTMLButtonElement>('button[aria-label="지도 범위 유가 통계 안내"]')!;
+    await act(async () => { trigger.focus(); trigger.click(); });
+    const popup = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(popup).not.toBeNull();
+    await act(async () => popup.querySelector<HTMLAnchorElement>('a[href="/fuel/statistics"]')!.focus());
+    await act(async () => root.render(<FuelViewportSummary items={[metrics]} pending />));
+    await vi.waitFor(() => { expect(popup.isConnected).toBe(true); expect(popup.contains(document.activeElement)).toBe(true); });
+    expect(popup.textContent).toContain("통계 조회 중");
+    expect(popup.textContent).not.toContain("1,700");
+    await act(async () => root.render(<FuelViewportSummary items={[metrics]} pending={false} failed />));
+    expect(popup.contains(document.activeElement)).toBe(true);
+    expect(popup.textContent).toContain("통계를 불러오지 못했습니다");
+    expect(popup.textContent).not.toContain("1,700");
+    await act(async () => root.render(<FuelViewportSummary items={[{ ...metrics, average_price: 1800 }]} pending={false} />));
+    expect(popup.contains(document.activeElement)).toBe(true);
+    expect(popup.textContent).toContain("1,800");
+    expect(popup.textContent).not.toContain("1,700");
+    await act(async () => popup.querySelector<HTMLButtonElement>('button[aria-label="안내 닫기"]')!.click());
+    await vi.waitFor(() => expect(document.activeElement).toBe(trigger));
+    await act(async () => root.render(<FuelViewportSummary items={[metrics]} pending />));
+    expect(document.activeElement).toBe(trigger);
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
+test("열린 안내에서 다른 입력으로 옮긴 초점은 통계 재조회가 빼앗지 않는다", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const container = document.createElement("div"), input = document.createElement("input"); document.body.append(container, input);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<FuelViewportSummary items={[metrics]} pending={false} />));
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="지도 범위 유가 통계 안내"]')!.click());
+    const popup = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    await act(async () => popup.querySelector<HTMLAnchorElement>('a[href="/fuel/statistics"]')!.focus());
+    await act(async () => input.focus());
+    await act(async () => root.render(<FuelViewportSummary items={[metrics]} pending />));
+    expect(document.activeElement).toBe(input);
+    await act(async () => root.render(<FuelViewportSummary items={[metrics]} pending={false} failed />));
+    expect(document.activeElement).toBe(input);
+  } finally { await act(async () => root.unmount()); container.remove(); input.remove(); }
 });

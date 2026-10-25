@@ -63,24 +63,32 @@ export function FuelStatisticsCard({ metrics, title }: { metrics: FuelMetrics; t
   </article>;
 }
 
-export function FuelViewportSummary({ items, pending, failed = false }: { items: FuelViewportStatistics[]; pending: boolean; failed?: boolean }) {
+export function FuelPriceStatus({ stale, lastRefreshedAt }: { stale: boolean; lastRefreshedAt?: string | null }) {
+  return stale ? <p className="error" role="status">갱신 지연 · 가격 갱신 {dateTime(lastRefreshedAt)}</p>
+    : lastRefreshedAt ? <p className="fuel-viewport-context">가격 갱신 {dateTime(lastRefreshedAt)}</p> : null;
+}
+
+export function FuelViewportSummary({ items, pending, failed = false, pricesStale = false, pricesLastRefreshedAt }: { items: FuelViewportStatistics[]; pending: boolean; failed?: boolean; pricesStale?: boolean; pricesLastRefreshedAt?: string | null }) {
   const productId = useId();
   const [product, setProduct] = useState("B027");
   const selected = items.find((item) => item.product_code === product) ?? items[0];
   return <section className="fuel-viewport-summary" aria-label="현재 지도 범위 유가 통계" aria-busy={pending}>
     <header><h2>현재 지도 범위</h2>
-      {!pending && !failed && selected ? <>
-        {items.length > 1 ? <><label className="sr-only" htmlFor={productId}>지도 통계 유종</label><select id={productId} value={selected.product_code} onChange={(event) => setProduct(event.target.value)}>{items.map((item) => <option key={item.product_code} value={item.product_code}>{fuelProductLabel(item.product_code)}</option>)}</select></> : <span>{fuelProductLabel(selected.product_code)}</span>}
-        <InfoButton label="지도 범위 유가 통계">
+      {!pending && !failed && selected ? items.length > 1 ? <><label className="sr-only" htmlFor={productId}>지도 통계 유종</label><select id={productId} value={selected.product_code} onChange={(event) => setProduct(event.target.value)}>{items.map((item) => <option key={item.product_code} value={item.product_code}>{fuelProductLabel(item.product_code)}</option>)}</select></> : <span>{fuelProductLabel(selected.product_code)}</span> : null}
+      <InfoButton label="지도 범위 유가 통계">
+        {pending ? <p role="status">통계 조회 중…</p> : failed ? <p role="alert">통계를 불러오지 못했습니다.</p> : selected ? <>
           <p>현재 지도 범위와 검색·출처·유종 조건에 맞는 전체 주유소의 유효 가격을 집계합니다. 묶음 마커 개수와는 다릅니다.</p>
+          <p>통계 기준은 공개된 통계 세대의 수집 시각이고, 가격 갱신은 가격 읽기 모델의 마지막 성공 갱신 시각입니다. 개별 가격의 관측 시각은 주유소 상세에서 확인할 수 있습니다.</p>
+          {pricesStale ? <p>가격 갱신이 지연되어 현재 유종·가격·판매 여부가 표시된 자료와 다를 수 있습니다.</p> : null}
           <FuelStatisticsCard title={fuelProductLabel(selected.product_code)} metrics={selected} />
           <Link className="inline-link" href="/fuel/statistics">지역·기간별 유가 통계</Link>
-        </InfoButton>
-      </> : null}
+        </> : <p>통계 없음 · 수집 완료 후 반영됩니다.</p>}
+      </InfoButton>
     </header>
     {pending ? <p role="status">통계 조회 중…</p> : failed ? <p role="alert">통계를 불러오지 못했습니다.</p> : selected ? <>
       <dl><div><dt>평균</dt><dd>{money(selected.average_price)}<small>원/L</small></dd></div><div><dt>최저</dt><dd>{money(selected.minimum_price)}<small>원/L</small></dd></div></dl>
-      <p className="fuel-viewport-context"><span>{selected.station_count.toLocaleString()}개 주유소</span><span>수집 {dateTime(selected.generated_at)}</span></p>
+      <FuelPriceStatus stale={pricesStale} lastRefreshedAt={pricesLastRefreshedAt} />
+      <p className="fuel-viewport-context"><span>{selected.station_count.toLocaleString()}개 주유소</span><span>통계 기준 {dateTime(selected.generated_at)}</span></p>
       {selected.update_pending ? <p role="status">최신 수집 통계 반영 대기</p> : null}
     </> : <p>통계 없음 · 수집 완료 후 반영됩니다.</p>}
   </section>;
