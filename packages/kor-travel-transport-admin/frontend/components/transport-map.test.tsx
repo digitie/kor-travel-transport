@@ -102,3 +102,14 @@ test("별도 목록 건수는 좌표나 추가 지물과 합산하지 않고 지
     expect(fetch).not.toHaveBeenCalled();
   } finally { await act(async () => root.unmount()); container.remove(); }
 });
+
+test("숨긴 기본 장소는 목록 건수에 넣지 않고 추가 목록 지물만 센다", async () => {
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  try {
+    await act(async () => root.render(<TransportMap places={[station]} view="list" listPlaces={false} />));
+    expect(container.querySelectorAll(".place-row")).toHaveLength(0);
+    expect(container.querySelector(".kt-map-count")!.textContent).toBe("0건 표시");
+    await act(async () => root.render(<TransportMap places={[station]} view="list" listPlaces={false} listFeatureCount={3} />));
+    expect(container.querySelector(".kt-map-count")!.textContent).toBe("3건 표시");
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});

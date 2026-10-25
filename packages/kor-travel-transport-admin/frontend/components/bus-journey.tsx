@@ -12,7 +12,7 @@ const TransportMap = dynamic(() => import("./transport-map").then((m) => m.Trans
 type Terminal = { id: number; terminal_id: string; terminal_name: string | null; city_name: string | null; latitude: number | null; longitude: number | null; updated_at: string; location_source?: string | null };
 type Timetable = { service_date: string; fetched_at: string; total?: number | null; truncated?: boolean; stored?: boolean; stale?: boolean; refresh_status?: "stored_only" | "rate_limited" | "not_configured" | "upstream_error" | null; items: { departure_planned_time: string | null; arrival_planned_time: string | null; departure_terminal_name: string | null; arrival_terminal_name: string | null; grade_name: string | null; adult_fare: number | null }[] };
 
-function TerminalSearch({ type, label, selected, other, terminals, catalogReady, catalogFailed, date, direction, onSelect }: { type: string; label: string; selected: Terminal | null; other: Terminal | null; terminals: Terminal[]; catalogReady: boolean; catalogFailed: boolean; date: string; direction: "departure" | "arrival"; onSelect: (value: Terminal | null) => void }) {
+function TerminalSearch({ type, label, selected, other, terminals, catalogReady, catalogFailed, date, direction, onSelect, onVisibleCountChange }: { type: string; label: string; selected: Terminal | null; other: Terminal | null; terminals: Terminal[]; catalogReady: boolean; catalogFailed: boolean; date: string; direction: "departure" | "arrival"; onSelect: (value: Terminal | null) => void; onVisibleCountChange: (count: number) => void }) {
   const [query, setQuery] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [response, setResponse] = useState<{ key: string; items?: Terminal[]; error?: boolean }>({ key: "" });
@@ -30,6 +30,10 @@ function TerminalSearch({ type, label, selected, other, terminals, catalogReady,
   const rows = options.filter((item) => item.terminal_id !== other?.terminal_id && (!query.trim() || [item.terminal_name, item.city_name, item.terminal_id].join(" ").includes(query.trim())));
   const ready = other && !showAll ? current?.items !== undefined : catalogReady;
   const visible = query.trim() || other ? rows.slice(0, 20) : [];
+  useEffect(() => {
+    onVisibleCountChange(visible.length);
+    return () => onVisibleCountChange(0);
+  }, [visible.length, onVisibleCountChange]);
   return <section className="terminal-search"><MapFilterBar><MapFilterField htmlFor={`bus-${label}`} label={label}><Input id={`bus-${label}`} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="터미널 이름·지역·코드" /></MapFilterField></MapFilterBar>
     {selected ? <p><strong>{selected.terminal_name ?? selected.terminal_id}</strong> <button type="button" className="inline-link" onClick={() => onSelect(null)}>선택 해제</button></p> : null}
     {other ? <><label className="inline-checkbox"><input type="checkbox" checked={!showAll} onChange={(event) => setShowAll(!event.target.checked)} />{other.terminal_name}와 연결 확인된 터미널</label><InfoButton label="연결된 터미널">해당 운행일의 저장된 시간표로 확인된 연결입니다. 미조회 노선도 찾으려면 연결 확인 필터를 해제하고 전체 터미널을 검색하세요.</InfoButton></> : null}
@@ -48,6 +52,8 @@ export function BusJourney({ type }: { type: "express" | "intercity" }) {
   const [departure, setDeparture] = useState<Terminal | null>(null);
   const [arrival, setArrival] = useState<Terminal | null>(null);
   const [focused, setFocused] = useState<Terminal | null>(null);
+  const [departureRowCount, setDepartureRowCount] = useState(0);
+  const [arrivalRowCount, setArrivalRowCount] = useState(0);
   const { position, positionError, locating, locate } = useNearbyPosition();
   const today = useSeoulToday();
   const [date, setDate] = useState(seoulDate);
@@ -116,9 +122,9 @@ export function BusJourney({ type }: { type: "express" | "intercity" }) {
     filterSummary={departure || arrival ? `${departure?.terminal_name ?? "출발지"} → ${arrival?.terminal_name ?? "도착지"}` : "버스 필터"}
     toolbar={<MapFilterBar><MapFilterField label="출발일" htmlFor="bus-service-date"><input id="bus-service-date" type="date" min={today} max={type === "intercity" ? today : seoulDate(9)} value={effectiveDate} disabled={type === "intercity"} onChange={(event) => { invalidate(); setDate(event.target.value); }} /></MapFilterField><button type="button" className="secondary" disabled={locating} onClick={() => { locate(); setView("list"); }}>{locating ? "위치 확인 중…" : "내 근처 터미널"}</button><button type="button" className="secondary" disabled={!departure && !arrival} onClick={() => { invalidate(); setDeparture(arrival); setArrival(departure); }}>출발·도착 바꾸기</button><button type="button" className="secondary" onClick={() => setView("list")}>출발·도착 검색</button><a className="inline-link" href="#bus-departures">시간표 보기</a><InfoButton label="버스 시간표">시외버스는 오늘 운행편을 제공합니다. 목록에서 출발·도착 터미널을 검색한 뒤 운행편을 조회하면 예정 시각과 요금을 확인할 수 있습니다.</InfoButton></MapFilterBar>}
     feedback={<>{catalogError ? <p role="alert">{catalogError}</p> : null}{positionError ? <p role="alert">{positionError}</p> : null}</>}
-    listPlaces={false} listContent={<>
+    listPlaces={false} listCount={nearby.length + departureRowCount + arrivalRowCount} listContent={<>
     {position ? <><p className="quiet">위치 오차 약 {Math.round(position.accuracy)}m · 직선 거리 순</p><div className="station-results" aria-label="가까운 터미널">{nearby.map(({ place, distance }) => <button type="button" key={place.terminal_id} onClick={() => setFocused(place)}><strong>{place.terminal_name}</strong><small>{distance.toFixed(1)}km · {place.terminal_id}</small></button>)}</div>{!nearby.length ? <p>좌표가 등록된 터미널이 없습니다. 이름으로 검색해 주세요.</p> : null}</> : null}
-    <div className="journey-data-grid"><TerminalSearch type={type} label="출발 터미널" selected={departure} other={arrival} direction="arrival" terminals={terminals} catalogReady={catalogLoaded} catalogFailed={Boolean(catalogError) && !catalogLoaded} date={effectiveDate} onSelect={(value) => { invalidate(); setDeparture(value); setFocused(null); }} /><TerminalSearch type={type} label="도착 터미널" selected={arrival} other={departure} direction="departure" terminals={terminals} catalogReady={catalogLoaded} catalogFailed={Boolean(catalogError) && !catalogLoaded} date={effectiveDate} onSelect={(value) => { invalidate(); setArrival(value); setFocused(null); }} /></div>
+    <div className="journey-data-grid"><TerminalSearch type={type} label="출발 터미널" selected={departure} other={arrival} direction="arrival" terminals={terminals} catalogReady={catalogLoaded} catalogFailed={Boolean(catalogError) && !catalogLoaded} date={effectiveDate} onVisibleCountChange={setDepartureRowCount} onSelect={(value) => { invalidate(); setDeparture(value); setFocused(null); }} /><TerminalSearch type={type} label="도착 터미널" selected={arrival} other={departure} direction="departure" terminals={terminals} catalogReady={catalogLoaded} catalogFailed={Boolean(catalogError) && !catalogLoaded} date={effectiveDate} onVisibleCountChange={setArrivalRowCount} onSelect={(value) => { invalidate(); setArrival(value); setFocused(null); }} /></div>
     </>}
     details={focused ? <div><p className="quiet">{focused.city_name} · {focused.terminal_id}</p><div className="journey-toolbar"><button type="button" className="button" onClick={() => { invalidate(); setDeparture(focused); }}>출발지로 선택</button><button type="button" className="secondary" onClick={() => { invalidate(); setArrival(focused); }}>도착지로 선택</button></div></div> : undefined} />
     </div>

@@ -41,7 +41,7 @@ export function MetroJourney() {
   function close() { setSelected(null); }
   return <section className="journey-workbench rail-journey map-route">
     <div id="metro-map" className="journey-map-target map-route-primary" tabIndex={-1}><TransportMap places={places} selectedPlace={selected} onSelectPlace={choose} view={view} onViewChange={setView} focusRevision={focusRevision} onCloseDetails={close}
-    listPlaces={hasFilters} listContent={listMessage ? <p className="quiet" role="status">{listMessage}</p> : undefined}
+    listPlaces={hasFilters} listCount={hasFilters ? places.length : 0} listContent={listMessage ? <p className="quiet" role="status">{listMessage}</p> : undefined}
     filterSummary={[routes.get(line), query, position ? "내 근처" : ""].filter(Boolean).join(" · ") || "도시철도 필터"}
     toolbar={<MapFilterBar>
       <MapFilterField label="노선" htmlFor={`${id}-line`}><select id={`${id}-line`} value={line} onChange={(event) => { setLine(event.target.value); setSelected(null); }}><option value="">노선 선택</option>{[...routes].sort((a, b) => a[1].localeCompare(b[1], "ko")).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></MapFilterField>

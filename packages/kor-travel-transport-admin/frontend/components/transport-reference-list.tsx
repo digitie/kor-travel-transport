@@ -99,7 +99,7 @@ export function TransportReferenceList({ kind, children }: { kind: "rail_station
       <button className="secondary" type="button" onClick={() => setView("list")}>항구 검색·선택</button><a className="inline-link" href="#ferry-comparison">운항편 비교</a>
       </MapFilterBar>}
       feedback={<>{message ? <p role="status">{message}</p> : null}{error ? <p className="error" role="alert">{error}</p> : null}</>}
-      listPlaces={false} listCount={filtered.length} listContent={<>
+      listPlaces={false} listCount={Math.min(filtered.length, 60)} listContent={<>
       <p className="quiet">저장된 {rail ? "역" : "항구"} {items.length.toLocaleString("ko-KR")}곳 · 지도 좌표 {items.filter(hasCoordinates).length}곳</p>
         <MultiSearch label={rail ? "역 또는 노선 검색" : "항구 검색"} query={query} onQuery={setQuery}
           options={filtered.map((item) => ({ id: keyOf(item), name: displayName(item), description: referenceDescription(item, rail) }))}

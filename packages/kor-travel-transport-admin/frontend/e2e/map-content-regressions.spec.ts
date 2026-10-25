@@ -20,6 +20,50 @@ test.beforeEach(async ({ page }) => {
 });
 
 for (const width of [375, 1440]) {
+  test(`도시철도 검색 전 숨긴 역은 목록 건수에 포함하지 않는다 ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const station = { ...port, id: 71, kind: "rail_station", name: "시험역", source: "kric_public_file", subtitle: "시험기관", line_names: ["시험선"], longitude: 127.1, latitude: 37.3 };
+    await page.route("**/api/**", (route) => route.fulfill({ json: { items: [station] } }));
+    await page.goto("/rail/metro");
+    const count = page.locator(".kt-map-count");
+    await expect(count).toHaveText("1건 표시");
+    await page.getByRole("tab", { name: "목록", exact: true }).click();
+    await expect(page.locator(".map-place-list .place-row")).toHaveCount(0); await expect(count).toHaveText("0건 표시");
+    await openFilters(page); await page.getByLabel("역 검색", { exact: true }).fill("시험역");
+    await expect(page.locator(".map-place-list .place-row")).toHaveCount(1); await expect(count).toHaveText("1건 표시");
+    await page.getByLabel("역 검색", { exact: true }).clear(); await expect(count).toHaveText("0건 표시");
+  });
+
+  for (const path of ["/bus/express", "/bus/intercity"]) test(`${path} 목록 건수는 가까운 장소나 실제 검색 행만 센다 ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const terminal = { id: 1, terminal_id: "T1", terminal_name: "시험터미널", city_name: "시험도시", longitude: 127.1, latitude: 37.3, updated_at: at };
+    await page.route("**/api/**", (route) => route.fulfill({ json: { items: [terminal], next_offset: null } }));
+    await page.goto(path); const count = page.locator(".kt-map-count");
+    await expect(count).toHaveText("1건 표시");
+    await page.getByRole("tab", { name: "목록", exact: true }).click();
+    const rows = page.locator(".terminal-search .station-results button");
+    await expect(rows).toHaveCount(0); await expect(count).toHaveText("0건 표시");
+    const from = page.getByLabel("출발 터미널", { exact: true }), to = page.getByLabel("도착 터미널", { exact: true });
+    await from.fill("시험"); await expect(rows).toHaveCount(1); await expect(count).toHaveText("1건 표시");
+    await to.fill("시험"); await expect(rows).toHaveCount(2); await expect(count).toHaveText("2건 표시");
+    await from.clear(); await expect(count).toHaveText("1건 표시");
+    await to.clear(); await expect(count).toHaveText("0건 표시");
+  });
+
+  test(`항구 목록 건수는 상위 60개 표시 제한과 검색을 따른다 ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const ports = Array.from({ length: 61 }, (_, index) => ({ ...port, id: index + 1, provider_id: `U${index + 1}`, name: `항구${index + 1}` }));
+    await page.route("**/api/**", (route) => route.fulfill({ json: { items: ports } }));
+    await page.goto("/ferry"); await page.getByRole("tab", { name: "목록", exact: true }).click();
+    const count = page.locator(".kt-map-count");
+    await expect(page.getByRole("checkbox")).toHaveCount(60); await expect(count).toHaveText("60건 표시");
+    await expect(page.locator(".multi-search").getByRole("status")).toContainText("61개 결과");
+    await expect(page.getByText("상위 60곳을 표시합니다. 검색어를 입력해 범위를 좁혀 주세요.", { exact: true })).toBeVisible();
+    await page.getByLabel("항구 검색", { exact: true }).fill("항구61");
+    await expect(page.getByRole("checkbox")).toHaveCount(1); await expect(count).toHaveText("1건 표시");
+    await page.getByLabel("항구 검색", { exact: true }).clear(); await expect(count).toHaveText("60건 표시");
+  });
+
   test(`좌표 없는 항구 상세는 비교 선택과 독립적으로 열고 초점을 복원한다 ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     let ports = [port];
