@@ -85,3 +85,20 @@ test("목록 선택이 지도로 전환돼도 활성 상세에 초점을 두고 
     await act(async () => { await vi.waitFor(() => expect(document.activeElement).toBe(container.querySelector('[role="tab"][aria-selected="true"]'))); });
   } finally { await act(async () => root.unmount()); container.remove(); }
 });
+
+test("별도 목록 건수는 좌표나 추가 지물과 합산하지 않고 지도 건수에는 영향을 주지 않는다", async () => {
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  const places = [station, { ...station, id: 2, longitude: null, latitude: null }];
+  const count = () => container.querySelector(".kt-map-count")!.textContent;
+  try {
+    await act(async () => root.render(<TransportMap places={places} view="list" listCount={6} listPlaces={false} listFeatureCount={5} />));
+    expect(count()).toBe("6건 표시");
+    await act(async () => root.render(<TransportMap places={places} view="list" listCount={0} listPlaces={false} listFeatureCount={5} />));
+    expect(count()).toBe("0건 표시");
+    await act(async () => root.render(<TransportMap places={places} view="map" listCount={6} mapFeatureCount={3} />));
+    expect(count()).toBe("4건 표시");
+    await act(async () => root.render(<TransportMap places={places} view="list" listFeatureCount={5} />));
+    expect(count()).toBe("7건 표시");
+    expect(fetch).not.toHaveBeenCalled();
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});

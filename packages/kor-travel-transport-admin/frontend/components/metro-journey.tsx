@@ -34,17 +34,20 @@ export function MetroJourney() {
   const routes = new Map((items ?? []).flatMap((place) => place.line_names.map((name) => [routeKey(place, name), `${name} · ${place.subtitle ?? "운영기관 미제공"}`] as const)));
   const filtered = (items ?? []).filter((place) => (!line || place.line_names.some((name) => routeKey(place, name) === line)) && (!query.trim() || [place.name, place.provider_id, ...place.line_names].join(" ").toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())));
   const nearby = position ? nearestPlaces(filtered, position).slice(0, 10) : [];
+  const places = position && !line && !query.trim() ? nearby.map((row) => row.place) : filtered;
+  const hasFilters = Boolean(line || query.trim() || position);
+  const listMessage = !error && items ? !items.length ? "저장된 역 정보가 없습니다." : !hasFilters ? "필터에서 노선을 선택하거나 역 이름을 검색하세요." : !places.length ? "조건에 맞는 역이 없습니다. 다른 이름이나 노선을 선택해 주세요." : "" : "";
   function choose(place: Place) { setSelected(place); setFocusRevision((v) => v + 1); }
   function close() { setSelected(null); }
   return <section className="journey-workbench rail-journey map-route">
-    <div id="metro-map" className="journey-map-target map-route-primary" tabIndex={-1}><TransportMap places={position && !line && !query.trim() ? nearby.map((row) => row.place) : filtered} selectedPlace={selected} onSelectPlace={choose} view={view} onViewChange={setView} focusRevision={focusRevision} onCloseDetails={close}
-    listPlaces={Boolean(line || query.trim() || position)} listContent={!line && !query.trim() && !position ? <p className="quiet">필터에서 노선을 선택하거나 역 이름을 검색하세요.</p> : undefined}
+    <div id="metro-map" className="journey-map-target map-route-primary" tabIndex={-1}><TransportMap places={places} selectedPlace={selected} onSelectPlace={choose} view={view} onViewChange={setView} focusRevision={focusRevision} onCloseDetails={close}
+    listPlaces={hasFilters} listContent={listMessage ? <p className="quiet" role="status">{listMessage}</p> : undefined}
     filterSummary={[routes.get(line), query, position ? "내 근처" : ""].filter(Boolean).join(" · ") || "도시철도 필터"}
     toolbar={<MapFilterBar>
       <MapFilterField label="노선" htmlFor={`${id}-line`}><select id={`${id}-line`} value={line} onChange={(event) => { setLine(event.target.value); setSelected(null); }}><option value="">노선 선택</option>{[...routes].sort((a, b) => a[1].localeCompare(b[1], "ko")).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></MapFilterField>
       <MapFilterField label="역 검색" htmlFor={`${id}-query`}><Input ref={search} id={`${id}-query`} type="search" placeholder="역 이름·코드" value={query} onChange={(event) => { setQuery(event.target.value); setSelected(null); }} /></MapFilterField>
       <Button type="button" variant="outline" disabled={locating} onClick={locate}>{locating ? "위치 확인 중…" : "내 근처 역"}</Button>
-      <Button type="button" variant="ghost" onClick={() => { setItems(null); setReload((v) => v + 1); }}>새로고침</Button>
+      <Button type="button" variant="ghost" onClick={() => { setItems(null); setError(false); setReload((v) => v + 1); }}>새로고침</Button>
       <a className="inline-link" href="#station-timetable">시간표 보기</a><InfoButton label="역 찾기">노선을 선택하거나 역 이름을 검색하세요. 후보는 목록에서 선택할 수 있습니다. 내 근처 역은 좌표가 등록된 역을 직선 거리 순으로 표시합니다.</InfoButton>
     </MapFilterBar>}
     feedback={<>{positionError ? <p role="alert">{positionError}</p> : null}

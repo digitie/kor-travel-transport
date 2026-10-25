@@ -27,10 +27,10 @@ export function ViewSwitch({ value, onChange }: { value: "map" | "list"; onChang
   </ToggleGroup>;
 }
 
-export function MultiSearch({ label, query, onQuery, options, selected, onSelect, max = 5, loading = false, scrollable = true }: {
+export function MultiSearch({ label, query, onQuery, options, selected, onSelect, onInspect, max = 5, loading = false, scrollable = true }: {
   label: string; query: string; onQuery: (value: string) => void;
   options: { id: string; name: string; description?: string }[];
-  selected: { id: string; name: string }[]; onSelect: (id: string) => void; max?: number; loading?: boolean; scrollable?: boolean;
+  selected: { id: string; name: string }[]; onSelect: (id: string) => void; onInspect?: (id: string) => void; max?: number; loading?: boolean; scrollable?: boolean;
 }) {
   const id = useId();
   return <section className="multi-search">
@@ -43,6 +43,7 @@ export function MultiSearch({ label, query, onQuery, options, selected, onSelect
       return <Field orientation="horizontal" key={item.id} data-disabled={disabled} className="min-h-11">
         <Checkbox id={`${id}-${item.id}`} checked={checked} disabled={disabled} onCheckedChange={() => onSelect(item.id)} />
         <FieldLabel htmlFor={`${id}-${item.id}`} className="min-w-0 min-h-11 flex-1"><span className="flex min-w-0 flex-col gap-1"><strong>{item.name}</strong>{item.description ? <small>{item.description}</small> : null}</span></FieldLabel>
+        {onInspect ? <Button type="button" variant="outline" size="sm" className="shrink-0" aria-label={`${item.name} 상세 보기`} onClick={() => onInspect(item.id)}>상세</Button> : null}
       </Field>;
     })}</FieldGroup></FieldSet>
     {!loading && !options.length ? <Empty><EmptyHeader><EmptyDescription>검색 결과가 없습니다. 다른 이름이나 지역을 입력해 주세요.</EmptyDescription></EmptyHeader></Empty> : null}

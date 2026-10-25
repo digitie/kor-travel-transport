@@ -42,9 +42,12 @@ export function GeneralRailGuide() {
     line_names: categories.filter((row) => row.code === category).map((row) => row.name), facilities: [], prices: [] }));
   const filtered = places.filter((place) => !query.trim() || place.name.includes(query.trim()));
   const nearby = position ? nearestPlaces(filtered, position).slice(0, 10) : [];
+  const displayedPlaces = position ? nearby.map((row) => row.place) : filtered;
+  const listMessage = current?.data && !displayedPlaces.length ? !category && !query.trim() ? "노선이나 권역을 선택해 역을 찾으세요." : "조건에 맞는 역이 없습니다. 다른 이름이나 노선·권역을 선택해 주세요." : "";
   function choose(place: Place) { setSelected(place); setFocusRevision((value) => value + 1); }
   return <section className="journey-workbench rail-journey map-route map-route-primary" aria-label="철도 역 지도">
-    <div id="general-rail-map" className="journey-map-target map-route-primary" tabIndex={-1}><TransportMap places={position ? nearby.map((row) => row.place) : filtered} selectedPlace={selected} onSelectPlace={choose} view={view} onViewChange={setView} focusRevision={focusRevision} onCloseDetails={() => setSelected(null)}
+    <div id="general-rail-map" className="journey-map-target map-route-primary" tabIndex={-1}><TransportMap places={displayedPlaces} selectedPlace={selected} onSelectPlace={choose} view={view} onViewChange={setView} focusRevision={focusRevision} onCloseDetails={() => setSelected(null)}
+    listContent={listMessage ? <p className="quiet" role="status">{listMessage}</p> : undefined}
     filterSummary={`${kind === "ktx" ? "KTX" : "일반철도"} · ${categories.find((row) => row.code === category)?.name ?? "노선·권역 선택"}${query ? ` · ${query}` : ""}`}
     toolbar={<MapFilterBar>
       <MapFilterField label="역 안내 구분" htmlFor={`${id}-kind`}><select id={`${id}-kind`} value={kind} onChange={(event) => { setKind(event.target.value as "ktx" | "main"); setCategory(""); setQuery(""); setSelected(null); }}><option value="ktx">KTX 노선</option><option value="main">일반철도 권역</option></select></MapFilterField>

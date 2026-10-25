@@ -23,6 +23,7 @@ export function TransportReferenceList({ kind, children }: { kind: "rail_station
   const [query, setQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [activePlace, setActivePlace] = useState<Place | null>(null);
+  const [focusRevision, setFocusRevision] = useState(0);
   const [message, setMessage] = useState("저장된 기준정보를 읽는 중입니다…");
   const [error, setError] = useState("");
   const [reload, setReload] = useState(0);
@@ -84,10 +85,12 @@ export function TransportReferenceList({ kind, children }: { kind: "rail_station
     setSelectedIds((current) => current.includes(id) ? current.filter((value) => value !== id) : current.length < 5 ? [...current, id] : current);
     if (activePlace && keyOf(activePlace) === id) setActivePlace(null);
   }
+  function inspect(place: Place) { setActivePlace(place); setFocusRevision((value) => value + 1); }
   const mapItems = (selected.length ? selected : filtered).filter(hasCoordinates);
   return <section className="journey-workbench map-route">
-    <div id="ferry-map" className="map-route-primary" tabIndex={-1}><TransportMap places={mapItems} selectedPlace={activePlace} view={view} onViewChange={setView}
-      onSelectPlace={(place) => { setActivePlace(place); if (!selectedIds.includes(keyOf(place)) && selectedIds.length < 5) setSelectedIds((current) => [...current, keyOf(place)]); }}
+    <div id="ferry-map" className="map-route-primary" tabIndex={-1}><TransportMap places={mapItems} selectedPlace={activePlace} view={view} onViewChange={setView} focusRevision={focusRevision}
+      onSelectPlace={(place) => { inspect(place); if (!selectedIds.includes(keyOf(place)) && selectedIds.length < 5) setSelectedIds((current) => [...current, keyOf(place)]); }}
+      detailTitle={activePlace ? displayName(activePlace) : undefined}
       onCloseDetails={() => setActivePlace(null)} details={activePlace ? <PlaceDetails place={activePlace} showHeading={false} onShowMap={() => setView("map")} /> : undefined}
       filterSummary={`${effectiveDate} · ${selected.length}/5곳 선택`}
       toolbar={<MapFilterBar>
@@ -96,11 +99,11 @@ export function TransportReferenceList({ kind, children }: { kind: "rail_station
       <button className="secondary" type="button" onClick={() => setView("list")}>항구 검색·선택</button><a className="inline-link" href="#ferry-comparison">운항편 비교</a>
       </MapFilterBar>}
       feedback={<>{message ? <p role="status">{message}</p> : null}{error ? <p className="error" role="alert">{error}</p> : null}</>}
-      listPlaces={false} listContent={<>
+      listPlaces={false} listCount={filtered.length} listContent={<>
       <p className="quiet">저장된 {rail ? "역" : "항구"} {items.length.toLocaleString("ko-KR")}곳 · 지도 좌표 {items.filter(hasCoordinates).length}곳</p>
         <MultiSearch label={rail ? "역 또는 노선 검색" : "항구 검색"} query={query} onQuery={setQuery}
           options={filtered.map((item) => ({ id: keyOf(item), name: displayName(item), description: referenceDescription(item, rail) }))}
-          selected={selected.map((item) => ({ id: keyOf(item), name: displayName(item) }))} onSelect={toggle} scrollable={false} />
+          selected={selected.map((item) => ({ id: keyOf(item), name: displayName(item) }))} onSelect={toggle} onInspect={(id) => { const place = items.find((item) => keyOf(item) === id); if (place) inspect(place); }} scrollable={false} />
       <a className="inline-link" href="#ferry-comparison">선택한 항구 운항편 비교</a>
       </>} /></div>
       <div className="map-route-followup">
@@ -115,7 +118,6 @@ export function TransportReferenceList({ kind, children }: { kind: "rail_station
         </> : null}
         {rail && selected.length ? <RailTimetables placeIds={selected.map((place) => place.id)} /> : null}
         {rail ? selected.map((place) => <section className="reference-detail" key={place.id}><PlaceDetails place={place} showRailTimetable={false} /></section>) : null}
-        {activePlace && !rail ? <details><summary>{displayName(activePlace)} 항구 상세</summary><PlaceDetails place={activePlace} /></details> : null}
       </div>
       <p className="quiet">좌표가 없는 장소는 검색·선택 목록에 계속 표시됩니다. {stored?.items.length ? `저장본 최근 확인 ${dateTime(stored.items[0].fetched_at)}` : ""}</p>
       {children}
