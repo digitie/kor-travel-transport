@@ -12,11 +12,12 @@ import {
   type ReactNode,
 } from "react";
 
-import { buildApiClient } from "@/lib/api";
+import { buildApiClient } from "./api";
 import {
+  type StoredDashboardSelection,
   readStoredDashboardSelection,
   writeStoredDashboardSelection,
-} from "@/lib/dashboard-preferences";
+} from "./dashboard-preferences";
 import type {
   Airport,
   CollectorStatusResponse,
@@ -24,11 +25,13 @@ import type {
   HolidaySummaryResponse,
   ParkingLot,
   ParkingStatus,
-} from "@/lib/types";
+} from "./types";
 
 type DashboardProviderProps = {
   children: ReactNode;
   apiBaseUrl?: string;
+  apiClient?: ReturnType<typeof buildApiClient>;
+  initialSelection?: StoredDashboardSelection | null;
   autoRefreshIntervalMs?: number;
 };
 
@@ -66,11 +69,14 @@ const DashboardContext = createContext<DashboardContextValue | null>(null);
 export function DashboardProvider({
   children,
   apiBaseUrl,
+  apiClient,
+  initialSelection,
   autoRefreshIntervalMs = DASHBOARD_AUTO_REFRESH_INTERVAL_MS,
 }: DashboardProviderProps) {
-  const api = useMemo(() => buildApiClient(apiBaseUrl), [apiBaseUrl]);
+  const api = useMemo(() => apiClient ?? buildApiClient(apiBaseUrl), [apiBaseUrl, apiClient]);
   const mountedRef = useRef(false);
   const loadRequestIdRef = useRef(0);
+  const foregroundRequestIdRef = useRef<number | null>(null);
   const latestBackendUpdateMarkerRef = useRef<string | null>(null);
   const backendRefreshInFlightRef = useRef(false);
   const [airports, setAirports] = useState<Airport[]>([]);
@@ -82,6 +88,7 @@ export function DashboardProvider({
   const [dataVersion, setDataVersion] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [bootstrapRevision, setBootstrapRevision] = useState(0);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -101,6 +108,7 @@ export function DashboardProvider({
       const showLoading = options.showLoading ?? true;
 
       if (showLoading) {
+        foregroundRequestIdRef.current = requestId;
         setLoading(true);
         setHolidaySummary(null);
       }
@@ -127,6 +135,8 @@ export function DashboardProvider({
         if (showLoading) {
           setLoading(false);
         }
+      } finally {
+        if (foregroundRequestIdRef.current === requestId) foregroundRequestIdRef.current = null;
       }
     },
     [api]
@@ -134,6 +144,8 @@ export function DashboardProvider({
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setError(null);
 
     async function bootstrap() {
       try {
@@ -144,7 +156,7 @@ export function DashboardProvider({
         }
 
         setAirports(loadedAirports);
-        const storedSelection = readStoredDashboardSelection();
+        const storedSelection = initialSelection ?? readStoredDashboardSelection();
         const initialAirport =
           loadedAirports.find((airport) => airport.code === storedSelection?.airportCode) ?? loadedAirports[0] ?? null;
         const initialParkingLotId =
@@ -182,7 +194,7 @@ export function DashboardProvider({
     return () => {
       active = false;
     };
-  }, [api]);
+  }, [api, initialSelection, bootstrapRevision]);
 
   useEffect(() => {
     if (!selectedAirportCode) {
@@ -196,6 +208,7 @@ export function DashboardProvider({
         return;
       }
 
+      let ownsBackendRefresh = false;
       try {
         const status = await api.getCollectorStatus();
         if (!active || !mountedRef.current) {
@@ -211,16 +224,18 @@ export function DashboardProvider({
           return;
         }
 
-        if (nextMarker === previousMarker || backendRefreshInFlightRef.current) {
+        // 선택 조회가 끝나기 전에는 가벼운 상태 확인만 한다. 배경 요청이 최신 선택을 무효화하지 않는다.
+        if (nextMarker === previousMarker || backendRefreshInFlightRef.current || foregroundRequestIdRef.current !== null) {
           return;
         }
 
         backendRefreshInFlightRef.current = true;
+        ownsBackendRefresh = true;
         await loadAirportData(selectedAirportCode, selectedParkingLotId, { showLoading: false });
       } catch {
         // Keep the last known dashboard visible; the next poll or focus event will retry.
       } finally {
-        backendRefreshInFlightRef.current = false;
+        if (ownsBackendRefresh) backendRefreshInFlightRef.current = false;
       }
     }
 
@@ -297,7 +312,7 @@ export function DashboardProvider({
     onRefresh: () => {
       if (selectedAirportCode) {
         void loadAirportData(selectedAirportCode, selectedParkingLotId);
-      }
+      } else setBootstrapRevision((revision) => revision + 1);
     },
   };
 

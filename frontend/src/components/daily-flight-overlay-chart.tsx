@@ -8,8 +8,8 @@ import {
   formatNumber,
   formatSeoulDateKey,
   getSeoulDateParts,
-} from "@/lib/format";
-import type { FlightStatusItem, FlightStatusResponse, HolidayItemSummary, ParkingTimeSeriesResponse } from "@/lib/types";
+} from "../lib/format";
+import type { FlightStatusItem, FlightStatusResponse, HolidayItemSummary, ParkingTimeSeriesResponse } from "../lib/types";
 
 const BASE_CHART_WIDTH = 1180;
 const CHART_HEIGHT = 320;

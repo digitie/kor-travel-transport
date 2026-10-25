@@ -1,0 +1,46 @@
+{
+  "name": "@kor-travel/parking-ui",
+  "version": "0.1.0",
+  "private": true,
+  "sideEffects": [
+    "*.css"
+  ],
+  "exports": {
+    "./context": "./lib/dashboard-context.tsx",
+    "./api": "./lib/api.ts",
+    "./types": "./lib/types.ts",
+    "./current": "./components/pages/current-status-view.tsx",
+    "./analytics": "./components/pages/analytics-view.tsx",
+    "./history": "./components/pages/history-view.tsx",
+    "./fees": "./components/pages/fees-view.tsx",
+    "./styles.css": "./parking.css"
+  },
+  "files": [
+    "components/pages",
+    "components/ui",
+    "components/fee-calculator.tsx",
+    "components/history-chart.tsx",
+    "components/daily-flight-overlay-chart.tsx",
+    "hooks/use-analytics-data.ts",
+    "lib/api.ts",
+    "lib/types.ts",
+    "lib/format.ts",
+    "lib/dashboard-context.tsx",
+    "lib/dashboard-preferences.ts",
+    "lib/dashboard-view-helpers.ts",
+    "lib/utils.ts",
+    "parking.css"
+  ],
+  "peerDependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "dependencies": {
+    "@base-ui/react": "1.9.0",
+    "class-variance-authority": "0.7.1",
+    "cn": "0.5.0",
+    "date-fns": "4.4.0",
+    "lucide-react": "1.61.0",
+    "react-day-picker": "10.0.2"
+  }
+}

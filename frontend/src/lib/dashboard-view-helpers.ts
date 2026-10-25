@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 
-import { formatNumber } from "@/lib/format";
-import type { ParkingStatus, ThresholdWeekdayTime, TimeSeriesPoint, WeekdayHourBucket, WeekdayHourlyPattern } from "@/lib/types";
+import { formatNumber } from "./format";
+import type { ParkingStatus, ThresholdWeekdayTime, TimeSeriesPoint, WeekdayHourBucket, WeekdayHourlyPattern } from "./types";
 
 export function statusTone(statusLevel: ParkingStatus["status_level"]): string {
   switch (statusLevel) {

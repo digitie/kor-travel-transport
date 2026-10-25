@@ -1,12 +1,12 @@
 "use client";
 
-import { DailyFlightOverlayChart } from "@/components/daily-flight-overlay-chart";
-import { Alert } from "@/components/ui/alert";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAnalyticsData } from "@/hooks/use-analytics-data";
-import { useDashboard } from "@/lib/dashboard-context";
-import { formatDateTime, formatMinutesOfDay, formatNumber } from "@/lib/format";
+import { DailyFlightOverlayChart } from "../daily-flight-overlay-chart";
+import { Alert } from "../ui/alert";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
+import { useAnalyticsData } from "../../hooks/use-analytics-data";
+import { useDashboard } from "../../lib/dashboard-context";
+import { formatDateTime, formatMinutesOfDay, formatNumber } from "../../lib/format";
 import {
   HOURS,
   THRESHOLDS,
@@ -20,13 +20,13 @@ import {
   hasThresholdSamples,
   historyLabel,
   summarizeAverageAvailability,
-} from "@/lib/dashboard-view-helpers";
-import type { ThresholdDateHistoryItem } from "@/lib/types";
+} from "../../lib/dashboard-view-helpers";
+import type { ThresholdDateHistoryItem } from "../../lib/types";
 
-export function AnalyticsView() {
+export function AnalyticsView({ active = true }: { active?: boolean }) {
   const { selectedAirport, selectedParkingLotName, holidaySummary } = useDashboard();
-  const { error, thresholdEvents, thresholdInsights, weekdayHourlyPatterns, holidayPatterns, flightStatus, timeSeries } =
-    useAnalyticsData();
+  const { loading, error, thresholdEvents, thresholdInsights, weekdayHourlyPatterns, holidayPatterns, flightStatus, timeSeries } =
+    useAnalyticsData(6_000, active);
 
   const scopeLabel = historyLabel(selectedParkingLotName, selectedAirport?.name_ko);
   const maxHeatValue = Math.max(
@@ -54,8 +54,9 @@ export function AnalyticsView() {
           {error}
         </Alert>
       ) : null}
+      {loading ? <p className="notice" role="status">분석 자료를 불러오는 중입니다.</p> : null}
 
-      <Tabs defaultValue="weekday" className="analytics-tabs">
+      <Tabs defaultValue="weekday" className="analytics-tabs" aria-busy={loading}>
         <TabsList variant="line">
           <TabsTrigger value="weekday">요일별 패턴</TabsTrigger>
           <TabsTrigger value="holiday">공휴일 패턴</TabsTrigger>
@@ -63,13 +64,13 @@ export function AnalyticsView() {
           <TabsTrigger value="daily">일별 흐름</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="weekday">
+        <TabsContent keepMounted value="weekday">
           <article className="panel-surface panel-full-span">
             <div className="panel-head">
               <h3>요일별 시간대 평균 잔여 주차면</h3>
             </div>
             {weekdayHourlyPatterns.length === 0 ? (
-              <p className="notice">표시할 요일별 시간대 데이터가 없습니다.</p>
+              !loading && !error ? <p className="notice">표시할 요일별 시간대 데이터가 없습니다.</p> : null
             ) : (
               <>
                 <div className="pattern-summary-lines">
@@ -125,7 +126,7 @@ export function AnalyticsView() {
           </article>
         </TabsContent>
 
-        <TabsContent value="holiday">
+        <TabsContent keepMounted value="holiday">
           <article className="panel-surface panel-full-span">
             <div className="panel-head">
               <div>
@@ -134,7 +135,7 @@ export function AnalyticsView() {
               </div>
             </div>
             {holidayPatternItems.length === 0 ? (
-              <p className="notice">표시할 공휴일/토/일요일 패턴 데이터가 없습니다.</p>
+              !loading && !error ? <p className="notice">표시할 공휴일/토/일요일 패턴 데이터가 없습니다.</p> : null
             ) : (
               <>
                 {holidayPatterns?.error_message ? <p className="notice error">{holidayPatterns.error_message}</p> : null}
@@ -179,7 +180,7 @@ export function AnalyticsView() {
           </article>
         </TabsContent>
 
-        <TabsContent value="threshold" className="analytics-threshold-panels">
+        <TabsContent keepMounted value="threshold" className="analytics-threshold-panels">
           <article className="panel-surface">
             <div className="panel-head">
               <h3>요일별 임계 달성 시간</h3>
@@ -214,7 +215,7 @@ export function AnalyticsView() {
                 </Table>
               </div>
             ) : (
-              <p className="notice">임계 달성 시각을 계산할 만큼 충분한 기록이 없습니다.</p>
+              !loading && !error ? <p className="notice">임계 달성 시각을 계산할 만큼 충분한 기록이 없습니다.</p> : null
             )}
           </article>
 
@@ -247,7 +248,7 @@ export function AnalyticsView() {
                 </Table>
               </div>
             ) : (
-              <p className="notice">최근 기준에서 임계 달성 기록이 없습니다.</p>
+              !loading && !error ? <p className="notice">최근 기준에서 임계 달성 기록이 없습니다.</p> : null
             )}
           </article>
 
@@ -256,7 +257,7 @@ export function AnalyticsView() {
               <h3>임계치 이벤트</h3>
             </div>
             {thresholdEvents.length === 0 ? (
-              <p className="notice">선택한 기준에서 최근 임계치 이벤트가 없습니다.</p>
+              !loading && !error ? <p className="notice">선택한 기준에서 최근 임계치 이벤트가 없습니다.</p> : null
             ) : (
               <div className="threshold-scroll" data-testid="threshold-events-scroll">
                 <ul className="threshold-list">
@@ -280,8 +281,8 @@ export function AnalyticsView() {
           </article>
         </TabsContent>
 
-        <TabsContent value="daily">
-          <DailyFlightOverlayChart flightStatus={flightStatus} holidays={holidaySummary?.items ?? []} series={timeSeries} scopeLabel={scopeLabel} />
+        <TabsContent keepMounted value="daily">
+          {timeSeries || (!loading && !error) ? <DailyFlightOverlayChart flightStatus={flightStatus} holidays={holidaySummary?.items ?? []} series={timeSeries} scopeLabel={scopeLabel} /> : null}
         </TabsContent>
       </Tabs>
     </div>

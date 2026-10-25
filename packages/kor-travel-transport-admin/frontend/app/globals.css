@@ -3,10 +3,12 @@
 @import "tailwindcss/preflight.css" layer(base);
 @import "tailwindcss/utilities.css" layer(utilities);
 @import "tw-animate-css";
+@import "@kor-travel/parking-ui/styles.css";
 @import "@kor-travel/tokens/theme.css";
 @import "@kor-travel/ui/dagster.css";
 @import "@kor-travel/ui/map-controls.css";
 @source "../node_modules/@kor-travel/ui/dist";
+@source "../node_modules/@kor-travel/parking-ui";
 
 .transport-map-workspace { min-width: 0; }
 .transport-map-workspace .kt-map-detail { padding: 0; border: 1px solid var(--kt-border); }
@@ -594,12 +596,12 @@ h1, h2, h3 { color: var(--text-primary); }
 .transport-shell:has(.map-workbench) .admin-layout { block-size: 100%; min-block-size: 0; }
 .transport-shell:has(.map-workbench) .main { min-block-size: 0; overflow: auto; }
 .transport-shell:has(.map-workbench) .page-body { display: flex; flex-direction: column; block-size: 100%; min-block-size: 0; padding-block: .75rem; }
-.transport-shell[data-map-page] .page-header-wrap { flex: 0 0 auto; margin-bottom: .5rem; }
-.transport-shell[data-map-page] .page-header { padding: 0; min-height: 36px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
-.transport-shell[data-map-page] .page-context { display: none; }
-.transport-shell[data-map-page] .page-header-row { flex-direction: row; align-items: center; gap: .5rem; }
-.transport-shell[data-map-page] .page-header-actions { width: auto; }
-.transport-shell[data-map-page] .page-header h1 { font-size: 1.125rem; }
+.transport-shell:is([data-map-page], [data-parking-page]) .page-header-wrap { flex: 0 0 auto; margin-bottom: .5rem; }
+.transport-shell:is([data-map-page], [data-parking-page]) .page-header { padding: 0; min-height: 36px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.transport-shell:is([data-map-page], [data-parking-page]) .page-context { display: none; }
+.transport-shell:is([data-map-page], [data-parking-page]) .page-header-row { flex-direction: row; align-items: center; gap: .5rem; }
+.transport-shell:is([data-map-page], [data-parking-page]) .page-header-actions { width: auto; }
+.transport-shell:is([data-map-page], [data-parking-page]) .page-header h1 { font-size: 1.125rem; }
 .transport-shell:has(.map-workbench) .page-body > .journey-workbench,
 .transport-shell:has(.map-workbench) .page-body > .map-workbench { flex: 1; min-block-size: 0; }
 .map-route { display: flex; flex-direction: column; gap: 0; min-block-size: 0; }
@@ -634,10 +636,86 @@ h1, h2, h3 { color: var(--text-primary); }
 .transport-shell:has([data-slot="map-workspace"][data-expanded="true"]) .page-body { padding: .25rem; }
 @media (max-width: 62rem) {
   .transport-shell:has(.map-workbench) .admin-layout { grid-template-rows: auto minmax(0, 1fr); }
-  .transport-shell[data-map-page] .rail-shell { position: relative; padding: 0 .75rem; gap: 0; }
-  .transport-shell[data-map-page] .mobile-menu-button { display: inline-flex; position: absolute; right: 7rem; top: 0; min-height: 44px; }
-  .transport-shell[data-map-page] .rail-nav.common-menu:not(.is-open) { display: none; }
-  .transport-shell[data-map-page] .rail-nav.common-menu.is-open { display: block; position: absolute; z-index: 50; top: 3.5rem; right: .75rem; width: min(20rem, calc(100vw - 1.5rem)); max-height: 70dvh; overflow: auto; padding: .75rem; background: var(--panel); }
-  .transport-shell[data-map-page] .rail-nav.common-menu.is-open ul { flex-direction: column; }
+  .transport-shell:is([data-map-page], [data-parking-page]) .rail-shell { position: relative; padding: 0 .75rem; gap: 0; }
+  .transport-shell:is([data-map-page], [data-parking-page]) .mobile-menu-button { display: inline-flex; position: absolute; right: 7rem; top: 0; min-height: 44px; }
+  .transport-shell:is([data-map-page], [data-parking-page]) .rail-nav.common-menu:not(.is-open) { display: none; }
+  .transport-shell:is([data-map-page], [data-parking-page]) .rail-nav.common-menu.is-open { display: block; position: absolute; z-index: 50; top: 3.5rem; right: .75rem; width: min(20rem, calc(100vw - 1.5rem)); max-height: 70dvh; overflow: auto; padding: .75rem; background: var(--panel); }
+  .transport-shell:is([data-map-page], [data-parking-page]) .rail-nav.common-menu.is-open ul { flex-direction: column; }
   .transport-shell:has(.map-workbench) .page-body { padding: .25rem .75rem max(.5rem, env(safe-area-inset-bottom)); }
 }
+
+/* 공항 주차장 정본 뷰는 주차 root 안에서만 admin navy 토큰을 소비한다. */
+.parking-admin {
+  --surface: var(--panel); --surface-strong: var(--panel); --input-bg: var(--panel);
+  --input-border: var(--control-line); --grid-line: var(--line); --sticky-bg: var(--surface-subtle);
+  --sticky-shadow: var(--surface-page); --button-bg: var(--brand); --button-ink: var(--brand-foreground);
+  --accent-strong: var(--brand); --accent-soft: var(--surface-subtle); --teal: var(--success); --red: var(--danger); --yellow: var(--warning);
+  --radius-card: var(--radius-panel); --radius: var(--radius-control); --shadow: none;
+  --color-chart-holiday: var(--brand); --color-chart-holiday-fill: var(--surface-subtle); --color-chart-holiday-stroke: var(--line);
+  --color-chart-saturday-fill: var(--success-tint); --color-chart-saturday-stroke: var(--line);
+  --color-chart-sunday-fill: var(--warning-tint); --color-chart-sunday-stroke: var(--line);
+  --color-chart-flight-departure: var(--brand); --color-chart-flight-arrival: var(--success);
+  --color-chart-flight-departure-border: var(--line); --color-chart-flight-arrival-border: var(--line);
+  --color-chart-series-0: var(--brand); --color-chart-series-1: var(--success); --color-chart-series-2: var(--warning);
+  --color-chart-series-3: var(--danger); --color-chart-series-4: var(--muted); --color-chart-series-5: var(--text-primary); --color-chart-series-6: var(--text-secondary);
+  --color-tone-critical-bg: var(--warning-tint); --color-tone-warning-bg: var(--warning-tint); --color-tone-warning-ink: var(--warning);
+  --color-tone-busy-bg: var(--surface-subtle); --color-tone-stable-bg: var(--success-tint);
+  --color-tone-critical-solid: var(--danger); --color-tone-warning-solid: var(--warning); --color-tone-stable-solid: var(--success);
+  min-width: 0; display: grid; gap: .75rem; font-size: var(--text-sm);
+}
+.parking-admin .page-shell { width: 100%; min-width: 0; margin: 0; }
+.parking-admin .page-header { display: none; }
+.parking-admin .status-header { padding: 0 0 .5rem; gap: .5rem; }
+.parking-admin .status-header h2 { margin: 0; font-size: 1rem; }
+.parking-admin .status-meta { font-size: var(--text-xs); gap: .25rem .75rem; }
+.parking-admin .detail-ribbon { gap: .5rem; padding-bottom: .75rem; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.parking-admin .detail-card, .parking-admin .panel-surface, .parking-admin .table-surface, .parking-admin .lot-card { padding: .75rem; border-radius: var(--radius-panel); background: var(--panel); box-shadow: none; }
+.parking-admin .detail-card { gap: .25rem; }
+.parking-admin .detail-card span, .parking-admin .detail-card small { font-size: var(--text-xs); }
+.parking-admin .detail-card strong { font-size: 1rem; line-height: 1.3; overflow-wrap: anywhere; }
+.parking-admin .panel-head { padding: 0 0 .5rem; margin: 0 0 .5rem; border: 0; }
+.parking-admin .panel-head h3, .parking-admin .lot-card h3 { margin: 0; font-size: var(--text-sm); }
+.parking-admin .panel-head p { margin: .25rem 0 0; font-size: var(--text-xs); }
+.parking-admin .input { min-height: var(--control-h); padding: .25rem .5rem; border-radius: var(--radius-control); font-size: var(--text-sm); }
+.parking-admin .field { margin: 0; min-width: 0; gap: .25rem; }
+.parking-admin .field span { font-size: var(--text-xs); }
+.parking-admin .button { min-height: var(--control-h); padding: .25rem .75rem; border-radius: var(--radius-control); font-size: var(--text-sm); }
+.parking-admin .button.secondary { width: auto; background: var(--surface-subtle); color: var(--ink); border: 1px solid var(--control-line); }
+.parking-admin .fee-form { align-items: end; gap: .75rem; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.parking-admin .fee-panel { margin: 0; }
+.parking-admin .fee-panel h3 { display: flex; align-items: center; gap: .25rem; }
+.parking-admin .notice, .parking-admin .history-tooltip, .parking-admin .flight-highlight-label { background: var(--panel); border-color: var(--line); }
+.parking-admin .notice { margin-block: .5rem; padding: .5rem .75rem; font-size: var(--text-sm); }
+.parking-admin .analytics-threshold-panels { padding: 0; gap: .75rem; }
+.parking-admin .history-panel { margin-top: .75rem; }
+.parking-admin .action-stack { display: flex; flex-wrap: wrap; gap: .5rem; }
+.parking-admin .parking-flight-link { color: var(--brand); text-decoration: underline; text-underline-offset: .2em; font-size: var(--text-sm); }
+.parking-admin .lot-card-grid { gap: .5rem; }
+.parking-admin .lot-card-stats { margin-top: .5rem; }
+.parking-admin .stamp { margin-block: .5rem 0; }
+.parking-admin .quote-total { gap: .5rem; }
+.parking-admin .quote-total strong { margin: 0; font-size: 1.25rem; }
+.parking-admin .daily-date-toggle { background: var(--panel); }
+.parking-admin .daily-date-toggle.holiday, .parking-admin .daily-date-toggle.holiday small { color: var(--brand); }
+.parking-admin .daily-date-toggle.saturday, .parking-admin .daily-date-toggle.saturday small { color: var(--success); }
+.parking-admin .daily-date-toggle.sunday, .parking-admin .daily-date-toggle.sunday small { color: var(--danger); }
+.parking-admin .tone-critical, .parking-admin .tone-full { background: var(--warning-tint); color: var(--danger); }
+.parking-admin .tone-warning { background: var(--warning-tint); color: var(--warning); }
+.parking-admin .tone-busy { background: var(--surface-subtle); color: var(--brand); }
+.parking-admin .tone-stable { background: var(--success-tint); color: var(--success); }
+.parking-admin .heatmap-table td { background: var(--surface-subtle); }
+@media (max-width: 48rem) {
+  .parking-admin .fee-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .parking-admin .status-header, .parking-admin .panel-head { gap: .25rem; }
+  .parking-admin .detail-ribbon { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .parking-admin .detail-card { padding: .5rem; }
+  .parking-admin .detail-card strong { font-size: var(--text-sm); }
+}
+@media (max-width: 24rem) { .parking-admin .fee-form { grid-template-columns: minmax(0, 1fr); } }
+@media (pointer: coarse) { .parking-admin .kt-map-filter-field select, .parking-admin .kt-map-filter-bar button, .parking-admin .input, .parking-admin .button, .parking-admin .daily-date-toggle, .parking-admin .toggle-check, .parking-admin [data-slot="tabs-trigger"] { min-height: 44px; } .parking-admin [data-slot="tabs-list"] { height: auto; } }
+
+.parking-admin [data-slot="tabs-list"] { max-width: 100%; overflow-x: auto; justify-content: flex-start; }
+.parking-admin [data-slot="tabs-trigger"] { flex: 0 0 auto; }
+.parking-admin .holiday-band-label { fill: var(--muted); }
+.parking-admin .daily-date-toggle.special-day.holiday, .parking-admin .daily-date-toggle.special-day.holiday small { color: var(--brand); }
+@media (max-width: 62rem) { .transport-shell[data-parking-page] .admin-layout { grid-template-rows: auto minmax(0, 1fr); } }

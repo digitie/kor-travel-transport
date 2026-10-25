@@ -66,7 +66,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   } = useDashboard();
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="parking-radar flex min-h-dvh flex-col">
       <header className="border-b border-border bg-background">
         <div className="page-shell">
           <div className="page-header">

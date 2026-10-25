@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { useDashboard } from "@/lib/dashboard-context";
+import { useDashboard } from "../lib/dashboard-context";
 import type {
   FlightStatusResponse,
   HolidayPatternResponse,
@@ -10,9 +10,10 @@ import type {
   ThresholdEvent,
   ThresholdInsightsResponse,
   WeekdayHourlyPattern,
-} from "@/lib/types";
+} from "../lib/types";
 
 type AnalyticsState = {
+  scopeKey: string;
   loading: boolean;
   error: string | null;
   thresholdEvents: ThresholdEvent[];
@@ -24,6 +25,7 @@ type AnalyticsState = {
 };
 
 const INITIAL_STATE: AnalyticsState = {
+  scopeKey: "",
   loading: true,
   error: null,
   thresholdEvents: [],
@@ -75,18 +77,19 @@ function withTimeout<T>(
  * route-mount-gated loading, and re-fetches whenever `dataVersion` bumps (a background poll
  * found new data) even if the airport/lot selection itself hasn't changed.
  */
-export function useAnalyticsData(flightStatusTimeoutMs = 6_000): AnalyticsState {
-  const { api, selectedAirportCode, selectedParkingLotId, dataVersion } = useDashboard();
+export function useAnalyticsData(flightStatusTimeoutMs = 6_000, enabled = true): AnalyticsState {
+  const { api, selectedAirportCode, selectedParkingLotId, dataVersion, loading: dashboardLoading } = useDashboard();
+  const scopeKey = `${selectedAirportCode}/${selectedParkingLotId ?? "all"}`;
   const [state, setState] = useState<AnalyticsState>(INITIAL_STATE);
 
   useEffect(() => {
-    if (!selectedAirportCode) {
+    if (!enabled || dashboardLoading || !selectedAirportCode) {
       return;
     }
 
     let active = true;
     let flightStatusTimeoutId: ReturnType<typeof setTimeout> | null = null;
-    setState((current) => ({ ...current, loading: true, error: null }));
+    setState((current) => ({ ...(current.scopeKey === scopeKey ? current : INITIAL_STATE), scopeKey, loading: true, error: null }));
 
     async function load() {
       try {
@@ -105,6 +108,7 @@ export function useAnalyticsData(flightStatusTimeoutMs = 6_000): AnalyticsState 
           return;
         }
         setState({
+          scopeKey,
           loading: false,
           error: null,
           thresholdEvents: analytics.threshold_events,
@@ -133,13 +137,8 @@ export function useAnalyticsData(flightStatusTimeoutMs = 6_000): AnalyticsState 
         clearTimeout(flightStatusTimeoutId);
       }
     };
-    // selectedAirportCode/selectedParkingLotId are intentionally excluded: every airport/lot
-    // change goes through DashboardProvider's loadAirportData, which bumps dataVersion on
-    // success. Keying only on dataVersion (plus mount) avoids firing this fetch twice per
-    // selection change - once for the selection state update, once for the dataVersion bump -
-    // against the same (now-current) selectedAirportCode/selectedParkingLotId.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, dataVersion, flightStatusTimeoutMs]);
+    // 선택 bootstrap이 완료된 뒤에만 조회하고, 숨은 관리자 탭은 요청하지 않는다.
+  }, [api, dataVersion, flightStatusTimeoutMs, enabled, dashboardLoading, selectedAirportCode, selectedParkingLotId, scopeKey]);
 
-  return state;
+  return !dashboardLoading && state.scopeKey === scopeKey ? state : INITIAL_STATE;
 }

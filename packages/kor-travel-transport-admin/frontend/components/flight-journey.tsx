@@ -37,6 +37,7 @@ export function FlightJourney() {
   const [arrival, setArrival] = useState(plannedClock);
   const [reload, setReload] = useState(0);
   const [clock, setClock] = useState(() => Date.now());
+  const [parkingLot, setParkingLot] = useState<string | null>(null);
   const airport = selected?.provider_id ?? "";
   const key = `${airport}/${today}/${reload}`;
   const outlookKey = `${airport}/${arrival}/${reload}`;
@@ -50,6 +51,7 @@ export function FlightJourney() {
       if (controller.signal.aborted) return;
       setItems(data.items); setCatalogLoaded(true);
       let preferred = new URLSearchParams(window.location.search).get("airport");
+      setParkingLot(new URLSearchParams(window.location.search).get("lot"));
       try { preferred ??= window.localStorage.getItem("transport-last-airport"); } catch { /* 저장소 접근은 선택 사항이다. */ }
       setSelected(data.items.find((item) => item.provider_id === preferred) ?? data.items.find((item) => item.provider_id === "GMP") ?? data.items[0] ?? null);
     }).catch(() => { if (!controller.signal.aborted) { setCatalogLoaded(true); setCatalogError("공항 목록을 불러오지 못했습니다."); } });
@@ -76,7 +78,7 @@ export function FlightJourney() {
     }, 250);
     return () => { clearTimeout(timer); controller.abort(); };
   }, [airport, arrival, outlookKey]);
-  function select(place: Place) { setSelected(place); try { window.localStorage.setItem("transport-last-airport", place.provider_id ?? ""); } catch { /* 선택을 메모리에 유지한다. */ } }
+  function select(place: Place) { if (place.provider_id !== airport) setParkingLot(null); setSelected(place); try { window.localStorage.setItem("transport-last-airport", place.provider_id ?? ""); } catch { /* 선택을 메모리에 유지한다. */ } }
   const unavailable = catalogError ? "공항 목록을 확인하지 못했습니다." : catalogLoaded ? "저장된 공항이 없습니다." : "공항 목록을 확인하는 중입니다…";
   const parking = parkingState.key === key ? parkingState.data : undefined;
   const flights = flightState.key === key ? flightState.data : undefined;
@@ -93,7 +95,7 @@ export function FlightJourney() {
       details={mapInspected && selected ? <><PlaceDetails place={selected} showHeading={false} onShowMap={() => setView("map")} />{freshParking?.length ? <p>최근 15분 관측 잔여 {freshParking.reduce((sum, row) => sum + row.available_spaces, 0).toLocaleString()}면</p> : null}<button type="button" className="secondary" onClick={closeMap}>주차·이후 항공편 확인</button></> : undefined} /></div>
   </section>;
   return <section className="journey-workbench flight-journey">
-    <nav className="journey-shortcuts" aria-label="공항 화면 바로가기"><button ref={mapOpener} type="button" className="secondary" onClick={() => { setView("map"); setMapInspected(Boolean(selected)); setMapOpen(true); }}>공항 지도</button><a href="#airport-flights">이후 항공편</a><a href="#parking-pattern">주차 패턴</a></nav>
+    <nav className="journey-shortcuts" aria-label="공항 화면 바로가기"><button ref={mapOpener} type="button" className="secondary" onClick={() => { setView("map"); setMapInspected(Boolean(selected)); setMapOpen(true); }}>공항 지도</button><a href="#airport-flights">이후 항공편</a><a href="#parking-pattern">주차 패턴</a>{airport ? <a href={`/parking?${new URLSearchParams({ airport, ...(parkingLot ? { lot: parkingLot } : {}) })}`}>공항 주차장 전체 보기</a> : null}</nav>
     {airportControls}
     {errors.map((error) => <p key={error} role="alert">{error}</p>)}
     <SectionCard title="지금 주차할 곳" description={`${selected?.name ?? "공항"} · 최근 15분 관측만 현재 잔여 합계에 포함합니다.`}>

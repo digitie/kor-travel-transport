@@ -3,6 +3,8 @@ WORKDIR /app
 COPY packages/kor-travel-transport-admin/frontend/package.json \
      packages/kor-travel-transport-admin/frontend/package-lock.json ./
 COPY packages/kor-travel-transport-admin/frontend/vendor ./vendor
+COPY packages/kor-travel-transport-admin/frontend/.npmrc ./.npmrc
+COPY frontend/src /frontend/src
 RUN npx --yes npm@12.0.1 ci --ignore-scripts --no-audit --no-fund
 
 FROM dependencies AS builder

@@ -1,31 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { Alert } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { formatCurrency } from "@/lib/format";
-import type { Airport, FeeCalculationRequest, FeeCalculationResponse } from "@/lib/types";
+import { Alert } from "./ui/alert";
+import { Button } from "./ui/button";
+import { formatCurrency, formatSeoulDateKey } from "../lib/format";
+import type { Airport, FeeCalculationRequest, FeeCalculationResponse } from "../lib/types";
 
 type FeeCalculatorProps = {
   airports: Airport[];
   initialAirportCode: string;
+  initialParkingLotId?: number | null;
+  onAirportChange?: (code: string) => void;
+  onParkingLotChange?: (id: number | null) => void;
+  scopeControls?: boolean;
+  help?: ReactNode;
   onCalculate: (payload: FeeCalculationRequest) => Promise<FeeCalculationResponse>;
 };
 
 function buildDefaultRange() {
-  const entry = new Date();
-  entry.setHours(9, 0, 0, 0);
-  const exitAt = new Date(entry);
-  exitAt.setHours(entry.getHours() + 6);
-  return {
-    entry: entry.toISOString().slice(0, 16),
-    exitAt: exitAt.toISOString().slice(0, 16)
-  };
+  const localDate = formatSeoulDateKey(new Date().toISOString());
+  return { entry: `${localDate}T09:00`, exitAt: `${localDate}T15:00` };
 }
 
-export function FeeCalculator({ airports, initialAirportCode, onCalculate }: FeeCalculatorProps) {
-  const defaults = buildDefaultRange();
+export function FeeCalculator({ airports, initialAirportCode, initialParkingLotId = null, onAirportChange, onParkingLotChange, scopeControls = true, help, onCalculate }: FeeCalculatorProps) {
+  const [defaults] = useState(buildDefaultRange);
+  const requestId = useRef(0);
   const [airportCode, setAirportCode] = useState(initialAirportCode);
   const [vehicleSize, setVehicleSize] = useState<"small" | "large">("small");
   const [entryAt, setEntryAt] = useState(defaults.entry);
@@ -36,15 +36,26 @@ export function FeeCalculator({ airports, initialAirportCode, onCalculate }: Fee
   const [pending, setPending] = useState(false);
 
   const selectedAirport = airports.find((airport) => airport.code === airportCode);
-  const selectableLots = selectedAirport?.parking_lots.filter((lot) => lot.is_active) ?? [];
+  const selectableLots = useMemo(() => selectedAirport?.parking_lots.filter((lot) => lot.is_active) ?? [], [selectedAirport]);
 
   useEffect(() => {
     setAirportCode(initialAirportCode);
   }, [initialAirportCode]);
 
   useEffect(() => {
-    setParkingLotId(selectableLots[0]?.id ?? null);
-  }, [airportCode, airports, selectableLots]);
+    setParkingLotId((current) => selectableLots.some((lot) => lot.id === initialParkingLotId)
+      ? initialParkingLotId : scopeControls && selectableLots.some((lot) => lot.id === current) ? current : selectableLots[0]?.id ?? null);
+  }, [selectableLots, initialParkingLotId, scopeControls]);
+
+
+  useEffect(() => {
+    requestId.current += 1;
+    setPending(false);
+    setResult(null);
+    setError(null);
+  }, [airportCode, parkingLotId, vehicleSize, entryAt, exitAt]);
+
+  useEffect(() => () => { requestId.current += 1; }, []);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -54,12 +65,14 @@ export function FeeCalculator({ airports, initialAirportCode, onCalculate }: Fee
       return;
     }
 
-    if (new Date(exitAt) <= new Date(entryAt)) {
+    if (new Date(`${exitAt}:00+09:00`) <= new Date(`${entryAt}:00+09:00`)) {
       setError("출차 시각은 입차 시각보다 늦어야 합니다.");
       return;
     }
 
+    const currentRequest = ++requestId.current;
     setPending(true);
+    setResult(null);
     setError(null);
 
     try {
@@ -67,28 +80,28 @@ export function FeeCalculator({ airports, initialAirportCode, onCalculate }: Fee
         airport_code: airportCode,
         parking_lot_id: parkingLotId,
         vehicle_size: vehicleSize,
-        entry_at: new Date(entryAt).toISOString(),
-        exit_at: new Date(exitAt).toISOString()
+        entry_at: new Date(`${entryAt}:00+09:00`).toISOString(),
+        exit_at: new Date(`${exitAt}:00+09:00`).toISOString()
       });
-      setResult(quote);
+      if (currentRequest === requestId.current) setResult(quote);
     } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "요금 계산에 실패했습니다.");
+      if (currentRequest === requestId.current) setError(caughtError instanceof Error ? caughtError.message : "요금 계산에 실패했습니다.");
     } finally {
-      setPending(false);
+      if (currentRequest === requestId.current) setPending(false);
     }
   }
 
   return (
     <section className="panel-surface fee-panel">
       <div className="panel-head">
-        <h3>주차요금 계산기</h3>
-        <p>공항별 공개 요금 기준</p>
+        <h3>주차요금 계산기{help}</h3>
+        <p>공항별 공개 요금 기준 · 입력 시각 KST</p>
       </div>
 
       <form className="fee-form" onSubmit={handleSubmit}>
-        <label className="field">
+        {scopeControls ? <><label className="field">
           <span>공항</span>
-          <select className="input" value={airportCode} onChange={(event) => setAirportCode(event.target.value)}>
+          <select className="input" value={airportCode} onChange={(event) => { setAirportCode(event.target.value); onAirportChange?.(event.target.value); }}>
             {airports.map((airport) => (
               <option key={airport.code} value={airport.code}>
                 {airport.name_ko}
@@ -102,7 +115,7 @@ export function FeeCalculator({ airports, initialAirportCode, onCalculate }: Fee
           <select
             className="input"
             value={parkingLotId ?? ""}
-            onChange={(event) => setParkingLotId(event.target.value ? Number(event.target.value) : null)}
+            onChange={(event) => { const next = event.target.value ? Number(event.target.value) : null; setParkingLotId(next); onParkingLotChange?.(next); }}
           >
             {selectableLots.map((lot) => (
               <option key={lot.id} value={lot.id}>
@@ -110,7 +123,7 @@ export function FeeCalculator({ airports, initialAirportCode, onCalculate }: Fee
               </option>
             ))}
           </select>
-        </label>
+        </label></> : null}
 
         <label className="field">
           <span>차량 크기</span>
@@ -134,10 +147,11 @@ export function FeeCalculator({ airports, initialAirportCode, onCalculate }: Fee
           <input className="input" type="datetime-local" value={exitAt} onChange={(event) => setExitAt(event.target.value)} />
         </label>
 
-        <Button className="button" disabled={pending} type="submit">
+        <Button className="button" disabled={pending || !parkingLotId} type="submit">
           {pending ? "계산 중..." : "요금 계산"}
         </Button>
       </form>
+      {!selectableLots.length ? <p className="notice">요금을 계산할 활성 주차장이 없습니다.</p> : null}
 
       {error ? (
         <Alert className="notice error" variant="destructive">

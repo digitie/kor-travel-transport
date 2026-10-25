@@ -1,11 +1,11 @@
 "use client";
 
-import { Alert } from "@/components/ui/alert";
-import { Card } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useDashboard } from "@/lib/dashboard-context";
-import { formatDateTime, formatNumber } from "@/lib/format";
-import { statusLabel, statusTone } from "@/lib/dashboard-view-helpers";
+import { Alert } from "../ui/alert";
+import { Card } from "../ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
+import { useDashboard } from "../../lib/dashboard-context";
+import { formatDateTime, formatNumber } from "../../lib/format";
+import { statusLabel, statusTone } from "../../lib/dashboard-view-helpers";
 
 function findLatestValue<T extends { observed_at: string }>(items: T[]): string | null {
   if (items.length === 0) {
@@ -38,6 +38,7 @@ export function CurrentStatusView() {
   const totalOccupiedSpaces = scopeItems.reduce((sum, item) => sum + item.occupied_spaces, 0);
   const totalSpaces = scopeItems.reduce((sum, item) => sum + item.total_spaces, 0);
   const focusedLot = selectedParkingLotId !== null ? scopeItems[0] ?? null : null;
+  const hasDelayedObservation = scopeItems.some((item) => Date.now() - Date.parse(item.observed_at) > 15 * 60_000);
 
   return (
     <div className="page-shell">
@@ -45,8 +46,9 @@ export function CurrentStatusView() {
         <div>
           <h2>{selectedAirport?.name_ko ?? "공항"}</h2>
           <div className="status-meta">
-            <span>데이터 기준 시각: {latestObservedAt ? formatDateTime(latestObservedAt) : "데이터 없음"}</span>
+            <span>데이터 기준 시각: {latestObservedAt ? `${formatDateTime(latestObservedAt)} KST` : "데이터 없음"}</span>
             {holidaySummary ? <span className="holiday-sentence">{holidaySummary.sentence}</span> : null}
+            {hasDelayedObservation ? <span role="status">15분 이상 지난 관측이 포함되어 있습니다.</span> : null}
           </div>
         </div>
       </section>
@@ -54,7 +56,7 @@ export function CurrentStatusView() {
       <section className="detail-ribbon">
         <Card className="metric-card detail-card">
           <span>현재 잔여 주차면</span>
-          <strong>{formatNumber(totalAvailableSpaces)}대</strong>
+          <strong>{scopeItems.length ? `${formatNumber(totalAvailableSpaces)}대` : "—"}</strong>
           <small>{selectedParkingLotName ? "선택 주차장 기준" : "공항 합산 기준"}</small>
         </Card>
 
@@ -156,7 +158,7 @@ export function CurrentStatusView() {
         ))}
       </section>
 
-      {scopeItems.length === 0 ? <p className="notice">조건에 맞는 주차장이 없습니다.</p> : null}
+      {!loading && !error && scopeItems.length === 0 ? <p className="notice">조건에 맞는 주차장이 없습니다.</p> : null}
     </div>
   );
 }

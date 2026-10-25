@@ -9,8 +9,8 @@ import {
   formatNumber,
   formatSeoulDateKey,
   getSeoulDateParts,
-} from "@/lib/format";
-import type { HolidayItemSummary, ParkingTimeSeriesResponse, TimeSeriesPoint } from "@/lib/types";
+} from "../lib/format";
+import type { HolidayItemSummary, ParkingTimeSeriesResponse, TimeSeriesPoint } from "../lib/types";
 
 const CHART_MIN_WIDTH = 1280;
 const CHART_HEIGHT = 280;
