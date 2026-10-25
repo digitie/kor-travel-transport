@@ -170,11 +170,35 @@ test("고속도로 장소 없는 구간 상세는 목록에서 열고 닫아도 
   const detail = page.getByRole("complementary", { name: "선택 장소 상세" });
   await expect(detail).toContainText("시험 소통 구간");
   await expect(detail).toContainText("80 km/h");
+  await expect(detail).toBeFocused();
   expect(await clipping(page.getByRole("button", { name: "상세 닫기", exact: true }))).toMatchObject({ fullyVisible: true });
   await page.keyboard.press("Escape");
   await expect(detail).toHaveCount(0);
   await page.getByRole("tab", { name: "목록", exact: true }).click();
   await expect(page.locator(".map-place-list").getByRole("button", { name: /시험 소통 구간/ })).toBeVisible();
+});
+
+test("공항 선택으로 연 상세를 모바일에서 닫으면 숨은 select 대신 보이는 필터로 복귀한다", async ({ page }) => {
+  const secondAirport = { ...airport, id: 72, provider_id: "CJU", name: "두번째공항" };
+  await page.route("**/transport/features/places?**", (route) => route.fulfill({ json: { items: [airport, secondAirport] } }));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/flights");
+  await expect(page.getByLabel("공항", { exact: true })).toHaveValue(String(airport.id));
+  await page.getByRole("button", { name: "공항 지도", exact: true }).click();
+  const detail = page.getByRole("complementary", { name: "선택 장소 상세" });
+  await expect(detail).toBeFocused();
+  const select = page.getByLabel("공항", { exact: true });
+  await select.focus();
+  await select.selectOption(String(secondAirport.id));
+  await expect(detail).toContainText("두번째공항");
+  await expect(detail).toBeFocused();
+  await page.setViewportSize({ width: 375, height: 812 });
+  const trigger = page.locator('[data-slot="map-filter-trigger"]');
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  await expect(select).not.toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(detail).toHaveCount(0);
+  await expect(trigger).toBeFocused();
 });
 
 test("출처 팝업을 연 채 모바일로 바꾸면 숨은 필터에 팝업과 초점을 남기지 않는다", async ({ page }) => {

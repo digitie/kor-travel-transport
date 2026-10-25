@@ -6,12 +6,13 @@ PR131은 main `c027aceacc865ebee09258b5feb87e7aa5ee2b08`에 머지됐다. 이 �
 `codex/map-workspace-layout`의 C-MAP-01/T-MAP-01 소비자 변경을 다룬다. 초기 조사와
 이용 목적별 후속 범위는 [설계](../design/2026-10-25-mobility-improvements.md)를 따른다.
 
-Common `f15511a2f1d6137b1b9cae509de763e09b8337f0`의 `@kor-travel/ui` dev.8을 사용한다.
-vendor SHA256은 `866aca74b0c29d2487fac2640bccce468134ce0c7faba540782abf61106328ec`이며
+Common `a74ac808752fd6d6062e529909fd0dd656724f08`의 `@kor-travel/ui` dev.8을 사용한다.
+vendor SHA256은 `71d9f6ce8c178e3c66a47593a70a7fd9274938587ef9d96c1c7023673370059f`이며
 manifest와 lockfile도 같은 Git archive 정규 tarball로 고정했다. 초기 `ec0f887`/`143273f4…`
 실측 후보와 정규 `7504bd10…`는 27개 파일 내용이 같고 7개 파일 모드만 달랐다.
 그 뒤 명시 확장 `ca2a225`, 긴 제목/초점 보강 `20953b7`, stacking/양방향 초점 `f15511a2`로
-진행했으며 최종 검증은 마지막 핀 기준으로 정산한다.
+진행했다. 현재 핀은 `false` 상세 슬롯을 실제 상세로 세지 않는 공용 보완을 추가한다.
+공개 타입/CSS는 직전과 같고 이 앱은 빈 상세로 `null`을 넘긴다. 최종 검증은 마지막 핀 기준으로 정산한다.
 
 백엔드·provider·API 계약·DB·Dagster·운영 이미지 빌드·배포는 변경하지 않는다. 실제 철도
 시간표/주차 데이터 정상화, 주유소 7일 이력과 브랜드·선호 조건은 별도 작업으로 남긴다.
@@ -37,6 +38,8 @@ manifest와 lockfile도 같은 Git archive 정규 tarball로 고정했다. 초�
 기존 삽입 지도는 외부 `places`일 때 자체 장소 API를 호출하지 않는다. 일반 장소 선택이
 없는 고속도로 `detailKey`, 선택 반복의 `focusRevision`, Escape/닫기 뒤 열었던 컨트롤 복귀를
 보존한다. 목록→지도 재마운트에서는 실제 지도 중심/줌을 상태에 보관해 초기 카메라로 돌아가지 않게 했다.
+전환 중 이전 Panel이 잠시 유지되는 경계에서는 map/list 상세 ref를 분리한다. 이전 상세 언마운트가
+새 활성 ref를 비우지 않으며, 닫은 뒤 opener가 연결돼 있어도 숨겨지거나 inert이면 보이는 지도/필터로 복귀한다.
 
 가로/문자 확대에서 기본 작업면의 물리적인 높이 제한을 확인해 공용 opt-in `expandable`을 사용한다.
 `지도 크게 보기`는 같은 DOM/엔진/조회 조건을 유지하고 앱의 rail/PageHeader만 접는다. shell grid의
@@ -106,7 +109,34 @@ UI 수용이 아니다. 명시 확장/압축 뒤 320×568 문자 200%는 `stage 
 
 ## 로컬 검증과 남은 게이트
 
-- 최종 `f15511a2` 정규 tarball을 설치한 WSL2 Linux Node에서 타입·lint·Vitest 36파일 267개를 확인했다.
+첫 실행 후보 `78efe539a4e6ad94c2da50c18ca67d706563d315`의 전체 작업면 fixture는 112개 중
+110개 통과/고속도로 상세 초점 2개 실패였다. 목록 선택 뒤 지도 상세는 보이지만 focusin은 목록 버튼까지만
+기록되고 활성 노드가 BODY로 빠졌다. map/list가 같은 ref를 쓰고 이전 Panel의 늦은 언마운트가 활성 ref를
+비우는 원인을 새 단위 1개 실패로 재현했다. ref 분리 뒤 고속도로 상세 자동 초점→Escape와
+기존 도시철도의 주소→지도→자동 초점→Escape/목록 opener 복귀를 양 브라우저에서 확인했다.
+
+추가로 PC 공항 select로 상세를 연 뒤 375px로 줄여 필터를 접으면, 연결된 숨은 select로 초점을 돌려
+복귀가 실패하는 실제 경로를 브라우저 1개 실패로 재현했다. 가시성/inert 검사를 추가한 뒤 같은 단언으로
+양 브라우저 통과했다. 신규 공항 fixture의 첫 두 실패는 중복 `/transport/` 경로를 누락한 route 패턴으로
+두 번째 공항이 주입되지 않은 선택 timeout이며 제품 실패와 구분해 보존했다.
+
+실제 API/타일을 쓰는 별도 `78efe` 검증에서 모바일 좌표행이 추가되면 stage y259였고 SDK zoom은
+29px, attribution 중앙 hit-test는 마커 때문에 실패했다. 키 없는 fixture에는 좌표행이 없어 이 차이를
+잡지 못했다. 공용 readout은 유지하고 앱 지도 shell의 모바일 rail 세로 padding16px와 본문 상단4px를
+줄였다. SDK 조작부는 coarse44px, 지도 내부 코너 z-index6으로 마커/겹침보다 높이고 공용 overlay보다 낮췄다.
+실제 엔진·주입 타일의 양 브라우저 측정은 stage y239/h565, zoom44×44, 마커와 출처를 실제 겹친 뒤
+attribution hit=true다. 운영 타일/API 검증으로 확대하지 않는다.
+
+- 현재 핀의 WSL 타입/lint·36파일268단위가 통과했다. 새 초점 단위는 수정 전 실패/수정 후 통과이며 act 경고도 없다.
+- 최소 초점 회귀는 고속도로/숨은 공항 opener 4개와 기존 도시철도 375/1440px 주소·시간표·키보드 여정4개가 통과했다.
+- 최종 핀의 SDK 터치2개는 위 치수/겹침과 실제 확대 +1을 통과했다. pan 후 viewport API가 끝나기 전에 확대하던
+  첫 실행은 Firefox 확대 중간값7.807에서 실패했다. pan의 실제 응답·조회 완료를 기다리는 준비 조건을 넣고
+  +1 단언을 그대로 유지했다. 임의 시간 대기나 확대 정밀도 완화로 통과시키지 않았다.
+- 아래 `f15511a2`의 전체 결과와 새 후보의 재검증을 구분한다. 최종 전체9경로·유가/기존여정·실SDK는 고정 후보에서 마감한다.
+- 최종 소스 SHA·Docker 2차·CI 및 James/Popper 두 독립 리뷰의 판정은
+  [PR132](https://github.com/digitie/kor-travel-transport/pull/132)의 Checks/리뷰가 정본이다. 이 기록은 그 판정을 추정하지 않는다.
+
+- 직전 `f15511a2` 정규 tarball을 설치한 WSL2 Linux Node에서 타입·lint·Vitest 36파일 267개를 확인했다.
   QA 전용 초기 probe 4개는 프로젝트 밖의 증거 디렉터리로 보존 이동해 후보에 없는 미사용 변수 경고와 구분했다.
 - 첫 공용 후보의 비유가 8경로×3폭×Chromium/Firefox 48개 초기 geometry/지도·목록 왕복을 확인했다.
   최종 tarball·최종 제품 소스의 전체 회귀로 대체하기 전까지 최종 수용으로 확대하지 않는다.

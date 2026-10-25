@@ -66,3 +66,22 @@ test("장소 선택 없는 도로 detailKey도 공용 상세를 열고 Escape로
     expect(fetch).not.toHaveBeenCalled();
   } finally { await act(async () => root.unmount()); container.remove(); }
 });
+
+test("목록 선택이 지도로 전환돼도 활성 상세에 초점을 두고 Escape 뒤 보이는 컨트롤로 복귀한다", async () => {
+  function Route() {
+    const [selected, setSelected] = useState<Place | null>(null);
+    const [view, setView] = useState<"map" | "list">("list");
+    return <TransportMap places={[station]} selectedPlace={selected} onSelectPlace={(place) => { setSelected(place); setView("map"); }} details={selected ? <p>선택 역 위치</p> : undefined} onCloseDetails={() => setSelected(null)} view={view} onViewChange={setView} />;
+  }
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  try {
+    await act(async () => root.render(<Route />));
+    const opener = container.querySelector<HTMLButtonElement>(".place-row")!;
+    await act(async () => { opener.focus(); opener.click(); });
+    const panel = () => container.querySelector<HTMLElement>('[data-view="map"] [aria-label="선택 장소 상세"]')!;
+    await act(async () => { await vi.waitFor(() => expect(document.activeElement).toBe(panel())); });
+    await act(async () => panel().dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    await act(async () => { await vi.waitFor(() => expect(container.querySelector('[aria-label="선택 장소 상세"]')).toBeNull()); });
+    await act(async () => { await vi.waitFor(() => expect(document.activeElement).toBe(container.querySelector('[role="tab"][aria-selected="true"]'))); });
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});

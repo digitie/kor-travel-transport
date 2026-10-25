@@ -52,7 +52,7 @@ Python 복구 코어는 `backend/pyproject.toml`과 `backend/uv.lock`에서 comm
 
 Common source: e79816afb3c19b1b1e2fc1486b809c2ee3d34d6e. UI dev.7은 지도 종류·필터·탭·좌표/줌·오버레이를 추가한다. kor-travel-ui-0.1.0-dev.7.tgz의 SHA256은 4445c694013bd19fb57d3655cfc25d86e99a6733d655524718be3bf769ba7422다. Map/Weather와 동일한 산출물이며 이전 dev.6 후보를 삭제하지 않는다. [검증과 통합 경계](../../../../docs/reports/2026-10-24-shared-map-ui.md).
 
-UI dev.8은 Common `f15511a2f1d6137b1b9cae509de763e09b8337f0`의 추가 작업면·모바일 필터 접기·상세 슬롯·명시 확장 계약을 소비한다.
-`kor-travel-ui-0.1.0-dev.8.tgz` SHA256은 `866aca74b0c29d2487fac2640bccce468134ce0c7faba540782abf61106328ec`이다.
+UI dev.8은 Common `a74ac808752fd6d6062e529909fd0dd656724f08`의 추가 작업면·모바일 필터 접기·상세 슬롯·명시 확장 계약을 소비한다.
+`kor-travel-ui-0.1.0-dev.8.tgz` SHA256은 `71d9f6ce8c178e3c66a47593a70a7fd9274938587ef9d96c1c7023673370059f`이다.
 고정 Git archive에서 재생성해 원본 파일 모드를 정규화했다. 초기 후보의 제한/보완과 소비자 검증은 [작업 기록](../../../../docs/reports/2026-10-25-map-workspace-layout.md)에 남긴다.
 이전 후보는 보존한다. 패키지 자체 빌드와 운영 이미지 빌드를 구분하며 이 작업은 운영 빌드·배포를 수행하지 않는다.
