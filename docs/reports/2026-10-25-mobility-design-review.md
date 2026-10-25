@@ -30,7 +30,14 @@
 
 ## 독립 적대적 리뷰
 
-진행 전. 사용자 지정 인원 1명이 양쪽 문서를 읽기 전용으로 검토한다. 지적·수정·재검토 결과와 PR 상태를 여기 기록한다.
+Popper 1명이 Transport `c2afaaf`/Weather `c4783d7`을 독립 읽기 전용 검토했다. P0/P1은 없고 Weather P2 1건을 지적했다.
+‘등록하지 않은 장소’가 즐겨찾기인지 DB location인지 모호하고 이름→좌표→저장 anchor·필터/부재 연결이 빠진 문제다.
+현재 nearby/resolve에는 provider/kind가 없음을 소스에서 재확인하고, Weather 설계·조사·W-UX-03에
+기존 Geo 검색 계약 검증/지도 지점 대안·대표성/부재·정렬/LIMIT 전 필터·자동등록/추가 수집 없음과 수용 시나리오를 보완했다.
+동일 리뷰어의 수정 재확인을 진행한다. 리뷰어는 파일·앱·빌드·서비스·외부 PR을 변경하지 않았다.
+
+문서 Draft PR: [Transport #130](https://github.com/digitie/kor-travel-transport/pull/130),
+[Weather #168](https://github.com/digitie/kor-travel-weather/pull/168). 두 PR 모두 문서 변경만 포함한다.
 
 ## 실행하지 않은 검증
 
