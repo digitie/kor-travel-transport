@@ -478,7 +478,7 @@ h1, h2, h3 { color: var(--text-primary); }
 .fuel-viewport-summary dd { font-size: var(--text-sm); font-weight: 650; }
 .fuel-viewport-summary dd small { margin-left: var(--space-xs); font-size: var(--text-xs); font-weight: 400; }
 .fuel-viewport-context { display: flex; flex-wrap: wrap; column-gap: var(--space-md); }
-.fuel-map-overlays > .kt-map-detail { position: static; align-self: flex-end; flex: 1 1 auto; min-height: 0; max-height: none; width: min(22rem, 100%); pointer-events: auto; }
+.fuel-map-overlays > .kt-map-detail { position: static; align-self: flex-end; flex: 0 1 auto; min-height: 0; max-height: none; width: min(22rem, 100%); pointer-events: auto; }
 .fuel-driving-details > summary { min-height: 44px; display: flex; align-items: center; gap: var(--space-sm); cursor: pointer; font-size: var(--text-sm); color: var(--muted); }
 .fuel-driving-details > summary::before { content: "+"; }
 .fuel-driving-details[open] > summary::before { content: "−"; }

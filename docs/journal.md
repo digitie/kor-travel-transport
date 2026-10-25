@@ -1,3 +1,12 @@
+# 2026-10-25 — 관리자 UI 작은 수정 첫 묶음
+
+- Weather와 병렬로 Transport의 공용 토큰 navy/dark 연결과 단일 stage 테두리, 유가 상부 요약·선택 상세 압축,
+  주소/출처 팝업, 실가격 추이 우선·가정 계산 접기를 적용했다. 서버 집계/기존 API와 Common dev.7은 유지한다.
+- WSL2 Linux Node에서 타입/lint·Vitest250개, Chromium/Firefox fixture UI16개를 확인했다.
+  실제 타일/운영 API·운영 이미지 빌드/배포는 실행하지 않았다. 최종 CI/독립 리뷰는 PR 정본을 따른다.
+- [범위·검증·미완 항목](reports/2026-10-25-admin-ui-compact-batch.md),
+  [PR131](https://github.com/digitie/kor-travel-transport/pull/131).
+
 # 2026-10-25 — 웹·Android/iOS 이용 흐름 조사와 개선 설계 문서
 
 - 오피넷·로드플러스·지도/내비·철도/도시철도·버스·공항·날씨 앱의 공식 설명/공개 화면/후기를 조사했다.

@@ -23,6 +23,9 @@ for (const width of [390, 1440]) {
     await page.goto("/fuel/statistics");
     await expect(page.getByRole("article", { name: "전국 · 휘발유" })).toBeVisible();
     await expect(page.getByRole("img", { name: /최근 7일 평균 유가 추이/ })).toBeVisible();
+    await expect(page.getByLabel("주유량(L)", { exact: true })).not.toBeVisible();
+    await page.locator(".fuel-driving-details > summary").click();
+    await expect(page.getByLabel("주유량(L)", { exact: true })).toBeVisible();
     await page.getByLabel("범위", { exact: true }).selectOption("highway_direction");
     await page.getByLabel("유종", { exact: true }).selectOption("D047");
     await expect(page.getByRole("article", { name: "경부선 · 상행 · 경유" })).toBeVisible();
@@ -54,7 +57,60 @@ test("지도 요약 마커 수와 독립된 범위 통계를 같은 요청으로
   await page.goto("/fuel");
   const summary = page.getByRole("region", { name: "현재 지도 범위 유가 통계" });
   await expect(summary.getByText("12,000개 주유소")).toBeVisible();
-  await expect(summary.getByText("최저가 시험주유소", { exact: true })).toBeVisible();
+  await summary.getByRole("button", { name: "지도 범위 유가 통계 안내" }).click();
+  await expect(page.getByRole("dialog").getByText("최저가 시험주유소", { exact: true })).toBeVisible();
+});
+
+for (const width of [320, 375, 1440]) test(`${width}px 지도 상부 유가 요약·메타 팝업·프로젝트 톤`, async ({ page }, testInfo) => {
+  await page.setViewportSize({ width, height: 812 });
+  const place = { id: 1, kind: "fuel_station", source: "opinet_browser", name: "압축 시험주유소", brand_name: "시험 브랜드", address: "서울 시험 주소", latitude: 37.5, longitude: 127.1,
+    prices: [{ product_code: "B027", price: 1705, observed_at: metrics.generated_at }], line_names: [], facilities: ["셀프"], updated_at: metrics.generated_at };
+  await page.route("**/api/transport/transport/features/places?*", (route) => route.fulfill({ json: { items: [place], total: 1, truncated: false, clustered: false, available_sources: [place.source],
+    fuel_statistics: [{ ...metrics, product_code: "B027" }, { ...metrics, product_code: "D047", average_price: 1550 }] } }));
+  await page.goto("/fuel");
+  const summary = page.getByRole("region", { name: "현재 지도 범위 유가 통계" });
+  await expect(summary.getByText("12,000개 주유소")).toBeVisible();
+  await page.getByLabel("지도 통계 유종").selectOption("D047");
+  await expect(summary).toContainText("1,550");
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
+  await expect(summary).toHaveCount(0);
+  await page.locator(".map-place-list").getByRole("button", { name: /압축 시험주유소/ }).click();
+  const detail = page.getByRole("complementary", { name: "선택 장소 상세" });
+  await expect(detail).toContainText("1,705원/L");
+  const address = detail.getByRole("button", { name: "주소 안내", exact: true });
+  await address.click();
+  await expect(page.getByRole("dialog")).toContainText("서울 시험 주소");
+  await page.getByRole("dialog").getByRole("button", { name: /서울 시험 주소/ }).click();
+  await expect(page.getByRole("tab", { name: "지도", exact: true })).toHaveAttribute("aria-selected", "true");
+  // 주소의 지도 전환으로 목록 상세가 교체되므로 새 지도 상세의 팝업을 다시 연다.
+  await expect(detail).toBeVisible();
+  await address.click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(detail).toBeVisible();
+  await expect(address).toBeFocused();
+  const source = detail.getByRole("button", { name: "데이터 출처 안내", exact: true });
+  await source.click();
+  await expect(page.getByRole("dialog")).toContainText("기준정보 반영");
+  await page.keyboard.press("Escape");
+  await expect(source).toBeFocused();
+  const stage = page.locator(".fuel-map-stage");
+  const bounds = await stage.boundingBox();
+  const summaryBounds = await summary.boundingBox();
+  const detailBounds = await detail.boundingBox();
+  expect(summaryBounds!.y).toBeGreaterThanOrEqual(bounds!.y);
+  expect(summaryBounds!.y + summaryBounds!.height).toBeLessThanOrEqual(detailBounds!.y);
+  expect(detailBounds!.y + detailBounds!.height).toBeLessThanOrEqual(bounds!.y + bounds!.height);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
+    const palette = await page.evaluate(() => { const style = getComputedStyle(document.documentElement); return { brand: style.getPropertyValue("--brand").trim(), commonBrand: style.getPropertyValue("--kt-brand").trim(), card: style.getPropertyValue("--card").trim(), commonCard: style.getPropertyValue("--kt-surface-card").trim() }; });
+    expect(palette.commonBrand).toBe(palette.brand);
+    expect(palette.commonCard).toBe(palette.card);
+    const expectedSurface = await page.evaluate(() => { const probe = document.createElement("span"); probe.style.backgroundColor = "var(--kt-surface-card)"; document.body.append(probe); const color = getComputedStyle(probe).backgroundColor; probe.remove(); return color; });
+    await expect(page.getByLabel("장소 검색", { exact: true })).toHaveCSS("background-color", expectedSurface);
+    await page.screenshot({ path: `test-results/compact-fuel-${testInfo.project.name}-${width}-${theme}.png`, fullPage: true, animations: "disabled" });
+  }
 });
 
 test("추이 범주와 비교표는 지연 응답 중에도 키보드 포커스를 유지한다", async ({ page }) => {
