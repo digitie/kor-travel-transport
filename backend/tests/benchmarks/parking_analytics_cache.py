@@ -134,6 +134,7 @@ def benchmark_database_url():
         not parsed.drivername.startswith("postgresql")
         or parsed.database != "parking_analytics_benchmark_test"
         or parsed.host not in {"127.0.0.1", "localhost"}
+        or parsed.query
     ):
         raise RuntimeError("전용 PostgreSQL 벤치마크 DB만 허용합니다.")
     return url

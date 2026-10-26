@@ -107,7 +107,12 @@ DB 서버·컨테이너 전체·운영 호스트의 메모리 사용량을 뜻�
 일반 pytest에서 자동 실행하지 않는다. `KOR_TRAVEL_TRANSPORT_TEST_DATABASE=1`,
 명시적인 `TEST_DATABASE_URL`, loopback PostgreSQL, 정확한 DB 이름
 `parking_analytics_benchmark_test`가 모두 있어야 실행되며 운영 `DATABASE_URL`을
-상속하지 않는다. 마이그레이션한 빈 전용 DB에서 `seed --out <새 fixture.json>`를 실행하고,
+상속하지 않는다. URL query 옵션은 모두 거절한다. SQLAlchemy 연결 인자가 query의
+`host`·`database` 등으로 덮이는 경우를 무접속으로 재현하고
+[연결 제한 회귀](../../backend/tests/test_parking_analytics_benchmark_guard.py)로 차단한다.
+원본 guard에서 거절 회귀의 실패를 확인했고, 수정 후 13개가 통과했다. 이 검증은
+SQLAlchemy의 연결 인자 변환만 사용하며 DB 접속·외부 제공자 호출은 하지 않는다.
+마이그레이션한 빈 전용 DB에서 `seed --out <새 fixture.json>`를 실행하고,
 같은 DB와 고정 의존성에서 원본과 수정 코드의 `PYTHONPATH`를 각각 지정해
 `measure --out <각각 새 결과.json>`을 실행한다. 결과 파일은 덮어쓰지 않는다.
 `measure`는 이 전용 DB의 캐시만 비우고 다시 계산하므로 다른 테스트·운영 DB에는
