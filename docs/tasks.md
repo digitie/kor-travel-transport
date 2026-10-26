@@ -11,7 +11,8 @@
 - [ ] **T-MAP-01 / P0** — 모든 Transport 지도에 동일 작업면 적용, 모바일 접근·반복 안내·주소/외부 복귀·프로젝트 톤 수용.
   첫 작은 묶음에서 공용 navy/dark 토큰·단일 stage 테두리와 유가 요약/메타를 적용했다([PR131](https://github.com/digitie/kor-travel-transport/pull/131)).
   Common dev.8·9경로 작업면/상세 슬롯은 [PR132](https://github.com/digitie/kor-travel-transport/pull/132)의 main `1d807fd`에 머지했다.
-  275단위·74UI·실제 API/타일8개+무좌표2개·두 독립 리뷰와 전체 CI를 수용했다. Map 본체 소비자·실기기·운영 배포 등은 별도 미완료다.
+  275단위·74UI·실제 API/타일8개+무좌표2개·두 독립 리뷰와 전체 CI를 수용했다. PR132 당시 운영 배포는 미완이었다.
+  Map 본체 소비자·실기기 수용은 계속 미완이며 Transport 운영 배포는 아래10월27일 기록에서 완료했다.
   10월27일 `7f01b013` 배포 뒤375/1440의9경로 외곽과 Firefox map/fuel 실제 타일을 확인했다.
   초기 유가 로딩 중30px 변화·고속도로roads429는 보존하고, 모든 지도 데이터/전체 소비자 성공으로 확대하지 않는다.
   [전후 치수·검증 원장](reports/2026-10-25-map-workspace-layout.md). 최종 모든 소비자 수용 전까지 완료 처리하지 않는다.
@@ -26,6 +27,8 @@
   [통합 인계](reports/2026-10-26-parking-admin-integration-acceptance.md)에 남겼다. [복구 검증 원장](reports/2026-10-25-parking-analytics-refresh.md).
   10월27일 자연 job SUCCESS와14공항44개·김포 기본 캐시0→24행을 확인했으나,
   분석 순차 계산 약9분이5분 주기를 넘고 최초 모바일 분석은504였다. 새 관측·신선도·성능 수용 뒤 닫는다.
+  이후 엄격한 두 관측에서는 자연 run3023·새 적재·기본 캐시24행의 시각과 watermark 갱신이 통과했다.
+  파생 구간 약395초로5분 주기 초과가 남아 이 task 전체를 닫지 않는다.
   [실제 배포·수용 기록](reports/2026-10-26-parking-production-rollout.md).
 - [ ] **T-FUEL-01 / P1** — 지도 상부 작은 bbox 요약·compact 주유소 상세·주소/출처 i·동일 필터 집계.
 - [ ] **T-FUEL-02 / P1** — 기존 저장 이력 기반 7일 여러 유종 차트·최신 가격 직접 표시·결측/효력/모바일 표, 휴게소 이력 공백 별도 수용.

@@ -302,6 +302,8 @@ unit `kt-transport-parking-7f01b013-20261027`, invocation `6d06f744859a43a9abed4
   새 세션에서 데이터200·폰트 준비·연속 두 프레임 안정 뒤 측정한 지도565px는 목록 왕복 후에도565px였다.
   주유소 선택은 카메라를 해당 장소로 옮기는 계약이다. 선택 이후 카메라 고정을 요구한 시험은
   제품 회귀로 해석하지 않으며 무선택 카메라 왕복과 구분한다.
+  같은 원본의 detailOpened=false는 async count의 await 누락이었다. 실제 상세 DOM·44px 닫기와
+  Escape가 열림을 입증하며 helper를 고쳤지만 원본 FAIL은 덮지 않았다.
 - Firefox375 고속도로 roads429도 보존한다. 소스는 ITS worker 캐시의 차단 기한/일일 예산에서
   429를 반환하며 상류 실패는15분 backoff로 이어진다. 당시 Retry-After는 저장되지 않았으므로
   복원하지 않고, 단순히 연속 UI 시험이 원인이라고 단정하지 않는다.
@@ -323,6 +325,15 @@ source_observed_at22:04:03/generated_at22:04:39.212를 대조했다.
 commit하는 데 약9분이 더 걸렸다. 실제 job 종료 때 캐시 watermark는 약8분51초가 지나
 10분 만료에 근접했다. 새 적재 확인과5분 주기·캐시 성능 수용은 별개이며 개선을 진행한다.
 
+별도22:26:29.903의 after에서 기준 관측 이후 시작한 자연 run
+`c8084888-0767-437b-af1e-7c9ad64adee1`의 SUCCESS와 schedule 태그를 대조했다.
+run은22:16:10.757→22:24:04.224(473.467초), CollectionRun3023의 원본 수집은15.505초다.
+김포5개 새 적재와6scope×4지표 갱신을 확인했고 대표 collected_at은21:37:51.186→22:17:15.541,
+캐시 generated_at22:17:28.999/source_observed_at22:17:03 및 payload watermark가 일치했다.
+엄격한 두 관측의 갱신 증거는 PASS지만 원본 이후 파생 구간 약395초는 여전히5분을 넘는다.
+이 증거로 성능 task를 닫거나 최초 모바일504를 통과로 바꾸지 않는다.
+원본 before/after hash는 `cache-strict-summary-b56fe2d8-e375-4df5-9ffd-c60003014bfd.json`에 연결했다.
+
 주요 원본은 `/var/tmp/codex-live-ui-20261026/runs/7f01b0133dad73843ce61444830b1020cfd32f0a/`
 하위의 실행별 UTC·UUID 폴더다. 최초 분석1440의 메타데이터 파일에는 full DTO와 정확한
 HTTP 수신 완료 시각이 없으며 뒤늦게 복원하지 않았다. 후속 집중 시험은 별도 파일로 보존한다.
@@ -333,6 +344,12 @@ HTTP 수신 완료 시각이 없으며 뒤늦게 복원하지 않았다. 후속 
 HTTP200/6,028ms였고7/8/20/1,009개를 화면과 대조했다. full DTO와 후보/API SHA를 새로
 보존했다. time_series.generated_at22:16:17.094260은 첫 캐시의22:04:39와 다르지만
 이 DTO만으로 캐시 미적중 경로를 확정하지 않는다. 최초504를 덮지 않고 성능 목표 초과도 남긴다.
+
+초기 종료 helper의 Origin 없는 APIRequestContext logout은403이었다. 성공한 정리로 세거나
+제품 logout 실패로 단정하지 않는다. 마지막 브라우저 same-origin 확인에서는 로그인200→
+logout303과 쿠키1→0을 확인했다. 소유13runner/13child 종료·n150 작업UUID 잔여0을
+`/var/tmp/codex-live-ui-20261026/cleanup-final-7f01.json`에 남겼다. 다른 작업 중지와 kill은0이다.
+전체 실제 QA 해석은 같은 디렉터리의 `2026-10-27-transport-7f01-live-ui-acceptance.md`를 따른다.
 
 Weather는 사용자 지시로 진행 중 수집의 자연 종료 전 이미지 교체를 하지 않는다.
 Weather의 실제375px 지도615px와 상세 오버레이는 확인했지만 마커 배치504와

@@ -13,8 +13,9 @@ PR134·135·136을 포함한 main `1e50dbc93a86818285a9de22a983d9fb5aa7fb9d`의 
 각 정확 소스의 필수 CI·두 최종 코드 리뷰, 전체/집중 검증과 원본 실패는
 [통합 수용·인계](reports/2026-10-26-parking-admin-integration-acceptance.md)를 따른다.
 
-운영의 자연 tick 시각/캐시·실제 항공편 성공 마커·성능·공식 요금·실기기와 Firefox 첫 opening UNKNOWN은 후속이다.
-배포 SHA·DB·instigator 상태는 기존 운영 수용 기록의 관측 범위를 유지한다.
+위10월26일 인계 당시 자연 tick·실제 항공편·Firefox 첫 opening은 후속이었다.
+10월27일 새 수용에서 자연 적재/캐시 갱신·365마커·새 격리 첫 opening 성공을 확인했으며
+과거 UNKNOWN은 당시 기록으로 보존한다. 분석 지연·공식 요금·실기기는 계속 열린 항목이다.
 
 ## 2026-10-19 현재 Track2 수용 증거
 
