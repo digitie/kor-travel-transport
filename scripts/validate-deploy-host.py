@@ -46,7 +46,7 @@ def validate_remote(address: str, env_file: Path) -> None:
         raise ValueError("address not assigned here")
     manager = subprocess.run(
         ["sudo", "-n", "ktdctl", "targets", "validate", "--json"],
-        capture_output=True, text=True, timeout=30, check=True,
+        capture_output=True, text=True, timeout=60, check=True,
     )
     if len(manager.stdout) > 1048576 or not registry_matches(json.loads(manager.stdout), address):
         raise ValueError("Manager registry does not assign transport here")

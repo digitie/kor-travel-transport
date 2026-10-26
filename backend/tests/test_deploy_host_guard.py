@@ -193,6 +193,55 @@ def test_permission_denied_environment_is_not_accepted(monkeypatch, tmp_path):
     assert module.main(["--host", ADDR, "--env-file", str(envfile)]) == 2
 
 
+def test_manager_validation_allows_a_bounded_response_after_thirty_seconds(monkeypatch, tmp_path):
+    envfile = tmp_path / ".env.prod"
+    envfile.write_text("OWNED=fixture\n")
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append((argv, kwargs))
+        if argv[0] == "hostname":
+            return subprocess.CompletedProcess(argv, 0, ADDR, "")
+        # 실제로 기다리지 않고 45초에 완료되는 Manager 응답을 재현한다.
+        if kwargs["timeout"] < 45:
+            raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+        return subprocess.CompletedProcess(argv, 0, json.dumps(document()), "")
+
+    monkeypatch.setattr(module.subprocess, "run", run)
+    assert module.main(["--host", ADDR, "--env-file", str(envfile)]) == 0
+    assert calls == [
+        (["hostname", "-I"], {"capture_output": True, "text": True, "timeout": 15, "check": True}),
+        (["sudo", "-n", "ktdctl", "targets", "validate", "--json"],
+         {"capture_output": True, "text": True, "timeout": 60, "check": True}),
+    ]
+
+
+@pytest.mark.parametrize("timed_out_command", ["hostname", "sudo"])
+def test_command_timeout_refuses_without_exposing_output(monkeypatch, tmp_path, capsys, timed_out_command):
+    envfile = tmp_path / ".env.prod"
+    envfile.write_text("OWNED=fixture\n")
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv[0])
+        if argv[0] == timed_out_command:
+            raise subprocess.TimeoutExpired(
+                argv, kwargs["timeout"], output="owned-sensitive-output", stderr="owned-sensitive-error"
+            )
+        return subprocess.CompletedProcess(argv, 0, ADDR, "")
+
+    def unread_environment(*args):
+        pytest.fail("시간 초과 후 환경 파일 검사를 진행하면 안 된다")
+
+    monkeypatch.setattr(module.subprocess, "run", run)
+    monkeypatch.setattr(module.os, "access", unread_environment)
+    assert module.main(["--host", ADDR, "--env-file", str(envfile)]) == 2
+    assert calls == (["hostname"] if timed_out_command == "hostname" else ["hostname", "sudo"])
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "배포 거절: IPv4/Manager registry/환경 파일 효과 검증에 실패했습니다.\n"
+
+
 @pytest.mark.parametrize("script", ["deploy-prod.sh", "deploy-transport-admin-prod.sh"])
 def test_matching_effect_reaches_existing_next_step_only(tmp_path, script):
     result, calls = run_entry(tmp_path, script, ["--host", ADDR])
