@@ -1,6 +1,6 @@
 # 현재 상태 요약
 
-> 2026-10-26 현재 운영 조회: `a93dfba`, schema `0035_ferry_reference`와 다섯 역할 healthy를 확인했다. `71a551ef`의 세 이미지 빌드는 성공했으나 운영 교체 전 중단됐다. 05:56 UTC에 소유 빌더의 원래 STOPPED 상태를 복원했다. 검증 기한 수정 PR140의 백엔드 CI를 기다리며 새 후보 배포를 준비 중이다. 아직 운영 수용을 주장하지 않는다. [이번 실행 원장](reports/2026-10-26-parking-production-rollout.md). 10월 23일 `af415b3`·schema29·UI15개와 CPU 단일 표본은 [과거 운영 수용 기록](reports/2026-10-23-fuel-concurrency-rollout.md)이다.
+> 2026-10-27 06:59 KST에 `7f01b0133dad73843ce61444830b1020cfd32f0a` 배포를 완료했다. 다섯 역할 healthy·schema `0035_ferry_reference`·Transport 일정18개 원상복원·공용 daemon RUNNING을 확인했다. 실제 Firefox/Chromium 관리자 화면과 지도 타일을 검증 중이며 첫 모바일 분석504는 보존한다. 07:13 KST 자연 job 성공과 김포 기본 캐시0→24행 갱신을 확인했으나 분석 계산 약9분으로 5분 주기를 초과한다. 성능과 다음 자연 수집 대조 전에는 T-PARK-01/02를 닫지 않는다. [이번 실행 원장](reports/2026-10-26-parking-production-rollout.md). 10월 23일 수용 기록은 과거 이력이다.
 
 
 > 최신 운영 방침: 공용 daemon RUNNING을 유지한다. 아래 10월 19일의 run0·OFF는 당시 관측이다.
