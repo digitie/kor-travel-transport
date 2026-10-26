@@ -1,5 +1,34 @@
 # VadaHub 배편 기준자료 통합
 
+> 기록 범위: 원 Draft133 `ec6b9ffcd00995d167c017821a920c4008cf0d22`에서 빠졌던 2026-10-25의 역사적 배포 수용을 복구한다. 아래 “오늘”은 그 기록 날짜를 가리키며, 현재 새 후보 배포·재실행·성능 개선 수용이 아니다. 운영 query나 소스 변경 없이 기존 사실 기록만 옮겼다.
+
+## 2026-10-25 운영 수용 완료
+
+[PR129](https://github.com/digitie/kor-travel-transport/pull/129)/main
+`a93dfba27283224e1cf091865f2c08d40cdd9dc3`를 배포했다. 운영 native run
+`c8b70929-ba1a-4528-a662-b9b744f4bb9d`가 실제424+34+109+76=643건 저장 후 SUCCESS로 끝났다.
+오늘 정기 실행도 정상 저장본을 재사용해 성공했다. 공개 [배편 화면](https://transport.digitie.mywire.org/ferry)은
+로그인이 필요하며 실제375/1440px·검색·출처·기존 인천 운항시간표·로그아웃·release SHA 확인을 통과했다.
+운영5개 역할 healthy·schema0035·공유 collector volume·18개 instigator의 정확한 ID/상태 복원을 확인했다.
+공용 daemon/webserver의 이미지·시작 시각은 배포 전과 같다.
+
+최종 후보0198e5d와 머지a93dfba는 같은 tree9deaf9c814d3b41c1a5de95a55e7e5e039a02a40이다.
+CI40090454853/40090450929 모두 성공(backend1179/2skip·관리자248·웹130), WSL Docker1175/6skip이다.
+James의 전화/조사연도 검색, Popper의 정상 ZIP 재사용·취소 기록 지적을 재현·수정했으며
+CI green 후 독립 최종 리뷰2의 잔여 P0/P1/P2는0이다. ARM64 실제 SDK643건도 성공했다.
+GDAL NumPy 모듈 메시지가 표준오류에 있었지만4개 원천 파싱·저장은 성공했다.
+
+원격 Buildx 미지원 조회 옵션은 교체 전에 중단하고 plain inspect로 재개했다.
+사전 archive CRLF와 공식 staging LF가 캐시를 무효화한 것도 재현했다. 소유 solver/client/controller/keeper
+종료와 기존5개 역할·공용 plane 불변을 확인한 뒤749개 파일 bytes/실행 비트를 맞춰 공식 재개했다.
+실행 중 metadata는 바꾸지 않았다. 운영 backend의 파일시스템 layers·실행 설정은 ARM 검증 이미지와 같다.
+태그/attestation 식별자와 파일시스템 차이를 구분한다. 보호된 환경 백업·원래 instigator snapshot·이미지 ID·
+복구 스크립트·native 결과는 NVMe `/mnt/media/kor-travel/build/transport/vadahub-deploy-a93dfba27283`에 둔다.
+
+배포 후 유가 export HTTP200도 확인했다. 클릭150~850ms는 적용됐지만 오늘 전국 수집은08:03~09:05 KST,
+약62분이어서30분 목표는 아직 미달이다. T-OPINET-30에서 추가 병목을 확인한다.
+아래는 구현 당시의 상세 기록이다.
+
 ## 범위와 데이터 계약
 
 사용자의 최신 소스 배포·VadaHub 배편 표시 요청에 따라 기존 TAGO 저장 운항시간표와
@@ -67,8 +96,8 @@ orchestrator ID가 같은 것을 확인했다. VadaHub 대상7개가 통과했�
 최종 CI·Docker 및 운영 수용 증거는 [PR129](https://github.com/digitie/kor-travel-transport/pull/129)의
 검증·배포 원장과 함께 읽는다. 소스 머지와 운영 교체를 같은 상태로 간주하지 않는다.
 
-파싱에 실패한 원문을7일간 계속 읽는 재개 함정도 보완했다. 원천 실패 기록이 있으면
-그 원천만 새로 다운로드한다. 원천 오류 기록이 없는 DB 저장 재시도는 최근의 검증된 원문을
-재사용한다. 두 경우를 각각 재현하며 SDK archive를 지우거나 실패 원문을 덮어쓰지 않는다.
+파싱에 실패한 원문을7일간 계속 읽는 재개 함정도 보완했다. 이전 오류가 있어도 최근 ZIP을
+먼저 실제 파싱·검증하고 불량일 때만 새로 다운로드한다. 파싱 성공 뒤 DB 저장만 실패해도
+정상 ZIP을 재사용한다. SDK archive를 지우거나 실패 원문을 덮어쓰지 않는다.
 의존성·Chromium 준비도 정규화된 pyproject/lock 두 파일 뒤에 두어 앱·테스트 수정마다
 재설치하지 않는다. 최종 editable 설치 뒤 stdlib 사전 컴파일 순서는 유지한다.
