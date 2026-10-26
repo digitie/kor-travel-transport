@@ -3,9 +3,11 @@
 ## 증상과 범위
 
 2026-10-26 공항 주차장 통합 후보 `71a551ef7fa29957be018294363063e1870be011`의 배포를 진행하던 중,
-`scripts/validate-deploy-host.py` 내부의 `sudo -n ktdctl targets validate --json` 호출이 30초를 넘겨
-호스트 검증이 exit2로 종료됐다. 배포 제어기의 바깥 명령 기한은 120초였으므로 이 내부 기한이 먼저 적용됐다.
-배포 담당자가 전달한 당시 기록에는 종료 후 후손 프로세스가 약5초 남아 `UNKNOWN`으로 보존됐고,
+호스트 검증이 exit2로 종료됐다. `scripts/validate-deploy-host.py` 내부의
+`sudo -n ktdctl targets validate --json` 기한은 30초이며 바깥 명령 기한은 120초다.
+validator는 내부 예외를 같은 exit2로 처리하므로 최초 오류가 `TimeoutExpired`였는지는 확정하지 못했다.
+당시 소요 시각은 내부 30초의 여유 부족과 정합적이지만 이를 확정 원인으로 해석하지 않는다.
+배포 담당자가 전달한 기록에는 종료 후 후손 프로세스가 약5초 남아 `UNKNOWN`으로 보존됐고,
 운영 컨테이너는 교체되지 않았다. 별도로 제한된 읽기 전용 동일 명령은 19.339초·exit0이었다.
 기존 [유가 동시성 배포 기록](2026-10-23-fuel-concurrency-rollout.md)에서도 Manager CLI27.99초·전체 검증28.04초가
 걸린 이력이 있다.
