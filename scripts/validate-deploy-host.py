@@ -59,7 +59,7 @@ def instance_config_matches(document: object, registry: dict[str, object]) -> bo
     path = document["path"]
     if type(path) is not str or not re.fullmatch(r"/[A-Za-z0-9_./-]+", path):
         return False
-    if str(PurePosixPath(path)) != path or ".." in PurePosixPath(path).parts:
+    if path.startswith("//") or str(PurePosixPath(path)) != path or ".." in PurePosixPath(path).parts:
         return False
     # Manager의 trusted 설치 alias는 허용한다. 여기서 resolve/read/copy하지 않는다.
     digest = document["sha256"]

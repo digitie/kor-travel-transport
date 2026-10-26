@@ -34,7 +34,7 @@ def test_positive_policy_is_manager_owned(maximum):
 @pytest.mark.parametrize("change", [
     {"max_concurrent_runs": True}, {"max_concurrent_runs": 0}, {"max_concurrent_runs": -1},
     {"max_concurrent_runs": 5.0}, {"max_concurrent_runs": "5"}, {"host": "elsewhere"},
-    {"path": "relative.yaml"}, {"path": "/example/../dagster.yaml"}, {"path": "/example//dagster.yaml"},
+    {"path": "relative.yaml"}, {"path": "//example/dagster.yaml"}, {"path": "/example/../dagster.yaml"}, {"path": "/example//dagster.yaml"},
     {"path": "/example/./dagster.yaml"}, {"path": "/example/dagster.yaml/"},
     {"path": "/example/a:rw"}, {"path": "/example/${override}.yaml"}, {"path": "/example/a\n"},
     {"path": "/example/a\\b"}, {"sha256": "a" * 16}, {"sha256": "A" * 64}, {"unknown": 1},

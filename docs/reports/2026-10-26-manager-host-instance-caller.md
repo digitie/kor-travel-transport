@@ -109,3 +109,7 @@ Compose·API·SQL·DTO·provider·의존성·실제 상한은 변경하지 않�
 
 Manager559 실제 최종 CLI pin·외부 caller의 독립 리뷰2·정확 lock CI·두 호스트 runtime 동등성은
 아직 미완이다. PR은 Draft이며 merge/SSH/build/PG/서비스·실수집은 수행하지 않았다.
+
+선행 `//` path를 `PurePosixPath`가 보존하는 경계는 별도 음성에서1실패/18통과로 재현했다.
+원 체크포인트와 실패를 보존하고 이 입력을 명시적으로 거부했다. 정책·일반 alias 허용은 동일하며
+최종 집중122개20.89초·Ruff3파일이 통과했다. 실제 Manager가 오염된 path를 반환했다는 주장은 아니다.

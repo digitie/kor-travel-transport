@@ -1,3 +1,8 @@
+# 2026-10-26 — instance path 정규성 경계 보강
+
+- 선행 `//` 회귀1실패를 보존한 뒤 caller에서 거부했다. 최종 집중122개20.89초·Ruff 통과이며
+  [이전121개와 새 경계](reports/2026-10-26-manager-host-instance-caller.md)를 구분한다. 실제 운영 변경은0이다.
+
 # 2026-10-26 — Manager instance 정본 caller 구현, 운영 미실행
 
 - 공식 remote 배포가 Manager show 네 필드를 검증해 기존 instance 환경변수에 전달하도록 연결했다.
