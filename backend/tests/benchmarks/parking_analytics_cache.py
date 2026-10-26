@@ -26,8 +26,6 @@ from app.models import Airport, AnalyticsCache, ParkingLot, ParkingSnapshot
 from app.services import analytics, analytics_cache
 
 NOW = datetime(2026, 10, 27, 0, 5, 30, tzinfo=timezone.utc)
-analytics_cache.now_utc = lambda: NOW
-analytics.now_utc = lambda: NOW
 
 
 async def seed(factory):
@@ -146,7 +144,11 @@ async def main():
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
     engine, factory = create_engine_and_session_factory(benchmark_database_url())
+    original_cache_clock = analytics_cache.now_utc
+    original_analytics_clock = analytics.now_utc
     try:
+        analytics_cache.now_utc = lambda: NOW
+        analytics.now_utc = lambda: NOW
         result = await seed(factory) if args.phase == "seed" else await measure(engine, factory)
         path = Path(args.out)
         with path.open("x", encoding="utf-8") as stream:
@@ -154,6 +156,8 @@ async def main():
         print(json.dumps({key: value for key, value in result.items()
                           if key not in {"payload", "raw_value_sql"}}, ensure_ascii=False))
     finally:
+        analytics_cache.now_utc = original_cache_clock
+        analytics.now_utc = original_analytics_clock
         await engine.dispose()
 
 
