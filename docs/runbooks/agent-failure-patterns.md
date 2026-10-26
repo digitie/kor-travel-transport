@@ -94,6 +94,29 @@
   추가하기 전에 ADR을 먼저 갱신한다.
 
 
+## E. 배포 사전 계약과 복원
+
+- **E1 (실제 사례, 2026-10-26)**: Git 변경이 없는 배포 계약도 운영 파일의 CRLF와 Git archive의 LF 때문에
+  바이트 비교가 실패할 수 있다. → 먼저 변경 경로와 양쪽 hash를 읽기 전용으로 확인한다. 이번 사례는
+  `.py/.json/.yaml/.yml` 63개를 CRLF→LF만 변환해 대조했을 때 내용 차이 0이었다. shell·binary는 exact를
+  유지하고 공백·인코딩·내용을 임의 보정하지 않는다. 운영 env 두 개는 기존 byte/권한/소유권을 그대로
+  보존한다. 설치 overlay의 줄바꿈 교체는 정확히 승인된 기존/후보 hash와 동일 metadata/path로 제한한다.
+  중단한 audit/input/unit을 덮어쓰지 않고 새 실행 기록을 쓴다([실행 원장](../reports/2026-10-26-parking-production-rollout.md)).
+- **E2 (비운영 적대적 재현, 2026-10-26)**: 일정 원상복원이 일부만 성공한 동안 새 run이 CS 실행 artifact를
+  만들 수 있다. 이후 첫 snapshot만 복원하면 이 artifact가 사라진다. → 일정 복원 시도 이후의 실패에서는
+  현재 runtime/state를 보존하고 재pause를 검증한 UNKNOWN으로 남긴다. 초기 pause·재pause 자체가 미확인이면
+  `paused:null`로 구분하며 전체 중지 성공으로 보고하지 않는다. 이 경계는 운영 유실 사고가 아닌 로컬
+  재현·회귀로 확인했다. 원래 pause가 유지된 앞 단계의 검증된 이미지 복구와 구분한다.
+- **E3 (실제 사전 관측과 비운영 회귀, 2026-10-26)**: `/health.seeded`는 `ParkingSnapshot` 존재 여부다.
+  `SEED_SAMPLE_DATA=false`와 같은 뜻으로 해석해 `seeded:false`를 강제하지 않는다. 이번 운영의
+  `seeded:true`는 기존 수집 자료가 있다는 뜻이며 검증을 맞추기 위해 env나 DB를 바꾸지 않는다.
+- **E4 (실제 사례, 2026-10-26)**: Docker `inspect`의 `Mounts` 배열 순서는 같은 컨테이너에서도 바뀔 수
+  있다. 배열을 그대로 비교한 guard가 세 이미지 빌드 뒤 교체 전 확인과 복구 확인을 모두 거부했다.
+  → `Type/Source/Destination/RW` 등 계약 필드는 유지하고 결정적 키로 순서만 정규화한다. 항목을
+  집합으로 바꿔 중복을 지우거나 실제 mount 차이를 무시하지 않는다. 중단 원장·실제 child 종료·builder
+  원래 상태·완성 이미지 계보를 보존하고, 이미 staging된 소스를 과거 runtime의 rollback 원본으로
+  잘못 기록하지 않는다. 후속 절차는 새 기록에서 검증한다.
+
 ## 임시 Docker 검증망과 LAN 겹침 (2026-10-23 실제 사례)
 
 별도 project/name만 설정하고 IPAM을 생략한 Compose test망이192.168.0.0/20을 배정받아

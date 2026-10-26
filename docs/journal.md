@@ -8,6 +8,24 @@
 
 [채택 보고서](reports/2026-10-26-login-hydration-common-adoption.md)에 native POST /login 관측과 SSR·hydration 준비 경계만 기록했다.
 Common47의 개발 산출물 채택은 기존 CPU/Manager PR과 별도이며 제품·운영은 아직 바꾸지 않았다.
+# 2026-10-26 — 공항 주차장 통합 릴리스 빌드·배포 진행
+
+- 사용자 지시로 main `71a551ef7fa29957be018294363063e1870be011`의 빌드·배포를 시작했다.
+  제품은 기존 수용 코드 `1e50dbc`와 같으며 현재 운영 `a93dfba`에서 갱신한다.
+- 첫 실행은 운영 텍스트 63개의 CRLF/LF 차이를 사전 guard가 거부해 staging 전에 중단했다.
+  내용 차이 0을 입증하고 shell exact·두 env strict를 유지한 새 `-r2` 실행을 두 리뷰어가 수용했다.
+  비운영 39회귀를 독립 재실행했으며 원래 실행 기록은 보존했다.
+- 운영 다섯 역할·이전 이미지·소스·schema `0035_ferry_reference`와 타 컨테이너 52개의 기준 상태를
+  보존한 뒤 Transport 전용 제한 builder로 backend→frontend→admin 순서의 빌드를 모두 exit0으로 완료했다.
+  `-r2`는 교체 전 계약 확인에서 중단돼 `UNKNOWN_NO_PAUSE_PERFORMED`로 종료했다.
+  child 종료·일정 미중지는 확인됐으며 builder 원상복원이 미확정인 상태에서 원인과 후속 절차를 진단한다.
+  실제 원인은 마운트 배열 순서 false guard였으며 수정 `-r3`의 비운영50개·두 리뷰 뒤 재개했으나 호스트 검증 exit2로 멈췄다.
+  최초 내부 예외는 미확정이다. PR140은 내부 Manager 기한30→60초만 고쳐 WSL/Docker각107개·최종 두 리뷰를 통과했고 CI 대기 중이다.
+  빌더 정리 첫 실행은 살아 있는 Weather171의 G holder 경합으로 작업 전에 종료했다. 타 작업은 중지하지 않았다.
+  기존 Weather 자식·잠금 종료 뒤 새 cleanup-r2가 05:56:29 UTC에 빌더 원래 STOPPED 복원을 완료했다.
+  controller c59fe0a·비운영40개·두 최종 리뷰 PASS, 실제 정리 exit0·일정 변경0·fresh foreign53개와 Transport 보호 자료 전후 불변을 확인했다.
+  아직 일정 중지·운영 교체·실제 새 UI/자연 tick 수용은 완료하지 않았다.
+- [배포 실행·검증 원장](reports/2026-10-26-parking-production-rollout.md).
 
 # 2026-10-26 — 공항 주차장 통합 코드 수용과 검증 인계
 

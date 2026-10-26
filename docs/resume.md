@@ -7,6 +7,22 @@ frontend284/타입/lint는 PASS, 원실패는 보존한다. 다음은 독립 두
 
 [Common47 채택](reports/2026-10-26-login-hydration-common-adoption.md)을 격리 branch로 준비한다.
 다음은 정규 dev.9 vendor/lock과 앱 callback 경계 회귀이며 독립 두 리뷰·CI·공개 UI는 미완이다.
+## 2026-10-26 — 공항 주차장 통합 빌드·배포 진행
+
+- 현재 상태: 사용자 지시로 `71a551ef7fa29957be018294363063e1870be011`의 세 이미지를 빌드해 모두 exit0을 확인했다.
+  운영 API/CS/admin은 기존 `a93dfba`이며 다섯 역할이 healthy다. schema는 실제 조회한 `0035_ferry_reference`다.
+  첫 실행은 CRLF/LF guard에서 staging 전 중단했고, 39회귀·James/Popper PASS 뒤 새 `-r2` unit을 실행했다.
+  `-r2`는 이미지 빌드 후 계약 확인에서 `UNKNOWN_NO_PAUSE_PERFORMED`로 종료했다. 일정 중지·교체는 시작하지 않았고,
+  child 종료와 원본 소스 복구는 확인됐다. 마운트 순서 guard 수정본 `-r3`도 호스트 검증 exit2 뒤 중단돼 운영은 그대로다.
+  PR140 `d4166e8`의 Manager 기한30→60초 최소 수정은 WSL/Docker각107개와 두 코드 리뷰를 통과했고 전체 CI 대기 중이다.
+  Weather171의 기존 잠금·자식 종료 뒤 새 cleanup-r2가 05:56:29 UTC에 builder 원래 STOPPED 복원을 완료했다.
+  다섯 역할·환경·복구 자료·fresh foreign53개 전후 불변과 일정 변경0건을 확인했다. 타 작업은 중지하지 않았다.
+- 실행 정본: `/mnt/media/kor-travel/build/transport/parking-release-71a551ef-20261026-r2`의 기록과
+  `kt-transport-parking-71a551ef-20261026-r2` unit이다. 이전 증거를 재사용하거나 실행을 겹치지 않는다.
+- 다음 한 작업: PR140의 필수 CI를 확인하고 머지한 새 후보를 새 입력·원장·unit의 정식 절차로 빌드·배포한다.
+  fresh Transport 일정 snapshot·pause·자연 drain·공식 교체·원상복원을
+  확인하고 실제 관리자 네 뷰/지도/Firefox와 자연 tick의 raw/cache/API 시각을 대조한다.
+  성공 전에는 배포/운영 task를 완료하지 않는다. [실행 원장](reports/2026-10-26-parking-production-rollout.md).
 
 ## 2026-10-26 — 공항 주차장 통합 코드 수용과 운영 인계
 
