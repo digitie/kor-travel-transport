@@ -1,3 +1,7 @@
+## 2026-10-27 — VadaHub 기존 수용 기록의 문서 복구
+
+원 Draft133의 미흡수 기록을 최신 main에 정렬했다. 아래 VadaHub 완료는 2026-10-25 PR129/main a93dfba의 역사적 수용이며 현재 후보의 새 배포 완료가 아니다. [운영·복구 원장](reports/2026-10-24-vadahub-ferry.md)과 T-OPINET-30의 당시 약62분/30분 목표 미달을 보존한다. 현재 다른 배포·기능 과제 상태는 변경하지 않았다.
+
 ## 2026-10-26 — 로그인 dev.9 소비자 후보 고정
 
 [채택 보고서](reports/2026-10-26-login-hydration-common-adoption.md)의 정규 vendor/lock과 실제 앱 회귀를 구현했다.
@@ -50,14 +54,17 @@ frontend284/타입/lint는 PASS, 원실패는 보존한다. 다음은 독립 두
 - 기능 구현은 새 작업 ID C-MAP-01/T-MAP-01·T-RAIL·T-PARK·T-FUEL 등으로 추적한다. 아래 10/12지표·실시간표 등의
   과거 기록은 당시 구현/검증 이력이며, 실제 운영의 현재 유용성·정상 동작을 보장하지 않는다.
 
-## 2026-10-24 — VadaHub 배편 통합·최신 소스 배포 진행
+## 2026-10-25 — VadaHub 운영 수집·배편 화면 확인 완료
 
-최신 사용자 요청으로 Transport 배포 보류를 해제했다. `codex/vadahub-ferry-integration`에서
-SDK의 항로·시설·공식터미널을 저장/API/배편 UI에 연결했다.
-실제 공개 수집643행·실패/취소/재개 대상90개 검증을 통과했다.
-다음 한 작업은 최종 CI·리뷰2·Docker/반응형 검증 후 머지하고 Manager 정본 Odroid에
-Transport instigator만 일시 중지·자연 drain·복원 절차로 배포하는 것이다.
-[계약·검증·배포 원장](reports/2026-10-24-vadahub-ferry.md).
+PR129/main `a93dfba27283224e1cf091865f2c08d40cdd9dc3`를 배포했다.
+native run `c8b70929-ba1a-4528-a662-b9b744f4bb9d`에서 실제643건 저장·SUCCESS를 확인했다.
+오늘 정기 실행도 성공했으며 공개 [배편 화면](https://transport.digitie.mywire.org/ferry)의
+375/1440px·검색·출처·기존 인천 시간표·로그아웃·release SHA 검증을 통과했다.
+5개 역할 healthy·schema0035·18개 instigator 복원·공용 plane 유지도 확인했다.
+[계약·CI·독립 리뷰·배포/복구 증빙](reports/2026-10-24-vadahub-ferry.md).
+
+다음 한 작업은 클릭150~850ms가 적용된 오피넷의 전국 수집 추가 병목 확인이다.
+2026-10-25 실제08:03~09:05 KST 실행은 약62분으로30분 목표는 아직 미달이다.
 
 ## 2026-10-24 — 홈·교통 이용 흐름과 최종 UI 점검
 
