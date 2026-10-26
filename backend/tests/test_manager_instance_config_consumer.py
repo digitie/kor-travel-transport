@@ -58,8 +58,8 @@ def test_show_uses_exact_cli_and_no_prepare_or_local_config_read(monkeypatch, tm
     calls = []
 
     def run(argv, **kwargs):
-        calls.append(argv)
-        assert kwargs["timeout"] in (15, 30) and kwargs["check"]
+        calls.append((argv, kwargs["timeout"]))
+        assert kwargs["check"]
         stdout = ADDR if argv == ["hostname", "-I"] else json.dumps(
             shown() if "dagster-instance-config" in argv else registry()
         )
@@ -67,8 +67,11 @@ def test_show_uses_exact_cli_and_no_prepare_or_local_config_read(monkeypatch, tm
 
     monkeypatch.setattr(helper.subprocess, "run", run)
     assert helper.validate_remote(ADDR, envfile, instance_config=True) == shown()
-    assert calls == [["hostname", "-I"], ["sudo", "-n", "ktdctl", "targets", "validate", "--json"],
-                     ["sudo", "-n", "ktdctl", "dagster-instance-config", "show", "--json"]]
+    assert calls == [
+        (["hostname", "-I"], 15),
+        (["sudo", "-n", "ktdctl", "targets", "validate", "--json"], 60),
+        (["sudo", "-n", "ktdctl", "dagster-instance-config", "show", "--json"], 30),
+    ]
     # 합성 정본 path는 실제 존재하지 않는다. 일반 계정의 별도 file read를 요구하지 않는다.
     assert not Path(shown()["path"]).exists()
 
