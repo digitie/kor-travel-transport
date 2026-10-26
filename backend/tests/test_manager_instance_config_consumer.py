@@ -151,3 +151,28 @@ def test_revalidation_precedes_mutation_and_rollback_and_keeps_prepare_readonly(
     assert "rollback_dagster_code_server() {\n  verify_manager_instance_config || return 2" in text
     assert 'verify_manager_instance_config || exit 2\n  cutover_env_tmp=' in text
     assert "dagster-instance-config prepare" not in text
+
+
+@pytest.mark.parametrize("instance_config", [False, True])
+def test_oversize_registry_is_rejected_before_json_parse(monkeypatch, tmp_path, capsys, instance_config):
+    envfile = tmp_path / ".env.prod"
+    envfile.write_text("OWNED=fixture\n")
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        stdout = ADDR if argv == ["hostname", "-I"] else " " * 1048577
+        return subprocess.CompletedProcess(argv, 0, stdout, "sensitive-sentinel")
+
+    def forbidden_parse(*args, **kwargs):
+        raise AssertionError("oversize registry reached JSON parser")
+
+    monkeypatch.setattr(helper.subprocess, "run", run)
+    monkeypatch.setattr(helper.json, "loads", forbidden_parse)
+    args = ["--host", ADDR, "--env-file", str(envfile)]
+    if instance_config:
+        args.append("--instance-config")
+    assert helper.main(args) == 2
+    assert calls == [["hostname", "-I"], ["sudo", "-n", "ktdctl", "targets", "validate", "--json"]]
+    output = capsys.readouterr()
+    assert output.out == "" and "sensitive-sentinel" not in output.err

@@ -82,8 +82,10 @@ def validate_remote(
         ["sudo", "-n", "ktdctl", "targets", "validate", "--json"],
         capture_output=True, text=True, timeout=30, check=True,
     )
+    if len(manager.stdout) > 1048576:
+        raise ValueError("Manager registry output exceeds bound")
     registry = json.loads(manager.stdout)
-    if len(manager.stdout) > 1048576 or not registry_matches(registry, address):
+    if not registry_matches(registry, address):
         raise ValueError("Manager registry does not assign transport here")
     if not env_file.is_file() or not os.access(env_file, os.R_OK):
         raise ValueError("environment file is not readable")
