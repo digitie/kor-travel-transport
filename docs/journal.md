@@ -1,3 +1,9 @@
+## 2026-10-26 — 로그인 공통 dev.9 고정과 단위 검증
+
+[채택 보고서](reports/2026-10-26-login-hydration-common-adoption.md)에 정규 tarball/source/무결성을 고정했다.
+기존 dev.8 대비 archive의 로그인 JS·버전 metadata 두 파일만 바뀌고 기존 vendor는 남긴다. 앱 인증 구현·세션·배포 설정·CPU138/Manager139는 변경하지 않았다.
+원 1FAIL/1PASS 뒤 앱 회귀2PASS, 잠긴 offline 재설치/전체frontend284PASS·타입·lint를 확인했다. 로컬 시험의 HTTP대역과 Root 소유 실제 Next/UI 검증은 분리하며 후자는 미완이다.
+
 ## 2026-10-26 — 공통 로그인 준비 경계 채택 설계
 
 [채택 보고서](reports/2026-10-26-login-hydration-common-adoption.md)에 native POST /login 관측과 SSR·hydration 준비 경계만 기록했다.

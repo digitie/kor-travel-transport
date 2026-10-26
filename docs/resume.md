@@ -1,3 +1,8 @@
+## 2026-10-26 — 로그인 dev.9 소비자 후보 고정
+
+[채택 보고서](reports/2026-10-26-login-hydration-common-adoption.md)의 정규 vendor/lock과 실제 앱 회귀를 구현했다.
+frontend284/타입/lint는 PASS, 원실패는 보존한다. 다음은 독립 두 리뷰·소비자 CI와 Root 소유 실제 Next 후보 UI다. main merge/운영은 하지 않았다.
+
 ## 2026-10-26 — 로그인 공통 준비 경계 후속
 
 [Common47 채택](reports/2026-10-26-login-hydration-common-adoption.md)을 격리 branch로 준비한다.
