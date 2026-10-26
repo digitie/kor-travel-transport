@@ -1,3 +1,12 @@
+## 2026-10-26 — 원본 JSON scalar 국소 후보 구현
+
+Draft PR #138에서 `_plain_json` 정확 builtin 조기 반환6줄과 계약31개를 추가했다.
+원본/후보 actual module31PASS, 교대3쌍 CPU 중앙값은 scalar79.1%/중첩25.0% 감소했고
+JSON bytes는 동일했다. 함수 전용 합성 계량이며 전체 수집·ARM·RSS 개선을 주장하지 않는다.
+구 로컬 provider import 실패와 추가 계량 검사 실수는 별도 보존했다.
+[정확 범위·환경·미완 gate](reports/2026-10-26-plain-json-scalar-cpu.md).
+두 독립 리뷰·정확 CI·live UI·머지·운영은 미완이며 과거 기록은 아래에 유지한다.
+
 ## 2026-10-26 — 원본 JSON scalar CPU 후보 준비
 
 정확 builtin scalar만 조기 반환하는 `_plain_json`의 국소 후보를 격리 브랜치에서 조사한다.

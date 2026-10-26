@@ -1,8 +1,9 @@
 ## 원본 JSON 변환 국소 CPU 후속
 
 - [ ] T-CPU-PLAIN-01: `_plain_json` 정확 builtin scalar 조기 반환 후보의 결과·오류·identity를
-  보존하고 scalar/중첩 bulk CPU·RSS·bytes를 대조한다. 효과 확인 뒤 작은 코드 커밋과
-  CI·두 독립 리뷰·live UI를 수용한다. 전체 수집 성능·운영 적용은 별도다.
+  보존하고 scalar/중첩 bulk CPU·RSS·bytes를 대조한다. 정확 builtin6줄과 원본/후보31회귀·
+  국소 합성 계량을 확인한 PR #138은 CI·두 독립 리뷰·live UI·머지/운영 수용이 남았다.
+  전체 수집 성능·운영 적용은 별도다.
   [설계·검증 원장](reports/2026-10-26-plain-json-scalar-cpu.md).
 
 # tasks.md — parking-radar 백로그
