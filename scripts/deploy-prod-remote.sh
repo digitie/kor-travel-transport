@@ -94,6 +94,27 @@ if [[ ! "${DAGSTER_POSTGRES_URL:-}" =~ ^postgresql(\+psycopg2)?://[^@]+@127\.0\.
   exit 2
 fi
 
+# 공식 배포는 호스트별 Manager 정본만 소비한다. show는 준비/설치/서비스 변경을 하지 않는다.
+manager_instance_config() {
+  python3 "${SCRIPT_DIR}/validate-deploy-host.py" --host "${REMOTE_HOST}" \
+    --env-file "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" --instance-config
+}
+verify_manager_instance_config() {
+  local current
+  current="$(manager_instance_config)" || return 2
+  if [[ "${current}" != "${MANAGER_INSTANCE_CONFIG_JSON}" ]]; then
+    echo "Refusing production deployment: Manager instance configuration changed." >&2
+    return 2
+  fi
+}
+MANAGER_INSTANCE_CONFIG_JSON="$(manager_instance_config)" || exit 2
+manager_instance_path="$(printf '%s' "${MANAGER_INSTANCE_CONFIG_JSON}" | python3 -c 'import json,sys; print(json.load(sys.stdin)["path"])')" || exit 2
+if [[ -n "${KOR_TRAVEL_DAGSTER_SHARED_INSTANCE_CONFIG:-}" && "${KOR_TRAVEL_DAGSTER_SHARED_INSTANCE_CONFIG}" != "${manager_instance_path}" ]]; then
+  echo "Refusing production deployment: independent instance configuration override." >&2
+  exit 2
+fi
+export KOR_TRAVEL_DAGSTER_SHARED_INSTANCE_CONFIG="${manager_instance_path}"
+
 RUNTIME_ENV_FILE="$(mktemp "${REMOTE_APP_DIR}/.env.prod.runtime.XXXXXX")"
 ROLLBACK_RUNTIME_ENV_FILE=""
 PREVIOUS_CODE_SERVER_IMAGE=""
@@ -120,8 +141,10 @@ cleanup_remote() {
   exit "${exit_status}"
 }
 trap cleanup_remote EXIT
-awk '!/^(RELEASE_SHA|BACKEND_RUNTIME_IMAGE)=/' "${REMOTE_ENV_FILE}" > "${RUNTIME_ENV_FILE}"
+awk '!/^(RELEASE_SHA|BACKEND_RUNTIME_IMAGE|KOR_TRAVEL_DAGSTER_SHARED_INSTANCE_CONFIG)=/' "${REMOTE_ENV_FILE}" > "${RUNTIME_ENV_FILE}"
 printf 'RELEASE_SHA=%s\n' "${CANDIDATE_SHA}" >> "${RUNTIME_ENV_FILE}"
+printf 'KOR_TRAVEL_DAGSTER_SHARED_INSTANCE_CONFIG=%s\n' \
+  "${KOR_TRAVEL_DAGSTER_SHARED_INSTANCE_CONFIG}" >> "${RUNTIME_ENV_FILE}"
 chmod 600 "${RUNTIME_ENV_FILE}"
 # 백엔드 계열 이미지는 release마다 자기 태그를 받는다. `up --build`가 backend를 이 이름으로 빌드하고
 # migrate·Dagster 서비스도 같은 이미지로 뜬다. env 파일에 두면 다음 release가 같은 태그를 덮어써
@@ -230,6 +253,7 @@ if [[ "${DEPLOY_MODE}" == "prepare-shared-dagster-cutover" ]]; then
     echo "Refusing prepare: the production database is not at this release's Alembic head. Deploy the pending migrations first (normal deploy of a pre-join release), then prepare again." >&2
     exit 2
   }
+  verify_manager_instance_config || exit 2
   cutover_env_tmp="$(mktemp "${CUTOVER_ENV_FILE}.XXXXXX")"
   cat "${RUNTIME_ENV_FILE}" > "${cutover_env_tmp}"
   printf 'BACKEND_RUNTIME_IMAGE=%s\n' "${BACKEND_RUNTIME_IMAGE}" >> "${cutover_env_tmp}"
@@ -306,6 +330,7 @@ capture_previous_code_server_image() {
   }
 }
 rollback_dagster_code_server() {
+  verify_manager_instance_config || return 2
   if [[ ! "${PREVIOUS_CODE_SERVER_TAG}" =~ ^[0-9a-f]{12}$ ]] \
     || [[ "${PREVIOUS_CODE_SERVER_IMAGE}" != "kor-travel-transport-backend:rel-${PREVIOUS_CODE_SERVER_TAG}" ]]; then
     echo "Cannot roll back Dagster code-server: previous immutable image tag was not captured." >&2
@@ -313,9 +338,11 @@ rollback_dagster_code_server() {
   fi
   if [[ -z "${ROLLBACK_RUNTIME_ENV_FILE}" ]]; then
     ROLLBACK_RUNTIME_ENV_FILE="$(mktemp "${REMOTE_APP_DIR}/.env.prod.runtime.rollback.XXXXXX")" || return 1
-    awk '!/^(RELEASE_SHA|BACKEND_RUNTIME_IMAGE)=/' "${REMOTE_ENV_FILE}" > "${ROLLBACK_RUNTIME_ENV_FILE}" || return 1
+    awk '!/^(RELEASE_SHA|BACKEND_RUNTIME_IMAGE|KOR_TRAVEL_DAGSTER_SHARED_INSTANCE_CONFIG)=/' "${REMOTE_ENV_FILE}" > "${ROLLBACK_RUNTIME_ENV_FILE}" || return 1
     printf 'BACKEND_RUNTIME_IMAGE=%s\n' \
       "${PREVIOUS_CODE_SERVER_IMAGE}" >> "${ROLLBACK_RUNTIME_ENV_FILE}" || return 1
+    printf 'KOR_TRAVEL_DAGSTER_SHARED_INSTANCE_CONFIG=%s\n' \
+      "${KOR_TRAVEL_DAGSTER_SHARED_INSTANCE_CONFIG}" >> "${ROLLBACK_RUNTIME_ENV_FILE}" || return 1
     chmod 600 "${ROLLBACK_RUNTIME_ENV_FILE}" || return 1
   fi
   echo "Dagster code-server 배포 실패 — ${PREVIOUS_CODE_SERVER_IMAGE}로 복구를 시도한다." >&2
@@ -363,6 +390,7 @@ while :; do
   sleep 15
 done
 capture_previous_code_server_image
+verify_manager_instance_config || exit 2
 DEPLOYMENT_REPLACEMENT_STARTED=true
 compose up -d --no-build
 compose ps

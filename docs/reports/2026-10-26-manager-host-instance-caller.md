@@ -91,3 +91,21 @@ Manager 설치의 상호배제를 새로 보장하지 않는다. 교체 직전 s
 
 Manager559를 먼저 준비/설치하고 외부 Transport caller를 그 계약에 연결하는 순서다.
 실제 운영 변경은 Root의 Map 마무리와 후속 슬롯 지시 뒤 별도 수행한다.
+
+## 구현 체크포인트 — 운영 미실행
+
+기존 validator에 명시적 `--instance-config` 모드를 추가하고 duplicate/unknown/missing key,
+boolean/비양수 max, host 불일치, 비정규·보간 path, full SHA 오염을 거부했다. 기본 registry 검사는
+기존 호출을 유지하며 새 모드는 같은 host 검증 뒤 정확 show 명령만 실행한다.
+공식 remote script는 source 뒤 정본을 결박하고 stale env를 제거한 runtime/cutover/rollback
+환경에 같은 path를 기록하며 교체 직전과 rollback 전에 같은 네 필드를 다시 확인한다.
+Compose·API·SQL·DTO·provider·의존성·실제 상한은 변경하지 않았다.
+
+초기 합성 집중119개가 통과했다. 이후 명시적 subprocess check/import 정렬과 기존 shared-db
+계약을 포함한 최종 집중121개가20.42초에 통과했다. validator/직접 시험3파일 Ruff도 통과했다.
+시험은 기존 Python 환경에서 `--noconftest`로 해당 순수 deploy 시험4모듈만 실행했으며,
+전역 PG fixture·전체 앱/정확 lock·Docker·운영 수용을 대신하지 않는다. 기존 환경에 Ruff가 없어
+첫 Ruff 호출이 본문 진입 전에 실패했고 다른 기존 캐시의 Ruff를 사용했다. 설치는 하지 않았다.
+
+Manager559 실제 최종 CLI pin·외부 caller의 독립 리뷰2·정확 lock CI·두 호스트 runtime 동등성은
+아직 미완이다. PR은 Draft이며 merge/SSH/build/PG/서비스·실수집은 수행하지 않았다.

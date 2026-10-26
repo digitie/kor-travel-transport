@@ -1,3 +1,11 @@
+# 2026-10-26 — Manager instance 정본 caller 구현, 운영 미실행
+
+- 공식 remote 배포가 Manager show 네 필드를 검증해 기존 instance 환경변수에 전달하도록 연결했다.
+  독립 경로/미준비 실패를 거부하고 cutover·교체·rollback 전에 같은 정본인지 다시 확인한다.
+- 합성 집중121개20.42초·Ruff를 통과했다. 전체 앱/정확 lock·독립 리뷰2·두 호스트 effective
+  mount/digest 운영 수용은 별도 미완이며 Draft 상태다. [상태와 한계](reports/2026-10-26-manager-host-instance-caller.md).
+- Transport138/원본 dirty를 보존했고 설치·SSH·PG·build·서비스·수집은0이다.
+
 # 2026-10-26 — Manager 호스트별 instance 소비 연동 설계
 
 - Manager559의 읽기 전용 `dagster-instance-config show --json` 네 필드 계약을 외부 Transport
