@@ -128,8 +128,10 @@ loopback 24602 프록시는 첫 요청을 지연시켜 24102 native GraphQL로 �
 
 ## SQL 실행 제한시간 보존 후속
 
-2026-10-21부터 Common pin은 e746e4b81b9b62dd1a74ca90ba0a1204951c2885(main 조상)다
-(회수 sensor 예산·정체 경보 채택, `docs/runbooks/dagster-recovery.md`). 아래는 당시 기록이다.
+2026-10-27부터 Common pin은 c289b4624c8640eb918cc915803e72ae754e58fb(Common main 머지 커밋)다.
+직전 pin e746e4b81b9b62dd1a74ca90ba0a1204951c2885(2026-10-21, 회수 sensor 예산·정체 경보 채택,
+`docs/runbooks/dagster-recovery.md`) 이후 Python 변경은 공용 daemon 전용 `daemon_pool`의
+workspace 갱신 주기 opt-in(Common #44)뿐이고 Transport는 이를 쓰지 않는다. 아래는 당시 기록이다.
 당시 pin은 89291f36d731ab906161b96757522e1cd833b4ef다. 이전 a68d049의
 독립 제출 연결에서 native statement_timeout이 빠지는 반례를 수정했다.
 공식 SQLAlchemy Pool.recreate로 연결 생성 설정과 listener를 보존하고 원래 풀의

@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Integrated domestic travel transport data API"
 requires-python = ">=3.12"
 dependencies = [
-  "kor-travel-common[dagster,reverse-address] @ git+https://github.com/digitie/kor-travel-common.git@e746e4b81b9b62dd1a74ca90ba0a1204951c2885#subdirectory=packages/py/kor-travel-common",
+  "kor-travel-common[dagster,reverse-address] @ git+https://github.com/digitie/kor-travel-common.git@c289b4624c8640eb918cc915803e72ae754e58fb#subdirectory=packages/py/kor-travel-common",
   "aiosqlite>=0.22,<1.0",
   "alembic>=1.19,<2.0",
   "asyncpg>=0.31,<1.0",
