@@ -1,3 +1,10 @@
+## 2026-10-26 — 원본 JSON scalar CPU 후보 준비
+
+정확 builtin scalar만 조기 반환하는 `_plain_json`의 국소 후보를 격리 브랜치에서 조사한다.
+[설계·검증 경계](reports/2026-10-26-plain-json-scalar-cpu.md). 현재 문서 초안뿐이며
+함수 의미 대조·국소 계량·제품 변경·CI·live UI·운영 적용은 미완이다. 원래 관측 표본을
+전체 수집 CPU 효과로 해석하지 않고 기존 실패·운영 기록을 유지한다.
+
 # 2026-10-26 — 공항 주차장 통합 코드 수용과 검증 인계
 
 - SDK PR12와 Transport PR134·135·136의 검증 소스·CI·James/Popper 최종 코드 PASS와 머지를 정산했다.

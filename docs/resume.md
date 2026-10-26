@@ -1,3 +1,10 @@
+## 2026-10-26 — 원본 JSON 변환 국소 CPU 후보 준비
+
+- 현재 상태: 정확 builtin scalar만 대상으로 `_plain_json` 기존 계약과 국소 비용을 조사한다.
+  [초안](reports/2026-10-26-plain-json-scalar-cpu.md). 제품·SQL/API/DTO·운영은 변경하지 않았다.
+- 다음 한 작업: 기존 SDK payload·subclass/Enum/시간/Decimal/Mapping 계약과 전후 bytes를 고정하고
+  별도 프로세스 CPU/RSS를 비교한다. 효과 확인 전 제품화하지 않으며 CI·두 리뷰·live UI는 미완이다.
+
 ## 2026-10-26 — 공항 주차장 통합 코드 수용과 운영 인계
 
 - 현재 코드: SDK PR12와 Transport PR134·135·136은 정확 소스의 필수 CI·James/Popper 최종 코드 PASS 뒤 머지됐다.
