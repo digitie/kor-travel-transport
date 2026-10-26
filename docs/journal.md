@@ -14,6 +14,17 @@ JSON bytes는 동일했다. 함수 전용 합성 계량이며 전체 수집·ARM
 함수 의미 대조·국소 계량·제품 변경·CI·live UI·운영 적용은 미완이다. 원래 관측 표본을
 전체 수집 CPU 효과로 해석하지 않고 기존 실패·운영 기록을 유지한다.
 
+## 2026-10-26 — 로그인 공통 dev.9 고정과 단위 검증
+
+[채택 보고서](reports/2026-10-26-login-hydration-common-adoption.md)에 정규 tarball/source/무결성을 고정했다.
+기존 dev.8 대비 archive의 로그인 JS·버전 metadata 두 파일만 바뀌고 기존 vendor는 남긴다. 앱 인증 구현·세션·배포 설정·CPU138/Manager139는 변경하지 않았다.
+원 1FAIL/1PASS 뒤 앱 회귀2PASS, 잠긴 offline 재설치/전체frontend284PASS·타입·lint를 확인했다. 로컬 시험의 HTTP대역과 Root 소유 실제 Next/UI 검증은 분리하며 후자는 미완이다.
+
+## 2026-10-26 — 공통 로그인 준비 경계 채택 설계
+
+[채택 보고서](reports/2026-10-26-login-hydration-common-adoption.md)에 native POST /login 관측과 SSR·hydration 준비 경계만 기록했다.
+Common47의 개발 산출물 채택은 기존 CPU/Manager PR과 별도이며 제품·운영은 아직 바꾸지 않았다.
+
 # 2026-10-26 — 공항 주차장 통합 코드 수용과 검증 인계
 
 - SDK PR12와 Transport PR134·135·136의 검증 소스·CI·James/Popper 최종 코드 PASS와 머지를 정산했다.

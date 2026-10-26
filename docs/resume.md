@@ -12,6 +12,16 @@
 - 다음 한 작업: 기존 SDK payload·subclass/Enum/시간/Decimal/Mapping 계약과 전후 bytes를 고정하고
   별도 프로세스 CPU/RSS를 비교한다. 효과 확인 전 제품화하지 않으며 CI·두 리뷰·live UI는 미완이다.
 
+## 2026-10-26 — 로그인 dev.9 소비자 후보 고정
+
+[채택 보고서](reports/2026-10-26-login-hydration-common-adoption.md)의 정규 vendor/lock과 실제 앱 회귀를 구현했다.
+frontend284/타입/lint는 PASS, 원실패는 보존한다. 다음은 독립 두 리뷰·소비자 CI와 Root 소유 실제 Next 후보 UI다. main merge/운영은 하지 않았다.
+
+## 2026-10-26 — 로그인 공통 준비 경계 후속
+
+[Common47 채택](reports/2026-10-26-login-hydration-common-adoption.md)을 격리 branch로 준비한다.
+다음은 정규 dev.9 vendor/lock과 앱 callback 경계 회귀이며 독립 두 리뷰·CI·공개 UI는 미완이다.
+
 ## 2026-10-26 — 공항 주차장 통합 코드 수용과 운영 인계
 
 - 현재 코드: SDK PR12와 Transport PR134·135·136은 정확 소스의 필수 CI·James/Popper 최종 코드 PASS 뒤 머지됐다.
