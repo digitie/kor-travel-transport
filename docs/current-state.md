@@ -1,6 +1,6 @@
 # 현재 상태 요약
 
-> 2026-10-23 최신 배포: #103~#106 `af415b3`, schema29·CS12306·실제 KREX 수집·공개 UI15개 PASS. host CPU99.92% 단일 표본으로 전체 CPU/RAM 감소는 미입증이다. [운영 수용 기록](reports/2026-10-23-fuel-concurrency-rollout.md).
+> 2026-10-27 06:59 KST에 `7f01b0133dad73843ce61444830b1020cfd32f0a` 배포를 완료했다. 다섯 역할 healthy·schema `0035_ferry_reference`·Transport 일정18개 원상복원·공용 daemon RUNNING을 확인했다. 실제 Firefox/Chromium 관리자 화면과 지도 타일을 확인했으며 첫 모바일 분석504는 보존한다. 07:13 KST 자연 job 성공과 김포 기본 캐시0→24행, 이후 자연 재수집의 새 적재·24행 갱신도 확인했다. 파생 계산 약395초로5분 주기 초과가 남아 T-PARK-01/02는 닫지 않는다. [이번 실행 원장](reports/2026-10-26-parking-production-rollout.md). 10월 23일 수용 기록은 과거 이력이다.
 
 
 > 최신 운영 방침: 공용 daemon RUNNING을 유지한다. 아래 10월 19일의 run0·OFF는 당시 관측이다.
@@ -13,8 +13,9 @@ PR134·135·136을 포함한 main `1e50dbc93a86818285a9de22a983d9fb5aa7fb9d`의 
 각 정확 소스의 필수 CI·두 최종 코드 리뷰, 전체/집중 검증과 원본 실패는
 [통합 수용·인계](reports/2026-10-26-parking-admin-integration-acceptance.md)를 따른다.
 
-운영의 자연 tick 시각/캐시·실제 항공편 성공 마커·성능·공식 요금·실기기와 Firefox 첫 opening UNKNOWN은 후속이다.
-배포 SHA·DB·instigator 상태는 기존 운영 수용 기록의 관측 범위를 유지한다.
+위10월26일 인계 당시 자연 tick·실제 항공편·Firefox 첫 opening은 후속이었다.
+10월27일 새 수용에서 자연 적재/캐시 갱신·365마커·새 격리 첫 opening 성공을 확인했으며
+과거 UNKNOWN은 당시 기록으로 보존한다. 분석 지연·공식 요금·실기기는 계속 열린 항목이다.
 
 ## 2026-10-19 현재 Track2 수용 증거
 
