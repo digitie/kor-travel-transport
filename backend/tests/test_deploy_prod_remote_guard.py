@@ -125,7 +125,7 @@ def test_release_image_is_pinned_per_release_through_the_shell_env() -> None:
     # `set -a; source`가 둘을 셸 env로 export하고, 셸 env는 --env-file보다 우선한다.
     assert source < pin < build < up
     assert source < sha < build < up
-    assert "awk '!/^(RELEASE_SHA|BACKEND_RUNTIME_IMAGE)=/'" in text
+    assert "awk '!/^(RELEASE_SHA|BACKEND_RUNTIME_IMAGE|KOR_TRAVEL_DAGSTER_SHARED_INSTANCE_CONFIG)=/'" in text
 
 
 def _function(text: str, name: str) -> str:
@@ -185,6 +185,8 @@ def test_failed_code_server_release_rolls_back_to_the_previous_verified_image(tm
         + "PREVIOUS_CODE_SERVER_TAG='" + "a" * 12 + "'\n"
         + "PREVIOUS_CODE_SERVER_IMAGE=kor-travel-transport-backend:rel-aaaaaaaaaaaa\n"
         + "TRANSPORT_OVERRIDE_FILE=/opt/kor-travel-odroid/transport/transport.override.yml\n"
+        + "KOR_TRAVEL_DAGSTER_SHARED_INSTANCE_CONFIG=/example/manager-owned.yaml\n"
+        + "verify_manager_instance_config() { return 0; }\n"
         + "wait_code_server_health() { echo healthy; }\n"
         + "wait_location_loaded() { echo RepositoryLocation; }\n"
         + "rollback_dagster_code_server\n"
@@ -212,6 +214,7 @@ def test_failed_code_server_release_rolls_back_to_the_previous_verified_image(tm
     rollback_env = Path(args[args.index("--env-file") + 1]).read_text(encoding="utf-8")
     assert "BACKEND_RUNTIME_IMAGE=kor-travel-transport-backend:rel-" + "a" * 12 in rollback_env
     assert "candidate-image" not in rollback_env and _SHA not in rollback_env
+    assert "KOR_TRAVEL_DAGSTER_SHARED_INSTANCE_CONFIG=/example/manager-owned.yaml" in rollback_env
 
 
 def test_release_replacement_is_guarded_by_rollback_capture_and_exit_recovery() -> None:

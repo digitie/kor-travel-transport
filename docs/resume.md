@@ -1,3 +1,11 @@
+## 2026-10-27 — Manager caller 합성 CI의 명령별 기한 검증 정정
+
+최신 main의 registry 검증 기한60초를 #139에 합치면서 기존 회귀가15·30초만 허용해
+CI가1실패/1273통과/2건너뜀으로 종료했다. 같은 실패를 격리 재현했고, 허용값 나열 대신
+hostname15초·registry60초·show30초를 각 정확한 명령과 함께 검증하도록 고친다.
+제품 코드·기한·응답 상한은 바꾸지 않는다. 새 정확 head의 CI와 두 리뷰를 다시 확인한 뒤
+머지하며 원실패와 운영미배포 상태를 보존한다.
+
 ## 2026-10-27 — VadaHub 기존 수용 기록의 문서 복구
 
 원 Draft133의 미흡수 기록을 최신 main에 정렬했다. 아래 VadaHub 완료는 2026-10-25 PR129/main a93dfba의 역사적 수용이며 현재 후보의 새 배포 완료가 아니다. [운영·복구 원장](reports/2026-10-24-vadahub-ferry.md)과 T-OPINET-30의 당시 약62분/30분 목표 미달을 보존한다. 현재 다른 배포·기능 과제 상태는 변경하지 않았다.
@@ -16,6 +24,27 @@
   별도 Weather 마커 배치504/미확인 날씨의 구름 오표시는 격리 수정 중이다.
 - [전환 실패·복구·최종 배포와 수용 원장](reports/2026-10-26-parking-production-rollout.md).
   이전 약15시간 수집 중지 구간은 새 적재로 소급 복구되지 않는다. 철도·유가·실기기 등 전체 backlog는 열어 둔다.
+
+# 2026-10-26 — instance path 정규성 경계 보강
+
+- 선행 `//` 회귀1실패를 보존한 뒤 caller에서 거부했다. 최종 집중122개20.89초·Ruff 통과이며
+  [이전121개와 새 경계](reports/2026-10-26-manager-host-instance-caller.md)를 구분한다. 실제 운영 변경은0이다.
+
+# 2026-10-26 — Manager instance 정본 caller 구현, 운영 미실행
+
+- 공식 remote 배포가 Manager show 네 필드를 검증해 기존 instance 환경변수에 전달하도록 연결했다.
+  독립 경로/미준비 실패를 거부하고 cutover·교체·rollback 전에 같은 정본인지 다시 확인한다.
+- 합성 집중121개20.42초·Ruff를 통과했다. 전체 앱/정확 lock·독립 리뷰2·두 호스트 effective
+  mount/digest 운영 수용은 별도 미완이며 Draft 상태다. [상태와 한계](reports/2026-10-26-manager-host-instance-caller.md).
+- Transport138/원본 dirty를 보존했고 설치·SSH·PG·build·서비스·수집은0이다.
+
+# 2026-10-26 — Manager 호스트별 instance 소비 연동 설계
+
+- Manager559의 읽기 전용 `dagster-instance-config show --json` 네 필드 계약을 외부 Transport
+  공식 배포 caller에 전달하는 작은 후속 작업을 분리했다. n150 6 / Odroid 5의 기존 상한을 보존한다.
+- [접점·실패 경계·검증 계획](reports/2026-10-26-manager-host-instance-caller.md)을 기록했다.
+  제품은 아직 변경하지 않았고 기존138·원본 미커밋 변경을 보존했다.
+- Manager 준비/CLI 최종 핀·파일 권한/동시성 계약 확정 뒤 구현한다. SSH·PG·build·서비스·배포 0이다.
 
 ## 2026-10-26 — 원본 JSON scalar CPU 후보 PR #138
 

@@ -1,3 +1,11 @@
+## 2026-10-27 — Manager caller 합성 CI의 명령별 기한 검증 정정
+
+최신 main의 registry 검증 기한60초를 #139에 합치면서 기존 회귀가15·30초만 허용해
+CI가1실패/1273통과/2건너뜀으로 종료했다. 같은 실패를 격리 재현했고, 허용값 나열 대신
+hostname15초·registry60초·show30초를 각 정확한 명령과 함께 검증하도록 고친다.
+제품 코드·기한·응답 상한은 바꾸지 않는다. 새 정확 head의 CI와 두 리뷰를 다시 확인한 뒤
+머지하며 원실패와 운영미배포 상태를 보존한다.
+
 ## 2026-10-27 — PR133의 역사적 배포 기록 복구
 
 최신 main의 다른 문서를 보존하고 원 Draft133 `ec6b9ffcd00995d167c017821a920c4008cf0d22`의 미흡수5문서 내용을 옮겼다. 아래 2026-10-25 기록의 운영 소스는 PR129/main a93dfba이며 오늘의 새 Transport 배포·재수집 수용을 뜻하지 않는다. 원 run·검증·재개 실패와 ZIP 재사용 정정, 62분/30분 미달 과제는 [당시 원장](reports/2026-10-24-vadahub-ferry.md)에 보존한다. 이번 작업은 문서 복구뿐이며 운영 실행은 없다.
@@ -25,6 +33,27 @@
 - 문서 PR142는 두 번 정리하고 상대 링크184개·공백 검사를 확인했다. Popper의 독립 리뷰는
   지적0개, James의 P2 세 건은 상세 단언의 async 오류·로그아웃/정리 증거·배포 상태의 시제 분리로 보완했다.
   새 baseline 이후 자연 run3023의 적재/캐시 갱신도 별도 확인했으나 파생 약395초는 성능 미완으로 남긴다.
+
+# 2026-10-26 — instance path 정규성 경계 보강
+
+- 선행 `//` 회귀1실패를 보존한 뒤 caller에서 거부했다. 최종 집중122개20.89초·Ruff 통과이며
+  [이전121개와 새 경계](reports/2026-10-26-manager-host-instance-caller.md)를 구분한다. 실제 운영 변경은0이다.
+
+# 2026-10-26 — Manager instance 정본 caller 구현, 운영 미실행
+
+- 공식 remote 배포가 Manager show 네 필드를 검증해 기존 instance 환경변수에 전달하도록 연결했다.
+  독립 경로/미준비 실패를 거부하고 cutover·교체·rollback 전에 같은 정본인지 다시 확인한다.
+- 합성 집중121개20.42초·Ruff를 통과했다. 전체 앱/정확 lock·독립 리뷰2·두 호스트 effective
+  mount/digest 운영 수용은 별도 미완이며 Draft 상태다. [상태와 한계](reports/2026-10-26-manager-host-instance-caller.md).
+- Transport138/원본 dirty를 보존했고 설치·SSH·PG·build·서비스·수집은0이다.
+
+# 2026-10-26 — Manager 호스트별 instance 소비 연동 설계
+
+- Manager559의 읽기 전용 `dagster-instance-config show --json` 네 필드 계약을 외부 Transport
+  공식 배포 caller에 전달하는 작은 후속 작업을 분리했다. n150 6 / Odroid 5의 기존 상한을 보존한다.
+- [접점·실패 경계·검증 계획](reports/2026-10-26-manager-host-instance-caller.md)을 기록했다.
+  제품은 아직 변경하지 않았고 기존138·원본 미커밋 변경을 보존했다.
+- Manager 준비/CLI 최종 핀·파일 권한/동시성 계약 확정 뒤 구현한다. SSH·PG·build·서비스·배포 0이다.
 
 ## 2026-10-26 — 원본 JSON scalar 국소 후보 구현
 

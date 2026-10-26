@@ -1,5 +1,37 @@
 # 배포 및 실행
 
+
+## Manager 호스트별 instance 정본 전달
+
+공식 backend/code-server 배포에는 Manager559의 `dagster-instance-config show --json` 계약이
+필요하다. 정상 Manager installer의 명시적 prepare·설치를 먼저 완료하고, 외부 Transport가
+prepare를 자동 호출하지 않는다. 기존 registry·주소·NVMe·drain·rollback 검사는 계속 적용한다.
+
+`deploy-prod-remote.sh`는 env를 읽은 뒤 다음 명령을 읽기 전용으로 호출한다.
+
+```bash
+sudo -n ktdctl dagster-instance-config show --json
+```
+
+정확 네 필드 `host`, `max_concurrent_runs`, `path`, `sha256`을 받아 transport target의 host와
+맞추고 전체64자리 SHA를 검증한다. 숫자는 Manager가 소유하며 caller가 n150/Odroid 상한을
+다시 선언하지 않는다. 설치/미준비/권한·JSON·필드 불일치면 Docker 변경 전에 exit2다.
+Manager stdout/stderr·원 env를 오류에 재출력하지 않는다.
+
+얻은 path만 `KOR_TRAVEL_DAGSTER_SHARED_INSTANCE_CONFIG`로 export하고 runtime·cutover·rollback
+환경에도 보존한다. 미리 지정한 값이 정본과 다르면 거부한다. Compose의 tracked 기본값은 로컬
+호환용이며 공식 배포의 대체 경로가 아니다. trusted 기본 설치 alias는 허용하지만 임의 경로·
+부모 이동·개행·보간/volume 구문은 거부한다. Odroid의 content-addressed root 파일은 일반
+사용자가 직접 읽거나 복사하지 않으며 Manager CLI가 소유·mode·호스트 bytes/SHA를 검증한다.
+
+긴 build/drain 뒤 실제 up·cutover handoff와 실패 rollback 직전 같은 show 결과인지 재확인한다.
+path/SHA/host/max가 달라지면 교체/rollback을 거부하고 운영자가 Manager 상태를 확인한다.
+이 재검증이 외부 배포 전체와 Manager installer를 잠그는 보장은 아니다. 기존 lock 범위를
+유지하며, 정본 전환은 승인된 순서로 수행한다. 현재 코드의 실제 두 호스트 effective mount·digest
+수용은 후속 운영 readback으로 남긴다. 이 문서 갱신만으로 배포·서비스 변경 완료를 뜻하지 않는다.
+[설계와 검증 상태](../reports/2026-10-26-manager-host-instance-caller.md).
+
+
 ## T-TRN-01 source 배포 계약(2026-10-17)
 
 현재 source의 entry는 scripts/deploy-prod.sh --host <IPv4>, scripts/deploy-prod-remote.sh --host <IPv4>, scripts/deploy-transport-admin-prod.sh --host <IPv4>다. env 정본은 .env.prod와 .env.prod.example이며 app dir·project·실행 사용자는 유지한다. 구 env의 실제 개명·배포를 이 PR이 자동 수행하지 않는다. 구 .env.server14와 .env.server14.legacy/.env.server14.shared-dagster-cutover 세 파일은 정확한 exclude로 보존하며 root의 별도 확인 없이 정리하지 않는다.
