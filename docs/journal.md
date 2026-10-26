@@ -22,6 +22,22 @@
   지적0개, James의 P2 세 건은 상세 단언의 async 오류·로그아웃/정리 증거·배포 상태의 시제 분리로 보완했다.
   새 baseline 이후 자연 run3023의 적재/캐시 갱신도 별도 확인했으나 파생 약395초는 성능 미완으로 남긴다.
 
+## 2026-10-26 — 원본 JSON scalar 국소 후보 구현
+
+Draft PR #138에서 `_plain_json` 정확 builtin 조기 반환6줄과 계약31개를 추가했다.
+원본/후보 actual module31PASS, 교대3쌍 CPU 중앙값은 scalar79.1%/중첩25.0% 감소했고
+JSON bytes는 동일했다. 함수 전용 합성 계량이며 전체 수집·ARM·RSS 개선을 주장하지 않는다.
+구 로컬 provider import 실패와 추가 계량 검사 실수는 별도 보존했다.
+[정확 범위·환경·미완 gate](reports/2026-10-26-plain-json-scalar-cpu.md).
+두 독립 리뷰·정확 CI·live UI·머지·운영은 미완이며 과거 기록은 아래에 유지한다.
+
+## 2026-10-26 — 원본 JSON scalar CPU 후보 준비
+
+정확 builtin scalar만 조기 반환하는 `_plain_json`의 국소 후보를 격리 브랜치에서 조사한다.
+[설계·검증 경계](reports/2026-10-26-plain-json-scalar-cpu.md). 현재 문서 초안뿐이며
+함수 의미 대조·국소 계량·제품 변경·CI·live UI·운영 적용은 미완이다. 원래 관측 표본을
+전체 수집 CPU 효과로 해석하지 않고 기존 실패·운영 기록을 유지한다.
+
 ## 2026-10-26 — 로그인 공통 dev.9 고정과 단위 검증
 
 [채택 보고서](reports/2026-10-26-login-hydration-common-adoption.md)에 정규 tarball/source/무결성을 고정했다.
