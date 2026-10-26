@@ -1,3 +1,8 @@
+## 2026-10-26 — 공통 로그인 준비 경계 채택 설계
+
+[채택 보고서](reports/2026-10-26-login-hydration-common-adoption.md)에 native POST /login 관측과 SSR·hydration 준비 경계만 기록했다.
+Common47의 개발 산출물 채택은 기존 CPU/Manager PR과 별도이며 제품·운영은 아직 바꾸지 않았다.
+
 # 2026-10-26 — 공항 주차장 통합 코드 수용과 검증 인계
 
 - SDK PR12와 Transport PR134·135·136의 검증 소스·CI·James/Popper 최종 코드 PASS와 머지를 정산했다.

@@ -1,5 +1,7 @@
 # tasks.md — parking-radar 백로그
 
+- [ ] [공통 LoginForm hydration 준비 경계 채택](reports/2026-10-26-login-hydration-common-adoption.md): 별도 vendor/lock·회귀·두 리뷰·CI·Root 공개 UI 검증.
+
 ## 2026-10-25 — 조사 기반 지도·이용 흐름 후속
 
 [사전 조사](research/2026-10-25-mobility-ux.md)와 [설계·선행 관계·수용 조건](design/2026-10-25-mobility-improvements.md)을 따른다.

@@ -1,3 +1,8 @@
+## 2026-10-26 — 로그인 공통 준비 경계 후속
+
+[Common47 채택](reports/2026-10-26-login-hydration-common-adoption.md)을 격리 branch로 준비한다.
+다음은 정규 dev.9 vendor/lock과 앱 callback 경계 회귀이며 독립 두 리뷰·CI·공개 UI는 미완이다.
+
 ## 2026-10-26 — 공항 주차장 통합 코드 수용과 운영 인계
 
 - 현재 코드: SDK PR12와 Transport PR134·135·136은 정확 소스의 필수 CI·James/Popper 최종 코드 PASS 뒤 머지됐다.
