@@ -1,3 +1,11 @@
+# 2026-10-26 — Manager 호스트별 instance 소비 연동 설계
+
+- Manager559의 읽기 전용 `dagster-instance-config show --json` 네 필드 계약을 외부 Transport
+  공식 배포 caller에 전달하는 작은 후속 작업을 분리했다. n150 6 / Odroid 5의 기존 상한을 보존한다.
+- [접점·실패 경계·검증 계획](reports/2026-10-26-manager-host-instance-caller.md)을 기록했다.
+  제품은 아직 변경하지 않았고 기존138·원본 미커밋 변경을 보존했다.
+- Manager 준비/CLI 최종 핀·파일 권한/동시성 계약 확정 뒤 구현한다. SSH·PG·build·서비스·배포 0이다.
+
 ## 2026-10-26 — 공항 주차장 통합 코드 수용과 운영 인계
 
 - 현재 코드: SDK PR12와 Transport PR134·135·136은 정확 소스의 필수 CI·James/Popper 최종 코드 PASS 뒤 머지됐다.

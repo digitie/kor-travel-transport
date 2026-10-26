@@ -1,5 +1,10 @@
 # tasks.md — parking-radar 백로그
 
+## 2026-10-26 — Manager instance 정본 전달
+
+- [ ] **T-DAGSTER-INSTANCE-01** — Manager559 show의 host/max/path/전체 SHA를 검증하고 공식 deploy·cutover·rollback에 같은 경로를 전달한다. tracked6 silent fallback과 독립 경로를 거부하며 두 호스트 effective 일치는 운영 별도 수용한다. [설계·미완료 범위](reports/2026-10-26-manager-host-instance-caller.md).
+
+
 ## 2026-10-25 — 조사 기반 지도·이용 흐름 후속
 
 [사전 조사](research/2026-10-25-mobility-ux.md)와 [설계·선행 관계·수용 조건](design/2026-10-25-mobility-improvements.md)을 따른다.
