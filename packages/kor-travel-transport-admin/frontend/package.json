@@ -18,7 +18,7 @@
   "dependencies": {
     "@base-ui/react": "1.9.0",
     "@kor-travel/tokens": "file:vendor/kor-travel-tokens-0.1.0.tgz",
-    "@kor-travel/ui": "file:vendor/kor-travel-ui-0.1.0-dev.8.tgz",
+    "@kor-travel/ui": "file:vendor/kor-travel-ui-0.1.0-dev.9.tgz",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "echarts": "6.1.0",

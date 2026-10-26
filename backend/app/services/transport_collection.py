@@ -1742,6 +1742,12 @@ def _provider_json(value: Any) -> dict[str, Any]:
 
 
 def _plain_json(value: Any) -> Any:
+    value_type = type(value)
+    if (
+        value_type is str or value_type is int or value_type is float
+        or value_type is bool or value is None
+    ):
+        return value
     if isinstance(value, Mapping):
         return {str(key): _plain_json(item) for key, item in value.items()}
     if isinstance(value, (list, tuple, set)):

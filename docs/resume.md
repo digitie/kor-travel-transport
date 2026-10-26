@@ -19,6 +19,30 @@
   제품은 아직 변경하지 않았고 기존138·원본 미커밋 변경을 보존했다.
 - Manager 준비/CLI 최종 핀·파일 권한/동시성 계약 확정 뒤 구현한다. SSH·PG·build·서비스·배포 0이다.
 
+## 2026-10-26 — 원본 JSON scalar CPU 후보 PR #138
+
+- 현재 상태: 정확 builtin terminal6줄만 추가하고 source 전체 inverse/원본·후보 module31PASS를 확인했다.
+  국소 합성 CPU/bytes 결과와 로컬 구 의존성 한계는 [원장](reports/2026-10-26-plain-json-scalar-cpu.md)에 구분했다.
+- 다음 한 작업: 두 독립 적대리뷰와 정확 lock CI를 수용한다. 전체 수집·운영 CPU/RSS 효과 및
+  기존 PG/Docker·live UI·머지/배포는 미완이며 원래 실패와 원본 checkout의 dirty를 보존한다.
+
+## 2026-10-26 — 원본 JSON 변환 국소 CPU 후보 준비
+
+- 현재 상태: 정확 builtin scalar만 대상으로 `_plain_json` 기존 계약과 국소 비용을 조사한다.
+  [초안](reports/2026-10-26-plain-json-scalar-cpu.md). 제품·SQL/API/DTO·운영은 변경하지 않았다.
+- 다음 한 작업: 기존 SDK payload·subclass/Enum/시간/Decimal/Mapping 계약과 전후 bytes를 고정하고
+  별도 프로세스 CPU/RSS를 비교한다. 효과 확인 전 제품화하지 않으며 CI·두 리뷰·live UI는 미완이다.
+
+## 2026-10-26 — 로그인 dev.9 소비자 후보 고정
+
+[채택 보고서](reports/2026-10-26-login-hydration-common-adoption.md)의 정규 vendor/lock과 실제 앱 회귀를 구현했다.
+frontend284/타입/lint는 PASS, 원실패는 보존한다. 다음은 독립 두 리뷰·소비자 CI와 Root 소유 실제 Next 후보 UI다. main merge/운영은 하지 않았다.
+
+## 2026-10-26 — 로그인 공통 준비 경계 후속
+
+[Common47 채택](reports/2026-10-26-login-hydration-common-adoption.md)을 격리 branch로 준비한다.
+다음은 정규 dev.9 vendor/lock과 앱 callback 경계 회귀이며 독립 두 리뷰·CI·공개 UI는 미완이다.
+
 ## 2026-10-26 — 공항 주차장 통합 코드 수용과 운영 인계
 
 - 현재 코드: SDK PR12와 Transport PR134·135·136은 정확 소스의 필수 CI·James/Popper 최종 코드 PASS 뒤 머지됐다.

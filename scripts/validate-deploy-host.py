@@ -80,7 +80,7 @@ def validate_remote(
         raise ValueError("address not assigned here")
     manager = subprocess.run(
         ["sudo", "-n", "ktdctl", "targets", "validate", "--json"],
-        capture_output=True, text=True, timeout=30, check=True,
+        capture_output=True, text=True, timeout=60, check=True,
     )
     if len(manager.stdout) > 1048576:
         raise ValueError("Manager registry output exceeds bound")
