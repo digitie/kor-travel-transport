@@ -1,3 +1,7 @@
+## 2026-10-27 — PR133의 역사적 배포 기록 복구
+
+최신 main의 다른 문서를 보존하고 원 Draft133 `ec6b9ffcd00995d167c017821a920c4008cf0d22`의 미흡수5문서 내용을 옮겼다. 아래 2026-10-25 기록의 운영 소스는 PR129/main a93dfba이며 오늘의 새 Transport 배포·재수집 수용을 뜻하지 않는다. 원 run·검증·재개 실패와 ZIP 재사용 정정, 62분/30분 미달 과제는 [당시 원장](reports/2026-10-24-vadahub-ferry.md)에 보존한다. 이번 작업은 문서 복구뿐이며 운영 실행은 없다.
+
 # 2026-10-27 — 주차장 배포 완료·자연 통계 갱신과 실제 성능 한계 확인
 
 - `7f01b0133dad73843ce61444830b1020cfd32f0a`를06:59:52 KST에 배포했다.
@@ -224,6 +228,19 @@ Common47의 개발 산출물 채택은 기존 CPU/Manager PR과 별도이며 제
   두 차례 정리·Popper 1명의 Weather P2 수정·재검토 PASS(잔여 지적 없음)를 마쳤다.
   [검토 기록](reports/2026-10-25-mobility-design-review.md), [Transport #130](https://github.com/digitie/kor-travel-transport/pull/130),
   [Weather #168](https://github.com/digitie/kor-travel-weather/pull/168). 문서 작성/검토만 완료 처리하고 기능 작업은 백로그에 남겼다.
+
+# 2026-10-25 — VadaHub 배포·실수집·공개 화면 수용
+
+PR129/main a93dfba를 배포하고 native run c8b70929-ba1a-4528-a662-b9b744f4bb9d의
+SUCCESS·643건 저장을 확인했다. 오늘 정기 실행도 성공했고 공개 배편 화면375/1440px·
+검색·출처·기존 인천 시간표·로그아웃과 release SHA 확인이 통과했다.
+5개 역할 healthy·schema0035·공유 volume·18개 instigator 복원·공용 plane 불변도 재확인했다.
+최종0198e5d의 CI1179·관리자248·웹130, Docker1175와 James/Popper 독립 수용을 기록했다.
+
+Buildx 조회 옵션과 archive CRLF/LF 캐시 차이로 교체 전에 중단·재개한 실제 절차 및
+749개 파일 bytes/실행 비트 정렬 증거는 [운영 원장](reports/2026-10-24-vadahub-ferry.md)에 둔다.
+유가 export200도 유지한다. 새 지연이 적용된 전국 수집은 오늘 약62분이어서30분 성능 목표는
+완료로 처리하지 않고 T-OPINET-30에 남겼다.
 
 # 2026-10-24 — VadaHub 배편 통합 진행
 
