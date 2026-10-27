@@ -162,8 +162,7 @@ async def archive_global_statistics(
         existing = await session.get(ParkingGlobalStatisticsBucket, at)
         airport_ids = {row.airport_id for row in observations}
         records = {record.airport_id: record for record in (await session.scalars(
-            select(ParkingStatisticsBucket).where(ParkingStatisticsBucket.bucket_at == at,
-                                                  ParkingStatisticsBucket.airport_id.in_(airport_ids)),
+            select(ParkingStatisticsBucket).where(ParkingStatisticsBucket.bucket_at == at),
         )).all()}
         previous = await _previous_by_lot(session, at, {row.parking_lot_id for row in observations})
         if existing is not None:
@@ -177,6 +176,12 @@ async def archive_global_statistics(
                                blocked_reason="sealed_raw_mismatch", blocked_bucket_at=_iso(at))
             verified(at)
             continue
+        if set(records) - airport_ids:
+            # 기존 공항 proof의 원본 전체가 없어졌다면 현재 남은 공항만 전국으로 발행할 수 없다.
+            await record_archive_issue(session, scope_key="global", at=at, reason="airport_raw_missing",
+                                       max_snapshot_id=max(row.id for row in observations), checked_at=checked)
+            return outcome("blocked", "conflict", blocked_scope="global",
+                           blocked_reason="airport_raw_missing", blocked_bucket_at=_iso(at))
         if any(ensure_tz(row.collected_at, "UTC") >= cutoff for row in observations) or set(records) != airport_ids:
             deferred += 1
             metadata["global_deferred_buckets"] = deferred

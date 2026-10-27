@@ -13,6 +13,11 @@ from app.models import (ParkingArchiveIssue, ParkingGlobalStatisticsBucket, Park
                         ParkingLot, ParkingSnapshot)
 from app.services.parking_statistics_archive import RAW_RETENTION, bucket_start
 
+_CURRENT_FIELDS = (ParkingSnapshot.id, ParkingSnapshot.airport_id, ParkingSnapshot.parking_lot_id,
+                   ParkingSnapshot.source, ParkingSnapshot.observed_at, ParkingSnapshot.collected_at,
+                   ParkingSnapshot.available_spaces, ParkingSnapshot.occupied_spaces, ParkingSnapshot.total_spaces,
+                   ParkingSnapshot.congestion_label, ParkingSnapshot.congestion_ratio)
+
 
 def is_newer_current(candidate: Any, current: Any) -> bool:
     """archive 분석의 live 우선 규칙과 public current의 id 우선 규칙은 다르다."""
@@ -58,7 +63,22 @@ async def capture_latest_snapshot(session: AsyncSession, snapshot: ParkingSnapsh
     """public current와 같은 observed/id 선택. 오래된 지연 관측의 수신시각은 별도 유지한다."""
     current = await session.get(ParkingLatestState, snapshot.parking_lot_id)
     if current is None:
-        session.add(ParkingLatestState(**latest_state_values(snapshot)))
+        # seed가 아직 도달하지 않은 lot의 첫 수집이 지연 관측일 수 있다.
+        # 들어온 한 행 대신 기존 public current와 같은 전체 raw의 observed/id 승자를 읽는다.
+        await session.flush()
+        latest = (await session.execute(select(*_CURRENT_FIELDS).where(
+            ParkingSnapshot.airport_id == snapshot.airport_id,
+            ParkingSnapshot.parking_lot_id == snapshot.parking_lot_id,
+        ).order_by(ParkingSnapshot.observed_at.desc(), ParkingSnapshot.id.desc()).limit(1))).first()
+        if latest is None:
+            raise RuntimeError("현재 요약을 초기화할 저장 원본이 없습니다.")
+        ingested = await session.scalar(select(func.max(ParkingSnapshot.collected_at)).where(
+            ParkingSnapshot.airport_id == snapshot.airport_id,
+            ParkingSnapshot.parking_lot_id == snapshot.parking_lot_id,
+        ))
+        session.add(ParkingLatestState(**latest_state_values(
+            SimpleNamespace(**latest._mapping), latest_ingested_at=ingested,
+        )))
     else:
         latest_ingested = max(serialize_utc(current.latest_ingested_at), serialize_utc(snapshot.collected_at))
         if is_newer_current(snapshot, current):
@@ -92,13 +112,9 @@ async def seed_latest_states(session: AsyncSession, *, max_lots: int = 512) -> i
     ).where(ParkingSnapshot.parking_lot_id.in_([lot.id for lot in lots])).group_by(
         ParkingSnapshot.parking_lot_id,
     ))).all())
-    fields = (ParkingSnapshot.id, ParkingSnapshot.airport_id, ParkingSnapshot.parking_lot_id,
-              ParkingSnapshot.source, ParkingSnapshot.observed_at, ParkingSnapshot.collected_at,
-              ParkingSnapshot.available_spaces, ParkingSnapshot.occupied_spaces, ParkingSnapshot.total_spaces,
-              ParkingSnapshot.congestion_label, ParkingSnapshot.congestion_ratio)
     seeded = 0
     for lot in lots:
-        row = (await session.execute(select(*fields).where(
+        row = (await session.execute(select(*_CURRENT_FIELDS).where(
             ParkingSnapshot.airport_id == lot.airport_id, ParkingSnapshot.parking_lot_id == lot.id,
         ).order_by(ParkingSnapshot.observed_at.desc(), ParkingSnapshot.id.desc()).limit(1))).first()
         if row is not None:

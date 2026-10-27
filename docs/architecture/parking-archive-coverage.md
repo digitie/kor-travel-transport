@@ -80,3 +80,15 @@ F/E/skip0·actual0·Docker wait0이다. 기존707의17파일237+6 결과와 새q
 
 이는 집중 수용이며 source 전체·CI·두 독립 리뷰·실제 운영 적용의 gate는 남는다. 기존48시간 밖 raw가
 현재 API/history에서 사라졌다고 표시하지 않으며, reader 전환과 검증 후 prune를 붙이기 전 원본 삭제는0이다.
+
+## 최초 초기화·전국 첫 발행의 독립 리뷰 보완 후보
+
+summary가 없는 lot의 첫 수집이 지연 관측이면 기존 raw의 더 최신 관측을 읽어야 한다. 단순히
+들어온 행으로 summary를 만들면 후속 seed가 기존 summary를 건너뛰어 잘못된 current가 고착된다.
+초기화만 observed_at/id 최대 행과 전체 raw의 max(collected_at)을 compact 필드로 읽으며 원문은 읽지 않는다.
+이후 기존 summary 갱신과512개 seed 상한·collector와 archive의 동명 transaction lease는 유지한다.
+
+전국 첫 seal은 그 bucket의 모든 기존 공항 proof를 읽는다. raw가 있는데 공항 proof가 아직 없으면
+기존처럼 deferred, 반대로 기존 공항 proof의 원본 전체가 없어졌으면 blocked로 구분한다.
+이는 현재 발견한 raw bucket의 membership 검산이며 raw가 모두 사라진 과거 bucket을 매 실행
+전체 재탐색하는 감시 기능은 아니다. no_new_rows는 여전히 not_audited이고 삭제는 항상 거절한다.

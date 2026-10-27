@@ -1,3 +1,15 @@
+## 2026-10-28 — 161 독립 리뷰의 최초 최신 요약 P1·전국 membership P2
+
+원 d2 전체는 별도 동결 소스/DB에서 변경 없이 회수 중이다. 별도 수정 WT와 private PG16
+(2GiB/1CPU·disk volume·internal subnet/ports0)의 새 DB에서 d2제품+새10회귀는6 FAIL/4 PASS,
+actual1·F만6/E0/skip0으로 재현했다. 원 RED source/DB/JUnit·자식 종료를 보존한다.
+
+최초 summary가 없는 lot의 지연 수집은 기존 raw의 더 최신 observed/id를 가리지 않도록 전체 raw의
+current 승자와 최대 collected watermark를 읽어 초기화한다. 동일시각 id/source·seed/수집 lease의
+양순서·512 범위 밖 lot을 검증한다. 첫 global seal은 bucket의 기존 공항 proof 전체를 읽고
+proof가 있는데 raw가 사라진 공항은 airport_raw_missing blocked로 남긴다. 미집계 proof 대기는 유지한다.
+수정 GREEN/집중·독립 리뷰는 아직 미완이다. 원본 삭제·reader/운영 변경0이며 d2 whole은 이 수정의 검증이 아니다.
+
 ## 2026-10-28 — 2A 99의 seal 후보 계획·보존 guard 집중 수용
 
 정확99de06f의 관련9파일은 WSL152 PASS+6 subtests PASS/44.24초·Docker152 PASS+6 subtests
