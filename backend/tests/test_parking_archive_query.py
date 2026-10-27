@@ -2,7 +2,8 @@
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import delete, event, exists, select
+from sqlalchemy import delete, event, exists, select, text
+from sqlalchemy.dialects import postgresql
 
 from app.models import Airport, ParkingLot, ParkingSnapshot, ParkingStatisticsBucket
 from app.services.analytics import build_hourly_buckets, build_weekday_buckets, build_weekday_hour_patterns, deduplicate_snapshots
@@ -73,6 +74,64 @@ async def test_archive_and_recent_raw_match_after_old_fixture_raw_is_removed(tmp
                 expected = [row for row in rows if (row.parking_lot_id == scope["parking_lot_id"]
                     if scope.get("parking_lot_id") else row.airport_id == scope["airport_id"] if scope.get("airport_id") else True)]
                 assert_patterns(await load_pattern_statistics(session, start=AT, end=end, **scope), expected)
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_national_archive_range_and_seal_plans_remain_pk_bounded(tmp_path, test_settings):
+    if not test_settings.database_url.startswith("postgresql"):
+        pytest.skip("실제 PostgreSQL ANALYZE/일반 계획 회귀")
+    engine, factory = await database(tmp_path, test_settings)
+    try:
+        async with factory() as session:
+            # 요청 밖의 계획 전용 과거 PK 군집이다. 유효 backfill 자료로 수용하지 않는다.
+            await session.execute(text("ALTER TABLE parking_statistics_buckets SET (autovacuum_enabled=false)"))
+            await session.execute(text("""
+                INSERT INTO parking_statistics_buckets
+                    (airport_id,bucket_at,bucket_end,format_version,raw_count,selected_count,max_snapshot_id,
+                     raw_sha256,statistics_sha256,statistics_json,created_at)
+                SELECT 1, '1980-01-01 UTC'::timestamptz + n*interval '10 minutes',
+                       '1980-01-01 UTC'::timestamptz + (n+1)*interval '10 minutes',1,1,1,1,
+                       repeat('0',64),repeat('0',64),'{}'::jsonb,now()
+                FROM generate_series(0,29999) AS n
+            """))
+            rows = [snapshot(1, 0, 10), snapshot(2, 5, 70)]
+            session.add_all(rows)
+            await session.flush()
+            session.add_all(records_for(rows))
+            await session.commit()
+            statement = build_pattern_statistics_query(start=AT, end=AT + timedelta(days=1))
+            sql = str(statement.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+            prepared_sql = sql.replace("'" + str(AT) + "'", "$1").replace("'" + str(AT + timedelta(days=1)) + "'", "$2")
+            assert "$1" in prepared_sql and "$2" in prepared_sql
+
+            def nodes(plan):
+                yield plan
+                for child in plan.get("Plans", []):
+                    yield from nodes(child)
+
+            for analyzed in (False, True):
+                if analyzed:
+                    await session.execute(text("ANALYZE parking_statistics_buckets"))
+                for generic in (False, True):
+                    if generic:
+                        await session.execute(text("SET LOCAL plan_cache_mode=force_generic_plan"))
+                        await session.execute(text("PREPARE pattern_query_plan(timestamptz,timestamptz) AS " + prepared_sql))
+                        explained = "EXECUTE pattern_query_plan('" + str(AT) + "','" + str(AT + timedelta(days=1)) + "')"
+                    else:
+                        explained = sql
+                    plan = (await session.execute(text("EXPLAIN (ANALYZE,FORMAT JSON) " + explained))).scalar_one()[0]["Plan"]
+                    scans = [node for node in nodes(plan) if node.get("Relation Name") == "parking_statistics_buckets"
+                             and node.get("Actual Loops", 0) > 0]
+                    assert scans, (analyzed, generic, plan)
+                    for scan in scans:
+                        assert scan["Node Type"] in ("Index Scan", "Index Only Scan"), (analyzed, generic, scan)
+                        assert "airport_id" in scan.get("Index Cond", "") and "bucket_at" in scan.get("Index Cond", ""), scan
+                        assert scan.get("Rows Removed by Filter", 0) < 10, scan
+                        assert scan["Actual Rows"] <= 1, scan
+                    if generic:
+                        await session.execute(text("DEALLOCATE pattern_query_plan"))
     finally:
         await engine.dispose()
 
