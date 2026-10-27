@@ -119,3 +119,24 @@ test("적용 성공 후 이전 GET이 늦게 도착해 revision을 되돌리지 
   await act(async () => wait.resolve(json(initial))); await click("자동 연결 미리보기"); await click("적용");
   expect(host.textContent).toContain("77"); expect(posts()).toHaveLength(1);
 });
+
+test("단일 미연결 역의 수동409 뒤 명시적 초안 취소로 최신revision을 읽고 다시 저장한다", async () => {
+  const fresh = { ...initial, revision: "c".repeat(64) };
+  fetchMock.mockResolvedValueOnce(json({ detail: "새로고침 후 다시 저장하세요." }, 409)).mockResolvedValueOnce(json(fresh)).mockResolvedValueOnce(json({ ...fresh, revision: "d".repeat(64) }));
+  await render(); await input("#rail-place-search", "서울"); await act(async () => document.querySelector<HTMLButtonElement>('.rail-map-candidates button')!.click()); await input(".rail-map-note input", "검토한 연결 근거"); await click("수동으로 연결");
+  expect(button("새로고침").disabled).toBe(true); expect((document.querySelector('.rail-map-note input') as HTMLInputElement).value).toBe("검토한 연결 근거"); expect(posts()).toHaveLength(1);
+  await click("초안 취소 후 새로고침"); expect(posts()).toHaveLength(1); expect(document.querySelector('.rail-map-note input')).toBeNull(); expect((document.querySelector('#rail-place-search') as HTMLInputElement).value).toBe(""); expect(document.activeElement).toBe(document.querySelector('[data-slot=rail-station-mapping]'));
+  await input("#rail-place-search", "서울"); await act(async () => document.querySelector<HTMLButtonElement>('.rail-map-candidates button')!.click()); await click("수동으로 연결"); expect(JSON.parse(posts()[1][1].body).expected_revision).toBe(fresh.revision);
+});
+test("자동POST 성공 뒤 후속GET 대기에는 편집과 선택을 잠그고 최신FK를 받은 뒤에만 푼다", async () => {
+  const wait = deferred<Response>(); fetchMock.mockResolvedValueOnce(json(preview)).mockResolvedValueOnce(json(applied)).mockReturnValueOnce(wait.promise);
+  await render(); await act(async () => document.querySelector<HTMLInputElement>('input[type=checkbox]')!.click()); await click("자동 연결 미리보기"); await click("적용");
+  expect((document.querySelector('#rail-place-search') as HTMLInputElement).disabled).toBe(true); expect((document.querySelector('#rail-station-filter') as HTMLInputElement).disabled).toBe(true); expect((document.querySelector('.rail-map-station-list button') as HTMLButtonElement).disabled).toBe(true); expect(button("수동으로 연결").disabled).toBe(true);
+  await act(async () => wait.resolve(json({ ...initial, revision: candidate, stations: [{ ...initial.stations[0], rail_station_id: 1, rail_station_identity_key: "rail|seoul", match_method: "exact_identity" }] })));
+  expect((document.querySelector('#rail-place-search') as HTMLInputElement).disabled).toBe(false); expect((document.querySelector('.rail-map-note input') as HTMLInputElement).value).toBe(""); expect(host.textContent).toContain("서울역 · 1호선");
+});
+test("후속 목록GET 실패는 옛revision 편집을 계속 막고 사용자 새로고침 성공으로 복구한다", async () => {
+  fetchMock.mockResolvedValueOnce(json(preview)).mockResolvedValueOnce(json(applied)).mockResolvedValueOnce(json({ detail: "목록 조회 실패" }, 503)).mockResolvedValueOnce(json({ ...initial, revision: candidate }));
+  await render(); await click("자동 연결 미리보기"); await click("적용"); expect((document.querySelector('#rail-place-search') as HTMLInputElement).disabled).toBe(true); expect(button("자동 연결 미리보기").disabled).toBe(true); expect(host.textContent).toContain("최신 역 목록"); expect(button("새로고침").disabled).toBe(false);
+  await click("새로고침"); expect((document.querySelector('#rail-place-search') as HTMLInputElement).disabled).toBe(false); expect(button("자동 연결 미리보기").disabled).toBe(false); expect(posts()).toHaveLength(1);
+});
