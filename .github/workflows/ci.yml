@@ -25,7 +25,7 @@ jobs:
       KOR_TRAVEL_TRANSPORT_TEST_DATABASE: "1"
     services:
       postgres:
-        image: postgres:16
+        image: postgres:18
         env:
           POSTGRES_DB: kor_travel_transport_test
           POSTGRES_USER: kor_travel_transport
