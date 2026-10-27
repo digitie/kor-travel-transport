@@ -110,8 +110,9 @@ ADR accepted 여부는 별도 증거 정산 후 표시한다.
    성공만으로 Dagster 실행 종료를 증명하지 않는다. 역방향으로 Dagster
    실행 기록 없이 남은 code-server worker도 실패로 보고한다.
 5. release 이미지 보존: 배포마다 `kor-travel-transport-backend:rel-<sha12>` 태그가 남는다(ADR-010).
-   n150에서 하나가 약 2.5 GB이고 Dockerfile의 `COPY backend`가 `pip install` 앞이라 pip·playwright 층도
-   대부분 release마다 따로다. `docker image prune`은 태그가 붙은 이미지를 지우지 않는다. 배포가 health를
+   n150에서 하나가 약 2.5 GB다. 지금 Dockerfile은 `pyproject.toml`·`uv.lock`만 먼저 복사해 의존성과
+   playwright 층을 `COPY backend` 앞에서 만들므로 lock이 같으면 그 층은 release 사이에 재사용된다(#129 전에는
+   `COPY backend`가 `pip install` 앞이라 release마다 따로였다). `docker image prune`은 태그가 붙은 이미지를 지우지 않는다. 배포가 health를
    통과한 뒤 지금 release와 바로 전 release(되돌릴 이미지)만 남기고 나머지 `rel-*`를 지운다. 운영 식별자
    개명 cutover의 관찰 기간에는 지우지 않는다. 배포 스크립트가 자동으로 지우지 않는 것은 다른 세션의
    되돌리기가 쓰는 태그를 지울 수 있어서다.
@@ -426,10 +427,11 @@ bash ~/rename-deploy-identity-server14.sh status
    층을 적는 것은 containerd image store(n150)에서는 모든 단계가 cache hit인 재빌드도 config의 생성
    시각이 바뀌어 ID가 새로 나오기 때문이다(2026-09-28 WSL Docker 29.1.3·compose 5.1.4에서 확인: ID는
    재빌드마다 다르고 층은 같다, 내용이 바뀌면 층도 바뀐다. n150 Docker 29.6.1도 같은 containerd
-   snapshotter다). backend 이미지는 `uv.lock`이 아니라
-   `pip install -e ".[dev]"`(`dagster>=1.9,<2`)로 설치하므로 빌드할 때의 PyPI 최신 Dagster를 받는다
-   (2026-09-28: `uv.lock`·CI 1.13.23, 운영 code-server 1.13.24). 그래서 gate는 소스가 아니라 빌드 결과에
-   건다. 버전이 다르면 아래 "Dagster 버전이 다를 때"를 따른다.
+   snapshotter다). backend 이미지는 `uv export --locked --extra dev`로 `uv.lock`을 requirements로 뽑아
+   `pip install --no-deps`로 설치하고, 프로젝트 자체만 마지막에 `pip install -e ".[dev]" --no-deps`로 올린다.
+   그래서 이미지의 Dagster는 `uv.lock`의 버전이다(#129 전에는 `pip install -e ".[dev]"`가 의존성까지 풀어
+   빌드할 때의 PyPI 최신을 받았다 — 2026-09-28: `uv.lock`·CI 1.13.23, 운영 code-server 1.13.24). gate는
+   여전히 소스가 아니라 빌드 결과에 건다. 버전이 다르면 아래 "Dagster 버전이 다를 때"를 따른다.
 5. `window R`(창): prepare 뒤 옛 컨테이너 이미지가 바뀌지 않았는지와 migration gate를 다시 본다.
    지난 시도나 rollback이 남긴 새 디렉터리 `backups/`가 옛 것과 다르면 옛 스택을 멈추기 전에 STOP이고,
    두 쪽을 hardlink로 합치는 명령(`sudo cp -a -l --update=none -T …`, 덮어쓰거나 지우지 않는다)을
@@ -498,9 +500,9 @@ candidate 값으로 export한다(`set -a; source`가 파일의 줄을 셸 env로
 
 ### Dagster 버전이 다를 때
 
-`prebuild`나 `window`가 `dagster 버전이 다르다(운영 X, 빌드 Y)`로 멈추면 PyPI에 운영 code-server보다
-새 Dagster가 나온 것이다. backend Dockerfile은 `uv.lock`이 아니라 `pip install -e ".[dev]"`
-(`dagster>=1.9,<2`)로 설치하므로 빌드 캐시가 없는 빌드는 그때의 최신을 받는다. gate를 끄거나 태그를
+`prebuild`나 `window`가 `dagster 버전이 다르다(운영 X, 빌드 Y)`로 멈추면
+`uv.lock`의 Dagster가 운영 code-server와 다른 것이다. backend Dockerfile은 `uv export --locked`로
+`uv.lock`을 그대로 설치하므로(#129 이후) 이미지의 Dagster는 lock 버전이다. 대개 lock을 올린 PR이 원인이다. gate를 끄거나 태그를
 손으로 옮기지 않는다. 버전이 다르면 `dagster instance migrate`가 공유 metadata DB를 앞으로 올릴 수 있고,
 그 뒤에는 되돌린 옛 daemon(X)이 그 DB를 읽지 못할 수 있다.
 
@@ -513,7 +515,7 @@ candidate 값으로 export한다(`set -a; source`가 파일의 줄을 셸 env로
 3. 그 PR을 머지하고 새 머지 커밋을 R로 `prepare`부터 다시 한다(stage도 새 R로).
 4. Dagster를 올리는 일은 이 cutover가 끝난 뒤 따로 한다. 그때는 metadata DB dump를 먼저 뜬다.
 
-Dockerfile이 `uv.lock`을 따르게 하는 것은 ADR-010 후속이다. 그 전까지는 이 gate가 유일한 장치다.
+Dockerfile은 #129부터 `uv.lock`을 따른다. 그래도 lock과 운영 `:code`가 어긋나는 것은 이 gate만 잡는다.
 
 ### 되돌리기
 

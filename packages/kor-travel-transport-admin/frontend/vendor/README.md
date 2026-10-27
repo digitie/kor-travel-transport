@@ -40,8 +40,9 @@ UI 소스는 main `efcd671207d7f9e2fb01251bab6854a8d543279a`와 동일하다.
 UI는 `0.1.0-dev.6`, tokens는 기존 `9da1889`의 변경 없는 `0.1.0`이며 정식 registry 배포가 아니다.
 실행 검색·상태 필터·50행 페이지·상세를 공유하며 인증과 API는 소비 앱이 소유한다.
 각 tarball은 GPL-3.0-or-later `LICENSE`·`NOTICE`·`THIRD_PARTY_NOTICES.md`를 포함한다.
-Python 복구 코어는 `backend/pyproject.toml`과 `backend/uv.lock`에서 common
-`430a9e9cd5429204579792b1d4f8e399366dcb2f`로 별도 고정한다. 위 UI tarball의 source commit과 구분한다.
+Python 공용 코어(`kor-travel-common`)는 이 폴더가 아니라 `backend/pyproject.toml`과 `backend/uv.lock`에서
+별도로 고정한다. 당시 값은 `430a9e9cd5429204579792b1d4f8e399366dcb2f`였고 2026-10-27 #146 이후 현재 값은
+`c289b4624c8640eb918cc915803e72ae754e58fb`다. 현재 정본은 두 파일이며 UI tarball의 source commit과 구분한다.
 
 | 파일 | SHA-256 |
 | --- | --- |
@@ -56,3 +57,15 @@ UI dev.8은 Common `a74ac808752fd6d6062e529909fd0dd656724f08`의 추가 작업�
 `kor-travel-ui-0.1.0-dev.8.tgz` SHA256은 `71d9f6ce8c178e3c66a47593a70a7fd9274938587ef9d96c1c7023673370059f`이다.
 고정 Git archive에서 재생성해 원본 파일 모드를 정규화했다. 초기 후보의 제한/보완과 소비자 검증은 [작업 기록](../../../../docs/reports/2026-10-25-map-workspace-layout.md)에 남긴다.
 이전 후보는 보존한다. 패키지 자체 빌드와 운영 이미지 빌드를 구분하며 이 작업은 운영 빌드·배포를 수행하지 않는다.
+
+## 공통 로그인 hydration 준비 경계 (2026-10-26)
+
+현재 `package.json`·`package-lock.json`이 설치하는 UI는 `kor-travel-ui-0.1.0-dev.9.tgz`다(#141).
+Common 제품 source는 `f0b60bb70e65d53219f2a4bda57115c4e8fa2144`, CI 표기/fixture 정렬 후속은
+`44d7a240ebe82b11389824fd503e33ca4000ddd7`이며 정규 dev.9 산출물은 같다. dev.8 대비 `dist/login-form.js`와
+package metadata만 바뀌었다. `LoginForm`은 SSR과 최초 client 렌더에서 입력·제출을 disabled로 두고 hydration 뒤에 연다.
+이전 dev.6~8 tarball은 보존한다. [채택 기록](../../../../docs/reports/2026-10-26-login-hydration-common-adoption.md).
+
+| 파일 | SHA-256 |
+| --- | --- |
+| `kor-travel-ui-0.1.0-dev.9.tgz` | `b738d8824e36eb6e58d8cc6b78af7dc31233b6763248d634286044def795b403` |
