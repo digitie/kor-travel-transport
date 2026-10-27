@@ -37,6 +37,29 @@ transport-main3691-natural-airport-cpu-memory30s-actual-t-r1.json
 (1b4a77a96d47f604ff3b12c25df6977939ce7af97fa6e23885233f6a1bd3715e)에
 메타데이터1회·실제 CPU30초 측정0회를 남겼다. CPU 사용률0%라는 뜻이 아니다.
 
+### 별도 자연 수집 중 CPU·메모리 현재값 관측
+
+후속 단발 관찰은 자연 airport 실행10d5c1c9-089f-4f3f-9f3a-2be1dbd6bfab가
+04:42:04→04:42:46 UTC의 두 경계에서 모두 STARTED임을 확인했다.
+sleep 설정은30초지만 실제 CPU counter 표본은 컨테이너별36.10~36.14초다.
+고정 CID/PID·image·시작 시각·재시작 수·healthy를 대조한 현재 사용량은 다음과 같다.
+
+| 대상 | CPU 한 코어 기준 | 4코어 전체 대비 | Docker 메모리 사용량(MiB) |
+| --- | ---: | ---: | ---: |
+| Transport API | 35.637% | 8.909% | 228.93→206.61 |
+| Transport CS | 66.576% | 16.644% | 550.42→608.57 |
+| 공용 daemon | 16.959% | 4.240% | 165.93→165.89 |
+
+원본 transport-main3691-natural-airport-cpu-memory30s-actual-t-r2.json
+(90eb5831ee786a034654101c451805d86f0d9f738b9c631868d4941f6f69437c),
+요약 transport-main3691-natural-airport-cpu-memory30s-summary-t-r2.json
+(590cbf94212325c2aac8d24fe13462bc1cf98bce85b02cf0a63dbfbde7f8440f)에 결박했다.
+메모리는 cache 포함 Docker usage이며 anon/file은 원장에 따로 남겼다.
+RSS 원자료는 없어 null이고 working set을 RSS로 바꾸지 않는다. peak도 측정하지 않았다.
+CS의 동시 작업·공용 daemon의 다른 프로젝트 연산을 이 airport 하나에 귀속하지 않는다.
+비교 baseline이 없어 개선 감소율·원인·전체 호스트 CPU를 증명한 결과가 아니다.
+메타데이터 두 번 외 강제 job·provider·온도 확인·설정 변경은0이다.
+
 ### 실제 공개 HTTPS UI32
 
 정확3691에 결박한 기존 공개 시나리오32개가90.054초에 모두 통과했다.

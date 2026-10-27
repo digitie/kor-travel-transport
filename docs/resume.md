@@ -8,8 +8,10 @@ plane은 그대로다. 공개 HTTPS UI32는90.054초에 통과했다(보호 GET4
 첫 자연 run3080/2713b386의14공항44개와 김포24cache 관측 뒤, baseline 후의 자연
 두 실행3082/3084와 새 김포10개·기본4metric24cache·6범위 갱신을 엄격 검산했다.
 첫 비교 incomplete는 보존했고 실제 cron은5분/KST/RUNNING이다. 첫 CPU30초 시도는
-이미 완료된 job이라 측정0회였다. 다음 한 작업은 실제 수집 CPU/RSS 표본과 별도 주차
-UI 성능 수용이다. analytics 표시와 flight 대기 분리 후보를 기록했으며 이번 소스는 바꾸지 않았다.
+이미 완료된 job이라 측정0회였다. 후속 자연 실행 중에는 고정 API/CS/공용 daemon의
+실 counter36.10~36.14초 CPU·cache 포함 메모리 현재값을 관측했다. RSS·peak·전후 감소율과
+개별 job 원인 귀속은 미확정이다. 다음 한 작업은 같은 조건의 효과 비교와 별도 주차 UI 성능 수용이다.
+analytics 표시와 flight 대기 분리 후보를 기록했으며 이번 소스는 바꾸지 않았다.
 [배포·UI·관측 원장](reports/2026-10-27-integrated-production-rollout.md). 아래 진행 중 절은 당시 이력이다.
 
 ## 2026-10-27 — Manager caller 합성 CI의 명령별 기한 검증 정정
