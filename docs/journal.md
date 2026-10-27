@@ -1,4 +1,64 @@
-## 2026-10-27 — 저장 자동 매핑의 별도 backend API 후보
+## 2026-10-27 — 자동 역 연결 후보의 최신 main 통합 검증 중
+
+API 후보 `875ed9a`와 최신 main `abd4084`를 별도 작업트리에서 통합한다. API 서비스·DTO·route·
+회귀·OpenAPI는 기존 후보와 동일하게 유지하고, PR151의 운영 정산 및 PR146의 Common pin
+`c289b462` 변경을 보존한다. 기존 후보의 전체 WSL/Docker R2는 원래 Common `e746e4b8`에서
+별도로 실행 중이며, 그 결과를 새 pin 검증으로 확대하지 않는다. 최초 전체 실행의 종료 코드는
+UNKNOWN이므로 통과 수에 넣지 않는다.
+
+관리자 UI PR153의 `d36fb53`는 초안 충돌 복구·목록 재조회 중 편집 보호를 포함한다. UI317개·
+WSL/Docker 타입/lint/빌드·375/1440 화면과 backend875를 쓴 실제 로컬 통합3개는 통과했다.
+이는 운영 적용이나 새 Common pin 검증이 아니다. 다음 한 작업은 기존 R2의 실제 종료 회수 뒤
+이 통합 후보의 설치 pin·관련 회귀·CI·두 독립 리뷰를 마감하는 것이다. UI PR은 별도이며
+자동 매핑 운영 preview/적용·저장 FK/요일별 시간표 수용은 미완이다. 운영·provider·수집/job 변경0.
+[API 설계·기존 검증](reports/2026-10-27-rail-automatic-refresh.md).
+
+## 2026-10-27 — backend Common pin 최신 main 재핀
+
+- PR #146: `kor-travel-common[dagster,reverse-address]` pin을 `e746e4b8`→`c289b462`(Common main, Common #48 머지)로 올렸다.
+  사이 Common의 Python 변경은 공용 daemon 전용 `daemon_pool`의 workspace 갱신 주기 opt-in(Common #44)뿐이고
+  Transport는 `daemon_pool`을 쓰지 않는다. 설치 CLI(`http_health`·`build_bytecode`)의 SHA256은 그대로다.
+- `uv.lock`은 backend Dockerfile이 고정한 uv 0.11.21의 `uv lock`으로 재생성했다(source rev 2줄, revision 3 유지).
+  같은 uv의 `uv lock --locked`·`uv export --locked`와 uv 0.13.5의 `uv lock --locked`가 통과했다. 0.13.5로 재생성하면
+  revision이 3→5로 함께 바뀌어 고정 uv 쪽을 택했다. GitHub CI는 uv 0.13.6의 `uv sync --locked`로 통과했다.
+- 검증: GitHub CI(head `aaa3c04`) backend 1274 passed·2 skipped, frontend·transport-admin 성공.
+  n150 CI-parity(python:3.12·postgres:16)는 sync·alembic upgrade/check·OpenAPI 통과, pytest 1234 passed·6 skipped·36 failed다.
+  36건은 모두 이미지에 node가 없어 실패하는 `test_node_health_probes.py`이며 기준선 main `d7c36c3`도 같은 환경에서 같다.
+  node 22.23.1을 넣으면 head에서 그 파일과 `test_health_cpu_contract.py`가 54 passed다. Dockerfile 설치 경로 중 pin이 닿는
+  단계(python:3.12-slim, uv 0.11.21 `uv export --locked` → `pip install --no-deps` git `c289b46`)도 따로 재현해 설치 commit·
+  CLI 두 모듈 SHA256·실행을 확인했다. 전체 이미지 빌드는 하지 않았다.
+- 적대 리뷰 James/Popper(head `aaa3c04` 기준, 이후는 문서 정리와 최신 main rebase만): P0/P1 없음. 반영한 P2는 `Common #44` 표기,
+  uv 버전 서술, `reverse-address-refresh.md`의 옛 "현재 Common pin" 문장(→당시)과 새 pin 문장의 시제다.
+- 반영하지 않은 P2와 근거:
+  - `packages/kor-travel-transport-admin/frontend/vendor/README.md`의 옛 Python pin `430a9e9` 현재형 서술과 dev.9 항목 부재:
+    이번 작업은 소유자 지시로 frontend·vendor를 건드리지 않는다(UI dev.9 채택은 #141 범위). 별도 문서 정리로 남긴다.
+  - `docs/runbooks/deployment.md`의 "Dockerfile은 `uv.lock`이 아니라 `pip install -e`" 서술: 현재 Dockerfile은
+    uv 0.11.21 `uv export --locked`로 설치한다. 이번 변경 전부터 있던 별건이다.
+  - 관리자 live E2E의 로그인 화면 단언(`e2e/shadcn-ui.spec.ts`의 `data-slot=card`·`aria-invalid`,
+    `e2e/transport-admin.spec.ts:72`의 서버 오류 문구)이 #67 이후 Common LoginForm 구조와 맞지 않는다. 이 PR과 무관한
+    기존 상태이며 별도 수정이 필요하다. hydration 준비 경계 자체는 Playwright `fill()`·`click()`의 enabled 대기로 처리된다.
+  - `docs/resume.md`는 다음 한 작업이 바뀌지 않아 진행 중인 다른 문서 PR과의 충돌을 줄이려 갱신하지 않았다.
+    브랜치 이름 `chore/common-latest-transport`는 요청자 지정이며 CI는 pull_request로 돌았다.
+    live E2E UI는 UI 변경·배포가 없어 실행하지 않았다.
+- frontend·vendor·LoginForm(UI dev.9는 #141로 main 반영)은 건드리지 않았고 운영 배포는 하지 않았다.
+  운영에는 다음 Transport 이미지 빌드·배포부터 새 pin이 들어간다.
+
+## 2026-10-27 — 4d 운영 배포·늦은 항공편 성공과 자연 통계 갱신 수용
+
+PR147의 운영 `4d49610b2083fd0a30bc5e6afcca0036889044d4`에서 정확5역할/API/admin/schema35,
+새 상태12,628개·Transport18 원상복원·외부/환경 보존·builder STOPPED·정확 invocation 종료와 G 해제를 확인했다.
+초기 SCP0775 guard 실패와 별도 stdin0600 성공은 각각 보존한다. Native/Firefox375/1440은 실제200·
+365그룹마커=DOM365, 분리8초 재생은 추가 flight GET0으로6.2초 이후 pending→성공을 확인했다.
+Firefox375 map/fuel 타일18/18·38/38·565px 작업면도 확인했으나 map401/최종fuel PNG 조회 중 등 한계를 남긴다.
+자연 예약 SUCCESS3개의 원본 finish→job end는74.552/75.936/83.055초이며 캐시 commit 시각은 아니다.
+최종14공항·58범위·232행의 TTL과 최신 원본 반영을 함께 검산했다. 중간 TTL 유효/최신 세대 미반영0/14 원본도 보존했다.
+main의 PR150/a15에 이어 PR149 exact536도 WSL1314통과/2건너뜀·Docker1310통과/6건너뜀·794파일 불일치0·
+CI6개·두 SOURCE 재확인 후10:14 UTC main ca59458로 머지했다. 149·150 모두 운영 미포함이며
+별도 자동 참조 core는 설계/개발 중·운영0이다. 최초 주차 콜드 지연과
+전체 지도·철도·유가 상위 task는 닫지 않는다. [정확 증거와 남은 범위](reports/2026-10-27-flight4d-production-acceptance.md).
+아래 기록의 미배포/다음 작업은 당시 이력이며 이번 성공으로 원래 실패를 삭제하지 않는다.
+
+## 2026-10-27 — 저장 자동 매핑의 별도 backend API 후보 당시 이력
 
 149와150을 포함한 main ca59458을 기존8파일 바이트·UI150 보존 검산과 함께 통합했다.
 저장 입력만 계산하는 pure/DTO·DB 서비스와 backend GET/POST·OpenAPI를 연결했다.
@@ -8,7 +68,9 @@ RC 잠금 대기 뒤 새 revision 거절·양방향 lease 배제·변경 FK 쌍�
 미완이며 실제 운영 영향/매핑 적용·저장 시간표 수용과 분리한다. 운영/provider/job 변경0이다.
 [설계·남은 검증](reports/2026-10-27-rail-automatic-refresh.md).
 
-## 2026-10-27 — 경의중앙선 복합 식별 표기 차이 후보
+## 2026-10-27 — 경의중앙선 복합 식별 표기 차이 후보 당시 이력
+
+아래 후보 단계의 미완 게이트는 당시 기록이다. 위 정산의 최종 소스 검증·머지와 운영/FK/시간표 미완을 구분한다.
 
 관측된 서울역823 원문과 KR/K4/P313 catalog의 기관·노선 표기 차이를 RED로 재현했다.
 Transport의 복합 비교키에만 KR/K4 범위 별칭을 적용하고 정규화 뒤 양쪽 중복·다른 기관/노선·
