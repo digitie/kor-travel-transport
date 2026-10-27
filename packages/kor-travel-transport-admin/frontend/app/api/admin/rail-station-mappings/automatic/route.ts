@@ -9,7 +9,7 @@ async function forward(method: "GET" | "POST", body?: string) {
   const token = process.env.TRANSPORT_ADMIN_WRITE_TOKEN ?? "";
   if (token.length < 32) return denied("역 매핑 관리 기능이 설정되지 않았습니다.", 503);
   try {
-    const target = new URL("/v1/transport/admin/rail-station-mappings/automatic", process.env.TRANSPORT_API_INTERNAL_URL ?? "http://127.0.0.1:14001");
+    const target = new URL("/v1/transport/admin/rail-station-mappings/automatic", process.env.TRANSPORT_API_INTERNAL_URL ?? "http://127.0.0.1:12302");
     const response = await fetchNoStore(target, { method, headers: { "x-transport-admin-token": token, ...(body ? { "content-type": "application/json" } : {}) }, ...(body ? { body } : {}) });
     return new NextResponse(response.body, { status: response.status, headers: { ...headers, "content-type": response.headers.get("content-type") ?? "application/json" } });
   } catch { return denied("역 매핑 API에 연결하지 못했습니다.", 502); }
