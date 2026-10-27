@@ -126,4 +126,7 @@ DB 없는 실제 archive builder 기반11개 순수 회귀(7/14/21/28/90일×전
 11 PASS/0.657초·actual0·독립wait0,832파일/106패키지·Git10·원 child/CID 종료를 확인했다.
 첫 사전 이미지 준비는 FROM의 raw sha를 registry 이름으로 해석해 실패했고 테스트 실행은0이었다.
 그 원본 로그를 보존하고 기존 로컬 tag의 immutable ID를 전후 검산한 새 root에서 준비·실행했다.
+최초783 Docker 소스는 Windows archive의 CRLF 변환이 있었고 원본11 PASS는 보존한다.
+실행 텍스트까지 맞추기 위해 core.autocrlf=false의 새b8 LF archive에서 순수11개를0.748초에
+다시 통과했다(actual0/독립wait0). 두 제품 파일의 실제 SHA256은 첫 WSL과 최종 Docker가 같다.
 이는 전체/실제 DB/API/cache/bundle 검증이 아니며 해당 연결과 독립 리뷰는 여전히 미완 gate다.
