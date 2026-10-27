@@ -1,3 +1,15 @@
+## 2026-10-28 — 2B 첫 pattern reader 순수 동등성 후보
+
+별도2B WT에서 P1/P2 수정350을 기반으로 내부 pattern reader와11개 DB 없는 회귀를 추가했다.
+archive의 count/sum/min/max와 최근 raw를 배타 병합하며7/14/21/28/90일의 세 scope·archive-only/
+혼합/중복 포함45경우 및 가중치/KST/경계/변조/재수신을 기존 세 분석과 비교해 통과했다.
+복구할 원본이 없는10분 내부 절단은 사유·해상도를 가진 명시 예외이며 정확값이나 빈 성공으로
+숨기지 않는다. 기간 coverage는 unknown이다. 제품/회귀가 같은b8의 LF Docker 네트워크 없는 순수
+회귀도11 PASS·actual0·독립wait0이며832파일/106패키지·Git10·원자식/CID 종료를 확인했다.
+WSL0.602초·Docker0.748초이고 실제 DB/API/캐시/묶음 응답 연결은 미검증이다. API reader/history·
+캘린더·outlook·원본 삭제/자동 schedule/운영 변경은0이다.
+[범위·후속](reports/2026-10-28-parking-reader-transition-review.md).
+
 ## 2026-10-28 — 161 독립 리뷰의 최초 최신 요약 P1·전국 membership P2
 
 원 d2 전체는 별도 동결 소스/DB에서 변경 없이 회수 중이다. 별도 수정 WT와 private PG16
