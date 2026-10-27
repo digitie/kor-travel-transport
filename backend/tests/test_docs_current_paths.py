@@ -13,7 +13,10 @@ import pytest
 
 _REPO = Path(__file__).resolve().parents[2]
 _DOCS = ("docs/runbooks/deployment.md", "docs/current-state.md")
-_LINK = re.compile(r"\]\(([^)\s]+)\)")
+# 코드 블록·inline code 안의 `](…)`(정규식·명령 예시)는 링크가 아니다.
+_FENCE = re.compile(r"^[ \t]*```.*?^[ \t]*```", re.MULTILINE | re.DOTALL)
+_INLINE_CODE = re.compile(r"`[^`\n]*`")
+_LINK = re.compile(r"\[[^\]\n]*\]\(([^)\s]+)\)")
 
 
 @pytest.mark.parametrize("name", _DOCS)
@@ -21,7 +24,8 @@ def test_operational_doc_links_point_to_tracked_files(name: str) -> None:
     path = _REPO / name
     if not path.is_file():
         pytest.skip("Docker 회귀 이미지에는 docs/가 없다 — 저장소 checkout(CI)에서 검사한다")
-    targets = [target.split("#", 1)[0] for target in _LINK.findall(path.read_text(encoding="utf-8"))
+    text = _INLINE_CODE.sub("", _FENCE.sub("", path.read_text(encoding="utf-8")))
+    targets = [target.split("#", 1)[0] for target in _LINK.findall(text)
                if not target.startswith(("http://", "https://", "mailto:", "#"))]
     assert targets, "상대 링크를 하나도 찾지 못했다 — 파서가 낡았다"
     missing = [target for target in targets if target and not (path.parent / target).exists()]
