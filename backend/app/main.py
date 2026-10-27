@@ -148,7 +148,6 @@ from app.services.analytics import (
     build_weekday_buckets,
     build_weekday_hour_patterns,
     classify_status_level,
-    deduplicate_snapshot_rows,
     deduplicate_snapshots,
     detect_threshold_events,
 )
@@ -186,6 +185,8 @@ from app.services.analytics_cache import (
     METRIC_TIMESERIES,
     METRIC_WEEKDAY_HOUR,
     load_cached_analytics,
+    load_compact_analytics_rows,
+    load_compact_analytics_snapshots,
     refresh_default_analytics_cache,
 )
 from app.services.backup_restore import (
@@ -3212,17 +3213,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         buffer_minutes: int = 0,
     ) -> list[ParkingSnapshot]:
         cutoff = now_utc() - timedelta(days=days, minutes=buffer_minutes)
-        query = select(ParkingSnapshot).where(ParkingSnapshot.observed_at >= cutoff)
+        conditions = [ParkingSnapshot.observed_at >= cutoff]
 
         if parking_lot_id:
-            query = query.where(ParkingSnapshot.parking_lot_id == parking_lot_id)
+            conditions.append(ParkingSnapshot.parking_lot_id == parking_lot_id)
         elif airport_code:
             airport = await session.scalar(select(Airport).where(Airport.code == airport_code.upper()))
             if airport is None:
                 return []
-            query = query.where(ParkingSnapshot.airport_id == airport.id)
+            conditions.append(ParkingSnapshot.airport_id == airport.id)
 
-        return deduplicate_snapshots((await session.execute(query)).scalars().all())
+        return await load_compact_analytics_snapshots(session, conditions)
 
     async def _load_snapshots_between_local_dates(
         session: AsyncSession,
@@ -3253,33 +3254,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session: AsyncSession,
         conditions: list[Any],
     ) -> list[ParkingSnapshot]:
-        # 시계열 계산에는 원본 JSONB나 나머지 ORM 컬럼이 불필요하다. DB에서 소스
-        # 우선순위에 따라 중복을 먼저 제거하고 계산에 쓰는 값만 전송한다.
-        if session.bind.dialect.name != "postgresql":
-            return deduplicate_snapshots((await session.scalars(
-                select(ParkingSnapshot).where(*conditions)
-            )).all())
-        ranked = select(
-            ParkingSnapshot.id.label("id"),
-            ParkingSnapshot.parking_lot_id.label("parking_lot_id"),
-            ParkingSnapshot.observed_at.label("observed_at"),
-            ParkingSnapshot.occupied_spaces.label("occupied_spaces"),
-            ParkingSnapshot.total_spaces.label("total_spaces"),
-            ParkingSnapshot.available_spaces.label("available_spaces"),
-            func.row_number().over(
-                partition_by=(ParkingSnapshot.parking_lot_id, ParkingSnapshot.observed_at),
-                order_by=(
-                    case((func.left(ParkingSnapshot.source, 10) == "migration_", 1), else_=0),
-                    ParkingSnapshot.collected_at.desc(),
-                    ParkingSnapshot.id.desc(),
-                ),
-            ).label("rank"),
-        ).where(*conditions).subquery()
-        rows = (await session.execute(select(
-            ranked.c.id, ranked.c.parking_lot_id, ranked.c.observed_at,
-            ranked.c.occupied_spaces, ranked.c.total_spaces, ranked.c.available_spaces,
-        ).where(ranked.c.rank == 1))).all()
-        return [SimpleNamespace(**row._mapping) for row in rows]
+        return await load_compact_analytics_snapshots(session, conditions)
 
     async def _load_timeseries_snapshots_between_local_dates(
         session: AsyncSession,
@@ -3422,15 +3397,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             start_at = start_local.astimezone(UTC)
             end_at = (start_local + timedelta(days=1)).astimezone(UTC)
             day_ranges.append(and_(ParkingSnapshot.observed_at >= start_at, ParkingSnapshot.observed_at < end_at))
-        query = select(ParkingSnapshot).where(or_(*day_ranges))
+        conditions = [or_(*day_ranges)]
         if parking_lot_id:
-            query = query.where(ParkingSnapshot.parking_lot_id == parking_lot_id)
+            conditions.append(ParkingSnapshot.parking_lot_id == parking_lot_id)
         elif airport_code:
             airport = await session.scalar(select(Airport).where(Airport.code == airport_code.upper()))
             if airport is None:
                 return []
-            query = query.where(ParkingSnapshot.airport_id == airport.id)
-        return deduplicate_snapshots((await session.execute(query)).scalars().all())
+            conditions.append(ParkingSnapshot.airport_id == airport.id)
+        return await load_compact_analytics_snapshots(session, conditions)
 
     async def _load_snapshot_rows(
         session: AsyncSession,
@@ -3439,17 +3414,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         days: int,
     ) -> list[tuple[ParkingSnapshot, ParkingLot, Airport]]:
         cutoff = now_utc() - timedelta(days=days)
-        query = (
-            select(ParkingSnapshot, ParkingLot, Airport)
-            .join(ParkingLot, ParkingLot.id == ParkingSnapshot.parking_lot_id)
-            .join(Airport, Airport.id == ParkingSnapshot.airport_id)
-            .where(ParkingSnapshot.observed_at >= cutoff)
-        )
+        conditions = [ParkingSnapshot.observed_at >= cutoff]
         if parking_lot_id:
-            query = query.where(ParkingSnapshot.parking_lot_id == parking_lot_id)
+            conditions.append(ParkingSnapshot.parking_lot_id == parking_lot_id)
         elif airport_code:
-            query = query.where(Airport.code == airport_code.upper())
-        return deduplicate_snapshot_rows((await session.execute(query)).all())
+            conditions.append(Airport.code == airport_code.upper())
+        return await load_compact_analytics_rows(session, conditions)
 
     # `/health` stays unversioned (kor-travel-map convention: health/version are
     # fixed, everything else is versioned). All other routes live under `/v1`
