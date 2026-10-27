@@ -1,3 +1,12 @@
+## 2026-10-27 — 저장 자동 매핑의 backend API 후보
+
+`codex/rail-automatic-refresh`는149와150을 포함한 main ca59458을 안전하게 통합했다.
+저장 입력만 쓰는 pure/DTO·DB 서비스와 backend GET/POST/OpenAPI를 구현했고,
+실제 전용 PG11·새 API8·기존 회귀를 포함한 WSL 집중56개가 통과했다.
+다음 한 작업은 동일 소스를 동결해 Docker 집중·WSL/Docker 전체·CI·두 독립 리뷰를 수행하는 것이다.
+Next proxy/UI·실제 운영 preview/적용·저장 FK/시간표 수용은 아직 미완이며 운영 변경0이다.
+[계약·미완 게이트](reports/2026-10-27-rail-automatic-refresh.md).
+
 ## 2026-10-27 — 경의중앙선 복합키 표기 차이의 작은 후속
 
 KR/K4 범위에서만 코레일/경의중앙선과 한국철도공사/경의중앙 표기를 비교키로 묶는 후보를 만들었다.

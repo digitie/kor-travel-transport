@@ -34,6 +34,9 @@
 - [ ] **T-RAIL-03 / P0** — 도시철도 매핑·달력·저장/이후 편·방향 복구 및 실제 두 노선/기관 수용.
   KR/K4 복합 이름의 표기 차이만 정규화하는 [작은 후보](reports/2026-10-27-rail-composite-alias.md)는
   실제 FK·요일별 저장 시간표 수용과 분리한다. 직접1251↔P313 공식 대응 행은 없으며 task는 계속 열어 둔다.
+  별도 [자동 재계산 핵심 후보](reports/2026-10-27-rail-automatic-refresh.md)는 저장 입력만 사용한다.
+  main ca59458 통합 후 backend pure/DTO·GET/POST·OpenAPI와 실제 전용PG/API 포함 집중56개가 통과했다.
+  전체/CI/두 리뷰·Next proxy/UI·실제 적용·시간표 수용 전에는 완료로 세지 않는다.
 - [ ] **T-PARK-01 / P0** — 기존 job/run·원본·이력·cache·outlook/API 시각 대조, 원시/파생 정지 원인 재현.
 - [ ] **T-PARK-02 / P0** — 확인된 수집→분석 단절 복구, watermark·부분 성공·멱등/재시작·캐시 신선도 수용.
   기존 Dagster 경로에서 current5/cache80 불일치를 정상·부분 성공으로 재현하고 원본 commit 뒤 갱신·신선도 검증을

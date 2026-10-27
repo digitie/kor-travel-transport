@@ -1,3 +1,13 @@
+## 2026-10-27 — 저장 자동 매핑의 별도 backend API 후보
+
+149와150을 포함한 main ca59458을 기존8파일 바이트·UI150 보존 검산과 함께 통합했다.
+저장 입력만 계산하는 pure/DTO·DB 서비스와 backend GET/POST·OpenAPI를 연결했다.
+ImportError RED1·API404 RED1 뒤 WSL 집중56개(pure11·기존25·실제PG11·새API8·기존API1)가 통과했다.
+RC 잠금 대기 뒤 새 revision 거절·양방향 lease 배제·변경 FK 쌍만·수동 원문 보존·교환·
+예외/취소/제약 실패의 원자 rollback과 no-op 쓰기0를 확인했다. Next proxy/UI·전체/CI/두 리뷰는
+미완이며 실제 운영 영향/매핑 적용·저장 시간표 수용과 분리한다. 운영/provider/job 변경0이다.
+[설계·남은 검증](reports/2026-10-27-rail-automatic-refresh.md).
+
 ## 2026-10-27 — 경의중앙선 복합 식별 표기 차이 후보
 
 관측된 서울역823 원문과 KR/K4/P313 catalog의 기관·노선 표기 차이를 RED로 재현했다.

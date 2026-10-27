@@ -356,6 +356,82 @@ class KricStationMappingSaveRequest(BaseModel):
     mappings: list[KricStationManualMapping] = Field(max_length=1108)
 
 
+class KricAutomaticMappingCounts(BaseModel):
+    """장소 개수가 아닌 active 공식 catalog 코드 기준의 연결 현황."""
+
+    station_count: int = Field(ge=0, description="active 공식 catalog 코드 수")
+    mapped_count: int = Field(ge=0)
+    automatic_mapped_count: int = Field(ge=0)
+    manual_mapped_count: int = Field(ge=0, description="실제 유효한 수동 연결 수")
+    unmatched_count: int = Field(ge=0)
+
+
+class KricAutomaticMappingCodeKey(BaseModel):
+    operator_code: str
+    line_code: str
+    station_code: str
+
+
+class KricAutomaticMappingTarget(BaseModel):
+    rail_station_id: int | None = None
+    rail_station_identity_key: str | None = None
+    match_method: Literal["manual", "exact_identity", "station_number_and_name", "unmatched"]
+
+
+class KricAutomaticMappingChange(KricAutomaticMappingCodeKey):
+    operator_name: str
+    line_name: str
+    station_name: str
+    change_type: Literal["added", "removed", "retargeted", "method_changed"]
+    before: KricAutomaticMappingTarget
+    after: KricAutomaticMappingTarget
+
+
+class KricAutomaticMappingConflict(KricAutomaticMappingCodeKey):
+    rail_station_identity_key: str
+    reason: Literal["manual_code_override", "manual_target_reserved"]
+    reserved_by: KricAutomaticMappingCodeKey
+
+
+class KricAutomaticMappingBlocker(BaseModel):
+    code: str
+    message: str
+    operator_code: str | None = None
+    line_code: str | None = None
+    station_code: str | None = None
+
+
+class KricAutomaticMappingPreview(BaseModel):
+    schema_version: Literal[1] = 1
+    generated_at: datetime
+    expected_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+    candidate_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+    catalog_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    before: KricAutomaticMappingCounts
+    after: KricAutomaticMappingCounts
+    has_changes: bool
+    can_apply: bool
+    changes: list[KricAutomaticMappingChange] = Field(default_factory=list)
+    manual_conflicts: list[KricAutomaticMappingConflict] = Field(default_factory=list)
+    blockers: list[KricAutomaticMappingBlocker] = Field(default_factory=list)
+
+
+class KricAutomaticMappingApplyRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    expected_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+    candidate_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class KricAutomaticMappingApplyResponse(BaseModel):
+    schema_version: Literal[1] = 1
+    status: Literal["applied", "unchanged"]
+    previous_revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+    revision: str = Field(pattern=r"^[0-9a-f]{64}$")
+    changed_link_count: int = Field(ge=0)
+    summary: KricAutomaticMappingCounts
+
+
 class RailDepartureItem(BaseModel):
     train_number: str | None = None
     departure_time: str | None = None
