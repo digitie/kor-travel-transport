@@ -31,7 +31,10 @@ frontend (Next.js) → backend API (FastAPI) → services → repositories/SQLAl
 - DB event time은 `TIMESTAMPTZ`/SQLAlchemy timezone-aware datetime을 사용한다.
 - API는 UTC ISO-8601로 응답하고 UI만 `Asia/Seoul`로 표시한다.
 - `parking_snapshots`는 `(parking_lot_id, observed_at, source)` 중복을 막는다.
-- 분석은 가능하면 원본 스냅샷을 기준으로 계산하고 캐시는 재생성 가능해야 한다.
+- 주차 원본 보존 목표는 48시간, 집계 통계는 영구다. 캐시는 재생성 가능하지만 영구 통계는
+  과거 원본 삭제 뒤 유일한 정본이므로 캐시 TTL·정리에 포함하지 않는다.
+  현재 선행 저장 단계에서는 분석 읽기 전환·검산이 끝나기 전 원본 삭제를 차단한다.
+  `docs/architecture/parking-retention.md`의 단계·정확도·보류 계약을 따른다.
 - 5분 수집 컷오버는 base copy와 final delta를 분리하고, 마지막 관측 시각·행 수를
   새 DB에서 검증한다.
 

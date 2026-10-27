@@ -21,6 +21,7 @@ from sqlalchemy.orm import aliased
 
 from app.core.config import Settings
 from app.db.session import create_engine_and_session_factory
+from app.services.legacy_parking_guard import ensure_legacy_import_allowed
 from app.models import Airport, ParkingLot, ParkingSnapshot
 
 
@@ -156,6 +157,14 @@ async def import_history(args: argparse.Namespace) -> int:
     deduplicated = 0
     failures: list[str] = []
 
+    # 금지된 이관은 외부 조회 전에 거절하고, 네트워크 동안에는 DB lock을 보유하지 않는다.
+    try:
+        async with session_factory() as session:
+            await ensure_legacy_import_allowed(session)
+    except BaseException:
+        await engine.dispose()
+        raise
+
     async with httpx.AsyncClient(timeout=settings.api_timeout_seconds) as client:
         airports_payload = await fetch_json(client, base_url, "/airports")
         if not isinstance(airports_payload, list) or not airports_payload:
@@ -206,6 +215,13 @@ async def import_history(args: argparse.Namespace) -> int:
         return 2
 
     async with session_factory() as session:
+        # 자료를 읽는 동안 통계가 생겼을 수도 있으므로 첫 쓰기 전에 잠금 아래 다시 검사한다.
+        try:
+            await ensure_legacy_import_allowed(session)
+        except BaseException:
+            await session.rollback()
+            await engine.dispose()
+            raise
         lots_by_source_lot: dict[tuple[str, int], tuple[int, int]] = {}
         for airport_payload in airports_payload:
             airport, lots = await upsert_reference_data(session, airport_payload)

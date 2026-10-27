@@ -61,6 +61,10 @@
 3. 파싱 결과는 `airports`, `parking_lots`, `parking_snapshots`에 반영한다.
 4. 분석 API는 `parking_snapshots`를 기반으로 계산한다.
 
+주차 원본 48시간·통계 영구 보존 정책을 위해 `parking_statistics_archive_job`이
+별도 10분 영구 통계를 검산해 보관하는 선행 경로를 추가했다. 자동 schedule과 원본 삭제는 없으며,
+기존 분석 읽기·API 계약 전환 후에만 정리를 열 수 있다. [설계·수용 범위](parking-retention.md).
+
 공항 Dagster 수집도 원본 commit 뒤 기존 기본 분석 캐시를 갱신한다. 부분 성공분은 유지하고
 캐시 실패는 원본과 별도 transaction으로 처리한다. 캐시는 scope별 새 적재가 있거나 생성10분을
 넘으면 직접 계산으로 돌아간다. 재집계는 기존 airport advisory key와 첫 조회 전 watermark를
