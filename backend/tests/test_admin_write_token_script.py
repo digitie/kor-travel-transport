@@ -24,7 +24,7 @@ def test_admin_write_token_bootstrap_is_atomic_idempotent_and_quiet(tmp_path, mo
     env.write_text("TRANSPORT_UI_PASSWORD=fixture-ui-password\n", encoding="utf-8")
     module.ENV_PATH = env
     module.BACKUP_DIR = tmp_path / "backups"
-    monkeypatch.setattr(module.socket, "gethostname", lambda: "digitie-at-n150")
+    # 호스트 이름과 무관하다(운영은 Odroid, 시험은 CI runner). 실행 사용자 소유 일반 파일이면 진행한다.
     module.main()
     lines = env.read_text(encoding="utf-8").splitlines()
     token = next(line.partition("=")[2] for line in lines if line.startswith("TRANSPORT_ADMIN_WRITE_TOKEN="))
@@ -39,10 +39,26 @@ def test_admin_write_token_bootstrap_is_atomic_idempotent_and_quiet(tmp_path, mo
     assert len(list(module.BACKUP_DIR.glob("*.bak"))) == 1
 
 
-def test_admin_write_token_bootstrap_rejects_other_host(tmp_path, monkeypatch):
+def test_admin_write_token_bootstrap_rejects_a_symlinked_env(tmp_path):
     module = _module()
     module.ENV_PATH = tmp_path / ".env.prod"
     module.ENV_PATH.write_text("TRANSPORT_UI_PASSWORD=fixture-ui-password\n", encoding="utf-8")
-    monkeypatch.setattr(module.socket, "gethostname", lambda: "wrong-host")
-    with pytest.raises(SystemExit, match="n150"):
+    target = module.ENV_PATH
+    module.ENV_PATH = tmp_path / "linked.env.prod"
+    module.ENV_PATH.symlink_to(target)
+    module.BACKUP_DIR = tmp_path / "backups"
+    with pytest.raises(SystemExit, match="심볼릭 링크"):
         module.main()
+    assert "TRANSPORT_ADMIN_WRITE_TOKEN" not in target.read_text(encoding="utf-8")
+    assert not module.BACKUP_DIR.exists()
+
+
+def test_admin_write_token_bootstrap_rejects_an_env_owned_by_another_user(tmp_path, monkeypatch):
+    module = _module()
+    module.ENV_PATH = tmp_path / ".env.prod"
+    module.ENV_PATH.write_text("OWNED=fixture\n", encoding="utf-8")
+    module.BACKUP_DIR = tmp_path / "backups"
+    monkeypatch.setattr(module.os, "getuid", lambda: os.stat(module.ENV_PATH).st_uid + 1)
+    with pytest.raises(SystemExit, match="소유"):
+        module.main()
+    assert module.ENV_PATH.read_text(encoding="utf-8") == "OWNED=fixture\n"

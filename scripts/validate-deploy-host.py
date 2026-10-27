@@ -11,6 +11,48 @@ import sys
 from ipaddress import IPv4Address
 from pathlib import Path, PurePosixPath
 
+#: 시간 초과 때 SIGTERM(sudo가 자식 ktdctl에 전달한다) 뒤 kill 전까지 기다리는 시간.
+TERMINATE_GRACE_SECONDS = 5
+
+
+class DeployHostError(ValueError):
+    """고정·비민감 원인 토큰을 가진 거절. 값·명령 출력은 담지 않는다."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+def _run(argv: list[str], *, timeout: float) -> str:
+    """명령의 stdout을 돌려준다. 시간 초과면 sudo 아래 root ktdctl까지 정리한다.
+
+    `subprocess.run(timeout=)`은 직계 자식(sudo)에만 SIGKILL을 보내고, sudo는 그것을 전달하지 못해 root
+    ktdctl이 고아로 남는다. 먼저 SIGTERM(sudo가 자식에 전달)을 보내고 짧게 기다린 뒤 kill한다.
+    """
+    process = subprocess.Popen(
+        argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    try:
+        stdout, _stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        process.terminate()
+        try:
+            process.communicate(timeout=TERMINATE_GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate()
+        raise DeployHostError("timeout") from None
+    if process.returncode != 0:
+        raise DeployHostError("command")
+    return stdout
+
+
+def _json(text: str, **kwargs: object) -> object:
+    try:
+        return json.loads(text, **kwargs)
+    except ValueError:
+        raise DeployHostError("output") from None
+
 
 def parse_host(value: str) -> str:
     address = str(IPv4Address(value))
@@ -69,36 +111,30 @@ def instance_config_matches(document: object, registry: dict[str, object]) -> bo
 def validate_remote(
     address: str, env_file: Path, *, instance_config: bool = False,
 ) -> dict[str, object] | None:
-    interfaces = subprocess.run(["hostname", "-I"], capture_output=True, text=True, timeout=15, check=True)
+    interfaces = _run(["hostname", "-I"], timeout=15)
     local = set()
-    for value in interfaces.stdout.split():
+    for value in interfaces.split():
         try:
             local.add(str(IPv4Address(value)))
         except ValueError:
             continue
     if address not in local:
-        raise ValueError("address not assigned here")
-    manager = subprocess.run(
-        ["sudo", "-n", "ktdctl", "targets", "validate", "--json"],
-        capture_output=True, text=True, timeout=60, check=True,
-    )
-    if len(manager.stdout) > 1048576:
-        raise ValueError("Manager registry output exceeds bound")
-    registry = json.loads(manager.stdout)
+        raise DeployHostError("address")
+    manager = _run(["sudo", "-n", "ktdctl", "targets", "validate", "--json"], timeout=60)
+    if len(manager) > 1048576:
+        raise DeployHostError("output")
+    registry = _json(manager)
     if not registry_matches(registry, address):
-        raise ValueError("Manager registry does not assign transport here")
+        raise DeployHostError("registry")
     if not env_file.is_file() or not os.access(env_file, os.R_OK):
-        raise ValueError("environment file is not readable")
+        raise DeployHostError("env")
     if instance_config:
-        shown = subprocess.run(
-            ["sudo", "-n", "ktdctl", "dagster-instance-config", "show", "--json"],
-            capture_output=True, text=True, timeout=30, check=True,
-        )
-        if len(shown.stdout) > 16384:
-            raise ValueError("Manager instance output exceeds bound")
-        document = json.loads(shown.stdout, object_pairs_hook=_unique_object)
+        shown = _run(["sudo", "-n", "ktdctl", "dagster-instance-config", "show", "--json"], timeout=30)
+        if len(shown) > 16384:
+            raise DeployHostError("output")
+        document = _json(shown, object_pairs_hook=_unique_object)
         if not instance_config_matches(document, registry):
-            raise ValueError("Manager instance does not match the deployment host")
+            raise DeployHostError("instance")
         return document
     return None
 
@@ -111,18 +147,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--instance-config", action="store_true")
     args = parser.parse_args(argv)
     try:
-        address = parse_host(args.host)
+        try:
+            address = parse_host(args.host)
+        except ValueError:
+            raise DeployHostError("address") from None
         if args.instance_config and args.parse_only:
-            raise ValueError("instance output requires remote validation")
+            raise DeployHostError("instance")
         if not args.parse_only:
             if args.env_file is None:
-                raise ValueError("environment file is required")
+                raise DeployHostError("env")
             document = validate_remote(address, args.env_file, instance_config=args.instance_config)
             if args.instance_config:
                 print(json.dumps(document, sort_keys=True, separators=(",", ":")))
-    except (OSError, ValueError, subprocess.SubprocessError):
-        # 값/Manager stdout·stderr를 재노출하지 않는다.
-        print("배포 거절: IPv4/Manager registry/환경 파일 효과 검증에 실패했습니다.", file=sys.stderr)
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        # 값/Manager stdout·stderr를 재노출하지 않는다. 고정 원인 토큰(address|timeout|command|output|registry|
+        # env|instance)만 stderr에 덧붙인다 — stdout은 --instance-config JSON 계약이라 건드리지 않는다.
+        if isinstance(exc, DeployHostError):
+            reason = exc.reason
+        elif isinstance(exc, (OSError, subprocess.SubprocessError)):
+            reason = "command"
+        else:
+            reason = "output"
+        print(f"배포 거절: IPv4/Manager registry/환경 파일 효과 검증에 실패했습니다. reason={reason}", file=sys.stderr)
         return 2
     return 0
 

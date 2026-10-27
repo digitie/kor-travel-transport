@@ -1,3 +1,24 @@
+## 2026-10-27 — 지난 10일 Codex PR 상세 리뷰의 통합 수정
+
+- 2026-10-17 이후 머지된 Codex PR 51건(#83~#143)을 리뷰했다. 고칠 20건(T01~T20)은 PR 하나
+  (`review/codex-10d-transport`)로 묶었고, 보류 19건과 기각 3건은 PR 본문에 근거와 함께 남겼다.
+  보류에는 운영 관리자 UI 비밀번호 회전(소유자 조치)이 있다. 이 PR은 그 값과 줄을 다루지 않는다.
+- high: T01 Map current 플래그와 수집 범위(공항·인천·고속도로 노선/구간)를 API와 code-server가
+  `x-transport-scope-environment` 앵커 하나로 읽는다. 플래그를 켜도 API export가 503으로 남거나 scope hash가
+  어긋나지 않는다. T02 Map 모드 주차는 엄격 검증·급감 guard를 current 승격에만 건다. 거절된 원천의 이력은
+  플래그 OFF와 같은 parser로 저장하며, provider 추가 호출은 없다.
+- 설계 변경 두 건: T04 export snapshot은 생성 cache epoch의 끝+15분까지 유효하고, GC는
+  `FOR UPDATE SKIP LOCKED`로 다른 freeze가 지우는 victim을 건너뛴다. T05 자동 code-server rollback은
+  스키마가 후보 head였고 실패가 code-server 단계일 때만 한다. 그 밖에는 forward-fix 배너를 낸다.
+  code-server 냉기동은 compose healthcheck 창(start_period+interval+timeout)인 700초까지 기다린다.
+  근거는 [교통 current 문서](map-traffic-current-export.md)와 [배포 런북](runbooks/deployment.md)에 있다.
+- 나머지: T03 플래그 OFF 기준정보의 엄격 identity 해제, T06 주차 CSS `@scope`→`:where()` nesting(특이도
+  보존), T07 관리자 지도 카메라 prop 되먹임 제거, T08 고속도로 통계 노선별 재조회·표본 표기, T09 KAC 할당량 원장 노출 정리,
+  T10 로그인 상태별 문구, T11 모바일 메뉴 disclosure, T12 이미지 안 pytest 수집 오류, T13 호스트 검증
+  timeout의 sudo 하위 정리·원인 토큰, T14 odroid 잔재, T15 VadaHub 주간 갱신, T16 429 Retry-After·안내 범주
+  사전 검증, T17 플래그 직후 head 부트스트랩, T18 유가 통계 지연 가시성, T19 관리자 CI lint, T20 문서 정정.
+- 운영 미배포다. `TRANSPORT_MAP_CURRENT_ENABLED`는 계속 false이고, 머지·배포는 소유자 승인 뒤에 한다.
+
 ## 2026-10-28 — 소통 배치 PR155 코드·후보 UI·격리 성능 수용
 
 정확65a/main8bc의 CI6 SUCCESS와 두 제품 리뷰·실제 후보 UI39를 통과해 PR155를 main c19d6bc로 정상 머지했다.

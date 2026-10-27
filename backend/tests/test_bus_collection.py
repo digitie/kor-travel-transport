@@ -152,6 +152,54 @@ def test_bus_timetable_cache_covers_provider_protection_interval() -> None:
         Settings(bus_timetable_cache_seconds=300, bus_timetable_min_interval_seconds=301)
 
 
+class _LenientBusProvider(_BusProvider):
+    """Map 엄격 identity가 거절하는 행 — 이름 없음·id 없음·중복 id."""
+
+    async def iter_terminals(self, *, num_of_rows: int, max_pages: int):
+        assert (num_of_rows, max_pages) == (100, 100)
+        yield TagoBusTerminal(terminalId=f"{self.service_type}-1", terminalNm="옛 이름", cityName="테스트시")
+        yield TagoBusTerminal(terminalId=f"{self.service_type}-2", cityName="테스트시")
+        yield TagoBusTerminal(terminalNm="코드 없는 터미널", cityName="테스트시")
+        yield TagoBusTerminal(terminalId=f"{self.service_type}-1", terminalNm="새 이름", cityName="테스트시")
+
+
+class _LenientBusClient(_BusClient):
+    def __init__(self, **_kwargs: object) -> None:
+        self.express_bus = _LenientBusProvider("express")
+        self.intercity_bus = _LenientBusProvider("intercity")
+
+
+def test_flag_off_bus_reference_keeps_pre_map_lenient_terminal_rows(tmp_path: Path) -> None:
+    """엄격 identity는 Map membership(플래그 ON)용이다. 플래그 OFF는 id 없는 항목만 건너뛴다."""
+    settings = Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'bus-lenient.sqlite3'}",
+        seed_sample_data=False,
+        enable_scheduler=False,
+        bus_reference_collection_enabled=True,
+        data_go_kr_service_key="test-key",
+        transport_map_current_enabled=False,
+    )
+    engine, session_factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> None:
+        await init_database(engine)
+        service = BusReferenceCollectionService(settings, client_factory=_LenientBusClient)
+        async with session_factory() as session:
+            result = await service.collect(session)
+        async with session_factory() as session:
+            rows = (await session.scalars(select(BusTerminalReference).order_by(
+                BusTerminalReference.service_type, BusTerminalReference.terminal_id))).all()
+            run_row = await session.scalar(select(CollectionRun))
+        assert result["status"] == "success" and run_row.status == "success"
+        assert [(row.service_type, row.terminal_id, row.terminal_name) for row in rows] == [
+            ("express", "express-1", "새 이름"), ("express", "express-2", None),
+            ("intercity", "intercity-1", "새 이름"), ("intercity", "intercity-2", None),
+        ]
+        await engine.dispose()
+
+    asyncio.run(run())
+
+
 class _FailingBusProvider:
     async def iter_terminals(self, **_kwargs: object):
         raise RuntimeError("TAGO unavailable")

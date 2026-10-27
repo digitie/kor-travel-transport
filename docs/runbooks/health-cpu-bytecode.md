@@ -12,7 +12,7 @@ pyc를 복사하지 않는다. API와 code-server는 같은 backend 이미지를
 
 API probe는 python -I -m kortravelcommon.http_health --port <서비스 포트>
 --path /health --timeout-seconds 4다. 기본 이미지 포트8000과 shared host 포트
-PUBLIC_API_PORT(default14001)를 각 Compose의 실행 포트와 맞춘다. 기존 urllib의 proxy·redirect와
+PUBLIC_API_PORT(shared overlay 기본 12302, #90 이후)를 각 Compose의 실행 포트와 맞춘다. 기존 urllib의 proxy·redirect와
 body EOF 읽기는 제거된다. 새 CLI는 loopback GET, 최대16KiB 완전한 헤더, 전체4초 예산,
 2xx만 성공이며 redirect/retry를 하지 않는다. 4초는 모듈 시작 이후 HTTP 논리 예산이다.
 Python cold startup/import를 포함하는 Docker timeout5초의 성공 보장이 아니다. 헤더만 읽으므로 body 완전성 검증과 동등하지 않다.

@@ -1,3 +1,22 @@
+## 2026-10-27 — 지난 10일 Codex PR 리뷰 후속
+
+- [ ] T-REVIEW-10D-01 — 리뷰 통합 수정 PR(`review/codex-10d-transport`, T01~T20): 소유자 승인으로 머지했다(운영 미배포).
+  운영 배포 때 T01 compose 앵커(API·code-server 같은 플래그·범위)와 T05 rollback 정책(스키마 불변·code-server
+  단계 실패에서만 자동 rollback)이 같은 release로 들어가는지 확인한다. 외부 운영 controller도 같은 두 조건을 따른다.
+- [ ] T-SEC-UIPW-01 — (소유자) 공개 저장소의 운영 관리자 UI 비밀번호 리터럴: 운영 값 회전과 보호 environment Actions
+  secret 등록 뒤 저장소 리터럴을 secret 참조로 바꾸고 history 정리를 검토한다. 값은 문서·로그에 옮기지 않는다.
+- [ ] T-PARK-03 — #144 반영 뒤 공항 op의 분석 캐시 재계산 주기·watermark 기준·직접 계산 fallback single-flight를
+  재측정한다. 여전히 5분을 넘으면 별도 job/sensor 분리를 설계한다.
+- [ ] T-RAIL-04 — 퇴역한 `rail_station_references` 행의 현재 집합 정의·수동 매핑 의미·FK 재계산·Map 철도 export 정합을
+  함께 정하는 별도 PR.
+- [ ] T-DEPLOY-02 — 배포 중 Transport instigator pause/restore·QUEUED drain을 스크립트로 옮길지 외부 controller와 결정한다.
+  code-server 정본 포트 14005→12306 정리는 Manager의 odroid override 소비 확인 뒤 한다.
+- [ ] 소유자·설계 결정 대기: OPINET 통계 모집단의 사라진 주유소(공용 퇴역·신선도 정책), KRIC 계획 시간표 48시간
+  신선도와 수집 예산, 고속도로 통계의 전체 주기 서버 집계(새 API), Map T2~T4 `last_attempt_failed`·급감 override·
+  parking 신선도 기준, 일반철도·ITS 결정적 오류의 provider 실패 분류. 세부는 리뷰 통합 PR 본문의 보류 표를 따른다.
+- [ ] Common·별도 PR 대기: reverse_address keep 규칙(Common), MapReadout 좌표 live region(Common), 관리자 e2e 정비,
+  메모리 한도(#93), 이미지 크기·빌드 시간(#81), 목록 상한 안내(#128).
+
 ## 2026-10-27 — 주차 보존 수명 분리
 
 - [ ] **T-PARK-RET-01** — 주차 원본48시간·통계영구. 선행0036 영구통계/수동 backfill·검산·삭제 차단 후보는

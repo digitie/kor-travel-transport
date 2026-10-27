@@ -10,7 +10,8 @@
 최초 페이지는 PR112의 source/scope별 성공 head와 typed current만 REPEATABLE READ로 읽는다.
 이력/raw/provider를 조회하지 않는다. 수집 필터 fingerprint는 수집과 동일한 public helper를 쓴다.
 400행씩 읽어 필요한 DTO만 고정 snapshot item으로 저장하며 최대20,000건/16MiB를 넘거나
-head membership과 개수가 다르면 transaction을 취소한다. snapshot은15분 유효하다.
+head membership과 개수가 다르면 transaction을 취소한다. snapshot은 만든 15분 cache epoch의 끝+15분까지
+유효하다(2026-10-27 변경, 아래 보존·동시성).
 다음 페이지는 snapshot PK+ordinal index에서 limit+1행만 읽는다. 이후 같은 history PK가
 수정되거나 새 수집 head가 승격되어도 기존 snapshot DTO는 바뀌지 않는다.
 
@@ -42,6 +43,21 @@ GC/admission 이후 항목 partition 경계에서15초 경과를 검사한다. �
 만료 snapshot GC는 새 freeze 때 최대1개(한 snapshot 최대20,000항목)만 삭제한다.
 페이지 reader는 동일 RR transaction에서 snapshot와 항목을 읽으므로 PostgreSQL MVCC가
 동시 GC로부터 해당 읽기를 보호한다. 미만료 snapshot은 지우지 않는다.
+
+2026-10-27 보완(설계 변경, T2/T3 공통):
+
+- **만료 보장**: 만료 시각은 `생성 시각+15분`이 아니라 `생성 cache epoch의 끝+15분`이다
+  (`snapshot_expires_at`). cache generation이 15분 epoch라서, 예전에는 epoch 끝 몇 초 전에 재사용된
+  snapshot을 받은 reader가 다음 페이지에서 410을 받고 처음부터 다시 읽었다. 이제 같은 epoch 안에서 건네는
+  snapshot의 남은 수명은 항상 15분 이상이고 최대 30분이다. 응답의 `snapshot_expires_at` 의미(이 시각 이후
+  cursor는 410)는 그대로라 Map reader와 하위 호환이다.
+- **GC 잠금 경합**: PostgreSQL에서 GC는 victim 부모 행을 `FOR UPDATE SKIP LOCKED`로 먼저 잠근다. 다른
+  transaction이 지우는 중인 victim은 건너뛴다. 예전에는 다른 종류의 첫 페이지 freeze가 같은 victim을
+  골라, 그 행 잠금을 쥔 채 약 8,300항목을 물질화하는 쪽을 lock_timeout 2초까지 기다리다 55P03→503을 받았다.
+  이미 commit된 삭제와 겹친 RR 직렬화 실패(40001)는 기존처럼 새 RR로 한 번 재시도한다.
+- **남는 위험**: 같은 종류·scope를 동시에 처음 고정하면 UNIQUE admission에서 뒤 요청이 앞 transaction의
+  commit을 기다린다(물질화가 2초를 넘으면 55P03→503). 이 경로는 바꾸지 않았다. Map reader는 503을 기존처럼
+  유한 재시도한다.
 
 ## 검증 정산과 운영 잔여
 

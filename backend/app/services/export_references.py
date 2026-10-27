@@ -30,7 +30,7 @@ from app.services.rail_maritime_collection import KRIC_FILE_SOURCE, MARITIME_SOU
 from app.services.rail_station_mapping import persisted_mapping_context, persisted_station_links
 from app.services.parking_exports import parking_scope, parking_sources
 from app.services.export_addresses import export_admin_addresses
-from app.services.export_current import BATCH_SIZE, MAX_SNAPSHOT_BYTES, MAX_SNAPSHOT_ITEMS, SNAPSHOT_TTL, SnapshotRace, cache_generation, _snapshot_transaction, expire_snapshots
+from app.services.export_current import BATCH_SIZE, MAX_SNAPSHOT_BYTES, MAX_SNAPSHOT_ITEMS, SnapshotRace, cache_generation, _snapshot_transaction, expire_snapshots, snapshot_expires_at
 from app.services.export_price_history import _decode_cursor, _encode_cursor, _response
 
 @dataclass(frozen=True)
@@ -227,23 +227,24 @@ async def _freeze_reference(session, heads, spec):
             digest.update(body + b"\n")
     content = digest.hexdigest()
     namespace = json.dumps([[h.generation, serialize_utc(h.confirmed_at).isoformat()] for h in heads]) + content
-    generation = cache_generation(hashlib.sha256(namespace.encode()).hexdigest())
+    # 같은 시각으로 epoch generation과 만료를 정한다(epoch 경계에서 둘이 어긋나지 않게).
+    now = now_utc()
+    generation = cache_generation(hashlib.sha256(namespace.encode()).hexdigest(), now)
     cached = await session.scalar(select(ServiceExportSnapshot).where(
         ServiceExportSnapshot.kind == spec.kind, ServiceExportSnapshot.scope_key == spec.scope,
         ServiceExportSnapshot.generation == generation,
-        ServiceExportSnapshot.expires_at > now_utc(),
+        ServiceExportSnapshot.expires_at > now,
     ).order_by(ServiceExportSnapshot.created_at.desc()).limit(1))
     if cached:
         return cached
     await expire_snapshots(session)
-    now = now_utc()
     table = ServiceExportSnapshot.__table__
     factory = pg_insert if session.bind.dialect.name == "postgresql" else sqlite_insert
     snapshot_id = str(uuid4())
     admitted = await session.scalar(factory(table).values(
         id=snapshot_id, kind=spec.kind, scope_key=spec.scope, generation=generation,
         source_collected_at=min(serialize_utc(h.confirmed_at) for h in heads),
-        created_at=now, expires_at=now + SNAPSHOT_TTL, item_count=count, content_digest=content,
+        created_at=now, expires_at=snapshot_expires_at(now), item_count=count, content_digest=content,
     ).on_conflict_do_nothing(index_elements=["kind", "scope_key", "generation"]).returning(table.c.id))
     if admitted is None:
         raise SnapshotRace()

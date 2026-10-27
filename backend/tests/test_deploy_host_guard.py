@@ -10,12 +10,22 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[2]
+_BACKEND_ROOT = Path(__file__).resolve().parents[1]
+# 저장소 checkout은 `<repo>/backend/tests`·`<repo>/scripts`, Docker 회귀 이미지는 `/app/tests`·`/app/scripts`다.
+ROOT = _BACKEND_ROOT if (_BACKEND_ROOT / "scripts" / "validate-deploy-host.py").is_file() else _BACKEND_ROOT.parent
 HELPER = ROOT / "scripts/validate-deploy-host.py"
-spec = importlib.util.spec_from_file_location("deploy_host_effect", HELPER)
-module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(module)
 ADDR = "192.0.2.7"
+# 대역 bin 뒤의 PATH. python:slim 회귀 이미지의 python3는 /usr/local/bin에 있어 `/usr/bin:/bin`만으로는 127이 된다.
+_PATH_TAIL = f"{Path(sys.executable).parent}:/usr/bin:/bin"
+
+
+@pytest.fixture(scope="module")
+def module():
+    """helper는 수집 시점이 아니라 쓰는 시험에서 읽는다 — layout 차이가 전체 수집 오류로 번지지 않는다."""
+    spec = importlib.util.spec_from_file_location("deploy_host_effect", HELPER)
+    loaded = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(loaded)
+    return loaded
 
 
 def document():
@@ -38,7 +48,7 @@ def document():
         "192.0.2.7;touch /tmp/no",
     ],
 )
-def test_host_must_be_canonical_ipv4(value):
+def test_host_must_be_canonical_ipv4(module, value):
     with pytest.raises(ValueError):
         module.parse_host(value)
 
@@ -54,7 +64,7 @@ def test_host_must_be_canonical_ipv4(value):
         "not_ok",
     ],
 )
-def test_registry_output_has_no_address_fallback(change):
+def test_registry_output_has_no_address_fallback(module, change):
     value = document()
     if change == "missing_hosts":
         value.pop("hosts")
@@ -71,7 +81,7 @@ def test_registry_output_has_no_address_fallback(change):
     assert not module.registry_matches(value, ADDR)
 
 
-def test_declared_address_matches_the_selected_key_only():
+def test_declared_address_matches_the_selected_key_only(module):
     value = document()
     value["hosts"]["unrelated"] = {"addr": "203.0.113.1"}
     assert module.registry_matches(value, ADDR)
@@ -114,7 +124,7 @@ def run_entry(tmp_path, script, args, **changes):
     envfile = tmp_path / ".env.prod"
     envfile.write_text("OWNED=fixture\n")
     env = {
-        "PATH": str(bindir) + ":/usr/bin:/bin",
+        "PATH": f"{bindir}:{_PATH_TAIL}",
         "CALLS": str(calls),
         "OWN_ENV": str(envfile),
         "DOCUMENT": json.dumps(document()),
@@ -179,67 +189,133 @@ def test_effect_failure_refuses_before_archive_or_copy(tmp_path, script, failure
     assert "owned-sensitive-error" not in result.stdout + result.stderr
 
 
-def test_permission_denied_environment_is_not_accepted(monkeypatch, tmp_path):
+_REFUSAL = "배포 거절: IPv4/Manager registry/환경 파일 효과 검증에 실패했습니다."
+
+
+def test_permission_denied_environment_is_not_accepted(module, monkeypatch, tmp_path, capsys):
     envfile = tmp_path / ".env.prod"
     envfile.write_text("OWNED=fixture\n")
 
-    def run(argv, **kwargs):
-        return subprocess.CompletedProcess(
-            argv, 0, ADDR if argv[0] == "hostname" else json.dumps(document()), ""
-        )
+    def run(argv, *, timeout):
+        return ADDR if argv[0] == "hostname" else json.dumps(document())
 
-    monkeypatch.setattr(module.subprocess, "run", run)
+    monkeypatch.setattr(module, "_run", run)
     monkeypatch.setattr(module.os, "access", lambda *args: False)
     assert module.main(["--host", ADDR, "--env-file", str(envfile)]) == 2
+    assert capsys.readouterr().err == f"{_REFUSAL} reason=env\n"
 
 
-def test_manager_validation_allows_a_bounded_response_after_thirty_seconds(monkeypatch, tmp_path):
+def test_manager_validation_allows_a_bounded_response_after_thirty_seconds(module, monkeypatch, tmp_path):
     envfile = tmp_path / ".env.prod"
     envfile.write_text("OWNED=fixture\n")
     calls = []
 
-    def run(argv, **kwargs):
-        calls.append((argv, kwargs))
+    def run(argv, *, timeout):
+        calls.append((argv, timeout))
         if argv[0] == "hostname":
-            return subprocess.CompletedProcess(argv, 0, ADDR, "")
+            return ADDR
         # 실제로 기다리지 않고 45초에 완료되는 Manager 응답을 재현한다.
-        if kwargs["timeout"] < 45:
-            raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
-        return subprocess.CompletedProcess(argv, 0, json.dumps(document()), "")
+        if timeout < 45:
+            raise module.DeployHostError("timeout")
+        return json.dumps(document())
 
-    monkeypatch.setattr(module.subprocess, "run", run)
+    monkeypatch.setattr(module, "_run", run)
     assert module.main(["--host", ADDR, "--env-file", str(envfile)]) == 0
     assert calls == [
-        (["hostname", "-I"], {"capture_output": True, "text": True, "timeout": 15, "check": True}),
-        (["sudo", "-n", "ktdctl", "targets", "validate", "--json"],
-         {"capture_output": True, "text": True, "timeout": 60, "check": True}),
+        (["hostname", "-I"], 15),
+        (["sudo", "-n", "ktdctl", "targets", "validate", "--json"], 60),
     ]
 
 
-@pytest.mark.parametrize("timed_out_command", ["hostname", "sudo"])
-def test_command_timeout_refuses_without_exposing_output(monkeypatch, tmp_path, capsys, timed_out_command):
+class _HangingPopen:
+    """`communicate`가 정해진 횟수만큼 시간 초과하는 가짜 프로세스. 신호 순서를 기록한다."""
+
+    def __init__(self, events, timed_out_command, stops_after_terminate):
+        self.events, self.timed_out_command, self.stops_after_terminate = events, timed_out_command, stops_after_terminate
+
+    def __call__(self, argv, **kwargs):
+        process = _HangingProcess(self, argv)
+        self.events.append(("start", argv[0], kwargs.get("stdin")))
+        return process
+
+
+class _HangingProcess:
+    def __init__(self, owner, argv):
+        self.owner, self.argv, self.returncode, self.signals = owner, argv, None, []
+
+    def communicate(self, timeout=None):
+        self.owner.events.append(("communicate", self.argv[0], timeout))
+        if self.argv[0] != self.owner.timed_out_command:
+            self.returncode = 0
+            return ADDR, ""
+        hung = not self.signals or (self.signals == ["terminate"] and not self.owner.stops_after_terminate)
+        if hung:
+            raise subprocess.TimeoutExpired(self.argv, timeout, output="owned-sensitive-output", stderr="owned-sensitive-error")
+        self.returncode = -15 if self.signals == ["terminate"] else -9
+        return "owned-sensitive-output", "owned-sensitive-error"
+
+    def terminate(self):
+        self.signals.append("terminate")
+        self.owner.events.append(("terminate", self.argv[0]))
+
+    def kill(self):
+        self.signals.append("kill")
+        self.owner.events.append(("kill", self.argv[0]))
+
+
+@pytest.mark.parametrize("stops_after_terminate", [True, False])
+@pytest.mark.parametrize(("timed_out_command", "deadline"), [("hostname", 15), ("sudo", 60)])
+def test_command_timeout_terminates_before_kill_and_reports_only_the_reason(
+    module, monkeypatch, tmp_path, capsys, timed_out_command, deadline, stops_after_terminate,
+):
+    """시간 초과면 sudo가 root ktdctl에 전달하는 SIGTERM을 먼저 보내고, 그래도 안 끝나면 kill한다."""
     envfile = tmp_path / ".env.prod"
     envfile.write_text("OWNED=fixture\n")
-    calls = []
-
-    def run(argv, **kwargs):
-        calls.append(argv[0])
-        if argv[0] == timed_out_command:
-            raise subprocess.TimeoutExpired(
-                argv, kwargs["timeout"], output="owned-sensitive-output", stderr="owned-sensitive-error"
-            )
-        return subprocess.CompletedProcess(argv, 0, ADDR, "")
+    events = []
 
     def unread_environment(*args):
         pytest.fail("시간 초과 후 환경 파일 검사를 진행하면 안 된다")
 
-    monkeypatch.setattr(module.subprocess, "run", run)
+    monkeypatch.setattr(module.subprocess, "Popen", _HangingPopen(events, timed_out_command, stops_after_terminate))
     monkeypatch.setattr(module.os, "access", unread_environment)
     assert module.main(["--host", ADDR, "--env-file", str(envfile)]) == 2
-    assert calls == (["hostname"] if timed_out_command == "hostname" else ["hostname", "sudo"])
+    timed_out = [event for event in events if event[1] == timed_out_command]
+    expected = [("start", timed_out_command, subprocess.DEVNULL), ("communicate", timed_out_command, deadline),
+                ("terminate", timed_out_command), ("communicate", timed_out_command, module.TERMINATE_GRACE_SECONDS)]
+    if not stops_after_terminate:
+        expected += [("kill", timed_out_command), ("communicate", timed_out_command, None)]
+    assert timed_out == expected
     captured = capsys.readouterr()
     assert captured.out == ""
-    assert captured.err == "배포 거절: IPv4/Manager registry/환경 파일 효과 검증에 실패했습니다.\n"
+    assert captured.err == f"{_REFUSAL} reason=timeout\n"
+
+
+@pytest.mark.parametrize(("failure", "reason"), [
+    ("not_assigned", "address"), ("sudo_exit", "command"), ("invalid_json", "output"),
+    ("other_host", "registry"), ("bad_host_argument", "address"),
+])
+def test_refusal_names_a_fixed_reason_without_values(module, monkeypatch, tmp_path, capsys, failure, reason):
+    envfile = tmp_path / ".env.prod"
+    envfile.write_text("OWNED=fixture\n")
+
+    def run(argv, *, timeout):
+        if argv[0] == "hostname":
+            return "198.51.100.90" if failure == "not_assigned" else ADDR
+        if failure == "sudo_exit":
+            raise module.DeployHostError("command")
+        if failure == "invalid_json":
+            return "owned-sensitive-output"
+        value = document()
+        if failure == "other_host":
+            value["hosts"]["chosen"]["addr"] = "198.51.100.90"
+        return json.dumps(value)
+
+    monkeypatch.setattr(module, "_run", run)
+    host = "owned-sensitive-host" if failure == "bad_host_argument" else ADDR
+    assert module.main(["--host", host, "--env-file", str(envfile)]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == f"{_REFUSAL} reason={reason}\n"
 
 
 @pytest.mark.parametrize("script", ["deploy-prod.sh", "deploy-transport-admin-prod.sh"])

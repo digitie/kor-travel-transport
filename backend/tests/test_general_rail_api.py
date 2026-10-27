@@ -119,6 +119,52 @@ def test_public_station_guide_is_keyless_and_independent_of_tago_denial(test_set
 
 
 
+def _guide_client(monkeypatch, calls, categories):
+    from kric import KorailGuidePage
+
+    class PublicClient:
+        def __init__(self, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_): pass
+        async def get_guide_page(self, *, kind):
+            calls.append(("catalog", kind))
+            return KorailGuidePage(kind, 1, 0, (), categories)
+        async def get_located_category_stations(self, *, kind, category_code):
+            calls.append(("located", category_code))
+            return KorailGuidePage(kind, 1, 0, (), categories)
+    monkeypatch.setattr("app.general_rail_routes.KorailPublicClient", PublicClient)
+
+
+def test_unknown_guide_category_is_checked_against_the_kind_page_before_any_provider_call(test_settings, monkeypatch):
+    from kric import KorailGuideCategory
+    calls = []
+    _guide_client(monkeypatch, calls, (KorailGuideCategory("ktx1", "경부선", "ktx"),))
+    with TestClient(create_app(test_settings.model_copy(update={"seed_sample_data": False}))) as client:
+        # kind 페이지가 없으면 한 번 받아 저장한 뒤 검증한다.
+        assert client.get("/v1/transport/rail/general/guide", params={"category_code": "unknown"}).status_code == 422
+        assert calls == [("catalog", "ktx")]
+        # 캐시된 kind 페이지로 거절한다 — 일일 호출 횟수를 쓰지 않는다.
+        assert client.get("/v1/transport/rail/general/guide", params={"category_code": "other"}).status_code == 422
+        assert calls == [("catalog", "ktx")]
+
+
+def test_daily_cap_retry_after_points_to_the_next_korean_midnight(test_settings, monkeypatch):
+    from datetime import datetime, timezone
+
+    from kric import KorailGuideCategory
+    calls = []
+    _guide_client(monkeypatch, calls, tuple(KorailGuideCategory(f"c{index}", f"권역{index}", "ktx") for index in range(100)))
+    fixed = datetime(2026, 10, 27, 11, tzinfo=timezone.utc)  # KST 20:00
+    monkeypatch.setattr("app.general_rail_routes.now_utc", lambda: fixed)
+    with TestClient(create_app(test_settings.model_copy(update={"seed_sample_data": False}))) as client:
+        for index in range(95):  # kind 페이지 1회 + 권역 95회 = 일일 96회
+            assert client.get("/v1/transport/rail/general/guide", params={"category_code": f"c{index}"}).status_code == 200
+        capped = client.get("/v1/transport/rail/general/guide", params={"category_code": "c99"})
+    assert capped.status_code == 429
+    # 상한은 KST 자정에 초기화된다. 3600초 뒤 재시도는 자정까지 매번 429다.
+    assert capped.headers["retry-after"] == str(4 * 3600)
+
+
 def test_separate_cache_misses_share_one_provider_rate_limiter(test_settings, monkeypatch):
     import time
     timestamps = []

@@ -127,6 +127,53 @@ def test_new_success_fence_rejects_old_quota_failure(export_client, prior_failur
     _run(c, check)
 
 
+def test_expired_quota_deadline_reports_no_until_and_future_deadline_still_blocks(export_client):
+    """지난 deadline은 차단이 아니다 — admin collector-status가 false와 과거 until을 함께 내지 않는다."""
+    from app.core.time_utils import serialize_utc
+    c = export_client
+    client = LiveQuotaFixture()
+    client.quota = False
+    collector = c.app.state.collection_service
+    collector.client = client  # admin collector-status도 같은 live 판정을 쓴다.
+    past = now_utc() - timedelta(minutes=5)
+    async def seed(s):
+        s.add(TransportCollectionState(source=KAC_QUOTA_SOURCE, next_due_at=past,
+                                       last_started_at=past - timedelta(hours=1), updated_at=past,
+                                       last_error=f"kac_parking API error 99: {UPSTREAM_RATE_LIMIT_MARKER}"))
+    _run(c, seed)
+    async def state(s):
+        return await collector.get_upstream_rate_limit_state(s)
+    expired = _run(c, state)
+    assert (expired.is_blocked, expired.blocked_until, expired.error_message) == (False, None, None)
+    payload = c.get("/v1/admin/collector-status").json()
+    assert payload["upstream_rate_limited"] is False and payload["upstream_rate_limited_until"] is None
+    future = now_utc() + timedelta(minutes=5)
+    async def extend(s):
+        row = await s.scalar(select(TransportCollectionState).where(TransportCollectionState.source == KAC_QUOTA_SOURCE))
+        row.next_due_at = future
+    _run(c, extend)
+    blocked = _run(c, state)
+    assert blocked.is_blocked and serialize_utc(blocked.blocked_until) == future
+    assert UPSTREAM_RATE_LIMIT_MARKER in blocked.error_message
+    payload = c.get("/v1/admin/collector-status").json()
+    assert payload["upstream_rate_limited"] is True and payload["upstream_rate_limited_until"] is not None
+
+
+def test_transport_collector_status_hides_the_airport_quota_ledger(export_client):
+    """성공 run도 만드는 공항 KAC quota 원장은 교통 collector-status의 원천 목록에 섞이지 않는다."""
+    c = export_client
+    client = LiveQuotaFixture()
+    client.quota = False
+    collector = service(c, client)
+    assert _run(c, lambda s: collector.collect(s))["status"] == "success"
+    async def ledger(s):
+        return await s.scalar(select(TransportCollectionState.source).where(TransportCollectionState.source == KAC_QUOTA_SOURCE))
+    assert _run(c, ledger) == KAC_QUOTA_SOURCE
+    response = c.get("/v1/transport/collector-status")
+    assert response.status_code == 200, response.text
+    assert KAC_QUOTA_SOURCE not in [item["source"] for item in response.json()["sources"]]
+
+
 def test_legacy_private_error_is_redacted_before_source_state_copy(export_client):
     from app.services.collection import UpstreamRateLimitState
     c = export_client

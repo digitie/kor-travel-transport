@@ -108,12 +108,15 @@ class RailMaritimeCollectionService:
             .order_by(CollectionRun.finished_at.desc())
             .limit(1)
         )
+        previous = await session.get(ReferenceExportState, ("rail-station", "nationwide"))
         if latest_success is not None:
             if latest_success.tzinfo is None:
                 latest_success = latest_success.replace(tzinfo=UTC)
-            if now_utc() - latest_success < timedelta(days=2):
+            # Map 플래그를 켰는데 head가 없으면 최근 성공(플래그 OFF 수집)이 있어도 due다 — rail-stations export가
+            # 최대 2일 동안 503으로 남지 않게 첫 head를 바로 만든다.
+            bootstrap = self.settings.transport_map_current_enabled and previous is None
+            if not bootstrap and now_utc() - latest_success < timedelta(days=2):
                 return {"status": "skipped", "reason": "KRIC rail reference is not due for 48 hours"}
-        previous = await session.get(ReferenceExportState, ("rail-station", "nationwide"))
         previous_count = len(previous.member_ids) if previous else await session.scalar(
             select(func.count()).select_from(RailStationReference).where(RailStationReference.source == KRIC_FILE_SOURCE),
         )
@@ -357,7 +360,9 @@ class RailMaritimeCollectionService:
         for attempt in range(2):
             stations, archive = await self._fetch_rail_stations()
             try:
-                self._rail_keys(stations)
+                if self.settings.transport_map_current_enabled:
+                    # 엄격 identity는 Map membership용이다. 플래그 OFF는 이전처럼 중복 identity의 마지막 값이 이긴다.
+                    self._rail_keys(stations)
                 if archive is None and self._rail_fetcher is None:
                     raise ValueError("검증된 XLSX 보관 receipt가 없습니다")
                 if archive is not None and (archive.byte_size <= 0 or len(archive.checksum_sha256) != 64
@@ -400,7 +405,9 @@ class RailMaritimeCollectionService:
         for attempt in range(2):
             ports = tuple([item async for item in client.iter_ports(page_size=100, max_pages=20)])
             try:
-                self._port_keys(ports)
+                if self.settings.transport_map_current_enabled:
+                    # 엄격 identity는 Map membership용이다. 플래그 OFF는 이전처럼 id 없는 항구만 저장에서 건너뛴다.
+                    self._port_keys(ports)
                 return ports
             except ValueError:
                 if attempt:

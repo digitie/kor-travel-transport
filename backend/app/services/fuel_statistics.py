@@ -17,6 +17,7 @@ from app.models import (
     FuelLatestPrice, FuelStation, FuelStatisticsDaily, FuelStatisticsPoint,
     FuelStatisticsState, RestAreaFuelPrice, TransportCollectionState,
 )
+from app.services.flight_status import sanitize_upstream_error
 
 OPINET = "opinet_browser"
 HIGHWAY = "krex_rest_area_fuel"
@@ -191,13 +192,23 @@ async def publish_fuel_statistics(session: AsyncSession, source: str, collected_
     await session.flush()
 
 
-async def try_publish_fuel_statistics(session: AsyncSession, source: str, collected_at: datetime) -> None:
+def _deferred_cause(exc: BaseException) -> str:
+    """한 줄 원인: 예외 유형과 URL·키를 가린 짧은 메시지. SQL 원문 전체를 로그에 싣지 않는다."""
+    message = " ".join(sanitize_upstream_error(str(exc), None).split())[:200]
+    return f"{type(exc).__name__}: {message}" if message else type(exc).__name__
+
+
+async def try_publish_fuel_statistics(session: AsyncSession, source: str, collected_at: datetime) -> bool:
+    """통계를 발행했으면 True. 실패는 원본 수집 성공을 취소하지 않고 False와 한 줄 원인 경고로 남긴다."""
     # 통계 실패가 오래 걸린 원본 수집 성공을 취소하지 않게 savepoint로 격리한다.
     try:
         async with session.begin_nested():
             await publish_fuel_statistics(session, source, collected_at)
     except Exception as exc:
-        logger.warning("fuel statistics publication deferred source=%s error=%s", source, type(exc).__name__)
+        # 유가 op가 이 logger를 Dagster event log로 넘긴다(포화된 ARM의 반복 command_timeout을 run에서 보이게).
+        logger.warning("fuel statistics publication deferred source=%s cause=%s", source, _deferred_cause(exc))
+        return False
+    return True
 
 
 async def prune_fuel_statistics(session: AsyncSession, source: str) -> int:

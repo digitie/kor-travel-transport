@@ -1,4 +1,4 @@
-# kor-travel-docker-manager가 운영하는 n150 host-network 공용 PostgreSQL/RustFS를
+# kor-travel-docker-manager가 운영하는 운영 호스트(현재 Odroid, ADR-014)의 host-network 공용 PostgreSQL/RustFS를
 # 소비하는 운영 overlay. 운영 런타임도 Weather 정본과 동일하게 host-network를 쓰며,
 # 공용 DB는 컨테이너별 bridge gateway가 아니라 `127.0.0.1:11000`으로 접근한다.
 # 로컬의 기존 `docker-compose.yml` + `docker-compose.db.yml` 흐름은 빠른 개발·legacy
@@ -29,10 +29,20 @@ x-dagster-shared-environment: &dagster-shared-environment
   # Application schema DDL belongs only to the migrate one-shot service.
   RUN_DB_MIGRATIONS: "false"
 
+# Map current 플래그와 수집 범위. API(`backend`)와 code-server가 이 앵커 하나를 함께 병합해 **같은 정본**을 읽는다.
+# 플래그가 code-server에만 있으면 수집기는 Map 모드로 바뀌는데 API의 `/v1/service/exports/*`는 계속 503이다.
+# 주차·교통 export의 scope hash도 프로세스마다 이 값으로 따로 계산하므로 기본값까지 같아야 API가 head를 찾는다.
+x-transport-scope-environment: &transport-scope-environment
+  TRANSPORT_MAP_CURRENT_ENABLED: "${TRANSPORT_MAP_CURRENT_ENABLED:-false}"
+  AIRPORT_CODES_CSV: "${AIRPORT_CODES_CSV:-CJJ,CJU,GMP,HIN,ICN,KUV,KWJ,MWX,PUS,RSU,TAE,USN,WJU}"
+  ENABLE_INCHEON_COLLECTION: "${ENABLE_INCHEON_COLLECTION:-true}"
+  TRANSPORT_ROUTE_NOS_CSV: "${TRANSPORT_ROUTE_NOS_CSV:-}"
+  TRANSPORT_CONZONE_IDS_CSV: "${TRANSPORT_CONZONE_IDS_CSV:-}"
+
 # code-server와 그 run worker만 provider·application DB·RustFS secrets를 받는다.
 # 공용 webserver/daemon은 이 값을 모른다 — gRPC workspace로만 이 code-server에 닿는다.
 x-dagster-execution-environment: &dagster-execution-environment
-  <<: *dagster-shared-environment
+  <<: [*dagster-shared-environment, *transport-scope-environment]
   DATABASE_URL: "${DATABASE_URL:?set the application database DSN}"
   SCHEDULER_MODE: dagster
   ENABLE_SCHEDULER: "true"
@@ -41,10 +51,8 @@ x-dagster-execution-environment: &dagster-execution-environment
   APP_TIMEZONE: "${APP_TIMEZONE:-Asia/Seoul}"
   API_TIMEOUT_SECONDS: "${API_TIMEOUT_SECONDS:-15}"
   UPSTREAM_RATE_LIMIT_BACKOFF_SECONDS: "${UPSTREAM_RATE_LIMIT_BACKOFF_SECONDS:-3600}"
-  ENABLE_INCHEON_COLLECTION: "${ENABLE_INCHEON_COLLECTION:-true}"
   ENABLE_INCHEON_FEE_COLLECTION: "${ENABLE_INCHEON_FEE_COLLECTION:-false}"
   ENABLE_FEE_COLLECTION: "${ENABLE_FEE_COLLECTION:-false}"
-  AIRPORT_CODES_CSV: "${AIRPORT_CODES_CSV:-CJJ,CJU,GMP,HIN,ICN,KUV,KWJ,MWX,PUS,RSU,TAE,USN,WJU}"
   DATA_GO_KR_SERVICE_KEY: "${DATA_GO_KR_SERVICE_KEY:-}"
   VWORLD_API_KEY: "${VWORLD_API_KEY:-}"
   PLACE_LOCATION_COLLECTION_ENABLED: "${PLACE_LOCATION_COLLECTION_ENABLED:-false}"
@@ -63,11 +71,8 @@ x-dagster-execution-environment: &dagster-execution-environment
   TRANSPORT_COLLECTION_ENABLED: "${TRANSPORT_COLLECTION_ENABLED:-false}"
   VADAHUB_COLLECTION_ENABLED: "${VADAHUB_COLLECTION_ENABLED:-false}"
   VADAHUB_ARCHIVE_DIRECTORY: "/app/collector-state/vadahub"
-  TRANSPORT_MAP_CURRENT_ENABLED: "${TRANSPORT_MAP_CURRENT_ENABLED:-false}"
   TRANSPORT_COLLECT_INTERVAL_SECONDS: "${TRANSPORT_COLLECT_INTERVAL_SECONDS:-300}"
   TRANSPORT_QUOTA_BACKOFF_SECONDS: "${TRANSPORT_QUOTA_BACKOFF_SECONDS:-3600}"
-  TRANSPORT_ROUTE_NOS_CSV: "${TRANSPORT_ROUTE_NOS_CSV:-}"
-  TRANSPORT_CONZONE_IDS_CSV: "${TRANSPORT_CONZONE_IDS_CSV:-}"
   OPINET_BROWSER_ENABLED: "${OPINET_BROWSER_ENABLED:-true}"
   OPINET_QUERY_LEVEL: "${OPINET_QUERY_LEVEL:-sigungu}"
   OPINET_BROWSER_CHANNEL: "${OPINET_BROWSER_CHANNEL:-}"
@@ -214,6 +219,8 @@ services:
     extra_hosts: !reset []
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "${PUBLIC_API_PORT:-12302}"]
     environment:
+      # Map current 플래그·수집 범위는 code-server와 같은 앵커를 읽는다(export 활성·scope hash 일치).
+      <<: *transport-scope-environment
       DATABASE_URL: "${DATABASE_URL:?set the application database DSN}"
       RUN_DB_MIGRATIONS: "false"
       SCHEDULER_MODE: dagster

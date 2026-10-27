@@ -3,7 +3,7 @@
 import { Activity, Bus, ChartNoAxesCombined, Database, Fuel, Home, LogOut, Map, Menu, ParkingCircle, Plane, Route, ShipWheel, TrainFront, Waypoints } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { AppMenu } from "@kor-travel/ui";
 import { InfoButton } from "./info-button";
 
@@ -23,7 +23,16 @@ const mapPages = new Set(["/map", "/fuel", "/highways", "/rail", "/rail/metro", 
 export function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const navigationId = useId();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  // 메뉴를 연 경로. 메뉴 링크 밖의 탐색(뒤로 가기 등)으로 경로가 바뀌면 지도·주차 화면 위에 열린 채 남지 않게
+  // 바로 닫힌 것으로 본다. 효과에서 setState하지 않고 경로에서 파생한다(/login early return보다 앞의 hook).
+  const [menuOpenPath, setMenuOpenPath] = useState<string | null>(null);
+  const menuOpen = menuOpenPath === pathname;
+  function closeMenuOnEscape(event: KeyboardEvent<HTMLElement>) {
+    if (event.key !== "Escape" || !menuOpen) return;
+    setMenuOpenPath(null);
+    menuButton.current?.focus();
+  }
   function clearDashboardCache() { try { window.sessionStorage.removeItem("kor-travel-transport-dashboard-v1"); window.sessionStorage.removeItem("kor-travel-transport-dashboard-v2"); } catch { /* optional browser storage */ } }
   // 로그아웃 요청 중 이전 페이지의 늦은 응답이 캐시를 다시 쓸 수 있다.
   // 로그인 문서가 열린 뒤에도 정리해 이전 문서의 비동기 작업과 경합하지 않는다.
@@ -35,7 +44,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
       <a className="skip-link" href="#main-content">본문으로 건너뛰기</a>
       <div className="admin-layout" data-testid="admin-shell">
         <aside className="rail" aria-label="관리자 사이드바" data-slot="admin-shell-rail">
-          <div className="rail-shell">
+          <div className="rail-shell" onKeyDown={closeMenuOnEscape}>
             <div className="rail-header">
               <Link className="brand" href="/" aria-label="Kor Travel Transport 홈">
                 <span className="brand-mark"><Route aria-hidden="true" size={17} /></span>
@@ -43,8 +52,9 @@ export function AdminShell({ children }: { children: ReactNode }) {
                 <span className="brand-subtitle">Admin UI</span>
               </Link>
             </div>
-            <button type="button" className="mobile-menu-button" aria-label="주요 메뉴 열기" aria-controls={navigationId} aria-expanded={menuOpen} onClick={() => setMenuOpen((value) => !value)}><Menu aria-hidden="true" size={18} />메뉴</button>
-            <div id={navigationId} className={`rail-nav common-menu${menuOpen ? " is-open" : ""}`} onClick={(event) => { if (event.target instanceof Element && event.target.closest("a")) setMenuOpen(false); }}>
+            {/* 라벨은 상태와 무관한 중립 이름이고 열림·닫힘은 aria-expanded가 전달한다. */}
+            <button ref={menuButton} type="button" className="mobile-menu-button" aria-label="주요 메뉴" aria-controls={navigationId} aria-expanded={menuOpen} onClick={() => setMenuOpenPath(menuOpen ? null : pathname)}><Menu aria-hidden="true" size={18} />메뉴</button>
+            <div id={navigationId} className={`rail-nav common-menu${menuOpen ? " is-open" : ""}`} onClick={(event) => { if (event.target instanceof Element && event.target.closest("a")) setMenuOpenPath(null); }}>
               <AppMenu label="주요 메뉴" pathname={pathname} activeItemId={activeHref} linkComponent={Link}
                 groups={groups.map((group) => ({ id: group.id, label: group.label, items: group.items.map(([href, label, Icon]) => ({ id: href, href, label, exact: href === "/", icon: <Icon aria-hidden="true" size={16} strokeWidth={1.8} /> })) }))} />
             </div>

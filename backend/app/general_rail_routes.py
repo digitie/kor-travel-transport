@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.time_utils import now_utc, serialize_utc, to_seoul
+from app.core.time_utils import now_utc, seconds_until_next_seoul_midnight, serialize_utc, to_seoul
 from app.models import GeneralRailQuerySnapshot
 from app.schemas import (
     GeneralRailCatalogResponse, GeneralRailCode, GeneralRailStation, GeneralRailStationsResponse,
@@ -48,10 +48,17 @@ def build_general_rail_router(get_db) -> APIRouter:
             if state["day"] != to_seoul(now).date():
                 state["day"], state["attempts"] = to_seoul(now).date(), 0
             blocked_until = state["blocked_until"]
-            if blocked_until and now < blocked_until or state["attempts"] >= 96:
+            daily_cap_reached = state["attempts"] >= 96
+            if blocked_until and now < blocked_until or daily_cap_reached:
                 if previous:
                     return previous.model_copy(update={"stale": True})
-                raise HTTPException(status_code=429, detail="일반철도 제공기관 호출 보호 중입니다. 잠시 후 다시 조회해 주세요.", headers={"Retry-After": str(max(1, int((blocked_until - now).total_seconds()))) if blocked_until and now < blocked_until else "3600"})
+                # 일일 상한은 다음 KST 자정에야 초기화된다. 고정 3600초를 따르면 그때까지 매시간 429를 받는다.
+                waits = [1]
+                if blocked_until and now < blocked_until:
+                    waits.append(int((blocked_until - now).total_seconds()))
+                if daily_cap_reached:
+                    waits.append(seconds_until_next_seoul_midnight(now))
+                raise HTTPException(status_code=429, detail="일반철도 제공기관 호출 보호 중입니다. 잠시 후 다시 조회해 주세요.", headers={"Retry-After": str(max(waits))})
             state["attempts"] += 1
             try:
                 context = KorailPublicClient(timeout=settings.api_timeout_seconds) if public else DataGoKrClient(api_key=settings.data_go_kr_service_key, timeout=settings.api_timeout_seconds, max_rps=1, rate_limiter=tago_limiter)
@@ -126,6 +133,15 @@ def build_general_rail_router(get_db) -> APIRouter:
     @router.get("/guide", response_model=GeneralRailGuideResponse)
     async def guide(request: Request, kind: Literal["ktx", "main"] = "ktx",
         category_code: str = Query(default="", pattern=r"^[A-Za-z0-9_]{0,40}$"), session: AsyncSession = Depends(get_db)):
+        if category_code:
+            # 잘못된 노선·권역 코드로 provider 호출 횟수(일일 96회)를 쓰지 않게 캐시된 kind 페이지로 먼저 검증한다.
+            # 캐시가 없으면 kind 페이지를 한 번 받아 저장한 뒤 검증한다.
+            overview = await guide_page(request, session, kind, "")
+            if category_code not in {row.code for row in overview.categories}:
+                raise HTTPException(status_code=422, detail="역 안내의 노선·권역 목록에서 다시 선택해 주세요.")
+        return await guide_page(request, session, kind, category_code)
+
+    async def guide_page(request, session, kind, category_code):
         async def fetch(client):
             first = await client.get_guide_page(kind=kind)
             if category_code and category_code not in {row.code for row in first.categories}:

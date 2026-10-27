@@ -73,4 +73,19 @@ describe("정규 공통 로그인 산출물 채택", () => {
       expect(nativeSubmits).toBe(0);
     } finally { document.removeEventListener("submit", observe); }
   });
+
+  it.each([
+    [429, "로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요."],
+    [503, "로그인 설정을 확인할 수 없습니다. 관리자에게 문의해 주세요."],
+    [403, "허용되지 않은 요청입니다. 접속 경로를 확인해 주세요."],
+  ])("%i 응답은 비밀번호 오류가 아니라 Common 상태 문구를 보인다", async (status, message) => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status })));
+    const { host: container, password, button } = server();
+    await act(async () => { root = hydrateRoot(container, <LoginForm nextPath="/map" />); });
+    password.value = "example";
+    await act(async () => { button.click(); });
+    expect(container.textContent).toContain(message);
+    expect(container.textContent).not.toContain("아이디와 비밀번호를 확인하고 다시 시도해 주세요.");
+  });
 });

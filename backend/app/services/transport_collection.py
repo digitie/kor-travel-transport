@@ -45,6 +45,7 @@ from app.models import (
     RawApiResponse,
     TransportCollectionState,
 )
+from app.services.collection import KAC_QUOTA_SOURCE
 
 logger = logging.getLogger(__name__)
 
@@ -427,6 +428,8 @@ class TransportCollectionService:
         incident_count = 0
         fuel_station_count = 0
         fuel_price_count = 0
+        # 이번 실행이 유가 통계를 새로 발행했는가(None=발행 시도 없음). op metadata로 실패를 보이게 한다.
+        fuel_statistics_published: bool | None = None
         collected_source = False
 
         if not self.enabled:
@@ -682,7 +685,9 @@ class TransportCollectionService:
                 if snapshot is not None:
                     # 원본·최신 가격·성공 상태는 이미 원자적으로 확정됐다.
                     # 통계 실패는 이 성공을 취소하거나 비싼 브라우저 재수집을 유발하지 않는다.
-                    await try_publish_fuel_statistics(session, OPINET_SOURCE, snapshot.collected_at)
+                    fuel_statistics_published = await try_publish_fuel_statistics(
+                        session, OPINET_SOURCE, snapshot.collected_at,
+                    )
                     await session.commit()
                     await cleanup_fuel_statistics(session, OPINET_SOURCE)
                     collected_source = True
@@ -763,6 +768,7 @@ class TransportCollectionService:
                                and now_utc() - serialize_utc(state.last_success_at) <= FUEL_STALE_AFTER),
                 "next_fuel_due_at": serialize_utc(state.next_due_at).isoformat() if state and state.next_due_at else None,
                 "last_fuel_success_at": serialize_utc(state.last_success_at).isoformat() if state and state.last_success_at else None,
+                "fuel_statistics_published": fuel_statistics_published,
             })
             if not fuel_enabled:
                 summary["errors"] = [f"OpiNet browser collection is unavailable (provider={self.client_mode})."]
@@ -1515,7 +1521,8 @@ class TransportCollectionService:
                     "next_due_at": item.next_due_at,
                     "last_error": item.last_error,
                 }
-                for item in states
+                # 공항 KAC 할당량 원장은 같은 표에 두지만 교통 원천이 아니다(공항 collector-status가 소유).
+                for item in states if item.source != KAC_QUOTA_SOURCE
             ],
         }
 

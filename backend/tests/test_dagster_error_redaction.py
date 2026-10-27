@@ -491,6 +491,37 @@ def test_fuel_op_forwards_progress_logs_to_the_event_log_redacted(monkeypatch, l
     assert [(item.level, list(item.handlers)) for item in (browser_logger, service_logger)] == before
 
 
+@pytest.mark.parametrize(("job_name", "result"), [
+    ("fuel_collection_job", {"status": "success", "collection_run_id": 1, "fuel_statistics_published": False}),
+    ("rest_area_fuel_price_collection_job", {"status": "success", "run_id": 1, "fuel_statistics_published": False}),
+])
+def test_both_fuel_ops_surface_a_deferred_statistics_publication(monkeypatch, job_name, result):
+    """통계 발행이 미뤄져도 run은 성공이다. 두 유가 op 모두 가린 한 줄 원인을 event log에, 발행 여부를 metadata에 싣는다."""
+    import logging
+
+    statistics_logger = logging.getLogger("app.services.fuel_statistics")
+    before = (statistics_logger.level, list(statistics_logger.handlers), statistics_logger.propagate)
+
+    async def run_with_deferral(*_args: Any, **_kwargs: Any):
+        statistics_logger.warning(
+            "fuel statistics publication deferred source=fixture cause=TimeoutError: command timeout key=%s", KEX_KEY,
+        )
+        return dict(result)
+
+    _patch_services(monkeypatch)
+    monkeypatch.setattr(dagster_definitions, "_run_with_session", run_with_deferral)
+    with DagsterInstance.local_temp() as instance:
+        run = getattr(dagster_definitions, job_name).execute_in_process(raise_on_error=False, instance=instance)
+        assert run.success is True
+        texts = [entry.user_message for entry in instance.all_logs(run.run_id) if entry.dagster_event is None]
+    output = next(event.step_output_data for event in run.all_events if event.event_type_value == "STEP_OUTPUT")
+    assert output.metadata["fuel_statistics_published"].value is False
+    assert ("[app.services.fuel_statistics] fuel statistics publication deferred source=fixture "
+            "cause=TimeoutError: command timeout") in "\n".join(texts)
+    _assert_no_secret(texts)
+    assert (statistics_logger.level, list(statistics_logger.handlers), statistics_logger.propagate) == before
+
+
 @pytest.mark.parametrize("readiness", [False, None, "missing"])
 def test_fuel_unhealthy_skip_does_not_report_dagster_success(monkeypatch, readiness):
     async def skipped(*_args, **_kwargs):
