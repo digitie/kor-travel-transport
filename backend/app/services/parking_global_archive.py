@@ -91,7 +91,7 @@ def _next_global_at_query(dialect: str, complete_before: datetime, collected_bef
     if collected_before is not None:
         sealed = exists(select(1).select_from(ParkingGlobalStatisticsBucket).where(
             ParkingGlobalStatisticsBucket.bucket_at == expression,
-        ))
+        ).offset(0))  # 영구 PK 전체를 hash하는 ANY 대안 대신 구간별 PK lookup을 유지한다.
         conditions.append(or_(sealed, ~_recent_bucket_rows_exists(
             expression, dialect, collected_before, by_airport=False,
         )))

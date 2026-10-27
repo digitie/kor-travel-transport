@@ -183,8 +183,11 @@ def _next_unarchived_at_query(dialect: str, complete_before: datetime, collected
     )
     conditions = [ParkingSnapshot.observed_at < complete_before, ~covered]
     if collected_before is not None:
-        sealed = exists().where(ParkingStatisticsBucket.airport_id == ParkingSnapshot.airport_id,
-                                 ParkingStatisticsBucket.bucket_at == at_expression)
+        # PG16의 EXISTS→hashed ANY가 영구 통계 전체를 읽지 않도록 상관 PK 탐색을 유지한다.
+        sealed = exists(select(1).select_from(ParkingStatisticsBucket).where(
+            ParkingStatisticsBucket.airport_id == ParkingSnapshot.airport_id,
+            ParkingStatisticsBucket.bucket_at == at_expression,
+        ).offset(0))
         # 새 bucket 전체가 완결돼야 한다. 기존 seal의 새 id는 fresh여도 충돌 검산을 피하지 않는다.
         conditions.append(or_(sealed, ~_recent_bucket_rows_exists(
             at_expression, dialect, collected_before, by_airport=True,

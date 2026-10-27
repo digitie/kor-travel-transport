@@ -10,7 +10,7 @@ from app.models import (Airport, ParkingArchiveIssue, ParkingGlobalStatisticsBuc
 from app.services.legacy_parking_guard import ensure_legacy_import_allowed
 from app.services.parking_archive_state import capture_latest_snapshot, seed_latest_states
 from app.services.parking_global_archive import archive_global_statistics, archive_parking_with_coverage
-from app.services.parking_statistics_archive import archive_parking_statistics, prune_parking_raw
+from app.services.parking_statistics_archive import archive_parking_statistics, bucket_start, prune_parking_raw
 from test_parking_statistics_archive import AT, NOW, database, snapshot
 
 
@@ -194,5 +194,58 @@ async def test_global_deferred_old_date_does_not_starve_later_complete_scope(tmp
             assert await session.get(ParkingGlobalStatisticsBucket, AT) is None
             assert await session.get(ParkingGlobalStatisticsBucket, AT + timedelta(days=3)) is not None
             assert (await archive_parking_with_coverage(session, checked_at=NOW))["status"] == "deferred"
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scope", ["global", "airport"])
+@pytest.mark.parametrize("analyzed", [False, True])
+async def test_candidate_discovery_does_not_hash_entire_permanent_archive(tmp_path, test_settings, scope, analyzed):
+    """PG16이 적격 후보의 seal 존재 검사를 전체 hash로 바꾸는 실제 반례를 막는다."""
+    if not test_settings.database_url.startswith("postgresql"):
+        pytest.skip("PostgreSQL 실행계획 검증")
+    from sqlalchemy.dialects import postgresql
+    from app.services.parking_global_archive import _next_global_at_query
+    from app.services.parking_statistics_archive import _next_unarchived_at_query
+
+    engine, factory = await database(tmp_path, test_settings)
+    table = "parking_global_statistics_buckets" if scope == "global" else "parking_statistics_buckets"
+    # 이 행은 조회계획 전용 합성 seal이다. 내용 검산·원본 삭제 수용을 뜻하지 않는다.
+    columns = "bucket_at,bucket_end,format_version,raw_count,selected_count,max_snapshot_id,raw_sha256,statistics_sha256,statistics_json"
+    values = "CAST(:at AS timestamptz)-interval '20 days'+g*interval '10 minutes',CAST(:at AS timestamptz)-interval '20 days'+(g+1)*interval '10 minutes',1,1,1,100000,repeat('a',64),repeat('b',64),'{}'::jsonb"
+    if scope == "global":
+        columns += ",airport_proofs_json,sealed_at"
+        values += ",'{}'::jsonb,CAST(:at AS timestamptz)"
+    else:
+        columns = "airport_id," + columns + ",created_at"
+        values = "1," + values + ",CAST(:at AS timestamptz)"
+    try:
+        async with factory() as session:
+            session.add_all([snapshot(i + 1, i * 5, 10) for i in range(900)])
+            await session.execute(text(f"INSERT INTO {table}({columns}) SELECT {values} FROM generate_series(0,9999) AS g"), {"at": AT})
+            await session.commit()
+            if analyzed:
+                await session.execute(text("ANALYZE parking_snapshots"))
+                await session.execute(text("ANALYZE " + table))
+            query_fn = _next_global_at_query if scope == "global" else _next_unarchived_at_query
+            cutoff = NOW - timedelta(hours=48)
+            for collected_before in [None, cutoff]:
+                query = query_fn("postgresql", bucket_start(cutoff), collected_before)
+                assert await session.scalar(query) is None
+                sql = str(query.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+                plan = (await session.execute(text("EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) " + sql))).scalar_one()
+                scans = []
+
+                def walk(node):
+                    if node.get("Relation Name") == table and node.get("Actual Loops", 0) > 0:
+                        scans.append(node)
+                    for child in node.get("Plans", []):
+                        walk(child)
+
+                walk(plan[0]["Plan"])
+                assert scans and all(node.get("Index Name") == table + "_pkey"
+                                     and "bucket_at =" in node.get("Index Cond", "")
+                                     and node["Actual Rows"] <= 1 for node in scans)
     finally:
         await engine.dispose()

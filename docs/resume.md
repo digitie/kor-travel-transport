@@ -1,3 +1,15 @@
+## 2026-10-28 — 2A 707 집중 회수와 영구 seal 전역 스캔 P2
+
+정확707의 두 집중은 각237 PASS+6 subtests PASS(JUnit tests243/testcase237), F/E/skip0·actual0,
+WSL208.34초·Docker304.69초와 독립 Docker wait0을 회수했다. 소스829/locked106·Git10 및
+실행 중 Docker 지문을 검산했고 자식·컨테이너는 종료했다. 기존9fb 실패는 별도로 보존한다.
+
+이후10000개 영구 통계/900개 원본의 소유 DB EXPLAIN에서 적격 후보의 sealed EXISTS가
+hash용 전체 PK Index Only Scan(10000행/loops1)으로 바뀌는 실제 P2를 확인했다. SQL의 PK
+등가 조건만으로 bounded 실행을 보장하지 못했다. 원707 source/계획/DB/집중 원장은 보존한다.
+공항·전국의 해당 EXISTS에 OFFSET0만 추가하고 통계 유무/두 scope의 실제 계획 회귀를 추가했다.
+새 수정 소스 집중·실제 계획 GREEN/유데이터 downgrade 검산은 아직 미완이다. 새whole/운영/삭제0이다.
+
 ## 2026-10-28 — 2A 초기 집중 실패 보존과 관측·최신 main 통합
 
 2A의9fb 집중은166 PASS/7 FAIL·actual1이며 성공으로 수용하지 않는다. 기존 fixture가 새 전국/보류

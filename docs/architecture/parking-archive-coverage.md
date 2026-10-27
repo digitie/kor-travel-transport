@@ -58,3 +58,13 @@ lot/airport 복합 FK는 RESTRICT이고, 최신 요약만 있는 DB에도 legacy
 ## 검증 경계
 
 DB를 사용하지 않는 전국 동시각·중복·current 선택·raw 변조·부분 유실·삭제 후 재삽입 검산 회귀와 실제 DB ingestion/seed/lease 회귀는 분리한다. 후자의 새 nonce DB 검증 전에는 전자만으로 migration·transaction·FK·조회계획을 수용하지 않는다. 기존 API/48시간 history/cursor/cache/Map snapshot/해상도 전환과 실제 prune는2B·3단계의 별도 수용이다.
+
+## 영구 seal 후보 계획의 추가 P2
+
+707의 기능 집중 두 실행은 각237 PASS+6 subtests PASS였지만, 소유 합성 DB의10000통계/900원본
+계획은 적격 후보의 별도 seal EXISTS를 hash용 전체 PK 읽기로 바꿨다. 실행한 Index Only Scan의
+10000행/loops1이므로 index 이름만으로 bounded라고 수용하지 않는다. pending은 구간별900회 PK였다.
+공항·전국의 해당 EXISTS에 OFFSET0 fence를 넣어 결과는 유지하고 상관 구간별 PK 탐색을 보존한다.
+회귀는 통계 유무×scope 둘 다 실제 실행한 통계 scan의 bucket_at 등가 Index Cond·행수<=1을 검사한다.
+실행하지 않은 대안 노드의 표시를 실제 전체 읽기로 오인하지 않는다. 원707 증거는 고치지 않으며
+새 계획/집중/다운그레이드 GREEN과 독립 리뷰 전에는 이 P2나 전체48시간 정책을 완료로 표시하지 않는다.
