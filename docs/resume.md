@@ -4,8 +4,13 @@
 별도 SQL로 읽을 때 중간 backfill 발행으로 양쪽에서 관측이 빠질 수 있어 한 UNION ALL statement로
 읽는다. 전국도 공항별 PK 시간 범위·seal PK 등가 LATERAL/OFFSET0 탐색을 사용하며 새 index/DDL은 없다.
 raw 원문은 archive가 있는 요청 절단 경계에만 반환하고 그 외 미봉인·새 id 후보는 compact 필드다.
-현재 실제8개 PG 회귀·계획/넓은 집중·Docker는 미완이며 compile만 확인했다. API/cache/bundle/history/
-캘린더/outlook·원본 삭제/운영 전환0이다. 기존 caller transaction·격리수준·commit/lease를 바꾸지 않는다.
+980의 실제 PG8회귀는8 PASS/actual0·9.19초다. 제품이 같은a0의 reader/query2파일은 WSL/Docker
+각20 PASS+48 subtests·F/E/skip0·actual0·독립wait0(14.40초/11.98초)이다.3만 요청 밖 stat의
+ANALYZE 전후×literal/일반준비4계획에서 실제 PK 조건·행/불필요필터 제한을 검산했다.
+834 LF파일/106패키지·Git10 전후 동일·원 child/CID 잔여0·두 DB schema37/client0·PG OOM/max0·
+OpenAPI check0이다. 최종 집중 원장 SHA `d1d8fd5d76d708b86b4ef1c6fcd6d135dd55e3e31ad1f9f6fbb127c9a944f390`.
+이것은 전체·실제 API/cache/bundle/history/calendar/outlook의 수용이 아니며 독립 리뷰도 미완이다.
+원본 삭제/운영 전환0이다. 기존 caller transaction·격리수준·commit/lease를 바꾸지 않는다.
 
 ## 2026-10-28 — 2B 첫 pattern reader 순수 동등성 후보
 

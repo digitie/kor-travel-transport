@@ -148,3 +148,15 @@ PK 등가 LATERAL/OFFSET0이다. 기존 index를 사용하고 실제 계획을 �
 지문 검산하는 기능이 아니며, 원본 삭제 직전 전체 count/hash 검산은 별도 필수 gate다.
 소실된 경계의 부분기간·기존 하한-only API의 미래 관측·기본14일 cutoff의 effective 범위/header 및
 cache/bundle과의 일치는 실제 API 연결 전 정리한다. 현재 응답·에러 코드는 바뀌지 않는다.
+
+동결980의 실제 PG8회귀에서 두 SELECT 사이 별도 transaction의 backfill 발행은 빈 결과로
+RED이며 같은 경쟁의 한 statement는 원래 두 관측을 모두 유지해 GREEN이다. 원본 제거 전후
+7/14/21/28/90일×전국/공항/lot/동시lot·공항의lot우선4scope가 세 기존 pattern과 같다.
+절단 경계의 raw JSON만 전송하고, 원본 없는 절단은 명시적 예외이며 새 id 재수신도 감지했다.
+
+a0는 제품이980과 같고 실제 계획 회귀만 추가했다. WSL/Docker 각20 PASS+48 subtests,
+F/E/skip0·actual0·독립wait0(14.40초/11.98초),834 LF파일·106패키지/Git10 동일·원 자식/CID0,
+두 DB schema37/client0·PG OOM/max0·OpenAPI check0이다.3만 요청 밖의 계획 전용 과거 stat은
+유효 backfill로 세지 않으며, 통계 전후×literal/일반준비4종의 실행한 stat scan에서 PK의
+공항/버킷 조건·Rows<=1·불필요필터<10을 검산했다. 입력/조회 범위 밖 전체 이력을 읽지 않았다는
+이 합성 사례의 증거이며 모든 운영 분포의 성능 보증이나 새 API 전환 수용을 뜻하지 않는다.
