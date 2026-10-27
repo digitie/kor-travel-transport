@@ -15,6 +15,8 @@ _BACKEND_ROOT = Path(__file__).resolve().parents[1]
 ROOT = _BACKEND_ROOT if (_BACKEND_ROOT / "scripts" / "validate-deploy-host.py").is_file() else _BACKEND_ROOT.parent
 HELPER = ROOT / "scripts/validate-deploy-host.py"
 ADDR = "192.0.2.7"
+# 대역 bin 뒤의 PATH. python:slim 회귀 이미지의 python3는 /usr/local/bin에 있어 `/usr/bin:/bin`만으로는 127이 된다.
+_PATH_TAIL = f"{Path(sys.executable).parent}:/usr/bin:/bin"
 
 
 @pytest.fixture(scope="module")
@@ -122,7 +124,7 @@ def run_entry(tmp_path, script, args, **changes):
     envfile = tmp_path / ".env.prod"
     envfile.write_text("OWNED=fixture\n")
     env = {
-        "PATH": str(bindir) + ":/usr/bin:/bin",
+        "PATH": f"{bindir}:{_PATH_TAIL}",
         "CALLS": str(calls),
         "OWN_ENV": str(envfile),
         "DOCUMENT": json.dumps(document()),

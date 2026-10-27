@@ -132,7 +132,7 @@ def test_actual_binding_rejects_override_and_changed_show(tmp_path, override, ch
     hostname.chmod(0o755)
     envfile = tmp_path / ".env.prod"
     envfile.write_text("OWNED=fixture\n")
-    env = {"PATH": str(bindir) + ":/usr/bin:/bin", "SCRIPT_DIR": str(ROOT / "scripts"),
+    env = {"PATH": f"{bindir}:{Path(sys.executable).parent}:/usr/bin:/bin", "SCRIPT_DIR": str(ROOT / "scripts"),
            "REMOTE_HOST": ADDR, "REMOTE_APP_DIR": str(tmp_path), "REMOTE_ENV_FILE": ".env.prod",
            "REGISTRY": json.dumps(registry()), "SHOWN": json.dumps(shown()),
            "COUNTER": str(tmp_path / "count"), "CHANGE": "1" if change else "0"}
