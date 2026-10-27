@@ -231,6 +231,55 @@ def test_failed_archive_is_refetched_but_storage_only_resume_reuses_it(tmp_path,
     asyncio.run(run())
 
 
+@pytest.mark.parametrize("previous_error", [None, "SchemaError"])
+def test_due_refresh_downloads_a_fresh_archive_but_a_failed_retry_reuses_it(tmp_path, monkeypatch, previous_error):
+    """정상 게시본의 7일 갱신은 새 원본을 받는다. due(다운로드 전 시도 시각)와 보관 시각이 어긋나도 지난 ZIP을 쓰지 않는다."""
+    from app.services import vadahub_collection as module
+    attempted = now_utc() - timedelta(days=8)
+    now = attempted + timedelta(days=7, seconds=30)
+    monkeypatch.setattr(module, "now_utc", lambda: now)
+    layer = SimpleNamespace(layer_id="500059", table_name="psnr_rute_l", history_date="2019-12-10")
+    # 지난 다운로드는 시도 60초 뒤에 보관됐다 — 보관 수명으로는 아직 7일 안이다.
+    cached = SimpleNamespace(local_path=tmp_path / "cached.zip", collected_at=attempted + timedelta(seconds=60),
+        source_url="https://vadahub.go.kr/renew/spaceData/index.do", sha256="b" * 64)
+    downloads = []
+    class Store:
+        def __init__(self, root): pass
+        async def recover(self): pass
+        async def versions(self, _layer): return (SimpleNamespace(receipt=cached),)
+        async def put(self, receipt): return SimpleNamespace(receipt=receipt)
+    class Client:
+        def __init__(self, **options): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def list_datasets(self): return (SimpleNamespace(dataset_id="63"),)
+        async def list_layers(self, dataset): return (layer,)
+        async def download(self, _layer, destination):
+            downloads.append(destination)
+            return SimpleNamespace(local_path=destination, collected_at=now, source_url=cached.source_url, sha256="a" * 64)
+        async def load_file(self, path, **options):
+            return [SimpleNamespace(record_id="001", layer=layer, attributes={"strpnt_nm": "목포", "dstntn_nm": "제주"})]
+    monkeypatch.setattr(module, "LocalArchiveStore", Store)
+    monkeypatch.setattr(module, "VadaHubFileClient", Client)
+
+    async def run():
+        settings, engine, factory = await database(tmp_path)
+        async with factory() as session:
+            for key in SOURCES:
+                if key != "passenger_routes":
+                    session.add(FerryReferenceSnapshot(dataset=key, response_json=payload(key).model_dump(mode="json"), last_attempt_at=now))
+            session.add(FerryReferenceSnapshot(dataset="passenger_routes", response_json=payload("passenger_routes").model_dump(mode="json"),
+                                               last_attempt_at=attempted, last_error=previous_error))
+            await session.commit()
+            result = await VadaHubCollectionService(settings).collect(session)
+            assert result["status"] == "success"
+            row = await session.get(FerryReferenceSnapshot, "passenger_routes")
+            assert len(downloads) == (1 if previous_error is None else 0)
+            assert row.response_json["source_sha256"] == ("a" if previous_error is None else "b") * 64
+        await engine.dispose()
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("recording_step", ["rollback", "get", "commit"])
 def test_cancel_survives_failure_recording_errors_and_releases_lock(tmp_path, monkeypatch, recording_step):
     async def run():

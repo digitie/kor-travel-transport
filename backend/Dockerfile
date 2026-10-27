@@ -41,6 +41,8 @@ COPY docker-compose.yml /app/compose-contract/docker-compose.yml
 COPY docker-compose.transport-admin.yml /app/compose-contract/docker-compose.transport-admin.yml
 # 회귀 컨테이너에서 legacy DB와 실험 fixture의 간격을 구분해 확인한다.
 COPY docker-compose.db.yml docker-compose.live.yml /app/compose-contract/
+# Odroid code-server 포트 overlay 계약(test_transport_override_contract.py)도 같은 무비밀 계약 사본으로 둔다.
+COPY transport.override.yml /app/compose-contract/transport.override.yml
 COPY deploy/transport-admin /app/compose-contract/deploy/transport-admin
 COPY packages/kor-travel-transport-admin/frontend /app/compose-contract/packages/kor-travel-transport-admin/frontend
 

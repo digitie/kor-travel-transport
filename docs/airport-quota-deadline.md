@@ -15,8 +15,14 @@ ICN 수집이 정상이어도 KAC가 quota 대기 중이면 native partial_succe
 origin 비교로 새 deadline을 지울 수 없다. 초기 비quota 성공도 원장행과 origin fence를
 전진시켜 새성공 뒤에 도착한 옛 quota 실패가 대기를 다시 만들지 못하게 한다. 표의 last_success_at은 임의로 KAC 성공을 주장하지 않는다.
 Map flagON/OFF 모두 공항 collector의 기존 live quota 판정을 사용한다. source raw/provider 파싱과
-기존 이력·API계약은 그대로다. 즉시 quota를 반복 호출하거나 남은 KAC fee 순회를 계속하지 않는다.
+기존 이력은 그대로다. 즉시 quota를 반복 호출하거나 남은 KAC fee 순회를 계속하지 않는다.
 ICN 수집은 계속된다.
+
+API 표면(2026-10-27 정정): deadline이 지났거나 없으면 차단이 아니므로 legacy 분기와 같이 until·오류문을
+비운다. 그래서 `/v1/admin/collector-status`는 `upstream_rate_limited=false`와 과거
+`upstream_rate_limited_until`을 함께 내지 않는다(차단 중일 때만 until을 낸다). 원장 행
+`airport_kac_quota`는 성공 run에서도 생기지만 교통 원천이 아니므로 `/v1/transport/collector-status`의
+`sources`에서 뺀다. 공항 collector-status의 기존 필드 계약은 그대로다.
 
 두 독립 리뷰/정확CI/로컬PG·Compose 검증 전 운영 배포하지 않는다. 공유 daemon과 활성수집은
 root 조율 아래 유지한다. 이 문서의 구현은 PR118 고정 범위와 분리한다.

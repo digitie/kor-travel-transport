@@ -32,15 +32,21 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-test("외부 장소 지도는 자체 API를 호출하지 않고 목록 왕복에도 실제 카메라를 유지한다", async () => {
+test("외부 장소 지도는 자체 API를 호출하지 않고 이동을 카메라 prop으로 되먹이지 않으며 목록 왕복에는 마지막 카메라로 다시 연다", async () => {
   const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
   try {
     await act(async () => root.render(<TransportMap places={[station]} />));
     const camera = () => container.querySelector('[data-testid="fixture-map"]')!;
-    expect(camera().getAttribute("data-center")).toBe("128.53,37.6");
+    const readout = () => container.querySelector(".kt-map-coordinates")!.textContent;
+    // mount 시점 카메라가 유지된다. 실제 카메라는 readout에만 반영한다(SDK가 prop 변화마다 ease를 다시 걸지 않게).
+    expect(camera().getAttribute("data-center")).toBe("127.8,36.2");
+    expect(camera().getAttribute("data-zoom")).toBe("7");
+    expect(readout()).toBe("center 128.5300, 37.6000 · z 12.5");
     Object.assign(mapState, { longitude: 129.1, latitude: 35.2, zoom: 14 });
     await act(async () => [...container.querySelectorAll("button")].find((node) => node.textContent === "지도 이동 모의")!.click());
-    expect(camera().getAttribute("data-center")).toBe("129.1,35.2");
+    expect(camera().getAttribute("data-center")).toBe("127.8,36.2");
+    expect(camera().getAttribute("data-zoom")).toBe("7");
+    expect(readout()).toBe("center 129.1000, 35.2000 · z 14.0");
     await act(async () => container.querySelector<HTMLButtonElement>('[role="tab"][id]')?.focus());
     await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((node) => node.textContent?.includes("목록"))!.click());
     expect(container.querySelector('[data-testid="fixture-map"]')).toBeNull();

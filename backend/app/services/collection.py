@@ -381,9 +381,12 @@ class CollectionService:
         if quota is not None:
             # 한 번 명시 deadline을 만든 뒤에는 blocked 관찰 run의 started_at으로 재계산하지 않는다.
             due = serialize_utc(quota.next_due_at) if quota.next_due_at is not None else None
+            if due is None or now_utc() >= due:
+                # 지난 deadline은 차단이 아니다. legacy 분기와 같이 until·message를 비워 collector-status에
+                # `upstream_rate_limited=false`와 과거 until이 함께 나가지 않게 한다.
+                return UpstreamRateLimitState(is_blocked=False)
             return UpstreamRateLimitState(
-                is_blocked=due is not None and now_utc() < due,
-                blocked_until=due, source="kac_parking", error_message=quota.last_error,
+                is_blocked=True, blocked_until=due, source="kac_parking", error_message=quota.last_error,
             )
         latest_run = await session.scalar(
             select(CollectionRun)
@@ -836,6 +839,8 @@ class CollectionService:
         fetched = []
         failures = []
         failed_responses = []
+        # current 승격만 거절된 원천의 마지막 수신 응답. 이력은 플래그 OFF와 같은 parser로 계속 남긴다.
+        rejected = {}
         for source in sources:
             if source == "kac_parking" and rate_limit_state.is_blocked:
                 failures.append((source, normalize_upstream_rate_limit_error(rate_limit_state.error_message)
@@ -851,11 +856,13 @@ class CollectionService:
                     if not rows or len(rows) * 4 < previous[source]:
                         raise ValueError("주차장 빈/급감 집합은 재확인이 필요합니다")
                     fetched.append((source, response, history_rows, rows))
+                    rejected.pop(source, None)
                     break
                 except Exception as exc:
                     last_error = self._redact(str(exc))
                     if response is not None:
                         failed_responses.append((response, last_error))
+                        rejected[source] = response
                     if attempt or is_upstream_rate_limit_error(last_error):
                         failures.append((source, last_error))
                         break
@@ -878,6 +885,18 @@ class CollectionService:
             snapshot_count += await self._store_observations(session, run_id, history_rows, lot_ids=lot_ids)
             await store_parking_current(session, self.settings, source=source, run_id=run_id,
                                         observations=rows, proof=response.completion, lot_ids=lot_ids)
+        for source, response in rejected.items():
+            # 엄격 검증·급감 guard는 current 승격에만 건다. 용량0·미매핑 공항 한 행 때문에 그 원천의 이번 이력을
+            # 통째로 잃지 않게 플래그 OFF 경로와 같은 parser·인자로 이력만 저장한다(KAC는 현재값만 주므로
+            # 빠진 이력은 되살릴 수 없다). 관대한 parser마저 실패하면 지금처럼 이력을 건너뛴다. head는 그대로다.
+            try:
+                validate_source_response_body(response.source, response.body_text)
+                history_rows = (parse_kac_parking(response.body_text,
+                                                  allowed_airport_codes=self.settings.supported_airport_codes)
+                                if source == "kac_parking" else parse_incheon_parking(response.body_text))
+            except Exception:
+                continue
+            snapshot_count += await self._store_observations(session, run_id, history_rows)
         for source, message in failures:
             errors.append(message)
             await mark_reference_failure(session, kind=KIND, scope=parking_scope(self.settings, source),

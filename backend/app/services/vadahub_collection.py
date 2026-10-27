@@ -31,7 +31,8 @@ class VadaHubCollectionService:
         self.settings = settings
         self.fetcher = fetcher
 
-    async def _fetch(self, key: str, *, retry_failed_source: bool = False) -> FerryReferenceData:
+    async def _fetch(self, key: str, *, retry_failed_source: bool = False,
+                     reuse_recent_archive: bool = True) -> FerryReferenceData:
         title, dataset_id, layer_id, table = SOURCES[key]
         root = Path(self.settings.vadahub_archive_directory)
         store = LocalArchiveStore(root / "archives")
@@ -76,7 +77,10 @@ class VadaHubCollectionService:
                     return self._validate(FerryReferenceData(dataset=key, title=title, source=f"vadahub:{table}",
                         source_url=receipt.source_url, source_version=layer.history_date,
                         source_sha256=receipt.sha256, collected_at=receipt.collected_at, items=rows), key)
-                if recent:
+                # 보관본 재사용은 실패 재시도와 게시 전 중단(정상 게시본 없음)에만 쓴다. 정상 게시본의 7일 due 갱신은
+                # 항상 새 원본을 받는다 — due는 다운로드 전 last_attempt_at, 보관 수명은 collected_at을 보므로 둘이
+                # 어긋나면 주간 경계에서 지난주 ZIP을 다시 읽고 다음 실제 다운로드가 14일째로 밀린다.
+                if recent and reuse_recent_archive:
                     try:
                         return await load(recent[-1].receipt)
                     except Exception:
@@ -127,11 +131,14 @@ class VadaHubCollectionService:
                             continue
                     await session.commit()  # 브라우저 대기 중 DB transaction을 잡지 않는다.
                     attempted_at = now_utc()
+                    # 여기까지 온 정상 게시본은 7일 due 갱신이다 — 새 원본을 받는다.
+                    due_refresh = bool(old and old.response_json and not old.last_error)
                     try:
                         # 이전 오류가 있어도 정상 ZIP은 재사용한다. 최근 ZIP을 실제 검증해
                         # 실패한 경우에만 새 원문을 내려받아 저장 실패 뒤의 비용을 줄인다.
                         value = (await self.fetcher(key) if self.fetcher is not None else
-                                 await self._fetch(key, retry_failed_source=bool(old and old.last_error)))
+                                 await self._fetch(key, retry_failed_source=bool(old and old.last_error),
+                                                   reuse_recent_archive=not due_refresh))
                         data = self._validate(FerryReferenceData.model_validate(value), key)
                     except Exception as exc:
                         failures.append(key)

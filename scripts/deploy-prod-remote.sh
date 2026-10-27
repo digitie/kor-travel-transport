@@ -121,11 +121,21 @@ PREVIOUS_CODE_SERVER_IMAGE=""
 PREVIOUS_CODE_SERVER_TAG=""
 DEPLOYMENT_REPLACEMENT_STARTED=false
 DEPLOYMENT_VERIFIED=false
+# 자동 code-server rollback 자격. 교체 전 DB가 이미 후보의 Alembic head였고(스키마 불변), 실패가 compose up·
+# code-server health·location 적재 단계에서 났을 때만 참이다. migration이 적용된 뒤 code-server만 옛 이미지로
+# 되돌리면 새 스키마 위에서 옛 수집기가 새 API와 함께 도는 혼합 release가 되므로 그때는 forward-fix로 고친다.
+CODE_SERVER_ROLLBACK_ELIGIBLE=false
+CODE_SERVER_ROLLBACK_BLOCKER=""
 cleanup_remote() {
   local exit_status=$?
   set +e
   if [[ "${DEPLOYMENT_REPLACEMENT_STARTED}" == true && "${DEPLOYMENT_VERIFIED}" != true ]]; then
-    if rollback_dagster_code_server; then
+    if [[ "${CODE_SERVER_ROLLBACK_ELIGIBLE}" != true ]]; then
+      echo "==================================================================" >&2
+      echo "배포 검증 실패 — 자동 rollback 없음: ${CODE_SERVER_ROLLBACK_BLOCKER:-자동 rollback 자격이 없다}." >&2
+      echo "옛 code-server만 되돌리면 새 스키마·새 API와 섞인다. 원인을 고친 release로 다시 배포(forward-fix)한다." >&2
+      echo "==================================================================" >&2
+    elif rollback_dagster_code_server; then
       echo "배포 검증 실패: 이전 Dagster code-server release로 복구했다." >&2
     else
       echo "배포 검증과 Dagster code-server 복구가 모두 실패했다. Manager에서 ${dagster_location:-kor-travel-transport} location을 확인해야 한다." >&2
@@ -286,13 +296,20 @@ location_state() {
     python3 -c 'import json,sys; w=json.load(sys.stdin)["data"]["workspaceOrError"]; assert w["__typename"] == "Workspace", w; got={e["name"]: (e["locationOrLoadError"] or {}).get("__typename") for e in w["locationEntries"]}; print(got.get(sys.argv[1]) or "absent")' "${dagster_location}"
 }
 wait_code_server_health() {
-  local health="" attempt
-  for attempt in $(seq 1 60); do
+  # 실행 중이고 아직 `starting`이면 compose healthcheck의 냉기동 창(start_period 600초 + interval 90초)만큼
+  # 기다린다(`docker-compose.shared.yml` code-server). unhealthy·정지 등 다른 상태는 기존 5분(60×5초) 예산이다.
+  local health="" attempt=0 limit start_wait_seconds=690
+  while :; do
+    attempt=$((attempt + 1))
     health="$(docker inspect -f '{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "${dagster_code_server}" 2>/dev/null || true)"
     if [[ "${health}" == "true healthy" ]]; then
       return 0
     fi
-    if [[ "${attempt}" == "60" ]]; then
+    limit=60
+    if [[ "${health}" == "true starting" ]]; then
+      limit=$(((start_wait_seconds + 4) / 5))
+    fi
+    if ((attempt >= limit)); then
       echo "Dagster code-server가 healthy가 되지 않았다: ${dagster_code_server} (${health:-missing})" >&2
       return 1
     fi
@@ -371,6 +388,13 @@ for legacy in dagster-daemon dagster-webserver; do
   fi
 done
 
+# 교체 전에 운영 DB가 이미 이 release의 Alembic head인지 기록한다(drain 동안 스키마를 바꾸는 쪽은 없다).
+# 아니면 아래 `compose up`의 migrate가 스키마를 바꾸므로, 그 뒤의 어떤 실패에도 code-server를 자동으로 되돌리지 않는다.
+SCHEMA_AT_RELEASE_HEAD_BEFORE_REPLACEMENT=false
+if database_at_release_head; then
+  SCHEMA_AT_RELEASE_HEAD_BEFORE_REPLACEMENT=true
+fi
+
 # 공용 daemon은 다른 테넌트도 돌리므로 멈추지 않는다. 대신 이 location의 진행 중 run이 0이 될 때까지
 # 기다린 직후 교체한다. 그 사이 schedule이 새 run을 띄우면(5분 주기 수집) 교체가 그 run을 끊는다 —
 # 공용 instance의 run monitoring이 실패로 닫고 다음 tick이 다시 수집한다. 큐에만 있던 run은 code-server가
@@ -389,6 +413,11 @@ while :; do
   fi
   sleep 15
 done
+if [[ "${SCHEMA_AT_RELEASE_HEAD_BEFORE_REPLACEMENT}" == true ]]; then
+  CODE_SERVER_ROLLBACK_ELIGIBLE=true
+else
+  CODE_SERVER_ROLLBACK_BLOCKER="이 release의 migration이 운영 스키마를 바꿨다"
+fi
 capture_previous_code_server_image
 verify_manager_instance_config || exit 2
 DEPLOYMENT_REPLACEMENT_STARTED=true
@@ -397,6 +426,9 @@ compose ps
 # Compose가 컨테이너를 만들었다는 것과 공용 plane이 이 location을 다시 싣는 것은 다르다.
 wait_code_server_health
 wait_location_loaded
+# code-server와 location은 검증을 통과했다. 이후 backend·frontend 실패는 code-server rollback으로 고칠 수 없다.
+CODE_SERVER_ROLLBACK_ELIGIBLE=false
+CODE_SERVER_ROLLBACK_BLOCKER="code-server·location 검증 뒤 backend·frontend 검증이 실패했다"
 health_payload=""
 for attempt in $(seq 1 30); do
   if health_payload="$(curl -fsS "http://127.0.0.1:${PUBLIC_API_PORT:-12302}/health" 2>/dev/null)"; then

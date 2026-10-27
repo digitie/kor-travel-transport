@@ -11,7 +11,11 @@ API에서 확인한다. SDK의 `OpenApiPage.total_count`가 없으면fail-closed
 receipt를증명하지않는다. HTTP/원문파싱·다음page호출루프는SDK가소유하고, Transport는
 소비한typed page수량/고유identity를검증한다. 잘못된/빈 응답은 최대1회 재확인하고 실패하면 이전 성공집합을 유지한다.
 이전 성공25% 미만은 두 번의 완결 metadata와 동일 identity 집합이 확인된 nonempty만 승인한다.
-이름/코드 누락·중복은 성공으로 내보내지 않는다. 고속/시외 전체 fetch와 보조기준정보 fetch를
+이름/코드 누락·중복은 성공으로 내보내지 않는다. 이 엄격 identity 검사(버스 `_terminal_identity`,
+철도 `_rail_keys`, 항구 `_port_keys`)는 Map membership용이라 `TRANSPORT_MAP_CURRENT_ENABLED=true`일 때만
+건다. 플래그 OFF(현재 운영)는 #115~#117 이전처럼 id 없는 항목만 저장에서 건너뛰고 이름 없는 행·중복
+id(마지막 값이 이긴다)를 저장한다. 그래서 provider의 한 행이 하루치 기준정보 갱신을 막지 않는다. 철도의
+XLSX 보관 receipt 검증과 세 종류의 급감 guard는 플래그와 무관하게 유지한다. 고속/시외 전체 fetch와 보조기준정보 fetch를
 마친 뒤 reference rows+source head/memberIDs+native success를 하나의 transaction에 확정한다.
 외부 fetch 동안 저장 session의 DB 연결을 반환한다. PostgreSQL의 기존 전용 session advisory lease 연결1개는 소유권을 위해 유지한다. 후기 저장 실패는 rollback하고 scalar native run ID로
 실패를 기록한다. 만료 ORM run.id 재접근을 하지 않는다.

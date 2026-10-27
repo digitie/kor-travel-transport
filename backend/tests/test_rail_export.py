@@ -119,6 +119,33 @@ def test_empty_file_retry_retains_success_and_fetch_has_no_db_connection(export_
     assert response.status_code == 200 and response.json()["meta"]["source_status"] == "stale"
 
 
+@pytest.mark.parametrize(("flag", "head", "expected"), [
+    (True, False, "success"), (False, False, "skipped"), (True, True, "skipped"),
+])
+def test_flag_on_without_a_head_bootstraps_despite_a_recent_success(export_client, flag, head, expected):
+    """플래그를 켠 직후 최근(플래그 OFF) 성공 때문에 48시간 동안 head 없이 503이 되지 않는다."""
+    c = export_client
+    settings = c.app.state.settings
+    settings.rail_reference_collection_enabled = True
+    calls = []
+    async def fetch():
+        calls.append(True)
+        return (_station(),)
+    service = RailMaritimeCollectionService(settings, rail_fetcher=fetch)
+    settings.transport_map_current_enabled = head  # 첫 성공이 head를 만들지 정한다.
+    async def first(s):
+        assert (await service.collect_rail_reference(s))["status"] == "success"
+    _run(c, first)
+    settings.transport_map_current_enabled = flag
+    async def second(s):
+        status = (await service.collect_rail_reference(s))["status"]
+        return status, await s.get(ReferenceExportState, ("rail-station", "nationwide")) is not None
+    status, has_head = _run(c, second)
+    assert status == expected
+    assert len(calls) == (2 if expected == "success" else 1)
+    assert has_head is (head or expected == "success")
+
+
 def test_duplicate_file_identity_never_gets_a_success_head(export_client):
     c = export_client
     settings = c.app.state.settings

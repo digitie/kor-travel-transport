@@ -152,3 +152,26 @@ def test_publication_between_reads_keeps_current_day_history(client):
             assert len(page["history"]) == 2
             assert page["history"][-1]["average_price"] == page["items"][0]["average_price"] == 1666.67
     asyncio.run(exercise())
+
+
+def test_deferred_publication_returns_false_and_logs_a_redacted_one_line_cause(caplog, monkeypatch):
+    """발행 실패는 원본 성공을 취소하지 않되, 유형만이 아니라 가린 한 줄 원인을 남긴다(op metadata·event log용)."""
+    import logging
+    from contextlib import asynccontextmanager
+
+    from app.services import fuel_statistics as module
+
+    class Session:
+        @asynccontextmanager
+        async def begin_nested(self):
+            yield
+
+    async def timeout(*_args):
+        raise TimeoutError("command timeout\n  while calling https://example.invalid/api?serviceKey=owned-secret-key&pageNo=1")
+
+    monkeypatch.setattr(module, "publish_fuel_statistics", timeout)
+    with caplog.at_level(logging.WARNING, logger="app.services.fuel_statistics"):
+        assert asyncio.run(module.try_publish_fuel_statistics(Session(), OPINET, datetime.now(timezone.utc))) is False
+    message = caplog.records[-1].getMessage()
+    assert "cause=TimeoutError: command timeout while calling" in message
+    assert "\n" not in message and "owned-secret-key" not in message

@@ -92,7 +92,14 @@ class BusReferenceCollectionService:
         if latest_success is not None:
             if latest_success.tzinfo is None:
                 latest_success = latest_success.replace(tzinfo=UTC)
-            if now_utc() - latest_success < timedelta(days=3):
+            # Map 플래그를 켰는데 express·intercity head 중 하나라도 없으면 최근 성공(플래그 OFF 수집)이 있어도
+            # due다 — bus-terminals export가 최대 3일 동안 503으로 남지 않게 첫 head를 바로 만든다.
+            bootstrap = False
+            if self.settings.transport_map_current_enabled:
+                heads = set((await session.scalars(select(ReferenceExportState.scope_key).where(
+                    ReferenceExportState.kind == "bus-terminal"))).all())
+                bootstrap = bool({"express", "intercity"} - heads)
+            if not bootstrap and now_utc() - latest_success < timedelta(days=3):
                 return {"status": "skipped", "reason": "TAGO bus reference is not due for 72 hours"}
 
         run = CollectionRun(started_at=now_utc(), status="running", trigger=trigger)
@@ -161,6 +168,10 @@ class BusReferenceCollectionService:
         for attempt in range(2):
             try:
                 terminals, proof = await self._fetch_terminals(provider)
+                if not self.settings.transport_map_current_enabled:
+                    # 엄격 identity는 Map membership용이다. 플래그 OFF는 이전처럼 id 없는 항목만 저장에서 건너뛰고
+                    # 이름 없는 행·중복 id(마지막 값이 이긴다)를 허용한다.
+                    return terminals, proof, None
                 return terminals, proof, self._terminal_identity(terminals)
             except ValueError:
                 if attempt:
@@ -196,7 +207,8 @@ class BusReferenceCollectionService:
         collected_at = now_utc()
         for service_type, terminals, proof, cities, classes in fetched:
             for item in terminals:
-                await self._upsert_terminal(session, service_type, item, collected_at)
+                if item.terminal_id:  # 플래그 ON은 identity 검사가 이미 모든 id를 보장한다.
+                    await self._upsert_terminal(session, service_type, item, collected_at)
             await session.flush()
             if self.settings.transport_map_current_enabled:
                 ids = list((await session.scalars(select(BusTerminalReference.id).where(

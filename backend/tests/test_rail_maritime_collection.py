@@ -110,6 +110,31 @@ def test_rail_reference_collection_upserts_public_file_rows(tmp_path: Path) -> N
     asyncio.run(run())
 
 
+def test_flag_off_rail_reference_accepts_duplicate_file_identity(tmp_path: Path) -> None:
+    """엄격 identity는 Map membership(플래그 ON)용이다. 플래그 OFF는 중복 identity의 마지막 값이 이긴다."""
+    from dataclasses import replace
+
+    settings = _settings(tmp_path, rail_reference_collection_enabled=True, transport_map_current_enabled=False)
+    engine, session_factory = create_engine_and_session_factory(settings.database_url)
+
+    async def fetch() -> tuple[FileStationInfo, ...]:
+        return (_station(), replace(_station(), english_name="Updated Station"))
+
+    async def run() -> None:
+        await init_database(engine)
+        service = RailMaritimeCollectionService(settings, rail_fetcher=fetch)
+        async with session_factory() as session:
+            result = await service.collect_rail_reference(session)
+        async with session_factory() as session:
+            stations = (await session.scalars(select(RailStationReference))).all()
+            run_row = await session.scalar(select(CollectionRun))
+        assert result["status"] == "success" and run_row.status == "success"
+        assert [station.english_name for station in stations] == ["Updated Station"]
+        await engine.dispose()
+
+    asyncio.run(run())
+
+
 class _MaritimeClient:
     async def __aenter__(self) -> "_MaritimeClient":
         return self
@@ -170,6 +195,35 @@ def test_maritime_reference_collection_stores_only_stable_reference_data(tmp_pat
             "port_location_failed_calls": 0,
         }
         await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_flag_off_maritime_reference_keeps_a_nameless_port(tmp_path: Path) -> None:
+    """엄격 identity는 Map membership(플래그 ON)용이다. 플래그 OFF는 이름 없는 항구도 저장하고 id 없는 항구만 건너뛴다."""
+    settings = _settings(tmp_path, maritime_reference_collection_enabled=True, port_guideline_collection_enabled=False,
+                         data_go_kr_service_key="test-key", transport_map_current_enabled=False)
+
+    class Client(_MaritimeClient):
+        async def iter_ports(self, *, page_size: int, max_pages: int):
+            assert (page_size, max_pages) == (100, 20)
+            yield DomesticFerryPort(port_id="P001", port_name="테스트항", raw={"nodeId": "P001"})
+            yield DomesticFerryPort(port_id="P002", port_name=None, raw={"nodeId": "P002"})
+            yield DomesticFerryPort(port_id=None, port_name="코드없는항", raw={})
+
+    async def run() -> None:
+        engine, factory = create_engine_and_session_factory(settings.database_url)
+        await init_database(engine)
+        service = RailMaritimeCollectionService(settings, maritime_client_factory=lambda *_args, **_kwargs: Client())
+        try:
+            async with factory() as session:
+                summary = await service.collect_maritime_reference(session)
+            async with factory() as session:
+                ports = (await session.scalars(select(FerryPort).order_by(FerryPort.port_id))).all()
+            assert summary["status"] == "success"
+            assert [(port.port_id, port.port_name) for port in ports] == [("P001", "테스트항"), ("P002", None)]
+        finally:
+            await engine.dispose()
 
     asyncio.run(run())
 

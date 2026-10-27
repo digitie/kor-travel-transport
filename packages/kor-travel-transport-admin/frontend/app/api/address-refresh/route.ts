@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
   const token = (process.env.TRANSPORT_ADMIN_WRITE_TOKEN ?? "");
   if (token.length < 32) return reply("관리자 API 토큰이 설정되지 않았습니다.", 503);
   try {
-    const response = await fetch(new URL("/v1/transport/admin/address-refresh", (process.env.TRANSPORT_API_INTERNAL_URL ?? "http://127.0.0.1:14001")), {
+    const response = await fetch(new URL("/v1/transport/admin/address-refresh", (process.env.TRANSPORT_API_INTERNAL_URL ?? "http://127.0.0.1:12302")), {
       headers: { "x-transport-admin-token": token }, cache: "no-store", signal: AbortSignal.timeout(12_000),
     });
     if (!response.ok) return reply("주소 갱신 상태를 읽지 못했습니다.", response.status);

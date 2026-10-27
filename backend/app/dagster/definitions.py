@@ -320,8 +320,10 @@ def collect_highway_transport(context) -> dict[str, Any]:
 
 
 #: 유가 op 동안 Dagster event log로 넘기는 logger. 오피넷 수집기의 단계별 진행(지역 탐색, 탭별 시도 진행,
-#: 경과 시간)과 수집 서비스의 수집·저장 경과 시간이다. code-server는 logging을 설정하지 않아 INFO가 버려진다.
-FUEL_PROGRESS_LOGGERS = ("opinet.experimental.browser", "app.services.transport_collection")
+#: 경과 시간)과 수집 서비스의 수집·저장 경과 시간, 유가 통계 발행 지연의 한 줄 원인이다. code-server는 logging을
+#: 설정하지 않아 INFO가 버려지고 경고도 event log에 닿지 않는다.
+FUEL_STATISTICS_LOGGERS = ("app.services.fuel_statistics",)
+FUEL_PROGRESS_LOGGERS = ("opinet.experimental.browser", "app.services.transport_collection", *FUEL_STATISTICS_LOGGERS)
 #: event log에 싣는 진행 로그 한 줄의 상한.
 MAX_FORWARDED_LOG_CHARS = 1000
 
@@ -381,7 +383,8 @@ def collect_fuel_transport(context) -> dict[str, Any]:
         result = _collect_transport("fuel")
         context.add_output_metadata({key: value for key, value in result.items()
                                      if key in {"status", "collection_run_id", "fuel_station_count", "fuel_price_count",
-                                                "fuel_ready", "next_fuel_due_at", "last_fuel_success_at", "skip_reason"}})
+                                                "fuel_ready", "next_fuel_due_at", "last_fuel_success_at", "skip_reason",
+                                                "fuel_statistics_published"}})
         if result.get("status") == "skipped":
             if result.get("skip_reason") == "collector_busy":
                 context.log.warning("유가 수집은 다른 수집기가 체크포인트를 사용 중이어서 실행하지 않았습니다(status=skipped).")
@@ -593,9 +596,13 @@ def collect_rest_area_reference(context) -> dict[str, Any]:
 @op
 @_redact_op_errors
 def collect_rest_area_fuel_prices(context) -> dict[str, Any]:
-    with collection_owner(context.run_id, context.instance):
+    # 통계 발행이 미뤄지면(포화된 ARM의 command_timeout 등) 원인을 event log와 output metadata에서 보이게 한다.
+    with collection_owner(context.run_id, context.instance), _forward_progress_logs(context, FUEL_STATISTICS_LOGGERS):
         settings = _settings()
-        return asyncio.run(_run_with_session(settings, RestAreaCollectionService(settings).collect_fuel_prices))
+        result = asyncio.run(_run_with_session(settings, RestAreaCollectionService(settings).collect_fuel_prices))
+        if "fuel_statistics_published" in result:
+            context.add_output_metadata({"fuel_statistics_published": result["fuel_statistics_published"]})
+        return result
 
 
 @job(tags=_job_tags("reference", "rest_area_reference_collection_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))

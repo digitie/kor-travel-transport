@@ -6,7 +6,7 @@ const TIMEOUT_MS = 30_000;
 
 export function transportUpstreamUrl(path: string[], search: URLSearchParams) {
   if (!isAllowedTransportPath(path)) return null;
-  const base = (process.env.TRANSPORT_API_INTERNAL_URL ?? "http://127.0.0.1:14001").replace(/\/$/, "");
+  const base = (process.env.TRANSPORT_API_INTERNAL_URL ?? "http://127.0.0.1:12302").replace(/\/$/, "");
   const target = new URL(`${base}/v1/${path.join("/")}`);
   search.forEach((value, key) => target.searchParams.append(key, value));
   return target;

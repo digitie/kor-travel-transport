@@ -22,6 +22,13 @@ def to_seoul(value: datetime) -> datetime:
     return ensure_tz(value).astimezone(SEOUL_TZ)
 
 
+def seconds_until_next_seoul_midnight(value: datetime) -> int:
+    """다음 Asia/Seoul 자정까지 남은 초(최소 1). KST 날짜로 초기화되는 일일 호출 상한의 Retry-After에 쓴다."""
+    local = to_seoul(value)
+    midnight = (local + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return max(1, int((midnight - local).total_seconds()))
+
+
 def to_utc(value: datetime, default_tz: str = "Asia/Seoul") -> datetime:
     return ensure_tz(value, default_tz).astimezone(UTC_TZ)
 

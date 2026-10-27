@@ -341,18 +341,17 @@ cutover read-only source로만 남긴다.
 
 배포 host는 필수 --host 인자로 받고 Manager530의 targets.transport.host → hosts.<key>.addr 및 원격 자기 IPv4와 대조한다. 아래 n150 값은 기존 운영 이력이며 새 script의 주소 기본값이 아니다.
 
-배포 대상 이력:
+현재 운영(2026-10-27 정정): Manager 정본의 Odroid `192.168.1.13`이다([ADR-014](adr/014-odroid-host-and-deploy-host-flag.md)
+accepted, 2026-10-19 현재 운영 수용). project `kor-travel-transport`, 앱 경로 `/home/digitie/apps/kor-travel-transport`
+(`scripts/deploy-prod.sh`이 승인하는 유일한 디렉터리), API 12302·web 12303·gateway 12301·admin 12305·code-server
+12306(`transport.override.yml`)이다. 현재 절차는 [runbooks/deployment.md](runbooks/deployment.md)의 현재 Odroid 정본 절이다.
+
+배포 대상 이력(n150, 전환 전):
 
 - IP: `192.168.1.14`
 - 사용자: `digitie`
-- 앱 경로: `/home/digitie/apps/kor-travel-transport`(`scripts/deploy-prod.sh`이 승인하는 유일한 디렉터리; 옛 경로
-  `/home/digitie/apps/parking-radar`는 ADR-010 개명 전 값)
-
-계획(2026-10-13 기준, [ADR-014](adr/014-odroid-host-and-deploy-host-flag.md) proposed, 미구현): 배포 대상을
-odroid `192.168.1.13`으로 옮긴다 — 포트(14001/14002/14005, 12301/12305)·compose project·앱 디렉터리
-`/home/digitie/apps/kor-travel-transport`는 같고 호스트만 바뀌며, HAProxy `pr`/`pr-api`/`transport`/`transport-api`
-backend가 `.13`으로, 옛 `pr2` host와 odroid의 legacy `parking-radar` 스택은 폐기 예정이다(소유자 §14-2 미결 — ADR-014
-가정). 전환 전까지 이 절의 n150 값이 현재 운영이다.
+- 앱 경로: `/home/digitie/apps/kor-travel-transport`(옛 경로 `/home/digitie/apps/parking-radar`는 ADR-010 개명 전 값)
+- 포트: 14001/14002/14005, 12301/12305(odroid 전환 뒤 API·web·code-server는 위 현재 값으로 바뀌었다)
 
 비밀번호는 저장하지 않는 것이 원칙이다.
 

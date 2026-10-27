@@ -14,7 +14,7 @@ async function forward(method: "GET" | "POST", body?: string) {
   const token = process.env.TRANSPORT_ADMIN_WRITE_TOKEN ?? "";
   if (token.length < 32) return deniedConfiguration();
   try {
-    const target = new URL(API_PATH, process.env.TRANSPORT_API_INTERNAL_URL ?? "http://127.0.0.1:14001");
+    const target = new URL(API_PATH, process.env.TRANSPORT_API_INTERNAL_URL ?? "http://127.0.0.1:12302");
     const response = await fetchNoStore(target, {
       method,
       headers: { "x-transport-admin-token": token, ...(body ? { "content-type": "application/json" } : {}) },

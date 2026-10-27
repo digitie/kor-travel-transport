@@ -233,11 +233,17 @@ def test_release_replacement_is_guarded_by_rollback_capture_and_exit_recovery() 
 
 
 @pytest.mark.parametrize(
-    ("replacement_started", "deployment_verified", "should_rollback"),
-    [("true", "false", True), ("false", "false", False), ("true", "true", False)],
+    ("replacement_started", "deployment_verified", "eligible", "should_rollback"),
+    [
+        ("true", "false", "true", True),
+        # 스키마가 바뀌었거나 code-server·location 검증 뒤의 실패 — 자격이 없으면 교체 중 실패여도 되돌리지 않는다.
+        ("true", "false", "false", False),
+        ("false", "false", "true", False),
+        ("true", "true", "true", False),
+    ],
 )
 def test_exit_trap_rolls_back_only_an_unverified_replacement(
-    tmp_path: Path, replacement_started: str, deployment_verified: str, should_rollback: bool
+    tmp_path: Path, replacement_started: str, deployment_verified: str, eligible: str, should_rollback: bool
 ) -> None:
     cleanup = _function(_REMOTE.read_text(encoding="utf-8"), "cleanup_remote")
     rollback_log = tmp_path / "rollback.log"
@@ -249,6 +255,7 @@ def test_exit_trap_rolls_back_only_an_unverified_replacement(
         + "ROLLBACK_RUNTIME_ENV_FILE=''\nTRANSPORT_OVERRIDE_TMP=''\n"
         + f"DEPLOYMENT_REPLACEMENT_STARTED={replacement_started}\n"
         + f"DEPLOYMENT_VERIFIED={deployment_verified}\n"
+        + f"CODE_SERVER_ROLLBACK_ELIGIBLE={eligible}\nCODE_SERVER_ROLLBACK_BLOCKER='fixture blocker'\n"
         + "trap cleanup_remote EXIT\nexit 17\n"
     )
     result = subprocess.run(
@@ -260,6 +267,74 @@ def test_exit_trap_rolls_back_only_an_unverified_replacement(
     )
     assert result.returncode == 17
     assert rollback_log.exists() is should_rollback
+    forward_fix = replacement_started == "true" and deployment_verified == "false" and eligible == "false"
+    assert ("자동 rollback 없음: fixture blocker" in result.stderr) is forward_fix
+
+
+def _post_plane_section(text: str) -> str:
+    """공용 plane 합류 확인 뒤의 본문 — 스키마 기록부터 `DEPLOYMENT_VERIFIED=true`(파일 끝)까지."""
+
+    return text[text.index("SCHEMA_AT_RELEASE_HEAD_BEFORE_REPLACEMENT=false\n") :]
+
+
+@pytest.mark.parametrize(
+    ("schema_at_head", "code_server_healthy", "should_rollback", "message"),
+    [
+        (True, False, True, "이전 Dagster code-server release로 복구했다"),
+        (False, False, False, "자동 rollback 없음: 이 release의 migration이 운영 스키마를 바꿨다"),
+        (True, True, False, "자동 rollback 없음: code-server·location 검증 뒤 backend·frontend 검증이 실패했다"),
+    ],
+)
+def test_verification_failure_rolls_back_only_a_schema_unchanged_code_server_stage(
+    tmp_path: Path, schema_at_head: bool, code_server_healthy: bool, should_rollback: bool, message: str
+) -> None:
+    """migration이 적용된 뒤나 code-server·location 검증을 통과한 뒤에는 옛 code-server로 되돌리지 않는다(혼합 release)."""
+
+    text = _REMOTE.read_text(encoding="utf-8")
+    rollback_log = tmp_path / "rollback.log"
+    script = (
+        "set -euo pipefail\n"
+        + _function(text, "cleanup_remote")
+        + "rollback_dagster_code_server() { printf 'rollback\\n' >> \"$FAKE_ROLLBACK_LOG\"; }\n"
+        + f"database_at_release_head() {{ return {0 if schema_at_head else 1}; }}\n"
+        + f"wait_code_server_health() {{ return {0 if code_server_healthy else 1}; }}\n"
+        + "wait_location_loaded() { :; }\nin_flight_runs() { :; }\nin_flight_workers() { :; }\n"
+        + "capture_previous_code_server_image() { :; }\nverify_manager_instance_config() { :; }\n"
+        + "compose() { :; }\nsleep() { :; }\ncurl() { return 22; }\n"
+        + f"RUNTIME_ENV_FILE={str(tmp_path / '.env.prod.runtime')!r}\n"
+        + "ROLLBACK_RUNTIME_ENV_FILE=''\nTRANSPORT_OVERRIDE_TMP=''\n"
+        + "DEPLOYMENT_REPLACEMENT_STARTED=false\nDEPLOYMENT_VERIFIED=false\n"
+        + "CODE_SERVER_ROLLBACK_ELIGIBLE=false\nCODE_SERVER_ROLLBACK_BLOCKER=''\n"
+        + f"dagster_location=kor-travel-transport\nCANDIDATE_SHA={_SHA}\nPUBLIC_API_PORT=12302\n"
+        + "trap cleanup_remote EXIT\n"
+        + _post_plane_section(text)
+    )
+    result = subprocess.run(
+        ["bash", "-c", script],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "FAKE_ROLLBACK_LOG": str(rollback_log)},
+        timeout=60,
+    )
+    assert result.returncode == 1, result.stderr
+    assert rollback_log.exists() is should_rollback
+    assert message in result.stderr
+
+
+def test_rollback_eligibility_is_recorded_before_replacement_and_cleared_after_location() -> None:
+    text = _REMOTE.read_text(encoding="utf-8")
+    schema = text.index("if database_at_release_head; then\n  SCHEMA_AT_RELEASE_HEAD_BEFORE_REPLACEMENT=true\n")
+    drain = text.index('if runs="$(in_flight_runs)" && [[ -z "${runs}" ]]; then')
+    eligible = text.index("  CODE_SERVER_ROLLBACK_ELIGIBLE=true\n", schema)
+    started = text.index("DEPLOYMENT_REPLACEMENT_STARTED=true\n", schema)
+    up = text.index("\ncompose up -d --no-build\n", started)
+    location = text.index("wait_code_server_health\nwait_location_loaded\n", up)
+    cleared = text.index("CODE_SERVER_ROLLBACK_ELIGIBLE=false\n", location)
+    backend = text.index('health_payload="$(curl', up)
+    assert schema < drain < eligible < started < up < location < cleared < backend
+    # 자격은 교체 전 스키마가 후보 head였을 때만 켠다.
+    assert 'if [[ "${SCHEMA_AT_RELEASE_HEAD_BEFORE_REPLACEMENT}" == true ]]; then\n  CODE_SERVER_ROLLBACK_ELIGIBLE=true' in text
 
 
 def test_shared_dagster_runbook_uses_the_override_aware_release_entry() -> None:
@@ -331,6 +406,26 @@ def test_code_server_health_wait_rejects_a_dead_code_server_and_accepts_a_health
         assert result.returncode == expected, result.stderr
         if expected:
             assert "Dagster code-server가 healthy가 되지 않았다" in result.stderr
+
+
+@pytest.mark.parametrize(("starting_polls", "expected", "polls"), [(80, 0, 81), (500, 1, 138)])
+def test_code_server_health_wait_covers_the_compose_start_period(
+    tmp_path: Path, starting_polls: int, expected: int, polls: int
+) -> None:
+    """compose healthcheck의 start_period(600초)+interval(90초) 동안 `starting`은 실패가 아니다. 예산 뒤에는 실패한다."""
+
+    definition = _function(_REMOTE.read_text(encoding="utf-8"), "wait_code_server_health")
+    counter = tmp_path / "polls"
+    counter.write_text("0", encoding="ascii")
+    docker = (
+        'docker() { local n=$(($(cat "$COUNTER") + 1)); printf "%s" "$n" > "$COUNTER"; '
+        + f'if ((n <= {starting_polls})); then echo "true starting"; else echo "true healthy"; fi; }}\n'
+    )
+    script = definition + "dagster_code_server=test-code-server\n" + docker + "sleep() { :; }\nwait_code_server_health\n"
+    result = subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=False,
+                            env={**os.environ, "COUNTER": str(counter)})
+    assert result.returncode == expected, result.stderr
+    assert int(counter.read_text(encoding="ascii")) == polls
 
 
 def test_deploy_worker_probe_detects_orphan_and_fails_closed() -> None:

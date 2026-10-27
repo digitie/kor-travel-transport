@@ -85,6 +85,8 @@ jobs:
       - run: npx --yes npm@12.0.1 ci
       - run: npm run test
       - run: npm run type-check
+      # eslint.config.mjs의 react-hooks 규칙 해제·이후 lint 회귀도 CI가 잡는다.
+      - run: npm run lint
       - run: npm run build
 
   live-e2e:

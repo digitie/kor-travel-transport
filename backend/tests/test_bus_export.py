@@ -205,6 +205,38 @@ def test_late_store_failure_rolls_back_refs_and_heads_without_expired_run_access
     _run(c, second)
 
 
+@pytest.mark.parametrize(("flag", "seed_heads", "expected"), [
+    (True, False, "success"), (False, False, "skipped"), (True, True, "skipped"),
+])
+def test_flag_on_without_heads_bootstraps_despite_a_recent_success(export_client, flag, seed_heads, expected):
+    """플래그를 켠 직후 최근(플래그 OFF) 성공 때문에 72시간 동안 head 없이 503이 되지 않는다."""
+    from app.models import CollectionRun
+    c = export_client
+    settings = c.app.state.settings
+    settings.transport_map_current_enabled = flag
+    settings.bus_reference_collection_enabled = True
+    settings.data_go_kr_service_key = "fixture"
+    pool = PoolCounter(c.app.state.engine)
+    clients = []
+    def client_factory(**kwargs):
+        clients.append(CompleteClient(pool))
+        return clients[-1]
+    service = BusReferenceCollectionService(settings, client_factory=client_factory)
+    async def recent_success(s):
+        now = now_utc()
+        s.add(CollectionRun(started_at=now, finished_at=now, status="success", trigger="dagster_bus_reference"))
+        if seed_heads:
+            await seed(s)
+    _run(c, recent_success)
+    async def collect(s):
+        status = (await service.collect(s))["status"]
+        return status, {head.scope_key for head in (await s.scalars(select(ReferenceExportState))).all()}
+    status, heads = _run(c, collect)
+    assert status == expected
+    assert len(clients) == (1 if expected == "success" else 0)
+    assert heads == (set() if not flag and not seed_heads else {"express", "intercity"})
+
+
 def test_unapproved_off_mode_source_row_cannot_reuse_old_success(export_client):
     from datetime import timedelta
     c = export_client
