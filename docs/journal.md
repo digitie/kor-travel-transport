@@ -1,3 +1,48 @@
+## 2026-10-28 — PR156 관측 보완의 최신 main 문서 병합
+
+정확40f의 CI backend/frontend/admin은 모두 SUCCESS이며 live-e2e는 skipped다. c7 전체와
+관측 코드 a1a 집중 WSL119/Docker119는 각 원래 소스의 증거로 유지한다. 별도 작업트리에서
+main f647411을 병합했고 충돌은 journal/resume/tasks 세 문서뿐이었다. 양쪽 기록을 보존한다.
+주차 foundation·관측 제품/회귀는40f, 철도·관리자·공식 배포 도구는 main의 blob을 각각 검산한다.
+새 병합 head의 집중·CI·증분 독립 리뷰는 별도이며 새 전체·운영 변경·원본 삭제는0이다.
+2A의 전국/latest·UTC offset/보류 정체 보완은 이 PR에 섞지 않고 원본48시간 정책도 미완이다.
+
+## 2026-10-28 — c7 전체 회수와 Dagster 주차 통계 결과관측 보완
+
+c7 WSL1334 PASS/2 SKIP·Docker1330 PASS/6 SKIP의 actual exit0·원 child/컨테이너 잔여0,
+소스804/locked106/Git10 동일·디스크2GiB PG OOM/max0을 회수했다. c7의 두 CI backend/frontend/admin도 성공이다.
+589 OOM 무효화·초기c7 WSL UNKNOWN·기존 tmpfs/세 dump는 별도로 보존하고 성공에 합산하지 않는다.
+
+독립 리뷰에서 주차 통계 op가 업무 dict만 반환해 busy/not_audited도 관리자에게 SUCCESS만 보이는 P1을 확인했다.
+별도c7 기반 WT에서 실제 Dagster SUCCESS5개가 metadata status 누락으로 실패하는 RED를 재현했고,
+status/coverage/counts/cutoff/선택 창·검산/발행 extrema를 event와 scalar INFO 로그에 남기도록 보완했다.
+순수 Dagster GREEN5와 a1a의 실제 PG 포함 WSL119 PASS·Docker119 PASS(F/E/skip0, actual exit0)를 회수했다.
+양쪽 migration/check0이며 busy/무신규 SUCCESS의 not_audited·부분 검산/신규 발행 범위를 확인했다.
+새 CI·증분 독립 리뷰는 별도 수용한다.
+query/model/schema/API reader/원본 삭제·운영 변경은0이다. 두 P2(오래된 보류 정체·UTC offset floor)는 별도2A에서 추적한다.
+기존 전체는 c7 검증이며 관측 보완 head 전체로 확대하지 않는다. [정산](reports/2026-10-27-parking-statistics-archive.md).
+
+## 2026-10-27 — 주차 legacy 덮어쓰기 차단·전체 QA 무효화와 R2 준비
+
+영구 통계가 있는 DB의 SQLite PK 이관·HTTP upsert/중복 삭제를 같은 transaction lease로 거절한다.
+HTTP는 외부 조회 전과 첫 쓰기 전 재검사하고, SQLite는 sequence 조정까지 중간 commit을 없앴다.
+별도589 스크립트의3회귀 RED와 새 디스크 기반2GiB DB의 집중52개 GREEN을 확인했다.
+589 전체 두 실행은 512MiB/tmpfs PostgreSQL OOM·재초기화로 무효화됐으며 PASS가 아니다.
+본인 pytest만 SIGINT 각1회로 회수했고 실제 exit1/JUnit·잔여0·기존PG/세 dump를 보존했다.
+최소 PATH의 Python3 누락도 별도 QA 원인으로 재현해 새 이미지의 deploy84개/1건너뜀을 확인했다.
+schema35 dump의 거절·통계 보존과 schema36 옛 dump의2→1 통계 손실 가능성도 합성 DB로 구분했다.
+전체 R2·최신 CI·두 리뷰·읽기 전환/최종48시간 정리는 미완이다. [근거와 한계](reports/2026-10-27-parking-statistics-archive.md).
+
+## 2026-10-27 — 주차 원본48시간·통계영구 정책의 선행 저장 후보
+
+사용자 보존 정책을 ADR-015로 기록하고 원본/캐시/영구 통계의 수명을 분리했다. 추가 전용0036,
+10분 충분통계·동시각 공항 합산·원관측 이벤트와 수량/hash 검산, 수동 Dagster backfill을 구현했다.
+기존 읽기 전환 전의 원본 삭제는 항상 거절한다. 별도 PostgreSQL에서 migration/check와 집중22개,
+SQLite 초기21개/1건너뜀, PK 등가 탐색 계획과 데이터가 있는 downgrade 차단을 확인했다.
+초기 합계 기대 오기·SQLite concat 오류·QA 계약 파일 누락·이전 Hash Anti 계획의 원본도 보존한다.
+전체 시험·CI·독립 두 리뷰·읽기 전환·실제48시간 정리/운영 수용은 미완이다.
+[검증 원장과 한계](reports/2026-10-27-parking-statistics-archive.md).
+
 ## 2026-10-27 — 공식 배포 자식의 strict 사전 빌드 handoff
 
 외부 controller 뒤에서 공식 backend 자식이 다시 빌드·1800초 drain하던 P1을 별도
