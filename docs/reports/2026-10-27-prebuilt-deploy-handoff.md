@@ -47,6 +47,8 @@ up·기본 fallback·자식 rollback0, 다음 일반 배포의 strict 이전 이
 
 아래는 LF 원본 bytes다. 후속 controller는 최종 Git archive와 이 원본의 계보를
 다시 고정하며, 이 문서가 과거 archive의 승인 hash를 자동 갱신하지 않는다.
+Windows의 `core.autocrlf=true`는 `git archive`의 Python 출력도 CRLF로 바꿀 수 있다.
+정확 blob archive는 `git -c core.autocrlf=false archive`로 만들고 tree/blob bytes를 재검산한다.
 
 | 파일 | SHA-256 |
 |---|---|
