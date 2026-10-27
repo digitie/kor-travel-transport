@@ -1,5 +1,22 @@
 # 2026-10-27 주차 영구 통계 선행 저장
 
+## 2026-10-28 후속 정산
+
+정확c7의 R2 전체는 WSL1334 PASS/2 SKIP·Docker1330 PASS/6 SKIP, F/E0·실제 exit0을 회수했다.
+원 child/소유 경로 프로세스·backend 컨테이너 잔여0, source804/locked106·Git10 동일·디스크2GiB PG OOM/max0이다.
+Docker 원 컨테이너 source/runtime 지문은 --rm 종료 전14:56:20UTC 검산이며 종료 후 mutable layer 검산으로 확대하지 않는다.
+최종 회수 원장 SHA256은 `1615866fbc780d50e8b9fd940b9a5aef698e675b4899beb6cc54b2263ea917a5`다.
+공통 skip은 empty Dagster probe parameter와 opt-in fuel benchmark, Docker 추가4개는 rsync1/Docker CLI render3이다.
+추가4개는 WSL에서 통과했으며 주차 회귀 skip은 없다. c7 push/PR CI의 backend/frontend/admin은 success다.
+
+최초c7 WSL은 시작 원장 wrapper의 root-owned cwd 권한 오류 뒤 실제 exit를 회수하지 못해 UNKNOWN이며 PASS가 아니다.
+원 Docker 실행은 그대로 보존해 docker wait로 actual exit0을 회수했고, 별도 승인 nonce WSL1회의 위 결과만 채택했다.
+589 OOM 무효화 두 실행·기존 tmpfs PG·세 dump와 실패 로그는 보존했다.
+독립 리뷰의 두 P2(오래된 보류 bucket의 후속 날짜 정체, UTC offset floor)는 c7을 고쳐 통과했다고 쓰지 않고
+별도2A의 RED→GREEN/문서/태스크로 추적한다. [후속 모델](../architecture/parking-archive-coverage.md)과
+[reader/API 조사·반례](2026-10-28-parking-reader-transition-review.md)를 따른다.
+독립 리뷰 최종 정산·운영 수용과 reader/48시간 정리는 아직 완료가 아니다. 아래 이전 미완 표기는 당시 상태다.
+
 ## 범위
 
 사용자는 주차 원본을 이틀만, 통계자료를 영구 보존하도록 확정했다. 이 변경은 그 정책의 **1단계**다. `0036` 영구 통계 테이블과 수동 DB 전용 Dagster job을 추가하고, 원본 정리 진입은 항상 차단한다. 현재 분석/API/UI 읽기, 원본, provider, 자동 수집/schedule은 바꾸지 않는다. 전체 48시간 정책의 적용 완료나 운영 배포가 아니다.

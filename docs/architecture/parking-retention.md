@@ -6,9 +6,14 @@
 
 | 단계 | 구현·수용 기준 | 현재 상태 |
 |---|---|---|
-| 1 | 추가 전용 통계 모델·migration·멱등 backfill·삭제 및 legacy 덮어쓰기 차단 | 구현·검증 중 |
-| 2 | 모든 분석/전망/현재/내부 export 읽기 전환, API 해상도·coverage·48시간 history 계약 | 미구현 |
+| 1 | 추가 전용 통계 모델·migration·멱등 backfill·삭제 및 legacy 덮어쓰기 차단 | c7 전체/CI 통과, 독립 리뷰 정산 중 |
+| 2A | 전국 동시각 충분통계·coverage/seal/보류·작은 최신 상태와 backfill P2 해소 | 후속 구현·집중 검증 중 |
+| 2B | 모든 분석/전망/현재/내부 export 읽기 전환, API 해상도·coverage·48시간 history 계약 | 미구현 |
 | 3 | 기존 원본 backfill·공항/주차장별 수량·hash·값·이벤트 대조 후 48시간 정리와 운영 상태 표시 | 미구현 |
+
+2A의 구체 모델은 [전국 통계·보류·현재 요약](parking-archive-coverage.md), 실제 파일·함수·소비 경로와
+18개 반례 수용 항목은 [읽기 전환 조사](../reports/2026-10-28-parking-reader-transition-review.md)에 둔다.
+1단계 통과는 원본48시간 활성화 완료가 아니다.
 
 ## 실제 의존 경로 조사
 

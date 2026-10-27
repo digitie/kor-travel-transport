@@ -1,3 +1,14 @@
+## 2026-10-28 — 주차 보존 c7 회수와 별도2A 후보
+
+- 현재 상태: c7 WSL1334 PASS/2 SKIP·Docker1330 PASS/6 SKIP, 두 actual exit0·원 child/컨테이너 잔여0,
+  소스804/locked106/Git10·PG OOM/max0을 회수했다. c7 CI 양 실행의 backend/frontend/admin은 success다.
+  초기 UNKNOWN/OOM 실행·old tmpfs/세 dump는 보존하며 c7 독립 리뷰 최종 정산·운영 수용은 별도다.
+- 후속: 별도 c7 기반2A WT에서0037 전국 동시각 통계·coverage/seal/보류·작은 latest 상태를 준비했다.
+  오래된 보류 bucket 정체와 UTC offset floor의 P2는 c7 RED2개를 보존하고 후속에서 수정한다.
+- 다음 한 작업:2A 새 소스·nonce DB에서 migration/집중 회귀·멱등/late/lease·후보 조회계획을 검증한다.
+  새 전체는 별도 검토 전 시작하지 않는다. 모든 reader/history48h·기존cursor·해상도/current/export·복원/정리는 남는다.
+  [2A 모델](architecture/parking-archive-coverage.md), [실제 소비 경로와 반례](reports/2026-10-28-parking-reader-transition-review.md).
+
 ## 2026-10-27 — 주차 보존 선행 저장의 최신 검증 상태
 
 - 현재 상태: 589/새 Common의 전체 WSL·Docker는 QA512MiB/tmpfs DB OOM으로 무효화했고 통과로 세지 않는다.

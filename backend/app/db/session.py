@@ -11,7 +11,7 @@ from sqlalchemy.pool import NullPool
 
 from app.models import Base
 
-ALEMBIC_HEAD = "0036_parking_statistics_archive"
+ALEMBIC_HEAD = "0037_parking_archive_coverage"
 
 #: 수집 엔진의 문장 상한(초). 이미 쓰던 asyncpg `command_timeout`(클라이언트 측)과 같은 값을 서버
 #: `statement_timeout`에도 둔다. 서버 측 실행 시간은 클라이언트 왕복보다 길 수 없으므로 지금 통과하는

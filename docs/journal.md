@@ -1,3 +1,17 @@
+## 2026-10-28 — 주차 보존 c7 전체 회수·2A 저장 보완과 P2 해소
+
+정확c7의 WSL 전체1334 PASS/2 SKIP·Docker1330 PASS/6 SKIP, 실제 exit0과 원 child/컨테이너 잔여0을
+회수했다. 소스804·locked106/Git10·원WT clean c7·디스크2GiB PG의 OOM/max0을 확인했다.
+초기c7 WSL wrapper 실패의 UNKNOWN과589 OOM 무효화 원장·이전 tmpfs PG/세 dump는 따로 보존했다.
+정확c7의 push/PR CI backend/frontend/admin은 success, live-e2e는 skip이다. 독립 리뷰 정산·운영 수용은 별도다.
+
+후속 별도WT의0037은 전국 동시각 cohort·검산 membership seal·보류 상태와 lot별 latest 파생값을 추가한다.
+기존 API reader·자동 schedule·원본 삭제는 바꾸지 않는다. 순수 회귀와 실제 DB 회귀를 분리한다.
+독립 리뷰 P2인 오래된 보류 bucket의 후속 날짜 정체와 +05:45 UTC floor 오차는 별도 c7 RED2개를 보존하고
+2A에서 해소한다. 첫 경우는 별도 UUID DB에서 두 번 적격 집계0, 두 번째는 순수 기대18:20/실제18:15였다.
+새 nonce GREEN·migration/조회계획·읽기 전환·48시간 정리 수용 전에는 정책 완료로 보고하지 않는다.
+[저장 보완](architecture/parking-archive-coverage.md), [reader/API 경로와 반례](reports/2026-10-28-parking-reader-transition-review.md).
+
 ## 2026-10-27 — 주차 legacy 덮어쓰기 차단·전체 QA 무효화와 R2 준비
 
 영구 통계가 있는 DB의 SQLite PK 이관·HTTP upsert/중복 삭제를 같은 transaction lease로 거절한다.

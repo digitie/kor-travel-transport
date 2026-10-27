@@ -9,6 +9,19 @@ TTL·자동 삭제가 없으며 데이터가 든 downgrade와 공항 삭제를 �
 원본 48시간 정책의 선행 단계여서 기존 읽기는 아직 원본에 의존하고 삭제는 항상 차단된다.
 [보존·해상도·전환 수용 조건](parking-retention.md)을 따른다.
 
+## 주차 전국 통계·보류·현재 요약 (`0037_parking_archive_coverage`)
+
+- `parking_global_statistics_buckets`: UTC10분 PK, 전국의 같은 관측시각 합계 count/sum/min/max와
+  raw 수량/hash·공항별 검산 proof를 영구 보존한다. 공항별 min/max 합산으로 대체하지 않는다.
+- `parking_archive_issues`: scope/bucket PK의 보류 reason·최초/마지막 발견시각·최대id다.
+  관측 원문·배열 없이 sealed 재삽입/검산 실패를 드러내고 다음 실행의 성공 위장을 막는다.
+- `parking_latest_states`: lot PK와 RESTRICT lot/airport 복합FK의 작은 현재 파생 상태다.
+  기존 public current의 observed/id 선택과 원래 시각·혼잡도를 보존하고, 지연 관측의 수신 watermark는 분리한다.
+  snapshot/raw FK나 payload는 없다. reader 전환은2B이며 현재 API는 아직 원본을 읽는다.
+
+세 표의 데이터가 있으면 downgrade를 거절한다. 기존 수동 통계 job 외 자동 schedule과 원본 삭제는 없다.
+[저장·검산·현재 요약 계약](parking-archive-coverage.md)을 따른다.
+
 ## 수집 실행 소유권 (`0024_collection_run_owner`)
 
 `collection_runs.orchestrator_run_id`는 Dagster run UUID이며 nullable index를 갖는다.
