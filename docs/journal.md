@@ -1,3 +1,11 @@
+## 2026-10-27 — 소통 관측 exact pair 배치 조회 후보
+
+최신 main을 보존한 전용 branch에서 `_store_traffic`만400개 단위로 조회·flush하도록 구현했다.
+SQLite803입력/801고유의 신규·정정·재확인 전체 행 digest가 같고 SELECT 관측은801→3이다.
+이는 SQLAlchemy dispatch 관측이며 서버 DML·운영 CPU/RSS 감소가 아니다. 원 필드/첫 중복/UTC·KST/
+current OFF·기존 commit fence를 보존한다. [변경·원 실패·미수용 범위](reports/2026-10-27-traffic-store-batched-prefetch.md).
+Python3.13.14·frozen lock의 SQLite 집중 회귀84통과/1건너뜀(324.52초). PostgreSQL·Docker·CI·두 리뷰·live UI·운영 수용은 미완이다.
+
 ## 2026-10-27 — 4d 운영 배포·늦은 항공편 성공과 자연 통계 갱신 수용
 
 PR147의 운영 `4d49610b2083fd0a30bc5e6afcca0036889044d4`에서 정확5역할/API/admin/schema35,
