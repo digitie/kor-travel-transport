@@ -5840,6 +5840,403 @@
         "title": "HourlyBucket",
         "type": "object"
       },
+      "KricAutomaticMappingApplyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_revision": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Candidate Revision",
+            "type": "string"
+          },
+          "expected_revision": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Expected Revision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "candidate_revision"
+        ],
+        "title": "KricAutomaticMappingApplyRequest",
+        "type": "object"
+      },
+      "KricAutomaticMappingApplyResponse": {
+        "properties": {
+          "changed_link_count": {
+            "minimum": 0.0,
+            "title": "Changed Link Count",
+            "type": "integer"
+          },
+          "previous_revision": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Previous Revision",
+            "type": "string"
+          },
+          "revision": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Revision",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "applied",
+              "unchanged"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/KricAutomaticMappingCounts"
+          }
+        },
+        "required": [
+          "status",
+          "previous_revision",
+          "revision",
+          "changed_link_count",
+          "summary"
+        ],
+        "title": "KricAutomaticMappingApplyResponse",
+        "type": "object"
+      },
+      "KricAutomaticMappingBlocker": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "line_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Code"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "operator_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator Code"
+          },
+          "station_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Station Code"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "KricAutomaticMappingBlocker",
+        "type": "object"
+      },
+      "KricAutomaticMappingChange": {
+        "properties": {
+          "after": {
+            "$ref": "#/components/schemas/KricAutomaticMappingTarget"
+          },
+          "before": {
+            "$ref": "#/components/schemas/KricAutomaticMappingTarget"
+          },
+          "change_type": {
+            "enum": [
+              "added",
+              "removed",
+              "retargeted",
+              "method_changed"
+            ],
+            "title": "Change Type",
+            "type": "string"
+          },
+          "line_code": {
+            "title": "Line Code",
+            "type": "string"
+          },
+          "line_name": {
+            "title": "Line Name",
+            "type": "string"
+          },
+          "operator_code": {
+            "title": "Operator Code",
+            "type": "string"
+          },
+          "operator_name": {
+            "title": "Operator Name",
+            "type": "string"
+          },
+          "station_code": {
+            "title": "Station Code",
+            "type": "string"
+          },
+          "station_name": {
+            "title": "Station Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operator_code",
+          "line_code",
+          "station_code",
+          "operator_name",
+          "line_name",
+          "station_name",
+          "change_type",
+          "before",
+          "after"
+        ],
+        "title": "KricAutomaticMappingChange",
+        "type": "object"
+      },
+      "KricAutomaticMappingCodeKey": {
+        "properties": {
+          "line_code": {
+            "title": "Line Code",
+            "type": "string"
+          },
+          "operator_code": {
+            "title": "Operator Code",
+            "type": "string"
+          },
+          "station_code": {
+            "title": "Station Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operator_code",
+          "line_code",
+          "station_code"
+        ],
+        "title": "KricAutomaticMappingCodeKey",
+        "type": "object"
+      },
+      "KricAutomaticMappingConflict": {
+        "properties": {
+          "line_code": {
+            "title": "Line Code",
+            "type": "string"
+          },
+          "operator_code": {
+            "title": "Operator Code",
+            "type": "string"
+          },
+          "rail_station_identity_key": {
+            "title": "Rail Station Identity Key",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "manual_code_override",
+              "manual_target_reserved"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "reserved_by": {
+            "$ref": "#/components/schemas/KricAutomaticMappingCodeKey"
+          },
+          "station_code": {
+            "title": "Station Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operator_code",
+          "line_code",
+          "station_code",
+          "rail_station_identity_key",
+          "reason",
+          "reserved_by"
+        ],
+        "title": "KricAutomaticMappingConflict",
+        "type": "object"
+      },
+      "KricAutomaticMappingCounts": {
+        "description": "장소 개수가 아닌 active 공식 catalog 코드 기준의 연결 현황.",
+        "properties": {
+          "automatic_mapped_count": {
+            "minimum": 0.0,
+            "title": "Automatic Mapped Count",
+            "type": "integer"
+          },
+          "manual_mapped_count": {
+            "description": "실제 유효한 수동 연결 수",
+            "minimum": 0.0,
+            "title": "Manual Mapped Count",
+            "type": "integer"
+          },
+          "mapped_count": {
+            "minimum": 0.0,
+            "title": "Mapped Count",
+            "type": "integer"
+          },
+          "station_count": {
+            "description": "active 공식 catalog 코드 수",
+            "minimum": 0.0,
+            "title": "Station Count",
+            "type": "integer"
+          },
+          "unmatched_count": {
+            "minimum": 0.0,
+            "title": "Unmatched Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "station_count",
+          "mapped_count",
+          "automatic_mapped_count",
+          "manual_mapped_count",
+          "unmatched_count"
+        ],
+        "title": "KricAutomaticMappingCounts",
+        "type": "object"
+      },
+      "KricAutomaticMappingPreview": {
+        "properties": {
+          "after": {
+            "$ref": "#/components/schemas/KricAutomaticMappingCounts"
+          },
+          "before": {
+            "$ref": "#/components/schemas/KricAutomaticMappingCounts"
+          },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/KricAutomaticMappingBlocker"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "can_apply": {
+            "title": "Can Apply",
+            "type": "boolean"
+          },
+          "candidate_revision": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Candidate Revision",
+            "type": "string"
+          },
+          "catalog_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Catalog Sha256",
+            "type": "string"
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/KricAutomaticMappingChange"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "expected_revision": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Expected Revision",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "has_changes": {
+            "title": "Has Changes",
+            "type": "boolean"
+          },
+          "manual_conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/KricAutomaticMappingConflict"
+            },
+            "title": "Manual Conflicts",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "generated_at",
+          "expected_revision",
+          "candidate_revision",
+          "catalog_sha256",
+          "before",
+          "after",
+          "has_changes",
+          "can_apply"
+        ],
+        "title": "KricAutomaticMappingPreview",
+        "type": "object"
+      },
+      "KricAutomaticMappingTarget": {
+        "properties": {
+          "match_method": {
+            "enum": [
+              "manual",
+              "exact_identity",
+              "station_number_and_name",
+              "unmatched"
+            ],
+            "title": "Match Method",
+            "type": "string"
+          },
+          "rail_station_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rail Station Id"
+          },
+          "rail_station_identity_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rail Station Identity Key"
+          }
+        },
+        "required": [
+          "match_method"
+        ],
+        "title": "KricAutomaticMappingTarget",
+        "type": "object"
+      },
       "KricCoverage": {
         "properties": {
           "expected_snapshots": {
@@ -11616,6 +12013,140 @@
           }
         },
         "summary": "Save Rail Station Mappings"
+      }
+    },
+    "/v1/transport/admin/rail-station-mappings/automatic": {
+      "get": {
+        "operationId": "preview_automatic_rail_station_mappings_v1_transport_admin_rail_station_mappings_automatic_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KricAutomaticMappingPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Preview Automatic Rail Station Mappings"
+      },
+      "post": {
+        "operationId": "apply_automatic_rail_station_mappings_v1_transport_admin_rail_station_mappings_automatic_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KricAutomaticMappingApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KricAutomaticMappingApplyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Apply Automatic Rail Station Mappings"
       }
     },
     "/v1/transport/bus/connections": {

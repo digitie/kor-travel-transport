@@ -3,9 +3,25 @@
 - 현재 상태: 리뷰에서 나온 수정 20건(T01~T20)을 `review/codex-10d-transport` PR 하나로 구현했다. 운영 배포와
   플래그 변경은 없다. 설계 변경은 T04(snapshot 만료 epoch 끝+15분·GC SKIP LOCKED)와 T05(자동 code-server
   rollback 범위 축소)다.
-- 다음 한 작업: 소유자 승인을 받는다. #146(Common pin)이 먼저 머지되면 리베이스한다(journal 충돌 예상).
-  배포 때 T01 앵커와 T05 rollback 정책이 같은 release로 들어가는지 확인한다. 보류 19건은
+- 소유자 머지 승인으로 PR #154를 main에 반영했다(#146·#158·#152·#153 뒤 merge, 운영 미배포).
+- 다음 한 작업: 배포 때 T01 앵커와 T05 rollback 정책이 같은 release로 들어가는지 확인한다. 보류 19건은
   [tasks.md](tasks.md)의 2026-10-27 절과 PR 본문 순서로 진행한다.
+
+## 2026-10-27 — 자동 역 연결 후보의 최신 main 통합 검증 중
+
+API 후보 `875ed9a`와 최신 main `abd4084`를 별도 작업트리에서 통합한다. API 서비스·DTO·route·
+회귀·OpenAPI와 PR151의 운영 정산 및 PR146의 Common pin `c289b462` 변경을 보존했다.
+그 뒤 Popper P2의 없는 target을 거짓 연결로 세는 손상 입력을 재현해 automatic/manual 모두
+기존503으로 거절하는 최소 보강과4개 RED→GREEN을 추가했다. 기존 Common `e746e4b8`의875
+전체 R2는 WSL1344/2skip·Docker1340/6skip의 실제 exit0과 자식 종료를 회수했다. 이 결과를
+새 pin 검증으로 확대하지 않으며 최초 전체 exit UNKNOWN도 별도 보존한다.
+
+관리자 UI PR153의 `d36fb53`는 초안 충돌 복구·목록 재조회 중 편집 보호를 포함한다. UI317개·
+WSL/Docker 타입/lint/빌드·375/1440 화면과 backend875를 쓴 실제 로컬 통합3개는 통과했다.
+이는 운영 적용이나 새 Common pin 검증이 아니다. 다음 한 작업은 새 c289 runtime의 설치 pin·
+집중60/health 회귀·전체 R3 준비 조건을 확인하는 것이다. 이후 CI·수정 delta 두 리뷰가 필요하다. UI PR은 별도이며
+자동 매핑 운영 preview/적용·저장 FK/요일별 시간표 수용은 미완이다. 운영·provider·수집/job 변경0.
+[API 설계·기존 검증](reports/2026-10-27-rail-automatic-refresh.md).
 
 ## 2026-10-27 — 현재 운영4d의 항공편 지연 성공·자연 통계 갱신 수용
 
