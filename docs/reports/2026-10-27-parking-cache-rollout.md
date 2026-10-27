@@ -58,15 +58,17 @@ PAX의 full SHA와 일반파일788개의 Git blob·mode, 공식4파일과3 hered
 12:33:37 KST 읽기 전용 관측에서는 다른 승인 배포인
 `kt-transport-final-d7c36c3c-20261027-retry1.service`가 G를 보유하고 백엔드를 사전 빌드 중이었다.
 공식 staging의 `.release-sha=d7c36…`는 실제 이미지 교체 완료 증거가 아니다.
-그 작업·자식·빌더를 중지하거나 새 빌드와 겹치지 않는다. 실제 OLD·다섯 이미지·schema·Manager4필드는
-기존 배포와 선행 Weather 교체가 끝난 뒤 새로 고정하며 과거7f01 관측을 자동 재사용하지 않는다.
+당시 별도 준비본은 그 작업·자식·빌더와 겹치지 않고, 기존 배포와 Weather 교체 뒤 실제 OLD·다섯 이미지·
+schema·Manager4필드를 새로 고정할 계획이었다. 이 준비본은 실행하지 않았다. 실제 전환은 아래 다른 담당의
+3691 실행으로 먼저 완료됐고 Weather는 그 뒤에도 drain 중이었다. 과거7f01 관측을 실제 최종 baseline으로 재사용하지 않았다.
 
 해당 선행 배포의 백엔드 사전 빌드는12:39:16 KST에4539.896초/exit0로 끝났으나,
 다음 단계에서 `Cancelled`로 중단됐다. 빌드 실패로 기록하지 않는다.
 12:39:51 KST unit 종료1/MainPID0, G 해제, `ABORTED_ORIGINAL_RUNTIME_VERIFIED`,
 instigator pause 없음·자식 종료 확인·원래 빌더 STOPPED 복원을 확인했다.
 12:44:13 KST의 별도 읽기 관측에서 두 receipt7f01·기존 다섯 이미지 healthy와 기존 단일
-instance bind를 확인했다. 이 관측은 선행 Weather 교체 후의 최종 배포 baseline을 대신하지 않는다.
+instance bind를 확인했다. 이 관측은 당시 실행하지 않은 별도 준비본의 예비 확인이며,
+아래 실제3691 실행이 확보한 최종 baseline을 대신하지 않는다.
 
 기존 담당의 [공식 통합 배포·공개 UI32·CPU 현재값 원장](2026-10-27-integrated-production-rollout.md)도 보존한다.
 이 문서는 별도 최초 Native UI 실패·전국 캐시·독립 회수 증거를 추가하며 두 검증의 범위를 합쳐 성공으로 바꾸지 않는다.
