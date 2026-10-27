@@ -5,8 +5,16 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
+# pg_dump/pg_restore(backup_restore.py)는 공용 PG 서버와 같은 major(18)여야 한다 — Debian 기본
+# postgresql-client는 배포판 major(trixie=17)라 18 서버를 덤프하지 못한다. PGDG에서 major를 명시한다.
 RUN apt-get update \
-    && apt-get install --no-install-recommends -y git postgresql-client libgdal-dev g++ \
+    && apt-get install --no-install-recommends -y ca-certificates curl \
+    && install -d /usr/share/postgresql-common/pgdg \
+    && curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    && . /etc/os-release \
+    && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install --no-install-recommends -y git postgresql-client-18 libgdal-dev g++ \
     && rm -rf /var/lib/apt/lists/*
 
 # GDAL binding은 시스템 ABI에 맞추되 소스 변경마다 native 재컴파일하지 않는다.
