@@ -2,17 +2,16 @@
 
 - [ ] T-CPU-PLAIN-01: `_plain_json` 정확 builtin scalar 조기 반환 후보의 결과·오류·identity를
   보존하고 scalar/중첩 bulk CPU·RSS·bytes를 대조한다. 정확 builtin6줄과 원본/후보31회귀·
-  국소 합성 계량을 확인한 PR #138은 CI·두 독립 리뷰·live UI·머지/운영 수용이 남았다.
-  전체 수집 성능·운영 적용은 별도다.
+  국소 합성 계량을 확인한 PR #138은 최종 CI·두 독립 리뷰·머지와3691 운영 소스·공개 UI32를 수용했다.
+  전체 수집 CPU/RSS 효과의 실제 비교는 남아 있어 후속 과제는 열어 둔다.
   [설계·검증 원장](reports/2026-10-26-plain-json-scalar-cpu.md).
 
 # tasks.md — parking-radar 백로그
 
-- [ ] [공통 LoginForm hydration 준비 경계 채택](reports/2026-10-26-login-hydration-common-adoption.md): 별도 vendor/lock·회귀·두 리뷰·CI·Root 공개 UI 검증.
 
 ## 2026-10-26 — Manager instance 정본 전달
 
-- [ ] **T-DAGSTER-INSTANCE-01** — Manager559 show의 host/max/path/전체 SHA를 검증하고 공식 deploy·cutover·rollback에 같은 경로를 전달한다. tracked6 silent fallback과 독립 경로를 거부하며 두 호스트 effective 일치는 운영 별도 수용한다. [설계·미완료 범위](reports/2026-10-26-manager-host-instance-caller.md).
+- [ ] **T-DAGSTER-INSTANCE-01** — #139의 CI·두 리뷰·머지와 Odroid Transport CS의 정본 a7 read-only 소비·운영 복구 계약은 수용했다. 공용 plane c444→a7 수렴과 다른 소비자/호스트의 effective 일치는 별도 미완이다. [소비·복구 범위](reports/2026-10-27-integrated-production-rollout.md).
 
 
 ## 2026-10-25 — 조사 기반 지도·이용 흐름 후속
@@ -43,6 +42,10 @@
   이후 엄격한 두 관측에서는 자연 run3023·새 적재·기본 캐시24행의 시각과 watermark 갱신이 통과했다.
   파생 구간 약395초로5분 주기 초과가 남아 이 task 전체를 닫지 않는다.
   [실제 배포·수용 기록](reports/2026-10-26-parking-production-rollout.md).
+  #144/3691에서는 baseline 뒤 자연 두 실행과 새 김포10개·기본24cache·6범위 갱신을 수용했다.
+  실제 cron은5분이다. 첫 모바일 주차 UI·HTTP 값/응답 성능과 CPU/RSS 효과는 별도 미완이며,
+  analytics ready와 flight 대기 분리 후보를 남긴다. [최신 수용](reports/2026-10-27-integrated-production-rollout.md).
+
 - [ ] **T-FUEL-01 / P1** — 지도 상부 작은 bbox 요약·compact 주유소 상세·주소/출처 i·동일 필터 집계.
 - [ ] **T-FUEL-02 / P1** — 기존 저장 이력 기반 7일 여러 유종 차트·최신 가격 직접 표시·결측/효력/모바일 표, 휴게소 이력 공백 별도 수용.
 - [ ] **T-FUEL-03 / P1** — 기존 품질/시설 flag 의미 확인·API 필터/투영·선호 저장·공식 조건에 맞는 브랜드 마커/상세 자산.

@@ -1,5 +1,12 @@
 # 공통 로그인 hydration 준비 경계 채택
 
+## 2026-10-27 최신 운영 상태
+
+공통 dev.9를 소비한 PR #141은 머지·배포를 마쳤다. 최신3691 공개 HTTPS UI32에서 실제
+SSR의 입력·submit 비활성화와 hydration 뒤 로그인·세션·로그아웃303·보호 GET401을 확인했다.
+[최종 운영 원장](2026-10-27-integrated-production-rollout.md). 아래 준비·미배포 절은 당시 이력이다.
+
+
 ## 관측과 의존
 
 기존 운영 UI 진단에서 로그인 단계의 native `POST /login` 차단이 확인됐다.
