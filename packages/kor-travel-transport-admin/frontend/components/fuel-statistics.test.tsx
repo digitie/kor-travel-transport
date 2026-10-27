@@ -3,7 +3,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, test, vi } from "vitest";
-import { FuelPriceTrend, FuelStatisticsCard, FuelViewportSummary, type FuelViewportStatistics } from "./fuel-statistics";
+import { FuelPriceTrend, FuelStatisticsCard, FuelStatisticsPage, FuelViewportSummary, type FuelViewportStatistics } from "./fuel-statistics";
+import * as journey from "@/lib/journey";
 
 const metrics: FuelViewportStatistics = { product_code: "B027", station_count: 1000, average_price: 1700,
   minimum_price: 1600, maximum_price: 1800, price_spread: 200, standard_deviation: 50,
@@ -23,6 +24,75 @@ async function withSummaryInfo(props: Parameters<typeof FuelViewportSummary>[0],
 test("평균·최저·편차·절감액과 동률 주유소를 표시한다", () => {
   const html = renderToStaticMarkup(<FuelStatisticsCard title="휘발유" metrics={metrics} />);
   for (const value of ["1,700", "1,600", "5,000", "최저가 주유소", "외 1곳", "가격 표준편차"]) expect(html).toContain(value);
+  expect(html).toContain("최고−최저");
+  expect(html).not.toContain("전일 평균 차이");
+});
+
+const historyRow = (day: string, average_price: number, station_count = 1000) => ({
+  day, average_price, station_count, generated_at: `${day}T01:00:00Z`,
+});
+function comparisonCard(history: ReturnType<typeof historyRow>[]) {
+  const element = document.createElement("div");
+  element.innerHTML = renderToStaticMarkup(<FuelStatisticsCard title="전국 · 휘발유" metrics={metrics} history={history} />);
+  return element;
+}
+function displayedMetric(element: Element, label: string) {
+  return [...element.querySelectorAll(".fuel-stat-values > div")].find((node) => node.querySelector("dt")?.textContent?.startsWith(label))?.querySelector("dd")?.textContent;
+}
+
+test("페이지용 5칸은 마지막 실제 날짜의 정확 전일·6일 전 평균 차이를 보여준다", () => {
+  const element = comparisonCard([historyRow("2026-10-26", 1600), historyRow("2026-10-21", 1650), historyRow("2026-10-27", 1701.25)]);
+  expect(element.querySelectorAll(".fuel-stat-values > div")).toHaveLength(5);
+  expect(displayedMetric(element, "평균")).toBe("1,700원/L");
+  expect(displayedMetric(element, "최저")).toBe("1,600원/L");
+  expect(displayedMetric(element, "전일 평균 차이")).toBe("+101.25원/L");
+  expect(displayedMetric(element, "7일 구간 변화")).toBe("+51.25원/L");
+  expect(displayedMetric(element, "50L 평균 대비 절감")).toBe("5,000원");
+  expect(element.textContent).toContain("2026-10-21 → 2026-10-27");
+  expect(element.textContent).not.toContain("전주");
+});
+
+test("비교일이 없으면 가까운 날짜·D-7·0으로 대체하지 않는다", () => {
+  const element = comparisonCard([historyRow("2026-10-20", 1500), historyRow("2026-10-22", 1600), historyRow("2026-10-25", 1650), historyRow("2026-10-27", 1700)]);
+  expect(displayedMetric(element, "전일 평균 차이")).toBe("비교 관측 없음");
+  expect(displayedMetric(element, "7일 구간 변화")).toBe("비교 관측 없음");
+  expect(comparisonCard([]).textContent?.match(/비교 관측 없음/g)).toHaveLength(2);
+});
+
+test.each([[1700, "0원/L"], [1698.5, "-1.5원/L"]])("평균 차이 %s의 0·음수 부호를 보존한다", (average, expected) => {
+  const element = comparisonCard([historyRow("2026-10-21", 1700), historyRow("2026-10-26", 1700), historyRow("2026-10-27", Number(average))]);
+  expect(displayedMetric(element, "전일 평균 차이")).toBe(expected);
+  expect(displayedMetric(element, "7일 구간 변화")).toBe(expected);
+});
+
+test.each([
+  ["2025-01-02", "2025-01-01", "2024-12-27"],
+  ["2024-03-01", "2024-02-29", "2024-02-24"],
+])("달력 경계 %s도 오늘 시각 대신 실제 D의 정확 대응일을 쓴다", (day, previous, start) => {
+  const element = comparisonCard([historyRow(start, 1600), historyRow(previous, 1700), historyRow(day, 1701)]);
+  expect(displayedMetric(element, "전일 평균 차이")).toBe("+1원/L");
+  expect(displayedMetric(element, "7일 구간 변화")).toBe("+101원/L");
+  expect(element.textContent).toContain(`${start} → ${day}`);
+});
+
+test("기존 집계 i에서 비교 날짜·각일 건수/시각과 원래 가격 차이·표준편차를 보존한다", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const get = vi.spyOn(journey, "transportGet").mockResolvedValue({ generated_at: metrics.generated_at, update_pending: false,
+    history_scope_key: "all", items: [{ ...metrics, scope_key: "all", label: "전국" }],
+    history: [historyRow("2026-10-21", 1600, 800), historyRow("2026-10-26", 1690, 900), historyRow("2026-10-27", 1700, 1000)] });
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  try {
+    await act(async () => root.render(<FuelStatisticsPage />));
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="유가 집계 기준 안내"]')!.click());
+    const popup = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(popup.textContent).toContain("대상 주유소가 달라질 수 있습니다");
+    for (const day of ["2026-10-21", "2026-10-26", "2026-10-27"]) expect(popup.querySelector(`time[dateTime="${day}T01:00:00Z"]`)).not.toBeNull();
+    for (const count of ["800", "900", "1,000"]) expect(popup.textContent).toContain(`${count}개`);
+    expect(popup.textContent).toContain("가격 차이 200원/L");
+    expect(popup.textContent).toContain("표준편차 50원/L");
+    expect(container.querySelectorAll(".fuel-stat-card")).toHaveLength(1);
+    expect(container.querySelector(".fuel-driving-details")?.hasAttribute("open")).toBe(false);
+  } finally { await act(async () => root.unmount()); container.remove(); get.mockRestore(); }
 });
 
 test("지도 재조회 중 이전 범위의 통계를 표시하지 않는다", () => {
@@ -40,7 +110,7 @@ test("지도 통계 안내는 마커 개수 대신 API의 전체 주유소 개�
 });
 
 test("수집 기록이 없는 날짜의 간격을 유지하고 선을 연결하지 않는다", () => {
-  const html = renderToStaticMarkup(<FuelPriceTrend rows={["2026-10-15", "2026-10-16", "2026-10-21"].map((day) => ({ day, average_price: 1700, station_count: 1 }))} />);
+  const html = renderToStaticMarkup(<FuelPriceTrend rows={["2026-10-15", "2026-10-16", "2026-10-21"].map((day) => historyRow(day, 1700, 1))} />);
   const element = document.createElement("div"); element.innerHTML = html;
   const points = [...element.querySelectorAll("circle")].map((point) => Number(point.getAttribute("cx")));
   expect(points[1] - points[0]).toBeCloseTo((points[2] - points[1]) / 5);

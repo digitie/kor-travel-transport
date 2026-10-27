@@ -16,7 +16,7 @@ export type FuelMetrics = {
 };
 export type FuelViewportStatistics = FuelMetrics & { product_code: string };
 type Group = FuelMetrics & { scope_key: string; label: string };
-type History = { day: string; average_price: number; station_count: number };
+type History = { day: string; generated_at: string; average_price: number; station_count: number };
 type Statistics = { generated_at: string | null; update_pending: boolean; history_scope_key: string | null; items: Group[]; history: History[] };
 const money = (value: number) => value.toLocaleString("ko-KR", { maximumFractionDigits: 2 });
 const priceTimeFormat = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Seoul", year: "2-digit", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
@@ -27,6 +27,21 @@ function priceTimestamp(value?: string | null) {
   return `${parts.year}.${parts.month}.${parts.day} ${parts.hour}:${parts.minute} KST`;
 }
 const scopes = [["nationwide", "전국"], ["sido", "시도"], ["sigungu", "시군구"], ["highways", "고속도로 전체"], ["highway", "고속도로별"], ["highway_direction", "고속도로·방향별"]];
+
+function historyComparison(rows: History[]) {
+  const latest = [...rows].sort((left, right) => left.day.localeCompare(right.day)).at(-1);
+  const before = (days: number) => latest ? new Date(Date.parse(`${latest.day}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10) : null;
+  const previousDay = before(1), periodStart = before(6);
+  return { latest, previousDay, periodStart,
+    previous: rows.find((row) => row.day === previousDay),
+    start: rows.find((row) => row.day === periodStart) };
+}
+
+function averageDifference(current?: History, baseline?: History) {
+  if (!current || !baseline) return null;
+  const difference = current.average_price - baseline.average_price;
+  return `${difference > 0 ? "+" : ""}${money(difference)}`;
+}
 
 export function FuelDriverStatistics({ metrics }: { metrics: FuelMetrics }) {
   const [liters, setLiters] = useState("50");
@@ -53,14 +68,22 @@ export function FuelDriverStatistics({ metrics }: { metrics: FuelMetrics }) {
   </SectionCard>;
 }
 
-export function FuelStatisticsCard({ metrics, title }: { metrics: FuelMetrics; title: string }) {
+export function FuelStatisticsCard({ metrics, title, history }: { metrics: FuelMetrics; title: string; history?: History[] }) {
+  const comparison = history ? historyComparison(history) : null;
+  const dayDifference = averageDifference(comparison?.latest, comparison?.previous);
+  const periodDifference = averageDifference(comparison?.latest, comparison?.start);
   return <article className="fuel-stat-card" aria-label={title}>
     <header><h3>{title}</h3><span>{metrics.station_count.toLocaleString()}개 주유소</span></header>
     <dl className="fuel-stat-values">
       <div><dt>평균</dt><dd>{money(metrics.average_price)}<small>원/L</small></dd></div>
       <div><dt>최저</dt><dd>{money(metrics.minimum_price)}<small>원/L</small></dd></div>
-      <div><dt>최고−최저</dt><dd>{money(metrics.price_spread)}<small>원/L</small></dd></div>
-      <div><dt>가격 표준편차</dt><dd>{money(metrics.standard_deviation)}<small>원/L</small></dd></div>
+      {comparison ? <>
+        <div><dt>전일 평균 차이{comparison.latest ? <small className="block">{comparison.previousDay} → {comparison.latest.day}</small> : null}</dt><dd>{dayDifference === null ? "비교 관측 없음" : <>{dayDifference}<small>원/L</small></>}</dd></div>
+        <div><dt>7일 구간 변화{comparison.latest ? <small className="block">{comparison.periodStart} → {comparison.latest.day}</small> : null}</dt><dd>{periodDifference === null ? "비교 관측 없음" : <>{periodDifference}<small>원/L</small></>}</dd></div>
+      </> : <>
+        <div><dt>최고−최저</dt><dd>{money(metrics.price_spread)}<small>원/L</small></dd></div>
+        <div><dt>가격 표준편차</dt><dd>{money(metrics.standard_deviation)}<small>원/L</small></dd></div>
+      </>}
       <div><dt>50L 평균 대비 절감</dt><dd>{money(metrics.saving_50l)}<small>원</small></dd></div>
     </dl>
     <p>최저가 · <strong>{metrics.cheapest_station?.name ?? "정보 없음"}</strong>{metrics.cheapest_station_count > 1 ? ` 외 ${metrics.cheapest_station_count - 1}곳` : ""}</p>
@@ -151,6 +174,12 @@ export function FuelStatisticsPage() {
   }, [scope, product, scopeKey, reload]);
   const shownData = dataContext === `${scope}/${product}` ? data : null;
   const selected = shownData?.items.find((row) => row.scope_key === shownData.history_scope_key);
+  const comparison = historyComparison(shownData?.history ?? []);
+  const comparisonRows = comparison.latest ? [
+    { day: comparison.latest.day, row: comparison.latest },
+    { day: comparison.previousDay!, row: comparison.previous },
+    { day: comparison.periodStart!, row: comparison.start },
+  ] : [];
   const categoryKey = shownData?.items.some((row) => row.scope_key === scopeKey) ? scopeKey : selected?.scope_key ?? "";
   return <section className="fuel-stat-section" aria-label="유가 통계" aria-busy={pending}>
     <div className="fuel-stat-filters">
@@ -162,8 +191,13 @@ export function FuelStatisticsPage() {
     {pending ? <p role="status">통계 조회 중…</p> : error ? <p role="alert">통계를 불러오지 못했습니다. 새로고침해 주세요.</p> : shownData ? <>
       <p>{shownData.generated_at ? `수집 기준 ${dateTime(shownData.generated_at)}` : "첫 수집 완료 후 통계가 생성됩니다."}{shownData.update_pending ? " · 최신 수집 통계 반영 대기" : ""}</p>
       {shownData.items.length ? <>
-        {selected ? <FuelStatisticsCard title={`${selected.label} · ${fuelProductLabel(product)}`} metrics={selected} /> : null}
-        <div className="section-title-row"><h2>최근 7일 평균 유가 · {selected?.label}</h2><InfoButton label="유가 집계 기준">KST 일별 마지막 정상 수집 기준이며 수집 기록이 있는 날짜만 표시합니다. 전국·지역은 오피넷, 고속도로는 한국도로공사 기준입니다. 유효 가격을 주유소별 동일 비중으로 집계합니다. 절감액은 범주 평균과 최저가의 차이입니다.</InfoButton></div><FuelPriceTrend rows={shownData.history} />
+        {selected ? <FuelStatisticsCard title={`${selected.label} · ${fuelProductLabel(product)}`} metrics={selected} history={shownData.history} /> : null}
+        <div className="section-title-row"><h2>최근 7일 평균 유가 · {selected?.label}</h2><InfoButton label="유가 집계 기준">
+          <p>KST 일별 마지막 정상 수집 기준이며 수집 기록이 있는 날짜만 표시합니다. 전국·지역은 오피넷, 고속도로는 한국도로공사 기준입니다. 유효 가격을 주유소별 동일 비중으로 집계합니다. 절감액은 범주 평균과 최저가의 차이입니다.</p>
+          <p>평균 차이는 마지막 집계일과 정확한 전일·6일 전을 비교합니다. 날짜별 대상 주유소가 달라질 수 있습니다. 비교 관측이 없으면 가까운 날짜나 0으로 대체하지 않습니다.</p>
+          {comparisonRows.map(({ day, row }) => <p key={day}>{day} · {row ? <>평균 {money(row.average_price)}원/L · 유효 {row.station_count.toLocaleString("ko-KR")}개 · 수집 <time dateTime={row.generated_at}>{dateTime(row.generated_at)} KST</time></> : "비교 관측 없음"}</p>)}
+          {selected ? <p>선택 범주 가격 차이 {money(selected.price_spread)}원/L · 표준편차 {money(selected.standard_deviation)}원/L</p> : null}
+        </InfoButton></div><FuelPriceTrend rows={shownData.history} />
 
       </> : <p>선택한 유종의 통계가 없습니다.</p>}
 
