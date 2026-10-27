@@ -1,3 +1,11 @@
+## 2026-10-27 — 소통 배치 후보에 최신 Common c289 합성
+
+최신 main `abd4084b`를 정상 merge해 Common c289의 pyproject/lock·핀 회귀를 그대로 채택했다.
+journal 충돌은 양쪽 prepend와 기존 본문 전체를 보존했다. batch 제품/회귀는103a blob 그대로다.
+제품1788/문서103a의 PG15·Docker15와 전체 행 동등은 Common e746 환경의 역사적 수용이다.
+새 c289/head의 실제 환경·CI·두 리뷰·후보 API/UI 검증 전이며, 기존 venv·원 실패·한계를 보존한다.
+CPU/RSS 실험·운영 접근·이미지 변경·수집 실행은0이다. [정산·남은 검증](reports/2026-10-27-traffic-store-batched-prefetch.md).
+
 ## 2026-10-27 — 소통 관측 exact pair 배치 조회 후보
 
 최신 main을 보존한 전용 branch에서 `_store_traffic`만400개 단위로 조회·flush하도록 구현했다.
@@ -8,6 +16,36 @@ Python3.13.14·frozen lock의 SQLite 집중 회귀84통과/1건너뜀(324.52초)
 PG8,300개 각SELECT/쓰기 dispatch8,300→21을 확인했고 소유 CID/label/volume1 정리를 통과했다.
 첫 PG 준비의 CRLF export 검사 실패(DB 생성 전)와 원 raw 결과도 보존한다.
 CPU/RSS·Docker 회귀·CI·두 리뷰·live UI·운영 수용은 미완이다.
+
+## 2026-10-27 — backend Common pin 최신 main 재핀
+
+- PR #146: `kor-travel-common[dagster,reverse-address]` pin을 `e746e4b8`→`c289b462`(Common main, Common #48 머지)로 올렸다.
+  사이 Common의 Python 변경은 공용 daemon 전용 `daemon_pool`의 workspace 갱신 주기 opt-in(Common #44)뿐이고
+  Transport는 `daemon_pool`을 쓰지 않는다. 설치 CLI(`http_health`·`build_bytecode`)의 SHA256은 그대로다.
+- `uv.lock`은 backend Dockerfile이 고정한 uv 0.11.21의 `uv lock`으로 재생성했다(source rev 2줄, revision 3 유지).
+  같은 uv의 `uv lock --locked`·`uv export --locked`와 uv 0.13.5의 `uv lock --locked`가 통과했다. 0.13.5로 재생성하면
+  revision이 3→5로 함께 바뀌어 고정 uv 쪽을 택했다. GitHub CI는 uv 0.13.6의 `uv sync --locked`로 통과했다.
+- 검증: GitHub CI(head `aaa3c04`) backend 1274 passed·2 skipped, frontend·transport-admin 성공.
+  n150 CI-parity(python:3.12·postgres:16)는 sync·alembic upgrade/check·OpenAPI 통과, pytest 1234 passed·6 skipped·36 failed다.
+  36건은 모두 이미지에 node가 없어 실패하는 `test_node_health_probes.py`이며 기준선 main `d7c36c3`도 같은 환경에서 같다.
+  node 22.23.1을 넣으면 head에서 그 파일과 `test_health_cpu_contract.py`가 54 passed다. Dockerfile 설치 경로 중 pin이 닿는
+  단계(python:3.12-slim, uv 0.11.21 `uv export --locked` → `pip install --no-deps` git `c289b46`)도 따로 재현해 설치 commit·
+  CLI 두 모듈 SHA256·실행을 확인했다. 전체 이미지 빌드는 하지 않았다.
+- 적대 리뷰 James/Popper(head `aaa3c04` 기준, 이후는 문서 정리와 최신 main rebase만): P0/P1 없음. 반영한 P2는 `Common #44` 표기,
+  uv 버전 서술, `reverse-address-refresh.md`의 옛 "현재 Common pin" 문장(→당시)과 새 pin 문장의 시제다.
+- 반영하지 않은 P2와 근거:
+  - `packages/kor-travel-transport-admin/frontend/vendor/README.md`의 옛 Python pin `430a9e9` 현재형 서술과 dev.9 항목 부재:
+    이번 작업은 소유자 지시로 frontend·vendor를 건드리지 않는다(UI dev.9 채택은 #141 범위). 별도 문서 정리로 남긴다.
+  - `docs/runbooks/deployment.md`의 "Dockerfile은 `uv.lock`이 아니라 `pip install -e`" 서술: 현재 Dockerfile은
+    uv 0.11.21 `uv export --locked`로 설치한다. 이번 변경 전부터 있던 별건이다.
+  - 관리자 live E2E의 로그인 화면 단언(`e2e/shadcn-ui.spec.ts`의 `data-slot=card`·`aria-invalid`,
+    `e2e/transport-admin.spec.ts:72`의 서버 오류 문구)이 #67 이후 Common LoginForm 구조와 맞지 않는다. 이 PR과 무관한
+    기존 상태이며 별도 수정이 필요하다. hydration 준비 경계 자체는 Playwright `fill()`·`click()`의 enabled 대기로 처리된다.
+  - `docs/resume.md`는 다음 한 작업이 바뀌지 않아 진행 중인 다른 문서 PR과의 충돌을 줄이려 갱신하지 않았다.
+    브랜치 이름 `chore/common-latest-transport`는 요청자 지정이며 CI는 pull_request로 돌았다.
+    live E2E UI는 UI 변경·배포가 없어 실행하지 않았다.
+- frontend·vendor·LoginForm(UI dev.9는 #141로 main 반영)은 건드리지 않았고 운영 배포는 하지 않았다.
+  운영에는 다음 Transport 이미지 빌드·배포부터 새 pin이 들어간다.
 
 ## 2026-10-27 — 4d 운영 배포·늦은 항공편 성공과 자연 통계 갱신 수용
 

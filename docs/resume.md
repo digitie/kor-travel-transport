@@ -1,11 +1,11 @@
-## 2026-10-27 — 소통 관측 배치 조회 성능 후보
+## 2026-10-27 — 소통 배치 후보와 최신 Common pin 합성
 
-- 현재 상태: 최신 main 기준으로 원 행 단위 조회를 최대400개 exact pair 조회·flush로 바꿨다.
-  SQLite 신규/정정/재확인 전체 행 digest 동등과 SELECT801→3을 관측했다.
-  [원장·보존 계약·측정 한계](reports/2026-10-27-traffic-store-batched-prefetch.md).
-- 다음 한 작업: SQLite84통과/1건너뜀·격리PG15통과 및801/8,300전체 행 동등·소유 자원 정리 뒤
-  정확 lock Docker 회귀·두 적대 리뷰·최종 CI·live UI를 수용한다.
-  CPU/RSS·운영 ARM 절감은 미측정이며 운영 이미지·설정·스키마 변경은0이다.
+- 현재 상태: 최신 main `abd4084b`의 Common c289 핀·lock·핀 회귀를 정상 합성하고 journal 양쪽 기록을 보존했다.
+  기존400개 exact pair 배치 제품은103a와 동일하다. [원장·검증 환경·한계](reports/2026-10-27-traffic-store-batched-prefetch.md).
+- 기존 수용: 제품1788/문서103a의 Common e746 환경에서 SQLite84통과/1건너뜀·PG15통과 및
+  801/8,300전체 행3단계 동등·Docker15통과/소유 자원 정리를 확인했다. c289 실행 결과로 바꾸지 않는다.
+- 다음 한 작업: 새 exact head/c289 환경·CI·두 리뷰와 fresh Next/same-head API/유가 통계 UI를 수용한다.
+  기존 venv를 보존한다. CPU/RSS·운영 ARM 절감은 미측정이며 운영 이미지·설정·스키마 변경은0이다.
 
 ## 2026-10-27 — 현재 운영4d의 항공편 지연 성공·자연 통계 갱신 수용
 

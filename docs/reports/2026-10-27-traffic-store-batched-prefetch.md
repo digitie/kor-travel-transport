@@ -1,7 +1,28 @@
 # 고속도로 소통 관측의 배치 조회·저장
 
-상태: 최신 main `1f6a970796ad9c5bb54b9b574e2dcfc8735516d1`을 기준으로 작은 성능 후보를 구현했다.
-운영 컨테이너·설정·스키마·제공자 호출·API 계약은 바꾸지 않았다. 격리 PostgreSQL 정확성은 수용했고 CPU/RSS·Docker 회귀·CI·두 적대 리뷰·live UI 수용 전이다.
+상태: 최초 기준 main `1f6a970796ad9c5bb54b9b574e2dcfc8735516d1`의 성능 후보에 최신 main
+`abd4084b1bfbb4ff601bf03f5aaa3faf236c6374`의 Common c289 재핀을 정상 합성했다.
+운영 컨테이너·설정·스키마·제공자 호출·API 계약은 바꾸지 않았다. 아래 기존 시험은 e746 환경의 이력이며,
+c289 최종 환경의 정확 CI·두 리뷰·같은 HEAD API/후보 UI·CPU/RSS 수용은 아직 남아 있다.
+
+## 최신 main 합성과 기존 검증의 범위
+
+PR146의 Common pin `c289b4624c8640eb918cc915803e72ae754e58fb`와 정본 pyproject/lock·설치 핀 회귀를
+그대로 합쳤다. batch 제품·회귀 blob은 `103a0e00fb727af31fc16261bd7113b8fa5ce3db`와 동일하다.
+journal의 양쪽 prepend와 기존 본문을 모두 보존했으며 API·UI·배치 제품의 추가 변경은 없다.
+
+기존 PG15(18.48초)·801/8,300개3단계 동등 검증은 제품 코드 `1788d6c`의 **Common e746** 환경이다.
+103a는 그 코드에 문서3개만 더한 head였다. 추가 Docker 집중15개도103a/e746 frozen106에서23.62초에 통과했고,
+Git798개 mode/blob·site9423개 hash/size·106개 version/direct_url·lock·실제 import 경로를 검증했다.
+소유 준비/시험/PG 컨테이너·익명 volume·생성 의존성 이미지 정리를 수용했으며, 이는 cached CPython3.13.14
+amd64 환경의 집중 회귀다. 공식 Dockerfile 전체·CI3.12·후보 API/UI·ARM 성능 수용으로 확대하지 않는다.
+원 result SHA256은 `e34e5f4e3a1d55fef03f7516602af999a4545c45073e6ef501afef2ac70615d7`다.
+첫 Docker 준비의5초 ReadTimeout(정확 하위 단계 미확정)과 두 번째 uid/mode0600 proof 읽기 실패는
+보존한다. 세 번째는 실제 소유 uid1000으로만 고쳐 통과했고 권한·상한·검사는 완화하지 않았다.
+
+103a CI backend/frontend/transport-admin3개 SUCCESS와 live-e2e SKIPPED도 과거 head의 결과다.
+c289 합성 후 새 exact head의 실제 의존성 설치·집중 PG/Docker와 CI·두 리뷰·fresh Next/same-head API/UI를
+다시 결박해야 한다. 기존 backend/.venv는 과거 증거로 보존한다. CPU/RSS 실험과 운영 배포는0이다.
 
 ## 변경과 보존 경계
 
