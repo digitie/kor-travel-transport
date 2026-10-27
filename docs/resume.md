@@ -3,8 +3,9 @@
 - 현재: 정확c7 WSL1334 PASS/2 SKIP·Docker1330 PASS/6 SKIP, 실제 exit0·원 child/컨테이너 잔여0,
   source804/locked106·Git10 동일·PG OOM/max0을 회수했다. c7 CI 두 실행도 backend/frontend/admin 성공이다.
 - 우선 보완: 별도c7 WT에서 Dagster 결과관측 P1을 고친다. 업무상 busy/not_audited/부분 보류가 SUCCESS 속에
-  숨지 않도록 metadata·scalar 로그와 선택/검산/신규 발행 범위·cutoff를 남긴다. 순수 실제 Dagster5 RED→GREEN이다.
-- 다음 한 작업: 실제 PG 회귀·관련 집중/새 CI·증분 리뷰 뒤 PR156을 FF 정산한다. 기존 전체는 c7 증거로만 유지한다.
+  숨지 않도록 metadata·scalar 로그와 선택/검산/신규 발행 범위·cutoff를 남긴다. 실제 Dagster5 RED→GREEN과
+  a1a의 WSL119/Docker119 PASS·F/E/skip0·actual exit0·양쪽 migration/check0을 회수했다.
+- 다음 한 작업: 코드/시험 blob 동일인 문서 정산 뒤 PR156 FF·새 CI·증분 리뷰를 수용한다. 기존 전체는 c7 증거로만 유지한다.
   2A의 새 모델·reader 전환·UTC/starvation P2를 이 관측 commit에 섞지 않는다. 원본48시간 정책 전체는 미완이다.
 
 ## 2026-10-27 — 주차 보존 선행 저장의 최신 검증 상태

@@ -50,9 +50,9 @@ busy와 `no_new_rows/not_audited`도 강제 실패로 바꾸지 않고 미실행
 
 - `checked_at`, `raw_cutoff_at`, `complete_before`: 이번 평가 시각·48시간 원본 유지 경계·완결 bucket 경계다.
 - `selection_start_at`~`selection_end_exclusive`: 실제 raw SELECT의 최대 하루 창이다.
-  `selected_observed_min_at/max_at`, `selected_snapshots/buckets`는 그 창에서 읽은 실제 원본 범위/수량이다.
-- `verified_buckets`와 `verified_min/max_bucket_at`: 기존 또는 신규 통계를 실제 검산한 bucket 수와 양끝값이다.
-  `archived_buckets`와 `archived_min/max_bucket_at`는 이번에 새로 발행한 부분만 뜻한다.
+  `selected_observed_min_at`·`selected_observed_max_at`, `selected_snapshots`·`selected_buckets`는 그 창에서 읽은 실제 원본 범위/수량이다.
+- `verified_buckets`와 `verified_min_bucket_at`·`verified_max_bucket_at`: 기존 또는 신규 통계를 실제 검산한 bucket 수와 양끝값이다.
+  `archived_buckets`와 `archived_min_bucket_at`·`archived_max_bucket_at`는 이번에 새로 발행한 부분만 뜻한다.
 - `verification_scope=selected_bucket_subset`는 선택 창 안의 일부 검산이다. 양끝값이 같거나 넓다는 이유로
   그 사이 모든 시각/공항을 검산했다고 해석하지 않는다. 전체 coverage는 계속 partial 또는 not_audited다.
 - busy/무신규에서는 검산 범위가 none, 선택 범위는 null, 선택/검산/발행 수량은0이다.

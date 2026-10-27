@@ -13,7 +13,13 @@ Docker 원 컨테이너 fingerprint는 --rm 종료 전14:56:20UTC이며 종료 �
 
 James 리뷰의 결과관측 P1은 별도c7 WT에서 최소 수정한다. 기존 op의 실제 Dagster SUCCESS5개가
 STEP_OUTPUT status 누락으로 실패하는 RED5(exit1)를 보존했고 metadata/scalar INFO 로그를 추가한 GREEN5(exit0)를 확인했다.
-실제 PG의 busy/무신규/선택·검산·발행 범위, 관련 집중/새CI·증분 리뷰는 뒤이어 수용한다.
+정확a1a1e77928411bacd95e20a9bc851fd052b302f5의 실제 PG 포함 집중은 WSL119 PASS/72.18초·Docker119 PASS/141.57초,
+F/E/skip0·actual exit0이며 양쪽 schema36 upgrade/check0이다. 실제 Dagster SUCCESS에 PG busy/무신규의
+not_audited를 기록하고 선택2bucket/검산1→2/신규발행1을 구분했다. 기존 값·legacy·Dagster/redaction 회귀도 포함한다.
+WSL JUnit SHA는 `0b24d029077ac2a4bff8646d0f31e33ba288f4861bb311848c9691a9d340232c`,
+Docker는 `a05c0ee6d1dbe33b56729d7a277beafe9a5fec91d2a3cd42ce058507d5e81346`이다.
+관측 증거는 `/var/tmp/codex-parking-observability-20261028-fdd019ee4568/`에 분리했고 새 전체는 실행하지 않았다.
+검증 이후 문서 정산은 a1a의 backend2·시험2 Git blob 동일성을 별도로 대조한다. 새 CI·증분 리뷰는 별도다.
 기존 전체1334/1330은 c7 검증이며 새 관측 head 전체 결과가 아니다. model/schema/dependency·기존 query/집계값·API reader는 바꾸지 않는다.
 선택 창과 검산/발행의 extrema는 불연속 subset일 수 있고 전체 coverage 완료를 뜻하지 않는다.
 Popper의 오래된 보류 정체·UTC offset floor P2는 별도2A에서 RED→GREEN으로 해소하며 이 commit에 섞지 않는다.

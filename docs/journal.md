@@ -7,7 +7,9 @@ c7 WSL1334 PASS/2 SKIP·Docker1330 PASS/6 SKIP의 actual exit0·원 child/컨테
 독립 리뷰에서 주차 통계 op가 업무 dict만 반환해 busy/not_audited도 관리자에게 SUCCESS만 보이는 P1을 확인했다.
 별도c7 기반 WT에서 실제 Dagster SUCCESS5개가 metadata status 누락으로 실패하는 RED를 재현했고,
 status/coverage/counts/cutoff/선택 창·검산/발행 extrema를 event와 scalar INFO 로그에 남기도록 보완했다.
-순수 Dagster GREEN5이며 실제 PG 범위·회귀와 새 CI·증분 독립 리뷰는 별도 수용한다.
+순수 Dagster GREEN5와 a1a의 실제 PG 포함 WSL119 PASS·Docker119 PASS(F/E/skip0, actual exit0)를 회수했다.
+양쪽 migration/check0이며 busy/무신규 SUCCESS의 not_audited·부분 검산/신규 발행 범위를 확인했다.
+새 CI·증분 독립 리뷰는 별도 수용한다.
 query/model/schema/API reader/원본 삭제·운영 변경은0이다. 두 P2(오래된 보류 정체·UTC offset floor)는 별도2A에서 추적한다.
 기존 전체는 c7 검증이며 관측 보완 head 전체로 확대하지 않는다. [정산](reports/2026-10-27-parking-statistics-archive.md).
 
