@@ -32,6 +32,32 @@ path/SHA/host/max가 달라지면 교체/rollback을 거부하고 운영자가 M
 [설계와 검증 상태](../reports/2026-10-26-manager-host-instance-caller.md).
 
 
+## 배포 검증 실패와 자동 rollback 범위(2026-10-27, 설계 변경)
+
+`deploy-prod-remote.sh`의 `compose up -d --no-build`는 migrate service가 끝난 뒤에 backend와 code-server를
+띄운다. 그래서 그 뒤의 검증 실패 시점에는 후보의 Alembic migration이 이미 적용돼 있을 수 있다. 예전 EXIT trap은
+실패 종류를 가리지 않고 code-server만 옛 이미지로 다시 만들었다. migration이 있던 release라면 새 스키마 위에서
+옛 수집기가 새 API와 함께 도는 혼합 release가 되었다. 이제 자동 rollback은 다음 두 조건을 모두 만족할 때만 한다.
+
+1. **스키마 불변**: drain 전에 기존 `database_at_release_head`로 운영 DB가 이미 후보의 Alembic head인지
+   기록한다. head가 아니면(이번 `compose up`이 migration을 적용하면) 이후 어떤 실패에도 자동 rollback하지 않는다.
+2. **code-server 단계 실패**: 실패가 `compose up`, `wait_code_server_health`, `wait_location_loaded`에서 났다.
+   code-server와 location 검증을 통과하면 자격을 지운다. 그 뒤 backend `/health`·`release_sha`·frontend 실패는
+   code-server rollback으로 고칠 수 없다.
+
+자격이 없으면 trap은 "자동 rollback 없음 … forward-fix" 배너와 원인을 stderr에 크게 내고 exit≠0으로 끝난다.
+운영자는 원인을 고친 release로 다시 배포한다(forward-fix). 옛 이미지로 수동 복귀가 꼭 필요하면 스키마 하향
+migration 가능 여부를 먼저 확인한다. 하향 없이 code-server만 옛 이미지로 되돌리지 않는다.
+`wait_code_server_health`는 Docker health가 실행 중 `starting`인 동안 compose healthcheck의 냉기동 창
+(`docker-compose.shared.yml` dagster-code-server의 start_period 600초 + interval 90초 + probe timeout 10초 = 700초)만큼
+기다린다. start_period 동안은 start_interval 5초마다 probe하므로 창 안에 뜬 자식은 늦어도 창 끝 뒤 첫 interval probe에서
+healthy가 된다. compose 값과 스크립트 값은 `test_code_server_health_wait_matches_the_compose_healthcheck`가 대조한다.
+unhealthy·정지 등 다른 상태는 기존 5분 예산이다.
+Manager instance 정본 재검증 gate는 rollback 직전에도 그대로다. 외부 운영 controller가 배포를 감싸 직접
+rollback을 판단할 때도 같은 두 조건을 따른다. 회귀는 `backend/tests/test_deploy_prod_remote_guard.py`가 실제
+스크립트 본문을 stub로 실행해 고정한다.
+
+
 ## T-TRN-01 source 배포 계약(2026-10-17)
 
 현재 source의 entry는 scripts/deploy-prod.sh --host <IPv4>, scripts/deploy-prod-remote.sh --host <IPv4>, scripts/deploy-transport-admin-prod.sh --host <IPv4>다. env 정본은 .env.prod와 .env.prod.example이며 app dir·project·실행 사용자는 유지한다. 구 env의 실제 개명·배포를 이 PR이 자동 수행하지 않는다. 구 .env.server14와 .env.server14.legacy/.env.server14.shared-dagster-cutover 세 파일은 정확한 exclude로 보존하며 root의 별도 확인 없이 정리하지 않는다.
@@ -96,10 +122,10 @@ ADR accepted 여부는 별도 증거 정산 후 표시한다.
 ## 과거 n150 운영 절차
 
 1. n150에 `/home/digitie/apps/kor-travel-transport/.env.server14`를 만들고
-   [`.env.server14.example`](../../.env.server14.example)의 실제 DB 비밀번호와 운영
+   `.env.server14.example`(지금은 `.env.prod.example`로 대체돼 저장소에 없다)의 실제 DB 비밀번호와 운영
    API key를 입력한다.
 2. WSL 로컬 테스트와 `docker compose config`를 통과시킨다.
-3. [`scripts/deploy-server14.sh`](../../scripts/deploy-server14.sh)를 실행한다. 이
+3. `scripts/deploy-server14.sh`(지금은 `scripts/deploy-prod.sh --host`로 대체돼 저장소에 없다)를 실행한다. 이
    스크립트는 대상 host가 `192.168.1.14`이고 Compose project가 `kor-travel-transport`인지 먼저
    확인한 뒤 현재 Git `HEAD`를 candidate artifact로 만들어 n150의 `docker compose`만
    호출하며 다른 Compose project를 중지하지 않는다. 배포 직후 `/health.release_sha`가
@@ -755,9 +781,9 @@ PR에 수록, 머지 예정)다. Manager ADR-58 본문은 절차를 그 런북�
 아래는 과거 SQLite/10분 운영의 참고 기록이며 현재 실행 절차가 아니다.
 현재 Odroid 작업은 위 현재 정본 절·ADR-014를 따른다. legacy M6 삭제와 실제 서비스·볼륨의 은퇴는 구분한다.
 
-이 절의 환경변수·포트·스크립트는 과거 기록이다. `scripts/deploy-odroid.ps1`와
-`deploy/odroid/remote-deploy.sh`는 현재 fail-closed 차단 파일이며 Docker 명령을 실행하지 않는다.
-운영 변경은 위의 n150 절차만 사용한다.
+이 절의 환경변수·포트·스크립트는 과거 기록이다. 당시의 `scripts/deploy-odroid.ps1`와
+`deploy/odroid/remote-deploy.sh`는 #92에서 삭제돼 저장소에 없다(fail-closed 차단 파일도 아니다).
+운영 변경은 위의 현재 Odroid 정본 절과 `scripts/deploy-prod.sh --host`만 사용한다.
 
 ## 기존 실데이터 설정
 
@@ -816,11 +842,14 @@ DATA_GO_KR_SERVICE_KEY=...
 
 ## ODROID M1S 배포 파일
 
-- 운영용 compose: [docker-compose.odroid.yml](../../docker-compose.odroid.yml)
-- 운영용 환경 파일: [/.env.odroid](../../.env.odroid)
-- 로컬 배포 스크립트: [scripts/deploy-odroid.ps1](../../scripts/deploy-odroid.ps1)
-- 상태 확인 스크립트: [scripts/odroid-status.ps1](../../scripts/odroid-status.ps1)
-- 원격 실행 스크립트: [deploy/odroid/remote-deploy.sh](../../deploy/odroid/remote-deploy.sh)
+아래 파일은 저장소에 없다. legacy M6 은퇴(T-TRN-03b)와 #92에서 삭제됐고, `.env.odroid`는 원래 추적하지 않는
+운영 파일이었다. 당시 이름만 기록으로 남긴다.
+
+- 운영용 compose: `docker-compose.odroid.yml`
+- 운영용 환경 파일: `.env.odroid`
+- 로컬 배포 스크립트: `scripts/deploy-odroid.ps1`
+- 상태 확인 스크립트: `scripts/odroid-status.ps1`
+- 원격 실행 스크립트: `deploy/odroid/remote-deploy.sh`
 
 비밀값 관리:
 
@@ -863,7 +892,7 @@ ODROID 배포 절차는 폐기되었으며 실행하지 않는다.
 
 Windows 로컬 PowerShell 테스트만으로 ODROID에 배포하지 않는다. PowerShell은 배포 스크립트 실행과 원격 상태 확인 보조 도구로만 사용한다.
 
-`.\scripts\deploy-odroid.ps1`는 실행 시 즉시 종료된다. 현재 운영에는 위 현재 정본 절·ADR-014 절차를 사용한다.
+옛 `.\scripts\deploy-odroid.ps1`는 #92에서 삭제돼 저장소에 없다. 현재 운영에는 위 현재 정본 절·ADR-014 절차를 사용한다.
 
 이 절은 당시 n150 배포의 역사적 기록이다. 현재 운영은 위 [현재 Odroid 정본](#현재-odroid-정본2026-10-19)과 scripts/deploy-prod.sh를 따른다.
 

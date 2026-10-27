@@ -1,5 +1,10 @@
-/* 공개 앱과 관리자 공항 주차장 화면이 함께 쓰는 주차 뷰 스타일. */
-@scope (.parking-radar) {
+/* 공개 앱과 관리자 공항 주차장 화면이 함께 쓰는 주차 뷰 스타일.
+   경계는 `@scope`가 아니라 CSS nesting wrapper다. `@scope`를 모르는 브라우저(Safari 17.4 미만, Firefox 146 미만,
+   Chromium 118 미만)는 at-rule 블록 전체를 버리고, Lightning CSS는 `@scope`를 내려 주지 않는다. nesting은 빌드
+   대상에 맞춰 `:where(.parking-radar) <selector>`로 평탄화된다. `:where()`는 특이도 0이라 `@scope` 때와 같은
+   특이도를 지켜, 관리자 `.parking-admin` override(0,2,0)가 `.lot-card p` 같은 규칙에 계속 이긴다
+   (`parking-css.test.ts`가 재도입을 막는다). */
+:where(.parking-radar) {
 [data-slot="tabs-content"][hidden] { display: none !important; }
 button,
 input,

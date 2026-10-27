@@ -9,7 +9,9 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[2]
+_BACKEND_ROOT = Path(__file__).resolve().parents[1]
+# 저장소 checkout은 `<repo>/scripts`, Docker 회귀 이미지는 `/app/scripts`다(수집 시점 경로 오류 방지).
+ROOT = _BACKEND_ROOT if (_BACKEND_ROOT / "scripts" / "validate-deploy-host.py").is_file() else _BACKEND_ROOT.parent
 SPEC = importlib.util.spec_from_file_location("instance_consumer", ROOT / "scripts/validate-deploy-host.py")
 helper = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(helper)
@@ -57,15 +59,13 @@ def test_show_uses_exact_cli_and_no_prepare_or_local_config_read(monkeypatch, tm
     envfile.write_text("OWNED=fixture\n")
     calls = []
 
-    def run(argv, **kwargs):
-        calls.append((argv, kwargs["timeout"]))
-        assert kwargs["check"]
-        stdout = ADDR if argv == ["hostname", "-I"] else json.dumps(
+    def run(argv, *, timeout):
+        calls.append((argv, timeout))
+        return ADDR if argv == ["hostname", "-I"] else json.dumps(
             shown() if "dagster-instance-config" in argv else registry()
         )
-        return subprocess.CompletedProcess(argv, 0, stdout, "")
 
-    monkeypatch.setattr(helper.subprocess, "run", run)
+    monkeypatch.setattr(helper, "_run", run)
     assert helper.validate_remote(ADDR, envfile, instance_config=True) == shown()
     assert calls == [
         (["hostname", "-I"], 15),
@@ -81,26 +81,27 @@ def test_show_failure_has_fixed_error_without_raw_output(monkeypatch, tmp_path, 
     envfile = tmp_path / ".env.prod"
     envfile.write_text("OWNED=fixture\n")
 
-    def run(argv, **kwargs):
+    def run(argv, *, timeout):
         if argv == ["hostname", "-I"]:
-            return subprocess.CompletedProcess(argv, 0, ADDR, "")
+            return ADDR
         if "targets" in argv:
-            return subprocess.CompletedProcess(argv, 0, json.dumps(registry()), "")
+            return json.dumps(registry())
         if failure == "exit":
-            raise subprocess.CalledProcessError(2, argv, output="sensitive-sentinel", stderr="sensitive-sentinel")
+            raise helper.DeployHostError("command")
         if failure == "timeout":
-            raise subprocess.TimeoutExpired(argv, 30, output="sensitive-sentinel")
+            raise helper.DeployHostError("timeout")
         value = shown()
         if failure == "mismatch":
             value["host"] = "sensitive-sentinel"
-        raw = {"invalid": "sensitive-sentinel", "duplicate": '{"host":"x","host":"sensitive-sentinel"}',
-               "oversize": " " * 16385}.get(failure, json.dumps(value))
-        return subprocess.CompletedProcess(argv, 0, raw, "sensitive-sentinel")
+        return {"invalid": "sensitive-sentinel", "duplicate": '{"host":"x","host":"sensitive-sentinel"}',
+                "oversize": " " * 16385}.get(failure, json.dumps(value))
 
-    monkeypatch.setattr(helper.subprocess, "run", run)
+    monkeypatch.setattr(helper, "_run", run)
     assert helper.main(["--host", ADDR, "--env-file", str(envfile), "--instance-config"]) == 2
     output = capsys.readouterr()
     assert output.out == "" and "sensitive-sentinel" not in output.err
+    reason = {"exit": "command", "timeout": "timeout", "mismatch": "instance"}.get(failure, "output")
+    assert output.err.endswith(f"reason={reason}\n")
 
 
 def test_parse_only_cannot_bypass_manager_show(capsys):
@@ -131,7 +132,7 @@ def test_actual_binding_rejects_override_and_changed_show(tmp_path, override, ch
     hostname.chmod(0o755)
     envfile = tmp_path / ".env.prod"
     envfile.write_text("OWNED=fixture\n")
-    env = {"PATH": str(bindir) + ":/usr/bin:/bin", "SCRIPT_DIR": str(ROOT / "scripts"),
+    env = {"PATH": f"{bindir}:{Path(sys.executable).parent}:/usr/bin:/bin", "SCRIPT_DIR": str(ROOT / "scripts"),
            "REMOTE_HOST": ADDR, "REMOTE_APP_DIR": str(tmp_path), "REMOTE_ENV_FILE": ".env.prod",
            "REGISTRY": json.dumps(registry()), "SHOWN": json.dumps(shown()),
            "COUNTER": str(tmp_path / "count"), "CHANGE": "1" if change else "0"}
@@ -162,15 +163,14 @@ def test_oversize_registry_is_rejected_before_json_parse(monkeypatch, tmp_path, 
     envfile.write_text("OWNED=fixture\n")
     calls = []
 
-    def run(argv, **kwargs):
+    def run(argv, *, timeout):
         calls.append(argv)
-        stdout = ADDR if argv == ["hostname", "-I"] else " " * 1048577
-        return subprocess.CompletedProcess(argv, 0, stdout, "sensitive-sentinel")
+        return ADDR if argv == ["hostname", "-I"] else " " * 1048577
 
     def forbidden_parse(*args, **kwargs):
         raise AssertionError("oversize registry reached JSON parser")
 
-    monkeypatch.setattr(helper.subprocess, "run", run)
+    monkeypatch.setattr(helper, "_run", run)
     monkeypatch.setattr(helper.json, "loads", forbidden_parse)
     args = ["--host", ADDR, "--env-file", str(envfile)]
     if instance_config:

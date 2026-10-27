@@ -191,6 +191,65 @@ def test_postgres_invisible_cache_conflict_does_not_rematerialize(export_client,
     asyncio.run(race())
 
 
+def test_postgres_concurrent_gc_skips_a_victim_another_freeze_is_deleting(export_client):
+    """다른 종류의 첫 페이지 freeze가 같은 만료 victim을 고르면 행 잠금 2초 대기(55P03→503) 대신 건너뛴다."""
+    from time import monotonic
+
+    from app.services import export_current
+    c = export_client
+    if c.app.state.engine.dialect.name != "postgresql":
+        pytest.skip("실제 PostgreSQL 행 잠금·lock_timeout 회귀")
+    async def seed_expired(s):
+        snapshot_id, past = str(uuid4()), now_utc() - timedelta(minutes=1)
+        s.add(ServiceExportSnapshot(id=snapshot_id, kind="fixture-kind-v1", scope_key="fixture", generation="expired",
+                                    source_collected_at=past, created_at=past - timedelta(minutes=15),
+                                    expires_at=past, item_count=2, content_digest="fixture"))
+        await s.flush()
+        s.add_all([ServiceExportSnapshotItem(snapshot_id=snapshot_id, ordinal=i, payload={"i": i}) for i in (1, 2)])
+    _run(c, seed_expired)
+    async def race():
+        async with c.app.state.session_factory() as a, c.app.state.session_factory() as b:
+            await export_current._snapshot_transaction(a)
+            assert await expire_snapshots(a) == 1  # A는 commit 전까지 victim과 항목의 행 잠금을 쥔다.
+            await export_current._snapshot_transaction(b)
+            started = monotonic()
+            assert await asyncio.wait_for(expire_snapshots(b), 5) == 0
+            assert monotonic() - started < 1
+            await b.rollback()
+            await a.commit()
+        async with c.app.state.session_factory() as session:
+            assert await session.scalar(select(func.count()).select_from(ServiceExportSnapshot)) == 0
+            assert await session.scalar(select(func.count()).select_from(ServiceExportSnapshotItem)) == 0
+    asyncio.run(race())
+
+
+def test_snapshot_reused_at_epoch_end_still_serves_its_next_page(export_client, monkeypatch):
+    """같은 epoch의 cache 재사용은 남은 수명 TTL 이상을 보장한다 — epoch 끝 재사용 직후 다음 페이지가 410이 아니다."""
+    from datetime import UTC, datetime
+
+    from app.services import export_current
+    c = export_client
+    _enable(c)
+    _run(c, lambda s: _seed(s, c.app.state.settings))
+    ttl = export_current.SNAPSHOT_TTL
+    seconds = int(ttl.total_seconds())
+    start = datetime.fromtimestamp((int(now_utc().timestamp()) // seconds + 1) * seconds, tz=UTC)
+    end = start + ttl
+    clock = {"now": start + timedelta(seconds=1)}
+    monkeypatch.setattr(export_current, "now_utc", lambda: clock["now"])
+    first = c.get(PATH, headers=HEADERS, params={"limit": 1})
+    assert first.status_code == 200, first.text
+    clock["now"] = end - timedelta(seconds=0.5)
+    reused = c.get(PATH, headers=HEADERS, params={"limit": 1})
+    assert reused.status_code == 200, reused.text
+    assert reused.json()["snapshot_id"] == first.json()["snapshot_id"]
+    assert datetime.fromisoformat(reused.json()["snapshot_expires_at"]) - clock["now"] >= ttl
+    clock["now"] = end + timedelta(seconds=10)
+    page = c.get(PATH, headers=HEADERS, params={"limit": 1, "cursor": reused.json()["next_cursor"]})
+    assert page.status_code == 200, page.text
+    assert page.json()["snapshot_id"] == first.json()["snapshot_id"]
+
+
 def test_authoritative_zero_head_is_empty_snapshot_not_unready(export_client):
     c = export_client
     _enable(c)

@@ -34,6 +34,9 @@ from sqlalchemy import select
 TOKEN = "s" * 40
 HEADERS = {"X-Kor-Travel-Transport-Service-Token": TOKEN}
 REPO_ROOT = Path(__file__).resolve().parents[2]
+_BACKEND_ROOT = Path(__file__).resolve().parents[1]
+# Docker 회귀 이미지(`/app/tests`)는 gateway template을 `compose-contract/deploy/`에만 싣는다.
+_GATEWAY_ROOT = _BACKEND_ROOT / "compose-contract" if (_BACKEND_ROOT / "compose-contract" / "deploy").is_dir() else REPO_ROOT
 
 
 LOOPBACK_CLIENT = ("127.0.0.1", 50123)
@@ -116,9 +119,16 @@ def test_exports_stay_closed_when_the_token_is_short(test_settings: Settings) ->
     assert response.status_code == 404
 
 
-def test_public_proxy_blocks_exports_and_gateway_requires_consumer_allowlist() -> None:
-    gateway = (REPO_ROOT / "deploy/transport-admin/api-gateway.conf.template").read_text(encoding="utf-8")
-    proxy = (REPO_ROOT / "frontend/src/app/api/backend/[...path]/route.ts").read_text(encoding="utf-8")
+def test_public_proxy_never_forwards_service_exports() -> None:
+    proxy_path = REPO_ROOT / "frontend/src/app/api/backend/[...path]/route.ts"
+    if not proxy_path.is_file():
+        pytest.skip("Docker 회귀 이미지에는 공개 frontend route 파일이 없다 — 저장소 checkout(CI)에서 검사한다")
+    proxy = proxy_path.read_text(encoding="utf-8")
+    assert "service/" not in proxy and '"service' not in proxy
+
+
+def test_gateway_requires_consumer_allowlist_for_service_exports() -> None:
+    gateway = (_GATEWAY_ROOT / "deploy/transport-admin/api-gateway.conf.template").read_text(encoding="utf-8")
     # 운영 소비자 전용 경로만 예외이며, 공개 프록시는 계속 service 경로를 전달하지 않는다.
     locations = re.findall(r"^    location (.+?) \{", gateway, re.MULTILINE)
     assert len(locations) == 4
@@ -132,7 +142,6 @@ def test_public_proxy_blocks_exports_and_gateway_requires_consumer_allowlist() -
     assert 'proxy_set_header X-Forwarded-For "";' in export
     assert "allow all;" not in export
     assert "location / { return 404; }" in gateway
-    assert "service/" not in proxy and '"service' not in proxy
 
 
 def test_fuel_station_export_pages_stable_ids_with_latest_prices(export_client: TestClient) -> None:

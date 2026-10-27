@@ -1,11 +1,11 @@
-"""n150 비추적 운영 환경에 관리자 쓰기 토큰을 한 번만 안전하게 추가한다."""
+"""운영 호스트의 비추적 운영 환경에 관리자 쓰기 토큰을 한 번만 안전하게 추가한다."""
 
 from __future__ import annotations
 
 import os
 import secrets
 import shutil
-import socket
+import stat
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,9 +16,18 @@ BACKUP_DIR = Path("/home/digitie/backups/transport-config")
 KEY = "TRANSPORT_ADMIN_WRITE_TOKEN"
 
 
+def _owned_regular_file(path: Path) -> bool:
+    """호스트 이름 리터럴 대신 효과로 본다: 심볼릭 링크가 아닌 일반 파일이고 실행 사용자가 소유한다."""
+    try:
+        status = path.lstat()
+    except OSError:
+        return False
+    return stat.S_ISREG(status.st_mode) and status.st_uid == os.getuid()
+
+
 def main() -> None:
-    if socket.gethostname() != "digitie-at-n150" or not ENV_PATH.is_file():
-        raise SystemExit("n150의 지정된 운영 환경 파일에서만 실행할 수 있습니다.")
+    if not _owned_regular_file(ENV_PATH):
+        raise SystemExit("실행 사용자가 소유한 지정 운영 환경 파일(심볼릭 링크 아님)에서만 실행할 수 있습니다.")
     lines = ENV_PATH.read_text(encoding="utf-8").splitlines()
     found = [line.partition("=")[2] for line in lines if line.startswith(f"{KEY}=")]
     if len(found) > 1:

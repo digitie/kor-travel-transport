@@ -2,6 +2,8 @@
 
 `GET /v1/service/exports/parking/current`는 기존 service token/peer 검사, 공통meta,
 고정snapshot/cursor/15분TTL/gzip/ETag/최대5000개 페이지를 재사용한다. 기본 flagOFF다.
+snapshot 만료는 만든 cache epoch의 끝+15분이고, GC는 다른 freeze가 지우는 중인 victim을 건너뛴다
+(2026-10-27, [교통 current 보존·동시성](map-traffic-current-export.md#보존동시성)).
 source별 complete membership가 모두 준비되어야 첫snapshot을 만든다. 이후 원천 실패는
 이전 typed current와 stale을 제공하며, 초도집합이 없으면503이다.
 
@@ -15,7 +17,12 @@ SDK PR11의 `parse_parking_snapshot_values`로 원문 숫자·실제 KST 시각�
 Map current에는 SDK canonical 시각·수치를 직접 사용하고 기존 이력은 기존 parser 결과를
 유지한다. 정상 IIAC 초단위 시각을 분 단위 이력과 비교해 거부하지 않는다. 오류문자열을
 0/현재시각으로 승인하지 않는다.
-전체raw에서 해석되지 않은 행이 있으면 보류한다. KAC는 설정 공항으로 필터한 source scope를
+전체raw에서 해석되지 않은 행이 있으면 보류한다. 이 엄격 검증과 아래 급감 guard는 current 승격에만
+건다(2026-10-27). 거절된 원천도 마지막으로 받은 응답의 이력은 플래그 OFF와 같은 parser·인자
+(`parse_kac_parking(body, allowed_airport_codes=설정 공항)`/`parse_incheon_parking(body)`)로 저장한다.
+용량0·미매핑 공항 한 행 때문에 그 원천의 5분 이력을 통째로 잃지 않는다(KAC는 현재값만 주므로 되살릴 수
+없다). 관대한 parser마저 실패하면 이력도 건너뛴다. 이력용 provider 추가 호출은 없고 head는 그대로이며
+run은 partial_success다. KAC는 설정 공항으로 필터한 source scope를
 hash하고 ICN scope와 분리한다. 빈/오류/이전성공25%미만은1회 다시받고 미확인 시 이전집합을
 보존한다. 서로 다른 source의 성공과 요금수집 성공은 분리한다. blocked KAC도 기존 quota marker를
 정규화해 보존하므로 다음 native run의 cooldown 판정이 원천 재호출로 우회되지 않는다.

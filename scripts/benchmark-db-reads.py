@@ -46,7 +46,7 @@ def default_paths() -> tuple[str, ...]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", default="http://127.0.0.1:14001")
+    parser.add_argument("--base-url", default="http://127.0.0.1:12302")
     parser.add_argument("--samples", type=int, default=3)
     parser.add_argument("--threshold-seconds", type=float, default=1.0)
     parser.add_argument("--path", action="append", help="기본 목록 대신 검사할 경로. 반복 가능")

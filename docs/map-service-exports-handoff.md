@@ -70,8 +70,16 @@ producer 응답 사이 호환 수정은 Map 소유 후속이다.
 
 API 이미지와 collector code 모두 새 코드를 사용해야 한다. migration0030~0033을 현재 head까지
 적용한다. `TRANSPORT_MAP_CURRENT_ENABLED` 하나가 새 T2/T3 API와 collector 모두를 제어하며
-source별 개별 flag가 아니다. 기본값은 false이고 API·CS 환경을 일치시켜야 한다. 활성화 뒤
+source별 개별 flag가 아니다. 기본값은 false이고 API·CS 환경을 일치시켜야 한다. 운영
+overlay(`docker-compose.shared.yml`)에서는 API(`backend`)와 CS가 같은 `x-transport-scope-environment`
+앵커를 병합한다. 이 앵커는 플래그와 scope hash 입력(`AIRPORT_CODES_CSV`·`ENABLE_INCHEON_COLLECTION`·
+`TRANSPORT_ROUTE_NOS_CSV`·`TRANSPORT_CONZONE_IDS_CSV`)을 함께 둬서, env 파일에서 키가 빠져도 두 프로세스의
+기본값이 같다(`backend/tests/test_map_current_env_parity.py`). 활성화 뒤
 승인된 정상수집 순서로 scope별 head를 채운다. 이력 전체 backfill은 하지 않는다.
+플래그를 켠 직후 head가 없으면 철도(rail-station/nationwide)와 버스(express·intercity)는 최근 플래그 OFF 성공이
+있어도 다음 정기 tick을 due로 보고 첫 head를 만든다(48·72시간 guard가 export를 2~3일 503으로 두지 않게,
+2026-10-27). 항구는 3일 주기 cron이므로 활성화 직후 Dagster에서 `maritime_reference_collection_job`을 1회 수동 실행해
+ferry-ports head를 만든다. 주차·교통은 5분 주기 수집이 곧 head를 만든다.
 BUS express/intercity, KAC/ICN처럼 설정에 활성인 source의 head가 모두 준비되기 전에는503이다.
 API가 먼저 flagON되어도 미승인·구버전 행을 추정해 export하지 않는다.
 

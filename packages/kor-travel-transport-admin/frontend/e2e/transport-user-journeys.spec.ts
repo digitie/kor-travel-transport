@@ -31,9 +31,9 @@ for (const width of [375, 1440]) test(`운영 홈·노선 중심 도시철도·�
   await expect(page.getByRole("heading", { name: "운영 홈", exact: true })).toBeVisible();
   await expect(page.getByTestId("home-stat-sources")).toContainText("1");
   if (width === 375) {
-    await page.getByRole("button", { name: "주요 메뉴 열기" }).click();
+    await page.getByRole("button", { name: "주요 메뉴", exact: true }).click();
     await expect(page.getByRole("link", { name: "도시철도", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "주요 메뉴 열기" }).click();
+    await page.getByRole("button", { name: "주요 메뉴", exact: true }).click();
     await expect(page.getByRole("link", { name: "도시철도", exact: true })).not.toBeVisible();
   }
   await expect(page.getByRole("link", { name: "통합", exact: true })).toHaveCount(0);

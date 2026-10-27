@@ -124,7 +124,10 @@ def test_worker_daily_miss_budget_resets_on_korean_calendar_day(monkeypatch):
     stale = client.get(url)
     assert stale.status_code == 200 and stale.json()["stale"] is True
     assert len(state.calls) == attempts
-    assert client.get(url + "&direction=2").status_code == 429
+    capped = client.get(url + "&direction=2")
+    assert capped.status_code == 429
+    # 일일 상한은 다음 KST 자정(10-25 00:00 KST = 10-24 15:00 UTC)에 풀린다 — 지금(KST 09:30)부터 14시간 30분.
+    assert capped.headers["retry-after"] == str(14 * 3600 + 30 * 60)
     state.now = datetime(2026, 10, 24, 15, tzinfo=timezone.utc)
     assert client.get(url + "&direction=2").status_code == 200
     assert state.calls[-2] == ("0010", "2")

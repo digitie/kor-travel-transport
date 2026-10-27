@@ -27,6 +27,8 @@ class Fixture(FixturePublicDataClient):
     bad_source = None
     bad_kind = None
     timestamp_variant = None
+    kac_row_variant = None
+    last_kac_body = None
 
     def __init__(self):
         self.moment = now_utc() + timedelta(hours=9)
@@ -44,11 +46,17 @@ class Fixture(FixturePublicDataClient):
             row["parkingGettime"] = now.strftime("%H:%M:%S")
         if self.bad_source == "kac_parking":
             rows[0]["parkingIstay" if self.bad_kind == "count" else "parkingGetdate"] = "upstream error"
+        # 기존 이력 parser는 견디지만 Map current 엄격 검증은 거절하는 원천 행.
+        if self.kac_row_variant == "zero_capacity":
+            rows[0]["parkingFullSpace"] = "0"
+        elif self.kac_row_variant == "unmapped_airport":
+            rows[0]["aprKor"], rows[0]["aprEng"] = "미매핑공항", "UNMAPPED AIRPORT"
         if self.subset is not None:
             rows = rows[:self.subset]
         if self.empty_kac:
             rows = []
-        return replace(response, body_text=json.dumps(rows),
+        self.last_kac_body = json.dumps(rows)
+        return replace(response, body_text=self.last_kac_body,
                        completion=None if self.missing_proof else {"complete": True, "item_count": len(rows)})
 
     async def fetch_incheon_parking(self):
@@ -276,3 +284,61 @@ def test_current_uses_canonical_seconds_while_legacy_history_stays_unchanged(exp
     from datetime import datetime
     assert all(datetime.fromisoformat(item["observed_at"]).second == 20
                for item in page.json()["items"] if item["source"] == "incheon_parking")
+
+
+@pytest.mark.parametrize("variant", ["zero_capacity", "unmapped_airport"])
+def test_strict_current_rejection_still_stores_flag_off_history(export_client, variant):
+    """엄격 검증은 current 승격에만 건다 — 거절된 원천의 이번 이력은 플래그 OFF parser 결과대로 남는다."""
+    from app.services.parsers import parse_kac_parking
+    c = export_client
+    settings = c.app.state.settings
+    client = Fixture()
+    client.moment -= timedelta(minutes=10)  # 두 번째 수집의 이력이 중복 skip되지 않게 관측시각을 나눈다.
+    collector = service(c, client)
+    assert _run(c, lambda s: collector.collect(s))["status"] == "success"
+    async def head_generation(s):
+        head = await s.get(ReferenceExportState, (KIND, parking_scope(settings, "kac_parking")))
+        return head.generation
+    before = _run(c, head_generation)
+    client.moment += timedelta(minutes=10)
+    client.kac_row_variant = variant
+    result = _run(c, lambda s: collector.collect(s))
+    assert result["status"] == "partial_success", result
+    assert client.calls == 3  # 엄격 거절 재시도만 있고 이력용 추가 호출은 없다.
+    assert _run(c, head_generation) == before
+    page = c.get(PATH, headers=HEADERS)
+    assert page.status_code == 200 and page.json()["total_count"] == 12
+    assert page.json()["meta"]["source_status"] == "stale"
+    expected = len(parse_kac_parking(client.last_kac_body, allowed_airport_codes=settings.supported_airport_codes))
+    async def stored(s):
+        return await s.scalar(select(func.count()).select_from(ParkingSnapshot).where(
+            ParkingSnapshot.collection_run_id == result["collection_run_id"],
+            ParkingSnapshot.source == "kac_parking"))
+    assert expected > 0 and _run(c, stored) == expected
+
+
+def test_history_only_store_failure_does_not_abort_failure_marking(export_client):
+    """거절 원천의 이력 전용 저장이 실패해도 수집은 이어지고 그 원천의 실패 기록은 남는다."""
+    c = export_client
+    settings = c.app.state.settings
+    client = Fixture()
+    client.moment -= timedelta(minutes=10)
+    collector = service(c, client)
+    assert _run(c, lambda s: collector.collect(s))["status"] == "success"
+    client.moment += timedelta(minutes=10)
+    client.kac_row_variant = "zero_capacity"
+    original = collector._store_observations
+    async def failing_history_only(session, run_id, rows, *, lot_ids=None):
+        if lot_ids is None:
+            raise RuntimeError("history store boom")
+        return await original(session, run_id, rows, lot_ids=lot_ids)
+    collector._store_observations = failing_history_only
+    result = _run(c, lambda s: collector.collect(s))
+    assert result["status"] == "partial_success", result
+    async def state(s):
+        head = await s.get(ReferenceExportState, (KIND, parking_scope(settings, "kac_parking")))
+        stored = await s.scalar(select(func.count()).select_from(ParkingSnapshot).where(
+            ParkingSnapshot.collection_run_id == result["collection_run_id"],
+            ParkingSnapshot.source == "kac_parking"))
+        return head.last_error, stored
+    assert _run(c, state) == ("source_failed", 0)

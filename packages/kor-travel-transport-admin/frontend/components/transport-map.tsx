@@ -63,6 +63,17 @@ function MapMarker({ point, onSelect, selected, products }: { point: MapPoint; o
   </MapMarkerButton>;
 }
 
+type MapCamera = { center: [number, number]; zoom: number };
+const DEFAULT_CAMERA: MapCamera = { center: [127.8, 36.2], zoom: 7 };
+
+// 지도 mount 때 한 번 잡은 카메라만 VWorldMapView에 넘긴다. 실시간 카메라를 center/zoom prop으로 되먹이면 SDK가
+// prop 변화마다 pending camera(기본 smooth easeTo 300ms)를 만들어, 연속 확대나 묶음·장소 연속 선택에서 옛 위치로
+// 되돌아가거나 흔들린다. 목록→지도 재mount 때는 그때의 마지막 카메라로 다시 시작한다.
+function MountCamera({ camera, children }: { camera: MapCamera; children: (camera: MapCamera) => ReactNode }) {
+  const [initial] = useState(camera);
+  return children(initial);
+}
+
 // Map `showCoincidentPopup`과 같은 겹친 지점 팝업: 제목·개수 칩과 색 점·종류 배지·이름 행.
 function OverlapList({ places, onSelect, listRef }: { places: Place[]; onSelect: (place: Place) => void; listRef: RefObject<HTMLElement | null> }) {
   return <section ref={listRef} className="map-overlap" aria-label="겹친 장소 선택">
@@ -377,7 +388,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
     </MapFilterPanel> : null}
     <Tabs value={view} onValueChange={(value) => { if (value === "map" || value === "list") { setView(value); setFiltersExpanded(false); } }} className="min-h-0">
     <MapViewTabs ariaLabel="장소 보기" viewport={mapViewport} count={view === "list" ? listCount ?? ((listPlaces ? items.length : 0) + listFeatureCount) : mapFeatureCount + (serverClustered ? serverClusters.reduce((sum, item) => sum + item.count, 0) : visiblePoints.length)} status={pending.length ? <span className="kt-map-count">조회 중…</span> : undefined} />
-    <TabsContent className="min-h-0" value="map"><MapStage className={mode === "fuel" ? "fuel-map-stage" : undefined} summary={summary} detail={detailPanel("map")}><div className="map-primary" ref={mapContainer}><VWorldMapView apiKey={VWORLD_KEY} center={mapViewport ? [mapViewport.longitude, mapViewport.latitude] : [127.8, 36.2]} zoom={mapViewport?.zoom ?? 7} minZoom={5}
+    <TabsContent className="min-h-0" value="map"><MapStage className={mode === "fuel" ? "fuel-map-stage" : undefined} summary={summary} detail={detailPanel("map")}><div className="map-primary" ref={mapContainer}><MountCamera camera={mapViewport ? { center: [mapViewport.longitude, mapViewport.latitude], zoom: mapViewport.zoom } : DEFAULT_CAMERA}>{(initialCamera) => <VWorldMapView apiKey={VWORLD_KEY} center={initialCamera.center} zoom={initialCamera.zoom} minZoom={5}
         className="transport-map-canvas" layerType="Base" navigation={false} geolocate={false} scale
         loadingSkeleton={<p className="loading">지도를 준비하는 중입니다…</p>} fallback={(info) => <MapUnavailable info={info} onMessage={setMapUnavailableMessage} />}
         unsupportedTileFallback={{ imageUrl: MAP_FALLBACK_IMAGE }} transformRequest={basemap.transformRequest}
@@ -415,7 +426,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
         {clusterPlaces.length ? <OverlapPopup lngLat={clusterAnchor} onClose={closeOverlap}>
           <OverlapList places={clusterPlaces} onSelect={selectPlace} listRef={clusterList} />
         </OverlapPopup> : null}
-      </VWorldMapView></div>
+      </VWorldMapView>}</MountCamera></div>
       </MapStage>
     </TabsContent>
     <TabsContent className="min-h-0" value="list" keepMounted><MapStage view="list" detail={view === "list" ? detailPanel("list") : null}><div className="map-primary"><div className="map-place-list"><div className="map-feedback">{status}</div>{listContent}{listPlaces ? items.map((place) => <button type="button" className="place-row" key={keyOf(place)} aria-pressed={current ? keyOf(current) === keyOf(place) : false} onClick={() => selectPlace(place)}><PlaceIcon kind={place.kind} /><span><strong>{place.name}</strong><small>{place.line_names.join(" · ") || place.brand_name || place.subtitle || placeKindLabel(place.kind)}</small>{(place.kind === "ferry_port" || place.kind === "bus_terminal") && place.provider_id ? <small>{place.kind === "ferry_port" ? "항구" : "터미널"} 코드 {place.provider_id}</small> : null}{!hasCoordinates(place) ? <small>좌표 미등록</small> : null}</span></button>) : null}</div></div></MapStage></TabsContent>

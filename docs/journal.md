@@ -1,3 +1,82 @@
+## 2026-10-28 — 주차 보존 현재 수용과 main3f 통합 후보
+
+- PR161 c763의 정확 CI와 James/Popper SOURCE_PASS, 원 d2 전체의 정상 종료를 회수했다.
+  원 c763/WT/실패·집중·전체 원장은 보존하고 새 전용 branch에 main3f516을 합친다.
+  문서 충돌은 양쪽 정책·이력을 보존했으며 collection/Dagster 자동병합은 새 결합 검증·두 증분 리뷰 전이다.
+- 162 pure pattern/163 단일snapshot DB adapter의 CI와 집중은 성공했지만 실제 API/cache/outlook는
+  아직 이 reader를 호출하지 않는다. 새 통합 source의 집중/CI·두 리뷰와 후속 reader 전환이 남는다.
+- 원본48시간·통계영구는 미완이다. backfill/coverage·history48h/cursor410·정밀도·현재/Map export·복원
+  gate와 검산 후 정리가 모두 필요하며 prune/자동 schedule/운영 변경은0이다.
+  [재개 감사와 다음 순서](reports/2026-10-28-parking-retention-resume.md).
+- 아래 기록은 각 작성 시점 이력이다. “회수 중/다음 한 작업/미검증”을 현재 정산과 혼동하지 않는다.
+
+## 2026-10-27 — 지난 10일 Codex PR 상세 리뷰의 통합 수정
+
+- 2026-10-17 이후 머지된 Codex PR 51건(#83~#143)을 리뷰했다. 고칠 20건(T01~T20)은 PR 하나
+  (`review/codex-10d-transport`)로 묶었고, 보류 19건과 기각 3건은 PR 본문에 근거와 함께 남겼다.
+  보류에는 운영 관리자 UI 비밀번호 회전(소유자 조치)이 있다. 이 PR은 그 값과 줄을 다루지 않는다.
+- high: T01 Map current 플래그와 수집 범위(공항·인천·고속도로 노선/구간)를 API와 code-server가
+  `x-transport-scope-environment` 앵커 하나로 읽는다. 플래그를 켜도 API export가 503으로 남거나 scope hash가
+  어긋나지 않는다. T02 Map 모드 주차는 엄격 검증·급감 guard를 current 승격에만 건다. 거절된 원천의 이력은
+  플래그 OFF와 같은 parser로 저장하며, provider 추가 호출은 없다.
+- 설계 변경 두 건: T04 export snapshot은 생성 cache epoch의 끝+15분까지 유효하고, GC는
+  `FOR UPDATE SKIP LOCKED`로 다른 freeze가 지우는 victim을 건너뛴다. T05 자동 code-server rollback은
+  스키마가 후보 head였고 실패가 code-server 단계일 때만 한다. 그 밖에는 forward-fix 배너를 낸다.
+  code-server 냉기동은 compose healthcheck 창(start_period+interval+timeout)인 700초까지 기다린다.
+  근거는 [교통 current 문서](map-traffic-current-export.md)와 [배포 런북](runbooks/deployment.md)에 있다.
+- 나머지: T03 플래그 OFF 기준정보의 엄격 identity 해제, T06 주차 CSS `@scope`→`:where()` nesting(특이도
+  보존), T07 관리자 지도 카메라 prop 되먹임 제거, T08 고속도로 통계 노선별 재조회·표본 표기, T09 KAC 할당량 원장 노출 정리,
+  T10 로그인 상태별 문구, T11 모바일 메뉴 disclosure, T12 이미지 안 pytest 수집 오류, T13 호스트 검증
+  timeout의 sudo 하위 정리·원인 토큰, T14 odroid 잔재, T15 VadaHub 주간 갱신, T16 429 Retry-After·안내 범주
+  사전 검증, T17 플래그 직후 head 부트스트랩, T18 유가 통계 지연 가시성, T19 관리자 CI lint, T20 문서 정정.
+- 운영 미배포다. `TRANSPORT_MAP_CURRENT_ENABLED`는 계속 false이고, 머지·배포는 소유자 승인 뒤에 한다.
+
+## 2026-10-28 — 소통 배치 PR155 코드·후보 UI·격리 성능 수용
+
+정확65a/main8bc의 CI6 SUCCESS와 두 제품 리뷰·실제 후보 UI39를 통과해 PR155를 main c19d6bc로 정상 머지했다.
+기존3bf Next 산출물은 입력244개와 새65a source/복사 영수증으로 재사용했고 새 컴파일0이다.
+PG18/schema36·Common c289/frozen106에 결박한 UI39는28.967초/exit0·API15/tile40·오류0이며 소유 자원을 모두 정리했다.
+격리 amd64 PG18의8,300고유 관측 AB/BA/AB에서 구간별 원본·후보6회의 전체 행 digest가 일치했다(총18측정).
+저장·commit wall 중앙값은92.69~92.95%·client CPU는92.97~94.02% 감소했다. 표본 RSS는2,968/3,428/3,324KiB 증가해 메모리 감소가 아니며 서버 RSS·운영 ARM 효과는 미측정이다.
+첫 mux/API 종료 기록 누락과 SDK 역할 준비 실패·제어된 새 UUID 성공 이력을 보존한다.
+[실측 표·스코프·원장·남은 운영 수용](reports/2026-10-27-traffic-store-batched-prefetch.md).
+이 문서는 코드 머지 뒤 문서 전용으로 정산하며 운영 배포·원본 삭제는0이다. 아래는 각 작성 당시 이력이다.
+
+## 2026-10-28 — 소통 배치 후보에 PG18/schema36 main8bc 합성
+
+main8bc를 정상 merge하고 주차 영구 통계 선행 저장·원본 삭제 차단·prebuilt 배포 및 PG18/schema36 계약을 그대로 채택했다.
+batch 제품/회귀·Common c289/lock·프론트 입력은 유지했다. journal/resume 양쪽 기록과 main 전문을 보존했다.
+직전3bf CI6 SUCCESS와 b2fbb Next build/정리는 그 소스의 수용이며, PG/API/browser는 미기동이다.
+새 source/lab에서 frontend-input 동등/산출물 재사용 영수증과 PG18/schema36 하네스 두 리뷰를 준비한다.
+운영·재빌드·CPU 실험·원본 삭제는0이다. [최종 준비 기준과 검증 한계](reports/2026-10-27-traffic-store-batched-prefetch.md).
+
+## 2026-10-27 — 소통 배치 후보에 준비 기준 main5c823 합성
+
+준비 시점 최신 main `5c823c4`의 자동 역 연결 API/UI를 정상 merge하고 upstream6개 런타임 파일을 그대로 채택했다.
+batch 제품·회귀의 import/UTC와 Common c289/lock/schema35는 보존했다. journal/resume 양쪽 추가와 main 전문을 유지했다.
+직전516의 CI6 SUCCESS/live2 SKIPPED·c289 SQLite32통과는 그 소스의 이력이다. 후보 build/PG/API/browser는 미기동이다.
+새 합성 HEAD의 CI·두 리뷰·fresh Next/동일 API39 UI를 다시 결박한다. CPU/RSS 실험·운영·이미지 변경은0이다.
+[동결 기준·기존 증거·남은 수용](reports/2026-10-27-traffic-store-batched-prefetch.md).
+
+## 2026-10-27 — 소통 배치 후보에 최신 Common c289 합성
+
+최신 main `abd4084b`를 정상 merge해 Common c289의 pyproject/lock·핀 회귀를 그대로 채택했다.
+journal 충돌은 양쪽 prepend와 기존 본문 전체를 보존했다. batch 제품/회귀는103a blob 그대로다.
+제품1788/문서103a의 PG15·Docker15와 전체 행 동등은 Common e746 환경의 역사적 수용이다.
+새 c289/head의 실제 환경·CI·두 리뷰·후보 API/UI 검증 전이며, 기존 venv·원 실패·한계를 보존한다.
+CPU/RSS 실험·운영 접근·이미지 변경·수집 실행은0이다. [정산·남은 검증](reports/2026-10-27-traffic-store-batched-prefetch.md).
+
+## 2026-10-27 — 소통 관측 exact pair 배치 조회 후보
+
+최신 main을 보존한 전용 branch에서 `_store_traffic`만400개 단위로 조회·flush하도록 구현했다.
+SQLite803입력/801고유의 신규·정정·재확인 전체 행 digest가 같고 SELECT 관측은801→3이다.
+이는 SQLAlchemy dispatch 관측이며 서버 DML·운영 CPU/RSS 감소가 아니다. 원 필드/첫 중복/UTC·KST/
+current OFF·기존 commit fence를 보존한다. [변경·원 실패·미수용 범위](reports/2026-10-27-traffic-store-batched-prefetch.md).
+Python3.13.14·frozen lock의 SQLite 집중 회귀84통과/1건너뜀(324.52초), 격리PG15통과18.48초와801/8,300전체 행 동등을 수용했다.
+PG8,300개 각SELECT/쓰기 dispatch8,300→21을 확인했고 소유 CID/label/volume1 정리를 통과했다.
+첫 PG 준비의 CRLF export 검사 실패(DB 생성 전)와 원 raw 결과도 보존한다.
+CPU/RSS·Docker 회귀·CI·두 리뷰·live UI·운영 수용은 미완이다.
+
 ## 2026-10-28 — 161 독립 리뷰의 최초 최신 요약 P1·전국 membership P2
 
 원 d2 전체는 별도 동결 소스/DB에서 변경 없이 회수 중이다. 별도 수정 WT와 private PG16

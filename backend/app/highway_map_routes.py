@@ -7,7 +7,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query, Request
 from krits import AsyncTokenBucket, KritsClient
 
-from app.core.time_utils import now_utc, to_seoul
+from app.core.time_utils import now_utc, seconds_until_next_seoul_midnight, to_seoul
 from app.schemas import HighwayRoad, HighwayRoadCatalog, HighwayRoadTraffic, HighwayTrafficLink
 
 
@@ -43,7 +43,13 @@ def build_highway_map_router() -> APIRouter:
                     if (blocked_until and now < blocked_until) or attempts >= 96:
                         if saved:
                             return saved.model_copy(update={"stale": True})
-                        raise HTTPException(status_code=429, detail="도로 소통 조회 보호 중입니다. 잠시 후 다시 조회해 주세요.", headers={"Retry-After": str(max(1, int((blocked_until - now).total_seconds()))) if blocked_until and now < blocked_until else "3600"})
+                        # 일일 상한은 다음 KST 자정에야 초기화된다. 고정 3600초를 따르면 그때까지 매시간 429를 받는다.
+                        waits = [1]
+                        if blocked_until and now < blocked_until:
+                            waits.append(int((blocked_until - now).total_seconds()))
+                        if attempts >= 96:
+                            waits.append(seconds_until_next_seoul_midnight(now))
+                        raise HTTPException(status_code=429, detail="도로 소통 조회 보호 중입니다. 잠시 후 다시 조회해 주세요.", headers={"Retry-After": str(max(waits))})
                     attempts += 1
                     fetching = True
                     try:

@@ -11,8 +11,10 @@ from typing import Any
 import yaml
 
 BACKEND = Path(__file__).resolve().parents[1]
-ROOT = BACKEND.parent
-SCRIPTS = ROOT / "scripts"
+# 저장소 checkout은 `<repo>/backend/tests`다. Docker 회귀 이미지는 `/app/tests`이고 무비밀 compose 계약 파일은
+# `/app/compose-contract/`, scripts는 `/app/scripts`에 있다.
+ROOT = BACKEND.parent if (BACKEND.parent / "transport.override.yml").is_file() else BACKEND / "compose-contract"
+SCRIPTS = BACKEND / "scripts" if (BACKEND / "scripts" / "deploy-prod.sh").is_file() else BACKEND.parent / "scripts"
 
 
 class _ComposeLoader(yaml.SafeLoader):

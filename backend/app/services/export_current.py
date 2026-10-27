@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import AsyncIterator, Callable
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from time import monotonic
 from uuid import UUID, uuid4
 
@@ -38,9 +38,24 @@ class SnapshotRace(Exception):
     """별도 reader가 같은 generation/TTL epoch를 먼저 확정했다. 새 RR로 한 번 재시도한다."""
 
 
-def cache_generation(generation: str) -> str:
-    epoch = int(now_utc().timestamp()) // int(SNAPSHOT_TTL.total_seconds())
+def _cache_epoch(now: datetime) -> int:
+    return int(now.timestamp()) // int(SNAPSHOT_TTL.total_seconds())
+
+
+def cache_generation(generation: str, now: datetime | None = None) -> str:
+    epoch = _cache_epoch(now or now_utc())
     return hashlib.sha256(f"{generation}:{epoch}".encode()).hexdigest()[:32]
+
+
+def snapshot_expires_at(now: datetime) -> datetime:
+    """생성한 cache epoch의 끝 + TTL.
+
+    같은 epoch 안에서는 같은 generation의 snapshot을 재사용하므로, 만료를 생성 시각+TTL로 두면 epoch 끝에
+    재사용한 reader가 몇 초 만에 다음 페이지에서 410을 받는다. epoch 끝 기준이면 같은 epoch 안에서 건네는
+    snapshot의 남은 수명이 항상 TTL(15분) 이상이고 최대 2×TTL(30분)이다.
+    """
+    seconds = int(SNAPSHOT_TTL.total_seconds())
+    return datetime.fromtimestamp((_cache_epoch(now) + 1) * seconds, tz=UTC) + SNAPSHOT_TTL
 
 _FIELDS = (
     "identity_key", "source", "route_no", "route_name", "conzone_id", "conzone_name",
@@ -56,12 +71,21 @@ async def _snapshot_transaction(session: AsyncSession) -> None:
 
 
 async def expire_snapshots(session: AsyncSession, *, limit: int = 1) -> int:
-    """호출자 transaction의 만료 snapshot만 제한 삭제한다. 페이지 reader는 RR MVCC로 보호된다."""
+    """호출자 transaction의 만료 snapshot만 제한 삭제한다. 페이지 reader는 RR MVCC로 보호된다.
+
+    PostgreSQL은 victim 부모 행을 먼저 잠그고(`FOR UPDATE SKIP LOCKED`) 다른 transaction이 지우는 중인
+    victim은 건너뛴다. 다른 종류의 첫 페이지 freeze가 같은 victim의 행 잠금을 lock_timeout(2초)까지
+    기다리다 55P03으로 503이 되지 않는다. 이미 commit된 삭제와 겹친 RR 직렬화 실패(40001)는 호출자가
+    기존처럼 한 번 재시도한다.
+    """
     if not 1 <= limit <= 2:
         raise ValueError("GC limit은 1~2입니다")
-    ids = list((await session.scalars(select(ServiceExportSnapshot.id).where(
+    query = select(ServiceExportSnapshot.id).where(
         ServiceExportSnapshot.expires_at <= now_utc(),
-    ).order_by(ServiceExportSnapshot.expires_at).limit(limit))).all())
+    ).order_by(ServiceExportSnapshot.expires_at).limit(limit)
+    if session.bind.dialect.name == "postgresql":
+        query = query.with_for_update(skip_locked=True)
+    ids = list((await session.scalars(query)).all())
     if not ids:
         return 0
     # SQLite FK 설정에도 독립적으로 자식부터 정리한다. 공개된 미만료 snapshot은 지우지 않는다.
@@ -74,7 +98,7 @@ async def _freeze_traffic(
     session: AsyncSession, scope: str, head: HighwayTrafficCurrentState,
 ) -> ServiceExportSnapshot:
     now = now_utc()
-    generation = cache_generation(head.generation)
+    generation = cache_generation(head.generation, now)
     cached = await session.scalar(select(ServiceExportSnapshot).where(
         ServiceExportSnapshot.kind == KIND, ServiceExportSnapshot.scope_key == scope,
         ServiceExportSnapshot.generation == generation,
@@ -90,7 +114,7 @@ async def _freeze_traffic(
     factory = pg_insert if session.bind.dialect.name == "postgresql" else sqlite_insert
     admitted = await session.scalar(factory(table).values(
         id=snapshot_id, kind=KIND, scope_key=scope, generation=generation,
-        source_collected_at=head.confirmed_at, created_at=now, expires_at=now + SNAPSHOT_TTL,
+        source_collected_at=head.confirmed_at, created_at=now, expires_at=snapshot_expires_at(now),
         item_count=head.member_count, content_digest="pending",
     ).on_conflict_do_nothing(index_elements=["kind", "scope_key", "generation"]).returning(table.c.id))
     if admitted is None:

@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ detail: "항구·버스터미널 좌표만 보정할 수 있습니다." }, { status: 422 });
   }
   try {
-    const target = new URL("/v1/transport/admin/place-locations", process.env.TRANSPORT_API_INTERNAL_URL ?? "http://127.0.0.1:14001");
+    const target = new URL("/v1/transport/admin/place-locations", process.env.TRANSPORT_API_INTERNAL_URL ?? "http://127.0.0.1:12302");
     const response = await fetchNoStore(target, { method: "POST", headers: { "content-type": "application/json", "x-transport-admin-token": token }, body: raw });
     return new NextResponse(response.body, { status: response.status, headers: { "cache-control": "no-store, private", "content-type": response.headers.get("content-type") ?? "application/json" } });
   } catch {
