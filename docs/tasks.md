@@ -1,3 +1,21 @@
+## 2026-10-27 — 주차 보존 수명 분리
+
+- [ ] **T-PARK-RET-01** — 주차 원본48시간·통계영구. 선행0036 영구통계/수동 backfill·검산·삭제 차단 후보는
+  c7 전체 WSL1334/Docker1330 PASS·CI와 최소 Dagster 결과관측 P1의 a1a PG 집중 WSL119/Docker119 PASS를 회수했다.
+  정확40f CI3개 성공을 회수했고 최신main f647 병합의 집중/새 CI/증분 독립 수용을 우선한다.
+  UTC offset floor·오래된 보류 정체 P2와 전국/latest 저장 보완은 별도2A다.
+  모든 분석/전망/현재/Map export 읽기 전환, 원본 history48시간·커서/해상도/coverage,
+  원본 검산 후 정리·보류 상태·백업/참조·자연 실행 수용 전에는 완료로 옮기지 않는다.
+  [설계와 단계](architecture/parking-retention.md), [검증 원장](reports/2026-10-27-parking-statistics-archive.md).
+
+## 2026-10-27 — 공식 배포 자식 handoff
+
+- [ ] **T-DEPLOY-PREBUILT-01** — 공식 backend/admin의 strict 사전 빌드 경로 구현과
+  WSL158·Docker157/rsync부재1skip을 확인했다. 정확 head CI·독립 두 리뷰·새 controller
+  receipt/종료/복구 소비와 운영 수용은 미완이므로 완료 목록으로 옮기지 않는다.
+  [설계](design/2026-10-27-prebuilt-deploy-handoff.md),
+  [검증·고정 소스·경계](reports/2026-10-27-prebuilt-deploy-handoff.md).
+
 ## 원본 JSON 변환 국소 CPU 후속
 
 - [ ] T-CPU-PLAIN-01: `_plain_json` 정확 builtin scalar 조기 반환 후보의 결과·오류·identity를

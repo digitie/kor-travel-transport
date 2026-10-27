@@ -23,8 +23,9 @@
 | [ADR-012](012-admin-token-for-backup-and-admin-routes.md) | 백업·관리 API는 관리자 토큰으로 닫고 공개 웹 앱에서 백업 UI를 없앤다 | accepted |
 | [ADR-013](013-internal-service-exports-for-map.md) | kor-travel-map에 OpiNet·KREX·공항 데이터를 토큰으로 닫힌 내부 export로 제공한다 | accepted |
 | [ADR-014](014-odroid-host-and-deploy-host-flag.md) | transport 스택을 Odroid에서 운영하고 배포 스크립트는 `--host <addr>`를 효과로 검사한다 | accepted (2026-10-19 현재 운영 수용; 최초 전환 이력·T-TRN-05 한계 별도) |
+| [ADR-015](015-parking-raw-and-statistics-lifetimes.md) | 주차 원본 48시간·집계 통계 영구 보존과 삭제 전 읽기 전환·검산 | accepted (선행 저장 구현 중) |
 
-**다음 번호 = ADR-015.**
+**다음 번호 = ADR-016.**
 
 ## 새 ADR 작성 규약
 

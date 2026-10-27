@@ -1,5 +1,14 @@
 # 데이터 모델
 
+## 주차 영구 통계 (`0036_parking_statistics_archive`, 선행 저장 단계)
+
+`parking_statistics_buckets`는 `(airport_id, bucket_at)` PK의 UTC 10분 영구 통계다.
+주차장별 표본 가중 충분통계·용량>0 전망 통계·첫/마지막 추이점·동시각 공항 합산 통계·
+원관측 기준 임계 이벤트와 수량/hash 검산을 보존한다. 개별 관측 배열·원천 JSON은 복사하지 않는다.
+TTL·자동 삭제가 없으며 데이터가 든 downgrade와 공항 삭제를 거절한다.
+원본 48시간 정책의 선행 단계여서 기존 읽기는 아직 원본에 의존하고 삭제는 항상 차단된다.
+[보존·해상도·전환 수용 조건](parking-retention.md)을 따른다.
+
 ## 수집 실행 소유권 (`0024_collection_run_owner`)
 
 `collection_runs.orchestrator_run_id`는 Dagster run UUID이며 nullable index를 갖는다.
@@ -237,7 +246,7 @@ geo 릴리스는 이를 알려 주지 않는다.
 
 ## 분석 데이터 처리 원칙
 
-- 시계열 차트용 집계 결과는 현재 별도 테이블에 저장하지 않는다.
+- 현재 조회는 원본을 사용한다. `0036`의 영구 10분 통계는 선행 저장이며 아직 조회 전환을 하지 않았다.
 - 최근 7일 10분 시계열은 `parking_snapshots`에서 조회 시점에 계산한다.
 - 같은 10분 구간 안에서 주차장별 최신 상태를 사용해 공항 합산 값을 만든다.
 

@@ -73,6 +73,17 @@ Compose에 명시적으로 추가한다. 렌더된 command와 healthcheck가 모
 
 ### 사전 빌드와 공식 staging의 metadata
 
+외부 controller가 일정 중지 전에 빌드를 끝낸 뒤 공식 자식을 호출할 때에는
+`deploy-prebuilt` 계약을 사용할 수 있다. backend 자식은 checksum으로 고정한 새
+receipt의 세 image ID·전체 release·운영 schema·원본 CS CID·복사 뒤 state fingerprint와
+소유 일정 STOPPED·run 다섯 상태·실제 worker를 재검산하고 busy면 대기 없이 거절한다.
+관리자 자식은 별도로 두 image ID와 baked 관리자 release를 검산한다. 둘 다 빌드·pull·
+마이그레이션을 기동하지 않는다. strict 자식의 자동 CS rollback은 없으며 실제 종료와
+새 probe 뒤 부모만 복구를 결정한다. 교체 전에 state가 바뀌어 거절됐으면 과거 복사본을
+현재 state 위에 복원하지 않는다. 기존 일반/prepare 배포는 그대로다.
+[정확 입력·receipt 권한·부모 책임·남은 launch 경합](../design/2026-10-27-prebuilt-deploy-handoff.md)을
+먼저 따른다. 이 경로의 추가를 운영 배포나 원자적 launch fence 수용으로 간주하지 않는다.
+
 사전 빌드는 가능하면 공식 `DEPLOY_STAGE_ONLY=true`로 준비한 같은 staging과 같은 사용자·파일 metadata를 사용한다. 별도 Python tar 추출의 `filter=data`는 group write를 제거하므로 GNU tar staging과 Git tree/내용이 같아도 COPY 캐시가 달라질 수 있다. 캐시 재사용은 실제 build 로그로 확인하며 동일 tree만으로 단정하지 않는다. BuildKit의 자원 상한과 Docker daemon 이미지 적재의 자원 사용도 구분한다.
 
 실행 중인 배포의 source mode를 바꾸지 않는다. 불필요한 build를 취소해야 한다면 정확한 소유 PID뿐 아니라 공식 script/controller와 BuildKit solve의 종료, 기존 앱/schema 및 instigator 복원을 확인한다. 그 뒤 Manager global lock→Transport release lock 순으로 확보하고 tracked 일반 파일의 hash·실행 비트·경로와 보호 파일 보존을 확인한 경우에만 metadata를 정리한다. 종료가 불명확하면 재시도와 겹치지 않는다.

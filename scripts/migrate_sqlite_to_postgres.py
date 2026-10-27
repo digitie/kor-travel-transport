@@ -20,6 +20,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from app.core.config import Settings
 from app.db.session import create_engine_and_session_factory
+from app.services.legacy_parking_guard import ensure_legacy_import_allowed
 from app.models import (
     Airport,
     AnalyticsCache,
@@ -75,6 +76,7 @@ async def migrate(sqlite_path: Path) -> int:
     copied = 0
     try:
         async with session_factory() as session:
+            await ensure_legacy_import_allowed(session)
             for model in TABLES:
                 rows = [dict(row) for row in sqlite.execute(f"SELECT * FROM {model.__tablename__}")]
                 if not rows:
@@ -90,7 +92,7 @@ async def migrate(sqlite_path: Path) -> int:
                 await session.execute(statement)
                 copied += len(rows)
 
-            await session.commit()
+            # sequence 조정까지 같은 transaction lock을 유지한다.
             for model in TABLES:
                 await session.execute(
                     text(

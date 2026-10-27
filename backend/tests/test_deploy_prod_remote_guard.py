@@ -233,11 +233,12 @@ def test_release_replacement_is_guarded_by_rollback_capture_and_exit_recovery() 
 
 
 @pytest.mark.parametrize(
-    ("replacement_started", "deployment_verified", "should_rollback"),
-    [("true", "false", True), ("false", "false", False), ("true", "true", False)],
+    ("replacement_started", "deployment_verified", "mode", "should_rollback"),
+    [("true", "false", "deploy", True), ("false", "false", "deploy", False),
+     ("true", "true", "deploy", False), ("true", "false", "deploy-prebuilt", False)],
 )
 def test_exit_trap_rolls_back_only_an_unverified_replacement(
-    tmp_path: Path, replacement_started: str, deployment_verified: str, should_rollback: bool
+    tmp_path: Path, replacement_started: str, deployment_verified: str, mode: str, should_rollback: bool
 ) -> None:
     cleanup = _function(_REMOTE.read_text(encoding="utf-8"), "cleanup_remote")
     rollback_log = tmp_path / "rollback.log"
@@ -249,6 +250,7 @@ def test_exit_trap_rolls_back_only_an_unverified_replacement(
         + "ROLLBACK_RUNTIME_ENV_FILE=''\nTRANSPORT_OVERRIDE_TMP=''\n"
         + f"DEPLOYMENT_REPLACEMENT_STARTED={replacement_started}\n"
         + f"DEPLOYMENT_VERIFIED={deployment_verified}\n"
+        + f"DEPLOY_MODE={mode}\n"
         + "trap cleanup_remote EXIT\nexit 17\n"
     )
     result = subprocess.run(
@@ -304,7 +306,7 @@ def test_deploy_refuses_before_the_plane_carries_the_location_or_while_the_old_d
     """합류 전 배포는 code-server만 공용 instance로 옮겨 Manager 전환의 펜스를 건너뛴다 — 거부한다."""
 
     text = _REMOTE.read_text(encoding="utf-8")
-    guard = text[text.index('plane_state="$(location_state)"') : text.index("drain_deadline=")]
+    guard = text[text.index('plane_state="$(location_state)"') : text.index("# BEGIN replacement gate")]
     for plane, legacy_running, expected in (
         ("absent", "false", "does not list kor-travel-transport yet"),
         ("RepositoryLocation", "true", "still runs next to the shared plane"),

@@ -1,3 +1,12 @@
+## 2026-10-28 — 소통 배치 후보를 준비 main8bc/PG18/schema36으로 합성
+
+- 현재 상태: main8bc의 PG18/schema36·주차 통계 선행 저장/삭제 차단·prebuilt 계약을 그대로 채택했다.
+  batch/UTC 회귀·Common c289/lock·프론트 입력은 동일하다. [수용 이력과 남은 gate](reports/2026-10-27-traffic-store-batched-prefetch.md).
+- 직전3bf CI6 SUCCESS와 b2fbb fresh Next build/정리는 수용했다. PG/API/browser는 기동하지 않았다.
+- 다음 한 작업: 새 source/lab의 Git 전수·frontend 입력 동등과 기존 Next 복사 영수증, PG18/schema36의
+  최소 하네스 두 리뷰·실제 UI/PG 수용을 진행한다. 원래 source/backend 덮기·무조건 재빌드·운영·CPU 실험·원본 삭제는0이다.
+- 준비 기준8bc는 동결하고 최종 머지 전 upstream 진전을 확인한다. 아래는 각 작성 당시 이력이다.
+
 ## 2026-10-27 — 소통 배치 후보에 준비 시점 main5c823 합성
 
 - 현재 상태: main5c823의 자동 역 연결 API/UI6개 런타임 파일을 그대로 합쳤다. 배치 제품/UTC 회귀·Common c289/lock/schema35는 유지했다.
@@ -15,6 +24,60 @@
   801/8,300전체 행3단계 동등·Docker15통과/소유 자원 정리를 확인했다. c289 실행 결과로 바꾸지 않는다.
 - 다음 한 작업: 새 exact head/c289 환경·CI·두 리뷰와 fresh Next/same-head API/유가 통계 UI를 수용한다.
   기존 venv를 보존한다. CPU/RSS·운영 ARM 절감은 미측정이며 운영 이미지·설정·스키마 변경은0이다.
+
+## 2026-10-28 — 주차 PR156 최신 main 통합
+
+- 현재: 정확40f CI backend/frontend/admin SUCCESS·live-e2e skipped를 회수했다. 별도 WT에서
+  main f647411과 병합하고 충돌 문서3개의 양쪽 기록을 보존한다. c7 전체/a1a 집중을 새 head의
+  전체 검증으로 확대하지 않는다. 2A 제품/시험은 별도 WT에 보존하며 이 통합에 넣지 않는다.
+- 다음 한 작업: 제품 blob 보존과 필요한 집중·새 CI·두 증분 리뷰를 수용한다. 원본 삭제/운영0,
+  영구통계 읽기/history48시간/실제 prune 및 정책 전체 수용은 계속 미완이다.
+
+## 2026-10-28 — c7 전체 회수 뒤 최소 관측 보완
+
+- 현재: 정확c7 WSL1334 PASS/2 SKIP·Docker1330 PASS/6 SKIP, 실제 exit0·원 child/컨테이너 잔여0,
+  source804/locked106·Git10 동일·PG OOM/max0을 회수했다. c7 CI 두 실행도 backend/frontend/admin 성공이다.
+- 우선 보완: 별도c7 WT에서 Dagster 결과관측 P1을 고친다. 업무상 busy/not_audited/부분 보류가 SUCCESS 속에
+  숨지 않도록 metadata·scalar 로그와 선택/검산/신규 발행 범위·cutoff를 남긴다. 실제 Dagster5 RED→GREEN과
+  a1a의 WSL119/Docker119 PASS·F/E/skip0·actual exit0·양쪽 migration/check0을 회수했다.
+- 다음 한 작업: 코드/시험 blob 동일인 문서 정산 뒤 PR156 FF·새 CI·증분 리뷰를 수용한다. 기존 전체는 c7 증거로만 유지한다.
+  2A의 새 모델·reader 전환·UTC/starvation P2를 이 관측 commit에 섞지 않는다. 원본48시간 정책 전체는 미완이다.
+
+## 2026-10-27 — 주차 보존 선행 저장의 최신 검증 상태
+
+- 현재 상태: 589/새 Common의 전체 WSL·Docker는 QA512MiB/tmpfs DB OOM으로 무효화했고 통과로 세지 않는다.
+  본인 실행만 중단·회수해 실제 exit/JUnit·잔여0을 확인했고 기존 PG/세 dump·실패 입력을 보존했다.
+- 보완: 영구 통계가 있는 DB의 legacy 덮어쓰기를 거절한다. HTTP preflight와 첫 쓰기 재검사,
+  SQLite sequence까지 같은 transaction lease를 유지한다. 새 디스크2GiB DB에서 집중52개 통과·기존589 scripts3개 RED다.
+- 다음 한 작업: 최종 소스·새 runtime/DB·메모리/manifest를 사전 확인한 뒤 전체 R2와 CI·두 리뷰를 수용한다.
+  현재 원본 삭제/운영 변경0이며 읽기/해상도·커서/current/export·복원 guard와 실제48시간 정리는 남아 있다.
+- [검증 원장](reports/2026-10-27-parking-statistics-archive.md). 아래의 이전 검증 문구는 당시 범위다.
+
+## 2026-10-27 — 주차 보존 정책 선행 저장 후보
+
+- 현재 상태: 사용자 정책은 주차 원본48시간·통계영구다. 추가 전용0036·수동 DB backfill과
+  검산/충돌/삭제 차단을 구현 중이며 운영 변경0이다. 현재 분석·API/UI는 여전히 원본을 읽는다.
+- 검증: 전용 PostgreSQL migration/check·집중22개, SQLite 초기21개/1건너뜀,
+  PK 등가 탐색 계획·데이터가 든 downgrade 차단을 확인했다. 전체 WSL/Docker·CI·두 리뷰는 별도다.
+- 다음 한 작업: 이 선행 저장 후보를 검토하고 기존 분석/전망/현재/Map export 읽기를 영구 통계로 전환한다.
+  원본 history48시간·해상도/coverage·오래된 커서·수동 삭제/백업 복원 계약을 검증한 뒤에만 정리를 열고,
+  모든 단계가 붙기 전 정책 전체 완료라고 보고하지 않는다.
+- [설계](architecture/parking-retention.md), [검증 원장](reports/2026-10-27-parking-statistics-archive.md).
+
+## 2026-10-27 — strict 배포 handoff 현재 상태
+
+현재 상태: main `5c823c4` 기반 배포 도구만 변경했다. backend 공식 자식의 중첩
+재빌드/1800초 drain과 관리자 `up --build`를 없애는 외부 controller 전용
+`deploy-prebuilt`가 WSL158·Docker157/rsync부재1skip을 통과했다. 기존 deploy/prepare는
+보존했다. child의 실제 교체 전 거절과 최신 source fingerprint·고정 image ID를 검사한다.
+운영 호출·merge·배포0이며 기존 철도/유가 준비본은 수정하지 않았다.
+
+다음 한 작업: Draft [PR #159](https://github.com/digitie/kor-travel-transport/pull/159)의
+정확 head CI와 독립 James/Popper를 정산하고 새 controller가
+checksum receipt·copy 전후 fingerprint·실제 child 종료/교체0의 현재 state 보존 계약을
+소비하도록 별도 검토한다. 승인된 운영 실행은 그 뒤다. 마지막 probe→up은 원자적
+fence가 아니다. [입력·복구 설계](design/2026-10-27-prebuilt-deploy-handoff.md),
+[검증·미완 범위](reports/2026-10-27-prebuilt-deploy-handoff.md).
 
 ## 2026-10-27 — 자동 역 연결 후보의 최신 main 통합 검증 중
 

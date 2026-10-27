@@ -1,11 +1,25 @@
 # 고속도로 소통 관측의 배치 조회·저장
 
-상태: 배치 후보에 준비 시점 최신 main `5c823c49030efd83a8839064dde15f1d5993192f`를 정상 합성했다.
-기존 배치 제품·Common c289·lock·schema35는 보존했다. 배치 수정 자체의 API 계약은 그대로이며,
-업스트림의 자동 역 연결 API/UI·OpenAPI 추가를 정확히 승계했다. 운영 변경은0이다.
-아래 기존 시험은 각 소스·환경의 이력이며 새 합성의 최종 CI·두 리뷰·API/UI 수용과 구분한다.
+상태: 후보를 준비 시점 main `8bc25638c44409cc04e3cf0586b27d5c0c69b312`와 정상 합성했다.
+batch 제품·회귀와 Python/Common c289 의존 lock는 보존했고 PostgreSQL18·schema36 및
+주차 영구 통계 선행 저장/원본 삭제 차단·prebuilt 배포 계약은 upstream 원문으로 채택했다.
+운영 변경은0이다. 아래 기존 검증은 각각의 소스·DB 버전·환경 이력이며 새 합성과 구분한다.
 
-## 5c823 준비 기준 동결과 재검증 경계
+## 8bc256 통합과 기존 Next 재사용 검토
+
+직전3bf의 코드 CI6개는 모두 SUCCESS, live2개는 SKIPPED다. b2fbb UUID의 실제 Next build는
+정상 종료했고 Git809·manifest4/static59·소유 unit/cgroup 소멸을 수용했다. 실제PG/API/browser는0이다.
+main8bc와의 프론트 전체 path·package/lock·입력 계약은 같아 기존 산출물 재사용 후보지만, 새 source/lab의
+Git 전체 매니페스트와 frontend-input 동등·복사 영수증을 별도로 검증하기 전 재사용 완료라고 하지 않는다.
+기존3bf source 아래 backend를 덮어쓰지 않는다. 새 API의 schema36/새 PG18에 맞춘 최소 하네스를
+두 리뷰 후 실행하고, 기존PG16/schema35·32개 SQLite 결과를 새 버전 수용으로 바꾸지 않는다.
+
+Python 패키지/uv.lock/Common c289와 traffic module은 동일하다. c289106/site9425는 전후 해시 확인으로
+재사용할 수 있지만, Docker의 PGclient18 설치/실제 PG18·신규 schema36 검증은 별도다. 원본48시간 목표는
+영구 통계 선행 저장 이후의 단계이며, 분석 읽기 전환·검산 전에는 운영 원본 삭제를 하지 않는다.
+이번 준비 main은8bc로 동결하며 이후 진전은 원칙 후속으로 분리하고 최종 머지 전 다시 확인한다.
+
+## 5c823 준비 기준 당시 검증 경계
 
 직전 `516d4b21c053f97b0d85b370b9dbc1756bc38a18`의 backend/frontend/admin CI는 push·PR 각3개,
 총6 SUCCESS이고 live E2E2개는 SKIPPED다. 그 소스의 후보 Next/PG/API/browser 기동은0이었다.
