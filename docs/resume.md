@@ -1,3 +1,13 @@
+## 2026-10-27 — 주차 보존 선행 저장의 최신 검증 상태
+
+- 현재 상태: 589/새 Common의 전체 WSL·Docker는 QA512MiB/tmpfs DB OOM으로 무효화했고 통과로 세지 않는다.
+  본인 실행만 중단·회수해 실제 exit/JUnit·잔여0을 확인했고 기존 PG/세 dump·실패 입력을 보존했다.
+- 보완: 영구 통계가 있는 DB의 legacy 덮어쓰기를 거절한다. HTTP preflight와 첫 쓰기 재검사,
+  SQLite sequence까지 같은 transaction lease를 유지한다. 새 디스크2GiB DB에서 집중52개 통과·기존589 scripts3개 RED다.
+- 다음 한 작업: 최종 소스·새 runtime/DB·메모리/manifest를 사전 확인한 뒤 전체 R2와 CI·두 리뷰를 수용한다.
+  현재 원본 삭제/운영 변경0이며 읽기/해상도·커서/current/export·복원 guard와 실제48시간 정리는 남아 있다.
+- [검증 원장](reports/2026-10-27-parking-statistics-archive.md). 아래의 이전 검증 문구는 당시 범위다.
+
 ## 2026-10-27 — 주차 보존 정책 선행 저장 후보
 
 - 현재 상태: 사용자 정책은 주차 원본48시간·통계영구다. 추가 전용0036·수동 DB backfill과

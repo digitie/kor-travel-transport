@@ -1,3 +1,14 @@
+## 2026-10-27 — 주차 legacy 덮어쓰기 차단·전체 QA 무효화와 R2 준비
+
+영구 통계가 있는 DB의 SQLite PK 이관·HTTP upsert/중복 삭제를 같은 transaction lease로 거절한다.
+HTTP는 외부 조회 전과 첫 쓰기 전 재검사하고, SQLite는 sequence 조정까지 중간 commit을 없앴다.
+별도589 스크립트의3회귀 RED와 새 디스크 기반2GiB DB의 집중52개 GREEN을 확인했다.
+589 전체 두 실행은 512MiB/tmpfs PostgreSQL OOM·재초기화로 무효화됐으며 PASS가 아니다.
+본인 pytest만 SIGINT 각1회로 회수했고 실제 exit1/JUnit·잔여0·기존PG/세 dump를 보존했다.
+최소 PATH의 Python3 누락도 별도 QA 원인으로 재현해 새 이미지의 deploy84개/1건너뜀을 확인했다.
+schema35 dump의 거절·통계 보존과 schema36 옛 dump의2→1 통계 손실 가능성도 합성 DB로 구분했다.
+전체 R2·최신 CI·두 리뷰·읽기 전환/최종48시간 정리는 미완이다. [근거와 한계](reports/2026-10-27-parking-statistics-archive.md).
+
 ## 2026-10-27 — 주차 원본48시간·통계영구 정책의 선행 저장 후보
 
 사용자 보존 정책을 ADR-015로 기록하고 원본/캐시/영구 통계의 수명을 분리했다. 추가 전용0036,

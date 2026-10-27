@@ -6,7 +6,7 @@
 
 | 단계 | 구현·수용 기준 | 현재 상태 |
 |---|---|---|
-| 1 | 추가 전용 통계 모델·migration·멱등 backfill·삭제 차단 | 구현·검증 중 |
+| 1 | 추가 전용 통계 모델·migration·멱등 backfill·삭제 및 legacy 덮어쓰기 차단 | 구현·검증 중 |
 | 2 | 모든 분석/전망/현재/내부 export 읽기 전환, API 해상도·coverage·48시간 history 계약 | 미구현 |
 | 3 | 기존 원본 backfill·공항/주차장별 수량·hash·값·이벤트 대조 후 48시간 정리와 운영 상태 표시 | 미구현 |
 
@@ -36,7 +36,7 @@
 - `lots[].first/last`: 해당 10분 구간의 첫/마지막 관측 시각·수량. 마지막 점의 적재 시각·혼잡도는 최신 상태의 기준 시각을 새 시각으로 위조하지 않도록 함께 보존한다. 정각 경계와 추이 재표본화에 사용하며 관측 없는 구간을 보간하지 않는다.
 - `airport_cohorts`: 같은 정확한 원관측 timestamp의 공항 잔여면 합산을 표본으로 한 `sum/count/min/max`. 주차장별 평균 통계와 교환할 수 없다.
 - `events`: 원관측 기준 임계값 10/50의 양방향 교차. `previous_at`, `crossed_at`, 이전/현재 값·주차장 ID를 보존한다. 기존 이벤트 계산처럼 공백 뒤 교차도 기록하되 두 시각을 보존해 연속 관측이라고 오해하지 않게 한다.
-- `raw_count`, `selected_count`, `max_snapshot_id`, `raw_sha256`, `statistics_sha256`: 원본 행 전체와 중복 제거 표본 수 및 결과 검산. 원본 JSON은 지문 계산에만 사용한다.
+- `raw_count`, `selected_count`, `max_snapshot_id`, `raw_sha256`, `statistics_sha256`: 원본 수량·집계에 쓰는 값·`raw_item_json`을 포함한 정규화 지문과 중복 제거 표본 수 및 결과 검산. 원본 JSON은 지문 계산에만 사용한다. 이 지문은 HTTP 응답 원문 바이트나 수집 run FK까지 검사하는 값이 아니므로 원천 응답 정리는 별도의 run/source/endpoint 검증이 필요하다.
 
 10분 이전의 내부 변화, 동일 버킷 안의 중간 관측, 임의 offset의 정확한 이전 값은 복원할 수 없다. 후속 DTO는 원본/집계 구간, 최소 해상도, 부분 버킷·coverage, 원본 유지 경계를 명시한다. 임의 간격/offset의 집계 재표본화 결과를 원관측과 같다고 표시하지 않는다. 시간대/날짜 경계가 10분에 맞는 충분통계는 sum/count를 합치며, rolling cutoff가 버킷 안에 있으면 그 부분은 근사 또는 제외임을 계약으로 명시한다.
 
@@ -52,9 +52,13 @@
 
 ## 영구 참조·백업 경계의 좁은 조사
 
-운영 앱에서 `ParkingLot`을 하드 삭제하는 서비스 경로는 찾지 못했다. 수집은 기준정보를 갱신하고, sample seed의 정리는 미래 sample snapshot만 지운다. legacy SQLite/HTTP import도 주차장 upsert/관측 이관이며 새 영구 통계를 초기화하는 삭제 경로는 없다. 다만 lot JSON은 직접 FK가 없으므로 수동 DB 삭제·ID 재사용은 안전하다고 가정하지 않는다. 후속 읽기 전환에서 영구 이름/identity 보존 또는 실제 삭제 차단 계약을 검증한다.
+운영 앱에서 `ParkingLot`을 하드 삭제하는 서비스 경로는 찾지 못했다. 수집은 기준정보를 갱신하고, sample seed의 정리는 미래 sample snapshot만 지운다. 그러나 `migrate_sqlite_to_postgres.py`는 PK 기준으로 공항/주차장 identity를 덮을 수 있고, HTTP 이관은 원본 upsert와 `migration_` 중복 삭제를 수행한다. 통계 테이블을 직접 지우지 않더라도 통계의 참조 의미와 원본 지문을 깨뜨릴 수 있다.
 
-`backup_restore.py`는 테이블 allowlist 없이 전체 DB의 `pg_dump -Fc`와 `pg_restore`를 사용하므로 새 통계를 백업에서 누락하는 명시 목록은 없다. 그러나 오래된 백업을 복원하면 그 이후 영구 통계를 잃을 수 있고 원본 삭제 뒤에는 재생성도 불가능하다. 현재 복원은 pre-restore backup을 먼저 만들지만 영구 통계 세대 단조성 검사는 없다. 이 한계는 후속 읽기/삭제 활성화 전 수용 항목이며, 이 단계에서 기존 복원 동작을 몰래 바꾸지 않는다.
+두 이관 entry는 영구 통계가 하나라도 있으면 쓰기를 거절한다. 원천 collector·통계와 같은 transaction advisory lock 아래 검사하고 upsert/delete를 수행하며, SQLite 이관의 sequence 조정까지 중간 commit 없이 보호한다. HTTP 이관은 외부 조회 전에 먼저 거절하고 네트워크 동안 lock을 반환한다. 읽는 사이 통계가 생긴 경우도 첫 쓰기 전에 다시 거절한다. 통계가 빈 DB의 정상 이관·sequence 조정은 지원한다. 우회/force 설정은 두지 않는다. 직접 SQL 수정·lot ID 재사용은 안전하다고 가정하지 않으며 후속 읽기 전환의 영구 참조 수용은 계속 필요하다.
+
+`backup_restore.py`는 테이블 allowlist 없이 전체 DB의 `pg_dump -Fc`와 `pg_restore`를 사용하므로 새 통계를 백업에서 누락하는 명시 목록은 없다. 전용 합성 DB에서 실제 서비스와 같은 `--clean --if-exists --no-owner --no-acl --single-transaction --exit-on-error`로 경계를 확인했다. 통계 테이블이 없는 schema35 dump는 새 FK가 공항 PK 제거를 거절해 exit1/통계1개 보존이었다. 같은 schema36의 옛 dump는 정상 exit0이지만 이후 쌓인 통계가 2개→1개로 줄었다. 모든 과거 dump가 같은 방식으로 안전하게 거절되는 것은 아니다.
+
+실제 API는 pre-restore backup을 먼저 만들지만 통계 세대 단조성 검사는 없다. 이 검증은 `pg_restore` 경계이며 API pre-backup 전체 수용이 아니다. 원본 삭제 뒤 유실 통계는 재생성할 수 없으므로 통계 보존을 확인하는 복원 guard는 후속 읽기/삭제 활성화 전 수용 항목이다. 이 단계에서 기존 복원 동작을 몰래 바꾸지 않는다.
 
 Map 주차 current는 `ParkingCurrent`와 `ReferenceExportState`의 source/scope/generation/member IDs를 읽고, export는 DTO를 `ServiceExportSnapshotItem`에 고정한다. 원본 snapshot FK나 본문을 읽지 않는 경로임을 소스로 확인했다. 기존 snapshot TTL은 15분이며, 실제 원본 삭제 전후 current·membership·고정 세대·커서의 독립 회귀는 여전히 필요하다.
 
