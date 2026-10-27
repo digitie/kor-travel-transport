@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import event, select
-
 from app.core.time_utils import serialize_utc
 from app.models import HighwayTrafficCurrent, HighwayTrafficSnapshot
 from app.services import transport_collection
 from app.services.transport_collection import TransportCollectionService
+from sqlalchemy import event, select
 from test_traffic_current import _execute, _flow, _run, _state, replace
 from test_transport_collection import FakeTransportProvider
 
@@ -18,7 +17,7 @@ def test_batch_boundaries_keep_first_pair_and_update_same_utc_instant(
     test_settings, monkeypatch, map_current,
 ):
     test_settings.transport_map_current_enabled = map_current
-    confirmed_at = datetime(2026, 10, 27, 10, tzinfo=timezone.utc)
+    confirmed_at = datetime(2026, 10, 27, 10, tzinfo=UTC)
     monkeypatch.setattr(transport_collection, "now_utc", lambda: confirmed_at)
 
     async def check(factory, _engine):
@@ -42,7 +41,7 @@ def test_batch_boundaries_keep_first_pair_and_update_same_utc_instant(
             assert len(rows) == 801
             ids = {row.conzone_id: row.id for row in rows}
             assert all(row.speed == base.speed for row in rows)
-            assert all(serialize_utc(row.observed_at) == datetime(2026, 10, 27, 9, tzinfo=timezone.utc) for row in rows)
+            assert all(serialize_utc(row.observed_at) == datetime(2026, 10, 27, 9, tzinfo=UTC) for row in rows)
             await session.rollback()
             second = await _run(session)
             corrected = tuple(
@@ -96,7 +95,7 @@ def test_batch_query_dispatches_are_bounded_for_new_and_existing_points(test_set
 
 
 def test_unparseable_timestamp_uses_one_collection_time_across_batches(test_settings, monkeypatch):
-    confirmed_at = datetime(2026, 10, 27, 10, tzinfo=timezone.utc)
+    confirmed_at = datetime(2026, 10, 27, 10, tzinfo=UTC)
     calls = []
 
     def now():
