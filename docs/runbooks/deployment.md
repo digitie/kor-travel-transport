@@ -500,7 +500,7 @@ candidate 값으로 export한다(`set -a; source`가 파일의 줄을 셸 env로
 
 ### Dagster 버전이 다를 때
 
-`prebuild`나 `window`가 `dagster 버전이 다르다(운영 X, 빌드 Y)`로 멈추면 PyPI에 운영 code-server보다
+`prebuild`나 `window`가 `dagster 버전이 다르다(운영 X, 빌드 Y)`로 멈추면
 `uv.lock`의 Dagster가 운영 code-server와 다른 것이다. backend Dockerfile은 `uv export --locked`로
 `uv.lock`을 그대로 설치하므로(#129 이후) 이미지의 Dagster는 lock 버전이다. 대개 lock을 올린 PR이 원인이다. gate를 끄거나 태그를
 손으로 옮기지 않는다. 버전이 다르면 `dagster instance migrate`가 공유 metadata DB를 앞으로 올릴 수 있고,
