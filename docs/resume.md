@@ -1,3 +1,30 @@
+## 2026-10-28 — 소통 배치 후보를 준비 main8bc/PG18/schema36으로 합성
+
+- 현재 상태: main8bc의 PG18/schema36·주차 통계 선행 저장/삭제 차단·prebuilt 계약을 그대로 채택했다.
+  batch/UTC 회귀·Common c289/lock·프론트 입력은 동일하다. [수용 이력과 남은 gate](reports/2026-10-27-traffic-store-batched-prefetch.md).
+- 직전3bf CI6 SUCCESS와 b2fbb fresh Next build/정리는 수용했다. PG/API/browser는 기동하지 않았다.
+- 다음 한 작업: 새 source/lab의 Git 전수·frontend 입력 동등과 기존 Next 복사 영수증, PG18/schema36의
+  최소 하네스 두 리뷰·실제 UI/PG 수용을 진행한다. 원래 source/backend 덮기·무조건 재빌드·운영·CPU 실험·원본 삭제는0이다.
+- 준비 기준8bc는 동결하고 최종 머지 전 upstream 진전을 확인한다. 아래는 각 작성 당시 이력이다.
+
+## 2026-10-27 — 소통 배치 후보에 준비 시점 main5c823 합성
+
+- 현재 상태: main5c823의 자동 역 연결 API/UI6개 런타임 파일을 그대로 합쳤다. 배치 제품/UTC 회귀·Common c289/lock/schema35는 유지했다.
+  journal·resume의 양쪽 기록과 main 본문을 보존했다. [동결 기준·검증 범위](reports/2026-10-27-traffic-store-batched-prefetch.md).
+- 직전 수용:516의 CI6 SUCCESS/live2 SKIPPED·c289 SQLite32통과다. 후보 Next/PG/API/browser는 기동하지 않았다.
+- 다음 한 작업: 새 합성 HEAD의 정확 CI·두 리뷰와 fresh Next/동일 API39 UI를 결박한다. 원 venv를 보존하며
+  새 환경9425/106·Common19는 재검산 후 재사용한다. CPU/RSS·운영 배포·이미지 변경은0이다.
+- 이번 build의 main 기준은 준비 시점5c823으로 동결하며 최종 머지 전 upstream 진전을 다시 확인한다. 아래 절은 각각 작성 당시 이력이다.
+
+## 2026-10-27 — 소통 배치 후보와 최신 Common pin 합성
+
+- 현재 상태: 최신 main `abd4084b`의 Common c289 핀·lock·핀 회귀를 정상 합성하고 journal 양쪽 기록을 보존했다.
+  기존400개 exact pair 배치 제품은103a와 동일하다. [원장·검증 환경·한계](reports/2026-10-27-traffic-store-batched-prefetch.md).
+- 기존 수용: 제품1788/문서103a의 Common e746 환경에서 SQLite84통과/1건너뜀·PG15통과 및
+  801/8,300전체 행3단계 동등·Docker15통과/소유 자원 정리를 확인했다. c289 실행 결과로 바꾸지 않는다.
+- 다음 한 작업: 새 exact head/c289 환경·CI·두 리뷰와 fresh Next/same-head API/유가 통계 UI를 수용한다.
+  기존 venv를 보존한다. CPU/RSS·운영 ARM 절감은 미측정이며 운영 이미지·설정·스키마 변경은0이다.
+
 ## 2026-10-28 — 주차 PR156 최신 main 통합
 
 - 현재: 정확40f CI backend/frontend/admin SUCCESS·live-e2e skipped를 회수했다. 별도 WT에서

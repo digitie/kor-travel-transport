@@ -27,7 +27,7 @@ from opinet.experimental import (
     OpinetBrowserCollector,
     OpinetBrowserSnapshot,
 )
-from sqlalchemy import JSON, Integer, and_, cast, func, or_, select, text
+from sqlalchemy import JSON, Integer, and_, cast, func, or_, select, text, tuple_
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import DBAPIError
@@ -77,6 +77,8 @@ FUEL_NEXT_DUE_START_SLACK = timedelta(minutes=15)
 #: 문장당 `command_timeout`(60초) 안에 들도록 정한다. 주유소 41열 x 500 = 20,500개, 유가 9열 x 2,000 = 18,000개.
 FUEL_STATION_UPSERT_BATCH = 500
 FUEL_PRICE_UPSERT_BATCH = 2_000
+#: 기존 소통 관측 조회와 ORM flush의 일시 보유량을 제한한다. pair 400개는 SQLite 999 bind 안에도 든다.
+TRAFFIC_SNAPSHOT_BATCH = 400
 #: 유가 스냅샷 저장 시도 횟수. 일시적 DB 오류(`_is_transient_database_error`)에만 한 번 더 저장한다.
 FUEL_STORE_ATTEMPTS = 2
 CollectionScope = Literal["all", "highway", "fuel"]
@@ -989,56 +991,71 @@ class TransportCollectionService:
         stored = 0
         collected_at = now_utc()
         seen_keys: set[tuple[str, datetime]] = set()
-        for item in items:
-            direction = _enum_value(item.direction)
-            observed_at = _parse_provider_datetime(item.updated_at, self.settings.app_timezone) or collected_at
-            identity_key = _traffic_identity(item, direction)
-            dedupe_key = (identity_key, observed_at)
-            if dedupe_key in seen_keys:
+        for chunk in _chunked(items, TRAFFIC_SNAPSHOT_BATCH):
+            batch: list[tuple[TrafficFlow, str | None, datetime, str]] = []
+            for item in chunk:
+                direction = _enum_value(item.direction)
+                observed_at = _parse_provider_datetime(item.updated_at, self.settings.app_timezone) or collected_at
+                identity_key = _traffic_identity(item, direction)
+                dedupe_key = (identity_key, observed_at)
+                if dedupe_key in seen_keys:
+                    continue
+                seen_keys.add(dedupe_key)
+                batch.append((item, direction, observed_at, identity_key))
+            if not batch:
                 continue
-            seen_keys.add(dedupe_key)
-            existing = await session.scalar(
-                select(HighwayTrafficSnapshot).where(
-                    HighwayTrafficSnapshot.source == TRAFFIC_SOURCE,
-                    HighwayTrafficSnapshot.identity_key == identity_key,
-                    HighwayTrafficSnapshot.observed_at == observed_at,
+            # SQLite는 저장된 UTC 시각의 tzinfo를 돌려주지 않는다. provider 입력의
+            # KST 기본값과 구분해 UTC로 정규화해야 같은 관측을 새 행으로 오인하지 않는다.
+            existing_by_key = {
+                (row.identity_key, serialize_utc(row.observed_at)): row
+                for row in await session.scalars(
+                    select(HighwayTrafficSnapshot).where(
+                        HighwayTrafficSnapshot.source == TRAFFIC_SOURCE,
+                        tuple_(HighwayTrafficSnapshot.identity_key, HighwayTrafficSnapshot.observed_at).in_(
+                            [(identity_key, observed_at) for _, _, observed_at, identity_key in batch]
+                        ),
+                    )
                 )
-            )
-            if existing is not None:
-                # KREX가 동일한 관측 시각을 반복할 수 있다. 행을 하나 더 만들지는
-                # 않되, 이번 조회로 확인한 원본 값과 수집 시각은 갱신해야 공개 API가
-                # 실제 최신 확인 상태를 정확하게 표현한다.
-                existing.collection_run_id = collection_run_id
-                existing.collected_at = collected_at
-                existing.route_no = item.route_no
-                existing.route_name = item.route_name
-                existing.conzone_id = item.conzone_id
-                existing.conzone_name = item.conzone_name
-                existing.direction = direction
-                existing.speed = item.speed
-                existing.free_flow_speed = item.free_flow_speed
-                existing.congestion_level = _enum_value(item.congestion_level)
-                existing.raw_item_json = _provider_json(item)
-                continue
-            session.add(
-                HighwayTrafficSnapshot(
-                    collection_run_id=collection_run_id,
-                    source=TRAFFIC_SOURCE,
-                    identity_key=identity_key,
-                    observed_at=observed_at,
-                    collected_at=collected_at,
-                    route_no=item.route_no,
-                    route_name=item.route_name,
-                    conzone_id=item.conzone_id,
-                    conzone_name=item.conzone_name,
-                    direction=direction,
-                    speed=item.speed,
-                    free_flow_speed=item.free_flow_speed,
-                    congestion_level=_enum_value(item.congestion_level),
-                    raw_item_json=_provider_json(item),
+            }
+            for item, direction, observed_at, identity_key in batch:
+                existing = existing_by_key.get((identity_key, observed_at))
+                if existing is not None:
+                    # KREX가 동일한 관측 시각을 반복할 수 있다. 행을 하나 더 만들지는
+                    # 않되, 이번 조회로 확인한 원본 값과 수집 시각은 갱신해야 공개 API가
+                    # 실제 최신 확인 상태를 정확하게 표현한다.
+                    existing.collection_run_id = collection_run_id
+                    existing.collected_at = collected_at
+                    existing.route_no = item.route_no
+                    existing.route_name = item.route_name
+                    existing.conzone_id = item.conzone_id
+                    existing.conzone_name = item.conzone_name
+                    existing.direction = direction
+                    existing.speed = item.speed
+                    existing.free_flow_speed = item.free_flow_speed
+                    existing.congestion_level = _enum_value(item.congestion_level)
+                    existing.raw_item_json = _provider_json(item)
+                    continue
+                session.add(
+                    HighwayTrafficSnapshot(
+                        collection_run_id=collection_run_id,
+                        source=TRAFFIC_SOURCE,
+                        identity_key=identity_key,
+                        observed_at=observed_at,
+                        collected_at=collected_at,
+                        route_no=item.route_no,
+                        route_name=item.route_name,
+                        conzone_id=item.conzone_id,
+                        conzone_name=item.conzone_name,
+                        direction=direction,
+                        speed=item.speed,
+                        free_flow_speed=item.free_flow_speed,
+                        congestion_level=_enum_value(item.congestion_level),
+                        raw_item_json=_provider_json(item),
+                    )
                 )
-            )
-            stored += 1
+                stored += 1
+            await session.flush()
+            existing_by_key.clear()
         await session.flush()
         if self.settings.transport_map_current_enabled:
             from app.services.traffic_current import update_traffic_current

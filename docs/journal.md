@@ -1,3 +1,38 @@
+## 2026-10-28 — 소통 배치 후보에 PG18/schema36 main8bc 합성
+
+main8bc를 정상 merge하고 주차 영구 통계 선행 저장·원본 삭제 차단·prebuilt 배포 및 PG18/schema36 계약을 그대로 채택했다.
+batch 제품/회귀·Common c289/lock·프론트 입력은 유지했다. journal/resume 양쪽 기록과 main 전문을 보존했다.
+직전3bf CI6 SUCCESS와 b2fbb Next build/정리는 그 소스의 수용이며, PG/API/browser는 미기동이다.
+새 source/lab에서 frontend-input 동등/산출물 재사용 영수증과 PG18/schema36 하네스 두 리뷰를 준비한다.
+운영·재빌드·CPU 실험·원본 삭제는0이다. [최종 준비 기준과 검증 한계](reports/2026-10-27-traffic-store-batched-prefetch.md).
+
+## 2026-10-27 — 소통 배치 후보에 준비 기준 main5c823 합성
+
+준비 시점 최신 main `5c823c4`의 자동 역 연결 API/UI를 정상 merge하고 upstream6개 런타임 파일을 그대로 채택했다.
+batch 제품·회귀의 import/UTC와 Common c289/lock/schema35는 보존했다. journal/resume 양쪽 추가와 main 전문을 유지했다.
+직전516의 CI6 SUCCESS/live2 SKIPPED·c289 SQLite32통과는 그 소스의 이력이다. 후보 build/PG/API/browser는 미기동이다.
+새 합성 HEAD의 CI·두 리뷰·fresh Next/동일 API39 UI를 다시 결박한다. CPU/RSS 실험·운영·이미지 변경은0이다.
+[동결 기준·기존 증거·남은 수용](reports/2026-10-27-traffic-store-batched-prefetch.md).
+
+## 2026-10-27 — 소통 배치 후보에 최신 Common c289 합성
+
+최신 main `abd4084b`를 정상 merge해 Common c289의 pyproject/lock·핀 회귀를 그대로 채택했다.
+journal 충돌은 양쪽 prepend와 기존 본문 전체를 보존했다. batch 제품/회귀는103a blob 그대로다.
+제품1788/문서103a의 PG15·Docker15와 전체 행 동등은 Common e746 환경의 역사적 수용이다.
+새 c289/head의 실제 환경·CI·두 리뷰·후보 API/UI 검증 전이며, 기존 venv·원 실패·한계를 보존한다.
+CPU/RSS 실험·운영 접근·이미지 변경·수집 실행은0이다. [정산·남은 검증](reports/2026-10-27-traffic-store-batched-prefetch.md).
+
+## 2026-10-27 — 소통 관측 exact pair 배치 조회 후보
+
+최신 main을 보존한 전용 branch에서 `_store_traffic`만400개 단위로 조회·flush하도록 구현했다.
+SQLite803입력/801고유의 신규·정정·재확인 전체 행 digest가 같고 SELECT 관측은801→3이다.
+이는 SQLAlchemy dispatch 관측이며 서버 DML·운영 CPU/RSS 감소가 아니다. 원 필드/첫 중복/UTC·KST/
+current OFF·기존 commit fence를 보존한다. [변경·원 실패·미수용 범위](reports/2026-10-27-traffic-store-batched-prefetch.md).
+Python3.13.14·frozen lock의 SQLite 집중 회귀84통과/1건너뜀(324.52초), 격리PG15통과18.48초와801/8,300전체 행 동등을 수용했다.
+PG8,300개 각SELECT/쓰기 dispatch8,300→21을 확인했고 소유 CID/label/volume1 정리를 통과했다.
+첫 PG 준비의 CRLF export 검사 실패(DB 생성 전)와 원 raw 결과도 보존한다.
+CPU/RSS·Docker 회귀·CI·두 리뷰·live UI·운영 수용은 미완이다.
+
 ## 2026-10-28 — PR156 관측 보완의 최신 main 문서 병합
 
 정확40f의 CI backend/frontend/admin은 모두 SUCCESS이며 live-e2e는 skipped다. c7 전체와
