@@ -3,7 +3,8 @@
 - 현재 상태: 최신 main 기준으로 원 행 단위 조회를 최대400개 exact pair 조회·flush로 바꿨다.
   SQLite 신규/정정/재확인 전체 행 digest 동등과 SELECT801→3을 관측했다.
   [원장·보존 계약·측정 한계](reports/2026-10-27-traffic-store-batched-prefetch.md).
-- 다음 한 작업: SQLite 집중 회귀84통과/1건너뜀 뒤 격리 PostgreSQL·Docker·두 적대 리뷰·정확 CI·live UI를 수용한다.
+- 다음 한 작업: SQLite84통과/1건너뜀·격리PG15통과 및801/8,300전체 행 동등·소유 자원 정리 뒤
+  정확 lock Docker 회귀·두 적대 리뷰·최종 CI·live UI를 수용한다.
   CPU/RSS·운영 ARM 절감은 미측정이며 운영 이미지·설정·스키마 변경은0이다.
 
 ## 2026-10-27 — 현재 운영4d의 항공편 지연 성공·자연 통계 갱신 수용

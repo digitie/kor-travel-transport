@@ -4,7 +4,10 @@
 SQLite803입력/801고유의 신규·정정·재확인 전체 행 digest가 같고 SELECT 관측은801→3이다.
 이는 SQLAlchemy dispatch 관측이며 서버 DML·운영 CPU/RSS 감소가 아니다. 원 필드/첫 중복/UTC·KST/
 current OFF·기존 commit fence를 보존한다. [변경·원 실패·미수용 범위](reports/2026-10-27-traffic-store-batched-prefetch.md).
-Python3.13.14·frozen lock의 SQLite 집중 회귀84통과/1건너뜀(324.52초). PostgreSQL·Docker·CI·두 리뷰·live UI·운영 수용은 미완이다.
+Python3.13.14·frozen lock의 SQLite 집중 회귀84통과/1건너뜀(324.52초), 격리PG15통과18.48초와801/8,300전체 행 동등을 수용했다.
+PG8,300개 각SELECT/쓰기 dispatch8,300→21을 확인했고 소유 CID/label/volume1 정리를 통과했다.
+첫 PG 준비의 CRLF export 검사 실패(DB 생성 전)와 원 raw 결과도 보존한다.
+CPU/RSS·Docker 회귀·CI·두 리뷰·live UI·운영 수용은 미완이다.
 
 ## 2026-10-27 — 4d 운영 배포·늦은 항공편 성공과 자연 통계 갱신 수용
 
