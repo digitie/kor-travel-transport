@@ -11,6 +11,7 @@
   수정350의16파일 집중은 WSL/Docker 각277 PASS+6 subtests·actual0·Docker wait0/OpenAPI check0이다.
   원 d2 WSL 전체1466 PASS+6 subtests/2skip·actual0과 진행 중 d2 Docker 전체는 수정350 전체 수용과 다르다.
   PG16 집중·main의 PG18 CI/client delta를 구분하며 새 head CI/두 독립 리뷰는 미완이다.
+  다음 내부 DB 입력 어댑터는 WSL/Docker 각20 PASS+48 subtests·actual0·독립wait0/실제 PK계획4종을 확인했다.
   첫2B 내부 pattern reader의 DB 없는11순수 회귀는 WSL/Docker actual0·독립wait0이다. 실제 API/cache/bundle·DB 조회·리뷰는 미완이다.
   모든 분석/전망/현재/Map export 읽기 전환, 원본 history48시간·커서/해상도/coverage,
   원본 검산 후 정리·보류 상태·백업/참조·자연 실행 수용 전에는 완료로 옮기지 않는다.
