@@ -1,7 +1,7 @@
 ## 2026-10-27 — 공통 LoginForm의 실제 운영 채택
 
 - [x] 공통 LoginForm hydration 준비 경계 채택: PR #141의 vendor/lock·회귀·CI·두 독립 리뷰·머지 후
-  최신3691 공개 HTTPS UI32에서 실제 SSR 입력/submit 비활성화→hydration·로그인·세션·로그아웃401을 수용했다.
+  최신3691 공개 HTTPS UI32에서 실제 SSR 입력/submit 비활성화→hydration·로그인·세션·로그아웃303·보호 GET401을 수용했다.
   [초기 구현 원장](reports/2026-10-26-login-hydration-common-adoption.md)과
   [최종 운영 수용](reports/2026-10-27-integrated-production-rollout.md)을 구분한다.
   전체 주차 성능·다른 소비자·운영 CPU/RSS 완료로 확대하지 않는다.

@@ -1,5 +1,13 @@
 # Manager 호스트별 Dagster instance 설정 소비 계약 초안
 
+## 2026-10-27 최신 운영 상태
+
+PR #139의 최종 CI·두 리뷰·머지 뒤 최신3691에서 Odroid Transport CS의 Manager a7 정본
+read-only 소비·실제 내부 SHA·공식 배포 복구 경계를 수용했다. 공용 plane은 기존 c444이고
+다른 소비자/호스트까지 수렴했다고 쓰지 않는다. [최종 원장](2026-10-27-integrated-production-rollout.md).
+아래 구현·CI 정정·미배포 표현은 당시 이력이다.
+
+
 ## 문제와 소유 경계
 
 Transport main `71a551ef7fa29957be018294363063e1870be011`의 공식 원격 배포는
