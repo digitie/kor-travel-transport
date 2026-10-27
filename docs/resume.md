@@ -1,3 +1,12 @@
+## 2026-10-27 — 지난 10일 Codex PR 리뷰의 통합 수정 PR
+
+- 현재 상태: 리뷰에서 나온 수정 20건(T01~T20)을 `review/codex-10d-transport` PR 하나로 구현했다. 운영 배포와
+  플래그 변경은 없다. 설계 변경은 T04(snapshot 만료 epoch 끝+15분·GC SKIP LOCKED)와 T05(자동 code-server
+  rollback 범위 축소)다.
+- 다음 한 작업: 소유자 승인을 받는다. #146(Common pin)이 먼저 머지되면 리베이스한다(journal 충돌 예상).
+  배포 때 T01 앵커와 T05 rollback 정책이 같은 release로 들어가는지 확인한다. 보류 19건은
+  [tasks.md](tasks.md)의 2026-10-27 절과 PR 본문 순서로 진행한다.
+
 ## 2026-10-27 — 현재 운영4d의 항공편 지연 성공·자연 통계 갱신 수용
 
 - 현재 상태: PR147 검토 소스 `95f86b2d6d93f3655dbd79af9001ac5869fb8536`의 merge
