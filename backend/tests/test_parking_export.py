@@ -315,3 +315,30 @@ def test_strict_current_rejection_still_stores_flag_off_history(export_client, v
             ParkingSnapshot.collection_run_id == result["collection_run_id"],
             ParkingSnapshot.source == "kac_parking"))
     assert expected > 0 and _run(c, stored) == expected
+
+
+def test_history_only_store_failure_does_not_abort_failure_marking(export_client):
+    """거절 원천의 이력 전용 저장이 실패해도 수집은 이어지고 그 원천의 실패 기록은 남는다."""
+    c = export_client
+    settings = c.app.state.settings
+    client = Fixture()
+    client.moment -= timedelta(minutes=10)
+    collector = service(c, client)
+    assert _run(c, lambda s: collector.collect(s))["status"] == "success"
+    client.moment += timedelta(minutes=10)
+    client.kac_row_variant = "zero_capacity"
+    original = collector._store_observations
+    async def failing_history_only(session, run_id, rows, *, lot_ids=None):
+        if lot_ids is None:
+            raise RuntimeError("history store boom")
+        return await original(session, run_id, rows, lot_ids=lot_ids)
+    collector._store_observations = failing_history_only
+    result = _run(c, lambda s: collector.collect(s))
+    assert result["status"] == "partial_success", result
+    async def state(s):
+        head = await s.get(ReferenceExportState, (KIND, parking_scope(settings, "kac_parking")))
+        stored = await s.scalar(select(func.count()).select_from(ParkingSnapshot).where(
+            ParkingSnapshot.collection_run_id == result["collection_run_id"],
+            ParkingSnapshot.source == "kac_parking"))
+        return head.last_error, stored
+    assert _run(c, state) == ("source_failed", 0)
