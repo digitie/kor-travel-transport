@@ -1,7 +1,9 @@
 ## 2026-10-27 — 주차 보존 수명 분리
 
 - [ ] **T-PARK-RET-01** — 주차 원본48시간·통계영구. 선행0036 영구통계/수동 backfill·검산·삭제 차단 후보는
-  전용 PostgreSQL 집중 검증 중이다. 모든 분석/전망/현재/Map export 읽기 전환, 원본 history48시간·커서/해상도/coverage,
+  c7 전체 WSL1334/Docker1330 PASS·CI를 회수했고 최소 Dagster 결과관측 P1의 새 PG/증분 수용을 우선한다.
+  UTC offset floor·오래된 보류 정체 P2와 전국/latest 저장 보완은 별도2A다.
+  모든 분석/전망/현재/Map export 읽기 전환, 원본 history48시간·커서/해상도/coverage,
   원본 검산 후 정리·보류 상태·백업/참조·자연 실행 수용 전에는 완료로 옮기지 않는다.
   [설계와 단계](architecture/parking-retention.md), [검증 원장](reports/2026-10-27-parking-statistics-archive.md).
 

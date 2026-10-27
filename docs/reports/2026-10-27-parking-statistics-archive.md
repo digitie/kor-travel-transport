@@ -1,5 +1,24 @@
 # 2026-10-27 주차 영구 통계 선행 저장
 
+## 2026-10-28 c7 전체 정산과 최소 결과관측 보완
+
+정확c7의 R2는 WSL1334 PASS/2 SKIP·Docker1330 PASS/6 SKIP, F/E0·actual exit0을 회수했다.
+원 child/소유 경로 프로세스·backend 컨테이너0, 소스804/locked106·Git10 동일·디스크2GiB PG OOM/max0이다.
+Docker 원 컨테이너 fingerprint는 --rm 종료 전14:56:20UTC이며 종료 후 mutable layer 검산이라고 확대하지 않는다.
+최종 회수 원장 SHA256은 `1615866fbc780d50e8b9fd940b9a5aef698e675b4899beb6cc54b2263ea917a5`다.
+공통skip은 empty Dagster probe parameter/opt-in fuel benchmark, Docker 추가4개는 rsync1/Docker CLI render3이며
+이4개는 WSL에서 통과했다. 주차 회귀 skip은 없다. c7의 push/PR CI backend/frontend/admin은 success다.
+최초c7 WSL은 wrapper 권한 오류 뒤 actual exit 미회수로 UNKNOWN이고 PASS가 아니다. 승인한 새 nonce WSL1회와
+보존한 원 Docker 실행의 위 결과만 채택했다.589 OOM 실행·old tmpfs PG·세 dump·실패 로그는 그대로 보존한다.
+
+James 리뷰의 결과관측 P1은 별도c7 WT에서 최소 수정한다. 기존 op의 실제 Dagster SUCCESS5개가
+STEP_OUTPUT status 누락으로 실패하는 RED5(exit1)를 보존했고 metadata/scalar INFO 로그를 추가한 GREEN5(exit0)를 확인했다.
+실제 PG의 busy/무신규/선택·검산·발행 범위, 관련 집중/새CI·증분 리뷰는 뒤이어 수용한다.
+기존 전체1334/1330은 c7 검증이며 새 관측 head 전체 결과가 아니다. model/schema/dependency·기존 query/집계값·API reader는 바꾸지 않는다.
+선택 창과 검산/발행의 extrema는 불연속 subset일 수 있고 전체 coverage 완료를 뜻하지 않는다.
+Popper의 오래된 보류 정체·UTC offset floor P2는 별도2A에서 RED→GREEN으로 해소하며 이 commit에 섞지 않는다.
+새 UI·자동 schedule·원본 삭제·운영 변경0이며 정책 전체는 아직 미완이다. 아래 미완 표기는 당시 상태다.
+
 ## 범위
 
 사용자는 주차 원본을 이틀만, 통계자료를 영구 보존하도록 확정했다. 이 변경은 그 정책의 **1단계**다. `0036` 영구 통계 테이블과 수동 DB 전용 Dagster job을 추가하고, 원본 정리 진입은 항상 차단한다. 현재 분석/API/UI 읽기, 원본, provider, 자동 수집/schedule은 바꾸지 않는다. 전체 48시간 정책의 적용 완료나 운영 배포가 아니다.
