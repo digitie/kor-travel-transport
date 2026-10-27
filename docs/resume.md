@@ -1,3 +1,14 @@
+## 2026-10-27 — 주차 보존 정책 선행 저장 후보
+
+- 현재 상태: 사용자 정책은 주차 원본48시간·통계영구다. 추가 전용0036·수동 DB backfill과
+  검산/충돌/삭제 차단을 구현 중이며 운영 변경0이다. 현재 분석·API/UI는 여전히 원본을 읽는다.
+- 검증: 전용 PostgreSQL migration/check·집중22개, SQLite 초기21개/1건너뜀,
+  PK 등가 탐색 계획·데이터가 든 downgrade 차단을 확인했다. 전체 WSL/Docker·CI·두 리뷰는 별도다.
+- 다음 한 작업: 이 선행 저장 후보를 검토하고 기존 분석/전망/현재/Map export 읽기를 영구 통계로 전환한다.
+  원본 history48시간·해상도/coverage·오래된 커서·수동 삭제/백업 복원 계약을 검증한 뒤에만 정리를 열고,
+  모든 단계가 붙기 전 정책 전체 완료라고 보고하지 않는다.
+- [설계](architecture/parking-retention.md), [검증 원장](reports/2026-10-27-parking-statistics-archive.md).
+
 ## 2026-10-27 — 현재 운영4d의 항공편 지연 성공·자연 통계 갱신 수용
 
 - 현재 상태: PR147 검토 소스 `95f86b2d6d93f3655dbd79af9001ac5869fb8536`의 merge

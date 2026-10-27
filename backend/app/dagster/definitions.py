@@ -34,6 +34,7 @@ from app.core.config import Settings, get_settings
 from app.db.session import create_engine_and_session_factory
 from app.services.collection import CollectionService
 from app.services.analytics_cache import refresh_default_analytics_cache
+from app.services.parking_statistics_archive import archive_parking_statistics
 from app.services.flight_status import sanitize_upstream_error
 from app.services.bus_collection import BusReferenceCollectionService
 from app.services.kric_collection import KricTimetableCollectionService
@@ -618,6 +619,18 @@ def airport_collection_job() -> None:
     collect_airport_parking()
 
 
+@op
+@_redact_op_errors
+def archive_airport_parking_statistics() -> dict[str, Any]:
+    # 원본 수집/provider와 별개인 DB 전용 작업. 1단계에서는 자동 schedule/삭제가 없다.
+    return asyncio.run(_run_with_session(_settings(), archive_parking_statistics))
+
+
+@job(tags=_job_tags("parking", "parking_statistics_archive_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
+def parking_statistics_archive_job() -> None:
+    archive_airport_parking_statistics()
+
+
 @job(tags=_job_tags("highway", "highway_collection_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
 def highway_collection_job() -> None:
     collect_highway_transport()
@@ -783,6 +796,7 @@ definitions = Definitions(
     jobs=[
         address_refresh_job,
         airport_collection_job,
+        parking_statistics_archive_job,
         highway_collection_job,
         fuel_collection_job,
         rail_reference_collection_job,

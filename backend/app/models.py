@@ -850,6 +850,29 @@ class ParkingSnapshot(Base):
     parking_lot: Mapped[ParkingLot] = relationship(back_populates="snapshots")
 
 
+class ParkingStatisticsBucket(Base):
+    """영구 보존하는 10분 통계. 원천 응답과 개별 관측 배열은 넣지 않는다."""
+
+    __tablename__ = "parking_statistics_buckets"
+    __table_args__ = (
+        CheckConstraint("raw_count > 0 AND selected_count > 0 AND selected_count <= raw_count",
+                        name="ck_parking_statistics_counts"),
+        CheckConstraint("bucket_end > bucket_at", name="ck_parking_statistics_window"),
+    )
+
+    airport_id: Mapped[int] = mapped_column(ForeignKey("airports.id", ondelete="RESTRICT"), primary_key=True)
+    bucket_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    bucket_end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    format_version: Mapped[int] = mapped_column(Integer)
+    raw_count: Mapped[int] = mapped_column(Integer)
+    selected_count: Mapped[int] = mapped_column(Integer)
+    max_snapshot_id: Mapped[int] = mapped_column(Integer)
+    raw_sha256: Mapped[str] = mapped_column(Text)
+    statistics_sha256: Mapped[str] = mapped_column(Text)
+    statistics_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class AnalyticsCache(Base):
     __tablename__ = "analytics_caches"
     __table_args__ = (
