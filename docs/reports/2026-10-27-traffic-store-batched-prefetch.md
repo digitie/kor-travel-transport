@@ -1,5 +1,64 @@
 # 고속도로 소통 관측의 배치 조회·저장
 
+## 2026-10-28 최종 코드·UI·성능 수용
+
+PR [#155](https://github.com/digitie/kor-travel-transport/pull/155)는 검토·CI·후보 UI·격리 성능 검증을 마치고
+main `c19d6bc93273b36427a05d9eb1827407b4ae9d6b`로 정상 머지됐다. 실제 검증 소스는
+`65a185f8305516dc22835d76cc83567c92a25794`, 비교 원본은 준비 main
+`8bc25638c44409cc04e3cf0586b27d5c0c69b312`다. 정확65a의 backend/frontend/admin CI는
+두 실행에서6개 SUCCESS이고 live-e2e2개 SKIPPED는 아래 실제 UI 수용과 구분한다.
+제품 두 독립 리뷰의 추가 차단 지적은 없었다. **운영 배포는 아직0이며 ARM 수집 효과는 미측정**이다.
+
+### 최신 후보 UI39
+
+Git822개 mode/blob·frontend243개+지도 gitlink1개를 검산하고, 입력이 같은 기존3bf의 실제 Next build를
+새65a source/lab에 복사했다. manifest4/static59와 runtime47181개 hash/mode/link를 양쪽 대조했으며
+새 컴파일을 했다고 세지 않는다. 실제 PG18/schema36·Common c289/frozen106/site9425에 결박한
+API·BFF·브라우저에서 SSR/login/reload/menu/교통·유가 지도/타일/목록·모바일과 유가 통계
+D-1/D-6·누락일·안내창을 포함한39개가 모두 통과했다. API15/tile40·page/console/HTTP/request/nav 오류0,
+28.967초/정상 exit0다. 고정 합성 fixture의 후보 수용이며 운영 수집·provider·백업 검증으로 확대하지 않는다.
+
+첫 UUID c44는 브라우저 시작 전 tunnels 단계에서11.184초/exit1로 실패했다. master-only로 실제 재현한
+SSH mux 경로95+임시 suffix17byte 오류는 private cwd의 상대 control path로 고쳤다. Uvicorn 원 SIGTERM
+재전달로 바깥 finally 기록을 보장할 수 없어 public shutdown 완료 직후 API 종료 영수증을 남겼다.
+두 소스 리뷰 뒤 명시 승인된 새 UUID8f18 한 번의 성공이며 원 실패를 보존한다. API graceful 종료·network denied0,
+PG CID/익명 volume·API/Next unit/cgroup·터널/control·C7 정리와 frozen 환경 전후 불변을 확인했다.
+후보 API의16개 수집 관련 설정은 OFF로 격리했다. 제품 current 기본값·기존 commit/소유권 fence·
+고속도로 advisory lock과 운영 설정은 변경하지 않았다.
+
+### 격리 PG18 실측: 저장·commit 구간
+
+Linux amd64/WSL·CPython3.13.14·동일 frozen106/Common c289·PG18에서 원본/후보를
+AB/BA/AB 순서로 각3회 실행했다.8,302개 입력/8,300개 고유 관측의 신규·정정·원입력 재적용
+각 구간에서 원본·후보6회의 전체 행 digest가 일치했다(총18측정). 신규 count는8,300/0/0이다. Alembic upgrade/check와6회 시험은 모두 exit0이며
+정확 CID/name/label·volume1개와 소유 자식 정리, 소스/의존성 전후 불변을 수용했다.
+
+| 구간 | 저장·commit wall 중앙값 원본→후보(초) | client process CPU 중앙값 원본→후보(초) | 표본 최대 RSS 중앙값 원본→후보(KiB) |
+| --- | ---: | ---: | ---: |
+| 신규 | 12.343→0.893 (92.77% 감소) | 8.269→0.582 (92.97% 감소) | 108,320→111,288 (+2.74%) |
+| 정정 | 12.555→0.885 (92.95% 감소) | 8.315→0.542 (93.48% 감소) | 118,516→121,944 (+2.89%) |
+| 원입력 재적용 | 11.883→0.868 (92.69% 감소) | 7.799→0.466 (94.02% 감소) | 130,024→133,348 (+2.56%) |
+
+**표본 RSS는 감소하지 않았다.** 각 중앙값 차이는2,968/3,428/3,324KiB(약2.90/3.35/3.25MiB) 증가다.
+RSS는20ms 표본 최대의 하한이며 client process CPU에는 표본 수집 비용이 포함된다. process 수명 전체
+`ru_maxrss`는18구간 모두192,152KiB로 같지만 시작·검증·allocator 이력을 포함하는 별도 범위다.
+PG 전체 child CPU 중앙값7.560→1.256초도 import/준비/검증/background를 포함하며 저장 구간 전용 수치가 아니다.
+서버 RSS는 측정하지 않았다. 각3회·공유 PG cache·첫 원본 cold 효과와 배경 간섭을 포함하므로 일반적인
+감소율·통계적 유의성·운영 ARM 전체 수집 저감으로 확대하지 않는다. 마지막 구간은 정정 뒤 원입력을 다시 적용하는 시험이다.
+조회8,300→21은 이 시험의 source에서 유도한 lookup 호출 수이며 실제 SQL 이벤트 계측이나 서버 DML 횟수가 아니다.
+
+첫 성능 r6는 outer를 제품 venv로 실행해 Docker SDK import가 없어 PG 생성 전4.89초에 실패했다.
+소유 자원0·환경 불변을 확인하고 원 실패를 보존했다. 제품 환경에 SDK를 설치하지 않고 outer 제어만
+기존 도구 venv로 분리한 r7을 두 독립 리뷰 뒤 새 UUID 한 번 실행했다. migration/probe는 계속 제품 c289 Python이다.
+
+원 UI 수용 SHA256은 `ef1afc0600b92e5da57e157099951c2cbf120fb9bb00389674b5f0b4189722be`,
+성능 raw는 `b9d501f3aff0574c68f633b81befbfde59a830a209c6a35c939c17c73201bc08`,
+Root 독립 실측 검산은 `7554c83f92098f29fe6ee09c6680ff40748ac74f944546770c33eb8c90462f8f`다.
+UI는 W/Root/T, 제품·CI는 Root/T, 성능 source는 J/Root/W의 역할을 분리했고 성능 실제 결과는 Root가 독립 검산했다.
+
+## 아래는 각각 작성 당시의 준비·과거 소스 검증 기록
+
+
 상태: 후보를 준비 시점 main `8bc25638c44409cc04e3cf0586b27d5c0c69b312`와 정상 합성했다.
 batch 제품·회귀와 Python/Common c289 의존 lock는 보존했고 PostgreSQL18·schema36 및
 주차 영구 통계 선행 저장/원본 삭제 차단·prebuilt 배포 계약은 upstream 원문으로 채택했다.
