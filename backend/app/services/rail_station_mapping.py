@@ -145,9 +145,13 @@ def automatic_station_mappings(
             places_by_number_name[(number, name)].append(place)
 
     exact: dict[tuple[str, str, str], Any] = {}
+    ambiguous_alias_codes: set[tuple[str, str, str]] = set()
     for row in code_rows:
         key = _composite_match_key(row, official=True)
         candidates = places_by_source_name.get(key, [])
+        if key[0] == "kric_code_line" and (code_name_counts[key] > 1 or len(candidates) > 1):
+            # 별칭으로 합쳐진 복합 식별이 모호하면 번호 하나로 우회 확정하지 않는다.
+            ambiguous_alias_codes.add(provider_key(row))
         if code_name_counts[key] == 1 and len(candidates) == 1:
             exact[provider_key(row)] = candidates[0]
     exact_targets = {str(place.identity_key) for place in exact.values()}
@@ -155,7 +159,7 @@ def automatic_station_mappings(
     by_number: dict[tuple[str, str, str], Any] = {}
     for row in code_rows:
         code = provider_key(row)
-        if code in exact:
+        if code in exact or code in ambiguous_alias_codes:
             continue
         number = str(row.station_code).strip()
         name = normalized_station_name(row.station_name)

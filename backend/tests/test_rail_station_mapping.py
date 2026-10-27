@@ -145,6 +145,30 @@ def test_gyeongui_jungang_alias_rejects_duplicates_after_normalization(duplicate
     assert automatic_station_mappings(codes, places) == []
 
 
+@pytest.mark.parametrize("duplicate_side", ["code", "place"])
+def test_gyeongui_jungang_ambiguous_alias_cannot_fall_back_to_matching_number(duplicate_side):
+    first = code("KR", "K4", "P313", "서울역", line_name="경의중앙")
+    first.rail_operator_name = "한국철도공사"
+    codes = [first]
+    places = [place("rail|one", "P313", "서울역", line="경의중앙선", operator="코레일")]
+    if duplicate_side == "code":
+        second = code("KR", "K4", "P314", "서울역", line_name="경의중앙선")
+        second.rail_operator_name = "코레일"
+        codes.append(second)
+    else:
+        places.append(place("rail|two", "1251", "서울역", line="경의중앙", operator="한국철도공사"))
+    assert automatic_station_mappings(codes, places) == []
+
+
+def test_number_fallback_for_unaliased_composites_remains_available():
+    codes = [code("OP", "L1", "001", "서울역"), code("OP", "L1", "002", "서울역")]
+    reference = place("rail|one", "001", "서울역")
+    assert automatic_station_mappings(codes, [reference]) == [{
+        "operator_code": "OP", "line_code": "L1", "station_code": "001",
+        "rail_station_identity_key": reference.identity_key, "match_method": "station_number_and_name",
+    }]
+
+
 def test_gyeongui_jungang_alias_keeps_other_lines_name_number_and_manual_guards():
     official = code("KR", "K4", "P313", "서울역", line_name="경의중앙")
     official.rail_operator_name = "한국철도공사"

@@ -3,7 +3,9 @@
 관측된 서울역823 원문과 KR/K4/P313 catalog의 기관·노선 표기 차이를 RED로 재현했다.
 Transport의 복합 비교키에만 KR/K4 범위 별칭을 적용하고 정규화 뒤 양쪽 중복·다른 기관/노선·
 manual 점유·번호 분기·raw 보존을 검증한다. WSL 인접4파일62통과/1건너뜀 뒤 음성3추가를 포함한
-최종 매핑22통과, network=none의 Docker 집중65통과/1건너뜀이다. WSL/Docker 전체 backend·
+초기 매핑22통과, network=none의 Docker 집중65통과/1건너뜀을 확인했다. 추가 경계에서 별칭 모호성이
+번호 fallback으로 우회되는 RED2를 재현해 해당 namespace에서만 거절하고 최종 매핑25통과를 확인했다.
+앞선 집중 수치는 이 추가 보호 전 결과다. WSL/Docker 전체 backend·
 전체 CI·두 리뷰·머지·운영 수용은 각각 별도이며,
 직접 code crosswalk나 실제 시간표 성공으로 확대하지 않는다.
 [세부 근거와 남은 검증](reports/2026-10-27-rail-composite-alias.md).
