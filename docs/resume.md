@@ -1,3 +1,26 @@
+## 2026-10-27 — 현재 운영4d의 항공편 지연 성공·자연 통계 갱신 수용
+
+- 현재 상태: PR147 검토 소스 `95f86b2d6d93f3655dbd79af9001ac5869fb8536`의 merge
+  `4d49610b2083fd0a30bc5e6afcca0036889044d4`를 배포했다. 다섯 역할 healthy·API/admin 동일 SHA·
+  schema35·정본 a7 단일 read-only bind를 확인했고, 새 상태12,628개를 검산해 복원했다.
+  Transport18 RUNNING/0 STOPPED·builder STOPPED·공유 daemon RUNNING·보호 파일/외부 컨테이너 보존과
+  정확 invocation의 성공 deactivation·부모/자식 cgroup 소멸·G 해제를 확인했다.
+- 실제 수용: Native/Firefox×375/1440의 실제 항공편200과 API365=DOM365를 확인했다.
+  Native375는7.986초의 늦은 성공이고365는 그룹 마커 수다. 별도8초 재생은6.2초 이후 pending→성공을
+  추가 flight GET0으로 확인했다. Firefox375 map/fuel 타일18/18·38/38과 지도565px·핵심 조작도 통과했다.
+  map401 원인 미확정·fuel 최종 PNG의 선택 후 조회 중 상태·응답 본문 계측 한계는 함께 보존한다.
+- 통계: 새 baseline 뒤 자연 예약 SUCCESS3개와 김포 새15행/6범위24cache 갱신을 확인했다.
+  최종10:00:05 UTC의14공항/58범위/232행은 TTL과 최신 원본 반영을 모두 통과했다.
+  중간에는 TTL232행이 유효해도 최신 두 세대 반영0/14였으므로 그 표본을 삭제하지 않는다.
+- main/운영 구분: PR150의 exact `19e35fd1e5f30c3ba69c2b82434b6c236748150b`는10:02 UTC에
+  main `a15e08b3103c6e4afd7adf3c34b924c60b38a38b`로 머지했지만 이번 운영에는 없다.
+  PR149 별칭 정규화·별도 자동 참조 갱신 core는 인계 당시 검증/개발 중이며 운영 반영0이다.
+- 다음 한 작업: T-PARK-02의 최초 분석 콜드 지연을 원본/cache/API/화면 시각으로 분리해 최소 수정 범위를
+  정한다. 기존 최초12.971초·후속0.876초와 CPU/RSS 한계는 해결 완료가 아니다.
+  PR150 운영 수용·T-FUEL-04·모든 지도/철도/버스·outlook은 별도 미완으로 유지한다.
+- [배포·화면·통계 정본과 한계](reports/2026-10-27-flight4d-production-acceptance.md).
+  이 항목 아래의 과거 다음 작업·미배포 문장은 각 작성 당시 이력이다.
+
 ## 2026-10-27 — 주차 최초 UI와 전국 캐시의 추가 수용
 
 3691 운영 배포의 별도 최초 Native375 분석은 HTTP200/12.971초, 후속 Firefox375는0.876초였다.
