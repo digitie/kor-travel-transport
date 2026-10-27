@@ -408,11 +408,11 @@ def test_code_server_health_wait_rejects_a_dead_code_server_and_accepts_a_health
             assert "Dagster code-server가 healthy가 되지 않았다" in result.stderr
 
 
-@pytest.mark.parametrize(("starting_polls", "expected", "polls"), [(80, 0, 81), (500, 1, 138)])
+@pytest.mark.parametrize(("starting_polls", "expected", "polls"), [(80, 0, 81), (500, 1, 140)])
 def test_code_server_health_wait_covers_the_compose_start_period(
     tmp_path: Path, starting_polls: int, expected: int, polls: int
 ) -> None:
-    """compose healthcheck의 start_period(600초)+interval(90초) 동안 `starting`은 실패가 아니다. 예산 뒤에는 실패한다."""
+    """compose healthcheck 창(start_period 600+interval 90+timeout 10초) 동안 `starting`은 실패가 아니다. 뒤에는 실패한다."""
 
     definition = _function(_REMOTE.read_text(encoding="utf-8"), "wait_code_server_health")
     counter = tmp_path / "polls"
@@ -614,3 +614,24 @@ def test_admin_deploy_prunes_only_listed_retired_files_absent_from_the_release(t
     assert (app / retired[3]).exists()
     assert (app / frontend / "components/map-overlays.tsx").exists()
     assert (app / frontend / "notes-from-operator.md").exists()
+
+
+def _seconds(block: str, key: str) -> int:
+    match = re.search(rf"^\s+{key}: (\d+)s$", block, re.MULTILINE)
+    assert match, key
+    return int(match.group(1))
+
+
+def test_code_server_health_wait_matches_the_compose_healthcheck() -> None:
+    """`starting` 대기 예산은 code-server compose healthcheck의 start_period+interval+timeout과 같다."""
+
+    compose = _SCRIPTS.parent / "docker-compose.shared.yml"
+    if not compose.is_file():
+        pytest.skip("compose 파일이 없는 이미지 안 실행")
+    text = compose.read_text(encoding="utf-8")
+    start = text.index("\n  dagster-code-server:\n")
+    block = text[start:text.index("\n  dagster-webserver:\n", start)]
+    expected = sum(_seconds(block, key) for key in ("start_period", "interval", "timeout"))
+    definition = _function(_REMOTE.read_text(encoding="utf-8"), "wait_code_server_health")
+    match = re.search(r"start_wait_seconds=(\d+)", definition)
+    assert match and int(match.group(1)) == expected

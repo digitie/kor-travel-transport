@@ -49,7 +49,10 @@ path/SHA/host/max가 달라지면 교체/rollback을 거부하고 운영자가 M
 운영자는 원인을 고친 release로 다시 배포한다(forward-fix). 옛 이미지로 수동 복귀가 꼭 필요하면 스키마 하향
 migration 가능 여부를 먼저 확인한다. 하향 없이 code-server만 옛 이미지로 되돌리지 않는다.
 `wait_code_server_health`는 Docker health가 실행 중 `starting`인 동안 compose healthcheck의 냉기동 창
-(start_period 600초 + interval 90초 = 690초)만큼 기다린다. unhealthy·정지 등 다른 상태는 기존 5분 예산이다.
+(`docker-compose.shared.yml` dagster-code-server의 start_period 600초 + interval 90초 + probe timeout 10초 = 700초)만큼
+기다린다. start_period 동안은 start_interval 5초마다 probe하므로 창 안에 뜬 자식은 늦어도 창 끝 뒤 첫 interval probe에서
+healthy가 된다. compose 값과 스크립트 값은 `test_code_server_health_wait_matches_the_compose_healthcheck`가 대조한다.
+unhealthy·정지 등 다른 상태는 기존 5분 예산이다.
 Manager instance 정본 재검증 gate는 rollback 직전에도 그대로다. 외부 운영 controller가 배포를 감싸 직접
 rollback을 판단할 때도 같은 두 조건을 따른다. 회귀는 `backend/tests/test_deploy_prod_remote_guard.py`가 실제
 스크립트 본문을 stub로 실행해 고정한다.

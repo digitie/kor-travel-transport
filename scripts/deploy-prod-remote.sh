@@ -296,9 +296,12 @@ location_state() {
     python3 -c 'import json,sys; w=json.load(sys.stdin)["data"]["workspaceOrError"]; assert w["__typename"] == "Workspace", w; got={e["name"]: (e["locationOrLoadError"] or {}).get("__typename") for e in w["locationEntries"]}; print(got.get(sys.argv[1]) or "absent")' "${dagster_location}"
 }
 wait_code_server_health() {
-  # 실행 중이고 아직 `starting`이면 compose healthcheck의 냉기동 창(start_period 600초 + interval 90초)만큼
-  # 기다린다(`docker-compose.shared.yml` code-server). unhealthy·정지 등 다른 상태는 기존 5분(60×5초) 예산이다.
-  local health="" attempt=0 limit start_wait_seconds=690
+  # 실행 중이고 아직 `starting`이면 compose healthcheck의 냉기동 창만큼 기다린다(`docker-compose.shared.yml`
+  # dagster-code-server: start_period 600초 + interval 90초 + timeout 10초 = 700초). start_period 안에서는
+  # start_interval(5초)마다 probe하므로 그 안에 뜬 자식은 늦어도 창 끝 뒤 첫 interval probe(+timeout)에 healthy가 된다.
+  # compose 값을 바꾸면 이 값도 바꾼다(`test_code_server_health_wait_matches_the_compose_healthcheck`가 대조).
+  # unhealthy·정지 등 다른 상태는 기존 5분(60×5초) 예산이다.
+  local health="" attempt=0 limit start_wait_seconds=700
   while :; do
     attempt=$((attempt + 1))
     health="$(docker inspect -f '{{.State.Running}} {{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "${dagster_code_server}" 2>/dev/null || true)"

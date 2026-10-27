@@ -896,7 +896,14 @@ class CollectionService:
                                 if source == "kac_parking" else parse_incheon_parking(response.body_text))
             except Exception:
                 continue
-            snapshot_count += await self._store_observations(session, run_id, history_rows)
+            # 한 원천의 이력 저장 실패가 남은 원천과 실패 기록(mark_reference_failure)을 끊지 않게
+            # savepoint로 격리하고 기록만 남긴 뒤 다음 원천으로 넘어간다.
+            try:
+                async with session.begin_nested():
+                    snapshot_count += await self._store_observations(session, run_id, history_rows)
+            except Exception as exc:
+                logger.warning("parking history-only store failed source=%s run_id=%s: %s",
+                               source, run_id, self._redact(str(exc)))
         for source, message in failures:
             errors.append(message)
             await mark_reference_failure(session, kind=KIND, scope=parking_scope(self.settings, source),
