@@ -1,3 +1,15 @@
+## 2026-10-27 — 최신3691 운영·공개 UI32 수용, 주차 자연 다음 실행 확인 중
+
+#141·#138·#139와 #144를 포함한 최신 main3691을 공식 배포했다. Transport18일정만
+일시 중지·자연 drain 후 다섯 역할 healthy·schema35·API/admin full SHA·실제 CS a7 정본
+read-only·설치 원본 해시를 확인했고 일정과 builder STOPPED를 복원했다. Weather/공용
+plane은 그대로다. 공개 HTTPS UI32는90.054초에 통과했다(보호 GET401·소유 자원 정리 포함).
+로그인 공통 dev.9의 실제 SSR/hydration 수용과 코드 CI·두 리뷰·머지를 완료했다.
+첫 자연 run3080/2713b386은14공항44개와 김포 기본24cache를 갱신했으나 job 시작 후
+baseline이라 엄격한 다음 실행 비교는 미완이다. source/API/전체 UI 시간·CPU 효과를 혼동하지 않는다.
+다음 한 작업은 자연 schedule 뒤 같은 소스·원 proof의 읽기 관찰과 CPU/RSS 별도 실측이다.
+[배포·UI·관측 원장](reports/2026-10-27-integrated-production-rollout.md). 아래 진행 중 절은 당시 이력이다.
+
 ## 2026-10-27 — Manager caller 합성 CI의 명령별 기한 검증 정정
 
 최신 main의 registry 검증 기한60초를 #139에 합치면서 기존 회귀가15·30초만 허용해

@@ -2,17 +2,16 @@
 
 - [ ] T-CPU-PLAIN-01: `_plain_json` 정확 builtin scalar 조기 반환 후보의 결과·오류·identity를
   보존하고 scalar/중첩 bulk CPU·RSS·bytes를 대조한다. 정확 builtin6줄과 원본/후보31회귀·
-  국소 합성 계량을 확인한 PR #138은 CI·두 독립 리뷰·live UI·머지/운영 수용이 남았다.
-  전체 수집 성능·운영 적용은 별도다.
+  국소 합성 계량을 확인한 PR #138은 최종 CI·두 독립 리뷰·머지와3691 운영 소스·공개 UI32를 수용했다.
+  전체 수집 CPU/RSS 효과의 실제 비교는 남아 있어 후속 과제는 열어 둔다.
   [설계·검증 원장](reports/2026-10-26-plain-json-scalar-cpu.md).
 
 # tasks.md — parking-radar 백로그
 
-- [ ] [공통 LoginForm hydration 준비 경계 채택](reports/2026-10-26-login-hydration-common-adoption.md): 별도 vendor/lock·회귀·두 리뷰·CI·Root 공개 UI 검증.
 
 ## 2026-10-26 — Manager instance 정본 전달
 
-- [ ] **T-DAGSTER-INSTANCE-01** — Manager559 show의 host/max/path/전체 SHA를 검증하고 공식 deploy·cutover·rollback에 같은 경로를 전달한다. tracked6 silent fallback과 독립 경로를 거부하며 두 호스트 effective 일치는 운영 별도 수용한다. [설계·미완료 범위](reports/2026-10-26-manager-host-instance-caller.md).
+- [ ] **T-DAGSTER-INSTANCE-01** — #139의 CI·두 리뷰·머지와 Odroid Transport CS의 정본 a7 read-only 소비·운영 복구 계약은 수용했다. 공용 plane c444→a7 수렴과 다른 소비자/호스트의 effective 일치는 별도 미완이다. [소비·복구 범위](reports/2026-10-27-integrated-production-rollout.md).
 
 
 ## 2026-10-25 — 조사 기반 지도·이용 흐름 후속

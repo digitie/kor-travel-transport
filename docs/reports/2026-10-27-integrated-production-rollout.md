@@ -1,6 +1,119 @@
 # 2026-10-27 최종 통합 main 운영 전환
 
-## 현재 체크포인트 — 빌드 진행 중, 운영 수용 미완료
+## 최신 상태 — 3691 운영·공개 UI 완료, 자연 다음 실행 수용 진행
+
+#144까지 포함한 최신 main 3691a07ab5bca36060173294c7d02c7399b76e4c를
+10월27일04:13 UTC(13:13 KST)에 배포했다. 새 빌드 전 원격 main을 다시 확인했고,
+그 사이 진전된 #144를 포함하기 위해 d7c 빌드는 검토된 정상 취소 경로로 끝냈다.
+취소된 실행의 원 다섯 CID·source·Weather/plane·builder 복원과 G/R 해제를 검산했으며
+이 이력을 성공한 새 3691 실행으로 덮지 않았다.
+
+실제 수용 원장은 transport-main3691-operating-acceptance-t-r1.json
+(17fe38b0b5f3e9dea4591794d3c6aea3eec0a37b6b9db577386d64a20222c683)이다.
+Transport 일정18개만 일시 중지하고 기존 active/queued run·물리 worker의 자연 종료 뒤
+fresh 상태를 보존했다. backend·code-server·frontend·gateway·admin 다섯 역할 healthy,
+API/admin full SHA·schema0035·설치된 수집/analytics 원본 세 파일의 정확 해시를 확인했다.
+일정18 RUNNING·전용9415 builder STOPPED와 기존 자원 한도·G/R 해제를 복원했다.
+새 컨테이너의 CS12306은 Manager 정본 a7을 read-only로 읽고 실제 내부 SHA가 같다.
+공용 daemon/webserver 내부는 기존 c444이며 전체 plane 수렴을 완료한 것으로 쓰지 않는다.
+Weather 이미지·컨테이너·instigator와 공용 PG/plane은 변경하지 않았다.
+Weather job 상태는 자연 진행의 관찰이며 이 작업이 실행·취소하지 않았다.
+
+### 실제 공개 HTTPS UI32
+
+정확3691에 결박한 기존 공개 시나리오32개가90.054초에 모두 통과했다.
+원장은 transport-3691a0-public-ui-w-actual-r1.json
+(9e8733e7a44b81bdb58e03eae4d02005d1bd9f2d8b2e8743702419740c64448c)이다.
+
+- 실제 초기 script8개를 보류한 SSR에서 두 입력·submit 비활성화, hydration 뒤 활성화,
+  오프라인 설정 대조 뒤 로그인200·Secure/HttpOnly 세션·새로고침을 확인했다.
+- 교통762행·유가300행 목록과 각20개 실제 타일, 읽기 API200 10개를 확인했다.
+- 로그아웃303·cookie 제거·보호 화면 로그인 요구와 실제 보호 GET401을 확인했다.
+- JS·console·HTTP·일반 네트워크 오류와 domain write는0이다. 화면 전환의
+  ERR_ABORTED23개는 별도 집계했다. 자기 세션·브라우저·컨테이너 정리를 완료했다.
+- SameSite=Lax 관찰은 기존 HAProxy 검토 제외 범위로 남긴다. 비밀은 TTY/RAM/stdin만
+  사용했고 echo fallback을 거부했다. 파일·환경변수·argv·로그로 저장하지 않았다.
+
+공개 TLS 완주90.054초와 과거 loopback 후보26초를 같은 성능 전후 표본으로 비교하지 않는다.
+이32개는 주차 네 뷰·분석 네 탭의 실제 운영 성능을 모두 검증한 결과가 아니다.
+
+### 첫 자연 수집 관측과 미완료 경계
+
+새 소스의 자연 airport_collection_job 2713b386-a4a4-44fc-b9dc-317cd1e1b93b와
+dagster_airport 원본 실행3080이 성공했다. 실제14공항44개 관측과 김포5개,
+기본 네 metric의24개 cache 갱신을 읽기 전용으로 확인했다.
+전체 job257.312초, step175.896초, 원본 수집23.143초,
+원본 저장 완료부터 job 종료까지151.029초다. 전체 job 시간과 종전 분석395초를
+직접 퍼센트 비교하거나 CPU/RSS 감소 효과로 확대하지 않는다.
+
+transport-main3691-first-natural-run-observation-w-r1.json
+(e25cfeee6cc41001b77ef6c0cd18a1b1500245f8f1c110e6d2a10425e6be5b33)에
+원 관찰·step/원본/전체 시각과 한계를 남겼다. 첫 baseline은 이 job 시작 후여서 기존
+엄격한 새 schedule 연결 비교는 incomplete다. 다음 자연 실행을 기다려 검산하며
+강제 job·수집·추가 provider 요청은0이다. 정의의 기본 cron은5분이지만 실제 wrapper/
+운영 cadence를 확인하기 전 과거 run 시작 간격만으로15분이라고 확정하지 않는다.
+
+주차 분석 hook은 기본 탭에서도 analytics와 flight 조회를 Promise.all로 기다리며
+기본 flight fallback6초가 표시를 지연시킬 수 있다. 이는 소스 기반 가능성이고 과거
+Firefox 지연의 확정 원인이 아니다. 이번 게이트에 flight 차단·API fixture를 섞어
+정상 전체 live UI PASS로 쓰지 않았다. 후속으로 analytics ready와 flight 대기를
+분리하고 API 응답 시간·화면 준비 시간을 따로 검증한다.
+전체 수집 CPU/RSS 효과, 첫 모바일 주차 응답, 전체 지도/철도/유가 backlog와
+미흡수 Draft128·93·81·38·31은 완료 처리하지 않는다.
+
+아래 빌드·CI·안전 중단 절은 당시 시점의 이력이다.
+
+
+## 재시도 시작 당시 체크포인트 — 정본 경로 정합화와 새 배포 시도
+
+다른 Weather 빌드의 G가 자연 해제된 뒤 검토된 도구로 운영·중앙 env의 해당 키 하나만
+정합화했다. 원본은 root-private NVMe에 백업했고 uid/gid/0600과 다른 bytes는 보존했다.
+두 파일의 SHA는 e2b1에서969dbda2로 바뀌었고 서비스 재시작은 없었다.
+정본 경로 equality가 false에서true로 바뀐 것과 나머지13개 strict 플래그를 실제 재검산했다.
+정합화 수용 `transport-final-env-canonical-preparation-actual-t-r2.json`
+(`a2b6f813c3de814681ac008bd156cfcacd22b333e1ae7ca54386cc8ed19e9012`),
+후속 RO `5ee283174fc21c77a496c829ab54828bca3efa3a8afe13b31e5b0392fe048fdd`다.
+
+최신 remote main이 여전히 d7c36임을 확인하고 `retry1`의 새 INPUT/감사 ROOT/unit으로
+02:21:10 UTC에 G를 취득했다. source/archive·builder 제한·제품 guard·복구 계약은 그대로다.
+이전 실행·원본 백업·원 실패는 덮어쓰지 않았다. 현재 교체·공개 UI 수용 완료는 아니다.
+보존 비교는 재시도 직전 fresh 원장
+`transport-final-d7c36-retry1-before-readonly-t-r1.json`
+(`5fd5790e1473ab2112793144fb58cfdcb288675e57e75878d77ce9792319bf4f`)에 결박한다.
+이 새 기준이 아래 첫 시도의 안전 중단 및 외부 builder drift 이력을 지우지 않는다.
+
+## 첫 공식 교체 시도 이력 — 안전 중단, 원래 런타임 복구
+
+세 사전 빌드는 모두 exit0이다. backend4787.234초, core frontend55.936초,
+admin2198.929초이며 전체 수집의 성능 개선 계량이 아니다.
+10월27일01:29:58 UTC에 원래 RUNNING18개인 Transport instigator만 중지했고,
+01:33:14 UTC에 active run0·물리 worker0을 확인해 새 state를 보존했다.
+공식 backend 스크립트는01:35:04 UTC에51.43초/exit2로 끝났다. timeout이 아니며
+컨테이너 교체 전에 중단됐다. 원 다섯 CID/image/healthy·API7f01·schema0035를 검산하고,
+18개 instigator와 builder9415 STOPPED를 복원했다. 공개 UI32는 아직 실행하지 않았다.
+
+읽기 전용 후속 검산에서 `.env.prod`를 source한 뒤
+`KOR_TRAVEL_DAGSTER_SHARED_INSTANCE_CONFIG`가 Manager show 정본 경로와 달라지는 것을
+확인했다. 운영 파일과 중앙 파일에 각각 해당 키가 한 번 있고, 나머지13개 strict 플래그는
+맞았다. 제품139는 독립 override 불일치를 거부하므로 교정이 필요한 실제 선행조건이다.
+원 stderr는 저장하지 않았으므로 이것을 exit2의 유일한 원인으로 확정하지 않는다.
+제품 거부 규칙을 유지한 채 두 파일의 해당 키 하나만 G/R 안에서 정합화하는 절차와
+새 감사 namespace의 재시도는 두 독립 검토를 통과했다. 첫 도구 초안의 다중 파일 복구
+결함은 순수 fault 반례로 보존하고 수정했다. 검토된 교정 도구를 실행했으나
+`ManagerMutationActiveError`로 G 취득 전에 끝나 env·서비스 변경은 없었다.
+다른 소유자의 잠금을 우회하지 않으며, 현재 교정·재실행은 미완이다.
+
+안전 중단 뒤 별도 RO로 원5역할 metadata/mount 전체와 Weather3·plane2 식별자·시작시각,
+내부 c444,9415 STOPPED/자원한도를 직접 대조했다. shared9598는 같은 CID/PID로 살아 있지만
+CPU quota가 최초-1에서100000으로 달라진 외부 drift가 관측됐다. 이 controller는 해당
+builder를 바꾸지 않았고 원상 복원도 시도하지 않았다. shared 자원 전체 불변으로 주장하지 않는다.
+
+안전 중단 원장은 `transport-final-d7c36-first-attempt-safe-abort-acceptance-t-r1.json`
+(`d7a32a3a973a08771938bf868f4487f0d3a3eaf6fa6c9c56cdfd16d81b3d0e89`)이다.
+`transport-final-d7c36-official-guard-env-source-readonly-t-r1.json`에 선택한 불일치 bool만
+남겼고 env 원문·자격증명은 저장하지 않았다. 아래 초기 진행 기록은 당시 시점의 이력이다.
+
+## 초기 체크포인트 이력 — 빌드 진행 중, 운영 수용 미완료
 
 대상은 #141·#138·#143·#139를 합친 main
 `d7c36c3c99dafdefe4bc0100fd797662a2b4afd3`다. 검토된 #139 최종 b619와 전체 tree가 같고,
@@ -46,7 +159,7 @@ read-only bind만 허용한다. 반대로 교체 전 중단은 원 CID·image·s
 재검증 parent 기한은 기존120초에 맞췄다. 제품 안쪽 hostname15초·registry60초·show30초는
 변경하지 않았다. 원 P1과 원 실행 전 검산 실패는 지우지 않았다.
 
-## 검증 원장과 남은 수용
+## 초기 검증 원장과 당시 남은 수용
 
 - controller `f2c57159da8d03692efc9bda210aa64732c9aad4c50c194fc29db60fabb324ec`,
   helper `e4600b254981b3303d873139b5fc3fd34717851a0991a15335e746d93006b6e3`,
