@@ -43,6 +43,17 @@ def source_key(row: Any) -> tuple[str, str, str]:
     )
 
 
+def _composite_match_key(row: Any, *, official: bool) -> tuple[str, str, str, str]:
+    """원문과 별개인 비교키. 코레일 경의중앙 표기는 공식 KR/K4 안에서만 묶는다."""
+    operator, line, name = source_key(row)
+    aliases = {("코레일", "경의중앙선"), ("한국철도공사", "경의중앙")}
+    if (operator, line) in aliases:
+        if not official or provider_key(row)[:2] == ("KR", "K4"):
+            # 이름만 같은 다른 운영기관·노선의 원문 키와 충돌하지 않게 구분한다.
+            return ("kric_code_line", "KR", "K4", name)
+    return ("source_names", operator, line, name)
+
+
 def catalog_record(row: Any) -> dict[str, str]:
     operator_code, line_code, station_code = provider_key(row)
     operator_name, line_name, station_name = source_key(row)
@@ -119,15 +130,15 @@ def automatic_station_mappings(
     """정확한 이름 일치 또는 동일 역번·정규 역명 유일 일치만 JSON으로 만든다."""
     code_rows = list(codes)
     place_rows = list(places)
-    code_name_counts = Counter(source_key(row) for row in code_rows)
+    code_name_counts = Counter(_composite_match_key(row, official=True) for row in code_rows)
     code_number_name_counts = Counter(
         (str(row.station_code).strip(), normalized_station_name(row.station_name))
         for row in code_rows
     )
-    places_by_source_name: dict[tuple[str, str, str], list[Any]] = defaultdict(list)
+    places_by_source_name: dict[tuple[str, str, str, str], list[Any]] = defaultdict(list)
     places_by_number_name: dict[tuple[str, str], list[Any]] = defaultdict(list)
     for place in place_rows:
-        places_by_source_name[source_key(place)].append(place)
+        places_by_source_name[_composite_match_key(place, official=False)].append(place)
         number = str(place.station_number or "").strip()
         name = normalized_station_name(place.station_name)
         if number and name:
@@ -135,7 +146,7 @@ def automatic_station_mappings(
 
     exact: dict[tuple[str, str, str], Any] = {}
     for row in code_rows:
-        key = source_key(row)
+        key = _composite_match_key(row, official=True)
         candidates = places_by_source_name.get(key, [])
         if code_name_counts[key] == 1 and len(candidates) == 1:
             exact[provider_key(row)] = candidates[0]

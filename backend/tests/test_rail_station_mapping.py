@@ -1,4 +1,5 @@
 import asyncio
+from copy import deepcopy
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -96,6 +97,78 @@ def test_automatic_mapping_rejects_ambiguous_code_and_name_only_matches():
     codes = [code("OP1", "L1", "001", "검암역"), code("OP2", "L2", "001", "검암역")]
     places = [place("rail|incheon2", "999", "검암역", line="인천2호선", operator="인천교통공사")]
     assert automatic_station_mappings(codes, places) == []
+
+
+def test_gyeongui_jungang_composite_alias_preserves_observed_number_and_source():
+    official = code("KR", "K4", "P313", "서울역", line_name="경의중앙")
+    official.rail_operator_name = "한국철도공사"
+    reference = place("코레일|경의중앙선|1251|서울역", "1251", "서울역",
+        line="경의중앙선", operator="코레일")
+    official.raw = {"RAIL_OPR_ISTT_NM": "한국철도공사", "LN_NM": "경의중앙", "STIN_CD": "P313"}
+    reference.raw_item_json = {"철도운영기관명": "코레일", "운영노선": "경의중앙선", "역 번호": "1251"}
+    before = deepcopy((vars(official), vars(reference)))
+
+    assert automatic_station_mappings([official], [reference]) == [{
+        "operator_code": "KR", "line_code": "K4", "station_code": "P313",
+        "rail_station_identity_key": reference.identity_key, "match_method": "exact_identity",
+    }]
+    assert (vars(official), vars(reference)) == before
+
+
+@pytest.mark.parametrize(("operator_code", "line_code"), [("S1", "K4"), ("KR", "1"), ("AR", "A1")])
+@pytest.mark.parametrize(("operator_name", "line_name"), [("한국철도공사", "경의중앙"), ("코레일", "경의중앙선")])
+def test_gyeongui_jungang_alias_does_not_expand_to_other_official_code_lines(
+    operator_code, line_code, operator_name, line_name,
+):
+    official = code(operator_code, line_code, "P313", "서울역", line_name=line_name)
+    official.rail_operator_name = operator_name
+    reference = place("rail|gyeongui-seoul", "1251", "서울역", line="경의중앙선", operator="코레일")
+    assert automatic_station_mappings([official], [reference]) == []
+
+
+@pytest.mark.parametrize("duplicate_side", ["code", "place"])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_gyeongui_jungang_alias_rejects_duplicates_after_normalization(duplicate_side, reverse):
+    first = code("KR", "K4", "P313", "서울역", line_name="경의중앙")
+    first.rail_operator_name = "한국철도공사"
+    codes = [first]
+    places = [place("rail|one", "1251", "서울역", line="경의중앙선", operator="코레일")]
+    if duplicate_side == "code":
+        second = code("KR", "K4", "P314", "서울역", line_name="경의중앙선")
+        second.rail_operator_name = "코레일"
+        codes.append(second)
+    else:
+        places.append(place("rail|two", "9999", "서울역", line="경의중앙", operator="한국철도공사"))
+    if reverse:
+        codes.reverse()
+        places.reverse()
+    assert automatic_station_mappings(codes, places) == []
+
+
+def test_gyeongui_jungang_alias_keeps_other_lines_name_number_and_manual_guards():
+    official = code("KR", "K4", "P313", "서울역", line_name="경의중앙")
+    official.rail_operator_name = "한국철도공사"
+    reference = place("rail|gyeongui-seoul", "1251", "서울역", line="경의중앙선", operator="코레일")
+    airport = code("AR", "A1", "A01", "서울역(공항철도)", line_name="공항")
+    airport.rail_operator_name = "공항철도주식회사"
+    airport_place = place("rail|airport-seoul", "A01", "서울역", line="공항철도선", operator="공항철도")
+    codes, places = [official, airport], [reference, airport_place]
+    automatic = automatic_station_mappings(codes, places)
+    assert [(row["station_code"], row["rail_station_identity_key"], row["match_method"]) for row in automatic] == [
+        ("P313", "rail|gyeongui-seoul", "exact_identity"),
+        ("A01", "rail|airport-seoul", "station_number_and_name"),
+    ]
+    manual = validate_manual_mappings([{
+        "operator_code": "AR", "line_code": "A1", "station_code": "A01",
+        "rail_station_identity_key": reference.identity_key,
+    }], {("KR", "K4", "P313"), ("AR", "A1", "A01")})
+    assert effective_station_mappings(codes, places, automatic, manual) == {
+        ("AR", "A1", "A01"): (reference.identity_key, "manual"),
+    }
+    # 역명 정규화는 기존 번호 분기에서만 허용한다. 별칭이 역명만으로 연결을 늘리지 않는다.
+    different_name = place("rail|different-name", "1251", "서울", line="경의중앙선", operator="코레일")
+    other_line = place("rail|other-line", "1251", "서울역", line="경부선", operator="코레일")
+    assert automatic_station_mappings([official], [different_name, other_line]) == []
 
 
 def test_manual_mapping_is_validated_and_overrides_automatic_without_double_booking():
