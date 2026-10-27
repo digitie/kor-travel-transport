@@ -4,7 +4,8 @@
 
 이 소스를 포함한 main3691의 공식 배포와 기본 공개 HTTPS UI32를 수용했다.
 첫 자연 수집 성공·원본/cache 갱신과 구간별 시각은 [최종 운영 원장](2026-10-27-integrated-production-rollout.md)에 남겼다.
-엄격한 다음 schedule 비교·모바일 주차 응답과 운영 CPU/RSS 효과는 별도 미완이다.
+baseline 뒤 자연 두 schedule의 새 관측·기본24cache 갱신은 엄격 검산했다.
+모바일 주차 응답과 운영 CPU/RSS 효과는 별도 미완이다.
 아래 격리 benchmark를 운영 성능 감소율로 확대하지 않는다.
 
 

@@ -42,6 +42,10 @@
   이후 엄격한 두 관측에서는 자연 run3023·새 적재·기본 캐시24행의 시각과 watermark 갱신이 통과했다.
   파생 구간 약395초로5분 주기 초과가 남아 이 task 전체를 닫지 않는다.
   [실제 배포·수용 기록](reports/2026-10-26-parking-production-rollout.md).
+  #144/3691에서는 baseline 뒤 자연 두 실행과 새 김포10개·기본24cache·6범위 갱신을 수용했다.
+  실제 cron은5분이다. 첫 모바일 주차 UI·HTTP 값/응답 성능과 CPU/RSS 효과는 별도 미완이며,
+  analytics ready와 flight 대기 분리 후보를 남긴다. [최신 수용](reports/2026-10-27-integrated-production-rollout.md).
+
 - [ ] **T-FUEL-01 / P1** — 지도 상부 작은 bbox 요약·compact 주유소 상세·주소/출처 i·동일 필터 집계.
 - [ ] **T-FUEL-02 / P1** — 기존 저장 이력 기반 7일 여러 유종 차트·최신 가격 직접 표시·결측/효력/모바일 표, 휴게소 이력 공백 별도 수용.
 - [ ] **T-FUEL-03 / P1** — 기존 품질/시설 flag 의미 확인·API 필터/투영·선호 저장·공식 조건에 맞는 브랜드 마커/상세 자산.

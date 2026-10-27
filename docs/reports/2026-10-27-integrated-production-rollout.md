@@ -1,6 +1,6 @@
 # 2026-10-27 최종 통합 main 운영 전환
 
-## 최신 상태 — 3691 운영·공개 UI 완료, 자연 다음 실행 수용 진행
+## 최신 상태 — 3691 운영·공개 UI와 자연 수집 갱신 수용
 
 #144까지 포함한 최신 main 3691a07ab5bca36060173294c7d02c7399b76e4c를
 10월27일04:13 UTC(13:13 KST)에 배포했다. 새 빌드 전 원격 main을 다시 확인했고,
@@ -18,6 +18,24 @@ API/admin full SHA·schema0035·설치된 수집/analytics 원본 세 파일의 
 공용 daemon/webserver 내부는 기존 c444이며 전체 plane 수렴을 완료한 것으로 쓰지 않는다.
 Weather 이미지·컨테이너·instigator와 공용 PG/plane은 변경하지 않았다.
 Weather job 상태는 자연 진행의 관찰이며 이 작업이 실행·취소하지 않았다.
+
+### 후속 자연 schedule의 엄격한 갱신 검산 완료
+
+첫 baseline 뒤 시작한 자연 두 실행3082/f70491b4·3084/009d661e의 schedule 태그·UUID와
+Dagster/원본 성공을 연결했다. 김포 새 관측10개·원본 watermark 진전·기본 네 metric의
+24개 cache 갱신·공항 전체와 활성 다섯 주차장의6개 범위 모두 fresh/advanced를 검산했다.
+원장은 own parking 관찰의 strict-compare-next-w-r2.json
+(570c009fbf1fc901a30d0f96b031739eb5cfe2b5616ae88c1be6dd91ed7e2ee5)이다.
+원 before deba7219와 after 91af91a2, 원격 원본 result cac0701a·postflight ba3948d5의
+전체 SHA를 해당 원장에 결박했다. 첫 비교 incomplete는 이 성공으로 덮지 않았다.
+강제 job·일정 변경·추가 provider 요청은0이다.
+
+실제 Dagster schedule 정본은 cron */5 * * * *, Asia/Seoul, RUNNING이다.
+과거 시작 간격900초를15분 cron으로 확정하지 않는다. 별도 CPU30초 시도는 자체 시작
+확인 때009d661e가 이미 SUCCESS여서 표본을 만들지 않았다.
+transport-main3691-natural-airport-cpu-memory30s-actual-t-r1.json
+(1b4a77a96d47f604ff3b12c25df6977939ce7af97fa6e23885233f6a1bd3715e)에
+메타데이터1회·실제 CPU30초 측정0회를 남겼다. CPU 사용률0%라는 뜻이 아니다.
 
 ### 실제 공개 HTTPS UI32
 
@@ -37,7 +55,7 @@ Weather job 상태는 자연 진행의 관찰이며 이 작업이 실행·취소
 공개 TLS 완주90.054초와 과거 loopback 후보26초를 같은 성능 전후 표본으로 비교하지 않는다.
 이32개는 주차 네 뷰·분석 네 탭의 실제 운영 성능을 모두 검증한 결과가 아니다.
 
-### 첫 자연 수집 관측과 미완료 경계
+### 첫 자연 수집 관측과 당시 비교 한계
 
 새 소스의 자연 airport_collection_job 2713b386-a4a4-44fc-b9dc-317cd1e1b93b와
 dagster_airport 원본 실행3080이 성공했다. 실제14공항44개 관측과 김포5개,
@@ -49,9 +67,9 @@ dagster_airport 원본 실행3080이 성공했다. 실제14공항44개 관측과
 transport-main3691-first-natural-run-observation-w-r1.json
 (e25cfeee6cc41001b77ef6c0cd18a1b1500245f8f1c110e6d2a10425e6be5b33)에
 원 관찰·step/원본/전체 시각과 한계를 남겼다. 첫 baseline은 이 job 시작 후여서 기존
-엄격한 새 schedule 연결 비교는 incomplete다. 다음 자연 실행을 기다려 검산하며
-강제 job·수집·추가 provider 요청은0이다. 정의의 기본 cron은5분이지만 실제 wrapper/
-운영 cadence를 확인하기 전 과거 run 시작 간격만으로15분이라고 확정하지 않는다.
+엄격한 새 schedule 연결 비교는 당시 incomplete였다. 이후 baseline 뒤 시작한 두
+자연 실행에서 위 조건을 충족했다. 당시 비교·원 실패는 보존했고 강제 job·수집·추가
+provider 요청은0이다. 실제 cron5분 정본은 위 후속 메타데이터로 확인했다.
 
 주차 분석 hook은 기본 탭에서도 analytics와 flight 조회를 Promise.all로 기다리며
 기본 flight fallback6초가 표시를 지연시킬 수 있다. 이는 소스 기반 가능성이고 과거
@@ -59,7 +77,7 @@ Firefox 지연의 확정 원인이 아니다. 이번 게이트에 flight 차단�
 정상 전체 live UI PASS로 쓰지 않았다. 후속으로 analytics ready와 flight 대기를
 분리하고 API 응답 시간·화면 준비 시간을 따로 검증한다.
 전체 수집 CPU/RSS 효과, 첫 모바일 주차 응답, 전체 지도/철도/유가 backlog와
-미흡수 Draft128·93·81·38·31은 완료 처리하지 않는다.
+완전 흡수 검증 미완 Draft128·93·81·38·31은 완료 처리하지 않는다.
 
 아래 빌드·CI·안전 중단 절은 당시 시점의 이력이다.
 
