@@ -1,8 +1,10 @@
 ## 2026-10-28 — 주차 보존 수명 분리
 
 - [ ] **T-PARK-RET-01** — 주차 원본48시간·통계영구. 선행0036 영구통계/수동 backfill·검산·삭제 차단 후보는
-  c7 WSL1334 PASS/2 SKIP·Docker1330 PASS/6 SKIP와 CI를 통과했으며 독립 리뷰 정산 중이다.
-  후속2A는0037 전국 cohort·보류/latest와 오래된 보류 bucket의 후속 날짜 정체·UTC offset floor P2를 해소한다.
+  c7 전체 WSL1334/Docker1330 PASS와 최소 Dagster 결과관측의 a1a WSL119/Docker119 PASS를 회수했다.
+  정확40f CI3개 성공 뒤 최신main 통합70a는 WSL153/Docker153 PASS·새 CI/리뷰 수용 중이다.
+  별도2A의0037 전국/보류/latest·UTC offset floor·오래된 보류 정체 보완은9fb 집중7실패를 보존했다.
+  fixture 새 표 초기화 누락과 job action 기대를 수정하고 관측 metadata를 domain별로 통합 중이며 새 소스 검증은 미완이다.
   모든 분석/전망/현재/Map export 읽기 전환, 원본 history48시간·커서/해상도/coverage,
   원본 검산 후 정리·보류 상태·백업/참조·자연 실행 수용 전에는 완료로 옮기지 않는다.
   [설계와 단계](architecture/parking-retention.md), [검증 원장](reports/2026-10-27-parking-statistics-archive.md).

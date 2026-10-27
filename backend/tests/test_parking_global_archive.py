@@ -51,7 +51,7 @@ async def test_global_waits_for_airport_coverage_instead_of_publishing_partial_s
             session.add(snapshot(1, 0, 50))
             await session.commit()
             pending = await archive_global_statistics(session, checked_at=NOW)
-            assert pending["deferred_global_buckets"] == 1
+            assert pending["global_deferred_buckets"] == 1
             assert await session.scalar(select(func.count()).select_from(ParkingGlobalStatisticsBucket)) == 0
             await archive_parking_statistics(session, checked_at=NOW)
             complete = await archive_global_statistics(session, checked_at=NOW)

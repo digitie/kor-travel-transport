@@ -187,6 +187,7 @@ async def test_replayed_old_observation_after_simulated_raw_expiry_cannot_replac
 
 def test_archive_job_is_providerless_and_has_no_automatic_schedule(monkeypatch):
     from app.dagster import definitions as module
+    from app.services.parking_global_archive import archive_parking_with_coverage
 
     invoked = []
 
@@ -198,7 +199,7 @@ def test_archive_job_is_providerless_and_has_no_automatic_schedule(monkeypatch):
     monkeypatch.setattr(module, "_run_with_session", run)
     result = module.parking_statistics_archive_job.execute_in_process()
     assert result.success
-    assert invoked == [archive_parking_statistics]
+    assert invoked == [archive_parking_with_coverage]
     assert "parking_statistics_archive_job_schedule" not in {s.name for s in module.definitions.schedules}
 
 
@@ -214,7 +215,11 @@ async def test_postgres_collector_lock_busy_does_not_write(tmp_path, test_settin
             await lease.execute(text("SELECT pg_advisory_xact_lock(hashtext('kor_travel_transport:airport_collection'))"))
             async with factory() as session:
                 result = await archive_parking_statistics(session, checked_at=NOW)
-                assert result == {"status": "busy", "coverage_status": "not_audited", "archived_buckets": 0, "pruned_snapshots": 0}
+                assert {key: result[key] for key in ("status", "coverage_status", "archived_buckets", "pruned_snapshots")} == {
+                    "status": "busy", "coverage_status": "not_audited", "archived_buckets": 0, "pruned_snapshots": 0}
+                assert result["checked_at"] == NOW.isoformat()
+                assert result["raw_cutoff_at"] == (NOW - timedelta(hours=48)).isoformat()
+                assert result["selection_start_at"] is None and result["verified_buckets"] == 0
                 assert await session.scalar(select(func.count()).select_from(ParkingStatisticsBucket)) == 0
             await lease.rollback()
     finally:

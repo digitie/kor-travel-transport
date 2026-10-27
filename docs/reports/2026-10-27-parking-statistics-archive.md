@@ -1,21 +1,33 @@
 # 2026-10-27 주차 영구 통계 선행 저장
 
-## 2026-10-28 후속 정산
+## 2026-10-28 c7 전체 정산과 최소 결과관측 보완
 
-정확c7의 R2 전체는 WSL1334 PASS/2 SKIP·Docker1330 PASS/6 SKIP, F/E0·실제 exit0을 회수했다.
-원 child/소유 경로 프로세스·backend 컨테이너 잔여0, source804/locked106·Git10 동일·디스크2GiB PG OOM/max0이다.
-Docker 원 컨테이너 source/runtime 지문은 --rm 종료 전14:56:20UTC 검산이며 종료 후 mutable layer 검산으로 확대하지 않는다.
+정확c7의 R2는 WSL1334 PASS/2 SKIP·Docker1330 PASS/6 SKIP, F/E0·actual exit0을 회수했다.
+원 child/소유 경로 프로세스·backend 컨테이너0, 소스804/locked106·Git10 동일·디스크2GiB PG OOM/max0이다.
+Docker 원 컨테이너 fingerprint는 --rm 종료 전14:56:20UTC이며 종료 후 mutable layer 검산이라고 확대하지 않는다.
 최종 회수 원장 SHA256은 `1615866fbc780d50e8b9fd940b9a5aef698e675b4899beb6cc54b2263ea917a5`다.
-공통 skip은 empty Dagster probe parameter와 opt-in fuel benchmark, Docker 추가4개는 rsync1/Docker CLI render3이다.
-추가4개는 WSL에서 통과했으며 주차 회귀 skip은 없다. c7 push/PR CI의 backend/frontend/admin은 success다.
+공통skip은 empty Dagster probe parameter/opt-in fuel benchmark, Docker 추가4개는 rsync1/Docker CLI render3이며
+이4개는 WSL에서 통과했다. 주차 회귀 skip은 없다. c7의 push/PR CI backend/frontend/admin은 success다.
+최초c7 WSL은 wrapper 권한 오류 뒤 actual exit 미회수로 UNKNOWN이고 PASS가 아니다. 승인한 새 nonce WSL1회와
+보존한 원 Docker 실행의 위 결과만 채택했다.589 OOM 실행·old tmpfs PG·세 dump·실패 로그는 그대로 보존한다.
 
-최초c7 WSL은 시작 원장 wrapper의 root-owned cwd 권한 오류 뒤 실제 exit를 회수하지 못해 UNKNOWN이며 PASS가 아니다.
-원 Docker 실행은 그대로 보존해 docker wait로 actual exit0을 회수했고, 별도 승인 nonce WSL1회의 위 결과만 채택했다.
-589 OOM 무효화 두 실행·기존 tmpfs PG·세 dump와 실패 로그는 보존했다.
-독립 리뷰의 두 P2(오래된 보류 bucket의 후속 날짜 정체, UTC offset floor)는 c7을 고쳐 통과했다고 쓰지 않고
-별도2A의 RED→GREEN/문서/태스크로 추적한다. [후속 모델](../architecture/parking-archive-coverage.md)과
-[reader/API 조사·반례](2026-10-28-parking-reader-transition-review.md)를 따른다.
-독립 리뷰 최종 정산·운영 수용과 reader/48시간 정리는 아직 완료가 아니다. 아래 이전 미완 표기는 당시 상태다.
+James 리뷰의 결과관측 P1은 별도c7 WT에서 최소 수정한다. 기존 op의 실제 Dagster SUCCESS5개가
+STEP_OUTPUT status 누락으로 실패하는 RED5(exit1)를 보존했고 metadata/scalar INFO 로그를 추가한 GREEN5(exit0)를 확인했다.
+정확a1a1e77928411bacd95e20a9bc851fd052b302f5의 실제 PG 포함 집중은 WSL119 PASS/72.18초·Docker119 PASS/141.57초,
+F/E/skip0·actual exit0이며 양쪽 schema36 upgrade/check0이다. 실제 Dagster SUCCESS에 PG busy/무신규의
+not_audited를 기록하고 선택2bucket/검산1→2/신규발행1을 구분했다. 기존 값·legacy·Dagster/redaction 회귀도 포함한다.
+WSL JUnit SHA는 `0b24d029077ac2a4bff8646d0f31e33ba288f4861bb311848c9691a9d340232c`,
+Docker는 `a05c0ee6d1dbe33b56729d7a277beafe9a5fec91d2a3cd42ce058507d5e81346`이다.
+관측 증거는 `/var/tmp/codex-parking-observability-20261028-fdd019ee4568/`에 분리했고 새 전체는 실행하지 않았다.
+검증 이후 문서 정산은 a1a의 backend2·시험2 Git blob 동일성을 별도로 대조한다. 새 CI·증분 리뷰는 별도다.
+기존 전체1334/1330은 c7 검증이며 새 관측 head 전체 결과가 아니다. model/schema/dependency·기존 query/집계값·API reader는 바꾸지 않는다.
+선택 창과 검산/발행의 extrema는 불연속 subset일 수 있고 전체 coverage 완료를 뜻하지 않는다.
+Popper의 오래된 보류 정체·UTC offset floor P2는 별도2A에서 RED→GREEN으로 해소하며 이 commit에 섞지 않는다.
+새 UI·자동 schedule·원본 삭제·운영 변경0이며 정책 전체는 아직 미완이다. 아래 미완 표기는 당시 상태다.
+
+후속2A의 전국/latest·UTC/보류 정체 보완은 별도 작업트리와 원장에 남긴다.
+[후속 모델](../architecture/parking-archive-coverage.md)과
+[reader/API 조사·반례18개](2026-10-28-parking-reader-transition-review.md)를 따른다.
 
 ## 범위
 

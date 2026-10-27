@@ -621,12 +621,36 @@ def airport_collection_job() -> None:
 
 @op
 @_redact_op_errors
-def archive_airport_parking_statistics() -> dict[str, Any]:
+def archive_airport_parking_statistics(context) -> dict[str, Any]:
     # 원본 수집/provider와 별개인 DB 전용 작업. reader 전환 전 자동 schedule/삭제는 없다.
     result = asyncio.run(_run_with_session(_settings(), archive_parking_with_coverage))
+    fields = {"status", "coverage_status", "archived_buckets", "deferred_buckets", "pruned_snapshots",
+              "checked_at", "raw_cutoff_at", "complete_before", "max_buckets",
+              "selection_start_at", "selection_end_exclusive", "selected_observed_min_at", "selected_observed_max_at",
+              "selected_snapshots", "selected_buckets", "verified_buckets", "verification_scope",
+              "verified_min_bucket_at", "verified_max_bucket_at", "archived_min_bucket_at", "archived_max_bucket_at",
+              "verification_domain", "airport_status", "airport_coverage_status", "global_status", "global_coverage_status",
+              "latest_seeded", "oldest_pending_at", "deferred_count_scope", "blocked_scope", "blocked_reason", "blocked_bucket_at",
+              "global_buckets", "global_max_buckets", "global_deferred_buckets", "global_deferred_count_scope", "global_oldest_pending_at",
+              "global_selection_start_at", "global_selection_end_exclusive", "global_selected_observed_min_at", "global_selected_observed_max_at",
+              "global_selected_snapshots", "global_selected_buckets", "global_verified_buckets", "global_verification_scope",
+              "global_verified_min_bucket_at", "global_verified_max_bucket_at", "global_archived_min_bucket_at", "global_archived_max_bucket_at"}
+    context.add_output_metadata({key: value for key, value in result.items() if key in fields})
+    context.log.info(
+        "주차 통계 결과: status=%s coverage_status=%s selected_snapshots=%s verified_buckets=%s "
+        "archived_buckets=%s deferred_buckets=%s pruned_snapshots=%s raw_cutoff_at=%s selection=[%s,%s) "
+        "global_status=%s global_verified_buckets=%s global_buckets=%s global_deferred_buckets=%s blocked_reason=%s",
+        result.get("status"), result.get("coverage_status"), result.get("selected_snapshots", 0),
+        result.get("verified_buckets", 0), result.get("archived_buckets", 0), result.get("deferred_buckets", 0),
+        result.get("pruned_snapshots", 0), result.get("raw_cutoff_at"),
+        result.get("selection_start_at"), result.get("selection_end_exclusive"),
+        result.get("global_status"), result.get("global_verified_buckets", 0), result.get("global_buckets", 0),
+        result.get("global_deferred_buckets", 0), result.get("blocked_reason"),
+    )
     if result["status"] == "blocked":
         # 보류 상태 commit 뒤 job은 실패시킨다. 녹색 실행으로 coverage 성공을 위장하지 않는다.
-        raise RuntimeError("주차 영구 통계 검산이 보류되었습니다. parking_archive_issues를 확인하세요.")
+        raise Failure(description="주차 영구 통계 검산이 보류되었습니다. parking_archive_issues를 확인하세요.",
+                      metadata={key: value for key, value in result.items() if key in fields})
     return result
 
 

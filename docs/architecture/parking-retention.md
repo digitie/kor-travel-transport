@@ -47,6 +47,25 @@
 
 ## 멱등성과 보류
 
+### Dagster에서 실행 결과 확인
+
+수동 job의 SUCCESS는 op 실행이 끝났다는 뜻이며 전체 집계 검산 완료를 뜻하지 않는다.
+`status`·`coverage_status`, 선택/검산/신규 발행/보류/삭제 수량은 STEP_OUTPUT metadata와 INFO 로그에 남긴다.
+busy와 `no_new_rows/not_audited`도 강제 실패로 바꾸지 않고 미실행·미검산임을 명시한다.
+
+- `checked_at`, `raw_cutoff_at`, `complete_before`: 이번 평가 시각·48시간 원본 유지 경계·완결 bucket 경계다.
+- `selection_start_at`~`selection_end_exclusive`: 실제 raw SELECT의 최대 하루 창이다.
+  `selected_observed_min_at`·`selected_observed_max_at`, `selected_snapshots`·`selected_buckets`는 그 창에서 읽은 실제 원본 범위/수량이다.
+- `verified_buckets`와 `verified_min_bucket_at`·`verified_max_bucket_at`: 기존 또는 신규 통계를 실제 검산한 bucket 수와 양끝값이다.
+  `archived_buckets`와 `archived_min_bucket_at`·`archived_max_bucket_at`는 이번에 새로 발행한 부분만 뜻한다.
+- `verification_scope=selected_bucket_subset`는 선택 창 안의 일부 검산이다. 양끝값이 같거나 넓다는 이유로
+  그 사이 모든 시각/공항을 검산했다고 해석하지 않는다. 전체 coverage는 계속 partial 또는 not_audited다.
+- busy/무신규에서는 검산 범위가 none, 선택 범위는 null, 선택/검산/발행 수량은0이다.
+
+metadata는 이 scalar 필드만 허용하며 원문이나 provider 비밀값을 로그에 추가하지 않는다.
+기존 query·집계값·API reader·자동 schedule·원본 삭제는 이 관측 보완으로 바꾸지 않는다.
+가장 오래된 보류의 후속 날짜 정체와 비10분 offset UTC floor P2는 별도2A에서 해소할 활성화 전 필수 항목이다.
+
 `parking_statistics_archive_job`은 provider 호출 없는 수동 Dagster job이다. 자동 schedule은 아직 없다. 공항 수집과 같은 PostgreSQL transaction advisory lock을 즉시 시도하고 경합 시 `busy`/변경0을 반환한다. 48시간보다 오래된 **완결 버킷**만 후보로 잡고, 한 실행은 최대 하루 범위·기본 144개 공항 버킷으로 제한한다. `observed_at`이 오래돼도 최근 48시간에 `collected_at`이 들어온 표본이 있으면 그 버킷은 보류한다. 현재 상태/최신값을 억지로 변경하지 않는다.
 
 신규 행 탐색은 append-only 수집의 `max_snapshot_id`와 UTC `date_bin`의 PK 등가 조회를 사용한다. **이 탐색은 전체 과거 검산이 아니다.** 새 id가 없으면 `no_new_rows`/`coverage_status=not_audited`를 반환하고 전체 coverage 완료나 삭제 가능 상태로 표시하지 않는다. 같은 id의 값·JSON 수정이나 원본 누락은 이 탐색으로 발견하지 못한다. 실제 선택된 하루 범위에서 만난 기존 버킷만 원본 지문·행 수·통계를 다시 계산해, 다르면 `ParkingArchiveConflict`로 전체 transaction을 rollback한다. 신규 버킷 발행은 `batch_complete`/`coverage_status=partial`이며 전체 수용이 아니다. 삭제 전에는 후보 버킷마다 `verify_bucket`로 원본 전체·직전 상태를 다시 검산해야 한다.

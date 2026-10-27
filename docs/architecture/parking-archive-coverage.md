@@ -34,6 +34,17 @@ Python의 `bucket_start`와 지문/추이점 시각은 timezone을 단순 부착
 
 기존 수동 `parking_statistics_archive_job`은 같은 collector transaction lease 아래 현재 seed→공항 집계→전국 seal을 수행한다. 상태 commit이 끝난 뒤 blocked 결과는 Dagster 실패로 표시한다. 녹색 job으로 coverage 성공을 위장하지 않는다. provider 호출·수집 실행 추가·자동 schedule·삭제는0이다.
 
+공항/전국 집계는 같은 실행 UTC 시각과48시간 cutoff를 쓰되 서로 다른 날짜 창을 선택할 수 있다.
+기존 선택/검산/발행 scalar는 `verification_domain=airport_statistics`이고 전국은 `global_` 접두사로
+별도 표시한다. `airport_status`/`global_status`와 각각의 coverage도 분리한다. 전국의 `no_new_rows`가
+이번 공항의 실제 신규 발행을 덮어 전체 무처리로 바꾸지 않는다. Dagster output metadata·INFO 로그와
+blocked failure metadata에는 정해진 scalar만 남기며 raw payload를 넣지 않는다. batch 충돌 내부 sentinel은
+실제 관측 시각처럼 표시하지 않는다. 두 영역의 extrema 모두 연속 coverage·삭제 허용을 뜻하지 않는다.
+
+2A 초기9fb 집중은166 PASS/7 FAIL·actual exit1이었다. 새 무FK 테이블의 시험 초기화 누락으로6건,
+job action 기대1건이 실패했고 일부 통과도 잔존 상태 영향을 배제하지 못한다. 원본 로그/DB/JUnit은
+보존하고 초기화·action·관측 통합을 보완한 새 소스를 별도 nonce DB에서 다시 검증하기 전 수용하지 않는다.
+
 ## 현재 요약과 참조 보호
 
 `parking_latest_states`는 lot별 한 행의 파생 현재 상태다. public current의 기존 `observed_at desc/id desc`를 그대로 보존한다. 분석의 live 우선 규칙이나 Map의 별도 SDK 현재 집합으로 대체하지 않는다. 같은시각 live id1/마이그레이션 id9의 기존 current는 id9다.

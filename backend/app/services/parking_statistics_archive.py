@@ -194,7 +194,7 @@ def _next_unarchived_at_query(dialect: str, complete_before: datetime, collected
 
 async def archive_parking_statistics(
     session: AsyncSession, *, checked_at: datetime | None = None, max_buckets: int = 144,
-) -> dict[str, int | str]:
+) -> dict[str, int | str | None]:
     """완결된 과거 버킷을 최대 1일 범위에서 처리한다. commit은 호출자가 소유한다.
 
     원천 collector와 같은 advisory lock을 사용한다. 경합은 즉시 반환하고 원본을 변경하지 않는다.
@@ -207,18 +207,21 @@ async def archive_parking_statistics(
             "SELECT pg_try_advisory_xact_lock(hashtext('kor_travel_transport:airport_collection'))"
         ))
         if not acquired:
-            return {"status": "busy", "coverage_status": "not_audited", "archived_buckets": 0, "pruned_snapshots": 0}
-    cutoff = ensure_tz(checked_at or now_utc(), "UTC").astimezone(UTC) - RAW_RETENTION
+            return {**_run_metadata(ensure_tz(checked_at or now_utc(), "UTC").astimezone(UTC), max_buckets),
+                    "status": "busy", "coverage_status": "not_audited", "archived_buckets": 0, "pruned_snapshots": 0}
+    checked = ensure_tz(checked_at or now_utc(), "UTC").astimezone(UTC)
+    cutoff = checked - RAW_RETENTION
     complete_before = bucket_start(cutoff)
+    metadata = _run_metadata(checked, max_buckets)
     pending = await session.scalar(_next_unarchived_at_query(session.bind.dialect.name, complete_before))
     if pending is None:
         # max_id는 append-only 수집의 새 행 탐색용이다. 같은 id 변조·삭제 검산을 뜻하지 않는다.
         # 전체 coverage 완료나 삭제 가능 상태로 반환하지 않는다. 삭제 직전에는 verify_bucket 필수다.
-        return {"status": "no_new_rows", "coverage_status": "not_audited", "archived_buckets": 0,
+        return {**metadata, "status": "no_new_rows", "coverage_status": "not_audited", "archived_buckets": 0,
                 "pruned_snapshots": 0}
     earliest = await session.scalar(_next_unarchived_at_query(session.bind.dialect.name, complete_before, cutoff))
     if earliest is None:
-        return {"status": "deferred", "coverage_status": "partial", "archived_buckets": 0,
+        return {**metadata, "status": "deferred", "coverage_status": "partial", "archived_buckets": 0,
                 "deferred_buckets": 1, "deferred_count_scope": "first_pending_bucket",
                 "oldest_pending_at": _iso(bucket_start(pending)), "pruned_snapshots": 0}
     start = bucket_start(earliest)
@@ -231,13 +234,21 @@ async def archive_parking_statistics(
     grouped: dict[tuple[datetime, int], list[ParkingSnapshot]] = defaultdict(list)
     for row in rows:
         grouped[(bucket_start(row.observed_at), row.airport_id)].append(row)
+    metadata.update({"selection_start_at": _iso(start), "selection_end_exclusive": _iso(end),
+                     "selected_snapshots": len(rows), "selected_buckets": len(grouped)})
+    if rows:
+        metadata.update({"selected_observed_min_at": _iso(rows[0].observed_at),
+                         "selected_observed_max_at": _iso(rows[-1].observed_at)})
     previous = await _previous_by_lot(session, start, {row.parking_lot_id for row in rows})
     archived = 0
     deferred = 0
+    verified_ats: list[datetime] = []
+    archived_ats: list[datetime] = []
     for (at, airport_id), observations in sorted(grouped.items()):
         existing = await session.get(ParkingStatisticsBucket, (airport_id, at))
         if existing is not None:
             verify_bucket(existing, observations, previous)
+            verified_ats.append(at)
             # 다음 threshold 경계에도 기존 구간의 직전 관측을 반영한다.
             build_bucket(observations, previous)
             continue
@@ -259,9 +270,31 @@ async def archive_parking_statistics(
         session.add(record)
         await session.flush()
         verify_bucket(record, observations, prior_for_verification)
+        verified_ats.append(at)
+        archived_ats.append(at)
         archived += 1
-    return {"status": "batch_complete", "coverage_status": "partial", "archived_buckets": archived,
+    if verified_ats:
+        metadata.update({"verification_scope": "selected_bucket_subset", "verified_buckets": len(verified_ats),
+                         "verified_min_bucket_at": _iso(min(verified_ats)),
+                         "verified_max_bucket_at": _iso(max(verified_ats))})
+    if archived_ats:
+        metadata.update({"archived_min_bucket_at": _iso(min(archived_ats)),
+                         "archived_max_bucket_at": _iso(max(archived_ats))})
+    return {**metadata, "status": "batch_complete", "coverage_status": "partial", "archived_buckets": archived,
             "deferred_buckets": deferred, "oldest_pending_at": _iso(bucket_start(pending)), "pruned_snapshots": 0}
+
+
+def _run_metadata(checked_at: datetime, max_buckets: int) -> dict[str, int | str | None]:
+    """실제 선택 창과 검산/발행 extrema를 구분하며 전체 coverage를 추정하지 않는다."""
+    cutoff = checked_at - RAW_RETENTION
+    return {"checked_at": _iso(checked_at), "raw_cutoff_at": _iso(cutoff),
+            "complete_before": _iso(bucket_start(cutoff)), "max_buckets": max_buckets,
+            "selection_start_at": None, "selection_end_exclusive": None,
+            "selected_observed_min_at": None, "selected_observed_max_at": None,
+            "selected_snapshots": 0, "selected_buckets": 0, "deferred_buckets": 0,
+            "verified_buckets": 0, "verified_min_bucket_at": None, "verified_max_bucket_at": None,
+            "archived_min_bucket_at": None, "archived_max_bucket_at": None,
+            "verification_scope": "none"}
 
 
 async def prune_parking_raw(*_args: Any, **_kwargs: Any) -> None:

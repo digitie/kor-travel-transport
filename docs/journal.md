@@ -1,3 +1,14 @@
+## 2026-10-28 — 2A 초기 집중 실패 보존과 관측 보완 병합 중
+
+2A의9fb 집중은166 PASS/7 FAIL·actual1이며 성공으로 수용하지 않는다. 기존 fixture가 새 전국/보류
+테이블을 초기화하지 않아6실패·job action 기대1실패였고, 통과한 사례도 잔존 상태 영향을 배제하지
+못하므로 수정한 최종 소스를 새 nonce DB에서 관련 집중 전체로 다시 검증해야 한다. 9fb source·로그·
+JUnit/DB는 보존했다. c7/a1a/40f 및 최신main 통합70a의 통과 결과와 혼합하지 않는다.
+
+40f 관측 보완을 별도2A WT에 병합하며 공항/전국의 status·선택 창·검산/발행 extrema를 구분한다.
+전체 결과가 전국 no_new_rows로 덮이지 않게 하고 blocked는 commit 뒤 Dagster 실패 metadata로 남긴다.
+이 병합 후 새 소스 QA는 미완이며 원본 삭제·API reader 전환·자동 schedule·운영 변경0이다.
+
 ## 2026-10-28 — 주차 보존 c7 전체 회수·2A 저장 보완과 P2 해소
 
 정확c7의 WSL 전체1334 PASS/2 SKIP·Docker1330 PASS/6 SKIP, 실제 exit0과 원 child/컨테이너 잔여0을
@@ -11,6 +22,21 @@
 2A에서 해소한다. 첫 경우는 별도 UUID DB에서 두 번 적격 집계0, 두 번째는 순수 기대18:20/실제18:15였다.
 새 nonce GREEN·migration/조회계획·읽기 전환·48시간 정리 수용 전에는 정책 완료로 보고하지 않는다.
 [저장 보완](architecture/parking-archive-coverage.md), [reader/API 경로와 반례](reports/2026-10-28-parking-reader-transition-review.md).
+
+## 2026-10-28 — c7 전체 회수와 Dagster 주차 통계 결과관측 보완
+
+c7 WSL1334 PASS/2 SKIP·Docker1330 PASS/6 SKIP의 actual exit0·원 child/컨테이너 잔여0,
+소스804/locked106/Git10 동일·디스크2GiB PG OOM/max0을 회수했다. c7의 두 CI backend/frontend/admin도 성공이다.
+589 OOM 무효화·초기c7 WSL UNKNOWN·기존 tmpfs/세 dump는 별도로 보존하고 성공에 합산하지 않는다.
+
+독립 리뷰에서 주차 통계 op가 업무 dict만 반환해 busy/not_audited도 관리자에게 SUCCESS만 보이는 P1을 확인했다.
+별도c7 기반 WT에서 실제 Dagster SUCCESS5개가 metadata status 누락으로 실패하는 RED를 재현했고,
+status/coverage/counts/cutoff/선택 창·검산/발행 extrema를 event와 scalar INFO 로그에 남기도록 보완했다.
+순수 Dagster GREEN5와 a1a의 실제 PG 포함 WSL119 PASS·Docker119 PASS(F/E/skip0, actual exit0)를 회수했다.
+양쪽 migration/check0이며 busy/무신규 SUCCESS의 not_audited·부분 검산/신규 발행 범위를 확인했다.
+새 CI·증분 독립 리뷰는 별도 수용한다.
+query/model/schema/API reader/원본 삭제·운영 변경은0이다. 두 P2(오래된 보류 정체·UTC offset floor)는 별도2A에서 추적한다.
+기존 전체는 c7 검증이며 관측 보완 head 전체로 확대하지 않는다. [정산](reports/2026-10-27-parking-statistics-archive.md).
 
 ## 2026-10-27 — 주차 legacy 덮어쓰기 차단·전체 QA 무효화와 R2 준비
 
