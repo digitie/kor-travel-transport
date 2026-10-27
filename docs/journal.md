@@ -1,3 +1,12 @@
+## 2026-10-28 — 2B 단일 snapshot DB 어댑터 후보
+
+첫 내부 pattern reader(PR162)를 유지하며 별도 WT에서 DB 입력 어댑터를 추가한다. archive와 raw를
+별도 SQL로 읽을 때 중간 backfill 발행으로 양쪽에서 관측이 빠질 수 있어 한 UNION ALL statement로
+읽는다. 전국도 공항별 PK 시간 범위·seal PK 등가 LATERAL/OFFSET0 탐색을 사용하며 새 index/DDL은 없다.
+raw 원문은 archive가 있는 요청 절단 경계에만 반환하고 그 외 미봉인·새 id 후보는 compact 필드다.
+현재 실제8개 PG 회귀·계획/넓은 집중·Docker는 미완이며 compile만 확인했다. API/cache/bundle/history/
+캘린더/outlook·원본 삭제/운영 전환0이다. 기존 caller transaction·격리수준·commit/lease를 바꾸지 않는다.
+
 ## 2026-10-28 — 2B 첫 pattern reader 순수 동등성 후보
 
 별도2B WT에서 P1/P2 수정350을 기반으로 내부 pattern reader와11개 DB 없는 회귀를 추가했다.
