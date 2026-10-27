@@ -198,7 +198,7 @@ describe("AnalyticsView", () => {
     await waitFor(() => {
       expect(apiClient.getDashboardAnalytics).toHaveBeenCalledWith("GMP", null);
     });
-    expect(apiClient.getFlightStatus).toHaveBeenCalledWith("GMP");
+    expect(apiClient.getFlightStatus).toHaveBeenCalledWith("GMP", expect.any(AbortSignal));
   });
 
   test("renders the four sub-tabs and switches between them", async () => {

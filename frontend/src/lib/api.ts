@@ -126,9 +126,9 @@ export function buildApiClient(apiBaseUrl?: string, versionPrefix: "/v1" | "" = 
         buildAnalyticsUrl(baseUrl, "/dashboard/analytics", airportCode, { parkingLotId })
       );
     },
-    getFlightStatus(airportCode: string): Promise<FlightStatusResponse> {
+    getFlightStatus(airportCode: string, signal?: AbortSignal): Promise<FlightStatusResponse> {
       const params = new URLSearchParams({ airport_code: airportCode });
-      return getJson<FlightStatusResponse>(`${baseUrl}/flights/status?${params.toString()}`);
+      return getJson<FlightStatusResponse>(`${baseUrl}/flights/status?${params.toString()}`, signal ? { signal } : undefined);
     },
     getHolidaySummary(): Promise<HolidaySummaryResponse> {
       return getJson<HolidaySummaryResponse>(`${baseUrl}/holidays/summary`);
