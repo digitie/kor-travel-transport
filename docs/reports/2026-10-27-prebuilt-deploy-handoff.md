@@ -56,6 +56,11 @@ up·기본 fallback·자식 rollback0, 다음 일반 배포의 strict 이전 이
 
 ## 인계와 미검증
 
+Draft [PR #159](https://github.com/digitie/kor-travel-transport/pull/159)을 생성하고
+채팅에 연결했다. 구현 소스 커밋은 `2edae13356c1f3f9471f5992a882004c03bcbef4`다.
+이후 문서의 PR 인계와 회귀 파일 끝 빈 줄만 정리했으며 위 세 실행 소스 hash는 같다.
+기록 시점의 GitHub CI는 진행 중이다. 통과나 운영 반영으로 선결산하지 않는다.
+
 새 정확 candidate의 CI와 독립 James/Popper 검토는 부모가 정산한다. 실제 운영에서
 receipt를 만드는 새 controller, 원본 fingerprint 전후 검산, 자식 실제 종료 이후
 복구, state가 변한 채 교체0으로 거절된 경우의 현재 상태 보존도 부모의 필수 계약이다.

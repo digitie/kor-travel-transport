@@ -6,7 +6,8 @@
 보존했다. child의 실제 교체 전 거절과 최신 source fingerprint·고정 image ID를 검사한다.
 운영 호출·merge·배포0이며 기존 철도/유가 준비본은 수정하지 않았다.
 
-다음 한 작업: Draft PR의 정확 head CI와 독립 James/Popper를 정산하고 새 controller가
+다음 한 작업: Draft [PR #159](https://github.com/digitie/kor-travel-transport/pull/159)의
+정확 head CI와 독립 James/Popper를 정산하고 새 controller가
 checksum receipt·copy 전후 fingerprint·실제 child 종료/교체0의 현재 state 보존 계약을
 소비하도록 별도 검토한다. 승인된 운영 실행은 그 뒤다. 마지막 probe→up은 원자적
 fence가 아니다. [입력·복구 설계](design/2026-10-27-prebuilt-deploy-handoff.md),

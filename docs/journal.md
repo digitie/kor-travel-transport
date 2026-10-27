@@ -9,6 +9,8 @@ release 검사 뒤 build/pull 없이 교체한다. strict EXIT의 CS 자동 roll
 WSL 집중158통과·Docker157통과/rsync부재1건너뜀,12,000파일 합성scan0.27~0.31초를
 확인했다. 제품 전체/실제 UI는 반복하지 않았다. 운영 SSH/HTTP/Docker·일정·DB 변경0,
 merge/배포0이다. 정확 CI·두 독립 리뷰와 새 controller 소비·운영 검증은 후속이다.
+Draft [PR #159](https://github.com/digitie/kor-travel-transport/pull/159)을 생성·채팅 연결했으며
+구현 소스는 `2edae13356c1f3f9471f5992a882004c03bcbef4`다. CI는 기록 시점 진행 중이다.
 [설계](design/2026-10-27-prebuilt-deploy-handoff.md)와
 [실행 결과·고정 소스](reports/2026-10-27-prebuilt-deploy-handoff.md)를 남겼다.
 

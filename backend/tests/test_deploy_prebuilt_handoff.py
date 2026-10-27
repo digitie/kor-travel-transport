@@ -352,4 +352,3 @@ def test_official_admin_branch_has_no_build_and_never_falls_back(tmp_path, faile
         assert "--no-build --pull never --no-deps --force-recreate transport-api-gateway transport-admin-web" in calls[1]
         assert "--build" not in calls[1]
         assert "dagster" not in calls[1]
-
