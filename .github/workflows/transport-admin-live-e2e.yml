@@ -34,9 +34,17 @@ jobs:
       E2E_TRANSPORT_API_BASE_URL: ${{ inputs.api_url }}
       E2E_TRANSPORT_DAGSTER_BASE_URL: ${{ inputs.dagster_url }}
       E2E_TRANSPORT_RELEASE_SHA: ${{ inputs.release_sha }}
-      # 사용자 지정 초기 자격증명. 운영값 변경 시 이 workflow도 함께 바꾼다.
-      E2E_TRANSPORT_UI_PASSWORD: ad.min
+      # 운영 로그인 비밀번호는 저장소에 두지 않는다. 운영 .env.prod의 TRANSPORT_UI_PASSWORD와 같은 값을
+      # Actions secret TRANSPORT_ADMIN_E2E_PASSWORD로 넣는다(운영값을 바꾸면 secret도 함께 바꾼다).
+      E2E_TRANSPORT_UI_PASSWORD: ${{ secrets.TRANSPORT_ADMIN_E2E_PASSWORD }}
     steps:
+      - name: Require admin E2E password secret
+        working-directory: .
+        run: |
+          if [ -z "${E2E_TRANSPORT_UI_PASSWORD}" ]; then
+            echo "::error::Actions secret TRANSPORT_ADMIN_E2E_PASSWORD가 비어 있습니다. 운영 TRANSPORT_UI_PASSWORD 값을 secret으로 등록하세요." >&2
+            exit 1
+          fi
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:

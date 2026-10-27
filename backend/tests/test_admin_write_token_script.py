@@ -21,7 +21,7 @@ def _module():
 def test_admin_write_token_bootstrap_is_atomic_idempotent_and_quiet(tmp_path, monkeypatch, capsys):
     module = _module()
     env = tmp_path / ".env.prod"
-    env.write_text("TRANSPORT_UI_PASSWORD=ad.min\n", encoding="utf-8")
+    env.write_text("TRANSPORT_UI_PASSWORD=fixture-ui-password\n", encoding="utf-8")
     module.ENV_PATH = env
     module.BACKUP_DIR = tmp_path / "backups"
     # 호스트 이름과 무관하다(운영은 Odroid, 시험은 CI runner). 실행 사용자 소유 일반 파일이면 진행한다.
@@ -42,7 +42,7 @@ def test_admin_write_token_bootstrap_is_atomic_idempotent_and_quiet(tmp_path, mo
 def test_admin_write_token_bootstrap_rejects_a_symlinked_env(tmp_path):
     module = _module()
     module.ENV_PATH = tmp_path / ".env.prod"
-    module.ENV_PATH.write_text("TRANSPORT_UI_PASSWORD=ad.min\n", encoding="utf-8")
+    module.ENV_PATH.write_text("TRANSPORT_UI_PASSWORD=fixture-ui-password\n", encoding="utf-8")
     target = module.ENV_PATH
     module.ENV_PATH = tmp_path / "linked.env.prod"
     module.ENV_PATH.symlink_to(target)
