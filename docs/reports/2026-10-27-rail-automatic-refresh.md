@@ -4,6 +4,23 @@
 기존 비어 있지 않은 자동 배열을 실제로 재계산하는 별도 관리자 경로를 추가한다.
 [설계·요청/응답 계약](../design/2026-10-27-rail-automatic-refresh.md)을 따른다.
 
+## 최신 main 통합과 손상된 저장 대상의 경계 보강
+
+875의 기존 Common e746 환경 전체 R2는 WSL1344통과/2건너뜀·Docker1340통과/6건너뜀으로
+실제 exit0·JUnit·자식 종료와 독립 Docker wait의 컨테이너 exit0을 회수했다. 소스800개 해시와
+최초 UNKNOWN stdout2개·Docker XML은 불일치0이다. 최초 실행의 exit UNKNOWN은 소급 확정하지 않는다.
+
+main abd4084/Common c289를 포함한 통합 d126 위에서 Popper P2를 별도 순수 helper로 재현했다.
+실제 FK가NULL이고 저장 automatic만 없는 identity를 가리켜도 mapped1/적용 가능/removed1을
+반환했다. 정상 writer의 발생 경로와 운영 데이터 손상은 이 합성 재현으로 증명하지 않았다.
+이 경계를 방치하지 않고 저장 automatic/manual의 target이 현재 기준 역에 없으면 계산 전에
+기존 미준비503으로 거절한다. 원문 자동 정정·삭제나 새 DTO 필드는 추가하지 않았다.
+
+pure/API의 자동·수동 각2개, 총4개 RED를 보존한 뒤4개 GREEN을 확인했다. API GET/POST503,
+원문 note/추가 JSON·FK·갱신시각 보존, DB 쓰기0·외부 요청/수집 호출0을 회귀로 확인한다.
+새 Common c289는 별도 venv에 frozen/offline으로106개를 설치했지만, 이 새 후보의 집중60개·
+health pin·WSL/Docker 전체 R3와 수정 delta 재리뷰는 아직 미완이다. 아래56개 표는875 당시 결과다.
+
 ## 기준 소스와 변경 범위
 
 PR149의536 위에서 작성하던8파일을 별도 임시 경로에 백업하고 SHA256으로 고정했다.
@@ -46,7 +63,8 @@ manual/note·catalog·기준 역·수집/달력/시간표 상태는 보존한다
 자기 전용 PG16·DB와 명시적 비중복 network를 사용했고 기존 정확 lock/pin runtime은 수정하지
 않았다. 처음 선택한243 대역이 Weather 시험망과 겹침을 생성 전에 발견해244/28로 바꿨다.
 운영·다른 프로젝트의 DB/컨테이너/네트워크에는 쓰지 않았다. focused 로그·JUnit·소스 manifest는
-별도 임시 검증 경로에 보존한다. WSL/Docker 전체·CI·두 독립 리뷰·Next 연계는 아직 미완이다.
+별도 임시 검증 경로에 보존한다. 이 문단은875 집중 검증 당시 기록이며, 이후 전체 R2와
+새 Common 통합 후보의 검증 구분은 위 최신 절을 따른다.
 
 ## 운영 수용과 분리
 

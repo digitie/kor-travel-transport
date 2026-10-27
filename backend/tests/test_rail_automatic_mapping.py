@@ -182,3 +182,15 @@ def test_inactive_code_cannot_silently_surrender_a_candidate_target():
     assert result.preview.before.station_count == result.preview.after.station_count == 1
     assert not result.preview.can_apply
     assert result.preview.blockers[0].code == "inactive_target_occupied"
+
+
+@pytest.mark.parametrize("bucket", ["automatic", "manual"])
+def test_missing_stored_target_is_unprepared_instead_of_a_mapped_or_removed_row(bucket):
+    station = code("001", "공식역", place_id=None)
+    refs = [place(1, "unrelated", "999", "무관역", operator="다른 기관", line="다른 노선")]
+    raw = {**mapping(station, "ghost"), "note": " 원문 보존 ", "legacy": {"보존": True}}
+    source = registry([station], **{bucket: [raw]})
+    before = deepcopy((vars(station), vars(source), vars(refs[0])))
+    with pytest.raises(AutomaticMappingInputError, match="기준 역에 없는"):
+        plan(source, [station], refs)
+    assert (vars(station), vars(source), vars(refs[0])) == before

@@ -1,10 +1,15 @@
 """자동 연결 관리자 API와 기존 수동 API 계약의 호환성."""
 import asyncio
+from copy import deepcopy
+from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import event, select
 
 from app.main import create_app
+from app.models import KricStationCode, KricStationMappingRegistry
 from test_rail_automatic_mapping_db import seed
 
 PATH = "/v1/transport/admin/rail-station-mappings/automatic"
@@ -104,3 +109,54 @@ def test_existing_manual_save_makes_automatic_preview_stale(automatic_client):
     assert saved.status_code == 200
     stale = client.post(PATH, headers=HEADERS, json=body(preview))
     assert stale.status_code == 409 and isinstance(stale.json()["detail"], str)
+
+
+@pytest.mark.parametrize("bucket", ["automatic", "manual"])
+def test_missing_stored_target_returns_503_without_repair_or_writes(automatic_client, monkeypatch, bucket):
+    client = automatic_client
+    asyncio.run(seed(client.app.state.session_factory))
+    valid_preview = client.get(PATH, headers=HEADERS).json()
+
+    async def corrupt_stored_input():
+        async with client.app.state.session_factory() as session:
+            registry = await session.get(KricStationMappingRegistry, 1)
+            field = bucket + "_mappings_json"
+            records = deepcopy(getattr(registry, field))
+            item = {"operator_code": "KR", "line_code": "K4", "station_code": "P313",
+                "rail_station_identity_key": "ghost", "legacy_metadata": {"원문": True}}
+            if bucket == "automatic":
+                item["match_method"] = "exact_identity"
+            else:
+                item["note"] = "  없는 대상도 자동 정정하지 않는 원문 🙂  "
+            records.append(item)
+            setattr(registry, field, records)
+            await session.commit()
+
+    async def stored_state():
+        async with client.app.state.session_factory() as session:
+            registry = await session.get(KricStationMappingRegistry, 1)
+            links = (await session.execute(select(KricStationCode.station_code, KricStationCode.rail_station_id)
+                .order_by(KricStationCode.station_code))).all()
+            return deepcopy({"automatic": registry.automatic_mappings_json, "manual": registry.manual_mappings_json,
+                "catalog": registry.catalog_json, "sha": registry.catalog_sha256,
+                "updated_at": registry.updated_at, "mappings_updated_at": registry.mappings_updated_at,
+                "links": [tuple(row) for row in links]})
+
+    asyncio.run(corrupt_stored_input())
+    before = asyncio.run(stored_state())
+    assert dict(before["links"])["P313"] is None
+    writes = []
+    event.listen(client.app.state.engine.sync_engine, "before_cursor_execute",
+        lambda conn, cursor, sql, params, ctx, many: writes.append(sql) if sql.lstrip().upper().startswith(("UPDATE", "INSERT", "DELETE")) else None)
+    provider_guard = AsyncMock(side_effect=AssertionError("미준비 입력에서 외부 조회 금지"))
+    monkeypatch.setattr(httpx.AsyncClient, "request", provider_guard)
+    monkeypatch.setattr(client.app.state.transport_collection_service, "collect", provider_guard)
+    get = client.get(PATH, headers=HEADERS)
+    post = client.post(PATH, headers=HEADERS, json=body(valid_preview))
+    assert get.status_code == post.status_code == 503
+    assert "기준 역에 없는" in get.json()["detail"]
+    assert "기준 역에 없는" in post.json()["detail"]
+    assert get.headers["cache-control"] == post.headers["cache-control"] == "no-store, private"
+    assert asyncio.run(stored_state()) == before
+    assert not writes
+    provider_guard.assert_not_awaited()

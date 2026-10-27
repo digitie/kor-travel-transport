@@ -357,6 +357,10 @@ def build_automatic_mapping_plan(
         raise AutomaticMappingInputError("기준 역 식별자가 중복되거나 비어 있습니다.")
     old_auto = _stored_mapping_records(getattr(registry, "automatic_mappings_json", None))
     manual = _stored_mapping_records(getattr(registry, "manual_mappings_json", None))
+    known_identities = set(identities)
+    if any(item["rail_station_identity_key"] not in known_identities
+            for records in (old_auto, manual) for item in records):
+        raise AutomaticMappingInputError("저장 매핑이 현재 기준 역에 없는 대상을 참조합니다.")
     if any(item.get("match_method", "exact_identity") not in ("exact_identity", "station_number_and_name")
             for item in old_auto):
         raise AutomaticMappingInputError("저장된 자동 연결 방식이 유효하지 않습니다.")

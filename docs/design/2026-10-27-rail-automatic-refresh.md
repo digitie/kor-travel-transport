@@ -1,6 +1,6 @@
 # 자동 역 연결 미리보기·적용의 다음 작은 API 묶음
 
-별도 `codex/rail-automatic-refresh` 작업트리에서 저장 입력만 쓰는 순수 계획·명시 DTO·DB 서비스와 관리자 API를 구현했다. PR149와 UI150을 포함한 main `ca59458`을 fast-forward로 통합했고 기존 작성 파일8개의 바이트와 UI150 파일을 보존했다. API·실제 전용 PostgreSQL을 포함한 WSL 집중56회귀가 통과했다. Next proxy/UI·전체 검증·CI·두 리뷰·운영 적용은 별도 미완이다. 운영 읽기/POST/수집/job·SDK·schema DDL 변경은0이다.
+별도 `codex/rail-automatic-refresh` 작업트리에서 저장 입력만 쓰는 순수 계획·명시 DTO·DB 서비스와 관리자 API를 구현했다. PR149와 UI150을 포함한 main `ca59458` 통합과 기존8파일·UI150 보존을 확인했고,875의 기존 Common 환경은 집중56개와 전체 R2의 실제 exit0을 수용했다. 현재는 최신 main/Common c289 통합 위에서 없는 저장 target을503으로 거절하는 P2를 보강하고 새 R3를 준비한다. 그 새 후보의 전체·CI·수정 delta 리뷰·운영 적용은 미완이다. 운영 읽기/POST/수집/job·SDK·schema DDL 변경은0이다.
 
 ## 현재 확인한 경계
 
@@ -11,7 +11,7 @@
 
 ## 고정한 관리자 API 계약
 
-기존 manual endpoint를 유지한다. 새 backend resource는 **`/v1/transport/admin/rail-station-mappings/automatic`**의 GET/POST다. 기존 admin token 검증을 사용하며 인증 실패는404, 미준비 입력은503, 경합·이전 지문은409 문자열 `detail`이다. 성공과 알려진409/503에는 `Cache-Control: no-store, private`를 반환한다. 명시 DTO와 `docs/openapi.json`을 같은 변경에 반영한다. Next proxy는 기존 경로 아래 `automatic/route.ts`가 후속 후보이며 session·POST origin/JSON/본문 상한 검증은 그 계층에서 기존 패턴을 재사용해야 한다. 아직 proxy를 구현한 것은 아니다. provider/library wrapper는 없다.
+기존 manual endpoint를 유지한다. 새 backend resource는 **`/v1/transport/admin/rail-station-mappings/automatic`**의 GET/POST다. 기존 admin token 검증을 사용하며 인증 실패는404, 미준비 입력은503, 경합·이전 지문은409 문자열 `detail`이다. 성공과 알려진409/503에는 `Cache-Control: no-store, private`를 반환한다. 명시 DTO와 `docs/openapi.json`을 같은 변경에 반영한다. Next proxy와 UI는 별도 PR153에서 session·POST origin/JSON/본문 상한 검증과 함께 다룬다. 이 backend 후보에는 Next 변경을 섞지 않는다. provider/library wrapper는 없다.
 
 | 호출 | 입력 | 주요 응답과 의미 |
 |---|---|---|
@@ -22,7 +22,7 @@ GET은 새 READ ONLY/REPEATABLE READ snapshot으로 registry 원문·stored cata
 
 `expected_revision`은 기존 `mapping_revision(catalog_sha, old_automatic, raw_manual, reference_digest)`를 재사용한다. `candidate_revision`은 같은 함수에 **새 automatic과 동일 raw manual**을 넣어 만든다. 데이터 revision이 같아도 배포 사이 계산 결과가 달라지면 두 번째 지문이 달라져409로 막힌다. preview 서버 캐시·서명 토큰·새 테이블은 만들지 않는다.
 
-stored catalog SHA/내용과 active code catalog가 다르거나 원문 입력이 누락/중복/불완전하면 GET/POST는 기준정보 미준비 오류로 거절한다. 후보가 계산되지만 실제 FK와 registry가 다른 무결성 상태는 preview의 `can_apply=false`와 blocker로 드러내고 무조건 고치지 않는다. provider 조회로 채우지 않는다. 숨은 raw manual/note도 서버 원문을 보존하며 visible14개만으로 덮어쓰지 않는다.
+stored catalog SHA/내용과 active code catalog가 다르거나 원문 입력이 누락/중복/불완전하면 GET/POST는 기준정보 미준비 오류로 거절한다. 저장 automatic/manual이 현재 기준 역에 없는 identity를 참조하는 경우도503으로 거절하며, 거짓 연결 건수나 자동 제거 후보로 바꾸지 않는다. 후보가 계산되지만 실제 FK와 registry가 다른 무결성 상태는 preview의 `can_apply=false`와 blocker로 드러내고 무조건 고치지 않는다. provider 조회로 채우지 않는다. 숨은 raw manual/note도 서버 원문을 보존하며 visible14개만으로 덮어쓰지 않는다.
 
 before/after의 `station_count`는 public_file 장소 수가 아니라 active 공식 catalog 코드 수다.
 `mapped_count`는 해당 code의 effective 연결 수이고 `manual_mapped_count`도 유효한 수동 연결 수다.

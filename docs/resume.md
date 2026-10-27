@@ -1,15 +1,16 @@
 ## 2026-10-27 — 자동 역 연결 후보의 최신 main 통합 검증 중
 
 API 후보 `875ed9a`와 최신 main `abd4084`를 별도 작업트리에서 통합한다. API 서비스·DTO·route·
-회귀·OpenAPI는 기존 후보와 동일하게 유지하고, PR151의 운영 정산 및 PR146의 Common pin
-`c289b462` 변경을 보존한다. 기존 후보의 전체 WSL/Docker R2는 원래 Common `e746e4b8`에서
-별도로 실행 중이며, 그 결과를 새 pin 검증으로 확대하지 않는다. 최초 전체 실행의 종료 코드는
-UNKNOWN이므로 통과 수에 넣지 않는다.
+회귀·OpenAPI와 PR151의 운영 정산 및 PR146의 Common pin `c289b462` 변경을 보존했다.
+그 뒤 Popper P2의 없는 target을 거짓 연결로 세는 손상 입력을 재현해 automatic/manual 모두
+기존503으로 거절하는 최소 보강과4개 RED→GREEN을 추가했다. 기존 Common `e746e4b8`의875
+전체 R2는 WSL1344/2skip·Docker1340/6skip의 실제 exit0과 자식 종료를 회수했다. 이 결과를
+새 pin 검증으로 확대하지 않으며 최초 전체 exit UNKNOWN도 별도 보존한다.
 
 관리자 UI PR153의 `d36fb53`는 초안 충돌 복구·목록 재조회 중 편집 보호를 포함한다. UI317개·
 WSL/Docker 타입/lint/빌드·375/1440 화면과 backend875를 쓴 실제 로컬 통합3개는 통과했다.
-이는 운영 적용이나 새 Common pin 검증이 아니다. 다음 한 작업은 기존 R2의 실제 종료 회수 뒤
-이 통합 후보의 설치 pin·관련 회귀·CI·두 독립 리뷰를 마감하는 것이다. UI PR은 별도이며
+이는 운영 적용이나 새 Common pin 검증이 아니다. 다음 한 작업은 새 c289 runtime의 설치 pin·
+집중60/health 회귀·전체 R3 준비 조건을 확인하는 것이다. 이후 CI·수정 delta 두 리뷰가 필요하다. UI PR은 별도이며
 자동 매핑 운영 preview/적용·저장 FK/요일별 시간표 수용은 미완이다. 운영·provider·수집/job 변경0.
 [API 설계·기존 검증](reports/2026-10-27-rail-automatic-refresh.md).
 
