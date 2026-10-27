@@ -2,17 +2,16 @@
 
 - [ ] T-CPU-PLAIN-01: `_plain_json` 정확 builtin scalar 조기 반환 후보의 결과·오류·identity를
   보존하고 scalar/중첩 bulk CPU·RSS·bytes를 대조한다. 정확 builtin6줄과 원본/후보31회귀·
-  국소 합성 계량을 확인한 PR #138은 머지됐고 합성본3691의 필수 CI·운영·자연 수집에 포함됐다.
-  전체 수집의 CPU/RSS 절감 효과는 아직 계량하지 않아 이 후속을 열어 둔다.
+  국소 합성 계량을 확인한 PR #138은 최종 CI·두 독립 리뷰·머지와3691 운영 소스·공개 UI32를 수용했다.
+  전체 수집 CPU/RSS 효과의 실제 비교는 남아 있어 후속 과제는 열어 둔다.
   [설계·검증 원장](reports/2026-10-26-plain-json-scalar-cpu.md).
 
 # tasks.md — parking-radar 백로그
 
+
 ## 2026-10-26 — Manager instance 정본 전달
 
-- [ ] **T-DAGSTER-INSTANCE-01** — Manager559 show의 host/max/path/전체 SHA를 검증하고 공식 deploy·cutover·rollback에 같은 경로를 전달한다. tracked6 silent fallback과 독립 경로를 거부하며 두 호스트 effective 일치는 운영 별도 수용한다. [설계·미완료 범위](reports/2026-10-26-manager-host-instance-caller.md).
-  PR139를 포함한3691 배포에서 Odroid의 상한5·실제CS단일RO bind·컨테이너 내부 전체SHA 일치를 확인했다.
-  다른 호스트 consumer의 실제 검증은 이 관측으로 완료 처리하지 않는다.
+- [ ] **T-DAGSTER-INSTANCE-01** — #139의 CI·두 리뷰·머지와 Odroid Transport CS의 정본 a7 read-only 소비·운영 복구 계약은 수용했다. 공용 plane c444→a7 수렴과 다른 소비자/호스트의 effective 일치는 별도 미완이다. [소비·복구 범위](reports/2026-10-27-integrated-production-rollout.md).
 
 
 ## 2026-10-25 — 조사 기반 지도·이용 흐름 후속
@@ -31,8 +30,7 @@
   [전후 치수·검증 원장](reports/2026-10-25-map-workspace-layout.md). 최종 모든 소비자 수용 전까지 완료 처리하지 않는다.
 - [ ] **T-RAIL-01 / P0** — 일반/도시철도 실제 시간표 실패를 코드 연결·권한·참조·수집·요일·신선도로 분리 재현.
 - [ ] **T-RAIL-02 / P0** — 일반철도 참조 준비/정상 ID 조회와 지도 역→시간표 선택 연결, 실제 지원 구간·차종 수용.
-  10월27일 읽기 조사에서 실제 시간표 구현·당시89편 성공과 현재 cold 참조/선택 상태 연결 단절을 구분했다.
-  [재현할 입력·최소 후속](reports/2026-10-27-rail-flow-audit.md). 이번 조사는 운영 재현·복구 완료가 아니다.
+  [10월27일 읽기 조사](reports/2026-10-27-rail-flow-audit.md)는 기존 구현·당시89편 성공과 현재 cold 참조/선택 연결 단절을 구분했다. 운영 재현·복구 완료가 아니다.
 - [ ] **T-RAIL-03 / P0** — 도시철도 매핑·달력·저장/이후 편·방향 복구 및 실제 두 노선/기관 수용.
 - [ ] **T-PARK-01 / P0** — 기존 job/run·원본·이력·cache·outlook/API 시각 대조, 원시/파생 정지 원인 재현.
 - [ ] **T-PARK-02 / P0** — 확인된 수집→분석 단절 복구, watermark·부분 성공·멱등/재시작·캐시 신선도 수용.
@@ -45,11 +43,13 @@
   이후 엄격한 두 관측에서는 자연 run3023·새 적재·기본 캐시24행의 시각과 watermark 갱신이 통과했다.
   파생 구간 약395초로5분 주기 초과가 남아 이 task 전체를 닫지 않는다.
   [실제 배포·수용 기록](reports/2026-10-26-parking-production-rollout.md).
-  중복 원본 JSON 조회를 제거한 PR144는 main3691 머지·운영 전환을 완료했다. 첫 배포 후 자연 run의
-  파생 지연151.029초·새 baseline 이후 run SUCCESS와 첫모바일12.971초/후속Firefox0.876초를 분리한다.
-  이후 두 예약 run·김포 새 관측10개/캐시24행과 전공항14/58범위/232행의 최신 원본 반영도 확인했다.
-  마지막 원본 저장→job 종료는87.484초다. 최초 콜드 조회 지연·항공편 늦은 응답 UI 후속이 남아 전체 task는 열어 둔다.
-  [새 검증·현재 한계](reports/2026-10-27-parking-cache-rollout.md).
+  #144/3691에서는 baseline 뒤 자연 두 실행과 새 김포10개·기본24cache·6범위 갱신을 수용했다.
+  실제 cron은5분이다. 첫 모바일 주차 UI·HTTP 값/응답 성능과 CPU/RSS 효과는 별도 미완이며,
+  analytics ready와 flight 대기 분리 후보를 남긴다. [최신 수용](reports/2026-10-27-integrated-production-rollout.md).
+  별도 최초 모바일200/12.971초·후속Firefox0.876초, 이후 네 run의 원본 저장→종료105.370/86.421/95.672/87.484초와
+  전공항14/58범위/232행의 최신 원본 반영도 확인했다. 콜드 지연과 늦은 비행편 응답 UI 후속이 남아 전체 task는 열어 둔다.
+  [추가 검증·현재 한계](reports/2026-10-27-parking-cache-rollout.md).
+
 - [ ] **T-FUEL-01 / P1** — 지도 상부 작은 bbox 요약·compact 주유소 상세·주소/출처 i·동일 필터 집계.
 - [ ] **T-FUEL-02 / P1** — 기존 저장 이력 기반 7일 여러 유종 차트·최신 가격 직접 표시·결측/효력/모바일 표, 휴게소 이력 공백 별도 수용.
 - [ ] **T-FUEL-03 / P1** — 기존 품질/시설 flag 의미 확인·API 필터/투영·선호 저장·공식 조건에 맞는 브랜드 마커/상세 자산.

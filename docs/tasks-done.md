@@ -1,11 +1,13 @@
+## 2026-10-27 — 공통 LoginForm의 실제 운영 채택
+
+- [x] 공통 LoginForm hydration 준비 경계 채택: PR #141의 vendor/lock·회귀·CI·두 독립 리뷰·머지 후
+  최신3691 공개 HTTPS UI32에서 실제 SSR 입력/submit 비활성화→hydration·로그인·세션·로그아웃303·보호 GET401을 수용했다.
+  [초기 구현 원장](reports/2026-10-26-login-hydration-common-adoption.md)과
+  [최종 운영 수용](reports/2026-10-27-integrated-production-rollout.md)을 구분한다.
+  전체 주차 성능·다른 소비자·운영 CPU/RSS 완료로 확대하지 않는다.
+  [별도 Native 첫 실패·auth 부분 수용](reports/2026-10-27-parking-cache-rollout.md)도 구분해 보존한다.
+
 # tasks-done.md — 완료 작업 아카이브
-
-## 2026-10-27 — 공통 로그인 hydration 준비 경계 채택
-
-- [x] [공통 LoginForm hydration 준비 경계 채택](reports/2026-10-26-login-hydration-common-adoption.md):
-  정규 dev.9 vendor/lock·SSR/실제 callback 회귀와 PR141/main6d243의 머지,
-  최종 합성본3691의 필수 CI·운영 배포를 확인했다. Native375/1440의 실제 준비 뒤 로그인과
-  auth 전용 후속303/cookie1→0을 확인했다. 다른 항공편 표시·분석 지연·전체 UI의 원본 실패는 별도 보존한다.
 
 ## 2026-10-26 — 공항 주차장 관리자 뷰 이식 코드
 
