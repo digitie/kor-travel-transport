@@ -43,6 +43,11 @@ function averageDifference(current?: History, baseline?: History) {
   return `${difference > 0 ? "+" : ""}${money(difference)}`;
 }
 
+function historyRange(start: string, end: string) {
+  const full = `${start} → ${end}`;
+  return <span role="group" aria-label={full} title={full}>{start.slice(5).replace("-", ".")} → {end.slice(5).replace("-", ".")}</span>;
+}
+
 export function FuelDriverStatistics({ metrics }: { metrics: FuelMetrics }) {
   const [liters, setLiters] = useState("50");
   const [efficiency, setEfficiency] = useState("10");
@@ -78,8 +83,8 @@ export function FuelStatisticsCard({ metrics, title, history }: { metrics: FuelM
       <div><dt>평균</dt><dd>{money(metrics.average_price)}<small>원/L</small></dd></div>
       <div><dt>최저</dt><dd>{money(metrics.minimum_price)}<small>원/L</small></dd></div>
       {comparison ? <>
-        <div><dt>전일 평균 차이{comparison.latest ? <small className="block">{comparison.previousDay} → {comparison.latest.day}</small> : null}</dt><dd>{dayDifference === null ? "비교 관측 없음" : <>{dayDifference}<small>원/L</small></>}</dd></div>
-        <div><dt>7일 구간 변화{comparison.latest ? <small className="block">{comparison.periodStart} → {comparison.latest.day}</small> : null}</dt><dd>{periodDifference === null ? "비교 관측 없음" : <>{periodDifference}<small>원/L</small></>}</dd></div>
+        <div><dt>전일 평균 차이{comparison.latest ? <small className="block">{historyRange(comparison.previousDay!, comparison.latest.day)}</small> : null}</dt><dd>{dayDifference === null ? "비교 관측 없음" : <>{dayDifference}<small>원/L</small></>}</dd></div>
+        <div><dt>7일 구간 변화{comparison.latest ? <small className="block">{historyRange(comparison.periodStart!, comparison.latest.day)}</small> : null}</dt><dd>{periodDifference === null ? "비교 관측 없음" : <>{periodDifference}<small>원/L</small></>}</dd></div>
       </> : <>
         <div><dt>최고−최저</dt><dd>{money(metrics.price_spread)}<small>원/L</small></dd></div>
         <div><dt>가격 표준편차</dt><dd>{money(metrics.standard_deviation)}<small>원/L</small></dd></div>

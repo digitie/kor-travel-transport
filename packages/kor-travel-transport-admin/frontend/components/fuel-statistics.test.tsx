@@ -48,7 +48,10 @@ test("페이지용 5칸은 마지막 실제 날짜의 정확 전일·6일 전 �
   expect(displayedMetric(element, "전일 평균 차이")).toBe("+101.25원/L");
   expect(displayedMetric(element, "7일 구간 변화")).toBe("+51.25원/L");
   expect(displayedMetric(element, "50L 평균 대비 절감")).toBe("5,000원");
-  expect(element.textContent).toContain("2026-10-21 → 2026-10-27");
+  expect(element.textContent).toContain("10.21 → 10.27");
+  const period = element.querySelector('[aria-label="2026-10-21 → 2026-10-27"]');
+  expect(period?.getAttribute("title")).toBe("2026-10-21 → 2026-10-27");
+  expect(period?.textContent).toBe("10.21 → 10.27");
   expect(element.textContent).not.toContain("전주");
 });
 
@@ -72,7 +75,9 @@ test.each([
   const element = comparisonCard([historyRow(start, 1600), historyRow(previous, 1700), historyRow(day, 1701)]);
   expect(displayedMetric(element, "전일 평균 차이")).toBe("+1원/L");
   expect(displayedMetric(element, "7일 구간 변화")).toBe("+101원/L");
-  expect(element.textContent).toContain(`${start} → ${day}`);
+  const range = element.querySelector(`[aria-label="${start} → ${day}"]`);
+  expect(range?.getAttribute("title")).toBe(`${start} → ${day}`);
+  expect(range?.textContent).toBe(`${start.slice(5).replace("-", ".")} → ${day.slice(5).replace("-", ".")}`);
 });
 
 test("기존 집계 i에서 비교 날짜·각일 건수/시각과 원래 가격 차이·표준편차를 보존한다", async () => {
