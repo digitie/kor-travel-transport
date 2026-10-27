@@ -122,4 +122,8 @@ by-weekday, by-weekday-hour 배열을 만든다. 전국 scope도 이 세 분석�
 
 DB 없는 실제 archive builder 기반11개 순수 회귀(7/14/21/28/90일×전국/공항/lot×archive-only/
 혼합/중복 포함45경우, 평균 가중치, KST 날짜, Kathmandu 경계, 변조·재수신·공백)는 WSL
-`unittest`에서 통과했다. 실제 API/cache/bundle·DB 조회·Docker·독립 리뷰는 이 단위의 미완 gate다.
+`unittest`에서11 PASS/0.602초·actual0이었다. 같은 제품/회귀의783 Docker 순수 실행도 네트워크 없이
+11 PASS/0.657초·actual0·독립wait0,832파일/106패키지·Git10·원 child/CID 종료를 확인했다.
+첫 사전 이미지 준비는 FROM의 raw sha를 registry 이름으로 해석해 실패했고 테스트 실행은0이었다.
+그 원본 로그를 보존하고 기존 로컬 tag의 immutable ID를 전후 검산한 새 root에서 준비·실행했다.
+이는 전체/실제 DB/API/cache/bundle 검증이 아니며 해당 연결과 독립 리뷰는 여전히 미완 gate다.
