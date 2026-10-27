@@ -1,11 +1,11 @@
-## 2026-10-28 — 2A 초기 집중 실패 보존과 관측 보완 병합 중
+## 2026-10-28 — 2A 초기 집중 실패 보존과 관측·최신 main 통합
 
 2A의9fb 집중은166 PASS/7 FAIL·actual1이며 성공으로 수용하지 않는다. 기존 fixture가 새 전국/보류
 테이블을 초기화하지 않아6실패·job action 기대1실패였고, 통과한 사례도 잔존 상태 영향을 배제하지
 못하므로 수정한 최종 소스를 새 nonce DB에서 관련 집중 전체로 다시 검증해야 한다. 9fb source·로그·
 JUnit/DB는 보존했다. c7/a1a/40f 및 최신main 통합70a의 통과 결과와 혼합하지 않는다.
 
-40f 관측 보완을 별도2A WT에 병합하며 공항/전국의 status·선택 창·검산/발행 extrema를 구분한다.
+40f 관측 보완과 통합70a를 별도2A WT에 병합하며 공항/전국의 status·선택 창·검산/발행 extrema를 구분한다.
 전체 결과가 전국 no_new_rows로 덮이지 않게 하고 blocked는 commit 뒤 Dagster 실패 metadata로 남긴다.
 이 병합 후 새 소스 QA는 미완이며 원본 삭제·API reader 전환·자동 schedule·운영 변경0이다.
 
@@ -22,6 +22,15 @@ JUnit/DB는 보존했다. c7/a1a/40f 및 최신main 통합70a의 통과 결과�
 2A에서 해소한다. 첫 경우는 별도 UUID DB에서 두 번 적격 집계0, 두 번째는 순수 기대18:20/실제18:15였다.
 새 nonce GREEN·migration/조회계획·읽기 전환·48시간 정리 수용 전에는 정책 완료로 보고하지 않는다.
 [저장 보완](architecture/parking-archive-coverage.md), [reader/API 경로와 반례](reports/2026-10-28-parking-reader-transition-review.md).
+
+## 2026-10-28 — PR156 관측 보완의 최신 main 문서 병합
+
+정확40f의 CI backend/frontend/admin은 모두 SUCCESS이며 live-e2e는 skipped다. c7 전체와
+관측 코드 a1a 집중 WSL119/Docker119는 각 원래 소스의 증거로 유지한다. 별도 작업트리에서
+main f647411을 병합했고 충돌은 journal/resume/tasks 세 문서뿐이었다. 양쪽 기록을 보존한다.
+주차 foundation·관측 제품/회귀는40f, 철도·관리자·공식 배포 도구는 main의 blob을 각각 검산한다.
+새 병합 head의 집중·CI·증분 독립 리뷰는 별도이며 새 전체·운영 변경·원본 삭제는0이다.
+2A의 전국/latest·UTC offset/보류 정체 보완은 이 PR에 섞지 않고 원본48시간 정책도 미완이다.
 
 ## 2026-10-28 — c7 전체 회수와 Dagster 주차 통계 결과관측 보완
 
@@ -58,6 +67,38 @@ SQLite 초기21개/1건너뜀, PK 등가 탐색 계획과 데이터가 있는 do
 초기 합계 기대 오기·SQLite concat 오류·QA 계약 파일 누락·이전 Hash Anti 계획의 원본도 보존한다.
 전체 시험·CI·독립 두 리뷰·읽기 전환·실제48시간 정리/운영 수용은 미완이다.
 [검증 원장과 한계](reports/2026-10-27-parking-statistics-archive.md).
+
+## 2026-10-27 — 공식 배포 자식의 strict 사전 빌드 handoff
+
+외부 controller 뒤에서 공식 backend 자식이 다시 빌드·1800초 drain하던 P1을 별도
+`deploy-prebuilt`로 보완했다. 최신 state 내용/시각·원본 CID·run5·worker·소유 STOPPED를
+재검산하고 busy면 sleep0·교체0으로 거절한다. 관리자 두 역할도 별도 고정 ID/baked
+release 검사 뒤 build/pull 없이 교체한다. strict EXIT의 CS 자동 rollback은 부모에게
+맡기며 기본 deploy/prepare 동작과 다음 일반 배포의 이전 이미지 복구 호환을 유지했다.
+
+WSL 집중158통과·Docker157통과/rsync부재1건너뜀,12,000파일 합성scan0.27~0.31초를
+확인했다. 제품 전체/실제 UI는 반복하지 않았다. 운영 SSH/HTTP/Docker·일정·DB 변경0,
+merge/배포0이다. 정확 CI·두 독립 리뷰와 새 controller 소비·운영 검증은 후속이다.
+Draft [PR #159](https://github.com/digitie/kor-travel-transport/pull/159)을 생성·채팅 연결했으며
+구현 소스는 `2edae13356c1f3f9471f5992a882004c03bcbef4`다. CI는 기록 시점 진행 중이다.
+[설계](design/2026-10-27-prebuilt-deploy-handoff.md)와
+[실행 결과·고정 소스](reports/2026-10-27-prebuilt-deploy-handoff.md)를 남겼다.
+
+## 2026-10-27 — 자동 역 연결 후보의 최신 main 통합 검증 중
+
+API 후보 `875ed9a`와 최신 main `abd4084`를 별도 작업트리에서 통합한다. API 서비스·DTO·route·
+회귀·OpenAPI와 PR151의 운영 정산 및 PR146의 Common pin `c289b462` 변경을 보존했다.
+그 뒤 Popper P2의 없는 target을 거짓 연결로 세는 손상 입력을 재현해 automatic/manual 모두
+기존503으로 거절하는 최소 보강과4개 RED→GREEN을 추가했다. 기존 Common `e746e4b8`의875
+전체 R2는 WSL1344/2skip·Docker1340/6skip의 실제 exit0과 자식 종료를 회수했다. 이 결과를
+새 pin 검증으로 확대하지 않으며 최초 전체 exit UNKNOWN도 별도 보존한다.
+
+관리자 UI PR153의 `d36fb53`는 초안 충돌 복구·목록 재조회 중 편집 보호를 포함한다. UI317개·
+WSL/Docker 타입/lint/빌드·375/1440 화면과 backend875를 쓴 실제 로컬 통합3개는 통과했다.
+이는 운영 적용이나 새 Common pin 검증이 아니다. 다음 한 작업은 새 c289 runtime의 설치 pin·
+집중60/health 회귀·전체 R3 준비 조건을 확인하는 것이다. 이후 CI·수정 delta 두 리뷰가 필요하다. UI PR은 별도이며
+자동 매핑 운영 preview/적용·저장 FK/요일별 시간표 수용은 미완이다. 운영·provider·수집/job 변경0.
+[API 설계·기존 검증](reports/2026-10-27-rail-automatic-refresh.md).
 
 ## 2026-10-27 — backend Common pin 최신 main 재핀
 
@@ -103,6 +144,16 @@ CI6개·두 SOURCE 재확인 후10:14 UTC main ca59458로 머지했다. 149·150
 별도 자동 참조 core는 설계/개발 중·운영0이다. 최초 주차 콜드 지연과
 전체 지도·철도·유가 상위 task는 닫지 않는다. [정확 증거와 남은 범위](reports/2026-10-27-flight4d-production-acceptance.md).
 아래 기록의 미배포/다음 작업은 당시 이력이며 이번 성공으로 원래 실패를 삭제하지 않는다.
+
+## 2026-10-27 — 저장 자동 매핑의 별도 backend API 후보 당시 이력
+
+149와150을 포함한 main ca59458을 기존8파일 바이트·UI150 보존 검산과 함께 통합했다.
+저장 입력만 계산하는 pure/DTO·DB 서비스와 backend GET/POST·OpenAPI를 연결했다.
+ImportError RED1·API404 RED1 뒤 WSL 집중56개(pure11·기존25·실제PG11·새API8·기존API1)가 통과했다.
+RC 잠금 대기 뒤 새 revision 거절·양방향 lease 배제·변경 FK 쌍만·수동 원문 보존·교환·
+예외/취소/제약 실패의 원자 rollback과 no-op 쓰기0를 확인했다. Next proxy/UI·전체/CI/두 리뷰는
+미완이며 실제 운영 영향/매핑 적용·저장 시간표 수용과 분리한다. 운영/provider/job 변경0이다.
+[설계·남은 검증](reports/2026-10-27-rail-automatic-refresh.md).
 
 ## 2026-10-27 — 경의중앙선 복합 식별 표기 차이 후보 당시 이력
 
