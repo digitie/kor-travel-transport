@@ -136,8 +136,8 @@ SUCCESS였다. location·schedule metadata와 저장된 원본 run을 연결했�
 김포 새 snapshot15행, 원본 watermark 전진, 기본4 metric×6범위의24개 cache 갱신을
 `final-comparison`의 PROVED로 확인했다. 항공편은 이 DB 적재가 아니라 별도 메모리 API 캐시다.
 
-09:53:12 UTC의 중간 `all-airport-summary`는 TTL600초 안인232행을 가졌지만 두 세대의 최신 원본을
-반영한 공항은0/14였다. TTL 유효만으로 최신 원본 반영을 선언하지 않고 그 표본을 보존했다.
+09:53:12 UTC의 중간 `all-airport-summary`는 TTL600초 안인232행에3181세대(생성09:47:27.764826 UTC)는
+반영된 상태였지만 최신3182세대를 반영한 공항은0/14였다. TTL 유효만으로 최신 원본 반영을 선언하지 않고 그 표본을 보존했다.
 최종10:00:05.401532 UTC에는14공항·58범위·232행 모두 TTLfresh이며, 공항14개 각각
 `generated_at_min >= latest_collected_at`도 만족했다. 모든 활성 범위의 최신 원본 반영을 함께 확인한 결과다.
 
