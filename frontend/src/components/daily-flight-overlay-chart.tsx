@@ -427,10 +427,14 @@ export function DailyFlightOverlayChart({
           </div>
 
           <div className="daily-overlay-legend">
-            <span>
-              비행편 출발 {formatNumber(departureCount)}편 / 도착 {formatNumber(arrivalCount)}편
-            </span>
-            {flightStatus?.error_message ? <span className="flight-marker-error">{flightStatus.error_message}</span> : null}
+            {flightStatus?.status === "loading" ? (
+              <span role="status">{flightStatus.error_message}</span>
+            ) : (
+              <>
+                <span>비행편 출발 {formatNumber(departureCount)}편 / 도착 {formatNumber(arrivalCount)}편</span>
+                {flightStatus?.error_message ? <span className="flight-marker-error">{flightStatus.error_message}</span> : null}
+              </>
+            )}
           </div>
         </>
       )}

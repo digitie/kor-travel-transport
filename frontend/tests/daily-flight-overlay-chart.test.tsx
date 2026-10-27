@@ -96,6 +96,17 @@ function buildHolidays(): HolidayItemSummary[] {
 }
 
 describe("DailyFlightOverlayChart", () => {
+  test("계속 조회 중인 항공편을 확정 0편이나 오류로 표시하지 않고 늦은 성공을 그린다", () => {
+    const props = { holidays: buildHolidays(), series: buildSeries(), scopeLabel: "P1 주차장" };
+    const view = render(<DailyFlightOverlayChart {...props} flightStatus={{ ...buildFlightStatus(),
+      status: "loading", error_message: "비행편 정보를 계속 조회 중입니다.", items: [] }} />);
+    expect(screen.getByRole("status")).toHaveTextContent("계속 조회 중");
+    expect(screen.getByRole("status")).not.toHaveClass("flight-marker-error");
+    expect(screen.queryByText(/비행편 출발 0편/)).not.toBeInTheDocument();
+    view.rerender(<DailyFlightOverlayChart {...props} flightStatus={{ ...buildFlightStatus(), status: "success" }} />);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getAllByTestId("daily-flight-marker-button")).toHaveLength(buildFlightStatus().items.length);
+  });
   test("renders seven daily lines, fixed day axis, flight markers, and holiday styling", () => {
     const { container } = render(
       <DailyFlightOverlayChart

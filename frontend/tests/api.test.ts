@@ -1,6 +1,18 @@
 import { buildApiClient } from "@/lib/api";
 
 describe("api client", () => {
+  test("항공편 요청은 소유자의 AbortSignal로 취소할 수 있다", async () => {
+    const fetchMock = vi.fn((_url, init) => new Promise<Response>((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => reject(new DOMException("취소", "AbortError")));
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+    const request = buildApiClient("/api/transport", "").getFlightStatus("GMP", controller.signal);
+    controller.abort();
+    await expect(request).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).toHaveBeenCalledWith("/api/transport/flights/status?airport_code=GMP",
+      expect.objectContaining({ signal: controller.signal, cache: "no-store" }));
+  });
   test("uses the authenticated admin prefix without duplicating /v1", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
     vi.stubGlobal("fetch", fetchMock);

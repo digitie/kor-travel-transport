@@ -36,6 +36,8 @@ const INITIAL_STATE: AnalyticsState = {
   flightStatus: null,
 };
 
+const FLIGHT_FINAL_TIMEOUT_MS = 30_000;
+
 function buildFlightStatusError(airportCode: string, caughtError: unknown): FlightStatusResponse {
   return {
     generated_at: new Date().toISOString(),
@@ -89,14 +91,38 @@ export function useAnalyticsData(flightStatusTimeoutMs = 6_000, enabled = true):
 
     let active = true;
     let flightStatusTimeoutId: ReturnType<typeof setTimeout> | null = null;
+    let flightFinalTimeoutId: ReturnType<typeof setTimeout> | null = null;
+    const flightController = new AbortController();
+    let finalFlights: FlightStatusResponse | null = null;
+    let analyticsReady = false;
     setState((current) => ({ ...(current.scopeKey === scopeKey ? current : INITIAL_STATE), scopeKey, loading: true, error: null }));
 
     async function load() {
       try {
+        // 6초는 주차 분석을 먼저 여는 안내 시점이다. 같은 요청은 BFF 예산까지
+        // 기다리되, 최종 상한 이후 성공이나 폐기된 효과는 화면에 반영하지 않는다.
+        const finalFlightRequest = withTimeout(
+          api.getFlightStatus(selectedAirportCode, flightController.signal)
+            .catch((caughtError) => buildFlightStatusError(selectedAirportCode, caughtError)),
+          FLIGHT_FINAL_TIMEOUT_MS,
+          () => {
+            flightController.abort();
+            return buildFlightStatusError(selectedAirportCode, new Error("비행편 정보 조회 시간이 초과됐습니다. 다시 조회해 주세요."));
+          },
+          (id) => { flightFinalTimeoutId = id; }
+        );
+        void finalFlightRequest.then((flights) => {
+          finalFlights = flights;
+          if (!active || !analyticsReady) return;
+          setState((current) => current.scopeKey === scopeKey ? { ...current, flightStatus: flights } : current);
+        });
         const flightStatusRequest = withTimeout(
-          api.getFlightStatus(selectedAirportCode).catch((caughtError) => buildFlightStatusError(selectedAirportCode, caughtError)),
+          finalFlightRequest,
           flightStatusTimeoutMs,
-          () => buildFlightStatusError(selectedAirportCode, new Error("비행편 정보 응답이 지연되어 주차 현황을 먼저 표시합니다.")),
+          () => ({
+            ...buildFlightStatusError(selectedAirportCode, new Error("비행편 정보를 계속 조회 중입니다. 도착하면 자동으로 표시합니다.")),
+            status: "loading",
+          }),
           (id) => {
             flightStatusTimeoutId = id;
           }
@@ -107,6 +133,7 @@ export function useAnalyticsData(flightStatusTimeoutMs = 6_000, enabled = true):
         if (!active) {
           return;
         }
+        analyticsReady = true;
         setState({
           scopeKey,
           loading: false,
@@ -116,7 +143,8 @@ export function useAnalyticsData(flightStatusTimeoutMs = 6_000, enabled = true):
           weekdayHourlyPatterns: analytics.weekday_hour_patterns,
           holidayPatterns: analytics.holiday_patterns,
           timeSeries: analytics.time_series,
-          flightStatus: flights,
+          // 분석이 더 늦게 끝나도 그동안 도착한 실제 항공편을 안내값으로 덮지 않는다.
+          flightStatus: finalFlights ?? flights,
         });
       } catch (caughtError) {
         if (!active) {
@@ -133,8 +161,12 @@ export function useAnalyticsData(flightStatusTimeoutMs = 6_000, enabled = true):
     void load();
     return () => {
       active = false;
+      flightController.abort();
       if (flightStatusTimeoutId) {
         clearTimeout(flightStatusTimeoutId);
+      }
+      if (flightFinalTimeoutId) {
+        clearTimeout(flightFinalTimeoutId);
       }
     };
     // 선택 bootstrap이 완료된 뒤에만 조회하고, 숨은 관리자 탭은 요청하지 않는다.
