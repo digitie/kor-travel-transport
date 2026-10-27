@@ -308,7 +308,7 @@ def test_verification_failure_rolls_back_only_a_schema_unchanged_code_server_sta
         + f"RUNTIME_ENV_FILE={str(tmp_path / '.env.prod.runtime')!r}\n"
         + "ROLLBACK_RUNTIME_ENV_FILE=''\nTRANSPORT_OVERRIDE_TMP=''\n"
         + "DEPLOYMENT_REPLACEMENT_STARTED=false\nDEPLOYMENT_VERIFIED=false\n"
-        + "CODE_SERVER_ROLLBACK_ELIGIBLE=false\nCODE_SERVER_ROLLBACK_BLOCKER=''\n"
+        + "CODE_SERVER_ROLLBACK_ELIGIBLE=false\nCODE_SERVER_ROLLBACK_BLOCKER=''\nDEPLOY_MODE=deploy\n"
         + f"dagster_location=kor-travel-transport\nCANDIDATE_SHA={_SHA}\nPUBLIC_API_PORT=12302\n"
         + "trap cleanup_remote EXIT\n"
         + _post_plane_section(text)
@@ -331,7 +331,8 @@ def test_rollback_eligibility_is_recorded_before_replacement_and_cleared_after_l
     schema = text.index("if database_at_release_head; then\n  SCHEMA_AT_RELEASE_HEAD_BEFORE_REPLACEMENT=true\n")
     drain = text.index('if runs="$(in_flight_runs)" && [[ -z "${runs}" ]]; then')
     eligible = text.index("  CODE_SERVER_ROLLBACK_ELIGIBLE=true\n", schema)
-    started = text.index("DEPLOYMENT_REPLACEMENT_STARTED=true\n", schema)
+    # #159의 deploy-prebuilt 분기에도 교체 시작 표지가 있다. 일반 deploy 분기(자격 기록 뒤)의 것을 잰다.
+    started = text.index("DEPLOYMENT_REPLACEMENT_STARTED=true\n", eligible)
     up = text.index("\ncompose up -d --no-build\n", started)
     location = text.index("wait_code_server_health\nwait_location_loaded\n", up)
     cleared = text.index("CODE_SERVER_ROLLBACK_ELIGIBLE=false\n", location)
