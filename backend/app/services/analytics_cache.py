@@ -1,21 +1,21 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Iterable
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 
-from sqlalchemy import func, select, text
+from sqlalchemy import case, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.core.time_utils import now_utc, serialize_utc
+from app.core.time_utils import ensure_tz, now_utc, serialize_utc
 from app.models import Airport, AnalyticsCache, ParkingLot, ParkingSnapshot
 from app.services.analytics import (
     build_threshold_insights,
     build_time_series,
     build_weekday_hour_patterns,
-    deduplicate_snapshot_rows,
-    deduplicate_snapshots,
     detect_threshold_events,
 )
 
@@ -34,6 +34,64 @@ DEFAULT_THRESHOLD_INSIGHTS_DAYS = 21
 DEFAULT_THRESHOLD_INSIGHTS_INTERVAL_MINUTES = 10
 # 5분 수집 두 주기를 넘긴 파생 결과는 원본으로 다시 계산한다.
 MAX_ANALYTICS_CACHE_AGE = timedelta(minutes=10)
+
+
+def _ranked_snapshot_values(conditions: list[Any], *, with_references: bool = False):
+    query = select(
+        ParkingSnapshot.id,
+        ParkingSnapshot.airport_id,
+        ParkingSnapshot.parking_lot_id,
+        ParkingSnapshot.observed_at,
+        ParkingSnapshot.occupied_spaces,
+        ParkingSnapshot.total_spaces,
+        ParkingSnapshot.available_spaces,
+        func.row_number().over(
+            partition_by=(ParkingSnapshot.parking_lot_id, ParkingSnapshot.observed_at),
+            order_by=(
+                case((func.substr(ParkingSnapshot.source, 1, 10) == "migration_", 1), else_=0),
+                ParkingSnapshot.collected_at.desc(),
+                ParkingSnapshot.id.desc(),
+            ),
+        ).label("rank"),
+    ).select_from(ParkingSnapshot)
+    if with_references:
+        # 기존 joined loader처럼 유효한 기준정보와 결합한 뒤 중복을 제거한다.
+        query = query.add_columns(
+            ParkingLot.name.label("parking_lot_name"),
+            Airport.code.label("airport_code"),
+            Airport.name_ko.label("airport_name"),
+        ).join(ParkingLot, ParkingLot.id == ParkingSnapshot.parking_lot_id).join(
+            Airport, Airport.id == ParkingSnapshot.airport_id,
+        )
+    return query.where(*conditions).subquery()
+
+
+async def load_compact_analytics_snapshots(
+    session: AsyncSession, conditions: list[Any],
+) -> list[ParkingSnapshot]:
+    """원본 JSON·ORM 객체 없이 동일 소스 우선순위의 계산용 값만 읽는다."""
+    ranked = _ranked_snapshot_values(conditions)
+    rows = (await session.execute(select(
+        ranked.c.id, ranked.c.airport_id, ranked.c.parking_lot_id, ranked.c.observed_at,
+        ranked.c.occupied_spaces, ranked.c.total_spaces, ranked.c.available_spaces,
+    ).where(ranked.c.rank == 1).order_by(
+        ranked.c.observed_at, ranked.c.parking_lot_id, ranked.c.id,
+    ))).all()
+    return [SimpleNamespace(**row._mapping) for row in rows]
+
+
+async def load_compact_analytics_rows(
+    session: AsyncSession, conditions: list[Any],
+) -> list[tuple[ParkingSnapshot, ParkingLot, Airport]]:
+    ranked = _ranked_snapshot_values(conditions, with_references=True)
+    rows = (await session.execute(select(ranked).where(ranked.c.rank == 1).order_by(
+        ranked.c.observed_at, ranked.c.parking_lot_id, ranked.c.id,
+    ))).all()
+    return [(
+        SimpleNamespace(**row._mapping),
+        SimpleNamespace(id=row.parking_lot_id, name=row.parking_lot_name),
+        SimpleNamespace(code=row.airport_code, name_ko=row.airport_name),
+    ) for row in rows]
 
 
 def build_analytics_scope_key(airport_code: str | None, parking_lot_id: int | None) -> str:
@@ -167,18 +225,22 @@ async def refresh_default_analytics_cache(
         )
     ).scalars().all()
 
+    lots = await _load_analytics_lots(session)
     refreshed = 0
     for airport in airports:
-        lot_ids = (
-            await session.execute(
-                select(ParkingLot.id)
-                .where(ParkingLot.airport_id == airport.id, ParkingLot.is_active.is_(True))
-                .order_by(ParkingLot.id)
-            )
-        ).scalars().all()
+        lot_ids = sorted(lot.id for lot in lots.values() if lot.airport_id == airport.id and lot.is_active)
+        snapshots = await _load_snapshots(
+            session, airport.id, None, DEFAULT_THRESHOLD_INSIGHTS_DAYS,
+            buffer_minutes=DEFAULT_THRESHOLD_INSIGHTS_INTERVAL_MINUTES,
+        )
+        by_lot = defaultdict(list)
+        for snapshot in snapshots:
+            by_lot[snapshot.parking_lot_id].append(snapshot)
         for parking_lot_id in [None, *lot_ids]:
-            refreshed += await refresh_scope_analytics_cache(
-                session, settings, airport, parking_lot_id, generated_at=generated_at,
+            refreshed += await _refresh_scope_from_snapshots(
+                session, settings, airport, parking_lot_id,
+                snapshots if parking_lot_id is None else by_lot[parking_lot_id], lots,
+                generated_at=generated_at,
             )
     return refreshed
 
@@ -193,14 +255,31 @@ async def refresh_scope_analytics_cache(
 ) -> int:
     # 계산 종료 시각이 아닌 첫 원본 조회 전 시각을 watermark로 쓴다.
     generated_at = generated_at or now_utc()
+    snapshots = await _load_snapshots(
+        session, airport.id, parking_lot_id, DEFAULT_THRESHOLD_INSIGHTS_DAYS,
+        buffer_minutes=DEFAULT_THRESHOLD_INSIGHTS_INTERVAL_MINUTES,
+    )
+    return await _refresh_scope_from_snapshots(
+        session, settings, airport, parking_lot_id, snapshots, await _load_analytics_lots(session),
+        generated_at=generated_at,
+    )
+
+
+async def _refresh_scope_from_snapshots(
+    session: AsyncSession,
+    settings: Settings,
+    airport: Airport,
+    parking_lot_id: int | None,
+    snapshots: list[ParkingSnapshot],
+    lots: dict[int, ParkingLot],
+    *,
+    generated_at: datetime,
+) -> int:
     refreshed = 0
     source_observed_at = await _load_latest_observed_at(session, airport.id, parking_lot_id)
 
-    time_series_snapshots = await _load_snapshots(
-        session,
-        airport.id,
-        parking_lot_id,
-        DEFAULT_TIMESERIES_DAYS,
+    time_series_snapshots = _snapshots_in_window(
+        snapshots, DEFAULT_TIMESERIES_DAYS,
         buffer_minutes=DEFAULT_TIMESERIES_INTERVAL_MINUTES,
     )
     await store_cached_analytics(
@@ -231,7 +310,7 @@ async def refresh_scope_analytics_cache(
     )
     refreshed += 1
 
-    weekday_snapshots = await _load_snapshots(session, airport.id, parking_lot_id, DEFAULT_WEEKDAY_HOUR_DAYS)
+    weekday_snapshots = _snapshots_in_window(snapshots, DEFAULT_WEEKDAY_HOUR_DAYS)
     await store_cached_analytics(
         session,
         metric=METRIC_WEEKDAY_HOUR,
@@ -244,7 +323,11 @@ async def refresh_scope_analytics_cache(
     )
     refreshed += 1
 
-    threshold_rows = await _load_snapshot_rows(session, airport.id, parking_lot_id, DEFAULT_THRESHOLD_EVENTS_DAYS)
+    threshold_rows = [
+        (snapshot, lots[snapshot.parking_lot_id], airport)
+        for snapshot in _snapshots_in_window(snapshots, DEFAULT_THRESHOLD_EVENTS_DAYS)
+        if snapshot.parking_lot_id in lots
+    ]
     threshold_events = [
         {**event, "crossed_at": serialize_utc(event["crossed_at"])}
         for event in detect_threshold_events(threshold_rows, limit=DEFAULT_THRESHOLD_EVENTS_LIMIT)
@@ -262,11 +345,8 @@ async def refresh_scope_analytics_cache(
     )
     refreshed += 1
 
-    threshold_snapshots = await _load_snapshots(
-        session,
-        airport.id,
-        parking_lot_id,
-        DEFAULT_THRESHOLD_INSIGHTS_DAYS,
+    threshold_snapshots = _snapshots_in_window(
+        snapshots, DEFAULT_THRESHOLD_INSIGHTS_DAYS,
         buffer_minutes=DEFAULT_THRESHOLD_INSIGHTS_INTERVAL_MINUTES,
     )
     threshold_points = build_time_series(
@@ -318,30 +398,21 @@ async def _load_snapshots(
     buffer_minutes: int = 0,
 ) -> list[ParkingSnapshot]:
     cutoff = now_utc() - timedelta(days=days, minutes=buffer_minutes)
-    query = (
-        select(ParkingSnapshot)
-        .where(ParkingSnapshot.airport_id == airport_id, ParkingSnapshot.observed_at >= cutoff)
-        .order_by(ParkingSnapshot.parking_lot_id, ParkingSnapshot.observed_at)
-    )
+    conditions = [ParkingSnapshot.airport_id == airport_id, ParkingSnapshot.observed_at >= cutoff]
     if parking_lot_id is not None:
-        query = query.where(ParkingSnapshot.parking_lot_id == parking_lot_id)
-    return deduplicate_snapshots((await session.execute(query)).scalars().all())
+        conditions.append(ParkingSnapshot.parking_lot_id == parking_lot_id)
+    return await load_compact_analytics_snapshots(session, conditions)
 
 
-async def _load_snapshot_rows(
-    session: AsyncSession,
-    airport_id: int,
-    parking_lot_id: int | None,
-    days: int,
-) -> list[tuple[ParkingSnapshot, ParkingLot, Airport]]:
-    cutoff = now_utc() - timedelta(days=days)
-    query = (
-        select(ParkingSnapshot, ParkingLot, Airport)
-        .join(ParkingLot, ParkingLot.id == ParkingSnapshot.parking_lot_id)
-        .join(Airport, Airport.id == ParkingSnapshot.airport_id)
-        .where(ParkingSnapshot.airport_id == airport_id, ParkingSnapshot.observed_at >= cutoff)
-        .order_by(ParkingLot.id, ParkingSnapshot.observed_at)
-    )
-    if parking_lot_id is not None:
-        query = query.where(ParkingSnapshot.parking_lot_id == parking_lot_id)
-    return deduplicate_snapshot_rows((await session.execute(query)).all())
+def _snapshots_in_window(
+    snapshots: list[ParkingSnapshot], days: int, buffer_minutes: int = 0,
+) -> list[ParkingSnapshot]:
+    cutoff = now_utc() - timedelta(days=days, minutes=buffer_minutes)
+    return [snapshot for snapshot in snapshots if ensure_tz(snapshot.observed_at, "UTC") >= cutoff]
+
+
+async def _load_analytics_lots(session: AsyncSession) -> dict[int, ParkingLot]:
+    rows = (await session.execute(select(
+        ParkingLot.id, ParkingLot.airport_id, ParkingLot.name, ParkingLot.is_active,
+    ))).all()
+    return {row.id: SimpleNamespace(**row._mapping) for row in rows}
