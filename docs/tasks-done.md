@@ -1,5 +1,12 @@
 # tasks-done.md — 완료 작업 아카이브
 
+## 2026-10-27 — 공통 로그인 hydration 준비 경계 채택
+
+- [x] [공통 LoginForm hydration 준비 경계 채택](reports/2026-10-26-login-hydration-common-adoption.md):
+  정규 dev.9 vendor/lock·SSR/실제 callback 회귀와 PR141/main6d243의 머지,
+  최종 합성본3691의 필수 CI·운영 배포를 확인했다. Native375/1440의 실제 준비 뒤 로그인과
+  auth 전용 후속303/cookie1→0을 확인했다. 다른 항공편 표시·분석 지연·전체 UI의 원본 실패는 별도 보존한다.
+
 ## 2026-10-26 — 공항 주차장 관리자 뷰 이식 코드
 
 - [x] **T-PARK-UI-01 / P1** — parking-radar 네 뷰·분석 네 탭을 관리자 `/parking`에 정본 소스로 재사용하고

@@ -1,5 +1,15 @@
 # Manager 호스트별 Dagster instance 설정 소비 계약 초안
 
+## 2026-10-27 Odroid 운영 수용
+
+PR139/main `d7c36c3c99dafdefe4bc0100fd797662a2b4afd3`는 합성본3691의 배포에 포함됐다.
+공식 Manager의 `host=odroid/max_concurrent_runs=5`와 내용 주소 instance 경로를 전달했고,
+실제 CS의 단일 read-only bind와 컨테이너 내부 파일 SHA256을 독립 대조했다.
+둘 다 `a7d907c4d54024e2868c1c9db0e6d775a351bfc1d0001de378983e8a2c7bc9db`로 일치한다.
+[배포·원본 보존·현재 한계](2026-10-27-parking-cache-rollout.md)를 따른다.
+이 관측은 Odroid Transport 한 역할의 수용이며 다른 호스트의 실제 consumer 검증을 대신하지 않는다.
+아래 초안·미머지·운영 미실행은 당시 source checkpoint의 기록이다.
+
 ## 문제와 소유 경계
 
 Transport main `71a551ef7fa29957be018294363063e1870be011`의 공식 원격 배포는
