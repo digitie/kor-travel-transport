@@ -1,6 +1,6 @@
 # 항공편 지연 성공 수정의 배포·실제 화면·자연 통계 갱신 수용
 
-2026-10-27 10:02 UTC 이후 인계된 증거를 기준으로 정리한다. 현재 운영은
+2026-10-27 10:14 UTC의 PR149 머지 인계를 포함한 증거를 기준으로 정리한다. 현재 운영은
 `4d49610b2083fd0a30bc5e6afcca0036889044d4`다. 이후 main의 유가 UI 변경은 운영에 포함되지 않는다.
 이 문서는 기존 원장을 읽어 정산하며 새 배포·수집·제공자 직접 조회·테스트를 실행하지 않았다.
 이후 상태가 바뀌면 별도 시각과 증거를 추가한다.
@@ -13,7 +13,14 @@
 | 이번 배포의 변경 | 기존 6초 뒤에도 같은 항공편 응답을 기다려 늦은 성공을 표시한다. 자동 재시도 GET 없이 30초 상한·선택/효과 폐기 경계를 지킨다. 분석 콜드 CPU·DB·수집 변경이 아니다. [원인·제품 검증](2026-10-27-flight-late-success.md). |
 | 유가 UI [PR150](https://github.com/digitie/kor-travel-transport/pull/150) | 최종 소스 `19e35fd1e5f30c3ba69c2b82434b6c236748150b`, 10:02 UTC merge main `a15e08b3103c6e4afd7adf3c34b924c60b38a38b`. UI와 history 타입의 두 파일만 바뀌며 **운영 미포함**이다. |
 | PR150 검증 범위 | WSL·Docker 관리자 291개/타입/린트/빌드, 375/1440 fixture, 두 독립 최종 SOURCE PASS와 PR workflow `40479092885` 전체 SUCCESS를 확인했다. 동일 HEAD의 별도 push workflow `40479086710`에는 마지막 backend 1개가 당시 pending이었다. 모든 workflow 6개가 성공했다고 합치지 않는다. [날짜·모집단·fixture 한계](2026-10-27-fuel-history-comparison.md). |
-| 철도 후속 | PR149의 exact `536…` 별칭 정규화 후보는 당시 Node 추가 QA 전체 93%/실패0인 진행 상태였고 머지 미완이다. 자동 참조 갱신의 provider 없는 preview/apply는 별도 WT에서 설계·순수 core 개발 중이며 운영 실행0이다. 이번 배포의 기능으로 세지 않는다. |
+| 철도 별칭 [PR149](https://github.com/digitie/kor-travel-transport/pull/149) | exact `536a3288b13d83e03a2f9fc15086d32df8b74094`는 WSL1314통과/2건너뜀·Docker1310통과/6건너뜀 exit0, 794파일 불일치0, CI 두 run의6개 SUCCESS·두 독립 최종 SOURCE 재확인 뒤10:14 UTC merge `ca59458b3276a9f80284c3e086f902fa66e5e64f`를 완료했다. 이 main은 PR150/a15도 포함하지만 **149·150 모두 운영 미포함**이다. FK·저장 시간표 전체 수용과 구분한다. |
+| 별도 자동 참조 갱신 | provider 없는 preview/apply는 별도 WT에서 설계·순수 core 개발 중이며 운영 실행0이다. PR149의 소스 머지나 이번 배포로 완료 처리하지 않는다. |
+
+PR149의 추가 QA93%/실패0·머지 미완이라는 최초 인계는 위 최종 완료 전의 이력이다.
+최종 CI 정본은 로컬 `C:/Users/digit/.codex/tmp/rail149-536-final-ci-20261027.json`이고,
+추가 전체 검산의 `final-whole-manifest.json`과 두 SOURCE 확인을 함께 보존한다.
+기존 [철도 별칭 원장](2026-10-27-rail-composite-alias.md)의 미완 게이트 문장은 작성 당시 범위이며
+위 최종 소스 검증·머지 사실과 현재도 미완인 운영/FK/시간표 수용을 나눠 읽는다.
 
 ## 공식 전환과 복원
 
