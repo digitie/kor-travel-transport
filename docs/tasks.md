@@ -42,6 +42,10 @@
   PR149 exact536a328은 전체 WSL1314통과/2건너뜀·Docker1310통과/6건너뜀·794파일 불일치0·CI6개·두 SOURCE
   재확인 뒤10:14 UTC main ca59458에 머지했다. 150도 포함한 이 main은 운영4d와 다르며149·150은 미배포다.
   [최종 소스/운영 경계](reports/2026-10-27-flight4d-production-acceptance.md). 초기93%/머지 미완 기록은 당시 이력이다.
+  별도 [저장 자동 재계산 API 후보](reports/2026-10-27-rail-automatic-refresh.md)는875의 집중56개·CI와
+  UI153/d36의317개·실제 로컬 통합3개를 확보했다. 기존875/e746 전체R2의WSL1344/2skip·Docker1340/6skip는
+  실제 exit0을 회수했다. 최신main/c289 통합 위에는 없는 저장 target을503으로 거절하는P2 보강과4회귀를
+  추가했다. 새 후보 집중60/health·전체R3·수정 delta 리뷰·CI·운영 적용·FK/시간표 수용은 미완이다.
 - [ ] **T-PARK-01 / P0** — 기존 job/run·원본·이력·cache·outlook/API 시각 대조, 원시/파생 정지 원인 재현.
 - [ ] **T-PARK-02 / P0** — 확인된 수집→분석 단절 복구, watermark·부분 성공·멱등/재시작·캐시 신선도 수용.
   기존 Dagster 경로에서 current5/cache80 불일치를 정상·부분 성공으로 재현하고 원본 commit 뒤 갱신·신선도 검증을
