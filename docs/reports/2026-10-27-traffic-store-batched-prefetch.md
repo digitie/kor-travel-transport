@@ -1,11 +1,27 @@
 # 고속도로 소통 관측의 배치 조회·저장
 
-상태: 최초 기준 main `1f6a970796ad9c5bb54b9b574e2dcfc8735516d1`의 성능 후보에 최신 main
-`abd4084b1bfbb4ff601bf03f5aaa3faf236c6374`의 Common c289 재핀을 정상 합성했다.
-운영 컨테이너·설정·스키마·제공자 호출·API 계약은 바꾸지 않았다. 아래 기존 시험은 e746 환경의 이력이며,
-c289 최종 환경의 정확 CI·두 리뷰·같은 HEAD API/후보 UI·CPU/RSS 수용은 아직 남아 있다.
+상태: 배치 후보에 준비 시점 최신 main `5c823c49030efd83a8839064dde15f1d5993192f`를 정상 합성했다.
+기존 배치 제품·Common c289·lock·schema35는 보존했다. 배치 수정 자체의 API 계약은 그대로이며,
+업스트림의 자동 역 연결 API/UI·OpenAPI 추가를 정확히 승계했다. 운영 변경은0이다.
+아래 기존 시험은 각 소스·환경의 이력이며 새 합성의 최종 CI·두 리뷰·API/UI 수용과 구분한다.
 
-## 최신 main 합성과 기존 검증의 범위
+## 5c823 준비 기준 동결과 재검증 경계
+
+직전 `516d4b21c053f97b0d85b370b9dbc1756bc38a18`의 backend/frontend/admin CI는 push·PR 각3개,
+총6 SUCCESS이고 live E2E2개는 SKIPPED다. 그 소스의 후보 Next/PG/API/browser 기동은0이었다.
+새 main의 자동 역 연결 backend3/admin3개 런타임 파일을 그대로 채택했으며, batch 제품과 신규회귀의
+import/UTC 정리는 직전516 그대로다. journal·resume의 양쪽 추가와 main 본문을 모두 보존했다.
+
+Common c289·pyproject/uv.lock·admin package/lock·Dockerfile/Compose·지도 gitlink·schema35가 같음을
+Git blob으로 확인했다. 별도 c289106환경의 SQLite32통과8.64초·신규회귀/핀시험 Ruff 통과는516의 수용이다.
+기존 수집 파일의 Ruff12개는 같은 도구·조건의 main에도 동일하여 이번 작업에서 고치지 않았다.
+원 venv는 보존했고 새 환경9425파일·Common19·실제 import를 검산했다. 새 API 모듈·최종 합성 HEAD의
+source/import·CI·두 리뷰·fresh Next/동일 API39 UI는 별도로 결박해야 하며 이전 UI 성공을 승계하지 않는다.
+
+이번 빌드의 기준 main은 준비 시점5c823으로 동결한다. 빌드 중 새 upstream은 원칙적으로 후속 범위로
+분리하고, 최종 머지 전의 진전은 다시 확인한다. 실제PG/Docker 재검증·CPU/RSS 실험·운영 배포는0이다.
+
+## abd408/Common pin 합성 당시 검증의 범위
 
 PR146의 Common pin `c289b4624c8640eb918cc915803e72ae754e58fb`와 정본 pyproject/lock·설치 핀 회귀를
 그대로 합쳤다. batch 제품·회귀 blob은 `103a0e00fb727af31fc16261bd7113b8fa5ce3db`와 동일하다.

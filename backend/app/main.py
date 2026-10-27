@@ -116,6 +116,9 @@ from app.schemas import (
     KricStationPlaceOption,
     KricStationMappingResponse,
     KricStationMappingSaveRequest,
+    KricAutomaticMappingPreview,
+    KricAutomaticMappingApplyRequest,
+    KricAutomaticMappingApplyResponse,
     HourlyBucket,
     ParkingCurrentResponse,
     ParkingOutlookResponse,
@@ -153,6 +156,10 @@ from app.services.analytics import (
 )
 from app.services.provider_status import provider_status
 from app.services.rail_station_mapping import (
+    AutomaticMappingConflict,
+    AutomaticMappingInputError,
+    apply_automatic_station_mappings,
+    preview_automatic_station_mappings,
     catalog_digest,
     effective_station_mappings,
     lock_rail_station_reference_catalog,
@@ -758,6 +765,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ("/v1/transport/bus/timetable", "get"): (404, 429, 502, 503),
             ("/v1/transport/rail/timetables", "get"): (404,),
             ("/v1/transport/rail/departures", "get"): (404,),
+            ("/v1/transport/admin/rail-station-mappings/automatic", "get"): (404, 409, 503),
+            ("/v1/transport/admin/rail-station-mappings/automatic", "post"): (404, 409, 503),
             # 내부 서비스 export는 토큰·접속 주소가 맞지 않으면 경로를 숨기고(404), 근거 수집이
             # 이력 없음·실패·stale이면 503이다(ADR-013).
             ("/v1/service/exports/fuel-stations", "get"): (404, 503),
@@ -971,6 +980,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         registry.updated_at = changed_at
         await session.commit()
         return await get_rail_station_mappings(session)
+
+    @router.get(
+        "/transport/admin/rail-station-mappings/automatic",
+        response_model=KricAutomaticMappingPreview,
+        dependencies=[Depends(require_admin_token)],
+    )
+    async def preview_automatic_rail_station_mappings(
+        response: Response, session: AsyncSession = Depends(get_db),
+    ) -> KricAutomaticMappingPreview:
+        response.headers["Cache-Control"] = "no-store, private"
+        try:
+            return await preview_automatic_station_mappings(session)
+        except (AutomaticMappingConflict, AutomaticMappingInputError) as exc:
+            raise HTTPException(status_code=409 if isinstance(exc, AutomaticMappingConflict) else 503,
+                detail=str(exc), headers={"Cache-Control": "no-store, private"}) from None
+
+    @router.post(
+        "/transport/admin/rail-station-mappings/automatic",
+        response_model=KricAutomaticMappingApplyResponse,
+        dependencies=[Depends(require_admin_token)],
+    )
+    async def apply_automatic_rail_station_mappings(
+        payload: KricAutomaticMappingApplyRequest,
+        response: Response, session: AsyncSession = Depends(get_db),
+    ) -> KricAutomaticMappingApplyResponse:
+        response.headers["Cache-Control"] = "no-store, private"
+        try:
+            return await apply_automatic_station_mappings(session, payload)
+        except (AutomaticMappingConflict, AutomaticMappingInputError) as exc:
+            raise HTTPException(status_code=409 if isinstance(exc, AutomaticMappingConflict) else 503,
+                detail=str(exc), headers={"Cache-Control": "no-store, private"}) from None
 
     @router.get("/transport/admin/address-refresh", response_model=AddressRefreshSummary,
                 dependencies=[Depends(require_admin_token)])

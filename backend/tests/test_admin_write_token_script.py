@@ -21,7 +21,7 @@ def _module():
 def test_admin_write_token_bootstrap_is_atomic_idempotent_and_quiet(tmp_path, monkeypatch, capsys):
     module = _module()
     env = tmp_path / ".env.prod"
-    env.write_text("TRANSPORT_UI_PASSWORD=ad.min\n", encoding="utf-8")
+    env.write_text("TRANSPORT_UI_PASSWORD=fixture-ui-password\n", encoding="utf-8")
     module.ENV_PATH = env
     module.BACKUP_DIR = tmp_path / "backups"
     monkeypatch.setattr(module.socket, "gethostname", lambda: "digitie-at-n150")
@@ -42,7 +42,7 @@ def test_admin_write_token_bootstrap_is_atomic_idempotent_and_quiet(tmp_path, mo
 def test_admin_write_token_bootstrap_rejects_other_host(tmp_path, monkeypatch):
     module = _module()
     module.ENV_PATH = tmp_path / ".env.prod"
-    module.ENV_PATH.write_text("TRANSPORT_UI_PASSWORD=ad.min\n", encoding="utf-8")
+    module.ENV_PATH.write_text("TRANSPORT_UI_PASSWORD=fixture-ui-password\n", encoding="utf-8")
     monkeypatch.setattr(module.socket, "gethostname", lambda: "wrong-host")
     with pytest.raises(SystemExit, match="n150"):
         module.main()

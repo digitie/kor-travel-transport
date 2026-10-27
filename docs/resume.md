@@ -1,3 +1,12 @@
+## 2026-10-27 — 소통 배치 후보에 준비 시점 main5c823 합성
+
+- 현재 상태: main5c823의 자동 역 연결 API/UI6개 런타임 파일을 그대로 합쳤다. 배치 제품/UTC 회귀·Common c289/lock/schema35는 유지했다.
+  journal·resume의 양쪽 기록과 main 본문을 보존했다. [동결 기준·검증 범위](reports/2026-10-27-traffic-store-batched-prefetch.md).
+- 직전 수용:516의 CI6 SUCCESS/live2 SKIPPED·c289 SQLite32통과다. 후보 Next/PG/API/browser는 기동하지 않았다.
+- 다음 한 작업: 새 합성 HEAD의 정확 CI·두 리뷰와 fresh Next/동일 API39 UI를 결박한다. 원 venv를 보존하며
+  새 환경9425/106·Common19는 재검산 후 재사용한다. CPU/RSS·운영 배포·이미지 변경은0이다.
+- 이번 build의 main 기준은 준비 시점5c823으로 동결하며 최종 머지 전 upstream 진전을 다시 확인한다. 아래 절은 각각 작성 당시 이력이다.
+
 ## 2026-10-27 — 소통 배치 후보와 최신 Common pin 합성
 
 - 현재 상태: 최신 main `abd4084b`의 Common c289 핀·lock·핀 회귀를 정상 합성하고 journal 양쪽 기록을 보존했다.
@@ -6,6 +15,22 @@
   801/8,300전체 행3단계 동등·Docker15통과/소유 자원 정리를 확인했다. c289 실행 결과로 바꾸지 않는다.
 - 다음 한 작업: 새 exact head/c289 환경·CI·두 리뷰와 fresh Next/same-head API/유가 통계 UI를 수용한다.
   기존 venv를 보존한다. CPU/RSS·운영 ARM 절감은 미측정이며 운영 이미지·설정·스키마 변경은0이다.
+
+## 2026-10-27 — 자동 역 연결 후보의 최신 main 통합 검증 중
+
+API 후보 `875ed9a`와 최신 main `abd4084`를 별도 작업트리에서 통합한다. API 서비스·DTO·route·
+회귀·OpenAPI와 PR151의 운영 정산 및 PR146의 Common pin `c289b462` 변경을 보존했다.
+그 뒤 Popper P2의 없는 target을 거짓 연결로 세는 손상 입력을 재현해 automatic/manual 모두
+기존503으로 거절하는 최소 보강과4개 RED→GREEN을 추가했다. 기존 Common `e746e4b8`의875
+전체 R2는 WSL1344/2skip·Docker1340/6skip의 실제 exit0과 자식 종료를 회수했다. 이 결과를
+새 pin 검증으로 확대하지 않으며 최초 전체 exit UNKNOWN도 별도 보존한다.
+
+관리자 UI PR153의 `d36fb53`는 초안 충돌 복구·목록 재조회 중 편집 보호를 포함한다. UI317개·
+WSL/Docker 타입/lint/빌드·375/1440 화면과 backend875를 쓴 실제 로컬 통합3개는 통과했다.
+이는 운영 적용이나 새 Common pin 검증이 아니다. 다음 한 작업은 새 c289 runtime의 설치 pin·
+집중60/health 회귀·전체 R3 준비 조건을 확인하는 것이다. 이후 CI·수정 delta 두 리뷰가 필요하다. UI PR은 별도이며
+자동 매핑 운영 preview/적용·저장 FK/요일별 시간표 수용은 미완이다. 운영·provider·수집/job 변경0.
+[API 설계·기존 검증](reports/2026-10-27-rail-automatic-refresh.md).
 
 ## 2026-10-27 — 현재 운영4d의 항공편 지연 성공·자연 통계 갱신 수용
 
