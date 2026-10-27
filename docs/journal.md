@@ -3,8 +3,8 @@
 정확65a/main8bc의 CI6 SUCCESS와 두 제품 리뷰·실제 후보 UI39를 통과해 PR155를 main c19d6bc로 정상 머지했다.
 기존3bf Next 산출물은 입력244개와 새65a source/복사 영수증으로 재사용했고 새 컴파일0이다.
 PG18/schema36·Common c289/frozen106에 결박한 UI39는28.967초/exit0·API15/tile40·오류0이며 소유 자원을 모두 정리했다.
-격리 amd64 PG18의8,300고유 관측 AB/BA/AB·18구간 전체 행 digest는 같고 저장·commit wall/client CPU 중앙값은
-wall92.69~92.95%·client CPU92.97~94.02% 감소했다. 표본 RSS는2,968/3,428/3,324KiB 증가해 메모리 감소가 아니며 서버 RSS·운영 ARM 효과는 미측정이다.
+격리 amd64 PG18의8,300고유 관측 AB/BA/AB에서 구간별 원본·후보6회의 전체 행 digest가 일치했다(총18측정).
+저장·commit wall 중앙값은92.69~92.95%·client CPU는92.97~94.02% 감소했다. 표본 RSS는2,968/3,428/3,324KiB 증가해 메모리 감소가 아니며 서버 RSS·운영 ARM 효과는 미측정이다.
 첫 mux/API 종료 기록 누락과 SDK 역할 준비 실패·제어된 새 UUID 성공 이력을 보존한다.
 [실측 표·스코프·원장·남은 운영 수용](reports/2026-10-27-traffic-store-batched-prefetch.md).
 이 문서는 코드 머지 뒤 문서 전용으로 정산하며 운영 배포·원본 삭제는0이다. 아래는 각 작성 당시 이력이다.

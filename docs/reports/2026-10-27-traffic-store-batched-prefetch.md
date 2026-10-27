@@ -29,8 +29,8 @@ PG CID/익명 volume·API/Next unit/cgroup·터널/control·C7 정리와 frozen 
 ### 격리 PG18 실측: 저장·commit 구간
 
 Linux amd64/WSL·CPython3.13.14·동일 frozen106/Common c289·PG18에서 원본/후보를
-AB/BA/AB 순서로 각3회 실행했다.8,302개 입력/8,300개 고유 관측의 신규·정정·원입력 재적용18구간은
-모든 전체 행 digest가 같고 신규 count는8,300/0/0이다. Alembic upgrade/check와6회 시험은 모두 exit0이며
+AB/BA/AB 순서로 각3회 실행했다.8,302개 입력/8,300개 고유 관측의 신규·정정·원입력 재적용
+각 구간에서 원본·후보6회의 전체 행 digest가 일치했다(총18측정). 신규 count는8,300/0/0이다. Alembic upgrade/check와6회 시험은 모두 exit0이며
 정확 CID/name/label·volume1개와 소유 자식 정리, 소스/의존성 전후 불변을 수용했다.
 
 | 구간 | 저장·commit wall 중앙값 원본→후보(초) | client process CPU 중앙값 원본→후보(초) | 표본 최대 RSS 중앙값 원본→후보(KiB) |

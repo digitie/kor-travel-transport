@@ -2,7 +2,7 @@
 
 - 완료: exact65a/main8bc CI6 SUCCESS·두 제품 리뷰·PG18/schema36의 실제 후보 UI39를 수용하고
   PR155를 main c19d6bc로 정상 머지했다. 기존 Next의 입력244개 동등/새source 복사 영수증을 검증했으며 새 컴파일0이다.
-- 실측: amd64 PG18·동일 frozen106/Common c289의 각3회 AB/BA/AB에서8,300행18구간 digest가 같다.
+- 실측: amd64 PG18·동일 frozen106/Common c289의 AB/BA/AB에서8,300행의 구간별 원본·후보6회 digest가 일치했다(총18측정).
   저장·commit wall/client CPU 중앙값은 약93% 감소했지만 표본 RSS는약2.90/3.35/3.25MiB 증가했다.
   서버 RSS·운영 ARM 전체 수집 성능은 미측정이다. [수치·범위·원 실패](reports/2026-10-27-traffic-store-batched-prefetch.md).
 - 보존: 첫 prebrowser mux/API 종료 기록 누락과 첫 성능 SDK import 준비 실패, 이후 두 리뷰·제어된 새 UUID 수용을 구분한다.
