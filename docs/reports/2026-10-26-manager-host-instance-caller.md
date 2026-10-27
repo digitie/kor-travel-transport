@@ -7,6 +7,10 @@ read-only 소비·실제 내부 SHA·공식 배포 복구 경계를 수용했다
 다른 소비자/호스트까지 수렴했다고 쓰지 않는다. [최종 원장](2026-10-27-integrated-production-rollout.md).
 아래 구현·CI 정정·미배포 표현은 당시 이력이다.
 
+별도 독립 회수에서도 host=odroid/max_concurrent_runs=5와 CS 단일 read-only bind·내부 전체 SHA
+`a7d907c4d54024e2868c1c9db0e6d775a351bfc1d0001de378983e8a2c7bc9db`를 대조했다.
+이 수용은 다른 호스트 consumer 검증을 대신하지 않는다.
+[별도 최초 UI·배포 독립 검산](2026-10-27-parking-cache-rollout.md).
 
 ## 문제와 소유 경계
 

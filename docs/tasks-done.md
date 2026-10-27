@@ -5,6 +5,7 @@
   [초기 구현 원장](reports/2026-10-26-login-hydration-common-adoption.md)과
   [최종 운영 수용](reports/2026-10-27-integrated-production-rollout.md)을 구분한다.
   전체 주차 성능·다른 소비자·운영 CPU/RSS 완료로 확대하지 않는다.
+  [별도 Native 첫 실패·auth 부분 수용](reports/2026-10-27-parking-cache-rollout.md)도 구분해 보존한다.
 
 # tasks-done.md — 완료 작업 아카이브
 

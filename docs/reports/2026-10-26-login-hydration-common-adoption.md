@@ -6,6 +6,10 @@
 SSR의 입력·submit 비활성화와 hydration 뒤 로그인·세션·로그아웃303·보호 GET401을 확인했다.
 [최종 운영 원장](2026-10-27-integrated-production-rollout.md). 아래 준비·미배포 절은 당시 이력이다.
 
+별도 Native375/1440도 hydration 뒤 로그인과 정확 callback을 확인했다. 첫 Native 로그아웃 이벤트
+미포착은 보존하고 auth 전용 후속에서303/auth cookie1→0·보호 페이지 복귀를 확인했다.
+항공편 누락·분석 지연까지 전체 성공으로 확대하지 않는다.
+[별도 최초 UI·배포 독립 검산](2026-10-27-parking-cache-rollout.md).
 
 ## 관측과 의존
 
