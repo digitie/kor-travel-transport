@@ -1,3 +1,11 @@
+## 2026-10-28 — 최신3f 격리 검증 완료·운영 빌드 진행 체크포인트
+
+- main3f와 Git tree가 같은 PR154 head3fb7c3d의 backend/frontend/transport-admin CI는3 SUCCESS, GitHub live-e2e는SKIPPED다. 새 Next compile과 동일 source PG18/schema36의 실제 UI39·소유 자원 정리를 수용했다.
+- PR155의 약93% CPU·wall 감소는 amd64 저장·commit 구간이며 전체 job이나 ARM 수치가 아니다. 표본 RSS는약3MiB 증가했고 메모리 저감은 미수용이다.
+- Manager 최신 설치·공개UI는 완료됐고 Transport 최신 source stage도 통과했다. 21:02:54Z 관측에서는 unit 약22분·backend 약21분 진행 중이며 최종 result가 없어 전체 빌드는 미완료였다.
+- 실제 배포·원 native 상태 복구·운영 공개35·자연 수집과 ARM CPU/메모리 전후는 남아 있다. 고정 합성39의 가격·날짜를 운영 oracle로 재사용하지 않는다.
+- [완료·미완과 원 실패](reports/2026-10-28-production-3f-rollout.md)를 분리했다. 이번 문서 변경은 native helper·운영 조회/변경을 실행하지 않는다. 아래 일지 원문은 각각 작성 당시 이력으로 보존한다.
+
 ## 2026-10-27 — 지난 10일 Codex PR 상세 리뷰의 통합 수정
 
 - 2026-10-17 이후 머지된 Codex PR 51건(#83~#143)을 리뷰했다. 고칠 20건(T01~T20)은 PR 하나

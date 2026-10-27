@@ -1,3 +1,11 @@
+## 2026-10-28 — 최신3f 현재 검증과 운영 빌드 미완(21:02:54Z 관측)
+
+- 완료: main3f와 Git tree가 같은 PR154 head3fb7c3d의 CI3 SUCCESS/live-e2e SKIPPED, 새 Next compile·PG18/schema0036의 실제 격리 UI39와 소유 정리. Manager 설치·공개UI와 최신 source stage 수용도 완료했다.
+- 성능 범위: PR155의 저장·commit CPU/wall 약93% 감소는 격리 amd64 수치다. 전체 Dagster job/ARM 효과와 메모리 저감은 미수용이며 표본 RSS는약3MiB 증가했다.
+- 운영 관측: 21:02:54Z에는 unit 약22분·backend 약21분 진행 중·최종 result 없음이었다. 이 기록을 전체 이미지 완성·배포 성공으로 해석하지 않는다.
+- 다음 한 작업: 담당자가 공식 빌드 종료·정리/이미지ID를 수용한 뒤 원 native 상태 capture·Transport만 pause·자연 run/worker/PG drain·공식 cutover·호환 health·원복을 확인한다. 운영 UI35와 ARM 실측은 그 뒤 별도다.
+- [체크리스트·근거·한계](reports/2026-10-28-production-3f-rollout.md)를 따르며 이번 문서 작업의 운영 변경·native 실행은0이다. 아래 절은 각 작성 시점의 이력이다.
+
 ## 2026-10-27 — 지난 10일 Codex PR 리뷰의 통합 수정 PR
 
 - 현재 상태: 리뷰에서 나온 수정 20건(T01~T20)을 `review/codex-10d-transport` PR 하나로 구현했다. 운영 배포와

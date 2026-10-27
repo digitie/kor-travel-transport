@@ -26,7 +26,7 @@ OpenAPI와 내부 통계로 즉시 제공한다. 현재 `parking-radar`는 그�
 
 ## 2. 운영 기준
 
-- 백엔드: FastAPI, SQLAlchemy 2, PostgreSQL 16, Alembic
+- 백엔드: FastAPI, SQLAlchemy 2, PostgreSQL 18(현재 운영 공용 instance), Alembic
 - 프론트엔드: Next.js App Router, React, TypeScript
 - 실행: Docker Compose
 - 타임존: 저장·API는 UTC aware timestamp, 화면 표시는 `Asia/Seoul`
@@ -45,7 +45,7 @@ OpenAPI와 내부 통계로 즉시 제공한다. 현재 `parking-radar`는 그�
 2. `codex/` 브랜치에서 작고 검토 가능한 커밋을 만든다.
 3. WSL 로컬 테스트 → Docker Compose 테스트 → Draft PR → CI 순서로 검증한다.
 4. 적대적 리뷰 에이전트 2명의 지적을 재현하고 수정한다.
-5. n150 운영 환경에서 live E2E UI와 수집/백업 smoke를 통과시킨다.
+5. live E2E UI와 수집/백업 smoke 통과 요건은 유지한다. 브라우저는 n150 Linux, 운영 대상은 Manager 정본·Odroid 런북으로 확인한다.
 6. 모든 필수 검증 후 PR을 머지하고 `docs/journal.md`, `docs/tasks-done.md`를 갱신한다.
 
 ## 4. 먼저 읽을 문서
