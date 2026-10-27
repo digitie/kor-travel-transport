@@ -92,3 +92,9 @@ summary가 없는 lot의 첫 수집이 지연 관측이면 기존 raw의 더 최
 기존처럼 deferred, 반대로 기존 공항 proof의 원본 전체가 없어졌으면 blocked로 구분한다.
 이는 현재 발견한 raw bucket의 membership 검산이며 raw가 모두 사라진 과거 bucket을 매 실행
 전체 재탐색하는 감시 기능은 아니다. no_new_rows는 여전히 not_audited이고 삭제는 항상 거절한다.
+
+원 d2에 새10회귀만 붙인 독립 PG16은6 FAIL/4 PASS로 위 두 반례를 재현했고, 수정 d0은10 PASS다.
+main 통합350의 수집/current/export/API·영구통계 관련16파일은 WSL/Docker 각277 PASS+6 subtests,
+F/E/skip0·actual0·Docker wait0을 회수했다. 이는 수정 경로의 집중 수용이며 원 d2 전체와 구분한다.
+PG18 client를 설치하는 최신 main Dockerfile 자체의 실제 이미지 빌드·새 CI/두 리뷰·운영 수용은
+이 PG16/native QA로 대신하지 않는다. API reader/48시간 history와 실제 prune는 여전히 미활성이다.
