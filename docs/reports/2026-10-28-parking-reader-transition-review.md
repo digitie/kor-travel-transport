@@ -93,6 +93,33 @@
 
 1. **2A 저장 보완:** global cohort 충분통계·coverage/sealing/late상태, 전역 삭제 guard. 원본삭제 계속0. current tie와 raw/통계 기간 metadata 수용방식 확정. 임의분간격 손실은 명시한다.
 2. **2B reader 전환:** 충분통계 병합·시계열 복원·outlook·event/insights·cache·직접API/묶음API, 기존과 같은 화면에서 metadata·달력만 필요한 만큼 반영. raw history48h/cursor/cache/proxy 계약을 함께 변경. 삭제 계속0.
+
 3. **3 삭제 연결:** 완전 backfill→위반례 검산→bounded batch prune와 보류상태. backup/restore/기준정보/현재state/export 보호를 포함한다. 모든 read 수용 전에 raw삭제가 활성화되는 commit은 만들지 않는다.
 
 1단계PR을 머지해도 사용자 정책 전체 완료가 아니다. 위 reader와 prune가 함께 검증된 뒤에만 원본48h·통계영구 정책 완료라고 보고한다.
+
+### 2B 첫 내부 단위: 세 pattern의 동등성
+
+`parking_archive_reader.read_pattern_statistics`는 DB/API를 전환하지 않는 순수 함수다.
+입력의 공항/lot와 반열린 UTC 기간에 대해 count/sum/min/max를 병합해 기존 by-hour,
+by-weekday, by-weekday-hour 배열을 만든다. 전국 scope도 이 세 분석에서는 lot 관측 가중치를
+유지한다. 공휴일의 동일시각 합산 cohort나 outlook의 날짜 동일 가중치와 혼용하지 않는다.
+
+동일 공항/10분 버킷은 archive가 소유하므로 남은 원본을 중복 합산하지 않는다. 버전·통계 지문·
+표본·범위를 검산하고, 원본 전체가 전달된 버킷은 count/raw 지문도 대조한다. 봉인 이후 새 id의
+지연 재수신은 영구 통계에 덧붙이거나 덮어쓰지 않고 conflict로 거절한다. 입력에 일부 원본만
+남은 경우 그것만으로 전체 raw 지문이 검산됐다고 표시하지 않는다.
+
+범위 경계나 시간대의 hour 경계가 요약 내부를 자르면 해당 공항/버킷의 필터 전 원본 전체와
+지문이 일치할 때만 정확한 raw로 나눈다. 복구할 수 없으면 `ParkingArchivePrecisionUnavailable`
+예외의 metadata에 사유·요청 기간·버킷·10분 해상도를 제공한다. 이 예외를 기존 API의 빈 배열로
+바꾸는 연결은 없다. 최종 API의 유효 범위/header·객체 metadata 처리는 다음 연결 단위에서 정한다.
+
+정확도는 `exact_for_included_observations`, 전체 기간 coverage는 `unknown`으로 구분한다.
+이 함수에 없던 버킷이 실제 무관측인지 누락인지 알 수 없기 때문이다. 빈 입력도 관측0의
+정상 완전 구간이라고 보증하지 않는다. 요청은 반열린 기간인 반면 현재 일부 API는 하한만
+적용하므로, 이 내부 계약을 실제 API 응답 변경 없이 그대로 대체했다고 표시하지 않는다.
+
+DB 없는 실제 archive builder 기반11개 순수 회귀(7/14/21/28/90일×전국/공항/lot×archive-only/
+혼합/중복 포함45경우, 평균 가중치, KST 날짜, Kathmandu 경계, 변조·재수신·공백)는 WSL
+`unittest`에서 통과했다. 실제 API/cache/bundle·DB 조회·Docker·독립 리뷰는 이 단위의 미완 gate다.

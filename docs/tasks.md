@@ -9,6 +9,7 @@
   원707/9fb 증거를 보존하며 d2 동결 전체는 별도 회수 중이다. PR156은8bc에 머지했지만0036은 운영 미배포다.
   PR161 독립 리뷰의 최초 latest 초기화P1·최초 전국 membership P2는 독립 PG16의 실제6 FAIL→10 PASS로 보완했다.
   원 d2 전체와 수정 d0·main 통합26b 증거를 구분하며 넓은 집중/새 CI/두 독립 리뷰는 미완이다.
+  첫2B 내부 pattern reader의 DB 없는11순수 회귀는 통과했다. 실제 API/cache/bundle·DB 조회·Docker·리뷰는 미완이다.
   모든 분석/전망/현재/Map export 읽기 전환, 원본 history48시간·커서/해상도/coverage,
   원본 검산 후 정리·보류 상태·백업/참조·자연 실행 수용 전에는 완료로 옮기지 않는다.
   [설계와 단계](architecture/parking-retention.md), [검증 원장](reports/2026-10-27-parking-statistics-archive.md).
