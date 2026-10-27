@@ -233,17 +233,20 @@ def test_release_replacement_is_guarded_by_rollback_capture_and_exit_recovery() 
 
 
 @pytest.mark.parametrize(
-    ("replacement_started", "deployment_verified", "eligible", "should_rollback"),
+    ("replacement_started", "deployment_verified", "eligible", "mode", "should_rollback"),
     [
-        ("true", "false", "true", True),
+        ("true", "false", "true", "deploy", True),
         # 스키마가 바뀌었거나 code-server·location 검증 뒤의 실패 — 자격이 없으면 교체 중 실패여도 되돌리지 않는다.
-        ("true", "false", "false", False),
-        ("false", "false", "true", False),
-        ("true", "true", "true", False),
+        ("true", "false", "false", "deploy", False),
+        ("false", "false", "true", "deploy", False),
+        ("true", "true", "true", "deploy", False),
+        # strict prebuilt controller가 복구를 결정한다.
+        ("true", "false", "true", "deploy-prebuilt", False),
     ],
 )
 def test_exit_trap_rolls_back_only_an_unverified_replacement(
-    tmp_path: Path, replacement_started: str, deployment_verified: str, eligible: str, should_rollback: bool
+    tmp_path: Path, replacement_started: str, deployment_verified: str, eligible: str, mode: str,
+    should_rollback: bool,
 ) -> None:
     cleanup = _function(_REMOTE.read_text(encoding="utf-8"), "cleanup_remote")
     rollback_log = tmp_path / "rollback.log"
@@ -256,6 +259,7 @@ def test_exit_trap_rolls_back_only_an_unverified_replacement(
         + f"DEPLOYMENT_REPLACEMENT_STARTED={replacement_started}\n"
         + f"DEPLOYMENT_VERIFIED={deployment_verified}\n"
         + f"CODE_SERVER_ROLLBACK_ELIGIBLE={eligible}\nCODE_SERVER_ROLLBACK_BLOCKER='fixture blocker'\n"
+        + f"DEPLOY_MODE={mode}\n"
         + "trap cleanup_remote EXIT\nexit 17\n"
     )
     result = subprocess.run(
@@ -379,7 +383,7 @@ def test_deploy_refuses_before_the_plane_carries_the_location_or_while_the_old_d
     """합류 전 배포는 code-server만 공용 instance로 옮겨 Manager 전환의 펜스를 건너뛴다 — 거부한다."""
 
     text = _REMOTE.read_text(encoding="utf-8")
-    guard = text[text.index('plane_state="$(location_state)"') : text.index("drain_deadline=")]
+    guard = text[text.index('plane_state="$(location_state)"') : text.index("# BEGIN replacement gate")]
     for plane, legacy_running, expected in (
         ("absent", "false", "does not list kor-travel-transport yet"),
         ("RepositoryLocation", "true", "still runs next to the shared plane"),

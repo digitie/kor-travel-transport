@@ -51,9 +51,17 @@ if [[ ! -f "${RELEASE_MANIFEST_FILE}" || -L "${RELEASE_MANIFEST_FILE}" ]] \
 fi
 bash ./scripts/verify-release-stage.sh "${REMOTE_APP_DIR}" "${CANDIDATE_SHA}"
 
+# 외부 controller의 strict 선택과 고정 receipt는 운영 env가 덮어쓰지 못한다.
+requested_deploy_mode="${DEPLOY_MODE:-deploy}"
+prebuilt_handoff_file="${PREBUILT_HANDOFF_FILE:-}"
+prebuilt_handoff_sha256="${PREBUILT_HANDOFF_SHA256:-}"
+readonly requested_deploy_mode prebuilt_handoff_file prebuilt_handoff_sha256
 set -a
 source "${REMOTE_ENV_FILE}"
 set +a
+if [[ "${requested_deploy_mode}" == "deploy-prebuilt" ]]; then
+  DEPLOY_MODE=deploy-prebuilt
+fi
 
 require_exact() {
   local name="$1"
@@ -126,9 +134,12 @@ DEPLOYMENT_VERIFIED=false
 # 되돌리면 새 스키마 위에서 옛 수집기가 새 API와 함께 도는 혼합 release가 되므로 그때는 forward-fix로 고친다.
 CODE_SERVER_ROLLBACK_ELIGIBLE=false
 CODE_SERVER_ROLLBACK_BLOCKER=""
+PREBUILT_COMPOSE_FILE=""
 cleanup_remote() {
   local exit_status=$?
   set +e
+  # strict controller만 child의 실제 종료·새 probe·drain0 뒤 복구를 결정한다.
+  if [[ "${DEPLOY_MODE:-deploy}" != "deploy-prebuilt" ]]; then
   if [[ "${DEPLOYMENT_REPLACEMENT_STARTED}" == true && "${DEPLOYMENT_VERIFIED}" != true ]]; then
     if [[ "${CODE_SERVER_ROLLBACK_ELIGIBLE}" != true ]]; then
       echo "==================================================================" >&2
@@ -140,6 +151,10 @@ cleanup_remote() {
     else
       echo "배포 검증과 Dagster code-server 복구가 모두 실패했다. Manager에서 ${dagster_location:-kor-travel-transport} location을 확인해야 한다." >&2
     fi
+  fi
+  fi
+  if [[ -n "${PREBUILT_COMPOSE_FILE:-}" ]]; then
+    rm -f -- "${PREBUILT_COMPOSE_FILE}"
   fi
   rm -f -- "${RUNTIME_ENV_FILE}"
   if [[ -n "${ROLLBACK_RUNTIME_ENV_FILE}" ]]; then
@@ -176,8 +191,8 @@ fi
 # 컨테이너는 바꾸지 않는다 — code-server를 공용 instance로 옮기는 일은 옛 daemon을 먼저 멈추는 전환
 # 스크립트만 한다(이중 발화 방지).
 DEPLOY_MODE="${DEPLOY_MODE:-deploy}"
-if [[ "${DEPLOY_MODE}" != "deploy" && "${DEPLOY_MODE}" != "prepare-shared-dagster-cutover" ]]; then
-  echo "Refusing production deployment: DEPLOY_MODE must be deploy or prepare-shared-dagster-cutover." >&2
+if [[ "${DEPLOY_MODE}" != "deploy" && "${DEPLOY_MODE}" != "prepare-shared-dagster-cutover" && "${DEPLOY_MODE}" != "deploy-prebuilt" ]]; then
+  echo "Refusing production deployment: DEPLOY_MODE must be deploy, prepare-shared-dagster-cutover or deploy-prebuilt." >&2
   exit 2
 fi
 CUTOVER_ENV_FILE="${REMOTE_APP_DIR}/.env.prod.shared-dagster-cutover"
@@ -187,7 +202,17 @@ TRANSPORT_OVERRIDE_FILE="${TRANSPORT_OVERRIDE_DIR}/transport.override.yml"
 TRANSPORT_OVERRIDE_TMP=""
 
 compose() {
-  docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${RUNTIME_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml -f "${TRANSPORT_OVERRIDE_FILE}" "$@"
+  local extra=()
+  if [[ -n "${PREBUILT_COMPOSE_FILE}" ]]; then
+    extra=(-f "${PREBUILT_COMPOSE_FILE}")
+  fi
+  docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${RUNTIME_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml -f "${TRANSPORT_OVERRIDE_FILE}" "${extra[@]}" "$@"
+}
+
+strict_prebuilt_gate() {
+  python3 "${SCRIPT_DIR}/verify-prebuilt-handoff.py" \
+    --receipt "${prebuilt_handoff_file}" --sha256 "${prebuilt_handoff_sha256}" \
+    --revision "${CANDIDATE_SHA}" "$@"
 }
 
 install_transport_override() {
@@ -244,7 +269,13 @@ install_transport_override
 compose config -q
 compose config --format json | python3 ./scripts/verify-transport-override.py
 # 이미지를 만드는 동안에는 기존 수집기를 계속 운영한다.
+if [[ "${DEPLOY_MODE}" == "deploy-prebuilt" ]]; then
+  PREBUILT_COMPOSE_FILE="$(mktemp "${REMOTE_APP_DIR}/.prebuilt-compose.XXXXXX.json")"
+  strict_prebuilt_gate --overlay > "${PREBUILT_COMPOSE_FILE}"
+  compose config -q
+else
 compose build
+fi
 
 # code-server의 dagster는 공용 plane 호스트와 **같은 버전**이어야 한다. 높으면 공용 webserver가 unhealthy가 되어
 # 다른 테넌트까지 내려가고(버전 상한), 낮아도 run worker가 다른 버전의 instance ref를 읽는다. 컨테이너를 바꾸기 전에 본다.
@@ -338,6 +369,26 @@ capture_previous_code_server_image() {
     echo "Refusing production deployment: cannot capture the current Dagster code-server image for rollback." >&2
     return 2
   }
+  if [[ "${PREVIOUS_CODE_SERVER_IMAGE}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    # strict가 실제 ID로 띄운 컨테이너도 다음 일반 배포에서 복구할 수 있어야 한다.
+    # label만 믿지 않고 실제 image ID·전체 release env·그 release의 로컬 tag를 모두 대조한다.
+    local release previous_id="${PREVIOUS_CODE_SERVER_IMAGE}"
+    release="$(docker inspect "${dagster_code_server}" | python3 -c '
+import json,re,sys
+v=json.load(sys.stdin)[0]; c=v["Config"]; labels=c["Labels"]
+r=labels.get("io.kor-travel-transport.prebuilt-release", "")
+values=[s.split("=",1)[1] for s in c["Env"] if s.startswith("RELEASE_SHA=")]
+assert re.fullmatch("[0-9a-f]{40}",r) and values == [r]
+assert v["Image"] == c["Image"] == sys.argv[1]
+assert labels.get("com.docker.compose.project") == "kor-travel-transport"
+assert labels.get("com.docker.compose.service") == "dagster-code-server"
+print(r)' "${previous_id}")" || return 2
+    PREVIOUS_CODE_SERVER_IMAGE="kor-travel-transport-backend:rel-${release:0:12}"
+    if [[ "$(docker image inspect -f '{{.Id}}' "${PREVIOUS_CODE_SERVER_IMAGE}")" != "${previous_id}" ]]; then
+      echo "Refusing production deployment: strict release tag no longer matches the actual previous image." >&2
+      return 2
+    fi
+  fi
   if [[ "${PREVIOUS_CODE_SERVER_IMAGE}" =~ ^kor-travel-transport-backend:rel-([0-9a-f]{12})$ ]]; then
     PREVIOUS_CODE_SERVER_TAG="${BASH_REMATCH[1]}"
   else
@@ -402,6 +453,15 @@ fi
 # 기다린 직후 교체한다. 그 사이 schedule이 새 run을 띄우면(5분 주기 수집) 교체가 그 run을 끊는다 —
 # 공용 instance의 run monitoring이 실패로 닫고 다음 tick이 다시 수집한다. 큐에만 있던 run은 code-server가
 # 돌아오면 공용 run queue가 다시 꺼낸다(`run_queue.max_user_code_failure_retries`).
+# BEGIN replacement gate
+if [[ "${DEPLOY_MODE}" == "deploy-prebuilt" ]]; then
+  verify_manager_instance_config || exit 2
+  # 모든 준비 뒤 최신 state·run5·worker·STOPPED를 재검산한다. busy는 대기 없이 실패한다.
+  # 이 probe와 Compose launch 사이에는 원자적 fence가 없다.
+  strict_prebuilt_gate
+  DEPLOYMENT_REPLACEMENT_STARTED=true
+  compose up -d --no-build --pull never --no-deps backend frontend dagster-code-server
+else
 drain_deadline=$((SECONDS + 1800))
 while :; do
   if runs="$(in_flight_runs)" && [[ -z "${runs}" ]]; then
@@ -425,6 +485,8 @@ capture_previous_code_server_image
 verify_manager_instance_config || exit 2
 DEPLOYMENT_REPLACEMENT_STARTED=true
 compose up -d --no-build
+fi
+# END replacement gate
 compose ps
 # Compose가 컨테이너를 만들었다는 것과 공용 plane이 이 location을 다시 싣는 것은 다르다.
 wait_code_server_health

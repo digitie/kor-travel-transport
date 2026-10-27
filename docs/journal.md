@@ -19,6 +19,22 @@
   사전 검증, T17 플래그 직후 head 부트스트랩, T18 유가 통계 지연 가시성, T19 관리자 CI lint, T20 문서 정정.
 - 운영 미배포다. `TRANSPORT_MAP_CURRENT_ENABLED`는 계속 false이고, 머지·배포는 소유자 승인 뒤에 한다.
 
+## 2026-10-27 — 공식 배포 자식의 strict 사전 빌드 handoff
+
+외부 controller 뒤에서 공식 backend 자식이 다시 빌드·1800초 drain하던 P1을 별도
+`deploy-prebuilt`로 보완했다. 최신 state 내용/시각·원본 CID·run5·worker·소유 STOPPED를
+재검산하고 busy면 sleep0·교체0으로 거절한다. 관리자 두 역할도 별도 고정 ID/baked
+release 검사 뒤 build/pull 없이 교체한다. strict EXIT의 CS 자동 rollback은 부모에게
+맡기며 기본 deploy/prepare 동작과 다음 일반 배포의 이전 이미지 복구 호환을 유지했다.
+
+WSL 집중158통과·Docker157통과/rsync부재1건너뜀,12,000파일 합성scan0.27~0.31초를
+확인했다. 제품 전체/실제 UI는 반복하지 않았다. 운영 SSH/HTTP/Docker·일정·DB 변경0,
+merge/배포0이다. 정확 CI·두 독립 리뷰와 새 controller 소비·운영 검증은 후속이다.
+Draft [PR #159](https://github.com/digitie/kor-travel-transport/pull/159)을 생성·채팅 연결했으며
+구현 소스는 `2edae13356c1f3f9471f5992a882004c03bcbef4`다. CI는 기록 시점 진행 중이다.
+[설계](design/2026-10-27-prebuilt-deploy-handoff.md)와
+[실행 결과·고정 소스](reports/2026-10-27-prebuilt-deploy-handoff.md)를 남겼다.
+
 ## 2026-10-27 — 자동 역 연결 후보의 최신 main 통합 검증 중
 
 API 후보 `875ed9a`와 최신 main `abd4084`를 별도 작업트리에서 통합한다. API 서비스·DTO·route·

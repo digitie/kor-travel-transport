@@ -1,6 +1,6 @@
 ## 2026-10-27 — 지난 10일 Codex PR 리뷰 후속
 
-- [ ] T-REVIEW-10D-01 — 리뷰 통합 수정 PR(`review/codex-10d-transport`, T01~T20): 소유자 승인 뒤 머지한다.
+- [ ] T-REVIEW-10D-01 — 리뷰 통합 수정 PR(`review/codex-10d-transport`, T01~T20): 소유자 승인으로 머지했다(운영 미배포).
   운영 배포 때 T01 compose 앵커(API·code-server 같은 플래그·범위)와 T05 rollback 정책(스키마 불변·code-server
   단계 실패에서만 자동 rollback)이 같은 release로 들어가는지 확인한다. 외부 운영 controller도 같은 두 조건을 따른다.
 - [ ] T-SEC-UIPW-01 — (소유자) 공개 저장소의 운영 관리자 UI 비밀번호 리터럴: 운영 값 회전과 보호 environment Actions
@@ -16,6 +16,14 @@
   parking 신선도 기준, 일반철도·ITS 결정적 오류의 provider 실패 분류. 세부는 리뷰 통합 PR 본문의 보류 표를 따른다.
 - [ ] Common·별도 PR 대기: reverse_address keep 규칙(Common), MapReadout 좌표 live region(Common), 관리자 e2e 정비,
   메모리 한도(#93), 이미지 크기·빌드 시간(#81), 목록 상한 안내(#128).
+
+## 2026-10-27 — 공식 배포 자식 handoff
+
+- [ ] **T-DEPLOY-PREBUILT-01** — 공식 backend/admin의 strict 사전 빌드 경로 구현과
+  WSL158·Docker157/rsync부재1skip을 확인했다. 정확 head CI·독립 두 리뷰·새 controller
+  receipt/종료/복구 소비와 운영 수용은 미완이므로 완료 목록으로 옮기지 않는다.
+  [설계](design/2026-10-27-prebuilt-deploy-handoff.md),
+  [검증·고정 소스·경계](reports/2026-10-27-prebuilt-deploy-handoff.md).
 
 ## 원본 JSON 변환 국소 CPU 후속
 

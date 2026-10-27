@@ -3,9 +3,24 @@
 - 현재 상태: 리뷰에서 나온 수정 20건(T01~T20)을 `review/codex-10d-transport` PR 하나로 구현했다. 운영 배포와
   플래그 변경은 없다. 설계 변경은 T04(snapshot 만료 epoch 끝+15분·GC SKIP LOCKED)와 T05(자동 code-server
   rollback 범위 축소)다.
-- 소유자 머지 승인으로 PR #154를 main에 반영했다(#146·#158·#152·#153 뒤 merge, 운영 미배포).
+- 소유자 머지 승인으로 PR #154를 main에 반영했다(#146·#158·#152·#153·#159 뒤 merge, 운영 미배포).
 - 다음 한 작업: 배포 때 T01 앵커와 T05 rollback 정책이 같은 release로 들어가는지 확인한다. 보류 19건은
   [tasks.md](tasks.md)의 2026-10-27 절과 PR 본문 순서로 진행한다.
+
+## 2026-10-27 — strict 배포 handoff 현재 상태
+
+현재 상태: main `5c823c4` 기반 배포 도구만 변경했다. backend 공식 자식의 중첩
+재빌드/1800초 drain과 관리자 `up --build`를 없애는 외부 controller 전용
+`deploy-prebuilt`가 WSL158·Docker157/rsync부재1skip을 통과했다. 기존 deploy/prepare는
+보존했다. child의 실제 교체 전 거절과 최신 source fingerprint·고정 image ID를 검사한다.
+운영 호출·merge·배포0이며 기존 철도/유가 준비본은 수정하지 않았다.
+
+다음 한 작업: Draft [PR #159](https://github.com/digitie/kor-travel-transport/pull/159)의
+정확 head CI와 독립 James/Popper를 정산하고 새 controller가
+checksum receipt·copy 전후 fingerprint·실제 child 종료/교체0의 현재 state 보존 계약을
+소비하도록 별도 검토한다. 승인된 운영 실행은 그 뒤다. 마지막 probe→up은 원자적
+fence가 아니다. [입력·복구 설계](design/2026-10-27-prebuilt-deploy-handoff.md),
+[검증·미완 범위](reports/2026-10-27-prebuilt-deploy-handoff.md).
 
 ## 2026-10-27 — 자동 역 연결 후보의 최신 main 통합 검증 중
 
