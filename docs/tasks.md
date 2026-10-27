@@ -5,7 +5,8 @@
   정확40f CI3개 성공 뒤 최신main 통합70a는 WSL153/Docker153 PASS·새 CI/리뷰 수용 중이다.
   별도2A의0037 전국/보류/latest·UTC offset floor·오래된 보류 정체 보완은9fb 집중7실패를 보존했다.
   fixture/action/관측 통합707의 두 집중237 PASS+6 subtests를 회수했지만 실제 eligible seal 전역 스캔 P2를 확인했다.
-  공항/전국 EXISTS의 최소 OFFSET0 보완·실제 계획 회귀의 새 검증을 진행하며 원707 증거는 보존한다.
+  99의 최소 OFFSET0 보완은 두 집중152 PASS+6 subtests·실제 plan GREEN·세 유데이터 downgrade거절을 확인했다.
+  원707/9fb 증거를 보존하며 stacked PR·새 전체 필요 범위/CI/두 독립 리뷰는 미완이다.
   모든 분석/전망/현재/Map export 읽기 전환, 원본 history48시간·커서/해상도/coverage,
   원본 검산 후 정리·보류 상태·백업/참조·자연 실행 수용 전에는 완료로 옮기지 않는다.
   [설계와 단계](architecture/parking-retention.md), [검증 원장](reports/2026-10-27-parking-statistics-archive.md).

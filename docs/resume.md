@@ -1,3 +1,13 @@
+## 2026-10-28 — 2A 현재 후보와 다음 검증
+
+- 현재:99de06f는 공항/전국 seal EXISTS의 전역 hash P2를 최소 OFFSET0로 보완했다. WSL/Docker
+  각152 PASS+6 subtests·actual0, 새 plan DB10000/900의 구간별 PK와 세 유데이터 downgrade 거절을
+  확인했다. 기존707의 넓은 집중237+6 및9fb 실패·707 plan RED는 원래 범위로 각각 보존한다.
+- 다음 한 작업: docs-only 정산의 제품 blob 동일성·최종 원장과 stacked Draft PR을 고정하고,
+  새 전체 필요 범위·CI·두 독립 리뷰를 수용한다. 전체는 별도 GO 전 시작하지 않는다.
+- 원본48시간 정책 전체는 미완이다. API reader/history/cursor/해상도·복원 guard·실제 prune 및
+  운영 수용은 후속이다. [2A 경계](architecture/parking-archive-coverage.md).
+
 ## 2026-10-28 — 2A 707 집중 회수와 영구 seal 전역 스캔 P2
 
 정확707의 두 집중은 각237 PASS+6 subtests PASS(JUnit tests243/testcase237), F/E/skip0·actual0,

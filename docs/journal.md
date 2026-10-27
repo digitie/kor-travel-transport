@@ -1,3 +1,17 @@
+## 2026-10-28 — 2A 99의 seal 후보 계획·보존 guard 집중 수용
+
+정확99de06f의 관련9파일은 WSL152 PASS+6 subtests PASS/44.24초·Docker152 PASS+6 subtests
+PASS/55.12초(F/E/skip0, JUnit tests158/testcase152), actual0·독립Docker wait0이다. 별도707의
+더 넓은17파일237 PASS+6 subtests는 원래 source 범위로 보존하며99 전체 검증으로 확대하지 않는다.
+829 source/locked106·Git10 동일성과 실행 중 Docker 지문을 검산했다. 707의 plan RED와 같은 DB의
+read-only GREEN 및 새10000통계/900원본 DB의 PK등가 Rows1×900을 구분해 보존했다.
+영구전국10000행·보류1행·latest1행의 각 실제 downgrade exit1과 데이터/schema37 보존도 확인했다.
+
+첫9fb의 fixture/action 실패와707의 실제 전역 스캔 RED·모든 원본 source/DB/log를 보존한다.
+2A는 여전히 reader/원본 정리·자동 schedule·운영 변경0이다. 새 whole·CI·독립 리뷰·정책 전체 수용은
+별도이며 자동 전체 재실행은 하지 않는다. [모델·계획 경계](architecture/parking-archive-coverage.md),
+[독자 전환18반례](reports/2026-10-28-parking-reader-transition-review.md).
+
 ## 2026-10-28 — 2A 707 집중 회수와 영구 seal 전역 스캔 P2
 
 정확707의 두 집중은 각237 PASS+6 subtests PASS(JUnit tests243/testcase237), F/E/skip0·actual0,

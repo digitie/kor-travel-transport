@@ -68,3 +68,15 @@ DB를 사용하지 않는 전국 동시각·중복·current 선택·raw 변조·
 회귀는 통계 유무×scope 둘 다 실제 실행한 통계 scan의 bucket_at 등가 Index Cond·행수<=1을 검사한다.
 실행하지 않은 대안 노드의 표시를 실제 전체 읽기로 오인하지 않는다. 원707 증거는 고치지 않으며
 새 계획/집중/다운그레이드 GREEN과 독립 리뷰 전에는 이 P2나 전체48시간 정책을 완료로 표시하지 않는다.
+
+## 99 후속 검산 결과와 다음 gate
+
+99de06f의 관련9파일은 WSL152 PASS+6 subtests/44.24초·Docker152 PASS+6 subtests/55.12초,
+F/E/skip0·actual0·Docker wait0이다. 기존707의17파일237+6 결과와 새query delta 검증을 구분한다.
+통계 유무×공항/전국의 새 실제 PG 계획 회귀가 모두 통과했다.707 RED와 동일 DB의 read-only 재조회와
+별도 fresh10000통계/900원본의 pending/eligible는 모두 실행한 통계 scan이 PK등가·Rows1×900이다.
+세 추가 테이블은 각각 데이터가 있을 때 downgrade 실제exit1이며 행수10000/1/1과schema37을 유지했다.
+829파일/locked106/Git10 검산과 실제 child·Docker 종료를 회수했다. source/DB/log·이전 실패는 보존한다.
+
+이는 집중 수용이며 source 전체·CI·두 독립 리뷰·실제 운영 적용의 gate는 남는다. 기존48시간 밖 raw가
+현재 API/history에서 사라졌다고 표시하지 않으며, reader 전환과 검증 후 prune를 붙이기 전 원본 삭제는0이다.
