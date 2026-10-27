@@ -5,7 +5,7 @@
 - [ ] T-OPS-3F-PUBLIC35 — 실제 운영 공개35개를 수용한다. 격리39의 고정 합성 가격·D-1/D-6 oracle는 운영에 승계하지 않는다.
 - [ ] T-OPS-3F-ARM — 자연 수집과 비교 가능한 ARM 전체 job CPU·메모리/PG 전후를 측정한다. PR155의 약93% 저장 CPU 감소·약3MiB RSS 증가와 별도다.
 
-[완료된 exact3f CI·fresh39·Manager와 남은 운영 경계](reports/2026-10-28-production-3f-rollout.md)를 구분한다. 아래 기존 미완 task도 이번 체크포인트로 자동 완료하지 않는다.
+[완료된 main3f 동등 tree의 CI·fresh39·Manager와 남은 운영 경계](reports/2026-10-28-production-3f-rollout.md)를 구분한다. 아래 기존 미완 task도 이번 체크포인트로 자동 완료하지 않는다.
 
 ## 2026-10-27 — 지난 10일 Codex PR 리뷰 후속
 

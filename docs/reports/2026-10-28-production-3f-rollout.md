@@ -5,7 +5,7 @@
 ## 완료한 코드·격리 검증
 
 - 최신 원격 main과 배포 준비 source는 `3f5160a0d5e0c246fa744864998a3fc805542ce4`다. PR #154의 통합 변경과 이미 머지한 PR #155의 교통 저장 배치 개선을 포함한다. 후속 문서 커밋은 새 이미지가 필요하다는 뜻이 아니다.
-- exact3f의 GitHub backend·frontend·transport-admin 세 check가 SUCCESS다. GitHub `live-e2e` check는 SKIPPED이며 이를 성공으로 바꾸어 쓰지 않는다. 별도 실제 격리 UI39 수용은 아래 근거다. 과거65a의 CI6 결과와 구분한다.
+- PR #154 head `3fb7c3d`의 GitHub backend·frontend·transport-admin 세 check가 SUCCESS이며, 그 Git tree는 main3f와 같다. GitHub `live-e2e` check는 SKIPPED이며 이를 성공으로 바꾸어 쓰지 않는다. 별도 실제 격리 UI39 수용은 아래 근거다. 과거65a의 CI6 결과와 구분한다.
 - exact3f 프론트엔드를 **새로 컴파일**한 뒤 같은 source의 격리 PG18/schema0036·실제 API·Next·브라우저에서39개가 통과했다. 이전3bf/65a Next 재사용 결과를 새3f 컴파일로 바꿔 쓰지 않았다.
 - UI는 모바일·데스크톱, 기존32개와 유가 통계 D-1/D-6·누락일·안내창을 포함한39개다. 14.569초, API15·tile40, 초기 script hold8개와 정상 종료·소유 API/PG·volume·unit/cgroup·터널/C7 정리를 확인했다. 고정 합성 fixture의 가격·날짜·신선도는 운영 데이터의 검증값이 아니다.
 - Manager는 Odroid `f368af3e` 공식 설치와 공개 UI12 수용·문서 PR #564를 마쳤다. n150은 같은 제품 `d1468213`를 유지했다. 원래 설치 후 CLI25초 timeout과 뒤이은 Transport 공식 stage의 필수60초 검사 성공을 구분한다. 40.166초는 stage 전체이며 CLI 단독 시간이 아니다.
@@ -22,7 +22,7 @@
 
 정본 Manager를 통해 최신3f source stage가 정상 종료했고 Git source827개·보호 파일/환경과 기존 runtime 보존을 확인했다. 현재 서빙4d와 desired3f를 같은 것으로 취급하지 않는다.
 
-**21:02:54Z 관측에서는 backend 빌드가 약22분 진행 중이었고 전체 빌드는 미완료였다.** 고유 빌드 unit은 active/running, 마지막 phase는 backend building, 최종 result는 없었다. 이 관측만으로 backend 이미지 완성, frontend/admin 빌드 완료, unit 정상 종료나 배포 성공을 주장하지 않는다. 당시 source와 NVMe·정본 G→R·소유 builder 상한을 따른 T의 별도 운영 경로가 진행 중이었다. 다른 builder를 중지하거나 잠금을 우회하지 않았다.
+**21:02:54Z 관측에서는 unit은 약22분, backend 단계는 약21분 진행 중이었고 전체 빌드는 미완료였다.** 고유 빌드 unit은 active/running, 마지막 phase는 backend building, 최종 result는 없었다. 이 관측만으로 backend 이미지 완성, frontend/admin 빌드 완료, unit 정상 종료나 배포 성공을 주장하지 않는다. 당시 source와 NVMe·정본 G→R·소유 builder 상한을 따른 T의 별도 운영 경로가 진행 중이었다. 다른 builder를 중지하거나 잠금을 우회하지 않았다.
 
 이전 G 경합으로 실제 build0이었던 실행, 첫 prebuild 계약 거부와 보존 검사, source 재준비 이력은 남긴다. 후보 UI의 최초 mux 경로/API 종료 기록 실패와 첫 성능 SDK 준비 실패도 기존 기록에서 지우지 않는다. 제어된 후속 성공은 원 실패를 무효로 하지 않는다.
 
