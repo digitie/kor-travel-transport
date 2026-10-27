@@ -15,6 +15,16 @@ REMOTE_APP_DIR="${REMOTE_APP_DIR:-/home/digitie/apps/kor-travel-transport}"
 REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-.env.prod}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-kor-travel-transport}"
 CANDIDATE_SHA="$(git rev-parse HEAD)"
+DEPLOY_MODE="${DEPLOY_MODE:-deploy}"
+PREBUILT_ADMIN_WEB_IMAGE_ID="${PREBUILT_ADMIN_WEB_IMAGE_ID:-}"
+PREBUILT_GATEWAY_IMAGE_ID="${PREBUILT_GATEWAY_IMAGE_ID:-}"
+[[ "${DEPLOY_MODE}" == deploy || "${DEPLOY_MODE}" == deploy-prebuilt ]] || { echo "잘못된 관리자 배포 mode입니다." >&2; exit 2; }
+if [[ "${DEPLOY_MODE}" == deploy-prebuilt ]]; then
+  [[ "${PREBUILT_ADMIN_WEB_IMAGE_ID}" =~ ^sha256:[0-9a-f]{64}$ && "${PREBUILT_GATEWAY_IMAGE_ID}" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "관리자 사전 빌드 image ID 두 개가 필요합니다." >&2; exit 2; }
+else
+  PREBUILT_ADMIN_WEB_IMAGE_ID=""
+  PREBUILT_GATEWAY_IMAGE_ID=""
+fi
 
 [[ "${REMOTE_APP_DIR}" == "/home/digitie/apps/kor-travel-transport" ]] || { echo "승인된 transport checkout만 허용합니다." >&2; exit 2; }
 [[ "${REMOTE_ENV_FILE}" == ".env.prod" ]] || { echo "승인된 운영 환경 파일만 허용합니다." >&2; exit 2; }
@@ -84,8 +94,13 @@ ssh "${REMOTE_USER}@${REMOTE_HOST}" "mkdir -p '${REMOTE_APP_DIR}'"
 scp "${archive}" "${REMOTE_USER}@${REMOTE_HOST}:${remote_archive}"
 
 ssh "${REMOTE_USER}@${REMOTE_HOST}" \
-  "REMOTE_APP_DIR='${REMOTE_APP_DIR}' REMOTE_ENV_FILE='${REMOTE_ENV_FILE}' REMOTE_ARCHIVE='${remote_archive}' REMOTE_STAGE='${remote_stage}' CANDIDATE_SHA='${CANDIDATE_SHA}' bash -s" <<'REMOTE'
+  "REMOTE_APP_DIR='${REMOTE_APP_DIR}' REMOTE_ENV_FILE='${REMOTE_ENV_FILE}' REMOTE_ARCHIVE='${remote_archive}' REMOTE_STAGE='${remote_stage}' CANDIDATE_SHA='${CANDIDATE_SHA}' DEPLOY_MODE='${DEPLOY_MODE}' PREBUILT_ADMIN_WEB_IMAGE_ID='${PREBUILT_ADMIN_WEB_IMAGE_ID}' PREBUILT_GATEWAY_IMAGE_ID='${PREBUILT_GATEWAY_IMAGE_ID}' bash -s" <<'REMOTE'
 set -euo pipefail
+admin_deploy_mode="${DEPLOY_MODE:-deploy}"
+prebuilt_admin_id="${PREBUILT_ADMIN_WEB_IMAGE_ID:-}"
+prebuilt_gateway_id="${PREBUILT_GATEWAY_IMAGE_ID:-}"
+readonly admin_deploy_mode prebuilt_admin_id prebuilt_gateway_id
+[[ "${admin_deploy_mode}" == deploy || "${admin_deploy_mode}" == deploy-prebuilt ]] || { echo "잘못된 관리자 배포 mode입니다." >&2; exit 2; }
 [[ -f "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" && -r "${REMOTE_APP_DIR}/${REMOTE_ENV_FILE}" ]] || { echo "운영 환경 파일이 없습니다." >&2; exit 2; }
 # backend 동기화·빌드와 Dagster Compose 교체가 끝날 때까지 같은 checkout을 건드리지 않는다.
 release_lock_path="/mnt/media/kor-travel/build/transport/.kor-travel-transport-deploy.lock"
@@ -134,7 +149,16 @@ cd "${REMOTE_APP_DIR}"
 # 감지하지 못하므로, 이 전용 두 서비스를 명시적으로 재생성해 공개 allowlist가
 # 이전 설정에 머무르지 않게 한다. 같은 project의 backend/frontend/code-server를
 # orphan으로 지우지 않도록 아래 명시한 두 서비스만 갱신한다.
+# BEGIN admin replacement gate
+if [[ "${admin_deploy_mode}" == deploy-prebuilt ]]; then
+  prebuilt_admin_compose="${stage}/prebuilt-admin-compose.json"
+  python3 ./scripts/verify-prebuilt-handoff.py --admin-overlay --revision "${CANDIDATE_SHA}" \
+    --admin-image-id "${prebuilt_admin_id}" --gateway-image-id "${prebuilt_gateway_id}" > "${prebuilt_admin_compose}"
+  TRANSPORT_ADMIN_RELEASE_SHA="${CANDIDATE_SHA}" docker compose --project-name kor-travel-transport --env-file "${REMOTE_ENV_FILE}" -f docker-compose.transport-admin.yml -f "${prebuilt_admin_compose}" up -d --no-build --pull never --no-deps --force-recreate transport-api-gateway transport-admin-web
+else
 TRANSPORT_ADMIN_RELEASE_SHA="${CANDIDATE_SHA}" docker compose --project-name kor-travel-transport --env-file "${REMOTE_ENV_FILE}" -f docker-compose.transport-admin.yml up -d --build --force-recreate transport-api-gateway transport-admin-web
+fi
+# END admin replacement gate
 api_port="$(port_from_env TRANSPORT_PUBLIC_API_PORT 12301)"
 web_port="$(port_from_env TRANSPORT_PUBLIC_WEB_PORT 12305)"
 for url in "http://127.0.0.1:${api_port}/health" "http://127.0.0.1:${web_port}/login"; do

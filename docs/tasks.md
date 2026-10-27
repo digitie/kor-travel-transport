@@ -1,3 +1,11 @@
+## 2026-10-27 — 공식 배포 자식 handoff
+
+- [ ] **T-DEPLOY-PREBUILT-01** — 공식 backend/admin의 strict 사전 빌드 경로 구현과
+  WSL158·Docker157/rsync부재1skip을 확인했다. 정확 head CI·독립 두 리뷰·새 controller
+  receipt/종료/복구 소비와 운영 수용은 미완이므로 완료 목록으로 옮기지 않는다.
+  [설계](design/2026-10-27-prebuilt-deploy-handoff.md),
+  [검증·고정 소스·경계](reports/2026-10-27-prebuilt-deploy-handoff.md).
+
 ## 원본 JSON 변환 국소 CPU 후속
 
 - [ ] T-CPU-PLAIN-01: `_plain_json` 정확 builtin scalar 조기 반환 후보의 결과·오류·identity를
