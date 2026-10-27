@@ -15,7 +15,7 @@
   쓰지 말고 safety buffer를 두고(이 저장소는 120초), 그 여유를 ADR/런북에 근거와 함께 남긴다
   ([ADR-002](../adr/002-dual-check-5min-cutover.md) 참고).
 - **A3 (일반 원칙)**: 로컬(WSL2) green을 CI green과 동일시하지 않는다. 이 저장소의 CI는
-  실제 PostgreSQL 16 컨테이너로 `alembic upgrade head` + `alembic check`까지 돌리므로,
+  실제 PostgreSQL 18 컨테이너로 `alembic upgrade head` + `alembic check`까지 돌리므로,
   SQLite 기준 로컬 1차 테스트만 통과했다고 "완료"로 보고하지 않는다. 2차(WSL2+Docker)까지
   통과한 뒤에만 배포로 넘어간다(`AGENTS.md` WSL 테스트 기준).
 - **A4 (실제 사례, PR #47)**: 과거 검증 이미지 태그를 재사용하면 최신 테스트/Compose 계약이
