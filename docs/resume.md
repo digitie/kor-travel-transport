@@ -1,3 +1,15 @@
+## 2026-10-28 — 소통 배치 PR155 코드 검증 완료·운영 수용 대기
+
+- 완료: exact65a/main8bc CI6 SUCCESS·두 제품 리뷰·PG18/schema36의 실제 후보 UI39를 수용하고
+  PR155를 main c19d6bc로 정상 머지했다. 기존 Next의 입력244개 동등/새source 복사 영수증을 검증했으며 새 컴파일0이다.
+- 실측: amd64 PG18·동일 frozen106/Common c289의 각3회 AB/BA/AB에서8,300행18구간 digest가 같다.
+  저장·commit wall/client CPU 중앙값은 약93% 감소했지만 표본 RSS는약2.90/3.35/3.25MiB 증가했다.
+  서버 RSS·운영 ARM 전체 수집 성능은 미측정이다. [수치·범위·원 실패](reports/2026-10-27-traffic-store-batched-prefetch.md).
+- 보존: 첫 prebrowser mux/API 종료 기록 누락과 첫 성능 SDK import 준비 실패, 이후 두 리뷰·제어된 새 UUID 수용을 구분한다.
+  소유 PG/volume/자식/API·Next·터널/C7 정리·환경 불변을 수용했고 수집 flag OFF·기존 lock/fence를 유지했다.
+- 다음 한 작업: 담당자의 최신 운영 상태·부하·NVMe·정본 배포/원 instigator 상태 및 실제 run/worker/PG drain을
+  확인한 뒤 승인된 공식 배포와 자연 수집·공개 UI를 수용한다. 현재 운영 배포·원본 삭제는0이다. 아래는 당시 이력이다.
+
 ## 2026-10-28 — 소통 배치 후보를 준비 main8bc/PG18/schema36으로 합성
 
 - 현재 상태: main8bc의 PG18/schema36·주차 통계 선행 저장/삭제 차단·prebuilt 계약을 그대로 채택했다.
