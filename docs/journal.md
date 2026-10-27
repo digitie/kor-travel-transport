@@ -12,8 +12,8 @@
   스키마가 후보 head였고 실패가 code-server 단계일 때만 한다. 그 밖에는 forward-fix 배너를 낸다.
   code-server 냉기동은 690초까지 기다린다. 근거는 [교통 current 문서](map-traffic-current-export.md)와
   [배포 런북](runbooks/deployment.md)에 있다.
-- 나머지: T03 플래그 OFF 기준정보의 엄격 identity 해제, T06 주차 CSS `@scope`→nesting, T07 관리자 지도
-  카메라 prop 되먹임 제거, T08 고속도로 통계 노선별 재조회·표본 표기, T09 KAC 할당량 원장 노출 정리,
+- 나머지: T03 플래그 OFF 기준정보의 엄격 identity 해제, T06 주차 CSS `@scope`→`:where()` nesting(특이도
+  보존), T07 관리자 지도 카메라 prop 되먹임 제거, T08 고속도로 통계 노선별 재조회·표본 표기, T09 KAC 할당량 원장 노출 정리,
   T10 로그인 상태별 문구, T11 모바일 메뉴 disclosure, T12 이미지 안 pytest 수집 오류, T13 호스트 검증
   timeout의 sudo 하위 정리·원인 토큰, T14 odroid 잔재, T15 VadaHub 주간 갱신, T16 429 Retry-After·안내 범주
   사전 검증, T17 플래그 직후 head 부트스트랩, T18 유가 통계 지연 가시성, T19 관리자 CI lint, T20 문서 정정.
