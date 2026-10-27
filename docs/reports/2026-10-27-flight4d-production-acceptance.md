@@ -87,7 +87,9 @@ GMP·2026-10-27 KST·lot1에서 실행 전 정확 운영 proof를 확인했다.
 분석 ready/pending1/marker0·동일 선택 범위를 확인했다. 이후365개가 반영되고 pending/error가 사라졌다.
 이를 새 제공자 성공이나 운영 응답 시간으로 세지 않는다.
 
-현황의 관측 시각·보이는 lot행·loading0을 확인했다. 현재 `/parking`에는 outlook 패널이 없어
+현황의 관측 시각·보이는 lot행·loading0을 확인했다. 초기 현황에는15분 이상 지난 관측 안내도 있어
+loading 해제를 현황 전체의 신선도 통과로 확대하지 않는다. 뒤의 자연 수집/최종 캐시 검증은 별도 시점이다.
+현재 `/parking`에는 outlook 패널이 없어
 NOT_APPLICABLE/별도 요청0이며 outlook 구현·수용 완료를 뜻하지 않는다. 실제 장치가 아닌 브라우저/hasTouch 검증이다.
 Native375의 첫 본문은 미보존이며 재조회로 대체하지 않았다. 다른3개 보존본은 민감키/URL query를 제거하고
 재직렬화한 DTO라서 원문 bytes 동일성·raw bytes SHA는 미계측이다. 마커 수·pending 문구는 DOM 근거와
