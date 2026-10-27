@@ -1,3 +1,13 @@
+## 2026-10-27 — backend Common pin 최신 main 재핀
+
+- `kor-travel-common[dagster,reverse-address]` pin을 `e746e4b8`→`c289b462`(Common main #48 머지)로 올렸다.
+  사이 Python 변경은 공용 daemon 전용 `daemon_pool`의 workspace 갱신 주기 opt-in(#44)뿐이고 Transport는
+  `daemon_pool`을 쓰지 않는다. 설치 CLI(`http_health`·`build_bytecode`)의 SHA256은 그대로다.
+- `uv.lock`은 backend Dockerfile이 고정한 uv 0.11.21의 `uv lock`으로 재생성했다(source rev 2줄, revision 3 유지).
+  같은 uv의 `uv export --locked`와 최신 uv 0.13.5의 `uv lock --locked`가 통과했다. 최신 uv로 재생성하면
+  revision이 3→5로 함께 바뀌어 고정 uv 쪽을 택했다.
+- frontend·vendor·LoginForm(UI dev.9는 #141로 main 반영)은 건드리지 않았고 운영 배포는 하지 않았다.
+
 ## 2026-10-27 — 4d 운영 배포·늦은 항공편 성공과 자연 통계 갱신 수용
 
 PR147의 운영 `4d49610b2083fd0a30bc5e6afcca0036889044d4`에서 정확5역할/API/admin/schema35,
