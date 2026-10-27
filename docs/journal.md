@@ -12,7 +12,7 @@
   node 22.23.1을 넣으면 head에서 그 파일과 `test_health_cpu_contract.py`가 54 passed다. Dockerfile 설치 경로 중 pin이 닿는
   단계(python:3.12-slim, uv 0.11.21 `uv export --locked` → `pip install --no-deps` git `c289b46`)도 따로 재현해 설치 commit·
   CLI 두 모듈 SHA256·실행을 확인했다. 전체 이미지 빌드는 하지 않았다.
-- 적대 리뷰 James/Popper(runtime 변경 commit `d6f16f7`, 이후는 문서만): P0/P1 없음. 반영한 P2는 `Common #44` 표기,
+- 적대 리뷰 James/Popper(head `aaa3c04` 기준, 이후는 문서 정리와 최신 main rebase만): P0/P1 없음. 반영한 P2는 `Common #44` 표기,
   uv 버전 서술, `reverse-address-refresh.md`의 옛 "현재 Common pin" 문장(→당시)과 새 pin 문장의 시제다.
 - 반영하지 않은 P2와 근거:
   - `packages/kor-travel-transport-admin/frontend/vendor/README.md`의 옛 Python pin `430a9e9` 현재형 서술과 dev.9 항목 부재:
