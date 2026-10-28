@@ -4,7 +4,8 @@
 - 완료: 세 ARM64 후보 불변 이미지 계약·backend 96개 파일/의존성·소유 빌드/probe 정리. 별도 공식 공용 plane 수렴은 두 서비스 healthy·drift 0이다. 기존 원 aggregate timeout과 준비 실패는 보존했다.
 - cutover: 29f 원인 UNKNOWN, 8b36 FD9 prebaseline 실패, c051 Transport 18 pause→PG drain 실패→18 restore 뒤 부모 복구 후 검증의 ContractError/native_restored=false를 구분한다. 세부 발생 지점은 UNKNOWN이다. 별도95c18 두 관측은 전체 47 원 ID/상태·기존 5개 역할 healthy·DB35 보존을 수용했다.
 - 후속: r9/r10 사전 검사의 pg_command_contract 거절과 55aa/30f5 launch0을 보존한다. 실제 GUC 분류ce00 뒤 r11에 pg_stat_statements.max 한 이름만 추가했고 순수65개·두 소스 리뷰를 수용했다.
-- 다음 한 작업: r11 fresh 검사는 02:21:06–11Z canonical G에서 ManagerMutationActiveError로 차단됐다. PG·원47 현재 검사 본문 미진입·4999 launch/root/unit 및 native/DDL/runtime 변경0이며 당시 owner는 UNKNOWN·강제 해제0이었다. 후속 읽기로 별도 이미지 검증 unit의 G 소유를 확인했으나 담당자·진척·결과는 미확정이다. 02:24:58–25:12Z에는 기존 4d 다섯 역할 CID/image/start·healthy/DB35와 plane 두 CID/image/start·healthy 유지가 확인됐지만 inside/env 전수·원47 현재 재검산은 아니다. 우리4999는 launch0/HOLD로 중복 배포를 대기하며 이전95c18을 새 fresh PASS로 확대하지 않는다. 공개35·수집/백업 smoke·ARM 전체 job 비용은 미완이다.
+- 최근 사전 검사: r11 fresh 검사는 02:21:06–11Z canonical G에서 ManagerMutationActiveError로 차단됐다. PG·원47 현재 검사 본문 미진입·4999 launch/root/unit 및 native/DDL/runtime 변경0이며 당시 owner는 UNKNOWN·강제 해제0이었다. 후속 읽기로 별도 이미지 검증 unit의 G 소유를 확인했으나 그때 담당자·진척·결과는 미확정이었다. 02:24:58–25:12Z에는 기존 4d 다섯 역할 CID/image/start·healthy/DB35와 plane 두 CID/image/start·healthy 유지가 확인됐지만 inside/env 전수·원47 현재 재검산은 아니다. 우리4999는 launch0/HOLD로 중복 배포를 대기하며 이전95c18을 새 fresh PASS로 확대하지 않는다. 공개35·수집/백업 smoke·ARM 전체 job 비용은 미완이다.
+- 다음 한 작업: 명시 승인된 조율과 상대 응답으로 확정한 단일 담당의 실제 배포·원47 복원·UI 결과를 별도 수용한다. 이쪽4999는 미실행/HOLD이고 G 해제 후에도 경쟁 실행하지 않는다. 상대 SDK/web 검증 보고를 우리 독립 운영 수용으로 확대하지 않는다.
 - PR155 약 93%는 격리 amd64 저장·commit CPU/wall이며 표본 RSS는약 3 MiB 증가했다. [현재 근거·미완 경계](reports/2026-10-28-production-3f-rollout.md)를 따른다. 이번 문서 작업의 운영 호출은0이다. 아래 절은 각 작성 당시 이력이다.
 
 ## 2026-10-27 — 지난 10일 Codex PR 리뷰의 통합 수정 PR
