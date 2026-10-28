@@ -1,5 +1,6 @@
 """운영 export 소비자 제한은 빈 값 거절·IPv4/CIDR 검증·쓰기 금지를 보존한다."""
 from pathlib import Path
+import re
 import subprocess
 import pytest
 
@@ -44,3 +45,28 @@ def test_export_gateway_does_not_expand_admin_or_public_contract():
     compose = (ROOT / "docker-compose.transport-admin.yml").read_text()
     assert 'TRANSPORT_EXPORT_CONSUMER_CIDR: "${TRANSPORT_EXPORT_CONSUMER_CIDR:-}"' in compose
     assert "/docker-entrypoint.d/19-export-allowlist.sh:ro" in compose
+
+
+@pytest.mark.parametrize("path,allowed", [
+    ("/v1/transport/fuel/stations/1/price-history", True),
+    ("/v1/transport/fuel/stations/9274/price-history", True),
+    ("/v1/transport/fuel/stations", True),
+    ("/v1/transport/fuel/statistics", True),
+    ("/v1/transport/fuel/stations/0/price-history", False),
+    ("/v1/transport/fuel/stations/-1/price-history", False),
+    ("/v1/transport/fuel/stations/1x/price-history", False),
+    ("/v1/transport/fuel/stations/1/price-history/delete", False),
+    ("/v1/transport/fuel/stations/1/price-history/", False),
+    ("/v1/transport/fuel/stations/1/prices", False),
+    ("/v1/admin/backups", False),
+    ("/v1/service/exports/fuel-stations/opinet:1/price-history", False),
+])
+def test_public_fuel_history_is_an_exact_read_route(path, allowed):
+    template = (ROOT / "deploy/transport-admin/api-gateway.conf.template").read_text()
+    location = next(line.strip() for line in template.splitlines()
+                    if line.strip().startswith("location ~ ^/v1/transport/"))
+    pattern = location.removeprefix("location ~ ").removesuffix(" {")
+    assert bool(re.fullmatch(pattern, path)) is allowed
+    block = template.split(location, 1)[1].split("\n    }", 1)[0]
+    assert "limit_except GET { deny all; }" in block
+    assert "proxy_read_timeout 30s;" in block

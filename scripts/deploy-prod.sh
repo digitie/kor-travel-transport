@@ -113,6 +113,7 @@ STAGE_MARKER="${REMOTE_APP_DIR}/.staged-release-sha"
 rm -f -- "${STAGE_MARKER}"
 rsync -a --delete \
   --exclude="${REMOTE_ENV_FILE}" \
+  --exclude=".env.prod.bak-*" \
   --exclude=".env.server14" \
   --exclude=".env.server14.legacy" \
   --exclude=".env.server14.shared-dagster-cutover" \

@@ -112,7 +112,7 @@ function ManualLocationEditor({ place, onSaved, onReload }: { place: Place; onSa
 
 export function PlaceInspector({ place, onClose, onSaved, onReload, onShowMap, showHeader = true }: { place: Place; onClose: () => void; onSaved?: (updated: Place) => void; onReload?: () => void; onShowMap?: () => void; showHeader?: boolean }) {
   return <>
-    {showHeader ? <header className="inspector-heading"><div><span className="place-title"><PlaceIcon kind={place.kind} />{place.brand_name ?? placeKindLabel(place.kind)}</span><h2>{place.name}</h2>{place.kind !== "fuel_station" ? <><p>{collectionSourceLabel(place.source)}</p><p>기준정보 반영 {dateTime(place.updated_at)}</p></> : null}</div><Button type="button" variant="outline" size="icon" aria-label="장소 상세 닫기" onClick={onClose}><X data-icon="inline-start" aria-hidden="true" /></Button></header> : null}
+    {showHeader ? <header className="inspector-heading"><div><span className="place-title"><PlaceIcon kind={place.kind} brandCode={place.brand_code} brandName={place.brand_name} />{place.brand_name ?? placeKindLabel(place.kind)}</span><h2>{place.name}</h2>{place.kind !== "fuel_station" ? <><p>{collectionSourceLabel(place.source)}</p><p>기준정보 반영 {dateTime(place.updated_at)}</p></> : null}</div><Button type="button" variant="outline" size="icon" aria-label="장소 상세 닫기" onClick={onClose}><X data-icon="inline-start" aria-hidden="true" /></Button></header> : null}
     {place.kind === "ferry_port" ? <PortDepartures key={place.id} place={place} /> : null}
     {place.kind === "airport" ? <AirportDetails key={place.id} place={place} /> : null}
     <section className="inspector-section" aria-label="장소 정보"><PlaceDetails place={place} showHeading={false} onShowMap={onShowMap} /></section>

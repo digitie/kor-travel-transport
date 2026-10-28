@@ -119,4 +119,18 @@ describe("FeeCalculator", () => {
     await user.click(screen.getByRole("button", { name: "요금 계산" }));
     expect(screen.getByText("인천공항은 현재 요금 계산을 지원하지 않습니다.")).toBeInTheDocument();
   });
+
+  test("shows the official next action for a missing tariff and keeps rule details behind the info button", async () => {
+    const user = userEvent.setup();
+    const onCalculate = vi.fn(async () => ({ supported: false, airport_code: "GMP", vehicle_size: "small", total_fee: null,
+      currency: "KRW", reason_code: "collection_disabled", message: "요금 수집이 꺼져 있습니다.",
+      official_url: "https://www.airport.co.kr/gimpo/cms/frCon/index.do?CONTENTS_NO=2&MENU_ID=1360", breakdown: [] }) as FeeCalculationResponse);
+    render(<FeeCalculator airports={airports} initialAirportCode="GMP" onCalculate={onCalculate} />);
+    await user.click(screen.getByRole("button", { name: "요금 계산" }));
+    expect(await screen.findByText("계산 불가")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "공항 공식 요금 안내 ↗" })).toHaveAttribute("target", "_blank");
+    expect(screen.getByText("요금 수집이 꺼져 있습니다.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "주차요금 계산 안내" }));
+    expect(await screen.findByText(/입출차 시각은 한국 시간/)).toBeInTheDocument();
+  });
 });

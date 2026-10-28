@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Info } from "lucide-react";
 
 import { Alert } from "./ui/alert";
 import { Button } from "./ui/button";
-import { formatCurrency, formatSeoulDateKey } from "../lib/format";
+import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "./ui/popover";
+import { formatCurrency, formatDateTimeWithZone, formatSeoulDateKey } from "../lib/format";
 import type { Airport, FeeCalculationRequest, FeeCalculationResponse } from "../lib/types";
 
 type FeeCalculatorProps = {
@@ -94,8 +96,10 @@ export function FeeCalculator({ airports, initialAirportCode, initialParkingLotI
   return (
     <section className="panel-surface fee-panel">
       <div className="panel-head">
-        <h3>주차요금 계산기{help}</h3>
-        <p>공항별 공개 요금 기준 · 입력 시각 KST</p>
+        <h3>주차요금 계산기{help ?? <Popover>
+          <PopoverTrigger render={<Button variant="ghost" size="icon-xs" aria-label="주차요금 계산 안내" />}><Info /></PopoverTrigger>
+          <PopoverContent><PopoverTitle>주차요금 계산 안내</PopoverTitle><p>입출차 시각은 한국 시간입니다. 선택한 주차장·차량의 저장 규칙으로 일반요금을 계산하며, 증빙이 필요한 할인은 반영하지 않습니다.</p></PopoverContent>
+        </Popover>}</h3>
       </div>
 
       <form className="fee-form" onSubmit={handleSubmit}>
@@ -162,9 +166,21 @@ export function FeeCalculator({ airports, initialAirportCode, initialParkingLotI
       {result ? (
         <div className="quote-box">
           <div className="quote-total">
-            <span>예상 요금</span>
-            <strong>{result.supported ? formatCurrency(result.total_fee) : result.message ?? "미지원"}</strong>
+            <span>예상 요금{result.supported ? <Popover>
+              <PopoverTrigger render={<Button variant="ghost" size="icon-xs" aria-label="계산 근거와 공식 요금 안내" />}><Info /></PopoverTrigger>
+              <PopoverContent>
+                <PopoverTitle>계산 근거</PopoverTitle>
+                {result.message ? <p>{result.message}</p> : null}
+                {result.rule_updated_at ? <p>규칙 확인 {formatDateTimeWithZone(result.rule_updated_at)}</p> : null}
+                {result.official_url ? <a href={result.official_url} target="_blank" rel="noreferrer">공항 공식 요금 안내 ↗</a> : null}
+              </PopoverContent>
+            </Popover> : null}</span>
+            <strong>{result.supported ? formatCurrency(result.total_fee) : "계산 불가"}</strong>
           </div>
+          {!result.supported ? <div role="status">
+            <p>{result.message ?? "선택한 주차장·차량의 요금 규칙을 확인할 수 없습니다."}</p>
+            {result.official_url ? <a href={result.official_url} target="_blank" rel="noreferrer">공항 공식 요금 안내 ↗</a> : null}
+          </div> : null}
           {result.breakdown.length > 0 ? (
             <ul className="quote-breakdown">
               {result.breakdown.map((line) => (

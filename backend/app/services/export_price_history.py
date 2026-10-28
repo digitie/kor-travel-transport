@@ -8,6 +8,8 @@ import hashlib
 import hmac
 import json
 from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass
+from typing import Any
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
@@ -18,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.core.time_utils import now_utc, serialize_utc
 from app.models import FuelPriceSnapshot, FuelStation, TransportCollectionState
-from app.schemas import ExportPriceHistoryItem, FuelPriceHistoryExportPage, ServiceExportMeta
+from app.schemas import ExportPriceHistoryItem, FuelPriceHistoryExportPage, FuelStationPriceHistoryResponse, ServiceExportMeta
 from app.services.parking_history_cache import accepts_gzip
 from app.services.transport_collection import FUEL_STALE_AFTER, OPINET_SOURCE
 
@@ -61,7 +63,7 @@ def _decode_cursor(value: str, key: bytes) -> dict:
 
 
 def _response(
-    page: FuelPriceHistoryExportPage, request: Request, *, cursor_epoch: int | None,
+    page: FuelPriceHistoryExportPage | FuelStationPriceHistoryResponse, request: Request, *, cursor_epoch: int | None,
     cursor_revision: str | None,
 ) -> Response:
     payload = page.model_dump(mode="json")
@@ -83,6 +85,118 @@ def _response(
         body = gzip.compress(body, compresslevel=1, mtime=0)
         headers["Content-Encoding"] = "gzip"
     return Response(body, media_type="application/json", headers=headers)
+
+
+@dataclass
+class PriceHistoryRead:
+    page: FuelPriceHistoryExportPage
+    rows: list[Any]
+    station_id: int
+    from_at: datetime
+    to_at: datetime
+    source_last_success_at: datetime
+    revision: str
+    issued: datetime
+
+
+class PriceHistoryUnavailable(Exception):
+    def __init__(self, response: Response):
+        self.response = response
+
+
+async def read_price_history_page(
+    request: Request, station_key: str, product: str | None,
+    from_at: datetime | None, to_at: datetime | None, limit: int, cursor: str | None,
+    session: AsyncSession, cursor_key: bytes, *, native_station_id: int | None = None,
+    default_days: int = 30, max_window: timedelta = MAX_HISTORY_WINDOW,
+    cursor_scope: str | None = None,
+) -> PriceHistoryRead:
+    """한 주유소의 bounded DB 이력. 호출자가 같은 snapshot의 후속 조회와 rollback을 소유한다."""
+    if session.bind.dialect.name == "postgresql":
+        await session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
+    station_id = await session.scalar(select(FuelStation.id).where(
+        FuelStation.source == OPINET_SOURCE,
+        (FuelStation.source_station_id == station_key if native_station_id is None else FuelStation.id == native_station_id),
+    ).order_by(FuelStation.id).limit(1))
+    if station_id is None:
+        raise HTTPException(404, "주유소 자연키를 찾을 수 없습니다." if native_station_id is None else "저장된 주유소를 찾을 수 없습니다.")
+    state = await session.scalar(select(TransportCollectionState).where(
+        TransportCollectionState.source == OPINET_SOURCE,
+    ))
+    if state is None or state.last_success_at is None:
+        raise PriceHistoryUnavailable(JSONResponse(status_code=503, media_type="application/problem+json", content={
+            "type": "about:blank", "title": "Service Unavailable", "status": 503,
+            "detail": "성공한 유가 수집 이력이 없습니다.", "instance": request.url.path,
+            "meta": ServiceExportMeta(generated_at=now_utc(), source_collected_at=None,
+                                      source_status="failed", item_count=0).model_dump(mode="json"),
+        }, headers={"Cache-Control": "private, no-cache"}))
+    now = now_utc()
+    revision = _revision(state)
+    after_at = None
+    after_id = None
+    try:
+        if cursor is not None:
+            saved = _decode_cursor(cursor, cursor_key)
+            if saved["station"] != station_key or saved["product"] != product or saved.get("scope") != cursor_scope:
+                raise ValueError("cursor 필터가 다릅니다.")
+            if saved["revision"] != revision:
+                raise HTTPException(409, "수집 상태가 바뀌었습니다. 첫 페이지부터 다시 조회하세요.")
+            issued = _aware(datetime.fromisoformat(saved["issued"]))
+            if now - issued > CURSOR_TTL or issued > now:
+                raise HTTPException(409, "cursor가 만료됐습니다. 첫 페이지부터 다시 조회하세요.")
+            start, end = (_aware(datetime.fromisoformat(saved[k])) for k in ("from", "to"))
+            if (from_at is not None and _aware(from_at) != start
+                    or to_at is not None and _aware(to_at) != end):
+                raise ValueError("cursor 시각 조건이 다릅니다.")
+            after_at = _aware(datetime.fromisoformat(saved["at"]))
+            after_id = saved["id"]
+            if type(after_id) is not int or after_id < 1:
+                raise ValueError("cursor 행 키가 잘못됐습니다.")
+        else:
+            end = _aware(to_at) if to_at is not None else now
+            start = _aware(from_at) if from_at is not None else end - timedelta(days=default_days)
+            issued = now
+        if end < start or end - start > max_window or end > now:
+            raise ValueError("조회 창은 과거366일 이내 길이여야 합니다.")
+        if cursor_scope is not None and (end != issued or start != issued - timedelta(days=default_days)):
+            raise ValueError("공개 이력 cursor는 최초 요청의 rolling 창만 사용할 수 있습니다.")
+    except (ValueError, KeyError, TypeError, OverflowError) as exc:
+        raise HTTPException(422, "이력 시각·창·cursor 조건이 올바르지 않습니다.") from exc
+    query = select(FuelPriceSnapshot.product_code, FuelPriceSnapshot.observed_at,
+                   FuelPriceSnapshot.price, FuelPriceSnapshot.collected_at, FuelPriceSnapshot.id, FuelPriceSnapshot.provider_updated_at).where(
+        FuelPriceSnapshot.fuel_station_id == station_id,
+        FuelPriceSnapshot.source == OPINET_SOURCE,
+        FuelPriceSnapshot.observed_at >= start, FuelPriceSnapshot.observed_at <= end,
+    )
+    if product is not None:
+        query = query.where(FuelPriceSnapshot.product_code == product)
+    if after_at is not None:
+        query = query.where(or_(FuelPriceSnapshot.observed_at < after_at, and_(
+            FuelPriceSnapshot.observed_at == after_at, FuelPriceSnapshot.id < after_id,
+        )))
+    rows = (await session.execute(query.order_by(
+        FuelPriceSnapshot.observed_at.desc(), FuelPriceSnapshot.id.desc(),
+    ).limit(limit + 1))).all()
+    page, has_more = rows[:limit], len(rows) > limit
+    next_cursor = None
+    if has_more:
+        next_cursor = _encode_cursor({
+            **({"scope": cursor_scope} if cursor_scope is not None else {}),
+            "v": 1, "station": station_key, "product": product, "revision": revision,
+            "from": start.isoformat(), "to": end.isoformat(), "issued": issued.isoformat(),
+            "at": serialize_utc(page[-1].observed_at).isoformat(), "id": page[-1].id,
+        }, cursor_key)
+    source_clock = min(serialize_utc(row.collected_at) for row in page) if page else serialize_utc(state.last_success_at)
+    source_status = "stale" if (state.last_error or now - serialize_utc(state.last_success_at) > FUEL_STALE_AFTER) else "ok"
+    result = FuelPriceHistoryExportPage(
+        meta=ServiceExportMeta(generated_at=now_utc(), source_collected_at=source_clock,
+                               source_status=source_status, item_count=len(page)),
+        station_key=station_key, items=[ExportPriceHistoryItem(
+            product_code=row.product_code, observed_at=serialize_utc(row.observed_at),
+            price=float(row.price) if row.price is not None else None,
+        ) for row in page], next_cursor=next_cursor, has_more=has_more,
+    )
+    return PriceHistoryRead(result, page, station_id, start, end, serialize_utc(state.last_success_at), revision, issued)
 
 
 def build_price_history_router(
@@ -112,92 +226,18 @@ def build_price_history_router(
         cursor는15분 동안 창·필터·성공 수집 revision을 고정한다. 수집 revision이 바뀌면409로
         처음부터 다시 읽는다. 휴게소 가격 이력 표는 만들지 않으며 별도 경로는501이다.
         """
-        if session.bind.dialect.name == "postgresql":
-            await session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
-        station_id = await session.scalar(select(FuelStation.id).where(
-            FuelStation.source == OPINET_SOURCE, FuelStation.source_station_id == station_key,
-        ).order_by(FuelStation.id).limit(1))
-        if station_id is None:
-            raise HTTPException(404, "주유소 자연키를 찾을 수 없습니다.")
-        state = await session.scalar(select(TransportCollectionState).where(
-            TransportCollectionState.source == OPINET_SOURCE,
-        ))
-        if state is None or state.last_success_at is None:
-            return JSONResponse(status_code=503, media_type="application/problem+json", content={
-                "type": "about:blank", "title": "Service Unavailable", "status": 503,
-                "detail": "성공한 유가 수집 이력이 없습니다.", "instance": request.url.path,
-                "meta": ServiceExportMeta(generated_at=now_utc(), source_collected_at=None,
-                                          source_status="failed", item_count=0).model_dump(mode="json"),
-            }, headers={"Cache-Control": "private, no-cache"})
-        now = now_utc()
-        revision = _revision(state)
-        after_at = None
-        after_id = None
         try:
-            if cursor is not None:
-                saved = _decode_cursor(cursor, cursor_key)
-                if saved["station"] != station_key or saved["product"] != product:
-                    raise ValueError("cursor 필터가 다릅니다.")
-                if saved["revision"] != revision:
-                    raise HTTPException(409, "수집 상태가 바뀌었습니다. 첫 페이지부터 다시 조회하세요.")
-                issued = _aware(datetime.fromisoformat(saved["issued"]))
-                if now - issued > CURSOR_TTL or issued > now:
-                    raise HTTPException(409, "cursor가 만료됐습니다. 첫 페이지부터 다시 조회하세요.")
-                start, end = (_aware(datetime.fromisoformat(saved[k])) for k in ("from", "to"))
-                if (from_at is not None and _aware(from_at) != start
-                        or to_at is not None and _aware(to_at) != end):
-                    raise ValueError("cursor 시각 조건이 다릅니다.")
-                after_at = _aware(datetime.fromisoformat(saved["at"]))
-                after_id = saved["id"]
-                if type(after_id) is not int or after_id < 1:
-                    raise ValueError("cursor 행 키가 잘못됐습니다.")
-            else:
-                end = _aware(to_at) if to_at is not None else now
-                start = _aware(from_at) if from_at is not None else end - timedelta(days=30)
-                issued = now
-            if end < start or end - start > MAX_HISTORY_WINDOW or end > now:
-                raise ValueError("조회 창은 과거366일 이내 길이여야 합니다.")
-        except (ValueError, KeyError, TypeError, OverflowError) as exc:
-            raise HTTPException(422, "이력 시각·창·cursor 조건이 올바르지 않습니다.") from exc
-        query = select(FuelPriceSnapshot.product_code, FuelPriceSnapshot.observed_at,
-                       FuelPriceSnapshot.price, FuelPriceSnapshot.collected_at, FuelPriceSnapshot.id).where(
-            FuelPriceSnapshot.fuel_station_id == station_id,
-            FuelPriceSnapshot.source == OPINET_SOURCE,
-            FuelPriceSnapshot.observed_at >= start, FuelPriceSnapshot.observed_at <= end,
-        )
-        if product is not None:
-            query = query.where(FuelPriceSnapshot.product_code == product)
-        if after_at is not None:
-            query = query.where(or_(FuelPriceSnapshot.observed_at < after_at, and_(
-                FuelPriceSnapshot.observed_at == after_at, FuelPriceSnapshot.id < after_id,
-            )))
-        rows = (await session.execute(query.order_by(
-            FuelPriceSnapshot.observed_at.desc(), FuelPriceSnapshot.id.desc(),
-        ).limit(limit + 1))).all()
-        page, has_more = rows[:limit], len(rows) > limit
-        next_cursor = None
-        if has_more:
-            next_cursor = _encode_cursor({
-                "v": 1, "station": station_key, "product": product, "revision": revision,
-                "from": start.isoformat(), "to": end.isoformat(), "issued": issued.isoformat(),
-                "at": serialize_utc(page[-1].observed_at).isoformat(), "id": page[-1].id,
-            }, cursor_key)
-        source_clock = min(serialize_utc(row.collected_at) for row in page) if page else serialize_utc(state.last_success_at)
-        source_status = "stale" if (state.last_error or now - serialize_utc(state.last_success_at) > FUEL_STALE_AFTER) else "ok"
-        result = FuelPriceHistoryExportPage(
-            meta=ServiceExportMeta(generated_at=now_utc(), source_collected_at=source_clock,
-                                   source_status=source_status, item_count=len(page)),
-            station_key=station_key, items=[ExportPriceHistoryItem(
-                product_code=row.product_code, observed_at=serialize_utc(row.observed_at),
-                price=float(row.price) if row.price is not None else None,
-            ) for row in page], next_cursor=next_cursor, has_more=has_more,
-        )
+            read = await read_price_history_page(
+                request, station_key, product, from_at, to_at, limit, cursor, session, cursor_key,
+            )
+        except PriceHistoryUnavailable as exc:
+            return exc.response
         # gzip/JSON CPU 작업 중에는 DB snapshot을 잡지 않는다.
         await session.rollback()
         return _response(
-            result, request,
-            cursor_epoch=int(issued.timestamp()) // int(CURSOR_TTL.total_seconds()) if has_more else None,
-            cursor_revision=revision if has_more else None,
+            read.page, request,
+            cursor_epoch=int(read.issued.timestamp()) // int(CURSOR_TTL.total_seconds()) if read.page.has_more else None,
+            cursor_revision=read.revision if read.page.has_more else None,
         )
 
     @router.get("/rest-area-fuel-prices/{station_key}/price-history", status_code=501,

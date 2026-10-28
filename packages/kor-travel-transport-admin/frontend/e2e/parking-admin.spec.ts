@@ -237,7 +237,7 @@ for (const width of [375, 1440]) test(`공항·주차장 선택으로 항공편�
   await expect(page.getByLabel("공항 선택", { exact: true })).toHaveValue("CJU"); await expect(page.getByLabel("세부 주차장", { exact: true })).toHaveValue("3");
   await page.getByRole("tab", { name: "요금계산", exact: true }).click();
   const info = page.getByRole("button", { name: "주차요금 기준 안내", exact: true }); await info.focus(); await info.press("Enter");
-  await expect(page.getByText("요금의 ‘휴일’은 현재 토·일요일 기준이며 공휴일과 할인 조건은 별도로 계산하지 않습니다.", { exact: false })).toBeVisible();
+  await expect(page.getByText("김포·김해·제주는 금~일요일과 법정공휴일 요금을 적용합니다.", { exact: false })).toBeVisible();
   await page.keyboard.press("Escape"); await expect(info).toBeFocused();
 });
 

@@ -12,6 +12,8 @@ import { cn } from "@/lib/utils";
 import { CameraRequest, ClusterBubble, MapMarkerButton, MapUnavailable, MarkerBadge, OverlapPopup, useVWorldBasemapHealth, vworldApiKey, ZoomButtons, type CameraTarget } from "./map-overlays";
 import { PlaceIcon } from "./journey-controls";
 import { PlaceInspector } from "./place-inspector";
+import { FuelBrandIcon } from "./fuel-brand-icon";
+import { fuelBrand } from "@/lib/fuel-brands";
 import { MapDetailOverlay, MapFilterBar, MapFilterField, MapFilterPanel, MapKindFilter, MapStage, MapWorkspace, MapTabs as Tabs, MapTabPanel as TabsContent, MapViewTabs, type MapViewportReadout } from "@kor-travel/ui/map-controls";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -53,12 +55,12 @@ function MapMarker({ point, onSelect, selected, products }: { point: MapPoint; o
   const { markerIcon, markerColor } = placeMarkerStyle(place.kind);
   const priceLabel = place.kind === "fuel_station" ? priceMarkerLabel(place.prices, products) : null;
   const title = [place.name, place.brand_name, place.kind === "rail_station" ? place.line_names.join("·") : null].filter(Boolean).join(" · ");
-  const ariaLabel = [placeKindLabel(place.kind), place.name, place.line_names.join(" · "), priceLabel ? priceSpeech(place.prices, products) : null, "상세 보기"].filter(Boolean).join(" ");
+  const ariaLabel = [placeKindLabel(place.kind), place.name, place.kind === "fuel_station" ? fuelBrand(place.brand_code, place.brand_name).name : null, place.line_names.join(" · "), priceLabel ? priceSpeech(place.prices, products) : null, "상세 보기"].filter(Boolean).join(" ");
   // 선택 마커는 묶음 원(z 3) 위(z 4)에 그리되 포인터는 통과시켜 같은 좌표의 묶음 원도 눌린다.
   return <MapMarkerButton lngLat={point.lngLat} interactionId={point.id} zIndex={selected ? 4 : undefined} passThrough={selected} pressed={selected}
     className={`transport-map-marker ${place.kind}${selected ? " is-selected" : ""}`}
     title={priceLabel ? `${title} ${priceLabel.replace(/\n/g, " ")}` : title} ariaLabel={ariaLabel} onClick={() => onSelect(place)}>
-    <MarkerBadge markerIcon={markerIcon} markerColor={markerColor} selected={selected} />
+    {place.kind === "fuel_station" ? <FuelBrandIcon code={place.brand_code} name={place.brand_name} className="fuel-brand-marker" /> : <MarkerBadge markerIcon={markerIcon} markerColor={markerColor} selected={selected} />}
     {priceLabel ? <span className="map-marker-price" style={{ "--marker-color": placeMarkerColor(place.kind) } as CSSProperties}>{priceLabel}</span> : null}
   </MapMarkerButton>;
 }
@@ -356,7 +358,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
   const closeDetail = () => { setSelected(null); requestAnimationFrame(() => { if (canRestoreFocus(detailOpener.current)) detailOpener.current.focus({ preventScroll: true }); else focusFilters(); }); };
   const detailPanel = (panelView: "map" | "list") => embedded && details ? <MapDetailOverlay ref={panelView === "map" ? mapDetail : listDetail} className="transport-map-detail" aria-label="선택 장소 상세" header={<h2>{detailTitle ?? current?.name ?? "선택 장소 상세"}</h2>} collapsible onDismiss={dismissEmbeddedDetail}>
     {details}
-  </MapDetailOverlay> : !embedded && current ? <MapDetailOverlay className={cn("transport-map-detail weather-inspector", current.kind === "fuel_station" && "fuel-inspector")} ref={panelView === "map" ? mapDetail : listDetail} aria-label="선택 장소 상세" header={current.kind === "fuel_station" ? <div className="fuel-detail-heading"><PlaceIcon kind={current.kind} /><h2>{current.name}</h2>{current.brand_name ? <small>{current.brand_name}</small> : null}</div> : <div><span className="place-title"><PlaceIcon kind={current.kind} />{current.brand_name ?? placeKindLabel(current.kind)}</span><h2>{current.name}</h2></div>} collapsible={current.kind !== "fuel_station"} onDismiss={closeDetail}>
+  </MapDetailOverlay> : !embedded && current ? <MapDetailOverlay className={cn("transport-map-detail weather-inspector", current.kind === "fuel_station" && "fuel-inspector")} ref={panelView === "map" ? mapDetail : listDetail} aria-label="선택 장소 상세" header={current.kind === "fuel_station" ? <div className="fuel-detail-heading"><PlaceIcon kind={current.kind} brandCode={current.brand_code} brandName={current.brand_name} /><h2>{current.name}</h2>{current.brand_name ? <small>{current.brand_name}</small> : null}</div> : <div><span className="place-title"><PlaceIcon kind={current.kind} brandCode={current.brand_code} brandName={current.brand_name} />{current.brand_name ?? placeKindLabel(current.kind)}</span><h2>{current.name}</h2></div>} collapsible={current.kind !== "fuel_station"} onDismiss={closeDetail}>
     {current.kind === "fuel_station" && loaded.fuel_station?.fuel_prices_stale ? <div className="inspector-section fuel-price-status"><FuelPriceStatus stale lastRefreshedAt={loaded.fuel_station.fuel_prices_last_refreshed_at} /></div> : null}
     <PlaceInspector key={keyOf(current)} place={current} showHeader={false} onShowMap={() => { setView("map"); setCameraRequest((value) => value + 1); }} onClose={closeDetail} onSaved={(updated) => { setSelected(updated); setReload((value) => value + 1); }} onReload={() => { setSelected(null); setReload((value) => value + 1); focusFilters(); }} />
   </MapDetailOverlay> : null;
@@ -429,7 +431,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
       </VWorldMapView>}</MountCamera></div>
       </MapStage>
     </TabsContent>
-    <TabsContent className="min-h-0" value="list" keepMounted><MapStage view="list" detail={view === "list" ? detailPanel("list") : null}><div className="map-primary"><div className="map-place-list"><div className="map-feedback">{status}</div>{listContent}{listPlaces ? items.map((place) => <button type="button" className="place-row" key={keyOf(place)} aria-pressed={current ? keyOf(current) === keyOf(place) : false} onClick={() => selectPlace(place)}><PlaceIcon kind={place.kind} /><span><strong>{place.name}</strong><small>{place.line_names.join(" · ") || place.brand_name || place.subtitle || placeKindLabel(place.kind)}</small>{(place.kind === "ferry_port" || place.kind === "bus_terminal") && place.provider_id ? <small>{place.kind === "ferry_port" ? "항구" : "터미널"} 코드 {place.provider_id}</small> : null}{!hasCoordinates(place) ? <small>좌표 미등록</small> : null}</span></button>) : null}</div></div></MapStage></TabsContent>
+    <TabsContent className="min-h-0" value="list" keepMounted><MapStage view="list" detail={view === "list" ? detailPanel("list") : null}><div className="map-primary"><div className="map-place-list"><div className="map-feedback">{status}</div>{listContent}{listPlaces ? items.map((place) => <button type="button" className="place-row" key={keyOf(place)} aria-pressed={current ? keyOf(current) === keyOf(place) : false} onClick={() => selectPlace(place)}><PlaceIcon kind={place.kind} brandCode={place.brand_code} brandName={place.brand_name} /><span><strong>{place.name}</strong><small>{place.line_names.join(" · ") || place.brand_name || place.subtitle || placeKindLabel(place.kind)}</small>{(place.kind === "ferry_port" || place.kind === "bus_terminal") && place.provider_id ? <small>{place.kind === "ferry_port" ? "항구" : "터미널"} 코드 {place.provider_id}</small> : null}{!hasCoordinates(place) ? <small>좌표 미등록</small> : null}</span></button>) : null}</div></div></MapStage></TabsContent>
     {!embedded && !(mode === "fuel" && view === "map") ? <div className="map-feedback map-guidance" role="status">
       {kinds.includes("fuel_station") && loaded.fuel_station?.fuel_prices_stale ? <p className="error">유가 갱신 지연 · 유종·가격은 {dateTime(loaded.fuel_station.fuel_prices_last_refreshed_at)} 기준이며 판매 여부도 다를 수 있습니다.</p> : null}
       {kinds.includes("fuel_station") && loaded.fuel_station?.fuel_prices_last_refreshed_at && !loaded.fuel_station.fuel_prices_stale ? <p>유가 {dateTime(loaded.fuel_station.fuel_prices_last_refreshed_at)} 갱신</p> : null}

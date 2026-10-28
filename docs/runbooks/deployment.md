@@ -78,6 +78,14 @@ DSN의 loopback11000/DB 이름, 공용 Dagster 버전, location absent 거절·P
 
 예전 n150/파일명으로 적힌 아래 절은 당시 이력이다. 현재 명령에는 위 prod entry·--host·.env.prod를 적용하고, 이전 정책 문구·실제 source 배포/ARM/live 수용은 T-TRN-03a/04에서 별도로 정산한다. 현재 source의 tracked-file/효과 검사 적용과 runtime image 재빌드·전체 cutover는 별개다.
 
+### 환경 회전 백업 보존
+
+공식 staging의 `rsync --delete`는 `.env.prod.bak-*`를 전송·삭제 대상에서 제외한다.
+키 회전·설정 수정 전에 보관한 운영 백업을 후보 archive의 같은 이름 파일로 덮거나 지우지 않는다.
+이 규칙은 `.env.prod.example`까지 보존하는 광범위한 `.env.prod*` 패턴이 아니므로 추적된 예시
+설정은 후보 내용으로 갱신한다. 실제 배포 전에는 기존 파일의 bytes·권한·지문을 새로 확인하고,
+백업 삭제·키 값 출력·과거 백업으로의 임의 복원은 하지 않는다.
+
 ## 현재 Odroid 정본(2026-10-19)
 
 사용자 승인에 따라 현재 대상은 Manager가 지정한 Odroid다. project는

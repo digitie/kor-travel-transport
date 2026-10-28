@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from app.services.parsers import (
     parse_incheon_fee,
     parse_incheon_parking,
@@ -95,6 +97,7 @@ def test_parse_incheon_fee_builds_short_and_long_rules() -> None:
     assert long_rule.basic_minutes == 60
     assert long_rule.basic_fee == 1000
     assert long_rule.daily_max_fee == 9000
+    assert {rule.vehicle_size for rule in parsed} == {"small"}
 
 
 def test_parse_kac_fee(fixtures_dir) -> None:
@@ -221,3 +224,20 @@ def test_parse_incheon_fee_accepts_pre_extracted_item_list() -> None:
     assert short_rule.daily_max_fee == 24000
 
     assert parse_incheon_fee(json.dumps(items)) == parsed
+
+
+@pytest.mark.parametrize("maximum", [None, "요금 안내 확인", "일일 최대 0원 적용"])
+def test_parse_incheon_fee_rejects_missing_or_invalid_daily_cap(maximum) -> None:
+    items = [{"charid": "FB00000002", "chardesc": "01:00 초과 시 1000원 부과"}]
+    if maximum is not None:
+        items.append({"charid": "NF00000002", "chardesc": maximum})
+    with pytest.raises(ValueError, match="일 최대요금"):
+        parse_incheon_fee(items)
+
+
+def test_parse_incheon_fee_rejects_missing_unit_instead_of_a_flat_basic_fee() -> None:
+    with pytest.raises(ValueError, match="추가 단위"):
+        parse_incheon_fee([
+            {"charid": "FB00000001", "chardesc": "최초 00:30 에 한해 1200원 적용"},
+            {"charid": "NF00000001", "chardesc": "일일 최대 24000원 적용"},
+        ])

@@ -355,12 +355,22 @@ def test_backend_sync_preserves_old_and_new_environment_artifacts(tmp_path):
     destination.mkdir()
     protected = (
         ".env.prod", ".env.prod.legacy", ".env.prod.shared-dagster-cutover",
+        ".env.prod.bak-rfskey-20261028T014959Z", ".env.prod.bak-timeout-fixture",
         ".env.server14", ".env.server14.legacy", ".env.server14.shared-dagster-cutover",
     )
     for name in protected:
         (destination / name).write_text("owned-preserve-" + name)
+        (destination / name).chmod(0o600)
+    protected_before = {
+        name: ((destination / name).stat().st_ino, (destination / name).stat().st_mode,
+               (destination / name).stat().st_mtime_ns)
+        for name in protected
+    }
     (destination / "obsolete-owned.txt").write_text("owned stale")
     (source / "candidate.txt").write_text("owned candidate")
+    (destination / ".env.prod.example").write_text("owned old template")
+    (source / ".env.prod.example").write_text("owned new candidate template")
+    (source / ".env.prod.bak-rfskey-20261028T014959Z").write_text("must not replace backup")
     result = subprocess.run(
         ["bash", "-c", "set -euo pipefail\n" + block],
         env={"PATH": "/usr/bin:/bin", "REMOTE_ENV_FILE": ".env.prod", "REMOTE_SOURCE": str(source), "REMOTE_APP_DIR": str(destination)},
@@ -369,5 +379,8 @@ def test_backend_sync_preserves_old_and_new_environment_artifacts(tmp_path):
     assert result.returncode == 0, result.stderr
     assert (destination / "candidate.txt").read_text() == "owned candidate"
     assert not (destination / "obsolete-owned.txt").exists()
+    assert (destination / ".env.prod.example").read_text() == "owned new candidate template"
     for name in protected:
         assert (destination / name).read_text() == "owned-preserve-" + name
+        info = (destination / name).stat()
+        assert (info.st_ino, info.st_mode, info.st_mtime_ns) == protected_before[name]

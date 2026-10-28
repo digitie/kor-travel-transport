@@ -1340,12 +1340,14 @@ def test_flight_status_rejects_invalid_local_date(client) -> None:
 
 
 def test_fee_calculation(client) -> None:
+    airport = next(item for item in client.get("/v1/airports").json() if item["code"] == "GMP")
     entry = datetime(2026, 4, 24, 9, 0, tzinfo=ZoneInfo("Asia/Seoul"))
     exit_at = entry + timedelta(hours=2)
     response = client.post(
         "/v1/fees/calculate",
         json={
             "airport_code": "GMP",
+            "parking_lot_id": airport["parking_lots"][0]["id"],
             "vehicle_size": "small",
             "entry_at": entry.isoformat(),
             "exit_at": exit_at.isoformat(),
@@ -1355,15 +1357,17 @@ def test_fee_calculation(client) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["supported"] is True
-    assert payload["total_fee"] == 3000
+    assert payload["total_fee"] == 5700
 
 
 def test_incheon_fee_calculation_is_supported(client) -> None:
+    airport = next(item for item in client.get("/v1/airports").json() if item["code"] == "ICN")
     entry = datetime(2026, 4, 24, 9, 0, tzinfo=ZoneInfo("Asia/Seoul"))
     response = client.post(
         "/v1/fees/calculate",
         json={
             "airport_code": "ICN",
+            "parking_lot_id": next(lot["id"] for lot in airport["parking_lots"] if "장기" in lot["name"]),
             "vehicle_size": "small",
             "entry_at": entry.isoformat(),
             "exit_at": (entry + timedelta(hours=1)).isoformat(),
@@ -1373,7 +1377,7 @@ def test_incheon_fee_calculation_is_supported(client) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["supported"] is True
-    assert payload["total_fee"] == 1000
+    assert payload["total_fee"] == 2000
 
 
 def test_admin_collect_returns_cooldown_error(tmp_path: Path) -> None:
