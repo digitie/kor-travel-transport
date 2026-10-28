@@ -368,8 +368,9 @@ def test_fee_database_write_failure_still_rolls_back_collection(client) -> None:
 
 
 @asynccontextmanager
-async def _fee_budget_database(tmp_path):
-    engine, factory = create_engine_and_session_factory(f"sqlite+aiosqlite:///{tmp_path / 'fee-budget.sqlite3'}")
+async def _fee_budget_database(test_settings: Settings):
+    # 공통 fixture의 명시적 테스트 DB 검증을 거쳐 PostgreSQL과 SQLite를 모두 검사한다.
+    engine, factory = create_engine_and_session_factory(test_settings.database_url)
     try:
         async with engine.begin() as connection:
             await connection.run_sync(lambda sync: Base.metadata.create_all(sync, tables=[
@@ -387,7 +388,7 @@ def _fee_budget_service(client, airports="GMP"):
         enable_incheon_fee_collection=False, airport_codes_csv=airports), client=client)
 
 
-def test_kac_fee_success_budget_is_per_airport_and_refreshes_at_24_hours(tmp_path, caplog) -> None:
+def test_kac_fee_success_budget_is_per_airport_and_refreshes_at_24_hours(test_settings, caplog) -> None:
     class CountingClient(FixturePublicDataClient):
         calls: list[str] = []
 
@@ -400,7 +401,7 @@ def test_kac_fee_success_budget_is_per_airport_and_refreshes_at_24_hours(tmp_pat
     async def check():
         clock = [datetime(2026, 10, 28, tzinfo=timezone.utc)]
         client = CountingClient()
-        async with _fee_budget_database(tmp_path) as factory:
+        async with _fee_budget_database(test_settings) as factory:
             async def tick(airports="GMP", trigger="manual"):
                 async with factory() as session:
                     return await _fee_budget_service(client, airports).collect(session, trigger=trigger)
@@ -437,7 +438,7 @@ def test_kac_fee_success_budget_is_per_airport_and_refreshes_at_24_hours(tmp_pat
     asyncio.run(check())
 
 
-def test_kac_fee_fetch_failure_budget_is_four_hours_and_does_not_leak_exception(tmp_path) -> None:
+def test_kac_fee_fetch_failure_budget_is_four_hours_and_does_not_leak_exception(test_settings) -> None:
     class FailingClient(FixturePublicDataClient):
         calls = 0
 
@@ -448,7 +449,7 @@ def test_kac_fee_fetch_failure_budget_is_four_hours_and_does_not_leak_exception(
     async def check():
         clock = [datetime(2026, 10, 28, tzinfo=timezone.utc)]
         client = FailingClient()
-        async with _fee_budget_database(tmp_path) as factory:
+        async with _fee_budget_database(test_settings) as factory:
             async def tick():
                 async with factory() as session:
                     return await _fee_budget_service(client).collect(session, trigger="manual_force")
@@ -475,9 +476,9 @@ def test_kac_fee_fetch_failure_budget_is_four_hours_and_does_not_leak_exception(
 
 
 @pytest.mark.parametrize("legacy_status,contract", [("received", None), ("failed", None), ("received", KAC_FEE_REFRESH_CONTRACT)])
-def test_legacy_fee_receipts_do_not_suppress_first_new_collection(tmp_path, legacy_status, contract) -> None:
+def test_legacy_fee_receipts_do_not_suppress_first_new_collection(test_settings, legacy_status, contract) -> None:
     async def check():
-        async with _fee_budget_database(tmp_path) as factory:
+        async with _fee_budget_database(test_settings) as factory:
             async with factory() as session:
                 params = {"schAirportCode": "GMP"}
                 if contract:
@@ -494,7 +495,7 @@ def test_legacy_fee_receipts_do_not_suppress_first_new_collection(tmp_path, lega
     asyncio.run(check())
 
 
-def test_unmatched_fee_rules_record_failed_budget_without_rolling_back_parking(tmp_path) -> None:
+def test_unmatched_fee_rules_record_failed_budget_without_rolling_back_parking(test_settings) -> None:
     class UnmatchedClient(FixturePublicDataClient):
         calls = 0
 
@@ -508,7 +509,7 @@ def test_unmatched_fee_rules_record_failed_budget_without_rolling_back_parking(t
             return response
 
     async def check():
-        async with _fee_budget_database(tmp_path) as factory:
+        async with _fee_budget_database(test_settings) as factory:
             client = UnmatchedClient()
             async with factory() as session:
                 summary = await _fee_budget_service(client).collect(session)
@@ -524,7 +525,7 @@ def test_unmatched_fee_rules_record_failed_budget_without_rolling_back_parking(t
 
 
 @pytest.mark.parametrize("body,expected_status", [("[]", "parsed"), ("not valid JSON or XML", "failed")])
-def test_empty_and_invalid_fee_responses_have_distinct_budget_receipts(tmp_path, body, expected_status) -> None:
+def test_empty_and_invalid_fee_responses_have_distinct_budget_receipts(test_settings, body, expected_status) -> None:
     class BodyClient(FixturePublicDataClient):
         calls = 0
 
@@ -535,7 +536,7 @@ def test_empty_and_invalid_fee_responses_have_distinct_budget_receipts(tmp_path,
             return response
 
     async def check():
-        async with _fee_budget_database(tmp_path) as factory:
+        async with _fee_budget_database(test_settings) as factory:
             client = BodyClient()
             async with factory() as session:
                 summary = await _fee_budget_service(client).collect(session)
@@ -551,9 +552,9 @@ def test_empty_and_invalid_fee_responses_have_distinct_budget_receipts(tmp_path,
     asyncio.run(check())
 
 
-def test_kac_fee_budget_does_not_bypass_existing_global_quota(tmp_path) -> None:
+def test_kac_fee_budget_does_not_bypass_existing_global_quota(test_settings) -> None:
     async def check():
-        async with _fee_budget_database(tmp_path) as factory:
+        async with _fee_budget_database(test_settings) as factory:
             client = FixturePublicDataClient()
             service = _fee_budget_service(client)
             state = UpstreamRateLimitState(True, datetime.now(timezone.utc) + timedelta(hours=1),
