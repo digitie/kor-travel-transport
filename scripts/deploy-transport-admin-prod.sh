@@ -120,6 +120,9 @@ mkdir -m 700 "${stage}"
 cleanup() { rm -rf -- "${REMOTE_STAGE}"; }
 trap cleanup EXIT
 tar -xzf "${REMOTE_ARCHIVE}" -C "${stage}"
+# Manager current release 표식(ADR-60): checkout과 컨테이너를 바꾸기 전에 실행 이미지가 current와 같아야 한다.
+source "${stage}/scripts/manager-release-pointer.sh"
+require_release_pointer_in_sync || exit 2
 # 두 배포가 같은 checkout을 쓴다. 관리자 동기화도 backend staging 증거를
 # 무효화해야 수동 remote 재시도에서 혼합 파일을 release로 오인하지 않는다.
 rm -f -- "${REMOTE_APP_DIR}/.staged-release-sha"
@@ -174,6 +177,8 @@ for url in "http://127.0.0.1:${api_port}/health" "http://127.0.0.1:${web_port}/l
 done
 printf '%s\n' "${CANDIDATE_SHA}" > .transport-admin-release-sha
 chmod 600 .transport-admin-release-sha
+# health 뒤에만 새 current를 발행한다. 이 배포는 migrate를 바꾸지 않으므로 현재 표식의 migrate ID를 넘긴다.
+publish_release_pointer "$(current_migrate_image_id)"
 REMOTE
 
 echo "transport admin 배포 완료: ${CANDIDATE_SHA}"
