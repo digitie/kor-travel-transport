@@ -237,11 +237,13 @@ async def test_kac_fee_consumes_complete_sdk_fields_and_preserves_source_audit()
         large_basic_minutes=None, large_basic_fee=None, large_daily_max_fee=None, raw=raw,
     )
     mock_client = _mock_krairport_client(parking_fees=[item])
-    with patch("app.services.collection.KrairportClient", return_value=mock_client):
+    with patch("app.services.collection.KrairportClient", return_value=mock_client) as sdk_factory:
         response = await KrairportPublicDataClient(Settings(data_go_kr_service_key="test-key")).fetch_kac_fee("GMP")
+    assert sdk_factory.call_args.kwargs["retries"] == 0
     mock_client.__aenter__.return_value.parking_fees.assert_awaited_once_with(airport_code="GMP")
     mock_client.__aenter__.return_value.kac_raw_items.assert_not_awaited()
     assert json.loads(response.body_text) == [raw]
+    assert response.request_params == {"schAirportCode": "GMP"}
     assert response.fee_rules is not None and len(response.fee_rules) == 2
     assert {rule.vehicle_size for rule in response.fee_rules} == {"small"}
     assert {rule.day_type: rule.daily_max_fee for rule in response.fee_rules} == {"weekday": 20000, "holiday": 30000}

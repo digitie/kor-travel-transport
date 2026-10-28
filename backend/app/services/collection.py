@@ -31,6 +31,7 @@ from app.services.parsers import (
 
 
 KAC_QUOTA_SOURCE = "airport_kac_quota"
+KAC_FEE_REFRESH_CONTRACT = "kac_fee_daily:v1"
 
 KAC_PARKING_ENDPOINT = "http://openapi.airport.co.kr/service/rest/AirportParking/airportparkingRT"
 INCHEON_PARKING_ENDPOINT = "http://apis.data.go.kr/B551177/StatusOfParking/getTrackingParking"
@@ -125,6 +126,7 @@ class SourceResponse:
     body_text: str
     completion: dict[str, Any] | None = None
     fee_rules: list[ParsedFeeRule] | None = None
+    raw_response_id: int | None = None
 
 
 def _kac_fee_domain_rules(items: list[ParkingFee], airport_code: str) -> list[ParsedFeeRule]:
@@ -297,6 +299,7 @@ class KrairportPublicDataClient(PublicDataClient):
         async with KrairportClient(
             kac_service_key=self.settings.data_go_kr_service_key,
             timeout=self.settings.api_timeout_seconds,
+            retries=0,
         ) as client:
             items = await client.parking_fees(airport_code=airport_code)
         return SourceResponse(
@@ -576,19 +579,36 @@ class CollectionService:
                 for airport_code in self.settings.supported_airport_codes:
                     if airport_code == "ICN":
                         continue
+                    if not await self._kac_fee_refresh_due(session, airport_code, started_at):
+                        continue
                     response = await self._safe_fetch(
                         session,
                         run,
                         lambda airport_code=airport_code: self.client.fetch_kac_fee(airport_code),
                         errors,
+                        kac_fee_airport_code=airport_code,
                     )
                     if response is None:
                         if any(is_upstream_rate_limit_error(message) for message in errors):
                             break
                         continue
                     raw_count += 1
-                    parsed_rules = response.fee_rules if response.fee_rules is not None else parse_kac_fee(response.body_text, airport_code)
-                    fee_rule_count += await self._store_fee_rules(session, parsed_rules, errors=errors)
+                    assert response.fee_rules is not None
+                    error_start = len(errors)
+                    fee_rule_count += await self._store_fee_rules(session, response.fee_rules, errors=errors)
+                    # 저장 오류는 바깥 transaction을 실패시킨다. 원천/매칭 오류만 공항별 재시도에 남긴다.
+                    raw = await session.scalar(select(RawApiResponse).where(
+                        RawApiResponse.id == response.raw_response_id,
+                        RawApiResponse.collection_run_id == run.id,
+                        RawApiResponse.source == "kac_fee",
+                        RawApiResponse.endpoint == KAC_FEE_ENDPOINT,
+                        RawApiResponse.request_params_json["schAirportCode"].as_string() == airport_code,
+                        RawApiResponse.request_params_json["fee_refresh_contract"].as_string() == KAC_FEE_REFRESH_CONTRACT,
+                    ))
+                    if raw is None:
+                        raise RuntimeError("자체 생성한 KAC 요금 원문을 확인하지 못했습니다.")
+                    raw.parse_status = "failed" if len(errors) > error_start else "parsed"
+                    raw.parse_error = "\n".join(errors[error_start:]) or None
 
             if self.settings.enable_incheon_fee_collection:
                 response = await self._safe_fetch(session, run, self.client.fetch_incheon_fee, errors)
@@ -709,53 +729,51 @@ class CollectionService:
         # flight_status와 같은 sanitizer(원문 키 + URL의 serviceKey= 값 — 인코딩된 키 포함)를 쓴다.
         return sanitize_upstream_error(message, self.settings.data_go_kr_service_key)
 
+    async def _kac_fee_refresh_due(self, session: AsyncSession, airport_code: str, checked_at: datetime) -> bool:
+        # 제공기관 보장이 아닌 내부 호출예산 정책이다. 예전 received 원문은 성공으로 추정하지 않는다.
+        previous = await session.scalar(select(RawApiResponse).where(
+            RawApiResponse.source == "kac_fee",
+            RawApiResponse.endpoint == KAC_FEE_ENDPOINT,
+            RawApiResponse.request_params_json["schAirportCode"].as_string() == airport_code,
+            RawApiResponse.request_params_json["fee_refresh_contract"].as_string() == KAC_FEE_REFRESH_CONTRACT,
+            RawApiResponse.parse_status.in_(["parsed", "failed"]),
+            RawApiResponse.received_at > checked_at - timedelta(hours=24),
+        ).order_by(RawApiResponse.received_at.desc(), RawApiResponse.id.desc()).limit(1))
+        if previous is None:
+            return True
+        due_at = serialize_utc(previous.received_at) + timedelta(hours=24 if previous.parse_status == "parsed" else 4)
+        if checked_at >= due_at:
+            return True
+        logger.info("KAC fee refresh deferred airport=%s status=%s received_at=%s next_due_at=%s",
+                    airport_code, previous.parse_status, serialize_utc(previous.received_at).isoformat(), due_at.isoformat())
+        return False
+
     async def _safe_fetch(
         self,
         session: AsyncSession,
         run: CollectionRun,
         fetcher,
         errors: list[str],
+        *,
+        kac_fee_airport_code: str | None = None,
     ) -> SourceResponse | None:
         try:
             response = await fetcher()
-            raw = RawApiResponse(
-                collection_run_id=run.id,
-                source=response.source,
-                endpoint=response.endpoint,
-                request_params_json=redact_request_params(response.request_params),
-                status_code=response.status_code,
-                body_text=response.body_text,
-                received_at=now_utc(),
-                parse_status="received",
-                parse_error=None,
-            )
-            session.add(raw)
-            await session.flush()
-            try:
-                validate_source_response_body(response.source, response.body_text)
-                if response.source == "incheon_fee":
-                    # 요금표 불완전은 이 원천의 실패로 보존한다. 정상 주차 관측과
-                    # DB 저장 오류까지 같은 예외 경계에서 삼키지 않는다.
-                    response.fee_rules = parse_incheon_fee(response.body_text)
-            except Exception as exc:
-                # DB(parse_error·collection_runs.error_message)와 route 응답에는 가린 글만 둔다. 가린 뒤에도
-                # rate-limit 표지(UPSTREAM_RATE_LIMIT_MARKER)는 남는다 — get_upstream_rate_limit_state가 읽는다.
-                message = self._redact(str(exc))
-                raw.parse_status = "failed"
-                raw.parse_error = message
-                await session.flush()
-                errors.append(message)
-                return None
-            return response
         except Exception as exc:
-            message = self._redact(str(exc))
+            if kac_fee_airport_code is not None:
+                # SDK 예외에는 인증 query/응답 본문이 들어갈 수 있다. 차단 표지만 보존한다.
+                detail = UPSTREAM_RATE_LIMIT_MARKER if is_upstream_rate_limit_error(str(exc)) else type(exc).__name__
+                message = f"kac_fee {kac_fee_airport_code}: {detail}"
+            else:
+                message = self._redact(str(exc))
             errors.append(message)
             session.add(
                 RawApiResponse(
                     collection_run_id=run.id,
-                    source="error",
-                    endpoint="unknown",
-                    request_params_json=None,
+                    source="kac_fee" if kac_fee_airport_code is not None else "error",
+                    endpoint=KAC_FEE_ENDPOINT if kac_fee_airport_code is not None else "unknown",
+                    request_params_json={"schAirportCode": kac_fee_airport_code,
+                        "fee_refresh_contract": KAC_FEE_REFRESH_CONTRACT} if kac_fee_airport_code is not None else None,
                     status_code=0,
                     body_text="",
                     received_at=now_utc(),
@@ -765,6 +783,39 @@ class CollectionService:
             )
             await session.flush()
             return None
+        # DB 오류를 원천 실패로 삼키지 않는다. fetcher가 넘긴 receipt는 신뢰하지 않는다.
+        response.raw_response_id = None
+        raw = RawApiResponse(
+            collection_run_id=run.id,
+            source="kac_fee" if kac_fee_airport_code is not None else response.source,
+            endpoint=KAC_FEE_ENDPOINT if kac_fee_airport_code is not None else response.endpoint,
+            request_params_json={"schAirportCode": kac_fee_airport_code,
+                "fee_refresh_contract": KAC_FEE_REFRESH_CONTRACT} if kac_fee_airport_code is not None else redact_request_params(response.request_params),
+            status_code=response.status_code, body_text=response.body_text, received_at=now_utc(),
+            parse_status="received", parse_error=None,
+        )
+        session.add(raw)
+        await session.flush()
+        response.raw_response_id = raw.id
+        try:
+            if kac_fee_airport_code is not None and (
+                response.source != "kac_fee" or response.endpoint != KAC_FEE_ENDPOINT
+                or response.request_params.get("schAirportCode") != kac_fee_airport_code
+            ):
+                raise ValueError("KAC 요금 응답의 공항·원천이 요청과 다릅니다.")
+            validate_source_response_body(response.source, response.body_text)
+            if response.source == "incheon_fee":
+                response.fee_rules = parse_incheon_fee(response.body_text)
+            elif kac_fee_airport_code is not None and response.fee_rules is None:
+                response.fee_rules = parse_kac_fee(response.body_text, kac_fee_airport_code)
+        except Exception as exc:
+            message = self._redact(str(exc))
+            raw.parse_status = "failed"
+            raw.parse_error = message
+            errors.append(message)
+            await session.flush()
+            return None
+        return response
 
     async def _get_or_create_airport(
         self,

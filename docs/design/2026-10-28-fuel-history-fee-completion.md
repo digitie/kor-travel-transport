@@ -78,6 +78,13 @@ KAC 요금 필드 해석은 형제 `python-krairport-api`의 typed `ParkingFee`�
 IIAC 요금의 typed 지원은 아직 없어 기존 raw 조회·설명문 파싱을 유지한다. 파싱 실패는 해당
 원천의 raw/오류에 남기고 정상 주차 관측까지 되돌리지 않는다. DB 쓰기 실패는 기존 rollback 경계를 유지한다.
 
+KAC 활성화는 요금표까지 주차 현황처럼 매5분 재조회한다는 뜻이 아니다. 기존 공항 job 안에서
+공항별 성공24시간·실패4시간을 적용하며, 즉시 SDK 재시도는0이다. 기존 raw의 내부 계약 표지와
+원천·공항·상태·UTC 시각을 조회하고 자체 생성한 receipt만 후속 처리한다. legacy `received`는
+성공으로 추정하지 않는다. 유예된 tick은 이전 실패·확인 시각을 그대로 유지한다. 기존 quota 차단은
+우선하며 수동 실행도 이 간격을 우회하지 않는다. 새 DB 구조·설정 항목·별도 job은 추가하지 않는다.
+이 내부 간격을 제공기관의 실제 호출 허용량으로 설명하지 않는다.
+
 ### 시간 경계 조사와 계산 검증
 
 [김포공항 공식 주차 안내](https://www.airport.co.kr/gimpo/cms/frCon/index.do?CONTENTS_NO=2&MENU_ID=1360)의

@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime, timezone
+from datetime import timedelta
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import delete, func, select
@@ -12,8 +14,8 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.config import Settings
 from app.db.session import create_engine_and_session_factory
-from app.models import Airport, Base, CollectionRun, ParkingFeeRule, ParkingLot, ParkingSnapshot, RawApiResponse
-from app.services.collection import CollectionService, FixturePublicDataClient, SourceResponse
+from app.models import Airport, Base, CollectionRun, ParkingFeeRule, ParkingLot, ParkingSnapshot, RawApiResponse, TransportCollectionState
+from app.services.collection import CollectionService, FixturePublicDataClient, SourceResponse, KAC_FEE_ENDPOINT, KAC_FEE_REFRESH_CONTRACT, UpstreamRateLimitState, UPSTREAM_RATE_LIMIT_MARKER
 from app.services.fee_rules import select_fee_rules
 from app.services.parsers import ParsedFeeRule, parse_incheon_fee
 
@@ -363,3 +365,209 @@ def test_fee_database_write_failure_still_rolls_back_collection(client) -> None:
             run = await session.scalar(select(CollectionRun).order_by(CollectionRun.id.desc()).limit(1))
             assert run.status == "failed" and "test write failure" in run.error_message
     asyncio.run(collect())
+
+
+@asynccontextmanager
+async def _fee_budget_database(tmp_path):
+    engine, factory = create_engine_and_session_factory(f"sqlite+aiosqlite:///{tmp_path / 'fee-budget.sqlite3'}")
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(lambda sync: Base.metadata.create_all(sync, tables=[
+                Airport.__table__, ParkingLot.__table__, CollectionRun.__table__, ParkingSnapshot.__table__,
+                ParkingFeeRule.__table__, RawApiResponse.__table__, TransportCollectionState.__table__,
+            ]))
+        yield factory
+    finally:
+        await engine.dispose()
+
+
+def _fee_budget_service(client, airports="GMP"):
+    return CollectionService(Settings(data_go_kr_service_key=None, use_sample_client_when_no_key=True,
+        enable_scheduler=False, enable_fee_collection=True, enable_incheon_collection=False,
+        enable_incheon_fee_collection=False, airport_codes_csv=airports), client=client)
+
+
+def test_kac_fee_success_budget_is_per_airport_and_refreshes_at_24_hours(tmp_path, caplog) -> None:
+    class CountingClient(FixturePublicDataClient):
+        calls: list[str] = []
+
+        async def fetch_kac_fee(self, airport_code):
+            self.calls.append(airport_code)
+            response = await super().fetch_kac_fee(airport_code)
+            response.raw_response_id = 999999  # 외부 receipt는 자체 생성 ID로 덮어써야 한다.
+            return response
+
+    async def check():
+        clock = [datetime(2026, 10, 28, tzinfo=timezone.utc)]
+        client = CountingClient()
+        async with _fee_budget_database(tmp_path) as factory:
+            async def tick(airports="GMP", trigger="manual"):
+                async with factory() as session:
+                    return await _fee_budget_service(client, airports).collect(session, trigger=trigger)
+            with patch("app.services.collection.now_utc", side_effect=lambda: clock[0]), patch(
+                "app.services.parsers.now_utc", side_effect=lambda: clock[0]
+            ):
+                first = await tick()
+                assert first["fee_rule_count"] > 0 and first["status"] == "success"
+                async with factory() as session:
+                    raw = await session.scalar(select(RawApiResponse).where(RawApiResponse.source == "kac_fee"))
+                    original = (raw.id, raw.received_at, raw.parse_status, raw.parse_error)
+                    assert raw.id != 999999 and raw.parse_status == "parsed"
+                    initial_count = await session.scalar(select(func.count()).select_from(ParkingFeeRule))
+                clock[0] += timedelta(minutes=5)
+                caplog.set_level("INFO", logger="app.services.collection")
+                second = await tick(trigger="manual_force")
+                assert second["fee_rule_count"] == 0 and second["status"] == "success"
+                assert client.calls == ["GMP"]
+                assert "KAC fee refresh deferred airport=GMP status=parsed" in caplog.text
+                async with factory() as session:
+                    raw = await session.get(RawApiResponse, original[0])
+                    assert (raw.id, raw.received_at, raw.parse_status, raw.parse_error) == original
+                await tick("GMP,PUS")
+                assert client.calls == ["GMP", "PUS"]
+                clock[0] = datetime(2026, 10, 29, tzinfo=timezone.utc)
+                updated = await tick()
+                assert client.calls == ["GMP", "PUS", "GMP"]
+                assert updated["fee_rule_count"] == first["fee_rule_count"]
+                async with factory() as session:
+                    airport = await session.scalar(select(Airport).where(Airport.code == "GMP"))
+                    rows = list((await session.scalars(select(ParkingFeeRule).where(ParkingFeeRule.airport_id == airport.id))).all())
+                    assert len(rows) == initial_count
+                    assert all(row.source_updated_at.replace(tzinfo=timezone.utc) == clock[0] for row in rows)
+    asyncio.run(check())
+
+
+def test_kac_fee_fetch_failure_budget_is_four_hours_and_does_not_leak_exception(tmp_path) -> None:
+    class FailingClient(FixturePublicDataClient):
+        calls = 0
+
+        async def fetch_kac_fee(self, airport_code):
+            self.calls += 1
+            raise RuntimeError("https://provider.invalid/?serviceKey=secret-from-sdk payload-private")
+
+    async def check():
+        clock = [datetime(2026, 10, 28, tzinfo=timezone.utc)]
+        client = FailingClient()
+        async with _fee_budget_database(tmp_path) as factory:
+            async def tick():
+                async with factory() as session:
+                    return await _fee_budget_service(client).collect(session, trigger="manual_force")
+            with patch("app.services.collection.now_utc", side_effect=lambda: clock[0]):
+                first = await tick()
+                assert first["status"] == "partial_success" and first["snapshot_count"] > 0
+                assert first["errors"] == ["kac_fee GMP: RuntimeError"]
+                async with factory() as session:
+                    raw = await session.scalar(select(RawApiResponse).where(RawApiResponse.source == "kac_fee"))
+                    original = (raw.id, raw.received_at, raw.parse_error)
+                    assert raw.parse_status == "failed" and raw.status_code == 0 and raw.body_text == ""
+                    assert raw.endpoint == KAC_FEE_ENDPOINT
+                    assert raw.request_params_json == {"schAirportCode": "GMP", "fee_refresh_contract": KAC_FEE_REFRESH_CONTRACT}
+                clock[0] += timedelta(hours=4, microseconds=-1)
+                deferred = await tick()
+                assert client.calls == 1 and deferred["fee_rule_count"] == 0 and deferred["errors"] == []
+                async with factory() as session:
+                    raw = await session.get(RawApiResponse, original[0])
+                    assert (raw.id, raw.received_at, raw.parse_error) == original
+                clock[0] += timedelta(microseconds=1)
+                assert (await tick())["errors"] == first["errors"]
+                assert client.calls == 2
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("legacy_status,contract", [("received", None), ("failed", None), ("received", KAC_FEE_REFRESH_CONTRACT)])
+def test_legacy_fee_receipts_do_not_suppress_first_new_collection(tmp_path, legacy_status, contract) -> None:
+    async def check():
+        async with _fee_budget_database(tmp_path) as factory:
+            async with factory() as session:
+                params = {"schAirportCode": "GMP"}
+                if contract:
+                    params["fee_refresh_contract"] = contract
+                session.add(RawApiResponse(source="kac_fee", endpoint=KAC_FEE_ENDPOINT,
+                    request_params_json=params, status_code=200, body_text="[]",
+                    received_at=datetime.now(timezone.utc), parse_status=legacy_status))
+                await session.commit()
+            async with factory() as session:
+                summary = await _fee_budget_service(FixturePublicDataClient()).collect(session)
+                assert summary["fee_rule_count"] > 0
+                assert await session.scalar(select(func.count()).select_from(RawApiResponse).where(
+                    RawApiResponse.source == "kac_fee", RawApiResponse.parse_status == "parsed")) == 1
+    asyncio.run(check())
+
+
+def test_unmatched_fee_rules_record_failed_budget_without_rolling_back_parking(tmp_path) -> None:
+    class UnmatchedClient(FixturePublicDataClient):
+        calls = 0
+
+        async def fetch_kac_fee(self, airport_code):
+            self.calls += 1
+            response = await super().fetch_kac_fee(airport_code)
+            items = json.loads(response.body_text)
+            for item in items:
+                item["parkingParkingName"] = "미등록주차장"
+            response.body_text = json.dumps(items)
+            return response
+
+    async def check():
+        async with _fee_budget_database(tmp_path) as factory:
+            client = UnmatchedClient()
+            async with factory() as session:
+                summary = await _fee_budget_service(client).collect(session)
+                assert summary["status"] == "partial_success" and summary["snapshot_count"] > 0
+                assert summary["fee_rule_count"] == 0
+                raw = await session.scalar(select(RawApiResponse).where(RawApiResponse.source == "kac_fee"))
+                assert raw.parse_status == "failed" and "주차장에 연결하지 못해" in raw.parse_error
+            async with factory() as session:
+                await _fee_budget_service(client).collect(session)
+                assert client.calls == 1
+                assert await session.scalar(select(func.count()).select_from(ParkingSnapshot)) == summary["snapshot_count"]
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("body,expected_status", [("[]", "parsed"), ("not valid JSON or XML", "failed")])
+def test_empty_and_invalid_fee_responses_have_distinct_budget_receipts(tmp_path, body, expected_status) -> None:
+    class BodyClient(FixturePublicDataClient):
+        calls = 0
+
+        async def fetch_kac_fee(self, airport_code):
+            self.calls += 1
+            response = await super().fetch_kac_fee(airport_code)
+            response.body_text = body
+            return response
+
+    async def check():
+        async with _fee_budget_database(tmp_path) as factory:
+            client = BodyClient()
+            async with factory() as session:
+                summary = await _fee_budget_service(client).collect(session)
+                assert summary["snapshot_count"] > 0 and summary["fee_rule_count"] == 0
+                assert summary["status"] == ("success" if expected_status == "parsed" else "partial_success")
+                raw = await session.scalar(select(RawApiResponse).where(RawApiResponse.source == "kac_fee"))
+                assert raw.parse_status == expected_status and raw.body_text == body
+                assert bool(raw.parse_error) == (expected_status == "failed")
+                assert await session.scalar(select(func.count()).select_from(ParkingFeeRule)) == 0
+            async with factory() as session:
+                await _fee_budget_service(client).collect(session)
+                assert client.calls == 1
+    asyncio.run(check())
+
+
+def test_kac_fee_budget_does_not_bypass_existing_global_quota(tmp_path) -> None:
+    async def check():
+        async with _fee_budget_database(tmp_path) as factory:
+            client = FixturePublicDataClient()
+            service = _fee_budget_service(client)
+            state = UpstreamRateLimitState(True, datetime.now(timezone.utc) + timedelta(hours=1),
+                "kac_parking", UPSTREAM_RATE_LIMIT_MARKER)
+            with patch.object(service, "get_upstream_rate_limit_state", AsyncMock(return_value=state)), patch.object(
+                client, "fetch_kac_fee", AsyncMock()
+            ) as fee_fetch, patch.object(client, "fetch_kac_parking", AsyncMock()) as parking_fetch, patch.object(
+                service, "_kac_fee_refresh_due", AsyncMock()
+            ) as fee_budget:
+                async with factory() as session:
+                    summary = await service.collect(session, trigger="manual_force")
+                    assert summary["status"] == "skipped"
+                    assert await session.scalar(select(func.count()).select_from(RawApiResponse)) == 0
+                fee_fetch.assert_not_awaited()
+                parking_fetch.assert_not_awaited()
+                fee_budget.assert_not_awaited()
+    asyncio.run(check())
