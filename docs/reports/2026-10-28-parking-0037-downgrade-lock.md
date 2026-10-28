@@ -1,5 +1,9 @@
 # 0037 downgrade의 영구 행 소실 경쟁 조건 보완
 
+아래는833→d733의 READ COMMITTED 잠금 보완 이력이다. d733 CI는 이후 SUCCESS를 회수했지만
+독립 리뷰에서 RR/SERIALIZABLE snapshot P1이 추가 확인됐다. 현재 수용은
+[후속 격리 guard](2026-10-28-parking-0037-isolation-guard.md)와 구분하며 이12집중을 새21집중/리뷰로 바꾸지 않는다.
+
 ## 범위와 현재 수용
 
 PR161의 exact833a69ee1ae551c9c0323495d6d9d417766a0bd3 독립 리뷰에서 빈 표 검사와 DROP 사이의 경쟁 조건을 발견했다. 원833/WT/ref/집중·CI와 이전 c763/d2 실패·전체 원장은 그대로 보존한다. 새 전용 branch에서0037 downgrade와 회귀만 보완했으며 API·reader·수집·Dagster·모델·의존성·프론트 제품은 변경하지 않았다. 새 후보의 정확 CI와 독립 두 증분 리뷰는 별도 수용 항목이다. main push·머지·운영 변경·prune 실행은0이다.

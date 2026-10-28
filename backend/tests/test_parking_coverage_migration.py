@@ -283,3 +283,49 @@ def test_sqlite_empty_drop_and_nonempty_refusal():
             assert not any(sa.inspect(connection).has_table(table) for table in TABLES)
     finally:
         engine.dispose()
+
+
+@pytest.mark.parametrize("isolation", ("REPEATABLE READ", "SERIALIZABLE", "AUTOCOMMIT"))
+@pytest.mark.parametrize("table", TABLES)
+def test_non_read_committed_snapshot_refuses_downgrade(test_settings, isolation, table, record_testsuite_property):
+    """버전 SELECT 뒤 writer가 commit한 행을 옛 snapshot의 빈 검사로 지우지 않는다."""
+    async def run():
+        engine = _engine(test_settings)
+        await _seed(engine)
+        proof = {"isolation": isolation, "table": table, "writer_committed": False, "outcome": None}
+        try:
+            async with engine.connect() as ddl:
+                await ddl.execution_options(isolation_level=isolation)
+                try:
+                    async with ddl.begin():
+                        proof["actual_isolation"] = await ddl.scalar(sa.text("SHOW transaction_isolation"))
+                        # Alembic도 downgrade module 전 version을 읽는다. RR/SERIALIZABLE snapshot을 고정한다.
+                        assert await ddl.scalar(sa.text("SELECT version_num FROM alembic_version")) == NEW
+                        proof["snapshot_before_writer"] = await ddl.scalar(sa.text("SELECT pg_current_snapshot()::text"))
+                        async with engine.begin() as writer:
+                            await writer.execute(sa.text(INSERTS[table]))
+                        proof["writer_committed"] = True
+                        await ddl.run_sync(lambda sync: _step(sync, "downgrade"))
+                    proof["outcome"] = "downgrade_committed"
+                except RuntimeError as error:
+                    proof["outcome"] = ("non_read_committed_refused" if "READ COMMITTED" in str(error)
+                                        else "existing_row_refused")
+                except sa.exc.DBAPIError as error:
+                    proof["outcome"] = "database_error"
+                    proof["sqlstate"] = error.orig.sqlstate
+            head, tables, raw, archive = await _state(engine)
+            proof.update(head_after=head, tables_after=tables, raw_preserved=raw == {"keep": "raw"},
+                         archive36_preserved=archive == {"keep": "archive"})
+            if tables == list(TABLES):
+                async with engine.connect() as connection:
+                    proof["committed_row_count"] = await connection.scalar(sa.text(f"SELECT count(*) FROM {table}"))
+            record_testsuite_property(f"actual_pg_isolation_{isolation}_{table}", json.dumps(proof, sort_keys=True))
+            expected_isolation = "read committed" if isolation == "AUTOCOMMIT" else isolation.lower()
+            assert proof["actual_isolation"] == expected_isolation, proof
+            assert proof["writer_committed"] and proof["outcome"] == "non_read_committed_refused", proof
+            assert head == NEW and tables == list(TABLES) and proof["committed_row_count"] == 1, proof
+            assert proof["raw_preserved"] and proof["archive36_preserved"], proof
+        finally:
+            await _restore(engine)
+            await engine.dispose()
+    asyncio.run(run())

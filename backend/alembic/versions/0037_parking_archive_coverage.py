@@ -68,6 +68,9 @@ def downgrade():
     bind = op.get_bind()
     tables = ("parking_archive_issues", "parking_global_statistics_buckets", "parking_latest_states")
     if bind.dialect.name == "postgresql":
+        if (bind.get_isolation_level() != "READ COMMITTED"
+                or bind.get_execution_options().get("isolation_level") == "AUTOCOMMIT"):
+            raise RuntimeError("주차 통계 downgrade는 AUTOCOMMIT이 아닌 READ COMMITTED transaction에서만 가능합니다.")
         # 빈 상태 검사부터 DROP/버전 변경 commit까지 신규 writer를 막는다. 잠금 순서는 고정한다.
         op.execute("SET LOCAL lock_timeout = '5s'")
         op.execute("LOCK TABLE " + ", ".join(tables) + " IN ACCESS EXCLUSIVE MODE")

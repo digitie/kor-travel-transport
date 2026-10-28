@@ -53,7 +53,9 @@ job action 기대1건이 실패했고 일부 통과도 잔존 상태 영향을 �
 
 현재 행이 없는 lot만 기본512개씩 seed한다. 원본이 없는 lot은 상한을 적용하기 전에 제외하므로 빈 기준정보가 선두를 점유해 뒤의 유효 lot을 영원히 막지 않는다. seed는 raw JSON 없이 기존 latest 선택과 lot별 최대 적재시각을 읽는다. 이후 정상 수집 INSERT와 같은 transaction에서 갱신한다. API reader 전환은2B에 남긴다.
 
-lot/airport 복합 FK는 RESTRICT이고, 최신 요약만 있는 DB에도 legacy PK 덮어쓰기를 거절한다. 통계가 없다는 이유로 현재 lot 의미를 바꾸지 않는다. 새 세 표에 데이터가 있으면 migration downgrade도 거절한다. PostgreSQL의0037 downgrade는 세 표를 고정 순서로 먼저 `ACCESS EXCLUSIVE` 잠근 뒤 빈 상태를 다시 검사한다. 같은 Alembic transaction의 DROP·version 변경 commit까지 잠금을 유지하며5초 내 잠금을 얻지 못하면 전체 rollback한다. 검사 뒤 다른 writer가 commit한 영구 행을 DROP하는 경쟁 조건을 막기 위한 조치다. 이미 시작한 writer가 먼저 commit하면 잠금 획득 후 새 행을 보고 downgrade를 거절한다. SQLite 호환 경로에는 PostgreSQL 잠금 문법을 실행하지 않는다.
+lot/airport 복합 FK는 RESTRICT이고, 최신 요약만 있는 DB에도 legacy PK 덮어쓰기를 거절한다. 통계가 없다는 이유로 현재 lot 의미를 바꾸지 않는다. 새 세 표에 데이터가 있으면 migration downgrade도 거절한다. PostgreSQL의0037 downgrade는 실제 격리가 `READ COMMITTED`인 경우만 허용하며 명시 `execution_options(isolation_level="AUTOCOMMIT")`도 거절한다. 그 뒤 세 표를 고정 순서로 먼저 `ACCESS EXCLUSIVE` 잠근 뒤 빈 상태를 다시 검사한다. 같은 Alembic transaction의 DROP·version 변경 commit까지 잠금을 유지하며5초 내 잠금을 얻지 못하면 전체 rollback한다. 검사 뒤 다른 writer가 commit한 영구 행을 DROP하는 경쟁 조건을 막기 위한 조치다. 이미 시작한 writer가 먼저 commit하면 잠금 획득 후 새 행을 보고 downgrade를 거절한다. SQLite 호환 경로에는 PostgreSQL 격리·잠금 문법을 실행하지 않는다.
+
+REPEATABLE READ/SERIALIZABLE에서는 Alembic의 선행 version SELECT가 고정한 옛 snapshot을 나중 table lock이 갱신하지 않는다. 기존 transaction의 격리를 강제로 낮추거나 자동 재시도하지 않고 명시 거절한다. [실제 격리 반례·수용 경계](../reports/2026-10-28-parking-0037-isolation-guard.md)를 참조한다.
 
 같은 schema의 옛 전체 dump가 통계를 되돌리는 복원 문제는 여전히 별도의 활성화 전 수용 항목이며, pre-restore backup의 존재만으로 해결됐다고 표시하지 않는다. [0037 실제 경쟁 반례와 집중 검증](../reports/2026-10-28-parking-0037-downgrade-lock.md)은 원본 정리나 reader 전환의 수용 증거가 아니다.
 

@@ -2,6 +2,10 @@
 
 ## 후속 정산과 아래 감사의 작성 시점
 
+이후 d733 CI는 성공했지만 RR/SERIALIZABLE snapshot P1이 새로 확인됐다. 현재는 실제6건 RED와
+최소 격리 guard의 WSL21/Docker21 PASS를 회수한 별도 후보이며 새 CI/두 리뷰는 미완이다.
+[격리 보완의 현재 원장](2026-10-28-parking-0037-isolation-guard.md)을 먼저 읽는다.
+
 아래 PR 표·다음 순서는 main3f 통합 전의 감사 기록이다. 이후833 통합의 WSL/Docker 각310PASS+6subtests와
 두 CI run40600192409/40600199508의 backend/frontend/admin SUCCESS·live SKIPPED를 회수했다.
 독립 리뷰에서0037 downgrade의 빈 검사 뒤 동시 commit 행이 DROP되는 P1을 실제 PG18에서 재현했다.

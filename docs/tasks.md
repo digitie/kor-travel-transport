@@ -2,7 +2,9 @@
 
 - [ ] **T-PARK-RET-CURRENT** — PR161 main3f 통합833의 PG18 집중 각310+6와 두 CI 성공을 회수했다.
   독립 리뷰의0037 downgrade 경쟁 P1은 실제 RED2 3FAIL→최소 잠금 보완의 WSL12/Docker12PASS로 확인했다.
-  새 정확 head CI·두 증분 리뷰와 collection/Dagster 결합 리뷰는 남는다. 162/163 내부 reader/DB 입력은
+  d733 CI는 SUCCESS였으나 RR/SERIALIZABLE의 추가P1을 실제6건으로 재현해 최소 격리 guard를 보완했다.
+  새 WSL21/Docker21 PASS와 이전 결과를 분리하며 새 정확 head CI·두 증분 리뷰와 결합 리뷰는 남는다.
+  [격리 보완](reports/2026-10-28-parking-0037-isolation-guard.md). 162/163 내부 reader/DB 입력은
   실제 API/cold/cache/bundle/outlook/history/current/Map export에 미연결이다.
   [0037 경합·검증 경계](reports/2026-10-28-parking-0037-downgrade-lock.md).
 - [ ] 운영 backfill/완전 coverage·동일schema 구dump 복원 보호·raw48h/cursor410·해상도·검산 후

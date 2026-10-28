@@ -1,3 +1,13 @@
+## 2026-10-28 — 0037 옛 snapshot 격리의 downgrade 명시 거절
+
+- d733 CI 성공 뒤 독립 James의 P1을 실제 PG18.6에서 확정했다. RR3/SERIALIZABLE3은 version SELECT 후
+  writer가 commit한 행을 옛 snapshot의 빈 검사로 보지 못해 DROP했다. d733/12집중/CI·원 실패는 불변이다.
+- PostgreSQL의 실제 READ COMMITTED와 비AUTOCOMMIT transaction만 허용하는 최소 guard를 넣었다.
+  같은 격리 반례의 WSL21/Docker21 PASS·actual0·wait0·source/runtime106/Git10 동일·자식 종료를 회수했다.
+  첫 미지원 fixture3실패와 AUTOCOMMIT의 기존25P01 거절을 실제 행 소실6건과 분리했다.
+- 네 DB dump·disk volume을 보존한 뒤 정확 소유 PG/network만 정리했다. 새 정확 CI·두 증분 리뷰는 남으며
+  reader/정리/운영 활성화는0이다. [격리 반례·환경·한계](reports/2026-10-28-parking-0037-isolation-guard.md).
+
 ## 2026-10-28 — 0037 빈 표 downgrade의 동시 commit 소실 보완
 
 - 독립 리뷰의 P1을 새 PG18.6 세션에서 실제 재현했다. 원833 제품의 RED2는3 FAIL/5 PASS이며

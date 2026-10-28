@@ -1,3 +1,13 @@
+## 2026-10-28 — 0037 격리 수준 P1 보완 후보
+
+- 현재 상태: d733의12집중·CI40610095559 SUCCESS 이후 RR/SERIALIZABLE snapshot의 추가 P1을 확인했다.
+  원 d733/원장/리뷰는 보존했고 별도 WT에서 실제6행 소실 반례→최소 READ COMMITTED guard를 검증했다.
+- 새 집중은 WSL21/Docker21 PASS·actual0·독립wait0·source/runtime 동일·자식 종료다.4dump와 volume을
+  보존하고 소유 PG/network만 정리했다. [정확 범위·원 실패](reports/2026-10-28-parking-0037-isolation-guard.md).
+- 다음 한 작업: 새 정확 head CI와 두 독립 증분 리뷰를 수용한다. main의 철도문서PR166은 이후 통합 시
+  양쪽 이력을 보존해야 한다. 현재 source/운영 배포 입력을 덮거나 main push/merge하지 않았다.
+  API reader/backfill/coverage·복원/검산 후 prune가 연결되기 전 정책은 미완이며 운영/prune0이다.
+
 ## 2026-10-28 — 0037 downgrade P1 보완 후보
 
 - 현재 상태: 원833 main3f 통합의 두 CI와 WSL/Docker 각310PASS+6subtests는 회수했다.
