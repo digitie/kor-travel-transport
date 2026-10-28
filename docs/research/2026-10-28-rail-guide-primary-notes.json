@@ -1,0 +1,68 @@
+{
+  "date_kst": "2026-10-28",
+  "method": "공식 문서/스토어 웹 열람; 설치/로그인/실제터치0",
+  "sources": [
+    {
+      "url": "https://play.google.com/store/apps/details?hl=ko&id=com.korail.talk",
+      "evidence": "공식 Android 설명",
+      "observed_scope": "여정 연계·가까운 역 선택을 설명한다. 이번 설치·터치 검증은 아니다."
+    },
+    {
+      "url": "https://apps.apple.com/kr/app/id1000558562",
+      "evidence": "공식 iOS 설명",
+      "observed_scope": "열차 조회와 연계 이동·근처 역 선택을 설명한다. 기존 연구의 화면 관찰과 구분했다."
+    },
+    {
+      "url": "https://play.google.com/store/apps/details?id=kr.co.srail.newapp&hl=ko",
+      "evidence": "공식 Android 설명",
+      "observed_scope": "지도형 출도착역 선택을 설명한다. 잔여석 등 앱 기능을 우리 TAGO 지원으로 이전하지 않았다."
+    },
+    {
+      "url": "https://apps.apple.com/kr/app/id1350286957",
+      "evidence": "공식 iOS 설명",
+      "observed_scope": "지도형 출도착 선택과 열차 조회를 설명한다. 앱 설치나 예약을 실행하지 않았다."
+    },
+    {
+      "url": "https://etk.srail.kr/cms/archive.do?pageId=TK0403010100",
+      "evidence": "공식 SR 수서 안내",
+      "observed_scope": "SRT역·지하철 환승통로·출구/접근 안내가 구분된다. 전국 또는 실시간 시설 가동 증거가 아니다."
+    },
+    {
+      "url": "https://data.kric.go.kr/rips/M_01_02/detail.do?id=426&service=convenientInfo&operation=stationCnvFacl",
+      "evidence": "공식 KRIC API 명세",
+      "observed_scope": "전국 도시철도기관3코드 scope와 시설종류/층/위치를 명세한다. 실제 API 호출은0이다."
+    },
+    {
+      "url": "https://station.kric.go.kr/v2/altmInfoSys/index.do",
+      "evidence": "공식 포털 화면 구조",
+      "observed_scope": "역 선택 뒤 시설·이용안내도·출입구/교통약자 경로를 구분한다. 개별역 데이터는 조회하지 않았다."
+    },
+    {
+      "url": "https://www.data.go.kr/data/15098552/openapi.do",
+      "evidence": "공식 TAGO 명세",
+      "observed_scope": "출발/도착 예정표·차종·도시별 역 목록의 범위를 확인했다. Root 기존 성공 증거를 재사용하며 이번 재호출0이다."
+    },
+    {
+      "url": "https://www.korail.com/ticket/train/stationGuide/station/view?stationSeq=10281321",
+      "evidence": "공식 URL 열람 한계",
+      "observed_scope": "열람 도구가 서비스 이용 안내를 반환해 역 시설 상세는 미확인이다. 실패를 우회하지 않았다."
+    },
+    {
+      "url": "https://www.data.go.kr/data/15125773/openapi.do",
+      "evidence": "공식 후속 자료 후보",
+      "observed_scope": "임대매장 위치/층/운영시각과 stor_stn_cd 별도 code type을 명세한다. 실자료·활용권한·현 SDK 지원은 미검증이다."
+    },
+    {
+      "url": "https://openapis.korail.com/samples/public/lease/stores",
+      "evidence": "공식 조회 안내",
+      "observed_scope": "역코드3자리 문자열과 정확 역명 입력 UI를 확인했다. 검색 버튼/API 조회는 실행하지 않았다."
+    },
+    {
+      "url": "https://www.data.go.kr/data/15125762/openapi.do",
+      "evidence": "공식 후속 자료 후보",
+      "observed_scope": "주운행선·역·정차·상하행 별도 code 정보를 명세한다. TAGO 교차표·실시간 지연·현재 SRT 지원 증거가 아니다."
+    }
+  ],
+  "provider_operation_calls": 0,
+  "official_web_research": true
+}

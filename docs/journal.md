@@ -1,3 +1,14 @@
+## 2026-10-28 — 철도 지도 역→시간표 연결 사전 조사 문서
+
+- source3f/실SDK pin의 안내·예정표/시설 범위와 공식 웹·Android/iOS 설명을 대조했다.
+  이름/거리 자동 매핑 대신 기존 TAGO 후보의 명시 확인과 외부 API의 같은 확정ID 검증을 설계했다.
+- 비재진입 TAGO 공용lock의 dependency 순서·누적 시간 예산 P2를 별도 문서 packet에서 보완했다.
+  원R1 조사/리뷰를 보존했고 새 정합성2회를 수행했다. 새 독립 증분 리뷰는 미완이다.
+- 후속은 작은A/B 구현이며 현재 코드·provider·DB·운영 변경0이다.
+  [조사](research/2026-10-28-rail-guide-connection.md),
+  [설계](design/2026-10-28-rail-guide-timetable-connection.md),
+  [검증 경계](reports/2026-10-28-rail-guide-research-validation.md).
+
 ## 2026-10-27 — 지난 10일 Codex PR 상세 리뷰의 통합 수정
 
 - 2026-10-17 이후 머지된 Codex PR 51건(#83~#143)을 리뷰했다. 고칠 20건(T01~T20)은 PR 하나

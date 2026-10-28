@@ -1,0 +1,228 @@
+{
+  "state": "RESEARCH_SOURCE_CAPTURE_ONLY_R2_LOCK_BUDGET_CLARIFIED",
+  "sources": {
+    "transport": {
+      "repository": "F:/dev/kor-travel-transport",
+      "commit": "3f5160a0d5e0c246fa744864998a3fc805542ce4",
+      "files": {
+        "docs/architecture/architecture.md": {
+          "git_blob": "9d914572bc51fc2eb39d2b2539e032e51fdcf9a2",
+          "sha256": "88d3338a6fdaae72dcb9647c12d5639ce9069a4377f3e1cc703a7801b2b6c6cc",
+          "lines": 313
+        },
+        "docs/architecture/data-model.md": {
+          "git_blob": "0382664af8fbebe80e1f8c25c0b5cbc83ed73df2",
+          "sha256": "c70a12746d1d074aa9848e9e05d49d9ee1e7428831993c9c90ef1311b7dd48a5",
+          "lines": 327
+        },
+        "docs/architecture/transport-admin.md": {
+          "git_blob": "c2e04ad86e7efb031af9e8690b447d928a0d5957",
+          "sha256": "d876025a43ced55faf5218351e643e74f287f6b1fd0a6ed9f6e275159cf1fc1a",
+          "lines": 160
+        },
+        "docs/architecture/transport-journey-ui.md": {
+          "git_blob": "63498e5ac99abb6f0c622c275662410de83feb1f",
+          "sha256": "0229b32f33add69227f8b0581c32841653a706d2cb2897738279f12d715aba6c",
+          "lines": 69
+        },
+        "docs/architecture/kric-timetable.md": {
+          "git_blob": "82493e128def90c2394f9365393907c596f00d67",
+          "sha256": "5b974f362b12decab1730b3284db42d7acd310283c4f0aed0fd2a121c0fe9626",
+          "lines": 78
+        },
+        "docs/resume.md": {
+          "git_blob": "6f7a46fba09b875b7ada8def11c2e0267931e921",
+          "sha256": "3a9e75ca2cb91bcbfc7c5c095ebbdc5e0454d675dec6f6afc5620db7ef0ef0e3",
+          "lines": 1802
+        },
+        "docs/research/2026-10-25-mobility-ux.md": {
+          "git_blob": "2846a8da915659571f7330157691de976146c979",
+          "sha256": "32cfdca49affc90d2742edaf77489e86b045a61da3af189249f3391606829b06",
+          "lines": 165
+        },
+        "docs/design/2026-10-25-mobility-improvements.md": {
+          "git_blob": "fa2be260dbc63c0ffe1cc97837887db968d23508",
+          "sha256": "6226c1e39e0f1334cc5e3f8cda8da66d92efc908af1743f4d8f6ae9c586853b8",
+          "lines": 295
+        },
+        "docs/reports/2026-10-27-rail-flow-audit.md": {
+          "git_blob": "06255b0587fab54ad8cf545c50b26603fc783970",
+          "sha256": "8adb6c9c406d0aa5827ad9ca92f9ffc6b11b341780c82a08eb8bd1fef4fee881",
+          "lines": 41
+        },
+        "docs/runbooks/agent-failure-patterns.md": {
+          "git_blob": "e481b815b51bffedfe639301733de3302a7244c4",
+          "sha256": "cd58e7641734f9cc6f815454316a825060d1b505cfb90721f472ab6b4954140d",
+          "lines": 137
+        },
+        "docs/runbooks/hostile-review.md": {
+          "git_blob": "7cd04493717fcf72a3bed0957ec107afffb93f2d",
+          "sha256": "c38ee369e0e9d1c27e3562d3547badd4d19b257d12fdb46007655f6e058062a8",
+          "lines": 92
+        },
+        "backend/app/general_rail_routes.py": {
+          "git_blob": "ca8de816aa5347dfbf14bab3de074b025a450ae3",
+          "sha256": "934e0e9c1c3b6ff07253bfc5a7dcb9c4ae9ce7ce561ccf526fac8ccd46eee290",
+          "lines": 156
+        },
+        "backend/app/schemas.py": {
+          "git_blob": "6c8d4b5d6ddfd82cd87719a7a635aaa3f31ce329",
+          "sha256": "a9620e8ef893c1adc3eebdaf96142e06b158cfdc49b28249044d88ad228ca7f6",
+          "lines": 1446
+        },
+        "backend/app/services/general_rail_storage.py": {
+          "git_blob": "1b494bc1a468c69b4ea9dae346690c2b2ca5ef13",
+          "sha256": "1085f189ec68a84a0ef05e1c91328fb693fc858808df7c6b1010788e5335f874",
+          "lines": 23
+        },
+        "backend/app/services/rail_station_mapping.py": {
+          "git_blob": "35e71723c3fe4066795cfb8bd2de27df97b754b0",
+          "sha256": "e9d4b643343727bdbfc93a75f1db5d67148bea847ea14f0c3636703ef6642239",
+          "lines": 620
+        },
+        "backend/app/services/rail_timetable.py": {
+          "git_blob": "2c10863365daad21c6a80de9e3d29b19bc7935d4",
+          "sha256": "f01714c5fc172af7181b3017733bbbf28eb508c11062e49a550f55d454c4fea6",
+          "lines": 66
+        },
+        "backend/uv.lock": {
+          "git_blob": "fc8f04c577bc18692213a24cc77b3a1453d3342c",
+          "sha256": "80854aece4e3abc89c026e057abb62644833576bbffa44ffa09f3e299246cca7",
+          "lines": 2569
+        },
+        "packages/kor-travel-transport-admin/frontend/components/general-rail-guide.tsx": {
+          "git_blob": "6780b1f51659b85c32f2242ad829038eb22d586c",
+          "sha256": "f0988583618919cde2e8af04b7d0e8c2e8630f4a5749645d26cdcbd37e4cc540",
+          "lines": 64
+        },
+        "packages/kor-travel-transport-admin/frontend/components/general-rail-journey.tsx": {
+          "git_blob": "bee129461e5c1a398683459d04c6f404f79128d3",
+          "sha256": "868cbaceb7dbe28a1bbe2c6905e2f11171064895c9209482f0bd86a29aceaf18",
+          "lines": 99
+        },
+        "packages/kor-travel-transport-admin/frontend/lib/journey.ts": {
+          "git_blob": "b5f4084d6d88b7b748554325ff7c8389b6051674",
+          "sha256": "ebae84463be1926dda0609195b6194373c9826704b0d603379438887d594106c",
+          "lines": 80
+        },
+        "packages/kor-travel-transport-admin/frontend/lib/journey-hooks.ts": {
+          "git_blob": "e98d37e8ead58651e8e83a1071f8bd236a7237fc",
+          "sha256": "a2c755af2e315e6b0281f906ca78f0d58e331e8df62cf3ae4c3e7daa3f2d6bc2",
+          "lines": 31
+        },
+        "packages/kor-travel-transport-admin/frontend/components/rail-timetables.tsx": {
+          "git_blob": "5065de61dcb72eb72b4b198f8da860bfe6403abe",
+          "sha256": "875dc8627f12d380b1a4103759bfd39a84b49c8294beca8c5b025fae7b2c8423",
+          "lines": 61
+        },
+        "packages/kor-travel-transport-admin/frontend/components/metro-journey.tsx": {
+          "git_blob": "3884381f782e4a7e83d90214e85357d797ea1df4",
+          "sha256": "eca2bcf41d02b0c2f676cf37e3437e792e66b1aeb9a7d38e61b2d5cdbbc0a566",
+          "lines": 66
+        },
+        "packages/kor-travel-transport-admin/frontend/app/rail/page.tsx": {
+          "git_blob": "c83b98286a95513451ee7ea725c52ef96b397630",
+          "sha256": "79db001ce312534f10394dbd795e6957cc88ddd4a1c8a0893be364436a614d3c",
+          "lines": 4
+        },
+        "backend/app/main.py": {
+          "git_blob": "03ba852f2fe2f4b6a28baa3fee34515894c9f800",
+          "sha256": "619444fd7dcff3f57d20c244eccaab7ca62dd3d61e9f64cff0e301f8d06138a1",
+          "lines": 3666
+        },
+        "backend/app/models.py": {
+          "git_blob": "a763552dc2207cbe1e8be3fc887d4a0b882ba40f",
+          "sha256": "f4f34e8ed4e30ecf8680e9352c47f7bd2481085d48e1b37656c50facd26f6fdf",
+          "lines": 1017
+        },
+        "backend/app/core/config.py": {
+          "git_blob": "b73f4ff353ab269b7ac0590eec9f2b5a413fdb85",
+          "sha256": "70c1186a673e4dc23a931e5dd6619277a48421804433d4ff13c35e1ab207c7ef",
+          "lines": 202
+        }
+      }
+    },
+    "python-kric-api": {
+      "repository": "F:/dev/python-kric-api",
+      "commit": "5bf0e61604443fa0e0bd4b1255720fca2bcc993f",
+      "files": {
+        "README.md": {
+          "git_blob": "a69cf84d2e58753d7236ded78281d8e4ee39980b",
+          "sha256": "83eae3f56dce2268708a50b6a76f7c3e8adcb4267c919f780591799cc3cd75fc",
+          "lines": 224
+        },
+        "docs/korail-public-station-guide.md": {
+          "git_blob": "17e636010051fdae52f08f3e2c6a6aafd7eaaf6c",
+          "sha256": "4d573428106e6f690d954f2d210e9177f8d1ff6f192116e3128584322c3af39d",
+          "lines": 19
+        },
+        "src/kric/korail_public.py": {
+          "git_blob": "2f74566a7c8650fcf3f3f4a61b79394fed4ab671",
+          "sha256": "9c00dfb81a7e886f646f8cf4ee1e6b7aba5e903d174433373f6c1b085771a209",
+          "lines": 233
+        },
+        "src/kric/models.py": {
+          "git_blob": "0fd4762c23558c43e8a03ef9ce66f0e2ee9c6f3d",
+          "sha256": "095258829a2097c1c2a3bbdf7ad42e29086021509d5f9fc75151f455ae7e0525",
+          "lines": 322
+        },
+        "src/kric/client.py": {
+          "git_blob": "3d80fb1b8d52aaec358e865afdaa2af0c80b5a05",
+          "sha256": "89694fb7f98abc961e536101058a75ce79ba393f0b3e2825324fc356ccc8d63b",
+          "lines": 211
+        },
+        "src/kric/__init__.py": {
+          "git_blob": "7b414c510772a24dc37a17fae8175b53f00c086f",
+          "sha256": "7fda39035e641cb617d5619b49ac17ab37a8987ffb522557ac58dad1084807da",
+          "lines": 97
+        },
+        "tests/test_korail_public.py": {
+          "git_blob": "d7f970bf77e76be6bd42c2931ecf65565272329c",
+          "sha256": "390b6da6fcfa3beafa412c8f847249ac0d8813205d5a8e145468854eb903af81",
+          "lines": 158
+        },
+        "tests/test_station_file_facilities.py": {
+          "git_blob": "fdc45fe2737ad20bdcbd57a85752a8ed337af0f6",
+          "sha256": "1e10520b8347c8d411dbd1bbd633d1cf0409ac6ff825381ab37459de4453d401",
+          "lines": 24
+        },
+        "src/kric/files.py": {
+          "git_blob": "acd8785ab4b70ec1e8eedc55319e43c86ca5e338",
+          "sha256": "7e28f5fbb087ce723cfee3b022a0cea8de967ea3ea9ab80ed938c420831a8de2",
+          "lines": 535
+        },
+        "src/kric/parse.py": {
+          "git_blob": "3b01910d35c5fe58029b58ed21710e7a903f8f99",
+          "sha256": "478a1b6cf0e1da828ab660758668d4b2cea2efd6f5533289eb648fbf1676e4d7",
+          "lines": 176
+        }
+      }
+    },
+    "python-datagokr-api": {
+      "repository": "F:/dev/python-datagokr-api",
+      "commit": "69c8107ad629d52137673696622475f6c7215a70",
+      "files": {
+        "src/datagokr/models.py": {
+          "git_blob": "caa7425f022d5c9ea9fb898fd050b1bda933f60a",
+          "sha256": "2f437f926b0f44cac430121dc1b8a6dbcc794514ccd2441916c457ae2bc245d5",
+          "lines": 336
+        },
+        "src/datagokr/transport.py": {
+          "git_blob": "dcd03bfc92e85d836aa5c57853dab96d59e572f9",
+          "sha256": "ccd1f719df5188ef53143377d52ecb14f3c63f3ed697b6bf7d054f6df7da7dc6",
+          "lines": 74
+        },
+        "src/datagokr/services/openapi.py": {
+          "git_blob": "6783af5c125ad71d74b3060b467d8d779edbb726",
+          "sha256": "36e97f406ffad8bcc00a3201cb68fa8202aae2bae9179e87ccb67b69ef11ece7",
+          "lines": 631
+        }
+      }
+    }
+  },
+  "operating_calls": 0,
+  "provider_calls": 0,
+  "DB_calls": 0,
+  "product_changes": 0,
+  "initial_packet_manifest_sha256": "6b974bd2e80074303e63e5f91cbffef01ad1f4aaeb1c14c2c0cf74572b835a2c"
+}

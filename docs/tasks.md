@@ -1,3 +1,11 @@
+## 2026-10-28 — 철도 안내와 시간표의 확정 참조 연결
+
+- [ ] **T-RAIL-GUIDE-LINK-A/B** — [고정source·공식 앱 조사](research/2026-10-28-rail-guide-connection.md)와
+  [최소 설계](design/2026-10-28-rail-guide-timetable-connection.md)의 독립 문서 리뷰 후,
+  Guide의 출발/도착 의도→TAGO 실제 후보 명시 확인→API확정ID/city 검증을 작은 단계로 구현한다.
+  비재진입lock·총deadline·시설범위/미확인상태·375/1440·실제GUI를 회귀/수용한다. 현재 구현/운영0이다.
+  KRIC 시설을 일반철도/SRT에 대입하거나 이름·거리 자동 매핑을 추가하지 않는다.
+
 ## 2026-10-27 — 지난 10일 Codex PR 리뷰 후속
 
 - [ ] T-REVIEW-10D-01 — 리뷰 통합 수정 PR(`review/codex-10d-transport`, T01~T20): 소유자 승인으로 머지했다(운영 미배포).
