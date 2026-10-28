@@ -15,6 +15,11 @@ REMOTE_APP_DIR="${REMOTE_APP_DIR:-/home/digitie/apps/kor-travel-transport}"
 REMOTE_ENV_FILE="${REMOTE_ENV_FILE:-.env.prod}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-kor-travel-transport}"
 CANDIDATE_SHA="$(git rev-parse HEAD)"
+ALLOW_RELEASE_POINTER_DRIFT="${ALLOW_RELEASE_POINTER_DRIFT:-}"
+if [[ -n "${ALLOW_RELEASE_POINTER_DRIFT}" && "${ALLOW_RELEASE_POINTER_DRIFT}" != "forward-fix" ]]; then
+  echo "Refusing deployment: ALLOW_RELEASE_POINTER_DRIFT must be empty or forward-fix." >&2
+  exit 2
+fi
 DEPLOY_MODE="${DEPLOY_MODE:-deploy}"
 PREBUILT_ADMIN_WEB_IMAGE_ID="${PREBUILT_ADMIN_WEB_IMAGE_ID:-}"
 PREBUILT_GATEWAY_IMAGE_ID="${PREBUILT_GATEWAY_IMAGE_ID:-}"
@@ -94,7 +99,7 @@ ssh "${REMOTE_USER}@${REMOTE_HOST}" "mkdir -p '${REMOTE_APP_DIR}'"
 scp "${archive}" "${REMOTE_USER}@${REMOTE_HOST}:${remote_archive}"
 
 ssh "${REMOTE_USER}@${REMOTE_HOST}" \
-  "REMOTE_APP_DIR='${REMOTE_APP_DIR}' REMOTE_ENV_FILE='${REMOTE_ENV_FILE}' REMOTE_ARCHIVE='${remote_archive}' REMOTE_STAGE='${remote_stage}' CANDIDATE_SHA='${CANDIDATE_SHA}' DEPLOY_MODE='${DEPLOY_MODE}' PREBUILT_ADMIN_WEB_IMAGE_ID='${PREBUILT_ADMIN_WEB_IMAGE_ID}' PREBUILT_GATEWAY_IMAGE_ID='${PREBUILT_GATEWAY_IMAGE_ID}' bash -s" <<'REMOTE'
+  "REMOTE_APP_DIR='${REMOTE_APP_DIR}' REMOTE_ENV_FILE='${REMOTE_ENV_FILE}' REMOTE_ARCHIVE='${remote_archive}' REMOTE_STAGE='${remote_stage}' CANDIDATE_SHA='${CANDIDATE_SHA}' DEPLOY_MODE='${DEPLOY_MODE}' PREBUILT_ADMIN_WEB_IMAGE_ID='${PREBUILT_ADMIN_WEB_IMAGE_ID}' PREBUILT_GATEWAY_IMAGE_ID='${PREBUILT_GATEWAY_IMAGE_ID}' ALLOW_RELEASE_POINTER_DRIFT='${ALLOW_RELEASE_POINTER_DRIFT}' bash -s" <<'REMOTE'
 set -euo pipefail
 admin_deploy_mode="${DEPLOY_MODE:-deploy}"
 prebuilt_admin_id="${PREBUILT_ADMIN_WEB_IMAGE_ID:-}"
@@ -178,7 +183,7 @@ done
 printf '%s\n' "${CANDIDATE_SHA}" > .transport-admin-release-sha
 chmod 600 .transport-admin-release-sha
 # health 뒤에만 새 current를 발행한다. 이 배포는 migrate를 바꾸지 않으므로 현재 표식의 migrate ID를 넘긴다.
-publish_release_pointer "$(current_migrate_image_id)"
+publish_release_pointer_keeping_migrate
 REMOTE
 
 echo "transport admin 배포 완료: ${CANDIDATE_SHA}"

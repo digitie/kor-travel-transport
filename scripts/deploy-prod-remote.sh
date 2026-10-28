@@ -527,6 +527,8 @@ for attempt in $(seq 1 30); do
 done
 DEPLOYMENT_VERIFIED=true
 # health 뒤에만 실제 실행 이미지를 Manager current로 발행한다. migrate는 one-shot이라 resolved 이미지 ID를 명시한다.
-migrate_image_ref="$(compose config --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["migrate"]["image"])')"
-migrate_image_id="$(docker image inspect -f '{{.Id}}' "${migrate_image_ref}")"
+migrate_image_id=""
+if migrate_image_ref="$(compose config --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["migrate"]["image"])')"; then
+  migrate_image_id="$(docker image inspect -f '{{.Id}}' "${migrate_image_ref}")" || migrate_image_id=""
+fi
 publish_release_pointer "${migrate_image_id}"

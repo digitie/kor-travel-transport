@@ -104,12 +104,18 @@ Compose에 명시적으로 추가한다. 렌더된 command와 healthcheck가 모
 [`scripts/manager-release-pointer.sh`](../../scripts/manager-release-pointer.sh)로 다음을 한다.
 
 - **교체 전**: `sudo -n ktdctl service-release verify transport`가 exit 0이어야 한다. drift(exit 1)·표식 없음·
-  `service-release`가 없는 Manager(exit 2)면 checkout·override·컨테이너를 바꾸기 전에 멈춘다.
-  backend 배포의 `prepare-shared-dagster-cutover`와 stage-only는 컨테이너를 바꾸지 않으므로 보지 않는다.
+  `service-release`가 없는 Manager(exit 2)·비밀번호 없는 sudo 불가면 공유 checkout(`deploy-prod.sh`·관리자 배포의
+  rsync 전)·override·컨테이너를 바꾸기 전에 멈춘다. `deploy-prod-remote.sh`도 수동 실행에 대비해 다시 본다.
+  `prepare-shared-dagster-cutover`와 stage-only는 컨테이너를 바꾸지 않으므로 보지 않는다.
+- **forward-fix 예외**: 직전 배포가 검증 뒤 실패해(예: migration 적용 후) 발행되지 않은 이미지가 돌고 있으면
+  `ALLOW_RELEASE_POINTER_DRIFT=forward-fix`로 그 고치는 배포만 drift(exit 1)를 넘긴다. 표식 없음·CLI 없음은 넘기지 않는다.
 - **health 뒤**: `adopt transport --confirm --replace-current`로 실제 실행 이미지를 새 current로 발행한다.
-  one-shot `migrate`는 backend 배포가 resolved Compose의 이미지 ID를, 관리자 배포가 현재 표식의 값을 넘긴다.
-  발행이 실패하면 배포는 healthy지만 exit 2와 함께 다시 실행할 명령을 출력한다. 다음 배포의 교체 전 검사가
-  그 drift를 멈춤으로 잡는다.
+  adopt는 core·admin 모든 runtime이 Docker `healthy`여야 하므로 방금 재생성한 컨테이너의 `starting` 동안 15초 간격
+  16회까지 재시도한다. one-shot `migrate`는 backend 배포가 resolved Compose의 이미지 ID를, 관리자 배포가 현재 표식의
+  값을 넘긴다. 발행만 실패하면 배포는 healthy지만 **exit 3**과 다시 실행할 명령을 출력한다(외부 controller는 이것을
+  배포 실패로 복구하지 않는다). 다음 배포의 교체 전 검사가 그 drift를 멈춤으로 잡는다.
+- 같은 project·서비스 label을 가진 남은 one-off 컨테이너(`compose run`, 진단용 `kt-transport-schema-guard-*` 등)가
+  있으면 Manager verify/adopt가 "정확히 하나" 조건으로 거절한다. 배포 전에 지운다.
 - `.release-sha`·`.staged-release-sha`·`.transport-admin-release-sha`는 준비·소스 표식으로 그대로 둔다(ADR-60 D6).
   현재 실행 상태는 이 파일들이 아니라 표식의 이미지 ID로 읽는다.
 
