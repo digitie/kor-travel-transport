@@ -30,7 +30,8 @@ export const TRANSPORT_ENDPOINTS = [
 ] as const;
 
 export function isAllowedTransportPath(path: string[]) {
-  return TRANSPORT_ENDPOINTS.includes(path.join("/") as (typeof TRANSPORT_ENDPOINTS)[number]) || (path.length === 4 && path[0] === "transport" && path[1] === "ports" && path[3] === "timetable");
+  return TRANSPORT_ENDPOINTS.includes(path.join("/") as (typeof TRANSPORT_ENDPOINTS)[number]) || (path.length === 4 && path[0] === "transport" && path[1] === "ports" && path[3] === "timetable")
+    || (path.length === 5 && path[0] === "transport" && path[1] === "fuel" && path[2] === "stations" && /^[1-9][0-9]*$/.test(path[3]) && path[4] === "price-history");
 }
 
 

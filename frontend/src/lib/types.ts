@@ -254,6 +254,10 @@ export type FeeCalculationResponse = {
   total_fee: number | null;
   currency: string;
   message: string | null;
+  reason_code?: string | null;
+  official_url?: string | null;
+  rule_updated_at?: string | null;
+  parking_lot_id?: number | null;
   breakdown: FeeBreakdown[];
 };
 

@@ -629,6 +629,30 @@ h1, h2, h3 { color: var(--text-primary); }
 .fuel-inspector .fuel-price-status { font-size: var(--text-xs); }
 .fuel-inspector .place-details { gap: 4px; }
 .fuel-inspector .price-grid > div { grid-template-columns: repeat(auto-fit, minmax(min(100%, 6rem), 1fr)); padding-block: 4px; gap: 4px; }
+.fuel-brand-icon { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 40px; height: 24px; }
+.fuel-brand-icon img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.fuel-brand-marker { padding: 2px; background: white; border: 1px solid var(--line); border-radius: 4px; }
+.transport-map-marker.is-selected .fuel-brand-marker { outline: 2px solid var(--brand); outline-offset: 2px; }
+.fuel-station-history { display: grid; gap: 4px; min-width: 0; padding-block: 4px; border-bottom: 1px solid var(--line); }
+.fuel-history-heading { display: flex; align-items: center; gap: 4px; }
+.fuel-history-heading h3 { margin: 0; font-size: var(--text-sm); }
+.fuel-current-price-label { font-size: var(--text-xs); }
+.fuel-price-old { display: block; color: var(--warning); }
+.fuel-station-trend { display: block; width: 100%; max-width: 27rem; height: auto; overflow: visible; touch-action: pan-y; }
+.fuel-station-trend:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 4px; }
+.fuel-trend-axis { fill: var(--text-secondary); font-size: 12px; }
+.fuel-trend-grid { stroke: var(--line); stroke-width: .75px; }
+.fuel-trend-latest { font-size: 14px; font-weight: 700; }
+.fuel-trend-active { stroke: var(--brand); stroke-width: 2px; fill: var(--panel); }
+.fuel-trend-legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 8px; font-size: var(--text-xs); }
+.fuel-trend-legend > span { display: flex; align-items: start; gap: 4px; min-width: 0; }
+.fuel-trend-legend i { flex: 0 0 12px; height: 3px; margin-top: 7px; background: var(--series-color); }
+.fuel-trend-legend small { display: block; color: var(--text-secondary); font-size: .65rem; }
+.fuel-trend-tooltip { font-size: var(--text-xs); background: var(--surface-subtle); padding: 4px; border-radius: var(--radius-control); }
+.fuel-trend-table { font-size: var(--text-xs); }
+.fuel-trend-table summary { min-height: 28px; cursor: pointer; }
+.fuel-trend-table [data-slot="table-container"] { max-height: 10rem; overflow: auto; }
+.fuel-trend-table :is(th, td) { padding: 4px 6px; font-size: var(--text-xs); }
 .map-route-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
 /* 공용 확장은 같은 작업면/엔진을 유지하며 앱의 주변 문서만 접는다. */
 .transport-shell:has([data-slot="map-workspace"][data-expanded="true"]) .admin-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }

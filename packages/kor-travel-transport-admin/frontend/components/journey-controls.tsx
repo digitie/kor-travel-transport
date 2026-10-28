@@ -4,7 +4,7 @@ import Link from "next/link";
 import { InfoButton } from "./info-button";
 import { Anchor, Bus, Fuel, Plane, TrainFront, Coffee, MapPin, TriangleAlert, X } from "lucide-react";
 import { useId } from "react";
-import { dateTime, hasCoordinates, money, serviceTime, type FerryTimetable, type Place } from "@/lib/journey";
+import { dateTime, hasCoordinates, hasFuelPrice, money, serviceTime, type FerryTimetable, type Place } from "@/lib/journey";
 import { collectionSourceLabel, fuelProductLabel, placeKindLabel } from "@/lib/transport-presentation";
 import { RailTimetables } from "./rail-timetables";
 import { Button } from "@/components/ui/button";
@@ -14,10 +14,18 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Badge } from "@/components/ui/badge";
 import { Empty, EmptyHeader, EmptyDescription } from "@/components/ui/empty";
+import { FuelBrandIcon } from "./fuel-brand-icon";
+import { FuelStationPriceHistory } from "./fuel-station-history";
 
-export function PlaceIcon({ kind }: { kind: string }) {
+export function PlaceIcon({ kind, brandCode, brandName }: { kind: string; brandCode?: string | null; brandName?: string | null }) {
+  if (kind === "fuel_station") return <FuelBrandIcon code={brandCode} name={brandName} />;
   const Icon = ({ fuel_station: Fuel, rail_station: TrainFront, ferry_port: Anchor, airport: Plane, rest_area: Coffee, bus_terminal: Bus, highway_incident: TriangleAlert } as const)[kind as Place["kind"]] ?? MapPin;
   return <Icon size={18} aria-hidden="true" />;
+}
+
+function isOldFuelObservation(observedAt: string) {
+  const instant = Date.parse(observedAt);
+  return Number.isFinite(instant) && Date.now() - instant > 168 * 3600_000;
 }
 
 export function ViewSwitch({ value, onChange }: { value: "map" | "list"; onChange: (value: "map" | "list") => void }) {
@@ -52,19 +60,21 @@ export function MultiSearch({ label, query, onQuery, options, selected, onSelect
 }
 
 export function PlaceDetails({ place, showRailTimetable = true, showHeading = true, onShowMap }: { place: Place; showRailTimetable?: boolean; showHeading?: boolean; onShowMap?: () => void }) {
+  const prices = place.kind === "fuel_station" ? place.prices?.filter(hasFuelPrice) : place.prices;
   const address = place.address ? hasCoordinates(place) ? onShowMap
     ? <button type="button" className="inline-link" onClick={onShowMap}>{place.address} · 지도에서 보기</button>
     : <Link className="inline-link" href={`/${place.kind === "fuel_station" ? "fuel" : "map"}?longitude=${place.longitude}&latitude=${place.latitude}`}>{place.address} · 지도에서 보기</Link>
     : place.address : null;
   return <div className="place-details">
-    {showHeading ? <><div className="place-title"><PlaceIcon kind={place.kind} /><span>{placeKindLabel(place.kind)}</span></div><h2>{place.name}</h2></> : null}
+    {showHeading ? <><div className="place-title"><PlaceIcon kind={place.kind} brandCode={place.brand_code} brandName={place.brand_name} /><span>{placeKindLabel(place.kind)}</span></div><h2>{place.name}</h2></> : null}
     {place.brand_name && (showHeading || place.kind !== "fuel_station") ? <p>{place.brand_name}</p> : null}
     {place.line_names.length ? <div className="flex flex-wrap gap-2">{place.line_names.map((line) => <Badge variant="secondary" key={line}>{line}</Badge>)}</div> : null}
-    {place.subtitle ? <p>{place.subtitle}</p> : null}
-    {place.prices?.length ? <dl className="price-grid">{place.prices.map((price) => <div key={price.product_code}><dt>{fuelProductLabel(price.product_code)}</dt><dd>{money(price.price, "원/L")}</dd><small>{dateTime(price.provider_updated_at ?? price.observed_at)}</small></div>)}</dl> : place.kind === "fuel_station" ? <p className="quiet">등록된 유가가 없습니다.</p> : null}
+    {place.subtitle && place.kind !== "fuel_station" ? <p>{place.subtitle}</p> : null}
+    {place.kind === "fuel_station" ? <FuelStationPriceHistory key={`${place.source}:${place.id}`} place={place} /> : null}
+    {prices?.length ? <><span className="quiet fuel-current-price-label">최근 저장 가격</span><dl className="price-grid">{prices.map((price) => <div key={price.product_code}><dt>{fuelProductLabel(price.product_code)}</dt><dd>{money(price.price, "원/L")}</dd><small><time dateTime={price.observed_at}>관측 {dateTime(price.observed_at)}</time>{place.kind === "fuel_station" && isOldFuelObservation(price.observed_at) ? <span className="fuel-price-old">7일 이전 관측</span> : null}</small></div>)}</dl></> : place.kind === "fuel_station" ? <p className="quiet">등록된 유효 유가가 없습니다.</p> : null}
     {place.kind === "fuel_station" ? <div className="place-metadata-actions">
       {address ? <InfoButton label="주소" icon={<MapPin size={15} aria-hidden="true" />}>{address}</InfoButton> : null}
-      <InfoButton label="데이터 출처">{collectionSourceLabel(place.source)}<p>기준정보 반영 {dateTime(place.updated_at)}</p></InfoButton>
+      <InfoButton label="데이터 출처">{collectionSourceLabel(place.source)}<p>기준정보 반영 {dateTime(place.updated_at)}</p>{prices?.filter((price) => price.provider_updated_at).map((price) => <p key={price.product_code}>{fuelProductLabel(price.product_code)} 제공기관 공시 {dateTime(price.provider_updated_at)}</p>)}</InfoButton>
     </div> : address ? <p>{address}</p> : null}
     {place.phone ? <p>전화 <a className="inline-link" href={`tel:${place.phone.replace(/[^+\d]/g, "")}`}>{place.phone}</a></p> : null}
     {place.kind === "ferry_port" ? <p className="quiet">항구 코드 {place.provider_id ?? "미제공"}</p> : null}

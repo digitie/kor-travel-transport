@@ -49,6 +49,7 @@ from app.service_exports import build_service_export_router
 from app.general_rail_routes import build_general_rail_router
 from app.ferry_reference_routes import build_ferry_reference_router
 from app.highway_map_routes import build_highway_map_router
+from app.services.fuel_price_history import build_fuel_price_history_router
 from app.services.parking_history_cache import (
     BoundedHistoryResponse, ParkingHistoryReadCache, encode_response, run_history_cpu,
 )
@@ -67,7 +68,6 @@ from app.models import (
     HighwayTrafficSnapshot,
     KricStationCode,
     KricStationMappingRegistry,
-    ParkingFeeRule,
     ParkingLot,
     ParkingSnapshot,
     RawApiResponse,
@@ -205,7 +205,7 @@ from app.services.backup_restore import (
     save_uploaded_backup,
 )
 from app.services.collection import CollectionService, is_upstream_rate_limit_error
-from app.services.fee_calculator import calculate_total_fee
+from app.services.fee_rules import quote_parking_fee
 from app.services.flight_status import FlightStatusService, sanitize_upstream_error
 from app.services.holidays import (
     HolidayItem,
@@ -1559,7 +1559,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 select(
                     FuelStation.id, FuelStation.source, FuelStation.name,
                     FuelStation.longitude, FuelStation.latitude, FuelStation.address,
-                    FuelStation.brand_name, FuelStation.phone, FuelStation.is_self,
+                    FuelStation.brand_name, FuelStation.brand_code, FuelStation.phone, FuelStation.is_self,
                     FuelStation.is_24h, FuelStation.has_carwash,
                     FuelStation.has_maintenance, FuelStation.has_cvs,
                     FuelStation.last_seen_at,
@@ -1584,7 +1584,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 items.append(TransportPlaceMapItem(
                     id=station.id, kind="fuel_station", source=station.source, name=station.name,
                     longitude=station.longitude, latitude=station.latitude, subtitle=station.address,
-                    brand_name=station.brand_name, latest_price=float(price.price) if price and price.price is not None else None,
+                    brand_name=station.brand_name, brand_code=station.brand_code, latest_price=float(price.price) if price and price.price is not None else None,
                     price_product_code=price.product_code if price else None, address=station.address,
                     prices=[FuelPriceItem(product_code=row.product_code, price=row.price, provider_updated_at=serialize_utc(row.provider_updated_at) if row.provider_updated_at else None, observed_at=serialize_utc(row.observed_at), collected_at=serialize_utc(row.collected_at)) for row in prices],
                     phone=station.phone,
@@ -2927,11 +2927,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def calculate_fees(
         payload: FeeCalculationRequest,
         session: AsyncSession = Depends(get_db),
+        holiday_service: HolidayService = Depends(get_holiday_service),
     ) -> FeeCalculationResponse:
         airport = await session.scalar(select(Airport).where(Airport.code == payload.airport_code.upper()))
         if airport is None:
             raise HTTPException(status_code=404, detail="지원하지 않는 공항입니다.")
 
+        lot = None
         if payload.parking_lot_id is not None:
             lot = await session.scalar(
                 select(ParkingLot).where(
@@ -2942,51 +2944,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if lot is None:
                 raise HTTPException(status_code=404, detail="해당 공항의 주차장을 찾지 못했습니다.")
 
-        query = select(ParkingFeeRule).where(
-            ParkingFeeRule.airport_id == airport.id,
-            ParkingFeeRule.vehicle_size == payload.vehicle_size,
-        ).order_by(
-            ParkingFeeRule.parking_lot_id.is_(None).desc(),
-            ParkingFeeRule.parking_lot_id,
-            ParkingFeeRule.day_type,
-        )
-        if payload.parking_lot_id is not None:
-            query = query.where(
-                (ParkingFeeRule.parking_lot_id == payload.parking_lot_id) | (ParkingFeeRule.parking_lot_id.is_(None))
-            )
-
-        fetched_rules = (await session.execute(query)).scalars().all()
-        # Generic rules are the fallback; a lot-specific rule must win
-        # deterministically when both rows exist.
-        generic_rules = [rule for rule in fetched_rules if rule.parking_lot_id is None]
-        if payload.parking_lot_id is not None:
-            rules = generic_rules + [
-                rule for rule in fetched_rules if rule.parking_lot_id == payload.parking_lot_id
-            ]
-        elif generic_rules:
-            rules = generic_rules
-        else:
-            # Some providers publish only lot-specific rules. For an airport
-            # wide quote, use the lowest-id lot deterministically instead of
-            # letting database row order decide which rule wins.
-            lot_ids = sorted({rule.parking_lot_id for rule in fetched_rules if rule.parking_lot_id is not None})
-            rules = [rule for rule in fetched_rules if rule.parking_lot_id == (lot_ids[0] if lot_ids else None)]
-        if not rules:
-            return FeeCalculationResponse(
-                supported=False,
-                airport_code=airport.code,
-                vehicle_size=payload.vehicle_size,
-                message="요금 규칙을 찾지 못했습니다.",
-            )
-
-        calculated = calculate_total_fee(payload.entry_at, payload.exit_at, rules)
-        return FeeCalculationResponse(
-            supported=True,
-            airport_code=airport.code,
-            vehicle_size=payload.vehicle_size,
-            total_fee=calculated.total_fee,
-            breakdown=calculated.breakdown,
-        )
+        return await quote_parking_fee(session, airport, lot, payload, resolved_settings, holiday_service)
 
     @router.post("/admin/collect", response_model=CollectionSummary, dependencies=[Depends(require_admin_token)])
     async def admin_collect(
@@ -3468,6 +3426,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(build_general_rail_router(get_db), prefix="/v1")
     app.include_router(build_ferry_reference_router(get_db), prefix="/v1")
     app.include_router(build_highway_map_router(), prefix="/v1")
+    app.include_router(build_fuel_price_history_router(resolved_settings, get_db), prefix="/v1")
     # 내부 서비스 일괄 export(ADR-013) — 서비스 토큰과 접속한 쪽의 주소(peer, 기본 loopback)로 닫힌다.
     app.include_router(build_service_export_router(resolved_settings, get_db), prefix="/v1")
 

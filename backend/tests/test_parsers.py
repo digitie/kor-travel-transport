@@ -95,6 +95,7 @@ def test_parse_incheon_fee_builds_short_and_long_rules() -> None:
     assert long_rule.basic_minutes == 60
     assert long_rule.basic_fee == 1000
     assert long_rule.daily_max_fee == 9000
+    assert {rule.vehicle_size for rule in parsed} == {"small"}
 
 
 def test_parse_kac_fee(fixtures_dir) -> None:

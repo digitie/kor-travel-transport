@@ -437,7 +437,9 @@ def parse_incheon_fee(payload: str | dict[str, Any] | list[dict[str, Any]]) -> l
             "max_items": raw_by_id.get(str(profile["max_id"]), []),
         }
         for lot_prefix in profile["lot_prefixes"]:
-            for vehicle_size in ("small", "large"):
+            # 이 charid 요금표는 소형 단기/장기/예약 주차장만 제공한다.
+            # 같은 금액을 대형차 규칙으로 복제하지 않는다.
+            for vehicle_size in ("small",):
                 for day_type in ("weekday", "holiday"):
                     rule = _build_incheon_fee_rule(
                         profile,

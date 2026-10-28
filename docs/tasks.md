@@ -1,3 +1,13 @@
+## 2026-10-28 — 전체 UI 보완 후 새 릴리스
+
+- [ ] **T-UI-FUEL-FEE-01** — 브랜드·개별 주유소 최근168시간 차트와 공개 API/BFF/gateway,
+  실제 주차장 요금 수집/선택·무료 회차/24시간 경계·미지원 사유를 완성한다.
+  형제 SDK의 typed 필드·정확 pin, WSL/Docker·CI·두 리뷰·375/1440 Firefox를 새 소스에 결합한다.
+  이전 후보 UI 실패를 통과로 바꾸지 않는다. [설계·범위](design/2026-10-28-fuel-history-fee-completion.md).
+- [ ] **T-RELEASE-FULL-UI-01** — 새 릴리스 운영 반영 후 전체 UI와 자연 주차 관측 두 번,
+  정기 `airport_collection_job SUCCESS`, 순수 요금 계산 및 PG18 앱 내부 백업 한 번을 검증한다.
+  수집 플래그 OFF 안내와 실제 계산 성공은 별개다. 주차 원본 삭제는 보존 정책의 선행 게이트 전까지 차단한다.
+
 ## 2026-10-28 — 철도 안내와 시간표의 확정 참조 연결
 
 - [ ] **T-RAIL-GUIDE-LINK-A/B** — [고정source·공식 앱 조사](research/2026-10-28-rail-guide-connection.md)와

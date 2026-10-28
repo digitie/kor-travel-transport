@@ -210,6 +210,7 @@ class TransportPlaceMapItem(BaseModel):
     latitude: float | None
     subtitle: str | None = None
     brand_name: str | None = None
+    brand_code: str | None = None
     latest_price: float | None = None
     price_product_code: str | None = None
     prices: list[FuelPriceItem] = Field(default_factory=list)
@@ -999,8 +1000,12 @@ class FeeCalculationRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_interval(self) -> "FeeCalculationRequest":
+        if self.entry_at.tzinfo is None or self.exit_at.tzinfo is None:
+            raise ValueError("입출차 시각에는 시간대가 필요합니다.")
         if self.exit_at <= self.entry_at:
             raise ValueError("출차 시각은 입차 시각보다 늦어야 합니다.")
+        if (self.exit_at - self.entry_at).total_seconds() > 366 * 86400:
+            raise ValueError("요금 계산 기간은 최대 366일입니다.")
         return self
 
 
@@ -1018,6 +1023,10 @@ class FeeCalculationResponse(BaseModel):
     total_fee: int | None = None
     currency: str = "KRW"
     message: str | None = None
+    reason_code: str | None = None
+    official_url: str | None = None
+    rule_updated_at: datetime | None = None
+    parking_lot_id: int | None = None
     breakdown: list[FeeBreakdown] = Field(default_factory=list)
 
 
@@ -1314,6 +1323,31 @@ class FuelPriceHistoryExportPage(BaseModel):
     meta: ServiceExportMeta
     station_key: str
     items: list[ExportPriceHistoryItem]
+    next_cursor: str | None = None
+    has_more: bool
+
+
+class FuelPriceHistoryWindow(BaseModel):
+    from_at: datetime
+    to_at: datetime
+    mode: Literal["rolling"] = "rolling"
+    timezone: Literal["Asia/Seoul"] = "Asia/Seoul"
+
+
+class FuelStationPriceHistoryResponse(BaseModel):
+    """공개 저장 이력. 창은 UTC rolling 기간이며 화면 날짜만 KST로 표시한다."""
+
+    meta: ServiceExportMeta
+    station_id: int
+    source: str
+    provider_id: str | None
+    brand_code: str | None
+    brand_name: str | None
+    window: FuelPriceHistoryWindow
+    source_last_success_at: datetime
+    source_revision: str
+    latest: list[FuelPriceItem] = Field(description="현재 저장 가격. 조회 창 밖의 오래된 관측일 수 있어 이력 그래프와 구분합니다.")
+    items: list[FuelPriceItem] = Field(description="창 안 실제 관측의 최신순 페이지. null/0은 유효 가격으로 그리지 않습니다.")
     next_cursor: str | None = None
     has_more: bool
 

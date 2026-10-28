@@ -11,6 +11,7 @@ from typing import Any
 from xml.etree import ElementTree
 
 from krairport import KrairportClient
+from krairport.models import ParkingFee
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -123,6 +124,33 @@ class SourceResponse:
     status_code: int
     body_text: str
     completion: dict[str, Any] | None = None
+    fee_rules: list[ParsedFeeRule] | None = None
+
+
+def _kac_fee_domain_rules(items: list[ParkingFee], airport_code: str) -> list[ParsedFeeRule]:
+    """SDK의 정규화 요금표를 저장용 도메인으로 옮긴다. 공급자 필드를 재파싱하지 않는다."""
+    rules: list[ParsedFeeRule] = []
+    observed_at = now_utc()
+    for item in items:
+        if item.airport_code != airport_code:
+            raise ValueError("요금표 공항이 요청 공항과 다릅니다.")
+        for vehicle in ("small", "large"):
+            for day_type, holiday in (("weekday", ""), ("holiday", "holiday_")):
+                values = {name: getattr(item, f"{vehicle}_{holiday}{name}") for name in (
+                    "free_minutes", "basic_minutes", "basic_fee", "unit_minutes", "unit_fee", "daily_max_fee",
+                )}
+                if any(value is None for value in values.values()):
+                    continue
+                if values["basic_minutes"] <= 0 or values["unit_minutes"] <= 0:
+                    raise ValueError("요금표의 기본·추가 단위시간이 올바르지 않습니다.")
+                rules.append(ParsedFeeRule(
+                    airport_code=airport_code, airport_name=item.airport_name or airport_code,
+                    parking_lot_name=item.parking_name, vehicle_size=vehicle, day_type=day_type,
+                    source_updated_at=observed_at, raw_item=dict(item.raw), **values,
+                ))
+    if items and not rules:
+        raise ValueError("완전한 주차요금 규칙을 제공받지 못했습니다.")
+    return rules
 
 
 @dataclass(slots=True)
@@ -188,22 +216,10 @@ class FixturePublicDataClient(PublicDataClient):
 
 
 class KrairportPublicDataClient(PublicDataClient):
-    """Live client backed by `python-krairport-api` (ADR-004, T-029).
+    """공급자 조회·요금 필드 정규화는 SDK에 맡기고 원문은 감사용으로 보존한다.
 
-    Uses krairport's generic raw-item escape hatch (`kac_raw_items` /
-    `iiac_raw_items`) rather than its typed `parking_status()`/
-    `parking_fees()` models: krairport's `ParkingFee` model is missing
-    holiday rates and the progressive per-unit fee fields this service's
-    fee calculator needs, and its field-name assumptions for KAC fees
-    don't match the field names this service has verified against the
-    live API. The raw-item path returns the same flat `{tag: text}` /
-    `{key: value}` shape our own `parsers.py` already expects, so the
-    parsing/business logic stays untouched -- only the HTTP fetch layer
-    changes.
-
-    krairport validates the upstream `resultCode` internally and raises
-    before returning on any non-success response, so `SourceResponse`
-    only ever carries already-validated items here.
+    KAC 요금은 완전한 typed `ParkingFee`를 소비한다. typed 지원이 없는
+    인천 요금 등은 기존 SDK 원문 경로를 유지하며 HTTP 우회 구현을 만들지 않는다.
     """
 
     def __init__(self, settings: Settings) -> None:
@@ -278,13 +294,17 @@ class KrairportPublicDataClient(PublicDataClient):
         )
 
     async def fetch_kac_fee(self, airport_code: str) -> SourceResponse:
-        return await self._raw_items(
-            provider="kac",
-            service="AirportParkingFee",
-            operation="parkingfee",
-            params={"pageNo": 1, "numOfRows": 50, "schAirportCode": airport_code},
+        async with KrairportClient(
+            kac_service_key=self.settings.data_go_kr_service_key,
+            timeout=self.settings.api_timeout_seconds,
+        ) as client:
+            items = await client.parking_fees(airport_code=airport_code)
+        return SourceResponse(
             source="kac_fee",
             endpoint=KAC_FEE_ENDPOINT,
+            request_params={"schAirportCode": airport_code}, status_code=200,
+            body_text=json.dumps([dict(item.raw) for item in items], ensure_ascii=False),
+            fee_rules=_kac_fee_domain_rules(items, airport_code),
         )
 
 
@@ -567,7 +587,7 @@ class CollectionService:
                             break
                         continue
                     raw_count += 1
-                    parsed_rules = parse_kac_fee(response.body_text, airport_code)
+                    parsed_rules = response.fee_rules if response.fee_rules is not None else parse_kac_fee(response.body_text, airport_code)
                     fee_rule_count += await self._store_fee_rules(session, parsed_rules)
 
             if self.settings.enable_incheon_fee_collection:
@@ -993,22 +1013,41 @@ class CollectionService:
 
             lot_ids = [None]
             if rule.parking_lot_name:
-                lot = await session.scalar(
-                    select(ParkingLot).where(ParkingLot.airport_id == airport.id, ParkingLot.name == rule.parking_lot_name)
-                )
-                if lot is not None:
-                    lot_ids = [lot.id]
-                elif rule.airport_code == "ICN":
+                # KAC 요금 응답의 공식 명칭과 실시간 현황의 canonical lot를 연결한다.
+                # 국제선 통합 요금은 공식 표에서 동일한 지하/빌딩 두 곳에만 적용한다.
+                lot_names = {
+                    ("GMP", "국제선 주차장"): ("국제선 지하주차장", "국제선 주차빌딩"),
+                    ("GMP", "화물청사 주차장"): ("화물청사주차장",),
+                    ("GMP", "국내선 제2주차장(일반/예약)"): ("국내선 제2주차장",),
+                }.get((rule.airport_code, rule.parking_lot_name), (rule.parking_lot_name,))
+                exact_lots = list((await session.execute(select(ParkingLot).where(
+                    ParkingLot.airport_id == airport.id, ParkingLot.name.in_(lot_names),
+                ))).scalars())
+                if rule.airport_code == "ICN":
+                    # 현황의 'T1 장기 P1 주차장', 'T2 P1 장기주차타워' 등은
+                    # 요금표 명칭의 접두어가 아니다. 확인된 터미널·종류로 연결한다.
+                    category = {"단기주차장": "short", "장기주차장": "long", "예약주차장": "reserved"}.get(
+                        rule.parking_lot_name[3:]
+                    )
                     matching_lots = (
                         await session.execute(
                             select(ParkingLot).where(
                                 ParkingLot.airport_id == airport.id,
-                                ParkingLot.name.startswith(rule.parking_lot_name),
+                                ParkingLot.terminal == rule.parking_lot_name[:2],
+                                ParkingLot.category == category,
                             )
                         )
-                    ).scalars().all()
+                    ).scalars().all() if category is not None else []
                     if matching_lots:
                         lot_ids = [matching_lot.id for matching_lot in matching_lots]
+                elif exact_lots:
+                    lot_ids = [lot.id for lot in exact_lots]
+
+                # 이름이 있는 규칙은 해당 주차장에만 적용한다. 매칭 실패를
+                # 공항 공통(NULL) 규칙으로 저장하면 다른 주차장 요금이 오염된다.
+                if lot_ids == [None]:
+                    logger.warning("주차장에 연결하지 못한 요금 규칙을 저장하지 않습니다: airport=%s", rule.airport_code)
+                    continue
 
             for lot_id in lot_ids:
                 existing = await session.scalar(

@@ -150,3 +150,15 @@ test("숨긴 목록에는 선택 상세를 중복 마운트하지 않는다", as
     expect(container.querySelectorAll('[data-testid="inspector-probe"]')).toHaveLength(1);
   } finally { await act(async () => root.unmount()); container.remove(); }
 });
+
+test("주유소 지도 마커와 목록 모두 실제 상표 코드의 로고와 접근 이름을 사용한다", async () => {
+  const fuel: Place = { ...station, id: 77, kind: "fuel_station", source: "opinet_browser", name: "시험 주유소", brand_code: "SOL", brand_name: "S-OIL", line_names: [] };
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  try {
+    await act(async () => root.render(<TransportMap places={[fuel]} mode="fuel" />));
+    expect(container.querySelector('button[aria-label*="시험 주유소 S-OIL"] img')?.getAttribute("src")).toBe("/fuel-brands/soil.gif");
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((node) => node.textContent?.includes("목록"))!.click());
+    expect(container.querySelector(".place-row img")?.getAttribute("alt")).toBe("S-OIL");
+    expect(fetch).not.toHaveBeenCalled();
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
