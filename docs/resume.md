@@ -9,6 +9,40 @@
   [설계](design/2026-10-28-rail-guide-timetable-connection.md),
   [검증 경계](reports/2026-10-28-rail-guide-research-validation.md).
 
+## 2026-10-28 — 0037 격리 수준 P1 보완 후보
+
+- 현재 상태: d733의12집중·CI40610095559 SUCCESS 이후 RR/SERIALIZABLE snapshot의 추가 P1을 확인했다.
+  원 d733/원장/리뷰는 보존했고 별도 WT에서 실제6행 소실 반례→최소 READ COMMITTED guard를 검증했다.
+- 새 집중은 WSL21/Docker21 PASS·actual0·독립wait0·source/runtime 동일·자식 종료다.4dump와 volume을
+  보존하고 소유 PG/network만 정리했다. [정확 범위·원 실패](reports/2026-10-28-parking-0037-isolation-guard.md).
+- 다음 한 작업: 새 정확 head CI와 두 독립 증분 리뷰를 수용한다. main의 철도문서PR166은 이후 통합 시
+  양쪽 이력을 보존해야 한다. 현재 source/운영 배포 입력을 덮거나 main push/merge하지 않았다.
+  API reader/backfill/coverage·복원/검산 후 prune가 연결되기 전 정책은 미완이며 운영/prune0이다.
+
+## 2026-10-28 — 0037 downgrade P1 보완 후보
+
+- 현재 상태: 원833 main3f 통합의 두 CI와 WSL/Docker 각310PASS+6subtests는 회수했다.
+  독립 리뷰에서 빈 검사 후 concurrent INSERT·COMMIT→DROP 행 소실을 발견했고 새 PG18.6 RED2로 확정했다.
+  원833/WT/원장과 첫 fixture 실패를 보존했다.
+- 최소 수정:0037의 세 표를 같은 transaction에서 먼저 ACCESS EXCLUSIVE 잠그고 빈 상태를 재검사한다.
+  새 집중 WSL12/Docker12 PASS·actual0·wait0·자식 종료와 네 dump/소유 자원 정리를 회수했다.
+  [경합 증거와 범위](reports/2026-10-28-parking-0037-downgrade-lock.md).
+- 다음 한 작업: 수정 정확 head CI와 두 독립 증분 리뷰를 수용한다. 새 전체/UI/운영 검증은 수행하지 않았다.
+  PR162/163 reader 실제 연결·backfill/coverage·history48h·복원 보호·검산 후 정리 전까지 정책은 미완이다.
+  prune OFF·main push/머지·운영 변경0이다. 아래 “다음/미완”은 작성 당시 이력과 구분한다.
+
+## 2026-10-28 — 주차 보존 현재 수용과 main3f 통합 후보
+
+- PR161 c763의 정확 CI와 James/Popper SOURCE_PASS, 원 d2 전체의 정상 종료를 회수했다.
+  원 c763/WT/실패·집중·전체 원장은 보존하고 새 전용 branch에 main3f516을 합친다.
+  문서 충돌은 양쪽 정책·이력을 보존했으며 collection/Dagster 자동병합은 새 결합 검증·두 증분 리뷰 전이다.
+- 162 pure pattern/163 단일snapshot DB adapter의 CI와 집중은 성공했지만 실제 API/cache/outlook는
+  아직 이 reader를 호출하지 않는다. 새 통합 source의 집중/CI·두 리뷰와 후속 reader 전환이 남는다.
+- 원본48시간·통계영구는 미완이다. backfill/coverage·history48h/cursor410·정밀도·현재/Map export·복원
+  gate와 검산 후 정리가 모두 필요하며 prune/자동 schedule/운영 변경은0이다.
+  [재개 감사와 다음 순서](reports/2026-10-28-parking-retention-resume.md).
+- 아래 기록은 각 작성 시점 이력이다. “회수 중/다음 한 작업/미검증”을 현재 정산과 혼동하지 않는다.
+
 ## 2026-10-27 — 지난 10일 Codex PR 리뷰의 통합 수정 PR
 
 - 현재 상태: 리뷰에서 나온 수정 20건(T01~T20)을 `review/codex-10d-transport` PR 하나로 구현했다. 운영 배포와
@@ -57,6 +91,70 @@
   801/8,300전체 행3단계 동등·Docker15통과/소유 자원 정리를 확인했다. c289 실행 결과로 바꾸지 않는다.
 - 다음 한 작업: 새 exact head/c289 환경·CI·두 리뷰와 fresh Next/same-head API/유가 통계 UI를 수용한다.
   기존 venv를 보존한다. CPU/RSS·운영 ARM 절감은 미측정이며 운영 이미지·설정·스키마 변경은0이다.
+
+## 2026-10-28 — 161 독립 리뷰의 최초 최신 요약 P1·전국 membership P2
+
+원 d2 전체는 별도 동결 소스/DB에서 변경 없이 회수 중이다. 별도 수정 WT와 private PG16
+(2GiB/1CPU·disk volume·internal subnet/ports0)의 새 DB에서 d2제품+새10회귀는6 FAIL/4 PASS,
+actual1·F만6/E0/skip0으로 재현했다. 원 RED source/DB/JUnit·자식 종료를 보존한다.
+
+최초 summary가 없는 lot의 지연 수집은 기존 raw의 더 최신 observed/id를 가리지 않도록 전체 raw의
+current 승자와 최대 collected watermark를 읽어 초기화한다. 동일시각 id/source·seed/수집 lease의
+양순서·512 범위 밖 lot을 검증한다. 첫 global seal은 bucket의 기존 공항 proof 전체를 읽고
+proof가 있는데 raw가 사라진 공항은 airport_raw_missing blocked로 남긴다. 미집계 proof 대기는 유지한다.
+수정 d0e43ee의 같은10회귀는10 PASS·actual0·skip0, JUnit `3ca17afba27eb62423c696fa5f44293902bbba454e59a75713ae638dc80fc4b2`이며
+원 자식 종료를 확인했다. 최신 main8bc를 별도 수정 WT에 합친26b92b5는 CI PostgreSQL18/server·client
+관련 두 파일만 추가됐고 앱/의존성/DDL은 d0와 같다. 정확350의 넓은16파일 집중은 WSL/Docker
+각277 PASS+6 subtests·F/E/skip0·actual0, Docker wait0으로 끝났다. WSL649.13초·Docker740.41초,
+830파일/106패키지·Git10/CLI 전후 동일·원 child/CID 잔여0·두 DB schema37/client0·PG OOM/max0이다.
+OpenAPI check0이며 집중 최종 원장 SHA는 `fbdaacba7c8fdb863b47537194b3ef5690cf639b297e21ef5e916440f53037b5`다.
+이는 PG16/native QA이고 main Dockerfile의 PG18 client 이미지 빌드 수용과 다르다. 새 head CI/독립 리뷰는 미완이다.
+원 d2 WSL 전체는1466 PASS+6 subtests/2skip·actual0으로 종료했고 같은 d2 Docker 전체는 순차 회수 중이다.
+원본 삭제·reader/운영 변경0이며 d2 whole은 이 수정이나 PG18 이미지의 검증이 아니다.
+
+## 2026-10-28 — 2A 현재 후보와 다음 검증
+
+- 현재:99de06f는 공항/전국 seal EXISTS의 전역 hash P2를 최소 OFFSET0로 보완했다. WSL/Docker
+  각152 PASS+6 subtests·actual0, 새 plan DB10000/900의 구간별 PK와 세 유데이터 downgrade 거절을
+  확인했다. 기존707의 넓은 집중237+6 및9fb 실패·707 plan RED는 원래 범위로 각각 보존한다.
+- 다음 한 작업: docs-only 정산의 제품 blob 동일성·최종 원장과 stacked Draft PR을 고정하고,
+  새 전체 필요 범위·CI·두 독립 리뷰를 수용한다. 전체는 별도 GO 전 시작하지 않는다.
+- 원본48시간 정책 전체는 미완이다. API reader/history/cursor/해상도·복원 guard·실제 prune 및
+  운영 수용은 후속이다. [2A 경계](architecture/parking-archive-coverage.md).
+
+## 2026-10-28 — 2A 707 집중 회수와 영구 seal 전역 스캔 P2
+
+정확707의 두 집중은 각237 PASS+6 subtests PASS(JUnit tests243/testcase237), F/E/skip0·actual0,
+WSL208.34초·Docker304.69초와 독립 Docker wait0을 회수했다. 소스829/locked106·Git10 및
+실행 중 Docker 지문을 검산했고 자식·컨테이너는 종료했다. 기존9fb 실패는 별도로 보존한다.
+
+이후10000개 영구 통계/900개 원본의 소유 DB EXPLAIN에서 적격 후보의 sealed EXISTS가
+hash용 전체 PK Index Only Scan(10000행/loops1)으로 바뀌는 실제 P2를 확인했다. SQL의 PK
+등가 조건만으로 bounded 실행을 보장하지 못했다. 원707 source/계획/DB/집중 원장은 보존한다.
+공항·전국의 해당 EXISTS에 OFFSET0만 추가하고 통계 유무/두 scope의 실제 계획 회귀를 추가했다.
+새 수정 소스 집중·실제 계획 GREEN/유데이터 downgrade 검산은 아직 미완이다. 새whole/운영/삭제0이다.
+
+## 2026-10-28 — 2A 초기 집중 실패 보존과 관측·최신 main 통합
+
+2A의9fb 집중은166 PASS/7 FAIL·actual1이며 성공으로 수용하지 않는다. 기존 fixture가 새 전국/보류
+테이블을 초기화하지 않아6실패·job action 기대1실패였고, 통과한 사례도 잔존 상태 영향을 배제하지
+못하므로 수정한 최종 소스를 새 nonce DB에서 관련 집중 전체로 다시 검증해야 한다. 9fb source·로그·
+JUnit/DB는 보존했다. c7/a1a/40f 및 최신main 통합70a의 통과 결과와 혼합하지 않는다.
+
+40f 관측 보완과 통합70a를 별도2A WT에 병합하며 공항/전국의 status·선택 창·검산/발행 extrema를 구분한다.
+전체 결과가 전국 no_new_rows로 덮이지 않게 하고 blocked는 commit 뒤 Dagster 실패 metadata로 남긴다.
+이 병합 후 새 소스 QA는 미완이며 원본 삭제·API reader 전환·자동 schedule·운영 변경0이다.
+
+## 2026-10-28 — 주차 보존 c7 회수와 별도2A 후보
+
+- 현재 상태: c7 WSL1334 PASS/2 SKIP·Docker1330 PASS/6 SKIP, 두 actual exit0·원 child/컨테이너 잔여0,
+  소스804/locked106/Git10·PG OOM/max0을 회수했다. c7 CI 양 실행의 backend/frontend/admin은 success다.
+  초기 UNKNOWN/OOM 실행·old tmpfs/세 dump는 보존하며 c7 독립 리뷰 최종 정산·운영 수용은 별도다.
+- 후속: 별도 c7 기반2A WT에서0037 전국 동시각 통계·coverage/seal/보류·작은 latest 상태를 준비했다.
+  오래된 보류 bucket 정체와 UTC offset floor의 P2는 c7 RED2개를 보존하고 후속에서 수정한다.
+- 다음 한 작업:2A 새 소스·nonce DB에서 migration/집중 회귀·멱등/late/lease·후보 조회계획을 검증한다.
+  새 전체는 별도 검토 전 시작하지 않는다. 모든 reader/history48h·기존cursor·해상도/current/export·복원/정리는 남는다.
+  [2A 모델](architecture/parking-archive-coverage.md), [실제 소비 경로와 반례](reports/2026-10-28-parking-reader-transition-review.md).
 
 ## 2026-10-28 — 주차 PR156 최신 main 통합
 

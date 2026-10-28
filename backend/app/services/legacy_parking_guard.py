@@ -2,7 +2,7 @@
 from sqlalchemy import exists, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import ParkingStatisticsBucket
+from app.models import ParkingGlobalStatisticsBucket, ParkingLatestState, ParkingStatisticsBucket
 
 
 async def ensure_legacy_import_allowed(session: AsyncSession) -> None:
@@ -13,5 +13,6 @@ async def ensure_legacy_import_allowed(session: AsyncSession) -> None:
         ))
         if not acquired:
             raise RuntimeError("주차 수집·통계 작업 중에는 legacy 주차 이관을 실행할 수 없습니다.")
-    if await session.scalar(select(exists().select_from(ParkingStatisticsBucket))):
-        raise RuntimeError("영구 주차 통계가 있는 DB에는 legacy 주차 자료를 덮어쓸 수 없습니다.")
+    for model in (ParkingStatisticsBucket, ParkingGlobalStatisticsBucket, ParkingLatestState):
+        if await session.scalar(select(exists().select_from(model))):
+            raise RuntimeError("영구 주차 통계·현재 요약이 있는 DB에는 legacy 주차 자료를 덮어쓸 수 없습니다.")

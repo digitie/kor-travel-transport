@@ -187,6 +187,7 @@ async def test_replayed_old_observation_after_simulated_raw_expiry_cannot_replac
 
 def test_archive_job_is_providerless_and_has_no_automatic_schedule(monkeypatch):
     from app.dagster import definitions as module
+    from app.services.parking_global_archive import archive_parking_with_coverage
 
     invoked = []
 
@@ -198,7 +199,7 @@ def test_archive_job_is_providerless_and_has_no_automatic_schedule(monkeypatch):
     monkeypatch.setattr(module, "_run_with_session", run)
     result = module.parking_statistics_archive_job.execute_in_process()
     assert result.success
-    assert invoked == [archive_parking_statistics]
+    assert invoked == [archive_parking_with_coverage]
     assert "parking_statistics_archive_job_schedule" not in {s.name for s in module.definitions.schedules}
 
 

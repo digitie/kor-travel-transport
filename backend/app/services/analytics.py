@@ -60,6 +60,18 @@ def deduplicate_snapshot_rows(
     )
 
 
+def build_global_cohort_summary(rows: list[ParkingSnapshot]) -> tuple[dict[str, int], int]:
+    """기존 source 우선순위로 중복 제거한 뒤 전국의 같은 시각 합계를 표본으로 삼는다."""
+    selected = deduplicate_snapshots(rows)
+    cohorts: dict[datetime, int] = defaultdict(int)
+    for row in selected:
+        cohorts[ensure_tz(row.observed_at, "UTC")] += row.available_spaces
+    if not cohorts:
+        raise ValueError("관측 없는 전국 통계를 0 표본으로 발행하지 않습니다.")
+    values = list(cohorts.values())
+    return {"count": len(values), "sum": sum(values), "min": min(values), "max": max(values)}, len(selected)
+
+
 def classify_status_level(available_spaces: int, total_spaces: int) -> str:
     if available_spaces <= 0:
         return "full"

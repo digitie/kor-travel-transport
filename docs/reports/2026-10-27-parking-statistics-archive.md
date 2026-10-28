@@ -25,6 +25,10 @@ Docker는 `a05c0ee6d1dbe33b56729d7a277beafe9a5fec91d2a3cd42ce058507d5e81346`이�
 Popper의 오래된 보류 정체·UTC offset floor P2는 별도2A에서 RED→GREEN으로 해소하며 이 commit에 섞지 않는다.
 새 UI·자동 schedule·원본 삭제·운영 변경0이며 정책 전체는 아직 미완이다. 아래 미완 표기는 당시 상태다.
 
+후속2A의 전국/latest·UTC/보류 정체 보완은 별도 작업트리와 원장에 남긴다.
+[후속 모델](../architecture/parking-archive-coverage.md)과
+[reader/API 조사·반례18개](2026-10-28-parking-reader-transition-review.md)를 따른다.
+
 ## 범위
 
 사용자는 주차 원본을 이틀만, 통계자료를 영구 보존하도록 확정했다. 이 변경은 그 정책의 **1단계**다. `0036` 영구 통계 테이블과 수동 DB 전용 Dagster job을 추가하고, 원본 정리 진입은 항상 차단한다. 현재 분석/API/UI 읽기, 원본, provider, 자동 수집/schedule은 바꾸지 않는다. 전체 48시간 정책의 적용 완료나 운영 배포가 아니다.

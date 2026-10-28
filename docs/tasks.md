@@ -6,6 +6,21 @@
   비재진입lock·총deadline·시설범위/미확인상태·375/1440·실제GUI를 회귀/수용한다. 현재 구현/운영0이다.
   KRIC 시설을 일반철도/SRT에 대입하거나 이름·거리 자동 매핑을 추가하지 않는다.
 
+## 2026-10-28 — 주차 보존 미완 gate와 새 통합
+
+- [ ] **T-PARK-RET-CURRENT** — PR161 main3f 통합833의 PG18 집중 각310+6와 두 CI 성공을 회수했다.
+  독립 리뷰의0037 downgrade 경쟁 P1은 실제 RED2 3FAIL→최소 잠금 보완의 WSL12/Docker12PASS로 확인했다.
+  d733 CI는 SUCCESS였으나 RR/SERIALIZABLE의 추가P1을 실제6건으로 재현해 최소 격리 guard를 보완했다.
+  새 WSL21/Docker21 PASS와 이전 결과를 분리하며 새 정확 head CI·두 증분 리뷰와 결합 리뷰는 남는다.
+  [격리 보완](reports/2026-10-28-parking-0037-isolation-guard.md). 162/163 내부 reader/DB 입력은
+  실제 API/cold/cache/bundle/outlook/history/current/Map export에 미연결이다.
+  [0037 경합·검증 경계](reports/2026-10-28-parking-0037-downgrade-lock.md).
+- [ ] 운영 backfill/완전 coverage·동일schema 구dump 복원 보호·raw48h/cursor410·해상도·검산 후
+  bounded prune와 자연 실행 수용을 마치기 전 원본48시간·통계영구 완료로 옮기지 않는다.
+  prune OFF·운영 삭제/스케줄 변경0이다. [현행 감사](reports/2026-10-28-parking-retention-resume.md).
+
+아래 항목의 과거 “회수 중/리뷰 미완”은 작성 당시 이력이며 현재 수용은 이 절과 감사 보고서가 정본이다.
+
 ## 2026-10-27 — 지난 10일 Codex PR 리뷰 후속
 
 - [ ] T-REVIEW-10D-01 — 리뷰 통합 수정 PR(`review/codex-10d-transport`, T01~T20): 소유자 승인으로 머지했다(운영 미배포).
@@ -28,12 +43,20 @@
 ## 2026-10-27 — 주차 보존 수명 분리
 
 - [ ] **T-PARK-RET-01** — 주차 원본48시간·통계영구. 선행0036 영구통계/수동 backfill·검산·삭제 차단 후보는
-  c7 전체 WSL1334/Docker1330 PASS·CI와 최소 Dagster 결과관측 P1의 a1a PG 집중 WSL119/Docker119 PASS를 회수했다.
-  정확40f CI3개 성공을 회수했고 최신main f647 병합의 집중/새 CI/증분 독립 수용을 우선한다.
-  UTC offset floor·오래된 보류 정체 P2와 전국/latest 저장 보완은 별도2A다.
+  c7 전체 WSL1334/Docker1330 PASS와 최소 Dagster 결과관측의 a1a WSL119/Docker119 PASS를 회수했다.
+  정확40f CI3개 성공 뒤 최신main 통합70a는 WSL153/Docker153 PASS·새 CI/리뷰 수용 중이다.
+  별도2A의0037 전국/보류/latest·UTC offset floor·오래된 보류 정체 보완은9fb 집중7실패를 보존했다.
+  fixture/action/관측 통합707의 두 집중237 PASS+6 subtests를 회수했지만 실제 eligible seal 전역 스캔 P2를 확인했다.
+  99의 최소 OFFSET0 보완은 두 집중152 PASS+6 subtests·실제 plan GREEN·세 유데이터 downgrade거절을 확인했다.
+  원707/9fb 증거를 보존하며 d2 동결 전체는 별도 회수 중이다. PR156은8bc에 머지했지만0036은 운영 미배포다.
+  PR161 독립 리뷰의 최초 latest 초기화P1·최초 전국 membership P2는 독립 PG16의 실제6 FAIL→10 PASS로 보완했다.
+  수정350의16파일 집중은 WSL/Docker 각277 PASS+6 subtests·actual0·Docker wait0/OpenAPI check0이다.
+  원 d2 WSL 전체1466 PASS+6 subtests/2skip·actual0과 진행 중 d2 Docker 전체는 수정350 전체 수용과 다르다.
+  PG16 집중·main의 PG18 CI/client delta를 구분하며 새 head CI/두 독립 리뷰는 미완이다.
   모든 분석/전망/현재/Map export 읽기 전환, 원본 history48시간·커서/해상도/coverage,
   원본 검산 후 정리·보류 상태·백업/참조·자연 실행 수용 전에는 완료로 옮기지 않는다.
   [설계와 단계](architecture/parking-retention.md), [검증 원장](reports/2026-10-27-parking-statistics-archive.md).
+  [2A 저장 보완](architecture/parking-archive-coverage.md), [실제 경로와 반례18개](reports/2026-10-28-parking-reader-transition-review.md).
 
 ## 2026-10-27 — 공식 배포 자식 handoff
 

@@ -9,6 +9,39 @@
   [설계](design/2026-10-28-rail-guide-timetable-connection.md),
   [검증 경계](reports/2026-10-28-rail-guide-research-validation.md).
 
+## 2026-10-28 — 0037 옛 snapshot 격리의 downgrade 명시 거절
+
+- d733 CI 성공 뒤 독립 James의 P1을 실제 PG18.6에서 확정했다. RR3/SERIALIZABLE3은 version SELECT 후
+  writer가 commit한 행을 옛 snapshot의 빈 검사로 보지 못해 DROP했다. d733/12집중/CI·원 실패는 불변이다.
+- PostgreSQL의 실제 READ COMMITTED와 비AUTOCOMMIT transaction만 허용하는 최소 guard를 넣었다.
+  같은 격리 반례의 WSL21/Docker21 PASS·actual0·wait0·source/runtime106/Git10 동일·자식 종료를 회수했다.
+  첫 미지원 fixture3실패와 AUTOCOMMIT의 기존25P01 거절을 실제 행 소실6건과 분리했다.
+- 네 DB dump·disk volume을 보존한 뒤 정확 소유 PG/network만 정리했다. 새 정확 CI·두 증분 리뷰는 남으며
+  reader/정리/운영 활성화는0이다. [격리 반례·환경·한계](reports/2026-10-28-parking-0037-isolation-guard.md).
+
+## 2026-10-28 — 0037 빈 표 downgrade의 동시 commit 소실 보완
+
+- 독립 리뷰의 P1을 새 PG18.6 세션에서 실제 재현했다. 원833 제품의 RED2는3 FAIL/5 PASS이며
+  세 표 각각 마지막 빈 검사 뒤 INSERT·COMMIT한 행이 DROP됐다. 첫 fixture7실패는 별도 보존했다.
+- 모든 대상 표를 같은 Alembic transaction에서 고정 순서로 먼저 ACCESS EXCLUSIVE 잠그고
+  빈 상태를 재검사한다.5초 잠금 timeout·기존 행 거절·DDL/version rollback·SQLite 분기를 유지했다.
+- 새 회귀 WSL12/Docker12 PASS·actual0·독립 wait0·원 child 종료·source/runtime 전후 동일을 회수했다.
+  네 DB dump와 disk volume을 보존하고 소유 PG/network만 정리했다. 원833의310+6·CI를 새 head 전체로 세지 않는다.
+- 다음 gate는 새 정확 CI와 두 독립 증분 리뷰다. reader/운영 backfill/복원 보호·원본 정리는 미완이며
+  main push·머지·운영/prune0이다. [실제 반례·환경·검증 한계](reports/2026-10-28-parking-0037-downgrade-lock.md).
+
+## 2026-10-28 — 주차 보존 현재 수용과 main3f 통합 후보
+
+- PR161 c763의 정확 CI와 James/Popper SOURCE_PASS, 원 d2 전체의 정상 종료를 회수했다.
+  원 c763/WT/실패·집중·전체 원장은 보존하고 새 전용 branch에 main3f516을 합친다.
+  문서 충돌은 양쪽 정책·이력을 보존했으며 collection/Dagster 자동병합은 새 결합 검증·두 증분 리뷰 전이다.
+- 162 pure pattern/163 단일snapshot DB adapter의 CI와 집중은 성공했지만 실제 API/cache/outlook는
+  아직 이 reader를 호출하지 않는다. 새 통합 source의 집중/CI·두 리뷰와 후속 reader 전환이 남는다.
+- 원본48시간·통계영구는 미완이다. backfill/coverage·history48h/cursor410·정밀도·현재/Map export·복원
+  gate와 검산 후 정리가 모두 필요하며 prune/자동 schedule/운영 변경은0이다.
+  [재개 감사와 다음 순서](reports/2026-10-28-parking-retention-resume.md).
+- 아래 기록은 각 작성 시점 이력이다. “회수 중/다음 한 작업/미검증”을 현재 정산과 혼동하지 않는다.
+
 ## 2026-10-27 — 지난 10일 Codex PR 상세 리뷰의 통합 수정
 
 - 2026-10-17 이후 머지된 Codex PR 51건(#83~#143)을 리뷰했다. 고칠 20건(T01~T20)은 PR 하나
@@ -75,6 +108,77 @@ Python3.13.14·frozen lock의 SQLite 집중 회귀84통과/1건너뜀(324.52초)
 PG8,300개 각SELECT/쓰기 dispatch8,300→21을 확인했고 소유 CID/label/volume1 정리를 통과했다.
 첫 PG 준비의 CRLF export 검사 실패(DB 생성 전)와 원 raw 결과도 보존한다.
 CPU/RSS·Docker 회귀·CI·두 리뷰·live UI·운영 수용은 미완이다.
+
+## 2026-10-28 — 161 독립 리뷰의 최초 최신 요약 P1·전국 membership P2
+
+원 d2 전체는 별도 동결 소스/DB에서 변경 없이 회수 중이다. 별도 수정 WT와 private PG16
+(2GiB/1CPU·disk volume·internal subnet/ports0)의 새 DB에서 d2제품+새10회귀는6 FAIL/4 PASS,
+actual1·F만6/E0/skip0으로 재현했다. 원 RED source/DB/JUnit·자식 종료를 보존한다.
+
+최초 summary가 없는 lot의 지연 수집은 기존 raw의 더 최신 observed/id를 가리지 않도록 전체 raw의
+current 승자와 최대 collected watermark를 읽어 초기화한다. 동일시각 id/source·seed/수집 lease의
+양순서·512 범위 밖 lot을 검증한다. 첫 global seal은 bucket의 기존 공항 proof 전체를 읽고
+proof가 있는데 raw가 사라진 공항은 airport_raw_missing blocked로 남긴다. 미집계 proof 대기는 유지한다.
+수정 d0e43ee의 같은10회귀는10 PASS·actual0·skip0, JUnit `3ca17afba27eb62423c696fa5f44293902bbba454e59a75713ae638dc80fc4b2`이며
+원 자식 종료를 확인했다. 최신 main8bc를 별도 수정 WT에 합친26b92b5는 CI PostgreSQL18/server·client
+관련 두 파일만 추가됐고 앱/의존성/DDL은 d0와 같다. 정확350의 넓은16파일 집중은 WSL/Docker
+각277 PASS+6 subtests·F/E/skip0·actual0, Docker wait0으로 끝났다. WSL649.13초·Docker740.41초,
+830파일/106패키지·Git10/CLI 전후 동일·원 child/CID 잔여0·두 DB schema37/client0·PG OOM/max0이다.
+OpenAPI check0이며 집중 최종 원장 SHA는 `fbdaacba7c8fdb863b47537194b3ef5690cf639b297e21ef5e916440f53037b5`다.
+이는 PG16/native QA이고 main Dockerfile의 PG18 client 이미지 빌드 수용과 다르다. 새 head CI/독립 리뷰는 미완이다.
+원 d2 WSL 전체는1466 PASS+6 subtests/2skip·actual0으로 종료했고 같은 d2 Docker 전체는 순차 회수 중이다.
+원본 삭제·reader/운영 변경0이며 d2 whole은 이 수정이나 PG18 이미지의 검증이 아니다.
+
+## 2026-10-28 — 2A 99의 seal 후보 계획·보존 guard 집중 수용
+
+정확99de06f의 관련9파일은 WSL152 PASS+6 subtests PASS/44.24초·Docker152 PASS+6 subtests
+PASS/55.12초(F/E/skip0, JUnit tests158/testcase152), actual0·독립Docker wait0이다. 별도707의
+더 넓은17파일237 PASS+6 subtests는 원래 source 범위로 보존하며99 전체 검증으로 확대하지 않는다.
+829 source/locked106·Git10 동일성과 실행 중 Docker 지문을 검산했다. 707의 plan RED와 같은 DB의
+read-only GREEN 및 새10000통계/900원본 DB의 PK등가 Rows1×900을 구분해 보존했다.
+영구전국10000행·보류1행·latest1행의 각 실제 downgrade exit1과 데이터/schema37 보존도 확인했다.
+
+첫9fb의 fixture/action 실패와707의 실제 전역 스캔 RED·모든 원본 source/DB/log를 보존한다.
+2A는 여전히 reader/원본 정리·자동 schedule·운영 변경0이다. 새 whole·CI·독립 리뷰·정책 전체 수용은
+별도이며 자동 전체 재실행은 하지 않는다. [모델·계획 경계](architecture/parking-archive-coverage.md),
+[독자 전환18반례](reports/2026-10-28-parking-reader-transition-review.md).
+
+## 2026-10-28 — 2A 707 집중 회수와 영구 seal 전역 스캔 P2
+
+정확707의 두 집중은 각237 PASS+6 subtests PASS(JUnit tests243/testcase237), F/E/skip0·actual0,
+WSL208.34초·Docker304.69초와 독립 Docker wait0을 회수했다. 소스829/locked106·Git10 및
+실행 중 Docker 지문을 검산했고 자식·컨테이너는 종료했다. 기존9fb 실패는 별도로 보존한다.
+
+이후10000개 영구 통계/900개 원본의 소유 DB EXPLAIN에서 적격 후보의 sealed EXISTS가
+hash용 전체 PK Index Only Scan(10000행/loops1)으로 바뀌는 실제 P2를 확인했다. SQL의 PK
+등가 조건만으로 bounded 실행을 보장하지 못했다. 원707 source/계획/DB/집중 원장은 보존한다.
+공항·전국의 해당 EXISTS에 OFFSET0만 추가하고 통계 유무/두 scope의 실제 계획 회귀를 추가했다.
+새 수정 소스 집중·실제 계획 GREEN/유데이터 downgrade 검산은 아직 미완이다. 새whole/운영/삭제0이다.
+
+## 2026-10-28 — 2A 초기 집중 실패 보존과 관측·최신 main 통합
+
+2A의9fb 집중은166 PASS/7 FAIL·actual1이며 성공으로 수용하지 않는다. 기존 fixture가 새 전국/보류
+테이블을 초기화하지 않아6실패·job action 기대1실패였고, 통과한 사례도 잔존 상태 영향을 배제하지
+못하므로 수정한 최종 소스를 새 nonce DB에서 관련 집중 전체로 다시 검증해야 한다. 9fb source·로그·
+JUnit/DB는 보존했다. c7/a1a/40f 및 최신main 통합70a의 통과 결과와 혼합하지 않는다.
+
+40f 관측 보완과 통합70a를 별도2A WT에 병합하며 공항/전국의 status·선택 창·검산/발행 extrema를 구분한다.
+전체 결과가 전국 no_new_rows로 덮이지 않게 하고 blocked는 commit 뒤 Dagster 실패 metadata로 남긴다.
+이 병합 후 새 소스 QA는 미완이며 원본 삭제·API reader 전환·자동 schedule·운영 변경0이다.
+
+## 2026-10-28 — 주차 보존 c7 전체 회수·2A 저장 보완과 P2 해소
+
+정확c7의 WSL 전체1334 PASS/2 SKIP·Docker1330 PASS/6 SKIP, 실제 exit0과 원 child/컨테이너 잔여0을
+회수했다. 소스804·locked106/Git10·원WT clean c7·디스크2GiB PG의 OOM/max0을 확인했다.
+초기c7 WSL wrapper 실패의 UNKNOWN과589 OOM 무효화 원장·이전 tmpfs PG/세 dump는 따로 보존했다.
+정확c7의 push/PR CI backend/frontend/admin은 success, live-e2e는 skip이다. 독립 리뷰 정산·운영 수용은 별도다.
+
+후속 별도WT의0037은 전국 동시각 cohort·검산 membership seal·보류 상태와 lot별 latest 파생값을 추가한다.
+기존 API reader·자동 schedule·원본 삭제는 바꾸지 않는다. 순수 회귀와 실제 DB 회귀를 분리한다.
+독립 리뷰 P2인 오래된 보류 bucket의 후속 날짜 정체와 +05:45 UTC floor 오차는 별도 c7 RED2개를 보존하고
+2A에서 해소한다. 첫 경우는 별도 UUID DB에서 두 번 적격 집계0, 두 번째는 순수 기대18:20/실제18:15였다.
+새 nonce GREEN·migration/조회계획·읽기 전환·48시간 정리 수용 전에는 정책 완료로 보고하지 않는다.
+[저장 보완](architecture/parking-archive-coverage.md), [reader/API 경로와 반례](reports/2026-10-28-parking-reader-transition-review.md).
 
 ## 2026-10-28 — PR156 관측 보완의 최신 main 문서 병합
 

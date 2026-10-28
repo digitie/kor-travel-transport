@@ -917,6 +917,7 @@ class CollectionService:
         observations: list[ParsedParkingObservation],
         *, lot_ids: dict[tuple[str, str], int] | None = None,
     ) -> int:
+        from app.services.parking_archive_state import capture_latest_snapshot
         stored = 0
         # 같은 저장 호출 안에서만 재사용한다. rollback/다음 수집으로 ORM 객체를 넘기지 않는다.
         airports: dict[str, Airport] = {}
@@ -974,6 +975,7 @@ class CollectionService:
                     await session.flush()
             except IntegrityError:
                 continue
+            await capture_latest_snapshot(session, snapshot)
             stored += 1
         await session.flush()
         return stored
