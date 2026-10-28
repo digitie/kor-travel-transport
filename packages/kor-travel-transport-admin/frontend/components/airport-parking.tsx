@@ -54,7 +54,7 @@ function ParkingWorkspace({ initialView }: { initialView: View }) {
       <TabsContent keepMounted value="current">{visited.has("current") ? <CurrentStatusView /> : null}</TabsContent>
       <TabsContent keepMounted value="analytics">{visited.has("analytics") ? airports.length ? <AnalyticsView active={view === "analytics"} /> : unavailable : null}</TabsContent>
       <TabsContent keepMounted value="history">{visited.has("history") ? airports.length ? <HistoryView active={view === "history"} /> : unavailable : null}</TabsContent>
-      <TabsContent keepMounted value="fees">{visited.has("fees") ? <FeesView scopeControls={false} help={<InfoButton label="주차요금 기준">요금의 ‘휴일’은 현재 토·일요일 기준이며 공휴일과 할인 조건은 별도로 계산하지 않습니다. 공항별 공개 요금 규칙이 없는 경우에는 미지원으로 표시합니다.</InfoButton>} /> : null}</TabsContent>
+      <TabsContent keepMounted value="fees">{visited.has("fees") ? <FeesView scopeControls={false} help={<InfoButton label="주차요금 기준">김포·김해·제주는 금~일요일과 법정공휴일 요금을 적용합니다. 공항·주차장·차량별 저장 규칙으로 계산하며, 자료가 불완전하면 계산 불가 사유를 표시합니다. 할인은 반영하지 않습니다.</InfoButton>} /> : null}</TabsContent>
     </Tabs>
   </section>;
 }
