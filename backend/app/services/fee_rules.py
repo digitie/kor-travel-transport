@@ -84,6 +84,11 @@ async def quote_parking_fee(
         )
     if {rule.day_type for rule in rules} != {"weekday", "holiday"}:
         return unavailable("incomplete_rules", "평일·휴일 요금 규칙이 완전하지 않아 계산할 수 없습니다.")
+    if airport.code == "ICN" and any(
+        rule.daily_max_fee <= 0 or rule.unit_minutes <= 0 or rule.unit_fee <= 0
+        or rule.basic_minutes <= 0 or rule.basic_fee <= 0 for rule in rules
+    ):
+        return unavailable("incomplete_rules", "인천 주차장의 기본·추가·일 최대요금 규칙이 완전하지 않아 계산할 수 없습니다.")
     if airport.code not in OFFICIAL_FEE_URLS:
         return unavailable("policy_unverified", "이 공항의 무료 회차·일일 요금 적용 기준 확인이 필요합니다.")
     if airport.code == "CJJ" and payload.vehicle_size == "large" and (lot is None or "5" not in lot.name):

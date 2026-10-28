@@ -378,24 +378,28 @@ def _build_incheon_fee_rule(
     fee_descriptions = descriptions_by_id.get(str(profile["fee_id"]), [])
     max_descriptions = descriptions_by_id.get(str(profile["max_id"]), [])
     if not fee_descriptions:
+        if max_descriptions:
+            raise ValueError("인천 주차요금표의 기본·추가 요금이 누락되었습니다.")
         return None
+    if not max_descriptions or _parse_won_amount(max_descriptions[0]) <= 0:
+        raise ValueError("인천 주차요금표의 일 최대요금이 누락되거나 올바르지 않습니다.")
 
     basic_description = next((description for description in fee_descriptions if description.startswith("최초")), "")
     unit_description = next((description for description in fee_descriptions if "초과" in description), "")
+    unit_minutes = _parse_hhmm_duration(unit_description)
+    unit_fee = _parse_won_amount(unit_description)
+    if unit_minutes <= 0 or unit_fee <= 0:
+        raise ValueError("인천 주차요금표의 추가 단위시간·요금이 누락되거나 올바르지 않습니다.")
 
     if basic_description:
         basic_minutes = _parse_hhmm_duration(basic_description)
         basic_fee = _parse_won_amount(basic_description)
-        unit_minutes = _parse_hhmm_duration(unit_description) or basic_minutes
-        unit_fee = _parse_won_amount(unit_description)
     else:
-        unit_minutes = _parse_hhmm_duration(unit_description)
-        unit_fee = _parse_won_amount(unit_description)
         basic_minutes = unit_minutes
         basic_fee = unit_fee
 
     if basic_minutes <= 0 or basic_fee <= 0:
-        return None
+        raise ValueError("인천 주차요금표의 기본시간·요금이 올바르지 않습니다.")
 
     return ParsedFeeRule(
         airport_code="ICN",
@@ -406,9 +410,9 @@ def _build_incheon_fee_rule(
         free_minutes=0,
         basic_minutes=basic_minutes,
         basic_fee=basic_fee,
-        unit_minutes=max(1, unit_minutes or basic_minutes),
+        unit_minutes=unit_minutes,
         unit_fee=unit_fee,
-        daily_max_fee=_parse_won_amount(max_descriptions[0]) if max_descriptions else 0,
+        daily_max_fee=_parse_won_amount(max_descriptions[0]),
         source_updated_at=source_updated_at,
         raw_item=raw_item,
     )

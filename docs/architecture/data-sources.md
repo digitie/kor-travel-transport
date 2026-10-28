@@ -46,7 +46,9 @@
   - `FB00000003`, `NF00000003`: T1/T2 예약주차장
 - 운영 주의:
   - `ENABLE_INCHEON_FEE_COLLECTION=true`일 때만 수집한다.
-  - 실시간 주차장 이름이 `T1 단기주차장지하1층`처럼 층 정보를 포함하면, 요금 규칙은 `T1 단기주차장` 접두어 기준으로 연결한다.
+  - 요금표의 T1/T2와 단기·장기·예약 분류를 실제 주차장 `terminal/category`에 연결한다.
+    장기·예약 주차장의 이름은 요금표 접두어와 다를 수 있다. 이름이 매칭되지 않은 특정 규칙을 공항 공통으로 저장하지 않는다.
+  - 기본·추가요금과 양의 일 최대요금이 완전해야 저장하며, 소형 요금을 대형에 복제하지 않는다.
 - provider 라이브러리: krairport에 이 endpoint의 typed 지원은 없지만, 범용
   `iiac_raw_items("ParkingChargeInfo", "getParkingChargeInformation", ...)` escape hatch로
   조회한다(`T-030`). 파싱(`charid`/`chardesc` → 요금 규칙 변환)은 여전히
@@ -58,10 +60,12 @@
 - 용도:
   - 한국공항공사 관리 공항의 주차요금 계산
   - 소형/대형, 평일/주말/공휴일 요금 규칙 저장
-- provider 라이브러리: krairport의 `kac_raw_items("AirportParkingFee", "parkingfee", ...)`를
-  통해 조회한다(`T-030`). krairport의 typed `ParkingFee` model은 쓰지 않는다 — 휴일 요금과
-  분당 추가요금 필드가 없고, 필드명(`parkingBasicM` 등)도 parking-radar가 실측 검증한 이름
-  (`PARKING_BASIC_M` 등)과 다르다. `parsers.py::parse_kac_fee`가 raw item을 그대로 파싱한다.
+- provider 라이브러리: krairport의 `parking_fees(airport_code=...)` typed `ParkingFee`를 사용한다.
+  형제 SDK PR #13의 머지 commit `e60b5280462803d00575cf9a16911681057d5ea6`에서 실제
+  `parkingParkingName`, `parkingMaxAccount`와 소형/대형·평일/휴일의 무료/기본/추가/최대 필드를 보완했다.
+  Transport는 정규화된 값을 저장 도메인으로 옮기며 공급자 필드를 재파싱하지 않는다.
+  원 항목은 감사용으로 보존하고 `parse_kac_fee`는 오프라인 fixture 호환에만 사용한다.
+  초기 raw 경로와 대문자 필드명 오해의 이력은 ADR-004에 보존한다.
 
 ## 6. 한국공항공사 실시간 항공편 운항 정보
 

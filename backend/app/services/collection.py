@@ -588,14 +588,14 @@ class CollectionService:
                         continue
                     raw_count += 1
                     parsed_rules = response.fee_rules if response.fee_rules is not None else parse_kac_fee(response.body_text, airport_code)
-                    fee_rule_count += await self._store_fee_rules(session, parsed_rules)
+                    fee_rule_count += await self._store_fee_rules(session, parsed_rules, errors=errors)
 
             if self.settings.enable_incheon_fee_collection:
                 response = await self._safe_fetch(session, run, self.client.fetch_incheon_fee, errors)
                 if response is not None:
                     raw_count += 1
-                    parsed_rules = parse_incheon_fee(response.body_text)
-                    fee_rule_count += await self._store_fee_rules(session, parsed_rules)
+                    assert response.fee_rules is not None
+                    fee_rule_count += await self._store_fee_rules(session, response.fee_rules, errors=errors)
 
             if not errors:
                 run.status = "success"
@@ -733,6 +733,10 @@ class CollectionService:
             await session.flush()
             try:
                 validate_source_response_body(response.source, response.body_text)
+                if response.source == "incheon_fee":
+                    # 요금표 불완전은 이 원천의 실패로 보존한다. 정상 주차 관측과
+                    # DB 저장 오류까지 같은 예외 경계에서 삼키지 않는다.
+                    response.fee_rules = parse_incheon_fee(response.body_text)
             except Exception as exc:
                 # DB(parse_error·collection_runs.error_message)와 route 응답에는 가린 글만 둔다. 가린 뒤에도
                 # rate-limit 표지(UPSTREAM_RATE_LIMIT_MARKER)는 남는다 — get_upstream_rate_limit_state가 읽는다.
@@ -998,8 +1002,11 @@ class CollectionService:
         await session.flush()
         return stored
 
-    async def _store_fee_rules(self, session: AsyncSession, rules: list[ParsedFeeRule]) -> int:
+    async def _store_fee_rules(
+        self, session: AsyncSession, rules: list[ParsedFeeRule], *, errors: list[str] | None = None,
+    ) -> int:
         stored = 0
+        unmatched: dict[str, int] = {}
         for rule in rules:
             airport = await session.scalar(select(Airport).where(Airport.code == rule.airport_code))
             if airport is None:
@@ -1047,6 +1054,7 @@ class CollectionService:
                 # 공항 공통(NULL) 규칙으로 저장하면 다른 주차장 요금이 오염된다.
                 if lot_ids == [None]:
                     logger.warning("주차장에 연결하지 못한 요금 규칙을 저장하지 않습니다: airport=%s", rule.airport_code)
+                    unmatched[rule.airport_code] = unmatched.get(rule.airport_code, 0) + 1
                     continue
 
             for lot_id in lot_ids:
@@ -1075,7 +1083,6 @@ class CollectionService:
                         raw_item_json=rule.raw_item,
                     )
                     session.add(existing)
-                    stored += 1
                 else:
                     existing.free_minutes = rule.free_minutes
                     existing.basic_minutes = rule.basic_minutes
@@ -1085,6 +1092,12 @@ class CollectionService:
                     existing.daily_max_fee = rule.daily_max_fee
                     existing.source_updated_at = rule.source_updated_at
                     existing.raw_item_json = rule.raw_item
+                stored += 1
 
         await session.flush()
+        if errors is not None:
+            errors.extend(
+                f"{airport_code} 주차요금 규칙 {count}개를 주차장에 연결하지 못해 저장하지 않았습니다."
+                for airport_code, count in sorted(unmatched.items())
+            )
         return stored
