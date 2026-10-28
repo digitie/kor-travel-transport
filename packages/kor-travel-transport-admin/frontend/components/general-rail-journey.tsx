@@ -5,18 +5,26 @@ import { useSeoulToday } from "@/lib/journey-hooks";
 import { MapFilterBar, MapFilterField } from "@kor-travel/ui/map-controls";
 import { Input } from "./ui/input";
 import { SectionCard } from "./section-card";
-import { GeneralRailGuide } from "./general-rail-guide";
+import { GeneralRailGuide, type GeneralRailStationIntent, type GeneralRailStationReference } from "./general-rail-guide";
 
 type Code = { code: string; name: string };
 type Station = { station_id: string; station_name: string };
 type Catalog = { fetched_at: string; stale: boolean; cities: Code[]; train_classes: Code[] };
 type Stations = { fetched_at: string; stale: boolean; city_code: string; items: Station[] };
 type Trips = { fetched_at: string; stale: boolean; service_date: string; total: number | null; truncated: boolean; items: { train_number: string | null; grade_name: string | null; departure_station_name: string | null; arrival_station_name: string | null; departure_planned_time: string | null; arrival_planned_time: string | null; adult_fare: number | null }[] };
+type StationSearchIntent = { revision: number; station: GeneralRailStationReference };
 
-function StationSearch({ label, cities, value, onChange }: { label: string; cities: Code[]; value: Station | null; onChange: (value: Station | null) => void }) {
+function StationSearch({ label, cities, value, onChange, request }: { label: string; cities: Code[]; value: Station | null; onChange: (value: Station | null) => void; request?: StationSearchIntent }) {
   const id = useId();
   const [city, setCity] = useState("");
-  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState({ revision: 0, text: "" });
+  const revision = request?.revision ?? 0;
+  // 안내의 이름은 검색어일 뿐이다. 지역과 실제 TAGO station_id는 후보 클릭 전 확정하지 않는다.
+  const query = search.revision === revision ? search.text : request?.station.name ?? "";
+  const fieldset = useRef<HTMLFieldSetElement>(null);
+  const cityInput = useRef<HTMLSelectElement>(null);
+  const queryInput = useRef<HTMLInputElement>(null);
+  const focusedRequest = useRef(0);
   const [response, setResponse] = useState<{ city: string; data?: Stations; error?: string }>({ city: "" });
   useEffect(() => {
     if (!city) return;
@@ -27,13 +35,24 @@ function StationSearch({ label, cities, value, onChange }: { label: string; citi
     return () => controller.abort();
   }, [city]);
   const current = response.city === city ? response : undefined;
+  const ready = Boolean(current?.data);
+  useEffect(() => {
+    if (!revision) return;
+    const freshRequest = focusedRequest.current !== revision;
+    focusedRequest.current = revision;
+    // 뒤늦은 목록 응답은 다른 쪽 역/날짜 등으로 옮긴 사용자의 초점을 빼앗지 않는다.
+    if (!freshRequest && document.activeElement !== cityInput.current && document.activeElement !== queryInput.current) return;
+    if (freshRequest) fieldset.current?.scrollIntoView?.({ block: "start" });
+    (city && ready ? queryInput.current : cityInput.current)?.focus({ preventScroll: true });
+  }, [revision, city, ready]);
   const results = query.trim() ? current?.data?.items.filter((station) => `${station.station_name} ${station.station_id}`.includes(query.trim())) ?? [] : [];
-  return <fieldset className="train-station-search"><legend>{label}</legend>
-    <MapFilterBar><MapFilterField label="지역" htmlFor={`${id}-city`}><select id={`${id}-city`} value={city} onChange={(event) => { setCity(event.target.value); setQuery(""); onChange(null); }}><option value="">지역 선택</option>{cities.map((row) => <option key={row.code} value={row.code}>{row.name}</option>)}</select></MapFilterField><MapFilterField label={`${label} 검색`} htmlFor={`${id}-query`}><Input id={`${id}-query`} type="search" disabled={!current?.data} placeholder="역 이름·코드" value={query} onChange={(event) => setQuery(event.target.value)} /></MapFilterField></MapFilterBar>
+  return <fieldset ref={fieldset} className="train-station-search"><legend>{label}</legend>
+    <MapFilterBar><MapFilterField label="지역" htmlFor={`${id}-city`}><select ref={cityInput} id={`${id}-city`} value={city} onChange={(event) => { setCity(event.target.value); setSearch({ revision, text: request?.station.name ?? "" }); onChange(null); }}><option value="">지역 선택</option>{cities.map((row) => <option key={row.code} value={row.code}>{row.name}</option>)}</select></MapFilterField><MapFilterField label={`${label} 검색`} htmlFor={`${id}-query`}><Input ref={queryInput} id={`${id}-query`} type="search" disabled={!ready} placeholder="역 이름·코드" value={query} onChange={(event) => setSearch({ revision, text: event.target.value })} /></MapFilterField></MapFilterBar>
+    {request && !value ? <p className="quiet" role="status">{request.station.name} · {city ? "TAGO 후보를 확인해 선택하세요." : "지역을 선택한 뒤 TAGO 후보를 확인하세요."}</p> : null}
     {current?.error ? <p role="alert">{current.error}</p> : city && !current?.data ? <p role="status">역 목록 조회 중…</p> : null}
     {current?.data?.stale ? <p>갱신에 실패한 이전 역 목록입니다.</p> : null}
     {value ? <p><strong>{value.station_name}</strong> <small>{value.station_id}</small> <button type="button" className="inline-link" onClick={() => onChange(null)}>선택 해제</button></p> : null}
-    {results.length ? <div className="station-results">{results.slice(0, 20).map((station) => <button type="button" key={station.station_id} aria-pressed={value?.station_id === station.station_id} onClick={() => onChange(station)}><strong>{station.station_name}</strong><small>{station.station_id}</small></button>)}</div> : query ? <p className="quiet">조건에 맞는 역이 없습니다.</p> : null}
+    {results.length ? <div className="station-results">{results.slice(0, 20).map((station) => <button type="button" key={station.station_id} aria-pressed={value?.station_id === station.station_id} onClick={() => onChange(station)}><strong>{station.station_name}</strong><small>{station.station_id}</small></button>)}</div> : ready && query.trim() ? <p className="quiet">조건에 맞는 역이 없습니다.</p> : null}
   </fieldset>;
 }
 
@@ -45,6 +64,7 @@ export function GeneralRailJourney() {
   const [reload, setReload] = useState(0);
   const [departure, setDeparture] = useState<Station | null>(null);
   const [arrival, setArrival] = useState<Station | null>(null);
+  const [stationRequests, setStationRequests] = useState<Partial<Record<GeneralRailStationIntent["role"], StationSearchIntent>>>({});
   const [grade, setGrade] = useState("");
   const [date, setDate] = useState(seoulDate);
   const [futureOnly, setFutureOnly] = useState(true);
@@ -80,14 +100,18 @@ export function GeneralRailJourney() {
   const current = response.key === key ? response : undefined;
   const trips = current?.data;
   const rows = trips?.items.filter((row) => !futureOnly || (serviceInstant(row.departure_planned_time, trips.service_date) ?? -Infinity) >= clock).sort((a, b) => (serviceInstant(a.departure_planned_time, trips!.service_date) ?? Infinity) - (serviceInstant(b.departure_planned_time, trips!.service_date) ?? Infinity));
+  function requestStation({ role, station }: GeneralRailStationIntent) {
+    if (role === "departure") setDeparture(null); else setArrival(null);
+    setStationRequests((previous) => ({ ...previous, [role]: { revision: (previous[role]?.revision ?? 0) + 1, station } }));
+  }
   return <section className="journey-workbench map-route">
-    <GeneralRailGuide />
+    <GeneralRailGuide onStationIntent={requestStation} />
     <div id="general-rail-timetable" className="journey-map-target map-route-followup" tabIndex={-1}>
     <a className="inline-link" href="#general-rail-map">지도 작업면으로</a>
     {catalogError ? <p role="alert">{catalogError} <button type="button" className="inline-link" onClick={() => setReload((v) => v + 1)}>다시 조회</button></p> : !catalog ? <p role="status">열차 종류와 지역을 확인하는 중입니다…</p> : null}
     {catalog?.stale ? <p>갱신에 실패한 이전 기준정보입니다. 조회 기준 {dateTime(catalog.fetched_at)}</p> : null}
     <MapFilterBar><MapFilterField label="열차 종류" htmlFor={`${id}-grade`}><select id={`${id}-grade`} value={grade} onChange={(event) => setGrade(event.target.value)}><option value="">모든 열차</option>{catalog?.train_classes.map((row) => <option key={row.code} value={row.code}>{row.name}</option>)}</select></MapFilterField><MapFilterField label="출발일" htmlFor={`${id}-date`}><input id={`${id}-date`} type="date" min={today} max={seoulDate(9)} value={effectiveDate} onChange={(event) => setDate(event.target.value)} /></MapFilterField></MapFilterBar>
-    <div className="journey-data-grid"><StationSearch label="출발역" cities={catalog?.cities ?? []} value={departure} onChange={setDeparture} /><StationSearch label="도착역" cities={catalog?.cities ?? []} value={arrival} onChange={setArrival} /></div>
+    <div className="journey-data-grid"><StationSearch label="출발역" cities={catalog?.cities ?? []} value={departure} onChange={setDeparture} request={stationRequests.departure} /><StationSearch label="도착역" cities={catalog?.cities ?? []} value={arrival} onChange={setArrival} request={stationRequests.arrival} /></div>
     <button type="button" className="button" onClick={() => void load()} disabled={!departure || !arrival || departure.station_id === arrival.station_id || !effectiveDate || current?.pending}>예정 운행편 조회</button>
     {current?.pending ? <p role="status">시간표를 조회하는 중입니다…</p> : current?.error ? <p role="alert">{current.error}</p> : null}
     <SectionCard title={`${departure?.station_name ?? "출발역"} → ${arrival?.station_name ?? "도착역"}`} description="예정 출발·도착 시각과 성인 요금을 비교합니다. 실시간 지연·잔여 좌석은 제공하지 않습니다.">
