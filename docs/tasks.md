@@ -1,9 +1,11 @@
 ## 2026-10-28 — 최신3f 운영 수용 잔여
 
-- [ ] T-OPS-3F-BUILD — 21:02:54Z backend building·최종 result 없음 뒤 공식 세 이미지 완성·source/imageID·소유 종료와 정리를 실제 원장으로 수용한다.
-- [ ] T-OPS-3F-CUTOVER — 원 native 전체 상태와 두 ID를 보존해 Transport만 pause·자연 tick/run/worker/PG drain·정본 cutover·호환 health·원복을 수용한다.
+세 후보 ARM64 이미지 계약·backend 내용 검증·빌드/probe 종료와 정리는 수용했다. 원 aggregate timeout과 완료 backend/frontend 재사용·admin 후속 빌드를 구분하며, 운영 교체 완료로 세지 않는다.
+
+- [ ] T-OPS-3F-CUTOVER — 29f 원인 UNKNOWN·8b36 FD9·c051 PG drain 실패를 보존한다. 별도 전체 47 원복95c18/DB35·기존 5개 역할 보존은 수용했지만 r9 소스 두 리뷰·순수 44개는 실행 성공이 아니다. 후속 fresh 사전 검사366d47ec가 `pg_command_contract`로 차단해 55aa launch·root·unit 생성0·native/DDL/runtime 변경0이다. r9 권한 중지·r10 포트 parser 소스 검토 후 새 실제 cutover·호환 health·원 상태 복구를 수용한다.
 - [ ] T-OPS-3F-PUBLIC35 — 실제 운영 공개35개를 수용한다. 격리39의 고정 합성 가격·D-1/D-6 oracle는 운영에 승계하지 않는다.
-- [ ] T-OPS-3F-ARM — 자연 수집과 비교 가능한 ARM 전체 job CPU·메모리/PG 전후를 측정한다. PR155의 약93% 저장 CPU 감소·약3MiB RSS 증가와 별도다.
+- [ ] T-OPS-3F-SMOKE — 기존 필수 수집/백업 smoke를 실제 결과로 수용한다. 이미지 내용 검증·소스 리뷰로 대체하지 않는다.
+- [ ] T-OPS-3F-ARM — 자연 수집과 비교 가능한 ARM 전체 job CPU·메모리/PG 전후를 측정한다. PR155의 약 93% 저장 CPU 감소·약 3 MiB RSS 증가와 별도다.
 
 [완료된 main3f 동등 tree의 CI·fresh39·Manager와 남은 운영 경계](reports/2026-10-28-production-3f-rollout.md)를 구분한다. 아래 기존 미완 task도 이번 체크포인트로 자동 완료하지 않는다.
 
@@ -57,7 +59,7 @@
 
 ## 2026-10-26 — Manager instance 정본 전달
 
-- [ ] **T-DAGSTER-INSTANCE-01** — #139의 CI·두 리뷰·머지와 Odroid Transport CS의 정본 a7 read-only 소비·운영 복구 계약은 수용했다. 공용 plane c444→a7 수렴과 다른 소비자/호스트의 effective 일치는 별도 미완이다. [소비·복구 범위](reports/2026-10-27-integrated-production-rollout.md).
+- [ ] **T-DAGSTER-INSTANCE-01** — #139의 CI·두 리뷰·머지와 Odroid Transport CS의 정본 a7 read-only 소비·운영 복구 계약은 수용했다. 이후 Odroid 공용 plane c444→a7 공식 수렴은 두 healthy·drift0/보호 대상 보존으로 수용했다. 다른 소비자/호스트의 effective 전체 일치는 별도 미완이다. [소비·복구 범위](reports/2026-10-27-integrated-production-rollout.md).
 
 
 ## 2026-10-25 — 조사 기반 지도·이용 흐름 후속

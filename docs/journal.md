@@ -1,10 +1,11 @@
-## 2026-10-28 — 최신3f 격리 검증 완료·운영 빌드 진행 체크포인트
+## 2026-10-28 — 3f 후보 이미지 수용·cutover 실패 후 원복 정산
 
-- main3f와 Git tree가 같은 PR154 head3fb7c3d의 backend/frontend/transport-admin CI는3 SUCCESS, GitHub live-e2e는SKIPPED다. 새 Next compile과 동일 source PG18/schema36의 실제 UI39·소유 자원 정리를 수용했다.
-- PR155의 약93% CPU·wall 감소는 amd64 저장·commit 구간이며 전체 job이나 ARM 수치가 아니다. 표본 RSS는약3MiB 증가했고 메모리 저감은 미수용이다.
-- Manager 최신 설치·공개UI는 완료됐고 Transport 최신 source stage도 통과했다. 21:02:54Z 관측에서는 unit 약22분·backend 약21분 진행 중이며 최종 result가 없어 전체 빌드는 미완료였다.
-- 실제 배포·원 native 상태 복구·운영 공개35·자연 수집과 ARM CPU/메모리 전후는 남아 있다. 고정 합성39의 가격·날짜를 운영 oracle로 재사용하지 않는다.
-- [완료·미완과 원 실패](reports/2026-10-28-production-3f-rollout.md)를 분리했다. 이번 문서 변경은 native helper·운영 조회/변경을 실행하지 않는다. 아래 일지 원문은 각각 작성 당시 이력으로 보존한다.
+- main 8d80은 검증 빌드3f 대비 문서 아래 8개 경로만 바뀌었고 문서 밖 629개 mode/kind/blob이 같다. 실제 이미지·격리 UI39·CI의 source 표시는 3f로 유지한다.
+- 원 aggregate 빌드 timeout을 보존하고 완료된 backend/frontend ID를 재사용한 admin 후속 빌드와 세 ARM64 이미지 계약·소유 정리를 수용했다. 별도 공식 공용 plane 수렴은 두 서비스 healthy·drift 0이다.
+- cutover29f의 원인은 UNKNOWN, 8b36은 FD9 점유로 prebaseline 실패했다. c051은 Transport 18 pause 뒤 PG drain 실패·18 restore 기록을 남겼지만 부모 복구 후 검증에서 ContractError와 native_restored=false를 남겼고 세부 발생 지점은 UNKNOWN이다. 별도 두 관측95c18에서 전체 47 원 ID/상태·기존 5개 역할·DB35 보존을 수용했다.
+- 읽기 전용 재현으로 PG 기본 socket5432 실패와 실제 포트11000 성공을 구분했다. r9 포트·복구 진단 소스의 두 리뷰와 순수 44개 통과는 실행·배포 성공이 아니다. 기존 원 실패는 모두 보존한다. 후속 fresh 사전 검사366d47ec가 `pg_command_contract`로 차단해 새 55aa의 launch·root·unit 생성 및 native·DDL·runtime 변경은0이다. r9 권한은 중지됐고 r10 포트 parser 소스 검토가 남았다.
+- PR155 약 93%는 격리 amd64 저장·commit CPU/wall이며 RSS는약 3 MiB 증가했다. 운영 공개35·수집/백업 smoke·ARM 전체 job 비용은 미완이다.
+- [완료·미완과 원장](reports/2026-10-28-production-3f-rollout.md)을 구분한다. 이번 문서 작업의 추가 운영 호출은0이며 아래 일지 전문은 작성 당시 이력으로 유지한다.
 
 ## 2026-10-27 — 지난 10일 Codex PR 상세 리뷰의 통합 수정
 
