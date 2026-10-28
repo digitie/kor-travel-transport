@@ -1,6 +1,6 @@
 # 최신3f 운영 빌드·배포 수용 체크포인트
 
-이 문서는 저장된 빌드·이미지 검증과 `c051` 실패 후 원복, `r9` 소스 검토까지 반영한 배포 미완 초안이다. 문서 작성자의 추가 운영 호출은 없다. 실제 cutover·운영 공개 UI35·수집/백업 smoke·ARM 전체 job 측정은 아직 수용하지 않았다.
+이 문서는 저장된 빌드·이미지 검증과 `c051` 실패 후 원복, `r11` 소스 검토와 G 경합 사전 검사까지 반영한 배포 미완 초안이다. 문서 작성자의 추가 운영 호출은 없다. 실제 cutover·운영 공개 UI35·수집/백업 smoke·ARM 전체 job 측정은 아직 수용하지 않았다.
 
 ## 완료한 코드·격리 검증
 
@@ -45,7 +45,15 @@
 - `c051`: Transport 원 RUNNING 18개에 STOP mutation18·running0을 기록한 뒤 부모의 `official_command_nonzero`로 중단했다. 최초 부모 호출 소스와 후속 endpoint 재현에 근거해 PG drain 접속 실패로 분류하지만, 당시 원 stderr를 확보한 것은 아니다. restore mutation18·running18 기록은 있으나 부모 복구 후 검증에서 `ContractError`/`native_restored=false`를 남겼다. query·map·equality 중 세부 발생 지점은 **UNKNOWN**이다. 그 실패 원장을 성공으로 고치지 않는다.
 - 후속 독립 읽기 두 관측에서 전체 47개의 원 ID·상태가 10초 간격으로 같고 Transport 18 RUNNING, 원 STOPPED·다른 location, 기존 다섯 역할 healthy·보호 대상·DB0035가 유지됨을 수용했다. 이는 실패한 부모의 원복 판정과 별도 증거다. migration/runtime intent는 없었다.
 - 같은 보호 PG·같은 DB의 읽기 전용 `SHOW port` 재현은 `-p` 없는 연결이 기본 socket5432에서 exit2, 실제 Cmd/정본 포트11000을 명시하면 exit0임을 확인했다. `c051` 원 stderr는 저장되지 않았으므로 이를 되찾은 것으로 쓰지 않는다.
-- `r9`는 보호 PG CID와 실제 Cmd 포트를 pause 전에 검증하고 psql에 명시한다. 기존 SQL·statement3초/lock0.5초/idle5초/connect3초/외측15초·drain1800초, FD9·복구 guard는 유지한다. 소스 두 독립 리뷰와 저자 순수 44개 검증은 완료했지만 **새 cutover 실행·배포 성공의 증거는 아니다**. 이후 fresh 읽기 전용 사전 검사는 `pg_command_contract`로 거절됐다. 실제 Cmd를 3인자로 한정한 parser 가정이 맞지 않아 포트 parser 후속 r10 소스 검토가 필요하다. 새 55aa는 launch·root·unit 생성0, native·DDL·runtime 변경0이며 Root가 r9 실행 권한을 중지했다.
+- `r9`는 보호 PG CID와 실제 Cmd 포트를 pause 전에 검증하고 psql에 명시한다. 기존 SQL·statement3초/lock0.5초/idle5초/connect3초/외측15초·drain1800초, FD9·복구 guard는 유지한다. 소스 두 독립 리뷰와 저자 순수 44개 검증은 완료했지만 **새 cutover 실행·배포 성공의 증거는 아니다**. 이후 fresh 읽기 전용 사전 검사는 `pg_command_contract`로 거절됐다. 실제 Cmd를 3인자로 한정한 parser 가정이 맞지 않아 후속 r10 포트 parser로 분리했다. 새 55aa는 launch·root·unit 생성0, native·DDL·runtime 변경0이며 Root가 r9 실행 권한을 중지했다.
+
+- `r10`: 순수 62개 검증·소스 검토 후 fresh 사전 검사도 `pg_command_contract`로 거절됐다. 실제 Cmd 33인자에 들어 있는 GUC 이름을 분류한 별도 읽기 원장 `ce00`은 설정 15개 각 1회·단일 포트11000을 확인했다. r10 허용 목록에서 빠진 이름은 `pg_stat_statements.max` 하나였으며 30f5는 launch0이었다.
+- `r11`: 그 이름 한 문자열과 launcher 교차 핀만 추가했다. 실제 이름·pair_index를 쓰고 설정값은 가린 33인자 fixture를 포함한 순수 65개와 J/W 두 소스 리뷰를 수용했다. 이것은 실제 PG 전체 속성·현재 native 상태나 운영 배포를 확인한 결과가 아니다.
+- `r11`의 다음 fresh 읽기 사전 검사는 **2026-10-28 02:21:06–11Z** canonical G 획득에서 `ManagerMutationActiveError`로 끝났다. PG·원 47개 native의 현재 상태를 검사하는 본문에는 진입하지 않았고, 새 4999의 launch·root·unit 생성 및 native·DDL·runtime 변경은 모두0이다. 그 시점에는 잠금 소유자 정체가 UNKNOWN이었고 강제 해제하지 않았다. 현재 상태를 새로 통과했다고 쓰거나 이전 `95c18`의 기존 5개 역할·DB35 복구 수용을 이번 검사로 확대하지 않는다.
+
+02:23Z의 후속 읽기에서 G 소유자는 별도 Transport 이미지 검증 unit으로 확인됐다. 02:24:58–02:25:12Z 관측에서 그 unit은 active였으나 담당자·작업 진척·최종 결과는 아직 미확정이다. 중복 배포를 진행하지 않고 우리 4999는 launch0/HOLD를 유지한다.
+
+같은 후속 관측은 기존 4d의 다섯 역할 CID·imageID·시작 시각과 healthy, DB0035, 공용 plane 두 CID·imageID·시작 시각과 healthy 유지를 수용했다. 이 관측은 컨테이너 내부 파일과 환경 전체를 다시 검산한 결과가 아니며, 원 47개 native 상태를 새로 통과했다는 증거도 아니다. `95c18`의 별도 원복 수용과 범위를 구분한다.
 
 ## 남은 실제 수용
 
@@ -81,3 +89,10 @@
 | PG 포트 읽기 전용 재현 | `37b338e110096db6ccacc08934ee9a45e06505defe4620a640616e175901e233` |
 | r9 소스·순수44 검증 결박 | `2697dead40ec313e25f5bd8957f7ef044240305ce695d86563aac32a43aa79af` |
 | r9 fresh 사전 검사 차단·launch0 | `366d47ec49ea5e989e24ee6103bd2acf082b40bf4566a0d96e5cb1416742ef48` |
+| r10 fresh 사전 검사 차단·launch0 | `d149832b13c3c3b98d70df8a80062cc12737bbce809348b119acfac783cc427c` |
+| 실제 PG GUC 이름·pair_index 분류 | `ce00c5ee45780f28a902b36aa3cd7898f7820d53066bca72755e9fe2963acead` |
+| r11 순수65 원장 | `9e650e02d0117993d7b5f02402c2ba53c0bdfc103d79f18b5d9127249e6992d4` |
+| r11 독립 소스·순수65 결박 | `860fc5d909e1686db00efb746d79dc418b1a3eb5c872b70ea21312fce8470384` |
+| r11 fresh G 경합·본문 미진입 | `23b695907b4474df5470b671d4b8b638a4834ef13ecd074a8b278ee4664bf0b6` |
+| 후속 G 소유 검증 unit 식별 | `2a06d09a5e337daaca833f011cce4ba316cccdbf375b7e577ebfaef86623b0c4` |
+| 기존 4d 다섯 역할·DB35·plane 후속 관측 | `747292c4c59e479dff22af50ecdd0ce2e7618aff8c22f10f5c9fa3bea6b515f0` |

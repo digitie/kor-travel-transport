@@ -3,7 +3,8 @@
 - main 8d80은 검증 빌드3f 대비 문서 아래 8개 경로만 바뀌었고 문서 밖 629개 mode/kind/blob이 같다. 실제 이미지·격리 UI39·CI의 source 표시는 3f로 유지한다.
 - 원 aggregate 빌드 timeout을 보존하고 완료된 backend/frontend ID를 재사용한 admin 후속 빌드와 세 ARM64 이미지 계약·소유 정리를 수용했다. 별도 공식 공용 plane 수렴은 두 서비스 healthy·drift 0이다.
 - cutover29f의 원인은 UNKNOWN, 8b36은 FD9 점유로 prebaseline 실패했다. c051은 Transport 18 pause 뒤 PG drain 실패·18 restore 기록을 남겼지만 부모 복구 후 검증에서 ContractError와 native_restored=false를 남겼고 세부 발생 지점은 UNKNOWN이다. 별도 두 관측95c18에서 전체 47 원 ID/상태·기존 5개 역할·DB35 보존을 수용했다.
-- 읽기 전용 재현으로 PG 기본 socket5432 실패와 실제 포트11000 성공을 구분했다. r9 포트·복구 진단 소스의 두 리뷰와 순수 44개 통과는 실행·배포 성공이 아니다. 기존 원 실패는 모두 보존한다. 후속 fresh 사전 검사366d47ec가 `pg_command_contract`로 차단해 새 55aa의 launch·root·unit 생성 및 native·DDL·runtime 변경은0이다. r9 권한은 중지됐고 r10 포트 parser 소스 검토가 남았다.
+- 읽기 전용 재현으로 PG 기본 socket5432 실패와 실제 포트11000 성공을 구분했다. r9 포트·복구 진단 소스의 두 리뷰와 순수 44개 통과는 실행·배포 성공이 아니다. 기존 원 실패는 모두 보존한다. 후속 fresh 사전 검사366d47ec가 `pg_command_contract`로 차단해 새 55aa의 launch·root·unit 생성 및 native·DDL·runtime 변경은0이다. r9 권한 중지 뒤 r10 사전 검사도 거절됐고 30f5 launch0을 보존한다.
+- 실제 GUC 분류ce00에서 누락된 pg_stat_statements.max 한 이름을 확인해 r11 문자열 하나·교차 핀만 추가했다. 순수65개·두 소스 리뷰는 수용했지만 실제 새 배포가 아니다. r11의 02:21:06–11Z fresh 검사는 canonical G의 ManagerMutationActiveError로 PG·원47 현재 검사 전 차단됐다. 4999 launch/root/unit·native/DDL/runtime 변경0이며 당시 owner는 UNKNOWN·강제 해제0이었다. 이후 G는 별도 이미지 검증 unit 소유로 확인됐고 중복 배포를 대기한다. 02:24:58–25:12Z 관측은 기존 4d 다섯 역할 CID/image/start·healthy, DB35와 plane 두 CID/image/start·healthy 유지 범위다. 내부 파일/env 전수·원47 현재 상태의 새 검산은 아니며 이전95c18을 새 fresh PASS로 확대하지 않는다. 별도 unit의 담당자·진척·결과는 미확정이고 우리4999는 launch0/HOLD다.
 - PR155 약 93%는 격리 amd64 저장·commit CPU/wall이며 RSS는약 3 MiB 증가했다. 운영 공개35·수집/백업 smoke·ARM 전체 job 비용은 미완이다.
 - [완료·미완과 원장](reports/2026-10-28-production-3f-rollout.md)을 구분한다. 이번 문서 작업의 추가 운영 호출은0이며 아래 일지 전문은 작성 당시 이력으로 유지한다.
 
