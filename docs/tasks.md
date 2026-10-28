@@ -4,7 +4,8 @@
   [최소 설계](design/2026-10-28-rail-guide-timetable-connection.md)의 독립 문서 리뷰 후,
   Guide의 출발/도착 의도→TAGO 실제 후보 명시 확인→API확정ID/city 검증을 작은 단계로 구현한다.
   단계 A의 안내 의도→이름 hint→실제 후보 명시 확인은 구현했고 WSL/Docker14와 타입·린트·빌드가 통과했다.
-  [검증 원장](reports/2026-10-28-rail-guide-station-intent.md)의 두 리뷰·최종 CI·375/1440 실제 GUI 수용 전이므로 체크는 유지한다.
+  [검증 원장](reports/2026-10-28-rail-guide-station-intent.md)의375/1440 실제 Next/Firefox 대역 미리보기32항목은 통과했다.
+  독립 두 리뷰·최종 CI·실제 VWorld/운영 데이터 수용 전이므로 체크는 유지한다.
   단계 B의 비재진입lock·총deadline·API 확정ID/city 검증·시설범위/미확인상태는 별도 미완이며 운영 변경0이다.
   KRIC 시설을 일반철도/SRT에 대입하거나 이름·거리 자동 매핑을 추가하지 않는다.
 
