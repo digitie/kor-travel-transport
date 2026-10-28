@@ -1,3 +1,15 @@
+## 2026-10-28 — 0037 downgrade P1 보완 후보
+
+- 현재 상태: 원833 main3f 통합의 두 CI와 WSL/Docker 각310PASS+6subtests는 회수했다.
+  독립 리뷰에서 빈 검사 후 concurrent INSERT·COMMIT→DROP 행 소실을 발견했고 새 PG18.6 RED2로 확정했다.
+  원833/WT/원장과 첫 fixture 실패를 보존했다.
+- 최소 수정:0037의 세 표를 같은 transaction에서 먼저 ACCESS EXCLUSIVE 잠그고 빈 상태를 재검사한다.
+  새 집중 WSL12/Docker12 PASS·actual0·wait0·자식 종료와 네 dump/소유 자원 정리를 회수했다.
+  [경합 증거와 범위](reports/2026-10-28-parking-0037-downgrade-lock.md).
+- 다음 한 작업: 수정 정확 head CI와 두 독립 증분 리뷰를 수용한다. 새 전체/UI/운영 검증은 수행하지 않았다.
+  PR162/163 reader 실제 연결·backfill/coverage·history48h·복원 보호·검산 후 정리 전까지 정책은 미완이다.
+  prune OFF·main push/머지·운영 변경0이다. 아래 “다음/미완”은 작성 당시 이력과 구분한다.
+
 ## 2026-10-28 — 주차 보존 현재 수용과 main3f 통합 후보
 
 - PR161 c763의 정확 CI와 James/Popper SOURCE_PASS, 원 d2 전체의 정상 종료를 회수했다.

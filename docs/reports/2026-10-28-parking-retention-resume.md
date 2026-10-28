@@ -1,5 +1,15 @@
 # 주차 원본48시간·통계영구 작업 재개 감사
 
+## 후속 정산과 아래 감사의 작성 시점
+
+아래 PR 표·다음 순서는 main3f 통합 전의 감사 기록이다. 이후833 통합의 WSL/Docker 각310PASS+6subtests와
+두 CI run40600192409/40600199508의 backend/frontend/admin SUCCESS·live SKIPPED를 회수했다.
+독립 리뷰에서0037 downgrade의 빈 검사 뒤 동시 commit 행이 DROP되는 P1을 실제 PG18에서 재현했다.
+새 최소 잠금 보완은 WSL12/Docker12 PASS·actual0·wait0이며 새 정확 head CI·두 증분 리뷰는 별도 gate다.
+[경합 보완의 실제 원장·한계](2026-10-28-parking-0037-downgrade-lock.md)를 현재 정산으로 읽는다.
+162/163 실제 API 연결·backfill/coverage·원본48h·복원/검산 후 정리의 누락 목록은 그대로 유효하다.
+운영/prune0이며 아래 과거 head의 SOURCE_PASS를 새 수정 head의 독립 리뷰로 바꾸지 않는다.
+
 ## 현재 정책과 운영 경계
 
 사용자 정책은 원본48시간·집계통계영구다. 운영 완료가 아니다. 이번 감사에서 운영DB/SSH/태그/컨테이너/스케줄·provider·prune 실행은0이며 원래3f516 배포 입력은 수정하지 않는다. 실제 운영 schema는 별도 Root 관측의 정본이며 이 보고서가 재조회한 값은 아니다. source main의0036 공항통계와 PR161의0037 전국/보류/최신 요약은 아직 운영 수용되지 않았다.

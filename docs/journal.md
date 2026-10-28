@@ -1,3 +1,14 @@
+## 2026-10-28 — 0037 빈 표 downgrade의 동시 commit 소실 보완
+
+- 독립 리뷰의 P1을 새 PG18.6 세션에서 실제 재현했다. 원833 제품의 RED2는3 FAIL/5 PASS이며
+  세 표 각각 마지막 빈 검사 뒤 INSERT·COMMIT한 행이 DROP됐다. 첫 fixture7실패는 별도 보존했다.
+- 모든 대상 표를 같은 Alembic transaction에서 고정 순서로 먼저 ACCESS EXCLUSIVE 잠그고
+  빈 상태를 재검사한다.5초 잠금 timeout·기존 행 거절·DDL/version rollback·SQLite 분기를 유지했다.
+- 새 회귀 WSL12/Docker12 PASS·actual0·독립 wait0·원 child 종료·source/runtime 전후 동일을 회수했다.
+  네 DB dump와 disk volume을 보존하고 소유 PG/network만 정리했다. 원833의310+6·CI를 새 head 전체로 세지 않는다.
+- 다음 gate는 새 정확 CI와 두 독립 증분 리뷰다. reader/운영 backfill/복원 보호·원본 정리는 미완이며
+  main push·머지·운영/prune0이다. [실제 반례·환경·검증 한계](reports/2026-10-28-parking-0037-downgrade-lock.md).
+
 ## 2026-10-28 — 주차 보존 현재 수용과 main3f 통합 후보
 
 - PR161 c763의 정확 CI와 James/Popper SOURCE_PASS, 원 d2 전체의 정상 종료를 회수했다.

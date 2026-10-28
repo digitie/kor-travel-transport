@@ -65,8 +65,14 @@ def upgrade():
 
 
 def downgrade():
-    for table in ("parking_global_statistics_buckets", "parking_archive_issues", "parking_latest_states"):
-        if op.get_bind().execute(sa.text(f"SELECT 1 FROM {table} LIMIT 1")).first():
+    bind = op.get_bind()
+    tables = ("parking_archive_issues", "parking_global_statistics_buckets", "parking_latest_states")
+    if bind.dialect.name == "postgresql":
+        # 빈 상태 검사부터 DROP/버전 변경 commit까지 신규 writer를 막는다. 잠금 순서는 고정한다.
+        op.execute("SET LOCAL lock_timeout = '5s'")
+        op.execute("LOCK TABLE " + ", ".join(tables) + " IN ACCESS EXCLUSIVE MODE")
+    for table in tables:
+        if bind.execute(sa.text(f"SELECT 1 FROM {table} LIMIT 1")).first():
             raise RuntimeError("주차 영구 통계·현재 요약·보류 상태가 있어 이 migration을 downgrade할 수 없습니다.")
     op.drop_table("parking_latest_states")
     op.drop_table("parking_archive_issues")
