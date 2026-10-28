@@ -3,7 +3,7 @@
 - source3f/실SDK pin의 안내·예정표/시설 범위와 공식 웹·Android/iOS 설명을 대조했다.
   이름/거리 자동 매핑 대신 기존 TAGO 후보의 명시 확인과 외부 API의 같은 확정ID 검증을 설계했다.
 - 비재진입 TAGO 공용lock의 dependency 순서·누적 시간 예산 P2를 별도 문서 packet에서 보완했다.
-  원R1 조사/리뷰를 보존했고 새 정합성2회를 수행했다. 새 독립 증분 리뷰는 미완이다.
+  원R1 조사/리뷰를 보존했고 새 정합성2회를 수행했다. 정확dfd7de5의 독립 SOURCE_PASS를 회수했다.
 - 후속은 작은A/B 구현이며 현재 코드·provider·DB·운영 변경0이다.
   [조사](research/2026-10-28-rail-guide-connection.md),
   [설계](design/2026-10-28-rail-guide-timetable-connection.md),

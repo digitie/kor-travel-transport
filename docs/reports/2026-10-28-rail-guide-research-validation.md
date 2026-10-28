@@ -27,8 +27,12 @@ operation/SDK/HTTP 호출 수의 구분, 모든 상대 링크도 확인했다. �
 packet과 검산 스크립트는 로컬 증거이며 repository의 실제 source는
 [40파일 원장](../research/2026-10-28-rail-guide-source-manifest.json)의 commit/Git blob으로 고정한다.
 
-새 문서의 독립 증분 리뷰는 미완으로 남긴다. 사용자 지시대로 문서PR은 CI 결과를 기다리지 않고
-정합성2회와 독립 리뷰 뒤에만 머지하며 merge는 Root가 결정한다. 실제 UI/API·배포 테스트가 통과한 것으로 표현하지 않는다.
+정확 `dfd7de50e67c1630e7b1e9cc2330fd26a7399e43`의 문서8파일·원R1 대비 P2 보완에 대한
+독립 Popper SOURCE_PASS를 회수했다. 보고서 SHA256은
+`25bc89dc20a137698e2b144695b3f9b25db46149c8cfb6d6ba7db93cc637068a`다.
+이후 변경은 완료된 리뷰 상태의 정정뿐이며 조사·설계·source 원문은 그대로다.
+사용자 지시대로 문서PR은 CI 결과를 기다리지 않고 정합성2회·독립 리뷰 및 상태 정정 증분 확인 뒤에만
+머지하며 merge는 Root가 결정한다. 실제 UI/API·배포 테스트나 기능 구현이 완료된 것으로 표현하지 않는다.
 
 ## 자료와 설계의 정확한 경계
 
