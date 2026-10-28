@@ -97,6 +97,31 @@ Compose에 명시적으로 추가한다. 렌더된 command와 healthcheck가 모
 소비자 export는 GET과 기존 승인 IP/CIDR에 한정하고 빈 설정은 모두 거부한다.
 기존 env 보호 exclude를 지우거나 HAProxy를 직접 수정하지 않는다. 공용 daemon RUNNING을 유지한다. DB 조회·worker 확인에 상한을 두고, 배포 시간 초과로 하위 작업의 종료가 불명확하면 pause를 유지한 채 별도 정산한다. 종료를 증명하기 전에 자동 rollback과 정방향 배포를 겹치지 않는다.
 
+### Manager current release 표식(2026-10-28, Manager #568·ADR-60)
+
+현재 실행 이미지의 정본은 Manager의 `/srv/ktdm-releases/current/transport` 표식이다(Manager
+`docs/service-current-release.md`). 두 배포 스크립트는 공용 helper
+[`scripts/manager-release-pointer.sh`](../../scripts/manager-release-pointer.sh)로 다음을 한다.
+
+- **교체 전**: `sudo -n ktdctl service-release verify transport`가 exit 0이어야 한다. drift(exit 1)·표식 없음·
+  `service-release`가 없는 Manager(exit 2)·비밀번호 없는 sudo 불가면 공유 checkout(`deploy-prod.sh`·관리자 배포의
+  rsync 전)·override·컨테이너를 바꾸기 전에 멈춘다. `deploy-prod-remote.sh`도 수동 실행에 대비해 다시 본다.
+  `prepare-shared-dagster-cutover`와 stage-only는 컨테이너를 바꾸지 않으므로 보지 않는다.
+- **forward-fix 예외**: 직전 배포가 검증 뒤 실패해(예: migration 적용 후) 발행되지 않은 이미지가 돌고 있으면
+  `ALLOW_RELEASE_POINTER_DRIFT=forward-fix`로 그 고치는 배포만 drift(exit 1)를 넘긴다. 표식 없음·CLI 없음은 넘기지 않는다.
+- **health 뒤**: `adopt transport --confirm --replace-current`로 실제 실행 이미지를 새 current로 발행한다.
+  adopt는 core·admin 모든 runtime이 Docker `healthy`여야 하므로 방금 재생성한 컨테이너의 `starting` 동안 15초 간격
+  16회까지 재시도한다. one-shot `migrate`는 backend 배포가 resolved Compose의 이미지 ID를, 관리자 배포가 현재 표식의
+  값을 넘긴다. 발행만 실패하면 배포는 healthy지만 **exit 3**과 다시 실행할 명령을 출력한다(외부 controller는 이것을
+  배포 실패로 복구하지 않는다). 다음 배포의 교체 전 검사가 그 drift를 멈춤으로 잡는다.
+- 같은 project·서비스 label을 가진 남은 one-off 컨테이너(`compose run`, 진단용 `kt-transport-schema-guard-*` 등)가
+  있으면 Manager verify/adopt가 "정확히 하나" 조건으로 거절한다. 배포 전에 지운다.
+- `.release-sha`·`.staged-release-sha`·`.transport-admin-release-sha`는 준비·소스 표식으로 그대로 둔다(ADR-60 D6).
+  현재 실행 상태는 이 파일들이 아니라 표식의 이미지 ID로 읽는다.
+
+전제: Odroid에 `service-release`를 포함한 Manager가 설치되어 있어야 한다. 표식 수동 등록·되돌리기는
+Manager 런북을 따른다.
+
 ### 사전 빌드와 공식 staging의 metadata
 
 외부 controller가 일정 중지 전에 빌드를 끝낸 뒤 공식 자식을 호출할 때에는

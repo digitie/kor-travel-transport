@@ -265,6 +265,12 @@ database_at_release_head() {
 
 # The manager workspace and registry pin this location to 12306. Validate the tracked overlay and its
 # rendered effect before any image build or container replacement; a missing overlay cannot fall back to 14005.
+# Manager current release 표식(ADR-60): 실행 중 이미지가 current와 다르면 어떤 파일·컨테이너도 바꾸기 전에 멈춘다.
+# prepare 모드는 컨테이너를 바꾸지 않으므로 표식을 보지 않는다.
+source "${SCRIPT_DIR}/manager-release-pointer.sh"
+if [[ "${DEPLOY_MODE}" != "prepare-shared-dagster-cutover" ]]; then
+  require_release_pointer_in_sync || exit 2
+fi
 install_transport_override
 compose config -q
 compose config --format json | python3 ./scripts/verify-transport-override.py
@@ -520,3 +526,9 @@ for attempt in $(seq 1 30); do
   sleep 2
 done
 DEPLOYMENT_VERIFIED=true
+# health 뒤에만 실제 실행 이미지를 Manager current로 발행한다. migrate는 one-shot이라 resolved 이미지 ID를 명시한다.
+migrate_image_id=""
+if migrate_image_ref="$(compose config --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["migrate"]["image"])')"; then
+  migrate_image_id="$(docker image inspect -f '{{.Id}}' "${migrate_image_ref}")" || migrate_image_id=""
+fi
+publish_release_pointer "${migrate_image_id}"
