@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.services.fuel_regions import regional_fuel_prices
+
 from app.services.fuel_statistics import fuel_statistics_page, viewport_fuel_statistics, with_publication_status
 
 from app.schemas import AddressRefreshSummary
@@ -1404,6 +1406,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # map admin처럼 bbox를 기준으로 조회하되, 한 종류마다 별도 API를 호출하지 않도록
         # 선택한 종류의 집계를 한 SQL union으로 묶는다.
         if zoom is not None and zoom < 12 and min_longitude is not None:
+            fuel_regions = await regional_fuel_prices(
+                session, zoom=zoom, bounds=bounds, sources=selected_sources,
+                products=selected_products, query=query,
+            ) if "fuel_station" in requested_kinds else []
             grid_size = viewport_cluster_grid_size(
                 min_longitude=min_longitude,
                 min_latitude=min_latitude,
@@ -1432,6 +1438,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
             cluster_queries = []
             for requested_kind in requested_kinds:
+                if requested_kind == "fuel_station":
+                    kind_totals[requested_kind] = sum(r["station_count"] for r in fuel_regions if r["product_code"] == (selected_products[0] if selected_products else "B027"))
+                    continue
                 model = cluster_models.get(requested_kind)
                 if model is None:
                     continue
@@ -1545,7 +1554,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             result = TransportPlaceMapResponse(
                 generated_at=now_utc(), kind=selected_kind, total=total, truncated=False,
-                fuel_statistics=with_publication_status(fuel_statistics, fuel_prices_last_refreshed_at), clustered=True, kind_totals=kind_totals, clusters=cluster_items, items=[],
+                fuel_regions=fuel_regions, fuel_statistics=with_publication_status(fuel_statistics, fuel_prices_last_refreshed_at), clustered=True, kind_totals=kind_totals, clusters=cluster_items, items=[],
                 available_sources=sorted(available_sources), fuel_prices_stale=fuel_prices_stale,
                 fuel_prices_last_refreshed_at=fuel_prices_last_refreshed_at,
             )
