@@ -1,3 +1,9 @@
+## 2026-10-31 — 코드 정본 역명·시간표 상세 구현
+
+- 공식 코드 자체의 역명과 시간표를 위치파일 매핑 없이 조회하는 API·관리 UI를 구현했다.
+- WSL/Docker 관련 backend40 PASS/기존 PG잠금1 SKIP, UI4 PASS와 예시 자료의 Firefox375/750 비교를 확인했다.
+- 운영 미배포이며 실시간 도착·노선 순서·출구별 자료 수집은 미완이다. [계약과 검증](design/2026-10-31-metro-code-detail.md).
+
 ## 2026-10-27 — 공통 LoginForm의 실제 운영 채택
 
 - [x] 공통 LoginForm hydration 준비 경계 채택: PR #141의 vendor/lock·회귀·CI·두 독립 리뷰·머지 후
