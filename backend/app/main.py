@@ -25,7 +25,7 @@ from types import SimpleNamespace
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Path as ApiPath, Query, Request, UploadFile
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -139,6 +139,7 @@ from app.schemas import (
     FuelStatisticsResponse,
     TransportStatisticsResponse,
     RailTimetableResponse,
+    MetroStationCatalog,
     RailDepartureSummaryResponse,
     WeekdayBucket,
     WeekdayHourlyPattern,
@@ -764,6 +765,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # 실시간 TAGO 시간표는 설정·참조 데이터·상류 provider 상태를 함께 반영한다.
             ("/v1/transport/bus/timetable", "get"): (404, 429, 502, 503),
             ("/v1/transport/rail/timetables", "get"): (404,),
+            ("/v1/transport/rail/stations/{code_id}/timetable", "get"): (404,),
             ("/v1/transport/rail/departures", "get"): (404,),
             ("/v1/transport/admin/rail-station-mappings/automatic", "get"): (404, 409, 503),
             ("/v1/transport/admin/rail-station-mappings/automatic", "post"): (404, 409, 503),
@@ -1744,6 +1746,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="저장되지 않은 역이 포함되어 있습니다.")
         result = await stored_rail_timetables(session, list(places), None, summary_only=True)
         return RailDepartureSummaryResponse.model_validate(result.model_dump())
+
+    @router.get("/transport/rail/stations", response_model=MetroStationCatalog)
+    async def transport_metro_stations(session: AsyncSession = Depends(get_db)) -> MetroStationCatalog:
+        """공식 코드·역명을 그대로 읽는다. 위치 파일 연결은 지도 좌표의 보조 정보일 뿐이다."""
+        rows = (await session.execute(select(KricStationCode, RailStationReference).outerjoin(
+            RailStationReference, KricStationCode.rail_station_id == RailStationReference.id,
+        ).where(KricStationCode.active.is_(True)).order_by(
+            KricStationCode.operator_code, KricStationCode.line_code, KricStationCode.station_code,
+        ))).all()
+        return MetroStationCatalog(generated_at=now_utc(), items=[TransportPlaceMapItem(
+            id=code.id, kind="rail_station", source="kric_station_codes",
+            provider_id=f"{code.operator_code}/{code.line_code}/{code.station_code}",
+            name=code.station_name, subtitle=code.operator_name, line_names=[code.line_name],
+            longitude=place.longitude if place else None, latitude=place.latitude if place else None,
+            address=(place.road_address or place.lot_address) if place else None,
+            phone=place.station_phone_number if place else None,
+            updated_at=code.last_seen_at,
+        ) for code, place in rows])
+
+    @router.get("/transport/rail/stations/{code_id}/timetable", response_model=RailTimetableResponse)
+    async def transport_coded_rail_timetable(
+        code_id: int = ApiPath(ge=1, le=2147483647),
+        day_code: Literal["7", "8", "9"] | None = None,
+        session: AsyncSession = Depends(get_db),
+    ) -> RailTimetableResponse:
+        code = await session.scalar(select(KricStationCode).where(
+            KricStationCode.id == code_id, KricStationCode.active.is_(True),
+        ))
+        if code is None:
+            raise HTTPException(status_code=404, detail="저장된 공식 역 코드가 없습니다.")
+        return await stored_rail_timetables(session, [], day_code, station_codes=[code])
 
     @router.get("/transport/rail/timetables", response_model=RailTimetableResponse)
     async def transport_rail_timetables(

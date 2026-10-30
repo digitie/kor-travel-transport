@@ -10,7 +10,7 @@ from app.schemas import RailDepartureItem, RailTimetableItem, RailTimetableRespo
 from app.services.kric_collection import aware
 
 
-async def stored_rail_timetables(session: AsyncSession, places: list[RailStationReference], day_code: str | None, *, summary_only: bool = False) -> RailTimetableResponse:
+async def stored_rail_timetables(session: AsyncSession, places: list[RailStationReference], day_code: str | None, *, summary_only: bool = False, station_codes: list[KricStationCode] | None = None) -> RailTimetableResponse:
     now = now_utc()
     local = to_seoul(now)
     basis = "selected_period"
@@ -28,16 +28,19 @@ async def stored_rail_timetables(session: AsyncSession, places: list[RailStation
     codes = (await session.scalars(select(KricStationCode).where(KricStationCode.active.is_(True)))).all()
     linked = {row.rail_station_id: row for row in codes if row.rail_station_id is not None}
     names = {(row.operator_code, row.line_code, row.station_code): row.station_name for row in codes}
-    station_ids = [linked[place.id].id for place in places if place.id in linked]
+    # 공식 코드 카탈로그는 자체 역명을 갖는다. 위치파일 FK가 없어도 시간표를 읽는다.
+    targets = [(place.id, linked.get(place.id), place.station_name or "이름 없는 역", place.operating_line_name) for place in places]
+    if station_codes is not None:
+        targets = [(None, code, code.station_name, code.line_name) for code in station_codes]
+    station_ids = [code.id for _, code, _, _ in targets if code is not None]
     snapshots = {row.station_id: row for row in (await session.scalars(select(KricTimetableSnapshot).where(
         KricTimetableSnapshot.station_id.in_(station_ids), KricTimetableSnapshot.day_code == day_code,
     ))).all()} if day_code is not None else {}
     result = []
-    for place in places:
-        code = linked.get(place.id)
+    for place_id, code, station_name, line_name in targets:
         snapshot = snapshots.get(code.id) if code else None
-        item = RailTimetableItem(place_id=place.id, station_name=place.station_name or "이름 없는 역",
-            line_name=place.operating_line_name, status="unlinked" if not code else "day_unresolved" if day_code is None else "stored" if snapshot else "not_collected")
+        item = RailTimetableItem(place_id=place_id, code_id=code.id if code else None, station_name=station_name,
+            line_name=line_name, status="unlinked" if not code else "day_unresolved" if day_code is None else "stored" if snapshot else "not_collected")
         if snapshot and code:
             item.collected_at = aware(snapshot.collected_at)
             item.stale = now - item.collected_at > timedelta(hours=48)
