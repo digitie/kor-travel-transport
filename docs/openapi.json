@@ -3640,6 +3640,59 @@
         "title": "FuelPriceStatistics",
         "type": "object"
       },
+      "FuelRegionSummary": {
+        "properties": {
+          "average_price": {
+            "title": "Average Price",
+            "type": "number"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "latitude": {
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "title": "Longitude",
+            "type": "number"
+          },
+          "product_code": {
+            "title": "Product Code",
+            "type": "string"
+          },
+          "region_key": {
+            "title": "Region Key",
+            "type": "string"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "station_count": {
+            "title": "Station Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scope",
+          "region_key",
+          "label",
+          "source",
+          "product_code",
+          "longitude",
+          "latitude",
+          "average_price",
+          "station_count"
+        ],
+        "title": "FuelRegionSummary",
+        "type": "object"
+      },
       "FuelStationExportPage": {
         "properties": {
           "collection": {
@@ -8811,6 +8864,13 @@
             "description": "확인된 최신 유가 읽기 모델 지연 여부. false는 직후 발생한 늦은 원본 커밋까지 보증하지 않습니다.",
             "title": "Fuel Prices Stale",
             "type": "boolean"
+          },
+          "fuel_regions": {
+            "items": {
+              "$ref": "#/components/schemas/FuelRegionSummary"
+            },
+            "title": "Fuel Regions",
+            "type": "array"
           },
           "fuel_statistics": {
             "items": {

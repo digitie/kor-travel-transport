@@ -743,3 +743,5 @@ h1, h2, h3 { color: var(--text-primary); }
 .parking-admin .holiday-band-label { fill: var(--muted); }
 .parking-admin .daily-date-toggle.special-day.holiday, .parking-admin .daily-date-toggle.special-day.holiday small { color: var(--brand); }
 @media (max-width: 62rem) { .transport-shell[data-parking-page] .admin-layout { grid-template-rows: auto minmax(0, 1fr); } }
+
+.fuel-region-label { display:flex; flex-direction:column; padding:var(--space-sm); border:1px solid var(--border); border-radius:var(--radius-panel); background:var(--card); color:var(--text-primary); white-space:nowrap; font-size:12px; }
