@@ -1439,7 +1439,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             cluster_queries = []
             for requested_kind in requested_kinds:
                 if requested_kind == "fuel_station":
-                    kind_totals[requested_kind] = sum(r["station_count"] for r in fuel_regions if r["product_code"] == (selected_products[0] if selected_products else "B027"))
+                    kind_totals[requested_kind] = int(await session.scalar(
+                        select(func.count()).select_from(FuelStation).where(*coordinate_conditions(FuelStation))
+                    ) or 0)
                     continue
                 model = cluster_models.get(requested_kind)
                 if model is None:
