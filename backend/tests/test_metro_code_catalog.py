@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 from app.core.time_utils import now_utc
 from app.db.session import create_engine_and_session_factory, init_database
-from app.models import KricStationCode, KricTimetableSnapshot, RailServiceDay
+from app.models import KricStationCode, KricTimetableSnapshot, RailServiceDay, RailStationReference
 from app.services.rail_timetable import stored_rail_timetables
 
 
@@ -66,3 +66,27 @@ def test_direct_code_reader_keeps_today_and_stale_rules(test_settings, monkeypat
             assert result.basis=="calendar" and result.items[0].next_departure.departure_time=="120100"
         await engine.dispose()
     asyncio.run(run())
+
+
+def test_catalog_includes_only_sdk_confirmed_station_facilities(client, test_settings):
+    ids = seed(test_settings)
+    async def link():
+        engine, factory = create_engine_and_session_factory(test_settings.database_url)
+        async with factory() as session:
+            now = now_utc()
+            place = RailStationReference(source="kric_public_file", identity_key="facility-test",
+                station_name="성복", first_seen_at=now, last_seen_at=now,
+                road_address="시험시 시험로 1", station_phone_number="02-1234-5678",
+                raw_item_json={"스크린도어 설치유무":"있음", "유실물 취급여부":"있음", "안전발판 유무":"", "환승역 여부":"가능"})
+            session.add(place)
+            await session.flush()
+            code = await session.get(KricStationCode, ids[0])
+            code.rail_station_id = place.id
+            await session.commit()
+        await engine.dispose()
+    asyncio.run(link())
+    rows = client.get("/v1/transport/rail/stations").json()["items"]
+    target = next(row for row in rows if row["id"] == ids[0])
+    assert target["facilities"] == ["환승 가능", "유실물 취급", "스크린도어"]
+    assert target["address"] == "시험시 시험로 1" and target["phone"] == "02-1234-5678"
+    assert next(row for row in rows if row["id"] == ids[1])["facilities"] == []

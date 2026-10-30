@@ -30,3 +30,21 @@ SDK 격리 환경과 프로젝트 자체 npm 설치로 보완했다. 위 결과�
 Firefox375/750에서 명시한 예시 자료로 컴포넌트를 촬영하고 페이지 가로 넘침0을 확인했다.
 캡처: `C:/Users/digit/.codex/tmp/metro-station-comparison-20261031/after-375.png`, `after-750.png`.
 운영 배포·DB 스키마/수집 설정·수동 수집·백업/복원 변경은 없다.
+
+## 추가 반영 — 편의정보와 시간표 펼침 캡처
+
+사용자 요청으로 노선도 영역을 생략하고 출구정보 자리에는 `역 편의정보`를 배치했다.
+기존 KRIC SDK `parse_station_file_facilities`를 그대로 사용해 저장 원문에서 명시적으로 확인된
+환승 가능·유실물 취급·안전발판·스크린도어·승강장 연결을 공식 코드 목록 응답에 포함한다.
+UI는 시설별 설명과 역 주소·전화 안내를 보여준다. 자료가 없는 시설을 없음으로 확정하거나
+화장실·엘리베이터·수유실의 위치/이용시간을 만들어 내지 않는다. 새 수집이나 provider 파서 복제는 없다.
+
+Firefox에서 실제 React 컴포넌트를 로드하고 `전체 시간표`와 `첫차·막차` 버튼을 각각 클릭해
+펼침/닫힘과 표시 시각을 대조했다. 375/750 두 폭에서 페이지 넘침과 pageerror는 모두0이었다.
+고정 예시 데이터이며 실제 운영 역의 운행·시설 정보가 아니다.
+캡처 경로는 `C:/Users/digit/.codex/tmp/metro-station-comparison-20261031/`의
+`all-timetable-375.png`, `first-last-375.png`, `all-timetable-750.png`, `first-last-750.png`다.
+캡처용 자체 Vite 서버는 확인 뒤 종료했다.
+
+WSL 관련 API3개, UI5개·타입·변경 컴포넌트 ESLint를 통과했다.
+WSL Docker UI5개·API3개와 Next 빌드를 통과했다. API 필드/DB 스키마 추가는 없다.

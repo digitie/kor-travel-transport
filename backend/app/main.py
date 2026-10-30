@@ -1762,6 +1762,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             longitude=place.longitude if place else None, latitude=place.latitude if place else None,
             address=(place.road_address or place.lot_address) if place else None,
             phone=place.station_phone_number if place else None,
+            facilities=list(parse_station_file_facilities(place.raw_item_json or {})) if place else [],
             updated_at=code.last_seen_at,
         ) for code, place in rows])
 

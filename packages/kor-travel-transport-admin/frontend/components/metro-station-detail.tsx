@@ -46,9 +46,12 @@ export function MetroStationSummary({ station, data, loading = false, failed = f
     <div className="metro-timetable-actions"><button type="button" aria-expanded={expanded==="all"} onClick={()=>setExpanded(expanded==="all"?null:"all")}>◷ 전체 시간표</button><button type="button" aria-expanded={expanded==="ends"} onClick={()=>setExpanded(expanded==="ends"?null:"ends")}>첫차·막차</button></div>
     {expanded === "all" ? <section className="metro-expanded" aria-label="전체 예정 시간표"><h4>전체 예정 시간표</h4>{table?.items.length ? <div className="metro-all-timetable">{groups.map(group=><section key={group.name}><h5>{group.name}</h5>{group.rows.map((row,i)=><div className="metro-schedule-row" key={`${row.train_number}/${i}`}><strong>{serviceTime(row.departure_time)}</strong><span>{row.train_number ?? "열차번호 미제공"}</span></div>)}</section>)}</div> : <p className="quiet">표시할 저장 시간표가 없습니다.</p>}</section> : null}
     {expanded === "ends" ? <section className="metro-expanded" aria-label="저장표 첫차 막차"><h4>첫차·막차</h4><p className="quiet">저장표의 시각 순서입니다. 자정 이후 운행일 연장은 운영기관에 확인해 주세요.</p>{groups.map(group => {const valid=group.rows.filter(row=>clockSeconds(row.departure_time)!==null);return <div className="metro-schedule-row" key={group.name}><span>{group.name}</span><strong>{serviceTime(valid[0]?.departure_time)} ~ {serviceTime(valid.at(-1)?.departure_time)}</strong></div>;})}</section> : null}
-    <section className="metro-information"><h3>노선도</h3><p className="quiet">제공기관의 노선 순서 자료가 아직 없습니다.</p></section>
-    <section className="metro-information"><h3>출구정보</h3><p className="quiet">출구별 안내 자료가 아직 없습니다.</p></section>
-    <details className="metro-source"><summary>역 안내 · 출처</summary>{station.address ? <p>{station.address}</p> : null}{station.phone ? <a href={`tel:${station.phone.replace(/[^+\d]/g, "")}`}>{station.phone}</a> : null}<p>KRIC 공식 코드 {station.provider_id}</p>{table?.collected_at ? <p>시간표 저장 {dateTime(table.collected_at)}</p> : null}<p>기준정보 {dateTime(station.updated_at)}</p></details>
+    <section className="metro-information metro-amenities" aria-label="역 편의정보"><h3>역 편의정보</h3>
+      {station.facilities.length ? <ul>{station.facilities.map(facility => <li key={facility}><strong>{facility}</strong><span>{({"환승 가능":"다른 노선으로 환승할 수 있는 역입니다.","유실물 취급":"유실물 취급이 등록된 역입니다. 문의는 역 연락처를 이용해 주세요.","안전발판":"안전발판 설치가 확인된 역입니다.","스크린도어":"승강장 스크린도어 설치가 확인된 역입니다.","승강장 연결":"승강장 연결이 등록된 역입니다."} as Record<string,string>)[facility] ?? "제공기관에 등록된 편의시설입니다."}</span></li>)}</ul> : <p className="quiet">확인된 편의시설 정보가 아직 없습니다.</p>}
+      <dl className="metro-station-contact"><div><dt>역 주소</dt><dd>{station.address || "미제공"}</dd></div><div><dt>역 연락처</dt><dd>{station.phone ? <a className="inline-link" href={`tel:${station.phone.replace(/[^+\d]/g, "")}`}>{station.phone}</a> : "미제공"}</dd></div></dl>
+      <p className="quiet">시설의 세부 위치·이용시간과 화장실·엘리베이터·수유실 안내는 추가 확인이 필요합니다.</p>
+    </section>
+    <details className="metro-source"><summary>역 안내 · 출처</summary><p>KRIC 공식 코드 {station.provider_id}</p>{table?.collected_at ? <p>시간표 저장 {dateTime(table.collected_at)}</p> : null}<p>기준정보 {dateTime(station.updated_at)}</p></details>
   </section>;
 }
 
