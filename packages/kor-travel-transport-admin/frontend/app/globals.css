@@ -783,3 +783,7 @@ h1, h2, h3 { color: var(--text-primary); }
 .metro-station-contact dt { color:var(--text-secondary); }
 .metro-station-contact dd { margin:0; overflow-wrap:anywhere; }
 .fuel-region-label { display:flex; flex-direction:column; padding:var(--space-sm); border:1px solid var(--border); border-radius:var(--radius-panel); background:var(--card); color:var(--text-primary); white-space:nowrap; font-size:12px; }
+
+.fuel-region-label > strong, .fuel-region-price { display:flex; align-items:baseline; justify-content:space-between; gap:var(--space-md); }
+.fuel-region-label small { color:var(--text-secondary); font-weight:400; }
+.fuel-region-price b { font-weight:600; font-variant-numeric:tabular-nums; }
