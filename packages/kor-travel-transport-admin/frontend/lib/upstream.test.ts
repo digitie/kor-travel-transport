@@ -11,3 +11,12 @@ describe("transport upstream URL", () => {
     expect(transportUpstreamUrl(["admin", "collect"], new URLSearchParams())).toBeNull();
   });
 });
+
+describe("새 지역 유가와 공식 코드 역 조회의 운영 중계",()=>{
+ it.each(["transport/fuel/regions","transport/rail/stations","transport/rail/stations/274/timetable"])("%s를 내부 읽기 API에 연결한다",path=>{
+  expect(transportUpstreamUrl(path.split("/"),new URLSearchParams("day_code=7"))?.pathname).toBe(`/v1/${path}`);
+ });
+ it.each(["transport/rail/stations/0/timetable","transport/rail/stations/274/delete","transport/rail/stations/admin/timetable"])("%s는 허용하지 않는다",path=>{
+  expect(transportUpstreamUrl(path.split("/"),new URLSearchParams())).toBeNull();
+ });
+});
