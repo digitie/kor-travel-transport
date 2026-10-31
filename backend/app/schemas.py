@@ -292,7 +292,20 @@ class FuelStatisticsResponse(BaseModel):
     history: list[FuelStatisticsHistory]
 
 
+class FuelRegionSummary(BaseModel):
+    scope: str
+    region_key: str
+    label: str
+    source: str
+    product_code: str
+    longitude: float
+    latitude: float
+    average_price: float
+    station_count: int
+
+
 class TransportPlaceMapResponse(BaseModel):
+    fuel_regions: list[FuelRegionSummary] = Field(default_factory=list)
     generated_at: datetime
     kind: str | None = None
     total: int = 0

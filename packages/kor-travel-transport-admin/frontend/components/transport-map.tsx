@@ -22,7 +22,8 @@ import { FilterCombobox } from "./filter-combobox";
 type MapPoint = { id: string; lngLat: [number, number]; place: Place };
 type Viewport = { min_longitude: string; min_latitude: string; max_longitude: string; max_latitude: string };
 type MapCluster = { longitude: number; latitude: number; count: number; kind_counts: Partial<Record<PlaceKind, number>> };
-type PlaceResponse = { fuel_statistics?: FuelViewportStatistics[]; items: Place[]; total: number; truncated: boolean; clustered?: boolean; kind_totals?: Partial<Record<PlaceKind, number>>; clusters?: MapCluster[]; available_sources?: string[]; fuel_prices_stale?: boolean; fuel_prices_last_refreshed_at?: string | null };
+type FuelRegion = { region_key: string; label: string; product_code: string; average_price: number; station_count: number; longitude: number; latitude: number };
+type PlaceResponse = { fuel_regions?: FuelRegion[]; fuel_statistics?: FuelViewportStatistics[]; items: Place[]; total: number; truncated: boolean; clustered?: boolean; kind_totals?: Partial<Record<PlaceKind, number>>; clusters?: MapCluster[]; available_sources?: string[]; fuel_prices_stale?: boolean; fuel_prices_last_refreshed_at?: string | null };
 const KINDS: PlaceKind[] = ["fuel_station", "rail_station", "ferry_port", "bus_terminal", "airport", "rest_area", "highway_incident"];
 const TRANSPORT_KINDS: PlaceKind[] = ["rail_station", "ferry_port", "bus_terminal", "airport", "rest_area", "highway_incident"];
 const MAP_CLUSTER_CACHE_TTL_MS = 20_000;
@@ -97,6 +98,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
   const [products, setProducts] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [clusterPlaces, setClusterPlaces] = useState<Place[]>([]);
+  const [fuelRegions, setFuelRegions] = useState<FuelRegion[]>([]);
   const [serverClusters, setServerClusters] = useState<MapCluster[]>([]);
   const [serverClustered, setServerClustered] = useState(false);
   const [clusterAnchor, setClusterAnchor] = useState<[number, number]>([127.8, 36.2]);
@@ -264,6 +266,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
         };
       }
       setLoaded(perKind);
+      setFuelRegions(payload.fuel_regions ?? []);
       setServerClusters(payload.clusters ?? []);
       setServerClustered(payload.clustered ?? false);
       knownSourcesReady.current = true;
@@ -398,6 +401,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
         <ZoomButtons />
         <CameraRequest target={camera} />
         {layers}
+        {serverClustered && fuelRegions.filter(r => products.length ? products.includes(r.product_code) : r.product_code === "B027").map(r => <MapMarkerButton key={`${r.region_key}:${r.product_code}`} lngLat={[r.longitude, r.latitude]} ariaLabel={`${r.label} ${fuelProductLabel(r.product_code)} 평균 ${Math.round(r.average_price)}원/L, ${r.station_count}곳`} interactionId={`region:${r.region_key}:${r.product_code}`} className="fuel-region-marker" onClick={() => { setClusterCamera({center:[r.longitude,r.latitude],zoom:Math.floor(zoom)<8?8:12});setCameraRequest(v=>v+1); }}><span className="fuel-region-label"><strong>{r.label}</strong><span>{fuelProductLabel(r.product_code)} 평균 {Math.round(r.average_price).toLocaleString("ko-KR")}원/L</span></span></MapMarkerButton>)}
         {serverClustered ? serverClusters.map((item, index) => <MapMarkerButton key={`${item.longitude}:${item.latitude}:${index}`} lngLat={[item.longitude, item.latitude]} ariaLabel={`${item.count}개 장소 요약 묶음 확대`} interactionId={`server-cluster:${item.longitude.toFixed(6)},${item.latitude.toFixed(6)}`} className="map-cluster" zIndex={3} isCluster onClick={() => {
           setClusterPlaces([]); setClusterCamera({ center: [item.longitude, item.latitude], zoom: Math.min(19, Math.max(12, Math.ceil(zoom) + 2)) });
           setCameraRequest((value) => value + 1);

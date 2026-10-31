@@ -782,3 +782,4 @@ h1, h2, h3 { color: var(--text-primary); }
 .metro-station-contact > div { display:grid; grid-template-columns:5.5rem minmax(0,1fr); gap:0.5rem; margin-block:0.375rem; }
 .metro-station-contact dt { color:var(--text-secondary); }
 .metro-station-contact dd { margin:0; overflow-wrap:anywhere; }
+.fuel-region-label { display:flex; flex-direction:column; padding:var(--space-sm); border:1px solid var(--border); border-radius:var(--radius-panel); background:var(--card); color:var(--text-primary); white-space:nowrap; font-size:12px; }
