@@ -292,7 +292,20 @@ class FuelStatisticsResponse(BaseModel):
     history: list[FuelStatisticsHistory]
 
 
+class FuelRegionSummary(BaseModel):
+    scope: str
+    region_key: str
+    label: str
+    source: str
+    product_code: str
+    longitude: float
+    latitude: float
+    average_price: float
+    station_count: int
+
+
 class TransportPlaceMapResponse(BaseModel):
+    fuel_regions: list[FuelRegionSummary] = Field(default_factory=list)
     generated_at: datetime
     kind: str | None = None
     total: int = 0
@@ -433,6 +446,11 @@ class KricAutomaticMappingApplyResponse(BaseModel):
     summary: KricAutomaticMappingCounts
 
 
+class MetroStationCatalog(BaseModel):
+    generated_at: datetime
+    items: list["TransportPlaceMapItem"]
+
+
 class RailDepartureItem(BaseModel):
     train_number: str | None = None
     departure_time: str | None = None
@@ -442,7 +460,8 @@ class RailDepartureItem(BaseModel):
 
 
 class RailDepartureSummary(BaseModel):
-    place_id: int
+    place_id: int | None
+    code_id: int | None = None
     station_name: str
     line_name: str | None = None
     status: Literal["unlinked", "day_unresolved", "not_collected", "stored"]

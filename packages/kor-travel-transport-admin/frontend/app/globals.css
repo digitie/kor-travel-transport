@@ -743,3 +743,43 @@ h1, h2, h3 { color: var(--text-primary); }
 .parking-admin .holiday-band-label { fill: var(--muted); }
 .parking-admin .daily-date-toggle.special-day.holiday, .parking-admin .daily-date-toggle.special-day.holiday small { color: var(--brand); }
 @media (max-width: 62rem) { .transport-shell[data-parking-page] .admin-layout { grid-template-rows: auto minmax(0, 1fr); } }
+
+/* 도시철도 역 상세: 코드 정본 시간표와 작은 역 안내. */
+.metro-station-sheet { min-width:0; }
+.metro-station-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem; padding:0.5rem 0.75rem; border:1px solid var(--color-rule); border-radius:var(--radius-control); }
+.metro-station-heading > strong { font-size:1rem; }
+.metro-station-heading > :is(span,small) { font-size:0.6875rem; color:var(--text-secondary); }
+.metro-station-toolbar { display:flex; align-items:center; gap:0.5rem; margin-block:0.75rem 0.5rem; }
+.metro-station-toolbar > small { font-size:0.625rem; color:var(--text-secondary); }
+.metro-station-toolbar > button { margin-left:auto; min-width:2.75rem; min-height:2.75rem; border:1px solid var(--color-rule); border-radius:var(--radius-control); background:var(--card); }
+.metro-mode { font-size:0.75rem; font-weight:600; }
+.metro-day-select { display:flex; align-items:center; gap:0.5rem; font-size:0.6875rem; margin-bottom:0.5rem; }
+.metro-day-select select { width:auto; min-height:2.75rem; padding:0.125rem 0.5rem; font-size:0.6875rem; }
+.metro-destination-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0.5rem; }
+.metro-destination { min-width:0; padding:0.75rem; border:1px solid var(--color-rule); border-radius:var(--radius-control); }
+.metro-destination h4 { margin:0 0 0.5rem; font-size:0.875rem; overflow-wrap:anywhere; }
+.metro-destination > div { display:flex; justify-content:space-between; flex-wrap:wrap; gap:0.25rem; font-size:0.75rem; margin-top:0.375rem; }
+.metro-destination > div strong { color:var(--brand); font-weight:600; }
+.metro-station-sheet .quiet { font-size:0.6875rem; line-height:1.5; color:var(--text-secondary); }
+.metro-timetable-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); border:1px solid var(--color-rule); margin-top:0.75rem; }
+.metro-timetable-actions button { border:0; border-radius:0; background:transparent; min-height:2.75rem; font-size:0.75rem; }
+.metro-timetable-actions button + button { border-left:1px solid var(--color-rule); }
+.metro-timetable-actions button[aria-expanded="true"] { background:var(--surface-subtle); font-weight:600; }
+.metro-information { border-top:1px solid var(--color-rule); margin-top:1rem; padding-top:0.75rem; }
+.metro-information h3, .metro-expanded h4 { font-size:0.875rem; margin:0 0 0.5rem; }
+.metro-expanded { margin-top:0.75rem; }
+.metro-all-timetable { max-height:20rem; overflow-y:auto; }
+.metro-all-timetable h5 { font-size:0.75rem; margin-block:0.75rem 0.25rem; }
+.metro-schedule-row { display:flex; justify-content:space-between; gap:0.5rem; padding-block:0.375rem; border-bottom:1px solid var(--color-rule); font-size:0.75rem; }
+.metro-source { margin-top:1rem; font-size:0.625rem; color:var(--text-secondary); }
+.metro-source summary { cursor:pointer; }
+
+.metro-amenities ul { list-style:none; margin:0; padding:0; }
+.metro-amenities li { display:grid; grid-template-columns:5.5rem minmax(0,1fr); gap:0.5rem; padding:0.5rem 0; border-bottom:1px solid var(--color-rule); }
+.metro-amenities li strong { font-size:0.75rem; font-weight:600; }
+.metro-amenities li span { font-size:0.6875rem; line-height:1.5; color:var(--text-secondary); }
+.metro-station-contact { margin:0.75rem 0; font-size:0.6875rem; }
+.metro-station-contact > div { display:grid; grid-template-columns:5.5rem minmax(0,1fr); gap:0.5rem; margin-block:0.375rem; }
+.metro-station-contact dt { color:var(--text-secondary); }
+.metro-station-contact dd { margin:0; overflow-wrap:anywhere; }
+.fuel-region-label { display:flex; flex-direction:column; padding:var(--space-sm); border:1px solid var(--border); border-radius:var(--radius-panel); background:var(--card); color:var(--text-primary); white-space:nowrap; font-size:12px; }
