@@ -4711,6 +4711,13 @@
             ],
             "title": "Latitude"
           },
+          "line_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Line Names",
+            "type": "array"
+          },
           "longitude": {
             "anyOf": [
               {

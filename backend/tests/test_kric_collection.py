@@ -17,6 +17,28 @@ def code(station="0312", name="테스트역", line="03"):
         line_name="3호선", station_code=station, station_name=name)
 
 
+@pytest.mark.asyncio
+async def test_next_hour_continues_missing_stations_without_repeating_daily_attempts(test_settings, monkeypatch):
+    clock = [datetime(2026, 11, 1, 3, tzinfo=UTC)]
+    monkeypatch.setattr("app.services.kric_collection.now_utc", lambda: clock[0])
+    settings = test_settings.model_copy(update={"kric_timetable_collection_enabled":True,"kric_service_key":"fake","kric_timetable_max_calls":2})
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+    await init_database(engine)
+    fake = FakeClient()
+    fetch = AsyncMock(return_value=((code(), code("0313", "다른역")), None))
+    service = KricTimetableCollectionService(settings, code_fetcher=fetch, client_factory=lambda *a,**kw:fake, sleep=AsyncMock())
+    async with factory() as session:
+        await service.collect(session)
+        first = {(row["station_code"],row["day_code"]) for row in fake.calls}
+        clock[0] += timedelta(hours=1)
+        await service.collect(session)
+        second = {(row["station_code"],row["day_code"]) for row in fake.calls[2:]}
+        assert len(first)==2 and len(second)==2 and first.isdisjoint(second)
+        assert await session.scalar(select(func.count()).select_from(KricTimetableSnapshot)) == 4
+        fetch.assert_awaited_once()  # 코드 파일은 하루 한 번만 갱신한다.
+    await engine.dispose()
+
+
 def place(now, name="테스트역", operator="운영기관"):
     return RailStationReference(source="kric_public_file", identity_key=f"{operator}/{name}",
         rail_operator_name=operator, operating_line_name="3호선", station_name=name,
@@ -95,7 +117,7 @@ async def test_station_auth_and_quota_errors_stop_without_trying_another_station
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("run_status", ["success", "failed", "running"])
-async def test_48_hour_guard_includes_failed_and_abandoned_runs(test_settings, monkeypatch, run_status):
+async def test_hourly_batch_guard_includes_failed_and_abandoned_runs(test_settings, monkeypatch, run_status):
     now = datetime(2026, 9, 27, 3, tzinfo=UTC)
     monkeypatch.setattr("app.services.kric_collection.now_utc", lambda: now)
     settings = test_settings.model_copy(update={"kric_timetable_collection_enabled": True, "kric_service_key": "fake"})
@@ -103,7 +125,7 @@ async def test_48_hour_guard_includes_failed_and_abandoned_runs(test_settings, m
     await init_database(engine)
     fetch = AsyncMock(return_value=((code(),), None))
     async with factory() as session:
-        session.add(CollectionRun(trigger=TRIGGER, started_at=now - timedelta(hours=47, minutes=59), status=run_status))
+        session.add(CollectionRun(trigger=TRIGGER, started_at=now - timedelta(minutes=59), status=run_status))
         await session.commit()
         result = await KricTimetableCollectionService(settings, code_fetcher=fetch).collect(session)
     assert result["status"] == "skipped"
@@ -378,7 +400,7 @@ async def test_verified_calendar_only_and_preservation(test_settings, monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_exact_48_hours_allows_one_batch_and_ambiguous_names_stay_unlinked(test_settings, monkeypatch):
+async def test_daily_refresh_allows_one_batch_and_ambiguous_names_stay_unlinked(test_settings, monkeypatch):
     now = datetime(2026, 9, 27, 3, tzinfo=UTC)
     monkeypatch.setattr("app.services.kric_collection.now_utc", lambda: now)
     settings = test_settings.model_copy(update={"kric_timetable_collection_enabled": True, "kric_service_key": "fake", "kric_timetable_max_calls": 1})
@@ -521,7 +543,7 @@ def test_provider_coverage_counts_active_codes_and_freshness(client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("age,status", [(1, "throttled"), (49, "not_collected")])
+@pytest.mark.parametrize("age,status", [(0.5, "throttled"), (2, "not_collected")])
 async def test_skipped_kric_guard_is_visible_without_claiming_collection(test_settings, monkeypatch, age, status):
     from app.services.provider_status import provider_status
     now = datetime(2026, 9, 27, 4, tzinfo=UTC)
@@ -537,6 +559,6 @@ async def test_skipped_kric_guard_is_visible_without_claiming_collection(test_se
         assert item.status == status
         assert item.last_success_at is None
         assert item.last_started_at is None
-        assert item.next_due_at == (now + timedelta(hours=48 - age))
+        assert item.next_due_at == (now + timedelta(hours=1 - age))
         assert item.error_code is None
     await engine.dispose()

@@ -331,3 +331,7 @@ operation은 catalog/stations/timetable/station_guide CHECK로 제한한다. TAG
 source 식별자를 섞지 않으며 실패·인증키·원문 오류는 저장하지 않는다. 32일 경과 캐시만 정리하고
 수집 원천/이력과 분리한다. 주차 패턴 집계는 기존 airport_id/observed_at cover index를 이용해
 선택 요일·시간대만 읽는다. 상세 TTL·표본 기준은 [검증 원장](../reports/2026-10-24-transport-user-journeys.md)을 따른다.
+
+## 0037 지역 유가·철도 일일 수집
+
+fuel_region_summaries는 성공 수집 세대별 시도·시군구·유종의 영구 요약이며 공개 포인터와 같은 트랜잭션으로 발행한다. fuel_statistics_daily의 이전 7일 보관 제한은 제거하고 조회 창만 7일로 유지한다. kric_timetable_attempts는 역/운행 기준별 24시간 요청 원장이다. [상세 계약](../design/2026-11-01-rail-daily-fuel-summary.md).

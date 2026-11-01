@@ -1,4 +1,4 @@
-"""성공한 수집의 최신 가격을 한 번만 집계하고 작은 7일 일별 통계를 보관한다."""
+"""수집 완료 시 통계를 미리 집계한다. 지역 세대·일별 통계는 영구 보존한다."""
 from __future__ import annotations
 
 import json
@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.time_utils import serialize_utc
 from app.models import (
     FuelLatestPrice, FuelStation, FuelStatisticsDaily, FuelStatisticsPoint,
-    FuelStatisticsState, RestAreaFuelPrice, TransportCollectionState,
+    FuelStatisticsState, FuelRegionSummary, RestAreaFuelPrice, TransportCollectionState,
 )
 from app.services.flight_status import sanitize_upstream_error
 
@@ -101,6 +101,7 @@ async def publish_fuel_statistics(session: AsyncSession, source: str, collected_
         FuelStatisticsPoint.source == source, FuelStatisticsPoint.generated_at == stamp,
     ))
     groups: dict[tuple[str, str, str], _Accumulator] = {}
+    regions: dict[tuple[str, str, str], dict] = {}
     pending: list[dict] = []
 
     async def consume(point: dict, scopes: list[tuple[str, str, str]]) -> None:
@@ -135,6 +136,16 @@ async def publish_fuel_statistics(session: AsyncSession, source: str, collected_
             if row.sido_value and row.sigungu_value:
                 scopes.append(("sigungu", _key(row.sido_value, row.sigungu_value),
                                f"{row.sido_name or row.sido_value} {row.sigungu_name or row.sigungu_value}".strip()))
+            for scope, key, label in scopes[1:]:
+                region = regions.setdefault((scope, key, row.product_code), {
+                    "region_key": ":".join([source, row.sido_value] + ([row.sigungu_value] if scope == "sigungu" else [])),
+                    "label": label, "longitude": 0., "latitude": 0., "located": 0,
+                })
+                if (row.longitude is not None and row.latitude is not None
+                        and -180 <= row.longitude <= 180 and -90 <= row.latitude <= 90):
+                    region["longitude"] += row.longitude
+                    region["latitude"] += row.latitude
+                    region["located"] += 1
             await consume(point, scopes)
     elif source == HIGHWAY:
         stream = await session.stream(select(RestAreaFuelPrice).where(
@@ -178,10 +189,25 @@ async def publish_fuel_statistics(session: AsyncSession, source: str, collected_
             FuelStatisticsPoint.source == source, FuelStatisticsPoint.generated_at == stamp,
         ))
         return
-    # 작은 일별 집계와 공개 포인터만 같은 짧은 transaction 말미에서 전환한다.
+    # 지역 이력도 포인터와 같은 transaction으로 공개한다. 이전 세대는 삭제하지 않는다.
+    await session.execute(delete(FuelRegionSummary).where(
+        FuelRegionSummary.source == source, FuelRegionSummary.generated_at == stamp,
+    ))
+    region_rows = []
+    for (scope, key, product), region in regions.items():
+        group = groups[(scope, key, product)]
+        region_rows.append({"source": source, "generated_at": stamp, "scope": scope,
+            "region_key": region["region_key"], "product_code": product, "label": region["label"],
+            "longitude": region["longitude"] / region["located"] if region["located"] else None,
+            "latitude": region["latitude"] / region["located"] if region["located"] else None,
+            "average_price": group.total / group.count, "station_count": group.count,
+            "metrics_json": group.metrics()})
+    for offset in range(0, len(region_rows), 250):
+        await session.execute(insert(FuelRegionSummary), region_rows[offset:offset + 250])
+    # 하루의 마지막 성공본은 교체하되 지난 날짜는 보존한다. UI 조회 창과 저장 수명은 별개다.
     await session.execute(delete(FuelStatisticsDaily).where(
         FuelStatisticsDaily.source == source,
-        or_(FuelStatisticsDaily.day == day, FuelStatisticsDaily.day < day - timedelta(days=6)),
+        FuelStatisticsDaily.day == day,
     ))
     for offset in range(0, len(rows), 250):
         await session.execute(insert(FuelStatisticsDaily), rows[offset:offset + 250])

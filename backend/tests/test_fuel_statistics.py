@@ -84,7 +84,7 @@ def test_kst_retention_same_day_replace_and_atomic_failure(client):
             assert len(page["history"]) == 7
             assert str(page["history"][0]["day"]) == "2026-10-14"
             assert str(page["history"][-1]["day"]) == "2026-10-20"
-            assert await session.scalar(select(func.count()).select_from(FuelStatisticsDaily)) == 21
+            assert await session.scalar(select(func.count()).select_from(FuelStatisticsDaily)) == 24
             # 통계 도중 실패해도 기존 세대가 보이고 원본 트랜잭션은 계속 사용 가능하다.
             raw_price = await session.get(FuelLatestPrice, (2, "B027"))
             raw_price.price = 1900

@@ -106,7 +106,8 @@ def test_public_station_guide_is_keyless_and_independent_of_tago_denial(test_set
     with TestClient(create_app(settings)) as client:
         assert client.get("/v1/transport/rail/general/catalog").status_code == 502
         catalog = client.get("/v1/transport/rail/general/guide")
-        assert catalog.status_code == 200 and catalog.json()["items"] == []
+        assert catalog.status_code == 200 and catalog.json()["items"][0]["station_name"] == "서울"
+        assert catalog.json()["items"][0]["line_names"] == ["경부선"]
         result = client.get("/v1/transport/rail/general/guide", params={"kind": "ktx", "category_code": "ktx1"})
         assert result.status_code == 200
         assert result.json()["items"][0]["provider_id"] == "001"
@@ -142,10 +143,10 @@ def test_unknown_guide_category_is_checked_against_the_kind_page_before_any_prov
     with TestClient(create_app(test_settings.model_copy(update={"seed_sample_data": False}))) as client:
         # kind 페이지가 없으면 한 번 받아 저장한 뒤 검증한다.
         assert client.get("/v1/transport/rail/general/guide", params={"category_code": "unknown"}).status_code == 422
-        assert calls == [("catalog", "ktx")]
+        assert calls == [("located", "")]
         # 캐시된 kind 페이지로 거절한다 — 일일 호출 횟수를 쓰지 않는다.
         assert client.get("/v1/transport/rail/general/guide", params={"category_code": "other"}).status_code == 422
-        assert calls == [("catalog", "ktx")]
+        assert calls == [("located", "")]
 
 
 def test_daily_cap_retry_after_points_to_the_next_korean_midnight(test_settings, monkeypatch):

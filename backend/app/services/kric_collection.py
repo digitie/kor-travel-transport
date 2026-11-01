@@ -1,4 +1,4 @@
-"""KRIC 코드 파일과 예정 시간표를 48시간 간격의 제한된 batch로 저장한다."""
+"""KRIC 예정 시간표를 역·운행일별 하루 한 번 저장하고 미수집분은 다음 배치로 이어간다."""
 from __future__ import annotations
 
 import asyncio
@@ -17,7 +17,7 @@ from app.core.config import Settings
 from app.core.time_utils import now_utc, to_seoul
 from app.models import (
     CollectionRun, KricStationCode, KricStationMappingRegistry, KricTimetableSnapshot,
-    RailServiceDay, RailStationReference, RawApiResponse,
+    RailServiceDay, RailStationReference, RawApiResponse, KricTimetableAttempt,
 )
 from app.services.rail_station_mapping import (
     automatic_station_mappings,
@@ -65,28 +65,37 @@ class KricTimetableCollectionService:
         async with self._lease(session) as acquired:
             if not acquired:
                 return {"status": "skipped", "reason": "another KRIC batch is active"}
-            latest = await session.scalar(select(CollectionRun.started_at).where(CollectionRun.trigger == TRIGGER).order_by(CollectionRun.started_at.desc()).limit(1))
-            if latest and now_utc() - aware(latest) < timedelta(hours=48):
-                return {"status": "skipped", "reason": "KRIC batch is not due for 48 hours since last attempt"}
+            latest = await session.scalar(select(CollectionRun).where(CollectionRun.trigger == TRIGGER).order_by(CollectionRun.started_at.desc()).limit(1))
+            if latest:
+                # 공통 인증/할당량 오류는 원천 전체 보호, 그 외에는 다음 시간에 미수집분을 계속한다.
+                delay = 24 if latest.error_message in {"KricAuthError", "KricRateLimitError"} else 1
+                if now_utc() - aware(latest.started_at) < timedelta(hours=delay):
+                    return {"status": "skipped", "reason": "KRIC batch retry interval has not elapsed"}
             run = CollectionRun(started_at=now_utc(), status="running", trigger=TRIGGER)
             session.add(run)
-            await session.commit()  # 호출 전에 시도를 영구 기록한다. 실패·강제 종료도 48시간 보호한다.
+            await session.commit()
             run_id = run.id
             try:
-                codes, archive = await self.code_fetcher()
-                stations = await self._sync_codes(session, codes)
+                stations = list((await session.scalars(select(KricStationCode).where(KricStationCode.active.is_(True)))).all())
+                catalog_fresh = stations and all(now_utc() - aware(row.last_seen_at) < timedelta(hours=24) for row in stations)
+                archive = None
+                if not catalog_fresh:
+                    codes, archive = await self.code_fetcher()
+                    stations = await self._sync_codes(session, codes)
                 await self._sync_calendar(session)
-                session.add(RawApiResponse(
+                if not catalog_fresh:
+                    session.add(RawApiResponse(
                     collection_run_id=run_id, source="kric_station_codes", endpoint="data.kric.go.kr:notice-17",
                     request_params_json=None, status_code=200, received_at=now_utc(), parse_status="success",
                     body_text=json.dumps({"station_count": len(stations), "rustfs_object_key": archive.object_key if archive else None,
                         "rustfs_bucket": archive.bucket if archive else None, "checksum_sha256": archive.checksum_sha256 if archive else None}),
-                ))
+                    ))
                 await session.commit()
                 snapshots = {(row.station_id, row.day_code): row for row in (await session.execute(select(
                     KricTimetableSnapshot.id, KricTimetableSnapshot.station_id,
                     KricTimetableSnapshot.day_code, KricTimetableSnapshot.collected_at,
                 ))).all()}
+                attempts = {(row.station_id, row.day_code): row for row in (await session.scalars(select(KricTimetableAttempt))).all()}
                 missing_since = datetime.min.replace(tzinfo=UTC)
                 today = to_seoul(now_utc()).weekday()
                 preferred_day = "7" if today == 5 else "9" if today == 6 else "8"
@@ -96,13 +105,15 @@ class KricTimetableCollectionService:
                     for station in stations:
                         for day in ("7", "8", "9"):
                             previous = snapshots.get((station.id, day))
-                            if previous is None or now_utc() - aware(previous.collected_at) >= timedelta(hours=48):
+                            attempt = attempts.get((station.id, day))
+                            if ((previous is None or now_utc() - aware(previous.collected_at) >= timedelta(hours=24))
+                                    and (attempt is None or now_utc() - aware(attempt.attempted_at) >= timedelta(hours=24))):
                                 candidate_count += 1
                                 yield station, day
                 candidates = eligible_candidates()
                 candidates = heapq.nsmallest(self.settings.kric_timetable_max_calls, candidates, key=lambda pair: (
                     aware(snapshots[(pair[0].id, pair[1])].collected_at) if (pair[0].id, pair[1]) in snapshots else missing_since,
-                    pair[0].rail_station_id is None, pair[1] != preferred_day, pair[0].id, pair[1],
+                    pair[1] != preferred_day, pair[0].id, pair[1],
                 ))
                 count = 0
                 attempted = 0
@@ -110,7 +121,7 @@ class KricTimetableCollectionService:
                 consecutive_failures = 0
                 async with self.client_factory(self.settings.kric_service_key, timeout=self.settings.api_timeout_seconds) as client:
                     for station, day in candidates:
-                        # 4시간 Dagster 상한보다 일찍 종료하고 다음 48시간 batch에서 재개한다.
+                        # 4시간 Dagster 상한 전에 끝내고 다음 시간 배치에서 미수집 역을 재개한다.
                         if now_utc() - aware(run.started_at) >= timedelta(hours=3):
                             break
                         if attempted:
@@ -118,6 +129,12 @@ class KricTimetableCollectionService:
                         if now_utc() - aware(run.started_at) >= timedelta(hours=3):
                             break
                         attempted += 1
+                        attempt = attempts.get((station.id, day))
+                        if attempt is None:
+                            session.add(KricTimetableAttempt(station_id=station.id, day_code=day, attempted_at=now_utc()))
+                        else:
+                            attempt.attempted_at = now_utc()
+                        await session.commit()  # 실패/강제 종료 때도 같은 역을 하루에 반복 호출하지 않는다.
                         try:
                             rows = await client.get_station_timetable(rail_operator_code=station.operator_code,
                                 line_code=station.line_code, station_code=station.station_code, day_code=day)
@@ -236,6 +253,9 @@ class KricTimetableCollectionService:
         if not self.settings.data_go_kr_service_key:
             return
         start = to_seoul(now_utc()).date()
+        existing = await session.get(RailServiceDay, start)
+        if existing and now_utc() - aware(existing.verified_at) < timedelta(hours=24):
+            return
         result = await HolidayService(self.settings).get_holidays(start, start + timedelta(days=31))
         if result.status != "success" or result.source != "kasi_holiday_info":
             return  # 확인 실패를 평일로 저장하지 않는다. 기존 정상 달력은 보존한다.

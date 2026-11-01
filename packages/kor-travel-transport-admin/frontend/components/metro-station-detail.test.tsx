@@ -15,7 +15,9 @@ afterEach(()=>vi.unstubAllGlobals());
 test("실제 행선지별 예정 카드를 만들고 실시간·노선순서·출구를 만들어 내지 않는다",()=>{
  const html=renderToStaticMarkup(<MetroStationSummary station={station} data={data} period="" onPeriod={()=>{}} refresh={()=>{}}/>);
  expect(html).toContain("신사행");expect(html).toContain("광교행");expect(html).toContain("3분 후 예정");expect(html).toContain("12분 후 예정");
- expect(html).toContain("실시간 도착 정보가 아닙니다");expect(html).not.toContain("노선도");expect(html).not.toContain("출구정보");expect(html).toContain("확인된 편의시설 정보가 아직 없습니다");
+ expect(html).toContain("실시간 도착 정보가 아닙니다");expect(html).not.toContain("노선도");expect(html).not.toContain("출구정보");expect(html).toContain("편의시설 미제공");
+ expect(html).toContain('/rail/timetable?mode=metro&amp;station=17');
+ expect(html).toContain('<svg');expect(html).not.toContain("↻");
  expect(html.indexOf("전체 시간표")).toBeLessThan(html.indexOf("역 편의정보"));
  for(const props of [{loading:true},{failed:true},{data:{...data,basis:"selected_period" as const}},{data:{...data,items:[{...data.items[0],stale:true}]}}]){
   expect(renderToStaticMarkup(<MetroStationSummary station={station} data={data} period="" onPeriod={()=>{}} refresh={()=>{}} {...props}/>)).not.toContain("분 후 예정");
@@ -24,7 +26,7 @@ test("실제 행선지별 예정 카드를 만들고 실시간·노선순서·�
 test("코드 ID로 조회하고 전체 시간표·첫차막차를 펼친다",async()=>{
  api.get.mockResolvedValue(data);const container=document.createElement("div");document.body.append(container);const root=createRoot(container);
  try{
-  await act(async()=>root.render(<MetroStationDetail station={station}/>));
+  await act(async()=>root.render(<MetroStationDetail station={station} timetablePage/>));
   expect(api.get.mock.calls[0][0]).toBe("transport/rail/stations/17/timetable?");
   await act(async()=>[...container.querySelectorAll("button")].find(b=>b.textContent?.includes("전체 시간표"))!.click());
   expect(container.querySelector('[aria-label="전체 예정 시간표"]')?.textContent).toContain("09:12");
@@ -35,6 +37,6 @@ test("코드 ID로 조회하고 전체 시간표·첫차막차를 펼친다",asy
 
 test("등록된 편의시설의 상세와 주소·전화만 표시한다",()=>{
  const html=renderToStaticMarkup(<MetroStationSummary station={{...station,facilities:["스크린도어","유실물 취급","환승 가능"],address:"시험시 시험로 1",phone:"02-1234-5678"}} data={data} period="" onPeriod={()=>{}} refresh={()=>{}}/>);
- expect(html).toContain("승강장 스크린도어 설치가 확인");expect(html).toContain("유실물 취급이 등록");expect(html).toContain("시험시 시험로 1");expect(html).toContain('href="tel:0212345678"');
+ expect(html).toContain('aria-label="스크린도어 있음">O');expect(html).toContain('aria-label="유실물 취급 있음">O');expect(html).not.toContain("설치가 확인");expect(html).toContain("시험시 시험로 1");expect(html).toContain('href="tel:0212345678"');
  expect(html).not.toContain("엘리베이터 설치");expect(html).not.toContain("노선도");
 });

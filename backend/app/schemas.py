@@ -674,6 +674,7 @@ class GeneralRailGuideStation(BaseModel):
     phone: str | None = None
     longitude: float | None = None
     latitude: float | None = None
+    line_names: list[str] = Field(default_factory=list)
 
 
 class GeneralRailGuideResponse(BaseModel):

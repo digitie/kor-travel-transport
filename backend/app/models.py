@@ -446,7 +446,7 @@ class FuelStatisticsPoint(Base):
 
 
 class FuelStatisticsDaily(Base):
-    """KST 하루의 마지막 정상 수집 기준 집계. 오늘 포함 7일만 유지한다."""
+    """KST 하루의 마지막 정상 수집 기준 집계. 기간 제한 없이 보존한다."""
 
     __tablename__ = "fuel_statistics_daily"
     source: Mapped[str] = mapped_column(String(40), primary_key=True)
@@ -456,6 +456,27 @@ class FuelStatisticsDaily(Base):
     day: Mapped[date] = mapped_column(Date, primary_key=True)
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     label: Mapped[str] = mapped_column(String(300))
+    metrics_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
+class FuelRegionSummary(Base):
+    """수집 성공 세대별 행정구역 통계. 지도는 공개 세대만, 이력은 영구 보존한다."""
+
+    __tablename__ = "fuel_region_summaries"
+    __table_args__ = (
+        CheckConstraint("scope IN ('sido', 'sigungu')", name="ck_fuel_region_scope"),
+        CheckConstraint("station_count > 0 AND average_price > 0", name="ck_fuel_region_values"),
+    )
+    source: Mapped[str] = mapped_column(Text, primary_key=True)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    scope: Mapped[str] = mapped_column(Text, primary_key=True)
+    region_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    product_code: Mapped[str] = mapped_column(Text, primary_key=True)
+    label: Mapped[str] = mapped_column(Text)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    average_price: Mapped[float] = mapped_column(Numeric(12, 4))
+    station_count: Mapped[int] = mapped_column(Integer)
     metrics_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
 
 
@@ -556,6 +577,16 @@ class KricStationMappingRegistry(Base):
     catalog_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     mappings_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class KricTimetableAttempt(Base):
+    """역·운행일별 일일 호출 원장. 실패가 다른 역의 수집을 막지 않는다."""
+
+    __tablename__ = "kric_timetable_attempts"
+    station_id: Mapped[int] = mapped_column(ForeignKey("kric_station_codes.id", ondelete="CASCADE"), primary_key=True)
+    day_code: Mapped[str] = mapped_column(String(1), primary_key=True)
+    attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (CheckConstraint("day_code IN ('7', '8', '9')", name="ck_kric_attempt_day"),)
 
 
 class KricTimetableSnapshot(Base):

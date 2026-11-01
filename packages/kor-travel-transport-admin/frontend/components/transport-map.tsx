@@ -18,6 +18,7 @@ import { MapDetailOverlay, MapFilterBar, MapFilterField, MapFilterPanel, MapKind
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { FilterCombobox } from "./filter-combobox";
+import { railLines } from "@/lib/rail-line-style";
 
 type MapPoint = { id: string; lngLat: [number, number]; place: Place };
 type Viewport = { min_longitude: string; min_latitude: string; max_longitude: string; max_latitude: string };
@@ -62,7 +63,7 @@ function MapMarker({ point, onSelect, selected, products }: { point: MapPoint; o
   return <MapMarkerButton lngLat={point.lngLat} interactionId={point.id} zIndex={selected ? 4 : undefined} passThrough={selected} pressed={selected}
     className={`transport-map-marker ${place.kind}${selected ? " is-selected" : ""}`}
     title={priceLabel ? `${title} ${priceLabel.replace(/\n/g, " ")}` : title} ariaLabel={ariaLabel} onClick={() => onSelect(place)}>
-    {place.kind === "fuel_station" ? <FuelBrandIcon code={place.brand_code} name={place.brand_name} className="fuel-brand-marker" /> : <MarkerBadge markerIcon={markerIcon} markerColor={markerColor} selected={selected} />}
+    {place.kind === "fuel_station" ? <FuelBrandIcon code={place.brand_code} name={place.brand_name} className="fuel-brand-marker" /> : place.kind === "rail_station" ? <span className="rail-map-label"><span className="rail-map-lines">{railLines(place).map(line => <span key={line.name} className="rail-line-badge" style={{"--rail-line-color":line.color} as CSSProperties}>{line.label}</span>)}</span><span className="rail-map-name">{place.name}</span></span> : <MarkerBadge markerIcon={markerIcon} markerColor={markerColor} selected={selected} />}
     {priceLabel ? <span className="map-marker-price" style={{ "--marker-color": placeMarkerColor(place.kind) } as CSSProperties}>{priceLabel}</span> : null}
   </MapMarkerButton>;
 }
@@ -167,6 +168,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
     && point.lngLat[1] >= Number(viewport.min_latitude) && point.lngLat[1] <= Number(viewport.max_latitude));
   const cluster = !serverClustered && clusterAtScale(zoom, (Number(viewport.min_latitude) + Number(viewport.max_latitude)) / 2, visiblePoints.length, mapSize.width, mapSize.height);
   const markerPoints = embedded ? points : visiblePoints;
+  const railOnly = items.length > 0 && items.every(item => item.kind === "rail_station");
   const groupedPoints = useMemo(() => current ? markerPoints.filter((point) => point.id !== keyOf(current)) : markerPoints, [markerPoints, current]);
   const selectedPoint = points.find((point) => current && point.id === keyOf(current))
     ?? (current && hasCoordinates(current) ? { id: keyOf(current), lngLat: [current.longitude, current.latitude] as [number, number], place: current } : undefined);
@@ -422,7 +424,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
         {serverClustered ? serverClusters.map((item, index) => <MapMarkerButton key={`${item.longitude}:${item.latitude}:${index}`} lngLat={[item.longitude, item.latitude]} ariaLabel={`${item.count}개 장소 요약 묶음 확대`} interactionId={`server-cluster:${item.longitude.toFixed(6)},${item.latitude.toFixed(6)}`} className="map-cluster" zIndex={3} isCluster onClick={() => {
           setClusterPlaces([]); setClusterCamera({ center: [item.longitude, item.latitude], zoom: Math.min(19, Math.max(12, Math.ceil(zoom) + 2)) });
           setCameraRequest((value) => value + 1);
-        }}><ClusterBubble count={item.count} label={CLUSTER_NUMBER_FORMATTER.format(item.count)} /></MapMarkerButton>) : <ClusterLayer points={groupedPoints} radius={cluster ? (products.length === 1 ? 80 : 110) : 60} maxZoom={19}
+        }}><ClusterBubble count={item.count} label={CLUSTER_NUMBER_FORMATTER.format(item.count)} /></MapMarkerButton>) : <ClusterLayer points={groupedPoints} radius={railOnly ? 24 : cluster ? (products.length === 1 ? 80 : 110) : 60} maxZoom={railOnly ? 10 : 19}
           renderCluster={(group, count, index) => {
             const coordinates = group.geometry.coordinates;
             const id = group.properties.cluster_id;
