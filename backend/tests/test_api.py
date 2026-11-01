@@ -231,7 +231,9 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
     assert cluster_payload["items"] == []
     assert cluster_payload["kind_totals"] == {"fuel_station": 1, "rail_station": 1, "ferry_port": 1}
     assert sum(item["count"] for item in cluster_payload["clusters"]) == 2
-    assert cluster_payload["fuel_regions"][0]["average_price"] > 0
+    # 원본만 저장한 legacy source를 미발행 지역 통계로 즉석 집계하지 않는다.
+    # 공개 세대 요약의 값·발행 시점은 test_fuel_regions에서 별도로 검산한다.
+    assert cluster_payload["fuel_regions"] == []
     assert sum(sum(item["kind_counts"].values()) for item in cluster_payload["clusters"]) == 2
     unlocated_cluster_payload = client.get("/v1/transport/features/places", params={
         "kinds": "fuel_station,rail_station,ferry_port", "zoom": 7, "include_unlocated": "true",

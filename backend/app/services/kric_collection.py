@@ -121,9 +121,14 @@ class KricTimetableCollectionService:
                 attempted = 0
                 failures = 0
                 no_data = 0
+                provider_calls = 0
+                alternate_stored = 0
+                alternate_deferred = 0
                 consecutive_failures = 0
                 async with self.client_factory(self.settings.kric_service_key, timeout=self.settings.api_timeout_seconds) as client:
                     for station, day in candidates:
+                        if provider_calls >= self.settings.kric_timetable_max_calls:
+                            break
                         # 4시간 Dagster 상한 전에 끝내고 다음 시간 배치에서 미수집 역을 재개한다.
                         if now_utc() - aware(run.started_at) >= timedelta(hours=3):
                             break
@@ -140,15 +145,33 @@ class KricTimetableCollectionService:
                             attempt.attempted_at = now_utc()
                             attempt.outcome = "pending"
                         await session.commit()  # 실패/강제 종료 때도 같은 역을 하루에 반복 호출하지 않는다.
+                        endpoint = "convenientInfo/stationTimetable"
                         try:
-                            rows = await client.get_station_timetable(rail_operator_code=station.operator_code,
-                                line_code=station.line_code, station_code=station.station_code, day_code=day)
+                            provider_calls += 1
+                            try:
+                                rows = await client.get_station_timetable(rail_operator_code=station.operator_code,
+                                    line_code=station.line_code, station_code=station.station_code, day_code=day)
+                            except KricNoDataError:
+                                if provider_calls >= self.settings.kric_timetable_max_calls:
+                                    alternate_deferred += 1
+                                    raise
+                                session.add(RawApiResponse(collection_run_id=run_id, source="kric_timetable",
+                                    endpoint=endpoint, status_code=200,
+                                    request_params_json={"operator_code": station.operator_code, "line_code": station.line_code,
+                                        "station_code": station.station_code, "day_code": day},
+                                    received_at=now_utc(), parse_status="no_data", body_text='{"resultCode":"03"}'))
+                                await session.commit()
+                                await self.sleep(self.settings.kric_timetable_request_interval_seconds)
+                                endpoint = "trainUseInfo/subwayTimetable"
+                                provider_calls += 1
+                                rows = await client.get_subway_timetable(rail_operator_code=station.operator_code,
+                                    line_code=station.line_code, station_code=station.station_code, day_code=day)
                         except KricNoDataError:
                             no_data += 1
                             consecutive_failures = 0
                             attempt.outcome = "no_data"
                             session.add(RawApiResponse(collection_run_id=run_id, source="kric_timetable",
-                                endpoint="convenientInfo/stationTimetable", status_code=200,
+                                endpoint=endpoint, status_code=200,
                                 request_params_json={"operator_code": station.operator_code, "line_code": station.line_code,
                                     "station_code": station.station_code, "day_code": day},
                                 received_at=now_utc(), parse_status="no_data", body_text='{"resultCode":"03"}'))
@@ -161,7 +184,7 @@ class KricTimetableCollectionService:
                             attempt.outcome = "error"
                             consecutive_failures += 1
                             session.add(RawApiResponse(collection_run_id=run_id, source="kric_timetable",
-                                endpoint="convenientInfo/stationTimetable", status_code=0,
+                                endpoint=endpoint, status_code=0,
                                 request_params_json={"operator_code": station.operator_code, "line_code": station.line_code,
                                     "station_code": station.station_code, "day_code": day},
                                 received_at=now_utc(), parse_status="error", parse_error=type(exc).__name__,
@@ -174,7 +197,17 @@ class KricTimetableCollectionService:
                         if any((row.rail_operator_code, row.line_code, row.station_code, str(row.day_code)) !=
                                (station.operator_code, station.line_code, station.station_code, day) for row in rows):
                             raise ValueError("KRIC timetable response identity does not match requested station/day")
-                        items = [{name: getattr(row, name) for name in ("arrival_time", "departure_time", "origin_station_code", "terminal_station_code", "train_number")} for row in rows]
+                        # 열차별 API에는 기·종점이 없다. SDK의 실제 typed 시각/열차번호만
+                        # 저장하고 행선지를 열차번호나 역 순서로 추정하지 않는다.
+                        items = [{**{name: getattr(row, name, None) for name in ("arrival_time", "departure_time", "origin_station_code", "terminal_station_code", "train_number")},
+                                  "provider_operation": endpoint} for row in rows]
+                        if endpoint == "trainUseInfo/subwayTimetable":
+                            alternate_stored += 1
+                            session.add(RawApiResponse(collection_run_id=run_id, source="kric_timetable",
+                                endpoint=endpoint, status_code=200,
+                                request_params_json={"operator_code": station.operator_code, "line_code": station.line_code,
+                                    "station_code": station.station_code, "day_code": day},
+                                received_at=now_utc(), parse_status="success", body_text=json.dumps({"stored_row_count":len(items)})))
                         attempt.outcome = "stored"
                         snapshot = snapshots.get((station.id, day))
                         if snapshot is None:
@@ -193,6 +226,8 @@ class KricTimetableCollectionService:
                         "linked_station_count": sum(station.rail_station_id is not None for station in stations),
                         "stored_snapshot_count": count, "failed_snapshot_count": failures,
                         "no_data_snapshot_count": no_data,
+                        "provider_call_count": provider_calls, "alternate_stored_snapshot_count": alternate_stored,
+                        "alternate_deferred_snapshot_count": alternate_deferred,
                         "attempted_snapshot_count": attempted, "deferred_snapshot_count": candidate_count - attempted}
             except (Exception, asyncio.CancelledError) as exc:
                 await session.rollback()

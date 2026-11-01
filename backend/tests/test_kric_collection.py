@@ -68,7 +68,7 @@ class FakeClient:
 
 @pytest.mark.asyncio
 async def test_explicit_no_data_continues_other_stations_and_preserves_last_good_table(test_settings):
-    settings = test_settings.model_copy(update={"kric_timetable_collection_enabled": True, "kric_service_key": "fake", "kric_timetable_max_calls": 6})
+    settings = test_settings.model_copy(update={"kric_timetable_collection_enabled": True, "kric_service_key": "fake", "kric_timetable_max_calls": 9})
     fake = FakeClient()
     async def get(**params):
         fake.calls.append(params)
@@ -76,6 +76,7 @@ async def test_explicit_no_data_continues_other_stations_and_preserves_last_good
             raise KricNoDataError("KRIC returned no data (03)")
         return []
     fake.get_station_timetable = get
+    fake.get_subway_timetable = get
     engine, factory = create_engine_and_session_factory(settings.database_url)
     await init_database(engine)
     service = KricTimetableCollectionService(settings, code_fetcher=AsyncMock(return_value=((code(), code("0313", "다른역")), None)), client_factory=lambda *a, **kw: fake, sleep=AsyncMock())
@@ -90,6 +91,7 @@ async def test_explicit_no_data_continues_other_stations_and_preserves_last_good
         assert result["no_data_snapshot_count"] == 3
         assert result["stored_snapshot_count"] == 3
         assert result["attempted_snapshot_count"] == 6
+        assert result["provider_call_count"] == 9
         assert result["failed_snapshot_count"] == 0
         table = await stored_rail_timetables(session, [], "8", station_codes=[stations[0]])
         assert table.items[0].collection_status == "no_data"
@@ -99,6 +101,41 @@ async def test_explicit_no_data_continues_other_stations_and_preserves_last_good
         assert table.items[0].next_departure is None
         attempts = (await session.scalars(select(KricTimetableAttempt))).all()
         assert sorted(row.outcome for row in attempts) == ["no_data"] * 3 + ["stored"] * 3
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("budget", [1, 2])
+async def test_alternate_timetable_fills_missing_station_with_actual_typed_times_within_budget(test_settings, budget):
+    settings = test_settings.model_copy(update={"kric_timetable_collection_enabled": True, "kric_service_key": "fake", "kric_timetable_max_calls": budget})
+    fake = FakeClient()
+    async def primary(**params):
+        fake.calls.append(params)
+        raise KricNoDataError("03")
+    async def alternate(**params):
+        fake.calls.append(params)
+        return [SimpleNamespace(rail_operator_code=params["rail_operator_code"], line_code=params["line_code"],
+            station_code=params["station_code"], day_code=params["day_code"], arrival_time=None,
+            departure_time="091500", train_number="actual")]
+    fake.get_station_timetable, fake.get_subway_timetable = primary, alternate
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+    await init_database(engine)
+    sleep = AsyncMock()
+    service = KricTimetableCollectionService(settings, code_fetcher=AsyncMock(return_value=((code(),), None)), client_factory=lambda *a, **kw: fake, sleep=sleep)
+    async with factory() as session:
+        result = await service.collect(session)
+        assert result["provider_call_count"] == budget and len(fake.calls) == budget
+        assert result["stored_snapshot_count"] == result["alternate_stored_snapshot_count"] == budget - 1
+        assert result["no_data_snapshot_count"] == result["alternate_deferred_snapshot_count"] == 2 - budget
+        snapshot = await session.scalar(select(KricTimetableSnapshot))
+        if budget == 2:
+            assert snapshot.items_json[0]["departure_time"] == "091500"
+            assert snapshot.items_json[0]["terminal_station_code"] is None
+            assert snapshot.items_json[0]["provider_operation"] == "trainUseInfo/subwayTimetable"
+            sleep.assert_awaited_once_with(5)
+        else:
+            assert snapshot is None
+            sleep.assert_not_awaited()
     await engine.dispose()
 
 
