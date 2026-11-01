@@ -798,7 +798,7 @@ h1, h2, h3 { color: var(--text-primary); }
 .rail-timetable-page { display: grid; gap: var(--space-lg); min-width: 0; }
 .rail-timetable-nav { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
 .rail-timetable-nav a.button:not([aria-current="page"]) { background: var(--card); color: var(--brand); border-color: var(--control-line); }
-.metro-timetable-actions button[aria-expanded="true"] { background: var(--brand-tint); color: var(--brand); border-color: var(--brand); }
+.metro-timetable-actions button[aria-expanded="true"], .metro-timetable-actions button[aria-pressed="true"] { background: var(--brand-tint); color: var(--brand); border-color: var(--brand); }
 .rail-timetable-page .metro-station-sheet { max-width: 60rem; width: 100%; }
 .rail-timetable-page .journey-data-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .rail-timetable-page .train-station-search { min-width: 0; }
