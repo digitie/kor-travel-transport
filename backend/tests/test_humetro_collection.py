@@ -8,7 +8,7 @@ from kric import HUMETRO_PARSER_REVISION, HumetroTimetableEntry, HumetroTimetabl
 from sqlalchemy import func,select
 
 from app.db.session import create_engine_and_session_factory,init_database
-from app.models import KricTimetableAttempt,KricTimetableSnapshot
+from app.models import CollectionRun,KricTimetableAttempt,KricTimetableSnapshot
 from app.services.kric_collection import KricTimetableCollectionService
 from app.services.rail_timetable import stored_rail_timetables
 
@@ -47,6 +47,7 @@ async def test_provider_change_retries_recent_kric_no_data_once_then_stores_all_
     async with factory() as session:
         station=(await collector._sync_codes(session,codes))[0]
         for day in ("7","8","9"):session.add(KricTimetableAttempt(station_id=station.id,day_code=day,attempted_at=datetime.now(UTC)-timedelta(minutes=10),outcome="no_data" if prior_provider=="kric" else "error",provider=prior_provider,provider_revision=prior_revision))
+        if prior_provider=="humetro":session.add(CollectionRun(started_at=datetime.now(UTC),status="failed",trigger="dagster_kric_timetable"))
         await session.commit()
         result=await collector.collect(session)
         assert result['status']=='success' and result['provider_call_count']==2 and result['humetro_provider_call_count']==2
@@ -102,8 +103,7 @@ async def test_current_parser_error_or_recent_auth_failure_does_not_retry(test_s
         station=(await collector._sync_codes(session,codes))[0]
         for day in ("7","8","9"):
             session.add(KricTimetableAttempt(station_id=station.id,day_code=day,attempted_at=datetime.now(UTC)-timedelta(minutes=10),outcome="error",provider="humetro",provider_revision=None if auth_error else HUMETRO_PARSER_REVISION))
-        if auth_error:
-            session.add(CollectionRun(started_at=datetime.now(UTC)-timedelta(minutes=10),status="failed",trigger="dagster_kric_timetable",error_message=auth_error))
+        session.add(CollectionRun(started_at=datetime.now(UTC),status="failed",trigger="dagster_kric_timetable",error_message=auth_error))
         await session.commit()
         result=await collector.collect(session)
         assert not fake.calls

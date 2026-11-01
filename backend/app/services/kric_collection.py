@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from kric import HUMETRO_PARSER_REVISION, HumetroClient, KricClient, KricFileClient, KricNetworkError, KricNoDataError, KricServerError, RustfsObjectStore, StationCodeInfo, StoredObject
-from sqlalchemy import select, text, update
+from sqlalchemy import or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -73,8 +73,18 @@ class KricTimetableCollectionService:
                 delay = 24 if latest.error_message in {"KricAuthError", "KricRateLimitError", "HumetroAuthError", "HumetroRateLimitError"} else 1
                 # 다음 정시 실행이 몇 초 빨리 시작해도 한 시간 전체를 건너뛰지 않는다.
                 same_hour = now_utc().replace(minute=0, second=0, microsecond=0) == aware(latest.started_at).replace(minute=0, second=0, microsecond=0)
-                if (delay == 24 and now_utc() - aware(latest.started_at) < timedelta(hours=24)) or (delay == 1 and same_hour):
+                if delay == 24 and now_utc() - aware(latest.started_at) < timedelta(hours=24):
                     return {"status": "skipped", "reason": "KRIC batch retry interval has not elapsed"}
+                if delay == 1 and same_hour:
+                    # 실패한 구 파서를 교체한 복구는 같은 파서의 재시도와 구분한다.
+                    # 인증/할당량 보호는 위에서 끝내고, lease와 HTTP 예산은 그대로 적용한다.
+                    previous_parser_failed = latest.status in {"failed", "partial"} and bool(await session.scalar(
+                        select(KricTimetableAttempt.station_id).where(
+                            KricTimetableAttempt.provider == "humetro", KricTimetableAttempt.outcome == "error",
+                            or_(KricTimetableAttempt.provider_revision.is_(None), KricTimetableAttempt.provider_revision != HUMETRO_PARSER_REVISION),
+                        ).limit(1)))
+                    if not previous_parser_failed:
+                        return {"status": "skipped", "reason": "KRIC batch retry interval has not elapsed"}
             run = CollectionRun(started_at=now_utc(), status="running", trigger=TRIGGER)
             session.add(run)
             await session.commit()
