@@ -7760,10 +7760,39 @@
             ],
             "title": "Collected At"
           },
+          "collection_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pending",
+                  "stored",
+                  "no_data",
+                  "error"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Status"
+          },
           "departure_count": {
             "default": 0,
             "title": "Departure Count",
             "type": "integer"
+          },
+          "last_attempt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt At"
           },
           "line_name": {
             "anyOf": [
@@ -7952,6 +7981,23 @@
             ],
             "title": "Collected At"
           },
+          "collection_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pending",
+                  "stored",
+                  "no_data",
+                  "error"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Status"
+          },
           "departure_count": {
             "default": 0,
             "title": "Departure Count",
@@ -7963,6 +8009,18 @@
             },
             "title": "Items",
             "type": "array"
+          },
+          "last_attempt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt At"
           },
           "line_name": {
             "anyOf": [

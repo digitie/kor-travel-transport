@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.time_utils import now_utc, to_seoul
-from app.models import KricStationCode, KricTimetableSnapshot, RailServiceDay, RailStationReference
+from app.models import KricStationCode, KricTimetableAttempt, KricTimetableSnapshot, RailServiceDay, RailStationReference
 from app.schemas import RailDepartureItem, RailTimetableItem, RailTimetableResponse
 from app.services.kric_collection import aware
 
@@ -36,14 +36,21 @@ async def stored_rail_timetables(session: AsyncSession, places: list[RailStation
     snapshots = {row.station_id: row for row in (await session.scalars(select(KricTimetableSnapshot).where(
         KricTimetableSnapshot.station_id.in_(station_ids), KricTimetableSnapshot.day_code == day_code,
     ))).all()} if day_code is not None else {}
+    attempts = {row.station_id: row for row in (await session.scalars(select(KricTimetableAttempt).where(
+        KricTimetableAttempt.station_id.in_(station_ids), KricTimetableAttempt.day_code == day_code,
+    ))).all()} if day_code is not None else {}
     result = []
     for place_id, code, station_name, line_name in targets:
         snapshot = snapshots.get(code.id) if code else None
         item = RailTimetableItem(place_id=place_id, code_id=code.id if code else None, station_name=station_name,
             line_name=line_name, status="unlinked" if not code else "day_unresolved" if day_code is None else "stored" if snapshot else "not_collected")
+        attempt = attempts.get(code.id) if code else None
+        if attempt:
+            item.collection_status = attempt.outcome
+            item.last_attempt_at = aware(attempt.attempted_at)
         if snapshot and code:
             item.collected_at = aware(snapshot.collected_at)
-            item.stale = now - item.collected_at > timedelta(hours=48)
+            item.stale = now - item.collected_at > timedelta(hours=24)
             item.departure_count = len(snapshot.items_json)
             def departure(row):
                 return RailDepartureItem(train_number=row.get("train_number"),
@@ -52,7 +59,7 @@ async def stored_rail_timetables(session: AsyncSession, places: list[RailStation
                     destination_name=names.get((code.operator_code, code.line_code, row.get("terminal_station_code"))))
             if not summary_only:
                 item.items = sorted((departure(row) for row in snapshot.items_json), key=lambda row: row.departure_time or "999999")
-            if basis == "calendar" and not item.stale:
+            if basis == "calendar" and not item.stale and (not attempt or attempt.outcome == "stored"):
                 current_clock = local.strftime("%H%M%S")
                 # 날짜가 없는 계획 시각은 같은 한국 날짜의 05~23시 범위만 다음 열차로 표시한다.
                 # 원문이 확정 범위 밖이면 전체 시간표에는 남기되 다음 열차로 추정하지 않는다.

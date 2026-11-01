@@ -25,7 +25,7 @@ export function GeneralRailJourney({initialDepartureName="",compact=false}:{init
   const key=JSON.stringify([departure?.station_id,arrival?.station_id,effectiveDate,grade]);
   useEffect(()=>{
     const controller=new AbortController();
-    generalRailStations(controller.signal).then(data=>{if(!controller.signal.aborted){setReference(data);setReferenceError("");if(initialDepartureName)setDeparture(uniqueStationByName(data.stations,initialDepartureName));}}).catch(reason=>{if(!controller.signal.aborted)setReferenceError(reason instanceof Error?reason.message:"역 목록 조회 실패");});
+    generalRailStations(controller.signal).then(data=>{if(!controller.signal.aborted){setReference(data);setReferenceError("");if(initialDepartureName&&!data.incomplete)setDeparture(uniqueStationByName(data.stations,initialDepartureName));}}).catch(reason=>{if(!controller.signal.aborted)setReferenceError(reason instanceof Error?reason.message:"역 목록 조회 실패");});
     return()=>controller.abort();
   },[revision,initialDepartureName]);
   useEffect(()=>{
@@ -47,6 +47,7 @@ export function GeneralRailJourney({initialDepartureName="",compact=false}:{init
     {referenceError?<p role="alert">{referenceError} <Button variant="outline" onClick={()=>setRevision(v=>v+1)}>다시 조회</Button></p>:!reference?<p role="status">전체 역 목록을 불러오는 중…</p>:null}
     {reference?.stale?<p className="quiet">이전 저장 역 목록입니다.</p>:null}
     {reference?.incomplete?<p role="status">일부 지역 역 목록을 불러오지 못했습니다. 확인된 역만 표시합니다.</p>:null}
+    {initialDepartureName&&reference&&!departure?<p className="quiet">이 역의 시간표 코드를 유일하게 확인하지 못했습니다. 출발역을 직접 선택해 주세요.</p>:null}
     <div className="journey-data-grid"><RailStationPicker id={`${id}-departure`} label="출발역" stations={reference?.stations??[]} value={departure} onChange={setDeparture} disabled={!reference}/><RailStationPicker id={`${id}-arrival`} label="도착역" stations={reference?.stations??[]} value={arrival} onChange={setArrival} disabled={!reference}/></div>
     <MapFilterBar><Button variant="outline" aria-label="출발역 도착역 바꾸기" onClick={()=>{setDeparture(arrival);setArrival(departure);}}><ArrowLeftRight aria-hidden="true"/>바꾸기</Button><MapFilterField label="출발일" htmlFor={`${id}-date`}><input id={`${id}-date`} type="date" min={today} max={seoulDate(9)} value={effectiveDate} onChange={event=>setDate(event.target.value)}/></MapFilterField><MapFilterField label="열차 종류" htmlFor={`${id}-grade`}><select id={`${id}-grade`} value={grade} onChange={event=>setGrade(event.target.value)}><option value="">모든 열차</option>{reference?.catalog.train_classes.map(row=><option key={row.code} value={row.code}>{row.name}</option>)}</select></MapFilterField><Button disabled={!departure||!arrival||departure.station_id===arrival.station_id||!effectiveDate||loading} onClick={()=>{setResult({key:""});setRequest({key,revision:Date.now()});}}><RefreshCw aria-hidden="true"/>{loading?"조회 중…":"예정 시간표 조회"}</Button></MapFilterBar>
     {compact?<a className="inline-link" href={`/rail/timetable?mode=general&departure=${encodeURIComponent(departure?.station_name??initialDepartureName)}`}>전체 화면에서 시간표 조회</a>:null}

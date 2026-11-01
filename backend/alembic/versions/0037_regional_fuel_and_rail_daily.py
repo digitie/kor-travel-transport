@@ -31,7 +31,9 @@ def upgrade():
         sa.Column("station_id", sa.BigInteger(), sa.ForeignKey("kric_station_codes.id", ondelete="CASCADE"), primary_key=True),
         sa.Column("day_code", sa.String(1), primary_key=True),
         sa.Column("attempted_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("outcome", sa.String(16), nullable=False),
         sa.CheckConstraint("day_code IN ('7', '8', '9')", name="ck_kric_attempt_day"),
+        sa.CheckConstraint("outcome IN ('pending', 'stored', 'no_data', 'error')", name="ck_kric_attempt_outcome"),
     )
     # 마지막 공개 가격 세대만 요약해 새 지도 읽기를 연결한다. 새 수집으로 기록하지 않는다.
     if op.get_bind().dialect.name == "postgresql":

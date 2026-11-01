@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { transportUpstreamUrl } from "./upstream";
+import { transportTimeoutMs, transportUpstreamUrl } from "./upstream";
 
 describe("transport upstream URL", () => {
+  it("전체 역 안내 최초 저장만 60초를 허용한다",()=>{
+    expect(transportTimeoutMs(new URL("http://localhost/v1/transport/rail/general/guide"))).toBe(60_000);
+    expect(transportTimeoutMs(new URL("http://localhost/v1/transport/features/places"))).toBe(30_000);
+  });
   it("허용한 transport read endpoint와 반복 query를 그대로 만든다", () => {
     const url = transportUpstreamUrl(["transport", "highways", "traffic"], new URLSearchParams([["route_no", "1"], ["route_no", "10"]]));
     expect(url?.toString()).toContain("/v1/transport/highways/traffic?route_no=1&route_no=10");

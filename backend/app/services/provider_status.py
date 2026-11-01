@@ -54,7 +54,8 @@ async def provider_status(session: AsyncSession, settings: Settings) -> Provider
         if source == "kric_timetable" and kric_attempt:
             if kric_attempt.tzinfo is None:
                 kric_attempt = kric_attempt.replace(tzinfo=now_utc().tzinfo)
-            next_due = kric_attempt + timedelta(hours=1)
+            next_due = (kric_attempt + timedelta(hours=24) if run and run.error_message in {"KricAuthError", "KricRateLimitError"}
+                        else kric_attempt.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1))
             # 진단 후 보호 기록은 성공으로 계산하지 않되, 언제까지 대기하는지는 보여준다.
             if enabled and run is None:
                 status = "throttled" if next_due > now_utc() else "not_collected"

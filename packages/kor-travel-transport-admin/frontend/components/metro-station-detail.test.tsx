@@ -40,3 +40,17 @@ test("등록된 편의시설의 상세와 주소·전화만 표시한다",()=>{
  expect(html).toContain('aria-label="스크린도어 있음">O');expect(html).toContain('aria-label="유실물 취급 있음">O');expect(html).not.toContain("설치가 확인");expect(html).toContain("시험시 시험로 1");expect(html).toContain('href="tel:0212345678"');
  expect(html).not.toContain("엘리베이터 설치");expect(html).not.toContain("노선도");
 });
+
+test("종착역의 도착 시각을 누락하지 않으며 출발 예정 분으로 바꾸지 않는다",()=>{
+ const arrivals={...data,items:[{...data.items[0],items:[{...row("001200","성복"),departure_time:null,arrival_time:"001200"},{...row("232000","성복"),departure_time:null,arrival_time:"232000"}]}]};
+ const props={station,data:arrivals,period:"",onPeriod:()=>{},refresh:()=>{},timetablePage:true};
+ const all=renderToStaticMarkup(<MetroStationSummary {...props}/>);
+ expect(all).toContain("00:12");expect(all).toContain("도착 ·");expect(all).not.toContain("분 후 예정");
+ const ends=renderToStaticMarkup(<MetroStationSummary {...props} initialView="ends"/>);
+ expect(ends).toContain("도착 시각 범위");expect(ends).toContain("00:12 ~ 23:20");
+});
+
+test("최근 제공기관 데이터 부재는 이전 저장표와 구분하고 예정 분을 숨긴다",()=>{
+ const html=renderToStaticMarkup(<MetroStationSummary station={station} data={{...data,items:[{...data.items[0],collection_status:"no_data"}]}} period="" onPeriod={()=>{}} refresh={()=>{}} timetablePage/>);
+ expect(html).toContain("제공기관이 시간표를 제공하지 않았습니다");expect(html).toContain("09:03");expect(html).not.toContain("분 후 예정");
+});

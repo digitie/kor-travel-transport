@@ -865,7 +865,7 @@ definitions = Definitions(
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=bus_reference_collection_job, cron_schedule="30 3 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=place_location_collection_job, cron_schedule="30 4 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=kakao_place_location_collection_job, cron_schedule="30 6 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
-        # 실패·강제 종료도 포함해 마지막 시도부터 48시간 guard를 적용한다.
+        # 시간별로 미수집분을 이어가되 같은 역·운행 기준은 24시간 호출 원장으로 보호한다.
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=kric_timetable_collection_job, cron_schedule="0 * * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=general_rail_timetable_collection_job, cron_schedule="30 2 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         # 휴게소 기준정보는 저변동(약 200행·1회 호출)이라 하루 한 번, 유가는 4시간마다 갱신한다(ADR-013).

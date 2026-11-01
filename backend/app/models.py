@@ -586,7 +586,11 @@ class KricTimetableAttempt(Base):
     station_id: Mapped[int] = mapped_column(ForeignKey("kric_station_codes.id", ondelete="CASCADE"), primary_key=True)
     day_code: Mapped[str] = mapped_column(String(1), primary_key=True)
     attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    __table_args__ = (CheckConstraint("day_code IN ('7', '8', '9')", name="ck_kric_attempt_day"),)
+    outcome: Mapped[str] = mapped_column(String(16), default="pending")
+    __table_args__ = (
+        CheckConstraint("day_code IN ('7', '8', '9')", name="ck_kric_attempt_day"),
+        CheckConstraint("outcome IN ('pending', 'stored', 'no_data', 'error')", name="ck_kric_attempt_outcome"),
+    )
 
 
 class KricTimetableSnapshot(Base):

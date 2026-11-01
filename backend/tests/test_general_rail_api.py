@@ -104,6 +104,16 @@ def test_public_station_guide_is_keyless_and_independent_of_tago_denial(test_set
     monkeypatch.setattr("app.general_rail_routes.DataGoKrClient", fake_client(train))
     settings = test_settings.model_copy(update={"seed_sample_data": False, "data_go_kr_service_key": "fake"})
     with TestClient(create_app(settings)) as client:
+        # 이전 버전이 저장한 빈 분류 카탈로그가 있어도 배포 직후 전체 역을 읽어야 한다.
+        import asyncio, json
+        from app.models import GeneralRailQuerySnapshot
+        async def legacy_catalog():
+            async with client.app.state.session_factory() as session:
+                session.add(GeneralRailQuerySnapshot(operation="station_guide",request_key=json.dumps(["ktx", ""]),fetched_at=now_utc(),response_json={
+                    "fetched_at":now_utc().isoformat(),"kind":"ktx","category_code":"","total":19,"items":[],
+                    "categories":[{"code":"ktx1","name":"경부선"}]}))
+                await session.commit()
+        asyncio.run(legacy_catalog())
         assert client.get("/v1/transport/rail/general/catalog").status_code == 502
         catalog = client.get("/v1/transport/rail/general/guide")
         assert catalog.status_code == 200 and catalog.json()["items"][0]["station_name"] == "서울"

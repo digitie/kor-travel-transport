@@ -149,6 +149,7 @@ def build_general_rail_router(get_db) -> APIRouter:
                 items=[GeneralRailGuideStation(provider_id=row.station_sequence, station_code=row.station_code,
                     station_name=row.station_name, address=row.address, phone=row.phone,
                     longitude=row.longitude, latitude=row.latitude,
-                    line_names=[category.name for category in page.categories if category.code in row.category_codes]) for row in page.stations])
-        return await query(request, session, "station_guide", json.dumps([kind, category_code]), GeneralRailGuideResponse, fetch, ttl_hours=24, public=True)
+                    line_names=[category.name for category in page.categories if kind == "ktx" and category.code in row.category_codes]) for row in page.stations])
+        # 이전 계약의 빈 분류 카탈로그(items=[])를 하루 더 재사용하지 않는다.
+        return await query(request, session, "station_guide", json.dumps(["v2", kind, category_code]), GeneralRailGuideResponse, fetch, ttl_hours=24, public=True)
     return router
