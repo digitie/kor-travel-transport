@@ -588,6 +588,7 @@ class KricTimetableAttempt(Base):
     attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     outcome: Mapped[str] = mapped_column(String(16), default="pending")
     provider: Mapped[str] = mapped_column(String(24), default="kric", server_default="kric")
+    provider_revision: Mapped[str | None] = mapped_column(String(32), nullable=True)
     __table_args__ = (
         CheckConstraint("day_code IN ('7', '8', '9')", name="ck_kric_attempt_day"),
         CheckConstraint("outcome IN ('pending', 'stored', 'no_data', 'error')", name="ck_kric_attempt_outcome"),

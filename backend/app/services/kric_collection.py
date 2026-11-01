@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from kric import HumetroClient, KricClient, KricFileClient, KricNetworkError, KricNoDataError, KricServerError, RustfsObjectStore, StationCodeInfo, StoredObject
+from kric import HUMETRO_PARSER_REVISION, HumetroClient, KricClient, KricFileClient, KricNetworkError, KricNoDataError, KricServerError, RustfsObjectStore, StationCodeInfo, StoredObject
 from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -110,7 +110,9 @@ class KricTimetableCollectionService:
                     previous = snapshots.get((station.id, day))
                     attempt = attempts.get((station.id, day))
                     return ((previous is None or now_utc() - aware(previous.collected_at) >= timedelta(hours=24))
-                        and (attempt is None or attempt.provider != provider(station) or now_utc() - aware(attempt.attempted_at) >= timedelta(hours=24)))
+                        and (attempt is None or attempt.provider != provider(station)
+                            or (provider(station) == "humetro" and attempt.outcome == "error" and attempt.provider_revision != HUMETRO_PARSER_REVISION)
+                            or now_utc() - aware(attempt.attempted_at) >= timedelta(hours=24)))
                 def eligible_candidates():
                     nonlocal candidate_count
                     for station in stations:
@@ -161,6 +163,7 @@ class KricTimetableCollectionService:
                                     attempts[(station.id, value)] = attempt
                                     session.add(attempt)
                                 attempt.provider, attempt.attempted_at, attempt.outcome = "humetro", now_utc(), "pending"
+                                attempt.provider_revision = HUMETRO_PARSER_REVISION
                             attempted += len(days)
                             await session.commit()
                             try:
@@ -188,7 +191,7 @@ class KricTimetableCollectionService:
                                     session.add(RawApiResponse(collection_run_id=run_id, source="humetro_timetable", endpoint="humetro/stationtime",
                                         request_params_json={"line_code":station.line_code,"station_code":station.station_code,"direction":page.direction},
                                         status_code=200, received_at=now_utc(), parse_status="success",
-                                        body_text=json.dumps({"source_url":page.source_url,"checksum_sha256":page.checksum_sha256,"row_count":len(page.items)})))
+                                        body_text=json.dumps({"source_url":page.source_url,"checksum_sha256":page.checksum_sha256,"row_count":len(page.items),"parser_revision":HUMETRO_PARSER_REVISION})))
                                 for value in days:
                                     items = [{"departure_time":row.departure_time,"arrival_time":None,"train_number":None,
                                         "origin_station_code":None,"terminal_station_code":row.terminal_station_code,
@@ -217,7 +220,7 @@ class KricTimetableCollectionService:
                                 for value in days:
                                     attempts[(station.id,value)].outcome = "error"
                                 session.add(RawApiResponse(collection_run_id=run_id, source="humetro_timetable", endpoint="humetro/stationtime",
-                                    status_code=0, received_at=now_utc(), parse_status="error", parse_error=type(exc).__name__,body_text=json.dumps({"error_type":type(exc).__name__})))
+                                    status_code=0, received_at=now_utc(), parse_status="error", parse_error=type(exc).__name__,body_text=json.dumps({"error_type":type(exc).__name__,"parser_revision":HUMETRO_PARSER_REVISION})))
                                 await session.commit()
                                 if consecutive_failures >= 3:
                                     break
@@ -232,6 +235,7 @@ class KricTimetableCollectionService:
                             attempt.attempted_at = now_utc()
                             attempt.outcome = "pending"
                             attempt.provider = "kric"
+                            attempt.provider_revision = None
                         await session.commit()  # 실패/강제 종료 때도 같은 역을 하루에 반복 호출하지 않는다.
                         endpoint = "convenientInfo/stationTimetable"
                         try:

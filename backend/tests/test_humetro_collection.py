@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from kric import HumetroTimetableEntry, HumetroTimetablePage, HumetroSchemaError, StationCodeInfo
+from kric import HUMETRO_PARSER_REVISION, HumetroTimetableEntry, HumetroTimetablePage, HumetroSchemaError, StationCodeInfo
 from sqlalchemy import func,select
 
 from app.db.session import create_engine_and_session_factory,init_database
@@ -39,13 +39,14 @@ def service(settings,fake):
 
 
 @pytest.mark.asyncio
-async def test_provider_change_retries_recent_kric_no_data_once_then_stores_all_days(test_settings):
+@pytest.mark.parametrize("prior_provider,prior_revision", [("kric", None), ("humetro", None), ("humetro", "old-format")])
+async def test_provider_change_retries_recent_kric_no_data_once_then_stores_all_days(test_settings, prior_provider, prior_revision):
     settings=test_settings.model_copy(update={"kric_timetable_collection_enabled":True,"kric_service_key":"fake","kric_timetable_max_calls":2})
     engine,factory=create_engine_and_session_factory(settings.database_url);await init_database(engine)
     fake=FakeHumetro();collector,codes=service(settings,fake)
     async with factory() as session:
         station=(await collector._sync_codes(session,codes))[0]
-        for day in ("7","8","9"):session.add(KricTimetableAttempt(station_id=station.id,day_code=day,attempted_at=datetime.now(UTC)-timedelta(minutes=10),outcome="no_data",provider="kric"))
+        for day in ("7","8","9"):session.add(KricTimetableAttempt(station_id=station.id,day_code=day,attempted_at=datetime.now(UTC)-timedelta(minutes=10),outcome="no_data" if prior_provider=="kric" else "error",provider=prior_provider,provider_revision=prior_revision))
         await session.commit()
         result=await collector.collect(session)
         assert result['status']=='success' and result['provider_call_count']==2 and result['humetro_provider_call_count']==2
@@ -53,7 +54,7 @@ async def test_provider_change_retries_recent_kric_no_data_once_then_stores_all_
         assert result['attempted_snapshot_count']==3 and result['deferred_snapshot_count']==0
         assert fake.calls==[None,"1"]
         attempts=(await session.scalars(select(KricTimetableAttempt))).all()
-        assert all(row.provider=='humetro' and row.outcome=='stored' for row in attempts)
+        assert all(row.provider=='humetro' and row.outcome=='stored' and row.provider_revision==HUMETRO_PARSER_REVISION for row in attempts)
         snapshots=(await session.scalars(select(KricTimetableSnapshot))).all()
         assert len(snapshots)==3 and all(len(row.items_json)==4 for row in snapshots)
         table=await stored_rail_timetables(session,[],"9",station_codes=[station])
@@ -87,4 +88,24 @@ async def test_no_partial_direction_publish_or_budget_overrun(test_settings,budg
         else:
             assert not fake.calls and result['provider_call_count']==0
             assert await session.scalar(select(func.count()).select_from(KricTimetableAttempt))==0
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("auth_error", [None, "HumetroAuthError", "HumetroRateLimitError"])
+async def test_current_parser_error_or_recent_auth_failure_does_not_retry(test_settings, auth_error):
+    from app.models import CollectionRun
+    settings=test_settings.model_copy(update={"kric_timetable_collection_enabled":True,"kric_service_key":"fake","kric_timetable_max_calls":2})
+    engine,factory=create_engine_and_session_factory(settings.database_url);await init_database(engine)
+    fake=FakeHumetro();collector,codes=service(settings,fake)
+    async with factory() as session:
+        station=(await collector._sync_codes(session,codes))[0]
+        for day in ("7","8","9"):
+            session.add(KricTimetableAttempt(station_id=station.id,day_code=day,attempted_at=datetime.now(UTC)-timedelta(minutes=10),outcome="error",provider="humetro",provider_revision=None if auth_error else HUMETRO_PARSER_REVISION))
+        if auth_error:
+            session.add(CollectionRun(started_at=datetime.now(UTC)-timedelta(minutes=10),status="failed",trigger="dagster_kric_timetable",error_message=auth_error))
+        await session.commit()
+        result=await collector.collect(session)
+        assert not fake.calls
+        if auth_error:assert result["status"]=="skipped"
     await engine.dispose()
