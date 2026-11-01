@@ -54,3 +54,12 @@ test("최근 제공기관 데이터 부재는 이전 저장표와 구분하고 �
  const html=renderToStaticMarkup(<MetroStationSummary station={station} data={{...data,items:[{...data.items[0],collection_status:"no_data"}]}} period="" onPeriod={()=>{}} refresh={()=>{}} timetablePage/>);
  expect(html).toContain("제공기관이 시간표를 제공하지 않았습니다");expect(html).toContain("09:03");expect(html).not.toContain("분 후 예정");
 });
+
+test("기관 정본의 분 단위 시각과 익일 막차를 같은 조회 화면에서 표시한다",()=>{
+ const input={...data,items:[{...data.items[0],source_name:"부산교통공사",time_precision:"minute" as const,items:[row("09:03","다대포해수욕장"),row("24:24","다대포해수욕장")]}]};
+ const props={station,data:input,period:"",onPeriod:()=>{},refresh:()=>{},timetablePage:true};
+ const all=renderToStaticMarkup(<MetroStationSummary {...props}/>);
+ expect(all).toContain("부산교통공사");expect(all).toContain("분 단위 시각");expect(all).toContain("3분 후 예정");expect(all).toContain("익일 00:24");
+ const ends=renderToStaticMarkup(<MetroStationSummary {...props} initialView="ends"/>);
+ expect(ends).toContain("09:03 ~ 익일 00:24");
+});

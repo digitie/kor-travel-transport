@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from kric import KricClient, KricFileClient, KricNetworkError, KricNoDataError, KricServerError, RustfsObjectStore, StationCodeInfo, StoredObject
+from kric import HumetroClient, KricClient, KricFileClient, KricNetworkError, KricNoDataError, KricServerError, RustfsObjectStore, StationCodeInfo, StoredObject
 from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,11 +37,13 @@ def aware(value: datetime) -> datetime:
 class KricTimetableCollectionService:
     def __init__(
         self, settings: Settings, *, client_factory: Callable[..., Any] = KricClient,
+        humetro_client_factory: Callable[..., Any] = HumetroClient,
         code_fetcher: Callable[[], Awaitable[tuple[tuple[StationCodeInfo, ...], StoredObject | None]]] | None = None,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         self.settings = settings
         self.client_factory = client_factory
+        self.humetro_client_factory = humetro_client_factory
         self.code_fetcher = code_fetcher or self._fetch_codes
         self.sleep = sleep
 
@@ -68,7 +70,7 @@ class KricTimetableCollectionService:
             latest = await session.scalar(select(CollectionRun).where(CollectionRun.trigger == TRIGGER).order_by(CollectionRun.started_at.desc()).limit(1))
             if latest:
                 # 공통 인증/할당량 오류는 원천 전체 보호, 그 외에는 다음 시간에 미수집분을 계속한다.
-                delay = 24 if latest.error_message in {"KricAuthError", "KricRateLimitError"} else 1
+                delay = 24 if latest.error_message in {"KricAuthError", "KricRateLimitError", "HumetroAuthError", "HumetroRateLimitError"} else 1
                 # 다음 정시 실행이 몇 초 빨리 시작해도 한 시간 전체를 건너뛰지 않는다.
                 same_hour = now_utc().replace(minute=0, second=0, microsecond=0) == aware(latest.started_at).replace(minute=0, second=0, microsecond=0)
                 if (delay == 24 and now_utc() - aware(latest.started_at) < timedelta(hours=24)) or (delay == 1 and same_hour):
@@ -102,14 +104,18 @@ class KricTimetableCollectionService:
                 today = to_seoul(now_utc()).weekday()
                 preferred_day = "7" if today == 5 else "9" if today == 6 else "8"
                 candidate_count = 0
+                def provider(station):
+                    return "humetro" if station.operator_code == "BS" and station.line_code in {"1", "2", "3", "4"} else "kric"
+                def due(station, day):
+                    previous = snapshots.get((station.id, day))
+                    attempt = attempts.get((station.id, day))
+                    return ((previous is None or now_utc() - aware(previous.collected_at) >= timedelta(hours=24))
+                        and (attempt is None or attempt.provider != provider(station) or now_utc() - aware(attempt.attempted_at) >= timedelta(hours=24)))
                 def eligible_candidates():
                     nonlocal candidate_count
                     for station in stations:
                         for day in ("7", "8", "9"):
-                            previous = snapshots.get((station.id, day))
-                            attempt = attempts.get((station.id, day))
-                            if ((previous is None or now_utc() - aware(previous.collected_at) >= timedelta(hours=24))
-                                    and (attempt is None or now_utc() - aware(attempt.attempted_at) >= timedelta(hours=24))):
+                            if due(station, day):
                                 candidate_count += 1
                                 yield station, day
                 candidates = eligible_candidates()
@@ -124,9 +130,14 @@ class KricTimetableCollectionService:
                 provider_calls = 0
                 alternate_stored = 0
                 alternate_deferred = 0
+                humetro_stored = 0
+                humetro_calls = 0
+                humetro_done = set()
                 consecutive_failures = 0
-                async with self.client_factory(self.settings.kric_service_key, timeout=self.settings.api_timeout_seconds) as client:
+                async with self.client_factory(self.settings.kric_service_key, timeout=self.settings.api_timeout_seconds) as client, self.humetro_client_factory(timeout=self.settings.api_timeout_seconds) as humetro:
                     for station, day in candidates:
+                        if provider(station) == "humetro" and station.id in humetro_done:
+                            continue
                         if provider_calls >= self.settings.kric_timetable_max_calls:
                             break
                         # 4시간 Dagster 상한 전에 끝내고 다음 시간 배치에서 미수집 역을 재개한다.
@@ -136,14 +147,91 @@ class KricTimetableCollectionService:
                             await self.sleep(self.settings.kric_timetable_request_interval_seconds)
                         if now_utc() - aware(run.started_at) >= timedelta(hours=3):
                             break
+                        if provider(station) == "humetro":
+                            humetro_done.add(station.id)
+                            # 공식 페이지 하나가 모든 요일을 포함한다. 방향별 HTTP는 각각 세고
+                            # 같은 정상 원문의 다른 요일도 함께 저장해 중복 조회를 줄인다.
+                            days = [value for value in ("7", "8", "9") if due(station, value)]
+                            if not days or provider_calls + 2 > self.settings.kric_timetable_max_calls:
+                                continue
+                            for value in days:
+                                attempt = attempts.get((station.id, value))
+                                if attempt is None:
+                                    attempt = KricTimetableAttempt(station_id=station.id, day_code=value)
+                                    attempts[(station.id, value)] = attempt
+                                    session.add(attempt)
+                                attempt.provider, attempt.attempted_at, attempt.outcome = "humetro", now_utc(), "pending"
+                            attempted += len(days)
+                            await session.commit()
+                            try:
+                                provider_calls += 1
+                                humetro_calls += 1
+                                first = await humetro.get_station_page(line_code=station.line_code, station_code=station.station_code)
+                                if not first.available_directions or not set(first.available_directions) <= {"0", "1"} or first.direction not in first.available_directions:
+                                    raise ValueError("HUmetro direction contract invalid")
+                                pages = [first]
+                                for direction in first.available_directions:
+                                    if direction == first.direction:
+                                        continue
+                                    await self.sleep(self.settings.kric_timetable_request_interval_seconds)
+                                    provider_calls += 1
+                                    humetro_calls += 1
+                                    page = await humetro.get_station_page(line_code=station.line_code, station_code=station.station_code, direction=direction)
+                                    if page.available_directions != first.available_directions:
+                                        raise ValueError("HUmetro direction set changed during collection")
+                                    pages.append(page)
+                                rows = [row for page in pages for row in page.items]
+                                if (not rows or any(page.station_code != station.station_code or page.line_code != station.line_code for page in pages)
+                                        or any((row.rail_operator_code, row.line_code, row.station_code) != ("BS", station.line_code, station.station_code) or row.day_code not in {"7", "8", "9"} for row in rows)):
+                                    raise ValueError("HUmetro timetable identity or content invalid")
+                                for page in pages:
+                                    session.add(RawApiResponse(collection_run_id=run_id, source="humetro_timetable", endpoint="humetro/stationtime",
+                                        request_params_json={"line_code":station.line_code,"station_code":station.station_code,"direction":page.direction},
+                                        status_code=200, received_at=now_utc(), parse_status="success",
+                                        body_text=json.dumps({"source_url":page.source_url,"checksum_sha256":page.checksum_sha256,"row_count":len(page.items)})))
+                                for value in days:
+                                    items = [{"departure_time":row.departure_time,"arrival_time":None,"train_number":None,
+                                        "origin_station_code":None,"terminal_station_code":row.terminal_station_code,
+                                        "destination_name":row.destination_name,"source_clock":row.source_clock,
+                                        "provider_operation":"humetro/stationtime","time_precision":"minute"} for row in rows if row.day_code == value]
+                                    attempt = attempts[(station.id,value)]
+                                    if not items:
+                                        attempt.outcome = "no_data"
+                                        no_data += 1
+                                        continue
+                                    snapshot = snapshots.get((station.id,value))
+                                    if snapshot is None:
+                                        snapshot = KricTimetableSnapshot(station_id=station.id, day_code=value, collected_at=now_utc(), items_json=items)
+                                        session.add(snapshot)
+                                    else:
+                                        await session.execute(update(KricTimetableSnapshot).where(KricTimetableSnapshot.id == snapshot.id).values(collected_at=now_utc(),items_json=items))
+                                    snapshots[(station.id,value)] = snapshot
+                                    attempt.outcome = "stored"
+                                    count += 1
+                                    humetro_stored += 1
+                                await session.commit()
+                                consecutive_failures = 0
+                            except (KricNetworkError, KricServerError) as exc:
+                                failures += len(days)
+                                consecutive_failures += 1
+                                for value in days:
+                                    attempts[(station.id,value)].outcome = "error"
+                                session.add(RawApiResponse(collection_run_id=run_id, source="humetro_timetable", endpoint="humetro/stationtime",
+                                    status_code=0, received_at=now_utc(), parse_status="error", parse_error=type(exc).__name__,body_text=json.dumps({"error_type":type(exc).__name__})))
+                                await session.commit()
+                                if consecutive_failures >= 3:
+                                    break
+                            continue
                         attempted += 1
                         attempt = attempts.get((station.id, day))
                         if attempt is None:
-                            attempt = KricTimetableAttempt(station_id=station.id, day_code=day, attempted_at=now_utc(), outcome="pending")
+                            attempt = KricTimetableAttempt(station_id=station.id, day_code=day, attempted_at=now_utc(), outcome="pending", provider="kric")
                             session.add(attempt)
+                            attempts[(station.id,day)] = attempt
                         else:
                             attempt.attempted_at = now_utc()
                             attempt.outcome = "pending"
+                            attempt.provider = "kric"
                         await session.commit()  # 실패/강제 종료 때도 같은 역을 하루에 반복 호출하지 않는다.
                         endpoint = "convenientInfo/stationTimetable"
                         try:
@@ -227,6 +315,7 @@ class KricTimetableCollectionService:
                         "stored_snapshot_count": count, "failed_snapshot_count": failures,
                         "no_data_snapshot_count": no_data,
                         "provider_call_count": provider_calls, "alternate_stored_snapshot_count": alternate_stored,
+                        "humetro_stored_snapshot_count":humetro_stored,"humetro_provider_call_count":humetro_calls,
                         "alternate_deferred_snapshot_count": alternate_deferred,
                         "attempted_snapshot_count": attempted, "deferred_snapshot_count": candidate_count - attempted}
             except (Exception, asyncio.CancelledError) as exc:

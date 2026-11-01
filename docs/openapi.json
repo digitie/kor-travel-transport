@@ -7826,6 +7826,17 @@
             ],
             "title": "Place Id"
           },
+          "source_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Name"
+          },
           "stale": {
             "default": false,
             "title": "Stale",
@@ -7844,6 +7855,18 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "time_precision": {
+            "anyOf": [
+              {
+                "const": "minute",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Precision"
           }
         },
         "required": [
@@ -8054,6 +8077,17 @@
             ],
             "title": "Place Id"
           },
+          "source_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Name"
+          },
           "stale": {
             "default": false,
             "title": "Stale",
@@ -8072,6 +8106,18 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "time_precision": {
+            "anyOf": [
+              {
+                "const": "minute",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Precision"
           },
           "upcoming_departures": {
             "items": {

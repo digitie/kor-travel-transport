@@ -5,12 +5,13 @@ import { dateTime, serviceTime, transportGet, type Place } from "@/lib/journey";
 import { RefreshCw } from "lucide-react";
 
 export type MetroDeparture = { train_number: string | null; departure_time: string | null; arrival_time: string | null; origin_name: string | null; destination_name: string | null };
-export type MetroTimetable = { place_id: number | null; code_id?: number | null; station_name: string; line_name: string | null; status: "stored" | "unlinked" | "not_collected" | "day_unresolved"; collected_at: string | null; stale: boolean; collection_status?: "pending" | "stored" | "no_data" | "error" | null; last_attempt_at?: string | null; items: MetroDeparture[] };
+export type MetroTimetable = { place_id: number | null; code_id?: number | null; station_name: string; line_name: string | null; status: "stored" | "unlinked" | "not_collected" | "day_unresolved"; collected_at: string | null; stale: boolean; collection_status?: "pending" | "stored" | "no_data" | "error" | null; last_attempt_at?: string | null; source_name?: string | null; time_precision?: "minute" | null; items: MetroDeparture[] };
 export type MetroTimetableResponse = { generated_at: string; day_code: "7" | "8" | "9" | null; basis: "calendar" | "selected_period" | "calendar_unavailable" | "overnight_unresolved"; items: MetroTimetable[] };
 const dayNames = { "7": "토요일", "8": "평일", "9": "휴일" };
 function clockSeconds(value: string | null) {
-  if (!value || !/^[0-2][0-9][0-5][0-9][0-5][0-9]$/.test(value)) return null;
-  return Number(value.slice(0, 2)) * 3600 + Number(value.slice(2, 4)) * 60 + Number(value.slice(4));
+  if (!value) return null;
+  const match = /^([0-2][0-9])([0-5][0-9])([0-5][0-9])$/.exec(value) ?? /^([0-2][0-9]):([0-5][0-9])$/.exec(value);
+  return match ? Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3] ?? 0) : null;
 }
 export function metroDestinationGroups(table: MetroTimetable) {
   const groups = new Map<string, MetroDeparture[]>();
@@ -56,7 +57,7 @@ export function MetroStationSummary({ station, data, loading = false, failed = f
       {station.facilities.length ? <ul>{station.facilities.map(facility => <li key={facility}><span>{facility}</span><strong aria-label={`${facility} 있음`}>O</strong></li>)}</ul> : <p className="quiet">편의시설 미제공</p>}
       <dl className="metro-station-contact"><div><dt>역 주소</dt><dd>{station.address || "미제공"}</dd></div><div><dt>역 연락처</dt><dd>{station.phone ? <a className="inline-link" href={`tel:${station.phone.replace(/[^+\d]/g, "")}`}>{station.phone}</a> : "미제공"}</dd></div></dl>
     </section>
-    <details className="metro-source"><summary>역 안내 · 출처</summary><p>KRIC 공식 코드 {station.provider_id}</p>{table?.collected_at ? <p>시간표 저장 {dateTime(table.collected_at)}</p> : null}<p>기준정보 {dateTime(station.updated_at)}</p></details>
+    <details className="metro-source"><summary>역 안내 · 출처</summary><p>KRIC 공식 코드 {station.provider_id}</p>{table?.source_name ? <p>시간표 {table.source_name}{table.time_precision==="minute"?" · 분 단위 시각":""}</p> : null}{table?.collected_at ? <p>시간표 저장 {dateTime(table.collected_at)}</p> : null}<p>기준정보 {dateTime(station.updated_at)}</p></details>
   </section>;
 }
 

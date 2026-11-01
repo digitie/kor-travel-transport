@@ -471,6 +471,8 @@ class RailDepartureSummary(BaseModel):
     departure_count: int = 0
     collection_status: Literal["pending", "stored", "no_data", "error"] | None = None
     last_attempt_at: datetime | None = None
+    source_name: str | None = None
+    time_precision: Literal["minute"] | None = None
 
 
 class RailTimetableItem(RailDepartureSummary):

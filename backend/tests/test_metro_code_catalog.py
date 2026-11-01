@@ -50,6 +50,25 @@ def test_catalog_and_timetable_do_not_require_a_name_or_place_mapping(client, te
     assert client.get("/v1/transport/rail/stations/0/timetable").status_code==422
 
 
+def test_humetro_source_and_minute_service_clock_are_returned_without_inventing_seconds(client,test_settings):
+    async def setup():
+        engine,factory=create_engine_and_session_factory(test_settings.database_url)
+        await init_database(engine)
+        async with factory() as session:
+            now=now_utc();station=KricStationCode(operator_code="BS",line_code="1",station_code="100",operator_name="부산교통공사",line_name="1호선",station_name="동매",active=True,last_seen_at=now)
+            session.add(station);await session.flush()
+            session.add(KricTimetableSnapshot(station_id=station.id,day_code="9",collected_at=now,items_json=[{"departure_time":"09:03","destination_name":"다대포해수욕장","provider_operation":"humetro/stationtime","time_precision":"minute"},{"departure_time":"24:24","destination_name":"다대포해수욕장","provider_operation":"humetro/stationtime","time_precision":"minute"}]))
+            await session.commit();ident=station.id
+        await engine.dispose();return ident
+    ident=asyncio.run(setup())
+    response=client.get(f"/v1/transport/rail/stations/{ident}/timetable",params={"day_code":"9"})
+    assert response.status_code==200
+    item=response.json()['items'][0]
+    assert item['source_name']=='부산교통공사' and item['time_precision']=='minute'
+    assert [row['departure_time'] for row in item['items']]==['09:03','24:24']
+    assert item['items'][0]['destination_name']=='다대포해수욕장'
+
+
 def test_direct_code_reader_keeps_today_and_stale_rules(test_settings, monkeypatch):
     now=datetime(2026,10,31,3,0,tzinfo=UTC)
     monkeypatch.setattr("app.services.rail_timetable.now_utc",lambda:now)

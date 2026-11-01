@@ -335,3 +335,7 @@ source 식별자를 섞지 않으며 실패·인증키·원문 오류는 저장�
 ## 0037 지역 유가·철도 일일 수집
 
 fuel_region_summaries는 성공 수집 세대별 시도·시군구·유종의 영구 요약이며 공개 포인터와 같은 트랜잭션으로 발행한다. fuel_statistics_daily의 이전 7일 보관 제한은 제거하고 조회 창만 7일로 유지한다. kric_timetable_attempts는 역/운행 기준별 24시간 요청 원장이며 pending/stored/no_data/error 결과와 호출 시각을 보존한다. 03 응답은 정상 저장 시간표를 덮어쓰지 않는다. [상세 계약](../design/2026-11-01-rail-daily-fuel-summary.md).
+
+## 0038 철도 시간표 원천 구분
+
+`kric_timetable_attempts.provider`는 kric/humetro CHECK와 kric 기본값을 갖는다. 기존 역/요일 PK와 24시간 요청 원장을 유지하며 원천 전환 때만 이전 원천의 자료 없음과 새 요청을 구분한다. 정상 저장본의 24시간 재사용은 원천 전환으로 무효화하지 않는다. 새 원천 이력이 있으면 downgrade로 열을 제거할 수 없다. 부산 공식 분 단위 시간표는 기존 JSONB snapshot에 원천·원문 시각·행선지를 함께 보존하며 초·도착시각·열차번호를 만들어 넣지 않는다.
