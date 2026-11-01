@@ -8,7 +8,7 @@ from kric import HUMETRO_PARSER_REVISION, HumetroTimetableEntry, HumetroTimetabl
 from sqlalchemy import func,select
 
 from app.db.session import create_engine_and_session_factory,init_database
-from app.models import CollectionRun,KricTimetableAttempt,KricTimetableSnapshot
+from app.models import CollectionRun,KricTimetableAttempt,KricTimetableSnapshot,RawApiResponse
 from app.services.kric_collection import KricTimetableCollectionService
 from app.services.rail_timetable import stored_rail_timetables
 
@@ -23,12 +23,13 @@ class FakeHumetro:
     def __init__(self,fail_second=False):self.calls=[];self.fail_second=fail_second
     async def __aenter__(self):return self
     async def __aexit__(self,*_):pass
+    async def get_station_page_for_kric(self,**kwargs):return await self.get_station_page(**kwargs)
     async def get_station_page(self,*,line_code,station_code,direction=None):
         self.calls.append(direction)
         if direction=="1" and self.fail_second:raise HumetroSchemaError("invalid second page")
         chosen=direction or "0"
-        rows=tuple(HumetroTimetableEntry("BS",line_code,station_code,"동매",day,time,"00:24" if time=="24:24" else time,"다대포해수욕장","95",chosen) for day in ("7","8","9") for time in ("09:03","24:24"))
-        return HumetroTimetablePage(line_code,station_code,"동매",chosen,("0","1"),rows,"a"*64)
+        rows=tuple(HumetroTimetableEntry("BS",line_code,station_code,"동매",day,time,"00:24" if time=="24:24" else time,"다대포해수욕장","195",chosen) for day in ("7","8","9") for time in ("09:03","24:24"))
+        return HumetroTimetablePage(line_code,station_code,"동매",chosen,("0","1"),rows,"a"*64,source_station_code=station_code)
 
 
 def service(settings,fake):
@@ -39,7 +40,7 @@ def service(settings,fake):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("prior_provider,prior_revision", [("kric", None), ("humetro", None), ("humetro", "20261101-script-text")])
+@pytest.mark.parametrize("prior_provider,prior_revision", [("kric", None), ("humetro", None), ("humetro", "20261101-script-text"), ("humetro", "20261102-course-legend")])
 async def test_provider_change_retries_recent_kric_no_data_once_then_stores_all_days(test_settings, prior_provider, prior_revision):
     settings=test_settings.model_copy(update={"kric_timetable_collection_enabled":True,"kric_service_key":"fake","kric_timetable_max_calls":2})
     engine,factory=create_engine_and_session_factory(settings.database_url);await init_database(engine)
@@ -58,6 +59,10 @@ async def test_provider_change_retries_recent_kric_no_data_once_then_stores_all_
         assert all(row.provider=='humetro' and row.outcome=='stored' and row.provider_revision==HUMETRO_PARSER_REVISION for row in attempts)
         snapshots=(await session.scalars(select(KricTimetableSnapshot))).all()
         assert len(snapshots)==3 and all(len(row.items_json)==4 for row in snapshots)
+        assert all(row.items_json[0]['terminal_station_code']=='195' for row in snapshots)
+        import json
+        raw=(await session.scalars(select(RawApiResponse).where(RawApiResponse.source=='humetro_timetable'))).all()
+        assert len(raw)==2 and all(json.loads(row.body_text)['source_station_code']=='100' for row in raw)
         table=await stored_rail_timetables(session,[],"9",station_codes=[station])
         assert table.items[0].source_name=='부산교통공사' and table.items[0].time_precision=='minute'
         assert table.items[0].items[-1].departure_time=='24:24'

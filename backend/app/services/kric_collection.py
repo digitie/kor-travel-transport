@@ -179,7 +179,7 @@ class KricTimetableCollectionService:
                             try:
                                 provider_calls += 1
                                 humetro_calls += 1
-                                first = await humetro.get_station_page(line_code=station.line_code, station_code=station.station_code)
+                                first = await humetro.get_station_page_for_kric(line_code=station.line_code, station_code=station.station_code)
                                 if not first.available_directions or not set(first.available_directions) <= {"0", "1"} or first.direction not in first.available_directions:
                                     raise ValueError("HUmetro direction contract invalid")
                                 pages = [first]
@@ -189,7 +189,7 @@ class KricTimetableCollectionService:
                                     await self.sleep(self.settings.kric_timetable_request_interval_seconds)
                                     provider_calls += 1
                                     humetro_calls += 1
-                                    page = await humetro.get_station_page(line_code=station.line_code, station_code=station.station_code, direction=direction)
+                                    page = await humetro.get_station_page_for_kric(line_code=station.line_code, station_code=station.station_code, direction=direction)
                                     if page.available_directions != first.available_directions:
                                         raise ValueError("HUmetro direction set changed during collection")
                                     pages.append(page)
@@ -201,7 +201,7 @@ class KricTimetableCollectionService:
                                     session.add(RawApiResponse(collection_run_id=run_id, source="humetro_timetable", endpoint="humetro/stationtime",
                                         request_params_json={"line_code":station.line_code,"station_code":station.station_code,"direction":page.direction},
                                         status_code=200, received_at=now_utc(), parse_status="success",
-                                        body_text=json.dumps({"source_url":page.source_url,"checksum_sha256":page.checksum_sha256,"row_count":len(page.items),"parser_revision":HUMETRO_PARSER_REVISION})))
+                                        body_text=json.dumps({"source_url":page.source_url,"source_station_code":page.source_station_code,"checksum_sha256":page.checksum_sha256,"row_count":len(page.items),"parser_revision":HUMETRO_PARSER_REVISION})))
                                 for value in days:
                                     items = [{"departure_time":row.departure_time,"arrival_time":None,"train_number":None,
                                         "origin_station_code":None,"terminal_station_code":row.terminal_station_code,
