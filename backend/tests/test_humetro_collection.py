@@ -39,7 +39,7 @@ def service(settings,fake):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("prior_provider,prior_revision", [("kric", None), ("humetro", None), ("humetro", "old-format")])
+@pytest.mark.parametrize("prior_provider,prior_revision", [("kric", None), ("humetro", None), ("humetro", "20261101-script-text")])
 async def test_provider_change_retries_recent_kric_no_data_once_then_stores_all_days(test_settings, prior_provider, prior_revision):
     settings=test_settings.model_copy(update={"kric_timetable_collection_enabled":True,"kric_service_key":"fake","kric_timetable_max_calls":2})
     engine,factory=create_engine_and_session_factory(settings.database_url);await init_database(engine)
