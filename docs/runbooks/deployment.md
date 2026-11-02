@@ -217,13 +217,12 @@ n150에서 `scripts/cutover-shared-db-server14.sh`를 실행했다. 이 한 번�
 receipt-gated remote deploy를 호출하므로 n150에 `.git`이 없어도 된다. `.env.server14.legacy`는
 동기화 삭제 대상이 아니며 live E2E 수용 전까지 보존한다.
 
-유가 수집처럼 transport backend와 Dagster 실행부만 갱신할 때는
-[`scripts/deploy-transport-runtime-server14.sh`](../../scripts/deploy-transport-runtime-server14.sh)를
-사용한다. 이 스크립트는 candidate image로 Alembic migration과 `head` revision을 먼저
-확인한 뒤 `backend`, `dagster-code-server`, `dagster-webserver`, `dagster-daemon`만
-`--no-deps`로 재생성한다. 기존 parking-radar frontend와 gateway는 대상에 포함하지 않는다.
-완료 조건은 backend의 candidate `release_sha`와 세 Dagster 서비스의 `healthy` 상태이며,
-어느 하나라도 `unhealthy` 또는 제한 시간 초과이면 성공으로 처리하지 않는다.
+과거 n150의 backend·Dagster 전용 `deploy-transport-runtime-server14.sh`는 현재 호스트
+검증과 Transport 전용 범위를 지키지 않아 제거했다. 다시 실행하거나 공용 Dagster
+webserver·daemon을 Transport 이미지 교체에 포함하지 않는다. 현재 부분 배포에도 위의
+공식 prod entry·Manager 대상 검증·G→서비스 잠금·Transport 수집 자연 종료·원 일정 복원
+계약을 적용한다. 실제 backend의 후보 `release_sha`, 대상 역할의 정상 상태와 Manager
+current 표식을 확인하며, 다른 서비스와 공용 daemon은 보존한다.
 
 > **롤백 시 주의(T-035 이후)**: frontend만 이전 이미지로 되돌리고 PostgreSQL 상태는
 > 그대로 유지하는 롤백을 하면, T-035 이후 추가된 `/analytics`·`/history`·`/fees`·`/backup`
