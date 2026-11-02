@@ -31,6 +31,17 @@
 
 아래 항목의 과거 “회수 중/리뷰 미완”은 작성 당시 이력이며 현재 수용은 이 절과 감사 보고서가 정본이다.
 
+## 2026-10-28 — 최신3f 운영 수용 잔여
+
+세 후보 ARM64 이미지 계약·backend 내용 검증·빌드/probe 종료와 정리는 수용했다. 원 aggregate timeout과 완료 backend/frontend 재사용·admin 후속 빌드를 구분하며, 운영 교체 완료로 세지 않는다.
+
+- [ ] T-OPS-3F-CUTOVER — 29f 원인 UNKNOWN·8b36 FD9·c051 PG drain 실패를 보존한다. 별도 전체 47 원복95c18/DB35·기존 5개 역할 보존은 수용했지만 r9 소스 두 리뷰·순수 44개는 실행 성공이 아니다. 후속 fresh 사전 검사366d47ec가 `pg_command_contract`로 차단해 55aa launch·root·unit 생성0·native/DDL/runtime 변경0이다. r10도 사전 검사 거절·30f5 launch0이었다. r11은 실제 GUC 이름 한 개 보완·순수65개·두 소스 리뷰를 수용했지만 fresh23b695의 canonical G 경합으로 PG/원47 현재 검사 전 차단됐다. 4999 launch/root/unit·native/DDL/runtime 변경0·강제 해제0을 유지한다. 후속 관측은 별도 이미지 검증 unit의 G 소유와 기존 4d 다섯 역할·DB35·plane healthy 유지를 확인했지만 내부 파일/env 전수·원47 현재 재검산은 아니다. 그 관측 당시 별도 작업 담당자·진척·결과는 미확정이었다. 이후 명시 승인된 조율과 상대 응답으로 단일 최종 배포 담당을 확정했다. 이쪽4999는 미실행/HOLD·G 해제 뒤에도 경쟁 실행 금지로 두고, 단일 담당의 실제 cutover·호환 health·원47 복원·UI 결과를 별도 수용한다. 상대 SDK/web 검증은 우리 독립 수용이 아니다. 이전95c18은 새 fresh PASS가 아니다.
+- [ ] T-OPS-3F-PUBLIC35 — 실제 운영 공개35개를 수용한다. 격리39의 고정 합성 가격·D-1/D-6 oracle는 운영에 승계하지 않는다.
+- [ ] T-OPS-3F-SMOKE — 기존 필수 수집/백업 smoke를 실제 결과로 수용한다. 이미지 내용 검증·소스 리뷰로 대체하지 않는다.
+- [ ] T-OPS-3F-ARM — 자연 수집과 비교 가능한 ARM 전체 job CPU·메모리/PG 전후를 측정한다. PR155의 약 93% 저장 CPU 감소·약 3 MiB RSS 증가와 별도다.
+
+[완료된 main3f 동등 tree의 CI·fresh39·Manager와 남은 운영 경계](reports/2026-10-28-production-3f-rollout.md)를 구분한다. 아래 기존 미완 task도 이번 체크포인트로 자동 완료하지 않는다.
+
 ## 2026-10-27 — 지난 10일 Codex PR 리뷰 후속
 
 - [ ] T-REVIEW-10D-01 — 리뷰 통합 수정 PR(`review/codex-10d-transport`, T01~T20): 소유자 승인으로 머지했다(운영 미배포).
@@ -91,7 +102,7 @@
 
 ## 2026-10-26 — Manager instance 정본 전달
 
-- [ ] **T-DAGSTER-INSTANCE-01** — #139의 CI·두 리뷰·머지와 Odroid Transport CS의 정본 a7 read-only 소비·운영 복구 계약은 수용했다. 공용 plane c444→a7 수렴과 다른 소비자/호스트의 effective 일치는 별도 미완이다. [소비·복구 범위](reports/2026-10-27-integrated-production-rollout.md).
+- [ ] **T-DAGSTER-INSTANCE-01** — #139의 CI·두 리뷰·머지와 Odroid Transport CS의 정본 a7 read-only 소비·운영 복구 계약은 수용했다. 이후 Odroid 공용 plane c444→a7 공식 수렴은 두 healthy·drift0/보호 대상 보존으로 수용했다. 다른 소비자/호스트의 effective 전체 일치는 별도 미완이다. [소비·복구 범위](reports/2026-10-27-integrated-production-rollout.md).
 
 
 ## 2026-10-25 — 조사 기반 지도·이용 흐름 후속
