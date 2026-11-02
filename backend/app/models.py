@@ -873,6 +873,69 @@ class ParkingStatisticsBucket(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class ParkingGlobalStatisticsBucket(Base):
+    """전국 동일 관측시각 합계의 충분통계와 검산한 공항 membership. 영구 보존한다."""
+
+    __tablename__ = "parking_global_statistics_buckets"
+    __table_args__ = (
+        CheckConstraint("raw_count > 0 AND selected_count > 0 AND selected_count <= raw_count",
+                        name="ck_parking_global_statistics_counts"),
+        CheckConstraint("bucket_end > bucket_at", name="ck_parking_global_statistics_window"),
+    )
+
+    bucket_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    bucket_end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    format_version: Mapped[int] = mapped_column(Integer)
+    raw_count: Mapped[int] = mapped_column(Integer)
+    selected_count: Mapped[int] = mapped_column(Integer)
+    max_snapshot_id: Mapped[int] = mapped_column(Integer)
+    raw_sha256: Mapped[str] = mapped_column(Text)
+    statistics_sha256: Mapped[str] = mapped_column(Text)
+    statistics_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    airport_proofs_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    sealed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ParkingArchiveIssue(Base):
+    """집계 보류의 작은 상태. 원문·개별 관측을 보관하거나 통계를 덮어쓰지 않는다."""
+
+    __tablename__ = "parking_archive_issues"
+    scope_key: Mapped[str] = mapped_column(String(80), primary_key=True)
+    bucket_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    reason: Mapped[str] = mapped_column(String(60))
+    max_seen_snapshot_id: Mapped[int] = mapped_column(Integer)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ParkingLatestState(Base):
+    """public current의 observed_at/id 선택을 보존하는 lot별 파생 상태. raw FK는 없다."""
+
+    __tablename__ = "parking_latest_states"
+    __table_args__ = (
+        ForeignKeyConstraint(["parking_lot_id", "airport_id"],
+                             ["parking_lots.id", "parking_lots.airport_id"], ondelete="RESTRICT",
+                             name="fk_parking_latest_lot_airport"),
+        CheckConstraint("occupied_spaces >= 0 AND total_spaces >= 0 AND available_spaces >= 0 "
+                        "AND available_spaces <= total_spaces", name="ck_parking_latest_spaces"),
+        CheckConstraint("congestion_ratio IS NULL OR (congestion_ratio >= 0 AND congestion_ratio <= 100)",
+                        name="ck_parking_latest_congestion"),
+    )
+
+    parking_lot_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    airport_id: Mapped[int] = mapped_column(Integer)
+    snapshot_order: Mapped[int] = mapped_column(Integer)
+    source: Mapped[str] = mapped_column(String(40))
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    latest_ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    occupied_spaces: Mapped[int] = mapped_column(Integer)
+    total_spaces: Mapped[int] = mapped_column(Integer)
+    available_spaces: Mapped[int] = mapped_column(Integer)
+    congestion_label: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    congestion_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
 class AnalyticsCache(Base):
     __tablename__ = "analytics_caches"
     __table_args__ = (

@@ -11,8 +11,9 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import DateTime, Interval, Integer, String, case, cast, exists, func, literal, select, text
+from sqlalchemy import DateTime, Interval, Integer, String, case, cast, exists, func, literal, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.core.time_utils import ensure_tz, now_utc
 from app.models import ParkingSnapshot, ParkingStatisticsBucket
@@ -29,12 +30,12 @@ class ParkingArchiveConflict(RuntimeError):
 
 
 def bucket_start(value: datetime) -> datetime:
-    value = ensure_tz(value, "UTC")
+    value = ensure_tz(value, "UTC").astimezone(UTC)
     return value.replace(minute=value.minute // 10 * 10, second=0, microsecond=0)
 
 
 def _iso(value: datetime) -> str:
-    return ensure_tz(value, "UTC").isoformat()
+    return ensure_tz(value, "UTC").astimezone(UTC).isoformat()
 
 
 def _digest(value: Any) -> str:
@@ -153,23 +154,45 @@ async def _previous_by_lot(
     return result
 
 
-def _next_unarchived_at_query(dialect: str, complete_before: datetime):
+def _bucket_expression(column: Any, dialect: str):
     if dialect == "postgresql":
-        at_expression = func.date_bin(literal(BUCKET_INTERVAL, type_=Interval()),
-                                      ParkingSnapshot.observed_at,
-                                      literal(datetime(1970, 1, 1, tzinfo=UTC), type_=DateTime(timezone=True)))
-    else:
-        minute = cast(func.strftime("%M", ParkingSnapshot.observed_at), Integer)
-        at_expression = (func.strftime("%Y-%m-%d %H:", ParkingSnapshot.observed_at, type_=String)
-                         + func.printf("%02d", minute.op("/")(10) * 10, type_=String) + ":00.000000")
+        return func.date_bin(literal(BUCKET_INTERVAL, type_=Interval()), column,
+                             literal(datetime(1970, 1, 1, tzinfo=UTC), type_=DateTime(timezone=True)))
+    minute = cast(func.strftime("%M", column), Integer)
+    return (func.strftime("%Y-%m-%d %H:", column, type_=String)
+            + func.printf("%02d", minute.op("/")(10) * 10, type_=String) + ":00.000000")
+
+
+def _recent_bucket_rows_exists(at_expression: Any, dialect: str, cutoff: datetime, *, by_airport: bool):
+    recent = aliased(ParkingSnapshot)
+    end = (at_expression + literal(BUCKET_INTERVAL, type_=Interval()) if dialect == "postgresql"
+           else func.datetime(at_expression, "+10 minutes"))
+    conditions = [recent.observed_at >= at_expression, recent.observed_at < end,
+                  recent.collected_at >= cutoff]
+    if by_airport:
+        conditions.append(recent.airport_id == ParkingSnapshot.airport_id)
+    return exists(select(1).select_from(recent).where(*conditions))
+
+
+def _next_unarchived_at_query(dialect: str, complete_before: datetime, collected_before: datetime | None = None):
+    at_expression = _bucket_expression(ParkingSnapshot.observed_at, dialect)
     covered = exists().where(
         ParkingStatisticsBucket.airport_id == ParkingSnapshot.airport_id,
         ParkingStatisticsBucket.bucket_at == at_expression,
         ParkingStatisticsBucket.max_snapshot_id >= ParkingSnapshot.id,
     )
-    return select(ParkingSnapshot.observed_at).where(
-        ParkingSnapshot.observed_at < complete_before, ~covered,
-    ).order_by(ParkingSnapshot.observed_at).limit(1)
+    conditions = [ParkingSnapshot.observed_at < complete_before, ~covered]
+    if collected_before is not None:
+        # PG16의 EXISTS→hashed ANY가 영구 통계 전체를 읽지 않도록 상관 PK 탐색을 유지한다.
+        sealed = exists(select(1).select_from(ParkingStatisticsBucket).where(
+            ParkingStatisticsBucket.airport_id == ParkingSnapshot.airport_id,
+            ParkingStatisticsBucket.bucket_at == at_expression,
+        ).offset(0))
+        # 새 bucket 전체가 완결돼야 한다. 기존 seal의 새 id는 fresh여도 충돌 검산을 피하지 않는다.
+        conditions.append(or_(sealed, ~_recent_bucket_rows_exists(
+            at_expression, dialect, collected_before, by_airport=True,
+        )))
+    return select(ParkingSnapshot.observed_at).where(*conditions).order_by(ParkingSnapshot.observed_at).limit(1)
 
 
 async def archive_parking_statistics(
@@ -187,19 +210,26 @@ async def archive_parking_statistics(
             "SELECT pg_try_advisory_xact_lock(hashtext('kor_travel_transport:airport_collection'))"
         ))
         if not acquired:
-            return {**_run_metadata(ensure_tz(checked_at or now_utc(), "UTC"), max_buckets),
+            return {**_run_metadata(ensure_tz(checked_at or now_utc(), "UTC").astimezone(UTC), max_buckets),
                     "status": "busy", "coverage_status": "not_audited", "archived_buckets": 0, "pruned_snapshots": 0}
-    checked = ensure_tz(checked_at or now_utc(), "UTC")
+    checked = ensure_tz(checked_at or now_utc(), "UTC").astimezone(UTC)
     cutoff = checked - RAW_RETENTION
     complete_before = bucket_start(cutoff)
     metadata = _run_metadata(checked, max_buckets)
-    earliest = await session.scalar(_next_unarchived_at_query(session.bind.dialect.name, complete_before))
-    if earliest is None:
+    pending = await session.scalar(_next_unarchived_at_query(session.bind.dialect.name, complete_before))
+    if pending is None:
         # max_id는 append-only 수집의 새 행 탐색용이다. 같은 id 변조·삭제 검산을 뜻하지 않는다.
         # 전체 coverage 완료나 삭제 가능 상태로 반환하지 않는다. 삭제 직전에는 verify_bucket 필수다.
         return {**metadata, "status": "no_new_rows", "coverage_status": "not_audited", "archived_buckets": 0,
                 "pruned_snapshots": 0}
+    earliest = await session.scalar(_next_unarchived_at_query(session.bind.dialect.name, complete_before, cutoff))
+    if earliest is None:
+        return {**metadata, "status": "deferred", "coverage_status": "partial", "archived_buckets": 0,
+                "deferred_buckets": 1, "deferred_count_scope": "first_pending_bucket",
+                "oldest_pending_at": _iso(bucket_start(pending)), "pruned_snapshots": 0}
     start = bucket_start(earliest)
+    if start < bucket_start(pending) + timedelta(days=1):
+        start = bucket_start(pending)
     end = min(start + timedelta(days=1), complete_before)
     rows = list((await session.scalars(select(ParkingSnapshot).where(
         ParkingSnapshot.observed_at >= start, ParkingSnapshot.observed_at < end,
@@ -238,7 +268,7 @@ async def archive_parking_statistics(
             format_version=FORMAT_VERSION, raw_count=len(observations), selected_count=selected_count,
             max_snapshot_id=max(row.id for row in observations), raw_sha256=raw_digest(observations),
             statistics_sha256=_digest(payload), statistics_json=payload,
-            created_at=ensure_tz(checked_at or now_utc(), "UTC"),
+            created_at=ensure_tz(checked_at or now_utc(), "UTC").astimezone(UTC),
         )
         session.add(record)
         await session.flush()
@@ -254,7 +284,7 @@ async def archive_parking_statistics(
         metadata.update({"archived_min_bucket_at": _iso(min(archived_ats)),
                          "archived_max_bucket_at": _iso(max(archived_ats))})
     return {**metadata, "status": "batch_complete", "coverage_status": "partial", "archived_buckets": archived,
-            "deferred_buckets": deferred, "pruned_snapshots": 0}
+            "deferred_buckets": deferred, "oldest_pending_at": _iso(bucket_start(pending)), "pruned_snapshots": 0}
 
 
 def _run_metadata(checked_at: datetime, max_buckets: int) -> dict[str, int | str | None]:

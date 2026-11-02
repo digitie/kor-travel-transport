@@ -36,10 +36,16 @@ def test_successful_job_persists_business_outcome_and_scope(monkeypatch, status,
                "verified_max_bucket_at": "2026-10-20T15:20:00+00:00" if selected else None,
                "archived_min_bucket_at": "2026-10-20T15:10:00+00:00" if archived else None,
                "archived_max_bucket_at": "2026-10-20T15:20:00+00:00" if archived else None,
-               "verification_scope": "selected_bucket_subset" if selected else "none"}
+               "verification_scope": "selected_bucket_subset" if selected else "none",
+               "verification_domain": "airport_statistics", "airport_status": status,
+               "airport_coverage_status": coverage, "global_status": "no_new_rows",
+               "global_coverage_status": "not_audited", "global_buckets": 0,
+               "global_verified_buckets": 0, "global_deferred_buckets": 0,
+               "global_selection_start_at": None, "global_selection_end_exclusive": None,
+               "global_verification_scope": "none", "latest_seeded": 2}
 
     async def fake_run(_settings, action):
-        assert action is module.archive_parking_statistics
+        assert action is module.archive_parking_with_coverage
         return payload
 
     monkeypatch.setattr(module, "_settings", lambda: None)
@@ -55,7 +61,31 @@ def test_successful_job_persists_business_outcome_and_scope(monkeypatch, status,
         logs = [entry.user_message for entry in instance.all_logs(result.run_id)
                 if entry.step_key == "archive_airport_parking_statistics" and entry.level == logging.INFO]
         assert any(f"status={status}" in line and f"coverage_status={coverage}" in line
-                   and "pruned_snapshots=0" in line for line in logs)
+                   and "pruned_snapshots=0" in line and "global_status=no_new_rows" in line for line in logs)
+
+
+def test_blocked_job_persists_failure_scope_without_exposing_unlisted_payload(monkeypatch):
+    payload = {"status": "blocked", "coverage_status": "conflict", "pruned_snapshots": 0,
+               "blocked_scope": "global", "blocked_reason": "sealed_raw_mismatch",
+               "blocked_bucket_at": AT.isoformat(), "global_buckets": 1,
+               "global_verified_buckets": 2, "global_status": "blocked",
+               "global_coverage_status": "conflict", "raw_payload": "공개 금지"}
+
+    async def fake_run(_settings, action):
+        assert action is module.archive_parking_with_coverage
+        return payload
+
+    monkeypatch.setattr(module, "_settings", lambda: None)
+    monkeypatch.setattr(module, "_run_with_session", fake_run)
+    with DagsterInstance.ephemeral() as instance:
+        result = module.parking_statistics_archive_job.execute_in_process(instance=instance, raise_on_error=False)
+        assert not result.success
+        failure = next(event.event_specific_data for event in result.all_events
+                       if event.event_type_value == "STEP_FAILURE")
+        metadata = {k: v.value for k, v in failure.user_failure_data.metadata.items()}
+        assert metadata["status"] == "blocked" and metadata["global_buckets"] == 1
+        assert metadata["blocked_reason"] == "sealed_raw_mismatch"
+        assert "raw_payload" not in metadata
 
 
 @pytest.mark.parametrize("busy", [False, True])
