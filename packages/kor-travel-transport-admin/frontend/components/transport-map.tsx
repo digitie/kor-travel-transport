@@ -11,6 +11,7 @@ import { MAP_FALLBACK_IMAGE } from "@/lib/map-fallback";
 import { cn } from "@/lib/utils";
 import { CameraRequest, ClusterBubble, MapMarkerButton, MapUnavailable, MarkerBadge, OverlapPopup, useVWorldBasemapHealth, vworldApiKey, ZoomButtons, type CameraTarget } from "./map-overlays";
 import { PlaceIcon } from "./journey-controls";
+import { InfoButton } from "./info-button";
 import { PlaceInspector } from "./place-inspector";
 import { FuelBrandIcon } from "./fuel-brand-icon";
 import { fuelBrand } from "@/lib/fuel-brands";
@@ -145,6 +146,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
   const sourcesKey = selectedSources.join(",");
   const productsKey = products.join(",");
   const perKindLimit = Math.min(300, Math.floor(900 / Math.max(1, kinds.length)));
+  const partialListKinds = !embedded && view === "list" ? kinds.filter((kind) => loaded[kind]?.truncated === true) : [];
   const sources = useMemo(() => [...new Set([...knownSources, ...(places ?? []).map((item) => item.source)])], [places, knownSources]);
   const all = useMemo(() => places ?? kinds.flatMap((kind) => loaded[kind]?.items ?? []), [places, kinds, loaded]);
   const items = useMemo(() => all.filter((item) => (!selectedSources.length || selectedSources.includes(item.source)) && (!embedded || !query || [item.name, item.brand_name, item.address, item.subtitle, item.provider_id, ...item.line_names].join(" ").toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) && (!products.length || item.kind !== "fuel_station" || item.prices?.some((row) => hasFuelPrice(row) && products.includes(row.product_code)))), [all, embedded, selectedSources, query, products]);
@@ -389,7 +391,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
     </MapFilterBar>}
     </MapFilterPanel> : null}
     <Tabs value={view} onValueChange={(value) => { if (value === "map" || value === "list") { setView(value); setFiltersExpanded(false); } }} className="min-h-0">
-    <MapViewTabs ariaLabel="장소 보기" viewport={mapViewport} count={view === "list" ? listCount ?? ((listPlaces ? items.length : 0) + listFeatureCount) : mapFeatureCount + (serverClustered ? serverClusters.reduce((sum, item) => sum + item.count, 0) : visiblePoints.length)} status={pending.length ? <span className="kt-map-count">조회 중…</span> : undefined} />
+    <MapViewTabs ariaLabel="장소 보기" viewport={mapViewport} count={view === "list" ? listCount ?? ((listPlaces ? items.length : 0) + listFeatureCount) : mapFeatureCount + (serverClustered ? serverClusters.reduce((sum, item) => sum + item.count, 0) : visiblePoints.length)} status={pending.length ? <span className="kt-map-count">조회 중…</span> : partialListKinds.length ? <span className="inline-flex items-center gap-1"><span className="kt-map-count">{(listCount ?? ((listPlaces ? items.length : 0) + listFeatureCount)).toLocaleString("ko-KR")}건 표시</span><InfoButton label="목록 일부 표시">일부 결과만 조회했습니다. {partialListKinds.map((kind) => `${placeKindLabel(kind)} 최대 ${((kind === "ferry_port" || kind === "bus_terminal") && searchQuery.trim() ? 5000 : perKindLimit).toLocaleString("ko-KR")}건`).join(" · ")}. 검색 조건을 좁혀 주세요.</InfoButton></span> : undefined} />
     <TabsContent className="min-h-0" value="map"><MapStage className={mode === "fuel" ? "fuel-map-stage" : undefined} summary={summary} detail={detailPanel("map")}><div className="map-primary" ref={mapContainer}><MountCamera camera={mapViewport ? { center: [mapViewport.longitude, mapViewport.latitude], zoom: mapViewport.zoom } : DEFAULT_CAMERA}>{(initialCamera) => <VWorldMapView apiKey={VWORLD_KEY} center={initialCamera.center} zoom={initialCamera.zoom} minZoom={5}
         className="transport-map-canvas" layerType="Base" navigation={false} geolocate={false} scale
         loadingSkeleton={<p className="loading">지도를 준비하는 중입니다…</p>} fallback={(info) => <MapUnavailable info={info} onMessage={setMapUnavailableMessage} />}
