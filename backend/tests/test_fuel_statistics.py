@@ -76,18 +76,21 @@ def test_kst_retention_same_day_replace_and_atomic_failure(client):
             stamp = datetime(2026, 10, 12, 16, tzinfo=timezone.utc)
             await seed(session, stamp)
             for offset in range(8):
+                await session.execute(update(FuelLatestPrice).values(collected_at=stamp + timedelta(days=offset)))
                 await publish_fuel_statistics(session, OPINET, stamp + timedelta(days=offset))
             latest = stamp + timedelta(days=7, hours=1)
+            await session.execute(update(FuelLatestPrice).values(collected_at=latest))
             await publish_fuel_statistics(session, OPINET, latest)
             await session.commit()
             page = await fuel_statistics_page(session, "nationwide", "B027")
             assert len(page["history"]) == 7
             assert str(page["history"][0]["day"]) == "2026-10-14"
             assert str(page["history"][-1]["day"]) == "2026-10-20"
-            assert await session.scalar(select(func.count()).select_from(FuelStatisticsDaily)) == 21
+            assert await session.scalar(select(func.count()).select_from(FuelStatisticsDaily)) == 24
             # 통계 도중 실패해도 기존 세대가 보이고 원본 트랜잭션은 계속 사용 가능하다.
             raw_price = await session.get(FuelLatestPrice, (2, "B027"))
             raw_price.price = 1900
+            await session.execute(update(FuelLatestPrice).values(collected_at=latest + timedelta(hours=1)))
             session.add(TransportCollectionState(source=OPINET, last_success_at=latest + timedelta(hours=1),
                 updated_at=latest + timedelta(hours=1)))
             with patch("app.services.fuel_statistics._Accumulator.metrics", side_effect=RuntimeError("failed")):
@@ -130,7 +133,9 @@ def test_publication_between_reads_keeps_current_day_history(client):
         async with client.app.state.session_factory() as session:
             stamp = datetime.now(timezone.utc)
             await seed(session, stamp)
+            await session.execute(update(FuelLatestPrice).values(collected_at=stamp - timedelta(days=1)))
             await publish_fuel_statistics(session, OPINET, stamp - timedelta(days=1))
+            await session.execute(update(FuelLatestPrice).values(collected_at=stamp))
             await publish_fuel_statistics(session, OPINET, stamp)
             await session.commit()
             execute = session.execute
@@ -141,7 +146,7 @@ def test_publication_between_reads_keeps_current_day_history(client):
                 result = await execute(statement, *args, **kwargs)
                 if not changed and statement.is_select and "fuel_statistics_daily" in str(statement):
                     changed = True
-                    await execute(update(FuelLatestPrice).values(price=2100))
+                    await execute(update(FuelLatestPrice).values(price=2100, collected_at=stamp + timedelta(hours=1)))
                     await publish_fuel_statistics(session, OPINET, stamp + timedelta(hours=1))
                     await session.commit()
                 return result

@@ -38,6 +38,7 @@ from app.services.parking_statistics_archive import archive_parking_statistics
 from app.services.flight_status import sanitize_upstream_error
 from app.services.bus_collection import BusReferenceCollectionService
 from app.services.kric_collection import KricTimetableCollectionService
+from app.services.general_rail_collection import GeneralRailCollectionService
 from app.services.kakao_place_locations import KakaoPlaceCollectionService
 from app.services.place_locations import PlaceLocationCollectionService
 from app.services.rail_maritime_collection import RailMaritimeCollectionService
@@ -588,6 +589,17 @@ def collect_kric_timetable(context) -> dict[str, Any]:
 
 @op
 @_redact_op_errors
+def collect_general_rail_timetable(context) -> dict[str, Any]:
+    with collection_owner(context.run_id, context.instance):
+        settings = _settings()
+        result = asyncio.run(_run_with_session(settings, GeneralRailCollectionService(settings).collect))
+        if result.get("status") == "failed":
+            raise Failure(description="일반철도 시간표 갱신 실패. 이전 정상 저장본은 유지했습니다.", allow_retries=False)
+        return result
+
+
+@op
+@_redact_op_errors
 def collect_rest_area_reference(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         settings = _settings()
@@ -619,6 +631,11 @@ def rest_area_fuel_price_collection_job() -> None:
 @job(tags=_job_tags("reference", "kric_timetable_collection_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
 def kric_timetable_collection_job() -> None:
     collect_kric_timetable()
+
+
+@job(tags=_job_tags("reference", "general_rail_timetable_collection_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
+def general_rail_timetable_collection_job() -> None:
+    collect_general_rail_timetable()
 
 
 @job(tags=_job_tags("parking", "airport_collection_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
@@ -829,6 +846,7 @@ definitions = Definitions(
         place_location_collection_job,
         kakao_place_location_collection_job,
         kric_timetable_collection_job,
+        general_rail_timetable_collection_job,
         rest_area_reference_collection_job,
         rest_area_fuel_price_collection_job,
     ],
@@ -847,8 +865,9 @@ definitions = Definitions(
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=bus_reference_collection_job, cron_schedule="30 3 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=place_location_collection_job, cron_schedule="30 4 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=kakao_place_location_collection_job, cron_schedule="30 6 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
-        # 실패·강제 종료도 포함해 마지막 시도부터 48시간 guard를 적용한다.
+        # 시간별로 미수집분을 이어가되 같은 역·운행 기준은 24시간 호출 원장으로 보호한다.
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=kric_timetable_collection_job, cron_schedule="0 * * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
+        coalescing_schedule(project="transport", location_name="kor-travel-transport", job=general_rail_timetable_collection_job, cron_schedule="30 2 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         # 휴게소 기준정보는 저변동(약 200행·1회 호출)이라 하루 한 번, 유가는 4시간마다 갱신한다(ADR-013).
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=rest_area_reference_collection_job, cron_schedule="40 3 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=rest_area_fuel_price_collection_job, cron_schedule="25 */4 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),

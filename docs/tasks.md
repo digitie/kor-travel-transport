@@ -1,3 +1,21 @@
+철도 초도 조회·이번 수집분 유가 통계·양 앱 VWorld 키 반영과 실제 화면 수용은 [완료 목록](tasks-done.md)에 기록했다. 아래 과거 백업/복원 요구를 새 게이트로 재적용하지 않는다. 사용자가 생략을 명시했다.
+
+## 2026-10-31 — 운영 화면 관측 후속
+
+- [ ] **T-FUEL-REGION-LABEL-01 / P2** — 시도·시군구 평균 라벨이 겹쳐 가려지는 경우를 줄인다.
+  실제 클릭 가능한 다른 라벨의 확대 전환은 확인했지만 겹침 자체는 수정하지 않았다.
+- [ ] **T-FUEL-REGION-ALLOWLIST-01 / P2** — backend에 없는 `fuel/regions`의 불필요한 BFF/gateway 허용 항목과
+  mock 시험을 정리한다. 실제 지역 평균 경로는 `features/places`의 `fuel_regions`다.
+
+운영 반영·실제 역 상세/유가 지도 검사는 [완료 목록](tasks-done.md)과
+[실측 원장](reports/2026-10-31-ui-live-deployment.md)에 기록했다. 아래의 다른 주차·수집 과제는 완료로 바꾸지 않는다.
+
+## 2026-10-31 — 역 상세의 미제공 자료
+
+공식 코드의 역명·저장 시간표 조회는 구현했다. 실시간 도착과 세부 편의시설 위치·이용시간은 아직 수집/저장 자료가 없다. 노선도는 사용자 요청으로 표시 범위에서 제외했다.
+명시된 긍정 시설은 저장 파일의 기존 SDK 파서로 연결했다. 별도 시설 계약과 원 코드를 검증해 세부 자료를 수집·저장한 뒤 확장한다.
+[현재 API와 구현 범위](design/2026-10-31-metro-code-detail.md).
+
 ## 2026-10-28 — 전체 UI 보완 후 새 릴리스
 
 - [ ] **T-UI-FUEL-FEE-01** — 브랜드·개별 주유소 최근168시간 차트와 공개 API/BFF/gateway,
@@ -29,7 +47,7 @@
   함께 정하는 별도 PR.
 - [ ] T-DEPLOY-02 — 배포 중 Transport instigator pause/restore·QUEUED drain을 스크립트로 옮길지 외부 controller와 결정한다.
   code-server 정본 포트 14005→12306 정리는 Manager의 odroid override 소비 확인 뒤 한다.
-- [ ] 소유자·설계 결정 대기: OPINET 통계 모집단의 사라진 주유소(공용 퇴역·신선도 정책), KRIC 계획 시간표 48시간
+- [ ] 소유자·설계 결정 대기: KRIC 계획 시간표 48시간
   신선도와 수집 예산, 고속도로 통계의 전체 주기 서버 집계(새 API), Map T2~T4 `last_attempt_failed`·급감 override·
   parking 신선도 기준, 일반철도·ITS 결정적 오류의 provider 실패 분류. 세부는 리뷰 통합 PR 본문의 보류 표를 따른다.
 - [ ] Common·별도 PR 대기: reverse_address keep 규칙(Common), MapReadout 좌표 live region(Common), 관리자 e2e 정비,
@@ -530,3 +548,12 @@ dark-mode 차트/톤 팔레트 미토큰화, `globals.css` 전반의 desktop-fir
 ## UI 선행 반영(2026-10-24)
 
 - [ ] 기존 API 호환 관리자 UI의 검증·두 독립 리뷰·관리자 웹 단독 배포와 운영 반응형 수용. [범위](reports/2026-10-24-ui-first-release.md).
+
+## 2026-11-01 철도·유가 후속
+
+부산 공식 원천·막차 script 파서·파서 버전 복구와 실제 신평 세 운행 기준/PC·모바일 확인은 완료했다. 전체 역 초도 채움은 공식 batch529dd7ef의 이어받기이며 전체 성공으로 바꾸지 않는다. 다음 Opinet 성공 세대 발행 관측도 미완이다.
+
+- [ ] **T-RAIL-COVERAGE-01** — 운영 반영된 도시철도 일일 원장·이어받기의 초기사전 채움 커버리지를
+  실제 저장·자료 없음·실패로 정산한다. 일반철도 일일 SUCCESS와 도시철도 전체 저장 완료를 구분한다.
+  최초 실행 `926afc53-817a-49ee-be7d-b63c34f013b3`를 중복 실행하거나 중단하지 않는다.
+  [운영 결과와 범위](reports/2026-11-01-rail-daily-fuel-deployment.md).

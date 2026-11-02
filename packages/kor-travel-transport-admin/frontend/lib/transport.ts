@@ -8,6 +8,7 @@ export const TRANSPORT_ENDPOINTS = [
   "transport/highways/incidents",
   "transport/fuel/stations",
   "transport/fuel/statistics",
+  "transport/fuel/regions",
   "transport/features/places",
   "transport/bus/terminals",
   "transport/bus/timetable",
@@ -15,6 +16,7 @@ export const TRANSPORT_ENDPOINTS = [
   "transport/ports/timetables",
   "transport/ferry/reference",
   "transport/rail/timetables",
+  "transport/rail/stations",
   "transport/rail/departures",
   "transport/rail/general/catalog", "transport/rail/general/guide",
   "transport/rail/general/stations",
@@ -31,6 +33,7 @@ export const TRANSPORT_ENDPOINTS = [
 
 export function isAllowedTransportPath(path: string[]) {
   return TRANSPORT_ENDPOINTS.includes(path.join("/") as (typeof TRANSPORT_ENDPOINTS)[number]) || (path.length === 4 && path[0] === "transport" && path[1] === "ports" && path[3] === "timetable")
+    || (path.length === 5 && path[0] === "transport" && path[1] === "rail" && path[2] === "stations" && /^[1-9][0-9]*$/.test(path[3]) && path[4] === "timetable")
     || (path.length === 5 && path[0] === "transport" && path[1] === "fuel" && path[2] === "stations" && /^[1-9][0-9]*$/.test(path[3]) && path[4] === "price-history");
 }
 

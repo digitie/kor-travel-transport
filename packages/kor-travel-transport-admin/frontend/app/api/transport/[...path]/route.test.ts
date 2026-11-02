@@ -67,3 +67,14 @@ describe("POST /api/transport/fees/calculate", () => {
     vi.unstubAllEnvs();
   });
 });
+
+describe("새 역·지역 평균 읽기의 인증된 중계",()=>{
+ it.each(["transport/fuel/regions","transport/rail/stations","transport/rail/stations/274/timetable"])("%s는 인증 후 GET으로 중계한다",async path=>{
+  const fetchMock=vi.fn().mockResolvedValue(new Response('{"items":[]}',{headers:{"content-type":"application/json"}}));vi.stubGlobal("fetch",fetchMock);
+  const context={params:Promise.resolve({path:path.split("/")})};
+  expect((await GET(new NextRequest(`http://transport.test/api/transport/${path}`),context)).status).toBe(401);
+  expect(fetchMock).not.toHaveBeenCalled();
+  const response=await GET(await protectedRequest(path),context);
+  expect(response.status).toBe(200);expect(String(fetchMock.mock.calls[0][0])).toContain(`/v1/${path}`);
+ });
+});

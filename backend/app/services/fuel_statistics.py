@@ -1,4 +1,4 @@
-"""성공한 수집의 최신 가격을 한 번만 집계하고 작은 7일 일별 통계를 보관한다."""
+"""수집 완료 시 통계를 미리 집계한다. 지역 세대·일별 통계는 영구 보존한다."""
 from __future__ import annotations
 
 import json
@@ -9,13 +9,13 @@ from collections import OrderedDict
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import Float, and_, cast, delete, func, insert, or_, select, text, tuple_
+from sqlalchemy import Float, String, and_, cast, delete, exists, func, insert, literal, or_, select, text, tuple_, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.time_utils import serialize_utc
 from app.models import (
     FuelLatestPrice, FuelStation, FuelStatisticsDaily, FuelStatisticsPoint,
-    FuelStatisticsState, RestAreaFuelPrice, TransportCollectionState,
+    FuelStatisticsState, FuelRegionSummary, RestAreaFuelPrice, TransportCollectionState,
 )
 from app.services.flight_status import sanitize_upstream_error
 
@@ -78,6 +78,23 @@ def _metrics(count: int, average: float, minimum: float, maximum: float,
     }
 
 
+async def _opinet_cohort_matches(session: AsyncSession, stamp: datetime) -> bool:
+    """이미 공개된 구 모집단도 같은 성공 원본으로 정정하며, 정상 재시도는 쓰지 않는다."""
+    expected = select(cast(FuelLatestPrice.fuel_station_id, String),
+                      FuelLatestPrice.product_code, FuelLatestPrice.price).join(
+        FuelStation, FuelStation.id == FuelLatestPrice.fuel_station_id,
+    ).where(FuelStation.source == OPINET, FuelLatestPrice.price > 0,
+            FuelLatestPrice.collected_at == stamp)
+    published = select(FuelStatisticsPoint.station_key, FuelStatisticsPoint.product_code,
+                       FuelStatisticsPoint.price).where(
+        FuelStatisticsPoint.source == OPINET, FuelStatisticsPoint.generated_at == stamp)
+    differences = union_all(
+        select(literal(1)).select_from(expected.except_(published).subquery()),
+        select(literal(1)).select_from(published.except_(expected).subquery()),
+    ).subquery()
+    return not bool(await session.scalar(select(exists(select(1).select_from(differences)))))
+
+
 async def publish_fuel_statistics(session: AsyncSession, source: str, collected_at: datetime) -> None:
     """세대별로 준비하고 마지막에만 원천 잠금을 잡아 공개 포인터를 전환한다."""
     await session.flush()
@@ -87,20 +104,25 @@ async def publish_fuel_statistics(session: AsyncSession, source: str, collected_
         await session.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:generation, 0))"),
                               {"generation": f"fuel-statistics:{source}:{stamp.isoformat()}"})
     state = await session.get(FuelStatisticsState, source, populate_existing=True)
-    if state is not None and serialize_utc(state.generated_at) >= stamp:
+    if state is not None and serialize_utc(state.generated_at) > stamp:
         return
     collection = await session.scalar(select(TransportCollectionState).where(
         TransportCollectionState.source == source,
     ).execution_options(populate_existing=True))
     if collection and collection.last_success_at and serialize_utc(collection.last_success_at) != stamp:
         return
+    rebuild_current = bool(state is not None and serialize_utc(state.generated_at) == stamp
+                           and source == OPINET and not await _opinet_cohort_matches(session, stamp))
+    if state is not None and serialize_utc(state.generated_at) == stamp and not rebuild_current:
+        return
     day = stamp.astimezone(ZoneInfo("Asia/Seoul")).date()
     # 원본 저장 트랜잭션은 호출자가 먼저 확정한다. 같은 collected_at 재시도도
-    # savepoint 안에서 준비 세대만 교체하며 공개 세대에는 손대지 않는다.
+    # savepoint 안에서 교체한다. 현재 세대의 구 모집단 정정도 같은 commit으로 공개한다.
     await session.execute(delete(FuelStatisticsPoint).where(
         FuelStatisticsPoint.source == source, FuelStatisticsPoint.generated_at == stamp,
     ))
     groups: dict[tuple[str, str, str], _Accumulator] = {}
+    regions: dict[tuple[str, str, str], dict] = {}
     pending: list[dict] = []
 
     async def consume(point: dict, scopes: list[tuple[str, str, str]]) -> None:
@@ -122,6 +144,7 @@ async def publish_fuel_statistics(session: AsyncSession, source: str, collected_
             FuelStation.sigungu_value, FuelStation.sigungu_name, FuelLatestPrice.product_code, FuelLatestPrice.price,
         ).join(FuelLatestPrice, FuelLatestPrice.fuel_station_id == FuelStation.id).where(
             FuelStation.source == source, FuelLatestPrice.price > 0,
+            FuelLatestPrice.collected_at == stamp,
         ).order_by(FuelStation.id, FuelLatestPrice.product_code).execution_options(yield_per=500)
         stream = await session.stream(statement)
         async for row in stream:
@@ -135,6 +158,16 @@ async def publish_fuel_statistics(session: AsyncSession, source: str, collected_
             if row.sido_value and row.sigungu_value:
                 scopes.append(("sigungu", _key(row.sido_value, row.sigungu_value),
                                f"{row.sido_name or row.sido_value} {row.sigungu_name or row.sigungu_value}".strip()))
+            for scope, key, label in scopes[1:]:
+                region = regions.setdefault((scope, key, row.product_code), {
+                    "region_key": ":".join([source, row.sido_value] + ([row.sigungu_value] if scope == "sigungu" else [])),
+                    "label": label, "longitude": 0., "latitude": 0., "located": 0,
+                })
+                if (row.longitude is not None and row.latitude is not None
+                        and -180 <= row.longitude <= 180 and -90 <= row.latitude <= 90):
+                    region["longitude"] += row.longitude
+                    region["latitude"] += row.latitude
+                    region["located"] += 1
             await consume(point, scopes)
     elif source == HIGHWAY:
         stream = await session.stream(select(RestAreaFuelPrice).where(
@@ -173,15 +206,32 @@ async def publish_fuel_statistics(session: AsyncSession, source: str, collected_
     ).execution_options(populate_existing=True))
     superseded = bool(collection and collection.last_success_at and
                       serialize_utc(collection.last_success_at) != stamp)
-    if superseded or (state is not None and serialize_utc(state.generated_at) >= stamp):
+    already_published = state is not None and (serialize_utc(state.generated_at) > stamp
+        or (serialize_utc(state.generated_at) == stamp and not rebuild_current))
+    if superseded or already_published:
         await session.execute(delete(FuelStatisticsPoint).where(
             FuelStatisticsPoint.source == source, FuelStatisticsPoint.generated_at == stamp,
         ))
         return
-    # 작은 일별 집계와 공개 포인터만 같은 짧은 transaction 말미에서 전환한다.
+    # 지역 이력도 포인터와 같은 transaction으로 공개한다. 이전 세대는 삭제하지 않는다.
+    await session.execute(delete(FuelRegionSummary).where(
+        FuelRegionSummary.source == source, FuelRegionSummary.generated_at == stamp,
+    ))
+    region_rows = []
+    for (scope, key, product), region in regions.items():
+        group = groups[(scope, key, product)]
+        region_rows.append({"source": source, "generated_at": stamp, "scope": scope,
+            "region_key": region["region_key"], "product_code": product, "label": region["label"],
+            "longitude": region["longitude"] / region["located"] if region["located"] else None,
+            "latitude": region["latitude"] / region["located"] if region["located"] else None,
+            "average_price": group.total / group.count, "station_count": group.count,
+            "metrics_json": group.metrics()})
+    for offset in range(0, len(region_rows), 250):
+        await session.execute(insert(FuelRegionSummary), region_rows[offset:offset + 250])
+    # 하루의 마지막 성공본은 교체하되 지난 날짜는 보존한다. UI 조회 창과 저장 수명은 별개다.
     await session.execute(delete(FuelStatisticsDaily).where(
         FuelStatisticsDaily.source == source,
-        or_(FuelStatisticsDaily.day == day, FuelStatisticsDaily.day < day - timedelta(days=6)),
+        FuelStatisticsDaily.day == day,
     ))
     for offset in range(0, len(rows), 250):
         await session.execute(insert(FuelStatisticsDaily), rows[offset:offset + 250])

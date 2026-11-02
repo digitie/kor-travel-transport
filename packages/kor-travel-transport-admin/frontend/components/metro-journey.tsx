@@ -5,8 +5,8 @@ import { MapFilterBar, MapFilterField } from "@kor-travel/ui/map-controls";
 import { InfoButton } from "./info-button";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
-import { RailTimetables } from "./rail-timetables";
-import { dateTime, hasCoordinates, transportGet, type Place } from "@/lib/journey";
+import { MetroStationDetail } from "./metro-station-detail";
+import { transportGet, type Place } from "@/lib/journey";
 import { useNearbyPosition } from "@/lib/journey-hooks";
 import { nearestPlaces } from "@/lib/nearby";
 const TransportMap = dynamic(() => import("./transport-map").then((m) => m.TransportMap), { ssr: false });
@@ -25,12 +25,12 @@ export function MetroJourney() {
   const { position, positionError, locate, locating } = useNearbyPosition();
   useEffect(() => {
     const controller = new AbortController();
-    transportGet<{ items: Place[] }>("transport/features/places?kind=rail_station&include_unlocated=true&limit=5000", controller.signal)
+    transportGet<{ items: Place[] }>("transport/rail/stations", controller.signal)
       .then((data) => { if (!controller.signal.aborted) { setItems(data.items); setError(false); } })
       .catch(() => { if (!controller.signal.aborted) setError(true); });
     return () => controller.abort();
   }, [reload]);
-  const routeKey = (place: Place, name: string) => `${place.subtitle ?? ""}/${name}`;
+  const routeKey = (place: Place, name: string) => place.source === "kric_station_codes" ? (place.provider_id ?? "").split("/").slice(0, 2).join("/") : `${place.subtitle ?? ""}/${name}`;
   const routes = new Map((items ?? []).flatMap((place) => place.line_names.map((name) => [routeKey(place, name), `${name} · ${place.subtitle ?? "운영기관 미제공"}`] as const)));
   const filtered = (items ?? []).filter((place) => (!line || place.line_names.some((name) => routeKey(place, name) === line)) && (!query.trim() || [place.name, place.provider_id, ...place.line_names].join(" ").toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())));
   const nearby = position ? nearestPlaces(filtered, position).slice(0, 10) : [];
@@ -48,19 +48,12 @@ export function MetroJourney() {
       <MapFilterField label="역 검색" htmlFor={`${id}-query`}><Input ref={search} id={`${id}-query`} type="search" placeholder="역 이름·코드" value={query} onChange={(event) => { setQuery(event.target.value); setSelected(null); }} /></MapFilterField>
       <Button type="button" variant="outline" disabled={locating} onClick={locate}>{locating ? "위치 확인 중…" : "내 근처 역"}</Button>
       <Button type="button" variant="ghost" onClick={() => { setItems(null); setError(false); setReload((v) => v + 1); }}>새로고침</Button>
-      <a className="inline-link" href="#station-timetable">시간표 보기</a><InfoButton label="역 찾기">노선을 선택하거나 역 이름을 검색하세요. 후보는 목록에서 선택할 수 있습니다. 내 근처 역은 좌표가 등록된 역을 직선 거리 순으로 표시합니다.</InfoButton>
+      <InfoButton label="역 찾기">노선을 선택하거나 역 이름을 검색하세요. 후보는 목록에서 선택할 수 있습니다. 내 근처 역은 좌표가 등록된 역을 직선 거리 순으로 표시합니다.</InfoButton>
     </MapFilterBar>}
     feedback={<>{positionError ? <p role="alert">{positionError}</p> : null}
     {error ? <p role="alert">역 정보를 불러오지 못했습니다.</p> : !items ? <p role="status">노선과 역을 불러오는 중입니다…</p> : null}
     {position ? <p className="quiet">현재 위치 오차 약 {Math.round(position.accuracy)}m · 거리는 직선 거리입니다.</p> : null}</>}
-    detailTitle={<>{selected?.name} <small>{selected?.subtitle}</small></>} details={selected ? <div className="station-detail">
-      <p>{selected.line_names.join(" · ")}</p>
-      {selected.address ? <button type="button" className="inline-link station-address" disabled={!hasCoordinates(selected)} onClick={() => { setView("map"); choose(selected); }}>{selected.address}{hasCoordinates(selected) ? " · 지도에서 보기" : ""}</button> : <p className="quiet">주소 미제공</p>}
-      <p>전화 {selected.phone ? <a className="inline-link" href={`tel:${selected.phone.replace(/[^+\d]/g, "")}`}>{selected.phone}</a> : "미제공"}</p>
-      <p>편의시설 {selected.facilities.length ? selected.facilities.join(" · ") : "등록 정보 없음"}</p>
-      <p className="quiet">기준정보 {dateTime(selected.updated_at)}</p>
-      <a className="inline-link" href="#station-timetable">이후 시간표 보기</a>
-    </div> : undefined} /></div>
-    <div id="station-timetable" className="map-route-followup">{selected ? <><a className="inline-link" href="#metro-map">지도 작업면으로</a><RailTimetables placeIds={[selected.id]} /></> : null}</div>
+    detailTitle={<>{selected?.name} <small>{selected?.subtitle}</small></>} details={selected ? <MetroStationDetail key={selected.id} station={selected}/> : undefined} /></div>
+
   </section>;
 }
