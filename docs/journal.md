@@ -1,3 +1,21 @@
+## 2026-11-02 18:38 KST — VWorld 서버 반영·후속 완료
+
+- 서버 4역할의 실제 Settings 입력 일치와 healthy, Transport 원 일정 19개 복원, 기존 웹·다른 환경·서비스 보존을 확인했다. 후속73b533ba37/최초Invocationc8ea81c16ac0434da047a6438ef5c166은 실제0/종료/Main0/cgroup 부재다. 양 앱 Manager adopt/verify/show healthy와 전용 one-shot metadata를 확인했고 migration·DB·SDK 변경은 없다.
+- Transport API61804a5c/CS676d3580은 같은0d861d09에서 키 한 값만 교체했다. Weather API19ba900f/3f1236bf와 새로 관측된 CS4a48f58a/739b1b77의 기존 새 키를 유지했으며 재생성하지 않았다. 원 웹·첫 서버 실패와 변경된 Weather 일정 카탈로그를 보존했다.
+- 앞서 수용한 두 웹·PC/모바일 4개 타일 검사·철도2357저장/967기관자료없음·유가30119개 집계 결과를 합쳐 정산했다. 백업·복원은 사용자 지시로 생략했으며 추가 외부 수집·정리·원본 삭제는 없다. [최종 결과·증거·남은 범위](reports/2026-11-02-rail-opinet-vworld-followup.md).
+
+## 2026-11-02 — 철도 초도 조회 정산·VWorld UI 반영
+
+- 전국 활성1108역의3운행일3324개 최초 조회를 모두 정산했다. 저장2357개/제공기관03 자료 없음967개, 미시도·대기·현재 오류0이다. 마지막 공식9da0d5d2/앱5220 SUCCESS와 기존 대표역 PC/모바일 수용을 결합했다. 자료 없음은 실제 운행 중단으로 해석하지 않는다.
+- 실제 UI 소스Transport191·Weather b896와 의존성을 유지해 키 입력만 바꾸는 두 이미지를 BuildKit 비공개 입력으로 빌드·반영했다. Firefox157 PC1440/모바일375 네 화면에서 새 키 이미지 타일·지도 픽셀·오류 배너 없음과 세션/자식 종료를 확인했다. Git 변경·최근 커밋의 입력값 노출은 없었다.
+- 웹 부모는 후속Manager adopt weather의 잘못된one-shot 작업명 때문에실제1로 종료했다. 웹 반영 성공과 원 부모 실패를 구분해 보존했고 중복 교체하지 않았다. 별도 서버 반영에서 전용 작업명으로 보정하며 기존 Weather 수집의 자연 종료를 기다린다. 서버 키 소비·최종metadata·일정 복원·부모 종료는 아직 완료가 아니다. [증거와 현재 상태](reports/2026-11-02-rail-opinet-vworld-followup.md).
+- 서버 첫 반영은Weather 새 키의 실제Settings2개·healthy·원 일정 복원 후 Transport 일정 보호ContractError로 실제1/종료했다. 새로 관측된 Weather 일정 카탈로그와 실제 수집기739b1b77을 보존한 고유 후속73b533ba37이 Transport19개 일정만 일시 중지하고 기존 수집의 자연 종료를 기다린다. 이미 반영된 두 웹과 Weather 서버는 재교체하지 않는다. 외부 일정 보호를 약화하지 않았으며 원 실패·UNKNOWN도 보존했다.
+
+## 2026-11-02 — 동시성 시험 자료 수정 후 CI 성공
+
+- b328a73의 CI41394935767에서 backend·frontend·transport-admin이 모두SUCCESS다. CI live-e2e는SKIPPED이며 기존 실제 Firefox157 PC/모바일 수용과 구분한다. f01의 원 실패는 보존했고 운영 소스/이미지f01/0d861d09를 재빌드·교체하지 않았다.
+- 남은 철도 초도 수집13f527fd/앱5215가 정상 진행 중이다. VWorld 입력은 철도 정산 뒤 반영할 비공개 후속으로 유지한다.
+
 ## 2026-11-02 — 이번 수집분 유가 통계 운영 수용·동시성 시험 자료 정렬
 
 - API/수집기f01af803·이미지0d861d09를 배포하고 원 일정19복원·Manager current healthy·실제 부모0/최초 Invocation 종료/Main0/cgroup 부재를 확인했다. 다른 서비스·환경·관리 UI/gateway CID·스키마0039는 보존했다.

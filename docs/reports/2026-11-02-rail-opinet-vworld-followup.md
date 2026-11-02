@@ -1,8 +1,29 @@
 # 다른 지역 시간표·Opinet 집계 기준·VWorld 후속
 
-이번 성공 수집분만의 통계 배포와 실제 지도 대조는 완료했다. 다른 지역 시간표 초도 채움과 양 앱 VWorld 입력 반영은 진행 중이다.
+이번 성공 수집분만의 통계 배포와 실제 지도 대조, 다른 지역 시간표 초도 조회 정산, 양 앱 VWorld 입력 반영을 완료했다. 아래 중간 진행 원문과 실패는 당시 상태로 보존한다.
+
+## 2026-11-02 18:38 KST — 서버 키 반영·최종 정산 완료
+
+- 후속73b533ba37의 최초Invocationc8ea81c16ac0434da047a6438ef5c166이실제0으로 종료했다. MainPID0·cgroup 부재·소유 자식 종료와최초Invocation JOB_RESULT=done을 확인했다. 웹 부모와 첫 서버 부모의 원 실패를 이 성공으로 덮어쓰지 않는다.
+- Transport API61804a5c·수집기676d3580은같은제품이미지0d861d09에서VWORLD_API_KEY 한 필드만 바뀌었다. 실제Settings 입력 일치·healthy·원 일정19복원과 나머지 환경/웹/gateway/다른 서비스 보존을 확인했다. DB·migration·SDK 변경은0이다.
+- Weather API19ba900f/이미지3f1236bf와새로관측된수집기4a48f58a/이미지739b1b77의실제Settings 입력 일치·healthy를확인했다. 후속에서는 이미 일치하는 두 역할을 다시 교체하지 않았고 Weather의 새 카탈로그·다른 작업을 보존했다. 웹12205·API12201·수집기12206과Transport12302/12306 포트를 유지했다.
+- Manager의양 앱adopt/verify/show가healthy로일치했다. Weather는전용kor-travel-weather-migrate, Transport는migrate의실제API이미지를one-shot metadata에지정했으며migration서비스를실행하지않았다. current경로는Weather weather-adopt-20261102T092901Z-db7a0a6c1b994b3e93d177ad44948886, Transport transport-adopt-20261102T093811Z-080e87a7ccaf431e879a0664af893288이다.
+- 앞서수용한두웹이미지Transport1b6f803b/Weather4908a0d9와PC/모바일4개타일검사는그대로유효하며중복실행하지않았다. 서버키수용과실제외부주소수집성공은구분한다. 후속주소갱신을인위적으로실행하지않았다. 백업·복원은사용자지시로생략했다.
+
+## 2026-11-02 — 철도 초도 조회 완료·지도 키 반영
+
+- 활성1108역×운행일7/8/9의3324개 최초 조회를 모두 정산했다. 평일1077·토247·휴일1033개, 총2357개 표를 저장했다. 제공기관03 자료 없음은 평일31·토861·휴일75개, 총967개다. 미시도·대기·현재 오류는 모두0이며 자료 없음을 저장 성공이나 실제 운행 중단으로 바꾸지 않는다.
+- 마지막 공식9da0d5d2/앱5220은2026-11-02 16:32:51 KST에SUCCESS로 종료했다. 이전 성공run과 원 실패 이력은 보존했다. 예산500·간격5초·24시간 보호는 유지했고 다른 운행일 복사나 추가 API 재시도는 하지 않았다. 원장은regional-initial-sweep-acceptance.json, SHA256 eecd20e82ec43e0fcafea2a74badddcd285dbb8c0a2a0bb034562f9537afcc64다.
+- 실제 UI 소스Transport191ecf4·Weather b8962e9와 현재 의존성을 유지해 필요한 두 UI 이미지만 빌드했다. BuildKit 비공개 입력으로 전달했으며 키 값은 Git·문서·로그·명령 인자에 기록하지 않았다. 새 이미지의 실제 브라우저 번들 키 소비와 기존 실행 포트/명령 보존을 검산했다.
+- 두 웹 역할 교체 후 Firefox157 PC1440/모바일375 네 화면에서 새 키가 사용된 정상 이미지 타일을 확인했다. Weather20/12개·Transport24/8개의 실제 이미지 응답과 지도 픽셀을 확인했고 타일 오류 배너·가로 넘침은 없었다. 로그아웃과 소유 브라우저 자식 종료도 확인했다. 이는 전체 날씨 자료 패널 재검증을 뜻하지 않는다.
+- 웹 교체 부모는 후속Manager adopt weather에서실제exit2로 실패했다. 두 웹·원천 키 설정은 이미 반영된 상태로 보존했으며 원 실패를 성공으로 바꾸거나 웹 교체를 반복하지 않는다. Manager 기록 정산과 서버의 실제 키 소비는 후속으로 진행한다.
+- 첫 서버 반영76a41c6e0f는 Weather API·수집기 키 한 값만 같은 이미지로 교체하고 실제Settings 입력 일치·healthy·원 일정 복원을 확인했다. 이후 Transport 일정 보호 단계에서ContractError로 실제1/최초 Invocation failed/Main0/cgroup 부재로 종료했다. 원 실패는 보존했으며 Transport 자체19개 일정은 원 상태였다.
+- 별도 읽기 관측에서 Weather의 통합3개 일정이 현재/예보6개 일정으로 바뀐 카탈로그를 확인했다. 변화의 주체를 추정하거나 이전 카탈로그를 복원하지 않았다. 후속 실행 직전 실제 Weather 수집기CID4a48f58a·이미지739b1b77을 새 입력으로 동결했고 기존 새 키의 실제Settings 일치를 확인했다. 이 역할은 다시 교체하지 않았다.
+- 고유 후속73b533ba37/첫Invocationc8ea81c16ac0434da047a6438ef5c166은 정상G→R에서 새 카탈로그를 캡처해 Transport19개만 일시 중지하고 기존 수집의 자연 종료를 기다렸다. 외부 일정 보호를 유지한 최종 결과는 위18:38 KST 정산에 기록했다.
 
 ## 2026-11-02 — 새 모집단 운영 반영·실제 지도 수용
+
+- 후속b328a73의 CI41394935767에서 backend·frontend·transport-admin이 모두SUCCESS다. CI live-e2e는SKIPPED이며 별도의 실제 Firefox 수용과 구분한다. 이전 실패 원문은 보존하고 운영 이미지는f01/0d861d09 그대로 유지했다. 남은 철도 초도 수집은13f527fd/앱5215가 진행 중이다.
 
 - API·수집기에 소스f01af803/SDK8d52/이미지0d861d09를 반영했다. PG18/0039와 관리자 UI·gateway CID·환경·다른 서비스는 유지했고 원 일정19를 복원했다. Manager current의 adopt/verify/show가 일치하며 배포 부모는 최초 Invocation 종료·실제0·Main0·cgroup 부재다.
 - Opinet 성공 세대2026-11-02 09:16:23 KST를 유지한 채 canonical publisher로 구 모집단30229건을 이번 수집분30119건으로 정정했다. 이전110개 가격은 통계에서 제외했으며 최신 가격 원본의 건수·합·시각 서명과 이전 지역2388행·과거 일별8391행의 내용 지문이 동일하다. 외부 재수집·cleanup·migration은0이다.
