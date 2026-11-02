@@ -12,8 +12,8 @@ ROOT = (
     else _BACKEND_ROOT.parent
 )
 _ROLES = [
-    ("docker-compose.shared.yml", "frontend", "http://127.0.0.1:${PUBLIC_WEB_PORT:-14002}/", "10s", "10"),
-    ("docker-compose.transport-admin.yml", "transport-admin-web", "http://127.0.0.1:${TRANSPORT_PUBLIC_WEB_PORT:-12305}/login", "15s", "5"),
+    ("docker-compose.shared.yml", "frontend", "http://127.0.0.1:${PUBLIC_WEB_PORT:-12303}/", "30s", "10"),
+    ("docker-compose.transport-admin.yml", "transport-admin-web", "http://127.0.0.1:${TRANSPORT_PUBLIC_WEB_PORT:-12305}/login", "45s", "5"),
 ]
 
 
@@ -37,10 +37,12 @@ def test_ui_health_uses_one_exec_form_bounded_get(
     probe = health["test"][3]
     assert "require(\'node:http\')" in probe and "fetch(" not in probe
     assert "http.get(\'" + url + "\'" in probe
-    assert "res.statusCode>=200&&res.statusCode<300" in probe
-    assert "res.destroy()" in probe and "req.destroy()" in probe
+    assert "r.statusCode<200||r.statusCode>=300" in probe
+    assert "r.on('end'" in probe and "r.complete" in probe and "r.aborted" in probe
+    assert "size>1048576" in probe
+    assert "response?.destroy()" in probe and "request?.destroy()" in probe
     assert "setTimeout(" in probe and "4000" in probe
-    assert "req.on(\'error\',()=>process.exit(1))" in probe
+    assert "request.on(\'error\',()=>finish(1))" in probe
     assert str(health["timeout"]) == "5s"
 
 

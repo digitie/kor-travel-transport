@@ -35,12 +35,12 @@ INSERTS = {
 }
 
 
-def _step(connection, direction):
+def _step(connection, direction, target_override=None):
     """실제 Alembic step/version 갱신을 호출한 connection의 transaction 안에서 수행한다."""
     config = Config()
     config.set_main_option("script_location", str(Path(__file__).parents[1] / "alembic"))
     script = ScriptDirectory.from_config(config)
-    target = OLD if direction == "downgrade" else NEW
+    target = target_override or (OLD if direction == "downgrade" else NEW)
     planner = script._downgrade_revs if direction == "downgrade" else script._upgrade_revs
     with EnvironmentContext(config, script, fn=lambda revision, _: planner(target, revision),
                             destination_rev=target) as context:
@@ -85,6 +85,39 @@ async def _restore(engine):
     async with engine.begin() as connection:
         if await connection.scalar(sa.text("SELECT version_num FROM alembic_version")) == OLD:
             await connection.run_sync(lambda sync: _step(sync, "upgrade"))
+
+
+@pytest.fixture(autouse=True)
+def coverage_branch_schema(request):
+    """0037 분기 자체를 시험한 뒤 통합 head를 복구해 다음 시험을 오염시키지 않는다."""
+    if "test_settings" not in request.fixturenames:
+        yield
+        return
+    settings = request.getfixturevalue("test_settings")
+    from app.db.session import ALEMBIC_HEAD
+
+    async def prepare():
+        engine = _engine(settings)
+        try:
+            async with engine.begin() as connection:
+                await connection.run_sync(lambda sync: _step(sync, "downgrade", OLD))
+                await connection.run_sync(lambda sync: _step(sync, "upgrade", NEW))
+        finally:
+            await engine.dispose()
+
+    async def restore_merged_head():
+        engine = _engine(settings)
+        try:
+            async with engine.begin() as connection:
+                await connection.run_sync(lambda sync: _step(sync, "upgrade", ALEMBIC_HEAD))
+        finally:
+            await engine.dispose()
+
+    asyncio.run(prepare())
+    try:
+        yield
+    finally:
+        asyncio.run(restore_merged_head())
 
 
 @pytest.mark.parametrize("table", TABLES)

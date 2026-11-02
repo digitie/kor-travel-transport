@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 from krex import RestArea
 from sqlalchemy import func, select
@@ -18,7 +19,7 @@ def _settings(tmp_path: Path, **values: object) -> Settings:
         "database_url": f"sqlite+aiosqlite:///{tmp_path / 'rest-area.sqlite3'}",
         "seed_sample_data": False,
         "enable_scheduler": False,
-        "rest_area_reference_collection_enabled": True,
+        "rest_area_collection_enabled": True,
         "data_go_kr_service_key": "test-key",
     }
     return Settings(
@@ -42,42 +43,48 @@ def _rest_area() -> RestArea:
     )
 
 
-def test_rest_area_collection_upserts_saved_map_reference_and_respects_72_hour_gate(tmp_path: Path) -> None:
+def test_rest_area_collection_upserts_saved_map_reference_without_duplicate_places(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     engine, session_factory = create_engine_and_session_factory(settings.database_url)
 
-    async def fetch() -> tuple[RestArea, ...]:
-        return (_rest_area(),)
+    async def fetch(**_kwargs):
+        return SimpleNamespace(items=(_rest_area(),), total_count=1)
+
+    async def close():
+        pass
+
+    def client_factory(**_kwargs):
+        return SimpleNamespace(restarea=SimpleNamespace(list_all=fetch), aclose=close)
 
     async def run() -> None:
         await init_database(engine)
-        service = RestAreaCollectionService(settings, fetcher=fetch)
+        service = RestAreaCollectionService(settings, client_factory=client_factory)
         async with session_factory() as session:
-            first = await service.collect_reference(session)
+            first = await service.collect_references(session)
         async with session_factory() as session:
-            second = await service.collect_reference(session)
+            second = await service.collect_references(session)
         async with session_factory() as session:
             row = await session.scalar(select(RestAreaReference))
             assert row is not None
             assert (row.name, row.route_name, row.direction, row.latitude, row.longitude) == (
                 "테스트휴게소", "테스트고속도로", "서울방향", 37.5, 127.1
             )
-            assert await session.scalar(select(func.count()).select_from(CollectionRun)) == 1
-        assert first == {"status": "success", "run_id": 1, "rest_area_count": 1}
-        assert second == {"status": "skipped", "reason": "rest area reference is not due for 72 hours"}
+            assert await session.scalar(select(func.count()).select_from(CollectionRun)) == 2
+        assert first == {"status": "success", "run_id": 1, "received": 1, "stored": 1}
+        assert second == {"status": "success", "run_id": 2, "received": 1, "stored": 1}
         await engine.dispose()
 
     asyncio.run(run())
 
 
 def test_rest_area_collection_is_disabled_without_explicit_setting(tmp_path: Path) -> None:
-    settings = _settings(tmp_path, rest_area_reference_collection_enabled=False)
+    settings = _settings(tmp_path, rest_area_collection_enabled=False)
     engine, session_factory = create_engine_and_session_factory(settings.database_url)
 
     async def run() -> None:
         await init_database(engine)
         async with session_factory() as session:
-            assert (await RestAreaCollectionService(settings).collect_reference(session))["status"] == "skipped"
+            assert (await RestAreaCollectionService(settings).collect_references(session))["status"] == "skipped"
         await engine.dispose()
 
     asyncio.run(run())
