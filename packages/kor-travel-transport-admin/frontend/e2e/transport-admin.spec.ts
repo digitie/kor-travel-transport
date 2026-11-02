@@ -66,10 +66,13 @@ test.beforeEach(() => { test.skip(!password, "E2E_TRANSPORT_UI_PASSWORD가 필�
 
 test("잘못된 자격증명은 세션을 만들지 않고 로그인 화면에 오류를 남긴다", async ({ page, request }) => {
   await page.goto("/");
+  await expect(page).toHaveURL(/\/login/);
+  // @kor-travel/ui dev.9는 hydration 전까지 입력을 disabled로 둔다.
+  await expect(page.getByLabel("비밀번호")).toBeEnabled();
   await page.getByLabel("아이디").fill(username);
   await page.getByLabel("비밀번호").fill("invalid-password");
-  await page.getByRole("button", { name: "로그인" }).click();
-  await expect(page.getByText("아이디 또는 비밀번호가 올바르지 않습니다.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "로그인", exact: true }).click();
+  await expect(page.locator("[data-slot=login-error]")).toHaveText("아이디와 비밀번호를 확인하고 다시 시도해 주세요.");
   expect((await request.get("/api/transport/transport/statistics?days=1")).status()).toBe(401);
 });
 
