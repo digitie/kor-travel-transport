@@ -10,6 +10,8 @@ beforeEach(() => { navigation.pathname = "/"; });
 test.each([
   ["/", "/"],
   ["/map", "/map"],
+  ["/parking-lots", "/parking-lots"],
+  ["/parking", "/parking"],
   ["/map/place/1", "/map"],
   ["/fuel", "/fuel"],
   ["/rail/mapping", "/rail/mapping"],

@@ -17,6 +17,7 @@ export function highwayRouteLabel(routeNo: string | null | undefined, routeName?
 }
 
 export function collectionSourceLabel(source: string) {
+  if (source === "datagokr_parking_lots") return "전국주차장정보 표준데이터";
   if (source === "kac") return "한국공항공사";
   if (source === "incheon") return "인천국제공항공사";
   if (source.includes("krex")) return "한국도로공사 고속도로 정보";
@@ -30,5 +31,5 @@ export function collectionSourceLabel(source: string) {
 }
 
 export function placeKindLabel(kind: string) {
-  return ({ fuel_station: "주유소", rail_station: "철도역", ferry_port: "항구", airport: "공항", rest_area: "휴게소", bus_terminal: "버스터미널", highway_incident: "도로 돌발" } as Record<string, string>)[kind] ?? kind;
+  return ({ fuel_station: "주유소", rail_station: "철도역", ferry_port: "항구", airport: "공항", rest_area: "휴게소", bus_terminal: "버스터미널", highway_incident: "도로 돌발", public_parking_lot: "일반 주차장" } as Record<string, string>)[kind] ?? kind;
 }

@@ -69,12 +69,16 @@ describe("POST /api/transport/fees/calculate", () => {
 });
 
 describe("새 역·지역 평균 읽기의 인증된 중계",()=>{
- it.each(["transport/fuel/regions","transport/rail/stations","transport/rail/stations/274/timetable"])("%s는 인증 후 GET으로 중계한다",async path=>{
+ it.each(["transport/fuel/regions","transport/rail/stations","transport/rail/stations/274/timetable","transport/parking-lots?q=수지&limit=100&cursor=abc%2F%3D","transport/parking-lots/12"])("%s는 인증 후 GET으로 중계한다",async path=>{
   const fetchMock=vi.fn().mockResolvedValue(new Response('{"items":[]}',{headers:{"content-type":"application/json"}}));vi.stubGlobal("fetch",fetchMock);
-  const context={params:Promise.resolve({path:path.split("/")})};
+  const context={params:Promise.resolve({path:path.split("?")[0].split("/")})};
   expect((await GET(new NextRequest(`http://transport.test/api/transport/${path}`),context)).status).toBe(401);
   expect(fetchMock).not.toHaveBeenCalled();
   const response=await GET(await protectedRequest(path),context);
-  expect(response.status).toBe(200);expect(String(fetchMock.mock.calls[0][0])).toContain(`/v1/${path}`);
+  expect(response.status).toBe(200);
+  const forwarded = new URL(String(fetchMock.mock.calls[0][0]));
+  const expected = new URL(`http://test/v1/${path}`);
+  expect(forwarded.pathname).toBe(expected.pathname);
+  expect([...forwarded.searchParams]).toEqual([...expected.searchParams]);
  });
 });

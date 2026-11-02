@@ -161,10 +161,12 @@ async def store_cached_analytics(
     source_observed_at: datetime | None,
     payload: Any,
     generated_at: datetime | None = None,
+    cache_rows: dict[tuple, AnalyticsCache] | None = None,
 ) -> None:
     generated_at = generated_at or now_utc()
     scope_key = build_analytics_scope_key(airport_code, parking_lot_id)
-    cached = await session.scalar(
+    identity = (metric, scope_key, days, interval_minutes, limit, future_hours)
+    cached = cache_rows.get(identity) if cache_rows is not None else await session.scalar(
         select(AnalyticsCache).where(
             AnalyticsCache.metric == metric,
             AnalyticsCache.scope_key == scope_key,
@@ -176,22 +178,23 @@ async def store_cached_analytics(
     )
     serialized_payload = serialize_json_payload(payload)
     if cached is None:
-        session.add(
-            AnalyticsCache(
-                metric=metric,
-                scope_key=scope_key,
-                airport_code=airport_code,
-                parking_lot_id=parking_lot_id,
-                days=days,
-                interval_minutes=interval_minutes,
-                limit=limit,
-                future_hours=future_hours,
-                generated_at=generated_at,
-                source_observed_at=source_observed_at,
-                payload_json=serialized_payload,
-                updated_at=generated_at,
-            )
+        cached = AnalyticsCache(
+            metric=metric,
+            scope_key=scope_key,
+            airport_code=airport_code,
+            parking_lot_id=parking_lot_id,
+            days=days,
+            interval_minutes=interval_minutes,
+            limit=limit,
+            future_hours=future_hours,
+            generated_at=generated_at,
+            source_observed_at=source_observed_at,
+            payload_json=serialized_payload,
+            updated_at=generated_at,
         )
+        session.add(cached)
+        if cache_rows is not None:
+            cache_rows[identity] = cached
         return
 
     cached.airport_code = airport_code
@@ -226,6 +229,13 @@ async def refresh_default_analytics_cache(
     ).scalars().all()
 
     lots = await _load_analytics_lots(session)
+    # 네 metric × 공항/주차장 scope의 반복 조회를 합친다. 기존 payload도 함께
+    # 읽어야 ORM이 같은 JSON을 재기록하지 않는 기존 변경 감지를 유지한다.
+    cached_rows = (await session.scalars(select(AnalyticsCache).where(
+        AnalyticsCache.airport_code.in_([airport.code for airport in airports]),
+    ))).all()
+    cache_rows = {(row.metric, row.scope_key, row.days, row.interval_minutes, row.limit, row.future_hours): row
+                  for row in cached_rows}
     refreshed = 0
     for airport in airports:
         lot_ids = sorted(lot.id for lot in lots.values() if lot.airport_id == airport.id and lot.is_active)
@@ -240,7 +250,7 @@ async def refresh_default_analytics_cache(
             refreshed += await _refresh_scope_from_snapshots(
                 session, settings, airport, parking_lot_id,
                 snapshots if parking_lot_id is None else by_lot[parking_lot_id], lots,
-                generated_at=generated_at,
+                generated_at=generated_at, cache_rows=cache_rows,
             )
     return refreshed
 
@@ -274,6 +284,7 @@ async def _refresh_scope_from_snapshots(
     lots: dict[int, ParkingLot],
     *,
     generated_at: datetime,
+    cache_rows: dict[tuple, AnalyticsCache] | None = None,
 ) -> int:
     refreshed = 0
     source_observed_at = await _load_latest_observed_at(session, airport.id, parking_lot_id)
@@ -291,7 +302,7 @@ async def _refresh_scope_from_snapshots(
         interval_minutes=DEFAULT_TIMESERIES_INTERVAL_MINUTES,
         future_hours=DEFAULT_TIMESERIES_FUTURE_HOURS,
         source_observed_at=source_observed_at,
-        generated_at=generated_at,
+        generated_at=generated_at, cache_rows=cache_rows,
         payload={
             "generated_at": generated_at,
             "airport_code": airport.code,
@@ -318,7 +329,7 @@ async def _refresh_scope_from_snapshots(
         parking_lot_id=parking_lot_id,
         days=DEFAULT_WEEKDAY_HOUR_DAYS,
         source_observed_at=source_observed_at,
-        generated_at=generated_at,
+        generated_at=generated_at, cache_rows=cache_rows,
         payload=build_weekday_hour_patterns(weekday_snapshots, tz_name=settings.app_timezone),
     )
     refreshed += 1
@@ -340,7 +351,7 @@ async def _refresh_scope_from_snapshots(
         days=DEFAULT_THRESHOLD_EVENTS_DAYS,
         limit=DEFAULT_THRESHOLD_EVENTS_LIMIT,
         source_observed_at=source_observed_at,
-        generated_at=generated_at,
+        generated_at=generated_at, cache_rows=cache_rows,
         payload=threshold_events,
     )
     refreshed += 1
@@ -364,7 +375,7 @@ async def _refresh_scope_from_snapshots(
         days=DEFAULT_THRESHOLD_INSIGHTS_DAYS,
         interval_minutes=DEFAULT_THRESHOLD_INSIGHTS_INTERVAL_MINUTES,
         source_observed_at=source_observed_at,
-        generated_at=generated_at,
+        generated_at=generated_at, cache_rows=cache_rows,
         payload={
             "generated_at": generated_at,
             "airport_code": airport.code,

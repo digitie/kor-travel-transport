@@ -805,3 +805,11 @@ h1, h2, h3 { color: var(--text-primary); }
 .rail-timetable-page .train-station-search { min-width: 0; }
 .rail-timetable-page .departure-row { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; }
 @media (max-width: 42rem) { .rail-timetable-page .journey-data-grid { grid-template-columns: minmax(0, 1fr); } }
+.public-parking-search { display: flex; align-items: end; flex-wrap: wrap; gap: var(--space-sm); }
+.public-parking-search > [data-slot="field"] { flex: 1 1 14rem; min-width: 0; }
+.public-parking-feedback, .public-parking-list, .public-parking-details { display: flex; flex-direction: column; gap: var(--space-sm); min-width: 0; }
+.public-parking-list .place-row { width: 100%; text-align: start; }
+.public-parking-data { margin: 0; font-size: var(--text-sm); }
+.public-parking-data > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: var(--space-sm); padding-block: var(--space-xs); }
+.public-parking-data dt { color: var(--text-secondary); }
+.public-parking-data dd { margin: 0; overflow-wrap: anywhere; }

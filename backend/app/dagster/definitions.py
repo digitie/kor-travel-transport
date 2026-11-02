@@ -45,6 +45,7 @@ from app.services.place_locations import PlaceLocationCollectionService
 from app.services.rail_maritime_collection import RailMaritimeCollectionService
 from app.services.vadahub_collection import VadaHubCollectionService
 from app.services.rest_area_collection import RestAreaCollectionService
+from app.services.public_parking_collection import PublicParkingCollectionService
 from app.services.transport_collection import CollectionScope, TransportCollectionService
 
 #: 실행 상한(초). 공용 Dagster instance의 전역 상한(6시간, Manager `config/dagster-shared/dagster.yaml`)은
@@ -609,6 +610,22 @@ def collect_rest_area_reference(context) -> dict[str, Any]:
 
 @op
 @_redact_op_errors
+def collect_public_parking_reference(context) -> dict[str, Any]:
+    with collection_owner(context.run_id, context.instance):
+        settings = _settings()
+        result = asyncio.run(_run_with_session(settings, PublicParkingCollectionService(settings).collect))
+        if result.get("status") == "failed":
+            raise Failure(description="전국주차장 기준정보 갱신 실패. 이전 완료 집합을 보존했습니다.", allow_retries=False)
+        return result
+
+
+@job(tags=_job_tags("reference", "public_parking_reference_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
+def public_parking_reference_job() -> None:
+    collect_public_parking_reference()
+
+
+@op
+@_redact_op_errors
 def collect_rest_area_fuel_prices(context) -> dict[str, Any]:
     # 통계 발행이 미뤄지면(포화된 ARM의 command_timeout 등) 원인을 event log와 output metadata에서 보이게 한다.
     with collection_owner(context.run_id, context.instance), _forward_progress_logs(context, FUEL_STATISTICS_LOGGERS):
@@ -847,6 +864,7 @@ definitions = Definitions(
         for retry_job in (airport_collection_job, highway_collection_job, rest_area_reference_collection_job)
     ]],
     jobs=[
+        public_parking_reference_job,
         address_refresh_job,
         airport_collection_job,
         parking_statistics_archive_job,
@@ -865,6 +883,7 @@ definitions = Definitions(
         rest_area_fuel_price_collection_job,
     ],
     schedules=[
+        coalescing_schedule(project="transport", location_name="kor-travel-transport", job=public_parking_reference_job, cron_schedule="45 4 4 * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=airport_collection_job, cron_schedule=staggered_cron(interval_minutes=5, phase_minutes=1), execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=highway_collection_job, cron_schedule=staggered_cron(interval_minutes=5, phase_minutes=3), execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=fuel_collection_job, cron_schedule="0 */8 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),

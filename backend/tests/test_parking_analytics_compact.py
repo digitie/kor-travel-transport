@@ -311,3 +311,28 @@ def test_cold_special_dates_preserve_kst_boundaries_and_compact_projection(
     assert all(row["observations"] > 0 for row in expected)
     snapshot_queries = [sql for sql in statements if "parking_snapshots" in sql]
     assert snapshot_queries and all("raw_item_json" not in sql for sql in snapshot_queries)
+
+
+def test_refresh_loads_existing_cache_once_without_rewriting_equal_payloads(analytics_app):
+    client, settings, _, _ = analytics_app
+    async def warm():
+        async with client.app.state.session_factory() as session:
+            assert await cache.refresh_default_analytics_cache(session, settings) == 32
+            await session.commit()
+    asyncio.run(warm())
+    statements = []
+    payload_updates = []
+    def capture(_connection, _cursor, statement, _parameters, _context, _executemany):
+        normalized = statement.lower().lstrip()
+        if normalized.startswith("select") and "analytics_caches" in normalized:
+            statements.append(normalized)
+        if normalized.startswith("update analytics_caches") and "payload_json=" in normalized:
+            payload_updates.append(normalized)
+    engine = client.app.state.engine.sync_engine
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        asyncio.run(warm())
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+    assert len(statements) == 1
+    assert not payload_updates

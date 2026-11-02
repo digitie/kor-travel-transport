@@ -215,6 +215,9 @@ async def _freeze_reference(session, heads, spec):
     started = monotonic()
     size = count = 0
     digest = hashlib.sha256()
+    # 기존 16MiB 상한 안의 canonical bytes만 보관한다. 신규 snapshot을 만들 때
+    # 같은 source/주소/매핑을 다시 조회하지 않고 검산한 내용 그대로 저장한다.
+    encoded_payloads: list[bytes] = []
     async for batch in spec.payload_batches(session, heads):
         if monotonic() - started > 15:
             raise HTTPException(503, "터미널 snapshot 준비 시간 상한을 초과했습니다.")
@@ -225,6 +228,7 @@ async def _freeze_reference(session, heads, spec):
             if size > MAX_SNAPSHOT_BYTES or count > MAX_SNAPSHOT_ITEMS:
                 raise HTTPException(503, "터미널 snapshot 크기 상한을 초과했습니다.")
             digest.update(body + b"\n")
+            encoded_payloads.append(body)
     content = digest.hexdigest()
     namespace = json.dumps([[h.generation, serialize_utc(h.confirmed_at).isoformat()] for h in heads]) + content
     # 같은 시각으로 epoch generation과 만료를 정한다(epoch 경계에서 둘이 어긋나지 않게).
@@ -250,13 +254,13 @@ async def _freeze_reference(session, heads, spec):
         raise SnapshotRace()
     snapshot = await session.get(ServiceExportSnapshot, snapshot_id)
     ordinal = 0
-    async for batch in spec.payload_batches(session, heads):
+    for offset in range(0, len(encoded_payloads), BATCH_SIZE):
         if monotonic() - started > 15:
             raise HTTPException(503, "터미널 snapshot 저장 시간 상한을 초과했습니다.")
         values = []
-        for item in batch:
+        for body in encoded_payloads[offset:offset + BATCH_SIZE]:
             ordinal += 1
-            values.append({"snapshot_id": snapshot.id, "ordinal": ordinal, "payload": item})
+            values.append({"snapshot_id": snapshot.id, "ordinal": ordinal, "payload": json.loads(body)})
         await session.execute(insert(ServiceExportSnapshotItem), values)
     if ordinal != count:
         raise HTTPException(503, "터미널 snapshot의 완결 수량이 달라졌습니다.")

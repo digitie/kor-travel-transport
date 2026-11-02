@@ -284,3 +284,28 @@ def test_postgres_old_failure_cannot_mark_new_success_stale(export_client):
             states = list((await session.scalars(select(ReferenceExportState))).all())
             assert all(h.attempt_order == 2 and h.generation == "new-success" and h.last_error is None for h in states)
     asyncio.run(race())
+
+
+def test_reference_freeze_reads_and_hashes_each_source_payload_once(export_client, monkeypatch):
+    from dataclasses import replace
+    from app.services import export_references
+    c = export_client
+    c.app.state.settings.transport_map_current_enabled = True
+    _run(c, seed)
+    passes = 0
+    original = export_references._freeze_reference
+    async def counted_freeze(session, heads, spec):
+        async def batches(session, heads):
+            nonlocal passes
+            passes += 1
+            async for batch in spec.payload_batches(session, heads):
+                yield batch
+        return await original(session, heads, replace(spec, payload_batches=batches))
+    monkeypatch.setattr(export_references, "_freeze_reference", counted_freeze)
+    first = c.get(PATH, headers=HEADERS)
+    assert first.status_code == 200, first.text
+    assert first.json()["total_count"] == 2
+    assert passes == 1
+    repeated = c.get(PATH, headers={**HEADERS, "If-None-Match": first.headers["etag"]})
+    assert repeated.status_code == 304
+    assert passes == 2

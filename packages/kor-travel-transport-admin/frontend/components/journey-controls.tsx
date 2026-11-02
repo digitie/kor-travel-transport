@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { InfoButton } from "./info-button";
-import { Anchor, Bus, Fuel, Plane, TrainFront, Coffee, MapPin, TriangleAlert, X } from "lucide-react";
+import { Anchor, Bus, Fuel, Plane, TrainFront, Coffee, MapPin, ParkingCircle, TriangleAlert, X } from "lucide-react";
 import { useId } from "react";
 import { dateTime, hasCoordinates, hasFuelPrice, money, serviceTime, type FerryTimetable, type Place } from "@/lib/journey";
 import { collectionSourceLabel, fuelProductLabel, placeKindLabel } from "@/lib/transport-presentation";
@@ -19,7 +19,7 @@ import { FuelStationPriceHistory } from "./fuel-station-history";
 
 export function PlaceIcon({ kind, brandCode, brandName }: { kind: string; brandCode?: string | null; brandName?: string | null }) {
   if (kind === "fuel_station") return <FuelBrandIcon code={brandCode} name={brandName} />;
-  const Icon = ({ fuel_station: Fuel, rail_station: TrainFront, ferry_port: Anchor, airport: Plane, rest_area: Coffee, bus_terminal: Bus, highway_incident: TriangleAlert } as const)[kind as Place["kind"]] ?? MapPin;
+  const Icon = ({ fuel_station: Fuel, rail_station: TrainFront, ferry_port: Anchor, airport: Plane, rest_area: Coffee, bus_terminal: Bus, highway_incident: TriangleAlert, public_parking_lot: ParkingCircle } as const)[kind as Place["kind"]] ?? MapPin;
   return <Icon size={18} aria-hidden="true" />;
 }
 
