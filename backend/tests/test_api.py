@@ -230,8 +230,9 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
     assert cluster_payload["clustered"] is True
     assert cluster_payload["items"] == []
     assert cluster_payload["kind_totals"] == {"fuel_station": 1, "rail_station": 1, "ferry_port": 1}
-    assert sum(item["count"] for item in cluster_payload["clusters"]) == 3
-    assert sum(sum(item["kind_counts"].values()) for item in cluster_payload["clusters"]) == 3
+    assert sum(item["count"] for item in cluster_payload["clusters"]) == 2
+    assert cluster_payload["fuel_regions"][0]["average_price"] > 0
+    assert sum(sum(item["kind_counts"].values()) for item in cluster_payload["clusters"]) == 2
     unlocated_cluster_payload = client.get("/v1/transport/features/places", params={
         "kinds": "fuel_station,rail_station,ferry_port", "zoom": 7, "include_unlocated": "true",
         "min_longitude": 124, "min_latitude": 32, "max_longitude": 132, "max_latitude": 39,

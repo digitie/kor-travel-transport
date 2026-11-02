@@ -32,6 +32,19 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
+test("낮은 축척은 장소 수 대신 행정구역 평균 유가를 표시한다", async () => {
+  Object.assign(mapState, {zoom: 7});
+  vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({items:[],total:3,clustered:true,clusters:[],fuel_regions:[{region_key:"11",label:"서울특별시",product_code:"B027",average_price:1700,station_count:3,longitude:127,latitude:37.5}]}), {status:200}));
+  const container=document.createElement("div");document.body.append(container);const root=createRoot(container);
+  try {
+    await act(async()=>root.render(<TransportMap mode="fuel"/>));
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,50));});
+    expect(container.textContent).toContain("서울특별시");
+    expect(container.textContent).toContain("평균 1,700원/L");
+    expect(container.querySelector('[aria-label*="평균 1700원/L, 3곳"]')).not.toBeNull();
+  } finally {await act(async()=>root.unmount());container.remove();}
+});
+
 test("외부 장소 지도는 자체 API를 호출하지 않고 이동을 카메라 prop으로 되먹이지 않으며 목록 왕복에는 마지막 카메라로 다시 연다", async () => {
   const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
   try {
