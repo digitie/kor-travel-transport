@@ -446,6 +446,11 @@ class KricAutomaticMappingApplyResponse(BaseModel):
     summary: KricAutomaticMappingCounts
 
 
+class MetroStationCatalog(BaseModel):
+    generated_at: datetime
+    items: list["TransportPlaceMapItem"]
+
+
 class RailDepartureItem(BaseModel):
     train_number: str | None = None
     departure_time: str | None = None
@@ -455,7 +460,8 @@ class RailDepartureItem(BaseModel):
 
 
 class RailDepartureSummary(BaseModel):
-    place_id: int
+    place_id: int | None
+    code_id: int | None = None
     station_name: str
     line_name: str | None = None
     status: Literal["unlinked", "day_unresolved", "not_collected", "stored"]
@@ -463,6 +469,10 @@ class RailDepartureSummary(BaseModel):
     stale: bool = False
     next_departure: RailDepartureItem | None = None
     departure_count: int = 0
+    collection_status: Literal["pending", "stored", "no_data", "error"] | None = None
+    last_attempt_at: datetime | None = None
+    source_name: str | None = None
+    time_precision: Literal["minute"] | None = None
 
 
 class RailTimetableItem(RailDepartureSummary):
@@ -668,6 +678,7 @@ class GeneralRailGuideStation(BaseModel):
     phone: str | None = None
     longitude: float | None = None
     latitude: float | None = None
+    line_names: list[str] = Field(default_factory=list)
 
 
 class GeneralRailGuideResponse(BaseModel):

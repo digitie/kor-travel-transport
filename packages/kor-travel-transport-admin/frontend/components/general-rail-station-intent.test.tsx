@@ -18,6 +18,9 @@ vi.mock("next/dynamic", () => ({ default: () => function MapFixture({ toolbar, f
   {places.map((place) => <button key={place.id} data-guide-provider={place.provider_id} data-marker-id={place.id} onClick={() => onSelectPlace(place)}>{place.name} 지도 선택</button>)}{details}
 </div>; } }));
 
+vi.mock("./general-rail-station-detail",()=>({GeneralRailStationDetail:()=>null}));
+vi.mock("./rail-station-picker",()=>({RailStationPicker:({id,label,stations,value,onChange,searchRequest}:any)=><fieldset><legend>{label}</legend><input id={id} aria-label={`${label} 검색`} value={searchRequest?.text??""} readOnly/><select aria-label={`${label} 후보`} value={value?.station_id??""} onChange={event=>onChange(stations.find((station:any)=>station.station_id===event.target.value)??null)}><option value="">선택</option>{stations.map((station:any)=><option key={station.station_id} value={station.station_id}>{station.station_name} · {station.city_name}</option>)}</select></fieldset>}));
+
 import { GeneralRailGuide } from "./general-rail-guide";
 import { GeneralRailJourney } from "./general-rail-journey";
 
@@ -92,99 +95,45 @@ test("안내의 provider 참조로 지정 의도를 전달하며 노선 목록 �
   expect(timetableCalls()).toHaveLength(0);
 });
 
-test("출발 지정은 이름 hint만 넘기며 반대역·날짜·차종·지도 필터와 보기 상태를 유지한다", async () => {
-  await act(async () => root.render(<GeneralRailJourney />));
-  await chooseTago("도착역", "21", "부산", "NAT-BUSAN");
-  await change(host.querySelector('select[id$="-grade"]')!, "00");
-  await change(host.querySelector('input[type="date"]')!, "2026-10-29");
-  await guideChoice();
-  await change(host.querySelector('input[id$="-query"]')!, "서울");
-  await click(button("목록 보기 모형"));
-  const focus = host.querySelector('[data-map-view]')!.getAttribute("data-map-focus");
-  await click(button("출발로 지정"));
-  const from = group("출발역"), to = group("도착역");
-  expect(from.querySelector("input")!.value).toBe("서울");
-  expect(from.querySelector("select")!.value).toBe("");
-  expect(document.activeElement).toBe(from.querySelector("select"));
-  expect(from.textContent).not.toContain("조건에 맞는 역이 없습니다");
-  expect(to.textContent).toContain("NAT-BUSAN");
-  expect(host.querySelector<HTMLSelectElement>('select[id$="-grade"]')!.value).toBe("00");
-  expect(host.querySelector<HTMLInputElement>('input[type="date"]')!.value).toBe("2026-10-29");
-  expect(host.querySelector('[data-map-view]')!.getAttribute("data-map-view")).toBe("list");
-  expect(host.querySelector('[data-map-view]')!.getAttribute("data-map-focus")).toBe(focus);
-  expect(host.querySelector<HTMLSelectElement>('select[id$="-category"]')!.value).toBe("ktx1");
-  expect(button("예정 운행편 조회").disabled).toBe(true);
-  await change(from.querySelector("select")!, "11");
-  expect(document.activeElement).toBe(from.querySelector("input"));
-  expect(from.querySelectorAll('.station-results button[aria-pressed="true"]')).toHaveLength(0);
-  expect(from.querySelectorAll(".station-results button")).toHaveLength(2);
-  expect(button("예정 운행편 조회").disabled).toBe(true); // 이름이 같아도 자동 확정하지 않음.
-  await click(button("서울NAT-SEOUL-2", from));
-  expect(button("예정 운행편 조회").disabled).toBe(false);
-  await click(button("예정 운행편 조회"));
-  const url = new URL(timetableCalls()[0][0], "http://fixture");
-  expect(Object.fromEntries(url.searchParams)).toEqual({ departure_station_id: "NAT-SEOUL-2", arrival_station_id: "NAT-BUSAN", date: "2026-10-29", train_grade_code: "00" });
-});
 
-test("같은 역의 도착 지정도 재진입하며 진행 중 옛 시간표를 취소하고 기존 출발을 보존한다", async () => {
-  let resolveOld!: (value: unknown) => void;
-  api.get.mockImplementation((path: string) => path.includes("/timetable?") ? new Promise((resolve) => { resolveOld = resolve; }) : defaultGet(path));
-  await act(async () => root.render(<GeneralRailJourney />));
-  await chooseTago("출발역", "11", "서울", "NAT-SEOUL-1");
-  await chooseTago("도착역", "21", "부산", "NAT-BUSAN");
-  await click(button("예정 운행편 조회"));
-  const oldSignal = timetableCalls()[0][1] as AbortSignal;
-  await guideChoice("GUIDE-BUSAN");
-  await click(button("도착으로 지정"));
-  expect(oldSignal.aborted).toBe(true);
-  expect(group("출발역").textContent).toContain("NAT-SEOUL-1");
-  expect(group("도착역").querySelectorAll('.station-results button[aria-pressed="true"]')).toHaveLength(0);
-  expect(document.activeElement).toBe(group("도착역").querySelector("input"));
-  expect(button("예정 운행편 조회").disabled).toBe(true); // 후보가 하나여도 수동 확인.
-  await act(async () => resolveOld({ fetched_at: at, stale: false, service_date: "2026-10-28", total: 1, truncated: false,
-    items: [{ train_number: "OLD-TRAIN", departure_planned_time: "2026-10-28T10:00:00+09:00" }] }));
-  expect(host.textContent).not.toContain("OLD-TRAIN");
-  await click(button("부산NAT-BUSAN", group("도착역")));
-  await change(group("도착역").querySelector("input")!, "다른 검색");
-  await click(button("도착으로 지정"));
-  expect(group("도착역").querySelector("input")!.value).toBe("부산");
-  expect(group("도착역").querySelector("select")!.value).toBe("21");
-  expect(button("예정 운행편 조회").disabled).toBe(true);
-});
+async function pick(role:string,id:string){await change(group(role).querySelector("select")!,id);}
+async function openGuide(){await click(button("지도에서 역 선택"));await guideChoice();}
 
-test("지역 전환의 늦은 목록은 후보를 덮지 않고 loading/error를 빈 결과로 표시하지 않는다", async () => {
-  let resolveSeoul!: (value: unknown) => void, rejectBusan!: (reason: Error) => void;
-  api.get.mockImplementation((path: string) => path.includes("/stations?city_code=11") ? new Promise((resolve) => { resolveSeoul = resolve; })
-    : path.includes("/stations?city_code=21") ? new Promise((_resolve, reject) => { rejectBusan = reject; }) : defaultGet(path));
-  await act(async () => root.render(<GeneralRailJourney />));
-  await guideChoice(); await click(button("출발로 지정"));
-  const from = group("출발역");
-  await change(from.querySelector("select")!, "11");
-  const old = api.get.mock.calls.find(([path]) => path.includes("/stations?city_code=11"))![1] as AbortSignal;
-  await change(from.querySelector("select")!, "21");
-  expect(old.aborted).toBe(true);
-  expect(from.textContent).toContain("조회 중");
-  expect(from.textContent).not.toContain("조건에 맞는 역이 없습니다");
-  await act(async () => resolveSeoul(stationPage("11")));
-  expect(from.querySelectorAll(".station-results button")).toHaveLength(0);
-  await act(async () => rejectBusan(new Error("fixture 목록 접근 실패")));
-  expect(from.querySelector('[role="alert"]')?.textContent).toBe("fixture 목록 접근 실패");
-  expect(from.textContent).not.toContain("조건에 맞는 역이 없습니다");
-  expect(button("예정 운행편 조회").disabled).toBe(true);
-});
-
-test("이전 출발 지역의 늦은 응답이 새 도착 지정의 초점을 빼앗지 않는다", async () => {
-  let resolveDeparture!: (value: unknown) => void;
-  api.get.mockImplementation((path: string) => path.includes("/stations?city_code=11")
-    ? new Promise((resolve) => { resolveDeparture = resolve; }) : defaultGet(path));
-  await act(async () => root.render(<GeneralRailJourney />));
-  await guideChoice(); await click(button("출발로 지정"));
-  await change(group("출발역").querySelector("select")!, "11");
-  await guideChoice("GUIDE-BUSAN"); await click(button("도착으로 지정"));
-  const arrivalCity = group("도착역").querySelector("select");
-  expect(document.activeElement).toBe(arrivalCity);
-  await act(async () => resolveDeparture(stationPage("11")));
-  expect(document.activeElement).toBe(arrivalCity);
+test("지도 지정은 검색어만 전달하고 반대역·날짜·차종을 보존하며 실제 후보 선택 뒤 조회한다",async()=>{
+  await act(async()=>root.render(<GeneralRailJourney/>));
+  await pick("도착역","NAT-BUSAN");
+  await change(host.querySelector('select[id$="-grade"]')!,"00");
+  await change(host.querySelector('input[type="date"]')!,"2026-10-29");
+  await openGuide();await click(button("출발로 지정"));
   expect(group("출발역").querySelector("input")!.value).toBe("서울");
+  expect(group("출발역").querySelector("select")!.value).toBe("");
+  expect(group("도착역").querySelector("select")!.value).toBe("NAT-BUSAN");
+  expect(button("예정 시간표 조회").disabled).toBe(true);
+  expect(timetableCalls()).toHaveLength(0);
+  await pick("출발역","NAT-SEOUL-2");await click(button("예정 시간표 조회"));
+  expect(Object.fromEntries(new URL(timetableCalls()[0][0],"http://fixture").searchParams)).toEqual({departure_station_id:"NAT-SEOUL-2",arrival_station_id:"NAT-BUSAN",date:"2026-10-29",train_grade_code:"00"});
+});
+
+test("지도 재지정은 진행 중 응답을 취소하며 옛 조건으로 돌아와도 자동 재조회하지 않는다",async()=>{
+  let resolveOld!:(value:unknown)=>void;
+  api.get.mockImplementation((path:string)=>path.includes("/timetable?")?new Promise(resolve=>{resolveOld=resolve;}):defaultGet(path));
+  await act(async()=>root.render(<GeneralRailJourney/>));
+  await pick("출발역","NAT-SEOUL-1");await pick("도착역","NAT-BUSAN");await click(button("예정 시간표 조회"));
+  const signal=timetableCalls()[0][1] as AbortSignal;
+  await openGuide();await guideChoice("GUIDE-BUSAN");await click(button("도착으로 지정"));
+  expect(signal.aborted).toBe(true);
+  expect(group("출발역").querySelector("select")!.value).toBe("NAT-SEOUL-1");
+  expect(group("도착역").querySelector("select")!.value).toBe("");
+  await act(async()=>resolveOld({fetched_at:at,stale:false,service_date:"2026-10-28",total:1,truncated:false,items:[{train_number:"OLD-TRAIN",departure_planned_time:"2026-10-28T10:00:00+09:00"}]}));
+  await pick("도착역","NAT-BUSAN");
+  expect(host.textContent).not.toContain("OLD-TRAIN");expect(timetableCalls()).toHaveLength(1);
+  expect(button("예정 시간표 조회").disabled).toBe(false);
+});
+
+test("딥링크 이름이 유일해도 실제 시간표 코드를 자동 확정하지 않는다",async()=>{
+  await act(async()=>root.render(<GeneralRailJourney initialDepartureName="부산" initialStationIntent={{role:"arrival",station:{provider:"korail_public_guide",provider_id:"GUIDE-BUSAN",name:"부산"}}}/>));
   expect(group("도착역").querySelector("input")!.value).toBe("부산");
+  expect(group("도착역").querySelector("select")!.value).toBe("");
+  expect(timetableCalls()).toHaveLength(0);
+  expect(button("예정 시간표 조회").disabled).toBe(true);
 });

@@ -189,3 +189,25 @@ def test_transport_admin_compose_renders_public_dagster_origin(public_origin: st
     )
     services = json.loads(result.stdout)["services"]
     assert services["transport-admin-web"]["build"]["args"]["NEXT_PUBLIC_TRANSPORT_DAGSTER_URL"] == (public_origin or "https://dagster.digitie.mywire.org")
+
+
+def test_new_station_and_regional_reads_are_public_but_writes_are_not() -> None:
+    import re
+    template = (ROOT / "deploy/transport-admin/api-gateway.conf.template").read_text()
+    pattern = re.search(r"location ~ (\^/v1/transport/[^\n]+) \{", template).group(1)
+    for path in ["/v1/transport/fuel/regions", "/v1/transport/rail/stations", "/v1/transport/rail/stations/274/timetable"]:
+        assert re.fullmatch(pattern, path), path
+    for path in ["/v1/admin/collect", "/v1/transport/rail/stations/0/timetable", "/v1/transport/rail/stations/274/delete"]:
+        assert re.fullmatch(pattern, path) is None, path
+
+
+def test_general_rail_guide_has_a_bounded_read_only_cold_load_route() -> None:
+    import re
+    template = (ROOT / "deploy/transport-admin/api-gateway.conf.template").read_text()
+    pattern = r"^/v1/transport/rail/general/(catalog|stations|timetable|guide)$"
+    block = template.split("location ~ " + pattern + " {", 1)[1].split("\n    }", 1)[0]
+    assert "limit_except GET { deny all; }" in block and "proxy_read_timeout 60s;" in block
+    for operation in ("catalog", "stations", "timetable", "guide"):
+        assert re.fullmatch(pattern, f"/v1/transport/rail/general/{operation}")
+    for operation in ("collect", "delete", "guide/admin"):
+        assert re.fullmatch(pattern, f"/v1/transport/rail/general/{operation}") is None

@@ -4711,6 +4711,13 @@
             ],
             "title": "Latitude"
           },
+          "line_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Line Names",
+            "type": "array"
+          },
           "longitude": {
             "anyOf": [
               {
@@ -6967,6 +6974,28 @@
         "title": "ManualPlaceLocationRequest",
         "type": "object"
       },
+      "MetroStationCatalog": {
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TransportPlaceMapItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generated_at",
+          "items"
+        ],
+        "title": "MetroStationCatalog",
+        "type": "object"
+      },
       "ParkingCurrentExportPage": {
         "properties": {
           "has_more": {
@@ -7708,6 +7737,17 @@
       },
       "RailDepartureSummary": {
         "properties": {
+          "code_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Id"
+          },
           "collected_at": {
             "anyOf": [
               {
@@ -7720,10 +7760,39 @@
             ],
             "title": "Collected At"
           },
+          "collection_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pending",
+                  "stored",
+                  "no_data",
+                  "error"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Status"
+          },
           "departure_count": {
             "default": 0,
             "title": "Departure Count",
             "type": "integer"
+          },
+          "last_attempt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt At"
           },
           "line_name": {
             "anyOf": [
@@ -7747,8 +7816,26 @@
             ]
           },
           "place_id": {
-            "title": "Place Id",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Place Id"
+          },
+          "source_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Name"
           },
           "stale": {
             "default": false,
@@ -7768,6 +7855,18 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "time_precision": {
+            "anyOf": [
+              {
+                "const": "minute",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Precision"
           }
         },
         "required": [
@@ -7882,6 +7981,17 @@
       },
       "RailTimetableItem": {
         "properties": {
+          "code_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Id"
+          },
           "collected_at": {
             "anyOf": [
               {
@@ -7894,6 +8004,23 @@
             ],
             "title": "Collected At"
           },
+          "collection_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pending",
+                  "stored",
+                  "no_data",
+                  "error"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Status"
+          },
           "departure_count": {
             "default": 0,
             "title": "Departure Count",
@@ -7905,6 +8032,18 @@
             },
             "title": "Items",
             "type": "array"
+          },
+          "last_attempt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt At"
           },
           "line_name": {
             "anyOf": [
@@ -7928,8 +8067,26 @@
             ]
           },
           "place_id": {
-            "title": "Place Id",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Place Id"
+          },
+          "source_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Name"
           },
           "stale": {
             "default": false,
@@ -7949,6 +8106,18 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "time_precision": {
+            "anyOf": [
+              {
+                "const": "minute",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Precision"
           },
           "upcoming_departures": {
             "items": {
@@ -14156,6 +14325,117 @@
           }
         },
         "summary": "Timetable"
+      }
+    },
+    "/v1/transport/rail/stations": {
+      "get": {
+        "description": "공식 코드·역명을 그대로 읽는다. 위치 파일 연결은 지도 좌표의 보조 정보일 뿐이다.",
+        "operationId": "transport_metro_stations_v1_transport_rail_stations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetroStationCatalog"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Transport Metro Stations"
+      }
+    },
+    "/v1/transport/rail/stations/{code_id}/timetable": {
+      "get": {
+        "operationId": "transport_coded_rail_timetable_v1_transport_rail_stations__code_id__timetable_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code_id",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Code Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "day_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "7",
+                    "8",
+                    "9"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Day Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RailTimetableResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Transport Coded Rail Timetable"
       }
     },
     "/v1/transport/rail/timetables": {

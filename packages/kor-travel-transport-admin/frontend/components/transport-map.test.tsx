@@ -19,8 +19,9 @@ vi.mock("vworld-map-web", async () => {
 });
 vi.mock("./map-overlays", () => ({
   vworldApiKey: () => undefined, useVWorldBasemapHealth: () => ({}), ZoomButtons: () => null, CameraRequest: () => null, MarkerBadge: () => null, ClusterBubble: () => null, MapUnavailable: () => null, OverlapPopup: () => null,
-  MapMarkerButton: ({ ariaLabel, onClick, children }: { ariaLabel: string; onClick: () => void; children: React.ReactNode }) => <button aria-label={ariaLabel} onClick={onClick}>{children}</button>,
+  MapMarkerButton: ({ ariaLabel, onClick, children, className }: { ariaLabel: string; onClick: () => void; children: React.ReactNode; className?: string }) => <button className={className} aria-label={ariaLabel} onClick={onClick}>{children}</button>,
 }));
+vi.mock("./filter-combobox", () => ({ FilterCombobox: ({ options, value, onChange, placeholder }: { options: {value:string;label:string}[]; value:string[]; onChange:(value:string[])=>void; placeholder:string }) => <select aria-label={placeholder} value={value[0] ?? ""} onChange={event=>onChange(event.target.value ? [event.target.value] : [])}><option value="">전체</option>{options.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select> }));
 import { TransportMap } from "./transport-map";
 
 const station: Place = { id: 1, kind: "rail_station", source: "kric_public_file", name: "시험역", longitude: 127.1, latitude: 37.3, line_names: ["시험선"], facilities: [], prices: [], updated_at: "2026-10-25T00:00:00Z" };
@@ -32,16 +33,50 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-test("낮은 축척은 장소 수 대신 행정구역 평균 유가를 표시한다", async () => {
-  Object.assign(mapState, {zoom: 7});
-  vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({items:[],total:3,clustered:true,clusters:[],fuel_regions:[{region_key:"11",label:"서울특별시",product_code:"B027",average_price:1700,station_count:3,longitude:127,latitude:37.5}]}), {status:200}));
+test.each([7, 9])("줌%s 지역 카드 하나에 모든 유종을 함께 표시하고 평균 문구·누락 가격 대체를 넣지 않는다", async (zoom) => {
+  Object.assign(mapState, { zoom });
+  const regions = [
+    ...["B027", "D047", "B034", "K015"].map((product_code, index) => ({region_key:"opinet:11",label:"서울특별시",product_code,average_price:1700+index*100,station_count:3,longitude:127+index*.01,latitude:37.5})),
+    {region_key:"opinet:41",label:"경기도",product_code:"D047",average_price:1600,station_count:2,longitude:127.5,latitude:37.7},
+  ];
+  vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({items:[],total:5,clustered:true,clusters:[],fuel_regions:regions}), {status:200}));
   const container=document.createElement("div");document.body.append(container);const root=createRoot(container);
   try {
     await act(async()=>root.render(<TransportMap mode="fuel"/>));
     await act(async()=>{await new Promise(resolve=>setTimeout(resolve,50));});
-    expect(container.textContent).toContain("서울특별시");
-    expect(container.textContent).toContain("평균 1,700원/L");
-    expect(container.querySelector('[aria-label*="평균 1700원/L, 3곳"]')).not.toBeNull();
+    const cards=container.querySelectorAll(".fuel-region-marker");
+    expect(cards).toHaveLength(2);
+    const seoul=[...cards].find(card=>card.textContent?.includes("서울특별시"))!;
+    for (const label of ["휘발유", "경유", "고급유", "등유", "LPG"]) expect(seoul.textContent).toContain(label);
+    for (const price of ["1,700", "1,800", "1,900", "2,000"]) expect(seoul.textContent).toContain(price);
+    expect(seoul.textContent).toContain("미제공");
+    expect(seoul.textContent).not.toContain("평균");
+    expect(seoul.getAttribute("aria-label")).toContain("경유 1800원/L");
+    expect(seoul.getAttribute("aria-label")).not.toContain("평균");
+    const gyeonggi=[...cards].find(card=>card.textContent?.includes("경기도"))!;
+    expect(gyeonggi.textContent).toContain("1,600");expect(gyeonggi.textContent).not.toContain("1,700");
+  } finally {await act(async()=>root.unmount());container.remove();}
+});
+
+test("지역은 유종 선택과 무관하게 함께 읽고 확대된 주유소에는 선택 유종 필터를 유지한다", async () => {
+  Object.assign(mapState, {zoom:7});
+  vi.mocked(fetch).mockImplementation(async()=>new Response(JSON.stringify({items:[],total:2,clustered:true,clusters:[],fuel_regions:[
+    {region_key:"opinet:11",label:"서울특별시",product_code:"B027",average_price:1700,station_count:1,longitude:127,latitude:37.5},
+    {region_key:"opinet:11",label:"서울특별시",product_code:"D047",average_price:1600,station_count:1,longitude:127,latitude:37.5},
+  ]}),{status:200}));
+  const container=document.createElement("div");document.body.append(container);const root=createRoot(container);
+  const lastUrl=()=>new URL(String(vi.mocked(fetch).mock.calls.at(-1)?.[0]),"http://test");
+  try {
+    await act(async()=>root.render(<TransportMap mode="fuel"/>));
+    await act(async()=>{const select=container.querySelector<HTMLSelectElement>('select[aria-label="전체 유종"]')!;select.value="D047";select.dispatchEvent(new Event("change",{bubbles:true}));});
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,50));});
+    expect(lastUrl().searchParams.has("product_codes")).toBe(false);
+    expect(container.querySelector(".fuel-region-marker")?.textContent).toContain("1,700");
+    expect(container.querySelector(".fuel-region-marker")?.textContent).toContain("1,600");
+    Object.assign(mapState,{zoom:12.5});
+    await act(async()=>[...container.querySelectorAll("button")].find(button=>button.textContent==="지도 이동 모의")!.click());
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,450));});
+    expect(lastUrl().searchParams.get("product_codes")).toBe("D047");
   } finally {await act(async()=>root.unmount());container.remove();}
 });
 

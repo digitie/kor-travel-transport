@@ -3,11 +3,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from kric import StationCodeInfo, KricAuthError, KricRateLimitError, KricServerError
+from kric import StationCodeInfo, KricAuthError, KricNoDataError, KricRateLimitError, KricServerError
 from sqlalchemy import func, select
 
 from app.db.session import create_engine_and_session_factory, init_database
-from app.models import CollectionRun, KricStationCode, KricStationMappingRegistry, KricTimetableSnapshot, RailServiceDay, RailStationReference
+from app.models import CollectionRun, KricStationCode, KricStationMappingRegistry, KricTimetableSnapshot, KricTimetableAttempt, RailServiceDay, RailStationReference
 from app.services.kric_collection import KricTimetableCollectionService, TRIGGER
 from app.services.rail_timetable import stored_rail_timetables
 
@@ -15,6 +15,28 @@ from app.services.rail_timetable import stored_rail_timetables
 def code(station="0312", name="테스트역", line="03"):
     return StationCodeInfo(rail_operator_code="S1", rail_operator_name="운영기관", line_code=line,
         line_name="3호선", station_code=station, station_name=name)
+
+
+@pytest.mark.asyncio
+async def test_next_hour_continues_missing_stations_without_repeating_daily_attempts(test_settings, monkeypatch):
+    clock = [datetime(2026, 11, 1, 3, 0, 20, tzinfo=UTC)]
+    monkeypatch.setattr("app.services.kric_collection.now_utc", lambda: clock[0])
+    settings = test_settings.model_copy(update={"kric_timetable_collection_enabled":True,"kric_service_key":"fake","kric_timetable_max_calls":2})
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+    await init_database(engine)
+    fake = FakeClient()
+    fetch = AsyncMock(return_value=((code(), code("0313", "다른역")), None))
+    service = KricTimetableCollectionService(settings, code_fetcher=fetch, client_factory=lambda *a,**kw:fake, sleep=AsyncMock())
+    async with factory() as session:
+        await service.collect(session)
+        first = {(row["station_code"],row["day_code"]) for row in fake.calls}
+        clock[0] += timedelta(hours=1, seconds=-10)
+        await service.collect(session)
+        second = {(row["station_code"],row["day_code"]) for row in fake.calls[2:]}
+        assert len(first)==2 and len(second)==2 and first.isdisjoint(second)
+        assert await session.scalar(select(func.count()).select_from(KricTimetableSnapshot)) == 4
+        fetch.assert_awaited_once()  # 코드 파일은 하루 한 번만 갱신한다.
+    await engine.dispose()
 
 
 def place(now, name="테스트역", operator="운영기관"):
@@ -42,6 +64,79 @@ class FakeClient:
         if self.wrong_identity:
             return [SimpleNamespace(rail_operator_code="OTHER", line_code="03", station_code="0312", day_code=params["day_code"])]
         return []
+
+
+@pytest.mark.asyncio
+async def test_explicit_no_data_continues_other_stations_and_preserves_last_good_table(test_settings):
+    settings = test_settings.model_copy(update={"kric_timetable_collection_enabled": True, "kric_service_key": "fake", "kric_timetable_max_calls": 9})
+    fake = FakeClient()
+    async def get(**params):
+        fake.calls.append(params)
+        if params["station_code"] == "0312":
+            raise KricNoDataError("KRIC returned no data (03)")
+        return []
+    fake.get_station_timetable = get
+    fake.get_subway_timetable = get
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+    await init_database(engine)
+    service = KricTimetableCollectionService(settings, code_fetcher=AsyncMock(return_value=((code(), code("0313", "다른역")), None)), client_factory=lambda *a, **kw: fake, sleep=AsyncMock())
+    async with factory() as session:
+        stations = await service._sync_codes(session, (code(), code("0313", "다른역")))
+        old_time = datetime.now(UTC) - timedelta(hours=25)
+        session.add(KricTimetableSnapshot(station_id=stations[0].id, day_code="8", collected_at=old_time,
+            items_json=[{"departure_time": "090000", "train_number": "old"}]))
+        await session.commit()
+        result = await service.collect(session)
+        assert result["status"] == "success"
+        assert result["no_data_snapshot_count"] == 3
+        assert result["stored_snapshot_count"] == 3
+        assert result["attempted_snapshot_count"] == 6
+        assert result["provider_call_count"] == 9
+        assert result["failed_snapshot_count"] == 0
+        table = await stored_rail_timetables(session, [], "8", station_codes=[stations[0]])
+        assert table.items[0].collection_status == "no_data"
+        assert table.items[0].last_attempt_at is not None
+        assert table.items[0].items[0].train_number == "old"
+        assert table.items[0].stale
+        assert table.items[0].next_departure is None
+        attempts = (await session.scalars(select(KricTimetableAttempt))).all()
+        assert sorted(row.outcome for row in attempts) == ["no_data"] * 3 + ["stored"] * 3
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("budget", [1, 2])
+async def test_alternate_timetable_fills_missing_station_with_actual_typed_times_within_budget(test_settings, budget):
+    settings = test_settings.model_copy(update={"kric_timetable_collection_enabled": True, "kric_service_key": "fake", "kric_timetable_max_calls": budget})
+    fake = FakeClient()
+    async def primary(**params):
+        fake.calls.append(params)
+        raise KricNoDataError("03")
+    async def alternate(**params):
+        fake.calls.append(params)
+        return [SimpleNamespace(rail_operator_code=params["rail_operator_code"], line_code=params["line_code"],
+            station_code=params["station_code"], day_code=params["day_code"], arrival_time=None,
+            departure_time="091500", train_number="actual")]
+    fake.get_station_timetable, fake.get_subway_timetable = primary, alternate
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+    await init_database(engine)
+    sleep = AsyncMock()
+    service = KricTimetableCollectionService(settings, code_fetcher=AsyncMock(return_value=((code(),), None)), client_factory=lambda *a, **kw: fake, sleep=sleep)
+    async with factory() as session:
+        result = await service.collect(session)
+        assert result["provider_call_count"] == budget and len(fake.calls) == budget
+        assert result["stored_snapshot_count"] == result["alternate_stored_snapshot_count"] == budget - 1
+        assert result["no_data_snapshot_count"] == result["alternate_deferred_snapshot_count"] == 2 - budget
+        snapshot = await session.scalar(select(KricTimetableSnapshot))
+        if budget == 2:
+            assert snapshot.items_json[0]["departure_time"] == "091500"
+            assert snapshot.items_json[0]["terminal_station_code"] is None
+            assert snapshot.items_json[0]["provider_operation"] == "trainUseInfo/subwayTimetable"
+            sleep.assert_awaited_once_with(5)
+        else:
+            assert snapshot is None
+            sleep.assert_not_awaited()
+    await engine.dispose()
 
 
 @pytest.mark.asyncio
@@ -95,15 +190,15 @@ async def test_station_auth_and_quota_errors_stop_without_trying_another_station
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("run_status", ["success", "failed", "running"])
-async def test_48_hour_guard_includes_failed_and_abandoned_runs(test_settings, monkeypatch, run_status):
-    now = datetime(2026, 9, 27, 3, tzinfo=UTC)
+async def test_hourly_batch_guard_includes_failed_and_abandoned_runs(test_settings, monkeypatch, run_status):
+    now = datetime(2026, 9, 27, 3, 59, tzinfo=UTC)
     monkeypatch.setattr("app.services.kric_collection.now_utc", lambda: now)
     settings = test_settings.model_copy(update={"kric_timetable_collection_enabled": True, "kric_service_key": "fake"})
     engine, factory = create_engine_and_session_factory(settings.database_url)
     await init_database(engine)
     fetch = AsyncMock(return_value=((code(),), None))
     async with factory() as session:
-        session.add(CollectionRun(trigger=TRIGGER, started_at=now - timedelta(hours=47, minutes=59), status=run_status))
+        session.add(CollectionRun(trigger=TRIGGER, started_at=now - timedelta(minutes=59), status=run_status))
         await session.commit()
         result = await KricTimetableCollectionService(settings, code_fetcher=fetch).collect(session)
     assert result["status"] == "skipped"
@@ -299,7 +394,7 @@ def test_rail_marker_api_strips_full_timetable_and_deduplicates(client, monkeypa
     assert len(lookup.await_args.args[1]) == 1
 
 
-def test_rail_marker_api_300_distinct_stations_uses_four_reads(client, monkeypatch):
+def test_rail_marker_api_300_distinct_stations_uses_five_reads(client, monkeypatch):
     import asyncio
     from sqlalchemy import event
 
@@ -337,7 +432,7 @@ def test_rail_marker_api_300_distinct_stations_uses_four_reads(client, monkeypat
     assert response.status_code == 200
     items = {row["place_id"]: row for row in response.json()["items"]}
     assert len(items) == 300
-    assert len(reads) == 4  # 장소·달력·코드·스냅샷 각각 한 번, 역별 조회 없음
+    assert len(reads) == 5  # 장소·달력·코드·스냅샷·최근 수집 결과 각각 한 번, 역별 조회 없음
     assert len(response.content) < 200_000
     for i, place_id in enumerate(ids):
         item = items[place_id]
@@ -378,7 +473,7 @@ async def test_verified_calendar_only_and_preservation(test_settings, monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_exact_48_hours_allows_one_batch_and_ambiguous_names_stay_unlinked(test_settings, monkeypatch):
+async def test_daily_refresh_allows_one_batch_and_ambiguous_names_stay_unlinked(test_settings, monkeypatch):
     now = datetime(2026, 9, 27, 3, tzinfo=UTC)
     monkeypatch.setattr("app.services.kric_collection.now_utc", lambda: now)
     settings = test_settings.model_copy(update={"kric_timetable_collection_enabled": True, "kric_service_key": "fake", "kric_timetable_max_calls": 1})
@@ -521,10 +616,10 @@ def test_provider_coverage_counts_active_codes_and_freshness(client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("age,status", [(1, "throttled"), (49, "not_collected")])
+@pytest.mark.parametrize("age,status", [(0.5, "throttled"), (2, "not_collected")])
 async def test_skipped_kric_guard_is_visible_without_claiming_collection(test_settings, monkeypatch, age, status):
     from app.services.provider_status import provider_status
-    now = datetime(2026, 9, 27, 4, tzinfo=UTC)
+    now = datetime(2026, 9, 27, 4, 40, tzinfo=UTC)
     monkeypatch.setattr("app.services.provider_status.now_utc", lambda: now)
     settings = test_settings.model_copy(update={"kric_timetable_collection_enabled": True, "kric_service_key": "fake"})
     engine, factory = create_engine_and_session_factory(settings.database_url)
@@ -537,6 +632,6 @@ async def test_skipped_kric_guard_is_visible_without_claiming_collection(test_se
         assert item.status == status
         assert item.last_success_at is None
         assert item.last_started_at is None
-        assert item.next_due_at == (now + timedelta(hours=48 - age))
+        assert item.next_due_at == ((now - timedelta(hours=age)).replace(minute=0, second=0, microsecond=0) + timedelta(hours=1))
         assert item.error_code is None
     await engine.dispose()

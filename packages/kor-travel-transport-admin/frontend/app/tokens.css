@@ -2,6 +2,17 @@
  * Hallmark · macrostructure: Workbench · design-system: design.md · designed-as-app
  * 교통 마커의 기존 간격 별칭은 유지해 정보 밀도가 갑자기 커지지 않게 한다. */
 :root {
+  --rail-seoul-1: #0052a4; --rail-seoul-2: #00a84d; --rail-seoul-3: #ef7c1c;
+  --rail-seoul-4: #00a5de; --rail-seoul-5: #996cac; --rail-seoul-6: #cd7c2f;
+  --rail-seoul-7: #747f00; --rail-seoul-8: #e6186c; --rail-seoul-9: #bdb092;
+  --rail-busan-1: #f06a00; --rail-busan-2: #81bf48; --rail-busan-3: #bb8c00; --rail-busan-4: #217dcb;
+  --rail-daegu-1: #d93f5c; --rail-daegu-2: #00aa80; --rail-daegu-3: #ffb100;
+  --rail-incheon-1: #7ca8d5; --rail-incheon-2: #ed8b00; --rail-daejeon-1: #007448; --rail-gwangju-1: #009088;
+  --rail-gtx: #9a6292; --rail-shinbundang: #d4003b; --rail-bundang: #f5a200;
+  --rail-gyeongui: #77c4a3; --rail-gyeongchun: #0c8e72; --rail-gyeonggang: #0054a6;
+  --rail-arex: #0090d2; --rail-seohae: #81a914; --rail-ui: #b7c450; --rail-sillim: #6789ca;
+  --rail-donghae: #0054a6; --rail-gimhae: #8652a1; --rail-uijeongbu: #fda600;
+  --rail-everline: #509f22; --rail-gimpo: #ad8605; --rail-korail: #005bac; --rail-srt: #5a2149;
   --surface-page: oklch(97.8% .003 250); --surface-subtle: oklch(96.7% .006 250);
   --surface-muted: oklch(92.5% .01 250); --card: oklch(99.2% .002 250);
   --text-primary: oklch(30% .025 255); --text-secondary: oklch(48% .04 255);
