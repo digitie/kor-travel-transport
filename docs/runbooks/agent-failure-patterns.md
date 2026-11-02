@@ -5,6 +5,12 @@
 저장소에서 발생하지 않았지만 같은 실행 환경(WSL2 + Windows, git + GitHub PR)에서 일반적으로
 반복되는 패턴은 "일반 원칙"으로 따로 표시한다. 새 실수를 발견하면 여기에 추가한다.
 
+## 운영 cutover 관측·접속 정밀화(2026-10-28)
+
+- 부모 실패와 후속 원복 관측을 구분한다. c051의 restore18 기록만으로 전체 native 복구를 성공 처리하지 않고, 원 ID·상태 전체 47개를 두 번 비교한 별도 관측을 인용한다.
+- 컨테이너 내부 psql도 실제 서버 포트를 자동으로 알아내지 않는다. 이번 보호 PG는 서버 Cmd11000인데 기본 socket5432 연결이 실패했다. 보호 CID와 정본 Cmd 포트·클라이언트 endpoint override를 검증한 뒤 명시하며, 타임아웃 확대나 PGPORT 임의 주입으로 대체하지 않는다.
+- 고정 사유와 phase가 없던 29f의 원인을 뒤의 FD9/PG 결함으로 소급 확정하지 않는다. 소스 리뷰·순수 시험·진단 추가는 실제 cutover 성공과 별도다. [실패·원복 근거](../reports/2026-10-28-production-3f-rollout.md).
+
 ## A. 검증·보고
 
 - **A1 (일반 원칙)**: 실행하지 않았거나 취소된 검증을 "통과"로 보고하지 않는다. 검증 명령은
@@ -15,7 +21,7 @@
   쓰지 말고 safety buffer를 두고(이 저장소는 120초), 그 여유를 ADR/런북에 근거와 함께 남긴다
   ([ADR-002](../adr/002-dual-check-5min-cutover.md) 참고).
 - **A3 (일반 원칙)**: 로컬(WSL2) green을 CI green과 동일시하지 않는다. 이 저장소의 CI는
-  실제 PostgreSQL 16 컨테이너로 `alembic upgrade head` + `alembic check`까지 돌리므로,
+  실제 PostgreSQL 18 컨테이너로 `alembic upgrade head` + `alembic check`까지 돌리므로,
   SQLite 기준 로컬 1차 테스트만 통과했다고 "완료"로 보고하지 않는다. 2차(WSL2+Docker)까지
   통과한 뒤에만 배포로 넘어간다(`AGENTS.md` WSL 테스트 기준).
 - **A4 (실제 사례, PR #47)**: 과거 검증 이미지 태그를 재사용하면 최신 테스트/Compose 계약이

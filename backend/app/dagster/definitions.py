@@ -22,6 +22,7 @@ from dagster import (
 from sqlalchemy.engine import make_url
 from kortravelcommon.deadline import call_with_deadline
 from kortravelcommon.dagster import RecoveryPolicy, coalescing_schedule, infrastructure_retry_sensor, reconciliation_sensor
+from kortravelcommon.scheduling import staggered_cron
 
 from app.dagster import recovery
 from app.dagster.recovery import (
@@ -34,10 +35,11 @@ from app.core.config import Settings, get_settings
 from app.db.session import create_engine_and_session_factory
 from app.services.collection import CollectionService
 from app.services.analytics_cache import refresh_default_analytics_cache
-from app.services.parking_statistics_archive import archive_parking_statistics
+from app.services.parking_global_archive import archive_parking_with_coverage
 from app.services.flight_status import sanitize_upstream_error
 from app.services.bus_collection import BusReferenceCollectionService
 from app.services.kric_collection import KricTimetableCollectionService
+from app.services.general_rail_collection import GeneralRailCollectionService
 from app.services.kakao_place_locations import KakaoPlaceCollectionService
 from app.services.place_locations import PlaceLocationCollectionService
 from app.services.rail_maritime_collection import RailMaritimeCollectionService
@@ -588,6 +590,17 @@ def collect_kric_timetable(context) -> dict[str, Any]:
 
 @op
 @_redact_op_errors
+def collect_general_rail_timetable(context) -> dict[str, Any]:
+    with collection_owner(context.run_id, context.instance):
+        settings = _settings()
+        result = asyncio.run(_run_with_session(settings, GeneralRailCollectionService(settings).collect))
+        if result.get("status") == "failed":
+            raise Failure(description="일반철도 시간표 갱신 실패. 이전 정상 저장본은 유지했습니다.", allow_retries=False)
+        return result
+
+
+@op
+@_redact_op_errors
 def collect_rest_area_reference(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         settings = _settings()
@@ -621,6 +634,11 @@ def kric_timetable_collection_job() -> None:
     collect_kric_timetable()
 
 
+@job(tags=_job_tags("reference", "general_rail_timetable_collection_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
+def general_rail_timetable_collection_job() -> None:
+    collect_general_rail_timetable()
+
+
 @job(tags=_job_tags("parking", "airport_collection_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
 def airport_collection_job() -> None:
     collect_airport_parking()
@@ -629,22 +647,35 @@ def airport_collection_job() -> None:
 @op
 @_redact_op_errors
 def archive_airport_parking_statistics(context) -> dict[str, Any]:
-    # 원본 수집/provider와 별개인 DB 전용 작업. 1단계에서는 자동 schedule/삭제가 없다.
-    result = asyncio.run(_run_with_session(_settings(), archive_parking_statistics))
+    # 원본 수집/provider와 별개인 DB 전용 작업. reader 전환 전 자동 schedule/삭제는 없다.
+    result = asyncio.run(_run_with_session(_settings(), archive_parking_with_coverage))
     fields = {"status", "coverage_status", "archived_buckets", "deferred_buckets", "pruned_snapshots",
               "checked_at", "raw_cutoff_at", "complete_before", "max_buckets",
               "selection_start_at", "selection_end_exclusive", "selected_observed_min_at", "selected_observed_max_at",
               "selected_snapshots", "selected_buckets", "verified_buckets", "verification_scope",
-              "verified_min_bucket_at", "verified_max_bucket_at", "archived_min_bucket_at", "archived_max_bucket_at"}
+              "verified_min_bucket_at", "verified_max_bucket_at", "archived_min_bucket_at", "archived_max_bucket_at",
+              "verification_domain", "airport_status", "airport_coverage_status", "global_status", "global_coverage_status",
+              "latest_seeded", "oldest_pending_at", "deferred_count_scope", "blocked_scope", "blocked_reason", "blocked_bucket_at",
+              "global_buckets", "global_max_buckets", "global_deferred_buckets", "global_deferred_count_scope", "global_oldest_pending_at",
+              "global_selection_start_at", "global_selection_end_exclusive", "global_selected_observed_min_at", "global_selected_observed_max_at",
+              "global_selected_snapshots", "global_selected_buckets", "global_verified_buckets", "global_verification_scope",
+              "global_verified_min_bucket_at", "global_verified_max_bucket_at", "global_archived_min_bucket_at", "global_archived_max_bucket_at"}
     context.add_output_metadata({key: value for key, value in result.items() if key in fields})
     context.log.info(
         "주차 통계 결과: status=%s coverage_status=%s selected_snapshots=%s verified_buckets=%s "
-        "archived_buckets=%s deferred_buckets=%s pruned_snapshots=%s raw_cutoff_at=%s selection=[%s,%s)",
+        "archived_buckets=%s deferred_buckets=%s pruned_snapshots=%s raw_cutoff_at=%s selection=[%s,%s) "
+        "global_status=%s global_verified_buckets=%s global_buckets=%s global_deferred_buckets=%s blocked_reason=%s",
         result.get("status"), result.get("coverage_status"), result.get("selected_snapshots", 0),
         result.get("verified_buckets", 0), result.get("archived_buckets", 0), result.get("deferred_buckets", 0),
         result.get("pruned_snapshots", 0), result.get("raw_cutoff_at"),
         result.get("selection_start_at"), result.get("selection_end_exclusive"),
+        result.get("global_status"), result.get("global_verified_buckets", 0), result.get("global_buckets", 0),
+        result.get("global_deferred_buckets", 0), result.get("blocked_reason"),
     )
+    if result["status"] == "blocked":
+        # 보류 상태 commit 뒤 job은 실패시킨다. 녹색 실행으로 coverage 성공을 위장하지 않는다.
+        raise Failure(description="주차 영구 통계 검산이 보류되었습니다. parking_archive_issues를 확인하세요.",
+                      metadata={key: value for key, value in result.items() if key in fields})
     return result
 
 
@@ -829,12 +860,13 @@ definitions = Definitions(
         place_location_collection_job,
         kakao_place_location_collection_job,
         kric_timetable_collection_job,
+        general_rail_timetable_collection_job,
         rest_area_reference_collection_job,
         rest_area_fuel_price_collection_job,
     ],
     schedules=[
-        coalescing_schedule(project="transport", location_name="kor-travel-transport", job=airport_collection_job, cron_schedule="*/5 * * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
-        coalescing_schedule(project="transport", location_name="kor-travel-transport", job=highway_collection_job, cron_schedule="*/5 * * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
+        coalescing_schedule(project="transport", location_name="kor-travel-transport", job=airport_collection_job, cron_schedule=staggered_cron(interval_minutes=5, phase_minutes=1), execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
+        coalescing_schedule(project="transport", location_name="kor-travel-transport", job=highway_collection_job, cron_schedule=staggered_cron(interval_minutes=5, phase_minutes=3), execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=fuel_collection_job, cron_schedule="0 */8 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         # 매일 due를 평가하되 service가 마지막 성공 뒤 48시간 전에는 provider를 호출하지 않는다.
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=rail_reference_collection_job, cron_schedule="0 3 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
@@ -847,8 +879,9 @@ definitions = Definitions(
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=bus_reference_collection_job, cron_schedule="30 3 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=place_location_collection_job, cron_schedule="30 4 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=kakao_place_location_collection_job, cron_schedule="30 6 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
-        # 실패·강제 종료도 포함해 마지막 시도부터 48시간 guard를 적용한다.
+        # 시간별로 미수집분을 이어가되 같은 역·운행 기준은 24시간 호출 원장으로 보호한다.
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=kric_timetable_collection_job, cron_schedule="0 * * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
+        coalescing_schedule(project="transport", location_name="kor-travel-transport", job=general_rail_timetable_collection_job, cron_schedule="30 2 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         # 휴게소 기준정보는 저변동(약 200행·1회 호출)이라 하루 한 번, 유가는 4시간마다 갱신한다(ADR-013).
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=rest_area_reference_collection_job, cron_schedule="40 3 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=rest_area_fuel_price_collection_job, cron_schedule="25 */4 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),

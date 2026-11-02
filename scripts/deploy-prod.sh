@@ -15,6 +15,11 @@ COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-kor-travel-transport}"
 DEPLOY_STAGE_ONLY="${DEPLOY_STAGE_ONLY:-false}"
 DEPLOY_MODE="${DEPLOY_MODE:-deploy}"
 CANDIDATE_SHA="$(git rev-parse HEAD)"
+ALLOW_RELEASE_POINTER_DRIFT="${ALLOW_RELEASE_POINTER_DRIFT:-}"
+if [[ -n "${ALLOW_RELEASE_POINTER_DRIFT}" && "${ALLOW_RELEASE_POINTER_DRIFT}" != "forward-fix" ]]; then
+  echo "Refusing deployment: ALLOW_RELEASE_POINTER_DRIFT must be empty or forward-fix." >&2
+  exit 2
+fi
 
 # Odroid's shared Dagster workspace expects the transport location on gRPC 12306.
 # Keep the overlay tracked so git archive cannot silently omit it like a local runtime file.
@@ -77,7 +82,7 @@ fi
 ssh "${REMOTE_USER}@${REMOTE_HOST}" "mkdir -p '${REMOTE_APP_DIR}'"
 scp "${ARCHIVE_PATH}" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_ARCHIVE}"
 ssh "${REMOTE_USER}@${REMOTE_HOST}" \
-  "REMOTE_HOST='${REMOTE_HOST}' REMOTE_APP_DIR='${REMOTE_APP_DIR}' REMOTE_ARCHIVE='${REMOTE_ARCHIVE}' REMOTE_ENV_FILE='${REMOTE_ENV_FILE}' COMPOSE_PROJECT_NAME='${COMPOSE_PROJECT_NAME}' CANDIDATE_SHA='${CANDIDATE_SHA}' REMOTE_STAGE='${REMOTE_STAGE}' DEPLOY_STAGE_ONLY='${DEPLOY_STAGE_ONLY}' DEPLOY_MODE='${DEPLOY_MODE}' bash -s" <<'REMOTE_SCRIPT'
+  "REMOTE_HOST='${REMOTE_HOST}' REMOTE_APP_DIR='${REMOTE_APP_DIR}' REMOTE_ARCHIVE='${REMOTE_ARCHIVE}' REMOTE_ENV_FILE='${REMOTE_ENV_FILE}' COMPOSE_PROJECT_NAME='${COMPOSE_PROJECT_NAME}' CANDIDATE_SHA='${CANDIDATE_SHA}' REMOTE_STAGE='${REMOTE_STAGE}' DEPLOY_STAGE_ONLY='${DEPLOY_STAGE_ONLY}' DEPLOY_MODE='${DEPLOY_MODE}' ALLOW_RELEASE_POINTER_DRIFT='${ALLOW_RELEASE_POINTER_DRIFT}' bash -s" <<'REMOTE_SCRIPT'
 set -euo pipefail
 if ! command -v rsync >/dev/null 2>&1; then
   echo "Refusing deployment: rsync is required to remove stale candidate files safely." >&2
@@ -106,6 +111,11 @@ tar -xzf "${REMOTE_ARCHIVE}" -C "${REMOTE_SOURCE}"
 if [[ ! -f "${REMOTE_SOURCE}/transport.override.yml" || -L "${REMOTE_SOURCE}/transport.override.yml" ]]; then
   echo "Refusing deployment: received release archive is missing a regular transport.override.yml." >&2
   exit 2
+fi
+# Manager current release 표식(ADR-60): 컨테이너를 바꾸는 배포는 공유 checkout을 덮기 전에 drift를 확인한다.
+if [[ "${DEPLOY_STAGE_ONLY}" != "true" && "${DEPLOY_MODE}" == "deploy" ]]; then
+  source "${REMOTE_SOURCE}/scripts/manager-release-pointer.sh"
+  require_release_pointer_in_sync || exit 2
 fi
 # 이 receipt는 현재 배포된 SHA와 달리, 공유 checkout의 복사가 끝났다는 증거다.
 # 복사 중 끊기면 이전 receipt로 혼합 소스를 배포하지 못하도록 먼저 무효화한다.

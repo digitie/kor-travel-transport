@@ -104,9 +104,20 @@ def test_public_station_guide_is_keyless_and_independent_of_tago_denial(test_set
     monkeypatch.setattr("app.general_rail_routes.DataGoKrClient", fake_client(train))
     settings = test_settings.model_copy(update={"seed_sample_data": False, "data_go_kr_service_key": "fake"})
     with TestClient(create_app(settings)) as client:
+        # 이전 버전이 저장한 빈 분류 카탈로그가 있어도 배포 직후 전체 역을 읽어야 한다.
+        import asyncio, json
+        from app.models import GeneralRailQuerySnapshot
+        async def legacy_catalog():
+            async with client.app.state.session_factory() as session:
+                session.add(GeneralRailQuerySnapshot(operation="station_guide",request_key=json.dumps(["ktx", ""]),fetched_at=now_utc(),response_json={
+                    "fetched_at":now_utc().isoformat(),"kind":"ktx","category_code":"","total":19,"items":[],
+                    "categories":[{"code":"ktx1","name":"경부선"}]}))
+                await session.commit()
+        asyncio.run(legacy_catalog())
         assert client.get("/v1/transport/rail/general/catalog").status_code == 502
         catalog = client.get("/v1/transport/rail/general/guide")
-        assert catalog.status_code == 200 and catalog.json()["items"] == []
+        assert catalog.status_code == 200 and catalog.json()["items"][0]["station_name"] == "서울"
+        assert catalog.json()["items"][0]["line_names"] == ["경부선"]
         result = client.get("/v1/transport/rail/general/guide", params={"kind": "ktx", "category_code": "ktx1"})
         assert result.status_code == 200
         assert result.json()["items"][0]["provider_id"] == "001"
@@ -142,10 +153,10 @@ def test_unknown_guide_category_is_checked_against_the_kind_page_before_any_prov
     with TestClient(create_app(test_settings.model_copy(update={"seed_sample_data": False}))) as client:
         # kind 페이지가 없으면 한 번 받아 저장한 뒤 검증한다.
         assert client.get("/v1/transport/rail/general/guide", params={"category_code": "unknown"}).status_code == 422
-        assert calls == [("catalog", "ktx")]
+        assert calls == [("located", "")]
         # 캐시된 kind 페이지로 거절한다 — 일일 호출 횟수를 쓰지 않는다.
         assert client.get("/v1/transport/rail/general/guide", params={"category_code": "other"}).status_code == 422
-        assert calls == [("catalog", "ktx")]
+        assert calls == [("located", "")]
 
 
 def test_daily_cap_retry_after_points_to_the_next_korean_midnight(test_settings, monkeypatch):

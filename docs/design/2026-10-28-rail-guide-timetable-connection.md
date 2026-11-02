@@ -1,5 +1,9 @@
 # 철도 역 안내→시간표 최소 연결 설계
 
+> 후속 구현 상태: 단계 A의 이름 검색 의도·실제 TAGO 후보 확인 연결과 로컬 두 계층 검증은
+> [별도 구현 원장](../reports/2026-10-28-rail-guide-station-intent.md)으로 정리했다. 아래 조사 당시의 미구현 기록은 source3f 기준 이력이며,
+> 단계 B/API·시설·실제 UI 수용은 여전히 미완이다.
+
 [현행 source·웹/Android/iOS 조사](../research/2026-10-28-rail-guide-connection.md),
 [검증 범위와 구현 미완 gate](../reports/2026-10-28-rail-guide-research-validation.md)를 근거로 한다.
 

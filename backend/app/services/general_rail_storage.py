@@ -19,5 +19,7 @@ async def save_general_rail(session: AsyncSession, operation: str, key: str, res
         set_={"fetched_at": statement.excluded.fetched_at, "response_json": statement.excluded.response_json},
         where=statement.excluded.fetched_at >= GeneralRailQuerySnapshot.fetched_at)
     await session.execute(statement)
-    await session.execute(delete(GeneralRailQuerySnapshot).where(GeneralRailQuerySnapshot.fetched_at < now_utc() - timedelta(days=32)))
+    await session.execute(delete(GeneralRailQuerySnapshot).where(
+        GeneralRailQuerySnapshot.fetched_at < now_utc() - timedelta(days=32),
+    ).execution_options(synchronize_session=False))
     await session.commit()
