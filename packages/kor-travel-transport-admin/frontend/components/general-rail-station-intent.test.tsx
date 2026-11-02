@@ -3,6 +3,9 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Place } from "@/lib/journey";
+import type { RailStation } from "@/lib/general-rail";
+
+type PickerProps = {id:string;label:string;stations:RailStation[];value:RailStation|null;onChange:(station:RailStation|null)=>void;searchRequest?:{revision:number;text:string}};
 
 const api = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock("@/lib/journey", async (original) => ({ ...await original<typeof import("@/lib/journey")>(), transportGet: api.get }));
@@ -19,7 +22,7 @@ vi.mock("next/dynamic", () => ({ default: () => function MapFixture({ toolbar, f
 </div>; } }));
 
 vi.mock("./general-rail-station-detail",()=>({GeneralRailStationDetail:()=>null}));
-vi.mock("./rail-station-picker",()=>({RailStationPicker:({id,label,stations,value,onChange,searchRequest}:any)=><fieldset><legend>{label}</legend><input id={id} aria-label={`${label} 검색`} value={searchRequest?.text??""} readOnly/><select aria-label={`${label} 후보`} value={value?.station_id??""} onChange={event=>onChange(stations.find((station:any)=>station.station_id===event.target.value)??null)}><option value="">선택</option>{stations.map((station:any)=><option key={station.station_id} value={station.station_id}>{station.station_name} · {station.city_name}</option>)}</select></fieldset>}));
+vi.mock("./rail-station-picker",()=>({RailStationPicker:({id,label,stations,value,onChange,searchRequest}:PickerProps)=><fieldset><legend>{label}</legend><input id={id} aria-label={`${label} 검색`} value={searchRequest?.text??""} readOnly/><select aria-label={`${label} 후보`} value={value?.station_id??""} onChange={event=>onChange(stations.find(station=>station.station_id===event.target.value)??null)}><option value="">선택</option>{stations.map(station=><option key={station.station_id} value={station.station_id}>{station.station_name} · {station.city_name}</option>)}</select></fieldset>}));
 
 import { GeneralRailGuide } from "./general-rail-guide";
 import { GeneralRailJourney } from "./general-rail-journey";
@@ -64,12 +67,6 @@ async function change(element: HTMLInputElement | HTMLSelectElement, value: stri
 function button(text: string, scope: ParentNode = host) { return [...scope.querySelectorAll<HTMLButtonElement>("button")].find((node) => node.textContent === text)!; }
 async function click(element: HTMLElement) { expect(element).toBeTruthy(); await act(async () => element.click()); }
 function group(label: string) { return [...host.querySelectorAll<HTMLFieldSetElement>("fieldset")].find((node) => node.querySelector("legend")?.textContent === label)!; }
-async function chooseTago(label: string, city: string, name: string, node: string) {
-  const field = group(label);
-  await change(field.querySelector("select")!, city);
-  await change(field.querySelector("input")!, name);
-  await click(button(name + node, field));
-}
 async function guideChoice(provider = "GUIDE-SEOUL") {
   const category = host.querySelector<HTMLSelectElement>('select[id$="-category"]')!;
   if (!category.value) await change(category, "ktx1");
