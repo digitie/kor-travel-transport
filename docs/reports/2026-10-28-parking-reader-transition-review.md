@@ -130,3 +130,33 @@ DB 없는 실제 archive builder 기반11개 순수 회귀(7/14/21/28/90일×전
 실행 텍스트까지 맞추기 위해 core.autocrlf=false의 새b8 LF archive에서 순수11개를0.748초에
 다시 통과했다(actual0/독립wait0). 두 제품 파일의 실제 SHA256은 첫 WSL과 최종 Docker가 같다.
 이는 전체/실제 DB/API/cache/bundle 검증이 아니며 해당 연결과 독립 리뷰는 여전히 미완 gate다.
+
+### 2B 다음 내부 단위: DB 입력의 단일 snapshot
+
+`parking_archive_query`는 archive와 필요한 raw를 한 UNION ALL statement로 읽는다. READ COMMITTED의
+별도 두 SELECT 사이에 backfill이 발행되면 첫 archive 결과는 비고 뒤 raw의 NOT EXISTS에서도
+행이 제외되는 경쟁을 피하기 위한 선택이다. 실제 API와 caller transaction의 격리수준/commit은 바꾸지 않는다.
+
+전국 scope도 Airport에서 각 공항 PK 시간 범위로 LATERAL/OFFSET0 조회하며 raw seal은 UTC10분
+PK 등가 LATERAL/OFFSET0이다. 기존 index를 사용하고 실제 계획을 확인하기 전 bounded 실행을
+완료로 표시하지 않는다. 같은 statement의 lot 우선 scope를 보존하며 현재 세 pattern과 같은 KST 기준이다.
+[SQLAlchemy의 상관 LATERAL](https://docs.sqlalchemy.org/en/20/tutorial/data_select.html#lateral-correlation)을
+참고했으며 실제 고정 runtime/PG의 실행·계획 검증이 우선이다.
+
+원본은 요청 기간과 겹치는 미봉인 구간·seal보다 새 id인 재수신·archive의 요청 절단 경계만 읽는다.
+마지막 경우에만 raw JSON을 반환한다. archive와 아직 겹치는 모든 과거 raw를 매 조회마다 다시
+지문 검산하는 기능이 아니며, 원본 삭제 직전 전체 count/hash 검산은 별도 필수 gate다.
+소실된 경계의 부분기간·기존 하한-only API의 미래 관측·기본14일 cutoff의 effective 범위/header 및
+cache/bundle과의 일치는 실제 API 연결 전 정리한다. 현재 응답·에러 코드는 바뀌지 않는다.
+
+동결980의 실제 PG8회귀에서 두 SELECT 사이 별도 transaction의 backfill 발행은 빈 결과로
+RED이며 같은 경쟁의 한 statement는 원래 두 관측을 모두 유지해 GREEN이다. 원본 제거 전후
+7/14/21/28/90일×전국/공항/lot/동시lot·공항의lot우선4scope가 세 기존 pattern과 같다.
+절단 경계의 raw JSON만 전송하고, 원본 없는 절단은 명시적 예외이며 새 id 재수신도 감지했다.
+
+a0는 제품이980과 같고 실제 계획 회귀만 추가했다. WSL/Docker 각20 PASS+48 subtests,
+F/E/skip0·actual0·독립wait0(14.40초/11.98초),834 LF파일·106패키지/Git10 동일·원 자식/CID0,
+두 DB schema37/client0·PG OOM/max0·OpenAPI check0이다.3만 요청 밖의 계획 전용 과거 stat은
+유효 backfill로 세지 않으며, 통계 전후×literal/일반준비4종의 실행한 stat scan에서 PK의
+공항/버킷 조건·Rows<=1·불필요필터<10을 검산했다. 입력/조회 범위 밖 전체 이력을 읽지 않았다는
+이 합성 사례의 증거이며 모든 운영 분포의 성능 보증이나 새 API 전환 수용을 뜻하지 않는다.
