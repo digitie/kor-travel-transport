@@ -9,7 +9,7 @@ from collections import OrderedDict
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import Float, and_, cast, delete, func, insert, or_, select, text, tuple_
+from sqlalchemy import Float, String, and_, cast, delete, exists, func, insert, literal, or_, select, text, tuple_, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.time_utils import serialize_utc
@@ -78,6 +78,23 @@ def _metrics(count: int, average: float, minimum: float, maximum: float,
     }
 
 
+async def _opinet_cohort_matches(session: AsyncSession, stamp: datetime) -> bool:
+    """이미 공개된 구 모집단도 같은 성공 원본으로 정정하며, 정상 재시도는 쓰지 않는다."""
+    expected = select(cast(FuelLatestPrice.fuel_station_id, String),
+                      FuelLatestPrice.product_code, FuelLatestPrice.price).join(
+        FuelStation, FuelStation.id == FuelLatestPrice.fuel_station_id,
+    ).where(FuelStation.source == OPINET, FuelLatestPrice.price > 0,
+            FuelLatestPrice.collected_at == stamp)
+    published = select(FuelStatisticsPoint.station_key, FuelStatisticsPoint.product_code,
+                       FuelStatisticsPoint.price).where(
+        FuelStatisticsPoint.source == OPINET, FuelStatisticsPoint.generated_at == stamp)
+    differences = union_all(
+        select(literal(1)).select_from(expected.except_(published).subquery()),
+        select(literal(1)).select_from(published.except_(expected).subquery()),
+    ).subquery()
+    return not bool(await session.scalar(select(exists(select(1).select_from(differences)))))
+
+
 async def publish_fuel_statistics(session: AsyncSession, source: str, collected_at: datetime) -> None:
     """세대별로 준비하고 마지막에만 원천 잠금을 잡아 공개 포인터를 전환한다."""
     await session.flush()
@@ -87,16 +104,20 @@ async def publish_fuel_statistics(session: AsyncSession, source: str, collected_
         await session.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:generation, 0))"),
                               {"generation": f"fuel-statistics:{source}:{stamp.isoformat()}"})
     state = await session.get(FuelStatisticsState, source, populate_existing=True)
-    if state is not None and serialize_utc(state.generated_at) >= stamp:
+    if state is not None and serialize_utc(state.generated_at) > stamp:
         return
     collection = await session.scalar(select(TransportCollectionState).where(
         TransportCollectionState.source == source,
     ).execution_options(populate_existing=True))
     if collection and collection.last_success_at and serialize_utc(collection.last_success_at) != stamp:
         return
+    rebuild_current = bool(state is not None and serialize_utc(state.generated_at) == stamp
+                           and source == OPINET and not await _opinet_cohort_matches(session, stamp))
+    if state is not None and serialize_utc(state.generated_at) == stamp and not rebuild_current:
+        return
     day = stamp.astimezone(ZoneInfo("Asia/Seoul")).date()
     # 원본 저장 트랜잭션은 호출자가 먼저 확정한다. 같은 collected_at 재시도도
-    # savepoint 안에서 준비 세대만 교체하며 공개 세대에는 손대지 않는다.
+    # savepoint 안에서 교체한다. 현재 세대의 구 모집단 정정도 같은 commit으로 공개한다.
     await session.execute(delete(FuelStatisticsPoint).where(
         FuelStatisticsPoint.source == source, FuelStatisticsPoint.generated_at == stamp,
     ))
@@ -123,6 +144,7 @@ async def publish_fuel_statistics(session: AsyncSession, source: str, collected_
             FuelStation.sigungu_value, FuelStation.sigungu_name, FuelLatestPrice.product_code, FuelLatestPrice.price,
         ).join(FuelLatestPrice, FuelLatestPrice.fuel_station_id == FuelStation.id).where(
             FuelStation.source == source, FuelLatestPrice.price > 0,
+            FuelLatestPrice.collected_at == stamp,
         ).order_by(FuelStation.id, FuelLatestPrice.product_code).execution_options(yield_per=500)
         stream = await session.stream(statement)
         async for row in stream:
@@ -184,7 +206,9 @@ async def publish_fuel_statistics(session: AsyncSession, source: str, collected_
     ).execution_options(populate_existing=True))
     superseded = bool(collection and collection.last_success_at and
                       serialize_utc(collection.last_success_at) != stamp)
-    if superseded or (state is not None and serialize_utc(state.generated_at) >= stamp):
+    already_published = state is not None and (serialize_utc(state.generated_at) > stamp
+        or (serialize_utc(state.generated_at) == stamp and not rebuild_current))
+    if superseded or already_published:
         await session.execute(delete(FuelStatisticsPoint).where(
             FuelStatisticsPoint.source == source, FuelStatisticsPoint.generated_at == stamp,
         ))

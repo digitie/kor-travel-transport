@@ -35,7 +35,7 @@ def test_regional_prices_use_entire_region_not_bbox_or_marker_limit(client):
 
 def test_regions_are_frozen_until_successful_publication_and_history_is_permanent(client):
     from datetime import timedelta
-    from sqlalchemy import func, select
+    from sqlalchemy import func, select, update
     from app.models import FuelLatestPrice, FuelRegionSummary
     from app.services.fuel_regions import regional_fuel_prices
 
@@ -51,6 +51,7 @@ def test_regions_are_frozen_until_successful_publication_and_history_is_permanen
             latest.price = 2200
             await session.commit()
             assert await regional_fuel_prices(session, **args) == before
+            await session.execute(update(FuelLatestPrice).values(collected_at=stamp + timedelta(days=40)))
             await publish_fuel_statistics(session, OPINET, stamp + timedelta(days=40))
             await session.commit()
             after = await regional_fuel_prices(session, **args)

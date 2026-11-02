@@ -1,3 +1,8 @@
+## 2026-11-02 — 이번 수집분 통계·지도 키 후속
+
+- [ ] **T-FUEL-CURRENT-COHORT-01** — 인간이 선택한 이번 성공 수집분만 통계로 발행한다. WSL/Docker PG18 회귀는 완료했으며 운영 소스 적용·현재 세대 원자 정정·산술/API/DOM 재대조는 남아 있다. 이전110개 가격 원본과 지난 지역 통계는 보존한다.
+- [ ] **T-VWORLD-INPUT-APPLY-01** — 현재 시간표/Opinet 작업 정산 뒤 인간이 비공개 제공한 VWorld 키를 Weather·Transport에 반영하고 PC/모바일 타일을 확인한다. 키 값은 Git·문서·로그에 기록하지 않는다. 기존 키나 다른 환경·서비스는 임의 변경하지 않는다.
+
 ## 2026-11-02 — 배포 후 자료 범위 관측
 
 - [ ] **T-RAIL-CATALOG-FILL-01** — 부산114역의 세 운행일 저장·두 역 PC/모바일 수용은 완료했다. 기존 단일 공식 run8c515b1c와 정기 이어받기에서 나머지 기관의 초도 채움·자료 없음·실패를 구분해 관측한다. 작업 중인 수집을 중복하거나 종료하지 않는다.
@@ -52,7 +57,7 @@
   함께 정하는 별도 PR.
 - [ ] T-DEPLOY-02 — 배포 중 Transport instigator pause/restore·QUEUED drain을 스크립트로 옮길지 외부 controller와 결정한다.
   code-server 정본 포트 14005→12306 정리는 Manager의 odroid override 소비 확인 뒤 한다.
-- [ ] 소유자·설계 결정 대기: OPINET 통계 모집단의 사라진 주유소(공용 퇴역·신선도 정책), KRIC 계획 시간표 48시간
+- [ ] 소유자·설계 결정 대기: KRIC 계획 시간표 48시간
   신선도와 수집 예산, 고속도로 통계의 전체 주기 서버 집계(새 API), Map T2~T4 `last_attempt_failed`·급감 override·
   parking 신선도 기준, 일반철도·ITS 결정적 오류의 provider 실패 분류. 세부는 리뷰 통합 PR 본문의 보류 표를 따른다.
 - [ ] Common·별도 PR 대기: reverse_address keep 규칙(Common), MapReadout 좌표 live region(Common), 관리자 e2e 정비,

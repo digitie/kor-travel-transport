@@ -20,6 +20,8 @@ API·legacy 실행의 NULL 소유권은 자동 회수 대상에서 제외한다.
 
 ## 수집 완료 유가 통계 (`0028_fuel_statistics`)
 
+2026-11-02 사용자가 선택한 오피넷 모집단은 이번 성공 수집분이다. `fuel_latest_prices.collected_at`과 성공 세대가 같은 양수 가격만 point·지역·일별 통계로 발행한다. 이전 가격 원본과 지난 영구 요약은 유지한다. 같은 공개 세대의 구 모집단은 기존 원천 잠금·세대 잠금 및 savepoint로 원자 정정하며, 정상 가격 집합의 재시도는 쓰기 없이 끝난다. 이 기준 변경에는 스키마 migration이 없다.
+
 원천별 발행 포인터 `fuel_statistics_states`, 최신 지도 가격 `fuel_statistics_points`,
 KST 일별 범주/유종 집계 `fuel_statistics_daily`를 분리한다. 원본 이력은 보존하고
 조회 시에는 읽지 않는다. 지도 가격은 bbox 인덱스를 사용하며 일별 집계는 오늘 포함
