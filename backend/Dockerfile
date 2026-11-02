@@ -1,7 +1,13 @@
+FROM ghcr.io/astral-sh/uv:0.11.21 AS uv
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_LINK_MODE=copy \
+    PATH="/opt/venv/bin:$PATH"
+COPY --from=uv /uv /uvx /bin/
+RUN python -m venv /opt/venv
 
 WORKDIR /app
 
@@ -23,8 +29,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY --chmod=0644 backend/pyproject.toml backend/uv.lock /app/
 
-RUN pip install --no-cache-dir "uv==0.11.21" \
-    && uv export --locked --extra dev --no-emit-project --no-hashes \
+RUN uv export --locked --extra dev --no-emit-project --no-hashes \
         --format requirements.txt --output-file /tmp/backend-requirements.txt \
     && pip install --no-cache-dir --no-deps -r /tmp/backend-requirements.txt
 
