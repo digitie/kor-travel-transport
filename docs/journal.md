@@ -1,5 +1,10 @@
 ## 2026-11-02 18:38 KST — VWorld 서버 반영·후속 완료
 
+## 2026-11-02 전체 PR 새 이미지 반영 완료
+
+제품 소스 `f22364dc08c94c4be88ade88cf635728d94c8272`의 새 이미지를 운영에 반영했다. 웹부터 교체한 뒤 수집 자연 종료·migration·API/수집 서버 교체·원 일정 복원·Manager metadata 정산을 마쳤다. Firefox PC/모바일 실제 결과와 범위는 [통합 배포 기록](reports/2026-11-02-all-pr-images-release.md)에 정리했다. 백업·복원과 추가 독립 리뷰는 사용자 지시로 생략했다.
+
+
 - 서버 4역할의 실제 Settings 입력 일치와 healthy, Transport 원 일정 19개 복원, 기존 웹·다른 환경·서비스 보존을 확인했다. 후속73b533ba37/최초Invocationc8ea81c16ac0434da047a6438ef5c166은 실제0/종료/Main0/cgroup 부재다. 양 앱 Manager adopt/verify/show healthy와 전용 one-shot metadata를 확인했고 migration·DB·SDK 변경은 없다.
 - Transport API61804a5c/CS676d3580은 같은0d861d09에서 키 한 값만 교체했다. Weather API19ba900f/3f1236bf와 새로 관측된 CS4a48f58a/739b1b77의 기존 새 키를 유지했으며 재생성하지 않았다. 원 웹·첫 서버 실패와 변경된 Weather 일정 카탈로그를 보존했다.
 - 앞서 수용한 두 웹·PC/모바일 4개 타일 검사·철도2357저장/967기관자료없음·유가30119개 집계 결과를 합쳐 정산했다. 백업·복원은 사용자 지시로 생략했으며 추가 외부 수집·정리·원본 삭제는 없다. [최종 결과·증거·남은 범위](reports/2026-11-02-rail-opinet-vworld-followup.md).

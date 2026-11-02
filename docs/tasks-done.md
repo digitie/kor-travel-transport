@@ -1070,3 +1070,5 @@ ADR014·legacy6개 은퇴·5role 메모리/Opinet 수용은 후속이다.
   `.agents/skills`를 kor-travel-map 방식으로 이식했다.
 - architecture/runbooks/reports와 tasks/resume/journal 구조를 정리하고 운영 IP·도메인·포트
   규칙을 문서화했다.
+
+- [x] 2026-11-02 모든 미반영 PR 통합·새 ARM64 이미지 운영 반영·PC/모바일 실제 확인. [결과](reports/2026-11-02-all-pr-images-release.md)
