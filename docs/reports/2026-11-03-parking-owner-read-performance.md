@@ -4,10 +4,11 @@ Map 데이터 복제가 아니라 수집·저장·조회 기능을 Transport에 
 전국주차장 기준정보를 직접 수집하고 `0041_public_parking_lots`에 저장한다. 공항 실시간 주차는
 기존 경로를 유지한다. [데이터 모델](../architecture/data-model.md)과 [설계](../design/2026-11-03-public-parking-owner.md)를 따른다.
 
-2026-11-03 최종 확인에서 Weather와 Transport의 읽기 비용 개선 및 새 Transport API·수집기
-이미지 반영은 완료됐다. 그러나 일반 주차장 공식 수집은 공급자 403으로 실패했고 운영 DB의
-`last_success_at`은 `null`이다. **18,992개 시설 검산은 보존 원문의 오프라인 결과이며 운영 게시
-성공이 아니다.** 키 등록 확인과 실데이터 목록·상세·지도 수용은 남아 있다.
+2026-11-03 Weather와 Transport의 읽기 비용 개선·기능 이미지 반영을 완료했다. 일반 주차장의
+기존 OpenAPI 수집은403이었으나, 사용자의 “파일이라 key 불필요” 지적 뒤 공식 공개 파일 다운로드가
+키 없이 동작함을 확인했다. 이 다운로드 경로를 SDK18864a3/소비자f60b023에 반영했고 새 이미지
+e7cdd88e를 배포했다. 공식 수집61213dad/앱5730 SUCCESS·18992시설 저장·DB/API/export·
+실제 PC/모바일 수용을 완료했다. 키 활용신청·등록 확인은 필요 없다. 아래의 기존403·빈 화면 관측은 이력이다.
 
 ## 기능과 API
 
@@ -49,9 +50,9 @@ CI 통과 이력도 보존한다.
 백업·복원과 새 독립 리뷰는 사용자 지시로 생략했다.
 원본 삭제·과거 집합 정리·Map DB 접근·자동 복원은 수행하지 않는다.
 
-## 최종 실제 이미지·DB·일정 반영
+## 파일 경로 보정 전 이미지·DB·일정 반영 이력
 
-Transport의 현재 API·수집기는 제품 `dc7a9ff0dd20aa200e8f4d76c58ee50dc9d9785f`, SDK
+당시 Transport API·수집기는 제품 `dc7a9ff0dd20aa200e8f4d76c58ee50dc9d9785f`, SDK
 `c936a5aa921318c606d1dbd157b657bc04d5cfd5`를 소비한다. 최종 ARM64 이미지는
 `sha256:6c2f187b42ac26b91ebf6eb2322d158628c7cb7d21d11395ac2930b07a03cb4a`다.
 API 컨테이너는 `1aafa91dd4a4c791bfb46480fef70f3e2a996bc4bc3520ab3f758bbb6d19f640`,
@@ -140,7 +141,7 @@ Claude checkout의 legacy 변수 `KRTOUR_MAP_DEBUG_UI_DATAGOKR_SERVICE_KEY`,
 `local-map-parking-key-expanded.json`, `local-parking-key-validation.json`,
 `local-parking-key-local-sdk-validation.json`이다.
 
-현재 일반 주차장 source의 `last_success_at=null`, `last_error=TransportError`다.
+당시 일반 주차장 source의 `last_success_at=null`, `last_error=TransportError`였다.
 목록은 HTTP 200이지만 빈 항목과 실패 표시를 반환하고, 인증 export는 완료본이 없어 503이다.
 따라서 운영 18,992개 게시·실데이터 목록/상세/지도 수용을 완료로 표시하지 않는다.
 
@@ -154,10 +155,67 @@ Firefox157 PC1440·모바일375의 안내·넘침0·페이지 오류0·로그아
 범위만 보정한 별도 관측에서 확인했고 제품은 재배포하지 않았다. 결과는 여전히
 `NOT_READY/no_stored_rows`다.
 
-남은 필수 입력은 전국주차장정보표준데이터의 활용신청·키 등록 확인, 또는 등록된 키가 있는
-Git 밖 비공개 파일의 PATH다. 사용자에게 이 확인을 요청한 상태이며 키 값을 채팅·로그·Git에
-받거나 기록하지 않는다. 입력이 해결된 뒤 공식 수집의 실제 성공과 DB/API·목록/상세/지도
-수용을 확인해야 한다. 백업·복원 재도입, 새 리뷰, 원본 정리나 자동 복원을 추가 게이트로 삼지 않는다.
+당시에는 활용신청·키 등록 확인을 요청했으나 파일 다운로드를 놓친 판단이었다. 사용자 지적 뒤
+그 입력 요구를 철회하고 아래 공개 파일 경로로 수정했다. 원403·실패·NOT_READY 증거는 삭제하지 않는다.
+백업·복원 재도입, 새 리뷰, 원본 정리나 자동 복원을 추가 게이트로 삼지 않는다.
+
+## 키 없는 공식 파일 경로 보정
+
+공식 상세 페이지의 `std-download-manager.js`가 사용하는 공개 다운로드 경로는
+`/download/columList.json?pk=15012896&ext=JSON`과 `/download/standard.json`이다.
+포털 CSV/JSON 다운로드와 같은 원천이며 키·활용신청이 필요 없다. SDK에 전용 무인증 전송을
+추가해 키가 설정돼 있어도 다운로드에 보내지 않는다. API 전송과 TPS 예산을 공유하고 종료한다.
+전체 건수·컬럼·각 페이지 길이·다운로드 전후 메타데이터를 검산하며5만 건 상한 자료는 거부한다.
+대문자 원문은 그대로 보존하고 typed 필드에 대응하는 책임은 SDK에 둔다. Transport는 기존
+0041·복합 식별·충돌 공통값 투영·원자 성공 포인터 계약을 그대로 소비한다. 스키마 변경은 없다.
+
+SDK18864a3의 WSL/Docker 관련32개씩·ruff·mypy, 소비자f60b023의 PG18 WSL/Docker14개씩과
+lock 검사를 통과했다. 새 실제 공개 파일은 두 페이지10000+8994행·고유18992시설/충돌2개였다.
+이 사전 검산은 운영 DB 쓰기0이며 공식 job 성공으로 바꾸지 않는다. 첫 새 빌드4358e08029는
+BASE digest를 저장소 이름으로 해석해 실제1/Docker1/Main0/cgroup부재로 종료했다. 같은 소스·
+wheel·Dockerfile의 BASE만 검증된 로컬 태그로 고친 별도R2 997556e2ab/첫Invocation
+e33427a3eef24108a388cf26e38c525c는 실제0/Docker0/Main0/cgroup부재·native무인증 계약을 통과했다.
+
+최신 API·수집기의 제품은 `f60b02327bb2c720c091b910d45ab330fea97fd0`, SDK는
+`18864a3aa3314bcd4cbefb6fabcd589c5847f750`, ARM64 이미지는
+`sha256:e7cdd88ed0fddd4880826e542d24222c7d79804ca1764f857ed7b4937a6dc9a5`다.
+API CID는 `881082deacb887011b268f0c23f33655f353c4f00fb13e5595b43a24f246dde1`,
+수집기 CID는 `fca04b02a1f0c21a1b9f01edf216b855a698c5b1cb6f6db3ea5f6a6b7ecb19cc`다.
+배포7805f2ba09/첫Invocation2f2d4c04aa894e22911b1e83622dd268은 실제0/Main0/cgroup부재·
+소유 자식 종료이며 다섯 역할 healthy·원20개 일정 복원·환경파일 동일성을 확인했다. API12302·
+CS12306·관리 화면9b8b7ad0/12305·PG18/0041은 유지했다. 최신 Manager 정본은
+`/srv/ktdm-releases/transport-adopt-20261103T114711Z-0c42bf2e590f4219998cdcb1a06340d9`다.
+runtime 교체는 API·수집기2개뿐이고 다른 역할·다른 서비스·키·환경·스키마 변경은 없다.
+
+공식 작업 `61213dad-ca2b-4fc2-8bfa-870b16c18f80`·앱5730은 실제 SUCCESS/success다.
+제출 부모bc30e8c0b1/첫Invocation754a71612dc4441e8c98c8c220731c6a도 실제0/Main0/cgroup부재·
+자식 종료다. 제출0과 작업SUCCESS를 구분했고 관측했던 run 부모·로그 자식 PID도 현재 부재다.
+원문2페이지18994행·고유18992시설·충돌2개,0면18곳을 보존했다. 좌표 미제공751곳은 DB에 남기고
+지도에서는 제외한다. 새 성공 포인터·실패 표시 해제·독립 고유건수·검색·커서·충돌 상세·지도 집계·
+인증export200을 확인했다. 과거 실패와 원문은 삭제하지 않았다. 단일 native 관측의 목록100행은
+321.02ms, 상세146.95ms, 검색1622.74ms, 인증export401.41ms였다. 운영 평균이나 개선 배율이 아니다.
+
+Firefox157 PC1440·모바일375의 목록/상세에서 각 요금·면수·운영시간·주소·기관 DTO-DOM과
+정적 기준정보 안내·넘침0·페이지 오류0·로그아웃303·인증 저장소 정리·자식 종료를 확인했다.
+첫100행에서는 좌표 미등록 항목이 관측되지 않았으며 이 UI 항목은 별도 NOT_OBSERVED로 남겼다.
+그 자료의 DB 보존·일반 목록/API 계약은 기존 집중 시험으로 확인했다. 첫 PC 지도 관측은 숨겨진
+모바일 토글을 기다려 TimeoutError였고 로컬 continuation36221은 실제1로 종료했다. 원 실패를
+보존하고 PC에서 항상 열린 필터를 그대로 사용하는 PC 전용 재관측으로 PASS를 확인했다.
+모바일 원 관측은 PASS다. 추가 앱 배포·공식 수집 재실행은 없다.
+
+첫 지도 PNG는 타일/상세의 로딩 중이었다. 별도 지도 관측에서 상세 렌더링과 network idle을
+기다려 PC·모바일 선택 마커·실제 지도 픽셀·상세 화면을 다시 캡처하고 Root가 확인했다.
+최종 지도 관측도 두 폭 PASS·넘침0·오류0·인증 정리·모든 소유 브라우저 자식 종료다.
+원문은 `parking-keyless-build-r2/build-last-status.json`, `parking-keyless-deployment/deploy-last-status.json`,
+`parking-keyless-job/last-job-status.json`, `parking-keyless-live-read.json`,
+`live-parking-keyless/results.json`, `live-parking-keyless-pc/results.json`,
+`live-parking-keyless-settled-map/results.json` 및 해당 PNG다.
+최종 결박 `parking-keyless-final-evidence.json`의 SHA256은
+`e12db4ade9cd7352753604bd8819c9ce3a6eab95a28d1f3f8e25685c1fcf1676`이다.
+기존 미완 원장7243a85a와 새 완료 원장을 구분하며 원 파일을 편집하지 않았다.
+f60b023의 CI41628896935/41628890856은 최종 관측에서 frontend·transport-admin SUCCESS,
+backend 진행 중·live-e2e SKIPPED였다. 이 CI를 집중 검증·실제 Firefox 수용으로 대신 기록하지 않으며
+PR173·SDK22는 Draft로 유지한다. 키 등록 입력이나 추가 배포/수집/백업·복원/리뷰는 남지 않았다.
 
 Git 밖 증거 원장은 `C:/Users/digit/.codex/tmp/transport-map-parking-perf-20261103` 아래의
 `parking-identity-build-r3/build-last-status.json`, `parking-identity-deployment/deploy-last-status.json`,

@@ -1,3 +1,13 @@
+## 2026-11-03 — 키 없는 전국주차장 파일 수집·운영 화면 수용 완료
+
+사용자의 “파일이라 key 불필요” 지적에 따라 공식 다운로드 화면의 공개 파일 경로를 확인하고 SDK18864a3·Transport f60b023에 반영했다. SDK에서 키가 설정돼 있어도 다운로드에는 보내지 않으며 전체 건수·페이지·다운로드 상한·전후 메타데이터를 검산한다. 원문·복합 식별·충돌 공통값 투영·0041 원자 게시를 유지한다. SDK WSL/Docker32개씩·ruff·mypy, 소비자 PG18 WSL/Docker14개씩·lock 검사를 통과했다.
+
+R2 빌드997556e2ab/첫Invocatione33427a3eef24108a388cf26e38c525c와 배포7805f2ba09/첫Invocation2f2d4c04aa894e22911b1e83622dd268은 실제0/Main0/cgroup부재·소유 자식 종료다. API·수집기만 이미지e7cdd88e로 교체하고 다섯 역할 healthy·원20개 일정 복원·Manager healthy를 확인했다. 웹/다른 서비스/키/환경/DB 스키마 변경은 없다. 기존 수집은 자연 종료를 기다렸으며 취소하지 않았다.
+
+공식 수집61213dad/앱5730 SUCCESS로 원문18994행을 보존하고18992시설을 저장했다. 독립 건수·원문2페이지·충돌2개·0면18곳·좌표 미제공751곳과 목록/상세/검색/커서/지도 집계/인증export를 검산했다. Firefox157 PC1440·모바일375의 DTO-DOM·선택 마커·타일·넘침0·오류0·로그아웃303·자식 종료와 실제 PNG를 확인했다. PC의 숨겨진 모바일 필터 버튼을 기다린 최초 관측/로컬 continuation1은 보존했고 PC 관측만 수정했다. 지도 로딩 중 첫 PNG도 보존한 뒤 상세·network idle 후 별도 지도 캡처를 확인했다. 앱 재배포·재수집은 없었다.
+
+원 OpenAPI403·키 대기 오판과 첫 keyless 빌드 BASE 참조 오류도 보존한다. 키 활용신청·등록은 이 파일 수집에 필요 없다. 새 증거 원장 parking-keyless-final-evidence.json SHAe12db4ade9cd7352753604bd8819c9ce3a6eab95a28d1f3f8e25685c1fcf1676과 [최종 보고서](reports/2026-11-03-parking-owner-read-performance.md)에 정산했다. 백업·복원은 SKIPPED_BY_USER이고 prune·자동 복원·새 리뷰·PR 머지는 없다. CI 전체 backend는 최종 관측에서 진행 중으로 남기며 집중 검증·운영 수용과 혼동하지 않는다.
+
 ## 2026-11-03 — Map·원 라이브러리 비공개 키 대조
 
 사용자 지시에 따라 Map과 원 라이브러리의 로컬 비공개 설정을 확인했다. Map의 legacy 변수 KRTOUR_MAP_DEBUG_UI_DATAGOKR_SERVICE_KEY·KRTOUR_MAP_DATA_GO_KR_SERVICE_KEY·KRTOUR_MAP_ADMIN_DATAGOKR_SERVICE_KEY와 python-datagokr-api의 DATA_GO_KR_SERVICE_KEY는 모두 현재 Transport 유효 키와 같았다. 기존 확인에서 빠졌던 Map 변수명까지 포함해 대조했으며 다른 후보 키는 없었다. 같은 키를 실제 수집기의 SDK와 로컬 원 라이브러리에서 각각 한 번 조회했고 모두403이었다. 키 값·URL·오류 본문은 출력하지 않았고 비공개 후보 파일은 Git 밖600 권한이다. 유효한 다른 키가 없으므로 환경 변경·재배포·공식 수집 재제출은 하지 않았다. 앞서 확인한 공급자 키 미등록 오류와 활용신청·등록 확인 필요 상태를 유지한다.
