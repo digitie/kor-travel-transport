@@ -129,6 +129,17 @@ API·수집기의 유효 키는 같고 과거 배포와도 같았다. URL 인코
 관측되지 않았으며 로컬 Map 환경에 대신 사용할 등록 키도 없었다. 키 값·URL·응답 원문은
 이 문서나 진단 출력에 기록하지 않는다.
 
+후속 사용자 지시에 따라 Map과 원 라이브러리 로컬 설정을 추가 확인했다. Map debug UI와
+Claude checkout의 legacy 변수 `KRTOUR_MAP_DEBUG_UI_DATAGOKR_SERVICE_KEY`,
+`KRTOUR_MAP_DATA_GO_KR_SERVICE_KEY`, `KRTOUR_MAP_ADMIN_DATAGOKR_SERVICE_KEY`에 있는
+값과 `F:/dev/python-datagokr-api/.env`의 `DATA_GO_KR_SERVICE_KEY`는 모두 현재 Transport
+유효 키와 같았다. 기존 현재 변수명만의 검사에서 빠진 Map legacy 이름도 포함했으며 고유 후보는
+하나였다. 그 키로 실제 수집기의 SDK와 로컬 원 라이브러리에서 각각 단1회 조회했으나 둘 다403이었다.
+대체 키 반영·환경 변경·재배포·공식 수집 재제출은 수행하지 않았다. 후보 값은 Git 밖600 파일로만
+다뤘으며 출력하지 않았다. 새 원문은 `local-parking-key-discovery.json`,
+`local-map-parking-key-expanded.json`, `local-parking-key-validation.json`,
+`local-parking-key-local-sdk-validation.json`이다.
+
 현재 일반 주차장 source의 `last_success_at=null`, `last_error=TransportError`다.
 목록은 HTTP 200이지만 빈 항목과 실패 표시를 반환하고, 인증 export는 완료본이 없어 503이다.
 따라서 운영 18,992개 게시·실데이터 목록/상세/지도 수용을 완료로 표시하지 않는다.

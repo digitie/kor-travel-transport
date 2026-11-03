@@ -1,3 +1,7 @@
+## 2026-11-03 — Map·원 라이브러리 비공개 키 대조
+
+사용자 지시에 따라 Map과 원 라이브러리의 로컬 비공개 설정을 확인했다. Map의 legacy 변수 KRTOUR_MAP_DEBUG_UI_DATAGOKR_SERVICE_KEY·KRTOUR_MAP_DATA_GO_KR_SERVICE_KEY·KRTOUR_MAP_ADMIN_DATAGOKR_SERVICE_KEY와 python-datagokr-api의 DATA_GO_KR_SERVICE_KEY는 모두 현재 Transport 유효 키와 같았다. 기존 확인에서 빠졌던 Map 변수명까지 포함해 대조했으며 다른 후보 키는 없었다. 같은 키를 실제 수집기의 SDK와 로컬 원 라이브러리에서 각각 한 번 조회했고 모두403이었다. 키 값·URL·오류 본문은 출력하지 않았고 비공개 후보 파일은 Git 밖600 권한이다. 유효한 다른 키가 없으므로 환경 변경·재배포·공식 수집 재제출은 하지 않았다. 앞서 확인한 공급자 키 미등록 오류와 활용신청·등록 확인 필요 상태를 유지한다.
+
 ## 2026-11-03 — 성능·주차장 이미지 반영 정산과 외부 등록 제약
 
 Weather 읽기 성능539d6c87/4c349d4c와 Transport API·수집기dc7a9ff/6c2f187b·관리 화면604b10d/9b8b7ad0를 실제 반영했다. Transport 원20개 일정 복원·PG18/0041·다섯 역할 healthy·Manager 정산을 확인했다. 기존 KRIC 수집은 자연 종료했고 취소하지 않았다. 관리 화면만 바꾼 최종 부모f0df6bcfea/최초Invocation1ad0fab7e94242d5a2f2de5de1e27f26은 실제0/Main0/cgroup부재·자식 종료다.
