@@ -25,6 +25,27 @@ vi.mock("./filter-combobox", () => ({ FilterCombobox: ({ options, value, onChang
 import { TransportMap } from "./transport-map";
 
 const station: Place = { id: 1, kind: "rail_station", source: "kric_public_file", name: "시험역", longitude: 127.1, latitude: 37.3, line_names: ["시험선"], facilities: [], prices: [], updated_at: "2026-10-25T00:00:00Z" };
+
+test("교통 지도는 일반 주차장 필터를 요청하고 좌표 없는 주차장은 목록에만 둔다", async () => {
+  const parking: Place = { ...station, id: 12, kind: "public_parking_lot", source: "datagokr_parking_lots", name: "좌표없는 주차장", latitude: null, longitude: null, line_names: [], parking_capacity: 20 };
+  vi.mocked(fetch).mockImplementation(async input => {
+    const url = new URL(String(input), "http://test");
+    const items = !url.searchParams.has("kind") || url.searchParams.get("kind") === "public_parking_lot" ? [parking] : [];
+    return new Response(JSON.stringify({ items, total: items.length, truncated: false }));
+  });
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  try {
+    await act(async () => root.render(<TransportMap mode="transport" />));
+    const requests = () => vi.mocked(fetch).mock.calls.map(call => new URL(String(call[0]), "http://test"));
+    expect(requests().some(url => url.searchParams.get("kinds")?.split(",").includes("public_parking_lot"))).toBe(true);
+    expect(container.querySelector(".transport-map-marker.public_parking_lot")).toBeNull();
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(button => button.textContent?.includes("목록"))!.click());
+    expect(container.querySelector(".place-row")?.textContent).toContain(parking.name);
+    expect(container.querySelector(".place-row")?.textContent).toContain("좌표 미등록");
+    expect(requests().some(url => url.searchParams.get("kind") === "public_parking_lot" && url.searchParams.get("include_unlocated") === "true")).toBe(true);
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true, ResizeObserver: class { observe() {} disconnect() {} } });
   vi.stubGlobal("fetch", vi.fn());

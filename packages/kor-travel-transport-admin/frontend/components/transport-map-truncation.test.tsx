@@ -53,7 +53,7 @@ for (const mode of ["fuel", "transport"] as const) describe(`${mode} 목록 상�
     expect(list).toBeDefined();
     await act(async () => { list.click(); });
     expect(container.querySelectorAll(".place-row")).toHaveLength(1);
-    expect(mocks.get).toHaveBeenCalledTimes(mode === "fuel" ? 2 : 7); // 안내가 새 API를 호출하지 않는다.
+    expect(mocks.get).toHaveBeenCalledTimes(mode === "fuel" ? 2 : 8); // 일반 주차장 포함 종류별 조회 외 안내가 새 API를 호출하지 않는다.
     expect(container.querySelectorAll(".kt-map-count")).toHaveLength(1);
     expect(container.querySelector(".kt-map-count")?.textContent).toBe("1건 표시");
     if (partial) {
@@ -61,7 +61,7 @@ for (const mode of ["fuel", "transport"] as const) describe(`${mode} 목록 상�
       expect(document.body.textContent).not.toContain("일부 결과만 조회했습니다.");
       await act(async () => { notice()!.click(); });
       expect(document.body.textContent).toContain("일부 결과만 조회했습니다.");
-      expect(document.body.textContent).toContain(mode === "fuel" ? "주유소 최대 300건" : "철도역 최대 150건");
+      expect(document.body.textContent).toContain(mode === "fuel" ? "주유소 최대 300건" : "철도역 최대 128건");
       expect(document.body.textContent).not.toContain("항구 최대");
     } else {
       expect(notice()).toBeNull();

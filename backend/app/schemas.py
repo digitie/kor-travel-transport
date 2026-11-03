@@ -7,6 +7,53 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, model_validator
 
 
+class PublicParkingHours(BaseModel):
+    weekday_open: str | None = None
+    weekday_close: str | None = None
+    saturday_open: str | None = None
+    saturday_close: str | None = None
+    holiday_open: str | None = None
+    holiday_close: str | None = None
+
+
+class PublicParkingItem(BaseModel):
+    id: int
+    source: str
+    provider_id: str | None
+    name: str
+    category: str | None
+    parking_type: str | None
+    road_address: str | None
+    land_address: str | None
+    longitude: float | None
+    latitude: float | None
+    capacity: int | None
+    fee_info: str | None
+    basic_minutes: float | None
+    basic_fee: int | None
+    additional_minutes: float | None
+    additional_fee: int | None
+    daily_minutes: float | None
+    daily_fee: int | None
+    monthly_fee: int | None
+    operating_days: str | None
+    opening_hours: PublicParkingHours
+    payment_methods: str | None
+    notes: str | None
+    phone: str | None
+    institution_name: str | None
+    institution_code: str | None
+    disabled_parking: str | None
+    reference_date: date | None
+    collected_at: datetime
+    is_current: bool
+
+
+class PublicParkingExportItem(PublicParkingItem):
+    source_key: str
+    raw: dict[str, Any]
+
+
 class ParkingLotSummary(BaseModel):
     id: int
     source_lot_id: str
@@ -201,7 +248,7 @@ class TransportPlaceMapItem(BaseModel):
     """kor-travel-map·PinVi가 지도 marker로 바로 소비할 저장 장소 요약."""
 
     id: int
-    kind: Literal["fuel_station", "rail_station", "ferry_port", "bus_terminal", "airport", "rest_area", "highway_incident"]
+    kind: Literal["fuel_station", "rail_station", "ferry_port", "bus_terminal", "airport", "rest_area", "highway_incident", "public_parking_lot"]
     source: str
     provider_id: str | None = None
     city_name: str | None = None
@@ -223,6 +270,8 @@ class TransportPlaceMapItem(BaseModel):
     location_source: str | None = None
     manual_location_revision: str | None = None
     location_point_count: int | None = None
+    parking_capacity: int | None = None
+    parking_fee_info: str | None = None
 
     @model_validator(mode="after")
     def valid_map_coordinates(self) -> "TransportPlaceMapItem":
@@ -1158,6 +1207,22 @@ class ExportCollectionState(BaseModel):
     failed: bool
     stale: bool
     last_attempt_failed: bool
+
+
+class PublicParkingPage(BaseModel):
+    generated_at: datetime
+    collection: ExportCollectionState
+    items: list[PublicParkingItem]
+    next_cursor: str | None = None
+    has_more: bool = False
+
+
+class PublicParkingExportPage(BaseModel):
+    generated_at: datetime
+    collection: ExportCollectionState
+    items: list[PublicParkingExportItem]
+    next_cursor: str | None = None
+    has_more: bool = False
 
 
 class ExportFuelPrice(BaseModel):

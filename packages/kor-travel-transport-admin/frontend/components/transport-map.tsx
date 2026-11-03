@@ -27,8 +27,8 @@ type MapCluster = { longitude: number; latitude: number; count: number; kind_cou
 type FuelRegion = { region_key: string; label: string; product_code: string; average_price: number; station_count: number; longitude: number; latitude: number };
 type PlaceResponse = { fuel_regions?: FuelRegion[]; fuel_statistics?: FuelViewportStatistics[]; items: Place[]; total: number; truncated: boolean; clustered?: boolean; kind_totals?: Partial<Record<PlaceKind, number>>; clusters?: MapCluster[]; available_sources?: string[]; fuel_prices_stale?: boolean; fuel_prices_last_refreshed_at?: string | null };
 const FUEL_PRODUCTS = ["B027", "D047", "B034", "C004", "K015"] as const;
-const KINDS: PlaceKind[] = ["fuel_station", "rail_station", "ferry_port", "bus_terminal", "airport", "rest_area", "highway_incident"];
-const TRANSPORT_KINDS: PlaceKind[] = ["rail_station", "ferry_port", "bus_terminal", "airport", "rest_area", "highway_incident"];
+const KINDS: PlaceKind[] = ["fuel_station", "rail_station", "ferry_port", "bus_terminal", "airport", "rest_area", "highway_incident", "public_parking_lot"];
+const TRANSPORT_KINDS: PlaceKind[] = ["rail_station", "ferry_port", "bus_terminal", "airport", "rest_area", "highway_incident", "public_parking_lot"];
 const MAP_CLUSTER_CACHE_TTL_MS = 20_000;
 const MAP_CLUSTER_CACHE_MAX = 8;
 const CLUSTER_NUMBER_FORMATTER = new Intl.NumberFormat("ko-KR", { notation: "compact", maximumFractionDigits: 1 });
@@ -329,7 +329,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
     // 목록은 좌표 없는 항구·터미널도 찾아야 하므로 기존 종류별 reference 조회를 유지한다.
     selectedKinds.forEach((kind) => {
       // 좌표 없는 항구·터미널도 목록에서 코드/이름으로 찾되 지도에는 검증된 위치만 놓는다.
-      const referenceList = view === "list" && (kind === "ferry_port" || kind === "bus_terminal");
+      const referenceList = view === "list" && (kind === "ferry_port" || kind === "bus_terminal" || kind === "public_parking_lot");
       const search = new URLSearchParams({ kind, limit: String(referenceList && searchQuery.trim() ? 5000 : perKindLimit),
         ...(referenceList ? { include_unlocated: "true" } : viewport) });
       if (!knownSourcesReady.current) search.set("include_sources", "true");
@@ -401,13 +401,13 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
     {toolbar || !embedded ? <MapFilterPanel label={filterSummary ?? ([query, selectedSources.length ? `${selectedSources.length}개 출처` : "", products.map(fuelProductLabel).join("·"), kinds.length !== allowedKinds.length ? `${kinds.length}종류` : ""].filter(Boolean).join(" · ") || "지도 필터")} expanded={filtersExpanded} onExpandedChange={setFiltersExpanded} triggerRef={filterTrigger}>
     {toolbar ?? <MapFilterBar>
       {mode !== "fuel" ? <MapKindFilter ariaLabel={mode === "transport" ? "교통 종류" : "장소 종류"} options={allowedKinds.map((kind) => ({ value: kind, label: placeKindLabel(kind), icon: <PlaceIcon kind={kind} /> }))} value={kinds} onToggle={(value) => { const kind = value as PlaceKind; setKinds((previous) => previous.includes(kind) ? previous.filter((entry) => entry !== kind) : [...previous, kind]); setSelected(null); }} /> : null}
-      <MapFilterField htmlFor={`${controlId}-query`} label="장소 검색"><Input ref={queryInput} id={`${controlId}-query`} type="search" value={query} onChange={(event) => { setQuery(event.target.value); setSelected(null); }} placeholder="이름·브랜드·노선" /></MapFilterField>
+      <MapFilterField htmlFor={`${controlId}-query`} label="장소 검색"><Input ref={queryInput} id={`${controlId}-query`} type="search" value={query} onChange={(event) => { setQuery(event.target.value); setSelected(null); }} placeholder="이름·주소·브랜드·노선" /></MapFilterField>
       <MapFilterField htmlFor={`${controlId}-source`} label="데이터 출처"><FilterCombobox compact id={`${controlId}-source`} value={selectedSources} onChange={(values) => { setSelectedSources(values); setSelected(null); }} placeholder="모든 출처" options={sources.map((value) => ({ value, label: collectionSourceLabel(value) }))} /></MapFilterField>
       {kinds.includes("fuel_station") ? <MapFilterField htmlFor={`${controlId}-product`} label="표시 유종"><FilterCombobox compact id={`${controlId}-product`} value={products} onChange={(values) => { setProducts(values); setSelected(null); }} placeholder="전체 유종" options={FUEL_PRODUCTS.map((value) => ({ value, label: fuelProductLabel(value) }))} /></MapFilterField> : null}
     </MapFilterBar>}
     </MapFilterPanel> : null}
     <Tabs value={view} onValueChange={(value) => { if (value === "map" || value === "list") { setView(value); setFiltersExpanded(false); } }} className="min-h-0">
-    <MapViewTabs ariaLabel="장소 보기" viewport={mapViewport} count={view === "list" ? listCount ?? ((listPlaces ? items.length : 0) + listFeatureCount) : mapFeatureCount + (serverClustered ? serverClusters.reduce((sum, item) => sum + item.count, 0) : visiblePoints.length)} status={pending.length ? <span className="kt-map-count">조회 중…</span> : partialListKinds.length ? <span className="inline-flex items-center gap-1"><span className="kt-map-count">{(listCount ?? ((listPlaces ? items.length : 0) + listFeatureCount)).toLocaleString("ko-KR")}건 표시</span><InfoButton label="목록 일부 표시">일부 결과만 조회했습니다. {partialListKinds.map((kind) => `${placeKindLabel(kind)} 최대 ${((kind === "ferry_port" || kind === "bus_terminal") && searchQuery.trim() ? 5000 : perKindLimit).toLocaleString("ko-KR")}건`).join(" · ")}. 검색 조건을 좁혀 주세요.</InfoButton></span> : undefined} />
+    <MapViewTabs ariaLabel="장소 보기" viewport={mapViewport} count={view === "list" ? listCount ?? ((listPlaces ? items.length : 0) + listFeatureCount) : mapFeatureCount + (serverClustered ? serverClusters.reduce((sum, item) => sum + item.count, 0) : visiblePoints.length)} status={pending.length ? <span className="kt-map-count">조회 중…</span> : partialListKinds.length ? <span className="inline-flex items-center gap-1"><span className="kt-map-count">{(listCount ?? ((listPlaces ? items.length : 0) + listFeatureCount)).toLocaleString("ko-KR")}건 표시</span><InfoButton label="목록 일부 표시">일부 결과만 조회했습니다. {partialListKinds.map((kind) => `${placeKindLabel(kind)} 최대 ${((kind === "ferry_port" || kind === "bus_terminal" || kind === "public_parking_lot") && searchQuery.trim() ? 5000 : perKindLimit).toLocaleString("ko-KR")}건`).join(" · ")}. 검색 조건을 좁혀 주세요.</InfoButton></span> : undefined} />
     <TabsContent className="min-h-0" value="map"><MapStage className={mode === "fuel" ? "fuel-map-stage" : undefined} summary={summary} detail={detailPanel("map")}><div className="map-primary" ref={mapContainer}><MountCamera camera={mapViewport ? { center: [mapViewport.longitude, mapViewport.latitude], zoom: mapViewport.zoom } : DEFAULT_CAMERA}>{(initialCamera) => <VWorldMapView apiKey={VWORLD_KEY} center={initialCamera.center} zoom={initialCamera.zoom} minZoom={5}
         className="transport-map-canvas" layerType="Base" navigation={false} geolocate={false} scale
         loadingSkeleton={<p className="loading">지도를 준비하는 중입니다…</p>} fallback={(info) => <MapUnavailable info={info} onMessage={setMapUnavailableMessage} />}

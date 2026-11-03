@@ -6,10 +6,13 @@ import asyncio
 import gzip
 import logging
 from bisect import bisect_left
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from time import monotonic
+from types import MappingProxyType
+from weakref import WeakValueDictionary
 
 import brotli
 from pydantic_core import to_json
@@ -72,11 +75,22 @@ class CachedHistoryItem:
 
 
 @dataclass(frozen=True, slots=True)
+class HistoryScopeIndex:
+    items: tuple[CachedHistoryItem, ...]
+    times: tuple[datetime, ...]
+
+
+_EMPTY_SCOPE = HistoryScopeIndex((), ())
+
+
+@dataclass(frozen=True, slots=True)
 class ParkingHistorySnapshot:
     earliest_observed_at: datetime
     max_snapshot_id: int
     items: tuple[CachedHistoryItem, ...]
     times: tuple[datetime, ...]
+    airport_indexes: Mapping[str, HistoryScopeIndex]
+    lot_indexes: Mapping[int, HistoryScopeIndex]
 
     @classmethod
     def from_rows(cls, earliest_observed_at: datetime, max_snapshot_id: int, rows: list) -> ParkingHistorySnapshot:
@@ -93,19 +107,35 @@ class ParkingHistorySnapshot:
                 "available_spaces": row.available_spaces,
             }),
         ) for row in rows)
-        return cls(earliest_observed_at, max_snapshot_id, items, tuple(item.observed_at for item in items))
+        airports: dict[str, list[CachedHistoryItem]] = defaultdict(list)
+        lots: dict[int, list[CachedHistoryItem]] = defaultdict(list)
+        for item in items:
+            airports[item.airport_code].append(item)
+            lots[item.parking_lot_id].append(item)
+        # 같은 인코딩 객체의 참조만 분할한다. 원본 순서·동일 시각 순서를 그대로 유지한다.
+        def indexes(groups):
+            return MappingProxyType({key: HistoryScopeIndex(tuple(group), tuple(item.observed_at for item in group))
+                                     for key, group in groups.items()})
+        return cls(earliest_observed_at, max_snapshot_id, items, tuple(item.observed_at for item in items),
+                   indexes(airports), indexes(lots))
+
+    def scope_index(self, airport_code: str | None, parking_lot_id: int | None) -> HistoryScopeIndex:
+        if parking_lot_id:
+            return self.lot_indexes.get(parking_lot_id, _EMPTY_SCOPE)
+        if airport_code:
+            return self.airport_indexes.get(airport_code, _EMPTY_SCOPE)
+        return HistoryScopeIndex(self.items, self.times)
+
+    def start_index(self, cutoff: datetime, airport_code: str | None, parking_lot_id: int | None) -> int:
+        return bisect_left(self.scope_index(airport_code, parking_lot_id).times, cutoff)
 
     def render(self, cutoff: datetime, airport_code: str | None, parking_lot_id: int | None) -> bytes:
-        start = bisect_left(self.times, cutoff)
-        if parking_lot_id:
-            payload = b",".join(item.encoded for item in self.items[start:]
-                                if item.parking_lot_id == parking_lot_id)
-        elif airport_code:
-            payload = b",".join(item.encoded for item in self.items[start:]
-                                if item.airport_code == airport_code)
-        else:
-            payload = b",".join(item.encoded for item in self.items[start:])
+        scope = self.scope_index(airport_code, parking_lot_id)
+        start = bisect_left(scope.times, cutoff)
+        # 타 공항 전체 순회 없이 선택된 범위의 항목만 읽는다.
+        payload = b",".join(item.encoded for item in scope.items[start:])
         return b'{"items":[' + payload + b'],"next_cursor":null}'
+
 
 
 def accepts_gzip(header: str) -> bool:
@@ -164,24 +194,36 @@ class ParkingHistoryReadCache:
         self.validated_at_utc: datetime | None = None
         self.last_fingerprint: tuple[int, int, int, int] | None = None
         self.prepared_responses: OrderedDict[tuple[int, str | None, int | None, str], bytes] = OrderedDict()
+        # 같은 불변 snapshot/범위만 합친다. 대기자가 사라지면 lock도 남기지 않는다.
+        self.preparation_locks: WeakValueDictionary[tuple, asyncio.Lock] = WeakValueDictionary()
 
     async def response_body(
         self, snapshot: ParkingHistorySnapshot, cutoff: datetime,
         airport_code: str | None, parking_lot_id: int | None, accept_encoding: str,
     ) -> tuple[bytes, dict[str, str]]:
         encoding = response_encoding(accept_encoding)
-        key = (bisect_left(snapshot.times, cutoff), airport_code, parking_lot_id, encoding)
-        if encoding != "identity" and snapshot is self.snapshot and key in self.prepared_responses:
-            self.prepared_responses.move_to_end(key)
-            return self.prepared_responses[key], response_headers(encoding)
-        body = await run_history_cpu(snapshot.render, cutoff, airport_code, parking_lot_id)
-        prepared, headers = await run_history_cpu(encode_response, body, accept_encoding)
-        if encoding != "identity" and snapshot is self.snapshot:
-            self.prepared_responses[key] = prepared
-            self.prepared_responses.move_to_end(key)
-            while len(self.prepared_responses) > MAX_PREPARED_RESPONSES:
-                self.prepared_responses.popitem(last=False)
-        return prepared, headers
+        key = (snapshot.start_index(cutoff, airport_code, parking_lot_id), airport_code, parking_lot_id, encoding)
+        async def prepare():
+            if encoding != "identity" and snapshot is self.snapshot and key in self.prepared_responses:
+                self.prepared_responses.move_to_end(key)
+                return self.prepared_responses[key], response_headers(encoding)
+            body = await run_history_cpu(snapshot.render, cutoff, airport_code, parking_lot_id)
+            prepared, headers = await run_history_cpu(encode_response, body, accept_encoding)
+            if encoding != "identity" and snapshot is self.snapshot:
+                self.prepared_responses[key] = prepared
+                self.prepared_responses.move_to_end(key)
+                while len(self.prepared_responses) > MAX_PREPARED_RESPONSES:
+                    self.prepared_responses.popitem(last=False)
+            return prepared, headers
+        if encoding == "identity":
+            return await prepare()
+        lock_key = (id(snapshot), key)
+        lock = self.preparation_locks.get(lock_key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self.preparation_locks[lock_key] = lock
+        async with lock:
+            return await prepare()
 
     async def source_fingerprint(self) -> tuple[int, int, int, int]:
         async with self.session_factory() as session:

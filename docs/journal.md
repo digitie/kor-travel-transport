@@ -1,3 +1,33 @@
+## 2026-11-03 — 키 없는 전국주차장 파일 수집·운영 화면 수용 완료
+
+사용자의 “파일이라 key 불필요” 지적에 따라 공식 다운로드 화면의 공개 파일 경로를 확인하고 SDK18864a3·Transport f60b023에 반영했다. SDK에서 키가 설정돼 있어도 다운로드에는 보내지 않으며 전체 건수·페이지·다운로드 상한·전후 메타데이터를 검산한다. 원문·복합 식별·충돌 공통값 투영·0041 원자 게시를 유지한다. SDK WSL/Docker32개씩·ruff·mypy, 소비자 PG18 WSL/Docker14개씩·lock 검사를 통과했다.
+
+R2 빌드997556e2ab/첫Invocatione33427a3eef24108a388cf26e38c525c와 배포7805f2ba09/첫Invocation2f2d4c04aa894e22911b1e83622dd268은 실제0/Main0/cgroup부재·소유 자식 종료다. API·수집기만 이미지e7cdd88e로 교체하고 다섯 역할 healthy·원20개 일정 복원·Manager healthy를 확인했다. 웹/다른 서비스/키/환경/DB 스키마 변경은 없다. 기존 수집은 자연 종료를 기다렸으며 취소하지 않았다.
+
+공식 수집61213dad/앱5730 SUCCESS로 원문18994행을 보존하고18992시설을 저장했다. 독립 건수·원문2페이지·충돌2개·0면18곳·좌표 미제공751곳과 목록/상세/검색/커서/지도 집계/인증export를 검산했다. Firefox157 PC1440·모바일375의 DTO-DOM·선택 마커·타일·넘침0·오류0·로그아웃303·자식 종료와 실제 PNG를 확인했다. PC의 숨겨진 모바일 필터 버튼을 기다린 최초 관측/로컬 continuation1은 보존했고 PC 관측만 수정했다. 지도 로딩 중 첫 PNG도 보존한 뒤 상세·network idle 후 별도 지도 캡처를 확인했다. 앱 재배포·재수집은 없었다.
+
+원 OpenAPI403·키 대기 오판과 첫 keyless 빌드 BASE 참조 오류도 보존한다. 키 활용신청·등록은 이 파일 수집에 필요 없다. 새 증거 원장 parking-keyless-final-evidence.json SHAe12db4ade9cd7352753604bd8819c9ce3a6eab95a28d1f3f8e25685c1fcf1676과 [최종 보고서](reports/2026-11-03-parking-owner-read-performance.md)에 정산했다. 백업·복원은 SKIPPED_BY_USER이고 prune·자동 복원·새 리뷰·PR 머지는 없다. CI 전체 backend는 최종 관측에서 진행 중으로 남기며 집중 검증·운영 수용과 혼동하지 않는다.
+
+## 2026-11-03 — Map·원 라이브러리 비공개 키 대조
+
+사용자 지시에 따라 Map과 원 라이브러리의 로컬 비공개 설정을 확인했다. Map의 legacy 변수 KRTOUR_MAP_DEBUG_UI_DATAGOKR_SERVICE_KEY·KRTOUR_MAP_DATA_GO_KR_SERVICE_KEY·KRTOUR_MAP_ADMIN_DATAGOKR_SERVICE_KEY와 python-datagokr-api의 DATA_GO_KR_SERVICE_KEY는 모두 현재 Transport 유효 키와 같았다. 기존 확인에서 빠졌던 Map 변수명까지 포함해 대조했으며 다른 후보 키는 없었다. 같은 키를 실제 수집기의 SDK와 로컬 원 라이브러리에서 각각 한 번 조회했고 모두403이었다. 키 값·URL·오류 본문은 출력하지 않았고 비공개 후보 파일은 Git 밖600 권한이다. 유효한 다른 키가 없으므로 환경 변경·재배포·공식 수집 재제출은 하지 않았다. 앞서 확인한 공급자 키 미등록 오류와 활용신청·등록 확인 필요 상태를 유지한다.
+
+## 2026-11-03 — 성능·주차장 이미지 반영 정산과 외부 등록 제약
+
+Weather 읽기 성능539d6c87/4c349d4c와 Transport API·수집기dc7a9ff/6c2f187b·관리 화면604b10d/9b8b7ad0를 실제 반영했다. Transport 원20개 일정 복원·PG18/0041·다섯 역할 healthy·Manager 정산을 확인했다. 기존 KRIC 수집은 자연 종료했고 취소하지 않았다. 관리 화면만 바꾼 최종 부모f0df6bcfea/최초Invocation1ad0fab7e94242d5a2f2de5de1e27f26은 실제0/Main0/cgroup부재·자식 종료다.
+
+공식 주차장 수집c25937b9/앱5580은 공급자403/SERVICE_KEY_IS_NOT_REGISTERED_ERROR로 실패했다. 과거와 같은 키·형태·Settings 전달을 확인했으며 사용자에게 전국주차장정보표준데이터의 활용신청·등록 확인 또는 Git 밖 비공개 키 파일 PATH를 요청했다. 등록 확인 전 재시도하지 않는다. 완료본이 없어 공개 목록200 빈 자료·인증export503·전체 데이터 수용NOT_READY를 유지한다. 보존18994행→18992시설/충돌2개의 오프라인 검산은 운영 적재 성공이 아니다.
+
+실제 화면에서 발견한 최초 실패 안내와 PC 검색 폼 간격을 수정했다. WSL/Docker 각각8개 통과 후 Firefox157 PC1440·모바일375에서 안내·넘침0·오류0·로그아웃303·자식 종료를 확인했다. PC 검색 영역63.25px다. 첫 화면 관측은 안내를 목록 내부에서 찾은 잘못된 locator로 실패했고 원문을 보존했다. feedback 영역만 보정한 별도 관측으로 확인했으며 추가 앱 배포는 없었다. [증거와 남은 범위](reports/2026-11-03-parking-owner-read-performance.md)를 따른다.
+
+## 2026-11-03 — 양 앱 읽기 성능 반영·일반 주차장 원천 검산
+
+Weather API539d6c87/schema0036과 Transport7a406e5/이미지22b4139의 읽기 성능 수정을 실제 반영했다. Transport는 참조 인덱스·중복 압축 공유·reference 단일 읽기·분석 cache 일괄 조회다. 합성 측정과 실제 응답을 구분한 [기록](reports/2026-11-03-parking-owner-read-performance.md)을 따른다. 주차장 첫 공식 수집은 원천 번호 충돌로 실패해 미완 집합을 게시하지 않았다. SDK 기관 alias 두 개와 복합 식별·충돌 공통값 투영을 수정하고 실제18994원문→18992시설/충돌2개·원문 보존 및 PG18 WSL/Docker13개씩을 검증했다. 수정 이미지6c2f187b는 빌드 완료다. 인간이 선택한 기존 수집의 자연 종료 뒤 API·수집기만 교체하고 초도 수집·화면을 정산한다. 새 이미지·UI 수용이 모두 끝났다고 기록하지 않는다.
+
+## 2026-11-03 — 일반 주차장 기능 이식과 반복 읽기 개선
+
+Map의 자료를 가져오는 방식 대신 기존 SDK로 직접 수집·저장·조회하는 기능을 Transport에 이식했다. 기관 코드 충돌 방지·0041 기준정보·완료 세대 원자 게시·공개/인증 API·일반 주차장 화면을 추가했다. 공항 실시간 잔여면은 보존한다. 주차 이력의 범위별 참조 인덱스·동시 압축 공유, reference 단일 순회, 분석 cache 일괄 조회를 구현했다. PG18 WSL/Docker·프런트 집중 회귀와 측정은 [작업 기록](reports/2026-11-03-parking-owner-read-performance.md)에 기록했다. 운영 수치로 환산하지 않으며 새 이미지·초도 수집·실제 화면은 후속이다.
+
 ## 2026-11-02 18:38 KST — VWorld 서버 반영·후속 완료
 
 ## 2026-11-02 전체 PR 새 이미지 반영 완료

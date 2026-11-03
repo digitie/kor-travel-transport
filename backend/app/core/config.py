@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     vadahub_archive_directory: str = "/app/collector-state/vadahub"
     vadahub_chromium_executable_path: str | None = None
     data_go_kr_service_key: str | None = None
+    public_parking_collection_enabled: bool = False
+    # 기존 TAGO 등의 공통 키는 바꾸지 않는다. 별도 키가 없으면 공통 data.go.kr 키를 쓴다.
+    public_parking_service_key: str | None = None
     vworld_api_key: str | None = None
     place_location_collection_enabled: bool = False
     place_location_max_calls_per_day: int = Field(default=10000, ge=1, le=10000)

@@ -71,11 +71,13 @@ from app.models import (
     KricStationCode,
     KricStationMappingRegistry,
     ParkingLot,
+    PublicParkingLot,
     ParkingSnapshot,
     RawApiResponse,
     RailStationReference,
     RestAreaReference,
 )
+from app.public_parking_routes import build_public_parking_router, current_parking_conditions
 from app.schemas import (
     AirportSummary,
     BackupFile,
@@ -1333,7 +1335,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> TransportPlaceMapResponse:
         """저장된 장소만 지도 marker 계약으로 반환한다. provider 원문이나 비밀값은 노출하지 않는다."""
         selected_kind = kind.strip() if kind else None
-        supported = {"fuel_station", "rail_station", "ferry_port", "bus_terminal", "airport", "rest_area", "highway_incident"}
+        supported = {"fuel_station", "rail_station", "ferry_port", "bus_terminal", "airport", "rest_area", "highway_incident", "public_parking_lot"}
         def filter_values(single: str | None, multiple: str | None, maximum: int, length: int) -> list[str]:
             if multiple is None:
                 return [single] if single else []
@@ -1348,7 +1350,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail="kind와 kinds는 함께 지정할 수 없습니다.")
         if selected_kind is not None and selected_kind not in supported:
             raise HTTPException(status_code=422, detail="지원하지 않는 교통 장소 종류입니다.")
-        selected_kinds = filter_values(None, kinds, 7, 32)
+        selected_kinds = filter_values(None, kinds, 8, 32)
         if any(value not in supported for value in selected_kinds):
             raise HTTPException(status_code=422, detail="지원하지 않는 교통 장소 종류입니다.")
         bounds = (min_longitude, min_latitude, max_longitude, max_latitude)
@@ -1382,9 +1384,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     FerryPort: [FerryPort.port_name, FerryPort.port_id],
                     BusTerminalReference: [BusTerminalReference.terminal_name, BusTerminalReference.terminal_id, BusTerminalReference.city_name],
                     RestAreaReference: [RestAreaReference.name, RestAreaReference.route_name],
+                    PublicParkingLot: [PublicParkingLot.name, PublicParkingLot.road_address, PublicParkingLot.land_address],
                     HighwayIncidentSnapshot: [HighwayIncidentSnapshot.point_name, HighwayIncidentSnapshot.route_no, HighwayIncidentSnapshot.route_name, HighwayIncidentSnapshot.message],
                 }[model]
                 conditions.append(or_(*(field.icontains(query.strip(), autoescape=True) for field in fields)))
+            if model is PublicParkingLot:
+                conditions.extend(current_parking_conditions())
             if model is FuelStation and selected_products:
                 # 유종 행은 가격 미제공(NULL)도 저장된다. 과거 가격 존재가 아니라
                 # 상세 응답과 동일한 최신 행을 기준으로 실제 판매 가격을 확인한다.
@@ -1437,6 +1442,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "ferry_port": FerryPort,
                 "bus_terminal": BusTerminalReference,
                 "rest_area": RestAreaReference,
+                "public_parking_lot": PublicParkingLot,
             }
             cluster_queries = []
             for requested_kind in requested_kinds:
@@ -1545,6 +1551,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "fuel_station": FuelStation, "rail_station": RailStationReference,
                     "ferry_port": FerryPort, "bus_terminal": BusTerminalReference,
                     "airport": Airport, "rest_area": RestAreaReference,
+                    "public_parking_lot": PublicParkingLot,
                     "highway_incident": HighwayIncidentSnapshot,
                 }
                 for requested_kind in requested_kinds:
@@ -1645,6 +1652,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     manual_location_revision=((port.raw_item_json or {}).get("_manual_location") or {}).get("revision") if port.location_source == "admin_manual" else None,
                     location_point_count=port.location_point_count,
                 ))
+        if "public_parking_lot" in requested_kinds:
+            conditions = coordinate_conditions(PublicParkingLot)
+            count = int(await session.scalar(select(func.count()).select_from(PublicParkingLot).where(*conditions)) or 0)
+            kind_totals["public_parking_lot"] = count
+            total += count
+            rows = (await session.execute(select(
+                PublicParkingLot.id, PublicParkingLot.source, PublicParkingLot.provider_id,
+                PublicParkingLot.name, PublicParkingLot.longitude, PublicParkingLot.latitude,
+                PublicParkingLot.road_address, PublicParkingLot.land_address, PublicParkingLot.phone,
+                PublicParkingLot.capacity, PublicParkingLot.fee_info, PublicParkingLot.last_seen_at,
+            ).where(*conditions).order_by(PublicParkingLot.id).limit(per_kind_limit))).all()
+            for row in rows:
+                items.append(TransportPlaceMapItem(
+                    id=row.id, kind="public_parking_lot", source=row.source, provider_id=row.provider_id,
+                    name=row.name, longitude=row.longitude, latitude=row.latitude,
+                    subtitle=row.road_address or row.land_address, address=row.road_address or row.land_address,
+                    phone=row.phone, parking_capacity=row.capacity, parking_fee_info=row.fee_info,
+                    updated_at=serialize_utc(row.last_seen_at),
+                ))
         if "rest_area" in requested_kinds:
             conditions = coordinate_conditions(RestAreaReference)
             kind_totals["rest_area"] = int(await session.scalar(select(func.count()).select_from(RestAreaReference).where(*conditions)) or 0)
@@ -1719,7 +1745,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             total += kind_totals["airport"]
             items.extend(airport_items[:per_kind_limit])
         visible_items = items[:limit]
-        source_models = {"fuel_station": FuelStation, "rail_station": RailStationReference, "ferry_port": FerryPort, "bus_terminal": BusTerminalReference, "airport": Airport, "rest_area": RestAreaReference, "highway_incident": HighwayIncidentSnapshot}
+        source_models = {"fuel_station": FuelStation, "rail_station": RailStationReference, "ferry_port": FerryPort, "bus_terminal": BusTerminalReference, "airport": Airport, "rest_area": RestAreaReference, "highway_incident": HighwayIncidentSnapshot, "public_parking_lot": PublicParkingLot}
         available_sources: set[str] = set()
         if include_sources:
             for requested_kind in requested_kinds:
@@ -3468,6 +3494,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # fixed, everything else is versioned). All other routes live under `/v1`
     # (ADR-005) -- a clean-cut, no legacy unprefixed alias.
     app.include_router(router, prefix="/v1")
+    app.include_router(build_public_parking_router(get_db), prefix="/v1")
     app.include_router(build_general_rail_router(get_db), prefix="/v1")
     app.include_router(build_ferry_reference_router(get_db), prefix="/v1")
     app.include_router(build_highway_map_router(), prefix="/v1")

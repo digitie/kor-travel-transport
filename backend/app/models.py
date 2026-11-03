@@ -32,6 +32,51 @@ class Base(DeclarativeBase):
     pass
 
 
+class PublicParkingLot(Base):
+    """전국주차장표준데이터. 공항 잔여면 관측과 분리한 주차장 기준정보다."""
+
+    __tablename__ = "public_parking_lots"
+    __table_args__ = (
+        UniqueConstraint("source", "source_key", name="uq_public_parking_lot_source_key"),
+        Index("ix_public_parking_lots_current", "source", "last_seen_at", "id"),
+        Index("ix_public_parking_lots_bbox", "source", "last_seen_at", "longitude", "latitude"),
+        CheckConstraint("capacity IS NULL OR capacity >= 0", name="ck_public_parking_capacity"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), Identity(), primary_key=True)
+    source: Mapped[str] = mapped_column(String(40))
+    source_key: Mapped[str] = mapped_column(Text)
+    provider_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    name: Mapped[str] = mapped_column(Text)
+    category: Mapped[str | None] = mapped_column(Text, nullable=True)
+    parking_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    road_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    land_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fee_info: Mapped[str | None] = mapped_column(Text, nullable=True)
+    basic_minutes: Mapped[float | None] = mapped_column(Numeric(10, 3), nullable=True)
+    basic_fee: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    additional_minutes: Mapped[float | None] = mapped_column(Numeric(10, 3), nullable=True)
+    additional_fee: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    daily_minutes: Mapped[float | None] = mapped_column(Numeric(10, 3), nullable=True)
+    daily_fee: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    monthly_fee: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    operating_days: Mapped[str | None] = mapped_column(Text, nullable=True)
+    opening_hours_json: Mapped[dict[str, Any]] = mapped_column(JSON().with_variant(JSONB, "postgresql"))
+    payment_methods: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    phone: Mapped[str | None] = mapped_column(Text, nullable=True)
+    institution_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    institution_code: Mapped[str | None] = mapped_column(Text, nullable=True)
+    disabled_parking: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reference_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    raw_json: Mapped[dict[str, Any]] = mapped_column(JSON().with_variant(JSONB, "postgresql"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 # 파생 주소는 원천 주소·좌표와 분리해 같은 소비자 DB에 저장한다.
 reverse_address_tables(Base.metadata)
 

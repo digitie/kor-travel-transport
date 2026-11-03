@@ -59,6 +59,7 @@ from app.schemas import (
     RestAreaFuelPriceExportPage,
 )
 from app.services.export_addresses import export_admin_addresses
+from app.public_parking_routes import build_public_parking_export_router
 from app.services.export_current import build_current_export_router
 from app.services.export_references import build_reference_export_router
 from app.services.export_price_history import build_price_history_router
@@ -101,6 +102,7 @@ def build_service_export_router(
 
     router = APIRouter(prefix="/service/exports", dependencies=[Depends(require_service_token)],
                        tags=["service-exports"])
+    router.include_router(build_public_parking_export_router(get_db))
 
     @router.get("/fuel-stations", response_model=FuelStationExportPage)
     async def export_fuel_stations(

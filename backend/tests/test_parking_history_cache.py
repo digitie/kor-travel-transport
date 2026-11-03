@@ -471,3 +471,73 @@ def test_postgres_cache_matches_live_priority_and_detects_new_rows(client) -> No
     ))["items"]) >= len(json.loads(snapshot.render(
         observed_at - timedelta(seconds=1), None, lot_id,
     ))["items"]) + 1
+
+
+def test_filtered_history_cache_key_ignores_other_airport_cutoff_changes(monkeypatch) -> None:
+    now = datetime(2026, 11, 3, tzinfo=UTC)
+    snapshot = history_cache.ParkingHistorySnapshot.from_rows(now - timedelta(days=30), 3, [
+        _row(now - timedelta(hours=3), 1, "GMP"),
+        _row(now - timedelta(hours=2), 2, "CJU"),
+        _row(now - timedelta(hours=1), 1, "GMP"),
+    ])
+    cache = history_cache.ParkingHistoryReadCache(None)
+    cache.snapshot = snapshot
+    calls = 0
+    original = history_cache.compress_body
+    def counted(body, encoding):
+        nonlocal calls
+        calls += 1
+        return original(body, encoding)
+    monkeypatch.setattr(history_cache, "compress_body", counted)
+    async def check():
+        first, _ = await cache.response_body(snapshot, now - timedelta(hours=2, minutes=30), "GMP", None, "gzip")
+        second, _ = await cache.response_body(snapshot, now - timedelta(hours=1, minutes=30), "GMP", None, "gzip")
+        assert first == second
+        assert calls == 1
+        third, _ = await cache.response_body(snapshot, now, "GMP", None, "gzip")
+        assert json.loads(gzip.decompress(third))["items"] == []
+        assert calls == 2
+    asyncio.run(check())
+
+
+def test_history_scope_indexes_reuse_encoded_objects_and_keep_equal_time_order() -> None:
+    now = datetime(2026, 11, 3, tzinfo=UTC)
+    snapshot = history_cache.ParkingHistorySnapshot.from_rows(now - timedelta(days=30), 4, [
+        _row(now - timedelta(hours=1), 1, "GMP"),
+        _row(now, 2, "CJU"), _row(now, 3, "GMP"), _row(now, 1, "GMP"),
+    ])
+    assert snapshot.lot_indexes[1].items[0] is snapshot.items[0]
+    assert snapshot.lot_indexes[1].items[1] is snapshot.items[3]
+    assert snapshot.airport_indexes["GMP"].items[1] is snapshot.items[2]
+    assert [row["parking_lot_id"] for row in json.loads(snapshot.render(now, "GMP", None))["items"]] == [3, 1]
+    assert [row["parking_lot_id"] for row in json.loads(snapshot.render(now, "CJU", 1))["items"]] == [1]
+    assert json.loads(snapshot.render(now, "missing", None))["items"] == []
+    assert json.loads(snapshot.render(now, None, 999))["items"] == []
+    with pytest.raises(TypeError):
+        snapshot.lot_indexes[2] = snapshot.lot_indexes[1]
+    empty = history_cache.ParkingHistorySnapshot.from_rows(now - timedelta(days=30), 0, [])
+    assert empty.render(now, None, 1) == b'{"items":[],"next_cursor":null}'
+
+
+def test_matching_history_requests_share_compression_in_flight(monkeypatch) -> None:
+    now = datetime(2026, 11, 3, tzinfo=UTC)
+    snapshot = history_cache.ParkingHistorySnapshot.from_rows(now - timedelta(days=30), 1, [_row(now, 1)])
+    cache = history_cache.ParkingHistoryReadCache(None)
+    cache.snapshot = snapshot
+    calls = 0
+    original = history_cache.compress_body
+    def counted(body, encoding):
+        nonlocal calls
+        calls += 1
+        return original(body, encoding)
+    async def yielding_cpu(fn, *args):
+        await asyncio.sleep(0)
+        return fn(*args)
+    monkeypatch.setattr(history_cache, "compress_body", counted)
+    monkeypatch.setattr(history_cache, "run_history_cpu", yielding_cpu)
+    async def check():
+        results = await asyncio.gather(*(cache.response_body(snapshot, now, "GMP", None, "gzip") for _ in range(2)))
+        assert results[0] == results[1]
+        assert json.loads(gzip.decompress(results[0][0]))["items"][0]["parking_lot_id"] == 1
+        assert calls == 1
+    asyncio.run(check())
