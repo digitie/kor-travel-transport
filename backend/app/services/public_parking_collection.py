@@ -6,6 +6,7 @@ import hashlib
 import json
 import math
 import unicodedata
+from enum import StrEnum
 from typing import Any, Callable
 
 from datagokr import DataGoKrClient
@@ -23,10 +24,26 @@ SOURCE = "datagokr_parking_lots"
 PAGE_SIZE = 1000
 MAX_PAGES = 1000
 UPSERT_BATCH_SIZE = 200  # 32열×200: asyncpg bind 상한보다 작게 유지한다.
+CONFLICT_NOTICE = "원천의 중복 자료가 서로 달라 일부 항목을 확인할 수 없습니다."
+
+
+class PublicParkingFailureCode(StrEnum):
+    MISSING_IDENTITY = "missing_identity"
+    PAGE_SEQUENCE = "page_sequence"
+    TOTAL_COUNT_CHANGED = "total_count_changed"
+    DUPLICATE_IDENTITY = "duplicate_identity"
+    EMPTY_CATALOG = "empty_catalog"
+    TOTAL_COUNT_MISMATCH = "total_count_mismatch"
+    UNKNOWN_TOTAL_PAGE_LIMIT = "unknown_total_page_limit"
+    RUN_ALREADY_FINISHED = "run_already_finished"
 
 
 class IncompletePublicParkingCollection(RuntimeError):
     """누락·중복·0건을 새 완결 집합으로 게시하지 않는다."""
+
+    def __init__(self, code: PublicParkingFailureCode):
+        self.code = PublicParkingFailureCode(code)
+        super().__init__(self.code.value)
 
 
 def _label(value: Any) -> str | None:
@@ -37,16 +54,17 @@ def _label(value: Any) -> str | None:
 
 
 def parking_source_key(item: Any) -> str:
-    """기관 코드는 주차장 식별자가 아니다. 공식 번호가 없으면 여러 단서를 함께 쓴다."""
+    """공식 번호도 전역 고유하지 않으므로 기관·시설명·주소와 함께 결박한다."""
     provider_id = _label(item.prkplce_no)
-    if provider_id:
-        return "id:" + provider_id
     name = _label(item.prkplce_nm)
     address = _label(item.rdnmadr) or _label(item.lnmadr)
     if not name or not address:
-        raise IncompletePublicParkingCollection("주차장 식별 단서가 없습니다.")
+        raise IncompletePublicParkingCollection(PublicParkingFailureCode.MISSING_IDENTITY)
     parts = [_label(item.instt_code), name, address]
-    return "derived:" + hashlib.sha256(json.dumps(parts, ensure_ascii=False).encode()).hexdigest()
+    if provider_id:
+        parts.insert(0, provider_id)
+    prefix = "id:" if provider_id else "derived:"
+    return prefix + hashlib.sha256(json.dumps(parts, ensure_ascii=False).encode()).hexdigest()
 
 
 def parking_row(item: Any, collected_at: Any) -> dict[str, Any]:
@@ -80,6 +98,63 @@ def parking_row(item: Any, collected_at: Any) -> dict[str, Any]:
     }
 
 
+def _raw_digest(raw: dict[str, Any]) -> bytes:
+    return hashlib.sha256(json.dumps(
+        raw, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False,
+    ).encode()).digest()
+
+
+def _merge_common_fields(current: dict[str, Any], incoming: dict[str, Any], conflicts: set[str]) -> None:
+    # None도 알려지지 않은 값이다. 값이 한번 달라지면 이후 variant가 들어와도
+    # 복구하지 않아 순서·페이지 경계와 무관한 전체 공통값만 남긴다.
+    for name, value in incoming.items():
+        if name in {"source", "source_key", "raw_json", "created_at", "last_seen_at"}:
+            continue
+        if name == "opening_hours_json":
+            for period, hour in value.items():
+                if current[name][period] != hour:
+                    current[name][period] = None
+                    conflicts.add(f"{name}.{period}")
+        elif current[name] != value:
+            current[name] = None
+            conflicts.add(name)
+    if conflicts.intersection({"latitude", "longitude"}):
+        current["latitude"] = current["longitude"] = None
+        conflicts.update({"latitude", "longitude"})
+
+
+class _ParkingCatalog:
+    """수집과 원문 offline 검산에서 같은 공통값 투영을 사용한다."""
+
+    def __init__(self) -> None:
+        self.rows: dict[str, dict[str, Any]] = {}
+        self.seen_raw: dict[str, set[bytes]] = {}
+        self.variants: dict[str, list[dict[str, Any]]] = {}
+        self.conflicting_fields: dict[str, set[str]] = {}
+
+    def add(self, item: Any, generation: Any) -> None:
+        row = parking_row(item, generation)
+        identity, raw = row["source_key"], row["raw_json"]
+        digest = _raw_digest(raw)
+        if identity not in self.rows:
+            self.rows[identity], self.seen_raw[identity] = row, {digest}
+            return
+        if digest in self.seen_raw[identity]:
+            raise IncompletePublicParkingCollection(PublicParkingFailureCode.DUPLICATE_IDENTITY)
+        self.seen_raw[identity].add(digest)
+        self.variants.setdefault(identity, [self.rows[identity]["raw_json"]]).append(raw)
+        _merge_common_fields(self.rows[identity], row, self.conflicting_fields.setdefault(identity, set()))
+
+    def materialize(self) -> list[dict[str, Any]]:
+        for identity, records in self.variants.items():
+            self.rows[identity]["notes"] = CONFLICT_NOTICE
+            self.rows[identity]["raw_json"] = {
+                "source_records": sorted(records, key=_raw_digest),
+                "conflicting_fields": sorted(self.conflicting_fields[identity]),
+            }
+        return list(self.rows.values())
+
+
 class PublicParkingCollectionService:
     def __init__(self, settings: Settings, *, client_factory: Callable[..., Any] = DataGoKrClient):
         self.settings, self.client_factory = settings, client_factory
@@ -92,7 +167,8 @@ class PublicParkingCollectionService:
         session.add(run)
         await session.commit()
         run_id, generation = run.id, now_utc()
-        received, pages, expected, seen = 0, 0, None, set()
+        received, pages, expected = 0, 0, None
+        catalog = _ParkingCatalog()
         try:
             if session.bind.dialect.name == "postgresql":
                 locked = await session.scalar(text("SELECT pg_try_advisory_xact_lock(hashtext(:name))"),
@@ -108,53 +184,62 @@ class PublicParkingCollectionService:
                 async for page in client.parking.iter_pages(num_of_rows=PAGE_SIZE, max_pages=MAX_PAGES):
                     pages += 1
                     if page.page_no != pages:
-                        raise IncompletePublicParkingCollection("페이지 순서가 바뀌었습니다.")
+                        raise IncompletePublicParkingCollection(PublicParkingFailureCode.PAGE_SEQUENCE)
                     if getattr(page, "total_count_known", True):
                         if expected is not None and expected != page.total_count:
-                            raise IncompletePublicParkingCollection("전체 건수가 수집 중 바뀌었습니다.")
+                            raise IncompletePublicParkingCollection(PublicParkingFailureCode.TOTAL_COUNT_CHANGED)
                         expected = page.total_count
-                    rows = [parking_row(item, generation) for item in page.items]
-                    for row in rows:
-                        if row["source_key"] in seen:
-                            raise IncompletePublicParkingCollection("중복 주차장 식별자가 있습니다.")
-                        seen.add(row["source_key"])
-                    for offset in range(0, len(rows), UPSERT_BATCH_SIZE):
-                        insert = pg_insert if session.bind.dialect.name == "postgresql" else sqlite_insert
-                        statement = insert(PublicParkingLot).values(rows[offset:offset + UPSERT_BATCH_SIZE])
-                        await session.execute(statement.on_conflict_do_update(
-                            index_elements=[PublicParkingLot.source, PublicParkingLot.source_key],
-                            set_={name: getattr(statement.excluded, name) for name in rows[0]
-                                  if name not in {"source", "source_key", "created_at"}},
-                        ))
-                    received += len(rows)
+                    for item in page.items:
+                        catalog.add(item, generation)
+                    received += len(page.items)
                     session.add(RawApiResponse(
                         collection_run_id=run_id, source=SOURCE, endpoint="datagokr:parking.iter_pages",
                         request_params_json={"page_no": page.page_no, "num_of_rows": PAGE_SIZE},
-                        status_code=200, body_text=json.dumps([dict(item.raw) for item in page.items], ensure_ascii=False),
+                        status_code=200, body_text=json.dumps([item.raw for item in page.items], ensure_ascii=False),
                         received_at=now_utc(), parse_status="success", parse_error=None,
                     ))
                     await session.flush()
             finally:
                 await client.aclose()
-            if not received or (expected is not None and received != expected) or (pages >= MAX_PAGES and expected is None):
-                raise IncompletePublicParkingCollection("전체 주차장 집합을 확인하지 못했습니다.")
+            if not received:
+                raise IncompletePublicParkingCollection(PublicParkingFailureCode.EMPTY_CATALOG)
+            if expected is not None and received != expected:
+                raise IncompletePublicParkingCollection(PublicParkingFailureCode.TOTAL_COUNT_MISMATCH)
+            if pages >= MAX_PAGES and expected is None:
+                raise IncompletePublicParkingCollection(PublicParkingFailureCode.UNKNOWN_TOTAL_PAGE_LIMIT)
+            # 전 페이지의 완결 건수를 검산한 뒤 각 복합키를 한 번만 저장한다.
+            rows = catalog.materialize()
+            for offset in range(0, len(rows), UPSERT_BATCH_SIZE):
+                insert = pg_insert if session.bind.dialect.name == "postgresql" else sqlite_insert
+                statement = insert(PublicParkingLot).values(rows[offset:offset + UPSERT_BATCH_SIZE])
+                await session.execute(statement.on_conflict_do_update(
+                    index_elements=[PublicParkingLot.source, PublicParkingLot.source_key],
+                    set_={name: getattr(statement.excluded, name) for name in rows[0]
+                          if name not in {"source", "source_key", "created_at"}},
+                ))
             active = await session.scalar(select(CollectionRun).where(CollectionRun.id == run_id)
                                           .with_for_update().execution_options(populate_existing=True))
             if active.status != "running":
-                raise IncompletePublicParkingCollection("수집 실행이 이미 종료됐습니다.")
+                raise IncompletePublicParkingCollection(PublicParkingFailureCode.RUN_ALREADY_FINISHED)
             active.status, active.finished_at = "success", now_utc()
             state.last_success_at, state.last_error, state.updated_at = generation, None, now_utc()
             await session.commit()
-            return {"status": "success", "run_id": run_id, "received": received, "stored": received, "pages": pages}
+            return {"status": "success", "run_id": run_id, "received": received, "stored": len(rows),
+                    "pages": pages, "conflicts": len(catalog.variants)}
         except (Exception, asyncio.CancelledError) as error:
             error_type, cancelled = type(error).__name__, isinstance(error, asyncio.CancelledError)
+            error_code = error.code.value if isinstance(error, IncompletePublicParkingCollection) else None
+            safe_error = error_code or error_type
             await session.rollback()
             stored = await session.get(CollectionRun, run_id, populate_existing=True)
             if stored is not None and stored.status == "running":
-                stored.status, stored.finished_at, stored.error_message = "cancelled" if cancelled else "failed", now_utc(), error_type
+                stored.status, stored.finished_at, stored.error_message = "cancelled" if cancelled else "failed", now_utc(), safe_error
             state = await get_or_create_state(session, SOURCE)
-            state.last_started_at, state.last_error, state.updated_at = generation, error_type, now_utc()
+            state.last_started_at, state.last_error, state.updated_at = generation, safe_error, now_utc()
             await session.commit()
             if cancelled:
                 raise
-            return {"status": "failed", "run_id": run_id, "error_type": error_type, "received": received, "pages": pages}
+            result = {"status": "failed", "run_id": run_id, "error_type": error_type, "received": received, "pages": pages}
+            if error_code is not None:
+                result["error_code"] = error_code
+            return result
