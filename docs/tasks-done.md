@@ -1,3 +1,9 @@
+## 2026-11-03 — 읽기 성능 수정 운영 반영
+
+- [x] **T-READ-PERF-01** — 주차 이력의 범위별 참조 인덱스·동시 중복 압축 공유, reference 원자료 순회 2→1, 분석 cache 조회 32→1을 구현했다. 최종 API·수집기 dc7a9ff/6c2f187b에서도 이 변경을 유지하며 0041·원20개 일정·Manager healthy를 확인했다. PG18 WSL/Docker 집중80개와 통합34개는 겹치므로 합산하지 않는다. 합성 render 측정·출력 SHA 보존은 운영 API 지연 수치와 구분한다. 병행 Weather API539d6c87/schema0036도 배포 완료로, 실제500행200·조건부304 본문0을 확인했다. 원 guard503과 당시 경합 원인 미확정은 보존한다. 일반 주차장 공식 수집의 키 등록 제약과 실데이터 수용은 별도 미완이다. [검증과 실제 반영 범위](reports/2026-11-03-parking-owner-read-performance.md).
+
+- [x] **T-PARKING-EMPTY-UI-01** — 최초 수집 실패 시 이전 완료본을 표시한다는 잘못된 안내를 수정하고 PC 검색창의 큰 빈 공간을 줄였다. UI604b10d/이미지9b8b7ad0를 관리 화면에만 반영했다. WSL·Docker 관련8개씩 통과, 실제 Firefox PC1440·모바일375에서 정확한 안내·넘침0·오류0·세션/자식 종료를 확인했다. PC 검색 영역은63.25px다. 실데이터가 없어 전체 데이터 수용은 NOT_READY로 유지한다.
+
 ## 2026-11-02 — 양 앱 VWorld 키 실제 반영
 
 - [x] **T-VWORLD-INPUT-APPLY-01** — Weather·Transport의 두 웹 이미지에 비공개 입력을 반영하고 Firefox157 PC1440/모바일375 네 화면의 실제 새 키 이미지 타일·지도 픽셀·세션/자식 종료를 확인했다. 서버4역할은 실제Settings 입력 일치와healthy, Transport19개 원 일정 복원·다른 환경/역할 보존·Manager 양 앱adopt/verify/show healthy를 확인했다. 후속73b533ba37의 최초Invocationc8ea81c16ac0434da047a6438ef5c166은actual0/종료/Main0/cgroup 부재다. 키 값은Git·문서·로그에 기록하지 않았고 원 실패는 보존했다. DB·SDK 재설치·백업/복원·추가 수집은 하지 않았다. [실제 결과·남은 외부 제약](reports/2026-11-02-rail-opinet-vworld-followup.md).
