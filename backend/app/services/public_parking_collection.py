@@ -21,7 +21,7 @@ from app.models import CollectionRun, PublicParkingLot, RawApiResponse
 from app.services.transport_collection import get_or_create_state
 
 SOURCE = "datagokr_parking_lots"
-PAGE_SIZE = 1000
+PAGE_SIZE = 10_000  # 공식 파일 다운로드의 페이지 크기. OpenAPI 서비스키를 쓰지 않는다.
 MAX_PAGES = 1000
 UPSERT_BATCH_SIZE = 200  # 32열×200: asyncpg bind 상한보다 작게 유지한다.
 CONFLICT_NOTICE = "원천의 중복 자료가 서로 달라 일부 항목을 확인할 수 없습니다."
@@ -160,9 +160,8 @@ class PublicParkingCollectionService:
         self.settings, self.client_factory = settings, client_factory
 
     async def collect(self, session: AsyncSession, *, trigger: str = "dagster_public_parking") -> dict[str, Any]:
-        key = self.settings.public_parking_service_key or self.settings.data_go_kr_service_key
-        if not self.settings.public_parking_collection_enabled or not key:
-            return {"status": "skipped", "reason": "public parking collection disabled or key unavailable"}
+        if not self.settings.public_parking_collection_enabled:
+            return {"status": "skipped", "reason": "public parking collection disabled"}
         run = CollectionRun(started_at=now_utc(), status="running", trigger=trigger)
         session.add(run)
         await session.commit()
@@ -179,9 +178,9 @@ class PublicParkingCollectionService:
                     return {"status": "skipped", "reason": "public parking collector busy", "run_id": run_id}
             state = await get_or_create_state(session, SOURCE)
             state.last_started_at = generation
-            client = self.client_factory(api_key=key, timeout=self.settings.api_timeout_seconds, max_rps=1.0)
+            client = self.client_factory(timeout=self.settings.api_timeout_seconds, max_rps=1.0)
             try:
-                async for page in client.parking.iter_pages(num_of_rows=PAGE_SIZE, max_pages=MAX_PAGES):
+                async for page in client.parking.iter_file_pages(num_of_rows=PAGE_SIZE, max_pages=MAX_PAGES):
                     pages += 1
                     if page.page_no != pages:
                         raise IncompletePublicParkingCollection(PublicParkingFailureCode.PAGE_SEQUENCE)
@@ -193,7 +192,7 @@ class PublicParkingCollectionService:
                         catalog.add(item, generation)
                     received += len(page.items)
                     session.add(RawApiResponse(
-                        collection_run_id=run_id, source=SOURCE, endpoint="datagokr:parking.iter_pages",
+                        collection_run_id=run_id, source=SOURCE, endpoint="datagokr:parking.iter_file_pages",
                         request_params_json={"page_no": page.page_no, "num_of_rows": PAGE_SIZE},
                         status_code=200, body_text=json.dumps([item.raw for item in page.items], ensure_ascii=False),
                         received_at=now_utc(), parse_status="success", parse_error=None,

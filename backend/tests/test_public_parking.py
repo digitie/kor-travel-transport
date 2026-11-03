@@ -37,7 +37,27 @@ def client_for(pages, *, fail_after=False):
     async def close():
         pass
 
-    return lambda **_: SimpleNamespace(parking=SimpleNamespace(iter_pages=iterate), aclose=close)
+    return lambda **_: SimpleNamespace(parking=SimpleNamespace(iter_file_pages=iterate), aclose=close)
+
+
+def test_official_file_collection_needs_no_service_key(client):
+    settings = client.app.state.settings.model_copy(update={
+        "public_parking_collection_enabled": True,
+        "public_parking_service_key": None, "data_go_kr_service_key": None,
+    })
+    def factory(**kwargs):
+        assert "api_key" not in kwargs
+        return client_for([[provider("KEYLESS")]])(**kwargs)
+
+    async def collect():
+        async with client.app.state.session_factory() as session:
+            result = await PublicParkingCollectionService(settings, client_factory=factory).collect(session)
+            assert result["status"] == "success" and result["stored"] == 1
+            raw = await session.scalar(select(RawApiResponse).where(RawApiResponse.collection_run_id == result["run_id"]))
+            assert raw.endpoint == "datagokr:parking.iter_file_pages"
+            assert (await session.scalar(select(TransportCollectionState).where(
+                TransportCollectionState.source == SOURCE))).last_success_at is not None
+    asyncio.run(collect())
 
 
 def test_identity_and_provider_semantics():
@@ -266,7 +286,7 @@ def test_stored_parking_map_list_detail_and_atomic_refresh(client):
         yield SimpleNamespace(page_no=1, items=[provider("D")], total_count=2, total_count_known=True)
     async def close():
         pass
-    bad_factory = lambda **_: SimpleNamespace(parking=SimpleNamespace(iter_pages=incomplete), aclose=close)
+    bad_factory = lambda **_: SimpleNamespace(parking=SimpleNamespace(iter_file_pages=incomplete), aclose=close)
     incomplete_result = asyncio.run(collect([], bad_factory))
     assert incomplete_result["status"] == "failed" and incomplete_result["error_code"] == "total_count_mismatch"
     preserved = client.get("/v1/transport/parking-lots").json()
@@ -329,7 +349,7 @@ def test_cancelled_collection_keeps_complete_catalog(tmp_path):
         async with factory() as session:
             with pytest.raises(asyncio.CancelledError):
                 await PublicParkingCollectionService(settings, client_factory=lambda **_: SimpleNamespace(
-                    parking=SimpleNamespace(iter_pages=interrupted), aclose=close)).collect(session)
+                    parking=SimpleNamespace(iter_file_pages=interrupted), aclose=close)).collect(session)
         async with factory() as session:
             assert await session.scalar(select(func.count()).select_from(PublicParkingLot)) == 0
             assert (await session.scalar(select(CollectionRun))).status == "cancelled"
