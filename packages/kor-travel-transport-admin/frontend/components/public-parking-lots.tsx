@@ -70,7 +70,9 @@ export function PublicParkingLots() {
     feedback={<div className="public-parking-feedback">
       <p className="quiet">정적 총면수·요금·운영시간 기준정보입니다. 실시간 잔여면은 제공하지 않습니다.</p>
       {data ? <p className="quiet">불러온 {data.items.length.toLocaleString("ko-KR")}곳 · 지도 좌표 {data.items.filter(hasCoordinates).length.toLocaleString("ko-KR")}곳 · 마지막 완료 {dateTime(data.collection.last_success_at)}{data.has_more ? " · 목록에서 더 불러올 수 있습니다." : ""}</p> : null}
-      {data?.collection.last_attempt_failed ? <Alert><AlertDescription>최근 수집 시도가 실패해 마지막 완료된 저장 정보를 표시합니다.</AlertDescription></Alert> : null}
+      {data?.collection.last_attempt_failed ? <Alert><AlertDescription>{data.collection.last_success_at
+        ? "최근 수집 시도가 실패해 마지막 완료된 저장 정보를 표시합니다."
+        : "최근 수집 시도가 실패했습니다. 아직 완료된 저장 정보가 없습니다."}</AlertDescription></Alert> : null}
       {data?.collection.stale && data.collection.last_success_at ? <Alert><AlertDescription>마지막 완료 수집이 오래된 기준정보입니다. 자료 기준일과 관리기관 안내를 확인해 주세요.</AlertDescription></Alert> : null}
       {error ? <Alert variant="destructive"><AlertDescription><p>{error}</p><Button type="button" variant="outline" onClick={() => setRequest(value => ({ ...value, revision: value.revision + 1 }))}>목록 다시 조회</Button><Button type="button" variant="outline" onClick={reset}>첫 페이지부터 조회</Button></AlertDescription></Alert> : null}
       {loading ? <div role="status"><p>저장된 주차장 목록 확인 중…</p><Skeleton className="h-10 w-full" aria-hidden="true" /></div> : null}

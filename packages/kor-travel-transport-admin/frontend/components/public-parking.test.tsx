@@ -77,12 +77,15 @@ test("collection 미완과 오래된 마지막 완료본·실패를 빈 정상 �
   const { container, done } = await mount(<PublicParkingLots />);
   try {
     expect(container.textContent).toContain("완료된 주차장 기준정보가 아직 없습니다");
-    expect(container.textContent).toContain("최근 수집 시도가 실패");
+    expect(container.textContent).toContain("최근 수집 시도가 실패했습니다. 아직 완료된 저장 정보가 없습니다.");
+    expect(container.textContent).not.toContain("마지막 완료된 저장 정보를 표시합니다");
     vi.mocked(fetch).mockResolvedValue(response(page([lot()], { collection: {
-      source: "datagokr_parking_lots", last_success_at: "2026-01-01T00:00:00Z", failed: false, stale: true, last_attempt_failed: false,
+      source: "datagokr_parking_lots", last_success_at: "2026-01-01T00:00:00Z", failed: false, stale: true, last_attempt_failed: true,
     } })));
     await click(container, "첫 페이지 새로고침");
     expect(container.textContent).toContain("마지막 완료 수집이 오래된 기준정보");
+    expect(container.textContent).toContain("최근 수집 시도가 실패해 마지막 완료된 저장 정보를 표시합니다");
+    expect(container.textContent).not.toContain("아직 완료된 저장 정보가 없습니다");
     expect(container.querySelectorAll(".place-row")).toHaveLength(1);
   } finally { await done(); }
 });
