@@ -1,3 +1,7 @@
+## 2026-11-08 — 대량 유가 지도 집합 투영·완료 검증 재사용 구현
+
+사용자 추가 지시로 실제16~21초인5천 장소 경로를 개선했다. 단일 fuel PG 요청은 집합 JSON 투영과 같은 전체 DTO 검증을 사용하고, 실제 DB JSON 전체 바이트가 같을 때만 완료 검증 결과를 재사용한다. source 읽기/metadata 갱신은 매 요청 유지해 TTL/반영 지연이 없다. 필드·좌표/시각/NULL·유종 필터·schema·SDK·웹은 유지한다. codec은 최대2건/worker에서 실행하며 WSL/Docker PG18각36·후속5 통과와 전체 바이트 SHA 동일을 확인했다. Native 구간 재사용1.8~2.3초는 운영 HTTP/p95가 아니다. 아직 새 이미지 반영 전이며 기존 Weather Root의 자연 종료 뒤 이어간다. [구현·검산·한계](reports/2026-11-08-large-fuel-map.md).
+
 ## 2026-11-08 — Transport 추가 조회 개선 이미지 배포·실제 수용
 
 제품22d53a4를 API/수집기eb0d0392에 반영하고 원20복원·Manager healthy·schema0041/SDK/환경·다른 역할 보존·첫Inv6ece 실제done/Main0/cgroup부재·전체87자식 종료0을 확인했다. HTTP8요청200과 PC1440/모바일375 대표 카드·선택 가격·overflow/로그아웃을 수용했다. 모바일 원 assertion 실패 원인은UNKNOWN으로 보존하고 같은 이미지의 별도R2 PASS를 구분했다. 실제 지도5,000곳16.22/20.86초는 기존12~13초보다 느렸고 국소 CPU 개선을 HTTP 개선으로 과장하지 않는다. 1초 목표와 카드 겹침/갱신 지연은 미완이다. 정본 SHAb6922904182173e4c8cc8fe6300243a40ce5ff86b1d1a993bb31396b28fac286. [결과·한계](reports/2026-11-07-read-next.md).

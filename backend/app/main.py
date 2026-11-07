@@ -27,6 +27,8 @@ from types import SimpleNamespace
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
+from anyio import CapacityLimiter, to_thread
+
 from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Path as ApiPath, Query, Request, UploadFile
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
@@ -147,6 +149,8 @@ from app.schemas import (
     WeekdayBucket,
     WeekdayHourlyPattern,
 )
+from app.services.fuel_map import fuel_map_items_statement
+from app.services.fuel_map_validation import validated_fuel_map_items
 from app.services.analytics import (
     build_special_day_patterns,
     build_threshold_insights,
@@ -619,6 +623,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url="/redoc" if resolved_settings.enable_api_docs else None,
         openapi_url="/openapi.json" if resolved_settings.enable_api_docs else None,
     )
+    # 대량 marker JSON 변환은 두 건만 병행하고 event loop를 직접 막지 않는다.
+    app.state.fuel_map_limiter = CapacityLimiter(2)
     @app.exception_handler(HTTPException)
     async def problem_json_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
         # RFC 7807 (ADR-005): every error response uses the same shape,
@@ -1319,6 +1325,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @router.get("/transport/features/places", response_model=TransportPlaceMapResponse)
     async def transport_place_features(
+        request: Request,
         kind: str | None = Query(default=None, description="fuel_station, rail_station, ferry_port, bus_terminal, airport, rest_area, highway_incident 중 하나. 돌발은 최근 24시간 최신 저장 관측"),
         kinds: str | None = Query(default=None, max_length=280, description="지도 종류를 쉼표로 구분해 한 요청으로 조회"),
         limit: int = Query(default=1000, ge=1, le=5000),
@@ -1372,6 +1379,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # 수천 개의 DOM marker를 만들지 않게 하는 API 경계이기도 하다.
         per_kind_limit = (limit + len(requested_kinds) - 1) // len(requested_kinds)
         items: list[TransportPlaceMapItem | dict[str, Any]] = []
+        fuel_items_json = None
+        fuel_items_count = 0
         total = 0
         kind_totals: dict[str, int] = {}
 
@@ -1579,7 +1588,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             conditions = coordinate_conditions(FuelStation)
             kind_totals["fuel_station"] = int(await session.scalar(select(func.count()).select_from(FuelStation).where(*conditions)) or 0)
             total += kind_totals["fuel_station"]
-            stations = (await session.execute(
+            station_query = (
                 select(
                     FuelStation.id, FuelStation.source, FuelStation.name,
                     FuelStation.longitude, FuelStation.latitude, FuelStation.address,
@@ -1589,34 +1598,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     FuelStation.last_seen_at,
                 ).where(*conditions)
                 .order_by(FuelStation.last_seen_at.desc(), FuelStation.id.desc()).limit(per_kind_limit)
-            )).all()
-            station_ids = [station.id for station in stations]
-            latest: dict[int, list[Any]] = {}
-            if station_ids:
-                rows = (await session.execute(
-                    select(
-                        FuelLatestPrice.fuel_station_id, FuelLatestPrice.product_code,
-                        FuelLatestPrice.price, FuelLatestPrice.provider_updated_at,
-                        FuelLatestPrice.observed_at, FuelLatestPrice.collected_at,
-                    ).where(FuelLatestPrice.fuel_station_id.in_(station_ids))
-                )).all()
-                for row in rows:
-                    latest.setdefault(row.fuel_station_id, []).append(row)
-            for station in stations:
-                prices = sorted(latest.get(station.id, []), key=lambda row: row.product_code)
-                price = next((row for row in prices if row.product_code == "B027"), prices[0] if prices else None)
-                # 장소와 가격을 부모의 동일 중첩 validator에서 한 번만 구성한다.
-                items.append(dict(
-                    id=station.id, kind="fuel_station", source=station.source, name=station.name,
-                    longitude=station.longitude, latitude=station.latitude, subtitle=station.address,
-                    brand_name=station.brand_name, brand_code=station.brand_code, latest_price=float(price.price) if price and price.price is not None else None,
-                    price_product_code=price.product_code if price else None, address=station.address,
-                    # 부모 모델의 C validator가 가격까지 한 번에 검증한다. 유종별 Python 모델 생성은 반복하지 않는다.
-                    prices=[{"product_code": row.product_code, "price": row.price, "provider_updated_at": serialize_utc(row.provider_updated_at) if row.provider_updated_at else None, "observed_at": serialize_utc(row.observed_at), "collected_at": serialize_utc(row.collected_at)} for row in prices],
-                    phone=station.phone,
-                    facilities=[label for field, label in (("is_self", "셀프"), ("is_24h", "24시간"), ("has_carwash", "세차"), ("has_maintenance", "정비"), ("has_cvs", "편의점")) if getattr(station, field) is True],
-                    updated_at=serialize_utc(station.last_seen_at),
-                ))
+            )
+            if requested_kinds == ("fuel_station",) and session.get_bind().dialect.name == "postgresql":
+                async with request.app.state.fuel_map_limiter:
+                    fuel_items_json, fuel_items_count = (await session.execute(
+                        fuel_map_items_statement(station_query),
+                    )).one()
+                    fuel_items_json, validated_count = await to_thread.run_sync(
+                        validated_fuel_map_items, fuel_items_json,
+                    )
+                    if validated_count != fuel_items_count:
+                        raise RuntimeError("유가 지도 JSON 항목 수가 조회 결과와 다릅니다.")
+            else:
+                stations = (await session.execute(station_query)).all()
+                station_ids = [station.id for station in stations]
+                latest: dict[int, list[Any]] = {}
+                if station_ids:
+                    rows = (await session.execute(
+                        select(
+                            FuelLatestPrice.fuel_station_id, FuelLatestPrice.product_code,
+                            FuelLatestPrice.price, FuelLatestPrice.provider_updated_at,
+                            FuelLatestPrice.observed_at, FuelLatestPrice.collected_at,
+                        ).where(FuelLatestPrice.fuel_station_id.in_(station_ids))
+                    )).all()
+                    for row in rows:
+                        latest.setdefault(row.fuel_station_id, []).append(row)
+                for station in stations:
+                    prices = sorted(latest.get(station.id, []), key=lambda row: row.product_code)
+                    price = next((row for row in prices if row.product_code == "B027"), prices[0] if prices else None)
+                    # 장소와 가격을 부모의 동일 중첩 validator에서 한 번만 구성한다.
+                    items.append(dict(
+                        id=station.id, kind="fuel_station", source=station.source, name=station.name,
+                        longitude=station.longitude, latitude=station.latitude, subtitle=station.address,
+                        brand_name=station.brand_name, brand_code=station.brand_code, latest_price=float(price.price) if price and price.price is not None else None,
+                        price_product_code=price.product_code if price else None, address=station.address,
+                        # 부모 모델의 C validator가 가격까지 한 번에 검증한다. 유종별 Python 모델 생성은 반복하지 않는다.
+                        prices=[{"product_code": row.product_code, "price": row.price, "provider_updated_at": serialize_utc(row.provider_updated_at) if row.provider_updated_at else None, "observed_at": serialize_utc(row.observed_at), "collected_at": serialize_utc(row.collected_at)} for row in prices],
+                        phone=station.phone,
+                        facilities=[label for field, label in (("is_self", "셀프"), ("is_24h", "24시간"), ("has_carwash", "세차"), ("has_maintenance", "정비"), ("has_cvs", "편의점")) if getattr(station, field) is True],
+                        updated_at=serialize_utc(station.last_seen_at),
+                    ))
+
         if "rail_station" in requested_kinds:
             conditions = coordinate_conditions(RailStationReference)
             kind_totals["rail_station"] = int(await session.scalar(select(func.count()).select_from(RailStationReference).where(*conditions)) or 0)
@@ -1765,10 +1787,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         result = TransportPlaceMapResponse(
             generated_at=now_utc(), kind=selected_kind, total=total,
-            fuel_statistics=with_publication_status(fuel_statistics, fuel_prices_last_refreshed_at), truncated=total > len(visible_items), kind_totals=kind_totals,
+            fuel_statistics=with_publication_status(fuel_statistics, fuel_prices_last_refreshed_at), truncated=total > (fuel_items_count if fuel_items_json is not None else len(visible_items)), kind_totals=kind_totals,
             items=visible_items, available_sources=sorted(available_sources),
             fuel_prices_stale=fuel_prices_stale, fuel_prices_last_refreshed_at=fuel_prices_last_refreshed_at,
         )
+        if fuel_items_json is not None:
+            # 항목은 같은 DTO의 완료 검증을 원문 바이트 일치 때만 재사용한다.
+            # 총수/신선도/통계 metadata는 매 요청 현재 DB 상태로 따로 검증한다.
+            metadata_json = result.model_dump_json(exclude={"items"}).encode("utf-8")
+            return Response(content=metadata_json[:-1] + b',"items":' + fuel_items_json + b"}",
+                            media_type="application/json")
         # 대량 지도 응답은 이미 검증된 Pydantic 모델을 FastAPI가 다시 순회하지 않게 한다.
         return Response(content=result.model_dump_json(), media_type="application/json")
 
