@@ -1,3 +1,9 @@
+## 2026-11-07 — 조회 성능 세 회차·실제 이미지 수용
+
+- [x] **T-READ-MAX-01** — 동일 Pydantic 중첩 검증을 유지하며 유종별 Python 모델 중복 구성을 제거했다. ARM64 국소 교대 측정·동일 출력 SHA·WSL/PG18/Docker 집중 회귀를 확인했다.
+- [x] **T-READ-MAX-02** — 유가 목록의 응답 전용 ORM 상태6000개를 Core 투영으로 제거하고 같은 결과를 검산했다. 새 datetime 입력에서 더 느린 UTC cache 후보는 폐기했다.
+- [x] **T-READ-MAX-03** — 필요한 기관·노선의 역명만 읽고300역5SQL 계약을 보존했다. WSL SQLite12·WSLPG18/DockerPG18각14개(겹침 합산0)·동일 이름 SHA를 확인했다. 세 회차 제품aeff45/이미지791eb754를 API f00d0540·CS535235ef에 반영하고 KRIC SUCCESS 자연 종료·원20복원·Manager healthy·최초Invd6dc715d done/Main0/cgroup부재·271개 자식 실제0/종료를 수용했다. 18GET200·Firefox PC/모바일 DTO-DOM/세션 종료를 확인했고 대량 지도12~13초/1초 목표 미달·stale/라벨 겹침·자료 없음과 원 실패는 유지한다. [최종 증거와 한계](reports/2026-11-07-read-max-optimization.md).
+
 ## 2026-11-03 — 키 없는 일반 주차장 파일 수집·실제 화면 수용
 
 - [x] **T-PARKING-OWNER-01** — Map 자료 pull 없이 SDK의 공식 공개 파일 다운로드로 직접 수집·0041 DB·공개/인증 API·일반 주차장 목록/상세/지도 기능을 Transport에 이식했다. f60b023/SDK18864a3/이미지e7cdd88e를 API·수집기에 반영하고 원20개 일정·다른 역할/서비스·키/환경을 보존했다. 공식61213dad/앱5730 SUCCESS, 원문18994행/고유18992시설/충돌2개를 실제 저장·검산했다. API/export와 Firefox157 PC1440·모바일375의 실제 목록/상세/지도·타일·넘침0·오류0·세션/자식 종료를 확인했다. SDK WSL/Docker32개씩·PG18 수집14개씩 통과. 원 OpenAPI403·키 대기 오판·첫 빌드 참조 오류·PC 관측 스크립트 실패는 보존했다. 파일 수집에 키·활용신청은 필요 없다. [최종 증거와 범위](reports/2026-11-03-parking-owner-read-performance.md).

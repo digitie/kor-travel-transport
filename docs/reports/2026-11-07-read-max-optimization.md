@@ -4,7 +4,7 @@
 
 Weather 세 회차 제품7ccf88a의 실제 API/수집기 반영·원27복원·최초 부모 done·PC/모바일 수용 뒤 시작했다. Transport는 feature branch `codex/transport-read-max-20261107`에서 원인 발굴→개선→전후 검증을 세 번 진행한다. 새 독립 리뷰·백업/복원·전체 시험 반복·수집 취소·main 머지는 추가하지 않는다. 운영 반영은 정상 Manager G→서비스R/FD9·NVMe에서 기존 수집/worker 자연 종료 뒤 수행한다.
 
-세 회차의 구현·국소 전후 검산·집중 검증은 마쳤다. 최종 이미지791eb754를 빌드하고 새 API를 먼저 반영했다. 수집기는 기존 KRIC 작업의 자연 종료를 기다리고 있어 전체 배포 수용은 아직이다. PG18.6/0041·API12302를 유지한다. 관리 UI604b10d/9b8b7ad0·legacy frontend·gateway·환경·다른 서비스는 보존한다.
+세 회차의 구현·국소 전후 검산·집중 검증은 마쳤다. 최종 이미지791eb754를 API·수집기에 반영하고 기존 KRIC 자연 종료·원20일정 복원·Manager healthy·최초 부모 실제 done까지 수용했다. PG18.6/0041·API12302를 유지한다. 관리 UI604b10d/9b8b7ad0·legacy frontend·gateway·환경·다른 서비스는 보존한다.
 
 ## 실제 기준 관측과 원인 분리
 
@@ -60,7 +60,7 @@ DB READ ONLY·문장10초 상한 관측에서 schema0041/PG18.6와 테이블 누
 
 WSL SQLite12개·격리PG18 WSL14개·Docker14개를 통과했다. PG 묶음의2개 유가 API 회귀는 앞 회차와 겹치므로 합산하지 않는다. 단일 코드 endpoint의 ORM load가 선택한 한 역뿐인지,300역 marker5개 SQL·344편의 count/행선지·본문 상한, 공식 코드 이름/좌표 없는 역·시설·부산 시각과 calendar/stale/심야 보류를 검산했다. 전용 PG는 정확CID/label 확인 뒤 종료·제거했다. 원본/제공기관 자료 없음967개를 재수집하거나 저장 성공으로 바꾸지 않았다.
 
-추가 읽기 전용 조사에서 API의 cpu.max는 max100000·quota0·누적 throttled0이었으므로 CPU 제한을 원인으로 단정하거나 자원 제한을 바꾸지 않았다. 기존 이미지39layer·Python3.12.13·설치된 datagokr17파일 SHA8bcc12c52cd681f7390c57701b0b16882e7fd60acefa4e0e5496b13bddbdb91d를 고정해 의존성/SDK 설치 없이 최소 소스 이미지를 만들었다. schema0041·Alembic·lock·웹은 같아 migration/웹 재빌드는 없다. 새 API의 HTTP·선택 화면은 아래에 기록하고, 수집기 교체·일정/Manager/부모 실제 종료까지 완료한 뒤만 전체 수용으로 표시한다.
+추가 읽기 전용 조사에서 API의 cpu.max는 max100000·quota0·누적 throttled0이었으므로 CPU 제한을 원인으로 단정하거나 자원 제한을 바꾸지 않았다. 기존 이미지39layer·Python3.12.13·설치된 datagokr17파일 SHA8bcc12c52cd681f7390c57701b0b16882e7fd60acefa4e0e5496b13bddbdb91d를 고정해 의존성/SDK 설치 없이 최소 소스 이미지를 만들었다. schema0041·Alembic·lock·웹은 같아 migration/웹 재빌드는 없다. 새 API의 HTTP·선택 화면과 수집기 교체·일정/Manager/부모 실제 종료를 아래에 함께 정산했다.
 
 
 ## 실제 새 이미지·API 우선 반영
@@ -69,11 +69,22 @@ WSL SQLite12개·격리PG18 WSL14개·Docker14개를 통과했다. PG 묶음의2
 
 R2 bd42186b30/첫 Invocationad9296bc4dde4e33aeff40518a11f006는 실제 done/Main0/cgroup부재·모든 소유 자식 종료와 native 검산을 마쳤다. 이미지 `sha256:791eb75437013efcb4419513c5cf42f85ba4b4a3b786d2d920ed2d5a3bbad001`의 실제 제품 소스·실행 코드·기존 SDK/Python/Alembic·키 부재를 확인했다. 의존성 설치·웹 빌드·migration은 없다.
 
-단일 배포1577adcb3e/첫 Invocationd6dc715d35cb4070b5e3f80823277ef9가 정상 G→TransportR/FD9에서 실행 중이다. API CIDf00d0540242967e425482e10f38f4df4b0fd0a58061ee6bc6e889700054cab56를 먼저 교체해 healthy·제품aeff45·Cmd12302·schema0041·개별 환경/키 보존을 확인했다. 원20일정을 capture/pause하고 기존 KRIC f124dfa4의 자연 종료를 기다리며 CS는 기존fca04b02/e7cdd88e다. 사용자가 자연 종료를 선택했으므로 임의 취소·강제 교체는 하지 않는다. API 완료와 전체 부모/수집기·일정 복원 완료를 구분한다.
+단일 배포1577adcb3e/첫 Invocationd6dc715d35cb4070b5e3f80823277ef9가 정상 G→TransportR/FD9에서 실제 done으로 종료했다. API CIDf00d0540242967e425482e10f38f4df4b0fd0a58061ee6bc6e889700054cab56를 먼저 교체해 healthy·제품aeff45·Cmd12302·schema0041·개별 환경/키 보존을 확인했다. 원20일정을 capture/pause하고 기존 KRIC f124dfa4가 공식 SUCCESS로 자연 종료한 뒤 CS를 같은 새 이미지로 교체했다. 수집 취소·강제 중단은 없었다. API 선행 수용과 최종 CS/일정 복원·부모 종료 원문은 별도로 보존했다.
 
 새 실제 API에 결박한18개 GET은 모두200이었다. 유가 목록1,000곳3.90/1.87초, 지도5,000곳12.28/12.90초(7.36MB), 저배율 요약0.27/0.12초, 철도 코드1,108역1.02/0.96초, 일반 주차장1,000곳1.83/2.82초다. 기준 표본보다 짧지만 수집 정지·부하/재사용 상태가 달라 코드 단독 개선율·p95·cold 보장으로 해석하지 않는다. 지도 최대 응답1초 목표는 여전히 미달이다. 동적 생성 시각을 포함한 응답의 전후 SHA가 같다고 주장하지 않는다.
 
-Firefox157 PC1440·모바일375에서 서울역의 선택 평일(day_code8) 저장표488행과 다섯 행선지의 첫차/막차를 실제 API·DOM으로 대조했다. overflow0·로그아웃303·세션 정리·모든 소유 브라우저 자식 종료와 실제 PNG를 확인했다. 명시 선택한 평일표이며 오늘 토요일의 실시간 안내라는 주장을 하지 않는다. 원문은 `live-rail-ui/results.json`, HTTP는 `after-http.json`이다. CS 자연 종료 뒤 교체·원20복원·Manager·최초 부모 실제 종료는 아직 남아 있다.
+Firefox157 PC1440·모바일375에서 서울역의 선택 평일(day_code8) 저장표488행과 다섯 행선지의 첫차/막차를 실제 API·DOM으로 대조했다. overflow0·로그아웃303·세션 정리·모든 소유 브라우저 자식 종료와 실제 PNG를 확인했다. 명시 선택한 평일표이며 오늘 토요일의 실시간 안내라는 주장을 하지 않는다. 원문은 `live-rail-ui/results.json`, HTTP는 `after-http.json`이다. 최종 CS 교체·원20복원·Manager·최초 부모 실제 종료도 아래 원장으로 수용했다.
 
 
-유가 화면은 Firefox157 PC1440/375에서 시도 대표 카드15/12개의 전5유종 값을 실제 표시 응답과 대조했고, 선택한 모악주유소의 양수 가격1개·브랜드/목록/상세·overflow0·오류0·로그아웃303·소유 자식 종료를 확인했다. 첫 관측은 실제 상세가 표시됐는데도 잘못된 region 역할을 기다려 시간 초과했다. 원 FAIL·스크린샷·정상 로그아웃/자식 종료를 보존하고 별도R2에서 실제 fuel-inspector 요소로 상세 관측만 수정해 통과했다. 제품 변경·재배포는 없었다. 사진에 남은 유가 갱신 지연 안내와 지역 카드 겹침은 숨기지 않는다. R2 PNG의 7일 이력은 로딩 중이므로 이 캡처를 7일 그래프 완료의 새 증거로 쓰지 않는다. 원문은 live-fuel-ui/results.json과 live-fuel-detail-r2/results.json이다. 남은 운영 단계는 기존 KRIC 자연 종료 뒤 CS 교체·원20 복원·Manager·최초 부모 실제 종료뿐이다.
+유가 화면은 Firefox157 PC1440/375에서 시도 대표 카드15/12개의 전5유종 값을 실제 표시 응답과 대조했고, 선택한 모악주유소의 양수 가격1개·브랜드/목록/상세·overflow0·오류0·로그아웃303·소유 자식 종료를 확인했다. 첫 관측은 실제 상세가 표시됐는데도 잘못된 region 역할을 기다려 시간 초과했다. 원 FAIL·스크린샷·정상 로그아웃/자식 종료를 보존하고 별도R2에서 실제 fuel-inspector 요소로 상세 관측만 수정해 통과했다. 제품 변경·재배포는 없었다. 사진에 남은 유가 갱신 지연 안내와 지역 카드 겹침은 숨기지 않는다. R2 PNG의 7일 이력은 로딩 중이므로 이 캡처를 7일 그래프 완료의 새 증거로 쓰지 않는다. 원문은 live-fuel-ui/results.json과 live-fuel-detail-r2/results.json이다. 수집기 교체와 복원·부모 종료는 아래 최종 원장에 정산했다.
+
+
+## 최종 실제 운영 수용
+
+KRIC 공식 run `f124dfa4-668c-475d-aa7d-191d1e1591da`는 SUCCESS로 자연 종료했다. 종료 뒤 실제 run/worker 부재를 확인하고 수집기 CID `535235ef0ed60cdf5dde51370a0c12bf7bcae044aa2c7207feb1b471ac7d7c5e`를 API와 같은791eb754 이미지·제품aeff45로 반영했다. 다섯 역할 healthy·schema0041·원 SDK18864a3·유효 키/일반 주차장 설정·원20일정 복원·관리 UI/legacy frontend/gateway·다른 서비스와 보호 환경파일 보존을 확인했다. 복원 뒤 정기 airport STARTED와 highway QUEUED가 관측됐으며 이 새 정상 작업을 drain 잔여나 실패로 취급하지 않는다.
+
+Manager adopt/verify/show의 자식은 모두 실제0이며 같은 release `/srv/ktdm-releases/transport-adopt-20261107T134729Z-7c457ddf980347139477162ed02d20eb`와 healthy/issues없음을 배포 actor가 검산했다. 최초 Invocation `d6dc715d35cb4070b5e3f80823277ef9`의 journal JOB_RESULT는 done, MainPID0·예상 cgroup부재다. 전체 events에서271개 child-start와 child-ended가 정확히 대응하며 모두 실제 exit0이다. 프로세스 명령의0과 부모 종료를 혼동하지 않는다. 모든 중간 실패·UNKNOWN을 삭제하거나 통과로 바꾸지 않았다.
+
+최종 원장 `C:/Users/digit/.codex/tmp/transport-read-max-20261107/final-acceptance.json`의 SHA는 `d6babc0574fa684e525aa166249d9f6c7c2ee2bf49dcca3dac1cb4ad1294caab`다. 실제 역할/소스·HTTP·UI·첫 Invocation terminal·전체 자식 종료·원20복원·Manager·보호 파일 검사를 연결한다. Weather의 완료 원장 SHA306ef3b49c7308fd9d6af52c250d8c6ae15f5590612d3c8ee8b2ee4f277fb479도 연결했고 Weather는 재배포하지 않았다. 세 회차의 승인된 개선·실제 배포·집중 검증은 완료하며 Draft PR174/Weather208을 유지하고 main 머지는 하지 않는다. 백업·복원은 SKIPPED_BY_USER, migration·prune·자동 rollback·수집 재제출은 없다.
+
+남은 성능·기능 한계는 별개다. 대량 유가 지도12~13초는1초 목표에 못 미치고 운영 p95/cold·코드 단독 개선율은 측정하지 않았다. 갱신 지연 안내·대표 카드 겹침·제공기관 자료 없음967개와 Weather stale/미제공은 보존했다. 이번 유가 상세 PNG의 이력 로딩 상태를 새 그래프 완료로 과장하지 않았다. 이런 한계를 이유로 완료된 세 회차의 시험/빌드/배포를 다시 실행하지 않는다.
