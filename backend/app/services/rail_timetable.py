@@ -2,7 +2,7 @@
 from datetime import timedelta
 import re
 
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.time_utils import now_utc, to_seoul
@@ -33,8 +33,29 @@ async def stored_rail_timetables(session: AsyncSession, places: list[RailStation
             else:
                 basis = "calendar"
                 day_code = calendar.day_code
-    codes = (await session.scalars(select(KricStationCode).where(KricStationCode.active.is_(True)))).all()
-    linked = {row.rail_station_id: row for row in codes if row.rail_station_id is not None}
+    active = KricStationCode.active.is_(True)
+    line_key = tuple_(KricStationCode.operator_code, KricStationCode.line_code)
+    if station_codes is None:
+        place_ids = [place.id for place in places]
+        query = select(*KricStationCode.__table__.columns).where(active)
+        if day_code is None:
+            query = query.where(KricStationCode.rail_station_id.in_(place_ids))
+        else:
+            # 연결 코드와 행선지 이름을 한 번에 읽어 대량 marker의 고정 SQL 수를 유지한다.
+            lines = select(KricStationCode.operator_code, KricStationCode.line_code).where(
+                active, KricStationCode.rail_station_id.in_(place_ids),
+            ).correlate(None)
+            query = query.where(line_key.in_(lines))
+        codes = (await session.execute(query)).all() if place_ids else []
+        linked = {row.rail_station_id: row for row in codes if row.rail_station_id is not None}
+    else:
+        lines = sorted({(code.operator_code, code.line_code) for code in station_codes})
+        query = select(
+            KricStationCode.operator_code, KricStationCode.line_code,
+            KricStationCode.station_code, KricStationCode.station_name,
+        ).where(active, line_key.in_(lines))
+        codes = (await session.execute(query)).all() if lines and day_code is not None else []
+        linked = {}
     names = {(row.operator_code, row.line_code, row.station_code): row.station_name for row in codes}
     # 공식 코드 카탈로그는 자체 역명을 갖는다. 위치파일 FK가 없어도 시간표를 읽는다.
     targets = [(place.id, linked.get(place.id), place.station_name or "이름 없는 역", place.operating_line_name) for place in places]
@@ -43,10 +64,10 @@ async def stored_rail_timetables(session: AsyncSession, places: list[RailStation
     station_ids = [code.id for _, code, _, _ in targets if code is not None]
     snapshots = {row.station_id: row for row in (await session.scalars(select(KricTimetableSnapshot).where(
         KricTimetableSnapshot.station_id.in_(station_ids), KricTimetableSnapshot.day_code == day_code,
-    ))).all()} if day_code is not None else {}
+    ))).all()} if station_ids and day_code is not None else {}
     attempts = {row.station_id: row for row in (await session.scalars(select(KricTimetableAttempt).where(
         KricTimetableAttempt.station_id.in_(station_ids), KricTimetableAttempt.day_code == day_code,
-    ))).all()} if day_code is not None else {}
+    ))).all()} if station_ids and day_code is not None else {}
     result = []
     for place_id, code, station_name, line_name in targets:
         snapshot = snapshots.get(code.id) if code else None
