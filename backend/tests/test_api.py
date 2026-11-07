@@ -10,9 +10,10 @@ from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.time_utils import now_utc
@@ -168,9 +169,18 @@ def test_map_fuel_filter_requires_latest_positive_price(client) -> None:
     mapped = {item["name"]: item["prices"] for item in client.get(
         path, params={"kind": "fuel_station"},
     ).json()["items"]}
-    listed = {item["name"]: item["prices"] for item in client.get(
-        "/v1/transport/fuel/stations", params={"days": 7},
-    ).json()["items"]}
+    loaded_types = []
+    def record_loaded(_session, instance):
+        loaded_types.append(type(instance).__name__)
+    event.listen(Session, "loaded_as_persistent", record_loaded)
+    try:
+        listed = {item["name"]: item["prices"] for item in client.get(
+            "/v1/transport/fuel/stations", params={"days": 7},
+        ).json()["items"]}
+    finally:
+        event.remove(Session, "loaded_as_persistent", record_loaded)
+    assert "FuelStation" not in loaded_types
+    assert "FuelLatestPrice" not in loaded_types
     assert mapped == listed
     for name, premium in [("고급유 판매", 2000.35), ("고급유 미제공", None),
                           ("고급유 0", 0), ("같은 수집시각 최신 미제공", None)]:

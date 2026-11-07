@@ -38,7 +38,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import DateTime, Integer, and_, bindparam, case, exists, func, or_, select, text as sql_text, true, union_all
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlalchemy.orm import defer, selectinload
+from sqlalchemy.orm import selectinload
 from datagokr import DataGoKrClient
 from datagokr.exceptions import ApiErrorResponse
 from kric import DataGoKrMaritimeClient, KricRateLimitError, parse_station_file_facilities
@@ -1210,24 +1210,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session: AsyncSession = Depends(get_db),
     ) -> FuelStationResponse:
         cutoff = now_utc() - timedelta(days=days)
-        query = select(FuelStation).options(defer(FuelStation.raw_item_json)).where(FuelStation.last_seen_at >= cutoff)
+        # 응답 전용 행에 ORM identity/state를 만들지 않고 원문 JSON도 읽지 않는다.
+        query = select(*(column for column in FuelStation.__table__.columns
+                         if column.name != "raw_item_json")).where(FuelStation.last_seen_at >= cutoff)
         if sido_value:
             query = query.where(FuelStation.sido_value == sido_value.strip())
         if sigungu_value:
             query = query.where(FuelStation.sigungu_value == sigungu_value.strip())
         query = query.order_by(FuelStation.last_seen_at.desc(), FuelStation.id.desc()).limit(limit)
-        stations = (await session.execute(query)).scalars().all()
+        stations = (await session.execute(query)).all()
         station_ids = [station.id for station in stations]
-        price_rows: list[FuelLatestPrice] = []
+        price_rows = []
         if station_ids:
-            price_query = select(FuelLatestPrice).where(
+            price_query = select(
+                FuelLatestPrice.fuel_station_id, FuelLatestPrice.product_code, FuelLatestPrice.price,
+                FuelLatestPrice.provider_updated_at, FuelLatestPrice.observed_at, FuelLatestPrice.collected_at,
+            ).where(
                 FuelLatestPrice.fuel_station_id.in_(station_ids),
                 FuelLatestPrice.collected_at >= cutoff,
             )
             if product_code:
                 price_query = price_query.where(FuelLatestPrice.product_code == product_code.strip())
             price_query = price_query.order_by(FuelLatestPrice.fuel_station_id, FuelLatestPrice.product_code)
-            price_rows = list((await session.execute(price_query)).scalars().all())
+            price_rows = list((await session.execute(price_query)).all())
 
         prices_by_station: dict[int, list[dict[str, Any]]] = {}
         for row in price_rows:
