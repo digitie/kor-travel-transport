@@ -38,7 +38,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import DateTime, Integer, and_, bindparam, case, exists, func, or_, select, text as sql_text, true, union_all
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlalchemy.orm import defer, selectinload
+from sqlalchemy.orm import selectinload
 from datagokr import DataGoKrClient
 from datagokr.exceptions import ApiErrorResponse
 from kric import DataGoKrMaritimeClient, KricRateLimitError, parse_station_file_facilities
@@ -99,7 +99,6 @@ from app.schemas import (
     FerryOperationResponse,
     FerryStoredTimetableResponse,
     FlightStatusResponse,
-    FuelPriceItem,
     FuelPriceStatistics,
     FuelStationItem,
     FuelStationResponse,
@@ -1211,35 +1210,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session: AsyncSession = Depends(get_db),
     ) -> FuelStationResponse:
         cutoff = now_utc() - timedelta(days=days)
-        query = select(FuelStation).options(defer(FuelStation.raw_item_json)).where(FuelStation.last_seen_at >= cutoff)
+        # 응답 전용 행에 ORM identity/state를 만들지 않고 원문 JSON도 읽지 않는다.
+        query = select(*(column for column in FuelStation.__table__.columns
+                         if column.name != "raw_item_json")).where(FuelStation.last_seen_at >= cutoff)
         if sido_value:
             query = query.where(FuelStation.sido_value == sido_value.strip())
         if sigungu_value:
             query = query.where(FuelStation.sigungu_value == sigungu_value.strip())
         query = query.order_by(FuelStation.last_seen_at.desc(), FuelStation.id.desc()).limit(limit)
-        stations = (await session.execute(query)).scalars().all()
+        stations = (await session.execute(query)).all()
         station_ids = [station.id for station in stations]
-        price_rows: list[FuelLatestPrice] = []
+        price_rows = []
         if station_ids:
-            price_query = select(FuelLatestPrice).where(
+            price_query = select(
+                FuelLatestPrice.fuel_station_id, FuelLatestPrice.product_code, FuelLatestPrice.price,
+                FuelLatestPrice.provider_updated_at, FuelLatestPrice.observed_at, FuelLatestPrice.collected_at,
+            ).where(
                 FuelLatestPrice.fuel_station_id.in_(station_ids),
                 FuelLatestPrice.collected_at >= cutoff,
             )
             if product_code:
                 price_query = price_query.where(FuelLatestPrice.product_code == product_code.strip())
             price_query = price_query.order_by(FuelLatestPrice.fuel_station_id, FuelLatestPrice.product_code)
-            price_rows = list((await session.execute(price_query)).scalars().all())
+            price_rows = list((await session.execute(price_query)).all())
 
-        prices_by_station: dict[int, list[FuelPriceItem]] = {}
+        prices_by_station: dict[int, list[dict[str, Any]]] = {}
         for row in price_rows:
             prices_by_station.setdefault(row.fuel_station_id, []).append(
-                FuelPriceItem(
-                    product_code=row.product_code,
-                    price=float(row.price) if row.price is not None else None,
-                    provider_updated_at=(serialize_utc(row.provider_updated_at) if row.provider_updated_at else None),
-                    observed_at=serialize_utc(row.observed_at),
-                    collected_at=serialize_utc(row.collected_at),
-                )
+                {
+                    "product_code": row.product_code,
+                    "price": float(row.price) if row.price is not None else None,
+                    "provider_updated_at": serialize_utc(row.provider_updated_at) if row.provider_updated_at else None,
+                    "observed_at": serialize_utc(row.observed_at),
+                    "collected_at": serialize_utc(row.collected_at),
+                }
             )
 
         items: list[FuelStationItem] = []
@@ -1367,7 +1371,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # 전체 지도는 한 종류가 limit을 모두 소모하지 않도록 균등하게 읽는다. 프런트가
         # 수천 개의 DOM marker를 만들지 않게 하는 API 경계이기도 하다.
         per_kind_limit = (limit + len(requested_kinds) - 1) // len(requested_kinds)
-        items: list[TransportPlaceMapItem] = []
+        items: list[TransportPlaceMapItem | dict[str, Any]] = []
         total = 0
         kind_totals: dict[str, int] = {}
 
@@ -1601,12 +1605,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             for station in stations:
                 prices = sorted(latest.get(station.id, []), key=lambda row: row.product_code)
                 price = next((row for row in prices if row.product_code == "B027"), prices[0] if prices else None)
-                items.append(TransportPlaceMapItem(
+                # 장소와 가격을 부모의 동일 중첩 validator에서 한 번만 구성한다.
+                items.append(dict(
                     id=station.id, kind="fuel_station", source=station.source, name=station.name,
                     longitude=station.longitude, latitude=station.latitude, subtitle=station.address,
                     brand_name=station.brand_name, brand_code=station.brand_code, latest_price=float(price.price) if price and price.price is not None else None,
                     price_product_code=price.product_code if price else None, address=station.address,
-                    prices=[FuelPriceItem(product_code=row.product_code, price=row.price, provider_updated_at=serialize_utc(row.provider_updated_at) if row.provider_updated_at else None, observed_at=serialize_utc(row.observed_at), collected_at=serialize_utc(row.collected_at)) for row in prices],
+                    # 부모 모델의 C validator가 가격까지 한 번에 검증한다. 유종별 Python 모델 생성은 반복하지 않는다.
+                    prices=[{"product_code": row.product_code, "price": row.price, "provider_updated_at": serialize_utc(row.provider_updated_at) if row.provider_updated_at else None, "observed_at": serialize_utc(row.observed_at), "collected_at": serialize_utc(row.collected_at)} for row in prices],
                     phone=station.phone,
                     facilities=[label for field, label in (("is_self", "셀프"), ("is_24h", "24시간"), ("has_carwash", "세차"), ("has_maintenance", "정비"), ("has_cvs", "편의점")) if getattr(station, field) is True],
                     updated_at=serialize_utc(station.last_seen_at),

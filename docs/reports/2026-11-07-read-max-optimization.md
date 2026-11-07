@@ -1,0 +1,90 @@
+# Transport 조회 성능 세 회차 개선
+
+## 승인 범위와 현재 단계
+
+Weather 세 회차 제품7ccf88a의 실제 API/수집기 반영·원27복원·최초 부모 done·PC/모바일 수용 뒤 시작했다. Transport는 feature branch `codex/transport-read-max-20261107`에서 원인 발굴→개선→전후 검증을 세 번 진행한다. 새 독립 리뷰·백업/복원·전체 시험 반복·수집 취소·main 머지는 추가하지 않는다. 운영 반영은 정상 Manager G→서비스R/FD9·NVMe에서 기존 수집/worker 자연 종료 뒤 수행한다.
+
+세 회차의 구현·국소 전후 검산·집중 검증은 마쳤다. 최종 이미지791eb754를 API·수집기에 반영하고 기존 KRIC 자연 종료·원20일정 복원·Manager healthy·최초 부모 실제 done까지 수용했다. PG18.6/0041·API12302를 유지한다. 관리 UI604b10d/9b8b7ad0·legacy frontend·gateway·환경·다른 서비스는 보존한다.
+
+## 실제 기준 관측과 원인 분리
+
+기존 실제 API CID881082deacb887011b268f0c23f33655f353c4f00fb13e5595b43a24f246dde1에 결박해 DB 기반 공개 GET9종을 각각 두 번 관측했다. 모든18응답은200이며 provider 호출·재시도는 없다. 단일 표본이고 p95/cold 보장은 아니다.
+
+| 조회 | 첫 관측 | 다음 관측 | 응답 크기 |
+| --- | ---: | ---: | ---: |
+| 유가 목록1,000곳 | 7.00초 | 7.64초 | 1.92MB |
+| 유가 지도5,000곳 | 22.19초 | 20.74초 | 7.36MB |
+| 저배율 시도 유가 요약 | 0.69초 | 0.39초 | 19KB |
+| 철도 코드1,108역 | 2.94초 | 2.37초 | 711KB |
+| GMP 현재 주차 | 0.54초 | 0.27초 | 1.9KB |
+| GMP 이력1,000행 | 1.37초 | 1.16초 | 144KB |
+| 일반 주차장1,000곳 | 3.82초 | 3.09초 | 934KB |
+
+DB READ ONLY·문장10초 상한 관측에서 schema0041/PG18.6와 테이블 누적 통계를 기록했다. 해당 순간에 다른 active/잠금 대기는 관측되지 않았으며 이를 항상 잠금이 없다는 주장으로 확대하지 않는다. pg_stat_statements는 설치되지 않아 공유 DB에 임의 설치하지 않았다. 누적 dead tuple·HOT/scan 수치만으로 정상 인덱스를 삭제하거나 vacuum/정리·원본 삭제를 실행하지 않는다.
+
+별도 READ ONLY 연결·lifespan 미실행 ASGI 프로파일의 동일 지도 응답은22.42초/7.36MB였다(cProfile 포함). SQL은5회이며 실행 구간 합계 약2.18초, Pydantic Python 생성자30,001호출이4.79초, UTC 보정67,690호출이1.78초였다. async 중첩 프레임의 누적시간은 서로 겹치므로 전체 시간을 합산하지 않는다. SQL 시간만을 보고 전체 지연을 해결했다고 판정하지 않는다.
+
+## 1회차 — 가격 모델의 Python 반복 생성 제거
+
+지도·목록에서 유종마다 `FuelPriceItem`을 먼저 만든 뒤 부모 응답에 다시 전달하던 경로를 바꿨다. 작은 가격 dict를 부모에 넘기고 Pydantic의 중첩 C validator가 같은 스키마를 한 번 검증한다. 검증 생략·`model_construct`·TTL 캐시·API 필드 축소는 없다. 가격 정밀도·0·NULL·UTC·유종 순서·최신 양수 가격 필터는 유지한다.
+
+실제 ARM64/Pydantic2.13.4에서 고정5,000곳×5유종을3회 교대 생성했다. 구성 wall 중앙값2678.38→2292.24ms, CPU1860.96→1697.84ms였다. 출력6,259,166byte와 SHA f4222d72f03efeac6e45dd79d45de74ccb3cf1dea1351faf93f3877fa20e3f61은 같았다. 이는 DTO 구성 국소 합성 측정이며 운영 HTTP 개선율이 아니다.
+
+기존 API 회귀에 지도·목록 가격 대조를 추가해 소수2000.35·0·NULL·공급자 시각 부재·UTC·두 유종 순서를 검산했다. WSL SQLite2개·격리 PostgreSQL18 WSL2개·Docker2개가 통과했다(같은 시험이라 합산하지 않는다). 전용 PG는 정확CID/소유 label 검사 후 종료·제거했다. 문법/미정의 검사와 diff 검사를 통과했다. 전체 Ruff의 기존 진단은 별도 보존하고 동일 stdin 기준80→80/새 진단0을 확인했으며 주변 포맷을 바꾸지 않았다.
+
+## 세 회차에서 평가한 선택지
+
+- 잠금·트랜잭션: 요청 중 외부 fetch가 없는 현재 경계를 유지하고 실제 대기·짧은 session·읽기 전용 경로를 분리해 측정한다.
+- 캐시: 기존 세대 기반 요약·bounded cache를 먼저 활용한다. 임의 TTL로 수집 중 가격/실패·신선도 상태를 숨기지 않고 정확한 무효화 근거가 있는 경로만 채택한다.
+- 인덱스: 큰 이력의 전체 크기보다 실제 요청 계획·행수·heap/TOAST 비용으로 판단한다. 현재5개 SQL과 DTO 비용을 구분하며 불필요한 쓰기·중복 인덱스는 늘리지 않는다.
+- MV·비정규화: 저배율 유가 요약은 이미 성공 세대별 영구 테이블을 읽어0.39~0.69초였다. 원본을 다시 훑는 전체 MV refresh를 도입하지 않는다. 지도 상세/역 카탈로그의 투영·직렬화·동일 계산 재사용을 먼저 측정하고, 저장 projection은 실제 이득과 동기 갱신 책임을 입증할 때만 선택한다.
+- 큰 응답:7.36MB·934KB 같은 payload와 Python 객체/직렬화 반복을 함께 분석한다. API 필드를 임의 삭제하거나 합성 값을 실제 데이터로 바꾸지 않는다.
+
+2·3회차의 별도 전후 측정·집중 회귀와 구현은 아래에 기록했다. 마지막에 같은 실제 API/화면을 재관측하며 현재 HTTP1초 목표 미달을 완료로 바꾸지 않는다. 원문은 Git 밖 `C:/Users/digit/.codex/tmp/transport-read-max-20261107/`에 보존한다.
+
+## 2회차 — 유가 목록의 ORM 객체 제거
+
+별도 실제 READ ONLY·lifespan 미실행 유가 목록 profile은7.75초/1.92MB였고 SQL4회 약0.91초와 ORM6,001개 객체 생성/추적 비용을 분리했다. 응답 전용 주유소·최신 가격 행을 Core 열 투영으로 읽도록 바꿨다. 원문 JSON은 여전히 읽지 않고 가격6필드만 가져오며 정렬·기간·지역/유종 필터·NULL·소수·UTC·수집 상태 의미를 유지한다. 새로운 index·MV·migration·데이터 cache·provider 호출은 없다.
+
+실제 PG18 READ ONLY에서1,000곳/5,000가격을3회 교대해 원래 ORM과 같은 투영 결과를 비교했다. identity map6,000→0, wall 중앙값1233.78→1158.89ms·CPU867.37→775.39ms였다. 출력 SHA570b726e02b70f4a2de9aa3450f4ab27ab73caa8aaf82edf5c4c188f62ce2605은 같다. 이는 조회·변환 국소 측정이며 최종 HTTP 개선율이 아니다. ORM load event 회귀로 두 종류의 응답 전용 ORM 객체가 다시 만들어지지 않는 것도 검사했다. WSL SQLite2개·격리PG18 WSL2개·Docker2개가 통과했고 소유 PG 종료/제거·문법/미정의·diff 검사를 확인했다. 앞 회차와 같은 시험은 합산하지 않는다.
+
+### 채택하지 않은 UTC cache
+
+시간 문자열 변환의512개 LRU 후보는 같은 datetime 객체를 재사용한 첫 실험에서 좋아 보였다. 각 case마다 새 datetime 객체를 만들어 다시 측정하자 Python datetime hash의 첫 계산 비용 때문에 CPU278.163→384.985ms·wall315.941→403.886ms로 나빠졌다. 실제25,000가격의63,875시각·LRU hit51,472/miss12,403에서도 그랬다. 단순 인라인 후보도 CPU273.526→272.529ms·wall287.552→289.369ms여서 유효한 개선으로 보지 않았다. 두 후보와 자기 미커밋 helper/test는 제품에서 제거했고 원 helper를 유지했다. 임시 후보의 WSL14개 통과는 최종 제품 검증 수에 넣지 않으며 PG/Docker 시험도 실행하지 않았다. 새 cache·TTL·시간대/DST 의미 변경은 없다.
+
+## 3회차 — 시간표의 전체 코드 카탈로그 순회 제거
+
+한 역의 저장표를 읽어도 active1,108코드를 ORM으로 읽고 매번 전체 역명 사전을 만들던 경로를 바꿨다. 직접 코드 조회는 선택한 기관·노선의 네 열만 읽는다. 위치 ID 조회는 같은 기관·노선의 연결 코드와 이름을 하나의 Core 투영/부분 쿼리로 읽어 대량300역의 기존5개 SQL 계약을 유지한다. 운행일 미확정 시에는 필요한 연결 코드만 읽고, 대상이 없으면 빈 snapshot/attempt 조회도 하지 않는다. 자료 없음·미수집·심야/달력 보류·stale·부산 분 단위/24시 이후 시각·행선지·다음 열차 계산은 유지한다.
+
+실제 READ ONLY PG18에서 저장표가 있는 한 노선의 필요한14개 이름을3회 교대 검산했다. 전체 카탈로그1,108행/ORM1,108객체를 읽던 것을14행/ORM0으로 바꿨으며 같은 이름 SHA946d31604db73a583d1ced50ce52382531c71bf1520288b9207f3150e4240d67이었다. wall 중앙값289.878→15.131ms·CPU120.038→10.332ms다. 특정 노선의 이름 조회 국소 측정이며 전체 시간표 HTTP나 모든 노선의 개선율이 아니다.
+
+WSL SQLite12개·격리PG18 WSL14개·Docker14개를 통과했다. PG 묶음의2개 유가 API 회귀는 앞 회차와 겹치므로 합산하지 않는다. 단일 코드 endpoint의 ORM load가 선택한 한 역뿐인지,300역 marker5개 SQL·344편의 count/행선지·본문 상한, 공식 코드 이름/좌표 없는 역·시설·부산 시각과 calendar/stale/심야 보류를 검산했다. 전용 PG는 정확CID/label 확인 뒤 종료·제거했다. 원본/제공기관 자료 없음967개를 재수집하거나 저장 성공으로 바꾸지 않았다.
+
+추가 읽기 전용 조사에서 API의 cpu.max는 max100000·quota0·누적 throttled0이었으므로 CPU 제한을 원인으로 단정하거나 자원 제한을 바꾸지 않았다. 기존 이미지39layer·Python3.12.13·설치된 datagokr17파일 SHA8bcc12c52cd681f7390c57701b0b16882e7fd60acefa4e0e5496b13bddbdb91d를 고정해 의존성/SDK 설치 없이 최소 소스 이미지를 만들었다. schema0041·Alembic·lock·웹은 같아 migration/웹 재빌드는 없다. 새 API의 HTTP·선택 화면과 수집기 교체·일정/Manager/부모 실제 종료를 아래에 함께 정산했다.
+
+
+## 실제 새 이미지·API 우선 반영
+
+제품 `aeff45dc370f2a28d9bc61114345035d95c34ae6`의 LF archive SHA는 f684defdca9ec75e263f45a851db621f11e660bf36815767e9e3b14ea44fc234다. 첫 빌드4fff1a6097/Invocation2335182397bf467db7b1d3b4c51f36c9는 자체 보조 redactor의 경로 표현 오류로 Docker 자식·iid 생성 전에 failed/Main0/cgroup부재로 끝났다. 원 stderr는 보조 실행기가 보존하지 않아 원 traceback을 얻었다고 하지 않는다. 고정 소스와 정확히 같은 표현의 AttributeError 재현·Docker child/iid 부재를 별도 증거로 남겼다. 원 실패를 보존하고 별도 R2에서 경로 표현만 수정했다.
+
+R2 bd42186b30/첫 Invocationad9296bc4dde4e33aeff40518a11f006는 실제 done/Main0/cgroup부재·모든 소유 자식 종료와 native 검산을 마쳤다. 이미지 `sha256:791eb75437013efcb4419513c5cf42f85ba4b4a3b786d2d920ed2d5a3bbad001`의 실제 제품 소스·실행 코드·기존 SDK/Python/Alembic·키 부재를 확인했다. 의존성 설치·웹 빌드·migration은 없다.
+
+단일 배포1577adcb3e/첫 Invocationd6dc715d35cb4070b5e3f80823277ef9가 정상 G→TransportR/FD9에서 실제 done으로 종료했다. API CIDf00d0540242967e425482e10f38f4df4b0fd0a58061ee6bc6e889700054cab56를 먼저 교체해 healthy·제품aeff45·Cmd12302·schema0041·개별 환경/키 보존을 확인했다. 원20일정을 capture/pause하고 기존 KRIC f124dfa4가 공식 SUCCESS로 자연 종료한 뒤 CS를 같은 새 이미지로 교체했다. 수집 취소·강제 중단은 없었다. API 선행 수용과 최종 CS/일정 복원·부모 종료 원문은 별도로 보존했다.
+
+새 실제 API에 결박한18개 GET은 모두200이었다. 유가 목록1,000곳3.90/1.87초, 지도5,000곳12.28/12.90초(7.36MB), 저배율 요약0.27/0.12초, 철도 코드1,108역1.02/0.96초, 일반 주차장1,000곳1.83/2.82초다. 기준 표본보다 짧지만 수집 정지·부하/재사용 상태가 달라 코드 단독 개선율·p95·cold 보장으로 해석하지 않는다. 지도 최대 응답1초 목표는 여전히 미달이다. 동적 생성 시각을 포함한 응답의 전후 SHA가 같다고 주장하지 않는다.
+
+Firefox157 PC1440·모바일375에서 서울역의 선택 평일(day_code8) 저장표488행과 다섯 행선지의 첫차/막차를 실제 API·DOM으로 대조했다. overflow0·로그아웃303·세션 정리·모든 소유 브라우저 자식 종료와 실제 PNG를 확인했다. 명시 선택한 평일표이며 오늘 토요일의 실시간 안내라는 주장을 하지 않는다. 원문은 `live-rail-ui/results.json`, HTTP는 `after-http.json`이다. 최종 CS 교체·원20복원·Manager·최초 부모 실제 종료도 아래 원장으로 수용했다.
+
+
+유가 화면은 Firefox157 PC1440/375에서 시도 대표 카드15/12개의 전5유종 값을 실제 표시 응답과 대조했고, 선택한 모악주유소의 양수 가격1개·브랜드/목록/상세·overflow0·오류0·로그아웃303·소유 자식 종료를 확인했다. 첫 관측은 실제 상세가 표시됐는데도 잘못된 region 역할을 기다려 시간 초과했다. 원 FAIL·스크린샷·정상 로그아웃/자식 종료를 보존하고 별도R2에서 실제 fuel-inspector 요소로 상세 관측만 수정해 통과했다. 제품 변경·재배포는 없었다. 사진에 남은 유가 갱신 지연 안내와 지역 카드 겹침은 숨기지 않는다. R2 PNG의 7일 이력은 로딩 중이므로 이 캡처를 7일 그래프 완료의 새 증거로 쓰지 않는다. 원문은 live-fuel-ui/results.json과 live-fuel-detail-r2/results.json이다. 수집기 교체와 복원·부모 종료는 아래 최종 원장에 정산했다.
+
+
+## 최종 실제 운영 수용
+
+KRIC 공식 run `f124dfa4-668c-475d-aa7d-191d1e1591da`는 SUCCESS로 자연 종료했다. 종료 뒤 실제 run/worker 부재를 확인하고 수집기 CID `535235ef0ed60cdf5dde51370a0c12bf7bcae044aa2c7207feb1b471ac7d7c5e`를 API와 같은791eb754 이미지·제품aeff45로 반영했다. 다섯 역할 healthy·schema0041·원 SDK18864a3·유효 키/일반 주차장 설정·원20일정 복원·관리 UI/legacy frontend/gateway·다른 서비스와 보호 환경파일 보존을 확인했다. 복원 뒤 정기 airport STARTED와 highway QUEUED가 관측됐으며 이 새 정상 작업을 drain 잔여나 실패로 취급하지 않는다.
+
+Manager adopt/verify/show의 자식은 모두 실제0이며 같은 release `/srv/ktdm-releases/transport-adopt-20261107T134729Z-7c457ddf980347139477162ed02d20eb`와 healthy/issues없음을 배포 actor가 검산했다. 최초 Invocation `d6dc715d35cb4070b5e3f80823277ef9`의 journal JOB_RESULT는 done, MainPID0·예상 cgroup부재다. 전체 events에서271개 child-start와 child-ended가 정확히 대응하며 모두 실제 exit0이다. 프로세스 명령의0과 부모 종료를 혼동하지 않는다. 모든 중간 실패·UNKNOWN을 삭제하거나 통과로 바꾸지 않았다.
+
+최종 원장 `C:/Users/digit/.codex/tmp/transport-read-max-20261107/final-acceptance.json`의 SHA는 `d6babc0574fa684e525aa166249d9f6c7c2ee2bf49dcca3dac1cb4ad1294caab`다. 실제 역할/소스·HTTP·UI·첫 Invocation terminal·전체 자식 종료·원20복원·Manager·보호 파일 검사를 연결한다. Weather의 완료 원장 SHA306ef3b49c7308fd9d6af52c250d8c6ae15f5590612d3c8ee8b2ee4f277fb479도 연결했고 Weather는 재배포하지 않았다. 세 회차의 승인된 개선·실제 배포·집중 검증은 완료하며 Draft PR174/Weather208을 유지하고 main 머지는 하지 않는다. 백업·복원은 SKIPPED_BY_USER, migration·prune·자동 rollback·수집 재제출은 없다.
+
+남은 성능·기능 한계는 별개다. 대량 유가 지도12~13초는1초 목표에 못 미치고 운영 p95/cold·코드 단독 개선율은 측정하지 않았다. 갱신 지연 안내·대표 카드 겹침·제공기관 자료 없음967개와 Weather stale/미제공은 보존했다. 이번 유가 상세 PNG의 이력 로딩 상태를 새 그래프 완료로 과장하지 않았다. 이런 한계를 이유로 완료된 세 회차의 시험/빌드/배포를 다시 실행하지 않는다.

@@ -2,6 +2,9 @@
 import asyncio
 from datetime import UTC, datetime
 
+from sqlalchemy import event
+from sqlalchemy.orm import Session
+
 from app.core.time_utils import now_utc
 from app.db.session import create_engine_and_session_factory, init_database
 from app.models import KricStationCode, KricTimetableSnapshot, RailServiceDay, RailStationReference
@@ -48,6 +51,24 @@ def test_catalog_and_timetable_do_not_require_a_name_or_place_mapping(client, te
     assert item["items"][0]["origin_name"] == "성복"
     assert client.get(f"/v1/transport/rail/stations/{ids[3]}/timetable").status_code==404
     assert client.get("/v1/transport/rail/stations/0/timetable").status_code==422
+
+
+def test_single_station_timetable_does_not_materialize_the_whole_catalog(client, test_settings):
+    ids = seed(test_settings)
+    loaded_codes = []
+    def record_loaded(_session, instance):
+        if isinstance(instance, KricStationCode):
+            loaded_codes.append(instance.id)
+    event.listen(Session, "loaded_as_persistent", record_loaded)
+    try:
+        response = client.get(f"/v1/transport/rail/stations/{ids[0]}/timetable", params={"day_code": "8"})
+    finally:
+        event.remove(Session, "loaded_as_persistent", record_loaded)
+    assert response.status_code == 200
+    assert loaded_codes == [ids[0]]  # endpoint가 고른 코드만 ORM, 행선지는 필요한 노선의 열 투영이다.
+    departure = response.json()["items"][0]["items"][0]
+    assert departure["origin_name"] == "성복"
+    assert departure["destination_name"] == "광교"
 
 
 def test_humetro_source_and_minute_service_clock_are_returned_without_inventing_seconds(client,test_settings):
