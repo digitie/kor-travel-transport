@@ -99,7 +99,6 @@ from app.schemas import (
     FerryOperationResponse,
     FerryStoredTimetableResponse,
     FlightStatusResponse,
-    FuelPriceItem,
     FuelPriceStatistics,
     FuelStationItem,
     FuelStationResponse,
@@ -1230,16 +1229,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             price_query = price_query.order_by(FuelLatestPrice.fuel_station_id, FuelLatestPrice.product_code)
             price_rows = list((await session.execute(price_query)).scalars().all())
 
-        prices_by_station: dict[int, list[FuelPriceItem]] = {}
+        prices_by_station: dict[int, list[dict[str, Any]]] = {}
         for row in price_rows:
             prices_by_station.setdefault(row.fuel_station_id, []).append(
-                FuelPriceItem(
-                    product_code=row.product_code,
-                    price=float(row.price) if row.price is not None else None,
-                    provider_updated_at=(serialize_utc(row.provider_updated_at) if row.provider_updated_at else None),
-                    observed_at=serialize_utc(row.observed_at),
-                    collected_at=serialize_utc(row.collected_at),
-                )
+                {
+                    "product_code": row.product_code,
+                    "price": float(row.price) if row.price is not None else None,
+                    "provider_updated_at": serialize_utc(row.provider_updated_at) if row.provider_updated_at else None,
+                    "observed_at": serialize_utc(row.observed_at),
+                    "collected_at": serialize_utc(row.collected_at),
+                }
             )
 
         items: list[FuelStationItem] = []
@@ -1606,7 +1605,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     longitude=station.longitude, latitude=station.latitude, subtitle=station.address,
                     brand_name=station.brand_name, brand_code=station.brand_code, latest_price=float(price.price) if price and price.price is not None else None,
                     price_product_code=price.product_code if price else None, address=station.address,
-                    prices=[FuelPriceItem(product_code=row.product_code, price=row.price, provider_updated_at=serialize_utc(row.provider_updated_at) if row.provider_updated_at else None, observed_at=serialize_utc(row.observed_at), collected_at=serialize_utc(row.collected_at)) for row in prices],
+                    # 부모 모델의 C validator가 가격까지 한 번에 검증한다. 유종별 Python 모델 생성은 반복하지 않는다.
+                    prices=[{"product_code": row.product_code, "price": row.price, "provider_updated_at": serialize_utc(row.provider_updated_at) if row.provider_updated_at else None, "observed_at": serialize_utc(row.observed_at), "collected_at": serialize_utc(row.collected_at)} for row in prices],
                     phone=station.phone,
                     facilities=[label for field, label in (("is_self", "셀프"), ("is_24h", "24시간"), ("has_carwash", "세차"), ("has_maintenance", "정비"), ("has_cvs", "편의점")) if getattr(station, field) is True],
                     updated_at=serialize_utc(station.last_seen_at),

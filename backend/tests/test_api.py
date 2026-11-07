@@ -132,7 +132,7 @@ def test_map_fuel_filter_requires_latest_positive_price(client) -> None:
         now = now_utc()
         async with client.app.state.session_factory() as session:
             for index, (name, latest) in enumerate([
-                ("고급유 판매", 2000), ("고급유 미제공", None), ("고급유 0", 0),
+                ("고급유 판매", 2000.35), ("고급유 미제공", None), ("고급유 0", 0),
                 ("같은 수집시각 최신 미제공", None),
             ]):
                 station = FuelStation(source="opinet", identity_key=f"premium-{index}", name=name,
@@ -164,6 +164,23 @@ def test_map_fuel_filter_requires_latest_positive_price(client) -> None:
     assert client.get(path, params={"kind": "fuel_station", "product_codes": "B034,D047"}).json()["total"] == 4
     assert client.get(path, params={"kind": "fuel_station", "product_codes": "B034,K015"}).json()["total"] == 1
     assert client.get(path, params={"kind": "fuel_station"}).json()["total"] == 4
+    # 지도·목록의 중첩 가격 검증 경로가 달라도 소수·0·NULL·UTC·유종 순서는 같다.
+    mapped = {item["name"]: item["prices"] for item in client.get(
+        path, params={"kind": "fuel_station"},
+    ).json()["items"]}
+    listed = {item["name"]: item["prices"] for item in client.get(
+        "/v1/transport/fuel/stations", params={"days": 7},
+    ).json()["items"]}
+    assert mapped == listed
+    for name, premium in [("고급유 판매", 2000.35), ("고급유 미제공", None),
+                          ("고급유 0", 0), ("같은 수집시각 최신 미제공", None)]:
+        prices = mapped[name]
+        assert [item["product_code"] for item in prices] == ["B034", "D047"]
+        assert [item["price"] for item in prices] == [premium, 1600]
+        for price in prices:
+            assert price["provider_updated_at"] is None
+            assert_is_utc_iso(price["observed_at"])
+            assert_is_utc_iso(price["collected_at"])
 
 
 def test_health(client) -> None:
