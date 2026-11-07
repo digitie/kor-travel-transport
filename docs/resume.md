@@ -1,3 +1,7 @@
+## 2026-11-07 — 추가 조회 개선 구현·집중 검증, 새 배포 진행
+
+사용자 추가 요청으로 Transport의 부모/장소 좌표 이중 검증 구성과 Weather의 JSON UTF-8 크기 중복 계산을 줄였다. 값·검증·상태/신선도·예산을 보존한 국소 전후 검산과 Transport WSL/Docker PG18각26개·Weather각40개를 통과했다. 겹침은 합산하지 않는다. Weather5초 초과 원 관측과 wall이 좋아지지 않은 cohort batch 후보를 보존했고 timeout 확대/추정 index 변경은 하지 않았다. 새 이미지·실제 배포는 아직 완료 전이며 기존 수집 자연 종료 정책을 유지한다. [근거와 남은 실제 단계](reports/2026-11-07-read-next.md).
+
 ## 2026-11-07 — 조회 성능 세 회차 실제 배포·수용 완료
 
 제품aeff45/API·수집기 이미지791eb754를 실제 반영했다. 기존 KRIC f124dfa4의 공식 SUCCESS 자연 종료·worker 부재 후 수집기를 교체했고 다섯 역할 healthy·원20일정 복원·schema0041·SDK/키/환경/다른 서비스 보존·Manager healthy를 확인했다. 첫Invd6dc715d는 실제 done/Main0/cgroup부재, 전체271개 소유 자식도 실제0·종료다. Weather 세 회차 완료 원장과 함께 최종 정산했으며 새 리뷰/머지·백업·복원·migration·prune는 없다.

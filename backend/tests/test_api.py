@@ -182,6 +182,12 @@ def test_map_fuel_filter_requires_latest_positive_price(client) -> None:
     assert "FuelStation" not in loaded_types
     assert "FuelLatestPrice" not in loaded_types
     assert mapped == listed
+    detail = client.get(path, params={"kind": "fuel_station", "product_codes": "B034"}).json()["items"][0]
+    assert detail["longitude"] == 127 and detail["latitude"] == 37
+    assert detail["line_names"] == [] and detail["facilities"] == []
+    assert detail["provider_id"] is None and detail["latest_price"] == 2000.35
+    assert detail["price_product_code"] == "B034"
+    assert_is_utc_iso(detail["updated_at"])
     for name, premium in [("고급유 판매", 2000.35), ("고급유 미제공", None),
                           ("고급유 0", 0), ("같은 수집시각 최신 미제공", None)]:
         prices = mapped[name]

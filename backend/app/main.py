@@ -1371,7 +1371,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # 전체 지도는 한 종류가 limit을 모두 소모하지 않도록 균등하게 읽는다. 프런트가
         # 수천 개의 DOM marker를 만들지 않게 하는 API 경계이기도 하다.
         per_kind_limit = (limit + len(requested_kinds) - 1) // len(requested_kinds)
-        items: list[TransportPlaceMapItem] = []
+        items: list[TransportPlaceMapItem | dict[str, Any]] = []
         total = 0
         kind_totals: dict[str, int] = {}
 
@@ -1605,7 +1605,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             for station in stations:
                 prices = sorted(latest.get(station.id, []), key=lambda row: row.product_code)
                 price = next((row for row in prices if row.product_code == "B027"), prices[0] if prices else None)
-                items.append(TransportPlaceMapItem(
+                # 장소와 가격을 부모의 동일 중첩 validator에서 한 번만 구성한다.
+                items.append(dict(
                     id=station.id, kind="fuel_station", source=station.source, name=station.name,
                     longitude=station.longitude, latitude=station.latitude, subtitle=station.address,
                     brand_name=station.brand_name, brand_code=station.brand_code, latest_price=float(price.price) if price and price.price is not None else None,
