@@ -1,3 +1,5 @@
+- [x] **READ-NEXT-20261107** — Transport 추가22d53 API/CS 실제 반영, 원20/Manager·첫부모done·87자식 종료와 HTTP/PC모바일 수용. 지도16~21초/1초 미달·원 mobile UNKNOWN 보존. [근거](reports/2026-11-07-read-next.md).
+
 ## 2026-11-07 — 조회 성능 세 회차·실제 이미지 수용
 
 - [x] **T-READ-MAX-01** — 동일 Pydantic 중첩 검증을 유지하며 유종별 Python 모델 중복 구성을 제거했다. ARM64 국소 교대 측정·동일 출력 SHA·WSL/PG18/Docker 집중 회귀를 확인했다.

@@ -1,3 +1,9 @@
+## 2026-11-08 — Transport 추가 조회 개선 이미지 배포·실제 수용
+
+제품22d53a4를 API/수집기eb0d0392에 반영하고 원20복원·Manager healthy·schema0041/SDK/환경·다른 역할 보존·첫Inv6ece 실제done/Main0/cgroup부재·전체87자식 종료0을 확인했다. HTTP8요청200과 PC1440/모바일375 대표 카드·선택 가격·overflow/로그아웃을 수용했다. 모바일 원 assertion 실패 원인은UNKNOWN으로 보존하고 같은 이미지의 별도R2 PASS를 구분했다. 실제 지도5,000곳16.22/20.86초는 기존12~13초보다 느렸고 국소 CPU 개선을 HTTP 개선으로 과장하지 않는다. 1초 목표와 카드 겹침/갱신 지연은 미완이다. 정본 SHAb6922904182173e4c8cc8fe6300243a40ce5ff86b1d1a993bb31396b28fac286. [결과·한계](reports/2026-11-07-read-next.md).
+
+다음 운영 작업은 Weather 기존 수집 자연 종료 후 승인 최대60초 reader 캐시의 API 배포다. Transport는 완료분을 재빌드·재검증하지 않는다.
+
 ## 2026-11-07 — 추가 조회 개선 구현·집중 검증, 새 배포 진행
 
 사용자 추가 요청으로 Transport의 부모/장소 좌표 이중 검증 구성과 Weather의 JSON UTF-8 크기 중복 계산을 줄였다. 값·검증·상태/신선도·예산을 보존한 국소 전후 검산과 Transport WSL/Docker PG18각26개·Weather각40개를 통과했다. 겹침은 합산하지 않는다. Weather5초 초과 원 관측과 wall이 좋아지지 않은 cohort batch 후보를 보존했고 timeout 확대/추정 index 변경은 하지 않았다. 새 이미지·실제 배포는 아직 완료 전이며 기존 수집 자연 종료 정책을 유지한다. [근거와 남은 실제 단계](reports/2026-11-07-read-next.md).
