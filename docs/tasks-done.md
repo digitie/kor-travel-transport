@@ -1,3 +1,7 @@
+## 2026-11-08 — MAP-LARGE-20261108 실제 반영 정산
+
+- [x] **MAP-LARGE-20261108** — 대량 유가 지도 a8869693 API·CS 실제 배포와 HTTP/n150 PC모바일·원20복원/Manager·첫 부모 종료를 수용했다. 전체1초/카드 겹침은 미완이다. [원장](reports/2026-11-08-large-fuel-map.md).
+
 - [x] **READ-NEXT-20261107** — Transport 추가22d53 API/CS 실제 반영, 원20/Manager·첫부모done·87자식 종료와 HTTP/PC모바일 수용. 지도16~21초/1초 미달·원 mobile UNKNOWN 보존. [근거](reports/2026-11-07-read-next.md).
 
 ## 2026-11-07 — 조회 성능 세 회차·실제 이미지 수용

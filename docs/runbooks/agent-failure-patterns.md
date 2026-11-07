@@ -1,5 +1,11 @@
 # agent-failure-patterns — 반복되는 실수와 회피 규칙
 
+## 2026-11-08 — 배포 소스와 실제 검산 경로
+
+- Git 정본 아카이브는 `git -c core.autocrlf=false archive`로 만든다. checkout의 CRLF 설정을 상속한 아카이브가 native SHA 검산에서 실패한 실제 사례가 있다. 배포 전 tar 파일 내용을 `git ls-tree`의 blob SHA와 대조하고 symlink/gitlink는 별도로 취급한다. 파일 수·아카이브 SHA·원 실패를 기록하며 의미가 같다는 이유로 SHA 가드를 약화하지 않는다. [실제 원문과 R2](../reports/2026-11-08-large-fuel-map.md).
+- Python `-I`는 `PYTHONPATH`를 무시한다. API가 `/app/packages/.../src`에서 실행되는 경우 native 검산도 해당 정본 경로를 명시하고 실제 import 모듈의 `__file__`·SHA·초기화 상태를 검사한다. 검산 경로 오류로 교체 후 실패한 부모는 보존하고 이미 반영된 healthy 컨테이너를 같은 이미지로 다시 교체하지 않는다.
+- 운영 actor의 전후 runtime 동일성 검산에는 실제 before/after와 변경 역할을 안전한 metadata로 남긴다. 마지막 AssertionError만 남기면 어떤 역할이 달라졌는지 확정할 수 없다. 원 실패와 별도 실제 역할·일정·Manager 수용 원문을 구분한다.
+
 이 문서는 에이전트가 이 저장소에서 반복하기 쉬운 실수를 "[증상] → 회피 규칙"으로 정리한다.
 실제 이 저장소에서 발생한 사례는 근거(journal/tasks-done 항목)를 함께 남기고, 아직 이
 저장소에서 발생하지 않았지만 같은 실행 환경(WSL2 + Windows, git + GitHub PR)에서 일반적으로
