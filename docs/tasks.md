@@ -1,10 +1,9 @@
-- [ ] **REMAINS-20261108** — 남은 지연/카드 겹침 수정의 실제 최소 이미지·HTTP·n150 PC모바일·원상태/Manager·첫 부모 종료를 수용한다. [근거](reports/2026-11-08-remaining-read-and-overlap.md).
 
 
 
 ## 2026-11-07 — 조회 성능 세 회차 완료
 
-T-READ-MAX-01·02·03은 실제 배포·원20복원·부모 종료까지 수용해 [완료 목록](tasks-done.md)으로 이동했다. 1초 목표 미달·갱신 지연/라벨 겹침 등 [한계](reports/2026-11-07-read-max-optimization.md)는 유지한다. 완료된 회차를 새 시험/배포 게이트로 반복하지 않는다.
+T-READ-MAX-01·02·03은 실제 배포·원20복원·부모 종료까지 수용해 [완료 목록](tasks-done.md)으로 이동했다. 1초 목표 미달·갱신 지연 등 [한계](reports/2026-11-07-read-max-optimization.md)는 유지한다. 완료된 회차를 새 시험/배포 게이트로 반복하지 않는다.
 
 ## 2026-11-03 — 주차장 소유권·읽기 비용 개선 완료
 
@@ -12,14 +11,12 @@ T-PARKING-OWNER-01·T-READ-PERF-01은 [완료 목록](tasks-done.md)에 이동�
 
 ## 2026-11-03 — 전체 PR 새 이미지 반영 정산
 
-새 이미지 반영·원 일정 복원·Manager 표식·PC/모바일 실제 검사는 [완료 목록](tasks-done.md)과 [배포 기록](reports/2026-11-02-all-pr-images-release.md)에 기록했다. 아래 미제공 자료·라벨 겹침·주차 보존 등의 별도 기능 과제를 이번 배포 성공으로 완료 처리하지 않는다.
+새 이미지 반영·원 일정 복원·Manager 표식·PC/모바일 실제 검사는 [완료 목록](tasks-done.md)과 [배포 기록](reports/2026-11-02-all-pr-images-release.md)에 기록했다. 아래 미제공 자료·주차 보존 등의 별도 기능 과제를 이번 배포 성공으로 완료 처리하지 않는다.
 
 철도 초도 조회·이번 수집분 유가 통계·양 앱 VWorld 키 반영과 실제 화면 수용은 [완료 목록](tasks-done.md)에 기록했다. 아래 과거 백업/복원 요구를 새 게이트로 재적용하지 않는다. 사용자가 생략을 명시했다.
 
 ## 2026-10-31 — 운영 화면 관측 후속
 
-- [ ] **T-FUEL-REGION-LABEL-01 / P2** — 시도·시군구 평균 라벨이 겹쳐 가려지는 경우를 줄인다.
-  실제 클릭 가능한 다른 라벨의 확대 전환은 확인했지만 겹침 자체는 수정하지 않았다.
 - [ ] **T-FUEL-REGION-ALLOWLIST-01 / P2** — backend에 없는 `fuel/regions`의 불필요한 BFF/gateway 허용 항목과
   mock 시험을 정리한다. 실제 지역 평균 경로는 `features/places`의 `fuel_regions`다.
 
