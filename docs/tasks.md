@@ -1,7 +1,6 @@
 ## 2026-11-08 — 유가 검색 MCP 병행
 
-소스·집중 검증과 [Draft PR175](https://github.com/digitie/kor-travel-transport/pull/175) 인계는 [완료 목록](tasks-done.md)에 기록했다. [계약](fuel-mcp.md).
-- [ ] **T-FUEL-MCP-LIVE-20261108** — Root의 API 이미지·활성화 설정 및 같은 호스트 실제 인증/가격 세대·도구/종료 수용. 현재 미배포이며 별도 백업·리뷰 게이트를 재도입하지 않는다.
+소스·집중 검증과 [Draft PR175](https://github.com/digitie/kor-travel-transport/pull/175) 인계와 같은 API의 실제 수용은 [완료 목록](tasks-done.md)에 기록했다. [계약](fuel-mcp.md).
 
 
 

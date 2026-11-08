@@ -1,3 +1,7 @@
+## 2026-11-08 — 같은 API의 유가 검색 MCP 실제 반영
+
+제품a3fbb4e/API857b507b를 같은12302 `/mcp`에 반영했다. 반경·전국·좌표 시군구5유종과 독립 반경 산술 PASS, 기존108 distribution/provider138파일·CS/웹/gateway/Weather/원47일정·DB0041을 보존했다. 공개 gateway는 미개방이다. [실제 계약과 한계](fuel-mcp.md). 원장SHA 5ae25e420f2e850d0495604fab09f065fcf19152b8c509f03cfd14a3c703deb9.
+
 ## 2026-11-08 — 같은 API의 유가 검색 MCP 구현·집중 검증
 
 `codex/transport-fuel-mcp-20261108`에서 FastAPI `/mcp`의 읽기 전용 반경·전국/시군구 도구를 구현했다.

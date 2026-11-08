@@ -88,7 +88,7 @@ DB에서 bbox로 후보를 제한하고 대권 직선거리로 반경을 판정�
 
 - `scope`: 기본 `nationwide`, 또는 `sigungu`.
 - 전국 조회는 인자 없이 가능하다. 전 유종 평균·최저가·대표 주유소를 반환한다.
-- 시군구는 `latitude`·`longitude`, 또는 `sido_value`·`sigungu_value` 두 Opinet 코드를 받는다.
+- 시군구는 `latitude`·`longitude`, 또는 `sido_value`·`sigungu_value` 두 저장 지역 값을 받는다.
 - 명시적 코드가 있으면 주소 제공자를 호출하지 않는다. 해당 공개 지역이 없으면
   `region.status=unavailable`, `reason=region_not_published`다.
 - 좌표는 기존 정확한 좌표 키의 저장 주소를 먼저 읽는다. 없으면 기존 VWorld/Kakao resolver를
@@ -96,7 +96,7 @@ DB에서 bbox로 후보를 제한하고 대권 직선거리로 반경을 판정�
   메모리 캐시로 재사용하며 DB 주소 쓰기는 없다. 이 캐시는 유가·수집 상태를 캐시하지 않는다.
 - 법정동 연결 또는 SDK 시도 코드 변환과 유일한 저장 시군구명 대조로 지역을 확인한다.
   제공자 실패·명칭/코드 불일치·다중 후보이면 명시적 이유와 unavailable을 반환한다.
-  가까운 주유소의 행정구역을 현재 위치라고 단정하지 않는다. 명시적 Opinet 코드로 다시 조회할 수 있다.
+  가까운 주유소의 행정구역을 현재 위치라고 단정하지 않는다. 명시적 저장 지역 값로 다시 조회할 수 있다.
 - 전국·시군구는 기존 영구 통계의 **안정 대표 최저가 1곳과 전체 동률 수**를 그대로 반환한다.
   동률이 더 있으면 `truncated=true`다. 다른 세대의 주유소 지역/상호를 섞어 재집계하지 않는다.
   좌표를 같이 주면 대표 주유소의 직선거리도 DB에서 계산한다.
@@ -212,3 +212,11 @@ Root가 지정한 기존 ARM64 API 기준 이미지는
 - [Python SDK 설치·현재 안정 버전 계열](https://github.com/modelcontextprotocol/python-sdk/blob/main/docs/get-started/installation.md)
 - [최신/initialize 프로토콜 호환](https://github.com/modelcontextprotocol/python-sdk/blob/main/docs/protocol-versions.md)
 - [MCP 도구 스키마·목록·호출 명세](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
+
+## 2026-11-08 실제 API 반영
+
+제품 `a3fbb4e`/API 이미지 `857b507b`를 같은12302 `/mcp`에 반영했다. API에서만 MCP를 활성화하며 CS·웹·gateway·Weather·원47개 일정을 보존했다. DB/schema0041과 provider는 그대로다. 실제 ARM64 Python3.12.13의 기존108개 distribution·Git provider Python138파일을 보존하고 새16개 wheel만 추가했다. 격리95개/17파일과 합산하지 않는다. 원 CRLF overlay는 보존하고 같은 Git commit의 정본LF archive를 blob SHA로 검산했다.
+
+공식 Client 두 프로토콜로 실제 소켓을 호출했다. 예제 좌표 서울시청 부근5km의5유종 표본은52/43/52/16/0개이며 평균·최저·동률·순서를 독립 거리/산술과 대조해 일치했다. LPG0개는 반경 미제공이다. 전국·저장 지역값·좌표 기반 서울 중구도 같은 공개 성공 세대에서 조회했으며 update_pending=false였다. 단일 호출은 반경3.125초/전국1.650초/명시 지역0.210초/좌표 지역4.230초다. p95/cold/모든 지역 보장은 아니다. 시도/시군구 값은 실제 저장된 이름일 수도 있으므로 숫자 코드로 추측하지 않는다.
+
+인증 없는 호출404/API health200, Manager healthy·원 일정·빌드/배포 첫 Invocation done·MainPID0·cgroup부재를 확인했다. 외부 gateway/HAProxy는 변경하지 않았으므로 공개 도메인 성공으로 표현하지 않는다. 기존 서비스 토큰·허용 대역 또는 같은 호스트 loopback으로 접속한다. 키값·토큰·URL query·HAR는 기록하지 않았다. 정본은 `transport-fuel-mcp-release-20261108/final-acceptance.json`이다.

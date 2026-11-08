@@ -1,3 +1,7 @@
+## 2026-11-08 — 같은 API의 유가 MCP 실제 수용
+
+- [x] **T-FUEL-MCP-LIVE-20261108** — API857b507b/같은12302 `/mcp`, 반경·전국·명시/좌표 시군구 실제5유종과 독립 반경 산술을 수용했다. 기존108 distribution/provider138파일·원47일정·CS/웹/gateway/Weather/DB0041 보존, Managerhealthy·첫 부모done/잔여0 확인. 공개 gateway는 미개방이다. [실제 증거·한계](fuel-mcp.md).
+
 ## 2026-11-08 — 유가 검색 MCP 소스 인계
 
 - [x] **T-FUEL-MCP-SOURCE-20261108** — 같은 FastAPI `/mcp`의 읽기 전용 반경·전국/시군구 도구, 현재 성공 세대·전5유종·거리/동률·기존 token/실제 peer 및 독립 gateway MCP CIDR을 구현했다. Python3.12 PG18 WSL/Docker 각각22개·실제 SDK legacy/modern·격리 Nginx를 검산했다. 기존95개 의존성과 provider17파일을 유지한 신규16개 추가 경로 및 ARM64 cp312 wheel SHA를 확인했다. 제품 `a3fbb4e9dca25e059efaef1d59d81d4885206366`과 [stacked Draft PR175](https://github.com/digitie/kor-travel-transport/pull/175) 인계를 마쳤다. 운영 이미지·HAProxy·공개 URL 수용은 미배포로 별도 유지한다. [계약과 한계](fuel-mcp.md).
