@@ -6,7 +6,8 @@ provider 핀을 보존하고 기존 token/실제 peer 및 별도 gateway MCP CID
 Python3.12 PG18 WSL·Docker 각각22개, 실제 socket SDK legacy/modern 및 격리 Nginx GET/POST를 검증했다.
 기존95개 의존성 버전/17개 provider 파일을 보존한 신규16개 추가 경로도 검산했다. 최초 protocol/SQL 열과
 GET 기대값 실패는 원장에 보존했다. [도구·설정·인계](fuel-mcp.md), 정본 `transport-fuel-mcp-20261108/plan.json`.
-Stacked Draft PR 준비 단계이며 실제 이미지·HAProxy·공개 URL·운영 활성화는 Root 후속이다.
+제품 `a3fbb4e9dca25e059efaef1d59d81d4885206366`을 [stacked Draft PR175](https://github.com/digitie/kor-travel-transport/pull/175)로 인계했다.
+ARM64 CPython3.12 신규16 wheel의 잠금 SHA 검산도 완료했다. 실제 이미지·HAProxy·공개 URL·운영 활성화는 Root 후속이다.
 
 ## 2026-11-08 — 남은 조회 지연·대표 카드 겹침 수정
 

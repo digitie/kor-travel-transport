@@ -1,11 +1,13 @@
-## 2026-11-08 — 유가 검색 MCP 소스·집중 검증 완료, Draft PR 준비
+## 2026-11-08 — 유가 검색 MCP 소스·집중 검증·Draft PR 인계 완료
 
 같은 API process/port의 opt-in `/mcp`에 반경 최저가·평균과 전국/현재 위치 시군구의 영구 통계를 제공한다.
 전5유종·이번 성공 수집분·동률·시각/미제공을 보존하고 GPS/IP나 가까운 주유소로 위치를 추정하지 않는다.
 Python3.12 PG18 WSL/Docker22개씩·실제 SDK 두 프로토콜·격리 gateway·신규16개만 추가/기존 의존성 보존을
 검산했다. 기존 SDK 재설치·schema/수집·운영 변경은 0이다. [MCP 안내](fuel-mcp.md).
-다음 한 작업은 stacked Draft PR 인계이며 실제 API 이미지·gateway MCP CIDR/HAProxy·공개 URL 수용은
-Root가 별도로 수행한다. 기본 활성화 false·gateway MCP CIDR empty deny를 유지한다.
+제품 `a3fbb4e9dca25e059efaef1d59d81d4885206366`은 [stacked Draft PR175](https://github.com/digitie/kor-travel-transport/pull/175)로 인계했다.
+ARM64 cp312 신규16 wheel 검산을 마쳤고 `transport-fuel-mcp-20261108/root/runtime-handoff.json`에 실행 경계를 기록했다.
+다음 한 작업인 실제 API 이미지·gateway MCP CIDR/HAProxy·공개 URL 수용은 Root가 별도로 수행한다.
+기본 활성화 false·gateway MCP CIDR empty deny를 유지한다.
 
 ## 2026-11-08 — 남은 조회 지연·대표 카드 겹침 수정
 

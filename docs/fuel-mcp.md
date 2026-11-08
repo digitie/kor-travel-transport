@@ -183,13 +183,29 @@ Linux CPython3.12에는 그중 16개가 적용되며 `httpx2-jsfetch`는 emscrip
 | sse-starlette | 3.7.0 |
 | truststore | 0.10.5 |
 
-Root는 같은 Python3.12·아키텍처의 기존 API 이미지를 기준으로 신규 목록만
-`pip download --only-binary=:all: --no-deps -r backend/fuel-mcp-additions.txt`로 준비하고
-선택한 wheel의 SHA를 위 lock의 wheel record와 대조할 수 있다. 설치는 같은 목록으로
+ARM64 CPython3.12용 신규 16개 wheel을 아래 명령으로 내려받고 각각의 SHA를 위 lock의
+wheel record와 대조했다. 내려받기 도구는 별도 환경이며 기존 provider 환경은 수정하지 않았다.
+
+```sh
+uv tool run --from pip pip download --only-binary=:all: --no-deps \
+  --platform manylinux2014_aarch64 --platform manylinux_2_17_aarch64 \
+  --implementation cp --python-version 3.12 --abi cp312 --abi abi3 \
+  -r backend/fuel-mcp-additions.txt -d <신규-wheel-디렉터리>
+```
+
+개인 작업 원장의 `arm64-cp312-wheels/manifest.json`에 정확 파일명·버전·SHA를 기록했다.
+`transport-fuel-mcp-arm64-cp312-wheels.tgz` SHA256은
+`3e58f08c8cf1836bd2e6040902ca456e591659cea6d4f01da2f58e39410d9b3f`다.
+Root가 지정한 기존 ARM64 API 기준 이미지는
+`sha256:11418aa1e1a654fa1d09d85df1ec9984c94bdb4b040622d6dd320d7bb82d6c01`이며,
+실행 인계는 같은 원장의 `root/runtime-handoff.json`에 기록한다. 설치는 같은 목록으로
 `pip install --no-deps --no-index --find-links=<검산한-wheel-디렉터리> -r backend/fuel-mcp-additions.txt`를
 사용한다. 기존 SDK나 전체 requirements를 재설치하거나 다른 기존 버전을 갱신하지 않는다.
 새 backend 소스/프로젝트 metadata만 반영하고 기존 dependency inventory와 provider 파일 SHA를
-전후 대조한다. 실제 ARM64 이미지 생성·wheel 선택·pip check와 배포는 Root 단계다.
+전후 대조한다. wheel 선택·해시 검산은 완료했고, 실제 ARM64 이미지 생성·추가 설치·pip check와
+배포는 Root 단계다. 소스 제품 commit은 `a3fbb4e9dca25e059efaef1d59d81d4885206366`,
+검토용 [Draft PR175](https://github.com/digitie/kor-travel-transport/pull/175)는 PR174의
+`codex/transport-read-max-20261107` 위에 쌓았다. 머지·운영 배포는 하지 않았다.
 
 참고한 공식 자료:
 
