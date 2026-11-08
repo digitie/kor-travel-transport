@@ -9,7 +9,8 @@
 
 | 항목 | 계약 |
 |---|---|
-| 주소 | 같은 호스트의 `http://127.0.0.1:12302/mcp` |
+| 외부 주소 | `https://transport-api.digitie.mywire.org/mcp` |
+| 서버 내부 주소 | `http://127.0.0.1:12302/mcp` |
 | 인증 | 기존 `x-kor-travel-transport-service-token` 헤더, 32자 이상 |
 | 접속 대역 | 기존 `SERVICE_EXPORT_ALLOWED_CLIENTS_CSV`, 기본 loopback |
 | 활성화 | `TRANSPORT_FUEL_MCP_ENABLED`, API 역할에서만 사용 |
@@ -18,7 +19,7 @@
 
 인증이 없거나 잘못됐거나 실제 ASGI peer가 허용 대역 밖이면 404다. `Host`나
 `X-Forwarded-For`를 읽어 peer 권한을 넓히지 않는다. API의 TrustedHost와 MCP의 Host/Origin
-검사도 함께 적용한다. 직접 loopback 접속이 기본이며 새 공용 reverse proxy 경로를 열지 않는다.
+검사도 함께 적용한다. 서버 내부 loopback 접속과 아래의 공개 HTTPS MCP 경로를 제공한다.
 프록시를 사용한다면 ASGI peer 생성에 관여하는 Uvicorn의 신뢰 프록시 설정도 Root가 확인해야 한다.
 서비스 토큰은 도구 인자·URL·명령행에 넣지 않는다. 실제 값은 기존 비공개 환경을 통해서만 전달한다.
 
@@ -32,12 +33,14 @@ gateway의 MCP CIDR은 **gateway가 실제로 관측하는 peer**이고 backend�
 `SERVICE_EXPORT_ALLOWED_CLIENTS_CSV`는 **backend가 실제로 관측하는 peer**다.
 gateway 경유 backend peer는 loopback이며, HAProxy 경유 gateway peer는 Root가 실제 경로에서
 확인해야 한다. 임의 XFF로 원래 사용자 IP를 단정하거나 raw export CIDR을 대신 넓히지 않는다.
-Transport 저장소의 gateway 구성과 배포 런북의 host-route 이력을 확인했으나 실제 HAProxy 설정은
-이 구현에서 조회·변경하지 않았다. 공개 `transport-api` 도메인/SNI의 연결 성공은 아직 미검증이다.
+기존 공개 HTTPS 경로의 API health와 gateway 실제 peer `192.168.1.1`을 관측했다.
+MCP 전용 CIDR만 `192.168.1.1/32`로 설정했고 기존 raw export CIDR `192.168.1.14/32`는 유지했다.
+HAProxy 자체 설정은 변경하지 않았다. 공개 도메인의 TLS 검증·양 MCP 프로토콜과 실제 도구 호출은
+아래 외부 HTTPS 수용에 기록했다. 시험 클라이언트는 LAN의 WSL에서 공개 DNS/TLS 경로를 이용했다.
 
 공식 Python MCP SDK `mcp==2.3.0`을 사용한다. 최신 `2026-07-28` 프로토콜과
 `2025-11-25`의 `initialize` 연결을 모두 지원한다. SDK가 최신 요청의 메타데이터와
-`MCP-Method` 헤더를 구성하게 한다. 예를 들어 같은 호스트의 클라이언트는 다음처럼 연결한다.
+`MCP-Method` 헤더를 구성하게 한다. 예를 들어 외부 HTTP MCP 클라이언트는 다음처럼 연결한다.
 예제 좌표는 설명용이며 사용자 GPS/IP를 추정하지 않는다.
 
 ```python
@@ -53,7 +56,7 @@ async def main():
         "x-kor-travel-transport-service-token": os.environ["TRANSPORT_SERVICE_EXPORT_TOKEN"],
     }
     async with httpx2.AsyncClient(headers=headers, trust_env=False, timeout=20) as http:
-        transport = streamable_http_client("http://127.0.0.1:12302/mcp", http_client=http)
+        transport = streamable_http_client("https://transport-api.digitie.mywire.org/mcp", http_client=http)
         async with Client(transport, cache=None) as client:
             result = await client.call_tool("search_nearby_fuel", {"query": {
                 "latitude": 37.5665, "longitude": 126.9780, "radius_m": 5000,
@@ -148,7 +151,7 @@ PG18 집중 묶음은 WSL 22개·Docker 22개 통과했다. 도중 수집 성공
 운영 반영은 Root가 현재 배포 런북·ADR-014에 따라 API 이미지·활성화 값과 기존 gateway 설정을
 적용하고 실제 HAProxy peer를 관측해 MCP 전용 CIDR만 명시한 뒤 같은 호스트와 공개 경로의
 인증·도구·실제 가격 세대·부모/자식 종료를 확인한다. gateway의 기존 Nginx 이미지 재빌드는
-필요하지 않으며 template/allowlist 설정 반영은 별도다. 이 구현은 아직 운영에 반영하지 않았다.
+필요하지 않으며 template/allowlist 설정 반영은 별도다. 이 문단은 초기 소스 인계 시점의 기록이며, 실제 운영 반영은 아래의 수용 절을 따른다.
 새로운 백업·복원·수집·키 교체·migration·prune는 필요하지 않다.
 
 ## 기존 Python 3.12 이미지의 의존성 추가 경로
@@ -205,7 +208,7 @@ Root가 지정한 기존 ARM64 API 기준 이미지는
 전후 대조한다. wheel 선택·해시 검산은 완료했고, 실제 ARM64 이미지 생성·추가 설치·pip check와
 배포는 Root 단계다. 소스 제품 commit은 `a3fbb4e9dca25e059efaef1d59d81d4885206366`,
 검토용 [Draft PR175](https://github.com/digitie/kor-travel-transport/pull/175)는 PR174의
-`codex/transport-read-max-20261107` 위에 쌓았다. 머지·운영 배포는 하지 않았다.
+`codex/transport-read-max-20261107` 위에 쌓았다. 당시에는 머지·운영 배포를 하지 않았다. 실제 배포는 아래에 별도로 기록했다.
 
 참고한 공식 자료:
 
@@ -220,3 +223,18 @@ Root가 지정한 기존 ARM64 API 기준 이미지는
 공식 Client 두 프로토콜로 실제 소켓을 호출했다. 예제 좌표 서울시청 부근5km의5유종 표본은52/43/52/16/0개이며 평균·최저·동률·순서를 독립 거리/산술과 대조해 일치했다. LPG0개는 반경 미제공이다. 전국·저장 지역값·좌표 기반 서울 중구도 같은 공개 성공 세대에서 조회했으며 update_pending=false였다. 단일 호출은 반경3.125초/전국1.650초/명시 지역0.210초/좌표 지역4.230초다. p95/cold/모든 지역 보장은 아니다. 시도/시군구 값은 실제 저장된 이름일 수도 있으므로 숫자 코드로 추측하지 않는다.
 
 인증 없는 호출404/API health200, Manager healthy·원 일정·빌드/배포 첫 Invocation done·MainPID0·cgroup부재를 확인했다. 외부 gateway/HAProxy는 변경하지 않았으므로 공개 도메인 성공으로 표현하지 않는다. 기존 서비스 토큰·허용 대역 또는 같은 호스트 loopback으로 접속한다. 키값·토큰·URL query·HAR는 기록하지 않았다. 정본은 `transport-fuel-mcp-release-20261108/final-acceptance.json`이다.
+
+
+## 2026-11-08 외부 HTTPS MCP 실제 수용
+
+사용자가 외부 접근과 기존 서비스 토큰 표시를 명시 요청했다. 외부 연결 주소는 `https://transport-api.digitie.mywire.org/mcp`, 방식은 Streamable HTTP이며 기존 `x-kor-travel-transport-service-token` 헤더를 사용한다. 토큰 값은 Git·운영 문서·URL·명령행에 기록하지 않는다. 사용자 답변으로만 별도 전달한다.
+
+기존 공개 도메인의 TLS/API health에서 제품a3fbb4e를 확인하고 gateway가 실제로 보는 프록시 주소192.168.1.1에 MCP만 허용했다. 별도 REST export의192.168.1.14/32·backend의loopback peer 제한은 그대로다. 기존 이미지96868d9f의 gateway만 재생성했고 API3386f16b/857b507b·CS·웹·Weather·DB0041·원47일정·환경/키를 보존했다. APP의 두 gateway 입력을 Git 정본a3fbb4e로 반영하고 Compose에 MCP 환경값 전달1줄과 정본 환경2파일의 `TRANSPORT_MCP_CONSUMER_CIDR`만 추가했다. HAProxy 변경·신규 이미지 빌드·API/CS 교체·migration·수집/통계 발행은0이다. 실제 gateway CID는 `85506a86aec02a89e32f9896781afee7f923e8d84c802833b14666b2f2bb3c7d`다.
+
+공식 Client의2025-11-25/2026-07-28 연결·도구2개와 공개 HTTPS 반경/전국/좌표 시군구 호출을 수용했다. 서울 예제5km1475.76ms·전국241.12ms·좌표 서울 중구2211.87ms이고 전5유종을 확인했다. 같은 마지막 성공 공개 세대2026-11-08T00:25:31.164755Z를 반환했으며 당시 last_attempt_failed=true 표시는 보존했다. 연결 성공을 최신 수집 성공이나 p95 보장으로 바꾸지 않는다. 토큰 없음/오류404·MCP 하위 임의 경로404·DELETE403·관리 경로404·유효 토큰으로도 raw export403이다. TLS 검증을 끄거나 프록시 환경변수를 쓰지 않았다. 별도 외부망 단말의 호출은 미관측이며, 독립 웹 fetch 도구의 URL 접근 불가를 서비스 실패/성공으로 판정하지 않았다.
+
+MCP allow 파일이 추가된 뒤 기존 시험 helper가 export 파일만 tmp로 치환해 `/etc/nginx` 쓰기에 실패하는 것을1개 재현했다. 두 경로를 시험 tmp에 격리하고 MCP/기존 export 분리·잘못된 MCP CIDR에서 두 파일 보존·정확 경로/stream 설정을 WSL/Docker각39개로 검산했다. 같은 시험은 합산하지 않는다. 운영 Nginx는 기존 이미지의 격리 `nginx -t`와 교체 뒤 `nginx -t`, 실제 HTTPS Client로 확인했다.
+
+주 배포 첫 Invocation98183a6eccee4dcf90e552208f1be7f6는 실제done/Main0/cgroup부재·소유자식 종료·Manager healthy다. private umask 때문에 좁혀진 두 공개 입력의 권한은 별도a9d0eb838bfb47e69931a91fba747a5d에서 기존644/755로 회복했고 bytes/owner·실제 runtime/env 동일·서비스 재생성/reload0·Manager healthy·부모done을 검산했다. Compose는digitie 소유600이며 해당 사용자의 읽기 가능을 확인했다. 원 실행 파일을 성공처럼 고쳐 쓰지 않고 이 정산을 분리했다. 첫 로그 감사 helper의 WSL 전용 경로 오류는 보존하고 실제 runtime 키를 메모리에서 읽는 R2로 API/gateway 로그의 토큰·VWorld literal 부재를 확인했다. 원문 로그는 보관하지 않았다.
+
+정본은 Git 밖 `transport-fuel-mcp-release-20261108/external-access/final-acceptance.json`, SHA `15dc44a1095cff7c08a3df7e5879a292a864b58470023428db245147cda26658`다. 내부 수용의 기존 원장과 실패는 그대로 보존했다. 백업/복원은 사용자 지시로 생략했고 새 리뷰·main 머지 없이 Draft PR175를 유지한다. 이번 변경은 시험·문서와 이미 검증된 gateway 입력의 실제 반영이며 제품 API 트리는 동일하므로 API 이미지를 재빌드하지 않는다.

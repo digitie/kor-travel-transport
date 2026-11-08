@@ -1,6 +1,6 @@
 ## 2026-11-08 — 유가 검색 MCP 병행
 
-소스·집중 검증과 [Draft PR175](https://github.com/digitie/kor-travel-transport/pull/175) 인계와 같은 API의 실제 수용은 [완료 목록](tasks-done.md)에 기록했다. [계약](fuel-mcp.md).
+소스·집중 검증·같은 API 실제 반영과 공개 HTTPS 경로 수용을 [완료 목록](tasks-done.md)에 기록했다. [Draft PR175](https://github.com/digitie/kor-travel-transport/pull/175), [연결법과 계약](fuel-mcp.md).
 
 
 

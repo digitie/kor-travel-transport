@@ -1,3 +1,7 @@
+## 2026-11-08 — 유가 MCP 외부 HTTPS 연결 수용
+
+`https://transport-api.digitie.mywire.org/mcp`를 기존 서비스 토큰으로 연결할 수 있게 반영했다. 기존 gateway 이미지만 재사용해 gateway역할만 교체했고 API/수집기/Weather/DB·원47일정과 raw export 제한은 유지했다. 실제 TLS·두 프로토콜/도구2개·반경/전국/좌표 시군구를 검산했으며 토큰 없음/오류404·기타 쓰기/관리/raw export 차단도 확인했다. WSL/Docker gateway39개씩·원source권한 정산·두 첫 부모done/Main0/cgroup부재·Managerhealthy를 기록했다. 토큰 값은 문서/Git에 넣지 않는다. [연결법과 실제 한계](fuel-mcp.md).
+
 ## 2026-11-08 — 같은 API의 유가 검색 MCP 실제 반영
 
 제품a3fbb4e/API857b507b를 같은12302 `/mcp`에 반영했다. 반경·전국·좌표 시군구5유종과 독립 반경 산술 PASS, 기존108 distribution/provider138파일·CS/웹/gateway/Weather/원47일정·DB0041을 보존했다. 공개 gateway는 미개방이다. [실제 계약과 한계](fuel-mcp.md). 원장SHA 5ae25e420f2e850d0495604fab09f065fcf19152b8c509f03cfd14a3c703deb9.

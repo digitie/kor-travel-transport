@@ -1,5 +1,10 @@
 # agent-failure-patterns — 반복되는 실수와 회피 규칙
 
+## 2026-11-08 — gateway 시험 경로·파일 권한
+
+- allowlist를 분리하면 시험 helper도 두 출력 경로를 tmp로 치환한다. 하나만 치환해 실제 `/etc/nginx` 쓰기에 실패한 원문을 보존하고 invalid 입력에서 두 파일이 모두 보존되는지도 검사한다.
+- umask077 아래의 `os.open(..., 원래 mode)`는644/755를600/700으로 좁힌다. 공개 입력의 기존 권한을 보존할 때는 열린 FD에 `fchmod`를 명시하고 owner/bytes도 대조한다. 이미 교체한 서비스를 재생성하지 않고 정확한 파일만 정상G/R에서 정산한다.
+
 ## 2026-11-08 — 배포 소스와 실제 검산 경로
 
 - Git 정본 아카이브는 `git -c core.autocrlf=false archive`로 만든다. checkout의 CRLF 설정을 상속한 아카이브가 native SHA 검산에서 실패한 실제 사례가 있다. 배포 전 tar 파일 내용을 `git ls-tree`의 blob SHA와 대조하고 symlink/gitlink는 별도로 취급한다. 파일 수·아카이브 SHA·원 실패를 기록하며 의미가 같다는 이유로 SHA 가드를 약화하지 않는다. [실제 원문과 R2](../reports/2026-11-08-large-fuel-map.md).

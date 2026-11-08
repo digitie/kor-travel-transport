@@ -8,11 +8,15 @@ BACKEND = Path(__file__).resolve().parents[1]
 ROOT = BACKEND if (BACKEND / "scripts").is_dir() else BACKEND.parent
 SCRIPT = ROOT / "deploy/transport-admin/19-export-allowlist.sh"
 
-def run_script(tmp_path, value):
+def run_script(tmp_path, value, mcp_value=""):
     destination = tmp_path / "allow.conf"
     destination.write_text("prior")
+    mcp_destination = tmp_path / "mcp-allow.conf"
+    mcp_destination.write_text("prior-mcp")
     source = SCRIPT.read_text().replace("/etc/nginx/transport-export-allow.conf", str(destination))
-    env = {"PATH": "/usr/bin:/bin", "TRANSPORT_EXPORT_CONSUMER_CIDR": value}
+    source = source.replace("/etc/nginx/transport-mcp-allow.conf", str(mcp_destination))
+    env = {"PATH": "/usr/bin:/bin", "TRANSPORT_EXPORT_CONSUMER_CIDR": value,
+           "TRANSPORT_MCP_CONSUMER_CIDR": mcp_value}
     result = subprocess.run(["sh", "-c", source], env=env, capture_output=True, text=True)
     return result, destination.read_text()
 
@@ -31,6 +35,37 @@ def test_invalid_value_is_rejected_before_file_write(tmp_path, value):
     result, content = run_script(tmp_path, value)
     assert result.returncode != 0
     assert content == "prior"
+
+
+@pytest.mark.parametrize("mcp_value", ["", "192.168.1.1/32", "192.0.2.0/24"])
+def test_mcp_allowlist_does_not_widen_export(tmp_path, mcp_value):
+    result, content = run_script(tmp_path, "192.168.1.14/32", mcp_value)
+    assert result.returncode == 0, result.stderr
+    assert content == "allow 192.168.1.14/32;\ndeny all;\n"
+    assert (tmp_path / "mcp-allow.conf").read_text() == (
+        (f"allow {mcp_value};\n" if mcp_value else "") + "deny all;\n"
+    )
+
+
+@pytest.mark.parametrize("mcp_value", [
+    "invalid", "192.168.1.1; allow all", "192.168.1.1/33", "192.168.1.1\n",
+])
+def test_invalid_mcp_cidr_preserves_both_allowlists(tmp_path, mcp_value):
+    result, content = run_script(tmp_path, "192.168.1.14/32", mcp_value)
+    assert result.returncode != 0
+    assert content == "prior"
+    assert (tmp_path / "mcp-allow.conf").read_text() == "prior-mcp"
+
+
+def test_mcp_gateway_is_exact_and_preserves_streaming_and_peer_gate():
+    template = (ROOT / "deploy/transport-admin/api-gateway.conf.template").read_text()
+    mcp = template.split("location = /mcp {", 1)[1].split("\n    }", 1)[0]
+    assert "include /etc/nginx/transport-mcp-allow.conf;" in mcp
+    assert "limit_except GET POST { deny all; }" in mcp
+    assert 'proxy_set_header X-Forwarded-For "";' in mcp
+    assert "proxy_buffering off;" in mcp
+    assert "proxy_cache off;" in mcp
+    assert "proxy_request_buffering off;" in mcp
 
 def test_export_gateway_does_not_expand_admin_or_public_contract():
     template = (ROOT / "deploy/transport-admin/api-gateway.conf.template").read_text()

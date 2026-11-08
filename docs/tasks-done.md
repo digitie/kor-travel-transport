@@ -1,3 +1,7 @@
+## 2026-11-08 — 유가 MCP 공개 HTTPS 경로
+
+- [x] **T-FUEL-MCP-PUBLIC-20261108** — 기존 공개 TLS 경로의 gateway peer만 MCP CIDR로 허용하고 실제 두 프로토콜·반경/전국/좌표 시군구를 수용했다. 토큰/임의 경로/관리/raw export 제한·API/CS/DB/원47상태 보존·두 운영 부모 종료·Managerhealthy를 검산했다. 별도 외부망 단말 시험은 미관측이다. [접속과 근거](fuel-mcp.md).
+
 ## 2026-11-08 — 같은 API의 유가 MCP 실제 수용
 
 - [x] **T-FUEL-MCP-LIVE-20261108** — API857b507b/같은12302 `/mcp`, 반경·전국·명시/좌표 시군구 실제5유종과 독립 반경 산술을 수용했다. 기존108 distribution/provider138파일·원47일정·CS/웹/gateway/Weather/DB0041 보존, Managerhealthy·첫 부모done/잔여0 확인. 공개 gateway는 미개방이다. [실제 증거·한계](fuel-mcp.md).
