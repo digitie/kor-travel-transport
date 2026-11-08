@@ -788,6 +788,18 @@ h1, h2, h3 { color: var(--text-primary); }
 .fuel-region-label > strong, .fuel-region-price { display:flex; align-items:baseline; justify-content:space-between; gap:var(--space-md); }
 .fuel-region-label small { color:var(--text-secondary); font-weight:400; }
 .fuel-region-price b { font-weight:600; font-variant-numeric:tabular-nums; }
+.fuel-region-marker .fuel-region-label { translate:var(--region-offset-x, 0px) var(--region-offset-y, 0px); pointer-events:auto; }
+.fuel-region-marker[data-region-overflow="true"] .fuel-region-label { visibility:hidden; pointer-events:none; }
+.fuel-region-marker:focus-visible { outline:none; }
+.fuel-region-marker:focus-visible .fuel-region-label { outline:3px solid var(--color-focus); outline-offset:3px; }
+.fuel-region-link, .fuel-region-origin { position:absolute; left:50%; top:50%; pointer-events:none; }
+.fuel-region-link { overflow:visible; color:var(--text-secondary); }
+.fuel-region-link line { stroke:currentColor; stroke-width:1; }
+.fuel-region-origin { width:var(--space-xs); height:var(--space-xs); border-radius:50%; background:var(--text-primary); translate:-50% -50%; }
+.fuel-region-access { position:absolute; left:var(--space-sm); right:var(--space-sm); bottom:var(--space-xl); z-index:5; width:fit-content; max-width:calc(100% - 2 * var(--space-sm)); display:grid; gap:var(--space-xs); }
+.fuel-region-access-list { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:var(--space-sm); max-height:min(50dvh, 24rem); overflow:auto; overscroll-behavior:contain; padding:var(--space-sm); border:1px solid var(--border); border-radius:var(--radius-panel); background:var(--card); box-shadow:var(--shadow-map); }
+.fuel-region-access-list > button { min-width:0; padding:0; text-align:start; background:transparent; border:0; border-radius:var(--radius-panel); }
+.fuel-region-access-list .fuel-region-label { white-space:normal; height:100%; }
 /* Hallmark · pre-emit critique: P4 H4 E4 S5 R5 V4 · 기존 Workbench 토큰 유지 */
 .rail-map-label { display: flex; align-items: center; gap: var(--space-xs); white-space: nowrap; }
 .rail-map-lines { display: flex; gap: var(--space-xs); }

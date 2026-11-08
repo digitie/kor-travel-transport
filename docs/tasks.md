@@ -1,3 +1,5 @@
+- [ ] **REMAINS-20261108** — 남은 지연/카드 겹침 수정의 실제 최소 이미지·HTTP·n150 PC모바일·원상태/Manager·첫 부모 종료를 수용한다. [근거](reports/2026-11-08-remaining-read-and-overlap.md).
+
 
 
 ## 2026-11-07 — 조회 성능 세 회차 완료

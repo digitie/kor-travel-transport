@@ -25,6 +25,11 @@ type MapPoint = { id: string; lngLat: [number, number]; place: Place };
 type Viewport = { min_longitude: string; min_latitude: string; max_longitude: string; max_latitude: string };
 type MapCluster = { longitude: number; latitude: number; count: number; kind_counts: Partial<Record<PlaceKind, number>> };
 type FuelRegion = { region_key: string; label: string; product_code: string; average_price: number; station_count: number; longitude: number; latitude: number };
+function FuelRegionLabel({ label, prices }: { label: string; prices: Map<string, FuelRegion> }) {
+  return <span className="fuel-region-label"><strong>{label}<small>원/L</small></strong>
+    {FUEL_PRODUCTS.map(code => { const price = prices.get(code); return <span key={code} className="fuel-region-price"><span>{fuelProductLabel(code)}</span><b>{price ? Math.round(price.average_price).toLocaleString("ko-KR") : "미제공"}</b></span>; })}
+  </span>;
+}
 type PlaceResponse = { fuel_regions?: FuelRegion[]; fuel_statistics?: FuelViewportStatistics[]; items: Place[]; total: number; truncated: boolean; clustered?: boolean; kind_totals?: Partial<Record<PlaceKind, number>>; clusters?: MapCluster[]; available_sources?: string[]; fuel_prices_stale?: boolean; fuel_prices_last_refreshed_at?: string | null };
 const FUEL_PRODUCTS = ["B027", "D047", "B034", "C004", "K015"] as const;
 const KINDS: PlaceKind[] = ["fuel_station", "rail_station", "ferry_port", "bus_terminal", "airport", "rest_area", "highway_incident", "public_parking_lot"];
@@ -35,6 +40,31 @@ const CLUSTER_NUMBER_FORMATTER = new Intl.NumberFormat("ko-KR", { notation: "com
 const DEFAULT_VIEWPORT: Viewport = { min_longitude: "124", min_latitude: "32", max_longitude: "132", max_latitude: "39" };
 const keyOf = (place: Place) => `${place.kind}:${place.id}`;
 const canRestoreFocus = (element: HTMLElement | null): element is HTMLElement => Boolean(element?.isConnected && element !== document.body && element.getClientRects().length && !element.closest("[inert], [hidden]") && getComputedStyle(element).visibility !== "hidden");
+
+type RegionCardRect = { left: number; top: number; width: number; height: number };
+// 좌표는 변경하지 않고 화면에서만 카드를 옮긴다. 카드마다 최대 129곳만 검사해 시군구 수에도 비용을 제한한다.
+export function layoutFuelRegionCards(cards: RegionCardRect[], width: number, height: number, reserved: RegionCardRect[] = []) {
+  const gap = 8;
+  const occupied = [...reserved];
+  const overlaps = (a: RegionCardRect, b: RegionCardRect) => a.left < b.left + b.width + gap
+    && a.left + a.width + gap > b.left && a.top < b.top + b.height + gap && a.top + a.height + gap > b.top;
+  return cards.map(card => {
+    const candidates: RegionCardRect[] = [];
+    if (card.width <= width - gap * 2 && card.height <= height - gap * 2) {
+      candidates.push({ ...card,
+        left: Math.max(gap, Math.min(width - card.width - gap, card.left)),
+        top: Math.max(gap, Math.min(height - card.height - gap, card.top)),
+      });
+      for (let top = gap; top <= height - card.height - gap && candidates.length < 129; top += card.height + gap)
+        for (let left = gap; left <= width - card.width - gap && candidates.length < 129; left += card.width + gap)
+          candidates.push({ ...card, left, top });
+      candidates.sort((a, b) => Math.hypot(a.left - card.left, a.top - card.top) - Math.hypot(b.left - card.left, b.top - card.top));
+    }
+    const placed = candidates.find(candidate => !occupied.some(other => overlaps(candidate, other)));
+    if (placed) occupied.push(placed);
+    return { x: placed ? placed.left - card.left : 0, y: placed ? placed.top - card.top : 0, placed: Boolean(placed) };
+  });
+}
 
 function quantizeViewport(bounds: { min_longitude: number; min_latitude: number; max_longitude: number; max_latitude: number }, zoom: number): Viewport {
   const precision = zoom >= 14 ? 4 : zoom >= 11 ? 3 : zoom >= 8 ? 2 : 1;
@@ -102,6 +132,8 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
   const [query, setQuery] = useState("");
   const [clusterPlaces, setClusterPlaces] = useState<Place[]>([]);
   const [fuelRegions, setFuelRegions] = useState<FuelRegion[]>([]);
+  const [regionListOpen, setRegionListOpen] = useState(false);
+  const regionListId = useId();
   const regionMarkers = useMemo(() => {
     const groups = new Map<string, FuelRegion[]>();
     for (const row of fuelRegions) groups.set(row.region_key, [...(groups.get(row.region_key) ?? []), row]);
@@ -236,6 +268,61 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
     observer.observe(mapContainer.current);
     return () => observer.disconnect();
   }, [view]);
+
+  useEffect(() => {
+    const root = mapContainer.current;
+    if (!root || view !== "map" || !serverClustered || !regionMarkers.length) return;
+    let frame = 0;
+    let focusFrame = 0;
+    const position = () => {
+      frame = 0;
+      const bounds = root.getBoundingClientRect();
+      if (!bounds.width || !bounds.height) return;
+      const hosts = [...root.querySelectorAll<HTMLElement>(".fuel-region-marker")];
+      const cards = hosts.map(host => {
+        const label = host.querySelector<HTMLElement>(".fuel-region-label")!;
+        const anchor = host.getBoundingClientRect();
+        return { left: anchor.left - bounds.left, top: anchor.top - bounds.top,
+          width: label.offsetWidth, height: label.offsetHeight };
+      });
+      if (cards.some(card => !card.width || !card.height)) return;
+      const controls = root.closest(".fuel-map-stage")?.querySelectorAll<HTMLElement>(".fuel-viewport-summary, .fuel-region-access > button, .maplibregl-ctrl-top-right, .maplibregl-ctrl-bottom-right") ?? [];
+      const reserved = [...controls].map(control => {
+        const rect = control.getBoundingClientRect();
+        return { left: rect.left - bounds.left, top: rect.top - bounds.top, width: rect.width, height: rect.height };
+      }).filter(rect => rect.width && rect.height);
+      const offsets = layoutFuelRegionCards(cards, bounds.width, bounds.height, reserved);
+      offsets.forEach((offset, index) => {
+        const host = hosts[index];
+        host.style.setProperty("--region-offset-x", `${offset.x}px`);
+        host.style.setProperty("--region-offset-y", `${offset.y}px`);
+        // 공간이 모자란 카드의 가격도 아래 열린 스크롤 목록에서 전부 제공한다. 원점은 지도에 남긴다.
+        host.dataset.regionOverflow = String(!offset.placed);
+        host.tabIndex = offset.placed ? 0 : -1;
+        if (offset.placed) host.removeAttribute("aria-hidden");
+        else {
+          host.setAttribute("aria-hidden", "true");
+          if (host.contains(document.activeElement)) {
+            cancelAnimationFrame(focusFrame);
+            focusFrame = requestAnimationFrame(() => {
+              if (host.contains(document.activeElement)) root.querySelector<HTMLElement>(".fuel-region-access-list")?.focus();
+            });
+          }
+        }
+        const line = host.querySelector(".fuel-region-link line");
+        line?.setAttribute("x2", String(offset.x)); line?.setAttribute("y2", String(offset.y));
+      });
+      if (offsets.some(offset => !offset.placed)) setRegionListOpen(true);
+    };
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(position); };
+    // Marker는 portal로 늦게 붙는다. style 변경은 관찰하지 않아 자체 위치 보정이 반복되지 않는다.
+    const observer = new MutationObserver(schedule);
+    observer.observe(root, { childList: true, subtree: true });
+    const resize = new ResizeObserver(schedule);
+    root.closest(".fuel-map-stage")?.querySelectorAll<HTMLElement>(".fuel-viewport-summary").forEach(control => resize.observe(control));
+    schedule();
+    return () => { observer.disconnect(); resize.disconnect(); cancelAnimationFrame(frame); cancelAnimationFrame(focusFrame); };
+  }, [view, serverClustered, regionMarkers, mapViewport, mapSize]);
 
   useEffect(() => {
     if (query === searchQuery) return;
@@ -416,12 +503,12 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
         <ZoomButtons />
         <CameraRequest target={camera} />
         {layers}
-        {serverClustered && regionMarkers.map(r => <MapMarkerButton key={r.region_key} lngLat={[r.longitude, r.latitude]}
+        {serverClustered && regionMarkers.map(r => <MapMarkerButton key={r.region_key} lngLat={[r.longitude, r.latitude]} passThrough
           ariaLabel={`${r.label}, ${FUEL_PRODUCTS.map(code => { const price = r.prices.get(code); return `${fuelProductLabel(code)} ${price ? `${Math.round(price.average_price)}원/L, ${price.station_count}곳` : "미제공"}`; }).join(", ")}`}
           interactionId={`region:${r.region_key}`} className="fuel-region-marker" onClick={() => { setClusterCamera({center:[r.longitude,r.latitude],zoom:Math.floor(zoom)<8?8:12});setCameraRequest(v=>v+1); }}>
-          <span className="fuel-region-label"><strong>{r.label}<small>원/L</small></strong>
-            {FUEL_PRODUCTS.map(code => { const price = r.prices.get(code); return <span key={code} className="fuel-region-price"><span>{fuelProductLabel(code)}</span><b>{price ? Math.round(price.average_price).toLocaleString("ko-KR") : "미제공"}</b></span>; })}
-          </span>
+          <svg className="fuel-region-link" aria-hidden="true" width="1" height="1"><line x1="0" y1="0" x2="0" y2="0" /></svg>
+          <span className="fuel-region-origin" aria-hidden="true" />
+          <FuelRegionLabel label={r.label} prices={r.prices} />
         </MapMarkerButton>)}
         {serverClustered ? serverClusters.map((item, index) => <MapMarkerButton key={`${item.longitude}:${item.latitude}:${index}`} lngLat={[item.longitude, item.latitude]} ariaLabel={`${item.count}개 장소 요약 묶음 확대`} interactionId={`server-cluster:${item.longitude.toFixed(6)},${item.latitude.toFixed(6)}`} className="map-cluster" zIndex={3} isCluster onClick={() => {
           setClusterPlaces([]); setClusterCamera({ center: [item.longitude, item.latitude], zoom: Math.min(19, Math.max(12, Math.ceil(zoom) + 2)) });
@@ -453,7 +540,14 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
         {clusterPlaces.length ? <OverlapPopup lngLat={clusterAnchor} onClose={closeOverlap}>
           <OverlapList places={clusterPlaces} onSelect={selectPlace} listRef={clusterList} />
         </OverlapPopup> : null}
-      </VWorldMapView>}</MountCamera></div>
+        </VWorldMapView>}</MountCamera>
+        {serverClustered && regionMarkers.length ? <section className="fuel-region-access" aria-label="지역별 유가 카드">
+          <Button variant="outline" size="sm" aria-expanded={regionListOpen} aria-controls={regionListId} onClick={() => setRegionListOpen(open => !open)}>{regionListOpen ? "지역 카드 접기" : `지역 카드 모두 보기 (${regionMarkers.length})`}</Button>
+          {regionListOpen ? <div id={regionListId} className="fuel-region-access-list" role="region" aria-label="모든 지역 유가" tabIndex={0}>
+            {regionMarkers.map(r => <button key={r.region_key} type="button" onClick={() => { setClusterCamera({center:[r.longitude,r.latitude],zoom:Math.floor(zoom)<8?8:12});setCameraRequest(v=>v+1); }}><FuelRegionLabel label={r.label} prices={r.prices} /><span className="sr-only">확대</span></button>)}
+          </div> : null}
+        </section> : null}
+      </div>
       </MapStage>
     </TabsContent>
     <TabsContent className="min-h-0" value="list" keepMounted><MapStage view="list" detail={view === "list" ? detailPanel("list") : null}><div className="map-primary"><div className="map-place-list"><div className="map-feedback">{status}</div>{listContent}{listPlaces ? items.map((place) => <button type="button" className="place-row" key={keyOf(place)} aria-pressed={current ? keyOf(current) === keyOf(place) : false} onClick={() => selectPlace(place)}><PlaceIcon kind={place.kind} brandCode={place.brand_code} brandName={place.brand_name} /><span><strong>{place.name}</strong><small>{place.line_names.join(" · ") || place.brand_name || place.subtitle || placeKindLabel(place.kind)}</small>{(place.kind === "ferry_port" || place.kind === "bus_terminal") && place.provider_id ? <small>{place.kind === "ferry_port" ? "항구" : "터미널"} 코드 {place.provider_id}</small> : null}{!hasCoordinates(place) ? <small>좌표 미등록</small> : null}</span></button>) : null}</div></div></MapStage></TabsContent>
