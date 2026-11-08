@@ -55,6 +55,7 @@ services:
       # Map 내부 export(ADR-013). bridge network라 host에서 들어온 접속도 docker gateway 주소로 보인다 —
       # standalone에서 Map을 붙이려면 그 대역을 SERVICE_EXPORT_ALLOWED_CLIENTS_CSV에 더한다.
       TRANSPORT_SERVICE_EXPORT_TOKEN: "${TRANSPORT_SERVICE_EXPORT_TOKEN:-}"
+      TRANSPORT_FUEL_MCP_ENABLED: "${TRANSPORT_FUEL_MCP_ENABLED:-false}"
       SERVICE_EXPORT_ALLOWED_CLIENTS_CSV: "${SERVICE_EXPORT_ALLOWED_CLIENTS_CSV:-127.0.0.1/32,::1/128}"
       TRANSPORT_COLLECTION_ENABLED: "${TRANSPORT_COLLECTION_ENABLED:-false}"
       # Map current export(API)와 수집기의 공통 플래그. 운영 overlay는 code-server와 같은 앵커로 덮는다.

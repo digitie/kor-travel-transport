@@ -92,13 +92,7 @@ def build_service_export_router(
     settings: Settings, get_db: Callable[..., AsyncIterator[AsyncSession]],
 ) -> APIRouter:
     def require_service_token(request: Request) -> None:
-        configured = settings.transport_service_export_token or ""
-        provided = request.headers.get(SERVICE_TOKEN_HEADER, "")
-        token_ok = len(configured) >= MIN_SERVICE_TOKEN_LENGTH and secrets.compare_digest(
-            configured.encode(), provided.encode(),
-        )
-        if not token_ok or not _client_allowed(request, settings):
-            raise HTTPException(status_code=404, detail="Not Found")
+        require_service_access(request, settings)
 
     router = APIRouter(prefix="/service/exports", dependencies=[Depends(require_service_token)],
                        tags=["service-exports"])
@@ -281,6 +275,16 @@ def build_service_export_router(
     router.include_router(build_reference_export_router(settings, get_db))
     router.include_router(build_price_history_router(settings, get_db))
     return router
+
+
+def require_service_access(request: Request, settings: Settings) -> None:
+    """내부 export와 같은 토큰·실제 peer 경계를 MCP에도 적용한다."""
+    configured = settings.transport_service_export_token or ""
+    provided = request.headers.get(SERVICE_TOKEN_HEADER, "")
+    if len(configured) < MIN_SERVICE_TOKEN_LENGTH or not secrets.compare_digest(
+        configured.encode(), provided.encode(),
+    ) or not _client_allowed(request, settings):
+        raise HTTPException(status_code=404, detail="Not Found")
 
 
 def _client_allowed(request: Request, settings: Settings) -> bool:

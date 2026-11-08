@@ -131,17 +131,23 @@ def test_gateway_requires_consumer_allowlist_for_service_exports() -> None:
     gateway = (_GATEWAY_ROOT / "deploy/transport-admin/api-gateway.conf.template").read_text(encoding="utf-8")
     # 운영 소비자 전용 경로만 예외이며, 공개 프록시는 계속 service 경로를 전달하지 않는다.
     locations = re.findall(r"^    location (.+?) \{", gateway, re.MULTILINE)
-    assert len(locations) == 5
+    assert len(locations) == 6
     assert locations[0] == "= /health"
     assert locations[1].startswith("~ ^/v1/transport/")
     assert locations[1].endswith("$")
     assert locations[2] == "~ ^/v1/transport/rail/general/(catalog|stations|timetable|guide)$"
-    assert locations[3:] == ["^~ /v1/service/exports/", "/"]
+    assert locations[3:] == ["^~ /v1/service/exports/", "= /mcp", "/"]
     export = gateway.split("    location ^~ /v1/service/exports/ {", 1)[1].split("\n    }", 1)[0]
     assert "include /etc/nginx/transport-export-allow.conf;" in export
     assert "limit_except GET { deny all; }" in export
     assert 'proxy_set_header X-Forwarded-For "";' in export
     assert "allow all;" not in export
+    mcp = gateway.split("    location = /mcp {", 1)[1].split("\n    }", 1)[0]
+    assert "include /etc/nginx/transport-mcp-allow.conf;" in mcp
+    assert "limit_except GET POST { deny all; }" in mcp
+    assert 'proxy_set_header X-Forwarded-For "";' in mcp
+    assert 'proxy_set_header Host 127.0.0.1;' in mcp
+    assert "proxy_buffering off;" in mcp and "proxy_cache off;" in mcp
     assert "location / { return 404; }" in gateway
 
 

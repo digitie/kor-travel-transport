@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     # 경로 전체가 404다. 허용 Host는 loopback 이름만 — 외부 reverse proxy(pr-api)를 거친 요청은
     # 토큰이 맞아도 닫힌다.
     transport_service_export_token: str | None = None
+    transport_fuel_mcp_enabled: bool = False
     #: export에 접속할 수 있는 peer 주소 대역(CIDR). Host 헤더가 아니라 실제 접속 주소로 판정한다.
     service_export_allowed_clients_csv: str = "127.0.0.1/32,::1/128"
     rest_area_collection_enabled: bool = False

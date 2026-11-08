@@ -4,7 +4,94 @@ from datetime import date, datetime
 from math import isfinite
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+FuelSearchProductCode = Literal["B027", "B034", "D047", "C004", "K015"]
+
+
+class NearbyFuelQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False, hide_input_in_errors=True)
+    latitude: float = Field(ge=-90, le=90, description="호출자가 제공하는 WGS84 위도")
+    longitude: float = Field(ge=-180, le=180, description="호출자가 제공하는 WGS84 경도")
+    radius_m: int = Field(default=5000, ge=1, le=50000, description="검색 반경, 미터(m). 최대 50km")
+    product_codes: list[FuelSearchProductCode] = Field(default_factory=lambda: ["B027", "B034", "D047", "C004", "K015"], min_length=1, max_length=5)
+    limit_per_product: int = Field(default=5, ge=1, le=20, description="유종별 최저가 동률 결과 상한")
+
+
+class RegionalFuelQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False, hide_input_in_errors=True)
+    scope: Literal["nationwide", "sigungu"] = "nationwide"
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    sido_value: str | None = Field(default=None, min_length=1, max_length=40, description="명시적 Opinet 시도 코드")
+    sigungu_value: str | None = Field(default=None, min_length=1, max_length=80, description="명시적 Opinet 시군구 코드")
+    product_codes: list[FuelSearchProductCode] = Field(default_factory=lambda: ["B027", "B034", "D047", "C004", "K015"], min_length=1, max_length=5)
+
+    @model_validator(mode="after")
+    def paired_location(self):
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("latitude와 longitude를 함께 지정해야 합니다.")
+        if (self.sido_value is None) != (self.sigungu_value is None):
+            raise ValueError("시도·시군구 코드를 함께 지정해야 합니다.")
+        if self.scope == "sigungu" and self.sido_value is None and self.latitude is None:
+            raise ValueError("시군구 조회에는 좌표 또는 명시적 지역 코드가 필요합니다.")
+        return self
+
+
+class FuelSearchStation(BaseModel):
+    station_key: str
+    name: str
+    address: str | None = None
+    brand_name: str | None = None
+    longitude: float | None = None
+    latitude: float | None = None
+    price: float
+    distance_m: float | None = None
+
+
+class FuelSearchProduct(BaseModel):
+    product_code: FuelSearchProductCode
+    product_name: str
+    station_count: int | None = None
+    average_price: float | None = None
+    minimum_price: float | None = None
+    cheapest_station_count: int | None = None
+    cheapest_stations: list[FuelSearchStation] = Field(default_factory=list)
+    truncated: bool = False
+
+
+class FuelSearchCollection(BaseModel):
+    source: Literal["opinet_browser"] = "opinet_browser"
+    status: Literal["ready", "unavailable"]
+    reason: str | None = None
+    generated_at: datetime | None = None
+    last_success_at: datetime | None = None
+    update_pending: bool = False
+    stale: bool = False
+    last_attempt_failed: bool = False
+
+
+class FuelSearchRegion(BaseModel):
+    status: Literal["resolved", "unavailable"]
+    method: str
+    reason: str | None = None
+    sido_value: str | None = None
+    sigungu_value: str | None = None
+    label: str | None = None
+    address_provider: str | None = None
+
+
+class FuelSearchResponse(BaseModel):
+    scope: Literal["radius", "nationwide", "sigungu"]
+    collection: FuelSearchCollection
+    products: list[FuelSearchProduct]
+    latitude: float | None = None
+    longitude: float | None = None
+    radius_m: int | None = None
+    region: FuelSearchRegion | None = None
+    price_unit: Literal["KRW/L"] = "KRW/L"
+    distance_method: Literal["great_circle_6371008.8m"] = "great_circle_6371008.8m"
 
 
 class PublicParkingHours(BaseModel):

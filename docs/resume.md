@@ -1,3 +1,12 @@
+## 2026-11-08 — 유가 검색 MCP 소스·집중 검증 완료, Draft PR 준비
+
+같은 API process/port의 opt-in `/mcp`에 반경 최저가·평균과 전국/현재 위치 시군구의 영구 통계를 제공한다.
+전5유종·이번 성공 수집분·동률·시각/미제공을 보존하고 GPS/IP나 가까운 주유소로 위치를 추정하지 않는다.
+Python3.12 PG18 WSL/Docker22개씩·실제 SDK 두 프로토콜·격리 gateway·신규16개만 추가/기존 의존성 보존을
+검산했다. 기존 SDK 재설치·schema/수집·운영 변경은 0이다. [MCP 안내](fuel-mcp.md).
+다음 한 작업은 stacked Draft PR 인계이며 실제 API 이미지·gateway MCP CIDR/HAProxy·공개 URL 수용은
+Root가 별도로 수행한다. 기본 활성화 false·gateway MCP CIDR empty deny를 유지한다.
+
 ## 2026-11-08 — 남은 조회 지연·대표 카드 겹침 수정
 
 2026-11-08 남은 조회·대표 카드 후속3이미지와 마지막 Weather 웹 전용 수정을 실제 배포하고 n150 PC/모바일·Manager/원47상태/첫 부모 종료로 수용했다. [보고서](reports/2026-11-08-remaining-read-and-overlap.md)에 실제 HTTP/이전 실패·한계를 정산했다. 정본 SHA 04a0622ca18995913794218d73ed0591040c532e1978fe8bd6a46ddb71502786. 전체1초/원천 stale는 남는다.

@@ -1,0 +1,18 @@
+# backend/uv.lock의 신규 record만 추출. 기존 provider/의존성 재설치용이 아니다.
+attrs==26.1.0
+cffi==2.1.1 ; platform_python_implementation != 'PyPy'
+cryptography==50.0.2
+httpcore2==2.16.0 ; sys_platform != 'emscripten'
+httpx2==2.16.0
+httpx2-jsfetch==1.0 ; sys_platform == 'emscripten'
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+mcp==2.3.0
+mcp-types==2.3.0
+opentelemetry-api==1.45.2
+pycparser==3.12 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
+pyjwt==2.15.1
+referencing==0.37.0
+rpds-py==2026.9.1
+sse-starlette==3.7.0
+truststore==0.10.5 ; sys_platform != 'emscripten'

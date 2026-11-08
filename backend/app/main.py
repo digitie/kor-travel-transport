@@ -17,7 +17,7 @@ import secrets
 import traceback
 from collections import OrderedDict
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from contextlib import suppress
 from datetime import UTC, date, datetime, time, timedelta
 from functools import wraps
@@ -516,6 +516,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     resolved_settings = settings or get_settings()
     _install_exception_log_redaction(resolved_settings)
     engine, session_factory = create_engine_and_session_factory(resolved_settings.database_url)
+    fuel_mcp_http = fuel_mcp_gate = None
+    if resolved_settings.transport_fuel_mcp_enabled:
+        from app.fuel_mcp import build_fuel_mcp
+        _, fuel_mcp_http, fuel_mcp_gate = build_fuel_mcp(resolved_settings, session_factory)
     history_read_cache = (
         ParkingHistoryReadCache(session_factory)
         if engine.dialect.name == "postgresql" and not resolved_settings.seed_sample_data else None
@@ -592,7 +596,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             logger.info("in-process scheduler disabled; Dagster owns collection execution")
 
         try:
-            yield
+            async with AsyncExitStack() as stack:
+                if fuel_mcp_http is not None:
+                    await stack.enter_async_context(fuel_mcp_http.router.lifespan_context(fuel_mcp_http))
+                yield
         finally:
             history_cache_task = app.state.history_cache_task
             if history_cache_task is not None:
@@ -3535,6 +3542,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(build_fuel_price_history_router(resolved_settings, get_db), prefix="/v1")
     # 내부 서비스 일괄 export(ADR-013) — 서비스 토큰과 접속한 쪽의 주소(peer, 기본 loopback)로 닫힌다.
     app.include_router(build_service_export_router(resolved_settings, get_db), prefix="/v1")
+
+    if fuel_mcp_gate is not None:
+        # 마지막 fallback mount의 실제 경로는 /mcp 하나다. API와 같은 process/port/lifespan.
+        app.mount("/", fuel_mcp_gate)
 
     return app
 

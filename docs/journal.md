@@ -1,3 +1,13 @@
+## 2026-11-08 — 같은 API의 유가 검색 MCP 구현·집중 검증
+
+`codex/transport-fuel-mcp-20261108`에서 FastAPI `/mcp`의 읽기 전용 반경·전국/시군구 도구를 구현했다.
+좌표는 호출자가 제공하며 DB 거리/집계와 현재 성공 공개 세대·영구 통계를 사용한다. 원본/과거 통계·
+provider 핀을 보존하고 기존 token/실제 peer 및 별도 gateway MCP CIDR로 보호한다. 기본 비활성화다.
+Python3.12 PG18 WSL·Docker 각각22개, 실제 socket SDK legacy/modern 및 격리 Nginx GET/POST를 검증했다.
+기존95개 의존성 버전/17개 provider 파일을 보존한 신규16개 추가 경로도 검산했다. 최초 protocol/SQL 열과
+GET 기대값 실패는 원장에 보존했다. [도구·설정·인계](fuel-mcp.md), 정본 `transport-fuel-mcp-20261108/plan.json`.
+Stacked Draft PR 준비 단계이며 실제 이미지·HAProxy·공개 URL·운영 활성화는 Root 후속이다.
+
 ## 2026-11-08 — 남은 조회 지연·대표 카드 겹침 수정
 
 2026-11-08 남은 조회·대표 카드 후속3이미지와 마지막 Weather 웹 전용 수정을 실제 배포하고 n150 PC/모바일·Manager/원47상태/첫 부모 종료로 수용했다. [보고서](reports/2026-11-08-remaining-read-and-overlap.md)에 실제 HTTP/이전 실패·한계를 정산했다. 정본 SHA 04a0622ca18995913794218d73ed0591040c532e1978fe8bd6a46ddb71502786. 전체1초/원천 stale는 남는다.

@@ -2,7 +2,8 @@
 set -eu
 
 # template에 env 문자열을 직접 삽입하지 않는다. 운영의 단일 IPv4/CIDR만 지원한다.
-value="${TRANSPORT_EXPORT_CONSUMER_CIDR:-}"
+validate_cidr() {
+value="$1"
 if [ -n "$value" ]; then
     case "$value" in *[!0-9./]*) echo "Invalid export consumer IPv4/CIDR" >&2; exit 2;; esac
     printf '%s\n' "$value" | awk '
@@ -21,8 +22,20 @@ if [ -n "$value" ]; then
         }
     ' || { echo "Invalid export consumer IPv4/CIDR" >&2; exit 2; }
 fi
-# 소유 Nginx container 안에서만 생성하며 invalid 값은 기존 파일도 덮어쓰지 않는다.
+}
+
+write_allowlist() {
+value="$1"
 {
     if [ -n "$value" ]; then printf 'allow %s;\n' "$value"; fi
     printf 'deny all;\n'
-} > /etc/nginx/transport-export-allow.conf
+} > "$2"
+}
+
+export_value="${TRANSPORT_EXPORT_CONSUMER_CIDR:-}"
+mcp_value="${TRANSPORT_MCP_CONSUMER_CIDR:-}"
+# 두 값을 모두 검산한 뒤 소유 container의 파일만 쓴다. invalid면 기존 파일도 보존한다.
+validate_cidr "$export_value"
+validate_cidr "$mcp_value"
+write_allowlist "$export_value" /etc/nginx/transport-export-allow.conf
+write_allowlist "$mcp_value" /etc/nginx/transport-mcp-allow.conf

@@ -18,6 +18,7 @@ services:
     environment:
       TRANSPORT_PUBLIC_API_PORT: "${TRANSPORT_PUBLIC_API_PORT:-12301}"
       TRANSPORT_EXPORT_CONSUMER_CIDR: "${TRANSPORT_EXPORT_CONSUMER_CIDR:-}"
+      TRANSPORT_MCP_CONSUMER_CIDR: "${TRANSPORT_MCP_CONSUMER_CIDR:-}"
     volumes:
       - ./deploy/transport-admin/api-gateway.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ./deploy/transport-admin/19-export-allowlist.sh:/docker-entrypoint.d/19-export-allowlist.sh:ro
