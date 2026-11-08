@@ -274,6 +274,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
     if (!root || view !== "map" || !serverClustered || !regionMarkers.length) return;
     let frame = 0;
     let focusFrame = 0;
+    let overflowOpened = false;
     const position = () => {
       frame = 0;
       const bounds = root.getBoundingClientRect();
@@ -312,7 +313,10 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
         const line = host.querySelector(".fuel-region-link line");
         line?.setAttribute("x2", String(offset.x)); line?.setAttribute("y2", String(offset.y));
       });
-      if (offsets.some(offset => !offset.placed)) setRegionListOpen(true);
+      if (!overflowOpened && offsets.some(offset => !offset.placed)) {
+        overflowOpened = true;
+        setRegionListOpen(true);
+      }
     };
     const schedule = () => { if (!frame) frame = requestAnimationFrame(position); };
     // Marker는 portal로 늦게 붙는다. style 변경은 관찰하지 않아 자체 위치 보정이 반복되지 않는다.

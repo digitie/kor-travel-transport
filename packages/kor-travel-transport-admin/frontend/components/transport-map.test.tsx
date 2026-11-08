@@ -71,6 +71,35 @@ test("좁은 지도의 지역 목록에서도 전5유종과 미제공을 읽고 
   } finally { await act(async () => root.unmount()); container.remove(); }
 });
 
+test("공간 부족 목록을 사용자가 접으면 같은 화면의 DOM 갱신이 다시 열지 않는다", async () => {
+  Object.assign(mapState, { zoom: 7 });
+  const bounds = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function(this: HTMLElement) {
+    return this.classList.contains("map-primary") ? new DOMRect(0, 0, 351, 190)
+      : this.classList.contains("fuel-region-marker") ? new DOMRect(110, 140, 130, 130) : new DOMRect();
+  });
+  const width = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(function(this: HTMLElement) { return this.classList.contains("fuel-region-label") ? 130 : 0; });
+  const height = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function(this: HTMLElement) { return this.classList.contains("fuel-region-label") ? 130 : 0; });
+  vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ items: [], total: 2, clustered: true, clusters: [], fuel_regions: [
+    { region_key: "opinet:11", label: "서울특별시", product_code: "B027", average_price: 1700, station_count: 1, longitude: 127, latitude: 37.5 },
+    { region_key: "opinet:41", label: "경기도", product_code: "D047", average_price: 1600, station_count: 1, longitude: 127.5, latitude: 37.7 },
+  ] })));
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  try {
+    await act(async () => { root.render(<TransportMap mode="fuel" />); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
+    expect(container.querySelector('[aria-label="모든 지역 유가"]')).not.toBeNull();
+    const toggle = [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "지역 카드 접기")!;
+    await act(async () => toggle.click());
+    // 목록 제거가 실제 MutationObserver를 다시 깨운 뒤에도 명시적인 접기는 유지한다.
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector('[aria-label="모든 지역 유가"]')).toBeNull();
+  } finally {
+    await act(async () => root.unmount()); container.remove();
+    bounds.mockRestore(); width.mockRestore(); height.mockRestore();
+  }
+});
+
 const station: Place = { id: 1, kind: "rail_station", source: "kric_public_file", name: "시험역", longitude: 127.1, latitude: 37.3, line_names: ["시험선"], facilities: [], prices: [], updated_at: "2026-10-25T00:00:00Z" };
 
 test("교통 지도는 일반 주차장 필터를 요청하고 좌표 없는 주차장은 목록에만 둔다", async () => {
