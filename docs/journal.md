@@ -1,3 +1,12 @@
+## 2026-11-10 — PR177 전체 CI 마감
+
+수정7ff7b52의 [CI42604663260](https://github.com/digitie/kor-travel-transport/actions/runs/42604663260)가
+backend/frontend/관리자 모두 성공한 것을 확인했다. Backend1793통과·2생략·33경고·54 subtest 통과,
+2026.77초이며 의존성 설치·migration·Alembic/OpenAPI 확인도 성공했다. live-e2e 생략은 기존
+실제 배포 수용과 별개로 유지한다. 원 CI42590864342 실패를 삭제하거나 성공으로 바꾸지 않았다.
+CI 대기 task를 완료로 옮기고 PR/체크포인트에 결과를 정산했다. 문서만 갱신하며 제품36dd849의
+새 이미지 빌드·재배포·재수집·DB 변경·main merge는 하지 않았다. PR177은 Draft로 유지한다.
+
 ## 2026-11-09 — PR177 재확인과 테스트·문서 정정
 
 최신 b9a4e28의 CI42590864342에서 frontend/관리자는 성공했지만 backend는1790통과·2실패·2생략이었다.

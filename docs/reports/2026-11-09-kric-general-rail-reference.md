@@ -34,7 +34,10 @@ Alembic/OpenAPI 확인은 성공했고, 실패는 다음 두 기대값이었다.
 두 실패를 WSL에서 그대로 재현한 뒤 관련 세 시험 파일은 WSL/Docker Python3.12에서 각각87개 통과했다.
 현재 data-model/export 문서의 TAGO source와 완료된 저장을 미완으로 적은 문구도 정정했다.
 제공자 [PR14 CI42579826698](https://github.com/digitie/python-kric-api/actions/runs/42579826698)는 성공이다.
-후속 전체 CI 성공은 아직 별도 확인 항목이며 집중87개 결과로 대신하지 않는다.
+2026-11-10 실제 확인에서 수정7ff7b52의 [후속 CI42604663260](https://github.com/digitie/kor-travel-transport/actions/runs/42604663260)는
+backend/frontend/관리자 모두 성공했다. Backend1793통과·2생략·33경고·54 subtest 통과(2026.77초),
+migration·Alembic/OpenAPI 확인도 성공이며 live-e2e는 생략이다. 집중87개 결과와 합산하지 않는다.
+원 실패와 기존 운영 수용을 보존하고 PR177은 Draft로 유지한다.
 운영 제품36dd849와 API/수집기 이미지·schema0041·원본·일정은 이 정정으로 바꾸지 않는다.
 
 
