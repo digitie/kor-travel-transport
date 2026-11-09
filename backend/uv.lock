@@ -1232,7 +1232,7 @@ requires-dist = [
     { name = "python-kasi-api", git = "https://github.com/digitie/python-kasi-api?rev=4259e574468435355be79d3fe85b394249ab1989" },
     { name = "python-krairport-api", git = "https://github.com/digitie/python-krairport-api?rev=e60b5280462803d00575cf9a16911681057d5ea6" },
     { name = "python-krex-api", git = "https://github.com/digitie/python-krex-api?rev=1a37a0108fa837351aa6bb6644052f325ae76daf" },
-    { name = "python-kric-api", git = "https://github.com/digitie/python-kric-api?rev=8d52a10d89e5d8a4505099f68858ea8fa3e10043" },
+    { name = "python-kric-api", git = "https://github.com/digitie/python-kric-api?rev=c006c8be64edfa4dc73cc3dd087c92cdeb9fba84" },
     { name = "python-krits-api", git = "https://github.com/digitie/python-krits-api?rev=417e3d5dc1a897f770e9c832eb39d8ff9c40e92a" },
     { name = "python-multipart", specifier = ">=0.0.32,<1.0" },
     { name = "python-opinet-api", extras = ["browser"], git = "https://github.com/digitie/python-opinet-api?rev=f58a879676f8d2c6d8de26e3daaf7eb154fd9ad2" },
@@ -2112,7 +2112,7 @@ dependencies = [
 [[package]]
 name = "python-kric-api"
 version = "0.1.0"
-source = { git = "https://github.com/digitie/python-kric-api?rev=8d52a10d89e5d8a4505099f68858ea8fa3e10043#8d52a10d89e5d8a4505099f68858ea8fa3e10043" }
+source = { git = "https://github.com/digitie/python-kric-api?rev=c006c8be64edfa4dc73cc3dd087c92cdeb9fba84#c006c8be64edfa4dc73cc3dd087c92cdeb9fba84" }
 dependencies = [
     { name = "boto3" },
     { name = "httpx" },

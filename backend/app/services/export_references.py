@@ -27,7 +27,7 @@ from app.models import BusTerminalReference, FerryPort, RailStationReference, Pa
 from app.schemas import BusTerminalExportPage, FerryPortExportPage, RailStationExportPage, ParkingCurrentExportPage, ServiceExportMeta
 from app.services.bus_collection import TAGO_BUS_SOURCE
 from app.services.rail_maritime_collection import KRIC_FILE_SOURCE, MARITIME_SOURCE, PORT_GUIDELINE_SOURCE
-from app.services.general_rail_reference import TAGO_TRAIN_SOURCE, TAGO_TRAIN_SCOPE
+from app.services.general_rail_reference import KRIC_GENERAL_SOURCE, KRIC_GENERAL_SCOPE
 from app.services.rail_station_mapping import persisted_mapping_context, persisted_station_links
 from app.services.parking_exports import parking_scope, parking_sources
 from app.services.export_addresses import export_admin_addresses
@@ -137,7 +137,7 @@ async def _ferry_payload_batches(session, heads):
 
 async def _rail_payload_batches(session, heads):
     ids = sorted(member for head in heads for member in head.member_ids)
-    sources = {"nationwide": KRIC_FILE_SOURCE, TAGO_TRAIN_SCOPE: TAGO_TRAIN_SOURCE}
+    sources = {"nationwide": KRIC_FILE_SOURCE, KRIC_GENERAL_SCOPE: KRIC_GENERAL_SOURCE}
     owners = {member: head for head in heads for member in head.member_ids}
     if len(owners) != len(ids):
         raise HTTPException(503, "철도 source membership이 중복됩니다.")
@@ -355,7 +355,7 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
         ReferenceSpec("/rail-stations", "rail-stations-v1", "rail-station",
                       hashlib.sha256(b"rail-stations:nationwide:v1").hexdigest(),
                       ("nationwide",), timedelta(days=6), RailStationExportPage, _rail_payload_batches,
-                      optional_scope_keys=(TAGO_TRAIN_SCOPE,)),
+                      optional_scope_keys=(KRIC_GENERAL_SCOPE,)),
     )
     sources = parking_sources(settings)
     scopes = tuple(parking_scope(settings, source) for source in sources)

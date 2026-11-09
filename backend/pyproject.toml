@@ -26,7 +26,7 @@ dependencies = [
   "python-kasi-api @ git+https://github.com/digitie/python-kasi-api@4259e574468435355be79d3fe85b394249ab1989",
   "python-krairport-api @ git+https://github.com/digitie/python-krairport-api@e60b5280462803d00575cf9a16911681057d5ea6",
   "python-krits-api @ git+https://github.com/digitie/python-krits-api@417e3d5dc1a897f770e9c832eb39d8ff9c40e92a",
-  "python-kric-api @ git+https://github.com/digitie/python-kric-api@8d52a10d89e5d8a4505099f68858ea8fa3e10043",
+  "python-kric-api @ git+https://github.com/digitie/python-kric-api@c006c8be64edfa4dc73cc3dd087c92cdeb9fba84",
   "python-krex-api @ git+https://github.com/digitie/python-krex-api@1a37a0108fa837351aa6bb6644052f325ae76daf",
   "python-opinet-api[browser] @ git+https://github.com/digitie/python-opinet-api@f58a879676f8d2c6d8de26e3daaf7eb154fd9ad2",
   "python-vworld-api @ git+https://github.com/digitie/python-vworld-api@3b174abea1a1e734c60a9c2522b2844474a1ec71",

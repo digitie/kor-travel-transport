@@ -387,3 +387,7 @@ fuel_region_summaries는 성공 수집 세대별 시도·시군구·유종의 �
 ## 0039 시간표 파서 버전
 
 요청 원장의 nullable `provider_revision`은 SDK의 실제 파서 버전을 보존한다. 기존 행은 NULL로 남긴다. 정상본은 24시간 재사용하고 같은 파서의 실패는 재조회하지 않는다. 파서가 수정됐을 때 이전 파서의 error만 한 번 다시 읽으며 인증·할당량 전역 보호는 유지한다. 원 실패 CollectionRun·RawApiResponse를 삭제하거나 정상으로 바꾸지 않는다. 새 원문 기록에도 파서 버전을 남긴다.
+
+## KRIC 일반철도 공개 source(2026-11-09)
+
+기존 테이블에 `kric_general_portal` source/`kric-general` 완결 head를 별도로 보관한다. KRIC 목록에 있는 공식 코레일 상세 식별자가 identity이며 기존 KRIC 도시철도 source와 이름 병합하지 않는다. KRIC가 연결한 코레일 검증 좌표만 사용하고 원문 분류/연결 ID를 raw_item_json에 보존한다. 새로운 migration은 없다. 미배포 TAGO 설계는 최신 사용자 요청으로 대체됐다.
