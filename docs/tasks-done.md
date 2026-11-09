@@ -1,3 +1,9 @@
+## 2026-11-10 — PR177 최신 이미지 실제 수용
+
+- [x] **T-PR177-IMAGE-20261110** —4dac82d API b9ac0d18·수집기22f47ac5 신규 이미지 반영,
+  HTTP200/DB ready·다섯 역할 healthy·원20/Manager·최종 부모0/소유 자식 종료를 확인했다.
+  원 배포1·MCP 신규 Settings 선언과 기존 두 수집 FAILURE를 보존했다. [근거](reports/2026-11-10-pr177-image-release.md).
+
 ## 2026-11-10 — PR177 전체 CI 수용
 
 - [x] **T-PR177-CI-20261109** — 수정7ff7b52의 CI42604663260에서 backend1793통과·2생략·

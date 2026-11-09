@@ -1,3 +1,12 @@
+## 2026-11-10 — PR177 최신 새 이미지 반영 완료
+
+사용자 지시로4dac82d의 새 API b9ac0d18·수집기22f47ac5를 반영했다. 다섯 역할 healthy·
+새 release/DB ready·철도/유가 HTTP200·원20복원·Transport location·Manager healthy를 확인했다.
+수집기 Settings 신규 MCP 필드 때문에 원 배포 부모1이 된 이력을 보존하고, 기존 필드/환경 동일성을
+검산한 completion first67dcc9b3 실제0/Main0/cgroup부재로 재교체 없이 마감했다.
+기존 유가 수집 SUCCESS·공항/고속도로 FAILURE는 별개로 보존한다. [실제 원장과 경계](reports/2026-11-10-pr177-image-release.md).
+PR177은 Draft이며 이 배포의 추가 이미지 작업은 없다.
+
 ## 2026-11-10 — PR177 후속 전체 CI 성공
 
 수정 커밋7ff7b52의 [CI42604663260](https://github.com/digitie/kor-travel-transport/actions/runs/42604663260)는

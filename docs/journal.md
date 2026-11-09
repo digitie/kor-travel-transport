@@ -1,3 +1,14 @@
+## 2026-11-10 — PR177 최신 이미지 실제 수용
+
+사용자가 이미지를 올리라고 명시해4dac82d의 API b9ac0d18·수집기22f47ac5를 새로 빌드·교체했다.
+71앱 파일·의존성 지문·실제 명령을 검산했고 API/gateway health와 철도·유가 조회200,
+schema0041·개별 환경/키·원20복원·다섯 역할 healthy·location/Manager healthy를 확인했다.
+원 배포 부모1은 신규 MCP Settings 필드에 대한 전체 지문 가정이 원인이었다. 기존 필드 값과
+RELEASE_SHA 외 실제 환경이 같음을 확인한 별도 completion 부모0으로 재교체 없이 마감했다.
+모든 소유 자식 종료·잔여PID/cgroup 부재와 원 실패를 보존했다. 기존 유가 SUCCESS와 공항/고속도로
+FAILURE를 구분하며 강제 취소·재수집·DB 변경·다른 서비스 중지·백업/복원·prune는 하지 않았다.
+[실제 이미지·최초Invocation·실패 원장](reports/2026-11-10-pr177-image-release.md)을 따른다.
+
 ## 2026-11-10 — PR177 전체 CI 마감
 
 수정7ff7b52의 [CI42604663260](https://github.com/digitie/kor-travel-transport/actions/runs/42604663260)가
