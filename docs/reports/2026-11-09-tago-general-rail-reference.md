@@ -50,3 +50,22 @@ WSL/Docker에서 각각 통과했다. 실제 이미지·공식 최초 수집·Ma
 정본은 Git 밖 `transport-tago-stations-20261109/plan.json`이다. 기존 API·CS는 서로 다른 기반 소스와
 의존성을 쓰므로 역할별 기반 이미지를 보존하고 변경된 source3파일만 같은 새 patch revision으로 반영한다.
 전체 CS 소스가 API 소스와 같다고 해석하지 않는다. 웹·schema0041·키/환경·다른 서비스는 보존한다.
+
+### 2026-11-09 운영 중단 관측
+
+제품 소스 `8cadc3ab909dfb09cad4074e6468f8739792e63e`의 첫 빌드 Root
+`5d25a96ab4`/첫Invocation `7f941a43d1404f36bbedb7690d1aa326`는 Docker build 자식1·부모1로
+실패했다. stderr 원문은 회수하지 못해 원인을UNKNOWN으로 보존한다. iid·완성 이미지·서비스 교체는 없다.
+동일 archive를 유지하고 로컬 기반 tag·로그 수집을 보정한 별도 R2 `1073f27c7d`/첫Invocation
+`88935d22adb444be9926c64c8794936c`는 운영 healthy 사전검사에서 부모1로 종료했다. Docker build 전이다.
+두 Root 모두 Main0·cgroup 부재·소유 자식 종료·정확 첫Invocation failed를 확인했으며 재시작하지 않았다.
+
+04:53 UTC 읽기 관측에서 Docker 서비스 시작 시각은04:45:35 UTC이고, Transport5개뿐 아니라 공유
+PostgreSQL·RustFS·Dagster·Weather·Geo·관측 도구 등 당시 실행하던18개 컨테이너가04:45~04:46에
+종료돼 있었다. 컨테이너 OOM 표시는false이며 시작 주체·중지 원인은 확정하지 않는다.
+이번 작업의 두 빌드에는 서비스 stop/up/교체 명령이 없고 운영 배포 Root도 아직 제출하지 않았다.
+공유 서비스·다른 앱의 복구 범위와 별도 점검 여부를 사용자에게 확인 중이다.
+
+따라서 일반철도 운영 수용·Map의 신규 역 수신은 아직 미완이다. 마지막 실제 DB 조회에는 KRIC1108건만
+있고 TAGO head·요청4역은 없었다. 공식 TAGO 최초 수집도 미제출이다. Git 밖 `host-state.json`,
+`host-recovery-proposal.json`, 두 `last-status.json`에 실제 관측과 복구 제안을 보존한다.

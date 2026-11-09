@@ -6,6 +6,11 @@ KRIC1108건과 미제공 좌표·기존 코드/cursor를 보존한다. 다음은
 최소 API/CS 이미지 반영·공식 최초 수집·Map peer의 전주/순천/익산/안동 대조다.
 [상세](reports/2026-11-09-tago-general-rail-reference.md), 정본 `transport-tago-stations-20261109/plan.json`.
 
+최종 소유권 집중11개는 WSL/Docker PG18에서 각각 통과했다. 첫 빌드는 Docker 자식1, R2는
+사전 healthy 검사 실패로 실제 종료했고 원 실패를 보존한다. 04:45 UTC Docker 재시작 뒤 공유 DB·
+Dagster·세 앱 등18개 컨테이너의 중지를 관측했다. 별도 점검 여부·기존 동일 컨테이너 복구 범위의
+사용자 응답을 기다린다. 새 배포·TAGO 수집·다른 앱 재가동은 아직 실행하지 않았다.
+
 ## 2026-11-09 — Map 철도·해운 적재 준비 완료
 
 운영 API·수집기의 공통map flag를ON했고 철도·해운 수집 flag/예약은 기존ON을 유지했다.

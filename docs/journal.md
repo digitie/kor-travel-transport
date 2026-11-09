@@ -5,6 +5,11 @@ KRIC 도시·광역철도1108건에 없는 일반철도 역을 기존 SDK의 TAG
 실패/급감 보호를 검증 중이다. SDK·schema·웹 변경은 없으며 새 이미지 실제 반영은 아직 미완이다.
 [설계·시험·운영 상태](reports/2026-11-09-tago-general-rail-reference.md).
 
+소유권 세션 수정 후 집중11개도 WSL/Docker PG18 각각 통과했다. 빌드 첫Root는 Docker1,
+R2는 운영 healthy 검사에서 실패·종료했다. 같은 기존 CID들의 중지와 Docker 서비스04:45 UTC
+재시작을 실제 읽기로 확인했고, 공유 DB/Dagster·다른 앱까지 포함돼 복구 범위를 확인 중이다.
+이미지 교체·공식 TAGO 수집은 미실행이며 두 첫Invocation failed/Main0/cgroup부재를 보존한다.
+
 ## 2026-11-09 — Map 철도·해운 기준정보 운영 활성화
 
 API·수집기의 `TRANSPORT_MAP_CURRENT_ENABLED=true`와 기존 철도·해운 수집 flag/예약 활성 상태를 확인했다.
