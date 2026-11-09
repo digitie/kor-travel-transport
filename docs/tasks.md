@@ -1,8 +1,8 @@
-## 2026-11-09 — TAGO 일반철도 역 보강
+## 2026-11-09 — KRIC 일반철도·KTX 역 보강
 
-- [ ] **T-TAGO-RAIL-REF-20261109** — 기존 SDK로 전국 지역·역을 완결 수집해 별도 source로 저장하고,
-  KRIC을 보존한 Map export·최소 이미지·실제 공식 수집과4개 요청 역을 수용한다.
-  [설계·현재 상태](reports/2026-11-09-tago-general-rail-reference.md).
+- [ ] **T-KRIC-GENERAL-LIVE-20261109** — 새 이미지와 기존18개 서비스 복구는 완료했다.
+  정식 job c56323f9의 신규358역 저장·기존1108행 보존·Map 목표4역/페이지/304를 마감한다.
+  [설계·현재 상태](reports/2026-11-09-kric-general-rail-reference.md). TAGO 미배포 후보는 최신 사용자 지시로 대체됐다.
 
 ## 2026-11-09 — Map 철도·해운 기준정보 준비
 

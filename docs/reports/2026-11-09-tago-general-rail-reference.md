@@ -1,3 +1,5 @@
+> 역사적 미배포 후보: 최신 사용자 요청으로 [KRIC 일반철도·KTX](2026-11-09-kric-general-rail-reference.md) 방식으로 대체했다. TAGO source 배포·수집은0이다. 아래는 당시 검증 이력이다.
+
 # TAGO 일반철도 역 보강
 
 ## 누락 원인과 보강 범위

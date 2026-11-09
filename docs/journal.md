@@ -1,3 +1,11 @@
+## 2026-11-09 — 서비스 복구 수용, KRIC 정식 수집 대기
+
+새 API3123a377/CS5d8a50fc(제품36dd849) 적용과 기존18개 서비스 복구를 완료했다.
+세 앱 Manager healthy·원20일정·기존 도시철도1108 지문/원16CID·환경/마운트가 같다.
+R2 first245a419f는done/Main0/CG부재, 원 두 종류의 실패도 보존한다.
+공식 rail_reference_collection_job c56323f9는 기존 순서로QUEUED이며 제출0을 저장 성공으로 바꾸지 않는다.
+다음은 같은job358역 저장/Map 대조다. [정본](reports/2026-11-09-kric-general-rail-reference.md).
+
 ## 2026-11-09 — KRIC 일반철도·KTX 및 서비스 복구 진행
 
 최신 인간 지시로 TAGO 미배포 후보를 KRIC으로 대체했다. 공식397행/358역·좌표198역과 목표4역을 확인했고 provider WSL/Docker291개·mypy 통과다. 공유서비스18개 중지는 장애이며 복구가 승인됐다. 다음은 최소 API/CS 이미지 적용 뒤 기존서비스 복구·공식수집·Map 수용이다. [상세](reports/2026-11-09-kric-general-rail-reference.md).

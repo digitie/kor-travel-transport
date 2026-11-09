@@ -1,3 +1,11 @@
+## 2026-11-09 — 세 서비스 장애 복구 및 KRIC 이미지
+
+- [x] **T-SERVICE-RECOVERY-20261109** — 공유 PG18·스토리지·Dagster·세 앱 등 기존18개 복구,
+  Weather/Geo/Transport Manager healthy·원20상태·환경/마운트/기존16CID 보존·새 API3123a377/CS5d8a50fc 적용.
+  R2 first245a419f done/Main0/CG부재, 원 실패는 보존했다. [원장과 한계](reports/2026-11-09-kric-general-rail-reference.md).
+- [x] **T-KRIC-GENERAL-SOURCE-20261109** — KRIC provider c006c8b·제품36dd849와 WSL/Docker291/70개씩 통과.
+  신규358역의 공식job 저장은 별도 미완 항목이다.
+
 ## 2026-11-09 — Map 철도·해운 기준정보 운영 준비
 
 - [x] **MAP-REF-ENABLE-20261109** — API/수집기 공통map flagON·기존 철도/해운 flag/예약ON,
