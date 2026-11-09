@@ -1,3 +1,11 @@
+## 2026-11-09 — KRIC 일반철도·KTX 실제 저장과 Map 수용
+
+- [x] **T-KRIC-GENERAL-LIVE-20261109** — KRIC397행→358건/공식c56323f9·앱8603 SUCCESS/success,
+  기존1108 지문/원head 보존, 실제 Map1466(1000/466)·고유identity·ok·304와4개 요청역 좌표 대조.
+  기존 수집 자연 종료와 동시실행 한도를 보존하고 승인된 대기1건만 priority10으로 바꿨다.
+  새 좌표198/미제공160과 기존null13을 보존한다. Map 적재/예약·백업·복원·migration0.
+  [최종 원장과 실패 보존](reports/2026-11-09-kric-general-rail-reference.md).
+
 ## 2026-11-09 — 세 서비스 장애 복구 및 KRIC 이미지
 
 - [x] **T-SERVICE-RECOVERY-20261109** — 공유 PG18·스토리지·Dagster·세 앱 등 기존18개 복구,

@@ -1,3 +1,13 @@
+## 2026-11-09 — KRIC 일반철도358건·Map1466건과 세 서비스 복구 완료
+
+제품36dd849의 API3123a377/CS5d8a50fc를 적용하고 기존18개 서비스/원20상태를 복구했다.
+Weather/Geo/Transport Manager healthy다. 정식 c56323f9/앱8603 성공·신규358건과 기존1108행 지문 동일,
+실제 Map peer1466건 두 페이지200/304·전주/순천/익산/안동 DB/API 좌표를 검산했다.
+사용자가 승인한 대기1건만 priority0→10으로 바꿨고 기존 KRIC 시간표의 자연 종료·그룹1을 보존했다.
+새358건의 좌표 미제공160건·기존13건을 보존하며 Map 적재/주간 예약은 담당 후속이다.
+Docker daemon nil-pointer panic 뒤 systemd 재시작이 동시 중단의 직접 원인이었고 촉발 경로는 미확정이다.
+[최종 원장·실패 이력](reports/2026-11-09-kric-general-rail-reference.md), Draft PR177/SDK14. 추가 재빌드·수집·main merge0.
+
 ## 2026-11-09 — 서비스 복구 수용, KRIC 정식 수집 대기
 
 새 API3123a377/CS5d8a50fc(제품36dd849) 적용과 기존18개 서비스 복구를 완료했다.
