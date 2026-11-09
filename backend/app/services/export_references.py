@@ -27,6 +27,7 @@ from app.models import BusTerminalReference, FerryPort, RailStationReference, Pa
 from app.schemas import BusTerminalExportPage, FerryPortExportPage, RailStationExportPage, ParkingCurrentExportPage, ServiceExportMeta
 from app.services.bus_collection import TAGO_BUS_SOURCE
 from app.services.rail_maritime_collection import KRIC_FILE_SOURCE, MARITIME_SOURCE, PORT_GUIDELINE_SOURCE
+from app.services.general_rail_reference import TAGO_TRAIN_SOURCE, TAGO_TRAIN_SCOPE
 from app.services.rail_station_mapping import persisted_mapping_context, persisted_station_links
 from app.services.parking_exports import parking_scope, parking_sources
 from app.services.export_addresses import export_admin_addresses
@@ -43,6 +44,7 @@ class ReferenceSpec:
     max_age: timedelta
     page_model: type
     payload_batches: Callable
+    optional_scope_keys: tuple[str, ...] = ()
 
 
 _FIELDS = ("id", "source", "service_type", "terminal_id", "terminal_name", "city_name", "latitude", "longitude", "location_source")
@@ -51,13 +53,15 @@ _FIELDS = ("id", "source", "service_type", "terminal_id", "terminal_name", "city
 async def _reference_heads(session, spec):
     heads = list((await session.scalars(select(ReferenceExportState).where(
         ReferenceExportState.kind == spec.reference_kind,
-        ReferenceExportState.scope_key.in_(spec.scope_keys),
+        ReferenceExportState.scope_key.in_(spec.scope_keys + spec.optional_scope_keys),
     ).order_by(ReferenceExportState.scope_key))).all())
     return heads
 
 
 def _valid_heads(heads, spec):
-    return (bool(spec.scope_keys) and len(heads) == len(spec.scope_keys) and {h.scope_key for h in heads} == set(spec.scope_keys)
+    scopes = {h.scope_key for h in heads}
+    return (bool(spec.scope_keys) and set(spec.scope_keys) <= scopes
+            and scopes <= set(spec.scope_keys + spec.optional_scope_keys) and len(scopes) == len(heads)
             and all(h.proof.get("complete") and 0 < len(h.member_ids) <= 10000
                     and len(set(h.member_ids)) == len(h.member_ids) for h in heads))
 
@@ -132,22 +136,27 @@ async def _ferry_payload_batches(session, heads):
 
 
 async def _rail_payload_batches(session, heads):
-    head = heads[0]
-    ids = sorted(head.member_ids)
+    ids = sorted(member for head in heads for member in head.member_ids)
+    sources = {"nationwide": KRIC_FILE_SOURCE, TAGO_TRAIN_SCOPE: TAGO_TRAIN_SOURCE}
+    owners = {member: head for head in heads for member in head.member_ids}
+    if len(owners) != len(ids):
+        raise HTTPException(503, "철도 source membership이 중복됩니다.")
     try:
         context = await persisted_mapping_context(session)
     except ValueError as exc:
         raise HTTPException(503, str(exc)) from exc
     fields = ("id", "source", "identity_key", "station_name", "rail_operator_name", "operating_line_name",
-              "station_number", "latitude", "longitude")
+              "station_number", "latitude", "longitude", "last_seen_at")
     for offset in range(0, len(ids), BATCH_SIZE):
         selected = ids[offset:offset + BATCH_SIZE]
         rows = list((await session.execute(select(*(getattr(RailStationReference, field) for field in fields))
-                    .where(RailStationReference.id.in_(selected), RailStationReference.source == KRIC_FILE_SOURCE,
-                           RailStationReference.last_seen_at == head.confirmed_at)
+                    .where(RailStationReference.id.in_(selected))
                     .order_by(RailStationReference.id))).mappings())
         if len(rows) != len(selected):
             raise HTTPException(503, "역사 source 성공 membership이 일치하지 않습니다.")
+        if any(row["source"] != sources[owners[row["id"]].scope_key]
+               or serialize_utc(row["last_seen_at"]) != serialize_utc(owners[row["id"]].confirmed_at) for row in rows):
+            raise HTTPException(503, "역사 source·승인시각이 일치하지 않습니다.")
         try:
             links = await persisted_station_links(session, selected, context)
         except ValueError as exc:
@@ -345,7 +354,8 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
                       ("ports",), timedelta(days=9), FerryPortExportPage, _ferry_payload_batches),
         ReferenceSpec("/rail-stations", "rail-stations-v1", "rail-station",
                       hashlib.sha256(b"rail-stations:nationwide:v1").hexdigest(),
-                      ("nationwide",), timedelta(days=6), RailStationExportPage, _rail_payload_batches),
+                      ("nationwide",), timedelta(days=6), RailStationExportPage, _rail_payload_batches,
+                      optional_scope_keys=(TAGO_TRAIN_SCOPE,)),
     )
     sources = parking_sources(settings)
     scopes = tuple(parking_scope(settings, source) for source in sources)

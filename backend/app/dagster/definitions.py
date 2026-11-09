@@ -40,6 +40,7 @@ from app.services.flight_status import sanitize_upstream_error
 from app.services.bus_collection import BusReferenceCollectionService
 from app.services.kric_collection import KricTimetableCollectionService
 from app.services.general_rail_collection import GeneralRailCollectionService
+from app.services.general_rail_reference import GeneralRailReferenceCollectionService
 from app.services.kakao_place_locations import KakaoPlaceCollectionService
 from app.services.place_locations import PlaceLocationCollectionService
 from app.services.rail_maritime_collection import RailMaritimeCollectionService
@@ -487,6 +488,14 @@ def collect_rail_reference(context) -> dict[str, Any]:
 
 @op
 @_redact_op_errors
+def collect_general_rail_reference(context) -> dict[str, Any]:
+    with collection_owner(context.run_id, context.instance):
+        settings = _settings()
+        return asyncio.run(_run_with_session(settings, GeneralRailReferenceCollectionService(settings).collect))
+
+
+@op
+@_redact_op_errors
 def collect_maritime_reference(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         return _collect_reference("maritime")
@@ -714,6 +723,7 @@ def fuel_collection_job() -> None:
 @job(tags=_job_tags("reference", "rail_reference_collection_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
 def rail_reference_collection_job() -> None:
     collect_rail_reference()
+    collect_general_rail_reference()
 
 
 @job(tags=_job_tags("reference", "maritime_reference_collection_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))

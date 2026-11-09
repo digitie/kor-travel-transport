@@ -1,3 +1,10 @@
+## 2026-11-09 — TAGO 일반철도 역 보강 구현
+
+KRIC 도시·광역철도1108건에 없는 일반철도 역을 기존 SDK의 TAGO API로 보강하는 source와
+동일 Map export의 합성 집합을 구현했다. source별 원자 게시·기존 KRIC/코드/cursor 보존과
+실패/급감 보호를 검증 중이다. SDK·schema·웹 변경은 없으며 새 이미지 실제 반영은 아직 미완이다.
+[설계·시험·운영 상태](reports/2026-11-09-tago-general-rail-reference.md).
+
 ## 2026-11-09 — Map 철도·해운 기준정보 운영 활성화
 
 API·수집기의 `TRANSPORT_MAP_CURRENT_ENABLED=true`와 기존 철도·해운 수집 flag/예약 활성 상태를 확인했다.

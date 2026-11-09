@@ -1,3 +1,11 @@
+## 2026-11-09 — TAGO 일반철도 보강 진행
+
+현재 `codex/transport-tago-stations-20261109`에서 일반철도 source·합성 export를 구현했다.
+기존 TAGO API의 실제 catalog200/지역16개를 확인했고 새 키·SDK·migration은 필요하지 않다.
+KRIC1108건과 미제공 좌표·기존 코드/cursor를 보존한다. 다음은 최종 소유권 세션 검증과
+최소 API/CS 이미지 반영·공식 최초 수집·Map peer의 전주/순천/익산/안동 대조다.
+[상세](reports/2026-11-09-tago-general-rail-reference.md), 정본 `transport-tago-stations-20261109/plan.json`.
+
 ## 2026-11-09 — Map 철도·해운 적재 준비 완료
 
 운영 API·수집기의 공통map flag를ON했고 철도·해운 수집 flag/예약은 기존ON을 유지했다.

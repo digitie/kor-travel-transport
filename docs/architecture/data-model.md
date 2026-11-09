@@ -1,5 +1,14 @@
 # 데이터 모델
 
+## TAGO 일반철도 역 보강
+
+기존 `rail_station_references`의 `(source, identity_key)` 고유키를 재사용해 `tago_train`과
+`tago_train:<공식 역 코드>`를 저장한다. KRIC 파일 source와 기존 행을 합치지 않는다.
+`reference_export_states`의 `rail-station/tago` head에 완결 membership을 별도 게시하고,
+Map export는 기존 `rail-station/nationwide`와 함께 읽는다. 소스별 승인 시각·실패·코드를 보존하며
+TAGO 미제공 좌표는null이다. 새 테이블·열·index·migration은 없다.
+[완결성·실패·운영 경계](../reports/2026-11-09-tago-general-rail-reference.md).
+
 ## 전국주차장 기준정보 (`0041_public_parking_lots`)
 
 `public_parking_lots`는 공공데이터포털 전국주차장표준데이터를 Transport가 직접 수집한 기준정보다.

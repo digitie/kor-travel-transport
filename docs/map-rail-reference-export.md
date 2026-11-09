@@ -6,6 +6,10 @@ source spec snapshot engine을 사용한다. 기본OFF/schema0032이며 새 migr
 
 ## Source 성공
 
+TAGO 일반철도 보강은 [별도 수집·합성 집합 계약](reports/2026-11-09-tago-general-rail-reference.md)을 따른다.
+KRIC의 아래 `nationwide` scope는 그대로 유지하고, TAGO는 별도의 `tago` scope를 처음 성공한 뒤 추가한다.
+일반철도 역의 공식 코드는 `source=tago_train`의 `station_number`이며 KRIC 코드 필드와 혼용하지 않는다.
+
 provider public `KricFileClient.get_nationwide_station_info_to_rustfs`가 검증한 dataset1294
 XLSX와 StoredObject의 SHA256/byte_size receipt를 사용한다. XLSX 파싱/다운로드를 재구현하지
 않는다. nonempty·중복identity·역명·최대10,000개를 확인하고 invalid/빈파일은 최대1회 재확인한다.
