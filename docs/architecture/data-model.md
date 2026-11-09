@@ -1,13 +1,17 @@
 # 데이터 모델
 
-## TAGO 일반철도 역 보강
+## KRIC 일반철도·KTX 역 보강
 
-기존 `rail_station_references`의 `(source, identity_key)` 고유키를 재사용해 `tago_train`과
-`tago_train:<공식 역 코드>`를 저장한다. KRIC 파일 source와 기존 행을 합치지 않는다.
-`reference_export_states`의 `rail-station/tago` head에 완결 membership을 별도 게시하고,
+기존 `rail_station_references`의 `(source, identity_key)` 고유키를 재사용해 `kric_general_portal`과
+`kric_general_portal:<공식 연결 식별자>`를 저장한다. KRIC 목록이 연결한 코레일 상세 식별자를 사용하며
+기존 도시철도 파일 source와 이름으로 병합하지 않는다. `station_number`의 코레일 코드와
+KRIC 도시철도 `station_code`는 별개다.
+`reference_export_states`의 `rail-station/kric-general` head에 완결 membership을 별도 게시하고,
 Map export는 기존 `rail-station/nationwide`와 함께 읽는다. 소스별 승인 시각·실패·코드를 보존하며
-TAGO 미제공 좌표는null이다. 새 테이블·열·index·migration은 없다.
-[완결성·실패·운영 경계](../reports/2026-11-09-tago-general-rail-reference.md).
+KRIC가 연결한 코레일 검증 좌표만 사용한다. 미제공 좌표는null이고 분류·연결 ID·원문은
+`raw_item_json`에 보존한다. 새 테이블·열·index·migration은 없다.
+[완결성·실패·운영 수용](../reports/2026-11-09-kric-general-rail-reference.md).
+미배포 [TAGO 후보](../reports/2026-11-09-tago-general-rail-reference.md)는 사용자 지시로 대체된 이력이다.
 
 ## 전국주차장 기준정보 (`0041_public_parking_lots`)
 
@@ -387,7 +391,3 @@ fuel_region_summaries는 성공 수집 세대별 시도·시군구·유종의 �
 ## 0039 시간표 파서 버전
 
 요청 원장의 nullable `provider_revision`은 SDK의 실제 파서 버전을 보존한다. 기존 행은 NULL로 남긴다. 정상본은 24시간 재사용하고 같은 파서의 실패는 재조회하지 않는다. 파서가 수정됐을 때 이전 파서의 error만 한 번 다시 읽으며 인증·할당량 전역 보호는 유지한다. 원 실패 CollectionRun·RawApiResponse를 삭제하거나 정상으로 바꾸지 않는다. 새 원문 기록에도 파서 버전을 남긴다.
-
-## KRIC 일반철도 공개 source(2026-11-09)
-
-기존 테이블에 `kric_general_portal` source/`kric-general` 완결 head를 별도로 보관한다. KRIC 목록에 있는 공식 코레일 상세 식별자가 identity이며 기존 KRIC 도시철도 source와 이름 병합하지 않는다. KRIC가 연결한 코레일 검증 좌표만 사용하고 원문 분류/연결 ID를 raw_item_json에 보존한다. 새로운 migration은 없다. 미배포 TAGO 설계는 최신 사용자 요청으로 대체됐다.

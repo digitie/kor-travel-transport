@@ -1,3 +1,10 @@
+## 2026-11-09 — PR177 회귀 기대값·문서 정정
+
+- [x] **T-PR177-RECHECK-20261109** — CI42590864342의 두 실패를 재현하고 신규 일반철도 op의
+  키 가림 독립 검증·전체 gateway 전달 포트 계약을 정정했다. WSL/Docker87개씩 통과,
+  현재 KRIC 계약 문서/미완 표기 정정. 전체 CI는 [후속 확인](tasks.md)으로 구분한다.
+  제품·운영·DB·수집 변경은 없다.
+
 ## 2026-11-09 — KRIC 일반철도·KTX 실제 저장과 Map 수용
 
 - [x] **T-KRIC-GENERAL-LIVE-20261109** — KRIC397행→358건/공식c56323f9·앱8603 SUCCESS/success,
@@ -12,7 +19,7 @@
   Weather/Geo/Transport Manager healthy·원20상태·환경/마운트/기존16CID 보존·새 API3123a377/CS5d8a50fc 적용.
   R2 first245a419f done/Main0/CG부재, 원 실패는 보존했다. [원장과 한계](reports/2026-11-09-kric-general-rail-reference.md).
 - [x] **T-KRIC-GENERAL-SOURCE-20261109** — KRIC provider c006c8b·제품36dd849와 WSL/Docker291/70개씩 통과.
-  신규358역의 공식job 저장은 별도 미완 항목이다.
+  신규358역의 공식job 저장과 Map1466건 수용은 위 **T-KRIC-GENERAL-LIVE-20261109**에서 완료했다.
 
 ## 2026-11-09 — Map 철도·해운 기준정보 운영 준비
 

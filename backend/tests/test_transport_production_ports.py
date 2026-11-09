@@ -54,7 +54,16 @@ def test_operational_tools_do_not_default_to_the_retired_api_port():
 def test_gateway_and_admin_capability_use_current_api_port():
     gateway = (ROOT / "deploy/transport-admin/api-gateway.conf.template").read_text()
     admin = (SCRIPTS / "deploy-transport-admin-prod.sh").read_text()
-    assert gateway.count("proxy_pass http://127.0.0.1:12302;") == 4
+    locations = dict(re.findall(r"^    location ([^\n]+) \{\n(.*?)^    }", gateway, re.MULTILINE | re.DOTALL))
+    assert {
+        "= /health", "^~ /v1/service/exports/", "= /mcp",
+        "~ ^/v1/transport/rail/general/(catalog|stations|timetable|guide)$",
+    } <= locations.keys()
+    assert any(location.startswith("~ ^/v1/transport/(") for location in locations)
+    for location, block in locations.items():
+        assert re.findall(r"^\s*proxy_pass (\S+);", block, re.MULTILINE) == [
+            "http://127.0.0.1:12302",
+        ], location
     assert "http://127.0.0.1:12302/v1/transport/admin/place-locations/capability" in admin
     assert "127.0.0.1:14001" not in gateway + admin
 

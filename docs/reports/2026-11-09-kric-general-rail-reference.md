@@ -19,6 +19,28 @@ Native job의 공식SUCCESS와 저장을 수용했으며 별도 run-health RPC �
 최종 원장 `transport-kric-general-20261109/final-acceptance.json` SHA fc65259987e37a0f5a1179497effceb466b90168ef21acafd1d3958769b39ecc.
 Map 적재·주간 예약은 담당 후속이며 이번 작업에서 변경하지 않았다. 백업/복원은 사용자 선택으로 생략했다.
 
+## PR177 재확인
+
+최신 문서 HEAD b9a4e28의 [CI42590864342](https://github.com/digitie/kor-travel-transport/actions/runs/42590864342)는
+frontend/관리자 성공·live-e2e 생략, backend1790통과·2실패·2생략이었다. 의존성 설치·migration·
+Alembic/OpenAPI 확인은 성공했고, 실패는 다음 두 기대값이었다.
+
+- `test_dagster_error_redaction`은 rail job에 독립 일반철도 op가 추가된 뒤에도 실패 op를 하나로 기대했다.
+  실제 두 실패 모두 키를 가렸지만 개수 검사에서 중단됐다. 새 op의 service도 stub하고 각 op를 선택해
+  예외 사슬·metadata·전체 event log의 키 가림을 독립적으로 검증한다.
+- `test_transport_production_ports`는 MCP 추가 전 전달 블록4개를 기대했으나 실제5개였다.
+  개수 대신 필수 경로와 각 블록의12302 전달을 검증한다. 운영 port나 gateway 변경은 없다.
+
+두 실패를 WSL에서 그대로 재현한 뒤 관련 세 시험 파일은 WSL/Docker Python3.12에서 각각87개 통과했다.
+현재 data-model/export 문서의 TAGO source와 완료된 저장을 미완으로 적은 문구도 정정했다.
+제공자 [PR14 CI42579826698](https://github.com/digitie/python-kric-api/actions/runs/42579826698)는 성공이다.
+후속 전체 CI 성공은 아직 별도 확인 항목이며 집중87개 결과로 대신하지 않는다.
+운영 제품36dd849와 API/수집기 이미지·schema0041·원본·일정은 이 정정으로 바꾸지 않는다.
+
+
+## 설계 및 이전 진행 이력
+
+아래는 최종 수용 전의 설계·관측 이력이며 현재 결과는 위 정산이 우선한다.
 
 최신 사용자 지시로 미배포 TAGO 후보를 KRIC 기준으로 대체한다. KRIC 공개 일반323행·KTX74행의 모든 페이지를 검산하고 공식 상세 링크의 코레일 stationSeq로358역을 식별한다. 좌표198역이며 전주·순천·익산·안동은 공식 연결 좌표가 있다. 미제공160역은 추정하지 않는다.
 

@@ -1,3 +1,12 @@
+## 2026-11-09 — PR177 재확인·CI 회귀 기대값 정정
+
+문서 HEAD b9a4e28의 CI42590864342는 frontend/관리자 성공, backend1790통과·2실패·2생략이었다.
+새 일반철도 op가 추가된 job을 단일 실패 op로 가정한 시험과 MCP 추가 전 gateway 개수 기대값을
+WSL에서 그대로 재현했다. 각 수집 op의 키 가림을 독립 검증하고 모든 전달 경로의12302 포트를
+검사하도록 고친 뒤 WSL/Docker 각각87개가 통과했다. 현재 계약 문서의 TAGO source도 KRIC으로 정정했다.
+원 CI 실패는 보존하며 집중 검증을 전체 CI 성공으로 바꾸지 않는다. 다음 확인은 수정 커밋의 전체 CI다.
+제품36dd849·기존 이미지/DB/수집 상태는 이 테스트·문서 수정으로 바꾸지 않았다.
+
 ## 2026-11-09 — KRIC 일반철도358건·Map1466건과 세 서비스 복구 완료
 
 제품36dd849의 API3123a377/CS5d8a50fc를 적용하고 기존18개 서비스/원20상태를 복구했다.
@@ -8,7 +17,9 @@ Weather/Geo/Transport Manager healthy다. 정식 c56323f9/앱8603 성공·신규
 Docker daemon nil-pointer panic 뒤 systemd 재시작이 동시 중단의 직접 원인이었고 촉발 경로는 미확정이다.
 [최종 원장·실패 이력](reports/2026-11-09-kric-general-rail-reference.md), Draft PR177/SDK14. 추가 재빌드·수집·main merge0.
 
-## 2026-11-09 — 서비스 복구 수용, KRIC 정식 수집 대기
+## 2026-11-09 — 이전 진행 기록: 서비스 복구 수용·수집 대기
+
+아래 세 절은 완료 전의 관측 이력이다. 현재 상태는 위 최종 수용과 PR 재확인이 우선한다.
 
 새 API3123a377/CS5d8a50fc(제품36dd849) 적용과 기존18개 서비스 복구를 완료했다.
 세 앱 Manager healthy·원20일정·기존 도시철도1108 지문/원16CID·환경/마운트가 같다.
@@ -16,11 +27,11 @@ R2 first245a419f는done/Main0/CG부재, 원 두 종류의 실패도 보존한다
 공식 rail_reference_collection_job c56323f9는 기존 순서로QUEUED이며 제출0을 저장 성공으로 바꾸지 않는다.
 다음은 같은job358역 저장/Map 대조다. [정본](reports/2026-11-09-kric-general-rail-reference.md).
 
-## 2026-11-09 — KRIC 일반철도·KTX 및 서비스 복구 진행
+## 2026-11-09 — 이전 진행 기록: KRIC 일반철도·KTX와 서비스 복구
 
 최신 인간 지시로 TAGO 미배포 후보를 KRIC으로 대체했다. 공식397행/358역·좌표198역과 목표4역을 확인했고 provider WSL/Docker291개·mypy 통과다. 공유서비스18개 중지는 장애이며 복구가 승인됐다. 다음은 최소 API/CS 이미지 적용 뒤 기존서비스 복구·공식수집·Map 수용이다. [상세](reports/2026-11-09-kric-general-rail-reference.md).
 
-## 2026-11-09 — TAGO 일반철도 보강 진행
+## 2026-11-09 — 대체된 이력: 미배포 TAGO 일반철도 후보
 
 현재 `codex/transport-tago-stations-20261109`에서 일반철도 source·합성 export를 구현했다.
 기존 TAGO API의 실제 catalog200/지역16개를 확인했고 새 키·SDK·migration은 필요하지 않다.
