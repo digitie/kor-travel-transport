@@ -1,3 +1,11 @@
+## 2026-11-09 — Map 철도·해운 기준정보 운영 준비
+
+- [x] **MAP-REF-ENABLE-20261109** — API/수집기 공통map flagON·기존 철도/해운 flag/예약ON,
+  같은 이미지·schema/키/다른 서비스 보존·원20복원·Manager healthy·운영/제출 부모 실제done0.
+  공식 기준정보 앱8560/8562 성공·승인1108/753건과 실제 Map 호스트의 전체페이지200/고유identity·304를 확인했다.
+  좌표null13/611건·해운 후속 위치 보충 실행 중을 보존하며 Map 적재/주간 예약은 담당 후속이다.
+  [실제 결과](reports/2026-11-09-map-reference-activation.md).
+
 ## 2026-11-08 — 유가 MCP 공개 HTTPS 경로
 
 - [x] **T-FUEL-MCP-PUBLIC-20261108** — 기존 공개 TLS 경로의 gateway peer만 MCP CIDR로 허용하고 실제 두 프로토콜·반경/전국/좌표 시군구를 수용했다. 토큰/임의 경로/관리/raw export 제한·API/CS/DB/원47상태 보존·두 운영 부모 종료·Managerhealthy를 검산했다. 별도 외부망 단말 시험은 미관측이다. [접속과 근거](fuel-mcp.md).

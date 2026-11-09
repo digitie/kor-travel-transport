@@ -1,3 +1,11 @@
+## 2026-11-09 — Map 철도·해운 적재 준비 완료
+
+운영 API·수집기의 공통map flag를ON했고 철도·해운 수집 flag/예약은 기존ON을 유지했다.
+같은 API/CS 이미지·schema0041·환경·다른 서비스를 보존하고 원20복원·Manager healthy·운영 부모 종료를 확인했다.
+공식 최초 기준정보는 철도1108·항구753건이며 실제 Map n150에서 완결200/304를 확인했다.
+좌표null13/611건과 해운 후속 위치 보충job 실행 중을 보존한다. [운영 정산](reports/2026-11-09-map-reference-activation.md).
+다음 담당 작업은 Map의 새 T3 reader 적재1회와 주간 예약 활성화다. Transport에서 Map 작업을 실행하지 않았다.
+
 ## 2026-11-08 — 유가 MCP 외부 HTTPS 연결 수용
 
 `https://transport-api.digitie.mywire.org/mcp`를 기존 서비스 토큰으로 연결할 수 있게 반영했다. 기존 gateway 이미지만 재사용해 gateway역할만 교체했고 API/수집기/Weather/DB·원47일정과 raw export 제한은 유지했다. 실제 TLS·두 프로토콜/도구2개·반경/전국/좌표 시군구를 검산했으며 토큰 없음/오류404·기타 쓰기/관리/raw export 차단도 확인했다. WSL/Docker gateway39개씩·원source권한 정산·두 첫 부모done/Main0/cgroup부재·Managerhealthy를 기록했다. 토큰 값은 문서/Git에 넣지 않는다. [연결법과 실제 한계](fuel-mcp.md).

@@ -1,3 +1,8 @@
+## 2026-11-09 — Map 철도·해운 기준정보 준비
+
+운영map flag·수집 활성화와 철도1108/항구753건의 실제 Map 호스트 완결200/304를
+[완료 목록](tasks-done.md)에 정산했다. 해운 후속 위치 보충은 실행 중이며 Map 적재·주간 예약은 Map 담당 후속이다.
+
 ## 2026-11-08 — 유가 검색 MCP 병행
 
 소스·집중 검증·같은 API 실제 반영과 공개 HTTPS 경로 수용을 [완료 목록](tasks-done.md)에 기록했다. [Draft PR175](https://github.com/digitie/kor-travel-transport/pull/175), [연결법과 계약](fuel-mcp.md).

@@ -40,5 +40,8 @@ DTO digest에 반영하고 기존 페이지는 만료까지 고정한다. source
 ## 검증 상태
 
 PR117 두 독립 리뷰·정확 CI PG1070 PASS/2 SKIP, 집중 PG40 PASS와 실제 TCP 결과는
-[수용 정산](reports/2026-10-23-map-t2-t3-acceptance.md)에 기록했다. 운영 미배포/defaultOFF이며
-실제 source bootstrap·Map consumer UI·ARM CPU/RAM 실측은 남았다.
+[수용 정산](reports/2026-10-23-map-t2-t3-acceptance.md)에 기록했다. 제품 기본값OFF와 별개로,
+2026-11-09 운영 API·수집기의 공통flag를ON하고 공식 철도 최초 수집을 완료했다.
+실제 Map 호스트 n150에서1108건의 전체 두 페이지·고유identity·source_status=ok·ETag304를 확인했다.
+좌표null13건은 그대로 유지한다. [운영 정산](reports/2026-11-09-map-reference-activation.md).
+Map 적재·consumer UI와 ARM CPU/RAM 실측은 이번 검증에 포함하지 않는다.
