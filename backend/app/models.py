@@ -1119,6 +1119,43 @@ class ParkingFeeRule(Base):
     raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
 
 
+class ReferenceExportArtifact(Base):
+    """입력 revision에 고정된 불변 본문. HTTP handle 만료와 분리해 보관한다."""
+
+    __tablename__ = "reference_export_artifacts"
+    __table_args__ = (
+        UniqueConstraint("kind", "scope_key", "input_revision", name="uq_reference_artifact_input"),
+        CheckConstraint("item_count > 0 AND item_count <= 20000", name="ck_reference_artifact_count"),
+        CheckConstraint("byte_count > 0 AND byte_count <= 16777216", name="ck_reference_artifact_bytes"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(40))
+    scope_key: Mapped[str] = mapped_column(String(64))
+    input_revision: Mapped[str] = mapped_column(String(64))
+    source_collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    item_count: Mapped[int] = mapped_column(Integer)
+    byte_count: Mapped[int] = mapped_column(Integer)
+    content_digest: Mapped[str] = mapped_column(String(64))
+
+
+class ReferenceExportArtifactItem(Base):
+    __tablename__ = "reference_export_artifact_items"
+    __table_args__ = (CheckConstraint("ordinal > 0", name="ck_reference_artifact_ordinal"),)
+    artifact_id: Mapped[str] = mapped_column(ForeignKey("reference_export_artifacts.id", ondelete="CASCADE"), primary_key=True)
+    ordinal: Mapped[int] = mapped_column(Integer, primary_key=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
+class ReferenceExportArtifactHead(Base):
+    """종류/범위마다 마지막 승인 본문 하나를 pin한다. 읽을 때마다 갱신하지 않는다."""
+
+    __tablename__ = "reference_export_artifact_heads"
+    kind: Mapped[str] = mapped_column(String(40), primary_key=True)
+    scope_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    artifact_id: Mapped[str] = mapped_column(ForeignKey("reference_export_artifacts.id", ondelete="RESTRICT"), index=True)
+
+
 class ServiceExportSnapshot(Base):
     """유한 수명의 immutable DTO. 원천·이력 정본과 독립적인 HTTP 탐색 자료다."""
 
@@ -1137,6 +1174,7 @@ class ServiceExportSnapshot(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     item_count: Mapped[int] = mapped_column(Integer)
     content_digest: Mapped[str] = mapped_column(String(64))
+    artifact_id: Mapped[str | None] = mapped_column(ForeignKey("reference_export_artifacts.id", ondelete="RESTRICT"), nullable=True, index=True)
 
 
 class ServiceExportSnapshotItem(Base):

@@ -15,7 +15,7 @@ from uuid import UUID, uuid4
 from krairport import get_airport_or_none
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from sqlalchemy import func, insert, literal, select
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -23,7 +23,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.core.config import Settings
 from app.core.time_utils import now_utc, serialize_utc
-from app.models import BusTerminalReference, FerryPort, RailStationReference, ParkingCurrent, ReferenceExportState, ServiceExportSnapshot, ServiceExportSnapshotItem
+from app.models import BusTerminalReference, FerryPort, RailStationReference, ParkingCurrent, ReferenceExportState, ReferenceExportArtifact, ReferenceExportArtifactItem, ServiceExportSnapshot, ServiceExportSnapshotItem
 from app.schemas import BusTerminalExportPage, FerryPortExportPage, RailStationExportPage, ParkingCurrentExportPage, ServiceExportMeta
 from app.services.bus_collection import TAGO_BUS_SOURCE
 from app.services.rail_maritime_collection import KRIC_FILE_SOURCE, MARITIME_SOURCE, PORT_GUIDELINE_SOURCE
@@ -31,9 +31,10 @@ from app.services.general_rail_reference import KRIC_GENERAL_SOURCE, KRIC_GENERA
 from app.services.rail_station_mapping import persisted_mapping_context, persisted_station_links
 from app.services.parking_exports import parking_scope, parking_sources
 from app.services.export_addresses import export_admin_addresses
-from app.services.export_current import BATCH_SIZE, MAX_SNAPSHOT_BYTES, MAX_SNAPSHOT_ITEMS, SNAPSHOT_TTL, SnapshotRace, cache_generation, _snapshot_transaction, expire_snapshots, snapshot_expires_at
+from app.services.export_current import BATCH_SIZE, MAX_SNAPSHOT_BYTES, MAX_SNAPSHOT_ITEMS, SnapshotRace, cache_generation, _snapshot_transaction, expire_snapshots, snapshot_expires_at
 from app.services.export_price_history import _decode_cursor, _encode_cursor, _response
 from app.services.reference_export_revision import reference_payload_revision
+from app.services.reference_artifacts import prepare_artifact, collect_unused_artifact
 
 @dataclass(frozen=True)
 class ReferenceSpec:
@@ -221,59 +222,36 @@ async def _parking_payload_batches(session, heads):
             yield payloads
 
 
-async def _copy_reference_snapshot(session, previous, spec, heads, generation, now, started):
-    """입력 지문이 같은 이전 epoch의 불변 항목을 새 유효 cursor 집합에 연결한다."""
-    items = ServiceExportSnapshotItem.__table__
-    count, first, last = (await session.execute(select(
-        func.count(), func.min(items.c.ordinal), func.max(items.c.ordinal),
-    ).where(items.c.snapshot_id == previous.id))).one()
-    if (not 0 < previous.item_count <= MAX_SNAPSHOT_ITEMS or count != previous.item_count
-            or first != 1 or last != count or len(previous.content_digest) != 64):
-        raise HTTPException(503, "재사용 snapshot의 완결 수량·순서가 일치하지 않습니다.")
+async def _artifact_snapshot(session, heads, spec, input_revision, started):
+    artifact, _ = await prepare_artifact(session, heads, spec, input_revision, started=started)
+    now = now_utc()
+    generation = cache_generation(input_revision, now)
+    cached = await session.scalar(select(ServiceExportSnapshot).where(
+        ServiceExportSnapshot.kind == spec.kind, ServiceExportSnapshot.scope_key == spec.scope,
+        ServiceExportSnapshot.generation == generation, ServiceExportSnapshot.expires_at > now))
+    if cached is not None:
+        if cached.artifact_id != artifact.id or cached.item_count != artifact.item_count or cached.content_digest != artifact.content_digest:
+            raise HTTPException(503, "handle과 reference 본문이 일치하지 않습니다.")
+        return cached
+    await expire_snapshots(session)
     table = ServiceExportSnapshot.__table__
     snapshot_id = str(uuid4())
     admitted = await session.scalar(pg_insert(table).values(
         id=snapshot_id, kind=spec.kind, scope_key=spec.scope, generation=generation,
-        source_collected_at=min(serialize_utc(h.confirmed_at) for h in heads),
-        created_at=now, expires_at=snapshot_expires_at(now), item_count=count,
-        content_digest=previous.content_digest,
+        source_collected_at=artifact.source_collected_at, created_at=now, expires_at=snapshot_expires_at(now),
+        item_count=artifact.item_count, content_digest=artifact.content_digest, artifact_id=artifact.id,
     ).on_conflict_do_nothing(index_elements=["kind", "scope_key", "generation"]).returning(table.c.id))
     if admitted is None:
         raise SnapshotRace()
-    if monotonic() - started > 15:
-        raise HTTPException(503, "snapshot 복사 준비 시간 상한을 초과했습니다.")
-    copied = await session.execute(insert(items).from_select(
-        ["snapshot_id", "ordinal", "payload"], select(literal(snapshot_id), items.c.ordinal, items.c.payload)
-        .where(items.c.snapshot_id == previous.id),
-    ))
-    if copied.rowcount != count:
-        raise HTTPException(503, "재사용 snapshot의 복사 수량이 일치하지 않습니다.")
-    if monotonic() - started > 15:
-        raise HTTPException(503, "snapshot 복사 시간 상한을 초과했습니다.")
-    # 이전 항목을 복사하기 전에 지우지 않는다. 기존 유효 cursor는 만료까지 보존한다.
-    await expire_snapshots(session)
+    await collect_unused_artifact(session)
     return await session.get(ServiceExportSnapshot, snapshot_id)
 
 
 async def _freeze_reference(session, heads, spec, *, payload_revision=None):
     started = monotonic()
     input_revision = await reference_payload_revision(session, heads, spec.kind, payload_revision)
-    now = now_utc()
-    generation = cache_generation(input_revision, now) if input_revision is not None else None
-    if generation is not None:
-        cached = await session.scalar(select(ServiceExportSnapshot).where(
-            ServiceExportSnapshot.kind == spec.kind, ServiceExportSnapshot.scope_key == spec.scope,
-            ServiceExportSnapshot.generation == generation,
-            ServiceExportSnapshot.expires_at > now,
-        ))
-        if cached is not None:
-            return cached
-        previous = await session.scalar(select(ServiceExportSnapshot).where(
-            ServiceExportSnapshot.kind == spec.kind, ServiceExportSnapshot.scope_key == spec.scope,
-            ServiceExportSnapshot.generation == cache_generation(input_revision, now - SNAPSHOT_TTL),
-        ))
-        if previous is not None:
-            return await _copy_reference_snapshot(session, previous, spec, heads, generation, now, started)
+    if input_revision is not None:
+        return await _artifact_snapshot(session, heads, spec, input_revision, started)
     size = count = 0
     digest = hashlib.sha256()
     # 기존 16MiB 상한 안의 canonical bytes만 보관한다. 신규 snapshot을 만들 때
@@ -328,6 +306,27 @@ async def _freeze_reference(session, heads, spec, *, payload_revision=None):
     return snapshot
 
 
+def reference_specs(settings):
+    specs = (
+        ReferenceSpec("/bus-terminals", "bus-terminals-v1", "bus-terminal",
+                      hashlib.sha256(b"bus-terminals:express+intercity:v1").hexdigest(),
+                      ("express", "intercity"), timedelta(days=9), BusTerminalExportPage, _bus_payload_batches),
+        ReferenceSpec("/ferry-ports", "ferry-ports-v1", "ferry-port",
+                      hashlib.sha256(b"ferry-ports:all:v1").hexdigest(),
+                      ("ports",), timedelta(days=9), FerryPortExportPage, _ferry_payload_batches),
+        ReferenceSpec("/rail-stations", "rail-stations-v1", "rail-station",
+                      hashlib.sha256(b"rail-stations:nationwide:v1").hexdigest(),
+                      ("nationwide",), timedelta(days=6), RailStationExportPage, _rail_payload_batches,
+                      optional_scope_keys=(KRIC_GENERAL_SCOPE,)),
+    )
+    sources = parking_sources(settings)
+    scopes = tuple(parking_scope(settings, source) for source in sources)
+    specs += (ReferenceSpec("/parking/current", "parking-current-v1", "parking-current",
+                            hashlib.sha256(("parking:" + ",".join(scopes)).encode()).hexdigest(),
+                            scopes, timedelta(minutes=15), ParkingCurrentExportPage, _parking_payload_batches),)
+    return specs
+
+
 def build_reference_export_router(settings: Settings, get_db: Callable[..., AsyncIterator[AsyncSession]]) -> APIRouter:
     router = APIRouter()
     key = hashlib.sha256((settings.transport_service_export_token or "").encode()).digest()
@@ -376,9 +375,18 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
                 snapshot = await _freeze_reference(session, heads, spec, payload_revision=settings.release_sha)
             stale = (not _valid_heads(heads, spec) or any(h.last_error is not None for h in heads)
                      or now_utc() - serialize_utc(snapshot.source_collected_at) > spec.max_age)
-            rows = list((await session.execute(select(ServiceExportSnapshotItem.ordinal, ServiceExportSnapshotItem.payload).where(
-                ServiceExportSnapshotItem.snapshot_id == snapshot.id, ServiceExportSnapshotItem.ordinal > after,
-            ).order_by(ServiceExportSnapshotItem.ordinal).limit(limit + 1))).all())
+            if snapshot.artifact_id is not None:
+                artifact = await session.get(ReferenceExportArtifact, snapshot.artifact_id)
+                if (artifact is None or artifact.kind != spec.kind or artifact.scope_key != spec.scope
+                        or artifact.item_count != snapshot.item_count or artifact.content_digest != snapshot.content_digest
+                        or serialize_utc(artifact.source_collected_at) != serialize_utc(snapshot.source_collected_at)):
+                    raise HTTPException(503, "handle의 reference 본문이 일치하지 않습니다.")
+                model, identity = ReferenceExportArtifactItem, ReferenceExportArtifactItem.artifact_id == artifact.id
+            else:
+                model, identity = ServiceExportSnapshotItem, ServiceExportSnapshotItem.snapshot_id == snapshot.id
+            rows = list((await session.execute(select(model.ordinal, model.payload).where(
+                identity, model.ordinal > after,
+            ).order_by(model.ordinal).limit(limit + 1))).all())
             if (len(rows) != min(limit + 1, snapshot.item_count - after)
                     or any(row.ordinal != after + i + 1 for i, row in enumerate(rows))):
                 raise HTTPException(503, "snapshot membership이 일치하지 않습니다.")
@@ -397,23 +405,7 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
 
         return endpoint
 
-    specs = (
-        ReferenceSpec("/bus-terminals", "bus-terminals-v1", "bus-terminal",
-                      hashlib.sha256(b"bus-terminals:express+intercity:v1").hexdigest(),
-                      ("express", "intercity"), timedelta(days=9), BusTerminalExportPage, _bus_payload_batches),
-        ReferenceSpec("/ferry-ports", "ferry-ports-v1", "ferry-port",
-                      hashlib.sha256(b"ferry-ports:all:v1").hexdigest(),
-                      ("ports",), timedelta(days=9), FerryPortExportPage, _ferry_payload_batches),
-        ReferenceSpec("/rail-stations", "rail-stations-v1", "rail-station",
-                      hashlib.sha256(b"rail-stations:nationwide:v1").hexdigest(),
-                      ("nationwide",), timedelta(days=6), RailStationExportPage, _rail_payload_batches,
-                      optional_scope_keys=(KRIC_GENERAL_SCOPE,)),
-    )
-    sources = parking_sources(settings)
-    scopes = tuple(parking_scope(settings, source) for source in sources)
-    specs += (ReferenceSpec("/parking/current", "parking-current-v1", "parking-current",
-                            hashlib.sha256(("parking:" + ",".join(scopes)).encode()).hexdigest(),
-                            scopes, timedelta(minutes=15), ParkingCurrentExportPage, _parking_payload_batches),)
+    specs = reference_specs(settings)
     for spec in specs:
         router.add_api_route(spec.path, endpoint_for(spec), methods=["GET"], response_model=spec.page_model,
                              name=spec.path.strip("/").replace("-", "_"), responses={304: {}, 404: {}, 410: {}, 422: {}, 503: {}})

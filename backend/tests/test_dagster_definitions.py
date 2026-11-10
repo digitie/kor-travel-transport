@@ -319,7 +319,7 @@ def test_dagster_definitions_register_every_collection_domain() -> None:
 ])
 def test_reference_jobs_enrich_coordinates_after_official_rows(job_name: str, first_op: str) -> None:
     graph = definitions.get_job_def(job_name).graph
-    assert graph.node_names() == [first_op, "enrich_new_reference_locations"]
+    assert graph.node_names() == [first_op, "enrich_new_reference_locations", "prepare_reference_exports"]
 
 
 def test_dagster_definitions_enable_every_schedule_and_serialize_overlapping_groups() -> None:

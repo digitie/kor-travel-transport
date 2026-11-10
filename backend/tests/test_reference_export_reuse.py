@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import delete, update
 
 from app.core.time_utils import now_utc, serialize_utc
-from app.models import KricStationCode, KricStationMappingRegistry, RailStationReference, ReferenceExportState, ServiceExportSnapshotItem
+from app.models import KricStationCode, KricStationMappingRegistry, RailStationReference, ReferenceExportState, ReferenceExportArtifactItem, ServiceExportSnapshot
 from app.services import export_current, export_references
 from test_rail_export import PATH, seed
 from test_service_exports import HEADERS, _run, export_client  # noqa: F401
@@ -115,7 +115,8 @@ def test_incomplete_previous_epoch_snapshot_is_not_copied(export_client, monkeyp
     first = _get(c)
     assert first.status_code == 200, first.text
     async def remove(s):
-        await s.execute(delete(ServiceExportSnapshotItem).where(ServiceExportSnapshotItem.snapshot_id == first.json()["snapshot_id"], ServiceExportSnapshotItem.ordinal == 2))
+        snapshot = await s.get(ServiceExportSnapshot, first.json()["snapshot_id"])
+        await s.execute(delete(ReferenceExportArtifactItem).where(ReferenceExportArtifactItem.artifact_id == snapshot.artifact_id, ReferenceExportArtifactItem.ordinal == 2))
     _run(c, remove)
     monkeypatch.setattr(export_references, "now_utc", lambda: moment + export_current.SNAPSHOT_TTL)
     result = _get(c)

@@ -2,7 +2,8 @@
 
 - [ ] **T-REFERENCE-COLD-FIX-20261110** — 분석에서 확인한 본문/cursor 수명 결합과 요청 중 동기 전체 구성을
   우선 줄인다. [상세 원인·측정·우선순위](reports/2026-11-10-reference-cold-build-analysis.md).
-  이번 단계는 사용자 요청대로 원인 분석까지이며 제안은 아직 제품에 반영하지 않았다.
+  후속 사용자 승인으로 artifact/FK handle·묶음 JSON 저장·수집 뒤 준비 op를 구현하고 검증 중이다.
+  운영0041은 아직 유지하며 WSL/Docker·migration/구 cursor·GC 경합·ARM 비교 뒤 배포한다.
 
 T-PERF-PR210-CI-20261110은 backend1813통과와 전체 CI 성공을 확인해 완료 목록에 정산했다.
 

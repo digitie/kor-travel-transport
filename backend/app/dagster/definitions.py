@@ -47,6 +47,7 @@ from app.services.rail_maritime_collection import RailMaritimeCollectionService
 from app.services.vadahub_collection import VadaHubCollectionService
 from app.services.rest_area_collection import RestAreaCollectionService
 from app.services.public_parking_collection import PublicParkingCollectionService
+from app.services.reference_export_preparation import prepare_reference_exports as prepare_reference_export_bodies
 from app.services.transport_collection import CollectionScope, TransportCollectionService
 
 #: 실행 상한(초). 공용 Dagster instance의 전역 상한(6시간, Manager `config/dagster-shared/dagster.yaml`)은
@@ -665,9 +666,28 @@ def general_rail_timetable_collection_job() -> None:
     collect_general_rail_timetable()
 
 
+@op
+@_redact_op_errors
+def prepare_reference_exports(context, upstream: Any = None, other: Any = None) -> dict[str, Any]:
+    settings = _settings()
+    if not getattr(settings, "transport_map_current_enabled", False):
+        return {"status": "disabled", "prepared": 0, "reused": 0, "kinds": []}
+    with collection_owner(context.run_id, context.instance):
+        result = asyncio.run(_run_with_session(settings, functools.partial(prepare_reference_export_bodies, settings=settings)))
+    context.add_output_metadata({"status": result["status"], "prepared": result["prepared"], "reused": result["reused"]})
+    if result["status"] == "not_ready":
+        raise Failure(description="완결된 reference source가 없어 본문을 준비하지 못했습니다.", allow_retries=False)
+    return result
+
+
+@job(tags={**_job_tags("reference", "reference_export_prepare_job"), "dagster/max_runtime": "180"}, executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
+def reference_export_prepare_job() -> None:
+    prepare_reference_exports()
+
+
 @job(tags=_job_tags("parking", "airport_collection_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
 def airport_collection_job() -> None:
-    collect_airport_parking()
+    prepare_reference_exports(collect_airport_parking())
 
 
 @op
@@ -722,13 +742,12 @@ def fuel_collection_job() -> None:
 
 @job(tags=_job_tags("reference", "rail_reference_collection_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
 def rail_reference_collection_job() -> None:
-    collect_rail_reference()
-    collect_general_rail_reference()
+    prepare_reference_exports(collect_rail_reference(), collect_general_rail_reference())
 
 
 @job(tags=_job_tags("reference", "maritime_reference_collection_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
 def maritime_reference_collection_job() -> None:
-    enrich_new_reference_locations(collect_maritime_reference())
+    prepare_reference_exports(enrich_new_reference_locations(collect_maritime_reference()))
 
 
 @job(tags=_job_tags("reference", "ferry_timetable_collection_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
@@ -756,17 +775,17 @@ def vadahub_reference_collection_job() -> None:
 
 @job(tags=_job_tags("reference", "bus_reference_collection_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
 def bus_reference_collection_job() -> None:
-    enrich_new_reference_locations(collect_bus_reference())
+    prepare_reference_exports(enrich_new_reference_locations(collect_bus_reference()))
 
 
 @job(tags=_job_tags("reference", "place_location_collection_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
 def place_location_collection_job() -> None:
-    collect_place_locations()
+    prepare_reference_exports(collect_place_locations())
 
 
 @job(tags=_job_tags("reference", "kakao_place_location_collection_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
 def kakao_place_location_collection_job() -> None:
-    collect_kakao_place_locations()
+    prepare_reference_exports(collect_kakao_place_locations())
 
 
 #: 회수 keyset 위치. sensor cursor는 common 정체 시계가 소유하므로 code-server 프로세스에 둔다.
@@ -881,6 +900,7 @@ definitions = Definitions(
         highway_collection_job,
         fuel_collection_job,
         rail_reference_collection_job,
+        reference_export_prepare_job,
         maritime_reference_collection_job,
         vadahub_reference_collection_job,
         ferry_timetable_collection_job,

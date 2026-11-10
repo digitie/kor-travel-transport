@@ -121,6 +121,26 @@ JOB_CRASH_OPS = [
 ]
 
 
+def test_reference_preparation_error_is_redacted_and_not_retried(monkeypatch):
+    def settings():
+        value = _secret_settings()
+        value.transport_map_current_enabled = True
+        return value
+    async def leaky_run(*_args, **_kwargs):raise _leaky_error()
+    monkeypatch.setattr(dagster_definitions,"_settings",settings)
+    monkeypatch.setattr(dagster_definitions,"get_settings",settings)
+    monkeypatch.setattr(dagster_definitions,"_run_with_session",leaky_run)
+    result=dagster_definitions.reference_export_prepare_job.execute_in_process(raise_on_error=False)
+    assert not result.success and not any(e.is_step_up_for_retry for e in result.all_events)
+    failures=[e for e in result.all_events if e.event_type==DagsterEventType.STEP_FAILURE]
+    assert [e.step_key for e in failures]==["prepare_reference_exports"]
+    info=failures[0].step_failure_data
+    texts=_error_texts(info.error)+[str(e.message) for e in result.all_events]
+    texts.append(str(info.user_failure_data.description))
+    texts.extend(str(v.value) for v in info.user_failure_data.metadata.values())
+    _assert_no_secret(texts)
+
+
 @pytest.mark.parametrize(("job_name", "op_name"), JOB_CRASH_OPS)
 def test_op_crash_reaches_event_log_without_provider_keys(monkeypatch, job_name, op_name):
     async def leaky_run(*_args: Any, **_kwargs: Any):
