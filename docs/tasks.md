@@ -1,8 +1,8 @@
-## 2026-11-10 — Transport 조회 성능 개선
+## 2026-11-10 — Transport 성능 개선 후속 CI
 
-- [ ] **T-PERF-PR210-20261110** — 실제 Map 기준정보 반복 구성·철도 카탈로그 병목을 줄이고,
-  입력/상태/cursor 정합성 집중 WSL·Docker 검증, 새 API/수집기 이미지와 실제 HTTP·원 일정·Manager·부모 종료까지 수용한다.
-  [측정·현재 경계](reports/2026-11-10-transport-performance-pr210.md). SDK·웹·migration·신규 상태 TTL 없음.
+- [ ] **T-PERF-PR210-CI-20261110** — 이미 진행 중인 제품d0c9010의 CI42727647602 backend 최종 결과를
+  정산한다. frontend/관리자·migration/Alembic/OpenAPI는 성공, live-e2e는 생략이었다. 원 실행을 중단·재실행하지 않는다.
+  제품 최적화·운영 반영은 [완료 목록](tasks-done.md)에 정산했고 문서 변경으로 다시 배포하지 않는다.
 
 ## 2026-11-10 — PR177 최신 이미지 완료
 

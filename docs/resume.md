@@ -1,10 +1,13 @@
-## 2026-11-10 — Weather PR210 참고 Transport 성능 개선 중
+## 2026-11-10 — Weather PR210 참고 Transport 성능 개선·운영 반영 완료
 
 별도 branch `codex/transport-performance-pr210-20261110`에서 Map 기준정보 반복 구성과
-철도 카탈로그 비용을 줄이고 있다. PR210은 제품 코드가 아닌 문서다. 실제 입력 지문과 완료 본문을
-분리하며 새 상태 TTL·SDK·웹·migration은 추가하지 않는다. [측정·설계·현재 검증](reports/2026-11-10-transport-performance-pr210.md).
-집중 WSL20개/보정1개·Docker PG18 21개가 통과했다. 다음은 새 이미지와 실제 HTTP·원 일정·Manager·부모 종료를 수용하는 작업이다.
-기존 운영은 아래 PR177 완료 상태다.
+철도 카탈로그 비용을 줄였다. PR210은 제품 코드가 아닌 문서다. 실제 입력 지문과 완료 본문을
+분리하며 새 상태 TTL·SDK·웹·migration은 추가하지 않았다. [실측·설계·원장](reports/2026-11-10-transport-performance-pr210.md).
+WSL20개/보정1개·Docker PG18 21개 통과 뒤 제품d0c9010의 API5bee4f97·수집기37f45393를 반영했다.
+다섯 역할 healthy·원20복원·Manager healthy·두 부모 실제0/자식 종료까지 확인했다.
+단일 HTTP는 조건부4.624→1.807초·카탈로그4.071→2.442초이며 최초 전체 구성12.426초는 남는다.
+PR178은 Draft다. 다음 한 작업은 이미 실행 중인 제품 CI42727647602의 backend 최종 결과 정산이다.
+추가 빌드·배포·수집은 필요하지 않다. 아래 PR177 이미지는 이전 운영 이력이다.
 
 ## 2026-11-10 — PR177 최신 새 이미지 반영 완료
 

@@ -6,7 +6,8 @@
 [Weather PR210](https://github.com/digitie/kor-travel-weather/pull/210)은 닫힌 미병합 문서 PR이며,
 완료된 제품 구현으로 취급하지 않는다. 실제 사용 중인 Map 기준정보의 반복 export와
 도시철도 카탈로그 조회를 측정하고, 상태·본문·cursor의 수명을 구분하는 제안을 적용한다.
-현재 후보는 집중 검증을 마쳤으며 이 문서 작성 시 운영 이미지 교체는 아직 하지 않았다.
+집중 검증·새 API/수집기 이미지·운영 HTTP·원 일정 복원·Manager·부모 실제 종료를 완료했다.
+[Draft PR178](https://github.com/digitie/kor-travel-transport/pull/178)은 PR177 위의 후속이며 main 병합은 하지 않았다.
 
 기존 운영은 제품4dac82d의 API b9ac0d18·수집기22f47ac5·PG18.6/schema0041이다.
 이 작업은 SDK·웹·의존성·Alembic·신규 상태 TTL을 변경하지 않는다.
@@ -87,4 +88,41 @@ Core0.848~2.407초로 편차가 남는다. 원장 `native-catalog-controlled.jso
 
 주소·수동 위치·signed zero·동시 writer·상태 즉시 반영·snapshot 만료/복사와 네 종류 reference의
 재사용/변경 감지를 검증했다. 문법·미정의 이름·새 모듈의 미사용 import와 diff 검사도 확인했다.
-새 이미지·운영 HTTP는 다음 실제 반영 단계에서 정산한다. 웹·SDK·의존성은 변경하지 않아 재빌드하지 않는다.
+웹·SDK·의존성은 변경하지 않아 재빌드하지 않았다.
+
+## 실제 이미지 반영과 HTTP 수용
+
+제품d0c9010의 새 API `5bee4f97`/CID `d0c79634`, 수집기 `37f45393`/CID `ada0fe6e`를 반영했다.
+PG18.6/schema0041·12302/12306 명령·SDK18864a3·Settings·개별 환경/키·마운트·자원을 보존했다.
+API 먼저 반영 후 기존 수집/worker의 자연 종료를 확인해 수집기를 교체했다. 기존20일정은 원상태로
+복원됐고 다섯 역할 healthy·Transport location·Manager adopt/verify/show healthy를 확인했다.
+frontend·관리자·gateway와 Weather/공용 daemon·다른 서비스, 환경 파일은 그대로다.
+DB migration·추가 외부 수집·백업/복원·원본/영구 통계 정리·자동 rollback은 실행하지 않았다.
+
+| 경로 | 전 | 후 | 실제 결과 |
+| --- | --- | --- | --- |
+| 도시철도 카탈로그 | 4.071초 | 2.442초 | 1108역, 전체 항목 SHA 동일 |
+| 철도 기준정보 첫 페이지 | 10.027초 | 12.426초 | 새 본문 구성, 첫1000건/전체1466건 |
+| 같은 ETag 조건부 요청 | 4.624초 | 1.807초 | HTTP304 |
+| 철도 두 번째 페이지 | 미측정 | 0.475초 | 같은 snapshot, 나머지466건 |
+
+1466건의 자연키 중복0·두 페이지 완결·source_status=ok와 API/gateway health200,
+토큰 없음/오류404를 확인했다. 카탈로그의 실제 전체 항목 SHA는
+`1a8ebf743790afa4563fa8cf3b42bda164351b825525a4dde9b3c35917c9c235`로 기존 국소 대조와 일치한다.
+운영 첫 요청과 조건부 요청을 한 번씩 읽었으며 별도 warm·캐시 삭제·수집을 추가하지 않았다.
+
+전후 부하·새 snapshot 생성 여부·수집기 기동 상태가 다르므로 코드 단독 개선율이나 p95가 아니다.
+특히 **최초 전체 본문은12.426초로 개선되지 않았다.** 입력 지문 확인 외에도 전체 DTO·JSON·
+snapshot insert와 페이지 DTO/ETag 구성 비용이 남는다. 모든 최대 응답1초 목표 달성으로 쓰지 않는다.
+기존 대량 유가 조회나 PC/모바일 렌더링을 새로 측정한 결과도 아니다.
+
+빌드 first `4954de0b5114435c8e4b1e42c19f434f`는 실제0·자식11개 종료,
+배포 first `dc5ec6571e7d4fccbbfec3b8a8af48f9`는 실제0·자식84개 종료다.
+두 최초 Invocation의 done·Main0·cgroup부재·소유 PID부재를 별도 읽기로 검산했다.
+정본은 Git 밖 `transport-performance-pr210-20261110/final-acceptance.json`,
+SHA `1be4af369bf44ca1e8433a3307086df66a1bca8dd83fe88d3337099118f69d9d`다.
+
+[제품 CI42727647602](https://github.com/digitie/kor-travel-transport/actions/runs/42727647602)는
+최종 관측에서 frontend/관리자 성공·migration/Alembic/OpenAPI 검사 성공, backend 전체 pytest는 진행 중이었다.
+live-e2e는 생략이며 실제 HTTP·집중 WSL/Docker 검증과 구분한다. 문서 정산 커밋은 제품 tree를
+변경하지 않고 추가 전체 CI를 요청하지 않는다. 기존 제품 CI는 중단하거나 재실행하지 않는다.
