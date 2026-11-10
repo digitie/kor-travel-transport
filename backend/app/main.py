@@ -151,6 +151,7 @@ from app.schemas import (
 )
 from app.services.fuel_map import fuel_map_items_statement
 from app.services.fuel_map_validation import validated_fuel_map_items
+from app.services.rail_catalog import metro_station_catalog
 from app.services.analytics import (
     build_special_day_patterns,
     build_threshold_insights,
@@ -1828,21 +1829,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @router.get("/transport/rail/stations", response_model=MetroStationCatalog)
     async def transport_metro_stations(session: AsyncSession = Depends(get_db)) -> MetroStationCatalog:
         """공식 코드·역명을 그대로 읽는다. 위치 파일 연결은 지도 좌표의 보조 정보일 뿐이다."""
-        rows = (await session.execute(select(KricStationCode, RailStationReference).outerjoin(
-            RailStationReference, KricStationCode.rail_station_id == RailStationReference.id,
-        ).where(KricStationCode.active.is_(True)).order_by(
-            KricStationCode.operator_code, KricStationCode.line_code, KricStationCode.station_code,
-        ))).all()
-        return MetroStationCatalog(generated_at=now_utc(), items=[TransportPlaceMapItem(
-            id=code.id, kind="rail_station", source="kric_station_codes",
-            provider_id=f"{code.operator_code}/{code.line_code}/{code.station_code}",
-            name=code.station_name, subtitle=code.operator_name, line_names=[code.line_name],
-            longitude=place.longitude if place else None, latitude=place.latitude if place else None,
-            address=(place.road_address or place.lot_address) if place else None,
-            phone=place.station_phone_number if place else None,
-            facilities=list(parse_station_file_facilities(place.raw_item_json or {})) if place else [],
-            updated_at=code.last_seen_at,
-        ) for code, place in rows])
+        return await metro_station_catalog(session)
 
     @router.get("/transport/rail/stations/{code_id}/timetable", response_model=RailTimetableResponse)
     async def transport_coded_rail_timetable(

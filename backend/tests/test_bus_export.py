@@ -294,13 +294,13 @@ def test_reference_freeze_reads_and_hashes_each_source_payload_once(export_clien
     _run(c, seed)
     passes = 0
     original = export_references._freeze_reference
-    async def counted_freeze(session, heads, spec):
+    async def counted_freeze(session, heads, spec, *, payload_revision=None):
         async def batches(session, heads):
             nonlocal passes
             passes += 1
             async for batch in spec.payload_batches(session, heads):
                 yield batch
-        return await original(session, heads, replace(spec, payload_batches=batches))
+        return await original(session, heads, replace(spec, payload_batches=batches), payload_revision=payload_revision)
     monkeypatch.setattr(export_references, "_freeze_reference", counted_freeze)
     first = c.get(PATH, headers=HEADERS)
     assert first.status_code == 200, first.text

@@ -15,7 +15,7 @@ from uuid import UUID, uuid4
 from krairport import get_airport_or_none
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from sqlalchemy import insert, select
+from sqlalchemy import func, insert, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -31,8 +31,9 @@ from app.services.general_rail_reference import KRIC_GENERAL_SOURCE, KRIC_GENERA
 from app.services.rail_station_mapping import persisted_mapping_context, persisted_station_links
 from app.services.parking_exports import parking_scope, parking_sources
 from app.services.export_addresses import export_admin_addresses
-from app.services.export_current import BATCH_SIZE, MAX_SNAPSHOT_BYTES, MAX_SNAPSHOT_ITEMS, SnapshotRace, cache_generation, _snapshot_transaction, expire_snapshots, snapshot_expires_at
+from app.services.export_current import BATCH_SIZE, MAX_SNAPSHOT_BYTES, MAX_SNAPSHOT_ITEMS, SNAPSHOT_TTL, SnapshotRace, cache_generation, _snapshot_transaction, expire_snapshots, snapshot_expires_at
 from app.services.export_price_history import _decode_cursor, _encode_cursor, _response
+from app.services.reference_export_revision import reference_payload_revision
 
 @dataclass(frozen=True)
 class ReferenceSpec:
@@ -220,8 +221,59 @@ async def _parking_payload_batches(session, heads):
             yield payloads
 
 
-async def _freeze_reference(session, heads, spec):
+async def _copy_reference_snapshot(session, previous, spec, heads, generation, now, started):
+    """입력 지문이 같은 이전 epoch의 불변 항목을 새 유효 cursor 집합에 연결한다."""
+    items = ServiceExportSnapshotItem.__table__
+    count, first, last = (await session.execute(select(
+        func.count(), func.min(items.c.ordinal), func.max(items.c.ordinal),
+    ).where(items.c.snapshot_id == previous.id))).one()
+    if (not 0 < previous.item_count <= MAX_SNAPSHOT_ITEMS or count != previous.item_count
+            or first != 1 or last != count or len(previous.content_digest) != 64):
+        raise HTTPException(503, "재사용 snapshot의 완결 수량·순서가 일치하지 않습니다.")
+    table = ServiceExportSnapshot.__table__
+    snapshot_id = str(uuid4())
+    admitted = await session.scalar(pg_insert(table).values(
+        id=snapshot_id, kind=spec.kind, scope_key=spec.scope, generation=generation,
+        source_collected_at=min(serialize_utc(h.confirmed_at) for h in heads),
+        created_at=now, expires_at=snapshot_expires_at(now), item_count=count,
+        content_digest=previous.content_digest,
+    ).on_conflict_do_nothing(index_elements=["kind", "scope_key", "generation"]).returning(table.c.id))
+    if admitted is None:
+        raise SnapshotRace()
+    if monotonic() - started > 15:
+        raise HTTPException(503, "snapshot 복사 준비 시간 상한을 초과했습니다.")
+    copied = await session.execute(insert(items).from_select(
+        ["snapshot_id", "ordinal", "payload"], select(literal(snapshot_id), items.c.ordinal, items.c.payload)
+        .where(items.c.snapshot_id == previous.id),
+    ))
+    if copied.rowcount != count:
+        raise HTTPException(503, "재사용 snapshot의 복사 수량이 일치하지 않습니다.")
+    if monotonic() - started > 15:
+        raise HTTPException(503, "snapshot 복사 시간 상한을 초과했습니다.")
+    # 이전 항목을 복사하기 전에 지우지 않는다. 기존 유효 cursor는 만료까지 보존한다.
+    await expire_snapshots(session)
+    return await session.get(ServiceExportSnapshot, snapshot_id)
+
+
+async def _freeze_reference(session, heads, spec, *, payload_revision=None):
     started = monotonic()
+    input_revision = await reference_payload_revision(session, heads, spec.kind, payload_revision)
+    now = now_utc()
+    generation = cache_generation(input_revision, now) if input_revision is not None else None
+    if generation is not None:
+        cached = await session.scalar(select(ServiceExportSnapshot).where(
+            ServiceExportSnapshot.kind == spec.kind, ServiceExportSnapshot.scope_key == spec.scope,
+            ServiceExportSnapshot.generation == generation,
+            ServiceExportSnapshot.expires_at > now,
+        ))
+        if cached is not None:
+            return cached
+        previous = await session.scalar(select(ServiceExportSnapshot).where(
+            ServiceExportSnapshot.kind == spec.kind, ServiceExportSnapshot.scope_key == spec.scope,
+            ServiceExportSnapshot.generation == cache_generation(input_revision, now - SNAPSHOT_TTL),
+        ))
+        if previous is not None:
+            return await _copy_reference_snapshot(session, previous, spec, heads, generation, now, started)
     size = count = 0
     digest = hashlib.sha256()
     # 기존 16MiB 상한 안의 canonical bytes만 보관한다. 신규 snapshot을 만들 때
@@ -242,7 +294,7 @@ async def _freeze_reference(session, heads, spec):
     namespace = json.dumps([[h.generation, serialize_utc(h.confirmed_at).isoformat()] for h in heads]) + content
     # 같은 시각으로 epoch generation과 만료를 정한다(epoch 경계에서 둘이 어긋나지 않게).
     now = now_utc()
-    generation = cache_generation(hashlib.sha256(namespace.encode()).hexdigest(), now)
+    generation = cache_generation(input_revision or hashlib.sha256(namespace.encode()).hexdigest(), now)
     cached = await session.scalar(select(ServiceExportSnapshot).where(
         ServiceExportSnapshot.kind == spec.kind, ServiceExportSnapshot.scope_key == spec.scope,
         ServiceExportSnapshot.generation == generation,
@@ -321,7 +373,7 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
             else:
                 if not _valid_heads(heads, spec):
                     raise HTTPException(503, "기준정보 source의 완결 성공 집합이 없습니다.")
-                snapshot = await _freeze_reference(session, heads, spec)
+                snapshot = await _freeze_reference(session, heads, spec, payload_revision=settings.release_sha)
             stale = (not _valid_heads(heads, spec) or any(h.last_error is not None for h in heads)
                      or now_utc() - serialize_utc(snapshot.source_collected_at) > spec.max_age)
             rows = list((await session.execute(select(ServiceExportSnapshotItem.ordinal, ServiceExportSnapshotItem.payload).where(

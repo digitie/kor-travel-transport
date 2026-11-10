@@ -1,3 +1,9 @@
+## 2026-11-10 — Transport 조회 성능 개선
+
+- [ ] **T-PERF-PR210-20261110** — 실제 Map 기준정보 반복 구성·철도 카탈로그 병목을 줄이고,
+  입력/상태/cursor 정합성 집중 WSL·Docker 검증, 새 API/수집기 이미지와 실제 HTTP·원 일정·Manager·부모 종료까지 수용한다.
+  [측정·현재 경계](reports/2026-11-10-transport-performance-pr210.md). SDK·웹·migration·신규 상태 TTL 없음.
+
 ## 2026-11-10 — PR177 최신 이미지 완료
 
 T-PR177-IMAGE-20261110은 새 API/수집기·원20복원·Manager/최종 부모 실제 종료를 확인해
