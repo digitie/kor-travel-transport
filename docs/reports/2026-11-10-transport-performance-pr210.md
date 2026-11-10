@@ -123,6 +123,10 @@ snapshot insert와 페이지 DTO/ETag 구성 비용이 남는다. 모든 최대 
 SHA `1be4af369bf44ca1e8433a3307086df66a1bca8dd83fe88d3337099118f69d9d`다.
 
 [제품 CI42727647602](https://github.com/digitie/kor-travel-transport/actions/runs/42727647602)는
-최종 관측에서 frontend/관리자 성공·migration/Alembic/OpenAPI 검사 성공, backend 전체 pytest는 진행 중이었다.
+backend1813통과·2생략·33경고·54 subtest 통과와 frontend/관리자·migration/Alembic/OpenAPI 성공으로 완료했다.
 live-e2e는 생략이며 실제 HTTP·집중 WSL/Docker 검증과 구분한다. 문서 정산 커밋은 제품 tree를
-변경하지 않고 추가 전체 CI를 요청하지 않는다. 기존 제품 CI는 중단하거나 재실행하지 않는다.
+변경하지 않고 추가 전체 CI를 요청하지 않았다. 기존 제품 CI를 중단하거나 재실행하지 않았다.
+
+이후 사용자 지시로 수행한 [최초 구성 상세 분석](2026-11-10-reference-cold-build-analysis.md)에서
+주소 처리·행별 JSONB 저장·전체 입력 해시 비용과 장기 유휴 뒤 재구성되는 수명 결합을 확인했다.
+상세 분석은 추가 제품 수정/재배포와 구분한다.
