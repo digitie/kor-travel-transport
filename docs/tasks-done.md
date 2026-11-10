@@ -1,3 +1,10 @@
+## 2026-11-10 — 불변 본문과 cursor 분리 실제 수용
+
+- [x] **T-REFERENCE-COLD-FIX-20261110** — artifact/FK handle·JSON 묶음·주소 투영·조회 밖 준비를 구현했다.
+  WSL lifecycle/migration·Docker PG18 41개·ARM64 교대 지문 동일을 확인하고 제품7a5d0c4/0042를 반영했다.
+  구 cursor·전체1466개·원20복원·다섯 역할/Manager healthy·공식 준비 SUCCESS·실제 부모/자식 종료를 수용했다.
+  원 실패와 미준비/조건부 비용·CI backend 진행 중을 구분한다. [근거](reports/2026-11-10-reference-artifact-improvement.md).
+
 ## 2026-11-10 — 최초 구성 원인 분석과 제품 CI 정산
 
 - [x] **T-REFERENCE-COLD-ANALYSIS-20261110** — 같은 ARM64/실제 데이터의 격리 구성9.651/9.908초와

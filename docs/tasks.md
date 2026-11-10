@@ -1,9 +1,8 @@
-## 2026-11-10 — 최초 본문 구성 상세 분석 후속
+## 2026-11-10 — 본문 개선 실제 수용 후 CI 정산
 
-- [ ] **T-REFERENCE-COLD-FIX-20261110** — 분석에서 확인한 본문/cursor 수명 결합과 요청 중 동기 전체 구성을
-  우선 줄인다. [상세 원인·측정·우선순위](reports/2026-11-10-reference-cold-build-analysis.md).
-  후속 사용자 승인으로 artifact/FK handle·묶음 JSON 저장·수집 뒤 준비 op를 구현하고 검증 중이다.
-  운영0041은 아직 유지하며 WSL/Docker·migration/구 cursor·GC 경합·ARM 비교 뒤 배포한다.
+- [ ] **T-REFERENCE-ARTIFACT-CI-20261110** — 제품7a5d0c4의 CI42753661307 backend 결과를 읽어 정산한다.
+  04:44UTC는 진행 중이며 frontend/관리자는 성공, live-e2e는 생략이다. 새 전수 시험·이미지·배포를 반복하지 않는다.
+  본문 개선의 구현/집중 검증/운영 수용 T-REFERENCE-COLD-FIX-20261110은 [완료 목록](tasks-done.md)으로 옮겼다.
 
 T-PERF-PR210-CI-20261110은 backend1813통과와 전체 CI 성공을 확인해 완료 목록에 정산했다.
 

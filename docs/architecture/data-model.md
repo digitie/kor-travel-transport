@@ -1,6 +1,6 @@
 # 데이터 모델
 
-## 기준정보 본문과 유한 handle (`0042_reference_export_artifacts`, 구현 검증 중)
+## 기준정보 본문과 유한 handle (`0042_reference_export_artifacts`, 운영 반영)
 
 `reference_export_artifacts`는 `(kind, scope_key, input_revision)` 고유키의 불변 본문 manifest다.
 원천 시각·canonical SHA·항목 수·byte 수를 보존하고 `reference_export_artifact_items`가 ordinal별 JSONB를 저장한다.
@@ -10,7 +10,8 @@
 현재 head 또는 하나라도 남은 handle이 참조한 artifact는 GC하지 않는다. 만료 handle 정리는 기존처럼 제한하며
 사용되지 않는 본문도 한 번에 하나만 정리한다. FK/key-share/skip-locked가 참조 생성과 삭제 경합을 보호한다.
 이 테이블은 원천이나 영구 통계가 아닌 재생성 가능한 파생 본문이다. 주차 원본/영구 통계 정책과 섞지 않는다.
-현재 단계는 migration·집중 검증 중이며 운영 DB는 아직0041이다. [결정](../adr/016-reference-export-artifact-lifetime.md).
+제품7a5d0c4/운영 DB0042에서 실제 수용했다. [결정](../adr/016-reference-export-artifact-lifetime.md)과
+[구 cursor·GC·ARM64·실제 HTTP 검산](../reports/2026-11-10-reference-artifact-improvement.md)을 따른다.
 
 ## KRIC 일반철도·KTX 역 보강
 

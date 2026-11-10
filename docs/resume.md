@@ -1,10 +1,10 @@
-## 2026-11-10 — 최초 본문 개선 구현·검증 중
+## 2026-11-10 — 본문 개선 새 이미지·0042 실제 수용
 
-최신 사용자가 개선 진행을 승인해 본문/handle 분리를 구현했다. migration0042는 불변 artifact/items/current-head와
-기존 handle의 nullable FK를 추가하며 예전 NULL handle을 보존한다. JSON 묶음 저장과 주소3필드 투영,
-기존 기준정보 수집 뒤 준비 op·예약 없는 내부 준비 job도 추가했다. 아직 운영은 제품d0c9010/0041 그대로다.
-다음은 진행 중인 전용 WSL/Docker PG18의 lifecycle·구 cursor·bulk·GC 경합·migration 집중 검증이다.
-새 운영 Root/이미지 빌드/추가 수집은 시작하지 않았다. [결정](adr/016-reference-export-artifact-lifetime.md).
+제품7a5d0c4의 API74e235b7·수집기89b77f19와0042를 반영했다. 원 수집 자연 종료·구 cursor466개 동일·
+원20복원·다섯 역할/Manager healthy·정식 준비job SUCCESS·HTTP200/304와 전체1466개 지문을 확인했다.
+운영 첫 수용 GET3.9575초/3044.0156초이며, 격리 유휴1.179/1.464초·준비 후1.382/1.200초와 구분한다.
+미준비7.556~8.903초·조건부 비용은 남는다. 원 배포 부모1은 보존하고 재교체 없는 completion firstad793607 실제0으로 정산했다.
+전체 CI backend는 최신 관측에서 진행 중이며 두 UI job은 성공이다. [실측·실패·정본 SHA](reports/2026-11-10-reference-artifact-improvement.md).
 
 ## 2026-11-10 — 최초 본문 구성 지연 상세 분석 완료
 
