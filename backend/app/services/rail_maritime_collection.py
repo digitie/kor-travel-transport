@@ -647,6 +647,9 @@ class RailMaritimeCollectionService:
                 )
             )
         else:
+            from app.services.rail_locations import preserve_rail_address_location
+
+            preserve_rail_address_location(row, values)
             for name, value in values.items():
                 setattr(row, name, value)
 

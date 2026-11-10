@@ -1,3 +1,7 @@
+## 2026-11-10 — #179 운영 후속
+
+- [ ] **T-RAIL-COORD-179** — 주소 보강 코드는 집중 검증 완료. 최소 API/CS 이미지·기존 수집 자연 종료·공식 rail_only job·DB/export/여수엑스포 실제 확인을 마친다. 미제공/불일치NULL은 구분한다. [원장](reports/2026-11-10-rail-address-coordinates-179.md).
+
 ## 2026-11-10 — 본문 개선 실제 수용 후 CI 정산
 
 - [ ] **T-REFERENCE-ARTIFACT-CI-20261110** — 제품7a5d0c4의 CI42753661307 backend 결과를 읽어 정산한다.

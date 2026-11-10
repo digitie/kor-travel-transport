@@ -17,7 +17,7 @@ from urllib.parse import quote, unquote
 from .address_refresh import address_refresh_job, address_refresh_sensor
 
 from dagster import (
-    DagsterExecutionInterruptedError, DefaultScheduleStatus, Definitions, Failure, multiprocess_executor, job, op,
+    DagsterExecutionInterruptedError, DefaultScheduleStatus, Definitions, Failure, Field, multiprocess_executor, job, op,
 )
 from sqlalchemy.engine import make_url
 from kortravelcommon.deadline import call_with_deadline
@@ -414,7 +414,7 @@ def _place_collection_error(result: dict[str, Any]) -> bool:
 def _place_metadata(result: dict[str, Any]) -> dict[str, Any]:
     return {key: result.get(key, default) for key, default in (
         ("run_id", ""), ("status", ""), ("provider_calls", 0), ("deferred", 0), ("provider_failed", 0),
-        ("incomplete", 0), ("unmatched", 0), ("bus_locations", 0), ("port_locations", 0))}
+        ("incomplete", 0), ("unmatched", 0), ("bus_locations", 0), ("port_locations", 0), ("rail_locations", 0))}
 
 
 def _finish_place_collection(context, result: dict[str, Any], provider: str) -> dict[str, Any]:
@@ -516,12 +516,16 @@ def collect_bus_reference(context) -> dict[str, Any]:
         return _collect_bus_reference()
 
 
-@op
+@op(config_schema={"rail_only": Field(bool, default_value=False, is_required=False)})
 @_redact_op_errors
 def collect_place_locations(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         settings = _settings()
-        result = asyncio.run(_run_with_session(settings, PlaceLocationCollectionService(settings).collect))
+        service = PlaceLocationCollectionService(settings)
+        async def rail_only(session):
+            return await service.collect(session, kinds={"rail"})
+        collector = rail_only if context.op_config.get("rail_only", False) else service.collect
+        result = asyncio.run(_run_with_session(settings, collector))
         return _finish_place_collection(context, result, "VWorld")
 
 

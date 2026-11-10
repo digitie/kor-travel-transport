@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from app.core.time_utils import now_utc, serialize_utc
 from app.models import CollectionRun, RailStationReference, ReferenceExportState
+from app.services.rail_locations import preserve_rail_address_location
 from app.services.rail_station_mapping import lock_rail_station_reference_catalog
 from app.services.reference_exports import mark_reference_failure, promote_reference
 
@@ -64,9 +65,13 @@ class GeneralRailReferenceCollectionService:
                 row.operating_line_name = ", ".join(item.route_labels) or None
                 row.station_type = ", ".join(item.station_kinds) or None
                 row.road_address = item.address
-                row.latitude, row.longitude = item.latitude, item.longitude
+                values = {"station_name": item.station_name, "road_address": item.address, "lot_address": None,
+                          "latitude": item.latitude, "longitude": item.longitude,
+                          "raw_item_json": {**asdict(item), "coordinate_source": "korail_public_link" if item.latitude is not None else None}}
+                preserve_rail_address_location(row, values)
+                row.latitude, row.longitude = values["latitude"], values["longitude"]
                 row.last_seen_at = collected_at
-                row.raw_item_json = {**asdict(item), "coordinate_source": "korail_public_link" if item.latitude is not None else None}
+                row.raw_item_json = values["raw_item_json"]
                 members.append(row)
             await session.flush()
             await promote_reference(session, kind="rail-station", scope=KRIC_GENERAL_SCOPE, run_id=run_id,

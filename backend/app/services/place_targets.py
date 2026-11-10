@@ -2,7 +2,7 @@
 
 from sqlalchemy import func, select
 
-from app.models import BusTerminalReference, FerryPort
+from app.models import BusTerminalReference, FerryPort, RailStationReference
 
 
 def _missing(model, name):
@@ -27,7 +27,7 @@ async def _ids(session, model, name):
         cursor = ids[-1]
 
 
-async def iter_missing_place_targets(session):
+async def iter_missing_place_targets(session, *, include_rail=False, kinds=None):
     streams = [
         (
             _ids(session, BusTerminalReference, BusTerminalReference.terminal_name),
@@ -36,6 +36,10 @@ async def iter_missing_place_targets(session):
         ),
         (_ids(session, FerryPort, FerryPort.port_name), "port", FerryPort),
     ]
+    if include_rail:
+        streams.append((_ids(session, RailStationReference, RailStationReference.station_name), "rail", RailStationReference))
+    if kinds is not None:
+        streams = [stream for stream in streams if stream[1] in kinds]
     while streams:
         remaining = []
         for stream, kind, model in streams:
