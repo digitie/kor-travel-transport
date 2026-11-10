@@ -1,3 +1,7 @@
+## 2026-11-10 — #179 이미지·주소 보강 실제 수용
+
+- [x] **T-RAIL-COORD-179** — WSL/Docker PG18 각각101개 검증 뒤4998226 API/수집기를 반영했다. 원20복원·다섯 역할/Manager 정상·최초 부모 실제0와 자식 종료를 확인했다. 첫 공식job FAILURE/3개와 후속 SUCCESS/117개를 구분하고157개 주소는 각각1회만 조회했다. DB/Map 소비 연결1466개·빈 좌표173→53·여수엑스포·304를 확인했다. 남은 원천53개는 별도 task이며 CPU 제한/동시성·웹/SDK/schema 변경0이다. [근거](reports/2026-11-10-rail-address-coordinates-179.md).
+
 ## 2026-11-10 — 불변 본문과 cursor 분리 실제 수용
 
 - [x] **T-REFERENCE-COLD-FIX-20261110** — artifact/FK handle·JSON 묶음·주소 투영·조회 밖 준비를 구현했다.

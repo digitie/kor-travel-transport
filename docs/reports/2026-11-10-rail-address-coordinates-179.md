@@ -2,11 +2,13 @@
 
 ## 상태
 
-주소 기반 좌표 보강 코드를 구현했고 WSL/Docker PG18 집중 검증은 각각101개가 통과했다. 겹치는 SQLite47개·Dagster53개·API1개는 합산하지 않는다. 현재 운영 API/수집기는 아직7a5d0c4이며 새 이미지·공식 철도 전용 job·Map export 실제 수용은 다음 단계다.
+제품4998226의 API·수집기를 실제 반영했고 다섯 역할과 Manager가 정상이다. 원래 Transport 일정20개·환경·키·기존 웹·다른 서비스·schema0042를 보존했다. WSL/Docker PG18 집중 검증은 각각101개가 통과했으며 겹치는 SQLite47개·Dagster53개·API1개는 합산하지 않는다.
+
+공식 철도 전용 후속 job의 SUCCESS/success와 실제 DB·Map 소비 연결의 export를 확인했다. 일반철도116건·도시철도4건, 총120건을 보강해 전체1466건의 export 빈 좌표는173→53건이다. #179를 전체 해결이나 모든 좌표 제공으로 표시하지 않는다.
 
 ## 원인과 입력
 
-[#179](https://github.com/digitie/kor-travel-transport/issues/179)의 최초1466개 중NULL173개(일반160/도시13)는 당시 관측이다. 이번 read-only 현재 DB는NULL171개(일반160/도시11)다. 기존 수집기는 지오코딩을 실행하지 않고 KRIC의 코레일 공식 stationSeq 링크와 정확한 역명 연결 좌표만 썼다. 현재 코레일 공개 좌표281개와 과거 KRIC 링크·공개 안내의 식별자/표기가 일치하지 않는 경우가 있다. 여수엑스포는 공식 안내의 `stationCode`도NULL이며 별도 역명·코드 매핑을 추정하지 않았다.
+[#179](https://github.com/digitie/kor-travel-transport/issues/179)의 최초1466개 중NULL173개(일반160/도시13)는 export 관측이다. 이번 DB에는 양쪽 NULL171개(일반160/도시11), 경도만 NULL인 까치산1개, 국내 범위를 벗어난 한대앞1개가 있었다. export는 이 세 유형을 모두 빈 좌표로 내보내173개다. 기존 수집기는 지오코딩을 실행하지 않고 KRIC의 코레일 공식 stationSeq 링크와 정확한 역명 연결 좌표만 썼다. 현재 코레일 공개 좌표281개와 과거 KRIC 링크·공개 안내의 식별자/표기가 일치하지 않는 경우가 있다. 여수엑스포는 공식 안내의 `stationCode`도NULL이며 별도 역명·코드 매핑을 추정하지 않았다.
 
 기존 VWorld SDK의 주소 조회로 원천 `전남광주 여수시 망양로 2`가 정확한 도로/건물번호로 정제되고127.74889094082855/34.753114229613544를 제공하는 것을 별도 진단 조회로 확인했다. 이는 운영 적재가 아니다. 장소 검색은 같은 이름의 승강장·버스정류장·주차장 등16개를 반환하므로 그중 하나를 이름만 보고 채택하지 않는다.
 
@@ -35,6 +37,27 @@
 
 Docker CPU는 코어 하나를100%로 표현하며 호스트는4코어다. 최초71.04%는 전체4코어의 약17.8%에 해당한다. 두 표본의 부하·job 상태는 다르므로 개선율로 비교하지 않는다. 처음에는 고속도로/KRIC, 후속에는 공항/KRIC이 STARTED였다. 후속의57.61% 자식은 생성37.5초인 spawn worker이며 서버 본체는5.55%였다. 이 표본에서 수집 자식의 비중이 가장 컸지만, Python 함수별 hot stack이나 유휴 p95를 측정한 것은 아니다.
 
-Transport runtime/CID·CPU quota·동시 실행 한도·공용 daemon은 변경하지 않았다. CPU 숫자만을 이유로 실행 수집을 취소하거나 동시성을 늘리지 않았다. 반복 비용 추가 검산은 step 프로세스 시작/모듈 import와 실제 수집 처리 시간을 분리하는 것이 다음 후보이며, 이번 관측을 CPU 최적화 완료로 쓰지 않는다.
+두 표본은 새 좌표 이미지 반영 전 관측이다. CPU quota·동시 실행 한도·공용 daemon은 변경하지 않았다. CPU 숫자만을 이유로 실행 수집을 취소하거나 동시성을 늘리지 않았다. 반복 비용 추가 검산은 step 프로세스 시작/모듈 import와 실제 수집 처리 시간을 분리하는 것이 다음 후보이며, 이번 관측을 CPU 최적화 완료로 쓰지 않는다.
 
-정본 `transport-rail179-20261110/plan.json`, `pg-qa-results.json`, `cpu-summary.json`을 사용한다. Weather main3bcda7e1 배포/캐시 완료는 [별도 기록](https://github.com/digitie/kor-travel-weather/pull/221)이다. 역 보강의 운영 저장 수량·남은NULL과 공식 job은 실제 결과 후 정산한다.
+## 실제 배포·수집·소비 수용
+
+- API 이미지1688e6ad·수집기64ec62a2, source4998226으로 교체했다. SDK18864a3·실제 포트12302/12306·원 환경/키·schema0042는 보존했고 migration·웹 재빌드·SDK 설치·백업/복원은 실행하지 않았다.
+- 기존 KRIC f36ea052/앱9200은 자연 종료해 앱 success·저장272개였다. 배포가 원20일정을 복원한 뒤 Manager adopt/verify/show가 정상이며, 최초 Invocation1be6ea1d의 실제0/done·Main0·cgroup부재와 소유 자식326개 종료를 확인했다. 빌드 최초3d56c96d도 실제0/done·소유 자식11개 종료다.
+- 첫 철도 전용2e90c54f/앱9203은5개 정상 응답에서3건을 저장한 뒤 VworldServerError1개로 FAILURE/partial_success였다. HTTP 상세 원문은 없어 원인을 특정 HTTP 상태로 단정하지 않는다. 원 실패와 receipt51597은 보존했고 같은 주소를 다시 호출하지 않았다.
+- active 중복 부재·최초 실패 종료를 확인한 별도 후속16b26d6e/앱9209는 나머지151개 주소를 처리해117건을 추가 저장했다. 기존 native tag·우선순위·호출 예산을 유지했고 SUCCESS/success와 export 준비 완료까지 확인했다. 두 제출 부모의 최초674237ca/50a79dd8은 각각 실제0/done·소유 자식1개 종료이며, 제출 성공과 job 성공을 구분했다.
+- 두 job을 합친157개 endpoint는 각각1회뿐이다. 실패 주소의24시간 보호·기존 정상 조회 재사용을 유지했으며 버스/항구 endpoint 호출은0이다. 남은14개는 상세 주소가 없어 외부 호출을 하지 않았다.
+- 기존 좌표·원천 head/membership·역명/identity·first_seen_at/last_seen_at은 동일하다. DB 국내 유효 좌표와 새 export의1466개 항목이 모두 일치했고 여수엑스포127.74889094082855/34.753114229613544가 제공된다. 공식 station_code/station_number의NULL은 그대로다.
+- 실제 n150 Map 수집 서버의 기존 연결로1000+466개를 HTTP200/source_status=ok로 읽었다. 고유 identity1466개·전체 항목 SHA가 생산자와 같고, 첫 페이지 조건부304도 확인했다. Map 자체 DB 적재·스케줄은 변경하지 않았다.
+- 제품4998226의 CI42819606265·42819855014는 모두 backend/frontend/관리자 SUCCESS다. live-e2e 생략과 기존/이번 실제 API 관측을 구분한다. 이번 변경은 백엔드/데이터이며 웹 이미지는 바꾸지 않았다.
+
+## 남은53건
+
+| 구분 | 건수 | 처리 |
+| --- | --- | --- |
+| 구체적인 도로/필지 주소 없음 | 14 | 원천 보완 전 좌표 추정 안 함 |
+| 주소 응답 미제공 또는 엄격 일치 기준 미충족 | 36 | 임의 역명/인근 시설 좌표로 대체 안 함 |
+| 제공자/응답 예외 | 1 | 원 실패·24시간 재조회 보호 유지 |
+| 까치산 경도만 NULL | 1 | 기존 부분 좌표 보존, 별도 원천 보완 필요 |
+| 한대앞 국내 범위 밖 원천 좌표 | 1 | 기존 저장값 보존, export는NULL 유지 |
+
+정본 `transport-rail179-20261110/final-acceptance.json` SHA `6a5d2fcf4993e3fcd8c97fe4fb4940325988132ea6409359b196e75cbd6c670c`와 `remaining-source-gaps.json`을 사용한다. 최종 다섯 역할 healthy·Manager healthy·소유 운영 unit0·읽기 observer 종료도 검산했다. Weather main3bcda7e1 배포/캐시 완료는 [별도 기록](https://github.com/digitie/kor-travel-weather/pull/221)이며, API64MiB/8192개·Dagster4MiB/1024개와 실제 하위9개 프로세스 상속을 확인했다.
