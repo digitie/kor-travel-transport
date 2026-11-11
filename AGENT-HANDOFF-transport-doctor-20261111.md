@@ -1,3 +1,11 @@
+## 2026-11-12 — 최종 C11 실행 gate와 E2E readiness 보강
+
+새 native4/18·Alpine4/18 PASS, 실제153/263파일 MATCH, 소유 프로세스0·슬롯1 반환.
+원17/1은 보존하고 toBeAttached 추가 후 전체18을 두 경로에서 통과했다. 제품 runtime delta0이다.
+기준 ef7 CI/원A/B PASS와 후속 test/docs CI·리뷰 delta를 구분한다.
+최신 원장: [C11 최종 실행 검증](docs/reports/2026-11-12-transport-c11-validation.md).
+공식 own bundle은 same-source/locks/schema 조건으로 승인 범위이며 G/current receipt/pin을 보존한다. 운영 변경0이다.
+
 ## 2026-11-12 — Harvey 인수: C11 소비자 최종 gate 진행
 
 부모 인계 b327e2a의 변경을 보존했다. 최신 상태는 [C11 검증 원장](docs/reports/2026-11-12-transport-c11-validation.md)에 기록한다. 아래 c9 내용은 당시 증거이며 새 엔진 브라우저 PASS를 뜻하지 않는다.

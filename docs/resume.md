@@ -1,3 +1,17 @@
+## 2026-11-12 — Transport C11·Scope2 새 native/Alpine gate 수용
+
+- Fresh native public4/admin18, 별도 Alpine public4/admin18 모두 PASS·skip/flaky0.
+  실제 이미지153/263파일 exact, 소유 서버/컨테이너 종료·active0을 확인해 N150 슬롯1을 반환했다.
+- 원 admin17/1은 dynamic TransportMap 마운트 전 isVisible=false로 모바일 필터 열기를 생략한 E2E race다.
+  기존 분기 앞에 toBeAttached assertion1개를 보강한 뒤 전체18을 두 경로에서 통과했다.
+  제품 runtime·기존 assertion·timeout·retry는 그대로이며 첫 실패/trace를 보존했다.
+- 기준 ef7 원A/B source/package PASS·신규0, 일반/중앙 CI SUCCESS.
+  실제 backend CI1548PASS/2SKIP는 기존 WSL1511/39·Docker1508/42와 구분한다.
+- 추가 test/docs 커밋 CI·리뷰 delta·부모 PR181 merge 뒤 기존 공식 배포로 새 이미지를 반영한다.
+  필요한 own backend/code/gateway 재시작은 source/locks/same-schema 조건 아래 승인 범위다.
+  G/current receipt/pin·secret을 보존하며 DB/RustFS/global daemon lifecycle·새 migration은 제외한다.
+- [최종 실행 검증](reports/2026-11-12-transport-c11-validation.md). 현재 운영 변경0.
+
 ## 2026-11-12 — Transport C11 인수·설치 동일성 확인
 
 - 부모의 C11 manifests/lock/UI/tokens/Scope2 변경을 인수했다. public153/admin263 파일이 원본 tgz와

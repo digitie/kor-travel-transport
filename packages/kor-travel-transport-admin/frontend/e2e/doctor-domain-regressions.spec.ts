@@ -21,6 +21,8 @@ for (const width of [375, 1440]) {
     });
     await page.goto("/bus/express");
     const filters = page.locator('[data-slot="map-filter-trigger"]');
+    // TransportMap의 비동기 로드가 끝난 뒤 모바일 필터 표시 여부를 판정한다.
+    await expect(filters).toBeAttached();
     if (await filters.isVisible()) await filters.click();
     await page.getByRole("button", { name: "출발·도착 검색", exact: true }).click();
     await page.getByLabel("출발 터미널", { exact: true }).fill("서울");

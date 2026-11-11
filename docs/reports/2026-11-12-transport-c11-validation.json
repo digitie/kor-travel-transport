@@ -63,7 +63,119 @@
       }
     }
   },
-  "freshBrowserAndBuild": "PENDING_N150_SLOT",
+  "freshBrowserAndBuild": "PASS",
   "backendFullRerun": "NOT_RUN: source unchanged; previous WSL1511/39skip and Docker1508/42skip retained",
-  "foundationMerge": "e8ed3ae75000be5cd22a3a11492bd97660635d78"
+  "foundationMerge": "e8ed3ae75000be5cd22a3a11492bd97660635d78",
+  "validatedRuntimeSource": "ef7bd62dd81cb01b3c41b8bb10106c4586bb3bcf",
+  "freshBrowserStats": {
+    "native-public": {
+      "startTime": "2026-11-11T19:42:36.800Z",
+      "duration": 38491.587999999996,
+      "expected": 4,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "native-admin": {
+      "startTime": "2026-11-11T19:49:55.415Z",
+      "duration": 23889.716,
+      "expected": 18,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "alpine-public": {
+      "startTime": "2026-11-11T20:03:25.495Z",
+      "duration": 11917.078,
+      "expected": 4,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "alpine-admin": {
+      "startTime": "2026-11-11T20:17:48.792Z",
+      "duration": 22645.879,
+      "expected": 18,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    }
+  },
+  "readinessRegression": {
+    "originalNative": {
+      "passed": 17,
+      "failed": 1,
+      "timeoutMs": 45000
+    },
+    "cause": "ssr:false TransportMap not mounted when immediate isVisible returned false; mobile opening skipped",
+    "traceIsVisibleMs": 11143.623,
+    "traceReturned": false,
+    "laterFilterSnapshotMs": 11332.706,
+    "fix": "additional expect(filters).toBeAttached() before existing isVisible branch",
+    "existingAssertionsTimeoutsRetriesUnchanged": true,
+    "productRuntimeChanged": false
+  },
+  "images": {
+    "public": {
+      "tag": "transport-c11-public-harvey:ef7bd62",
+      "id": "sha256:36580999af5c12cf33e3c7baa6a17e7f0e33fe58946193dc53b952494975c02c"
+    },
+    "admin": {
+      "tag": "transport-c11-admin-harvey:ef7bd62",
+      "id": "sha256:d35cd70a0dc79e839f38422b5d9bd7a3466618b348c07db270da5174a4ed4c5d"
+    }
+  },
+  "cleanup": {
+    "activeOwnedProcesses": [],
+    "containers": [
+      {
+        "id": "fff07eac73a687dbbcd1c7467862928e8cdf246cdb51e963d29c27f43e4fdaa4",
+        "status": "exited",
+        "running": false,
+        "image": "sha256:36580999af5c12cf33e3c7baa6a17e7f0e33fe58946193dc53b952494975c02c",
+        "exitCode": 143
+      },
+      {
+        "id": "3e5e38d94d6a3b106e9525a30d808bc96960c28fe336f5e46c32daa6ebb6ce80",
+        "status": "exited",
+        "running": false,
+        "image": "sha256:d35cd70a0dc79e839f38422b5d9bd7a3466618b348c07db270da5174a4ed4c5d",
+        "exitCode": 143
+      }
+    ],
+    "slot1": "RELEASED"
+  },
+  "sourceBaselineCI": {
+    "head": "ef7bd62dd81cb01b3c41b8bb10106c4586bb3bcf",
+    "generalRun": 43084745064,
+    "centralRun": 43084745441,
+    "backendJob": 130746083326,
+    "backendFinalSummary": "2026-11-11T19:59:15.0359817Z 1548 passed, 2 skipped, 6 warnings in 2875.08s (0:47:55)",
+    "frontend": "SUCCESS 164",
+    "admin": "SUCCESS 356",
+    "centralBoth": "SUCCESS",
+    "liveE2E": "SKIPPED, excluded"
+  },
+  "supplementCommitCi": "NOT_OBSERVED_AT_DOCUMENT_WRITE",
+  "independentSourceReviews": {
+    "review-A-consumers-c11-batch-1.md": {
+      "sha256": "a8b93cef62bffe0d8fe6c66a428a9aa55451e7f1c8e3c72ae9ab9e1a5a03f553",
+      "head": "ef7bd62dd81cb01b3c41b8bb10106c4586bb3bcf",
+      "verdict": "SOURCE_PACKAGE_PASS_NEW0"
+    },
+    "review-B-consumers-c11-batch-1.md": {
+      "sha256": "ce4ff6265a106d8634b4a13de3b6afc99f67f51702e517061a940b773032218a",
+      "head": "ef7bd62dd81cb01b3c41b8bb10106c4586bb3bcf",
+      "verdict": "SOURCE_PACKAGE_PASS_NEW0"
+    }
+  },
+  "finalRawEvidence": {
+    "transport-c11-n150-final/final-acceptance-confirmation.json": "700ce88ce9af48f68b1e88ef318f8393af6b01c18d57970853822868f7c897fc",
+    "transport-c11-n150-final/readiness-fix-results.json": "5b0ab83fa8f4611597aa05add9a719df0af95c770b7d914c757430d5d3b4d133",
+    "transport-c11-n150-final/race-fix-runtime-equivalence.json": "3d4a7bcb9c22f049aa38b615bd564e8511e2155b6e5aec618eb5b17732c86e3a",
+    "transport-c11-n150-checkpoint/before-readiness-fix/admin-native-browser.json": "9d2e6af97dc3e6f86bc77b634aa3fb92fe852efd5163b3f5f2a73714fd718ef7",
+    "transport-c11-n150-final/logs-readiness-fix/admin-native-browser.json": "31ab429565fd46c7a2ead09380074a177ded12eff94a14bb1be540c0179ce060",
+    "transport-c11-n150-final/logs-readiness-fix/public-alpine-browser.json": "02e18054f422e48e0132adbb59aada77195cf3780f9f2f6de48cc210a508b1da",
+    "transport-c11-n150-final/logs-readiness-fix/admin-alpine-browser.json": "670991de6fe713007248659a6789dc4f0c079037654a55e448aa6deb65a6428f"
+  }
 }
