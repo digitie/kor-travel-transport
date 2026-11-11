@@ -51,10 +51,10 @@ function ParkingWorkspace({ initialView }: { initialView: View }) {
     {error && (view === "analytics" || view === "history") ? <p role="alert" className="error">{error}</p> : null}
     <Tabs value={view} onValueChange={(next) => { const value = next as View; setView(value); setVisited((current) => new Set([...current, value])); }} className="parking-views">
       <TabsList variant="line" aria-label="주차장 보기"><TabsTrigger value="current">현황</TabsTrigger><TabsTrigger value="analytics">분석</TabsTrigger><TabsTrigger value="history">과거조회</TabsTrigger><TabsTrigger value="fees">요금계산</TabsTrigger></TabsList>
-      <TabsContent keepMounted value="current">{visited.has("current") ? <CurrentStatusView /> : null}</TabsContent>
-      <TabsContent keepMounted value="analytics">{visited.has("analytics") ? airports.length ? <AnalyticsView active={view === "analytics"} /> : unavailable : null}</TabsContent>
-      <TabsContent keepMounted value="history">{visited.has("history") ? airports.length ? <HistoryView active={view === "history"} /> : unavailable : null}</TabsContent>
-      <TabsContent keepMounted value="fees">{visited.has("fees") ? <FeesView scopeControls={false} help={<InfoButton label="주차요금 기준">김포·김해·제주는 금~일요일과 법정공휴일 요금을 적용합니다. 공항·주차장·차량별 저장 규칙으로 계산하며, 자료가 불완전하면 계산 불가 사유를 표시합니다. 할인은 반영하지 않습니다.</InfoButton>} /> : null}</TabsContent>
+      <TabsContent forceMount value="current" className="data-[state=inactive]:hidden">{visited.has("current") ? <CurrentStatusView /> : null}</TabsContent>
+      <TabsContent forceMount value="analytics" className="data-[state=inactive]:hidden">{visited.has("analytics") ? airports.length ? <AnalyticsView active={view === "analytics"} /> : unavailable : null}</TabsContent>
+      <TabsContent forceMount value="history" className="data-[state=inactive]:hidden">{visited.has("history") ? airports.length ? <HistoryView active={view === "history"} /> : unavailable : null}</TabsContent>
+      <TabsContent forceMount value="fees" className="data-[state=inactive]:hidden">{visited.has("fees") ? <FeesView scopeControls={false} help={<InfoButton label="주차요금 기준">김포·김해·제주는 금~일요일과 법정공휴일 요금을 적용합니다. 공항·주차장·차량별 저장 규칙으로 계산하며, 자료가 불완전하면 계산 불가 사유를 표시합니다. 할인은 반영하지 않습니다.</InfoButton>} /> : null}</TabsContent>
     </Tabs>
   </section>;
 }

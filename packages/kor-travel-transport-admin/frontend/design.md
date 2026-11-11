@@ -58,7 +58,7 @@ overflow로 숨기지 않고 패널 자체의 가로 넘침을 1440/375px에서 
 ## 다른 프로젝트로 옮길 때의 토큰
 
 CSS 정본은 `app/tokens.css`이며 Weather 색상을 기존 transport 역할에 연결한다.
-Transport admin은 Tailwind v4 + shadcn/ui(Base UI, base-nova)를 사용한다.
+Transport admin은 Tailwind 4.3.5 + 공통 `@kor-travel/ui`의 shadcn/ui(Radix, radix-nova)를 사용한다.
 Weather의 파란 강조색과 레이아웃을 적용하며 버튼·입력·선택·탭·상태·표·카드는
 `components/ui/`의 공식 컴포넌트로 구성한다. `components.json`이 설치 설정의 정본이다.
 `app/globals.css`에서 의미 색상을 기존 토큰에 연결하며, 기존 스타일은 `legacy` 레이어에

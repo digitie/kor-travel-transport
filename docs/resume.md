@@ -1,3 +1,14 @@
+## 2026-11-11 — 공통 UI 통합 소비자 후보
+
+- 현재: 지정 clone·`agent/codex-common-unification-20261111` 유지. 공개/공유/관리자 UI를 부모 common 후보4로 이관했다.
+  모든 자체 표는 VirtualTable, 기본 부품은 공통 Radix export를 사용하고 RHF/Zod/Zustand/Pretendard를 실제 적용했다.
+  ESLint10 exact 지원 조합과 guard·Doctor 전체 warning gate를 CI에 연결했다.
+- 현재 blocker: common Tabs 방향/활성 속성 불일치와 MapTabPanel 비활성 forceMount 표시 회귀,
+  Doctor 공개6/관리자48 잔여 경고. 후보3 Chromium 로그인/필터6개는 통과했다.
+- 다음 한 작업: 부모 공통 수정 후보·최종 hash를 동기화하고 전체 앱 gate를 재검증한다. 두 독립 리뷰·CI·PRmerge와
+  부모go 전 운영 배포는 하지 않는다. DB/RustFS lifecycle은 변경하지 않는다.
+- [검증 원장·구체 배포 계획](reports/2026-11-11-common-ui-validation.md), [Doctor 진단](reports/2026-11-11-react-doctor-findings.md).
+
 ## 2026-10-28 — 전체 UI 보완 후 새 릴리스 준비
 
 - 사용자 결정: 이전 후보의 유가 UI 미완을 유예하지 않고 전체 UI를 보완한 새 릴리스로 진행한다.

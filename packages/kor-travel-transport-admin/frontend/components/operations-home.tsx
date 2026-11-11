@@ -1,5 +1,7 @@
 "use client";
 
+import { VirtualTable } from "@kor-travel/ui/virtual-table";
+
 // SPDX-License-Identifier: GPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 Youn-sok Choi (digitie)
 // Derived-From: kor-travel-map@974e2d025 home-client.tsx 운영 요약·실행·상태 배치
@@ -75,9 +77,10 @@ export function OperationsHome() {
       <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="min-w-0 space-y-6">
           <SectionCard title="최근 실행" description="이 Transport 코드 위치의 최근 실행입니다." actions={<Link href="/admin/dagster" className="inline-link">전체 실행</Link>}>
-            <div className="overflow-x-auto"><table className="operations-table"><thead><tr><th>작업</th><th>상태</th><th>시작 시각</th><th>실행</th></tr></thead><tbody>
-              {recentRuns.slice(0, 8).map((run) => <tr key={run.runId}><td><a className="inline-link" href={dagsterJobRunsUrl(run.jobName)} target="_blank" rel="noreferrer">{JOB_LABELS[run.jobName] ?? run.jobName}</a></td><td><span className={`operation-state ${run.status === "FAILURE" ? "failed" : run.status === "SUCCESS" ? "success" : ""}`}>{statusLabel(run.status)}</span></td><td>{dateTime(run.startTime ? new Date(run.startTime * 1000).toISOString() : null)}</td><td><a className="inline-link" href={dagsterRunUrl(run.runId)} target="_blank" rel="noreferrer">상세<ExternalLink aria-hidden="true" size={12} /></a></td></tr>)}
-            </tbody></table></div>
+            <div className="overflow-x-auto"><VirtualTable ariaLabel="조회 결과" containerClassName="operations-table" data={recentRuns.slice(0, 8)} getRowId={(run) => String(run.runId)} virtualized={false} columns={[{ id: 'column0', header: '작업', cell: ({ row: { original: run } }) => <><a className="inline-link" href={dagsterJobRunsUrl(run.jobName)} target="_blank" rel="noreferrer">{JOB_LABELS[run.jobName] ?? run.jobName}</a></> },
+{ id: 'column1', header: '상태', cell: ({ row: { original: run } }) => <><span className={`operation-state ${run.status === "FAILURE" ? "failed" : run.status === "SUCCESS" ? "success" : ""}`}>{statusLabel(run.status)}</span></> },
+{ id: 'column2', header: '시작 시각', cell: ({ row: { original: run } }) => <>{dateTime(run.startTime ? new Date(run.startTime * 1000).toISOString() : null)}</> },
+{ id: 'column3', header: '실행', cell: ({ row: { original: run } }) => <><a className="inline-link" href={dagsterRunUrl(run.runId)} target="_blank" rel="noreferrer">상세<ExternalLink aria-hidden="true" size={12} /></a></> }]} /></div>
             {!dagster ? <p className="quiet">{loading ? "최근 실행을 확인하는 중입니다…" : "최근 실행을 확인하지 못했습니다."}</p> : !recentRuns.length ? <p className="empty-state">최근 실행 기록이 없습니다.</p> : null}
             {dagster?.warning ? <p role="status">{dagster.warning}</p> : null}
           </SectionCard>

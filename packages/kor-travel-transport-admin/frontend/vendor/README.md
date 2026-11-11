@@ -1,3 +1,13 @@
+# 현재 통합 후보 — 2026-11-11
+
+현재 사용 산출물은 UI 0.2.0, tokens 0.1.1, 지도 web 1.0.3/core 1.0.0이다.
+부모 통합 루트의 단일 pack 파일을 복사하며 이 디렉터리에서 다시 pack하지 않는다.
+정확한 SHA512 integrity와 버전은 [`../common-artifacts.json`](../common-artifacts.json)에 있다.
+원장은 `CANDIDATE_NOT_RELEASED` 상태이며 정식 배포 완료를 뜻하지 않는다.
+공개 앱도 같은 UI/tokens bytes를 `frontend/vendor`에서 사용한다.
+
+이하 이전 산출물 기록은 이력이며 현재 dependency 선택이 아니다.
+
 # 고정 패키지 정보
 
 ## Firefox 타일 protocol 수정 (2026-10-24)

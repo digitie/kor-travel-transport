@@ -116,7 +116,6 @@ export function HistoryView({ active = true }: { active?: boolean }) {
     };
     // range is read directly (not spread into primitives) - a new Date selection always
     // produces a new object, so this effect re-runs exactly when the user picks a new range.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, selectedAirportCode, selectedParkingLotId, dataVersion, range, active, dashboardLoading, scopeKey]);
 
   const summary = visibleSeries ? summarizeTimeSeriesAvailability(visibleSeries.items) : null;

@@ -64,7 +64,6 @@ export function TransportReferenceList({ kind, children }: { kind: "rail_station
   useEffect(() => {
     if (rail || !selectedKey) {
       // 취소된 요청의 finally는 실행 상태를 바꾸지 않으므로 빈 선택을 여기서 초기화한다.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(false); setStored(null);
       return;
     }

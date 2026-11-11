@@ -1,3 +1,21 @@
+## 2026-11-11 — 공통 Radix·VirtualTable 통합 소비자 후보
+
+기존 clone/branch와 미커밋 transport 초안을 보존해 공개·공유 parking-ui·관리자를 이관했다.
+부모 후보4 UI0.2.0/tokens0.1.1과 web1.0.3/core1.0.0 동일 tgz·원장을 소비한다.
+버전 exact·nested override, 공통 프리미티브/표, 폼·상태·폰트 실사용, ESLint10 지원 plugin 구성과
+소스/산출물 guard·Doctor CI를 연결했다. 기존 API/인증/수집/DB/RustFS 정책은 변경하지 않았다.
+
+검증 중 발견한 공통 Tabs 방향/선택 및 비활성 forceMount 회귀를 부모에게 보고했다. 앱별 monkeypatch는 없다.
+첫 후보 WSL 공개164/관리자350 단위와 두 타입/lint/build/guard, Docker 두 build는 통과했다.
+Chromium 로그인·폰트·지도 다중 필터6개도 통과했다. 후보4도 두 WSL/Docker unit·타입/lint/build/guard를 통과했다. 실제 Chromium은10통과/공통 회귀2실패다.
+전체 backend WSL은 아직 실행 중이며 성공으로 보고하지 않는다. 후보별 검증은 아래 원장에서 구분한다.
+Doctor는 오류0이지만 전체 warning 차단에서 공개6/관리자48 경고가 남아 실패한다. 무시 baseline으로 숨기지 않았다.
+
+현재 통합 후보이며 완료 릴리스가 아니다. 독립2리뷰·원격CI·PRmerge·이미지 배포는 미실행이다.
+최종 부모go 이후에만 승인된 정본/이미지 ID로 순차 배포한다.
+[검증·구체 배포 계획](reports/2026-11-11-common-ui-validation.md),
+[Doctor 잔여 진단](reports/2026-11-11-react-doctor-findings.md).
+
 ## 2026-10-29 — 유가 차트 단절 기준 안내 정합성
 
 정식 James 리뷰는 약48시간 차이의 관측도 한국 날짜가 연속이면 선이 연결되는 P2를 재현했다.

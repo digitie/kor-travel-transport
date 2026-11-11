@@ -48,9 +48,9 @@ test("외부 장소 지도는 자체 API를 호출하지 않고 이동을 카메
     expect(camera().getAttribute("data-zoom")).toBe("7");
     expect(readout()).toBe("center 129.1000, 35.2000 · z 14.0");
     await act(async () => container.querySelector<HTMLButtonElement>('[role="tab"][id]')?.focus());
-    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((node) => node.textContent?.includes("목록"))!.click());
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((node) => node.textContent?.includes("목록"))!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
     expect(container.querySelector('[data-testid="fixture-map"]')).toBeNull();
-    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((node) => node.textContent?.includes("지도"))!.click());
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((node) => node.textContent?.includes("지도"))!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
     expect(camera().getAttribute("data-center")).toBe("129.1,35.2");
     expect(camera().getAttribute("data-zoom")).toBe("14");
     expect(fetch).not.toHaveBeenCalled();
@@ -145,7 +145,7 @@ test("숨긴 목록에는 선택 상세를 중복 마운트하지 않는다", as
   try {
     await act(async () => root.render(<TransportMap places={[station]} selectedPlace={station} details={<Inspector />} />));
     expect(mounted).toHaveBeenCalledTimes(1); expect(container.querySelectorAll('[data-testid="inspector-probe"]')).toHaveLength(1);
-    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((node) => node.textContent?.includes("목록"))!.click());
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((node) => node.textContent?.includes("목록"))!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
     expect(mounted).toHaveBeenCalledTimes(2); expect(unmounted).toHaveBeenCalledTimes(1);
     expect(container.querySelectorAll('[data-testid="inspector-probe"]')).toHaveLength(1);
   } finally { await act(async () => root.unmount()); container.remove(); }
@@ -157,7 +157,7 @@ test("주유소 지도 마커와 목록 모두 실제 상표 코드의 로고와
   try {
     await act(async () => root.render(<TransportMap places={[fuel]} mode="fuel" />));
     expect(container.querySelector('button[aria-label*="시험 주유소 S-OIL"] img')?.getAttribute("src")).toBe("/fuel-brands/soil.gif");
-    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((node) => node.textContent?.includes("목록"))!.click());
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((node) => node.textContent?.includes("목록"))!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
     expect(container.querySelector(".place-row img")?.getAttribute("alt")).toBe("S-OIL");
     expect(fetch).not.toHaveBeenCalled();
   } finally { await act(async () => root.unmount()); container.remove(); }

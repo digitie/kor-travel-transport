@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { useLayoutEffect, act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -144,7 +144,7 @@ describe("지도 초기화 실패", () => {
 
 function HealthProbe({ onReady }: { onReady: (health: ReturnType<typeof useVWorldBasemapHealth>) => void }) {
   const health = useVWorldBasemapHealth();
-  onReady(health);
+  useLayoutEffect(() => { onReady(health); }, [health, onReady]);
   return <p data-failed={String(health.basemapFailed)} />;
 }
 

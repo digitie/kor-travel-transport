@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldGroup, FieldLabel, FieldSet, FieldLegend } from "@/components/ui/field";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Tabs, TabsList, TabsTrigger } from "@kor-travel/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Empty, EmptyHeader, EmptyDescription } from "@/components/ui/empty";
 import { FuelBrandIcon } from "./fuel-brand-icon";
@@ -29,10 +29,10 @@ function isOldFuelObservation(observedAt: string) {
 }
 
 export function ViewSwitch({ value, onChange }: { value: "map" | "list"; onChange: (value: "map" | "list") => void }) {
-  return <ToggleGroup variant="outline" aria-label="보기 방식" value={[value]} onValueChange={(values) => { if (values[0] === "map" || values[0] === "list") onChange(values[0]); }}>
-    <ToggleGroupItem value="map" aria-label="지도">지도</ToggleGroupItem>
-    <ToggleGroupItem value="list" aria-label="목록">목록</ToggleGroupItem>
-  </ToggleGroup>;
+  return <Tabs value={value} onValueChange={(next) => { if (next === "map" || next === "list") onChange(next); }}><TabsList aria-label="보기 방식">
+    <TabsTrigger value="map" aria-label="지도">지도</TabsTrigger>
+    <TabsTrigger value="list" aria-label="목록">목록</TabsTrigger>
+  </TabsList></Tabs>;
 }
 
 export function MultiSearch({ label, query, onQuery, options, selected, onSelect, onInspect, max = 5, loading = false, scrollable = true }: {
@@ -91,7 +91,7 @@ export function FerryDepartures({ timetable, name, query = "" }: { timetable: Fe
   const rows = timetable.items.filter((item) => [item.arrival_port_name, item.departure_port_name, item.vessel_name].join(" ").includes(query.trim())).sort((a, b) => (a.departure_planned_time ?? "").localeCompare(b.departure_planned_time ?? ""));
   return <section className="departures" aria-label={`${name} 운항 정보`}>
     <header><h3>{name} · {timetable.service_date}</h3><p className="quiet">항구 코드 {timetable.port_id}{timetable.port_name ? ` · ${timetable.port_name}` : ""}</p><p className="quiet">저장본 확인 {dateTime(timetable.fetched_at)} · {rows.length}편</p></header>
-    {rows.length ? rows.map((item, index) => <article className="departure-row" key={index}>
+    {rows.length ? rows.map((item) => <article className="departure-row" key={`${item.departure_port_name}/${item.arrival_port_name}/${item.vessel_name}/${item.departure_planned_time}`}>
       <div className="departure-time"><strong>{serviceTime(item.departure_planned_time, timetable.service_date)}</strong><span>{item.departure_port_name ?? name}</span></div>
       <div className="departure-route"><span aria-hidden="true">→</span><strong>{item.arrival_port_name ?? "도착항 미제공"}</strong><small>도착 {serviceTime(item.arrival_planned_time, timetable.service_date)}</small></div>
       <div className="departure-meta"><strong>{item.vessel_name ?? "선박명 미제공"}</strong><span>{money(item.fare)}</span></div>

@@ -1,4 +1,25 @@
 const SEOUL_TIME_ZONE = "Asia/Seoul";
+const seoulPartsFormatter = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: SEOUL_TIME_ZONE,
+});
+
+const dayLabelFormatter = new Intl.DateTimeFormat("ko-KR", {
+    month: "numeric",
+    day: "numeric",
+    timeZone: SEOUL_TIME_ZONE,
+  });
+const currencyFormatter = new Intl.NumberFormat("ko-KR", {
+    style: "currency",
+    currency: "KRW",
+    maximumFractionDigits: 0,
+  });
+const numberFormatter = new Intl.NumberFormat("ko-KR");
 const ISO_WITH_TIME_ZONE = /(Z|[+-]\d{2}:\d{2})$/i;
 
 function normalizeApiDate(value: string): string {
@@ -51,16 +72,7 @@ export function formatDateTimeWithZone(value: string): string {
 }
 
 export function getSeoulDateParts(value: string): { year: number; month: number; day: number; hour: number; minute: number } {
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: SEOUL_TIME_ZONE,
-  });
-  const parts = formatter.formatToParts(parseApiDate(value));
+  const parts = seoulPartsFormatter.formatToParts(parseApiDate(value));
   const partMap = new Map(parts.map((part) => [part.type, part.value]));
 
   return {
@@ -78,11 +90,7 @@ export function formatSeoulDateKey(value: string): string {
 }
 
 export function formatDayLabel(value: string): string {
-  return new Intl.DateTimeFormat("ko-KR", {
-    month: "numeric",
-    day: "numeric",
-    timeZone: SEOUL_TIME_ZONE,
-  }).format(parseApiDate(value));
+  return dayLabelFormatter.format(parseApiDate(value));
 }
 
 export function formatAxisDateLabel(value: string): string {
@@ -109,13 +117,9 @@ export function formatCurrency(value: number | null): string {
   if (value === null) {
     return "-";
   }
-  return new Intl.NumberFormat("ko-KR", {
-    style: "currency",
-    currency: "KRW",
-    maximumFractionDigits: 0,
-  }).format(value);
+  return currencyFormatter.format(value);
 }
 
 export function formatNumber(value: number): string {
-  return new Intl.NumberFormat("ko-KR").format(value);
+  return numberFormatter.format(value);
 }

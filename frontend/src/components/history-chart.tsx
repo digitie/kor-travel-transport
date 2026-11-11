@@ -229,13 +229,13 @@ function buildSpecialDayBands(
 }
 
 export function HistoryChart({ holidays, series, scopeLabel }: HistoryChartProps) {
-  const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
+  const [activeSelection, setActiveSelection] = useState<{ series: HistoryChartProps["series"]; index: number | null }>({ series, index: null });
+  const activePointIndex = activeSelection.series === series ? activeSelection.index : null;
+  const setActivePointIndex = (index: number | null) => setActiveSelection({ series, index });
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const touchGestureRef = useRef<{ startX: number; isHorizontalDrag: boolean } | null>(null);
 
   useEffect(() => {
-    setActivePointIndex(null);
-
     if (!series || series.items.length === 0) {
       return;
     }
@@ -281,19 +281,7 @@ export function HistoryChart({ holidays, series, scopeLabel }: HistoryChartProps
   const labelIndexes = buildLabelIndexes(points);
   const chartWidth = Math.max(CHART_MIN_WIDTH, labelIndexes.length * 64);
   const chartPoints = buildChartPoints(points, chartWidth);
-  const observedRuns: ChartPoint[][] = [];
-  let inObservedRun = false;
-  for (const point of chartPoints) {
-    if (point.lot_observations > 0) {
-      if (!inObservedRun) {
-        observedRuns.push([]);
-      }
-      observedRuns[observedRuns.length - 1].push(point);
-      inObservedRun = true;
-    } else {
-      inObservedRun = false;
-    }
-  }
+  const observedRuns = buildObservedRuns(chartPoints);
   const axisMarkers = buildAxisMarkers(chartPoints, labelIndexes);
   const holidayBands = buildSpecialDayBands(buildSpecialDays(holidays, chartPoints), chartPoints, chartWidth);
   const latestPoint = observedPoints[observedPoints.length - 1];
@@ -501,4 +489,21 @@ export function HistoryChart({ holidays, series, scopeLabel }: HistoryChartProps
       </div>
     </article>
   );
+}
+
+function buildObservedRuns(chartPoints: ChartPoint[]) {
+  const observedRuns: ChartPoint[][] = [];
+  let inObservedRun = false;
+  for (const point of chartPoints) {
+    if (point.lot_observations > 0) {
+      if (!inObservedRun) {
+        observedRuns.push([]);
+      }
+      observedRuns[observedRuns.length - 1].push(point);
+      inObservedRun = true;
+    } else {
+      inObservedRun = false;
+    }
+  }
+  return observedRuns;
 }

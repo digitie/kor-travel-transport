@@ -1,4 +1,6 @@
 "use client";
+
+import { VirtualTable } from "@kor-travel/ui/virtual-table";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -26,7 +28,6 @@ export function HighwayJourney() {
   useEffect(() => {
     const controller = new AbortController();
     // 재조회가 시작되면 이전 오류만 지운다.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setErrors([]);
     const fail = (message: string) => { if (!controller.signal.aborted) setErrors((value) => [...value, message]); };
     transportGet<HighwayRoadCatalog>("transport/highways/roads", controller.signal).then((data) => {
@@ -54,7 +55,7 @@ export function HighwayJourney() {
   const selectIncident = (place: Place) => { setSelectedIndex(null); setCameraIndex(null); setSelected(place); mapTarget.current?.scrollIntoView({ block: "start" }); };
   const changeRoad = (value: string) => { setRoadId(value); setSelected(null); setSelectedIndex(null); setCameraIndex(null); setVisibleLinks(0); };
   const places: Place[] = incidents.map((row, index) => ({ id: index, kind: "highway_incident", source: row.source, name: row.point_name ?? row.incident_type ?? "도로 돌발", latitude: row.latitude, longitude: row.longitude, line_names: [highwayRouteLabel(row.route_no, row.route_name)], subtitle: [row.incident_type, row.process_status].filter(Boolean).join(" · "), address: row.message, updated_at: row.observed_at, prices: [], facilities: [] }));
-  const lineList = <div className="highway-link-list" aria-label="선택 도로 소통 구간">{data?.items.map((row, index) => <button type="button" className="incident-row" key={`${row.link_id}:${index}`} onClick={() => selectLink(index)} aria-pressed={selectedIndex === index}>
+  const lineList = <div className="highway-link-list" aria-label="선택 도로 소통 구간">{data?.items.map((row, index) => <button type="button" className="incident-row" key={row.link_id} onClick={() => selectLink(index)} aria-pressed={selectedIndex === index}>
     <strong>{row.section_name}</strong><span><i className="highway-speed-dot" style={{ backgroundColor: highwaySpeedColor(row.speed_kmh) }} />{row.speed_kmh == null ? "속도 미제공" : `${row.speed_kmh} km/h`} · {row.length_m == null ? "길이 미제공" : `${(row.length_m / 1000).toFixed(1)} km`}{row.path.length < 2 ? " · 경로 미제공" : ""}</span>
   </button>)}</div>;
   return <section className="journey-workbench highway-journey map-route">
@@ -83,7 +84,10 @@ export function HighwayJourney() {
       {view === "map" ? <section><h2>선택 도로 소통 {data?.items.length ?? 0}구간</h2>{lineList}</section> : null}
       <section><div className="section-title-row"><h2>저장된 도로 돌발·통제 {incidents.length}건</h2><InfoButton label="저장 돌발 범위">선택 ITS 노선과 무관한 최근 24시간의 저장 관측 최대 1,000행입니다. 상세의 처리 상태와 관측 시각을 확인하세요. 목록은 처음 30건을 표시합니다.</InfoButton></div>{incidents.slice(0, 30).map((row, index) => <button type="button" className="incident-row" key={row.identity_key} onClick={() => selectIncident(places[index])}><strong>{row.point_name ?? highwayRouteLabel(row.route_no, row.route_name)}</strong><span>{row.message ?? row.incident_type ?? "상세 내용 미제공"}</span><small>{row.process_status ?? "처리 상태 미제공"} · {dateTime(row.observed_at)}</small></button>)}</section>
     </div>
-    <details><summary>별도 저장 소통 관측 {traffic.length}곳</summary><div className="overflow-x-auto"><table className="operations-table"><thead><tr><th>구간</th><th>노선·방향</th><th>속도</th><th>관측</th></tr></thead><tbody>{traffic.slice(0, 60).map((row) => <tr key={row.identity_key}><th>{row.conzone_name ?? highwayRouteLabel(row.route_no, row.route_name)}</th><td>{highwayRouteLabel(row.route_no, row.route_name)} · {row.direction ?? "방향 미제공"}</td><td>{row.speed == null ? "미제공" : `${row.speed} km/h`}</td><td>{dateTime(row.observed_at)}</td></tr>)}</tbody></table></div><p className="quiet">최근 24시간 최대 1,000행 중 처음 60구간 · 지도 선형과 별도 출처</p></details>
+    <details><summary>별도 저장 소통 관측 {traffic.length}곳</summary><div className="overflow-x-auto"><VirtualTable ariaLabel="조회 결과" containerClassName="operations-table" data={traffic.slice(0, 60)} getRowId={(row) => String(row.identity_key)} virtualized={false} columns={[{ id: 'column0', header: '구간', cell: ({ row: { original: row } }) => <>{row.conzone_name ?? highwayRouteLabel(row.route_no, row.route_name)}</> },
+{ id: 'column1', header: '노선·방향', cell: ({ row: { original: row } }) => <>{highwayRouteLabel(row.route_no, row.route_name)} · {row.direction ?? "방향 미제공"}</> },
+{ id: 'column2', header: '속도', cell: ({ row: { original: row } }) => <>{row.speed == null ? "미제공" : `${row.speed} km/h`}</> },
+{ id: 'column3', header: '관측', cell: ({ row: { original: row } }) => <>{dateTime(row.observed_at)}</> }]} /></div><p className="quiet">최근 24시간 최대 1,000행 중 처음 60구간 · 지도 선형과 별도 출처</p></details>
     </div>
   </section>;
 }

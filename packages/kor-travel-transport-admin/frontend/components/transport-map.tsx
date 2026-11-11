@@ -135,7 +135,6 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
     const longitude = Number(search.get("longitude")), latitude = Number(search.get("latitude"));
     if (!Number.isFinite(longitude) || !Number.isFinite(latitude) || longitude < 124 || longitude > 132 || latitude < 32 || latitude > 39.5) return;
     // URL이 지정한 지도 위치는 최초 문서에서만 복원한다.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setClusterCamera({ center: [longitude, latitude], zoom: 15 });
     setViewport({ min_longitude: String(longitude - .015), max_longitude: String(longitude + .015), min_latitude: String(latitude - .015), max_latitude: String(latitude + .015) });
     setZoom(15);
@@ -147,7 +146,9 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
   const perKindLimit = Math.min(300, Math.floor(900 / Math.max(1, kinds.length)));
   const sources = useMemo(() => [...new Set([...knownSources, ...(places ?? []).map((item) => item.source)])], [places, knownSources]);
   const all = useMemo(() => places ?? kinds.flatMap((kind) => loaded[kind]?.items ?? []), [places, kinds, loaded]);
-  const items = useMemo(() => all.filter((item) => (!selectedSources.length || selectedSources.includes(item.source)) && (!embedded || !query || [item.name, item.brand_name, item.address, item.subtitle, item.provider_id, ...item.line_names].join(" ").toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) && (!products.length || item.kind !== "fuel_station" || item.prices?.some((row) => hasFuelPrice(row) && products.includes(row.product_code)))), [all, embedded, selectedSources, query, products]);
+  const sourceSet = useMemo(() => new Set(selectedSources), [selectedSources]);
+  const productSet = useMemo(() => new Set(products), [products]);
+  const items = useMemo(() => all.filter((item) => (!selectedSources.length || sourceSet.has(item.source)) && (!embedded || !query || [item.name, item.brand_name, item.address, item.subtitle, item.provider_id, ...item.line_names].join(" ").toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) && (!products.length || item.kind !== "fuel_station" || item.prices?.some((row) => hasFuelPrice(row) && productSet.has(row.product_code)))), [all, embedded, selectedSources, query, products, sourceSet, productSet]);
   const points = useMemo<MapPoint[]>(() => items.filter(hasCoordinates).map((place) => ({ id: keyOf(place), lngLat: [place.longitude, place.latitude], place })), [items]);
   const visiblePoints = points.filter((point) =>
     point.lngLat[0] >= Number(viewport.min_longitude) && point.lngLat[0] <= Number(viewport.max_longitude)
@@ -183,7 +184,10 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
   };
   // 겹친 지점 팝업을 연 묶음 원. 닫기(×·Escape) 뒤 포커스를 그 자리로 돌려준다. 장소를 고르면 상세로 간다.
   const overlapOpener = useRef<HTMLElement | null>(null);
+  const overlapFocusCleanup = useRef<(() => void) | null>(null);
+  useEffect(() => () => overlapFocusCleanup.current?.(), []);
   const closeOverlap = () => {
+    overlapFocusCleanup.current?.();
     const opener = overlapOpener.current;
     overlapOpener.current = null;
     setClusterPlaces([]);
@@ -200,7 +204,8 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
       find()?.focus();
     });
     observer.observe(root, { childList: true, subtree: true });
-    setTimeout(() => observer.disconnect(), 2000);
+    const timer = setTimeout(() => observer.disconnect(), 2000);
+    overlapFocusCleanup.current = () => { observer.disconnect(); clearTimeout(timer); };
   };
   const selectPlace = (place: Place) => {
     overlapOpener.current = null;
@@ -229,7 +234,6 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
   useEffect(() => {
     // 지도 이동·크기 변경으로 DB 결과가 갱신되어도 열어 둔 선택 목록은 유지한다.
     // 검색 조건을 바꾸거나 명시적으로 선택/닫기한 경우에만 목록을 닫는다.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setClusterPlaces([]);
   }, [kindsKey, sourcesKey, searchQuery, productsKey, view, mode]);
 
@@ -248,7 +252,6 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
       setLoaded({}); setServerClusters([]); setServerClustered(false);
       mapFilterSignature.current = filterSignature;
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPending(selectedKinds); setFailed([]);
 
     const applyPayload = (payload: PlaceResponse) => {
@@ -398,7 +401,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
         <ZoomButtons />
         <CameraRequest target={camera} />
         {layers}
-        {serverClustered ? serverClusters.map((item, index) => <MapMarkerButton key={`${item.longitude}:${item.latitude}:${index}`} lngLat={[item.longitude, item.latitude]} ariaLabel={`${item.count}개 장소 요약 묶음 확대`} interactionId={`server-cluster:${item.longitude.toFixed(6)},${item.latitude.toFixed(6)}`} className="map-cluster" zIndex={3} isCluster onClick={() => {
+        {serverClustered ? serverClusters.map((item) => <MapMarkerButton key={`${item.longitude}:${item.latitude}`} lngLat={[item.longitude, item.latitude]} ariaLabel={`${item.count}개 장소 요약 묶음 확대`} interactionId={`server-cluster:${item.longitude.toFixed(6)},${item.latitude.toFixed(6)}`} className="map-cluster" zIndex={3} isCluster onClick={() => {
           setClusterPlaces([]); setClusterCamera({ center: [item.longitude, item.latitude], zoom: Math.min(19, Math.max(12, Math.ceil(zoom) + 2)) });
           setCameraRequest((value) => value + 1);
         }}><ClusterBubble count={item.count} label={CLUSTER_NUMBER_FORMATTER.format(item.count)} /></MapMarkerButton>) : <ClusterLayer points={groupedPoints} radius={cluster ? (products.length === 1 ? 80 : 110) : 60} maxZoom={19}
@@ -431,7 +434,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
       </VWorldMapView>}</MountCamera></div>
       </MapStage>
     </TabsContent>
-    <TabsContent className="min-h-0" value="list" keepMounted><MapStage view="list" detail={view === "list" ? detailPanel("list") : null}><div className="map-primary"><div className="map-place-list"><div className="map-feedback">{status}</div>{listContent}{listPlaces ? items.map((place) => <button type="button" className="place-row" key={keyOf(place)} aria-pressed={current ? keyOf(current) === keyOf(place) : false} onClick={() => selectPlace(place)}><PlaceIcon kind={place.kind} brandCode={place.brand_code} brandName={place.brand_name} /><span><strong>{place.name}</strong><small>{place.line_names.join(" · ") || place.brand_name || place.subtitle || placeKindLabel(place.kind)}</small>{(place.kind === "ferry_port" || place.kind === "bus_terminal") && place.provider_id ? <small>{place.kind === "ferry_port" ? "항구" : "터미널"} 코드 {place.provider_id}</small> : null}{!hasCoordinates(place) ? <small>좌표 미등록</small> : null}</span></button>) : null}</div></div></MapStage></TabsContent>
+    <TabsContent className="min-h-0 data-[state=inactive]:hidden" value="list" forceMount><MapStage view="list" detail={view === "list" ? detailPanel("list") : null}><div className="map-primary"><div className="map-place-list"><div className="map-feedback">{status}</div>{listContent}{listPlaces ? items.map((place) => <button type="button" className="place-row" key={keyOf(place)} aria-pressed={current ? keyOf(current) === keyOf(place) : false} onClick={() => selectPlace(place)}><PlaceIcon kind={place.kind} brandCode={place.brand_code} brandName={place.brand_name} /><span><strong>{place.name}</strong><small>{place.line_names.join(" · ") || place.brand_name || place.subtitle || placeKindLabel(place.kind)}</small>{(place.kind === "ferry_port" || place.kind === "bus_terminal") && place.provider_id ? <small>{place.kind === "ferry_port" ? "항구" : "터미널"} 코드 {place.provider_id}</small> : null}{!hasCoordinates(place) ? <small>좌표 미등록</small> : null}</span></button>) : null}</div></div></MapStage></TabsContent>
     {!embedded && !(mode === "fuel" && view === "map") ? <div className="map-feedback map-guidance" role="status">
       {kinds.includes("fuel_station") && loaded.fuel_station?.fuel_prices_stale ? <p className="error">유가 갱신 지연 · 유종·가격은 {dateTime(loaded.fuel_station.fuel_prices_last_refreshed_at)} 기준이며 판매 여부도 다를 수 있습니다.</p> : null}
       {kinds.includes("fuel_station") && loaded.fuel_station?.fuel_prices_last_refreshed_at && !loaded.fuel_station.fuel_prices_stale ? <p>유가 {dateTime(loaded.fuel_station.fuel_prices_last_refreshed_at)} 갱신</p> : null}

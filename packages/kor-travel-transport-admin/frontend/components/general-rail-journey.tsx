@@ -63,7 +63,6 @@ export function GeneralRailJourney() {
   useEffect(() => {
     pending.current?.abort(); pending.current = null;
     // 조건 변경으로 취소한 요청의 pending 상태가 같은 조건으로 복귀했을 때 살아나지 않게 한다.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setResponse((previous) => previous.pending ? { key: "" } : previous);
   }, [key]);
   useEffect(() => () => pending.current?.abort(), []);
@@ -92,7 +91,7 @@ export function GeneralRailJourney() {
     {current?.pending ? <p role="status">시간표를 조회하는 중입니다…</p> : current?.error ? <p role="alert">{current.error}</p> : null}
     <SectionCard title={`${departure?.station_name ?? "출발역"} → ${arrival?.station_name ?? "도착역"}`} description="예정 출발·도착 시각과 성인 요금을 비교합니다. 실시간 지연·잔여 좌석은 제공하지 않습니다.">
       <label className="inline-checkbox"><input type="checkbox" checked={futureOnly} onChange={(event) => setFutureOnly(event.target.checked)} />지금 이후만</label>
-      {trips ? <><p className="quiet">{trips.service_date} · {dateTime(trips.fetched_at)} 조회{trips.stale ? " · 이전 저장 시간표" : ""}{trips.truncated ? " · 일부 결과" : ""}</p>{rows?.map((row, index) => <article className="departure-row" key={`${row.train_number}/${index}`}><div><strong>{serviceTime(row.departure_planned_time, trips.service_date)}</strong><p>{row.departure_station_name}</p></div><div><strong>{row.grade_name ?? "종류 미제공"} {row.train_number}</strong><p>{row.arrival_station_name} · 도착 {serviceTime(row.arrival_planned_time, row.departure_planned_time ?? trips.service_date)}</p></div><strong>{money(row.adult_fare)}</strong></article>)}{!rows?.length ? <p>{trips.items.length ? "지금 이후 조건에 맞는 운행편이 없습니다. 전체 시간표도 확인할 수 있습니다." : "정상 응답에 등록된 운행편이 없습니다. 미운행 확정은 아닙니다."}</p> : null}</> : <p className="quiet">출발·도착역을 선택하고 예정 운행편을 조회하세요.</p>}
+      {trips ? <><p className="quiet">{trips.service_date} · {dateTime(trips.fetched_at)} 조회{trips.stale ? " · 이전 저장 시간표" : ""}{trips.truncated ? " · 일부 결과" : ""}</p>{rows?.map((row) => <article className="departure-row" key={`${row.train_number}/${row.departure_planned_time}/${row.arrival_station_name}`}><div><strong>{serviceTime(row.departure_planned_time, trips.service_date)}</strong><p>{row.departure_station_name}</p></div><div><strong>{row.grade_name ?? "종류 미제공"} {row.train_number}</strong><p>{row.arrival_station_name} · 도착 {serviceTime(row.arrival_planned_time, row.departure_planned_time ?? trips.service_date)}</p></div><strong>{money(row.adult_fare)}</strong></article>)}{!rows?.length ? <p>{trips.items.length ? "지금 이후 조건에 맞는 운행편이 없습니다. 전체 시간표도 확인할 수 있습니다." : "정상 응답에 등록된 운행편이 없습니다. 미운행 확정은 아닙니다."}</p> : null}</> : <p className="quiet">출발·도착역을 선택하고 예정 운행편을 조회하세요.</p>}
     </SectionCard>
     </div>
   </section>;

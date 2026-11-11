@@ -25,7 +25,9 @@ const CACHE_MAX_AGE_MS = 60_000;
 const DASHBOARD_TABS = [["overview", "통합 현황"], ["highway", "고속도로"], ["fuel", "유가"]] as const;
 const CARD_CLASS_NAME = "panel gap-3 px-0 py-5 [--card-spacing:--spacing(5)]";
 
-function number(value: number | null) { return value === null ? "—" : new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 1 }).format(value); }
+const numberFormatter = new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 1 });
+
+function number(value: number | null) { return value === null ? "—" : numberFormatter.format(value); }
 function readCache(): DashboardCache | null { try { const value = JSON.parse(window.sessionStorage.getItem(CACHE_KEY) ?? "null") as DashboardCache | null; return value && Date.now() - value.savedAt <= CACHE_MAX_AGE_MS ? value : null; } catch { return null; } }
 function writeCache(status: Status, statistics: Statistics, traffic: Traffic, incidents: Incidents) { try { window.sessionStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt: Date.now(), status, statistics, traffic, incidents } satisfies DashboardCache)); } catch { /* browser storage is optional */ } }
 async function json<T>(response: Response): Promise<T> { if (!response.ok) throw new Error("저장된 교통정보를 불러오지 못했습니다."); return response.json() as Promise<T>; }
@@ -100,7 +102,7 @@ export function TransportDashboard() {
       <AlertTitle>주유소별 최신 가격 반영 지연</AlertTitle>
       <AlertDescription>저장된 유가 원본과 주유소별 가격 지도가 다를 수 있습니다. <Link href="/collections">수집 상태 확인 →</Link></AlertDescription>
     </Alert> : null}
-    {DASHBOARD_TABS.map(([value]) => <TabsContent key={value} value={value} keepMounted className="min-w-0 hidden:hidden">
+    {DASHBOARD_TABS.map(([value]) => <TabsContent key={value} value={value} forceMount className="data-[state=inactive]:hidden min-w-0 hidden:hidden">
       {tab === value ? <div className="grid">
         {value === "overview" ? <>
           <Card className={CARD_CLASS_NAME}>
@@ -132,7 +134,7 @@ export function TransportDashboard() {
           </Card>
           <Card className={CARD_CLASS_NAME}>
             <CardHeader className="grid-cols-1"><CardTitle><h2 className="m-0">노선별 돌발 현황</h2></CardTitle></CardHeader>
-            <CardContent>{statistics ? <ul className="row-list">{statistics.incidents.slice(0, 8).map((item, index) => <li key={`${item.route_no}-${index}`}><span>{highwayRouteLabel(item.route_no, routeNames.get(item.route_no ?? ""))}</span><strong>{item.incidents}건</strong></li>)}</ul> : statisticsPlaceholder}</CardContent>
+            <CardContent>{statistics ? <ul className="row-list">{statistics.incidents.slice(0, 8).map((item) => <li key={item.route_no}><span>{highwayRouteLabel(item.route_no, routeNames.get(item.route_no ?? ""))}</span><strong>{item.incidents}건</strong></li>)}</ul> : statisticsPlaceholder}</CardContent>
           </Card>
         </> : null}
         {value === "fuel" ? <>

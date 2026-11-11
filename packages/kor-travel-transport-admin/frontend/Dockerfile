@@ -13,6 +13,7 @@ ENV NEXT_PUBLIC_TRANSPORT_DAGSTER_URL=${NEXT_PUBLIC_TRANSPORT_DAGSTER_URL}
 ARG NEXT_PUBLIC_VWORLD_API_KEY
 ENV NEXT_PUBLIC_VWORLD_API_KEY=${NEXT_PUBLIC_VWORLD_API_KEY}
 COPY packages/kor-travel-transport-admin/frontend ./
+RUN npm run check:dependencies
 RUN npm run build
 
 FROM node:22.23.1-alpine AS runner

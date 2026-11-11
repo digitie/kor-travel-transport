@@ -18,7 +18,6 @@ export function CollectionStatus() {
   useEffect(() => {
     const controller = new AbortController();
     // 수동 새로고침을 포함한 외부 상태 조회의 시작 상태.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true); setErrors([]);
     const failure = (error: unknown) => { if (!controller.signal.aborted) setErrors((current) => [...current, error instanceof Error ? error.message : "상태 조회 실패"]); };
     Promise.allSettled([

@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useForm, useWatch } from "react-hook-form";
+import { z } from "zod";
+import { createStore } from "zustand/vanilla";
+import { useStore } from "zustand";
 import { Info } from "lucide-react";
 
 import { Alert } from "./ui/alert";
@@ -28,41 +32,46 @@ function buildDefaultRange() {
 export function FeeCalculator({ airports, initialAirportCode, initialParkingLotId = null, onAirportChange, onParkingLotChange, scopeControls = true, help, onCalculate }: FeeCalculatorProps) {
   const [defaults] = useState(buildDefaultRange);
   const requestId = useRef(0);
-  const [airportCode, setAirportCode] = useState(initialAirportCode);
+  const [airportSelection, setAirportSelection] = useState({ initial: initialAirportCode, value: initialAirportCode });
+  const airportCode = airportSelection.initial === initialAirportCode ? airportSelection.value : initialAirportCode;
+  const setAirportCode = (value: string) => setAirportSelection({ initial: initialAirportCode, value });
   const [vehicleSize, setVehicleSize] = useState<"small" | "large">("small");
-  const [entryAt, setEntryAt] = useState(defaults.entry);
-  const [exitAt, setExitAt] = useState(defaults.exitAt);
-  const [parkingLotId, setParkingLotId] = useState<number | null>(null);
-  const [result, setResult] = useState<FeeCalculationResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
+  const timeForm = useForm<{ entryAt: string; exitAt: string }>({ defaultValues: { entryAt: defaults.entry, exitAt: defaults.exitAt } });
+  const { entryAt, exitAt } = useWatch({ control: timeForm.control });
+  const [parkingSelection, setParkingSelection] = useState({ airportCode: initialAirportCode, initialParkingLotId, value: null as number | null });
 
   const selectedAirport = airports.find((airport) => airport.code === airportCode);
   const selectableLots = useMemo(() => selectedAirport?.parking_lots.filter((lot) => lot.is_active) ?? [], [selectedAirport]);
 
-  useEffect(() => {
-    setAirportCode(initialAirportCode);
-  }, [initialAirportCode]);
-
-  useEffect(() => {
-    setParkingLotId((current) => selectableLots.some((lot) => lot.id === initialParkingLotId)
-      ? initialParkingLotId : scopeControls && selectableLots.some((lot) => lot.id === current) ? current : selectableLots[0]?.id ?? null);
-  }, [selectableLots, initialParkingLotId, scopeControls]);
-
-
-  useEffect(() => {
-    requestId.current += 1;
-    setPending(false);
-    setResult(null);
-    setError(null);
-  }, [airportCode, parkingLotId, vehicleSize, entryAt, exitAt]);
+  const ownsSelection = parkingSelection.airportCode === airportCode && parkingSelection.initialParkingLotId === initialParkingLotId;
+  const preferredLot = ownsSelection && scopeControls && parkingSelection.value !== null ? parkingSelection.value : initialParkingLotId;
+  const parkingLotId = selectableLots.find((lot) => lot.id === preferredLot)?.id ?? selectableLots[0]?.id ?? null;
+  const setParkingLotId = (value: number | null) => setParkingSelection({ airportCode, initialParkingLotId, value });
+  const inputKey = JSON.stringify([airportCode, parkingLotId, vehicleSize, entryAt, exitAt]);
+  const [quoteStore] = useState(() => createStore<{
+    scope: string; result: FeeCalculationResponse | null; error: string | null; pending: boolean;
+  }>(() => ({ scope: "", result: null, error: null, pending: false })));
+  const quote = useStore(quoteStore);
+  const result = quote.scope === inputKey ? quote.result : null;
+  const error = quote.scope === inputKey ? quote.error : null;
+  const pending = quote.scope === inputKey && quote.pending;
+  const updateQuote = useCallback((patch: Partial<Omit<typeof quote, "scope">>) => {
+    quoteStore.setState((current) => ({
+      ...(current.scope === inputKey ? current : { result: null, error: null, pending: false }),
+      ...patch, scope: inputKey,
+    }));
+  }, [inputKey, quoteStore]);
+  const setResult = (result: FeeCalculationResponse | null) => updateQuote({ result });
+  const setError = (error: string | null) => updateQuote({ error });
+  const setPending = (pending: boolean) => updateQuote({ pending });
+  // 입력 정체가 달라지면 이전 요청의 결과를 버린다. 화면 초기화는 위의 scope 비교에서 파생한다.
+  useEffect(() => { requestId.current += 1; }, [inputKey]);
 
   useEffect(() => () => { requestId.current += 1; }, []);
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleSubmit() {
 
-    if (!entryAt || !exitAt) {
+    if (!z.object({ entryAt: z.string().min(1), exitAt: z.string().min(1) }).safeParse({ entryAt, exitAt }).success || !entryAt || !exitAt) {
       setError("입차와 출차 시각을 모두 입력해 주세요.");
       return;
     }
@@ -97,12 +106,12 @@ export function FeeCalculator({ airports, initialAirportCode, initialParkingLotI
     <section className="panel-surface fee-panel">
       <div className="panel-head">
         <h3>주차요금 계산기{help ?? <Popover>
-          <PopoverTrigger render={<Button variant="ghost" size="icon-xs" aria-label="주차요금 계산 안내" />}><Info /></PopoverTrigger>
+          <PopoverTrigger asChild><Button variant="ghost" size="icon-xs" aria-label="주차요금 계산 안내"><Info /></Button></PopoverTrigger>
           <PopoverContent><PopoverTitle>주차요금 계산 안내</PopoverTitle><p>입출차 시각은 한국 시간입니다. 선택한 주차장·차량의 저장 규칙으로 일반요금을 계산하며, 증빙이 필요한 할인은 반영하지 않습니다.</p></PopoverContent>
         </Popover>}</h3>
       </div>
 
-      <form className="fee-form" onSubmit={handleSubmit}>
+      <form className="fee-form" onSubmit={timeForm.handleSubmit(handleSubmit)}>
         {scopeControls ? <><label className="field">
           <span>공항</span>
           <select className="input" value={airportCode} onChange={(event) => { setAirportCode(event.target.value); onAirportChange?.(event.target.value); }}>
@@ -143,12 +152,12 @@ export function FeeCalculator({ airports, initialAirportCode, initialParkingLotI
 
         <label className="field">
           <span>입차 시각</span>
-          <input className="input" type="datetime-local" value={entryAt} onChange={(event) => setEntryAt(event.target.value)} />
+          <input className="input" type="datetime-local" {...timeForm.register("entryAt")} />
         </label>
 
         <label className="field">
           <span>출차 시각</span>
-          <input className="input" type="datetime-local" value={exitAt} onChange={(event) => setExitAt(event.target.value)} />
+          <input className="input" type="datetime-local" {...timeForm.register("exitAt")} />
         </label>
 
         <Button className="button" disabled={pending || !parkingLotId} type="submit">
@@ -164,10 +173,18 @@ export function FeeCalculator({ airports, initialAirportCode, initialParkingLotI
       ) : null}
 
       {result ? (
+        <FeeQuote result={result} />
+      ) : null}
+    </section>
+  );
+}
+
+function FeeQuote({ result }: { result: FeeCalculationResponse }) {
+  return (
         <div className="quote-box">
           <div className="quote-total">
             <span>예상 요금{result.supported ? <Popover>
-              <PopoverTrigger render={<Button variant="ghost" size="icon-xs" aria-label="계산 근거와 공식 요금 안내" />}><Info /></PopoverTrigger>
+              <PopoverTrigger asChild><Button variant="ghost" size="icon-xs" aria-label="계산 근거와 공식 요금 안내"><Info /></Button></PopoverTrigger>
               <PopoverContent>
                 <PopoverTitle>계산 근거</PopoverTitle>
                 {result.message ? <p>{result.message}</p> : null}
@@ -194,7 +211,5 @@ export function FeeCalculator({ airports, initialAirportCode, initialParkingLotI
             </ul>
           ) : null}
         </div>
-      ) : null}
-    </section>
   );
 }

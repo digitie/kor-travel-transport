@@ -1,11 +1,12 @@
 "use client";
 
+import { VirtualTable } from "@kor-travel/ui/virtual-table";
+
 import { useEffect, useId, useMemo, useState, type CSSProperties } from "react";
 import { money, TransportError, type Place } from "@/lib/journey";
 import { fuelProductLabel } from "@/lib/transport-presentation";
 import { FUEL_HISTORY_PRODUCT_ORDER, fuelHistorySeries, isFuelHistoryGap, loadFuelStationHistory, type FuelStationHistory } from "@/lib/fuel-station-history";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { InfoButton } from "./info-button";
 
 const colors = ["var(--brand)", "var(--success)", "var(--warning)", "var(--danger)", "var(--text-secondary)"];
@@ -60,7 +61,9 @@ export function FuelStationHistoryChart({ data }: { data: FuelStationHistory }) 
     <span className="sr-only" id={hint}>좌우 방향키로 관측을 이동하고 Home·End로 처음·마지막 관측을 확인합니다. 터치로 날짜를 선택하거나 아래 관측값 표를 펼칠 수 있습니다.</span>
     <div className="fuel-trend-legend">{series.map((row, index) => <span key={row.product} style={{ "--series-color": seriesColor(row.product, index) } as CSSProperties}><i aria-hidden="true" /><span>{fuelProductLabel(row.product)} <strong>{money(row.points.at(-1)!.price, "원/L")}</strong><small>{historyTime(row.points.at(-1)!.observed_at)}</small></span></span>)}</div>
     {current ? <p className="fuel-trend-tooltip" role="status">{fuelProductLabel(current.product_code)} · {historyTime(current.observed_at)} · <strong>{money(current.price, "원/L")}</strong></p> : null}
-    <details className="fuel-trend-table"><summary>관측값 표 · {points.length.toLocaleString("ko-KR")}건</summary><Table aria-label="주유소 7일 가격 관측값"><TableHeader><TableRow><TableHead>관측 시각 (한국)</TableHead><TableHead>유종</TableHead><TableHead>원/L</TableHead></TableRow></TableHeader><TableBody>{[...points].reverse().map((point) => <TableRow key={`${point.product_code}:${point.instant}`}><TableCell><time dateTime={point.observed_at}>{historyTime(point.observed_at)}</time></TableCell><TableCell>{fuelProductLabel(point.product_code)}</TableCell><TableCell>{point.price.toLocaleString("ko-KR")}</TableCell></TableRow>)}</TableBody></Table></details>
+    <details className="fuel-trend-table"><summary>관측값 표 · {points.length.toLocaleString("ko-KR")}건</summary><VirtualTable ariaLabel="주유소 7일 가격 관측값" data={[...points].reverse()} getRowId={(point) => String(`${point.product_code}:${point.instant}`)} virtualized={false} columns={[{ id: 'column0', header: '관측 시각 (한국)', cell: ({ row: { original: point } }) => <><time dateTime={point.observed_at}>{historyTime(point.observed_at)}</time></> },
+{ id: 'column1', header: '유종', cell: ({ row: { original: point } }) => <>{fuelProductLabel(point.product_code)}</> },
+{ id: 'column2', header: '원/L', cell: ({ row: { original: point } }) => <>{point.price.toLocaleString("ko-KR")}</> }]} /></details>
   </>;
 }
 

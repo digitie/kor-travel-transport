@@ -1,4 +1,6 @@
 "use client";
+
+import { VirtualTable } from "@kor-travel/ui/virtual-table";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { transportGet, dateTime } from "@/lib/journey";
@@ -74,7 +76,11 @@ export function HighwayStatistics() {
         {stats ? `15분 초과·결측 등 ${stats.excluded}구간 제외 · ` : ""}조회 {dateTime(state.checked)}. 속도 구간은 이 화면의 비교 기준입니다.</p>
     </SectionCard>
     <SectionCard title="속도가 낮은 구간부터" description="출발 전 관심 노선의 정체 위치와 방향을 확인하세요.">
-      <div className="overflow-x-auto"><table className="operations-table"><thead><tr><th>노선</th><th>구간</th><th>방향</th><th>속도(km/h)</th><th>관측</th></tr></thead><tbody>{[...(stats?.rows ?? [])].sort((a, b) => a.speed! - b.speed!).slice(0, 100).map((row) => <tr key={row.identity_key}><td>{highwayRouteLabel(row.route_no, row.route_name)}</td><td>{(row as SpeedObservation & { conzone_name?: string }).conzone_name ?? "구간명 미제공"}</td><td>{(row as SpeedObservation & { direction?: string }).direction ?? "—"}</td><td>{decimal(row.speed)}</td><td>{dateTime(row.observed_at)}</td></tr>)}</tbody></table></div>
+      <div className="overflow-x-auto"><VirtualTable ariaLabel="조회 결과" containerClassName="operations-table" data={[...(stats?.rows ?? [])].sort((a, b) => a.speed! - b.speed!).slice(0, 100)} getRowId={(row) => String(row.identity_key)} virtualized={false} columns={[{ id: 'column0', header: '노선', cell: ({ row: { original: row } }) => <>{highwayRouteLabel(row.route_no, row.route_name)}</> },
+{ id: 'column1', header: '구간', cell: ({ row: { original: row } }) => <>{(row as SpeedObservation & { conzone_name?: string }).conzone_name ?? "구간명 미제공"}</> },
+{ id: 'column2', header: '방향', cell: ({ row: { original: row } }) => <>{(row as SpeedObservation & { direction?: string }).direction ?? "—"}</> },
+{ id: 'column3', header: '속도(km/h)', cell: ({ row: { original: row } }) => <>{decimal(row.speed)}</> },
+{ id: 'column4', header: '관측', cell: ({ row: { original: row } }) => <>{dateTime(row.observed_at)}</> }]} /></div>
       {stats && !stats.rows.length ? <p>최근 15분 이내의 유효 속도 관측이 없습니다.</p> : null}
     </SectionCard>
   </div>;

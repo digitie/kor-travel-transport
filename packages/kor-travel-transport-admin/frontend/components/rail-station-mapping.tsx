@@ -1,17 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Dialog } from "@base-ui/react/dialog";
+import { useForm, useWatch } from "react-hook-form";
+import { z } from "zod";
+import { VirtualTable } from "@kor-travel/ui/virtual-table";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription, DialogClose } from "@kor-travel/ui/dialog";
 import { InfoButton } from "./info-button";
 import { applyAutomaticMappings, MappingRequestError, previewAutomaticMappings, readMappings, saveMappings,
   type AutomaticMappingPreview, type MappingCode, type MappingDocument, type MappingPlace as Place,
   type MappingStation as Station, type ManualMapping } from "@/lib/rail-station-mappings";
 
+const dateFormatter = new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Seoul" });
+
 function stationKey(item: Pick<Station, "operator_code" | "line_code" | "station_code">) {
   return JSON.stringify([item.operator_code, item.line_code, item.station_code]);
 }
 function formatDate(value: string | null) {
-  return value ? new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Seoul" }).format(new Date(value)) : "아직 수집 전";
+  return value ? dateFormatter.format(new Date(value)) : "아직 수집 전";
 }
 
 function StationEditor({
@@ -23,7 +28,11 @@ function StationEditor({
 }) {
   const [query, setQuery] = useState("");
   const [target, setTarget] = useState(station.rail_station_identity_key ?? "");
-  const [note, setNote] = useState(manualMapping?.note ?? "");
+  const noteForm = useForm<{ note: string }>({ defaultValues: { note: manualMapping?.note ?? "" } });
+  const note = useWatch({ control: noteForm.control, name: "note" });
+  const noteSchema = z.string().max(500);
+  const { setValue } = noteForm;
+  const setNote = useCallback((value: string) => setValue("note", value), [setValue]);
   const dirty = target !== (station.rail_station_identity_key ?? "") || note !== (manualMapping?.note ?? "");
   useEffect(() => { onDirtyChange(dirty); return () => onDirtyChange(false); }, [dirty, onDirtyChange]);
   useEffect(() => {
@@ -31,7 +40,7 @@ function StationEditor({
     setTarget(station.rail_station_identity_key ?? "");
     setNote(manualMapping?.note ?? "");
   }, [station.operator_code, station.line_code, station.station_code,
-    station.rail_station_identity_key, manualMapping?.note]);
+    station.rail_station_identity_key, manualMapping?.note, setNote]);
   const candidates = useMemo(() => {
     const terms = query.trim().toLocaleLowerCase("ko-KR").split(/\s+/).filter(Boolean);
     if (!terms.length) return [];
@@ -66,10 +75,10 @@ function StationEditor({
         <strong>{place.station_name ?? "이름 미상"}</strong><span>{[place.line_name, place.operator_name, place.station_number && `역 번호 ${place.station_number}`].filter(Boolean).join(" · ")}</span>
       </button>) : <p>일치하는 기준 역이 없습니다.</p>}
     </div> : <p className="quiet">역명만 다른 경우에도 KRIC 역 번호와 기준정보를 확인해 연결합니다.</p>}
-    {target ? <label className="rail-map-note">수동 연결 근거 <input disabled={readOnly} value={note} maxLength={500} onChange={(event) => setNote(event.target.value)} placeholder="예: 역 번호와 운영기관 자료 대조" /></label> : null}
+    {target ? <label className="rail-map-note">수동 연결 근거 <input disabled={readOnly} maxLength={500} {...noteForm.register("note")} placeholder="예: 역 번호와 운영기관 자료 대조" /></label> : null}
     <div className="rail-map-actions">
       <button className="button" type="button" disabled={!target || readOnly || (target === station.rail_station_identity_key && manualMapping?.note === note)}
-        onClick={() => void onSave(target, note)}>{saving ? "저장 중…" : manualMapping ? "수동 매핑 저장" : "수동으로 연결"}</button>
+        onClick={noteForm.handleSubmit(({ note }) => { const result = noteSchema.safeParse(note); if (result.success) void onSave(target, result.data); })}>{saving ? "저장 중…" : manualMapping ? "수동 매핑 저장" : "수동으로 연결"}</button>
       {manualMapping ? <button className="secondary" type="button" disabled={readOnly} onClick={() => void onSave(null, "")}>수동 연결 해제</button> : null}
       {dirty ? <button className="secondary" type="button" disabled={busy} onClick={onDiscard}>초안 취소 후 새로고침</button> : null}
     </div>
@@ -81,15 +90,18 @@ function AutomaticPreviewContent({ preview }: { preview: AutomaticMappingPreview
   const labels = { added: "연결 추가", removed: "연결 해제", retargeted: "대상 변경", method_changed: "연결 기준 변경" };
   const methods = { manual: "수동 연결", exact_identity: "기준정보 일치", station_number_and_name: "역 번호·이름 일치", unmatched: "미연결" };
   return <>
-    <table className="w-full text-sm" aria-label="연결 변경 건수"><thead><tr><th className="text-left">공식 역 코드 기준</th><th>현재 → 적용 후</th></tr></thead><tbody>
-      {([ ["전체 역", "station_count"], ["연결", "mapped_count"], ["자동 연결", "automatic_mapped_count"], ["수동 연결", "manual_mapped_count"], ["미연결", "unmatched_count"] ] as const).map(([label, key]) => <tr key={key}><th className="text-left font-normal">{label}</th><td className="text-center">{preview.before[key].toLocaleString("ko-KR")} → {preview.after[key].toLocaleString("ko-KR")}</td></tr>)}
-    </tbody></table>
+    <VirtualTable ariaLabel="연결 변경 건수" virtualized={false}
+      data={([ ["전체 역", "station_count"], ["연결", "mapped_count"], ["자동 연결", "automatic_mapped_count"], ["수동 연결", "manual_mapped_count"], ["미연결", "unmatched_count"] ] as const).map(([label, key]) => ({ key, label, before: preview.before[key], after: preview.after[key] }))}
+      getRowId={(row) => row.key} columns={[
+        { accessorKey: 'label', header: '공식 역 코드 기준' },
+        { id: 'count', header: '현재 → 적용 후', cell: ({ row }) => <>{row.original.before.toLocaleString("ko-KR")} → {row.original.after.toLocaleString("ko-KR")}</> },
+      ]} />
     {preview.has_changes && !preview.changes.length ? <p>연결 대상 변경 없이 자동 후보를 갱신합니다.</p> : null}
     {preview.has_changes && preview.changes.length ? <section aria-label="변경할 연결"><h3>변경 {preview.changes.length.toLocaleString("ko-KR")}건</h3><ul className="flex flex-col gap-2">
       {preview.changes.map(change => <li key={stationKey(change)} className="break-words"><strong>{change.station_name} · {change.line_name}</strong><small className="block">{change.operator_name} · {codeText(change)} · {labels[change.change_type]}</small><span className="block break-all">{change.before.rail_station_identity_key ?? "미연결"} → {change.after.rail_station_identity_key ?? "미연결"}</span>{change.change_type === "method_changed" ? <small>{methods[change.before.match_method]} → {methods[change.after.match_method]}</small> : null}</li>)}
     </ul></section> : !preview.has_changes ? <p>변경할 연결이 없습니다.</p> : null}
     {preview.manual_conflicts.length ? <section aria-label="수동 연결 충돌"><h3>수동 충돌 {preview.manual_conflicts.length.toLocaleString("ko-KR")}건</h3><ul className="flex flex-col gap-2">{preview.manual_conflicts.map(item => <li key={stationKey(item)} className="break-all">{codeText(item)} · {item.reason === "manual_target_reserved" ? "수동 대상 예약" : "수동 코드 우선"}<small className="block">{item.rail_station_identity_key} · 수동 코드 {codeText(item.reserved_by)}</small></li>)}</ul></section> : null}
-    {preview.blockers.length ? <section aria-label="적용 차단 사유"><h3>적용 차단</h3><ul>{preview.blockers.map((item, index) => <li key={index} className="break-words">{item.message}{item.station_code ? ` · ${[item.operator_code, item.line_code, item.station_code].filter(Boolean).join(" / ")}` : ""}</li>)}</ul></section> : null}
+    {preview.blockers.length ? <section aria-label="적용 차단 사유"><h3>적용 차단</h3><ul>{preview.blockers.map((item) => <li key={JSON.stringify(item)} className="break-words">{item.message}{item.station_code ? ` · ${[item.operator_code, item.line_code, item.station_code].filter(Boolean).join(" / ")}` : ""}</li>)}</ul></section> : null}
   </>;
 }
 
@@ -251,27 +263,25 @@ export function RailStationMapping() {
       <div><p className="eyebrow">KRIC · 역 코드 카탈로그</p><p className="quiet">최근 확인 {formatDate(data?.catalog_updated_at ?? null)} · 지문 {data?.catalog_sha256?.slice(0, 12) ?? "—"}</p></div>
       <div className="rail-map-toolbar-actions">
         <button className="secondary" type="button" disabled={loading || saving || applying || dirty} onClick={reloadDocument}>새로고침</button>
-        <Dialog.Root open={automaticOpen} onOpenChange={changeAutomaticOpen}>
-          <Dialog.Trigger ref={automaticTrigger} className="secondary" disabled={!data || !documentReady || loading || saving || applying || dirty} title={dirty ? "수동 편집을 저장하거나 초안을 취소한 뒤 미리보기를 확인하세요." : undefined}>자동 연결 미리보기</Dialog.Trigger>
-          <Dialog.Portal><Dialog.Backdrop className="fixed inset-0 bg-background/80" />
-            <Dialog.Viewport className="info-positioner fixed inset-0 flex items-center justify-center p-3">
-              <Dialog.Popup className="info-popup flex min-h-0 flex-col gap-3" style={{ width: "min(42rem, calc(100vw - 24px))", maxHeight: "calc(100dvh - 24px)" }} finalFocus={() => noticeRef.current ?? automaticTrigger.current}>
-                <div className="info-popup-heading"><Dialog.Title>자동 연결 미리보기</Dialog.Title><InfoButton label="자동 연결 기준"><p>저장된 공식 역 코드와 기준 역을 대조합니다. 수동 연결과 근거는 보존하며, 수동 편집 초안은 먼저 저장하거나 취소해 주세요.</p><p>건수는 장소 수가 아닌 공식 역 코드 기준입니다. 수동 연결로 억제된 후보 갱신이나 연결 기준만 바뀌면 실제 역 연결 변경은 0건일 수 있습니다. 적용은 시간표 수집을 실행하지 않습니다.</p></InfoButton></div>
-                <Dialog.Description className="sr-only">연결 건수와 변경행을 확인한 뒤 적용하거나 돌아갑니다.</Dialog.Description>
+        <Dialog open={automaticOpen} onOpenChange={changeAutomaticOpen}>
+          <DialogTrigger ref={automaticTrigger} className="secondary" disabled={!data || !documentReady || loading || saving || applying || dirty} title={dirty ? "수동 편집을 저장하거나 초안을 취소한 뒤 미리보기를 확인하세요." : undefined}>자동 연결 미리보기</DialogTrigger>
+
+              <DialogContent className="info-popup flex min-h-0 flex-col gap-3" style={{ width: "min(42rem, calc(100vw - 24px))", maxHeight: "calc(100dvh - 24px)" }} showCloseButton={false} onCloseAutoFocus={(event) => { event.preventDefault(); (noticeRef.current ?? automaticTrigger.current)?.focus(); }}>
+                <div className="info-popup-heading"><DialogTitle>자동 연결 미리보기</DialogTitle><InfoButton label="자동 연결 기준"><p>저장된 공식 역 코드와 기준 역을 대조합니다. 수동 연결과 근거는 보존하며, 수동 편집 초안은 먼저 저장하거나 취소해 주세요.</p><p>건수는 장소 수가 아닌 공식 역 코드 기준입니다. 수동 연결로 억제된 후보 갱신이나 연결 기준만 바뀌면 실제 역 연결 변경은 0건일 수 있습니다. 적용은 시간표 수집을 실행하지 않습니다.</p></InfoButton></div>
+                <DialogDescription className="sr-only">연결 건수와 변경행을 확인한 뒤 적용하거나 돌아갑니다.</DialogDescription>
                 <div className="min-h-0 overflow-auto" aria-busy={previewLoading || applying}>
                   {previewLoading ? <p role="status">자동 연결을 확인하는 중…</p> : null}
                   {automaticError ? <p className="error" role="alert">{automaticError}</p> : null}
                   {preview ? <AutomaticPreviewContent preview={preview} /> : null}
                 </div>
                 <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                  <Dialog.Close className="secondary" disabled={applying}>돌아가기</Dialog.Close>
+                  <DialogClose className="secondary" disabled={applying}>돌아가기</DialogClose>
                   {automaticError ? <button className="secondary" type="button" disabled={previewLoading || applying} onClick={() => void loadPreview()}>새 미리보기</button> : null}
                   <button className="button" type="button" disabled={!preview?.can_apply || !preview?.has_changes || previewLoading || applying || dirty || saving} onClick={() => void applyAutomatic()}>{applying ? "적용 중…" : "적용"}</button>
                 </div>
-              </Dialog.Popup>
-            </Dialog.Viewport>
-          </Dialog.Portal>
-        </Dialog.Root>
+              </DialogContent>
+
+        </Dialog>
         <button className="secondary" type="button" disabled={!data || !documentReady} onClick={exportJson}>JSON 내보내기</button>
       </div>
     </div>

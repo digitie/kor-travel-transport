@@ -1,5 +1,7 @@
 "use client";
 
+import { VirtualTable } from "@kor-travel/ui/virtual-table";
+
 import Link from "next/link";
 import { InfoButton } from "./info-button";
 import { useEffect, useId, useState } from "react";
@@ -154,7 +156,9 @@ export function FuelPriceTrend({ rows }: { rows: History[] }) {
   return <><svg className="fuel-stat-trend" viewBox="0 0 600 170" role="img" aria-label="최근 7일 평균 유가 추이. 상세 수치는 다음 표에 표시됩니다.">
     {rows.map((row, i) => i > 0 && Date.parse(row.day) - Date.parse(rows[i - 1].day) === dayMs ? <line key={row.day} stroke="currentColor" strokeWidth="2" x1={x(rows[i - 1].day)} y1={y(rows[i - 1].average_price)} x2={x(row.day)} y2={y(row.average_price)} /> : null)}
     {rows.map((row) => <g key={row.day}><circle data-day={row.day} cx={x(row.day)} cy={y(row.average_price)} r="4" /><text x={x(row.day)} y={y(row.average_price) - 10} textAnchor="middle" fontSize="12">{money(row.average_price)}</text><text x={x(row.day)} y="155" textAnchor="middle" fontSize="12">{row.day.slice(5)}</text></g>)}
-  </svg><div className="fuel-stat-table"><table><caption className="sr-only">최근 7일 평균 유가</caption><thead><tr><th>날짜(KST)</th><th>평균(원/L)</th><th>주유소</th></tr></thead><tbody>{rows.map((row) => <tr key={row.day}><td>{row.day}</td><td>{money(row.average_price)}</td><td>{row.station_count.toLocaleString()}</td></tr>)}</tbody></table></div></>;
+  </svg><div className="fuel-stat-table"><VirtualTable ariaLabel="조회 결과" containerClassName="sr-only" data={rows} getRowId={(row) => String(row.day)} virtualized={false} columns={[{ id: 'column0', header: '날짜(KST)', cell: ({ row: { original: row } }) => <>{row.day}</> },
+{ id: 'column1', header: '평균(원/L)', cell: ({ row: { original: row } }) => <>{money(row.average_price)}</> },
+{ id: 'column2', header: '주유소', cell: ({ row: { original: row } }) => <>{row.station_count.toLocaleString()}</> }]} /></div></>;
 }
 
 export function FuelStatisticsPage() {
@@ -168,7 +172,6 @@ export function FuelStatisticsPage() {
   const [pending, setPending] = useState(true);
   useEffect(() => {
     const controller = new AbortController();
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPending(true); setError(false);
     const search = new URLSearchParams({ scope, product_code: product });
     if (scopeKey) search.set("scope_key", scopeKey);
@@ -207,7 +210,13 @@ export function FuelStatisticsPage() {
       </> : <p>선택한 유종의 통계가 없습니다.</p>}
 
     </> : null}
-    {shownData?.items.length ? <div className="fuel-stat-table"><table><caption>전체 범주 비교 · {fuelProductLabel(product)} (원/L)</caption><thead><tr><th>범주</th><th>주유소</th><th>평균</th><th>최저</th><th>최저가 주유소</th><th>가격 차이</th><th>50L 절감(원)</th></tr></thead><tbody>{shownData.items.map((row) => <tr key={row.scope_key}><th><button type="button" onClick={() => setScopeKey(row.scope_key)}>{row.label}</button></th><td>{row.station_count}</td><td>{money(row.average_price)}</td><td>{money(row.minimum_price)}</td><td>{row.cheapest_station?.name}{row.cheapest_station_count > 1 ? ` 외 ${row.cheapest_station_count - 1}곳` : ""}</td><td>{money(row.price_spread)}</td><td>{money(row.saving_50l)}</td></tr>)}</tbody></table></div> : null}
+    {shownData?.items.length ? <div className="fuel-stat-table"><VirtualTable ariaLabel="조회 결과" data={shownData.items} getRowId={(row) => String(row.scope_key)} virtualized={false} columns={[{ id: 'column0', header: '범주', cell: ({ row: { original: row } }) => <><button type="button" onClick={() => setScopeKey(row.scope_key)}>{row.label}</button></> },
+{ id: 'column1', header: '주유소', cell: ({ row: { original: row } }) => <>{row.station_count}</> },
+{ id: 'column2', header: '평균', cell: ({ row: { original: row } }) => <>{money(row.average_price)}</> },
+{ id: 'column3', header: '최저', cell: ({ row: { original: row } }) => <>{money(row.minimum_price)}</> },
+{ id: 'column4', header: '최저가 주유소', cell: ({ row: { original: row } }) => <>{row.cheapest_station?.name}{row.cheapest_station_count > 1 ? ` 외 ${row.cheapest_station_count - 1}곳` : ""}</> },
+{ id: 'column5', header: '가격 차이', cell: ({ row: { original: row } }) => <>{money(row.price_spread)}</> },
+{ id: 'column6', header: '50L 절감(원)', cell: ({ row: { original: row } }) => <>{money(row.saving_50l)}</> }]} /></div> : null}
     {!pending && !error && selected ? <details className="fuel-driving-details"><summary>차량 운영비 비교</summary><FuelDriverStatistics metrics={selected} /></details> : null}
   </section>;
 }
