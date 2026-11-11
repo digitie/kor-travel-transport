@@ -155,8 +155,8 @@ describe("HistoryView", () => {
     const selectableDayButtons = dayButtons.filter((button) => !(button as HTMLButtonElement).disabled);
     const firstButton = selectableDayButtons[0];
     const lastButton = selectableDayButtons[selectableDayButtons.length - 1];
-    const expectedStartDate = toDateKeyFromKoreanLabel(firstButton.getAttribute("data-day"));
-    const expectedEndDate = toDateKeyFromKoreanLabel(lastButton.getAttribute("data-day"));
+    const expectedStartDate = toDateKeyFromDayAttribute(firstButton.getAttribute("data-day"));
+    const expectedEndDate = toDateKeyFromDayAttribute(lastButton.getAttribute("data-day"));
 
     await user.click(firstButton);
     // react-day-picker remounts the day grid on selection change - re-query rather than
@@ -189,14 +189,10 @@ describe("HistoryView", () => {
   });
 });
 
-/** Parses react-day-picker's `data-day` attribute (`date.toLocaleDateString("ko")`, e.g.
- * "2026. 4. 26.") into the YYYY-MM-DD key the app is expected to send to the API - lets the
- * test assert the *actual clicked dates* reached the fetch call, not just "some date". */
-function toDateKeyFromKoreanLabel(label: string | null): string {
-  const match = label?.match(/(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\./);
-  if (!match) {
+/** Assert that the actual clicked calendar-day keys reach the API. */
+function toDateKeyFromDayAttribute(label: string | null): string {
+  if (!label || !/^\d{4}-\d{2}-\d{2}$/.test(label)) {
     throw new Error(`Unexpected data-day format: ${label}`);
   }
-  const [, year, month, day] = match;
-  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  return label;
 }

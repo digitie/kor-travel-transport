@@ -1,37 +1,38 @@
 "use client";
 
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { VirtualTable } from "@kor-travel/ui/virtual-table";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Dialog } from "@base-ui/react/dialog";
+import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription, DialogClose } from "@kor-travel/ui/dialog";
 import { InfoButton } from "./info-button";
 import { applyAutomaticMappings, MappingRequestError, previewAutomaticMappings, readMappings, saveMappings,
   type AutomaticMappingPreview, type MappingCode, type MappingDocument, type MappingPlace as Place,
   type MappingStation as Station, type ManualMapping } from "@/lib/rail-station-mappings";
 
+type StationDraft = { key: string; target: string; note: string };
+
+const dateFormatter = new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Seoul" });
+
 function stationKey(item: Pick<Station, "operator_code" | "line_code" | "station_code">) {
   return JSON.stringify([item.operator_code, item.line_code, item.station_code]);
 }
 function formatDate(value: string | null) {
-  return value ? new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Seoul" }).format(new Date(value)) : "아직 수집 전";
+  return value ? dateFormatter.format(new Date(value)) : "아직 수집 전";
 }
 
 function StationEditor({
-  station, currentPlace, manualMapping, places, saving, readOnly, busy, onSave, onDirtyChange, onDiscard,
+  station, currentPlace, manualMapping, places, saving, readOnly, busy, onSave, draft, onDraftChange, dirty, onDiscard,
 }: {
   station: Station; currentPlace: Place | undefined; manualMapping: ManualMapping | undefined;
   places: Place[]; saving: boolean; readOnly: boolean; busy: boolean;
-  onSave: (target: string | null, note: string) => Promise<void>; onDirtyChange: (dirty: boolean) => void; onDiscard: () => void;
+  onSave: (target: string | null, note: string) => Promise<void>; draft: StationDraft; onDraftChange: (draft: StationDraft) => void; dirty: boolean; onDiscard: () => void;
 }) {
   const [query, setQuery] = useState("");
-  const [target, setTarget] = useState(station.rail_station_identity_key ?? "");
-  const [note, setNote] = useState(manualMapping?.note ?? "");
-  const dirty = target !== (station.rail_station_identity_key ?? "") || note !== (manualMapping?.note ?? "");
-  useEffect(() => { onDirtyChange(dirty); return () => onDirtyChange(false); }, [dirty, onDirtyChange]);
-  useEffect(() => {
-    // 선택 역 또는 저장된 연결이 바뀌면 편집 초안을 해당 서버 값으로 복원한다.
-    setTarget(station.rail_station_identity_key ?? "");
-    setNote(manualMapping?.note ?? "");
-  }, [station.operator_code, station.line_code, station.station_code,
-    station.rail_station_identity_key, manualMapping?.note]);
+  const { target, note } = draft;
+  const setTarget = (target: string) => onDraftChange({ ...draft, target });
+  const noteForm = useForm<{ note: string }>({ values: { note } });
+  const noteSchema = z.string().max(500);
   const candidates = useMemo(() => {
     const terms = query.trim().toLocaleLowerCase("ko-KR").split(/\s+/).filter(Boolean);
     if (!terms.length) return [];
@@ -60,19 +61,9 @@ function StationEditor({
     </div>
     <label className="rail-map-search-label" htmlFor="rail-place-search">연결할 KRIC 기준 역 검색</label>
     <input id="rail-place-search" type="search" disabled={readOnly} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="역명, 노선, 운영기관, 역 번호" autoComplete="off" />
-    {query.trim() ? <div className="rail-map-candidates" role="listbox" aria-label="역 검색 결과">
-      {candidates.length ? candidates.map((place) => <button key={place.identity_key} type="button" role="option" aria-selected={target === place.identity_key}
-        className={target === place.identity_key ? "is-selected" : ""} disabled={readOnly} onClick={() => setTarget(place.identity_key)}>
-        <strong>{place.station_name ?? "이름 미상"}</strong><span>{[place.line_name, place.operator_name, place.station_number && `역 번호 ${place.station_number}`].filter(Boolean).join(" · ")}</span>
-      </button>) : <p>일치하는 기준 역이 없습니다.</p>}
-    </div> : <p className="quiet">역명만 다른 경우에도 KRIC 역 번호와 기준정보를 확인해 연결합니다.</p>}
-    {target ? <label className="rail-map-note">수동 연결 근거 <input disabled={readOnly} value={note} maxLength={500} onChange={(event) => setNote(event.target.value)} placeholder="예: 역 번호와 운영기관 자료 대조" /></label> : null}
-    <div className="rail-map-actions">
-      <button className="button" type="button" disabled={!target || readOnly || (target === station.rail_station_identity_key && manualMapping?.note === note)}
-        onClick={() => void onSave(target, note)}>{saving ? "저장 중…" : manualMapping ? "수동 매핑 저장" : "수동으로 연결"}</button>
-      {manualMapping ? <button className="secondary" type="button" disabled={readOnly} onClick={() => void onSave(null, "")}>수동 연결 해제</button> : null}
-      {dirty ? <button className="secondary" type="button" disabled={busy} onClick={onDiscard}>초안 취소 후 새로고침</button> : null}
-    </div>
+    {query.trim() ? <StationTargetCandidates candidates={candidates} target={target} readOnly={readOnly} setTarget={setTarget} /> : <p className="quiet">역명만 다른 경우에도 KRIC 역 번호와 기준정보를 확인해 연결합니다.</p>}
+    {target ? <label className="rail-map-note">수동 연결 근거 <input disabled={readOnly} maxLength={500} {...noteForm.register("note", { onChange: (event) => onDraftChange({ ...draft, note: event.target.value }) })} placeholder="예: 역 번호와 운영기관 자료 대조" /></label> : null}
+    <StationEditorActions target={target} readOnly={readOnly} station={station} manualMapping={manualMapping} note={note} noteForm={noteForm} noteSchema={noteSchema} onSave={onSave} saving={saving} dirty={dirty} busy={busy} onDiscard={onDiscard} />
   </section>;
 }
 
@@ -81,19 +72,46 @@ function AutomaticPreviewContent({ preview }: { preview: AutomaticMappingPreview
   const labels = { added: "연결 추가", removed: "연결 해제", retargeted: "대상 변경", method_changed: "연결 기준 변경" };
   const methods = { manual: "수동 연결", exact_identity: "기준정보 일치", station_number_and_name: "역 번호·이름 일치", unmatched: "미연결" };
   return <>
-    <table className="w-full text-sm" aria-label="연결 변경 건수"><thead><tr><th className="text-left">공식 역 코드 기준</th><th>현재 → 적용 후</th></tr></thead><tbody>
-      {([ ["전체 역", "station_count"], ["연결", "mapped_count"], ["자동 연결", "automatic_mapped_count"], ["수동 연결", "manual_mapped_count"], ["미연결", "unmatched_count"] ] as const).map(([label, key]) => <tr key={key}><th className="text-left font-normal">{label}</th><td className="text-center">{preview.before[key].toLocaleString("ko-KR")} → {preview.after[key].toLocaleString("ko-KR")}</td></tr>)}
-    </tbody></table>
+    <VirtualTable ariaLabel="연결 변경 건수" virtualized={false}
+      data={([ ["전체 역", "station_count"], ["연결", "mapped_count"], ["자동 연결", "automatic_mapped_count"], ["수동 연결", "manual_mapped_count"], ["미연결", "unmatched_count"] ] as const).map(([label, key]) => ({ key, label, before: preview.before[key], after: preview.after[key] }))}
+      getRowId={(row) => row.key} columns={[
+        { accessorKey: 'label', header: '공식 역 코드 기준' },
+        { id: 'count', header: '현재 → 적용 후', cell: ({ row }) => <>{row.original.before.toLocaleString("ko-KR")} → {row.original.after.toLocaleString("ko-KR")}</> },
+      ]} />
     {preview.has_changes && !preview.changes.length ? <p>연결 대상 변경 없이 자동 후보를 갱신합니다.</p> : null}
     {preview.has_changes && preview.changes.length ? <section aria-label="변경할 연결"><h3>변경 {preview.changes.length.toLocaleString("ko-KR")}건</h3><ul className="flex flex-col gap-2">
       {preview.changes.map(change => <li key={stationKey(change)} className="break-words"><strong>{change.station_name} · {change.line_name}</strong><small className="block">{change.operator_name} · {codeText(change)} · {labels[change.change_type]}</small><span className="block break-all">{change.before.rail_station_identity_key ?? "미연결"} → {change.after.rail_station_identity_key ?? "미연결"}</span>{change.change_type === "method_changed" ? <small>{methods[change.before.match_method]} → {methods[change.after.match_method]}</small> : null}</li>)}
     </ul></section> : !preview.has_changes ? <p>변경할 연결이 없습니다.</p> : null}
     {preview.manual_conflicts.length ? <section aria-label="수동 연결 충돌"><h3>수동 충돌 {preview.manual_conflicts.length.toLocaleString("ko-KR")}건</h3><ul className="flex flex-col gap-2">{preview.manual_conflicts.map(item => <li key={stationKey(item)} className="break-all">{codeText(item)} · {item.reason === "manual_target_reserved" ? "수동 대상 예약" : "수동 코드 우선"}<small className="block">{item.rail_station_identity_key} · 수동 코드 {codeText(item.reserved_by)}</small></li>)}</ul></section> : null}
-    {preview.blockers.length ? <section aria-label="적용 차단 사유"><h3>적용 차단</h3><ul>{preview.blockers.map((item, index) => <li key={index} className="break-words">{item.message}{item.station_code ? ` · ${[item.operator_code, item.line_code, item.station_code].filter(Boolean).join(" / ")}` : ""}</li>)}</ul></section> : null}
+    {preview.blockers.length ? <section aria-label="적용 차단 사유"><h3>적용 차단</h3><ul>{preview.blockers.map((item) => <li key={JSON.stringify(item)} className="break-words">{item.message}{item.station_code ? ` · ${[item.operator_code, item.line_code, item.station_code].filter(Boolean).join(" / ")}` : ""}</li>)}</ul></section> : null}
   </>;
 }
 
 export function RailStationMapping() {
+  const { loading, saving, applying, workbenchRef, data, dirty, reloadDocument, automaticOpen, changeAutomaticOpen, automaticTrigger, documentReady, noticeRef, previewLoading, automaticError, preview, loadPreview, applyAutomatic, exportJson, error, notice, editorBlocked, query, setQuery, unmatchedOnly, setUnmatchedOnly, filtered, visibleStations, selected, setSelectedKey, editorReset, currentPlace, manualMapping, save, draft, setDraft, discardAndReload } = useRailStationMapping();
+  return <section className="rail-map-workbench" data-slot="rail-station-mapping" aria-busy={loading || saving || applying} ref={workbenchRef} tabIndex={-1}>
+    <StationMappingToolbar data={data} loading={loading} saving={saving} applying={applying} dirty={dirty} reloadDocument={reloadDocument} automaticOpen={automaticOpen} changeAutomaticOpen={changeAutomaticOpen} automaticTrigger={automaticTrigger} documentReady={documentReady} noticeRef={noticeRef} previewLoading={previewLoading} automaticError={automaticError} preview={preview} loadPreview={loadPreview} applyAutomatic={applyAutomatic} exportJson={exportJson} />
+    {data ? <div className="rail-map-metrics" aria-label="역 매핑 요약">
+      <div><span>전체 역</span><strong>{data.station_count.toLocaleString("ko-KR")}</strong></div>
+      <div><span>자동 연결</span><strong>{data.automatic_mapped_count.toLocaleString("ko-KR")}</strong></div>
+      <div><span>수동 연결</span><strong>{data.manual_mapped_count.toLocaleString("ko-KR")}</strong></div>
+      <div><span>미연결</span><strong>{data.unmatched_count.toLocaleString("ko-KR")}</strong></div>
+    </div> : null}
+    {loading && !data ? <p className="loading" role="status">KRIC 역 코드와 매핑을 불러오는 중입니다…</p> : null}
+    {loading && data ? <p className="quiet" role="status">최신 역 목록을 확인하는 중…</p> : null}
+    {error ? <p className="error" role="alert">{error}</p> : null}
+    {notice ? <p className="rail-map-notice" role="status" tabIndex={-1} ref={noticeRef}>{notice}</p> : null}
+    {data ? <div className="rail-map-layout">
+      <StationMappingList editorBlocked={editorBlocked} query={query} setQuery={setQuery} unmatchedOnly={unmatchedOnly} setUnmatchedOnly={setUnmatchedOnly} filtered={filtered} visibleStations={visibleStations} selected={selected} setSelectedKey={setSelectedKey} />
+      {selected ? <StationEditor key={`${stationKey(selected)}:${editorReset}`} station={selected} currentPlace={currentPlace}
+        manualMapping={manualMapping} places={data.places} saving={saving || applying} readOnly={editorBlocked} busy={loading || saving || applying} onSave={save} draft={draft} onDraftChange={setDraft} dirty={dirty} onDiscard={discardAndReload} /> : <div className="rail-map-editor"><p className="quiet">연결할 역을 선택해 주세요.</p></div>}
+    </div> : null}
+  </section>;
+}
+
+
+// 조회·선택·요청 수명은 이 도메인 훅이, 아래 컴포넌트는 표현을 소유한다.
+function useRailStationMapping() {
   const [data, setData] = useState<MappingDocument | null>(null);
   const [loading, setLoading] = useState(true);
   const [documentReady, setDocumentReady] = useState(false);
@@ -105,7 +123,7 @@ export function RailStationMapping() {
   const [unmatchedOnly, setUnmatchedOnly] = useState(true);
   const [selectedKey, setSelectedKey] = useState("");
   const [reload, setReload] = useState(0);
-  const [dirty, setDirty] = useState(false);
+  const [storedDraft, setDraft] = useState<StationDraft>({ key: "", target: "", note: "" });
   const [automaticOpen, setAutomaticOpen] = useState(false);
   const [preview, setPreview] = useState<AutomaticMappingPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -163,6 +181,11 @@ export function RailStationMapping() {
   const selected = visibleStations.find((station) => stationKey(station) === selectedKey) ?? visibleStations[0];
   const currentPlace = selected?.rail_station_identity_key ? data?.places.find((place) => place.identity_key === selected.rail_station_identity_key) : undefined;
   const manualMapping = selected ? data?.mappings.find((item) => stationKey(item) === stationKey(selected)) : undefined;
+  // 초안과 서버 기준을 부모가 함께 소유하므로 effect로 dirty를 되밀지 않는다.
+  const draftKey = JSON.stringify([selected && stationKey(selected), data?.revision, editorReset]);
+  const baseline = { key: draftKey, target: selected?.rail_station_identity_key ?? "", note: manualMapping?.note ?? "" };
+  const draft = storedDraft.key === draftKey ? storedDraft : baseline;
+  const dirty = draft.target !== baseline.target || draft.note !== baseline.note;
   const editorBlocked = loading || !documentReady || saving || applying;
 
   function reloadDocument() {
@@ -173,7 +196,7 @@ export function RailStationMapping() {
   function discardAndReload() {
     if (saving || applying || loading) return;
     workbenchRef.current?.focus({ preventScroll: true });
-    setDirty(false); setEditorReset(value => value + 1); reloadDocument();
+    setEditorReset(value => value + 1); reloadDocument();
   }
 
   async function save(target: string | null, note: string) {
@@ -194,6 +217,8 @@ export function RailStationMapping() {
       setData(updated);
       setNotice(target ? "수동 매핑을 저장했습니다." : "수동 매핑을 해제했습니다. 자동 기준과 다시 대조합니다.");
     } catch (reason) { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "역 매핑을 저장하지 못했습니다."); }
+    // 현재 mutation의 finally에서만 saving을 해제한다. 저장/자동 미리보기 취소·경합 단위회귀로 검증한다.
+    // react-doctor-disable-next-line react-doctor/no-loading-flag-reset-outside-finally
     finally { if (!controller.signal.aborted) setSaving(false); }
   }
 
@@ -208,6 +233,8 @@ export function RailStationMapping() {
       if (!controller.signal.aborted && sequence === previewSequence.current) setPreview(value);
     } catch (reason) {
       if (!controller.signal.aborted && sequence === previewSequence.current) setAutomaticError(reason instanceof Error ? reason.message : "미리보기를 불러오지 못했습니다.");
+    // 현재 sequence의 finally만 previewLoading을 해제한다. 닫힌/교체된 미리보기 응답은 새 요청 상태를 지우지 않는다.
+    // react-doctor-disable-next-line react-doctor/no-loading-flag-reset-outside-finally
     } finally { if (!controller.signal.aborted && sequence === previewSequence.current) setPreviewLoading(false); }
   }
   function changeAutomaticOpen(open: boolean) {
@@ -245,48 +272,31 @@ export function RailStationMapping() {
     const anchor = document.createElement("a"); anchor.href = url; anchor.download = "kric-rail-station-mappings.json"; anchor.click();
     URL.revokeObjectURL(url);
   }
+  return { loading, saving, applying, workbenchRef, data, dirty, reloadDocument, automaticOpen, changeAutomaticOpen, automaticTrigger, documentReady, noticeRef, previewLoading, automaticError, preview, loadPreview, applyAutomatic, exportJson, error, notice, editorBlocked, query, setQuery, unmatchedOnly, setUnmatchedOnly, filtered, visibleStations, selected, setSelectedKey, editorReset, currentPlace, manualMapping, save, draft, setDraft, discardAndReload };
+}
 
-  return <section className="rail-map-workbench" data-slot="rail-station-mapping" aria-busy={loading || saving || applying} ref={workbenchRef} tabIndex={-1}>
-    <div className="rail-map-toolbar">
-      <div><p className="eyebrow">KRIC · 역 코드 카탈로그</p><p className="quiet">최근 확인 {formatDate(data?.catalog_updated_at ?? null)} · 지문 {data?.catalog_sha256?.slice(0, 12) ?? "—"}</p></div>
-      <div className="rail-map-toolbar-actions">
-        <button className="secondary" type="button" disabled={loading || saving || applying || dirty} onClick={reloadDocument}>새로고침</button>
-        <Dialog.Root open={automaticOpen} onOpenChange={changeAutomaticOpen}>
-          <Dialog.Trigger ref={automaticTrigger} className="secondary" disabled={!data || !documentReady || loading || saving || applying || dirty} title={dirty ? "수동 편집을 저장하거나 초안을 취소한 뒤 미리보기를 확인하세요." : undefined}>자동 연결 미리보기</Dialog.Trigger>
-          <Dialog.Portal><Dialog.Backdrop className="fixed inset-0 bg-background/80" />
-            <Dialog.Viewport className="info-positioner fixed inset-0 flex items-center justify-center p-3">
-              <Dialog.Popup className="info-popup flex min-h-0 flex-col gap-3" style={{ width: "min(42rem, calc(100vw - 24px))", maxHeight: "calc(100dvh - 24px)" }} finalFocus={() => noticeRef.current ?? automaticTrigger.current}>
-                <div className="info-popup-heading"><Dialog.Title>자동 연결 미리보기</Dialog.Title><InfoButton label="자동 연결 기준"><p>저장된 공식 역 코드와 기준 역을 대조합니다. 수동 연결과 근거는 보존하며, 수동 편집 초안은 먼저 저장하거나 취소해 주세요.</p><p>건수는 장소 수가 아닌 공식 역 코드 기준입니다. 수동 연결로 억제된 후보 갱신이나 연결 기준만 바뀌면 실제 역 연결 변경은 0건일 수 있습니다. 적용은 시간표 수집을 실행하지 않습니다.</p></InfoButton></div>
-                <Dialog.Description className="sr-only">연결 건수와 변경행을 확인한 뒤 적용하거나 돌아갑니다.</Dialog.Description>
+
+function AutomaticMappingDialog({ automaticOpen, changeAutomaticOpen, automaticTrigger, data, documentReady, loading, saving, applying, dirty, noticeRef, previewLoading, automaticError, preview, loadPreview, applyAutomatic }: Pick<ReturnType<typeof useRailStationMapping>, "automaticOpen" | "changeAutomaticOpen" | "automaticTrigger" | "data" | "documentReady" | "loading" | "saving" | "applying" | "dirty" | "noticeRef" | "previewLoading" | "automaticError" | "preview" | "loadPreview" | "applyAutomatic">) {
+  return (<Dialog open={automaticOpen} onOpenChange={changeAutomaticOpen}>
+          <DialogTrigger ref={automaticTrigger} className="secondary" disabled={!data || !documentReady || loading || saving || applying || dirty} title={dirty ? "수동 편집을 저장하거나 초안을 취소한 뒤 미리보기를 확인하세요." : undefined}>자동 연결 미리보기</DialogTrigger>
+
+              <DialogContent className="info-popup flex min-h-0 flex-col gap-3" style={{ width: "min(42rem, calc(100vw - 24px))", maxHeight: "calc(100dvh - 24px)" }} showCloseButton={false} onCloseAutoFocus={(event) => { event.preventDefault(); (noticeRef.current ?? automaticTrigger.current)?.focus(); }}>
+                <div className="info-popup-heading"><DialogTitle>자동 연결 미리보기</DialogTitle><InfoButton label="자동 연결 기준"><p>저장된 공식 역 코드와 기준 역을 대조합니다. 수동 연결과 근거는 보존하며, 수동 편집 초안은 먼저 저장하거나 취소해 주세요.</p><p>건수는 장소 수가 아닌 공식 역 코드 기준입니다. 수동 연결로 억제된 후보 갱신이나 연결 기준만 바뀌면 실제 역 연결 변경은 0건일 수 있습니다. 적용은 시간표 수집을 실행하지 않습니다.</p></InfoButton></div>
+                <DialogDescription className="sr-only">연결 건수와 변경행을 확인한 뒤 적용하거나 돌아갑니다.</DialogDescription>
                 <div className="min-h-0 overflow-auto" aria-busy={previewLoading || applying}>
                   {previewLoading ? <p role="status">자동 연결을 확인하는 중…</p> : null}
                   {automaticError ? <p className="error" role="alert">{automaticError}</p> : null}
                   {preview ? <AutomaticPreviewContent preview={preview} /> : null}
                 </div>
-                <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                  <Dialog.Close className="secondary" disabled={applying}>돌아가기</Dialog.Close>
-                  {automaticError ? <button className="secondary" type="button" disabled={previewLoading || applying} onClick={() => void loadPreview()}>새 미리보기</button> : null}
-                  <button className="button" type="button" disabled={!preview?.can_apply || !preview?.has_changes || previewLoading || applying || dirty || saving} onClick={() => void applyAutomatic()}>{applying ? "적용 중…" : "적용"}</button>
-                </div>
-              </Dialog.Popup>
-            </Dialog.Viewport>
-          </Dialog.Portal>
-        </Dialog.Root>
-        <button className="secondary" type="button" disabled={!data || !documentReady} onClick={exportJson}>JSON 내보내기</button>
-      </div>
-    </div>
-    {data ? <div className="rail-map-metrics" aria-label="역 매핑 요약">
-      <div><span>전체 역</span><strong>{data.station_count.toLocaleString("ko-KR")}</strong></div>
-      <div><span>자동 연결</span><strong>{data.automatic_mapped_count.toLocaleString("ko-KR")}</strong></div>
-      <div><span>수동 연결</span><strong>{data.manual_mapped_count.toLocaleString("ko-KR")}</strong></div>
-      <div><span>미연결</span><strong>{data.unmatched_count.toLocaleString("ko-KR")}</strong></div>
-    </div> : null}
-    {loading && !data ? <p className="loading" role="status">KRIC 역 코드와 매핑을 불러오는 중입니다…</p> : null}
-    {loading && data ? <p className="quiet" role="status">최신 역 목록을 확인하는 중…</p> : null}
-    {error ? <p className="error" role="alert">{error}</p> : null}
-    {notice ? <p className="rail-map-notice" role="status" tabIndex={-1} ref={noticeRef}>{notice}</p> : null}
-    {data ? <div className="rail-map-layout">
-      <section className="rail-map-list" aria-label="KRIC 역 목록">
+                <AutomaticMappingActions applying={applying} automaticError={automaticError} previewLoading={previewLoading} loadPreview={loadPreview} preview={preview} dirty={dirty} saving={saving} applyAutomatic={applyAutomatic} />
+              </DialogContent>
+
+        </Dialog>);
+}
+
+
+function StationMappingList({ editorBlocked, query, setQuery, unmatchedOnly, setUnmatchedOnly, filtered, visibleStations, selected, setSelectedKey }: Pick<ReturnType<typeof useRailStationMapping>, "editorBlocked" | "query" | "setQuery" | "unmatchedOnly" | "setUnmatchedOnly" | "filtered" | "visibleStations" | "selected" | "setSelectedKey">) {
+  return (<section className="rail-map-list" aria-label="KRIC 역 목록">
         <div className="rail-map-list-tools">
           <label htmlFor="rail-station-filter">역명·운영기관·노선·코드 검색</label>
           <input id="rail-station-filter" type="search" disabled={editorBlocked} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="예: 서울역, 공항철도, A01" />
@@ -303,9 +313,46 @@ export function RailStationMapping() {
           </button>)}
           {!filtered.length ? <p className="quiet">조건에 맞는 역이 없습니다.</p> : null}
         </div>
-      </section>
-      {selected ? <StationEditor key={`${stationKey(selected)}:${editorReset}`} station={selected} currentPlace={currentPlace}
-        manualMapping={manualMapping} places={data.places} saving={saving || applying} readOnly={editorBlocked} busy={loading || saving || applying} onSave={save} onDirtyChange={setDirty} onDiscard={discardAndReload} /> : <div className="rail-map-editor"><p className="quiet">연결할 역을 선택해 주세요.</p></div>}
-    </div> : null}
-  </section>;
+      </section>);
+}
+
+
+function StationTargetCandidates({ candidates, target, readOnly, setTarget }: { candidates: Place[]; target: string; setTarget: (target: string) => void } & Pick<NonNullable<Parameters<typeof StationEditor>[0]>, "readOnly">) {
+  return (<div className="rail-map-candidates" role="listbox" aria-label="역 검색 결과">
+      {candidates.length ? candidates.map((place) => <button key={place.identity_key} type="button" role="option" aria-selected={target === place.identity_key}
+        className={target === place.identity_key ? "is-selected" : ""} disabled={readOnly} onClick={() => setTarget(place.identity_key)}>
+        <strong>{place.station_name ?? "이름 미상"}</strong><span>{[place.line_name, place.operator_name, place.station_number && `역 번호 ${place.station_number}`].filter(Boolean).join(" · ")}</span>
+      </button>) : <p>일치하는 기준 역이 없습니다.</p>}
+    </div>);
+}
+
+
+function StationEditorActions({ target, readOnly, station, manualMapping, note, noteForm, noteSchema, onSave, saving, dirty, busy, onDiscard }: { target: string; note: string; noteForm: import("react-hook-form").UseFormReturn<{ note: string }>; noteSchema: z.ZodString } & Pick<NonNullable<Parameters<typeof StationEditor>[0]>, "readOnly" | "station" | "manualMapping" | "onSave" | "saving" | "dirty" | "busy" | "onDiscard">) {
+  return (<div className="rail-map-actions">
+      <button className="button" type="button" disabled={!target || readOnly || (target === station.rail_station_identity_key && manualMapping?.note === note)}
+        onClick={noteForm.handleSubmit(({ note }) => { const result = noteSchema.safeParse(note); if (result.success) void onSave(target, result.data); })}>{saving ? "저장 중…" : manualMapping ? "수동 매핑 저장" : "수동으로 연결"}</button>
+      {manualMapping ? <button className="secondary" type="button" disabled={readOnly} onClick={() => void onSave(null, "")}>수동 연결 해제</button> : null}
+      {dirty ? <button className="secondary" type="button" disabled={busy} onClick={onDiscard}>초안 취소 후 새로고침</button> : null}
+    </div>);
+}
+
+
+function StationMappingToolbar({ data, loading, saving, applying, dirty, reloadDocument, automaticOpen, changeAutomaticOpen, automaticTrigger, documentReady, noticeRef, previewLoading, automaticError, preview, loadPreview, applyAutomatic, exportJson }: Pick<ReturnType<typeof useRailStationMapping>, "data" | "loading" | "saving" | "applying" | "dirty" | "reloadDocument" | "automaticOpen" | "changeAutomaticOpen" | "automaticTrigger" | "documentReady" | "noticeRef" | "previewLoading" | "automaticError" | "preview" | "loadPreview" | "applyAutomatic" | "exportJson">) {
+  return (<div className="rail-map-toolbar">
+      <div><p className="eyebrow">KRIC · 역 코드 카탈로그</p><p className="quiet">최근 확인 {formatDate(data?.catalog_updated_at ?? null)} · 지문 {data?.catalog_sha256?.slice(0, 12) ?? "—"}</p></div>
+      <div className="rail-map-toolbar-actions">
+        <button className="secondary" type="button" disabled={loading || saving || applying || dirty} onClick={reloadDocument}>새로고침</button>
+        <AutomaticMappingDialog automaticOpen={automaticOpen} changeAutomaticOpen={changeAutomaticOpen} automaticTrigger={automaticTrigger} data={data} documentReady={documentReady} loading={loading} saving={saving} applying={applying} dirty={dirty} noticeRef={noticeRef} previewLoading={previewLoading} automaticError={automaticError} preview={preview} loadPreview={loadPreview} applyAutomatic={applyAutomatic} />
+        <button className="secondary" type="button" disabled={!data || !documentReady} onClick={exportJson}>JSON 내보내기</button>
+      </div>
+    </div>);
+}
+
+
+function AutomaticMappingActions({ applying, automaticError, previewLoading, loadPreview, preview, dirty, saving, applyAutomatic }: Pick<NonNullable<Parameters<typeof AutomaticMappingDialog>[0]>, "applying" | "automaticError" | "previewLoading" | "loadPreview" | "preview" | "dirty" | "saving" | "applyAutomatic">) {
+  return (<div className="flex shrink-0 flex-wrap justify-end gap-2">
+                  <DialogClose className="secondary" disabled={applying}>돌아가기</DialogClose>
+                  {automaticError ? <button className="secondary" type="button" disabled={previewLoading || applying} onClick={() => void loadPreview()}>새 미리보기</button> : null}
+                  <button className="button" type="button" disabled={!preview?.can_apply || !preview?.has_changes || previewLoading || applying || dirty || saving} onClick={() => void applyAutomatic()}>{applying ? "적용 중…" : "적용"}</button>
+                </div>);
 }

@@ -23,6 +23,13 @@ function server() {
     password: host.querySelector<HTMLInputElement>("[name=password]")!, button: host.querySelector<HTMLButtonElement>("button[type=submit]")! };
 }
 
+async function fill(input: HTMLInputElement, value: string) {
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
 describe("정규 공통 로그인 산출물 채택", () => {
   it("SSR HTML은 hydration 전 입력과 submit을 닫아 현재 /login으로 기본 제출하지 않는다", () => {
     const { form, username, password, button } = server();
@@ -51,7 +58,7 @@ describe("정규 공통 로그인 산출물 채택", () => {
       expect(username.disabled).toBe(false);
       expect(password.disabled).toBe(false);
       expect(button.disabled).toBe(false);
-      password.value = "example";
+      await fill(password, "example");
       await act(async () => { button.click(); button.click(); });
       expect(fetch).toHaveBeenCalledTimes(1);
       const [path, request] = fetch.mock.calls[0] as unknown as [string, RequestInit];
@@ -66,7 +73,7 @@ describe("정규 공통 로그인 산출물 채택", () => {
       expect(password.value).toBe("");
       expect(container.textContent).toContain("아이디와 비밀번호를 확인하고 다시 시도해 주세요.");
       expect(button.getAttribute("aria-disabled")).toBe("false");
-      password.value = "retry";
+      await fill(password, "retry");
       await act(async () => { button.click(); });
       expect(fetch).toHaveBeenCalledTimes(2);
       await act(async () => { finish(new Response("{}", { status: 401 })); });
@@ -83,7 +90,7 @@ describe("정규 공통 로그인 산출물 채택", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status })));
     const { host: container, password, button } = server();
     await act(async () => { root = hydrateRoot(container, <LoginForm nextPath="/map" />); });
-    password.value = "example";
+    await fill(password, "example");
     await act(async () => { button.click(); });
     expect(container.textContent).toContain(message);
     expect(container.textContent).not.toContain("아이디와 비밀번호를 확인하고 다시 시도해 주세요.");

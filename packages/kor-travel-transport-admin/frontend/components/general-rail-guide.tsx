@@ -15,6 +15,22 @@ type Guide = { fetched_at: string; stale: boolean; kind: "ktx" | "main"; categor
   items: { provider_id: string; station_code: string | null; station_name: string; address: string | null; phone: string | null; longitude: number | null; latitude: number | null }[] };
 
 export function GeneralRailGuide() {
+  const { displayedPlaces, selected, choose, view, setView, focusRevision, setSelected, listMessage, kind, categories, category, query, id, setKind, setCategory, setQuery, locating, locate, current, setReload, positionError } = useGeneralRailGuide();
+  return <section className="journey-workbench rail-journey map-route map-route-primary" aria-label="철도 역 지도">
+    <div id="general-rail-map" className="journey-map-target map-route-primary" tabIndex={-1}><TransportMap places={displayedPlaces} selectedPlace={selected} onSelectPlace={choose} view={view} onViewChange={setView} focusRevision={focusRevision} onCloseDetails={() => setSelected(null)}
+    listContent={listMessage ? <p className="quiet" role="status">{listMessage}</p> : undefined}
+    filterSummary={`${kind === "ktx" ? "KTX" : "일반철도"} · ${categories.find((row) => row.code === category)?.name ?? "노선·권역 선택"}${query ? ` · ${query}` : ""}`}
+    toolbar={<RailGuideFilters id={id} kind={kind} setKind={setKind} setCategory={setCategory} setQuery={setQuery} setSelected={setSelected} category={category} categories={categories} query={query} locating={locating} locate={locate} />}
+    feedback={<>{current?.error ? <p role="alert">{current.error} <button type="button" className="inline-link" onClick={() => setReload((value) => value + 1)}>다시 조회</button></p> : !current?.data ? <p role="status">공개 역 안내 조회 중…</p> : null}
+    {current?.data?.stale ? <p role="status">갱신에 실패한 이전 역 안내입니다.</p> : null}
+    {positionError ? <p role="alert">{positionError}</p> : null}</>}
+    details={selected ? <RailGuideDetails selected={selected} setView={setView} choose={choose} /> : undefined} /></div>
+  </section>;
+}
+
+
+// 조회·선택·요청 수명은 이 도메인 훅이, 아래 컴포넌트는 표현을 소유한다.
+function useGeneralRailGuide() {
   const id = useId();
   const [kind, setKind] = useState<"ktx" | "main">("ktx");
   const [category, setCategory] = useState("");
@@ -45,20 +61,22 @@ export function GeneralRailGuide() {
   const displayedPlaces = position ? nearby.map((row) => row.place) : filtered;
   const listMessage = current?.data && !displayedPlaces.length ? !category && !query.trim() ? "노선이나 권역을 선택해 역을 찾으세요." : "조건에 맞는 역이 없습니다. 다른 이름이나 노선·권역을 선택해 주세요." : "";
   function choose(place: Place) { setSelected(place); setFocusRevision((value) => value + 1); }
-  return <section className="journey-workbench rail-journey map-route map-route-primary" aria-label="철도 역 지도">
-    <div id="general-rail-map" className="journey-map-target map-route-primary" tabIndex={-1}><TransportMap places={displayedPlaces} selectedPlace={selected} onSelectPlace={choose} view={view} onViewChange={setView} focusRevision={focusRevision} onCloseDetails={() => setSelected(null)}
-    listContent={listMessage ? <p className="quiet" role="status">{listMessage}</p> : undefined}
-    filterSummary={`${kind === "ktx" ? "KTX" : "일반철도"} · ${categories.find((row) => row.code === category)?.name ?? "노선·권역 선택"}${query ? ` · ${query}` : ""}`}
-    toolbar={<MapFilterBar>
+
+  return { displayedPlaces, selected, choose, view, setView, focusRevision, setSelected, listMessage, kind, categories, category, query, id, setKind, setCategory, setQuery, locating, locate, current, setReload, positionError };
+}
+
+
+function RailGuideFilters({ id, kind, setKind, setCategory, setQuery, setSelected, category, categories, query, locating, locate }: Pick<ReturnType<typeof useGeneralRailGuide>, "id" | "kind" | "setKind" | "setCategory" | "setQuery" | "setSelected" | "category" | "categories" | "query" | "locating" | "locate">) {
+  return (<MapFilterBar>
       <MapFilterField label="역 안내 구분" htmlFor={`${id}-kind`}><select id={`${id}-kind`} value={kind} onChange={(event) => { setKind(event.target.value as "ktx" | "main"); setCategory(""); setQuery(""); setSelected(null); }}><option value="ktx">KTX 노선</option><option value="main">일반철도 권역</option></select></MapFilterField>
       <MapFilterField label={kind === "ktx" ? "노선" : "권역"} htmlFor={`${id}-category`}><select id={`${id}-category`} value={category} onChange={(event) => { setCategory(event.target.value); setSelected(null); }}><option value="">{kind === "ktx" ? "노선 선택" : "권역 선택"}</option>{categories.map((row) => <option key={row.code} value={row.code}>{row.name}</option>)}</select></MapFilterField>
       <MapFilterField label="역 이름" htmlFor={`${id}-query`}><Input id={`${id}-query`} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="선택 범위에서 검색" /></MapFilterField>
       <button type="button" className="secondary" disabled={locating || !category} onClick={locate}>{locating ? "위치 확인 중…" : "내 근처 역"}</button>
       <a className="inline-link" href="#general-rail-timetable">시간표 조회</a><InfoButton label="철도 역 안내">코레일 공개 역 안내입니다. KTX는 노선별, 일반철도는 권역별로 역을 찾습니다. 지도는 역 위치를 표시하며 선로 경로나 정차 순서를 뜻하지 않습니다. 시간표는 아래 TAGO 역 목록에서 출발·도착역을 선택해 조회합니다.</InfoButton>
-    </MapFilterBar>}
-    feedback={<>{current?.error ? <p role="alert">{current.error} <button type="button" className="inline-link" onClick={() => setReload((value) => value + 1)}>다시 조회</button></p> : !current?.data ? <p role="status">공개 역 안내 조회 중…</p> : null}
-    {current?.data?.stale ? <p role="status">갱신에 실패한 이전 역 안내입니다.</p> : null}
-    {positionError ? <p role="alert">{positionError}</p> : null}</>}
-    details={selected ? <div className="station-detail"><p>{selected.line_names.join(" · ")}</p>{selected.address ? <button className="inline-link station-address" type="button" disabled={!hasCoordinates(selected)} onClick={() => { setView("map"); choose(selected); }}>{selected.address}{hasCoordinates(selected) ? " · 지도에서 보기" : ""}</button> : null}<p>전화 {selected.phone ? <a className="inline-link" href={`tel:${selected.phone.replace(/[^+\d]/g, "")}`}>{selected.phone}</a> : "미제공"}</p><p className="quiet">코레일 공개 역 안내 · 편의시설은 역 안내에서 확인</p><a className="inline-link" target="_blank" rel="noreferrer" href={`https://www.korail.com/ticket/train/stationGuide/station/view?stationSeq=${encodeURIComponent(selected.provider_id ?? "")}`}>공식 역 안내 ↗</a> <a className="inline-link" href="#general-rail-timetable">예정 시간표 조회</a></div> : undefined} /></div>
-  </section>;
+    </MapFilterBar>);
+}
+
+
+function RailGuideDetails({ selected, setView, choose }: Pick<ReturnType<typeof useGeneralRailGuide>, "selected" | "setView" | "choose">) {
+  return (selected ? <div className="station-detail"><p>{selected.line_names.join(" · ")}</p>{selected.address ? <button className="inline-link station-address" type="button" disabled={!hasCoordinates(selected)} onClick={() => { setView("map"); choose(selected); }}>{selected.address}{hasCoordinates(selected) ? " · 지도에서 보기" : ""}</button> : null}<p>전화 {selected.phone ? <a className="inline-link" href={`tel:${selected.phone.replace(/[^+\d]/g, "")}`}>{selected.phone}</a> : "미제공"}</p><p className="quiet">코레일 공개 역 안내 · 편의시설은 역 안내에서 확인</p><a className="inline-link" target="_blank" rel="noreferrer" href={`https://www.korail.com/ticket/train/stationGuide/station/view?stationSeq=${encodeURIComponent(selected.provider_id ?? "")}`}>공식 역 안내 ↗</a> <a className="inline-link" href="#general-rail-timetable">예정 시간표 조회</a></div> : undefined);
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import { VirtualTable } from "@kor-travel/ui/virtual-table";
+
 // SPDX-License-Identifier: GPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 Youn-sok Choi (digitie)
 // Derived-From: kor-travel-map@974e2d025 home-client.tsx 운영 요약·실행·상태 배치
@@ -27,24 +29,57 @@ type ProviderOverview = {
 };
 
 export function OperationsHome() {
+  const { loading, refresh, errors, activeProviders, providers, attention, activeRuns, dagster, runningSchedules, failedRuns, recentRuns, coverage } = useOperationsOverview();
+  return <>
+    <PageHeader title="운영 홈" description="운영 상태를 한 화면에서 확인합니다." actions={<>
+      <Button type="button" variant="outline" disabled={loading} onClick={refresh}><RefreshCw aria-hidden="true" className={loading ? "animate-spin" : ""} />새로고침</Button>
+      <a className="button secondary" href={dagsterLocationUrl()} target="_blank" rel="noreferrer"><ExternalLink aria-hidden="true" size={15} />Dagster</a>
+    </>} />
+    <OperationsSummary errors={errors} activeProviders={activeProviders} providers={providers} attention={attention} activeRuns={activeRuns} dagster={dagster} runningSchedules={runningSchedules} failedRuns={failedRuns} recentRuns={recentRuns} coverage={coverage} loading={loading} />
+  </>;
+}
+
+
+// 조회·선택·요청 수명은 이 도메인 훅이, 아래 컴포넌트는 표현을 소유한다.
+function useOperationsOverview() {
   const [providers, setProviders] = useState<ProviderOverview | null>(null);
   const [dagster, setDagster] = useState<DagsterOverview | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [reload, setReload] = useState(0);
+  // 중첩 async의 각 await 뒤 AbortSignal 가드와 cleanup abort가 있다.
+  // operations-query-lifecycle 회귀로 독립 응답 표시·두 요청 취소를 검증한다.
+  // Doctor 0.9.22는 이 중첩 함수의 공유 signal 가드를 추적하지 못한다.
+  // react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect
   useEffect(() => {
     const controller = new AbortController();
-    const failed = (key: string, reason: unknown) => {
-      if (!controller.signal.aborted) setErrors((previous) => ({ ...previous, [key]: reason instanceof Error ? reason.message : "조회 실패" }));
-    };
-    void Promise.allSettled([
-      transportGet<ProviderOverview>("transport/providers", controller.signal)
-        .then((value) => { if (!controller.signal.aborted) setProviders(value); })
-        .catch((reason: unknown) => failed("수집 상태", reason)),
-      getDagsterOverview(controller.signal)
-        .then((value) => { if (!controller.signal.aborted) setDagster(value); })
-        .catch((reason: unknown) => failed("파이프라인", reason)),
-    ]).then(() => { if (!controller.signal.aborted) setLoading(false); });
+    // 두 조회는 독립적으로 즉시 반영하되, 각 await 뒤에 현재 요청의 취소 여부를 검사한다.
+    async function loadProviders() {
+      try {
+        const value = await transportGet<ProviderOverview>("transport/providers", controller.signal);
+        if (controller.signal.aborted) return;
+        setProviders(value);
+      } catch (reason) {
+        if (controller.signal.aborted) return;
+        setErrors((previous) => ({ ...previous, "수집 상태": reason instanceof Error ? reason.message : "조회 실패" }));
+      }
+    }
+    async function loadDagster() {
+      try {
+        const value = await getDagsterOverview(controller.signal);
+        if (controller.signal.aborted) return;
+        setDagster(value);
+      } catch (reason) {
+        if (controller.signal.aborted) return;
+        setErrors((previous) => ({ ...previous, "파이프라인": reason instanceof Error ? reason.message : "조회 실패" }));
+      }
+    }
+    async function load() {
+      await Promise.all([loadProviders(), loadDagster()]);
+      if (controller.signal.aborted) return;
+      setLoading(false);
+    }
+    void load();
     return () => controller.abort();
   }, [reload]);
   function refresh() {
@@ -57,41 +92,22 @@ export function OperationsHome() {
   const recentRuns = dagster?.runs ?? [];
   const failedRuns = dagster ? recentRuns.filter((run) => run.status === "FAILURE").length : null;
   const runningSchedules = dagster?.schedules.filter((schedule) => schedule.scheduleState.status === "RUNNING").length;
-  return <>
-    <PageHeader title="운영 홈" description="운영 상태를 한 화면에서 확인합니다." actions={<>
-      <Button type="button" variant="outline" disabled={loading} onClick={refresh}><RefreshCw aria-hidden="true" className={loading ? "animate-spin" : ""} />새로고침</Button>
-      <a className="button secondary" href={dagsterLocationUrl()} target="_blank" rel="noreferrer"><ExternalLink aria-hidden="true" size={15} />Dagster</a>
-    </>} />
-    <div className="operations-home space-y-6">
+
+  return { loading, refresh, errors, activeProviders, providers, attention, activeRuns, dagster, runningSchedules, failedRuns, recentRuns, coverage };
+}
+
+
+function OperationsSummary({ errors, activeProviders, providers, attention, activeRuns, dagster, runningSchedules, failedRuns, recentRuns, coverage, loading }: Pick<ReturnType<typeof useOperationsOverview>, "errors" | "activeProviders" | "providers" | "attention" | "activeRuns" | "dagster" | "runningSchedules" | "failedRuns" | "recentRuns" | "coverage" | "loading">) {
+  return (<div className="operations-home space-y-6">
       {Object.keys(errors).length ? <Alert variant="destructive"><AlertTitle>운영 요약 확인 필요</AlertTitle><AlertDescription>{Object.entries(errors).map(([name, message]) => <p key={name}>{name} · {message}</p>)}<p>확인하지 못한 값은 —로 표시됩니다.</p></AlertDescription></Alert> : null}
-      <Card size="sm" className="p-4">
-        <StatStrip size="lg" ariaLabel="운영 요약" className="grid-cols-2 xl:grid-cols-4" items={[
-          { key: "sources", label: "활성 수집 소스", value: activeProviders?.length, unit: "개", href: "/collections", caption: providers ? `전체 ${providers.items.length}개 소스 · 확인 필요 ${attention?.length ?? 0}개` : "수집 상태 확인 중", testId: "home-stat-sources" },
-          { key: "pipeline", label: "진행 중 작업", value: activeRuns?.length, unit: "건", href: "/admin/dagster", caption: dagster ? `스케줄 ${runningSchedules ?? 0} / ${dagster.schedules.length}개 사용` : "파이프라인 상태 확인 중", testId: "home-stat-pipeline" },
-          { key: "failures", label: "최근 실행 실패", value: failedRuns, unit: "건", href: "/admin/dagster", caption: dagster ? `조회한 최근 ${recentRuns.length}건 기준` : "최근 실행 확인 중", tone: failedRuns ? "destructive" : "neutral", testId: "home-stat-failures" },
-          { key: "timetables", label: "도시철도 시간표", value: coverage?.fresh_snapshots, unit: "역·요일", href: "/rail/metro", caption: coverage ? `필요 ${coverage.expected_snapshots.toLocaleString()}개 · 저장 ${coverage.stored_snapshots.toLocaleString()}개` : "저장 범위 확인 중", testId: "home-stat-timetables" },
-        ]} />
-      </Card>
+      <OperationsMetrics activeProviders={activeProviders} providers={providers} attention={attention} activeRuns={activeRuns} dagster={dagster} runningSchedules={runningSchedules} failedRuns={failedRuns} recentRuns={recentRuns} coverage={coverage} />
       <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="min-w-0 space-y-6">
-          <SectionCard title="최근 실행" description="이 Transport 코드 위치의 최근 실행입니다." actions={<Link href="/admin/dagster" className="inline-link">전체 실행</Link>}>
-            <div className="overflow-x-auto"><table className="operations-table"><thead><tr><th>작업</th><th>상태</th><th>시작 시각</th><th>실행</th></tr></thead><tbody>
-              {recentRuns.slice(0, 8).map((run) => <tr key={run.runId}><td><a className="inline-link" href={dagsterJobRunsUrl(run.jobName)} target="_blank" rel="noreferrer">{JOB_LABELS[run.jobName] ?? run.jobName}</a></td><td><span className={`operation-state ${run.status === "FAILURE" ? "failed" : run.status === "SUCCESS" ? "success" : ""}`}>{statusLabel(run.status)}</span></td><td>{dateTime(run.startTime ? new Date(run.startTime * 1000).toISOString() : null)}</td><td><a className="inline-link" href={dagsterRunUrl(run.runId)} target="_blank" rel="noreferrer">상세<ExternalLink aria-hidden="true" size={12} /></a></td></tr>)}
-            </tbody></table></div>
-            {!dagster ? <p className="quiet">{loading ? "최근 실행을 확인하는 중입니다…" : "최근 실행을 확인하지 못했습니다."}</p> : !recentRuns.length ? <p className="empty-state">최근 실행 기록이 없습니다.</p> : null}
-            {dagster?.warning ? <p role="status">{dagster.warning}</p> : null}
-          </SectionCard>
-          <SectionCard title="확인이 필요한 수집" description="실패와 수집 이력 부재를 구분해 확인합니다." actions={<Link href="/collections" className="inline-link">수집 상태</Link>}>
-            {attention?.length ? <ul className="operations-issues">{attention.map((item) => <li key={item.source}><div><strong>{item.name}</strong><span className="operation-state failed">{statusLabel(item.status)}</span></div><p>마지막 성공 {dateTime(item.last_success_at)}{item.next_due_at ? ` · 다음 평가 ${dateTime(item.next_due_at)}` : ""}</p></li>)}</ul> : <p className="quiet">{providers ? "확인이 필요한 수집 오류가 없습니다." : loading ? "수집 상태를 확인하는 중입니다…" : "수집 상태를 확인하지 못했습니다."}</p>}
-          </SectionCard>
+          <RecentOperations recentRuns={recentRuns} dagster={dagster} loading={loading} />
+          <ProviderAttention attention={attention} providers={providers} loading={loading} />
         </div>
         <div className="min-w-0 space-y-6">
-          <SectionCard title="운영 상태"><dl className="operations-status">
-            <div><dt>저장 API</dt><dd>{providers ? "응답 정상" : loading ? "확인 중" : "확인 실패"}</dd></div>
-            <div><dt>Dagster</dt><dd>{dagster ? "응답 정상" : loading ? "확인 중" : "확인 실패"}</dd></div>
-            <div><dt>시간표 역 연결</dt><dd>{coverage ? `${coverage.linked_station_count.toLocaleString()} / ${coverage.station_count.toLocaleString()}역` : "—"}</dd></div>
-            <div><dt>수집 상태 확인</dt><dd>{dateTime(providers?.generated_at)}</dd></div>
-          </dl></SectionCard>
+          <OperationsHealth providers={providers} loading={loading} dagster={dagster} coverage={coverage} />
           <SectionCard title="교통 정보"><nav className="operations-links" aria-label="교통 정보 바로가기">
             <Link href="/map">교통 지도<span>역·공항·터미널 위치</span></Link>
             <Link href="/highways">고속도로<span>지도·소통·돌발</span></Link>
@@ -100,6 +116,46 @@ export function OperationsHome() {
           </nav></SectionCard>
         </div>
       </div>
-    </div>
-  </>;
+    </div>);
+}
+
+
+function OperationsMetrics({ activeProviders, providers, attention, activeRuns, dagster, runningSchedules, failedRuns, recentRuns, coverage }: Pick<NonNullable<Parameters<typeof OperationsSummary>[0]>, "activeProviders" | "providers" | "attention" | "activeRuns" | "dagster" | "runningSchedules" | "failedRuns" | "recentRuns" | "coverage">) {
+  return (<Card size="sm" className="p-4">
+        <StatStrip size="lg" ariaLabel="운영 요약" className="grid-cols-2 xl:grid-cols-4" items={[
+          { key: "sources", label: "활성 수집 소스", value: activeProviders?.length, unit: "개", href: "/collections", caption: providers ? `전체 ${providers.items.length}개 소스 · 확인 필요 ${attention?.length ?? 0}개` : "수집 상태 확인 중", testId: "home-stat-sources" },
+          { key: "pipeline", label: "진행 중 작업", value: activeRuns?.length, unit: "건", href: "/admin/dagster", caption: dagster ? `스케줄 ${runningSchedules ?? 0} / ${dagster.schedules.length}개 사용` : "파이프라인 상태 확인 중", testId: "home-stat-pipeline" },
+          { key: "failures", label: "최근 실행 실패", value: failedRuns, unit: "건", href: "/admin/dagster", caption: dagster ? `조회한 최근 ${recentRuns.length}건 기준` : "최근 실행 확인 중", tone: failedRuns ? "destructive" : "neutral", testId: "home-stat-failures" },
+          { key: "timetables", label: "도시철도 시간표", value: coverage?.fresh_snapshots, unit: "역·요일", href: "/rail/metro", caption: coverage ? `필요 ${coverage.expected_snapshots.toLocaleString()}개 · 저장 ${coverage.stored_snapshots.toLocaleString()}개` : "저장 범위 확인 중", testId: "home-stat-timetables" },
+        ]} />
+      </Card>);
+}
+
+
+function RecentOperations({ recentRuns, dagster, loading }: Pick<NonNullable<Parameters<typeof OperationsSummary>[0]>, "recentRuns" | "dagster" | "loading">) {
+  return (<SectionCard title="최근 실행" description="이 Transport 코드 위치의 최근 실행입니다." actions={<Link href="/admin/dagster" className="inline-link">전체 실행</Link>}>
+            <div className="overflow-x-auto"><VirtualTable ariaLabel="조회 결과" containerClassName="operations-table" data={recentRuns.slice(0, 8)} getRowId={(run) => String(run.runId)} virtualized={false} columns={[{ id: 'column0', header: '작업', cell: ({ row: { original: run } }) => <><a className="inline-link" href={dagsterJobRunsUrl(run.jobName)} target="_blank" rel="noreferrer">{JOB_LABELS[run.jobName] ?? run.jobName}</a></> },
+{ id: 'column1', header: '상태', cell: ({ row: { original: run } }) => <><span className={`operation-state ${run.status === "FAILURE" ? "failed" : run.status === "SUCCESS" ? "success" : ""}`}>{statusLabel(run.status)}</span></> },
+{ id: 'column2', header: '시작 시각', cell: ({ row: { original: run } }) => <>{dateTime(run.startTime ? new Date(run.startTime * 1000).toISOString() : null)}</> },
+{ id: 'column3', header: '실행', cell: ({ row: { original: run } }) => <><a className="inline-link" href={dagsterRunUrl(run.runId)} target="_blank" rel="noreferrer">상세<ExternalLink aria-hidden="true" size={12} /></a></> }]} /></div>
+            {!dagster ? <p className="quiet">{loading ? "최근 실행을 확인하는 중입니다…" : "최근 실행을 확인하지 못했습니다."}</p> : !recentRuns.length ? <p className="empty-state">최근 실행 기록이 없습니다.</p> : null}
+            {dagster?.warning ? <p role="status">{dagster.warning}</p> : null}
+          </SectionCard>);
+}
+
+
+function ProviderAttention({ attention, providers, loading }: Pick<NonNullable<Parameters<typeof OperationsSummary>[0]>, "attention" | "providers" | "loading">) {
+  return (<SectionCard title="확인이 필요한 수집" description="실패와 수집 이력 부재를 구분해 확인합니다." actions={<Link href="/collections" className="inline-link">수집 상태</Link>}>
+            {attention?.length ? <ul className="operations-issues">{attention.map((item) => <li key={item.source}><div><strong>{item.name}</strong><span className="operation-state failed">{statusLabel(item.status)}</span></div><p>마지막 성공 {dateTime(item.last_success_at)}{item.next_due_at ? ` · 다음 평가 ${dateTime(item.next_due_at)}` : ""}</p></li>)}</ul> : <p className="quiet">{providers ? "확인이 필요한 수집 오류가 없습니다." : loading ? "수집 상태를 확인하는 중입니다…" : "수집 상태를 확인하지 못했습니다."}</p>}
+          </SectionCard>);
+}
+
+
+function OperationsHealth({ providers, loading, dagster, coverage }: Pick<NonNullable<Parameters<typeof OperationsSummary>[0]>, "providers" | "loading" | "dagster" | "coverage">) {
+  return (<SectionCard title="운영 상태"><dl className="operations-status">
+            <div><dt>저장 API</dt><dd>{providers ? "응답 정상" : loading ? "확인 중" : "확인 실패"}</dd></div>
+            <div><dt>Dagster</dt><dd>{dagster ? "응답 정상" : loading ? "확인 중" : "확인 실패"}</dd></div>
+            <div><dt>시간표 역 연결</dt><dd>{coverage ? `${coverage.linked_station_count.toLocaleString()} / ${coverage.station_count.toLocaleString()}역` : "—"}</dd></div>
+            <div><dt>수집 상태 확인</dt><dd>{dateTime(providers?.generated_at)}</dd></div>
+          </dl></SectionCard>);
 }

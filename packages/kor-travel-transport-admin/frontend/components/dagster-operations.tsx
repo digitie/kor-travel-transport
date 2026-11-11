@@ -1,22 +1,12 @@
 "use client";
 
-import { DagsterOperations as CommonDagsterOperations, type DagsterSnapshot } from "@kor-travel/ui";
+import { DagsterOperations as CommonDagsterOperations } from "@kor-travel/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHeader } from "./admin-shell";
-import { getDagsterOverview, getRunFailure, jobBudgetSeconds, JOB_LABELS, statusLabel, type DagsterOverview, type DagsterRunFailureDetail } from "@/lib/dagster";
-import { DAGSTER_LOCATION_NAME, DAGSTER_REPOSITORY_NAME, dagsterLocationUrl, dagsterRunUrl, dagsterJobRunsUrl } from "@/lib/dagster-scope";
+import { getDagsterOverview, getRunFailure, JOB_LABELS, statusLabel, type DagsterOverview, type DagsterRunFailureDetail } from "@/lib/dagster";
+import { dagsterLocationUrl, dagsterRunUrl, dagsterJobRunsUrl } from "@/lib/dagster-scope";
 
-export function commonSnapshot(snapshot: DagsterOverview): DagsterSnapshot {
-  const runs = new Map(snapshot.runs.map(run => [run.runId, run]));
-  for (const run of snapshot.activeRuns ?? []) if (!runs.has(run.runId)) runs.set(run.runId, run);
-  return {
-    checkedAt: snapshot.checkedAt ?? "",
-    repositories: [{ name: DAGSTER_REPOSITORY_NAME, locationName: DAGSTER_LOCATION_NAME, jobs: [], assets: [],
-      schedules: snapshot.schedules.map(row => ({ name: row.name, cron: row.cronSchedule, jobName: row.pipelineName, status: row.scheduleState.status })) }],
-    runs: [...runs.values()].map(run => ({ ...run, errorMessage: run.errorMessage ?? null,
-      maxRuntimeSeconds: Number(run.tags?.find(tag => tag.key === "dagster/max_runtime")?.value) || jobBudgetSeconds(run.jobName) })),
-  };
-}
+import { commonSnapshot } from "@/lib/dagster-snapshot";
 
 const props = {
   jobLabel: (name: string) => JOB_LABELS[name] ?? name,

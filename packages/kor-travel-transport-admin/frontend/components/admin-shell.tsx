@@ -3,9 +3,17 @@
 import { Activity, Bus, ChartNoAxesCombined, Database, Fuel, Home, LogOut, Map, Menu, ParkingCircle, Plane, Route, ShipWheel, TrainFront, Waypoints } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { AppMenu } from "@kor-travel/ui";
+import { createContext, useContext, useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { createStore } from "zustand/vanilla";
+import { useStore } from "zustand";
+import { AppMenu, type AppMenuLinkProps } from "@kor-travel/ui";
 import { InfoButton } from "./info-button";
+
+const MenuCloseContext = createContext<() => void>(() => {});
+function MenuLink({ onClick, ...props }: AppMenuLinkProps) {
+  const close = useContext(MenuCloseContext);
+  return <Link {...props} onClick={(event) => { onClick?.(event); if (!event.defaultPrevented) close(); }} />;
+}
 
 // Map과 같은 비링크 그룹 제목 + 작업 페이지 구조다.
 const groups = [
@@ -26,8 +34,11 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const menuButton = useRef<HTMLButtonElement>(null);
   // 메뉴를 연 경로. 메뉴 링크 밖의 탐색(뒤로 가기 등)으로 경로가 바뀌면 지도·주차 화면 위에 열린 채 남지 않게
   // 바로 닫힌 것으로 본다. 효과에서 setState하지 않고 경로에서 파생한다(/login early return보다 앞의 hook).
-  const [menuOpenPath, setMenuOpenPath] = useState<string | null>(null);
+  const [uiStore] = useState(() => createStore<{ menuOpenPath: string | null }>(() => ({ menuOpenPath: null })));
+  const menuOpenPath = useStore(uiStore, (state) => state.menuOpenPath);
+  const setMenuOpenPath = (menuOpenPath: string | null) => uiStore.setState({ menuOpenPath });
   const menuOpen = menuOpenPath === pathname;
+  const closeMenu = useCallback(() => uiStore.setState({ menuOpenPath: null }), [uiStore]);
   function closeMenuOnEscape(event: KeyboardEvent<HTMLElement>) {
     if (event.key !== "Escape" || !menuOpen) return;
     setMenuOpenPath(null);
@@ -44,7 +55,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
       <a className="skip-link" href="#main-content">본문으로 건너뛰기</a>
       <div className="admin-layout" data-testid="admin-shell">
         <aside className="rail" aria-label="관리자 사이드바" data-slot="admin-shell-rail">
-          <div className="rail-shell" onKeyDown={closeMenuOnEscape}>
+          <div className="rail-shell" role="presentation" onKeyDown={closeMenuOnEscape}>
             <div className="rail-header">
               <Link className="brand" href="/" aria-label="Kor Travel Transport 홈">
                 <span className="brand-mark"><Route aria-hidden="true" size={17} /></span>
@@ -54,9 +65,9 @@ export function AdminShell({ children }: { children: ReactNode }) {
             </div>
             {/* 라벨은 상태와 무관한 중립 이름이고 열림·닫힘은 aria-expanded가 전달한다. */}
             <button ref={menuButton} type="button" className="mobile-menu-button" aria-label="주요 메뉴" aria-controls={navigationId} aria-expanded={menuOpen} onClick={() => setMenuOpenPath(menuOpen ? null : pathname)}><Menu aria-hidden="true" size={18} />메뉴</button>
-            <div id={navigationId} className={`rail-nav common-menu${menuOpen ? " is-open" : ""}`} onClick={(event) => { if (event.target instanceof Element && event.target.closest("a")) setMenuOpenPath(null); }}>
-              <AppMenu label="주요 메뉴" pathname={pathname} activeItemId={activeHref} linkComponent={Link}
-                groups={groups.map((group) => ({ id: group.id, label: group.label, items: group.items.map(([href, label, Icon]) => ({ id: href, href, label, exact: href === "/", icon: <Icon aria-hidden="true" size={16} strokeWidth={1.8} /> })) }))} />
+            <div id={navigationId} className={`rail-nav common-menu${menuOpen ? " is-open" : ""}`}>
+              <MenuCloseContext.Provider value={closeMenu}><AppMenu label="주요 메뉴" pathname={pathname} activeItemId={activeHref} linkComponent={MenuLink}
+                groups={groups.map((group) => ({ id: group.id, label: group.label, items: group.items.map(([href, label, Icon]) => ({ id: href, href, label, exact: href === "/", icon: <Icon aria-hidden="true" size={16} strokeWidth={1.8} /> })) }))} /></MenuCloseContext.Provider>
             </div>
             <form className="rail-footer" action="/api/auth/logout" method="post" onSubmit={clearDashboardCache}>
               <button className="nav-link logout-button" type="submit"><LogOut aria-hidden="true" size={16} strokeWidth={1.8} /><span>로그아웃</span></button>

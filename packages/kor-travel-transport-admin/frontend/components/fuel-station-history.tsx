@@ -1,11 +1,12 @@
 "use client";
 
+import { VirtualTable } from "@kor-travel/ui/virtual-table";
+
 import { useEffect, useId, useMemo, useState, type CSSProperties } from "react";
 import { money, TransportError, type Place } from "@/lib/journey";
 import { fuelProductLabel } from "@/lib/transport-presentation";
 import { FUEL_HISTORY_PRODUCT_ORDER, fuelHistorySeries, isFuelHistoryGap, loadFuelStationHistory, type FuelStationHistory } from "@/lib/fuel-station-history";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { InfoButton } from "./info-button";
 
 const colors = ["var(--brand)", "var(--success)", "var(--warning)", "var(--danger)", "var(--text-secondary)"];
@@ -60,11 +61,23 @@ export function FuelStationHistoryChart({ data }: { data: FuelStationHistory }) 
     <span className="sr-only" id={hint}>좌우 방향키로 관측을 이동하고 Home·End로 처음·마지막 관측을 확인합니다. 터치로 날짜를 선택하거나 아래 관측값 표를 펼칠 수 있습니다.</span>
     <div className="fuel-trend-legend">{series.map((row, index) => <span key={row.product} style={{ "--series-color": seriesColor(row.product, index) } as CSSProperties}><i aria-hidden="true" /><span>{fuelProductLabel(row.product)} <strong>{money(row.points.at(-1)!.price, "원/L")}</strong><small>{historyTime(row.points.at(-1)!.observed_at)}</small></span></span>)}</div>
     {current ? <p className="fuel-trend-tooltip" role="status">{fuelProductLabel(current.product_code)} · {historyTime(current.observed_at)} · <strong>{money(current.price, "원/L")}</strong></p> : null}
-    <details className="fuel-trend-table"><summary>관측값 표 · {points.length.toLocaleString("ko-KR")}건</summary><Table aria-label="주유소 7일 가격 관측값"><TableHeader><TableRow><TableHead>관측 시각 (한국)</TableHead><TableHead>유종</TableHead><TableHead>원/L</TableHead></TableRow></TableHeader><TableBody>{[...points].reverse().map((point) => <TableRow key={`${point.product_code}:${point.instant}`}><TableCell><time dateTime={point.observed_at}>{historyTime(point.observed_at)}</time></TableCell><TableCell>{fuelProductLabel(point.product_code)}</TableCell><TableCell>{point.price.toLocaleString("ko-KR")}</TableCell></TableRow>)}</TableBody></Table></details>
+    <details className="fuel-trend-table"><summary>관측값 표 · {points.length.toLocaleString("ko-KR")}건</summary><VirtualTable ariaLabel="주유소 7일 가격 관측값" data={[...points].reverse()} getRowId={(point) => String(`${point.product_code}:${point.instant}`)} virtualized={false} columns={[{ id: 'column0', header: '관측 시각 (한국)', cell: ({ row: { original: point } }) => <><time dateTime={point.observed_at}>{historyTime(point.observed_at)}</time></> },
+{ id: 'column1', header: '유종', cell: ({ row: { original: point } }) => <>{fuelProductLabel(point.product_code)}</> },
+{ id: 'column2', header: '원/L', cell: ({ row: { original: point } }) => <>{point.price.toLocaleString("ko-KR")}</> }]} /></details>
   </>;
 }
 
 export function FuelStationPriceHistory({ place }: { place: Pick<Place, "id" | "source"> }) {
+  const { supported, current, setReload, key } = useFuelStationHistory({ place });
+  return <section className="fuel-station-history" aria-label="최근 7일 주유소 가격" aria-busy={supported && !current}>
+    <div className="fuel-history-heading"><h3>최근 7일 유가</h3><InfoButton label="주유소 가격 추이">최근 168시간의 저장 관측만 표시합니다. 한국 날짜 기준으로 관측이 전혀 없는 날은 선을 끊고 보간하지 않습니다. 오른쪽 숫자는 유종별 마지막 실제 관측 가격입니다. 현재 가격 카드의 기준 시각과 다를 수 있습니다.{current?.data ? <><p>조회 범위 {historyTime(current.data.window.from_at)} → {historyTime(current.data.window.to_at)} · 한국 시각</p><p>출처 최근 수집 성공 {current.data.source_last_success_at ? historyTime(current.data.source_last_success_at) : "확인되지 않음"}</p></> : null}</InfoButton></div>
+    {!supported ? <p className="quiet">이 출처는 개별 주유소의 저장 가격 추이를 제공하지 않습니다.</p> : !current ? <p className="quiet" role="status">가격 이력 불러오는 중…</p> : current.error ? <div role="alert"><p>{current.error}</p><Button type="button" variant="outline" size="sm" onClick={() => setReload((value) => value + 1)}>다시 조회</Button></div> : current.data ? <FuelStationHistoryChart key={key} data={current.data} /> : null}
+  </section>;
+}
+
+
+// 조회·선택·요청 수명은 이 도메인 훅이, 아래 컴포넌트는 표현을 소유한다.
+function useFuelStationHistory({ place }: { place: Pick<Place, "id" | "source"> }) {
   const [reload, setReload] = useState(0);
   const key = `${place.source}/${place.id}/${reload}`;
   const [state, setState] = useState<{ key: string; data?: FuelStationHistory; error?: string }>();
@@ -80,8 +93,6 @@ export function FuelStationPriceHistory({ place }: { place: Pick<Place, "id" | "
     return () => controller.abort();
   }, [key, place.id, place.source, supported]);
   const current = state?.key === key ? state : undefined;
-  return <section className="fuel-station-history" aria-label="최근 7일 주유소 가격" aria-busy={supported && !current}>
-    <div className="fuel-history-heading"><h3>최근 7일 유가</h3><InfoButton label="주유소 가격 추이">최근 168시간의 저장 관측만 표시합니다. 한국 날짜 기준으로 관측이 전혀 없는 날은 선을 끊고 보간하지 않습니다. 오른쪽 숫자는 유종별 마지막 실제 관측 가격입니다. 현재 가격 카드의 기준 시각과 다를 수 있습니다.{current?.data ? <><p>조회 범위 {historyTime(current.data.window.from_at)} → {historyTime(current.data.window.to_at)} · 한국 시각</p><p>출처 최근 수집 성공 {current.data.source_last_success_at ? historyTime(current.data.source_last_success_at) : "확인되지 않음"}</p></> : null}</InfoButton></div>
-    {!supported ? <p className="quiet">이 출처는 개별 주유소의 저장 가격 추이를 제공하지 않습니다.</p> : !current ? <p className="quiet" role="status">가격 이력 불러오는 중…</p> : current.error ? <div role="alert"><p>{current.error}</p><Button type="button" variant="outline" size="sm" onClick={() => setReload((value) => value + 1)}>다시 조회</Button></div> : current.data ? <FuelStationHistoryChart key={key} data={current.data} /> : null}
-  </section>;
+
+  return { supported, current, setReload, key };
 }

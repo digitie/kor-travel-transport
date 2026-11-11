@@ -1,9 +1,12 @@
 /* Hallmark stamp: parking-radar / operational workbench / 2026-08-22 */
+@import "pretendard/dist/web/variable/pretendardvariable.css";
 @import "tailwindcss";
+@import "@kor-travel/tokens/theme.css";
+@import "@kor-travel/tokens/radix.css";
 @import "./tokens.css";
 @import "../parking.css";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@source "../../node_modules/@kor-travel/ui/dist";
 
 /* dark: 클래스 토글 없음 — 이 앱은 prefers-color-scheme만 사용한다(next-themes 미도입).
  * shadcn init이 기본으로 넣는 `.dark` 클래스 variant는 여기서 쓰지 않는다 — Tailwind v4
@@ -335,3 +338,5 @@ body {
     @apply font-sans;
   }
 }
+
+body { font-family: "Pretendard Variable", Pretendard, sans-serif; }

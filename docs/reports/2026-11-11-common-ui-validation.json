@@ -1,0 +1,604 @@
+{
+  "status": "LOCAL_GATES_PASS_PARENT_INTEGRATION_REVIEW_MERGE_DEPLOY_PENDING",
+  "branch": "agent/codex-common-unification-20261111",
+  "previousSources": {
+    "implementation": "53a8082112999500e72fc3d07e715d0bcd29e170",
+    "mapContractFix": "9e6600ae911b50619136ff35d3296966d2704980"
+  },
+  "artifacts": {
+    "status": "CANDIDATE_NOT_RELEASED",
+    "candidate": "integration-9-review",
+    "sources": {
+      "common": "2c1182e765bb2bc53e01e0962cf2a73683891e1d",
+      "maplibre-vworld-react": "9a7a348b02d61969b394c681b024d5851eef836b",
+      "lightningcss": "748651cbd845971e65c411166ddee101745dab21",
+      "serde-content": "18e53fcf6f8ace093a292891b34fa3411192617d"
+    },
+    "packages": {
+      "@kor-travel/tokens": {
+        "version": "0.1.1",
+        "filename": "kor-travel-tokens-0.1.1.tgz",
+        "integrity": "sha512-+JglXOZhP11afRr/upKHWz7cjsj4IPIKYkoVh8lq9IcJTKU8zIHA8pirC1IOS1++gqOmMCnPkj1oi8EzJsTUyQ=="
+      },
+      "@kor-travel/ui": {
+        "version": "0.2.0",
+        "filename": "kor-travel-ui-0.2.0.tgz",
+        "integrity": "sha512-buhlDym3/Id355Cse+lwBsFk3G1nz3dY2XviAA+X82TZPXmcujYGxItRZafsY0t4xsWkiQ3jAxtCYjFZ7JsbEQ=="
+      },
+      "lightningcss": {
+        "version": "1.33.0+nativecss.fix.4",
+        "filename": "lightningcss-1.33.0+nativecss.fix.4.tgz",
+        "integrity": "sha512-zDQ03VJE37OlyBrLsRcsEdIVu0T4BXJKDH5y9//To6GlGN2UrKQGERFVAFblkPQ5ZEbhuOp5wpXxGARZNdbQLA=="
+      },
+      "vworld-map-core": {
+        "version": "1.0.1",
+        "filename": "vworld-map-core-1.0.1.tgz",
+        "integrity": "sha512-Djm14Arr7U0r7Sabj6P0V57CdzWIGaJmecklmY1hwrq1QUZJjMUFgkZfGRFalUo6AFzHEwwzOEzbJPMifGhINw=="
+      },
+      "vworld-map-rn": {
+        "version": "1.0.1",
+        "filename": "vworld-map-rn-1.0.1.tgz",
+        "integrity": "sha512-lgDBasKIEG2ElQ9jnHDB9pA+x04Xge9yzBb1NPPw1auyvlkQvxsq4NfRPIrw1VWiutcGiIefySLiVaZDUkO69Q=="
+      },
+      "vworld-map-web": {
+        "version": "1.0.3",
+        "filename": "vworld-map-web-1.0.3.tgz",
+        "integrity": "sha512-HPXZcz/wP6tFsCZqlAbansWNICcZPubC+/V7rDWXYTQVlOBLl9cZQ1HSMJd25c2CZoMNreVFTQA0vzkVglkS1w=="
+      }
+    }
+  },
+  "runtimeEvidenceCandidate": {
+    "status": "CANDIDATE_NOT_RELEASED",
+    "candidate": "integration-8-review",
+    "sources": {
+      "common": "670a753bc17f956f71bdc28385d6241a6e4ee017",
+      "maplibre-vworld-react": "9a7a348b02d61969b394c681b024d5851eef836b",
+      "lightningcss": "748651cbd845971e65c411166ddee101745dab21",
+      "serde-content": "18e53fcf6f8ace093a292891b34fa3411192617d"
+    },
+    "packages": {
+      "@kor-travel/tokens": {
+        "version": "0.1.1",
+        "filename": "kor-travel-tokens-0.1.1.tgz",
+        "integrity": "sha512-juHDU+d/0GtLmylPyx9kDur2GwnzV5izAtRpzfqhxvbMjPlVfrbEanLBcdqC+EdmifO7StrMlcQJso239gv5PA=="
+      },
+      "@kor-travel/ui": {
+        "version": "0.2.0",
+        "filename": "kor-travel-ui-0.2.0.tgz",
+        "integrity": "sha512-RaBKVxmLJi7ZoQZqs28BaTmXzxpHsihV7D/VvR/vnDeqXtOvtiZawAo6K3CtbuZ37daKqMhGCG5hC5p42pI3Ug=="
+      },
+      "lightningcss": {
+        "version": "1.33.0+nativecss.fix.4",
+        "filename": "lightningcss-1.33.0+nativecss.fix.4.tgz",
+        "integrity": "sha512-zDQ03VJE37OlyBrLsRcsEdIVu0T4BXJKDH5y9//To6GlGN2UrKQGERFVAFblkPQ5ZEbhuOp5wpXxGARZNdbQLA=="
+      },
+      "vworld-map-core": {
+        "version": "1.0.1",
+        "filename": "vworld-map-core-1.0.1.tgz",
+        "integrity": "sha512-Djm14Arr7U0r7Sabj6P0V57CdzWIGaJmecklmY1hwrq1QUZJjMUFgkZfGRFalUo6AFzHEwwzOEzbJPMifGhINw=="
+      },
+      "vworld-map-rn": {
+        "version": "1.0.1",
+        "filename": "vworld-map-rn-1.0.1.tgz",
+        "integrity": "sha512-lgDBasKIEG2ElQ9jnHDB9pA+x04Xge9yzBb1NPPw1auyvlkQvxsq4NfRPIrw1VWiutcGiIefySLiVaZDUkO69Q=="
+      },
+      "vworld-map-web": {
+        "version": "1.0.3",
+        "filename": "vworld-map-web-1.0.3.tgz",
+        "integrity": "sha512-HPXZcz/wP6tFsCZqlAbansWNICcZPubC+/V7rDWXYTQVlOBLl9cZQ1HSMJd25c2CZoMNreVFTQA0vzkVglkS1w=="
+      }
+    }
+  },
+  "checks": {
+    "public": {
+      "guard": 0,
+      "canonical": 0,
+      "lint": 0,
+      "type": 0,
+      "unit": {
+        "exitCode": 0,
+        "passed": 164
+      },
+      "doctor": {
+        "errorCount": 0,
+        "warningCount": 0,
+        "affectedFileCount": 0,
+        "totalDiagnosticCount": 0,
+        "score": null,
+        "scoreLabel": null,
+        "complete": true,
+        "skippedChecks": [],
+        "analyzedFiles": 57
+      },
+      "nativeBuild": "PASS_N150",
+      "dockerBuild": {
+        "exitCode": 0,
+        "image": "transport-c8-public-qa:2jhvh18v",
+        "imageId": "sha256:851e35f7b3a462b4438041db13c5932b3139697f53d3bdb58edd11817d8025c4",
+        "log": "validation/transport-public-c8-docker-build.log"
+      },
+      "dockerUnit": {
+        "exitCode": 0,
+        "passed": 164,
+        "log": "validation/transport-public-c8-docker-unit.log"
+      },
+      "browser": "PASS_NATIVE_AND_DOCKER",
+      "nativeBrowser": {
+        "exitCode": 0,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "log": "validation/transport-public-c8-native-browser.log"
+      },
+      "fontRuntime": {
+        "family": "\"Pretendard Variable\", Pretendard, sans-serif",
+        "faces": [
+          {
+            "family": "Pretendard Variable",
+            "weight": "45 920",
+            "status": "loaded"
+          }
+        ],
+        "responses": [
+          {
+            "path": "/_next/static/media/PretendardVariable.0ztvx5mb7lxp4.woff2",
+            "status": 200
+          }
+        ]
+      },
+      "dockerBrowser": {
+        "exitCode": 0,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "log": "validation/transport-public-c8-docker-browser.log"
+      },
+      "c9Guard": {
+        "installed": 0,
+        "externalCanonical": 0
+      },
+      "dockerFontRuntime": {
+        "family": "\"Pretendard Variable\", Pretendard, sans-serif",
+        "faces": [
+          {
+            "family": "Pretendard Variable",
+            "weight": "45 920",
+            "status": "loaded"
+          }
+        ],
+        "responses": [
+          {
+            "path": "/_next/static/media/PretendardVariable.0ztvx5mb7lxp4.woff2",
+            "status": 200
+          }
+        ]
+      }
+    },
+    "admin": {
+      "guard": 0,
+      "canonical": 0,
+      "lint": 0,
+      "type": 0,
+      "unit": {
+        "exitCode": 0,
+        "passed": 356
+      },
+      "doctor": {
+        "errorCount": 0,
+        "warningCount": 0,
+        "affectedFileCount": 0,
+        "totalDiagnosticCount": 0,
+        "score": null,
+        "scoreLabel": null,
+        "complete": true,
+        "skippedChecks": [],
+        "analyzedFiles": 198
+      },
+      "nativeBuild": "PASS_N150",
+      "dockerBuild": {
+        "exitCode": 0,
+        "image": "transport-c8-admin-qa:2jhvh18v",
+        "imageId": "sha256:f6f66eb943c4901006a53663b34f9fcb98b5a09f0fffd2eb597ca0bfa4159e99",
+        "log": "validation/transport-admin-c8-docker-build.log"
+      },
+      "dockerUnit": {
+        "exitCode": 0,
+        "passed": 356,
+        "log": "validation/transport-admin-c8-docker-unit.log"
+      },
+      "browser": "PASS_NATIVE_AND_DOCKER",
+      "nativeBrowser": {
+        "exitCode": 0,
+        "passed": 18,
+        "failed": 0,
+        "skipped": 0,
+        "log": "validation/transport-admin-c8-native-browser.log"
+      },
+      "fontRuntime": {
+        "family": "\"Pretendard Variable\", Pretendard, sans-serif",
+        "faces": [
+          {
+            "family": "Pretendard Variable",
+            "weight": "45 920",
+            "status": "loaded"
+          }
+        ],
+        "responses": [
+          {
+            "path": "/_next/static/media/PretendardVariable.0ztvx5mb7lxp4.woff2",
+            "status": 200
+          }
+        ]
+      },
+      "dockerBrowser": {
+        "exitCode": 0,
+        "passed": 18,
+        "failed": 0,
+        "skipped": 0,
+        "log": "validation/transport-admin-c8-docker-browser.log"
+      },
+      "c9Guard": {
+        "installed": 0,
+        "externalCanonical": 0
+      },
+      "dockerFontRuntime": {
+        "family": "\"Pretendard Variable\", Pretendard, sans-serif",
+        "faces": [
+          {
+            "family": "Pretendard Variable",
+            "weight": "45 920",
+            "status": "loaded"
+          }
+        ],
+        "responses": [
+          {
+            "path": "/_next/static/media/PretendardVariable.0ztvx5mb7lxp4.woff2",
+            "status": 200
+          }
+        ]
+      }
+    }
+  },
+  "backend": {
+    "wsl": {
+      "status": "PASS_WITH_SKIPS",
+      "exitCode": 0,
+      "passed": 1511,
+      "failed": 0,
+      "skipped": 39,
+      "warnings": 6,
+      "durationSeconds": 3276.16,
+      "log": "validation/transport-backend-wsl-final.log"
+    },
+    "docker": {
+      "status": "PASS_WITH_SKIPS",
+      "exitCode": 0,
+      "passed": 1508,
+      "failed": 0,
+      "skipped": 42,
+      "warnings": 6,
+      "durationSeconds": 3493.99,
+      "log": "validation/transport-backend-docker-final.log"
+    }
+  },
+  "runtimeEquivalence": {
+    "parentProof": "/home/digitie/dev/common-unification-20261111/validation/common-c8-c9-runtime-equivalence.json",
+    "parentProofSha256": "30fbc2e986ab4e675f3492be4210c5bd71f4acfb2a353cdb86b7b70592ee897c",
+    "ownTarContentDiff": {
+      "@kor-travel/tokens": [
+        "package/check-dependencies.mjs"
+      ],
+      "@kor-travel/ui": [
+        "package/check-dependencies.mjs"
+      ],
+      "lightningcss": [],
+      "vworld-map-core": [],
+      "vworld-map-rn": [],
+      "vworld-map-web": []
+    },
+    "c8RuntimeProofPreserved": true,
+    "c9AdoptionStatus": "WAIT_C8_DOCKER_RUNTIME_GATES",
+    "c9CommonSource": "2c1182e765bb2bc53e01e0962cf2a73683891e1d"
+  },
+  "appSourceEquivalence": {
+    "runtimeSourceDifferences": [],
+    "policyOnlyConsumerDifferences": [
+      "frontend/common-artifacts.json",
+      "frontend/package-lock.json",
+      "frontend/vendor/kor-travel-tokens-0.1.1.tgz",
+      "frontend/vendor/kor-travel-ui-0.2.0.tgz",
+      "packages/kor-travel-transport-admin/frontend/common-artifacts.json",
+      "packages/kor-travel-transport-admin/frontend/package-lock.json",
+      "packages/kor-travel-transport-admin/frontend/package.json",
+      "packages/kor-travel-transport-admin/frontend/vendor/kor-travel-tokens-0.1.1.tgz",
+      "packages/kor-travel-transport-admin/frontend/vendor/kor-travel-ui-0.2.0.tgz"
+    ],
+    "sourceSnapshotFiles": 303,
+    "backendUnchangedHashAndMtimeFiles": 205,
+    "externalAndBothInstalledCheckersMatchExact2c": true,
+    "checkerSha256": "5dc49db1a98c8e586d495576a6034368b43d86d9543bb4dc965659f79f1fe9a5",
+    "uiBuildsRepeatedForC9": false
+  },
+  "c9NegativeGuardProbes": {
+    "passed": 10,
+    "failed": 0,
+    "log": "validation/transport-c9-guard-probes.json"
+  },
+  "parentOwnedExcluded": [
+    ".github/workflows/common-frontend-policy.yml"
+  ],
+  "remaining": [
+    "TRANSPORT_INDEPENDENT_REVIEWS",
+    "REMOTE_CI",
+    "PR_MERGE",
+    "PARENT_GO",
+    "FRESH_IMAGE_DEPLOY_AND_REAL_LOGIN_HEALTH_SMOKE"
+  ],
+  "candidate6History": {
+    "status": "FRONTEND_C6_IMPLEMENTED_INTEGRATION_PENDING",
+    "branch": "agent/codex-common-unification-20261111",
+    "previousSource": "5672cc24934b13492ce19b38ec2e90b47611f1de",
+    "artifacts": {
+      "status": "CANDIDATE_NOT_RELEASED",
+      "candidate": "integration-6-review",
+      "sources": {
+        "common": "a14301c01a87d7d56e8da5bcf24c0a7f145d05a1",
+        "maplibre-vworld-react": "9a7a348b02d61969b394c681b024d5851eef836b"
+      },
+      "packages": {
+        "@kor-travel/ui": {
+          "version": "0.2.0",
+          "filename": "kor-travel-ui-0.2.0.tgz",
+          "integrity": "sha512-VznXMJCxgixE5Ym3Ipnf8i3KCM+65rXcUoEwvigHavMeJv1TPmZocuL1as74x+ZP0d/5dR12gvN0jhV9fvktcQ=="
+        },
+        "@kor-travel/tokens": {
+          "version": "0.1.1",
+          "filename": "kor-travel-tokens-0.1.1.tgz",
+          "integrity": "sha512-GqHyu2fwh6OKhZARTMI5aJSOom71jQhoe2Bb895sX4cG7YZ7CFzqAL1xYDv8AXlM+pBYr2A+Xy9kJAzOnnWofw=="
+        },
+        "vworld-map-core": {
+          "version": "1.0.1",
+          "filename": "vworld-map-core-1.0.1.tgz",
+          "integrity": "sha512-Djm14Arr7U0r7Sabj6P0V57CdzWIGaJmecklmY1hwrq1QUZJjMUFgkZfGRFalUo6AFzHEwwzOEzbJPMifGhINw=="
+        },
+        "vworld-map-web": {
+          "version": "1.0.3",
+          "filename": "vworld-map-web-1.0.3.tgz",
+          "integrity": "sha512-HPXZcz/wP6tFsCZqlAbansWNICcZPubC+/V7rDWXYTQVlOBLl9cZQ1HSMJd25c2CZoMNreVFTQA0vzkVglkS1w=="
+        },
+        "vworld-map-rn": {
+          "version": "1.0.1",
+          "filename": "vworld-map-rn-1.0.1.tgz",
+          "integrity": "sha512-lgDBasKIEG2ElQ9jnHDB9pA+x04Xge9yzBb1NPPw1auyvlkQvxsq4NfRPIrw1VWiutcGiIefySLiVaZDUkO69Q=="
+        }
+      }
+    },
+    "checks": {
+      "artifact_guard_c6": "PASS_BOTH",
+      "canonical_current": "BLOCKED_C7_PACK_PENDING",
+      "type": "PASS_BOTH",
+      "lint": "PASS_BOTH",
+      "unit_wsl": {
+        "public": 164,
+        "admin": 356,
+        "status": "PASS"
+      },
+      "unit_docker": {
+        "public": 164,
+        "admin": 356,
+        "status": "PASS"
+      },
+      "browser_admin": {
+        "passed": 16,
+        "failed": 0,
+        "status": "PASS_C6_OVERLAY_FIX"
+      },
+      "browser_public": {
+        "passed": 4,
+        "failed": 0,
+        "status": "PASS_C6"
+      },
+      "backend_wsl": "FIXED_CONTRACT_FULL_RERUN_RUNNING_NOT_PASS",
+      "backend_docker": "RUNNING_NOT_PASS",
+      "transport_independent_reviews": "NOT_RUN",
+      "remote_ci": "FOUNDATION_MERGE_PENDING",
+      "push_pr_merge_deploy": "NOT_RUN",
+      "doctor": {
+        "public": {
+          "errorCount": 0,
+          "warningCount": 0,
+          "affectedFileCount": 0,
+          "totalDiagnosticCount": 0,
+          "score": null,
+          "scoreLabel": null,
+          "complete": true,
+          "skippedChecks": [],
+          "analyzedFileCount": 56,
+          "log": "validation/transport-public-doctor-53a8082.json"
+        },
+        "admin": {
+          "errorCount": 0,
+          "warningCount": 0,
+          "affectedFileCount": 0,
+          "totalDiagnosticCount": 0,
+          "score": null,
+          "scoreLabel": null,
+          "complete": true,
+          "skippedChecks": [],
+          "analyzedFileCount": 198,
+          "log": "validation/transport-admin-doctor-53a8082.json"
+        }
+      },
+      "backend_docker_original": "INTERRUPTED_KNOWN_ENV_FAILURES_NOT_PASS",
+      "backend_docker_corrected_focus": {
+        "passed": 110,
+        "exitCode": 0
+      },
+      "backend_docker_corrected_full": "RUNNING_NOT_PASS",
+      "build_wsl": "PASS_BOTH_CURRENT_SOURCE_CAPSULE",
+      "build_docker": "PASS_CURRENT_C6_IMAGES",
+      "backend_interim_observation": {
+        "wsl": {
+          "status": "COMPLETED_FAIL_OLD_CONTRACT",
+          "log": "validation/transport-backend-wsl-retry.log",
+          "observedPassMarkers": 1510,
+          "observedSkipMarkers": 39,
+          "observedFailureMarkers": 1,
+          "observedErrorMarkers": 0,
+          "latestProgressLine": "......................................                                   [100%]",
+          "passed": 1510,
+          "skipped": 39,
+          "failed": 1,
+          "warnings": 6,
+          "durationSeconds": 3879.15,
+          "exitCode": null,
+          "exitCodeNote": "분리 실행 원 launcher의 종료코드는 회수되지 않았다. pytest 최종 FAIL summary는 확인했다."
+        },
+        "docker_corrected": {
+          "status": "RUNNING_NOT_PASS",
+          "log": "validation/transport-backend-docker-corrected-full.log",
+          "observedPassMarkers": 800,
+          "observedSkipMarkers": 12,
+          "observedFailureMarkers": 0,
+          "observedErrorMarkers": 0,
+          "latestProgressLine": ".............ss..............s......s................................... [ 51%]"
+        },
+        "recordedAt": "2026-11-11T14:57:18.747716+00:00",
+        "oldVersionAssertionFix": {
+          "file": "backend/tests/test_transport_admin_contract.py",
+          "test": "test_transport_admin_builds_the_vworld_browser_key_into_the_map_bundle",
+          "before": {
+            "web": "1.0.1",
+            "core": "1.0.0"
+          },
+          "after": {
+            "web": "1.0.3",
+            "core": "1.0.1"
+          },
+          "wsl": {
+            "passed": 1,
+            "exitCode": 0,
+            "log": "validation/transport-backend-map-contract-wsl.log"
+          },
+          "docker": {
+            "passed": 1,
+            "exitCode": 0,
+            "log": "validation/transport-backend-map-contract-docker.log"
+          },
+          "fullRunCollectionPredatesFix": true
+        }
+      },
+      "font_runtime": {
+        "status": "PASS_BOTH",
+        "log": "validation/transport-font-runtime.json",
+        "downloadedWoff2PerApp": 1,
+        "loadedFace": "Pretendard Variable"
+      },
+      "backend_wsl_final": {
+        "status": "RUNNING_NOT_PASS",
+        "runnerPid": 128658,
+        "log": "validation/transport-backend-wsl-final.log",
+        "exitFile": "validation/transport-backend-wsl-final.exit",
+        "collectionIncludesMapContractFix": true
+      }
+    },
+    "parentOwnedExcluded": [
+      ".github/workflows/common-frontend-policy.yml"
+    ],
+    "candidate4History": {
+      "status": "BLOCKED_CANDIDATE_NOT_RELEASED",
+      "base": "59e1d8213c09a82a4ed9cc4396a6414ef0332b9c",
+      "branch": "agent/codex-common-unification-20261111",
+      "artifacts": {
+        "status": "CANDIDATE_NOT_RELEASED",
+        "packages": {
+          "@kor-travel/ui": {
+            "version": "0.2.0",
+            "filename": "kor-travel-ui-0.2.0.tgz",
+            "integrity": "sha512-B51TvwcAsIYou9DnEiRvdBki8qgqc1Ja6FizpM7ygsv/bLBhVJOP5nOtjybYpK0V4uNwS3bC7P/38t7A+PKVJg=="
+          },
+          "vworld-map-core": {
+            "version": "1.0.0",
+            "filename": "vworld-map-core-1.0.0.tgz",
+            "integrity": "sha512-tP++7XNg9UYXeeUc+aX8q+RD6/dkVzZuBSXPHUKEqHIRobLjUo1HcPEJruOU0bUzHGxnJL/8reIM7xI+vXYaUw=="
+          },
+          "@kor-travel/tokens": {
+            "version": "0.1.1",
+            "filename": "kor-travel-tokens-0.1.1.tgz",
+            "integrity": "sha512-gnlABsBfUovJe2mqw+XJwahABKSPN0Nan4BGU7fP6SXqgNpZ5Jg1rrGrxmJxwYTkizl2XtjZUMwzgppzrC4+oA=="
+          },
+          "vworld-map-web": {
+            "version": "1.0.3",
+            "filename": "vworld-map-web-1.0.3.tgz",
+            "integrity": "sha512-9S0TUlgu4ky9ztjkanf0lhoijydhcX5ehHtyQB1jla+rGnuPLK4POiH4wIb2v5ATKuO5hOnHEG534gfyuEH+5g=="
+          }
+        },
+        "candidate": "integration-4"
+      },
+      "checks": {
+        "dependency_guard": "PASS_BOTH",
+        "lint": "PASS_BOTH",
+        "type": "PASS_BOTH",
+        "unit_wsl": {
+          "public": 164,
+          "admin": 350,
+          "status": "PASS"
+        },
+        "unit_docker": {
+          "public": 164,
+          "admin": 350,
+          "status": "PASS"
+        },
+        "build_wsl": "PASS_BOTH",
+        "build_docker": "PASS_PUBLIC_AND_ADMIN_BUILDER",
+        "browser_chromium": {
+          "passed": 10,
+          "failed": 2,
+          "status": "FAIL_COMMON_TABS_REGRESSIONS"
+        },
+        "doctor": {
+          "public": {
+            "errorCount": 0,
+            "warningCount": 6,
+            "affectedFileCount": 6,
+            "totalDiagnosticCount": 6,
+            "score": null,
+            "scoreLabel": null
+          },
+          "admin": {
+            "errorCount": 0,
+            "warningCount": 48,
+            "affectedFileCount": 22,
+            "totalDiagnosticCount": 48,
+            "score": null,
+            "scoreLabel": null
+          }
+        },
+        "backend_full": "RUNNING_NOT_CONFIRMED",
+        "backend_docker": "NOT_RUN",
+        "independent_reviews": "NOT_RUN",
+        "remote_ci": "NOT_RUN",
+        "push_pr_merge_deploy": "NOT_RUN"
+      },
+      "common_blockers": [
+        {
+          "file": "packages/ui/src/tabs.tsx",
+          "issue": "Radix orientation/data-state와 Nova data-horizontal/data-active 어휘 불일치. 수평 탭 flex-direction이 row로 남음."
+        },
+        {
+          "file": "packages/ui/map-controls.css",
+          "issue": "forceMount한 비활성 Radix 패널에 hidden 속성이 없고 :not([hidden])의 display:flex가 layered hidden을 덮어 두 작업면이 보임."
+        }
+      ],
+      "validation_images": {
+        "transport-common-public-qa:review-c4": "sha256:f9632e6c836a21ee39b7b222f93c7ec9a4105e68cccae511c029bdd2d4c31b8e",
+        "transport-common-admin-test:review-c4-final": "sha256:41bc7b0f2d1abcfdb06d01afaeafa90ccaf5c38075abe28c0bb34fe85ec9d61c"
+      }
+    },
+    "validation_images": {
+      "public": "sha256:05e9d39d4ebb50092e73ec12ec744a51ca5a9e629e694c82d2beae7fab6a660f",
+      "admin": "sha256:4e200f6701f8ebf9e2136537dd0796a47201c3606447bab8bf0cc998968fe04c"
+    },
+    "implementationSource": "53a8082112999500e72fc3d07e715d0bcd29e170"
+  }
+}

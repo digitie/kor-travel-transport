@@ -1,3 +1,12 @@
+## 2026-11-11 — 공통 UI 소비자 통합 후보
+
+- [ ] **T-COMMON-UI-20261111** — 공개·공유 parking-ui·관리자 Radix/VirtualTable/버전/상태/폼/폰트 이관 후보를 검증한다.
+  최종c9 실제 설치·양쪽 installed/external canonical·새 금지 source 차단10개를 통과했다.
+  runtime/CSS가 같은 c8의 WSL/Docker unit164/356·타입/lint/Doctor0/0·native/Alpine build와 각 browser4/18을 연결한다.
+  backend WSL1511PASS/39SKIP·Docker1508PASS/42SKIP·각 exit0도 확인했다.
+  Transport 독립2리뷰·CI·PRmerge·부모go·새 image 배포는 남아 태스크는 열어 둔다.
+  [검증·배포 계획](reports/2026-11-11-common-ui-validation.md), [Doctor 진단](reports/2026-11-11-react-doctor-findings.md).
+
 ## 2026-10-28 — 전체 UI 보완 후 새 릴리스
 
 - [ ] **T-UI-FUEL-FEE-01** — 브랜드·개별 주유소 최근168시간 차트와 공개 API/BFF/gateway,
@@ -530,3 +539,7 @@ dark-mode 차트/톤 팔레트 미토큰화, `globals.css` 전반의 desktop-fir
 ## UI 선행 반영(2026-10-24)
 
 - [ ] 기존 API 호환 관리자 UI의 검증·두 독립 리뷰·관리자 웹 단독 배포와 운영 반응형 수용. [범위](reports/2026-10-24-ui-first-release.md).
+
+## 공통 UI 통합 (2026-11-11)
+
+- [ ] 공통 Radix·VirtualTable·LoginForm·상태/폼/폰트 실사용·Doctor 개선과 c8 native/Docker runtime·c9 checker 검증을 통과했다. 통합·리뷰·CI·머지·배포까지 열어 둔다. 검증 원장은 journal과 reports에 기록한다.

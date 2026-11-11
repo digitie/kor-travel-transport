@@ -43,8 +43,9 @@ function fuelOrder(code: string) {
 
 /** 지도에 표시할 가격 행. 값이 없는 행과 선택하지 않은 유종은 뺀다. */
 export function markerPrices(prices: readonly FuelPrice[] | null | undefined, products: readonly string[]) {
+  const selectedProducts = new Set(products);
   return (prices ?? [])
-    .filter((row) => hasFuelPrice(row) && (!products.length || products.includes(row.product_code)))
+    .filter((row) => hasFuelPrice(row) && (!products.length || selectedProducts.has(row.product_code)))
     .sort((left, right) => fuelOrder(left.product_code) - fuelOrder(right.product_code) || left.product_code.localeCompare(right.product_code));
 }
 

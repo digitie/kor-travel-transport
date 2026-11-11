@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useEffectEvent, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useMap } from "vworld-map-web";
 import type { MapMouseEvent } from "maplibre-gl";
 import { highwayFeatures, type HighwayRoadTraffic } from "@/lib/highway-map";
@@ -10,6 +10,7 @@ export function HighwayTrafficLayer({ data, selectedIndex, selectionRevision, on
   onSelect: (index: number) => void; onVisibleCount: (count: number) => void;
 }) {
   const map = useMap();
+  const select = useEffectEvent(onSelect);
   const geojson = useMemo(() => highwayFeatures(data?.items ?? []), [data]);
   const cameraRequested = useRef(selectedIndex !== null);
   const currentData = useRef(data);
@@ -48,7 +49,7 @@ export function HighwayTrafficLayer({ data, selectedIndex, selectionRevision, on
       if (event.originalEvent.target instanceof Element && event.originalEvent.target.closest("button, a, [role=button]")) return;
       if (!map.getLayer(LAYER)) return;
       const found = map.queryRenderedFeatures(event.point, { layers: [LAYER] })[0];
-      if (found) onSelect(Number(found.properties.index));
+      if (found) select(Number(found.properties.index));
     };
     // styledata는 타일 준비보다 먼저 올 수 있다. 최초 load/유휴와 스타일 교체 뒤에도 설치한다.
     map.on("load", install); map.on("style.load", install); map.on("idle", install); map.on("click", click); install();
@@ -57,7 +58,7 @@ export function HighwayTrafficLayer({ data, selectedIndex, selectionRevision, on
       if (map.getLayer(LAYER)) map.removeLayer(LAYER);
       if (map.getSource(SOURCE)) map.removeSource(SOURCE);
     };
-  }, [map, geojson, onSelect, onVisibleCount]);
+  }, [map, geojson, onVisibleCount]);
   useEffect(() => {
     if (!map || selectedIndex == null) return;
     const path = data?.items[selectedIndex]?.path;

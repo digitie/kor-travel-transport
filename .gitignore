@@ -5,8 +5,8 @@ __pycache__/
 *.pyc
 *.pyo
 *.sqlite3
-.next/
-node_modules/
+.next
+node_modules
 coverage/
 dist/
 .DS_Store
@@ -31,3 +31,6 @@ packages/kor-travel-transport-admin/frontend/public/maplibre/
 # MapLibre worker는 npm hook에서 설치된 패키지로부터 생성한다.
 packages/kor-travel-transport-admin/frontend/public/maplibre/
 .codex_tmp/
+
+# Transport 통합 작업의 로컬 검증 로그·임시 도구
+/validation/transport-*

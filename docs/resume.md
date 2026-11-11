@@ -1,3 +1,79 @@
+## 2026-11-12 — Transport C11·Scope2 새 native/Alpine gate 수용
+
+- Fresh native public4/admin18, 별도 Alpine public4/admin18 모두 PASS·skip/flaky0.
+  실제 이미지153/263파일 exact, 소유 서버/컨테이너 종료·active0을 확인해 N150 슬롯1을 반환했다.
+- 원 admin17/1은 dynamic TransportMap 마운트 전 isVisible=false로 모바일 필터 열기를 생략한 E2E race다.
+  기존 분기 앞에 toBeAttached assertion1개를 보강한 뒤 전체18을 두 경로에서 통과했다.
+  제품 runtime·기존 assertion·timeout·retry는 그대로이며 첫 실패/trace를 보존했다.
+- 기준 ef7 원A/B source/package PASS·신규0, 일반/중앙 CI SUCCESS.
+  실제 backend CI1548PASS/2SKIP는 기존 WSL1511/39·Docker1508/42와 구분한다.
+- 추가 test/docs 커밋 CI·리뷰 delta·부모 PR181 merge 뒤 기존 공식 배포로 새 이미지를 반영한다.
+  필요한 own backend/code/gateway 재시작은 source/locks/same-schema 조건 아래 승인 범위다.
+  G/current receipt/pin·secret을 보존하며 DB/RustFS/global daemon lifecycle·새 migration은 제외한다.
+- [최종 실행 검증](reports/2026-11-12-transport-c11-validation.md). 현재 운영 변경0.
+
+## 2026-11-12 — Transport C11 인수·설치 동일성 확인
+
+- 부모의 C11 manifests/lock/UI/tokens/Scope2 변경을 인수했다. public153/admin263 파일이 원본 tgz와
+  exact이며 installed/external canonical guard를 다시 통과했다. 미사용 fix1 vendor는 참조 부재 확인 후 제거했다.
+- 부모 최신 전체 public164/admin356·type/lint·Doctor0/0 및 최종 guard PASS 원문 해시를 기록했다.
+  초기 harness 실패도 보존했다. common PR49 최초 릴리스 bytes는 변경하거나 다시 pack하지 않았다.
+- 중앙 workflow exact55 pin을 포함한다. 새 Scope2 native/Alpine build·각 경로 browser4/18은 N150 슬롯 대기,
+  현재 PR181 CI·독립 리뷰 delta·merge·부모 go 이후 배포는 남는다. backend 전체는 source 불변이라 반복하지 않았다.
+- [C11 검증 원장](reports/2026-11-12-transport-c11-validation.md). symlink와 다른 작업자 프로세스·cache·DB/RustFS를 보존했다.
+
+## 2026-11-12 — Transport 최종 c9 로컬 gate 통과
+
+- 부모 c9 source2c1182e의 UI/tokens·원장·lock·실제 설치를 맞췄다. CSSfix4 직접dev+루트override와
+  관리자 core1.0.1/web1.0.3은 유지했다. 양쪽 installed/external canonical guard PASS, 금지 source 차단10개 PASS다.
+- c8→c9 shared checker만 다르고 앱 runtime 소스 차이0건이다. c8의 WSL/Docker unit164/356·타입/lint·Doctor0/0,
+  양쪽 n150 native/Alpine production build·각 CSS 경로의 Chromium4/18·실제 WOFF2 로드 PASS를 연결한다.
+  관리자 guard에는 lib source를 추가했다. c9 때문에 전체 UI build/browser를 반복하지 않았다.
+- backend 전체 WSL1511PASS/39SKIP·Docker1508PASS/42SKIP, 각각 exit0. backend205파일 해시/mtime은 그대로다.
+  이전 실패/중단은 별도 보존했다. 완료된 본인 QA 서버/tunnel만 정리하고 image와 로그는 남겼다.
+- 다음 한 작업: 부모 통합·독립2리뷰·원격CI·PRmerge 뒤 부모go로 공식 새 image 배포·실제 로그인/health/대표화면 smoke.
+  부모 workflow는 보존·커밋 제외다. DB/RustFS lifecycle은 변경하지 않는다.
+- [최종 검증·구체 배포 계획](reports/2026-11-11-common-ui-validation.md), [인계](../AGENT-HANDOFF-transport-doctor-20261111.md).
+  로컬 소비자 gate 통과이며 전체 프로젝트 릴리스/배포 완료를 뜻하지 않는다.
+
+## 2026-11-12 — Transport c8 실제 설치·native 검증
+
+- 부모 단일c8 UI/tokens/CSSfix4와 관리자 core/web을 vendor/원장/lock/실제 설치까지 대조했다.
+  CSS 직접 devDependency+루트 `$lightningcss` override, 양쪽 canonical/source guard PASS다.
+- WSL unit164/356·lint/type·Doctor0/0, n150 clean install·production build 양쪽 PASS다.
+  실제 native Chromium 공개4/관리자18(추가 Dialog2 포함)·WOFF2 200/loaded face도 PASS다.
+- backend WSL 수정본 전체1511PASS/39SKIP·exit0. Docker 수정본 전체도1508PASS/42SKIP·exit0으로 종료했다.
+  backend205파일 해시/mtime은 유지했다. 완료된 본인 fixture만 정리했다.
+- 다음 작업: 진행 중 c8 Docker frontend build/unit/browser 결과 회수.
+  준비된 부모 c9는 tar 비교로 checker-only임을 확인했다. c8 runtime 뒤 vendor/lock/실제 설치·새 guard만 갱신한다.
+  checker만 바뀌면 UI build/browser 전체를 반복하지 않는다. 부모 소유 workflow는 커밋에서 제외한다.
+- [검증 원장·구체 배포 계획](reports/2026-11-11-common-ui-validation.md).
+  독립2리뷰·CI·PRmerge·부모go 이후 새 이미지 배포까지 남아 있어 전체 태스크는 미완이다.
+
+## 2026-11-11 — Transport Doctor 개선 재개 후보
+
+- 공개/관리자 Doctor full warning0, WSL/Docker unit164/356, 타입·lint 및 관리자 Chromium16개·공개4개 통과.
+  상태 소유권·요청 취소·표현 분리를 구현하고 모바일 빈 상세 오버레이와 느린 독립 조회 회귀를 수정했다.
+- 미완: backend 전체 WSL/Docker 진행 중, c7 pack 동기화 및 독립 Transport 리뷰2건·CI·머지·배포.
+  최신 canonical은c7, root pack과 설치본은c6이므로 현재 canonical guard의 해시 차단을 통과로 보고하지 않는다.
+- 부모 소유 `.github/workflows/common-frontend-policy.yml`은 보존하고 worker 커밋에서 제외한다.
+- backend 중간 실패1건은 지도 패키지의 이전 버전을 기대한 계약 테스트다. 기대값2개만 현재 버전으로 갱신하고
+  별도 WSL/Docker 각각1PASS를 확인했다. 수정 전 WSL 전체는1510PASS/39skip/1FAIL로 종료했고 수정본 전체를 새로 시작했다. Docker 전체도 진행 중으로 PASS 아님.
+- 다음 작업: 진행 중 backend 결과를 회수하고 부모 단일 pack 후 동일 tgz/원장/lock으로 앱 gate를 재검증한다.
+  운영 배포는 전체 필수 gate·독립2리뷰·원격CI·PRmerge와 부모go 이후다. DB/RustFS lifecycle은 변경하지 않는다.
+- [검증 원장·배포 계획](reports/2026-11-11-common-ui-validation.md), [Doctor 개선](reports/2026-11-11-react-doctor-findings.md).
+
+## 2026-11-11 — 공통 UI 통합 소비자 후보
+
+- 현재: 지정 clone·`agent/codex-common-unification-20261111` 유지. 공개/공유/관리자 UI를 부모 common 후보4로 이관했다.
+  모든 자체 표는 VirtualTable, 기본 부품은 공통 Radix export를 사용하고 RHF/Zod/Zustand/Pretendard를 실제 적용했다.
+  ESLint10 exact 지원 조합과 guard·Doctor 전체 warning gate를 CI에 연결했다.
+- 현재 blocker: common Tabs 방향/활성 속성 불일치와 MapTabPanel 비활성 forceMount 표시 회귀,
+  Doctor 공개6/관리자48 잔여 경고. 후보3 Chromium 로그인/필터6개는 통과했다.
+- 다음 한 작업: 부모 공통 수정 후보·최종 hash를 동기화하고 전체 앱 gate를 재검증한다. 두 독립 리뷰·CI·PRmerge와
+  부모go 전 운영 배포는 하지 않는다. DB/RustFS lifecycle은 변경하지 않는다.
+- [검증 원장·구체 배포 계획](reports/2026-11-11-common-ui-validation.md), [Doctor 진단](reports/2026-11-11-react-doctor-findings.md).
+
 ## 2026-10-28 — 전체 UI 보완 후 새 릴리스 준비
 
 - 사용자 결정: 이전 후보의 유가 UI 미완을 유예하지 않고 전체 UI를 보완한 새 릴리스로 진행한다.

@@ -108,7 +108,7 @@ test("검색 결과가 바뀌면 편집 대상도 현재 목록의 역으로 이
   await expect(page.getByRole("option", { name: /서울역/ })).toHaveAttribute("aria-selected", "true");
 });
 
-test("늦게 도착한 새로고침 응답이 성공한 매핑 저장을 되돌리지 않는다", async ({ page }) => {
+test("새로고침 중 편집을 잠그고 조회 완료 뒤에만 매핑을 저장한다", async ({ page }) => {
   await provideMockAdminSession(page);
   let holdNextGet = false;
   let releaseStaleResponse = () => {};
@@ -138,15 +138,45 @@ test("늦게 도착한 새로고침 응답이 성공한 매핑 저장을 되돌�
   holdNextGet = true;
   await page.getByRole("button", { name: "새로고침" }).click();
   await staleRequestStarted;
+  await expect(page.getByLabel("연결할 KRIC 기준 역 검색")).toBeDisabled();
+  releaseStaleResponse();
+  await expect(page.getByLabel("연결할 KRIC 기준 역 검색")).toBeEnabled();
   await page.getByLabel("연결할 KRIC 기준 역 검색").fill("서울역");
   await page.getByRole("listbox", { name: "역 검색 결과" }).getByRole("option", { name: /서울역/ }).click();
   await page.getByPlaceholder("예: 역 번호와 운영기관 자료 대조").fill("수동 연결");
   await editor.getByRole("button", { name: "수동으로 연결" }).click();
   await expect(page.getByRole("status")).toBeFocused();
-  releaseStaleResponse();
   await page.getByRole("checkbox", { name: "미연결 우선 보기" }).uncheck();
   const updatedEditor = page.getByRole("region", { name: "서울역 역 매핑 편집" });
   await expect(updatedEditor.locator(".rail-map-badge")).toHaveText("수동 연결");
   await expect(page.locator(".rail-map-metrics")).toContainText("수동 연결");
   await expect(page.locator("p[role='alert']")).toHaveCount(0);
+});
+
+for (const width of [375, 1440]) test(`자동 연결 Dialog 경계·Tab 순환·Escape 복귀 ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await provideMockAdminSession(page);
+  await page.route("**/api/admin/rail-station-mappings**", route => route.fulfill(
+    new URL(route.request().url()).pathname.endsWith("/automatic")
+      ? { status: 503, json: { detail: "격리 미리보기 오류" } }
+      : { json: initial },
+  ));
+  await page.goto("/rail/mapping", { waitUntil: "domcontentloaded" });
+  const trigger = page.getByRole("button", { name: "자동 연결 미리보기", exact: true });
+  await expect(trigger).toBeEnabled();
+  await trigger.click();
+  const dialog = page.getByRole("dialog", { name: "자동 연결 미리보기", exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "새 미리보기", exact: true })).toBeEnabled();
+  await expect.poll(async () => {
+    const box = await dialog.boundingBox();
+    return !!box && box.x >= 0 && box.y >= 0 && box.x + box.width <= width && box.y + box.height <= 900;
+  }).toBe(true);
+  for (let step = 0; step < 8; step += 1) {
+    await page.keyboard.press("Tab");
+    expect(await dialog.evaluate(element => element.contains(document.activeElement))).toBe(true);
+  }
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
 });

@@ -100,7 +100,6 @@ export function DashboardProvider({
   const loadAirportData = useCallback(
     async (
       airportCode: string,
-      parkingLotId: number | null = null,
       options: { showLoading?: boolean } = {}
     ) => {
       const requestId = loadRequestIdRef.current + 1;
@@ -124,18 +123,15 @@ export function DashboardProvider({
         latestBackendUpdateMarkerRef.current = buildBackendUpdateMarker(bootstrap.collector);
         setHolidaySummary(bootstrap.holidays);
         setDataVersion((version) => version + 1);
-        if (showLoading) {
-          setLoading(false);
-        }
       } catch (caughtError) {
         if (!mountedRef.current || loadRequestIdRef.current !== requestId) {
           return;
         }
         setError(caughtError instanceof Error ? caughtError.message : "대시보드 데이터를 불러오지 못했습니다.");
-        if (showLoading) {
-          setLoading(false);
-        }
       } finally {
+        // 현재 요청/마운트일 때만 finally에서 해제한다. 취소된 옛 요청이 새 요청의 loading을 해제하면 안 된다.
+        // react-doctor-disable-next-line react-doctor/no-loading-flag-reset-outside-finally
+        if (mountedRef.current && loadRequestIdRef.current === requestId && showLoading) setLoading(false);
         if (foregroundRequestIdRef.current === requestId) foregroundRequestIdRef.current = null;
       }
     },
@@ -231,7 +227,7 @@ export function DashboardProvider({
 
         backendRefreshInFlightRef.current = true;
         ownsBackendRefresh = true;
-        await loadAirportData(selectedAirportCode, selectedParkingLotId, { showLoading: false });
+        await loadAirportData(selectedAirportCode, { showLoading: false });
       } catch {
         // Keep the last known dashboard visible; the next poll or focus event will retry.
       } finally {
@@ -282,7 +278,7 @@ export function DashboardProvider({
     [currentItems, selectedAirportCode, selectedParkingLotId]
   );
 
-  const value: DashboardContextValue = {
+  const value = useMemo<DashboardContextValue>(() => ({
     api,
     airports,
     selectedAirportCode,
@@ -301,20 +297,22 @@ export function DashboardProvider({
         setSelectedAirportCode(airportCode);
         setSelectedParkingLotId(null);
       });
-      void loadAirportData(airportCode, null);
+      void loadAirportData(airportCode);
     },
     onParkingLotChange: (parkingLotId) => {
       startTransition(() => {
         setSelectedParkingLotId(parkingLotId);
       });
-      void loadAirportData(selectedAirportCode, parkingLotId);
+      void loadAirportData(selectedAirportCode);
     },
     onRefresh: () => {
       if (selectedAirportCode) {
-        void loadAirportData(selectedAirportCode, selectedParkingLotId);
+        void loadAirportData(selectedAirportCode);
       } else setBootstrapRevision((revision) => revision + 1);
     },
-  };
+  }), [api, airports, selectedAirportCode, selectedParkingLotId, selectedAirport,
+    selectedAirportLots, selectedParkingLot?.name, scopeItems, holidaySummary, collectorStatus,
+    dataVersion, loading, error, loadAirportData]);
 
   return <DashboardContext.Provider value={value}>{children}</DashboardContext.Provider>;
 }

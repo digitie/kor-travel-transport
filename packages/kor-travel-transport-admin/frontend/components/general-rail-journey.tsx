@@ -38,6 +38,25 @@ function StationSearch({ label, cities, value, onChange }: { label: string; citi
 }
 
 export function GeneralRailJourney() {
+  const { catalogError, setReload, catalog, id, grade, setGrade, today, effectiveDate, setDate, departure, setDeparture, arrival, setArrival, load, current, futureOnly, setFutureOnly, trips, rows } = useGeneralRailJourney();
+  return <section className="journey-workbench map-route">
+    <GeneralRailGuide />
+    <div id="general-rail-timetable" className="journey-map-target map-route-followup" tabIndex={-1}>
+    <a className="inline-link" href="#general-rail-map">지도 작업면으로</a>
+    {catalogError ? <p role="alert">{catalogError} <button type="button" className="inline-link" onClick={() => setReload((v) => v + 1)}>다시 조회</button></p> : !catalog ? <p role="status">열차 종류와 지역을 확인하는 중입니다…</p> : null}
+    {catalog?.stale ? <p>갱신에 실패한 이전 기준정보입니다. 조회 기준 {dateTime(catalog.fetched_at)}</p> : null}
+    <GeneralRailControls id={id} grade={grade} setGrade={setGrade} catalog={catalog} today={today} effectiveDate={effectiveDate} setDate={setDate} />
+    <div className="journey-data-grid"><StationSearch label="출발역" cities={catalog?.cities ?? []} value={departure} onChange={setDeparture} /><StationSearch label="도착역" cities={catalog?.cities ?? []} value={arrival} onChange={setArrival} /></div>
+    <button type="button" className="button" onClick={() => void load()} disabled={!departure || !arrival || departure.station_id === arrival.station_id || !effectiveDate || current?.pending}>예정 운행편 조회</button>
+    {current?.pending ? <p role="status">시간표를 조회하는 중입니다…</p> : current?.error ? <p role="alert">{current.error}</p> : null}
+    <GeneralRailTrips departure={departure} arrival={arrival} futureOnly={futureOnly} setFutureOnly={setFutureOnly} trips={trips} rows={rows} />
+    </div>
+  </section>;
+}
+
+
+// 조회·선택·요청 수명은 이 도메인 훅이, 아래 컴포넌트는 표현을 소유한다.
+function useGeneralRailJourney() {
   const id = useId();
   const today = useSeoulToday();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
@@ -63,7 +82,6 @@ export function GeneralRailJourney() {
   useEffect(() => {
     pending.current?.abort(); pending.current = null;
     // 조건 변경으로 취소한 요청의 pending 상태가 같은 조건으로 복귀했을 때 살아나지 않게 한다.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setResponse((previous) => previous.pending ? { key: "" } : previous);
   }, [key]);
   useEffect(() => () => pending.current?.abort(), []);
@@ -80,20 +98,19 @@ export function GeneralRailJourney() {
   const current = response.key === key ? response : undefined;
   const trips = current?.data;
   const rows = trips?.items.filter((row) => !futureOnly || (serviceInstant(row.departure_planned_time, trips.service_date) ?? -Infinity) >= clock).sort((a, b) => (serviceInstant(a.departure_planned_time, trips!.service_date) ?? Infinity) - (serviceInstant(b.departure_planned_time, trips!.service_date) ?? Infinity));
-  return <section className="journey-workbench map-route">
-    <GeneralRailGuide />
-    <div id="general-rail-timetable" className="journey-map-target map-route-followup" tabIndex={-1}>
-    <a className="inline-link" href="#general-rail-map">지도 작업면으로</a>
-    {catalogError ? <p role="alert">{catalogError} <button type="button" className="inline-link" onClick={() => setReload((v) => v + 1)}>다시 조회</button></p> : !catalog ? <p role="status">열차 종류와 지역을 확인하는 중입니다…</p> : null}
-    {catalog?.stale ? <p>갱신에 실패한 이전 기준정보입니다. 조회 기준 {dateTime(catalog.fetched_at)}</p> : null}
-    <MapFilterBar><MapFilterField label="열차 종류" htmlFor={`${id}-grade`}><select id={`${id}-grade`} value={grade} onChange={(event) => setGrade(event.target.value)}><option value="">모든 열차</option>{catalog?.train_classes.map((row) => <option key={row.code} value={row.code}>{row.name}</option>)}</select></MapFilterField><MapFilterField label="출발일" htmlFor={`${id}-date`}><input id={`${id}-date`} type="date" min={today} max={seoulDate(9)} value={effectiveDate} onChange={(event) => setDate(event.target.value)} /></MapFilterField></MapFilterBar>
-    <div className="journey-data-grid"><StationSearch label="출발역" cities={catalog?.cities ?? []} value={departure} onChange={setDeparture} /><StationSearch label="도착역" cities={catalog?.cities ?? []} value={arrival} onChange={setArrival} /></div>
-    <button type="button" className="button" onClick={() => void load()} disabled={!departure || !arrival || departure.station_id === arrival.station_id || !effectiveDate || current?.pending}>예정 운행편 조회</button>
-    {current?.pending ? <p role="status">시간표를 조회하는 중입니다…</p> : current?.error ? <p role="alert">{current.error}</p> : null}
-    <SectionCard title={`${departure?.station_name ?? "출발역"} → ${arrival?.station_name ?? "도착역"}`} description="예정 출발·도착 시각과 성인 요금을 비교합니다. 실시간 지연·잔여 좌석은 제공하지 않습니다.">
+
+  return { catalogError, setReload, catalog, id, grade, setGrade, today, effectiveDate, setDate, departure, setDeparture, arrival, setArrival, load, current, futureOnly, setFutureOnly, trips, rows };
+}
+
+
+function GeneralRailControls({ id, grade, setGrade, catalog, today, effectiveDate, setDate }: Pick<ReturnType<typeof useGeneralRailJourney>, "id" | "grade" | "setGrade" | "catalog" | "today" | "effectiveDate" | "setDate">) {
+  return (<MapFilterBar><MapFilterField label="열차 종류" htmlFor={`${id}-grade`}><select id={`${id}-grade`} value={grade} onChange={(event) => setGrade(event.target.value)}><option value="">모든 열차</option>{catalog?.train_classes.map((row) => <option key={row.code} value={row.code}>{row.name}</option>)}</select></MapFilterField><MapFilterField label="출발일" htmlFor={`${id}-date`}><input id={`${id}-date`} type="date" min={today} max={seoulDate(9)} value={effectiveDate} onChange={(event) => setDate(event.target.value)} /></MapFilterField></MapFilterBar>);
+}
+
+
+function GeneralRailTrips({ departure, arrival, futureOnly, setFutureOnly, trips, rows }: Pick<ReturnType<typeof useGeneralRailJourney>, "departure" | "arrival" | "futureOnly" | "setFutureOnly" | "trips" | "rows">) {
+  return (<SectionCard title={`${departure?.station_name ?? "출발역"} → ${arrival?.station_name ?? "도착역"}`} description="예정 출발·도착 시각과 성인 요금을 비교합니다. 실시간 지연·잔여 좌석은 제공하지 않습니다.">
       <label className="inline-checkbox"><input type="checkbox" checked={futureOnly} onChange={(event) => setFutureOnly(event.target.checked)} />지금 이후만</label>
-      {trips ? <><p className="quiet">{trips.service_date} · {dateTime(trips.fetched_at)} 조회{trips.stale ? " · 이전 저장 시간표" : ""}{trips.truncated ? " · 일부 결과" : ""}</p>{rows?.map((row, index) => <article className="departure-row" key={`${row.train_number}/${index}`}><div><strong>{serviceTime(row.departure_planned_time, trips.service_date)}</strong><p>{row.departure_station_name}</p></div><div><strong>{row.grade_name ?? "종류 미제공"} {row.train_number}</strong><p>{row.arrival_station_name} · 도착 {serviceTime(row.arrival_planned_time, row.departure_planned_time ?? trips.service_date)}</p></div><strong>{money(row.adult_fare)}</strong></article>)}{!rows?.length ? <p>{trips.items.length ? "지금 이후 조건에 맞는 운행편이 없습니다. 전체 시간표도 확인할 수 있습니다." : "정상 응답에 등록된 운행편이 없습니다. 미운행 확정은 아닙니다."}</p> : null}</> : <p className="quiet">출발·도착역을 선택하고 예정 운행편을 조회하세요.</p>}
-    </SectionCard>
-    </div>
-  </section>;
+      {trips ? <><p className="quiet">{trips.service_date} · {dateTime(trips.fetched_at)} 조회{trips.stale ? " · 이전 저장 시간표" : ""}{trips.truncated ? " · 일부 결과" : ""}</p>{rows?.map((row) => <article className="departure-row" key={`${row.train_number}/${row.departure_planned_time}/${row.arrival_station_name}`}><div><strong>{serviceTime(row.departure_planned_time, trips.service_date)}</strong><p>{row.departure_station_name}</p></div><div><strong>{row.grade_name ?? "종류 미제공"} {row.train_number}</strong><p>{row.arrival_station_name} · 도착 {serviceTime(row.arrival_planned_time, row.departure_planned_time ?? trips.service_date)}</p></div><strong>{money(row.adult_fare)}</strong></article>)}{!rows?.length ? <p>{trips.items.length ? "지금 이후 조건에 맞는 운행편이 없습니다. 전체 시간표도 확인할 수 있습니다." : "정상 응답에 등록된 운행편이 없습니다. 미운행 확정은 아닙니다."}</p> : null}</> : <p className="quiet">출발·도착역을 선택하고 예정 운행편을 조회하세요.</p>}
+    </SectionCard>);
 }
