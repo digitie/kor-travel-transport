@@ -9,10 +9,11 @@
 설치/실행한 pack은 integration-6-review, canonical은 integration-7-review이나 root/artifacts는 아직c6이다.
 부모 소유 .github/workflows/common-frontend-policy.yml은 보존하고 worker 커밋에서 제외한다.
 
-현재 WSL PID67256는 계속 진행 중이다. 첫 Docker 실패 환경을 교정해 집중110개를 통과했고
-전체 corrected run도 진행 중이다(로그 transport-backend-docker-corrected-full.log). 원 Docker transport-doctor-c6-backend-run-7f7f3d8e87e3는 진행 중이다.
-로그: validation/transport-backend-wsl-retry.log, transport-backend-docker.log. 이전 중단/디스크 고갈 실행은 PASS 아님.
-임시 DB/캐시는 /tmp/transport-c6-qa-8pj9_c8v/backend-wsl-{tmp,pycache}와 격리 Docker 내부 tmpfs를 쓴다.
+이전 WSL PID67256는1510PASS/39skip/1FAIL로 종료했다. 유일한 실패는 옛 지도 버전 계약이며 아래 집중 재검증에서 수정 확인했다.
+수정된 계약을 collection한 WSL 전체 최종 runner PID128658를 시작했다. 로그 transport-backend-wsl-final.log와 .exit를 확인한다. 첫 Docker 실패 환경을 교정해 집중110개를 통과했고
+전체 corrected run도 진행 중이다(로그 transport-backend-docker-corrected-full.log). 원 Docker transport-doctor-c6-backend-run-7f7f3d8e87e3는 알려진 실패 환경의 진단 실행으로 종료했다(PASS 아님).
+로그: validation/transport-backend-wsl-final.log, transport-backend-docker-corrected-full.log. 이전 중단/디스크 고갈 실행은 PASS 아님.
+임시 DB/캐시는 /tmp/transport-c6-qa-8pj9_c8v/backend-wsl-{final-tmp,pycache}와 격리 Docker 내부 tmpfs를 쓴다.
 생성 node_modules/.next는 현재 본인 tmpfs의 capsule/frontend 및 capsule/packages/kor-travel-transport-admin/frontend 아래에 있다.
 repo에서는 symlink로 참조하고 Next 빌드는 같은 소스 capsule에서 실행한다.
 root 부족 때문에 옮겼으며 symlink를 source로 add하지 않는다. 다른 에이전트 tmp/cache는 건드리지 않았다.
@@ -20,6 +21,18 @@ F: /mnt/f/dev/transport-common-20261111-qa-ki7cjkq4에는 종료된 diskfull fix
 의존성 복사는 여유 복구 후 원본을 보존한 채 중단했다. 다음 설치 시 repo node_modules symlink를 npm이
 교체하지 않도록 주의하고, 기존 모듈을 재사용하는 전용 설치 경로에서 lock을 생성해 가져오는 방법을 검토한다.
 본인 backend source/venv는 수정/삭제하지 않았고 진행 중 검증은 중단하지 않았다.
+
+## 상세현황 요청 후 추가 관측
+
+- 구현 커밋 `53a8082` 보존. 부모 workflow는 여전히 untracked로 보존하며 worker commit에서 제외한다.
+- WSL 전체92% 구간의 실패1건은 test_transport_admin_contract.py의 지도 vendor 버전 계약이다.
+  이전 web1.0.1/core1.0.0 두 기대값만 실제 web1.0.3/core1.0.1로 갱신했다.
+  별도 WSL/Docker 단일 회귀는 각각1PASS/exit0(`transport-backend-map-contract-{wsl,docker}.log`).
+  기존 WSL·진행 중 Docker는 수정 전 collection한 결과이므로 단일 통과를 전체 통과로 기록하지 않는다.
+  WSL 이전 임시 fixture만 종료 확인 후2.04GB 정리하고 수정본 전체를 별도 재실행했다.
+- 전체 실시간 수는 validation/transport-backend-interim-status.json, 최종 결과는 두 full 로그를 확인한다.
+- Doctor 최신 원본은 transport-{public,admin}-doctor-53a8082.json이며0/0 full complete다.
+  transport-font-runtime.json의 두 앱 WOFF2 200·로드 face 증거도 확보했다.
 
 ## 과거 슬롯 조정 중단 기록
 

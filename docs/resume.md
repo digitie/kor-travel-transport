@@ -5,6 +5,8 @@
 - 미완: backend 전체 WSL/Docker 진행 중, c7 pack 동기화 및 독립 Transport 리뷰2건·CI·머지·배포.
   최신 canonical은c7, root pack과 설치본은c6이므로 현재 canonical guard의 해시 차단을 통과로 보고하지 않는다.
 - 부모 소유 `.github/workflows/common-frontend-policy.yml`은 보존하고 worker 커밋에서 제외한다.
+- backend 중간 실패1건은 지도 패키지의 이전 버전을 기대한 계약 테스트다. 기대값2개만 현재 버전으로 갱신하고
+  별도 WSL/Docker 각각1PASS를 확인했다. 수정 전 WSL 전체는1510PASS/39skip/1FAIL로 종료했고 수정본 전체를 새로 시작했다. Docker 전체도 진행 중으로 PASS 아님.
 - 다음 작업: 진행 중 backend 결과를 회수하고 부모 단일 pack 후 동일 tgz/원장/lock으로 앱 gate를 재검증한다.
   운영 배포는 전체 필수 gate·독립2리뷰·원격CI·PRmerge와 부모go 이후다. DB/RustFS lifecycle은 변경하지 않는다.
 - [검증 원장·배포 계획](reports/2026-11-11-common-ui-validation.md), [Doctor 개선](reports/2026-11-11-react-doctor-findings.md).

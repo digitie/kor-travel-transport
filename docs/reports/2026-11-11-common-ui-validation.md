@@ -34,11 +34,32 @@ Doctor의 공개6/관리자48 경고를 도메인 상태 소유권·조회 수�
 
 검증 로그는 저장소 `validation/transport-*`다. 공개/관리자 실제 image ID·현재 소스 해시는
 `transport-docker-source-receipt.json`, 브라우저는 `transport-browser-overlay-fix.log`,
-백엔드는 `transport-backend-wsl-retry.log`와 교정 뒤 `transport-backend-docker-corrected-full.log`를 확인한다.
+백엔드는 `transport-backend-wsl-final.log`와 교정 뒤 `transport-backend-docker-corrected-full.log`를 확인한다.
 원 실패 기록은 `transport-backend-docker.log`, 집중 원문은 `transport-backend-docker-focused.log`에 보존한다.
 원격 reusable 정책은 부모가 작성한 `.github/workflows/common-frontend-policy.yml`을 보존하고
 worker 커밋에서는 제외한다. foundation5e064808fabd3a54968dd20910eaccd04eba9f38 병합 전에는
 원격 CI 통과로 보고하지 않는다. 로컬 canonical 검사와 원격 main 정책 검사는 구분한다.
+
+## backend 중간 실패의 분리 기록
+
+구현 커밋은 `53a8082`다. 이 커밋 뒤 실행한 Doctor 원본은
+`transport-public-doctor-53a8082.json`과 `transport-admin-doctor-53a8082.json`이며 모두 오류0/경고0다.
+실제 Pretendard WOFF2 응답200·로드된 폰트 face도 두 앱에서 확인했다(`transport-font-runtime.json`).
+이미지 파일 대조의 순수 모듈3개는 EOF 공백 정리만 다르며 `transport-source-eof-normalization.json`에 구분한다.
+
+WSL 전체 실행의92% 구간 실패1건은
+`backend/tests/test_transport_admin_contract.py::test_transport_admin_builds_the_vworld_browser_key_into_the_map_bundle`다.
+계약 테스트의 이전 web1.0.1/core1.0.0 기대값을 현재 web1.0.3/core1.0.1로 갱신했다.
+별도 WSL·교정 Docker에서 해당 테스트는 각각1개 통과·exit0이다.
+로그는 `transport-backend-map-contract-{wsl,docker}.log`다.
+수정 전 WSL 전체는1510PASS/39skip/1FAIL로 종료했다. 교정 Docker 전체도 수정 전 collection했으므로
+이 별도 통과를 전체 PASS로 바꾸지 않는다. 수정된 계약으로 WSL 전체를 다시 시작했다
+(`transport-backend-wsl-final.log`, 종료코드 `transport-backend-wsl-final.exit`).
+실시간 중간 관측 수는 `transport-backend-interim-status.json`에 남기고 최종 summary와 구분한다.
+
+알려진 잘못된 환경의 원 Docker 실행은 필요한 두 전체 재검증과 별개로 종료했다.
+`transport-backend-diagnostic-stop.json`과 원 로그를 보존하며 이 중단도 PASS가 아니다.
+현재 필요한 수정본 WSL과 교정 Docker 전체 실행은 유지한다. 제품 backend 코드는 수정하지 않았다.
 
 ## 실패·자원 경계
 

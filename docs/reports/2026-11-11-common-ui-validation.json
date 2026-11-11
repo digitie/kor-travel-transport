@@ -62,7 +62,7 @@
       "failed": 0,
       "status": "PASS_C6"
     },
-    "backend_wsl": "RUNNING_NOT_PASS",
+    "backend_wsl": "FIXED_CONTRACT_FULL_RERUN_RUNNING_NOT_PASS",
     "backend_docker": "RUNNING_NOT_PASS",
     "transport_independent_reviews": "NOT_RUN",
     "remote_ci": "FOUNDATION_MERGE_PENDING",
@@ -77,7 +77,8 @@
         "scoreLabel": null,
         "complete": true,
         "skippedChecks": [],
-        "analyzedFileCount": 56
+        "analyzedFileCount": 56,
+        "log": "validation/transport-public-doctor-53a8082.json"
       },
       "admin": {
         "errorCount": 0,
@@ -88,17 +89,82 @@
         "scoreLabel": null,
         "complete": true,
         "skippedChecks": [],
-        "analyzedFileCount": 198
+        "analyzedFileCount": 198,
+        "log": "validation/transport-admin-doctor-53a8082.json"
       }
     },
-    "backend_docker_original": "RUNNING_WITH_ENVIRONMENT_FAILURES_NOT_PASS",
+    "backend_docker_original": "INTERRUPTED_KNOWN_ENV_FAILURES_NOT_PASS",
     "backend_docker_corrected_focus": {
       "passed": 110,
       "exitCode": 0
     },
     "backend_docker_corrected_full": "RUNNING_NOT_PASS",
     "build_wsl": "PASS_BOTH_CURRENT_SOURCE_CAPSULE",
-    "build_docker": "PASS_CURRENT_C6_IMAGES"
+    "build_docker": "PASS_CURRENT_C6_IMAGES",
+    "backend_interim_observation": {
+      "wsl": {
+        "status": "COMPLETED_FAIL_OLD_CONTRACT",
+        "log": "validation/transport-backend-wsl-retry.log",
+        "observedPassMarkers": 1510,
+        "observedSkipMarkers": 39,
+        "observedFailureMarkers": 1,
+        "observedErrorMarkers": 0,
+        "latestProgressLine": "......................................                                   [100%]",
+        "passed": 1510,
+        "skipped": 39,
+        "failed": 1,
+        "warnings": 6,
+        "durationSeconds": 3879.15,
+        "exitCode": null,
+        "exitCodeNote": "분리 실행 원 launcher의 종료코드는 회수되지 않았다. pytest 최종 FAIL summary는 확인했다."
+      },
+      "docker_corrected": {
+        "status": "RUNNING_NOT_PASS",
+        "log": "validation/transport-backend-docker-corrected-full.log",
+        "observedPassMarkers": 800,
+        "observedSkipMarkers": 12,
+        "observedFailureMarkers": 0,
+        "observedErrorMarkers": 0,
+        "latestProgressLine": ".............ss..............s......s................................... [ 51%]"
+      },
+      "recordedAt": "2026-11-11T14:57:18.747716+00:00",
+      "oldVersionAssertionFix": {
+        "file": "backend/tests/test_transport_admin_contract.py",
+        "test": "test_transport_admin_builds_the_vworld_browser_key_into_the_map_bundle",
+        "before": {
+          "web": "1.0.1",
+          "core": "1.0.0"
+        },
+        "after": {
+          "web": "1.0.3",
+          "core": "1.0.1"
+        },
+        "wsl": {
+          "passed": 1,
+          "exitCode": 0,
+          "log": "validation/transport-backend-map-contract-wsl.log"
+        },
+        "docker": {
+          "passed": 1,
+          "exitCode": 0,
+          "log": "validation/transport-backend-map-contract-docker.log"
+        },
+        "fullRunCollectionPredatesFix": true
+      }
+    },
+    "font_runtime": {
+      "status": "PASS_BOTH",
+      "log": "validation/transport-font-runtime.json",
+      "downloadedWoff2PerApp": 1,
+      "loadedFace": "Pretendard Variable"
+    },
+    "backend_wsl_final": {
+      "status": "RUNNING_NOT_PASS",
+      "runnerPid": 128658,
+      "log": "validation/transport-backend-wsl-final.log",
+      "exitFile": "validation/transport-backend-wsl-final.exit",
+      "collectionIncludesMapContractFix": true
+    }
   },
   "parentOwnedExcluded": [
     ".github/workflows/common-frontend-policy.yml"
@@ -196,5 +262,6 @@
   "validation_images": {
     "public": "sha256:05e9d39d4ebb50092e73ec12ec744a51ca5a9e629e694c82d2beae7fab6a660f",
     "admin": "sha256:4e200f6701f8ebf9e2136537dd0796a47201c3606447bab8bf0cc998968fe04c"
-  }
+  },
+  "implementationSource": "53a8082112999500e72fc3d07e715d0bcd29e170"
 }

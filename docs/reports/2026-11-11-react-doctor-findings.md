@@ -40,8 +40,8 @@
 
 ## 증거와 남은 통합 경계
 
-로그는 저장소 `validation/transport-*`에 둔다. 공개 Doctor는 `transport-public-doctor-c6.json`,
-관리자는 `transport-admin-doctor-overlay-fix.json`이 최신이다. 단위는 공개164/관리자356이며,
+로그는 저장소 `validation/transport-*`에 둔다. 구현 커밋 `53a8082` 뒤 공개 Doctor는 `transport-public-doctor-53a8082.json`,
+관리자는 `transport-admin-doctor-53a8082.json`이 최신이다. 단위는 공개164/관리자356이며,
 버스4개·독립 응답2개의 새 회귀와 기존 요금·과거조회·역 매핑·지도 포커스 회귀를 포함한다.
 공개/관리자 각각 같은 현재 소스를 포함한 격리 Docker unit도164/356 통과했다.
 관리자 최신 c6 이미지 Chromium은16개 통과했다. 공개 단독 앱도375/1440px 현재 표·요금·과거 차트/달력/초점4개를 통과했다.

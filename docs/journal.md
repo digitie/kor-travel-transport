@@ -1,3 +1,14 @@
+## 2026-11-11 — Transport 상세 중간 관측과 지도 버전 계약 갱신
+
+- 구현53a8082 뒤 Doctor 공개/관리자0/0·unit164/356·Chromium4/16을 확인했다.
+- WSL backend 전체92% 실패1건의 노드는 지도 vendor의 이전web1.0.1/core1.0.0 기대값이었다.
+  현재web1.0.3/core1.0.1로 두 assertion만 갱신하고 별도 WSL/Docker 각각1PASS·exit0을 확인했다.
+- 수정 전 WSL 전체는1510PASS/39skip/1FAIL로 종료했다. 별도 통과와 합쳐 전체 PASS로 표시하지 않았다.
+  종료된 본인 fixture만 경로/사용 프로세스 확인 후2.04GB 정리하고 수정본 WSL 전체를 별도 시작했다.
+  교정 Docker 전체도 진행 중이며 원 잘못된 환경의 Docker 진단 중단 기록은 보존한다.
+- 최신 관측 JSON·로그는 validation/transport-*다. c7 pack·리뷰·CI·병합·배포는 남는다.
+  부모 소유 workflow·다른 에이전트 경로·DB/RustFS는 변경하지 않았다.
+
 ## 2026-11-11 — Transport Doctor 전체 warning0와 소비자 회귀 개선
 
 공개6/관리자48 경고를 baseline으로 유예하지 않고 상태 소유권·도메인 조회 수명·표현 컴포넌트로 분리했다.
