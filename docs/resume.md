@@ -1,3 +1,31 @@
+## 2026-11-12 — Transport 최종 c9 로컬 gate 통과
+
+- 부모 c9 source2c1182e의 UI/tokens·원장·lock·실제 설치를 맞췄다. CSSfix4 직접dev+루트override와
+  관리자 core1.0.1/web1.0.3은 유지했다. 양쪽 installed/external canonical guard PASS, 금지 source 차단10개 PASS다.
+- c8→c9 shared checker만 다르고 앱 runtime 소스 차이0건이다. c8의 WSL/Docker unit164/356·타입/lint·Doctor0/0,
+  양쪽 n150 native/Alpine production build·각 CSS 경로의 Chromium4/18·실제 WOFF2 로드 PASS를 연결한다.
+  관리자 guard에는 lib source를 추가했다. c9 때문에 전체 UI build/browser를 반복하지 않았다.
+- backend 전체 WSL1511PASS/39SKIP·Docker1508PASS/42SKIP, 각각 exit0. backend205파일 해시/mtime은 그대로다.
+  이전 실패/중단은 별도 보존했다. 완료된 본인 QA 서버/tunnel만 정리하고 image와 로그는 남겼다.
+- 다음 한 작업: 부모 통합·독립2리뷰·원격CI·PRmerge 뒤 부모go로 공식 새 image 배포·실제 로그인/health/대표화면 smoke.
+  부모 workflow는 보존·커밋 제외다. DB/RustFS lifecycle은 변경하지 않는다.
+- [최종 검증·구체 배포 계획](reports/2026-11-11-common-ui-validation.md), [인계](../AGENT-HANDOFF-transport-doctor-20261111.md).
+  로컬 소비자 gate 통과이며 전체 프로젝트 릴리스/배포 완료를 뜻하지 않는다.
+
+## 2026-11-12 — Transport c8 실제 설치·native 검증
+
+- 부모 단일c8 UI/tokens/CSSfix4와 관리자 core/web을 vendor/원장/lock/실제 설치까지 대조했다.
+  CSS 직접 devDependency+루트 `$lightningcss` override, 양쪽 canonical/source guard PASS다.
+- WSL unit164/356·lint/type·Doctor0/0, n150 clean install·production build 양쪽 PASS다.
+  실제 native Chromium 공개4/관리자18(추가 Dialog2 포함)·WOFF2 200/loaded face도 PASS다.
+- backend WSL 수정본 전체1511PASS/39SKIP·exit0. Docker 수정본 전체도1508PASS/42SKIP·exit0으로 종료했다.
+  backend205파일 해시/mtime은 유지했다. 완료된 본인 fixture만 정리했다.
+- 다음 작업: 진행 중 c8 Docker frontend build/unit/browser 결과 회수.
+  준비된 부모 c9는 tar 비교로 checker-only임을 확인했다. c8 runtime 뒤 vendor/lock/실제 설치·새 guard만 갱신한다.
+  checker만 바뀌면 UI build/browser 전체를 반복하지 않는다. 부모 소유 workflow는 커밋에서 제외한다.
+- [검증 원장·구체 배포 계획](reports/2026-11-11-common-ui-validation.md).
+  독립2리뷰·CI·PRmerge·부모go 이후 새 이미지 배포까지 남아 있어 전체 태스크는 미완이다.
+
 ## 2026-11-11 — Transport Doctor 개선 재개 후보
 
 - 공개/관리자 Doctor full warning0, WSL/Docker unit164/356, 타입·lint 및 관리자 Chromium16개·공개4개 통과.

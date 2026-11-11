@@ -1,3 +1,52 @@
+# 최종 소비자 인계 — 2026-11-12
+
+로컬 필수 gate는 모두 통과했다. 전체 통합/릴리스/배포는 아직 미완이다.
+현재 HEAD의 이 인계와 frontend 변경이 최종 c9 소비자 소스다. 기존5672cc2·53a8082·9e6600a는 보존했다.
+부모 소유 .github/workflows/common-frontend-policy.yml은 보존·커밋 제외다. push/PR/운영 배포는 하지 않았다.
+
+- c9 common2c1182e765bb2bc53e01e0962cf2a73683891e1d의 동일 UI/tokens·원장·lock·실제 checker 설치를 완료했다.
+  CSS1.33.0+nativecss.fix.4는 양쪽 직접dev file dependency+루트 $lightningcss override다.
+  관리자 core1.0.1/web1.0.3도 같은 부모 원본이다. 공개vendor3종·관리자5종 외 예전 tgz는 없다.
+- installed guard·새 external canonical 양쪽 PASS. named/star/namespace reexport·literal import()/require 차단10개 PASS.
+  외부/두 앱 UI/tokens checker가 exact2c bytes와 같고 설치 파일 UI94/tokens25/CSS19·관리자 core25/web85를 대조했다.
+  admin script에는 명시 source에서 빠진 lib를 보강했다. 부모 workflow는 수정하지 않았다.
+- 부모/직접 tar 비교: c8→c9는 UI/tokens 각각 check-dependencies.mjs만 다르다. 앱 runtime 소스 차이0건이다.
+  checker-only로 UI build/browser 전체를 반복하지 않았다.
+- c8 WSL/Docker unit 공개164/admin356·타입/lint·Doctor0/0(full complete, 생략0) PASS.
+  n150 native/Alpine production build 양쪽 PASS, 각 CSS 경로 Chromium 공개4/admin18 PASS.
+  두 경로 모두 실제 Pretendard WOFF2 200·loaded face를 확인했다. 추가 Dialog2개는 viewport/Tab/Escape를 검증한다.
+- backend WSL1511PASS/39SKIP·Docker1508PASS/42SKIP·각 exit0. 원문은 transport-backend-{wsl,docker}-final.log/.exit.
+  backend205파일 해시/mtime은 그대로다. 원 실패/중단 로그를 새 PASS로 덮지 않았다.
+- 최신 최종 요약은 validation/transport-c9-validation-summary.json과 docs/reports/2026-11-11-common-ui-validation.{md,json}.
+  UI9 installed 검증은 transport-c9-installed-validation.json, source 동등성은 transport-c8-c9-app-source-equivalence.json.
+  중요 원 로그는 validation/transport-*이며 QA image와 n150 소스는 review용으로 보존한다.
+- 완료된 본인 native/Docker QA 서버와 SSH tunnel은 ID/PID/cwd 확인 후 종료했다. backend 전체는 자연 종료했다.
+  다른 에이전트/사용자 cache/DB/RustFS lifecycle은 건드리지 않았다.
+- 다음 부모 작업: 통합·Transport 독립2리뷰·원격CI·PRmerge 뒤 parentgo로 공식 새 image 배포·실제 로그인/health/대표화면 smoke.
+  배포 context·공식 entry/tag·secret 보존·instigator 경계는 검증 원장의 구체 계획을 따른다.
+
+## 보존한 이전 단계 기록
+
+# 최신 c8 소비자 상태 — 2026-11-12
+
+- 구현53a8082·계약9e6600a 보존, c8 동기화는 현재 dirty다. 부모 workflow는 소유권을 유지하며 제외한다.
+- 양쪽 UI/tokens/CSSfix4와 관리자 core/web을 원장·lock·실제 파일 bytes까지 확인했다.
+  CSS는 직접dev file dependency+루트 override다. 양쪽 source/canonical guard PASS다.
+- c8 WSL unit164/356·lint/type·Doctor0/0, n150 clean install/build PASS.
+  native production browser 공개4/admin18 PASS, font WOFF2 200·실제 loaded face 확인.
+- n150 root는 validation/transport-c8-remote-runner.json을 읽는다. Docker build 재시도 runner2393019가 진행 중이다.
+  동일 Node base를 전달해 metadata TLS 오류를 해결했고 현재 npm ci 이후 단계 확인 중이다.
+  완료된 native 서버2383714/2383743·SSH175444만 검증 후 종료했다. 실제 배포가 아니다.
+- backend WSL 최종1511PASS/39SKIP·exit0. 원 로그 transport-backend-wsl-final.log/.exit.
+  새 Docker 전체 transport-backend-docker-final.log/.exit도1508PASS/42SKIP·exit0으로 종료했다.
+  backend205파일 해시/mtime은 transport-c8-backend-source-preserved.json에 확인했다.
+- 부모 c9 정본2c1182e가 준비됐다. UI/tokens 각각 checker만 다름을 직접 tar 대조로 확인했다. c8 runtime gate 뒤
+  동일원본 vendor/원장/lock/실제 설치·새 guard를 검증한다. checker-only면 전체 UI build/browser 재실행 불요.
+- 다음 작업: frontend Docker build/unit/browser, c9 빠른 동기화, 진행 중 backend 결과 회수와 기록/explicit commit.
+  독립2리뷰·CI·PRmerge·부모go·실제 새 이미지 배포는 남는다. push/PR/배포는 아직 하지 않는다.
+
+## 이전 단계 인계 기록
+
 # 최신 재개 상태 — 2026-11-11
 
 이하 중단 기록은 과거 이력이다. 현재 worker는 재개했고 기존5672cc2 및 dirty를 보존해 개선을 진행했다.

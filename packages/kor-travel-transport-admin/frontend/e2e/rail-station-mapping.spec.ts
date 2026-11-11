@@ -152,3 +152,31 @@ test("새로고침 중 편집을 잠그고 조회 완료 뒤에만 매핑을 저
   await expect(page.locator(".rail-map-metrics")).toContainText("수동 연결");
   await expect(page.locator("p[role='alert']")).toHaveCount(0);
 });
+
+for (const width of [375, 1440]) test(`자동 연결 Dialog 경계·Tab 순환·Escape 복귀 ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await provideMockAdminSession(page);
+  await page.route("**/api/admin/rail-station-mappings**", route => route.fulfill(
+    new URL(route.request().url()).pathname.endsWith("/automatic")
+      ? { status: 503, json: { detail: "격리 미리보기 오류" } }
+      : { json: initial },
+  ));
+  await page.goto("/rail/mapping", { waitUntil: "domcontentloaded" });
+  const trigger = page.getByRole("button", { name: "자동 연결 미리보기", exact: true });
+  await expect(trigger).toBeEnabled();
+  await trigger.click();
+  const dialog = page.getByRole("dialog", { name: "자동 연결 미리보기", exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "새 미리보기", exact: true })).toBeEnabled();
+  await expect.poll(async () => {
+    const box = await dialog.boundingBox();
+    return !!box && box.x >= 0 && box.y >= 0 && box.x + box.width <= width && box.y + box.height <= 900;
+  }).toBe(true);
+  for (let step = 0; step < 8; step += 1) {
+    await page.keyboard.press("Tab");
+    expect(await dialog.evaluate(element => element.contains(document.activeElement))).toBe(true);
+  }
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});

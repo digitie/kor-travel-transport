@@ -14,7 +14,7 @@
     "predev": "node ./scripts/copy-maplibre-worker.mjs",
     "prebuild": "node ./scripts/copy-maplibre-worker.mjs",
     "test:e2e:parking": "playwright test --config playwright.parking.config.ts",
-    "check:dependencies": "node node_modules/@kor-travel/ui/check-dependencies.mjs --lock package-lock.json --workspace \"\" --artifacts common-artifacts.json --source app --source components --source ../../../frontend/src",
+    "check:dependencies": "node node_modules/@kor-travel/ui/check-dependencies.mjs --lock package-lock.json --workspace \"\" --artifacts common-artifacts.json --source app --source components --source lib --source ../../../frontend/src",
     "doctor": "react-doctor . --scope full --yes --no-telemetry --no-supply-chain --no-parallel --blocking warning"
   },
   "dependencies": {
@@ -55,10 +55,12 @@
     "typescript": "5.9.3",
     "typescript-eslint": "8.72.2",
     "vite": "8.3.8",
-    "vitest": "5.1.0"
+    "vitest": "5.1.0",
+    "lightningcss": "file:vendor/lightningcss-1.33.0+nativecss.fix.4.tgz"
   },
   "overrides": {
     "postcss": "8.5.32",
-    "undici": "8.12.4"
+    "undici": "8.12.4",
+    "lightningcss": "$lightningcss"
   }
 }

@@ -40,13 +40,16 @@
 
 ## 증거와 남은 통합 경계
 
-로그는 저장소 `validation/transport-*`에 둔다. 구현 커밋 `53a8082` 뒤 공개 Doctor는 `transport-public-doctor-53a8082.json`,
-관리자는 `transport-admin-doctor-53a8082.json`이 최신이다. 단위는 공개164/관리자356이며,
+로그는 저장소 `validation/transport-*`에 둔다. c8 실제 설치 뒤 공개 Doctor는 `transport-public-c8-doctor.json`,
+관리자는 `transport-admin-c8-doctor.json`이 최신이다. 단위는 공개164/관리자356이며,
 버스4개·독립 응답2개의 새 회귀와 기존 요금·과거조회·역 매핑·지도 포커스 회귀를 포함한다.
 공개/관리자 각각 같은 현재 소스를 포함한 격리 Docker unit도164/356 통과했다.
 관리자 최신 c6 이미지 Chromium은16개 통과했다. 공개 단독 앱도375/1440px 현재 표·요금·과거 차트/달력/초점4개를 통과했다.
 
-Doctor 통과는 전체 릴리스 완료가 아니다. backend 전체 WSL/Docker는 아직 진행 중이다.
-설치한 c6 원장과 새 canonical c7 원장이 달라 최신 canonical guard는 UI/tokens 해시에서 차단된다.
-root/artifacts가 아직 c6이므로 섞어 설치하지 않는다. 부모 pack 이후 같은 파일로 재동기화해야 한다.
-독립 Transport 리뷰2건·foundation 병합 뒤 원격CI·PRmerge·부모go와 실제 이미지 배포도 남는다.
+Doctor 통과는 전체 릴리스 완료가 아니다. c8 양쪽 native/Docker build·unit164/356과
+각 CSS 경로의 실제 Chromium 공개4/관리자18 및 폰트 로드를 통과했다.
+backend 전체는 WSL1511PASS/39SKIP·Docker1508PASS/42SKIP이며 각각 exit0이다.
+c9 실제 설치·새 external canonical guard도 양쪽 통과했다. c8→c9는 공유 checker만 달라지고
+앱 runtime 소스 차이0건이므로 이 변경 때문에 React 검사·UI build/browser 전체를 반복하지 않았다.
+새 정책의 금지 reexport/import()/require 차단10개는 별도 검증했다.
+독립 Transport 리뷰2건·원격CI·PRmerge·부모go와 실제 새 image 배포는 남는다.

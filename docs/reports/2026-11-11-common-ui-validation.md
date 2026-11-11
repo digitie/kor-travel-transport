@@ -1,83 +1,100 @@
-# Transport 공통 UI·Doctor 검증 — 2026-11-11
+# Transport 공통 UI·Doctor 최종 후보 검증 — 2026-11-12
 
-기존 clone과 `agent/codex-common-unification-20261111`, 후보5672cc2 및 이전 dirty를 보존했다.
-Transport 공개/공유 parking-ui/관리자만 수정한다. API·인증·수집 정책·DB 스키마·RustFS 수명주기는 변경하지 않았다.
-최종 RELEASE와 운영 배포는 미완이며 이번 결과는 integration-6-review 소비자 소스의 검증이다.
+지정 clone·`agent/codex-common-unification-20261111`과 기존5672cc2·구현53a8082·계약9e6600a를 보존했다.
+현재 설치 정본은 부모 단일 `integration-9-review`, common source는
+`2c1182e765bb2bc53e01e0962cf2a73683891e1d`다. 로컬 필수 gate는 통과했지만
+정식 RELEASE·독립 Transport 리뷰·원격CI·PRmerge·운영 배포는 아직 완료하지 않았다.
 
-## 구현 결과
+## 동일 산출물·실제 설치
 
-공통 Radix/shadcn·VirtualTable, Tailwind4.3.5 및 exact 의존성, 실제 RHF/Zod/Zustand/Pretendard와
-기존 LoginForm/AppMenu/Dagster/map-controls를 유지한다. 공통 web1.0.3/core1.0.1 산출물을 사용하며
-이전 core1.0.0 vendor는 제거했다. 공개/관리자의 UI·tokens tgz와 원장은 동일 bytes다.
+공개/관리자에 같은 UI0.2.0·tokens0.1.1·CSS1.33.0+nativecss.fix.4 원본을 사용한다.
+지도 core1.0.1/web1.0.3을 사용하는 관리자는 부모와 같은 tgz를 유지했다.
+두 원장도 부모 c9 원본 bytes와 같고, source/tgz/lock/실제 설치를 대조했다.
+각 앱의 CSS는 직접 devDependency인 file tgz이며 루트 override는 `"lightningcss": "$lightningcss"`다.
+strict install에서 legacy-peer/force는 사용하지 않았으며 독립 npm pack도 만들지 않았다.
 
-Doctor의 공개6/관리자48 경고를 도메인 상태 소유권·조회 수명·표현 분리로 개선했다.
-현재 양쪽 전체 warning gate는0이며 상세 조치와 좁은 오탐7개는
-[Doctor 검증 기록](2026-11-11-react-doctor-findings.md)에 있다.
-분리 중 발견한 느린 Dagster의 다른 성공 응답 표시 지연과 빈 상세 오버레이의 모바일 검색 차단도
-재현 테스트와 브라우저 검증으로 고쳤다. 공통 source/CSS monkeypatch는 없다.
+실제 설치 파일은 앱마다 UI94·tokens25·CSS19개, 관리자 core25·web85개가 tgz와 같다.
+사용하지 않는 예전 vendor는 없으며 공개3종·관리자5종만 남겼다.
+parent c9 증거와 직접 tar 비교 모두 UI/tokens 각각의 `package/check-dependencies.mjs`만 달라짐을 확인했다.
+VWorld3종·CSSfix4 tgz bytes도 그대로다. 외부 checker와 두 앱 UI/tokens의 실제 checker는 exact2c 코드와 같다.
 
-## 실제 검증 현황
+## 실제 통과 결과
 
-| 게이트 | 현재 관측 결과 |
-| --- | --- |
-| c6 source/tgz/lock guard | 두 frontend 통과 |
-| 최신 canonical guard | c7 UI/tokens 해시와 c6 설치본 불일치로 차단. root pack은 아직c6 |
-| 타입·ESLint10 경고0 | 두 frontend 통과 |
-| Doctor0.9.22 full warning | 공개56/관리자198파일, 오류0/경고0, complete=true, 생략0 |
-| WSL unit | 공개164/관리자356 통과 |
-| 격리 Docker unit | 공개164/관리자356 통과. 새 상세 회귀 뒤 관리자 재통과 |
-| Next production build | 두 WSL 빌드와 현재 소스의 두 Docker 이미지 생성 확인. 후속 관리자 수정도 Docker 재컴파일 통과 |
-| 관리자 실제 Chromium | 최신 c6 수정 이미지16/16 통과: 로그인/폰트/필터8·역 매핑4·버스/공항4 |
-| 공개 단독 Chromium | 375/1440px 현재 표·요금·과거 차트/달력/초점4/4 통과 |
-| backend 전체 WSL/Docker | 별도 실행 중. 최종 summary 미회수, PASS 아님 |
-| 독립 Transport 리뷰2건·원격CI·PRmerge·운영 배포 | 미실행, 부모 통합 게이트 |
+| gate | 공개 web | 관리자 |
+| --- | --- | --- |
+| c9 installed guard·external canonical | PASS | PASS |
+| WSL 타입·ESLint10 경고0 | PASS | PASS |
+| Doctor0.9.22 full warning | 오류0/경고0·56파일 | 오류0/경고0·198파일 |
+| WSL unit | 164 PASS | 356 PASS |
+| 격리 Docker unit | 164 PASS | 356 PASS |
+| n150 clean install·native production build | PASS | PASS |
+| Alpine Docker production build | exit0 | exit0 |
+| native production Chromium | 4/4 PASS | 18/18 PASS |
+| Alpine/WASM 실제 image Chromium | 4/4 PASS | 18/18 PASS |
+| native·Alpine 실제 Pretendard | WOFF2 200·face loaded | WOFF2 200·face loaded |
 
-검증 로그는 저장소 `validation/transport-*`다. 공개/관리자 실제 image ID·현재 소스 해시는
-`transport-docker-source-receipt.json`, 브라우저는 `transport-browser-overlay-fix.log`,
-백엔드는 `transport-backend-wsl-final.log`와 교정 뒤 `transport-backend-docker-corrected-full.log`를 확인한다.
-원 실패 기록은 `transport-backend-docker.log`, 집중 원문은 `transport-backend-docker-focused.log`에 보존한다.
-원격 reusable 정책은 부모가 작성한 `.github/workflows/common-frontend-policy.yml`을 보존하고
-worker 커밋에서는 제외한다. foundation5e064808fabd3a54968dd20910eaccd04eba9f38 병합 전에는
-원격 CI 통과로 보고하지 않는다. 로컬 canonical 검사와 원격 main 정책 검사는 구분한다.
+두 Doctor는 `complete=true`, `skippedChecks=[]`다. 코드 개선과 좁은 오탐7개는
+[Doctor 기록](2026-11-11-react-doctor-findings.md)에 설명했다.
+공개 browser는375/1440px 현재 표·RHF 요금·입력 변경·과거 차트·달력·Escape 초점을 확인했다.
+관리자18개는 로그인/폰트/필터/탭8·역 매핑4·버스/공항4·375/1440px Dialog 경계/Tab/Escape2개다.
+각 CSS 경로의 같은 사례 수를 합쳐 서로 다른 시나리오44개라고 보고하지 않는다.
 
-## backend 중간 실패의 분리 기록
+backend 전체도 종료코드를 회수했다. WSL은1511PASS/0FAIL/39SKIP·exit0·3276.16초,
+Docker는1508PASS/0FAIL/42SKIP·exit0·3493.99초이며 각각 warnings6개다.
+Docker 추가 skip3개는 Docker CLI가 없는 앱 이미지의 호스트 전용 Compose 렌더 검사다.
+backend205파일은 c8 동기화 전후 해시와 mtime이 그대로다.
 
-구현 커밋은 `53a8082`다. 이 커밋 뒤 실행한 Doctor 원본은
-`transport-public-doctor-53a8082.json`과 `transport-admin-doctor-53a8082.json`이며 모두 오류0/경고0다.
-실제 Pretendard WOFF2 응답200·로드된 폰트 face도 두 앱에서 확인했다(`transport-font-runtime.json`).
-이미지 파일 대조의 순수 모듈3개는 EOF 공백 정리만 다르며 `transport-source-eof-normalization.json`에 구분한다.
+## c9 정책 검증과 c8 증거 연결
 
-WSL 전체 실행의92% 구간 실패1건은
-`backend/tests/test_transport_admin_contract.py::test_transport_admin_builds_the_vworld_browser_key_into_the_map_bundle`다.
-계약 테스트의 이전 web1.0.1/core1.0.0 기대값을 현재 web1.0.3/core1.0.1로 갱신했다.
-별도 WSL·교정 Docker에서 해당 테스트는 각각1개 통과·exit0이다.
-로그는 `transport-backend-map-contract-{wsl,docker}.log`다.
-수정 전 WSL 전체는1510PASS/39skip/1FAIL로 종료했다. 교정 Docker 전체도 수정 전 collection했으므로
-이 별도 통과를 전체 PASS로 바꾸지 않는다. 수정된 계약으로 WSL 전체를 다시 시작했다
-(`transport-backend-wsl-final.log`, 종료코드 `transport-backend-wsl-final.exit`).
-실시간 중간 관측 수는 `transport-backend-interim-status.json`에 남기고 최종 summary와 구분한다.
+부모 `validation/common-c8-c9-runtime-equivalence.json`과 직접 비교를
+`validation/transport-c8-c9-runtime-equivalence.json`에 연결했다.
+c8 소스 사본303파일과 비교해 runtime 소스 차이도0건이다.
+소비자 차이는 원장·vendor·lock 및 관리자 검사 script의 `--source lib` 보강뿐이다.
+명시 source 목록이 lib를 제외하던 부분을 보완해 로컬/CI 검사 범위를 맞췄다.
 
-알려진 잘못된 환경의 원 Docker 실행은 필요한 두 전체 재검증과 별개로 종료했다.
-`transport-backend-diagnostic-stop.json`과 원 로그를 보존하며 이 중단도 PASS가 아니다.
-현재 필요한 수정본 WSL과 교정 Docker 전체 실행은 유지한다. 제품 backend 코드는 수정하지 않았다.
+c8 runtime gate가 모두 통과한 뒤 부모 c9 UI/tokens·원장을 복사하고 명시적 file install로
+lock과 설치본의 SRI를 갱신했다. 새 installed guard와 exact2c external canonical은 두 앱 모두 exit0이다.
+새 checker로 named/star/namespace reexport·literal import()/require()를 앱마다 격리 검사해
+총10개 금지 source가 실제 차단됨을 확인했다. 이 음성 검사의 exit1은 기대한 차단 결과다.
+checker만 달라진 c9 때문에 UI unit/native exports/build/browser 전체를 다시 실행하지 않았다.
 
-## 실패·자원 경계
+## 원문 증거
 
-5672cc2 당시 c4 결과(Doctor6/48, 브라우저10/2)는 과거 이력이며 현재 통과 수에 더하지 않는다.
-이전 중단 backend 실행과 이번 디스크 고갈 시점에 종료된 backend 검증도 PASS가 아니다.
-원 로그를 보존하고 현재 WSL 임시 DB/캐시를 본인 전용 tmpfs로 분리해 전체를 다시 실행한다.
-첫 Docker backend는 tmpfs2GB/noexec 때문에 백업 여유 검사와 실행 대역을 차단했고 Git 소유권/alternate 경로도 빠져 있었다.
-교정한6GB/exec·읽기 전용 Git 객체·컨테이너 한정 safe.directory 환경에서 집중110개를 통과했고 전체를 재실행 중이다.
-운영/백엔드 코드는 바꾸지 않았다. Docker backend는 source를 read-only로 마운트하고 network none·임시 SQLite만 사용한다.
-운영 DB·컨테이너·RustFS·다른 테넌트를 생성/중지/삭제하지 않았다.
+모든 최신 검증 로그는 이 저장소 `validation/transport-*`에 둔다.
 
-루트 고갈 때 본인 종료 검증의 임시 DB만 F:에 압축 보존하고 제거했다. 본인 node_modules·.next는
-전용 tmpfs로 옮겼으며 generated symlink도 git에서 제외한다. 다른 에이전트 경로나 기존 사용자 cache는
-정리하지 않았다. F: 의존성 복사는 부모 공간 확보 후 불필요해져 원본을 보존한 채 중단했다.
-Docker build의 한 호출은 이미지 생성 후 stdout 기록이 ENOSPC로 실패했다. 이미지 존재만으로 끝내지 않고
-현재 파일46개 해시와 실행 테스트를 대조했으며, 뒤의 관리자 상세 수정 이미지는 정상 exit0으로 재생성했다.
+- 최종 요약: `transport-c9-validation-summary.json`, `transport-c9-installed-validation.json`.
+- c9 guard: `transport-{public,admin}-c9-{guard,external-canonical}.log/.exit`, `transport-c9-guard-probes.json`.
+- Doctor/unit: `transport-{public,admin}-c8-{doctor.json,unit.log,docker-unit.log}`.
+- production build: `transport-{public,admin}-c8-{native-build,docker-build}.log/.exit`.
+- browser: `transport-{public,admin}-c8-{native,docker}-browser.log/.exit`.
+- font: `transport-c8-native-font-runtime.json`, `transport-c8-docker-font-runtime-{public,admin}.json`.
+- backend: `transport-backend-{wsl,docker}-final.log/.exit`.
+- source/mtime: `transport-c8-backend-source-preserved.json`, `transport-c8-c9-app-source-equivalence.json`.
+
+실제로 검증한 QA image는 아래와 같다. 운영에 배포한 image가 아니다.
+
+- 공개 `transport-c8-public-qa:2jhvh18v` — `sha256:851e35f7b3a462b4438041db13c5932b3139697f53d3bdb58edd11817d8025c4`.
+- 관리자 `transport-c8-admin-qa:2jhvh18v` — `sha256:f6f66eb943c4901006a53663b34f9fcb98b5a09f0fffd2eb597ca0bfa4159e99`.
+
+## 실패 보존·자원 경계
+
+이전 WSL1510PASS/39SKIP/1FAIL·Docker1507PASS/42SKIP/1FAIL은 옛 지도 버전을 기대한
+같은 계약 assertion이었다. 정확한 web1.0.3/core1.0.1 기대값으로 수정한9e6600a 뒤 단독·전체를 재검증했다.
+수정 전 collection된 원 전체 실패를 단독 통과와 합쳐 PASS로 바꾸지 않았으며 원 로그를 보존했다.
+초기 중단·디스크 고갈·잘못된2GB/noexec 환경도 이전 실패/중단 기록으로 남겼다.
+c4 Doctor6/48·브라우저10/2와 c6 기록은 JSON의 candidate6History 및 이전 커밋에 보존한다.
+
+root 고갈 때 관리자 gate 종료코드 기록이 실패해 별도 재실행했다. 큰 설치/빌드는 n150의
+본인 전용 `/var/tmp/transport-c8-qa.2jhVH18V`로 분리했다. 첫 Docker Hub TLS 실패는 같은 Node22.23.1-alpine
+캐시를 양쪽 동일 image ID로 전달해 해결했고 원 실패 로그도 보존했다.
+첫 native browser 준비 대기는 테스트 시작 전 만료됐으며 실제200 뒤 별도4/18을 통과했다.
+완료된 본인 native/Docker QA 서버·SSH tunnel만 ID/PID/cwd를 확인해 정리하고 image·로그는 보존한다.
+종료 확인한 본인 WSL fixture만 정리했다. 다른 에이전트·기존 사용자 cache·DB/RustFS lifecycle은 건드리지 않았다.
+부모 소유 `.github/workflows/common-frontend-policy.yml`은 보존하고 worker 커밋에서 제외한다.
 
 ## 부모 go 이후 이미지 배포 계획
+
+
 
 1. 최종 UI/tokens/map 단일 pack을 고정하고 양쪽 원장·tgz·lock integrity를 다시 대조한다.
    코드/필수 테스트·독립2리뷰·원격CI·PRmerge까지 확인한 exact merge SHA를 배포 source로 사용한다.
@@ -93,7 +110,7 @@ Docker build의 한 호출은 이미지 생성 후 stdout 기록이 ENOSPC로 �
 5. backend 전체 배포 entry는 `scripts/deploy-prod.sh --host <Manager가 승인한 대상>`,
    관리자 entry는 `scripts/deploy-transport-admin-prod.sh --host <동일 승인 대상>`이다.
    backend 태그는 공식 스크립트의 `kor-travel-transport-backend:rel-<merge SHA 앞12자리>` 규칙을 따른다.
-   공개 frontend는 공식 Compose의 project/service 이미지, admin은 `kor-travel-transport-transport-admin-web`
+   공개 frontend의 공식 기본 tag는 `kor-travel-transport-frontend:latest`, admin은 `kor-travel-transport-transport-admin-web:latest`
    이름과 전체 `TRANSPORT_ADMIN_RELEASE_SHA`를 사용한다. 표시 tag만 믿지 않고 실제 image ID와
    baked release를 배포 영수증에 함께 고정한다. 새 image ID를 기존 latest 후보와 혼동하지 않는다.
 6. 이번 변경의 공개/관리자 이미지를 모두 새로 빌드하되, backend/code-server 동반 전환이 필요하면
@@ -108,10 +125,3 @@ Docker build의 한 호출은 이미지 생성 후 stdout 기록이 ENOSPC로 �
    code-server만의 rollback으로 덮지 않는다. 불명확한 하위 프로세스 종료와 재배포를 겹치지 않는다.
 
 이 계획은 실제 이미지 배포 완료 보고가 아니다. 부모 go 이전 후보 배포는0이다.
-
-## 로컬 빌드 공간 분리
-
-루트 밖 node_modules symlink는 Turbopack의 해석 경계를 넘어 직접 빌드가 거부됐다.
-앱 설정을 넓혀 우회하지 않고 같은 소스300파일을 전용 tmpfs의 동일 상대 경로 구조로 복사하고 기존 의존성을
-같은 파일시스템 안에서 재사용한다. env 파일은 제외한다. 공개·관리자 capsule 빌드를 모두 통과했다.
-source 해시/경로는 `validation/transport-wsl-capsule-receipt.json`에 둔다. 이 검증 capsule은 새 clone/branch나 운영 배포가 아니다.

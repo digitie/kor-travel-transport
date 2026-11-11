@@ -1,3 +1,26 @@
+## 2026-11-12 — Transport c9 checker-only 최종 동기화·전체 로컬 검증
+
+- c8 native/Alpine build·unit164/356·각 CSS 경로 browser4/18과 실제 Pretendard 로드를 통과했다.
+  backend도 WSL1511PASS/39SKIP·Docker1508PASS/42SKIP·각 exit0을 회수했다. 원 실패는 별도 보존했다.
+- 부모/직접 tar 비교로 c9 UI/tokens의 checker만 변경됨을 확인하고 동일 원본·원장·lock·실제 설치를 갱신했다.
+  installed/external canonical 양쪽 PASS, 금지 reexport/import()/require 차단10개 PASS다.
+- exact2c 외부/설치 checker bytes와 runtime 소스 차이0건을 검증했다. 관리자 source 목록에 lib만 추가했다.
+  checker-only로 전체 UI build/browser를 반복하지 않았다. backend205파일 해시/mtime도 유지했다.
+- 부모 workflow는 보존·커밋 제외, 다른 repo·사용자 cache·DB/RustFS는 변경하지 않았다.
+  독립2리뷰·CI·PRmerge·부모go 후 실제 새 image 배포는 남는다.
+
+## 2026-11-12 — Transport c8 단일 pack·CSSfix4·native 검증
+
+- 부모 원본 UI/tokens/CSS와 관리자 core/web을 실제 설치 파일까지 같은 bytes로 맞췄다.
+  devDependency CSSfile+루트 override를 적용했고 양쪽 원장/canonical/source guard가 통과했다.
+- WSL unit164/356·lint/type·Doctor0, n150 clean install/build와 native browser4/18이 통과했다.
+  모바일/PC Dialog 경계·Tab 순환·Escape 복귀2개를 추가하고 실제 Pretendard 로드를 확인했다.
+- backend WSL 전체1511PASS/39SKIP·exit0을 회수했다. Docker backend 전체는 유지한다.
+  backend205파일 해시·mtime을 보존했고 종료된 본인 fixture만1.91GB 정리했다.
+- Docker Hub TLS 원 실패를 보존하고 동일 cached Node base를 n150에 전달해 frontend Docker를 재시도한다.
+  c9는 부모 checker-only 후보를 기다리며 runtime/CSS 동일성 입증 뒤 빠른 설치/guard로 연결한다.
+- 부모 workflow와 다른 repo/에이전트/cache, DB/RustFS lifecycle은 수정하지 않았다. 전체 릴리스·운영 배포는 미완이다.
+
 ## 2026-11-11 — Transport 상세 중간 관측과 지도 버전 계약 갱신
 
 - 구현53a8082 뒤 Doctor 공개/관리자0/0·unit164/356·Chromium4/16을 확인했다.
