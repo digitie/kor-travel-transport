@@ -1,3 +1,5 @@
+> 이 문서는 c8/c9 당시 증거다. 최신 C11 상태는 [C11 검증 원장](2026-11-12-transport-c11-validation.md)을 따른다.
+
 # Transport 공통 UI·Doctor 최종 후보 검증 — 2026-11-12
 
 지정 clone·`agent/codex-common-unification-20261111`과 기존5672cc2·구현53a8082·계약9e6600a를 보존했다.

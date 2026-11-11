@@ -1,0 +1,69 @@
+{
+  "sourceHead": "b327e2a7a2a0389fe95c8396e1dd7334330f490a",
+  "canonicalLedgerSha256": "be0bbaba1b825b33754cdbe4352168265d1ccb71467a1031aa095707b0b5eec8",
+  "surfaces": {
+    "public": {
+      "actualInstalledFiles": {
+        "node_modules/@kor-travel/ui": 94,
+        "node_modules/@kor-travel/tokens": 25,
+        "node_modules/lightningcss": 19,
+        "node_modules/@radix-ui/react-focus-scope": 15
+      },
+      "total": 153,
+      "installedGuard": "PASS",
+      "externalCanonical": "PASS",
+      "nodeModulesTarget": "/tmp/transport-c6-qa-8pj9_c8v/capsule/frontend/node_modules"
+    },
+    "admin": {
+      "actualInstalledFiles": {
+        "node_modules/@kor-travel/ui": 94,
+        "node_modules/@kor-travel/tokens": 25,
+        "node_modules/lightningcss": 19,
+        "node_modules/@radix-ui/react-focus-scope": 15,
+        "node_modules/vworld-map-core": 25,
+        "node_modules/vworld-map-web": 85
+      },
+      "total": 263,
+      "installedGuard": "PASS",
+      "externalCanonical": "PASS",
+      "nodeModulesTarget": "/tmp/transport-c6-qa-8pj9_c8v/capsule/packages/kor-travel-transport-admin/frontend/node_modules"
+    }
+  },
+  "parentChecks": {
+    "public": {
+      "unitPassed": 164,
+      "type": "PASS",
+      "lint": "PASS",
+      "doctorErrors": 0,
+      "doctorWarnings": 0,
+      "guardFinal": "PASS",
+      "rawSha256": {
+        "transport-public-checks.json": "a99d01b55564c8e73fa0c20289d39c680b302aa3620a31d9c1668564354a2c0a",
+        "transport-public-guard-final.json": "2c544dfc8a0bcf77f5fe6380df0a9968bfe23ede5ae3a2845dafedc711b5e1be",
+        "transport-public-unit.log": "307f29cc6dbbbaca49c567f70aff71b7a9dd6f15bc7ba66deb1ca65d24c0d5bd",
+        "transport-public-types.log": "f84c8330f8693b2ee3dd916e24450c800d790346c64da8fa40c7090c3c63b01e",
+        "transport-public-lint.log": "dfbb37dc31f30487ada885fec0799364230721f9700de84de6cbca1a36a212b8",
+        "transport-public-doctor.log": "29d529822b7719a326f185aebc265de95b27e80a96fe280598d94f5ac1a65e5d"
+      }
+    },
+    "admin": {
+      "unitPassed": 356,
+      "type": "PASS",
+      "lint": "PASS",
+      "doctorErrors": 0,
+      "doctorWarnings": 0,
+      "guardFinal": "PASS",
+      "rawSha256": {
+        "transport-admin-checks.json": "66a27e548c07005d17015b5390d4760a0699c4b7c5e0fbd616a8443eba563ff8",
+        "transport-admin-guard-final.json": "2c544dfc8a0bcf77f5fe6380df0a9968bfe23ede5ae3a2845dafedc711b5e1be",
+        "transport-admin-unit.log": "4ebeade171867c6e07df3645f945fb8e582804611b1f2d33edd477519f50a124",
+        "transport-admin-types.log": "c2412c712aab533536835760c179f7a23a93a8934eb025f0c329faff293f2a59",
+        "transport-admin-lint.log": "425d5af15a39f857f09624414413476b9a9490f3d5edfafe87374dc2e953e087",
+        "transport-admin-doctor.log": "dc6f461cb6918ae12be05e6522d9258cabae391d688d3ba626de262e38d405fd"
+      }
+    }
+  },
+  "freshBrowserAndBuild": "PENDING_N150_SLOT",
+  "backendFullRerun": "NOT_RUN: source unchanged; previous WSL1511/39skip and Docker1508/42skip retained",
+  "foundationMerge": "e8ed3ae75000be5cd22a3a11492bd97660635d78"
+}

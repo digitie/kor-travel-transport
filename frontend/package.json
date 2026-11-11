@@ -17,6 +17,7 @@
   "dependencies": {
     "@kor-travel/tokens": "file:vendor/kor-travel-tokens-0.1.1.tgz",
     "@kor-travel/ui": "file:vendor/kor-travel-ui-0.2.0.tgz",
+    "@radix-ui/react-focus-scope": "file:vendor/radix-ui-react-focus-scope-1.3.1+kortravel.fix.2.tgz",
     "@tailwindcss/postcss": "4.3.5",
     "class-variance-authority": "0.7.1",
     "date-fns": "4.4.0",
@@ -46,17 +47,18 @@
     "eslint-plugin-jsx-a11y-x": "0.2.0",
     "eslint-plugin-react-hooks": "7.1.1",
     "jsdom": "31.0.0",
+    "lightningcss": "file:vendor/lightningcss-1.33.0+nativecss.fix.4.tgz",
     "react-doctor": "0.9.22",
     "typescript": "5.9.3",
     "typescript-eslint": "8.72.2",
     "vite": "8.3.8",
-    "vitest": "5.1.0",
-    "lightningcss": "file:vendor/lightningcss-1.33.0+nativecss.fix.4.tgz"
+    "vitest": "5.1.0"
   },
   "overrides": {
     "postcss": "8.5.32",
     "undici": "8.12.4",
     "@testing-library/dom": "10.4.2",
-    "lightningcss": "$lightningcss"
+    "lightningcss": "$lightningcss",
+    "@radix-ui/react-focus-scope": "$@radix-ui/react-focus-scope"
   }
 }

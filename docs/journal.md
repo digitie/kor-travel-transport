@@ -1,3 +1,13 @@
+## 2026-11-12 — Transport C11 인수·설치 동일성 확인
+
+- 부모의 C11 manifests/lock/UI/tokens/Scope2 변경을 인수했다. public153/admin263 파일이 원본 tgz와
+  exact이며 installed/external canonical guard를 다시 통과했다. 미사용 fix1 vendor는 참조 부재 확인 후 제거했다.
+- 부모 최신 전체 public164/admin356·type/lint·Doctor0/0 및 최종 guard PASS 원문 해시를 기록했다.
+  초기 harness 실패도 보존했다. common PR49 최초 릴리스 bytes는 변경하거나 다시 pack하지 않았다.
+- 중앙 workflow exact55 pin을 포함한다. 새 Scope2 native/Alpine build·각 경로 browser4/18은 N150 슬롯 대기,
+  현재 PR181 CI·독립 리뷰 delta·merge·부모 go 이후 배포는 남는다. backend 전체는 source 불변이라 반복하지 않았다.
+- [C11 검증 원장](reports/2026-11-12-transport-c11-validation.md). symlink와 다른 작업자 프로세스·cache·DB/RustFS를 보존했다.
+
 ## 2026-11-12 — Transport c9 checker-only 최종 동기화·전체 로컬 검증
 
 - c8 native/Alpine build·unit164/356·각 CSS 경로 browser4/18과 실제 Pretendard 로드를 통과했다.

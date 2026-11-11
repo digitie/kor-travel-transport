@@ -1,10 +1,13 @@
-# 현재 통합 후보 — 2026-11-11
+# 공통 최초 릴리스 C11
 
-현재 사용 산출물은 UI 0.2.0, tokens 0.1.1, 지도 web 1.0.3/core 1.0.0이다.
-부모 통합 루트의 단일 pack 파일을 복사하며 이 디렉터리에서 다시 pack하지 않는다.
-정확한 SHA512 integrity와 버전은 [`../common-artifacts.json`](../common-artifacts.json)에 있다.
-원장은 `CANDIDATE_NOT_RELEASED` 상태이며 정식 배포 완료를 뜻하지 않는다.
-공개 앱도 같은 UI/tokens bytes를 `frontend/vendor`에서 사용한다.
+현재 공통 최초 릴리스 C11의 UI 0.2.0/tokens 0.1.1과 FocusScope
+1.3.1+kortravel.fix.2, LightningCSS 1.33.0+nativecss.fix.4를 사용한다.
+부모가 동결한 동일 tgz를 복사하며 이 디렉터리에서 다시 pack하지 않는다.
+버전·정확한 SHA512는 [원장](../common-artifacts.json)에 고정한다.
+원장의 CANDIDATE_NOT_RELEASED 표시는 pack 당시 보존된 metadata다.
+공통 PR49는 main e8ed3ae75000be5cd22a3a11492bd97660635d78로 병합됐고,
+소비 앱의 리뷰·CI·브라우저·머지·배포 gate는 별도로 남아 있다.
+관리자 지도는 같은 원장의 vworld-map-web 1.0.3/core 1.0.1이다.
 
 이하 이전 산출물 기록은 이력이며 현재 dependency 선택이 아니다.
 
