@@ -7,15 +7,21 @@ import { Input } from "@kor-travel/ui/input";
 import { Check, X } from "lucide-react";
 
 /** 지도 출처·유종 다중 필터. 포털·충돌 회피·외부 클릭은 공통 Radix가 소유한다. */
-export function FilterCombobox({ id, options, value, onChange, placeholder, compact = false }: {
+export function FilterCombobox({ id, options, value, onChange, placeholder, compact = false, mode = "multiple", disabled = false, inputValue, onInputValueChange }: {
   id: string; options: { value: string; label: string }[]; value: string[];
   onChange: (value: string[]) => void; placeholder: string; compact?: boolean;
+  mode?: "multiple" | "single"; disabled?: boolean; inputValue?: string; onInputValueChange?: (value: string) => void;
 }) {
   const anchor = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [active, setActive] = useState(0);
+  const [localQuery, setLocalQuery] = useState("");
+  const query = inputValue ?? localQuery;
+  const expanded = open && !disabled;
+  const [highlight, setHighlight] = useState({ query: "", index: 0 });
+  const active = highlight.query === query ? highlight.index : 0;
+  const setActive = (index: number) => setHighlight({ query, index });
+  const setQuery = (value: string) => { setLocalQuery(value); onInputValueChange?.(value); };
   useEffect(() => {
     if (!open || !anchor.current) return;
     const observer = new ResizeObserver(() => { if (!anchor.current?.getClientRects().length) setOpen(false); });
@@ -26,10 +32,15 @@ export function FilterCombobox({ id, options, value, onChange, placeholder, comp
   const filtered = options.filter((option) => option.label.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
   const optionId = (index: number) => `${id}-option-${index}`;
   function toggle(item: string) {
+    if (mode === "single") {
+      if (inputValue === undefined) setLocalQuery(label(item));
+      onChange([item]); setOpen(false); return;
+    }
     if (selected.has(item)) onChange(value.filter((current) => current !== item));
     else if (value.length < 10) onChange([...value, item]);
   }
   function keyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (disabled || event.nativeEvent.isComposing) return;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       const next = !open ? 0 : (active + (event.key === "ArrowDown" ? 1 : -1) + filtered.length) % Math.max(filtered.length, 1);
@@ -39,30 +50,31 @@ export function FilterCombobox({ id, options, value, onChange, placeholder, comp
       event.preventDefault();
       if (filtered[active]) toggle(filtered[active].value);
     } else if (event.key === "Escape" && open) {
-      event.preventDefault(); event.stopPropagation(); setOpen(false); setQuery("");
+      event.preventDefault(); event.stopPropagation(); setOpen(false); if (mode === "multiple") setQuery("");
     }
   }
-  return <Popover open={open} onOpenChange={setOpen}>
+  return <Popover open={expanded} onOpenChange={setOpen}>
     <PopoverAnchor asChild><div ref={anchor} data-slot="combobox-chips" className={`flex min-w-0 items-center gap-1 rounded-md border ${compact ? "kt-map-combobox" : "flex-wrap p-1"}`}>
-      <div className="kt-map-selected-chips">{value.map((item) => <span key={item} data-slot="combobox-chip" className="inline-flex items-center gap-1 rounded-sm bg-secondary pl-1 text-secondary-foreground">
+      <div className="kt-map-selected-chips">{mode === "multiple" ? value.map((item) => <span key={item} data-slot="combobox-chip" className="inline-flex items-center gap-1 rounded-sm bg-secondary pl-1 text-secondary-foreground">
         <span className="min-w-0 truncate" title={label(item)}>{label(item)}</span>
         <Button variant="ghost" size="icon-xs" data-slot="combobox-chip-remove" aria-label={`${label(item)} 선택 해제`}
           onClick={() => onChange(value.filter((current) => current !== item))}><X aria-hidden="true" /></Button>
-      </span>)}</div>
-      <Input ref={input} id={id} data-slot="combobox-chip-input" role="combobox" aria-expanded={open}
-        aria-controls={open ? `${id}-listbox` : undefined} aria-autocomplete="list"
-        aria-activedescendant={open && filtered[active] ? optionId(active) : undefined}
+      </span>) : null}</div>
+      <Input ref={input} id={id} data-slot="combobox-chip-input" role="combobox" aria-expanded={expanded}
+        aria-controls={expanded ? `${id}-listbox` : undefined} aria-autocomplete="list"
+        aria-activedescendant={expanded && filtered[active] ? optionId(active) : undefined}
         className="min-w-0 flex-1 border-0 bg-transparent shadow-none" autoComplete="off"
-        placeholder={value.length ? "추가 선택" : placeholder} value={query} onFocus={() => setOpen(true)}
+        placeholder={mode === "multiple" && value.length ? "추가 선택" : placeholder} disabled={disabled} value={query} onFocus={() => setOpen(true)}
         onClick={() => setOpen(true)} onChange={(event) => { setQuery(event.target.value); setActive(0); setOpen(true); }} onKeyDown={keyDown} />
+      {mode === "single" && value.length ? <Button variant="ghost" size="icon-xs" type="button" disabled={disabled} aria-label={label(value[0]) + " 선택 해제"} onClick={() => { if (inputValue === undefined) setLocalQuery(""); onChange([]); input.current?.focus(); }}><X aria-hidden="true" /></Button> : null}
     </div></PopoverAnchor>
     <PopoverContent data-slot="combobox-content" align="start" className="max-h-[min(16rem,var(--radix-popover-content-available-height))] w-(--radix-popover-trigger-width) min-w-48 max-w-[calc(100vw-2rem)] overflow-y-auto"
       onOpenAutoFocus={(event) => event.preventDefault()} onCloseAutoFocus={(event) => event.preventDefault()}
       onInteractOutside={(event) => { if (event.target instanceof Node && anchor.current?.contains(event.target)) event.preventDefault(); }}
-      onEscapeKeyDown={() => { setQuery(""); input.current?.focus(); }}>
-      <div id={`${id}-listbox`} role="listbox" aria-multiselectable="true" aria-label={placeholder}>
+      onEscapeKeyDown={() => { if (mode === "multiple") setQuery(""); input.current?.focus(); }}>
+      <div id={`${id}-listbox`} role="listbox" aria-multiselectable={mode === "multiple" || undefined} aria-label={placeholder}>
         {filtered.map((option, index) => <button key={option.value} id={optionId(index)} type="button" role="option"
-          aria-selected={selected.has(option.value)} disabled={value.length >= 10 && !selected.has(option.value)}
+          aria-selected={selected.has(option.value)} disabled={disabled || (mode === "multiple" && value.length >= 10 && !selected.has(option.value))}
           className={`flex min-h-11 w-full items-center gap-2 rounded-sm px-2 text-left whitespace-normal break-words disabled:opacity-50 ${active === index ? "bg-accent" : ""}`}
           onMouseDown={(event) => event.preventDefault()} onMouseMove={() => setActive(index)} onClick={() => toggle(option.value)}>
           <Check aria-hidden="true" size={14} className={selected.has(option.value) ? "" : "invisible"} />{option.label}

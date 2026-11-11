@@ -1,5 +1,12 @@
 ## 2026-11-12 — Transport C11·Scope2 새 native/Alpine gate 수용
 
+## 2026-11-12 — 운영 관리자 기능 보존 후보 검증 중
+
+- 베이스936 위에 실제 운영6bd의 관리자 UI 기능을 합성했다. 주차장/철도 시간표 독립 경로와 기존 C11 지도·앵커·취소 계약을 함께 유지한다.
+- 공통 C11 package/lock/vendor 및 backend·인증·DB 스키마는 그대로다. 공통 Select·Input·Radix combobox, RHF+Zod 검색을 실제 연결했다.
+- 현재 검증은 N150 격리 소스에서 진행한다. 두 번째 후보 타입/lint/집중38개 통과 후 Doctor6건 분리를 반영했으며, 최종 전체 검증과 정확 CI·독립2리뷰는 미완이다.
+- 다음 작업: 고정한 새 소스의 전체 gate와 A/B 검토를 병행하고, 머지된 새 SHA로 관리자 이미지를 다시 빌드·공식 SDK로 적용한다. 기존936 admin은 캐시 전용이며 적용 금지다.
+
 - Fresh native public4/admin18, 별도 Alpine public4/admin18 모두 PASS·skip/flaky0.
   실제 이미지153/263파일 exact, 소유 서버/컨테이너 종료·active0을 확인해 N150 슬롯1을 반환했다.
 - 원 admin17/1은 dynamic TransportMap 마운트 전 isVisible=false로 모바일 필터 열기를 생략한 E2E race다.

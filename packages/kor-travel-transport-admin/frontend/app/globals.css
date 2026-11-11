@@ -106,8 +106,9 @@ button, input { font: inherit; }
 .api-result { background: #10201e; border-radius: 8px; color: #def0e9; max-height: 460px; overflow: auto; padding: 15px; white-space: pre-wrap; }
 .transport-map-layout { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; display: grid; grid-template-columns: minmax(0, 1fr) 310px; min-height: 620px; overflow: hidden; }
 .transport-map-canvas { min-height: 620px; }
-.map-place-marker, .map-price-marker { background: var(--panel); border: 2px solid var(--accent); border-radius: 999px; box-shadow: var(--shadow-map); color: var(--ink); display: block; font-size: 12px; font-weight: 700; padding: 6px 9px; white-space: nowrap; }
-.map-price-marker { background: var(--accent); color: white; }
+.map-place-marker { align-items: center; background: var(--panel); border: 2px solid var(--accent); border-radius: 999px; box-shadow: var(--shadow-map); color: var(--ink); display: inline-flex; font-size: 12px; font-weight: 700; gap: 5px; padding: 6px 9px; white-space: nowrap; }
+.map-place-marker.has-price { background: var(--accent); color: white; }
+.map-marker-icon { fill: none; height: 15px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; width: 15px; }
 .map-popup { color: var(--ink); display: grid; gap: 8px; max-width: 280px; padding: 3px; }
 .map-popup h2, .map-popup p { margin: 0; }
 .transport-map-detail { border-left: 1px solid var(--line); padding: 22px; }
@@ -747,3 +748,86 @@ h1, h2, h3 { color: var(--text-primary); }
 @media (max-width: 62rem) { .transport-shell[data-parking-page] .admin-layout { grid-template-rows: auto minmax(0, 1fr); } }
 
 body { font-family: "Pretendard Variable", Pretendard, sans-serif; }
+/* 도시철도 역 상세: 코드 정본 시간표와 작은 역 안내. */
+.metro-station-sheet { min-width:0; }
+.metro-station-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem; padding:0.5rem 0.75rem; border:1px solid var(--color-rule); border-radius:var(--radius-control); }
+.metro-station-heading > strong { font-size:1rem; }
+.metro-station-heading > :is(span,small) { font-size:0.6875rem; color:var(--text-secondary); }
+.metro-station-toolbar { display:flex; align-items:center; gap:0.5rem; margin-block:0.75rem 0.5rem; }
+.metro-station-toolbar > small { font-size:0.625rem; color:var(--text-secondary); }
+.metro-station-toolbar > button { margin-left:auto; min-width:2.75rem; min-height:2.75rem; border:1px solid var(--color-rule); border-radius:var(--radius-control); background:var(--card); }
+.metro-mode { font-size:0.75rem; font-weight:600; }
+.metro-day-select { display:flex; align-items:center; gap:0.5rem; font-size:0.6875rem; margin-bottom:0.5rem; }
+.metro-day-select select { width:auto; min-height:2.75rem; padding:0.125rem 0.5rem; font-size:0.6875rem; }
+.metro-destination-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0.5rem; }
+.metro-destination { min-width:0; padding:0.75rem; border:1px solid var(--color-rule); border-radius:var(--radius-control); }
+.metro-destination h4 { margin:0 0 0.5rem; font-size:0.875rem; overflow-wrap:anywhere; }
+.metro-destination > div { display:flex; justify-content:space-between; flex-wrap:wrap; gap:0.25rem; font-size:0.75rem; margin-top:0.375rem; }
+.metro-destination > div strong { color:var(--brand); font-weight:600; }
+.metro-station-sheet .quiet { font-size:0.6875rem; line-height:1.5; color:var(--text-secondary); }
+.metro-timetable-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); border:1px solid var(--color-rule); margin-top:0.75rem; }
+.metro-timetable-actions button { border:0; border-radius:0; background:transparent; min-height:2.75rem; font-size:0.75rem; }
+.metro-timetable-actions button + button { border-left:1px solid var(--color-rule); }
+.metro-timetable-actions button[aria-expanded="true"] { background:var(--surface-subtle); font-weight:600; }
+.metro-information { border-top:1px solid var(--color-rule); margin-top:1rem; padding-top:0.75rem; }
+.metro-information h3, .metro-expanded h4 { font-size:0.875rem; margin:0 0 0.5rem; }
+.metro-expanded { margin-top:0.75rem; }
+.metro-all-timetable { max-height:20rem; overflow-y:auto; }
+.metro-all-timetable h5 { font-size:0.75rem; margin-block:0.75rem 0.25rem; }
+.metro-schedule-row { display:flex; justify-content:space-between; gap:0.5rem; padding-block:0.375rem; border-bottom:1px solid var(--color-rule); font-size:0.75rem; }
+.metro-source { margin-top:1rem; font-size:0.625rem; color:var(--text-secondary); }
+.metro-source summary { cursor:pointer; }
+
+.metro-amenities ul { list-style:none; margin:0; padding:0; }
+.metro-amenities li { display:grid; grid-template-columns:5.5rem minmax(0,1fr); gap:0.5rem; padding:0.5rem 0; border-bottom:1px solid var(--color-rule); }
+.metro-amenities li strong { font-size:0.75rem; font-weight:600; }
+.metro-amenities li span { font-size:0.6875rem; line-height:1.5; color:var(--text-secondary); }
+.metro-station-contact { margin:0.75rem 0; font-size:0.6875rem; }
+.metro-station-contact > div { display:grid; grid-template-columns:5.5rem minmax(0,1fr); gap:0.5rem; margin-block:0.375rem; }
+.metro-station-contact dt { color:var(--text-secondary); }
+.metro-station-contact dd { margin:0; overflow-wrap:anywhere; }
+.fuel-region-label { display:flex; flex-direction:column; padding:var(--space-sm); border:1px solid var(--border); border-radius:var(--radius-panel); background:var(--card); color:var(--text-primary); white-space:nowrap; font-size:12px; }
+
+.fuel-region-label > strong, .fuel-region-price { display:flex; align-items:baseline; justify-content:space-between; gap:var(--space-md); }
+.fuel-region-label small { color:var(--text-secondary); font-weight:400; }
+.fuel-region-price b { font-weight:600; font-variant-numeric:tabular-nums; }
+.fuel-map-stage .kt-map-stage-summary { pointer-events:none; }
+.fuel-map-stage .kt-map-stage-summary > * { pointer-events:auto; }
+.fuel-region-marker .fuel-region-label { translate:var(--region-offset-x, 0px) var(--region-offset-y, 0px); pointer-events:auto; }
+.fuel-region-marker[data-region-overflow="true"] .fuel-region-label { visibility:hidden; pointer-events:none; }
+.fuel-region-marker:focus-visible { outline:none; }
+.fuel-region-marker:focus-visible .fuel-region-label { outline:3px solid var(--color-focus); outline-offset:3px; }
+.fuel-region-link, .fuel-region-origin { position:absolute; left:50%; top:50%; pointer-events:none; }
+.fuel-region-link { overflow:visible; color:var(--text-secondary); }
+.fuel-region-link line { stroke:currentColor; stroke-width:1; }
+.fuel-region-origin { width:var(--space-xs); height:var(--space-xs); border-radius:50%; background:var(--text-primary); translate:-50% -50%; }
+.fuel-region-access { position:absolute; left:var(--space-sm); right:var(--space-sm); bottom:var(--space-xl); z-index:5; width:fit-content; max-width:calc(100% - 2 * var(--space-sm)); display:grid; gap:var(--space-xs); }
+.fuel-region-access-list { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:var(--space-sm); max-height:min(50dvh, 24rem); overflow:auto; overscroll-behavior:contain; padding:var(--space-sm); border:1px solid var(--border); border-radius:var(--radius-panel); background:var(--card); box-shadow:var(--shadow-map); }
+.fuel-region-access-list > button { min-width:0; padding:0; text-align:start; background:transparent; border:0; border-radius:var(--radius-panel); }
+.fuel-region-access-list .fuel-region-label { white-space:normal; height:100%; }
+/* Hallmark · pre-emit critique: P4 H4 E4 S5 R5 V4 · 기존 Workbench 토큰 유지 */
+.rail-map-label { display: flex; align-items: center; gap: var(--space-xs); white-space: nowrap; }
+.rail-map-lines { display: flex; gap: var(--space-xs); }
+.rail-line-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 1.75rem; height: 1.75rem; padding-inline: var(--space-xs); border-radius: var(--radius-control); background: var(--rail-line-color); color: var(--brand-foreground); font-size: var(--text-xs); font-weight: 800; border: 1px solid var(--card); }
+.rail-map-name { padding: var(--space-xs); background: var(--card); color: var(--text-primary); border: 1px solid var(--control-line); border-radius: var(--radius-control); font-size: var(--text-xs); }
+.metro-station-toolbar svg { width: 1rem; height: 1rem; }
+.metro-amenities ul { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
+.metro-amenities li { display: inline-flex; gap: var(--space-sm); padding: var(--space-xs) var(--space-sm); font-size: var(--text-xs); }
+.rail-timetable-page { display: grid; gap: var(--space-lg); min-width: 0; }
+.rail-timetable-nav { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
+.rail-timetable-nav a.button:not([aria-current="page"]) { background: var(--card); color: var(--brand); border-color: var(--control-line); }
+.metro-timetable-actions button[aria-expanded="true"], .metro-timetable-actions button[aria-pressed="true"] { background: var(--brand-tint); color: var(--brand); border-color: var(--brand); }
+.rail-timetable-page .metro-station-sheet { max-width: 60rem; width: 100%; }
+.rail-timetable-page .journey-data-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.rail-timetable-page .train-station-search { min-width: 0; }
+.rail-timetable-page .departure-row { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; }
+@media (max-width: 42rem) { .rail-timetable-page .journey-data-grid { grid-template-columns: minmax(0, 1fr); } }
+.public-parking-search { display: flex; flex-direction: row; align-items: end; flex-wrap: wrap; gap: var(--space-sm); }
+.public-parking-search > [data-slot="field"] { flex: 1 1 14rem; min-width: 0; }
+.public-parking-feedback, .public-parking-list, .public-parking-details { display: flex; flex-direction: column; gap: var(--space-sm); min-width: 0; }
+.public-parking-list .place-row { width: 100%; text-align: start; }
+.public-parking-data { margin: 0; font-size: var(--text-sm); }
+.public-parking-data > div { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: var(--space-sm); padding-block: var(--space-xs); }
+.public-parking-data dt { color: var(--text-secondary); }
+.public-parking-data dd { margin: 0; overflow-wrap: anywhere; }
+

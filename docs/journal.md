@@ -1,5 +1,12 @@
 ## 2026-11-12 — Transport C11·Scope2 새 native/Alpine gate 수용
 
+## 2026-11-12 — 운영 관리자 기능을 C11 공통 UI 위에 보존하는 후보
+
+- 운영 관리자6bd와 C11 머지936의 공통 조상59를 기준으로 주차장 기준정보·철도 독립 시간표·역 지정 의도·도시철도 운행 기준·유가 지역 카드의 UI 기능을 합성했다. backend·DB0042·인증·공통 패키지와 lock/vendor는 변경하지 않았다.
+- 기존 C11 지도 작업면·목록 왕복·시간표 앵커·비동기 요청 취소 계약을 유지하며, 새 역 선택은 기존 공통 Radix combobox를 확장했다. 운행 기준·차종은 공통 Select, 주차 검색은 RHF+Zod를 사용한다.
+- N150 첫 후보는 타입·guard 통과, unit412통과/7실패/미처리오류1건·lint1건·Doctor17건이었다. 실패 원문은 보존했다. Radix 탭 입력과 jsdom scrollIntoView fixture를 교정한 다음 후보는 타입·lint·집중38개 통과이며 Doctor6건이 남았다. 이후 품질 분리와 최종 전체 검증은 별도 진행한다.
+- 이 커밋은 검토를 시작할 불변 소스 후보다. 최종 전체 unit·브라우저·빌드·Doctor·CI와 독립 A/B 검토는 아직 미완이다. 관리자936 이미지는 캐시 준비 전용으로 활성화하지 않는다. Public936 공식 적용은 Aquinas 소유다.
+
 - Fresh native public4/admin18, 별도 Alpine public4/admin18 모두 PASS·skip/flaky0.
   실제 이미지153/263파일 exact, 소유 서버/컨테이너 종료·active0을 확인해 N150 슬롯1을 반환했다.
 - 원 admin17/1은 dynamic TransportMap 마운트 전 isVisible=false로 모바일 필터 열기를 생략한 E2E race다.

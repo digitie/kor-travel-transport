@@ -5,8 +5,8 @@ import { MapFilterBar, MapFilterField } from "@kor-travel/ui/map-controls";
 import { InfoButton } from "./info-button";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
-import { RailTimetables } from "./rail-timetables";
-import { dateTime, hasCoordinates, transportGet, type Place } from "@/lib/journey";
+import { MetroStationDetail } from "./metro-station-detail";
+import { transportGet, type Place } from "@/lib/journey";
 import { useNearbyPosition } from "@/lib/journey-hooks";
 import { nearestPlaces } from "@/lib/nearby";
 const TransportMap = dynamic(() => import("./transport-map").then((m) => m.TransportMap), { ssr: false });
@@ -21,8 +21,8 @@ export function MetroJourney() {
     feedback={<>{positionError ? <p role="alert">{positionError}</p> : null}
     {error ? <p role="alert">역 정보를 불러오지 못했습니다.</p> : !items ? <p role="status">노선과 역을 불러오는 중입니다…</p> : null}
     {position ? <p className="quiet">현재 위치 오차 약 {Math.round(position.accuracy)}m · 거리는 직선 거리입니다.</p> : null}</>}
-    detailTitle={<>{selected?.name} <small>{selected?.subtitle}</small></>} details={selected ? <MetroDetails selected={selected} setView={setView} choose={choose} /> : undefined} /></div>
-    <div id="station-timetable" className="map-route-followup">{selected ? <><a className="inline-link" href="#metro-map">지도 작업면으로</a><RailTimetables placeIds={[selected.id]} /></> : null}</div>
+    detailTitle={<>{selected?.name} <small>{selected?.subtitle}</small></>} details={selected ? <MetroStationDetail key={selected.id} station={selected} /> : undefined} /></div>
+    <div id="station-timetable" className="map-route-followup">{selected ? <><a className="inline-link" href="#metro-map">지도 작업면으로</a><MetroStationDetail key={selected.id} station={selected} timetablePage /></> : null}</div>
   </section>;
 }
 
@@ -42,7 +42,7 @@ function useMetroJourney() {
   const { position, positionError, locate, locating } = useNearbyPosition();
   useEffect(() => {
     const controller = new AbortController();
-    transportGet<{ items: Place[] }>("transport/features/places?kind=rail_station&include_unlocated=true&limit=5000", controller.signal)
+    transportGet<{ items: Place[] }>("transport/rail/stations", controller.signal)
       .then((data) => { if (!controller.signal.aborted) { setItems(data.items); setError(false); } })
       .catch(() => { if (!controller.signal.aborted) setError(true); });
     return () => controller.abort();
@@ -71,17 +71,6 @@ function MetroFilters({ id, line, setLine, setSelected, routes, search, query, s
     </MapFilterBar>);
 }
 
-
-function MetroDetails({ selected, setView, choose }: Pick<ReturnType<typeof useMetroJourney>, "selected" | "setView" | "choose">) {
-  return (selected ? <div className="station-detail">
-      <p>{selected.line_names.join(" · ")}</p>
-      {selected.address ? <button type="button" className="inline-link station-address" disabled={!hasCoordinates(selected)} onClick={() => { setView("map"); choose(selected); }}>{selected.address}{hasCoordinates(selected) ? " · 지도에서 보기" : ""}</button> : <p className="quiet">주소 미제공</p>}
-      <p>전화 {selected.phone ? <a className="inline-link" href={`tel:${selected.phone.replace(/[^+\d]/g, "")}`}>{selected.phone}</a> : "미제공"}</p>
-      <p>편의시설 {selected.facilities.length ? selected.facilities.join(" · ") : "등록 정보 없음"}</p>
-      <p className="quiet">기준정보 {dateTime(selected.updated_at)}</p>
-      <a className="inline-link" href="#station-timetable">이후 시간표 보기</a>
-    </div> : undefined);
-}
 
 function metroListMessage(error: boolean, items: Place[] | null, hasFilters: boolean, count: number) {
   if (error || !items) return "";

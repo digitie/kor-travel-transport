@@ -16,6 +16,7 @@ import { useSeoulToday } from "@/lib/journey-hooks";
 import { collectionSourceLabel, placeKindLabel } from "@/lib/transport-presentation";
 import { FerryDepartures, PlaceDetails, PlaceIcon } from "./journey-controls";
 import { AirportDetails } from "./airport-details";
+import { PublicParkingDetails } from "./public-parking-details";
 
 function PortDepartures({ place }: { place: Place }) {
   const serviceDateId = useId();
@@ -115,7 +116,7 @@ export function PlaceInspector({ place, onClose, onSaved, onReload, onShowMap, s
     {showHeader ? <header className="inspector-heading"><div><span className="place-title"><PlaceIcon kind={place.kind} brandCode={place.brand_code} brandName={place.brand_name} />{place.brand_name ?? placeKindLabel(place.kind)}</span><h2>{place.name}</h2>{place.kind !== "fuel_station" ? <><p>{collectionSourceLabel(place.source)}</p><p>기준정보 반영 {dateTime(place.updated_at)}</p></> : null}</div><Button type="button" variant="outline" size="icon" aria-label="장소 상세 닫기" onClick={onClose}><X data-icon="inline-start" aria-hidden="true" /></Button></header> : null}
     {place.kind === "ferry_port" ? <PortDepartures key={place.id} place={place} /> : null}
     {place.kind === "airport" ? <AirportDetails key={place.id} place={place} /> : null}
-    <section className="inspector-section" aria-label="장소 정보"><PlaceDetails place={place} showHeading={false} onShowMap={onShowMap} /></section>
+    {place.kind === "public_parking_lot" ? <PublicParkingDetails key={place.id} id={place.id} onShowMap={onShowMap} /> : <section className="inspector-section" aria-label="장소 정보"><PlaceDetails place={place} showHeading={false} onShowMap={onShowMap} /></section>}
     {((place.kind === "ferry_port" && place.source === "data_go_kr_maritime") ||
       (place.kind === "bus_terminal" && place.source === "data_go_kr_tago")) && place.provider_id && onSaved
       ? <ManualLocationEditor key={`${place.kind}:${place.id}`} place={place} onSaved={onSaved} onReload={onReload ?? onClose} /> : null}

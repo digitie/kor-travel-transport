@@ -18,12 +18,111 @@ vi.mock("vworld-map-web", async () => {
   };
 });
 vi.mock("./map-overlays", () => ({
-  vworldApiKey: () => undefined, useVWorldBasemapHealth: () => ({}), ZoomButtons: () => null, CameraRequest: () => null, MarkerBadge: () => null, ClusterBubble: () => null, MapUnavailable: () => null, OverlapPopup: () => null,
-  MapMarkerButton: ({ ariaLabel, onClick, children }: { ariaLabel: string; onClick: () => void; children: React.ReactNode }) => <button aria-label={ariaLabel} onClick={onClick}>{children}</button>,
+  vworldApiKey: () => undefined, useVWorldBasemapHealth: () => ({}), ZoomButtons: () => null, CameraRequest: ({ target }: { target?: unknown }) => <span data-camera-request={JSON.stringify(target)} />, MarkerBadge: () => null, ClusterBubble: () => null, MapUnavailable: () => null, OverlapPopup: () => null,
+  MapMarkerButton: ({ ariaLabel, onClick, children, className }: { ariaLabel: string; onClick: () => void; children: React.ReactNode; className?: string }) => <button className={className} aria-label={ariaLabel} onClick={onClick}>{children}</button>,
 }));
+vi.mock("./filter-combobox", () => ({ FilterCombobox: ({ options, value, onChange, placeholder }: { options: {value:string;label:string}[]; value:string[]; onChange:(value:string[])=>void; placeholder:string }) => <select aria-label={placeholder} value={value[0] ?? ""} onChange={event=>onChange(event.target.value ? [event.target.value] : [])}><option value="">전체</option>{options.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select> }));
 import { TransportMap } from "./transport-map";
+import { layoutFuelRegionCards } from "@/lib/fuel-region-layout";
+
+test.each([[1120, 832], [351, 787]])("지역 카드 배치는 %sx%s에서 충돌과 범위 통계 영역을 피하며 부족한 공간을 알린다", (width, height) => {
+  const cards = Array.from({ length: 12 }, () => ({ left: 110, top: 140, width: 130, height: 130 }));
+  const reserved = { left: 8, top: 8, width: Math.min(384, width - 16), height: 90 };
+  const offsets = layoutFuelRegionCards(cards, width, height, [reserved]);
+  const placed = offsets.flatMap((offset, index) => offset.placed ? [{ ...cards[index], left: cards[index].left + offset.x, top: cards[index].top + offset.y }] : []);
+  expect(placed.length).toBeGreaterThan(1);
+  const overlap = (a: typeof reserved, b: typeof reserved) => a.left < b.left + b.width && a.left + a.width > b.left && a.top < b.top + b.height && a.top + a.height > b.top;
+  for (const [index, rect] of placed.entries()) {
+    expect(rect.left).toBeGreaterThanOrEqual(8); expect(rect.top).toBeGreaterThanOrEqual(8);
+    expect(rect.left + rect.width).toBeLessThanOrEqual(width - 8);
+    expect(rect.top + rect.height).toBeLessThanOrEqual(height - 8);
+    expect(overlap(rect, reserved)).toBe(false);
+    for (const other of placed.slice(index + 1)) expect(overlap(rect, other)).toBe(false);
+  }
+  expect(cards.every(card => card.left === 110 && card.top === 140)).toBe(true);
+  if (width < 400) expect(offsets.some(offset => !offset.placed)).toBe(true);
+  else expect(placed).toHaveLength(cards.length);
+});
+
+test("좁은 지도의 지역 목록에서도 전5유종과 미제공을 읽고 원좌표로 지역별 확대한다", async () => {
+  Object.assign(mapState, { zoom: 7 });
+  vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ items: [], total: 2, clustered: true, clusters: [], fuel_regions: [
+    { region_key: "opinet:11", label: "서울특별시", product_code: "B027", average_price: 1700, station_count: 1, longitude: 127, latitude: 37.5 },
+    { region_key: "opinet:41", label: "경기도", product_code: "D047", average_price: 1600, station_count: 1, longitude: 127.5, latitude: 37.7 },
+  ] })));
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  try {
+    await act(async () => root.render(<TransportMap mode="fuel" />));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+    const toggle = [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "지역 카드 모두 보기 (2)")!;
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    await act(async () => toggle.click());
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    const list = container.querySelector<HTMLElement>('[aria-label="모든 지역 유가"]')!;
+    expect(list.tabIndex).toBe(0);
+    const buttons = [...list.querySelectorAll<HTMLButtonElement>("button")];
+    expect(buttons).toHaveLength(2);
+    for (const button of buttons) for (const label of ["휘발유", "경유", "고급유", "등유", "LPG", "미제공"]) expect(button.textContent).toContain(label);
+    const gyeonggi = buttons.find(button => button.textContent?.includes("경기도"))!;
+    gyeonggi.focus(); expect(document.activeElement).toBe(gyeonggi);
+    await act(async () => gyeonggi.click());
+    expect(JSON.parse(container.querySelector('[data-camera-request]')!.getAttribute("data-camera-request")!)).toMatchObject({ center: [127.5, 37.7], zoom: 8 });
+    await act(async () => toggle.click());
+    expect(container.querySelector('[aria-label="모든 지역 유가"]')).toBeNull();
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
+test("공간 부족 목록을 사용자가 접으면 같은 화면의 DOM 갱신이 다시 열지 않는다", async () => {
+  Object.assign(mapState, { zoom: 7 });
+  const bounds = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function(this: HTMLElement) {
+    return this.classList.contains("map-primary") ? new DOMRect(0, 0, 351, 190)
+      : this.classList.contains("fuel-region-marker") ? new DOMRect(110, 140, 130, 130) : new DOMRect();
+  });
+  const width = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(function(this: HTMLElement) { return this.classList.contains("fuel-region-label") ? 130 : 0; });
+  const height = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function(this: HTMLElement) { return this.classList.contains("fuel-region-label") ? 130 : 0; });
+  vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ items: [], total: 2, clustered: true, clusters: [], fuel_regions: [
+    { region_key: "opinet:11", label: "서울특별시", product_code: "B027", average_price: 1700, station_count: 1, longitude: 127, latitude: 37.5 },
+    { region_key: "opinet:41", label: "경기도", product_code: "D047", average_price: 1600, station_count: 1, longitude: 127.5, latitude: 37.7 },
+  ] })));
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  try {
+    await act(async () => { root.render(<TransportMap mode="fuel" />); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
+    expect(container.querySelector('[aria-label="모든 지역 유가"]')).not.toBeNull();
+    const toggle = [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "지역 카드 접기")!;
+    await act(async () => toggle.click());
+    // 목록 제거가 실제 MutationObserver를 다시 깨운 뒤에도 명시적인 접기는 유지한다.
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector('[aria-label="모든 지역 유가"]')).toBeNull();
+  } finally {
+    await act(async () => root.unmount()); container.remove();
+    bounds.mockRestore(); width.mockRestore(); height.mockRestore();
+  }
+});
 
 const station: Place = { id: 1, kind: "rail_station", source: "kric_public_file", name: "시험역", longitude: 127.1, latitude: 37.3, line_names: ["시험선"], facilities: [], prices: [], updated_at: "2026-10-25T00:00:00Z" };
+
+test("교통 지도는 일반 주차장 필터를 요청하고 좌표 없는 주차장은 목록에만 둔다", async () => {
+  const parking: Place = { ...station, id: 12, kind: "public_parking_lot", source: "datagokr_parking_lots", name: "좌표없는 주차장", latitude: null, longitude: null, line_names: [], parking_capacity: 20 };
+  vi.mocked(fetch).mockImplementation(async input => {
+    const url = new URL(String(input), "http://test");
+    const items = !url.searchParams.has("kind") || url.searchParams.get("kind") === "public_parking_lot" ? [parking] : [];
+    return new Response(JSON.stringify({ items, total: items.length, truncated: false }));
+  });
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  try {
+    await act(async () => root.render(<TransportMap mode="transport" />));
+    const requests = () => vi.mocked(fetch).mock.calls.map(call => new URL(String(call[0]), "http://test"));
+    expect(requests().some(url => url.searchParams.get("kinds")?.split(",").includes("public_parking_lot"))).toBe(true);
+    expect(container.querySelector(".transport-map-marker.public_parking_lot")).toBeNull();
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(button => button.textContent?.includes("목록"))!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })));
+    expect(container.querySelector(".place-row")?.textContent).toContain(parking.name);
+    expect(container.querySelector(".place-row")?.textContent).toContain("좌표 미등록");
+    expect(requests().some(url => url.searchParams.get("kind") === "public_parking_lot" && url.searchParams.get("include_unlocated") === "true")).toBe(true);
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true, ResizeObserver: class { observe() {} disconnect() {} } });
   vi.stubGlobal("fetch", vi.fn());
@@ -31,6 +130,53 @@ beforeEach(() => {
   Object.assign(mapState, { longitude: 128.53, latitude: 37.6, zoom: 12.5 });
 });
 afterEach(() => vi.unstubAllGlobals());
+
+test.each([7, 9])("줌%s 지역 카드 하나에 모든 유종을 함께 표시하고 평균 문구·누락 가격 대체를 넣지 않는다", async (zoom) => {
+  Object.assign(mapState, { zoom });
+  const regions = [
+    ...["B027", "D047", "B034", "K015"].map((product_code, index) => ({region_key:"opinet:11",label:"서울특별시",product_code,average_price:1700+index*100,station_count:3,longitude:127+index*.01,latitude:37.5})),
+    {region_key:"opinet:41",label:"경기도",product_code:"D047",average_price:1600,station_count:2,longitude:127.5,latitude:37.7},
+  ];
+  vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({items:[],total:5,clustered:true,clusters:[],fuel_regions:regions}), {status:200}));
+  const container=document.createElement("div");document.body.append(container);const root=createRoot(container);
+  try {
+    await act(async()=>root.render(<TransportMap mode="fuel"/>));
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,50));});
+    const cards=container.querySelectorAll(".fuel-region-marker");
+    expect(cards).toHaveLength(2);
+    const seoul=[...cards].find(card=>card.textContent?.includes("서울특별시"))!;
+    for (const label of ["휘발유", "경유", "고급유", "등유", "LPG"]) expect(seoul.textContent).toContain(label);
+    for (const price of ["1,700", "1,800", "1,900", "2,000"]) expect(seoul.textContent).toContain(price);
+    expect(seoul.textContent).toContain("미제공");
+    expect(seoul.textContent).not.toContain("평균");
+    expect(seoul.getAttribute("aria-label")).toContain("경유 1800원/L");
+    expect(seoul.getAttribute("aria-label")).not.toContain("평균");
+    const gyeonggi=[...cards].find(card=>card.textContent?.includes("경기도"))!;
+    expect(gyeonggi.textContent).toContain("1,600");expect(gyeonggi.textContent).not.toContain("1,700");
+  } finally {await act(async()=>root.unmount());container.remove();}
+});
+
+test("지역은 유종 선택과 무관하게 함께 읽고 확대된 주유소에는 선택 유종 필터를 유지한다", async () => {
+  Object.assign(mapState, {zoom:7});
+  vi.mocked(fetch).mockImplementation(async()=>new Response(JSON.stringify({items:[],total:2,clustered:true,clusters:[],fuel_regions:[
+    {region_key:"opinet:11",label:"서울특별시",product_code:"B027",average_price:1700,station_count:1,longitude:127,latitude:37.5},
+    {region_key:"opinet:11",label:"서울특별시",product_code:"D047",average_price:1600,station_count:1,longitude:127,latitude:37.5},
+  ]}),{status:200}));
+  const container=document.createElement("div");document.body.append(container);const root=createRoot(container);
+  const lastUrl=()=>new URL(String(vi.mocked(fetch).mock.calls.at(-1)?.[0]),"http://test");
+  try {
+    await act(async()=>root.render(<TransportMap mode="fuel"/>));
+    await act(async()=>{const select=container.querySelector<HTMLSelectElement>('select[aria-label="전체 유종"]')!;select.value="D047";select.dispatchEvent(new Event("change",{bubbles:true}));});
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,50));});
+    expect(lastUrl().searchParams.has("product_codes")).toBe(false);
+    expect(container.querySelector(".fuel-region-marker")?.textContent).toContain("1,700");
+    expect(container.querySelector(".fuel-region-marker")?.textContent).toContain("1,600");
+    Object.assign(mapState,{zoom:12.5});
+    await act(async()=>[...container.querySelectorAll("button")].find(button=>button.textContent==="지도 이동 모의")!.click());
+    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,450));});
+    expect(lastUrl().searchParams.get("product_codes")).toBe("D047");
+  } finally {await act(async()=>root.unmount());container.remove();}
+});
 
 test("외부 장소 지도는 자체 API를 호출하지 않고 이동을 카메라 prop으로 되먹이지 않으며 목록 왕복에는 마지막 카메라로 다시 연다", async () => {
   const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
