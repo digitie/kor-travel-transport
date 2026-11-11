@@ -68,6 +68,16 @@ export function FuelStationHistoryChart({ data }: { data: FuelStationHistory }) 
 }
 
 export function FuelStationPriceHistory({ place }: { place: Pick<Place, "id" | "source"> }) {
+  const { supported, current, setReload, key } = useFuelStationHistory({ place });
+  return <section className="fuel-station-history" aria-label="최근 7일 주유소 가격" aria-busy={supported && !current}>
+    <div className="fuel-history-heading"><h3>최근 7일 유가</h3><InfoButton label="주유소 가격 추이">최근 168시간의 저장 관측만 표시합니다. 한국 날짜 기준으로 관측이 전혀 없는 날은 선을 끊고 보간하지 않습니다. 오른쪽 숫자는 유종별 마지막 실제 관측 가격입니다. 현재 가격 카드의 기준 시각과 다를 수 있습니다.{current?.data ? <><p>조회 범위 {historyTime(current.data.window.from_at)} → {historyTime(current.data.window.to_at)} · 한국 시각</p><p>출처 최근 수집 성공 {current.data.source_last_success_at ? historyTime(current.data.source_last_success_at) : "확인되지 않음"}</p></> : null}</InfoButton></div>
+    {!supported ? <p className="quiet">이 출처는 개별 주유소의 저장 가격 추이를 제공하지 않습니다.</p> : !current ? <p className="quiet" role="status">가격 이력 불러오는 중…</p> : current.error ? <div role="alert"><p>{current.error}</p><Button type="button" variant="outline" size="sm" onClick={() => setReload((value) => value + 1)}>다시 조회</Button></div> : current.data ? <FuelStationHistoryChart key={key} data={current.data} /> : null}
+  </section>;
+}
+
+
+// 조회·선택·요청 수명은 이 도메인 훅이, 아래 컴포넌트는 표현을 소유한다.
+function useFuelStationHistory({ place }: { place: Pick<Place, "id" | "source"> }) {
   const [reload, setReload] = useState(0);
   const key = `${place.source}/${place.id}/${reload}`;
   const [state, setState] = useState<{ key: string; data?: FuelStationHistory; error?: string }>();
@@ -83,8 +93,6 @@ export function FuelStationPriceHistory({ place }: { place: Pick<Place, "id" | "
     return () => controller.abort();
   }, [key, place.id, place.source, supported]);
   const current = state?.key === key ? state : undefined;
-  return <section className="fuel-station-history" aria-label="최근 7일 주유소 가격" aria-busy={supported && !current}>
-    <div className="fuel-history-heading"><h3>최근 7일 유가</h3><InfoButton label="주유소 가격 추이">최근 168시간의 저장 관측만 표시합니다. 한국 날짜 기준으로 관측이 전혀 없는 날은 선을 끊고 보간하지 않습니다. 오른쪽 숫자는 유종별 마지막 실제 관측 가격입니다. 현재 가격 카드의 기준 시각과 다를 수 있습니다.{current?.data ? <><p>조회 범위 {historyTime(current.data.window.from_at)} → {historyTime(current.data.window.to_at)} · 한국 시각</p><p>출처 최근 수집 성공 {current.data.source_last_success_at ? historyTime(current.data.source_last_success_at) : "확인되지 않음"}</p></> : null}</InfoButton></div>
-    {!supported ? <p className="quiet">이 출처는 개별 주유소의 저장 가격 추이를 제공하지 않습니다.</p> : !current ? <p className="quiet" role="status">가격 이력 불러오는 중…</p> : current.error ? <div role="alert"><p>{current.error}</p><Button type="button" variant="outline" size="sm" onClick={() => setReload((value) => value + 1)}>다시 조회</Button></div> : current.data ? <FuelStationHistoryChart key={key} data={current.data} /> : null}
-  </section>;
+
+  return { supported, current, setReload, key };
 }

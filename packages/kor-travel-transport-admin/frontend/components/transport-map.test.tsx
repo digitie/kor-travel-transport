@@ -14,7 +14,7 @@ vi.mock("vworld-map-web", async () => {
       React.useEffect(() => { onLoad(map); }, [map, onLoad]);
       return <div data-testid="fixture-map" data-center={center.join(",")} data-zoom={zoom}><button onClick={() => onMoveEnd({ target: map })}>지도 이동 모의</button>{children}</div>;
     },
-    ClusterLayer: ({ points, renderMarker }: { points: unknown[]; renderMarker: (point: unknown) => React.ReactNode }) => <>{points.map((point, index) => <React.Fragment key={index}>{renderMarker(point)}</React.Fragment>)}</>,
+    ClusterLayer: ({ points, renderMarker }: { points: { id: string }[]; renderMarker: (point: unknown) => React.ReactNode }) => <>{points.map((point) => <React.Fragment key={point.id}>{renderMarker(point)}</React.Fragment>)}</>,
   };
 });
 vi.mock("./map-overlays", () => ({
@@ -36,6 +36,7 @@ test("외부 장소 지도는 자체 API를 호출하지 않고 이동을 카메
   const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
   try {
     await act(async () => root.render(<TransportMap places={[station]} />));
+    expect(container.querySelector('[aria-label="선택 장소 상세"]')).toBeNull();
     const camera = () => container.querySelector('[data-testid="fixture-map"]')!;
     const readout = () => container.querySelector(".kt-map-coordinates")!.textContent;
     // mount 시점 카메라가 유지된다. 실제 카메라는 readout에만 반영한다(SDK가 prop 변화마다 ease를 다시 걸지 않게).

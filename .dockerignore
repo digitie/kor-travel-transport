@@ -17,3 +17,6 @@
 backups/
 data/*.sqlite3
 
+
+# 작업별 검증 로그·임시 SQLite를 이미지 빌드 컨텍스트에 넣지 않는다.
+/validation/transport-*

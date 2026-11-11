@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { effectiveFerryServiceDate, referenceDescription } from "./transport-reference-list";
+import { effectiveFerryServiceDate, referenceDescription } from "@/lib/reference-places";
 
 describe("referenceDescription", () => {
   const place = { line_names: [], provider_id: "101", latitude: null, longitude: null };

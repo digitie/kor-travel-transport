@@ -30,78 +30,7 @@ function buildDefaultRange() {
 }
 
 export function FeeCalculator({ airports, initialAirportCode, initialParkingLotId = null, onAirportChange, onParkingLotChange, scopeControls = true, help, onCalculate }: FeeCalculatorProps) {
-  const [defaults] = useState(buildDefaultRange);
-  const requestId = useRef(0);
-  const [airportSelection, setAirportSelection] = useState({ initial: initialAirportCode, value: initialAirportCode });
-  const airportCode = airportSelection.initial === initialAirportCode ? airportSelection.value : initialAirportCode;
-  const setAirportCode = (value: string) => setAirportSelection({ initial: initialAirportCode, value });
-  const [vehicleSize, setVehicleSize] = useState<"small" | "large">("small");
-  const timeForm = useForm<{ entryAt: string; exitAt: string }>({ defaultValues: { entryAt: defaults.entry, exitAt: defaults.exitAt } });
-  const { entryAt, exitAt } = useWatch({ control: timeForm.control });
-  const [parkingSelection, setParkingSelection] = useState({ airportCode: initialAirportCode, initialParkingLotId, value: null as number | null });
-
-  const selectedAirport = airports.find((airport) => airport.code === airportCode);
-  const selectableLots = useMemo(() => selectedAirport?.parking_lots.filter((lot) => lot.is_active) ?? [], [selectedAirport]);
-
-  const ownsSelection = parkingSelection.airportCode === airportCode && parkingSelection.initialParkingLotId === initialParkingLotId;
-  const preferredLot = ownsSelection && scopeControls && parkingSelection.value !== null ? parkingSelection.value : initialParkingLotId;
-  const parkingLotId = selectableLots.find((lot) => lot.id === preferredLot)?.id ?? selectableLots[0]?.id ?? null;
-  const setParkingLotId = (value: number | null) => setParkingSelection({ airportCode, initialParkingLotId, value });
-  const inputKey = JSON.stringify([airportCode, parkingLotId, vehicleSize, entryAt, exitAt]);
-  const [quoteStore] = useState(() => createStore<{
-    scope: string; result: FeeCalculationResponse | null; error: string | null; pending: boolean;
-  }>(() => ({ scope: "", result: null, error: null, pending: false })));
-  const quote = useStore(quoteStore);
-  const result = quote.scope === inputKey ? quote.result : null;
-  const error = quote.scope === inputKey ? quote.error : null;
-  const pending = quote.scope === inputKey && quote.pending;
-  const updateQuote = useCallback((patch: Partial<Omit<typeof quote, "scope">>) => {
-    quoteStore.setState((current) => ({
-      ...(current.scope === inputKey ? current : { result: null, error: null, pending: false }),
-      ...patch, scope: inputKey,
-    }));
-  }, [inputKey, quoteStore]);
-  const setResult = (result: FeeCalculationResponse | null) => updateQuote({ result });
-  const setError = (error: string | null) => updateQuote({ error });
-  const setPending = (pending: boolean) => updateQuote({ pending });
-  // 입력 정체가 달라지면 이전 요청의 결과를 버린다. 화면 초기화는 위의 scope 비교에서 파생한다.
-  useEffect(() => { requestId.current += 1; }, [inputKey]);
-
-  useEffect(() => () => { requestId.current += 1; }, []);
-
-  async function handleSubmit() {
-
-    if (!z.object({ entryAt: z.string().min(1), exitAt: z.string().min(1) }).safeParse({ entryAt, exitAt }).success || !entryAt || !exitAt) {
-      setError("입차와 출차 시각을 모두 입력해 주세요.");
-      return;
-    }
-
-    if (new Date(`${exitAt}:00+09:00`) <= new Date(`${entryAt}:00+09:00`)) {
-      setError("출차 시각은 입차 시각보다 늦어야 합니다.");
-      return;
-    }
-
-    const currentRequest = ++requestId.current;
-    setPending(true);
-    setResult(null);
-    setError(null);
-
-    try {
-      const quote = await onCalculate({
-        airport_code: airportCode,
-        parking_lot_id: parkingLotId,
-        vehicle_size: vehicleSize,
-        entry_at: new Date(`${entryAt}:00+09:00`).toISOString(),
-        exit_at: new Date(`${exitAt}:00+09:00`).toISOString()
-      });
-      if (currentRequest === requestId.current) setResult(quote);
-    } catch (caughtError) {
-      if (currentRequest === requestId.current) setError(caughtError instanceof Error ? caughtError.message : "요금 계산에 실패했습니다.");
-    } finally {
-      if (currentRequest === requestId.current) setPending(false);
-    }
-  }
-
+  const { timeForm, handleSubmit, airportCode, setAirportCode, parkingLotId, setParkingLotId, selectableLots, vehicleSize, setVehicleSize, pending, error, result } = useFeeCalculatorSelection({ airports, initialAirportCode, initialParkingLotId, onAirportChange, onParkingLotChange, scopeControls, help, onCalculate });
   return (
     <section className="panel-surface fee-panel">
       <div className="panel-head">
@@ -112,31 +41,9 @@ export function FeeCalculator({ airports, initialAirportCode, initialParkingLotI
       </div>
 
       <form className="fee-form" onSubmit={timeForm.handleSubmit(handleSubmit)}>
-        {scopeControls ? <><label className="field">
-          <span>공항</span>
-          <select className="input" value={airportCode} onChange={(event) => { setAirportCode(event.target.value); onAirportChange?.(event.target.value); }}>
-            {airports.map((airport) => (
-              <option key={airport.code} value={airport.code}>
-                {airport.name_ko}
-              </option>
-            ))}
-          </select>
-        </label>
+        {scopeControls ? <><FeeAirportSelect airportCode={airportCode} setAirportCode={setAirportCode} onAirportChange={onAirportChange} airports={airports} />
 
-        <label className="field">
-          <span>주차장</span>
-          <select
-            className="input"
-            value={parkingLotId ?? ""}
-            onChange={(event) => { const next = event.target.value ? Number(event.target.value) : null; setParkingLotId(next); onParkingLotChange?.(next); }}
-          >
-            {selectableLots.map((lot) => (
-              <option key={lot.id} value={lot.id}>
-                {lot.name}
-              </option>
-            ))}
-          </select>
-        </label></> : null}
+        <FeeParkingSelect parkingLotId={parkingLotId} setParkingLotId={setParkingLotId} onParkingLotChange={onParkingLotChange} selectableLots={selectableLots} /></> : null}
 
         <label className="field">
           <span>차량 크기</span>
@@ -212,4 +119,122 @@ function FeeQuote({ result }: { result: FeeCalculationResponse }) {
           ) : null}
         </div>
   );
+}
+
+type FeeQuoteInput = { airportCode: string; parkingLotId: number | null; vehicleSize: "small" | "large"; entryAt?: string; exitAt?: string; onCalculate: FeeCalculatorProps["onCalculate"] };
+function useFeeQuote({ airportCode, parkingLotId, vehicleSize, entryAt, exitAt, onCalculate }: FeeQuoteInput) {
+  const requestId = useRef(0);
+  const inputKey = JSON.stringify([airportCode, parkingLotId, vehicleSize, entryAt, exitAt]);
+  const [quoteStore] = useState(() => createStore<{
+    scope: string; result: FeeCalculationResponse | null; error: string | null; pending: boolean;
+  }>(() => ({ scope: "", result: null, error: null, pending: false })));
+  const quote = useStore(quoteStore);
+  const result = quote.scope === inputKey ? quote.result : null;
+  const error = quote.scope === inputKey ? quote.error : null;
+  const pending = quote.scope === inputKey && quote.pending;
+  const updateQuote = useCallback((patch: Partial<Omit<typeof quote, "scope">>) => {
+    quoteStore.setState((current) => ({
+      ...(current.scope === inputKey ? current : { result: null, error: null, pending: false }),
+      ...patch, scope: inputKey,
+    }));
+  }, [inputKey, quoteStore]);
+  const setResult = (result: FeeCalculationResponse | null) => updateQuote({ result });
+  const setError = (error: string | null) => updateQuote({ error });
+  const setPending = (pending: boolean) => updateQuote({ pending });
+  // 입력 정체가 달라지면 이전 요청의 결과를 버린다. 화면 초기화는 위의 scope 비교에서 파생한다.
+  useEffect(() => { requestId.current += 1; }, [inputKey]);
+
+  useEffect(() => () => { requestId.current += 1; }, []);
+
+  async function handleSubmit() {
+
+    if (!z.object({ entryAt: z.string().min(1), exitAt: z.string().min(1) }).safeParse({ entryAt, exitAt }).success || !entryAt || !exitAt) {
+      setError("입차와 출차 시각을 모두 입력해 주세요.");
+      return;
+    }
+
+    if (new Date(`${exitAt}:00+09:00`) <= new Date(`${entryAt}:00+09:00`)) {
+      setError("출차 시각은 입차 시각보다 늦어야 합니다.");
+      return;
+    }
+
+    const currentRequest = ++requestId.current;
+    setPending(true);
+    setResult(null);
+    setError(null);
+
+    try {
+      const quote = await onCalculate({
+        airport_code: airportCode,
+        parking_lot_id: parkingLotId,
+        vehicle_size: vehicleSize,
+        entry_at: new Date(`${entryAt}:00+09:00`).toISOString(),
+        exit_at: new Date(`${exitAt}:00+09:00`).toISOString()
+      });
+      if (currentRequest === requestId.current) setResult(quote);
+    } catch (caughtError) {
+      if (currentRequest === requestId.current) setError(caughtError instanceof Error ? caughtError.message : "요금 계산에 실패했습니다.");
+    } finally {
+      if (currentRequest === requestId.current) setPending(false);
+    }
+  }
+
+  return { result, error, pending, handleSubmit };
+}
+
+
+// 조회·선택·요청 수명은 이 도메인 훅이, 아래 컴포넌트는 표현을 소유한다.
+function useFeeCalculatorSelection({ airports, initialAirportCode, initialParkingLotId = null, scopeControls = true, onCalculate }: FeeCalculatorProps) {
+  const [defaults] = useState(buildDefaultRange);
+  const [airportSelection, setAirportSelection] = useState({ initial: initialAirportCode, value: initialAirportCode });
+  const airportCode = airportSelection.initial === initialAirportCode ? airportSelection.value : initialAirportCode;
+  const setAirportCode = (value: string) => setAirportSelection({ initial: initialAirportCode, value });
+  const [vehicleSize, setVehicleSize] = useState<"small" | "large">("small");
+  const timeForm = useForm<{ entryAt: string; exitAt: string }>({ defaultValues: { entryAt: defaults.entry, exitAt: defaults.exitAt } });
+  const { entryAt, exitAt } = useWatch({ control: timeForm.control });
+  const [parkingSelection, setParkingSelection] = useState({ airportCode: initialAirportCode, initialParkingLotId, value: null as number | null });
+
+  const selectedAirport = airports.find((airport) => airport.code === airportCode);
+  const selectableLots = useMemo(() => selectedAirport?.parking_lots.filter((lot) => lot.is_active) ?? [], [selectedAirport]);
+
+  const ownsSelection = parkingSelection.airportCode === airportCode && parkingSelection.initialParkingLotId === initialParkingLotId;
+  const preferredLot = ownsSelection && scopeControls && parkingSelection.value !== null ? parkingSelection.value : initialParkingLotId;
+  const parkingLotId = selectableLots.find((lot) => lot.id === preferredLot)?.id ?? selectableLots[0]?.id ?? null;
+  const setParkingLotId = (value: number | null) => setParkingSelection({ airportCode, initialParkingLotId, value });
+  const { result, error, pending, handleSubmit } = useFeeQuote({ airportCode, parkingLotId, vehicleSize, entryAt, exitAt, onCalculate });
+
+
+  return { timeForm, handleSubmit, airportCode, setAirportCode, parkingLotId, setParkingLotId, selectableLots, vehicleSize, setVehicleSize, pending, error, result };
+}
+
+
+function FeeAirportSelect({ airportCode, setAirportCode, onAirportChange, airports }: Pick<ReturnType<typeof useFeeCalculatorSelection>, "airportCode" | "setAirportCode"> & Pick<NonNullable<Parameters<typeof FeeCalculator>[0]>, "onAirportChange" | "airports">) {
+  return (<label className="field">
+          <span>공항</span>
+          <select className="input" value={airportCode} onChange={(event) => { setAirportCode(event.target.value); onAirportChange?.(event.target.value); }}>
+            {airports.map((airport) => (
+              <option key={airport.code} value={airport.code}>
+                {airport.name_ko}
+              </option>
+            ))}
+          </select>
+        </label>);
+}
+
+
+function FeeParkingSelect({ parkingLotId, setParkingLotId, onParkingLotChange, selectableLots }: Pick<ReturnType<typeof useFeeCalculatorSelection>, "parkingLotId" | "setParkingLotId" | "selectableLots"> & Pick<NonNullable<Parameters<typeof FeeCalculator>[0]>, "onParkingLotChange">) {
+  return (<label className="field">
+          <span>주차장</span>
+          <select
+            className="input"
+            value={parkingLotId ?? ""}
+            onChange={(event) => { const next = event.target.value ? Number(event.target.value) : null; setParkingLotId(next); onParkingLotChange?.(next); }}
+          >
+            {selectableLots.map((lot) => (
+              <option key={lot.id} value={lot.id}>
+                {lot.name}
+              </option>
+            ))}
+          </select>
+        </label>);
 }

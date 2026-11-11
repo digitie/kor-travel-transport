@@ -1,3 +1,14 @@
+## 2026-11-11 — Transport Doctor 개선 재개 후보
+
+- 공개/관리자 Doctor full warning0, WSL/Docker unit164/356, 타입·lint 및 관리자 Chromium16개·공개4개 통과.
+  상태 소유권·요청 취소·표현 분리를 구현하고 모바일 빈 상세 오버레이와 느린 독립 조회 회귀를 수정했다.
+- 미완: backend 전체 WSL/Docker 진행 중, c7 pack 동기화 및 독립 Transport 리뷰2건·CI·머지·배포.
+  최신 canonical은c7, root pack과 설치본은c6이므로 현재 canonical guard의 해시 차단을 통과로 보고하지 않는다.
+- 부모 소유 `.github/workflows/common-frontend-policy.yml`은 보존하고 worker 커밋에서 제외한다.
+- 다음 작업: 진행 중 backend 결과를 회수하고 부모 단일 pack 후 동일 tgz/원장/lock으로 앱 gate를 재검증한다.
+  운영 배포는 전체 필수 gate·독립2리뷰·원격CI·PRmerge와 부모go 이후다. DB/RustFS lifecycle은 변경하지 않는다.
+- [검증 원장·배포 계획](reports/2026-11-11-common-ui-validation.md), [Doctor 개선](reports/2026-11-11-react-doctor-findings.md).
+
 ## 2026-11-11 — 공통 UI 통합 소비자 후보
 
 - 현재: 지정 clone·`agent/codex-common-unification-20261111` 유지. 공개/공유/관리자 UI를 부모 common 후보4로 이관했다.

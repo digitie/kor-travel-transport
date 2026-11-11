@@ -76,21 +76,12 @@ export function FuelDriverStatistics({ metrics }: { metrics: FuelMetrics }) {
 }
 
 export function FuelStatisticsCard({ metrics, title, history }: { metrics: FuelMetrics; title: string; history?: History[] }) {
-  const comparison = history ? historyComparison(history) : null;
-  const dayDifference = averageDifference(comparison?.latest, comparison?.previous);
-  const periodDifference = averageDifference(comparison?.latest, comparison?.start);
   return <article className="fuel-stat-card" aria-label={title}>
     <header><h3>{title}</h3><span>{metrics.station_count.toLocaleString()}개 주유소</span></header>
     <dl className="fuel-stat-values">
       <div><dt>평균</dt><dd>{money(metrics.average_price)}<small>원/L</small></dd></div>
       <div><dt>최저</dt><dd>{money(metrics.minimum_price)}<small>원/L</small></dd></div>
-      {comparison ? <>
-        <div><dt>전일 평균 차이{comparison.latest ? <small className="block">{historyRange(comparison.previousDay!, comparison.latest.day)}</small> : null}</dt><dd>{dayDifference === null ? "비교 관측 없음" : <>{dayDifference}<small>원/L</small></>}</dd></div>
-        <div><dt>7일 구간 변화{comparison.latest ? <small className="block">{historyRange(comparison.periodStart!, comparison.latest.day)}</small> : null}</dt><dd>{periodDifference === null ? "비교 관측 없음" : <>{periodDifference}<small>원/L</small></>}</dd></div>
-      </> : <>
-        <div><dt>최고−최저</dt><dd>{money(metrics.price_spread)}<small>원/L</small></dd></div>
-        <div><dt>가격 표준편차</dt><dd>{money(metrics.standard_deviation)}<small>원/L</small></dd></div>
-      </>}
+      <FuelPriceComparison metrics={metrics} history={history} />
       <div><dt>50L 평균 대비 절감</dt><dd>{money(metrics.saving_50l)}<small>원</small></dd></div>
     </dl>
     <p>최저가 · <strong>{metrics.cheapest_station?.name ?? "정보 없음"}</strong>{metrics.cheapest_station_count > 1 ? ` 외 ${metrics.cheapest_station_count - 1}곳` : ""}</p>
@@ -108,40 +99,13 @@ export function FuelPriceStatus({ stale, lastRefreshedAt }: { stale: boolean; la
 }
 
 export function FuelViewportSummary({ items, pending, failed = false, pricesStale = false, pricesLastRefreshedAt, detailOpen = false, detailExpanded, onDetailExpandedChange }: { items: FuelViewportStatistics[]; pending: boolean; failed?: boolean; pricesStale?: boolean; pricesLastRefreshedAt?: string | null; detailOpen?: boolean; detailExpanded?: boolean; onDetailExpandedChange?: (expanded: boolean) => void }) {
-  const productId = useId();
-  const bodyId = useId();
-  const [product, setProduct] = useState("B027");
-  const [localDetailExpanded, setLocalDetailExpanded] = useState(false);
-  const detailScopeExpanded = detailExpanded ?? localDetailExpanded;
-  const expanded = !detailOpen || detailScopeExpanded;
-  const selected = items.find((item) => item.product_code === product) ?? items[0];
+  const { expanded, bodyId, setLocalDetailExpanded, detailScopeExpanded, selected, productId, setProduct } = useFuelViewportSummary({ items, pending, failed, pricesStale, pricesLastRefreshedAt, detailOpen, detailExpanded, onDetailExpandedChange });
   return <section className="fuel-viewport-summary" aria-label="현재 지도 범위 유가 통계" aria-busy={pending}>
     <header><h2>{detailOpen ? <button type="button" className="fuel-summary-toggle" aria-expanded={expanded} aria-controls={bodyId} onClick={() => { setLocalDetailExpanded(!detailScopeExpanded); onDetailExpandedChange?.(!detailScopeExpanded); }}>{expanded ? "범위 접기" : "현재 지도 범위"}</button> : "범위"}</h2>{expanded ? <small>원/L</small> : null}
       {expanded && !pending && !failed && selected ? items.length > 1 ? <><label className="sr-only" htmlFor={productId}>지도 통계 유종</label><select id={productId} value={selected.product_code} onChange={(event) => setProduct(event.target.value)}>{items.map((item) => <option key={item.product_code} value={item.product_code}>{fuelProductLabel(item.product_code)}</option>)}</select></> : <span>{fuelProductLabel(selected.product_code)}</span> : null}
-      <InfoButton label="지도 범위 유가 통계">
-        {pending ? <p role="status">통계 조회 중…</p> : failed ? <p role="alert">통계를 불러오지 못했습니다.</p> : <>
-          {selected ? <>
-          <p>현재 지도 범위와 검색·출처·유종 조건에 맞는 전체 주유소의 유효 가격을 집계합니다. 묶음 마커 개수와는 다릅니다.</p>
-          <p>통계 기준은 공개된 통계 세대의 수집 시각이고, 가격 갱신은 가격 읽기 모델의 마지막 성공 갱신 시각입니다. 개별 가격의 관측 시각은 주유소 상세에서 확인할 수 있습니다.</p>
-          </> : null}
-          {pricesStale ? <p>가격 갱신이 지연되어 현재 유종·가격·판매 여부가 표시된 자료와 다를 수 있습니다.</p> : null}
-          {selected ? <>
-          <FuelStatisticsCard title={fuelProductLabel(selected.product_code)} metrics={selected} />
-          <Link className="inline-link" href="/fuel/statistics">지역·기간별 유가 통계</Link>
-          </> : <p>통계 없음 · 수집 완료 후 반영됩니다.</p>}
-        </>}
-      </InfoButton>
+      <FuelViewportHelp pending={pending} failed={failed} selected={selected} pricesStale={pricesStale} />
     </header>
-    <div id={bodyId} className="fuel-summary-body" hidden={!expanded}>
-    {pending ? <p role="status">통계 조회 중…</p> : failed ? <p role="alert">통계를 불러오지 못했습니다.</p> : <>
-      {detailOpen ? <FuelPriceStatus stale={pricesStale} lastRefreshedAt={pricesLastRefreshedAt} /> : null}
-      {selected ? <dl><div><dt>평균</dt><dd>{money(selected.average_price)}</dd></div><div><dt>최저</dt><dd>{money(selected.minimum_price)}</dd></div></dl> : null}
-      {!detailOpen ? <FuelPriceStatus stale={pricesStale} lastRefreshedAt={pricesLastRefreshedAt} /> : null}
-      {selected ? <>
-      {selected.update_pending ? <p role="status">최신 수집 통계 반영 대기</p> : null}
-      </> : <p>통계 없음 · 수집 완료 후 반영됩니다.</p>}
-    </>}
-    </div>
+    <FuelViewportValues bodyId={bodyId} expanded={expanded} pending={pending} failed={failed} detailOpen={detailOpen} pricesStale={pricesStale} pricesLastRefreshedAt={pricesLastRefreshedAt} selected={selected} />
   </section>;
 }
 
@@ -162,6 +126,23 @@ export function FuelPriceTrend({ rows }: { rows: History[] }) {
 }
 
 export function FuelStatisticsPage() {
+  const { pending, scope, setScope, setScopeKey, product, setProduct, setReload, shownData, categoryKey, error, selected, comparisonRows } = useFuelStatistics();
+  return <section className="fuel-stat-section" aria-label="유가 통계" aria-busy={pending}>
+    <div className="fuel-stat-filters">
+      <label>범위<select aria-label="범위" value={scope} onChange={(event) => { setScope(event.target.value); setScopeKey(""); }} >{scopes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <label>유종<select aria-label="유종" value={product} onChange={(event) => { setProduct(event.target.value); setScopeKey(""); }}>{["B027", "D047", "K015", "B034", "C004"].map((code) => <option key={code} value={code}>{fuelProductLabel(code)}</option>)}</select></label>
+      <button type="button" onClick={() => setReload((value) => value + 1)}>새로고침</button>
+    </div>
+    {shownData?.items.length ? <label className="fuel-stat-category">추이 범주<select aria-label="추이 범주" value={categoryKey} onChange={(event) => setScopeKey(event.target.value)}>{shownData.items.map((row) => <option key={row.scope_key} value={row.scope_key}>{row.label}</option>)}</select></label> : null}
+    <FuelStatisticsResult pending={pending} error={error} shownData={shownData} selected={selected} product={product} comparisonRows={comparisonRows} />
+    {shownData?.items.length ? <div className="fuel-stat-table"><FuelCategoryTable shownData={shownData} setScopeKey={setScopeKey} /></div> : null}
+    {!pending && !error && selected ? <details className="fuel-driving-details"><summary>차량 운영비 비교</summary><FuelDriverStatistics metrics={selected} /></details> : null}
+  </section>;
+}
+
+
+// 조회·선택·요청 수명은 이 도메인 훅이, 아래 컴포넌트는 표현을 소유한다.
+function useFuelStatistics() {
   const [scope, setScope] = useState("nationwide");
   const [product, setProduct] = useState("B027");
   const [scopeKey, setScopeKey] = useState("");
@@ -189,34 +170,106 @@ export function FuelStatisticsPage() {
     { day: comparison.periodStart!, row: comparison.start },
   ] : [];
   const categoryKey = shownData?.items.some((row) => row.scope_key === scopeKey) ? scopeKey : selected?.scope_key ?? "";
-  return <section className="fuel-stat-section" aria-label="유가 통계" aria-busy={pending}>
-    <div className="fuel-stat-filters">
-      <label>범위<select aria-label="범위" value={scope} onChange={(event) => { setScope(event.target.value); setScopeKey(""); }} >{scopes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-      <label>유종<select aria-label="유종" value={product} onChange={(event) => { setProduct(event.target.value); setScopeKey(""); }}>{["B027", "D047", "K015", "B034", "C004"].map((code) => <option key={code} value={code}>{fuelProductLabel(code)}</option>)}</select></label>
-      <button type="button" onClick={() => setReload((value) => value + 1)}>새로고침</button>
-    </div>
-    {shownData?.items.length ? <label className="fuel-stat-category">추이 범주<select aria-label="추이 범주" value={categoryKey} onChange={(event) => setScopeKey(event.target.value)}>{shownData.items.map((row) => <option key={row.scope_key} value={row.scope_key}>{row.label}</option>)}</select></label> : null}
-    {pending ? <p role="status">통계 조회 중…</p> : error ? <p role="alert">통계를 불러오지 못했습니다. 새로고침해 주세요.</p> : shownData ? <>
-      <p>{shownData.generated_at ? `수집 기준 ${dateTime(shownData.generated_at)}` : "첫 수집 완료 후 통계가 생성됩니다."}{shownData.update_pending ? " · 최신 수집 통계 반영 대기" : ""}</p>
-      {shownData.items.length ? <>
-        {selected ? <FuelStatisticsCard title={`${selected.label} · ${fuelProductLabel(product)}`} metrics={selected} history={shownData.history} /> : null}
-        <div className="section-title-row"><h2>최근 7일 평균 유가 · {selected?.label}</h2><InfoButton label="유가 집계 기준">
+  return { pending, scope, setScope, setScopeKey, product, setProduct, setReload, shownData, categoryKey, error, selected, comparisonRows };
+}
+
+
+// 조회·선택·요청 수명은 이 도메인 훅이, 아래 컴포넌트는 표현을 소유한다.
+function useFuelViewportSummary({ items, detailOpen = false, detailExpanded }: { items: FuelViewportStatistics[]; pending: boolean; failed?: boolean; pricesStale?: boolean; pricesLastRefreshedAt?: string | null; detailOpen?: boolean; detailExpanded?: boolean; onDetailExpandedChange?: (expanded: boolean) => void }) {
+  const productId = useId();
+  const bodyId = useId();
+  const [product, setProduct] = useState("B027");
+  const [localDetailExpanded, setLocalDetailExpanded] = useState(false);
+  const detailScopeExpanded = detailExpanded ?? localDetailExpanded;
+  const expanded = !detailOpen || detailScopeExpanded;
+  const selected = items.find((item) => item.product_code === product) ?? items[0];
+  return { expanded, bodyId, setLocalDetailExpanded, detailScopeExpanded, selected, productId, setProduct };
+}
+
+
+function FuelViewportHelp({ pending, failed, selected, pricesStale }: Pick<ReturnType<typeof useFuelViewportSummary>, "selected"> & Pick<NonNullable<Parameters<typeof FuelViewportSummary>[0]>, "pending" | "failed" | "pricesStale">) {
+  return (<InfoButton label="지도 범위 유가 통계">
+        {pending ? <p role="status">통계 조회 중…</p> : failed ? <p role="alert">통계를 불러오지 못했습니다.</p> : <>
+          {selected ? <>
+          <p>현재 지도 범위와 검색·출처·유종 조건에 맞는 전체 주유소의 유효 가격을 집계합니다. 묶음 마커 개수와는 다릅니다.</p>
+          <p>통계 기준은 공개된 통계 세대의 수집 시각이고, 가격 갱신은 가격 읽기 모델의 마지막 성공 갱신 시각입니다. 개별 가격의 관측 시각은 주유소 상세에서 확인할 수 있습니다.</p>
+          </> : null}
+          {pricesStale ? <p>가격 갱신이 지연되어 현재 유종·가격·판매 여부가 표시된 자료와 다를 수 있습니다.</p> : null}
+          {selected ? <>
+          <FuelStatisticsCard title={fuelProductLabel(selected.product_code)} metrics={selected} />
+          <Link className="inline-link" href="/fuel/statistics">지역·기간별 유가 통계</Link>
+          </> : <p>통계 없음 · 수집 완료 후 반영됩니다.</p>}
+        </>}
+      </InfoButton>);
+}
+
+
+function FuelViewportValues({ bodyId, expanded, pending, failed, detailOpen, pricesStale = false, pricesLastRefreshedAt, selected }: Pick<ReturnType<typeof useFuelViewportSummary>, "bodyId" | "expanded" | "selected"> & Pick<NonNullable<Parameters<typeof FuelViewportSummary>[0]>, "pending" | "failed" | "detailOpen" | "pricesStale" | "pricesLastRefreshedAt">) {
+  return (<div id={bodyId} className="fuel-summary-body" hidden={!expanded}>
+    <FuelRangeContent pending={pending} failed={failed} detailOpen={detailOpen} pricesStale={pricesStale} pricesLastRefreshedAt={pricesLastRefreshedAt} selected={selected} />
+    </div>);
+}
+
+
+function FuelHistoryContext({ selected, comparisonRows }: Pick<ReturnType<typeof useFuelStatistics>, "selected" | "comparisonRows">) {
+  return (<div className="section-title-row"><h2>최근 7일 평균 유가 · {selected?.label}</h2><InfoButton label="유가 집계 기준">
           <p>KST 일별 마지막 정상 수집 기준이며 수집 기록이 있는 날짜만 표시합니다. 전국·지역은 오피넷, 고속도로는 한국도로공사 기준입니다. 유효 가격을 주유소별 동일 비중으로 집계합니다. 절감액은 범주 평균과 최저가의 차이입니다.</p>
           <p>평균 차이는 마지막 집계일과 정확한 전일·6일 전을 비교합니다. 날짜별 대상 주유소가 달라질 수 있습니다. 비교 관측이 없으면 가까운 날짜나 0으로 대체하지 않습니다.</p>
           {comparisonRows.map(({ day, row }) => <p key={day}>{day} · {row ? <>평균 {money(row.average_price)}원/L · 유효 {row.station_count.toLocaleString("ko-KR")}개 · 수집 <time dateTime={row.generated_at}>{dateTime(row.generated_at)} KST</time></> : "비교 관측 없음"}</p>)}
           {selected ? <p>선택 범주 가격 차이 {money(selected.price_spread)}원/L · 표준편차 {money(selected.standard_deviation)}원/L</p> : null}
-        </InfoButton></div><FuelPriceTrend rows={shownData.history} />
+        </InfoButton></div>);
+}
 
-      </> : <p>선택한 유종의 통계가 없습니다.</p>}
 
-    </> : null}
-    {shownData?.items.length ? <div className="fuel-stat-table"><VirtualTable ariaLabel="조회 결과" data={shownData.items} getRowId={(row) => String(row.scope_key)} virtualized={false} columns={[{ id: 'column0', header: '범주', cell: ({ row: { original: row } }) => <><button type="button" onClick={() => setScopeKey(row.scope_key)}>{row.label}</button></> },
+function FuelCategoryTable({ shownData, setScopeKey }: Pick<ReturnType<typeof useFuelStatistics>, "setScopeKey"> & { shownData: Statistics }) {
+  return (<VirtualTable ariaLabel="조회 결과" data={shownData.items} getRowId={(row) => String(row.scope_key)} virtualized={false} columns={[{ id: 'column0', header: '범주', cell: ({ row: { original: row } }) => <><button type="button" onClick={() => setScopeKey(row.scope_key)}>{row.label}</button></> },
 { id: 'column1', header: '주유소', cell: ({ row: { original: row } }) => <>{row.station_count}</> },
 { id: 'column2', header: '평균', cell: ({ row: { original: row } }) => <>{money(row.average_price)}</> },
 { id: 'column3', header: '최저', cell: ({ row: { original: row } }) => <>{money(row.minimum_price)}</> },
 { id: 'column4', header: '최저가 주유소', cell: ({ row: { original: row } }) => <>{row.cheapest_station?.name}{row.cheapest_station_count > 1 ? ` 외 ${row.cheapest_station_count - 1}곳` : ""}</> },
 { id: 'column5', header: '가격 차이', cell: ({ row: { original: row } }) => <>{money(row.price_spread)}</> },
-{ id: 'column6', header: '50L 절감(원)', cell: ({ row: { original: row } }) => <>{money(row.saving_50l)}</> }]} /></div> : null}
-    {!pending && !error && selected ? <details className="fuel-driving-details"><summary>차량 운영비 비교</summary><FuelDriverStatistics metrics={selected} /></details> : null}
-  </section>;
+{ id: 'column6', header: '50L 절감(원)', cell: ({ row: { original: row } }) => <>{money(row.saving_50l)}</> }]} />);
+}
+
+function FuelPriceComparison({ metrics, history }: Pick<Parameters<typeof FuelStatisticsCard>[0], "metrics" | "history">) {
+  const comparison = history ? historyComparison(history) : null;
+  const dayDifference = averageDifference(comparison?.latest, comparison?.previous);
+  const periodDifference = averageDifference(comparison?.latest, comparison?.start);
+  return <>
+      {comparison ? <>
+        <div><dt>전일 평균 차이{comparison.latest ? <small className="block">{historyRange(comparison.previousDay!, comparison.latest.day)}</small> : null}</dt><dd>{dayDifference === null ? "비교 관측 없음" : <>{dayDifference}<small>원/L</small></>}</dd></div>
+        <div><dt>7일 구간 변화{comparison.latest ? <small className="block">{historyRange(comparison.periodStart!, comparison.latest.day)}</small> : null}</dt><dd>{periodDifference === null ? "비교 관측 없음" : <>{periodDifference}<small>원/L</small></>}</dd></div>
+      </> : <>
+        <div><dt>최고−최저</dt><dd>{money(metrics.price_spread)}<small>원/L</small></dd></div>
+        <div><dt>가격 표준편차</dt><dd>{money(metrics.standard_deviation)}<small>원/L</small></dd></div>
+      </>}
+  </>;
+}
+
+function FuelStatisticsResult({ pending, error, shownData, selected, product, comparisonRows }: Pick<ReturnType<typeof useFuelStatistics>, "pending" | "error" | "shownData" | "selected" | "product" | "comparisonRows">) {
+  if (pending) return <p role="status">통계 조회 중…</p>;
+  if (error) return <p role="alert">통계를 불러오지 못했습니다. 새로고침해 주세요.</p>;
+  if (!shownData) return null;
+  return <>
+      <p>{shownData.generated_at ? `수집 기준 ${dateTime(shownData.generated_at)}` : "첫 수집 완료 후 통계가 생성됩니다."}{shownData.update_pending ? " · 최신 수집 통계 반영 대기" : ""}</p>
+      {shownData.items.length ? <>
+        {selected ? <FuelStatisticsCard title={`${selected.label} · ${fuelProductLabel(product)}`} metrics={selected} history={shownData.history} /> : null}
+        <FuelHistoryContext selected={selected} comparisonRows={comparisonRows} /><FuelPriceTrend rows={shownData.history} />
+
+      </> : <p>선택한 유종의 통계가 없습니다.</p>}
+
+  </>;
+}
+
+function FuelRangeContent({ pending, failed, detailOpen, pricesStale = false, pricesLastRefreshedAt, selected }: Omit<Parameters<typeof FuelViewportValues>[0], "bodyId" | "expanded">) {
+  if (pending) return <p role="status">통계 조회 중…</p>;
+  if (failed) return <p role="alert">통계를 불러오지 못했습니다.</p>;
+  return <>
+      {detailOpen ? <FuelPriceStatus stale={pricesStale} lastRefreshedAt={pricesLastRefreshedAt} /> : null}
+      {selected ? <dl><div><dt>평균</dt><dd>{money(selected.average_price)}</dd></div><div><dt>최저</dt><dd>{money(selected.minimum_price)}</dd></div></dl> : null}
+      {!detailOpen ? <FuelPriceStatus stale={pricesStale} lastRefreshedAt={pricesLastRefreshedAt} /> : null}
+      {selected ? <>
+      {selected.update_pending ? <p role="status">최신 수집 통계 반영 대기</p> : null}
+      </> : <p>통계 없음 · 수집 완료 후 반영됩니다.</p>}
+  </>;
 }

@@ -60,18 +60,44 @@ export function MultiSearch({ label, query, onQuery, options, selected, onSelect
 }
 
 export function PlaceDetails({ place, showRailTimetable = true, showHeading = true, onShowMap }: { place: Place; showRailTimetable?: boolean; showHeading?: boolean; onShowMap?: () => void }) {
-  const prices = place.kind === "fuel_station" ? place.prices?.filter(hasFuelPrice) : place.prices;
-  const address = place.address ? hasCoordinates(place) ? onShowMap
-    ? <button type="button" className="inline-link" onClick={onShowMap}>{place.address} · 지도에서 보기</button>
-    : <Link className="inline-link" href={`/${place.kind === "fuel_station" ? "fuel" : "map"}?longitude=${place.longitude}&latitude=${place.latitude}`}>{place.address} · 지도에서 보기</Link>
-    : place.address : null;
   return <div className="place-details">
+    <PlaceHeading place={place} showHeading={showHeading} />
+    {place.kind === "fuel_station" ? <FuelStationPriceHistory key={`${place.source}:${place.id}`} place={place} /> : null}
+    <PlacePrices place={place} />
+    <PlaceContact place={place} onShowMap={onShowMap} />
+    {place.kind === "rail_station" && showRailTimetable ? <RailTimetables placeIds={[place.id]} /> : null}
+    <PlaceLocationEvidence place={place} />
+    {place.kind !== "fuel_station" ? <p className="quiet">출처 {collectionSourceLabel(place.source)} · 기준정보 반영 {dateTime(place.updated_at)}</p> : null}
+  </div>;
+}
+
+function PlaceHeading({ place, showHeading }: Pick<Parameters<typeof PlaceDetails>[0], "place" | "showHeading">) {
+  return <>
     {showHeading ? <><div className="place-title"><PlaceIcon kind={place.kind} brandCode={place.brand_code} brandName={place.brand_name} /><span>{placeKindLabel(place.kind)}</span></div><h2>{place.name}</h2></> : null}
     {place.brand_name && (showHeading || place.kind !== "fuel_station") ? <p>{place.brand_name}</p> : null}
     {place.line_names.length ? <div className="flex flex-wrap gap-2">{place.line_names.map((line) => <Badge variant="secondary" key={line}>{line}</Badge>)}</div> : null}
     {place.subtitle && place.kind !== "fuel_station" ? <p>{place.subtitle}</p> : null}
-    {place.kind === "fuel_station" ? <FuelStationPriceHistory key={`${place.source}:${place.id}`} place={place} /> : null}
+  </>;
+}
+
+function PlacePrices({ place }: { place: Place }) {
+  const prices = place.kind === "fuel_station" ? place.prices?.filter(hasFuelPrice) : place.prices;
+  return <>
     {prices?.length ? <><span className="quiet fuel-current-price-label">최근 저장 가격</span><dl className="price-grid">{prices.map((price) => <div key={price.product_code}><dt>{fuelProductLabel(price.product_code)}</dt><dd>{money(price.price, "원/L")}</dd><small><time dateTime={price.observed_at}>관측 {dateTime(price.observed_at)}</time>{place.kind === "fuel_station" && isOldFuelObservation(price.observed_at) ? <span className="fuel-price-old">7일 이전 관측</span> : null}</small></div>)}</dl></> : place.kind === "fuel_station" ? <p className="quiet">등록된 유효 유가가 없습니다.</p> : null}
+  </>;
+}
+
+function PlaceAddress({ place, onShowMap }: Pick<Parameters<typeof PlaceDetails>[0], "place" | "onShowMap">) {
+  return place.address ? hasCoordinates(place) ? onShowMap
+    ? <button type="button" className="inline-link" onClick={onShowMap}>{place.address} · 지도에서 보기</button>
+    : <Link className="inline-link" href={`/${place.kind === "fuel_station" ? "fuel" : "map"}?longitude=${place.longitude}&latitude=${place.latitude}`}>{place.address} · 지도에서 보기</Link>
+    : place.address : null;
+}
+
+function PlaceContact({ place, onShowMap }: Pick<Parameters<typeof PlaceDetails>[0], "place" | "onShowMap">) {
+  const prices = place.prices?.filter(hasFuelPrice);
+  const address = place.address ? <PlaceAddress place={place} onShowMap={onShowMap} /> : null;
+  return <>
     {place.kind === "fuel_station" ? <div className="place-metadata-actions">
       {address ? <InfoButton label="주소" icon={<MapPin size={15} aria-hidden="true" />}>{address}</InfoButton> : null}
       <InfoButton label="데이터 출처">{collectionSourceLabel(place.source)}<p>기준정보 반영 {dateTime(place.updated_at)}</p>{prices?.filter((price) => price.provider_updated_at).map((price) => <p key={price.product_code}>{fuelProductLabel(price.product_code)} 제공기관 공시 {dateTime(price.provider_updated_at)}</p>)}</InfoButton>
@@ -80,11 +106,30 @@ export function PlaceDetails({ place, showRailTimetable = true, showHeading = tr
     {place.kind === "ferry_port" ? <p className="quiet">항구 코드 {place.provider_id ?? "미제공"}</p> : null}
     {place.kind === "bus_terminal" ? <p className="quiet">터미널 코드 {place.provider_id ?? "미제공"}</p> : null}
     {place.facilities?.length ? <p>편의시설 · {place.facilities.join(" · ")}</p> : null}
-    {place.kind === "rail_station" && showRailTimetable ? <RailTimetables placeIds={[place.id]} /> : null}
-    {place.kind === "ferry_port" ? <InfoButton label="장소 위치의 근거">{hasCoordinates(place) ? place.location_source === "admin_manual" ? "관리자가 근거를 대조해 보정한 항구 위치입니다. 실제 승선 부두는 운항사에 확인해 주세요." : place.location_source === "komsa_port_call" ? "한국해양교통안전공단 기항지 위치입니다. 승선 부두·탑승구는 운항사에 확인해 주세요." : "지도 검색에서 확인한 항만 시설입니다. 실제 승선 장소는 운항사에 확인해 주세요." : "좌표 미등록 · 목록에서 운항 정보를 확인할 수 있습니다."}</InfoButton> : null}
-    {place.kind === "bus_terminal" ? <InfoButton label="장소 위치의 근거">{hasCoordinates(place) ? place.location_source === "admin_manual" ? "관리자가 근거를 대조해 보정한 터미널 위치입니다. 실제 승차 홈은 운송사에 확인해 주세요." : place.location_source === "vworld_place" ? "VWorld 시설 검색으로 확인한 터미널 위치입니다. 실제 승차 홈은 운송사에 확인해 주세요." : place.location_source === "kakao_place" ? "카카오맵 장소 검색으로 확인한 터미널 위치입니다. 실제 승차 홈은 운송사에 확인해 주세요." : "지도에서 확인한 터미널 위치입니다. 실제 승차 홈은 운송사에 확인해 주세요." : "좌표 미등록 · 터미널 이름과 코드로 검색할 수 있습니다."}</InfoButton> : null}
-    {place.kind !== "fuel_station" ? <p className="quiet">출처 {collectionSourceLabel(place.source)} · 기준정보 반영 {dateTime(place.updated_at)}</p> : null}
-  </div>;
+  </>;
+}
+
+function PlaceLocationEvidence({ place }: { place: Place }) {
+  if (place.kind !== "ferry_port" && place.kind !== "bus_terminal") return null;
+  return <InfoButton label="장소 위치의 근거">{locationEvidence(place)}</InfoButton>;
+}
+
+function locationEvidence(place: Place) {
+  if (place.kind === "ferry_port") {
+    if (!hasCoordinates(place)) return "좌표 미등록 · 목록에서 운항 정보를 확인할 수 있습니다.";
+    const evidence: Record<string, string> = {
+      admin_manual: "관리자가 근거를 대조해 보정한 항구 위치입니다. 실제 승선 부두는 운항사에 확인해 주세요.",
+      komsa_port_call: "한국해양교통안전공단 기항지 위치입니다. 승선 부두·탑승구는 운항사에 확인해 주세요.",
+    };
+    return evidence[place.location_source ?? ""] ?? "지도 검색에서 확인한 항만 시설입니다. 실제 승선 장소는 운항사에 확인해 주세요.";
+  }
+  if (!hasCoordinates(place)) return "좌표 미등록 · 터미널 이름과 코드로 검색할 수 있습니다.";
+  const evidence: Record<string, string> = {
+    admin_manual: "관리자가 근거를 대조해 보정한 터미널 위치입니다. 실제 승차 홈은 운송사에 확인해 주세요.",
+    vworld_place: "VWorld 시설 검색으로 확인한 터미널 위치입니다. 실제 승차 홈은 운송사에 확인해 주세요.",
+    kakao_place: "카카오맵 장소 검색으로 확인한 터미널 위치입니다. 실제 승차 홈은 운송사에 확인해 주세요.",
+  };
+  return evidence[place.location_source ?? ""] ?? "지도에서 확인한 터미널 위치입니다. 실제 승차 홈은 운송사에 확인해 주세요.";
 }
 
 export function FerryDepartures({ timetable, name, query = "" }: { timetable: FerryTimetable; name: string; query?: string }) {

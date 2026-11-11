@@ -12,6 +12,18 @@ import { StatStrip } from "./stat-strip";
 const decimal = (n: number | null) => n === null ? null : n.toLocaleString("ko-KR", { maximumFractionDigits: 1 });
 const SAMPLE_LIMIT = 1000;
 export function HighwayStatistics() {
+  const { route, setState, setRoute, options, setRevision, state, stats, sampleSegments } = useHighwayStatistics();
+  return <div className="space-y-6">
+    <div className="journey-toolbar"><label>고속도로<select value={route} onChange={(event) => { setState({}); setRoute(event.target.value); }}><option value="">전체 노선(최근 관측 1,000행 표본)</option>{options.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label><button type="button" className="secondary" onClick={() => { setState({}); setRevision((v) => v + 1); }}>새로고침</button><Link className="inline-link" href="/highways">지도에서 확인</Link></div>
+    {state.error ? <p role="alert">고속도로 통계를 불러오지 못했습니다.</p> : !state.rows ? <p role="status">최근 구간 관측을 확인하는 중입니다…</p> : null}
+    <HighwaySpeedMetrics stats={stats} route={route} sampleSegments={sampleSegments} state={state} />
+    <HighwaySpeedTable stats={stats} />
+  </div>;
+}
+
+
+// 조회·선택·요청 수명은 이 도메인 훅이, 아래 컴포넌트는 표현을 소유한다.
+function useHighwayStatistics() {
   const [state, setState] = useState<{ rows?: SpeedObservation[]; checked?: string; error?: boolean }>({});
   const [route, setRoute] = useState("");
   // 노선 선택지: 1일 통계(서버 캐시 60초)의 교통 노선과 조회 표본의 합집합이다. 표본에 없는 노선도 고를 수 있다.
@@ -52,11 +64,35 @@ export function HighwayStatistics() {
   const options = Object.entries(routeLabels).sort(([a], [b]) => a.localeCompare(b, "ko", { numeric: true }));
   const stats = state.rows ? currentSpeeds(state.rows.filter((row) => !route || row.route_no === route), clock) : null;
   const sampleSegments = state.rows ? new Set(state.rows.map((row) => row.identity_key)).size : null;
-  return <div className="space-y-6">
-    <div className="journey-toolbar"><label>고속도로<select value={route} onChange={(event) => { setState({}); setRoute(event.target.value); }}><option value="">전체 노선(최근 관측 1,000행 표본)</option>{options.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label><button type="button" className="secondary" onClick={() => { setState({}); setRevision((v) => v + 1); }}>새로고침</button><Link className="inline-link" href="/highways">지도에서 확인</Link></div>
-    {state.error ? <p role="alert">고속도로 통계를 불러오지 못했습니다.</p> : !state.rows ? <p role="status">최근 구간 관측을 확인하는 중입니다…</p> : null}
-    <SectionCard title="최근 15분 구간 속도" description="구간별 마지막 관측을 같은 비중으로 비교합니다. 실제 경로 소요시간이나 교통량 가중 평균이 아닙니다.">
-      <StatStrip ariaLabel="고속도로 운전 지표" className="driver-stats" items={[
+
+  return { route, setState, setRoute, options, setRevision, state, stats, sampleSegments };
+}
+
+
+function HighwaySpeedMetrics({ stats, route, sampleSegments, state }: Pick<ReturnType<typeof useHighwayStatistics>, "stats" | "route" | "sampleSegments" | "state">) {
+  return (<SectionCard title="최근 15분 구간 속도" description="구간별 마지막 관측을 같은 비중으로 비교합니다. 실제 경로 소요시간이나 교통량 가중 평균이 아닙니다.">
+      <StatStrip ariaLabel="고속도로 운전 지표" className="driver-stats" items={speedMetrics(stats)} />
+      <p className="quiet">{route
+        ? `선택 노선의 최근 관측(최대 ${SAMPLE_LIMIT.toLocaleString("ko-KR")}행)에서 구간별 최신 관측을 추립니다. `
+        : `전체 노선은 최근 관측 ${SAMPLE_LIMIT.toLocaleString("ko-KR")}행 표본${sampleSegments !== null ? `(표본 구간 ${sampleSegments.toLocaleString("ko-KR")}곳)` : ""}으로 계산하므로 전체 구간 집계가 아닙니다. 노선을 고르면 그 노선의 최신 관측을 다시 조회합니다. `}
+        {stats ? `15분 초과·결측 등 ${stats.excluded}구간 제외 · ` : ""}조회 {dateTime(state.checked)}. 속도 구간은 이 화면의 비교 기준입니다.</p>
+    </SectionCard>);
+}
+
+
+function HighwaySpeedTable({ stats }: Pick<ReturnType<typeof useHighwayStatistics>, "stats">) {
+  return (<SectionCard title="속도가 낮은 구간부터" description="출발 전 관심 노선의 정체 위치와 방향을 확인하세요.">
+      <div className="overflow-x-auto"><VirtualTable ariaLabel="조회 결과" containerClassName="operations-table" data={[...(stats?.rows ?? [])].sort((a, b) => a.speed! - b.speed!).slice(0, 100)} getRowId={(row) => String(row.identity_key)} virtualized={false} columns={[{ id: 'column0', header: '노선', cell: ({ row: { original: row } }) => <>{highwayRouteLabel(row.route_no, row.route_name)}</> },
+{ id: 'column1', header: '구간', cell: ({ row: { original: row } }) => <>{(row as SpeedObservation & { conzone_name?: string }).conzone_name ?? "구간명 미제공"}</> },
+{ id: 'column2', header: '방향', cell: ({ row: { original: row } }) => <>{(row as SpeedObservation & { direction?: string }).direction ?? "—"}</> },
+{ id: 'column3', header: '속도(km/h)', cell: ({ row: { original: row } }) => <>{decimal(row.speed)}</> },
+{ id: 'column4', header: '관측', cell: ({ row: { original: row } }) => <>{dateTime(row.observed_at)}</> }]} /></div>
+      {stats && !stats.rows.length ? <p>최근 15분 이내의 유효 속도 관측이 없습니다.</p> : null}
+    </SectionCard>);
+}
+
+function speedMetrics(stats: ReturnType<typeof useHighwayStatistics>["stats"]) {
+  return [
         { label: "평균 속도", value: decimal(stats?.mean ?? null), unit: "km/h" },
         { label: "중앙 속도", value: decimal(stats?.median ?? null), unit: "km/h" },
         { label: "최저 구간 속도", value: decimal(stats?.minimum ?? null), unit: "km/h" },
@@ -69,19 +105,5 @@ export function HighwayStatistics() {
         { label: "40 초과~80 미만 비율", value: decimal(stats?.mediumRatio ?? null), unit: "%" },
         { label: "80 km/h 이상 비율", value: decimal(stats?.fastRatio ?? null), unit: "%" },
         { label: "속도 확인 구간", value: stats?.rows.length, unit: "곳", caption: stats ? `${stats.routes}개 노선` : undefined },
-      ]} />
-      <p className="quiet">{route
-        ? `선택 노선의 최근 관측(최대 ${SAMPLE_LIMIT.toLocaleString("ko-KR")}행)에서 구간별 최신 관측을 추립니다. `
-        : `전체 노선은 최근 관측 ${SAMPLE_LIMIT.toLocaleString("ko-KR")}행 표본${sampleSegments !== null ? `(표본 구간 ${sampleSegments.toLocaleString("ko-KR")}곳)` : ""}으로 계산하므로 전체 구간 집계가 아닙니다. 노선을 고르면 그 노선의 최신 관측을 다시 조회합니다. `}
-        {stats ? `15분 초과·결측 등 ${stats.excluded}구간 제외 · ` : ""}조회 {dateTime(state.checked)}. 속도 구간은 이 화면의 비교 기준입니다.</p>
-    </SectionCard>
-    <SectionCard title="속도가 낮은 구간부터" description="출발 전 관심 노선의 정체 위치와 방향을 확인하세요.">
-      <div className="overflow-x-auto"><VirtualTable ariaLabel="조회 결과" containerClassName="operations-table" data={[...(stats?.rows ?? [])].sort((a, b) => a.speed! - b.speed!).slice(0, 100)} getRowId={(row) => String(row.identity_key)} virtualized={false} columns={[{ id: 'column0', header: '노선', cell: ({ row: { original: row } }) => <>{highwayRouteLabel(row.route_no, row.route_name)}</> },
-{ id: 'column1', header: '구간', cell: ({ row: { original: row } }) => <>{(row as SpeedObservation & { conzone_name?: string }).conzone_name ?? "구간명 미제공"}</> },
-{ id: 'column2', header: '방향', cell: ({ row: { original: row } }) => <>{(row as SpeedObservation & { direction?: string }).direction ?? "—"}</> },
-{ id: 'column3', header: '속도(km/h)', cell: ({ row: { original: row } }) => <>{decimal(row.speed)}</> },
-{ id: 'column4', header: '관측', cell: ({ row: { original: row } }) => <>{dateTime(row.observed_at)}</> }]} /></div>
-      {stats && !stats.rows.length ? <p>최근 15분 이내의 유효 속도 관측이 없습니다.</p> : null}
-    </SectionCard>
-  </div>;
+      ];
 }

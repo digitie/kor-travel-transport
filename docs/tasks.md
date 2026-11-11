@@ -1,8 +1,8 @@
 ## 2026-11-11 — 공통 UI 소비자 통합 후보
 
 - [ ] **T-COMMON-UI-20261111** — 공개·공유 parking-ui·관리자 Radix/VirtualTable/버전/상태/폼/폰트 이관 후보를 검증한다.
-  구현 및 원장 guard 연결은 완료했고 부모 후보4를 소비한다. common Tabs 두 브라우저 회귀와
-  Doctor 전체 warning gate(공개6/관리자48)는 미해결이다. 독립2리뷰·CI·PRmerge·부모go 이후에만 새 이미지로 배포한다.
+  c6의 Doctor0/0·WSL/Docker unit164/356·관리자 Chromium16개는 통과했다. backend 전체 검증과
+  c7 pack 동기화·Transport 독립 리뷰/CI가 남는다. 독립2리뷰·CI·PRmerge·부모go 이후에만 새 이미지로 배포한다.
   [검증·배포 계획](reports/2026-11-11-common-ui-validation.md), [Doctor 진단](reports/2026-11-11-react-doctor-findings.md).
 
 ## 2026-10-28 — 전체 UI 보완 후 새 릴리스

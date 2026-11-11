@@ -367,6 +367,8 @@ async function proxyToBackend(request: NextRequest, context: RouteContext): Prom
   const requestBody = method === "GET" || method === "HEAD" ? undefined : request.body;
 
   try {
+    // 검증된 backend 경로만 허용하고 아래 redirect:manual로 후속 URL을 따라가지 않는다. backend-proxy-route 19회귀로 고정한다.
+    // react-doctor-disable-next-line react-doctor/untrusted-redirect-following
     const upstreamResponse = await fetch(targetUrl, {
       method,
       headers: buildForwardHeaders(request),

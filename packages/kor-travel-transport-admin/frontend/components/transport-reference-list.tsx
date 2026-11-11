@@ -9,15 +9,32 @@ import { FerryDepartures, MultiSearch, PlaceDetails } from "./journey-controls";
 import { RailTimetables } from "./rail-timetables";
 
 const TransportMap = dynamic(() => import("./transport-map").then((module) => module.TransportMap), { ssr: false, loading: () => <p className="loading">지도를 준비하는 중입니다…</p> });
-export function effectiveFerryServiceDate(serviceDate: string, today = seoulDate()) { return serviceDate < today ? today : serviceDate; }
-export function referenceDescription(item: Pick<Place, "line_names" | "provider_id" | "latitude" | "longitude">, rail: boolean) {
-  return item.line_names.join(" · ") || [
-    item.provider_id ? `${rail ? "역" : "항구"} 코드 ${item.provider_id}` : null,
-    hasCoordinates(item) ? "지도 위치 제공" : rail ? "좌표 미등록" : "좌표 미등록 · 운항 검색 가능",
-  ].filter(Boolean).join(" · ");
-}
+import { effectiveFerryServiceDate, referenceDescription } from "@/lib/reference-places";
 
 export function TransportReferenceList({ kind, children }: { kind: "rail_station" | "ferry_port"; children?: ReactNode }) {
+  const { mapItems, activePlace, view, setView, focusRevision, inspect, selectedIds, keyOf, setSelectedIds, displayName, setActivePlace, effectiveDate, selected, rail, today, setServiceDate, line, setLine, lines, loading, setReload, message, error, filtered, items, query, setQuery, toggle, routeQuery, setRouteQuery, stored } = useTransportReferenceList({ kind, children });
+  return <section className="journey-workbench map-route">
+    <div id="ferry-map" className="map-route-primary" tabIndex={-1}><TransportMap places={mapItems} selectedPlace={activePlace} view={view} onViewChange={setView} focusRevision={focusRevision}
+      onSelectPlace={(place) => { inspect(place); if (!selectedIds.includes(keyOf(place)) && selectedIds.length < 5) setSelectedIds((current) => [...current, keyOf(place)]); }}
+      detailTitle={activePlace ? displayName(activePlace) : undefined}
+      onCloseDetails={() => setActivePlace(null)} details={activePlace ? <PlaceDetails place={activePlace} showHeading={false} onShowMap={() => setView("map")} /> : undefined}
+      filterSummary={`${effectiveDate} · ${selected.length}/5곳 선택`}
+      toolbar={<ReferenceFilters rail={rail} today={today} effectiveDate={effectiveDate} setServiceDate={setServiceDate} line={line} setLine={setLine} lines={lines} loading={loading} setReload={setReload} setView={setView} />}
+      feedback={<>{message ? <p role="status">{message}</p> : null}{error ? <p className="error" role="alert">{error}</p> : null}</>}
+      listPlaces={false} listCount={Math.min(filtered.length, 60)} listContent={<>
+      <p className="quiet">저장된 {rail ? "역" : "항구"} {items.length.toLocaleString("ko-KR")}곳 · 지도 좌표 {items.filter(hasCoordinates).length}곳</p>
+        <MultiSearch label={rail ? "역 또는 노선 검색" : "항구 검색"} query={query} onQuery={setQuery}
+          options={filtered.map((item) => ({ id: keyOf(item), name: displayName(item), description: referenceDescription(item, rail) }))}
+          selected={selected.map((item) => ({ id: keyOf(item), name: displayName(item) }))} onSelect={toggle} onInspect={(id) => { const place = items.find((item) => keyOf(item) === id); if (place) inspect(place); }} scrollable={false} />
+      <a className="inline-link" href="#ferry-comparison">선택한 항구 운항편 비교</a>
+      </>} /></div>
+      <ReferenceComparisons selected={selected} rail={rail} effectiveDate={effectiveDate} today={today} routeQuery={routeQuery} setRouteQuery={setRouteQuery} loading={loading} stored={stored} displayName={displayName} items={items} children={children} />
+  </section>;
+}
+
+
+// 조회·선택·요청 수명은 이 도메인 훅이, 아래 컴포넌트는 표현을 소유한다.
+function useTransportReferenceList({ kind }: { kind: "rail_station" | "ferry_port"; children?: ReactNode }) {
   const [view, setView] = useState<"map" | "list">("map");
   const [items, setItems] = useState<Place[]>([]);
   const [query, setQuery] = useState("");
@@ -52,7 +69,8 @@ export function TransportReferenceList({ kind, children }: { kind: "rail_station
   }, [kind, reload]);
 
   const keyOf = (place: Place) => rail ? String(place.id) : place.provider_id ?? String(place.id);
-  const selected = items.filter((item) => selectedIds.includes(keyOf(item)));
+  const selectedKeys = new Set(selectedIds);
+  const selected = items.filter((item) => selectedKeys.has(keyOf(item)));
   const nameCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const item of items) counts.set(item.name, (counts.get(item.name) ?? 0) + 1);
@@ -86,40 +104,45 @@ export function TransportReferenceList({ kind, children }: { kind: "rail_station
   }
   function inspect(place: Place) { setActivePlace(place); setFocusRevision((value) => value + 1); }
   const mapItems = (selected.length ? selected : filtered).filter(hasCoordinates);
-  return <section className="journey-workbench map-route">
-    <div id="ferry-map" className="map-route-primary" tabIndex={-1}><TransportMap places={mapItems} selectedPlace={activePlace} view={view} onViewChange={setView} focusRevision={focusRevision}
-      onSelectPlace={(place) => { inspect(place); if (!selectedIds.includes(keyOf(place)) && selectedIds.length < 5) setSelectedIds((current) => [...current, keyOf(place)]); }}
-      detailTitle={activePlace ? displayName(activePlace) : undefined}
-      onCloseDetails={() => setActivePlace(null)} details={activePlace ? <PlaceDetails place={activePlace} showHeading={false} onShowMap={() => setView("map")} /> : undefined}
-      filterSummary={`${effectiveDate} · ${selected.length}/5곳 선택`}
-      toolbar={<MapFilterBar>
+
+  return { mapItems, activePlace, view, setView, focusRevision, inspect, selectedIds, keyOf, setSelectedIds, displayName, setActivePlace, effectiveDate, selected, rail, today, setServiceDate, line, setLine, lines, loading, setReload, message, error, filtered, items, query, setQuery, toggle, routeQuery, setRouteQuery, stored };
+}
+
+
+function ReferenceFilters({ rail, today, effectiveDate, setServiceDate, line, setLine, lines, loading, setReload, setView }: Pick<ReturnType<typeof useTransportReferenceList>, "rail" | "today" | "effectiveDate" | "setServiceDate" | "line" | "setLine" | "lines" | "loading" | "setReload" | "setView">) {
+  return (<MapFilterBar>
       {!rail ? <MapFilterField label="운항일" htmlFor="ferry-service-date"><input id="ferry-service-date" type="date" min={today} max={seoulDate(9)} value={effectiveDate} onChange={(event) => { if (event.target.value) setServiceDate(event.target.value); }} /></MapFilterField> : <MapFilterField label="노선"><select value={line} onChange={(event) => setLine(event.target.value)}><option value="">모든 노선</option>{lines.map((name) => <option key={name}>{name}</option>)}</select></MapFilterField>}
       <button className="secondary" type="button" disabled={loading} onClick={() => setReload((value) => value + 1)}>저장 정보 새로고침</button>
       <button className="secondary" type="button" onClick={() => setView("list")}>항구 검색·선택</button><a className="inline-link" href="#ferry-comparison">운항편 비교</a>
-      </MapFilterBar>}
-      feedback={<>{message ? <p role="status">{message}</p> : null}{error ? <p className="error" role="alert">{error}</p> : null}</>}
-      listPlaces={false} listCount={Math.min(filtered.length, 60)} listContent={<>
-      <p className="quiet">저장된 {rail ? "역" : "항구"} {items.length.toLocaleString("ko-KR")}곳 · 지도 좌표 {items.filter(hasCoordinates).length}곳</p>
-        <MultiSearch label={rail ? "역 또는 노선 검색" : "항구 검색"} query={query} onQuery={setQuery}
-          options={filtered.map((item) => ({ id: keyOf(item), name: displayName(item), description: referenceDescription(item, rail) }))}
-          selected={selected.map((item) => ({ id: keyOf(item), name: displayName(item) }))} onSelect={toggle} onInspect={(id) => { const place = items.find((item) => keyOf(item) === id); if (place) inspect(place); }} scrollable={false} />
-      <a className="inline-link" href="#ferry-comparison">선택한 항구 운항편 비교</a>
-      </>} /></div>
-      <div className="map-route-followup">
-      <div id="ferry-comparison" className="journey-inspector" aria-live="polite">
+      </MapFilterBar>);
+}
+
+
+function ReferenceComparisons({ selected, rail, effectiveDate, today, routeQuery, setRouteQuery, loading, stored, displayName, items, children }: Pick<ReturnType<typeof useTransportReferenceList>, "selected" | "rail" | "effectiveDate" | "today" | "routeQuery" | "setRouteQuery" | "loading" | "stored" | "displayName" | "items"> & Pick<NonNullable<Parameters<typeof TransportReferenceList>[0]>, "children">) {
+  return (<div className="map-route-followup">
+      <FerryComparisonResults selected={selected} rail={rail} effectiveDate={effectiveDate} today={today} routeQuery={routeQuery} setRouteQuery={setRouteQuery} loading={loading} stored={stored} displayName={displayName} items={items} />
+      <p className="quiet">좌표가 없는 장소는 검색·선택 목록에 계속 표시됩니다. {stored?.items.length ? `저장본 최근 확인 ${dateTime(stored.items[0].fetched_at)}` : ""}</p>
+      {children}
+    </div>);
+}
+
+
+function FerryComparisonResults({ selected, rail, effectiveDate, today, routeQuery, setRouteQuery, loading, stored, displayName, items }: Pick<NonNullable<Parameters<typeof ReferenceComparisons>[0]>, "selected" | "rail" | "effectiveDate" | "today" | "routeQuery" | "setRouteQuery" | "loading" | "stored" | "displayName" | "items">) {
+  return (<div id="ferry-comparison" className="journey-inspector" aria-live="polite">
         <a className="inline-link" href="#ferry-map">지도 작업면으로</a>
         {!selected.length ? <div className="empty-state"><h2>{rail ? "역·노선 비교" : "어디에서 출발하시나요?"}</h2><p>{rail ? "역을 선택하면 노선·주소·연락처를 비교할 수 있습니다." : "출발 항구를 최대 5곳 선택하세요. 선택 즉시 저장된 운항편을 비교합니다."}</p></div> : null}
-        {!rail && selected.length ? <>
+        {!rail && selected.length ? <FerryStoredDepartures effectiveDate={effectiveDate} today={today} routeQuery={routeQuery} setRouteQuery={setRouteQuery} loading={loading} stored={stored} displayName={displayName} items={items} /> : null}
+        {rail && selected.length ? <RailTimetables placeIds={selected.map((place) => place.id)} /> : null}
+        {rail ? selected.map((place) => <section className="reference-detail" key={place.id}><PlaceDetails place={place} showRailTimetable={false} /></section>) : null}
+      </div>);
+}
+
+
+function FerryStoredDepartures({ effectiveDate, today, routeQuery, setRouteQuery, loading, stored, displayName, items }: Pick<NonNullable<Parameters<typeof FerryComparisonResults>[0]>, "effectiveDate" | "today" | "routeQuery" | "setRouteQuery" | "loading" | "stored" | "displayName" | "items">) {
+  return (<>
           <div className="journey-toolbar"><h2>{effectiveDate === today ? "오늘 운항" : `${effectiveDate} 운항`} 비교</h2><label>도착항·선박 검색<input type="search" value={routeQuery} onChange={(event) => setRouteQuery(event.target.value)} placeholder="예: 제주, 퀸" /></label></div>
           {loading ? <p role="status">저장된 운항 정보를 확인하는 중입니다…</p> : null}
           {(stored?.service_date === effectiveDate ? stored.items : []).map((table) => <FerryDepartures key={table.port_id} timetable={table} query={routeQuery} name={displayName(items.find((item) => item.provider_id === table.port_id) ?? { name: table.port_id, provider_id: table.port_id })} />)}
           {(stored?.service_date === effectiveDate ? stored.missing_port_ids : []).map((id) => <section className="empty-state" key={id}><h3>{displayName(items.find((item) => item.provider_id === id) ?? { name: id, provider_id: id })}</h3><p>이 날짜는 아직 수집 중입니다. 운항편이 없다는 뜻은 아닙니다. 정기 수집 후 저장 정보 새로고침으로 확인해 주세요.</p></section>)}
-        </> : null}
-        {rail && selected.length ? <RailTimetables placeIds={selected.map((place) => place.id)} /> : null}
-        {rail ? selected.map((place) => <section className="reference-detail" key={place.id}><PlaceDetails place={place} showRailTimetable={false} /></section>) : null}
-      </div>
-      <p className="quiet">좌표가 없는 장소는 검색·선택 목록에 계속 표시됩니다. {stored?.items.length ? `저장본 최근 확인 ${dateTime(stored.items[0].fetched_at)}` : ""}</p>
-      {children}
-    </div>
-  </section>;
+        </>);
 }

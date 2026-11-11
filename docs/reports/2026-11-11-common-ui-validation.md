@@ -1,71 +1,60 @@
-# Transport 공통 UI 통합 검증 — 2026-11-11
+# Transport 공통 UI·Doctor 검증 — 2026-11-11
 
-## 범위와 기준
+기존 clone과 `agent/codex-common-unification-20261111`, 후보5672cc2 및 이전 dirty를 보존했다.
+Transport 공개/공유 parking-ui/관리자만 수정한다. API·인증·수집 정책·DB 스키마·RustFS 수명주기는 변경하지 않았다.
+최종 RELEASE와 운영 배포는 미완이며 이번 결과는 integration-6-review 소비자 소스의 검증이다.
 
-기존 clone과 `agent/codex-common-unification-20261111` 브랜치를 유지했다.
-기준 HEAD는 `59e1d8213c09a82a4ed9cc4396a6414ef0332b9c`이다.
-공개 `frontend`, 공유 `frontend/src` parking-ui, 관리자 frontend만 UI 의존성과 소비 코드를 갱신한다.
-백엔드·DB 스키마·운영 설정·RustFS 수명주기는 변경하지 않는다.
-기존 미커밋 이관 초안을 보존하고 구현·검증을 이어받았다.
+## 구현 결과
 
-## 구현과 정책
+공통 Radix/shadcn·VirtualTable, Tailwind4.3.5 및 exact 의존성, 실제 RHF/Zod/Zustand/Pretendard와
+기존 LoginForm/AppMenu/Dagster/map-controls를 유지한다. 공통 web1.0.3/core1.0.1 산출물을 사용하며
+이전 core1.0.0 vendor는 제거했다. 공개/관리자의 UI·tokens tgz와 원장은 동일 bytes다.
 
-표는 공통 VirtualTable, 프리미티브는 공통 shadcn Radix export를 사용한다.
-기존 LoginForm/AppMenu/DagsterOperations/map-controls의 역할과 도메인 API를 유지한다.
-다중 지도 필터는 공통 Radix Popover를 조합하되 입력·선택 칩·10개 상한·키보드·Escape 계약을 보존한다.
-RHF/Zod는 역 매핑 근거와 요금 시간 입력, Zustand는 인스턴스별 메뉴·요금 결과에 실제 사용한다.
-Pretendard는 로컬 폰트 CSS를 로드하고 본문에 적용한다.
+Doctor의 공개6/관리자48 경고를 도메인 상태 소유권·조회 수명·표현 분리로 개선했다.
+현재 양쪽 전체 warning gate는0이며 상세 조치와 좁은 오탐7개는
+[Doctor 검증 기록](2026-11-11-react-doctor-findings.md)에 있다.
+분리 중 발견한 느린 Dagster의 다른 성공 응답 표시 지연과 빈 상세 오버레이의 모바일 검색 차단도
+재현 테스트와 브라우저 검증으로 고쳤다. 공통 source/CSS monkeypatch는 없다.
 
-부모 version-targets.json exact를 적용했다. nested PostCSS8.5.32·undici8.12.4와 공개 Testing Library DOM10.4.2도 override로 일치시켰다. TypeScript 5.9.3은 부모가 확인한 peer 호환성,
-@types/node 22.20.5는 실행환경22 기준이다. Tailwind/plugin은4.3.5다.
-ESLint10.14.0은 Next plugin·typescript-eslint·react-hooks·jsx-a11y-x의 지원 조합으로 실행하며
-eslint-config-next의 구 React/import/a11y plugin 묶음을 제거했다.
-React Doctor0.9.22 `--help`에서 실제 옵션을 확인했다. `doctor`는 전체 프로젝트를
-`--yes --no-telemetry --no-supply-chain --no-parallel --scope full --blocking warning`로 검사한다.
-공급망 진단 제외는 외부 Socket 전송을 막기 위한 것이며 React 진단/유지보수 검사는 계속 실행한다.
-CI는 설치 직후 산출물/소스 guard, Doctor, 타입, lint, 단위, 빌드를 실행한다.
+## 실제 검증 현황
 
-## 현재 검증 경계
-
-검증 대상은 후보4 UI와 같은 부모 원장이다. 최종 산출물은 아직 부모가 freeze하지 않았다.
-첫 후보 기준 WSL 공개164개/관리자350개 단위, 두 타입·lint·빌드·의존성 guard는 통과했다.
-같은 파일명 tgz 교체와 로컬 parking-ui 변경은 npm의 옛 lock 메타데이터를 재사용할 수 있었다.
-해당 항목을 실제 재설치하고 `npm ls --all`로 nested lucide/Base UI 잔재를 발견·정리했다.
-첫 후보의 로컬 Docker 공개/관리자 빌드도 성공했으나 이후 후보 변경의 증명으로 확대하지 않는다.
-
-브라우저에서 common MapTabPanel forceMount 비활성 표시와 Nova Tabs 방향 속성 회귀를 재현해 부모에게 알렸다.
-각 앱 CSS로 공통 회귀를 우회하지 않았다. 초기 Playwright 두 실행의 같은 출력 경로 충돌은
-검증 환경 실패이며 제품 실패와 구분한다. 재검증은 고유 output 디렉터리와 순차 실행을 사용한다.
-
-후보4 실제 Chromium은10개 통과/공통 회귀2개 실패다. 공통 로그인/폰트/필터6개와 역 매핑4개는 통과했다. 320/375/768/1440px 로그인 재시도·비밀번호 비움·서버 원문 비노출,
-375/1440px 입력·칩 제거·Escape·10개 상한을 검증했다. 운영 접속은 사용하지 않았다.
-실패한 두 항목은 `e2e/common-adoption.spec.ts`의 지도 활성 작업면1개와 수평 탭 본문 배치다.
-기존 역 매핑 E2E의 새로고침 중 편집 허용 기대는 현재 source의 documentReady 잠금과 충돌했다.
-이 테스트를 조회 중 비활성·완료 뒤 저장 계약으로 갱신했다.
-Doctor는 warning 차단으로 강화했고 현재 미통과다. 정확한 잔여 진단은
-[Doctor 진단 원장](2026-11-11-react-doctor-findings.md)에 기록했다.
-
-독립 리뷰2건·원격 CI·PR·머지·운영 배포는 부모 통합 뒤 별도 게이트다. 현재 NOT_RUN이다.
-
-## 후보4 최종 소비자 검증
-
-| 게이트 | 결과 |
+| 게이트 | 현재 관측 결과 |
 | --- | --- |
-| 소스·tgz·lock 원장 guard | 두 frontend 통과 |
-| 타입·ESLint10 | 두 frontend 통과 |
-| WSL unit | 공개164/관리자350 통과 |
-| WSL Next production build | 두 frontend 통과 |
-| Docker build | 공개 image와 관리자 builder 통과 |
-| 격리 Docker Compose unit | 공개164/관리자350 통과. network none, DB/volume 생성 없음 |
-| 실제 Chromium | 10통과/2실패. 공통 Tabs 두 회귀 재현 |
-| Doctor0.9.22 full warning gate | 공개 오류0/경고6, 관리자 오류0/경고48. 실패 |
-| 전체 backend WSL | 실행 중, 결과 미확정. 통과로 보고하지 않음 |
-| backend Docker/독립2리뷰/원격CI/PR/배포 | NOT_RUN |
+| c6 source/tgz/lock guard | 두 frontend 통과 |
+| 최신 canonical guard | c7 UI/tokens 해시와 c6 설치본 불일치로 차단. root pack은 아직c6 |
+| 타입·ESLint10 경고0 | 두 frontend 통과 |
+| Doctor0.9.22 full warning | 공개56/관리자198파일, 오류0/경고0, complete=true, 생략0 |
+| WSL unit | 공개164/관리자356 통과 |
+| 격리 Docker unit | 공개164/관리자356 통과. 새 상세 회귀 뒤 관리자 재통과 |
+| Next production build | 두 WSL 빌드와 현재 소스의 두 Docker 이미지 생성 확인. 후속 관리자 수정도 Docker 재컴파일 통과 |
+| 관리자 실제 Chromium | 최신 c6 수정 이미지16/16 통과: 로그인/폰트/필터8·역 매핑4·버스/공항4 |
+| 공개 단독 Chromium | 375/1440px 현재 표·요금·과거 차트/달력/초점4/4 통과 |
+| backend 전체 WSL/Docker | 별도 실행 중. 최종 summary 미회수, PASS 아님 |
+| 독립 Transport 리뷰2건·원격CI·PRmerge·운영 배포 | 미실행, 부모 통합 게이트 |
 
-이미지는 검증 전용 tag/image ID이며 운영 배포 이미지를 뜻하지 않는다.
-[구조화된 검증 원장](2026-11-11-common-ui-validation.json)에 artifact integrity와 image ID를 고정했다.
-전체 backend 실행 로그는 `/tmp/transport-backend-tests.log`, 실행 PID는25324다. backend source/lock은 변경하지 않았다.
-추가 후보 적용 후에는 해당 gate를 다시 실행해야 한다.
+검증 로그는 저장소 `validation/transport-*`다. 공개/관리자 실제 image ID·현재 소스 해시는
+`transport-docker-source-receipt.json`, 브라우저는 `transport-browser-overlay-fix.log`,
+백엔드는 `transport-backend-wsl-retry.log`와 교정 뒤 `transport-backend-docker-corrected-full.log`를 확인한다.
+원 실패 기록은 `transport-backend-docker.log`, 집중 원문은 `transport-backend-docker-focused.log`에 보존한다.
+원격 reusable 정책은 부모가 작성한 `.github/workflows/common-frontend-policy.yml`을 보존하고
+worker 커밋에서는 제외한다. foundation5e064808fabd3a54968dd20910eaccd04eba9f38 병합 전에는
+원격 CI 통과로 보고하지 않는다. 로컬 canonical 검사와 원격 main 정책 검사는 구분한다.
+
+## 실패·자원 경계
+
+5672cc2 당시 c4 결과(Doctor6/48, 브라우저10/2)는 과거 이력이며 현재 통과 수에 더하지 않는다.
+이전 중단 backend 실행과 이번 디스크 고갈 시점에 종료된 backend 검증도 PASS가 아니다.
+원 로그를 보존하고 현재 WSL 임시 DB/캐시를 본인 전용 tmpfs로 분리해 전체를 다시 실행한다.
+첫 Docker backend는 tmpfs2GB/noexec 때문에 백업 여유 검사와 실행 대역을 차단했고 Git 소유권/alternate 경로도 빠져 있었다.
+교정한6GB/exec·읽기 전용 Git 객체·컨테이너 한정 safe.directory 환경에서 집중110개를 통과했고 전체를 재실행 중이다.
+운영/백엔드 코드는 바꾸지 않았다. Docker backend는 source를 read-only로 마운트하고 network none·임시 SQLite만 사용한다.
+운영 DB·컨테이너·RustFS·다른 테넌트를 생성/중지/삭제하지 않았다.
+
+루트 고갈 때 본인 종료 검증의 임시 DB만 F:에 압축 보존하고 제거했다. 본인 node_modules·.next는
+전용 tmpfs로 옮겼으며 generated symlink도 git에서 제외한다. 다른 에이전트 경로나 기존 사용자 cache는
+정리하지 않았다. F: 의존성 복사는 부모 공간 확보 후 불필요해져 원본을 보존한 채 중단했다.
+Docker build의 한 호출은 이미지 생성 후 stdout 기록이 ENOSPC로 실패했다. 이미지 존재만으로 끝내지 않고
+현재 파일46개 해시와 실행 테스트를 대조했으며, 뒤의 관리자 상세 수정 이미지는 정상 exit0으로 재생성했다.
 
 ## 부모 go 이후 이미지 배포 계획
 
@@ -98,3 +87,10 @@ Doctor는 warning 차단으로 강화했고 현재 미통과다. 정확한 잔�
    code-server만의 rollback으로 덮지 않는다. 불명확한 하위 프로세스 종료와 재배포를 겹치지 않는다.
 
 이 계획은 실제 이미지 배포 완료 보고가 아니다. 부모 go 이전 후보 배포는0이다.
+
+## 로컬 빌드 공간 분리
+
+루트 밖 node_modules symlink는 Turbopack의 해석 경계를 넘어 직접 빌드가 거부됐다.
+앱 설정을 넓혀 우회하지 않고 같은 소스300파일을 전용 tmpfs의 동일 상대 경로 구조로 복사하고 기존 의존성을
+같은 파일시스템 안에서 재사용한다. env 파일은 제외한다. 공개·관리자 capsule 빌드를 모두 통과했다.
+source 해시/경로는 `validation/transport-wsl-capsule-receipt.json`에 둔다. 이 검증 capsule은 새 clone/branch나 운영 배포가 아니다.

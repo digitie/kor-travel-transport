@@ -1,3 +1,4 @@
+import { vworldApiKey } from "@/lib/vworld-presentation";
 // @vitest-environment jsdom
 import { useLayoutEffect, act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -65,7 +66,7 @@ vi.mock("maplibre-gl", () => {
 });
 
 import { VWorldMapView } from "vworld-map-web";
-import { CameraRequest, MapMarkerButton, MapUnavailable, OverlapPopup, useVWorldBasemapHealth, vworldApiKey, type CameraTarget } from "./map-overlays";
+import { CameraRequest, MapMarkerButton, MapUnavailable, OverlapPopup, useVWorldBasemapHealth, type CameraTarget } from "./map-overlays";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

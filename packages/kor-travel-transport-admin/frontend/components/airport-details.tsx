@@ -19,6 +19,34 @@ let flightRetryAt = 0;
 
 // 항공편은 provider 호출 가능 경로이므로 선택만으로 호출하지 않는다.
 export function AirportDetails({ place }: { place: Place }) {
+  const { loading, load, directionId, direction, setDirection, error, data, rows, result, parking } = useAirportDetails({ place });
+  return <section className="inspector-section" aria-label="공항 출도착·주차">
+    <h3>오늘 출발·도착</h3>
+    <AirportFlightControls place={place} loading={loading} load={load} directionId={directionId} direction={direction} setDirection={setDirection} />
+    {!place.provider_id ? <Empty><EmptyHeader><EmptyDescription>공항 코드가 없어 출도착을 조회할 수 없습니다.</EmptyDescription></EmptyHeader></Empty> : null}
+    {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
+    {data?.status === "sample" ? <Alert><AlertDescription>예시 항공편입니다. 실제 운항 정보가 아닙니다.</AlertDescription></Alert> : null}
+    {loading ? <div className="flex flex-col gap-3" role="status"><p>제공기관 항공편 확인 중…</p><Skeleton className="h-16 w-full" aria-hidden="true" /></div> : null}
+    <AirportFlightResults rows={rows} result={result} loading={loading} place={place} />
+    <h3>저장된 주차 현황</h3>
+    {!place.provider_id ? (
+      <Empty><EmptyHeader><EmptyDescription>공항 코드가 없어 주차 현황을 조회할 수 없습니다.</EmptyDescription></EmptyHeader></Empty>
+    ) : parking.error ? (
+      <Alert variant="destructive"><AlertDescription>주차 현황 조회에 실패했습니다.</AlertDescription></Alert>
+    ) : !parking.items ? (
+      <div className="flex flex-col gap-3" role="status">
+        <p className="flex items-center gap-2"><Spinner aria-hidden="true" />주차 현황 확인 중…</p>
+        <Skeleton className="h-16 w-full" aria-hidden="true" />
+      </div>
+    ) : parking.items.length ? parking.items.map((row) => <div className="parking-detail-row" key={row.parking_lot_name}><strong>{row.parking_lot_name}</strong><span>여유 {row.available_spaces?.toLocaleString("ko-KR") ?? "미제공"} / {row.total_spaces?.toLocaleString("ko-KR") ?? "미제공"}면</span><small>{dateTime(row.observed_at)}</small></div>) : (
+      <Empty><EmptyHeader><EmptyDescription>저장된 주차 관측이 없습니다.</EmptyDescription></EmptyHeader></Empty>
+    )}
+  </section>;
+}
+
+
+// 조회·선택·요청 수명은 이 도메인 훅이, 아래 컴포넌트는 표현을 소유한다.
+function useAirportDetails({ place }: { place: Place }) {
   const directionId = useId();
   const today = useSeoulToday();
   const [parking, setParking] = useState<{ items?: Parking[]; error?: boolean }>({});
@@ -54,12 +82,23 @@ export function AirportDetails({ place }: { place: Place }) {
         if (reason instanceof TransportError && reason.status === 429) flightRetryAt = Date.now() + Math.max(30, reason.retryAfter) * 1000;
         setError(reason instanceof TransportError ? reason.message : "항공편 조회가 완료되지 않았습니다. 잠시 후 다시 확인해 주세요.");
       }
+    // finally 안에서 현재 요청만 해제한다. abort된 옛 요청은 새 항공편 조회 상태를 건드리지 않는다.
+    // react-doctor-disable-next-line react-doctor/no-loading-flag-reset-outside-finally
     } finally { if (!controller.signal.aborted) setLoading(false); }
   }
   const rows = data?.items.filter((row) => !direction || row.direction === direction);
-  return <section className="inspector-section" aria-label="공항 출도착·주차">
-    <h3>오늘 출발·도착</h3>
-    <FieldGroup className="gap-3">
+
+  return { loading, load, directionId, direction, setDirection, error, data, rows, result, parking };
+}
+
+
+function AirportFlightResults({ rows, result, loading, place }: Pick<ReturnType<typeof useAirportDetails>, "rows" | "result" | "loading"> & Pick<NonNullable<Parameters<typeof AirportDetails>[0]>, "place">) {
+  return (<div aria-live="polite">{rows ? <><p className="quiet">{result?.date} · {rows.length}편 · 예정 시각은 변경될 수 있습니다.</p>{rows.slice(0, 20).map((row) => <article className="departure-row" key={`${row.flight_number}/${row.direction}/${row.scheduled_at}`}><div className="departure-time"><strong>{new Date(row.estimated_at ?? row.scheduled_at).toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false })}</strong><span>{row.direction === "arrival" ? "도착" : row.direction === "departure" ? "출발" : "방향 미제공"} · {row.flight_number}</span></div><div className="departure-route"><strong>{row.origin_airport} → {row.destination_airport}</strong><small>{row.airline}</small></div><div className="departure-meta"><span>{row.status ?? "상태 미제공"}</span><small>예정 {dateTime(row.scheduled_at)}</small></div></article>)}{!rows.length ? <Empty><EmptyHeader><EmptyDescription>등록된 항공편이 없습니다. 미운항을 확정하는 정보는 아닙니다.</EmptyDescription></EmptyHeader></Empty> : null}{rows.length > 20 ? <p className="quiet">상위 20편을 표시합니다. 전체 항공편은 비행·공항 메뉴에서 확인하세요.</p> : null}</> : !loading && place.provider_id ? <Empty><EmptyHeader><EmptyDescription>출도착 조회를 누르면 제공기관의 오늘 운항편을 확인합니다.</EmptyDescription></EmptyHeader></Empty> : null}</div>);
+}
+
+
+function AirportFlightControls({ place, loading, load, directionId, direction, setDirection }: Pick<ReturnType<typeof useAirportDetails>, "loading" | "load" | "directionId" | "direction" | "setDirection"> & Pick<NonNullable<Parameters<typeof AirportDetails>[0]>, "place">) {
+  return (<FieldGroup className="gap-3">
       <Field data-disabled={!place.provider_id || loading}>
         <Button className="w-fit" variant="outline" type="button" disabled={!place.provider_id || loading} onClick={() => void load()}>
           {loading ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
@@ -74,24 +113,5 @@ export function AirportDetails({ place }: { place: Place }) {
           <NativeSelectOption value="arrival">도착</NativeSelectOption>
         </NativeSelect>
       </Field>
-    </FieldGroup>
-    {!place.provider_id ? <Empty><EmptyHeader><EmptyDescription>공항 코드가 없어 출도착을 조회할 수 없습니다.</EmptyDescription></EmptyHeader></Empty> : null}
-    {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
-    {data?.status === "sample" ? <Alert><AlertDescription>예시 항공편입니다. 실제 운항 정보가 아닙니다.</AlertDescription></Alert> : null}
-    {loading ? <div className="flex flex-col gap-3" role="status"><p>제공기관 항공편 확인 중…</p><Skeleton className="h-16 w-full" aria-hidden="true" /></div> : null}
-    <div aria-live="polite">{rows ? <><p className="quiet">{result?.date} · {rows.length}편 · 예정 시각은 변경될 수 있습니다.</p>{rows.slice(0, 20).map((row) => <article className="departure-row" key={`${row.flight_number}/${row.direction}/${row.scheduled_at}`}><div className="departure-time"><strong>{new Date(row.estimated_at ?? row.scheduled_at).toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false })}</strong><span>{row.direction === "arrival" ? "도착" : row.direction === "departure" ? "출발" : "방향 미제공"} · {row.flight_number}</span></div><div className="departure-route"><strong>{row.origin_airport} → {row.destination_airport}</strong><small>{row.airline}</small></div><div className="departure-meta"><span>{row.status ?? "상태 미제공"}</span><small>예정 {dateTime(row.scheduled_at)}</small></div></article>)}{!rows.length ? <Empty><EmptyHeader><EmptyDescription>등록된 항공편이 없습니다. 미운항을 확정하는 정보는 아닙니다.</EmptyDescription></EmptyHeader></Empty> : null}{rows.length > 20 ? <p className="quiet">상위 20편을 표시합니다. 전체 항공편은 비행·공항 메뉴에서 확인하세요.</p> : null}</> : !loading && place.provider_id ? <Empty><EmptyHeader><EmptyDescription>출도착 조회를 누르면 제공기관의 오늘 운항편을 확인합니다.</EmptyDescription></EmptyHeader></Empty> : null}</div>
-    <h3>저장된 주차 현황</h3>
-    {!place.provider_id ? (
-      <Empty><EmptyHeader><EmptyDescription>공항 코드가 없어 주차 현황을 조회할 수 없습니다.</EmptyDescription></EmptyHeader></Empty>
-    ) : parking.error ? (
-      <Alert variant="destructive"><AlertDescription>주차 현황 조회에 실패했습니다.</AlertDescription></Alert>
-    ) : !parking.items ? (
-      <div className="flex flex-col gap-3" role="status">
-        <p className="flex items-center gap-2"><Spinner aria-hidden="true" />주차 현황 확인 중…</p>
-        <Skeleton className="h-16 w-full" aria-hidden="true" />
-      </div>
-    ) : parking.items.length ? parking.items.map((row) => <div className="parking-detail-row" key={row.parking_lot_name}><strong>{row.parking_lot_name}</strong><span>여유 {row.available_spaces?.toLocaleString("ko-KR") ?? "미제공"} / {row.total_spaces?.toLocaleString("ko-KR") ?? "미제공"}면</span><small>{dateTime(row.observed_at)}</small></div>) : (
-      <Empty><EmptyHeader><EmptyDescription>저장된 주차 관측이 없습니다.</EmptyDescription></EmptyHeader></Empty>
-    )}
-  </section>;
+    </FieldGroup>);
 }

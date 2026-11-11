@@ -24,6 +24,18 @@ export function AirportParking({ initialSelection = null, initialView = "current
 }
 
 function ParkingWorkspace({ initialView }: { initialView: View }) {
+  const { loading, id, selectedAirportCode, airports, onAirportChange, error, selectedParkingLotId, view, selectedAirportLots, onParkingLotChange, onRefresh, flightsParams, collectorStatus, setView, setVisited, visited, unavailable } = useParkingWorkspace({ initialView });
+  return <section className="parking-radar parking-admin" aria-label="공항 주차장" aria-busy={loading}>
+    <ParkingScopeFilters id={id} selectedAirportCode={selectedAirportCode} airports={airports} onAirportChange={onAirportChange} error={error} loading={loading} selectedParkingLotId={selectedParkingLotId} view={view} selectedAirportLots={selectedAirportLots} onParkingLotChange={onParkingLotChange} onRefresh={onRefresh} flightsParams={flightsParams} />
+    {collectorStatus?.upstream_rate_limited ? <p role="status" className="quiet">제공기관 호출 제한 · 마지막 저장 관측을 표시합니다.</p> : null}
+    {error && (view === "analytics" || view === "history") ? <p role="alert" className="error">{error}</p> : null}
+    <ParkingViews view={view} setView={setView} setVisited={setVisited} visited={visited} airports={airports} unavailable={unavailable} />
+  </section>;
+}
+
+
+// 조회·선택·요청 수명은 이 도메인 훅이, 아래 컴포넌트는 표현을 소유한다.
+function useParkingWorkspace({ initialView }: { initialView: View }) {
   const id = useId();
   const { airports, selectedAirportCode, selectedParkingLotId, selectedAirportLots, onAirportChange, onParkingLotChange, onRefresh, loading, collectorStatus, error } = useDashboard();
   const [view, setView] = useState<View>(initialView);
@@ -39,22 +51,28 @@ function ParkingWorkspace({ initialView }: { initialView: View }) {
   const unavailable = loading ? <p role="status" className="notice">공항 자료를 불러오는 중입니다.</p> : error ? null : <p className="notice">저장된 공항이 없습니다.</p>;
   const flightsParams = new URLSearchParams({ airport: selectedAirportCode });
   if (selectedParkingLotId !== null) flightsParams.set("lot", String(selectedParkingLotId));
-  return <section className="parking-radar parking-admin" aria-label="공항 주차장" aria-busy={loading}>
-    <MapFilterBar>
-      <MapFilterField label="공항 선택" htmlFor={`${id}-airport`}><select id={`${id}-airport`} value={selectedAirportCode} disabled={!airports.length} onChange={(event) => onAirportChange(event.target.value)}>{!airports.length ? <option value="">{error ? "조회 실패" : loading ? "공항 조회 중" : "저장된 공항 없음"}</option> : null}{airports.map((airport) => <option key={airport.code} value={airport.code}>{airport.name_ko}</option>)}</select></MapFilterField>
-      <MapFilterField label="세부 주차장" htmlFor={`${id}-lot`}><select id={`${id}-lot`} value={selectedParkingLotId ?? (view === "fees" ? selectedAirportLots[0]?.id ?? "" : "all")} disabled={!selectedAirportCode || !selectedAirportLots.length} onChange={(event) => onParkingLotChange(event.target.value === "all" ? null : Number(event.target.value))}>{view !== "fees" ? <option value="all">전체 주차장</option> : null}{view === "fees" && !selectedAirportLots.length ? <option value="">활성 주차장 없음</option> : null}{selectedAirportLots.map((lot) => <option key={lot.id} value={lot.id}>{lot.name}</option>)}</select></MapFilterField>
-      <Button variant="outline" disabled={loading} onClick={onRefresh}><RefreshCw data-icon="inline-start" />새로고침</Button>
-      {selectedAirportCode ? <Link className="parking-flight-link" href={`/flights?${flightsParams}`}>선택 공항의 항공편·지도</Link> : null}
-      <InfoButton label="주차 자료 갱신"><p>화면이 열려 있는 동안 15초마다 저장 상태를 확인하고 새 관측이 저장됐을 때 갱신합니다. 관측 시각과 주차장별 자료 지연을 함께 확인하세요.</p><p><Link href="/collections">수집 상태·이력</Link> · <a href={dagsterJobRunsUrl("airport_collection_job")} target="_blank" rel="noreferrer">공항 주차·요금 수집 실행 ↗</a></p></InfoButton>
-    </MapFilterBar>
-    {collectorStatus?.upstream_rate_limited ? <p role="status" className="quiet">제공기관 호출 제한 · 마지막 저장 관측을 표시합니다.</p> : null}
-    {error && (view === "analytics" || view === "history") ? <p role="alert" className="error">{error}</p> : null}
-    <Tabs value={view} onValueChange={(next) => { const value = next as View; setView(value); setVisited((current) => new Set([...current, value])); }} className="parking-views">
+
+  return { loading, id, selectedAirportCode, airports, onAirportChange, error, selectedParkingLotId, view, selectedAirportLots, onParkingLotChange, onRefresh, flightsParams, collectorStatus, setView, setVisited, visited, unavailable };
+}
+
+
+function ParkingViews({ view, setView, setVisited, visited, airports, unavailable }: Pick<ReturnType<typeof useParkingWorkspace>, "view" | "setView" | "setVisited" | "visited" | "airports" | "unavailable">) {
+  return (<Tabs value={view} onValueChange={(next) => { const value = next as View; setView(value); setVisited((current) => new Set([...current, value])); }} className="parking-views">
       <TabsList variant="line" aria-label="주차장 보기"><TabsTrigger value="current">현황</TabsTrigger><TabsTrigger value="analytics">분석</TabsTrigger><TabsTrigger value="history">과거조회</TabsTrigger><TabsTrigger value="fees">요금계산</TabsTrigger></TabsList>
       <TabsContent forceMount value="current" className="data-[state=inactive]:hidden">{visited.has("current") ? <CurrentStatusView /> : null}</TabsContent>
       <TabsContent forceMount value="analytics" className="data-[state=inactive]:hidden">{visited.has("analytics") ? airports.length ? <AnalyticsView active={view === "analytics"} /> : unavailable : null}</TabsContent>
       <TabsContent forceMount value="history" className="data-[state=inactive]:hidden">{visited.has("history") ? airports.length ? <HistoryView active={view === "history"} /> : unavailable : null}</TabsContent>
       <TabsContent forceMount value="fees" className="data-[state=inactive]:hidden">{visited.has("fees") ? <FeesView scopeControls={false} help={<InfoButton label="주차요금 기준">김포·김해·제주는 금~일요일과 법정공휴일 요금을 적용합니다. 공항·주차장·차량별 저장 규칙으로 계산하며, 자료가 불완전하면 계산 불가 사유를 표시합니다. 할인은 반영하지 않습니다.</InfoButton>} /> : null}</TabsContent>
-    </Tabs>
-  </section>;
+    </Tabs>);
+}
+
+
+function ParkingScopeFilters({ id, selectedAirportCode, airports, onAirportChange, error, loading, selectedParkingLotId, view, selectedAirportLots, onParkingLotChange, onRefresh, flightsParams }: Pick<ReturnType<typeof useParkingWorkspace>, "id" | "selectedAirportCode" | "airports" | "onAirportChange" | "error" | "loading" | "selectedParkingLotId" | "view" | "selectedAirportLots" | "onParkingLotChange" | "onRefresh" | "flightsParams">) {
+  return (<MapFilterBar>
+      <MapFilterField label="공항 선택" htmlFor={`${id}-airport`}><select id={`${id}-airport`} value={selectedAirportCode} disabled={!airports.length} onChange={(event) => onAirportChange(event.target.value)}>{!airports.length ? <option value="">{error ? "조회 실패" : loading ? "공항 조회 중" : "저장된 공항 없음"}</option> : null}{airports.map((airport) => <option key={airport.code} value={airport.code}>{airport.name_ko}</option>)}</select></MapFilterField>
+      <MapFilterField label="세부 주차장" htmlFor={`${id}-lot`}><select id={`${id}-lot`} value={selectedParkingLotId ?? (view === "fees" ? selectedAirportLots[0]?.id ?? "" : "all")} disabled={!selectedAirportCode || !selectedAirportLots.length} onChange={(event) => onParkingLotChange(event.target.value === "all" ? null : Number(event.target.value))}>{view !== "fees" ? <option value="all">전체 주차장</option> : null}{view === "fees" && !selectedAirportLots.length ? <option value="">활성 주차장 없음</option> : null}{selectedAirportLots.map((lot) => <option key={lot.id} value={lot.id}>{lot.name}</option>)}</select></MapFilterField>
+      <Button variant="outline" disabled={loading} onClick={onRefresh}><RefreshCw data-icon="inline-start" />새로고침</Button>
+      {selectedAirportCode ? <Link className="parking-flight-link" href={`/flights?${flightsParams}`}>선택 공항의 항공편·지도</Link> : null}
+      <InfoButton label="주차 자료 갱신"><p>화면이 열려 있는 동안 15초마다 저장 상태를 확인하고 새 관측이 저장됐을 때 갱신합니다. 관측 시각과 주차장별 자료 지연을 함께 확인하세요.</p><p><Link href="/collections">수집 상태·이력</Link> · <a href={dagsterJobRunsUrl("airport_collection_job")} target="_blank" rel="noreferrer">공항 주차·요금 수집 실행 ↗</a></p></InfoButton>
+    </MapFilterBar>);
 }

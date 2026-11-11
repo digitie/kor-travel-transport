@@ -1,3 +1,19 @@
+## 2026-11-11 — Transport Doctor 전체 warning0와 소비자 회귀 개선
+
+공개6/관리자48 경고를 baseline으로 유예하지 않고 상태 소유권·도메인 조회 수명·표현 컴포넌트로 분리했다.
+버스 검색 수와 역 초안 dirty의 자식 effect 통지를 제거하고 날짜별 시간표 scope·지도 초기 카메라/겹침 선택을 정리했다.
+비컴포넌트 export를 순수 모듈로 옮기고 HTTP 상태 처리·기존 조회 계층·RHF/Zod/Zustand 실사용을 유지했다.
+
+c6의 타입·ESLint·Doctor 전체 warning0, 공개164/관리자356 WSL·격리 Docker 단위와 관리자 Chromium16개를 통과했다.
+독립 응답 표시2·버스/공항4 회귀를 추가했다. 분리 중 빈 상세 element가 모바일 검색을 가리는 문제도 실제 브라우저로
+재현하고 undefined/null 계약을 복구했다. 공통 탭2회귀도 부모 수정 소비 후 통과했고 앱별 monkeypatch는 없다.
+
+루트 디스크 고갈로 기록이 불완전해진 backend 실행을 성공으로 보고하지 않았다. 전용 임시 DB/캐시로 WSL 및 Docker 전체를
+별도 재실행 중이며 최종 결과는 아직 없다. 본인 생성물만 절대 경로를 검증해 이동/정리하고 다른 에이전트·기존 사용자 cache는
+건드리지 않았다. 새 canonical c7과 root c6 pack의 차이는 통합 blocker로 기록한다. 부모 reusable workflow는 별도 보존·커밋 제외다.
+독립 Transport 리뷰·원격CI·PR/머지·운영 배포는 미실행이며 최종 부모go 순서를 유지한다.
+[검증·배포 계획](reports/2026-11-11-common-ui-validation.md), [Doctor 검증](reports/2026-11-11-react-doctor-findings.md).
+
 ## 2026-11-11 — 공통 Radix·VirtualTable 통합 소비자 후보
 
 기존 clone/branch와 미커밋 transport 초안을 보존해 공개·공유 parking-ui·관리자를 이관했다.

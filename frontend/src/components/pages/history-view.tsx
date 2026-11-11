@@ -42,36 +42,63 @@ function pickIntervalMinutes(from: Date, to: Date): number {
 }
 
 export function HistoryView({ active = true }: { active?: boolean }) {
-  const {
-    api,
-    selectedAirportCode,
-    selectedParkingLotId,
-    selectedAirport,
-    selectedParkingLotName,
-    holidaySummary,
-    collectorStatus,
-    dataVersion,
-    loading: dashboardLoading,
-  } = useDashboard();
-  const [range, setRange] = useState<DateRange | undefined>(undefined);
+  const { setReservedResultsHeight, resultsRef, triggerRef, range, setRange, earliestSelectable, today, hasCustomRange, resetToRelativeWindow, loading, error, reservedResultsHeight, summary, visibleSeries, holidaySummary, scopeLabel } = useHistoryViewModel({ active });
+  return (
+    <div className="page-shell">
+      <header className="page-header">
+        <h2>과거 자료 조회</h2>
+      </header>
+
+      <HistoryDatePicker setReservedResultsHeight={setReservedResultsHeight} resultsRef={resultsRef} triggerRef={triggerRef} range={range} setRange={setRange} earliestSelectable={earliestSelectable} today={today} hasCustomRange={hasCustomRange} resetToRelativeWindow={resetToRelativeWindow} />
+
+      {/* T-038 Hallmark audit: a screen reader is not guaranteed to announce a live
+          region that arrives already-mounted with its final content - keep this
+          announcer permanently mounted and let only its content change. */}
+      <p className="sr-only" aria-live="polite">
+        {loading ? "데이터를 불러오는 중입니다." : ""}
+      </p>
+
+      {error ? (
+        <Alert className="notice error" variant="destructive">
+          {error}
+        </Alert>
+      ) : null}
+      {loading ? (
+        <p className="notice" aria-hidden="true">
+          데이터를 불러오는 중입니다.
+        </p>
+      ) : null}
+
+      <div className="history-results" ref={resultsRef} style={{ minHeight: reservedResultsHeight ?? undefined }}>
+        {summary && (summary.min !== null || summary.max !== null || summary.average !== null) ? (
+          <section className="detail-ribbon">
+            <Card className="metric-card detail-card">
+              <span>최소 잔여 주차면</span>
+              <strong>{summary.min}대</strong>
+            </Card>
+            <Card className="metric-card detail-card">
+              <span>평균 잔여 주차면</span>
+              <strong>{summary.average}대</strong>
+            </Card>
+            <Card className="metric-card detail-card">
+              <span>최대 잔여 주차면</span>
+              <strong>{summary.max}대</strong>
+            </Card>
+          </section>
+        ) : null}
+
+        {visibleSeries || (!loading && !error) ? <HistoryChart holidays={holidaySummary?.items ?? []} series={visibleSeries} scopeLabel={scopeLabel} /> : null}
+      </div>
+    </div>
+  );
+}
+
+type HistorySeriesInput = Pick<ReturnType<typeof useDashboard>, "api" | "selectedAirportCode" | "selectedParkingLotId" | "dataVersion"> & { active: boolean; dashboardLoading: boolean; range: DateRange | undefined };
+function useHistorySeries({ api, active, dashboardLoading, selectedAirportCode, selectedParkingLotId, dataVersion, range }: HistorySeriesInput) {
   const [timeSeries, setTimeSeries] = useState<ParkingTimeSeriesResponse | null>(null);
   const [seriesScope, setSeriesScope] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const resultsRef = useRef<HTMLDivElement>(null);
-  const [reservedResultsHeight, setReservedResultsHeight] = useState<number | null>(null);
-
-  const scopeLabel = historyLabel(selectedParkingLotName, selectedAirport?.name_ko);
-  // Both bounds must be read as Asia/Seoul calendar days, not the viewer's own timezone -
-  // the calendar's day cells are browser-local Dates, so comparing them against a bound
-  // built from a raw UTC instant (or the browser's own "now") can be off by a day for any
-  // viewer not in KST.
-  const earliestSelectable = collectorStatus?.earliest_snapshot_observed_at
-    ? seoulDateBoundary(collectorStatus.earliest_snapshot_observed_at)
-    : undefined;
-  const today = seoulDateBoundary(new Date().toISOString());
-  const hasCustomRange = Boolean(range?.from && range?.to);
   const scopeKey = `${selectedAirportCode}/${selectedParkingLotId ?? "all"}/${range?.from && range?.to ? `${toDateKey(range.from)}/${toDateKey(range.to)}` : "7d"}`;
   const visibleSeries = !dashboardLoading && seriesScope === scopeKey ? timeSeries : null;
 
@@ -118,6 +145,40 @@ export function HistoryView({ active = true }: { active?: boolean }) {
     // produces a new object, so this effect re-runs exactly when the user picks a new range.
   }, [api, selectedAirportCode, selectedParkingLotId, dataVersion, range, active, dashboardLoading, scopeKey]);
 
+  return { visibleSeries, loading, error };
+}
+
+
+// 조회·선택·요청 수명은 이 도메인 훅이, 아래 컴포넌트는 표현을 소유한다.
+function useHistoryViewModel({ active = true }: { active?: boolean }) {
+  const {
+    api,
+    selectedAirportCode,
+    selectedParkingLotId,
+    selectedAirport,
+    selectedParkingLotName,
+    holidaySummary,
+    collectorStatus,
+    dataVersion,
+    loading: dashboardLoading,
+  } = useDashboard();
+  const [range, setRange] = useState<DateRange | undefined>(undefined);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const [reservedResultsHeight, setReservedResultsHeight] = useState<number | null>(null);
+
+  const scopeLabel = historyLabel(selectedParkingLotName, selectedAirport?.name_ko);
+  // Both bounds must be read as Asia/Seoul calendar days, not the viewer's own timezone -
+  // the calendar's day cells are browser-local Dates, so comparing them against a bound
+  // built from a raw UTC instant (or the browser's own "now") can be off by a day for any
+  // viewer not in KST.
+  const earliestSelectable = collectorStatus?.earliest_snapshot_observed_at
+    ? seoulDateBoundary(collectorStatus.earliest_snapshot_observed_at)
+    : undefined;
+  const today = seoulDateBoundary(new Date().toISOString());
+  const hasCustomRange = Boolean(range?.from && range?.to);
+  const { visibleSeries, loading, error } = useHistorySeries({ api, active, dashboardLoading, selectedAirportCode, selectedParkingLotId, dataVersion, range });
+
   const summary = visibleSeries ? summarizeTimeSeriesAvailability(visibleSeries.items) : null;
 
   function resetToRelativeWindow() {
@@ -127,13 +188,13 @@ export function HistoryView({ active = true }: { active?: boolean }) {
     triggerRef.current?.focus();
   }
 
-  return (
-    <div className="page-shell">
-      <header className="page-header">
-        <h2>과거 자료 조회</h2>
-      </header>
 
-      <div className="action-stack">
+  return { setReservedResultsHeight, resultsRef, triggerRef, range, setRange, earliestSelectable, today, hasCustomRange, resetToRelativeWindow, loading, error, reservedResultsHeight, summary, visibleSeries, holidaySummary, scopeLabel };
+}
+
+
+function HistoryDatePicker({ setReservedResultsHeight, resultsRef, triggerRef, range, setRange, earliestSelectable, today, hasCustomRange, resetToRelativeWindow }: Pick<ReturnType<typeof useHistoryViewModel>, "setReservedResultsHeight" | "resultsRef" | "triggerRef" | "range" | "setRange" | "earliestSelectable" | "today" | "hasCustomRange" | "resetToRelativeWindow">) {
+  return (<div className="action-stack">
         <Popover onOpenChange={(open) => {
           // 열린 달력 아래 결과가 로딩·빈 자료·실패로 짧아져도 문서 스크롤이 바뀌지 않게 한다.
           // 닫으면 예약 공간을 풀며 다른 범위의 수치는 계속 표시하지 않는다.
@@ -163,46 +224,5 @@ export function HistoryView({ active = true }: { active?: boolean }) {
             최근 {DEFAULT_RELATIVE_DAYS}일 보기
           </Button>
         ) : null}
-      </div>
-
-      {/* T-038 Hallmark audit: a screen reader is not guaranteed to announce a live
-          region that arrives already-mounted with its final content - keep this
-          announcer permanently mounted and let only its content change. */}
-      <p className="sr-only" aria-live="polite">
-        {loading ? "데이터를 불러오는 중입니다." : ""}
-      </p>
-
-      {error ? (
-        <Alert className="notice error" variant="destructive">
-          {error}
-        </Alert>
-      ) : null}
-      {loading ? (
-        <p className="notice" aria-hidden="true">
-          데이터를 불러오는 중입니다.
-        </p>
-      ) : null}
-
-      <div className="history-results" ref={resultsRef} style={{ minHeight: reservedResultsHeight ?? undefined }}>
-        {summary && (summary.min !== null || summary.max !== null || summary.average !== null) ? (
-          <section className="detail-ribbon">
-            <Card className="metric-card detail-card">
-              <span>최소 잔여 주차면</span>
-              <strong>{summary.min}대</strong>
-            </Card>
-            <Card className="metric-card detail-card">
-              <span>평균 잔여 주차면</span>
-              <strong>{summary.average}대</strong>
-            </Card>
-            <Card className="metric-card detail-card">
-              <span>최대 잔여 주차면</span>
-              <strong>{summary.max}대</strong>
-            </Card>
-          </section>
-        ) : null}
-
-        {visibleSeries || (!loading && !error) ? <HistoryChart holidays={holidaySummary?.items ?? []} series={visibleSeries} scopeLabel={scopeLabel} /> : null}
-      </div>
-    </div>
-  );
+      </div>);
 }

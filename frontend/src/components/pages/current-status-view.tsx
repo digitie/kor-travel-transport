@@ -108,7 +108,8 @@ export function CurrentStatusView() {
   );
 }
 
-function CurrentMetrics({ scopeItems, selectedParkingLotId, selectedParkingLotName }: Pick<ReturnType<typeof useDashboard>, "scopeItems" | "selectedParkingLotId" | "selectedParkingLotName">) {
+type MetricScope = Pick<ReturnType<typeof useDashboard>, "scopeItems" | "selectedParkingLotId" | "selectedParkingLotName">;
+function currentMetrics({ scopeItems, selectedParkingLotId, selectedParkingLotName }: MetricScope) {
   const sortedByAvailable = [...scopeItems].sort((left, right) => left.available_spaces - right.available_spaces);
   const tightestLot = sortedByAvailable[0];
   const roomiestLot = sortedByAvailable[sortedByAvailable.length - 1];
@@ -116,38 +117,16 @@ function CurrentMetrics({ scopeItems, selectedParkingLotId, selectedParkingLotNa
   const totalOccupiedSpaces = scopeItems.reduce((sum, item) => sum + item.occupied_spaces, 0);
   const totalSpaces = scopeItems.reduce((sum, item) => sum + item.total_spaces, 0);
   const focusedLot = selectedParkingLotId !== null ? scopeItems[0] ?? null : null;
-  return (
-      <section className="detail-ribbon">
-        <Card className="metric-card detail-card">
-          <span>현재 잔여 주차면</span>
-          <strong>{scopeItems.length ? `${formatNumber(totalAvailableSpaces)}대` : "—"}</strong>
-          <small>{selectedParkingLotName ? "선택 주차장 기준" : "공항 합산 기준"}</small>
-        </Card>
+  const remaining = (lot: (typeof scopeItems)[number] | undefined) => lot ? `${formatNumber(lot.available_spaces)}대 남음` : "데이터 없음";
+  return [
+    { label: "현재 잔여 주차면", value: scopeItems.length ? `${formatNumber(totalAvailableSpaces)}대` : "—", detail: selectedParkingLotName ? "선택 주차장 기준" : "공항 합산 기준" },
+    { label: focusedLot ? "현재 상태" : "가장 빠듯한 곳", value: focusedLot ? statusLabel(focusedLot.status_level) : tightestLot?.parking_lot_name ?? "-", detail: remaining(focusedLot ?? tightestLot) },
+    { label: focusedLot ? "전체 주차면" : "가장 여유 있는 곳", value: focusedLot ? `${formatNumber(totalSpaces)}대` : roomiestLot?.parking_lot_name ?? "-", detail: focusedLot ? `점유 ${formatNumber(totalOccupiedSpaces)} / 전체 ${formatNumber(totalSpaces)}` : remaining(roomiestLot) },
+  ];
+}
 
-        <Card className="metric-card detail-card">
-          <span>{focusedLot ? "현재 상태" : "가장 빠듯한 곳"}</span>
-          <strong>{focusedLot ? statusLabel(focusedLot.status_level) : tightestLot?.parking_lot_name ?? "-"}</strong>
-          <small>
-            {focusedLot
-              ? `${formatNumber(focusedLot.available_spaces)}대 남음`
-              : tightestLot
-                ? `${formatNumber(tightestLot.available_spaces)}대 남음`
-                : "데이터 없음"}
-          </small>
-        </Card>
-
-        <Card className="metric-card detail-card">
-          <span>{focusedLot ? "전체 주차면" : "가장 여유 있는 곳"}</span>
-          <strong>{focusedLot ? `${formatNumber(totalSpaces)}대` : roomiestLot?.parking_lot_name ?? "-"}</strong>
-          <small>
-            {focusedLot
-              ? `점유 ${formatNumber(totalOccupiedSpaces)} / 전체 ${formatNumber(totalSpaces)}`
-              : roomiestLot
-                ? `${formatNumber(roomiestLot.available_spaces)}대 남음`
-                : "데이터 없음"}
-          </small>
-        </Card>
-      </section>
-
-  );
+function CurrentMetrics(props: MetricScope) {
+  return <section className="detail-ribbon">{currentMetrics(props).map((metric) => <Card key={metric.label} className="metric-card detail-card">
+    <span>{metric.label}</span><strong>{metric.value}</strong><small>{metric.detail}</small>
+  </Card>)}</section>;
 }

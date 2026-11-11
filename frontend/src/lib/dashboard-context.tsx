@@ -129,6 +129,8 @@ export function DashboardProvider({
         }
         setError(caughtError instanceof Error ? caughtError.message : "대시보드 데이터를 불러오지 못했습니다.");
       } finally {
+        // 현재 요청/마운트일 때만 finally에서 해제한다. 취소된 옛 요청이 새 요청의 loading을 해제하면 안 된다.
+        // react-doctor-disable-next-line react-doctor/no-loading-flag-reset-outside-finally
         if (mountedRef.current && loadRequestIdRef.current === requestId && showLoading) setLoading(false);
         if (foregroundRequestIdRef.current === requestId) foregroundRequestIdRef.current = null;
       }

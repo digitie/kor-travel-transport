@@ -1,90 +1,200 @@
 {
-  "status": "BLOCKED_CANDIDATE_NOT_RELEASED",
-  "base": "59e1d8213c09a82a4ed9cc4396a6414ef0332b9c",
+  "status": "FRONTEND_C6_IMPLEMENTED_INTEGRATION_PENDING",
   "branch": "agent/codex-common-unification-20261111",
+  "previousSource": "5672cc24934b13492ce19b38ec2e90b47611f1de",
   "artifacts": {
     "status": "CANDIDATE_NOT_RELEASED",
+    "candidate": "integration-6-review",
+    "sources": {
+      "common": "a14301c01a87d7d56e8da5bcf24c0a7f145d05a1",
+      "maplibre-vworld-react": "9a7a348b02d61969b394c681b024d5851eef836b"
+    },
     "packages": {
       "@kor-travel/ui": {
         "version": "0.2.0",
         "filename": "kor-travel-ui-0.2.0.tgz",
-        "integrity": "sha512-B51TvwcAsIYou9DnEiRvdBki8qgqc1Ja6FizpM7ygsv/bLBhVJOP5nOtjybYpK0V4uNwS3bC7P/38t7A+PKVJg=="
-      },
-      "vworld-map-core": {
-        "version": "1.0.0",
-        "filename": "vworld-map-core-1.0.0.tgz",
-        "integrity": "sha512-tP++7XNg9UYXeeUc+aX8q+RD6/dkVzZuBSXPHUKEqHIRobLjUo1HcPEJruOU0bUzHGxnJL/8reIM7xI+vXYaUw=="
+        "integrity": "sha512-VznXMJCxgixE5Ym3Ipnf8i3KCM+65rXcUoEwvigHavMeJv1TPmZocuL1as74x+ZP0d/5dR12gvN0jhV9fvktcQ=="
       },
       "@kor-travel/tokens": {
         "version": "0.1.1",
         "filename": "kor-travel-tokens-0.1.1.tgz",
-        "integrity": "sha512-gnlABsBfUovJe2mqw+XJwahABKSPN0Nan4BGU7fP6SXqgNpZ5Jg1rrGrxmJxwYTkizl2XtjZUMwzgppzrC4+oA=="
+        "integrity": "sha512-GqHyu2fwh6OKhZARTMI5aJSOom71jQhoe2Bb895sX4cG7YZ7CFzqAL1xYDv8AXlM+pBYr2A+Xy9kJAzOnnWofw=="
+      },
+      "vworld-map-core": {
+        "version": "1.0.1",
+        "filename": "vworld-map-core-1.0.1.tgz",
+        "integrity": "sha512-Djm14Arr7U0r7Sabj6P0V57CdzWIGaJmecklmY1hwrq1QUZJjMUFgkZfGRFalUo6AFzHEwwzOEzbJPMifGhINw=="
       },
       "vworld-map-web": {
         "version": "1.0.3",
         "filename": "vworld-map-web-1.0.3.tgz",
-        "integrity": "sha512-9S0TUlgu4ky9ztjkanf0lhoijydhcX5ehHtyQB1jla+rGnuPLK4POiH4wIb2v5ATKuO5hOnHEG534gfyuEH+5g=="
+        "integrity": "sha512-HPXZcz/wP6tFsCZqlAbansWNICcZPubC+/V7rDWXYTQVlOBLl9cZQ1HSMJd25c2CZoMNreVFTQA0vzkVglkS1w=="
+      },
+      "vworld-map-rn": {
+        "version": "1.0.1",
+        "filename": "vworld-map-rn-1.0.1.tgz",
+        "integrity": "sha512-lgDBasKIEG2ElQ9jnHDB9pA+x04Xge9yzBb1NPPw1auyvlkQvxsq4NfRPIrw1VWiutcGiIefySLiVaZDUkO69Q=="
       }
-    },
-    "candidate": "integration-4"
+    }
   },
   "checks": {
-    "dependency_guard": "PASS_BOTH",
-    "lint": "PASS_BOTH",
+    "artifact_guard_c6": "PASS_BOTH",
+    "canonical_current": "BLOCKED_C7_PACK_PENDING",
     "type": "PASS_BOTH",
+    "lint": "PASS_BOTH",
     "unit_wsl": {
       "public": 164,
-      "admin": 350,
+      "admin": 356,
       "status": "PASS"
     },
     "unit_docker": {
       "public": 164,
-      "admin": 350,
+      "admin": 356,
       "status": "PASS"
     },
-    "build_wsl": "PASS_BOTH",
-    "build_docker": "PASS_PUBLIC_AND_ADMIN_BUILDER",
-    "browser_chromium": {
-      "passed": 10,
-      "failed": 2,
-      "status": "FAIL_COMMON_TABS_REGRESSIONS"
+    "browser_admin": {
+      "passed": 16,
+      "failed": 0,
+      "status": "PASS_C6_OVERLAY_FIX"
     },
+    "browser_public": {
+      "passed": 4,
+      "failed": 0,
+      "status": "PASS_C6"
+    },
+    "backend_wsl": "RUNNING_NOT_PASS",
+    "backend_docker": "RUNNING_NOT_PASS",
+    "transport_independent_reviews": "NOT_RUN",
+    "remote_ci": "FOUNDATION_MERGE_PENDING",
+    "push_pr_merge_deploy": "NOT_RUN",
     "doctor": {
       "public": {
         "errorCount": 0,
-        "warningCount": 6,
-        "affectedFileCount": 6,
-        "totalDiagnosticCount": 6,
+        "warningCount": 0,
+        "affectedFileCount": 0,
+        "totalDiagnosticCount": 0,
         "score": null,
-        "scoreLabel": null
+        "scoreLabel": null,
+        "complete": true,
+        "skippedChecks": [],
+        "analyzedFileCount": 56
       },
       "admin": {
         "errorCount": 0,
-        "warningCount": 48,
-        "affectedFileCount": 22,
-        "totalDiagnosticCount": 48,
+        "warningCount": 0,
+        "affectedFileCount": 0,
+        "totalDiagnosticCount": 0,
         "score": null,
-        "scoreLabel": null
+        "scoreLabel": null,
+        "complete": true,
+        "skippedChecks": [],
+        "analyzedFileCount": 198
       }
     },
-    "backend_full": "RUNNING_NOT_CONFIRMED",
-    "backend_docker": "NOT_RUN",
-    "independent_reviews": "NOT_RUN",
-    "remote_ci": "NOT_RUN",
-    "push_pr_merge_deploy": "NOT_RUN"
-  },
-  "common_blockers": [
-    {
-      "file": "packages/ui/src/tabs.tsx",
-      "issue": "Radix orientation/data-state와 Nova data-horizontal/data-active 어휘 불일치. 수평 탭 flex-direction이 row로 남음."
+    "backend_docker_original": "RUNNING_WITH_ENVIRONMENT_FAILURES_NOT_PASS",
+    "backend_docker_corrected_focus": {
+      "passed": 110,
+      "exitCode": 0
     },
-    {
-      "file": "packages/ui/map-controls.css",
-      "issue": "forceMount한 비활성 Radix 패널에 hidden 속성이 없고 :not([hidden])의 display:flex가 layered hidden을 덮어 두 작업면이 보임."
-    }
+    "backend_docker_corrected_full": "RUNNING_NOT_PASS",
+    "build_wsl": "PASS_BOTH_CURRENT_SOURCE_CAPSULE",
+    "build_docker": "PASS_CURRENT_C6_IMAGES"
+  },
+  "parentOwnedExcluded": [
+    ".github/workflows/common-frontend-policy.yml"
   ],
+  "candidate4History": {
+    "status": "BLOCKED_CANDIDATE_NOT_RELEASED",
+    "base": "59e1d8213c09a82a4ed9cc4396a6414ef0332b9c",
+    "branch": "agent/codex-common-unification-20261111",
+    "artifacts": {
+      "status": "CANDIDATE_NOT_RELEASED",
+      "packages": {
+        "@kor-travel/ui": {
+          "version": "0.2.0",
+          "filename": "kor-travel-ui-0.2.0.tgz",
+          "integrity": "sha512-B51TvwcAsIYou9DnEiRvdBki8qgqc1Ja6FizpM7ygsv/bLBhVJOP5nOtjybYpK0V4uNwS3bC7P/38t7A+PKVJg=="
+        },
+        "vworld-map-core": {
+          "version": "1.0.0",
+          "filename": "vworld-map-core-1.0.0.tgz",
+          "integrity": "sha512-tP++7XNg9UYXeeUc+aX8q+RD6/dkVzZuBSXPHUKEqHIRobLjUo1HcPEJruOU0bUzHGxnJL/8reIM7xI+vXYaUw=="
+        },
+        "@kor-travel/tokens": {
+          "version": "0.1.1",
+          "filename": "kor-travel-tokens-0.1.1.tgz",
+          "integrity": "sha512-gnlABsBfUovJe2mqw+XJwahABKSPN0Nan4BGU7fP6SXqgNpZ5Jg1rrGrxmJxwYTkizl2XtjZUMwzgppzrC4+oA=="
+        },
+        "vworld-map-web": {
+          "version": "1.0.3",
+          "filename": "vworld-map-web-1.0.3.tgz",
+          "integrity": "sha512-9S0TUlgu4ky9ztjkanf0lhoijydhcX5ehHtyQB1jla+rGnuPLK4POiH4wIb2v5ATKuO5hOnHEG534gfyuEH+5g=="
+        }
+      },
+      "candidate": "integration-4"
+    },
+    "checks": {
+      "dependency_guard": "PASS_BOTH",
+      "lint": "PASS_BOTH",
+      "type": "PASS_BOTH",
+      "unit_wsl": {
+        "public": 164,
+        "admin": 350,
+        "status": "PASS"
+      },
+      "unit_docker": {
+        "public": 164,
+        "admin": 350,
+        "status": "PASS"
+      },
+      "build_wsl": "PASS_BOTH",
+      "build_docker": "PASS_PUBLIC_AND_ADMIN_BUILDER",
+      "browser_chromium": {
+        "passed": 10,
+        "failed": 2,
+        "status": "FAIL_COMMON_TABS_REGRESSIONS"
+      },
+      "doctor": {
+        "public": {
+          "errorCount": 0,
+          "warningCount": 6,
+          "affectedFileCount": 6,
+          "totalDiagnosticCount": 6,
+          "score": null,
+          "scoreLabel": null
+        },
+        "admin": {
+          "errorCount": 0,
+          "warningCount": 48,
+          "affectedFileCount": 22,
+          "totalDiagnosticCount": 48,
+          "score": null,
+          "scoreLabel": null
+        }
+      },
+      "backend_full": "RUNNING_NOT_CONFIRMED",
+      "backend_docker": "NOT_RUN",
+      "independent_reviews": "NOT_RUN",
+      "remote_ci": "NOT_RUN",
+      "push_pr_merge_deploy": "NOT_RUN"
+    },
+    "common_blockers": [
+      {
+        "file": "packages/ui/src/tabs.tsx",
+        "issue": "Radix orientation/data-state와 Nova data-horizontal/data-active 어휘 불일치. 수평 탭 flex-direction이 row로 남음."
+      },
+      {
+        "file": "packages/ui/map-controls.css",
+        "issue": "forceMount한 비활성 Radix 패널에 hidden 속성이 없고 :not([hidden])의 display:flex가 layered hidden을 덮어 두 작업면이 보임."
+      }
+    ],
+    "validation_images": {
+      "transport-common-public-qa:review-c4": "sha256:f9632e6c836a21ee39b7b222f93c7ec9a4105e68cccae511c029bdd2d4c31b8e",
+      "transport-common-admin-test:review-c4-final": "sha256:41bc7b0f2d1abcfdb06d01afaeafa90ccaf5c38075abe28c0bb34fe85ec9d61c"
+    }
+  },
   "validation_images": {
-    "transport-common-public-qa:review-c4": "sha256:f9632e6c836a21ee39b7b222f93c7ec9a4105e68cccae511c029bdd2d4c31b8e",
-    "transport-common-admin-test:review-c4-final": "sha256:41bc7b0f2d1abcfdb06d01afaeafa90ccaf5c38075abe28c0bb34fe85ec9d61c"
+    "public": "sha256:05e9d39d4ebb50092e73ec12ec744a51ca5a9e629e694c82d2beae7fab6a660f",
+    "admin": "sha256:4e200f6701f8ebf9e2136537dd0796a47201c3606447bab8bf0cc998968fe04c"
   }
 }

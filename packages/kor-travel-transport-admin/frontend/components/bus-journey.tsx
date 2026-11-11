@@ -12,7 +12,35 @@ const TransportMap = dynamic(() => import("./transport-map").then((m) => m.Trans
 type Terminal = { id: number; terminal_id: string; terminal_name: string | null; city_name: string | null; latitude: number | null; longitude: number | null; updated_at: string; location_source?: string | null };
 type Timetable = { service_date: string; fetched_at: string; total?: number | null; truncated?: boolean; stored?: boolean; stale?: boolean; refresh_status?: "stored_only" | "rate_limited" | "not_configured" | "upstream_error" | null; items: { departure_planned_time: string | null; arrival_planned_time: string | null; departure_terminal_name: string | null; arrival_terminal_name: string | null; grade_name: string | null; adult_fare: number | null }[] };
 
-function TerminalSearch({ type, label, selected, other, terminals, catalogReady, catalogFailed, date, direction, onSelect, onVisibleCountChange }: { type: string; label: string; selected: Terminal | null; other: Terminal | null; terminals: Terminal[]; catalogReady: boolean; catalogFailed: boolean; date: string; direction: "departure" | "arrival"; onSelect: (value: Terminal | null) => void; onVisibleCountChange: (count: number) => void }) {
+type TerminalSearchProps = { type: string; label: string; selected: Terminal | null; other: Terminal | null; terminals: Terminal[]; catalogReady: boolean; catalogFailed: boolean; date: string; direction: "departure" | "arrival"; onSelect: (value: Terminal | null) => void };
+function TerminalSearch({ label, selected, other, catalogReady, catalogFailed, onSelect, model }: TerminalSearchProps & { model: ReturnType<typeof useTerminalSearch> }) {
+  const { query, setQuery, showAll, setShowAll, visible, ready } = model;
+  return <section className="terminal-search"><MapFilterBar><MapFilterField htmlFor={`bus-${label}`} label={label}><Input id={`bus-${label}`} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="터미널 이름·지역·코드" /></MapFilterField></MapFilterBar>
+    {selected ? <p><strong>{selected.terminal_name ?? selected.terminal_id}</strong> <button type="button" className="inline-link" onClick={() => onSelect(null)}>선택 해제</button></p> : null}
+    {other ? <><label className="inline-checkbox"><input type="checkbox" checked={!showAll} onChange={(event) => setShowAll(!event.target.checked)} />{other.terminal_name}와 연결 확인된 터미널</label><InfoButton label="연결된 터미널">해당 운행일의 저장된 시간표로 확인된 연결입니다. 미조회 노선도 찾으려면 연결 확인 필터를 해제하고 전체 터미널을 검색하세요.</InfoButton></> : null}
+    <TerminalSearchStatus other={other} catalogReady={catalogReady} catalogFailed={catalogFailed} model={model} />
+    {visible.length ? <TerminalMatches visible={visible} selected={selected} onSelect={onSelect} /> : ready && (query || other) ? <p className="quiet">조건에 맞는 터미널이 없습니다.</p> : null}
+  </section>;
+}
+
+export function BusJourney({ type }: { type: "express" | "intercity" }) {
+  const { places, focused, asPlace, setFocused, terminals, view, setView, departure, arrival, today, effectiveDate, invalidate, setDate, locating, locate, setDeparture, setArrival, catalogError, positionError, nearby, departureSearch, arrivalSearch, position, catalogLoaded, loading, search, result, error, futureOnly, setFutureOnly, shown } = useBusJourney({ type });
+  return <section className="journey-workbench bus-journey map-route">
+    <div id="bus-map" className="journey-map-target map-route-primary" tabIndex={-1}>
+    <TransportMap places={places} selectedPlace={focused ? asPlace(focused) : null} onSelectPlace={(place) => setFocused(terminals.find((row) => row.terminal_id === place.provider_id) ?? null)} onCloseDetails={() => setFocused(null)} view={view} onViewChange={setView}
+    filterSummary={departure || arrival ? `${departure?.terminal_name ?? "출발지"} → ${arrival?.terminal_name ?? "도착지"}` : "버스 필터"}
+    toolbar={<BusFilters today={today} type={type} effectiveDate={effectiveDate} invalidate={invalidate} setDate={setDate} locating={locating} locate={locate} setView={setView} departure={departure} arrival={arrival} setDeparture={setDeparture} setArrival={setArrival} />}
+    feedback={<>{catalogError ? <p role="alert">{catalogError}</p> : null}{positionError ? <p role="alert">{positionError}</p> : null}</>}
+    listPlaces={false} listCount={nearby.length + departureSearch.visible.length + arrivalSearch.visible.length} listContent={<BusTerminalList position={position} nearby={nearby} setFocused={setFocused} type={type} departure={departure} arrival={arrival} terminals={terminals} catalogLoaded={catalogLoaded} catalogError={catalogError} effectiveDate={effectiveDate} departureSearch={departureSearch} invalidate={invalidate} setDeparture={setDeparture} arrivalSearch={arrivalSearch} setArrival={setArrival} />}
+    details={focused ? <BusTerminalDetails focused={focused} invalidate={invalidate} setDeparture={setDeparture} setArrival={setArrival} /> : undefined} />
+    </div>
+    <BusTripResult departure={departure} arrival={arrival} effectiveDate={effectiveDate} loading={loading} search={search} result={result} error={error} futureOnly={futureOnly} setFutureOnly={setFutureOnly} shown={shown} />
+  </section>;
+}
+
+
+// 조회·선택·요청 수명은 이 도메인 훅이, 아래 컴포넌트는 표현을 소유한다.
+function useTerminalSearch({ type, other, terminals, catalogReady, date, direction }: Pick<TerminalSearchProps, "type" | "other" | "terminals" | "catalogReady" | "date" | "direction">) {
   const [query, setQuery] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [response, setResponse] = useState<{ key: string; items?: Terminal[]; error?: boolean }>({ key: "" });
@@ -30,21 +58,12 @@ function TerminalSearch({ type, label, selected, other, terminals, catalogReady,
   const rows = options.filter((item) => item.terminal_id !== other?.terminal_id && (!query.trim() || [item.terminal_name, item.city_name, item.terminal_id].join(" ").includes(query.trim())));
   const ready = other && !showAll ? current?.items !== undefined : catalogReady;
   const visible = query.trim() || other ? rows.slice(0, 20) : [];
-  useEffect(() => {
-    onVisibleCountChange(visible.length);
-    return () => onVisibleCountChange(0);
-  }, [visible.length, onVisibleCountChange]);
-  return <section className="terminal-search"><MapFilterBar><MapFilterField htmlFor={`bus-${label}`} label={label}><Input id={`bus-${label}`} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="터미널 이름·지역·코드" /></MapFilterField></MapFilterBar>
-    {selected ? <p><strong>{selected.terminal_name ?? selected.terminal_id}</strong> <button type="button" className="inline-link" onClick={() => onSelect(null)}>선택 해제</button></p> : null}
-    {other ? <><label className="inline-checkbox"><input type="checkbox" checked={!showAll} onChange={(event) => setShowAll(!event.target.checked)} />{other.terminal_name}와 연결 확인된 터미널</label><InfoButton label="연결된 터미널">해당 운행일의 저장된 시간표로 확인된 연결입니다. 미조회 노선도 찾으려면 연결 확인 필터를 해제하고 전체 터미널을 검색하세요.</InfoButton></> : null}
-    {(!other || showAll) && !catalogReady && !catalogFailed ? <p role="status">터미널 목록 조회 중…</p> : null}
-    {other && !showAll && !current ? <p role="status">연결된 터미널 확인 중…</p> : null}
-    {current?.error && !showAll ? <p role="alert">연결 정보를 확인하지 못했습니다. 전체 터미널 검색을 이용해 주세요.</p> : null}
-    {visible.length ? <div className="station-results">{visible.map((item) => <button type="button" key={item.terminal_id} aria-pressed={item.terminal_id === selected?.terminal_id} onClick={() => onSelect(item)}><strong>{item.terminal_name ?? item.terminal_id}</strong><small>{item.city_name} · {item.terminal_id}</small></button>)}</div> : ready && (query || other) ? <p className="quiet">조건에 맞는 터미널이 없습니다.</p> : null}
-  </section>;
+  return { query, setQuery, showAll, setShowAll, current, visible, ready };
 }
 
-export function BusJourney({ type }: { type: "express" | "intercity" }) {
+
+// 조회·선택·요청 수명은 이 도메인 훅이, 아래 컴포넌트는 표현을 소유한다.
+function useBusJourney({ type }: { type: "express" | "intercity" }) {
   const [view, setView] = useState<"map" | "list">("map");
   const [terminals, setTerminals] = useState<Terminal[]>([]);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
@@ -52,16 +71,15 @@ export function BusJourney({ type }: { type: "express" | "intercity" }) {
   const [departure, setDeparture] = useState<Terminal | null>(null);
   const [arrival, setArrival] = useState<Terminal | null>(null);
   const [focused, setFocused] = useState<Terminal | null>(null);
-  const [departureRowCount, setDepartureRowCount] = useState(0);
-  const [arrivalRowCount, setArrivalRowCount] = useState(0);
+
   const { position, positionError, locating, locate } = useNearbyPosition();
   const today = useSeoulToday();
   const [date, setDate] = useState(seoulDate);
   const effectiveDate = type === "intercity" || (date !== "" && date < today) ? today : date;
-  const [result, setResult] = useState<Timetable | null>(null);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [retryAt, setRetryAt] = useState(0);
+  const scope = `${type}/${departure?.terminal_id}/${arrival?.terminal_id}/${effectiveDate}`;
+  const [trip, setTrip] = useState<{ scope: string; result: Timetable | null; error: string; loading: boolean }>({ scope: "", result: null, error: "", loading: false });
+  const { result, error, loading } = trip.scope === scope ? trip : { result: null, error: "", loading: false };
+  const retryAt = useRef(0);
   const [futureOnly, setFutureOnly] = useState(true);
   const [clock, setClock] = useState(() => Date.now());
   const request = useRef<AbortController | null>(null);
@@ -83,12 +101,9 @@ export function BusJourney({ type }: { type: "express" | "intercity" }) {
     return () => controller.abort();
   }, [type]);
   useEffect(() => { const timer = setInterval(() => setClock(Date.now()), 30_000); return () => clearInterval(timer); }, []);
-  useEffect(() => {
-    request.current?.abort();
-    // 날짜가 바뀌면 이전 날짜의 결과와 진행 중인 요청을 버린다.
-    setResult(null); setLoading(false); setError("");
-  }, [effectiveDate]);
-  function invalidate() { request.current?.abort(); setResult(null); setError(""); setLoading(false); }
+  // 날짜별 응답은 scope로 도출하고 날짜가 바뀌면 요청만 취소한다.
+  useEffect(() => () => request.current?.abort(), [effectiveDate]);
+  function invalidate() { request.current?.abort(); setTrip({ scope, result: null, error: "", loading: false }); }
   async function search() {
     if (!departure || !arrival) return;
     const currentToday = seoulDate();
@@ -96,46 +111,78 @@ export function BusJourney({ type }: { type: "express" | "intercity" }) {
     if (!requestDate) return;
     if (currentToday !== today) {
       invalidate();
-      setError("한국 날짜가 변경되었습니다. 날짜 동기화 후 출발일을 확인하고 다시 조회해 주세요.");
+      setTrip({ scope, result: null, loading: false, error: "한국 날짜가 변경되었습니다. 날짜 동기화 후 출발일을 확인하고 다시 조회해 주세요." });
       return;
     }
     request.current?.abort(); const controller = new AbortController(); request.current = controller;
-    setLoading(true); setError(""); setResult(null);
+    setTrip({ scope, result: null, error: "", loading: true });
     try {
-      const data = await transportGet<Timetable>(`transport/bus/timetable?${new URLSearchParams({ service_type: type, departure_terminal_id: departure.terminal_id, arrival_terminal_id: arrival.terminal_id, date: requestDate, ...(retryAt > Date.now() ? { stored_only: "true" } : {}) })}`, controller.signal);
-      if (!controller.signal.aborted) setResult(data);
+      const data = await transportGet<Timetable>(`transport/bus/timetable?${new URLSearchParams({ service_type: type, departure_terminal_id: departure.terminal_id, arrival_terminal_id: arrival.terminal_id, date: requestDate, ...(retryAt.current > Date.now() ? { stored_only: "true" } : {}) })}`, controller.signal);
+      if (!controller.signal.aborted) setTrip((previous) => ({ ...previous, result: data }));
     } catch (reason) {
       if (!controller.signal.aborted) {
-        if (reason instanceof TransportError && reason.status === 429) { setRetryAt(Date.now() + reason.retryAfter * 1000); setError(`제공기관 호출 보호 중입니다. 신규 갱신은 ${Math.ceil(reason.retryAfter / 60)}분 뒤 가능합니다. 다른 노선의 DB 저장본은 운행편 조회로 계속 확인할 수 있습니다.`); }
-        else setError(reason instanceof Error ? reason.message : "운행편 조회에 실패했습니다.");
+        if (reason instanceof TransportError && reason.status === 429) { retryAt.current = Date.now() + reason.retryAfter * 1000; setTrip((previous) => ({ ...previous, error: `제공기관 호출 보호 중입니다. 신규 갱신은 ${Math.ceil(reason.retryAfter / 60)}분 뒤 가능합니다. 다른 노선의 DB 저장본은 운행편 조회로 계속 확인할 수 있습니다.` })); }
+        else setTrip((previous) => ({ ...previous, error: reason instanceof Error ? reason.message : "운행편 조회에 실패했습니다." }));
       }
-    } finally { if (!controller.signal.aborted) setLoading(false); }
+    // finally 해제와 AbortSignal 검사를 모두 갖춘다. 날짜 변경/새 요청의 상태를 옛 응답이 지우지 않도록 한다.
+    } finally { if (!controller.signal.aborted) setTrip((previous) => ({ ...previous, loading: false })); }
   }
   const nearby = position ? nearestPlaces(terminals, position).slice(0, 10) : [];
   const asPlace = (terminal: Terminal): Place => ({ id: terminal.id, kind: "bus_terminal", source: "data_go_kr_tago", provider_id: terminal.terminal_id, name: terminal.terminal_name ?? terminal.terminal_id, city_name: terminal.city_name, latitude: terminal.latitude, longitude: terminal.longitude, updated_at: terminal.updated_at, location_source: terminal.location_source, facilities: [], prices: [], line_names: [] });
   const places = (position ? nearby.map((row) => row.place) : terminals).map(asPlace);
   const shown = result?.items.filter((row) => !futureOnly || (serviceInstant(row.departure_planned_time, result.service_date) ?? -Infinity) >= clock).sort((a, b) => (serviceInstant(a.departure_planned_time, result!.service_date) ?? Infinity) - (serviceInstant(b.departure_planned_time, result!.service_date) ?? Infinity));
-  return <section className="journey-workbench bus-journey map-route">
-    <div id="bus-map" className="journey-map-target map-route-primary" tabIndex={-1}>
-    <TransportMap places={places} selectedPlace={focused ? asPlace(focused) : null} onSelectPlace={(place) => setFocused(terminals.find((row) => row.terminal_id === place.provider_id) ?? null)} onCloseDetails={() => setFocused(null)} view={view} onViewChange={setView}
-    filterSummary={departure || arrival ? `${departure?.terminal_name ?? "출발지"} → ${arrival?.terminal_name ?? "도착지"}` : "버스 필터"}
-    toolbar={<MapFilterBar><MapFilterField label="출발일" htmlFor="bus-service-date"><input id="bus-service-date" type="date" min={today} max={type === "intercity" ? today : seoulDate(9)} value={effectiveDate} disabled={type === "intercity"} onChange={(event) => { invalidate(); setDate(event.target.value); }} /></MapFilterField><button type="button" className="secondary" disabled={locating} onClick={() => { locate(); setView("list"); }}>{locating ? "위치 확인 중…" : "내 근처 터미널"}</button><button type="button" className="secondary" disabled={!departure && !arrival} onClick={() => { invalidate(); setDeparture(arrival); setArrival(departure); }}>출발·도착 바꾸기</button><button type="button" className="secondary" onClick={() => setView("list")}>출발·도착 검색</button><a className="inline-link" href="#bus-departures">시간표 보기</a><InfoButton label="버스 시간표">시외버스는 오늘 운행편을 제공합니다. 목록에서 출발·도착 터미널을 검색한 뒤 운행편을 조회하면 예정 시각과 요금을 확인할 수 있습니다.</InfoButton></MapFilterBar>}
-    feedback={<>{catalogError ? <p role="alert">{catalogError}</p> : null}{positionError ? <p role="alert">{positionError}</p> : null}</>}
-    listPlaces={false} listCount={nearby.length + departureRowCount + arrivalRowCount} listContent={<>
+  const departureSearch = useTerminalSearch({ type, other: arrival, direction: "arrival", terminals, catalogReady: catalogLoaded, date: effectiveDate });
+  const arrivalSearch = useTerminalSearch({ type, other: departure, direction: "departure", terminals, catalogReady: catalogLoaded, date: effectiveDate });
+  return { places, focused, asPlace, setFocused, terminals, view, setView, departure, arrival, today, effectiveDate, invalidate, setDate, locating, locate, setDeparture, setArrival, catalogError, positionError, nearby, departureSearch, arrivalSearch, position, catalogLoaded, loading, search, result, error, futureOnly, setFutureOnly, shown };
+}
+
+
+function BusFilters({ today, type, effectiveDate, invalidate, setDate, locating, locate, setView, departure, arrival, setDeparture, setArrival }: Pick<ReturnType<typeof useBusJourney>, "today" | "effectiveDate" | "invalidate" | "setDate" | "locating" | "locate" | "setView" | "departure" | "arrival" | "setDeparture" | "setArrival"> & Pick<NonNullable<Parameters<typeof BusJourney>[0]>, "type">) {
+  return (<MapFilterBar><MapFilterField label="출발일" htmlFor="bus-service-date"><input id="bus-service-date" type="date" min={today} max={type === "intercity" ? today : seoulDate(9)} value={effectiveDate} disabled={type === "intercity"} onChange={(event) => { invalidate(); setDate(event.target.value); }} /></MapFilterField><button type="button" className="secondary" disabled={locating} onClick={() => { locate(); setView("list"); }}>{locating ? "위치 확인 중…" : "내 근처 터미널"}</button><button type="button" className="secondary" disabled={!departure && !arrival} onClick={() => { invalidate(); setDeparture(arrival); setArrival(departure); }}>출발·도착 바꾸기</button><button type="button" className="secondary" onClick={() => setView("list")}>출발·도착 검색</button><a className="inline-link" href="#bus-departures">시간표 보기</a><InfoButton label="버스 시간표">시외버스는 오늘 운행편을 제공합니다. 목록에서 출발·도착 터미널을 검색한 뒤 운행편을 조회하면 예정 시각과 요금을 확인할 수 있습니다.</InfoButton></MapFilterBar>);
+}
+
+
+function BusTerminalList({ position, nearby, setFocused, type, departure, arrival, terminals, catalogLoaded, catalogError, effectiveDate, departureSearch, invalidate, setDeparture, arrivalSearch, setArrival }: Pick<ReturnType<typeof useBusJourney>, "position" | "nearby" | "setFocused" | "departure" | "arrival" | "terminals" | "catalogLoaded" | "catalogError" | "effectiveDate" | "departureSearch" | "invalidate" | "setDeparture" | "arrivalSearch" | "setArrival"> & Pick<NonNullable<Parameters<typeof BusJourney>[0]>, "type">) {
+  return (<>
     {position ? <><p className="quiet">위치 오차 약 {Math.round(position.accuracy)}m · 직선 거리 순</p><div className="station-results" aria-label="가까운 터미널">{nearby.map(({ place, distance }) => <button type="button" key={place.terminal_id} onClick={() => setFocused(place)}><strong>{place.terminal_name}</strong><small>{distance.toFixed(1)}km · {place.terminal_id}</small></button>)}</div>{!nearby.length ? <p>좌표가 등록된 터미널이 없습니다. 이름으로 검색해 주세요.</p> : null}</> : null}
-    <div className="journey-data-grid"><TerminalSearch type={type} label="출발 터미널" selected={departure} other={arrival} direction="arrival" terminals={terminals} catalogReady={catalogLoaded} catalogFailed={Boolean(catalogError) && !catalogLoaded} date={effectiveDate} onVisibleCountChange={setDepartureRowCount} onSelect={(value) => { invalidate(); setDeparture(value); setFocused(null); }} /><TerminalSearch type={type} label="도착 터미널" selected={arrival} other={departure} direction="departure" terminals={terminals} catalogReady={catalogLoaded} catalogFailed={Boolean(catalogError) && !catalogLoaded} date={effectiveDate} onVisibleCountChange={setArrivalRowCount} onSelect={(value) => { invalidate(); setArrival(value); setFocused(null); }} /></div>
-    </>}
-    details={focused ? <div><p className="quiet">{focused.city_name} · {focused.terminal_id}</p><div className="journey-toolbar"><button type="button" className="button" onClick={() => { invalidate(); setDeparture(focused); }}>출발지로 선택</button><button type="button" className="secondary" onClick={() => { invalidate(); setArrival(focused); }}>도착지로 선택</button></div></div> : undefined} />
-    </div>
-    <div className="map-route-followup">
+    <div className="journey-data-grid"><TerminalSearch type={type} label="출발 터미널" selected={departure} other={arrival} direction="arrival" terminals={terminals} catalogReady={catalogLoaded} catalogFailed={Boolean(catalogError) && !catalogLoaded} date={effectiveDate} model={departureSearch} onSelect={(value) => { invalidate(); setDeparture(value); setFocused(null); }} /><TerminalSearch type={type} label="도착 터미널" selected={arrival} other={departure} direction="departure" terminals={terminals} catalogReady={catalogLoaded} catalogFailed={Boolean(catalogError) && !catalogLoaded} date={effectiveDate} model={arrivalSearch} onSelect={(value) => { invalidate(); setArrival(value); setFocused(null); }} /></div>
+    </>);
+}
+
+
+function BusTimetable({ departure, arrival, futureOnly, setFutureOnly, result, shown }: Pick<ReturnType<typeof useBusJourney>, "departure" | "arrival" | "futureOnly" | "setFutureOnly" | "result" | "shown">) {
+  return (<section id="bus-departures" aria-live="polite" className="departures"><a className="inline-link" href="#bus-map">지도 작업면으로</a><h2>{departure?.terminal_name ?? "출발지"} → {arrival?.terminal_name ?? "도착지"}</h2><label className="inline-checkbox"><input type="checkbox" checked={futureOnly} onChange={(event) => setFutureOnly(event.target.checked)} />지금 이후만</label>
+      {result ? <><p className="quiet">{dateTime(result.fetched_at)} 조회 · {shown?.length}편 표시{result.truncated ? ` · 전체 ${result.total ?? "미확인"}편 중 일부 결과` : ""}</p>{shown?.map((row) => <article className="departure-row" key={`${row.departure_planned_time}/${row.arrival_planned_time}/${row.grade_name}`}><div className="departure-time"><strong>{serviceTime(row.departure_planned_time, result.service_date)}</strong><span>{row.departure_terminal_name ?? departure?.terminal_name}</span></div><div className="departure-route"><strong>{row.arrival_terminal_name ?? arrival?.terminal_name}</strong><span>도착 {serviceTime(row.arrival_planned_time, row.departure_planned_time && /^\d{8}/.test(row.departure_planned_time) ? row.departure_planned_time : result.service_date)}</span></div><div className="departure-meta"><strong>{row.grade_name ?? "등급 미제공"}</strong><span>{money(row.adult_fare)}</span></div></article>)}{!shown?.length ? <p className="empty-state">{result.items.length ? "지금 이후 조건에 맞는 운행편이 없습니다. 전체 시간표도 확인할 수 있습니다." : "정상 응답에 등록된 운행편이 없습니다. 미운행 확정은 아닙니다."}</p> : null}</> : <p className="quiet">출발·도착지를 선택하고 운행편을 조회하세요.</p>}
+    </section>);
+}
+
+
+function TerminalMatches({ visible, selected, onSelect }: Pick<ReturnType<typeof useTerminalSearch>, "visible"> & Pick<NonNullable<Parameters<typeof TerminalSearch>[0]>, "selected" | "onSelect">) {
+  return (<div className="station-results">{visible.map((item) => <button type="button" key={item.terminal_id} aria-pressed={item.terminal_id === selected?.terminal_id} onClick={() => onSelect(item)}><strong>{item.terminal_name ?? item.terminal_id}</strong><small>{item.city_name} · {item.terminal_id}</small></button>)}</div>);
+}
+
+
+function BusTripResult({ departure, arrival, effectiveDate, loading, search, result, error, futureOnly, setFutureOnly, shown }: Pick<ReturnType<typeof useBusJourney>, "departure" | "arrival" | "effectiveDate" | "loading" | "search" | "result" | "error" | "futureOnly" | "setFutureOnly" | "shown">) {
+  return (<div className="map-route-followup">
     {departure && arrival && departure.terminal_id === arrival.terminal_id ? <p role="alert">출발과 도착 터미널을 다르게 선택해 주세요.</p> : null}
     <button className="button" type="button" disabled={!departure || !arrival || departure.terminal_id === arrival.terminal_id || !effectiveDate || loading} onClick={() => void search()}>{loading ? "운행편 확인 중…" : "운행편 조회"}</button>
     {result?.stored ? <p className="quiet">저장된 시간표입니다.{result.stale ? " 갱신 전 저장본입니다." : ""}</p> : null}
     {result?.refresh_status ? <p className="quiet">{{ stored_only: "제공기관을 호출하지 않고 저장본만 조회했습니다.", rate_limited: "제공기관 호출 보호로 저장본을 표시합니다.", not_configured: "제공기관 연결 설정이 없어 저장본을 표시합니다.", upstream_error: "제공기관 갱신에 실패하여 이전 저장본을 표시합니다." }[result.refresh_status]}</p> : null}
     {error ? <p className="error" role="alert">{error}</p> : null}
-    <section id="bus-departures" aria-live="polite" className="departures"><a className="inline-link" href="#bus-map">지도 작업면으로</a><h2>{departure?.terminal_name ?? "출발지"} → {arrival?.terminal_name ?? "도착지"}</h2><label className="inline-checkbox"><input type="checkbox" checked={futureOnly} onChange={(event) => setFutureOnly(event.target.checked)} />지금 이후만</label>
-      {result ? <><p className="quiet">{dateTime(result.fetched_at)} 조회 · {shown?.length}편 표시{result.truncated ? ` · 전체 ${result.total ?? "미확인"}편 중 일부 결과` : ""}</p>{shown?.map((row) => <article className="departure-row" key={`${row.departure_planned_time}/${row.arrival_planned_time}/${row.grade_name}`}><div className="departure-time"><strong>{serviceTime(row.departure_planned_time, result.service_date)}</strong><span>{row.departure_terminal_name ?? departure?.terminal_name}</span></div><div className="departure-route"><strong>{row.arrival_terminal_name ?? arrival?.terminal_name}</strong><span>도착 {serviceTime(row.arrival_planned_time, row.departure_planned_time && /^\d{8}/.test(row.departure_planned_time) ? row.departure_planned_time : result.service_date)}</span></div><div className="departure-meta"><strong>{row.grade_name ?? "등급 미제공"}</strong><span>{money(row.adult_fare)}</span></div></article>)}{!shown?.length ? <p className="empty-state">{result.items.length ? "지금 이후 조건에 맞는 운행편이 없습니다. 전체 시간표도 확인할 수 있습니다." : "정상 응답에 등록된 운행편이 없습니다. 미운행 확정은 아닙니다."}</p> : null}</> : <p className="quiet">출발·도착지를 선택하고 운행편을 조회하세요.</p>}
-    </section>
-    </div>
-  </section>;
+    <BusTimetable departure={departure} arrival={arrival} futureOnly={futureOnly} setFutureOnly={setFutureOnly} result={result} shown={shown} />
+    </div>);
+}
+
+
+function BusTerminalDetails({ focused, invalidate, setDeparture, setArrival }: Pick<ReturnType<typeof useBusJourney>, "focused" | "invalidate" | "setDeparture" | "setArrival">) {
+  return (focused ? <div><p className="quiet">{focused.city_name} · {focused.terminal_id}</p><div className="journey-toolbar"><button type="button" className="button" onClick={() => { invalidate(); setDeparture(focused); }}>출발지로 선택</button><button type="button" className="secondary" onClick={() => { invalidate(); setArrival(focused); }}>도착지로 선택</button></div></div> : undefined);
+}
+
+function TerminalSearchStatus({ other, catalogReady, catalogFailed, model }: Pick<TerminalSearchProps, "other" | "catalogReady" | "catalogFailed"> & { model: ReturnType<typeof useTerminalSearch> }) {
+  const { showAll, current } = model;
+  return <>
+    {(!other || showAll) && !catalogReady && !catalogFailed ? <p role="status">터미널 목록 조회 중…</p> : null}
+    {other && !showAll && !current ? <p role="status">연결된 터미널 확인 중…</p> : null}
+    {current?.error && !showAll ? <p role="alert">연결 정보를 확인하지 못했습니다. 전체 터미널 검색을 이용해 주세요.</p> : null}
+  </>;
 }
