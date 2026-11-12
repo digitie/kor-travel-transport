@@ -1,3 +1,9 @@
+## 2026-11-13 — 유가 30일·전체 유종·공식 EvilCharts 구현/집중 검증
+
+- **T-FUEL30-CODE** — 요청12~15의30일 선/whisker·전체 유종·가격순10곳/주소·현재가격/상세 순서를 구현했다. 동일 성공 cohort·과거 null/알려진 한 곳·원본/영구 이력 보존을 검산했다.
+- SQLite/WSL PG18/Docker PG18 각24개, admin WSL/Docker 각47개·타입0·vendor포함 strict lint0/경고0, Chromium156 PC1440/mobile375 실제 fixture 캔버스·키보드·overflow0/pageerror0 완료다. [원장·화면·원 실패](reports/2026-11-13-fuel30-evilcharts.md).
+- 제품03c0f39/Draft PR190이며800177d는 소비자에 없는 lint 주석과 출처 정산이다. 독립 리뷰·CI·main 반영은 T-FUEL30-MERGE로 남긴다. 빌드·운영 배포·수집/재집계는 하지 않았다.
+
 ## 2026-11-13 — #180 main 반영 확인
 
 - #180의 정확 HEAD `7aec73aeb18804373ccec3a57ce31d9809952507`는 main `110d663316c23007d3cd803b7849fe45393b18e7`로 머지됐다. 이는 기존 UI 실패를 통과로 바꾸거나 신규21개 요청을 완료했다는 뜻이 아니다.

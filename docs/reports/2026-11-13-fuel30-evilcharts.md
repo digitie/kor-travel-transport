@@ -24,16 +24,16 @@
 | WSL SQLite | 24개 통과, 413.94초 | 30일 경계·ALL·실제 극값/null·가격순 10곳·이전 수집 제외·과거 주소·오류/원본 보존·native 이력 |
 | WSL PostgreSQL 18 | 24개 통과, 353.30초 | 격리 DB의 실제 SQL·API 계약 |
 | WSL+Docker PostgreSQL 18 | 24개 통과, 312.51초 | 같은 집중 시험, 종료 후 정확 소유 CID/label 검산·테스트 DB 제거 |
-| WSL/Docker admin | 각각 46개 통과 | 전체 유종·지표 누락·툴팁 수치/안전한 HTML·날짜 공백·주소 링크·순위·기존 오류/취소·상세 순서 |
-| 최종 접근성/strict lint | 정산 중 | vendor 범례와 그래프 native 키보드 제어를 포함한 마지막 회귀 |
+| WSL/Docker admin | 각각 47개 통과 | 전체 유종·지표 누락·툴팁 수치/안전한 HTML·날짜 공백·주소 링크·순위·기존 오류/취소·상세 순서 |
+| 최종 접근성/strict lint | 오류0·경고0 | vendor 6개·도메인 컴포넌트, native 범례/키보드 제어 포함 |
 | TypeScript | 0 오류 | 변경 컴포넌트와 API 소비 타입 |
 | Chromium 156.0.8078.4, 1440/375 | fixture 실제 캔버스 통과 | 2개 시간축 차트, 5유종×30일 선/whisker, 마우스/클릭 툴팁, 정확 금액·지도 링크, 각 10행 표, 원본 표 마지막, 현재가격 우선, pageerror0·가로 overflow0 |
 
 각 환경은 같은 시험을 반복한 것이므로 숫자를 합산하지 않는다. 브라우저는 격리 fixture이고 운영 API·실제 로그인·DB를 함께 검증한 live E2E 증거가 아니다. 기존 live E2E의 7일/SVG/요약 박스 선택자는 새 계약으로 갱신했지만 운영 실행은 하지 않았다. 이미지/앱 빌드는 별도 담당 범위다. 운영 속도나 p95 개선율을 주장하지 않는다.
 
-원장은 Git 밖 `weather-transport-evilcharts-20261112/fuel30-qa`와 `fuel30-pg-qa`에 보존한다. 핵심 기록은 `frontend-results-r6.json`, `frontend-results-r7.json`, `backend-sqlite.log`, PG `results.json`, `browser/final-results.json`이다. 초기 SVG/7일 기대치 불일치, JSDOM Canvas/ResizeObserver 부재, Docker 임시 mountpoint 부재, 지연 import 중 기본 5초 시험 timeout, 별도 fork worker 시작 60초 timeout은 원 실패로 남긴다. 최종 DOM 단위 시험은 엔진 경계만 대역 처리하고, 별도 옵션 검증과 실제 브라우저 캔버스로 보완한다.
+원장은 Git 밖 `weather-transport-evilcharts-20261112/fuel30-qa`와 `fuel30-pg-qa`에 보존한다. 핵심 기록은 `frontend-results-r7.json`, `strict-eslint-final.json`, `backend-sqlite.log`, PG `results.json`, `browser/final-results.json`이다. 초기 SVG/7일 기대치 불일치, JSDOM Canvas/ResizeObserver 부재, Docker 임시 mountpoint 부재, 지연 import 중 기본 5초 시험 timeout, 별도 fork worker 시작 60초 timeout은 원 실패로 남긴다. 최종 DOM 단위 시험은 엔진 경계만 대역 처리하고, 별도 옵션 검증과 실제 브라우저 캔버스로 보완한다.
 
-초기 로컬 브라우저 Chromium1254/C 경로 profile의 SIGTRAP 및 기존 Firefox 프로토콜 불일치도 원 실패로 보존했다. 기존 Chromium1248 실행파일(실제 156.0.8078.4)과 소유 /dev/shm 임시 profile로 정상 확인했다. DrvFS의 Windows 편집은 기본 Vite watcher가 놓칠 수 있어, 최종 로컬 fixture는 polling과 새 서버의 실제 파일로 확인했다. 소유 QA 서버·브라우저·테스트 DB는 종료하고 다른 작업자/서비스에는 신호를 보내지 않는다.
+초기 로컬 브라우저 Chromium1254/C 경로 profile의 SIGTRAP 및 기존 Firefox 프로토콜 불일치도 원 실패로 보존했다. 기존 Chromium1248 실행파일(실제 156.0.8078.4)과 소유 /dev/shm 임시 profile로 정상 확인했다. DrvFS의 Windows 편집은 기본 Vite watcher가 놓칠 수 있어, 최종 로컬 fixture는 polling과 새 서버의 실제 파일로 확인했다. 소유 QA 서버·브라우저·테스트 DB는 종료했고 다른 작업자/서비스에는 신호를 보내지 않았다.
 
 ## 화면
 
@@ -50,3 +50,12 @@
 ## 남은 한계
 
 과거에 기록되지 않은 Top 10은 즉시 채우지 않는다. 공급자 가격 오류를 임의 보정하지 않는다. 운영 배포/실제 API 통합 수용·CI·독립 리뷰·main 머지는 이번 분담에서 실행하지 않으며 Root가 별도로 정산한다. 공항/항공편/고속도로/Weather/캐시 이전 요청은 다른 분담 범위이고 유가 기능으로 완료 처리하지 않는다.
+
+
+## 최종 정산
+
+제품 기준은 `03c0f396f62d350e0e057f362cd100db879bdd04`, [Draft PR190](https://github.com/digitie/kor-travel-transport/pull/190)이다. 최종 WSL/Docker의 47개는 29개 통계·7개 개별 이력·2개 상세·1개 chart 옵션·5개 cursor 모델·2개 시간축 모델·1개 범례 시험이며 같은 시험을 합산하지 않는다. `ruff --select F,E9`는 변경 백엔드/시험 파일에서0이다.
+
+strict lint는 Weather에만 설치된 `react-x/no-children-for-each`를 가리키는 vendor 지시문 2개에서 실패했다. Root 승인에 따라 이 지시문만 일반 설명 주석으로 바꾸고 출처/설치 SHA를 갱신한 `800177dee27935fa3b92203a9a02e6dad091a0de`로 정산했다. 원 공식 Children.forEach와 런타임은 같다. 주석을 제거한 TypeScript JS 출력 SHA는 전후 `78abaaded9bcbda5dfa71a0e571bfebb6f4c81aef9c14534db52ab9e9911c5de`로 동일하며 `comment-runtime-equivalence.json`에 있다. 이 주석 수정 때문에 47개를 재실행하지 않았다. 최초 rule-definition 실패는 `eslint-vendor-rule-failure.log`, 후속 오류0·경고0은 `strict-eslint-final.json`으로 구분한다.
+
+백엔드 집중 명령은 `python -m pytest backend/tests/test_fuel_statistics.py backend/tests/test_fuel_price_history.py -q`이다. 프론트는 `vitest run --maxWorkers=1 --pool=threads`로 위 7개 파일을 WSL과 동일한 Docker 컨테이너에서 실행했다. TypeScript는 `tsc --noEmit --incremental false`, lint는 `eslint --max-warnings=0`으로 vendor와 변경 도메인을 포함했다. 원 worker 시작 timeout·JSDOM 엔진/동기 검증 경계 실패도 보존한다. 운영용 이미지/앱 빌드·실제 API 통합 E2E·수집·재집계·배포·main 머지는0이다. 이후 CI·독립 리뷰·머지는 Root가 이어간다.

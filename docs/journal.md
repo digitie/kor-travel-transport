@@ -2,7 +2,8 @@
 
 - 사용자 요청12~15의 API/집계/화면을 구현했다. ALL 단일 snapshot 조회, 일별 실제 극값·그날 최저가 링크, 정상 세대 가격순 10곳과 주소 보존, 30일 개별 관측을 추가했다. 기존 자료에 없는 순위·극값은 미제공이며 알려진 최저가 한 곳은 유지한다.
 - 통계는 그래프 우선·컴팩트한 필터 행·전체 유종 표로 바꾸고, 주유소 상세는 현재 가격→차트→연락처/근거→관측값 표로 정리했다. 공용 상세의 차트 엔진은 필요할 때 적재한다. 원본/과거/성공 cohort/영구 통계 정책·DB 스키마는 보존했다.
-- SQLite/WSL PG18/Docker PG18 각24개와 admin WSL/Docker 각46개, TypeScript, 실제 Chromium PC1440/mobile375 fixture를 확인했다. 마지막 native 키보드/범례 strict 접근성 정산은 이어서 한다. 동일 시험은 합산하지 않는다.
+- SQLite/WSL PG18/Docker PG18 각24개와 admin WSL/Docker 각47개, TypeScript와 vendor 포함 strict lint 오류0/경고0, 실제 Chromium PC1440/mobile375 fixture를 확인했다. native 키보드/범례 접근성도 정산했다. 동일 시험은 합산하지 않는다.
+- 제품03c0f39와 주석만 변경한800177d를 Draft PR190으로 push했다. 공식 line의 소비자에 없는 lint 지시문2개만 일반 주석으로 정산했고 주석 제거 JS SHA가 같음을 검산했다.
 - [구현·누락/실패·화면·검증 원장](reports/2026-11-13-fuel30-evilcharts.md). 빌드·운영 배포·수집·수동 게시·정리0, main 머지 전이다.
 
 ## 2026-11-13 — 유가·철도 원장 downgrade 경합 보호
