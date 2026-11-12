@@ -1,6 +1,8 @@
 import * as echarts from "echarts/core";
 import { PieChart } from "echarts/charts";
 import { CalendarComponent, TooltipComponent } from "echarts/components";
+import userEvent from "@testing-library/user-event";
+import { ParkingPatternCellDetails } from "@/components/parking-pattern-heatmap";
 import { render, screen } from "@testing-library/react";
 import { ParkingPie } from "@/components/parking-pie";
 import { ParkingHeatmapCanvas } from "@/components/parking-pattern-heatmap-canvas";
@@ -66,4 +68,22 @@ test("실제 ECharts SVG 엔진이 동심원과 시간대 행렬 옵션을 렌�
     heat.setOption({ ...captured.heat!.chartOptions, animation: false, tooltip: { show: false } });
     expect(heat.renderToSVGString()).toContain("공휴일");
   } finally { heat.dispose(); }
+});
+
+
+test("수치표의 네이티브 상세는 평균·최저·최고·관측 수를 모두 제공하고 결측과 0을 구별한다", async () => {
+  const user = userEvent.setup();
+  const bucket = { hour: 2, average_available_spaces: 0.125, min_available_spaces: 0, max_available_spaces: 1, observations: 8 };
+  const view = render(<ParkingPatternCellDetails label="월요일" bucket={bucket} />);
+  const summary = screen.getByText("0.125", { selector: "summary" });
+  expect(summary.getAttribute("aria-label")).toContain("평균 0.125면 · 최저 0면 · 최고 1면 · 관측 8개");
+  expect(summary.closest("details")).not.toHaveAttribute("open");
+  await user.click(summary);
+  expect(summary.closest("details")).toHaveAttribute("open");
+  expect(screen.getByText("월요일 2시 · 평균 0.125면 · 최저 0면 · 최고 1면 · 관측 8개", { selector: "p" })).toBeVisible();
+  view.rerender(<ParkingPatternCellDetails label="월요일" bucket={{ ...bucket, average_available_spaces: 0 }} />);
+  expect(screen.getByText("0", { selector: "summary" })).toBeTruthy();
+  view.rerender(<ParkingPatternCellDetails label="월요일" bucket={{ ...bucket, average_available_spaces: null, observations: 0 }} />);
+  expect(view.container.querySelector("summary")).toBeNull();
+  expect(screen.getByText("관측 없음")).toBeTruthy();
 });

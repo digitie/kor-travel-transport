@@ -1,6 +1,6 @@
 ## 2026-11-13 — 공항 차트 후속
 
-- [ ] 공항 EvilCharts 파이/요일·특수일 히트맵·고속도로 자동 조회·항공편 시각 방어의 집중 UI 시험과 Draft PR 정산. 실제 브라우저 캡처·제공기관 빈 응답 원인·운영 배포를 완료로 꾸미지 않는다. [근거](reports/2026-11-13-airport-charts-flow.md).
+- [ ] PR189의 부모 두 독립 리뷰/CI/머지 정산. 코드·집중 WSL/Docker·1440/375 fixture는 완료했으나 운영 항공편 빈 응답 원인/운영 배포는 미수용이며 기존 history/daily SVG의 line 전환은 별도 후속이다. [근거](reports/2026-11-13-airport-charts-flow.md).
 
 ## 2026-11-12 — 우선순위
 

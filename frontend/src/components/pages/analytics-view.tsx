@@ -1,6 +1,6 @@
 "use client";
 
-import { ParkingPatternHeatmap } from "../parking-pattern-heatmap";
+import { ParkingPatternCellDetails, ParkingPatternHeatmap } from "../parking-pattern-heatmap";
 import { DailyFlightOverlayChart } from "../daily-flight-overlay-chart";
 import { Alert } from "../ui/alert";
 import { VirtualTable } from "@kor-travel/ui/virtual-table";
@@ -106,7 +106,7 @@ function WeekdayPanel({ data }: AnalyticsPanelProps) {
                         const value = bucket?.average_available_spaces ?? null;
                         return <div data-testid={`weekday-hour-cell-${pattern.weekday}-${hour}`} style={buildAvailabilityHeatStyle(value, maxHeatValue)}
                           title={value === null ? `${pattern.weekday_name} ${formatHourLabel(hour)} 관측 없음` : `${pattern.weekday_name} ${formatHourLabel(hour)} 평균 ${value}대`}>
-                          {value === null ? '-' : value}</div>;
+                          <ParkingPatternCellDetails label={pattern.weekday_name} bucket={bucket} /></div>;
                       } })),
                   ]} />
                 </div>
@@ -147,7 +147,7 @@ function HolidayPanel({ data }: AnalyticsPanelProps) {
                         const value = bucket?.average_available_spaces ?? null;
                         return <div data-testid={`holiday-hour-cell-${pattern.local_date}-${hour}`} style={buildAvailabilityHeatStyle(value, maxHolidayHeatValue)}
                           title={value === null ? `${pattern.name} ${formatHourLabel(hour)} 관측 없음` : `${pattern.name} ${formatHourLabel(hour)} 평균 ${value}대`}>
-                          {value === null ? '-' : value}</div>;
+                          <ParkingPatternCellDetails label={`${pattern.local_date} ${pattern.name}`} bucket={bucket} /></div>;
                       } })),
                   ]} />
                 </div>

@@ -1,5 +1,5 @@
 vi.mock("@/components/parking-availability-charts", () => ({ ParkingAvailabilityCharts: () => null }));
-vi.mock("@/components/parking-pattern-heatmap", () => ({ ParkingPatternHeatmap: () => null }));
+vi.mock("@/components/parking-pattern-heatmap", async (original) => ({ ...await original<typeof import("@/components/parking-pattern-heatmap")>(), ParkingPatternHeatmap: () => null }));
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 

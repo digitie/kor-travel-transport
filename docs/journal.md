@@ -1,3 +1,9 @@
+## 2026-11-13 — PR189 키보드 상세 수치 경로 보강
+
+- James P1에 따라 요일/특수일 수치표 각 셀에 native details/summary를 넣어 평균뿐 아니라 최저·최고·관측 수도 키보드로 얻도록 했다. 그래프와 같은 DTO/설명 함수를 쓰며 빈 관측은 0으로 만들지 않는다.
+- P1 WSL 13개/TypeScript/lint가 통과했다. Chromium156 PC1440/mobile375에서 실제 Enter 상세 열기와 같은 정밀 숫자·overflow0을 확인했다. 첫 fixture dev server SIGTERM143은 보존하고 후속 정상 종료는 browser/server각0이다. [정산](reports/2026-11-13-airport-charts-flow.md).
+- 제품197418c의 선행 Docker public56/admin13은 CLI0이며 P1 집중 Docker13도 CLI0으로 완료했다. 운영/빌드/수집0, 기존 두 자체 SVG 시계열은 별도 후속이다.
+
 ## 2026-11-13 — 공항 주차 EvilCharts와 열린 통계 화면 갱신
 
 - 주차 현황/항공편 화면의 잔여·사용면 파이와 P1/P2 동심원, 요일·특수일 시간대 히트맵을 공식 EvilCharts ECharts 기반으로 구현했다. 0/결측/불일치와 원 관측 시각을 보존한다.
