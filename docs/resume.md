@@ -4,7 +4,7 @@
 - sealed vworld-map-web1.0.3의 loadingSkeleton 주석은 overlay라고 설명하지만 실제 구현은 높이100%인 지도 div 뒤에 전달받은 ReactNode를 sibling으로 반환한다. 자동 배치 계약이 모호한 상태에서 앱이 제공한 일반 문단의 배치를 앱 통합 책임으로 교정하며 upstream 버그로 단정하지 않는다.
 - 기존 공통 MapStage 안의 map-primary를 기준으로 전용 status 문구를 절대 배치하고 기존 공통 색상·간격 토큰을 사용한다. 전역 .loading·공통 패키지·SSR 작업면·메뉴·키·env·인증·backend·Map 앱은 변경하지 않는다. 지도 초기화 시간이 개선됐다는 주장은 하지 않는다.
 - 기존 PC1280·모바일375 NoJS 회귀에 실제 문구의 Range text rect와 viewport·overflow 조상 padding-box 교집합을 기록하고 99% 이상 노출 및 role=status를 검사한다. SDK mock이나 가짜 초기 상태를 추가하지 않는다.
-- 후속 diff 검토에서 --color-muted가 배경 토큰으로 매핑되어 전경과 같아지는 문제를 확인했다. 로딩 문구만 기존 --color-muted-foreground를 사용하도록 고쳤다. NoJS 첨부에 computed color/backgroundColor를 함께 기록하고 두 값이 다름을 검사한다. 이는 공통 전경 토큰 계약을 사용한 동일색 회귀 검사이며 실제 4.5:1 대비 증명이 아니다. 실제 PNG·전후 실행 검증은 대기다.
+- 실행 전59a에서 색상 별칭의 의미가 혼동될 수 있어 로딩 문구를 명시적인 --color-muted-foreground로 정리했다. app/tokens.css의 :root 재정의도 있으므로59a의 실제 전경·배경 동색을 재현한 것은 아니다. NoJS 첨부에 computed color/backgroundColor를 함께 기록하고 두 값이 다름을 검사한다. 이는 동일색 회귀 검사이며 실제 4.5:1 대비 증명이 아니다. 실제 PNG·전후 실행 검증은 대기다.
 - 검증 상태: 구현·diff 검토와 git diff --check를 완료했다. 로컬 설치·빌드·테스트는 실행하지 않았으며 N150 기존 warm NoJS baseline의 전후 검사와 새 정확 소스 QA는 부모/Mendel 후속 실행 대기다. 새 소스의 성공·독립 리뷰·CI·배포 수용을 이전 결과로 소급하지 않는다.
 
 ## 2026-11-12 — 늦은 역 목록 응답의 상세 초점 탈취 교정 중
