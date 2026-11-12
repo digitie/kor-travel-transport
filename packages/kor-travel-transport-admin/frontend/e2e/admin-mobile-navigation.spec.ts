@@ -19,7 +19,7 @@ async function openMenu(page: Page) {
   await expect(dialog).toBeVisible();
   return dialog;
 }
-for (const width of [320, 375, 414, 768, 1023]) {
+for (const width of [320, 375, 414, 768, 992, 993, 1023]) {
   test("Geo형 모바일 왼쪽 드로어·세로 메뉴·키보드 " + width + "px", async ({ page, baseURL }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -139,4 +139,21 @@ test("닫힌 드로어에서 화면 높이만 바뀌어도 문서 위치와 입�
   expect(await page.evaluate(() => window.scrollY)).toBe(before);
   await expect(control).toBeFocused();
   await expect(page.getByRole("navigation", { name: "주요 메뉴", exact: true })).toHaveCount(0);
+  const dialog = await openMenu(page);
+  const last = dialog.getByRole("navigation", { name: "주요 메뉴", exact: true }).getByRole("link").last();
+  await last.focus();
+  await expect(last).toBeInViewport();
+  const logout = dialog.getByRole("button", { name: "로그아웃", exact: true });
+  await expect(logout).toBeInViewport();
+  await dialog.getByRole("button", { name: "메뉴 닫기", exact: true }).focus();
+  await page.keyboard.press("Shift+Tab");
+  await expect(logout).toBeFocused();
+  const lockedScrollY = await page.evaluate(() => window.scrollY);
+  await dialog.locator(".rail-header").hover();
+  await page.mouse.wheel(0, 200);
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  expect(await page.evaluate(() => window.scrollY)).toBe(lockedScrollY);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "메뉴 열기", exact: true })).toBeFocused();
 });

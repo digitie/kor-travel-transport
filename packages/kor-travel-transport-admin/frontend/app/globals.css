@@ -458,11 +458,6 @@ h1, h2, h3 { color: var(--text-primary); }
 .common-menu [aria-current="page"] { background: var(--surface-subtle); }
 .login-panel { width: min(100%, 28rem); }
 .login-panel > h1 { margin: 1rem 1rem 0; }
-@media (max-width: 62rem) {
-  .common-menu [data-slot="app-menu"], .common-menu ul { flex-direction: row; }
-  .common-menu [data-slot="app-menu-group"] { flex-shrink: 0; }
-  .common-menu [data-slot="app-menu-link"] { width: auto; }
-}
 
 /* 유가 통계는 가벼운 SVG와 표를 함께 제공한다. */
 .fuel-stat-section { display: grid; gap: 1rem; margin-block: 1rem; min-width: 0; }
