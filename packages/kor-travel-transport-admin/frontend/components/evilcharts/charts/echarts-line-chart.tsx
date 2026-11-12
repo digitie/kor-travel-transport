@@ -374,7 +374,7 @@ function collectConfig(children: ReactNode): CollectedConfig {
   let brush: BrushSlot = { present: false };
 
   // 공식 합성 컴포넌트 API의 Line/축/범례 슬롯을 배열 복사 없이 읽는다.
-  // eslint-disable-next-line react-x/no-children-for-each
+  // 공식 슬롯 순회를 Transport에서도 그대로 사용한다.
   Children.forEach(children, (child) => {
     if (!isValidElement(child)) return;
     const type = child.type;
@@ -384,7 +384,7 @@ function collectConfig(children: ReactNode): CollectedConfig {
       let dotVariant: DotVariant = "none";
       let activeDotVariant: DotVariant = "none";
       // 공식 Line.Dot/ActiveDot 슬롯을 원래 자식 순회 계약으로 읽는다.
-      // eslint-disable-next-line react-x/no-children-for-each
+      // 공식 슬롯 순회를 Transport에서도 그대로 사용한다.
       Children.forEach(props.children, (dotChild) => {
         if (!isValidElement(dotChild)) return;
         if (dotChild.type === Dot) {

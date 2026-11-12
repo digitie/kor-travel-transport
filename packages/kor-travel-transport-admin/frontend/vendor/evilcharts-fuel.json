@@ -73,12 +73,13 @@
       "url": "https://evilcharts.com/r/echarts-line-chart.json",
       "registry_sha256": "af4497e9835369a7f23a007f8dfdb07e87d813bd7fb143a11d2cebba4c540e5d",
       "upstream_source_sha256": "102e36102ffeeccf1a5d80cfe9a268198cce7bf65a044da531d5dcd91d1bfd60",
-      "installed_source_sha256": "0f2cf596b6a071cea61663d90f050bd2b286b4e3daa93503f6ae79b8b9765615",
+      "installed_source_sha256": "8ddbfc646fa0d0c02e68312e35c488a3f127e4ff4dfc9f22857362922fa3cedf",
       "changes": [
         "앱의 실제 경로로 import 재배치",
         "생성 CSS는 style 텍스트 자식으로 넣어 HTML 삽입 제거",
         "공식 Children.forEach 슬롯 탐색은 유지하고 해당 벤더 구간의 lint 예외 이유 명시",
-        "툴팁은 작은 비영 기온을0으로 반올림하지 않는 문자열 formatter 사용"
+        "툴팁은 작은 비영 기온을0으로 반올림하지 않는 문자열 formatter 사용",
+        "Transport에 없는 react-x 규칙의 eslint-disable 2개만 일반 설명 주석으로 변경; 공식 슬롯 탐색과 런타임 동작 유지"
       ]
     }
   ]
