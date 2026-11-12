@@ -1,5 +1,12 @@
 # 데이터 모델
 
+## 유가·철도0037 downgrade 보호
+
+`fuel_region_summaries` 또는 `kric_timetable_attempts`에 자료가 있으면 downgrade를 거절한다.
+PostgreSQL에서는 비AUTOCOMMIT READ COMMITTED transaction 안에서 두 테이블을 고정 순서로
+ACCESS EXCLUSIVE 잠근 뒤 검사하며, DROP·Alembic 버전 commit까지 잠금을 유지한다. 잠금 대기는5초다.
+격리 수준이나 잠금 조건이 충족되지 않으면 DROP하지 않는다. 정상 upgrade와 수집·조회는 변경하지 않는다.
+
 ## 기준정보 본문과 유한 handle (`0042_reference_export_artifacts`, 운영 반영)
 
 `reference_export_artifacts`는 `(kind, scope_key, input_revision)` 고유키의 불변 본문 manifest다.
