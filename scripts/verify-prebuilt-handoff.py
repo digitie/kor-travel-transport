@@ -23,7 +23,7 @@ RECEIPT_UID = 0
 # 이미지 산출 역할만 정의한다. live state·적용 권한은 기존 handoff/Manager가 소유한다.
 BUILD_RECIPES = {
     "backend": ("backend/Dockerfile", None, "RELEASE_SHA"),
-    "frontend": ("frontend/Dockerfile", "builder", "RELEASE_SHA"),
+    "frontend": ("frontend/Dockerfile", "runner", "RELEASE_SHA"),
     "transport-admin-web": ("packages/kor-travel-transport-admin/frontend/Dockerfile", "runner", "TRANSPORT_ADMIN_RELEASE_SHA"),
     "dagster-gateway": ("backend/Dockerfile.dagster-gateway", None, "RELEASE_SHA"),
 }
@@ -303,6 +303,8 @@ def validate_normal_build_image(image: dict, role: str, revision: str, architect
     config = image.get("Config") or {}
     if any((config.get("Labels") or {}).get(k) != v for k, v in expected.items()):
         raise ContractError("image OCI/source/tree/role/input 불일치")
+    if role in {"frontend", "transport-admin-web"} and config.get("User") != "node":
+        raise ContractError("web image의 최종 USER node가 아닙니다")
     name = BUILD_RECIPES[role][2]
     releases = [v.split("=", 1)[1] for v in config.get("Env", []) if v.startswith(name + "=")]
     if releases != [revision]:

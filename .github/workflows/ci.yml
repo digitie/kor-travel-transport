@@ -74,6 +74,7 @@ jobs:
       - run: npm run type-check
       - run: npm run lint
       - run: npm run build
+      - run: node --test ../scripts/verify-web-runtime.test.cjs
 
   transport-admin:
     runs-on: ubuntu-latest

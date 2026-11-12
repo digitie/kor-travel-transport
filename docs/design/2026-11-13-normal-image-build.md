@@ -36,7 +36,7 @@ NEXT_PUBLIC 값은 웹 산출물에 포함될 수 있지만 빌드 로그·recei
 | 요청 역할 | 실제 이미지와 Dockerfile | 허용 public 입력 |
 |---|---|---|
 | backend, dagster-code-server, migrate | 동일 backend 이미지, backend/Dockerfile | 없음 |
-| frontend | frontend/Dockerfile의 기존 builder target | NEXT_PUBLIC_API_BASE_URL, NEXT_PUBLIC_API_PORT |
+| frontend | frontend/Dockerfile의 production runner target | NEXT_PUBLIC_API_BASE_URL, NEXT_PUBLIC_API_PORT |
 | transport-admin-web | 관리자 Dockerfile runner, repo root context·공유 frontend 유지 | NEXT_PUBLIC_VWORLD_API_KEY, NEXT_PUBLIC_TRANSPORT_DAGSTER_URL |
 | dagster-gateway | backend/Dockerfile.dagster-gateway | 없음 |
 
@@ -95,12 +95,30 @@ Escape 및 실제 목록 opener focus 복귀를 검사한다. 제품 CSS나 공�
 - B1: 선택 Node22.23.1/npm12.0.1 clean Linux install/full gate 및 실제 병합된 Common guard ref 연결 후 publish.
 - B2/B3: 승인된 격리 환경의 amd64/arm64 실제 정상 build, source/lock/C11 bytes,
   native worker·ABI·entrypoint 및 필요한 실제 실행 경로 검사. ignore-scripts 자체는 ABI PASS가 아니다.
-- B4: standalone/non-root는 별도 bounded packaging delta다. UID/config 권한·정상 start·
-  로그인fixture·worker·routes·SSR/readiness를 같은 architecture에서 검증하기 전에는 변경하지 않는다.
-  이번 patch의 USER/ENTRYPOINT/Next packaging은 보존하며 용량 개선을 주장하지 않는다.
+- B4: 공개·관리자 production runner를 분리하고 USER node와 이미지 내부 cache 소유권을 구현했다.
+  전체 node_modules/기존 start 계약을 보존한다. 실제 새 이미지의 uid/config/cache·정상 start·
+  로그인fixture·worker·routes·SSR/readiness는 미실행이며 적용 전 필수다.
+  backend/CS/gateway UID는 역할별 예외로 유지한다.
+  [ADR-017과 실제 probe 계약](../adr/017-web-production-runner-non-root.md)을 따른다.
 - B5/B6: 원 두 독립 리뷰, exact CI, 새 추적 E2E 및 기존 공식 Manager 역할별 인계·비선택 보존.
   실제 적용은 기존 런북과 SDK 절차의 별도 권한·증거로만 한다.
 - downgrade/DB rollback은 T-DOWNGRADE-GUARDS-20261113 P2 OPEN gate다.
   정상 build/controller는 downgrade를 호출하지 않으며 이 patch에서 DDL을 고치거나 시험하지 않는다.
 
 CI 순서·needs·fail-fast 분석과 재배치는 이 범위에 포함하지 않는다.
+
+
+## 새 웹 이미지의 production probe
+
+새 실제 이미지가 나온 뒤 기본 USER로 아래 두 역할을 각각 검사한다.
+이 문서의 명령은 준비된 검사 절차이며 현재 실제 image 실행 증거가 아니다.
+
+```text
+docker run --rm --network none --entrypoint node <공개immutable-imageID> /app/verify-web-runtime.cjs frontend <전체mergedSHA>
+docker run --rm --network none --entrypoint node <관리자immutable-imageID> /app/verify-web-runtime.cjs transport-admin-web <전체mergedSHA>
+```
+
+검사는 image 자체의 /app과 /home/node cache에서만 실행한다. host bind·임의 --user·키 값은 주지 않는다.
+기본 node의 파일 읽기/캐시 쓰기·Next config/native loader·worker 파일 동일성 범위이며
+서버 시작·HTTP/로그인·worker 실행/browser의 별도 실제 수용을 대체하지 않는다.
+probe 단위 fixture는 make frontend-check/CI에서 실제 temp 파일과 negative permission control로 검사한다.

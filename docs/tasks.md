@@ -8,9 +8,10 @@
     실제 image build/source proof는 별도 GO 후다.
   - B3: amd64/arm64·docker/OCI·역할별 ID 검사 구현. 실제 양 architecture의
     C11 bytes·native worker/ABI·entrypoint 검증은 미실행이다.
-  - B4: standalone/non-root는 **별도 bounded 후속**이다. 기본 USER/config 권한·
-    start·로그인fixture·worker·routes·SSR/readiness 회귀 전에는 변경하지 않는다.
-    현재 UID/ENTRYPOINT/runtime 구조는 보존한다.
+  - B4: 공개·관리자 production runner/USER node·이미지 내부 cache 소유권을 구현했다.
+    full node_modules/start 계약과 backend/CS/gateway의 기존 UID는 역할별로 보존한다.
+    [ADR-017](adr/017-web-production-runner-non-root.md). 실제 새 이미지의 기본 사용자·
+    config/cache·start·로그인fixture·worker·routes·SSR/readiness 수용은 미실행, 적용 전 필수다.
   - B5: 기존 prebuilt validator 재사용·normal build 의미·원본 receipt hash 연결 구현.
     기존 handoff가 live-state 정본이며 새 build receipt는 적용 권한을 주지 않는다.
   - B6: SDK508의 기존 core/public/admin 역할 지원과 공식 경로 재사용.

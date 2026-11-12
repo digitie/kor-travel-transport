@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import re
 import shlex
 import subprocess
 import tarfile
@@ -112,6 +113,9 @@ class FakeDocker:
                     "linux/"
                 ),
                 "Config": {
+                    "User": "node"
+                    if role in {"frontend", "transport-admin-web"}
+                    else "",
                     "Labels": labels,
                     "Env": [release_name + "=" + env[release_name]],
                 },
@@ -256,6 +260,7 @@ def test_invalid_cli_never_echoes_input_values(
         "source",
         "release",
         "duplicate-release",
+        "root-user",
         "copy",
         "input",
         "tree",
@@ -285,6 +290,8 @@ def test_wrong_actual_image_is_not_receipted(
                 "tree": "source-tree",
             }[bad]
             labels["io.kor-travel-transport." + name] = "0" * 64
+        if bad == "root-user":
+            image["Config"]["User"] = "root"
         if bad == "release":
             image["Config"]["Env"] = ["RELEASE_SHA=unknown"]
         if bad == "duplicate-release":
@@ -388,6 +395,15 @@ def test_production_dockerfile_coverage_and_no_new_runtime_packaging(builder):
     assert set(paths) == {value[0] for value in builder.contract.BUILD_RECIPES.values()}
     for role, (name, _, release_name) in builder.contract.BUILD_RECIPES.items():
         text = paths[name].read_text()
+        target = builder.contract.BUILD_RECIPES[role][1]
+        if target:
+            assert re.search(
+                r"^FROM .+ AS " + re.escape(target) + r"$", text, re.MULTILINE
+            ), role
+        if role in {"frontend", "transport-admin-web"}:
+            assert target == "runner"
+            runner = text.rsplit(" AS runner", 1)[1]
+            assert re.search(r"^USER node$", runner, re.MULTILINE), role
         assert "ARG " + release_name + "=unknown" in text, role
         declarations = [
             token

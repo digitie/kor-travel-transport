@@ -13,6 +13,7 @@ frontend-check:
 	cd frontend && npm run type-check
 	cd frontend && npm run lint
 	cd frontend && npm run build
+	node --test scripts/verify-web-runtime.test.cjs
 
 admin-install:
 	cd packages/kor-travel-transport-admin/frontend && npm ci --engine-strict

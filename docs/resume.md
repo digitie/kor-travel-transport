@@ -7,7 +7,9 @@ WSL 격리 unit100PASS가 있다. 실제 image/운영/SDK/SSH/DB/Map 작업은 �
 
 다음 한 작업은 후보를 고정해 Python3.12/fresh Linux full gate·browser QA·원2리뷰로 넘기는 것이다.
 Common 실제 toolchain guard ref 이전 publish는 보류한다.
-B4는 별도 bounded 후속이고 T-DOWNGRADE-GUARDS-20261113은 P2 OPEN이다.
+B4 웹 runner/USER node·cache/probe도 구현했고 작은 계약 Python103/Node19PASS다.
+실제 새 image QA는 미완이다.
+backend/CS/gateway UID는 ADR-017 역할별 예외로 보존하고 T-DOWNGRADE-GUARDS-20261113은 P2 OPEN이다.
 과거 FAIL을 현재 PASS로 바꾸지 않는다.
 [계약·남은 gate](design/2026-11-13-normal-image-build.md), [task](tasks.md).
 

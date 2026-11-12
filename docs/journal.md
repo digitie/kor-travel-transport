@@ -1,3 +1,18 @@
+## 2026-11-13 — B4 웹 production runner와 non-root 소스 구현
+
+- 2db591f/100PASS를 그대로 보존하고 같은 branch에서 B4를 추가했다.
+  공개 앱을 별도 runner로 바꾸고 공개·관리자 모두 USER node를 사용한다.
+  runtime file list/config/tsconfig/public worker·기존 npm/직접 next start와 공유 parking-ui 설치는 보존한다.
+- 권한은 이미지의 .next·node HOME cache에만 조정한다. host chmod·ENV·backend/CS/gateway UID는 바꾸지 않았다.
+  이 역할별 CI-33 처리와 full node_modules 유지 이유는 [ADR-017](adr/017-web-production-runner-non-root.md)에 기록했다.
+- 실제 파일·누락 config/entry·worker 변조·깨진 parking 경로·root/잘못된 npm/release·cache 권한을
+  구분하는 runtime probe/작은 fixture를 추가했다. 새 실제 image/HTTP/browser 수용은 아직 미실행이다.
+  기존 native QA를 새 이미지로 확대하지 않는다.
+- 작은 검증은 Python 계약103PASS와 Node runtime 파일/권한 fixture19PASS다.
+  실제 image/config loader·서버·HTTP/auth/worker 실행 수용과 구분한다.
+- 실제 Common guard ref·새 역할 이미지 QA·원2리뷰·exact CI 후 한 최종 PR/merged source 이미지로 인계한다.
+  중간 apply·설치·heavy build·SDK/SSH/DB/Map 작업0이다.
+
 ## 2026-11-13 — build-only 소스 후보와 추적 지도 E2E oracle 수정
 
 - 7aec와 PR180 merge110d의 tree389164 동일을 확인하고 dirty B1 bytes를 보존해
