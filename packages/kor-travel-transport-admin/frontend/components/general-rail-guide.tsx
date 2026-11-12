@@ -1,6 +1,5 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { MapFilterBar, MapFilterField } from "@kor-travel/ui/map-controls";
@@ -11,8 +10,8 @@ import { Input } from "./ui/input";
 import { InfoButton } from "./info-button";
 import { Button } from "./ui/button";
 import { GeneralRailStationDetail } from "./general-rail-station-detail";
+import { TransportMap } from "./transport-map";
 
-const TransportMap = dynamic(() => import("./transport-map").then((m) => m.TransportMap), { ssr: false });
 type Guide = { fetched_at: string; stale: boolean; kind: "ktx" | "main"; category_code: string; total: number;
   categories: { code: string; name: string }[];
   items: { provider_id: string; station_code: string | null; station_name: string; address: string | null; phone: string | null; longitude: number | null; latitude: number | null; line_names?: string[] }[] };

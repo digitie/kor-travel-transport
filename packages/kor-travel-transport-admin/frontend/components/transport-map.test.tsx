@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Place } from "@/lib/journey";
 
@@ -24,6 +25,20 @@ vi.mock("./map-overlays", () => ({
 vi.mock("./filter-combobox", () => ({ FilterCombobox: ({ options, value, onChange, placeholder }: { options: {value:string;label:string}[]; value:string[]; onChange:(value:string[])=>void; placeholder:string }) => <select aria-label={placeholder} value={value[0] ?? ""} onChange={event=>onChange(event.target.value ? [event.target.value] : [])}><option value="">전체</option>{options.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select> }));
 import { TransportMap } from "./transport-map";
 import { layoutFuelRegionCards } from "@/lib/fuel-region-layout";
+import { GeneralRailGuide } from "./general-rail-guide";
+
+test("역 지도는 서버 HTML부터 공통 작업면과 지도·목록 탭을 제공한다", () => {
+  const container = document.createElement("div");
+  container.innerHTML = renderToStaticMarkup(<GeneralRailGuide />);
+  const workspace = container.querySelector(
+    'section[aria-label="철도 역 지도"] .map-workbench [data-slot="map-workspace"]',
+  );
+  expect(workspace).not.toBeNull();
+  const tabs = Array.from(workspace?.querySelectorAll('[role="tab"]') ?? []);
+  expect(tabs).toHaveLength(2);
+  expect(tabs.some(tab => tab.textContent?.includes("지도"))).toBe(true);
+  expect(tabs.some(tab => tab.textContent?.includes("목록"))).toBe(true);
+});
 
 test.each([[1120, 832], [351, 787]])("지역 카드 배치는 %sx%s에서 충돌과 범위 통계 영역을 피하며 부족한 공간을 알린다", (width, height) => {
   const cards = Array.from({ length: 12 }, () => ({ left: 110, top: 140, width: 130, height: 130 }));

@@ -13,7 +13,7 @@ vi.mock("@/lib/journey-hooks", () => ({
   useSeoulToday: () => "2026-10-28",
   useNearbyPosition: () => ({ position: null, positionError: null, locating: false, locate: () => {} }),
 }));
-vi.mock("next/dynamic", () => ({ default: () => function MapFixture({ toolbar, feedback, details, places, selectedPlace, onSelectPlace, view, onViewChange, focusRevision, detailKey }: {
+vi.mock("./transport-map", () => ({ TransportMap: function MapFixture({ toolbar, feedback, details, places, selectedPlace, onSelectPlace, view, onViewChange, focusRevision, detailKey }: {
   toolbar?: ReactNode; feedback?: ReactNode; details?: ReactNode; places: Place[]; selectedPlace?: Place | null;
   onSelectPlace: (place: Place) => void; view: string; onViewChange: (view: "map" | "list") => void; focusRevision: number; detailKey?: string;
 }) { return <div data-map-view={view} data-map-focus={focusRevision} data-detail-key={detailKey} data-selected-provider={selectedPlace?.provider_id}>

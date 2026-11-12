@@ -92,7 +92,8 @@ function useGeneralRailJourney({ initialDepartureName, initialStationIntent }: {
   const [reference,setReference]=useState<{catalog:RailCatalog;stations:RailStation[];stale:boolean;incomplete:boolean}|null>(null);
   const intentRevision=useRef(1);
   const [guideOpen,setGuideOpen]=useState(false);
-  const [stationSearch,setStationSearch]=useState<Partial<Record<"departure"|"arrival",{revision:number;text:string}>>>(()=>initialStationIntent?{[initialStationIntent.role]:{revision:1,text:initialStationIntent.station.name}}:initialDepartureName?{departure:{revision:1,text:initialDepartureName}}:{});
+  // 초기 이름 채움은 검색어 전달이며, 명시적 역 지정만 자동 초점을 요청한다.
+  const [stationSearch,setStationSearch]=useState<Partial<Record<"departure"|"arrival",{revision:number;text:string}>>>(()=>initialStationIntent?{[initialStationIntent.role]:{revision:1,text:initialStationIntent.station.name}}:initialDepartureName?{departure:{revision:0,text:initialDepartureName}}:{});
   const [referenceError,setReferenceError]=useState("");
   const [revision,setRevision]=useState(0);
   const [departure,setDeparture]=useState<RailStation|null>(null), [arrival,setArrival]=useState<RailStation|null>(null);
