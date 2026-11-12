@@ -29,10 +29,16 @@ function useHighwayStatistics() {
   // 노선 선택지: 1일 통계(서버 캐시 60초)의 교통 노선과 조회 표본의 합집합이다. 표본에 없는 노선도 고를 수 있다.
   const [routeLabels, setRouteLabels] = useState<Record<string, string>>({});
   const [revision, setRevision] = useState(0);
+  const [trafficRevision, setTrafficRevision] = useState(0);
   const [clock, setClock] = useState(() => Date.now());
   useEffect(() => {
-    const timer = setInterval(() => setClock(Date.now()), 60_000);
-    return () => clearInterval(timer);
+    const refreshVisible = () => {
+      setClock(Date.now());
+      if (document.visibilityState !== "hidden") setTrafficRevision((value) => value + 1);
+    };
+    const timer = setInterval(refreshVisible, 60_000);
+    document.addEventListener("visibilitychange", refreshVisible);
+    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", refreshVisible); };
   }, []);
   useEffect(() => {
     const controller = new AbortController();
@@ -46,9 +52,9 @@ function useHighwayStatistics() {
         setRouteLabels((labels) => ({ ...labels, ...Object.fromEntries(data.items.filter((row) => row.route_no)
           .map((row) => [row.route_no!, highwayRouteLabel(row.route_no, row.route_name)])) }));
       })
-      .catch(() => { if (!controller.signal.aborted) setState({ error: true }); });
+      .catch(() => { if (!controller.signal.aborted) setState((current) => ({ ...current, error: true })); });
     return () => controller.abort();
-  }, [revision, route]);
+  }, [revision, route, trafficRevision]);
   useEffect(() => {
     const controller = new AbortController();
     transportGet<{ traffic: { route_no: string | null }[] }>("transport/statistics?days=1", controller.signal)

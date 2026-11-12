@@ -13,7 +13,8 @@
     "./analytics": "./components/pages/analytics-view.tsx",
     "./history": "./components/pages/history-view.tsx",
     "./fees": "./components/pages/fees-view.tsx",
-    "./styles.css": "./parking.css"
+    "./styles.css": "./parking.css",
+    "./parking-charts": "./components/parking-availability-charts.tsx"
   },
   "files": [
     "components/pages",
@@ -29,7 +30,13 @@
     "lib/dashboard-preferences.ts",
     "lib/dashboard-view-helpers.ts",
     "lib/utils.ts",
-    "parking.css"
+    "parking.css",
+    "components/evilcharts",
+    "components/parking-availability-charts.tsx",
+    "components/parking-pie.tsx",
+    "components/parking-pattern-heatmap.tsx",
+    "components/parking-pattern-heatmap-canvas.tsx",
+    "lib/parking-chart-model.ts"
   ],
   "peerDependencies": {
     "react": "19.3.1",
@@ -44,6 +51,8 @@
     "@kor-travel/tokens": "0.1.1",
     "react-hook-form": "7.92.0",
     "zod": "4.6.7",
-    "zustand": "5.1.0"
+    "zustand": "5.1.0",
+    "echarts": "6.1.0",
+    "motion": "14.12.0"
   }
 }

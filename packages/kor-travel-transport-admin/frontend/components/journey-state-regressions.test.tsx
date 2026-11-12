@@ -97,3 +97,24 @@ test("공항 주차 HTTP 실패는 요청 정체를 유지해 무한 로딩으�
   expect(host.textContent).toContain("주차 현황을 불러오지 못했습니다.");
   expect(host.textContent).not.toContain("주차 현황을 확인하는 중입니다…");
 });
+
+
+test("지금 이후만은 UTC/KST 정상 DTO의 이후 편을 유지하고 해제하면 지난 편도 보인다", async () => {
+  vi.setSystemTime(new Date("2026-11-12T03:00:00Z")); calendar.today = seoulDate();
+  const airport = { id: 1, kind: "airport", provider_id: "GMP", source: "fixture", name: "김포", latitude: null, longitude: null, prices: [], line_names: [], facilities: [], updated_at: "2026-11-12T00:00:00Z" };
+  const flight = (flight_number: string, scheduled_at: string) => ({ flight_number, scheduled_at, estimated_at: null, direction: "departure", airline: "시험 항공", origin_airport: "GMP", destination_airport: "CJU", status: "예정" });
+  fetchMock.mockImplementation(async (url: string) => {
+    if (url.includes("features/places")) return json({ items: [airport] });
+    if (url.includes("flights/status")) return json({ status: "success", items: [flight("FUTURE", "2026-11-12T12:30:00+09:00"), flight("PAST", "2026-11-12T02:30:00Z")], error_message: null });
+    return json({ items: [], generated_at: "2026-11-12T03:00:00Z" });
+  });
+  await act(async () => root.render(<FlightJourney />));
+  const rows = () => [...host.querySelectorAll(".departure-row")].map((row) => row.textContent);
+  expect(rows()).toHaveLength(1); expect(rows()[0]).toContain("FUTURE");
+  const checkbox = host.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+  expect(checkbox.checked).toBe(true);
+  await act(async () => checkbox.click());
+  expect(rows()).toHaveLength(2); expect(rows().join()).toContain("PAST");
+  await act(async () => checkbox.click());
+  expect(rows()).toHaveLength(1); expect(rows()[0]).toContain("FUTURE");
+});

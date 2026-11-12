@@ -1,5 +1,6 @@
 "use client";
 
+import { ParkingPatternHeatmap } from "../parking-pattern-heatmap";
 import { DailyFlightOverlayChart } from "../daily-flight-overlay-chart";
 import { Alert } from "../ui/alert";
 import { VirtualTable } from "@kor-travel/ui/virtual-table";
@@ -94,6 +95,8 @@ function WeekdayPanel({ data }: AnalyticsPanelProps) {
                   </span>
                 </div>
 
+                <ParkingPatternHeatmap rows={weekdayHourlyPatterns.map((row) => ({ key: String(row.weekday), label: row.weekday_name, hourly_buckets: row.hourly_buckets }))} />
+                <details><summary>시간대별 수치 표</summary>
                 <div className="heatmap-scroll" data-testid="weekday-hour-heatmap">
                   <VirtualTable ariaLabel="요일별 시간대 잔여 주차면" containerClassName="heatmap-table" data={weekdayHourlyPatterns} getRowId={(pattern) => String(pattern.weekday)} virtualized={false} columns={[
                     { id: 'label', header: '요일', cell: ({ row: { original: pattern } }) => <>{pattern.weekday_name}</> },
@@ -102,11 +105,12 @@ function WeekdayPanel({ data }: AnalyticsPanelProps) {
                         const bucket = pattern.hourly_buckets.find((item) => item.hour === hour);
                         const value = bucket?.average_available_spaces ?? null;
                         return <div data-testid={`weekday-hour-cell-${pattern.weekday}-${hour}`} style={buildAvailabilityHeatStyle(value, maxHeatValue)}
-                          title={value === null ? `${pattern.weekday_name} ${formatHourLabel(hour)} 관측 없음` : `${pattern.weekday_name} ${formatHourLabel(hour)} 평균 ${Math.round(value)}대`}>
-                          {value === null ? '-' : Math.round(value)}</div>;
+                          title={value === null ? `${pattern.weekday_name} ${formatHourLabel(hour)} 관측 없음` : `${pattern.weekday_name} ${formatHourLabel(hour)} 평균 ${value}대`}>
+                          {value === null ? '-' : value}</div>;
                       } })),
                   ]} />
                 </div>
+                </details>
               </>
             )}
           </article>
@@ -132,6 +136,8 @@ function HolidayPanel({ data }: AnalyticsPanelProps) {
             ) : (
               <>
                 {holidayPatterns?.error_message ? <p className="notice error">{holidayPatterns.error_message}</p> : null}
+                <ParkingPatternHeatmap rows={holidayPatternItems.map((row) => ({ key: `${row.local_date}-${row.name}`, label: `${row.local_date} ${row.name}`, hourly_buckets: row.hourly_buckets }))} />
+                <details><summary>특수일별 수치 표</summary>
                 <div className="heatmap-scroll" data-testid="holiday-pattern-heatmap">
                   <VirtualTable ariaLabel="특수일별 시간대 잔여 주차면" containerClassName="heatmap-table holiday-heatmap-table" data={holidayPatternItems} getRowId={(pattern) => `${pattern.local_date}-${pattern.name}`} virtualized={false} columns={[
                     { id: 'label', header: '특수일', cell: ({ row: { original: pattern } }) => <><strong>{formatHolidayDate(pattern.local_date, pattern.weekday_name)}</strong><small>{pattern.name}</small></> },
@@ -140,11 +146,12 @@ function HolidayPanel({ data }: AnalyticsPanelProps) {
                         const bucket = pattern.hourly_buckets.find((item) => item.hour === hour);
                         const value = bucket?.average_available_spaces ?? null;
                         return <div data-testid={`holiday-hour-cell-${pattern.local_date}-${hour}`} style={buildAvailabilityHeatStyle(value, maxHolidayHeatValue)}
-                          title={value === null ? `${pattern.name} ${formatHourLabel(hour)} 관측 없음` : `${pattern.name} ${formatHourLabel(hour)} 평균 ${Math.round(value)}대`}>
-                          {value === null ? '-' : Math.round(value)}</div>;
+                          title={value === null ? `${pattern.name} ${formatHourLabel(hour)} 관측 없음` : `${pattern.name} ${formatHourLabel(hour)} 평균 ${value}대`}>
+                          {value === null ? '-' : value}</div>;
                       } })),
                   ]} />
                 </div>
+                </details>
               </>
             )}
           </article>

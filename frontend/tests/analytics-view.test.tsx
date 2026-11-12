@@ -1,3 +1,5 @@
+vi.mock("@/components/parking-availability-charts", () => ({ ParkingAvailabilityCharts: () => null }));
+vi.mock("@/components/parking-pattern-heatmap", () => ({ ParkingPatternHeatmap: () => null }));
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -196,7 +198,7 @@ describe("AnalyticsView", () => {
     renderAnalytics();
 
     await waitFor(() => {
-      expect(apiClient.getDashboardAnalytics).toHaveBeenCalledWith("GMP", null);
+      expect(apiClient.getDashboardAnalytics).toHaveBeenCalledWith("GMP", null, expect.any(AbortSignal));
     });
     expect(apiClient.getFlightStatus).toHaveBeenCalledWith("GMP", expect.any(AbortSignal));
   });
@@ -257,14 +259,14 @@ describe("AnalyticsView", () => {
     );
 
     await waitFor(() => {
-      expect(apiClient.getDashboardAnalytics).toHaveBeenCalledWith("GMP", null);
+      expect(apiClient.getDashboardAnalytics).toHaveBeenCalledWith("GMP", null, expect.any(AbortSignal));
     });
     apiClient.getDashboardAnalytics.mockClear();
 
     await user.click(screen.getByRole("button", { name: "select lot" }));
 
     await waitFor(() => {
-      expect(apiClient.getDashboardAnalytics).toHaveBeenCalledWith("GMP", 1);
+      expect(apiClient.getDashboardAnalytics).toHaveBeenCalledWith("GMP", 1, expect.any(AbortSignal));
     });
     expect(apiClient.getDashboardAnalytics).toHaveBeenCalledTimes(1);
   });
