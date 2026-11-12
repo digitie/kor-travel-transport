@@ -1,3 +1,11 @@
+## 현재 상태 — 2026-11-13 취소 처리 후속과 최종 Common ref 연결
+
+bdb2 불변 후보에서 EOF 최종 wait 취소 회수와 redacted log flush를 보강했다.
+회귀 전2FAIL/1PASS·후3PASS, 작성자 격리 Python110PASS이며 실제 Docker 취소 검증은 미완이다.
+Common 실제 merge36e4d285ea926b9d8c20da4221ade86ebf74c04d의 도구 guard와 두 생산 Node Dockerfile을 연결했다.
+공개 bdb2 이미지 R2 PASS와 원124 NOTPASS를 별도 보존하며 후속 이미지의 PASS로 소급하지 않는다.
+다음 한 작업은 원2 bounded 재검토와 최종 exact CI, 새 역할 이미지/ARM 수용이다. 새 build/apply는 아직 실행하지 않는다.
+
 ## 현재 상태 — 2026-11-13 빌드 생태계 소스 후보
 
 PR180 merge110d(tree389164) 기반 build-only delta를 구현 중이다.

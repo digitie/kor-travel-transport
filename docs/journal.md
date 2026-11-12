@@ -1,3 +1,12 @@
+## 2026-11-13 — 빌드 종료 대기 취소 회수와 실제 Common guard 연결
+
+- A-TR-BUILD-P2-01의 stdout EOF 뒤 최종 wait 중단을 재현했다. 최종 wait도 기존 취소 처리 안으로 옮겨 소유 process group만 TERM·제한 대기·필요 시 KILL·reap한다. 정상 종료에서는 kill하지 않는다.
+- EOF 회귀는 원 bdb2에서 2FAIL/1PASS, 수정 후 3PASS다. 작성자 전체 격리 범위는 Python110PASS(두 모듈108+기존 관리자 계약2)이며 Python3.13.14의 작은 시험이다. 실제 Docker 취소나 production Python3.12 검증으로 확대하지 않는다.
+- redaction 후 줄마다 flush해 종료 대기 중에도 진행 로그가 보이게 했다. 관측 fixture에서 원문 비밀 sentinel은 출력되지 않았다.
+- reusable uses/common-ref를 실제 merge36e4d285ea926b9d8c20da4221ade86ebf74c04d로 고정하고 생산 Node Dockerfile 두 경로를 연결했다. 두 설치 anchor는 기존 frontend matrix가 각각 검사하며 별도 도구 anchor는 없다. parking-ui source package는 설치 정본이 아니므로 변경하지 않는다.
+- bdb2 공개 이미지의 원 runtime124는 NOTPASS로 보존한다. I/O 조건 회복 후 승인된 한 번의 R2는 같은 이미지·120초 budget·기본 node 사용자에서 파일/config/cache·C11 153파일·기본/공유 start HTTP를 통과했다. 이 후속 commit의 새 이미지 결과로 쓰지 않는다.
+- bdb2 원본 리뷰/원문은 유지하며 최종 원2 재검토·exact CI·관리자 이미지/지도 E2E·ARM·merged source 정상 이미지 및 공식 수용은 미완이다. 신규 build/install·운영·SDK·DB·Map 작업은 하지 않았다.
+
 ## 2026-11-13 — 정상 build target·archive 재현성과 B6 역할 경계 보강
 
 - 공개·관리자의 production target은 runner이며 builder target은 Docker 호출 전에 거절한다.

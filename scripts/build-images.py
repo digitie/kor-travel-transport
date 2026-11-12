@@ -337,6 +337,8 @@ def execute_build(command: list[str], env: dict, log: Path, values: list[str]) -
                 for value in sorted({v for v in values if v}, key=len, reverse=True):
                     line = line.replace(value, "[REDACTED]")
                 stream.write(line)
+                stream.flush()
+            code = p.wait()
         except BaseException:
             if p.poll() is None:
                 os.killpg(p.pid, signal.SIGTERM)
@@ -348,7 +350,7 @@ def execute_build(command: list[str], env: dict, log: Path, values: list[str]) -
             raise
         finally:
             p.stdout.close()
-        if p.wait():
+        if code:
             raise ContractError("normal Docker build 실패; redacted log를 보세요")
 
 

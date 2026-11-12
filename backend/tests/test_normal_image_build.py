@@ -622,3 +622,61 @@ def test_legacy_gateway_receipt_cannot_claim_current_api_gateway_build(
     )
     assert "transport-api-gateway" not in receipt["images"]
     assert receipt["actualApplyAllowed"] is False and receipt["deployReady"] is False
+
+
+@pytest.mark.parametrize("term_times_out", [False, True])
+def test_eof_final_wait_interrupt_reclaims_owned_group(
+    builder, monkeypatch, tmp_path, term_times_out
+):
+    calls = []
+
+    class Process:
+        pid = 123456789
+        stdout = io.StringIO("")
+
+        def poll(self):
+            return None
+
+        def wait(self, timeout=None):
+            calls.append(("wait", timeout))
+            if len([x for x in calls if x[0] == "wait"]) == 1:
+                raise InterruptedError("cancel during EOF wait")
+            if timeout == 15 and term_times_out:
+                raise subprocess.TimeoutExpired("owned-build", timeout)
+            return 0
+
+    process = Process()
+    monkeypatch.setattr(builder.subprocess, "Popen", lambda *a, **k: process)
+    monkeypatch.setattr(
+        builder.os, "killpg", lambda pid, sig: calls.append(("kill", pid, sig))
+    )
+    with pytest.raises(InterruptedError, match="EOF wait"):
+        builder.execute_build(["docker", "build"], {}, tmp_path / "eof.log", [])
+    kills = [x for x in calls if x[0] == "kill"]
+    assert kills == [("kill", process.pid, builder.signal.SIGTERM)] + (
+        [("kill", process.pid, builder.signal.SIGKILL)] if term_times_out else []
+    )
+    assert [x for x in calls if x[0] == "wait"] == [
+        ("wait", None),
+        ("wait", 15),
+        *([("wait", None)] if term_times_out else []),
+    ]
+    assert process.stdout.closed
+
+
+def test_normal_eof_final_wait_never_kills_owned_group(builder, monkeypatch, tmp_path):
+    calls = []
+
+    class Process:
+        stdout = io.StringIO("")
+
+        def wait(self, timeout=None):
+            calls.append(("wait", timeout))
+            return 0
+
+    monkeypatch.setattr(builder.subprocess, "Popen", lambda *a, **k: Process())
+    monkeypatch.setattr(
+        builder.os, "killpg", lambda *args: calls.append(("kill", args))
+    )
+    builder.execute_build(["docker", "build"], {}, tmp_path / "normal-eof.log", [])
+    assert calls == [("wait", None)]
