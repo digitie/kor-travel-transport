@@ -541,7 +541,7 @@ function TransportMapCanvas({ mapContainer, mapViewport, setMapUnavailableMessag
   return (<div className="map-primary" ref={mapContainer}><MountCamera camera={mapViewport ? { center: [mapViewport.longitude, mapViewport.latitude], zoom: mapViewport.zoom } : DEFAULT_CAMERA}>{(initialCamera) => <VWorldMapView apiKey={VWORLD_KEY} center={initialCamera.center} zoom={initialCamera.zoom} minZoom={5}
 
         className="transport-map-canvas" layerType="Base" navigation={false} geolocate={false} scale
-        loadingSkeleton={<p className="loading">지도를 준비하는 중입니다…</p>} fallback={(info) => <MapUnavailable info={info} onMessage={setMapUnavailableMessage} />}
+        loadingSkeleton={<p className="transport-map-loading" role="status">지도를 준비하는 중입니다…</p>} fallback={(info) => <MapUnavailable info={info} onMessage={setMapUnavailableMessage} />}
         unsupportedTileFallback={{ imageUrl: MAP_FALLBACK_IMAGE }} transformRequest={basemap.transformRequest}
         onError={basemap.onError} onIdle={basemap.onIdle} onLoad={moved} onMoveEnd={(event) => moved(event.target)}>
         <ZoomButtons />
