@@ -20,13 +20,14 @@ const groups = [
   { id: "overview", label: undefined, items: [["/", "홈", Home], ["/map", "교통 지도", Map]] },
   { id: "highways", label: "고속도로", items: [["/highways", "고속도로 지도", Route], ["/highways/statistics", "고속도로 통계", ChartNoAxesCombined]] },
   { id: "fuel", label: "유가", items: [["/fuel", "유가 지도", Fuel], ["/fuel/statistics", "유가 통계", ChartNoAxesCombined]] },
-  { id: "trains", label: "기차", items: [["/rail", "철도", TrainFront], ["/rail/metro", "도시철도", TrainFront], ["/rail/mapping", "역 코드 매핑", Waypoints]] },
+  { id: "parking-lots", label: "주차장", items: [["/parking-lots", "일반 주차장", ParkingCircle]] },
+  { id: "trains", label: "기차", items: [["/rail", "철도", TrainFront], ["/rail/metro", "도시철도", TrainFront], ["/rail/timetable", "시간표 조회", TrainFront], ["/rail/mapping", "역 코드 매핑", Waypoints]] },
   { id: "buses", label: "버스", items: [["/bus/express", "고속버스", Bus], ["/bus/intercity", "시외버스", Bus]] },
   { id: "air-sea", label: "항공·여객선", items: [["/flights", "비행·공항", Plane], ["/parking", "공항 주차장", ParkingCircle], ["/ferry", "배편", ShipWheel]] },
   { id: "operations", label: "운영 관리", items: [["/collections", "수집 상태", Activity], ["/admin/dagster", "Dagster", Database], ["/api-test", "API 점검", ChartNoAxesCombined]] },
 ] as const;
 const hrefs = groups.flatMap((group) => group.items.map(([href]) => String(href)));
-const mapPages = new Set(["/map", "/fuel", "/highways", "/rail", "/rail/metro", "/bus/express", "/bus/intercity", "/flights", "/ferry"]);
+const mapPages = new Set(["/map", "/fuel", "/parking-lots", "/highways", "/rail", "/rail/metro", "/bus/express", "/bus/intercity", "/flights", "/ferry"]);
 
 export function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();

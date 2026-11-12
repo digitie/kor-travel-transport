@@ -19,6 +19,7 @@ export const PLACE_MARKER_STYLE: Readonly<Record<PlaceKind, { markerIcon: string
   rail_station: { markerIcon: "rail", markerColor: "P-01" },
   ferry_port: { markerIcon: "ferry", markerColor: "P-15" },
   bus_terminal: { markerIcon: "bus", markerColor: "P-03" },
+  public_parking_lot: { markerIcon: "parking", markerColor: "P-04" },
 });
 
 export function placeMarkerStyle(kind: string) {

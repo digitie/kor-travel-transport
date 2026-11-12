@@ -17,4 +17,12 @@ describe("isAllowedTransportPath", () => {
     expect(isAllowedTransportPath(["transport", "fuel", "stations", "12", "collect"])).toBe(false);
     expect(isAllowedTransportPath(["transport", "fuel", "stations", "12", "price-history", "extra"])).toBe(false);
   });
+  it("일반 주차장 목록·상세의 정확한 읽기 경로만 허용한다", () => {
+    expect(isAllowedTransportPath(["transport", "parking-lots"])).toBe(true);
+    expect(isAllowedTransportPath(["transport", "parking-lots", "12"])).toBe(true);
+    for (const id of ["0", "-1", "01", "collect", "export", "1/collect", "1e2"]) {
+      expect(isAllowedTransportPath(["transport", "parking-lots", id])).toBe(false);
+    }
+    expect(isAllowedTransportPath(["transport", "parking-lots", "12", "raw"])).toBe(false);
+  });
 });

@@ -1,9 +1,9 @@
-export type PlaceKind = "fuel_station" | "rail_station" | "ferry_port" | "bus_terminal" | "airport" | "rest_area" | "highway_incident";
+export type PlaceKind = "fuel_station" | "rail_station" | "ferry_port" | "bus_terminal" | "airport" | "rest_area" | "highway_incident" | "public_parking_lot";
 export type FuelPrice = { product_code: string; price: number | null; observed_at: string; provider_updated_at?: string | null };
 export function hasFuelPrice(row: FuelPrice) {
   return row.price !== null && Number.isFinite(row.price) && row.price > 0;
 }
-export type Place = { id: number; kind: PlaceKind; source: string; provider_id?: string | null; name: string; city_name?: string | null; longitude: number | null; latitude: number | null; subtitle?: string | null; brand_code?: string | null; brand_name?: string | null; latest_price?: number | null; price_product_code?: string | null; prices: FuelPrice[]; line_names: string[]; facilities: string[]; phone?: string | null; station_type?: string | null; address?: string | null; updated_at: string; location_source?: string | null; manual_location_revision?: string | null; location_point_count?: number | null };
+export type Place = { id: number; kind: PlaceKind; source: string; provider_id?: string | null; name: string; city_name?: string | null; longitude: number | null; latitude: number | null; subtitle?: string | null; brand_code?: string | null; brand_name?: string | null; latest_price?: number | null; price_product_code?: string | null; prices: FuelPrice[]; line_names: string[]; facilities: string[]; phone?: string | null; station_type?: string | null; address?: string | null; updated_at: string; location_source?: string | null; manual_location_revision?: string | null; location_point_count?: number | null; parking_capacity?: number | null; parking_fee_info?: string | null };
 export type FerryOperation = { vessel_name: string | null; departure_port_name: string | null; arrival_port_name: string | null; departure_planned_time: string | null; arrival_planned_time: string | null; fare: string | null };
 export type FerryTimetable = { port_id: string; port_name?: string | null; service_date: string; fetched_at: string; items: FerryOperation[] };
 export type StoredFerry = { service_date: string; items: FerryTimetable[]; missing_port_ids: string[] };
