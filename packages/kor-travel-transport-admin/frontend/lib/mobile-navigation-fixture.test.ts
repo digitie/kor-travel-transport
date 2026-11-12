@@ -6,7 +6,11 @@ afterEach(() => vi.unstubAllEnvs());
 
 function fakePage() {
   const addCookies = vi.fn<BrowserContext["addCookies"]>().mockResolvedValue(undefined);
-  const route = vi.fn<Page["route"]>().mockResolvedValue(undefined);
+  const dispose = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+  const route = vi.fn<Page["route"]>().mockResolvedValue({
+    dispose,
+    [Symbol.asyncDispose]: dispose,
+  });
   const goto = vi.fn<Page["goto"]>().mockResolvedValue(null);
   const context = vi.fn(() => ({ addCookies }));
   return { page: { context, route, goto } as unknown as Page, addCookies, route, goto, context };
