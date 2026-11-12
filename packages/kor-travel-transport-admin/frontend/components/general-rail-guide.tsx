@@ -43,7 +43,7 @@ export function GeneralRailGuide({ onStationIntent, timetableAnchor = false }: {
     feedback={<>{current?.error ? <p role="alert">{current.error} <button type="button" className="inline-link" onClick={() => setReload((value) => value + 1)}>다시 조회</button></p> : !current?.data ? <p role="status">공개 역 안내 조회 중…</p> : null}
     {current?.data?.stale ? <p role="status">갱신에 실패한 이전 역 안내입니다.</p> : null}
     {positionError ? <p role="alert">{positionError}</p> : null}</>}
-    detailTitle={selected?.name} details={selected ? <><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" disabled={!selected.provider_id?.trim()} onClick={() => requestStation("departure")}>출발로 지정</Button><Button type="button" variant="outline" size="sm" disabled={!selected.provider_id?.trim()} onClick={() => requestStation("arrival")}>도착으로 지정</Button></div><GeneralRailStationDetail key={selected.provider_id} station={selected}/></> : undefined} /></div>
+    detailTitle={selected?.name} details={selected ? <><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" disabled={!selected.provider_id?.trim()} onClick={() => requestStation("departure")}>출발로 지정</Button><Button type="button" variant="outline" size="sm" disabled={!selected.provider_id?.trim()} onClick={() => requestStation("arrival")}>도착으로 지정</Button></div><GeneralRailStationDetail key={selected.provider_id} station={selected} onShowMap={() => { setView("map"); choose(selected); }}/></> : undefined} /></div>
   </section>;
 }
 

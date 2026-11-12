@@ -309,3 +309,47 @@ test("주유소 지도 마커와 목록 모두 실제 상표 코드의 로고와
     expect(fetch).not.toHaveBeenCalled();
   } finally { await act(async () => root.unmount()); container.remove(); }
 });
+
+
+test("집계만 바뀐 같은 좌표 묶음은 DOM과 키보드 초점을 유지한다", async () => {
+ let count=2;
+ Object.assign(mapState,{zoom:7});
+ vi.mocked(fetch).mockImplementation(async()=>new Response(JSON.stringify({items:[],total:count,clustered:true,clusters:[{longitude:127,latitude:37,count,kind_counts:{fuel_station:count}}]})));
+ const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+ try{
+  await act(async()=>root.render(<TransportMap mode="fuel"/>));
+  const cluster=()=>host.querySelector<HTMLButtonElement>(".map-cluster")!;
+  expect(cluster()?.getAttribute("aria-label")).toBe("2개 장소 요약 묶음 확대");
+  const original=cluster();original.focus();expect(document.activeElement).toBe(original);
+  count=3;Object.assign(mapState,{zoom:8});
+  await act(async()=>[...host.querySelectorAll("button")].find(button=>button.textContent==="지도 이동 모의")!.click());
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,450));});
+  expect(cluster()?.getAttribute("aria-label")).toBe("3개 장소 요약 묶음 확대");
+  expect(cluster()).toBe(original);expect(document.activeElement).toBe(original);
+ }finally{await act(async()=>root.unmount());host.remove();}
+});
+
+
+test("서로 가까운 두 묶음도 집계와 순서가 바뀔 때 각 DOM과 초점을 보존한다", async () => {
+ let updated=false;
+ Object.assign(mapState,{zoom:7});
+ vi.mocked(fetch).mockImplementation(async()=>{
+  const first={longitude:126.9999999,latitude:37,count:updated?3:2,kind_counts:{fuel_station:updated?3:2}};
+  const second={longitude:127.0000001,latitude:37,count:5,kind_counts:{fuel_station:5}};
+  return new Response(JSON.stringify({items:[],total:updated?8:7,clustered:true,clusters:updated?[second,first]:[first,second]}));
+ });
+ const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+ const cluster=(count:number)=>host.querySelector<HTMLButtonElement>(`.map-cluster[aria-label="${count}개 장소 요약 묶음 확대"]`)!;
+ try{
+  await act(async()=>root.render(<TransportMap mode="fuel"/>));
+  const first=cluster(2),second=cluster(5);
+  expect(first).not.toBeNull();expect(second).not.toBeNull();first.focus();
+  expect(document.activeElement).toBe(first);
+  updated=true;Object.assign(mapState,{zoom:8});
+  await act(async()=>[...host.querySelectorAll("button")].find(button=>button.textContent==="지도 이동 모의")!.click());
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,450));});
+  expect(cluster(3)).toBe(first);expect(cluster(5)).toBe(second);
+  expect(host.querySelectorAll(".map-cluster")).toHaveLength(2);
+  expect(document.activeElement).toBe(first);
+ }finally{await act(async()=>root.unmount());host.remove();}
+});

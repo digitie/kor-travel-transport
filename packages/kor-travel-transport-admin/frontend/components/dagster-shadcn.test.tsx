@@ -98,3 +98,12 @@ test.each(["QUEUED", "STARTING", "CANCELING"])("최근 30건 밖의 %s 실행도
   expect(html).toContain(`/runs/old-${status}`);
   expect(html).not.toContain("정체 의심");
 });
+
+
+test("일반철도 실제 작업 snapshot은 실행·스케줄 모두 기존 한국어 이름으로 표시한다", () => {
+ const job="general_rail_timetable_collection_job";
+ const html=renderToStaticMarkup(<DagsterTables snapshot={{...snapshot,runs:[{...snapshot.runs[0],jobName:job}],schedules:[{...snapshot.schedules[0],pipelineName:job}]}}/>);
+ const doc=new DOMParser().parseFromString(html,"text/html");
+ expect(doc.body.textContent?.match(/일반철도 예정 시간표/g)).toHaveLength(2);
+ expect(doc.body.textContent).not.toContain(job);
+});

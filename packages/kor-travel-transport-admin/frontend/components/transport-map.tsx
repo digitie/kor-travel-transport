@@ -552,7 +552,7 @@ function TransportMapCanvas({ mapContainer, mapViewport, setMapUnavailableMessag
           <span className="fuel-region-origin" aria-hidden="true" />
           <FuelRegionLabel label={r.label} prices={r.prices} />
         </MapMarkerButton>)}
-        {serverClustered ? serverClusters.map(item => <MapMarkerButton key={JSON.stringify(item)} lngLat={[item.longitude, item.latitude]} ariaLabel={`${item.count}개 장소 요약 묶음 확대`} interactionId={`server-cluster:${item.longitude.toFixed(6)},${item.latitude.toFixed(6)}`} className="map-cluster" zIndex={3} isCluster onClick={() => {
+        {serverClustered ? serverClusters.map(item => <MapMarkerButton key={`server-cluster:${item.longitude}:${item.latitude}`} lngLat={[item.longitude, item.latitude]} ariaLabel={`${item.count}개 장소 요약 묶음 확대`} interactionId={`server-cluster:${item.longitude.toFixed(6)},${item.latitude.toFixed(6)}`} className="map-cluster" zIndex={3} isCluster onClick={() => {
 
           setClusterPlaces([]); setClusterCamera({ center: [item.longitude, item.latitude], zoom: Math.min(19, Math.max(12, Math.ceil(zoom) + 2)) });
           setCameraRequest((value) => value + 1);
