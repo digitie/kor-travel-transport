@@ -45,15 +45,39 @@ export function AdminShell({ children }: { children: ReactNode }) {
     try { window.localStorage.setItem(sidebarStorageKey, collapsed ? "1" : "0"); } catch { /* 선택 상태 저장은 선택 사항이다. */ }
   }
   useEffect(() => {
+    const container = navigationRef.current;
+    if (!container) return;
+    let cancelled = false;
+    let previousWidth = container.clientWidth;
     const keepActiveVisible = () => {
-      if (typeof window.matchMedia !== "function" || !window.matchMedia("(max-width: 1023px)").matches) return;
+      if (cancelled || typeof window.matchMedia !== "function" || !window.matchMedia("(max-width: 1023px)").matches || !container.clientWidth) return;
+      const active = container.querySelector<HTMLElement>('[data-slot="app-menu-link"][aria-current="page"]');
+      if (!active) return;
+      const menu = container.getBoundingClientRect();
+      const item = active.getBoundingClientRect();
+      const left = container.scrollLeft + item.left - menu.left - container.clientLeft - (container.clientWidth - item.width) / 2;
       const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
-      navigationRef.current?.querySelector<HTMLElement>('[data-slot="app-menu-link"][aria-current="page"]')
-        ?.scrollIntoView?.({ block: "nearest", inline: "center", behavior });
+      // 문서·입력 위치를 움직이지 않고 메뉴의 가로 스크롤만 조정한다.
+      container.scrollTo?.({ left, top: container.scrollTop, behavior });
     };
     keepActiveVisible();
-    window.addEventListener("resize", keepActiveVisible, { passive: true });
-    return () => window.removeEventListener("resize", keepActiveVisible);
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(() => {
+      const width = container.clientWidth;
+      if (width === previousWidth) return;
+      previousWidth = width;
+      keepActiveVisible();
+    }) : undefined;
+    observer?.observe(container);
+    const fonts = document.fonts;
+    if (fonts) {
+      void fonts.ready.then(keepActiveVisible);
+      fonts.addEventListener("loadingdone", keepActiveVisible);
+    }
+    return () => {
+      cancelled = true;
+      observer?.disconnect();
+      fonts?.removeEventListener("loadingdone", keepActiveVisible);
+    };
   }, [pathname]);
   function clearDashboardCache() { try { window.sessionStorage.removeItem("kor-travel-transport-dashboard-v1"); window.sessionStorage.removeItem("kor-travel-transport-dashboard-v2"); } catch { /* optional browser storage */ } }
   // 로그아웃 요청 중 이전 페이지의 늦은 응답이 캐시를 다시 쓸 수 있다.

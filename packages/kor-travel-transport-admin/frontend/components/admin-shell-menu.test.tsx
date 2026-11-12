@@ -9,12 +9,23 @@ vi.mock("next/link", () => ({ default: ({ href, children, ...props }: { href: st
 import { AdminShell } from "./admin-shell";
 
 const viewport = { mobile: true, reducedMotion: false };
+const observers = new Set<ResizeObserverMock>();
+class ResizeObserverMock {
+  constructor(readonly callback: ResizeObserverCallback) { observers.add(this); }
+  observe(target: Element) { void target; }
+  disconnect() { observers.delete(this); }
+}
+function notifyResize() {
+  for (const observer of observers) observer.callback([], observer as unknown as ResizeObserver);
+}
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   navigation.pathname = "/map";
   viewport.mobile = true;
   viewport.reducedMotion = false;
   localStorage.clear();
+  observers.clear();
+  vi.stubGlobal("ResizeObserver", ResizeObserverMock);
   vi.stubGlobal("matchMedia", (query: string) => ({
     matches: query.includes("prefers-reduced-motion") ? viewport.reducedMotion : viewport.mobile,
   }));
@@ -81,21 +92,32 @@ test("경로가 바뀌면 가장 구체적인 공통 메뉴 하나만 활성화�
   } finally { await dispose(); }
 });
 
-test("좁은 화면의 활성 항목은 reduced-motion에 맞춰 수평 중앙으로 스크롤한다", async () => {
-  const { nav, dispose } = await mount();
+test("활성 항목은 메뉴 컨테이너의 가로축만 reduced-motion에 맞춰 중앙 정렬한다", async () => {
+  const { container, nav, dispose } = await mount();
   try {
+    const wrapper = container.querySelector<HTMLElement>(".rail-nav")!;
     const current = nav().querySelector<HTMLElement>('[aria-current="page"]')!;
+    vi.spyOn(wrapper, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 0, 320, 70));
+    vi.spyOn(current, "getBoundingClientRect").mockReturnValue(new DOMRect(360, 0, 80, 44));
+    Object.defineProperty(wrapper, "clientWidth", { configurable: true, value: 320 });
+    wrapper.scrollLeft = 100;
+    wrapper.scrollTop = 25;
     const scroll = vi.fn();
-    current.scrollIntoView = scroll;
+    wrapper.scrollTo = scroll;
     viewport.reducedMotion = true;
-    await act(async () => { window.dispatchEvent(new Event("resize")); });
-    expect(scroll).toHaveBeenLastCalledWith({ block: "nearest", inline: "center", behavior: "auto" });
+    await act(async () => notifyResize());
+    expect(scroll).toHaveBeenLastCalledWith({ left: 320, top: 25, behavior: "auto" });
     viewport.reducedMotion = false;
-    await act(async () => { window.dispatchEvent(new Event("resize")); });
-    expect(scroll).toHaveBeenLastCalledWith({ block: "nearest", inline: "center", behavior: "smooth" });
-    viewport.mobile = false;
+    Object.defineProperty(wrapper, "clientWidth", { configurable: true, value: 300 });
+    await act(async () => notifyResize());
+    expect(scroll).toHaveBeenLastCalledWith({ left: 330, top: 25, behavior: "smooth" });
     scroll.mockClear();
-    await act(async () => { window.dispatchEvent(new Event("resize")); });
+    Object.defineProperty(wrapper, "clientHeight", { configurable: true, value: 50 });
+    await act(async () => notifyResize());
+    expect(scroll).not.toHaveBeenCalled();
+    viewport.mobile = false;
+    Object.defineProperty(wrapper, "clientWidth", { configurable: true, value: 160 });
+    await act(async () => notifyResize());
     expect(scroll).not.toHaveBeenCalled();
   } finally { await dispose(); }
 });
