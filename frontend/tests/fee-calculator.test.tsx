@@ -40,6 +40,7 @@ describe("FeeCalculator", () => {
     let resolve!: (value: FeeCalculationResponse) => void;
     render(<FeeCalculator airports={airports} initialAirportCode="GMP" onCalculate={() => new Promise((done) => { resolve = done; })} />);
     fireEvent.submit(screen.getByRole("button", { name: "요금 계산" }).closest("form")!);
+    await waitFor(() => expect(resolve).toBeTypeOf("function"));
     fireEvent.change(screen.getByLabelText("차량 크기"), { target: { value: "large" } });
     await act(async () => resolve({ supported: true, airport_code: "GMP", vehicle_size: "small", total_fee: 9999, currency: "KRW", message: null, breakdown: [] }));
     expect(screen.queryByText("₩9,999")).toBeNull(); expect(screen.getByRole("button", { name: "요금 계산" })).not.toBeDisabled();

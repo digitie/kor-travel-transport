@@ -229,13 +229,12 @@ function buildSpecialDayBands(
 }
 
 export function HistoryChart({ holidays, series, scopeLabel }: HistoryChartProps) {
-  const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
+  const [activeSelection, setActiveSelection] = useState<{ series: HistoryChartProps["series"]; index: number | null }>({ series, index: null });
+  const activePointIndex = activeSelection.series === series ? activeSelection.index : null;
+  const setActivePointIndex = (index: number | null) => setActiveSelection({ series, index });
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const touchGestureRef = useRef<{ startX: number; isHorizontalDrag: boolean } | null>(null);
 
   useEffect(() => {
-    setActivePointIndex(null);
-
     if (!series || series.items.length === 0) {
       return;
     }
@@ -281,19 +280,7 @@ export function HistoryChart({ holidays, series, scopeLabel }: HistoryChartProps
   const labelIndexes = buildLabelIndexes(points);
   const chartWidth = Math.max(CHART_MIN_WIDTH, labelIndexes.length * 64);
   const chartPoints = buildChartPoints(points, chartWidth);
-  const observedRuns: ChartPoint[][] = [];
-  let inObservedRun = false;
-  for (const point of chartPoints) {
-    if (point.lot_observations > 0) {
-      if (!inObservedRun) {
-        observedRuns.push([]);
-      }
-      observedRuns[observedRuns.length - 1].push(point);
-      inObservedRun = true;
-    } else {
-      inObservedRun = false;
-    }
-  }
+  const observedRuns = buildObservedRuns(chartPoints);
   const axisMarkers = buildAxisMarkers(chartPoints, labelIndexes);
   const holidayBands = buildSpecialDayBands(buildSpecialDays(holidays, chartPoints), chartPoints, chartWidth);
   const latestPoint = observedPoints[observedPoints.length - 1];
@@ -317,17 +304,6 @@ export function HistoryChart({ holidays, series, scopeLabel }: HistoryChartProps
     setActivePointIndex(clamp(pointIndex, 0, Math.max(points.length - 1, 0)));
   }
 
-  function getTouchClientX(touches: { length: number; [index: number]: { clientX: number } }): number | null {
-    if (touches.length === 0) {
-      return null;
-    }
-    return touches[0].clientX;
-  }
-
-  function updateActivePointFromTouch(target: HTMLDivElement, clientX: number) {
-    const bounds = target.getBoundingClientRect();
-    updateActivePoint(clientX - bounds.left, bounds.width);
-  }
 
   return (
     <article className="panel-surface history-panel">
@@ -355,6 +331,115 @@ export function HistoryChart({ holidays, series, scopeLabel }: HistoryChartProps
               </div>
             ) : null}
 
+            <HistoryPlot series={series} scopeLabel={scopeLabel} chartWidth={chartWidth} axisMarkers={axisMarkers}
+              holidayBands={holidayBands} observedRuns={observedRuns} activePoint={activePoint} latestChartPoint={latestChartPoint} />
+
+            <HistorySurface onSelect={updateActivePoint} onClear={() => setActivePointIndex(null)} />
+
+            <div className="history-axis-shell" data-testid="history-axis-shell">
+              {axisMarkers.map((marker) => (
+                <span
+                  key={`axis-${marker.bucket_at}`}
+                  className="history-axis-label"
+                  data-testid="history-axis-label"
+                  style={{ left: `${marker.x}px` }}
+                >
+                  {marker.dateLabel ? <strong>{marker.dateLabel}</strong> : <strong className="history-axis-date-spacer" />}
+                  <small>{marker.timeLabel}</small>
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function buildObservedRuns(chartPoints: ChartPoint[]) {
+  const observedRuns: ChartPoint[][] = [];
+  let inObservedRun = false;
+  for (const point of chartPoints) {
+    if (point.lot_observations > 0) {
+      if (!inObservedRun) {
+        observedRuns.push([]);
+      }
+      observedRuns[observedRuns.length - 1].push(point);
+      inObservedRun = true;
+    } else {
+      inObservedRun = false;
+    }
+  }
+  return observedRuns;
+}
+
+function HistorySurface({ onSelect, onClear }: { onSelect: (x: number, width: number) => void; onClear: () => void }) {
+  const touchGestureRef = useRef<{ startX: number; isHorizontalDrag: boolean } | null>(null);
+  function getTouchClientX(touches: { length: number; [index: number]: { clientX: number } }): number | null {
+    if (touches.length === 0) {
+      return null;
+    }
+    return touches[0].clientX;
+  }
+
+  function updateActivePointFromTouch(target: HTMLDivElement, clientX: number) {
+    const bounds = target.getBoundingClientRect();
+    onSelect(clientX - bounds.left, bounds.width);
+  }
+
+  return (
+            <div
+              className="history-chart-surface"
+              data-testid="history-chart-surface"
+              onMouseLeave={() => {
+                onClear();
+              }}
+              onMouseMove={(event) => {
+                const bounds = event.currentTarget.getBoundingClientRect();
+                onSelect(event.clientX - bounds.left, bounds.width);
+              }}
+              onTouchMove={(event) => {
+                const clientX = getTouchClientX(event.touches);
+                if (clientX === null) {
+                  return;
+                }
+                const gesture = touchGestureRef.current;
+                if (!gesture) {
+                  return;
+                }
+                if (Math.abs(clientX - gesture.startX) > TOUCH_DRAG_THRESHOLD_PX) {
+                  touchGestureRef.current = { ...gesture, isHorizontalDrag: true };
+                  return;
+                }
+                if (!gesture.isHorizontalDrag) {
+                  updateActivePointFromTouch(event.currentTarget, clientX);
+                }
+              }}
+              onTouchStart={(event) => {
+                const clientX = getTouchClientX(event.touches);
+                if (clientX === null) {
+                  return;
+                }
+                touchGestureRef.current = { startX: clientX, isHorizontalDrag: false };
+                updateActivePointFromTouch(event.currentTarget, clientX);
+              }}
+              onTouchEnd={() => {
+                touchGestureRef.current = null;
+              }}
+              onTouchCancel={() => {
+                touchGestureRef.current = null;
+              }}
+            />
+
+  );
+}
+
+/** 관측 구간과 특별일을 그리는 순수 표현. 선택/제스처/스크롤 수명을 갖지 않는다. */
+function HistoryPlot({ series, scopeLabel, chartWidth, axisMarkers, holidayBands, observedRuns, activePoint, latestChartPoint }: {
+  series: ParkingTimeSeriesResponse; scopeLabel: string; chartWidth: number; axisMarkers: AxisMarker[];
+  holidayBands: HolidayChartBand[]; observedRuns: ChartPoint[][]; activePoint: ChartPoint | null; latestChartPoint?: ChartPoint;
+}) {
+  return (
             <svg
               aria-label={`${historyRangeLabel(series)} ${series.interval_minutes}분 간격 ${scopeLabel} 시계열`}
               className="history-chart"
@@ -439,66 +524,5 @@ export function HistoryChart({ holidays, series, scopeLabel }: HistoryChartProps
                 <circle className="history-point latest" cx={latestChartPoint.x} cy={latestChartPoint.y} r="5" />
               ) : null}
             </svg>
-
-            <div
-              className="history-chart-surface"
-              data-testid="history-chart-surface"
-              onMouseLeave={() => {
-                setActivePointIndex(null);
-              }}
-              onMouseMove={(event) => {
-                const bounds = event.currentTarget.getBoundingClientRect();
-                updateActivePoint(event.clientX - bounds.left, bounds.width);
-              }}
-              onTouchMove={(event) => {
-                const clientX = getTouchClientX(event.touches);
-                if (clientX === null) {
-                  return;
-                }
-                const gesture = touchGestureRef.current;
-                if (!gesture) {
-                  return;
-                }
-                if (Math.abs(clientX - gesture.startX) > TOUCH_DRAG_THRESHOLD_PX) {
-                  touchGestureRef.current = { ...gesture, isHorizontalDrag: true };
-                  return;
-                }
-                if (!gesture.isHorizontalDrag) {
-                  updateActivePointFromTouch(event.currentTarget, clientX);
-                }
-              }}
-              onTouchStart={(event) => {
-                const clientX = getTouchClientX(event.touches);
-                if (clientX === null) {
-                  return;
-                }
-                touchGestureRef.current = { startX: clientX, isHorizontalDrag: false };
-                updateActivePointFromTouch(event.currentTarget, clientX);
-              }}
-              onTouchEnd={() => {
-                touchGestureRef.current = null;
-              }}
-              onTouchCancel={() => {
-                touchGestureRef.current = null;
-              }}
-            />
-
-            <div className="history-axis-shell" data-testid="history-axis-shell">
-              {axisMarkers.map((marker) => (
-                <span
-                  key={`axis-${marker.bucket_at}`}
-                  className="history-axis-label"
-                  data-testid="history-axis-label"
-                  style={{ left: `${marker.x}px` }}
-                >
-                  {marker.dateLabel ? <strong>{marker.dateLabel}</strong> : <strong className="history-axis-date-spacer" />}
-                  <small>{marker.timeLabel}</small>
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </article>
   );
 }

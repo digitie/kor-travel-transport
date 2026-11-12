@@ -1,6 +1,6 @@
 "use client";
 
-import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { MapFilterBar, MapFilterField } from "@kor-travel/ui/map-controls";
 import { transportGet, type Place } from "@/lib/journey";
@@ -10,8 +10,8 @@ import { Input } from "./ui/input";
 import { InfoButton } from "./info-button";
 import { Button } from "./ui/button";
 import { GeneralRailStationDetail } from "./general-rail-station-detail";
+import { TransportMap } from "./transport-map";
 
-const TransportMap = dynamic(() => import("./transport-map").then((m) => m.TransportMap), { ssr: false });
 type Guide = { fetched_at: string; stale: boolean; kind: "ktx" | "main"; category_code: string; total: number;
   categories: { code: string; name: string }[];
   items: { provider_id: string; station_code: string | null; station_name: string; address: string | null; phone: string | null; longitude: number | null; latitude: number | null; line_names?: string[] }[] };
@@ -20,7 +20,33 @@ export type GeneralRailStationReference = { provider: "korail_public_guide"; pro
 export type GeneralRailStationIntent = { role: "departure" | "arrival"; station: GeneralRailStationReference };
 const stationKey = (providerId: string) => JSON.stringify(["korail_public_guide", providerId]);
 
-export function GeneralRailGuide({ onStationIntent }: { onStationIntent?: (intent: GeneralRailStationIntent) => void } = {}) {
+export function GeneralRailGuide({ onStationIntent, timetableAnchor = false }: { onStationIntent?: (intent: GeneralRailStationIntent) => void; timetableAnchor?: boolean } = {}) {
+  const { id, kind, setKind, category, setCategory, query, setQuery, selectedKey, setSelectedKey, selected, view, setView, focusRevision, choose, displayedPlaces, listMessage, categories, current, setReload, positionError, locating, locate } = useGeneralRailGuide();
+  function requestStation(role: GeneralRailStationIntent["role"]) {
+    if (!selected?.provider_id?.trim()) return;
+    const intent: GeneralRailStationIntent = {role, station:{provider:"korail_public_guide",provider_id:selected.provider_id,name:selected.name}};
+    if (onStationIntent) onStationIntent(intent);
+    else window.location.assign(`/rail/timetable?${new URLSearchParams({mode:"general",guide_id:selected.provider_id,guide_name:selected.name,guide_role:role})}`);
+  }
+  return <section className="journey-workbench rail-journey map-route map-route-primary" aria-label="철도 역 지도">
+    <div id="general-rail-map" className="journey-map-target map-route-primary" tabIndex={-1}><TransportMap places={displayedPlaces} selectedPlace={selected} detailKey={selectedKey ?? undefined} onSelectPlace={choose} view={view} onViewChange={setView} focusRevision={focusRevision} onCloseDetails={() => setSelectedKey(null)}
+    listContent={listMessage ? <p className="quiet" role="status">{listMessage}</p> : undefined}
+    filterSummary={`${kind === "ktx" ? "KTX" : "일반철도"} · ${categories.find((row) => row.code === category)?.name ?? "노선·권역 선택"}${query ? ` · ${query}` : ""}`}
+    toolbar={<MapFilterBar>
+      <MapFilterField label="역 안내 구분" htmlFor={`${id}-kind`}><select id={`${id}-kind`} value={kind} onChange={(event) => { setKind(event.target.value as "ktx" | "main"); setCategory(""); setQuery(""); setSelectedKey(null); }}><option value="ktx">KTX 노선</option><option value="main">일반철도 권역</option></select></MapFilterField>
+      <MapFilterField label={kind === "ktx" ? "노선" : "권역"} htmlFor={`${id}-category`}><select id={`${id}-category`} value={category} onChange={(event) => { setCategory(event.target.value); setSelectedKey(null); }}><option value="">{kind === "ktx" ? "노선 선택" : "권역 선택"}</option>{categories.map((row) => <option key={row.code} value={row.code}>{row.name}</option>)}</select></MapFilterField>
+      <MapFilterField label="역 이름" htmlFor={`${id}-query`}><Input id={`${id}-query`} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="선택 범위에서 검색" /></MapFilterField>
+      <button type="button" className="secondary" disabled={locating} onClick={locate}>{locating ? "위치 확인 중…" : "내 근처 역"}</button>
+      {timetableAnchor ? <a className="inline-link" href="#general-rail-timetable">시간표 조회</a> : <Link className="inline-link" href="/rail/timetable?mode=general">시간표 조회</Link>}<InfoButton label="철도 역 안내">노선 선택 전에도 전체 역을 표시합니다. 역을 누르면 예정 시간표를 조회할 수 있습니다. 출발·도착 지정 후 지역과 실제 시간표 역 후보를 확인해 선택하세요. 지도는 역 위치를 표시하며 선로 경로나 정차 순서를 뜻하지 않습니다.</InfoButton>
+    </MapFilterBar>}
+    feedback={<>{current?.error ? <p role="alert">{current.error} <button type="button" className="inline-link" onClick={() => setReload((value) => value + 1)}>다시 조회</button></p> : !current?.data ? <p role="status">공개 역 안내 조회 중…</p> : null}
+    {current?.data?.stale ? <p role="status">갱신에 실패한 이전 역 안내입니다.</p> : null}
+    {positionError ? <p role="alert">{positionError}</p> : null}</>}
+    detailTitle={selected?.name} details={selected ? <><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" disabled={!selected.provider_id?.trim()} onClick={() => requestStation("departure")}>출발로 지정</Button><Button type="button" variant="outline" size="sm" disabled={!selected.provider_id?.trim()} onClick={() => requestStation("arrival")}>도착으로 지정</Button></div><GeneralRailStationDetail key={selected.provider_id} station={selected} onShowMap={() => { setView("map"); choose(selected); }}/></> : undefined} /></div>
+  </section>;
+}
+
+function useGeneralRailGuide() {
   const id = useId();
   const [kind, setKind] = useState<"ktx" | "main">("ktx");
   const [category, setCategory] = useState("");
@@ -62,26 +88,6 @@ export function GeneralRailGuide({ onStationIntent }: { onStationIntent?: (inten
   const displayedPlaces = position ? nearby.map((row) => row.place) : filtered;
   const listMessage = current?.data && !displayedPlaces.length ? !category && !query.trim() ? "노선이나 권역을 선택해 역을 찾으세요." : "조건에 맞는 역이 없습니다. 다른 이름이나 노선·권역을 선택해 주세요." : "";
   function choose(place: Place) { setSelectedKey(stationKey(place.provider_id ?? "")); setFocusRevision((value) => value + 1); }
-  function requestStation(role: GeneralRailStationIntent["role"]) {
-    if (!selected?.provider_id?.trim()) return;
-    const intent: GeneralRailStationIntent = {role, station:{provider:"korail_public_guide",provider_id:selected.provider_id,name:selected.name}};
-    if (onStationIntent) onStationIntent(intent);
-    else window.location.assign(`/rail/timetable?${new URLSearchParams({mode:"general",guide_id:selected.provider_id,guide_name:selected.name,guide_role:role})}`);
-  }
-  return <section className="journey-workbench rail-journey map-route map-route-primary" aria-label="철도 역 지도">
-    <div id="general-rail-map" className="journey-map-target map-route-primary" tabIndex={-1}><TransportMap places={displayedPlaces} selectedPlace={selected} detailKey={selectedKey ?? undefined} onSelectPlace={choose} view={view} onViewChange={setView} focusRevision={focusRevision} onCloseDetails={() => setSelectedKey(null)}
-    listContent={listMessage ? <p className="quiet" role="status">{listMessage}</p> : undefined}
-    filterSummary={`${kind === "ktx" ? "KTX" : "일반철도"} · ${categories.find((row) => row.code === category)?.name ?? "노선·권역 선택"}${query ? ` · ${query}` : ""}`}
-    toolbar={<MapFilterBar>
-      <MapFilterField label="역 안내 구분" htmlFor={`${id}-kind`}><select id={`${id}-kind`} value={kind} onChange={(event) => { setKind(event.target.value as "ktx" | "main"); setCategory(""); setQuery(""); setSelectedKey(null); }}><option value="ktx">KTX 노선</option><option value="main">일반철도 권역</option></select></MapFilterField>
-      <MapFilterField label={kind === "ktx" ? "노선" : "권역"} htmlFor={`${id}-category`}><select id={`${id}-category`} value={category} onChange={(event) => { setCategory(event.target.value); setSelectedKey(null); }}><option value="">{kind === "ktx" ? "노선 선택" : "권역 선택"}</option>{categories.map((row) => <option key={row.code} value={row.code}>{row.name}</option>)}</select></MapFilterField>
-      <MapFilterField label="역 이름" htmlFor={`${id}-query`}><Input id={`${id}-query`} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="선택 범위에서 검색" /></MapFilterField>
-      <button type="button" className="secondary" disabled={locating} onClick={locate}>{locating ? "위치 확인 중…" : "내 근처 역"}</button>
-      <a className="inline-link" href="/rail/timetable?mode=general">시간표 조회</a><InfoButton label="철도 역 안내">노선 선택 전에도 전체 역을 표시합니다. 역을 누르면 예정 시간표를 조회할 수 있습니다. 출발·도착 지정 후 지역과 실제 시간표 역 후보를 확인해 선택하세요. 지도는 역 위치를 표시하며 선로 경로나 정차 순서를 뜻하지 않습니다.</InfoButton>
-    </MapFilterBar>}
-    feedback={<>{current?.error ? <p role="alert">{current.error} <button type="button" className="inline-link" onClick={() => setReload((value) => value + 1)}>다시 조회</button></p> : !current?.data ? <p role="status">공개 역 안내 조회 중…</p> : null}
-    {current?.data?.stale ? <p role="status">갱신에 실패한 이전 역 안내입니다.</p> : null}
-    {positionError ? <p role="alert">{positionError}</p> : null}</>}
-    detailTitle={selected?.name} details={selected ? <><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" disabled={!selected.provider_id?.trim()} onClick={() => requestStation("departure")}>출발로 지정</Button><Button type="button" variant="outline" size="sm" disabled={!selected.provider_id?.trim()} onClick={() => requestStation("arrival")}>도착으로 지정</Button></div><GeneralRailStationDetail key={selected.provider_id} station={selected}/></> : undefined} /></div>
-  </section>;
+
+  return { id, kind, setKind, category, setCategory, query, setQuery, selectedKey, setSelectedKey, selected, view, setView, focusRevision, choose, displayedPlaces, listMessage, categories, current, setReload, positionError, locating, locate };
 }

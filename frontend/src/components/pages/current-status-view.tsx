@@ -2,7 +2,7 @@
 
 import { Alert } from "../ui/alert";
 import { Card } from "../ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
+import { VirtualTable } from "@kor-travel/ui/virtual-table";
 import { useDashboard } from "../../lib/dashboard-context";
 import { formatDateTime, formatNumber } from "../../lib/format";
 import { statusLabel, statusTone } from "../../lib/dashboard-view-helpers";
@@ -31,13 +31,6 @@ export function CurrentStatusView() {
   } = useDashboard();
 
   const latestObservedAt = findLatestValue(scopeItems);
-  const sortedByAvailable = [...scopeItems].sort((left, right) => left.available_spaces - right.available_spaces);
-  const tightestLot = sortedByAvailable[0];
-  const roomiestLot = sortedByAvailable[sortedByAvailable.length - 1];
-  const totalAvailableSpaces = scopeItems.reduce((sum, item) => sum + item.available_spaces, 0);
-  const totalOccupiedSpaces = scopeItems.reduce((sum, item) => sum + item.occupied_spaces, 0);
-  const totalSpaces = scopeItems.reduce((sum, item) => sum + item.total_spaces, 0);
-  const focusedLot = selectedParkingLotId !== null ? scopeItems[0] ?? null : null;
   const hasDelayedObservation = scopeItems.some((item) => Date.now() - Date.parse(item.observed_at) > 15 * 60_000);
 
   return (
@@ -53,37 +46,7 @@ export function CurrentStatusView() {
         </div>
       </section>
 
-      <section className="detail-ribbon">
-        <Card className="metric-card detail-card">
-          <span>현재 잔여 주차면</span>
-          <strong>{scopeItems.length ? `${formatNumber(totalAvailableSpaces)}대` : "—"}</strong>
-          <small>{selectedParkingLotName ? "선택 주차장 기준" : "공항 합산 기준"}</small>
-        </Card>
-
-        <Card className="metric-card detail-card">
-          <span>{focusedLot ? "현재 상태" : "가장 빠듯한 곳"}</span>
-          <strong>{focusedLot ? statusLabel(focusedLot.status_level) : tightestLot?.parking_lot_name ?? "-"}</strong>
-          <small>
-            {focusedLot
-              ? `${formatNumber(focusedLot.available_spaces)}대 남음`
-              : tightestLot
-                ? `${formatNumber(tightestLot.available_spaces)}대 남음`
-                : "데이터 없음"}
-          </small>
-        </Card>
-
-        <Card className="metric-card detail-card">
-          <span>{focusedLot ? "전체 주차면" : "가장 여유 있는 곳"}</span>
-          <strong>{focusedLot ? `${formatNumber(totalSpaces)}대` : roomiestLot?.parking_lot_name ?? "-"}</strong>
-          <small>
-            {focusedLot
-              ? `점유 ${formatNumber(totalOccupiedSpaces)} / 전체 ${formatNumber(totalSpaces)}`
-              : roomiestLot
-                ? `${formatNumber(roomiestLot.available_spaces)}대 남음`
-                : "데이터 없음"}
-          </small>
-        </Card>
-      </section>
+      <CurrentMetrics scopeItems={scopeItems} selectedParkingLotId={selectedParkingLotId} selectedParkingLotName={selectedParkingLotName} />
 
       {/* T-038 Hallmark audit: a screen reader is not guaranteed to announce a live
           region that arrives already-mounted with its final content - the region
@@ -106,29 +69,11 @@ export function CurrentStatusView() {
 
       <div className="hidden lg:block">
         <section className="table-surface" data-testid="desktop-lot-table">
-          <Table className="lot-table">
-            <TableHeader>
-              <TableRow>
-                <TableHead>주차장</TableHead>
-                <TableHead>잔여/전체</TableHead>
-                <TableHead>기준 시각</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {scopeItems.map((item) => (
-                <TableRow key={item.parking_lot_id}>
-                  <TableCell>
-                    <strong>{item.parking_lot_name}</strong>
-                    <span>{item.terminal ?? "터미널 정보 없음"}</span>
-                  </TableCell>
-                  <TableCell>
-                    {formatNumber(item.available_spaces)}/{formatNumber(item.total_spaces)}대
-                  </TableCell>
-                  <TableCell>{formatDateTime(item.observed_at)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <VirtualTable ariaLabel="주차장 현재 상태" containerClassName="lot-table" data={scopeItems} getRowId={(item) => String(item.parking_lot_id)} virtualized={false} columns={[
+            { id: 'name', header: '주차장', cell: ({ row: { original: item } }) => <><strong>{item.parking_lot_name}</strong><span>{item.terminal ?? "터미널 정보 없음"}</span></> },
+            { id: 'spaces', header: '잔여/전체', cell: ({ row: { original: item } }) => <>{formatNumber(item.available_spaces)}/{formatNumber(item.total_spaces)}대</> },
+            { id: 'observed', header: '기준 시각', cell: ({ row }) => formatDateTime(row.original.observed_at) },
+          ]} />
         </section>
       </div>
 
@@ -161,4 +106,27 @@ export function CurrentStatusView() {
       {!loading && !error && scopeItems.length === 0 ? <p className="notice">조건에 맞는 주차장이 없습니다.</p> : null}
     </div>
   );
+}
+
+type MetricScope = Pick<ReturnType<typeof useDashboard>, "scopeItems" | "selectedParkingLotId" | "selectedParkingLotName">;
+function currentMetrics({ scopeItems, selectedParkingLotId, selectedParkingLotName }: MetricScope) {
+  const sortedByAvailable = [...scopeItems].sort((left, right) => left.available_spaces - right.available_spaces);
+  const tightestLot = sortedByAvailable[0];
+  const roomiestLot = sortedByAvailable[sortedByAvailable.length - 1];
+  const totalAvailableSpaces = scopeItems.reduce((sum, item) => sum + item.available_spaces, 0);
+  const totalOccupiedSpaces = scopeItems.reduce((sum, item) => sum + item.occupied_spaces, 0);
+  const totalSpaces = scopeItems.reduce((sum, item) => sum + item.total_spaces, 0);
+  const focusedLot = selectedParkingLotId !== null ? scopeItems[0] ?? null : null;
+  const remaining = (lot: (typeof scopeItems)[number] | undefined) => lot ? `${formatNumber(lot.available_spaces)}대 남음` : "데이터 없음";
+  return [
+    { label: "현재 잔여 주차면", value: scopeItems.length ? `${formatNumber(totalAvailableSpaces)}대` : "—", detail: selectedParkingLotName ? "선택 주차장 기준" : "공항 합산 기준" },
+    { label: focusedLot ? "현재 상태" : "가장 빠듯한 곳", value: focusedLot ? statusLabel(focusedLot.status_level) : tightestLot?.parking_lot_name ?? "-", detail: remaining(focusedLot ?? tightestLot) },
+    { label: focusedLot ? "전체 주차면" : "가장 여유 있는 곳", value: focusedLot ? `${formatNumber(totalSpaces)}대` : roomiestLot?.parking_lot_name ?? "-", detail: focusedLot ? `점유 ${formatNumber(totalOccupiedSpaces)} / 전체 ${formatNumber(totalSpaces)}` : remaining(roomiestLot) },
+  ];
+}
+
+function CurrentMetrics(props: MetricScope) {
+  return <section className="detail-ribbon">{currentMetrics(props).map((metric) => <Card key={metric.label} className="metric-card detail-card">
+    <span>{metric.label}</span><strong>{metric.value}</strong><small>{metric.detail}</small>
+  </Card>)}</section>;
 }

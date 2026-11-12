@@ -1,17 +1,22 @@
-import nextVitals from "eslint-config-next/core-web-vitals";
-import nextTypeScript from "eslint-config-next/typescript";
+import nextPlugin from "@next/eslint-plugin-next";
+import tseslint from "typescript-eslint";
+import reactHooks from "eslint-plugin-react-hooks";
+import jsxA11y from "eslint-plugin-jsx-a11y-x";
 
-const config = [
-  ...nextVitals,
-  ...nextTypeScript,
+// ESLint 10을 지원하는 플러그인만 사용한다. React Compiler 적용은 별도 결정이다.
+export default [
+  { ignores: [".next/**", "coverage/**", "playwright-report/**", "test-results/**", "public/maplibre/**", "next-env.d.ts"] },
+  ...tseslint.configs.recommended,
+  jsxA11y.configs.recommended,
   {
-    // React Compiler 도입은 별도 작업이며 기존 Hooks 규칙은 유지한다.
-    files: ["components/address-refresh.tsx", "components/rail-station-mapping.tsx"],
-    rules: { "react-hooks/set-state-in-effect": "off" },
-  },
-  {
-    ignores: ["coverage/**", "playwright-report/**", "test-results/**", "public/maplibre/**"],
+    files: ["**/*.{js,jsx,ts,tsx}"],
+    plugins: { "@next/next": nextPlugin, "react-hooks": reactHooks },
+    rules: {
+      ...nextPlugin.configs.recommended.rules,
+      ...nextPlugin.configs["core-web-vitals"].rules,
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "warn",
+    },
+    settings: { next: { rootDir: "." } },
   },
 ];
-
-export default config;

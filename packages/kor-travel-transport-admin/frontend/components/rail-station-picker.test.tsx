@@ -7,6 +7,7 @@ import type {RailStation} from "@/lib/general-rail";
 
 beforeEach(()=>{
   Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});
+  Object.defineProperty(HTMLElement.prototype,"scrollIntoView",{configurable:true,value:vi.fn()});
   vi.stubGlobal("ResizeObserver",class{observe(){}unobserve(){}disconnect(){}});
   vi.stubGlobal("matchMedia",()=>({matches:false,addEventListener(){},removeEventListener(){}}));
 });

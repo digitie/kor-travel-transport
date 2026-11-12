@@ -17,7 +17,7 @@ test("비교 최대 5곳에 도달해도 여섯째 상세는 선택 변경 없�
     await act(async () => root.render(<MultiSearch label="항구 검색" query="" onQuery={() => {}} options={options} selected={options.slice(0, 5)} onSelect={select} onInspect={inspect} />));
     const choices = container.querySelectorAll('[role="checkbox"]');
     expect(choices).toHaveLength(6);
-    expect(choices[5].getAttribute("aria-disabled")).toBe("true");
+    expect((choices[5] as HTMLButtonElement).disabled).toBe(true);
     const button = container.querySelector<HTMLButtonElement>('[aria-label="항구6 상세 보기"]')!;
     expect(button.disabled).toBe(false);
     await act(async () => button.click());

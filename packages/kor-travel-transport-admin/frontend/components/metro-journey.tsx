@@ -12,6 +12,23 @@ import { nearestPlaces } from "@/lib/nearby";
 const TransportMap = dynamic(() => import("./transport-map").then((m) => m.TransportMap), { ssr: false });
 
 export function MetroJourney() {
+  const { places, selected, choose, view, setView, focusRevision, close, hasFilters, listMessage, routes, line, query, position, id, setLine, setSelected, search, setQuery, locating, locate, setItems, setError, setReload, positionError, error, items } = useMetroJourney();
+  return <section className="journey-workbench rail-journey map-route">
+    <div id="metro-map" className="journey-map-target map-route-primary" tabIndex={-1}><TransportMap places={places} selectedPlace={selected} onSelectPlace={choose} view={view} onViewChange={setView} focusRevision={focusRevision} onCloseDetails={close}
+    listPlaces={hasFilters} listCount={hasFilters ? places.length : 0} listContent={listMessage ? <p className="quiet" role="status">{listMessage}</p> : undefined}
+    filterSummary={[routes.get(line), query, position ? "내 근처" : ""].filter(Boolean).join(" · ") || "도시철도 필터"}
+    toolbar={<MetroFilters id={id} line={line} setLine={setLine} setSelected={setSelected} routes={routes} search={search} query={query} setQuery={setQuery} locating={locating} locate={locate} setItems={setItems} setError={setError} setReload={setReload} />}
+    feedback={<>{positionError ? <p role="alert">{positionError}</p> : null}
+    {error ? <p role="alert">역 정보를 불러오지 못했습니다.</p> : !items ? <p role="status">노선과 역을 불러오는 중입니다…</p> : null}
+    {position ? <p className="quiet">현재 위치 오차 약 {Math.round(position.accuracy)}m · 거리는 직선 거리입니다.</p> : null}</>}
+    detailTitle={<>{selected?.name} <small>{selected?.subtitle}</small></>} details={selected ? <MetroStationDetail key={selected.id} station={selected} /> : undefined} /></div>
+    <div id="station-timetable" className="map-route-followup">{selected ? <><a className="inline-link" href="#metro-map">지도 작업면으로</a><MetroStationDetail key={selected.id} station={selected} timetablePage /></> : null}</div>
+  </section>;
+}
+
+
+// 조회·선택·요청 수명은 이 도메인 훅이, 아래 컴포넌트는 표현을 소유한다.
+function useMetroJourney() {
   const id = useId();
   const search = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<Place[] | null>(null);
@@ -30,30 +47,34 @@ export function MetroJourney() {
       .catch(() => { if (!controller.signal.aborted) setError(true); });
     return () => controller.abort();
   }, [reload]);
-  const routeKey = (place: Place, name: string) => place.source === "kric_station_codes" ? (place.provider_id ?? "").split("/").slice(0, 2).join("/") : `${place.subtitle ?? ""}/${name}`;
+  const routeKey = (place: Place, name: string) => `${place.subtitle ?? ""}/${name}`;
   const routes = new Map((items ?? []).flatMap((place) => place.line_names.map((name) => [routeKey(place, name), `${name} · ${place.subtitle ?? "운영기관 미제공"}`] as const)));
   const filtered = (items ?? []).filter((place) => (!line || place.line_names.some((name) => routeKey(place, name) === line)) && (!query.trim() || [place.name, place.provider_id, ...place.line_names].join(" ").toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())));
   const nearby = position ? nearestPlaces(filtered, position).slice(0, 10) : [];
   const places = position && !line && !query.trim() ? nearby.map((row) => row.place) : filtered;
   const hasFilters = Boolean(line || query.trim() || position);
-  const listMessage = !error && items ? !items.length ? "저장된 역 정보가 없습니다." : !hasFilters ? "필터에서 노선을 선택하거나 역 이름을 검색하세요." : !places.length ? "조건에 맞는 역이 없습니다. 다른 이름이나 노선을 선택해 주세요." : "" : "";
+  const listMessage = metroListMessage(error, items, hasFilters, places.length);
   function choose(place: Place) { setSelected(place); setFocusRevision((v) => v + 1); }
   function close() { setSelected(null); }
-  return <section className="journey-workbench rail-journey map-route">
-    <div id="metro-map" className="journey-map-target map-route-primary" tabIndex={-1}><TransportMap places={places} selectedPlace={selected} onSelectPlace={choose} view={view} onViewChange={setView} focusRevision={focusRevision} onCloseDetails={close}
-    listPlaces={hasFilters} listCount={hasFilters ? places.length : 0} listContent={listMessage ? <p className="quiet" role="status">{listMessage}</p> : undefined}
-    filterSummary={[routes.get(line), query, position ? "내 근처" : ""].filter(Boolean).join(" · ") || "도시철도 필터"}
-    toolbar={<MapFilterBar>
+
+  return { places, selected, choose, view, setView, focusRevision, close, hasFilters, listMessage, routes, line, query, position, id, setLine, setSelected, search, setQuery, locating, locate, setItems, setError, setReload, positionError, error, items };
+}
+
+
+function MetroFilters({ id, line, setLine, setSelected, routes, search, query, setQuery, locating, locate, setItems, setError, setReload }: Pick<ReturnType<typeof useMetroJourney>, "id" | "line" | "setLine" | "setSelected" | "routes" | "search" | "query" | "setQuery" | "locating" | "locate" | "setItems" | "setError" | "setReload">) {
+  return (<MapFilterBar>
       <MapFilterField label="노선" htmlFor={`${id}-line`}><select id={`${id}-line`} value={line} onChange={(event) => { setLine(event.target.value); setSelected(null); }}><option value="">노선 선택</option>{[...routes].sort((a, b) => a[1].localeCompare(b[1], "ko")).map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></MapFilterField>
       <MapFilterField label="역 검색" htmlFor={`${id}-query`}><Input ref={search} id={`${id}-query`} type="search" placeholder="역 이름·코드" value={query} onChange={(event) => { setQuery(event.target.value); setSelected(null); }} /></MapFilterField>
       <Button type="button" variant="outline" disabled={locating} onClick={locate}>{locating ? "위치 확인 중…" : "내 근처 역"}</Button>
       <Button type="button" variant="ghost" onClick={() => { setItems(null); setError(false); setReload((v) => v + 1); }}>새로고침</Button>
-      <InfoButton label="역 찾기">노선을 선택하거나 역 이름을 검색하세요. 후보는 목록에서 선택할 수 있습니다. 내 근처 역은 좌표가 등록된 역을 직선 거리 순으로 표시합니다.</InfoButton>
-    </MapFilterBar>}
-    feedback={<>{positionError ? <p role="alert">{positionError}</p> : null}
-    {error ? <p role="alert">역 정보를 불러오지 못했습니다.</p> : !items ? <p role="status">노선과 역을 불러오는 중입니다…</p> : null}
-    {position ? <p className="quiet">현재 위치 오차 약 {Math.round(position.accuracy)}m · 거리는 직선 거리입니다.</p> : null}</>}
-    detailTitle={<>{selected?.name} <small>{selected?.subtitle}</small></>} details={selected ? <MetroStationDetail key={selected.id} station={selected}/> : undefined} /></div>
+      <a className="inline-link" href="#station-timetable">시간표 보기</a><InfoButton label="역 찾기">노선을 선택하거나 역 이름을 검색하세요. 후보는 목록에서 선택할 수 있습니다. 내 근처 역은 좌표가 등록된 역을 직선 거리 순으로 표시합니다.</InfoButton>
+    </MapFilterBar>);
+}
 
-  </section>;
+
+function metroListMessage(error: boolean, items: Place[] | null, hasFilters: boolean, count: number) {
+  if (error || !items) return "";
+  if (!items.length) return "저장된 역 정보가 없습니다.";
+  if (!hasFilters) return "필터에서 노선을 선택하거나 역 이름을 검색하세요.";
+  return count ? "" : "조건에 맞는 역이 없습니다. 다른 이름이나 노선을 선택해 주세요.";
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import { VirtualTable } from "@kor-travel/ui/virtual-table";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { dagsterRunUrl } from "@/lib/dagster-scope";
 import styles from "./address-refresh.module.css";
@@ -81,16 +83,13 @@ export function AddressRefresh() {
       {notice ? <p role="status">{notice}</p> : null}
       {summary?.items.length ? <>
         <p>최근 확인한 위치 최대 50개입니다. 실패·기한 경과 주소는 최신으로 보장되지 않습니다. 작은 화면에서는 표를 좌우로 이동해 확인하세요.</p>
+        {/* 스크롤 영역은 키보드로 좌우 이동할 수 있어야 한다. */}
+        {/* eslint-disable-next-line jsx-a11y-x/no-noninteractive-tabindex */}
         <div className={styles.scroll} role="region" aria-label="최근 주소 확인 결과" tabIndex={0}>
-        <table className={styles.table}>
-          <caption>최근 주소 확인 결과</caption>
-          <thead><tr><th>위치</th><th>확인 주소</th><th>상태 / 제공자</th><th>확인일 / 다음 갱신일</th></tr></thead>
-          <tbody>{summary.items.map(item => <tr key={item.target_key}>
-            <td>{item.name || item.target_key}</td><td>{item.address?.full || "주소 없음"}</td>
-            <td>{item.stale ? "재확인 필요" : "정상"} · {item.status} / {item.provider || "미확인"}{item.error_code ? " (" + item.error_code + ")" : ""}</td>
-            <td>{date(item.resolved_at)}<br />{date(item.next_refresh_at)}</td>
-          </tr>)}</tbody>
-        </table>
+        <VirtualTable ariaLabel="최근 주소 확인 결과" containerClassName={styles.table} data={summary.items} getRowId={(item) => String(item.target_key)} virtualized={false} columns={[{ id: 'column0', header: '위치', cell: ({ row: { original: item } }) => <>{item.name || item.target_key}</> },
+{ id: 'column1', header: '확인 주소', cell: ({ row: { original: item } }) => <>{item.address?.full || "주소 없음"}</> },
+{ id: 'column2', header: '상태 / 제공자', cell: ({ row: { original: item } }) => <>{item.stale ? "재확인 필요" : "정상"} · {item.status} / {item.provider || "미확인"}{item.error_code ? " (" + item.error_code + ")" : ""}</> },
+{ id: 'column3', header: '확인일 / 다음 갱신일', cell: ({ row: { original: item } }) => <>{date(item.resolved_at)}<br />{date(item.next_refresh_at)}</> }]} />
       </div></> : null}
     </section>
   );

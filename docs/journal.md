@@ -385,6 +385,160 @@ KRIC 코드 파일과 역사 응답에 역명이 함께 있음을 확인했다. 
 실시간 도착·노선 순서·출구별 미저장 자료는 만들어 내지 않는다. 기존 위치 매핑은 좌표 보조 자료로 보존한다.
 WSL/Docker backend40 PASS/기존 PG잠금1 SKIP, UI4 PASS와 타입·lint·Next 빌드·Firefox375/750 예시 캡처를 확인했다.
 [데이터소스·계약·미완 경계](design/2026-10-31-metro-code-detail.md). 운영 반영은 없다.
+## 2026-11-12 — 늦은 역 목록 응답의 상세 초점 탈취 교정 중
+
+- PR185의 첫 후보 bf937d1은 단위453·관리자/공개 프런트 CI·정책 검사·원 두 소스 리뷰를 통과했다. 초기 작업면 회귀는 기존 코드2건 실패, 새 native/Alpine 각2건 통과이며 PC 높이832px·모바일783px를 확인했다.
+- 첫 브라우저 결과는 native43 PASS, Alpine42 PASS/1 FAIL이다. Alpine375px의 주소 지도 이동 후 상세 초점 단언이 실패했다. 첫 실패 원문과 원래5000ms 단언을 보존한다.
+- 관측 하네스의 최초 실행은 대상 선택식 오류로0건 수집이었다. 선택식만 교정한 원래375px 단독 검사1회는 통과했으나, 기록에서 상세 초점967ms 뒤 출발역 입력칸이1161ms에 초점을 가져가는 현상을 확인했다. 단독 통과로 앞선 실패를 소거하거나 최초 운영 지도 높이0의 원인을 확정하지 않는다.
+- 초기 검색어 채움은 자동 초점 요청과 구분한다. initialDepartureName만 revision0으로 두고 명시적인 initialStationIntent와 사용자의 재지정 요청은 기존 양수 revision을 유지한다. 실제 공통 Combobox를 사용하는 지연 catalog·재마운트 회귀2건은 기존 코드에서 실패했고, 수정 후에는 이2건과 명시적 출발/도착·동일 역 재지정3건이 모두 통과했다.
+- 새 정확 소스의 전체 검사·native/Alpine·원 두 재검토·CI·머지·새 ARM 이미지·정상 실제 수용은 미완이다. 기존 M885의8 PASS/1 FAIL과 별도 운영 진단 실패를 보존하며 Common/Geo 최종 출판은 후속 수용 뒤 진행한다.
+- 공통 패키지·lock·vendor·공개 웹·backend·인증·키·DB 및 Map 앱은 변경하지 않는다. 이번 수정은 앱의 초기 렌더링과 초점 의도 교정이며 라이브러리 버그로 판정하지 않는다.
+
+## 2026-11-12 — 역 지도 작업면의 초기 HTML 누락 회귀 대응
+
+PR184의 Geo형 메뉴는 실제 M88566f7d/image5ffe49로 배포해 PC 세로 레일·모바일 드로어와 실제 폰트·지도·로그아웃을 검증했다. 첫 실제 정상 세션은8 PASS/1 FAIL이다. 역 연락처 검사가 region 가시성에서 실패했고, 별도 정상 단독 진단1회에서도 API200/65건과976×0px 영역을 확인했다. 두 정상 세션의 로그인·로그아웃은 각각1회이며 실패와 cleanup0 원문을 보존한다.
+
+역 안내는 TransportMap을 ssr:false 동적 import로 감싸고 기본 교통 지도는 같은 컴포넌트를 일반 import한다. 지도 작업면이 JavaScript 실행 전부터 유지되도록 후자와 일치시키는 최소 수정 후보를 만들고, PC1280·모바일375에서 JavaScript를 끈 실제 HTTP 페이지의 작업면 높이·지도/목록 탭 회귀를 추가한다. 현재 검증 전이며 성공으로 기록하지 않는다. x64 동적 child의 정상 표시와 운영 정적 JS13·CSS1 일치는 별도 관측이고 운영 실패의 라이브러리 원인을 확정한 것이 아니다.
+
+패키지·lock·공통 산출물·업무·인증·키·DB와 Map 앱은 그대로이며, 새 source의 검증·원 두 적대 리뷰·CI·머지·ARM 이미지·공식 관리자 적용·정상 실제 수용이 남는다.
+
+## 2026-11-12 — Transport 메뉴를 Geo 드로어·세로 레일로 정렬
+
+- 요청: 모바일 메뉴를 Geo와 같은 왼쪽 드로어로, PC 메뉴를 세로 레일로 유지한다.
+- 구현: 공통 AppMenu 19개 경로와 기존 Zustand 접힘 선택을 유지하고 기존 공통 Radix Dialog로 모바일 모달을 구성했다. 자체 focus trap·Escape·body 스크롤 잠금 구현을 추가하지 않았다.
+- 검증: 현재 후보의 실행 검증·원 두 리뷰·CI·머지·새 이미지 적용은 미실행이다. 이전47a 운영 수용과 새 후보를 분리해 기록한다.
+- 원 A/B의 첫 소스 지적은 같은 잔존 모바일 row CSS다. 원문과 첫 후보를 보존하고 해당 규칙 제거·992/993px 및 짧은 화면 회귀로 수정한다. 새 소스의 검증은 별도로 수행한다.
+- 경계: 공개 웹·backend·인증·DB·Geo/Map 운영·키·패키지와 vendor bytes는 변경하지 않는다.
+
+## 2026-11-12 — 일반 모바일 화면의 메뉴 높이 확장 교정
+
+ee45는 단위451·타입·린트·Doctor0·의존성 검사와 native 브라우저39개에 통과했다. 별도 스크린샷 점검에서는 768px 시간표 화면의 메뉴 영역이 불필요하게 길어지는 문제가 남았다. 실제 격리 브라우저에서 화면 높이900→1100px일 때 메뉴282.75→382.75px, 로그아웃의 세로 위치 변화도 확인했다. CSS의 모바일 바깥 행을 auto minmax(0,1fr)로 지정한 한 override에서는 메뉴171px가 두 높이에서 같고 로고·로그아웃 중심도 정렬됐다. 이 수치는 기존 빌드에서 CSS 가설을 검증한 결과이며 새 소스의 전체 수용으로 전용하지 않는다.
+
+모바일 전체 화면에 해당 행 구성을 적용하고 중복된 지도·공항 전용 선언을 정리했다. 지도 외 화면 검사에는 같은 폭에서 화면 높이를 바꿔도 메뉴 높이가 유지되는 단언을 더했다. 공통 산출물·제품 JavaScript·인증·데이터는 바꾸지 않는다. 원 리뷰와 ee45 실행 결과는 보존하며 새 정확 소스의 검증·독립 검토·CI·배포는 별도로 진행한다.
+
+## 2026-11-12 — 격리 탐색 테스트의 Playwright 반환 계약 교정
+
+db58 소스는 집중40·전체 단위451·린트·Doctor0·의존성 검사에 통과했으나 Page.route가 Promise<Disposable>을 반환하는 현재 Playwright 타입과 undefined 모의 반환값이 달라 타입 검사가 실패했다. native 빌드·브라우저·Alpine은 시작하지 않았고 실패 증거는 보존한다. 테스트 대역이 dispose와 Symbol.asyncDispose를 제공하게 수정했다. 제품 코드와 주소 격리 검사·단언은 그대로이며 이 새 소스의 타입 검사와 브라우저 검증은 별도로 확인한다.
+
+## 2026-11-12 — 모바일 탐색 독립 리뷰 후속 수정
+
+첫 strip 소스 b043은 전체 단위435·타입·린트·Doctor와 기존 native 브라우저28개를 통과했으나, 새 메뉴10개 중5개가 활성 항목 중앙 오차82~82.5px로 실패했다. Alpine은 시작하지 않았고 원 실패와 소유 서버 종료 증거를 보존한다. 원 A는 scrollIntoView의 문서 세로 스크롤 영향, 원 B는 실제 caller baseURL과 환경변수의 불일치에 따른 모의 응답 경계 누락을 각각 P2로 지적했다.
+
+후속 소스는 메뉴 컨테이너의 가로 scrollTo만 사용하고 폰트 완료와 ResizeObserver의 폭 변경을 반영한다. 실제 caller baseURL·경로의 loopback origin을 먼저 검증하고 쿠키·API 모의 응답·절대 탐색을 같은 origin에 결박한다. 네트워크 없는 잘못된 caller/경로 부작용0 단위 검사와 긴 화면의 높이 변경 회귀를 추가했다. 새 소스의 실제 재검증과 각 원 리뷰어의 closure는 아직 미완이며 b043의 성공·실패 수치를 새 소스에 전용하지 않는다.
+
+## 2026-11-12 — Transport 모바일 공통 탐색 패턴 대조·수정
+
+현재 운영 관리자 소스와 실제 테스트의 실패 증거를 고정한 뒤 모바일 UI 일치 작업을 시작했다. 다른 6개 앱의 확정 머지 소스와 실제 UI0.2.0 AppMenu를 대조했으며, 공통 RW-9·UX-G1.2는 상단 가로 strip을 기본으로 하고 Geo의 drawer를 옵션으로 허용한다. Transport에는 기본 strip을 적용한다.
+
+공통 AppMenu·Button으로 19개 기존 경로와 로그아웃 POST를 유지한다. 앱 셸은 1023/1024px에서 전환하며 활성 링크의 수평 스크롤과 reduced-motion, 데스크톱 레일 접힘·복구·접근 가능한 링크 이름을 연결한다. 접힘 상태는 다른 앱과 같은 앱 전용 localStorage 키에 저장하고 Zustand 저장소는 인스턴스별로 생성한다. DOM용 메뉴와 소비자 하단 탭바의 프로필을 혼합하지 않는다.
+
+이 변경은 backend·auth·schema·라이브러리 lock/vendor를 수정하지 않는다. 기존 실제 VWorld 응답 실패와 테스트 하네스의 768px 브레이크포인트 오판은 성공으로 바꾸지 않고 보존한다. 사용자가 Geo 실사용 키의 Transport 사용을 지시했으므로 키 출처 조사와 입력 조치는 별도 운영 증거로 남기며 키·URL 원문을 출판하지 않는다. 이 시점의 새 소스 검증·독립 2인 리뷰·CI·머지·배포는 아직 미완이며 이전 초안의 성공 수치를 이 소스에 전용하지 않는다.
+
+## 2026-11-12 — 관리자 운영 기능 보존의 독립 리뷰 후속 수정
+
+- e2a 소스를 검토한 두 독립 리뷰에서 공식 안내·전화 링크, 클러스터 집계 갱신의 포커스, 일반철도 작업 표시명 누락을 확인하고 해당 동작과 회귀 테스트를 복원했다. 존재하지 않는 지역 유가 경로는 성공 계약이 아닌 차단 계약으로 유지한다.
+- 같은 교정 테스트의 수정 전후 대조는 25통과·4실패 → 29통과다. 초기 테스트 환경의 act 대기 오류와 실제 DOM 정체성 실패를 구분해 보존하며 단위 테스트를 실제 브라우저 수용으로 확대하지 않는다.
+- 근접 좌표의 서로 다른 클러스터를 유지하는 검사와 격리 브라우저의 주소·공식 안내·전화·실제 VWorld Marker 검사를 추가했다. 모의 세션·응답은 loopback 서버 전용이며 운영 로그인 검증과 분리한다.
+- 후속 소스의 정확한 검사·재리뷰·운영 인수는 [PR182](https://github.com/digitie/kor-travel-transport/pull/182)와 최종 수용 기록으로 연결한다. 공통 라이브러리·vendor·lock과 백엔드·DB 스키마는 이번 후속 수정에서 바꾸지 않았다.
+
+## 2026-11-12 — Transport C11·Scope2 새 native/Alpine gate 수용
+
+## 2026-11-12 — 운영 관리자 기능을 C11 공통 UI 위에 보존하는 후보
+
+- 운영 관리자6bd와 C11 머지936의 공통 조상59를 기준으로 주차장 기준정보·철도 독립 시간표·역 지정 의도·도시철도 운행 기준·유가 지역 카드의 UI 기능을 합성했다. backend·DB0042·인증·공통 패키지와 lock/vendor는 변경하지 않았다.
+- 기존 C11 지도 작업면·목록 왕복·시간표 앵커·비동기 요청 취소 계약을 유지하며, 새 역 선택은 기존 공통 Radix combobox를 확장했다. 운행 기준·차종은 공통 Select, 주차 검색은 RHF+Zod를 사용한다.
+- N150 첫 후보는 타입·guard 통과, unit412통과/7실패/미처리오류1건·lint1건·Doctor17건이었다. 실패 원문은 보존했다. Radix 탭 입력과 jsdom scrollIntoView fixture를 교정한 다음 후보는 타입·lint·집중38개 통과이며 Doctor6건이 남았다. 이후 품질 분리와 최종 전체 검증은 별도 진행한다.
+- 이 커밋은 검토를 시작할 불변 소스 후보다. 최종 전체 unit·브라우저·빌드·Doctor·CI와 독립 A/B 검토는 아직 미완이다. 관리자936 이미지는 캐시 준비 전용으로 활성화하지 않는다. Public936 공식 적용은 Aquinas 소유다.
+
+- Fresh native public4/admin18, 별도 Alpine public4/admin18 모두 PASS·skip/flaky0.
+  실제 이미지153/263파일 exact, 소유 서버/컨테이너 종료·active0을 확인해 N150 슬롯1을 반환했다.
+- 원 admin17/1은 dynamic TransportMap 마운트 전 isVisible=false로 모바일 필터 열기를 생략한 E2E race다.
+  기존 분기 앞에 toBeAttached assertion1개를 보강한 뒤 전체18을 두 경로에서 통과했다.
+  제품 runtime·기존 assertion·timeout·retry는 그대로이며 첫 실패/trace를 보존했다.
+- 기준 ef7 원A/B source/package PASS·신규0, 일반/중앙 CI SUCCESS.
+  실제 backend CI1548PASS/2SKIP는 기존 WSL1511/39·Docker1508/42와 구분한다.
+- 추가 test/docs 커밋 CI·리뷰 delta·부모 PR181 merge 뒤 기존 공식 배포로 새 이미지를 반영한다.
+  필요한 own backend/code/gateway 재시작은 source/locks/same-schema 조건 아래 승인 범위다.
+  G/current receipt/pin·secret을 보존하며 DB/RustFS/global daemon lifecycle·새 migration은 제외한다.
+- [최종 실행 검증](reports/2026-11-12-transport-c11-validation.md). 현재 운영 변경0.
+
+## 2026-11-12 — Transport C11 인수·설치 동일성 확인
+
+- 부모의 C11 manifests/lock/UI/tokens/Scope2 변경을 인수했다. public153/admin263 파일이 원본 tgz와
+  exact이며 installed/external canonical guard를 다시 통과했다. 미사용 fix1 vendor는 참조 부재 확인 후 제거했다.
+- 부모 최신 전체 public164/admin356·type/lint·Doctor0/0 및 최종 guard PASS 원문 해시를 기록했다.
+  초기 harness 실패도 보존했다. common PR49 최초 릴리스 bytes는 변경하거나 다시 pack하지 않았다.
+- 중앙 workflow exact55 pin을 포함한다. 새 Scope2 native/Alpine build·각 경로 browser4/18은 N150 슬롯 대기,
+  현재 PR181 CI·독립 리뷰 delta·merge·부모 go 이후 배포는 남는다. backend 전체는 source 불변이라 반복하지 않았다.
+- [C11 검증 원장](reports/2026-11-12-transport-c11-validation.md). symlink와 다른 작업자 프로세스·cache·DB/RustFS를 보존했다.
+
+## 2026-11-12 — Transport c9 checker-only 최종 동기화·전체 로컬 검증
+
+- c8 native/Alpine build·unit164/356·각 CSS 경로 browser4/18과 실제 Pretendard 로드를 통과했다.
+  backend도 WSL1511PASS/39SKIP·Docker1508PASS/42SKIP·각 exit0을 회수했다. 원 실패는 별도 보존했다.
+- 부모/직접 tar 비교로 c9 UI/tokens의 checker만 변경됨을 확인하고 동일 원본·원장·lock·실제 설치를 갱신했다.
+  installed/external canonical 양쪽 PASS, 금지 reexport/import()/require 차단10개 PASS다.
+- exact2c 외부/설치 checker bytes와 runtime 소스 차이0건을 검증했다. 관리자 source 목록에 lib만 추가했다.
+  checker-only로 전체 UI build/browser를 반복하지 않았다. backend205파일 해시/mtime도 유지했다.
+- 부모 workflow는 보존·커밋 제외, 다른 repo·사용자 cache·DB/RustFS는 변경하지 않았다.
+  독립2리뷰·CI·PRmerge·부모go 후 실제 새 image 배포는 남는다.
+
+## 2026-11-12 — Transport c8 단일 pack·CSSfix4·native 검증
+
+- 부모 원본 UI/tokens/CSS와 관리자 core/web을 실제 설치 파일까지 같은 bytes로 맞췄다.
+  devDependency CSSfile+루트 override를 적용했고 양쪽 원장/canonical/source guard가 통과했다.
+- WSL unit164/356·lint/type·Doctor0, n150 clean install/build와 native browser4/18이 통과했다.
+  모바일/PC Dialog 경계·Tab 순환·Escape 복귀2개를 추가하고 실제 Pretendard 로드를 확인했다.
+- backend WSL 전체1511PASS/39SKIP·exit0을 회수했다. Docker backend 전체는 유지한다.
+  backend205파일 해시·mtime을 보존했고 종료된 본인 fixture만1.91GB 정리했다.
+- Docker Hub TLS 원 실패를 보존하고 동일 cached Node base를 n150에 전달해 frontend Docker를 재시도한다.
+  c9는 부모 checker-only 후보를 기다리며 runtime/CSS 동일성 입증 뒤 빠른 설치/guard로 연결한다.
+- 부모 workflow와 다른 repo/에이전트/cache, DB/RustFS lifecycle은 수정하지 않았다. 전체 릴리스·운영 배포는 미완이다.
+
+## 2026-11-11 — Transport 상세 중간 관측과 지도 버전 계약 갱신
+
+- 구현53a8082 뒤 Doctor 공개/관리자0/0·unit164/356·Chromium4/16을 확인했다.
+- WSL backend 전체92% 실패1건의 노드는 지도 vendor의 이전web1.0.1/core1.0.0 기대값이었다.
+  현재web1.0.3/core1.0.1로 두 assertion만 갱신하고 별도 WSL/Docker 각각1PASS·exit0을 확인했다.
+- 수정 전 WSL 전체는1510PASS/39skip/1FAIL로 종료했다. 별도 통과와 합쳐 전체 PASS로 표시하지 않았다.
+  종료된 본인 fixture만 경로/사용 프로세스 확인 후2.04GB 정리하고 수정본 WSL 전체를 별도 시작했다.
+  교정 Docker 전체도 진행 중이며 원 잘못된 환경의 Docker 진단 중단 기록은 보존한다.
+- 최신 관측 JSON·로그는 validation/transport-*다. c7 pack·리뷰·CI·병합·배포는 남는다.
+  부모 소유 workflow·다른 에이전트 경로·DB/RustFS는 변경하지 않았다.
+
+## 2026-11-11 — Transport Doctor 전체 warning0와 소비자 회귀 개선
+
+공개6/관리자48 경고를 baseline으로 유예하지 않고 상태 소유권·도메인 조회 수명·표현 컴포넌트로 분리했다.
+버스 검색 수와 역 초안 dirty의 자식 effect 통지를 제거하고 날짜별 시간표 scope·지도 초기 카메라/겹침 선택을 정리했다.
+비컴포넌트 export를 순수 모듈로 옮기고 HTTP 상태 처리·기존 조회 계층·RHF/Zod/Zustand 실사용을 유지했다.
+
+c6의 타입·ESLint·Doctor 전체 warning0, 공개164/관리자356 WSL·격리 Docker 단위와 관리자 Chromium16개를 통과했다.
+독립 응답 표시2·버스/공항4 회귀를 추가했다. 분리 중 빈 상세 element가 모바일 검색을 가리는 문제도 실제 브라우저로
+재현하고 undefined/null 계약을 복구했다. 공통 탭2회귀도 부모 수정 소비 후 통과했고 앱별 monkeypatch는 없다.
+
+루트 디스크 고갈로 기록이 불완전해진 backend 실행을 성공으로 보고하지 않았다. 전용 임시 DB/캐시로 WSL 및 Docker 전체를
+별도 재실행 중이며 최종 결과는 아직 없다. 본인 생성물만 절대 경로를 검증해 이동/정리하고 다른 에이전트·기존 사용자 cache는
+건드리지 않았다. 새 canonical c7과 root c6 pack의 차이는 통합 blocker로 기록한다. 부모 reusable workflow는 별도 보존·커밋 제외다.
+독립 Transport 리뷰·원격CI·PR/머지·운영 배포는 미실행이며 최종 부모go 순서를 유지한다.
+[검증·배포 계획](reports/2026-11-11-common-ui-validation.md), [Doctor 검증](reports/2026-11-11-react-doctor-findings.md).
+
+## 2026-11-11 — 공통 Radix·VirtualTable 통합 소비자 후보
+
+기존 clone/branch와 미커밋 transport 초안을 보존해 공개·공유 parking-ui·관리자를 이관했다.
+부모 후보4 UI0.2.0/tokens0.1.1과 web1.0.3/core1.0.0 동일 tgz·원장을 소비한다.
+버전 exact·nested override, 공통 프리미티브/표, 폼·상태·폰트 실사용, ESLint10 지원 plugin 구성과
+소스/산출물 guard·Doctor CI를 연결했다. 기존 API/인증/수집/DB/RustFS 정책은 변경하지 않았다.
+
+검증 중 발견한 공통 Tabs 방향/선택 및 비활성 forceMount 회귀를 부모에게 보고했다. 앱별 monkeypatch는 없다.
+첫 후보 WSL 공개164/관리자350 단위와 두 타입/lint/build/guard, Docker 두 build는 통과했다.
+Chromium 로그인·폰트·지도 다중 필터6개도 통과했다. 후보4도 두 WSL/Docker unit·타입/lint/build/guard를 통과했다. 실제 Chromium은10통과/공통 회귀2실패다.
+전체 backend WSL은 아직 실행 중이며 성공으로 보고하지 않는다. 후보별 검증은 아래 원장에서 구분한다.
+Doctor는 오류0이지만 전체 warning 차단에서 공개6/관리자48 경고가 남아 실패한다. 무시 baseline으로 숨기지 않았다.
+
+현재 통합 후보이며 완료 릴리스가 아니다. 독립2리뷰·원격CI·PRmerge·이미지 배포는 미실행이다.
+최종 부모go 이후에만 승인된 정본/이미지 ID로 순차 배포한다.
+[검증·구체 배포 계획](reports/2026-11-11-common-ui-validation.md),
+[Doctor 잔여 진단](reports/2026-11-11-react-doctor-findings.md).
 
 ## 2026-10-29 — 유가 차트 단절 기준 안내 정합성
 

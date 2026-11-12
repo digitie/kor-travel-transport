@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Place } from "@/lib/journey";
 
@@ -14,7 +15,7 @@ vi.mock("vworld-map-web", async () => {
       React.useEffect(() => { onLoad(map); }, [map, onLoad]);
       return <div data-testid="fixture-map" data-center={center.join(",")} data-zoom={zoom}><button onClick={() => onMoveEnd({ target: map })}>지도 이동 모의</button>{children}</div>;
     },
-    ClusterLayer: ({ points, renderMarker }: { points: unknown[]; renderMarker: (point: unknown) => React.ReactNode }) => <>{points.map((point, index) => <React.Fragment key={index}>{renderMarker(point)}</React.Fragment>)}</>,
+    ClusterLayer: ({ points, renderMarker }: { points: { id: string }[]; renderMarker: (point: unknown) => React.ReactNode }) => <>{points.map((point) => <React.Fragment key={point.id}>{renderMarker(point)}</React.Fragment>)}</>,
   };
 });
 vi.mock("./map-overlays", () => ({
@@ -22,7 +23,22 @@ vi.mock("./map-overlays", () => ({
   MapMarkerButton: ({ ariaLabel, onClick, children, className }: { ariaLabel: string; onClick: () => void; children: React.ReactNode; className?: string }) => <button className={className} aria-label={ariaLabel} onClick={onClick}>{children}</button>,
 }));
 vi.mock("./filter-combobox", () => ({ FilterCombobox: ({ options, value, onChange, placeholder }: { options: {value:string;label:string}[]; value:string[]; onChange:(value:string[])=>void; placeholder:string }) => <select aria-label={placeholder} value={value[0] ?? ""} onChange={event=>onChange(event.target.value ? [event.target.value] : [])}><option value="">전체</option>{options.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select> }));
-import { layoutFuelRegionCards, TransportMap } from "./transport-map";
+import { TransportMap } from "./transport-map";
+import { layoutFuelRegionCards } from "@/lib/fuel-region-layout";
+import { GeneralRailGuide } from "./general-rail-guide";
+
+test("역 지도는 서버 HTML부터 공통 작업면과 지도·목록 탭을 제공한다", () => {
+  const container = document.createElement("div");
+  container.innerHTML = renderToStaticMarkup(<GeneralRailGuide />);
+  const workspace = container.querySelector(
+    'section[aria-label="철도 역 지도"] .map-workbench [data-slot="map-workspace"]',
+  );
+  expect(workspace).not.toBeNull();
+  const tabs = Array.from(workspace?.querySelectorAll('[role="tab"]') ?? []);
+  expect(tabs).toHaveLength(2);
+  expect(tabs.some(tab => tab.textContent?.includes("지도"))).toBe(true);
+  expect(tabs.some(tab => tab.textContent?.includes("목록"))).toBe(true);
+});
 
 test.each([[1120, 832], [351, 787]])("지역 카드 배치는 %sx%s에서 충돌과 범위 통계 영역을 피하며 부족한 공간을 알린다", (width, height) => {
   const cards = Array.from({ length: 12 }, () => ({ left: 110, top: 140, width: 130, height: 130 }));
@@ -115,7 +131,7 @@ test("교통 지도는 일반 주차장 필터를 요청하고 좌표 없는 주
     const requests = () => vi.mocked(fetch).mock.calls.map(call => new URL(String(call[0]), "http://test"));
     expect(requests().some(url => url.searchParams.get("kinds")?.split(",").includes("public_parking_lot"))).toBe(true);
     expect(container.querySelector(".transport-map-marker.public_parking_lot")).toBeNull();
-    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(button => button.textContent?.includes("목록"))!.click());
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(button => button.textContent?.includes("목록"))!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })));
     expect(container.querySelector(".place-row")?.textContent).toContain(parking.name);
     expect(container.querySelector(".place-row")?.textContent).toContain("좌표 미등록");
     expect(requests().some(url => url.searchParams.get("kind") === "public_parking_lot" && url.searchParams.get("include_unlocated") === "true")).toBe(true);
@@ -181,6 +197,7 @@ test("외부 장소 지도는 자체 API를 호출하지 않고 이동을 카메
   const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
   try {
     await act(async () => root.render(<TransportMap places={[station]} />));
+    expect(container.querySelector('[aria-label="선택 장소 상세"]')).toBeNull();
     const camera = () => container.querySelector('[data-testid="fixture-map"]')!;
     const readout = () => container.querySelector(".kt-map-coordinates")!.textContent;
     // mount 시점 카메라가 유지된다. 실제 카메라는 readout에만 반영한다(SDK가 prop 변화마다 ease를 다시 걸지 않게).
@@ -193,9 +210,9 @@ test("외부 장소 지도는 자체 API를 호출하지 않고 이동을 카메
     expect(camera().getAttribute("data-zoom")).toBe("7");
     expect(readout()).toBe("center 129.1000, 35.2000 · z 14.0");
     await act(async () => container.querySelector<HTMLButtonElement>('[role="tab"][id]')?.focus());
-    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((node) => node.textContent?.includes("목록"))!.click());
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((node) => node.textContent?.includes("목록"))!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
     expect(container.querySelector('[data-testid="fixture-map"]')).toBeNull();
-    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((node) => node.textContent?.includes("지도"))!.click());
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((node) => node.textContent?.includes("지도"))!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
     expect(camera().getAttribute("data-center")).toBe("129.1,35.2");
     expect(camera().getAttribute("data-zoom")).toBe("14");
     expect(fetch).not.toHaveBeenCalled();
@@ -290,7 +307,7 @@ test("숨긴 목록에는 선택 상세를 중복 마운트하지 않는다", as
   try {
     await act(async () => root.render(<TransportMap places={[station]} selectedPlace={station} details={<Inspector />} />));
     expect(mounted).toHaveBeenCalledTimes(1); expect(container.querySelectorAll('[data-testid="inspector-probe"]')).toHaveLength(1);
-    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((node) => node.textContent?.includes("목록"))!.click());
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((node) => node.textContent?.includes("목록"))!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
     expect(mounted).toHaveBeenCalledTimes(2); expect(unmounted).toHaveBeenCalledTimes(1);
     expect(container.querySelectorAll('[data-testid="inspector-probe"]')).toHaveLength(1);
   } finally { await act(async () => root.unmount()); container.remove(); }
@@ -302,8 +319,52 @@ test("주유소 지도 마커와 목록 모두 실제 상표 코드의 로고와
   try {
     await act(async () => root.render(<TransportMap places={[fuel]} mode="fuel" />));
     expect(container.querySelector('button[aria-label*="시험 주유소 S-OIL"] img')?.getAttribute("src")).toBe("/fuel-brands/soil.gif");
-    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((node) => node.textContent?.includes("목록"))!.click());
+    await act(async () => [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((node) => node.textContent?.includes("목록"))!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
     expect(container.querySelector(".place-row img")?.getAttribute("alt")).toBe("S-OIL");
     expect(fetch).not.toHaveBeenCalled();
   } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
+
+test("집계만 바뀐 같은 좌표 묶음은 DOM과 키보드 초점을 유지한다", async () => {
+ let count=2;
+ Object.assign(mapState,{zoom:7});
+ vi.mocked(fetch).mockImplementation(async()=>new Response(JSON.stringify({items:[],total:count,clustered:true,clusters:[{longitude:127,latitude:37,count,kind_counts:{fuel_station:count}}]})));
+ const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+ try{
+  await act(async()=>root.render(<TransportMap mode="fuel"/>));
+  const cluster=()=>host.querySelector<HTMLButtonElement>(".map-cluster")!;
+  expect(cluster()?.getAttribute("aria-label")).toBe("2개 장소 요약 묶음 확대");
+  const original=cluster();original.focus();expect(document.activeElement).toBe(original);
+  count=3;Object.assign(mapState,{zoom:8});
+  await act(async()=>[...host.querySelectorAll("button")].find(button=>button.textContent==="지도 이동 모의")!.click());
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,450));});
+  expect(cluster()?.getAttribute("aria-label")).toBe("3개 장소 요약 묶음 확대");
+  expect(cluster()).toBe(original);expect(document.activeElement).toBe(original);
+ }finally{await act(async()=>root.unmount());host.remove();}
+});
+
+
+test("서로 가까운 두 묶음도 집계와 순서가 바뀔 때 각 DOM과 초점을 보존한다", async () => {
+ let updated=false;
+ Object.assign(mapState,{zoom:7});
+ vi.mocked(fetch).mockImplementation(async()=>{
+  const first={longitude:126.9999999,latitude:37,count:updated?3:2,kind_counts:{fuel_station:updated?3:2}};
+  const second={longitude:127.0000001,latitude:37,count:5,kind_counts:{fuel_station:5}};
+  return new Response(JSON.stringify({items:[],total:updated?8:7,clustered:true,clusters:updated?[second,first]:[first,second]}));
+ });
+ const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+ const cluster=(count:number)=>host.querySelector<HTMLButtonElement>(`.map-cluster[aria-label="${count}개 장소 요약 묶음 확대"]`)!;
+ try{
+  await act(async()=>root.render(<TransportMap mode="fuel"/>));
+  const first=cluster(2),second=cluster(5);
+  expect(first).not.toBeNull();expect(second).not.toBeNull();first.focus();
+  expect(document.activeElement).toBe(first);
+  updated=true;Object.assign(mapState,{zoom:8});
+  await act(async()=>[...host.querySelectorAll("button")].find(button=>button.textContent==="지도 이동 모의")!.click());
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,450));});
+  expect(cluster(3)).toBe(first);expect(cluster(5)).toBe(second);
+  expect(host.querySelectorAll(".map-cluster")).toHaveLength(2);
+  expect(document.activeElement).toBe(first);
+ }finally{await act(async()=>root.unmount());host.remove();}
 });

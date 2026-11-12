@@ -7,7 +7,9 @@ import type { Place } from "@/lib/journey";
 const api = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock("@/lib/journey", async (original) => ({ ...await original<typeof import("@/lib/journey")>(), transportGet: api.get }));
 vi.mock("@/lib/journey-hooks", () => ({ useNearbyPosition: () => ({ position: null, positionError: null, locate: () => {}, locating: false }) }));
-vi.mock("next/dynamic", () => ({ default: () => function MapFixture({ toolbar, feedback, listContent, places }: { toolbar?: ReactNode; feedback?: ReactNode; listContent?: ReactNode; places: Place[] }) { return <div>{toolbar}<section data-testid="result-flow">{feedback}{listContent}{places.map((place) => <button key={place.id}>{place.name}</button>)}</section></div>; } }));
+function MapFixture({ toolbar, feedback, listContent, places }: { toolbar?: ReactNode; feedback?: ReactNode; listContent?: ReactNode; places: Place[] }) { return <div>{toolbar}<section data-testid="result-flow">{feedback}{listContent}{places.map((place) => <button key={place.id}>{place.name}</button>)}</section></div>; }
+vi.mock("next/dynamic", () => ({ default: () => MapFixture }));
+vi.mock("./transport-map", () => ({ TransportMap: MapFixture }));
 import { MetroJourney } from "./metro-journey";
 import { GeneralRailGuide } from "./general-rail-guide";
 

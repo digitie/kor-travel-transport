@@ -66,8 +66,11 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npx --yes npm@12.0.1 ci
+      - run: npm run check:dependencies
+      - run: npm run doctor
       - run: npm run test -- --run
-      - run: npx tsc -p tsconfig.test.json --noEmit
+      - run: npm run type-check
+      - run: npm run lint
       - run: npm run build
 
   transport-admin:
@@ -83,6 +86,8 @@ jobs:
           cache: npm
           cache-dependency-path: packages/kor-travel-transport-admin/frontend/package-lock.json
       - run: npx --yes npm@12.0.1 ci
+      - run: npm run check:dependencies
+      - run: npm run doctor
       - run: npm run test
       - run: npm run type-check
       # eslint.config.mjs의 react-hooks 규칙 해제·이후 lint 회귀도 CI가 잡는다.
@@ -106,5 +111,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npx --yes npm@12.0.1 ci
+      - run: npm run check:dependencies
+      - run: npm run doctor
       - run: npm run e2e:install
       - run: npm run test:e2e

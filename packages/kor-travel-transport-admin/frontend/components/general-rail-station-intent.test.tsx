@@ -13,7 +13,7 @@ vi.mock("@/lib/journey-hooks", () => ({
   useSeoulToday: () => "2026-10-28",
   useNearbyPosition: () => ({ position: null, positionError: null, locating: false, locate: () => {} }),
 }));
-vi.mock("next/dynamic", () => ({ default: () => function MapFixture({ toolbar, feedback, details, places, selectedPlace, onSelectPlace, view, onViewChange, focusRevision, detailKey }: {
+vi.mock("./transport-map", () => ({ TransportMap: function MapFixture({ toolbar, feedback, details, places, selectedPlace, onSelectPlace, view, onViewChange, focusRevision, detailKey }: {
   toolbar?: ReactNode; feedback?: ReactNode; details?: ReactNode; places: Place[]; selectedPlace?: Place | null;
   onSelectPlace: (place: Place) => void; view: string; onViewChange: (view: "map" | "list") => void; focusRevision: number; detailKey?: string;
 }) { return <div data-map-view={view} data-map-focus={focusRevision} data-detail-key={detailKey} data-selected-provider={selectedPlace?.provider_id}>
@@ -49,14 +49,17 @@ function defaultGet(path: string) {
   if (url.pathname.endsWith("/timetable")) return Promise.resolve({ fetched_at: at, stale: false, service_date: "2026-10-29", total: 0, truncated: false, items: [] });
   throw new Error("예상하지 않은 fixture 요청");
 }
+const originalScrollIntoView=Object.getOwnPropertyDescriptor(HTMLElement.prototype,"scrollIntoView");
 let root: Root, host: HTMLDivElement;
 beforeEach(() => {
+  Object.defineProperty(HTMLElement.prototype,"scrollIntoView",{configurable:true,value:vi.fn()});
+  vi.stubGlobal("ResizeObserver",class{observe(){}unobserve(){}disconnect(){}});
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-10-28T00:00:00Z"));
   api.get.mockReset().mockImplementation(defaultGet);
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks();vi.unstubAllGlobals();if(originalScrollIntoView)Object.defineProperty(HTMLElement.prototype,"scrollIntoView",originalScrollIntoView);else Reflect.deleteProperty(HTMLElement.prototype,"scrollIntoView"); });
 async function change(element: HTMLInputElement | HTMLSelectElement, value: string) {
   await act(async () => {
     const prototype = element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
@@ -93,13 +96,21 @@ test("안내의 provider 참조로 지정 의도를 전달하며 노선 목록 �
 });
 
 
+
+async function selectGrade(label:string){
+ const trigger=host.querySelector<HTMLElement>('[role="combobox"][aria-label="열차 종류"]')!;expect(trigger).toBeTruthy();
+ await act(async()=>trigger.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true,cancelable:true})));
+ const option=[...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node=>node.textContent?.trim()===label)!;expect(option).toBeTruthy();
+ await act(async()=>option.dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true,cancelable:true})));
+}
+
 async function pick(role:string,id:string){await change(group(role).querySelector("select")!,id);}
 async function openGuide(){await click(button("지도에서 역 선택"));await guideChoice();}
 
 test("지도 지정은 검색어만 전달하고 반대역·날짜·차종을 보존하며 실제 후보 선택 뒤 조회한다",async()=>{
   await act(async()=>root.render(<GeneralRailJourney/>));
   await pick("도착역","NAT-BUSAN");
-  await change(host.querySelector('select[id$="-grade"]')!,"00");
+  await selectGrade("KTX");
   await change(host.querySelector('input[type="date"]')!,"2026-10-29");
   await openGuide();await click(button("출발로 지정"));
   expect(group("출발역").querySelector("input")!.value).toBe("서울");

@@ -344,6 +344,137 @@ WSL/Docker backend40 PASS/기존 PG잠금1 SKIP, UI4 PASS와 타입·lint·Next 
 [데이터소스·계약·미완 경계](design/2026-10-31-metro-code-detail.md). 운영 반영은 없다.
 
 다음 한 작업: 이 Draft PR의 CI를 확인한다. 실시간·노선 순서·출구 수집은 별도 미완이다.
+## 2026-11-12 — 늦은 역 목록 응답의 상세 초점 탈취 교정 중
+
+- PR185의 첫 후보 bf937d1은 단위453·관리자/공개 프런트 CI·정책 검사·원 두 소스 리뷰를 통과했다. 초기 작업면 회귀는 기존 코드2건 실패, 새 native/Alpine 각2건 통과이며 PC 높이832px·모바일783px를 확인했다.
+- 첫 브라우저 결과는 native43 PASS, Alpine42 PASS/1 FAIL이다. Alpine375px의 주소 지도 이동 후 상세 초점 단언이 실패했다. 첫 실패 원문과 원래5000ms 단언을 보존한다.
+- 관측 하네스의 최초 실행은 대상 선택식 오류로0건 수집이었다. 선택식만 교정한 원래375px 단독 검사1회는 통과했으나, 기록에서 상세 초점967ms 뒤 출발역 입력칸이1161ms에 초점을 가져가는 현상을 확인했다. 단독 통과로 앞선 실패를 소거하거나 최초 운영 지도 높이0의 원인을 확정하지 않는다.
+- 초기 검색어 채움은 자동 초점 요청과 구분한다. initialDepartureName만 revision0으로 두고 명시적인 initialStationIntent와 사용자의 재지정 요청은 기존 양수 revision을 유지한다. 실제 공통 Combobox를 사용하는 지연 catalog·재마운트 회귀2건은 기존 코드에서 실패했고, 수정 후에는 이2건과 명시적 출발/도착·동일 역 재지정3건이 모두 통과했다.
+- 새 정확 소스의 전체 검사·native/Alpine·원 두 재검토·CI·머지·새 ARM 이미지·정상 실제 수용은 미완이다. 기존 M885의8 PASS/1 FAIL과 별도 운영 진단 실패를 보존하며 Common/Geo 최종 출판은 후속 수용 뒤 진행한다.
+- 공통 패키지·lock·vendor·공개 웹·backend·인증·키·DB 및 Map 앱은 변경하지 않는다. 이번 수정은 앱의 초기 렌더링과 초점 의도 교정이며 라이브러리 버그로 판정하지 않는다.
+
+## 2026-11-12 — 역 지도 초기 작업면의 서버 렌더링 검증 중
+
+- Geo형 메뉴 PR184는88566f7d로 머지했고 ARM image5ffe49를 공식 SDK508의 관리자 단독 dry-run1·confirm1 healthy/current/postproof로 적용했다. 공개936·backend499/schema0042·비선택54와 기존 인증·키를 보존했다.
+- 새 메뉴의 실제9개 폭·11개 전환/메뉴 Pretendard11표본·높이/스크롤·지도 PNG40(20+20, 실제 디코딩2+2·줌7→8)·표·업무·정상 로그아웃401은 통과했다. 첫 정상 세션은8 PASS/1 FAIL이며 전체 수용 완료가 아니다.
+- 별도 역 연락처 검사는 역 지도 region의 가시성 선행조건에서 실패했다. 원래 단언 그대로 한 번 더 진단하여 API200/65건·region1개의976×0px 상태를 확인했다. 공식 링크·전화 href 단언에는 아직 도달하지 못했다. 최초 실패 원인은 미확정으로 보존한다.
+- x64 native/Alpine에서는 동적 지도 child가 표시됐다. 운영에서 확인한 JS13·CSS1은 이미지와 동일했으며 라이브러리 결함으로 확정하지 않는다. 같은 ARM 이미지의 격리 cold/warm 비교는 별도 진행한다.
+- 기본 교통 지도와 같은 TransportMap의 일반 import로 역 지도도 서버 HTML에서 작업면을 구성하는 최소 수정 후보를 만든다. JavaScript 실행 전 PC/모바일의 지도 영역·지도/목록 탭을 검사하는 회귀를 추가한다. 새 후보의 실행·원 두 리뷰·정확 CI·머지·이미지·정상 실제 수용은 아직 미완이다.
+- 이전 모든 실패·리뷰·영수증과 키 입력 이력은 보존한다. Common/Geo 최종 출판은 이 후속 수용 이후이며 패키지·lock·vendor·backend·인증·DB·지도 키와 Map 앱은 변경하지 않는다.
+
+## 2026-11-12 — Geo와 같은 모바일 드로어·PC 세로 메뉴 적용 중
+
+- 사용자 후속 지시에 따라 1024px 미만에서는 Geo와 같은 햄버거 버튼·왼쪽 드로어, 그 이상에서는 16rem 세로 레일과 4rem 접힘 선택을 사용한다. 앞선 가로 strip은 당시 검증 이력으로 남긴다.
+- 기존 공통 AppMenu의 19개 경로·그룹·활성 상태를 두 레이아웃이 공유한다. 모바일에서는 PC 접힘 선택과 관계없이 모든 메뉴 이름을 표시한다.
+- 모바일 모달은 기존 공통 shadcn/Radix Dialog를 사용한다. Escape·배경 클릭·초점 가두기·닫기 후 초점 복귀와 스크롤 잠금을 라이브러리에 맡기며, 경로·PC/모바일 전환 시 드로어를 닫는다.
+- POST 로그아웃·세션 캐시 정리·공개936·backend499/schema0042 및 공통 라이브러리 버전·lock·vendor를 보존한다. 승인된 Geo 웹 키를 다시 변경하지 않는다.
+- 소스의 단위·타입·lint·React Doctor·native/Alpine 브라우저·독립 원 A/B 검토·정확 CI·머지·새 ARM 이미지·실제 운영 수용은 이 후보에서 아직 검증 전이다.
+- 0aae의 관리자 CI452·공개164·양쪽 Doctor0은 통과했지만 원 두 소스 리뷰가 잔존 62rem 가로 메뉴 CSS 충돌을 찾았다. 해당 규칙을 제거하고 992/993px 경계·짧은 화면 말단 링크/로그아웃·역방향 초점·배경 스크롤 회귀를 추가했다. 수정 소스의 새 실행·재검토·CI는 별도 미완이며 이전 결과로 대체하지 않는다.
+- 이전47a/image3f207의 실제 지도 PNG36·디코딩2+2·줌7→8과 단일 정상 세션9 PASS는 당시 소스의 완료 증거다. 새 드로어 후보의 수용으로 소급하지 않는다. Common/Geo 최종 문서 출판은 새 메뉴의 수용 이후 재개한다.
+
+## 2026-11-12 — 공통 모바일 상단 메뉴 일치 검증 중
+
+- 공통 규약의 기본인 1024px 미만 상단 가로 메뉴와 그 이상 데스크톱 레일에 맞춘다. Transport의 개별 모바일 팝업은 제거하고 공통 AppMenu의 19개 링크·그룹·활성 경로를 유지한다.
+- 좁은 화면에서는 활성 항목을 가운데로 이동하고 reduced-motion을 따른다. 데스크톱 접힘 선택은 인스턴스별 Zustand와 앱 전용 localStorage 키로 유지하며, 아이콘 링크의 이름·title과 POST 로그아웃을 보존한다.
+- Geo의 기존 드로어는 규약상 허용 옵션이다. 다른 앱의 실제 머지 소스와 공통 UI 산출물을 대조했으며 Map 소스·빌드·운영 변경은 하지 않는다.
+- 라이브러리 버전·lock·공통 vendor와 backend·인증·DB 스키마는 변경하지 않는다. 현재 소스의 전체 QA·독립 2인 리뷰·정확 CI·새 이미지 배포와 실제 수용은 미완이다.
+- 이전 실제 관리자 수용에서 타일 응답이 XML/InvalidParameterValue·locator=key였던 실패를 보존한다. 사용자 지시로 Geo 실사용 웹 키를 찾아 Transport에 적용하는 조사를 별도로 진행하며, 키 값은 소스나 문서에 기록하지 않는다.
+- 원 두 리뷰의 P2인 문서 세로 스크롤 범위와 실제 caller baseURL 검증 경계를 수정했다. 가로 컨테이너만 이동하고 폰트 로드·컨테이너 폭 변경을 반영하며, 실제 loopback origin 검증이 모의 인증·route·탐색보다 앞선다. 이 수정의 실행·원 재검토는 아직 미완이다.
+- db58 검증은 단위451·린트·Doctor0·의존성 검사 통과 후 Playwright route 모의 반환값의 타입 오류로 중단됐다. 실제 Disposable 계약에 맞게 테스트 대역을 수정하며 native/Alpine·브라우저는 미실행 상태로 보존한다.
+- ee45의 native39개는 통과했으나 스크린샷에서 일반 화면의 메뉴 높이 확장을 추가 발견했다. 격리 브라우저에서 768px·높이900→1100 시 메뉴282.75→382.75px를 재현했고 한 CSS override로171px 불변을 확인했다. 모바일 전체의 행 구성을 고쳐 지도 외 화면도 메뉴 고유 높이를 유지하며 같은 높이 변경을 회귀 검사에 추가한다. 새 소스 빌드·브라우저 검증은 별도 진행한다.
+- 다음 작업은 이 소스의 단위·타입·린트·Doctor·native/Alpine·브라우저 회귀를 검증하고 원 두 리뷰어의 검토를 받는 것이다.
+
+## 2026-11-12 — 관리자 운영 기능과 리뷰 회귀 보존
+
+- 공통 C11 위에 일반 주차장·독립 철도 시간표·역 선택·유가 지역 카드와 기존 지도 동작을 함께 보존했다.
+- 일반철도 상세의 공식 역 안내·정제된 전화 연결·주소 지도 이동과 수집 작업의 한국어 표시명을 복원했다.
+- 클러스터 집계가 갱신되어도 같은 좌표의 DOM·키보드 초점이 유지되도록 정체성을 고정하고, 근접 좌표를 반올림해 합치지 않는다.
+- 격리된 회귀 테스트에 공식 안내·전화·지도 이동, 집계 갱신과 포커스를 추가했다. 모의 세션·API 응답은 loopback 테스트 서버로 제한하며 운영 수용은 정상 인증으로 별도 검증한다.
+- 원 독립 리뷰 2인의 최초 BLOCK과 수정 전후 증거는 보존한다. 수정 전후 동일 집중 검사에서는 25통과·4실패에서 29통과로 바뀌었으며, 이는 tree b962의 집중 검증이고 이후 소스의 전체 CI를 대신하지 않는다.
+- 정확한 소스·CI·재리뷰·머지 상태는 [PR182](https://github.com/digitie/kor-travel-transport/pull/182)에서 확인한다. 전체 운영 수용 전 관리자936 이미지는 적용하지 않는다.
+
+## 2026-11-12 — Transport C11·Scope2 새 native/Alpine gate 수용
+
+## 2026-11-12 — 운영 관리자 기능 보존 후보 검증 중
+
+- 베이스936 위에 실제 운영6bd의 관리자 UI 기능을 합성했다. 주차장/철도 시간표 독립 경로와 기존 C11 지도·앵커·취소 계약을 함께 유지한다.
+- 공통 C11 package/lock/vendor 및 backend·인증·DB 스키마는 그대로다. 공통 Select·Input·Radix combobox, RHF+Zod 검색을 실제 연결했다.
+- 현재 검증은 N150 격리 소스에서 진행한다. 두 번째 후보 타입/lint/집중38개 통과 후 Doctor6건 분리를 반영했으며, 최종 전체 검증과 정확 CI·독립2리뷰는 미완이다.
+- 다음 작업: 고정한 새 소스의 전체 gate와 A/B 검토를 병행하고, 머지된 새 SHA로 관리자 이미지를 다시 빌드·공식 SDK로 적용한다. 기존936 admin은 캐시 전용이며 적용 금지다.
+
+- Fresh native public4/admin18, 별도 Alpine public4/admin18 모두 PASS·skip/flaky0.
+  실제 이미지153/263파일 exact, 소유 서버/컨테이너 종료·active0을 확인해 N150 슬롯1을 반환했다.
+- 원 admin17/1은 dynamic TransportMap 마운트 전 isVisible=false로 모바일 필터 열기를 생략한 E2E race다.
+  기존 분기 앞에 toBeAttached assertion1개를 보강한 뒤 전체18을 두 경로에서 통과했다.
+  제품 runtime·기존 assertion·timeout·retry는 그대로이며 첫 실패/trace를 보존했다.
+- 기준 ef7 원A/B source/package PASS·신규0, 일반/중앙 CI SUCCESS.
+  실제 backend CI1548PASS/2SKIP는 기존 WSL1511/39·Docker1508/42와 구분한다.
+- 추가 test/docs 커밋 CI·리뷰 delta·부모 PR181 merge 뒤 기존 공식 배포로 새 이미지를 반영한다.
+  필요한 own backend/code/gateway 재시작은 source/locks/same-schema 조건 아래 승인 범위다.
+  G/current receipt/pin·secret을 보존하며 DB/RustFS/global daemon lifecycle·새 migration은 제외한다.
+- [최종 실행 검증](reports/2026-11-12-transport-c11-validation.md). 현재 운영 변경0.
+
+## 2026-11-12 — Transport C11 인수·설치 동일성 확인
+
+- 부모의 C11 manifests/lock/UI/tokens/Scope2 변경을 인수했다. public153/admin263 파일이 원본 tgz와
+  exact이며 installed/external canonical guard를 다시 통과했다. 미사용 fix1 vendor는 참조 부재 확인 후 제거했다.
+- 부모 최신 전체 public164/admin356·type/lint·Doctor0/0 및 최종 guard PASS 원문 해시를 기록했다.
+  초기 harness 실패도 보존했다. common PR49 최초 릴리스 bytes는 변경하거나 다시 pack하지 않았다.
+- 중앙 workflow exact55 pin을 포함한다. 새 Scope2 native/Alpine build·각 경로 browser4/18은 N150 슬롯 대기,
+  현재 PR181 CI·독립 리뷰 delta·merge·부모 go 이후 배포는 남는다. backend 전체는 source 불변이라 반복하지 않았다.
+- [C11 검증 원장](reports/2026-11-12-transport-c11-validation.md). symlink와 다른 작업자 프로세스·cache·DB/RustFS를 보존했다.
+
+## 2026-11-12 — Transport 최종 c9 로컬 gate 통과
+
+- 부모 c9 source2c1182e의 UI/tokens·원장·lock·실제 설치를 맞췄다. CSSfix4 직접dev+루트override와
+  관리자 core1.0.1/web1.0.3은 유지했다. 양쪽 installed/external canonical guard PASS, 금지 source 차단10개 PASS다.
+- c8→c9 shared checker만 다르고 앱 runtime 소스 차이0건이다. c8의 WSL/Docker unit164/356·타입/lint·Doctor0/0,
+  양쪽 n150 native/Alpine production build·각 CSS 경로의 Chromium4/18·실제 WOFF2 로드 PASS를 연결한다.
+  관리자 guard에는 lib source를 추가했다. c9 때문에 전체 UI build/browser를 반복하지 않았다.
+- backend 전체 WSL1511PASS/39SKIP·Docker1508PASS/42SKIP, 각각 exit0. backend205파일 해시/mtime은 그대로다.
+  이전 실패/중단은 별도 보존했다. 완료된 본인 QA 서버/tunnel만 정리하고 image와 로그는 남겼다.
+- 다음 한 작업: 부모 통합·독립2리뷰·원격CI·PRmerge 뒤 부모go로 공식 새 image 배포·실제 로그인/health/대표화면 smoke.
+  부모 workflow는 보존·커밋 제외다. DB/RustFS lifecycle은 변경하지 않는다.
+- [최종 검증·구체 배포 계획](reports/2026-11-11-common-ui-validation.md), [인계](../AGENT-HANDOFF-transport-doctor-20261111.md).
+  로컬 소비자 gate 통과이며 전체 프로젝트 릴리스/배포 완료를 뜻하지 않는다.
+
+## 2026-11-12 — Transport c8 실제 설치·native 검증
+
+- 부모 단일c8 UI/tokens/CSSfix4와 관리자 core/web을 vendor/원장/lock/실제 설치까지 대조했다.
+  CSS 직접 devDependency+루트 `$lightningcss` override, 양쪽 canonical/source guard PASS다.
+- WSL unit164/356·lint/type·Doctor0/0, n150 clean install·production build 양쪽 PASS다.
+  실제 native Chromium 공개4/관리자18(추가 Dialog2 포함)·WOFF2 200/loaded face도 PASS다.
+- backend WSL 수정본 전체1511PASS/39SKIP·exit0. Docker 수정본 전체도1508PASS/42SKIP·exit0으로 종료했다.
+  backend205파일 해시/mtime은 유지했다. 완료된 본인 fixture만 정리했다.
+- 다음 작업: 진행 중 c8 Docker frontend build/unit/browser 결과 회수.
+  준비된 부모 c9는 tar 비교로 checker-only임을 확인했다. c8 runtime 뒤 vendor/lock/실제 설치·새 guard만 갱신한다.
+  checker만 바뀌면 UI build/browser 전체를 반복하지 않는다. 부모 소유 workflow는 커밋에서 제외한다.
+- [검증 원장·구체 배포 계획](reports/2026-11-11-common-ui-validation.md).
+  독립2리뷰·CI·PRmerge·부모go 이후 새 이미지 배포까지 남아 있어 전체 태스크는 미완이다.
+
+## 2026-11-11 — Transport Doctor 개선 재개 후보
+
+- 공개/관리자 Doctor full warning0, WSL/Docker unit164/356, 타입·lint 및 관리자 Chromium16개·공개4개 통과.
+  상태 소유권·요청 취소·표현 분리를 구현하고 모바일 빈 상세 오버레이와 느린 독립 조회 회귀를 수정했다.
+- 미완: backend 전체 WSL/Docker 진행 중, c7 pack 동기화 및 독립 Transport 리뷰2건·CI·머지·배포.
+  최신 canonical은c7, root pack과 설치본은c6이므로 현재 canonical guard의 해시 차단을 통과로 보고하지 않는다.
+- 부모 소유 `.github/workflows/common-frontend-policy.yml`은 보존하고 worker 커밋에서 제외한다.
+- backend 중간 실패1건은 지도 패키지의 이전 버전을 기대한 계약 테스트다. 기대값2개만 현재 버전으로 갱신하고
+  별도 WSL/Docker 각각1PASS를 확인했다. 수정 전 WSL 전체는1510PASS/39skip/1FAIL로 종료했고 수정본 전체를 새로 시작했다. Docker 전체도 진행 중으로 PASS 아님.
+- 다음 작업: 진행 중 backend 결과를 회수하고 부모 단일 pack 후 동일 tgz/원장/lock으로 앱 gate를 재검증한다.
+  운영 배포는 전체 필수 gate·독립2리뷰·원격CI·PRmerge와 부모go 이후다. DB/RustFS lifecycle은 변경하지 않는다.
+- [검증 원장·배포 계획](reports/2026-11-11-common-ui-validation.md), [Doctor 개선](reports/2026-11-11-react-doctor-findings.md).
+
+## 2026-11-11 — 공통 UI 통합 소비자 후보
+
+- 현재: 지정 clone·`agent/codex-common-unification-20261111` 유지. 공개/공유/관리자 UI를 부모 common 후보4로 이관했다.
+  모든 자체 표는 VirtualTable, 기본 부품은 공통 Radix export를 사용하고 RHF/Zod/Zustand/Pretendard를 실제 적용했다.
+  ESLint10 exact 지원 조합과 guard·Doctor 전체 warning gate를 CI에 연결했다.
+- 현재 blocker: common Tabs 방향/활성 속성 불일치와 MapTabPanel 비활성 forceMount 표시 회귀,
+  Doctor 공개6/관리자48 잔여 경고. 후보3 Chromium 로그인/필터6개는 통과했다.
+- 다음 한 작업: 부모 공통 수정 후보·최종 hash를 동기화하고 전체 앱 gate를 재검증한다. 두 독립 리뷰·CI·PRmerge와
+  부모go 전 운영 배포는 하지 않는다. DB/RustFS lifecycle은 변경하지 않는다.
+- [검증 원장·구체 배포 계획](reports/2026-11-11-common-ui-validation.md), [Doctor 진단](reports/2026-11-11-react-doctor-findings.md).
 
 ## 2026-10-28 — 전체 UI 보완 후 새 릴리스 준비
 

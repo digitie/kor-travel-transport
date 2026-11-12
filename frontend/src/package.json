@@ -36,11 +36,14 @@
     "react-dom": "19.3.1"
   },
   "dependencies": {
-    "@base-ui/react": "1.9.0",
     "class-variance-authority": "0.7.1",
-    "cn": "0.5.0",
     "date-fns": "4.4.0",
-    "lucide-react": "1.61.0",
-    "react-day-picker": "10.0.2"
+    "lucide-react": "1.72.0",
+    "react-day-picker": "10.0.2",
+    "@kor-travel/ui": "0.2.0",
+    "@kor-travel/tokens": "0.1.1",
+    "react-hook-form": "7.92.0",
+    "zod": "4.6.7",
+    "zustand": "5.1.0"
   }
 }

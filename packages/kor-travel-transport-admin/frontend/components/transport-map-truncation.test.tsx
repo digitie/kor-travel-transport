@@ -51,7 +51,7 @@ for (const mode of ["fuel", "transport"] as const) describe(`${mode} 목록 상�
     const list = [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
       .find((button) => button.textContent === "목록")!;
     expect(list).toBeDefined();
-    await act(async () => { list.click(); });
+    await act(async () => { list.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })); });
     expect(container.querySelectorAll(".place-row")).toHaveLength(1);
     expect(mocks.get).toHaveBeenCalledTimes(mode === "fuel" ? 2 : 8); // 일반 주차장 포함 종류별 조회 외 안내가 새 API를 호출하지 않는다.
     expect(container.querySelectorAll(".kt-map-count")).toHaveLength(1);
@@ -78,7 +78,7 @@ it("추가 목록 건수와 일부 표시 안내가 하나의 합계로 함께 �
   await act(async () => { root.render(<TransportMap mode="fuel" listFeatureCount={2} />); });
   const list = [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
     .find((button) => button.textContent === "목록")!;
-  await act(async () => { list.click(); });
+  await act(async () => { list.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })); });
   expect(container.querySelectorAll(".kt-map-count")).toHaveLength(1);
   expect(container.querySelector(".kt-map-count")?.textContent).toBe("3건 표시");
   expect(container.querySelector('button[aria-label="목록 일부 표시 안내"]')).not.toBeNull();

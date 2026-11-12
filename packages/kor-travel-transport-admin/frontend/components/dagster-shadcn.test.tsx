@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, expect, test, vi } from "vitest";
 import { DagsterOperations, DagsterTables } from "./dagster-operations";
@@ -27,10 +28,11 @@ test("실행 표와 스케줄 표의 제목·키보드 진입·링크 의미를 
 
   expect(html).toContain("최근 실행 · 마지막 확인");
   expect(html).toContain("<h2>스케줄</h2>");
-  expect(html).toMatch(/role="region" aria-label="최근 Dagster 실행 표" tabindex="0"/);
-  expect(html).toMatch(/role="region" aria-label="Dagster 스케줄 표" tabindex="0"/);
+  const document = new DOMParser().parseFromString(html, "text/html");
+  expect(document.querySelector('[role="region"][aria-label="최근 Dagster 실행 표"][tabindex="0"]')).not.toBeNull();
+  expect(document.querySelector('[role="region"][aria-label="Dagster 스케줄 표"][tabindex="0"]')).not.toBeNull();
   expect(html.match(/scope="col"/g)).toHaveLength(8);
-  expect(html).toMatch(/<button[^>]*aria-expanded="false"/);
+  expect(document.querySelector('[data-slot="dagster-operations-schedule-table"]')).not.toBeNull();
   expect(html).toContain("5분마다");
   const link = html.match(/<a\b[^>]*href="https:\/\/dagster[^>]*>/)?.[0];
   expect(link).toContain('href="https://dagster.digitie.mywire.org/runs/run%2Fwith%20space"');
@@ -56,7 +58,9 @@ test("빈 조회 결과와 실패한 실행을 각각 표시한다", () => {
   const empty = renderToStaticMarkup(<DagsterTables snapshot={{ runs: [], schedules: [] }} />);
   expect(empty).toContain("최근 Dagster 실행이 없습니다.");
   expect(empty).toContain("등록된 스케줄이 없습니다.");
-  expect(empty).not.toContain("<table");
+  const emptyDocument = new DOMParser().parseFromString(empty, "text/html");
+  expect(emptyDocument.querySelectorAll("table")).toHaveLength(2);
+  expect(emptyDocument.querySelector('[data-slot="empty"]')).not.toBeNull();
 
   const failed = renderToStaticMarkup(<DagsterTables snapshot={{
     ...snapshot,
@@ -93,4 +97,13 @@ test.each(["QUEUED", "STARTING", "CANCELING"])("최근 30건 밖의 %s 실행도
     activeRuns: [{ ...snapshot.runs[0], runId: `old-${status}`, status, startTime: null }] }} />);
   expect(html).toContain(`/runs/old-${status}`);
   expect(html).not.toContain("정체 의심");
+});
+
+
+test("일반철도 실제 작업 snapshot은 실행·스케줄 모두 기존 한국어 이름으로 표시한다", () => {
+ const job="general_rail_timetable_collection_job";
+ const html=renderToStaticMarkup(<DagsterTables snapshot={{...snapshot,runs:[{...snapshot.runs[0],jobName:job}],schedules:[{...snapshot.schedules[0],pipelineName:job}]}}/>);
+ const doc=new DOMParser().parseFromString(html,"text/html");
+ expect(doc.body.textContent?.match(/일반철도 예정 시간표/g)).toHaveLength(2);
+ expect(doc.body.textContent).not.toContain(job);
 });

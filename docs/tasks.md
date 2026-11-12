@@ -63,6 +63,14 @@ T-PARKING-OWNER-01·T-READ-PERF-01은 [완료 목록](tasks-done.md)에 이동�
 공식 코드의 역명·저장 시간표 조회는 구현했다. 실시간 도착과 세부 편의시설 위치·이용시간은 아직 수집/저장 자료가 없다. 노선도는 사용자 요청으로 표시 범위에서 제외했다.
 명시된 긍정 시설은 저장 파일의 기존 SDK 파서로 연결했다. 별도 시설 계약과 원 코드를 검증해 세부 자료를 수집·저장한 뒤 확장한다.
 [현재 API와 구현 범위](design/2026-10-31-metro-code-detail.md).
+## 2026-11-11 — 공통 UI 소비자 통합 후보
+
+- [ ] **T-COMMON-UI-20261111** — 공개·공유 parking-ui·관리자 Radix/VirtualTable/버전/상태/폼/폰트 이관 후보를 검증한다.
+  최종c9 실제 설치·양쪽 installed/external canonical·새 금지 source 차단10개를 통과했다.
+  runtime/CSS가 같은 c8의 WSL/Docker unit164/356·타입/lint/Doctor0/0·native/Alpine build와 각 browser4/18을 연결한다.
+  backend WSL1511PASS/39SKIP·Docker1508PASS/42SKIP·각 exit0도 확인했다.
+  Transport 독립2리뷰·CI·PRmerge·부모go·새 image 배포는 남아 태스크는 열어 둔다.
+  [검증·배포 계획](reports/2026-11-11-common-ui-validation.md), [Doctor 진단](reports/2026-11-11-react-doctor-findings.md).
 
 ## 2026-10-28 — 전체 UI 보완 후 새 릴리스
 
@@ -668,3 +676,6 @@ dark-mode 차트/톤 팔레트 미토큰화, `globals.css` 전반의 desktop-fir
   실제 저장·자료 없음·실패로 정산한다. 일반철도 일일 SUCCESS와 도시철도 전체 저장 완료를 구분한다.
   최초 실행 `926afc53-817a-49ee-be7d-b63c34f013b3`를 중복 실행하거나 중단하지 않는다.
   [운영 결과와 범위](reports/2026-11-01-rail-daily-fuel-deployment.md).
+## 공통 UI 통합 (2026-11-11)
+
+- [ ] 공통 Radix·VirtualTable·LoginForm·상태/폼/폰트 실사용·Doctor 개선과 c8 native/Docker runtime·c9 checker 검증을 통과했다. 통합·리뷰·CI·머지·배포까지 열어 둔다. 검증 원장은 journal과 reports에 기록한다.

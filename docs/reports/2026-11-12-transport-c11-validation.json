@@ -1,0 +1,181 @@
+{
+  "sourceHead": "b327e2a7a2a0389fe95c8396e1dd7334330f490a",
+  "canonicalLedgerSha256": "be0bbaba1b825b33754cdbe4352168265d1ccb71467a1031aa095707b0b5eec8",
+  "surfaces": {
+    "public": {
+      "actualInstalledFiles": {
+        "node_modules/@kor-travel/ui": 94,
+        "node_modules/@kor-travel/tokens": 25,
+        "node_modules/lightningcss": 19,
+        "node_modules/@radix-ui/react-focus-scope": 15
+      },
+      "total": 153,
+      "installedGuard": "PASS",
+      "externalCanonical": "PASS",
+      "nodeModulesTarget": "/tmp/transport-c6-qa-8pj9_c8v/capsule/frontend/node_modules"
+    },
+    "admin": {
+      "actualInstalledFiles": {
+        "node_modules/@kor-travel/ui": 94,
+        "node_modules/@kor-travel/tokens": 25,
+        "node_modules/lightningcss": 19,
+        "node_modules/@radix-ui/react-focus-scope": 15,
+        "node_modules/vworld-map-core": 25,
+        "node_modules/vworld-map-web": 85
+      },
+      "total": 263,
+      "installedGuard": "PASS",
+      "externalCanonical": "PASS",
+      "nodeModulesTarget": "/tmp/transport-c6-qa-8pj9_c8v/capsule/packages/kor-travel-transport-admin/frontend/node_modules"
+    }
+  },
+  "parentChecks": {
+    "public": {
+      "unitPassed": 164,
+      "type": "PASS",
+      "lint": "PASS",
+      "doctorErrors": 0,
+      "doctorWarnings": 0,
+      "guardFinal": "PASS",
+      "rawSha256": {
+        "transport-public-checks.json": "a99d01b55564c8e73fa0c20289d39c680b302aa3620a31d9c1668564354a2c0a",
+        "transport-public-guard-final.json": "2c544dfc8a0bcf77f5fe6380df0a9968bfe23ede5ae3a2845dafedc711b5e1be",
+        "transport-public-unit.log": "307f29cc6dbbbaca49c567f70aff71b7a9dd6f15bc7ba66deb1ca65d24c0d5bd",
+        "transport-public-types.log": "f84c8330f8693b2ee3dd916e24450c800d790346c64da8fa40c7090c3c63b01e",
+        "transport-public-lint.log": "dfbb37dc31f30487ada885fec0799364230721f9700de84de6cbca1a36a212b8",
+        "transport-public-doctor.log": "29d529822b7719a326f185aebc265de95b27e80a96fe280598d94f5ac1a65e5d"
+      }
+    },
+    "admin": {
+      "unitPassed": 356,
+      "type": "PASS",
+      "lint": "PASS",
+      "doctorErrors": 0,
+      "doctorWarnings": 0,
+      "guardFinal": "PASS",
+      "rawSha256": {
+        "transport-admin-checks.json": "66a27e548c07005d17015b5390d4760a0699c4b7c5e0fbd616a8443eba563ff8",
+        "transport-admin-guard-final.json": "2c544dfc8a0bcf77f5fe6380df0a9968bfe23ede5ae3a2845dafedc711b5e1be",
+        "transport-admin-unit.log": "4ebeade171867c6e07df3645f945fb8e582804611b1f2d33edd477519f50a124",
+        "transport-admin-types.log": "c2412c712aab533536835760c179f7a23a93a8934eb025f0c329faff293f2a59",
+        "transport-admin-lint.log": "425d5af15a39f857f09624414413476b9a9490f3d5edfafe87374dc2e953e087",
+        "transport-admin-doctor.log": "dc6f461cb6918ae12be05e6522d9258cabae391d688d3ba626de262e38d405fd"
+      }
+    }
+  },
+  "freshBrowserAndBuild": "PASS",
+  "backendFullRerun": "NOT_RUN: source unchanged; previous WSL1511/39skip and Docker1508/42skip retained",
+  "foundationMerge": "e8ed3ae75000be5cd22a3a11492bd97660635d78",
+  "validatedRuntimeSource": "ef7bd62dd81cb01b3c41b8bb10106c4586bb3bcf",
+  "freshBrowserStats": {
+    "native-public": {
+      "startTime": "2026-11-11T19:42:36.800Z",
+      "duration": 38491.587999999996,
+      "expected": 4,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "native-admin": {
+      "startTime": "2026-11-11T19:49:55.415Z",
+      "duration": 23889.716,
+      "expected": 18,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "alpine-public": {
+      "startTime": "2026-11-11T20:03:25.495Z",
+      "duration": 11917.078,
+      "expected": 4,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "alpine-admin": {
+      "startTime": "2026-11-11T20:17:48.792Z",
+      "duration": 22645.879,
+      "expected": 18,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    }
+  },
+  "readinessRegression": {
+    "originalNative": {
+      "passed": 17,
+      "failed": 1,
+      "timeoutMs": 45000
+    },
+    "cause": "ssr:false TransportMap not mounted when immediate isVisible returned false; mobile opening skipped",
+    "traceIsVisibleMs": 11143.623,
+    "traceReturned": false,
+    "laterFilterSnapshotMs": 11332.706,
+    "fix": "additional expect(filters).toBeAttached() before existing isVisible branch",
+    "existingAssertionsTimeoutsRetriesUnchanged": true,
+    "productRuntimeChanged": false
+  },
+  "images": {
+    "public": {
+      "tag": "transport-c11-public-harvey:ef7bd62",
+      "id": "sha256:36580999af5c12cf33e3c7baa6a17e7f0e33fe58946193dc53b952494975c02c"
+    },
+    "admin": {
+      "tag": "transport-c11-admin-harvey:ef7bd62",
+      "id": "sha256:d35cd70a0dc79e839f38422b5d9bd7a3466618b348c07db270da5174a4ed4c5d"
+    }
+  },
+  "cleanup": {
+    "activeOwnedProcesses": [],
+    "containers": [
+      {
+        "id": "fff07eac73a687dbbcd1c7467862928e8cdf246cdb51e963d29c27f43e4fdaa4",
+        "status": "exited",
+        "running": false,
+        "image": "sha256:36580999af5c12cf33e3c7baa6a17e7f0e33fe58946193dc53b952494975c02c",
+        "exitCode": 143
+      },
+      {
+        "id": "3e5e38d94d6a3b106e9525a30d808bc96960c28fe336f5e46c32daa6ebb6ce80",
+        "status": "exited",
+        "running": false,
+        "image": "sha256:d35cd70a0dc79e839f38422b5d9bd7a3466618b348c07db270da5174a4ed4c5d",
+        "exitCode": 143
+      }
+    ],
+    "slot1": "RELEASED"
+  },
+  "sourceBaselineCI": {
+    "head": "ef7bd62dd81cb01b3c41b8bb10106c4586bb3bcf",
+    "generalRun": 43084745064,
+    "centralRun": 43084745441,
+    "backendJob": 130746083326,
+    "backendFinalSummary": "2026-11-11T19:59:15.0359817Z 1548 passed, 2 skipped, 6 warnings in 2875.08s (0:47:55)",
+    "frontend": "SUCCESS 164",
+    "admin": "SUCCESS 356",
+    "centralBoth": "SUCCESS",
+    "liveE2E": "SKIPPED, excluded"
+  },
+  "supplementCommitCi": "NOT_OBSERVED_AT_DOCUMENT_WRITE",
+  "independentSourceReviews": {
+    "review-A-consumers-c11-batch-1.md": {
+      "sha256": "a8b93cef62bffe0d8fe6c66a428a9aa55451e7f1c8e3c72ae9ab9e1a5a03f553",
+      "head": "ef7bd62dd81cb01b3c41b8bb10106c4586bb3bcf",
+      "verdict": "SOURCE_PACKAGE_PASS_NEW0"
+    },
+    "review-B-consumers-c11-batch-1.md": {
+      "sha256": "ce4ff6265a106d8634b4a13de3b6afc99f67f51702e517061a940b773032218a",
+      "head": "ef7bd62dd81cb01b3c41b8bb10106c4586bb3bcf",
+      "verdict": "SOURCE_PACKAGE_PASS_NEW0"
+    }
+  },
+  "finalRawEvidence": {
+    "transport-c11-n150-final/final-acceptance-confirmation.json": "700ce88ce9af48f68b1e88ef318f8393af6b01c18d57970853822868f7c897fc",
+    "transport-c11-n150-final/readiness-fix-results.json": "5b0ab83fa8f4611597aa05add9a719df0af95c770b7d914c757430d5d3b4d133",
+    "transport-c11-n150-final/race-fix-runtime-equivalence.json": "3d4a7bcb9c22f049aa38b615bd564e8511e2155b6e5aec618eb5b17732c86e3a",
+    "transport-c11-n150-checkpoint/before-readiness-fix/admin-native-browser.json": "9d2e6af97dc3e6f86bc77b634aa3fb92fe852efd5163b3f5f2a73714fd718ef7",
+    "transport-c11-n150-final/logs-readiness-fix/admin-native-browser.json": "31ab429565fd46c7a2ead09380074a177ded12eff94a14bb1be540c0179ce060",
+    "transport-c11-n150-final/logs-readiness-fix/public-alpine-browser.json": "02e18054f422e48e0132adbb59aada77195cf3780f9f2f6de48cc210a508b1da",
+    "transport-c11-n150-final/logs-readiness-fix/admin-alpine-browser.json": "670991de6fe713007248659a6789dc4f0c079037654a55e448aa6deb65a6428f"
+  }
+}

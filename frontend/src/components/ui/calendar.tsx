@@ -1,12 +1,12 @@
 "use client"
 
 import * as React from "react"
-import { cn } from "cn"
+import { toDateKey } from "../../lib/format"
+import { cn } from "@kor-travel/ui/utils"
 import {
   DayPicker,
   getDefaultClassNames,
   type DayButton,
-  type Locale,
 } from "react-day-picker"
 
 import { Button, buttonVariants } from "./button"
@@ -164,7 +164,7 @@ function Calendar({
           )
         },
         DayButton: ({ ...props }) => (
-          <CalendarDayButton locale={locale} {...props} />
+          <CalendarDayButton {...props} />
         ),
         WeekNumber: ({ children, ...props }) => {
           return (
@@ -186,9 +186,8 @@ function CalendarDayButton({
   className,
   day,
   modifiers,
-  locale,
   ...props
-}: React.ComponentProps<typeof DayButton> & { locale?: Partial<Locale> }) {
+}: React.ComponentProps<typeof DayButton>) {
   const defaultClassNames = getDefaultClassNames()
 
   const ref = React.useRef<HTMLButtonElement>(null)
@@ -200,7 +199,7 @@ function CalendarDayButton({
     <Button
       variant="ghost"
       size="icon"
-      data-day={day.date.toLocaleDateString(locale?.code)}
+      data-day={toDateKey(day.date)}
       data-selected-single={
         modifiers.selected &&
         !modifiers.range_start &&

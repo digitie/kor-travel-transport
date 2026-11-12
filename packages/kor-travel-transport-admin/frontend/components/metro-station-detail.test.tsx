@@ -1,17 +1,22 @@
+import type { MetroTimetableResponse } from "@/lib/metro-timetable";
 // @vitest-environment jsdom
 import {act} from "react";
 import {createRoot} from "react-dom/client";
 import {afterEach,beforeEach,expect,test,vi} from "vitest";
 import {renderToStaticMarkup} from "react-dom/server";
 import type {Place} from "@/lib/journey";
-import {MetroStationDetail,MetroStationSummary,type MetroTimetableResponse} from "./metro-station-detail";
+import {MetroStationDetail,MetroStationSummary} from "./metro-station-detail";
 const api=vi.hoisted(()=>({get:vi.fn()}));
 vi.mock("@/lib/journey",async original=>({...await original<typeof import("@/lib/journey")>(),transportGet:api.get}));
 const station={id:17,kind:"rail_station",source:"kric_station_codes",provider_id:"S/01/001",name:"성복",subtitle:"공식기관",line_names:["신분당선"],prices:[],facilities:[],longitude:null,latitude:null,updated_at:"2026-10-31T00:00:00Z"} as Place;
 const row=(time:string,destination:string)=>({train_number:time,departure_time:time,arrival_time:null,origin_name:"출발역",destination_name:destination});
 const data:MetroTimetableResponse={generated_at:"2026-10-31T00:00:00Z",day_code:"7",basis:"calendar",items:[{place_id:null,code_id:17,station_name:"성복",line_name:"신분당선",status:"stored",stale:false,collected_at:"2026-10-31T00:00:00Z",items:[row("090300","신사"),row("090400","광교"),row("091200","광교")]}]};
-beforeEach(()=>{Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});api.get.mockReset();});
-afterEach(()=>vi.unstubAllGlobals());
+beforeEach(()=>{
+ Object.assign(globalThis,{IS_REACT_ACT_ENVIRONMENT:true});api.get.mockReset();
+ vi.stubGlobal("ResizeObserver",class {observe(){}unobserve(){}disconnect(){}});
+ Object.defineProperty(HTMLElement.prototype,"scrollIntoView",{configurable:true,value:vi.fn()});
+});
+afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();});
 test("실제 행선지별 예정 카드를 만들고 실시간·노선순서·출구를 만들어 내지 않는다",()=>{
  const html=renderToStaticMarkup(<MetroStationSummary station={station} data={data} period="" onPeriod={()=>{}} refresh={()=>{}}/>);
  expect(html).toContain("신사행");expect(html).toContain("광교행");expect(html).toContain("3분 후 예정");expect(html).toContain("12분 후 예정");
@@ -62,4 +67,19 @@ test("기관 정본의 분 단위 시각과 익일 막차를 같은 조회 화�
  expect(all).toContain("부산교통공사");expect(all).toContain("분 단위 시각");expect(all).toContain("3분 후 예정");expect(all).toContain("익일 00:24");
  const ends=renderToStaticMarkup(<MetroStationSummary {...props} initialView="ends"/>);
  expect(ends).toContain("09:03 ~ 익일 00:24");
+});
+
+
+for (const [label, code] of [["평일", "8"], ["토요일", "7"], ["휴일", "9"]]) test("공통 Select에서 " + label + "을 고르면 코드 ID와 운행 기준을 보존한다", async () => {
+ api.get.mockImplementation((path: string) => Promise.resolve(path.includes("day_code=") ? {...data, day_code: code, basis: "selected_period"} : data));
+ const container=document.createElement("div");document.body.append(container);const root=createRoot(container);
+ try {
+  await act(async()=>root.render(<MetroStationDetail station={station} timetablePage/>));
+  const trigger=container.querySelector<HTMLElement>('[role="combobox"][aria-label="운행 기준"]')!;
+  await act(async()=>trigger.dispatchEvent(new KeyboardEvent("keydown",{key:"ArrowDown",bubbles:true})));
+  const option=[...document.querySelectorAll<HTMLElement>('[role="option"]')].find(row=>row.textContent===label)!;
+  expect(option).toBeTruthy();await act(async()=>option.click());
+  expect(api.get.mock.calls.at(-1)?.[0]).toBe("transport/rail/stations/17/timetable?day_code="+code);
+  expect(container.textContent).toContain("09:03");expect(container.textContent).not.toContain("분 후 예정");
+ } finally {await act(async()=>root.unmount());container.remove();}
 });
