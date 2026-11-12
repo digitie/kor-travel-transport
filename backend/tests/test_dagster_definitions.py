@@ -271,6 +271,10 @@ def test_dagster_definitions_evaluates_kric_rail_due_daily_with_a_48_hour_guard(
     assert kric_schedule.cron_schedule == "0 * * * *"
     assert kric_schedule.execution_timezone == "Asia/Seoul"
     assert kric_schedule.default_status.name == "RUNNING"
+    general_schedule = definitions.get_schedule_def("general_rail_timetable_collection_job_schedule")
+    assert general_schedule.cron_schedule == "30 2 * * *"
+    assert general_schedule.execution_timezone == "Asia/Seoul"
+    assert general_schedule.default_status.name == "RUNNING"
 
     assert rail_schedule.cron_schedule == "0 3 * * *"
     assert maritime_schedule.cron_schedule == "0 3 */3 * *"
@@ -304,6 +308,7 @@ def test_dagster_definitions_register_every_collection_domain() -> None:
         "place_location_collection_job",
         "kakao_place_location_collection_job",
         "kric_timetable_collection_job",
+        "general_rail_timetable_collection_job",
     }
     assert {definitions.get_job_def(name).name for name in job_names} == job_names
 
@@ -314,7 +319,7 @@ def test_dagster_definitions_register_every_collection_domain() -> None:
 ])
 def test_reference_jobs_enrich_coordinates_after_official_rows(job_name: str, first_op: str) -> None:
     graph = definitions.get_job_def(job_name).graph
-    assert graph.node_names() == [first_op, "enrich_new_reference_locations"]
+    assert graph.node_names() == [first_op, "enrich_new_reference_locations", "prepare_reference_exports"]
 
 
 def test_dagster_definitions_enable_every_schedule_and_serialize_overlapping_groups() -> None:
@@ -329,6 +334,7 @@ def test_dagster_definitions_enable_every_schedule_and_serialize_overlapping_gro
         "place_location_collection_job_schedule",
         "kakao_place_location_collection_job_schedule",
         "kric_timetable_collection_job_schedule",
+        "general_rail_timetable_collection_job_schedule",
     }
     assert {definitions.get_schedule_def(name).default_status.name for name in schedule_names} == {"RUNNING"}
 

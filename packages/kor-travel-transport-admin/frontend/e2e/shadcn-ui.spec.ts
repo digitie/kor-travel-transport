@@ -1,18 +1,23 @@
 import { expect, test } from "@playwright/test";
 
 for (const width of [320, 375, 768, 1440]) {
-  test(`shadcn 로그인 필드와 키보드 제출 ${width}px`, async ({ page }) => {
+  test(`공통 로그인 필드와 키보드 제출 ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/login");
-    await expect(page.locator("[data-slot=card]")).toBeVisible();
-    expect(await page.locator("[data-slot=card-header]").evaluate((node) => getComputedStyle(node).gridTemplateColumns.split(" ").length)).toBe(1);
-    await expect(page.getByLabel("아이디")).toHaveAttribute("data-slot", "input");
-    await expect(page.getByLabel("비밀번호")).toHaveAttribute("data-slot", "input");
-    await page.route("**/api/auth/login", (route) => route.fulfill({ status: 401, json: { detail: "아이디 또는 비밀번호를 확인해 주세요." } }));
-    await page.getByLabel("비밀번호").fill("invalid-test-only");
-    await page.getByLabel("비밀번호").press("Enter");
-    await expect(page.locator("[data-slot=field-error]")).toContainText("아이디 또는 비밀번호");
-    await expect(page.getByLabel("비밀번호")).toHaveAttribute("aria-invalid", "true");
+    await expect(page.locator("[data-slot=login-form]")).toBeVisible();
+    const username = page.getByLabel("아이디");
+    const password = page.getByLabel("비밀번호");
+    await expect(username).toHaveAttribute("data-slot", "login-username");
+    await expect(password).toHaveAttribute("data-slot", "login-password");
+    // @kor-travel/ui dev.9는 hydration으로 handler가 준비될 때까지 입력을 disabled로 둔다.
+    await expect(password).toBeEnabled();
+    await page.route("**/api/auth/login", (route) => route.fulfill({ status: 401, json: { detail: "아이디 또는 비밀번호가 올바르지 않습니다." } }));
+    await password.fill("invalid-test-only");
+    await password.press("Enter");
+    const error = page.locator("[data-slot=login-error]");
+    await expect(error).toHaveText("아이디와 비밀번호를 확인하고 다시 시도해 주세요.");
+    await expect(password).toHaveAttribute("aria-describedby", (await error.getAttribute("id"))!);
+    await expect(password).toHaveValue("");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 

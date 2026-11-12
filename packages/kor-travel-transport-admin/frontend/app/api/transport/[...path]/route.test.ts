@@ -68,8 +68,8 @@ describe("POST /api/transport/fees/calculate", () => {
   });
 });
 
-describe("새 역·주차장 읽기의 인증된 중계",()=>{
- it.each(["transport/rail/stations","transport/rail/stations/274/timetable","transport/parking-lots?q=수지&limit=100&cursor=abc%2F%3D","transport/parking-lots/12"])("%s는 인증 후 GET으로 중계한다",async path=>{
+describe("새 역·지역 평균 읽기의 인증된 중계",()=>{
+ it.each(["transport/fuel/regions","transport/rail/stations","transport/rail/stations/274/timetable","transport/parking-lots?q=수지&limit=100&cursor=abc%2F%3D","transport/parking-lots/12"])("%s는 인증 후 GET으로 중계한다",async path=>{
   const fetchMock=vi.fn().mockResolvedValue(new Response('{"items":[]}',{headers:{"content-type":"application/json"}}));vi.stubGlobal("fetch",fetchMock);
   const context={params:Promise.resolve({path:path.split("?")[0].split("/")})};
   expect((await GET(new NextRequest(`http://transport.test/api/transport/${path}`),context)).status).toBe(401);
@@ -81,12 +81,4 @@ describe("새 역·주차장 읽기의 인증된 중계",()=>{
   expect(forwarded.pathname).toBe(expected.pathname);
   expect([...forwarded.searchParams]).toEqual([...expected.searchParams]);
  });
-});
-
-it("사용하지 않는 별도 유가 지역 경로는 인증 후에도 중계하지 않는다", async () => {
-  const upstream = vi.fn(); vi.stubGlobal("fetch", upstream);
-  const path = "transport/fuel/regions";
-  const request = await protectedRequest(path);
-  expect((await GET(request, {params: Promise.resolve({path: path.split("/")})})).status).toBe(404);
-  expect(upstream).not.toHaveBeenCalled();
 });

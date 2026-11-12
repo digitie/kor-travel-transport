@@ -22,11 +22,14 @@ def test_preparation_does_not_hold_publication_lock_and_older_cannot_replace_new
     async def exercise():
         engine, factory = create_engine_and_session_factory(test_settings.database_url)
         stamp = datetime.now(timezone.utc)
+        older, newer = stamp + timedelta(hours=1), stamp + timedelta(hours=2)
         async with factory() as session:
             await seed(session, stamp)
             await stats.publish_fuel_statistics(session, stats.OPINET, stamp)
             await session.commit()
-        older, newer = stamp + timedelta(hours=1), stamp + timedelta(hours=2)
+            # 각 성공 수집 세대의 가격 자료를 준비한다. 발행 시각만 미래로 바꾸지 않는다.
+            await session.execute(update(FuelLatestPrice).values(collected_at=older))
+            await session.commit()
         preparing, release = asyncio.Event(), asyncio.Event()
         original_lock = stats.lock_fuel_statistics
 
@@ -52,7 +55,7 @@ def test_preparation_does_not_hold_publication_lock_and_older_cannot_replace_new
                     before = await stats.fuel_statistics_page(session, "nationwide", "B027")
                     assert before["items"][0]["average_price"] == 1666.67
                     await session.rollback()
-                    await session.execute(update(FuelLatestPrice).values(price=2100))
+                    await session.execute(update(FuelLatestPrice).values(price=2100, collected_at=newer))
                     await session.commit()
                     await stats.publish_fuel_statistics(session, stats.OPINET, newer)
                     await session.commit()

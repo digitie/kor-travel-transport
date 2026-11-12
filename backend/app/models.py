@@ -32,6 +32,51 @@ class Base(DeclarativeBase):
     pass
 
 
+class PublicParkingLot(Base):
+    """전국주차장표준데이터. 공항 잔여면 관측과 분리한 주차장 기준정보다."""
+
+    __tablename__ = "public_parking_lots"
+    __table_args__ = (
+        UniqueConstraint("source", "source_key", name="uq_public_parking_lot_source_key"),
+        Index("ix_public_parking_lots_current", "source", "last_seen_at", "id"),
+        Index("ix_public_parking_lots_bbox", "source", "last_seen_at", "longitude", "latitude"),
+        CheckConstraint("capacity IS NULL OR capacity >= 0", name="ck_public_parking_capacity"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), Identity(), primary_key=True)
+    source: Mapped[str] = mapped_column(String(40))
+    source_key: Mapped[str] = mapped_column(Text)
+    provider_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    name: Mapped[str] = mapped_column(Text)
+    category: Mapped[str | None] = mapped_column(Text, nullable=True)
+    parking_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    road_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    land_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fee_info: Mapped[str | None] = mapped_column(Text, nullable=True)
+    basic_minutes: Mapped[float | None] = mapped_column(Numeric(10, 3), nullable=True)
+    basic_fee: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    additional_minutes: Mapped[float | None] = mapped_column(Numeric(10, 3), nullable=True)
+    additional_fee: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    daily_minutes: Mapped[float | None] = mapped_column(Numeric(10, 3), nullable=True)
+    daily_fee: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    monthly_fee: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    operating_days: Mapped[str | None] = mapped_column(Text, nullable=True)
+    opening_hours_json: Mapped[dict[str, Any]] = mapped_column(JSON().with_variant(JSONB, "postgresql"))
+    payment_methods: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    phone: Mapped[str | None] = mapped_column(Text, nullable=True)
+    institution_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    institution_code: Mapped[str | None] = mapped_column(Text, nullable=True)
+    disabled_parking: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reference_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    raw_json: Mapped[dict[str, Any]] = mapped_column(JSON().with_variant(JSONB, "postgresql"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 # 파생 주소는 원천 주소·좌표와 분리해 같은 소비자 DB에 저장한다.
 reverse_address_tables(Base.metadata)
 
@@ -446,7 +491,7 @@ class FuelStatisticsPoint(Base):
 
 
 class FuelStatisticsDaily(Base):
-    """KST 하루의 마지막 정상 수집 기준 집계. 오늘 포함 7일만 유지한다."""
+    """KST 하루의 마지막 정상 수집 기준 집계. 기간 제한 없이 보존한다."""
 
     __tablename__ = "fuel_statistics_daily"
     source: Mapped[str] = mapped_column(String(40), primary_key=True)
@@ -456,6 +501,27 @@ class FuelStatisticsDaily(Base):
     day: Mapped[date] = mapped_column(Date, primary_key=True)
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     label: Mapped[str] = mapped_column(String(300))
+    metrics_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
+class FuelRegionSummary(Base):
+    """수집 성공 세대별 행정구역 통계. 지도는 공개 세대만, 이력은 영구 보존한다."""
+
+    __tablename__ = "fuel_region_summaries"
+    __table_args__ = (
+        CheckConstraint("scope IN ('sido', 'sigungu')", name="ck_fuel_region_scope"),
+        CheckConstraint("station_count > 0 AND average_price > 0", name="ck_fuel_region_values"),
+    )
+    source: Mapped[str] = mapped_column(Text, primary_key=True)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    scope: Mapped[str] = mapped_column(Text, primary_key=True)
+    region_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    product_code: Mapped[str] = mapped_column(Text, primary_key=True)
+    label: Mapped[str] = mapped_column(Text)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    average_price: Mapped[float] = mapped_column(Numeric(12, 4))
+    station_count: Mapped[int] = mapped_column(Integer)
     metrics_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
 
 
@@ -556,6 +622,23 @@ class KricStationMappingRegistry(Base):
     catalog_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     mappings_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class KricTimetableAttempt(Base):
+    """역·운행일별 일일 호출 원장. 실패가 다른 역의 수집을 막지 않는다."""
+
+    __tablename__ = "kric_timetable_attempts"
+    station_id: Mapped[int] = mapped_column(ForeignKey("kric_station_codes.id", ondelete="CASCADE"), primary_key=True)
+    day_code: Mapped[str] = mapped_column(String(1), primary_key=True)
+    attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    outcome: Mapped[str] = mapped_column(String(16), default="pending")
+    provider: Mapped[str] = mapped_column(String(24), default="kric", server_default="kric")
+    provider_revision: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    __table_args__ = (
+        CheckConstraint("day_code IN ('7', '8', '9')", name="ck_kric_attempt_day"),
+        CheckConstraint("outcome IN ('pending', 'stored', 'no_data', 'error')", name="ck_kric_attempt_outcome"),
+        CheckConstraint("provider IN ('kric', 'humetro')", name="ck_rail_attempt_provider"),
+    )
 
 
 class KricTimetableSnapshot(Base):
@@ -873,6 +956,69 @@ class ParkingStatisticsBucket(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class ParkingGlobalStatisticsBucket(Base):
+    """전국 동일 관측시각 합계의 충분통계와 검산한 공항 membership. 영구 보존한다."""
+
+    __tablename__ = "parking_global_statistics_buckets"
+    __table_args__ = (
+        CheckConstraint("raw_count > 0 AND selected_count > 0 AND selected_count <= raw_count",
+                        name="ck_parking_global_statistics_counts"),
+        CheckConstraint("bucket_end > bucket_at", name="ck_parking_global_statistics_window"),
+    )
+
+    bucket_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    bucket_end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    format_version: Mapped[int] = mapped_column(Integer)
+    raw_count: Mapped[int] = mapped_column(Integer)
+    selected_count: Mapped[int] = mapped_column(Integer)
+    max_snapshot_id: Mapped[int] = mapped_column(Integer)
+    raw_sha256: Mapped[str] = mapped_column(Text)
+    statistics_sha256: Mapped[str] = mapped_column(Text)
+    statistics_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    airport_proofs_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+    sealed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ParkingArchiveIssue(Base):
+    """집계 보류의 작은 상태. 원문·개별 관측을 보관하거나 통계를 덮어쓰지 않는다."""
+
+    __tablename__ = "parking_archive_issues"
+    scope_key: Mapped[str] = mapped_column(String(80), primary_key=True)
+    bucket_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    reason: Mapped[str] = mapped_column(String(60))
+    max_seen_snapshot_id: Mapped[int] = mapped_column(Integer)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ParkingLatestState(Base):
+    """public current의 observed_at/id 선택을 보존하는 lot별 파생 상태. raw FK는 없다."""
+
+    __tablename__ = "parking_latest_states"
+    __table_args__ = (
+        ForeignKeyConstraint(["parking_lot_id", "airport_id"],
+                             ["parking_lots.id", "parking_lots.airport_id"], ondelete="RESTRICT",
+                             name="fk_parking_latest_lot_airport"),
+        CheckConstraint("occupied_spaces >= 0 AND total_spaces >= 0 AND available_spaces >= 0 "
+                        "AND available_spaces <= total_spaces", name="ck_parking_latest_spaces"),
+        CheckConstraint("congestion_ratio IS NULL OR (congestion_ratio >= 0 AND congestion_ratio <= 100)",
+                        name="ck_parking_latest_congestion"),
+    )
+
+    parking_lot_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    airport_id: Mapped[int] = mapped_column(Integer)
+    snapshot_order: Mapped[int] = mapped_column(Integer)
+    source: Mapped[str] = mapped_column(String(40))
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    latest_ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    occupied_spaces: Mapped[int] = mapped_column(Integer)
+    total_spaces: Mapped[int] = mapped_column(Integer)
+    available_spaces: Mapped[int] = mapped_column(Integer)
+    congestion_label: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    congestion_ratio: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
 class AnalyticsCache(Base):
     __tablename__ = "analytics_caches"
     __table_args__ = (
@@ -973,6 +1119,43 @@ class ParkingFeeRule(Base):
     raw_item_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
 
 
+class ReferenceExportArtifact(Base):
+    """입력 revision에 고정된 불변 본문. HTTP handle 만료와 분리해 보관한다."""
+
+    __tablename__ = "reference_export_artifacts"
+    __table_args__ = (
+        UniqueConstraint("kind", "scope_key", "input_revision", name="uq_reference_artifact_input"),
+        CheckConstraint("item_count > 0 AND item_count <= 20000", name="ck_reference_artifact_count"),
+        CheckConstraint("byte_count > 0 AND byte_count <= 16777216", name="ck_reference_artifact_bytes"),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(40))
+    scope_key: Mapped[str] = mapped_column(String(64))
+    input_revision: Mapped[str] = mapped_column(String(64))
+    source_collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    item_count: Mapped[int] = mapped_column(Integer)
+    byte_count: Mapped[int] = mapped_column(Integer)
+    content_digest: Mapped[str] = mapped_column(String(64))
+
+
+class ReferenceExportArtifactItem(Base):
+    __tablename__ = "reference_export_artifact_items"
+    __table_args__ = (CheckConstraint("ordinal > 0", name="ck_reference_artifact_ordinal"),)
+    artifact_id: Mapped[str] = mapped_column(ForeignKey("reference_export_artifacts.id", ondelete="CASCADE"), primary_key=True)
+    ordinal: Mapped[int] = mapped_column(Integer, primary_key=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
+class ReferenceExportArtifactHead(Base):
+    """종류/범위마다 마지막 승인 본문 하나를 pin한다. 읽을 때마다 갱신하지 않는다."""
+
+    __tablename__ = "reference_export_artifact_heads"
+    kind: Mapped[str] = mapped_column(String(40), primary_key=True)
+    scope_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    artifact_id: Mapped[str] = mapped_column(ForeignKey("reference_export_artifacts.id", ondelete="RESTRICT"), index=True)
+
+
 class ServiceExportSnapshot(Base):
     """유한 수명의 immutable DTO. 원천·이력 정본과 독립적인 HTTP 탐색 자료다."""
 
@@ -991,6 +1174,7 @@ class ServiceExportSnapshot(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     item_count: Mapped[int] = mapped_column(Integer)
     content_digest: Mapped[str] = mapped_column(String(64))
+    artifact_id: Mapped[str | None] = mapped_column(ForeignKey("reference_export_artifacts.id", ondelete="RESTRICT"), nullable=True, index=True)
 
 
 class ServiceExportSnapshotItem(Base):

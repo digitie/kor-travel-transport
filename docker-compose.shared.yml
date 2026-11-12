@@ -212,6 +212,9 @@ x-dagster-code-server-probe: &dagster-code-server-probe |-
 
 services:
   backend:
+    # 상주 peak와 worker 여유를 둔 초기 한도; 실제 Opinet 수용은 별도 기록한다.
+    mem_limit: 512m
+    memswap_limit: 512m
     image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-transport-backend:latest}"
     network_mode: host
     networks: !reset []
@@ -237,6 +240,7 @@ services:
       TRANSPORT_ADMIN_WRITE_TOKEN: "${TRANSPORT_ADMIN_WRITE_TOKEN:-}"
       # kor-travel-map이 읽는 내부 export 토큰(ADR-013). 비면 /v1/service/exports/*는 404다.
       TRANSPORT_SERVICE_EXPORT_TOKEN: "${TRANSPORT_SERVICE_EXPORT_TOKEN:-}"
+      TRANSPORT_FUEL_MCP_ENABLED: "${TRANSPORT_FUEL_MCP_ENABLED:-false}"
       # export에 접속할 수 있는 peer 대역(CIDR). 운영은 Map이 host network라 loopback만 연다.
       SERVICE_EXPORT_ALLOWED_CLIENTS_CSV: "${SERVICE_EXPORT_ALLOWED_CLIENTS_CSV:-127.0.0.1/32,::1/128}"
       # 휴게소 수집 상태(/v1/transport/providers)가 Dagster 수집기와 같은 설정을 보도록 backend에도 준다.
@@ -308,6 +312,9 @@ services:
   #   instance의 로컬 쓰기(`/opt/dagster/state`)는 이 컨테이너 안에서 풀린다(root라 쓸 수 있다).
   # - 옛 metadata DSN(`DAGSTER_POSTGRES_URL`)은 받지 않는다.
   dagster-code-server:
+    # 상주 peak와 worker 여유를 둔 초기 한도; 실제 Opinet 수용은 별도 기록한다.
+    mem_limit: 2560m
+    memswap_limit: 2560m
     image: "${BACKEND_RUNTIME_IMAGE:-kor-travel-transport-backend:latest}"
     restart: unless-stopped
     network_mode: host
@@ -422,6 +429,9 @@ services:
     ports: !reset []
 
   frontend:
+    # 상주 peak와 worker 여유를 둔 초기 한도; 실제 Opinet 수용은 별도 기록한다.
+    mem_limit: 384m
+    memswap_limit: 384m
     network_mode: host
     networks: !reset []
     ports: !reset []

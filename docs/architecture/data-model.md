@@ -1,5 +1,51 @@
 # 데이터 모델
 
+## 기준정보 본문과 유한 handle (`0042_reference_export_artifacts`, 운영 반영)
+
+`reference_export_artifacts`는 `(kind, scope_key, input_revision)` 고유키의 불변 본문 manifest다.
+원천 시각·canonical SHA·항목 수·byte 수를 보존하고 `reference_export_artifact_items`가 ordinal별 JSONB를 저장한다.
+현재 종류/범위의 head가 artifact 하나를 pin한다. 기존 `service_export_snapshots`에는 nullable artifact FK만
+추가해 새 handle을 발급하며 본문을 복사하지 않는다. NULL인 예전 handle은 기존 items를 읽어 호환한다.
+
+현재 head 또는 하나라도 남은 handle이 참조한 artifact는 GC하지 않는다. 만료 handle 정리는 기존처럼 제한하며
+사용되지 않는 본문도 한 번에 하나만 정리한다. FK/key-share/skip-locked가 참조 생성과 삭제 경합을 보호한다.
+이 테이블은 원천이나 영구 통계가 아닌 재생성 가능한 파생 본문이다. 주차 원본/영구 통계 정책과 섞지 않는다.
+제품7a5d0c4/운영 DB0042에서 실제 수용했다. [결정](../adr/016-reference-export-artifact-lifetime.md)과
+[구 cursor·GC·ARM64·실제 HTTP 검산](../reports/2026-11-10-reference-artifact-improvement.md)을 따른다.
+
+## KRIC 일반철도·KTX 역 보강
+
+기존 `rail_station_references`의 `(source, identity_key)` 고유키를 재사용해 `kric_general_portal`과
+`kric_general_portal:<공식 연결 식별자>`를 저장한다. KRIC 목록이 연결한 코레일 상세 식별자를 사용하며
+기존 도시철도 파일 source와 이름으로 병합하지 않는다. `station_number`의 코레일 코드와
+KRIC 도시철도 `station_code`는 별개다.
+`reference_export_states`의 `rail-station/kric-general` head에 완결 membership을 별도 게시하고,
+Map export는 기존 `rail-station/nationwide`와 함께 읽는다. 소스별 승인 시각·실패·코드를 보존하며
+KRIC가 연결한 코레일 검증 좌표만 사용한다. 미제공 좌표는null이고 분류·연결 ID·원문은
+`raw_item_json`에 보존한다. 새 테이블·열·index·migration은 없다.
+[완결성·실패·운영 수용](../reports/2026-11-09-kric-general-rail-reference.md).
+미배포 [TAGO 후보](../reports/2026-11-09-tago-general-rail-reference.md)는 사용자 지시로 대체된 이력이다.
+
+## 전국주차장 기준정보 (`0041_public_parking_lots`)
+
+`public_parking_lots`는 공공데이터포털 전국주차장표준데이터를 Transport가 직접 수집한 기준정보다.
+공항 `parking_lots`·`parking_snapshots`의 실시간 잔여면과 분리한다. `capacity`는 정적 총면수다.
+안정 내부 ID와 `(source, source_key)` 고유키를 사용하며 공식 번호가 있어도 기관·이름·주소와
+함께 식별한다. 번호가 없으면 기관·이름·주소를 사용한다. 같은 식별값의 ID는 보존하고 이름·주소가
+바뀐 이전 행도 남긴다. 번호·기관 코드 하나로 여러 주차장을 합치지 않는다. 요금의 무료 0·분수 시간·자유 표기는
+각각 숫자와 원문으로 보존하며 좌표가 잘못된 행도 기준정보에는 남긴다.
+
+한 월간 수집의 모든 페이지와 마지막 성공 시각을 한 transaction으로 게시한다. 현재 목록·지도는
+`last_seen_at = transport_collection_states.last_success_at`인 완료 집합만 읽는다. 누락·동일 원문의 반복·0건·실패는
+이전 완료 집합을 바꾸지 않는다. 사라진 항목의 이전 행과 과거 원문도 삭제하지 않는다.
+일반 조회는 큰 `raw_json`을 읽지 않고, 원문은 인증된 서비스 export에서만 제공한다.
+같은 식별값의 서로 다른 원문은 공통 항목만 typed 열에 투영하고 충돌 항목은 NULL로 둔다.
+비고에 불일치 안내를 넣고 인증 `raw`의 `source_records`·`conflicting_fields`에 모든 원문과
+충돌 경로를 보존한다. 전체 원문 수와 고유 시설 수는 다르며 원본 페이지는 축약하지 않는다.
+페이지 커서는 완료 세대와 검색 조건에 묶이며 수집 교체 시 409로 첫 페이지 재조회를 요청한다.
+수집 후 90일은 월간 기준정보의 신선도 경계이며 제공기관 자료 기준일과 구분한다.
+자세한 소유권·API는 [이식 설계](../design/2026-11-03-public-parking-owner.md)를 따른다.
+
 ## 주차 영구 통계 (`0036_parking_statistics_archive`, 선행 저장 단계)
 
 `parking_statistics_buckets`는 `(airport_id, bucket_at)` PK의 UTC 10분 영구 통계다.
@@ -8,6 +54,19 @@
 TTL·자동 삭제가 없으며 데이터가 든 downgrade와 공항 삭제를 거절한다.
 원본 48시간 정책의 선행 단계여서 기존 읽기는 아직 원본에 의존하고 삭제는 항상 차단된다.
 [보존·해상도·전환 수용 조건](parking-retention.md)을 따른다.
+
+## 주차 전국 통계·보류·현재 요약 (`0037_parking_archive_coverage`)
+
+- `parking_global_statistics_buckets`: UTC10분 PK, 전국의 같은 관측시각 합계 count/sum/min/max와
+  raw 수량/hash·공항별 검산 proof를 영구 보존한다. 공항별 min/max 합산으로 대체하지 않는다.
+- `parking_archive_issues`: scope/bucket PK의 보류 reason·최초/마지막 발견시각·최대id다.
+  관측 원문·배열 없이 sealed 재삽입/검산 실패를 드러내고 다음 실행의 성공 위장을 막는다.
+- `parking_latest_states`: lot PK와 RESTRICT lot/airport 복합FK의 작은 현재 파생 상태다.
+  기존 public current의 observed/id 선택과 원래 시각·혼잡도를 보존하고, 지연 관측의 수신 watermark는 분리한다.
+  snapshot/raw FK나 payload는 없다. reader 전환은2B이며 현재 API는 아직 원본을 읽는다.
+
+세 표의 데이터가 있으면 downgrade를 거절한다. 기존 수동 통계 job 외 자동 schedule과 원본 삭제는 없다.
+[저장·검산·현재 요약 계약](parking-archive-coverage.md)을 따른다.
 
 ## 수집 실행 소유권 (`0024_collection_run_owner`)
 
@@ -19,6 +78,8 @@ API·legacy 실행의 NULL 소유권은 자동 회수 대상에서 제외한다.
 기존 원천 응답·성공 부분·provider receipt는 삭제하거나 재생성하지 않는다.
 
 ## 수집 완료 유가 통계 (`0028_fuel_statistics`)
+
+2026-11-02 사용자가 선택한 오피넷 모집단은 이번 성공 수집분이다. `fuel_latest_prices.collected_at`과 성공 세대가 같은 양수 가격만 point·지역·일별 통계로 발행한다. 이전 가격 원본과 지난 영구 요약은 유지한다. 같은 공개 세대의 구 모집단은 기존 원천 잠금·세대 잠금 및 savepoint로 원자 정정하며, 정상 가격 집합의 재시도는 쓰기 없이 끝난다. 이 기준 변경에는 스키마 migration이 없다.
 
 원천별 발행 포인터 `fuel_statistics_states`, 최신 지도 가격 `fuel_statistics_points`,
 KST 일별 범주/유종 집계 `fuel_statistics_daily`를 분리한다. 원본 이력은 보존하고
@@ -331,3 +392,15 @@ operation은 catalog/stations/timetable/station_guide CHECK로 제한한다. TAG
 source 식별자를 섞지 않으며 실패·인증키·원문 오류는 저장하지 않는다. 32일 경과 캐시만 정리하고
 수집 원천/이력과 분리한다. 주차 패턴 집계는 기존 airport_id/observed_at cover index를 이용해
 선택 요일·시간대만 읽는다. 상세 TTL·표본 기준은 [검증 원장](../reports/2026-10-24-transport-user-journeys.md)을 따른다.
+
+## 0037 지역 유가·철도 일일 수집
+
+fuel_region_summaries는 성공 수집 세대별 시도·시군구·유종의 영구 요약이며 공개 포인터와 같은 트랜잭션으로 발행한다. fuel_statistics_daily의 이전 7일 보관 제한은 제거하고 조회 창만 7일로 유지한다. kric_timetable_attempts는 역/운행 기준별 24시간 요청 원장이며 pending/stored/no_data/error 결과와 호출 시각을 보존한다. 03 응답은 정상 저장 시간표를 덮어쓰지 않는다. [상세 계약](../design/2026-11-01-rail-daily-fuel-summary.md).
+
+## 0038 철도 시간표 원천 구분
+
+`kric_timetable_attempts.provider`는 kric/humetro CHECK와 kric 기본값을 갖는다. 기존 역/요일 PK와 24시간 요청 원장을 유지하며 원천 전환 때만 이전 원천의 자료 없음과 새 요청을 구분한다. 정상 저장본의 24시간 재사용은 원천 전환으로 무효화하지 않는다. 새 원천 이력이 있으면 downgrade로 열을 제거할 수 없다. 부산 공식 분 단위 시간표는 기존 JSONB snapshot에 원천·원문 시각·행선지를 함께 보존하며 초·도착시각·열차번호를 만들어 넣지 않는다.
+
+## 0039 시간표 파서 버전
+
+요청 원장의 nullable `provider_revision`은 SDK의 실제 파서 버전을 보존한다. 기존 행은 NULL로 남긴다. 정상본은 24시간 재사용하고 같은 파서의 실패는 재조회하지 않는다. 파서가 수정됐을 때 이전 파서의 error만 한 번 다시 읽으며 인증·할당량 전역 보호는 유지한다. 원 실패 CollectionRun·RawApiResponse를 삭제하거나 정상으로 바꾸지 않는다. 새 원문 기록에도 파서 버전을 남긴다.

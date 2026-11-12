@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     vadahub_archive_directory: str = "/app/collector-state/vadahub"
     vadahub_chromium_executable_path: str | None = None
     data_go_kr_service_key: str | None = None
+    public_parking_collection_enabled: bool = False
+    # 기존 TAGO 등의 공통 키는 바꾸지 않는다. 별도 키가 없으면 공통 data.go.kr 키를 쓴다.
+    public_parking_service_key: str | None = None
     vworld_api_key: str | None = None
     place_location_collection_enabled: bool = False
     place_location_max_calls_per_day: int = Field(default=10000, ge=1, le=10000)
@@ -55,6 +58,7 @@ class Settings(BaseSettings):
     # 경로 전체가 404다. 허용 Host는 loopback 이름만 — 외부 reverse proxy(pr-api)를 거친 요청은
     # 토큰이 맞아도 닫힌다.
     transport_service_export_token: str | None = None
+    transport_fuel_mcp_enabled: bool = False
     #: export에 접속할 수 있는 peer 주소 대역(CIDR). Host 헤더가 아니라 실제 접속 주소로 판정한다.
     service_export_allowed_clients_csv: str = "127.0.0.1/32,::1/128"
     rest_area_collection_enabled: bool = False

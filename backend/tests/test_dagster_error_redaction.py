@@ -65,7 +65,7 @@ def _patch_services(monkeypatch) -> None:
     for name in (
         "CollectionService", "TransportCollectionService", "RailMaritimeCollectionService",
         "BusReferenceCollectionService", "PlaceLocationCollectionService", "KakaoPlaceCollectionService",
-        "KricTimetableCollectionService", "RestAreaCollectionService",
+        "KricTimetableCollectionService", "RestAreaCollectionService", "GeneralRailReferenceCollectionService",
     ):
         monkeypatch.setattr(dagster_definitions, name, _AnyService)
     monkeypatch.setattr(dagster_definitions, "_settings", _secret_settings)
@@ -103,12 +103,13 @@ def _assert_no_secret(texts: list[str]) -> None:
         assert secret not in joined
 
 
-#: (job, 실패를 기대하는 op) — 모든 수집 op를 덮는다. enrich op는 아래에서 따로 본다.
-JOB_FIRST_OPS = [
+#: (job, 실패를 기대하는 op) — 대상 수집 op를 각각 검증한다. enrich op는 아래에서 따로 본다.
+JOB_CRASH_OPS = [
     ("airport_collection_job", "collect_airport_parking"),
     ("highway_collection_job", "collect_highway_transport"),
     ("fuel_collection_job", "collect_fuel_transport"),
     ("rail_reference_collection_job", "collect_rail_reference"),
+    ("rail_reference_collection_job", "collect_general_rail_reference"),
     ("maritime_reference_collection_job", "collect_maritime_reference"),
     ("ferry_timetable_collection_job", "collect_ferry_timetable"),
     ("bus_reference_collection_job", "collect_bus_reference"),
@@ -120,7 +121,27 @@ JOB_FIRST_OPS = [
 ]
 
 
-@pytest.mark.parametrize(("job_name", "op_name"), JOB_FIRST_OPS)
+def test_reference_preparation_error_is_redacted_and_not_retried(monkeypatch):
+    def settings():
+        value = _secret_settings()
+        value.transport_map_current_enabled = True
+        return value
+    async def leaky_run(*_args, **_kwargs):raise _leaky_error()
+    monkeypatch.setattr(dagster_definitions,"_settings",settings)
+    monkeypatch.setattr(dagster_definitions,"get_settings",settings)
+    monkeypatch.setattr(dagster_definitions,"_run_with_session",leaky_run)
+    result=dagster_definitions.reference_export_prepare_job.execute_in_process(raise_on_error=False)
+    assert not result.success and not any(e.is_step_up_for_retry for e in result.all_events)
+    failures=[e for e in result.all_events if e.event_type==DagsterEventType.STEP_FAILURE]
+    assert [e.step_key for e in failures]==["prepare_reference_exports"]
+    info=failures[0].step_failure_data
+    texts=_error_texts(info.error)+[str(e.message) for e in result.all_events]
+    texts.append(str(info.user_failure_data.description))
+    texts.extend(str(v.value) for v in info.user_failure_data.metadata.values())
+    _assert_no_secret(texts)
+
+
+@pytest.mark.parametrize(("job_name", "op_name"), JOB_CRASH_OPS)
 def test_op_crash_reaches_event_log_without_provider_keys(monkeypatch, job_name, op_name):
     async def leaky_run(*_args: Any, **_kwargs: Any):
         raise _leaky_error()
@@ -128,7 +149,8 @@ def test_op_crash_reaches_event_log_without_provider_keys(monkeypatch, job_name,
     _patch_services(monkeypatch)
     monkeypatch.setattr(dagster_definitions, "_run_with_session", leaky_run)
     job = getattr(dagster_definitions, job_name)
-    result = job.execute_in_process(raise_on_error=False)
+    # 같은 job의 독립 op도 각각 실패시켜 모든 경계의 가림을 검산한다.
+    result = job.execute_in_process(op_selection=[op_name], raise_on_error=False)
 
     assert result.success is False
     assert not any(event.is_step_up_for_retry for event in result.all_events)
@@ -150,7 +172,7 @@ def test_op_crash_reaches_event_log_without_provider_keys(monkeypatch, job_name,
     assert "serviceKey=<redacted>" in joined
 
 
-@pytest.mark.parametrize(("job_name", "op_name"), JOB_FIRST_OPS[:3])
+@pytest.mark.parametrize(("job_name", "op_name"), JOB_CRASH_OPS[:3])
 def test_raised_op_error_chain_has_no_provider_keys(monkeypatch, job_name, op_name):
     async def leaky_run(*_args: Any, **_kwargs: Any):
         raise _leaky_error()

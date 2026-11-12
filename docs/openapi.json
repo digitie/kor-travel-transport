@@ -3640,6 +3640,59 @@
         "title": "FuelPriceStatistics",
         "type": "object"
       },
+      "FuelRegionSummary": {
+        "properties": {
+          "average_price": {
+            "title": "Average Price",
+            "type": "number"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "latitude": {
+            "title": "Latitude",
+            "type": "number"
+          },
+          "longitude": {
+            "title": "Longitude",
+            "type": "number"
+          },
+          "product_code": {
+            "title": "Product Code",
+            "type": "string"
+          },
+          "region_key": {
+            "title": "Region Key",
+            "type": "string"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "station_count": {
+            "title": "Station Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scope",
+          "region_key",
+          "label",
+          "source",
+          "product_code",
+          "longitude",
+          "latitude",
+          "average_price",
+          "station_count"
+        ],
+        "title": "FuelRegionSummary",
+        "type": "object"
+      },
       "FuelStationExportPage": {
         "properties": {
           "collection": {
@@ -4657,6 +4710,13 @@
               }
             ],
             "title": "Latitude"
+          },
+          "line_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Line Names",
+            "type": "array"
           },
           "longitude": {
             "anyOf": [
@@ -6914,6 +6974,28 @@
         "title": "ManualPlaceLocationRequest",
         "type": "object"
       },
+      "MetroStationCatalog": {
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TransportPlaceMapItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generated_at",
+          "items"
+        ],
+        "title": "MetroStationCatalog",
+        "type": "object"
+      },
       "ParkingCurrentExportPage": {
         "properties": {
           "has_more": {
@@ -7592,6 +7674,827 @@
         "title": "ProviderStatusResponse",
         "type": "object"
       },
+      "PublicParkingExportItem": {
+        "properties": {
+          "additional_fee": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Additional Fee"
+          },
+          "additional_minutes": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Additional Minutes"
+          },
+          "basic_fee": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basic Fee"
+          },
+          "basic_minutes": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basic Minutes"
+          },
+          "capacity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capacity"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "collected_at": {
+            "format": "date-time",
+            "title": "Collected At",
+            "type": "string"
+          },
+          "daily_fee": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Fee"
+          },
+          "daily_minutes": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Minutes"
+          },
+          "disabled_parking": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disabled Parking"
+          },
+          "fee_info": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Info"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "institution_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Institution Code"
+          },
+          "institution_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Institution Name"
+          },
+          "is_current": {
+            "title": "Is Current",
+            "type": "boolean"
+          },
+          "land_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Land Address"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "monthly_fee": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Fee"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "opening_hours": {
+            "$ref": "#/components/schemas/PublicParkingHours"
+          },
+          "operating_days": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operating Days"
+          },
+          "parking_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parking Type"
+          },
+          "payment_methods": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Methods"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "provider_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Id"
+          },
+          "raw": {
+            "additionalProperties": true,
+            "title": "Raw",
+            "type": "object"
+          },
+          "reference_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Date"
+          },
+          "road_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Road Address"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "source_key": {
+            "title": "Source Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "provider_id",
+          "name",
+          "category",
+          "parking_type",
+          "road_address",
+          "land_address",
+          "longitude",
+          "latitude",
+          "capacity",
+          "fee_info",
+          "basic_minutes",
+          "basic_fee",
+          "additional_minutes",
+          "additional_fee",
+          "daily_minutes",
+          "daily_fee",
+          "monthly_fee",
+          "operating_days",
+          "opening_hours",
+          "payment_methods",
+          "notes",
+          "phone",
+          "institution_name",
+          "institution_code",
+          "disabled_parking",
+          "reference_date",
+          "collected_at",
+          "is_current",
+          "source_key",
+          "raw"
+        ],
+        "title": "PublicParkingExportItem",
+        "type": "object"
+      },
+      "PublicParkingExportPage": {
+        "properties": {
+          "collection": {
+            "$ref": "#/components/schemas/ExportCollectionState"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "has_more": {
+            "default": false,
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PublicParkingExportItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "generated_at",
+          "collection",
+          "items"
+        ],
+        "title": "PublicParkingExportPage",
+        "type": "object"
+      },
+      "PublicParkingHours": {
+        "properties": {
+          "holiday_close": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holiday Close"
+          },
+          "holiday_open": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holiday Open"
+          },
+          "saturday_close": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Saturday Close"
+          },
+          "saturday_open": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Saturday Open"
+          },
+          "weekday_close": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekday Close"
+          },
+          "weekday_open": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekday Open"
+          }
+        },
+        "title": "PublicParkingHours",
+        "type": "object"
+      },
+      "PublicParkingItem": {
+        "properties": {
+          "additional_fee": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Additional Fee"
+          },
+          "additional_minutes": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Additional Minutes"
+          },
+          "basic_fee": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basic Fee"
+          },
+          "basic_minutes": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basic Minutes"
+          },
+          "capacity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capacity"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "collected_at": {
+            "format": "date-time",
+            "title": "Collected At",
+            "type": "string"
+          },
+          "daily_fee": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Fee"
+          },
+          "daily_minutes": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Minutes"
+          },
+          "disabled_parking": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disabled Parking"
+          },
+          "fee_info": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fee Info"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "institution_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Institution Code"
+          },
+          "institution_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Institution Name"
+          },
+          "is_current": {
+            "title": "Is Current",
+            "type": "boolean"
+          },
+          "land_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Land Address"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "monthly_fee": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly Fee"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "opening_hours": {
+            "$ref": "#/components/schemas/PublicParkingHours"
+          },
+          "operating_days": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operating Days"
+          },
+          "parking_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parking Type"
+          },
+          "payment_methods": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Methods"
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone"
+          },
+          "provider_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Id"
+          },
+          "reference_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Date"
+          },
+          "road_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Road Address"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "provider_id",
+          "name",
+          "category",
+          "parking_type",
+          "road_address",
+          "land_address",
+          "longitude",
+          "latitude",
+          "capacity",
+          "fee_info",
+          "basic_minutes",
+          "basic_fee",
+          "additional_minutes",
+          "additional_fee",
+          "daily_minutes",
+          "daily_fee",
+          "monthly_fee",
+          "operating_days",
+          "opening_hours",
+          "payment_methods",
+          "notes",
+          "phone",
+          "institution_name",
+          "institution_code",
+          "disabled_parking",
+          "reference_date",
+          "collected_at",
+          "is_current"
+        ],
+        "title": "PublicParkingItem",
+        "type": "object"
+      },
+      "PublicParkingPage": {
+        "properties": {
+          "collection": {
+            "$ref": "#/components/schemas/ExportCollectionState"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "has_more": {
+            "default": false,
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PublicParkingItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "generated_at",
+          "collection",
+          "items"
+        ],
+        "title": "PublicParkingPage",
+        "type": "object"
+      },
       "RailDepartureItem": {
         "properties": {
           "arrival_time": {
@@ -7655,6 +8558,17 @@
       },
       "RailDepartureSummary": {
         "properties": {
+          "code_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Id"
+          },
           "collected_at": {
             "anyOf": [
               {
@@ -7667,10 +8581,39 @@
             ],
             "title": "Collected At"
           },
+          "collection_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pending",
+                  "stored",
+                  "no_data",
+                  "error"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Status"
+          },
           "departure_count": {
             "default": 0,
             "title": "Departure Count",
             "type": "integer"
+          },
+          "last_attempt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt At"
           },
           "line_name": {
             "anyOf": [
@@ -7694,8 +8637,26 @@
             ]
           },
           "place_id": {
-            "title": "Place Id",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Place Id"
+          },
+          "source_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Name"
           },
           "stale": {
             "default": false,
@@ -7715,6 +8676,18 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "time_precision": {
+            "anyOf": [
+              {
+                "const": "minute",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Precision"
           }
         },
         "required": [
@@ -7829,6 +8802,17 @@
       },
       "RailTimetableItem": {
         "properties": {
+          "code_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code Id"
+          },
           "collected_at": {
             "anyOf": [
               {
@@ -7841,6 +8825,23 @@
             ],
             "title": "Collected At"
           },
+          "collection_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pending",
+                  "stored",
+                  "no_data",
+                  "error"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Status"
+          },
           "departure_count": {
             "default": 0,
             "title": "Departure Count",
@@ -7852,6 +8853,18 @@
             },
             "title": "Items",
             "type": "array"
+          },
+          "last_attempt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt At"
           },
           "line_name": {
             "anyOf": [
@@ -7875,8 +8888,26 @@
             ]
           },
           "place_id": {
-            "title": "Place Id",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Place Id"
+          },
+          "source_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Name"
           },
           "stale": {
             "default": false,
@@ -7896,6 +8927,18 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "time_precision": {
+            "anyOf": [
+              {
+                "const": "minute",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Precision"
           },
           "upcoming_departures": {
             "items": {
@@ -8606,7 +9649,8 @@
               "bus_terminal",
               "airport",
               "rest_area",
-              "highway_incident"
+              "highway_incident",
+              "public_parking_lot"
             ],
             "title": "Kind",
             "type": "string"
@@ -8687,6 +9731,28 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "parking_capacity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parking Capacity"
+          },
+          "parking_fee_info": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parking Fee Info"
           },
           "phone": {
             "anyOf": [
@@ -8811,6 +9877,13 @@
             "description": "확인된 최신 유가 읽기 모델 지연 여부. false는 직후 발생한 늦은 원본 커밋까지 보증하지 않습니다.",
             "title": "Fuel Prices Stale",
             "type": "boolean"
+          },
+          "fuel_regions": {
+            "items": {
+              "$ref": "#/components/schemas/FuelRegionSummary"
+            },
+            "title": "Fuel Regions",
+            "type": "array"
           },
           "fuel_statistics": {
             "items": {
@@ -11565,6 +12638,78 @@
         ]
       }
     },
+    "/v1/service/exports/parking-lots": {
+      "get": {
+        "operationId": "export_parking_v1_service_exports_parking_lots_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicParkingExportPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Export Parking",
+        "tags": [
+          "service-exports"
+        ]
+      }
+    },
     "/v1/service/exports/parking/current": {
       "get": {
         "operationId": "parking_current_v1_service_exports_parking_current_get",
@@ -13656,6 +14801,149 @@
         "summary": "Transport Highway Traffic"
       }
     },
+    "/v1/transport/parking-lots": {
+      "get": {
+        "operationId": "list_parking_v1_transport_parking_lots_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 500,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicParkingPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "List Parking",
+        "tags": [
+          "parking-reference"
+        ]
+      }
+    },
+    "/v1/transport/parking-lots/{parking_id}": {
+      "get": {
+        "operationId": "detail_parking_v1_transport_parking_lots__parking_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "parking_id",
+            "required": true,
+            "schema": {
+              "maximum": 9223372036854775807,
+              "minimum": 1,
+              "title": "Parking Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicParkingItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Detail Parking",
+        "tags": [
+          "parking-reference"
+        ]
+      }
+    },
     "/v1/transport/ports/timetables": {
       "get": {
         "description": "비교 검색은 저장 데이터만 읽는다. 미수집과 제공기관의 빈 시간표를 구분한다.",
@@ -14096,6 +15384,117 @@
           }
         },
         "summary": "Timetable"
+      }
+    },
+    "/v1/transport/rail/stations": {
+      "get": {
+        "description": "공식 코드·역명을 그대로 읽는다. 위치 파일 연결은 지도 좌표의 보조 정보일 뿐이다.",
+        "operationId": "transport_metro_stations_v1_transport_rail_stations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetroStationCatalog"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Transport Metro Stations"
+      }
+    },
+    "/v1/transport/rail/stations/{code_id}/timetable": {
+      "get": {
+        "operationId": "transport_coded_rail_timetable_v1_transport_rail_stations__code_id__timetable_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "code_id",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Code Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "day_code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "7",
+                    "8",
+                    "9"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Day Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RailTimetableResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "요청 검증 오류"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "애플리케이션 오류"
+          }
+        },
+        "summary": "Transport Coded Rail Timetable"
       }
     },
     "/v1/transport/rail/timetables": {

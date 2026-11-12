@@ -1,3 +1,355 @@
+## 현재 상태 — 2026-11-12 장기 미처리 PR 우선 정리
+
+- 오래된21건은 #180의 전체 Git 조상으로 확인해 중복 종료했다. main 반영 완료를 뜻하지 않으며 #180을 최신 main과 통합한4c06으로 갱신했다. #186은 별도 작업으로 유지한다. 원 브랜치·실패·검증 이력과 타 작업자는 보존했다.
+- 다음 한 작업: #180 통합 후보의 백엔드 CI·격리 UI·두 독립 리뷰를 정산하고 실제 검증 결과로 main 반영한다. 이후 사용자 차트·지도·반경 API·통계·KMA·NVMe21개 요청을 이어간다.
+- 세부 근거: [장기 PR 정리](reports/2026-11-12-pr-consolidation.md). 운영 변경0/백업·복원 생략/prune OFF.
+
+## 2026-11-10 — 현재: #179 배포·120개 보강·실제 소비 수용
+
+운영 API/수집기는4998226의1688e6ad/64ec62a2이며 다섯 역할·Manager healthy, 원20복원·schema0042·키/환경/다른 서비스 보존이다.
+기존 KRIC 자연 종료와 배포 최초1be6ea1d 실제0/done·소유 자식326개 종료를 확인했다. 공식 첫 job은 제공자 응답 예외로
+FAILURE/3개 저장, 별도 후속은 실패 주소 재조회 없이 SUCCESS/117개 추가 저장이다. 일반116·도시4, 총120개를 보강했다.
+Map용1466개 두 페이지의 빈 좌표173→53·여수엑스포 실제 좌표·DB/항목 SHA 동일·조건부304를 Map의 기존 소비 연결로 확인했다.
+Map 적재/스케줄은 변경하지 않았다. CPU는 서버 본체5%대·주요 자식58~59%의 제한된 표본이며 최적화 완료로 쓰지 않는다.
+Weather main3bcda7e1과 API64MiB/8192개·Dagster4MiB/1024개 캐시는 PR221에서 실제 완료했다.
+
+다음 한 작업은 남은53개의 원천 주소·미제공/불일치·제공자 오류·부분/범위 좌표를 구분해 보완하는 것이다.
+같은 실패/미일치 주소를 즉시 재조회하거나 기존 원천 좌표를 추정값으로 대체하지 않는다. [운영·실패·잔여 근거](reports/2026-11-10-rail-address-coordinates-179.md).
+아래 구현/배포 전 기록은 이력이다. 제품 CI42819606265·42819855014는 모두 backend/frontend/관리자 SUCCESS이며 live-e2e는 생략이다.
+
+## 2026-11-10 — #179 주소 기반 역 좌표 보강 구현
+
+기존 장소 수집기에 원천 상세 주소가 일치하는 역 좌표 보강과 철도 전용 op config를 추가했다. WSL/Docker PG18 각각101개·새 lint0을 확인했고 재수집 보존·새 export/구 cursor 경계를 검사했다. 새 이미지와 실제 보강 job은 아직 미완이다. CPU는 서버 본체5%대·주요 자식58~59%의 제한된 표본이며 quota/worker를 바꾸지 않았다. [근거와 다음 단계](reports/2026-11-10-rail-address-coordinates-179.md).
+
+## 2026-11-10 — 본문 개선 새 이미지·0042 실제 수용
+
+제품7a5d0c4의 API74e235b7·수집기89b77f19와0042를 반영했다. 원 수집 자연 종료·구 cursor466개 동일·
+원20복원·다섯 역할/Manager healthy·정식 준비job SUCCESS·HTTP200/304와 전체1466개 지문을 확인했다.
+운영 첫 수용 GET3.9575초/3044.0156초이며, 격리 유휴1.179/1.464초·준비 후1.382/1.200초와 구분한다.
+미준비7.556~8.903초·조건부 비용은 남는다. 원 배포 부모1은 보존하고 재교체 없는 completion firstad793607 실제0으로 정산했다.
+전체 CI backend는 최신 관측에서 진행 중이며 두 UI job은 성공이다. [실측·실패·정본 SHA](reports/2026-11-10-reference-artifact-improvement.md).
+
+## 2026-11-10 — 최초 본문 구성 지연 상세 분석 완료
+
+최신 사용자는 추가 수정 전에12.43초의 이유부터 상세 분석하라고 지시했다. 제품 코드는 바꾸지 않고
+같은 ARM64/운영 데이터의 격리 snapshot 쓰기를 측정했다. 최초9.651/9.908초 중 전체 구성8.746/8.950초,
+주소1.769~2.893초·항목 저장2.663~3.458초·입력 지문0.716~1.095초를 확인했다. 주소는 원천 조립 시간에 포함된다.
+장기 유휴 뒤에도 본문을 재생성하는 cursor/본문 수명 결합이 핵심 구조적 원인이다.
+[상세 원인·계획·측정 한계](reports/2026-11-10-reference-cold-build-analysis.md). 분석 부모/전용 PG 정산·운영 다섯 역할 불변 완료.
+다음 한 작업은 불변 본문과 짧은 cursor의 수명을 분리하는 후속 구현이다. 이번 분석에서는 제품 수정/재배포0이다.
+
+## 2026-11-10 — Weather PR210 참고 Transport 성능 개선·운영 반영 완료
+
+별도 branch `codex/transport-performance-pr210-20261110`에서 Map 기준정보 반복 구성과
+철도 카탈로그 비용을 줄였다. PR210은 제품 코드가 아닌 문서다. 실제 입력 지문과 완료 본문을
+분리하며 새 상태 TTL·SDK·웹·migration은 추가하지 않았다. [실측·설계·원장](reports/2026-11-10-transport-performance-pr210.md).
+WSL20개/보정1개·Docker PG18 21개 통과 뒤 제품d0c9010의 API5bee4f97·수집기37f45393를 반영했다.
+다섯 역할 healthy·원20복원·Manager healthy·두 부모 실제0/자식 종료까지 확인했다.
+단일 HTTP는 조건부4.624→1.807초·카탈로그4.071→2.442초이며 최초 전체 구성12.426초는 남는다.
+PR178은 Draft다. 제품 CI42727647602는 backend1813통과·2생략·54 subtest 통과와 frontend/관리자 성공으로 완료했다.
+위 상세 분석은 이 제품의 최초 구성 한계를 더 조사한 후속이며 기존 배포를 반복하지 않았다. 아래 PR177 이미지는 이전 운영 이력이다.
+
+## 2026-11-10 — PR177 최신 새 이미지 반영 완료
+
+사용자 지시로4dac82d의 새 API b9ac0d18·수집기22f47ac5를 반영했다. 다섯 역할 healthy·
+새 release/DB ready·철도/유가 HTTP200·원20복원·Transport location·Manager healthy를 확인했다.
+수집기 Settings 신규 MCP 필드 때문에 원 배포 부모1이 된 이력을 보존하고, 기존 필드/환경 동일성을
+검산한 completion first67dcc9b3 실제0/Main0/cgroup부재로 재교체 없이 마감했다.
+기존 유가 수집 SUCCESS·공항/고속도로 FAILURE는 별개로 보존한다. [실제 원장과 경계](reports/2026-11-10-pr177-image-release.md).
+PR177은 Draft이며 이 배포의 추가 이미지 작업은 없다.
+
+## 2026-11-10 — PR177 후속 전체 CI 성공
+
+수정 커밋7ff7b52의 [CI42604663260](https://github.com/digitie/kor-travel-transport/actions/runs/42604663260)는
+backend/frontend/관리자 모두 성공했다. Backend1793통과·2생략·54 subtest 통과이며 migration·
+Alembic/OpenAPI 검산도 성공이다. live-e2e는 생략이므로 기존 실제 운영 수용과 구분한다.
+원 CI42590864342의 두 실패는 이력으로 보존했고 CI 대기 항목은 완료 목록으로 옮겼다.
+이번 마감은 문서만 변경하며 운영 제품36dd849와 이미지·DB·수집 상태는 바꾸지 않는다. PR177은 Draft다.
+
+## 2026-11-09 — PR177 재확인·CI 회귀 기대값 정정
+
+문서 HEAD b9a4e28의 CI42590864342는 frontend/관리자 성공, backend1790통과·2실패·2생략이었다.
+새 일반철도 op가 추가된 job을 단일 실패 op로 가정한 시험과 MCP 추가 전 gateway 개수 기대값을
+WSL에서 그대로 재현했다. 각 수집 op의 키 가림을 독립 검증하고 모든 전달 경로의12302 포트를
+검사하도록 고친 뒤 WSL/Docker 각각87개가 통과했다. 현재 계약 문서의 TAGO source도 KRIC으로 정정했다.
+원 CI 실패는 보존하며 집중 검증과 후속 전체 CI 성공은 위 최신 정산에서 구분한다.
+제품36dd849·기존 이미지/DB/수집 상태는 이 테스트·문서 수정으로 바꾸지 않았다.
+
+## 2026-11-09 — KRIC 일반철도358건·Map1466건과 세 서비스 복구 완료
+
+제품36dd849의 API3123a377/CS5d8a50fc를 적용하고 기존18개 서비스/원20상태를 복구했다.
+Weather/Geo/Transport Manager healthy다. 정식 c56323f9/앱8603 성공·신규358건과 기존1108행 지문 동일,
+실제 Map peer1466건 두 페이지200/304·전주/순천/익산/안동 DB/API 좌표를 검산했다.
+사용자가 승인한 대기1건만 priority0→10으로 바꿨고 기존 KRIC 시간표의 자연 종료·그룹1을 보존했다.
+새358건의 좌표 미제공160건·기존13건을 보존하며 Map 적재/주간 예약은 담당 후속이다.
+Docker daemon nil-pointer panic 뒤 systemd 재시작이 동시 중단의 직접 원인이었고 촉발 경로는 미확정이다.
+[최종 원장·실패 이력](reports/2026-11-09-kric-general-rail-reference.md), Draft PR177/SDK14. 추가 재빌드·수집·main merge0.
+
+## 2026-11-09 — 이전 진행 기록: 서비스 복구 수용·수집 대기
+
+아래 세 절은 완료 전의 관측 이력이다. 현재 상태는 위 최종 수용과 PR 재확인이 우선한다.
+
+새 API3123a377/CS5d8a50fc(제품36dd849) 적용과 기존18개 서비스 복구를 완료했다.
+세 앱 Manager healthy·원20일정·기존 도시철도1108 지문/원16CID·환경/마운트가 같다.
+R2 first245a419f는done/Main0/CG부재, 원 두 종류의 실패도 보존한다.
+공식 rail_reference_collection_job c56323f9는 기존 순서로QUEUED이며 제출0을 저장 성공으로 바꾸지 않는다.
+다음은 같은job358역 저장/Map 대조다. [정본](reports/2026-11-09-kric-general-rail-reference.md).
+
+## 2026-11-09 — 이전 진행 기록: KRIC 일반철도·KTX와 서비스 복구
+
+최신 인간 지시로 TAGO 미배포 후보를 KRIC으로 대체했다. 공식397행/358역·좌표198역과 목표4역을 확인했고 provider WSL/Docker291개·mypy 통과다. 공유서비스18개 중지는 장애이며 복구가 승인됐다. 다음은 최소 API/CS 이미지 적용 뒤 기존서비스 복구·공식수집·Map 수용이다. [상세](reports/2026-11-09-kric-general-rail-reference.md).
+
+## 2026-11-09 — 대체된 이력: 미배포 TAGO 일반철도 후보
+
+현재 `codex/transport-tago-stations-20261109`에서 일반철도 source·합성 export를 구현했다.
+기존 TAGO API의 실제 catalog200/지역16개를 확인했고 새 키·SDK·migration은 필요하지 않다.
+KRIC1108건과 미제공 좌표·기존 코드/cursor를 보존한다. 다음은 최종 소유권 세션 검증과
+최소 API/CS 이미지 반영·공식 최초 수집·Map peer의 전주/순천/익산/안동 대조다.
+[상세](reports/2026-11-09-tago-general-rail-reference.md), 정본 `transport-tago-stations-20261109/plan.json`.
+
+최종 소유권 집중11개는 WSL/Docker PG18에서 각각 통과했다. 첫 빌드는 Docker 자식1, R2는
+사전 healthy 검사 실패로 실제 종료했고 원 실패를 보존한다. 04:45 UTC Docker 재시작 뒤 공유 DB·
+Dagster·세 앱 등18개 컨테이너의 중지를 관측했다. 별도 점검 여부·기존 동일 컨테이너 복구 범위의
+사용자 응답을 기다린다. 새 배포·TAGO 수집·다른 앱 재가동은 아직 실행하지 않았다.
+
+## 2026-11-09 — Map 철도·해운 적재 준비 완료
+
+운영 API·수집기의 공통map flag를ON했고 철도·해운 수집 flag/예약은 기존ON을 유지했다.
+같은 API/CS 이미지·schema0041·환경·다른 서비스를 보존하고 원20복원·Manager healthy·운영 부모 종료를 확인했다.
+공식 최초 기준정보는 철도1108·항구753건이며 실제 Map n150에서 완결200/304를 확인했다.
+좌표null13/611건과 해운 후속 위치 보충job 실행 중을 보존한다. [운영 정산](reports/2026-11-09-map-reference-activation.md).
+다음 담당 작업은 Map의 새 T3 reader 적재1회와 주간 예약 활성화다. Transport에서 Map 작업을 실행하지 않았다.
+
+## 2026-11-08 — 유가 MCP 외부 HTTPS 연결 수용
+
+`https://transport-api.digitie.mywire.org/mcp`를 기존 서비스 토큰으로 연결할 수 있게 반영했다. 기존 gateway 이미지만 재사용해 gateway역할만 교체했고 API/수집기/Weather/DB·원47일정과 raw export 제한은 유지했다. 실제 TLS·두 프로토콜/도구2개·반경/전국/좌표 시군구를 검산했으며 토큰 없음/오류404·기타 쓰기/관리/raw export 차단도 확인했다. WSL/Docker gateway39개씩·원source권한 정산·두 첫 부모done/Main0/cgroup부재·Managerhealthy를 기록했다. 토큰 값은 문서/Git에 넣지 않는다. [연결법과 실제 한계](fuel-mcp.md).
+
+## 2026-11-08 — 같은 API의 유가 검색 MCP 실제 반영
+
+제품a3fbb4e/API857b507b를 같은12302 `/mcp`에 반영했다. 반경·전국·좌표 시군구5유종과 독립 반경 산술 PASS, 기존108 distribution/provider138파일·CS/웹/gateway/Weather/원47일정·DB0041을 보존했다. 공개 gateway는 미개방이다. [실제 계약과 한계](fuel-mcp.md). 원장SHA 5ae25e420f2e850d0495604fab09f065fcf19152b8c509f03cfd14a3c703deb9.
+
+## 2026-11-08 — 유가 검색 MCP 소스·집중 검증·Draft PR 인계 완료
+
+같은 API process/port의 opt-in `/mcp`에 반경 최저가·평균과 전국/현재 위치 시군구의 영구 통계를 제공한다.
+전5유종·이번 성공 수집분·동률·시각/미제공을 보존하고 GPS/IP나 가까운 주유소로 위치를 추정하지 않는다.
+Python3.12 PG18 WSL/Docker22개씩·실제 SDK 두 프로토콜·격리 gateway·신규16개만 추가/기존 의존성 보존을
+검산했다. 기존 SDK 재설치·schema/수집·운영 변경은 0이다. [MCP 안내](fuel-mcp.md).
+제품 `a3fbb4e9dca25e059efaef1d59d81d4885206366`은 [stacked Draft PR175](https://github.com/digitie/kor-travel-transport/pull/175)로 인계했다.
+ARM64 cp312 신규16 wheel 검산을 마쳤고 `transport-fuel-mcp-20261108/root/runtime-handoff.json`에 실행 경계를 기록했다.
+다음 한 작업인 실제 API 이미지·gateway MCP CIDR/HAProxy·공개 URL 수용은 Root가 별도로 수행한다.
+기본 활성화 false·gateway MCP CIDR empty deny를 유지한다.
+
+## 2026-11-08 — 남은 조회 지연·대표 카드 겹침 수정
+
+2026-11-08 남은 조회·대표 카드 후속3이미지와 마지막 Weather 웹 전용 수정을 실제 배포하고 n150 PC/모바일·Manager/원47상태/첫 부모 종료로 수용했다. [보고서](reports/2026-11-08-remaining-read-and-overlap.md)에 실제 HTTP/이전 실패·한계를 정산했다. 정본 SHA 04a0622ca18995913794218d73ed0591040c532e1978fe8bd6a46ddb71502786. 전체1초/원천 stale는 남는다.
+
+2026-11-08 첫3역할 배포는 실제0으로 완료했으나 HTTP current503/일부 카드 입력·복합 모바일 수용 실패를 보존했다. 실제 재현에 따른4키집합 조회/배열 목록·summary 입력/명시 접기 후속을 검증했으며 새 이미지 반영이 남았다. [원장](reports/2026-11-08-remaining-read-and-overlap.md).
+
+대표 카드의 원 좌표·전5유종을 보존하며 화면상 충돌을 분리했다. 공간 부족 시 지도 내부의 한정된 스크롤 목록으로 모든 대표를 읽고 선택한다. 원점 연결·키보드 접근을 보존하며 WSL/Docker37개씩·타입/린트·실제저장DTO15지역 Firefox fixture를 검산했다. 아직 새 UI 이미지 배포 전이다.
+
+실제 새 이미지·Manager/일정·HTTP·n150 PC/모바일 결과는 배포 뒤 별도로 정산한다. 기존 실패와 속도 목표 미달은 유지한다. 원장 weather-transport-remains-20261108/plan.json, UI 원문 fuel-region-overlap-20261108/manifest.json. 새 리뷰/SDK설치/백업복원 게이트는 추가하지 않는다.
+
+## 2026-11-08 — 대량 유가 지도 새 이미지 실제 반영
+
+최종 n150 Firefox157 PC/모바일 지도·확대 경로·선택 가격/그래프·logout303·자식 종료를 수용했고 실제 캡처를 검토했다. MAP-LARGE-20261108은 완료 목록으로 이동했다. 남은 전체1초/카드 겹침은 보고서에 유지한다.
+
+제품 a8869693b84bf615007c17efb60e47b7a13984bf를 API·수집기 이미지11418aa1에 반영했다. API67e9174c/수집기dee4b424 healthy·포트12302/12306·schema0041/SDK18864a3/키·다른 환경·웹/다른 서비스 보존·원20일정 복원·Manager healthy를 확인했다. 첫Inv3cad34a9fdb7423b96c7bfa9d29d283e는 실제done/Main0/cgroup부재이고 전체84자식 종료0이다. 실제5,000곳7.36MB HTTP는12.79→4.36/4.03초, 화면 범위756곳은3.89→1.31/0.93초이며 각각 항목 SHA가 같았다. 이는 단일 순차 표본이며 cache hit/cold/p95/코드 단독 개선율로 해석하지 않는다. 1초 전체 응답 목표와 기존 카드 겹침/신선도 지연은 남는다. PC·모바일 최종 관측은 아래 보고서에 별도 정산한다. [실제 결과](reports/2026-11-08-large-fuel-map.md).
+
+## 2026-11-08 — 대량 유가 지도 집합 투영·완료 검증 재사용 구현
+
+사용자 추가 지시로 실제16~21초인5천 장소 경로를 개선했다. 단일 fuel PG 요청은 집합 JSON 투영과 같은 전체 DTO 검증을 사용하고, 실제 DB JSON 전체 바이트가 같을 때만 완료 검증 결과를 재사용한다. source 읽기/metadata 갱신은 매 요청 유지해 TTL/반영 지연이 없다. 필드·좌표/시각/NULL·유종 필터·schema·SDK·웹은 유지한다. codec은 최대2건/worker에서 실행하며 WSL/Docker PG18각36·후속5 통과와 전체 바이트 SHA 동일을 확인했다. Native 구간 재사용1.8~2.3초는 운영 HTTP/p95가 아니다. 아직 새 이미지 반영 전이며 기존 Weather Root의 자연 종료 뒤 이어간다. [구현·검산·한계](reports/2026-11-08-large-fuel-map.md).
+
+## 2026-11-08 — Transport 추가 조회 개선 이미지 배포·실제 수용
+
+제품22d53a4를 API/수집기eb0d0392에 반영하고 원20복원·Manager healthy·schema0041/SDK/환경·다른 역할 보존·첫Inv6ece 실제done/Main0/cgroup부재·전체87자식 종료0을 확인했다. HTTP8요청200과 PC1440/모바일375 대표 카드·선택 가격·overflow/로그아웃을 수용했다. 모바일 원 assertion 실패 원인은UNKNOWN으로 보존하고 같은 이미지의 별도R2 PASS를 구분했다. 실제 지도5,000곳16.22/20.86초는 기존12~13초보다 느렸고 국소 CPU 개선을 HTTP 개선으로 과장하지 않는다. 1초 목표와 카드 겹침/갱신 지연은 미완이다. 정본 SHAb6922904182173e4c8cc8fe6300243a40ce5ff86b1d1a993bb31396b28fac286. [결과·한계](reports/2026-11-07-read-next.md).
+
+다음 운영 작업은 Weather 기존 수집 자연 종료 후 승인 최대60초 reader 캐시의 API 배포다. Transport는 완료분을 재빌드·재검증하지 않는다.
+
+## 2026-11-07 — 추가 조회 개선 구현·집중 검증, 새 배포 진행
+
+사용자 추가 요청으로 Transport의 부모/장소 좌표 이중 검증 구성과 Weather의 JSON UTF-8 크기 중복 계산을 줄였다. 값·검증·상태/신선도·예산을 보존한 국소 전후 검산과 Transport WSL/Docker PG18각26개·Weather각40개를 통과했다. 겹침은 합산하지 않는다. Weather5초 초과 원 관측과 wall이 좋아지지 않은 cohort batch 후보를 보존했고 timeout 확대/추정 index 변경은 하지 않았다. 새 이미지·실제 배포는 아직 완료 전이며 기존 수집 자연 종료 정책을 유지한다. [근거와 남은 실제 단계](reports/2026-11-07-read-next.md).
+
+## 2026-11-07 — 조회 성능 세 회차 실제 배포·수용 완료
+
+제품aeff45/API·수집기 이미지791eb754를 실제 반영했다. 기존 KRIC f124dfa4의 공식 SUCCESS 자연 종료·worker 부재 후 수집기를 교체했고 다섯 역할 healthy·원20일정 복원·schema0041·SDK/키/환경/다른 서비스 보존·Manager healthy를 확인했다. 첫Invd6dc715d는 실제 done/Main0/cgroup부재, 전체271개 소유 자식도 실제0·종료다. Weather 세 회차 완료 원장과 함께 최종 정산했으며 새 리뷰/머지·백업·복원·migration·prune는 없다.
+
+실제18GET200·Firefox157 PC1440/375의 선택 평일 시간표488행/첫막차·유가 전유종 대표값/선택 가격 DTO-DOM·overflow0·로그아웃303·브라우저 종료를 수용했다. 대량 지도12.28/12.90초는1초 목표 미달이며 p95/cold·코드 단독 개선율 보장은 아니다. 갱신 지연/대표 카드 겹침·기관 자료 없음·Weather stale/미제공과 원 실패는 유지한다. 유가 이력 로딩 중 PNG를 새 그래프 완료 증거로 쓰지 않는다.
+
+정본 final-acceptance.json SHA `d6babc0574fa684e525aa166249d9f6c7c2ee2bf49dcca3dac1cb4ad1294caab`. 승인된 세 회차 후속의 다음 운영 작업은 없고 자동 후속을 종료한다. [최종 결과·한계](reports/2026-11-07-read-max-optimization.md).
+
+## 2026-11-07 — 세 회차 새 이미지·API 반영, 수집기 자연 종료 대기
+
+제품aeff45의 API/수집기 공용 이미지791eb754를 실제 빌드하고 API CIDf00d0540에 우선 반영했다. 원 첫 보조 빌드의 Docker 실행 전 경로 표현 오류·failed 종료를 보존했으며 별도R2는 done/Main0/cgroup부재·native/SDK/키 검산을 마쳤다. 새 API의18GET200·유가 목록1,000곳3.90/1.87초·지도5,000곳12.28/12.90초를 관측했다. 수집 정지/부하 상태가 달라 코드 단독 개선율·p95로 과장하지 않고1초 목표 미달을 유지한다.
+
+Firefox157 PC1440/375에서 선택 평일 서울역488행·첫차/막차 API-DOM·overflow0·로그아웃303·브라우저 종료를 확인했다. 유가 화면도 PC/모바일 대표 카드15/12개의 전유종·선택 주유소 가격을 DTO-DOM으로 대조했고 잘못된 role locator의 원 FAIL을 별도 보존했다. 단일 Root1577adcb3e/첫Invd6dc715d는 원20 pause 후 기존KRIC의 자연 종료를 기다린다. CS 교체·원20복원·Manager·최초 부모 실제 종료 전이므로 전체 배포는 아직 수용하지 않는다. [실제 결과와 한계](reports/2026-11-07-read-max-optimization.md).
+
+## 2026-11-07 — 조회 성능 세 회차 구현·집중 검증 완료
+
+3회차는 시간표를 읽을 때 전체 active1,108코드 ORM을 만들던 것을 필요한 기관·노선의 Core 투영으로 줄였다. 특정 노선14개 이름의 같은 SHA에서 조회 wall290→15ms·CPU120→10ms였으며 전체 HTTP 보장은 아니다. WSL SQLite12·격리PG18 WSL14·Docker14개를 통과했고300역5개 SQL·행선지·부산 시각·달력/stale 규칙을 보존했다. 전용 PG는 종료·제거했다.
+
+앞선 중첩 가격 모델·목록 Core 투영까지 세 회차 코드는 완료했다. 다음은 같은 SDK/의존성·schema0041·웹/환경/다른 서비스를 보존하는 최소 새 API/수집기 이미지와 실제 운영 수용이다. 아직 운영 반영 완료가 아니며 기존 수집은 자연 종료를 기다린다. [전후 검산과 폐기한 후보](reports/2026-11-07-read-max-optimization.md).
+
+## 2026-11-07 — 조회 성능 2회차 Core 투영 검증
+
+유가 목록의 응답 전용 주유소/가격 ORM 객체6,000개를 열 투영으로 제거했다. 실제 READ ONLY PG18 교대 검산은 같은1,000곳/5,000가격·같은 SHA에서 identity map6,000→0·CPU867→775ms였다. WSL SQLite·WSL PG18·Docker PG18의 API 회귀2개씩과 ORM 재생성 방지 검사를 통과했고 소유 PG를 정산했다. 국소 측정이며 운영 HTTP 수용은 아직이다.
+
+UTC LRU 후보는 새 datetime 객체의 hash 비용을 포함하니 더 느려 채택하지 않았다. 인라인 후보도 차이가 없어 원 helper를 유지했다. 다음은3회차의 역 시간표 이름 조회 범위 개선이며 새로운 리뷰/백업/SDK 설치를 추가하지 않는다. [근거와 폐기한 후보](reports/2026-11-07-read-max-optimization.md).
+
+## 2026-11-07 — 조회 성능 세 회차 시작·1회차 가격 모델 개선
+
+Weather 세 회차 실제 배포 수용 뒤 Transport를 시작했다. 운영 기준 유가 목록1,000곳7.00~7.64초·지도5,000곳20.74~22.19초, 역 카탈로그2.37~2.94초·일반 주차장1,000곳3.09~3.82초를 확인했다. READ ONLY 프로파일에서 SQL5회 약2.18초와 Python 모델 생성30,001호출4.79초를 분리했다.
+
+첫 개선은 유가 중첩 모델의 Python 생성 반복을 없애고 부모의 같은 C validator를 쓰는 것이다. 고정 ARM64 DTO5,000×5 교대 측정의 wall2678→2292ms·CPU1861→1698ms와 출력 SHA 동일을 확인했다. WSL SQLite·WSL PG18·Docker PG18의 동일 API 회귀2개씩·새 Ruff 진단0을 확인했다. 운영 HTTP 개선율이나 최종 배포 성공으로 표현하지 않는다. 다음은 나머지 병목을 측정·개선하는2·3회차이며 원본·기존 통계·키·일정/다른 서비스는 유지한다. [측정과 선택지](reports/2026-11-07-read-max-optimization.md).
+
+## 2026-11-03 — 양 앱 성능·키 없는 주차장 파일 수집 운영 수용 완료
+
+Map의 주차장 기능을 Transport 직접 SDK 수집·0041 DB·공개/인증 API·일반 주차장 화면으로 이식했다. Map 데이터 pull은 없다. 원자 게시·미완 수집 보존과 PG18 WSL/Docker 집중 회귀, 프런트 집중 검증을 통과했다. [검증 범위와 측정](reports/2026-11-03-parking-owner-read-performance.md)을 따른다.
+
+Weather·Transport의 읽기 성능 수정은 운영 반영 완료다. 최신 Transport API·수집기는 f60b023/SDK18864a3/이미지e7cdd88e, 관리 화면은604b10d/이미지9b8b7ad0이며 다섯 역할 healthy·PG18/0041·원20개 일정 복원·Manager 정산을 확인했다. 기존 수집은 자연 종료했고 취소하지 않았다. 키·환경·스키마·관리 화면·다른 서비스는 이번 파일 경로 반영에서 바꾸지 않았다.
+
+사용자의 “파일이라 key 불필요” 지적 뒤 공식 공개 다운로드 경로를 SDK에서 구현했다. WSL/Docker SDK32개씩·PG18 수집14개씩을 통과했고 빌드R2 e33427a3·배포7805f2ba09/2f2d4c04는 실제0/Main0/cgroup부재·자식 종료다. 공식 수집61213dad/앱5730은 SUCCESS로 끝나 원문18994행을 보존하고18992시설을 저장했다. 독립 건수·충돌2개·0면18곳·좌표 미제공751곳과 DB/API/export를 검산했고 Firefox157 PC1440·모바일375의 목록/상세/지도·타일·넘침0·오류0·인증 정리·자식 종료를 확인했다. PC의 숨겨진 모바일 토글을 기다린 첫 관측 실패는 보존하고 PC 조회와 렌더 완료 지도 캡처만 보정했다. 추가 앱 배포·재수집은 없다.
+
+이 승인 범위의 다음 운영 작업은 없다. 월간 일정은 같은 키 없는 파일 경로로 유지한다. 기존 OpenAPI403·실패·NOT_READY와 별도 최초 빌드 BASE 참조 오류도 이력으로 보존하며 키 등록 입력 요구는 철회했다. 원본 삭제·백업/복원·새 리뷰·PR 머지를 추가하지 않는다. CI의 backend 전체 실행은 최종 관측에서 진행 중이며 focused 시험·실제 수용과 구분한다. [최종 기록](reports/2026-11-03-parking-owner-read-performance.md)을 따른다.
+
+Map의 legacy 변수와 원 라이브러리 로컬 .env에서 찾은 키가 기존 Transport 키와 같고 OpenAPI 조회가403이었던 이력도 남긴다. 이 결과는 키 없는 파일 다운로드의 사용 불가를 뜻하지 않는다.
+
+## 2026-11-02 — 철도·유가·양 앱 VWorld 후속 완료
+
+## 2026-11-02 전체 PR 새 이미지 반영 완료
+
+제품 소스 `f22364dc08c94c4be88ade88cf635728d94c8272`의 새 이미지를 운영에 반영했다. 웹부터 교체한 뒤 수집 자연 종료·migration·API/수집 서버 교체·원 일정 복원·Manager metadata 정산을 마쳤다. Firefox PC/모바일 실제 결과와 범위는 [통합 배포 기록](reports/2026-11-02-all-pr-images-release.md)에 정리했다. 백업·복원과 추가 독립 리뷰는 사용자 지시로 생략했다.
+
+
+- 철도1108역×3운행일3324개 초도 조회를 정산했다. 평일1077·토247·휴일1033개 표가 저장됐으며967개는 실제 제공기관03 자료 없음이다. 미시도·대기·현재 오류0, 마지막9da0d5d2/앱5220 SUCCESS다. 다른 요일 복사나 추가 수집은 하지 않는다.
+- 이번 성공 수집분30119개 유가 통계와 CIb328 성공은 완료다. 새 UI 이미지Transport1b6f803b·Weather4908a0d9를 반영했고 Firefox157 PC1440/모바일375의 두 앱 모두 새 키 타일 이미지 응답·지도 픽셀·오류 배너 없음·세션/자식 종료를 확인했다. 키 값은 Git·문서·로그에 기록하지 않았다.
+- 서버4역할의실제Settings 입력 일치·healthy와Transport19개원일정복원·기존웹/다른환경/다른서비스보존을확인했다. 후속73b533ba37/최초Invocationc8ea81c16ac0434da047a6438ef5c166은실제0/종료/Main0/cgroup부재다. Transport API61804a5c/CS676d3580은같은0d861d09, Weather API19ba900f/3f1236bf·CS4a48f58a/739b1b77을유지한다.
+- 양앱Manager adopt/verify/show가healthy로일치했다. 웹부모와첫서버부모실패는보존하고중복교체하지않았다. Weather의새일정카탈로그는그대로보존했다. 키소비검증과외부주소수집성공은구분하며새수집을실행하지않았다.
+- 이승인후속의추가운영작업은없다. 남은범위는제공기관자료없음967개·별도시설세부정보·유가지역라벨겹침등기존미완과제다. 새릴리스/원본삭제/백업·복원게이트를추가하지않는다. Draft PR171/SDK13은유지한다.
+- [실제 결과와 외부 제약](reports/2026-11-02-rail-opinet-vworld-followup.md).
+
+## 2026-11-02 — 이번 수집분 유가 통계 운영 수용 완료
+
+- API·수집기f01af803/SDK8d52/이미지0d861d09, PG18/0039, 원 일정19복원·Manager current healthy·최초 Invocation 실제0/종료/Main0/cgroup 부재를 확인했다. 관리자 UI·gateway CID·환경·다른 서비스는 보존했다.
+- 원 Opinet 성공 세대를30119개 이번 수집 가격으로 정정했다. 가격30119·지역1194·일별 통계의 독립 계산 불일치0, PC/모바일 전5유종 API-DOM 일치·소유 브라우저 종료다. 이전110개 가격 원본·과거 지역2388행·일별8391행은 보존했다. 외부 재수집/cleanup/백업·복원0이다.
+- f01 CI의 backend1건 실패는 새 세대에 가격 시각을 맞추지 않은 기존 동시성 시험 자료였다. 실제 재현 후 시험만 수정해 WSL/Docker PostgreSQL18 각2건을 통과했다. 후속b328a73의 CI41394935767에서 backend·frontend·transport-admin이 모두SUCCESS다. CI live-e2e는SKIPPED이며 실제 Firefox 수용은 별도다. 운영 제품 소스는f01 그대로다.
+- 철도81b79292/앱5209 SUCCESS, 평일1077·토234·휴일749역 저장, 미시도638운행일이 남았다. 다음 한 작업은 기존 정기 초도 채움의 이어받기 관측이다. 완료된 유가 배포/수용은 반복하지 않고, read-regions-current.py의 새 CID/image 검사를 사용한다. 양 앱 VWorld 입력은 이 정산 뒤 적용한다.
+- [결과·증거·남은 범위](reports/2026-11-02-rail-opinet-vworld-followup.md).
+
+## 2026-11-02 13:20 KST — 이번 수집분 집계 이미지 완료·배포 진행
+
+- 소스f01af803/SDK8d52/새 ARM64 이미지0d861d09는 실제 빌드0·최초 Invocation 종료·Main0·cgroup 부재다. 첫 빌드의 Docker 레이어 한도 실패는 별도 보존했다. 새 리뷰·SDK 재설치·관리 UI 재빌드는 하지 않았다.
+- 단일 배포fabb1f0d62/첫 Invocation730db3e27cfb4a479ea372e5cb692a2a가 정상 G→Transport R에서 원 일정19를 일시 중지하고 기존 수집의 자연 종료를 기다린다. 운영 적용·통계 정정·일정 복원·metadata 성공은 아직 미확인이다. 중복 배포/worker 종료를 하지 않는다.
+- 철도39dccec5/앱5199는SUCCESS로 종료했다. 평일1077·토234·휴일651역 저장, 초도 미시도937개 운행일이 남았다. 기존 대표6역의 실제24개 운행일 UI 대조는 재시험하지 않는다.
+- 다음 한 작업은 기존 배포 status/원문 관측 뒤 새 기준 통계 DB/API/DOM과 원본·과거 세대 보존을 확인하는 것이다. VWorld 입력은 비공개로 보관 중이며 철도/유가 정산 뒤에만 적용한다. [진행 원문](reports/2026-11-02-rail-opinet-vworld-followup.md).
+
+## 2026-11-02 — 다른 지역 저장 관측·오피넷 이번 수집분 집계 수정
+
+- 다른 지역의 평일 저장은1108역 중1077역,31역은 제공기관 자료 없음이었다. 토요일/휴일 초도 조회는 기존 정기 run39dccec5/앱5199가 이어받고 있어 전체 완료로 표시하지 않는다. 대구94역·광주20역은 세 운행일 저장됐다.
+- 서울역·수원·반월당·녹동·판암·개화6역의 실제 PC1440/모바일375,24개 운행일 API-DOM 행/시각/첫차·막차가 통과했고 세션/자식 종료를 확인했다.
+- Opinet09:16 KST의 실제 성공5169/공식9a9734ad에서 보유 최신가격30229건·지역1194행·일별 통계·공개 포인터·지도 API-DOM은 기존 정의로 일치했다. 추가 감사에서110건이 이전 관측값임을 확인했고 인간은 이번 성공 수집분만 집계를 선택했다.
+- 새 기준은 collected_at=성공 세대만 포함한다. 같은 세대의 구 모집단은 원자 정정하고 정상 재시도는 쓰지 않는다. 원본·지난 세대는 유지하며 migration·외부 재수집·cleanup을 추가하지 않는다. WSL/Docker PostgreSQL18 관련9개씩과 현재 세대 정정 실패/보존/재시도2개씩을 통과했다. 운영은 아직984/f807이며 새 소스는 배포 전이다.
+- 다음 한 작업은 새 백엔드 이미지를 빌드하고 기존 worker의 정상 종료 뒤 API·수집기에 반영해 현재 성공 세대를 정정·검산하는 것이다. 원 일정19·환경·다른 서비스는 보존하고 새 리뷰/백업·복원 게이트를 만들지 않는다.
+- VWorld 입력은 비공개로 보관했으며 값은 Git·문서·로그에 쓰지 않았다. 시간표/Opinet 작업을 마친 뒤 Weather·Transport에 적용하고 실제 타일을 확인한다. 현재 지도 타일 오류와 통계 수치 대조 통과는 구분한다. 자동후속이15분 간격으로 이 채팅에서 이어받는다.
+
+## 2026-11-02 — 부산114역 실제 저장·PC/모바일 수용
+
+- API·수집기98470cb/SDK8d52a10/이미지f8078d9·PG18/0039·원 일정19·Manager current healthy를 확인했다. 관리 UI191ecf4·gateway·환경·다른 서비스는 유지했다. 빌드·배포·요청 부모는 각각 실제0·Main0·cgroup 부재와 최초 Invocation 종료를 확인했다.
+- 부산1호선40역·2호선43역·3호선17역·4호선14역, 합계114역 모두 평일·토요일·휴일342개 저장표가 있다. 수정 전 실패34역/102개 기준을 새 파서로 저장했고 현재 부산 오류·대기는0이다. 원 오류40건과 취소된 run5153의 실패 이력은 보존한다.
+- 다대포해수욕장은 KRIC195/원천95를 구분해 평일169·토160·휴154행, 고촌은 평일290·토276·휴258행을 실제 저장했다. 두 역의 Firefox157 PC1440/모바일375에서 전체 행·시각·첫차/막차·원천·SVG·가로 넘침 없음·로그아웃303·브라우저 자식 종료를 확인했다. 고촌의 익일00:42 막차도 API-DOM 일치한다.
+- SDK261개·mypy·WSL9개·Docker PG18 9개·lock 검사가 통과했다. SDK CI 두 실행은 성공했고 Transport984의 frontend/admin은 성공, backend 전체 CI는 최종 관측 시 진행 중이다. Draft PR171/SDK13은 머지하지 않았다.
+- 단일 공식 수집8c515b1c/CollectionRun5159는 다른 기관 카탈로그를 계속 수집한다. 전국 전체1108역의 모든 운행일 완료와 배포 후 새 Opinet 성공 세대의 발행은 아직 확인하지 않았다. 다음 한 작업은 기존 수집의 이어받기 관측이며 재배포·백업/복원·새 검토 게이트를 만들지 않는다. 백업·복원은 SKIPPED_BY_USER다.
+- [실제 반영·증거·남은 범위](reports/2026-11-01-rail-daily-fuel-deployment.md). 정본 원장은 C:/Users/digit/.codex/tmp/transport-rail-daily-fuel-regions-20261101/nov2-final-evidence.json, SHA256 e458caf7b1ddc3626e710ed5be368fd37377cea4228c908f4c1f27531760c5e9다.
+
+## 2026-11-02 — 부산 연장역 공식 코드 구분
+
+- KRIC195~199와 부산교통공사 웹95~99의 다섯 역명을 양쪽 공식 자료로 확인했다. SDK8d52a10의 명시적인 KRIC 조회를 소비하며 저장 키·행선지 코드는 KRIC로 보존하고 원천 웹 코드를 수집 원문에 따로 기록한다.
+- 같은 페이지 범례에만 있는 행선지와 막차 안내 script 제외도 유지한다. 기존 시간표와 실패 이력은 보존한다.
+- SDK261개·mypy·파서100%, 소비자 WSL9개·Docker PostgreSQL18 9개·lock 검사가 통과했다. 실제 다대포해수욕장 공개 원천은 웹95/참조195로 평일169·토요일160·휴일154행이며 제공된 한 방향만 읽었다. 운영 저장·화면 결과는 배포 뒤 별도 기록한다.
+- 사용자는 기존 수집a8f5eb04 한 건의 정식 취소를 허용했다. SAFE_TERMINATE 요청은 한 번 접수됐고, 다른 작업에는 종료 권한을 확대하지 않는다. 백업·복원은 생략한다.
+
+## 2026-11-02 — 남은 공식 시간표 범례 오류 보완
+
+- 기존 지도·전용 조회 UI·일일 저장·영구 지역 유가 요약은 유지한다. 전체 CI69bcead 두 실행이 성공했다.
+- 후속 실제 관측은 부산80역/세 운행일 저장, 나머지34역의102개 운행 기준 오류를 보였다. 일부 방향의 행선지가 빈 접근성 글자로 오고 같은 페이지 범례에만 있다.
+- SDK의 정확한 course-mark 범례 연결을 pin2b140fb로 소비하며, parser_revision으로 기존 실패만 한 번 복구한다. 운영 DB 초기화·새 migration·환경/일정 변경은 필요 없다. 진행 중 수집a8f5eb04는 중단하거나 중복하지 않는다.
+- 유가 요약은2세대2388행 보존과 공개 포인터를 확인했다. 수집 세대 시각과 배포 이후 수집 성공 여부는 구분한다.
+
+## 2026-11-01 — 최종 철도 저장·UI 운영 확인
+
+- API/수집기 c378338·SDKb05e454·관리 UI191ecf4·PG18/schema0039·원 일정19·Manager current 정상.
+- 부산 공식 시간표와 막차 script 처리·파서 버전별 복구를 실제 저장으로 확인했다. 신평 평일 368행·토요일 342행·휴일 327행, 실제1440/375 화면 대조·캡처·자식 종료를 통과했다.
+- 전체 역 초도 채움과 다음 성공 Opinet 세대의 실제 발행 관측은 진행 항목이다. 백업·복원은 사용자 지시로 생략했다.
+- [실제 증거·현재 이미지·미완 범위](reports/2026-11-01-rail-daily-fuel-deployment.md).
+
+## 2026-11-01 — 공식 막차 안내 파서 수정
+
+- 신평·하단·당리의 원 실패와 동매의 정상 저장은 구분해 보존한다. SDK에서 막차 안내용 script/style의 본문을 시간표 글자에서 제외하며 실행하지 않는다.
+- migration0039의 nullable provider_revision은 기존 실패를 초기화하지 않고 수정 전 파서 오류만 새 파서로 한 번 다시 조회하게 한다. 같은 파서 실패의 24시간 보호·원천 인증/할당량 오류 24시간 보호·정상 저장본 24시간 재사용을 유지한다.
+- WSL SDK248개·mypy, 소비자 회귀8개를 통과했다. 운영 UI·공식 저장 재확인은 새 백엔드 적용 뒤 정산한다. 관리 UI 코드는 같아서 이미지 재빌드는 하지 않는다.
+
+## 2026-11-01 — 부산 공식 시간표 저장 보완
+
+- KRIC가 자료 없음(03)을 반환한 부산 역은 SDK의 부산교통공사 공식 원천으로 조회한다. 인증키와 HTML 파서는 backend에 재구현하지 않는다.
+- 한 역의 양방향을 모두 받은 뒤 평일·토요일·공휴일을 원자 저장한다. 각 HTTP를 기존 500회/5초/3시간 예산에 포함하고 24시간 재사용한다. 실패는 이전 정상 시간표를 보존한다.
+- migration0038의 원천 구분 기본값은 kric다. 기존 자료 없음 이력을 삭제하지 않으며 새로운 원천의 첫 조회만 허용한다. 저장된 분 단위 출발시각과 24시 이후 서비스 시각을 API·화면에서 유지한다.
+- SDK WSL 247개·mypy, 소비자 WSL 관련 49개와 Docker PostgreSQL18 관련 7개·UI 6개가 통과했다. 채워진 schema37→38과 기존 no_data 보존·Alembic check도 확인했다.
+- 운영 이미지와 실제 부산 DB 저장·화면은 다음 배포에서 확인한다. 현재 수집 worker는 중단하지 않는다.
+
+## 2026-11-01 — 철도 지도·전용 시간표·영구 지역 유가 통계 운영 반영
+
+철도 묶음 해제 줌·노선 문자/색 마커·기본 역 표시·SVG 새로고침·간결한 시설 표시를 수정하고
+별도 시간표 조회 화면을 추가했다. KRIC 역별 24시간 호출 원장과 이어받기, 조회 경로의 일반철도
+일일 갱신, 수집 성공 세대의 지역 유가 요약·영구 이력을 구현했다.
+
+API/수집기0593577·SDKec185/이미지4b7f, 관리 UI4f407cd/이미지4a939를 반영했다.
+같은 DB0037·네 역할 healthy·원 일정18개 복구/새 일일 일정 추가·Manager current healthy를 확인했다.
+실제 Firefox1440/375/320/414/768에서 저장표·전용 페이지·현재일87편/첫차막차·노선 색/문자·지역5유종 카드를 확인했다.
+공개 세대의 영구 지역 요약1194행과 일반철도 일일 작업 SUCCESS/저장을 확인했다.
+도시철도 초기사전 채움은 실행 중이며 자료 없음과 전체 역의 저장 성공을 구분한다.
+
+CI8a02024 백엔드1561건/2skip·프론트엔드/관리 UI 성공, Docker UI371건·PG18 관련118건/3skip,
+최종 수정 범위45건, SDK210건/2skip·92%를 확인했다. 원 시험·배포 실패는 지우지 않았다.
+증분 이미지의 이전 SDK 잔존·복구 원 일정 연결·게이트웨이 준비 대기 실패와 선택 버튼 대비 보정을
+[실제 반영 원장](reports/2026-11-01-rail-daily-fuel-deployment.md)에 기록했다.
+백업·복원은 사용자 지시로 생략했다. [계약](design/2026-11-01-rail-daily-fuel-summary.md),
+[유가 확장 검토](reports/2026-11-01-fuel-analysis-feasibility.md).
+
+다음 한 작업: 실행 중인 도시철도 초기사전 채움의 실제 커버리지를 정산한다. 끝난 이미지 교체·백업·검토를 반복하지 않는다.
+## 2026-11-01 — 지역 유가 카드 모든 유종 동시 표시 운영 반영
+
+관리 UI add7dea/이미지14423b95/CIDb76f485a만 반영했다. 시도·시군구 카드마다 휘발유·경유·고급유·등유·LPG를
+함께 표시하고 카드의 ‘평균’ 문구를 제거했다. 실제 PC1440/모바일375에서 가격 DTO/DOM·고배율 전환을 확인했다.
+CI 성공·별도 반영 unit0·Manager healthy이며 API·수집기·다른 서비스·환경·DB 마이그레이션은 유지했다.
+[실제 이미지·캡처·원 실패·범위](reports/2026-11-01-fuel-region-products.md).
+다음 한 작업: 기존 인접 지역 라벨 충돌 개선. 분석·범위 통계의 평균 지표와 미제공 자료는 별도로 유지한다.
+
+## 2026-10-31 — 역 상세·지역 유가 평균 운영 반영과 실제 화면 확인
+
+API `67bfb215`(최종 `e7407c95`와 실행 코드 동일)·관리 UI/gateway `e7407c95`를 운영 반영했다.
+수집기·공개 프론트엔드·schema0036·원래 18개 일정·환경 설정은 유지했다.
+정본 Manager 등록·검증과 실제 Firefox1440/375 역 상세·전체 시간표·첫차/막차·유가 평균/확대 전환을 확인했다.
+Weather API/웹 `e8733c5e`의 실제 상세·지도 검사도 통과했다. 백업·복원은 사용자 지시로 생략했다.
+[실제 이미지·실패 보존·캡처·미제공 경계](reports/2026-10-31-ui-live-deployment.md).
+
+다음 한 작업: 지역 라벨 겹침과 불필요한 `fuel/regions` 허용 경로를 별도로 정리한다.
+역 실시간·시설 상세 위치·미수집/오래된 시간표 자료는 별도 미완이며 이번 화면 성공으로 확대하지 않는다.
+
+## 2026-10-31 — 역 편의정보와 시간표 펼침 화면
+
+노선도는 생략하고 출구정보 대신 확인된 시설별 상세·주소·전화 안내를 표시했다.
+기존 SDK의 저장 파일 시설 파서를 공식 코드 목록에 연결했으며 미기재를 시설 없음으로 확정하지 않는다.
+Firefox375/750에서 전체 시간표/첫차·막차 버튼을 실제 클릭한 상태로 비교용 예시 화면을 캡처했다.
+[변경 범위와 캡처](design/2026-10-31-metro-code-detail.md#추가-반영--편의정보와-시간표-펼침-캡처). 운영 변경은 없다.
+
+## 2026-10-31 — 공식 코드 정본 역명·도시철도 상세
+
+KRIC 코드 파일과 역사 응답에 역명이 함께 있음을 확인했다. 코드 행 ID로 저장 시간표를 읽는 API와
+첨부 화면의 행선지별 예정·전체 시간표·첫차/막차 상세를 추가해 위치파일 매핑이 없어도 조회한다.
+실시간 도착·노선 순서·출구별 미저장 자료는 만들어 내지 않는다. 기존 위치 매핑은 좌표 보조 자료로 보존한다.
+WSL/Docker backend40 PASS/기존 PG잠금1 SKIP, UI4 PASS와 타입·lint·Next 빌드·Firefox375/750 예시 캡처를 확인했다.
+[데이터소스·계약·미완 경계](design/2026-10-31-metro-code-detail.md). 운영 반영은 없다.
+
+다음 한 작업: 이 Draft PR의 CI를 확인한다. 실시간·노선 순서·출구 수집은 별도 미완이다.
 ## 2026-11-12 — 지도 로딩 문구의 작업면 내부 배치
 
 - M9(9aebd199)와 같은 tree의 실제 NoJS 관측에서 기존 p.loading은 y887·높이110.5px였고, 높이를 모두 쓰는 지도 div 뒤에서 부모 overflow clip과의 교집합이0이었다. Playwright isVisible은 true였다. 근거는 비공개 validation/transport-M9aeb-map-loader-nojs-r2-20261112/final-receipt.json(SHA256 6a10df33c1a92dc6c0cba701b584716a5fe86cf2b1a638254935f67aed835609)이다. 별도 CommonMapReadout의 실제 대체 안내는 측정하지 않아 전체 피드백 부재로 확대하지 않는다.
@@ -153,6 +505,17 @@
   Docker 전수·새 CI와 두 적대적 리뷰·실제 Firefox를 결합한다. 운영 수집 플래그·일정·이미지 변경과 원본 삭제는 아직0이다.
 - [설계·조사·수용 조건](design/2026-10-28-fuel-history-fee-completion.md).
 
+## 2026-10-28 — 철도 안내 역의 출발·도착 지정 단계 A
+
+- 안내의 provider/provider_id를 지도 선택 참조로 유지하고, 상세의 작은 출발/도착 지정 버튼으로 기존 TAGO 이름 검색에 연결했다.
+  지역/실제 후보는 직접 확인하며 같은 이름·유일 후보도 자동 확정하지 않는다. 반대역·날짜·차종·지도 상태를 유지한다.
+- 원본 RED5실패를 보존한 뒤 WSL/Docker 각각14통과와 WSL 타입·린트·빌드 exit0을 회수했다.
+  첫 Docker QA 포장 실패와 새 QA전용 ignore 보완을 구분한다. 제품 의존성·backend·SDK·DB·운영 변경0이다.
+- 실제 Next/Firefox의1440/375 대역 미리보기32항목을 통과하고 세션·소유 자식을 정리했다. 운영/API 성공과 구분한다.
+  독립 두 리뷰·최종 CI·실제 VWorld/운영 데이터 수용은 미완이다. 단계 B·시설 데이터도 별도 미완으로 유지한다.
+  [변경·반례·실행 원장](reports/2026-10-28-rail-guide-station-intent.md).
+- 다음 한 작업: 정확한 구현 head의 독립 두 리뷰·CI와 실제 VWorld/운영 데이터 수용을 마감한다.
+
 ## 2026-10-28 — 철도 지도 역→시간표 연결 사전 조사 문서
 
 - source3f/실SDK pin의 안내·예정표/시설 범위와 공식 웹·Android/iOS 설명을 대조했다.
@@ -163,6 +526,50 @@
   [조사](research/2026-10-28-rail-guide-connection.md),
   [설계](design/2026-10-28-rail-guide-timetable-connection.md),
   [검증 경계](reports/2026-10-28-rail-guide-research-validation.md).
+
+## 2026-10-28 — 0037 격리 수준 P1 보완 후보
+
+- 현재 상태: d733의12집중·CI40610095559 SUCCESS 이후 RR/SERIALIZABLE snapshot의 추가 P1을 확인했다.
+  원 d733/원장/리뷰는 보존했고 별도 WT에서 실제6행 소실 반례→최소 READ COMMITTED guard를 검증했다.
+- 새 집중은 WSL21/Docker21 PASS·actual0·독립wait0·source/runtime 동일·자식 종료다.4dump와 volume을
+  보존하고 소유 PG/network만 정리했다. [정확 범위·원 실패](reports/2026-10-28-parking-0037-isolation-guard.md).
+- 다음 한 작업: 새 정확 head CI와 두 독립 증분 리뷰를 수용한다. main의 철도문서PR166은 이후 통합 시
+  양쪽 이력을 보존해야 한다. 현재 source/운영 배포 입력을 덮거나 main push/merge하지 않았다.
+  API reader/backfill/coverage·복원/검산 후 prune가 연결되기 전 정책은 미완이며 운영/prune0이다.
+
+## 2026-10-28 — 0037 downgrade P1 보완 후보
+
+- 현재 상태: 원833 main3f 통합의 두 CI와 WSL/Docker 각310PASS+6subtests는 회수했다.
+  독립 리뷰에서 빈 검사 후 concurrent INSERT·COMMIT→DROP 행 소실을 발견했고 새 PG18.6 RED2로 확정했다.
+  원833/WT/원장과 첫 fixture 실패를 보존했다.
+- 최소 수정:0037의 세 표를 같은 transaction에서 먼저 ACCESS EXCLUSIVE 잠그고 빈 상태를 재검사한다.
+  새 집중 WSL12/Docker12 PASS·actual0·wait0·자식 종료와 네 dump/소유 자원 정리를 회수했다.
+  [경합 증거와 범위](reports/2026-10-28-parking-0037-downgrade-lock.md).
+- 다음 한 작업: 수정 정확 head CI와 두 독립 증분 리뷰를 수용한다. 새 전체/UI/운영 검증은 수행하지 않았다.
+  PR162/163 reader 실제 연결·backfill/coverage·history48h·복원 보호·검산 후 정리 전까지 정책은 미완이다.
+  prune OFF·main push/머지·운영 변경0이다. 아래 “다음/미완”은 작성 당시 이력과 구분한다.
+
+## 2026-10-28 — 주차 보존 현재 수용과 main3f 통합 후보
+
+- PR161 c763의 정확 CI와 James/Popper SOURCE_PASS, 원 d2 전체의 정상 종료를 회수했다.
+  원 c763/WT/실패·집중·전체 원장은 보존하고 새 전용 branch에 main3f516을 합친다.
+  문서 충돌은 양쪽 정책·이력을 보존했으며 collection/Dagster 자동병합은 새 결합 검증·두 증분 리뷰 전이다.
+- 162 pure pattern/163 단일snapshot DB adapter의 CI와 집중은 성공했지만 실제 API/cache/outlook는
+  아직 이 reader를 호출하지 않는다. 새 통합 source의 집중/CI·두 리뷰와 후속 reader 전환이 남는다.
+- 원본48시간·통계영구는 미완이다. backfill/coverage·history48h/cursor410·정밀도·현재/Map export·복원
+  gate와 검산 후 정리가 모두 필요하며 prune/자동 schedule/운영 변경은0이다.
+  [재개 감사와 다음 순서](reports/2026-10-28-parking-retention-resume.md).
+- 아래 기록은 각 작성 시점 이력이다. “회수 중/다음 한 작업/미검증”을 현재 정산과 혼동하지 않는다.
+
+## 2026-10-28 — 3f 후보 빌드 수용·기존 운영 복구·cutover 미완
+
+- source: 관측한 main 8d80과 검증 빌드3f의 문서 밖 629항목은 같다. 이미지·stage·격리 UI39·CI를 8d80의 새 실행으로 바꾸어 쓰지 않는다.
+- 완료: 세 ARM64 후보 불변 이미지 계약·backend 96개 파일/의존성·소유 빌드/probe 정리. 별도 공식 공용 plane 수렴은 두 서비스 healthy·drift 0이다. 기존 원 aggregate timeout과 준비 실패는 보존했다.
+- cutover: 29f 원인 UNKNOWN, 8b36 FD9 prebaseline 실패, c051 Transport 18 pause→PG drain 실패→18 restore 뒤 부모 복구 후 검증의 ContractError/native_restored=false를 구분한다. 세부 발생 지점은 UNKNOWN이다. 별도95c18 두 관측은 전체 47 원 ID/상태·기존 5개 역할 healthy·DB35 보존을 수용했다.
+- 후속: r9/r10 사전 검사의 pg_command_contract 거절과 55aa/30f5 launch0을 보존한다. 실제 GUC 분류ce00 뒤 r11에 pg_stat_statements.max 한 이름만 추가했고 순수65개·두 소스 리뷰를 수용했다.
+- 최근 사전 검사: r11 fresh 검사는 02:21:06–11Z canonical G에서 ManagerMutationActiveError로 차단됐다. PG·원47 현재 검사 본문 미진입·4999 launch/root/unit 및 native/DDL/runtime 변경0이며 당시 owner는 UNKNOWN·강제 해제0이었다. 후속 읽기로 별도 이미지 검증 unit의 G 소유를 확인했으나 그때 담당자·진척·결과는 미확정이었다. 02:24:58–25:12Z에는 기존 4d 다섯 역할 CID/image/start·healthy/DB35와 plane 두 CID/image/start·healthy 유지가 확인됐지만 inside/env 전수·원47 현재 재검산은 아니다. 우리4999는 launch0/HOLD로 중복 배포를 대기하며 이전95c18을 새 fresh PASS로 확대하지 않는다. 공개35·수집/백업 smoke·ARM 전체 job 비용은 미완이다.
+- 다음 한 작업: 명시 승인된 조율과 상대 응답으로 확정한 단일 담당의 실제 배포·원47 복원·UI 결과를 별도 수용한다. 이쪽4999는 미실행/HOLD이고 G 해제 후에도 경쟁 실행하지 않는다. 상대 SDK/web 검증 보고를 우리 독립 운영 수용으로 확대하지 않는다.
+- PR155 약 93%는 격리 amd64 저장·commit CPU/wall이며 표본 RSS는약 3 MiB 증가했다. [현재 근거·미완 경계](reports/2026-10-28-production-3f-rollout.md)를 따른다. 이번 문서 작업의 운영 호출은0이다. 아래 절은 각 작성 당시 이력이다.
 
 ## 2026-10-27 — 지난 10일 Codex PR 리뷰의 통합 수정 PR
 
@@ -212,6 +619,96 @@
   801/8,300전체 행3단계 동등·Docker15통과/소유 자원 정리를 확인했다. c289 실행 결과로 바꾸지 않는다.
 - 다음 한 작업: 새 exact head/c289 환경·CI·두 리뷰와 fresh Next/same-head API/유가 통계 UI를 수용한다.
   기존 venv를 보존한다. CPU/RSS·운영 ARM 절감은 미측정이며 운영 이미지·설정·스키마 변경은0이다.
+
+## 2026-10-28 — 2B 단일 snapshot DB 어댑터 후보
+
+첫 내부 pattern reader(PR162)를 유지하며 별도 WT에서 DB 입력 어댑터를 추가한다. archive와 raw를
+별도 SQL로 읽을 때 중간 backfill 발행으로 양쪽에서 관측이 빠질 수 있어 한 UNION ALL statement로
+읽는다. 전국도 공항별 PK 시간 범위·seal PK 등가 LATERAL/OFFSET0 탐색을 사용하며 새 index/DDL은 없다.
+raw 원문은 archive가 있는 요청 절단 경계에만 반환하고 그 외 미봉인·새 id 후보는 compact 필드다.
+980의 실제 PG8회귀는8 PASS/actual0·9.19초다. 제품이 같은a0의 reader/query2파일은 WSL/Docker
+각20 PASS+48 subtests·F/E/skip0·actual0·독립wait0(14.40초/11.98초)이다.3만 요청 밖 stat의
+ANALYZE 전후×literal/일반준비4계획에서 실제 PK 조건·행/불필요필터 제한을 검산했다.
+834 LF파일/106패키지·Git10 전후 동일·원 child/CID 잔여0·두 DB schema37/client0·PG OOM/max0·
+OpenAPI check0이다. 최종 집중 원장 SHA `d1d8fd5d76d708b86b4ef1c6fcd6d135dd55e3e31ad1f9f6fbb127c9a944f390`.
+이것은 전체·실제 API/cache/bundle/history/calendar/outlook의 수용이 아니며 독립 리뷰도 미완이다.
+원본 삭제/운영 전환0이다. 기존 caller transaction·격리수준·commit/lease를 바꾸지 않는다.
+
+## 2026-10-28 — 2B 첫 pattern reader 순수 동등성 후보
+
+별도2B WT에서 P1/P2 수정350을 기반으로 내부 pattern reader와11개 DB 없는 회귀를 추가했다.
+archive의 count/sum/min/max와 최근 raw를 배타 병합하며7/14/21/28/90일의 세 scope·archive-only/
+혼합/중복 포함45경우 및 가중치/KST/경계/변조/재수신을 기존 세 분석과 비교해 통과했다.
+복구할 원본이 없는10분 내부 절단은 사유·해상도를 가진 명시 예외이며 정확값이나 빈 성공으로
+숨기지 않는다. 기간 coverage는 unknown이다. 제품/회귀가 같은b8의 LF Docker 네트워크 없는 순수
+회귀도11 PASS·actual0·독립wait0이며832파일/106패키지·Git10·원자식/CID 종료를 확인했다.
+WSL0.602초·Docker0.748초이고 실제 DB/API/캐시/묶음 응답 연결은 미검증이다. API reader/history·
+캘린더·outlook·원본 삭제/자동 schedule/운영 변경은0이다.
+[범위·후속](reports/2026-10-28-parking-reader-transition-review.md).
+
+## 2026-10-28 — 161 독립 리뷰의 최초 최신 요약 P1·전국 membership P2
+
+원 d2 전체는 별도 동결 소스/DB에서 변경 없이 회수 중이다. 별도 수정 WT와 private PG16
+(2GiB/1CPU·disk volume·internal subnet/ports0)의 새 DB에서 d2제품+새10회귀는6 FAIL/4 PASS,
+actual1·F만6/E0/skip0으로 재현했다. 원 RED source/DB/JUnit·자식 종료를 보존한다.
+
+최초 summary가 없는 lot의 지연 수집은 기존 raw의 더 최신 observed/id를 가리지 않도록 전체 raw의
+current 승자와 최대 collected watermark를 읽어 초기화한다. 동일시각 id/source·seed/수집 lease의
+양순서·512 범위 밖 lot을 검증한다. 첫 global seal은 bucket의 기존 공항 proof 전체를 읽고
+proof가 있는데 raw가 사라진 공항은 airport_raw_missing blocked로 남긴다. 미집계 proof 대기는 유지한다.
+수정 d0e43ee의 같은10회귀는10 PASS·actual0·skip0, JUnit `3ca17afba27eb62423c696fa5f44293902bbba454e59a75713ae638dc80fc4b2`이며
+원 자식 종료를 확인했다. 최신 main8bc를 별도 수정 WT에 합친26b92b5는 CI PostgreSQL18/server·client
+관련 두 파일만 추가됐고 앱/의존성/DDL은 d0와 같다. 정확350의 넓은16파일 집중은 WSL/Docker
+각277 PASS+6 subtests·F/E/skip0·actual0, Docker wait0으로 끝났다. WSL649.13초·Docker740.41초,
+830파일/106패키지·Git10/CLI 전후 동일·원 child/CID 잔여0·두 DB schema37/client0·PG OOM/max0이다.
+OpenAPI check0이며 집중 최종 원장 SHA는 `fbdaacba7c8fdb863b47537194b3ef5690cf639b297e21ef5e916440f53037b5`다.
+이는 PG16/native QA이고 main Dockerfile의 PG18 client 이미지 빌드 수용과 다르다. 새 head CI/독립 리뷰는 미완이다.
+원 d2 WSL 전체는1466 PASS+6 subtests/2skip·actual0으로 종료했고 같은 d2 Docker 전체는 순차 회수 중이다.
+원본 삭제·reader/운영 변경0이며 d2 whole은 이 수정이나 PG18 이미지의 검증이 아니다.
+
+## 2026-10-28 — 2A 현재 후보와 다음 검증
+
+- 현재:99de06f는 공항/전국 seal EXISTS의 전역 hash P2를 최소 OFFSET0로 보완했다. WSL/Docker
+  각152 PASS+6 subtests·actual0, 새 plan DB10000/900의 구간별 PK와 세 유데이터 downgrade 거절을
+  확인했다. 기존707의 넓은 집중237+6 및9fb 실패·707 plan RED는 원래 범위로 각각 보존한다.
+- 다음 한 작업: docs-only 정산의 제품 blob 동일성·최종 원장과 stacked Draft PR을 고정하고,
+  새 전체 필요 범위·CI·두 독립 리뷰를 수용한다. 전체는 별도 GO 전 시작하지 않는다.
+- 원본48시간 정책 전체는 미완이다. API reader/history/cursor/해상도·복원 guard·실제 prune 및
+  운영 수용은 후속이다. [2A 경계](architecture/parking-archive-coverage.md).
+
+## 2026-10-28 — 2A 707 집중 회수와 영구 seal 전역 스캔 P2
+
+정확707의 두 집중은 각237 PASS+6 subtests PASS(JUnit tests243/testcase237), F/E/skip0·actual0,
+WSL208.34초·Docker304.69초와 독립 Docker wait0을 회수했다. 소스829/locked106·Git10 및
+실행 중 Docker 지문을 검산했고 자식·컨테이너는 종료했다. 기존9fb 실패는 별도로 보존한다.
+
+이후10000개 영구 통계/900개 원본의 소유 DB EXPLAIN에서 적격 후보의 sealed EXISTS가
+hash용 전체 PK Index Only Scan(10000행/loops1)으로 바뀌는 실제 P2를 확인했다. SQL의 PK
+등가 조건만으로 bounded 실행을 보장하지 못했다. 원707 source/계획/DB/집중 원장은 보존한다.
+공항·전국의 해당 EXISTS에 OFFSET0만 추가하고 통계 유무/두 scope의 실제 계획 회귀를 추가했다.
+새 수정 소스 집중·실제 계획 GREEN/유데이터 downgrade 검산은 아직 미완이다. 새whole/운영/삭제0이다.
+
+## 2026-10-28 — 2A 초기 집중 실패 보존과 관측·최신 main 통합
+
+2A의9fb 집중은166 PASS/7 FAIL·actual1이며 성공으로 수용하지 않는다. 기존 fixture가 새 전국/보류
+테이블을 초기화하지 않아6실패·job action 기대1실패였고, 통과한 사례도 잔존 상태 영향을 배제하지
+못하므로 수정한 최종 소스를 새 nonce DB에서 관련 집중 전체로 다시 검증해야 한다. 9fb source·로그·
+JUnit/DB는 보존했다. c7/a1a/40f 및 최신main 통합70a의 통과 결과와 혼합하지 않는다.
+
+40f 관측 보완과 통합70a를 별도2A WT에 병합하며 공항/전국의 status·선택 창·검산/발행 extrema를 구분한다.
+전체 결과가 전국 no_new_rows로 덮이지 않게 하고 blocked는 commit 뒤 Dagster 실패 metadata로 남긴다.
+이 병합 후 새 소스 QA는 미완이며 원본 삭제·API reader 전환·자동 schedule·운영 변경0이다.
+
+## 2026-10-28 — 주차 보존 c7 회수와 별도2A 후보
+
+- 현재 상태: c7 WSL1334 PASS/2 SKIP·Docker1330 PASS/6 SKIP, 두 actual exit0·원 child/컨테이너 잔여0,
+  소스804/locked106/Git10·PG OOM/max0을 회수했다. c7 CI 양 실행의 backend/frontend/admin은 success다.
+  초기 UNKNOWN/OOM 실행·old tmpfs/세 dump는 보존하며 c7 독립 리뷰 최종 정산·운영 수용은 별도다.
+- 후속: 별도 c7 기반2A WT에서0037 전국 동시각 통계·coverage/seal/보류·작은 latest 상태를 준비했다.
+  오래된 보류 bucket 정체와 UTC offset floor의 P2는 c7 RED2개를 보존하고 후속에서 수정한다.
+- 다음 한 작업:2A 새 소스·nonce DB에서 migration/집중 회귀·멱등/late/lease·후보 조회계획을 검증한다.
+  새 전체는 별도 검토 전 시작하지 않는다. 모든 reader/history48h·기존cursor·해상도/current/export·복원/정리는 남는다.
+  [2A 모델](architecture/parking-archive-coverage.md), [실제 소비 경로와 반례](reports/2026-10-28-parking-reader-transition-review.md).
 
 ## 2026-10-28 — 주차 PR156 최신 main 통합
 
@@ -492,6 +989,11 @@ native run `c8b70929-ba1a-4528-a662-b9b744f4bb9d`에서 실제643건 저장·SUC
 다음 한 작업은 클릭150~850ms가 적용된 오피넷의 전국 수집 추가 병목 확인이다.
 2026-10-25 실제08:03~09:05 KST 실행은 약62분으로30분 목표는 아직 미달이다.
 
+## 2026-10-24 — 일부 목록 조회 상한 안내 복구
+
+- 독립 UI 리뷰의 목록 상한 누락을 수정한다. 목록 모드의 현재 선택 응답이 `truncated=true`일 때만 기존 건수 옆 안내 버튼으로 해당 종류·상한을 확인한다. 긴 상시 문단·중복 건수·지도 안내는 추가하지 않고 API 조회도 늘리지 않는다.
+- [검증과 범위](reports/2026-10-24-list-truncation-notice.md). 원본/운영 배포 작업 트리는 보존하고 별도 feature에서 검증한다. 최신 main PR126을 통합하고 목록 추가 건수·focus·controlled view를 보존했다. 관리자 248건·타입·lint·build·backend 계약11건 PASS이며 통합 exact CI·두 리뷰·schema0034 운영 UI/배포는 대기다.
+
 ## 2026-10-24 — 홈·교통 이용 흐름과 최종 UI 점검
 
 `codex/transport-user-journeys`에서 운영 홈·분류 메뉴·고속도로/유가12지표·노선/역 지도·일반철도 실시간표·
@@ -742,6 +1244,11 @@ exclude는 유지하며 운영 서비스를 재배포하지 않는다. 다음은
 계측과5role memory==memswap 정책 수용이다. daemon OFF는 유지한다.
 
 
+## 2026-10-19 T-TRN-05 진행
+
+5역할 memory==memswap 합계4032MiB 후보를 준비한다. 실제 cap 적용 후 CS native fuel1회 수용이 남았다.
+[검증 순서](reviews/2026-10-19-runtime-memory.md)를 따른다. daemon OFF를 유지한다.
+
 
 ## 2026-10-19 현재 Track2 다음 작업
 
@@ -872,6 +1379,12 @@ Daemon OFF는 계속 유지한다.
 ## 현재 상태
 
 - **2026-10-16 PR82 /health seeded EXISTS 소스 검증 완료.** COUNT만 존재 조회로 바꿔 DTO/DB장애/readiness를 보존한다. OLD3RED→focused4PASS, 로컬 전체738 PASS·10 SKIP, PostgreSQL CI746 PASS·2 SKIP, 격리Docker 신규4 PASS·독립 A/C SOURCE_PASS OPEN0. runtime bde6120 불변/이후 docs-only이며 증거 head CI를 별도 추적한다. 운영 적용·실제 CPU 개선은 NOT_RUN, PR81/Common pin/HC주기와 분리한다. [검증 범위·원문](reviews/2026-10-16-health-presence.md).
+
+- **2026-10-16 두 Node core HTTP healthcheck 후보.** wget의302/noLocation거짓양성을확정해폐기하고 두운영UI의동일coreGET/strict2xx/4초전체요청timer로보강한다. redirect는failclosed, 원URL/주기/5초Docker상한보존. exact실제각1회CPU0.535/0.558초·CLI1.91/2.46초exit0(비통제표본). 다음은최종소스계약/새ARM/CI/독립2리뷰이며서비스변경0. [검증 경계](reviews/2026-10-16-node-healthcheck.md).
+
+- **2026-10-16 Transport81 backend lock 빌드 보강 중.** Docker의 pip 설치가 lock을 소비하지 않아 base provider commit과 registry 버전이 달랐다. 실제 Dockerfile을 uv0.11.21·새 전용환경의 locked dev 설치로 바꾼다. 새 빈 native 환경104개/Common7파일 parity와 KREX WAF·cadence·retry28 PASS, lock drift 사전거절을 확인했다. 실제9c ARM의 uv캐시413266264B를 확인해 원no-cache footprint도 복구한다. 9c 증거는 보존하며 새HEAD image를 별도 고정한다. 다음은 새HEAD의 ARM/Python3.12 설치 parity·산출물·CI·두 독립 delta 리뷰다. 기존f42b Docker757/13/1 및 제품086 native759 결과는 보존하며 merge/deploy는 하지 않는다.
+
+- **2026-10-15 공항·고속도로 phase 분산 후보 구현 중.** Common Python41b pin/lock과 공항phase1·고속도로phase3을 적용해 예약 총량288회/일·5분 간격을 보존한다. OLD 달력3 FAIL/계약10 PASS, NEW 최초 표적25 PASS. 제품086에서 native 전체759 PASS·10 SKIP, 후속 retry14 PASS와 lock/OpenAPI 확인을 마쳤다. 최종HEAD CI·Docker·frontend·2인 독립 리뷰는 별도 후속이다. 다음은 결과 고정·초안 PR·독립 적대 리뷰이며 배포/merge는 하지 않는다. [검증 기록](reviews/2026-10-15-transport-cadence-common.md).
 
 - **2026-10-15 적대 리뷰 A-P2-01 보강.** 긴 단일 오류 토큰의 clipping을 Common 상세 본문 클래스 재사용으로 수정했다. 로컬 Chromium375/1440px OLD RED→NEW GREEN을 확인했다. 다음은 후속 커밋의 독립 재리뷰·CI·live UI이며 운영 완료로 표시하지 않는다. [검증 기록](reviews/2026-10-15-transport-dagster-on-demand-detail.md).
 
@@ -1578,6 +2091,28 @@ Daemon OFF는 계속 유지한다.
   여객선·버스 시간표 cache의 TTL/LRU 상한을 고정했다. 최신 James/Popper 재리뷰는 모두
   `APPROVE`다. 다음 게이트는 최신 CI와 n150 live E2E, PR 머지다.
 
+- 2026-09-23 `codex/map-marker-density`에서 운영 저장량 확인 뒤 지도 marker 밀도·표현과
+  휴게소 기준정보 수집을 보완 중이다. 운영 DB의 주유소는 11,829건(좌표 11,823건), 유가
+  스냅샷은 258,247건이다. 마지막 유가 수집 실패는 Playwright 응답 30초 timeout이었고,
+  `python-opinet-api#19`의 60초 대기 provider pin 및 transport 기본/예제 설정으로 보완했다.
+  shared Compose fallback도 60초로 고쳐 code default가 환경변수에 의해 다시 덮이지 않도록
+  contract test를 추가했다. Popper 리뷰 P1에 따라 n150 배포도 stage-only 뒤 backend·Dagster
+  네 서비스만 재생성하는 전용 경로로 분리해 parking-radar frontend를 건드리지 않는다.
+  이 경로는 candidate image의 Alembic `migrate`와 `current=head` 확인을 먼저 통과해야 한다.
+  이 변경은 재시도·수집 빈도를 늘리지 않는다. 철도 기준정보 flag를 활성화하고 즉시 실행해 1,108건(좌표
+  1,107건)을 적재했다. 공항은 기존 5분 주기 수집이 14곳을 저장하고 있었지만 지도 좌표
+  결합 경로가 없어 표시되지 않았으므로, `python-krairport-api`의 번들 WGS84 좌표와
+  결합한 저장 장소 응답·전용 SVG marker를 추가했다. 공항 marker/popup은 최신 주차장 수,
+  가용면·전체면·관측시각도 저장 snapshot에서 즉시 읽는다. 항구는 TAGO가 `totalCount` 없이
+  전량을 반환하는 정상 응답을 주므로 `python-kric-api` provider 보완을 pin 한 뒤 재수집한다.
+  휴게소도 기존에는 저장 table이 없었다. `rest_area_references` migration과
+  `rest_area_reference_collection_job`을 추가해 `python-krex-api` async 기준정보를 3일
+  간격으로 저장하며, 설정 flag를 켜기 전에는 provider 호출을 하지 않는다. 지도는
+  종류별 400/750/1,000곳, 60초 viewport cache, 중복 viewport request 차단으로 전환했고,
+  주유소에는 유종·가격 label, 네 장소 종류에는 개별 SVG marker를 제공한다. backend
+  계약·수집·Dagster WSL 테스트 7건은 통과했다. 다음 한 작업은 frontend type/build,
+  Docker 검증과 n150의 기준정보 flag·수집 상태 확인이다.
+
 - 2026-09-22 `codex/transport-experience`는 병합된 PR #36 (`46f29da`)에서 분기했다.
   교통·유가를 하나의 저장 통계 화면으로 통합하고, 고속도로·유가·수집 source 코드를
   사람이 읽는 명칭과 Apache ECharts 그래프로 바꿨다. 열차·도시철도와 배편을 독립 화면으로
@@ -1712,12 +2247,19 @@ Daemon OFF는 계속 유지한다.
 - 이 작업의 목표는 `kor-travel-transport`를 국내 여행용 통합 교통정보 라이브러리/API로
   운영하는 것이다. provider에서 데이터를 주기적으로 수집해 PostgreSQL에 저장하고,
   저장 자료를 외부 OpenAPI와 내부 통계로 즉시 제공한다.
-- 현재 T-040 브랜치에서 `python-krex-api` 고속도로 소통·돌발과 최신
+- T-040에서 `python-krex-api` 고속도로 소통·돌발과 최신
   `python-opinet-api` Playwright 주유소·유가 수집/저장/API/통계를 구현했다. WSL2
   백엔드 전체 테스트는 통과했다. 최신 보강에서는 DB 실패 실행의 durable 상태,
   RFC7807 OpenAPI 계약, 활성 live 소스의 실제 저장·최신성 E2E 검증을 추가했다.
 
 - 기준일: 2026-09-20
+- PR #30은 `7d1ad37460acd04e1f4efdc48d53e3b0021f6120`으로 머지·배포됐다.
+  OPINET #18/KREX #16도 머지 완료. 구현·머지 완료 항목은 T-040으로 보관하고
+  KRIC/확장 조사(T-041), 운영 후속(T-042)을 분리했다. 아래 미머지 표현은 과거 이력이다.
+  머지 SHA 승격 배포 시 소통 run13623이 `collection cancelled`로 종료돼, 19분 안전
+  예약(00:30:36 KST)을 보존한 자연 회복 확인이 남았다. 이 상태의 E2E는15개통과/1개실패다.
+  KRIC 공식 목록·상세 명세와 신청 보고서/확장 조사 초안을 작성했다. KRIC 로컬 clone은
+  끝났지만 라이브러리는 아직 미구현이며 승인 키 실검증도 하지 않았다.
 - 최신 검증: 런타임 `f7987b2d8858e83b2a602ac70cdcd5b5a4902d6b`의 WSL/Docker
   PostgreSQL 백엔드 각각 130개, 프론트 각각 85개와 타입/build가 통과했다. n150 배포와
   공개 health SHA 일치, 설치 OPINET `39e7acc`의 초기 탐색/종료(지역 조회 0회)를 확인했다.
@@ -1757,9 +2299,8 @@ Daemon OFF는 계속 유지한다.
   갱신됐다고 간주하지 않는다. 22:25 KST에는 관측이 22:20 KST로 갱신됨을 확인했다.
   추가 E2E 보강은 관측/저장 시각 모두 15분 이내·미래 60초 이내를 요구한다. 회귀를
   포함한 프론트 WSL/Docker 85개, 타입/build와 두 코드 재리뷰를 통과했다.
-- 다음 한 작업: 두 리뷰어의 최종 운영 확인을 마치고 증적 문서 후보의 배포 SHA와 CI를
-  정렬한 뒤 provider PR #16/#18 및 PR #30을 `kor-travel-transport`에 머지한다. 그 다음에만 KRIC
-  provider 구현과 교통정보 확장 조사 문서를 시작한다.
+- 다음 한 작업: main 배포 후 소통 수집의 자연 회복과 최종 E2E/CI를 확인한다.
+  이후 KRIC provider 구현과 확장 조사 문서 리뷰를 이어간다.
 - `digitie/kor-travel-airport`(구 `digitie/parking-radar`) PR #2~#28 모두 **MERGED**
   상태다. 이 세션에서 다룬 마지막 코드/운영 PR은
   [#28](https://github.com/digitie/kor-travel-airport/pull/28)(UI 밀도 개선,
@@ -1770,7 +2311,7 @@ Daemon OFF는 계속 유지한다.
   T-033(shadcn 기반 도입)·T-034(button/card/table/alert/confirm-dialog 치환)·
   T-035(라우트 기반 앱 셸)·T-036(과거 자료 조회 기능)·T-037(Hallmark audit)·
   T-038(Hallmark redesign)·T-039(UI 밀도 개선) 전부 완료·배포·live E2E 검증까지
-  끝났다. 현재 진행 중인 작업은 `docs/tasks.md`의 T-040이다.
+  끝났다. 현재 진행 중인 작업은 `docs/tasks.md`의 T-041/T-042다.
   - **T-039에서 새로 배운 것**: (1) "레이아웃이 비효율적"처럼 모호한 사용자
     피드백은 코드만 읽어서는 특정하기 어렵다 — 브라우저 확장이 연결 안 될 때는
     Playwright를 라이브 사이트에 직접 붙여 스크린샷으로 확인하는 게 코드
@@ -1920,6 +2461,9 @@ Daemon OFF는 계속 유지한다.
 
 ## 다음 한 작업
 
+공항·고속도로 phase/Common 후보의 전체 검증 결과와 HEAD를 고정하고 초안 PR에서
+두 독립 적대 리뷰를 받는다. 운영 반영·merge는 별도 승인 범위다.
+
 항구 607곳과 버스 터미널 649곳의 미확인 좌표를 공식 코드·주소·시설명 교차표로
 검증한다. 장소 중심점이나 항로 안내 점을 실제 승선·승차 지점으로 대체하지 않는다.
 PR #54의 운영 관리자·지도 E2E는 완료했지만 실제 Kakao 마커 클릭 검증은 별도다.
@@ -1934,6 +2478,10 @@ ADR-010 개명과 #45 운영 반영은 완료됐다. 새 디렉터리·project�
 관찰 전 n150 prune은 하지 않는다. parking-radar DB도 이미 공용 PostgreSQL이므로
 추가 이전하지 않는다. 공유 DB 장애 원인, TAGO 일반철도 HTTP 403, 버스 좌표 및
 배편 전체 저장 범위 등 나머지 이슈는 백로그를 따른다.
+
+T-040/PR #30의 머지는 끝났다. main 승격 배포로 취소된 소통 수집의 자연 회복과
+E2E/CI를 확인한 뒤, T-041 KRIC provider 구현 및 확장 조사 반영을 이어간다.
+비활성/샘플 데이터는 최종 운영 승인으로 인정하지 않는다.
 
 ## 확인된 사실
 

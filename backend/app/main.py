@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.services.fuel_regions import regional_fuel_prices
+
 from app.services.fuel_statistics import fuel_statistics_page, viewport_fuel_statistics, with_publication_status
 
 from app.schemas import AddressRefreshSummary
@@ -15,7 +17,7 @@ import secrets
 import traceback
 from collections import OrderedDict
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from contextlib import suppress
 from datetime import UTC, date, datetime, time, timedelta
 from functools import wraps
@@ -25,7 +27,9 @@ from types import SimpleNamespace
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
+from anyio import CapacityLimiter, to_thread
+
+from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Path as ApiPath, Query, Request, UploadFile
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,7 +40,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from sqlalchemy import DateTime, Integer, and_, bindparam, case, exists, func, or_, select, text as sql_text, true, union_all
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlalchemy.orm import defer, selectinload
+from sqlalchemy.orm import selectinload
 from datagokr import DataGoKrClient
 from datagokr.exceptions import ApiErrorResponse
 from kric import DataGoKrMaritimeClient, KricRateLimitError, parse_station_file_facilities
@@ -69,11 +73,13 @@ from app.models import (
     KricStationCode,
     KricStationMappingRegistry,
     ParkingLot,
+    PublicParkingLot,
     ParkingSnapshot,
     RawApiResponse,
     RailStationReference,
     RestAreaReference,
 )
+from app.public_parking_routes import build_public_parking_router, current_parking_conditions
 from app.schemas import (
     AirportSummary,
     BackupFile,
@@ -95,7 +101,6 @@ from app.schemas import (
     FerryOperationResponse,
     FerryStoredTimetableResponse,
     FlightStatusResponse,
-    FuelPriceItem,
     FuelPriceStatistics,
     FuelStationItem,
     FuelStationResponse,
@@ -139,10 +144,14 @@ from app.schemas import (
     FuelStatisticsResponse,
     TransportStatisticsResponse,
     RailTimetableResponse,
+    MetroStationCatalog,
     RailDepartureSummaryResponse,
     WeekdayBucket,
     WeekdayHourlyPattern,
 )
+from app.services.fuel_map import fuel_map_items_statement
+from app.services.fuel_map_validation import validated_fuel_map_items
+from app.services.rail_catalog import metro_station_catalog
 from app.services.analytics import (
     build_special_day_patterns,
     build_threshold_insights,
@@ -508,6 +517,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     resolved_settings = settings or get_settings()
     _install_exception_log_redaction(resolved_settings)
     engine, session_factory = create_engine_and_session_factory(resolved_settings.database_url)
+    fuel_mcp_http = fuel_mcp_gate = None
+    if resolved_settings.transport_fuel_mcp_enabled:
+        from app.fuel_mcp import build_fuel_mcp
+        _, fuel_mcp_http, fuel_mcp_gate = build_fuel_mcp(resolved_settings, session_factory)
     history_read_cache = (
         ParkingHistoryReadCache(session_factory)
         if engine.dialect.name == "postgresql" and not resolved_settings.seed_sample_data else None
@@ -584,7 +597,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             logger.info("in-process scheduler disabled; Dagster owns collection execution")
 
         try:
-            yield
+            async with AsyncExitStack() as stack:
+                if fuel_mcp_http is not None:
+                    await stack.enter_async_context(fuel_mcp_http.router.lifespan_context(fuel_mcp_http))
+                yield
         finally:
             history_cache_task = app.state.history_cache_task
             if history_cache_task is not None:
@@ -615,6 +631,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url="/redoc" if resolved_settings.enable_api_docs else None,
         openapi_url="/openapi.json" if resolved_settings.enable_api_docs else None,
     )
+    # 대량 marker JSON 변환은 두 건만 병행하고 event loop를 직접 막지 않는다.
+    app.state.fuel_map_limiter = CapacityLimiter(2)
     @app.exception_handler(HTTPException)
     async def problem_json_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
         # RFC 7807 (ADR-005): every error response uses the same shape,
@@ -764,6 +782,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # 실시간 TAGO 시간표는 설정·참조 데이터·상류 provider 상태를 함께 반영한다.
             ("/v1/transport/bus/timetable", "get"): (404, 429, 502, 503),
             ("/v1/transport/rail/timetables", "get"): (404,),
+            ("/v1/transport/rail/stations/{code_id}/timetable", "get"): (404,),
             ("/v1/transport/rail/departures", "get"): (404,),
             ("/v1/transport/admin/rail-station-mappings/automatic", "get"): (404, 409, 503),
             ("/v1/transport/admin/rail-station-mappings/automatic", "post"): (404, 409, 503),
@@ -1205,35 +1224,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session: AsyncSession = Depends(get_db),
     ) -> FuelStationResponse:
         cutoff = now_utc() - timedelta(days=days)
-        query = select(FuelStation).options(defer(FuelStation.raw_item_json)).where(FuelStation.last_seen_at >= cutoff)
+        # 응답 전용 행에 ORM identity/state를 만들지 않고 원문 JSON도 읽지 않는다.
+        query = select(*(column for column in FuelStation.__table__.columns
+                         if column.name != "raw_item_json")).where(FuelStation.last_seen_at >= cutoff)
         if sido_value:
             query = query.where(FuelStation.sido_value == sido_value.strip())
         if sigungu_value:
             query = query.where(FuelStation.sigungu_value == sigungu_value.strip())
         query = query.order_by(FuelStation.last_seen_at.desc(), FuelStation.id.desc()).limit(limit)
-        stations = (await session.execute(query)).scalars().all()
+        stations = (await session.execute(query)).all()
         station_ids = [station.id for station in stations]
-        price_rows: list[FuelLatestPrice] = []
+        price_rows = []
         if station_ids:
-            price_query = select(FuelLatestPrice).where(
+            price_query = select(
+                FuelLatestPrice.fuel_station_id, FuelLatestPrice.product_code, FuelLatestPrice.price,
+                FuelLatestPrice.provider_updated_at, FuelLatestPrice.observed_at, FuelLatestPrice.collected_at,
+            ).where(
                 FuelLatestPrice.fuel_station_id.in_(station_ids),
                 FuelLatestPrice.collected_at >= cutoff,
             )
             if product_code:
                 price_query = price_query.where(FuelLatestPrice.product_code == product_code.strip())
             price_query = price_query.order_by(FuelLatestPrice.fuel_station_id, FuelLatestPrice.product_code)
-            price_rows = list((await session.execute(price_query)).scalars().all())
+            price_rows = list((await session.execute(price_query)).all())
 
-        prices_by_station: dict[int, list[FuelPriceItem]] = {}
+        prices_by_station: dict[int, list[dict[str, Any]]] = {}
         for row in price_rows:
             prices_by_station.setdefault(row.fuel_station_id, []).append(
-                FuelPriceItem(
-                    product_code=row.product_code,
-                    price=float(row.price) if row.price is not None else None,
-                    provider_updated_at=(serialize_utc(row.provider_updated_at) if row.provider_updated_at else None),
-                    observed_at=serialize_utc(row.observed_at),
-                    collected_at=serialize_utc(row.collected_at),
-                )
+                {
+                    "product_code": row.product_code,
+                    "price": float(row.price) if row.price is not None else None,
+                    "provider_updated_at": serialize_utc(row.provider_updated_at) if row.provider_updated_at else None,
+                    "observed_at": serialize_utc(row.observed_at),
+                    "collected_at": serialize_utc(row.collected_at),
+                }
             )
 
         items: list[FuelStationItem] = []
@@ -1309,6 +1333,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @router.get("/transport/features/places", response_model=TransportPlaceMapResponse)
     async def transport_place_features(
+        request: Request,
         kind: str | None = Query(default=None, description="fuel_station, rail_station, ferry_port, bus_terminal, airport, rest_area, highway_incident 중 하나. 돌발은 최근 24시간 최신 저장 관측"),
         kinds: str | None = Query(default=None, max_length=280, description="지도 종류를 쉼표로 구분해 한 요청으로 조회"),
         limit: int = Query(default=1000, ge=1, le=5000),
@@ -1329,7 +1354,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> TransportPlaceMapResponse:
         """저장된 장소만 지도 marker 계약으로 반환한다. provider 원문이나 비밀값은 노출하지 않는다."""
         selected_kind = kind.strip() if kind else None
-        supported = {"fuel_station", "rail_station", "ferry_port", "bus_terminal", "airport", "rest_area", "highway_incident"}
+        supported = {"fuel_station", "rail_station", "ferry_port", "bus_terminal", "airport", "rest_area", "highway_incident", "public_parking_lot"}
         def filter_values(single: str | None, multiple: str | None, maximum: int, length: int) -> list[str]:
             if multiple is None:
                 return [single] if single else []
@@ -1344,7 +1369,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail="kind와 kinds는 함께 지정할 수 없습니다.")
         if selected_kind is not None and selected_kind not in supported:
             raise HTTPException(status_code=422, detail="지원하지 않는 교통 장소 종류입니다.")
-        selected_kinds = filter_values(None, kinds, 7, 32)
+        selected_kinds = filter_values(None, kinds, 8, 32)
         if any(value not in supported for value in selected_kinds):
             raise HTTPException(status_code=422, detail="지원하지 않는 교통 장소 종류입니다.")
         bounds = (min_longitude, min_latitude, max_longitude, max_latitude)
@@ -1361,7 +1386,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # 전체 지도는 한 종류가 limit을 모두 소모하지 않도록 균등하게 읽는다. 프런트가
         # 수천 개의 DOM marker를 만들지 않게 하는 API 경계이기도 하다.
         per_kind_limit = (limit + len(requested_kinds) - 1) // len(requested_kinds)
-        items: list[TransportPlaceMapItem] = []
+        items: list[TransportPlaceMapItem | dict[str, Any]] = []
+        fuel_items_json = None
+        fuel_items_count = 0
         total = 0
         kind_totals: dict[str, int] = {}
 
@@ -1378,9 +1405,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     FerryPort: [FerryPort.port_name, FerryPort.port_id],
                     BusTerminalReference: [BusTerminalReference.terminal_name, BusTerminalReference.terminal_id, BusTerminalReference.city_name],
                     RestAreaReference: [RestAreaReference.name, RestAreaReference.route_name],
+                    PublicParkingLot: [PublicParkingLot.name, PublicParkingLot.road_address, PublicParkingLot.land_address],
                     HighwayIncidentSnapshot: [HighwayIncidentSnapshot.point_name, HighwayIncidentSnapshot.route_no, HighwayIncidentSnapshot.route_name, HighwayIncidentSnapshot.message],
                 }[model]
                 conditions.append(or_(*(field.icontains(query.strip(), autoescape=True) for field in fields)))
+            if model is PublicParkingLot:
+                conditions.extend(current_parking_conditions())
             if model is FuelStation and selected_products:
                 # 유종 행은 가격 미제공(NULL)도 저장된다. 과거 가격 존재가 아니라
                 # 상세 응답과 동일한 최신 행을 기준으로 실제 판매 가격을 확인한다.
@@ -1404,6 +1434,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # map admin처럼 bbox를 기준으로 조회하되, 한 종류마다 별도 API를 호출하지 않도록
         # 선택한 종류의 집계를 한 SQL union으로 묶는다.
         if zoom is not None and zoom < 12 and min_longitude is not None:
+            # 지역 카드는 전체 지역 평균이다. 상호·주소·브랜드 검색은 실제 일치
+            # 지점의 묶음을 남겨야 지역명과 다르더라도 검색·확대 경로가 유지된다.
+            use_fuel_regions = not (query and query.strip())
+            fuel_regions = await regional_fuel_prices(
+                session, zoom=zoom, bounds=bounds, sources=selected_sources,
+                products=selected_products, query=query,
+            ) if "fuel_station" in requested_kinds and use_fuel_regions else []
             grid_size = viewport_cluster_grid_size(
                 min_longitude=min_longitude,
                 min_latitude=min_latitude,
@@ -1429,9 +1466,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "ferry_port": FerryPort,
                 "bus_terminal": BusTerminalReference,
                 "rest_area": RestAreaReference,
+                "public_parking_lot": PublicParkingLot,
             }
             cluster_queries = []
             for requested_kind in requested_kinds:
+                if requested_kind == "fuel_station" and use_fuel_regions:
+                    kind_totals[requested_kind] = int(await session.scalar(
+                        select(func.count()).select_from(FuelStation).where(*coordinate_conditions(FuelStation))
+                    ) or 0)
+                    continue
                 model = cluster_models.get(requested_kind)
                 if model is None:
                     continue
@@ -1532,6 +1575,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "fuel_station": FuelStation, "rail_station": RailStationReference,
                     "ferry_port": FerryPort, "bus_terminal": BusTerminalReference,
                     "airport": Airport, "rest_area": RestAreaReference,
+                    "public_parking_lot": PublicParkingLot,
                     "highway_incident": HighwayIncidentSnapshot,
                 }
                 for requested_kind in requested_kinds:
@@ -1545,7 +1589,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             result = TransportPlaceMapResponse(
                 generated_at=now_utc(), kind=selected_kind, total=total, truncated=False,
-                fuel_statistics=with_publication_status(fuel_statistics, fuel_prices_last_refreshed_at), clustered=True, kind_totals=kind_totals, clusters=cluster_items, items=[],
+                fuel_regions=fuel_regions, fuel_statistics=with_publication_status(fuel_statistics, fuel_prices_last_refreshed_at), clustered=True, kind_totals=kind_totals, clusters=cluster_items, items=[],
                 available_sources=sorted(available_sources), fuel_prices_stale=fuel_prices_stale,
                 fuel_prices_last_refreshed_at=fuel_prices_last_refreshed_at,
             )
@@ -1555,7 +1599,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             conditions = coordinate_conditions(FuelStation)
             kind_totals["fuel_station"] = int(await session.scalar(select(func.count()).select_from(FuelStation).where(*conditions)) or 0)
             total += kind_totals["fuel_station"]
-            stations = (await session.execute(
+            station_query = (
                 select(
                     FuelStation.id, FuelStation.source, FuelStation.name,
                     FuelStation.longitude, FuelStation.latitude, FuelStation.address,
@@ -1565,32 +1609,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     FuelStation.last_seen_at,
                 ).where(*conditions)
                 .order_by(FuelStation.last_seen_at.desc(), FuelStation.id.desc()).limit(per_kind_limit)
-            )).all()
-            station_ids = [station.id for station in stations]
-            latest: dict[int, list[Any]] = {}
-            if station_ids:
-                rows = (await session.execute(
-                    select(
-                        FuelLatestPrice.fuel_station_id, FuelLatestPrice.product_code,
-                        FuelLatestPrice.price, FuelLatestPrice.provider_updated_at,
-                        FuelLatestPrice.observed_at, FuelLatestPrice.collected_at,
-                    ).where(FuelLatestPrice.fuel_station_id.in_(station_ids))
-                )).all()
-                for row in rows:
-                    latest.setdefault(row.fuel_station_id, []).append(row)
-            for station in stations:
-                prices = sorted(latest.get(station.id, []), key=lambda row: row.product_code)
-                price = next((row for row in prices if row.product_code == "B027"), prices[0] if prices else None)
-                items.append(TransportPlaceMapItem(
-                    id=station.id, kind="fuel_station", source=station.source, name=station.name,
-                    longitude=station.longitude, latitude=station.latitude, subtitle=station.address,
-                    brand_name=station.brand_name, brand_code=station.brand_code, latest_price=float(price.price) if price and price.price is not None else None,
-                    price_product_code=price.product_code if price else None, address=station.address,
-                    prices=[FuelPriceItem(product_code=row.product_code, price=row.price, provider_updated_at=serialize_utc(row.provider_updated_at) if row.provider_updated_at else None, observed_at=serialize_utc(row.observed_at), collected_at=serialize_utc(row.collected_at)) for row in prices],
-                    phone=station.phone,
-                    facilities=[label for field, label in (("is_self", "셀프"), ("is_24h", "24시간"), ("has_carwash", "세차"), ("has_maintenance", "정비"), ("has_cvs", "편의점")) if getattr(station, field) is True],
-                    updated_at=serialize_utc(station.last_seen_at),
-                ))
+            )
+            if requested_kinds == ("fuel_station",) and session.get_bind().dialect.name == "postgresql":
+                async with request.app.state.fuel_map_limiter:
+                    fuel_items_json, fuel_items_count = (await session.execute(
+                        fuel_map_items_statement(station_query),
+                    )).one()
+                    fuel_items_json, validated_count = await to_thread.run_sync(
+                        validated_fuel_map_items, fuel_items_json,
+                    )
+                    if validated_count != fuel_items_count:
+                        raise RuntimeError("유가 지도 JSON 항목 수가 조회 결과와 다릅니다.")
+            else:
+                stations = (await session.execute(station_query)).all()
+                station_ids = [station.id for station in stations]
+                latest: dict[int, list[Any]] = {}
+                if station_ids:
+                    rows = (await session.execute(
+                        select(
+                            FuelLatestPrice.fuel_station_id, FuelLatestPrice.product_code,
+                            FuelLatestPrice.price, FuelLatestPrice.provider_updated_at,
+                            FuelLatestPrice.observed_at, FuelLatestPrice.collected_at,
+                        ).where(FuelLatestPrice.fuel_station_id.in_(station_ids))
+                    )).all()
+                    for row in rows:
+                        latest.setdefault(row.fuel_station_id, []).append(row)
+                for station in stations:
+                    prices = sorted(latest.get(station.id, []), key=lambda row: row.product_code)
+                    price = next((row for row in prices if row.product_code == "B027"), prices[0] if prices else None)
+                    # 장소와 가격을 부모의 동일 중첩 validator에서 한 번만 구성한다.
+                    items.append(dict(
+                        id=station.id, kind="fuel_station", source=station.source, name=station.name,
+                        longitude=station.longitude, latitude=station.latitude, subtitle=station.address,
+                        brand_name=station.brand_name, brand_code=station.brand_code, latest_price=float(price.price) if price and price.price is not None else None,
+                        price_product_code=price.product_code if price else None, address=station.address,
+                        # 부모 모델의 C validator가 가격까지 한 번에 검증한다. 유종별 Python 모델 생성은 반복하지 않는다.
+                        prices=[{"product_code": row.product_code, "price": row.price, "provider_updated_at": serialize_utc(row.provider_updated_at) if row.provider_updated_at else None, "observed_at": serialize_utc(row.observed_at), "collected_at": serialize_utc(row.collected_at)} for row in prices],
+                        phone=station.phone,
+                        facilities=[label for field, label in (("is_self", "셀프"), ("is_24h", "24시간"), ("has_carwash", "세차"), ("has_maintenance", "정비"), ("has_cvs", "편의점")) if getattr(station, field) is True],
+                        updated_at=serialize_utc(station.last_seen_at),
+                    ))
+
         if "rail_station" in requested_kinds:
             conditions = coordinate_conditions(RailStationReference)
             kind_totals["rail_station"] = int(await session.scalar(select(func.count()).select_from(RailStationReference).where(*conditions)) or 0)
@@ -1631,6 +1690,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     updated_at=serialize_utc(port.last_seen_at), location_source=port.location_source,
                     manual_location_revision=((port.raw_item_json or {}).get("_manual_location") or {}).get("revision") if port.location_source == "admin_manual" else None,
                     location_point_count=port.location_point_count,
+                ))
+        if "public_parking_lot" in requested_kinds:
+            conditions = coordinate_conditions(PublicParkingLot)
+            count = int(await session.scalar(select(func.count()).select_from(PublicParkingLot).where(*conditions)) or 0)
+            kind_totals["public_parking_lot"] = count
+            total += count
+            rows = (await session.execute(select(
+                PublicParkingLot.id, PublicParkingLot.source, PublicParkingLot.provider_id,
+                PublicParkingLot.name, PublicParkingLot.longitude, PublicParkingLot.latitude,
+                PublicParkingLot.road_address, PublicParkingLot.land_address, PublicParkingLot.phone,
+                PublicParkingLot.capacity, PublicParkingLot.fee_info, PublicParkingLot.last_seen_at,
+            ).where(*conditions).order_by(PublicParkingLot.id).limit(per_kind_limit))).all()
+            for row in rows:
+                items.append(TransportPlaceMapItem(
+                    id=row.id, kind="public_parking_lot", source=row.source, provider_id=row.provider_id,
+                    name=row.name, longitude=row.longitude, latitude=row.latitude,
+                    subtitle=row.road_address or row.land_address, address=row.road_address or row.land_address,
+                    phone=row.phone, parking_capacity=row.capacity, parking_fee_info=row.fee_info,
+                    updated_at=serialize_utc(row.last_seen_at),
                 ))
         if "rest_area" in requested_kinds:
             conditions = coordinate_conditions(RestAreaReference)
@@ -1706,7 +1784,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             total += kind_totals["airport"]
             items.extend(airport_items[:per_kind_limit])
         visible_items = items[:limit]
-        source_models = {"fuel_station": FuelStation, "rail_station": RailStationReference, "ferry_port": FerryPort, "bus_terminal": BusTerminalReference, "airport": Airport, "rest_area": RestAreaReference, "highway_incident": HighwayIncidentSnapshot}
+        source_models = {"fuel_station": FuelStation, "rail_station": RailStationReference, "ferry_port": FerryPort, "bus_terminal": BusTerminalReference, "airport": Airport, "rest_area": RestAreaReference, "highway_incident": HighwayIncidentSnapshot, "public_parking_lot": PublicParkingLot}
         available_sources: set[str] = set()
         if include_sources:
             for requested_kind in requested_kinds:
@@ -1720,10 +1798,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         result = TransportPlaceMapResponse(
             generated_at=now_utc(), kind=selected_kind, total=total,
-            fuel_statistics=with_publication_status(fuel_statistics, fuel_prices_last_refreshed_at), truncated=total > len(visible_items), kind_totals=kind_totals,
+            fuel_statistics=with_publication_status(fuel_statistics, fuel_prices_last_refreshed_at), truncated=total > (fuel_items_count if fuel_items_json is not None else len(visible_items)), kind_totals=kind_totals,
             items=visible_items, available_sources=sorted(available_sources),
             fuel_prices_stale=fuel_prices_stale, fuel_prices_last_refreshed_at=fuel_prices_last_refreshed_at,
         )
+        if fuel_items_json is not None:
+            # 항목은 같은 DTO의 완료 검증을 원문 바이트 일치 때만 재사용한다.
+            # 총수/신선도/통계 metadata는 매 요청 현재 DB 상태로 따로 검증한다.
+            metadata_json = result.model_dump_json(exclude={"items"}).encode("utf-8")
+            return Response(content=metadata_json[:-1] + b',"items":' + fuel_items_json + b"}",
+                            media_type="application/json")
         # 대량 지도 응답은 이미 검증된 Pydantic 모델을 FastAPI가 다시 순회하지 않게 한다.
         return Response(content=result.model_dump_json(), media_type="application/json")
 
@@ -1744,6 +1828,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="저장되지 않은 역이 포함되어 있습니다.")
         result = await stored_rail_timetables(session, list(places), None, summary_only=True)
         return RailDepartureSummaryResponse.model_validate(result.model_dump())
+
+    @router.get("/transport/rail/stations", response_model=MetroStationCatalog)
+    async def transport_metro_stations(session: AsyncSession = Depends(get_db)) -> MetroStationCatalog:
+        """공식 코드·역명을 그대로 읽는다. 위치 파일 연결은 지도 좌표의 보조 정보일 뿐이다."""
+        return await metro_station_catalog(session)
+
+    @router.get("/transport/rail/stations/{code_id}/timetable", response_model=RailTimetableResponse)
+    async def transport_coded_rail_timetable(
+        code_id: int = ApiPath(ge=1, le=2147483647),
+        day_code: Literal["7", "8", "9"] | None = None,
+        session: AsyncSession = Depends(get_db),
+    ) -> RailTimetableResponse:
+        code = await session.scalar(select(KricStationCode).where(
+            KricStationCode.id == code_id, KricStationCode.active.is_(True),
+        ))
+        if code is None:
+            raise HTTPException(status_code=404, detail="저장된 공식 역 코드가 없습니다.")
+        return await stored_rail_timetables(session, [], day_code, station_codes=[code])
 
     @router.get("/transport/rail/timetables", response_model=RailTimetableResponse)
     async def transport_rail_timetables(
@@ -3423,12 +3525,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # fixed, everything else is versioned). All other routes live under `/v1`
     # (ADR-005) -- a clean-cut, no legacy unprefixed alias.
     app.include_router(router, prefix="/v1")
+    app.include_router(build_public_parking_router(get_db), prefix="/v1")
     app.include_router(build_general_rail_router(get_db), prefix="/v1")
     app.include_router(build_ferry_reference_router(get_db), prefix="/v1")
     app.include_router(build_highway_map_router(), prefix="/v1")
     app.include_router(build_fuel_price_history_router(resolved_settings, get_db), prefix="/v1")
     # 내부 서비스 일괄 export(ADR-013) — 서비스 토큰과 접속한 쪽의 주소(peer, 기본 loopback)로 닫힌다.
     app.include_router(build_service_export_router(resolved_settings, get_db), prefix="/v1")
+
+    if fuel_mcp_gate is not None:
+        # 마지막 fallback mount의 실제 경로는 /mcp 하나다. API와 같은 process/port/lifespan.
+        app.mount("/", fuel_mcp_gate)
 
     return app
 

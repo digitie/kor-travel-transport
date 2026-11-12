@@ -9,12 +9,16 @@ name: kor-travel-transport
 # 옛 `transport-dagster-gateway`(12302, transport-dagster.digitie.mywire.org)는 없어졌다(redirect 없음).
 services:
   transport-api-gateway:
+    # 상주 peak와 worker 여유를 둔 초기 한도; 실제 Opinet 수용은 별도 기록한다.
+    mem_limit: 64m
+    memswap_limit: 64m
     image: nginx:1.27-alpine
     restart: unless-stopped
     network_mode: host
     environment:
       TRANSPORT_PUBLIC_API_PORT: "${TRANSPORT_PUBLIC_API_PORT:-12301}"
       TRANSPORT_EXPORT_CONSUMER_CIDR: "${TRANSPORT_EXPORT_CONSUMER_CIDR:-}"
+      TRANSPORT_MCP_CONSUMER_CIDR: "${TRANSPORT_MCP_CONSUMER_CIDR:-}"
     volumes:
       - ./deploy/transport-admin/api-gateway.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ./deploy/transport-admin/19-export-allowlist.sh:/docker-entrypoint.d/19-export-allowlist.sh:ro
@@ -25,6 +29,9 @@ services:
       retries: 5
 
   transport-admin-web:
+    # 상주 peak와 worker 여유를 둔 초기 한도; 실제 Opinet 수용은 별도 기록한다.
+    mem_limit: 512m
+    memswap_limit: 512m
     build:
       context: .
       dockerfile: packages/kor-travel-transport-admin/frontend/Dockerfile

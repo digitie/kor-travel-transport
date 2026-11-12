@@ -12,6 +12,7 @@ export function statusLabel(value: string): string {
 }
 JOB_LABELS.general_rail_timetable_collection_job = "일반철도 예정 시간표";
 JOB_LABELS.kric_timetable_collection_job = "도시철도 예정 시간표";
+JOB_LABELS.general_rail_timetable_collection_job = "일반철도 예정 시간표";
 JOB_LABELS.place_location_collection_job = "시설 좌표 보강 (VWorld)";
 JOB_LABELS.kakao_place_location_collection_job = "시설 좌표 보강 (Kakao)";
 JOB_LABELS.rest_area_reference_collection_job = "휴게소 기준정보";

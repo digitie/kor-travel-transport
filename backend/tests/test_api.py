@@ -10,9 +10,10 @@ from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.time_utils import now_utc
@@ -132,7 +133,7 @@ def test_map_fuel_filter_requires_latest_positive_price(client) -> None:
         now = now_utc()
         async with client.app.state.session_factory() as session:
             for index, (name, latest) in enumerate([
-                ("고급유 판매", 2000), ("고급유 미제공", None), ("고급유 0", 0),
+                ("고급유 판매", 2000.35), ("고급유 미제공", None), ("고급유 0", 0),
                 ("같은 수집시각 최신 미제공", None),
             ]):
                 station = FuelStation(source="opinet", identity_key=f"premium-{index}", name=name,
@@ -164,6 +165,38 @@ def test_map_fuel_filter_requires_latest_positive_price(client) -> None:
     assert client.get(path, params={"kind": "fuel_station", "product_codes": "B034,D047"}).json()["total"] == 4
     assert client.get(path, params={"kind": "fuel_station", "product_codes": "B034,K015"}).json()["total"] == 1
     assert client.get(path, params={"kind": "fuel_station"}).json()["total"] == 4
+    # 지도·목록의 중첩 가격 검증 경로가 달라도 소수·0·NULL·UTC·유종 순서는 같다.
+    mapped = {item["name"]: item["prices"] for item in client.get(
+        path, params={"kind": "fuel_station"},
+    ).json()["items"]}
+    loaded_types = []
+    def record_loaded(_session, instance):
+        loaded_types.append(type(instance).__name__)
+    event.listen(Session, "loaded_as_persistent", record_loaded)
+    try:
+        listed = {item["name"]: item["prices"] for item in client.get(
+            "/v1/transport/fuel/stations", params={"days": 7},
+        ).json()["items"]}
+    finally:
+        event.remove(Session, "loaded_as_persistent", record_loaded)
+    assert "FuelStation" not in loaded_types
+    assert "FuelLatestPrice" not in loaded_types
+    assert mapped == listed
+    detail = client.get(path, params={"kind": "fuel_station", "product_codes": "B034"}).json()["items"][0]
+    assert detail["longitude"] == 127 and detail["latitude"] == 37
+    assert detail["line_names"] == [] and detail["facilities"] == []
+    assert detail["provider_id"] is None and detail["latest_price"] == 2000.35
+    assert detail["price_product_code"] == "B034"
+    assert_is_utc_iso(detail["updated_at"])
+    for name, premium in [("고급유 판매", 2000.35), ("고급유 미제공", None),
+                          ("고급유 0", 0), ("같은 수집시각 최신 미제공", None)]:
+        prices = mapped[name]
+        assert [item["product_code"] for item in prices] == ["B034", "D047"]
+        assert [item["price"] for item in prices] == [premium, 1600]
+        for price in prices:
+            assert price["provider_updated_at"] is None
+            assert_is_utc_iso(price["observed_at"])
+            assert_is_utc_iso(price["collected_at"])
 
 
 def test_health(client) -> None:
@@ -230,8 +263,11 @@ def test_transport_place_features_exposes_saved_map_markers_and_rejects_unknown_
     assert cluster_payload["clustered"] is True
     assert cluster_payload["items"] == []
     assert cluster_payload["kind_totals"] == {"fuel_station": 1, "rail_station": 1, "ferry_port": 1}
-    assert sum(item["count"] for item in cluster_payload["clusters"]) == 3
-    assert sum(sum(item["kind_counts"].values()) for item in cluster_payload["clusters"]) == 3
+    assert sum(item["count"] for item in cluster_payload["clusters"]) == 2
+    # 원본만 저장한 legacy source를 미발행 지역 통계로 즉석 집계하지 않는다.
+    # 공개 세대 요약의 값·발행 시점은 test_fuel_regions에서 별도로 검산한다.
+    assert cluster_payload["fuel_regions"] == []
+    assert sum(sum(item["kind_counts"].values()) for item in cluster_payload["clusters"]) == 2
     unlocated_cluster_payload = client.get("/v1/transport/features/places", params={
         "kinds": "fuel_station,rail_station,ferry_port", "zoom": 7, "include_unlocated": "true",
         "min_longitude": 124, "min_latitude": 32, "max_longitude": 132, "max_latitude": 39,

@@ -2,6 +2,11 @@
 
 ## 구현·운영 상태
 
+2026-11-09 운영 API·수집기의 공통 `TRANSPORT_MAP_CURRENT_ENABLED`를 true로 맞췄다.
+철도·해운 기준정보 수집 flag·예약도 활성 상태다. 실제 Map 호스트에서 철도1108건과 항구753건의
+완결 페이지·source_status=ok·조건부304를 확인했다. [실제 활성화와 한계](reports/2026-11-09-map-reference-activation.md).
+아래 나머지 T2/T3 source의 최초 승인집합은 이번 수용 범위에 포함하지 않는다.
+
 Map PR1355의 기존 consumer는 T1의 `collection/has_more/next_cursor` 페이지를 읽는다.
 새 T2/T3는 `meta/snapshot_id/snapshot_expires_at/total_count/items/has_more/next_cursor`의 별도
 고정 집합 계약이다. 기존 T1 parser로 직접 읽지 말고 Map 쪽에 새 reader를 추가해야 한다.
@@ -9,11 +14,11 @@ Map PR1355의 기존 consumer는 T1의 `collection/has_more/next_cursor` 페이�
 
 | 구분 | 경로 suffix | Transport PR | 운영 상태 |
 | --- | --- | --- | --- |
-| T2 | highway-traffic/current | 114 | 머지됨, 새 API 미배포·flagOFF |
-| T3 | bus-terminals | 115 | 머지됨, 새 API 미배포·flagOFF |
-| T3 | ferry-ports | 116 | 머지됨, 새 API 미배포·flagOFF |
-| T3 | rail-stations | 117 | 머지됨, 새 API 미배포·flagOFF |
-| T2 | parking/current | 118 | 머지됨, 새 API 미배포·flagOFF |
+| T2 | highway-traffic/current | 114 | API 배포·공통flagON, source 수용 별도 |
+| T3 | bus-terminals | 115 | API 배포·공통flagON, source 수용 별도 |
+| T3 | ferry-ports | 116 | 실제753건·완결200/304 확인 |
+| T3 | rail-stations | 117 | 실제1108건·완결200/304 확인 |
+| T2 | parking/current | 118 | API 배포·공통flagON, source 수용 별도 |
 
 [제품 검증·머지/운영 잔여 gate 정산](reports/2026-10-23-map-t2-t3-acceptance.md). KAC quota 복구 PR119도 운영 rollout 전에 포함한다.
 

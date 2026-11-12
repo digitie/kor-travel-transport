@@ -105,6 +105,31 @@ Compose에 명시적으로 추가한다. 렌더된 command와 healthcheck가 모
 소비자 export는 GET과 기존 승인 IP/CIDR에 한정하고 빈 설정은 모두 거부한다.
 기존 env 보호 exclude를 지우거나 HAProxy를 직접 수정하지 않는다. 공용 daemon RUNNING을 유지한다. DB 조회·worker 확인에 상한을 두고, 배포 시간 초과로 하위 작업의 종료가 불명확하면 pause를 유지한 채 별도 정산한다. 종료를 증명하기 전에 자동 rollback과 정방향 배포를 겹치지 않는다.
 
+### Manager current release 표식(2026-10-28, Manager #568·ADR-60)
+
+현재 실행 이미지의 정본은 Manager의 `/srv/ktdm-releases/current/transport` 표식이다(Manager
+`docs/service-current-release.md`). 두 배포 스크립트는 공용 helper
+[`scripts/manager-release-pointer.sh`](../../scripts/manager-release-pointer.sh)로 다음을 한다.
+
+- **교체 전**: `sudo -n ktdctl service-release verify transport`가 exit 0이어야 한다. drift(exit 1)·표식 없음·
+  `service-release`가 없는 Manager(exit 2)·비밀번호 없는 sudo 불가면 공유 checkout(`deploy-prod.sh`·관리자 배포의
+  rsync 전)·override·컨테이너를 바꾸기 전에 멈춘다. `deploy-prod-remote.sh`도 수동 실행에 대비해 다시 본다.
+  `prepare-shared-dagster-cutover`와 stage-only는 컨테이너를 바꾸지 않으므로 보지 않는다.
+- **forward-fix 예외**: 직전 배포가 검증 뒤 실패해(예: migration 적용 후) 발행되지 않은 이미지가 돌고 있으면
+  `ALLOW_RELEASE_POINTER_DRIFT=forward-fix`로 그 고치는 배포만 drift(exit 1)를 넘긴다. 표식 없음·CLI 없음은 넘기지 않는다.
+- **health 뒤**: `adopt transport --confirm --replace-current`로 실제 실행 이미지를 새 current로 발행한다.
+  adopt는 core·admin 모든 runtime이 Docker `healthy`여야 하므로 방금 재생성한 컨테이너의 `starting` 동안 15초 간격
+  16회까지 재시도한다. one-shot `migrate`는 backend 배포가 resolved Compose의 이미지 ID를, 관리자 배포가 현재 표식의
+  값을 넘긴다. 발행만 실패하면 배포는 healthy지만 **exit 3**과 다시 실행할 명령을 출력한다(외부 controller는 이것을
+  배포 실패로 복구하지 않는다). 다음 배포의 교체 전 검사가 그 drift를 멈춤으로 잡는다.
+- 같은 project·서비스 label을 가진 남은 one-off 컨테이너(`compose run`, 진단용 `kt-transport-schema-guard-*` 등)가
+  있으면 Manager verify/adopt가 "정확히 하나" 조건으로 거절한다. 배포 전에 지운다.
+- `.release-sha`·`.staged-release-sha`·`.transport-admin-release-sha`는 준비·소스 표식으로 그대로 둔다(ADR-60 D6).
+  현재 실행 상태는 이 파일들이 아니라 표식의 이미지 ID로 읽는다.
+
+전제: Odroid에 `service-release`를 포함한 Manager가 설치되어 있어야 한다. 표식 수동 등록·되돌리기는
+Manager 런북을 따른다.
+
 ### 사전 빌드와 공식 staging의 metadata
 
 외부 controller가 일정 중지 전에 빌드를 끝낸 뒤 공식 자식을 호출할 때에는
@@ -155,8 +180,9 @@ ADR accepted 여부는 별도 증거 정산 후 표시한다.
    성공만으로 Dagster 실행 종료를 증명하지 않는다. 역방향으로 Dagster
    실행 기록 없이 남은 code-server worker도 실패로 보고한다.
 5. release 이미지 보존: 배포마다 `kor-travel-transport-backend:rel-<sha12>` 태그가 남는다(ADR-010).
-   n150에서 하나가 약 2.5 GB이고 Dockerfile의 `COPY backend`가 `pip install` 앞이라 pip·playwright 층도
-   대부분 release마다 따로다. `docker image prune`은 태그가 붙은 이미지를 지우지 않는다. 배포가 health를
+   n150에서 하나가 약 2.5 GB다. 지금 Dockerfile은 `pyproject.toml`·`uv.lock`만 먼저 복사해 의존성과
+   playwright 층을 `COPY backend` 앞에서 만들므로 lock이 같으면 그 층은 release 사이에 재사용된다(#129 전에는
+   `COPY backend`가 `pip install` 앞이라 release마다 따로였다). `docker image prune`은 태그가 붙은 이미지를 지우지 않는다. 배포가 health를
    통과한 뒤 지금 release와 바로 전 release(되돌릴 이미지)만 남기고 나머지 `rel-*`를 지운다. 운영 식별자
    개명 cutover의 관찰 기간에는 지우지 않는다. 배포 스크립트가 자동으로 지우지 않는 것은 다른 세션의
    되돌리기가 쓰는 태그를 지울 수 있어서다.
@@ -190,6 +216,13 @@ n150에서 `scripts/cutover-shared-db-server14.sh`를 실행했다. 이 한 번�
 지웠다(재현은 `git show 07d3848:scripts/cutover-shared-db-server14.sh`). cutover는 staged artifact의
 receipt-gated remote deploy를 호출하므로 n150에 `.git`이 없어도 된다. `.env.server14.legacy`는
 동기화 삭제 대상이 아니며 live E2E 수용 전까지 보존한다.
+
+과거 n150의 backend·Dagster 전용 `deploy-transport-runtime-server14.sh`는 현재 호스트
+검증과 Transport 전용 범위를 지키지 않아 제거했다. 다시 실행하거나 공용 Dagster
+webserver·daemon을 Transport 이미지 교체에 포함하지 않는다. 현재 부분 배포에도 위의
+공식 prod entry·Manager 대상 검증·G→서비스 잠금·Transport 수집 자연 종료·원 일정 복원
+계약을 적용한다. 실제 backend의 후보 `release_sha`, 대상 역할의 정상 상태와 Manager
+current 표식을 확인하며, 다른 서비스와 공용 daemon은 보존한다.
 
 > **롤백 시 주의(T-035 이후)**: frontend만 이전 이미지로 되돌리고 PostgreSQL 상태는
 > 그대로 유지하는 롤백을 하면, T-035 이후 추가된 `/analytics`·`/history`·`/fees`·`/backup`
@@ -471,10 +504,11 @@ bash ~/rename-deploy-identity-server14.sh status
    층을 적는 것은 containerd image store(n150)에서는 모든 단계가 cache hit인 재빌드도 config의 생성
    시각이 바뀌어 ID가 새로 나오기 때문이다(2026-09-28 WSL Docker 29.1.3·compose 5.1.4에서 확인: ID는
    재빌드마다 다르고 층은 같다, 내용이 바뀌면 층도 바뀐다. n150 Docker 29.6.1도 같은 containerd
-   snapshotter다). backend 이미지는 `uv.lock`이 아니라
-   `pip install -e ".[dev]"`(`dagster>=1.9,<2`)로 설치하므로 빌드할 때의 PyPI 최신 Dagster를 받는다
-   (2026-09-28: `uv.lock`·CI 1.13.23, 운영 code-server 1.13.24). 그래서 gate는 소스가 아니라 빌드 결과에
-   건다. 버전이 다르면 아래 "Dagster 버전이 다를 때"를 따른다.
+   snapshotter다). backend 이미지는 `uv export --locked --extra dev`로 `uv.lock`을 requirements로 뽑아
+   `pip install --no-deps`로 설치하고, 프로젝트 자체만 마지막에 `pip install -e ".[dev]" --no-deps`로 올린다.
+   그래서 이미지의 Dagster는 `uv.lock`의 버전이다(#129 전에는 `pip install -e ".[dev]"`가 의존성까지 풀어
+   빌드할 때의 PyPI 최신을 받았다 — 2026-09-28: `uv.lock`·CI 1.13.23, 운영 code-server 1.13.24). gate는
+   여전히 소스가 아니라 빌드 결과에 건다. 버전이 다르면 아래 "Dagster 버전이 다를 때"를 따른다.
 5. `window R`(창): prepare 뒤 옛 컨테이너 이미지가 바뀌지 않았는지와 migration gate를 다시 본다.
    지난 시도나 rollback이 남긴 새 디렉터리 `backups/`가 옛 것과 다르면 옛 스택을 멈추기 전에 STOP이고,
    두 쪽을 hardlink로 합치는 명령(`sudo cp -a -l --update=none -T …`, 덮어쓰거나 지우지 않는다)을
@@ -543,9 +577,9 @@ candidate 값으로 export한다(`set -a; source`가 파일의 줄을 셸 env로
 
 ### Dagster 버전이 다를 때
 
-`prebuild`나 `window`가 `dagster 버전이 다르다(운영 X, 빌드 Y)`로 멈추면 PyPI에 운영 code-server보다
-새 Dagster가 나온 것이다. backend Dockerfile은 `uv.lock`이 아니라 `pip install -e ".[dev]"`
-(`dagster>=1.9,<2`)로 설치하므로 빌드 캐시가 없는 빌드는 그때의 최신을 받는다. gate를 끄거나 태그를
+`prebuild`나 `window`가 `dagster 버전이 다르다(운영 X, 빌드 Y)`로 멈추면
+`uv.lock`의 Dagster가 운영 code-server와 다른 것이다. backend Dockerfile은 `uv export --locked`로
+`uv.lock`을 그대로 설치하므로(#129 이후) 이미지의 Dagster는 lock 버전이다. 대개 lock을 올린 PR이 원인이다. gate를 끄거나 태그를
 손으로 옮기지 않는다. 버전이 다르면 `dagster instance migrate`가 공유 metadata DB를 앞으로 올릴 수 있고,
 그 뒤에는 되돌린 옛 daemon(X)이 그 DB를 읽지 못할 수 있다.
 
@@ -558,7 +592,7 @@ candidate 값으로 export한다(`set -a; source`가 파일의 줄을 셸 env로
 3. 그 PR을 머지하고 새 머지 커밋을 R로 `prepare`부터 다시 한다(stage도 새 R로).
 4. Dagster를 올리는 일은 이 cutover가 끝난 뒤 따로 한다. 그때는 metadata DB dump를 먼저 뜬다.
 
-Dockerfile이 `uv.lock`을 따르게 하는 것은 ADR-010 후속이다. 그 전까지는 이 gate가 유일한 장치다.
+Dockerfile은 #129부터 `uv.lock`을 따른다. 그래도 lock과 운영 `:code`가 어긋나는 것은 이 gate만 잡는다.
 
 ### 되돌리기
 

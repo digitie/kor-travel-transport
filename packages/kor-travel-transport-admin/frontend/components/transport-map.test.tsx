@@ -69,6 +69,7 @@ test("좁은 지도의 지역 목록에서도 전5유종과 미제공을 읽고 
   try {
     await act(async () => root.render(<TransportMap mode="fuel" />));
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+    expect(container.querySelector(".kt-map-count")?.textContent).toBe("2건 표시");
     const toggle = [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "지역 카드 모두 보기 (2)")!;
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     await act(async () => toggle.click());

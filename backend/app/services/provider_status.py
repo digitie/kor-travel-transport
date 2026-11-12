@@ -22,7 +22,8 @@ async def provider_status(session: AsyncSession, settings: Settings) -> Provider
         ("krex_traffic_incident", "고속도로 돌발", "highway_collection_job", "transport_dagster_highway", transport and bool(settings.kex_ex_api_key), settings.transport_collect_interval_seconds),
         ("opinet_browser", "오피넷 주유소·유가", "fuel_collection_job", "transport_dagster_fuel", transport and settings.opinet_browser_enabled, 28800),
         ("kric_public_file", "KRIC 역·노선 파일", "rail_reference_collection_job", "dagster_rail", settings.rail_reference_collection_enabled, 172800),
-        ("kric_timetable", "KRIC 예정 시간표", "kric_timetable_collection_job", "dagster_kric_timetable", settings.kric_timetable_collection_enabled and bool(settings.kric_service_key), 172800),
+        ("kric_timetable", "KRIC 예정 시간표", "kric_timetable_collection_job", "dagster_kric_timetable", settings.kric_timetable_collection_enabled and bool(settings.kric_service_key), 86400),
+        ("general_rail_timetable", "일반철도 예정 시간표", "general_rail_timetable_collection_job", "dagster_general_rail_timetable", bool(settings.data_go_kr_service_key), 86400),
         ("data_go_kr_maritime", "여객항구·선종", "maritime_reference_collection_job", "dagster_maritime", keyed and settings.maritime_reference_collection_enabled, 259200),
         ("ferry_timetable", "여객선 10일 운항시간표", "ferry_timetable_collection_job", "dagster_ferry_timetable", keyed and settings.ferry_timetable_collection_enabled, 14400),
         ("data_go_kr_tago", "TAGO 고속·시외버스 터미널", "bus_reference_collection_job", "dagster_bus_reference", keyed and settings.bus_reference_collection_enabled, 259200),
@@ -48,10 +49,13 @@ async def provider_status(session: AsyncSession, settings: Settings) -> Provider
         source_status = "failed" if failed else "success" if state and state.last_success_at else "not_collected"
         status = "disabled" if not enabled else source_status if state else run.status if run else "not_collected"
         next_due = state.next_due_at if state else None
+        if source == "general_rail_timetable" and last_started:
+            next_due = serialize_utc(last_started) + timedelta(hours=24)
         if source == "kric_timetable" and kric_attempt:
             if kric_attempt.tzinfo is None:
                 kric_attempt = kric_attempt.replace(tzinfo=now_utc().tzinfo)
-            next_due = kric_attempt + timedelta(hours=48)
+            next_due = (kric_attempt + timedelta(hours=24) if run and run.error_message in {"KricAuthError", "KricRateLimitError"}
+                        else kric_attempt.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1))
             # 진단 후 보호 기록은 성공으로 계산하지 않되, 언제까지 대기하는지는 보여준다.
             if enabled and run is None:
                 status = "throttled" if next_due > now_utc() else "not_collected"

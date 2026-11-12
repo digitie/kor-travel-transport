@@ -11,9 +11,12 @@ from typing import Any
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from vworld import VworldClient, VworldNetworkError, VworldNoDataError, parse_search_response, process_search_response
+from vworld import (VworldClient, VworldNetworkError, VworldNoDataError, parse_search_response,
+                    process_search_response, parse_geocode_response)
 
 from app.services.place_targets import iter_missing_place_targets, matching_place_names
+from app.services.rail_locations import choose_rail_address, rail_address_query, rail_address_signature
+from app.services.rail_station_mapping import lock_rail_station_reference_catalog
 from app.core.config import Settings
 from app.core.time_utils import now_utc
 from app.models import BusTerminalReference, CollectionRun, FerryPort, RawApiResponse
@@ -27,6 +30,8 @@ def _province(value: str) -> str:
         ("강원", "강원"), ("경기", "경기"), ("경상남", "경남"), ("경상북", "경북"),
         ("전라남", "전남"), ("전남광주", "전남"), ("전라북", "전북"),
         ("충청남", "충남"), ("충청북", "충북"), ("제주", "제주"),
+        ("경남", "경남"), ("경북", "경북"), ("전남", "전남"), ("전북", "전북"),
+        ("충남", "충남"), ("충북", "충북"),
         ("서울", "서울"), ("부산", "부산"), ("대구", "대구"), ("인천", "인천"),
         ("광주", "광주"), ("대전", "대전"), ("울산", "울산"), ("세종", "세종"),
     ):
@@ -106,13 +111,13 @@ class PlaceLocationCollectionService:
         self.settings = settings
         self.client_factory = client_factory
 
-    async def collect(self, session: AsyncSession) -> dict[str, Any]:
+    async def collect(self, session: AsyncSession, *, kinds=None) -> dict[str, Any]:
         if not self.settings.place_location_collection_enabled or not self.settings.vworld_api_key:
             return {"status": "skipped", "reason": "place location collection or VWorld key is disabled"}
         async with self._postgres_collection_lease(session) as acquired:
             if not acquired:
                 return {"status": "skipped", "reason": "another VWorld place collection is active"}
-            return await self._collect_unlocked(session)
+            return await self._collect_unlocked(session, kinds=kinds)
 
     @asynccontextmanager
     async def _postgres_collection_lease(self, session: AsyncSession) -> AsyncIterator[bool]:
@@ -137,22 +142,31 @@ class PlaceLocationCollectionService:
                     if not released:
                         raise RuntimeError("VWorld place collection advisory lock was not released")
 
-    async def _collect_unlocked(self, session: AsyncSession) -> dict[str, Any]:
+    async def _collect_unlocked(self, session: AsyncSession, *, kinds=None) -> dict[str, Any]:
         run = CollectionRun(started_at=now_utc(), status="running", trigger=TRIGGER)
         session.add(run)
         await session.commit()
-        summary = {"provider_calls": 0, "bus_locations": 0, "port_locations": 0, "unmatched": 0,
+        summary = {"provider_calls": 0, "bus_locations": 0, "port_locations": 0, "rail_locations": 0, "unmatched": 0,
                    "deferred": 0, "provider_failed": 0}
         try:
             async with self.client_factory(
                 api_key=self.settings.vworld_api_key, timeout=self.settings.api_timeout_seconds,
                 max_retries=0, max_rps=100.0,
             ) as client:
-                async for kind, row in iter_missing_place_targets(session):
+                async for kind, row in iter_missing_place_targets(session, include_rail=True, kinds=kinds):
                     await session.refresh(row)
-                    if row.latitude is not None or row.location_source == "admin_manual":
+                    if row.latitude is not None or getattr(row, "location_source", None) == "admin_manual":
                         continue
-                    if kind == "bus":
+                    rail_query = rail_address_query(row) if kind == "rail" else None
+                    if kind == "rail":
+                        if rail_query is None:
+                            summary["unmatched"] += 1
+                            continue
+                        name = row.station_name.strip()
+                        query, address_type = rail_query
+                        endpoint = f"vworld:rail-address:{row.id}"
+                        input_signature = rail_address_signature(row.station_name, row.road_address, row.lot_address)
+                    elif kind == "bus":
                         if await matching_place_names(session, kind, row) != 1:
                             continue
                         name = row.terminal_name.strip()
@@ -175,6 +189,7 @@ class PlaceLocationCollectionService:
                         received = previous.received_at.replace(tzinfo=UTC) if previous.received_at.tzinfo is None else previous.received_at
                         if ((previous.request_params_json or {}).get("query") == query
                                 and (previous.request_params_json or {}).get("name") == name
+                                and (kind != "rail" or (previous.request_params_json or {}).get("input_signature") == input_signature)
                                 and (previous.request_params_json or {}).get("city_name") == (
                                     row.city_name if kind == "bus" else None)
                                 and now - received < timedelta(
@@ -201,12 +216,43 @@ class PlaceLocationCollectionService:
                         break
                     receipt = RawApiResponse(collection_run_id=run.id, source=LOCATION_SOURCE,
                         endpoint=endpoint, request_params_json={"query": query, "name": name,
+                            **({"input_signature": input_signature, "address_type": address_type} if kind == "rail" else {}),
                             "city_name": row.city_name if kind == "bus" else None}, status_code=0,
                         body_text="null", received_at=now, parse_status="pending", parse_error=None)
                     session.add(receipt)
                     await session.commit()
                     summary["provider_calls"] += 1
                     try:
+                        if kind == "rail":
+                            try:
+                                raw = await client.get_coord(query, address_type)
+                                parsed = parse_geocode_response(raw).response
+                                if parsed.get("status") not in ("OK", "NOT_FOUND"):
+                                    raise RuntimeError("VWorld address lookup failed")
+                                selected = choose_rail_address(parsed, address=query, address_type=address_type,
+                                                               province=_province)
+                            except VworldNoDataError:
+                                selected = None
+                            receipt.status_code, receipt.parse_status = 200, "success"
+                            receipt.body_text = json.dumps({"selected": selected}, ensure_ascii=False)
+                            if selected is None:
+                                summary["unmatched"] += 1
+                            else:
+                                await lock_rail_station_reference_catalog(session)
+                                await session.refresh(row, with_for_update=True)
+                                if (row.latitude is None and row.longitude is None
+                                        and input_signature == rail_address_signature(
+                                            row.station_name, row.road_address, row.lot_address)):
+                                    row.latitude, row.longitude = selected["latitude"], selected["longitude"]
+                                    row.raw_item_json = {**(row.raw_item_json or {}),
+                                        "_vworld_address": {**selected, "version": 1,
+                                            "input_signature": input_signature}, "coordinate_source": "vworld_address"}
+                                    summary["rail_locations"] += 1
+                                else:
+                                    summary["deferred"] += 1
+                            await session.commit()
+                            await asyncio.sleep(self.settings.place_location_request_interval_seconds)
+                            continue
                         try:
                             raw = await client.search_place(query, size=100)
                         except VworldNoDataError:

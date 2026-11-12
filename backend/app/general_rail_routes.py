@@ -129,7 +129,7 @@ def build_general_rail_router(get_db) -> APIRouter:
                     departure_station_name=row.dep_place_name, arrival_station_name=row.arr_place_name,
                     departure_planned_time=row.dep_planned_time, arrival_planned_time=row.arr_planned_time,
                     adult_fare=row.adult_charge) for row in page.items])
-        return await query(request, session, "timetable", key, GeneralRailTimetableResponse, fetch, ttl_hours=.25)
+        return await query(request, session, "timetable", key, GeneralRailTimetableResponse, fetch, ttl_hours=24)
     @router.get("/guide", response_model=GeneralRailGuideResponse)
     async def guide(request: Request, kind: Literal["ktx", "main"] = "ktx",
         category_code: str = Query(default="", pattern=r"^[A-Za-z0-9_]{0,40}$"), session: AsyncSession = Depends(get_db)):
@@ -143,14 +143,13 @@ def build_general_rail_router(get_db) -> APIRouter:
 
     async def guide_page(request, session, kind, category_code):
         async def fetch(client):
-            first = await client.get_guide_page(kind=kind)
-            if category_code and category_code not in {row.code for row in first.categories}:
-                raise HTTPException(status_code=422, detail="역 안내의 노선·권역 목록에서 다시 선택해 주세요.")
-            page = await client.get_located_category_stations(kind=kind, category_code=category_code) if category_code else first
+            page = await client.get_located_category_stations(kind=kind, category_code=category_code)
             return GeneralRailGuideResponse(fetched_at=now_utc(), kind=kind, category_code=category_code,
                 categories=[GeneralRailCode(code=row.code, name=row.name) for row in page.categories], total=page.total,
                 items=[GeneralRailGuideStation(provider_id=row.station_sequence, station_code=row.station_code,
                     station_name=row.station_name, address=row.address, phone=row.phone,
-                    longitude=row.longitude, latitude=row.latitude) for row in page.stations] if category_code else [])
-        return await query(request, session, "station_guide", json.dumps([kind, category_code]), GeneralRailGuideResponse, fetch, ttl_hours=24, public=True)
+                    longitude=row.longitude, latitude=row.latitude,
+                    line_names=[category.name for category in page.categories if kind == "ktx" and category.code in row.category_codes]) for row in page.stations])
+        # 이전 계약의 빈 분류 카탈로그(items=[])를 하루 더 재사용하지 않는다.
+        return await query(request, session, "station_guide", json.dumps(["v2", kind, category_code]), GeneralRailGuideResponse, fetch, ttl_hours=24, public=True)
     return router

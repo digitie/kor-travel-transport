@@ -8,7 +8,7 @@ from typing import Any
 
 from kortravelcommon.address_providers import VworldKakaoAddressResolver
 from kortravelcommon.reverse_address import AddressTarget, reverse_address_tables
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.time_utils import serialize_utc
@@ -35,8 +35,11 @@ async def export_admin_addresses(
     if not targets:
         return {}
     entries, _ = reverse_address_tables(Base.metadata)
+    payload = entries.c.payload
+    if session.bind.dialect.name == "postgresql":
+        payload = func.jsonb_build_object("provider", payload["provider"], "address", payload["address"], "region", payload["region"])
     query = select(entries.c.target_key, entries.c.coordinate_key,
-                   entries.c.payload, entries.c.resolved_at).where(
+                   payload.label("payload"), entries.c.resolved_at).where(
         entries.c.provider_id == VworldKakaoAddressResolver.provider_id,
         entries.c.status.in_(("ok", "error")),
         entries.c.target_key.in_(targets),
