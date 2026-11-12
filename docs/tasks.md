@@ -1,3 +1,10 @@
+## 2026-11-12 — 우선순위
+
+- [ ] 유가 통계0037 downgrade의 첫 writer 경합 방지: 빈 상태 검사 전에 transaction/isolation 확인과 배타 잠금, 실제 경합 회귀를 추가한다. 정상 배포/이번 운영에서는 downgrade0.
+- [ ] #180 장기 PR 통합: CI·집중 Docker·n150 UI·두 독립 리뷰·main 반영 정산. 원21건 종료를 main 머지 성공으로 표시하지 않는다.
+- [ ] 이후 Weather/Transport EvilCharts·날씨 상세·지역 대표/반경/경계·주차/유가 차트·수집/통계 누락·전반 조회/수집 성능과 Odroid eMMC 캐시의 NVMe 이전 요청21항목 진행.
+- 근거와 보존할 실패: [장기 PR 정리](reports/2026-11-12-pr-consolidation.md).
+
 ## 2026-11-10 — #179 남은 원천 자료
 
 - [ ] **T-RAIL-COORD-179-SOURCE-GAPS** — 새 이미지·120개 보강·DB/Map export 수용은 완료했다. 남은53개는 주소 부족14·미제공/불일치36·제공자 응답 오류1·까치산 부분 좌표1·한대앞 범위 오류1이다. 원천 보완·제공자 정상화 없이 추정 좌표나 즉시 재조회로 채우지 않는다. [원장](reports/2026-11-10-rail-address-coordinates-179.md).

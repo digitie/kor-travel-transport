@@ -73,11 +73,13 @@ UI dev.8은 Common `a74ac808752fd6d6062e529909fd0dd656724f08`의 추가 작업�
 
 ## 공통 로그인 hydration 준비 경계 (2026-10-26)
 
-현재 `package.json`·`package-lock.json`이 설치하는 UI는 `kor-travel-ui-0.1.0-dev.9.tgz`다(#141).
+당시 #141의 `package.json`·`package-lock.json`은 `kor-travel-ui-0.1.0-dev.9.tgz`를 설치했다.
+현재 설치 정본은 이 문서 맨 위의 C11 및 `package.json`·`common-artifacts.json`이다.
 Common 제품 source는 `f0b60bb70e65d53219f2a4bda57115c4e8fa2144`, CI 표기/fixture 정렬 후속은
 `44d7a240ebe82b11389824fd503e33ca4000ddd7`이며 정규 dev.9 산출물은 같다. dev.8 대비 `dist/login-form.js`와
 package metadata만 바뀌었다. `LoginForm`은 SSR과 최초 client 렌더에서 입력·제출을 disabled로 두고 hydration 뒤에 연다.
-이전 dev.6~8 tarball은 보존한다. [채택 기록](../../../../docs/reports/2026-10-26-login-hydration-common-adoption.md).
+당시 dev.6~8 tarball 보존과 dev.9 해시는 아래 채택 이력이며 현재 파일 목록을 뜻하지 않는다.
+[채택 기록](../../../../docs/reports/2026-10-26-login-hydration-common-adoption.md).
 
 | 파일 | SHA-256 |
 | --- | --- |

@@ -1434,10 +1434,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # map admin처럼 bbox를 기준으로 조회하되, 한 종류마다 별도 API를 호출하지 않도록
         # 선택한 종류의 집계를 한 SQL union으로 묶는다.
         if zoom is not None and zoom < 12 and min_longitude is not None:
+            # 지역 카드는 전체 지역 평균이다. 상호·주소·브랜드 검색은 실제 일치
+            # 지점의 묶음을 남겨야 지역명과 다르더라도 검색·확대 경로가 유지된다.
+            use_fuel_regions = not (query and query.strip())
             fuel_regions = await regional_fuel_prices(
                 session, zoom=zoom, bounds=bounds, sources=selected_sources,
                 products=selected_products, query=query,
-            ) if "fuel_station" in requested_kinds else []
+            ) if "fuel_station" in requested_kinds and use_fuel_regions else []
             grid_size = viewport_cluster_grid_size(
                 min_longitude=min_longitude,
                 min_latitude=min_latitude,
@@ -1467,7 +1470,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
             cluster_queries = []
             for requested_kind in requested_kinds:
-                if requested_kind == "fuel_station":
+                if requested_kind == "fuel_station" and use_fuel_regions:
                     kind_totals[requested_kind] = int(await session.scalar(
                         select(func.count()).select_from(FuelStation).where(*coordinate_conditions(FuelStation))
                     ) or 0)

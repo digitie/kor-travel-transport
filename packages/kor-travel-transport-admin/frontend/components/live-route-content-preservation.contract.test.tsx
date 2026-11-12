@@ -2,6 +2,8 @@
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import ParkingLotsPage from "../app/parking-lots/page";
+import TimetablePage from "../app/rail/timetable/page";
 const api=vi.hoisted(()=>({get:vi.fn()}));
 vi.mock("next/navigation",()=>({usePathname:()=>"/rail/timetable"}));
 vi.mock("@/lib/journey",async original=>({...await original<typeof import("@/lib/journey")>(),transportGet:api.get}));
@@ -24,7 +26,8 @@ beforeEach(()=>{
  });host=document.createElement("div");document.body.append(host);root=createRoot(host);
 });
 afterEach(async()=>{await act(async()=>root.unmount());host.remove();vi.unstubAllGlobals();});
-async function page(path:string,params?:Record<string,string>){const routeModule=await import(new URL(path,import.meta.url).pathname);return routeModule.default({searchParams:Promise.resolve(params??{})});}
+// 모듈 로딩은 수집 단계에서 끝내고 기존 5초 상한은 실제 렌더링·계약 단언에 적용한다.
+async function page(path:string,params?:Record<string,string>){return path==="../app/parking-lots/page"?ParkingLotsPage():TimetablePage({searchParams:Promise.resolve(params??{})});}
 test("일반 주차장 주소는 공항 화면이 아니라 정적 기준정보와 검색·미완수집 안내를 연다",async()=>{
  const node=await page("../app/parking-lots/page");await act(async()=>root.render(node));
  expect(host.querySelector("h1")?.textContent).toBe("일반 주차장");expect(host.querySelector('form[aria-label="일반 주차장 검색"]')).not.toBeNull();

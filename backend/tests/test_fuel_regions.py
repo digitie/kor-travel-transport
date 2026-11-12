@@ -7,6 +7,35 @@ from test_fuel_statistics import seed
 from app.services.fuel_statistics import OPINET, publish_fuel_statistics
 
 
+@pytest.mark.parametrize("zoom", [7, 9])
+@pytest.mark.parametrize("query", ["주유소0", "검증브랜드"])
+def test_low_zoom_search_preserves_matching_station_clusters(client, zoom, query):
+    """지역명과 다른 상호·브랜드 검색도 검색 지점과 확대 경로를 남긴다."""
+    from sqlalchemy import update
+    from app.models import FuelStation
+
+    async def setup():
+        async with client.app.state.session_factory() as session:
+            stamp = datetime.now(timezone.utc)
+            await seed(session, stamp)
+            await session.execute(update(FuelStation).where(FuelStation.id == 2).values(brand_name="검증브랜드"))
+            await publish_fuel_statistics(session, OPINET, stamp)
+            await session.commit()
+    asyncio.run(setup())
+    result = client.get("/v1/transport/features/places", params={
+        "kind": "fuel_station", "zoom": zoom, "query": query,
+        "min_longitude": 126.9, "max_longitude": 127.1,
+        "min_latitude": 37, "max_latitude": 38,
+    })
+    assert result.status_code == 200
+    payload = result.json()
+    assert payload["total"] == 1
+    assert payload["kind_totals"] == {"fuel_station": 1}
+    assert payload["fuel_regions"] == []
+    assert sum(item["count"] for item in payload["clusters"]) == 1
+    assert payload["clusters"][0]["kind_counts"] == {"fuel_station": 1}
+
+
 def test_regional_prices_use_entire_region_not_bbox_or_marker_limit(client):
     async def setup():
         async with client.app.state.session_factory() as session:
