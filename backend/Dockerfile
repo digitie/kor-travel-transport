@@ -1,5 +1,5 @@
-FROM ghcr.io/astral-sh/uv:0.11.21 AS uv
-FROM python:3.12-slim
+FROM ghcr.io/astral-sh/uv:0.11.21@sha256:ff07b86af50d4d9391d9daf4ff89ce427bc544f9aae87057e69a1cc0aa369946 AS uv
+FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -50,6 +50,8 @@ RUN python -I -m kortravelcommon.build_bytecode --stdlib
 
 COPY .env.prod.example /app/compose-contract/.env.prod.example
 COPY docs/openapi.json /app/compose-contract/openapi.json
+# 이미지 안의 기존 regression도 네 역할 Dockerfile 계약을 같은 소스에서 검사한다.
+COPY frontend/Dockerfile /app/compose-contract/frontend/Dockerfile
 COPY docker-compose.yml /app/compose-contract/docker-compose.yml
 COPY docker-compose.transport-admin.yml /app/compose-contract/docker-compose.transport-admin.yml
 # 회귀 컨테이너에서 legacy DB와 실험 fixture의 간격을 구분해 확인한다.
@@ -61,6 +63,9 @@ COPY packages/kor-travel-transport-admin/frontend /app/compose-contract/packages
 
 COPY backend/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh && mkdir -p /app/backups
+
+ARG RELEASE_SHA=unknown
+ENV RELEASE_SHA=${RELEASE_SHA}
 
 EXPOSE 8000
 

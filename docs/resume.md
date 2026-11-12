@@ -1,3 +1,16 @@
+## 현재 상태 — 2026-11-13 빌드 생태계 소스 후보
+
+PR180 merge110d(tree389164) 기반 build-only delta를 구현 중이다.
+7aec와 동일 tree여서 dirty B1을 보존한 fast-forward로 정렬했다.
+Node/npm·Make·불변 normal image wrapper·기존 prebuilt 재사용·지도 E2E oracle 교정 후보와
+WSL 격리 unit100PASS가 있다. 실제 image/운영/SDK/SSH/DB/Map 작업은 실행하지 않았다.
+
+다음 한 작업은 후보를 고정해 Python3.12/fresh Linux full gate·browser QA·원2리뷰로 넘기는 것이다.
+Common 실제 toolchain guard ref 이전 publish는 보류한다.
+B4는 별도 bounded 후속이고 T-DOWNGRADE-GUARDS-20261113은 P2 OPEN이다.
+과거 FAIL을 현재 PASS로 바꾸지 않는다.
+[계약·남은 gate](design/2026-11-13-normal-image-build.md), [task](tasks.md).
+
 ## 현재 상태 — 2026-11-12 장기 미처리 PR 우선 정리
 
 - 오래된21건은 #180의 전체 Git 조상으로 확인해 중복 종료했다. main 반영 완료를 뜻하지 않으며 #180을 최신 main과 통합한4c06으로 갱신했다. #186은 별도 작업으로 유지한다. 원 브랜치·실패·검증 이력과 타 작업자는 보존했다.

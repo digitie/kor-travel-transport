@@ -1,6 +1,37 @@
+## 2026-11-13 — 빌드 생태계 정착과 별도 운영 금지 gate
+
+- [ ] **T-BUILD-ECOSYSTEM-20261113 / 진행 중** — B1~B6 후보를
+  [정상 이미지 빌드 계약](design/2026-11-13-normal-image-build.md)과 연결한다.
+  - B1: Node22.23.1/npm12.0.1 metadata·selector·strict install·Make 구현.
+    실제 Common guard ref와 fresh Linux full gate는 미완이다.
+  - B2: clean HEAD/tree archive·gitlink·COPY/input hash·이동/변조 차단 구현.
+    실제 image build/source proof는 별도 GO 후다.
+  - B3: amd64/arm64·docker/OCI·역할별 ID 검사 구현. 실제 양 architecture의
+    C11 bytes·native worker/ABI·entrypoint 검증은 미실행이다.
+  - B4: standalone/non-root는 **별도 bounded 후속**이다. 기본 USER/config 권한·
+    start·로그인fixture·worker·routes·SSR/readiness 회귀 전에는 변경하지 않는다.
+    현재 UID/ENTRYPOINT/runtime 구조는 보존한다.
+  - B5: 기존 prebuilt validator 재사용·normal build 의미·원본 receipt hash 연결 구현.
+    기존 handoff가 live-state 정본이며 새 build receipt는 적용 권한을 주지 않는다.
+  - B6: SDK508의 기존 core/public/admin 역할 지원과 공식 경로 재사용.
+    원2리뷰·exact CI·역할별 QA/공식 인계는 미완이다.
+- [ ] **T-MAP-DETAIL-ORACLE-20261113 / 소스 수정·QA 대기** — tracked shared-map-ui의
+  absolute 대상은 C11 overlay wrapper다. panel bbox·제목·overflow·Escape·실제 목록 opener
+  focus를 검사한다. 과거7aec geometry/focus FAIL은 보존하며 PASS로 소급하지 않는다.
+- [ ] **T-DOWNGRADE-GUARDS-20261113 / P2 OPEN** — 소유자: maintainer/Codex integration.
+  **목표: BEFORE ANY downgrade/DB rollback.** fuel0037 및0038/0039/0041/0042의
+  destructive downgrade 빈 상태 검사와 DDL 사이 race가 열려 있다.
+  기존 운영499의 동일 파일에도 있던 위험이며 이번 forward42의 새 회귀가 아니다.
+  RC 격리 확인 + 배타 잠금 + 실제 두 세션 경합 시험이 모두 검증되기 전에는
+  downgrade/DB rollback gate를 금지한다. FIXED 또는 DEFERRED_DONE으로 쓰지 않는다.
+  이 build patch의 DDL 수정·DB 시험·downgrade 실행은0이다.
+  정상 merged-source build/controller도 downgrade를 호출하지 않는다.
+  기존 prebuilt revision drift 차단을 유지한다.
+  [스키마 인계 계약](design/2026-10-27-prebuilt-deploy-handoff.md).
+
 ## 2026-11-12 — 우선순위
 
-- [ ] 유가 통계0037 downgrade의 첫 writer 경합 방지: 빈 상태 검사 전에 transaction/isolation 확인과 배타 잠금, 실제 경합 회귀를 추가한다. 정상 배포/이번 운영에서는 downgrade0.
+- [ ] 유가 통계0037 downgrade 경합은 위 T-DOWNGRADE-GUARDS-20261113 P2 OPEN으로 추적한다. 정상 배포/이번 운영에서는 downgrade0.
 - [ ] #180 장기 PR 통합: CI·집중 Docker·n150 UI·두 독립 리뷰·main 반영 정산. 원21건 종료를 main 머지 성공으로 표시하지 않는다.
 - [ ] 이후 Weather/Transport EvilCharts·날씨 상세·지역 대표/반경/경계·주차/유가 차트·수집/통계 누락·전반 조회/수집 성능과 Odroid eMMC 캐시의 NVMe 이전 요청21항목 진행.
 - 근거와 보존할 실패: [장기 PR 정리](reports/2026-11-12-pr-consolidation.md).

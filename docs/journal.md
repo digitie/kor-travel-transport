@@ -1,3 +1,24 @@
+## 2026-11-13 — build-only 소스 후보와 추적 지도 E2E oracle 수정
+
+- 7aec와 PR180 merge110d의 tree389164 동일을 확인하고 dirty B1 bytes를 보존해
+  feature branch를110d로 fast-forward했다. reset/stash/rebase는 사용하지 않았다.
+- Node22.23.1/npm12.0.1·strict install·Make를 채택하고 기존 Node Alpine/Python slim/uv/nginx
+  계열을 유지해 공식 digest를 고정했다. release ARG/ENV는 실제 build revision으로 결박한다.
+- tracked archive/COPY·입력 hash·architecture·실제 image ID/OCI/default release wrapper와
+  기존 prebuilt 계약을 추가했다. 실제 적용 정본은 기존 Manager/런북이다.
+- WSL Python3.13.14 격리 unit100개 PASS. production Python3.12 full gate나 실제 Docker/
+  worker ABI 결과가 아니다. 첫35PASS·설정 경고1과 중간99PASS/1FAIL 원문도 보존한다.
+  중간 실패는 새 시험이 기존 multi-line ENV를 단일 line으로 가정한 오류였고,
+  실제 logical ENV를 파싱하도록 시험만 보정했다. 최종100PASS/경고0과 구분한다.
+- 새 wrapper/시험 Ruff·AST·Make dry-run·lock graph/SRI 불변 검사가 통과했다.
+  기존 prebuilt helper의 BLE001은 baseline에도 존재하여 별도 유지한다.
+- tracked 지도 E2E는 C11 wrapper·panel/제목/overflow/Escape·실제 opener focus로 교정했다.
+  제품/C11/CSS 수정0이며 browser는 QA 담당에게 인계한다. 과거7aec FAIL은 보존한다.
+- T-DOWNGRADE-GUARDS-20261113 P2 OPEN과 B1~B6 미완 gate를 별도로 등록했다.
+  Common 실제 guard ref·fresh Linux/양 architecture·원2리뷰·exact CI는 미완,
+  B4 packaging은 별도 후속이다. 운영/SDK/SSH/DB/Map 작업0.
+  [구현·검증 경계](design/2026-11-13-normal-image-build.md).
+
 ## 2026-11-12 — 장기 미처리 PR 21건을 #180으로 통합
 
 - 사용자 우선 지시로 열린23건의 Git 포함 관계를 확인했다. 오래된21건은 전체 HEAD가 #180 조상이므로 중복 종료하고 원 브랜치를 보존했다. #180은 main 대상 통합 후보4c06, #186은 별도로 남긴다.

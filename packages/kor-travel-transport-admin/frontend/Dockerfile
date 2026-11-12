@@ -1,11 +1,12 @@
-FROM node:22.23.1-alpine AS dependencies
+FROM node:22.23.1-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS dependencies
 WORKDIR /app
 COPY packages/kor-travel-transport-admin/frontend/package.json \
      packages/kor-travel-transport-admin/frontend/package-lock.json ./
 COPY packages/kor-travel-transport-admin/frontend/vendor ./vendor
 COPY packages/kor-travel-transport-admin/frontend/.npmrc ./.npmrc
 COPY frontend/src /frontend/src
-RUN npx --yes npm@12.0.1 ci --ignore-scripts --no-audit --no-fund
+RUN npm install --global npm@12.0.1 \
+    && npm ci --engine-strict --ignore-scripts --no-audit --no-fund
 
 FROM dependencies AS builder
 ARG NEXT_PUBLIC_TRANSPORT_DAGSTER_URL=https://dagster.digitie.mywire.org
@@ -16,7 +17,8 @@ COPY packages/kor-travel-transport-admin/frontend ./
 RUN npm run check:dependencies
 RUN npm run build
 
-FROM node:22.23.1-alpine AS runner
+FROM node:22.23.1-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS runner
+RUN npm install --global npm@12.0.1
 WORKDIR /app
 ARG TRANSPORT_ADMIN_RELEASE_SHA=unknown
 ENV NODE_ENV=production \
