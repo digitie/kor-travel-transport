@@ -14,7 +14,8 @@
     config/cache·start·로그인fixture·worker·routes·SSR/readiness 수용은 미실행, 적용 전 필수다.
   - B5: 기존 prebuilt validator 재사용·normal build 의미·원본 receipt hash 연결 구현.
     기존 handoff가 live-state 정본이며 새 build receipt는 적용 권한을 주지 않는다.
-  - B6: SDK508의 기존 core/public/admin 역할 지원과 공식 경로 재사용.
+  - B6: SDK508의 기존 core/public/admin 경로 재사용. 현재 API gateway는 외부 nginx ID와
+    merged-source template hash의 paired-role receipt이며 비활성 LEGACY Dagster gateway 산출물과 구분한다.
     원2리뷰·exact CI·역할별 QA/공식 인계는 미완이다.
 - [ ] **T-MAP-DETAIL-ORACLE-20261113 / 소스 수정·QA 대기** — tracked shared-map-ui의
   absolute 대상은 C11 overlay wrapper다. panel bbox·제목·overflow·Escape·실제 목록 opener

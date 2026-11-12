@@ -38,11 +38,13 @@ NEXT_PUBLIC 값은 웹 산출물에 포함될 수 있지만 빌드 로그·recei
 | backend, dagster-code-server, migrate | 동일 backend 이미지, backend/Dockerfile | 없음 |
 | frontend | frontend/Dockerfile의 production runner target | NEXT_PUBLIC_API_BASE_URL, NEXT_PUBLIC_API_PORT |
 | transport-admin-web | 관리자 Dockerfile runner, repo root context·공유 frontend 유지 | NEXT_PUBLIC_VWORLD_API_KEY, NEXT_PUBLIC_TRANSPORT_DAGSTER_URL |
-| dagster-gateway | backend/Dockerfile.dagster-gateway | 없음 |
+| dagster-gateway | 비활성 LEGACY 소유 산출물, backend/Dockerfile.dagster-gateway | 없음 |
 
 migrate는 이미지 별칭일 뿐이며 컨테이너나 migration을 실행하지 않는다.
-관리자 transport-api-gateway는 기존 외부 nginx 이미지 선택 계약이고
-위 Dagster gateway와 다르다. 새 로컬 recipe를 발명하거나 같은 이미지로 치환하지 않는다.
+현재 transport-api-gateway는 upstream nginx의 실제 pinned image ID와 추적 mounted template를
+선택하는 기존 SDK508 admin paired-role 계약이다. 위 비활성 LEGACY Dagster gateway와 다르다.
+외부 API gateway를 이 CLI의 legacy 산출물로 덮지 않으며 새 custom nginx 이미지를 만들지 않는다.
+legacy 산출물에는 roleProfile: legacy-disabled-owned-artifact를 명시한다.
 
 ## 소스·입력·실제 이미지 결박
 
@@ -122,3 +124,23 @@ docker run --rm --network none --entrypoint node <관리자immutable-imageID> /a
 기본 node의 파일 읽기/캐시 쓰기·Next config/native loader·worker 파일 동일성 범위이며
 서버 시작·HTTP/로그인·worker 실행/browser의 별도 실제 수용을 대체하지 않는다.
 probe 단위 fixture는 make frontend-check/CI에서 실제 temp 파일과 negative permission control로 검사한다.
+
+
+## 역할별 build와 최종 적용 인계
+
+| 실제 역할 | build 산출물 / 적용 증거 |
+|---|---|
+| backend / dagster-code-server / migrate | 같은 소유 backend 이미지. migrate는 이미지 별칭만 제공하며 wrapper가 실행하지 않음 |
+| 공개 frontend / transport-admin-web | 각 소유 production runner, 실제 merged source의 정상 build/immutable ID/OCI/default release·runtime QA |
+| 비활성 LEGACY dagster-gateway | 선택 가능한 소유 Dockerfile 산출물. 현재 API gateway coverage나 활성 운영 역할로 쓰지 않음 |
+| 현재 transport-api-gateway | 외부 upstream nginx의 pinned immutable image ID/architecture + 추적 template·helper의 경로/bytes hash + actual merged source tree. 기존 SDK508 admin paired-role receipt 사용 |
+
+외부 API gateway는 소유 build output이 아니며 Transport OCI revision을 강제로 요구하지 않는다.
+image ID/config receipt의 정본은 기존 SDK/prebuilt 계약이다. wrapper가 같은 정본을 새로 발행하지 않는다.
+실제 최종 source의 gateway template delta가 있으면 reviewed merged source에서 해당 설정을 stage하고,
+기존 공식 admin 선택 경로의 gateway recreate와 비선택 역할 보존을 검증해야 한다.
+예전 운영 checkout 전체 sync·새 custom nginx·DB/lifecycle 변경으로 우회하지 않는다.
+
+offline build CLI는 remote main 조회를 gate로 발명하지 않는다. clean canonical candidate도
+build-only 산출물이 될 수 있다. 운영 factory는 별도로 actual merged M/source 전체 tree bridge와
+정상 M build·입력·runtime·기존 공식 적용 gate를 증명해야 한다. 이 구분은 deployReady:false를 완화하지 않는다.

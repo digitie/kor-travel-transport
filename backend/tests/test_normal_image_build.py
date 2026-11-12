@@ -237,6 +237,7 @@ def test_wrong_public_role_and_credential_inputs_refuse(
         ["--role", "transport-api-gateway"],
         ["--architecture", "amd64,arm64"],
         ["--output", "registry"],
+        ["--target", "builder"],
         ["--build-arg", "TOKEN=DO_NOT_PRINT_SECRET"],
         ["--revision", "HEAD"],
     ],
@@ -368,7 +369,7 @@ def test_stdout_and_stderr_build_output_is_redacted(builder, monkeypatch, tmp_pa
     assert "[REDACTED]" in log.read_text()
 
 
-def test_production_dockerfile_coverage_and_no_new_runtime_packaging(builder):
+def test_owned_dockerfile_coverage_and_role_profiles(builder):
     if (ROOT / "backend/Dockerfile").is_file():
         actual = {
             str(p.relative_to(ROOT))
@@ -566,3 +567,58 @@ def test_interrupted_build_only_terminates_its_owned_group(
     assert calls[0] == (Process.pid, builder.signal.SIGTERM)
     assert ("wait", 15) in calls
     assert "close" in calls
+
+
+def test_wrong_web_target_is_refused_before_docker(
+    builder, source, tmp_path, monkeypatch
+):
+    a = args(builder, source, tmp_path)
+    docker = FakeDocker(builder, monkeypatch)
+    monkeypatch.setitem(
+        builder.contract.BUILD_RECIPES,
+        "frontend",
+        ("frontend/Dockerfile", "builder", "RELEASE_SHA"),
+    )
+    with pytest.raises(builder.ContractError, match="production target"):
+        builder.build(a, {})
+    assert docker.calls == []
+    assert not (a.output_dir / "build-receipt.json").exists()
+
+
+def test_archive_explicitly_uses_canonical_lf_despite_local_git_setting(
+    builder, source, tmp_path, monkeypatch
+):
+    repo, git = source
+    git("config", "core.autocrlf", "true")
+    commands = []
+    original = builder.run
+
+    def observe(command, **kwargs):
+        commands.append(command)
+        return original(command, **kwargs)
+
+    monkeypatch.setattr(builder, "run", observe)
+    output = tmp_path / "canonical-archive"
+    output.mkdir()
+    builder.materialize(repo, git("rev-parse", "HEAD"), output)
+    archive = next(command for command in commands if "archive" in command)
+    assert archive[archive.index("-c") + 1] == "core.autocrlf=false"
+    assert archive.index("core.autocrlf=false") < archive.index("archive")
+    assert (
+        output / "source/.dockerignore"
+    ).read_bytes() == b"**/.env.*\n!.env.prod.example\n"
+
+
+def test_legacy_gateway_receipt_cannot_claim_current_api_gateway_build(
+    builder, source, tmp_path, monkeypatch
+):
+    a = args(builder, source, tmp_path)
+    a.role = ["dagster-gateway"]
+    FakeDocker(builder, monkeypatch)
+    receipt = builder.build(a, {})
+    assert (
+        receipt["artifacts"]["dagster-gateway"]["roleProfile"]
+        == "legacy-disabled-owned-artifact"
+    )
+    assert "transport-api-gateway" not in receipt["images"]
+    assert receipt["actualApplyAllowed"] is False and receipt["deployReady"] is False

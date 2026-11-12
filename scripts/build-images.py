@@ -106,6 +106,8 @@ def materialize(repo: Path, revision: str, output: Path) -> dict:
         [
             "git",
             "--no-replace-objects",
+            "-c",
+            "core.autocrlf=false",
             "-C",
             str(repo),
             "archive",
@@ -415,6 +417,8 @@ def build(args, inputs: dict) -> dict:
         verify_source(repo, args.revision, args.expected_tree)
         verify_context(source, snapshot)
         dockerfile, target, release_name = contract.BUILD_RECIPES[role]
+        if role in {"frontend", "transport-admin-web"} and target != "runner":
+            raise ContractError("web production target은 runner여야 합니다")
         copies = copy_inputs(source, dockerfile, snapshot)
         selected = {k: v for k, v in inputs.items() if k in PUBLIC_INPUTS[role]}
         hashes = {k: digest(v.encode()) for k, v in selected.items()}
@@ -491,6 +495,9 @@ def build(args, inputs: dict) -> dict:
             "architecture": args.architecture,
             "loaded": args.output == "docker",
             "normalDockerBuild": True,
+            "roleProfile": "legacy-disabled-owned-artifact"
+            if role in contract.LEGACY_BUILD_ROLES
+            else "current-owned-build",
             "dockerfile": dockerfile,
             "COPY": copies,
             "publicInputHashes": hashes,

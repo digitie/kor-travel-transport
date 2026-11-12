@@ -1,3 +1,17 @@
+## 2026-11-13 — 정상 build target·archive 재현성과 B6 역할 경계 보강
+
+- 공개·관리자의 production target은 runner이며 builder target은 Docker 호출 전에 거절한다.
+  실제 image Config.User=node 검사를 유지하고 backend/CS/legacy gateway의 UID는 바꾸지 않는다.
+- git archive에 core.autocrlf=false를 명시했다. 실제 Git fixture의 canonical LF와
+  잘못된 target/CLI 선택을 음성 대조했다. 실제 NTFS/새 이미지 수용 결과로 확대하지 않는다.
+- 비활성 소유 legacy dagster-gateway와 현재 외부 nginx transport-api-gateway를 구분했다.
+  전자는 legacy-disabled-owned-artifact로 기록하며 후자의 pinned ID/template/source hash는
+  기존 SDK508 paired-role receipt 정본을 따른다. custom nginx·Transport OCI 강제·적용 코드는 추가하지 않았다.
+- 최신 작은 Python 계약107PASS. cee70의 runtime FS fixture19PASS 소스는 그대로다.
+  2db/100·cee70/103과 M30 원문/호환 bytes는 보존한다.
+  실제 Common ref·원2리뷰·full QA·새 역할 이미지/proxy/worker/browser 수용은 아직 미완이다.
+  설치·heavy build·운영·SDK·SSH·DB·Map 작업0이다.
+
 ## 2026-11-13 — B4 웹 production runner와 non-root 소스 구현
 
 - 2db591f/100PASS를 그대로 보존하고 같은 branch에서 B4를 추가했다.

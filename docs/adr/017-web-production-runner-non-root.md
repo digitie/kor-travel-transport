@@ -39,8 +39,9 @@ transpile하며 기존 worker는 prebuild가 생성한 두 public 파일을 함�
 backend/CS는 같은 Python 이미지를 사용한다. 현재 entrypoint·이미지 내 bootstrap과 collector-state/
 backup·root 소유 bind config 읽기 계약이 별도로 있다. migrate는 이 이미지의 one-shot 역할이다.
 이들의 USER를 웹과 함께 바꾸거나 host 권한을 넓히지 않는다.
-기존 Dagster nginx gateway는 시작 때 /etc/nginx/.htpasswd를 작성하고 master를 실행한다.
-관리자 API gateway는 별도 외부 nginx 이미지/공식 SDK 선택이다.
+비활성 LEGACY Dagster nginx gateway Dockerfile은 시작 때 /etc/nginx/.htpasswd를 작성하고 master를 실행한다.
+현재 관리자 API gateway는 별도 외부 nginx pinned ID + 추적 template/공식 SDK508 paired-role 선택이다.
+비활성 소유 Dagster gateway를 현재 API gateway coverage로 세지 않는다.
 
 이 역할들은 이번 웹 CI-33 반영으로 non-root가 되었다고 표시하지 않는다.
 현재 root 역할을 유지하는 명시적 범위 예외이며 향후 해당 역할의 최소 권한·bootstrap/state/backup/

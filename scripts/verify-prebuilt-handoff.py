@@ -20,7 +20,8 @@ ROLES = {"backend", "frontend", "dagster-code-server"}
 RUN_STATUSES = ("NOT_STARTED", "QUEUED", "STARTING", "STARTED", "CANCELING")
 RECEIPT_UID = 0
 
-# 이미지 산출 역할만 정의한다. live state·적용 권한은 기존 handoff/Manager가 소유한다.
+# 소유 Dockerfile 산출 역할만 정의한다. gateway 한 개는 비활성 legacy이며 현재 API gateway는 외부 이미지다.
+# live state·적용 권한은 기존 handoff/Manager가 소유한다.
 BUILD_RECIPES = {
     "backend": ("backend/Dockerfile", None, "RELEASE_SHA"),
     "frontend": ("frontend/Dockerfile", "runner", "RELEASE_SHA"),
@@ -32,6 +33,7 @@ BUILD_ROLE_IMAGE = {
     "frontend": "frontend", "transport-admin-web": "transport-admin-web",
     "dagster-gateway": "dagster-gateway",
 }
+LEGACY_BUILD_ROLES = {"dagster-gateway"}
 BUILD_SOURCE = "https://github.com/digitie/kor-travel-transport.git"
 
 
