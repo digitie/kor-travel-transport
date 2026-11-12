@@ -1,19 +1,21 @@
 "use client";
 
-import { Activity, Bus, ChartNoAxesCombined, Database, Fuel, Home, LogOut, Map, Menu, ParkingCircle, Plane, Route, ShipWheel, TrainFront, Waypoints } from "lucide-react";
+import { Activity, Bus, ChartNoAxesCombined, Database, Fuel, Home, LogOut, Map, PanelLeftClose, PanelLeftOpen, ParkingCircle, Plane, Route, ShipWheel, TrainFront, Waypoints } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { createContext, useContext, useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
 import { AppMenu, type AppMenuLinkProps } from "@kor-travel/ui";
+import { Button } from "@kor-travel/ui/primitives";
 import { InfoButton } from "./info-button";
 
-const MenuCloseContext = createContext<() => void>(() => {});
-function MenuLink({ onClick, ...props }: AppMenuLinkProps) {
-  const close = useContext(MenuCloseContext);
-  return <Link {...props} onClick={(event) => { onClick?.(event); if (!event.defaultPrevented) close(); }} />;
+const SidebarCollapsedContext = createContext(false);
+function MenuLink(props: AppMenuLinkProps) {
+  const collapsed = useContext(SidebarCollapsedContext);
+  return <Link {...props} title={props.title ?? (collapsed ? props["aria-label"] : undefined)} />;
 }
+const sidebarStorageKey = "kor-travel-transport:sidebar-collapsed";
 
 // Map과 같은 비링크 그룹 제목 + 작업 페이지 구조다.
 const groups = [
@@ -31,20 +33,28 @@ const mapPages = new Set(["/map", "/fuel", "/parking-lots", "/highways", "/rail"
 
 export function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const navigationId = useId();
-  const menuButton = useRef<HTMLButtonElement>(null);
-  // 메뉴를 연 경로. 메뉴 링크 밖의 탐색(뒤로 가기 등)으로 경로가 바뀌면 지도·주차 화면 위에 열린 채 남지 않게
-  // 바로 닫힌 것으로 본다. 효과에서 setState하지 않고 경로에서 파생한다(/login early return보다 앞의 hook).
-  const [uiStore] = useState(() => createStore<{ menuOpenPath: string | null }>(() => ({ menuOpenPath: null })));
-  const menuOpenPath = useStore(uiStore, (state) => state.menuOpenPath);
-  const setMenuOpenPath = (menuOpenPath: string | null) => uiStore.setState({ menuOpenPath });
-  const menuOpen = menuOpenPath === pathname;
-  const closeMenu = useCallback(() => uiStore.setState({ menuOpenPath: null }), [uiStore]);
-  function closeMenuOnEscape(event: KeyboardEvent<HTMLElement>) {
-    if (event.key !== "Escape" || !menuOpen) return;
-    setMenuOpenPath(null);
-    menuButton.current?.focus();
+  const navigationRef = useRef<HTMLDivElement>(null);
+  const [uiStore] = useState(() => createStore<{ sidebarCollapsed: boolean }>(() => ({ sidebarCollapsed: false })));
+  const sidebarCollapsed = useStore(uiStore, (state) => state.sidebarCollapsed);
+  useEffect(() => {
+    try { if (window.localStorage.getItem(sidebarStorageKey) === "1") uiStore.setState({ sidebarCollapsed: true }); } catch { /* 저장소가 막혀도 메뉴는 사용할 수 있다. */ }
+  }, [uiStore]);
+  function toggleSidebar() {
+    const collapsed = !uiStore.getState().sidebarCollapsed;
+    uiStore.setState({ sidebarCollapsed: collapsed });
+    try { window.localStorage.setItem(sidebarStorageKey, collapsed ? "1" : "0"); } catch { /* 선택 상태 저장은 선택 사항이다. */ }
   }
+  useEffect(() => {
+    const keepActiveVisible = () => {
+      if (typeof window.matchMedia !== "function" || !window.matchMedia("(max-width: 1023px)").matches) return;
+      const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+      navigationRef.current?.querySelector<HTMLElement>('[data-slot="app-menu-link"][aria-current="page"]')
+        ?.scrollIntoView?.({ block: "nearest", inline: "center", behavior });
+    };
+    keepActiveVisible();
+    window.addEventListener("resize", keepActiveVisible, { passive: true });
+    return () => window.removeEventListener("resize", keepActiveVisible);
+  }, [pathname]);
   function clearDashboardCache() { try { window.sessionStorage.removeItem("kor-travel-transport-dashboard-v1"); window.sessionStorage.removeItem("kor-travel-transport-dashboard-v2"); } catch { /* optional browser storage */ } }
   // 로그아웃 요청 중 이전 페이지의 늦은 응답이 캐시를 다시 쓸 수 있다.
   // 로그인 문서가 열린 뒤에도 정리해 이전 문서의 비동기 작업과 경합하지 않는다.
@@ -52,26 +62,29 @@ export function AdminShell({ children }: { children: ReactNode }) {
   if (pathname === "/login") return <>{children}</>;
   const activeHref = hrefs.filter((href) => href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`)).sort((a, b) => b.length - a.length)[0];
   return (
-    <div className="transport-shell" data-map-page={mapPages.has(pathname) || undefined} data-parking-page={pathname === "/parking" || undefined}>
+    <div className="transport-shell" data-sidebar-collapsed={sidebarCollapsed} data-map-page={mapPages.has(pathname) || undefined} data-parking-page={pathname === "/parking" || undefined}>
       <a className="skip-link" href="#main-content">본문으로 건너뛰기</a>
       <div className="admin-layout" data-testid="admin-shell">
         <aside className="rail" aria-label="관리자 사이드바" data-slot="admin-shell-rail">
-          <div className="rail-shell" role="presentation" onKeyDown={closeMenuOnEscape}>
+          <div className="rail-shell">
             <div className="rail-header">
               <Link className="brand" href="/" aria-label="Kor Travel Transport 홈">
                 <span className="brand-mark"><Route aria-hidden="true" size={17} /></span>
                 <span className="brand-wordmark">Transport</span>
                 <span className="brand-subtitle">Admin UI</span>
               </Link>
+              <Button variant="ghost" size="icon-sm" className="sidebar-collapse" type="button"
+                aria-label={sidebarCollapsed ? "좌측 메뉴 펼치기" : "좌측 메뉴 접기"}
+                title={sidebarCollapsed ? "좌측 메뉴 펼치기" : "좌측 메뉴 접기"} onClick={toggleSidebar}>
+                {sidebarCollapsed ? <PanelLeftOpen aria-hidden="true" size={16} /> : <PanelLeftClose aria-hidden="true" size={16} />}
+              </Button>
             </div>
-            {/* 라벨은 상태와 무관한 중립 이름이고 열림·닫힘은 aria-expanded가 전달한다. */}
-            <button ref={menuButton} type="button" className="mobile-menu-button" aria-label="주요 메뉴" aria-controls={navigationId} aria-expanded={menuOpen} onClick={() => setMenuOpenPath(menuOpen ? null : pathname)}><Menu aria-hidden="true" size={18} />메뉴</button>
-            <div id={navigationId} className={`rail-nav common-menu${menuOpen ? " is-open" : ""}`}>
-              <MenuCloseContext.Provider value={closeMenu}><AppMenu label="주요 메뉴" pathname={pathname} activeItemId={activeHref} linkComponent={MenuLink}
-                groups={groups.map((group) => ({ id: group.id, label: group.label, items: group.items.map(([href, label, Icon]) => ({ id: href, href, label, exact: href === "/", icon: <Icon aria-hidden="true" size={16} strokeWidth={1.8} /> })) }))} /></MenuCloseContext.Provider>
+            <div ref={navigationRef} className="rail-nav common-menu">
+              <SidebarCollapsedContext.Provider value={sidebarCollapsed}><AppMenu label="주요 메뉴" pathname={pathname} activeItemId={activeHref} linkComponent={MenuLink}
+                groups={groups.map((group) => ({ id: group.id, label: group.label, items: group.items.map(([href, label, Icon]) => ({ id: href, href, label, exact: href === "/", icon: <Icon aria-hidden="true" size={16} strokeWidth={1.8} /> })) }))} /></SidebarCollapsedContext.Provider>
             </div>
             <form className="rail-footer" action="/api/auth/logout" method="post" onSubmit={clearDashboardCache}>
-              <button className="nav-link logout-button" type="submit"><LogOut aria-hidden="true" size={16} strokeWidth={1.8} /><span>로그아웃</span></button>
+              <Button variant="ghost" className="nav-link logout-button" aria-label="로그아웃" title={sidebarCollapsed ? "로그아웃" : undefined} type="submit"><LogOut aria-hidden="true" size={16} strokeWidth={1.8} /><span>로그아웃</span></Button>
             </form>
           </div>
         </aside>
