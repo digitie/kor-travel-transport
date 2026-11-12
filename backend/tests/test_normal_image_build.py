@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import importlib.util
 import io
@@ -128,7 +129,10 @@ class FakeDocker:
                 )
             else:
                 output = command[command.index("--output") + 1]
-                path = Path(output.removeprefix("type=oci,dest="))
+                fields = next(csv.reader([output], strict=True))
+                options = dict(field.split("=", 1) for field in fields)
+                assert options["type"] == "oci"
+                path = Path(options["dest"])
                 write_oci(path, self.image["Architecture"], self.image["Config"])
             log.write_text("mock normal build; no Docker executed\n")
 
@@ -680,3 +684,33 @@ def test_normal_eof_final_wait_never_kills_owned_group(builder, monkeypatch, tmp
     )
     builder.execute_build(["docker", "build"], {}, tmp_path / "normal-eof.log", [])
     assert calls == [("wait", None)]
+
+
+@pytest.mark.parametrize("path_kind", ["normal", "comma", "quotes", "duplicate-dest"])
+def test_oci_csv_preserves_single_destination_and_repo_boundary(
+    builder, source, tmp_path, monkeypatch, path_kind
+):
+    repo, _ = source
+    name = {
+        "normal": "oci-output",
+        "comma": "oci,output",
+        "quotes": 'oci"output',
+        "duplicate-dest": "oci-output,dest=" + str(repo / "frontend"),
+    }[path_kind]
+    a = args(builder, source, tmp_path, "--output", "oci")
+    a.output_dir = tmp_path / name
+    docker = FakeDocker(builder, monkeypatch)
+    receipt = builder.build(a, {})
+    command = docker.calls[0]
+    option = command[command.index("--output") + 1]
+    fields = next(csv.reader([option], strict=True))
+    expected = a.output_dir / "frontend.oci.tar"
+    assert fields == ["type=oci", "dest=" + str(expected)]
+    assert len([field for field in fields if field.startswith("dest=")]) == 1
+    if path_kind == "quotes":
+        # Buildx의 CSV 인용부호 규약: 경로 안의 quote는 두 번 써야 한다.
+        assert '""' in option
+    assert expected.is_file()
+    assert not (repo / "frontend/frontend.oci.tar").exists()
+    assert builder.oci_image(expected)["Id"] == receipt["images"]["frontend"]
+    assert receipt["actualApplyAllowed"] is False

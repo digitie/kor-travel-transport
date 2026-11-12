@@ -16,6 +16,10 @@ repo는 canonical GitHub HTTPS origin의 전체 소스이며 clean HEAD를 사�
 SHA와 tree는 검토 대상의 전체40자리 값이다. branch 이름·HEAD 같은 이동 참조는 받지 않는다.
 output은 repo 밖의 새 디렉터리여야 한다. CLI는 설치·fetch·clone·SSH를 대신 실행하지 않는다.
 
+OCI --output은 하나의 argv 안에서도 CSV로 해석된다. stdlib CSV writer로 type과 dest를 두 필드로
+직렬화하여 경로의 쉼표·인용부호·dest= 문자열이 추가 exporter 옵션이 되지 않게 한다.
+이 직렬화는 파일 생성 전에 수행하며 Docker mode의 iid 출력 경로 의미는 바꾸지 않는다.
+
 ```bash
 make image-build BUILD_OPTIONS="--repo /work/transport --revision <40자리SHA> --expected-tree <40자리TREE> --role transport-admin-web --architecture arm64 --output docker --output-dir /work/build-output/new --public-inputs /work/private/public-inputs.json"
 ```

@@ -1,3 +1,11 @@
+## 현재 상태 — 2026-11-13 OCI exporter CSV 경계 후속 후보
+
+B-TRBUILD-P2-01을 stdlib CSV 직렬화로 수정했다. 정상/쉼표/quote/중복 dest 회귀 전3FAIL/1PASS,
+후 전체 작은 계약114PASS이며 실제 Buildx bake --print의 네 dest도 모두 경계 안에 보존됐다.
+print-only 검사는 daemon 없이 실행했고 실제 OCI image export/ABI 수용은 아니다.
+15da Docker 후보 normal build PASS·원 runtime124 NOTPASS/Node 미시작·cleanup0을 보존한다.
+다음은 원2 bounded 재확인·새 exact CI와 IO 회복 후 실제 UID/worker/auth/지도 수용이다. blind retry·새 build/apply0이다.
+
 ## 현재 상태 — 2026-11-13 취소 처리 후속과 최종 Common ref 연결
 
 bdb2 불변 후보에서 EOF 최종 wait 취소 회수와 redacted log flush를 보강했다.

@@ -6,8 +6,10 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import importlib.util
+import io
 import json
 import os
 import re
@@ -408,6 +410,15 @@ def build(args, inputs: dict) -> dict:
     roles = [contract.BUILD_ROLE_IMAGE[r] for r in args.role]
     if len(set(args.role)) != len(args.role):
         raise ContractError("중복 build role")
+    # exporter는 argv 내부도 CSV로 읽는다. 파일 생성 전에 dest를 단일 필드로 결박한다.
+    oci_outputs = {}
+    if args.output == "oci":
+        for role in dict.fromkeys(roles):
+            record = io.StringIO(newline="")
+            csv.writer(record).writerow(
+                ["type=oci", "dest=" + str(output / (role + ".oci.tar"))]
+            )
+            oci_outputs[role] = record.getvalue().removesuffix("\r\n")
     inputs = public_inputs(inputs, roles)
     verify_source(repo, args.revision, args.expected_tree)
     output.mkdir(parents=True, mode=448)
@@ -467,7 +478,7 @@ def build(args, inputs: dict) -> dict:
         if args.output == "docker":
             cmd += ["--iidfile", str(iid)]
         else:
-            cmd += ["--output", "type=oci,dest=" + str(output / (role + ".oci.tar"))]
+            cmd += ["--output", oci_outputs[role]]
         cmd.append(str(source))
         execute_build(
             cmd, env, output / (role + ".redacted.log"), list(selected.values())

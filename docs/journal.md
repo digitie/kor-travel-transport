@@ -1,3 +1,12 @@
+## 2026-11-13 — B-TRBUILD-P2-01의 OCI CSV 출력 경계 수정
+
+- OCI exporter 옵션을 stdlib csv.writer로 직렬화한다. 파일 생성 전 역할별 dest를 단일 CSV 필드로 준비하고 Docker output mode의 argv는 그대로 유지한다.
+- FakeDocker도 prefix 제거 대신 CSV 필드를 읽게 했다. 정상/쉼표/인용부호/중복 dest 회귀는 원15da에서 3FAIL/1PASS, 수정 후 전체 작은 계약114PASS다. 실제 Git와 OCI archive/digest를 검사하며 실제 OCI 이미지 export는 실행하지 않았다.
+- 실제 설치 Buildx v0.34.1의 bake --print도 사용했다. daemon socket을 존재하지 않는 task 경로로 지정한 print-only 대조에서 원15da는 쉼표·quote 실패/중복 dest가 repo 내부로 해석됐고, 수정 후 네 경우 모두 의도한 repo 밖 dest 하나였다. Docker build·컨테이너·운영 호출0이다.
+- 공식 CSV 규약과 후행 dest 해석은 [Buildx exporter 원본](https://raw.githubusercontent.com/docker/buildx/v0.29.0/util/buildflags/export.go)을 참고했다. stdlib 직렬화는 공개 runtime 의존성을 추가하지 않는다.
+- 실제15da Docker-mode 관리자 이미지의 normal build PASS와 원 file probe124/created·Node 미시작 상태는 별도 보존한다. 설치 C11/worker/cache/HTTP/지도 수용은 NOTRUN이며 이 후속 소스의 PASS로 소급하지 않는다.
+- B 조건부 원문·기존 bdb/15da·T-DOWNGRADE-GUARDS-20261113 P2 OPEN은 유지한다. 새 원2 재확인·exact CI·실제 merged source 이미지/공식 수용은 미완이다.
+
 ## 2026-11-13 — 빌드 종료 대기 취소 회수와 실제 Common guard 연결
 
 - A-TR-BUILD-P2-01의 stdout EOF 뒤 최종 wait 중단을 재현했다. 최종 wait도 기존 취소 처리 안으로 옮겨 소유 process group만 TERM·제한 대기·필요 시 KILL·reap한다. 정상 종료에서는 kill하지 않는다.
