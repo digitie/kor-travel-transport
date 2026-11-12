@@ -43,10 +43,14 @@ function MetroNotices({ loading, failed, data, table }: Pick<SummaryProps, "load
     {loading ? <p role="status">저장 시간표 조회 중…</p> : failed ? <p role="alert">시간표를 불러오지 못했습니다. 새로고침해 주세요.</p> : null}
     {data?.basis === "calendar_unavailable" ? <p className="quiet">공휴일 확인이 필요합니다. 운행 기준을 선택해 주세요.</p> : data?.basis === "overnight_unresolved" ? <p className="quiet">새벽 운행일은 확인이 필요합니다. 운행 기준을 선택해 주세요.</p> : null}
     {table?.stale ? <p className="quiet">24시간이 지난 저장본입니다. 이후 예정은 표시하지 않습니다.</p> : null}
-    {table?.collection_status === "no_data" ? <p className="quiet">최근 조회에서 제공기관이 시간표를 제공하지 않았습니다. 이전 저장본이 있으면 아래에 표시합니다. 운행이 없다는 뜻은 아닙니다.</p> : table?.collection_status === "error" ? <p className="quiet">최근 수집에 실패했습니다. 이전 저장본을 참고해 주세요.</p> : table?.collection_status === "pending" ? <p className="quiet">최근 수집 결과가 아직 확정되지 않았습니다.</p> : null}
+    <MetroCollectionNotice table={table} />
     {table && table.status !== "stored" ? <p className="quiet">{table.status === "day_unresolved" ? "선택한 운행 기준을 확인해 주세요." : "저장 시간표가 아직 없습니다. 운행이 없다는 뜻은 아닙니다."}</p> : null}
     {table?.status === "stored" && !table.items.length ? <p className="quiet">마지막 정상 응답에 시간표가 없습니다. 운행 중단을 의미하지 않습니다.</p> : null}
   </>;
+}
+
+function MetroCollectionNotice({ table }: { table?: MetroTimetable }) {
+  return <>{table?.collection_status === "no_data" ? <p className="quiet">최근 조회에서 제공기관이 시간표를 제공하지 않았습니다. 이전 저장본이 있으면 아래에 표시합니다. 운행이 없다는 뜻은 아닙니다.</p> : table?.collection_status === "error" ? <p className="quiet">최근 수집에 실패했습니다. 이전 저장본을 참고해 주세요.</p> : table?.collection_status === "pending" ? <p className="quiet">최근 수집 결과가 아직 확정되지 않았습니다.</p> : null}</>;
 }
 
 function MetroDestinationCard({ group, canShowNext, seconds }: { group: DestinationGroup; canShowNext: boolean; seconds: number }) {

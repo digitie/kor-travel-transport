@@ -103,12 +103,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
   const { workspace, embedded, detail, detailOpener, query, selectedSources, products, kinds, allowedKinds, filtersExpanded, setFiltersExpanded, filterTrigger, setKinds, setSelected, controlId, queryInput, setQuery, setSelectedSources, sources, setProducts, view, setView, mapViewport, items, serverClustered, serverClusters, visiblePoints, pending, mapContainer, setMapUnavailableMessage, basemap, moved, camera, setClusterPlaces, setClusterCamera, zoom, setCameraRequest, groupedPoints, cluster, overlapOpener, setClusterAnchor, clusterList, selectPlace, selectedPoint, clusterPlaces, clusterAnchor, closeOverlap, current, loaded, mapDetail, listDetail, dismissEmbeddedDetail, closeDetail, setReload, focusFilters, failed, mapUnavailableMessage, fuelDetailScopeExpanded, setFuelDetailScopeExpanded, regionMarkers, regionListOpen, setRegionListOpen, regionListId, railOnly, partialListKinds, perKindLimit, searchQuery } = useTransportMap({ places, selectedPlace, onSelectPlace, mode, details, detailTitle, onCloseDetails, focusRevision, layers, detailKey, mapFeatureCount, listFeatureCount, listCount, listContent, listPlaces, toolbar, feedback, filterSummary, view: controlledView, onViewChange });
   const detailPanel = (panelView: "map" | "list") => (embedded ? details : current) ? <MapInspector panelView={panelView} embedded={embedded} details={details} mapDetail={mapDetail} listDetail={listDetail} detailTitle={detailTitle} current={current} dismissEmbeddedDetail={dismissEmbeddedDetail} closeDetail={closeDetail} loaded={loaded} setView={setView} setCameraRequest={setCameraRequest} setSelected={setSelected} setReload={setReload} focusFilters={focusFilters} /> : null;
 const status = <MapQueryStatus feedback={feedback} failed={failed} setReload={setReload} basemap={basemap} view={view} mapUnavailableMessage={mapUnavailableMessage} />;
-const summary = <>
-    <div className="map-feedback">{status}</div>
-    {!embedded && mode === "fuel" ? <FuelViewportSummary items={loaded.fuel_station?.fuel_statistics ?? []} pending={pending.length > 0} failed={failed.length > 0}
-      detailOpen={Boolean(current)} detailExpanded={fuelDetailScopeExpanded} onDetailExpandedChange={setFuelDetailScopeExpanded}
-      pricesStale={loaded.fuel_station?.fuel_prices_stale} pricesLastRefreshedAt={loaded.fuel_station?.fuel_prices_last_refreshed_at} /> : null}
-  </>;
+const summary = <MapStatusSummary status={status} embedded={embedded} mode={mode} loaded={loaded} pending={pending} failed={failed} current={current} fuelDetailScopeExpanded={fuelDetailScopeExpanded} setFuelDetailScopeExpanded={setFuelDetailScopeExpanded} />;
 return <section className="map-workbench" aria-label={mode === "fuel" ? "유가 지도" : "교통 장소 지도"}>
     <MapWorkspace expandable ref={workspace} className={embedded ? "embedded-map" : "transport-map-workspace"} onClickCapture={(event) => captureDetailOpener(event, detail, detailOpener)}>
     {toolbar || !embedded ? <MapSearchFilters filterSummary={filterSummary} query={query} selectedSources={selectedSources} products={products} kinds={kinds} allowedKinds={allowedKinds} filtersExpanded={filtersExpanded} setFiltersExpanded={setFiltersExpanded} filterTrigger={filterTrigger} toolbar={toolbar} mode={mode} setKinds={setKinds} setSelected={setSelected} controlId={controlId} queryInput={queryInput} setQuery={setQuery} setSelectedSources={setSelectedSources} sources={sources} setProducts={setProducts} /> : null}
@@ -118,10 +113,23 @@ return <section className="map-workbench" aria-label={mode === "fuel" ? "유가 
       </MapStage>
     </TabsContent>
     <TabsContent className="min-h-0 data-[state=inactive]:hidden" value="list" forceMount><MapStage view="list" detail={view === "list" ? detailPanel("list") : null}><div className="map-primary"><MapPlaceRows status={status} listContent={listContent} listPlaces={listPlaces} items={items} current={current} selectPlace={selectPlace} /></div></MapStage></TabsContent>
-    {!embedded && !(mode === "fuel" && view === "map") ? <FuelMapGuidance kinds={kinds} loaded={loaded} /> : null}
+    <MapFuelGuidance embedded={embedded} mode={mode} view={view} kinds={kinds} loaded={loaded} />
     </Tabs>
     </MapWorkspace>
   </section>;
+}
+
+function MapStatusSummary({ status, embedded, mode, loaded, pending, failed, current, fuelDetailScopeExpanded, setFuelDetailScopeExpanded }: { status: ReactNode; mode: "all" | "transport" | "fuel" } & Pick<ReturnType<typeof useTransportMap>, "embedded" | "loaded" | "pending" | "failed" | "current" | "fuelDetailScopeExpanded" | "setFuelDetailScopeExpanded">) {
+  return <>
+    <div className="map-feedback">{status}</div>
+    {!embedded && mode === "fuel" ? <FuelViewportSummary items={loaded.fuel_station?.fuel_statistics ?? []} pending={pending.length > 0} failed={failed.length > 0}
+      detailOpen={Boolean(current)} detailExpanded={fuelDetailScopeExpanded} onDetailExpandedChange={setFuelDetailScopeExpanded}
+      pricesStale={loaded.fuel_station?.fuel_prices_stale} pricesLastRefreshedAt={loaded.fuel_station?.fuel_prices_last_refreshed_at} /> : null}
+  </>;
+}
+
+function MapFuelGuidance({ embedded, mode, view, kinds, loaded }: { mode: "all" | "transport" | "fuel" } & Pick<ReturnType<typeof useTransportMap>, "embedded" | "view" | "kinds" | "loaded">) {
+  return !embedded && !(mode === "fuel" && view === "map") ? <FuelMapGuidance kinds={kinds} loaded={loaded} /> : null;
 }
 
 // 숨은 panel의 자식은 opener로 저장하지 않아 닫기 뒤 보이는 컨트롤로 복귀한다.
