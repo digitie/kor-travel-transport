@@ -59,7 +59,17 @@ def upgrade():
 
 
 def downgrade():
-    if op.get_bind().execute(sa.text("SELECT 1 FROM fuel_region_summaries LIMIT 1")).first():
-        raise RuntimeError("영구 유가 통계가 있으므로 downgrade할 수 없습니다.")
+    bind = op.get_bind()
+    tables = ("fuel_region_summaries", "kric_timetable_attempts")
+    if bind.dialect.name == "postgresql":
+        if (bind.get_isolation_level() != "READ COMMITTED"
+                or bind.get_execution_options().get("isolation_level") == "AUTOCOMMIT"):
+            raise RuntimeError("유가·철도 원장 downgrade는 AUTOCOMMIT이 아닌 READ COMMITTED transaction에서만 가능합니다.")
+        # 검사부터 DROP/버전 갱신 commit까지 writer를 막고, 잠금 전에 완료된 commit도 읽는다.
+        op.execute("SET LOCAL lock_timeout = '5s'")
+        op.execute("LOCK TABLE " + ", ".join(tables) + " IN ACCESS EXCLUSIVE MODE")
+    for table in tables:
+        if bind.execute(sa.text(f"SELECT 1 FROM {table} LIMIT 1")).first():
+            raise RuntimeError("영구 유가 통계 또는 철도 호출 원장이 있으므로 downgrade할 수 없습니다.")
     op.drop_table("kric_timetable_attempts")
     op.drop_table("fuel_region_summaries")

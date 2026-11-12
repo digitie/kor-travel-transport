@@ -1,3 +1,11 @@
+## 2026-11-13 — 빌드 후보와 PR188 main 통합
+
+- 검토된6a0fc0fa와 현재 main e88f5b73의 충돌은 journal/resume/tasks 세 문서였다. 격리 worktree에서 양쪽 기록과 미완 gate를 보존하고 이미 머지된 #180/188의 오래된 머지 대기를 정리했다.
+- main의0037 보호 코드·회귀 코드·data-model·완료 목록은 bytes 그대로 유지했다. 기존 빌드 코드·Dockerfile·C11/vendor·지도 assertion/timeout은6a와 같다.
+- 기존 빌드 계약115개와 main의 mock-only 거절4개, 총119개가 격리 Python3.13.14에서 통과했다. 실제 PostgreSQL·두 세션·DDL·이미지·브라우저·운영 검증은 실행하지 않았다.
+- 별도 확장 Ruff 검사에서는 main이 이미 가진 스타일3개(I001/SIM117/PIE807)를 관측했다. 해당 Python 파일에 불필요한 스타일 수정을 섞지 않고 보존했으며 전체 backend lint PASS로 표시하지 않는다. 검토된 빌드 helper/시험 Ruff는 통과다.
+- 6a의 push CI/원문과 source3 리뷰를 유지한다. 이 통합 head는 새 exact CI·원2 bounded 재검토 뒤 판단하며 강제 push/reset/배포는 하지 않았다.
+
 ## 2026-11-13 — 제한 umask의 directory mode로 인한 관리자 startup 실패 수정
 
 - 동일15da 이미지·기본 USER/CMD의 startup-only 진단에서 EACCES scandir /app/public/fuel-brands, PID1 exit1·OOMKilled=false를 수집한 뒤 own CID만 제거했다. HTTP/browser 수용은 재실행하지 않았고 원124/R2 NOTPASS를 유지한다.
@@ -73,6 +81,13 @@
   Common 실제 guard ref·fresh Linux/양 architecture·원2리뷰·exact CI는 미완,
   B4 packaging은 별도 후속이다. 운영/SDK/SSH/DB/Map 작업0.
   [구현·검증 경계](design/2026-11-13-normal-image-build.md).
+
+## 2026-11-13 — 유가·철도 원장 downgrade 경합 보호
+
+- #180은 main `110d663316c23007d3cd803b7849fe45393b18e7`에 이미 머지됐다. 과거 통합 후보의 실패와 미수용 UI 기록은 그대로 보존한다.
+- 후속 P2였던0037의 빈 검사/DROP 경합을 수정했다. PostgreSQL 비AUTOCOMMIT READ COMMITTED에서 두 원장을 고정 순서로 배타 잠근 뒤 빈 상태를 확인한다. 잠금 대기는5초이며 유가 통계나 철도 호출 원장이 있으면 거절한다. upgrade·런타임 API·수집 경로는 바꾸지 않는다.
+- 격리 수준 거절·잠금 실패·두 연결의 실제 writer commit 경합을 다루는 회귀 코드를 추가했다. 함수 직접 호출 시험이므로 Alembic 버전 보존·부분 DROP rollback·마지막 빈 검사 후 writer 차단의 실행 증거로 사용하지 않는다.
+- 사용자 지시로 빌드·테스트·브라우저·운영 DB·배포 실행은0이다. 시험 실행은 외부 담당 범위이며 통과를 주장하지 않는다. James/Popper 독립 정적 리뷰는 새 확정 지적 없음이다.
 
 ## 2026-11-12 — 장기 미처리 PR 21건을 #180으로 통합
 

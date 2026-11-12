@@ -33,8 +33,8 @@
 
 ## 2026-11-12 — 우선순위
 
+- [ ] 유가·철도0037 downgrade 보호의 실행 검증. source PR188/e88f5b73는 main 반영됐고 코드·회귀 시험 작성과 두 독립 정적 리뷰는 완료했다. 빌드·시험 실행은 사용자 지시로 외부에서 수행한다. Alembic 버전/부분 DDL rollback·빈 검사 이후 writer 경합의 별도 실행 검증은 미완이다.
 - [ ] 유가 통계0037 downgrade 경합은 위 T-DOWNGRADE-GUARDS-20261113 P2 OPEN으로 추적한다. 정상 배포/이번 운영에서는 downgrade0.
-- [ ] #180 장기 PR 통합: CI·집중 Docker·n150 UI·두 독립 리뷰·main 반영 정산. 원21건 종료를 main 머지 성공으로 표시하지 않는다.
 - [ ] 이후 Weather/Transport EvilCharts·날씨 상세·지역 대표/반경/경계·주차/유가 차트·수집/통계 누락·전반 조회/수집 성능과 Odroid eMMC 캐시의 NVMe 이전 요청21항목 진행.
 - 근거와 보존할 실패: [장기 PR 정리](reports/2026-11-12-pr-consolidation.md).
 
