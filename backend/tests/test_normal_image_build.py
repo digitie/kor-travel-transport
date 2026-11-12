@@ -9,8 +9,10 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 import re
 import shlex
+import stat
 import subprocess
 import tarfile
 from pathlib import Path
@@ -714,3 +716,38 @@ def test_oci_csv_preserves_single_destination_and_repo_boundary(
     assert not (repo / "frontend/frontend.oci.tar").exists()
     assert builder.oci_image(expected)["Id"] == receipt["images"]["frontend"]
     assert receipt["actualApplyAllowed"] is False
+
+
+def test_restrictive_umask_keeps_canonical_public_directories_traversable(
+    builder, source, tmp_path
+):
+    repo, git = source
+    name = "packages/kor-travel-transport-admin/frontend/public/fuel-brands/probe.svg"
+    asset = repo / name
+    asset.parent.mkdir(parents=True)
+    asset.write_text("<svg />")
+    git("add", "--", name)
+    git("-c", "core.hooksPath=/dev/null", "commit", "-qm", "public directory fixture")
+    output = tmp_path / "private-build"
+    output.mkdir(mode=0o700)
+    previous = os.umask(0o077)
+    try:
+        snapshot = builder.materialize(repo, git("rev-parse", "HEAD"), output)
+    finally:
+        os.umask(previous)
+    with tarfile.open(output / "tracked-source.tar") as archive:
+        member = archive.getmember(str(Path(name).parent) + "/")
+        expected_mode = tarfile.tar_filter(member, str(output / "source")).mode
+    directory = output / "source" / Path(name).parent
+    assert expected_mode == 0o755
+    assert stat.S_IMODE(directory.stat().st_mode) == expected_mode
+    assert directory.stat().st_mode & (stat.S_IROTH | stat.S_IXOTH) == (
+        stat.S_IROTH | stat.S_IXOTH
+    )
+    assert stat.S_IMODE(output.stat().st_mode) == 0o700
+    assert stat.S_IMODE((output / "source").stat().st_mode) == 0o700
+    assert (output / "source" / name).read_text() == "<svg />"
+    builder.verify_context(output / "source", snapshot)
+    directory.chmod(0o700)
+    with pytest.raises(builder.ContractError, match="metadata"):
+        builder.verify_context(output / "source", snapshot)

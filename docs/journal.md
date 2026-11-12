@@ -1,3 +1,11 @@
+## 2026-11-13 — 제한 umask의 directory mode로 인한 관리자 startup 실패 수정
+
+- 동일15da 이미지·기본 USER/CMD의 startup-only 진단에서 EACCES scandir /app/public/fuel-brands, PID1 exit1·OOMKilled=false를 수집한 뒤 own CID만 제거했다. HTTP/browser 수용은 재실행하지 않았고 원124/R2 NOTPASS를 유지한다.
+- 실제 Git archive directory0775와 생성 context0700을 대조했다. tarfile data_filter는 directory mode를 적용하지 않아 producer의 umask077을 상속했다. 이는 문서화된 표준 동작이며 Python 라이브러리 버그로 처리하지 않는다.
+- data_filter의 경로·링크·파일·소유자 보호를 유지하면서 private build context directory에만 tar_filter가 산출한 안전한 archive mode0755를 적용한다. 외부 source/host chmod·USER 변경·Dockerfile·기존 이미지 수정은 하지 않는다.
+- 실제 Git archive/umask077 회귀는 수정 전1FAIL, 수정 후 작은 전체 계약115PASS다. private output/context root0700 유지·하위 directory의 비소유자 read/traverse·context metadata 변경 차단을 확인했다. 실제 새 image/startup/HTTP/browser PASS는 아직 아니다.
+- d65/source2와 원 리뷰·실패·C11 bytes는 보존한다. 새 child commit의 원2 검토·exact CI·새 normal image 수용 뒤에만 다음 적용을 판단한다.
+
 ## 2026-11-13 — B-TRBUILD-P2-01의 OCI CSV 출력 경계 수정
 
 - OCI exporter 옵션을 stdlib csv.writer로 직렬화한다. 파일 생성 전 역할별 dest를 단일 CSV 필드로 준비하고 Docker output mode의 argv는 그대로 유지한다.

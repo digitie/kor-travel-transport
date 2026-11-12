@@ -121,11 +121,19 @@ def materialize(repo: Path, revision: str, output: Path) -> dict:
     )
     source = output / "source"
     source.mkdir()
+
+    def archive_filter(member, destination):
+        safe = tarfile.data_filter(member, destination)
+        if safe is not None and member.isdir():
+            # data의 경로/소유자 보호는 유지하고 archive의 안전한 directory mode만 복원한다.
+            safe = safe.replace(mode=tarfile.tar_filter(member, destination).mode)
+        return safe
+
     with tarfile.open(archive) as t:
         for member in t.getmembers():
             if not member.isfile() and (not member.isdir()):
                 raise ContractError("archive link/special file은 지원하지 않습니다")
-        t.extractall(source, filter="data")
+        t.extractall(source, filter=archive_filter)
     entries, links = ({}, {})
     rows = run(
         ["git", "--no-replace-objects", "-C", str(repo), "ls-tree", "-rz", revision]

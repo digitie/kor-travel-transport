@@ -58,6 +58,12 @@ gitlink는 기록만 하고 재귀 checkout하지 않는다. ignored 환경 파�
 context의 bytes·uid/gid/mode·inode·ctime 등을 매 빌드 전후 다시 확인한다.
 같은 bytes 재작성도 거절한다. filesystem snapshot이나 악성 Docker daemon 격리 보장은 아니다.
 
+Git archive 추출은 data_filter의 경로·소유자 보호를 유지한다. directory mode는 표준 data_filter가
+생략하므로 제한 umask077에 의존하지 않게 tar_filter가 산출한 안전한 mode를 directory에만 적용한다.
+현재 Git header0775는0755가 되며 제한 umask077 대조에서 private output/source root0700과 regular file 보호는 그대로다.
+[Python 공식 data_filter 계약](https://docs.python.org/3.14/library/tarfile.html#tarfile.data_filter)을 따른다.
+원15da context0700/startup EACCES는 보존하며 이 소스 수정만으로 새 이미지 수용을 주장하지 않는다.
+
 현재 production Dockerfile의 literal COPY 및 dockerignore로 복사 파일 목록·SHA-256을 산출한다.
 내부 COPY --from은 Docker 단계가 처리한다. 지원하지 않는 변수·glob COPY나 dockerignore
 구문은 추정하지 않고 거절한다. 수량은 현재 tree에서 계산하며 예전909/298/263을

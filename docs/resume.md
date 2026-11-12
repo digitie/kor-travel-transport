@@ -1,3 +1,11 @@
+## 현재 상태 — 2026-11-13 관리자 startup directory-mode 후속 후보
+
+startup-only 진단은 기본 USER/CMD에서 EACCES scandir /app/public/fuel-brands, PID1 exit1·OOMKilled=false였다.
+원 archive0775 대비 producer context0700을 확인해 data_filter의 directory-mode 생략과 umask077 상호작용을 수정했다.
+파일/소유자 보호와 private root0700은 유지하고 하위 directory만 안전한 archive0755로 추출한다.
+회귀 전1FAIL·작은 전체115PASS이며 새 image/runtime/HTTP/browser는 아직 미실행이다.
+d65/source2·15da 실제 이미지·원124/R2 실패를 유지한다. 다음은 source3 원2 재검토·exact CI·새 정상 이미지 QA다.
+
 ## 현재 상태 — 2026-11-13 OCI exporter CSV 경계 후속 후보
 
 B-TRBUILD-P2-01을 stdlib CSV 직렬화로 수정했다. 정상/쉼표/quote/중복 dest 회귀 전3FAIL/1PASS,
