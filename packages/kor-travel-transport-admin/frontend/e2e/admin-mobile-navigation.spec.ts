@@ -145,7 +145,7 @@ test("닫힌 드로어에서 화면 높이만 바뀌어도 문서 위치와 입�
   await expect(last).toBeInViewport();
   const logout = dialog.getByRole("button", { name: "로그아웃", exact: true });
   await expect(logout).toBeInViewport();
-  await dialog.getByRole("button", { name: "메뉴 닫기", exact: true }).focus();
+  await dialog.getByRole("link", { name: "Kor Travel Transport 홈", exact: true }).focus();
   await page.keyboard.press("Shift+Tab");
   await expect(logout).toBeFocused();
   const lockedScrollY = await page.evaluate(() => window.scrollY);
