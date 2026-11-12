@@ -28,6 +28,7 @@ for (const width of [1280, 375]) {
       const range = document.createRange();
       range.selectNodeContents(element);
       const text = range.getBoundingClientRect();
+      const loadingStyle = getComputedStyle(element);
       let left = Math.max(text.left, 0);
       let top = Math.max(text.top, 0);
       let right = Math.min(text.right, document.documentElement.clientWidth);
@@ -57,6 +58,7 @@ for (const width of [1280, 375]) {
         clippedRect: { left, top, right, bottom }, visibleArea,
         visibleRatio: text.width * text.height > 0 ? visibleArea / (text.width * text.height) : 0,
         clippingAncestors,
+        color: loadingStyle.color, backgroundColor: loadingStyle.backgroundColor,
       };
     });
     await test.info().attach("server-map-loading-text-clipping", {
@@ -67,6 +69,8 @@ for (const width of [1280, 375]) {
     expect(geometry.textRect.height).toBeGreaterThan(0);
     expect(geometry.visibleArea).toBeGreaterThan(0);
     expect(geometry.visibleRatio).toBeGreaterThanOrEqual(0.99);
+    // 전경·배경 동일색 회귀만 검출하며 실제 4.5:1 대비 측정을 뜻하지 않는다.
+    expect(geometry.color).not.toBe(geometry.backgroundColor);
     await expect(loading).toHaveAttribute("role", "status");
   });
 }
