@@ -7,15 +7,16 @@
     "build": "next build",
     "start": "next start --hostname 127.0.0.1 --port 12305",
     "type-check": "next typegen && tsc --noEmit",
-    "lint": "eslint .",
-    "test": "vitest run --passWithNoTests",
+    "lint": "eslint . --max-warnings=0",
+    "test": "vitest run",
     "e2e:install": "playwright install --with-deps chromium firefox",
     "test:e2e": "playwright test",
     "predev": "node ./scripts/copy-maplibre-worker.mjs",
     "prebuild": "node ./scripts/copy-maplibre-worker.mjs",
     "test:e2e:parking": "playwright test --config playwright.parking.config.ts",
     "check:dependencies": "node node_modules/@kor-travel/ui/check-dependencies.mjs --lock package-lock.json --workspace \"\" --artifacts common-artifacts.json --source app --source components --source lib --source ../../../frontend/src",
-    "doctor": "react-doctor . --scope full --yes --no-telemetry --no-supply-chain --no-parallel --blocking warning"
+    "doctor": "react-doctor . --scope full --yes --no-telemetry --no-supply-chain --no-parallel --blocking warning",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@kor-travel/parking-ui": "file:../../../frontend/src",
@@ -64,5 +65,10 @@
     "undici": "8.12.4",
     "lightningcss": "$lightningcss",
     "@radix-ui/react-focus-scope": "$@radix-ui/react-focus-scope"
+  },
+  "packageManager": "npm@12.0.1",
+  "engines": {
+    "node": "22.23.1",
+    "npm": "12.0.1"
   }
 }

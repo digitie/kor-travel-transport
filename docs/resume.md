@@ -1,8 +1,55 @@
-## 현재 상태 — 2026-11-13 코드 수정과 머지만 수행
+## 현재 상태 — 2026-11-13 main 충돌 해소 통합 후보
+
+빌드6a0fc0fa와 PR188 main e88f5b73를 격리 worktree에서 통합했다. 충돌은 문서3개였으며 main의 코드·시험과 빌드 코드·C11 bytes는 각 원본 그대로다.
+순수 계약119PASS(기존115+main mock-only4)이며 실제 DB/DDL·이미지/브라우저는 미실행이다.
+main의 기존 Ruff 스타일3개는 별도 관측으로 남겼고 전체 backend lint 성공을 주장하지 않는다.
+다음은 통합 head의 원2 bounded 재검토·push/PR exact CI다. 6a와 모든 과거 원문을 유지하며 운영 변경0이다.
+
+## 현재 상태 — 2026-11-13 관리자 startup directory-mode 후속 후보
+
+startup-only 진단은 기본 USER/CMD에서 EACCES scandir /app/public/fuel-brands, PID1 exit1·OOMKilled=false였다.
+원 archive0775 대비 producer context0700을 확인해 data_filter의 directory-mode 생략과 umask077 상호작용을 수정했다.
+파일/소유자 보호와 private root0700은 유지하고 하위 directory만 안전한 archive0755로 추출한다.
+회귀 전1FAIL·작은 전체115PASS이며 새 image/runtime/HTTP/browser는 아직 미실행이다.
+d65/source2·15da 실제 이미지·원124/R2 실패를 유지한다. 다음은 source3 원2 재검토·exact CI·새 정상 이미지 QA다.
+
+## 현재 상태 — 2026-11-13 OCI exporter CSV 경계 후속 후보
+
+B-TRBUILD-P2-01을 stdlib CSV 직렬화로 수정했다. 정상/쉼표/quote/중복 dest 회귀 전3FAIL/1PASS,
+후 전체 작은 계약114PASS이며 실제 Buildx bake --print의 네 dest도 모두 경계 안에 보존됐다.
+print-only 검사는 daemon 없이 실행했고 실제 OCI image export/ABI 수용은 아니다.
+15da Docker 후보 normal build PASS·원 runtime124 NOTPASS/Node 미시작·cleanup0을 보존한다.
+다음은 원2 bounded 재확인·새 exact CI와 IO 회복 후 실제 UID/worker/auth/지도 수용이다. blind retry·새 build/apply0이다.
+
+## 현재 상태 — 2026-11-13 취소 처리 후속과 최종 Common ref 연결
+
+bdb2 불변 후보에서 EOF 최종 wait 취소 회수와 redacted log flush를 보강했다.
+회귀 전2FAIL/1PASS·후3PASS, 작성자 격리 Python110PASS이며 실제 Docker 취소 검증은 미완이다.
+Common 실제 merge36e4d285ea926b9d8c20da4221ade86ebf74c04d의 도구 guard와 두 생산 Node Dockerfile을 연결했다.
+공개 bdb2 이미지 R2 PASS와 원124 NOTPASS를 별도 보존하며 후속 이미지의 PASS로 소급하지 않는다.
+다음 한 작업은 원2 bounded 재검토와 최종 exact CI, 새 역할 이미지/ARM 수용이다. 새 build/apply는 아직 실행하지 않는다.
+
+## 현재 상태 — 2026-11-13 빌드 생태계 소스 후보
+
+PR180 merge110d(tree389164) 기반 build-only delta를 구현 중이다.
+7aec와 동일 tree여서 dirty B1을 보존한 fast-forward로 정렬했다.
+Node/npm·Make·불변 normal image wrapper·기존 prebuilt 재사용·지도 E2E oracle 교정 후보와
+WSL 격리 unit100PASS가 있다. 실제 image/운영/SDK/SSH/DB/Map 작업은 실행하지 않았다.
+
+다음 한 작업은 후보를 고정해 Python3.12/fresh Linux full gate·browser QA·원2리뷰로 넘기는 것이다.
+Common 실제 toolchain guard ref 이전 publish는 보류한다.
+B4 웹 runner/USER node·cache/probe도 구현했고 작은 계약 Python107/Node19PASS다.
+실제 새 image QA는 미완이다. archive LF/production target 음성 대조와
+현재 외부 API gateway 대 비활성 legacy build 역할 구분도 소스에 반영했다.
+backend/CS/gateway UID는 ADR-017 역할별 예외로 보존하고 T-DOWNGRADE-GUARDS-20261113은 P2 OPEN이다.
+과거 FAIL을 현재 PASS로 바꾸지 않는다.
+[계약·남은 gate](design/2026-11-13-normal-image-build.md), [task](tasks.md).
+
+## 인계 이력 — 2026-11-13 코드 수정과 머지만 수행
 
 - #180은 main `110d663316c23007d3cd803b7849fe45393b18e7`로 머지 완료됐다. 별도 빌드 작업자의 #187은 이번 수정에 포함하지 않는다.
 - 남은0037 원장 downgrade 경합 보호를 구현하고 회귀 코드를 추가했다. 두 독립 정적 리뷰에서 확정 지적 없음이다. 사용자 지시로 빌드·테스트·실화면·운영 실행은 하지 않았으며 새 통과 결과는 없다.
-- 다음 한 작업: 이 작은 보호 수정의 PR을 머지한다. 앞서 요청한 Weather/Transport21개 개선사항은 별도 미완이며 이 수정으로 완료 처리하지 않는다.
+- 당시 다음 작업은 보호 수정 PR 머지였으며 이후 #188/e88f5b73에 반영됐다. 실행 검증은 별도 미완이다. 앞서 요청한 Weather/Transport21개 개선사항은 별도 미완이며 이 수정으로 완료 처리하지 않는다.
 
 ## 과거 상태 — 2026-11-12 장기 미처리 PR 우선 정리
 

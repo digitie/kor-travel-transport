@@ -1,3 +1,87 @@
+## 2026-11-13 — 빌드 후보와 PR188 main 통합
+
+- 검토된6a0fc0fa와 현재 main e88f5b73의 충돌은 journal/resume/tasks 세 문서였다. 격리 worktree에서 양쪽 기록과 미완 gate를 보존하고 이미 머지된 #180/188의 오래된 머지 대기를 정리했다.
+- main의0037 보호 코드·회귀 코드·data-model·완료 목록은 bytes 그대로 유지했다. 기존 빌드 코드·Dockerfile·C11/vendor·지도 assertion/timeout은6a와 같다.
+- 기존 빌드 계약115개와 main의 mock-only 거절4개, 총119개가 격리 Python3.13.14에서 통과했다. 실제 PostgreSQL·두 세션·DDL·이미지·브라우저·운영 검증은 실행하지 않았다.
+- 별도 확장 Ruff 검사에서는 main이 이미 가진 스타일3개(I001/SIM117/PIE807)를 관측했다. 해당 Python 파일에 불필요한 스타일 수정을 섞지 않고 보존했으며 전체 backend lint PASS로 표시하지 않는다. 검토된 빌드 helper/시험 Ruff는 통과다.
+- 6a의 push CI/원문과 source3 리뷰를 유지한다. 이 통합 head는 새 exact CI·원2 bounded 재검토 뒤 판단하며 강제 push/reset/배포는 하지 않았다.
+
+## 2026-11-13 — 제한 umask의 directory mode로 인한 관리자 startup 실패 수정
+
+- 동일15da 이미지·기본 USER/CMD의 startup-only 진단에서 EACCES scandir /app/public/fuel-brands, PID1 exit1·OOMKilled=false를 수집한 뒤 own CID만 제거했다. HTTP/browser 수용은 재실행하지 않았고 원124/R2 NOTPASS를 유지한다.
+- 실제 Git archive directory0775와 생성 context0700을 대조했다. tarfile data_filter는 directory mode를 적용하지 않아 producer의 umask077을 상속했다. 이는 문서화된 표준 동작이며 Python 라이브러리 버그로 처리하지 않는다.
+- data_filter의 경로·링크·파일·소유자 보호를 유지하면서 private build context directory에만 tar_filter가 산출한 안전한 archive mode0755를 적용한다. 외부 source/host chmod·USER 변경·Dockerfile·기존 이미지 수정은 하지 않는다.
+- 실제 Git archive/umask077 회귀는 수정 전1FAIL, 수정 후 작은 전체 계약115PASS다. private output/context root0700 유지·하위 directory의 비소유자 read/traverse·context metadata 변경 차단을 확인했다. 실제 새 image/startup/HTTP/browser PASS는 아직 아니다.
+- d65/source2와 원 리뷰·실패·C11 bytes는 보존한다. 새 child commit의 원2 검토·exact CI·새 normal image 수용 뒤에만 다음 적용을 판단한다.
+
+## 2026-11-13 — B-TRBUILD-P2-01의 OCI CSV 출력 경계 수정
+
+- OCI exporter 옵션을 stdlib csv.writer로 직렬화한다. 파일 생성 전 역할별 dest를 단일 CSV 필드로 준비하고 Docker output mode의 argv는 그대로 유지한다.
+- FakeDocker도 prefix 제거 대신 CSV 필드를 읽게 했다. 정상/쉼표/인용부호/중복 dest 회귀는 원15da에서 3FAIL/1PASS, 수정 후 전체 작은 계약114PASS다. 실제 Git와 OCI archive/digest를 검사하며 실제 OCI 이미지 export는 실행하지 않았다.
+- 실제 설치 Buildx v0.34.1의 bake --print도 사용했다. daemon socket을 존재하지 않는 task 경로로 지정한 print-only 대조에서 원15da는 쉼표·quote 실패/중복 dest가 repo 내부로 해석됐고, 수정 후 네 경우 모두 의도한 repo 밖 dest 하나였다. Docker build·컨테이너·운영 호출0이다.
+- 공식 CSV 규약과 후행 dest 해석은 [Buildx exporter 원본](https://raw.githubusercontent.com/docker/buildx/v0.29.0/util/buildflags/export.go)을 참고했다. stdlib 직렬화는 공개 runtime 의존성을 추가하지 않는다.
+- 실제15da Docker-mode 관리자 이미지의 normal build PASS와 원 file probe124/created·Node 미시작 상태는 별도 보존한다. 설치 C11/worker/cache/HTTP/지도 수용은 NOTRUN이며 이 후속 소스의 PASS로 소급하지 않는다.
+- B 조건부 원문·기존 bdb/15da·T-DOWNGRADE-GUARDS-20261113 P2 OPEN은 유지한다. 새 원2 재확인·exact CI·실제 merged source 이미지/공식 수용은 미완이다.
+
+## 2026-11-13 — 빌드 종료 대기 취소 회수와 실제 Common guard 연결
+
+- A-TR-BUILD-P2-01의 stdout EOF 뒤 최종 wait 중단을 재현했다. 최종 wait도 기존 취소 처리 안으로 옮겨 소유 process group만 TERM·제한 대기·필요 시 KILL·reap한다. 정상 종료에서는 kill하지 않는다.
+- EOF 회귀는 원 bdb2에서 2FAIL/1PASS, 수정 후 3PASS다. 작성자 전체 격리 범위는 Python110PASS(두 모듈108+기존 관리자 계약2)이며 Python3.13.14의 작은 시험이다. 실제 Docker 취소나 production Python3.12 검증으로 확대하지 않는다.
+- redaction 후 줄마다 flush해 종료 대기 중에도 진행 로그가 보이게 했다. 관측 fixture에서 원문 비밀 sentinel은 출력되지 않았다.
+- reusable uses/common-ref를 실제 merge36e4d285ea926b9d8c20da4221ade86ebf74c04d로 고정하고 생산 Node Dockerfile 두 경로를 연결했다. 두 설치 anchor는 기존 frontend matrix가 각각 검사하며 별도 도구 anchor는 없다. parking-ui source package는 설치 정본이 아니므로 변경하지 않는다.
+- bdb2 공개 이미지의 원 runtime124는 NOTPASS로 보존한다. I/O 조건 회복 후 승인된 한 번의 R2는 같은 이미지·120초 budget·기본 node 사용자에서 파일/config/cache·C11 153파일·기본/공유 start HTTP를 통과했다. 이 후속 commit의 새 이미지 결과로 쓰지 않는다.
+- bdb2 원본 리뷰/원문은 유지하며 최종 원2 재검토·exact CI·관리자 이미지/지도 E2E·ARM·merged source 정상 이미지 및 공식 수용은 미완이다. 신규 build/install·운영·SDK·DB·Map 작업은 하지 않았다.
+
+## 2026-11-13 — 정상 build target·archive 재현성과 B6 역할 경계 보강
+
+- 공개·관리자의 production target은 runner이며 builder target은 Docker 호출 전에 거절한다.
+  실제 image Config.User=node 검사를 유지하고 backend/CS/legacy gateway의 UID는 바꾸지 않는다.
+- git archive에 core.autocrlf=false를 명시했다. 실제 Git fixture의 canonical LF와
+  잘못된 target/CLI 선택을 음성 대조했다. 실제 NTFS/새 이미지 수용 결과로 확대하지 않는다.
+- 비활성 소유 legacy dagster-gateway와 현재 외부 nginx transport-api-gateway를 구분했다.
+  전자는 legacy-disabled-owned-artifact로 기록하며 후자의 pinned ID/template/source hash는
+  기존 SDK508 paired-role receipt 정본을 따른다. custom nginx·Transport OCI 강제·적용 코드는 추가하지 않았다.
+- 최신 작은 Python 계약107PASS. cee70의 runtime FS fixture19PASS 소스는 그대로다.
+  2db/100·cee70/103과 M30 원문/호환 bytes는 보존한다.
+  실제 Common ref·원2리뷰·full QA·새 역할 이미지/proxy/worker/browser 수용은 아직 미완이다.
+  설치·heavy build·운영·SDK·SSH·DB·Map 작업0이다.
+
+## 2026-11-13 — B4 웹 production runner와 non-root 소스 구현
+
+- 2db591f/100PASS를 그대로 보존하고 같은 branch에서 B4를 추가했다.
+  공개 앱을 별도 runner로 바꾸고 공개·관리자 모두 USER node를 사용한다.
+  runtime file list/config/tsconfig/public worker·기존 npm/직접 next start와 공유 parking-ui 설치는 보존한다.
+- 권한은 이미지의 .next·node HOME cache에만 조정한다. host chmod·ENV·backend/CS/gateway UID는 바꾸지 않았다.
+  이 역할별 CI-33 처리와 full node_modules 유지 이유는 [ADR-017](adr/017-web-production-runner-non-root.md)에 기록했다.
+- 실제 파일·누락 config/entry·worker 변조·깨진 parking 경로·root/잘못된 npm/release·cache 권한을
+  구분하는 runtime probe/작은 fixture를 추가했다. 새 실제 image/HTTP/browser 수용은 아직 미실행이다.
+  기존 native QA를 새 이미지로 확대하지 않는다.
+- 작은 검증은 Python 계약103PASS와 Node runtime 파일/권한 fixture19PASS다.
+  실제 image/config loader·서버·HTTP/auth/worker 실행 수용과 구분한다.
+- 실제 Common guard ref·새 역할 이미지 QA·원2리뷰·exact CI 후 한 최종 PR/merged source 이미지로 인계한다.
+  중간 apply·설치·heavy build·SDK/SSH/DB/Map 작업0이다.
+
+## 2026-11-13 — build-only 소스 후보와 추적 지도 E2E oracle 수정
+
+- 7aec와 PR180 merge110d의 tree389164 동일을 확인하고 dirty B1 bytes를 보존해
+  feature branch를110d로 fast-forward했다. reset/stash/rebase는 사용하지 않았다.
+- Node22.23.1/npm12.0.1·strict install·Make를 채택하고 기존 Node Alpine/Python slim/uv/nginx
+  계열을 유지해 공식 digest를 고정했다. release ARG/ENV는 실제 build revision으로 결박한다.
+- tracked archive/COPY·입력 hash·architecture·실제 image ID/OCI/default release wrapper와
+  기존 prebuilt 계약을 추가했다. 실제 적용 정본은 기존 Manager/런북이다.
+- WSL Python3.13.14 격리 unit100개 PASS. production Python3.12 full gate나 실제 Docker/
+  worker ABI 결과가 아니다. 첫35PASS·설정 경고1과 중간99PASS/1FAIL 원문도 보존한다.
+  중간 실패는 새 시험이 기존 multi-line ENV를 단일 line으로 가정한 오류였고,
+  실제 logical ENV를 파싱하도록 시험만 보정했다. 최종100PASS/경고0과 구분한다.
+- 새 wrapper/시험 Ruff·AST·Make dry-run·lock graph/SRI 불변 검사가 통과했다.
+  기존 prebuilt helper의 BLE001은 baseline에도 존재하여 별도 유지한다.
+- tracked 지도 E2E는 C11 wrapper·panel/제목/overflow/Escape·실제 opener focus로 교정했다.
+  제품/C11/CSS 수정0이며 browser는 QA 담당에게 인계한다. 과거7aec FAIL은 보존한다.
+- T-DOWNGRADE-GUARDS-20261113 P2 OPEN과 B1~B6 미완 gate를 별도로 등록했다.
+  Common 실제 guard ref·fresh Linux/양 architecture·원2리뷰·exact CI는 미완,
+  B4 packaging은 별도 후속이다. 운영/SDK/SSH/DB/Map 작업0.
+  [구현·검증 경계](design/2026-11-13-normal-image-build.md).
+
 ## 2026-11-13 — 유가·철도 원장 downgrade 경합 보호
 
 - #180은 main `110d663316c23007d3cd803b7849fe45393b18e7`에 이미 머지됐다. 과거 통합 후보의 실패와 미수용 UI 기록은 그대로 보존한다.
