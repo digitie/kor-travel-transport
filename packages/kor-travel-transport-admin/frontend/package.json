@@ -36,7 +36,8 @@
     "vworld-map-core": "file:vendor/vworld-map-core-1.0.1.tgz",
     "vworld-map-web": "file:vendor/vworld-map-web-1.0.3.tgz",
     "zod": "4.6.7",
-    "zustand": "5.1.0"
+    "zustand": "5.1.0",
+    "motion": "14.12.0"
   },
   "devDependencies": {
     "@next/eslint-plugin-next": "16.4.6",

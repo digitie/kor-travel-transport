@@ -26,7 +26,7 @@ test("비교 최대 5곳에 도달해도 여섯째 상세는 선택 변경 없�
   } finally { await act(async () => root.unmount()); container.remove(); }
 });
 
-test("주유소 이력은 가격 카드 위에 있고 유효 가격·실관측 시각·오래된 관측을 구분한다", () => {
+test("주유소 현재 가격은 이력 위에 있고 유효 가격·실관측 시각·오래된 관측을 구분한다", () => {
   vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-28T03:00:00Z"));
   try {
     const place: Place = { id: 1, kind: "fuel_station", source: "opinet_browser", brand_code: "SOL", name: "시험 주유소", address: "서울시 시험로 123", subtitle: "서울시 시험로 123", longitude: 127, latitude: 37, line_names: [], facilities: [], updated_at: "2026-10-28T03:00:00Z", prices: [
@@ -40,6 +40,8 @@ test("주유소 이력은 가격 카드 위에 있고 유효 가격·실관측 �
     expect(node.querySelectorAll(".price-grid > div")).toHaveLength(1);
     expect(node.querySelector(".price-grid time")?.getAttribute("datetime")).toBe("2026-10-20T03:00:00Z");
     expect(node.querySelector(".fuel-price-old")?.textContent).toBe("7일 이전 관측");
-    expect(node.innerHTML.indexOf("fuel-station-history")).toBeLessThan(node.innerHTML.indexOf("price-grid"));
+    expect(node.innerHTML.indexOf("price-grid")).toBeLessThan(node.innerHTML.indexOf("fuel-station-history"));
+    expect(node.querySelector(".fuel-current-price-label")).toBeNull();
+    expect(node.querySelector('[aria-label="휘발유 가격 기준 안내"]')).not.toBeNull();
   } finally { vi.useRealTimers(); }
 });

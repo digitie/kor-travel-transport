@@ -38,7 +38,7 @@ export async function loadFuelStationHistory(id: number, source: string, signal:
       const items: FuelStationHistory["items"] = [], seen = new Set<string>();
       do {
         signal.throwIfAborted();
-        const params = new URLSearchParams({ source, days: "7", limit: "1000" });
+        const params = new URLSearchParams({ source, days: "30", limit: "1000" });
         if (cursor) params.set("cursor", cursor);
         const page = await transportGet<FuelStationHistory>(`transport/fuel/stations/${id}/price-history?${params}`, signal);
         if (page.station_id !== id || page.source !== source || first && (page.window.from_at !== first.window.from_at || page.window.to_at !== first.window.to_at || page.source_revision !== first.source_revision)) throw new Error("주유소 가격 이력의 조회 기준이 일치하지 않습니다. 다시 조회해 주세요.");

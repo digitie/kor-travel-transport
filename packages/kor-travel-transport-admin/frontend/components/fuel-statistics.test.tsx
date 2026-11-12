@@ -6,6 +6,9 @@ import { expect, test, vi } from "vitest";
 import { FuelPriceTrend, FuelStatisticsCard, FuelStatisticsPage, FuelViewportSummary, type FuelViewportStatistics } from "./fuel-statistics";
 import * as journey from "@/lib/journey";
 
+vi.mock("./fuel-price-chart-loader", async () => ({ default: (await import("./fuel-price-chart")).default }));
+vi.mock("./evilcharts/charts/echarts-line-chart", () => ({ EChartsLineChart: () => <div data-official-chart="true" /> }));
+
 const metrics: FuelViewportStatistics = { product_code: "B027", station_count: 1000, average_price: 1700,
   minimum_price: 1600, maximum_price: 1800, price_spread: 200, standard_deviation: 50,
   saving_50l: 5000, cheapest_station_count: 2, generated_at: "2026-10-21T01:00:00Z",
@@ -95,7 +98,7 @@ test("기존 집계 i에서 비교 날짜·각일 건수/시각과 원래 가격
     for (const count of ["800", "900", "1,000"]) expect(popup.textContent).toContain(`${count}개`);
     expect(popup.textContent).toContain("가격 차이 200원/L");
     expect(popup.textContent).toContain("표준편차 50원/L");
-    expect(container.querySelectorAll(".fuel-stat-card")).toHaveLength(1);
+    expect(container.querySelectorAll(".fuel-stat-card")).toHaveLength(0);
     expect(container.querySelector(".fuel-driving-details")?.hasAttribute("open")).toBe(false);
   } finally { await act(async () => root.unmount()); container.remove(); get.mockRestore(); }
 });
@@ -114,12 +117,12 @@ test("지도 통계 안내는 마커 개수 대신 API의 전체 주유소 개�
   });
 });
 
-test("수집 기록이 없는 날짜의 간격을 유지하고 선을 연결하지 않는다", () => {
-  const html = renderToStaticMarkup(<FuelPriceTrend rows={["2026-10-15", "2026-10-16", "2026-10-21"].map((day) => historyRow(day, 1700, 1))} />);
+test("일별 그래프는 30일 접근 이름과 실제 관측 표를 보존한다", () => {
+  const html = renderToStaticMarkup(<FuelPriceTrend rows={["2026-10-15", "2026-10-16", "2026-10-21"].map(day => historyRow(day, 1700, 1))} />);
   const element = document.createElement("div"); element.innerHTML = html;
-  const points = [...element.querySelectorAll("circle")].map((point) => Number(point.getAttribute("cx")));
-  expect(points[1] - points[0]).toBeCloseTo((points[2] - points[1]) / 5);
-  expect(element.querySelectorAll("line")).toHaveLength(1);
+  expect(element.querySelector('[aria-label="최근 30일 유종별 평균·최저·최고 유가"]')).not.toBeNull();
+  expect(element.querySelectorAll("tbody tr")).toHaveLength(3);
+  expect(element.textContent).toContain("미제공");
 });
 
 test("지도 통계가 최신 수집을 반영하지 못했으면 대기를 표시한다", () => {
@@ -273,4 +276,40 @@ test("열린 안내에서 다른 입력으로 옮긴 초점은 통계 재조회�
     await act(async () => root.render(<FuelViewportSummary items={[metrics]} pending={false} failed />));
     expect(document.activeElement).toBe(input);
   } finally { await act(async () => root.unmount()); container.remove(); input.remove(); }
+});
+
+
+test("전체 유종은 단일 요청·가격순 10곳·주소 링크·동일 필터 행으로 표시한다", async () => {
+  const ranked = Array.from({ length: 12 }, (_, index) => ({ station_key: String(index), name: `주유소${index}`, address: `시험로${index}`, longitude: 127 + index / 100, latitude: 37, price: 1700 - index }));
+  const products = ["K015", "B034", "D047", "B027", "C004"];
+  const get = vi.spyOn(journey, "transportGet").mockResolvedValue({ generated_at: metrics.generated_at, update_pending: false, history_scope_key: "all", items: products.map(product_code => ({ ...metrics, product_code, scope_key: "all", label: "전국", ranking_complete: true, cheapest_stations: ranked })), history: products.map(product_code => ({ ...historyRow("2026-10-21", 1700), product_code, minimum_price: 1600, maximum_price: 1800 })) });
+  const container = document.createElement("div"), root = createRoot(container);
+  try {
+    await act(async () => root.render(<FuelStatisticsPage />));
+    expect(get).toHaveBeenCalledTimes(1); expect(get.mock.calls[0][0]).toContain("product_code=ALL");
+    expect(container.querySelectorAll(".fuel-stat-filters label")).toHaveLength(3);
+    expect(container.querySelectorAll(".fuel-stat-category option")).toHaveLength(1);
+    expect(container.querySelectorAll(".fuel-stat-card")).toHaveLength(0);
+    const sections = container.querySelectorAll(".fuel-cheapest-tables > section");
+    expect([...sections].map(section => section.querySelector("h3")?.textContent?.split(" · ")[0])).toEqual(["휘발유", "경유", "고급유", "LPG", "등유"]);
+    expect(sections[0].querySelectorAll("tbody tr")).toHaveLength(10);
+    const first = sections[0].querySelector("tbody tr")!;
+    expect(first.textContent).toContain("1,689"); expect(first.textContent).toContain("시험로11");
+    expect(first.querySelector("a")?.href).toContain("longitude=127.11");
+    expect(container.innerHTML.indexOf("fuel-echarts")).toBeLessThan(container.innerHTML.indexOf("fuel-cheapest-tables"));
+  } finally { await act(async () => root.unmount()); get.mockRestore(); }
+});
+
+
+test("이전 집계는 알려진 최저가 한 곳을 보존하고 10곳을 꾸며 채우지 않는다", async () => {
+  const get = vi.spyOn(journey, "transportGet").mockResolvedValue({ generated_at: metrics.generated_at, update_pending: false, history_scope_key: "all", items: [{ ...metrics, product_code: "B027", scope_key: "all", label: "전국" }], history: [historyRow("2026-10-21", 1700)] });
+  const container = document.createElement("div"), root = createRoot(container);
+  try {
+    await act(async () => root.render(<FuelStatisticsPage />));
+    const tables = container.querySelector(".fuel-cheapest-tables")!;
+    expect(tables.querySelectorAll("tbody tr")).toHaveLength(1);
+    expect(tables.textContent).toContain("최저가 주유소");
+    expect(tables.textContent).toContain("10곳 순위가 저장되지 않았습니다");
+    expect(tables.textContent).toContain("이 유종의 통계가 없습니다");
+  } finally { await act(async () => root.unmount()); get.mockRestore(); }
 });

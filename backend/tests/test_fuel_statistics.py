@@ -83,8 +83,8 @@ def test_kst_retention_same_day_replace_and_atomic_failure(client):
             await publish_fuel_statistics(session, OPINET, latest)
             await session.commit()
             page = await fuel_statistics_page(session, "nationwide", "B027")
-            assert len(page["history"]) == 7
-            assert str(page["history"][0]["day"]) == "2026-10-14"
+            assert len(page["history"]) == 8
+            assert str(page["history"][0]["day"]) == "2026-10-13"
             assert str(page["history"][-1]["day"]) == "2026-10-20"
             assert await session.scalar(select(func.count()).select_from(FuelStatisticsDaily)) == 24
             # 통계 도중 실패해도 기존 세대가 보이고 원본 트랜잭션은 계속 사용 가능하다.
@@ -180,3 +180,69 @@ def test_deferred_publication_returns_false_and_logs_a_redacted_one_line_cause(c
     message = caplog.records[-1].getMessage()
     assert "cause=TimeoutError: command timeout while calling" in message
     assert "\n" not in message and "owned-secret-key" not in message
+
+
+def test_all_products_30day_extremes_and_legacy_missing_values(client):
+    async def setup():
+        async with client.app.state.session_factory() as session:
+            stamp = datetime(2026, 10, 1, 16, tzinfo=timezone.utc)
+            await seed(session, stamp)
+            session.add(FuelPriceSnapshot(fuel_station_id=2, source=OPINET, product_code="D047",
+                price=1500, observed_at=stamp, collected_at=stamp))
+            await session.flush()
+            await upsert_latest_fuel_prices(session, collected_at=stamp)
+            for offset in (0, 1, 30):
+                current = stamp + timedelta(days=offset)
+                await session.execute(update(FuelLatestPrice).values(collected_at=current))
+                await publish_fuel_statistics(session, OPINET, current)
+            # 과거 스키마에 실제 없던 극값은 채우지 않는다.
+            legacy = await session.scalar(select(FuelStatisticsDaily).where(
+                FuelStatisticsDaily.scope == "nationwide", FuelStatisticsDaily.product_code == "D047",
+                FuelStatisticsDaily.day == (stamp + timedelta(days=1, hours=9)).date()))
+            legacy.metrics_json = {key: value for key, value in legacy.metrics_json.items()
+                                   if key not in {"minimum_price", "maximum_price", "cheapest_station"}}
+            await session.commit()
+    asyncio.run(setup())
+    response = client.get("/v1/transport/fuel/statistics", params={"product_code": "ALL", "scope_key": "all"})
+    assert response.status_code == 200
+    body = response.json()
+    assert {row["product_code"] for row in body["items"]} == {"B027", "D047"}
+    assert len(body["history"]) == 4  # D-29와 D, 각 두 유종. D-30 제외.
+    assert {row["day"] for row in body["history"]} == {"2026-10-03", "2026-11-01"}
+    old = next(row for row in body["history"] if row["day"] == "2026-10-03" and row["product_code"] == "D047")
+    assert old["minimum_price"] is old["maximum_price"] is old["cheapest_station"] is None
+    latest = next(row for row in body["history"] if row["day"] == "2026-11-01" and row["product_code"] == "B027")
+    assert (latest["minimum_price"], latest["maximum_price"]) == (1600, 1800)
+
+
+def test_ranked_cheapest_ten_are_published_cohort_snapshot(client):
+    async def setup():
+        async with client.app.state.session_factory() as session:
+            stamp = datetime(2026, 11, 13, 1, tzinfo=timezone.utc)
+            for index in range(13):
+                station = FuelStation(source=OPINET, identity_key=f"rank{index}", name=f"순위{index}",
+                    address=f"주소{index}", query_level="sigungu", source_kinds=[],
+                    sido_value="11", sido_name="서울", sigungu_value="110", sigungu_name="종로",
+                    longitude=127 + index / 100, latitude=37.5, first_seen_at=stamp, last_seen_at=stamp)
+                session.add(station)
+                await session.flush()
+                session.add(FuelPriceSnapshot(fuel_station_id=station.id, source=OPINET, product_code="B027",
+                    price=100 if index == 12 else 1600 + index // 2, observed_at=stamp,
+                    collected_at=stamp - timedelta(days=1) if index == 12 else stamp))
+            await session.flush()
+            await upsert_latest_fuel_prices(session)
+            await publish_fuel_statistics(session, OPINET, stamp)
+            # 이후 기준정보 변경으로 이미 공개된 주소/지역/순위를 바꾸지 않는다.
+            await session.execute(update(FuelStation).values(address="이후 주소", sigungu_value="999"))
+            await session.commit()
+    asyncio.run(setup())
+    response = client.get("/v1/transport/fuel/statistics", params={"product_code": "ALL"})
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["station_count"] == 12
+    assert item["ranking_complete"] is True
+    ranks = item["cheapest_stations"]
+    assert len(ranks) == 10
+    assert [(row["price"], row["station_key"]) for row in ranks] == sorted((row["price"], row["station_key"]) for row in ranks)
+    assert all(row["price"] >= 1600 and row["address"].startswith("주소") for row in ranks)
+    assert ranks[0]["longitude"] is not None
