@@ -1,3 +1,11 @@
+## 2026-11-12 — 지도 로딩 문구의 작업면 내부 배치
+
+- M9(9aebd199)와 같은 tree의 실제 NoJS 관측에서 기존 p.loading은 y887·높이110.5px였고, 높이를 모두 쓰는 지도 div 뒤에서 부모 overflow clip과의 교집합이0이었다. Playwright isVisible은 true였다. 근거는 비공개 validation/transport-M9aeb-map-loader-nojs-r2-20261112/final-receipt.json(SHA256 6a10df33c1a92dc6c0cba701b584716a5fe86cf2b1a638254935f67aed835609)이다. 별도 CommonMapReadout의 실제 대체 안내는 측정하지 않아 전체 피드백 부재로 확대하지 않는다.
+- sealed vworld-map-web1.0.3의 loadingSkeleton 주석은 overlay라고 설명하지만 실제 구현은 높이100%인 지도 div 뒤에 전달받은 ReactNode를 sibling으로 반환한다. 자동 배치 계약이 모호한 상태에서 앱이 제공한 일반 문단의 배치를 앱 통합 책임으로 교정하며 upstream 버그로 단정하지 않는다.
+- 기존 공통 MapStage 안의 map-primary를 기준으로 전용 status 문구를 절대 배치하고 기존 공통 색상·간격 토큰을 사용한다. 전역 .loading·공통 패키지·SSR 작업면·메뉴·키·env·인증·backend·Map 앱은 변경하지 않는다. 지도 초기화 시간이 개선됐다는 주장은 하지 않는다.
+- 기존 PC1280·모바일375 NoJS 회귀에 실제 문구의 Range text rect와 viewport·overflow 조상 padding-box 교집합을 기록하고 99% 이상 노출 및 role=status를 검사한다. SDK mock이나 가짜 초기 상태를 추가하지 않는다.
+- 검증 상태: 구현·diff 검토와 git diff --check를 완료했다. 로컬 설치·빌드·테스트는 실행하지 않았으며 N150 기존 warm NoJS baseline의 전후 검사와 새 정확 소스 QA는 부모/Mendel 후속 실행 대기다. 새 소스의 성공·독립 리뷰·CI·배포 수용을 이전 결과로 소급하지 않는다.
+
 ## 2026-11-12 — 늦은 역 목록 응답의 상세 초점 탈취 교정 중
 
 - PR185의 첫 후보 bf937d1은 단위453·관리자/공개 프런트 CI·정책 검사·원 두 소스 리뷰를 통과했다. 초기 작업면 회귀는 기존 코드2건 실패, 새 native/Alpine 각2건 통과이며 PC 높이832px·모바일783px를 확인했다.
