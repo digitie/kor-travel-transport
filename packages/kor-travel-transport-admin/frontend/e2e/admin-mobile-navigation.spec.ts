@@ -103,6 +103,12 @@ for (const path of ["/parking", "/rail/timetable"]) {
     await expect(nav.getByRole("link")).toHaveCount(19);
     await expect(page.locator(".mobile-menu-button")).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
+    const rail = page.locator('[data-slot="admin-shell-rail"]');
+    const railHeight = (await rail.boundingBox())!.height;
+    await page.setViewportSize({ width: 768, height: 1100 });
+    await expect.poll(async () => Math.abs((await rail.boundingBox())!.height - railHeight)).toBeLessThan(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   });
 }
 

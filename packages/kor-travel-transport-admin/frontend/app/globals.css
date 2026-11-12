@@ -828,7 +828,7 @@ body { font-family: "Pretendard Variable", Pretendard, sans-serif; }
   .transport-shell[data-sidebar-collapsed="true"] .logout-button { justify-content: center; gap: 0; padding-inline: .5rem; }
 }
 @media (max-width: 1023px) {
-  .admin-layout { grid-template-columns: minmax(0, 1fr); }
+  .admin-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .rail { align-self: auto; height: auto; min-height: 0; position: static; border-right: 0; border-bottom: 1px solid var(--surface-muted); }
   .rail-shell { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .75rem .5rem; }
   .rail-header { grid-column: 1; grid-row: 1; }
@@ -838,6 +838,4 @@ body { font-family: "Pretendard Variable", Pretendard, sans-serif; }
   .common-menu [data-slot="app-menu-group"] { flex-shrink: 0; }
   .common-menu [data-slot="app-menu-link"] { width: auto; }
   .rail-footer { grid-column: 2; grid-row: 1; border: 0; padding: 0; align-self: center; }
-  .transport-shell:has(.map-workbench) .admin-layout,
-  .transport-shell[data-parking-page] .admin-layout { grid-template-rows: auto minmax(0, 1fr); }
 }
