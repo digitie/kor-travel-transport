@@ -1,3 +1,34 @@
+## 2026-11-13 — CI 표본 최적화 main 머지
+
+- [x] **T-CI-SEED-MERGE** — PR194 전체 CI 성공과 main12c65b9 머지를 부모가 확인했다. backend1915PASS/2SKIP/54subtests·903.19초이며 runner/표본 차이를 코드 단독 개선율로 과장하지 않는다. PR192/Weather232도 실제 머지 완료이며 PR191 최종 HEAD CI/머지는 별도 대기다.
+
+## 2026-11-13 — 상세 버튼 main 머지
+
+- [x] **T-DETAIL-BUTTONS-MERGE** — PR192는 전체 CI 성공 후 main3ed6335로 실제 머지됐다. 원 embedded44px RED와 후속32px/SVG16·키보드/포인터·PC/mobile 검증은 원문 그대로이며 운영 수용은 별도다.
+
+## 2026-11-13 — 자정 비행편 설명창 경계 보정
+
+- [x] 추가 독립 P2의00:00/23:59 설명창 잘림을 실제8개 bbox와 unit2FAIL로 재현한 뒤 중심만 최대 반폭 안쪽으로 제한했다. 실제 PC1440/mobile375 정상/4배축8개 bbox GREEN·검토한 캡처·브라우저/server각0, 별도 WSL/Docker각12PASS다. 전체184/기존 전체 브라우저 반복0·운영/build0이다. [원문](reports/2026-11-13-parking-lines.md).
+
+## 2026-11-13 — 공항·유가 main 머지 정산
+
+- [x] **T-FUEL30-MERGE** — PR190의 전체 CI 성공과 main b3c9942 머지를 부모가 확인했다. PR189도 main cfefd534로 머지됐다. 운영 배포·외부 수집·주차 line PR191 머지 수용은 포함하지 않는다.
+
+## 2026-11-13 — PR191 CI fixture·가시 툴팁 보정
+
+- [x] 원 c554 frontend CI182PASS/1FAIL·unhandled2를 보존하고 HistoryView의 Canvas 경계만 mock했다. 달력/API/기간/초점 assertion을 유지한다.
+- [x] 실제 가시 툴팁의 전체 KST 날짜·항공사·상태를 기존 label로 복구했다. RED1 뒤 WSL view4/전체184, Docker14PASS이며 겹침 합산0·엔진/범위/의존성/운영 변경0이다. [정산](reports/2026-11-13-parking-lines.md).
+
+## 2026-11-13 — PR191 필수 통합 검산
+
+- [x] 22888 정상 merge와 문서3개 양쪽 보존, build22파일/Node22.23.1/npm12.0.1·strict 계약/lock 비루트 그래프 검산.
+- [x] 직접 표2곳의 실제 공통 guard 거절을 공유 VirtualTable로 최소 보정. 양 앱 공통 guard/타입, 변경 lint/두 파일 Doctor0, 표 WSL/Docker각2PASS. line/engine/CSS와 원21개·브라우저 원문은 보존하며 CI/리뷰/머지는 별도다. [정산](reports/2026-11-13-parking-lines.md).
+
+## 2026-11-13 — 공유 주차 이력·하루 흐름 line 차트
+
+- [x] **T-PARKING-LINES-CODE-20261113** — 공식 EvilCharts line engine, 관측0/결측 단절·고립 관측·특별일·KST 항공편·날짜/방향/4배축·native 키보드와 수치표, 실제 마운트 시 지연 적재와 선택 memo 경계를 구현했다.
+- [x] 양 앱 타입/전체 lint/Doctor78·232파일 warning0, 최종 순차 WSL21/Docker21, Chromium156 PC1440/mobile375 실제 캔버스·pointer/touch·키보드·숫자·조상 테마·dispose·overflow/오류0과 캡처를 확인했다. 소유 컨테이너0·fixture포트 해제와 제공 키의 Git 부재를 정산한다. CI/리뷰/머지와 운영 반영은 이 코드 완료에 포함하지 않는다. [정산](reports/2026-11-13-parking-lines.md).
+
 ## 2026-11-13 — CI 표본 생성 구현/집중 검증
 
 - [x] **T-CI-SEED-CODE** — 원본 고정 시각4테이블 모든 열/ID/JSON 해시·재실행·source/run/미래 삭제 경계를 보존하며 관측 조회를 lot별18회로 제한했다. 초도 SQLite/PG18/전체 저장소 Docker 각4개를 보존하고 workflow 거울 시험의 루트 의존 P1을 제거했다. 최종 의미3개는 WSL PG18·backend-only `/app` Docker PASS, 기존 health 전후 각1개와 좁은 Ruff/diff0이다. 표본 함수11.320→0.651초는 로컬 단일 표본이다. CI/머지/운영 수용과 구분한다.
