@@ -1,3 +1,9 @@
+## 2026-11-13 — PR193 source5 실제 충돌 해소
+
+source4 de6079f를 동결한 뒤 main에 PR191 b353a44가 머지돼 실제 문서 충돌과 CI 미등록이 발생했다. 요청된 예외에 따라 정상 merge로 journal/resume 양쪽 기록을 보존하고 PR191의 주차 이력·하루 흐름 line 코드·시험·보고서·원본 원장을 그대로 가져왔다. 실질 충돌 없이 main을 계속 따라잡는 작업은 하지 않는다.
+Ruff3 두 파일과 Motion14.13 공개/관리자/공유 UI 선언·lock은 source4 그대로다. 새로 들어온 parking-lines 원장의14.12는 재사용 source commit 시점 기록으로 보존하며 실제 소비/해석 버전은 두 lock의14.13.0이다. backend 전체는 source4와 같아 해당469→466 기준선·mock4PASS/DB2deselected·원문을 동일 입력 증거로 연결하고 새 실행으로 표기하지 않는다.
+다음은 정확 source5의 원2 리뷰·실제 CI·최종 main 머지 후 정상 제품3종 빌드다. Common36 refs를 유지하고 미래 Common ref는 이 앱 수용 대기 조건이 아니다. 최종 codepin 전파와 workflow 최적화는 마지막 별도 workflow-only PR이다. downgrade P2 OPEN·제품 HOLD·Geo confirm 우선/Weather R4 대기·Map0을 유지한다.
+
 ## 2026-11-13 — PR193 source4 최신 main 통합과 최종 앱 수용 순서
 
 Ruff3·Motion14.13 source3 a92f31f에 실제 main12c65b9(PR194)를 정상 merge했다. 양쪽 journal/resume 기록을 보존하고 main의 sample-data 코드/시험·workflow·task는 원본 blob 그대로 가져왔다. 본 작업에서 CI 순서 감사/재배치는 수행하지 않았다.
@@ -21,6 +27,37 @@ backend 두 스타일 파일은 source1 그대로다. 기존 Ruff 대상0/전체
 실제 main b3c9942의 새 기능 계보를 보존한 별도 브랜치다. 대상 두 파일의 I001/SIM117/PIE807만 수정했고 SQL·migration guard·revision·제품/의존성/producer는 그대로다.
 대상 Ruff0건, 전체 backend468→465건(나머지 동일), mock4PASS/DB시험2개 deselected와 AST 동등성·CodeGraph backend249파일 검산을 정산했다. 전체 lint나 실제 두 세션 DDL 수용을 주장하지 않는다.
 다음 한 작업은 이 정확한 source의 원2 리뷰·Draft PR·CI·최종 main 머지다. T-DOWNGRADE-GUARDS-20261113 OPEN과 기존 운영 제한을 유지한다. Transport 제품3종은 새 실제 merged SHA/tree 확정 전 HOLD이며 Map·CI 순서 감사는 미실행이다.
+
+## 현재 정산 — 2026-11-13 CI 최적화 main 반영과 PR191 마감
+
+- Transport PR192는 main3ed6335, Weather PR232는 부모가 관측한 실제 머지 완료다. Transport PR194도 전체 CI 성공 뒤04:00UTC에 main `12c65b95143369032dda434b6c79c18db25cbdfc`로 실제 머지됐다. PR194 backend는1915PASS/2SKIP/54subtests,903.19초(15분03초)다. 표본·runner 상태가 달라 코드 단독 개선율로 해석하지 않는다.
+- 검토·검증된 PR191 차트 frontend는03d9/9510 bytes를 그대로 보존하고 backend/admin/CI는 최신 main194와 동일하게 정상 merge했다. 충돌은 문서4개뿐이며 양쪽 기록과 완료/미완 상태를 보존했다. 기존 시험·브라우저·새 빌드·운영을 반복하지 않는다.
+- 다음은 이 통합 HEAD의 공식 PR191 CI·main 머지를 Root가 마감한다. PR194 성공을 PR191 최종 HEAD 성공으로 소급하지 않는다. 공식 workflow는 기능 push 중복 없이 PR에서 전체 시험을 그대로 실행한다.
+
+## 현재 정산 — 2026-11-13 PR192 머지와 PR191 마감
+
+- 상세32px/SVG16px의 PR192는 전체 CI 성공 뒤 main `3ed6335dbbcf4fab8e000be3691a40ad32640c83`로 실제 머지됐다. 아래192 머지 대기는 과거 이력이며 T-DETAIL-BUTTONS-MERGE는 완료다. 운영/이미지 수용으로 확대하지 않는다.
+- PR191의 자정 설명창 후속9510c68은 두 독립 delta 리뷰 문제0과 집중 WSL/Docker각12·타입/lint·실제8개 경계 bbox를 정산한 뒤 정상 push했다. 최신 main 충돌은 문서4개뿐으로 양쪽 이력을 보존했다. 공개 제품은9510, backend/admin은3ed6335와 동일하다. 이미 끝난 시험·브라우저·빌드/운영을 반복하지 않는다.
+- 다음은 PR191의 정확 통합 HEAD CI·main 머지를 Root가 마감한다. 원9510 push CI43359111183은 그 원 HEAD의 진행 기록으로 보존하고 새 통합 HEAD 성공으로 소급하지 않는다.
+
+## 현재 정산 — 2026-11-13 main 공항·유가와 PR191 후속
+
+- 공항 PR189는 main `cfefd5344532cbbdf74c5c03a641f8c5b1b887eb`, 유가 PR190은 전체 CI 성공 뒤 main `b3c9942d99065731f890376a6653bafd57a58cc3`로 실제 머지됐다. 아래 머지 대기 문구는 과거 후보 이력이며 T-FUEL30-MERGE는 완료다. 운영 배포·수집 최신화 성공을 뜻하지 않는다.
+- PR191의 CI fixture/가시 툴팁 후속은 별도43038e1로 고정했다. HistoryView4/공개 전체184/Docker14와 공개 타입·변경 lint가 실제0이다. 최신 main을 정상 merge한5b28168은 양 앱 통합 guard/타입0·공개 frontend=43038/backend·admin=b3c994 diff0으로 정산했다.
+- 추가 독립 P2의 자정 설명창 잘림은 중심 위치만 제한해 보정했다. 실제00:00/23:59·PC/mobile·정상/4배축8개 bbox RED→GREEN과 캡처를 확인했다. 기존 전체184/브라우저 전체를 반복하지 않으며 별도 집중 WSL/Docker각12PASS로 정산한다.
+- PR192는 소스 검증·두 독립 리뷰 완료 후 CI 대기다. PR191 자체의 최종 delta 리뷰·exact CI·main 머지는 아직 부모 정산 범위다. 끝난 전체 시험/브라우저를 반복하거나 운영/build를 실행하지 않는다.
+
+## 통합 후속 — 2026-11-13 PR191
+
+- 22888 부모 빌드 계약을 정상 merge하고 기존6e0 line/engine/CSS/의존성 그래프를 보존했다. 새 수치표2곳만 공유 VirtualTable로 보정해 공통 guard 누락을 해결했다.
+- 양 앱 공통 guard/타입·변경 lint/Doctor0, 표 전용 WSL/Docker각2PASS다. 원21개·1440/375 그래프 관측은 코드 동일 범위의 원 수용으로 보존하며 반복하지 않았다. [근거/원실패](reports/2026-11-13-parking-lines.md).
+- 다음은 부모의 최신 우선 작업 완료 뒤 PR191 CI/두 독립 리뷰/머지 정산이다. 새 운영/생산 빌드/리뷰 확장은 하지 않는다.
+
+## 현재 후속 — 2026-11-13 주차 이력·하루 흐름 line 차트
+
+- 최근 주차 이력/날짜별 하루 흐름의 실제 데이터 plot도 공식 EvilCharts ECharts line으로 바꿨다. daily 명시적 결측 단절, 관측0, KST marker_at, 특별일·날짜·방향·키보드·포인터/터치 계약을 확인했다.
+- 최종 순차 WSL/Docker각21·양 앱 타입/전체 lint/Doctor78·232파일0·Chromium1440/375 fixture·dispose와 캡처 검토가 완료됐다. [검증/원실패/한계](reports/2026-11-13-parking-lines.md).
+- 다음 한 작업은 이 후속 Draft PR의 부모 CI/두 독립 리뷰/머지다. 기존 PR189에 쌓아 차이만 공개하며 운영 배포·생산 빌드·외부 수집은 하지 않는다.
 
 ## 현재 후속 — 2026-11-13 CI 표본 생성 비용
 

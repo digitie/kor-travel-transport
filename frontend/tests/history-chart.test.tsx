@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { ParkingLinesProbe, lineOptions } from "./parking-lines-probe";
+vi.mock("next/dynamic", () => ({ default: () => ParkingLinesProbe }));
 
 import { fireEvent, render, screen, within } from "@testing-library/react";
 
@@ -49,15 +50,37 @@ function buildWeekendSeries(): ParkingTimeSeriesResponse {
 }
 
 describe("HistoryChart", () => {
+  test("a native observation slider selects an actual zero and an explicit missing bucket", () => {
+    const series = buildSeries();
+    series.items[1] = { ...series.items[1], available_spaces: 0 };
+    series.items[2] = { ...series.items[2], available_spaces: 0, lot_observations: 0 };
+    render(<HistoryChart holidays={[]} series={series} scopeLabel="P1" />);
+    const slider = screen.getByRole("slider", { name: "주차 관측 시점" });
+    fireEvent.change(slider, { target: { value: "1" } });
+    expect(screen.getByTestId("history-tooltip")).toHaveTextContent("0대");
+    expect(slider).toHaveAttribute("aria-valuetext", expect.stringContaining("0대"));
+    fireEvent.change(slider, { target: { value: "2" } });
+    expect(screen.getByTestId("history-tooltip")).toHaveTextContent("주차 정보 없음");
+    expect(screen.getByText("관측 수치와 특별일 보기")).toBeInTheDocument();
+  });
+  test("does not mount a data engine for empty or entirely missing data", () => {
+    const view = render(<HistoryChart holidays={[]} series={null} scopeLabel="P1" />);
+    expect(screen.queryByTestId("parking-line-probe")).toBeNull();
+    const series = buildSeries(); series.items = series.items.map((point) => ({ ...point, lot_observations: 0 }));
+    view.rerender(<HistoryChart holidays={[]} series={series} scopeLabel="P1" />);
+    expect(screen.queryByTestId("parking-line-probe")).toBeNull();
+  });
   test("breaks the line and area across missing observations", () => {
     const series = buildSeries();
     series.items = series.items.slice(0, 6).map((item, index) => index === 2 || index === 3
       ? { ...item, lot_observations: 0, available_spaces: 0, occupied_spaces: 0, total_spaces: 0 }
       : item);
-    const { container } = render(<HistoryChart holidays={[]} series={series} scopeLabel="P1" />);
+    render(<HistoryChart holidays={[]} series={series} scopeLabel="P1" />);
 
-    expect(container.querySelectorAll(".history-line")).toHaveLength(2);
-    expect(container.querySelectorAll(".history-area")).toHaveLength(2);
+    const options = lineOptions<{ series: { data: [number, number | null][]; connectNulls: boolean; areaStyle: object }[] }>();
+    expect(options.series[0].data.map((point) => point[1])).toEqual([100, 101, null, null, 104, 105]);
+    expect(options.series[0].connectNulls).toBe(false);
+    expect(options.series[0].areaStyle).toBeTruthy();
   });
 
   test("keeps isolated older observations visible as points", () => {
@@ -65,15 +88,16 @@ describe("HistoryChart", () => {
     series.items = series.items.slice(0, 5).map((item, index) => index === 1 || index === 3
       ? item
       : { ...item, lot_observations: 0, available_spaces: 0, occupied_spaces: 0, total_spaces: 0 });
-    const { container } = render(<HistoryChart holidays={[]} series={series} scopeLabel="P1" />);
+    render(<HistoryChart holidays={[]} series={series} scopeLabel="P1" />);
 
-    expect(container.querySelectorAll(".history-point.isolated")).toHaveLength(2);
-    const css = readFileSync("src/parking.css", "utf8");
-    expect(css).toMatch(/\.history-point\.isolated\s*\{[^}]*fill:\s*var\(--teal\)/);
+    const options = lineOptions<{ series: { data: [number, number | null][]; showSymbol: boolean; showAllSymbol: boolean }[] }>();
+    expect(options.series[0].data.map((point) => point[1])).toEqual([null, 101, null, 103, null]);
+    expect(options.series[0].showSymbol).toBe(true);
+    expect(options.series[0].showAllSymbol).toBe(true);
   });
 
   test("renders 6 hour axis labels", () => {
-    const { container } = render(
+    render(
       <HistoryChart
         holidays={buildHolidays()}
         series={buildSeries()}
@@ -89,9 +113,8 @@ describe("HistoryChart", () => {
     expect(screen.getByText("06:00")).toBeInTheDocument();
     expect(screen.getByText("12:00")).toBeInTheDocument();
 
-    const linePath = container.querySelector(".history-line");
-    expect(linePath?.getAttribute("d")).toContain("H");
-    expect(linePath?.getAttribute("d")).toContain("V");
+    const options = lineOptions<{ series: { step: string }[] }>();
+    expect(options.series[0].step).toBe("end");
 
     const tooltip = screen.getByTestId("history-tooltip");
     expect(tooltip).toBeInTheDocument();
@@ -196,7 +219,7 @@ describe("HistoryChart", () => {
     );
 
     expect(screen.getAllByTestId("holiday-band")).toHaveLength(2);
-    expect(screen.getByText("토요일")).toBeInTheDocument();
-    expect(screen.getByText("일요일")).toBeInTheDocument();
+    expect(screen.getAllByText(/토요일/)[0]).toBeInTheDocument();
+    expect(screen.getAllByText(/일요일/)[0]).toBeInTheDocument();
   });
 });

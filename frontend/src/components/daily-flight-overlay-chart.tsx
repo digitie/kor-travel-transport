@@ -1,6 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+import { VirtualTable, type ColumnDef } from "@kor-travel/ui/virtual-table";
+import { useCallback, useMemo, useState } from "react";
+import { dailyLineOptions } from "./evilcharts/parking-line-options";
+
+const ParkingLineCanvas = dynamic(() => import("./evilcharts/parking-line-canvas").then((module) => module.ParkingLineCanvas), { ssr: false, loading: () => <p role="status">하루 흐름 차트를 불러오는 중입니다.</p> });
 
 import {
   formatAxisTimeLabel,
@@ -15,9 +20,8 @@ const BASE_CHART_WIDTH = 1180;
 const CHART_HEIGHT = 320;
 const CHART_PADDING_X = 42;
 const CHART_PADDING_TOP = 30;
-const CHART_PADDING_BOTTOM = 32;
-const GRID_LINES = 4;
-const HOURS = [0, 6, 12, 18, 24];
+// parking.css의 설명창 최대 너비240px를 차트 양쪽 경계 안에 둔다.
+const FLIGHT_TOOLTIP_HALF_WIDTH = 120;
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
 type DailyFlightOverlayChartProps = {
@@ -30,7 +34,7 @@ type DailyFlightOverlayChartProps = {
 type DailyPoint = {
   bucketAt: string;
   minuteOfDay: number;
-  availableSpaces: number;
+  availableSpaces: number | null;
 };
 
 type SpecialDayType = "holiday" | "saturday" | "sunday";
@@ -41,11 +45,6 @@ type DailyLine = {
   specialDayName: string | null;
   specialDayType: SpecialDayType | null;
   points: DailyPoint[];
-};
-
-type PositionedPoint = DailyPoint & {
-  x: number;
-  y: number;
 };
 
 type FlightMarker = FlightStatusItem & {
@@ -84,11 +83,6 @@ function minuteToX(minuteOfDay: number, chartWidth: number): number {
   return CHART_PADDING_X + (Math.min(Math.max(minuteOfDay, 0), 1440) / 1440) * innerWidth;
 }
 
-function valueToY(value: number, maxValue: number): number {
-  const innerHeight = CHART_HEIGHT - CHART_PADDING_TOP - CHART_PADDING_BOTTOM;
-  return CHART_PADDING_TOP + (1 - value / Math.max(maxValue, 1)) * innerHeight;
-}
-
 function buildDailyLines(
   series: ParkingTimeSeriesResponse | null,
   holidays: HolidayItemSummary[]
@@ -101,21 +95,19 @@ function buildDailyLines(
   const grouped = new Map<string, DailyPoint[]>();
 
   for (const item of series.items) {
-    if (item.lot_observations <= 0) {
-      continue;
-    }
     const { hour, minute } = getSeoulDateParts(item.bucket_at);
     const localDate = formatSeoulDateKey(item.bucket_at);
     const points = grouped.get(localDate) ?? [];
     points.push({
       bucketAt: item.bucket_at,
       minuteOfDay: hour * 60 + minute,
-      availableSpaces: item.available_spaces,
+      availableSpaces: item.lot_observations > 0 ? item.available_spaces : null,
     });
     grouped.set(localDate, points);
   }
 
   return Array.from(grouped.entries())
+    .filter(([, points]) => points.some((point) => point.availableSpaces !== null))
     .sort(([leftDate], [rightDate]) => leftDate.localeCompare(rightDate))
     .slice(-7)
     .map(([localDate, points]) => {
@@ -129,18 +121,6 @@ function buildDailyLines(
         points: points.sort((left, right) => left.minuteOfDay - right.minuteOfDay),
       };
     });
-}
-
-function buildStepPath(points: PositionedPoint[]): string {
-  if (points.length === 0) {
-    return "";
-  }
-  const path = [`M ${points[0].x} ${points[0].y}`];
-  for (const point of points.slice(1)) {
-    path.push(`H ${point.x}`);
-    path.push(`V ${point.y}`);
-  }
-  return path.join(" ");
 }
 
 function formatFlightDirection(direction: FlightStatusItem["direction"]): string {
@@ -191,16 +171,8 @@ export function DailyFlightOverlayChart({
 
   const chartWidth = BASE_CHART_WIDTH * (useWideAxis ? 4 : 1);
   const dailyLines = useMemo(() => buildDailyLines(series, holidays), [holidays, series]);
-  const maxValue = Math.max(...dailyLines.flatMap((line) => line.points.map((point) => point.availableSpaces)), 1);
-  const visibleLines = dailyLines.filter((line) => !hiddenDates.has(line.localDate));
-  const positionedLines = visibleLines.map((line) => ({
-    ...line,
-    points: line.points.map((point) => ({
-      ...point,
-      x: minuteToX(point.minuteOfDay, chartWidth),
-      y: valueToY(point.availableSpaces, maxValue),
-    })),
-  }));
+  const maxValue = Math.max(...dailyLines.flatMap((line) => line.points.map((point) => point.availableSpaces ?? 0)), 1);
+  const visibleLines = useMemo(() => dailyLines.filter((line) => !hiddenDates.has(line.localDate)), [dailyLines, hiddenDates]);
   const flightMarkers = useMemo(
     () =>
       buildFlightMarkers(flightStatus, chartWidth).filter((marker) => {
@@ -218,6 +190,11 @@ export function DailyFlightOverlayChart({
   const arrivalCount = flightMarkers.filter((marker) => marker.direction === "arrival").length;
   const activeFlightKey = hoveredFlightKey ?? selectedFlightKey;
   const activeFlight = activeFlightKey ? flightMarkers.find((marker) => marker.key === activeFlightKey) ?? null : null;
+  const selectFlight = useCallback((key: string) => setSelectedFlightKey((current) => current === key ? null : key), []);
+  // Hover/selection updates the DOM overlay, not the full series/Graphic lifetime under the pointer.
+  const chartOptions = useMemo(() => dailyLineOptions({ lines: visibleLines, allDates: dailyLines.map((line) => line.localDate), width: chartWidth, maxValue,
+    flights: flightMarkers, activeFlightKey: null, onHover: setHoveredFlightKey, onSelect: selectFlight }),
+    [visibleLines, dailyLines, chartWidth, maxValue, flightMarkers, selectFlight]);
 
   function toggleDate(localDate: string) {
     setHiddenDates((current) => {
@@ -300,105 +277,18 @@ export function DailyFlightOverlayChart({
                 <div
                   className="flight-highlight-label daily-flight-highlight"
                   data-testid="daily-flight-highlight-label"
-                  style={{ left: `${activeFlight.x}px` }}
+                  style={{ left: `${Math.min(chartWidth - FLIGHT_TOOLTIP_HALF_WIDTH, Math.max(FLIGHT_TOOLTIP_HALF_WIDTH, activeFlight.x))}px` }}
                 >
                   <strong>
                     {formatAxisTimeLabel(activeFlight.marker_at)} {activeFlight.flight_number}
                   </strong>
-                  <span>
-                    {formatFlightDirection(activeFlight.direction)} {activeFlight.origin_airport} {"->"}{" "}
-                    {activeFlight.destination_airport}
-                  </span>
+                  <span>{activeFlight.label}</span>
                 </div>
               ) : null}
 
-              <svg
-                aria-label={`최근 7일 ${scopeLabel} 일 단위 잔여 주차면 변화`}
-                className="daily-overlay-chart"
-                role="img"
-                viewBox={`0 0 ${chartWidth} ${CHART_HEIGHT}`}
-              >
-                {Array.from({ length: GRID_LINES }, (_, index) => {
-                  const y =
-                    CHART_PADDING_TOP +
-                    ((CHART_HEIGHT - CHART_PADDING_TOP - CHART_PADDING_BOTTOM) * index) /
-                      Math.max(GRID_LINES - 1, 1);
-                  return (
-                    <line
-                      key={`daily-grid-${index}`}
-                      className="history-grid-line"
-                      x1={CHART_PADDING_X}
-                      x2={chartWidth - CHART_PADDING_X}
-                      y1={y}
-                      y2={y}
-                    />
-                  );
-                })}
-
-                {HOURS.map((hour) => {
-                  const x = minuteToX(hour * 60, chartWidth);
-                  return (
-                    <g key={`daily-hour-${hour}`}>
-                      <line
-                        className="history-divider"
-                        x1={x}
-                        x2={x}
-                        y1={CHART_PADDING_TOP}
-                        y2={CHART_HEIGHT - CHART_PADDING_BOTTOM}
-                      />
-                      <text className="daily-axis-label" textAnchor="middle" x={x} y={CHART_HEIGHT - 8}>
-                        {String(hour).padStart(2, "0")}:00
-                      </text>
-                    </g>
-                  );
-                })}
-
-                {positionedLines.map((line, index) => (
-                  <g
-                    key={`daily-line-${line.localDate}`}
-                    className={line.specialDayType ? `daily-line-special daily-line-${line.specialDayType}` : ""}
-                  >
-                    <path
-                      className={`daily-line daily-line-${index % 7}`}
-                      d={buildStepPath(line.points)}
-                      fill="none"
-                      data-testid="daily-overlay-line"
-                    />
-                    {line.specialDayType && line.points.length > 0 ? (
-                      <rect
-                        className={`daily-holiday-marker daily-holiday-marker-${line.specialDayType}`}
-                        height="9"
-                        width="9"
-                        x={line.points[line.points.length - 1].x - 4.5}
-                        y={line.points[line.points.length - 1].y - 4.5}
-                      />
-                    ) : null}
-                  </g>
-                ))}
-
-                {flightMarkers.map((marker) => (
-                  <g
-                    key={marker.key}
-                    className={`daily-flight-marker daily-flight-marker-${marker.direction} ${
-                      marker.key === activeFlightKey ? "active" : ""
-                    }`}
-                    data-testid="daily-flight-marker"
-                    onClick={() => setSelectedFlightKey((current) => (current === marker.key ? null : marker.key))}
-                    onMouseEnter={() => setHoveredFlightKey(marker.key)}
-                    onMouseLeave={() => setHoveredFlightKey(null)}
-                  >
-                    <title>{marker.label}</title>
-                    <line
-                      className="flight-marker-line"
-                      x1={marker.x}
-                      x2={marker.x}
-                      y1={CHART_PADDING_TOP}
-                      y2={CHART_HEIGHT - CHART_PADDING_BOTTOM}
-                    />
-                    <circle className="flight-marker-dot" cx={marker.x} cy={marker.y} r="4.5" />
-                  </g>
-                ))}
-              </svg>
+              <ParkingLineCanvas height={CHART_HEIGHT} label={`최근 7일 ${scopeLabel} 일 단위 잔여 주차면 변화`}
+                options={chartOptions} />
+              {activeFlight ? <div aria-hidden="true" style={{ position: "absolute", pointerEvents: "none", left: activeFlight.x, top: CHART_PADDING_TOP, height: CHART_HEIGHT - CHART_PADDING_TOP - 32, borderLeft: `3px solid var(--color-chart-flight-${activeFlight.direction})` }} /> : null}
             </div>
             <div className="daily-flight-marker-list" aria-label="비행편 선택" role="group">
               {flightMarkers.map((marker) => (
@@ -426,6 +316,7 @@ export function DailyFlightOverlayChart({
             </div>
           </div>
 
+          <DailyValues lines={visibleLines} />
           <div className="daily-overlay-legend">
             {flightStatus?.status === "loading" ? (
               <span role="status">{flightStatus.error_message}</span>
@@ -439,5 +330,21 @@ export function DailyFlightOverlayChart({
         </>
       )}
     </article>
+  );
+}
+
+const dailyValueColumns: ColumnDef<DailyPoint>[] = [
+  { id: "time", header: "시각", meta: { rowHeader: true }, cell: ({ row }) => formatAxisTimeLabel(row.original.bucketAt) },
+  { id: "available", header: "잔여면", meta: { align: "right" }, cell: ({ row }) => row.original.availableSpaces === null ? "관측 없음" : formatNumber(row.original.availableSpaces) },
+];
+
+function DailyValues({ lines }: { lines: DailyLine[] }) {
+  const [showValues, setShowValues] = useState(false);
+  return (
+          <details onToggle={(event) => setShowValues(event.currentTarget.open)}><summary>날짜별 관측 수치 보기</summary>
+            {showValues ? lines.map((line) => <VirtualTable key={line.localDate} ariaLabel={`${line.label} ${line.specialDayName ?? ""} 잔여면`}
+              caption={`${line.label} ${line.specialDayName ?? ""}`} columns={dailyValueColumns} data={line.points}
+              getRowId={(point) => point.bucketAt} virtualized={false} />) : null}
+          </details>
   );
 }

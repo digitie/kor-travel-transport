@@ -1,3 +1,9 @@
+## 2026-11-13 — PR193 source5 실제 충돌 해소
+
+source4 de6079f를 동결한 뒤 main에 PR191 b353a44가 머지돼 실제 문서 충돌과 CI 미등록이 발생했다. 요청된 예외에 따라 정상 merge로 journal/resume 양쪽 기록을 보존하고 PR191의 주차 이력·하루 흐름 line 코드·시험·보고서·원본 원장을 그대로 가져왔다. 실질 충돌 없이 main을 계속 따라잡는 작업은 하지 않는다.
+Ruff3 두 파일과 Motion14.13 공개/관리자/공유 UI 선언·lock은 source4 그대로다. 새로 들어온 parking-lines 원장의14.12는 재사용 source commit 시점 기록으로 보존하며 실제 소비/해석 버전은 두 lock의14.13.0이다. backend 전체는 source4와 같아 해당469→466 기준선·mock4PASS/DB2deselected·원문을 동일 입력 증거로 연결하고 새 실행으로 표기하지 않는다.
+다음은 정확 source5의 원2 리뷰·실제 CI·최종 main 머지 후 정상 제품3종 빌드다. Common36 refs를 유지하고 미래 Common ref는 이 앱 수용 대기 조건이 아니다. 최종 codepin 전파와 workflow 최적화는 마지막 별도 workflow-only PR이다. downgrade P2 OPEN·제품 HOLD·Geo confirm 우선/Weather R4 대기·Map0을 유지한다.
+
 ## 2026-11-13 — PR193 source4 최신 main 통합과 최종 앱 수용 순서
 
 Ruff3·Motion14.13 source3 a92f31f에 실제 main12c65b9(PR194)를 정상 merge했다. 양쪽 journal/resume 기록을 보존하고 main의 sample-data 코드/시험·workflow·task는 원본 blob 그대로 가져왔다. 본 작업에서 CI 순서 감사/재배치는 수행하지 않았다.
@@ -25,6 +31,43 @@ backend 두 스타일 파일은 source1 그대로다. 기존 Ruff 대상0/전체
 - 기존 mock 시험4PASS/DB시험2개 deselected이며 PostgreSQL/실제DDL은 실행하지 않았다. plugin 자동 로딩을 끈 좁은 실행의 asyncio_mode 설정 경고1개는 원문으로 보존했다. 정규화 AST는 두 스타일 변환과 import 순서를 제외하고 같고, migration downgrade 함수 AST·문자열 상수는 그대로다.
 - 기존 CodeGraph로 backend249파일/6537nodes/6221edges를 인덱싱했다. affected 결과0은 importlib 동적 로딩의 영향 부재 증명이 아니므로 해당 migration을 직접 읽는 mock4개와 AST 검산을 함께 사용했다. 새 회귀 시험을 추가하거나 기존 기대를 약화하지 않았다.
 - T-DOWNGRADE-GUARDS-20261113은 OPEN이며 0038/0039/0041/0042의 destructive downgrade 보호 완료로 바꾸지 않는다. 이 패치로 DB rollback/downgrade를 허용하지 않는다. 원2 독립 리뷰·정확한 새 SHA의 CI·머지가 남았으며 Transport 제품 이미지3종은 최종 검토·머지 SHA까지 HOLD다. 이미지/운영/Map/CI 순서 감사 실행0이다.
+
+## 2026-11-13 — CI 최적화 PR194와 주차 line 최종 통합
+
+- PR194는 backend1915PASS/2SKIP/54subtests·903.19초(15분03초)와 전체 CI 성공 뒤04:00UTC에 main12c65b9로 머지됐다. PR192/Weather232 실제 머지도 부모 관측으로 정산한다. 서로 다른 runner/표본의 시간을 코드 단독 개선율로 쓰지 않는다.
+- PR191은 최신 main194를 정상 merge하고 충돌 문서4개에서 양쪽 기록을 보존했다. 차트 frontend03d9/9510 bytes와 main194 backend/admin/CI를 유지한다. 새 QA·검토·빌드·운영0이며 이 최종 통합 HEAD CI는 아직 대기다.
+
+## 2026-11-13 — PR192 머지 후 주차 line 문서 통합
+
+- PR192가 main3ed6335로 머지된 뒤 PR191은 실제 dirty였다. 검토된9510을 먼저 정상 push하고 최신 main을 정상 merge했다. 충돌 문서4개 양쪽을 보존했고 공개9510/backend·admin3ed 제품 bytes는 유지한다. 새 시험·빌드·운영0이다.
+- 9510 원 CI43359111183과 새 통합 HEAD의 CI를 구분한다. 상세 버튼 머지 완료와 PR191 최종 CI/머지 대기를 정산하며 기존 검증은 반복하지 않는다.
+
+## 2026-11-13 — 자정 항공편 설명창 경계 보정
+
+- 추가 독립 P2의00:00/23:59 설명창 잘림을 Chromium PC1440/mobile375 정상/4배축8개 bbox RED와 unit2FAIL로 재현했다. 설명창 중심만 최대 폭의 반폭120px 안쪽으로 제한하고 시계열/항공편 위치·label·엔진은 유지했다.
+- 같은 실제8개 bbox GREEN과 캡처를 확인했다. browser/server각0·오류/외부요청/문서 overflow0이며 기존 전체184·브라우저 전체를 반복하지 않는다. [근거](reports/2026-11-13-parking-lines.md).
+
+## 2026-11-13 — PR191과 최신 main 정상 병합
+
+- sourcefix43038e1을 고정한 뒤 공항 PR189/유가 PR190이 머지된 main b3c9942를 정상 merge했다. 충돌 문서4개는 양쪽 이력과 최신 완료/미완 상태를 보존했다. 부모의 backend/유가 제품과 주차 line 수정은 각 소유 범위 그대로 유지한다.
+- PR189/190 main 반영과 T-FUEL30-MERGE 완료를 정산하고 PR191 최종 리뷰/CI/머지 및 PR192 CI 대기를 구분한다. 운영·생산 빌드·수집0이다.
+
+## 2026-11-13 — PR191 CI fixture와 가시 항공편 정보 보정
+
+- c554의 실제 두 frontend CI는183개 중182PASS/1FAIL과 unhandled2였다. jsdom에 없는 ResizeObserver/matchMedia로 Canvas가 view 시험을 중단한 원문을 보존하고 HistoryView의 시각 엔진 경계만 mock했다. 날짜/API/초점 oracle은 유지한다.
+- 별도 P2는 가시 툴팁의 날짜·항공사·상태 누락이었다. 실제 가시 DOM RED1을 보존하고 기존 전체 KST label을 안전한 React 텍스트로 표시했다. WSL view4→공개 전체184→Docker14를 순차 통과했으며 엔진·시간 범위·의존성·운영/build0이다. [근거](reports/2026-11-13-parking-lines.md).
+
+## 2026-11-13 — PR191 부모 통합과 공통 표 계약 보정
+
+- PR189의22888을 정상 merge하고 충돌한 문서3개 양쪽을 보존했다. 빌드22파일·Node22.23.1/npm12.0.1/strict 계약은 부모 그대로이고 lock 비루트 그래프·직접 의존성은6e0와 같다.
+- 통합 guard가 새 native 표2곳을 거절해 그 표현만 공유 VirtualTable로 고쳤다. 공개/관리자 공통 guard·타입0, 변경 lint·두 파일 Doctor0, 새 표 WSL/Docker각2PASS다. 기존21개·브라우저·full Doctor는 반복하지 않았고 line/engine/CSS는 유지한다.
+- 원 guard/CLI/pack 보조 실패와 부모의 기존 EOF 경고는 [정산](reports/2026-11-13-parking-lines.md)에 남긴다. 추가 작업·리뷰·머지는 부모의 최신 우선 작업 완료 뒤이며 운영/build0이다.
+
+## 2026-11-13 — 주차 이력·하루 흐름의 공식 ECharts line 전환
+
+- 공유 history/daily의 실제 SVG 데이터 선을 EvilCharts ECharts line으로 전환했다. 관측0/null 단절·특별일·KST marker_at·날짜/방향/확대·hover/click/native 키보드 경로를 보존했다. daily가 명시적 결측을 건너 연결하던 부분은 null gap으로 고쳤다.
+- source/installed43파일 패키지, 양 앱 타입/전체 lint/Doctor78·232파일0, 최종 순차 WSL21/Docker21, 실제 Chromium PC1440/mobile375·dispose/overflow/오류0과 캡처를 검산했다. 기존 실패와 지연 적재/테이블/선택 비용 경계는 [정산](reports/2026-11-13-parking-lines.md)에 있다.
+- 기존 PR189 checkout과 운영/수집/빌드/DB/키/의존성은 변경하지 않았다. stacked Draft PR의 CI/두 리뷰/머지는 부모 범위다.
 
 ## 2026-11-13 — CI 표본 생성 반복 조회 제거
 

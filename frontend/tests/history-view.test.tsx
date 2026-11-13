@@ -11,6 +11,12 @@ import type {
   ParkingTimeSeriesResponse,
 } from "@/lib/types";
 
+// 날짜/API/초점 계약을 검증하는 view 시험이다. 실제 브라우저 전용 Canvas는
+// 별도 차트 시험과 브라우저 fixture에서 검증하며 jsdom 전역 API를 위조하지 않는다.
+vi.mock("@/components/evilcharts/parking-line-canvas", () => ({
+  ParkingLineCanvas: () => null,
+}));
+
 const airports: Airport[] = [
   {
     code: "GMP",

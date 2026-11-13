@@ -1,0 +1,55 @@
+{
+  "설명": "공식 EvilCharts ECharts line 엔진을 공용 주차 이력·하루 흐름 차트에 재사용. 새 주차 옵션/수치표/테마 어댑터는 원본 엔진과 분리한다.",
+  "공식_저장소": "https://github.com/legions-developer/evilcharts",
+  "라이선스": "MIT",
+  "재사용_소스_커밋": "f4cc5aad07ce2650fc74366622d5081d16f02667",
+  "버전": {
+    "echarts": "6.1.0",
+    "motion": "14.12.0"
+  },
+  "파일": [
+    {
+      "파일": "frontend/src/components/evilcharts/charts/echarts-line-chart.tsx",
+      "소스_경로": "packages/kor-travel-transport-admin/frontend/components/evilcharts/charts/echarts-line-chart.tsx",
+      "registry_url": "https://evilcharts.com/r/echarts-line-chart.json",
+      "registry_sha256": "af4497e9835369a7f23a007f8dfdb07e87d813bd7fb143a11d2cebba4c540e5d",
+      "upstream_source_sha256": "102e36102ffeeccf1a5d80cfe9a268198cce7bf65a044da531d5dcd91d1bfd60",
+      "재사용_소스_sha256": "d868fa30dd6f7e2b6d5fd997879074e57ff8c0cdea661a43c11ec6285ca9719e",
+      "로컬_LF_sha256": "57ef5ba33389d1ec8dbe6a00fd9c08fd7abc6d8e9a9e0f96b1ce5b93b2b89431",
+      "변형": [
+        "공유 패키지 내부 소비를 위해 @/components/evilcharts/ui/ 경로와 해당 경로 설명만 ../ui/ 상대 경로로 재배치. 재사용 소스의 renderer/compound/수명/예외 주석 동작은 유지."
+      ]
+    },
+    {
+      "파일": "frontend/src/components/evilcharts/ui/echarts-brush.tsx",
+      "소스_경로": "packages/kor-travel-transport-admin/frontend/components/evilcharts/ui/echarts-brush.tsx",
+      "registry_url": "https://evilcharts.com/r/echarts-brush.json",
+      "registry_sha256": "8dc5314c49fdbeff04211515852c6aab7e43a653e020124294e6ae41ca1e8554",
+      "upstream_source_sha256": "8ab742558334a63adadb09d19ff9cd039f22de4303d61f0ec93ebcbc0dd917a2",
+      "재사용_소스_sha256": "841b9b5b4cb2bfbb866b38eabdae99aa725bc7a29e1a14cf2ab4f82ecc7a7f84",
+      "로컬_LF_sha256": "cd6f18e4527740f2ec972ac969fdd0ce62f99f9a59f66eb86511b80c69d520d0",
+      "변형": [
+        "공유 패키지 내부 소비를 위해 @/components/evilcharts/ui/를 chart에서는 ../ui/, UI에서는 ./ 상대 import로만 재배치. 재사용 소스의 renderer/compound/수명/예외 주석은 유지."
+      ]
+    },
+    {
+      "파일": "frontend/src/components/evilcharts/ui/echarts-dot.tsx",
+      "소스_경로": "packages/kor-travel-transport-admin/frontend/components/evilcharts/ui/echarts-dot.tsx",
+      "registry_url": "https://evilcharts.com/r/echarts-dot.json",
+      "registry_sha256": "7f4b42b09783b95911479dc05eb37c1c93bb16b9ce82d789115cdf07667fdb6c",
+      "upstream_source_sha256": "27258e7e3072ca8163e266e42b3073a5cadf382d415bc2410cb09f4b3fbc3cdd",
+      "재사용_소스_sha256": "27258e7e3072ca8163e266e42b3073a5cadf382d415bc2410cb09f4b3fbc3cdd",
+      "로컬_LF_sha256": "27258e7e3072ca8163e266e42b3073a5cadf382d415bc2410cb09f4b3fbc3cdd",
+      "변형": [
+        "공유 패키지 내부 소비를 위해 @/components/evilcharts/ui/를 chart에서는 ../ui/, UI에서는 ./ 상대 import로만 재배치. 재사용 소스의 renderer/compound/수명/예외 주석은 유지."
+      ]
+    }
+  ],
+  "공통_보존": "기반 cf905의 chart/tooltip/legend와 LICENSE를 그대로 사용한다. 설치/lockfile/의존성 변경 없음.",
+  "도메인_어댑터": [
+    "parking-line-options.ts: step:end·null 단절·관측 0·공휴일 띠·날짜별 고정 색·KST marker_at 좌표",
+    "parking-line-canvas.tsx: 원본 EChartsLineChart에 실제 옵션 전달, 기존 CSS 변수의 조상 테마 구독, memo 경계",
+    "parking-line.module.css/.d.ts: 실제 차트 부모 높이 보장. TS 테스트 설정은 변경하지 않는다."
+  ],
+  "지문_기준": "Git blob LF 바이트. 최초 fixture/타입 실패는 보고서와 Git 밖 원문에 보존한다."
+}

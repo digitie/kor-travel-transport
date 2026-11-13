@@ -1,0 +1,10 @@
+.canvas {
+  height: 100%;
+}
+
+/* 공유 패키지의 실제 mount 높이는 소비 앱의 Tailwind 탐색 범위에 의존하지 않는다. */
+.canvas > div:first-of-type > div:first-of-type {
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+}
