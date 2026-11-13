@@ -1,3 +1,8 @@
+## 2026-11-13 — CI 최적화 PR194와 주차 line 최종 통합
+
+- PR194는 backend1915PASS/2SKIP/54subtests·903.19초(15분03초)와 전체 CI 성공 뒤04:00UTC에 main12c65b9로 머지됐다. PR192/Weather232 실제 머지도 부모 관측으로 정산한다. 서로 다른 runner/표본의 시간을 코드 단독 개선율로 쓰지 않는다.
+- PR191은 최신 main194를 정상 merge하고 충돌 문서4개에서 양쪽 기록을 보존했다. 차트 frontend03d9/9510 bytes와 main194 backend/admin/CI를 유지한다. 새 QA·검토·빌드·운영0이며 이 최종 통합 HEAD CI는 아직 대기다.
+
 ## 2026-11-13 — PR192 머지 후 주차 line 문서 통합
 
 - PR192가 main3ed6335로 머지된 뒤 PR191은 실제 dirty였다. 검토된9510을 먼저 정상 push하고 최신 main을 정상 merge했다. 충돌 문서4개 양쪽을 보존했고 공개9510/backend·admin3ed 제품 bytes는 유지한다. 새 시험·빌드·운영0이다.
@@ -29,6 +34,11 @@
 - 공유 history/daily의 실제 SVG 데이터 선을 EvilCharts ECharts line으로 전환했다. 관측0/null 단절·특별일·KST marker_at·날짜/방향/확대·hover/click/native 키보드 경로를 보존했다. daily가 명시적 결측을 건너 연결하던 부분은 null gap으로 고쳤다.
 - source/installed43파일 패키지, 양 앱 타입/전체 lint/Doctor78·232파일0, 최종 순차 WSL21/Docker21, 실제 Chromium PC1440/mobile375·dispose/overflow/오류0과 캡처를 검산했다. 기존 실패와 지연 적재/테이블/선택 비용 경계는 [정산](reports/2026-11-13-parking-lines.md)에 있다.
 - 기존 PR189 checkout과 운영/수집/빌드/DB/키/의존성은 변경하지 않았다. stacked Draft PR의 CI/두 리뷰/머지는 부모 범위다.
+
+## 2026-11-13 — CI 표본 생성 반복 조회 제거
+
+- 실제 health1건의 setup11.799초 중 seed11.320초를 확인했다. lot/source/시간 범위별 projection1회로 바꿔 같은 시험의 seed0.651초·setup1.220초를 관측했다. 원본4테이블 전체 해시·ID·JSON·시각/재실행을 보존한다.
+- 초도 WSL SQLite/PG18·전체 저장소 Docker의 집중4개씩을 보존했다. 리뷰 P1의 소스 루트 의존 workflow 거울 시험1개만 제거하고 최종 의미 회귀3개를 WSL PG18·backend-only `/app` Docker에서 확인했다. workflow는 main push+PR로 중복을 제거하고 전체 시험/기존 job 이름을 유지하며 durations25를 남긴다. 새 exact CI/머지는 미완이고 운영·빌드0이다. [정본과 원 실패](reports/2026-11-13-ci-sample-seed.md).
 
 ## 2026-11-13 — 상세 버튼 임베디드 P1 수정
 

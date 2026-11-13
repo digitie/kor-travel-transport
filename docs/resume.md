@@ -1,3 +1,9 @@
+## 현재 정산 — 2026-11-13 CI 최적화 main 반영과 PR191 마감
+
+- Transport PR192는 main3ed6335, Weather PR232는 부모가 관측한 실제 머지 완료다. Transport PR194도 전체 CI 성공 뒤04:00UTC에 main `12c65b95143369032dda434b6c79c18db25cbdfc`로 실제 머지됐다. PR194 backend는1915PASS/2SKIP/54subtests,903.19초(15분03초)다. 표본·runner 상태가 달라 코드 단독 개선율로 해석하지 않는다.
+- 검토·검증된 PR191 차트 frontend는03d9/9510 bytes를 그대로 보존하고 backend/admin/CI는 최신 main194와 동일하게 정상 merge했다. 충돌은 문서4개뿐이며 양쪽 기록과 완료/미완 상태를 보존했다. 기존 시험·브라우저·새 빌드·운영을 반복하지 않는다.
+- 다음은 이 통합 HEAD의 공식 PR191 CI·main 머지를 Root가 마감한다. PR194 성공을 PR191 최종 HEAD 성공으로 소급하지 않는다. 공식 workflow는 기능 push 중복 없이 PR에서 전체 시험을 그대로 실행한다.
+
 ## 현재 정산 — 2026-11-13 PR192 머지와 PR191 마감
 
 - 상세32px/SVG16px의 PR192는 전체 CI 성공 뒤 main `3ed6335dbbcf4fab8e000be3691a40ad32640c83`로 실제 머지됐다. 아래192 머지 대기는 과거 이력이며 T-DETAIL-BUTTONS-MERGE는 완료다. 운영/이미지 수용으로 확대하지 않는다.
@@ -22,6 +28,11 @@
 - 최근 주차 이력/날짜별 하루 흐름의 실제 데이터 plot도 공식 EvilCharts ECharts line으로 바꿨다. daily 명시적 결측 단절, 관측0, KST marker_at, 특별일·날짜·방향·키보드·포인터/터치 계약을 확인했다.
 - 최종 순차 WSL/Docker각21·양 앱 타입/전체 lint/Doctor78·232파일0·Chromium1440/375 fixture·dispose와 캡처 검토가 완료됐다. [검증/원실패/한계](reports/2026-11-13-parking-lines.md).
 - 다음 한 작업은 이 후속 Draft PR의 부모 CI/두 독립 리뷰/머지다. 기존 PR189에 쌓아 차이만 공개하며 운영 배포·생산 빌드·외부 수집은 하지 않는다.
+
+## 현재 후속 — 2026-11-13 CI 표본 생성 비용
+
+- 같은 health 시험에서 sample seed11.320→0.651초, setup11.799→1.220초를 관측했다. 전체4테이블 해시/ID/시각/원문과 기존 표본·요금·범위를 보존한다. 초도4개를 보존하고 리뷰 P1의 workflow 소스 루트 의존 시험만 제거해 최종 의미 회귀3개를 WSL PG18·backend-only `/app` Docker에서 확인했다.
+- 다음 한 작업: 이 별도 후보의 exact commit을 부모에 전달해 독립 리뷰·실제 CI·머지를 정산한다. main push+PR/기존 job·전체 시험을 유지하며 기능 push 중복만 제거했다. 전체CI65분의 개선율·운영 배포로 과장하지 않는다. [근거](reports/2026-11-13-ci-sample-seed.md).
 
 ## 현재 우선 후속 — 2026-11-13 상세 버튼 P1
 

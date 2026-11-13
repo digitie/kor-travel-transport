@@ -1,3 +1,7 @@
+## 2026-11-13 — CI 표본 최적화 main 머지
+
+- [x] **T-CI-SEED-MERGE** — PR194 전체 CI 성공과 main12c65b9 머지를 부모가 확인했다. backend1915PASS/2SKIP/54subtests·903.19초이며 runner/표본 차이를 코드 단독 개선율로 과장하지 않는다. PR192/Weather232도 실제 머지 완료이며 PR191 최종 HEAD CI/머지는 별도 대기다.
+
 ## 2026-11-13 — 상세 버튼 main 머지
 
 - [x] **T-DETAIL-BUTTONS-MERGE** — PR192는 전체 CI 성공 후 main3ed6335로 실제 머지됐다. 원 embedded44px RED와 후속32px/SVG16·키보드/포인터·PC/mobile 검증은 원문 그대로이며 운영 수용은 별도다.
@@ -24,6 +28,10 @@
 
 - [x] **T-PARKING-LINES-CODE-20261113** — 공식 EvilCharts line engine, 관측0/결측 단절·고립 관측·특별일·KST 항공편·날짜/방향/4배축·native 키보드와 수치표, 실제 마운트 시 지연 적재와 선택 memo 경계를 구현했다.
 - [x] 양 앱 타입/전체 lint/Doctor78·232파일 warning0, 최종 순차 WSL21/Docker21, Chromium156 PC1440/mobile375 실제 캔버스·pointer/touch·키보드·숫자·조상 테마·dispose·overflow/오류0과 캡처를 확인했다. 소유 컨테이너0·fixture포트 해제와 제공 키의 Git 부재를 정산한다. CI/리뷰/머지와 운영 반영은 이 코드 완료에 포함하지 않는다. [정산](reports/2026-11-13-parking-lines.md).
+
+## 2026-11-13 — CI 표본 생성 구현/집중 검증
+
+- [x] **T-CI-SEED-CODE** — 원본 고정 시각4테이블 모든 열/ID/JSON 해시·재실행·source/run/미래 삭제 경계를 보존하며 관측 조회를 lot별18회로 제한했다. 초도 SQLite/PG18/전체 저장소 Docker 각4개를 보존하고 workflow 거울 시험의 루트 의존 P1을 제거했다. 최종 의미3개는 WSL PG18·backend-only `/app` Docker PASS, 기존 health 전후 각1개와 좁은 Ruff/diff0이다. 표본 함수11.320→0.651초는 로컬 단일 표본이다. CI/머지/운영 수용과 구분한다.
 
 ## 2026-11-13 — 상세 버튼 크기 구현
 

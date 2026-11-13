@@ -1,3 +1,9 @@
+## 현재 정산 — 2026-11-13 CI 최적화 main 반영과 PR191 마감
+
+- Transport PR192는 main3ed6335, Weather PR232는 부모가 관측한 실제 머지 완료다. Transport PR194도 전체 CI 성공 뒤04:00UTC에 main `12c65b95143369032dda434b6c79c18db25cbdfc`로 실제 머지됐다. PR194 backend는1915PASS/2SKIP/54subtests,903.19초(15분03초)다. 표본·runner 상태가 달라 코드 단독 개선율로 해석하지 않는다.
+- 검토·검증된 PR191 차트 frontend는03d9/9510 bytes를 그대로 보존하고 backend/admin/CI는 최신 main194와 동일하게 정상 merge했다. 충돌은 문서4개뿐이며 양쪽 기록과 완료/미완 상태를 보존했다. 기존 시험·브라우저·새 빌드·운영을 반복하지 않는다.
+- 다음은 이 통합 HEAD의 공식 PR191 CI·main 머지를 Root가 마감한다. PR194 성공을 PR191 최종 HEAD 성공으로 소급하지 않는다. 공식 workflow는 기능 push 중복 없이 PR에서 전체 시험을 그대로 실행한다.
+
 ## 현재 정산 — 2026-11-13 PR192 머지와 PR191 마감
 
 - 상세32px/SVG16px의 PR192는 전체 CI 성공 뒤 main `3ed6335dbbcf4fab8e000be3691a40ad32640c83`로 실제 머지됐다. 아래192 머지 대기는 과거 이력이며 T-DETAIL-BUTTONS-MERGE는 완료다. 운영/이미지 수용으로 확대하지 않는다.
@@ -16,6 +22,9 @@
 - [ ] **T-PARKING-LINES-MERGE-20261113** — history/daily line 전환의 부모 CI/두 독립 리뷰/머지. 6e0의 코드·양 앱 정적 검사·순차 WSL/Docker각21·1440/375 fixture를 보존한다. 22888 통합과 공통 표2곳 보정은 새 공통 guard/타입·변경 검사·WSL/Docker각2로 확인했으며 부모 우선 작업 완료 뒤 CI/리뷰/머지가 남았다. 운영 수용은 별도다. [근거](reports/2026-11-13-parking-lines.md).
 
 ## 2026-11-13 — 통합 상태 정정
+
+## 2026-11-13 — CI 표본 생성 후속
+
 
 ## 2026-11-13 — 상세 버튼 우선 반영
 
