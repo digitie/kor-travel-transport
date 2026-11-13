@@ -36,7 +36,8 @@ import {
 import { TooltipComponent, type TooltipComponentOption } from "echarts/components";
 import { LegendOverlay, type LegendVariant } from "../ui/echarts-legend";
 import { PieChart, type PieSeriesOption } from "echarts/charts";
-import { motion, useReducedMotion } from "motion/react";
+import { domAnimation, LazyMotion, useReducedMotion } from "motion/react";
+import * as m from "motion/react-m";
 import type { ComposeOption } from "echarts/core";
 import * as echarts from "echarts/core";
 
@@ -876,6 +877,8 @@ type LiveState = {
  * drives a single imperative ECharts instance. Fully self-contained: its only
  * dependencies are `react`, `echarts`, and `motion`.
  */
+// Upstream compound API owns one renderer lifetime; preserve its slots, observers and cleanup.
+// react-doctor-disable-next-line react-doctor/no-giant-component
 export function EChartsPieChart<TData extends Record<string, unknown>>({
   data,
   config,
@@ -1210,7 +1213,7 @@ export function EChartsPieChart<TData extends Record<string, unknown>>({
 
       {isLoading && (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
-          <motion.div
+          <LazyMotion features={domAnimation} strict><m.div
             initial={shouldReduceMotion ? false : { opacity: 0, scale: 0.92 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.25, ease: "easeOut" }}
@@ -1218,7 +1221,7 @@ export function EChartsPieChart<TData extends Record<string, unknown>>({
           >
             <div className="border-border border-t-primary h-3 w-3 animate-spin rounded-full border" />
             <span>Loading</span>
-          </motion.div>
+          </m.div></LazyMotion>
         </div>
       )}
     </div>

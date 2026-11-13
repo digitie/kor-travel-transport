@@ -10,13 +10,13 @@
       "파일": "frontend\\src\\components\\evilcharts\\charts\\echarts-pie-chart.tsx",
       "registry_sha256": "df00d9487a64ea32e0e8e8ca8bae8e77e7cb2dc681e96a7a14a41ccd47f3b691",
       "upstream_sha256": "dfb481cff6d7387d113be9e124b15646152b2a1b697536b71f1369986652b871",
-      "local_sha256": "fd70b0290828b52b0ee7862ff60b9e4ec646c015b57d1233a6fe36f25391fdc4"
+      "local_sha256": "0ab9a10b6504f009cb35b2f9152a00ee896f9c3ffabd6661b074882b0892311e"
     },
     {
       "파일": "frontend\\src\\components\\evilcharts\\charts\\echarts-heatmap-chart.tsx",
       "registry_sha256": "c9f27df34fce1de20edba2181315b7718df5914c5a3caf415ba7f6d626b3dcd2",
       "upstream_sha256": "d57be1b22c03fdcd7102664403e96c731eb44ef17a6d591d3d719d8e4ecd643a",
-      "local_sha256": "1c17fd62222b8140d8e20fbec4db71902bbccc24ccb21a28573508c4de1a4287"
+      "local_sha256": "25b676d70d57b1ba7d88c06e1c52486bf3b12a392e4146f4ce03203f1931054c"
     }
   ],
   "공통_소스_커밋": "179e4a9efd454431a1532885b08e26353e594539",
@@ -38,5 +38,6 @@
       "local_sha256": "5eb6fed4b62404d3b3aab740672fa293ddc4b151e9271c09f4c040262e6e1b8d"
     }
   ],
-  "로컬_지문_기준": "Git blob의 LF 정규화 바이트. Windows checkout의 CRLF는 비교 전 LF로 정규화한다."
+  "로컬_지문_기준": "Git blob의 LF 정규화 바이트. Windows checkout의 CRLF는 비교 전 LF로 정규화한다.",
+  "차트_추가_변형": "두 compound chart의 원문 renderer/slot/observer/cleanup 구조를 유지하기 위해 정확한 export 선언의 react-doctor/no-giant-component만 근거 주석으로 예외. loading overlay는 full motion factory 대신 LazyMotion/domAnimation + motion/react-m으로 변경하며 useReducedMotion은 유지."
 }

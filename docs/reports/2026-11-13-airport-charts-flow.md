@@ -33,6 +33,15 @@
 - P1 후속은 WSL 13개/시험 TypeScript/lint 0이다. 별도 fixture R2는 키보드 Enter로 외부 수치표와 각 셀 상세를 열어 평균 0.125/최저 0/최고 1/관측 8개를 읽고 1440/375 모두 overflow/pageerror/외부 요청 0을 확인했다. 브라우저 0·HTTP 정상 종료한 dev server 0이며 캡처도 직접 검토했다. P1 집중 Docker도 동일 13개/CLI 0이다. 선행 56개와 겹치는 시험을 합산하지 않는다.
 - 앱/제품 이미지 빌드·운영 배포는 수행하지 않았다. 위 브라우저는 제조된 시험 자료의 독립 fixture이며 운영 화면/API 수용이 아니다.
 
+## 원 CI 실패와 후속 수정
+
+- 제품197418c의 CI43329668779/frontend job131570919657 원문은 새 React Doctor warning 5개로 실패했다. 두 공식 차트의 full-motion import 2개, compound 선언 크기 2개, 새 주차 파이 래퍼의 render Date.now 1개다. 기존 코드 실패로 돌리거나 원 실패를 PASS로 바꾸지 않는다.
+- full-motion factory는 LazyMotion/domAnimation + motion/react-m의 m 요소로 바꿨다. useReducedMotion과 원 로딩 애니메이션은 보존한다. compound renderer/slot/observer/cleanup 구조를 재작성하지 않도록 정확한 두 export 선언의 no-giant-component만 Doctor 전용 주석으로 예외 처리했다. 파일 전체/디렉터리/전역 규칙 제외나 CI gate 완화는 없으며 원문/로컬 SHA와 변형 근거는 vendor manifest에 있다.
+- 시간에 따라 SSR/첫 hydration 문자열이 달라지는 원인은 서버 snapshot 0과 구독 후에만 갱신되는 useSyncExternalStore 시계로 고쳤다. 원 관측 시각/15분 기준은 보존하고 15초마다 지연 표시를 갱신하며 unmount에 timer를 정리한다.
+- 시각 경계 hydration/늦은 관측 표시/타이머 정리와 기존 차트 검산은 WSL 8개와 Docker 8개 모두 CLI0이며 TypeScript/lint도 통과했다. 선행/P1 시험과 겹치는 차트 검산은 합산하지 않는다.
+- 최종 React Doctor0.9.22는 --scope full --blocking warning --no-cache로 70파일 오류0/경고0/CLI0이다. 제품 production build는 로컬에서 추가하지 않았다. 수정 후 실제 CI 수용은 부모 작업이 최신 HEAD에서 확인한다.
+- Chromium156 별도 fixture R3의 1440/375에서는 기존 pointer/touch/키보드 수치표/범례/0·결측·정밀 숫자와 overflow/pageerror/외부 요청0을 재확인했다. LazyMotion 파이·히트맵 로딩 표시가 실제로 나타나고 닫은 뒤 각 ECharts instance가 dispose되는 것도 확인했다. browser/server 부모는 실제0이며 원 실패/143은 별도로 보존했다.
+
 ## 별도 후속
 
 기존 `history-chart.tsx`와 `daily-flight-overlay-chart.tsx`의 자체 SVG 시계열은 이 패치에서 변경하지 않았다. 사용자 전체 차트 전환 요청의 남은 범위이며 별도 후속에서 공식 EvilCharts line으로 옮긴다. 최근 7일 실제 관측 구간/공휴일 밴드/일별 흐름에서만 항공편 표시/날짜 토글/호버·클릭 계약을 보존해야 한다.

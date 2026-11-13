@@ -1,3 +1,9 @@
+## 2026-11-13 — PR189 CI 원문 확인과 hydration·Motion 보정
+
+- 원 frontend CI43329668779/job131570919657은 이번 변경의 Doctor warning5개로 실패했다. 두 full-motion import는 실제 LazyMotion/m 경로로, 현재 시각 JSX는 결정적인 server snapshot을 쓰는 useSyncExternalStore 시계로 고쳤다.
+- 두 upstream compound 선언 크기만 정확한 Doctor 전용 주석과 근거/provenance로 예외를 남겼다. 전역/vendor 디렉터리 제외·gate 완화0이며 최종 full/no-cache Doctor70파일 warning0이다.
+- 집중 WSL/Docker각8·타입/lint와 Chromium156 PC1440/mobile375의 실제 로딩 overlay/종료 dispose/숫자/키보드/overflow0을 확인했다. 원 CI·fixture 실패와 경고는 [정산](reports/2026-11-13-airport-charts-flow.md)에 보존한다. CI/머지는 부모 범위이고 운영/production build0이다.
+
 ## 2026-11-13 — PR189 키보드 상세 수치 경로 보강
 
 - James P1에 따라 요일/특수일 수치표 각 셀에 native details/summary를 넣어 평균뿐 아니라 최저·최고·관측 수도 키보드로 얻도록 했다. 그래프와 같은 DTO/설명 함수를 쓰며 빈 관측은 0으로 만들지 않는다.
