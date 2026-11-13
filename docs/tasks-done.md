@@ -1,3 +1,7 @@
+## 2026-11-13 — 상세 버튼 main 머지
+
+- [x] **T-DETAIL-BUTTONS-MERGE** — PR192는 전체 CI 성공 후 main3ed6335로 실제 머지됐다. 원 embedded44px RED와 후속32px/SVG16·키보드/포인터·PC/mobile 검증은 원문 그대로이며 운영 수용은 별도다.
+
 ## 2026-11-13 — 자정 비행편 설명창 경계 보정
 
 - [x] 추가 독립 P2의00:00/23:59 설명창 잘림을 실제8개 bbox와 unit2FAIL로 재현한 뒤 중심만 최대 반폭 안쪽으로 제한했다. 실제 PC1440/mobile375 정상/4배축8개 bbox GREEN·검토한 캡처·브라우저/server각0, 별도 WSL/Docker각12PASS다. 전체184/기존 전체 브라우저 반복0·운영/build0이다. [원문](reports/2026-11-13-parking-lines.md).
@@ -20,6 +24,10 @@
 
 - [x] **T-PARKING-LINES-CODE-20261113** — 공식 EvilCharts line engine, 관측0/결측 단절·고립 관측·특별일·KST 항공편·날짜/방향/4배축·native 키보드와 수치표, 실제 마운트 시 지연 적재와 선택 memo 경계를 구현했다.
 - [x] 양 앱 타입/전체 lint/Doctor78·232파일 warning0, 최종 순차 WSL21/Docker21, Chromium156 PC1440/mobile375 실제 캔버스·pointer/touch·키보드·숫자·조상 테마·dispose·overflow/오류0과 캡처를 확인했다. 소유 컨테이너0·fixture포트 해제와 제공 키의 Git 부재를 정산한다. CI/리뷰/머지와 운영 반영은 이 코드 완료에 포함하지 않는다. [정산](reports/2026-11-13-parking-lines.md).
+
+## 2026-11-13 — 상세 버튼 크기 구현
+
+- [x] **T-DETAIL-BUTTONS-CODE** — 상세 아이콘과 포털 정보창 닫기를 PC/모바일32×32px/SVG16으로 통일하고 초기 workspace-only fixture9조건을 확인했으나 embedded 누락이 P1으로 재개됐다. 후속 앱 고유 selector와 정확 class의 embedded12·독립9조건/타입/lint/guard로 보완했다. 지도 컨트롤·공용 라이브러리·제품 데이터 로직은 유지했다. 머지/운영 수용과 구분한다.
 
 ## 2026-11-13 — 유가 30일·전체 유종·공식 EvilCharts 구현/집중 검증
 

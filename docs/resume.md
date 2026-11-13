@@ -1,3 +1,9 @@
+## 현재 정산 — 2026-11-13 PR192 머지와 PR191 마감
+
+- 상세32px/SVG16px의 PR192는 전체 CI 성공 뒤 main `3ed6335dbbcf4fab8e000be3691a40ad32640c83`로 실제 머지됐다. 아래192 머지 대기는 과거 이력이며 T-DETAIL-BUTTONS-MERGE는 완료다. 운영/이미지 수용으로 확대하지 않는다.
+- PR191의 자정 설명창 후속9510c68은 두 독립 delta 리뷰 문제0과 집중 WSL/Docker각12·타입/lint·실제8개 경계 bbox를 정산한 뒤 정상 push했다. 최신 main 충돌은 문서4개뿐으로 양쪽 이력을 보존했다. 공개 제품은9510, backend/admin은3ed6335와 동일하다. 이미 끝난 시험·브라우저·빌드/운영을 반복하지 않는다.
+- 다음은 PR191의 정확 통합 HEAD CI·main 머지를 Root가 마감한다. 원9510 push CI43359111183은 그 원 HEAD의 진행 기록으로 보존하고 새 통합 HEAD 성공으로 소급하지 않는다.
+
 ## 현재 정산 — 2026-11-13 main 공항·유가와 PR191 후속
 
 - 공항 PR189는 main `cfefd5344532cbbdf74c5c03a641f8c5b1b887eb`, 유가 PR190은 전체 CI 성공 뒤 main `b3c9942d99065731f890376a6653bafd57a58cc3`로 실제 머지됐다. 아래 머지 대기 문구는 과거 후보 이력이며 T-FUEL30-MERGE는 완료다. 운영 배포·수집 최신화 성공을 뜻하지 않는다.
@@ -16,6 +22,16 @@
 - 최근 주차 이력/날짜별 하루 흐름의 실제 데이터 plot도 공식 EvilCharts ECharts line으로 바꿨다. daily 명시적 결측 단절, 관측0, KST marker_at, 특별일·날짜·방향·키보드·포인터/터치 계약을 확인했다.
 - 최종 순차 WSL/Docker각21·양 앱 타입/전체 lint/Doctor78·232파일0·Chromium1440/375 fixture·dispose와 캡처 검토가 완료됐다. [검증/원실패/한계](reports/2026-11-13-parking-lines.md).
 - 다음 한 작업은 이 후속 Draft PR의 부모 CI/두 독립 리뷰/머지다. 기존 PR189에 쌓아 차이만 공개하며 운영 배포·생산 빌드·외부 수집은 하지 않는다.
+
+## 현재 우선 후속 — 2026-11-13 상세 버튼 P1
+
+- PR192의 workspace-only 누락을 앱 고유 transport-map-detail 범위로 수정했다. 실제 embedded-map/coarse RED44px를 보존하고 embedded12·독립9조건32px/SVG16·pointer/keyboard/overflow0을 확인했다. 타입/lint/guard0이다.
+- 다음 한 작업: 같은 PR192 후속 exact head를 독립 재확인·CI/머지한다. 원b5의9조건은 embedded 페이지 증거가 아니라는 한계를 [보고서](reports/2026-11-13-detail-buttons.md)에 명시했다. 전체 로그인 E2E/빌드·운영은0이다.
+
+## 현재 우선 작업 — 2026-11-13 상세 버튼 크기
+
+- Transport 상세 아이콘32×32/SVG16px 통일을 별도 codex/transport-detail-buttons-20261113에서 완료했다. PC/모바일/320font200·철도/유가/공공주차9조건 실브라우저와 타입/lint/의존성 guard0이다. 공용 설치본/데이터/차트·운영 변경0이다.
+- 다음 한 작업: 이 작은 CSS·E2E·문서 후보를 Root에 인계해 Weather의 같은32px와 함께 exact CI/리뷰·머지를 정산한다. [원장](reports/2026-11-13-detail-buttons.md). 기존47c70 통합 CI는 별개로 보존한다.
 
 ## 현재 상태 — 2026-11-13 유가·main 빌드 계약 통합
 

@@ -1,3 +1,8 @@
+## 2026-11-13 — PR192 머지 후 주차 line 문서 통합
+
+- PR192가 main3ed6335로 머지된 뒤 PR191은 실제 dirty였다. 검토된9510을 먼저 정상 push하고 최신 main을 정상 merge했다. 충돌 문서4개 양쪽을 보존했고 공개9510/backend·admin3ed 제품 bytes는 유지한다. 새 시험·빌드·운영0이다.
+- 9510 원 CI43359111183과 새 통합 HEAD의 CI를 구분한다. 상세 버튼 머지 완료와 PR191 최종 CI/머지 대기를 정산하며 기존 검증은 반복하지 않는다.
+
 ## 2026-11-13 — 자정 항공편 설명창 경계 보정
 
 - 추가 독립 P2의00:00/23:59 설명창 잘림을 Chromium PC1440/mobile375 정상/4배축8개 bbox RED와 unit2FAIL로 재현했다. 설명창 중심만 최대 폭의 반폭120px 안쪽으로 제한하고 시계열/항공편 위치·label·엔진은 유지했다.
@@ -24,6 +29,16 @@
 - 공유 history/daily의 실제 SVG 데이터 선을 EvilCharts ECharts line으로 전환했다. 관측0/null 단절·특별일·KST marker_at·날짜/방향/확대·hover/click/native 키보드 경로를 보존했다. daily가 명시적 결측을 건너 연결하던 부분은 null gap으로 고쳤다.
 - source/installed43파일 패키지, 양 앱 타입/전체 lint/Doctor78·232파일0, 최종 순차 WSL21/Docker21, 실제 Chromium PC1440/mobile375·dispose/overflow/오류0과 캡처를 검산했다. 기존 실패와 지연 적재/테이블/선택 비용 경계는 [정산](reports/2026-11-13-parking-lines.md)에 있다.
 - 기존 PR189 checkout과 운영/수집/빌드/DB/키/의존성은 변경하지 않았다. stacked Draft PR의 CI/두 리뷰/머지는 부모 범위다.
+
+## 2026-11-13 — 상세 버튼 임베디드 P1 수정
+
+- 독립 검토에서 embedded-map 소비가 누락된 것을 확인했다. 원b5의 workspace-only9조건을 embedded 증거로 쓰지 않고 보존했다. 실제 class375/coarse RED44px→앱 고유 transport-map-detail selector 후GREEN32px다.
+- embedded12·독립9조건을 실제 Common DOM/정확 소비 class로 나눠 검산했고 header/info/portal32/16·키보드/포인터/overflow0이다. 실제 공공주차 페이지 E2E 회귀도 추가하고 타입/lint/guard0을 확인했다. 전체 로그인 E2E·빌드·운영은 미실행이다. [원장](reports/2026-11-13-detail-buttons.md).
+
+## 2026-11-13 — 상세 버튼32px 우선 반영
+
+- 상세 닫기·접기·정보/주소와 포털 닫기를 PC/모바일32×32px, SVG16px로 통일했다. 앱 상세 범위 CSS만 바꾸고 공용 라이브러리/지도 컨트롤/데이터 로직은 유지한다.
+- 실제 Chromium1440/375/320font200·3종9조건의 측정/포인터/키보드/overflow0과 타입·lint·Common guard0을 확인했다. 기존 E2E 크기/키보드 회귀를 보강했으며 전체 로그인E2E/빌드/운영은 미실행이다. [근거와 캡처](reports/2026-11-13-detail-buttons.md).
 
 ## 2026-11-13 — 유가 후보와 main 빌드 계약 통합
 

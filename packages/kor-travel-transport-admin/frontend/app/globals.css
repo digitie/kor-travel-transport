@@ -876,3 +876,26 @@ body { font-family: "Pretendard Variable", Pretendard, sans-serif; }
 .fuel-chart-tooltip-row { margin-top: .35rem; padding-top: .35rem; border-top: 1px solid var(--control-line); }
 
 .fuel-chart-keyboard:focus { position: static; width: auto; height: auto; margin: .25rem 0; clip: auto; white-space: normal; }
+
+/* 상세 아이콘은 입력 장치와 무관하게 같은 크기다. 지도/검색 컨트롤은 바꾸지 않는다. */
+.transport-map-detail .kt-map-detail-header > button,
+.transport-map-detail .info-button,
+.transport-map-detail .inspector-heading > button,
+.info-popup .info-popup-heading > .info-button {
+  box-sizing: border-box;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  max-width: 32px;
+  max-height: 32px;
+  padding: 0;
+}
+.transport-map-detail .kt-map-detail-header > button svg,
+.transport-map-detail .info-button svg,
+.transport-map-detail .inspector-heading > button svg,
+.info-popup .info-popup-heading > .info-button svg {
+  width: 16px;
+  height: 16px;
+}
