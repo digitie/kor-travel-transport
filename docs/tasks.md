@@ -2,13 +2,52 @@
 
 - [ ] **T-PARKING-LINES-MERGE-20261113** — history/daily line 전환의 부모 CI/두 독립 리뷰/머지. 코드·양 앱 정적 검사·순차 WSL/Docker각21·1440/375 fixture는 완료했고 운영 수용은 별도다. [근거](reports/2026-11-13-parking-lines.md).
 
+## 2026-11-13 — 통합 상태 정정
+
+- PR189와 main4b24e0d의 새 소스 통합 CI/머지를 정산한다. 아래 빌드 관련 원 gate는 이미지 담당 범위로 보존한다.
+- 0037 원장 보호는 #188/e88 및 별도 WSL/Docker각6PASS다. 기존 T-DOWNGRADE-GUARDS 기록의 다른0038/0039/0041/0042 위험은 여전히 별도이며 downgrade/rollback을 실행하지 않는다.
+
 ## 2026-11-13 — 공항 차트 후속
 
 - [ ] PR189의 부모 두 독립 리뷰/CI/머지 정산. 코드·집중 WSL/Docker·1440/375 fixture는 완료했으나 운영 항공편 빈 응답 원인/운영 배포는 미수용이며 기존 history/daily SVG의 line 전환은 별도 후속이다. [근거](reports/2026-11-13-airport-charts-flow.md).
 
+## 2026-11-13 — 빌드 생태계 정착과 별도 운영 금지 gate
+
+- [ ] **T-BUILD-ECOSYSTEM-20261113 / 진행 중** — B1~B6 후보를
+  [정상 이미지 빌드 계약](design/2026-11-13-normal-image-build.md)과 연결한다.
+  - B1: Node22.23.1/npm12.0.1 metadata·selector·strict install·Make 구현.
+    실제 Common guard ref와 fresh Linux full gate는 미완이다.
+  - B2: clean HEAD/tree archive·gitlink·COPY/input hash·이동/변조 차단 구현.
+    실제 image build/source proof는 별도 GO 후다.
+  - B3: amd64/arm64·docker/OCI·역할별 ID 검사 구현. 실제 양 architecture의
+    C11 bytes·native worker/ABI·entrypoint 검증은 미실행이다.
+  - B4: 공개·관리자 production runner/USER node·이미지 내부 cache 소유권을 구현했다.
+    full node_modules/start 계약과 backend/CS/gateway의 기존 UID는 역할별로 보존한다.
+    [ADR-017](adr/017-web-production-runner-non-root.md). 실제 새 이미지의 기본 사용자·
+    config/cache·start·로그인fixture·worker·routes·SSR/readiness 수용은 미실행, 적용 전 필수다.
+  - B5: 기존 prebuilt validator 재사용·normal build 의미·원본 receipt hash 연결 구현.
+    기존 handoff가 live-state 정본이며 새 build receipt는 적용 권한을 주지 않는다.
+  - B6: SDK508의 기존 core/public/admin 경로 재사용. 현재 API gateway는 외부 nginx ID와
+    merged-source template hash의 paired-role receipt이며 비활성 LEGACY Dagster gateway 산출물과 구분한다.
+    원2리뷰·exact CI·역할별 QA/공식 인계는 미완이다.
+- [ ] **T-MAP-DETAIL-ORACLE-20261113 / 소스 수정·QA 대기** — tracked shared-map-ui의
+  absolute 대상은 C11 overlay wrapper다. panel bbox·제목·overflow·Escape·실제 목록 opener
+  focus를 검사한다. 과거7aec geometry/focus FAIL은 보존하며 PASS로 소급하지 않는다.
+- [ ] **T-DOWNGRADE-GUARDS-20261113 / P2 OPEN** — 소유자: maintainer/Codex integration.
+  **목표: BEFORE ANY downgrade/DB rollback.** fuel0037 및0038/0039/0041/0042의
+  destructive downgrade 빈 상태 검사와 DDL 사이 race가 열려 있다.
+  기존 운영499의 동일 파일에도 있던 위험이며 이번 forward42의 새 회귀가 아니다.
+  RC 격리 확인 + 배타 잠금 + 실제 두 세션 경합 시험이 모두 검증되기 전에는
+  downgrade/DB rollback gate를 금지한다. FIXED 또는 DEFERRED_DONE으로 쓰지 않는다.
+  이 build patch의 DDL 수정·DB 시험·downgrade 실행은0이다.
+  정상 merged-source build/controller도 downgrade를 호출하지 않는다.
+  기존 prebuilt revision drift 차단을 유지한다.
+  [스키마 인계 계약](design/2026-10-27-prebuilt-deploy-handoff.md).
+
 ## 2026-11-12 — 우선순위
 
-- [ ] 유가·철도0037 downgrade 보호 수정 PR 머지. 코드·회귀 시험 작성과 두 독립 정적 리뷰 완료. 빌드·시험 실행은 사용자 지시로 외부에서 수행한다. Alembic 버전/부분 DDL rollback·빈 검사 이후 writer 경합의 별도 실행 검증은 미완이다.
+- [ ] 유가·철도0037 downgrade 보호의 실행 검증. source PR188/e88f5b73는 main 반영됐고 코드·회귀 시험 작성과 두 독립 정적 리뷰는 완료했다. 빌드·시험 실행은 사용자 지시로 외부에서 수행한다. Alembic 버전/부분 DDL rollback·빈 검사 이후 writer 경합의 별도 실행 검증은 미완이다.
+- [ ] 유가 통계0037 downgrade 경합은 위 T-DOWNGRADE-GUARDS-20261113 P2 OPEN으로 추적한다. 정상 배포/이번 운영에서는 downgrade0.
 - [ ] 이후 Weather/Transport EvilCharts·날씨 상세·지역 대표/반경/경계·주차/유가 차트·수집/통계 누락·전반 조회/수집 성능과 Odroid eMMC 캐시의 NVMe 이전 요청21항목 진행.
 - 근거와 보존할 실패: [장기 PR 정리](reports/2026-11-12-pr-consolidation.md).
 

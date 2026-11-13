@@ -38,19 +38,41 @@ for (const width of [375, 1440]) test(`공통 지도 필터·좌표·상세 오�
   await page.keyboard.press("Escape");
   await expect(page.locator(".kt-map-combobox")).toHaveCSS("height", "30px");
   await page.getByRole("tab", { name: "목록", exact: true }).click();
-  await page.locator(".map-place-list").getByRole("button", { name: /공통 UI 시험휴게소/ }).click();
+  const detailOpener = page.locator(".map-place-list").getByRole("button", { name: /공통 UI 시험휴게소/ });
+  await detailOpener.click();
   const detail = page.getByRole("complementary", { name: "선택 장소 상세" });
   await expect(detail).toBeVisible();
-  await expect(detail).toHaveCSS("position", "absolute");
+  const overlays = page.locator(".kt-map-stage:visible .kt-map-stage-overlays");
+  await expect(overlays).toHaveCSS("position", "absolute");
+  await expect(detail.getByRole("heading", { name: place.name, exact: true })).toBeVisible();
   const stage = await page.locator(".kt-map-stage:visible").boundingBox();
   const overlay = await detail.boundingBox();
   expect(overlay!.x).toBeGreaterThanOrEqual(stage!.x);
   expect(overlay!.x + overlay!.width).toBeLessThanOrEqual(stage!.x + stage!.width + 1);
+  expect(overlay!.height).toBeGreaterThan(0);
+  expect(overlay!.y).toBeGreaterThanOrEqual(stage!.y);
+  expect(overlay!.y + overlay!.height).toBeLessThanOrEqual(stage!.y + stage!.height + 1);
+  const readable = await detail.evaluate((element) => {
+    const heading = element.querySelector("h2")!;
+    const text = document.createRange();
+    text.selectNodeContents(heading);
+    const label = text.getBoundingClientRect();
+    const panel = element.getBoundingClientRect();
+    return { scrollWidth: element.scrollWidth, clientWidth: element.clientWidth,
+      label: { left: label.left, right: label.right, top: label.top, bottom: label.bottom, height: label.height },
+      panel: { left: panel.left, right: panel.right, top: panel.top, bottom: panel.bottom } };
+  });
+  expect(readable.scrollWidth).toBeLessThanOrEqual(readable.clientWidth + 1);
+  expect(readable.label.height).toBeGreaterThan(0);
+  expect(readable.label.left).toBeGreaterThanOrEqual(readable.panel.left);
+  expect(readable.label.right).toBeLessThanOrEqual(readable.panel.right + 1);
+  expect(readable.label.top).toBeGreaterThanOrEqual(readable.panel.top);
+  expect(readable.label.bottom).toBeLessThanOrEqual(readable.panel.bottom + 1);
   await page.screenshot({ path: `test-results/transport-shared-overlay-${width}.png`, fullPage: true });
   await detail.focus();
   await page.keyboard.press("Escape");
   await expect(detail).toHaveCount(0);
-  await expect(query).toBeFocused();
+  await expect(detailOpener).toBeFocused();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: `test-results/shared-map-ui-${width}.png`, fullPage: true });
 });

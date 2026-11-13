@@ -45,3 +45,12 @@
 ## 별도 후속
 
 기존 `history-chart.tsx`와 `daily-flight-overlay-chart.tsx`의 자체 SVG 시계열은 이 패치에서 변경하지 않았다. 사용자 전체 차트 전환 요청의 남은 범위이며 별도 후속에서 공식 EvilCharts line으로 옮긴다. 최근 7일 실제 관측 구간/공휴일 밴드/일별 흐름에서만 항공편 표시/날짜 토글/호버·클릭 계약을 보존해야 한다.
+# main 빌드 계약 통합 후속
+
+PR189의 제품cf905ac5에 main4b24e0d(#187)를 정상 병합했다. 충돌은 journal/resume/tasks
+세 문서뿐이며 양쪽 이력을 보존했다. 앱 소스는 cf905와 동일하고 public/admin lock 설치
+그래프도 동일하다. scripts·Node22.23.1/npm12.0.1·strict 설치·nonroot Dockerfile·workflow·
+빌드 helper는 main을 유지한다. public/admin 공통 의존성 검사와 public/시험/admin 타입은0이다.
+원문은 Git 밖 `airport-main-merge-source.json`, `airport-main-integration-qa-20261113/results.json`이다.
+기존 기능 시험을 반복 합산하거나 빌드 실행으로 쓰지 않는다. 새 통합 head의 실제 CI는 아직 별도다.
+

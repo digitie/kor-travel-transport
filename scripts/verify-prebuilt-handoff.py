@@ -7,18 +7,34 @@ import hashlib
 import inspect
 import json
 import os
-from pathlib import Path
 import re
 import stat
 import subprocess
 import sys
 import urllib.request
+from pathlib import Path
 
 LOCATION = "kor-travel-transport"
 CODE_SERVER = LOCATION + "-dagster-code-server-1"
 ROLES = {"backend", "frontend", "dagster-code-server"}
 RUN_STATUSES = ("NOT_STARTED", "QUEUED", "STARTING", "STARTED", "CANCELING")
 RECEIPT_UID = 0
+
+# 소유 Dockerfile 산출 역할만 정의한다. gateway 한 개는 비활성 legacy이며 현재 API gateway는 외부 이미지다.
+# live state·적용 권한은 기존 handoff/Manager가 소유한다.
+BUILD_RECIPES = {
+    "backend": ("backend/Dockerfile", None, "RELEASE_SHA"),
+    "frontend": ("frontend/Dockerfile", "runner", "RELEASE_SHA"),
+    "transport-admin-web": ("packages/kor-travel-transport-admin/frontend/Dockerfile", "runner", "TRANSPORT_ADMIN_RELEASE_SHA"),
+    "dagster-gateway": ("backend/Dockerfile.dagster-gateway", None, "RELEASE_SHA"),
+}
+BUILD_ROLE_IMAGE = {
+    "backend": "backend", "dagster-code-server": "backend", "migrate": "backend",
+    "frontend": "frontend", "transport-admin-web": "transport-admin-web",
+    "dagster-gateway": "dagster-gateway",
+}
+LEGACY_BUILD_ROLES = {"dagster-gateway"}
+BUILD_SOURCE = "https://github.com/digitie/kor-travel-transport.git"
 
 
 class ContractError(RuntimeError):
@@ -253,6 +269,48 @@ def admin_overlay(revision: str, admin_id: str, gateway_id: str, run=command) ->
     return {"services": {role: {"image": image, "labels": {
         "io.kor-travel-transport.prebuilt-release": revision}} for role, image in
         (("transport-admin-web", admin_id), ("transport-api-gateway", gateway_id))}}
+
+
+
+def validate_normal_build_marker(value: dict, original: bytes | None = None, original_hash: str | None = None) -> None:
+    """원본 normal build와 metadata 호환 copy를 구분하며 flag를 추정하지 않는다."""
+    if value.get("normalDockerBuild") is not True:
+        raise ContractError("normal Docker build 증명이 없습니다")
+    if original is not None:
+        if hashlib.sha256(original).hexdigest() != original_hash:
+            raise ContractError("원본 build receipt hash 불일치")
+        parent = json.loads(original)
+        if "normalDockerBuild" in parent or {k: v for k, v in value.items() if k != "normalDockerBuild"} != parent:
+            raise ContractError("호환 copy가 원본 build metadata를 바꿨습니다")
+        if parent.get("actualMergedNormalBuildCompleted") is not True:
+            raise ContractError("원본 normal build 의미를 확인할 수 없습니다")
+
+
+def validate_normal_build_image(image: dict, role: str, revision: str, architecture: str,
+                                tree: str, copy_hash: str, input_hash: str) -> None:
+    """정상 build가 반환한 실제 image config의 역할·출처·기본 release를 검산한다."""
+    if role not in BUILD_RECIPES or architecture not in {"amd64", "arm64"}:
+        raise ContractError("지원하지 않는 build 역할/architecture")
+    if (not re.fullmatch(r"sha256:[0-9a-f]{64}", image.get("Id", ""))
+            or image.get("Architecture") != architecture or image.get("Os") != "linux"):
+        raise ContractError("image ID/architecture 불일치")
+    expected = {
+        "org.opencontainers.image.source": BUILD_SOURCE,
+        "org.opencontainers.image.revision": revision,
+        "io.kor-travel-transport.source-tree": tree,
+        "io.kor-travel-transport.build-role": role,
+        "io.kor-travel-transport.copy-sha256": copy_hash,
+        "io.kor-travel-transport.public-input-sha256": input_hash,
+    }
+    config = image.get("Config") or {}
+    if any((config.get("Labels") or {}).get(k) != v for k, v in expected.items()):
+        raise ContractError("image OCI/source/tree/role/input 불일치")
+    if role in {"frontend", "transport-admin-web"} and config.get("User") != "node":
+        raise ContractError("web image의 최종 USER node가 아닙니다")
+    name = BUILD_RECIPES[role][2]
+    releases = [v.split("=", 1)[1] for v in config.get("Env", []) if v.startswith(name + "=")]
+    if releases != [revision]:
+        raise ContractError("image 기본 release 불일치")
 
 
 def main() -> int:
