@@ -280,10 +280,7 @@ export function DailyFlightOverlayChart({
                   <strong>
                     {formatAxisTimeLabel(activeFlight.marker_at)} {activeFlight.flight_number}
                   </strong>
-                  <span>
-                    {formatFlightDirection(activeFlight.direction)} {activeFlight.origin_airport} {"->"}{" "}
-                    {activeFlight.destination_airport}
-                  </span>
+                  <span>{activeFlight.label}</span>
                 </div>
               ) : null}
 

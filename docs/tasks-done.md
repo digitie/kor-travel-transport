@@ -1,3 +1,8 @@
+## 2026-11-13 — PR191 CI fixture·가시 툴팁 보정
+
+- [x] 원 c554 frontend CI182PASS/1FAIL·unhandled2를 보존하고 HistoryView의 Canvas 경계만 mock했다. 달력/API/기간/초점 assertion을 유지한다.
+- [x] 실제 가시 툴팁의 전체 KST 날짜·항공사·상태를 기존 label로 복구했다. RED1 뒤 WSL view4/전체184, Docker14PASS이며 겹침 합산0·엔진/범위/의존성/운영 변경0이다. [정산](reports/2026-11-13-parking-lines.md).
+
 ## 2026-11-13 — PR191 필수 통합 검산
 
 - [x] 22888 정상 merge와 문서3개 양쪽 보존, build22파일/Node22.23.1/npm12.0.1·strict 계약/lock 비루트 그래프 검산.

@@ -46,4 +46,11 @@
 
 ## 남은 수용
 
-소유 QA와 실제 반환값을 정산했다. 새 코드/테스트/문서와 정상 부모 통합을 feature branch와 stacked Draft PR191로 부모에 전달한다. CI/두 독립 리뷰/머지는 부모 범위다. 운영 배포·수집 최신화·제공기관 응답 정상화·성능 p95/전국 보장으로 확대하지 않는다.
+소유 QA와 실제 반환값을 정산했다. PR191은 PR189 머지 뒤 main 대상으로 전환됐다. CI/두 독립 리뷰/머지는 부모 범위다. 운영 배포·수집 최신화·제공기관 응답 정상화·성능 p95/전국 보장으로 확대하지 않는다.
+
+## c554 CI 원문과 툴팁 후속
+
+- 정확한 c554의 frontend job131632199668/run43348090150와 job131632175342/run43348082818은 모두 183개 중182PASS/1FAIL, unhandled2였다. 원문 SHA는 각각 `dcc0bee58e84497d76136e0654cb21354f6dd74a06ccfad249a6f7fad22f4416`, `8526c08116433e79b6be4ac66db92fb72c080e0be59a10d6d7955b33f1ab9e71`이며 Git 밖 `parking-lines-ci-c554-diagnosis-20261113`에 보존한다. 원 실패를 새 성공으로 소급하지 않는다.
+- HistoryView의 달력 시험에서 실제 Canvas 엔진이 jsdom에 마운트돼 제공되지 않는 ResizeObserver/matchMedia 때문에 React 트리가 사라졌다. 화면 달력/API 오류로 단정하지 않는다. view 시험의 ParkingLineCanvas 경계만 mock하고 원 날짜 선택·기간·요약·오류·초점 검증은 유지했다. 전역 API 위조나 assertion/시간 제한 완화는 없다.
+- 독립 리뷰의 별도 제품 P2는 가시 항공편 툴팁에서 날짜·항공사·상태가 빠진 것이었다. 새 실제 가시 DOM 회귀가 `04.24 03:00` 부재로1FAIL인 원문을 보존했다. 기존 buildFlightLabel의 전체 KST 날짜·대한항공·지연을 React 텍스트로 표시하고 hover 해제/click 선택까지 검증한다. aria-label만 검사해 통과시키지 않으며 HTML 삽입·marker_at/시간 범위·엔진 변경은 없다.
+- 후속은 순차 WSL HistoryView4PASS, 공개 전체184PASS/21파일, network:none Docker HistoryView/항공편14PASS다. 서로 겹치는 시험은 합산하지 않는다. 기존 브라우저21개/픽셀·전체 Doctor를 반복한 기록이 아니며 운영/생산 빌드0이다. 공개 타입·변경3파일 lint도 실제0이다. 최종 main 통합 검산은 별도 원장으로 정산한다.

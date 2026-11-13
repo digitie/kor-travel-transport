@@ -98,6 +98,26 @@ function buildHolidays(): HolidayItemSummary[] {
 }
 
 describe("DailyFlightOverlayChart", () => {
+  test("shows the full KST date airline and status in the visible flight tooltip", () => {
+    const flightStatus = buildFlightStatus();
+    flightStatus.items = [{ ...flightStatus.items[0], marker_at: "2026-04-23T18:00:00Z", airline: "대한항공", status: "지연" }];
+    render(<DailyFlightOverlayChart flightStatus={flightStatus} holidays={[]} series={buildSeries()} scopeLabel="시험" />);
+    const marker = screen.getByTestId("daily-flight-marker");
+    fireEvent.mouseEnter(marker);
+    const hovered = screen.getByTestId("daily-flight-highlight-label");
+    expect(hovered).toBeVisible();
+    expect(hovered).toHaveTextContent("04.24 03:00");
+    expect(within(hovered).getByText(/대한항공/)).toBeVisible();
+    expect(within(hovered).getByText(/지연/)).toBeVisible();
+    fireEvent.mouseLeave(marker);
+    expect(screen.queryByTestId("daily-flight-highlight-label")).toBeNull();
+    fireEvent.click(marker);
+    const selected = screen.getByTestId("daily-flight-highlight-label");
+    expect(selected).toBeVisible();
+    expect(selected).toHaveTextContent("04.24 03:00");
+    expect(within(selected).getByText(/대한항공/)).toBeVisible();
+    expect(within(selected).getByText(/지연/)).toBeVisible();
+  });
   test("explicit missing daily buckets remain gaps while observed zero is retained", () => {
     const series = buildSeries();
     series.items[0] = { ...series.items[0], available_spaces: 0 };

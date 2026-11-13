@@ -1,3 +1,8 @@
+## 2026-11-13 — PR191 CI fixture와 가시 항공편 정보 보정
+
+- c554의 실제 두 frontend CI는183개 중182PASS/1FAIL과 unhandled2였다. jsdom에 없는 ResizeObserver/matchMedia로 Canvas가 view 시험을 중단한 원문을 보존하고 HistoryView의 시각 엔진 경계만 mock했다. 날짜/API/초점 oracle은 유지한다.
+- 별도 P2는 가시 툴팁의 날짜·항공사·상태 누락이었다. 실제 가시 DOM RED1을 보존하고 기존 전체 KST label을 안전한 React 텍스트로 표시했다. WSL view4→공개 전체184→Docker14를 순차 통과했으며 엔진·시간 범위·의존성·운영/build0이다. [근거](reports/2026-11-13-parking-lines.md).
+
 ## 2026-11-13 — PR191 부모 통합과 공통 표 계약 보정
 
 - PR189의22888을 정상 merge하고 충돌한 문서3개 양쪽을 보존했다. 빌드22파일·Node22.23.1/npm12.0.1/strict 계약은 부모 그대로이고 lock 비루트 그래프·직접 의존성은6e0와 같다.
