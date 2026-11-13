@@ -1,3 +1,8 @@
+## 현재 후속 — 2026-11-13 CI 표본 생성 비용
+
+- 같은 health 시험에서 sample seed11.320→0.651초, setup11.799→1.220초를 관측했다. 전체4테이블 해시/ID/시각/원문과 기존 표본·요금·범위를 보존한다. 초도4개를 보존하고 리뷰 P1의 workflow 소스 루트 의존 시험만 제거해 최종 의미 회귀3개를 WSL PG18·backend-only `/app` Docker에서 확인했다.
+- 다음 한 작업: 이 별도 후보의 exact commit을 부모에 전달해 독립 리뷰·실제 CI·머지를 정산한다. main push+PR/기존 job·전체 시험을 유지하며 기능 push 중복만 제거했다. 전체CI65분의 개선율·운영 배포로 과장하지 않는다. [근거](reports/2026-11-13-ci-sample-seed.md).
+
 ## 현재 우선 후속 — 2026-11-13 상세 버튼 P1
 
 - PR192의 workspace-only 누락을 앱 고유 transport-map-detail 범위로 수정했다. 실제 embedded-map/coarse RED44px를 보존하고 embedded12·독립9조건32px/SVG16·pointer/keyboard/overflow0을 확인했다. 타입/lint/guard0이다.

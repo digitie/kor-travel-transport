@@ -1,3 +1,7 @@
+## 2026-11-13 — CI 표본 생성 구현/집중 검증
+
+- [x] **T-CI-SEED-CODE** — 원본 고정 시각4테이블 모든 열/ID/JSON 해시·재실행·source/run/미래 삭제 경계를 보존하며 관측 조회를 lot별18회로 제한했다. 초도 SQLite/PG18/전체 저장소 Docker 각4개를 보존하고 workflow 거울 시험의 루트 의존 P1을 제거했다. 최종 의미3개는 WSL PG18·backend-only `/app` Docker PASS, 기존 health 전후 각1개와 좁은 Ruff/diff0이다. 표본 함수11.320→0.651초는 로컬 단일 표본이다. CI/머지/운영 수용과 구분한다.
+
 ## 2026-11-13 — 상세 버튼 크기 구현
 
 - [x] **T-DETAIL-BUTTONS-CODE** — 상세 아이콘과 포털 정보창 닫기를 PC/모바일32×32px/SVG16으로 통일하고 초기 workspace-only fixture9조건을 확인했으나 embedded 누락이 P1으로 재개됐다. 후속 앱 고유 selector와 정확 class의 embedded12·독립9조건/타입/lint/guard로 보완했다. 지도 컨트롤·공용 라이브러리·제품 데이터 로직은 유지했다. 머지/운영 수용과 구분한다.

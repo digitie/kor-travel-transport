@@ -1,3 +1,7 @@
+## 2026-11-13 — CI 표본 생성 후속
+
+- [ ] **T-CI-SEED-MERGE** — 의미 보존 projection과 main push/PR 중복 제거를 집중 검증했다. 부모 독립 리뷰·exact CI·머지와 새 전체 소요 시간 정산이 남는다. [보고서](reports/2026-11-13-ci-sample-seed.md).
+
 ## 2026-11-13 — 상세 버튼 우선 반영
 
 - [ ] **T-DETAIL-BUTTONS-MERGE** — Transport 상세32px/16px와 embedded P1을 수정했다. 초기 workspace-only9조건의 한계를 보존하고 정확 소비 class의 embedded12·독립9조건과 타입/lint/guard를 확인했다. Root의 Weather 병행 결과와 exact CI/리뷰·머지 정산이 남는다. [검증 경계](reports/2026-11-13-detail-buttons.md).
