@@ -1,3 +1,9 @@
+## 2026-11-13 — Ruff3 source2 최신 main 정상 통합
+
+source1 121e001에 actual main3ed6335(PR192)를 정상 merge했다. 충돌 문서2곳은 양쪽 앞삽입 기록과 공통 이력을 모두 보존했다. 외부 상세32px CSS·E2E·보고서/PNG·task는 최신 main blob 그대로이며 PR191은 이 시점 미병합이다.
+backend 두 스타일 파일은 source1 그대로다. 기존 Ruff 대상0/전체465잔존·mock4PASS/DB2deselected·AST/CodeGraph 검증은 동일 backend 입력 증거로 연결하며 새 전체 시험으로 표기하지 않는다.
+다음은 PR193 정확 source2의 원2 리뷰·새 CI·최종 main 머지다. T-DOWNGRADE-GUARDS-20261113 P2 OPEN과 제품3종 HOLD를 유지한다. DB/DDL/이미지/운영/Map/CI 순서 감사 실행0이다.
+
 ## 2026-11-13 — PR188에서 가져온 Ruff 스타일 3건만 정리
 
 - 현재 main b3c9942에서 별도 브랜치를 만들고 PR188의 두 파일만 수정했다. 0037 migration import 순서(I001), 두 세션 시험의 중첩 async with 병합(SIM117), mock의 빈 dict factory(PIE807)다. SQL·revision/down_revision·잠금/격리 guard·제품 API·프론트·라이브러리·빌드 producer는 변경하지 않았다.
@@ -5,6 +11,16 @@
 - 기존 mock 시험4PASS/DB시험2개 deselected이며 PostgreSQL/실제DDL은 실행하지 않았다. plugin 자동 로딩을 끈 좁은 실행의 asyncio_mode 설정 경고1개는 원문으로 보존했다. 정규화 AST는 두 스타일 변환과 import 순서를 제외하고 같고, migration downgrade 함수 AST·문자열 상수는 그대로다.
 - 기존 CodeGraph로 backend249파일/6537nodes/6221edges를 인덱싱했다. affected 결과0은 importlib 동적 로딩의 영향 부재 증명이 아니므로 해당 migration을 직접 읽는 mock4개와 AST 검산을 함께 사용했다. 새 회귀 시험을 추가하거나 기존 기대를 약화하지 않았다.
 - T-DOWNGRADE-GUARDS-20261113은 OPEN이며 0038/0039/0041/0042의 destructive downgrade 보호 완료로 바꾸지 않는다. 이 패치로 DB rollback/downgrade를 허용하지 않는다. 원2 독립 리뷰·정확한 새 SHA의 CI·머지가 남았으며 Transport 제품 이미지3종은 최종 검토·머지 SHA까지 HOLD다. 이미지/운영/Map/CI 순서 감사 실행0이다.
+
+## 2026-11-13 — 상세 버튼 임베디드 P1 수정
+
+- 독립 검토에서 embedded-map 소비가 누락된 것을 확인했다. 원b5의 workspace-only9조건을 embedded 증거로 쓰지 않고 보존했다. 실제 class375/coarse RED44px→앱 고유 transport-map-detail selector 후GREEN32px다.
+- embedded12·독립9조건을 실제 Common DOM/정확 소비 class로 나눠 검산했고 header/info/portal32/16·키보드/포인터/overflow0이다. 실제 공공주차 페이지 E2E 회귀도 추가하고 타입/lint/guard0을 확인했다. 전체 로그인 E2E·빌드·운영은 미실행이다. [원장](reports/2026-11-13-detail-buttons.md).
+
+## 2026-11-13 — 상세 버튼32px 우선 반영
+
+- 상세 닫기·접기·정보/주소와 포털 닫기를 PC/모바일32×32px, SVG16px로 통일했다. 앱 상세 범위 CSS만 바꾸고 공용 라이브러리/지도 컨트롤/데이터 로직은 유지한다.
+- 실제 Chromium1440/375/320font200·3종9조건의 측정/포인터/키보드/overflow0과 타입·lint·Common guard0을 확인했다. 기존 E2E 크기/키보드 회귀를 보강했으며 전체 로그인E2E/빌드/운영은 미실행이다. [근거와 캡처](reports/2026-11-13-detail-buttons.md).
 
 ## 2026-11-13 — 유가 후보와 main 빌드 계약 통합
 

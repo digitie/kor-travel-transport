@@ -1,8 +1,24 @@
+## 2026-11-13 — Ruff3 source2 최신 main 정상 통합
+
+source1 121e001에 actual main3ed6335(PR192)를 정상 merge했다. 충돌 문서2곳은 양쪽 앞삽입 기록과 공통 이력을 모두 보존했다. 외부 상세32px CSS·E2E·보고서/PNG·task는 최신 main blob 그대로이며 PR191은 이 시점 미병합이다.
+backend 두 스타일 파일은 source1 그대로다. 기존 Ruff 대상0/전체465잔존·mock4PASS/DB2deselected·AST/CodeGraph 검증은 동일 backend 입력 증거로 연결하며 새 전체 시험으로 표기하지 않는다.
+다음은 PR193 정확 source2의 원2 리뷰·새 CI·최종 main 머지다. T-DOWNGRADE-GUARDS-20261113 P2 OPEN과 제품3종 HOLD를 유지한다. DB/DDL/이미지/운영/Map/CI 순서 감사 실행0이다.
+
 ## 현재 후속 — 2026-11-13 PR188 Ruff 스타일 3건 한정 정리
 
 실제 main b3c9942의 새 기능 계보를 보존한 별도 브랜치다. 대상 두 파일의 I001/SIM117/PIE807만 수정했고 SQL·migration guard·revision·제품/의존성/producer는 그대로다.
 대상 Ruff0건, 전체 backend468→465건(나머지 동일), mock4PASS/DB시험2개 deselected와 AST 동등성·CodeGraph backend249파일 검산을 정산했다. 전체 lint나 실제 두 세션 DDL 수용을 주장하지 않는다.
 다음 한 작업은 이 정확한 source의 원2 리뷰·Draft PR·CI·최종 main 머지다. T-DOWNGRADE-GUARDS-20261113 OPEN과 기존 운영 제한을 유지한다. Transport 제품3종은 새 실제 merged SHA/tree 확정 전 HOLD이며 Map·CI 순서 감사는 미실행이다.
+
+## 현재 우선 후속 — 2026-11-13 상세 버튼 P1
+
+- PR192의 workspace-only 누락을 앱 고유 transport-map-detail 범위로 수정했다. 실제 embedded-map/coarse RED44px를 보존하고 embedded12·독립9조건32px/SVG16·pointer/keyboard/overflow0을 확인했다. 타입/lint/guard0이다.
+- 다음 한 작업: 같은 PR192 후속 exact head를 독립 재확인·CI/머지한다. 원b5의9조건은 embedded 페이지 증거가 아니라는 한계를 [보고서](reports/2026-11-13-detail-buttons.md)에 명시했다. 전체 로그인 E2E/빌드·운영은0이다.
+
+## 현재 우선 작업 — 2026-11-13 상세 버튼 크기
+
+- Transport 상세 아이콘32×32/SVG16px 통일을 별도 codex/transport-detail-buttons-20261113에서 완료했다. PC/모바일/320font200·철도/유가/공공주차9조건 실브라우저와 타입/lint/의존성 guard0이다. 공용 설치본/데이터/차트·운영 변경0이다.
+- 다음 한 작업: 이 작은 CSS·E2E·문서 후보를 Root에 인계해 Weather의 같은32px와 함께 exact CI/리뷰·머지를 정산한다. [원장](reports/2026-11-13-detail-buttons.md). 기존47c70 통합 CI는 별개로 보존한다.
 
 ## 현재 상태 — 2026-11-13 유가·main 빌드 계약 통합
 
