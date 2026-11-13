@@ -50,10 +50,11 @@
       "url": "https://evilcharts.com/r/echarts-legend.json",
       "registry_sha256": "cb74f7b714991b5c1395d377c404bb379d17605fd51dcf572c06649d57b694aa",
       "upstream_source_sha256": "2f649c97b1c81ad36294eb281629b01c947a2033e278fe0ee1f62eaa656738e4",
-      "installed_source_sha256": "88b48513f2693fe1572e7a77d480e5f69ceb499e49e4fc5d1c3864d7b40195ef",
+      "installed_source_sha256": "6fae1ca37b8786937019fc6530e84ef40573c09a383913468c0297e482f268ad",
       "changes": [
         "앱의 실제 경로로 import 재배치",
-        "클릭 범례 행만 native button과 aria-pressed로 변경하고 비클릭 div와 원래 스타일 유지"
+        "클릭 범례 행만 native button과 aria-pressed로 변경하고 비클릭 div와 원래 스타일 유지",
+        "공식 marker/스타일/DOM 유틸리티 공개 계약의 mixed export 진단만 각 정확 선언에서 근거 예외"
       ]
     },
     {
@@ -62,9 +63,10 @@
       "url": "https://evilcharts.com/r/echarts-brush.json",
       "registry_sha256": "8dc5314c49fdbeff04211515852c6aab7e43a653e020124294e6ae41ca1e8554",
       "upstream_source_sha256": "8ab742558334a63adadb09d19ff9cd039f22de4303d61f0ec93ebcbc0dd917a2",
-      "installed_source_sha256": "1cf51288872bc00348975decca7d1b1535894f30a9c93582952669b7a99b93fb",
+      "installed_source_sha256": "841b9b5b4cb2bfbb866b38eabdae99aa725bc7a29e1a14cf2ab4f82ecc7a7f84",
       "changes": [
-        "앱의 실제 경로로 import 재배치"
+        "앱의 실제 경로로 import 재배치",
+        "공식 marker/스타일/DOM 유틸리티 공개 계약의 mixed export 진단만 각 정확 선언에서 근거 예외"
       ]
     },
     {
@@ -73,13 +75,17 @@
       "url": "https://evilcharts.com/r/echarts-line-chart.json",
       "registry_sha256": "af4497e9835369a7f23a007f8dfdb07e87d813bd7fb143a11d2cebba4c540e5d",
       "upstream_source_sha256": "102e36102ffeeccf1a5d80cfe9a268198cce7bf65a044da531d5dcd91d1bfd60",
-      "installed_source_sha256": "8ddbfc646fa0d0c02e68312e35c488a3f127e4ff4dfc9f22857362922fa3cedf",
+      "installed_source_sha256": "d868fa30dd6f7e2b6d5fd997879074e57ff8c0cdea661a43c11ec6285ca9719e",
       "changes": [
         "앱의 실제 경로로 import 재배치",
         "생성 CSS는 style 텍스트 자식으로 넣어 HTML 삽입 제거",
         "공식 Children.forEach 슬롯 탐색은 유지하고 해당 벤더 구간의 lint 예외 이유 명시",
         "툴팁은 작은 비영 기온을0으로 반올림하지 않는 문자열 formatter 사용",
-        "Transport에 없는 react-x 규칙의 eslint-disable 2개만 일반 설명 주석으로 변경; 공식 슬롯 탐색과 런타임 동작 유지"
+        "Transport에 없는 react-x 규칙의 eslint-disable 2개만 일반 설명 주석으로 변경; 공식 슬롯 탐색과 런타임 동작 유지",
+        "Motion Loading overlay를 LazyMotion/m으로 적재",
+        "StrictMode 선택 callback을 state updater 밖의 event snapshot 경계로 이동",
+        "loading RAF callback은 useEffectEvent로 읽고 불필요한 effect 재구독 방지",
+        "고정 공식 compound component 선언의 giant 진단만 정확 위치 예외와 근거 기록"
       ]
     }
   ]
