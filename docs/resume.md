@@ -1,33 +1,3 @@
-## 2026-11-13 — PR193 source5 실제 충돌 해소
-
-source4 de6079f를 동결한 뒤 main에 PR191 b353a44가 머지돼 실제 문서 충돌과 CI 미등록이 발생했다. 요청된 예외에 따라 정상 merge로 journal/resume 양쪽 기록을 보존하고 PR191의 주차 이력·하루 흐름 line 코드·시험·보고서·원본 원장을 그대로 가져왔다. 실질 충돌 없이 main을 계속 따라잡는 작업은 하지 않는다.
-Ruff3 두 파일과 Motion14.13 공개/관리자/공유 UI 선언·lock은 source4 그대로다. 새로 들어온 parking-lines 원장의14.12는 재사용 source commit 시점 기록으로 보존하며 실제 소비/해석 버전은 두 lock의14.13.0이다. backend 전체는 source4와 같아 해당469→466 기준선·mock4PASS/DB2deselected·원문을 동일 입력 증거로 연결하고 새 실행으로 표기하지 않는다.
-다음은 정확 source5의 원2 리뷰·실제 CI·최종 main 머지 후 정상 제품3종 빌드다. Common36 refs를 유지하고 미래 Common ref는 이 앱 수용 대기 조건이 아니다. 최종 codepin 전파와 workflow 최적화는 마지막 별도 workflow-only PR이다. downgrade P2 OPEN·제품 HOLD·Geo confirm 우선/Weather R4 대기·Map0을 유지한다.
-
-## 2026-11-13 — PR193 source4 최신 main 통합과 최종 앱 수용 순서
-
-Ruff3·Motion14.13 source3 a92f31f에 실제 main12c65b9(PR194)를 정상 merge했다. 양쪽 journal/resume 기록을 보존하고 main의 sample-data 코드/시험·workflow·task는 원본 blob 그대로 가져왔다. 본 작업에서 CI 순서 감사/재배치는 수행하지 않았다.
-두 migration 스타일 파일과 Motion14.13 선언/lock/원장은 source3 그대로다. 기존 full Ruff465는 이전 source의 관측이며 새 main을 검사한 성공으로 표기하지 않는다. 실제 DB/DDL/이미지/운영/Map 실행0이다.
-다음은 원2의 Ruff3+Motion+통합 검토와 정확 최종 앱 SHA CI·실제 main 머지·정상 제품3종 빌드다. 기존 Common36 refs를 유지하며 미래 Common ref는 앱 머지/빌드의 대기 조건이 아니다. 최종 codepin 전파와 workflow 최적화는 마지막 별도 workflow-only PR이며 그 변경만으로 앱 코드/lock·이미지를 다시 만들지 않는다.
-T-DOWNGRADE-GUARDS-20261113 P2 OPEN과 최종 reviewed actual merged SHA/tree 전 제품 HOLD는 유지한다.
-
-## 현재 라이브러리 후속 — 2026-11-13 Motion14.13.0
-
-SOURCE2 89c06a0은 PR193에 push·CI 진행 중인 불변 이력으로 보존한다. 별도 후속에서 공개/관리자/공유 UI의 Motion을14.13.0 exact로 맞췄고 canonical Node22.23.1/npm12.0.1 lock-only 명령으로 관련3패키지만 갱신했다. app 설치/빌드·런타임은 아직 미실행이다.
-다음은 실제 Common optional 정책 merged ref 연결·정확한 최종 source의 원2 리뷰/CI·머지다. 이 로컬 후속을 먼저 push해 장시간 CI를 중복 실행하지 않는다. 기존 새 main의 CSS/E2E/모든 기능과 Ruff3 수정·downgrade P2 OPEN·Transport 제품 HOLD는 유지한다.
-
-## 2026-11-13 — Ruff3 source2 최신 main 정상 통합
-
-source1 121e001에 actual main3ed6335(PR192)를 정상 merge했다. 충돌 문서2곳은 양쪽 앞삽입 기록과 공통 이력을 모두 보존했다. 외부 상세32px CSS·E2E·보고서/PNG·task는 최신 main blob 그대로이며 PR191은 이 시점 미병합이다.
-backend 두 스타일 파일은 source1 그대로다. 기존 Ruff 대상0/전체465잔존·mock4PASS/DB2deselected·AST/CodeGraph 검증은 동일 backend 입력 증거로 연결하며 새 전체 시험으로 표기하지 않는다.
-다음은 PR193 정확 source2의 원2 리뷰·새 CI·최종 main 머지다. T-DOWNGRADE-GUARDS-20261113 P2 OPEN과 제품3종 HOLD를 유지한다. DB/DDL/이미지/운영/Map/CI 순서 감사 실행0이다.
-
-## 현재 후속 — 2026-11-13 PR188 Ruff 스타일 3건 한정 정리
-
-실제 main b3c9942의 새 기능 계보를 보존한 별도 브랜치다. 대상 두 파일의 I001/SIM117/PIE807만 수정했고 SQL·migration guard·revision·제품/의존성/producer는 그대로다.
-대상 Ruff0건, 전체 backend468→465건(나머지 동일), mock4PASS/DB시험2개 deselected와 AST 동등성·CodeGraph backend249파일 검산을 정산했다. 전체 lint나 실제 두 세션 DDL 수용을 주장하지 않는다.
-다음 한 작업은 이 정확한 source의 원2 리뷰·Draft PR·CI·최종 main 머지다. T-DOWNGRADE-GUARDS-20261113 OPEN과 기존 운영 제한을 유지한다. Transport 제품3종은 새 실제 merged SHA/tree 확정 전 HOLD이며 Map·CI 순서 감사는 미실행이다.
-
 ## 현재 정산 — 2026-11-13 CI 최적화 main 반영과 PR191 마감
 
 - Transport PR192는 main3ed6335, Weather PR232는 부모가 관측한 실제 머지 완료다. Transport PR194도 전체 CI 성공 뒤04:00UTC에 main `12c65b95143369032dda434b6c79c18db25cbdfc`로 실제 머지됐다. PR194 backend는1915PASS/2SKIP/54subtests,903.19초(15분03초)다. 표본·runner 상태가 달라 코드 단독 개선율로 해석하지 않는다.
@@ -2668,3 +2638,34 @@ E2E/CI를 확인한 뒤, T-041 KRIC provider 구현 및 확장 조사 반영을 
   노출 제한을 유지한다.
 - scheduler 실행 중 restore는 `409` 유지보수 창 응답으로 제한하고, n150 scheduler는
   `300/180/120` 계약으로 운영한다. 마지막 기능 release의 strict gate는 `7/7` 통과했다.
+
+
+## 2026-11-13 — PR193 source5 실제 충돌 해소
+
+source4 de6079f를 동결한 뒤 main에 PR191 b353a44가 머지돼 실제 문서 충돌과 CI 미등록이 발생했다. 요청된 예외에 따라 정상 merge로 journal/resume 양쪽 기록을 보존하고 PR191의 주차 이력·하루 흐름 line 코드·시험·보고서·원본 원장을 그대로 가져왔다. 실질 충돌 없이 main을 계속 따라잡는 작업은 하지 않는다.
+Ruff3 두 파일과 Motion14.13 공개/관리자/공유 UI 선언·lock은 source4 그대로다. 새로 들어온 parking-lines 원장의14.12는 재사용 source commit 시점 기록으로 보존하며 실제 소비/해석 버전은 두 lock의14.13.0이다. backend 전체는 source4와 같아 해당469→466 기준선·mock4PASS/DB2deselected·원문을 동일 입력 증거로 연결하고 새 실행으로 표기하지 않는다.
+다음은 정확 source5의 원2 리뷰·실제 CI·최종 main 머지 후 정상 제품3종 빌드다. Common36 refs를 유지하고 미래 Common ref는 이 앱 수용 대기 조건이 아니다. 최종 codepin 전파와 workflow 최적화는 마지막 별도 workflow-only PR이다. downgrade P2 OPEN·제품 HOLD·Geo confirm 우선/Weather R4 대기·Map0을 유지한다.
+
+## 2026-11-13 — PR193 source4 최신 main 통합과 최종 앱 수용 순서
+
+Ruff3·Motion14.13 source3 a92f31f에 실제 main12c65b9(PR194)를 정상 merge했다. 양쪽 journal/resume 기록을 보존하고 main의 sample-data 코드/시험·workflow·task는 원본 blob 그대로 가져왔다. 본 작업에서 CI 순서 감사/재배치는 수행하지 않았다.
+두 migration 스타일 파일과 Motion14.13 선언/lock/원장은 source3 그대로다. 기존 full Ruff465는 이전 source의 관측이며 새 main을 검사한 성공으로 표기하지 않는다. 실제 DB/DDL/이미지/운영/Map 실행0이다.
+다음은 원2의 Ruff3+Motion+통합 검토와 정확 최종 앱 SHA CI·실제 main 머지·정상 제품3종 빌드다. 기존 Common36 refs를 유지하며 미래 Common ref는 앱 머지/빌드의 대기 조건이 아니다. 최종 codepin 전파와 workflow 최적화는 마지막 별도 workflow-only PR이며 그 변경만으로 앱 코드/lock·이미지를 다시 만들지 않는다.
+T-DOWNGRADE-GUARDS-20261113 P2 OPEN과 최종 reviewed actual merged SHA/tree 전 제품 HOLD는 유지한다.
+
+## 현재 라이브러리 후속 — 2026-11-13 Motion14.13.0
+
+SOURCE2 89c06a0은 PR193에 push·CI 진행 중인 불변 이력으로 보존한다. 별도 후속에서 공개/관리자/공유 UI의 Motion을14.13.0 exact로 맞췄고 canonical Node22.23.1/npm12.0.1 lock-only 명령으로 관련3패키지만 갱신했다. app 설치/빌드·런타임은 아직 미실행이다.
+다음은 실제 Common optional 정책 merged ref 연결·정확한 최종 source의 원2 리뷰/CI·머지다. 이 로컬 후속을 먼저 push해 장시간 CI를 중복 실행하지 않는다. 기존 새 main의 CSS/E2E/모든 기능과 Ruff3 수정·downgrade P2 OPEN·Transport 제품 HOLD는 유지한다.
+
+## 2026-11-13 — Ruff3 source2 최신 main 정상 통합
+
+source1 121e001에 actual main3ed6335(PR192)를 정상 merge했다. 충돌 문서2곳은 양쪽 앞삽입 기록과 공통 이력을 모두 보존했다. 외부 상세32px CSS·E2E·보고서/PNG·task는 최신 main blob 그대로이며 PR191은 이 시점 미병합이다.
+backend 두 스타일 파일은 source1 그대로다. 기존 Ruff 대상0/전체465잔존·mock4PASS/DB2deselected·AST/CodeGraph 검증은 동일 backend 입력 증거로 연결하며 새 전체 시험으로 표기하지 않는다.
+다음은 PR193 정확 source2의 원2 리뷰·새 CI·최종 main 머지다. T-DOWNGRADE-GUARDS-20261113 P2 OPEN과 제품3종 HOLD를 유지한다. DB/DDL/이미지/운영/Map/CI 순서 감사 실행0이다.
+
+## 현재 후속 — 2026-11-13 PR188 Ruff 스타일 3건 한정 정리
+
+실제 main b3c9942의 새 기능 계보를 보존한 별도 브랜치다. 대상 두 파일의 I001/SIM117/PIE807만 수정했고 SQL·migration guard·revision·제품/의존성/producer는 그대로다.
+대상 Ruff0건, 전체 backend468→465건(나머지 동일), mock4PASS/DB시험2개 deselected와 AST 동등성·CodeGraph backend249파일 검산을 정산했다. 전체 lint나 실제 두 세션 DDL 수용을 주장하지 않는다.
+다음 한 작업은 이 정확한 source의 원2 리뷰·Draft PR·CI·최종 main 머지다. T-DOWNGRADE-GUARDS-20261113 OPEN과 기존 운영 제한을 유지한다. Transport 제품3종은 새 실제 merged SHA/tree 확정 전 HOLD이며 Map·CI 순서 감사는 미실행이다.

@@ -1,37 +1,3 @@
-## 2026-11-13 — PR193 source5 실제 충돌 해소
-
-source4 de6079f를 동결한 뒤 main에 PR191 b353a44가 머지돼 실제 문서 충돌과 CI 미등록이 발생했다. 요청된 예외에 따라 정상 merge로 journal/resume 양쪽 기록을 보존하고 PR191의 주차 이력·하루 흐름 line 코드·시험·보고서·원본 원장을 그대로 가져왔다. 실질 충돌 없이 main을 계속 따라잡는 작업은 하지 않는다.
-Ruff3 두 파일과 Motion14.13 공개/관리자/공유 UI 선언·lock은 source4 그대로다. 새로 들어온 parking-lines 원장의14.12는 재사용 source commit 시점 기록으로 보존하며 실제 소비/해석 버전은 두 lock의14.13.0이다. backend 전체는 source4와 같아 해당469→466 기준선·mock4PASS/DB2deselected·원문을 동일 입력 증거로 연결하고 새 실행으로 표기하지 않는다.
-다음은 정확 source5의 원2 리뷰·실제 CI·최종 main 머지 후 정상 제품3종 빌드다. Common36 refs를 유지하고 미래 Common ref는 이 앱 수용 대기 조건이 아니다. 최종 codepin 전파와 workflow 최적화는 마지막 별도 workflow-only PR이다. downgrade P2 OPEN·제품 HOLD·Geo confirm 우선/Weather R4 대기·Map0을 유지한다.
-
-## 2026-11-13 — PR193 source4 최신 main 통합과 최종 앱 수용 순서
-
-Ruff3·Motion14.13 source3 a92f31f에 실제 main12c65b9(PR194)를 정상 merge했다. 양쪽 journal/resume 기록을 보존하고 main의 sample-data 코드/시험·workflow·task는 원본 blob 그대로 가져왔다. 본 작업에서 CI 순서 감사/재배치는 수행하지 않았다.
-두 migration 스타일 파일과 Motion14.13 선언/lock/원장은 source3 그대로다. 기존 full Ruff465는 이전 source의 관측이며 새 main을 검사한 성공으로 표기하지 않는다. 실제 DB/DDL/이미지/운영/Map 실행0이다.
-다음은 원2의 Ruff3+Motion+통합 검토와 정확 최종 앱 SHA CI·실제 main 머지·정상 제품3종 빌드다. 기존 Common36 refs를 유지하며 미래 Common ref는 앱 머지/빌드의 대기 조건이 아니다. 최종 codepin 전파와 workflow 최적화는 마지막 별도 workflow-only PR이며 그 변경만으로 앱 코드/lock·이미지를 다시 만들지 않는다.
-T-DOWNGRADE-GUARDS-20261113 P2 OPEN과 최종 reviewed actual merged SHA/tree 전 제품 HOLD는 유지한다.
-
-## 2026-11-13 — Motion14.13.0 exact 후속 후보
-
-- 공식 registry에서 확인한 새 목표 Motion14.13.0을 공개/관리자 frontend와 공유 parking-ui package에 적용했다. Node22.23.1/npm12.0.1, engine-strict의 정상 package-lock-only/ignore-scripts 명령으로 두 lock을 갱신했고 force/legacy-peer-deps·실제 node_modules 설치는 사용하지 않았다.
-- 각 lock 변화는 root 선언과 motion/framer-motion/motion-dom 3개 항목뿐이다. 모두14.13.0이고 다른 graph·SRI/C11 원본은 그대로다. vendor 소비 의존성 원장도14.13.0으로 맞추고 원본 registry/source SHA와 파일 provenance는 그대로 보존했다.
-- 이는 설치/런타임 검증 완료가 아니다. 새 Motion을 실제 설치한 정확 source의 CI·타입/단위/Doctor/빌드·원2 독립 재검토가 필요하며 기존89c06a0 CI를 이 후보의 성공으로 소급하지 않는다. Common의 optional chart/Motion 정책 실제 후속 merge ref도 최종 연결 전이다.
-- SQL/guard·제품 API/컴포넌트·Docker/producer·키/환경은 수정하지 않았다. source1/source2 원문·P2 OPEN을 보존하고 최종 reviewed merged SHA/tree 전 Transport 제품3종 HOLD·Map0·CI 순서 감사 NOT_STARTED다.
-
-## 2026-11-13 — Ruff3 source2 최신 main 정상 통합
-
-source1 121e001에 actual main3ed6335(PR192)를 정상 merge했다. 충돌 문서2곳은 양쪽 앞삽입 기록과 공통 이력을 모두 보존했다. 외부 상세32px CSS·E2E·보고서/PNG·task는 최신 main blob 그대로이며 PR191은 이 시점 미병합이다.
-backend 두 스타일 파일은 source1 그대로다. 기존 Ruff 대상0/전체465잔존·mock4PASS/DB2deselected·AST/CodeGraph 검증은 동일 backend 입력 증거로 연결하며 새 전체 시험으로 표기하지 않는다.
-다음은 PR193 정확 source2의 원2 리뷰·새 CI·최종 main 머지다. T-DOWNGRADE-GUARDS-20261113 P2 OPEN과 제품3종 HOLD를 유지한다. DB/DDL/이미지/운영/Map/CI 순서 감사 실행0이다.
-
-## 2026-11-13 — PR188에서 가져온 Ruff 스타일 3건만 정리
-
-- 현재 main b3c9942에서 별도 브랜치를 만들고 PR188의 두 파일만 수정했다. 0037 migration import 순서(I001), 두 세션 시험의 중첩 async with 병합(SIM117), mock의 빈 dict factory(PIE807)다. SQL·revision/down_revision·잠금/격리 guard·제품 API·프론트·라이브러리·빌드 producer는 변경하지 않았다.
-- Ruff0.16.5 전체 backend 기준선468건에서 대상3건만 제거해465건이 남았다. 나머지 위치·규칙·메시지는 동일하며 전체 lint 통과로 표기하지 않는다. 대상 두 파일 Ruff는0건이다.
-- 기존 mock 시험4PASS/DB시험2개 deselected이며 PostgreSQL/실제DDL은 실행하지 않았다. plugin 자동 로딩을 끈 좁은 실행의 asyncio_mode 설정 경고1개는 원문으로 보존했다. 정규화 AST는 두 스타일 변환과 import 순서를 제외하고 같고, migration downgrade 함수 AST·문자열 상수는 그대로다.
-- 기존 CodeGraph로 backend249파일/6537nodes/6221edges를 인덱싱했다. affected 결과0은 importlib 동적 로딩의 영향 부재 증명이 아니므로 해당 migration을 직접 읽는 mock4개와 AST 검산을 함께 사용했다. 새 회귀 시험을 추가하거나 기존 기대를 약화하지 않았다.
-- T-DOWNGRADE-GUARDS-20261113은 OPEN이며 0038/0039/0041/0042의 destructive downgrade 보호 완료로 바꾸지 않는다. 이 패치로 DB rollback/downgrade를 허용하지 않는다. 원2 독립 리뷰·정확한 새 SHA의 CI·머지가 남았으며 Transport 제품 이미지3종은 최종 검토·머지 SHA까지 HOLD다. 이미지/운영/Map/CI 순서 감사 실행0이다.
-
 ## 2026-11-13 — CI 최적화 PR194와 주차 line 최종 통합
 
 - PR194는 backend1915PASS/2SKIP/54subtests·903.19초(15분03초)와 전체 CI 성공 뒤04:00UTC에 main12c65b9로 머지됐다. PR192/Weather232 실제 머지도 부모 관측으로 정산한다. 서로 다른 runner/표본의 시간을 코드 단독 개선율로 쓰지 않는다.
@@ -5329,3 +5295,38 @@ Popper의 rollback fence 추적 유실·lease loss 후 다음 provider 게시 P1
   일시 장애로 판단했고 2분 뒤 재확인해 정상화됐다. live E2E 15개 중 14개 PASS,
   나머지 1개는 T-035에서 이미 기록한 것과 같은 기존 `collector-status` 플레이크.
   상세는 `docs/tasks-done.md` T-036 참고.
+
+
+## 2026-11-13 — PR193 source5 실제 충돌 해소
+
+source4 de6079f를 동결한 뒤 main에 PR191 b353a44가 머지돼 실제 문서 충돌과 CI 미등록이 발생했다. 요청된 예외에 따라 정상 merge로 journal/resume 양쪽 기록을 보존하고 PR191의 주차 이력·하루 흐름 line 코드·시험·보고서·원본 원장을 그대로 가져왔다. 실질 충돌 없이 main을 계속 따라잡는 작업은 하지 않는다.
+Ruff3 두 파일과 Motion14.13 공개/관리자/공유 UI 선언·lock은 source4 그대로다. 새로 들어온 parking-lines 원장의14.12는 재사용 source commit 시점 기록으로 보존하며 실제 소비/해석 버전은 두 lock의14.13.0이다. backend 전체는 source4와 같아 해당469→466 기준선·mock4PASS/DB2deselected·원문을 동일 입력 증거로 연결하고 새 실행으로 표기하지 않는다.
+다음은 정확 source5의 원2 리뷰·실제 CI·최종 main 머지 후 정상 제품3종 빌드다. Common36 refs를 유지하고 미래 Common ref는 이 앱 수용 대기 조건이 아니다. 최종 codepin 전파와 workflow 최적화는 마지막 별도 workflow-only PR이다. downgrade P2 OPEN·제품 HOLD·Geo confirm 우선/Weather R4 대기·Map0을 유지한다.
+
+## 2026-11-13 — PR193 source4 최신 main 통합과 최종 앱 수용 순서
+
+Ruff3·Motion14.13 source3 a92f31f에 실제 main12c65b9(PR194)를 정상 merge했다. 양쪽 journal/resume 기록을 보존하고 main의 sample-data 코드/시험·workflow·task는 원본 blob 그대로 가져왔다. 본 작업에서 CI 순서 감사/재배치는 수행하지 않았다.
+두 migration 스타일 파일과 Motion14.13 선언/lock/원장은 source3 그대로다. 기존 full Ruff465는 이전 source의 관측이며 새 main을 검사한 성공으로 표기하지 않는다. 실제 DB/DDL/이미지/운영/Map 실행0이다.
+다음은 원2의 Ruff3+Motion+통합 검토와 정확 최종 앱 SHA CI·실제 main 머지·정상 제품3종 빌드다. 기존 Common36 refs를 유지하며 미래 Common ref는 앱 머지/빌드의 대기 조건이 아니다. 최종 codepin 전파와 workflow 최적화는 마지막 별도 workflow-only PR이며 그 변경만으로 앱 코드/lock·이미지를 다시 만들지 않는다.
+T-DOWNGRADE-GUARDS-20261113 P2 OPEN과 최종 reviewed actual merged SHA/tree 전 제품 HOLD는 유지한다.
+
+## 2026-11-13 — Motion14.13.0 exact 후속 후보
+
+- 공식 registry에서 확인한 새 목표 Motion14.13.0을 공개/관리자 frontend와 공유 parking-ui package에 적용했다. Node22.23.1/npm12.0.1, engine-strict의 정상 package-lock-only/ignore-scripts 명령으로 두 lock을 갱신했고 force/legacy-peer-deps·실제 node_modules 설치는 사용하지 않았다.
+- 각 lock 변화는 root 선언과 motion/framer-motion/motion-dom 3개 항목뿐이다. 모두14.13.0이고 다른 graph·SRI/C11 원본은 그대로다. vendor 소비 의존성 원장도14.13.0으로 맞추고 원본 registry/source SHA와 파일 provenance는 그대로 보존했다.
+- 이는 설치/런타임 검증 완료가 아니다. 새 Motion을 실제 설치한 정확 source의 CI·타입/단위/Doctor/빌드·원2 독립 재검토가 필요하며 기존89c06a0 CI를 이 후보의 성공으로 소급하지 않는다. Common의 optional chart/Motion 정책 실제 후속 merge ref도 최종 연결 전이다.
+- SQL/guard·제품 API/컴포넌트·Docker/producer·키/환경은 수정하지 않았다. source1/source2 원문·P2 OPEN을 보존하고 최종 reviewed merged SHA/tree 전 Transport 제품3종 HOLD·Map0·CI 순서 감사 NOT_STARTED다.
+
+## 2026-11-13 — Ruff3 source2 최신 main 정상 통합
+
+source1 121e001에 actual main3ed6335(PR192)를 정상 merge했다. 충돌 문서2곳은 양쪽 앞삽입 기록과 공통 이력을 모두 보존했다. 외부 상세32px CSS·E2E·보고서/PNG·task는 최신 main blob 그대로이며 PR191은 이 시점 미병합이다.
+backend 두 스타일 파일은 source1 그대로다. 기존 Ruff 대상0/전체465잔존·mock4PASS/DB2deselected·AST/CodeGraph 검증은 동일 backend 입력 증거로 연결하며 새 전체 시험으로 표기하지 않는다.
+다음은 PR193 정확 source2의 원2 리뷰·새 CI·최종 main 머지다. T-DOWNGRADE-GUARDS-20261113 P2 OPEN과 제품3종 HOLD를 유지한다. DB/DDL/이미지/운영/Map/CI 순서 감사 실행0이다.
+
+## 2026-11-13 — PR188에서 가져온 Ruff 스타일 3건만 정리
+
+- 현재 main b3c9942에서 별도 브랜치를 만들고 PR188의 두 파일만 수정했다. 0037 migration import 순서(I001), 두 세션 시험의 중첩 async with 병합(SIM117), mock의 빈 dict factory(PIE807)다. SQL·revision/down_revision·잠금/격리 guard·제품 API·프론트·라이브러리·빌드 producer는 변경하지 않았다.
+- Ruff0.16.5 전체 backend 기준선468건에서 대상3건만 제거해465건이 남았다. 나머지 위치·규칙·메시지는 동일하며 전체 lint 통과로 표기하지 않는다. 대상 두 파일 Ruff는0건이다.
+- 기존 mock 시험4PASS/DB시험2개 deselected이며 PostgreSQL/실제DDL은 실행하지 않았다. plugin 자동 로딩을 끈 좁은 실행의 asyncio_mode 설정 경고1개는 원문으로 보존했다. 정규화 AST는 두 스타일 변환과 import 순서를 제외하고 같고, migration downgrade 함수 AST·문자열 상수는 그대로다.
+- 기존 CodeGraph로 backend249파일/6537nodes/6221edges를 인덱싱했다. affected 결과0은 importlib 동적 로딩의 영향 부재 증명이 아니므로 해당 migration을 직접 읽는 mock4개와 AST 검산을 함께 사용했다. 새 회귀 시험을 추가하거나 기존 기대를 약화하지 않았다.
+- T-DOWNGRADE-GUARDS-20261113은 OPEN이며 0038/0039/0041/0042의 destructive downgrade 보호 완료로 바꾸지 않는다. 이 패치로 DB rollback/downgrade를 허용하지 않는다. 원2 독립 리뷰·정확한 새 SHA의 CI·머지가 남았으며 Transport 제품 이미지3종은 최종 검토·머지 SHA까지 HOLD다. 이미지/운영/Map/CI 순서 감사 실행0이다.
