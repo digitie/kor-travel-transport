@@ -99,4 +99,3 @@ export function getActiveAdminItem(pathname: string | null | undefined) {
     .filter((item) => isActive(pathname, item.href))
     .sort((a, b) => b.href.length - a.href.length)[0];
 }
-

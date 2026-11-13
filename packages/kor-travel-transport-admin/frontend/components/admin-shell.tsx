@@ -4,6 +4,7 @@
 import { LogOutIcon, PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react";
 import Link from "next/link";
 import { AppMenu, type AppMenuLinkProps } from "@kor-travel/ui/app-menu";
+import { toast } from "sonner";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
@@ -243,6 +244,7 @@ function ButtonLogout({
     } catch {
       cancelPendingAdminLogout();
       setError("로그아웃하지 못했습니다. 다시 시도해 주세요.");
+      toast.error("로그아웃하지 못했습니다. 다시 시도해 주세요.");
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -269,7 +271,7 @@ function ButtonLogout({
         <span className={cn(iconOnly ? "sr-only" : collapsed && "lg:hidden")}>로그아웃</span>
       </button>
       {error ? (
-        <p role="alert" className="px-2 text-xs text-destructive">
+        <p role="alert" className="sr-only">
           {error}
         </p>
       ) : null}
