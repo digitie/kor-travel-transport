@@ -2,7 +2,7 @@
 
 - **T-FUEL30-CODE** — 요청12~15의30일 선/whisker·전체 유종·가격순10곳/주소·현재가격/상세 순서를 구현했다. 동일 성공 cohort·과거 null/알려진 한 곳·원본/영구 이력 보존을 검산했다.
 - SQLite/WSL PG18/Docker PG18 각24개, admin WSL/Docker 각47개·타입0·vendor포함 strict lint0/경고0, Chromium156 PC1440/mobile375 실제 fixture 캔버스·키보드·overflow0/pageerror0 완료다. [원장·화면·원 실패](reports/2026-11-13-fuel30-evilcharts.md).
-- 제품03c0f39/Draft PR190이며800177d는 소비자에 없는 lint 주석과 출처 정산이다. 독립 리뷰·CI·main 반영은 T-FUEL30-MERGE로 남긴다. 빌드·운영 배포·수집/재집계는 하지 않았다.
+- 제품03c0f39/Draft PR190이며800177d는 소비자에 없는 lint 주석과 출처 정산이다. 후속f4cc5aa는 James P1 정식 OpenAPI와 실제 StrictMode/Motion/EffectEvent를 보완했고 추가계약2/회귀2각WSL-Docker 및fullDoctor243파일0을 확인했다. 독립 리뷰·CI·main 반영은 T-FUEL30-MERGE로 남긴다. 빌드·운영 배포·수집/재집계는 하지 않았다.
 
 ## 2026-11-13 — #180 main 반영 확인
 

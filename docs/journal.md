@@ -1,3 +1,9 @@
+## 2026-11-13 — 유가 API 사양·공식 차트 CI 후속
+
+- CI43331656574의 OpenAPI stale/backend1과 vendor Doctor8경고/admin1을 원문으로 확인했다. James P1의 정식67경로 사양을 명시 in-memory SQLite에서 생성하고 --check·lifespan 사양2개를 WSL/Docker 각각0으로 정산했다. 운영/기본 DB 연결은0이다.
+- 공식 line helper의 StrictMode callback 두 번 실행을 실제 브라우저 두 클릭4회로 재현했다. event snapshot에서한번실행하도록 바꾸고 LazyMotion/m·loading EffectEvent를 적용했다. 고정 compound 선언1곳/utility export4곳만 Root 승인한 정확 규칙 주석 예외이며 광역ignore/게이트완화0이다.
+- 추가 회귀2개 WSL/Docker각PASS, 최종타입/lint0·full Doctor243파일0진단·skipped0이다. 실제 StrictMode callback2회·Loading표시·PC/모바일 캔버스를 확인했다. [원 실패와 후속](reports/2026-11-13-fuel30-evilcharts.md). 제품/사양f4cc5aa, 기존24/47시험은보존·중복합산0이다.
+
 ## 2026-11-13 — 유가 30일·전체 유종·공식 EvilCharts
 
 - 사용자 요청12~15의 API/집계/화면을 구현했다. ALL 단일 snapshot 조회, 일별 실제 극값·그날 최저가 링크, 정상 세대 가격순 10곳과 주소 보존, 30일 개별 관측을 추가했다. 기존 자료에 없는 순위·극값은 미제공이며 알려진 최저가 한 곳은 유지한다.

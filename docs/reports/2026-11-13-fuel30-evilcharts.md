@@ -49,7 +49,7 @@
 
 ## 남은 한계
 
-과거에 기록되지 않은 Top 10은 즉시 채우지 않는다. 공급자 가격 오류를 임의 보정하지 않는다. 운영 배포/실제 API 통합 수용·CI·독립 리뷰·main 머지는 이번 분담에서 실행하지 않으며 Root가 별도로 정산한다. 공항/항공편/고속도로/Weather/캐시 이전 요청은 다른 분담 범위이고 유가 기능으로 완료 처리하지 않는다.
+과거에 기록되지 않은 Top 10은 즉시 채우지 않는다. 공급자 가격 오류를 임의 보정하지 않는다. 운영 배포/실제 API 통합 수용·main 머지는 Root가 별도로 정산한다. CI 원문 실패 조회와 후속 수정은 아래에 정산하며 독립 리뷰는 Root가 진행한다. 공항/항공편/고속도로/Weather/캐시 이전 요청은 다른 분담 범위이고 유가 기능으로 완료 처리하지 않는다.
 
 
 ## 최종 정산
@@ -59,3 +59,16 @@
 strict lint는 Weather에만 설치된 `react-x/no-children-for-each`를 가리키는 vendor 지시문 2개에서 실패했다. Root 승인에 따라 이 지시문만 일반 설명 주석으로 바꾸고 출처/설치 SHA를 갱신한 `800177dee27935fa3b92203a9a02e6dad091a0de`로 정산했다. 원 공식 Children.forEach와 런타임은 같다. 주석을 제거한 TypeScript JS 출력 SHA는 전후 `78abaaded9bcbda5dfa71a0e571bfebb6f4c81aef9c14534db52ab9e9911c5de`로 동일하며 `comment-runtime-equivalence.json`에 있다. 이 주석 수정 때문에 47개를 재실행하지 않았다. 최초 rule-definition 실패는 `eslint-vendor-rule-failure.log`, 후속 오류0·경고0은 `strict-eslint-final.json`으로 구분한다.
 
 백엔드 집중 명령은 `python -m pytest backend/tests/test_fuel_statistics.py backend/tests/test_fuel_price_history.py -q`이다. 프론트는 `vitest run --maxWorkers=1 --pool=threads`로 위 7개 파일을 WSL과 동일한 Docker 컨테이너에서 실행했다. TypeScript는 `tsc --noEmit --incremental false`, lint는 `eslint --max-warnings=0`으로 vendor와 변경 도메인을 포함했다. 원 worker 시작 timeout·JSDOM 엔진/동기 검증 경계 실패도 보존한다. 운영용 이미지/앱 빌드·실제 API 통합 E2E·수집·재집계·배포·main 머지는0이다. 이후 CI·독립 리뷰·머지는 Root가 이어간다.
+
+
+## 독립 리뷰 P1·원 CI 실패 후속
+
+최초 CI `43331656574`의 backend/job131577577349는 정적 OpenAPI stale, admin/job131577576996는 full React Doctor의 vendor8개 경고로 실패했다. 원 `ci-43331656574-failed.log`를 보존하며 성공으로 바꾸지 않는다. frontend/common-policy는 성공, live E2E는 생략이었다.
+
+James P1에 따라 정식 `scripts/export_openapi.py`를 명시 `DATABASE_URL=sqlite+aiosqlite:///:memory:` 환경으로 실행했다. 이전 `--check`의 실제1을 먼저 보존했고, 생성 후 WSL/Docker의 `--check` 모두0이다. `test_lifespan.py -k committed_openapi`의 사양/런타임 계약2개도 WSL2·Docker 각각 통과했다. Docker는 network:none·읽기전용 소스·in-memory SQLite로 실행하여 운영/기본 DB에 연결하지 않는다. 변경은 FuelRankedStation/FuelStatisticsGroup/FuelStatisticsHistory/FuelViewportStatistics와 유가2개 경로의 메타데이터뿐이며 총67개 경로를 유지한다. 정식 사양 SHA는 `443bdb9cbba4ca1d30589cfc050b92de61f1ac243e5bddf62f6e01c696e58123`, 원장은 `openapi-p1-results.json`이다. 기존24개를 이 이유로 재실행/합산하지 않았다.
+
+Doctor의 실제 동작 문제는 공식 line helper 안에서 고쳤다. 전체 motion 대신 LazyMotion/m을 사용한다. 선택 callback은 state updater 밖의 event snapshot 경계에서 한 번만 실행하며 같은 batch의 두 클릭도 중간 선택을 잃지 않는다. loading RAF는 useEffectEvent로 최신 데이터를 읽는다. 고정 공식 compound API의 giant 선언1곳과 Brush/Legend의 의도적인 utility export4개만 각각 정확 위치의 근거 주석 예외로 남겼다. 광역 vendor 제외·config ignore·gate 완화는 없다. 출처/설치 SHA와 변형 이유는 같은 manifest에 기록했다.
+
+실제 Chromium StrictMode에서 수정 전 두 클릭은 `[price,price,null,null]`과 다른 component를 render 중 갱신하는 경고를 만들었다. 수정 후 `[price,null]`이며 Loading overlay도 표시된다. StrictMode·같은 batch/최신 callback 회귀2개는 WSL/Docker 각각 통과했다. 이는 기존47개와 별도의 좁은 회귀이며 중복 합산하지 않는다. 최종 TypeScript/ESLint는0, React Doctor0.9.22 full은243파일·진단0·skippedChecks=[]·ok=true다. `doctor-fix-results.json`, `doctor-full.json`, `doctor-unit-results.json`, `strict-before.json`, `strict-after-final.json`을 구분해 보존한다. 최초 fixture resource404는 Next public 자산 경로를 제공하지 않은 검증 환경 문제였으며 최종 publicDir 연결 후 failedResources/errors 모두0이다. 보완한 helper의 실제 PC1440/mobile375 유가 캔버스·툴팁·키보드도 다시 확인했다.
+
+이 후속 제품/사양 기준은 `f4cc5aad07ce2650fc74366622d5081d16f02667`이다. 800177d까지의 주석 동일성 검산과 달리 이 커밋에는 위의 실제 callback/Motion/EffectEvent 수정이 포함된다. 새 CI의 최종 상태는 이후 실제 원문으로 관측하며 자동 재실행이나 빌드·배포는 하지 않는다.
