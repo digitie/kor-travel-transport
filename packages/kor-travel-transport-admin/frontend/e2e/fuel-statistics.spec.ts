@@ -16,24 +16,27 @@ test.beforeEach(async ({ page }) => {
 });
 
 for (const width of [390, 1440]) {
-  test(`${width}px 통계 범주·유종 전환과 7일 추이`, async ({ page }) => {
+  test(`${width}px 통계 범주·전체 유종 전환과 30일 추이`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
     await page.route("**/api/transport/transport/fuel/statistics?*", async (route) => {
       const url = new URL(route.request().url());
       const label = url.searchParams.get("scope") === "highway_direction" ? "경부선 · 상행" : "전국";
+      const products = url.searchParams.get("product_code") === "ALL" ? ["B027", "D047", "B034", "K015", "C004"] : [url.searchParams.get("product_code") ?? "B027"];
       await route.fulfill({ json: { generated_at: metrics.generated_at, update_pending: false,
-        history_scope_key: "all", items: [{ ...metrics, scope_key: "all", label }],
-        history: Array.from({ length: 7 }, (_, i) => ({ day: `2026-10-${15 + i}`, average_price: 1700 + i, station_count: 12000 })) } });
+        history_scope_key: "all", items: products.map(product_code => ({ ...metrics, product_code, scope_key: "all", label })),
+        history: products.flatMap(product_code => Array.from({ length: 30 }, (_, i) => ({ product_code, day: new Date(Date.UTC(2026, 9, 1 + i)).toISOString().slice(0, 10), generated_at: metrics.generated_at, average_price: 1700 + i, minimum_price: 1600, maximum_price: 1800, station_count: 12000 }))) } });
     });
     await page.goto("/fuel/statistics");
-    await expect(page.getByRole("article", { name: "전국 · 휘발유" })).toBeVisible();
-    await expect(page.getByRole("img", { name: /최근 7일 평균 유가 추이/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "최근 30일 평균 유가 · 전국" })).toBeVisible();
+    await expect(page.getByLabel("유종", { exact: true })).toHaveValue("ALL");
+    await expect(page.getByRole("group", { name: /최근 30일 유종별 평균·최저·최고 유가/ })).toBeVisible();
     await expect(page.getByLabel("주유량(L)", { exact: true })).not.toBeVisible();
     await page.locator(".fuel-driving-details > summary").click();
     await expect(page.getByLabel("주유량(L)", { exact: true })).toBeVisible();
     await page.getByLabel("범위", { exact: true }).selectOption("highway_direction");
     await page.getByLabel("유종", { exact: true }).selectOption("D047");
-    await expect(page.getByRole("article", { name: "경부선 · 상행 · 경유" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "최근 30일 평균 유가 · 경부선 · 상행" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "경유 · 최저가 주유소", exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 }

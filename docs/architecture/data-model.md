@@ -90,8 +90,7 @@ API·legacy 실행의 NULL 소유권은 자동 회수 대상에서 제외한다.
 
 원천별 발행 포인터 `fuel_statistics_states`, 최신 지도 가격 `fuel_statistics_points`,
 KST 일별 범주/유종 집계 `fuel_statistics_daily`를 분리한다. 원본 이력은 보존하고
-조회 시에는 읽지 않는다. 지도 가격은 bbox 인덱스를 사용하며 일별 집계는 오늘 포함
-7일만 남긴다. 원천 잠금·savepoint로 원본 성공과 통계 발행 실패를 분리한다.
+조회 시에는 읽지 않는다. 지도 가격은 bbox 인덱스를 사용하며 일별 집계는 영구 보존한다. 조회 창만 마지막 공개일 포함 30일이다. 원천 잠금·savepoint로 원본 성공과 통계 발행 실패를 분리한다.
 지표·원천·초기 기록 기준은 [유가 통계](../fuel-statistics.md)를 따른다.
 
 ## 핵심 테이블
@@ -402,7 +401,7 @@ source 식별자를 섞지 않으며 실패·인증키·원문 오류는 저장�
 
 ## 0037 지역 유가·철도 일일 수집
 
-fuel_region_summaries는 성공 수집 세대별 시도·시군구·유종의 영구 요약이며 공개 포인터와 같은 트랜잭션으로 발행한다. fuel_statistics_daily의 이전 7일 보관 제한은 제거하고 조회 창만 7일로 유지한다. kric_timetable_attempts는 역/운행 기준별 24시간 요청 원장이며 pending/stored/no_data/error 결과와 호출 시각을 보존한다. 03 응답은 정상 저장 시간표를 덮어쓰지 않는다. [상세 계약](../design/2026-11-01-rail-daily-fuel-summary.md).
+fuel_region_summaries는 성공 수집 세대별 시도·시군구·유종의 영구 요약이며 공개 포인터와 같은 트랜잭션으로 발행한다. fuel_statistics_daily의 이전 7일 보관 제한은 제거하고 조회 창은 2026-11-13부터 마지막 공개일 포함 30일이다. 일별 metrics_json에는 정상 수집 세대의 최저가 10곳과 이름·주소·좌표를 함께 저장한다. 과거 순위·극값 누락은 재계산하지 않고 미제공으로 구분한다. kric_timetable_attempts는 역/운행 기준별 24시간 요청 원장이며 pending/stored/no_data/error 결과와 호출 시각을 보존한다. 03 응답은 정상 저장 시간표를 덮어쓰지 않는다. [상세 계약](../design/2026-11-01-rail-daily-fuel-summary.md).
 
 ## 0038 철도 시간표 원천 구분
 

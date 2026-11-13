@@ -1,3 +1,8 @@
+## 2026-11-13 — 유가 30일·전체 유종·공식 EvilCharts 구현/집중 검증
+
+- **T-FUEL30-CODE** — 요청12~15의30일 선/whisker·전체 유종·가격순10곳/주소·현재가격/상세 순서를 구현했다. 동일 성공 cohort·과거 null/알려진 한 곳·원본/영구 이력 보존을 검산했다.
+- SQLite/WSL PG18/Docker PG18 각24개, admin WSL/Docker 각47개·타입0·vendor포함 strict lint0/경고0, Chromium156 PC1440/mobile375 실제 fixture 캔버스·키보드·overflow0/pageerror0 완료다. [원장·화면·원 실패](reports/2026-11-13-fuel30-evilcharts.md).
+- 제품03c0f39/Draft PR190이며800177d는 소비자에 없는 lint 주석과 출처 정산이다. 후속f4cc5aa는 James P1 정식 OpenAPI와 실제 StrictMode/Motion/EffectEvent를 보완했고 추가계약2/회귀2각WSL-Docker 및fullDoctor243파일0을 확인했다. 독립 리뷰·CI·main 반영은 T-FUEL30-MERGE로 남긴다. 빌드·운영 배포·수집/재집계는 하지 않았다.
 ## 2026-11-13 — 공항 차트·고속도로 화면 갱신 코드와 WSL 집중 검증
 
 - [x] 공항 주차 현황/항공편 파이·명시적 P번호 동심원, 요일/공휴일 시간대 히트맵을 공식 EvilCharts ECharts로 구현했다. 0/결측/불일치·정밀 숫자·관측 시각을 보존했다.

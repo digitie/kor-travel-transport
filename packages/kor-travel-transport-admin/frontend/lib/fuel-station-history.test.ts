@@ -29,7 +29,7 @@ test("cursor 전량 조회는 고정 창과 source revision을 유지한다", as
   const get = vi.spyOn(journey, "transportGet").mockResolvedValueOnce(first).mockResolvedValueOnce(second);
   const data = await loadFuelStationHistory(1, "opinet_browser", new AbortController().signal);
   expect(data.items).toHaveLength(2); expect(get.mock.calls[1][0]).toContain("cursor=opaque");
-  expect(get.mock.calls[0][0]).toContain("transport/fuel/stations/1/price-history?source=opinet_browser&days=7&limit=1000");
+  expect(get.mock.calls[0][0]).toContain("transport/fuel/stations/1/price-history?source=opinet_browser&days=30&limit=1000");
 });
 test("revision 409는 한 번 새 창으로 시작하고 이전 페이지를 혼합하지 않는다", async () => {
   const first = { ...historyFixture(), items: [price("2026-10-28T02:00:00Z", 9999)], has_more: true, next_cursor: "old" };

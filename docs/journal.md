@@ -1,3 +1,20 @@
+## 2026-11-13 — 유가 후보와 main 빌드 계약 통합
+
+- 유가 후보2da65ed와 main의 PR187 merge4b24e0d를 정상 merge했다. 충돌 문서3개에서 양쪽 이력과 미완 gate를 보존했다. 제품 API/차트 로직은 유지하고 Node/npm·strict 설치·non-root 빌드 계약을 함께 소비한다. OpenAPI --check·타입·공통 의존성 guard0, 좁은 빌드 계약4개·Node runtime fixture19개를 통과했다. Fuel/사양 런타임 diff0·lock 비root 그래프 동일이며 root에는 main engines만 추가됐다. 원 DrvFS 모드 실패와 환경 보정은 [유가 원장](reports/2026-11-13-fuel30-evilcharts.md)에 정산했다. 빌드·운영·수집 실행0이다.
+
+## 2026-11-13 — 유가 API 사양·공식 차트 CI 후속
+
+- CI43331656574의 OpenAPI stale/backend1과 vendor Doctor8경고/admin1을 원문으로 확인했다. James P1의 정식67경로 사양을 명시 in-memory SQLite에서 생성하고 --check·lifespan 사양2개를 WSL/Docker 각각0으로 정산했다. 운영/기본 DB 연결은0이다.
+- 공식 line helper의 StrictMode callback 두 번 실행을 실제 브라우저 두 클릭4회로 재현했다. event snapshot에서한번실행하도록 바꾸고 LazyMotion/m·loading EffectEvent를 적용했다. 고정 compound 선언1곳/utility export4곳만 Root 승인한 정확 규칙 주석 예외이며 광역ignore/게이트완화0이다.
+- 추가 회귀2개 WSL/Docker각PASS, 최종타입/lint0·full Doctor243파일0진단·skipped0이다. 실제 StrictMode callback2회·Loading표시·PC/모바일 캔버스를 확인했다. [원 실패와 후속](reports/2026-11-13-fuel30-evilcharts.md). 제품/사양f4cc5aa, 기존24/47시험은보존·중복합산0이다.
+
+## 2026-11-13 — 유가 30일·전체 유종·공식 EvilCharts
+
+- 사용자 요청12~15의 API/집계/화면을 구현했다. ALL 단일 snapshot 조회, 일별 실제 극값·그날 최저가 링크, 정상 세대 가격순 10곳과 주소 보존, 30일 개별 관측을 추가했다. 기존 자료에 없는 순위·극값은 미제공이며 알려진 최저가 한 곳은 유지한다.
+- 통계는 그래프 우선·컴팩트한 필터 행·전체 유종 표로 바꾸고, 주유소 상세는 현재 가격→차트→연락처/근거→관측값 표로 정리했다. 공용 상세의 차트 엔진은 필요할 때 적재한다. 원본/과거/성공 cohort/영구 통계 정책·DB 스키마는 보존했다.
+- SQLite/WSL PG18/Docker PG18 각24개와 admin WSL/Docker 각47개, TypeScript와 vendor 포함 strict lint 오류0/경고0, 실제 Chromium PC1440/mobile375 fixture를 확인했다. native 키보드/범례 접근성도 정산했다. 동일 시험은 합산하지 않는다.
+- 제품03c0f39와 주석만 변경한800177d를 Draft PR190으로 push했다. 공식 line의 소비자에 없는 lint 지시문2개만 일반 주석으로 정산했고 주석 제거 JS SHA가 같음을 검산했다.
+- [구현·누락/실패·화면·검증 원장](reports/2026-11-13-fuel30-evilcharts.md). 빌드·운영 배포·수집·수동 게시·정리0, main 머지 전이다.
 ## 2026-11-13 — 공항 후보와 main 빌드 계약 통합
 
 - PR189의 cf905ac5에 main4b24e0d(#187)를 정상 병합했다. 충돌은 문서3개였고 양쪽 이력을 보존했다. 앱 로직은 cf905와 같으며 Node22.23.1/npm12.0.1·strict 설치·nonroot Dockerfile·workflow/scripts는 main을 유지한다. 새 이미지/운영 변경은 없다.

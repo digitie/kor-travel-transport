@@ -1,3 +1,15 @@
+## 현재 상태 — 2026-11-13 유가·main 빌드 계약 통합
+
+- 유가 후보2da65ed와 main PR187 merge4b24e0d를 정상 merge해 문서3개 충돌에서 양쪽 기록을 보존했다. 유가 제품f4cc5aa와67경로 API는 그대로다. Node22.23.1/npm12.0.1·strict 설치·non-root 계약과 ECharts6.1.0/Motion14.12.0을 함께 유지한다.
+- 사양 --check·타입·공통 의존성 guard0, 빌드 계약4개·runtime fixture19개가 통과했다. 제품/사양 diff0·lock 비root 그래프 동일이다. 다음 한 작업: 정상 merge의 exact CI·Root 독립 리뷰/머지를 정산한다. 기존 완료 시험은 반복하지 않으며 빌드·운영·수집0이다. 과거 빌드 후보 이력의 미완 실제 이미지/운영 수용을 완료로 바꾸지 않는다.
+
+## 유가 분담 인계 — 2026-11-13
+
+- 요청12~15의 유가 30일·전체 유종·EvilCharts·Top10/주소·상세 순서를 구현하고 집중 DB/프론트/실제 fixture 화면을 확인했다. 과거 누락 순위는 미제공으로 남기고 알려진 최저가 한 곳을 보존한다. [정본](reports/2026-11-13-fuel30-evilcharts.md).
+- 다음 한 작업: Draft PR190의 후속f4cc5aa 사양/공식 helper를 Root에 전달하고 새 CI·독립 리뷰·통합/머지를 정산한다. 기존47개와 별도 OpenAPI 계약2개/StrictMode 회귀2개는 각WSL/Docker PASS, full Doctor243파일0·타입/lint0이다. 원 CI의 backend사양/adminDoctor 실패는 보존했다. 빌드·운영·수집/재집계는 하지 않는다.
+- 다른 Weather/공항/항공편/고속도로/캐시 요청은 병행 범위이며 이 유가 분담으로 완료 처리하지 않는다.
+
+## 이전 빌드 후보 인계 — 2026-11-13 main 충돌 해소 통합 후보
 ## 통합 현재 상태 — 2026-11-13 공항 기능과 main 빌드 계약
 
 - PR189 공항 소스 cf905와 main4b24e0d(#187)의 빌드 계약을 통합한다. 양쪽 코드/기록을 보존하며 package의 ECharts/Motion과 Node/npm/strict 계약이 함께 남는다. 기능 검증 원문은 아래 공항 기록이고 새 통합 CI/머지 수용은 아직 미완이다.
@@ -18,7 +30,7 @@
 main의 기존 Ruff 스타일3개는 별도 관측으로 남겼고 전체 backend lint 성공을 주장하지 않는다.
 다음은 통합 head의 원2 bounded 재검토·push/PR exact CI다. 6a와 모든 과거 원문을 유지하며 운영 변경0이다.
 
-## 현재 상태 — 2026-11-13 관리자 startup directory-mode 후속 후보
+## 이전 빌드 후보 인계 — 2026-11-13 관리자 startup directory-mode 후속 후보
 
 startup-only 진단은 기본 USER/CMD에서 EACCES scandir /app/public/fuel-brands, PID1 exit1·OOMKilled=false였다.
 원 archive0775 대비 producer context0700을 확인해 data_filter의 directory-mode 생략과 umask077 상호작용을 수정했다.
@@ -26,7 +38,7 @@ startup-only 진단은 기본 USER/CMD에서 EACCES scandir /app/public/fuel-bra
 회귀 전1FAIL·작은 전체115PASS이며 새 image/runtime/HTTP/browser는 아직 미실행이다.
 d65/source2·15da 실제 이미지·원124/R2 실패를 유지한다. 다음은 source3 원2 재검토·exact CI·새 정상 이미지 QA다.
 
-## 현재 상태 — 2026-11-13 OCI exporter CSV 경계 후속 후보
+## 이전 빌드 후보 인계 — 2026-11-13 OCI exporter CSV 경계 후속 후보
 
 B-TRBUILD-P2-01을 stdlib CSV 직렬화로 수정했다. 정상/쉼표/quote/중복 dest 회귀 전3FAIL/1PASS,
 후 전체 작은 계약114PASS이며 실제 Buildx bake --print의 네 dest도 모두 경계 안에 보존됐다.
@@ -34,7 +46,7 @@ print-only 검사는 daemon 없이 실행했고 실제 OCI image export/ABI 수�
 15da Docker 후보 normal build PASS·원 runtime124 NOTPASS/Node 미시작·cleanup0을 보존한다.
 다음은 원2 bounded 재확인·새 exact CI와 IO 회복 후 실제 UID/worker/auth/지도 수용이다. blind retry·새 build/apply0이다.
 
-## 현재 상태 — 2026-11-13 취소 처리 후속과 최종 Common ref 연결
+## 이전 빌드 후보 인계 — 2026-11-13 취소 처리 후속과 최종 Common ref 연결
 
 bdb2 불변 후보에서 EOF 최종 wait 취소 회수와 redacted log flush를 보강했다.
 회귀 전2FAIL/1PASS·후3PASS, 작성자 격리 Python110PASS이며 실제 Docker 취소 검증은 미완이다.
@@ -42,7 +54,7 @@ Common 실제 merge36e4d285ea926b9d8c20da4221ade86ebf74c04d의 도구 guard와 �
 공개 bdb2 이미지 R2 PASS와 원124 NOTPASS를 별도 보존하며 후속 이미지의 PASS로 소급하지 않는다.
 다음 한 작업은 원2 bounded 재검토와 최종 exact CI, 새 역할 이미지/ARM 수용이다. 새 build/apply는 아직 실행하지 않는다.
 
-## 현재 상태 — 2026-11-13 빌드 생태계 소스 후보
+## 이전 빌드 후보 인계 — 2026-11-13 빌드 생태계 소스 후보
 
 PR180 merge110d(tree389164) 기반 build-only delta를 구현 중이다.
 7aec와 동일 tree여서 dirty B1을 보존한 fast-forward로 정렬했다.

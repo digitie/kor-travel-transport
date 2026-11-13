@@ -6,7 +6,7 @@ import logging
 import math
 import time
 from collections import OrderedDict
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import Float, String, and_, cast, delete, exists, func, insert, literal, or_, select, text, tuple_, union_all
@@ -45,6 +45,7 @@ class _Accumulator:
         self.maximum = 0.0
         self.cheapest: dict | None = None
         self.cheapest_count = 0
+        self.ranked: list[dict] = []
 
     def add(self, point: dict) -> None:
         price = float(point["price"])
@@ -52,6 +53,9 @@ class _Accumulator:
         self.total += price
         self.squares += price * price
         self.maximum = max(self.maximum, price)
+        self.ranked.append({**{k: point[k] for k in ("station_key", "name", "address", "longitude", "latitude")}, "price": price})
+        self.ranked.sort(key=lambda row: (row["price"], row["station_key"]))
+        del self.ranked[10:]
         if price < self.minimum:
             self.minimum, self.cheapest_count = price, 1
             self.cheapest = {k: point[k] for k in ("station_key", "name", "address", "longitude", "latitude")}
@@ -62,8 +66,9 @@ class _Accumulator:
 
     def metrics(self) -> dict:
         average = self.total / self.count
-        return _metrics(self.count, average, self.minimum, self.maximum,
-                        self.squares / self.count, self.cheapest, self.cheapest_count)
+        return {**_metrics(self.count, average, self.minimum, self.maximum,
+                          self.squares / self.count, self.cheapest, self.cheapest_count),
+                "cheapest_stations": self.ranked, "ranking_complete": True}
 
 
 def _metrics(count: int, average: float, minimum: float, maximum: float,
@@ -298,36 +303,44 @@ async def fuel_statistics_page(session: AsyncSession, scope: str, product_code: 
                                scope_key: str | None = None) -> dict:
     source = OPINET if scope in {"nationwide", "sido", "sigungu"} else HIGHWAY
     d, state = FuelStatisticsDaily, FuelStatisticsState
+    product_filter = literal(True) if product_code == "ALL" else d.product_code == product_code
     current_keys = select(d.scope_key).join(state, and_(
         d.source == state.source, d.day == state.day, d.generated_at == state.generated_at,
-    )).where(d.source == source, d.scope == scope, d.product_code == product_code).cte("fuel_current_keys")
+    )).where(d.source == source, d.scope == scope, product_filter).distinct().cte("fuel_current_keys")
     chosen = func.coalesce(
         select(current_keys.c.scope_key).where(current_keys.c.scope_key == scope_key).scalar_subquery(),
         select(func.min(current_keys.c.scope_key)).scalar_subquery(),
     )
-    day_start = func.date(state.day, "-6 days") if session.bind.dialect.name == "sqlite" else state.day - 6
-    # 현재 범주와 선택 범주의 7일 이력을 한 SQL snapshot에서 읽는다.
+    day_start = func.date(state.day, "-29 days") if session.bind.dialect.name == "sqlite" else state.day - 29
+    # 현재 범주와 선택 범주의 30일 이력을 한 SQL snapshot에서 읽는다.
     # 발행의 delete/insert 사이 또는 자정 보관 정리 사이를 섞어 읽지 않는다.
     rows = (await session.execute(select(d, state.generated_at, state.day, chosen).select_from(state).outerjoin(d, and_(
-        d.source == state.source, d.scope == scope, d.product_code == product_code,
+        d.source == state.source, d.scope == scope, product_filter,
         d.day.between(day_start, state.day), d.generated_at <= state.generated_at,
         or_(and_(d.day == state.day, d.generated_at == state.generated_at), d.scope_key == chosen),
-    )).where(state.source == source).order_by(d.scope_key, d.day))).all()
+    )).where(state.source == source).order_by(d.scope_key, d.day, d.product_code))).all()
     generated_at = rows[0][1] if rows else None
     selected_key = rows[0][3] if rows else None
     current = [row[0] for row in rows if row[0] is not None and row[0].day == row[2]
                and serialize_utc(row[0].generated_at) == serialize_utc(row[1])]
     history = [{"day": row[0].day, "generated_at": row[0].generated_at,
+                "product_code": row[0].product_code,
                 "average_price": row[0].metrics_json["average_price"],
-                "station_count": row[0].metrics_json["station_count"]}
+                "station_count": row[0].metrics_json["station_count"],
+                "minimum_price": row[0].metrics_json.get("minimum_price"),
+                "maximum_price": row[0].metrics_json.get("maximum_price"),
+                "cheapest_station": row[0].metrics_json.get("cheapest_station")}
                for row in rows if row[0] is not None and row[0].scope_key == selected_key]
     collection = await session.scalar(select(TransportCollectionState).where(TransportCollectionState.source == source))
     pending = bool(collection and collection.last_success_at and (
         generated_at is None or serialize_utc(collection.last_success_at) > serialize_utc(generated_at)))
     return {"scope": scope, "product_code": product_code, "history_scope_key": selected_key,
             "generated_at": generated_at, "update_pending": pending,
-            "items": [{"scope_key": row.scope_key, "label": row.label, "generated_at": row.generated_at,
-                       **row.metrics_json} for row in current], "history": history}
+            "items": [{**row.metrics_json, "scope_key": row.scope_key, "label": row.label,
+                       "generated_at": row.generated_at, "product_code": row.product_code,
+                       "cheapest_stations": row.metrics_json.get("cheapest_stations", []) if row.scope_key == selected_key else [],
+                       "ranking_complete": bool(row.scope_key == selected_key and row.metrics_json.get("ranking_complete"))}
+                      for row in current], "history": history}
 
 
 def with_publication_status(items: list[dict], last_success_at: datetime | None) -> list[dict]:

@@ -387,6 +387,10 @@ class FuelCheapestStation(BaseModel):
     latitude: float | None = None
 
 
+class FuelRankedStation(FuelCheapestStation):
+    price: float
+
+
 class FuelStatisticsMetrics(BaseModel):
     station_count: int
     average_price: float
@@ -397,6 +401,8 @@ class FuelStatisticsMetrics(BaseModel):
     saving_50l: float
     cheapest_station: FuelCheapestStation | None = None
     cheapest_station_count: int
+    cheapest_stations: list[FuelRankedStation] = Field(default_factory=list)
+    ranking_complete: bool = False
 
 
 class FuelViewportStatistics(FuelStatisticsMetrics):
@@ -406,16 +412,21 @@ class FuelViewportStatistics(FuelStatisticsMetrics):
 
 
 class FuelStatisticsGroup(FuelStatisticsMetrics):
+    product_code: str = ""
     scope_key: str
     label: str
     generated_at: datetime
 
 
 class FuelStatisticsHistory(BaseModel):
+    product_code: str = ""
     day: date
     generated_at: datetime
     average_price: float
     station_count: int
+    minimum_price: float | None = None
+    maximum_price: float | None = None
+    cheapest_station: FuelCheapestStation | None = None
 
 
 class FuelStatisticsResponse(BaseModel):

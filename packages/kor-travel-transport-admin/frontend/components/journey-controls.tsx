@@ -62,11 +62,10 @@ export function MultiSearch({ label, query, onQuery, options, selected, onSelect
 export function PlaceDetails({ place, showRailTimetable = true, showHeading = true, onShowMap }: { place: Place; showRailTimetable?: boolean; showHeading?: boolean; onShowMap?: () => void }) {
   return <div className="place-details">
     <PlaceHeading place={place} showHeading={showHeading} />
-    {place.kind === "fuel_station" ? <FuelStationPriceHistory key={`${place.source}:${place.id}`} place={place} /> : null}
     <PlacePrices place={place} />
-    <PlaceContact place={place} onShowMap={onShowMap} />
+    {place.kind === "fuel_station" ? <FuelStationPriceHistory key={`${place.source}:${place.id}`} place={place}><PlaceContact place={place} onShowMap={onShowMap} /><PlaceLocationEvidence place={place} /></FuelStationPriceHistory> : <PlaceContact place={place} onShowMap={onShowMap} />}
     {place.kind === "rail_station" && showRailTimetable ? <RailTimetables placeIds={[place.id]} /> : null}
-    <PlaceLocationEvidence place={place} />
+    {place.kind !== "fuel_station" ? <PlaceLocationEvidence place={place} /> : null}
     {place.kind !== "fuel_station" ? <p className="quiet">출처 {collectionSourceLabel(place.source)} · 기준정보 반영 {dateTime(place.updated_at)}</p> : null}
   </div>;
 }
@@ -83,7 +82,7 @@ function PlaceHeading({ place, showHeading }: Pick<Parameters<typeof PlaceDetail
 function PlacePrices({ place }: { place: Place }) {
   const prices = place.kind === "fuel_station" ? place.prices?.filter(hasFuelPrice) : place.prices;
   return <>
-    {prices?.length ? <><span className="quiet fuel-current-price-label">최근 저장 가격</span><dl className="price-grid">{prices.map((price) => <div key={price.product_code}><dt>{fuelProductLabel(price.product_code)}</dt><dd>{money(price.price, "원/L")}</dd><small><time dateTime={price.observed_at}>관측 {dateTime(price.observed_at)}</time>{place.kind === "fuel_station" && isOldFuelObservation(price.observed_at) ? <span className="fuel-price-old">7일 이전 관측</span> : null}</small></div>)}</dl></> : place.kind === "fuel_station" ? <p className="quiet">등록된 유효 유가가 없습니다.</p> : null}
+    {prices?.length ? <>{place.kind !== "fuel_station" ? <span className="quiet fuel-current-price-label">최근 저장 가격</span> : null}<dl className={place.kind === "fuel_station" ? "price-grid fuel-current-prices" : "price-grid"}>{prices.map((price) => <div key={price.product_code}><dt>{fuelProductLabel(price.product_code)}{place.kind === "fuel_station" ? <InfoButton label={`${fuelProductLabel(price.product_code)} 가격 기준`}><p><time dateTime={price.observed_at}>관측 {dateTime(price.observed_at)}</time></p>{isOldFuelObservation(price.observed_at) ? <p>7일 이전 관측입니다. 현재 판매 가격과 다를 수 있습니다.</p> : null}</InfoButton> : null}</dt><dd>{money(price.price, "원/L")}</dd><small><time dateTime={price.observed_at}>관측 {dateTime(price.observed_at)}</time>{place.kind === "fuel_station" && isOldFuelObservation(price.observed_at) ? <span className="fuel-price-old">7일 이전 관측</span> : null}</small></div>)}</dl></> : place.kind === "fuel_station" ? <p className="quiet">등록된 유효 유가가 없습니다.</p> : null}
   </>;
 }
 

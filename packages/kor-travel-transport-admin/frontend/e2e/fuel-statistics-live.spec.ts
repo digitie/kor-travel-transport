@@ -15,7 +15,7 @@ test("실제 로그인·통계 API·지도 범위·모바일/데스크톱 화면
   await page.getByRole("button", { name: "로그인", exact: true }).click();
   await expect(page).toHaveURL(/\/fuel\/statistics$/);
   const region = page.getByRole("region", { name: "유가 통계", exact: true });
-  await expect(region.getByRole("article").first()).toBeVisible({ timeout: 30_000 });
+  await expect(region.getByRole("group", { name: /최근 30일 유종별 평균·최저·최고 유가/ })).toBeVisible({ timeout: 30_000 });
   const timings: Array<{ scope: string; milliseconds: number; groups: number; history: number }> = [];
   for (const scope of ["nationwide", "sido", "sigungu", "highways", "highway", "highway_direction"]) {
     const start = Date.now();
@@ -31,14 +31,14 @@ test("실제 로그인·통계 API·지도 범위·모바일/데스크톱 화면
     await page.setViewportSize({ width, height: 1000 });
     await page.getByLabel("범위", { exact: true }).selectOption("highway_direction");
     await expect(region).toHaveAttribute("aria-busy", "false");
-    await expect(region.getByRole("article").first()).toBeVisible();
-    await expect(region.getByRole("img", { name: /최근 7일 평균 유가 추이/ })).toBeVisible();
+    await expect(region.getByRole("group", { name: /최근 30일 유종별 평균·최저·최고 유가/ })).toBeVisible();
+    await expect(region.getByRole("group", { name: /최근 30일 유종별 평균·최저·최고 유가/ })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: test.info().outputPath(`fuel-statistics-${width}.png`), fullPage: true });
   }
   await page.goto("/fuel");
   const viewport = page.getByRole("region", { name: "현재 지도 범위 유가 통계" });
-  await expect(viewport.getByRole("article").first()).toBeVisible({ timeout: 30_000 });
+  await expect(viewport.locator(".fuel-summary-body")).toBeVisible({ timeout: 30_000 });
   await expect(viewport).toHaveAttribute("aria-busy", "false");
   if (process.env.E2E_FUEL_MAP_CAMERA === "true") {
     const endpoint = "/api/transport/transport/features/places";

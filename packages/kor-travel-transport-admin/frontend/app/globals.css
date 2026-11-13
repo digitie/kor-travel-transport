@@ -853,3 +853,26 @@ body { font-family: "Pretendard Variable", Pretendard, sans-serif; }
   .mobile-topbar-title { font-size: .9375rem; }
 }
 .transport-shell:has([data-slot="map-workspace"][data-expanded="true"]) .mobile-topbar { display: none; }
+
+/* 유가: 차트를 먼저 읽고 모바일에서는 제어만 자연스럽게 줄바꿈한다. */
+.fuel-stat-filters { align-items: end; gap: .5rem; flex-wrap: wrap; }
+.fuel-stat-filters label { min-width: 0; flex: 1 1 8rem; }
+.fuel-stat-filters .fuel-stat-category { margin: 0; }
+.fuel-collection-basis { font-size: .75rem; line-height: 1.5; margin-block: .5rem; }
+.fuel-echarts { height: var(--fuel-chart-height); min-width: 0; width: 100%; }
+.fuel-echarts > div { height: 100%; }
+.fuel-chart-legend { display: flex; flex-wrap: wrap; gap: .75rem; font-size: .75rem; }
+.fuel-chart-tooltip { max-width: min(30rem, 80vw); line-height: 1.7; white-space: normal; }
+.fuel-cheapest-tables { display: grid; gap: 1rem; min-width: 0; }
+.fuel-cheapest-tables h3 { font-size: .875rem; margin-block: .75rem .25rem; }
+.fuel-current-prices { display: flex !important; flex-wrap: nowrap; overflow-x: auto; gap: .5rem .875rem; }
+.fuel-current-prices > div { flex: 0 0 auto; display: flex !important; flex-wrap: nowrap; align-items: baseline; gap: .25rem; }
+.fuel-current-prices dt, .fuel-current-prices dd { font-size: .8rem; margin: 0; }
+.fuel-current-prices small { display: none; }
+.fuel-station-history { min-width: 0; }
+@media (max-width: 480px) { .fuel-stat-filters label { flex-basis: 6.5rem; } .fuel-echarts { height: var(--fuel-chart-height-mobile); } }
+
+.fuel-chart-tooltip { max-height: 60vh; overflow: auto; font-size: .75rem; line-height: 1.5; }
+.fuel-chart-tooltip-row { margin-top: .35rem; padding-top: .35rem; border-top: 1px solid var(--control-line); }
+
+.fuel-chart-keyboard:focus { position: static; width: auto; height: auto; margin: .25rem 0; clip: auto; white-space: normal; }
