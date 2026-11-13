@@ -1,3 +1,5 @@
+vi.mock("@/components/parking-availability-charts", () => ({ ParkingAvailabilityCharts: () => null }));
+vi.mock("@/components/parking-pattern-heatmap", () => ({ ParkingPatternHeatmap: () => null }));
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 

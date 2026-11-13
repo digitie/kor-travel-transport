@@ -20,7 +20,7 @@ beforeEach(() => {
     return { items: [row("0010-a", "0010", "경부선", 90), row("0010-b", "0010", "경부선", 70)], generated_at: observed() };
   });
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 test("전체 노선은 1,000행 표본으로 표기하고 노선을 고르면 그 노선 전체를 다시 조회한다", async () => {
   const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
@@ -42,4 +42,32 @@ test("전체 노선은 1,000행 표본으로 표기하고 노선을 고르면 �
     expect(container.textContent).toContain("선택 노선의 최근 관측");
     expect(container.textContent).toContain("수도권제1순환선");
   } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
+
+test("열린 화면은 표시 중에만 저장 자료를 다시 읽어 새 수집분을 반영한다", async () => {
+  vi.useFakeTimers();
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  try {
+    await act(async () => root.render(<HighwayStatistics />));
+    const before = api.get.mock.calls.length;
+    api.get.mockImplementation(async (path: string) => path.startsWith("transport/statistics")
+      ? { traffic: [{ route_no: "0010" }] }
+      : { items: [row("new-a", "0010", "경부선", 12)], generated_at: observed() });
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(api.get.mock.calls.length).toBe(before + 1);
+    expect(container.textContent).toContain("12");
+    expect(api.get.mock.calls.filter(([path]) => String(path).startsWith("transport/statistics"))).toHaveLength(1);
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    const hidden = api.get.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(api.get.mock.calls.length).toBe(hidden);
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+    expect(api.get.mock.calls.length).toBe(hidden + 1);
+    await act(async () => root.unmount());
+    const ended = api.get.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(api.get.mock.calls.length).toBe(ended);
+  } finally { await act(async () => root.unmount()); container.remove(); vi.restoreAllMocks(); }
 });

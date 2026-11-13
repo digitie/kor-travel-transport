@@ -1,5 +1,6 @@
 "use client";
 
+import { ParkingAvailabilityCharts } from "../parking-availability-charts";
 import { Alert } from "../ui/alert";
 import { Card } from "../ui/card";
 import { VirtualTable } from "@kor-travel/ui/virtual-table";
@@ -47,6 +48,8 @@ export function CurrentStatusView() {
       </section>
 
       <CurrentMetrics scopeItems={scopeItems} selectedParkingLotId={selectedParkingLotId} selectedParkingLotName={selectedParkingLotName} />
+
+      <ParkingAvailabilityCharts items={scopeItems} />
 
       {/* T-038 Hallmark audit: a screen reader is not guaranteed to announce a live
           region that arrives already-mounted with its final content - the region

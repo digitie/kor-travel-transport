@@ -3,6 +3,12 @@
 - **T-FUEL30-CODE** — 요청12~15의30일 선/whisker·전체 유종·가격순10곳/주소·현재가격/상세 순서를 구현했다. 동일 성공 cohort·과거 null/알려진 한 곳·원본/영구 이력 보존을 검산했다.
 - SQLite/WSL PG18/Docker PG18 각24개, admin WSL/Docker 각47개·타입0·vendor포함 strict lint0/경고0, Chromium156 PC1440/mobile375 실제 fixture 캔버스·키보드·overflow0/pageerror0 완료다. [원장·화면·원 실패](reports/2026-11-13-fuel30-evilcharts.md).
 - 제품03c0f39/Draft PR190이며800177d는 소비자에 없는 lint 주석과 출처 정산이다. 후속f4cc5aa는 James P1 정식 OpenAPI와 실제 StrictMode/Motion/EffectEvent를 보완했고 추가계약2/회귀2각WSL-Docker 및fullDoctor243파일0을 확인했다. 독립 리뷰·CI·main 반영은 T-FUEL30-MERGE로 남긴다. 빌드·운영 배포·수집/재집계는 하지 않았다.
+## 2026-11-13 — 공항 차트·고속도로 화면 갱신 코드와 WSL 집중 검증
+
+- [x] 공항 주차 현황/항공편 파이·명시적 P번호 동심원, 요일/공휴일 시간대 히트맵을 공식 EvilCharts ECharts로 구현했다. 0/결측/불일치·정밀 숫자·관측 시각을 보존했다.
+- [x] 표시 중 고속도로 관측 재조회와 숨은 화면 정지/복귀 재조회, 공항 분석 요청 취소, 원본 범례의 키보드 버튼을 구현했다. 항공편 시각 fallback은 방어 수정이며 운영 빈 결과의 확정 해결은 아니다.
+- CI 후속 hydration/시간 갱신·정리 WSL/Docker각8·Doctor full70파일 warning0과 실제 LazyMotion 로딩/dispose를 추가 확인했다. 원 CI43329668779 실패는 보존하며 최신 CI/머지는 아직 부모 정산 범위다.
+- WSL 집중 검증, 선행 Docker public56/admin13, P1 WSL/Docker각13, Chromium156 PC1440/mobile375 pointer/touch·수치표 Enter 상세 수치·범례 키보드·overflow/pageerror/외부요청0을 확인했다. 같은 시험은 합산하지 않는다. 기존 cache게시/소스 commit 격리 회귀를 포함한 실제 결과는 [정산](reports/2026-11-13-airport-charts-flow.md)에 있다. PR189 부모 리뷰·CI·머지, 운영 배포와 두 기존 SVG 시계열의 line 전환은 이 완료에 포함하지 않는다.
 
 ## 2026-11-13 — #180 main 반영 확인
 

@@ -13,6 +13,18 @@ describe("api client", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/transport/flights/status?airport_code=GMP",
       expect.objectContaining({ signal: controller.signal, cache: "no-store" }));
   });
+  test("분석 요청도 선택 변경 시 소유자가 취소할 수 있다", async () => {
+    const fetchMock = vi.fn((_url, init) => new Promise<Response>((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => reject(new DOMException("취소", "AbortError")));
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+    const request = buildApiClient("/api/transport", "").getDashboardAnalytics("GMP", 1, controller.signal);
+    controller.abort();
+    await expect(request).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetchMock).toHaveBeenCalledWith("/api/transport/dashboard/analytics?airport_code=GMP&parking_lot_id=1",
+      expect.objectContaining({ signal: controller.signal }));
+  });
   test("uses the authenticated admin prefix without duplicating /v1", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
     vi.stubGlobal("fetch", fetchMock);

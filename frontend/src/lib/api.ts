@@ -120,10 +120,12 @@ export function buildApiClient(apiBaseUrl?: string, versionPrefix: "/v1" | "" = 
     },
     getDashboardAnalytics(
       airportCode: string,
-      parkingLotId: number | null = null
+      parkingLotId: number | null = null,
+      signal?: AbortSignal
     ): Promise<DashboardAnalyticsResponse> {
       return getJson<DashboardAnalyticsResponse>(
-        buildAnalyticsUrl(baseUrl, "/dashboard/analytics", airportCode, { parkingLotId })
+        buildAnalyticsUrl(baseUrl, "/dashboard/analytics", airportCode, { parkingLotId }),
+        signal ? { signal } : undefined
       );
     },
     getFlightStatus(airportCode: string, signal?: AbortSignal): Promise<FlightStatusResponse> {

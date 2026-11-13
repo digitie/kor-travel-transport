@@ -83,3 +83,28 @@ Doctor의 실제 동작 문제는 공식 line helper 안에서 고쳤다. 전체
 초기 기본 npm11.19.1 관측을 보존하고 기존 cache의 npm12.0.1을 실제 Node22.23.1로 실행해 정확 버전을 검산했다. 공개 frontend는 로컬 node_modules가 없어 기본 npm script가 MODULE_NOT_FOUND였으며 설치하지 않았다. 동일한 설치된 Common guard를 공개 package/lock/artifacts/source 인자로 실행한 후속0을 별도로 기록했다. DrvFS 임시 Git/archive의 executable mode 대조2FAIL/2PASS도 원문으로 남겼다. 동일4개를 POSIX `/dev/shm`의 소유 임시 fixture에서 다시 실행해4PASS였으며 제품 guard를 완화하거나 소스/host 파일 권한을 바꾸지 않았다.
 
 통합 전 head의 CI43335964564는 관측 시 admin/frontend SUCCESS, backend pytest 진행 중, live E2E SKIPPED였다. 통합 exact head의 최종 CI는 push 후 별도 실제 상태로 정산하며 미래 성공을 만들지 않는다. normal 이미지/production 앱 빌드·운영·수집/게시·백업/복원·main 머지는 실행하지 않았다.
+
+## 공항 차트와 조합 통합
+
+main4b24e0d를 가진 PR189의22888cae와 normal merge했다. 충돌은문서4개뿐이며
+양쪽기록을보존했다. 유가/backend/API는716ed039와같고공개앱·빌드계약은22888와같다.
+기존집중시험과독립두리뷰는각원후보의증거이며조합전체CI는별도다.
+
+조합검사에서ignored local file: 설치복사본이오래돼parking-charts export를못찾는
+타입오류1을확인했다. 정상strict/offline npm install은ERESOLVE로실패했고원실패보존,
+--force·legacy-peer-deps·ignore-scripts우회0이다. pinnednpm12 pack뒤공식pacote.extract로
+해당36파일만갱신하고전byte·peer·manifest/lock·제품/index불변을확인했다.
+이는새CI의clean npm ci 성공과다르다. 새복사본으로타입·공통guard는WSL/Docker0,
+Docker선택7PASS다. WSL원runner6PASS뒤worker-start오류1을보존하고미시도Fuel1개만
+단독PASS했다. 깨끗한단일7PASS나기존24/47에합산하지않는다. 소유QA컨테이너잔여0.
+원장은fuel-airport-integration-qa-20261113/installed-copy-refresh-final-receipt.json이다.
+
+추가수집/통계확인은기존짧은게시잠금·동일성공모집단·원자게시·공항지연관측무효화·
+고속도로원본/5분집계같은TX를확인했지만운영성공을소급하지않는다. 새실제재현P2는
+동일수집stamp의구모집단정정직후지도cache가최대10초이전값을반환하는경계다.
+TTL만료후일치하고새정기성공세대는즉시새key를쓰므로일반게시실패와구분한다.
+기존state에는정정revision이없으며이10초계약만으로새DB열·매요청스캔을추가하지않았다.
+정정검산은10초뒤같은bounds/query로DB/page/지도를대조하고,그뒤불일치는새오류로본다.
+원장은transport-collection-robustness-evidence/findings.md다. 게시실패가다음정상수집까지
+대기할수있는기존한계(유가8시간)와실제고속도로원천오류/마지막성공검산은운영담당의잔여다.
+이번제품·DB스키마·원본·통계원장변경0이며실DB·외부수집·재게시·스케줄·prune0이다.
