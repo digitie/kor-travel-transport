@@ -1,3 +1,11 @@
+## 2026-11-13 — PR188에서 가져온 Ruff 스타일 3건만 정리
+
+- 현재 main b3c9942에서 별도 브랜치를 만들고 PR188의 두 파일만 수정했다. 0037 migration import 순서(I001), 두 세션 시험의 중첩 async with 병합(SIM117), mock의 빈 dict factory(PIE807)다. SQL·revision/down_revision·잠금/격리 guard·제품 API·프론트·라이브러리·빌드 producer는 변경하지 않았다.
+- Ruff0.16.5 전체 backend 기준선468건에서 대상3건만 제거해465건이 남았다. 나머지 위치·규칙·메시지는 동일하며 전체 lint 통과로 표기하지 않는다. 대상 두 파일 Ruff는0건이다.
+- 기존 mock 시험4PASS/DB시험2개 deselected이며 PostgreSQL/실제DDL은 실행하지 않았다. plugin 자동 로딩을 끈 좁은 실행의 asyncio_mode 설정 경고1개는 원문으로 보존했다. 정규화 AST는 두 스타일 변환과 import 순서를 제외하고 같고, migration downgrade 함수 AST·문자열 상수는 그대로다.
+- 기존 CodeGraph로 backend249파일/6537nodes/6221edges를 인덱싱했다. affected 결과0은 importlib 동적 로딩의 영향 부재 증명이 아니므로 해당 migration을 직접 읽는 mock4개와 AST 검산을 함께 사용했다. 새 회귀 시험을 추가하거나 기존 기대를 약화하지 않았다.
+- T-DOWNGRADE-GUARDS-20261113은 OPEN이며 0038/0039/0041/0042의 destructive downgrade 보호 완료로 바꾸지 않는다. 이 패치로 DB rollback/downgrade를 허용하지 않는다. 원2 독립 리뷰·정확한 새 SHA의 CI·머지가 남았으며 Transport 제품 이미지3종은 최종 검토·머지 SHA까지 HOLD다. 이미지/운영/Map/CI 순서 감사 실행0이다.
+
 ## 2026-11-13 — 유가 후보와 main 빌드 계약 통합
 
 - 유가 후보2da65ed와 main의 PR187 merge4b24e0d를 정상 merge했다. 충돌 문서3개에서 양쪽 이력과 미완 gate를 보존했다. 제품 API/차트 로직은 유지하고 Node/npm·strict 설치·non-root 빌드 계약을 함께 소비한다. OpenAPI --check·타입·공통 의존성 guard0, 좁은 빌드 계약4개·Node runtime fixture19개를 통과했다. Fuel/사양 런타임 diff0·lock 비root 그래프 동일이며 root에는 main engines만 추가됐다. 원 DrvFS 모드 실패와 환경 보정은 [유가 원장](reports/2026-11-13-fuel30-evilcharts.md)에 정산했다. 빌드·운영·수집 실행0이다.

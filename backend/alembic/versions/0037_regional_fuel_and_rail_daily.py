@@ -1,6 +1,6 @@
 """영구 지역 유가 요약과 역별 일일 시간표 호출 원장."""
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "0037_fuel_regions_rail_daily"

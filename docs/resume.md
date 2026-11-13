@@ -1,3 +1,9 @@
+## 현재 후속 — 2026-11-13 PR188 Ruff 스타일 3건 한정 정리
+
+실제 main b3c9942의 새 기능 계보를 보존한 별도 브랜치다. 대상 두 파일의 I001/SIM117/PIE807만 수정했고 SQL·migration guard·revision·제품/의존성/producer는 그대로다.
+대상 Ruff0건, 전체 backend468→465건(나머지 동일), mock4PASS/DB시험2개 deselected와 AST 동등성·CodeGraph backend249파일 검산을 정산했다. 전체 lint나 실제 두 세션 DDL 수용을 주장하지 않는다.
+다음 한 작업은 이 정확한 source의 원2 리뷰·Draft PR·CI·최종 main 머지다. T-DOWNGRADE-GUARDS-20261113 OPEN과 기존 운영 제한을 유지한다. Transport 제품3종은 새 실제 merged SHA/tree 확정 전 HOLD이며 Map·CI 순서 감사는 미실행이다.
+
 ## 현재 상태 — 2026-11-13 유가·main 빌드 계약 통합
 
 - 유가 후보2da65ed와 main PR187 merge4b24e0d를 정상 merge해 문서3개 충돌에서 양쪽 기록을 보존했다. 유가 제품f4cc5aa와67경로 API는 그대로다. Node22.23.1/npm12.0.1·strict 설치·non-root 계약과 ECharts6.1.0/Motion14.12.0을 함께 유지한다.
