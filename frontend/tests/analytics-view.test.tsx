@@ -1,11 +1,13 @@
 vi.mock("@/components/parking-availability-charts", () => ({ ParkingAvailabilityCharts: () => null }));
+vi.mock("@/components/evilcharts/parking-line-canvas", () => ({ ParkingLineCanvas: () => <div data-testid="parking-line-canvas-probe" /> }));
 vi.mock("@/components/parking-pattern-heatmap", async (original) => ({ ...await original<typeof import("@/components/parking-pattern-heatmap")>(), ParkingPatternHeatmap: () => null }));
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { AnalyticsView } from "@/components/pages/analytics-view";
 import { CurrentStatusView } from "@/components/pages/current-status-view";
 import { DashboardProvider, useDashboard } from "@/lib/dashboard-context";
+import { DASHBOARD_SELECTION_COOKIE_KEY } from "@/lib/dashboard-preferences";
 import type {
   Airport,
   CollectorStatusResponse,
@@ -166,6 +168,8 @@ function renderAnalytics() {
 describe("AnalyticsView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
+    document.cookie = `${DASHBOARD_SELECTION_COOKIE_KEY}=; Max-Age=0; Path=/`;
     apiClient.getCollectorStatus.mockResolvedValue(buildCollectorStatus());
     apiClient.getDashboardBootstrap.mockResolvedValue({
       airports,
@@ -174,6 +178,103 @@ describe("AnalyticsView", () => {
       holidays: holidaySummaryPayload,
     });
     apiClient.getDashboardAnalytics.mockResolvedValue(dashboardAnalyticsPayload);
+  });
+
+  test("일별 엔진은 첫 탭 방문 때 열고 다시 숨겨도 날짜 선택을 유지한다", async () => {
+    apiClient.getDashboardAnalytics.mockResolvedValue({ ...dashboardAnalyticsPayload, time_series: {
+      ...timeSeriesPayload, items: [{ bucket_at: "2026-11-03T08:00:00Z", available_spaces: 0, occupied_spaces: 100, total_spaces: 100, lot_observations: 1 }],
+    } });
+    const user = userEvent.setup(); renderAnalytics();
+    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+    expect(screen.queryByTestId("daily-date-toggles")).not.toBeInTheDocument();
+    const daily = screen.getByRole("tab", { name: "일별 흐름" });
+    await user.click(daily); expect(daily).toHaveFocus();
+    const date = screen.getByRole("button", { name: "11/3 (화)" });
+    await act(async () => date.focus()); await user.keyboard("{Enter}"); expect(date).toHaveAttribute("aria-pressed", "false");
+    await user.click(screen.getByRole("tab", { name: "요일별 패턴" }));
+    await user.click(daily); expect(daily).toHaveFocus();
+    expect(screen.getByRole("button", { name: "11/3 (화)" })).toHaveAttribute("aria-pressed", "false");
+    expect(apiClient.getDashboardAnalytics).toHaveBeenCalledTimes(1);
+  });
+
+  test("일별 자료를 기다리다 떠났다면 응답이 와도 숨은 차트를 처음 열지 않는다", async () => {
+    let complete!: (value: DashboardAnalyticsResponse) => void;
+    apiClient.getDashboardAnalytics.mockReturnValueOnce(new Promise((resolve) => { complete = resolve; }));
+    const user = userEvent.setup(); renderAnalytics();
+    await waitFor(() => expect(apiClient.getDashboardAnalytics).toHaveBeenCalled());
+    await user.click(screen.getByRole("tab", { name: "일별 흐름" }));
+    await user.click(screen.getByRole("tab", { name: "요일별 패턴" }));
+    complete({ ...dashboardAnalyticsPayload, time_series: { ...timeSeriesPayload, items: [
+      { bucket_at: "2026-11-03T08:00:00Z", available_spaces: 0, occupied_spaces: 100, total_spaces: 100, lot_observations: 1 },
+    ] } });
+    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+    expect(screen.queryByTestId("daily-date-toggles")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "일별 흐름" }));
+    expect(screen.getByRole("button", { name: "11/3 (화)" })).toBeInTheDocument();
+  });
+
+  test("inactive 패널은 native hidden으로 레이아웃과 키보드 경로에서 제외한다", async () => {
+    const user = userEvent.setup(); renderAnalytics();
+    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+    const panels = screen.getAllByRole("tabpanel", { hidden: true });
+    function panelFor(name: string) {
+      const id = screen.getByRole("tab", { name }).id;
+      return panels.find((panel) => panel.getAttribute("aria-labelledby") === id)!;
+    }
+    expect(panelFor("요일별 패턴")).not.toHaveAttribute("hidden");
+    for (const name of ["공휴일 패턴", "임계치", "일별 흐름"]) expect(panelFor(name)).toHaveAttribute("hidden");
+    const threshold = screen.getByRole("tab", { name: "임계치" });
+    await user.click(threshold); expect(threshold).toHaveFocus();
+    expect(panelFor("임계치")).not.toHaveAttribute("hidden");
+    expect(panelFor("요일별 패턴")).toHaveAttribute("hidden");
+  });
+
+  test.each(["airport", "lot"])("%s 범위 변경 뒤 새 일별 자료는 숨은 탭에서 처음 열지 않는다", async (change) => {
+    const filled = { ...dashboardAnalyticsPayload, time_series: { ...timeSeriesPayload, items: [
+      { bucket_at: "2026-11-03T08:00:00Z", available_spaces: 0, occupied_spaces: 100, total_spaces: 100, lot_observations: 1 },
+    ] } };
+    let complete!: (value: DashboardAnalyticsResponse) => void;
+    apiClient.getDashboardBootstrap.mockResolvedValue({ airports: [...airports, { ...airports[0], code: "CJU", name_ko: "Jeju" }], current: currentPayload, collector: buildCollectorStatus(), holidays: holidaySummaryPayload });
+    apiClient.getDashboardAnalytics.mockResolvedValueOnce(filled).mockReturnValueOnce(new Promise((resolve) => { complete = resolve; }));
+    function ScopeHarness() {
+      const { onAirportChange, onParkingLotChange } = useDashboard();
+      return <><button type="button" onClick={() => change === "airport" ? onAirportChange("CJU") : onParkingLotChange(1)}>범위 변경</button><AnalyticsView /></>;
+    }
+    const user = userEvent.setup(); render(<DashboardProvider apiBaseUrl="http://localhost:8000" initialSelection={{ airportCode: "GMP", parkingLotId: null }}><ScopeHarness /></DashboardProvider>);
+    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+    await user.click(screen.getByRole("tab", { name: "일별 흐름" }));
+    expect(screen.getByTestId("daily-date-toggles")).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "요일별 패턴" }));
+    await user.click(screen.getByRole("button", { name: "범위 변경" }));
+    await waitFor(() => expect(apiClient.getDashboardAnalytics).toHaveBeenCalledTimes(2));
+    const airport = change === "airport" ? "CJU" : "GMP";
+    const lot = change === "lot" ? 1 : null;
+    await act(async () => complete({ ...filled,
+      threshold_insights: { ...filled.threshold_insights, airport_code: airport, parking_lot_id: lot },
+      holiday_patterns: { ...filled.holiday_patterns, airport_code: airport, parking_lot_id: lot },
+      time_series: { ...filled.time_series, airport_code: airport, parking_lot_id: lot },
+    }));
+    expect(screen.queryByTestId("daily-date-toggles")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "일별 흐름" }));
+    expect(screen.getByTestId("daily-date-toggles")).toBeInTheDocument();
+  });
+
+  test("빈 일별 응답에서 떠난 뒤 60초 후 첫 관측이 와도 숨은 차트를 열지 않는다", async () => {
+    vi.useFakeTimers();
+    try {
+      apiClient.getDashboardAnalytics.mockResolvedValueOnce(dashboardAnalyticsPayload).mockResolvedValue({ ...dashboardAnalyticsPayload, time_series: { ...timeSeriesPayload, items: [
+        { bucket_at: "2026-11-03T08:00:00Z", available_spaces: 0, occupied_spaces: 100, total_spaces: 100, lot_observations: 1 },
+      ] } });
+      renderAnalytics();
+      await act(async () => { await Promise.resolve(); });
+      await act(async () => { fireEvent.mouseDown(screen.getByRole("tab", { name: "일별 흐름" }), { button: 0, ctrlKey: false }); });
+      await act(async () => { fireEvent.mouseDown(screen.getByRole("tab", { name: "요일별 패턴" }), { button: 0, ctrlKey: false }); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+      expect(apiClient.getDashboardAnalytics).toHaveBeenCalledTimes(2);
+      expect(screen.queryByTestId("daily-date-toggles")).not.toBeInTheDocument();
+      await act(async () => { fireEvent.mouseDown(screen.getByRole("tab", { name: "일별 흐름" }), { button: 0, ctrlKey: false }); });
+      expect(screen.getByTestId("daily-date-toggles")).toBeInTheDocument();
+    } finally { cleanup(); vi.useRealTimers(); }
   });
 
   test("withholds empty results until the initial analytics request completes", async () => {

@@ -1,3 +1,7 @@
+## 2026-11-13 — 신고된 운영 회귀 마감
+
+- [ ] **T-REPORTED-REGRESSIONS-DEPLOY-20261113** — 동결 세대 Top10·필터·분석 재조회·새 주차 SDK를 정확 CI/두 독립검토 후 새 이미지에 반영한다. 정규 수집의 새 KAC/ICN 관측과 DB/API/화면 날짜·원20일정·Manager·첫 부모 실제종료를 검산한다. 기존 d9 버전정렬/타일 해결은 완료이고 반복하지 않는다. [근거](reports/2026-11-13-reported-runtime-regressions.md).
+
 ## 현재 정산 — 2026-11-13 CI 최적화 main 반영과 PR191 마감
 
 - Transport PR192는 main3ed6335, Weather PR232는 부모가 관측한 실제 머지 완료다. Transport PR194도 전체 CI 성공 뒤04:00UTC에 main `12c65b95143369032dda434b6c79c18db25cbdfc`로 실제 머지됐다. PR194 backend는1915PASS/2SKIP/54subtests,903.19초(15분03초)다. 표본·runner 상태가 달라 코드 단독 개선율로 해석하지 않는다.

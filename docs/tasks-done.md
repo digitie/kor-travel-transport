@@ -1,3 +1,8 @@
+## 2026-11-13 — 신고 증상 원인 분리와 버전 정렬
+
+- [x] **T-REPORTED-VERSION-ALIGN-20261113** — d9 웹/4998 API·CS 혼합을 확인해 준비된 d9 ARM64 이미지로 정렬했다. ALL5유종/95저장행·극값·지도 PC/mobile 타일24개·사용자 해결 확인, 원20복원·Managerhealthy·R2첫Invdone/Main0/cgroup부재/70자식 종료를 확인했다. 원 첫 부모1은 보존하며 신규 Top10/필터/공항 수집 수용과 구분한다.
+- [x] **T-KAC-GW-SDK-20261113** — 공식15158681 등록 후25행 인증 확인, SDK14의 KAC주차 전용 GW와 IIAC `.000` 엄격허용을 검증/두 독립검토/CI4성공 뒤 main6b81cc7로 머지했다. 운영 정규 수집 수용은 후속 task에 남긴다.
+
 ## 2026-11-13 — CI 표본 최적화 main 머지
 
 - [x] **T-CI-SEED-MERGE** — PR194 전체 CI 성공과 main12c65b9 머지를 부모가 확인했다. backend1915PASS/2SKIP/54subtests·903.19초이며 runner/표본 차이를 코드 단독 개선율로 과장하지 않는다. PR192/Weather232도 실제 머지 완료이며 PR191 최종 HEAD CI/머지는 별도 대기다.
