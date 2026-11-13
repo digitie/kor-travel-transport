@@ -3640,6 +3640,62 @@
         "title": "FuelPriceStatistics",
         "type": "object"
       },
+      "FuelRankedStation": {
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "latitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latitude"
+          },
+          "longitude": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Longitude"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price": {
+            "title": "Price",
+            "type": "number"
+          },
+          "station_key": {
+            "title": "Station Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "station_key",
+          "name",
+          "price"
+        ],
+        "title": "FuelRankedStation",
+        "type": "object"
+      },
       "FuelRegionSummary": {
         "properties": {
           "average_price": {
@@ -4360,6 +4416,13 @@
             "title": "Cheapest Station Count",
             "type": "integer"
           },
+          "cheapest_stations": {
+            "items": {
+              "$ref": "#/components/schemas/FuelRankedStation"
+            },
+            "title": "Cheapest Stations",
+            "type": "array"
+          },
           "generated_at": {
             "format": "date-time",
             "title": "Generated At",
@@ -4380,6 +4443,16 @@
           "price_spread": {
             "title": "Price Spread",
             "type": "number"
+          },
+          "product_code": {
+            "default": "",
+            "title": "Product Code",
+            "type": "string"
+          },
+          "ranking_complete": {
+            "default": false,
+            "title": "Ranking Complete",
+            "type": "boolean"
           },
           "saving_50l": {
             "title": "Saving 50L",
@@ -4420,6 +4493,16 @@
             "title": "Average Price",
             "type": "number"
           },
+          "cheapest_station": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FuelCheapestStation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "day": {
             "format": "date",
             "title": "Day",
@@ -4428,6 +4511,33 @@
           "generated_at": {
             "format": "date-time",
             "title": "Generated At",
+            "type": "string"
+          },
+          "maximum_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximum Price"
+          },
+          "minimum_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Price"
+          },
+          "product_code": {
+            "default": "",
+            "title": "Product Code",
             "type": "string"
           },
           "station_count": {
@@ -4526,6 +4636,13 @@
             "title": "Cheapest Station Count",
             "type": "integer"
           },
+          "cheapest_stations": {
+            "items": {
+              "$ref": "#/components/schemas/FuelRankedStation"
+            },
+            "title": "Cheapest Stations",
+            "type": "array"
+          },
           "generated_at": {
             "format": "date-time",
             "title": "Generated At",
@@ -4546,6 +4663,11 @@
           "product_code": {
             "title": "Product Code",
             "type": "string"
+          },
+          "ranking_complete": {
+            "default": false,
+            "title": "Ranking Complete",
+            "type": "boolean"
           },
           "saving_50l": {
             "title": "Saving 50L",
@@ -14308,7 +14430,7 @@
     },
     "/v1/transport/fuel/stations/{station_id}/price-history": {
       "get": {
-        "description": "최근 rolling 최대168시간의 유종별 실제 관측과 별도 현재 가격.\n\nFeature fuel_station의 양수 id/source를 함께 사용한다. 휴게소 현재 가격에는\n저장 이력이 없으므로501이며, 보간·provider 호출·raw 응답 노출은 하지 않는다.\ncursor는15분 동안 창을 고정하고 수집 revision이 바뀌면409로 재시작한다.",
+        "description": "최근 rolling 최대720시간의 유종별 실제 관측과 별도 현재 가격.\n\nFeature fuel_station의 양수 id/source를 함께 사용한다. 휴게소 현재 가격에는\n저장 이력이 없으므로501이며, 보간·provider 호출·raw 응답 노출은 하지 않는다.\ncursor는15분 동안 창을 고정하고 수집 revision이 바뀌면409로 재시작한다.",
         "operationId": "station_price_history_v1_transport_fuel_stations__station_id__price_history_get",
         "parameters": [
           {
@@ -14339,7 +14461,7 @@
             "required": false,
             "schema": {
               "default": 7,
-              "maximum": 7,
+              "maximum": 30,
               "minimum": 1,
               "title": "Days",
               "type": "integer"
@@ -14485,11 +14607,13 @@
             }
           },
           {
+            "description": "유종 코드. ALL은 같은 공개 세대의 모든 유종",
             "in": "query",
             "name": "product_code",
             "required": false,
             "schema": {
               "default": "B027",
+              "description": "유종 코드. ALL은 같은 공개 세대의 모든 유종",
               "maxLength": 20,
               "minLength": 1,
               "title": "Product Code",

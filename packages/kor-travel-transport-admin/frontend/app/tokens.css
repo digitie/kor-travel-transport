@@ -85,3 +85,5 @@
 
 @media (max-width: 62rem) { :root { --layout-gutter: 1rem; } }
 @media (max-width: 42rem) { :root { --layout-gutter: .75rem; } }
+
+:root { --fuel-chart-height: 20rem; --fuel-chart-height-mobile: 17rem; }

@@ -1,22 +1,30 @@
+## 현재 정산 — 2026-11-13 main 공항·유가와 PR191 후속
+
+- 공항 PR189는 main `cfefd5344532cbbdf74c5c03a641f8c5b1b887eb`, 유가 PR190은 전체 CI 성공 뒤 main `b3c9942d99065731f890376a6653bafd57a58cc3`로 실제 머지됐다. 아래 머지 대기 문구는 과거 후보 이력이며 T-FUEL30-MERGE는 완료다. 운영 배포·수집 최신화 성공을 뜻하지 않는다.
+- PR191의 CI fixture/가시 툴팁 후속은 별도43038e1로 고정했다. HistoryView4/공개 전체184/Docker14와 공개 타입·변경 lint가 실제0이다. 최신 main은 정상 merge해 양쪽 문서와 제품 경계를 보존했다. 양 앱 통합 공통 guard/타입도 실제0이며 공개 frontend는43038, backend/admin은b3c994와 diff0이다.
+- PR192는 소스 검증·두 독립 리뷰 완료 후 CI 대기다. PR191 자체의 최종 delta 리뷰·exact CI·main 머지는 아직 부모 정산 범위다. 끝난 전체 시험/브라우저를 반복하거나 운영/build를 실행하지 않는다.
+
 ## 2026-11-13 — 주차 line 차트 후속
 
 - [ ] **T-PARKING-LINES-MERGE-20261113** — history/daily line 전환의 부모 CI/두 독립 리뷰/머지. 6e0의 코드·양 앱 정적 검사·순차 WSL/Docker각21·1440/375 fixture를 보존한다. 22888 통합과 공통 표2곳 보정은 새 공통 guard/타입·변경 검사·WSL/Docker각2로 확인했으며 부모 우선 작업 완료 뒤 CI/리뷰/머지가 남았다. 운영 수용은 별도다. [근거](reports/2026-11-13-parking-lines.md).
 
 ## 2026-11-13 — 통합 상태 정정
 
-- PR189와 main4b24e0d의 새 소스 통합 CI/머지를 정산한다. 아래 빌드 관련 원 gate는 이미지 담당 범위로 보존한다.
-- 0037 원장 보호는 #188/e88 및 별도 WSL/Docker각6PASS다. 기존 T-DOWNGRADE-GUARDS 기록의 다른0038/0039/0041/0042 위험은 여전히 별도이며 downgrade/rollback을 실행하지 않는다.
+## 2026-11-13 — 두 차트 후보의 소스 통합
 
-## 2026-11-13 — 공항 차트 후속
+- PR189의 공항 파이/히트맵·고속도로 화면 갱신과 PR190의 유가30일·전체 유종 코드를 정상 병합했다. 제품 파일 충돌0이며 문서4개에서 양쪽 이력과 미완 과제를 보존했다. 각 원 시험·리뷰는 그대로이고 조합 CI는 별도 정산한다.
+- PR189/190 실제 CI·main 머지는 아직 대기다. 운영 배포·수집 검증과 주차 history/daily line 후속은 별도다. [공항](reports/2026-11-13-airport-charts-flow.md), [유가](reports/2026-11-13-fuel30-evilcharts.md).
+- 0037 보호는 #188과 별도 WSL/Docker각6PASS 완료다. 다른0038/0039/0041/0042 downgrade 위험은 미완이며 이번 소스 통합은 downgrade/DB rollback을 실행하지 않는다.
 
-- [ ] PR189의 부모 두 독립 리뷰/CI/머지 정산. 코드·집중 WSL/Docker·1440/375 fixture는 완료했으나 운영 항공편 빈 응답 원인/운영 배포는 미수용이며 기존 history/daily SVG의 line 전환은 별도 후속이다. [근거](reports/2026-11-13-airport-charts-flow.md).
+## 2026-11-13 — 유가 차트 후속
 
-## 2026-11-13 — 빌드 생태계 정착과 별도 운영 금지 gate
 
-- [ ] **T-BUILD-ECOSYSTEM-20261113 / 진행 중** — B1~B6 후보를
+## 2026-11-13 — main PR187 소스 반영·별도 운영 수용 gate
+
+- [ ] **T-BUILD-ECOSYSTEM-20261113 / 소스 main 반영·실제 수용 별도** — B1~B6 후보를
   [정상 이미지 빌드 계약](design/2026-11-13-normal-image-build.md)과 연결한다.
   - B1: Node22.23.1/npm12.0.1 metadata·selector·strict install·Make 구현.
-    실제 Common guard ref와 fresh Linux full gate는 미완이다.
+    Common guard ref의 소스 연결은 main에 반영됐다. fresh Linux full gate의 원문 수용은 별도 빌드 담당 범위다.
   - B2: clean HEAD/tree archive·gitlink·COPY/input hash·이동/변조 차단 구현.
     실제 image build/source proof는 별도 GO 후다.
   - B3: amd64/arm64·docker/OCI·역할별 ID 검사 구현. 실제 양 architecture의

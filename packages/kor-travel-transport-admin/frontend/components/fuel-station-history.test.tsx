@@ -7,6 +7,9 @@ import { FuelStationHistoryChart, FuelStationPriceHistory } from "./fuel-station
 import { FuelBrandIcon } from "./fuel-brand-icon";
 import * as history from "@/lib/fuel-station-history";
 
+vi.mock("./fuel-price-chart-loader", async () => ({ default: (await import("./fuel-price-chart")).default }));
+vi.mock("./evilcharts/charts/echarts-line-chart", () => ({ EChartsLineChart: () => <div data-official-chart="true" /> }));
+
 const fixture = (station_id = 1): history.FuelStationHistory => ({ station_id, source: "opinet_browser", provider_id: "A001", brand_code: "SOL", brand_name: "S-OIL",
   window: { from_at: "2026-10-21T03:00:00Z", to_at: "2026-10-28T03:00:00Z", timezone: "Asia/Seoul", mode: "rolling" },
   items: [], latest: [], meta: { generated_at: "2026-10-28T03:00:00Z", source_collected_at: null, source_status: "success", item_count: 0 }, source_last_success_at: null, source_revision: "r1", has_more: false, next_cursor: null });
@@ -20,7 +23,7 @@ test("유종별 마지막 실제 가격과 전체 관측 표를 표시하고 빈
   expect(node.querySelector('[data-latest-product="B027"]')?.textContent).toBe("1,705");
   expect(node.querySelector('[data-latest-product="D047"]')?.textContent).toBe("1,550");
   expect(node.querySelector('[data-latest-product="C004"]')).toBeNull();
-  expect(node.querySelector('path[data-product="B027"]')?.getAttribute("d")?.match(/M/g)).toHaveLength(2);
+  expect(node.querySelector('[aria-label="주유소 최근 30일 유종별 가격 추이"]')).not.toBeNull();
   expect(node.querySelectorAll("tbody tr")).toHaveLength(3);
   expect(node.querySelector("details")?.open).toBe(false);
 });
@@ -35,9 +38,10 @@ test("키보드 방향키와 End로 관측 날짜·가격을 확인한다", asyn
   const data = fixture(); data.items = [price("2026-10-27T02:00:00Z", 1700), price("2026-10-28T02:00:00Z", 1705)];
   try {
     await act(async () => root.render(<FuelStationHistoryChart data={data} />));
-    await act(async () => container.querySelector("svg")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })));
+    await act(async () => { await vi.waitFor(() => expect(container.querySelector('[data-official-chart="true"]')).not.toBeNull(), { timeout: 4000 }); });
+    await act(async () => container.querySelector(".fuel-chart-keyboard")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })));
     expect(container.querySelector('[role="status"]')?.textContent).toContain("1,700원/L");
-    await act(async () => container.querySelector("svg")!.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
+    await act(async () => container.querySelector(".fuel-chart-keyboard")!.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
     expect(container.querySelector('[role="status"]')?.textContent).toContain("1,705원/L");
   } finally { await act(async () => root.unmount()); }
 });
@@ -74,4 +78,12 @@ test("로고 읽기 실패 시 상표 접근 이름을 보존하고 일반 아�
     await act(async () => container.querySelector("img")!.dispatchEvent(new Event("error")));
     expect(container.querySelector("img")).toBeNull(); expect(container.textContent).toContain("S-OIL");
   } finally { await act(async () => root.unmount()); }
+});
+
+
+test("관측값 표는 연락처 등 상세정보 다음 마지막에 둔다", () => {
+  const data = fixture(); data.items = [price("2026-10-28T02:00:00Z", 1700)];
+  const node = document.createElement("div"); node.innerHTML = renderToStaticMarkup(<FuelStationHistoryChart data={data} afterChart={<p data-contact="true">연락처</p>} />);
+  expect(node.lastElementChild?.tagName).toBe("DETAILS");
+  expect(node.querySelector('[data-contact="true"]')?.nextElementSibling?.tagName).toBe("DETAILS");
 });

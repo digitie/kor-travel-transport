@@ -1,3 +1,7 @@
+## 2026-11-13 — 공항·유가 main 머지 정산
+
+- [x] **T-FUEL30-MERGE** — PR190의 전체 CI 성공과 main b3c9942 머지를 부모가 확인했다. PR189도 main cfefd534로 머지됐다. 운영 배포·외부 수집·주차 line PR191 머지 수용은 포함하지 않는다.
+
 ## 2026-11-13 — PR191 CI fixture·가시 툴팁 보정
 
 - [x] 원 c554 frontend CI182PASS/1FAIL·unhandled2를 보존하고 HistoryView의 Canvas 경계만 mock했다. 달력/API/기간/초점 assertion을 유지한다.
@@ -13,6 +17,11 @@
 - [x] **T-PARKING-LINES-CODE-20261113** — 공식 EvilCharts line engine, 관측0/결측 단절·고립 관측·특별일·KST 항공편·날짜/방향/4배축·native 키보드와 수치표, 실제 마운트 시 지연 적재와 선택 memo 경계를 구현했다.
 - [x] 양 앱 타입/전체 lint/Doctor78·232파일 warning0, 최종 순차 WSL21/Docker21, Chromium156 PC1440/mobile375 실제 캔버스·pointer/touch·키보드·숫자·조상 테마·dispose·overflow/오류0과 캡처를 확인했다. 소유 컨테이너0·fixture포트 해제와 제공 키의 Git 부재를 정산한다. CI/리뷰/머지와 운영 반영은 이 코드 완료에 포함하지 않는다. [정산](reports/2026-11-13-parking-lines.md).
 
+## 2026-11-13 — 유가 30일·전체 유종·공식 EvilCharts 구현/집중 검증
+
+- **T-FUEL30-CODE** — 요청12~15의30일 선/whisker·전체 유종·가격순10곳/주소·현재가격/상세 순서를 구현했다. 동일 성공 cohort·과거 null/알려진 한 곳·원본/영구 이력 보존을 검산했다.
+- SQLite/WSL PG18/Docker PG18 각24개, admin WSL/Docker 각47개·타입0·vendor포함 strict lint0/경고0, Chromium156 PC1440/mobile375 실제 fixture 캔버스·키보드·overflow0/pageerror0 완료다. [원장·화면·원 실패](reports/2026-11-13-fuel30-evilcharts.md).
+- 제품03c0f39/Draft PR190이며800177d는 소비자에 없는 lint 주석과 출처 정산이다. 후속f4cc5aa는 James P1 정식 OpenAPI와 실제 StrictMode/Motion/EffectEvent를 보완했고 추가계약2/회귀2각WSL-Docker 및fullDoctor243파일0을 확인했다. 독립 리뷰·CI·main 반영은 T-FUEL30-MERGE로 남긴다. 빌드·운영 배포·수집/재집계는 하지 않았다.
 ## 2026-11-13 — 공항 차트·고속도로 화면 갱신 코드와 WSL 집중 검증
 
 - [x] 공항 주차 현황/항공편 파이·명시적 P번호 동심원, 요일/공휴일 시간대 히트맵을 공식 EvilCharts ECharts로 구현했다. 0/결측/불일치·정밀 숫자·관측 시각을 보존했다.

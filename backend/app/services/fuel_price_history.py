@@ -49,13 +49,13 @@ def build_fuel_price_history_router(
         request: Request,
         station_id: int = Path(gt=0, le=2_147_483_647),
         source: str = Query(min_length=1, max_length=40),
-        days: int = Query(default=7, ge=1, le=7),
+        days: int = Query(default=7, ge=1, le=30),
         product: str | None = Query(default=None, min_length=1, max_length=20),
         limit: int = Query(default=1000, ge=1, le=MAX_HISTORY_LIMIT),
         cursor: str | None = Query(default=None, min_length=1, max_length=4096),
         session: AsyncSession = Depends(get_db),
     ) -> Response:
-        """최근 rolling 최대168시간의 유종별 실제 관측과 별도 현재 가격.
+        """최근 rolling 최대720시간의 유종별 실제 관측과 별도 현재 가격.
 
         Feature fuel_station의 양수 id/source를 함께 사용한다. 휴게소 현재 가격에는
         저장 이력이 없으므로501이며, 보간·provider 호출·raw 응답 노출은 하지 않는다.

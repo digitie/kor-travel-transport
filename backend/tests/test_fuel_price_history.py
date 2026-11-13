@@ -9,7 +9,6 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app.core.time_utils import now_utc
 from app.main import create_app
 from app.models import FuelPriceSnapshot, FuelStation
 from app.services import export_price_history
@@ -155,7 +154,7 @@ def test_native_latest_does_not_mix_another_snapshot_source(native_history):
     assert "foreign" not in {r["product_code"] for r in body["latest"]}
 
 
-@pytest.mark.parametrize("change", [{}, {"source": "krex_rest_area_fuel"}, {"source": ""}, {"source": OPINET_SOURCE, "days": 8}, {"source": OPINET_SOURCE, "days": 0}, {"source": OPINET_SOURCE, "limit": 5001}, {"source": OPINET_SOURCE, "cursor": "invalid"}])
+@pytest.mark.parametrize("change", [{}, {"source": "krex_rest_area_fuel"}, {"source": ""}, {"source": OPINET_SOURCE, "days": 31}, {"source": OPINET_SOURCE, "days": 0}, {"source": OPINET_SOURCE, "limit": 5001}, {"source": OPINET_SOURCE, "cursor": "invalid"}])
 def test_native_source_and_query_boundaries(native_history, change):
     client, path, _ = native_history
     response = client.get(path, params=change)
@@ -171,3 +170,12 @@ def test_native_missing_or_synthetic_station_ids_and_feature_brand(native_histor
     places = client.get("/v1/transport/features/places", params={"kind": "fuel_station"}).json()["items"]
     assert len(places) == 1 and places[0]["brand_code"] == "SKE"
     assert places[0]["brand_name"] == "SK에너지" and places[0]["source"] == OPINET_SOURCE
+
+
+def test_native_history_30_days_keeps_older_actual_observations(native_history):
+    client, path, _ = native_history
+    response = client.get(path, params={"source": OPINET_SOURCE, "days": 30})
+    assert response.status_code == 200
+    body = response.json()
+    assert datetime.fromisoformat(body["window"]["to_at"]) - datetime.fromisoformat(body["window"]["from_at"]) == timedelta(days=30)
+    assert any(row["product_code"] == "K015" and row["price"] == 2000 for row in body["items"])

@@ -158,3 +158,5 @@ E2E_TRANSPORT_DAGSTER_BASE_URL=https://dagster.digitie.mywire.org \
 E2E_TRANSPORT_UI_PASSWORD="$E2E_TRANSPORT_UI_PASSWORD" \
 npm run test:e2e
 ```
+
+- `/fuel/statistics`의 유가 전용 페이지는 공식 EvilCharts ECharts 기반 30일 평균/최저/최고와 전체 유종, 가격순 최대 10곳을 제공한다. 공용 상세의 유가 엔진은 필요할 때만 적재한다. [집계·과거 누락 계약](../fuel-statistics.md)을 따른다.
