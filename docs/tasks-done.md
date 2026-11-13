@@ -1,3 +1,8 @@
+## 2026-11-13 — PR191 필수 통합 검산
+
+- [x] 22888 정상 merge와 문서3개 양쪽 보존, build22파일/Node22.23.1/npm12.0.1·strict 계약/lock 비루트 그래프 검산.
+- [x] 직접 표2곳의 실제 공통 guard 거절을 공유 VirtualTable로 최소 보정. 양 앱 공통 guard/타입, 변경 lint/두 파일 Doctor0, 표 WSL/Docker각2PASS. line/engine/CSS와 원21개·브라우저 원문은 보존하며 CI/리뷰/머지는 별도다. [정산](reports/2026-11-13-parking-lines.md).
+
 ## 2026-11-13 — 공유 주차 이력·하루 흐름 line 차트
 
 - [x] **T-PARKING-LINES-CODE-20261113** — 공식 EvilCharts line engine, 관측0/결측 단절·고립 관측·특별일·KST 항공편·날짜/방향/4배축·native 키보드와 수치표, 실제 마운트 시 지연 적재와 선택 memo 경계를 구현했다.

@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { VirtualTable, type ColumnDef } from "@kor-travel/ui/virtual-table";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { historyLineOptions } from "./evilcharts/parking-line-options";
 
@@ -332,12 +333,18 @@ export function HistoryChart({ holidays, series, scopeLabel }: HistoryChartProps
           </div>
         </div>
       </div>
-      <HistoryValues points={chartPoints} bands={holidayBands} index={resolvedActivePointIndex} onSelect={selectObservation} />
+      <HistoryValues points={points} bands={holidayBands} index={resolvedActivePointIndex} onSelect={selectObservation} />
     </article>
   );
 }
 
-function HistoryValues({ points, bands, index, onSelect }: { points: ChartPoint[]; bands: HolidayChartBand[]; index: number; onSelect: (index: number) => void }) {
+const historyValueColumns: ColumnDef<TimeSeriesPoint>[] = [
+  { id: "time", header: "시각", meta: { rowHeader: true, wrap: true }, cell: ({ row }) => formatDateTime(row.original.bucket_at) },
+  { id: "available", header: "잔여면", meta: { align: "right" }, cell: ({ row }) => row.original.lot_observations > 0 ? formatNumber(row.original.available_spaces) : "관측 없음" },
+  { id: "observations", header: "관측 수", meta: { align: "right" }, cell: ({ row }) => row.original.lot_observations },
+];
+
+function HistoryValues({ points, bands, index, onSelect }: { points: TimeSeriesPoint[]; bands: HolidayChartBand[]; index: number; onSelect: (index: number) => void }) {
   const [showValues, setShowValues] = useState(false);
   const activePoint = points[index];
   return <>
@@ -348,9 +355,8 @@ function HistoryValues({ points, bands, index, onSelect }: { points: ChartPoint[
       </label>
       <details onToggle={(event) => setShowValues(event.currentTarget.open)}><summary>관측 수치와 특별일 보기</summary>
         <p>{bands.map((band) => `${band.local_date} ${band.name}`).join(" · ") || "표시 구간에 공휴일·주말 없음"}</p>
-        {showValues ? <table><caption>실제 주차 관측 수치</caption><thead><tr><th>시각</th><th>잔여면</th><th>관측 수</th></tr></thead>
-          <tbody>{points.map((point) => <tr key={point.bucket_at}><th>{formatDateTime(point.bucket_at)}</th><td>{point.lot_observations > 0 ? formatNumber(point.available_spaces) : "관측 없음"}</td><td>{point.lot_observations}</td></tr>)}</tbody>
-        </table> : null}
+        {showValues ? <VirtualTable ariaLabel="실제 주차 관측 수치" caption="실제 주차 관측 수치" columns={historyValueColumns}
+          data={points} getRowId={(point) => point.bucket_at} virtualized={false} /> : null}
       </details>
   </>;
 }

@@ -1,6 +1,6 @@
 ## 2026-11-13 — 주차 line 차트 후속
 
-- [ ] **T-PARKING-LINES-MERGE-20261113** — history/daily line 전환의 부모 CI/두 독립 리뷰/머지. 코드·양 앱 정적 검사·순차 WSL/Docker각21·1440/375 fixture는 완료했고 운영 수용은 별도다. [근거](reports/2026-11-13-parking-lines.md).
+- [ ] **T-PARKING-LINES-MERGE-20261113** — history/daily line 전환의 부모 CI/두 독립 리뷰/머지. 6e0의 코드·양 앱 정적 검사·순차 WSL/Docker각21·1440/375 fixture를 보존한다. 22888 통합과 공통 표2곳 보정은 새 공통 guard/타입·변경 검사·WSL/Docker각2로 확인했으며 부모 우선 작업 완료 뒤 CI/리뷰/머지가 남았다. 운영 수용은 별도다. [근거](reports/2026-11-13-parking-lines.md).
 
 ## 2026-11-13 — 통합 상태 정정
 

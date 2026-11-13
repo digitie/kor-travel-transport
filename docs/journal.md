@@ -1,3 +1,9 @@
+## 2026-11-13 — PR191 부모 통합과 공통 표 계약 보정
+
+- PR189의22888을 정상 merge하고 충돌한 문서3개 양쪽을 보존했다. 빌드22파일·Node22.23.1/npm12.0.1/strict 계약은 부모 그대로이고 lock 비루트 그래프·직접 의존성은6e0와 같다.
+- 통합 guard가 새 native 표2곳을 거절해 그 표현만 공유 VirtualTable로 고쳤다. 공개/관리자 공통 guard·타입0, 변경 lint·두 파일 Doctor0, 새 표 WSL/Docker각2PASS다. 기존21개·브라우저·full Doctor는 반복하지 않았고 line/engine/CSS는 유지한다.
+- 원 guard/CLI/pack 보조 실패와 부모의 기존 EOF 경고는 [정산](reports/2026-11-13-parking-lines.md)에 남긴다. 추가 작업·리뷰·머지는 부모의 최신 우선 작업 완료 뒤이며 운영/build0이다.
+
 ## 2026-11-13 — 주차 이력·하루 흐름의 공식 ECharts line 전환
 
 - 공유 history/daily의 실제 SVG 데이터 선을 EvilCharts ECharts line으로 전환했다. 관측0/null 단절·특별일·KST marker_at·날짜/방향/확대·hover/click/native 키보드 경로를 보존했다. daily가 명시적 결측을 건너 연결하던 부분은 null gap으로 고쳤다.

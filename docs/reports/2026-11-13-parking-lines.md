@@ -34,6 +34,16 @@
 - `final-tests-r2` Docker는 컨테이너/시험 시작 전에 address pool 고갈로 실제1이었다. 공용 network/daemon/prune를 변경하지 않고 외부 통신이 필요 없는 후속 QA만 Compose `network_mode:none`으로 격리했다. 이 실패를 제품 테스트 실패/성공으로 바꾸지 않는다.
 - jsdom SSR 경로는 native canvas text metric 미구현 경고를 남긴다. 실제 픽셀/hover/touch 증거는 별도 실제 Chromium fixture다. 기존 Vitest native config-loader 권고도 원문에 보존한다.
 
+## PR189 부모 통합과 공통 표 누락 보정
+
+- 22888cae(PR189의 cf905 + main4b24e0d 빌드 계약)를 정상 merge `e3d1cf83d28613e126f4856b9080aa7fc923f607`로 받았다. rebase/force 없이 journal/resume/tasks3개 충돌의 양쪽 문서를 보존했다. 빌드/workflow/strict 설치 등22개 파일은22888 bytes이고 Node22.23.1/npm12.0.1·두 lock의 비루트 설치 그래프·직접 의존성은 각각 부모/6e0와 같다.
+- 통합 첫 공통 guard는6e0의 새 직접 작성 `<table>` 두 곳을 거절했다(실제1). 해당 누락을 인정하고 history/daily 수치표만 기존 공유 VirtualTable로 최소 교체했다. `virtualized=false`와 details 열기 전 DOM0, 시각·0·결측·관측 수·키보드 시점 선택을 유지한다. 안정된 원 자료와 열 정의를 전달하며 renderer/line 옵션/CSS/lock/다른 제품은 바꾸지 않는다.
+- 동일 Node와 task-local npm12.0.1을 확인한 뒤 공개/관리자 공통 guard와 타입 검사가 모두 실제0이다. 바뀐 두 TSX와 새 표 시험 lint0, 명시적 두 파일 Doctor warning0이다. 파일 인자와 `--scope full`을 함께 준 첫 CLI1은 원문 보존했고 지원되는 `--scope files`로 정확히 두 파일만 검사했다. 규칙/전역 설정을 낮추지 않았다.
+- 새 표 전용 WSL2개→network:none Docker2개가 모두 통과했다. 이전21개/픽셀 브라우저/full Doctor를 반복하거나 새 HEAD에서 재수행한 것으로 표기하지 않는다. 순수 plot prefix와 모든 엔진/옵션/CSS는6e0와 같고 새 표는 이 추가 회귀로 확인했다.
+- npm12 `pack --json`은 패키지명을 키로 갖는 객체였다. 배열로 읽은 최초 보조 스크립트1은 보존하고 이미 생성된 같은 archive를 올바르게 읽어 npm의 pacote.extract로 이 작업 소유 관리자 설치본만 갱신했다. archive SHA `da90ecf8f3fcd63bfa12d0882525e78c2a044646c000875d5396f02a2aefe1f9`, 양 컴포넌트 source/installed bytes 일치, 의존성 재설치0이다.
+- 전체 incoming diff에는 부모의 airport 정산 파일 EOF 빈 줄 경고가 이미 있다. 해당 파일은22888과 동일하게 보존했고22888 기준 새 diff 검사0이다. 원1과 동일성 근거를 남기며 부모 문서를 임의 포맷하지 않았다.
+- 통합 근거는 Git 밖 `parking-lines-main-integration-structure-r3.json`, `parking-lines-table-integration-qa-r1`, `parking-lines-table-impact-qa-r2`, `parking-lines-table-package-r2`다. 원6e0 수용 원장과 그 키 감사 파일/지문은 별도 그대로 보존한다. 운영·생산 빌드·새 브라우저·다른 작업자 변경0이다.
+
 ## 남은 수용
 
-소유 QA와 실제 반환값을 정산했다. 새 코드/테스트/문서만 feature branch와 stacked Draft PR로 부모에 전달한다. CI/두 독립 리뷰/머지는 부모 범위다. 운영 배포·수집 최신화·제공기관 응답 정상화·성능 p95/전국 보장으로 확대하지 않는다.
+소유 QA와 실제 반환값을 정산했다. 새 코드/테스트/문서와 정상 부모 통합을 feature branch와 stacked Draft PR191로 부모에 전달한다. CI/두 독립 리뷰/머지는 부모 범위다. 운영 배포·수집 최신화·제공기관 응답 정상화·성능 p95/전국 보장으로 확대하지 않는다.

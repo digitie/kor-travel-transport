@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { VirtualTable, type ColumnDef } from "@kor-travel/ui/virtual-table";
 import { useCallback, useMemo, useState } from "react";
 import { dailyLineOptions } from "./evilcharts/parking-line-options";
 
@@ -333,13 +334,18 @@ export function DailyFlightOverlayChart({
   );
 }
 
+const dailyValueColumns: ColumnDef<DailyPoint>[] = [
+  { id: "time", header: "시각", meta: { rowHeader: true }, cell: ({ row }) => formatAxisTimeLabel(row.original.bucketAt) },
+  { id: "available", header: "잔여면", meta: { align: "right" }, cell: ({ row }) => row.original.availableSpaces === null ? "관측 없음" : formatNumber(row.original.availableSpaces) },
+];
+
 function DailyValues({ lines }: { lines: DailyLine[] }) {
   const [showValues, setShowValues] = useState(false);
   return (
           <details onToggle={(event) => setShowValues(event.currentTarget.open)}><summary>날짜별 관측 수치 보기</summary>
-            {showValues ? lines.map((line) => <table key={line.localDate}><caption>{line.label} {line.specialDayName}</caption>
-              <thead><tr><th>시각</th><th>잔여면</th></tr></thead><tbody>{line.points.map((point) => <tr key={point.bucketAt}><th>{formatAxisTimeLabel(point.bucketAt)}</th><td>{point.availableSpaces === null ? "관측 없음" : formatNumber(point.availableSpaces)}</td></tr>)}</tbody>
-            </table>) : null}
+            {showValues ? lines.map((line) => <VirtualTable key={line.localDate} ariaLabel={`${line.label} ${line.specialDayName ?? ""} 잔여면`}
+              caption={`${line.label} ${line.specialDayName ?? ""}`} columns={dailyValueColumns} data={line.points}
+              getRowId={(point) => point.bucketAt} virtualized={false} />) : null}
           </details>
   );
 }
