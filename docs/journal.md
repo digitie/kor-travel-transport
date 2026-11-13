@@ -1,3 +1,8 @@
+## 2026-11-13 — CI 표본 생성 반복 조회 제거
+
+- 실제 health1건의 setup11.799초 중 seed11.320초를 확인했다. lot/source/시간 범위별 projection1회로 바꿔 같은 시험의 seed0.651초·setup1.220초를 관측했다. 원본4테이블 전체 해시·ID·JSON·시각/재실행을 보존한다.
+- 초도 WSL SQLite/PG18·전체 저장소 Docker의 집중4개씩을 보존했다. 리뷰 P1의 소스 루트 의존 workflow 거울 시험1개만 제거하고 최종 의미 회귀3개를 WSL PG18·backend-only `/app` Docker에서 확인했다. workflow는 main push+PR로 중복을 제거하고 전체 시험/기존 job 이름을 유지하며 durations25를 남긴다. 새 exact CI/머지는 미완이고 운영·빌드0이다. [정본과 원 실패](reports/2026-11-13-ci-sample-seed.md).
+
 ## 2026-11-13 — 상세 버튼 임베디드 P1 수정
 
 - 독립 검토에서 embedded-map 소비가 누락된 것을 확인했다. 원b5의 workspace-only9조건을 embedded 증거로 쓰지 않고 보존했다. 실제 class375/coarse RED44px→앱 고유 transport-map-detail selector 후GREEN32px다.
