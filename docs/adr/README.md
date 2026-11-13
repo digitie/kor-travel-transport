@@ -57,3 +57,5 @@ h3 헤딩으로 승격하고 표를 섞어 써도 된다.
   폐기 사유와 대체 ADR 번호를 남긴다. 번호는 재사용하지 않는다.
 
 새 ADR은 다음 번호를 사용하고, 관련 task·문서·테스트와 함께 갱신한다.
+
+- [ADR-017 — 웹 production runner의 non-root와 역할별 예외](017-web-production-runner-non-root.md)

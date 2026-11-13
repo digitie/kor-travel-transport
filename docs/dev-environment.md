@@ -66,3 +66,42 @@ Get-Process -Id <PID>
 때문이다. PostgreSQL은 Docker named volume을 쓰므로 이 문제에서 자유롭지만, 새로운 파일
 기반 상태(캐시, 임시 dump 등)를 추가할 때는 named volume이나 컨테이너 내부 경로를 우선
 검토한다.
+
+## 5. 공통 빌드 도구와 검사 진입점
+
+Node는 저장소 루트 `.nvmrc`, npm은 각 private 앱의 `packageManager`와
+`engines.npm`을 선택한다. 버전 정책 정본은 Common `versions.json`이며, 소비자의
+고정 실행 설정과 공통 CI guard가 차이를 검사한다. `.npmrc`의 `engine-strict=true`를
+끄거나 `--force`/`--legacy-peer-deps`로 우회하지 않는다. `npx npm@… ci` 한 번만
+실행해도 이후의 일반 `npm` 명령 버전이 바뀌지는 않는다.
+
+Linux/WSL에서 선택 Node를 활성화하고 다음과 같이 npm을 선택한다. 이 명령은 개발
+환경 또는 격리된 빌드 stage에서 실행하며 운영 호스트의 기본 Node를 교체하지 않는다.
+
+```bash
+nvm use
+npm install --global "$(node -p 'require("./frontend/package.json").packageManager')"
+node --version
+npm --version
+make frontend-install
+make frontend-check
+make admin-install
+make admin-check
+```
+
+| 진입점 | 범위와 필요한 입력 |
+|---|---|
+| `make frontend-install` / `make admin-install` | 기존 두 lock을 각각 `npm ci --engine-strict`로 설치 |
+| `make frontend-check` / `make admin-check` | 공통 의존성·Doctor·단위 시험·타입·린트·빌드. 현재 CI 상대 순서 유지 |
+| `npm run test:watch` | 각 앱 디렉터리에서 개발용 감시 실행 |
+| `make backend-install` | 기존 `backend/uv.lock`을 변경하지 않고 개발 의존 설치 |
+| `make backend-check` | OpenAPI drift·pytest. PostgreSQL 시험은 기존 테스트 런북의 격리 DB opt-in 필요 |
+
+일반 `npm test`는 한 번 실행 후 종료하며 테스트가 0개면 실패한다. 린트는 경고도
+실패로 취급하고 Doctor는 잠긴 버전의 `full`·`blocking warning` 검사를 유지한다.
+백엔드의 `alembic upgrade`·수집·backfill·삭제·운영 배포는 위 진입점에 포함하지 않는다.
+기존 [시험 런북](runbooks/testing.md)의 로컬·Docker 검사 구분과 실제 실행 증거가
+각각 필요하다. 명령 정의만으로 시험·이미지·운영 수용을 완료 처리하지 않는다.
+
+이미지 산출은 [정상 빌드 진입점](design/2026-11-13-normal-image-build.md)의
+make image-build로 분리한다. 기존 공식 Manager 적용·prebuilt handoff의 정본은 유지한다.
