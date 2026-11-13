@@ -1,3 +1,8 @@
+## 2026-11-13 — 상세 버튼 임베디드 P1 수정
+
+- 독립 검토에서 embedded-map 소비가 누락된 것을 확인했다. 원b5의 workspace-only9조건을 embedded 증거로 쓰지 않고 보존했다. 실제 class375/coarse RED44px→앱 고유 transport-map-detail selector 후GREEN32px다.
+- embedded12·독립9조건을 실제 Common DOM/정확 소비 class로 나눠 검산했고 header/info/portal32/16·키보드/포인터/overflow0이다. 실제 공공주차 페이지 E2E 회귀도 추가하고 타입/lint/guard0을 확인했다. 전체 로그인 E2E·빌드·운영은 미실행이다. [원장](reports/2026-11-13-detail-buttons.md).
+
 ## 2026-11-13 — 상세 버튼32px 우선 반영
 
 - 상세 닫기·접기·정보/주소와 포털 닫기를 PC/모바일32×32px, SVG16px로 통일했다. 앱 상세 범위 CSS만 바꾸고 공용 라이브러리/지도 컨트롤/데이터 로직은 유지한다.

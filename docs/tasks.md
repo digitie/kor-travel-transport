@@ -1,6 +1,6 @@
 ## 2026-11-13 — 상세 버튼 우선 반영
 
-- [ ] **T-DETAIL-BUTTONS-MERGE** — Transport 상세32px/16px 소스·실브라우저9조건·집중 타입/lint/guard 완료. Root의 Weather 병행 결과와 exact CI/리뷰·머지 정산이 남는다. [검증 경계](reports/2026-11-13-detail-buttons.md).
+- [ ] **T-DETAIL-BUTTONS-MERGE** — Transport 상세32px/16px와 embedded P1을 수정했다. 초기 workspace-only9조건의 한계를 보존하고 정확 소비 class의 embedded12·독립9조건과 타입/lint/guard를 확인했다. Root의 Weather 병행 결과와 exact CI/리뷰·머지 정산이 남는다. [검증 경계](reports/2026-11-13-detail-buttons.md).
 
 ## 2026-11-13 — 두 차트 후보의 소스 통합
 

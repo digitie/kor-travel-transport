@@ -1,6 +1,6 @@
 ## 2026-11-13 — 상세 버튼 크기 구현
 
-- [x] **T-DETAIL-BUTTONS-CODE** — 상세 아이콘과 포털 정보창 닫기를 PC/모바일32×32px/SVG16으로 통일하고 실제 Common fixture9조건과 타입/lint/guard를 확인했다. 지도 컨트롤·공용 라이브러리·제품 데이터 로직은 유지했다. 머지/운영 수용과 구분한다.
+- [x] **T-DETAIL-BUTTONS-CODE** — 상세 아이콘과 포털 정보창 닫기를 PC/모바일32×32px/SVG16으로 통일하고 초기 workspace-only fixture9조건을 확인했으나 embedded 누락이 P1으로 재개됐다. 후속 앱 고유 selector와 정확 class의 embedded12·독립9조건/타입/lint/guard로 보완했다. 지도 컨트롤·공용 라이브러리·제품 데이터 로직은 유지했다. 머지/운영 수용과 구분한다.
 
 ## 2026-11-13 — 유가 30일·전체 유종·공식 EvilCharts 구현/집중 검증
 

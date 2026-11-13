@@ -878,9 +878,9 @@ body { font-family: "Pretendard Variable", Pretendard, sans-serif; }
 .fuel-chart-keyboard:focus { position: static; width: auto; height: auto; margin: .25rem 0; clip: auto; white-space: normal; }
 
 /* 상세 아이콘은 입력 장치와 무관하게 같은 크기다. 지도/검색 컨트롤은 바꾸지 않는다. */
-.transport-map-workspace .kt-map-detail-header > button,
-.transport-map-workspace .kt-map-detail .info-button,
-.transport-map-workspace .inspector-heading > button,
+.transport-map-detail .kt-map-detail-header > button,
+.transport-map-detail .info-button,
+.transport-map-detail .inspector-heading > button,
 .info-popup .info-popup-heading > .info-button {
   box-sizing: border-box;
   flex: 0 0 32px;
@@ -892,9 +892,9 @@ body { font-family: "Pretendard Variable", Pretendard, sans-serif; }
   max-height: 32px;
   padding: 0;
 }
-.transport-map-workspace .kt-map-detail-header > button svg,
-.transport-map-workspace .kt-map-detail .info-button svg,
-.transport-map-workspace .inspector-heading > button svg,
+.transport-map-detail .kt-map-detail-header > button svg,
+.transport-map-detail .info-button svg,
+.transport-map-detail .inspector-heading > button svg,
 .info-popup .info-popup-heading > .info-button svg {
   width: 16px;
   height: 16px;

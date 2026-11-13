@@ -1,5 +1,17 @@
 # 상세 아이콘 버튼 크기 통일
 
+## 독립 리뷰 P1: 임베디드 상세 누락 후속
+
+첫 후보b5a4811은 workspace 부모만 보았다. 실제 TransportMap109는 places가 있으면 MapWorkspace class를 embedded-map으로 바꾸고,517/521의 embedded/독립 상세는 모두 앱 고유 transport-map-detail을 사용한다. 따라서 초기9조건의 fixture가 모든 경우에 transport-map-workspace를 붙인 것은 철도/공공주차의 실제 embedded 소비 증거가 아니다. 원 후보·initial-workspace-only-after-results.json과 첫 캡처는 이 한계를 가진 원문으로 보존한다.
+
+수정 전 실제 소비 class 조합인 kt-map-workspace embedded-map 아래 transport-map-detail만 둔375px/coarse에서 상세 접기가44px로 남는 RED/exit1을 재현했다. header/metadata에는32px selector가 닿지 않았으며 portal만32px였다. 최소 수정은32px 규칙의 부모를 transport-map-workspace에서 앱 고유 transport-map-detail로 바꾸는 것이다. 공용 CSS/설치본/지도 컨트롤/제품 JS는 그대로다.
+
+수정 후 새 fixture는 부모 두 분기와 실제 aside class 차이를 그대로 사용한다. embedded-map + transport-map-detail은 철도/버스/공항/공공주차 ×1440/375/320font200%12조건, transport-map-workspace + transport-map-detail weather-inspector(유가fuel-inspector 포함)은9조건을 각각 통과했다. 총21조건은 header/metadata/info/portal32×32·SVG16, pointer hit-test·Enter/Space/포인터 접기펼침·정보창·주소링크·닫기/focus/disabled·overflow/pageerror0이다. 이것은 실제 Common DOM과 정확 소비 class의 합성 fixture이며 전체 제품 페이지/로그인 E2E로 확대하지 않는다.
+
+기존 standalone E2E에 더해 실제 /parking-lots 페이지의 .embedded-map 상세를 여는375/1440 E2E를 추가했다. 타입·변경 spec lint·Common guard는0이다. 이 로그인 앱 E2E는 아직 실행하지 않았으며 실제 class fixture의 RED→GREEN과 구분한다. 새 원장은 browser/embedded-red-embedded-observed.json·failure.txt, after-embedded-results.json, after-standalone-results.json 및 p1-results.json이다. 아래 캡처는 후속12/9조건의 수정 후 파일로 갱신했다.
+
+## 초기 구현과 검증 이력(위 P1 한계 포함)
+
 사용자의 우선 요청에 따라 Transport 상세의 닫기·접기·정보/주소 아이콘을 PC와 모바일 모두32×32px, SVG16×16px로 맞췄다. 포털로 열리는 정보 팝업의 닫기X도 같은 기준이다. Weather는 별도 병행 범위다.
 
 기존 실제 Common MapDetailOverlay와 앱 globals.css를 사용한 Linux Chromium156 fixture에서 PC는28/30/44px가 섞였고 coarse pointer에서는44px로 커지는 것을 재현했다. 앱의 상세 selector와 info-popup 닫기만 좁게 덮어썼다. Common 설치본·공용 CSS·지도 본체 확대/축소·필터/검색·일반 텍스트 행동·유가/기차/주차 데이터와 차트 로직은 변경하지 않는다. 버튼 이름·이벤트·키보드/disabled 계약도 그대로다.

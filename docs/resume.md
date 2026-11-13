@@ -1,3 +1,8 @@
+## 현재 우선 후속 — 2026-11-13 상세 버튼 P1
+
+- PR192의 workspace-only 누락을 앱 고유 transport-map-detail 범위로 수정했다. 실제 embedded-map/coarse RED44px를 보존하고 embedded12·독립9조건32px/SVG16·pointer/keyboard/overflow0을 확인했다. 타입/lint/guard0이다.
+- 다음 한 작업: 같은 PR192 후속 exact head를 독립 재확인·CI/머지한다. 원b5의9조건은 embedded 페이지 증거가 아니라는 한계를 [보고서](reports/2026-11-13-detail-buttons.md)에 명시했다. 전체 로그인 E2E/빌드·운영은0이다.
+
 ## 현재 우선 작업 — 2026-11-13 상세 버튼 크기
 
 - Transport 상세 아이콘32×32/SVG16px 통일을 별도 codex/transport-detail-buttons-20261113에서 완료했다. PC/모바일/320font200·철도/유가/공공주차9조건 실브라우저와 타입/lint/의존성 guard0이다. 공용 설치본/데이터/차트·운영 변경0이다.

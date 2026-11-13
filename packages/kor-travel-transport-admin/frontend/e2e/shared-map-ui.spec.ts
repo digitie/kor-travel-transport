@@ -96,3 +96,46 @@ for (const width of [375, 1440]) test(`공통 지도 필터·좌표·상세 오�
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: `test-results/shared-map-ui-${width}.png`, fullPage: true });
 });
+
+
+for (const width of [375, 1440]) test(`임베디드 공공주차 상세 버튼 ${width}px`, async ({ page }) => {
+  test.setTimeout(90_000);
+  test.skip(!process.env.E2E_TRANSPORT_UI_PASSWORD, "로그인 암호 필요");
+  await page.setViewportSize({ width, height: 1000 });
+  await page.goto("/login");
+  await page.getByLabel("비밀번호").fill(process.env.E2E_TRANSPORT_UI_PASSWORD!);
+  await page.getByRole("button", { name: "로그인", exact: true }).click();
+  await expect(page).toHaveURL(/\/$/, { timeout: 30_000 });
+  const stamp = new Date().toISOString();
+  const item = { id: 9412, source: "datagokr_parking_lots", provider_id: "fixture",
+    name: "임베디드 시험 공영주차장", longitude: 127.8, latitude: 36.2,
+    road_address: "시험 주소", capacity: 25, collected_at: stamp, is_current: true,
+    opening_hours: { weekday_open: null, weekday_close: null, saturday_open: null,
+      saturday_close: null, holiday_open: null, holiday_close: null } };
+  await page.route("**/transport/transport/parking-lots**", route => route.fulfill({ json:
+    new URL(route.request().url()).pathname.endsWith("/9412") ? item : {
+      generated_at: stamp, collection: { source: item.source, last_success_at: stamp,
+        failed: false, stale: false, last_attempt_failed: false },
+      items: [item], has_more: false, next_cursor: null,
+    },
+  }));
+  await page.goto("/parking-lots");
+  await page.getByRole("tab", { name: "목록", exact: true }).click();
+  await page.locator(".public-parking-list .place-row").filter({ hasText: item.name }).click();
+  const detail = page.locator(".embedded-map [data-slot=map-detail-overlay]:visible");
+  await expect(detail).toHaveCount(1);
+  await expect(detail.getByRole("heading", { name: item.name, exact: true })).toBeVisible();
+  for (const button of await detail.locator(".kt-map-detail-header > button").all()) {
+    await expect(button).toHaveCSS("width", "32px");
+    await expect(button).toHaveCSS("height", "32px");
+    await expect(button.locator("svg")).toHaveCSS("width", "16px");
+    await expect(button.locator("svg")).toHaveCSS("height", "16px");
+  }
+  await detail.getByRole("button", { name: "상세 접기", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(detail.locator(".kt-map-detail-body")).toBeHidden();
+  await page.keyboard.press("Space");
+  await expect(detail.locator(".kt-map-detail-body")).toBeVisible();
+  await detail.getByRole("button", { name: "상세 닫기", exact: true }).click();
+  await expect(detail).toHaveCount(0);
+});
