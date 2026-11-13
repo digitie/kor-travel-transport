@@ -5300,7 +5300,7 @@ Popper의 rollback fence 추적 유실·lease loss 후 다음 provider 게시 P1
 ## 2026-11-13 — PR193 source5 실제 충돌 해소
 
 source4 de6079f를 동결한 뒤 main에 PR191 b353a44가 머지돼 실제 문서 충돌과 CI 미등록이 발생했다. 요청된 예외에 따라 정상 merge로 journal/resume 양쪽 기록을 보존하고 PR191의 주차 이력·하루 흐름 line 코드·시험·보고서·원본 원장을 그대로 가져왔다. 실질 충돌 없이 main을 계속 따라잡는 작업은 하지 않는다.
-Ruff3 두 파일과 Motion14.13 공개/관리자/공유 UI 선언·lock은 source4 그대로다. 새로 들어온 parking-lines 원장의14.12는 재사용 source commit 시점 기록으로 보존하며 실제 소비/해석 버전은 두 lock의14.13.0이다. backend 전체는 source4와 같아 해당469→466 기준선·mock4PASS/DB2deselected·원문을 동일 입력 증거로 연결하고 새 실행으로 표기하지 않는다.
+Ruff3 두 파일과 Motion14.13 공개/관리자/공유 UI 선언·lock은 source4 그대로다. parking-lines 원장의 현재 소비 버전도14.13.0으로 맞췄고 이전14.12 선택은 명시적인 이전_소비_버전과 소비자_버전_재정의 기록에 보존했다. 원본 revision/source hash/license 및 코드·두 lock은 변경하지 않았다. backend 전체는 source4와 같아 해당469→466 기준선·mock4PASS/DB2deselected·원문을 동일 입력 증거로 연결하고 새 실행으로 표기하지 않는다.
 다음은 정확 source5의 원2 리뷰·실제 CI·최종 main 머지 후 정상 제품3종 빌드다. Common36 refs를 유지하고 미래 Common ref는 이 앱 수용 대기 조건이 아니다. 최종 codepin 전파와 workflow 최적화는 마지막 별도 workflow-only PR이다. downgrade P2 OPEN·제품 HOLD·Geo confirm 우선/Weather R4 대기·Map0을 유지한다.
 
 ## 2026-11-13 — PR193 source4 최신 main 통합과 최종 앱 수용 순서
