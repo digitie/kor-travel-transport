@@ -72,3 +72,14 @@ Doctor의 실제 동작 문제는 공식 line helper 안에서 고쳤다. 전체
 실제 Chromium StrictMode에서 수정 전 두 클릭은 `[price,price,null,null]`과 다른 component를 render 중 갱신하는 경고를 만들었다. 수정 후 `[price,null]`이며 Loading overlay도 표시된다. StrictMode·같은 batch/최신 callback 회귀2개는 WSL/Docker 각각 통과했다. 이는 기존47개와 별도의 좁은 회귀이며 중복 합산하지 않는다. 최종 TypeScript/ESLint는0, React Doctor0.9.22 full은243파일·진단0·skippedChecks=[]·ok=true다. `doctor-fix-results.json`, `doctor-full.json`, `doctor-unit-results.json`, `strict-before.json`, `strict-after-final.json`을 구분해 보존한다. 최초 fixture resource404는 Next public 자산 경로를 제공하지 않은 검증 환경 문제였으며 최종 publicDir 연결 후 failedResources/errors 모두0이다. 보완한 helper의 실제 PC1440/mobile375 유가 캔버스·툴팁·키보드도 다시 확인했다.
 
 이 후속 제품/사양 기준은 `f4cc5aad07ce2650fc74366622d5081d16f02667`이다. 800177d까지의 주석 동일성 검산과 달리 이 커밋에는 위의 실제 callback/Motion/EffectEvent 수정이 포함된다. 새 CI의 최종 상태는 이후 실제 원문으로 관측하며 자동 재실행이나 빌드·배포는 하지 않는다.
+
+
+## main PR187 빌드 계약 통합
+
+유가 기준 `2da65ed2110f3293a93a6cfae7f7ac3d61a1ba7c`를 로컬 보존 ref로 남기고 main `4b24e0de99fa13dacc0a349396769b8d07f414af`를 정상 merge했다. 충돌은 journal/resume/tasks 세 문서뿐이며 양쪽 이력과 실제 이미지/운영 수용 미완을 보존했다. main의 Node22.23.1/npm12.0.1·strict .npmrc·non-root Dockerfile·workflow·scripts는 해당 main bytes 그대로다. 유가 API/차트/벤더·기존 시험·Alembic·SDK/의존성 pin과67경로 사양의 제품 diff는0이다. admin lock의 모든 비root packages 엔트리는2da와 같고 root에는 main engines만 추가됐다. ECharts6.1.0/Motion14.12.0을 함께 유지했으며 install/upgrade0이다.
+
+통합 집중 검산은 WSL의 정식 OpenAPI --check0, TypeScript0, admin/public Common 의존성/산출물 guard0, 선택한 빌드 계약4개 PASS, Node runtime 파일/권한 fixture19개 PASS다. 새 Node fixture는 실제 이미지/start/HTTP 수용이 아니다. 기존24/47개 및 별도2개 회귀는 이 metadata 통합 때문에 반복하지 않았다. 원장은 Git 밖 `fuel30-qa/main-integration-structure.json`, `main-integration-checks.json`, `main-integration-followup-checks.json`, `main-integration-posix-fixture-checks.json`이다.
+
+초기 기본 npm11.19.1 관측을 보존하고 기존 cache의 npm12.0.1을 실제 Node22.23.1로 실행해 정확 버전을 검산했다. 공개 frontend는 로컬 node_modules가 없어 기본 npm script가 MODULE_NOT_FOUND였으며 설치하지 않았다. 동일한 설치된 Common guard를 공개 package/lock/artifacts/source 인자로 실행한 후속0을 별도로 기록했다. DrvFS 임시 Git/archive의 executable mode 대조2FAIL/2PASS도 원문으로 남겼다. 동일4개를 POSIX `/dev/shm`의 소유 임시 fixture에서 다시 실행해4PASS였으며 제품 guard를 완화하거나 소스/host 파일 권한을 바꾸지 않았다.
+
+통합 전 head의 CI43335964564는 관측 시 admin/frontend SUCCESS, backend pytest 진행 중, live E2E SKIPPED였다. 통합 exact head의 최종 CI는 push 후 별도 실제 상태로 정산하며 미래 성공을 만들지 않는다. normal 이미지/production 앱 빌드·운영·수집/게시·백업/복원·main 머지는 실행하지 않았다.
