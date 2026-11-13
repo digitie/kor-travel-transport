@@ -152,10 +152,12 @@ describe("분석 화면의 항공편 대기·최종 응답", () => {
     const newer = deferred<FlightStatusResponse>(); flightRequest.mockReturnValueOnce(pending.promise).mockReturnValueOnce(newer.promise);
     const view = render(<Probe />); await advance(6_000);
     const oldSignal = flightRequest.mock.calls[0]?.[1];
+    const oldAnalyticsSignal = analyticsRequest.mock.calls[0]?.[2];
     dashboard = { ...dashboard, ...(change === "airport" ? { selectedAirportCode: "CJU" }
       : change === "lot" ? { selectedParkingLotId: 2 } : { dataVersion: 1 }) };
     vi.mocked(useDashboard).mockReturnValue(dashboard); view.rerender(<Probe />); await settle();
     expect(oldSignal?.aborted).toBe(true);
+    expect(oldAnalyticsSignal?.aborted).toBe(true);
     await act(async () => newer.resolve(flights(dashboard.selectedAirportCode, "NEW")));
     await act(async () => pending.resolve(flights("GMP", "OLD")));
     expect(state().flightStatus.items[0].flight_number).toBe("NEW"); expect(flightRequest).toHaveBeenCalledTimes(2);

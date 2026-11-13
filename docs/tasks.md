@@ -1,3 +1,12 @@
+## 2026-11-13 — 통합 상태 정정
+
+- PR189와 main4b24e0d의 새 소스 통합 CI/머지를 정산한다. 아래 빌드 관련 원 gate는 이미지 담당 범위로 보존한다.
+- 0037 원장 보호는 #188/e88 및 별도 WSL/Docker각6PASS다. 기존 T-DOWNGRADE-GUARDS 기록의 다른0038/0039/0041/0042 위험은 여전히 별도이며 downgrade/rollback을 실행하지 않는다.
+
+## 2026-11-13 — 공항 차트 후속
+
+- [ ] PR189의 부모 두 독립 리뷰/CI/머지 정산. 코드·집중 WSL/Docker·1440/375 fixture는 완료했으나 운영 항공편 빈 응답 원인/운영 배포는 미수용이며 기존 history/daily SVG의 line 전환은 별도 후속이다. [근거](reports/2026-11-13-airport-charts-flow.md).
+
 ## 2026-11-13 — 빌드 생태계 정착과 별도 운영 금지 gate
 
 - [ ] **T-BUILD-ECOSYSTEM-20261113 / 진행 중** — B1~B6 후보를

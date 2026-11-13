@@ -1,3 +1,27 @@
+## 2026-11-13 — 공항 후보와 main 빌드 계약 통합
+
+- PR189의 cf905ac5에 main4b24e0d(#187)를 정상 병합했다. 충돌은 문서3개였고 양쪽 이력을 보존했다. 앱 로직은 cf905와 같으며 Node22.23.1/npm12.0.1·strict 설치·nonroot Dockerfile·workflow/scripts는 main을 유지한다. 새 이미지/운영 변경은 없다.
+- public/admin 의존성·공통 산출물과 public/시험/admin 타입 검사를 모두 통과했다. 두 lock의 설치 그래프는 cf905와 같고 scripts/engines는 main과 같다. 기존 기능 시험은 소스 동일성으로 보존하며 새 통합 CI는 별도로 확인한다.
+
+## 2026-11-13 — PR189 CI 원문 확인과 hydration·Motion 보정
+
+- 원 frontend CI43329668779/job131570919657은 이번 변경의 Doctor warning5개로 실패했다. 두 full-motion import는 실제 LazyMotion/m 경로로, 현재 시각 JSX는 결정적인 server snapshot을 쓰는 useSyncExternalStore 시계로 고쳤다.
+- 두 upstream compound 선언 크기만 정확한 Doctor 전용 주석과 근거/provenance로 예외를 남겼다. 전역/vendor 디렉터리 제외·gate 완화0이며 최종 full/no-cache Doctor70파일 warning0이다.
+- 집중 WSL/Docker각8·타입/lint와 Chromium156 PC1440/mobile375의 실제 로딩 overlay/종료 dispose/숫자/키보드/overflow0을 확인했다. 원 CI·fixture 실패와 경고는 [정산](reports/2026-11-13-airport-charts-flow.md)에 보존한다. CI/머지는 부모 범위이고 운영/production build0이다.
+
+## 2026-11-13 — PR189 키보드 상세 수치 경로 보강
+
+- James P1에 따라 요일/특수일 수치표 각 셀에 native details/summary를 넣어 평균뿐 아니라 최저·최고·관측 수도 키보드로 얻도록 했다. 그래프와 같은 DTO/설명 함수를 쓰며 빈 관측은 0으로 만들지 않는다.
+- P1 WSL 13개/TypeScript/lint가 통과했다. Chromium156 PC1440/mobile375에서 실제 Enter 상세 열기와 같은 정밀 숫자·overflow0을 확인했다. 첫 fixture dev server SIGTERM143은 보존하고 후속 정상 종료는 browser/server각0이다. [정산](reports/2026-11-13-airport-charts-flow.md).
+- 제품197418c의 선행 Docker public56/admin13은 CLI0이며 P1 집중 Docker13도 CLI0으로 완료했다. 운영/빌드/수집0, 기존 두 자체 SVG 시계열은 별도 후속이다.
+
+## 2026-11-13 — 공항 주차 EvilCharts와 열린 통계 화면 갱신
+
+- 주차 현황/항공편 화면의 잔여·사용면 파이와 P1/P2 동심원, 요일·특수일 시간대 히트맵을 공식 EvilCharts ECharts 기반으로 구현했다. 0/결측/불일치와 원 관측 시각을 보존한다.
+- 분석 탭 전환 시 요청을 취소하고 고속도로 통계의 표시 중 60초 저장 자료 갱신/복귀 재조회를 추가했다. 기존 화면은 시계만 갱신해 새 수집분을 읽지 않았다.
+- 잘못된 항공편 변경 시각의 예정 시각 fallback을 추가했다. 정상 API는 datetime|null 계약이므로 운영 빈 응답 원인으로 단정하지 않는다.
+- 기존 공항 캐시/고속도로 저장 강건성은 격리 회귀로 확인하고 중복 재개발하지 않는다. 빌드·배포·수집/환경/보관 정책 변경0. [상세와 검증](reports/2026-11-13-airport-charts-flow.md).
+
 ## 2026-11-13 — 빌드 후보와 PR188 main 통합
 
 - 검토된6a0fc0fa와 현재 main e88f5b73의 충돌은 journal/resume/tasks 세 문서였다. 격리 worktree에서 양쪽 기록과 미완 gate를 보존하고 이미 머지된 #180/188의 오래된 머지 대기를 정리했다.

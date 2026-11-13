@@ -1,5 +1,7 @@
 "use client";
 
+import { ParkingAvailabilityCharts } from "@kor-travel/parking-ui/parking-charts";
+import { flightMoment } from "@/lib/flight-time";
 import { VirtualTable } from "@kor-travel/ui/virtual-table";
 import dynamic from "next/dynamic";
 import { useEffect, useId, useRef, useState } from "react";
@@ -18,7 +20,6 @@ type Parking = { parking_lot_id: number; parking_lot_name: string; available_spa
 type Outlook = { generated_at: string; weekday: number; hour: number; items: { parking_lot_id: number; parking_lot_name: string; sample_days: number; observations: number; average_available_spaces: number; minimum_available_spaces: number; maximum_available_spaces: number; full_days: number; full_day_ratio: number; minimum_capacity: number; maximum_capacity: number; latest_observed_at: string }[] };
 type Resource<T> = { key: string; data?: T; error?: string };
 const plannedClock = () => new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 16);
-const flightMoment = (row: Flight) => Date.parse(row.estimated_at ?? row.scheduled_at);
 export function FlightJourney() {
   const { mapOpener, setView, setMapInspected, selected, setMapOpen, airport, parkingLot, errors, freshParking, parkingState, key, unavailable, flights, clock, parking, id, select, direction, setDirection, filter, setFilter, futureOnly, setFutureOnly, rows, flightState, arrival, setArrival, outlook, outlookState, outlookKey, mapOpen, items, mapInspected, view, closeMap, catalogError, setReload } = useFlightJourney();
   const airportControls = <MapFilterBar><MapFilterField label="공항" htmlFor={`${id}-airport`}><select id={`${id}-airport`} value={selected?.id ?? ""} onChange={(event) => { const place = items.find((item) => item.id === Number(event.target.value)); if (place) select(place); }}>{!selected ? <option value="">공항 선택</option> : null}{items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></MapFilterField><button type="button" className="secondary" onClick={() => setReload((value) => value + 1)}>주차·항공편 새로고침</button></MapFilterBar>;
@@ -114,6 +115,7 @@ function useFlightJourney() {
 function FlightParkingNow({ selected, freshParking, parkingState, resourceKey, airport, unavailable, flights, clock, parking }: Pick<ReturnType<typeof useFlightJourney>, "selected" | "freshParking" | "parkingState" | "airport" | "unavailable" | "flights" | "clock" | "parking"> & { resourceKey: string }) {
   return (<SectionCard title="지금 주차할 곳" description={`${selected?.name ?? "공항"} · 최근 15분 관측만 현재 잔여 합계에 포함합니다.`}>
       <ParkingFlightMetrics freshParking={freshParking} parkingState={parkingState} resourceKey={resourceKey} airport={airport} unavailable={unavailable} flights={flights} clock={clock} />
+      {parking?.length ? <ParkingAvailabilityCharts items={parking} /> : null}
       {parking ? parking.length ? <div className="parking-lots">{parking.map((row) => <article key={row.parking_lot_id}><strong>{row.parking_lot_name}</strong><span>{row.terminal}</span><p>잔여 <strong>{row.available_spaces.toLocaleString()}</strong> / {row.total_spaces.toLocaleString()}면</p><small>{clock - Date.parse(row.observed_at) > 15 * 60_000 ? "갱신 지연 · " : ""}{dateTime(row.observed_at)}</small></article>)}</div> : <p>저장된 주차 관측이 없습니다.</p> : parkingState.error && parkingState.key === resourceKey ? null : <p role="status">{airport ? "주차 현황을 확인하는 중입니다…" : unavailable}</p>}
     </SectionCard>);
 }
@@ -158,5 +160,5 @@ function ParkingFlightMetrics({ freshParking, parkingState, resourceKey, airport
 
 
 function FlightDepartureRows({ rows }: Pick<NonNullable<Parameters<typeof AirportDepartures>[0]>, "rows">) {
-  return (<div aria-live="polite">{rows?.map((row) => <article className="departure-row" key={`${row.flight_number}/${row.direction}/${row.scheduled_at}`}><div className="departure-time"><strong>{new Date(row.estimated_at ?? row.scheduled_at).toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false })}</strong><span>{row.flight_number} · {row.direction === "arrival" ? "도착" : "출발"}</span></div><div className="departure-route"><strong>{row.origin_airport} → {row.destination_airport}</strong><small>{row.airline}</small></div><div className="departure-meta"><strong>{row.status ?? "상태 미제공"}</strong><small>예정 {dateTime(row.scheduled_at)}</small></div></article>)}{!rows?.length ? <p className="empty-state">조건에 맞는 이후 항공편이 없습니다.</p> : null}</div>);
+  return (<div aria-live="polite">{rows?.map((row) => <article className="departure-row" key={`${row.flight_number}/${row.direction}/${row.scheduled_at}`}><div className="departure-time"><strong>{new Date(flightMoment(row)).toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false })}</strong><span>{row.flight_number} · {row.direction === "arrival" ? "도착" : "출발"}</span></div><div className="departure-route"><strong>{row.origin_airport} → {row.destination_airport}</strong><small>{row.airline}</small></div><div className="departure-meta"><strong>{row.status ?? "상태 미제공"}</strong><small>예정 {dateTime(row.scheduled_at)}</small></div></article>)}{!rows?.length ? <p className="empty-state">조건에 맞는 이후 항공편이 없습니다.</p> : null}</div>);
 }

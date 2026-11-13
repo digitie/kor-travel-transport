@@ -93,6 +93,7 @@ export function useAnalyticsData(flightStatusTimeoutMs = 6_000, enabled = true):
     let flightStatusTimeoutId: ReturnType<typeof setTimeout> | null = null;
     let flightFinalTimeoutId: ReturnType<typeof setTimeout> | null = null;
     const flightController = new AbortController();
+    const analyticsController = new AbortController();
     let finalFlights: FlightStatusResponse | null = null;
     let analyticsReady = false;
     setState((current) => ({ ...(current.scopeKey === scopeKey ? current : INITIAL_STATE), scopeKey, loading: true, error: null }));
@@ -127,7 +128,7 @@ export function useAnalyticsData(flightStatusTimeoutMs = 6_000, enabled = true):
             flightStatusTimeoutId = id;
           }
         );
-        const analyticsRequest = api.getDashboardAnalytics(selectedAirportCode, selectedParkingLotId);
+        const analyticsRequest = api.getDashboardAnalytics(selectedAirportCode, selectedParkingLotId, analyticsController.signal);
         const [analytics, flights] = await Promise.all([analyticsRequest, flightStatusRequest]);
 
         if (!active) {
@@ -162,6 +163,7 @@ export function useAnalyticsData(flightStatusTimeoutMs = 6_000, enabled = true):
     return () => {
       active = false;
       flightController.abort();
+      analyticsController.abort();
       if (flightStatusTimeoutId) {
         clearTimeout(flightStatusTimeoutId);
       }

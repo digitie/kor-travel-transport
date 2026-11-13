@@ -1,3 +1,10 @@
+## 2026-11-13 — 공항 차트·고속도로 화면 갱신 코드와 WSL 집중 검증
+
+- [x] 공항 주차 현황/항공편 파이·명시적 P번호 동심원, 요일/공휴일 시간대 히트맵을 공식 EvilCharts ECharts로 구현했다. 0/결측/불일치·정밀 숫자·관측 시각을 보존했다.
+- [x] 표시 중 고속도로 관측 재조회와 숨은 화면 정지/복귀 재조회, 공항 분석 요청 취소, 원본 범례의 키보드 버튼을 구현했다. 항공편 시각 fallback은 방어 수정이며 운영 빈 결과의 확정 해결은 아니다.
+- CI 후속 hydration/시간 갱신·정리 WSL/Docker각8·Doctor full70파일 warning0과 실제 LazyMotion 로딩/dispose를 추가 확인했다. 원 CI43329668779 실패는 보존하며 최신 CI/머지는 아직 부모 정산 범위다.
+- WSL 집중 검증, 선행 Docker public56/admin13, P1 WSL/Docker각13, Chromium156 PC1440/mobile375 pointer/touch·수치표 Enter 상세 수치·범례 키보드·overflow/pageerror/외부요청0을 확인했다. 같은 시험은 합산하지 않는다. 기존 cache게시/소스 commit 격리 회귀를 포함한 실제 결과는 [정산](reports/2026-11-13-airport-charts-flow.md)에 있다. PR189 부모 리뷰·CI·머지, 운영 배포와 두 기존 SVG 시계열의 line 전환은 이 완료에 포함하지 않는다.
+
 ## 2026-11-13 — #180 main 반영 확인
 
 - #180의 정확 HEAD `7aec73aeb18804373ccec3a57ce31d9809952507`는 main `110d663316c23007d3cd803b7849fe45393b18e7`로 머지됐다. 이는 기존 UI 실패를 통과로 바꾸거나 신규21개 요청을 완료했다는 뜻이 아니다.
