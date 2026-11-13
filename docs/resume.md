@@ -1,7 +1,8 @@
 ## 현재 정산 — 2026-11-13 main 공항·유가와 PR191 후속
 
 - 공항 PR189는 main `cfefd5344532cbbdf74c5c03a641f8c5b1b887eb`, 유가 PR190은 전체 CI 성공 뒤 main `b3c9942d99065731f890376a6653bafd57a58cc3`로 실제 머지됐다. 아래 머지 대기 문구는 과거 후보 이력이며 T-FUEL30-MERGE는 완료다. 운영 배포·수집 최신화 성공을 뜻하지 않는다.
-- PR191의 CI fixture/가시 툴팁 후속은 별도43038e1로 고정했다. HistoryView4/공개 전체184/Docker14와 공개 타입·변경 lint가 실제0이다. 최신 main은 정상 merge해 양쪽 문서와 제품 경계를 보존했다. 양 앱 통합 공통 guard/타입도 실제0이며 공개 frontend는43038, backend/admin은b3c994와 diff0이다.
+- PR191의 CI fixture/가시 툴팁 후속은 별도43038e1로 고정했다. HistoryView4/공개 전체184/Docker14와 공개 타입·변경 lint가 실제0이다. 최신 main을 정상 merge한5b28168은 양 앱 통합 guard/타입0·공개 frontend=43038/backend·admin=b3c994 diff0으로 정산했다.
+- 추가 독립 P2의 자정 설명창 잘림은 중심 위치만 제한해 보정했다. 실제00:00/23:59·PC/mobile·정상/4배축8개 bbox RED→GREEN과 캡처를 확인했다. 기존 전체184/브라우저 전체를 반복하지 않으며 별도 집중 WSL/Docker각12PASS로 정산한다.
 - PR192는 소스 검증·두 독립 리뷰 완료 후 CI 대기다. PR191 자체의 최종 delta 리뷰·exact CI·main 머지는 아직 부모 정산 범위다. 끝난 전체 시험/브라우저를 반복하거나 운영/build를 실행하지 않는다.
 
 ## 통합 후속 — 2026-11-13 PR191

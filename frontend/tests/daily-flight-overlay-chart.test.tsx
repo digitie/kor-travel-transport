@@ -98,6 +98,19 @@ function buildHolidays(): HolidayItemSummary[] {
 }
 
 describe("DailyFlightOverlayChart", () => {
+  test.each([
+    { hour: 0, minute: 0, normalLeft: 120, wideLeft: 120 },
+    { hour: 23, minute: 59, normalLeft: 1060, wideLeft: 4600 },
+  ])("keeps the $hour:$minute flight tooltip inside the normal and wide chart", ({ hour, minute, normalLeft, wideLeft }) => {
+    const flightStatus = buildFlightStatus();
+    flightStatus.items = [{ ...flightStatus.items[0], marker_at: kstIso("2026-04-24", hour, minute) }];
+    render(<DailyFlightOverlayChart flightStatus={flightStatus} holidays={[]} series={buildSeries()} scopeLabel="시험" />);
+    fireEvent.click(screen.getByTestId("daily-flight-marker"));
+    expect(screen.getByTestId("daily-flight-highlight-label")).toHaveStyle({ left: `${normalLeft}px` });
+    fireEvent.click(screen.getByTestId("daily-wide-axis-toggle"));
+    expect(screen.getByTestId("daily-flight-highlight-label")).toHaveStyle({ left: `${wideLeft}px` });
+  });
+
   test("shows the full KST date airline and status in the visible flight tooltip", () => {
     const flightStatus = buildFlightStatus();
     flightStatus.items = [{ ...flightStatus.items[0], marker_at: "2026-04-23T18:00:00Z", airline: "대한항공", status: "지연" }];

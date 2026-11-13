@@ -55,3 +55,10 @@
 - 독립 리뷰의 별도 제품 P2는 가시 항공편 툴팁에서 날짜·항공사·상태가 빠진 것이었다. 새 실제 가시 DOM 회귀가 `04.24 03:00` 부재로1FAIL인 원문을 보존했다. 기존 buildFlightLabel의 전체 KST 날짜·대한항공·지연을 React 텍스트로 표시하고 hover 해제/click 선택까지 검증한다. aria-label만 검사해 통과시키지 않으며 HTML 삽입·marker_at/시간 범위·엔진 변경은 없다.
 - 후속은 순차 WSL HistoryView4PASS, 공개 전체184PASS/21파일, network:none Docker HistoryView/항공편14PASS다. 서로 겹치는 시험은 합산하지 않는다. 기존 브라우저21개/픽셀·전체 Doctor를 반복한 기록이 아니며 운영/생산 빌드0이다. 공개 타입·변경3파일 lint도 실제0이다. 최종 main 통합 검산은 별도 원장으로 정산한다.
 - sourcefix43038e1 뒤 공항189/유가190이 머지된 main b3c9942를 정상 merge했다. 충돌은 문서4개뿐이며 양쪽 기록을 보존했다. 공개 frontend 전체는43038과 diff0, backend·admin 전체는b3c994와 diff0이다. 양 앱 공통 의존성 guard·타입도 실제0이다. `parking-lines-main-r2-structure.json`과 `parking-lines-main-r2-impact/results.json`에 근거를 보존한다. 끝난 전체 시험·브라우저·전체 backend 검사를 반복하지 않았다.
+
+## 자정 경계 툴팁 후속
+
+- 5b28168에 대한 추가 독립 P2는00:00 비행편의 x42px를 설명창 중심으로 써 최대240px 폭의 왼쪽78px가 잘리는 문제였다. 실제 Chromium156의 PC1440/mobile375, 정상/4배축00:00·23:59의8개 bbox가 모두 차트 범위를 벗어나는 RED를 `parking-lines-flight-edge-red`에 보존했다. 모바일00:00은 실제 x=-47px였다. browser1/server0을 정산했으며10개 건너뛴 unit을 성공으로 합산하지 않는 별도 경계 unit2FAIL도 보존했다.
+- 설명창 중심만 `[120, chartWidth-120]`으로 제한한다. CSS 최대 폭240px와 연결한 상수 외 엔진/helper/의존성/marker 좌표·marker_at/시간 범위·원 label/hover·선택 동작을 바꾸지 않는다.
+- `parking-lines-flight-edge-green`의 같은8개 실제 bbox는 차트와 양 끝 스크롤 화면 안에 모두 들어온다. KST 날짜·대한항공·지연의 가시 DOM과 PC/mobile 캡처를 직접 확인했고 오류·외부 요청·문서 overflow0, browser/server각0이다. 기존 브라우저 전체 시나리오를 반복하거나 운영 화면 증거로 쓰지 않는다.
+- 경계 보정은 순차 WSL daily12→network:none Docker daily12, 공개 타입·변경2파일 lint가 모두 실제0이다. 겹치는 선행184/14/21개와 합산하지 않는다. 소유 컨테이너0·키의 Git/staged/새 메시지 부재를 검산하고 추가 delta의 두 독립 리뷰·exact CI·머지는 부모에 전달한다.

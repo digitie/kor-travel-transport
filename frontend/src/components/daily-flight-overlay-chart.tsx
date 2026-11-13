@@ -20,6 +20,8 @@ const BASE_CHART_WIDTH = 1180;
 const CHART_HEIGHT = 320;
 const CHART_PADDING_X = 42;
 const CHART_PADDING_TOP = 30;
+// parking.css의 설명창 최대 너비240px를 차트 양쪽 경계 안에 둔다.
+const FLIGHT_TOOLTIP_HALF_WIDTH = 120;
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
 type DailyFlightOverlayChartProps = {
@@ -275,7 +277,7 @@ export function DailyFlightOverlayChart({
                 <div
                   className="flight-highlight-label daily-flight-highlight"
                   data-testid="daily-flight-highlight-label"
-                  style={{ left: `${activeFlight.x}px` }}
+                  style={{ left: `${Math.min(chartWidth - FLIGHT_TOOLTIP_HALF_WIDTH, Math.max(FLIGHT_TOOLTIP_HALF_WIDTH, activeFlight.x))}px` }}
                 >
                   <strong>
                     {formatAxisTimeLabel(activeFlight.marker_at)} {activeFlight.flight_number}
