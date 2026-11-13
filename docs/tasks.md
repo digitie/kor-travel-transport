@@ -1,3 +1,7 @@
+## 2026-11-13 — 주차 line 차트 후속
+
+- [ ] **T-PARKING-LINES-MERGE-20261113** — history/daily line 전환의 부모 CI/두 독립 리뷰/머지. 코드·양 앱 정적 검사·순차 WSL/Docker각21·1440/375 fixture는 완료했고 운영 수용은 별도다. [근거](reports/2026-11-13-parking-lines.md).
+
 ## 2026-11-13 — 공항 차트 후속
 
 - [ ] PR189의 부모 두 독립 리뷰/CI/머지 정산. 코드·집중 WSL/Docker·1440/375 fixture는 완료했으나 운영 항공편 빈 응답 원인/운영 배포는 미수용이며 기존 history/daily SVG의 line 전환은 별도 후속이다. [근거](reports/2026-11-13-airport-charts-flow.md).

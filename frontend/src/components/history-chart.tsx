@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { historyLineOptions } from "./evilcharts/parking-line-options";
+
+const ParkingLineCanvas = dynamic(() => import("./evilcharts/parking-line-canvas").then((module) => module.ParkingLineCanvas), { ssr: false, loading: () => <p role="status">주차 이력 차트를 불러오는 중입니다.</p> });
 
 import {
   formatAxisDateLabel,
@@ -16,7 +20,6 @@ const CHART_MIN_WIDTH = 1280;
 const CHART_HEIGHT = 280;
 const CHART_PADDING_X = 18;
 const CHART_PADDING_Y = 20;
-const GRID_LINES = 4;
 const TOOLTIP_EDGE_PADDING = 88;
 const TOUCH_DRAG_THRESHOLD_PX = 12;
 
@@ -104,40 +107,6 @@ function buildAxisMarkers(points: ChartPoint[], labelIndexes: number[]): AxisMar
       timeLabel: formatAxisTimeLabel(point.bucket_at),
     };
   });
-}
-
-function buildStepLinePath(points: ChartPoint[]): string {
-  if (points.length === 0) {
-    return "";
-  }
-
-  const path = [`M ${points[0].x} ${points[0].y}`];
-
-  for (let index = 1; index < points.length; index += 1) {
-    const point = points[index];
-    path.push(`H ${point.x}`);
-    path.push(`V ${point.y}`);
-  }
-
-  return path.join(" ");
-}
-
-function buildStepAreaPath(points: ChartPoint[]): string {
-  if (points.length === 0) {
-    return "";
-  }
-
-  const bottom = CHART_HEIGHT - CHART_PADDING_Y;
-  const path = [`M ${points[0].x} ${bottom}`, `L ${points[0].x} ${points[0].y}`];
-
-  for (const point of points.slice(1)) {
-    path.push(`H ${point.x}`);
-    path.push(`V ${point.y}`);
-  }
-
-  path.push(`L ${points[points.length - 1].x} ${bottom}`);
-  path.push("Z");
-  return path.join(" ");
 }
 
 function getLocalDateWeekendType(localDate: string): SpecialDayType | null {
@@ -233,6 +202,14 @@ export function HistoryChart({ holidays, series, scopeLabel }: HistoryChartProps
   const activePointIndex = activeSelection.series === series ? activeSelection.index : null;
   const setActivePointIndex = (index: number | null) => setActiveSelection({ series, index });
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  // Pointer/keyboard selection only moves the DOM cursor; it does not reparse all ECharts series.
+  const plotOptions = useMemo(() => {
+    if (!series?.items.length) return null;
+    const width = Math.max(CHART_MIN_WIDTH, buildLabelIndexes(series.items).length * 64);
+    const points = buildChartPoints(series.items, width);
+    const bands = buildSpecialDayBands(buildSpecialDays(holidays, points), points, width);
+    return historyLineOptions({ points, width, bands, activeIndex: -1 });
+  }, [series, holidays]);
 
   useEffect(() => {
     if (!series || series.items.length === 0) {
@@ -280,21 +257,24 @@ export function HistoryChart({ holidays, series, scopeLabel }: HistoryChartProps
   const labelIndexes = buildLabelIndexes(points);
   const chartWidth = Math.max(CHART_MIN_WIDTH, labelIndexes.length * 64);
   const chartPoints = buildChartPoints(points, chartWidth);
-  const observedRuns = buildObservedRuns(chartPoints);
   const axisMarkers = buildAxisMarkers(chartPoints, labelIndexes);
   const holidayBands = buildSpecialDayBands(buildSpecialDays(holidays, chartPoints), chartPoints, chartWidth);
   const latestPoint = observedPoints[observedPoints.length - 1];
-  const chartPointByBucket = new Map(chartPoints.map((point) => [point.bucket_at, point] as const));
-  const latestChartPoint = chartPointByBucket.get(latestPoint.bucket_at);
   const defaultActivePointIndex = Math.max(
     chartPoints.findIndex((point) => point.bucket_at === latestPoint.bucket_at),
     0
   );
   const resolvedActivePointIndex =
     activePointIndex !== null && activePointIndex < chartPoints.length ? activePointIndex : defaultActivePointIndex;
-  const activePoint = chartPoints[resolvedActivePointIndex] ?? null;
-  const tooltipLeft = activePoint ? clamp(activePoint.x, TOOLTIP_EDGE_PADDING, chartWidth - TOOLTIP_EDGE_PADDING) : 0;
-  const tooltipTop = activePoint ? clamp(activePoint.y - 12, 60, CHART_HEIGHT - 8) : 0;
+  const activePoint = chartPoints[resolvedActivePointIndex];
+  const tooltipLeft = clamp(activePoint.x, TOOLTIP_EDGE_PADDING, chartWidth - TOOLTIP_EDGE_PADDING);
+  const tooltipTop = clamp(activePoint.y - 12, 60, CHART_HEIGHT - 8);
+
+  function selectObservation(index: number) {
+    setActivePointIndex(index);
+    const scroll = scrollRef.current;
+    if (scroll) scroll.scrollLeft = Math.max(0, chartPoints[index].x - scroll.clientWidth / 2);
+  }
 
   function updateActivePoint(clientX: number, width: number) {
     const svgX = clamp((clientX / width) * chartWidth, CHART_PADDING_X, chartWidth - CHART_PADDING_X);
@@ -318,7 +298,6 @@ export function HistoryChart({ holidays, series, scopeLabel }: HistoryChartProps
       <div className="history-chart-shell" data-testid="history-chart">
         <div className="history-chart-scroll" ref={scrollRef}>
           <div className="history-chart-stage" style={{ width: `${chartWidth}px` }}>
-            {activePoint ? (
               <div
                 className="history-tooltip"
                 data-testid="history-tooltip"
@@ -329,11 +308,12 @@ export function HistoryChart({ holidays, series, scopeLabel }: HistoryChartProps
                 </strong>
                 <span>{formatDateTime(activePoint.bucket_at)}</span>
               </div>
-            ) : null}
 
-            <HistoryPlot series={series} scopeLabel={scopeLabel} chartWidth={chartWidth} axisMarkers={axisMarkers}
-              holidayBands={holidayBands} observedRuns={observedRuns} activePoint={activePoint} latestChartPoint={latestChartPoint} />
+            <ParkingLineCanvas height={CHART_HEIGHT} label={`${historyRangeLabel(series)} ${series.interval_minutes}분 간격 ${scopeLabel} 시계열`}
+              options={plotOptions!} />
 
+            <div aria-hidden="true" style={{ position: "absolute", pointerEvents: "none", left: activePoint.x, top: CHART_PADDING_Y, height: CHART_HEIGHT - CHART_PADDING_Y * 2, borderLeft: "1px dashed var(--color-accent)" }} />
+            {activePoint.lot_observations > 0 ? <div aria-hidden="true" style={{ position: "absolute", pointerEvents: "none", left: activePoint.x - 6, top: activePoint.y - 6, width: 12, height: 12, borderRadius: "50%", background: "var(--surface-strong)", border: "3px solid var(--teal)" }} /> : null}
             <HistorySurface onSelect={updateActivePoint} onClear={() => setActivePointIndex(null)} />
 
             <div className="history-axis-shell" data-testid="history-axis-shell">
@@ -352,25 +332,27 @@ export function HistoryChart({ holidays, series, scopeLabel }: HistoryChartProps
           </div>
         </div>
       </div>
+      <HistoryValues points={chartPoints} bands={holidayBands} index={resolvedActivePointIndex} onSelect={selectObservation} />
     </article>
   );
 }
 
-function buildObservedRuns(chartPoints: ChartPoint[]) {
-  const observedRuns: ChartPoint[][] = [];
-  let inObservedRun = false;
-  for (const point of chartPoints) {
-    if (point.lot_observations > 0) {
-      if (!inObservedRun) {
-        observedRuns.push([]);
-      }
-      observedRuns[observedRuns.length - 1].push(point);
-      inObservedRun = true;
-    } else {
-      inObservedRun = false;
-    }
-  }
-  return observedRuns;
+function HistoryValues({ points, bands, index, onSelect }: { points: ChartPoint[]; bands: HolidayChartBand[]; index: number; onSelect: (index: number) => void }) {
+  const [showValues, setShowValues] = useState(false);
+  const activePoint = points[index];
+  return <>
+      <label>관측 시점 선택
+        <input type="range" min={0} max={points.length - 1} value={index}
+          aria-label="주차 관측 시점" aria-valuetext={`${formatDateTime(activePoint.bucket_at)} · ${activePoint.lot_observations > 0 ? `${formatNumber(activePoint.available_spaces)}대` : "주차 정보 없음"}`}
+          onChange={(event) => onSelect(Number(event.target.value))} />
+      </label>
+      <details onToggle={(event) => setShowValues(event.currentTarget.open)}><summary>관측 수치와 특별일 보기</summary>
+        <p>{bands.map((band) => `${band.local_date} ${band.name}`).join(" · ") || "표시 구간에 공휴일·주말 없음"}</p>
+        {showValues ? <table><caption>실제 주차 관측 수치</caption><thead><tr><th>시각</th><th>잔여면</th><th>관측 수</th></tr></thead>
+          <tbody>{points.map((point) => <tr key={point.bucket_at}><th>{formatDateTime(point.bucket_at)}</th><td>{point.lot_observations > 0 ? formatNumber(point.available_spaces) : "관측 없음"}</td><td>{point.lot_observations}</td></tr>)}</tbody>
+        </table> : null}
+      </details>
+  </>;
 }
 
 function HistorySurface({ onSelect, onClear }: { onSelect: (x: number, width: number) => void; onClear: () => void }) {
@@ -431,98 +413,5 @@ function HistorySurface({ onSelect, onClear }: { onSelect: (x: number, width: nu
               }}
             />
 
-  );
-}
-
-/** 관측 구간과 특별일을 그리는 순수 표현. 선택/제스처/스크롤 수명을 갖지 않는다. */
-function HistoryPlot({ series, scopeLabel, chartWidth, axisMarkers, holidayBands, observedRuns, activePoint, latestChartPoint }: {
-  series: ParkingTimeSeriesResponse; scopeLabel: string; chartWidth: number; axisMarkers: AxisMarker[];
-  holidayBands: HolidayChartBand[]; observedRuns: ChartPoint[][]; activePoint: ChartPoint | null; latestChartPoint?: ChartPoint;
-}) {
-  return (
-            <svg
-              aria-label={`${historyRangeLabel(series)} ${series.interval_minutes}분 간격 ${scopeLabel} 시계열`}
-              className="history-chart"
-              role="img"
-              viewBox={`0 0 ${chartWidth} ${CHART_HEIGHT}`}
-            >
-              <defs>
-                <linearGradient id="history-area-gradient" x1="0" x2="0" y1="0" y2="1">
-                  <stop offset="0%" stopColor="rgba(12, 139, 125, 0.24)" />
-                  <stop offset="100%" stopColor="rgba(12, 139, 125, 0.02)" />
-                </linearGradient>
-              </defs>
-
-              {Array.from({ length: GRID_LINES }, (_, index) => {
-                const y =
-                  CHART_PADDING_Y + ((CHART_HEIGHT - CHART_PADDING_Y * 2) * index) / Math.max(GRID_LINES - 1, 1);
-                return (
-                  <line
-                    key={`grid-${index}`}
-                    className="history-grid-line"
-                    x1={CHART_PADDING_X}
-                    x2={chartWidth - CHART_PADDING_X}
-                    y1={y}
-                    y2={y}
-                  />
-                );
-              })}
-
-              {axisMarkers.map((marker) => (
-                <line
-                  key={`divider-${marker.bucket_at}`}
-                  className="history-divider"
-                  x1={marker.x}
-                  x2={marker.x}
-                  y1={CHART_PADDING_Y}
-                  y2={CHART_HEIGHT - CHART_PADDING_Y}
-                />
-              ))}
-
-              {holidayBands.map((band) => (
-                <g key={`holiday-band-${band.local_date}-${band.day_type}-${band.name}`}>
-                  <rect
-                    className={`holiday-band holiday-band-${band.day_type}`}
-                    data-testid="holiday-band"
-                    height={CHART_HEIGHT - CHART_PADDING_Y * 2}
-                    width={band.width}
-                    x={band.x}
-                    y={CHART_PADDING_Y}
-                  />
-                  <text className="holiday-band-label" textAnchor="middle" x={band.labelX} y={CHART_PADDING_Y - 6}>
-                    {band.name}
-                  </text>
-                </g>
-              ))}
-
-              {observedRuns.map((run, index) => (
-                <path key={`area-${index}`} className="history-area" d={buildStepAreaPath(run)} />
-              ))}
-              {observedRuns.map((run, index) => (
-                <path key={`line-${index}`} className="history-line" d={buildStepLinePath(run)} fill="none" />
-              ))}
-              {observedRuns.filter((run) => run.length === 1).map(([point]) => (
-                <circle key={`isolated-${point.bucket_at}`} className="history-point isolated"
-                  cx={point.x} cy={point.y} r="4" />
-              ))}
-
-              {activePoint ? (
-                <>
-                  <line
-                    className="history-active-line"
-                    x1={activePoint.x}
-                    x2={activePoint.x}
-                    y1={CHART_PADDING_Y}
-                    y2={CHART_HEIGHT - CHART_PADDING_Y}
-                  />
-                  {activePoint.lot_observations > 0 ? (
-                    <circle className="history-point active" cx={activePoint.x} cy={activePoint.y} r="6" />
-                  ) : null}
-                </>
-              ) : null}
-              {latestChartPoint ? (
-                <circle className="history-point latest" cx={latestChartPoint.x} cy={latestChartPoint.y} r="5" />
-              ) : null}
-            </svg>
   );
 }

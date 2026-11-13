@@ -1,4 +1,6 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { ParkingLinesProbe, lineOptions } from "./parking-lines-probe";
+vi.mock("next/dynamic", () => ({ default: () => ParkingLinesProbe }));
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { DailyFlightOverlayChart } from "@/components/daily-flight-overlay-chart";
@@ -96,6 +98,24 @@ function buildHolidays(): HolidayItemSummary[] {
 }
 
 describe("DailyFlightOverlayChart", () => {
+  test("explicit missing daily buckets remain gaps while observed zero is retained", () => {
+    const series = buildSeries();
+    series.items[0] = { ...series.items[0], available_spaces: 0 };
+    series.items[1] = { ...series.items[1], available_spaces: 0, lot_observations: 0 };
+    render(<DailyFlightOverlayChart flightStatus={null} holidays={[]} series={series} scopeLabel="P1" />);
+    const options = lineOptions<{ series: { data: [number, number | null][]; connectNulls: boolean }[] }>();
+    expect(options.series[0].data).toEqual([[0, 0], [720, null], [1410, series.items[2].available_spaces]]);
+    expect(options.series[0].connectNulls).toBe(false);
+    expect(screen.getByText("날짜별 관측 수치 보기")).toBeInTheDocument();
+  });
+  test("flight position uses marker_at in KST rather than scheduled or estimated time", () => {
+    const flightStatus = buildFlightStatus();
+    flightStatus.items = [{ ...flightStatus.items[0], marker_at: "2026-04-23T18:00:00Z", scheduled_at: "2026-04-24T01:00:00Z", estimated_at: "2026-04-24T02:00:00Z" }];
+    render(<DailyFlightOverlayChart flightStatus={flightStatus} holidays={[]} series={buildSeries()} scopeLabel="P1" />);
+    const options = lineOptions<{ graphic: { children: { shape: { x1: number } }[] }[] }>();
+    expect(options.graphic[0].children[0].shape.x1).toBe(42 + 3 / 24 * (1180 - 84));
+    expect(within(screen.getByRole("group", { name: "비행편 선택" })).getByRole("button", { name: /03:00.*KE1101/ })).toBeInTheDocument();
+  });
   test("계속 조회 중인 항공편을 확정 0편이나 오류로 표시하지 않고 늦은 성공을 그린다", () => {
     const props = { holidays: buildHolidays(), series: buildSeries(), scopeLabel: "P1 주차장" };
     const view = render(<DailyFlightOverlayChart {...props} flightStatus={{ ...buildFlightStatus(),
@@ -108,7 +128,7 @@ describe("DailyFlightOverlayChart", () => {
     expect(screen.getAllByTestId("daily-flight-marker-button")).toHaveLength(buildFlightStatus().items.length);
   });
   test("renders seven daily lines, fixed day axis, flight markers, and holiday styling", () => {
-    const { container } = render(
+    render(
       <DailyFlightOverlayChart
         flightStatus={buildFlightStatus()}
         holidays={buildHolidays()}
@@ -121,21 +141,18 @@ describe("DailyFlightOverlayChart", () => {
     expect(screen.getAllByTestId("daily-overlay-line")).toHaveLength(7);
     expect(screen.getAllByTestId("daily-flight-marker")).toHaveLength(2);
     expect(screen.getAllByTestId("daily-flight-marker-button")).toHaveLength(2);
-    expect(screen.getByText("00:00")).toBeInTheDocument();
-    expect(screen.getByText("06:00")).toBeInTheDocument();
-    expect(screen.getByText("12:00")).toBeInTheDocument();
-    expect(screen.getByText("18:00")).toBeInTheDocument();
-    expect(screen.getByText("24:00")).toBeInTheDocument();
+    const options = lineOptions<{ xAxis: { min: number; max: number; interval: number }; series: { markPoint: { data: unknown[] }; lineStyle: { type: string } }[] }>();
+    expect(options.xAxis).toMatchObject({ min: 0, max: 1440, interval: 360 });
+    expect(options.series.filter((line) => line.markPoint.data.length)).toHaveLength(3);
+    expect(options.series.filter((line) => line.lineStyle.type === "dashed")).toHaveLength(3);
     expect(screen.getByText("토요일")).toBeInTheDocument();
     expect(screen.getByText("일요일")).toBeInTheDocument();
     expect(screen.getByText("테스트 공휴일")).toBeInTheDocument();
-    expect(container.querySelectorAll(".daily-line-special")).toHaveLength(3);
-    expect(container.querySelector(".daily-line-holiday")).not.toBeNull();
   });
 
   test("expands the daily x axis four times", async () => {
     const user = userEvent.setup();
-    const { container } = render(
+    render(
       <DailyFlightOverlayChart
         flightStatus={buildFlightStatus()}
         holidays={buildHolidays()}
@@ -144,11 +161,11 @@ describe("DailyFlightOverlayChart", () => {
       />
     );
 
-    expect(container.querySelector(".daily-overlay-chart")?.getAttribute("viewBox")).toBe("0 0 1180 320");
+    expect(screen.getByTestId("daily-flight-overlay-chart").querySelector(".daily-overlay-chart-stage")).toHaveStyle({ width: "1180px" });
 
     await user.click(screen.getByTestId("daily-wide-axis-toggle"));
 
-    expect(container.querySelector(".daily-overlay-chart")?.getAttribute("viewBox")).toBe("0 0 4720 320");
+    expect(screen.getByTestId("daily-flight-overlay-chart").querySelector(".daily-overlay-chart-stage")).toHaveStyle({ width: "4720px" });
   });
 
   test("hides and shows a selected date line", async () => {
@@ -219,7 +236,7 @@ describe("DailyFlightOverlayChart", () => {
     expect(screen.getByTestId("daily-flight-highlight-label")).toHaveTextContent("KE1101");
   });
 
-  test("offers native keyboard controls for flight markers outside the SVG image", async () => {
+  test("offers native keyboard controls for flight markers outside the canvas image", async () => {
     const user = userEvent.setup();
     render(
       <DailyFlightOverlayChart
@@ -230,8 +247,8 @@ describe("DailyFlightOverlayChart", () => {
       />
     );
 
-    const button = screen.getByRole("button", { name: /10:00.*KE1101/ });
-    button.focus();
+    const button = within(screen.getByRole("group", { name: "비행편 선택" })).getByRole("button", { name: /10:00.*KE1101/ });
+    act(() => button.focus());
     expect(button).toHaveFocus();
     await user.click(button);
     expect(button).toHaveAttribute("aria-pressed", "true");

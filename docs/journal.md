@@ -1,3 +1,9 @@
+## 2026-11-13 — 주차 이력·하루 흐름의 공식 ECharts line 전환
+
+- 공유 history/daily의 실제 SVG 데이터 선을 EvilCharts ECharts line으로 전환했다. 관측0/null 단절·특별일·KST marker_at·날짜/방향/확대·hover/click/native 키보드 경로를 보존했다. daily가 명시적 결측을 건너 연결하던 부분은 null gap으로 고쳤다.
+- source/installed43파일 패키지, 양 앱 타입/전체 lint/Doctor78·232파일0, 최종 순차 WSL21/Docker21, 실제 Chromium PC1440/mobile375·dispose/overflow/오류0과 캡처를 검산했다. 기존 실패와 지연 적재/테이블/선택 비용 경계는 [정산](reports/2026-11-13-parking-lines.md)에 있다.
+- 기존 PR189 checkout과 운영/수집/빌드/DB/키/의존성은 변경하지 않았다. stacked Draft PR의 CI/두 리뷰/머지는 부모 범위다.
+
 ## 2026-11-13 — PR189 CI 원문 확인과 hydration·Motion 보정
 
 - 원 frontend CI43329668779/job131570919657은 이번 변경의 Doctor warning5개로 실패했다. 두 full-motion import는 실제 LazyMotion/m 경로로, 현재 시각 JSX는 결정적인 server snapshot을 쓰는 useSyncExternalStore 시계로 고쳤다.

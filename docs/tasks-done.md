@@ -1,3 +1,8 @@
+## 2026-11-13 — 공유 주차 이력·하루 흐름 line 차트
+
+- [x] **T-PARKING-LINES-CODE-20261113** — 공식 EvilCharts line engine, 관측0/결측 단절·고립 관측·특별일·KST 항공편·날짜/방향/4배축·native 키보드와 수치표, 실제 마운트 시 지연 적재와 선택 memo 경계를 구현했다.
+- [x] 양 앱 타입/전체 lint/Doctor78·232파일 warning0, 최종 순차 WSL21/Docker21, Chromium156 PC1440/mobile375 실제 캔버스·pointer/touch·키보드·숫자·조상 테마·dispose·overflow/오류0과 캡처를 확인했다. 소유 컨테이너0·fixture포트 해제와 제공 키의 Git 부재를 정산한다. CI/리뷰/머지와 운영 반영은 이 코드 완료에 포함하지 않는다. [정산](reports/2026-11-13-parking-lines.md).
+
 ## 2026-11-13 — 공항 차트·고속도로 화면 갱신 코드와 WSL 집중 검증
 
 - [x] 공항 주차 현황/항공편 파이·명시적 P번호 동심원, 요일/공휴일 시간대 히트맵을 공식 EvilCharts ECharts로 구현했다. 0/결측/불일치·정밀 숫자·관측 시각을 보존했다.
