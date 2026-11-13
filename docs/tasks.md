@@ -1,6 +1,7 @@
 ## 2026-11-13 — 신고된 운영 회귀 마감
 
-- [ ] **T-REPORTED-REGRESSIONS-DEPLOY-20261113** — 동결 세대 Top10·필터·분석 재조회·새 주차 SDK를 정확 CI/두 독립검토 후 새 이미지에 반영한다. 정규 수집의 새 KAC/ICN 관측과 DB/API/화면 날짜·원20일정·Manager·첫 부모 실제종료를 검산한다. 기존 d9 버전정렬/타일 해결은 완료이고 반복하지 않는다. [근거](reports/2026-11-13-reported-runtime-regressions.md).
+- T-REPORTED-REGRESSIONS-DEPLOY-20261113은 PR196 머지·신규 API/CS/관리자·정규44개 수집2회·DB/API/실제 PC/모바일 날짜와 유가 Top10·원20/Manager/실제 부모종료까지 수용해 [완료 목록](tasks-done.md)으로 옮겼다. 기존 실패·미제공 자료·항공편 오류는 보존한다. [근거](reports/2026-11-13-reported-runtime-regressions.md).
+- [ ] **T-PARKING-MOBILE-AXIS-20261113** — 최신 날짜 복구 후 별도 실제 터치375 문맥에서 차트 shell1180px/자체 scrollLeft0을 관측했다. 문서 overflow0과 구분해 조상 폭·축/컨트롤 가시성·스크롤을 보정한다. 원문은 Git 밖 `live-fixed-parking-mobile-detail/results.json`이며 새 날짜 수용을 되돌리거나 데이터 재수집하지 않는다.
 
 ## 현재 정산 — 2026-11-13 CI 최적화 main 반영과 PR191 마감
 
