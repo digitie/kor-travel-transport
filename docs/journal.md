@@ -1,3 +1,10 @@
+## 2026-11-13 — PR193 source4 최신 main 통합과 최종 앱 수용 순서
+
+Ruff3·Motion14.13 source3 a92f31f에 실제 main12c65b9(PR194)를 정상 merge했다. 양쪽 journal/resume 기록을 보존하고 main의 sample-data 코드/시험·workflow·task는 원본 blob 그대로 가져왔다. 본 작업에서 CI 순서 감사/재배치는 수행하지 않았다.
+두 migration 스타일 파일과 Motion14.13 선언/lock/원장은 source3 그대로다. 기존 full Ruff465는 이전 source의 관측이며 새 main을 검사한 성공으로 표기하지 않는다. 실제 DB/DDL/이미지/운영/Map 실행0이다.
+다음은 원2의 Ruff3+Motion+통합 검토와 정확 최종 앱 SHA CI·실제 main 머지·정상 제품3종 빌드다. 기존 Common36 refs를 유지하며 미래 Common ref는 앱 머지/빌드의 대기 조건이 아니다. 최종 codepin 전파와 workflow 최적화는 마지막 별도 workflow-only PR이며 그 변경만으로 앱 코드/lock·이미지를 다시 만들지 않는다.
+T-DOWNGRADE-GUARDS-20261113 P2 OPEN과 최종 reviewed actual merged SHA/tree 전 제품 HOLD는 유지한다.
+
 ## 2026-11-13 — Motion14.13.0 exact 후속 후보
 
 - 공식 registry에서 확인한 새 목표 Motion14.13.0을 공개/관리자 frontend와 공유 parking-ui package에 적용했다. Node22.23.1/npm12.0.1, engine-strict의 정상 package-lock-only/ignore-scripts 명령으로 두 lock을 갱신했고 force/legacy-peer-deps·실제 node_modules 설치는 사용하지 않았다.
@@ -18,6 +25,11 @@ backend 두 스타일 파일은 source1 그대로다. 기존 Ruff 대상0/전체
 - 기존 mock 시험4PASS/DB시험2개 deselected이며 PostgreSQL/실제DDL은 실행하지 않았다. plugin 자동 로딩을 끈 좁은 실행의 asyncio_mode 설정 경고1개는 원문으로 보존했다. 정규화 AST는 두 스타일 변환과 import 순서를 제외하고 같고, migration downgrade 함수 AST·문자열 상수는 그대로다.
 - 기존 CodeGraph로 backend249파일/6537nodes/6221edges를 인덱싱했다. affected 결과0은 importlib 동적 로딩의 영향 부재 증명이 아니므로 해당 migration을 직접 읽는 mock4개와 AST 검산을 함께 사용했다. 새 회귀 시험을 추가하거나 기존 기대를 약화하지 않았다.
 - T-DOWNGRADE-GUARDS-20261113은 OPEN이며 0038/0039/0041/0042의 destructive downgrade 보호 완료로 바꾸지 않는다. 이 패치로 DB rollback/downgrade를 허용하지 않는다. 원2 독립 리뷰·정확한 새 SHA의 CI·머지가 남았으며 Transport 제품 이미지3종은 최종 검토·머지 SHA까지 HOLD다. 이미지/운영/Map/CI 순서 감사 실행0이다.
+
+## 2026-11-13 — CI 표본 생성 반복 조회 제거
+
+- 실제 health1건의 setup11.799초 중 seed11.320초를 확인했다. lot/source/시간 범위별 projection1회로 바꿔 같은 시험의 seed0.651초·setup1.220초를 관측했다. 원본4테이블 전체 해시·ID·JSON·시각/재실행을 보존한다.
+- 초도 WSL SQLite/PG18·전체 저장소 Docker의 집중4개씩을 보존했다. 리뷰 P1의 소스 루트 의존 workflow 거울 시험1개만 제거하고 최종 의미 회귀3개를 WSL PG18·backend-only `/app` Docker에서 확인했다. workflow는 main push+PR로 중복을 제거하고 전체 시험/기존 job 이름을 유지하며 durations25를 남긴다. 새 exact CI/머지는 미완이고 운영·빌드0이다. [정본과 원 실패](reports/2026-11-13-ci-sample-seed.md).
 
 ## 2026-11-13 — 상세 버튼 임베디드 P1 수정
 

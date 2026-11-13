@@ -1,3 +1,10 @@
+## 2026-11-13 — PR193 source4 최신 main 통합과 최종 앱 수용 순서
+
+Ruff3·Motion14.13 source3 a92f31f에 실제 main12c65b9(PR194)를 정상 merge했다. 양쪽 journal/resume 기록을 보존하고 main의 sample-data 코드/시험·workflow·task는 원본 blob 그대로 가져왔다. 본 작업에서 CI 순서 감사/재배치는 수행하지 않았다.
+두 migration 스타일 파일과 Motion14.13 선언/lock/원장은 source3 그대로다. 기존 full Ruff465는 이전 source의 관측이며 새 main을 검사한 성공으로 표기하지 않는다. 실제 DB/DDL/이미지/운영/Map 실행0이다.
+다음은 원2의 Ruff3+Motion+통합 검토와 정확 최종 앱 SHA CI·실제 main 머지·정상 제품3종 빌드다. 기존 Common36 refs를 유지하며 미래 Common ref는 앱 머지/빌드의 대기 조건이 아니다. 최종 codepin 전파와 workflow 최적화는 마지막 별도 workflow-only PR이며 그 변경만으로 앱 코드/lock·이미지를 다시 만들지 않는다.
+T-DOWNGRADE-GUARDS-20261113 P2 OPEN과 최종 reviewed actual merged SHA/tree 전 제품 HOLD는 유지한다.
+
 ## 현재 라이브러리 후속 — 2026-11-13 Motion14.13.0
 
 SOURCE2 89c06a0은 PR193에 push·CI 진행 중인 불변 이력으로 보존한다. 별도 후속에서 공개/관리자/공유 UI의 Motion을14.13.0 exact로 맞췄고 canonical Node22.23.1/npm12.0.1 lock-only 명령으로 관련3패키지만 갱신했다. app 설치/빌드·런타임은 아직 미실행이다.
@@ -14,6 +21,11 @@ backend 두 스타일 파일은 source1 그대로다. 기존 Ruff 대상0/전체
 실제 main b3c9942의 새 기능 계보를 보존한 별도 브랜치다. 대상 두 파일의 I001/SIM117/PIE807만 수정했고 SQL·migration guard·revision·제품/의존성/producer는 그대로다.
 대상 Ruff0건, 전체 backend468→465건(나머지 동일), mock4PASS/DB시험2개 deselected와 AST 동등성·CodeGraph backend249파일 검산을 정산했다. 전체 lint나 실제 두 세션 DDL 수용을 주장하지 않는다.
 다음 한 작업은 이 정확한 source의 원2 리뷰·Draft PR·CI·최종 main 머지다. T-DOWNGRADE-GUARDS-20261113 OPEN과 기존 운영 제한을 유지한다. Transport 제품3종은 새 실제 merged SHA/tree 확정 전 HOLD이며 Map·CI 순서 감사는 미실행이다.
+
+## 현재 후속 — 2026-11-13 CI 표본 생성 비용
+
+- 같은 health 시험에서 sample seed11.320→0.651초, setup11.799→1.220초를 관측했다. 전체4테이블 해시/ID/시각/원문과 기존 표본·요금·범위를 보존한다. 초도4개를 보존하고 리뷰 P1의 workflow 소스 루트 의존 시험만 제거해 최종 의미 회귀3개를 WSL PG18·backend-only `/app` Docker에서 확인했다.
+- 다음 한 작업: 이 별도 후보의 exact commit을 부모에 전달해 독립 리뷰·실제 CI·머지를 정산한다. main push+PR/기존 job·전체 시험을 유지하며 기능 push 중복만 제거했다. 전체CI65분의 개선율·운영 배포로 과장하지 않는다. [근거](reports/2026-11-13-ci-sample-seed.md).
 
 ## 현재 우선 후속 — 2026-11-13 상세 버튼 P1
 

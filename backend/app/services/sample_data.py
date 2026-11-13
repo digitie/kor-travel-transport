@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.time_utils import align_to_ten_minutes, now_utc
+from app.core.time_utils import align_to_ten_minutes, ensure_tz, now_utc
 from app.models import Airport, ParkingFeeRule, ParkingLot, ParkingSnapshot
 
 
@@ -190,6 +190,23 @@ async def seed_sample_database(session: AsyncSession) -> None:
     for airport, lot, index in created_lots:
         total = lot.total_spaces_hint or 100
         source = airport.source if airport.code == "ICN" else "kac_parking"
+        # 동일 lot/source의 실제 생성 구간만 한 번 읽는다. SQLite는 UTC를 naive로
+        # 돌려주므로 aware UTC로 맞추며, 아래 신규 시각도 즉시 넣어 최근 override와
+        # 겹치는 반시간 관측을 기존처럼 먼저 생성한 값으로 유지한다.
+        first_observed_at = (now_seoul - timedelta(days=7)).replace(
+            hour=0, minute=0, second=0, microsecond=0,
+        ).astimezone(ZoneInfo("UTC"))
+        existing_times = {
+            ensure_tz(value, "UTC")
+            for value in await session.scalars(
+                select(ParkingSnapshot.observed_at).where(
+                    ParkingSnapshot.parking_lot_id == lot.id,
+                    ParkingSnapshot.source == source,
+                    ParkingSnapshot.observed_at >= first_observed_at,
+                    ParkingSnapshot.observed_at <= now,
+                )
+            )
+        }
 
         for day_offset in range(7, -1, -1):
             day = now_seoul - timedelta(days=day_offset)
@@ -205,14 +222,7 @@ async def seed_sample_database(session: AsyncSession) -> None:
                 if observed_at > now:
                     continue
 
-                existing_snapshot = await session.scalar(
-                    select(ParkingSnapshot).where(
-                        ParkingSnapshot.parking_lot_id == lot.id,
-                        ParkingSnapshot.observed_at == observed_at,
-                        ParkingSnapshot.source == source,
-                    )
-                )
-                if existing_snapshot is not None:
+                if observed_at in existing_times:
                     continue
 
                 available = _sample_available(total, day_offset, hour, minute, index, airport.code)
@@ -234,6 +244,7 @@ async def seed_sample_database(session: AsyncSession) -> None:
                         raw_item_json={"seeded": True},
                     )
                 )
+                existing_times.add(observed_at)
 
         for offset_index in range(6):
             observed_at = now - timedelta(minutes=(50 - (offset_index * 10)))
@@ -241,14 +252,7 @@ async def seed_sample_database(session: AsyncSession) -> None:
             if override_available is None:
                 continue
 
-            existing_snapshot = await session.scalar(
-                select(ParkingSnapshot).where(
-                    ParkingSnapshot.parking_lot_id == lot.id,
-                    ParkingSnapshot.observed_at == observed_at,
-                    ParkingSnapshot.source == source,
-                )
-            )
-            if existing_snapshot is not None:
+            if observed_at in existing_times:
                 continue
 
             session.add(
@@ -267,6 +271,7 @@ async def seed_sample_database(session: AsyncSession) -> None:
                     raw_item_json={"seeded": True, "recent": True},
                 )
             )
+            existing_times.add(observed_at)
 
     fee_updated_at = now
     for airport in created_airports.values():
