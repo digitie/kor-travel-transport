@@ -54,43 +54,46 @@ def test_committed_writer_is_visible_after_waiting_for_lock(test_settings, table
                 await setup.execute(sa.text(f'CREATE SCHEMA "{schema}"'))
                 for name in ("fuel_region_summaries", "kric_timetable_attempts"):
                     await setup.execute(sa.text(f'CREATE TABLE "{schema}".{name} (id int)'))
-            async with engine.connect() as writer, engine.connect() as ddl:
-                async with writer.begin():
-                    await writer.execute(sa.text(f'INSERT INTO "{schema}".{table} VALUES (1)'))
+            async with (
+                engine.connect() as writer,
+                engine.connect() as ddl,
+                writer.begin(),
+            ):
+                await writer.execute(sa.text(f'INSERT INTO "{schema}".{table} VALUES (1)'))
 
-                    async def downgrade():
-                        async with ddl.begin():
-                            await ddl.execute(sa.text(f'SET LOCAL search_path TO "{schema}"'))
-                            def invoke(connection):
-                                migration = _migration()
-                                migration.op = Operations(MigrationContext.configure(connection))
-                                migration.downgrade()
-                            await ddl.run_sync(invoke)
+                async def downgrade():
+                    async with ddl.begin():
+                        await ddl.execute(sa.text(f'SET LOCAL search_path TO "{schema}"'))
+                        def invoke(connection):
+                            migration = _migration()
+                            migration.op = Operations(MigrationContext.configure(connection))
+                            migration.downgrade()
+                        await ddl.run_sync(invoke)
 
-                    pid = await ddl.scalar(sa.text("SELECT pg_backend_pid()"))
-                    await ddl.rollback()
-                    attempt = asyncio.create_task(downgrade())
-                    try:
-                        async def waiting():
-                            # observer는 매 조회 새 READ COMMITTED snapshot을 사용한다.
-                            async with engine.connect() as observer:
-                                while not attempt.done():
-                                    blocked = await observer.scalar(sa.text(
-                                        "SELECT wait_event_type='Lock' FROM pg_stat_activity WHERE pid=:pid"
-                                    ), {"pid": pid})
-                                    await observer.rollback()
-                                    if blocked:
-                                        return
-                                    await asyncio.sleep(.01)
-                            raise AssertionError("downgrade가 writer를 기다리지 않았습니다")
-                        await asyncio.wait_for(waiting(), 3)
-                        await writer.commit()
-                        with pytest.raises(RuntimeError, match="downgrade할 수 없습니다"):
-                            await asyncio.wait_for(attempt, 7)
-                    finally:
-                        if not attempt.done():
-                            attempt.cancel()
-                            await asyncio.gather(attempt, return_exceptions=True)
+                pid = await ddl.scalar(sa.text("SELECT pg_backend_pid()"))
+                await ddl.rollback()
+                attempt = asyncio.create_task(downgrade())
+                try:
+                    async def waiting():
+                        # observer는 매 조회 새 READ COMMITTED snapshot을 사용한다.
+                        async with engine.connect() as observer:
+                            while not attempt.done():
+                                blocked = await observer.scalar(sa.text(
+                                    "SELECT wait_event_type='Lock' FROM pg_stat_activity WHERE pid=:pid"
+                                ), {"pid": pid})
+                                await observer.rollback()
+                                if blocked:
+                                    return
+                                await asyncio.sleep(.01)
+                        raise AssertionError("downgrade가 writer를 기다리지 않았습니다")
+                    await asyncio.wait_for(waiting(), 3)
+                    await writer.commit()
+                    with pytest.raises(RuntimeError, match="downgrade할 수 없습니다"):
+                        await asyncio.wait_for(attempt, 7)
+                finally:
+                    if not attempt.done():
+                        attempt.cancel()
+                        await asyncio.gather(attempt, return_exceptions=True)
             async with engine.connect() as check:
                 assert await check.scalar(sa.text(f'SELECT count(*) FROM "{schema}".{table}')) == 1
                 for name in ("fuel_region_summaries", "kric_timetable_attempts"):
@@ -106,7 +109,7 @@ def test_lock_failure_never_drops_tables(monkeypatch):
     migration = _migration()
     bind = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"),
                            get_isolation_level=lambda: "READ COMMITTED",
-                           get_execution_options=lambda: {}, execute=Mock())
+                           get_execution_options=dict, execute=Mock())
     def execute(sql):
         if str(sql).startswith("LOCK TABLE"):
             raise RuntimeError("lock timeout")
