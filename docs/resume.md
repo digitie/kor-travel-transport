@@ -1,3 +1,9 @@
+## 현재 상태 — 2026-11-13 신고된 교통 회귀 후속
+
+- 기존 웹d9/API·CS4998 혼합을 실제 d9로 맞춰 ALL·극값을 복구했다. PC/mobile 지도 타일24개와 사용자의 해결 확인, 원20일정 복원·Managerhealthy·실제 부모종료를 완료했다. 이 배포를 반복하지 않는다.
+- 신규 Top10/필터/분석재조회와 공급자b146 소비를 통합 중이다. SDK14는 main6b81cc7로 머지·두 독립검토·CI4성공이다. 공식 GW는 사용자 신청 뒤00/25행이나 운영 KAC 관측은 아직11월3일이다.
+- 다음 한 작업: 통합 소스의 정확 CI/독립 delta 검토 후 새 이미지를 반영하고 정규 수집에서 DB/API/분석 날짜를 확인한다. 수동 수집/원본삭제/과거 지역 membership 추정0, 백업복원 사용자 생략. [정본](reports/2026-11-13-reported-runtime-regressions.md).
+
 ## 현재 정산 — 2026-11-13 CI 최적화 main 반영과 PR191 마감
 
 - Transport PR192는 main3ed6335, Weather PR232는 부모가 관측한 실제 머지 완료다. Transport PR194도 전체 CI 성공 뒤04:00UTC에 main `12c65b95143369032dda434b6c79c18db25cbdfc`로 실제 머지됐다. PR194 backend는1915PASS/2SKIP/54subtests,903.19초(15분03초)다. 표본·runner 상태가 달라 코드 단독 개선율로 해석하지 않는다.

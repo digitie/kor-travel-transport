@@ -86,6 +86,74 @@ describe("분석 화면의 항공편 대기·최종 응답", () => {
     expect(state().flightStatus.error_message).toMatch(/계속 조회 중/);
   });
 
+  test("같은 수집 marker여도 보이는 분석은 60초 뒤 저장된 새 응답을 읽는다", async () => {
+    vi.setSystemTime(new Date("2026-11-13T08:00:00Z"));
+    pending.resolve(flights());
+    const oldSeries = { ...analytics.time_series, generated_at: "2026-11-03T08:08:03Z", items: [
+      { bucket_at: "2026-11-03T08:08:03Z", available_spaces: 10, occupied_spaces: 90, total_spaces: 100, lot_observations: 1 },
+    ] };
+    const updated = { ...oldSeries, generated_at: "2026-11-13T08:08:03Z", items: [
+      { ...oldSeries.items[0], bucket_at: "2026-11-13T08:08:03Z", available_spaces: 20 },
+    ] };
+    analyticsRequest.mockResolvedValueOnce({ ...analytics, time_series: oldSeries }).mockResolvedValueOnce({ ...analytics, time_series: updated });
+    render(<Probe />); await settle();
+    expect(state().timeSeries.items[0].bucket_at).toBe("2026-11-03T08:08:03Z");
+    await advance(59_999); expect(analyticsRequest).toHaveBeenCalledTimes(1);
+    await advance(1);
+    expect(analyticsRequest).toHaveBeenCalledTimes(2);
+    expect(state().timeSeries.items[0].bucket_at).toBe("2026-11-13T08:08:03Z");
+    expect(dashboard.dataVersion).toBe(0);
+  });
+
+  test("분석 실패도 수집 marker 변경 없이 60초 뒤 재시도한다", async () => {
+    pending.resolve(flights()); analyticsRequest.mockRejectedValueOnce(new Error("일시 실패"));
+    render(<Probe />); await settle(); expect(state().error).toBe("일시 실패");
+    await advance(60_000);
+    expect(analyticsRequest).toHaveBeenCalledTimes(2); expect(state().error).toBeNull();
+  });
+
+  test("재조회해도 저장 관측이 오래됐으면 실제 날짜를 오늘로 바꾸지 않는다", async () => {
+    vi.setSystemTime(new Date("2026-11-13T08:00:00Z"));
+    pending.resolve(flights());
+    const oldSeries = { ...analytics.time_series, generated_at: "2026-11-13T08:00:00Z", items: [
+      { bucket_at: "2026-11-03T08:08:03Z", available_spaces: 0, occupied_spaces: 100, total_spaces: 100, lot_observations: 1 },
+    ] };
+    analyticsRequest.mockResolvedValue({ ...analytics, time_series: oldSeries });
+    render(<Probe />); await settle(); await advance(60_000);
+    expect(analyticsRequest).toHaveBeenCalledTimes(2);
+    expect(state().timeSeries.items).toEqual(oldSeries.items);
+  });
+
+  test("진행 중인 분석 또는 늦은 항공편을 복귀 이벤트로 중복하거나 취소하지 않는다", async () => {
+    const delayed = deferred<DashboardAnalyticsResponse>(); analyticsRequest.mockReturnValueOnce(delayed.promise);
+    render(<Probe />); await settle();
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    expect(analyticsRequest).toHaveBeenCalledTimes(1);
+    await act(async () => delayed.resolve(analytics)); await advance(6_000);
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    expect(analyticsRequest).toHaveBeenCalledTimes(1);
+    expect(flightRequest.mock.calls[0]?.[1]?.aborted).toBe(false);
+    await act(async () => pending.resolve(flights()));
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    expect(analyticsRequest).toHaveBeenCalledTimes(2);
+  });
+
+  test("숨은 화면은 주기 조회하지 않고 복귀 때 한 번 갱신하며 비활성화하면 멈춘다", async () => {
+    pending.resolve(flights()); const view = render(<Probe />); await settle();
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    await advance(120_000); await act(async () => window.dispatchEvent(new Event("focus")));
+    expect(analyticsRequest).toHaveBeenCalledTimes(1);
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(analyticsRequest).toHaveBeenCalledTimes(2);
+    view.rerender(<Probe enabled={false} />); await advance(120_000);
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    expect(analyticsRequest).toHaveBeenCalledTimes(2); expect(vi.getTimerCount()).toBe(0);
+  });
+
   test("8.981초 성공을 13초 분석 완료 시 옛 대기값으로 덮지 않는다", async () => {
     const delayed = deferred<DashboardAnalyticsResponse>(); analyticsRequest.mockReturnValue(delayed.promise);
     render(<Probe />); await advance(8_981);
@@ -120,7 +188,8 @@ describe("분석 화면의 항공편 대기·최종 응답", () => {
     render(<Probe />); await advance(30_000);
     expect(state().flightStatus.status).toBe("client_error");
     expect(state().flightStatus.error_message).toMatch(/시간.*초과/);
-    expect(vi.getTimerCount()).toBe(0); expect(flightRequest).toHaveBeenCalledTimes(1);
+    // 항공편 타이머는 정리되고 visible 분석의 60초 재조회 interval만 남는다.
+    expect(vi.getTimerCount()).toBe(1); expect(flightRequest).toHaveBeenCalledTimes(1);
   });
 
   test("서버 거절은 실제 오류로 표시하고 성공 0편과 구별한다", async () => {
@@ -132,7 +201,7 @@ describe("분석 화면의 항공편 대기·최종 응답", () => {
   test("유효한 0편 성공을 대기나 오류로 바꾸지 않는다", async () => {
     pending.resolve({ ...flights(), items: [] }); render(<Probe />); await settle();
     expect(state().flightStatus.status).toBe("success"); expect(state().flightStatus.items).toEqual([]);
-    expect(state().flightStatus.error_message).toBeNull(); expect(vi.getTimerCount()).toBe(0);
+    expect(state().flightStatus.error_message).toBeNull(); expect(vi.getTimerCount()).toBe(1);
   });
 
   test("제공기관 오류 응답은 정상 0편으로 바꾸지 않는다", async () => {

@@ -115,7 +115,9 @@ export function FuelViewportSummary({ items, pending, failed = false, pricesStal
 export function FuelPriceTrend({ rows }: { rows: History[] }) {
   if (!rows.length) return <p>추이 데이터가 없습니다.</p>;
   const products = [...new Set(rows.map(row => row.product_code ?? "B027"))].sort((a, b) => productOrder(a) - productOrder(b) || a.localeCompare(b));
-  return <><FuelPriceChart label="최근 30일 유종별 평균·최저·최고 유가" series={products.map(product => ({ product, points: rows.filter(row => (row.product_code ?? "B027") === product).map(row => ({ time: row.day, average: row.average_price, minimum: row.minimum_price, maximum: row.maximum_price, cheapest: row.cheapest_station, generated_at: row.generated_at })) }))} />
+  return <><p className="fuel-stat-chart-key">선: 평균 · 세로선 양 끝: 최저·최고 (원/L)</p>
+    {rows.some(row => row.minimum_price == null || row.maximum_price == null) ? <p className="quiet fuel-stat-extremes-note">일부 날짜의 최저·최고가는 미제공입니다. 평균가로 대신 채우지 않습니다.</p> : null}
+    <FuelPriceChart label="최근 30일 유종별 평균·최저·최고 유가" series={products.map(product => ({ product, points: rows.filter(row => (row.product_code ?? "B027") === product).map(row => ({ time: row.day, average: row.average_price, minimum: row.minimum_price, maximum: row.maximum_price, cheapest: row.cheapest_station, generated_at: row.generated_at })) }))} />
     <details className="fuel-stat-table"><summary>일별 가격 표</summary><VirtualTable ariaLabel="30일 유가 관측값" data={rows} getRowId={row => `${row.product_code ?? "B027"}:${row.day}`} virtualized={false} columns={[
       { id: "date", header: "날짜(KST)", cell: ({ row: { original: row } }) => row.day },
       { id: "product", header: "유종", cell: ({ row: { original: row } }) => fuelProductLabel(row.product_code ?? "B027") },
@@ -138,7 +140,7 @@ function FuelCheapestTables({ items, allProducts = false }: { items: Group[]; al
     const ranked = item?.cheapest_stations?.length ? item.cheapest_stations : item?.cheapest_station ? [{ ...item.cheapest_station, station_key: "legacy", price: item.minimum_price }] : [];
     return <section key={product} aria-label={`${fuelProductLabel(product)} 최저가 주유소`}><h3>{fuelProductLabel(product)} · 최저가 주유소</h3>
       {!item ? <p className="quiet">이 유종의 통계가 없습니다.</p> : <>
-        {!item.ranking_complete ? <p className="quiet">이전 집계에는 10곳 순위가 저장되지 않았습니다. 확인된 최저가만 표시하며 다음 정상 수집부터 순위가 반영됩니다.</p> : null}
+        {!item.ranking_complete ? <p className="quiet">이전 집계에는 10곳 순위가 저장되지 않았습니다. 해당 범주의 당시 전체 순위를 확인할 수 없어 알려진 최저가만 표시합니다.</p> : null}
         <VirtualTable ariaLabel={`${fuelProductLabel(product)} 가격순 주유소`} data={[...ranked].sort((a, b) => a.price - b.price || a.station_key.localeCompare(b.station_key)).slice(0, 10)} getRowId={row => row.station_key} virtualized={false} columns={[
           { id: "rank", header: "순위", cell: ({ row }) => row.index + 1 },
           { id: "price", header: "가격(원/L)", cell: ({ row: { original: row } }) => money(row.price) },
@@ -155,8 +157,8 @@ export function FuelStatisticsPage() {
     <div className="fuel-stat-filters">
       <label>범위<select aria-label="범위" value={scope} onChange={(event) => { setScope(event.target.value); setScopeKey(""); }} >{scopes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label>유종<select aria-label="유종" value={product} onChange={(event) => { setProduct(event.target.value); setScopeKey(""); }}>{["ALL", ...FUEL_CHART_ORDER].map((code) => <option key={code} value={code}>{code === "ALL" ? "전체" : fuelProductLabel(code)}</option>)}</select></label>
-      <button type="button" onClick={() => setReload((value) => value + 1)}>새로고침</button>
       {shownData?.items.length ? <label className="fuel-stat-category">추이 범주<select aria-label="추이 범주" value={categoryKey} onChange={event => setScopeKey(event.target.value)}>{[...new Map(shownData.items.map(row => [row.scope_key, row])).values()].map(row => <option key={row.scope_key} value={row.scope_key}>{row.label}</option>)}</select></label> : null}
+      <button className="fuel-stat-refresh" type="button" onClick={() => setReload((value) => value + 1)}>새로고침</button>
     </div>
     <FuelStatisticsResult pending={pending} error={error} shownData={shownData} selected={selected} product={product} comparisonRows={comparisonRows} />
     {shownData?.items.length ? <div className="fuel-stat-table"><FuelCategoryTable shownData={shownData} setScopeKey={setScopeKey} /></div> : null}
@@ -280,7 +282,7 @@ function FuelStatisticsResult({ pending, error, shownData, selected, product, co
         <FuelHistoryContext selected={selected} comparisonRows={comparisonRows} /><FuelPriceTrend rows={shownData.history} />
         <FuelCheapestTables allProducts={product === "ALL"} items={shownData.items.filter(row => row.scope_key === shownData.history_scope_key)} />
 
-      </> : <p>선택한 유종의 통계가 없습니다.</p>}
+      </> : <p>{product === "ALL" ? "선택한 범위의 전체 유종 통계가 없습니다." : "선택한 유종의 통계가 없습니다."}</p>}
 
   </>;
 }

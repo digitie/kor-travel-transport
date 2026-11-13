@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useDashboard } from "../lib/dashboard-context";
 import type {
@@ -37,6 +37,7 @@ const INITIAL_STATE: AnalyticsState = {
 };
 
 const FLIGHT_FINAL_TIMEOUT_MS = 30_000;
+const ANALYTICS_REFRESH_INTERVAL_MS = 60_000;
 
 function buildFlightStatusError(airportCode: string, caughtError: unknown): FlightStatusResponse {
   return {
@@ -83,6 +84,26 @@ export function useAnalyticsData(flightStatusTimeoutMs = 6_000, enabled = true):
   const { api, selectedAirportCode, selectedParkingLotId, dataVersion, loading: dashboardLoading } = useDashboard();
   const scopeKey = `${selectedAirportCode}/${selectedParkingLotId ?? "all"}`;
   const [state, setState] = useState<AnalyticsState>(INITIAL_STATE);
+  const [refreshRevision, setRefreshRevision] = useState(0);
+  const requestPendingRef = useRef(false);
+
+  useEffect(() => {
+    if (!enabled || dashboardLoading || !selectedAirportCode) return;
+    function refreshVisible() {
+      if (document.visibilityState === "hidden" || requestPendingRef.current) return;
+      requestPendingRef.current = true;
+      setRefreshRevision((revision) => revision + 1);
+    }
+    // collector marker가 같아도 TTL 만료·지연 발행·일시 오류 뒤 분석을 다시 읽는다.
+    const timer = window.setInterval(refreshVisible, ANALYTICS_REFRESH_INTERVAL_MS);
+    window.addEventListener("focus", refreshVisible);
+    document.addEventListener("visibilitychange", refreshVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshVisible);
+      document.removeEventListener("visibilitychange", refreshVisible);
+    };
+  }, [enabled, dashboardLoading, selectedAirportCode, scopeKey, dataVersion]);
 
   useEffect(() => {
     if (!enabled || dashboardLoading || !selectedAirportCode) {
@@ -96,6 +117,8 @@ export function useAnalyticsData(flightStatusTimeoutMs = 6_000, enabled = true):
     const analyticsController = new AbortController();
     let finalFlights: FlightStatusResponse | null = null;
     let analyticsReady = false;
+    let requestsStarted = false;
+    requestPendingRef.current = true;
     setState((current) => ({ ...(current.scopeKey === scopeKey ? current : INITIAL_STATE), scopeKey, loading: true, error: null }));
 
     async function load() {
@@ -129,6 +152,11 @@ export function useAnalyticsData(flightStatusTimeoutMs = 6_000, enabled = true):
           }
         );
         const analyticsRequest = api.getDashboardAnalytics(selectedAirportCode, selectedParkingLotId, analyticsController.signal);
+        requestsStarted = true;
+        // 6초 안내 뒤에도 살아 있는 항공편은 새 polling/focus가 중단하지 않는다.
+        void Promise.allSettled([analyticsRequest, finalFlightRequest]).then(() => {
+          if (active) requestPendingRef.current = false;
+        });
         const [analytics, flights] = await Promise.all([analyticsRequest, flightStatusRequest]);
 
         if (!active) {
@@ -151,6 +179,7 @@ export function useAnalyticsData(flightStatusTimeoutMs = 6_000, enabled = true):
         if (!active) {
           return;
         }
+        if (!requestsStarted) requestPendingRef.current = false;
         setState((current) => ({
           ...current,
           loading: false,
@@ -162,6 +191,7 @@ export function useAnalyticsData(flightStatusTimeoutMs = 6_000, enabled = true):
     void load();
     return () => {
       active = false;
+      requestPendingRef.current = false;
       flightController.abort();
       analyticsController.abort();
       if (flightStatusTimeoutId) {
@@ -172,7 +202,7 @@ export function useAnalyticsData(flightStatusTimeoutMs = 6_000, enabled = true):
       }
     };
     // 선택 bootstrap이 완료된 뒤에만 조회하고, 숨은 관리자 탭은 요청하지 않는다.
-  }, [api, dataVersion, flightStatusTimeoutMs, enabled, dashboardLoading, selectedAirportCode, selectedParkingLotId, scopeKey]);
+  }, [api, dataVersion, refreshRevision, flightStatusTimeoutMs, enabled, dashboardLoading, selectedAirportCode, selectedParkingLotId, scopeKey]);
 
   return !dashboardLoading && state.scopeKey === scopeKey ? state : INITIAL_STATE;
 }

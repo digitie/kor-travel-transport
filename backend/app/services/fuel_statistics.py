@@ -299,6 +299,51 @@ async def cleanup_fuel_statistics(session: AsyncSession, source: str) -> None:
         logger.warning("fuel statistics cleanup deferred source=%s error=%s", source, type(exc).__name__)
 
 
+async def _legacy_global_rankings(session: AsyncSession, source: str, scope: str,
+                                  selected_key: str | None, generated_at: datetime | None,
+                                  current: list[FuelStatisticsDaily]) -> dict[str, list[dict]]:
+    """현재 전체 모집단의 동결 point로만 구 순위를 보완한다. 통계/원본 쓰기는 없다.
+
+    지역·노선의 과거 membership은 point에 없으므로 현재 기준정보로 추정하지 않는다.
+    별도 SQL이 읽는 현재 state/daily/point는 한 snapshot이고, 그 사이 세대나 집계가
+    바뀌었거나 point가 일부 없으면 원래 알려진 최저가 한 곳을 그대로 유지한다.
+    """
+    needed = {row.product_code: row.metrics_json for row in current
+              if row.scope_key == selected_key and not row.metrics_json.get("ranking_complete")}
+    if scope not in {"nationwide", "highways"} or selected_key != "all" or not generated_at or not needed:
+        return {}
+    p, d, state = FuelStatisticsPoint, FuelStatisticsDaily, FuelStatisticsState
+    partition = [p.product_code]
+    ranked = select(
+        p.product_code, p.station_key, p.name, p.address, p.longitude, p.latitude, p.price,
+        d.metrics_json, func.row_number().over(partition_by=partition,
+            order_by=[p.price, p.station_key]).label("rank"),
+        func.count().over(partition_by=partition).label("count"),
+        func.avg(p.price).over(partition_by=partition).label("average"),
+        func.min(p.price).over(partition_by=partition).label("minimum"),
+        func.max(p.price).over(partition_by=partition).label("maximum"),
+    ).select_from(p).join(state, and_(p.source == state.source, p.generated_at == state.generated_at)).join(d, and_(
+        d.source == state.source, d.day == state.day, d.generated_at == state.generated_at,
+        d.scope == scope, d.scope_key == selected_key, d.product_code == p.product_code,
+    )).where(state.source == source, state.generated_at == generated_at,
+             p.product_code.in_(needed), p.price > 0).subquery()
+    rows = (await session.execute(select(ranked).where(ranked.c.rank <= 10)
+                                  .order_by(ranked.c.product_code, ranked.c.rank))).mappings()
+    result: dict[str, list[dict]] = {}
+    for row in rows:
+        metrics = needed[row["product_code"]]
+        if (row["metrics_json"] != metrics or row["count"] != metrics["station_count"]
+                or any(not math.isclose(float(row[name]), float(metrics[name + "_price"]), abs_tol=.011, rel_tol=0)
+                       for name in ("average", "minimum", "maximum"))):
+            continue
+        result.setdefault(row["product_code"], []).append({
+            **{key: row[key] for key in ("station_key", "name", "address", "longitude", "latitude")},
+            "price": float(row["price"]),
+        })
+    return {product: values for product, values in result.items()
+            if len(values) == min(10, needed[product]["station_count"])}
+
+
 async def fuel_statistics_page(session: AsyncSession, scope: str, product_code: str,
                                scope_key: str | None = None) -> dict:
     source = OPINET if scope in {"nationwide", "sido", "sigungu"} else HIGHWAY
@@ -323,6 +368,7 @@ async def fuel_statistics_page(session: AsyncSession, scope: str, product_code: 
     selected_key = rows[0][3] if rows else None
     current = [row[0] for row in rows if row[0] is not None and row[0].day == row[2]
                and serialize_utc(row[0].generated_at) == serialize_utc(row[1])]
+    legacy_rankings = await _legacy_global_rankings(session, source, scope, selected_key, generated_at, current)
     history = [{"day": row[0].day, "generated_at": row[0].generated_at,
                 "product_code": row[0].product_code,
                 "average_price": row[0].metrics_json["average_price"],
@@ -338,8 +384,10 @@ async def fuel_statistics_page(session: AsyncSession, scope: str, product_code: 
             "generated_at": generated_at, "update_pending": pending,
             "items": [{**row.metrics_json, "scope_key": row.scope_key, "label": row.label,
                        "generated_at": row.generated_at, "product_code": row.product_code,
-                       "cheapest_stations": row.metrics_json.get("cheapest_stations", []) if row.scope_key == selected_key else [],
-                       "ranking_complete": bool(row.scope_key == selected_key and row.metrics_json.get("ranking_complete"))}
+                       "cheapest_stations": (legacy_rankings.get(row.product_code)
+                           or row.metrics_json.get("cheapest_stations", [])) if row.scope_key == selected_key else [],
+                       "ranking_complete": bool(row.scope_key == selected_key and (
+                           row.metrics_json.get("ranking_complete") or row.product_code in legacy_rankings))}
                       for row in current], "history": history}
 
 

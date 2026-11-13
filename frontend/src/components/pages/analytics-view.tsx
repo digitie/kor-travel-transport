@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { ParkingPatternCellDetails, ParkingPatternHeatmap } from "../parking-pattern-heatmap";
 import { DailyFlightOverlayChart } from "../daily-flight-overlay-chart";
 import { Alert } from "../ui/alert";
@@ -24,10 +25,21 @@ import {
 } from "../../lib/dashboard-view-helpers";
 
 export function AnalyticsView({ active = true }: { active?: boolean }) {
-  const { selectedAirport, selectedParkingLotName, holidaySummary } = useDashboard();
+  const { selectedAirport, selectedAirportCode, selectedParkingLotId, selectedParkingLotName, holidaySummary } = useDashboard();
   const data = useAnalyticsData(6_000, active);
   const { loading, error, flightStatus, timeSeries } = data;
   const scopeLabel = historyLabel(selectedParkingLotName, selectedAirport?.name_ko);
+  const [selectedTab, setSelectedTab] = useState("weekday");
+  const [dailyVisitedScope, setDailyVisitedScope] = useState<string | null>(null);
+  const dailyScope = `${selectedAirportCode}/${selectedParkingLotId ?? "all"}`;
+  const dailyReady = Boolean(timeSeries || (!loading && !error));
+
+  function selectTab(value: string) {
+    // 자료를 기다리다 떠난 탭은 숨은 상태에서 처음 초기화하지 않는다.
+    // 이미 표시한 일별 차트는 떠날 때 보존해 날짜·방향 선택을 유지한다.
+    if (selectedTab === "daily" && timeSeries?.items.some((item) => item.lot_observations > 0)) setDailyVisitedScope(dailyScope);
+    setSelectedTab(value);
+  }
 
   return (
     <div className="page-shell">
@@ -42,7 +54,7 @@ export function AnalyticsView({ active = true }: { active?: boolean }) {
       ) : null}
       {loading ? <p className="notice" role="status">분석 자료를 불러오는 중입니다.</p> : null}
 
-      <Tabs defaultValue="weekday" className="analytics-tabs" aria-busy={loading}>
+      <Tabs value={selectedTab} onValueChange={selectTab} className="analytics-tabs" aria-busy={loading}>
         <TabsList variant="line">
           <TabsTrigger value="weekday">요일별 패턴</TabsTrigger>
           <TabsTrigger value="holiday">공휴일 패턴</TabsTrigger>
@@ -50,28 +62,28 @@ export function AnalyticsView({ active = true }: { active?: boolean }) {
           <TabsTrigger value="daily">일별 흐름</TabsTrigger>
         </TabsList>
 
-        <WeekdayPanel data={data} scopeLabel={scopeLabel} />
+        <WeekdayPanel data={data} scopeLabel={scopeLabel} active={selectedTab === "weekday"} />
 
-        <HolidayPanel data={data} scopeLabel={scopeLabel} />
+        <HolidayPanel data={data} scopeLabel={scopeLabel} active={selectedTab === "holiday"} />
 
-        <ThresholdPanel data={data} scopeLabel={scopeLabel} />
+        <ThresholdPanel data={data} scopeLabel={scopeLabel} active={selectedTab === "threshold"} />
 
-        <TabsContent forceMount value="daily" className="data-[state=inactive]:hidden">
-          {timeSeries || (!loading && !error) ? <DailyFlightOverlayChart flightStatus={flightStatus} holidays={holidaySummary?.items ?? []} series={timeSeries} scopeLabel={scopeLabel} /> : null}
+        <TabsContent forceMount value="daily" hidden={selectedTab !== "daily"} className="data-[state=inactive]:hidden">
+          {(selectedTab === "daily" || dailyVisitedScope === dailyScope) && dailyReady ? <DailyFlightOverlayChart flightStatus={flightStatus} holidays={holidaySummary?.items ?? []} series={timeSeries} scopeLabel={scopeLabel} /> : null}
         </TabsContent>
       </Tabs>
     </div>
   );
 }
 
-type AnalyticsPanelProps = { data: ReturnType<typeof useAnalyticsData>; scopeLabel: string };
+type AnalyticsPanelProps = { data: ReturnType<typeof useAnalyticsData>; scopeLabel: string; active: boolean };
 
-function WeekdayPanel({ data }: AnalyticsPanelProps) {
+function WeekdayPanel({ data, active }: AnalyticsPanelProps) {
   const { loading, error, weekdayHourlyPatterns } = data;
   const averageAvailabilitySummary = summarizeAverageAvailability(weekdayHourlyPatterns);
   const maxHeatValue = Math.max(...weekdayHourlyPatterns.flatMap((pattern) => pattern.hourly_buckets.map((bucket) => bucket.average_available_spaces ?? 0)), 1);
   return (
-        <TabsContent forceMount value="weekday" className="data-[state=inactive]:hidden">
+        <TabsContent forceMount value="weekday" hidden={!active} className="data-[state=inactive]:hidden">
           <article className="panel-surface panel-full-span">
             <div className="panel-head">
               <h3>요일별 시간대 평균 잔여 주차면</h3>
@@ -118,12 +130,12 @@ function WeekdayPanel({ data }: AnalyticsPanelProps) {
   );
 }
 
-function HolidayPanel({ data }: AnalyticsPanelProps) {
+function HolidayPanel({ data, active }: AnalyticsPanelProps) {
   const { loading, error, holidayPatterns } = data;
   const holidayPatternItems = holidayPatterns?.items ?? [];
   const maxHolidayHeatValue = Math.max(...holidayPatternItems.flatMap((pattern) => pattern.hourly_buckets.map((bucket) => bucket.average_available_spaces ?? 0)), 1);
   return (
-        <TabsContent forceMount value="holiday" className="data-[state=inactive]:hidden">
+        <TabsContent forceMount value="holiday" hidden={!active} className="data-[state=inactive]:hidden">
           <article className="panel-surface panel-full-span">
             <div className="panel-head">
               <div>
@@ -159,13 +171,13 @@ function HolidayPanel({ data }: AnalyticsPanelProps) {
   );
 }
 
-function ThresholdPanel({ data }: AnalyticsPanelProps) {
+function ThresholdPanel({ data, active }: AnalyticsPanelProps) {
   const { loading, error, thresholdEvents, thresholdInsights } = data;
   const thresholdWeekdayItems = thresholdInsights?.weekday_items ?? [];
   const thresholdHistoryItems = thresholdInsights?.history_items ?? [];
   const showThresholdInsights = hasThresholdSamples(thresholdWeekdayItems);
   return (
-        <TabsContent forceMount value="threshold" className="data-[state=inactive]:hidden analytics-threshold-panels">
+        <TabsContent forceMount value="threshold" hidden={!active} className="data-[state=inactive]:hidden analytics-threshold-panels">
           <article className="panel-surface">
             <div className="panel-head">
               <h3>요일별 임계 달성 시간</h3>

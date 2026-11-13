@@ -288,6 +288,7 @@ test("전체 유종은 단일 요청·가격순 10곳·주소 링크·동일 필
     await act(async () => root.render(<FuelStatisticsPage />));
     expect(get).toHaveBeenCalledTimes(1); expect(get.mock.calls[0][0]).toContain("product_code=ALL");
     expect(container.querySelectorAll(".fuel-stat-filters label")).toHaveLength(3);
+    expect(container.querySelector(".fuel-stat-filters")?.lastElementChild?.textContent).toBe("새로고침");
     expect(container.querySelectorAll(".fuel-stat-category option")).toHaveLength(1);
     expect(container.querySelectorAll(".fuel-stat-card")).toHaveLength(0);
     const sections = container.querySelectorAll(".fuel-cheapest-tables > section");
@@ -298,6 +299,28 @@ test("전체 유종은 단일 요청·가격순 10곳·주소 링크·동일 필
     expect(first.querySelector("a")?.href).toContain("longitude=127.11");
     expect(container.innerHTML.indexOf("fuel-echarts")).toBeLessThan(container.innerHTML.indexOf("fuel-cheapest-tables"));
   } finally { await act(async () => root.unmount()); get.mockRestore(); }
+});
+
+test("전체의 빈 응답은 지원 버전 오류로 단정하거나 다섯 요청으로 숨기지 않는다", async () => {
+  const get = vi.spyOn(journey, "transportGet").mockResolvedValue({ generated_at: metrics.generated_at,
+    update_pending: false, history_scope_key: null, items: [], history: [] });
+  const container = document.createElement("div"), root = createRoot(container);
+  try {
+    await act(async () => root.render(<FuelStatisticsPage />));
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(container.querySelector<HTMLSelectElement>('select[aria-label="유종"]')?.value).toBe("ALL");
+    expect(container.textContent).toContain("선택한 범위의 전체 유종 통계가 없습니다");
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(container.textContent).not.toContain("버전");
+  } finally { await act(async () => root.unmount()); get.mockRestore(); }
+});
+
+test("평균선과 최저최고 세로선의 뜻 및 과거 극값 미제공을 분리해 표시한다", () => {
+  const missing = renderToStaticMarkup(<FuelPriceTrend rows={[historyRow("2026-11-01", 1700)]} />);
+  expect(missing).toContain("선: 평균 · 세로선 양 끝: 최저·최고");
+  expect(missing).toContain("일부 날짜의 최저·최고가는 미제공");
+  const complete = renderToStaticMarkup(<FuelPriceTrend rows={[{ ...historyRow("2026-11-01", 1700), minimum_price: 1600, maximum_price: 1800 }]} />);
+  expect(complete).not.toContain("일부 날짜의 최저·최고가는 미제공");
 });
 
 
