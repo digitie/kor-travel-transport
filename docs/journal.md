@@ -1,3 +1,10 @@
+## 2026-11-13 — Motion14.13.0 exact 후속 후보
+
+- 공식 registry에서 확인한 새 목표 Motion14.13.0을 공개/관리자 frontend와 공유 parking-ui package에 적용했다. Node22.23.1/npm12.0.1, engine-strict의 정상 package-lock-only/ignore-scripts 명령으로 두 lock을 갱신했고 force/legacy-peer-deps·실제 node_modules 설치는 사용하지 않았다.
+- 각 lock 변화는 root 선언과 motion/framer-motion/motion-dom 3개 항목뿐이다. 모두14.13.0이고 다른 graph·SRI/C11 원본은 그대로다. vendor 소비 의존성 원장도14.13.0으로 맞추고 원본 registry/source SHA와 파일 provenance는 그대로 보존했다.
+- 이는 설치/런타임 검증 완료가 아니다. 새 Motion을 실제 설치한 정확 source의 CI·타입/단위/Doctor/빌드·원2 독립 재검토가 필요하며 기존89c06a0 CI를 이 후보의 성공으로 소급하지 않는다. Common의 optional chart/Motion 정책 실제 후속 merge ref도 최종 연결 전이다.
+- SQL/guard·제품 API/컴포넌트·Docker/producer·키/환경은 수정하지 않았다. source1/source2 원문·P2 OPEN을 보존하고 최종 reviewed merged SHA/tree 전 Transport 제품3종 HOLD·Map0·CI 순서 감사 NOT_STARTED다.
+
 ## 2026-11-13 — Ruff3 source2 최신 main 정상 통합
 
 source1 121e001에 actual main3ed6335(PR192)를 정상 merge했다. 충돌 문서2곳은 양쪽 앞삽입 기록과 공통 이력을 모두 보존했다. 외부 상세32px CSS·E2E·보고서/PNG·task는 최신 main blob 그대로이며 PR191은 이 시점 미병합이다.

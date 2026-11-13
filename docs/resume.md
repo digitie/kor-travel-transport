@@ -1,3 +1,8 @@
+## 현재 라이브러리 후속 — 2026-11-13 Motion14.13.0
+
+SOURCE2 89c06a0은 PR193에 push·CI 진행 중인 불변 이력으로 보존한다. 별도 후속에서 공개/관리자/공유 UI의 Motion을14.13.0 exact로 맞췄고 canonical Node22.23.1/npm12.0.1 lock-only 명령으로 관련3패키지만 갱신했다. app 설치/빌드·런타임은 아직 미실행이다.
+다음은 실제 Common optional 정책 merged ref 연결·정확한 최종 source의 원2 리뷰/CI·머지다. 이 로컬 후속을 먼저 push해 장시간 CI를 중복 실행하지 않는다. 기존 새 main의 CSS/E2E/모든 기능과 Ruff3 수정·downgrade P2 OPEN·Transport 제품 HOLD는 유지한다.
+
 ## 2026-11-13 — Ruff3 source2 최신 main 정상 통합
 
 source1 121e001에 actual main3ed6335(PR192)를 정상 merge했다. 충돌 문서2곳은 양쪽 앞삽입 기록과 공통 이력을 모두 보존했다. 외부 상세32px CSS·E2E·보고서/PNG·task는 최신 main blob 그대로이며 PR191은 이 시점 미병합이다.
