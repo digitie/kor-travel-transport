@@ -68,6 +68,26 @@ for (const width of [375, 1440]) test(`공통 지도 필터·좌표·상세 오�
   expect(readable.label.right).toBeLessThanOrEqual(readable.panel.right + 1);
   expect(readable.label.top).toBeGreaterThanOrEqual(readable.panel.top);
   expect(readable.label.bottom).toBeLessThanOrEqual(readable.panel.bottom + 1);
+  for (const button of await detail.locator(".kt-map-detail-header > button, .info-button").all()) {
+    await expect(button).toHaveCSS("width", "32px");
+    await expect(button).toHaveCSS("height", "32px");
+    await expect(button.locator("svg")).toHaveCSS("width", "16px");
+    await expect(button.locator("svg")).toHaveCSS("height", "16px");
+  }
+  const collapse = detail.getByRole("button", { name: "상세 접기", exact: true });
+  await collapse.focus();
+  await page.keyboard.press("Enter");
+  await expect(detail.locator(".kt-map-detail-body")).toBeHidden();
+  await page.keyboard.press("Space");
+  await expect(detail.locator(".kt-map-detail-body")).toBeVisible();
+  const info = detail.locator(".info-button").first();
+  await info.click();
+  const infoClose = page.getByRole("button", { name: "안내 닫기", exact: true });
+  await expect(infoClose).toHaveCSS("width", "32px");
+  await expect(infoClose).toHaveCSS("height", "32px");
+  await expect(infoClose.locator("svg")).toHaveCSS("width", "16px");
+  await expect(infoClose.locator("svg")).toHaveCSS("height", "16px");
+  await infoClose.click();
   await page.screenshot({ path: `test-results/transport-shared-overlay-${width}.png`, fullPage: true });
   await detail.focus();
   await page.keyboard.press("Escape");

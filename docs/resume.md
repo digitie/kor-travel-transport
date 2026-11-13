@@ -1,3 +1,8 @@
+## 현재 우선 작업 — 2026-11-13 상세 버튼 크기
+
+- Transport 상세 아이콘32×32/SVG16px 통일을 별도 codex/transport-detail-buttons-20261113에서 완료했다. PC/모바일/320font200·철도/유가/공공주차9조건 실브라우저와 타입/lint/의존성 guard0이다. 공용 설치본/데이터/차트·운영 변경0이다.
+- 다음 한 작업: 이 작은 CSS·E2E·문서 후보를 Root에 인계해 Weather의 같은32px와 함께 exact CI/리뷰·머지를 정산한다. [원장](reports/2026-11-13-detail-buttons.md). 기존47c70 통합 CI는 별개로 보존한다.
+
 ## 현재 상태 — 2026-11-13 유가·main 빌드 계약 통합
 
 - 유가 후보2da65ed와 main PR187 merge4b24e0d를 정상 merge해 문서3개 충돌에서 양쪽 기록을 보존했다. 유가 제품f4cc5aa와67경로 API는 그대로다. Node22.23.1/npm12.0.1·strict 설치·non-root 계약과 ECharts6.1.0/Motion14.12.0을 함께 유지한다.

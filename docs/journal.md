@@ -1,3 +1,8 @@
+## 2026-11-13 — 상세 버튼32px 우선 반영
+
+- 상세 닫기·접기·정보/주소와 포털 닫기를 PC/모바일32×32px, SVG16px로 통일했다. 앱 상세 범위 CSS만 바꾸고 공용 라이브러리/지도 컨트롤/데이터 로직은 유지한다.
+- 실제 Chromium1440/375/320font200·3종9조건의 측정/포인터/키보드/overflow0과 타입·lint·Common guard0을 확인했다. 기존 E2E 크기/키보드 회귀를 보강했으며 전체 로그인E2E/빌드/운영은 미실행이다. [근거와 캡처](reports/2026-11-13-detail-buttons.md).
+
 ## 2026-11-13 — 유가 후보와 main 빌드 계약 통합
 
 - 유가 후보2da65ed와 main의 PR187 merge4b24e0d를 정상 merge했다. 충돌 문서3개에서 양쪽 이력과 미완 gate를 보존했다. 제품 API/차트 로직은 유지하고 Node/npm·strict 설치·non-root 빌드 계약을 함께 소비한다. OpenAPI --check·타입·공통 의존성 guard0, 좁은 빌드 계약4개·Node runtime fixture19개를 통과했다. Fuel/사양 런타임 diff0·lock 비root 그래프 동일이며 root에는 main engines만 추가됐다. 원 DrvFS 모드 실패와 환경 보정은 [유가 원장](reports/2026-11-13-fuel30-evilcharts.md)에 정산했다. 빌드·운영·수집 실행0이다.
