@@ -1,31 +1,38 @@
 "use client";
 
-import { useRef } from "react";
-import { Combobox, ComboboxChip, ComboboxChips, ComboboxChipsInput, ComboboxContent, ComboboxEmpty, ComboboxItem, ComboboxList, ComboboxValue } from "@/components/ui/combobox";
+import { MultiFilterCombobox } from "@/components/multi-filter-combobox";
 
-export function FilterCombobox({ id, options, value, onChange, placeholder, compact = false }: {
-  id: string;
+/**
+ * 값·라벨 쌍 옵션을 Map의 다중 선택 콤보박스에 맞춘다. 콤보박스는 문자열 옵션만 받으므로
+ * 라벨로 보여 주고 선택 값으로 되돌린다. 라벨은 옵션 안에서 유일해야 한다.
+ * 입력 요소의 접근성 이름은 `ariaLabel`(없으면 placeholder)로 준다.
+ */
+export function FilterCombobox({
+  options,
+  value,
+  onChange,
+  placeholder,
+  ariaLabel,
+}: {
+  /** 기존 호출부의 `id`는 입력 요소에 붙일 수 없어 받지 않는다(label 연결은 ariaLabel이 맡는다). */
+  id?: string;
   options: { value: string; label: string }[];
   value: string[];
   onChange: (value: string[]) => void;
   placeholder: string;
+  ariaLabel?: string;
+  /** 예전 밀도 옵션. Map의 다중 선택 콤보박스는 한 가지 밀도만 쓰므로 무시한다. */
   compact?: boolean;
 }) {
-  const anchor = useRef<HTMLDivElement | null>(null);
-  const label = (value: string) => options.find((option) => option.value === value)?.label ?? value;
-  return <Combobox multiple items={options.map((option) => option.value)} value={value} onValueChange={(next, details) => {
-    // 검색창의 Escape는 목록/검색어만 닫는다. 필터 해제는 칩 삭제로 명시한다.
-    if (details.reason === "escape-key") details.cancel();
-    else onChange(next);
-  }} itemToStringLabel={label}>
-    <ComboboxChips ref={anchor} className={compact ? "kt-map-combobox" : undefined}>
-      <ComboboxValue>{compact ? <div className="kt-map-selected-chips">{value.map((item) => <ComboboxChip key={item} label={label(item)}>{label(item)}</ComboboxChip>)}</div>
-        : value.map((item) => <ComboboxChip key={item} label={label(item)}>{label(item)}</ComboboxChip>)}</ComboboxValue>
-      <ComboboxChipsInput id={id} placeholder={value.length ? "추가 선택" : placeholder} />
-    </ComboboxChips>
-    <ComboboxContent anchor={anchor}>
-      <ComboboxEmpty>검색 결과가 없습니다.</ComboboxEmpty>
-      <ComboboxList>{(item: string) => <ComboboxItem key={item} value={item} disabled={value.length >= 10 && !value.includes(item)}>{label(item)}</ComboboxItem>}</ComboboxList>
-    </ComboboxContent>
-  </Combobox>;
+  const labelOf = (item: string) => options.find((option) => option.value === item)?.label ?? item;
+  const valueOf = (label: string) => options.find((option) => option.label === label)?.value ?? label;
+  return (
+    <MultiFilterCombobox
+      ariaLabel={ariaLabel ?? placeholder}
+      placeholder={placeholder}
+      options={options.map((option) => option.label)}
+      values={value.map(labelOf)}
+      onChange={(labels) => onChange(labels.map(valueOf))}
+    />
+  );
 }

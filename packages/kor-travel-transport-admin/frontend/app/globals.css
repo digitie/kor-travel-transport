@@ -1,584 +1,531 @@
 @layer theme, base, legacy, components, utilities;
-@import "tailwindcss/theme.css" layer(theme);
-@import "tailwindcss/preflight.css" layer(base);
-@import "tailwindcss/utilities.css" layer(utilities);
+/*
+ * Transport admin 전역 스타일. kor-travel-map admin app/globals.css를 기준으로 한다.
+ * - 색 값은 app/transport-palette.css만 가진다(이 파일의 :root에는 색 값이 없다).
+ * - 아래 "transport 도메인 잔여" 블록은 아직 TSX가 쓰는 기존 클래스만 남긴 것이며 2단계에서 없앤다.
+ * - 토큰 정본: @kor-travel/tokens (theme.css, radix.css). 간격·형태·모션 값은 이 파일 :root가 정본이다.
+ */
+@import "tailwindcss";
 @import "tw-animate-css";
 @import "@kor-travel/tokens/theme.css";
+@import "@kor-travel/tokens/radix.css";
+@import "./transport-palette.css";
 @import "@kor-travel/ui/dagster.css";
 @import "@kor-travel/ui/map-controls.css";
 @source "../node_modules/@kor-travel/ui/dist";
 
-.transport-map-workspace { min-width: 0; }
-.transport-map-workspace .map-primary, .transport-map-workspace .transport-map-canvas { height: 70dvh; min-height: 28rem; }
-.transport-map-workspace .map-place-list { max-height: 70dvh; min-height: 28rem; overflow-y: auto; }
-.transport-map-workspace .kt-map-detail { display: block; padding: 0; border: 1px solid var(--kt-border); }
+@custom-variant data-checked {
+  &:where([data-state="checked"]),
+  &:where([data-checked]:not([data-checked="false"])) {
+    @slot;
+  }
+}
 
-/* 기존 색상 변수 이름과 shadcn의 muted/accent 의미 충돌을 피한다. */
+@custom-variant data-active {
+  &:where([data-state="active"]),
+  &:where([data-active]:not([data-active="false"])) {
+    @slot;
+  }
+}
+
+/* Card의 `data-interactive` opt-in(실제로 클릭되는 카드만) — 이름 있는 data variant는
+   shadcn 스타일시트를 import하지 않으므로 이 파일이 직접 소유한다
+   (`tests/unit/test_frontend_dependency_security.py::test_frontend_owns_every_named_shadcn_css_token_it_uses`).
+   `data-interactive="false"`는 opt-out으로 취급한다 — data-checked/data-active와 같은 규약. */
+@custom-variant data-interactive {
+  &:where([data-interactive]:not([data-interactive="false"])) {
+    @slot;
+  }
+}
+
+@custom-variant data-horizontal {
+  &:where([data-orientation="horizontal"]) {
+    @slot;
+  }
+}
+
+@custom-variant data-vertical {
+  &:where([data-orientation="vertical"]) {
+    @slot;
+  }
+}
+
+@custom-variant dark (&:is(.dark *));
+
 @theme inline {
-  --color-background: var(--paper);
-  --color-foreground: var(--ink);
-  --color-card: var(--panel);
-  --color-card-foreground: var(--ink);
-  --color-popover: var(--panel);
-  --color-popover-foreground: var(--ink);
-  --color-primary: var(--accent);
-  --color-primary-foreground: var(--color-accent-ink);
-  --color-secondary: var(--surface-subtle);
-  --color-secondary-foreground: var(--ink);
-  --color-muted: var(--surface-subtle);
-  --color-muted-foreground: var(--muted);
-  --color-accent: var(--color-selected);
-  --color-accent-foreground: var(--brand);
-  --color-destructive: var(--danger);
+  /* ── shadcn alias (kept; component code speaks the project vocabulary below) ── */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  /* `border-input` = 컨트롤 경계(--control-line). shadcn 이름을 유지하되 값은 장식용
+     `--border`와 분리된 고대비 hairline이다. */
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* ── project vocabulary: surfaces · ink ── */
+  --color-surface-page: var(--surface-page);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-surface-muted: var(--surface-muted);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-text-disabled: var(--text-disabled);
+  --color-icon-default: var(--icon-default);
+
+  /* ── hairlines: 장식(`--border`)과 컨트롤 경계(`--control-line`)를 분리한다 ── */
+  --color-control-line: var(--control-line);
+
+  /* ── brand ── */
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-tint: var(--brand-tint);
+  --color-brand-foreground: var(--brand-foreground);
+
+  /* ── status (single tone table: src/lib/status-label.ts) ── */
   --color-success: var(--success);
   --color-success-tint: var(--success-tint);
   --color-warning: var(--warning);
   --color-warning-tint: var(--warning-tint);
-  --color-border: var(--line);
-  --color-input: var(--control-line);
-  --color-ring: var(--color-focus);
-  --font-sans: var(--font-body);
+  --color-info: var(--info);
+  --color-info-tint: var(--info-tint);
+  --color-destructive: var(--destructive);
+  --color-destructive-tint: var(--destructive-tint);
+
+  /* ── focus · overlay · compare pair ── */
+  --color-focus: var(--focus);
+  --color-overlay: var(--overlay);
+  --color-compare-a: var(--compare-a);
+  --color-compare-b: var(--compare-b);
+
+  /* ── sidebar / chart aliases (kept) ── */
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+
+  /* ── radii: exactly two. legacy names collapse onto them (design.md §Spacing) ── */
+  --radius-control: var(--radius-control);
+  --radius-panel: var(--radius-panel);
+  --radius-xs: var(--radius-control);
   --radius-sm: var(--radius-control);
   --radius-md: var(--radius-control);
   --radius-lg: var(--radius-panel);
   --radius-xl: var(--radius-panel);
+  --radius-2xl: var(--radius-panel);
+  --radius-3xl: var(--radius-panel);
+  --radius-4xl: var(--radius-panel);
+
+  /* ── type scale (7 steps; no text-[Npx]) — 12 / 13.5 / 15 / 17 / 20 / 24 / 30 px ── */
+  --text-2xs: 0.75rem;
+  --text-2xs--line-height: 1.5;
+  --text-xs: 0.84375rem;
+  --text-xs--line-height: 1.5;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.5;
+  --text-base: 0.9375rem; /* legacy alias → body size (kept on-scale) */
+  --text-base--line-height: 1.5;
+  --text-md: 1.0625rem;
+  --text-md--line-height: 1.4;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.3;
+  --text-xl: 1.5rem;
+  --text-xl--line-height: 1.25;
+  --text-2xl: 1.875rem;
+  --text-2xl--line-height: 1.2;
+
+  /* ── sizes: h-control · h-control-sm · w-rail (spacing namespace) ── */
+  --spacing-control: var(--control-h);
+  --spacing-control-sm: var(--control-h-sm);
+  --spacing-rail: var(--rail);
+  --container-rail: var(--rail); /* max-w-rail / min-w-rail resolve via container ns too */
+
+  /* ── fonts ── */
+  --font-sans:
+    var(--font-pretendard, "Pretendard Variable"), Pretendard, "Noto Sans KR",
+    "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono:
+    var(--font-geist-mono, "Geist Mono"), ui-monospace, SFMono-Regular, Menlo,
+    Consolas, "Liberation Mono", monospace;
+  --font-heading: var(--font-sans);
+
+  /* ── shadows: overlays only (rest = hairline) ── */
+  --shadow-elevated: var(--shadow-elevated);
+  --shadow-modal: var(--shadow-modal);
+
+  /* ── motion ── */
+  --ease-out: var(--ease-out);
+  --ease-in: var(--ease-in);
+  --default-transition-duration: var(--duration-fast);
+  --default-transition-timing-function: var(--ease-out);
 }
 
-@layer legacy {
-* { box-sizing: border-box; }
-html { background: var(--paper); color: var(--ink); overflow-x: clip; }
-body { margin: 0; font-family: Arial, "Noto Sans KR", sans-serif; overflow-x: clip; }
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-a { color: inherit; text-decoration: none; }
-button, input { font: inherit; }
-.admin-layout { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100vh; }
-.rail { background: #12302d; color: #e7f2ed; padding: 28px 18px; }
-.brand { display: grid; gap: 5px; margin: 0 8px 32px; }
-.brand strong { font-size: 17px; letter-spacing: -.02em; }
-.brand span { color: #a6c4bd; font-size: 12px; }
-.nav { display: grid; gap: 5px; }
-.nav a { border-radius: 8px; color: #c9ddd6; padding: 10px 12px; font-size: 14px; }
-.nav a:hover, .nav a.active { background: #1d4a45; color: white; }
-.nav-label { color: #93b4ac; font-size: 11px; letter-spacing: .1em; margin: 18px 12px 5px; text-transform: uppercase; }
-.sign-out { background: transparent; border: 0; color: #c9ddd6; cursor: pointer; margin: 28px 12px 0; padding: 0; }
-.main { min-width: 0; padding: 42px clamp(20px, 5vw, 72px); }
-.page-header { border-bottom: 1px solid var(--line); margin-bottom: 27px; padding-bottom: 22px; }
-.page-header h1 { font-size: clamp(26px, 3vw, 38px); letter-spacing: -.045em; margin: 4px 0 8px; }
-.page-header p, .eyebrow { color: var(--muted); margin: 0; }
-.eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
-.grid:not([data-slot]) { display: grid; gap: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 11px; min-width: 0; padding: 20px; }
-.metric { color: var(--muted); display: block; font-size: 13px; margin-bottom: 8px; }
-.value { font-size: 28px; font-weight: 700; letter-spacing: -.04em; }
-.wide { grid-column: span 2; }
-.panel h2 { font-size: 16px; margin: 0 0 14px; }
-.status-list, .row-list { display: grid; gap: 9px; list-style: none; margin: 0; padding: 0; }
-.status-list li, .row-list li { align-items: baseline; border-top: 1px solid #edf0eb; display: flex; gap: 12px; justify-content: space-between; padding-top: 9px; }
-.status-list li:first-child, .row-list li:first-child { border-top: 0; padding-top: 0; }
-.quiet { color: var(--muted); font-size: 13px; }
-.error { color: var(--danger); white-space: pre-wrap; }
-.loading { color: var(--muted); padding: 44px 0; }
-.transport-tabs { border-bottom: 1px solid var(--line); display: flex; gap: 4px; margin: 0 0 20px; overflow-x: auto; padding-bottom: 8px; }
-.transport-tabs button { background: transparent; border: 1px solid transparent; border-radius: 7px; color: var(--muted); cursor: pointer; flex: 0 0 auto; padding: 8px 12px; }
-.transport-tabs button:hover, .transport-tabs button.active { background: var(--panel); border-color: var(--line); color: var(--ink); }
-.transport-tabs button:focus-visible, .button:focus-visible, .reference-toolbar input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-.transport-chart { height: 260px; min-width: 0; width: 100%; }
-.reference-section { display: grid; gap: 18px; }
-.reference-toolbar { align-items: end; display: flex; gap: 18px; justify-content: space-between; }
-.reference-toolbar label { display: grid; font-size: 13px; font-weight: 700; gap: 7px; max-width: 440px; width: 100%; }
-.reference-toolbar input { background: var(--panel); border: 1px solid #b9c4bd; border-radius: 7px; min-height: 40px; padding: 8px 10px; }
-.reference-list { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.reference-card { background: var(--panel); border: 1px solid var(--line); border-radius: 11px; display: grid; gap: 8px; padding: 18px; }
-.reference-card h2 { font-size: 18px; margin: 0; }
-.reference-card p { margin: 0; }
-.reference-lines { color: var(--accent); font-size: 14px; }
-.ferry-operations { margin: 0; }
-.reference-more { justify-self: center; }
-.login-shell { align-items: center; display: flex; justify-content: center; min-height: 100vh; padding: 20px; }
-.login-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; max-width: 410px; padding: 32px; width: 100%; }
-.login-panel h1 { margin: 4px 0 26px; }
-.field { display: grid; gap: 7px; margin-bottom: 16px; }
-.field input { border: 1px solid #b9c4bd; border-radius: 7px; padding: 10px; }
-.button { background: var(--accent); border: 0; border-radius: 7px; color: white; cursor: pointer; padding: 11px 15px; }
-.login-error { color: var(--danger); min-height: 20px; }
-.api-result { background: #10201e; border-radius: 8px; color: #def0e9; max-height: 460px; overflow: auto; padding: 15px; white-space: pre-wrap; }
-.transport-map-layout { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; display: grid; grid-template-columns: minmax(0, 1fr) 310px; min-height: 620px; overflow: hidden; }
-.transport-map-canvas { min-height: 620px; }
-.map-place-marker, .map-price-marker { background: var(--panel); border: 2px solid var(--accent); border-radius: 999px; box-shadow: var(--shadow-map); color: var(--ink); display: block; font-size: 12px; font-weight: 700; padding: 6px 9px; white-space: nowrap; }
-.map-price-marker { background: var(--accent); color: white; }
-.map-popup { color: var(--ink); display: grid; gap: 8px; max-width: 280px; padding: 3px; }
-.map-popup h2, .map-popup p { margin: 0; }
-.transport-map-detail { border-left: 1px solid var(--line); padding: 22px; }
-.transport-map-detail h2 { margin: 4px 0 12px; }
-.transport-map-picker { display: grid; font-size: 13px; font-weight: 700; gap: 6px; margin-bottom: 20px; }
-.transport-map-picker select { background: white; border: 1px solid #b9c4bd; border-radius: 7px; min-height: 40px; padding: 8px; }
-.timetable-result { white-space: pre-wrap; }
-.rail-map-workbench { display: grid; gap: var(--space-lg); min-width: 0; }
-.rail-map-toolbar, .rail-map-toolbar-actions, .rail-map-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; }
-.rail-map-toolbar p { margin: 4px 0 0; }
-.rail-map-metrics { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.rail-map-metrics > div { background: var(--card); border: 1px solid var(--surface-muted); border-radius: var(--radius-panel); display: grid; gap: 7px; padding: 15px 18px; }
-.rail-map-metrics span, .rail-map-current span { color: var(--muted); font-size: 12px; }
-.rail-map-metrics strong { font-size: 1.5rem; font-variant-numeric: tabular-nums; }
-.rail-map-layout { align-items: start; display: grid; gap: var(--space-lg); grid-template-columns: minmax(260px, .85fr) minmax(0, 1.5fr); }
-.rail-map-list, .rail-map-editor { background: var(--card); border: 1px solid var(--surface-muted); border-radius: var(--radius-panel); min-width: 0; padding: var(--panel-padding); }
-.rail-map-list-tools { display: grid; gap: 9px; }
-.rail-map-list-tools label, .rail-map-search-label { font-size: 13px; font-weight: 650; }
-.rail-map-list-tools input[type=search], .rail-map-editor input:not([type=checkbox]) { background: var(--card); border: 1px solid var(--control-line); border-radius: var(--radius-control); color: var(--text-primary); min-height: 42px; padding: 9px 11px; width: 100%; }
-.rail-map-checkbox { align-items: center; display: flex; gap: 8px; }
-.rail-map-checkbox input { accent-color: var(--brand); height: 18px; width: 18px; }
-.rail-map-list-tools .quiet { margin: 0; }
-.rail-map-station-list { display: grid; gap: 4px; margin-top: 12px; max-height: min(68vh, 760px); overflow: auto; }
-.rail-map-station-list > button { align-items: center; background: transparent; border: 1px solid transparent; border-radius: var(--radius-control); color: var(--text-primary); cursor: pointer; display: flex; gap: 12px; justify-content: space-between; min-height: 52px; padding: 8px 10px; text-align: left; }
-.rail-map-station-list > button:hover, .rail-map-station-list > button.is-selected { background: var(--surface-subtle); border-color: var(--control-line); }
-.rail-map-station-list > button > span:first-child { display: grid; gap: 3px; min-width: 0; }
-.rail-map-station-list strong, .rail-map-station-list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rail-map-station-list small { color: var(--muted); font-size: 12px; }
-.rail-map-dot { background: var(--success); border-radius: 50%; flex: 0 0 auto; height: 9px; width: 9px; }
-.rail-map-dot.is-unmatched { background: var(--warning); }
-.rail-map-editor { display: grid; gap: 15px; }
-.rail-map-editor-heading { align-items: start; display: flex; gap: 12px; justify-content: space-between; }
-.rail-map-editor-heading .eyebrow, .rail-map-editor-heading h2 { margin: 0; }
-.rail-map-editor-heading h2 { margin-top: 5px; }
-.rail-map-badge { background: var(--success-tint); border-radius: 999px; color: var(--success); font-size: 12px; font-weight: 650; padding: 5px 9px; }
-.rail-map-badge.is-unmatched { background: var(--warning-tint); color: var(--warning); }
-.rail-map-code-grid { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; }
-.rail-map-code-grid > div { background: var(--surface-subtle); border-radius: var(--radius-control); min-width: 0; padding: 10px; }
-.rail-map-code-grid dt { color: var(--muted); font-size: 11px; }
-.rail-map-code-grid dd { font-size: 13px; font-weight: 600; margin: 4px 0 0; overflow-wrap: anywhere; }
-.rail-map-current { border-left: 3px solid var(--brand); display: grid; gap: 5px; padding-left: 12px; }
-.rail-map-search-label { margin-bottom: -9px; }
-.rail-map-candidates { border: 1px solid var(--control-line); border-radius: var(--radius-control); display: grid; max-height: 300px; overflow: auto; }
-.rail-map-candidates button { background: var(--card); border: 0; border-bottom: 1px solid var(--surface-muted); color: var(--text-primary); cursor: pointer; display: grid; gap: 4px; padding: 11px; text-align: left; }
-.rail-map-candidates button:last-child { border-bottom: 0; }
-.rail-map-candidates button:hover, .rail-map-candidates button.is-selected { background: var(--surface-subtle); }
-.rail-map-candidates span { color: var(--muted); font-size: 12px; }
-.rail-map-candidates p { margin: 0; padding: 12px; }
-.rail-map-note { display: grid; gap: 7px; font-size: 13px; font-weight: 650; }
-.rail-map-actions { justify-content: flex-start; }
-.rail-map-notice { background: var(--success-tint); border-radius: var(--radius-control); color: var(--success); margin: 0; padding: 11px 14px; }
-@media (max-width: 900px) { .rail-map-layout { grid-template-columns: minmax(0, 1fr); } .rail-map-station-list { max-height: 340px; } }
-@media (max-width: 560px) { .rail-map-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .rail-map-toolbar { align-items: stretch; } .rail-map-toolbar-actions { justify-content: flex-start; width: 100%; } .rail-map-code-grid { grid-template-columns: 1fr; } }
-@media (max-width: 760px) { .transport-map-layout { grid-template-columns: 1fr; min-height: 0; } .transport-map-canvas { min-height: 440px; } .transport-map-detail { border-left: 0; border-top: 1px solid var(--line); } }
-@media (max-width: 760px) { .admin-layout { grid-template-columns: 1fr; } .rail { padding: 18px; } .brand { margin-bottom: 15px; } .nav { grid-template-columns: repeat(3, minmax(0, 1fr)); } .nav-label { display: none; } .sign-out { margin-top: 18px; } .main { padding: 28px 20px; } .grid:not([data-slot]), .reference-list { grid-template-columns: 1fr; } .wide { grid-column: span 1; } .reference-toolbar { align-items: stretch; flex-direction: column; gap: 8px; } }
+/* duration-fast / duration-base — Tailwind v4에는 --duration-* namespace가 없어
+   utility로 등록한다. `--tw-duration`도 함께 세팅해 tw-animate-css가 읽게 한다. */
+@utility duration-fast {
+  --tw-duration: var(--duration-fast);
+  transition-duration: var(--duration-fast);
+}
 
-/* Hallmark · genre: modern-minimal · macrostructure: Workbench · design-system: design.md · designed-as-app */
-.main { padding: var(--space-xl); }
-h1, h2, h3 { min-width: 0; overflow-wrap: anywhere; font-family: var(--font-display); font-style: normal; }
-button, input, select { font-family: var(--font-body); }
-button, .button, .secondary, .nav a, .transport-tabs a { white-space: nowrap; }
-button:disabled { opacity: .55; cursor: not-allowed; }
-button:active:not(:disabled), .secondary:active { transform: translateY(1px); }
-:where(button, a, input, select, summary):focus-visible { outline: 3px solid var(--color-focus); outline-offset: 3px; }
-.skip-link { position: fixed; top: var(--space-sm); left: var(--space-sm); transform: translateY(-200%); padding: var(--space-lg); background: var(--color-panel); color: var(--color-ink); z-index: 400; }
-.skip-link:focus { transform: none; }
-.nav a { display: flex; align-items: center; gap: var(--space-sm); min-height: 44px; }
-.journey-workbench, .map-workbench { display: grid; gap: var(--space-lg); min-width: 0; }
-.journey-toolbar, .map-filter-bar { display: flex; gap: var(--space-md); flex-wrap: wrap; align-items: end; }
-.map-filter-bar { flex-direction: column; align-items: stretch; }
-.journey-toolbar > label, .multi-search > label { display: grid; gap: var(--space-sm); font-size: var(--text-sm); font-weight: 700; min-width: 0; }
-.journey-toolbar input, .journey-toolbar select, .multi-search input[type=search] { background: var(--color-panel); color: var(--color-ink); border: 1px solid var(--color-muted); border-radius: var(--radius-control); min-height: 44px; padding: var(--space-sm) var(--space-md); max-width: 100%; font-size: var(--text-sm); }
-.secondary, .view-switch button, .kind-filters button, .selection-chips button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-sm); background: var(--color-panel); color: var(--color-ink); border: 1px solid var(--color-rule); border-radius: var(--radius-control); cursor: pointer; padding: var(--space-sm) var(--space-md); min-height: 44px; font-size: var(--text-sm); }
-.kind-filters, .view-switch, .selection-chips, .line-chips { display: flex; gap: var(--space-sm); flex-wrap: wrap; }
-[aria-pressed=true].place-row, .kind-filters [aria-pressed=true], .view-switch [aria-pressed=true], .transport-tabs a[aria-current=page] { background: var(--color-selected); color: var(--color-accent); border-color: var(--color-accent); }
-.transport-tabs a { padding: var(--space-md); border: 1px solid var(--color-rule); border-radius: var(--radius-control); }
-.journey-layout { display: grid; grid-template-columns: minmax(230px, .65fr) minmax(0, 1.7fr); gap: var(--space-xl); align-items: start; }
-.journey-search { grid-column: 1; grid-row: 1 / 3; min-width: 0; }
-.journey-inspector { grid-column: 2; grid-row: 1; min-width: 0; display: grid; gap: var(--space-xl); }
-.journey-map { grid-column: 2; grid-row: 2; min-width: 0; }
-.multi-search { display: grid; gap: var(--space-sm); }
-.multi-search > label input { width: 100%; }
-.search-options { display: grid; max-height: 440px; overflow-y: auto; border-block: 1px solid var(--color-rule); }
-.search-options > label { display: flex; align-items: center; gap: var(--space-md); padding: var(--space-md) var(--space-sm); min-height: 48px; border-bottom: 1px solid var(--color-rule); cursor: pointer; }
-.search-options input { width: 18px; height: 18px; accent-color: var(--color-accent); flex: 0 0 auto; }
-.search-options span { display: grid; gap: var(--space-xs); min-width: 0; }
-.search-options small, .place-row small { color: var(--color-muted); font-size: var(--text-xs); }
-.selection-chips button { background: var(--color-selected); color: var(--color-accent); max-width: 100%; }
-.empty-state { padding: var(--space-xl); color: var(--color-muted); background: var(--color-panel); border-block: 1px solid var(--color-rule); line-height: 1.6; }
-.empty-state h2, .empty-state h3 { color: var(--color-ink); margin-top: 0; }
-.departures { min-width: 0; border-top: 1px solid var(--color-rule); }
-.departures h3 { margin-block: var(--space-lg) var(--space-sm); }
-.departure-row { display: grid; grid-template-columns: minmax(90px, .7fr) minmax(0, 1.3fr) minmax(0, 1fr); align-items: center; gap: var(--space-lg); padding: var(--space-lg) 0; border-bottom: 1px solid var(--color-rule); font-variant-numeric: tabular-nums; }
-.departure-time, .departure-route, .departure-meta { display: grid; gap: var(--space-sm); min-width: 0; overflow-wrap: anywhere; }
-.departure-time > strong { font-size: var(--text-lg); color: var(--color-accent); }
-.departure-meta { text-align: right; }
-.departure-row small { color: var(--color-muted); }
-.place-details { display: grid; gap: var(--space-md); }
-.place-details h2, .place-details p { margin: 0; }
-.place-title { display: flex; align-items: center; gap: var(--space-sm); color: var(--color-accent); font-size: var(--text-sm); }
-.price-grid { display: grid; gap: var(--space-md); margin: 0; }
-.price-grid > div { padding-block: var(--space-md); border-block-end: 1px solid var(--color-rule); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-sm); }
-.price-grid dd { font-size: var(--text-lg); margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
-.price-grid small { grid-column: 1 / -1; color: var(--color-muted); }
-.line-chips span, .status-badge { padding: var(--space-xs) var(--space-sm); background: var(--color-selected); color: var(--color-accent); border-radius: var(--radius-control); font-size: var(--text-sm); }
-.data-caveat { color: var(--color-muted); border-left: 1px solid var(--color-rule); padding-left: var(--space-md); font-size: var(--text-sm); line-height: 1.6; }
-.reference-detail { padding-bottom: var(--space-lg); border-bottom: 1px solid var(--color-rule); }
-.transport-map-layout { grid-template-columns: minmax(0, 1fr) minmax(260px, 320px); min-height: 540px; }
-.transport-map-canvas { min-height: 540px; }
-.transport-map-detail { overflow-y: auto; max-height: 720px; padding: var(--space-xl); display: grid; align-content: start; gap: var(--space-xl); }
-.transport-map-picker { margin: 0; }
-.embedded-map { min-width: 0; border: 1px solid var(--color-rule); border-radius: var(--radius-panel); overflow: clip; }
-.embedded-map .transport-map-canvas { min-height: 360px; }
-.map-feedback { color: var(--color-muted); font-size: var(--text-sm); line-height: 1.5; }
-.map-feedback p { margin-block: var(--space-sm); }
-.map-place-list { display: grid; align-content: start; max-height: 600px; overflow-y: auto; }
-.place-row { display: flex; align-items: center; text-align: left; white-space: normal; gap: var(--space-md); background: var(--color-panel); color: var(--color-ink); border: 0; border-bottom: 1px solid var(--color-rule); padding: var(--space-lg); min-height: 56px; cursor: pointer; }
-.place-row > span { display: grid; gap: var(--space-xs); }
-/* Map 지도와 같은 마커·묶음·겹친 지점 팝업(kor-travel-map admin `components/vworld-map-view.tsx`
- * 399d6b6a의 inline style 값을 그대로 옮겼다). 배지 자체는 vendored `createMarkerElement`가 그린다.
- * `.transport-map-marker`·`.map-cluster`는 maplibre-vworld-react `Marker`의 마커 요소(MapLibre가
- * `position: absolute`와 transform으로 놓는다)에 붙는다. 여기서 position을 바꾸지 않는다. */
-.transport-map-marker { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; cursor: pointer; user-select: none; border-radius: 9999px; }
-.transport-map-marker:focus-visible, .map-cluster:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
-/* 선택 마커는 묶음 원 위(z 4)에 그리되 포인터는 통과시켜(MapMarkerButton passThrough) 같은 좌표의 묶음도 누를 수 있게 한다. */
-.map-marker-content { display: flex; align-items: center; justify-content: center; }
-/* 지도 안의 쌓임 순서(일반 마커 < 묶음 원 3 < 선택 마커 4 < 겹친 지점 팝업 5)는 지도 컨테이너 안에서만 통한다.
- * isolation으로 쌓임 맥락을 만들어 필터 combobox 목록·skip link 같은 페이지 overlay를 덮지 않게 한다.
- * 라이브러리 Popup은 열 때마다 inline z-index를 2부터 올리므로 팝업만 !important로 5에 고정한다. */
-.transport-map-canvas { isolation: isolate; }
-.maplibregl-popup.map-overlap-popup { z-index: 5 !important; }
-/* 터치 화면에서는 보이는 크기(24px·36px)는 Map과 같게 두고 누르는 영역만 44px로 넓힌다. */
-@media (pointer: coarse) {
-  .transport-map-marker::before, .map-cluster::before { content: ""; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); border-radius: 9999px; }
+@utility duration-base {
+  --tw-duration: var(--duration-base);
+  transition-duration: var(--duration-base);
 }
-.map-marker-badge { display: contents; }
-.map-marker-price { position: absolute; left: calc(100% + 4px); top: 50%; transform: translateY(-50%); min-width: 58px; padding: 3px 6px; border-radius: 6px; background: rgba(255, 255, 255, .96); border: 1px solid var(--marker-color, #3b82f6); box-shadow: 0 1px 4px rgba(0, 0, 0, .24); color: #111827; font-size: 11px; font-weight: 700; line-height: 1.18; white-space: pre; text-align: left; pointer-events: none; font-variant-numeric: tabular-nums; }
-.map-cluster { display: block; cursor: pointer; border-radius: 9999px; }
-.map-cluster-bubble { display: flex; align-items: center; justify-content: center; border-radius: 9999px; background: var(--brand); color: var(--brand-foreground); font-weight: 600; line-height: 1; border: 2px solid var(--card); box-shadow: var(--shadow-elevated); user-select: none; }
-.map-overlap { min-width: 248px; font: 13px/1.4 system-ui, -apple-system, sans-serif; color: #111827; background: #fff; }
-.map-overlap > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2px 2px 10px; }
-.map-overlap-title { font-size: 13px; font-weight: 800; letter-spacing: 0; color: #0f172a; }
-.map-overlap-count { flex: 0 0 auto; border-radius: 9999px; background: #e0f2fe; border: 1px solid #bae6fd; color: #075985; font-size: 11px; font-weight: 800; line-height: 1; padding: 5px 8px; }
-.map-overlap-list { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow-y: auto; }
-.map-overlap-list > button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 42px; padding: 8px 9px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; box-shadow: 0 1px 2px rgba(15, 23, 42, .06); cursor: pointer; text-align: left; font: inherit; color: inherit; transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease; }
-.map-overlap-list > button:hover { background: #f8fafc; border-color: var(--marker-color); box-shadow: 0 4px 12px rgba(15, 23, 42, .12); }
-.map-overlap-list > button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.map-overlap-dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 9999px; background: var(--marker-color); box-shadow: 0 0 0 3px color-mix(in srgb, var(--marker-color) 13%, transparent); }
-.map-overlap-kind { flex: 0 0 auto; font-size: 10px; font-weight: 800; line-height: 1; padding: 4px 6px; border-radius: 9999px; background: color-mix(in srgb, var(--marker-color) 12%, transparent); color: var(--marker-color); border: 1px solid color-mix(in srgb, var(--marker-color) 20%, transparent); }
-.map-overlap-name { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 650; }
-.bus-search-grid { display: grid; gap: var(--space-xl); grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.bus-search-grid .search-options { max-height: 220px; }
-.ops-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-lg); }
-.ops-grid .panel { display: grid; gap: var(--space-md); }
-.ops-grid strong { font-size: var(--text-lg); font-variant-numeric: tabular-nums; }
-.ops-grid span, .ops-grid small { color: var(--color-muted); }
-.provider-row { border-bottom: 1px solid var(--color-rule); padding: var(--space-lg) 0; }
-.provider-row summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-lg); min-height: 44px; cursor: pointer; }
-.provider-row summary strong { flex: 1; min-width: 140px; }
-.provider-row summary::before { content: "＋"; color: var(--color-muted); }
-.provider-row[open] summary::before { content: "−"; }
-.provider-detail { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-lg); }
-.provider-detail dt { font-size: var(--text-sm); color: var(--color-muted); }
-.provider-detail dd { margin: var(--space-sm) 0 0; }
-.status-badge.failed { color: var(--color-error); background: var(--color-panel); }
-.inline-link { text-decoration: underline; text-underline-offset: var(--space-xs); color: var(--color-accent); }
-@media (hover: hover) { .secondary:hover, .place-row:hover, .search-options > label:hover, .view-switch button:hover, .kind-filters button:hover { background: var(--color-selected); color: var(--color-accent); } }
-@media (max-width: 62rem) {
-  .admin-layout { grid-template-columns: minmax(0, 1fr); }
-  .rail { padding: var(--space-lg); }
-  .brand { margin: 0 0 var(--space-md); }
-  .nav { display: flex; overflow-x: auto; gap: var(--space-xs); }
-  .nav a { flex: 0 0 auto; }
-  .nav-label { display: none; }
-  .sign-out { margin: var(--space-md) 0 0; min-height: 44px; }
-  .main { padding: var(--space-lg); }
-  .transport-map-layout { grid-template-columns: minmax(0, 1fr); }
-  .transport-map-detail { grid-row: 1; max-height: none; border: 0; border-bottom: 1px solid var(--color-rule); }
-  .journey-layout { grid-template-columns: minmax(0, 1fr); gap: var(--space-lg); }
-  .journey-search { grid-column: 1; grid-row: 1; }
-  .journey-inspector { grid-column: 1; grid-row: 2; }
-  .journey-map { grid-column: 1; grid-row: 3; }
-  .search-options { max-height: 200px; }
-  .ops-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (max-width: 40rem) {
-  .bus-search-grid, .provider-detail { grid-template-columns: minmax(0, 1fr); }
-  .departure-row { grid-template-columns: minmax(70px, .6fr) minmax(0, 1fr); gap: var(--space-md); }
-  .departure-meta { grid-column: 1 / -1; display: flex; justify-content: space-between; text-align: left; }
-  .journey-toolbar > label { width: 100%; }
-  .journey-toolbar input, .journey-toolbar select { width: 100%; }
-  .transport-map-canvas { min-height: 380px; }
-  .ops-grid .panel { padding: var(--space-md); }
-}
-@media (prefers-reduced-motion: reduce) { .map-workbench *, .journey-workbench * { animation: none !important; transition: none !important; } }
-.selection-chips button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.selection-chips button > svg { flex: 0 0 auto; }
-.page-header h1 { overflow-wrap: anywhere; min-width: 0; }
-/* 긴 실제 장소명이 select의 최소 콘텐츠 폭을 통해 가격 패널을 밀어내지 않게 한다. */
-.transport-map-detail, .transport-map-detail > *, .place-details, .price-grid { min-width: 0; }
-.transport-map-picker select { width: 100%; min-width: 0; max-width: 100%; }
-.price-grid > div { min-width: 0; }
-.price-grid dt { overflow-wrap: anywhere; }
 
-/* Weather의 패널 헤더·우측 inspector·운영 표 구조를 같은 토큰으로 유지한다. */
-.page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-lg); flex-wrap: wrap; }
-.page-header > div { min-width: 0; }
-.page-header-actions { display: flex; gap: var(--space-sm); flex-wrap: wrap; }
-.transport-map-layout { background: transparent; border: 0; border-radius: 0; overflow: visible; gap: var(--space-lg); grid-template-columns: minmax(0, 1fr) minmax(320px, 380px); align-items: start; }
-.map-primary { min-width: 0; overflow: clip; border: 1px solid var(--color-rule); border-radius: var(--radius-panel); }
-.weather-inspector { min-width: 0; background: var(--color-panel); border: 1px solid var(--color-rule); border-radius: var(--radius-panel); padding: 0; gap: 0; }
-.weather-inspector:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
-.weather-inspector .transport-map-picker { padding: var(--space-lg); border-bottom: 1px solid var(--color-rule); }
-.inspector-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-md); padding: var(--space-lg); border-bottom: 1px solid var(--color-rule); }
-.inspector-heading > div { min-width: 0; }
-.inspector-heading h2 { font-size: var(--text-lg); margin: var(--space-xs) 0; letter-spacing: -.025em; }
-.inspector-heading p { color: var(--color-muted); font-size: var(--text-xs); margin: var(--space-xs) 0 0; overflow-wrap: anywhere; }
-.icon-button { flex: 0 0 auto; width: 44px; padding: var(--space-sm); }
-.inspector-section { padding: var(--space-lg); min-width: 0; }
-.inspector-section + .inspector-section { border-top: 1px solid var(--color-rule); }
-.inspector-section h3 { font-size: var(--text-base); margin-top: 0; }
-.inspector-section .departure-row { grid-template-columns: minmax(75px, .7fr) minmax(0, 1fr); gap: var(--space-md); }
-.inspector-section .departure-meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: space-between; text-align: left; }
-.inspector-section .journey-toolbar > label { width: 100%; }
-.inspector-section select { width: 100%; }
-.parking-detail-row { display: grid; gap: var(--space-sm); padding-block: var(--space-md); border-bottom: 1px solid var(--color-rule); font-variant-numeric: tabular-nums; }
-.parking-detail-row small { color: var(--color-muted); }
-.ops-card strong { display: block; font-size: 1.875rem; letter-spacing: -.04em; line-height: 1; }
-.panel.dagster-runs, .panel.dagster-schedules { padding: 0; border-radius: var(--radius-panel); overflow: hidden; }
-.panel-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-md); padding: var(--space-lg); border-bottom: 1px solid var(--color-rule); }
-.panel-head h2, .panel-head p { margin: 0; }
-.panel-head p { color: var(--color-muted); font-size: var(--text-xs); }
-.table-wrap { max-width: 100%; overflow: auto; }
-.table-wrap table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); text-align: left; font-variant-numeric: tabular-nums; }
-.table-wrap th, .table-wrap td { padding: var(--space-md) var(--space-lg); border-bottom: 1px solid var(--color-rule); vertical-align: top; }
-.table-wrap th { color: var(--color-muted); font-weight: 500; white-space: nowrap; }
-.dagster-runs table { min-width: 38rem; }
-.dagster-schedules table { min-width: 30rem; }
-.dagster-runs td code, .dagster-run-elapsed { display: block; margin-top: var(--space-xs); color: var(--color-muted); font-size: var(--text-xs); }
-.dagster-run-elapsed { white-space: nowrap; }
-.status-badge.warning { color: var(--color-warning); }
-.inline-link { display: inline-flex; gap: var(--space-xs); align-items: center; }
-.row-expand-toggle { display: inline-flex; align-items: center; gap: var(--space-xs); background: transparent; border: 0; color: var(--color-ink); cursor: pointer; min-height: 44px; padding: var(--space-xs); }
-.sync-run-detail-row td { background: var(--color-paper); white-space: normal; }
-.sync-run-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: var(--space-lg); margin: 0; }
-.sync-run-detail-grid dt { color: var(--color-muted); font-size: var(--text-xs); }
-.sync-run-detail-grid dd { margin: var(--space-xs) 0 0; overflow-wrap: anywhere; }
-@media (max-width: 62rem) { .transport-map-layout { grid-template-columns: minmax(0, 1fr); } .weather-inspector { border: 1px solid var(--color-rule); } }
+:root {
+  /* shape · size */
+  --radius-control: 0.375rem; /* 6px — button/input/badge/tab */
+  --radius-panel: 0.5rem; /* 8px — Card/SectionCard/dialog/popover */
+  --radius: var(--radius-control);
+  --control-h: 2.25rem; /* 36px */
+  --control-h-sm: 1.875rem; /* 30px */
+  --rail: 22rem; /* right inspector rail */
 
-/* Weather c25642099: 밝은 17rem 레일, 경량 헤더 카드, 동일한 본문 밀도.
- * API/지도/인증 동작은 바꾸지 않고 공통 외형만 맞춘다. */
-html { font-size: 16px; }
-body { font-family: var(--font-body); font-size: .9375rem; line-height: 1.5; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
-code, pre { font-family: var(--font-mono); }
-h1, h2, h3 { color: var(--text-primary); }
-.transport-shell { min-height: 100dvh; background: var(--surface-page); color: var(--text-primary); }
-.admin-layout { grid-template-columns: var(--rail) minmax(0, 1fr); min-height: 100dvh; min-width: 0; }
-.rail { align-self: start; min-width: 0; height: 100dvh; position: sticky; top: 0; padding: 0; border-right: 1px solid var(--surface-muted); background: var(--card); color: var(--text-primary); }
-.rail-shell { display: flex; height: 100%; min-width: 0; flex-direction: column; gap: 1.25rem; padding: 1.25rem; }
-.rail-header { display: flex; height: 2.5rem; min-width: 0; flex-shrink: 0; align-items: center; justify-content: space-between; gap: .5rem; }
-.brand { display: flex; min-width: 0; align-items: baseline; gap: .375rem; margin: 0; border-radius: var(--radius-control); color: var(--text-primary); font-size: .875rem; font-weight: 700; letter-spacing: -.02em; }
-.brand .brand-mark { display: inline-flex; width: 2.5rem; height: 2.5rem; flex: 0 0 auto; align-items: center; justify-content: center; border-radius: .75rem; background: var(--brand-tint); color: var(--brand); }
-.brand .brand-wordmark, .brand .brand-subtitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.brand .brand-wordmark { color: var(--text-primary); font-size: .875rem; }
-.brand .brand-subtitle { color: var(--text-tertiary); font-size: .75rem; font-weight: 500; }
-.rail-nav { display: flex; min-height: 0; min-width: 0; flex: 1; flex-direction: column; gap: .25rem; overflow-x: hidden; overflow-y: auto; padding: 0; }
-.rail-nav .nav-link, .logout-button { display: flex; min-width: 0; min-height: var(--control-h); height: var(--control-h); flex-shrink: 0; align-items: center; justify-content: flex-start; gap: .625rem; border: 1px solid transparent; border-radius: var(--radius-control); background: transparent; color: var(--text-secondary); padding: 0 .75rem; font: inherit; font-size: .8125rem; font-weight: 500; line-height: 1; text-align: left; white-space: nowrap; cursor: pointer; }
-.nav-link svg { flex: 0 0 auto; color: var(--icon-default); }
-.rail-nav .nav-link:hover, .rail-nav .nav-link.active { background: var(--surface-subtle); color: var(--text-primary); }
-.rail-nav .nav-link.active { font-weight: 600; }
-.rail-nav .nav-link.active svg { color: var(--brand); }
-.rail-footer { flex-shrink: 0; border-top: 1px solid var(--surface-muted); padding: .75rem 0 0; }
-.logout-button { width: 100%; }
-.logout-button:hover { background: var(--destructive-tint); color: var(--destructive); }
-.main { padding: 0; }
-.main:focus-visible { outline: 0; }
-.page-body { min-width: 0; padding: var(--layout-gutter); }
-.page-header-wrap { margin-bottom: var(--layout-gutter); }
-.page-header { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 1rem; margin: 0; border: 1px solid color-mix(in srgb, var(--surface-muted) 70%, transparent); border-radius: var(--radius-header); background: var(--card); box-shadow: var(--shadow-card); padding: 1.5rem; }
-.page-header-copy { display: flex; min-width: 0; width: 100%; flex-direction: column; gap: .25rem; }
-.page-context { display: flex; min-width: 0; align-items: center; gap: .5rem; color: var(--text-secondary); font-size: .75rem; font-weight: 500; }
-.page-path { overflow: hidden; color: var(--text-tertiary); font-family: var(--font-mono); font-size: .6875rem; text-overflow: ellipsis; white-space: nowrap; }
-.page-header-row { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 1.5rem; }
-.page-header h1 { margin: 0; font-size: 1.5rem; font-weight: 700; letter-spacing: -.025em; line-height: 1.25; }
-.page-header .description { max-width: 65ch; margin: 0; color: var(--text-secondary); font-size: .8125rem; line-height: 1.5; }
-.page-header-actions { display: flex; flex-shrink: 0; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .5rem; }
-.panel, .reference-card, .login-panel { border-radius: var(--radius-panel); box-shadow: var(--shadow-card); }
-.panel h2 { font-size: 1.125rem; font-weight: 600; letter-spacing: -.015em; }
-.grid:not([data-slot]) { gap: var(--layout-gutter); }
-.ops-grid { gap: 1rem; }
-.status-list li, .row-list li { border-color: var(--surface-muted); }
-.ops-card strong { font-size: 1.875rem; }
-.dagster-workbench { gap: var(--layout-gutter); }
-.panel-head { align-items: flex-start; padding: 1rem 1rem 0; border-bottom: 0; }
-.panel-head p { margin-top: .25rem; font-size: .8125rem; }
-.table-wrap { margin: 1rem; border: 1px solid var(--surface-muted); border-radius: var(--radius-panel); }
-.table-wrap th { background: var(--surface-subtle); font-size: .75rem; }
-.table-wrap th, .table-wrap td { padding: .75rem; }
-.transport-map-layout { gap: var(--layout-gutter); grid-template-columns: minmax(0, 1fr) 22rem; }
-.transport-map-layout-unselected { grid-template-columns: minmax(0, 1fr); }
-.inspector-heading, .inspector-section, .weather-inspector .transport-map-picker { padding: var(--panel-padding); }
-.weather-inspector > [data-slot="field-group"] { padding: var(--panel-padding); margin-bottom: 0; border-bottom: 1px solid var(--surface-muted); }
-.inspector-heading p { font-family: var(--font-mono); font-size: .6875rem; }
-.reference-toolbar input, .field input, .transport-map-picker select { border-color: var(--control-line); border-radius: var(--radius-control); background: var(--card); color: var(--text-primary); }
-.button { border-radius: var(--radius-control); background: var(--brand); color: var(--brand-foreground); }
-.api-result { background: var(--surface-subtle); color: var(--text-primary); border: 1px solid var(--surface-muted); }
-:where(button, a, input, select, summary):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-@media (max-width: 62rem) {
-  .admin-layout { grid-template-columns: minmax(0, 1fr); }
-  .rail { align-self: auto; height: auto; min-height: 0; position: static; border-right: 0; border-bottom: 1px solid var(--surface-muted); }
-  .rail-shell { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1.25rem .5rem; }
-  .rail-header { grid-column: 1; grid-row: 1; }
-  .rail-nav { grid-column: 1 / -1; grid-row: 2; flex-direction: row; flex: 0 1 auto; max-width: 100%; overflow-x: auto; overflow-y: hidden; }
-  .rail-nav .nav-link { width: auto; min-width: max-content; }
-  /* Weather의 숨김 처리와 달리 모바일에서도 로그아웃을 유지한다. */
-  .rail-footer { grid-column: 2; grid-row: 1; border: 0; padding: 0; align-self: center; }
-  .transport-map-layout { grid-template-columns: minmax(0, 1fr); }
-}
-@media (max-width: 42rem) {
-  .page-body { padding-top: 1rem; }
-  .page-header-row { align-items: flex-start; flex-direction: column; gap: .75rem; }
-  .page-header-actions { width: 100%; justify-content: flex-start; }
-  .page-header-actions .button, .page-header-actions [data-slot="button"] { flex: 1 1 auto; }
-  .ops-grid { grid-template-columns: minmax(0, 1fr); }
-  .panel-head { flex-direction: column; }
-  .table-wrap { margin: .75rem; }
-  .rail-header .brand-subtitle { display: none; }
-}
-@media (pointer: coarse) {
-  .rail-nav .nav-link, .logout-button { min-height: 44px; height: 44px; }
-}
+  /* motion */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --duration-fast: 100ms; /* hover / colour */
+  --duration-base: 150ms; /* overlay enter: opacity + scale .98 */
+  --dur-fast: var(--duration-fast); /* design.md name parity */
+  --dur-base: var(--duration-base);
+
+  /* 색 값은 app/transport-palette.css가 정본이다. 여기서는 형태·모션·별칭만 둔다. */
+
+  /* shadcn aliases → project tokens */
+  --card-foreground: var(--text-primary);
+  --popover: var(--card);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--brand);
+  --primary-foreground: var(--brand-foreground);
+  --secondary: var(--surface-subtle);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--surface-subtle);
+  --muted-foreground: var(--text-secondary);
+  --accent: var(--brand-tint);
+  --accent-foreground: var(--brand);
+  --border: var(--surface-muted); /* 장식 hairline — 대비 요건 없음 */
+  --input: var(--control-line); /* 컨트롤 경계 — 3:1 이상 */
+  --ring: var(--focus);
+  --background: var(--surface-page);
+  --foreground: var(--text-primary);
+  --sidebar: var(--card);
+  --sidebar-foreground: var(--text-primary);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: var(--brand-foreground);
+  --sidebar-accent: var(--brand-tint);
+  --sidebar-accent-foreground: var(--brand);
+  --sidebar-border: var(--surface-muted);
+  --sidebar-ring: var(--focus);
 }
 
 @layer base {
-  :root { --secondary: var(--color-selected); --foreground: var(--ink); }
-  [data-slot="table-row"], [data-slot="alert"] { border-color: var(--line); }
-  [data-slot="button"], [data-slot="toggle-group-item"] { cursor: pointer; }
-  @media (pointer: coarse) {
-    [data-slot="button"], [data-slot="toggle-group-item"], [data-slot="native-select"], [data-slot="input"] { min-height: 44px; }
+  * {
+    @apply border-border;
   }
-  @media (prefers-reduced-motion: reduce) {
-    [data-slot="spinner"], [data-slot="skeleton"] { animation: none; }
+
+  html {
+    overflow-x: clip;
+    @apply font-sans;
+  }
+
+  html,
+  body {
+    min-height: 100%;
+    background: var(--surface-page);
+  }
+
+  body {
+    @apply bg-surface-page font-sans text-sm text-text-primary antialiased;
+  }
+
+  /* prose links only — button-styled <Link className=…> is unaffected */
+  a:not([class]),
+  .prose a,
+  .link {
+    @apply text-brand underline-offset-4 hover:underline;
+  }
+
+  /* one focus recipe, opaque, appears instantly (never transitioned).
+     light: page 6.66:1 · card 6.93 · subtle 6.45 · muted 5.70
+     dark:  page 10.26   · card 9.38 · subtle 9.13 · muted 7.28   (전부 1.4.11의 3:1 위) */
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  /* 링을 끄는 예외는 여기 base에 두지 않는다 — 대상이 4개뿐이고 모두 단일 공용 primitive라
+     (DialogContent · AlertDialogContent · PopoverContent · AdminShell `<main>`) 그 자리에
+     `focus-visible:outline-0` + 이유 주석을 두는 편이 호출부에서 바로 보인다. 규칙과 닫힌 목록은
+     design.md §Focus. `outline-none`은 어느 쪽에서도 금지(§금지 패턴 6). */
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
   }
 }
 
-/* 공통 메뉴는 transport shell의 기존 62rem 전환 지점을 따른다. */
-.common-menu [data-slot="app-menu"] { flex-direction: column; overflow-x: visible; padding: 0; }
-.common-menu ul { flex-direction: column; }
-.common-menu [data-slot="app-menu-group"] { flex-shrink: 1; min-width: 0; }
-.common-menu [aria-current="page"] { background: var(--surface-subtle); }
-.login-panel { width: min(100%, 28rem); }
-.login-panel > h1 { margin: 1rem 1rem 0; }
+
+/* Reduced motion (design.md §Motion): all spatial motion collapses. Elements that carry
+   `transition-opacity` or `data-motion="crossfade"` keep a ≤150ms opacity crossfade only. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .transition-opacity,
+  [data-motion="crossfade"] {
+    transition-property: opacity !important;
+    transition-duration: var(--duration-base) !important;
+  }
+
+  /* 로딩 스피너는 장식이 아니라 "지금 처리 중"을 알리는 유일한 시각 신호다(Button loading은
+     라벨을 opacity-0으로 감추고 스피너만 남긴다 — 멈추면 정지 상태와 구분되지 않는다).
+     그래서 위 킬스위치에서 제외하고, 대신 회전을 느리게(1.6s, 기본 1s) 돌려 전정기관 부담만
+     줄인다. `*` 규칙과 specificity로 경쟁하므로 두 속성 모두 다시 선언해야 한다.
+     반대로 Skeleton은 콘텐츠 자리표시(장식)라 컴포넌트에서 `motion-reduce:animate-none`으로
+     완전히 끈다 — 로딩 여부는 감싸는 영역의 `aria-busy`가 알린다. */
+  [data-slot="button-spinner"] svg,
+  [data-sonner-toast] [data-icon] svg.animate-spin {
+    animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
+  }
+}
+
+/* 공통 컴포넌트는 Map의 기존 의미 색상에 연결한다. */
+:root,
+.map-common-surface {
+  --kt-surface-page: var(--surface-page);
+  --kt-surface-subtle: var(--surface-subtle);
+  --kt-surface-muted: var(--surface-muted);
+  --kt-text-primary: var(--text-primary);
+  --kt-text-secondary: var(--text-secondary);
+  --kt-text-tertiary: var(--text-tertiary);
+  --kt-surface-card: var(--card);
+  --kt-border: var(--border);
+  --kt-radius-control: var(--radius-control);
+  --kt-control-line: var(--control-line);
+  --kt-brand: var(--brand);
+  --kt-brand-tint: var(--brand-tint);
+  --kt-focus: var(--focus);
+  --kt-text-disabled: var(--text-disabled);
+  --kt-text-strong: var(--text-primary);
+  --kt-icon: var(--icon-default);
+  --kt-brand-hover: var(--brand-hover);
+  --kt-brand-foreground: var(--brand-foreground);
+  --kt-success: var(--success);
+  --kt-success-tint: var(--success-tint);
+  --kt-warning: var(--warning);
+  --kt-warning-tint: var(--warning-tint);
+  --kt-info: var(--info);
+  --kt-info-tint: var(--info-tint);
+  --kt-destructive: var(--destructive);
+  --kt-destructive-tint: var(--destructive-tint);
+  --kt-overlay: var(--overlay);
+  --kt-shadow-elevated: var(--shadow-elevated);
+  --kt-shadow-modal: var(--shadow-modal);
+}
+@media (min-width: 1024px) {
+  .map-common-menu[data-collapsed="true"] [data-slot="app-menu-group-label"],
+  .map-common-menu[data-collapsed="true"] [data-slot="app-menu-link"] > span:not([aria-hidden]) { display: none; }
+  .map-common-menu[data-collapsed="true"] [data-slot="app-menu-link"] { padding-inline: 0; justify-content: center; }
+}
+
+/* transport 도메인 잔여 CSS가 읽는 간격·글자·서체 별칭(색은 transport-palette.css). */
+:root {
+  --space-xs: .25rem; --space-sm: .5rem; --space-md: .75rem; --space-lg: 1rem; --space-xl: 1.5rem;
+  --layout-gutter: 1.5rem; --panel-padding: 1rem; --radius-header: 1.125rem; --dur-short: 100ms;
+  --text-xs: .84375rem; --text-sm: .9375rem; --text-base: .9375rem; --text-lg: 1.25rem;
+  --font-body: var(--font-pretendard, "Pretendard Variable"), Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-display: var(--font-body);
+}
+@media (max-width: 62rem) { :root { --layout-gutter: 1rem; } }
+@media (max-width: 42rem) { :root { --layout-gutter: .75rem; } }
+
+/* ───────── transport 도메인 잔여 CSS (2단계에서 Tailwind 유틸·공용 컴포넌트로 옮긴다) ───────── */
+@layer legacy {
+
+.grid:not([data-slot]) { display: grid; gap: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.panel { background: var(--card); border: 1px solid var(--surface-muted); border-radius: 11px; min-width: 0; padding: 20px; }
+.metric { color: var(--text-secondary); display: block; font-size: 13px; margin-bottom: 8px; }
+.value { font-size: 28px; font-weight: 700; letter-spacing: -.04em; }
+
+.panel h2 { font-size: 16px; margin: 0 0 14px; }
+
+.error { color: var(--destructive); white-space: pre-wrap; }
+.loading { color: var(--text-secondary); padding: 44px 0; }
+.transport-chart { height: 260px; min-width: 0; width: 100%; }
+
+.transport-map-detail { border-left: 1px solid var(--surface-muted); padding: 22px; }
+.transport-map-detail h2 { margin: 4px 0 12px; }
+
+.rail-map-metrics { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.rail-map-metrics > div { background: var(--card); border: 1px solid var(--surface-muted); border-radius: var(--radius-panel); display: grid; gap: 7px; padding: 15px 18px; }
+.rail-map-metrics span { color: var(--text-secondary); font-size: 12px; }
+.rail-map-metrics strong { font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+
+.rail-map-badge { background: var(--success-tint); border-radius: 999px; color: var(--success); font-size: 12px; font-weight: 650; padding: 5px 9px; }
+
+@media (max-width: 560px) {
+.rail-map-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+}
+@media (max-width: 760px) {
+
+.transport-map-detail { border-left: 0; border-top: 1px solid var(--surface-muted); }
+}
+@media (max-width: 760px) {
+.grid:not([data-slot]) { grid-template-columns: 1fr; }
+
+}
+.secondary { white-space: nowrap; }
+.secondary:active { transform: translateY(1px); }
+.journey-workbench,
+.map-workbench { display: grid; gap: var(--space-lg); min-width: 0; }
+
+.multi-search > label { display: grid; gap: var(--space-sm); font-size: var(--text-sm); font-weight: 700; min-width: 0; }
+.multi-search input[type=search] { background: var(--card); color: var(--text-primary); border: 1px solid var(--text-secondary); border-radius: var(--radius-control); min-height: 44px; padding: var(--space-sm) var(--space-md); max-width: 100%; font-size: var(--text-sm); }
+.secondary { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-sm); background: var(--card); color: var(--text-primary); border: 1px solid var(--surface-muted); border-radius: var(--radius-control); cursor: pointer; padding: var(--space-sm) var(--space-md); min-height: 44px; font-size: var(--text-sm); }
+
+.multi-search { display: grid; gap: var(--space-sm); }
+.multi-search > label input { width: 100%; }
+
+.empty-state { padding: var(--space-xl); color: var(--text-secondary); background: var(--card); border-block: 1px solid var(--surface-muted); line-height: 1.6; }
+.empty-state h2,
+.empty-state h3 { color: var(--text-primary); margin-top: 0; }
+.departures { min-width: 0; border-top: 1px solid var(--surface-muted); }
+.departures h3 { margin-block: var(--space-lg) var(--space-sm); }
+.departure-row { display: grid; grid-template-columns: minmax(90px, .7fr) minmax(0, 1.3fr) minmax(0, 1fr); align-items: center; gap: var(--space-lg); padding: var(--space-lg) 0; border-bottom: 1px solid var(--surface-muted); font-variant-numeric: tabular-nums; }
+
+.departure-row small { color: var(--text-secondary); }
+.place-details { display: grid; gap: var(--space-md); }
+.place-details h2,
+.place-details p { margin: 0; }
+
+.status-badge { padding: var(--space-xs) var(--space-sm); background: var(--brand-tint); color: var(--brand); border-radius: var(--radius-control); font-size: var(--text-sm); }
+
+.transport-map-detail { overflow-y: auto; max-height: 720px; padding: var(--space-xl); display: grid; align-content: start; gap: var(--space-xl); }
+.embedded-map { min-width: 0; border: 1px solid var(--surface-muted); border-radius: var(--radius-panel); overflow: clip; }
+
+.map-feedback { color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.5; }
+.map-feedback p { margin-block: var(--space-sm); }
+.map-place-list { display: grid; align-content: start; max-height: 600px; overflow-y: auto; }
+
+.transport-map-marker { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; cursor: pointer; user-select: none; border-radius: 9999px; }
+.transport-map-marker:focus-visible,
+.map-cluster:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+
+.maplibregl-popup.map-overlap-popup { z-index: 5 !important; }
+@media (pointer: coarse) {
+.transport-map-marker::before,
+.map-cluster::before { content: ""; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; transform: translate(-50%, -50%); border-radius: 9999px; }
+}
+
+.map-marker-price { position: absolute; left: calc(100% + 4px); top: 50%; transform: translateY(-50%); min-width: 58px; padding: 3px 6px; border-radius: 6px; background: rgba(255, 255, 255, .96); border: 1px solid var(--marker-color, #3b82f6); box-shadow: 0 1px 4px rgba(0, 0, 0, .24); color: #111827; font-size: 11px; font-weight: 700; line-height: 1.18; white-space: pre; text-align: left; pointer-events: none; font-variant-numeric: tabular-nums; }
+.map-cluster { display: block; cursor: pointer; border-radius: 9999px; }
+
+.ops-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-lg); }
+.ops-grid .panel { display: grid; gap: var(--space-md); }
+.ops-grid strong { font-size: var(--text-lg); font-variant-numeric: tabular-nums; }
+.ops-grid span,
+.ops-grid small { color: var(--text-secondary); }
+.provider-row { border-bottom: 1px solid var(--surface-muted); padding: var(--space-lg) 0; }
+.provider-row summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-lg); min-height: 44px; cursor: pointer; }
+.provider-row summary strong { flex: 1; min-width: 140px; }
+.provider-row summary::before { content: "＋"; color: var(--text-secondary); }
+.provider-row[open] summary::before { content: "−"; }
+
+.status-badge.failed { color: var(--destructive); background: var(--card); }
+.inline-link { text-decoration: underline; text-underline-offset: var(--space-xs); color: var(--brand); }
+@media (hover: hover) {
+.secondary:hover { background: var(--brand-tint); color: var(--brand); }
+}
 @media (max-width: 62rem) {
-  .common-menu [data-slot="app-menu"], .common-menu ul { flex-direction: row; }
-  .common-menu [data-slot="app-menu-group"] { flex-shrink: 0; }
-  .common-menu [data-slot="app-menu-link"] { width: auto; }
+.transport-map-detail { grid-row: 1; max-height: none; border: 0; border-bottom: 1px solid var(--surface-muted); }
+
+.ops-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 40rem) {
+
+.departure-row { grid-template-columns: minmax(70px, .6fr) minmax(0, 1fr); gap: var(--space-md); }
+
+.ops-grid .panel { padding: var(--space-md); }
+}
+@media (prefers-reduced-motion: reduce) {
+.map-workbench *,
+.journey-workbench * { animation: none !important; transition: none !important; }
+}
+.transport-map-detail,
+.transport-map-detail > *,
+.place-details { min-width: 0; }
+
+.map-primary { min-width: 0; overflow: clip; border: 1px solid var(--surface-muted); border-radius: var(--radius-panel); }
+
+.panel.dagster-runs { padding: 0; border-radius: var(--radius-panel); overflow: hidden; }
+.status-badge.warning { color: var(--warning); }
+.inline-link { display: inline-flex; gap: var(--space-xs); align-items: center; }
+
+.panel { border-radius: var(--radius-panel); box-shadow: var(--shadow-card); }
+.panel h2 { font-size: 1.125rem; font-weight: 600; letter-spacing: -.015em; }
+.grid:not([data-slot]) { gap: var(--layout-gutter); }
+.ops-grid { gap: 1rem; }
+
+@media (max-width: 42rem) {
+.ops-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* 유가 통계는 가벼운 SVG와 표를 함께 제공한다. */
-.fuel-stat-section { display: grid; gap: 1rem; margin-block: 1rem; min-width: 0; }
-.fuel-stat-section h2 { font-size: 1.1rem; font-weight: 650; }
-.fuel-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 1rem; }
-.fuel-stat-card { border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--panel); padding: 1rem; min-width: 0; }
-.fuel-stat-card header { display: flex; justify-content: space-between; gap: .5rem; flex-wrap: wrap; }
-.fuel-stat-card h3 { font-weight: 650; }
-.fuel-stat-card p { overflow-wrap: anywhere; margin-block: .4rem; }
-.fuel-stat-card small, .fuel-stat-card header span { color: var(--muted); font-size: .8rem; }
-.fuel-stat-values { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1rem; margin-block: 1rem; }
-.fuel-stat-values dt { font-size: .8rem; color: var(--muted); }
-.fuel-stat-values dd { font-size: 1.3rem; font-weight: 650; font-variant-numeric: tabular-nums; }
-.fuel-stat-values small { font-weight: 400; margin-left: .3rem; }
-.fuel-stat-filters { display: flex; align-items: end; flex-wrap: wrap; gap: 1rem; }
-.fuel-stat-filters label, .fuel-stat-category { display: grid; gap: .35rem; max-width: 100%; }
-.fuel-stat-section select, .fuel-stat-filters button { padding: .5rem; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--panel); min-width: 0; max-width: 100%; }
-.fuel-stat-trend { width: 100%; max-width: 900px; color: var(--accent); }
-.fuel-stat-table { overflow-x: auto; max-width: 100%; }
-.fuel-stat-table table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-.fuel-stat-table th, .fuel-stat-table td { text-align: left; padding: .6rem; border-bottom: 1px solid var(--line); white-space: nowrap; }
-.fuel-stat-table caption { text-align: left; padding-block: .6rem; }
-.fuel-stat-table button { text-decoration: underline; text-underline-offset: .2rem; }
-
-/* Map 운영 홈의 요약 띠·실행 표·우측 상태 패널 */
 .operations-home { font-family: var(--kt-font-sans); }
-.operations-table { width: 100%; border-collapse: collapse; text-align: left; font-size: var(--text-kt-xs); }
-.operations-table th { color: var(--kt-text-secondary); font-weight: 500; }
-.operations-table th, .operations-table td { border-bottom: 1px solid var(--kt-border); padding: .625rem .5rem; white-space: nowrap; }
-.operations-table td:first-child, .operations-table th:first-child { padding-left: 0; }
-.operations-table a { display: inline-flex; align-items: center; gap: .25rem; }
-.operation-state { display: inline-flex; align-items: center; border-radius: var(--kt-radius-control); padding: .125rem .375rem; color: var(--kt-text-secondary); background: var(--kt-surface-subtle); font-size: var(--text-kt-2xs); }
-.operation-state.failed { color: var(--kt-destructive); background: var(--kt-destructive-tint); }
-.operation-state.success { color: var(--kt-success); background: var(--kt-success-tint); }
-.operations-issues { list-style: none; margin: 0; padding: 0; }
-.operations-issues li { padding: .75rem 0; border-bottom: 1px solid var(--kt-border); }
-.operations-issues li:last-child { border-bottom: 0; }
-.operations-issues li > div { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
-.operations-issues p { margin-top: .25rem; color: var(--kt-text-secondary); font-size: var(--text-kt-2xs); }
-.operations-status { margin: 0; font-size: var(--text-kt-xs); }
-.operations-status > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .375rem; padding: .5rem 0; }
-.operations-status dt { color: var(--kt-text-secondary); }
-.operations-status dd { margin: 0; font-variant-numeric: tabular-nums; }
-.operations-links { display: flex; flex-direction: column; gap: .75rem; font-size: var(--text-kt-xs); }
-.operations-links a { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .25rem; }
-.operations-links span { color: var(--kt-text-secondary); font-size: var(--text-kt-2xs); }
-.common-menu [data-slot="app-menu-group-label"] { margin-top: .75rem; margin-bottom: .25rem; font-size: var(--text-kt-2xs); }
-.driver-stats { grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); row-gap: 1.5rem; }
-.journey-data-grid { display: grid; min-width: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; }
+
 .station-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); max-height: 13rem; overflow-y: auto; gap: .25rem; }
 .station-results button { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: .25rem; padding: .5rem .75rem; border-radius: var(--kt-radius-control); text-align: left; }
-.station-results button:hover, .station-results button[aria-pressed="true"] { background: var(--kt-surface-subtle); }
-.station-results small, .station-detail h2 small { color: var(--kt-text-secondary); font-size: var(--text-kt-2xs); font-weight: 400; }
-.station-detail h2 { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; }
-.station-detail h2 { font-size: var(--text-kt-lg); font-weight: 600; }
-.rail-journey .kt-map-detail, .bus-journey .kt-map-detail { bottom: auto; max-height: calc(100% - 7rem); }
-.journey-detail-header { display: flex; justify-content: flex-end; }
-.station-address { font-size: var(--text-kt-2xs); text-align: left; white-space: normal; }
-.rail-journey .embedded-map .map-primary, .rail-journey .embedded-map .transport-map-canvas,
-.highway-journey .embedded-map .map-primary, .highway-journey .embedded-map .transport-map-canvas,
-.bus-journey .embedded-map .map-primary, .bus-journey .embedded-map .transport-map-canvas { height: 64dvh; min-height: 28rem; }
-.inline-checkbox { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .375rem; font-size: var(--text-kt-2xs); }
-.inline-checkbox input { width: 1rem; height: 1rem; min-height: 0; margin: 0; }
-.train-station-search { min-width: 0; border: 0; padding: 0; }
-.train-station-search legend { font-weight: 600; margin-bottom: .75rem; }
-.incident-row { display: flex; flex-direction: column; width: 100%; align-items: flex-start; text-align: left; gap: .375rem; padding: .75rem 0; border-bottom: 1px solid var(--kt-border); }
-.incident-row small { color: var(--kt-text-secondary); }
-.parking-lots { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 1rem; }
-.parking-lots article { border-top: 1px solid var(--kt-border); padding-top: .75rem; }
-.parking-lots article > span { margin-left: .5rem; color: var(--kt-text-secondary); font-size: var(--text-kt-2xs); }
-.parking-lots small { color: var(--kt-text-secondary); font-size: var(--text-kt-2xs); }
-.arrival-time { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; font-size: var(--text-kt-xs); }
-.arrival-time input { width: auto; max-width: 100%; }
-@media (max-width: 760px) { .journey-data-grid { grid-template-columns: minmax(0, 1fr); } .driver-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.station-results button:hover,
+.station-results button[aria-pressed="true"] { background: var(--kt-surface-subtle); }
+.station-results small { color: var(--kt-text-secondary); font-size: var(--text-kt-2xs); font-weight: 400; }
 
-/* 제목 옆 안내는 포털로 열어 지도와 모바일 화면 밖으로 잘리지 않게 한다. */
-.section-title-row { display: flex; align-items: center; gap: .375rem; min-width: 0; }
-.info-button { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border-radius: 50%; color: var(--kt-text-secondary); background: transparent; cursor: pointer; }
-.info-button:hover { background: var(--kt-surface-subtle); }
-.info-button:focus-visible { outline: 2px solid var(--kt-accent); outline-offset: 2px; }
-.info-positioner { z-index: 100; }
-.info-popup { width: min(22rem, calc(100vw - 24px)); max-height: min(24rem, 70dvh); overflow-y: auto; padding: .75rem; border: 1px solid var(--kt-border); border-radius: var(--kt-radius-control); background: var(--color-panel); color: var(--color-ink); box-shadow: var(--shadow-map); font-size: var(--text-sm); line-height: 1.6; }
-.info-popup-heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: .375rem; font-weight: 600; }
-.journey-shortcuts { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; font-size: var(--text-sm); }
-.journey-shortcuts a { color: var(--kt-text-secondary); text-decoration: underline; text-underline-offset: 3px; }
-.journey-map-target, #station-timetable, #bus-departures { min-width: 0; scroll-margin-top: 1rem; }
-.highway-map-summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm) var(--space-md); font-size: var(--text-sm); }
-.highway-speed-key { white-space: nowrap; }
-.highway-speed-dot { display: inline-block; width: .65rem; height: .65rem; border-radius: 50%; margin-right: var(--space-sm); }
-.highway-link-list { max-height: 24rem; overflow-y: auto; }
-.flight-journey .embedded-map .map-primary, .flight-journey .embedded-map .transport-map-canvas { height: 64dvh; min-height: 28rem; }
+.bus-journey .kt-map-detail { bottom: auto; max-height: calc(100% - 7rem); }
+
+.highway-journey .embedded-map .map-primary,
+.bus-journey .embedded-map .map-primary { height: 64dvh; min-height: 28rem; }
+
+.flight-journey .embedded-map .map-primary { height: 64dvh; min-height: 28rem; }
 @media (max-width: 760px) {
-  .journey-workbench { gap: .75rem; }
-  .rail-journey .station-results, .bus-journey .station-results { max-height: 6rem; }
-  .bus-journey > .journey-data-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
-  .terminal-search .kt-map-filter-field { width: 100%; }
-  .terminal-search .station-results { grid-template-columns: minmax(0, 1fr); }
-  .rail-journey .embedded-map .map-primary, .rail-journey .embedded-map .transport-map-canvas,
-  .bus-journey .embedded-map .map-primary, .bus-journey .embedded-map .transport-map-canvas,
-  .highway-journey .embedded-map .map-primary, .highway-journey .embedded-map .transport-map-canvas,
-  .flight-journey .embedded-map .map-primary, .flight-journey .embedded-map .transport-map-canvas { height: 64dvh; min-height: 22rem; }
+.journey-workbench { gap: .75rem; }
+.bus-journey .station-results { max-height: 6rem; }
+
+.terminal-search .kt-map-filter-field { width: 100%; }
+.terminal-search .station-results { grid-template-columns: minmax(0, 1fr); }
+.bus-journey .embedded-map .map-primary,
+.highway-journey .embedded-map .map-primary,
+.flight-journey .embedded-map .map-primary { height: 64dvh; min-height: 22rem; }
 }
-
-.mobile-menu-button { display: none; }
 @media (max-width: 760px) {
-  .rail-shell { position: relative; }
-  .mobile-menu-button { display: inline-flex; align-items: center; gap: .375rem; position: absolute; right: 7rem; top: 1.25rem; height: 40px; padding: .375rem; border-radius: var(--kt-radius-control); font-size: var(--text-sm); }
-  .rail-nav.common-menu:not(.is-open) { display: none; }
-  .rail-nav.common-menu.is-open { display: block; position: absolute; z-index: 50; top: 4.5rem; right: .75rem; width: min(20rem, calc(100vw - 1.5rem)); max-height: 70dvh; overflow-y: auto; padding: .75rem; background: var(--color-panel); border: 1px solid var(--kt-border); border-radius: var(--kt-radius-control); box-shadow: var(--shadow-map); }
-  .rail-nav.common-menu.is-open nav, .rail-nav.common-menu.is-open ul { display: grid; }
-  .rail-nav.common-menu.is-open ul { grid-template-columns: minmax(0, 1fr); }
+
+.bus-journey .multi-search [data-slot="field-group"].max-h-64 { max-height: 8rem; }
 }
-
-/* 기존 항구 화면도 모바일에서 지도 뒤로 상세를 배치한다. */
-@media (max-width: 760px) {
-  .journey-layout .journey-map { grid-row: 2; }
-  .journey-layout .journey-inspector { grid-row: 3; }
-  .bus-journey .multi-search [data-slot="field-group"].max-h-64 { max-height: 8rem; }
 }

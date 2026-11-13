@@ -4,15 +4,14 @@ for (const width of [320, 375, 768, 1440]) {
   test(`shadcn 로그인 필드와 키보드 제출 ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/login");
-    await expect(page.locator("[data-slot=card]")).toBeVisible();
-    expect(await page.locator("[data-slot=card-header]").evaluate((node) => getComputedStyle(node).gridTemplateColumns.split(" ").length)).toBe(1);
-    await expect(page.getByLabel("아이디")).toHaveAttribute("data-slot", "input");
-    await expect(page.getByLabel("비밀번호")).toHaveAttribute("data-slot", "input");
+    await expect(page.locator('[data-slot="login-form"]')).toBeVisible();
+    await expect(page.getByLabel("아이디")).toHaveAttribute("data-slot", "login-username");
+    await expect(page.getByLabel("비밀번호")).toHaveAttribute("data-slot", "login-password");
     await page.route("**/api/auth/login", (route) => route.fulfill({ status: 401, json: { detail: "아이디 또는 비밀번호를 확인해 주세요." } }));
     await page.getByLabel("비밀번호").fill("invalid-test-only");
     await page.getByLabel("비밀번호").press("Enter");
-    await expect(page.locator("[data-slot=field-error]")).toContainText("아이디 또는 비밀번호");
-    await expect(page.getByLabel("비밀번호")).toHaveAttribute("aria-invalid", "true");
+    await expect(page.locator('[data-slot="login-error"]')).toContainText("아이디 또는 비밀번호");
+    await expect(page.getByLabel("비밀번호")).toHaveAttribute("aria-describedby", /-error$/);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 

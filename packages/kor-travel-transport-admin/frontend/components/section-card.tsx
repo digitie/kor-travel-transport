@@ -1,19 +1,16 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-// SPDX-FileCopyrightText: 2026 Youn-sok Choi (digitie)
-// Origin: kor-travel-map@974e2d025 packages/kor-travel-map-admin/frontend/src/components/section-card.tsx
-// Modified: 2026-10-24 — Transport 운영 홈의 공용 토큰과 기존 Card에 연결
+// Hallmark · genre: editorial-utilitarian · macrostructure: Rail-Workbench · design-system: design.md · designed-as-app
 import * as React from "react";
 
 import {
   Card,
   CardAction,
   CardContent,
+  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { InfoButton } from "./info-button";
 
 type SectionCardProps = {
   title: React.ReactNode;
@@ -49,9 +46,8 @@ function SectionCard({
   return (
     <Card className={className} size={size}>
       <CardHeader className="border-b">
-        <div className="section-title-row"><CardTitle role="heading" aria-level={headingLevel}>{title}</CardTitle>
-          {description ? <InfoButton label={typeof title === "string" ? title : "이 항목"}>{description}</InfoButton> : null}
-        </div>
+        <CardTitle aria-level={headingLevel}>{title}</CardTitle>
+        {description ? <CardDescription>{description}</CardDescription> : null}
         {actions ? <CardAction>{actions}</CardAction> : null}
       </CardHeader>
       <CardContent className={cn("space-y-4", contentClassName)}>

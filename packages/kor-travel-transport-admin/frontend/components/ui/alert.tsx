@@ -1,75 +1,39 @@
-import * as React from "react"
-import { cva, type VariantProps } from "class-variance-authority"
-import { cn } from "@/lib/utils"
+"use client";
+import type { ComponentProps } from "react";
+import { cn } from "@/lib/utils";
+export {
+  AlertTitle,
+  AlertDescription,
+  AlertAction,
+} from "@kor-travel/ui/alert";
 
-const alertVariants = cva(
-  "group/alert relative grid w-full gap-0.5 rounded-lg border px-2.5 py-2 text-left text-sm has-data-[slot=alert-action]:relative has-data-[slot=alert-action]:pr-18 has-[>svg]:grid-cols-[auto_1fr] has-[>svg]:gap-x-2 *:[svg]:row-span-2 *:[svg]:translate-y-0.5 *:[svg]:text-current *:[svg:not([class*='size-'])]:size-4",
-  {
-    variants: {
-      variant: {
-        default: "bg-card text-card-foreground",
-        destructive:
-          "bg-card text-destructive *:data-[slot=alert-description]:text-destructive/90 *:[svg]:text-current",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-    },
-  }
-)
+export function AlertActions({ className, ...props }: ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="alert-actions"
+      className={cn("mt-3 flex flex-wrap items-center gap-2", className)}
+      {...props}
+    />
+  );
+}
 
-function Alert({
-  className,
+import { Alert as CommonAlert } from "@kor-travel/ui/alert";
+
+/** 오류는 assertive, 일반 작업 결과는 polite로 알리는 기존 Map 계약. */
+export function Alert({
   variant,
+  role,
+  "aria-live": live,
   ...props
-}: React.ComponentProps<"div"> & VariantProps<typeof alertVariants>) {
+}: ComponentProps<typeof CommonAlert>) {
+  const resolvedRole = role ?? (variant === "destructive" ? "alert" : "status");
   return (
-    <div
-      data-slot="alert"
-      role="alert"
-      className={cn(alertVariants({ variant }), className)}
+    <CommonAlert
+      data-variant={variant ?? "default"}
+      variant={variant}
+      role={resolvedRole}
+      aria-live={live ?? (resolvedRole === "alert" ? "assertive" : "polite")}
       {...props}
     />
-  )
+  );
 }
-
-function AlertTitle({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="alert-title"
-      className={cn(
-        "font-medium group-has-[>svg]/alert:col-start-2 [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-foreground",
-        className
-      )}
-      {...props}
-    />
-  )
-}
-
-function AlertDescription({
-  className,
-  ...props
-}: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="alert-description"
-      className={cn(
-        "text-sm text-balance text-muted-foreground md:text-pretty [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-foreground [&_p:not(:last-child)]:mb-4",
-        className
-      )}
-      {...props}
-    />
-  )
-}
-
-function AlertAction({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="alert-action"
-      className={cn("absolute top-2 right-2", className)}
-      {...props}
-    />
-  )
-}
-
-export { Alert, AlertTitle, AlertDescription, AlertAction }

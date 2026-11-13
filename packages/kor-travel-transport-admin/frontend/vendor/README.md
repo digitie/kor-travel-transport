@@ -50,4 +50,15 @@ Python 복구 코어는 `backend/pyproject.toml`과 `backend/uv.lock`에서 comm
 
 ## 공용 지도 작업면 후보 (2026-10-24)
 
-Common source: e79816afb3c19b1b1e2fc1486b809c2ee3d34d6e. UI dev.7은 지도 종류·필터·탭·좌표/줌·오버레이를 추가한다. kor-travel-ui-0.1.0-dev.7.tgz의 SHA256은 4445c694013bd19fb57d3655cfc25d86e99a6733d655524718be3bf769ba7422다. Map/Weather와 동일한 산출물이며 이전 dev.6 후보를 삭제하지 않는다. [검증과 통합 경계](../../../../docs/reports/2026-10-24-shared-map-ui.md).
+Common source: e79816afb3c19b1b1e2fc1486b809c2ee3d34d6e. UI dev.7은 지도 종류·필터·탭·좌표/줌·오버레이를 추가한다. kor-travel-ui-0.1.0-dev.7.tgz의 SHA256은 4445c694013bd19fb57d3655cfc25d86e99a6733d655524718be3bf769ba7422다. Map/Weather와 동일한 산출물이다. (2026-11-13에 dev.6·dev.7·tokens 0.1.0 tarball은 삭제했다. 아래 현재 고정본을 쓴다.) [검증과 통합 경계](../../../../docs/reports/2026-10-24-shared-map-ui.md).
+
+## 공용 UI·토큰 현재 고정 — Map 정렬 (2026-11-13)
+
+Map admin 프론트엔드와 같은 tarball이다. source는 kor-travel-map `origin/main` `a9adb16e2`의 `packages/kor-travel-map-admin/frontend/vendor/`에서 가져왔고, 비교는 `sha256sum`으로 했다.
+
+| 파일 | SHA-256 |
+| --- | --- |
+| `kor-travel-ui-0.2.0.tgz` | `16b4c213453fb02b527f8e4ae673a703e4ba3808538ae6fb24f70bdda770d213` |
+| `kor-travel-tokens-0.1.1.tgz` | `7e88aaf70b93fed953198779fd17a003e327499e686794fd5f647b23cc325ad3` |
+
+`@kor-travel/ui`는 `0.2.0`, `@kor-travel/tokens`는 `0.1.1`이다. 이전 `kor-travel-ui-0.1.0-dev.6`·`dev.7`과 `kor-travel-tokens-0.1.0` tarball은 더 이상 참조하지 않아 삭제했다.

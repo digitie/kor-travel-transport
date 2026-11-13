@@ -1,9 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { dagsterRunUrl } from "@/lib/dagster-scope";
-import styles from "./address-refresh.module.css";
+import { SectionCard } from "@/components/section-card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { dagsterRunUrl } from "@/lib/dagster-scope";
+import { cn } from "@/lib/utils";
 
 import type { AddressRefreshSummary } from "@/lib/transport";
 
@@ -63,35 +67,44 @@ export function AddressRefresh() {
     } finally { setBusy(false); }
   }
   return (
-    <section aria-label="주소 갱신" className={"panel " + styles.panel}>
-      <h2>주소 갱신</h2>
-      <p>VWorld 우선 · Kakao 보조로 좌표의 최신 주소를 확인합니다. 위치별 마지막 확인일부터 달력 6개월마다 갱신하며, 원천 주소와 관리자 좌표는 보존합니다.</p>
-      {summary ? <>
-        <p>전체 {summary.total.toLocaleString()}개 · 갱신 대상 {summary.due.toLocaleString()}개 · 실패 {summary.failed.toLocaleString()}개 · 자동 갱신 {summary.auto_enabled ? "켜짐" : "꺼짐"}</p>
-        <p>최근 정상 확인: {date(summary.last_resolved_at)}{summary.in_progress ? " · 배치 진행 또는 재개 대기" : ""}</p>
-        {!summary.configured ? <p role="status">VWorld 또는 Kakao 서버 키를 설정해야 실행할 수 있습니다.</p> : null}
-      </> : <p role="status">주소 갱신 상태 확인 중…</p>}
-      <div className={styles.actions}>
-        <Button type="button" disabled={busy || !summary?.configured} onClick={() => void launch()}>{busy ? "예약 중…" : "전체 주소 수동 갱신"}</Button>
-        <Button type="button" variant="outline" onClick={() => void load()}>상태 새로고침</Button>
-        {runId ? <a href={dagsterRunUrl(runId)} target="_blank" rel="noreferrer">실행 기록 보기 ↗</a> : null}
-      </div>
-      {loadError ? <p role="alert">{loadError}</p> : null}
-      {launchError ? <p role="alert">{launchError}</p> : null}
-      {notice ? <p role="status">{notice}</p> : null}
-      {summary?.items.length ? <>
-        <p>최근 확인한 위치 최대 50개입니다. 실패·기한 경과 주소는 최신으로 보장되지 않습니다. 작은 화면에서는 표를 좌우로 이동해 확인하세요.</p>
-        <div className={styles.scroll} role="region" aria-label="최근 주소 확인 결과" tabIndex={0}>
-        <table className={styles.table}>
-          <caption>최근 주소 확인 결과</caption>
-          <thead><tr><th>위치</th><th>확인 주소</th><th>상태 / 제공자</th><th>확인일 / 다음 갱신일</th></tr></thead>
-          <tbody>{summary.items.map(item => <tr key={item.target_key}>
-            <td>{item.name || item.target_key}</td><td>{item.address?.full || "주소 없음"}</td>
-            <td>{item.stale ? "재확인 필요" : "정상"} · {item.status} / {item.provider || "미확인"}{item.error_code ? " (" + item.error_code + ")" : ""}</td>
-            <td>{date(item.resolved_at)}<br />{date(item.next_refresh_at)}</td>
-          </tr>)}</tbody>
-        </table>
-      </div></> : null}
+    <section aria-label="주소 갱신">
+      <SectionCard title="주소 갱신" description="VWorld 우선 · Kakao 보조로 좌표의 최신 주소를 확인합니다. 위치별 마지막 확인일부터 달력 6개월마다 갱신하며, 원천 주소와 관리자 좌표는 보존합니다.">
+        {summary ? <div className="flex flex-col gap-1 text-sm">
+          <p>전체 {summary.total.toLocaleString()}개 · 갱신 대상 {summary.due.toLocaleString()}개 · 실패 {summary.failed.toLocaleString()}개 · 자동 갱신 {summary.auto_enabled ? "켜짐" : "꺼짐"}</p>
+          <p>최근 정상 확인: {date(summary.last_resolved_at)}{summary.in_progress ? " · 배치 진행 또는 재개 대기" : ""}</p>
+          {!summary.configured ? <p role="status">VWorld 또는 Kakao 서버 키를 설정해야 실행할 수 있습니다.</p> : null}
+        </div> : <p className="text-sm" role="status">주소 갱신 상태 확인 중…</p>}
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="button" disabled={busy || !summary?.configured} onClick={() => void launch()}>{busy ? "예약 중…" : "전체 주소 수동 갱신"}</Button>
+          <Button type="button" variant="outline" onClick={() => void load()}>상태 새로고침</Button>
+          {runId ? <a className={cn(buttonVariants({ variant: "ghost" }))} href={dagsterRunUrl(runId)} rel="noreferrer" target="_blank">실행 기록 보기 ↗</a> : null}
+        </div>
+        {loadError ? <Alert variant="destructive"><AlertDescription>{loadError}</AlertDescription></Alert> : null}
+        {launchError ? <Alert variant="destructive"><AlertDescription>{launchError}</AlertDescription></Alert> : null}
+        {notice ? <Alert><AlertDescription>{notice}</AlertDescription></Alert> : null}
+        {summary?.items.length ? <div className="flex flex-col gap-3">
+          <p className="text-xs text-text-secondary">최근 확인한 위치 최대 50개입니다. 실패·기한 경과 주소는 최신으로 보장되지 않습니다. 작은 화면에서는 표를 좌우로 이동해 확인하세요.</p>
+          <div aria-label="최근 주소 확인 결과" className="overflow-x-auto rounded-panel border border-border" role="region" tabIndex={0}>
+            <Table className="min-w-[40rem]">
+              <TableCaption className="text-left">최근 주소 확인 결과</TableCaption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>위치</TableHead>
+                  <TableHead>확인 주소</TableHead>
+                  <TableHead>상태 / 제공자</TableHead>
+                  <TableHead>확인일 / 다음 갱신일</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>{summary.items.map(item => <TableRow key={item.target_key}>
+                <TableCell>{item.name || item.target_key}</TableCell>
+                <TableCell>{item.address?.full || "주소 없음"}</TableCell>
+                <TableCell>{item.stale ? "재확인 필요" : "정상"} · {item.status} / {item.provider || "미확인"}{item.error_code ? " (" + item.error_code + ")" : ""}</TableCell>
+                <TableCell>{date(item.resolved_at)}<br />{date(item.next_refresh_at)}</TableCell>
+              </TableRow>)}</TableBody>
+            </Table>
+          </div>
+        </div> : null}
+      </SectionCard>
     </section>
   );
 }

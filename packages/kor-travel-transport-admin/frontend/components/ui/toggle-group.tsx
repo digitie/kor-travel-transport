@@ -1,89 +1,63 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { Toggle as TogglePrimitive } from "@base-ui/react/toggle"
-import { ToggleGroup as ToggleGroupPrimitive } from "@base-ui/react/toggle-group"
-import { type VariantProps } from "class-variance-authority"
-import { cn } from "@/lib/utils"
+import { createContext, useContext, type ComponentProps } from "react";
 
-import { toggleVariants } from "@/components/ui/toggle"
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
-const ToggleGroupContext = React.createContext<
-  VariantProps<typeof toggleVariants> & {
-    spacing?: number
-    orientation?: "horizontal" | "vertical"
-  }
->({
-  size: "default",
-  variant: "default",
-  spacing: 2,
-  orientation: "horizontal",
-})
+/**
+ * 공용 UI 패키지에는 토글 그룹이 없어 Map의 Button을 `aria-pressed` 토글로 쓴다.
+ * 단일 선택만 지원한다. 값 배열의 첫 항목이 선택 상태이고, 같은 항목을 다시 누르면 빈 배열이다.
+ */
+type ToggleGroupContextValue = {
+  value: readonly string[];
+  onValueChange?: (value: string[]) => void;
+  variant: "default" | "outline";
+};
 
-function ToggleGroup({
-  className,
-  variant,
-  size,
-  spacing = 2,
-  orientation = "horizontal",
-  children,
-  ...props
-}: ToggleGroupPrimitive.Props &
-  VariantProps<typeof toggleVariants> & {
-    spacing?: number
-    orientation?: "horizontal" | "vertical"
-  }) {
+const ToggleGroupContext = createContext<ToggleGroupContextValue>({ value: [], variant: "default" });
+
+type ToggleGroupProps = Omit<ComponentProps<"div">, "defaultValue" | "onChange"> & {
+  value?: readonly string[];
+  onValueChange?: (value: string[]) => void;
+  variant?: "default" | "outline";
+};
+
+function ToggleGroup({ value = [], onValueChange, variant = "default", className, children, ...props }: ToggleGroupProps) {
   return (
-    <ToggleGroupPrimitive
-      data-slot="toggle-group"
-      data-variant={variant}
-      data-size={size}
-      data-spacing={spacing}
-      data-orientation={orientation}
-      style={{ "--gap": spacing } as React.CSSProperties}
-      className={cn(
-        "group/toggle-group flex w-fit flex-row items-center gap-[--spacing(var(--gap))] rounded-lg data-[size=sm]:rounded-[min(var(--radius-md),10px)] data-vertical:flex-col data-vertical:items-stretch",
-        className
-      )}
-      {...props}
-    >
-      <ToggleGroupContext.Provider
-        value={{ variant, size, spacing, orientation }}
-      >
+    <ToggleGroupContext.Provider value={{ value, onValueChange, variant }}>
+      <div role="group" data-slot="toggle-group" className={cn("inline-flex flex-wrap items-center gap-1", className)} {...props}>
         {children}
-      </ToggleGroupContext.Provider>
-    </ToggleGroupPrimitive>
-  )
+      </div>
+    </ToggleGroupContext.Provider>
+  );
 }
 
-function ToggleGroupItem({
-  className,
-  children,
-  variant = "default",
-  size = "default",
-  ...props
-}: TogglePrimitive.Props & VariantProps<typeof toggleVariants>) {
-  const context = React.useContext(ToggleGroupContext)
+type ToggleGroupItemProps = Omit<ComponentProps<typeof Button>, "value"> & {
+  value: string;
+};
 
+function ToggleGroupItem({ value, className, onClick, children, ...props }: ToggleGroupItemProps) {
+  const group = useContext(ToggleGroupContext);
+  const pressed = group.value.includes(value);
   return (
-    <TogglePrimitive
+    <Button
+      type="button"
+      variant={pressed ? "secondary" : group.variant === "outline" ? "outline" : "ghost"}
       data-slot="toggle-group-item"
-      data-variant={context.variant || variant}
-      data-size={context.size || size}
-      data-spacing={context.spacing}
-      className={cn(
-        "shrink-0 group-data-[spacing=0]/toggle-group:rounded-none group-data-[spacing=0]/toggle-group:px-2 focus:z-10 focus-visible:z-10 group-data-[spacing=0]/toggle-group:has-data-[icon=inline-end]:pr-1.5 group-data-[spacing=0]/toggle-group:has-data-[icon=inline-start]:pl-1.5 group-data-horizontal/toggle-group:data-[spacing=0]:first:rounded-l-lg group-data-vertical/toggle-group:data-[spacing=0]:first:rounded-t-lg group-data-horizontal/toggle-group:data-[spacing=0]:last:rounded-r-lg group-data-vertical/toggle-group:data-[spacing=0]:last:rounded-b-lg group-data-horizontal/toggle-group:data-[spacing=0]:data-[variant=outline]:border-l-0 group-data-vertical/toggle-group:data-[spacing=0]:data-[variant=outline]:border-t-0 group-data-horizontal/toggle-group:data-[spacing=0]:data-[variant=outline]:first:border-l group-data-vertical/toggle-group:data-[spacing=0]:data-[variant=outline]:first:border-t",
-        toggleVariants({
-          variant: context.variant || variant,
-          size: context.size || size,
-        }),
-        className
-      )}
+      data-state={pressed ? "on" : "off"}
+      aria-pressed={pressed}
+      className={className}
+      onClick={(event) => {
+        onClick?.(event);
+        group.onValueChange?.(pressed ? [] : [value]);
+      }}
       {...props}
     >
       {children}
-    </TogglePrimitive>
-  )
+    </Button>
+  );
 }
 
-export { ToggleGroup, ToggleGroupItem }
+export { ToggleGroup, ToggleGroupItem };
+export type { ToggleGroupItemProps, ToggleGroupProps };

@@ -1,16 +1,11 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
-// SPDX-FileCopyrightText: 2026 Youn-sok Choi (digitie)
-// Origin: kor-travel-map@974e2d025 packages/kor-travel-map-admin/frontend/src/components/stat-strip.tsx
-// Modified: 2026-10-24 — Transport 운영 홈의 공용 토큰과 기존 Card에 연결
+// Hallmark · genre: editorial-utilitarian · macrostructure: Rail-Workbench · design-system: design.md · designed-as-app
 import * as React from "react";
 import Link from "next/link";
 
+import { HelpTip } from "@/components/help-tip";
+import { formatCount } from "@/lib/format";
+import { type StatusTone } from "@/lib/status-label";
 import { cn } from "@/lib/utils";
-
-type StatusTone = "success" | "warning" | "destructive" | "info" | "neutral";
-function formatCount(value: number | null, { loading = false } = {}) {
-  return loading || value === null || !Number.isFinite(value) ? "—" : value.toLocaleString("ko-KR");
-}
 
 type StatStripItem = {
   /** React key(생략 시 label). */
@@ -29,6 +24,8 @@ type StatStripItem = {
   href?: string;
   /** 이 항목만 로딩 중 — 값 자리에 `—`. */
   loading?: boolean;
+  /** 라벨 옆 도움말. */
+  help?: React.ReactNode;
   /** e2e 훅. */
   testId?: string;
 };
@@ -46,11 +43,11 @@ type StatStripProps = {
 };
 
 const TONE_DOT: Record<StatusTone, string> = {
-  success: "bg-kt-success",
-  warning: "bg-kt-warning",
-  destructive: "bg-kt-destructive",
-  info: "bg-kt-info",
-  neutral: "bg-kt-text-tertiary",
+  success: "bg-success",
+  warning: "bg-warning",
+  destructive: "bg-destructive",
+  info: "bg-info",
+  neutral: "bg-text-tertiary",
 };
 
 function renderValue(value: StatStripItem["value"], loading: boolean): React.ReactNode {
@@ -86,8 +83,8 @@ function StatStrip({
       aria-busy={isLoading || undefined}
       aria-label={ariaLabel}
       className={cn(
-        "grid grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-y-4 [&>*:not(:first-child)]:border-l [&>*:not(:first-child)]:border-kt-border",
-        framed && "rounded-kt-panel border border-kt-border bg-kt-surface-card px-2 py-4",
+        "grid grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-y-4 [&>*:not(:first-child)]:border-l [&>*:not(:first-child)]:border-border",
+        framed && "rounded-panel border border-border bg-card px-2 py-4",
         className,
       )}
       data-slot="stat-strip"
@@ -96,7 +93,7 @@ function StatStrip({
         const loading = isLoading || item.loading === true;
         const labelNode = item.href ? (
           <Link
-            className="rounded-kt-control underline-offset-4 hover:text-kt-text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-kt-focus"
+            className="rounded-control underline-offset-4 hover:text-text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
             href={item.href}
           >
             {item.label}
@@ -110,7 +107,7 @@ function StatStrip({
             data-testid={item.testId}
             key={item.key ?? item.label}
           >
-            <dt className="flex items-center gap-1.5 text-kt-xs font-medium text-kt-text-secondary">
+            <dt className="flex items-center gap-1.5 text-xs font-medium text-text-secondary">
               {item.tone ? (
                 <span
                   aria-hidden="true"
@@ -118,23 +115,24 @@ function StatStrip({
                 />
               ) : null}
               <span className="truncate">{labelNode}</span>
+              {item.help ? <HelpTip label={item.label}>{item.help}</HelpTip> : null}
             </dt>
             <dd className="flex min-w-0 flex-col gap-1">
               <span
                 aria-busy={loading || undefined}
                 className={cn(
-                  "flex items-baseline gap-1 font-semibold tabular-nums text-kt-text-primary",
-                  size === "lg" ? "text-kt-2xl" : "text-kt-lg",
-                  loading && "text-kt-text-tertiary",
+                  "flex items-baseline gap-1 font-semibold tabular-nums text-text-primary",
+                  size === "lg" ? "text-2xl" : "text-lg",
+                  loading && "text-text-tertiary",
                 )}
               >
                 <span className="truncate">{renderValue(item.value, loading)}</span>
                 {item.unit && hasValue(item.value, loading) ? (
-                  <span className="text-kt-xs font-medium text-kt-text-secondary">{item.unit}</span>
+                  <span className="text-xs font-medium text-text-secondary">{item.unit}</span>
                 ) : null}
               </span>
               {item.caption ? (
-                <span className="text-kt-2xs text-kt-text-secondary">{item.caption}</span>
+                <span className="text-2xs text-text-secondary">{item.caption}</span>
               ) : null}
             </dd>
           </div>

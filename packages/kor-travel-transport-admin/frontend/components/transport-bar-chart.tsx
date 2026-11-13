@@ -30,7 +30,7 @@ export function TransportBarChart({ ariaLabel, items, unit }: { ariaLabel: strin
   }, [items, unit]);
 
   return <>
-    <div aria-label={ariaLabel} className="transport-chart" role="img" ref={node} />
+    <div aria-label={ariaLabel} className="transport-chart h-[260px] w-full min-w-0" role="img" ref={node} />
     <ul className="sr-only" aria-label={`${ariaLabel} 수치`}>{items.map((item) => <li key={item.label}>{item.label}: {item.value === null ? "값 없음" : `${item.value.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}${unit}`}</li>)}</ul>
   </>;
 }

@@ -5,6 +5,10 @@ import type { DagsterOverview } from "@/lib/dagster";
 
 afterEach(() => vi.useRealTimers());
 
+function regionTag(html: string, label: string) {
+  return html.match(new RegExp(`<div[^>]*aria-label="${label}"[^>]*>`))?.[0] ?? "";
+}
+
 const snapshot: DagsterOverview = {
   checkedAt: "2026-09-28T03:20:00Z",
   runs: [{
@@ -27,8 +31,10 @@ test("실행 표와 스케줄 표의 제목·키보드 진입·링크 의미를 
 
   expect(html).toContain("최근 실행 · 마지막 확인");
   expect(html).toContain("<h2>스케줄</h2>");
-  expect(html).toMatch(/role="region" aria-label="최근 Dagster 실행 표" tabindex="0"/);
-  expect(html).toMatch(/role="region" aria-label="Dagster 스케줄 표" tabindex="0"/);
+  expect(regionTag(html, "최근 Dagster 실행 표")).toMatch(/role="region"/);
+  expect(regionTag(html, "최근 Dagster 실행 표")).toMatch(/tabindex="0"/);
+  expect(regionTag(html, "Dagster 스케줄 표")).toMatch(/role="region"/);
+  expect(regionTag(html, "Dagster 스케줄 표")).toMatch(/tabindex="0"/);
   expect(html.match(/scope="col"/g)).toHaveLength(8);
   expect(html).toMatch(/<button[^>]*aria-expanded="false"/);
   expect(html).toContain("5분마다");
@@ -56,7 +62,7 @@ test("빈 조회 결과와 실패한 실행을 각각 표시한다", () => {
   const empty = renderToStaticMarkup(<DagsterTables snapshot={{ runs: [], schedules: [] }} />);
   expect(empty).toContain("최근 Dagster 실행이 없습니다.");
   expect(empty).toContain("등록된 스케줄이 없습니다.");
-  expect(empty).not.toContain("<table");
+  expect(empty).not.toContain("data-index=");
 
   const failed = renderToStaticMarkup(<DagsterTables snapshot={{
     ...snapshot,
