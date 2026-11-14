@@ -23,6 +23,8 @@
     재비교: 이 브랜치 실패 107(이전 119) · main 146, 이 브랜치에서만 실패하는 테스트 0건. resume.md에 드로어 결정 대체를 남겼다.
   - 반영(P2): 오류 화면 sessionStorage 예외 처리, 자동 새로고침 키 접두어를 transport로, 문서 레일 폭 16rem 정정,
     없는 테스트를 가리키던 주석 정리.
+  - 머지: 리뷰 반영 HEAD `49e66f6` CI 전부 통과(backend 18분36초·frontend·transport-admin·common-policy×2) 뒤 사용자 지시로
+    n150 live E2E 없이 머지했다. 운영 환경 수용은 미검증이며 다음 배포 때 live E2E로 확인한다. PR200은 PR201로 대체해 닫는다.
   - 남긴 P2(후속): 데스크톱 작업면 높이의 헤더 고정 가정(9rem), `:has()` 미지원 브라우저의 확장 모드, 접힘 레일
     hydration 뒤 폭 변화(main과 같음), 로그인 성공 직후 버튼 재활성(공용 LoginForm), 오류 화면 스택 노출(내부망 ADR-003
     범위), 쓰이지 않는 ConfirmDialogProvider, status-label 등 새 모듈 단위 테스트, CI에서 비라이브 e2e 미실행,
