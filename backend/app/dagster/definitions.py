@@ -301,10 +301,16 @@ def _collection_failure_metadata(result: dict[str, Any], scope: CollectionScope)
     code, stage, hint, retryable = "COLLECTION_FAILED", "collection", "CHECK_RUN_DETAIL", False
     if "traffic flow response contains invalid records" in messages:
         code, stage, hint = "TRAFFIC_FLOW_INVALID_RECORDS", "provider_parse", "CHECK_RESPONSE_CONTRACT"
+    elif "traffic flow count must match" in messages or "incomplete total_count" in messages:
+        code, stage, hint = "TRAFFIC_FLOW_COUNT", "provider_parse", "CHECK_RESPONSE_CONTRACT"
     elif "Opinet browser action failed" in messages and "TimeoutError" in messages:
         code, stage, hint, retryable = "OPINET_BROWSER_TIMEOUT", "provider_fetch", "RETRY_AFTER_BACKOFF", True
-    elif any(word in messages.lower() for word in ("quota", "rate limit", "too many requests")):
+    elif re.search(r"\bEXCEEDED_LIMIT\b", messages) or any(
+        word in messages.lower() for word in ("quota", "rate limit", "too many requests")
+    ):
         code, stage, hint, retryable = "PROVIDER_RATE_LIMIT", "provider_fetch", "RETRY_AFTER_BACKOFF", True
+    elif re.search(r"\b(?:INVALID_KEY|EXPIRED_KEY|NO_REGISTERED_KEY)\b", messages):
+        code, stage = "PROVIDER_AUTH", "provider_fetch"
     elif "TimeoutError" in messages:
         code, stage, hint, retryable = "COLLECTION_TIMEOUT", "collection", "RETRY_AFTER_BACKOFF", True
     metadata: dict[str, Any] = {
