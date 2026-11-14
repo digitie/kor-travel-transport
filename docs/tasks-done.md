@@ -1,3 +1,7 @@
+## 2026-11-13 — 신고된 교통 회귀 실제 배포·수집 복구
+
+- [x] **T-REPORTED-REGRESSIONS-DEPLOY-20261113** — PR196 main49c1688·정확 HEAD CI/두 독립검토·ARM64 API/CS8a9d38e7/관리자588b36d3·schema0042 보존·원20복원·Managerhealthy·최종 첫Inv03ce 실제0/Main0/cgroup부재/68자식 종료를 확인했다. 정상 공항10567/10569는 각각44개 DB 저장/공식SUCCESS이고 네 공항11월13일 관측·김포 분석API/PC/mobile 날짜·line canvas를 확인했다. ALL5유종/각Top10/극값/실제 지도 타일도 수용했다. 과거 실패·KRIC1건CANCELED/원문374개 동일·항공편 중복 오류·자료 공백은 보존한다. [최종 근거](reports/2026-11-13-reported-runtime-regressions.md).
+
 ## 2026-11-13 — 신고 증상 원인 분리와 버전 정렬
 
 - [x] **T-REPORTED-VERSION-ALIGN-20261113** — d9 웹/4998 API·CS 혼합을 확인해 준비된 d9 ARM64 이미지로 정렬했다. ALL5유종/95저장행·극값·지도 PC/mobile 타일24개·사용자 해결 확인, 원20복원·Managerhealthy·R2첫Invdone/Main0/cgroup부재/70자식 종료를 확인했다. 원 첫 부모1은 보존하며 신규 Top10/필터/공항 수집 수용과 구분한다.

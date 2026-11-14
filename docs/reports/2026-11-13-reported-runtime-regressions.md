@@ -57,5 +57,63 @@ pack으로 admin의 파일 패키지에 다시 반영하고 typegen/타입/공�
 두 독립 검토의 최종 delta에서 새 확정 P0/P1/P2는 없었다. main PR195는 CI 정책 참조만
 바꾸며 제품 런타임 변경이 아니다.
 
-후속 제품 이미지·실제 배포·정규 공항 수집 후 DB/API/화면의 새 관측 날짜는 아직 마감 대상이다.
-기존 원본/영구 통계를 지우거나 수동 수집·재집계·구 지역 순위 추정으로 완료를 만들지 않는다.
+## 최종 머지·이미지·실제 수용
+
+Transport PR196은 정확 통합 HEAD `dcbe25a3715f6ad1d43bed4e2f04b766f992cf1a`의
+backend/frontend/admin CI와 두 독립 검토 뒤 main `49c1688d22a1469f7c7a834c5d72f98653eb12b9`로
+머지했다. backend는1918PASS/2SKIP/54subtests였고 CI live-e2e는 생략이다. 아래 실제 브라우저
+수용과 구분한다. main과 이미지 입력의 차이는 공통 CI 참조 파일1개뿐이며 런타임 트리는 같다.
+
+API·CS는 ARM64 `8a9d38e7f84369d3de1936d6ba9dc3ae4b4710767331365aa02dce9104def709`,
+관리자는 `588b36d3cec18809968492494cd0a71fb5d157316a9d30be4d356a529eb74329`로 반영했다.
+SDKb146의 실제 설치·원문 파싱·정확 아카이브 및 Git 정규화 지문·비공개 지도 키 소비를 검산했다.
+성공한 backend/admin 이미지는 후속 보조 검산 오류 때문에 재빌드하지 않고 재사용했다.
+schema0042와 원20일정 복원·5역할 healthy·Manager adopt/verify/show healthy, 명시적 env·키·
+기존 공개 frontend/gateway·Weather/Geo/공용 daemon을 보존했다. DB migration·수동 수집·재집계·
+백업/복원·원본 삭제는 없다.
+
+최종 forward의 첫 Invocation `03cecb010aea48be8b9139c21eb73458`은 실제 done/exit0·Main0·
+cgroup 부재·68개 소유 자식 종료다. API/admin은 선행 교체 결과를 그대로 쓰고 CS만 이어서
+교체했다. 사용자의 후속 직접 지시 “강제 중지하고 올려”에 따라 정확히 식별한 KRIC1건만
+Dagster SAFE_TERMINATE로 정산했다. 공식 CANCELED/앱 failed이며 기존 원문374개와 모든
+본문 지문이 동일하다. 다른 수집 취소·수집기 OS kill은 없다. 선행 배포 부모는 deferred SIGTERM
+정산으로 실제 exit1·원20복원·220개 자식 종료이며 이를 성공0으로 바꾸지 않는다.
+초기 sender·Manager 변경·NVMe 경로 오인·builder 선택·복사 권한·CRLF 검산 오류의 각 실패
+원문도 보존한다. 최종 native 검산 전용 R7은 실제0이며 이 문서 갱신으로 제품을 재빌드하지 않는다.
+
+### 정규 공항 수집과 날짜 복구
+
+원20일정 복원 뒤 정상 `airport_collection_job` 두 실행이 실제 SUCCESS로 끝났다.
+앱10567/공식 `164bae74-bf73-4129-a6af-aa7ec6e8465a`, 앱10569/공식
+`6e03224b-64c9-4b9c-a9d4-3dfb29a6b7be`에서 각각44개 주차 관측을 DB에 저장했다.
+KAC·인천 주차·요금 원문 HTTP200과 parse_error 부재를 실제 DB에서 확인했다. 과거 부분 성공은
+보존한다. 진단용25행 응답을 수집 성공으로 대체한 것이 아니다.
+
+13:59UTC 읽기에서 김포5·김해3·제주3개 주차장의 현재 관측은 모두
+`2026-11-13T13:57:03Z`, 인천19개는 `13:56:00Z`다. 이후 실제 김포 분석 API는 HTTP200,
+관측이 있는 두 버킷 `14:00:00Z`/`14:03:03Z`와 각5개 주차장의 잔여1303/1391면을 반환했다.
+generated_at을 관측 날짜로 쓰지 않았다. 실제 Chromium156 PC1440/모바일375에서
+`11/13 (금)` 날짜 선택과 가시 line canvas·문서 overflow0·pageerror0·logout303·소유 자식0을
+확인하고 캡처를 검토했다. 복구 전 단절 구간을 임의 보간·backfill하지 않는다.
+이 관측은 새 날짜·자료·가시 엔진 수용이다. 별도 실제 터치375 문맥에서 차트 shell의 폭이
+1180px이고 자체 가로 스크롤이0인 현상도 관측했다. 문서 overflow0을 모든 축/컨트롤의 모바일
+가시성 보장으로 확대하지 않으며 해당 폭/스크롤 문제는 별도 화면 후속으로 남긴다.
+
+### 지도·유가와 남은 한계
+
+새 관리자에서도 PC/모바일 정상 지도 타일24개·오류 배너0, ALL5유종·95개 실제 저장 일별행과
+각 유종 Top10을 확인했다. 실제 hover/모바일 touch 설명창에 날짜·평균·최저·최고·지도 링크가
+나오며 오른쪽 새로고침/유종별50개 표 행을 확인했다. 30일 창의19개 저장일을 연속30일 자료로
+과장하지 않는다. 비어 있는 과거 지역 membership과 누락 극값은 여전히 미제공이다.
+전체 조회7.61초 등은 단일 표본이며 p95/1초 보장이 아니다.
+
+브라우저 보조 관측의 로그인 반환 경로·가시 패널 선택자 오인·이미 방문한 숨은 heatmap6개를
+미방문 daily 엔진으로 잘못 센 실패는 원문을 보존했다. 실제 daily 전용 경계와 별도 가시 DOM을
+확인했으며 제품 코드를 바꾸거나 원 실패를 PASS로 덮지 않았다. 항공편은 여전히 제공기관
+출도착 페이지 중복 오류/0편을 표시한다. 주차 관측 복구를 항공편 복구로 확대하지 않는다.
+
+정본 원장은 Git 밖 `transport-reported-regressions-20261113/plan.json`과
+`fix-deployment-forward/{last-status,terminal-observation}.json`, `parking-db-after-fix.json`,
+`parking-official-normal-runs.json`, `parking-final-analytics-api.json`,
+`live-fixed-parking-r5/results.json`, `live-fixed-api-first/results.json`이다.
+실제 터치 문맥의 별도 폭/스크롤 원문은 `live-fixed-parking-mobile-detail/results.json`이다.
