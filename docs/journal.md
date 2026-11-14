@@ -2,7 +2,7 @@
 
 - PR200(`codex/transport-user-journeys`)의 map UI 정렬이 main과 160개 파일에서 충돌해, 최신 main에서 새 브랜치로
   다시 적용했다. 원칙은 main 기능·데이터 흐름·테스트 계약 유지, 화면(로그인·메뉴·셸·UI 컴포넌트·페이지 구성)은 map 기준이다.
-- 셸·메뉴는 map 레일(lg 이상 17rem, 미만은 상단 메뉴 띠)로 바꾸고 main의 새 경로(일반 주차장·시간표 조회·공항 주차장)를
+- 셸·메뉴는 map 레일(lg 이상 16rem, 미만은 상단 메뉴 띠)로 바꾸고 main의 새 경로(일반 주차장·시간표 조회·공항 주차장)를
   메뉴에 넣었다. main의 Geo 드로어 셸 CSS는 제외했다. `FilterCombobox`·`InfoButton`은 main 구현(공통 Radix,
   단일 선택·외부 검색어·아이콘)을 유지했고 map 복제 다중 선택 콤보박스는 쓰지 않는다.
 - 레거시 `.grid:not([data-slot])` 3열 규칙 삭제, `FilterField` 형제 label, 로그인 오류 문구(401 외 공통 사전)를 반영했다.
@@ -11,6 +11,22 @@
 - 검증: 타입 0, lint 경고 0, 단위 495개, react-doctor 0, 공통 의존성 정책 일치, 빌드 통과. 비라이브 e2e 27개 스펙을
   최신 main과 같은 로컬 조건(목 응답·테스트 전용 로그인 값)에서 비교해 이 브랜치에서만 실패하는 테스트는 0건이다
   (실패 이 브랜치 119 · main 146, 대부분 main에서도 실패하는 기존 스펙). 드로어 전용 셸 테스트·스펙은 map 셸 계약으로 바꿨다.
+
+- 적대적 리뷰(hostile-review.md) — James(프론트/UI)·Popper(운영/계약) 독립 실행, P0 0건.
+  - 반영(P1): main `tokens.css` 삭제로 사라진 legacy 별칭(`--ink --panel --line --color-rule --danger --color-panel`,
+    유가 차트 높이)을 `transport-palette.css`에 기존 토큰 참조로 되살렸다. shadcn이 배경색으로 쓰는 `--muted/--accent`를
+    글자색으로 쓰던 legacy 규칙은 `--text-secondary/--brand`로 바꿨다(출발 시각·유가 라벨이 배경색과 같아지던 문제).
+    `sanitizeLocalPath`가 `/.//evil.com`처럼 정규화 뒤 `//`가 되는 경로를 막는다. 로그아웃은 main과 같은 일반 폼 POST로
+    되돌려(스크립트 없이 동작, 303 대기 중 오판 없음, 오류 이중 낭독 제거) 쓰이지 않던 탭 간 로그아웃 모듈을 지웠다.
+    좁은 화면 로그아웃 아이콘 버튼은 coarse 포인터에서 44px다. lg 미만 지도 작업면은 `100dvh - 8rem`으로 줄여 지도 밖
+    스크롤 영역을 남겼다. `weather-visual-parity.spec.ts`를 map 셸 셀렉터로 바꿨다(20/20 통과). 반영 뒤 비라이브 e2e
+    재비교: 이 브랜치 실패 107(이전 119) · main 146, 이 브랜치에서만 실패하는 테스트 0건. resume.md에 드로어 결정 대체를 남겼다.
+  - 반영(P2): 오류 화면 sessionStorage 예외 처리, 자동 새로고침 키 접두어를 transport로, 문서 레일 폭 16rem 정정,
+    없는 테스트를 가리키던 주석 정리.
+  - 남긴 P2(후속): 데스크톱 작업면 높이의 헤더 고정 가정(9rem), `:has()` 미지원 브라우저의 확장 모드, 접힘 레일
+    hydration 뒤 폭 변화(main과 같음), 로그인 성공 직후 버튼 재활성(공용 LoginForm), 오류 화면 스택 노출(내부망 ADR-003
+    범위), 쓰이지 않는 ConfirmDialogProvider, status-label 등 새 모듈 단위 테스트, CI에서 비라이브 e2e 미실행,
+    coarse 포인터의 InfoButton(24px)·주소 갱신 버튼(32px) 터치 크기(main 기존 컴포넌트).
 
 ## 2026-11-13 — 신고된 지도·유가·주차 수집 회귀
 

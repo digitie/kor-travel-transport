@@ -2,7 +2,7 @@
 // chunk/RSC/network 계열 런타임 오류는 같은 pathname에서 1회 hard reload로 복구를
 // 시도한다. sessionStorage flag로 무한 reload를 막는다.
 
-const ERROR_RECOVERY_RELOAD_PREFIX = "kortravelmap.admin.error-reload";
+const ERROR_RECOVERY_RELOAD_PREFIX = "kor-travel-transport:error-reload";
 
 const RECOVERABLE_PATTERNS = [
   "chunkloaderror",

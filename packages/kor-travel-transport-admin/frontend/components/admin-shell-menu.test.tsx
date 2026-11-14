@@ -38,14 +38,19 @@ test("주요 메뉴는 기존 19개 경로를 모두 보이고 드로어 없이 
   } finally { await dispose(); }
 });
 
-test("로그아웃은 POST 요청을 보내는 버튼이다", async () => {
-  const fetchMock = vi.fn(async () => new Response(null, { status: 500 }));
-  vi.stubGlobal("fetch", fetchMock);
-  const { container, button, dispose } = await mount();
+test("로그아웃은 스크립트 없이도 동작하는 POST 폼이고 제출 때 대시보드 캐시를 지운다", async () => {
+  const { container, dispose } = await mount();
   try {
     expect(container.querySelector('a[href="/api/auth/logout"]')).toBeNull();
-    await act(async () => button("로그아웃")!.click());
-    expect(fetchMock).toHaveBeenCalledWith("/api/auth/logout", expect.objectContaining({ method: "POST" }));
+    const forms = [...container.querySelectorAll<HTMLFormElement>('form[action="/api/auth/logout"]')];
+    expect(forms.length).toBeGreaterThan(0);
+    for (const form of forms) {
+      expect(form.method).toBe("post");
+      expect(form.querySelector('button[type="submit"]')).not.toBeNull();
+    }
+    sessionStorage.setItem("kor-travel-transport-dashboard-v2", "{}");
+    await act(async () => { forms[0].dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
+    expect(sessionStorage.getItem("kor-travel-transport-dashboard-v2")).toBeNull();
   } finally { await dispose(); }
 });
 

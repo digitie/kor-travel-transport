@@ -58,4 +58,18 @@
   --color-port: oklch(40% .11 235);
   --color-airport: oklch(40% .11 305);
   --color-rest: oklch(40% .1 135);
+
+  /* 도메인 legacy 규칙이 쓰는 옛 별칭. 새 값이 아니라 위 토큰을 가리킨다.
+   * shadcn이 배경색으로 쓰는 --muted/--accent는 여기서 다시 정의하지 않는다. */
+  --paper: var(--surface-page);
+  --panel: var(--card);
+  --ink: var(--text-primary);
+  --line: var(--surface-muted);
+  --danger: var(--destructive);
+  --color-panel: var(--panel);
+  --color-rule: var(--line);
+
+  /* 유가 통계 차트 높이 */
+  --fuel-chart-height: 20rem;
+  --fuel-chart-height-mobile: 17rem;
 }

@@ -31,7 +31,7 @@
  *  - "확인됨"   = acknowledged(사람이 인지함, info) 전용. 결과 확정인 confirmed는 "확인 완료".
  * pending/acknowledged 쪽을 고정한 이유는 두 문자열이 live e2e 계약이기 때문이다
  * (e2e/live/reviews-decide-write.live.spec.ts · e2e/live/admin-issues-actions-write.live.spec.ts).
- * 규약은 `status-label.test.ts`가 잠근다 — 라벨 → tone이 함수여야 하고(한 라벨이 두 tone을 갖지
+ * 규약(테스트 후속 과제) — 라벨 → tone이 함수여야 하고(한 라벨이 두 tone을 갖지
  * 않는다), 라벨과 tone의 키 집합이 정확히 같아야 한다. 새 상태를 추가할 때 둘 중 하나만 적으면
  * 실패한다.
  *

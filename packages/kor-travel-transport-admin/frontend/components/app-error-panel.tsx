@@ -44,18 +44,26 @@ export function AppErrorPanel({ error, reset, standalone = false }: AppErrorPane
     }
 
     // chunk/RSC/network 계열은 같은 pathname에서 1회만 hard reload(무한 reload 방지).
+    // 저장소가 막혀 1회 표시를 남길 수 없으면 무한 reload를 피하려고 자동 새로고침을 하지 않는다.
     const key = errorReloadStorageKey(window.location.pathname);
-    if (window.sessionStorage.getItem(key) === "1") {
+    try {
+      if (window.sessionStorage.getItem(key) === "1") {
+        return;
+      }
+      window.sessionStorage.setItem(key, "1");
+    } catch {
       return;
     }
-
-    window.sessionStorage.setItem(key, "1");
     window.location.reload();
   }, [recoverable]);
 
   const retry = () => {
     if (typeof window !== "undefined") {
-      window.sessionStorage.removeItem(errorReloadStorageKey(window.location.pathname));
+      try {
+        window.sessionStorage.removeItem(errorReloadStorageKey(window.location.pathname));
+      } catch {
+        // 저장소가 막혀도 다시 시도는 진행한다.
+      }
     }
     if (reset) {
       reset();

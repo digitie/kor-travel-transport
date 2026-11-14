@@ -4,17 +4,11 @@
 import { LogOutIcon, PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react";
 import Link from "next/link";
 import { AppMenu, type AppMenuLinkProps } from "@kor-travel/ui/app-menu";
-import { toast } from "sonner";
 import { usePathname } from "next/navigation";
-import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 
 import { NAV_GROUPS, getActiveAdminItem } from "@/components/admin-nav";
 import { buttonVariants } from "@/components/ui/button-variants";
-import {
-  beginAdminLogout,
-  cancelPendingAdminLogout,
-  publishAdminLogout,
-} from "@/lib/admin-auth-events";
 import { cn } from "@/lib/utils";
 
 // 기존 `@/components/admin-shell` 호출부가 PageHeader를 그대로 가져가도록 재수출한다.
@@ -236,58 +230,25 @@ function ButtonLogout({
   className?: string;
 }) {
   const labelHidden = iconOnly || collapsed;
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const inFlight = useRef(false);
-
-  async function logout() {
-    if (inFlight.current || !beginAdminLogout()) return;
-    inFlight.current = true;
-    setBusy(true);
-    setError(null);
-    clearDashboardCache();
-    try {
-      const response = await fetch("/api/auth/logout", {
-        method: "POST",
-        signal: AbortSignal.timeout(5000),
-      });
-      if (!response.ok) throw new Error("logout failed");
-      publishAdminLogout();
-      window.location.assign("/login");
-    } catch {
-      cancelPendingAdminLogout();
-      setError("로그아웃하지 못했습니다. 다시 시도해 주세요.");
-      toast.error("로그아웃하지 못했습니다. 다시 시도해 주세요.");
-    } finally {
-      inFlight.current = false;
-      setBusy(false);
-    }
-  }
-
+  // 일반 폼 POST다. 스크립트가 없거나 오류 화면에서도 동작하고, 서버의 303이 곧바로 /login 문서로 이동시킨다.
+  // 제출 직전에 대시보드 캐시를 지워 이전 화면의 데이터가 다음 로그인에 남지 않게 한다.
   return (
-    <div>
+    <form action="/api/auth/logout" method="post" onSubmit={clearDashboardCache}>
       <button
-        aria-busy={busy}
-        aria-disabled={busy}
         aria-label={labelHidden ? "로그아웃" : undefined}
         className={cn(
           railRowClass,
-          iconOnly ? "size-control-sm justify-center gap-0 px-0" : "w-full",
+          // 상단 행의 아이콘 버튼은 터치 환경에서 최소 44px 대상을 지킨다.
+          iconOnly ? "size-control-sm justify-center gap-0 px-0 pointer-coarse:size-11" : "w-full",
           !iconOnly && collapsed && railRowCollapsedClass,
           className,
         )}
         title={labelHidden ? "로그아웃" : undefined}
-        type="button"
-        onClick={() => void logout()}
+        type="submit"
       >
         <LogOutIcon aria-hidden="true" className="size-4 shrink-0 text-icon-default" />
         <span className={cn(iconOnly ? "sr-only" : collapsed && "lg:hidden")}>로그아웃</span>
       </button>
-      {error ? (
-        <p role="alert" className="sr-only">
-          {error}
-        </p>
-      ) : null}
-    </div>
+    </form>
   );
 }
