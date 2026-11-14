@@ -1,3 +1,3 @@
 "use client";
 
-export * from "@kor-travel/ui/tabs";
+export { Tabs, TabsList, TabsTrigger, TabsContent } from "@kor-travel/ui/tabs";

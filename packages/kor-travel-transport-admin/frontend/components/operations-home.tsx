@@ -1,23 +1,28 @@
 "use client";
 
-import { VirtualTable } from "@kor-travel/ui/virtual-table";
-
 // SPDX-License-Identifier: GPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 Youn-sok Choi (digitie)
 // Derived-From: kor-travel-map@974e2d025 home-client.tsx 운영 요약·실행·상태 배치
+import type { ColumnDef } from "@kor-travel/ui/virtual-table";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/admin-shell";
+import { DetailList } from "@/components/detail-list";
+import { EmptyState } from "@/components/empty-state";
 import { SectionCard } from "@/components/section-card";
 import { StatStrip } from "@/components/stat-strip";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { StatusBadge } from "@/components/status-badge";
+import { Alert, AlertActions, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { Card } from "@/components/ui/card";
+import { DataTable } from "@/components/ui/data-table";
 import { getDagsterOverview, JOB_LABELS, statusLabel, type DagsterOverview } from "@/lib/dagster";
 import { dagsterLocationUrl, dagsterRunUrl, dagsterJobRunsUrl } from "@/lib/dagster-scope";
 import { needsProviderAttention } from "@/lib/provider-status";
 import { dateTime, transportGet } from "@/lib/journey";
+import { cn } from "@/lib/utils";
 
 type Provider = {
   source: string; name: string; enabled: boolean; mode: string; status: string;
@@ -27,15 +32,66 @@ type ProviderOverview = {
   generated_at: string; items: Provider[];
   kric_coverage?: { station_count: number; linked_station_count: number; expected_snapshots: number; stored_snapshots: number; fresh_snapshots: number } | null;
 };
+type DagsterRun = DagsterOverview["runs"][number];
+
+const HOME_STAT_COLUMNS = "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4";
+const RUN_COLUMNS: ColumnDef<DagsterRun, unknown>[] = [
+  {
+    id: "job",
+    accessorKey: "jobName",
+    header: "작업",
+    enableSorting: false,
+    cell: ({ row }) => (
+      <a className="text-brand underline-offset-4 hover:underline" href={dagsterJobRunsUrl(row.original.jobName)} rel="noreferrer" target="_blank">
+        {JOB_LABELS[row.original.jobName] ?? row.original.jobName}
+      </a>
+    ),
+  },
+  {
+    id: "status",
+    accessorKey: "status",
+    header: "상태",
+    enableSorting: false,
+    cell: ({ row }) => <StatusBadge label={statusLabel(row.original.status)} status={row.original.status} />,
+  },
+  {
+    id: "startedAt",
+    accessorKey: "startTime",
+    header: "시작 시각",
+    enableSorting: false,
+    cell: ({ row }) => (
+      <span className="text-text-secondary tabular-nums">
+        {dateTime(row.original.startTime ? new Date(row.original.startTime * 1000).toISOString() : null)}
+      </span>
+    ),
+  },
+  {
+    id: "run",
+    accessorKey: "runId",
+    header: "실행",
+    enableSorting: false,
+    cell: ({ row }) => (
+      <a className="inline-flex items-center gap-1 text-brand underline-offset-4 hover:underline" href={dagsterRunUrl(row.original.runId)} rel="noreferrer" target="_blank">
+        상세<ExternalLink aria-hidden="true" size={12} />
+      </a>
+    ),
+  },
+];
+const TRAFFIC_LINKS = [
+  ["/map", "교통 지도", "역·공항·터미널 위치"],
+  ["/highways", "고속도로", "지도·소통·돌발"],
+  ["/fuel/statistics", "유가 통계", "지역·고속도로 가격 비교"],
+  ["/flights", "비행·공항", "주차 현황과 출도착"],
+] as const;
 
 export function OperationsHome() {
   const { loading, refresh, errors, activeProviders, providers, attention, activeRuns, dagster, runningSchedules, failedRuns, recentRuns, coverage } = useOperationsOverview();
   return <>
     <PageHeader title="운영 홈" description="운영 상태를 한 화면에서 확인합니다." actions={<>
-      <Button type="button" variant="outline" disabled={loading} onClick={refresh}><RefreshCw aria-hidden="true" className={loading ? "animate-spin" : ""} />새로고침</Button>
-      <a className="button secondary" href={dagsterLocationUrl()} target="_blank" rel="noreferrer"><ExternalLink aria-hidden="true" size={15} />Dagster</a>
+      <Button type="button" variant="outline" loading={loading} onClick={refresh}><RefreshCw aria-hidden="true" data-icon="inline-start" />새로고침</Button>
+      <a className={cn(buttonVariants({ variant: "outline" }))} href={dagsterLocationUrl()} rel="noreferrer" target="_blank"><ExternalLink aria-hidden="true" data-icon="inline-start" />Dagster</a>
     </>} />
-    <OperationsSummary errors={errors} activeProviders={activeProviders} providers={providers} attention={attention} activeRuns={activeRuns} dagster={dagster} runningSchedules={runningSchedules} failedRuns={failedRuns} recentRuns={recentRuns} coverage={coverage} loading={loading} />
+    <OperationsSummary errors={errors} activeProviders={activeProviders} providers={providers} attention={attention} activeRuns={activeRuns} dagster={dagster} runningSchedules={runningSchedules} failedRuns={failedRuns} recentRuns={recentRuns} coverage={coverage} loading={loading} refresh={refresh} />
   </>;
 }
 
@@ -97,9 +153,18 @@ function useOperationsOverview() {
 }
 
 
-function OperationsSummary({ errors, activeProviders, providers, attention, activeRuns, dagster, runningSchedules, failedRuns, recentRuns, coverage, loading }: Pick<ReturnType<typeof useOperationsOverview>, "errors" | "activeProviders" | "providers" | "attention" | "activeRuns" | "dagster" | "runningSchedules" | "failedRuns" | "recentRuns" | "coverage" | "loading">) {
+function OperationsSummary({ errors, activeProviders, providers, attention, activeRuns, dagster, runningSchedules, failedRuns, recentRuns, coverage, loading, refresh }: Pick<ReturnType<typeof useOperationsOverview>, "errors" | "activeProviders" | "providers" | "attention" | "activeRuns" | "dagster" | "runningSchedules" | "failedRuns" | "recentRuns" | "coverage" | "loading" | "refresh">) {
   return (<div className="operations-home space-y-6">
-      {Object.keys(errors).length ? <Alert variant="destructive"><AlertTitle>운영 요약 확인 필요</AlertTitle><AlertDescription>{Object.entries(errors).map(([name, message]) => <p key={name}>{name} · {message}</p>)}<p>확인하지 못한 값은 —로 표시됩니다.</p></AlertDescription></Alert> : null}
+      {Object.keys(errors).length ? <Alert variant="destructive">
+        <AlertTitle>운영 요약 확인 필요</AlertTitle>
+        <AlertDescription>
+          {Object.entries(errors).map(([name, message]) => <p key={name}>{name} · {message}</p>)}
+          <p>확인하지 못한 값은 —로 표시됩니다.</p>
+        </AlertDescription>
+        <AlertActions>
+          <Button size="sm" type="button" variant="outline" loading={loading} onClick={refresh}>다시 시도</Button>
+        </AlertActions>
+      </Alert> : null}
       <OperationsMetrics activeProviders={activeProviders} providers={providers} attention={attention} activeRuns={activeRuns} dagster={dagster} runningSchedules={runningSchedules} failedRuns={failedRuns} recentRuns={recentRuns} coverage={coverage} />
       <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="min-w-0 space-y-6">
@@ -108,21 +173,23 @@ function OperationsSummary({ errors, activeProviders, providers, attention, acti
         </div>
         <div className="min-w-0 space-y-6">
           <OperationsHealth providers={providers} loading={loading} dagster={dagster} coverage={coverage} />
-          <SectionCard title="교통 정보"><nav className="operations-links" aria-label="교통 정보 바로가기">
-            <Link href="/map">교통 지도<span>역·공항·터미널 위치</span></Link>
-            <Link href="/highways">고속도로<span>지도·소통·돌발</span></Link>
-            <Link href="/fuel/statistics">유가 통계<span>지역·고속도로 가격 비교</span></Link>
-            <Link href="/flights">비행·공항<span>주차 현황과 출도착</span></Link>
-          </nav></SectionCard>
+          <SectionCard title="교통 정보">
+            <nav aria-label="교통 정보 바로가기" className="flex flex-col divide-y divide-border">
+              {TRAFFIC_LINKS.map(([href, label, caption]) => <Link className="flex flex-col gap-0.5 rounded-control py-2.5 text-sm font-medium text-text-primary first:pt-0 last:pb-0 hover:text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus" href={href} key={href}>
+                {label}<span className="text-xs font-normal text-text-secondary">{caption}</span>
+              </Link>)}
+            </nav>
+          </SectionCard>
         </div>
       </div>
     </div>);
 }
 
+type SummaryProps = NonNullable<Parameters<typeof OperationsSummary>[0]>;
 
-function OperationsMetrics({ activeProviders, providers, attention, activeRuns, dagster, runningSchedules, failedRuns, recentRuns, coverage }: Pick<NonNullable<Parameters<typeof OperationsSummary>[0]>, "activeProviders" | "providers" | "attention" | "activeRuns" | "dagster" | "runningSchedules" | "failedRuns" | "recentRuns" | "coverage">) {
-  return (<Card size="sm" className="p-4">
-        <StatStrip size="lg" ariaLabel="운영 요약" className="grid-cols-2 xl:grid-cols-4" items={[
+function OperationsMetrics({ activeProviders, providers, attention, activeRuns, dagster, runningSchedules, failedRuns, recentRuns, coverage }: Pick<SummaryProps, "activeProviders" | "providers" | "attention" | "activeRuns" | "dagster" | "runningSchedules" | "failedRuns" | "recentRuns" | "coverage">) {
+  return (<Card size="sm">
+        <StatStrip size="lg" ariaLabel="운영 요약" className={HOME_STAT_COLUMNS} items={[
           { key: "sources", label: "활성 수집 소스", value: activeProviders?.length, unit: "개", href: "/collections", caption: providers ? `전체 ${providers.items.length}개 소스 · 확인 필요 ${attention?.length ?? 0}개` : "수집 상태 확인 중", testId: "home-stat-sources" },
           { key: "pipeline", label: "진행 중 작업", value: activeRuns?.length, unit: "건", href: "/admin/dagster", caption: dagster ? `스케줄 ${runningSchedules ?? 0} / ${dagster.schedules.length}개 사용` : "파이프라인 상태 확인 중", testId: "home-stat-pipeline" },
           { key: "failures", label: "최근 실행 실패", value: failedRuns, unit: "건", href: "/admin/dagster", caption: dagster ? `조회한 최근 ${recentRuns.length}건 기준` : "최근 실행 확인 중", tone: failedRuns ? "destructive" : "neutral", testId: "home-stat-failures" },
@@ -132,30 +199,45 @@ function OperationsMetrics({ activeProviders, providers, attention, activeRuns, 
 }
 
 
-function RecentOperations({ recentRuns, dagster, loading }: Pick<NonNullable<Parameters<typeof OperationsSummary>[0]>, "recentRuns" | "dagster" | "loading">) {
-  return (<SectionCard title="최근 실행" description="이 Transport 코드 위치의 최근 실행입니다." actions={<Link href="/admin/dagster" className="inline-link">전체 실행</Link>}>
-            <div className="overflow-x-auto"><VirtualTable ariaLabel="조회 결과" containerClassName="operations-table" data={recentRuns.slice(0, 8)} getRowId={(run) => String(run.runId)} virtualized={false} columns={[{ id: 'column0', header: '작업', cell: ({ row: { original: run } }) => <><a className="inline-link" href={dagsterJobRunsUrl(run.jobName)} target="_blank" rel="noreferrer">{JOB_LABELS[run.jobName] ?? run.jobName}</a></> },
-{ id: 'column1', header: '상태', cell: ({ row: { original: run } }) => <><span className={`operation-state ${run.status === "FAILURE" ? "failed" : run.status === "SUCCESS" ? "success" : ""}`}>{statusLabel(run.status)}</span></> },
-{ id: 'column2', header: '시작 시각', cell: ({ row: { original: run } }) => <>{dateTime(run.startTime ? new Date(run.startTime * 1000).toISOString() : null)}</> },
-{ id: 'column3', header: '실행', cell: ({ row: { original: run } }) => <><a className="inline-link" href={dagsterRunUrl(run.runId)} target="_blank" rel="noreferrer">상세<ExternalLink aria-hidden="true" size={12} /></a></> }]} /></div>
-            {!dagster ? <p className="quiet">{loading ? "최근 실행을 확인하는 중입니다…" : "최근 실행을 확인하지 못했습니다."}</p> : !recentRuns.length ? <p className="empty-state">최근 실행 기록이 없습니다.</p> : null}
-            {dagster?.warning ? <p role="status">{dagster.warning}</p> : null}
+function RecentOperations({ recentRuns, dagster, loading }: Pick<SummaryProps, "recentRuns" | "dagster" | "loading">) {
+  const runsEmptyTitle = !dagster
+    ? loading ? "최근 실행을 확인하는 중입니다…" : "최근 실행을 확인하지 못했습니다."
+    : "최근 실행 기록이 없습니다.";
+  return (<SectionCard title="최근 실행" description="이 Transport 코드 위치의 최근 실행입니다." actions={<Link className={cn(buttonVariants({ variant: "ghost", size: "sm" }))} href="/admin/dagster">전체 실행</Link>}>
+            <DataTable
+              ariaLabel="조회 결과"
+              columns={RUN_COLUMNS}
+              data={recentRuns.slice(0, 8)}
+              emptyState={{ title: runsEmptyTitle }}
+              getRowId={(run) => run.runId}
+              isLoading={!dagster && loading}
+              manualSorting={false}
+            />
+            {dagster?.warning ? <p className="text-xs text-text-secondary" role="status">{dagster.warning}</p> : null}
           </SectionCard>);
 }
 
 
-function ProviderAttention({ attention, providers, loading }: Pick<NonNullable<Parameters<typeof OperationsSummary>[0]>, "attention" | "providers" | "loading">) {
-  return (<SectionCard title="확인이 필요한 수집" description="실패와 수집 이력 부재를 구분해 확인합니다." actions={<Link href="/collections" className="inline-link">수집 상태</Link>}>
-            {attention?.length ? <ul className="operations-issues">{attention.map((item) => <li key={item.source}><div><strong>{item.name}</strong><span className="operation-state failed">{statusLabel(item.status)}</span></div><p>마지막 성공 {dateTime(item.last_success_at)}{item.next_due_at ? ` · 다음 평가 ${dateTime(item.next_due_at)}` : ""}</p></li>)}</ul> : <p className="quiet">{providers ? "확인이 필요한 수집 오류가 없습니다." : loading ? "수집 상태를 확인하는 중입니다…" : "수집 상태를 확인하지 못했습니다."}</p>}
+function ProviderAttention({ attention, providers, loading }: Pick<SummaryProps, "attention" | "providers" | "loading">) {
+  return (<SectionCard title="확인이 필요한 수집" description="실패와 수집 이력 부재를 구분해 확인합니다." actions={<Link className={cn(buttonVariants({ variant: "ghost", size: "sm" }))} href="/collections">수집 상태</Link>}>
+            {attention?.length ? <ul className="divide-y divide-border">{attention.map((item) => <li className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0" key={item.source}>
+              <div className="flex flex-wrap items-center gap-2">
+                <strong className="text-sm font-medium text-text-primary">{item.name}</strong>
+                <StatusBadge label={statusLabel(item.status)} status={item.status} tone="destructive" />
+              </div>
+              <p className="text-xs text-text-secondary">마지막 성공 {dateTime(item.last_success_at)}{item.next_due_at ? ` · 다음 평가 ${dateTime(item.next_due_at)}` : ""}</p>
+            </li>)}</ul> : <EmptyState size="sm" title={providers ? "확인이 필요한 수집 오류가 없습니다." : loading ? "수집 상태를 확인하는 중입니다…" : "수집 상태를 확인하지 못했습니다."} />}
           </SectionCard>);
 }
 
 
-function OperationsHealth({ providers, loading, dagster, coverage }: Pick<NonNullable<Parameters<typeof OperationsSummary>[0]>, "providers" | "loading" | "dagster" | "coverage">) {
-  return (<SectionCard title="운영 상태"><dl className="operations-status">
-            <div><dt>저장 API</dt><dd>{providers ? "응답 정상" : loading ? "확인 중" : "확인 실패"}</dd></div>
-            <div><dt>Dagster</dt><dd>{dagster ? "응답 정상" : loading ? "확인 중" : "확인 실패"}</dd></div>
-            <div><dt>시간표 역 연결</dt><dd>{coverage ? `${coverage.linked_station_count.toLocaleString()} / ${coverage.station_count.toLocaleString()}역` : "—"}</dd></div>
-            <div><dt>수집 상태 확인</dt><dd>{dateTime(providers?.generated_at)}</dd></div>
-          </dl></SectionCard>);
+function OperationsHealth({ providers, loading, dagster, coverage }: Pick<SummaryProps, "providers" | "loading" | "dagster" | "coverage">) {
+  return (<SectionCard title="운영 상태">
+            <DetailList columns={1} layout="inline" items={[
+              { label: "저장 API", value: providers ? "응답 정상" : loading ? "확인 중" : "확인 실패" },
+              { label: "Dagster", value: dagster ? "응답 정상" : loading ? "확인 중" : "확인 실패" },
+              { label: "시간표 역 연결", value: coverage ? `${coverage.linked_station_count.toLocaleString()} / ${coverage.station_count.toLocaleString()}역` : null },
+              { label: "수집 상태 확인", value: dateTime(providers?.generated_at) },
+            ]} />
+          </SectionCard>);
 }

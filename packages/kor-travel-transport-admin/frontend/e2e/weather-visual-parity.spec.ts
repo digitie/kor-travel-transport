@@ -22,6 +22,8 @@ async function loginWithFixtures(page: Page, pathname: string) {
     const origin = new URL(page.url()).origin;
     if (origin !== "null" && url.origin !== origin && /^https?:$/.test(url.protocol)) return route.abort();
     if (url.pathname === "/api/dagster/graphql") return route.fulfill({ json: dagster });
+    // Dagster 화면의 주소 갱신 카드는 이 검사의 대상이 아니다. 읽기 실패 상태로 둔다.
+    if (url.pathname === "/api/address-refresh") return route.fulfill({ status: 503, json: {} });
     if (url.pathname === "/api/transport/transport/features/places") {
       return route.fulfill({ json: { items: [], total: 0, truncated: false } });
     }
@@ -36,8 +38,12 @@ async function loginWithFixtures(page: Page, pathname: string) {
   await page.getByLabel("비밀번호").fill(process.env.E2E_TRANSPORT_UI_PASSWORD!);
   await page.getByRole("button", { name: "로그인", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`${pathname}$`));
-  await expect(page.locator(".page-header h1")).toBeVisible();
+  await expect(page.locator('[data-slot="admin-shell-header"] h1')).toBeVisible();
   if (pathname === "/map") {
+    await expect(page.locator(".map-workbench")).toBeVisible();
+    // 좁은 화면의 map 공용 작업면은 필터를 "지도 필터" 버튼 뒤에 접어 둔다.
+    const filterToggle = page.getByRole("button", { name: "지도 필터" });
+    if (await filterToggle.isVisible()) await filterToggle.click();
     await expect(page.getByLabel("장소 검색")).toBeVisible();
     await expect(page.locator(".map-workbench")).not.toContainText("조회 중");
   } else {
@@ -77,77 +83,38 @@ test.beforeEach(() => {
   test.skip(!process.env.E2E_TRANSPORT_UI_PASSWORD, "E2E_TRANSPORT_UI_PASSWORD가 필요합니다.");
 });
 
+// 셸은 map 공용 셸(lg 이상 16rem 세로 레일, 미만은 상단 메뉴 띠)이다. Weather 카드형 헤더 검사는 셸 교체로 대체됐다.
 for (const width of widths) {
   for (const pathname of paths) {
-    test(`Weather 레일·헤더·본문 패리티 ${pathname} ${width}px`, async ({ page }, testInfo) => {
+    test(`map 셸 레일·헤더·본문 패리티 ${pathname} ${width}px`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width, height: 1000 });
       const unexpected = await loginWithFixtures(page, pathname);
       const main = page.locator("main#main-content");
-      const rail = page.locator(".rail");
-      const nav = page.locator(".rail-nav.nav");
-      const header = page.locator(".page-header-wrap .page-header");
-      const logout = page.locator('.rail-footer button[type="submit"]');
-      const gutter = width <= 672 ? 12 : width <= 992 ? 16 : 24;
+      const rail = page.locator('[data-slot="admin-shell-rail"]');
+      const nav = page.getByRole("navigation", { name: "주요 메뉴" });
+      const header = page.locator('[data-slot="admin-shell-header"]');
+      const logout = page.getByRole("button", { name: "로그아웃", exact: true });
 
-      await expect(page.locator(".admin-layout")).toBeVisible();
-      await expect(rail.locator(".rail-shell .rail-header")).toBeVisible();
-      await expect(main.locator(".page-body")).toBeVisible();
-      await expect(header.locator(".page-path")).toHaveText(pathname);
-      await expect(header.locator("h1")).toHaveCSS("font-size", "24px");
-      await expect(header).toHaveCSS("padding-left", "24px");
-      await expect(header).toHaveCSS("padding-right", "24px");
-      await expect(header).toHaveCSS("border-top-style", "solid");
-      await expect(header).toHaveCSS("border-top-left-radius", "18px");
-      await expectColor(page.locator("html"), "backgroundColor", "oklch(97.8% .003 250)");
+      await expect(header.locator("h1")).toBeVisible();
+      await expectColor(page.locator("body"), "backgroundColor", "oklch(97.8% .003 250)");
       await expectColor(rail, "backgroundColor", "oklch(99.2% .002 250)");
-      await expectColor(nav.locator('[aria-current="page"] svg'), "color", "oklch(47% .14 255)");
       await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
       await expect(nav.locator('[aria-current="page"]')).toHaveAttribute("href", pathname);
 
       const mainBox = await rectangle(main);
       const headerBox = await rectangle(header);
-      const content = await rectangle(page.locator(pathname === "/map" ? ".map-workbench" : ".journey-workbench"));
-      // 여백 회귀가 있어도 나머지 레일·액션 검사와 전체 스크린샷을 남긴다.
-      expect.soft(headerBox.x - mainBox.x, "헤더 왼쪽 여백").toBeCloseTo(gutter, 0);
-      expect.soft(mainBox.x + mainBox.width - headerBox.x - headerBox.width, "헤더 오른쪽 여백").toBeCloseTo(gutter, 0);
-      expect.soft(content.x - mainBox.x, "본문 왼쪽 여백").toBeCloseTo(gutter, 0);
-      expect.soft(mainBox.x + mainBox.width - content.x - content.width, "본문 오른쪽 여백").toBeCloseTo(gutter, 0);
-      expect(content.y).toBeGreaterThanOrEqual(headerBox.y + headerBox.height);
-      if (pathname === "/admin/dagster") {
-        const summary = page.locator(".ops-grid");
-        const columns = await summary.evaluate((node) => getComputedStyle(node).gridTemplateColumns.split(" ").length);
-        expect(columns).toBe(width <= 672 ? 1 : width <= 992 ? 2 : 4);
-        await expect.soft(summary).toHaveCSS("gap", "16px");
-        for (const card of await summary.locator('[data-slot="card"]').all()) {
-          expect.soft((await rectangle(card)).height).toBeGreaterThanOrEqual(160);
-          await expect.soft(card.locator('[data-slot="card-title"]')).toHaveCSS("font-size", "12px");
-        }
-        await expect(summary.locator("strong")).toHaveCount(4);
-        for (const value of await summary.locator("strong").all()) await expect(value).toHaveCSS("font-size", "30px");
-        const actions = await rectangle(header.locator(".page-header-actions"));
-        expect(actions.x).toBeGreaterThanOrEqual(headerBox.x + 24);
-        expect(actions.x + actions.width).toBeLessThanOrEqual(headerBox.x + headerBox.width - 24);
-        if (width <= 672) {
-          for (const action of await header.locator('.page-header-actions [data-slot="button"]').all()) {
-            await expect.soft(action).toHaveCSS("flex-grow", "1");
-            if (width === 320) expect.soft((await rectangle(action)).width).toBeCloseTo(actions.width, 0);
-          }
-        }
-      }
+      const content = await rectangle(pathname === "/map" ? page.locator(".map-workbench") : page.getByRole("region", { name: "최근 Dagster 실행 표" }));
+      expect(content.y).toBeGreaterThanOrEqual(headerBox.y + headerBox.height - 1);
+      expect(content.x).toBeGreaterThanOrEqual(mainBox.x);
+      expect(content.x + content.width).toBeLessThanOrEqual(mainBox.x + mainBox.width + 1);
 
       const railBox = await rectangle(rail);
-      if (width > 992) {
-        expect(railBox.width).toBeCloseTo(272, 0);
+      if (width >= 1024) {
+        expect(railBox.width).toBeCloseTo(256, 0);
         expect(mainBox.x).toBeCloseTo(railBox.x + railBox.width, 0);
-        await expect(nav).toHaveCSS("flex-direction", "column");
       } else {
         expect(railBox.width).toBeCloseTo(width, 0);
-        expect(mainBox.y).toBeGreaterThanOrEqual(railBox.y + railBox.height);
-        await expect(nav).toHaveCSS("flex-direction", "row");
-        await expect(nav).toHaveCSS("overflow-x", "auto");
-        const first = await rectangle(nav.locator("a").first());
-        const last = await rectangle(nav.locator("a").last());
-        expect(first.y).toBeCloseTo(last.y, 0);
+        expect(mainBox.y).toBeGreaterThanOrEqual(railBox.y + railBox.height - 1);
         await nav.locator("a").last().focus();
         await expect(nav.locator("a").last()).toBeFocused();
       }
@@ -161,17 +128,12 @@ for (const width of widths) {
       expect(logoutBox.x + logoutBox.width).toBeLessThanOrEqual(width);
       // trial 클릭으로 가림·pointer-events 회귀도 검사하되 세션은 유지한다.
       await logout.click({ trial: true });
-      const controls = pathname === "/map"
-        ? [page.getByLabel("장소 검색"), page.locator('[data-slot="combobox-chips"]').last(), page.getByRole("group", { name: "보기 방식", exact: true }).getByRole("button").first()]
-        : [page.locator(".page-header-actions button").first()];
-      // 동적 지도 청크의 CSS가 적용되기 전 일시적인 native 높이를 최종 치수로 취급하지 않는다.
-      for (const control of controls) await expect.poll(async () => (await rectangle(control)).height).toBeCloseTo(36, 0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
       expect(unexpected).toEqual([]);
       await page.mouse.move(0, 0);
       await page.evaluate(() => { (document.activeElement as HTMLElement | null)?.blur(); window.scrollTo(0, 0); });
       const screenshot = await page.screenshot({ path: testInfo.outputPath(`weather-${pathname.replaceAll("/", "-")}-${width}.png`), fullPage: true, animations: "disabled" });
-      await testInfo.attach("Weather 시각 패리티", { body: screenshot, contentType: "image/png" });
+      await testInfo.attach("map 셸 시각 패리티", { body: screenshot, contentType: "image/png" });
     });
   }
 }
@@ -184,8 +146,8 @@ test.describe("터치 환경", () => {
     const unexpected = await loginWithFixtures(page, pathname);
     expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
     const controls = pathname === "/map"
-      ? [page.getByLabel("장소 검색"), page.locator('[data-slot="combobox-chips"]').last(), page.getByRole("group", { name: "보기 방식", exact: true }).getByRole("button").first()]
-      : [page.locator(".page-header-actions button").first()];
+      ? [page.getByLabel("장소 검색"), page.locator('[data-slot="combobox-chips"]').last(), page.getByRole("tablist", { name: "장소 보기" }).getByRole("tab").first()]
+      : [page.getByRole("button", { name: "새로고침", exact: true })];
     controls.push(page.getByRole("button", { name: "로그아웃", exact: true }));
     for (const control of controls) await expect.poll(async () => (await rectangle(control)).height).toBeGreaterThanOrEqual(44);
 

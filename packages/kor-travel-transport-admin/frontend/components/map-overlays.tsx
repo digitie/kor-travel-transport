@@ -78,7 +78,7 @@ export function MapMarkerButton({ lngLat, ariaLabel, interactionId, className, t
   }, [zIndex]);
   return <Marker lngLat={lngLat} ariaLabel={ariaLabel} interactionId={interactionId} className={className} zIndex={zIndex} isCluster={isCluster}
     onClick={(_event, _context, marker) => onClick(marker.getElement())}>
-    <span ref={contentRef} className="map-marker-content" title={title}>{children}</span>
+    <span ref={contentRef} className="flex items-center justify-center" title={title}>{children}</span>
   </Marker>;
 }
 
@@ -97,14 +97,14 @@ export function MarkerBadge({ markerIcon, markerColor, selected = false }: { mar
     host.replaceChildren(element);
     return () => element.remove();
   }, [markerIcon, markerColor, selected]);
-  return <span ref={hostRef} className="map-marker-badge" />;
+  return <span ref={hostRef} className="contents" />;
 }
 
 /** Map `createClusterElement`와 같은 묶음 원(brand 배경·card 테두리·elevated 그림자). */
 export function ClusterBubble({ count, label }: { count: number; label?: string }) {
   const size = clusterBubbleSize(count);
   const style: CSSProperties = { width: size, height: size, fontSize: count < 1000 ? 12 : 11 };
-  return <span className="map-cluster-bubble" style={style} aria-hidden="true">{label ?? abbreviateClusterCount(count)}</span>;
+  return <span className="flex items-center justify-center rounded-full border-2 border-card bg-brand leading-none font-semibold text-brand-foreground shadow-elevated select-none" style={style} aria-hidden="true">{label ?? abbreviateClusterCount(count)}</span>;
 }
 
 /**
@@ -127,7 +127,7 @@ export function OverlapPopup({ lngLat, onClose, children }: { lngLat: [number, n
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
   }, []);
-  return <Popup lngLat={lngLat} closeButton closeOnClick={false} maxWidth="260px" className="map-overlap-popup" onClose={onClose}>
+  return <Popup lngLat={lngLat} closeButton closeOnClick={false} maxWidth="260px" className="map-overlap-popup [&_.maplibregl-popup-content]:bg-card [&_.maplibregl-popup-content]:text-text-primary" onClose={onClose}>
     <div ref={contentRef}>{children}</div>
   </Popup>;
 }
@@ -190,7 +190,7 @@ export function MapUnavailable({ info, onMessage }: { info: VWorldMapFallbackInf
     onMessage?.(message);
     return () => onMessage?.(null);
   }, [message, onMessage]);
-  return onMessage ? null : <p className="empty-state">{message}</p>;
+  return onMessage ? null : <div className="absolute inset-0 flex items-center justify-center bg-surface-subtle p-6"><p className="max-w-prose text-center text-sm text-text-secondary">{message}</p></div>;
 }
 
 // 타일 정체는 `z/y/x`다. 요청 URL(`vworld://…?fallback=…`)·실패 URL(`https://…`)·MapLibre 타일 좌표에서 같은 값을 만든다.

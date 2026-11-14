@@ -1,3 +1,10 @@
 "use client";
 
-export * from "@kor-travel/ui/empty";
+export {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@kor-travel/ui/empty";

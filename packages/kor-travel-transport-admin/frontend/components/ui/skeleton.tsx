@@ -1,3 +1,3 @@
 "use client";
 
-export * from "@kor-travel/ui/skeleton";
+export { Skeleton } from "@kor-travel/ui/skeleton";
