@@ -2,26 +2,41 @@
 
 ## 기준과 범위
 
-사용자 요청에 따라 로컬 kor-travel-weather의 실제 운영 화면을 정본으로 한다.
-2026-09-28 기준 커밋은 `c25642099e0968a36246a5aec24949cb7468e789`이며
-`app/tokens.css`, `app/globals.css`, `components/admin-shell.tsx`를 대조했다.
-문서와 코드가 다른 헤더 형태는 실제 코드의 둥근 카드형을 따른다. 새 테마를 만들지 않는다.
+기준은 `kor-travel-map` admin 프론트엔드의 최신 `origin/main`(a9adb16e2)이다.
+레이아웃·내비게이션·로그인·공용 컴포넌트·토큰 이름·간격·형태·모션·포커스 규칙은 map과 같다.
+kor-travel-geo와 kor-travel-weather 화면은 기준이 아니다.
+
+색 값만 다르다. 색은 `app/transport-palette.css`가 정본이며 Transport의 기존 값
+(표면·문자·파랑 brand·상태색)을 쓴다. 새 색은 더하지 않는다.
+
+의도한 편차는 네 가지다.
+
+1. 색 파생: Transport 팔레트에 없는 토큰은 기존 값에서 가져온다. `info`는 brand,
+   `text-disabled`는 control-line, `chart-2..5`는 텍스트 단계, `compare-b`는 text-secondary,
+   `overlay`·`shadow-modal`은 text-primary 색조에 map의 alpha·고도만 옮긴다.
+2. 서체: Geist Mono는 `next/font/google`로 받지 않는다. 빌드가 네트워크를 요구하지 않도록
+   Pretendard 스택(`@kor-travel/tokens/font.css`)만 쓰고 mono는 시스템 monospace로 떨어진다.
+3. 페이지 헤더: map은 AdminShell이 헤더를 그리지만 Transport는 루트 레이아웃이 셸을 감싸고
+   페이지가 `PageHeader`를 호출한다. 마크업·클래스는 map과 같고 `main` 안에 그려진다.
+   `description`은 예전 InfoButton처럼 HelpTip으로 연다.
+4. 메뉴·브랜드: 그룹·라우트·라벨·아이콘은 Transport의 기존 메뉴를 그대로 쓴다.
+   워드마크는 `kor-travel-transport admin`, 접힘 축약형은 `ktt`, 접힘 저장 키는
+   `kor-travel-transport:sidebar-collapsed`다.
+
+남은 전환 상태: `app/globals.css`의 `legacy` 레이어에 Transport 전용 클래스가 남아 있다.
+도메인 화면 전환이 끝나면 쓰지 않는 규칙을 지운다.
+
 교통 이용자가 장소와 운항을 비교하는 실용적인 화면이며 운영 상태는 별도 메뉴로 분리한다.
 기존 parking-radar의 화면과 스타일은 변경하지 않는다.
 
 ## 공통 구조
 
-- 장르: modern-minimal, 앱 구조: Workbench, 탐색: N3 사이드 레일.
-- 검색·필터 → 지도/목록 전환 → 선택 항목 inspector 순서다.
-- 모바일에서는 inspector를 검색 바로 아래로 배치하고 목록보다 먼저 읽는다.
-- Weather와 같은 밝은 17rem 레일, 파란 강조색, 중성 배경, 글꼴 fallback 순서를 쓴다.
-  폰트는 Weather처럼 시스템에 설치된 Geist/Pretendard/한글 글꼴을 순서대로 사용하며
-  외부 폰트 다운로드를 추가하지 않는다.
-- 제목은 24px, 헤더 카드 안쪽은 24px, 본문 좌우 여백은 24px다.
-  62rem 이하에서는 여백 16px·가로 탐색, 42rem 이하에서는 여백 12px다.
-  입력·버튼은 36px, 작은 버튼은 30px, 터치 환경은 최소 44px다.
-- Weather의 얇은 경계/6px 입력/8px 패널/18px 헤더 카드를 따른다.
-  모바일 로그아웃은 숨기지 않으며 POST·캐시 정리 계약을 유지한다.
+- 셸은 map과 같다. lg 이상에서 17rem 사이드 레일이 고정되고, 접힘 상태는 저장되며, 로그아웃은 레일 하단에 있다.
+  lg 미만에서는 로그아웃이 아이콘 버튼으로 보이며 숨기지 않는다. 로그아웃은 POST `/api/auth/logout` 후 `/login`으로 이동한다.
+- 검색·필터 → 지도/목록 전환 → 선택 항목 상세 순서다. 상세는 지도·목록 옆에 분리된 aside로 둔다.
+- 모바일에서는 상세를 검색 바로 아래에 두고 목록보다 먼저 읽게 한다. 닫으면 장소 선택으로 포커스를 돌린다.
+- 간격·형태·포커스·모션은 map의 토큰과 규칙을 따른다. 장식 모션은 없고 reduced-motion을 따른다.
+- 입력·버튼 높이는 map의 `--control-h`(36px)와 `--control-h-sm`(30px)을 쓰고, 터치 환경에서는 최소 44px을 지킨다.
 - 의미 없는 장식·진입 애니메이션·가짜 통계는 사용하지 않는다.
 - 가격에는 유종·단위·관측 시각을, 시간표에는 출발/도착·운항일·배/등급·요금을 붙인다.
 - 좌표 없음, 시간표 미수집, 수집 완료지만 운항 없음은 각각 다른 상태다.
@@ -35,57 +50,26 @@
 
 ## 토큰·상태
 
-app/tokens.css는 Weather 색상과 간격·폰트·형태를 제공한다.
-교통 마커의 기존 `--space-*` 이름은 호환성을 위해 유지하고 셸에는
-`--layout-gutter`, `--panel-padding`, `--control-h`를 사용한다.
-포커스 표시, 선택 상태, 로딩, 빈 결과, 오류, 재시도, disabled 설명을 제공한다.
-320/375/414/768px와 데스크톱에서 검증한다. 장식 모션은 없으며 reduced-motion을 따른다.
+- 토큰 이름과 구조는 `@kor-travel/tokens` 0.1.1(`theme.css`, `radix.css`, `font.css`)을 따른다.
+  `app/globals.css`가 이를 import하고, `app/transport-palette.css`가 색 값만 Transport 팔레트로 덮는다.
+- 공용 CSS는 `@kor-travel/ui` 0.2.0의 `dagster.css`와 `map-controls.css`를 map과 같이 쓴다.
+- 공용 UI 컴포넌트는 `components/ui/`(map 기준 복제본)와 `@kor-travel/ui`를 쓴다. 새 컴포넌트는 map에 대응물이 없을 때만 만든다.
+- 포커스 표시, 선택 상태, 로딩, 빈 결과, 오류, 재시도, disabled 설명을 제공한다.
+- 320/375/414/768px와 데스크톱에서 검증한다. 장식 모션은 없으며 reduced-motion을 따른다.
+- 차트는 Apache ECharts를 유지한다.
+- 버전: `@kor-travel/ui` 0.2.0, `@kor-travel/tokens` 0.1.1로 map과 같다. 고정 정보는 `vendor/README.md`에 있다.
 
 ## 실제 화면 검증
 
-2026-09-28 후속: Weather와 같은 분리된 우측 패널에서 제목·기준정보 시각·출도착·장소
-정보를 구분한다. 모바일에서는 상세를 위에 배치하고 닫으면 장소 선택으로 포커스를 돌린다.
-Dagster는 요약 카드·최근 실행 표·펼치는 스케줄 표를 사용한다. 교통별 장시간 기준과
-KST 표시는 유지하며 Weather의 일괄 10분 판정은 복사하지 않는다. 이 변경의 운영 검증은 진행 중이다.
+2026-09-28 후속: 분리된 우측 패널에서 제목·기준정보 시각·출도착·장소 정보를 구분한다.
+모바일에서는 상세를 위에 배치하고 닫으면 장소 선택으로 포커스를 돌린다.
+Dagster는 요약 카드·최근 실행 표·펼치는 스케줄 표를 사용한다. 교통별 장시간 기준(job별 실행 상한)을 쓰고
+기준이 없을 때만 10분을 적용한다. KST 표시는 유지한다. 이 변경의 운영 검증은 진행 중이다.
 
 Hallmark의 정보 위계·빈 상태 구분·키보드 포커스·반응형 기준을 적용했다.
 2026-09-27 n150에서 실제 유가 마커, 소청도 운항 카드, 공항 저장 주차 현황,
 고속도로 돌발·소통, 16개 수집 영역을 확인했다. 긴 장소명의 select가 상세 패널을
 밀어내는 문제는 실제 화면에서 발견해 최소 폭과 줄바꿈으로 고쳤다. 가격을
 overflow로 숨기지 않고 패널 자체의 가로 넘침을 1440/375px에서 검사한다.
-사용자가 기존 map/weather 복제를 요청했으므로 새 브랜드·레이아웃 변주는 적용하지 않는다.
 
-## 다른 프로젝트로 옮길 때의 토큰
-
-CSS 정본은 `app/tokens.css`이며 Weather 색상을 기존 transport 역할에 연결한다.
-Transport admin은 Tailwind 4.3.5 + 공통 `@kor-travel/ui`의 shadcn/ui(Radix, radix-nova)를 사용한다.
-Weather의 파란 강조색과 레이아웃을 적용하며 버튼·입력·선택·탭·상태·표·카드는
-`components/ui/`의 공식 컴포넌트로 구성한다. `components.json`이 설치 설정의 정본이다.
-`app/globals.css`에서 의미 색상을 기존 토큰에 연결하며, 기존 스타일은 `legacy` 레이어에
-두어 컴포넌트 유틸리티를 덮어쓰지 않게 한다. 기존 `--muted`(문자색), `--accent`(청록색)를
-shadcn의 같은 이름 배경색으로 재정의하지 않는다. 현재 `--accent`는 Weather 강조색이다.
-차트는 Apache ECharts를 유지한다.
-다음은 다른 소비 앱을 위한 토큰 매핑 예시다.
-
-```css
-/* CSS 정본 역할의 별칭 */
-:root { --color-paper: var(--paper); --color-ink: var(--ink); --color-accent: var(--accent); }
-/* Tailwind v4를 사용하는 소비 앱 */
-@theme inline { --color-background: var(--color-paper); --color-foreground: var(--color-ink); --color-primary: var(--color-accent); --spacing-control: .75rem; }
-```
-
-```json
-{
-  "color": {
-    "paper": { "$type": "color", "$value": "oklch(97.8% 0.003 250)" },
-    "ink": { "$type": "color", "$value": "oklch(30% 0.025 255)" },
-    "accent": { "$type": "color", "$value": "oklch(47% 0.14 255)" }
-  },
-  "space": { "control": { "$type": "dimension", "$value": "0.75rem" } }
-}
-```
-
-```css
-/* 완전한 CSS 색상 값을 소비하는 shadcn 역할 매핑 */
-:root { --background: var(--color-paper); --foreground: var(--color-ink); --primary: var(--color-accent); --primary-foreground: var(--color-accent-ink); --ring: var(--color-focus); --radius: 6px; }
-```
+사용자가 map 최신 UI 복제를 요청했으므로 새 브랜드·레이아웃 변주는 적용하지 않는다.

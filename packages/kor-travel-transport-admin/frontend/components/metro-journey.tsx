@@ -9,20 +9,23 @@ import { MetroStationDetail } from "./metro-station-detail";
 import { transportGet, type Place } from "@/lib/journey";
 import { useNearbyPosition } from "@/lib/journey-hooks";
 import { nearestPlaces } from "@/lib/nearby";
+import { Alert, AlertDescription } from "./ui/alert";
+
 const TransportMap = dynamic(() => import("./transport-map").then((m) => m.TransportMap), { ssr: false });
+const inlineLink = "rounded-control text-sm font-medium text-brand underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
 
 export function MetroJourney() {
   const { places, selected, choose, view, setView, focusRevision, close, hasFilters, listMessage, routes, line, query, position, id, setLine, setSelected, search, setQuery, locating, locate, setItems, setError, setReload, positionError, error, items } = useMetroJourney();
   return <section className="journey-workbench rail-journey map-route">
     <div id="metro-map" className="journey-map-target map-route-primary" tabIndex={-1}><TransportMap places={places} selectedPlace={selected} onSelectPlace={choose} view={view} onViewChange={setView} focusRevision={focusRevision} onCloseDetails={close}
-    listPlaces={hasFilters} listCount={hasFilters ? places.length : 0} listContent={listMessage ? <p className="quiet" role="status">{listMessage}</p> : undefined}
+    listPlaces={hasFilters} listCount={hasFilters ? places.length : 0} listContent={listMessage ? <p className="text-sm text-text-secondary" role="status">{listMessage}</p> : undefined}
     filterSummary={[routes.get(line), query, position ? "내 근처" : ""].filter(Boolean).join(" · ") || "도시철도 필터"}
     toolbar={<MetroFilters id={id} line={line} setLine={setLine} setSelected={setSelected} routes={routes} search={search} query={query} setQuery={setQuery} locating={locating} locate={locate} setItems={setItems} setError={setError} setReload={setReload} />}
-    feedback={<>{positionError ? <p role="alert">{positionError}</p> : null}
-    {error ? <p role="alert">역 정보를 불러오지 못했습니다.</p> : !items ? <p role="status">노선과 역을 불러오는 중입니다…</p> : null}
-    {position ? <p className="quiet">현재 위치 오차 약 {Math.round(position.accuracy)}m · 거리는 직선 거리입니다.</p> : null}</>}
-    detailTitle={<>{selected?.name} <small>{selected?.subtitle}</small></>} details={selected ? <MetroStationDetail key={selected.id} station={selected} /> : undefined} /></div>
-    <div id="station-timetable" className="map-route-followup">{selected ? <><a className="inline-link" href="#metro-map">지도 작업면으로</a><MetroStationDetail key={selected.id} station={selected} timetablePage /></> : null}</div>
+    feedback={<>{positionError ? <Alert variant="destructive"><AlertDescription>{positionError}</AlertDescription></Alert> : null}
+    {error ? <Alert variant="destructive"><AlertDescription>역 정보를 불러오지 못했습니다.</AlertDescription></Alert> : !items ? <p role="status" className="text-sm text-text-secondary">노선과 역을 불러오는 중입니다…</p> : null}
+    {position ? <p className="text-sm text-text-secondary">현재 위치 오차 약 {Math.round(position.accuracy)}m · 거리는 직선 거리입니다.</p> : null}</>}
+    detailTitle={<>{selected?.name} <small className="text-sm font-normal text-text-secondary">{selected?.subtitle}</small></>} details={selected ? <MetroStationDetail key={selected.id} station={selected} /> : undefined} /></div>
+    <div id="station-timetable" className="map-route-followup flex flex-col gap-4">{selected ? <><a className={inlineLink} href="#metro-map">지도 작업면으로</a><MetroStationDetail key={selected.id} station={selected} timetablePage /></> : null}</div>
   </section>;
 }
 
@@ -67,7 +70,7 @@ function MetroFilters({ id, line, setLine, setSelected, routes, search, query, s
       <MapFilterField label="역 검색" htmlFor={`${id}-query`}><Input ref={search} id={`${id}-query`} type="search" placeholder="역 이름·코드" value={query} onChange={(event) => { setQuery(event.target.value); setSelected(null); }} /></MapFilterField>
       <Button type="button" variant="outline" disabled={locating} onClick={locate}>{locating ? "위치 확인 중…" : "내 근처 역"}</Button>
       <Button type="button" variant="ghost" onClick={() => { setItems(null); setError(false); setReload((v) => v + 1); }}>새로고침</Button>
-      <a className="inline-link" href="#station-timetable">시간표 보기</a><InfoButton label="역 찾기">노선을 선택하거나 역 이름을 검색하세요. 후보는 목록에서 선택할 수 있습니다. 내 근처 역은 좌표가 등록된 역을 직선 거리 순으로 표시합니다.</InfoButton>
+      <a className={inlineLink} href="#station-timetable">시간표 보기</a><InfoButton label="역 찾기">노선을 선택하거나 역 이름을 검색하세요. 후보는 목록에서 선택할 수 있습니다. 내 근처 역은 좌표가 등록된 역을 직선 거리 순으로 표시합니다.</InfoButton>
     </MapFilterBar>);
 }
 

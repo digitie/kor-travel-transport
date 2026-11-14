@@ -1,3 +1,3 @@
 "use client";
 
-export * from "@kor-travel/ui/checkbox";
+export { Checkbox } from "@kor-travel/ui/checkbox";

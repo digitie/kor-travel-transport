@@ -1,3 +1,12 @@
 "use client";
 
-export * from "@kor-travel/ui/table";
+export {
+  Table,
+  TableHeader,
+  TableBody,
+  TableFooter,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableCaption,
+} from "@kor-travel/ui/table";

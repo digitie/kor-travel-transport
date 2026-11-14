@@ -30,12 +30,8 @@ for (const width of [375, 1440]) test(`운영 홈·노선 중심 도시철도·�
   await login(page);
   await expect(page.getByRole("heading", { name: "운영 홈", exact: true })).toBeVisible();
   await expect(page.getByTestId("home-stat-sources")).toContainText("1");
-  if (width === 375) {
-    await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
-    await expect(page.getByRole("link", { name: "도시철도", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "메뉴 닫기", exact: true }).click();
-    await expect(page.getByRole("link", { name: "도시철도", exact: true })).not.toBeVisible();
-  }
+  // map 공용 셸은 좁은 화면에서도 주요 메뉴를 접지 않고 사이드바 아래에 그대로 둔다.
+  if (width === 375) await expect(page.getByRole("navigation", { name: "주요 메뉴" }).getByRole("link", { name: "도시철도", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "통합", exact: true })).toHaveCount(0);
   await page.route("**/transport/features/places?**", (route) => route.fulfill({ json: { items: [metro] } }));
   await page.route("**/transport/rail/timetables?**", (route) => route.fulfill({ json: { generated_at: now(), basis: "calendar", day_code: "8", items: [{ place_id: metro.id, station_name: metro.name, line_name: "GTX-A", status: "stored", stale: false, collected_at: now(), next_departure: { departure_time: "140000", train_number: "A1", destination_name: "동탄" }, upcoming_departures: [{ departure_time: "140000", train_number: "A1", destination_name: "동탄" }, { departure_time: "141000", train_number: "A2", destination_name: "동탄" }], items: [{ departure_time: "140000", train_number: "A1", destination_name: "동탄" }] }] } }));
@@ -52,7 +48,8 @@ for (const width of [375, 1440]) test(`운영 홈·노선 중심 도시철도·�
   const stage = await page.locator('[data-slot="map-stage"]').boundingBox();
   expect(stage!.width).toBeGreaterThan(width === 1440 ? 800 : 250);
   expect(stage!.height).toBeGreaterThan(500);
-  if (width === 375) expect(stage!.y).toBeLessThan(600);
+  // map 공용 셸은 좁은 화면에서 메뉴 띠를 상단에 둔다 — 지도는 첫 화면(1000px) 안에서 시작해야 한다.
+  if (width === 375) expect(stage!.y).toBeLessThan(700);
   const panel = await overlay.boundingBox();
   expect(panel!.height).toBeLessThan(stage!.height - 30);
   await page.getByRole("button", { name: /경기도 용인시 · 지도에서 보기/ }).click();
@@ -171,10 +168,8 @@ test("공항은 주차·항공편을 자동 조회하고 이후 편부터 표시
   await page.route("**/parking/outlook?**", (route) => route.fulfill({ json: { generated_at: now(), hour: 12, weekday: 5, items: [{ parking_lot_id: 1, parking_lot_name: "국내선 주차장", average_available_spaces: 40, minimum_available_spaces: 0, maximum_available_spaces: 80, sample_days: 4, full_days: 1, full_day_ratio: 25, observations: 40, minimum_capacity: 100, maximum_capacity: 100 }] } }));
   await page.route("**/flights/status?**", (route) => route.fulfill({ json: { status: "success", items: [{ flight_number: "FUTURE101", direction: "arrival", origin_airport: "PUS", destination_airport: "GMP", scheduled_at: new Date(Date.now() + 3600_000).toISOString(), estimated_at: null }, { flight_number: "PAST999", direction: "arrival", origin_airport: "PUS", destination_airport: "GMP", scheduled_at: new Date(Date.now() - 3600_000).toISOString(), estimated_at: null }] } }));
   await page.goto("/flights");
-  await page.getByRole("button", { name: "입차 예정 시각의 과거 패턴 안내", exact: true }).click();
-  await expect(page.getByRole("dialog")).toContainText("같은 요일·시간대");
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).toHaveCount(0);
+  // SectionCard 설명은 map 구성대로 제목 아래 문장으로 보인다(도움말 대화상자 아님).
+  await expect(page.getByText(/최근 28일의 같은 요일·시간대 관측입니다/)).toBeVisible();
   await expect(page.getByText("FUTURE101", { exact: false })).toBeVisible();
   await expect(page.getByText("PAST999", { exact: false })).toHaveCount(0);
   await expect(page.getByText("52", { exact: true }).first()).toBeVisible();

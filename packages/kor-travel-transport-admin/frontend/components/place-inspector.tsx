@@ -4,19 +4,25 @@ import Link from "next/link";
 import { X } from "lucide-react";
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty";
+import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { NativeSelect } from "@/components/ui/native-select";
+import { NativeSelectOption } from "@/components/ui/native-select-option";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { EmptyState } from "@/components/empty-state";
 import { dateTime, transportGet, type Place, type StoredFerry } from "@/lib/journey";
 import { useSeoulToday } from "@/lib/journey-hooks";
 import { collectionSourceLabel, placeKindLabel } from "@/lib/transport-presentation";
 import { FerryDepartures, PlaceDetails, PlaceIcon } from "./journey-controls";
 import { AirportDetails } from "./airport-details";
 import { PublicParkingDetails } from "./public-parking-details";
+
+// 상세 패널 안의 구획: 위 구획과 hairline으로 나누고 제목은 본문보다 한 단계 크다(Map 상세 패널과 같은 리듬).
+const SECTION = "flex min-w-0 flex-col gap-3 border-t border-border pt-4";
+const SECTION_TITLE = "text-sm font-semibold text-text-primary";
 
 function PortDepartures({ place }: { place: Place }) {
   const serviceDateId = useId();
@@ -38,9 +44,9 @@ function PortDepartures({ place }: { place: Place }) {
   }, [key, place.provider_id, serviceDate]);
   const current = state?.key === key ? state : undefined;
   const table = current?.data?.items.find((item) => item.port_id === place.provider_id);
-  if (!place.provider_id) return <Empty><EmptyHeader><EmptyDescription>공식 항구 코드가 없어 시간표를 연결할 수 없습니다.</EmptyDescription></EmptyHeader></Empty>;
-  return <section className="inspector-section" aria-label="항구 출도착" aria-busy={!current}>
-    <h3>출발·도착 예정</h3>
+  if (!place.provider_id) return <EmptyState title="공식 항구 코드가 없어 시간표를 연결할 수 없습니다." />;
+  return <section className={SECTION} aria-label="항구 출도착" aria-busy={!current}>
+    <h3 className={SECTION_TITLE}>출발·도착 예정</h3>
     <FieldGroup>
       <Field>
         <FieldLabel htmlFor={serviceDateId}>운항일</FieldLabel>
@@ -49,7 +55,7 @@ function PortDepartures({ place }: { place: Place }) {
         </NativeSelect>
       </Field>
     </FieldGroup>
-    <p className="quiet">{serviceDate} · 저장 시간표만 조회합니다.</p>
+    <p className="text-xs text-text-secondary">{serviceDate} · 저장 시간표만 조회합니다.</p>
     {!current ? (
       <div className="flex flex-col gap-3" role="status">
         <p className="flex items-center gap-2"><Spinner aria-hidden="true" />저장 시간표 확인 중…</p>
@@ -63,7 +69,7 @@ function PortDepartures({ place }: { place: Place }) {
         </AlertDescription>
       </Alert>
     ) : table ? <FerryDepartures timetable={table} name={place.name} /> : (
-      <Empty><EmptyHeader><EmptyDescription>이 항구·날짜의 시간표가 아직 저장되지 않았습니다. 운항편이 없다는 뜻은 아닙니다.</EmptyDescription></EmptyHeader></Empty>
+      <EmptyState title="이 항구·날짜의 시간표가 아직 저장되지 않았습니다. 운항편이 없다는 뜻은 아닙니다." />
     )}
     <Link data-slot="button" className={buttonVariants({ variant: "link" })} href={`/ferry?port=${encodeURIComponent(place.provider_id)}`}>여러 항구 운항 비교</Link>
   </section>;
@@ -98,25 +104,35 @@ function ManualLocationEditor({ place, onSaved, onReload }: { place: Place; onSa
     } catch (error) { setMessage(error instanceof Error ? error.message : "좌표를 저장하지 못했습니다."); }
     finally { setSaving(false); }
   };
-  return <section className="inspector-section" aria-label="좌표 수동 보정">
-    <h3>좌표 수동 보정</h3>
-    <p className="quiet">공식 {place.kind === "ferry_port" ? "항구" : "터미널"} 코드 {place.provider_id}의 위치만 수정합니다. 근거를 확인한 뒤 입력하세요.</p>
+  return <section className={SECTION} aria-label="좌표 수동 보정">
+    <h3 className={SECTION_TITLE}>좌표 수동 보정</h3>
+    <p className="text-xs text-text-secondary">공식 {place.kind === "ferry_port" ? "항구" : "터미널"} 코드 {place.provider_id}의 위치만 수정합니다. 근거를 확인한 뒤 입력하세요.</p>
     <form onSubmit={save}><FieldGroup className="gap-3">
       <Field><FieldLabel htmlFor={`${id}-lat`}>위도</FieldLabel><Input id={`${id}-lat`} type="number" min="32" max="39.5" step="any" required value={latitude} onChange={(event) => setLatitude(event.target.value)} /></Field>
       <Field><FieldLabel htmlFor={`${id}-lon`}>경도</FieldLabel><Input id={`${id}-lon`} type="number" min="124" max="132" step="any" required value={longitude} onChange={(event) => setLongitude(event.target.value)} /></Field>
       <Field><FieldLabel htmlFor={`${id}-note`}>확인 근거</FieldLabel><Input id={`${id}-note`} maxLength={500} minLength={5} required value={note} onChange={(event) => setNote(event.target.value)} placeholder="예: 공식 터미널 주소와 지도 시설점 대조" /></Field>
-      <Button type="submit" disabled={saving}>{saving ? "저장 중…" : "좌표 저장"}</Button>
-  </FieldGroup></form><p role="status" aria-live="polite">{message}</p>
-    {conflict ? <Button type="button" variant="outline" onClick={onReload}>목록 새로 조회</Button> : null}
+      <Button type="submit" className="w-fit" disabled={saving}>{saving ? "저장 중…" : "좌표 저장"}</Button>
+  </FieldGroup></form><p className="text-xs text-text-secondary" role="status" aria-live="polite">{message}</p>
+    {conflict ? <Button type="button" variant="outline" className="w-fit" onClick={onReload}>목록 새로 조회</Button> : null}
   </section>;
 }
 
 export function PlaceInspector({ place, onClose, onSaved, onReload, onShowMap, showHeader = true }: { place: Place; onClose: () => void; onSaved?: (updated: Place) => void; onReload?: () => void; onShowMap?: () => void; showHeader?: boolean }) {
   return <>
-    {showHeader ? <header className="inspector-heading"><div><span className="place-title"><PlaceIcon kind={place.kind} brandCode={place.brand_code} brandName={place.brand_name} />{place.brand_name ?? placeKindLabel(place.kind)}</span><h2>{place.name}</h2>{place.kind !== "fuel_station" ? <><p>{collectionSourceLabel(place.source)}</p><p>기준정보 반영 {dateTime(place.updated_at)}</p></> : null}</div><Button type="button" variant="outline" size="icon" aria-label="장소 상세 닫기" onClick={onClose}><X data-icon="inline-start" aria-hidden="true" /></Button></header> : null}
+    {showHeader ? <header className="flex items-start justify-between gap-3 border-b border-border pb-3">
+      <div className="flex min-w-0 flex-col gap-1">
+        <span className="flex items-center gap-2 text-2xs font-medium text-text-secondary"><PlaceIcon kind={place.kind} brandCode={place.brand_code} brandName={place.brand_name} />{place.brand_name ?? placeKindLabel(place.kind)}</span>
+        <h2 className="text-md leading-snug font-semibold break-words text-text-primary">{place.name}</h2>
+        {place.kind !== "fuel_station" ? <>
+          <p className="text-xs text-text-secondary">{collectionSourceLabel(place.source)}</p>
+          <p className="text-2xs text-text-tertiary">기준정보 반영 {dateTime(place.updated_at)}</p>
+        </> : null}
+      </div>
+      <Button type="button" variant="ghost" size="icon-sm" aria-label="장소 상세 닫기" onClick={onClose}><X aria-hidden="true" /></Button>
+    </header> : null}
     {place.kind === "ferry_port" ? <PortDepartures key={place.id} place={place} /> : null}
     {place.kind === "airport" ? <AirportDetails key={place.id} place={place} /> : null}
-    {place.kind === "public_parking_lot" ? <PublicParkingDetails key={place.id} id={place.id} onShowMap={onShowMap} /> : <section className="inspector-section" aria-label="장소 정보"><PlaceDetails place={place} showHeading={false} onShowMap={onShowMap} /></section>}
+    {place.kind === "public_parking_lot" ? <PublicParkingDetails key={place.id} id={place.id} onShowMap={onShowMap} /> : <section className={SECTION} aria-label="장소 정보"><PlaceDetails place={place} showHeading={false} onShowMap={onShowMap} /></section>}
     {((place.kind === "ferry_port" && place.source === "data_go_kr_maritime") ||
       (place.kind === "bus_terminal" && place.source === "data_go_kr_tago")) && place.provider_id && onSaved
       ? <ManualLocationEditor key={`${place.kind}:${place.id}`} place={place} onSaved={onSaved} onReload={onReload ?? onClose} /> : null}

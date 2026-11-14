@@ -6,16 +6,28 @@ import { useEffect, useState } from "react";
 import { transportGet, dateTime } from "@/lib/journey";
 import { currentSpeeds, type SpeedObservation } from "@/lib/driver-statistics";
 import { highwayRouteLabel } from "@/lib/transport-presentation";
+import { FilterActions, FilterBar, FilterField } from "@/components/filter-bar";
 import { SectionCard } from "./section-card";
 import { StatStrip } from "./stat-strip";
+import { Alert, AlertDescription } from "./ui/alert";
+import { Button } from "./ui/button";
+import { NativeSelect } from "./ui/native-select";
+import { NativeSelectOption } from "./ui/native-select-option";
 
+const inlineLink = "rounded-control text-sm font-medium text-brand underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
 const decimal = (n: number | null) => n === null ? null : n.toLocaleString("ko-KR", { maximumFractionDigits: 1 });
 const SAMPLE_LIMIT = 1000;
 export function HighwayStatistics() {
   const { route, setState, setRoute, options, setRevision, state, stats, sampleSegments } = useHighwayStatistics();
-  return <div className="space-y-6">
-    <div className="journey-toolbar"><label>고속도로<select value={route} onChange={(event) => { setState({}); setRoute(event.target.value); }}><option value="">전체 노선(최근 관측 1,000행 표본)</option>{options.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label><button type="button" className="secondary" onClick={() => { setState({}); setRevision((v) => v + 1); }}>새로고침</button><Link className="inline-link" href="/highways">지도에서 확인</Link></div>
-    {state.error ? <p role="alert">고속도로 통계를 불러오지 못했습니다.</p> : !state.rows ? <p role="status">최근 구간 관측을 확인하는 중입니다…</p> : null}
+  return <div className="flex flex-col gap-6">
+    <FilterBar>
+      <FilterField label="고속도로"><NativeSelect value={route} onChange={(event) => { setState({}); setRoute(event.target.value); }}><NativeSelectOption value="">전체 노선(최근 관측 1,000행 표본)</NativeSelectOption>{options.map(([id, name]) => <NativeSelectOption key={id} value={id}>{name}</NativeSelectOption>)}</NativeSelect></FilterField>
+      <FilterActions>
+        <Button type="button" variant="outline" onClick={() => { setState({}); setRevision((v) => v + 1); }}>새로고침</Button>
+        <Link className={inlineLink} href="/highways">지도에서 확인</Link>
+      </FilterActions>
+    </FilterBar>
+    {state.error ? <Alert variant="destructive"><AlertDescription>고속도로 통계를 불러오지 못했습니다.</AlertDescription></Alert> : !state.rows ? <p role="status" className="text-sm text-text-secondary">최근 구간 관측을 확인하는 중입니다…</p> : null}
     <HighwaySpeedMetrics stats={stats} route={route} sampleSegments={sampleSegments} state={state} />
     <HighwaySpeedTable stats={stats} />
   </div>;
@@ -77,8 +89,8 @@ function useHighwayStatistics() {
 
 function HighwaySpeedMetrics({ stats, route, sampleSegments, state }: Pick<ReturnType<typeof useHighwayStatistics>, "stats" | "route" | "sampleSegments" | "state">) {
   return (<SectionCard title="최근 15분 구간 속도" description="구간별 마지막 관측을 같은 비중으로 비교합니다. 실제 경로 소요시간이나 교통량 가중 평균이 아닙니다.">
-      <StatStrip ariaLabel="고속도로 운전 지표" className="driver-stats" items={speedMetrics(stats)} />
-      <p className="quiet">{route
+      <StatStrip ariaLabel="고속도로 운전 지표" items={speedMetrics(stats)} />
+      <p className="text-sm text-text-secondary">{route
         ? `선택 노선의 최근 관측(최대 ${SAMPLE_LIMIT.toLocaleString("ko-KR")}행)에서 구간별 최신 관측을 추립니다. `
         : `전체 노선은 최근 관측 ${SAMPLE_LIMIT.toLocaleString("ko-KR")}행 표본${sampleSegments !== null ? `(표본 구간 ${sampleSegments.toLocaleString("ko-KR")}곳)` : ""}으로 계산하므로 전체 구간 집계가 아닙니다. 노선을 고르면 그 노선의 최신 관측을 다시 조회합니다. `}
         {stats ? `15분 초과·결측 등 ${stats.excluded}구간 제외 · ` : ""}조회 {dateTime(state.checked)}. 속도 구간은 이 화면의 비교 기준입니다.</p>
@@ -88,12 +100,12 @@ function HighwaySpeedMetrics({ stats, route, sampleSegments, state }: Pick<Retur
 
 function HighwaySpeedTable({ stats }: Pick<ReturnType<typeof useHighwayStatistics>, "stats">) {
   return (<SectionCard title="속도가 낮은 구간부터" description="출발 전 관심 노선의 정체 위치와 방향을 확인하세요.">
-      <div className="overflow-x-auto"><VirtualTable ariaLabel="조회 결과" containerClassName="operations-table" data={[...(stats?.rows ?? [])].sort((a, b) => a.speed! - b.speed!).slice(0, 100)} getRowId={(row) => String(row.identity_key)} virtualized={false} columns={[{ id: 'column0', header: '노선', cell: ({ row: { original: row } }) => <>{highwayRouteLabel(row.route_no, row.route_name)}</> },
+      <div className="overflow-x-auto"><VirtualTable ariaLabel="조회 결과" data={[...(stats?.rows ?? [])].sort((a, b) => a.speed! - b.speed!).slice(0, 100)} getRowId={(row) => String(row.identity_key)} virtualized={false} columns={[{ id: 'column0', header: '노선', cell: ({ row: { original: row } }) => <>{highwayRouteLabel(row.route_no, row.route_name)}</> },
 { id: 'column1', header: '구간', cell: ({ row: { original: row } }) => <>{(row as SpeedObservation & { conzone_name?: string }).conzone_name ?? "구간명 미제공"}</> },
 { id: 'column2', header: '방향', cell: ({ row: { original: row } }) => <>{(row as SpeedObservation & { direction?: string }).direction ?? "—"}</> },
-{ id: 'column3', header: '속도(km/h)', cell: ({ row: { original: row } }) => <>{decimal(row.speed)}</> },
+{ id: 'column3', header: '속도(km/h)', cell: ({ row: { original: row } }) => <span className="tabular-nums">{decimal(row.speed)}</span> },
 { id: 'column4', header: '관측', cell: ({ row: { original: row } }) => <>{dateTime(row.observed_at)}</> }]} /></div>
-      {stats && !stats.rows.length ? <p>최근 15분 이내의 유효 속도 관측이 없습니다.</p> : null}
+      {stats && !stats.rows.length ? <p className="text-sm text-text-secondary">최근 15분 이내의 유효 속도 관측이 없습니다.</p> : null}
     </SectionCard>);
 }
 

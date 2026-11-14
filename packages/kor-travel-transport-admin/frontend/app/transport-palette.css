@@ -1,0 +1,61 @@
+/*
+ * Transport 색 정본. kor-travel-map admin과 같은 토큰 이름에 Transport의 기존 색 값을 넣는다.
+ * 이 파일이 색 값의 유일한 출처다. globals.css와 컴포넌트는 토큰 이름만 쓴다.
+ *
+ * 새 색을 더하지 않는다. Transport 팔레트에 없는 토큰은 기존 값을 참조한다.
+ *   info → brand(같은 파랑 계열), text-disabled → control-line, chart-2..5 → 텍스트 단계,
+ *   compare-b → text-secondary, overlay·shadow-modal → text-primary 색조에 map의 alpha·고도만 옮긴 값.
+ */
+:root {
+  /* 표면·텍스트 */
+  --surface-page: oklch(97.8% .003 250);
+  --surface-subtle: oklch(96.7% .006 250);
+  --surface-muted: oklch(92.5% .01 250);
+  --card: oklch(99.2% .002 250);
+  --text-primary: oklch(30% .025 255);
+  --text-secondary: oklch(48% .04 255);
+  --text-tertiary: oklch(54% .04 255);
+  --text-disabled: var(--control-line);
+  --icon-default: var(--text-tertiary);
+  --control-line: oklch(61% .035 255);
+
+  /* 브랜드 */
+  --brand: oklch(47% .14 255);
+  --brand-hover: oklch(41% .15 255);
+  --brand-tint: oklch(95% .025 250);
+  --brand-foreground: oklch(99% .002 250);
+
+  /* 상태 */
+  --success: oklch(46.9% .087 149);
+  --success-tint: oklch(95% .03 150);
+  --warning: oklch(50.9% .103 71);
+  --warning-tint: oklch(96% .035 80);
+  --info: var(--brand);
+  --info-tint: var(--brand-tint);
+  --destructive: oklch(51.4% .167 27);
+  --destructive-tint: oklch(96% .03 25);
+
+  /* 포커스 · 오버레이 · 비교 · 차트 */
+  --focus: oklch(43% .13 255);
+  --overlay: oklch(30% .025 255 / .45);
+  --compare-a: var(--brand);
+  --compare-b: var(--text-secondary);
+  --chart-1: var(--brand);
+  --chart-2: var(--text-secondary);
+  --chart-3: var(--control-line);
+  --chart-4: var(--text-tertiary);
+  --chart-5: var(--text-primary);
+
+  /* 그림자 — 고도만 쓰고 색은 text-primary 색조 */
+  --shadow-card: none;
+  --shadow-card-hover: 0 2px 4px oklch(30% .025 255 / .08);
+  --shadow-elevated: 0 4px 12px oklch(30% .025 255 / .1);
+  --shadow-modal: 0 8px 24px oklch(30% .025 255 / .14);
+  --shadow-map: 0 2px 8px oklch(30% .025 255 / .22);
+
+  /* 지도 마커의 노선·장소 종류 색(Transport 전용) */
+  --color-rail: oklch(42% .14 270);
+  --color-port: oklch(40% .11 235);
+  --color-airport: oklch(40% .11 305);
+  --color-rest: oklch(40% .1 135);
+}

@@ -13,9 +13,12 @@ import { Field, FieldGroup, FieldLabel, FieldSet, FieldLegend } from "@/componen
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@kor-travel/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Empty, EmptyHeader, EmptyDescription } from "@/components/ui/empty";
+import { EmptyState } from "@/components/empty-state";
 import { FuelBrandIcon } from "./fuel-brand-icon";
 import { FuelStationPriceHistory } from "./fuel-station-history";
+
+// 장소 상세 안의 본문 링크(지도 보기·전화·공식 안내). 색에만 기대지 않도록 밑줄을 함께 쓴다.
+const INLINE_LINK = "inline-flex items-center gap-1 text-left text-brand underline underline-offset-4";
 
 export function PlaceIcon({ kind, brandCode, brandName }: { kind: string; brandCode?: string | null; brandName?: string | null }) {
   if (kind === "fuel_station") return <FuelBrandIcon code={brandCode} name={brandName} />;
@@ -41,38 +44,38 @@ export function MultiSearch({ label, query, onQuery, options, selected, onSelect
   selected: { id: string; name: string }[]; onSelect: (id: string) => void; onInspect?: (id: string) => void; max?: number; loading?: boolean; scrollable?: boolean;
 }) {
   const id = useId();
-  return <section className="multi-search">
+  return <section className="multi-search flex min-w-0 flex-col gap-2">
     <FieldGroup><Field><FieldLabel htmlFor={id}>{label}</FieldLabel><Input id={id} type="search" value={query} onChange={(event) => onQuery(event.target.value)} placeholder="이름·지역으로 검색" autoComplete="off" /></Field></FieldGroup>
     {selected.length ? <div className="flex min-w-0 flex-wrap gap-2" aria-label="선택한 장소">{selected.map((item) => <Button className="max-w-full" variant="secondary" type="button" key={item.id} onClick={() => onSelect(item.id)} aria-label={`${item.name} 선택 해제`} title={item.name}><span className="min-w-0 truncate">{item.name}</span><X data-icon="inline-end" aria-hidden="true" /></Button>)}</div> : null}
-    <p className="quiet" role="status">{loading ? "검색 중…" : `${options.length}개 결과 · ${selected.length}/${max}곳 선택`}</p>
-    <FieldSet><FieldLegend className="sr-only">{label} 검색 결과</FieldLegend><FieldGroup className={scrollable ? "max-h-64 overflow-y-auto gap-2" : "gap-2"}>{options.slice(0, 60).map((item) => {
+    <p className="text-xs text-text-secondary" role="status">{loading ? "검색 중…" : `${options.length}개 결과 · ${selected.length}/${max}곳 선택`}</p>
+    <FieldSet><FieldLegend className="sr-only">{label} 검색 결과</FieldLegend><FieldGroup className={scrollable ? "max-h-64 gap-2 overflow-y-auto" : "gap-2"}>{options.slice(0, 60).map((item) => {
       const checked = selected.some((value) => value.id === item.id);
       const disabled = max > 1 && selected.length >= max && !checked;
       return <Field orientation="horizontal" key={item.id} data-disabled={disabled} className="min-h-11">
         <Checkbox id={`${id}-${item.id}`} checked={checked} disabled={disabled} onCheckedChange={() => onSelect(item.id)} />
-        <FieldLabel htmlFor={`${id}-${item.id}`} className="min-w-0 min-h-11 flex-1"><span className="flex min-w-0 flex-col gap-1"><strong>{item.name}</strong>{item.description ? <small>{item.description}</small> : null}</span></FieldLabel>
+        <FieldLabel htmlFor={`${id}-${item.id}`} className="min-h-11 min-w-0 flex-1"><span className="flex min-w-0 flex-col gap-1"><strong>{item.name}</strong>{item.description ? <small className="text-xs text-text-secondary">{item.description}</small> : null}</span></FieldLabel>
         {onInspect ? <Button type="button" variant="outline" size="sm" className="shrink-0" aria-label={`${item.name} 상세 보기`} onClick={() => onInspect(item.id)}>상세</Button> : null}
       </Field>;
     })}</FieldGroup></FieldSet>
-    {!loading && !options.length ? <Empty><EmptyHeader><EmptyDescription>검색 결과가 없습니다. 다른 이름이나 지역을 입력해 주세요.</EmptyDescription></EmptyHeader></Empty> : null}
-    {options.length > 60 ? <p className="quiet">상위 60곳을 표시합니다. 검색어를 입력해 범위를 좁혀 주세요.</p> : null}
+    {!loading && !options.length ? <EmptyState title="검색 결과가 없습니다. 다른 이름이나 지역을 입력해 주세요." /> : null}
+    {options.length > 60 ? <p className="text-xs text-text-secondary">상위 60곳을 표시합니다. 검색어를 입력해 범위를 좁혀 주세요.</p> : null}
   </section>;
 }
 
 export function PlaceDetails({ place, showRailTimetable = true, showHeading = true, onShowMap }: { place: Place; showRailTimetable?: boolean; showHeading?: boolean; onShowMap?: () => void }) {
-  return <div className="place-details">
+  return <div className="place-details grid min-w-0 gap-3 text-sm">
     <PlaceHeading place={place} showHeading={showHeading} />
     <PlacePrices place={place} />
     {place.kind === "fuel_station" ? <FuelStationPriceHistory key={`${place.source}:${place.id}`} place={place}><PlaceContact place={place} onShowMap={onShowMap} /><PlaceLocationEvidence place={place} /></FuelStationPriceHistory> : <PlaceContact place={place} onShowMap={onShowMap} />}
     {place.kind === "rail_station" && showRailTimetable ? <RailTimetables placeIds={[place.id]} /> : null}
     {place.kind !== "fuel_station" ? <PlaceLocationEvidence place={place} /> : null}
-    {place.kind !== "fuel_station" ? <p className="quiet">출처 {collectionSourceLabel(place.source)} · 기준정보 반영 {dateTime(place.updated_at)}</p> : null}
+    {place.kind !== "fuel_station" ? <p className="text-xs text-text-secondary">출처 {collectionSourceLabel(place.source)} · 기준정보 반영 {dateTime(place.updated_at)}</p> : null}
   </div>;
 }
 
 function PlaceHeading({ place, showHeading }: Pick<Parameters<typeof PlaceDetails>[0], "place" | "showHeading">) {
   return <>
-    {showHeading ? <><div className="place-title"><PlaceIcon kind={place.kind} brandCode={place.brand_code} brandName={place.brand_name} /><span>{placeKindLabel(place.kind)}</span></div><h2>{place.name}</h2></> : null}
+    {showHeading ? <><div className="flex items-center gap-2 text-xs font-medium text-brand"><PlaceIcon kind={place.kind} brandCode={place.brand_code} brandName={place.brand_name} /><span>{placeKindLabel(place.kind)}</span></div><h2 className="text-md leading-snug font-semibold text-text-primary">{place.name}</h2></> : null}
     {place.brand_name && (showHeading || place.kind !== "fuel_station") ? <p>{place.brand_name}</p> : null}
     {place.line_names.length ? <div className="flex flex-wrap gap-2">{place.line_names.map((line) => <Badge variant="secondary" key={line}>{line}</Badge>)}</div> : null}
     {place.subtitle && place.kind !== "fuel_station" ? <p>{place.subtitle}</p> : null}
@@ -82,14 +85,14 @@ function PlaceHeading({ place, showHeading }: Pick<Parameters<typeof PlaceDetail
 function PlacePrices({ place }: { place: Place }) {
   const prices = place.kind === "fuel_station" ? place.prices?.filter(hasFuelPrice) : place.prices;
   return <>
-    {prices?.length ? <>{place.kind !== "fuel_station" ? <span className="quiet fuel-current-price-label">최근 저장 가격</span> : null}<dl className={place.kind === "fuel_station" ? "price-grid fuel-current-prices" : "price-grid"}>{prices.map((price) => <div key={price.product_code}><dt>{fuelProductLabel(price.product_code)}{place.kind === "fuel_station" ? <InfoButton label={`${fuelProductLabel(price.product_code)} 가격 기준`}><p><time dateTime={price.observed_at}>관측 {dateTime(price.observed_at)}</time></p>{isOldFuelObservation(price.observed_at) ? <p>7일 이전 관측입니다. 현재 판매 가격과 다를 수 있습니다.</p> : null}</InfoButton> : null}</dt><dd>{money(price.price, "원/L")}</dd><small><time dateTime={price.observed_at}>관측 {dateTime(price.observed_at)}</time>{place.kind === "fuel_station" && isOldFuelObservation(price.observed_at) ? <span className="fuel-price-old">7일 이전 관측</span> : null}</small></div>)}</dl></> : place.kind === "fuel_station" ? <p className="quiet">등록된 유효 유가가 없습니다.</p> : null}
+    {prices?.length ? <>{place.kind !== "fuel_station" ? <span className="fuel-current-price-label text-xs text-text-secondary">최근 저장 가격</span> : null}<dl className={place.kind === "fuel_station" ? "price-grid fuel-current-prices" : "price-grid"}>{prices.map((price) => <div key={price.product_code}><dt>{fuelProductLabel(price.product_code)}{place.kind === "fuel_station" ? <InfoButton label={`${fuelProductLabel(price.product_code)} 가격 기준`}><p><time dateTime={price.observed_at}>관측 {dateTime(price.observed_at)}</time></p>{isOldFuelObservation(price.observed_at) ? <p>7일 이전 관측입니다. 현재 판매 가격과 다를 수 있습니다.</p> : null}</InfoButton> : null}</dt><dd>{money(price.price, "원/L")}</dd><small><time dateTime={price.observed_at}>관측 {dateTime(price.observed_at)}</time>{place.kind === "fuel_station" && isOldFuelObservation(price.observed_at) ? <span className="fuel-price-old">7일 이전 관측</span> : null}</small></div>)}</dl></> : place.kind === "fuel_station" ? <p className="text-xs text-text-secondary">등록된 유효 유가가 없습니다.</p> : null}
   </>;
 }
 
 function PlaceAddress({ place, onShowMap }: Pick<Parameters<typeof PlaceDetails>[0], "place" | "onShowMap">) {
   return place.address ? hasCoordinates(place) ? onShowMap
-    ? <button type="button" className="inline-link" onClick={onShowMap}>{place.address} · 지도에서 보기</button>
-    : <Link className="inline-link" href={`/${place.kind === "fuel_station" ? "fuel" : "map"}?longitude=${place.longitude}&latitude=${place.latitude}`}>{place.address} · 지도에서 보기</Link>
+    ? <button type="button" className={INLINE_LINK} onClick={onShowMap}>{place.address} · 지도에서 보기</button>
+    : <Link className={INLINE_LINK} href={`/${place.kind === "fuel_station" ? "fuel" : "map"}?longitude=${place.longitude}&latitude=${place.latitude}`}>{place.address} · 지도에서 보기</Link>
     : place.address : null;
 }
 
@@ -101,9 +104,9 @@ function PlaceContact({ place, onShowMap }: Pick<Parameters<typeof PlaceDetails>
       {address ? <InfoButton label="주소" icon={<MapPin size={15} aria-hidden="true" />}>{address}</InfoButton> : null}
       <InfoButton label="데이터 출처">{collectionSourceLabel(place.source)}<p>기준정보 반영 {dateTime(place.updated_at)}</p>{prices?.filter((price) => price.provider_updated_at).map((price) => <p key={price.product_code}>{fuelProductLabel(price.product_code)} 제공기관 공시 {dateTime(price.provider_updated_at)}</p>)}</InfoButton>
     </div> : address ? <p>{address}</p> : null}
-    {place.phone ? <p>전화 <a className="inline-link" href={`tel:${place.phone.replace(/[^+\d]/g, "")}`}>{place.phone}</a></p> : null}
-    {place.kind === "ferry_port" ? <p className="quiet">항구 코드 {place.provider_id ?? "미제공"}</p> : null}
-    {place.kind === "bus_terminal" ? <p className="quiet">터미널 코드 {place.provider_id ?? "미제공"}</p> : null}
+    {place.phone ? <p>전화 <a className={INLINE_LINK} href={`tel:${place.phone.replace(/[^+\d]/g, "")}`}>{place.phone}</a></p> : null}
+    {place.kind === "ferry_port" ? <p className="text-xs text-text-secondary">항구 코드 {place.provider_id ?? "미제공"}</p> : null}
+    {place.kind === "bus_terminal" ? <p className="text-xs text-text-secondary">터미널 코드 {place.provider_id ?? "미제공"}</p> : null}
     {place.facilities?.length ? <p>편의시설 · {place.facilities.join(" · ")}</p> : null}
   </>;
 }
@@ -133,13 +136,13 @@ function locationEvidence(place: Place) {
 
 export function FerryDepartures({ timetable, name, query = "" }: { timetable: FerryTimetable; name: string; query?: string }) {
   const rows = timetable.items.filter((item) => [item.arrival_port_name, item.departure_port_name, item.vessel_name].join(" ").includes(query.trim())).sort((a, b) => (a.departure_planned_time ?? "").localeCompare(b.departure_planned_time ?? ""));
-  return <section className="departures" aria-label={`${name} 운항 정보`}>
-    <header><h3>{name} · {timetable.service_date}</h3><p className="quiet">항구 코드 {timetable.port_id}{timetable.port_name ? ` · ${timetable.port_name}` : ""}</p><p className="quiet">저장본 확인 {dateTime(timetable.fetched_at)} · {rows.length}편</p></header>
-    {rows.length ? rows.map((item) => <article className="departure-row" key={`${item.departure_port_name}/${item.arrival_port_name}/${item.vessel_name}/${item.departure_planned_time}`}>
-      <div className="departure-time"><strong>{serviceTime(item.departure_planned_time, timetable.service_date)}</strong><span>{item.departure_port_name ?? name}</span></div>
-      <div className="departure-route"><span aria-hidden="true">→</span><strong>{item.arrival_port_name ?? "도착항 미제공"}</strong><small>도착 {serviceTime(item.arrival_planned_time, timetable.service_date)}</small></div>
-      <div className="departure-meta"><strong>{item.vessel_name ?? "선박명 미제공"}</strong><span>{money(item.fare)}</span></div>
-    </article>) : <p className="empty-state">{query ? "조건에 맞는 운항편이 없습니다." : "제공기관의 마지막 저장 응답에 등록된 운항편이 없습니다. 결항을 의미하지는 않습니다."}</p>}
-    <p className="quiet">예정 시간·요금은 변경될 수 있습니다. 승선 전 운항사에 확인해 주세요.</p>
+  return <section className="departures flex min-w-0 flex-col gap-3" aria-label={`${name} 운항 정보`}>
+    <header className="flex flex-col gap-1"><h3 className="text-sm font-semibold text-text-primary">{name} · {timetable.service_date}</h3><p className="text-xs text-text-secondary">항구 코드 {timetable.port_id}{timetable.port_name ? ` · ${timetable.port_name}` : ""}</p><p className="text-xs text-text-secondary">저장본 확인 {dateTime(timetable.fetched_at)} · {rows.length}편</p></header>
+    {rows.length ? rows.map((item) => <article className="grid grid-cols-[minmax(70px,.6fr)_minmax(0,1fr)] items-center gap-3 border-b border-border py-3 tabular-nums" key={`${item.departure_port_name}/${item.arrival_port_name}/${item.vessel_name}/${item.departure_planned_time}`}>
+      <div className="grid min-w-0 gap-1 [overflow-wrap:anywhere]"><strong className="text-md font-semibold text-brand">{serviceTime(item.departure_planned_time, timetable.service_date)}</strong><span className="text-xs text-text-secondary">{item.departure_port_name ?? name}</span></div>
+      <div className="grid min-w-0 gap-1 [overflow-wrap:anywhere]"><span aria-hidden="true">→</span><strong className="text-sm font-semibold">{item.arrival_port_name ?? "도착항 미제공"}</strong><small className="text-xs text-text-secondary">도착 {serviceTime(item.arrival_planned_time, timetable.service_date)}</small></div>
+      <div className="col-span-2 flex flex-wrap items-center justify-between gap-2 text-sm"><strong className="font-semibold">{item.vessel_name ?? "선박명 미제공"}</strong><span>{money(item.fare)}</span></div>
+    </article>) : <EmptyState size="sm" title={query ? "조건에 맞는 운항편이 없습니다." : "제공기관의 마지막 저장 응답에 등록된 운항편이 없습니다. 결항을 의미하지는 않습니다."} />}
+    <p className="text-xs text-text-secondary">예정 시간·요금은 변경될 수 있습니다. 승선 전 운항사에 확인해 주세요.</p>
   </section>;
 }

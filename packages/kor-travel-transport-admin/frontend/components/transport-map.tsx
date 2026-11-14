@@ -72,7 +72,7 @@ function MapMarker({ point, onSelect, selected, products }: { point: MapPoint; o
   const ariaLabel = [placeKindLabel(place.kind), place.name, place.kind === "fuel_station" ? fuelBrand(place.brand_code, place.brand_name).name : null, place.line_names.join(" · "), priceLabel ? priceSpeech(place.prices, products) : null, "상세 보기"].filter(Boolean).join(" ");
   // 선택 마커는 묶음 원(z 3) 위(z 4)에 그리되 포인터는 통과시켜 같은 좌표의 묶음 원도 눌린다.
   return <MapMarkerButton lngLat={point.lngLat} interactionId={point.id} zIndex={selected ? 4 : undefined} passThrough={selected} pressed={selected}
-    className={`transport-map-marker ${place.kind}${selected ? " is-selected" : ""}`}
+    className={cn("transport-map-marker", place.kind, selected && "is-selected")}
     title={priceLabel ? `${title} ${priceLabel.replace(/\n/g, " ")}` : title} ariaLabel={ariaLabel} onClick={() => onSelect(place)}>
     {place.kind === "fuel_station" ? <FuelBrandIcon code={place.brand_code} name={place.brand_name} className="fuel-brand-marker" /> : place.kind === "rail_station" ? <span className="rail-map-label"><span className="rail-map-lines">{railLines(place).map(line => <span key={line.name} className="rail-line-badge" style={{"--rail-line-color":line.color} as CSSProperties}>{line.label}</span>)}</span><span className="rail-map-name">{place.name}</span></span> : <MarkerBadge markerIcon={markerIcon} markerColor={markerColor} selected={selected} />}
     {priceLabel ? <span className="map-marker-price" style={{ "--marker-color": placeMarkerColor(place.kind) } as CSSProperties}>{priceLabel}</span> : null}
@@ -92,10 +92,10 @@ function MountCamera({ camera, children }: { camera: MapCamera; children: (camer
 
 // Map `showCoincidentPopup`과 같은 겹친 지점 팝업: 제목·개수 칩과 색 점·종류 배지·이름 행.
 function OverlapList({ places, onSelect, listRef }: { places: Place[]; onSelect: (place: Place) => void; listRef: RefObject<HTMLElement | null> }) {
-  return <section ref={listRef} className="map-overlap" aria-label="겹친 장소 선택">
-    <header><span className="map-overlap-title">겹친 지점</span><span className="map-overlap-count">{places.length}개</span></header>
-    <div className="map-overlap-list">{places.map((place) => <button type="button" key={keyOf(place)} aria-label={place.name} style={{ "--marker-color": placeMarkerColor(place.kind) } as CSSProperties} onClick={() => onSelect(place)}>
-      <span className="map-overlap-dot" aria-hidden="true" /><span className="map-overlap-kind" aria-hidden="true">{placeKindLabel(place.kind)}</span><span className="map-overlap-name">{place.name}</span>
+  return <section ref={listRef} className="min-w-62 text-[13px] leading-snug text-text-primary" aria-label="겹친 장소 선택">
+    <header className="flex items-center justify-between gap-2.5 pt-0.5 pb-2.5"><span className="text-[13px] font-extrabold">겹친 지점</span><span className="shrink-0 rounded-full border border-brand-tint bg-brand-tint px-2 py-1 text-2xs leading-none font-extrabold text-brand">{places.length}개</span></header>
+    <div className="flex max-h-65 flex-col gap-1 overflow-y-auto">{places.map((place) => <button type="button" key={keyOf(place)} aria-label={place.name} className="flex min-h-10.5 w-full items-center gap-2 rounded-control border border-border bg-card px-2.5 py-2 text-left text-text-primary hover:border-(--marker-color) hover:bg-surface-subtle focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus" style={{ "--marker-color": placeMarkerColor(place.kind) } as CSSProperties} onClick={() => onSelect(place)}>
+      <span className="size-2.25 shrink-0 rounded-full bg-(--marker-color) shadow-[0_0_0_3px_color-mix(in_srgb,var(--marker-color)_13%,transparent)]" aria-hidden="true" /><span className="shrink-0 rounded-full bg-surface-subtle px-1.5 py-1 text-[10px] leading-none font-extrabold text-text-secondary" aria-hidden="true">{placeKindLabel(place.kind)}</span><span className="min-w-0 flex-1 truncate font-semibold">{place.name}</span>
     </button>)}</div>
   </section>;
 }
@@ -604,9 +604,9 @@ function MapPlaceRows({ status, listContent, listPlaces, items, current, selectP
 
 
 function FuelMapGuidance({ kinds, loaded }: Pick<ReturnType<typeof useTransportMap>, "kinds" | "loaded">) {
-  return (<div className="map-feedback map-guidance" role="status">
+  return (<div className="map-feedback map-guidance text-xs text-text-secondary" role="status">
 
-      {kinds.includes("fuel_station") && loaded.fuel_station?.fuel_prices_stale ? <p className="error">유가 갱신 지연 · 유종·가격은 {dateTime(loaded.fuel_station.fuel_prices_last_refreshed_at)} 기준이며 판매 여부도 다를 수 있습니다.</p> : null}
+      {kinds.includes("fuel_station") && loaded.fuel_station?.fuel_prices_stale ? <p className="error text-destructive">유가 갱신 지연 · 유종·가격은 {dateTime(loaded.fuel_station.fuel_prices_last_refreshed_at)} 기준이며 판매 여부도 다를 수 있습니다.</p> : null}
       {kinds.includes("fuel_station") && loaded.fuel_station?.fuel_prices_last_refreshed_at && !loaded.fuel_station.fuel_prices_stale ? <p>유가 {dateTime(loaded.fuel_station.fuel_prices_last_refreshed_at)} 갱신</p> : null}
     </div>);
 }

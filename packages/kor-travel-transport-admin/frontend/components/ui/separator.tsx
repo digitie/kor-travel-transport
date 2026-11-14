@@ -1,3 +1,3 @@
 "use client";
 
-export * from "@kor-travel/ui/separator";
+export { Separator } from "@kor-travel/ui/separator";

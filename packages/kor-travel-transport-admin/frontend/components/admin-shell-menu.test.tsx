@@ -8,120 +8,79 @@ vi.mock("next/navigation", () => ({ usePathname: () => navigation.pathname }));
 vi.mock("next/link", () => ({ default: ({ href, children, ...props }: ComponentProps<"a">) => <a href={href} {...props} onClick={(event) => { props.onClick?.(event); event.preventDefault(); }}>{children}</a> }));
 import { AdminShell } from "./admin-shell";
 
-let mobile = false;
-const mediaListeners = new Set<() => void>();
+// map 공용 셸: lg 이상은 접을 수 있는 세로 레일, 미만은 상단 메뉴 띠. 드로어(dialog)는 쓰지 않는다.
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   navigation.pathname = "/map";
-  mobile = false;
-  mediaListeners.clear();
   localStorage.clear();
-  vi.stubGlobal("matchMedia", (query: string) => ({
-    get matches() { return query.includes("1023") && mobile; },
-    media: query,
-    addEventListener: (_type: string, listener: () => void) => mediaListeners.add(listener),
-    removeEventListener: (_type: string, listener: () => void) => mediaListeners.delete(listener),
-  }));
+  vi.stubGlobal("matchMedia", (query: string) => ({ matches: false, media: query, addEventListener() {}, removeEventListener() {} }));
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); localStorage.clear(); });
-async function changeMobile(value: boolean) {
-  await act(async () => { mobile = value; for (const listener of [...mediaListeners]) listener(); });
-}
+
 async function mount() {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   await act(async () => root.render(<AdminShell><input aria-label="본문 입력" /></AdminShell>));
-  const nav = () => document.querySelector<HTMLElement>('nav[aria-label="주요 메뉴"]')!;
-  const shell = () => container.querySelector<HTMLElement>(".transport-shell")!;
-  const click = async (selector: string) => { await act(async () => document.querySelector<HTMLButtonElement>(selector)!.click()); };
+  const nav = () => container.querySelector<HTMLElement>('nav[aria-label="주요 메뉴"]')!;
+  const menu = () => container.querySelector<HTMLElement>("[data-collapsed]")!;
+  const button = (name: string) => [...container.querySelectorAll<HTMLButtonElement>("button")].find((item) => item.getAttribute("aria-label") === name || item.textContent?.trim() === name);
   const dispose = async () => { await act(async () => { root.unmount(); await new Promise((resolve) => setTimeout(resolve, 0)); }); container.remove(); };
-  return { container, root, nav, shell, click, dispose };
+  return { container, root, nav, menu, button, dispose };
 }
-test("PC 세로 메뉴는 기존 19개 경로와 POST 로그아웃을 보존한다", async () => {
-  const { container, nav, dispose } = await mount();
+
+test("주요 메뉴는 기존 19개 경로를 모두 보이고 드로어 없이 렌더링한다", async () => {
+  const { nav, dispose } = await mount();
   try {
     expect(nav().querySelectorAll('[data-slot="app-menu-link"]')).toHaveLength(19);
-    expect(nav().querySelector('a[href="/parking-lots"]')).not.toBeNull();
-    expect(nav().querySelector('a[href="/rail/timetable"]')).not.toBeNull();
-    expect(container.querySelector('form[action="/api/auth/logout"]')?.getAttribute("method")).toBe("post");
+    for (const href of ["/parking-lots", "/rail/timetable", "/parking"]) expect(nav().querySelector(`a[href="${href}"]`)).not.toBeNull();
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   } finally { await dispose(); }
 });
-test("모바일은 기본 닫힘이며 공통 Radix 드로어의 열기·닫기가 동작한다", async () => {
-  mobile = true;
-  const { nav, click, dispose } = await mount();
+
+test("로그아웃은 POST 요청을 보내는 버튼이다", async () => {
+  const fetchMock = vi.fn(async () => new Response(null, { status: 500 }));
+  vi.stubGlobal("fetch", fetchMock);
+  const { container, button, dispose } = await mount();
   try {
-    expect(nav()).toBeNull();
-    await click(".mobile-menu-toggle");
-    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("내비게이션 메뉴");
-    expect(nav().querySelectorAll('[data-slot="app-menu-link"]')).toHaveLength(19);
-    expect(document.activeElement?.getAttribute("aria-label")).toBe("메뉴 닫기");
-    await click(".sidebar-close");
-    expect(document.querySelector('[role="dialog"]')).toBeNull();
-    await vi.waitFor(() => expect(document.activeElement?.getAttribute("aria-label")).toBe("메뉴 열기"));
+    expect(container.querySelector('a[href="/api/auth/logout"]')).toBeNull();
+    await act(async () => button("로그아웃")!.click());
+    expect(fetchMock).toHaveBeenCalledWith("/api/auth/logout", expect.objectContaining({ method: "POST" }));
   } finally { await dispose(); }
 });
-test("PC 접힘 선택과 아이콘 링크 이름·title을 저장하고 복구한다", async () => {
-  const { nav, shell, click, dispose } = await mount();
+
+test("레일 접힘 선택을 저장하고 다시 열 때 복구한다", async () => {
+  const { menu, button, dispose } = await mount();
   try {
-    await click(".sidebar-collapse");
-    expect(shell().dataset.sidebarCollapsed).toBe("true");
+    await act(async () => button("좌측 메뉴 접기")!.click());
+    expect(menu().dataset.collapsed).toBe("true");
     expect(localStorage.getItem("kor-travel-transport:sidebar-collapsed")).toBe("1");
-    expect(nav().querySelector('[aria-current="page"]')?.getAttribute("aria-label")).toBe("교통 지도");
-    expect(nav().querySelector('[aria-current="page"]')?.getAttribute("title")).toBe("교통 지도");
+    expect(button("좌측 메뉴 펼치기")).toBeDefined();
   } finally { await dispose(); }
   const restored = await mount();
-  try { expect(restored.shell().dataset.sidebarCollapsed).toBe("true"); }
+  try { expect(restored.menu().dataset.collapsed).toBe("true"); }
   finally { await restored.dispose(); }
 });
-test("PC에서 접어도 모바일 드로어는 전체 이름을 표시하고 PC 복귀 시 접힘을 유지한다", async () => {
-  localStorage.setItem("kor-travel-transport:sidebar-collapsed", "1");
-  const { nav, shell, click, dispose } = await mount();
+
+test("하위 경로에서는 해당 메뉴 하나만 활성화한다", async () => {
+  navigation.pathname = "/rail/mapping/variant";
+  const { nav, dispose } = await mount();
   try {
-    await changeMobile(true);
-    expect(nav()).toBeNull();
-    await click(".mobile-menu-toggle");
-    expect(nav().textContent).toContain("교통 지도");
-    expect(nav().querySelector('[aria-current="page"]')?.getAttribute("title")).toBeNull();
-    await changeMobile(false);
-    expect(document.querySelector('[role="dialog"]')).toBeNull();
-    expect(shell().dataset.sidebarCollapsed).toBe("true");
-    await changeMobile(true);
-    expect(nav()).toBeNull();
-  } finally { await dispose(); }
-});
-test("모바일 경로 변경은 드로어를 닫고 새 경로 하나만 활성화한다", async () => {
-  mobile = true;
-  const { root, nav, click, dispose } = await mount();
-  try {
-    await click(".mobile-menu-toggle");
-    navigation.pathname = "/rail/mapping/variant";
-    await act(async () => root.render(<AdminShell><p>다른 본문</p></AdminShell>));
-    expect(document.querySelector('[role="dialog"]')).toBeNull();
-    await click(".mobile-menu-toggle");
     const selected = nav().querySelectorAll('[aria-current="page"]');
     expect(selected).toHaveLength(1);
     expect(selected[0].getAttribute("href")).toBe("/rail/mapping");
-    expect(nav().querySelectorAll('[data-slot="app-menu-link"]')).toHaveLength(19);
   } finally { await dispose(); }
 });
-test("모바일에서 이미 선택한 링크를 눌러도 메뉴를 닫는다", async () => {
-  mobile = true;
-  const { nav, click, dispose } = await mount();
-  try {
-    await click(".mobile-menu-toggle");
-    await act(async () => nav().querySelector<HTMLAnchorElement>('[aria-current="page"]')!.click());
-    expect(document.querySelector('[role="dialog"]')).toBeNull();
-  } finally { await dispose(); }
-});
-test("브라우저 저장소가 막혀도 PC 메뉴 접기와 링크를 사용할 수 있다", async () => {
+
+test("브라우저 저장소가 막혀도 레일 접기와 링크를 사용할 수 있다", async () => {
   vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("저장소 차단"); });
   vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("저장소 차단"); });
-  const { nav, shell, click, dispose } = await mount();
+  const { nav, menu, button, dispose } = await mount();
   try {
-    await click(".sidebar-collapse");
-    expect(shell().dataset.sidebarCollapsed).toBe("true");
+    await act(async () => button("좌측 메뉴 접기")!.click());
+    expect(menu().dataset.collapsed).toBe("true");
     expect(nav().querySelectorAll('[data-slot="app-menu-link"]')).toHaveLength(19);
+    await act(async () => button("좌측 메뉴 펼치기")!.click());
+    expect(menu().dataset.collapsed).toBe("false");
   } finally { await dispose(); }
 });
