@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { DetailList } from "@/components/detail-list";
 import { EmptyState } from "@/components/empty-state";
+import { CollectionRunFailure } from "@/components/collection-run-failure";
 import { FilterActions, FilterBar, FilterField } from "@/components/filter-bar";
 import { InfoButton } from "@/components/info-button";
 import { SectionCard } from "@/components/section-card";
@@ -160,8 +161,10 @@ function ProviderCollectionRows({ providers, query, dagster }: Pick<ReturnType<t
 
 
 function CollectionRuns({ dagster }: Pick<ReturnType<typeof useCollectionStatus>, "dagster">) {
+  const [selectedFailure, setSelectedFailure] = useState<string | null>(null);
   if (!dagster?.runs.length) return null;
-  return (<ul className="divide-y divide-border">{dagster.runs.map((run) => <li className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between" key={run.runId}>
+  return (<ul className="divide-y divide-border">{dagster.runs.map((run) => <li className="flex min-w-0 flex-col gap-2 py-3 first:pt-0 last:pb-0" key={run.runId}>
+      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 flex-col gap-1">
           <strong className="text-sm font-medium text-text-primary">{JOB_LABELS[run.jobName] ?? run.jobName}</strong>
           <div className="flex flex-wrap items-center gap-2">
@@ -174,6 +177,8 @@ function CollectionRuns({ dagster }: Pick<ReturnType<typeof useCollectionStatus>
           <p>{run.endTime ? `종료 ${dateTime(new Date(run.endTime * 1000).toISOString())}` : "아직 종료 기록 없음"}</p>
         </div>
         <a className="text-xs text-brand underline-offset-4 hover:underline" href={dagsterRunUrl(run.runId)} rel="noreferrer" target="_blank">실행 상세</a>
+      </div>
+      {run.status === "FAILURE" ? <CollectionRunFailure key={run.runId} runId={run.runId} expanded={selectedFailure === run.runId} onExpandedChange={value => setSelectedFailure(value ? run.runId : null)} /> : null}
       </li>)}</ul>);
 }
 

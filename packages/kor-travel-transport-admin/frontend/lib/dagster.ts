@@ -42,7 +42,7 @@ export async function getDagsterOverview(signal?: AbortSignal): Promise<DagsterO
 
 
 export type DagsterRunFailureDetail = { message: string | null; complete: boolean };
-type RunEvent = { __typename: string; message?: string };
+type RunEvent = { __typename: string; message?: string; diagnostic?: boolean };
 
 export async function getRunFailure(runId: string, signal?: AbortSignal): Promise<DagsterRunFailureDetail> {
   signal?.throwIfAborted();
@@ -51,6 +51,7 @@ export async function getRunFailure(runId: string, signal?: AbortSignal): Promis
   const boundedSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
   let cursor: string | null = null;
   let lastStepMessage: string | null = null;
+  let lastStepDiagnostic = false;
   const message = (event: RunEvent) => String(event.message ?? "실패 원인을 Dagster에서 확인하세요.").slice(0, 2000);
   // 사용자가 선택한 실행 하나만 순차 조회한다. 한 page와 마지막 요약만 보존한다.
   for (let page = 0; page < 20; page++) {
@@ -66,10 +67,10 @@ export async function getRunFailure(runId: string, signal?: AbortSignal): Promis
     const connection = payload.data.runsOrError.results?.[0]?.eventConnection;
     if (!connection || !Array.isArray(connection.events)) throw new Error("선택한 실행의 로그를 찾지 못했습니다.");
     const events = connection.events as RunEvent[];
-    const runFailure = events.find(event => event.__typename === "RunFailureEvent");
-    if (runFailure) return { message: message(runFailure), complete: true };
     const stepFailure = events.filter(event => event.__typename === "ExecutionStepFailureEvent").at(-1);
-    if (stepFailure) lastStepMessage = message(stepFailure);
+    if (stepFailure) { lastStepMessage = message(stepFailure); lastStepDiagnostic = stepFailure.diagnostic === true; }
+    const runFailure = events.find(event => event.__typename === "RunFailureEvent");
+    if (runFailure) return { message: lastStepDiagnostic ? lastStepMessage : message(runFailure), complete: true };
     if (!connection.hasMore) return { message: lastStepMessage, complete: true };
     if (!connection.cursor || connection.cursor === cursor) throw new Error("실행 로그의 다음 페이지를 확인하지 못했습니다.");
     cursor = connection.cursor;

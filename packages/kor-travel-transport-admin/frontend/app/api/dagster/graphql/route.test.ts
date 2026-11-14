@@ -32,3 +32,20 @@ test("이름 붙은 작업은 서버 소유 scope로 전달하고 본문을 읽�
   expect(await response.json()).toEqual({ data: { ok: true } });
   expect(response.headers.get("cache-control")).toContain("no-store");
 });
+
+test("선택 실패는 예외 chain을 읽되 비공개 원문은 브라우저 전송 전에 제거한다", async () => {
+  const secret = "fixture-private-token";
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ data: { runsOrError: { __typename: "Runs", results: [{ eventConnection: {
+    cursor: null, hasMore: false, events: [{ __typename: "ExecutionStepFailureEvent", stepKey: "collect_highway_transport", message: secret,
+      error: { message: `traffic flow response contains invalid records (received_rows=10, parsed_rows=9, invalid_rows=1) https://example.invalid/?key=${secret}`, className: "KrexParseError", stack: [secret] },
+    }],
+  } }] } } })));
+  const response = await POST(request({ operationName: "TransportDagsterRunFailure", variables: { runId: "00000000-0000-0000-0000-000000000001", cursor: null } }));
+  const body = await response.text();
+  expect(response.status).toBe(200);
+  expect(body).toContain("TRAFFIC_FLOW_INVALID_RECORDS");
+  expect(body).toContain("불량 행 수: 1");
+  expect(body).not.toContain(secret);
+  expect(body).not.toContain("https://");
+  expect(body).not.toContain('"error"');
+});

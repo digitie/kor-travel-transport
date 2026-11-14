@@ -119,6 +119,7 @@ class VadaHubCollectionService:
             await session.commit()
             run_id = run.id
             failures = []
+            failure_details = []
             counts = {}
             try:
                 for key in SOURCES:
@@ -133,15 +134,28 @@ class VadaHubCollectionService:
                     attempted_at = now_utc()
                     # 여기까지 온 정상 게시본은 7일 due 갱신이다 — 새 원본을 받는다.
                     due_refresh = bool(old and old.response_json and not old.last_error)
+                    stage = "provider_fetch"
                     try:
                         # 이전 오류가 있어도 정상 ZIP은 재사용한다. 최근 ZIP을 실제 검증해
                         # 실패한 경우에만 새 원문을 내려받아 저장 실패 뒤의 비용을 줄인다.
                         value = (await self.fetcher(key) if self.fetcher is not None else
                                  await self._fetch(key, retry_failed_source=bool(old and old.last_error),
                                                    reuse_recent_archive=not due_refresh))
+                        stage = "validation"
                         data = self._validate(FerryReferenceData.model_validate(value), key)
                     except Exception as exc:
                         failures.append(key)
+                        kind = type(exc).__name__
+                        schema_error = kind in {"SchemaError", "ValidationError", "ValueError"}
+                        if schema_error and stage == "provider_fetch":
+                            stage = "provider_parse"
+                        retryable = isinstance(exc, TimeoutError) or kind == "TimeoutError"
+                        failure_details.append({
+                            "dataset": key, "error_type": kind, "stage": stage,
+                            "error_code": "VADAHUB_SCHEMA_CHANGED" if schema_error else "VADAHUB_SOURCE_FAILED",
+                            "retryable": retryable,
+                            "recovery_hint": "RETRY_AFTER_BACKOFF" if retryable else "CHECK_RESPONSE_CONTRACT",
+                        })
                         row = await session.get(FerryReferenceSnapshot, key)
                         if row is None:
                             row = FerryReferenceSnapshot(dataset=key)
@@ -179,6 +193,7 @@ class VadaHubCollectionService:
                     except (Exception, asyncio.CancelledError):
                         logger.warning("VadaHub failure rollback failed run_id=%s", run_id)
                 raise
-            return {"status": "partial_success" if failures else "success", "run_id": run_id, "counts": counts, "failed_datasets": failures}
+            return {"status": "partial_success" if failures else "success", "run_id": run_id,
+                    "counts": counts, "failed_datasets": failures, "failure_details": failure_details}
         finally:
             lock.release()

@@ -1,3 +1,7 @@
+## 2026-11-15 — 수집 신뢰성 소스·집중 검증
+
+- [x] **COLLECTOR-RELIABILITY-SOURCE-QA-20261115** — 재현한 원인 수정·안전한 관리자 상세·WSL/Docker 집중 검증과 PC/mobile 소스 fixture를 마쳤다. 정확 HEAD의 CI·독립 검토·머지는 PR 원장으로 별도 확인하며 운영 수용을 주장하지 않는다.
+
 ## 2026-11-13 — 신고 증상 원인 분리와 버전 정렬
 
 - [x] **T-REPORTED-VERSION-ALIGN-20261113** — d9 웹/4998 API·CS 혼합을 확인해 준비된 d9 ARM64 이미지로 정렬했다. ALL5유종/95저장행·극값·지도 PC/mobile 타일24개·사용자 해결 확인, 원20복원·Managerhealthy·R2첫Invdone/Main0/cgroup부재/70자식 종료를 확인했다. 원 첫 부모1은 보존하며 신규 Top10/필터/공항 수집 수용과 구분한다.

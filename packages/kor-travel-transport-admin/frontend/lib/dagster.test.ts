@@ -3,6 +3,13 @@ import { getDagsterOverview, getRunFailure, runStalled, statusLabel } from "./da
 
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
+test("서버가 정제한 단계 진단은 일반 RunFailure 요약에 덮이지 않는다", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ data: { runsOrError: { __typename: "Runs", results: [{ eventConnection: {
+    events: [{ __typename: "ExecutionStepFailureEvent", diagnostic: true, message: "단계: 원천 해석\n불량 행 수: 1" }, { __typename: "RunFailureEvent", message: "일반 실행 실패" }], hasMore: false,
+  } }] } } })));
+  expect(await getRunFailure("00000000-0000-0000-0000-000000000001")).toEqual({ message: "단계: 원천 해석\n불량 행 수: 1", complete: true });
+});
+
 test("job 실행 상한 태그가 오래 걸리는 정상 작업의 오탐을 막는다", () => {
   const run = { runId: "run", jobName: "airport_collection_job", status: "STARTED", startTime: 0, endTime: null,
     tags: [{ key: "dagster/max_runtime", value: "14400" }] };

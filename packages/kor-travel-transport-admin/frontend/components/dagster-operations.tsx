@@ -92,7 +92,7 @@ export function DagsterOperations() {
     errorMessage: run.status !== "FAILURE" ? run.errorMessage : detail?.runId !== run.runId
       ? "실패 원인 미조회 · 실행을 선택해 조회하세요."
       : detail.loading ? "실패 원인 조회 중…" : detail.error ? "실패 원인 조회 실패 · 상세에서 다시 조회하세요."
-      : detail.result?.message ?? (detail.result?.complete ? "실패 이벤트가 없습니다." : "조회 상한에 도달했습니다."),
+      : detail.result?.message?.split("\n", 1)[0] ?? (detail.result?.complete ? "실패 이벤트가 없습니다." : "조회 상한에 도달했습니다."),
   })) };
   return <>
     <CommonDagsterOperations {...props} snapshot={displaySnapshot}

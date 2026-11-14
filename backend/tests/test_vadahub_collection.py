@@ -41,6 +41,11 @@ def test_partial_failure_retries_only_failed_source_and_preserves_previous(tmp_p
             service = VadaHubCollectionService(settings, fetcher=fetch)
             first = await service.collect(session)
             assert first["status"] == "partial_success"
+            assert first["failure_details"] == [{
+                "dataset": "ferry_routes", "error_type": "RuntimeError", "stage": "provider_fetch",
+                "error_code": "VADAHUB_SOURCE_FAILED", "retryable": False,
+                "recovery_hint": "CHECK_RESPONSE_CONTRACT",
+            }]
             assert len(calls) == 4
             old = await session.get(FerryReferenceSnapshot, "passenger_routes")
             old.last_attempt_at = now_utc() - timedelta(days=8)
@@ -71,6 +76,29 @@ async def fixed(key, calls):
     return payload(key)
 
 
+def test_provider_schema_diagnostics_never_store_raw_exception_text(tmp_path):
+    from vadahub import SchemaError
+    async def run():
+        settings, engine, factory = await database(tmp_path)
+        async def fetch(key):
+            if key == "official_terminals":
+                raise SchemaError("https://provider.invalid?token=private-value")
+            return payload(key)
+        try:
+            async with factory() as session:
+                result = await VadaHubCollectionService(settings, fetcher=fetch).collect(session)
+                detail = result["failure_details"][0]
+                assert detail["dataset"] == "official_terminals"
+                assert detail["stage"] == "provider_parse"
+                assert detail["error_code"] == "VADAHUB_SCHEMA_CHANGED"
+                assert detail["retryable"] is False
+                assert "private-value" not in str(result) and "http" not in str(result)
+                assert (await session.get(FerryReferenceSnapshot, "official_terminals")).last_error == "SchemaError"
+        finally:
+            await engine.dispose()
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("failure", ["empty", "duplicate", "wrong_dataset"])
 def test_invalid_or_incomplete_dataset_is_not_promoted(tmp_path, failure):
     async def run():
@@ -87,6 +115,8 @@ def test_invalid_or_incomplete_dataset_is_not_promoted(tmp_path, failure):
         async with factory() as session:
             result = await VadaHubCollectionService(settings, fetcher=fetch).collect(session)
             assert result["failed_datasets"] == list(SOURCES)
+            assert all(item["error_code"] == "VADAHUB_SCHEMA_CHANGED" and item["stage"] == "validation"
+                       for item in result["failure_details"])
             assert all(row.response_json is None for row in (await session.scalars(select(FerryReferenceSnapshot))).all())
             assert (await session.scalar(select(CollectionRun))).status == "partial_success"
         await engine.dispose()

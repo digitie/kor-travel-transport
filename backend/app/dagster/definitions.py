@@ -294,6 +294,38 @@ def _redacted_causes(errors: Any) -> str:
     return " | ".join(causes)
 
 
+def _collection_failure_metadata(result: dict[str, Any], scope: CollectionScope) -> dict[str, Any]:
+    """관리자가 원문·키 없이 실패 단계와 이미 저장한 성공분을 구분한다."""
+    errors = result.get("errors")
+    messages = " ".join(item for item in errors if isinstance(item, str)) if isinstance(errors, (list, tuple)) else ""
+    code, stage, hint, retryable = "COLLECTION_FAILED", "collection", "CHECK_RUN_DETAIL", False
+    if "traffic flow response contains invalid records" in messages:
+        code, stage, hint = "TRAFFIC_FLOW_INVALID_RECORDS", "provider_parse", "CHECK_RESPONSE_CONTRACT"
+    elif "Opinet browser action failed" in messages and "TimeoutError" in messages:
+        code, stage, hint, retryable = "OPINET_BROWSER_TIMEOUT", "provider_fetch", "RETRY_AFTER_BACKOFF", True
+    elif any(word in messages.lower() for word in ("quota", "rate limit", "too many requests")):
+        code, stage, hint, retryable = "PROVIDER_RATE_LIMIT", "provider_fetch", "RETRY_AFTER_BACKOFF", True
+    elif "TimeoutError" in messages:
+        code, stage, hint, retryable = "COLLECTION_TIMEOUT", "collection", "RETRY_AFTER_BACKOFF", True
+    metadata: dict[str, Any] = {
+        "error_code": code, "stage": stage, "scope": scope, "recovery_hint": hint,
+        "retryable": retryable, "status": result["status"], "run_id": result["collection_run_id"],
+        "error_count": len(errors) if isinstance(errors, (list, tuple)) else 0,
+        "successful_data_preserved": True,
+    }
+    for key in ("raw_response_count", "traffic_snapshot_count", "incident_snapshot_count", "fuel_station_count", "fuel_price_count"):
+        value = result.get(key)
+        if type(value) is int and 0 <= value <= 10_000_000:
+            metadata[key] = value
+    for key in ("received_rows", "parsed_rows", "invalid_rows"):
+        match = re.search(rf"\b{key}=([0-9]{{1,8}})\b", messages)
+        if match and int(match[1]) <= 10_000_000:
+            metadata[key] = int(match[1])
+    if result.get("skip_reason") == "collector_busy":
+        metadata["skip_reason"] = "collector_busy"
+    return metadata
+
+
 def _collect_transport(scope: CollectionScope) -> dict[str, Any]:
     result = asyncio.run(_collect_transport_in_one_loop(_settings(), scope))
     # 성공분·실패 상태를 커밋하고 provider를 닫은 뒤 Dagster에도 실패를 전달한다.
@@ -310,9 +342,7 @@ def _collect_transport(scope: CollectionScope) -> dict[str, Any]:
             description = description[: MAX_FAILURE_DESCRIPTION_CHARS - 3] + "..."
         raise Failure(
             description=description,
-            metadata={"run_id": result["collection_run_id"], "status": result["status"], "scope": scope,
-                      "error_count": len(errors) if isinstance(errors, (list, tuple)) else 0,
-                      **({"skip_reason": "collector_busy"} if reason else {})},
+            metadata=_collection_failure_metadata(result, scope),
             allow_retries=False,
         )
     return result
@@ -766,8 +796,12 @@ def collect_vadahub_reference(context) -> dict[str, Any]:
         settings = _settings()
         result = asyncio.run(_run_with_session(settings, VadaHubCollectionService(settings).collect))
         if result["status"] == "partial_success":
+            detail = (result.get("failure_details") or [{}])[0]
             raise Failure(description="일부 배편 기준자료 수집에 실패했습니다. 마지막 정상 자료를 유지합니다.",
-                          metadata={"failed_datasets": ", ".join(result["failed_datasets"])}, allow_retries=False)
+                          metadata={"failed_datasets": ", ".join(result["failed_datasets"]),
+                                    "failed_dataset_count": len(result["failed_datasets"]),
+                                    "successful_dataset_count": len(result["counts"]),
+                                    "successful_data_preserved": True, **detail}, allow_retries=False)
         context.log.info("VadaHub 배편 기준자료: %s", result)
         return result
 
