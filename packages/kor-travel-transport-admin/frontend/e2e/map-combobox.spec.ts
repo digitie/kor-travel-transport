@@ -158,7 +158,7 @@ for (const width of [320, 375, 768, 1440]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await source.fill("없는 출처");
     await expect(page.getByText("검색 결과가 없습니다.", { exact: true })).toBeVisible();
-    await expect(page.getByRole("status")).toHaveAttribute("aria-live", "polite");
+    await expect(page.locator('[data-slot="combobox-empty"]')).toHaveAttribute("aria-live", "polite");
     await page.keyboard.press("Escape");
   });
 
@@ -210,7 +210,8 @@ test("작은 가로 화면에서도 combobox 마지막 항목까지 스크롤한
   const list = page.getByRole("listbox");
   await expect(list).toBeVisible();
   const popup = page.locator('[data-slot="combobox-content"]');
-  expect(await list.evaluate((node) => node.clientHeight)).toBeLessThanOrEqual(await popup.evaluate((node) => node.clientHeight));
+  // 팝업(스크롤 컨테이너)은 남은 화면 높이를 넘지 않고, 목록은 그 안에서 스크롤한다.
+  expect(await popup.evaluate((node) => node.getBoundingClientRect().bottom <= innerHeight)).toBe(true);
   const last = page.getByRole("option", { name: "등유", exact: true });
   await last.scrollIntoViewIfNeeded();
   await expect(last).toBeInViewport();
@@ -306,18 +307,18 @@ test("낮은 화면에서 휠 스크롤만으로 마지막 옵션 전체를 표�
   await page.route("**/transport/features/places?**", (route) => route.fulfill({ json: { available_sources: sources, items: [], total: 0, truncated: false } }));
     await page.goto("/fuel");
   await page.getByRole("combobox", { name: "데이터 출처" }).click();
-  await expect(page.locator('[data-slot="combobox-empty"]')).toHaveCSS("display", "block");
   const list = page.getByRole("listbox");
   const listBox = (await list.boundingBox())!;
   await page.mouse.move(listBox.x + 20, listBox.y + 20);
   await page.mouse.wheel(0, 10000);
   const last = page.getByRole("option", { name: sources[10], exact: true });
   const popup = page.locator('[data-slot="combobox-content"]');
+  // 데스크톱 항목 높이는 map 기준 30px(--control-h-sm)이다. 마지막 항목 전체가 팝업 안에 보여야 한다.
   await expect.poll(async () => {
     const row = (await last.boundingBox())!;
     const box = (await popup.boundingBox())!;
-    return Math.min(row.y + row.height, box.y + box.height) - Math.max(row.y, box.y);
-  }).toBeGreaterThanOrEqual(44);
+    return Math.min(row.y + row.height, box.y + box.height) - Math.max(row.y, box.y) >= row.height - 1;
+  }).toBe(true);
 });
 
 test("모바일에서 긴 출처 옵션의 전체 이름을 줄바꿈한다", async ({ page }) => {

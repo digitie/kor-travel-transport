@@ -78,7 +78,7 @@ test("알 수 없는 항구 코드 딥링크는 이름으로 임의 연결하지
   let calls = 0;
   await page.route("**/transport/ports/timetables?**", (route) => { calls++; return route.fulfill({ json: {} }); });
   await page.goto("/ferry?port=UNKNOWN");
-  await expect(page.locator("p[role=alert]")).toContainText("링크의 항구 코드");
+  await expect(page.getByRole("alert").filter({ hasText: "링크의 항구 코드" })).toBeVisible();
   expect(calls).toBe(0);
   await expect(page.getByRole("checkbox", { name: /A항구/ })).not.toBeChecked();
 });

@@ -32,7 +32,17 @@ export function FilterCombobox({
       placeholder={placeholder}
       options={options.map((option) => option.label)}
       values={value.map(labelOf)}
-      onChange={(labels) => onChange(labels.map(valueOf))}
+      // 콤보박스는 표시용으로 정렬된 목록을 돌려준다. 조회 조건은 선택한 순서를 유지한다.
+      onChange={(labels) => {
+        const next = labels.map(valueOf);
+        onChange([...value.filter((item) => next.includes(item)), ...next.filter((item) => !value.includes(item))]);
+      }}
+      // 고정 코드 목록 필터다 — 목록 밖 입력을 값으로 만들지 않고, API 상한(10개)을 넘기지 않는다.
+      allowCreate={false}
+      maxSelected={10}
+      maxVisible={options.length}
+      emptyText="검색 결과가 없습니다."
+      removeLabel={(label) => `${label} 선택 해제`}
     />
   );
 }

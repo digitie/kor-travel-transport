@@ -40,15 +40,24 @@ function FilterField({
   className?: string;
   children: React.ReactNode;
 }) {
+  const caption = "text-2xs leading-none font-medium text-text-secondary";
+  const hintNode = hint ? <span className="text-2xs text-text-tertiary">{hint}</span> : null;
+  // id로 연결할 수 있으면 label이 컨트롤을 감싸지 않게 한다. 감싸면 select의 현재 값·옵션 문구가
+  // 라벨 이름에 섞여("노선 노선 선택") 접근성 이름과 getByLabel 계약이 흔들린다.
+  if (htmlFor) {
+    return (
+      <div className={cn("flex min-w-0 flex-col gap-1", className)} data-slot="filter-field">
+        <label className={caption} htmlFor={htmlFor}>{label}</label>
+        {children}
+        {hintNode}
+      </div>
+    );
+  }
   return (
-    <label
-      className={cn("flex min-w-0 flex-col gap-1", className)}
-      data-slot="filter-field"
-      htmlFor={htmlFor}
-    >
-      <span className="text-2xs leading-none font-medium text-text-secondary">{label}</span>
+    <label className={cn("flex min-w-0 flex-col gap-1", className)} data-slot="filter-field">
+      <span className={caption}>{label}</span>
       {children}
-      {hint ? <span className="text-2xs text-text-tertiary">{hint}</span> : null}
+      {hintNode}
     </label>
   );
 }

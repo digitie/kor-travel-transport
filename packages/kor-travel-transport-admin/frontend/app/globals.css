@@ -371,7 +371,6 @@
 /* ───────── transport 도메인 잔여 CSS (2단계에서 Tailwind 유틸·공용 컴포넌트로 옮긴다) ───────── */
 @layer legacy {
 
-.grid:not([data-slot]) { display: grid; gap: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .panel { background: var(--card); border: 1px solid var(--surface-muted); border-radius: 11px; min-width: 0; padding: 20px; }
 .metric { color: var(--text-secondary); display: block; font-size: 13px; margin-bottom: 8px; }
 .value { font-size: 28px; font-weight: 700; letter-spacing: -.04em; }
@@ -399,10 +398,6 @@
 @media (max-width: 760px) {
 
 .transport-map-detail { border-left: 0; border-top: 1px solid var(--surface-muted); }
-}
-@media (max-width: 760px) {
-.grid:not([data-slot]) { grid-template-columns: 1fr; }
-
 }
 .secondary { white-space: nowrap; }
 .secondary:active { transform: translateY(1px); }
@@ -493,7 +488,6 @@
 
 .panel { border-radius: var(--radius-panel); box-shadow: var(--shadow-card); }
 .panel h2 { font-size: 1.125rem; font-weight: 600; letter-spacing: -.015em; }
-.grid:not([data-slot]) { gap: var(--layout-gutter); }
 .ops-grid { gap: 1rem; }
 
 @media (max-width: 42rem) {

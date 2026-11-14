@@ -17,6 +17,16 @@ interface MultiFilterComboboxProps {
   options: string[];
   placeholder: string;
   values: string[];
+  /** 목록에 없는 입력값을 `추가: …`로 더할 수 있는지. 고정 코드 목록 필터는 false로 끈다. */
+  allowCreate?: boolean;
+  /** 선택 상한. 도달하면 남은 항목을 disabled로 보여 주고 더하지 않는다. */
+  maxSelected?: number;
+  /** 팝업에 보일 최대 항목 수. */
+  maxVisible?: number;
+  /** 선택지가 없을 때 문구(`role="status"`로 읽힌다). */
+  emptyText?: string;
+  /** chip 해제 버튼의 접근성 이름. */
+  removeLabel?: (value: string) => string;
 }
 
 /**
@@ -25,7 +35,7 @@ interface MultiFilterComboboxProps {
  * 가리킨다 — WAI-ARIA combobox 규약), 그래서 focus-visible 레시피가 아니라 aria-selected 레시피다.
  */
 const optionRowClass =
-  "flex h-control-sm w-full cursor-pointer items-center rounded-control px-2 text-left text-xs text-text-primary transition-[color,background-color] duration-fast ease-out hover:bg-surface-subtle aria-selected:bg-surface-subtle active:bg-surface-muted";
+  "flex min-h-control-sm w-full cursor-pointer items-center rounded-control px-2 py-1 text-left text-xs text-text-primary [overflow-wrap:anywhere] transition-[color,background-color] duration-fast ease-out hover:bg-surface-subtle aria-selected:bg-surface-subtle active:bg-surface-muted aria-disabled:cursor-not-allowed aria-disabled:text-text-disabled aria-disabled:hover:bg-transparent pointer-coarse:min-h-11";
 
 type ComboboxItem = {
   /** 화면에 보이는 문구(신규 추가 항목은 `추가: …`). */
@@ -33,6 +43,7 @@ type ComboboxItem = {
   /** 선택 시 실제로 더해지는 값. */
   value: string;
   key: string;
+  disabled?: boolean;
 };
 
 /**
@@ -50,6 +61,11 @@ function MultiFilterCombobox({
   options,
   placeholder,
   values,
+  allowCreate = true,
+  maxSelected,
+  maxVisible = 12,
+  emptyText = "선택지가 없습니다.",
+  removeLabel = (value) => `${value} 제거`,
 }: MultiFilterComboboxProps) {
   const baseId = useId();
   const listId = `${baseId}-listbox`;
@@ -72,21 +88,23 @@ function MultiFilterCombobox({
     [normalizedQuery, options, selected, selectedSet],
   );
 
+  const full = maxSelected !== undefined && selected.length >= maxSelected;
   const items = useMemo<ComboboxItem[]>(() => {
     const trimmed = query.trim();
     const creatable =
+      allowCreate &&
       trimmed.length > 0 &&
       !selectedSet.has(trimmed) &&
       !selectableOptions.includes(trimmed);
     return [
       ...(creatable
-        ? [{ key: `add:${trimmed}`, label: `추가: ${trimmed}`, value: trimmed }]
+        ? [{ key: `add:${trimmed}`, label: `추가: ${trimmed}`, value: trimmed, disabled: full }]
         : []),
       ...selectableOptions
-        .slice(0, 12)
-        .map((option) => ({ key: `option:${option}`, label: option, value: option })),
+        .slice(0, maxVisible)
+        .map((option) => ({ key: `option:${option}`, label: option, value: option, disabled: full })),
     ];
-  }, [query, selectableOptions, selectedSet]);
+  }, [allowCreate, full, maxVisible, query, selectableOptions, selectedSet]);
 
   const activeItem =
     activeIndex >= 0 && activeIndex < items.length ? items[activeIndex] : undefined;
@@ -103,13 +121,15 @@ function MultiFilterCombobox({
   const addValue = useCallback(
     (value: string) => {
       const next = value.trim();
-      if (!next || selectedSet.has(next)) return;
+      if (!next || selectedSet.has(next) || full) return;
+      // 목록 밖 입력을 허용하지 않으면 Enter로도 임의 값을 만들지 않는다.
+      if (!allowCreate && !options.includes(next)) return;
       onChange(uniqueSorted([...selected, next]));
       setQuery("");
       setActiveIndex(-1);
       setPopupOpen(false);
     },
-    [onChange, selected, selectedSet],
+    [allowCreate, full, onChange, options, selected, selectedSet],
   );
 
   const removeValue = useCallback(
@@ -145,18 +165,20 @@ function MultiFilterCombobox({
       <div className="flex min-h-control flex-wrap items-center gap-1 rounded-control border border-input bg-card px-2 py-0.5 transition-[border-color,background-color] duration-fast ease-out has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-focus">
         {selected.map((value) => (
           <span
-            className="inline-flex h-6 max-w-full items-center gap-0.5 rounded-control border border-border bg-surface-subtle pl-2 pr-0.5 text-2xs text-text-primary"
+            className="inline-flex h-6 max-w-full items-center gap-0.5 rounded-control border border-border bg-surface-subtle pl-2 pr-0.5 text-2xs text-text-primary pointer-coarse:h-11"
             key={value}
           >
             <span className="max-w-36 truncate">{value}</span>
             <button
-              aria-label={`${value} 제거`}
-              className="relative inline-flex size-5 shrink-0 items-center justify-center rounded-control text-text-secondary transition-[color,background-color] duration-fast ease-out before:absolute before:-inset-1 hover:bg-surface-muted hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus active:bg-surface-muted"
+              aria-label={removeLabel(value)}
+              className="relative inline-flex size-5 pointer-coarse:size-11 shrink-0 items-center justify-center rounded-control text-text-secondary transition-[color,background-color] duration-fast ease-out before:absolute before:-inset-1 hover:bg-surface-muted hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus active:bg-surface-muted"
               type="button"
               onClick={() => {
                 removeValue(value);
                 // 지운 버튼과 함께 포커스가 사라지면 body로 떨어진다 — 필드로 되돌린다.
                 inputRef.current?.focus();
+                // 해제로 다시 고를 수 있게 된 항목을 바로 보여 준다(입력값이 그대로면 change가 없어 열리지 않는다).
+                setPopupOpen(true);
               }}
             >
               <XIcon aria-hidden="true" className="size-3" />
@@ -217,6 +239,7 @@ function MultiFilterCombobox({
             }
             if (event.key === "Enter") {
               event.preventDefault();
+              if (activeItem?.disabled) return;
               addValue(activeItem ? activeItem.value : query);
               return;
             }
@@ -240,21 +263,22 @@ function MultiFilterCombobox({
           같은 e2e 계약이 입력과 listbox 둘 다에 걸려 strict mode 위반이 된다(부분 일치라
           `"… 후보 목록"` 처럼 접미사를 붙여도 마찬가지다). */}
       {popupOpen ? (
-        <PopoverContent role="presentation" align="start" sideOffset={4}
+        <PopoverContent data-slot="combobox-content" role="presentation" align="start" sideOffset={4}
           onOpenAutoFocus={(event) => event.preventDefault()}
           onCloseAutoFocus={(event) => event.preventDefault()}
-          className="w-[var(--radix-popover-trigger-width)] max-h-56 overflow-auto rounded-panel border border-border bg-card p-1 shadow-elevated">
+          className="w-[var(--radix-popover-trigger-width)] max-h-[min(14rem,var(--radix-popover-content-available-height))] overflow-auto overscroll-contain rounded-panel border border-border bg-card p-1 shadow-elevated">
           {items.length > 0 ? (
             <div id={listId} ref={listRef} role="listbox">
               {items.map((item, index) => (
                 <div
+                  aria-disabled={item.disabled || undefined}
                   aria-selected={index === activeIndex}
                   className={optionRowClass}
                   data-index={index}
                   id={`${baseId}-option-${index}`}
                   key={item.key}
                   role="option"
-                  onClick={() => addValue(item.value)}
+                  onClick={() => { if (!item.disabled) addValue(item.value); }}
                   // 항목을 눌러도 포커스는 입력에 머문다 — 팝업이 blur로 닫히지 않게.
                   onMouseDown={(event) => event.preventDefault()}
                 >
@@ -263,8 +287,8 @@ function MultiFilterCombobox({
               ))}
             </div>
           ) : (
-            <p className="px-2 py-1.5 text-xs text-text-secondary">
-              선택지가 없습니다.
+            <p data-slot="combobox-empty" role="status" aria-live="polite" className="px-2 py-1.5 text-xs text-text-secondary">
+              {emptyText}
             </p>
           )}
         </PopoverContent>
