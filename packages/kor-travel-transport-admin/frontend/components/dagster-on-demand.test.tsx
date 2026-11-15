@@ -87,3 +87,12 @@ test("overview 새로고침 실패는 마지막 목록을 보존한다", async (
   expect(container.querySelector("[data-slot=dagster-operations-error]")?.textContent).toContain("마지막 확인 결과");
   expect(select(ids[0])).toBeDefined(); expect(failure).not.toHaveBeenCalled();
 });
+
+
+test("목록에는 오류 코드 한 줄만 남기고 선택 상세에는 전체 진단을 표시한다", async () => {
+  failure.mockResolvedValue({ message: "오류 코드: COLLECTION_TIMEOUT\n실패 단계: 제공기관 요청\n요청 횟수: 2", complete: true });
+  await render(); await click(select(ids[0]));
+  expect(detail().textContent).toContain("요청 횟수: 2");
+  expect(container.querySelector("[data-slot=dagster-operations-run-table]")?.textContent).toContain("오류 코드: COLLECTION_TIMEOUT");
+  expect(container.querySelector("[data-slot=dagster-operations-run-table]")?.textContent).not.toContain("요청 횟수: 2");
+});

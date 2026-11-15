@@ -4,6 +4,7 @@ import { hasAdminSession } from "@/lib/auth";
 import { scopedDagsterRequest } from "@/lib/dagster-scope";
 import { isAllowedOrigin } from "@/lib/origin";
 import { readBounded } from "@/lib/bounded-stream";
+import { sanitizeFailureResponse } from "@/lib/dagster-failure-diagnostics";
 
 export async function POST(request: NextRequest) {
   if (!(await hasAdminSession(request))) return NextResponse.json({ errors: [{ message: "로그인이 필요합니다." }] }, { status: 401 });
@@ -21,6 +22,8 @@ export async function POST(request: NextRequest) {
     const base = (process.env.TRANSPORT_DAGSTER_INTERNAL_URL ?? "http://127.0.0.1:11002").replace(/\/$/, "");
     const response = await fetch(new URL(`${base}/graphql`), { method: "POST", headers: { accept: "application/json", "content-type": "application/json" }, body: scoped.body, cache: "no-store", signal: AbortSignal.timeout(10_000) });
     const result = await readBounded(response.body, 4_194_304);
-    return new NextResponse(result, { status: response.status, headers: { "cache-control": "no-store, private", "content-type": "application/json" } });
+    const failureRequest = (parsed as { operationName?: string } | null)?.operationName === "TransportDagsterRunFailure";
+    const safeResult = failureRequest ? JSON.stringify(sanitizeFailureResponse(JSON.parse(result))) : result;
+    return new NextResponse(safeResult, { status: response.status, headers: { "cache-control": "no-store, private", "content-type": "application/json" } });
   } catch { return NextResponse.json({ errors: [{ message: "Dagster에 연결하지 못했습니다." }] }, { status: 502 }); }
 }

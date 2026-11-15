@@ -58,8 +58,8 @@ const FAILURE_QUERY = `query TransportDagsterRunFailure($runId: String!, $locati
   runsOrError(limit: 1, filter: { runIds: [$runId], ${RUN_TAG_FILTER} }) {
     __typename
     ... on Runs { results { eventConnection(limit: 1000, afterCursor: $cursor) {
-      cursor hasMore events { __typename ... on RunFailureEvent { message }
-        ... on ExecutionStepFailureEvent { stepKey message } }
+      cursor hasMore events { __typename ... on RunFailureEvent { message error { className message cause { className message cause { className message cause { className message } } } } }
+        ... on ExecutionStepFailureEvent { stepKey message error { className message cause { className message cause { className message cause { className message } } } } failureMetadata { metadataEntries { __typename label ... on TextMetadataEntry { text } ... on IntMetadataEntry { intValue } ... on FloatMetadataEntry { floatValue } ... on BoolMetadataEntry { boolValue } } } } }
     } } }
   }
 }`;

@@ -1,3 +1,9 @@
+## 2026-11-15 — 수집 반복 실패 복구·관리자 원인 상세
+
+후보1589727의 전체 CI 성공 뒤 James/Popper 독립 검토에서 P0/P1=0·P2 각1건이었다. 인증·할당량/선언 건수 원인이 일반 오류로 가려지는 두 지적을 반영하고 WSL/Docker 집중8개를 확인했다. 최종 정확 HEAD CI·delta 수용·머지는 PR202 원장을 따른다.
+
+실제8352행 중 방향 공백1행의 전체 파싱 거부를 공급자 PR19/main894ea64로 해결하고 검증 제품af045fa를 정확 pin했다. 실제 SDK→DB 저장과 안전 Dagster metadata·관리자 상세를 통합한다. 바다허브 공식 파일 첨부 metadata 부재는 이전 정상본을 유지하는 별도 외부 계약 문제다. 정확 최종 CI/머지는 이번 PR 원장을 따르며 운영 이미지·서비스·DB·스케줄 변경0이다. [근거와 한계](reports/2026-11-15-collector-reliability.md).
+
 ## 2026-11-14 — 관리 UI를 map 공용 디자인으로 정렬(최신 main 위 재적용)
 
 - PR200(`codex/transport-user-journeys`)의 map UI 정렬이 main과 160개 파일에서 충돌해, 최신 main에서 새 브랜치로
