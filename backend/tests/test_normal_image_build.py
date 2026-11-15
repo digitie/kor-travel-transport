@@ -98,6 +98,7 @@ class FakeDocker:
 
     def __init__(self, builder, monkeypatch, mutation=None):
         self.builder, self.calls, self.image = (builder, [], None)
+        self.inspections = []
         original = builder.run
 
         def build(command, env, log, values):
@@ -125,7 +126,16 @@ class FakeDocker:
             }
             if mutation:
                 mutation(self.image)
-            if "--iidfile" in command:
+            if "--metadata-file" in command:
+                Path(command[command.index("--metadata-file") + 1]).write_text(
+                    json.dumps(
+                        {
+                            "containerimage.config.digest": "sha256:" + "a" * 64,
+                            "containerimage.digest": "sha256:" + "b" * 64,
+                        }
+                    )
+                )
+            elif "--iidfile" in command:
                 Path(command[command.index("--iidfile") + 1]).write_text(
                     "sha256:" + "a" * 64
                 )
@@ -140,6 +150,7 @@ class FakeDocker:
 
         def run(command, **kwargs):
             if command[:3] == ["docker", "image", "inspect"]:
+                self.inspections.append(command[3])
                 return json.dumps([self.image]).encode()
             return original(command, **kwargs)
 
@@ -751,3 +762,156 @@ def test_restrictive_umask_keeps_canonical_public_directories_traversable(
     directory.chmod(0o700)
     with pytest.raises(builder.ContractError, match="metadata"):
         builder.verify_context(output / "source", snapshot)
+
+
+@pytest.mark.parametrize("output", ["docker", "oci"])
+def test_persistent_builder_and_external_cache_reach_actual_build_argv(
+    builder, source, tmp_path, monkeypatch, output
+):
+    imports = [
+        "type=registry,ref=registry.example/transport:backend-arm64",
+        "type=local,src=/cache/transport arm64",
+    ]
+    exports = [
+        "type=registry,ref=registry.example/transport:backend-arm64,mode=max",
+        "type=local,dest=/cache/transport-next,mode=max",
+    ]
+    extra = ["--output", output, "--builder", "transport-persistent"]
+    for value in imports:
+        extra += ["--cache-from", value]
+    for value in exports:
+        extra += ["--cache-to", value]
+    a = args(builder, source, tmp_path, *extra)
+    docker = FakeDocker(builder, monkeypatch)
+    receipt = builder.build(a, {})
+    command = docker.calls[0]
+    assert command[:3] == ["docker", "buildx", "build"]
+    assert command[command.index("--builder") + 1] == "transport-persistent"
+    for flag, expected in [("--cache-from", imports), ("--cache-to", exports)]:
+        assert [
+            command[i + 1] for i, value in enumerate(command) if value == flag
+        ] == expected
+    assert "--provenance=false" in command
+    assert ("--load" in command) is (output == "docker")
+    assert ("--metadata-file" in command) is (output == "docker")
+    assert ("--output" in command) is (output == "oci")
+    assert "--iidfile" not in command
+    artifact = receipt["artifacts"]["frontend"]
+    assert artifact["command"] == command
+    assert artifact["loaded"] is (output == "docker")
+    if output == "docker":
+        # Fake Buildx returns different manifest/config digests, as real exporters can.
+        assert artifact["imageID"] == "sha256:" + "a" * 64
+    else:
+        assert artifact["imageID"] == builder.oci_image(
+            a.output_dir / "frontend.oci.tar"
+        )["Id"]
+    assert receipt["actualApplyAllowed"] is False
+    assert receipt["deployReady"] is False
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--builder", "transport-persistent"],
+        ["--cache-from", "type=local,src=/cache/previous"],
+        ["--cache-to", "type=local,dest=/cache/next,mode=max"],
+    ],
+)
+def test_each_cache_option_selects_buildx_with_docker_load(
+    builder, source, tmp_path, monkeypatch, extra
+):
+    a = args(builder, source, tmp_path, *extra)
+    docker = FakeDocker(builder, monkeypatch)
+    builder.build(a, {})
+    assert docker.calls[0][:3] == ["docker", "buildx", "build"]
+    assert "--load" in docker.calls[0]
+    assert "--provenance=false" in docker.calls[0]
+
+
+@pytest.mark.parametrize(
+    "invalid_metadata",
+    [
+        {"containerimage.digest": "sha256:" + "b" * 64},
+        {"containerimage.config.digest": "sha256:invalid"},
+        {"containerimage.config.digest": None},
+        {
+            "containerimage.config.digest": "sha256:" + "a" * 64,
+            "containerimage.digest": "sha256:invalid",
+        },
+        {
+            "containerimage.config.digest": "sha256:" + "c" * 64,
+            "containerimage.digest": "sha256:" + "d" * 64,
+        },
+    ],
+)
+def test_buildx_missing_malformed_or_unrelated_metadata_never_creates_receipt(
+    builder, source, tmp_path, monkeypatch, invalid_metadata
+):
+    a = args(builder, source, tmp_path, "--builder", "transport-persistent")
+    FakeDocker(builder, monkeypatch)
+    original = builder.execute_build
+
+    def corrupt_metadata(command, *rest):
+        original(command, *rest)
+        metadata = Path(command[command.index("--metadata-file") + 1])
+        metadata.write_text(json.dumps(invalid_metadata))
+
+    monkeypatch.setattr(builder, "execute_build", corrupt_metadata)
+    with pytest.raises((builder.ContractError, KeyError)):
+        builder.build(a, {})
+    assert not (a.output_dir / "build-receipt.json").exists()
+
+
+def test_cache_reuse_cannot_receipt_a_stale_image_revision(
+    builder, source, tmp_path, monkeypatch
+):
+    a = args(
+        builder,
+        source,
+        tmp_path,
+        "--builder",
+        "transport-persistent",
+        "--cache-from",
+        "type=registry,ref=registry.example/transport:previous",
+    )
+
+    def stale_image(image):
+        image["Config"]["Labels"]["org.opencontainers.image.revision"] = "0" * 40
+
+    FakeDocker(builder, monkeypatch, stale_image)
+    with pytest.raises(builder.ContractError, match="OCI/source/tree/role/input"):
+        builder.build(a, {})
+    assert not (a.output_dir / "build-receipt.json").exists()
+
+
+@pytest.mark.parametrize(
+    "store,actual_id",
+    [
+        ("classic", "sha256:" + "a" * 64),
+        ("containerd", "sha256:" + "b" * 64),
+        ("unrelated", "sha256:" + "c" * 64),
+    ],
+)
+def test_buildx_inspects_unique_tag_and_receipts_actual_store_id(
+    builder, source, tmp_path, monkeypatch, store, actual_id
+):
+    a = args(builder, source, tmp_path, "--builder", "transport-persistent")
+
+    def store_identity(image):
+        image["Id"] = actual_id
+
+    docker = FakeDocker(builder, monkeypatch, store_identity)
+    if store == "unrelated":
+        with pytest.raises(builder.ContractError, match="metadata와 실제 image 불일치"):
+            builder.build(a, {})
+        assert not (a.output_dir / "build-receipt.json").exists()
+    else:
+        receipt = builder.build(a, {})
+        assert receipt["images"]["frontend"] == actual_id
+        assert receipt["artifacts"]["frontend"]["imageID"] == actual_id
+    command = docker.calls[0]
+    tag = command[command.index("--tag") + 1]
+    assert docker.inspections == [tag]
+    assert command[:3] == ["docker", "buildx", "build"]
+    assert "--load" in command and "--provenance=false" in command

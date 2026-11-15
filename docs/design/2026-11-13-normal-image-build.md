@@ -33,9 +33,12 @@ NEXT_PUBLIC 값은 웹 산출물에 포함될 수 있지만 빌드 로그·recei
 |---|---|
 | --role | 아래 역할을 반복 선택. 중복 역할은 거절 |
 | --architecture amd64 또는 arm64 | 단일 Linux architecture. 쉼표 다중 값은 거절 |
-| --output docker | 정상 docker build의 iid와 실제 image inspect 검산. 로컬 load |
+| --output docker | 기본 docker build의 iid 검산. builder/cache 지정 시 Buildx --load 후 metadata config/manifest digest와 고유 tag의 실제 image ID 대조 |
 | --output oci | 정상 Buildx OCI export. manifest/config/layer hash와 실제 config ID·architecture 검산. load/push 없음 |
 | --public-inputs | 역할별 허용 JSON. 값 대신 공급된 값의 SHA-256 기록 |
+| --builder | 기존 persistent Buildx builder 선택. 생성·삭제·전역 기본값 변경 없음 |
+| --cache-from | Buildx 외부 캐시 import 사양. 반복 가능 |
+| --cache-to | Buildx 외부 캐시 export 사양. 반복 가능 |
 
 | 요청 역할 | 실제 이미지와 Dockerfile | 허용 public 입력 |
 |---|---|---|
@@ -49,6 +52,60 @@ migrate는 이미지 별칭일 뿐이며 컨테이너나 migration을 실행하�
 선택하는 기존 SDK508 admin paired-role 계약이다. 위 비활성 LEGACY Dagster gateway와 다르다.
 외부 API gateway를 이 CLI의 legacy 산출물로 덮지 않으며 새 custom nginx 이미지를 만들지 않는다.
 legacy 산출물에는 roleProfile: legacy-disabled-owned-artifact를 명시한다.
+
+## GDAL·의존성 캐시 재사용
+
+동일 빌드 환경에서 같은 builder를 계속 선택한다. 아래 builder 준비는 운영 중인 빌드와
+분리된 승인 환경에서 최초 한 번만 수행하는 예시이며 CLI가 대신 실행하지 않는다.
+`docker-container` driver는 BuildKit 상태를 전용 volume에 보존한다
+([Docker 문서](https://docs.docker.com/build/builders/drivers/docker-container/)).
+기존 default builder의 warm cache가 새 builder로 자동 이전되는 것은 아니다. 이미 warm인
+builder를 우선 사용하고, 새 builder는 기존에 export한 외부 캐시를 복원해야 재컴파일을 줄인다.
+
+```bash
+docker buildx create --name transport-persistent --driver docker-container
+python3 scripts/build-images.py --repo /work/transport \
+  --revision <40자리SHA> --expected-tree <40자리TREE> \
+  --role backend --architecture arm64 --output docker \
+  --output-dir /work/build-output/new \
+  --builder transport-persistent \
+  --cache-from type=registry,ref=registry.example/transport-cache:backend-arm64 \
+  --cache-to type=registry,ref=registry.example/transport-cache:backend-arm64,mode=max
+```
+
+registry 예시는 사용 가능한 저장소·인증을 호출자가 준비한다. `--cache-to`는 캐시만 저장하며
+완성 이미지 push 옵션이 아니다. local 방식은 `--cache-from type=local,src=/cache/previous`와
+`--cache-to type=local,dest=/cache/next,mode=max`로 복원·저장한다. 최초 캐시가 없으면
+`--cache-from`을 생략하고 저장부터 한다. 입력·출력 local 경로를 구분하고 성공한 cache를
+다음 실행의 입력으로 보존한다. cache 사양은 한 argv로 전달하므로 공백은 shell에서 인용한다.
+여러 역할의 export가 같은 목적지를 덮어쓰지 않게 실제 이미지 역할·architecture별로
+별도 호출/캐시 ref를 사용한다. `mode=max`는 중간 의존성 단계도 저장한다
+([외부 캐시](https://docs.docker.com/build/cache/backends/)).
+
+새 옵션이 없으면 기존 Docker 출력의 `docker build`를 유지한다. builder/cache 중 하나라도
+지정하면 Buildx를 사용하고 Docker 출력은 `--load --provenance=false`로 명시한다.
+Buildx metadata의 필수 `containerimage.config.digest`와 선택 `containerimage.digest`를
+sha256 형식으로 검증한다. 고유 빌드 tag를 inspect하고 실제 `Id`가 이 digest 중 하나와
+정확히 일치해야 한다. classic store의 config ID와 containerd store의 manifest ID를
+모두 수용하며 receipt에는 inspect의 실제 `Id`를 기록한다. save/reload 변환은 하지 않는다
+([Buildx metadata](https://docs.docker.com/reference/cli/docker/buildx/build/#metadata-file)).
+OCI 출력은 기존처럼 `--provenance=false`인 단일 architecture archive만 만들며 load하지 않는다.
+architecture·소스·release·실제 이미지 검증과 별도 native/runtime 수용 절차는 그대로다.
+Docker load 대상은 현재 Docker 환경이며 실제 tag inspect나 metadata ID 대조가 실패하면 성공 receipt를 만들지 않는다.
+캐시 사용만으로 native/ABI 검증 완료나 운영 적용을 선언하지 않는다.
+
+GDAL apt/pip 설치는 현재 Dockerfile에서 lock/source COPY보다 앞에 있고 RELEASE_SHA는
+끝에 있다. 이 RUN·base pin·단계 구성을 바꾸지 않아 기존 warm layer를 재사용한다.
+소스만 바뀌면 동일 입력의 GDAL/의존성 layer를 재사용할 수 있다. base digest·architecture·
+GDAL 설치 명령·ABI 입력이 바뀌면 해당 계층부터, lock이 바뀌면 Python 의존성 계층부터
+다시 만든다. 버전 변경과 캐시 누락은 구분한다. 같은 버전도 builder 교체·GC·prune·외부
+캐시 부재로 다시 빌드될 수 있으며 실제 `CACHED` 로그로 재사용을 확인한다.
+
+warm 의존성 캐시는 나이만으로 지우거나 공용 `docker system prune`/`docker builder prune`/
+`docker buildx prune`에 일괄 포함하지 않는다. 전용 builder volume과 외부 cache ref/local
+디렉터리를 보존하고 BuildKit GC의 기간·용량 정책도 해당 비용을 고려해 관리한다.
+캐시는 일반 이미지 보관과 별개다. 완성 이미지의 save/load만으로 전체 빌드 캐시가 복원된다고
+가정하지 않는다. 이 CLI는 GC/prune·daemon 설정·기존 실행을 변경하지 않는다.
 
 ## 소스·입력·실제 이미지 결박
 
