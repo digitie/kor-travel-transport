@@ -463,11 +463,20 @@ def build(args, inputs: dict) -> dict:
             + digest(str(output).encode())[:12]
         )
         env = {**os.environ, **selected, release_name: args.revision}
-        cmd = (
-            ["docker", "build"]
-            if args.output == "docker"
-            else ["docker", "buildx", "build", "--provenance=false"]
+        use_buildx = bool(
+            args.output == "oci" or args.builder or args.cache_from or args.cache_to
         )
+        cmd = (
+            ["docker", "buildx", "build", "--provenance=false"]
+            if use_buildx
+            else ["docker", "build"]
+        )
+        if args.builder:
+            cmd += ["--builder", args.builder]
+        for value in args.cache_from:
+            cmd += ["--cache-from", value]
+        for value in args.cache_to:
+            cmd += ["--cache-to", value]
         cmd += [
             "--platform",
             "linux/" + args.architecture,
@@ -483,8 +492,12 @@ def build(args, inputs: dict) -> dict:
         for key in [*sorted(selected), release_name]:
             cmd += ["--build-arg", key]
         iid = output / (role + ".iid")
+        metadata = output / (role + ".metadata.json")
         if args.output == "docker":
-            cmd += ["--iidfile", str(iid)]
+            if use_buildx:
+                cmd += ["--load", "--metadata-file", str(metadata)]
+            else:
+                cmd += ["--iidfile", str(iid)]
         else:
             cmd += ["--output", oci_outputs[role]]
         cmd.append(str(source))
@@ -494,12 +507,28 @@ def build(args, inputs: dict) -> dict:
         verify_source(repo, args.revision, args.expected_tree)
         verify_context(source, snapshot)
         if args.output == "docker":
-            identity = iid.read_text().strip()
-            if not re.fullmatch("sha256:[0-9a-f]{64}", identity):
-                raise ContractError("실제 build iid가 없습니다")
-            image = json.loads(run(["docker", "image", "inspect", identity]))[0]
-            if image["Id"] != identity:
-                raise ContractError("반환 iid와 실제 image 불일치")
+            if use_buildx:
+                build_metadata = json.loads(metadata.read_text())
+                identities = [build_metadata["containerimage.config.digest"]]
+                if "containerimage.digest" in build_metadata:
+                    identities.append(build_metadata["containerimage.digest"])
+                if any(
+                    not isinstance(value, str)
+                    or not re.fullmatch("sha256:[0-9a-f]{64}", value)
+                    for value in identities
+                ):
+                    raise ContractError("Buildx metadata digest 형식 오류")
+                # store에 따라 config/manifest ID를 반환한다. 고유 빌드 tag로 확인한다.
+                image = json.loads(run(["docker", "image", "inspect", tag]))[0]
+                if image["Id"] not in identities:
+                    raise ContractError("Buildx metadata와 실제 image 불일치")
+            else:
+                identity = iid.read_text().strip()
+                if not re.fullmatch("sha256:[0-9a-f]{64}", identity):
+                    raise ContractError("실제 build iid가 없습니다")
+                image = json.loads(run(["docker", "image", "inspect", identity]))[0]
+                if image["Id"] != identity:
+                    raise ContractError("반환 iid와 실제 image 불일치")
         else:
             image = oci_image(output / (role + ".oci.tar"))
         contract.validate_normal_build_image(
@@ -576,6 +605,13 @@ def arguments(argv=None):
     p.add_argument("--architecture", choices=["amd64", "arm64"], required=True)
     p.add_argument("--output", choices=["docker", "oci"], default="docker")
     p.add_argument("--output-dir", type=Path, required=True)
+    p.add_argument("--builder", help="기존 persistent Buildx builder 이름")
+    p.add_argument(
+        "--cache-from", action="append", default=[], help="Buildx cache import 사양. 반복 가능"
+    )
+    p.add_argument(
+        "--cache-to", action="append", default=[], help="Buildx cache export 사양. 반복 가능"
+    )
     p.add_argument(
         "--public-inputs",
         type=Path,
