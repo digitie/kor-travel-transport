@@ -43,3 +43,15 @@ WSL과 Docker의 집중 검증·관리자 원본 소스의 PC1440/모바일375 f
 정적 계약의 첫 QA에서 앱 root conftest의 기본 로컬15432 DB fixture가 의도치 않게 로드됐다. 정확한 자기 pytest와 부모만 정상 종료·잔여0을 검산했으며 당시 로컬 시험 DB 영향은 미확인으로 보존한다. 현재 해당 포트의 Docker 게시/리스너0 관측을 과거 무영향 증거로 소급하지 않는다. 후속은 --noconftest와 DB fixture 부재 검산으로 분리했다. 운영 Odroid·서비스·DB 변경과는 별개이며 PG나 다른 프로세스에 종료 신호를 보내거나 복구 명령을 실행하지 않았다.
 
 후속 CI의 backend는1964개 통과·2개 제외였다. 관리자 전체 시험에서 남은2개는 성공 실행의 선택 후 상세 조회를 금지하던 과거 기대와 새 endpoint가 없는 mock이었다. 기존 통합9개를 선택 전 미조회·선택 후 정상 상세/실패 원인 분리·양쪽 abort·늦은 응답 차단으로 강화했다. 제품 소스는 바꾸지 않고 관리자 전체78파일/623개를 WSL/Docker에서 각각1회 확인했으며 타입·lint도 통과했다. 기존 경고는 polite status로 계속 표시하고 오류를 숨기지 않는다. 원 CI2 실패와 기존 시험은 별도 보존했다. 이 시험 보정까지 포함한 최종 CI/James·Popper 검토는 PR 원장이 정본이다.
+
+## 독립 검토와 유가 통계 경고 보정
+
+전체 CI가 성공한 `893a2694ebb0e7d6cbfcb4edf0993ec84c85a2c0`을 James·Popper가 독립 검토했다. James는 P0/P1=0·P2 세 건(이벤트 시각·미해결 예약 ID·유가 통계 경고), Popper는 P0/P1=0·P2 한 건(같은 통계 경고)을 확인했다. 공통 시각은 Run/단계의 초와 이벤트의 밀리초를 분리하고, 기존 NOT_STARTED 예약이 일시 차단·권한 변경으로 소실되지 않게 했다. 프런트 RED17개 뒤 WSL/Docker 각각83개·타입/lint/전체 Doctor를 확인했다. 실제 실행 권한을 우회하거나 새 UUID로 자동 제출하지 않는다.
+
+신규 원본을 저장하고 통계 게시를 시도한 결과가 정확히 False이며 상태가 success/partial_success일 때만 부분 완료 metadata·경고 태그를 남긴다. 원본 status=success와 기존 제공자 오류 코드는 유지하고, 제공자 오류가 없을 때만 DERIVED_CACHE_DEFERRED를 쓴다. None·누락·True·숫자0, skipped/disabled/not_ready는 통계 게시 실패로 만들지 않는다. 휴게소 유가도 같은 경계를 사용하며 실제 run_id는 오류 metadata의 사본에만 collection_run_id로 연결한다.
+
+관리자에는 '원본 보존 · 유가 통계 게시 대기'라는 고정 경고를 보여준다. 이전 통계가 반드시 존재한다고 단정하지 않고 임의 유가 로그·URL·원문은 공개하지 않는다. 기존 오류 코드·계수도 유지한다. 프런트 RED6개 뒤 WSL/Docker 각각88개와 타입/lint/전체 Doctor가 통과했다.
+
+백엔드는 두 native op의 RED2/2 뒤 WSL/Docker 각각17개를 확인했다. 원 결과 성공·partial 태그·안전 metadata, 미실행/False 구분, 제공자 원인 우선, 실제 PG의 통계 롤백 뒤 원본 최신값·기존 통계 세대·원 모집단 보존 두 조건을 포함한다. 중간 fixture의 식별자 누락13PASS/2FAIL도 원문을 보존하고 실제 두 서비스의 식별자 계약으로 정정했다. 서비스·SDK·스키마는 바꾸지 않았고 소유 PG·QA 잔여는0이다.
+
+최종 보정본의 전체 CI·James/Popper delta 검토·main SHA는 PR204 원장이 정본이다. 과거 전체 CI와 로컬 시험 DB 영향 미확인 기록을 지우거나 새 버전 성공으로 소급하지 않는다.

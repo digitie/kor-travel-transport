@@ -4,7 +4,9 @@ import {createRoot,type Root} from "react-dom/client";
 import {afterEach,beforeEach,describe,expect,it,vi} from "vitest";
 import {DagsterCollectionWarnings,DagsterConsoleControls,DagsterRunInspector} from "./dagster-console";
 import {getConsoleCatalog,getConsoleRequestStatus,getConsoleRun,performConsoleAction} from "@/lib/dagster-console-client";
-import type {ConsoleCatalog,ConsoleRunDetail} from "@/lib/dagster-console-model";
+import {handleConsoleRequest} from "@/lib/dagster-console-server";
+import {DAGSTER_LOCATION_NAME,DAGSTER_LOCATION_TAG_KEY} from "@/lib/dagster-scope";
+import type {ConsoleActionResult,ConsoleCatalog,ConsoleRunDetail} from "@/lib/dagster-console-model";
 vi.mock("@/lib/dagster-console-client",async original=>({...await original<typeof import("@/lib/dagster-console-client")>(),getConsoleCatalog:vi.fn(),getConsoleRequestStatus:vi.fn(),getConsoleRun:vi.fn(),performConsoleAction:vi.fn()}));
 const id="11111111-1111-4111-8111-111111111111",other="22222222-2222-4222-8222-222222222222",jobLabel=(name:string)=>name;
 const detail=(runId=id):ConsoleRunDetail=>({runId,jobName:"fixture_job",status:"SUCCESS",creationTime:1,startTime:2,endTime:3,queuedTime:1,canCancel:false,canRetry:false,steps:[],events:[],stepsSucceeded:0,stepsFailed:0,materializations:0,cursor:null,hasMore:false,stepsTruncated:false,checkedAt:"2026-11-15T00:00:00Z"});
@@ -39,5 +41,34 @@ describe("실행 콘솔 조회·액션 경합",()=>{
    expect(vi.mocked(getConsoleRun).mock.calls.at(-1)?.[0]).toBe(other);
    await act(async()=>root.render(null));expect(remove.mock.calls.filter(([name])=>name==="visibilitychange")).toHaveLength(1);
   }finally{add.mockRestore();remove.mockRestore();visibility.mockRestore();}
+ });
+
+ it.each(["launch","retry"] as const)("%s의 실제 NOT_STARTED 예약은 경쟁 실행·권한 변경 뒤에도 같은 ID로 복구한다",async mode=>{
+  let exists=false,competing=false,reexecuteAllowed=true;
+  const reserved={runId:id,jobName:"fixture_job",status:"NOT_STARTED"},nativeCommands:Array<Record<string,unknown>>=[];
+  const rows=(values:unknown[])=>({runsOrError:{__typename:"Runs",results:values}});
+  const graphql=vi.fn(async(query:string,variables:Record<string,unknown>):Promise<Record<string,unknown>>=>{
+   if(query.includes("AdminDagsterCatalog"))return {repositoryOrError:{__typename:"Repository",jobs:[{name:"fixture_job",hasLaunchExecutionPermission:true}],schedules:[],sensors:[]},__schema:{mutationType:{fields:[{name:"launchIdempotentRun"}]}}};
+   if(query.includes("AdminDagsterOwnedRun"))return rows([{runId:other,jobName:"fixture_job",status:"FAILURE",hasReExecutePermission:reexecuteAllowed}]);
+   if(query.includes("AdminDagsterRequest"))return rows(exists?[reserved]:[]);
+   if(query.includes("AdminDagsterActive"))return rows([...(exists?[reserved]:[]),...(competing?[{runId:other,jobName:"fixture_job",status:"STARTED"}]:[])]);
+   if(query.includes("AdminDagsterLaunch")){nativeCommands.push(structuredClone(variables));exists=true;reserved.status=nativeCommands.length===1?"NOT_STARTED":"QUEUED";return {result:{__typename:"IdempotentLaunchRunSuccess",replayed:nativeCommands.length>1,run:{...reserved,tags:[{key:DAGSTER_LOCATION_TAG_KEY,value:DAGSTER_LOCATION_NAME}]}}};}
+   throw new Error("예상하지 않은 고정 연산");
+  });
+  vi.mocked(getConsoleCatalog).mockResolvedValue(catalog);vi.mocked(getConsoleRun).mockResolvedValue({...detail(other),status:"FAILURE",canRetry:true});
+  vi.mocked(performConsoleAction).mockImplementation(async command=>await handleConsoleRequest(command,graphql) as ConsoleActionResult);
+  vi.mocked(getConsoleRequestStatus).mockImplementation(async requestId=>await handleConsoleRequest({operation:"requestStatus",requestId},graphql) as ConsoleActionResult);
+  const uuid=vi.spyOn(crypto,"randomUUID").mockReturnValue("33333333-3333-4333-8333-333333333333");
+  try{
+   await act(async()=>root.render(mode==="launch"?<DagsterConsoleControls jobLabel={jobLabel}/>:<DagsterRunInspector runId={other} jobLabel={jobLabel}/>));
+   await click(mode==="launch"?"지금 실행":"같은 작업 다시 실행");expect(nativeCommands).toHaveLength(1);const original=vi.mocked(performConsoleAction).mock.calls[0][0];
+   if(mode==="launch")competing=true;else reexecuteAllowed=false;
+   await click("같은 요청 예약 확인·복구");expect(nativeCommands).toHaveLength(1);expect([...host.querySelectorAll("button")].some(button=>button.textContent==="같은 요청 예약 확인·복구")).toBe(true);
+   expect([...host.querySelectorAll("button")].find(button=>button.textContent===(mode==="launch"?"지금 실행":"같은 작업 다시 실행"))?.disabled).toBe(true);
+   await click("요청 상태 확인");expect(nativeCommands).toHaveLength(1);competing=false;reexecuteAllowed=true;
+   await click("같은 요청 예약 확인·복구");expect(nativeCommands).toHaveLength(2);expect(nativeCommands[1]).toEqual(nativeCommands[0]);
+   for(const [command]of vi.mocked(performConsoleAction).mock.calls)expect(command).toEqual(original);
+   expect(uuid).toHaveBeenCalledTimes(1);expect([...host.querySelectorAll("button")].some(button=>button.textContent==="같은 요청 예약 확인·복구")).toBe(false);
+  }finally{uuid.mockRestore();}
  });
 });

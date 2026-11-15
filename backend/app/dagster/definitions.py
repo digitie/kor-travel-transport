@@ -375,6 +375,12 @@ def _collection_output_metadata(result: dict[str, Any], scope: str) -> dict[str,
         "deferred" if status in {"skipped", "disabled", "not_ready"}
         else "partial" if status == "partial_success" else "success" if status == "success" else "unknown"
     )
+    statistics_deferred = (
+        status in {"success", "partial_success"}
+        and result.get("fuel_statistics_published") is False
+    )
+    if statistics_deferred:
+        outcome = "partial"
     metadata: dict[str, Any] = {
         "status": status, "collection_outcome": outcome, "previous_data_preserved": True,
     }
@@ -387,13 +393,19 @@ def _collection_output_metadata(result: dict[str, Any], scope: str) -> dict[str,
         if type(result.get(key)) is bool:
             metadata[key] = result[key]
     if outcome == "partial" and result.get("errors"):
-        metadata.update(_collection_failure_metadata(result, scope))
+        detail = result
+        if "collection_run_id" not in result and "run_id" in result:
+            # 휴게소 수집도 실제 run 식별자를 같은 진단 경계로 전달한다.
+            detail = {**result, "collection_run_id": result["run_id"]}
+        metadata.update(_collection_failure_metadata(detail, scope))
     if outcome == "deferred":
         metadata["error_code"] = "COLLECTION_DEFERRED"
         metadata["deferred_reason"] = (
             "collector_busy" if result.get("skip_reason") == "collector_busy" else "cooldown_or_disabled"
         )
-    elif result.get("cache_refresh_failed") is True and not result.get("errors"):
+    elif (
+        result.get("cache_refresh_failed") is True or statistics_deferred
+    ) and not result.get("errors"):
         metadata["error_code"] = "DERIVED_CACHE_DEFERRED"
     return metadata
 
@@ -760,8 +772,9 @@ def collect_rest_area_fuel_prices(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance), _forward_progress_logs(context, FUEL_STATISTICS_LOGGERS):
         settings = _settings()
         result = asyncio.run(_run_with_session(settings, RestAreaCollectionService(settings).collect_fuel_prices))
-        if "fuel_statistics_published" in result:
-            context.add_output_metadata({"fuel_statistics_published": result["fuel_statistics_published"]})
+        metadata = _collection_output_metadata(result, "fuel")
+        context.add_output_metadata(metadata)
+        _record_collection_outcome(context, metadata["collection_outcome"])
         return result
 
 

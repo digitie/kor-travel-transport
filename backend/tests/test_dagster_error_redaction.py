@@ -535,6 +535,14 @@ def test_both_fuel_ops_surface_a_deferred_statistics_publication(monkeypatch, jo
     with DagsterInstance.local_temp() as instance:
         run = getattr(dagster_definitions, job_name).execute_in_process(raise_on_error=False, instance=instance)
         assert run.success is True
+        output = next(event.step_output_data for event in run.all_events if event.event_type_value == "STEP_OUTPUT")
+        assert output.metadata["status"].value == "success"
+        assert output.metadata["collection_outcome"].value == "partial"
+        assert output.metadata["error_code"].value == "DERIVED_CACHE_DEFERRED"
+        assert output.metadata["previous_data_preserved"].value is True
+        assert instance.get_run_by_id(run.run_id).tags["kortravel/collection-outcome"] == "partial"
+        op_name = "collect_fuel_transport" if job_name == "fuel_collection_job" else "collect_rest_area_fuel_prices"
+        assert run.output_for_node(op_name)["status"] == result["status"] == "success"
         texts = [entry.user_message for entry in instance.all_logs(run.run_id) if entry.dagster_event is None]
     output = next(event.step_output_data for event in run.all_events if event.event_type_value == "STEP_OUTPUT")
     assert output.metadata["fuel_statistics_published"].value is False
