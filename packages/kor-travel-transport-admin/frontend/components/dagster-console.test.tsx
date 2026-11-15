@@ -27,4 +27,17 @@ describe("실행 콘솔 조회·액션 경합",()=>{
  it("UNKNOWN은 새 실행을 막고 명시적 확인·복구만 같은 요청을 재사용한다",async()=>{vi.mocked(getConsoleCatalog).mockResolvedValue(catalog);vi.mocked(performConsoleAction).mockResolvedValueOnce({state:"unknown",message:"예약 미확인"}).mockResolvedValue({state:"accepted",message:"같은 요청 확인"});vi.mocked(getConsoleRequestStatus).mockResolvedValue({state:"unknown",message:"예약 미확인"});await act(async()=>root.render(<DagsterConsoleControls jobLabel={jobLabel}/>));await click("지금 실행");expect(performConsoleAction).toHaveBeenCalledTimes(1);const launch=[...host.querySelectorAll("button")].find(v=>v.textContent==="지금 실행");expect(launch?.disabled).toBe(true);await click("요청 상태 확인");expect(performConsoleAction).toHaveBeenCalledTimes(1);await click("같은 요청 예약 확인·복구");expect(performConsoleAction).toHaveBeenCalledTimes(2);expect(vi.mocked(performConsoleAction).mock.calls[0][0]).toEqual(vi.mocked(performConsoleAction).mock.calls[1][0]);expect(getConsoleRequestStatus).toHaveBeenCalledTimes(2);});
 
  it("실패 실행은 현재 기본 설정으로 같은 작업의 재실행 명령을 보낸다",async()=>{vi.mocked(getConsoleRun).mockResolvedValue({...detail(),status:"FAILURE",canRetry:true});vi.mocked(performConsoleAction).mockResolvedValue({state:"accepted",message:"재실행 예약"});await act(async()=>root.render(<DagsterRunInspector runId={id} jobLabel={jobLabel}/>));expect(host.textContent).toContain("현재 기본 설정");await click("같은 작업 다시 실행");expect(vi.mocked(performConsoleAction).mock.calls[0][0]).toMatchObject({action:"retry",runId:id});expect(vi.mocked(performConsoleAction).mock.calls[0][0]).not.toHaveProperty("runConfigData");});
+
+ it("화면 표시 구독을 재등록하지 않고 최신 선택 실행을 다시 조회한다",async()=>{
+  const add=vi.spyOn(document,"addEventListener"),remove=vi.spyOn(document,"removeEventListener"),visibility=vi.spyOn(document,"visibilityState","get").mockReturnValue("visible");
+  vi.mocked(getConsoleRun).mockImplementation(async runId=>({...detail(runId),status:"STARTED"}));
+  try{
+   await act(async()=>root.render(<DagsterRunInspector runId={id} jobLabel={jobLabel}/>));
+   await act(async()=>root.render(<DagsterRunInspector runId={other} jobLabel={jobLabel}/>));
+   expect(add.mock.calls.filter(([name])=>name==="visibilitychange")).toHaveLength(1);expect(remove.mock.calls.filter(([name])=>name==="visibilitychange")).toHaveLength(0);
+   await act(async()=>document.dispatchEvent(new Event("visibilitychange")));
+   expect(vi.mocked(getConsoleRun).mock.calls.at(-1)?.[0]).toBe(other);
+   await act(async()=>root.render(null));expect(remove.mock.calls.filter(([name])=>name==="visibilitychange")).toHaveLength(1);
+  }finally{add.mockRestore();remove.mockRestore();visibility.mockRestore();}
+ });
 });

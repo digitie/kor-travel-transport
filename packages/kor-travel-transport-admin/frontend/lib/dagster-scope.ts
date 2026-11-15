@@ -59,7 +59,7 @@ const FAILURE_QUERY = `query TransportDagsterRunFailure($runId: String!, $locati
     __typename
     ... on Runs { results { eventConnection(limit: 1000, afterCursor: $cursor) {
       cursor hasMore events { __typename ... on RunFailureEvent { message error { className message cause { className message cause { className message cause { className message } } } } }
-        ... on ExecutionStepFailureEvent { stepKey message error { className message cause { className message cause { className message cause { className message } } } } failureMetadata { metadataEntries { __typename label ... on TextMetadataEntry { text } ... on IntMetadataEntry { intValue } ... on FloatMetadataEntry { floatValue } ... on BoolMetadataEntry { boolValue } } } } }
+        ... on ExecutionStepFailureEvent { stepKey message error { className message cause { className message cause { className message cause { className message } } } } failureMetadata { metadataEntries { __typename label ... on TextMetadataEntry { text } ... on IntMetadataEntry { intValue } ... on FloatMetadataEntry { floatValue } ... on BoolMetadataEntry { boolValue } ... on JsonMetadataEntry { jsonString } } } } }
     } } }
   }
 }`;
