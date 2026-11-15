@@ -177,6 +177,13 @@ GitHub 운영은 `docs/runbooks/branch-protection.md`, `docs/runbooks/cross-repo
 - 배포/실행 절차
 - 운영 예외사항과 재발 방지 메모
 
+## 빌드 캐시 보존
+
+- 반복 빌드는 기존 캐시가 있는 동일 builder를 재사용한다. `scripts/build-images.py`의 `--builder`, `--cache-from`, `--cache-to`는 [빌드 문서](docs/design/2026-11-13-normal-image-build.md)를 따른다.
+- GDAL·Python·npm 의존성 캐시는 나이만으로 삭제하거나 전역 prune에 포함하지 않는다. builder 상태와 외부 캐시를 보존한다.
+- 공간 정리는 정확한 소유·미사용 여부를 확인한 자기 앱 산출물부터 한다. 다른 작업의 이미지·빌드·캐시는 정리하지 않는다.
+- 캐시 재사용은 실제 빌드 로그의 `CACHED`로 확인한다. 같은 버전이라는 이유만으로 cache hit를 가정하지 않는다.
+
 ## WSL 테스트 기준
 
 - 이 저장소의 기본 작업/검증 기준은 `WSL2`이다.
