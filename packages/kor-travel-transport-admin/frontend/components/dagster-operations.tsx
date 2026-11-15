@@ -3,6 +3,7 @@
 import { DagsterOperations as CommonDagsterOperations } from "@kor-travel/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EmptyState } from "@/components/empty-state";
+import { DagsterCollectionWarnings, DagsterConsoleControls, DagsterRunInspector } from "@/components/dagster-console";
 import { Alert, AlertActions, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { getDagsterOverview, getRunFailure, JOB_LABELS, statusLabel, type DagsterOverview, type DagsterRunFailureDetail } from "@/lib/dagster";
@@ -95,6 +96,8 @@ export function DagsterOperations() {
       : detail.result?.message?.split("\n", 1)[0] ?? (detail.result?.complete ? "실패 이벤트가 없습니다." : "조회 상한에 도달했습니다."),
   })) };
   return <>
+    <DagsterConsoleControls jobLabel={props.jobLabel} onChanged={load} />
+    <DagsterCollectionWarnings runs={[...(snapshot?.runs ?? []),...(snapshot?.activeRuns ?? [])]} jobLabel={props.jobLabel} onSelectRun={selectRun} />
     <CommonDagsterOperations {...props} snapshot={displaySnapshot}
       error={error || snapshot?.warning} loading={loading} onRefresh={load} locationUrl={dagsterLocationUrl()}
       showRunDetails selectedRunId={selectedRunId} onSelectRun={selectRun}
@@ -112,7 +115,8 @@ export function DagsterOperations() {
             : <>
               <p className="break-words whitespace-pre-wrap">{detail.result?.message ?? (detail.result?.complete ? "실패 이벤트가 없습니다." : "조회 범위에서 실패 원인을 찾지 못했습니다.")}</p>
               {!detail.result?.complete ? <p className="text-xs text-text-secondary">조회 상한에 도달했습니다. 전체 로그는 Dagster에서 확인하세요.</p> : null}</>}
-        </div> : <p className="text-xs text-text-secondary">실패하지 않은 실행은 오류 로그를 자동 조회하지 않습니다.</p>}
+        </div> : null}
+        <DagsterRunInspector key={run.runId} runId={run.runId} jobLabel={props.jobLabel} />
         <a className="text-xs text-brand underline-offset-4 hover:underline" href={dagsterRunUrl(run.runId)} rel="noreferrer" target="_blank">선택한 실행을 Dagster에서 열기 ↗</a>
       </div>} />
     <p className="text-xs text-text-secondary">KRIC 48시간·버스 기준정보 72시간 보호를 따릅니다. 배편은 4시간마다 누락 범위를 보충합니다. 실행 성공은 전국 자료 적재 완료를 뜻하지 않습니다.</p>

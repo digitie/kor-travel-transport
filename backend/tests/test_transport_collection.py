@@ -1671,10 +1671,10 @@ def test_fuel_success_logs_fetch_and_store_progress(tmp_path: Path, caplog) -> N
 @pytest.mark.parametrize("first_size,next_size,complete,status", [
     (0, 0, False, "failed"), (1, 1, False, "failed"), (106, 106, False, "success"),
     (0, 106, False, "success"), (0, 0, True, "success"), (1, 1, True, "success"),
-    (0, 1, True, "failed"),
+    (0, 1, True, "success"),
 ])
 def test_highway_empty_or_reduced_response_is_reconfirmed_before_success(
-    client, first_size, next_size, complete, status,
+    client, monkeypatch, first_size, next_size, complete, status,
 ):
     from app.models import RawApiResponse
 
@@ -1682,6 +1682,8 @@ def test_highway_empty_or_reduced_response_is_reconfirmed_before_success(
     provider = FakeTransportProvider()
     provider.enabled_sources = (INCIDENT_SOURCE,)
     service.provider = provider
+    baseline = AsyncMock(wraps=service._highway_success_count)
+    monkeypatch.setattr(service, "_highway_success_count", baseline)
 
     async def run():
         original = await FakeTransportProvider().collect_highway()
@@ -1695,6 +1697,7 @@ def test_highway_empty_or_reduced_response_is_reconfirmed_before_success(
         async with client.app.state.session_factory() as session:
             first = await service.collect(session, scope="highway")
             assert first["status"] == "success"
+            baseline.reset_mock()
             state = await session.scalar(select(TransportCollectionState).where(
                 TransportCollectionState.source == INCIDENT_SOURCE))
             previous_success = state.last_success_at
@@ -1702,6 +1705,7 @@ def test_highway_empty_or_reduced_response_is_reconfirmed_before_success(
             await session.commit()
             second = await service.collect(session, scope="highway")
             assert second["status"] == status
+            assert baseline.await_count == (0 if complete else 1)
             await session.refresh(state)
             if status == "failed":
                 assert state.last_success_at == previous_success
@@ -1717,7 +1721,7 @@ def test_highway_empty_or_reduced_response_is_reconfirmed_before_success(
                 RawApiResponse.source == INCIDENT_SOURCE, RawApiResponse.status_code == 200,
             ))).all())
             assert len(successful_raw) == (1 if status == "failed" else 2)
-        assert provider.collect_highway.await_count == (2 if first_size == 106 else 3)
+        assert provider.collect_highway.await_count == (2 if complete or first_size == 106 else 3)
         assert provider.collect_highway.await_args.kwargs["sources"] == (INCIDENT_SOURCE,)
 
     client.portal.call(run)

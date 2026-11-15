@@ -24,12 +24,13 @@ test("원본 GraphQL·scope 조작·큰 본문은 upstream에 닿지 않는다",
 });
 
 test("이름 붙은 작업은 서버 소유 scope로 전달하고 본문을 읽은 뒤 반환한다", async () => {
-  const fetch = vi.fn().mockResolvedValue(Response.json({ data: { ok: true } })); vi.stubGlobal("fetch", fetch);
+  const fixture = { data: { repositoryOrError: { __typename: "Repository", schedules: [] }, runsOrError: { __typename: "Runs", results: [] }, activeRuns: { __typename: "Runs", results: [] } } };
+  const fetch = vi.fn().mockResolvedValue(Response.json(fixture)); vi.stubGlobal("fetch", fetch);
   const response = await POST(request({ operationName: "TransportDagsterOverview" }));
   const sent = JSON.parse(fetch.mock.calls[0][1].body);
   expect(sent.variables.locationTag).toBe("kor-travel-transport");
   expect(sent.query).toContain('key: "dagster/code_location"');
-  expect(await response.json()).toEqual({ data: { ok: true } });
+  expect(await response.json()).toEqual(fixture);
   expect(response.headers.get("cache-control")).toContain("no-store");
 });
 

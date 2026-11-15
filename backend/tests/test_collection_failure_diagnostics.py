@@ -60,22 +60,37 @@ def test_declared_count_failure_keeps_incomplete_snapshot_reason():
     assert detail["retryable"] is False and detail["successful_data_preserved"] is True
 
 
-def test_vadahub_failure_exposes_selected_source_and_preserved_success(monkeypatch):
+@pytest.mark.parametrize("counts", [
+    {"passenger_routes": 10, "ferry_routes": 3, "ferry_facilities": 5},
+    {"passenger_routes": 0, "ferry_routes": 0, "ferry_facilities": 0},
+    {},
+])
+def test_vadahub_partial_exposes_selected_source_and_preserved_success(monkeypatch, counts):
     async def result(*args, **kwargs):
         return {"status": "partial_success", "failed_datasets": ["official_terminals"],
-                "counts": {"passenger_routes": 10, "ferry_routes": 3, "ferry_facilities": 5},
+                "counts": counts,
                 "failure_details": [{"dataset": "official_terminals", "error_type": "SchemaError",
                                      "stage": "provider_parse", "error_code": "VADAHUB_SCHEMA_CHANGED"}]}
     monkeypatch.setattr(definitions, "_run_with_session", result)
     monkeypatch.setattr(definitions, "_settings", lambda: None)
     monkeypatch.setattr(definitions, "collection_owner", lambda *args: nullcontext())
-    context = SimpleNamespace(run_id="fixture", instance=None)
-    with pytest.raises(Failure) as caught:
-        definitions.collect_vadahub_reference.compute_fn.decorated_fn(context)
-    meta = caught.value.metadata
-    assert meta["dataset"].value == "official_terminals"
-    assert meta["error_code"].value == "VADAHUB_SCHEMA_CHANGED"
-    assert meta["failed_dataset_count"].value == 1
-    assert meta["successful_dataset_count"].value == 3
-    assert meta["successful_data_preserved"].value is True
-    assert caught.value.allow_retries is False
+    recorded = {}
+    context = SimpleNamespace(run_id="fixture", instance=None, add_output_metadata=recorded.update,
+                              log=SimpleNamespace(warning=lambda *args: None, info=lambda *args: None))
+    if counts:
+        output = definitions.collect_vadahub_reference.compute_fn.decorated_fn(context)
+        assert output["status"] == "partial_success"
+        assert recorded["collection_outcome"] == "partial"
+        assert recorded["successful_dataset_count"] == 3
+        assert recorded["previous_data_preserved"] is True
+        assert recorded["dataset"] == "official_terminals"
+    else:
+        with pytest.raises(Failure) as caught:
+            definitions.collect_vadahub_reference.compute_fn.decorated_fn(context)
+        meta = caught.value.metadata
+        assert meta["dataset"].value == "official_terminals"
+        assert meta["error_code"].value == "VADAHUB_SCHEMA_CHANGED"
+        assert meta["failed_dataset_count"].value == 1
+        assert meta["successful_dataset_count"].value == 0
+        assert meta["successful_data_preserved"].value is True
+        assert caught.value.allow_retries is False

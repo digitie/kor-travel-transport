@@ -74,10 +74,15 @@ def test_dagster_new_observation_reaches_existing_analytics_api(test_settings, m
         provider.occupied_spaces = 95
         provider.fail_incheon = partial_success
         second = dagster_definitions.airport_collection_job.execute_in_process(raise_on_error=False)
-        assert second.success is not partial_success
-        summary = second.output_for_node("collect_airport_parking") if not partial_success else None
-        if summary:
-            assert summary["snapshot_count"] == 1
+        assert second.success
+        summary = second.output_for_node("collect_airport_parking")
+        assert summary["snapshot_count"] == 1
+        expected_status = "partial_success" if partial_success else "success"
+        assert summary["status"] == expected_status
+        output = next(event.step_output_data for event in second.all_events
+                      if event.event_type_value == "STEP_OUTPUT" and event.step_key == "collect_airport_parking")
+        assert output.metadata["status"].value == expected_status
+        assert output.metadata["collection_outcome"].value == ("partial" if partial_success else "success")
         assert not any(event.is_step_up_for_retry for event in second.all_events)
 
         current = client.get("/v1/parking/current", params={"airport_code": "GMP"})
@@ -99,6 +104,8 @@ def test_dagster_new_observation_reaches_existing_analytics_api(test_settings, m
 
         async def verify_cache_source():
             async with client.app.state.session_factory() as session:
+                source_run = await session.get(CollectionRun, summary["collection_run_id"])
+                assert source_run.status == expected_status  # 부가 Dagster 태그가 원천 상태를 바꾸지 않는다.
                 caches = (await session.scalars(select(AnalyticsCache))).all()
                 latest = await session.scalar(select(ParkingSnapshot.observed_at)
                                               .order_by(ParkingSnapshot.observed_at.desc()).limit(1))
@@ -128,14 +135,15 @@ def test_cache_failure_keeps_committed_source_and_zero_snapshot_tick_repairs_it(
         provider.occupied_spaces = 95
         provider.fail_incheon = partial_success
         failed = dagster_definitions.airport_collection_job.execute_in_process(raise_on_error=False)
-        assert not failed.success
+        assert failed.success
         assert not any(event.is_step_up_for_retry for event in failed.all_events)
-        failure = failed.failure_data_for_node("collect_airport_parking").user_failure_data
-        assert failure.metadata["status"].value == ("partial_success" if partial_success else "success")
-        assert failure.description.startswith("공항 수집의 성공분은 저장했지만" if partial_success else "공항 관측은 저장했지만")
-        assert "secret-refresh-key" not in failure.metadata["analytics_cache_error"].value
-        if not str(cache_error):
-            assert type(cache_error).__name__ in failure.metadata["analytics_cache_error"].value
+        output = next(event.step_output_data for event in failed.all_events
+                      if event.event_type_value == "STEP_OUTPUT" and event.step_key == "collect_airport_parking")
+        assert output.metadata["status"].value == ("partial_success" if partial_success else "success")
+        assert output.metadata["collection_outcome"].value == "partial"
+        assert output.metadata["cache_refresh_failed"].value is True
+        assert "analytics_cache_error" not in output.metadata
+        assert "secret-refresh-key" not in str(output.metadata)
         response = client.get("/v1/dashboard/analytics", params={"airport_code": "GMP"})
         assert response.status_code == 200
         assert response.json()["time_series"]["items"][-1]["available_spaces"] == 5
