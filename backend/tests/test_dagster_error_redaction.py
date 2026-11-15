@@ -535,6 +535,14 @@ def test_both_fuel_ops_surface_a_deferred_statistics_publication(monkeypatch, jo
     with DagsterInstance.local_temp() as instance:
         run = getattr(dagster_definitions, job_name).execute_in_process(raise_on_error=False, instance=instance)
         assert run.success is True
+        output = next(event.step_output_data for event in run.all_events if event.event_type_value == "STEP_OUTPUT")
+        assert output.metadata["status"].value == "success"
+        assert output.metadata["collection_outcome"].value == "partial"
+        assert output.metadata["error_code"].value == "DERIVED_CACHE_DEFERRED"
+        assert output.metadata["previous_data_preserved"].value is True
+        assert instance.get_run_by_id(run.run_id).tags["kortravel/collection-outcome"] == "partial"
+        op_name = "collect_fuel_transport" if job_name == "fuel_collection_job" else "collect_rest_area_fuel_prices"
+        assert run.output_for_node(op_name)["status"] == result["status"] == "success"
         texts = [entry.user_message for entry in instance.all_logs(run.run_id) if entry.dagster_event is None]
     output = next(event.step_output_data for event in run.all_events if event.event_type_value == "STEP_OUTPUT")
     assert output.metadata["fuel_statistics_published"].value is False
@@ -545,7 +553,7 @@ def test_both_fuel_ops_surface_a_deferred_statistics_publication(monkeypatch, jo
 
 
 @pytest.mark.parametrize("readiness", [False, None, "missing"])
-def test_fuel_unhealthy_skip_does_not_report_dagster_success(monkeypatch, readiness):
+def test_fuel_unhealthy_skip_reports_deferred_without_false_data_ready(monkeypatch, readiness):
     async def skipped(*_args, **_kwargs):
         result = {"status": "skipped", "collection_run_id": 10,
                   "errors": [f"previous storage failure {KEX_KEY}"]}
@@ -555,10 +563,12 @@ def test_fuel_unhealthy_skip_does_not_report_dagster_success(monkeypatch, readin
     _patch_services(monkeypatch)
     monkeypatch.setattr(dagster_definitions, "_run_with_session", skipped)
     result = dagster_definitions.fuel_collection_job.execute_in_process(raise_on_error=False)
-    assert not result.success
-    failures = [event for event in result.all_events if event.is_step_failure]
-    assert "status=skipped" in failures[0].step_failure_data.user_failure_data.description
-    _assert_no_secret(_error_texts(failures[0].step_failure_data.error))
+    assert result.success
+    output = next(event.step_output_data for event in result.all_events if event.event_type_value == "STEP_OUTPUT")
+    assert output.metadata["status"].value == "skipped"
+    assert output.metadata["collection_outcome"].value == "deferred"
+    assert output.metadata["error_code"].value == "COLLECTION_DEFERRED"
+    _assert_no_secret([str(output.metadata)])
 
 
 def test_fuel_busy_skip_exposes_ownership_reason_when_source_is_healthy(monkeypatch):
@@ -574,15 +584,16 @@ def test_fuel_busy_skip_exposes_ownership_reason_when_source_is_healthy(monkeypa
     assert output.metadata["fuel_ready"].value is True
 
 
-def test_unhealthy_busy_skip_keeps_ownership_reason_on_dagster_failure(monkeypatch):
+def test_unhealthy_busy_skip_keeps_ownership_reason_on_deferred_result(monkeypatch):
     async def skipped(*_args, **_kwargs):
         return {"status": "skipped", "collection_run_id": 10, "fuel_ready": False,
                 "skip_reason": "collector_busy", "errors": ["previous storage failure"]}
     _patch_services(monkeypatch)
     monkeypatch.setattr(dagster_definitions, "_run_with_session", skipped)
     result = dagster_definitions.fuel_collection_job.execute_in_process(raise_on_error=False)
-    assert not result.success
-    failure = next(event.step_failure_data.user_failure_data for event in result.all_events if event.is_step_failure)
-    assert failure.metadata["skip_reason"].value == "collector_busy"
-    assert "collector_busy" in failure.description
-    assert "previous storage failure" in failure.description
+    assert result.success
+    output = next(event.step_output_data for event in result.all_events if event.event_type_value == "STEP_OUTPUT")
+    assert output.metadata["skip_reason"].value == "collector_busy"
+    assert output.metadata["fuel_ready"].value is False
+    assert output.metadata["collection_outcome"].value == "deferred"
+    assert output.metadata["deferred_reason"].value == "collector_busy"

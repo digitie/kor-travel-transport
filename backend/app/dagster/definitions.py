@@ -57,6 +57,28 @@ from app.services.transport_collection import CollectionScope, TransportCollecti
 MAX_RUNTIME_SECONDS = 14400
 
 
+def _record_collection_outcome(context, outcome: str) -> None:
+    """자기 실행의 관측 태그만 상향한다. 부가 기록 장애로 수집을 실패시키지 않는다."""
+    ranks = {"success": 0, "deferred": 1, "partial": 2}
+    if outcome not in {"partial", "deferred"}:
+        return
+    try:
+        instance = getattr(context, "instance", None)
+        run_id = getattr(context, "run_id", None)
+        if instance is None or not run_id:
+            return
+        run = instance.get_run_by_id(run_id)
+        if run is None:
+            return
+        previous = (getattr(run, "tags", None) or {}).get("kortravel/collection-outcome")
+        if previous in ranks and ranks[previous] >= ranks[outcome]:
+            return
+        instance.add_run_tags(run_id, {"kortravel/collection-outcome": outcome})
+    except Exception:
+        with contextlib.suppress(Exception):
+            context.log.warning("COLLECTION_OUTCOME_TAG_DEFERRED")
+
+
 #: Failure 설명의 상한(응답 본문 같은 긴 문장을 공용 event log에 그대로 두지 않는다).
 MAX_FAILURE_DESCRIPTION_CHARS = 2000
 #: metadata `frames`에 남기는 frame 수.
@@ -244,14 +266,20 @@ def collect_airport_parking(context) -> dict[str, Any]:
         ))
         cache_failed = "analytics_cache_error" in result
         cache_metadata = {"analytics_cache_error": result["analytics_cache_error"]} if cache_failed else {}
-        if result.get("status") in {"failed", "partial_success"}:
+        if result.get("status") == "failed" or (
+            result.get("status") == "partial_success" and not _has_collection_progress(result)
+        ):
             raise Failure(description="공항 수집의 성공분은 저장했지만 일부 수집이 실패했습니다.",
                           metadata={"run_id": result["collection_run_id"], "status": result["status"], **cache_metadata},
                           allow_retries=False)
+        if cache_failed or result.get("status") == "partial_success":
+            result["collection_outcome"] = "partial"
+            context.log.warning("공항 수집의 정상 저장분은 유지합니다. 미완료 원천·파생 캐시는 후속 실행에서 복구합니다.")
         if cache_failed:
-            raise Failure(description="공항 관측은 저장했지만 주차 분석 캐시 갱신에 실패했습니다.",
-                          metadata={"run_id": result["collection_run_id"], "status": result["status"], **cache_metadata},
-                          allow_retries=False)
+            result["cache_refresh_failed"] = True
+        metadata = _collection_output_metadata(result, "airport")
+        context.add_output_metadata(metadata)
+        _record_collection_outcome(context, metadata["collection_outcome"])
         return result
 
 
@@ -294,7 +322,7 @@ def _redacted_causes(errors: Any) -> str:
     return " | ".join(causes)
 
 
-def _collection_failure_metadata(result: dict[str, Any], scope: CollectionScope) -> dict[str, Any]:
+def _collection_failure_metadata(result: dict[str, Any], scope: str) -> dict[str, Any]:
     """관리자가 원문·키 없이 실패 단계와 이미 저장한 성공분을 구분한다."""
     errors = result.get("errors")
     messages = " ".join(item for item in errors if isinstance(item, str)) if isinstance(errors, (list, tuple)) else ""
@@ -332,13 +360,63 @@ def _collection_failure_metadata(result: dict[str, Any], scope: CollectionScope)
     return metadata
 
 
+def _has_collection_progress(result: dict[str, Any]) -> bool:
+    """원천의 정상 응답 또는 실제 저장이 있는 부분 완료만 후속 처리를 계속한다."""
+    return any(type(result.get(key)) is int and result[key] > 0 for key in (
+        "raw_response_count", "snapshot_count", "fee_rule_count", "traffic_snapshot_count",
+        "incident_snapshot_count", "fuel_station_count", "fuel_price_count",
+    ))
+
+
+def _collection_output_metadata(result: dict[str, Any], scope: str) -> dict[str, Any]:
+    """Dagster 실행 완료와 원천 전체 갱신을 구분하는 안전한 결과 metadata."""
+    status = result.get("status", "unknown")
+    outcome = result.get("collection_outcome") or (
+        "deferred" if status in {"skipped", "disabled", "not_ready"}
+        else "partial" if status == "partial_success" else "success" if status == "success" else "unknown"
+    )
+    statistics_deferred = (
+        status in {"success", "partial_success"}
+        and result.get("fuel_statistics_published") is False
+    )
+    if statistics_deferred:
+        outcome = "partial"
+    metadata: dict[str, Any] = {
+        "status": status, "collection_outcome": outcome, "previous_data_preserved": True,
+    }
+    for key in ("collection_run_id", "raw_response_count", "snapshot_count", "fee_rule_count",
+                "traffic_snapshot_count", "incident_snapshot_count", "fuel_station_count", "fuel_price_count"):
+        value = result.get(key)
+        if type(value) is int and 0 <= value <= 1_000_000_000:
+            metadata[key] = value
+    for key in ("fuel_ready", "fuel_statistics_published", "cache_refresh_failed"):
+        if type(result.get(key)) is bool:
+            metadata[key] = result[key]
+    if outcome == "partial" and result.get("errors"):
+        detail = result
+        if "collection_run_id" not in result and "run_id" in result:
+            # 휴게소 수집도 실제 run 식별자를 같은 진단 경계로 전달한다.
+            detail = {**result, "collection_run_id": result["run_id"]}
+        metadata.update(_collection_failure_metadata(detail, scope))
+    if outcome == "deferred":
+        metadata["error_code"] = "COLLECTION_DEFERRED"
+        metadata["deferred_reason"] = (
+            "collector_busy" if result.get("skip_reason") == "collector_busy" else "cooldown_or_disabled"
+        )
+    elif (
+        result.get("cache_refresh_failed") is True or statistics_deferred
+    ) and not result.get("errors"):
+        metadata["error_code"] = "DERIVED_CACHE_DEFERRED"
+    return metadata
+
+
 def _collect_transport(scope: CollectionScope) -> dict[str, Any]:
     result = asyncio.run(_collect_transport_in_one_loop(_settings(), scope))
     # 성공분·실패 상태를 커밋하고 provider를 닫은 뒤 Dagster에도 실패를 전달한다.
     # 원인은 가린 한 줄로 설명에 싣는다(다음 진단이 DB를 보지 않아도 되게). 기존 호출 유예를 자동 재시도로
     # 우회하지 않는다.
-    if result.get("status") in {"failed", "partial_success"} or (
-        scope == "fuel" and result.get("status") == "skipped" and result.get("fuel_ready") is not True
+    if result.get("status") == "failed" or (
+        result.get("status") == "partial_success" and not _has_collection_progress(result)
     ):
         errors = result.get("errors")
         reason = ", skip_reason=collector_busy" if result.get("skip_reason") == "collector_busy" else ""
@@ -351,6 +429,10 @@ def _collect_transport(scope: CollectionScope) -> dict[str, Any]:
             metadata=_collection_failure_metadata(result, scope),
             allow_retries=False,
         )
+    if result.get("status") == "partial_success":
+        result["collection_outcome"] = "partial"
+    elif result.get("status") == "skipped":
+        result["collection_outcome"] = "deferred"
     return result
 
 
@@ -358,7 +440,13 @@ def _collect_transport(scope: CollectionScope) -> dict[str, Any]:
 @_redact_op_errors
 def collect_highway_transport(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
-        return _collect_transport("highway")
+        result = _collect_transport("highway")
+        metadata = _collection_output_metadata(result, "highway")
+        context.add_output_metadata(metadata)
+        _record_collection_outcome(context, metadata["collection_outcome"])
+        if result.get("collection_outcome") == "partial":
+            context.log.warning("고속도로 수집의 정상 원천은 저장했습니다. 실패한 원천은 후속 주기에 다시 수집합니다.")
+        return result
 
 
 #: 유가 op 동안 Dagster event log로 넘기는 logger. 오피넷 수집기의 단계별 진행(지역 탐색, 탭별 시도 진행,
@@ -427,6 +515,9 @@ def collect_fuel_transport(context) -> dict[str, Any]:
                                      if key in {"status", "collection_run_id", "fuel_station_count", "fuel_price_count",
                                                 "fuel_ready", "next_fuel_due_at", "last_fuel_success_at", "skip_reason",
                                                 "fuel_statistics_published"}})
+        metadata = _collection_output_metadata(result, "fuel")
+        context.add_output_metadata(metadata)
+        _record_collection_outcome(context, metadata["collection_outcome"])
         if result.get("status") == "skipped":
             if result.get("skip_reason") == "collector_busy":
                 context.log.warning("유가 수집은 다른 수집기가 체크포인트를 사용 중이어서 실행하지 않았습니다(status=skipped).")
@@ -681,8 +772,9 @@ def collect_rest_area_fuel_prices(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance), _forward_progress_logs(context, FUEL_STATISTICS_LOGGERS):
         settings = _settings()
         result = asyncio.run(_run_with_session(settings, RestAreaCollectionService(settings).collect_fuel_prices))
-        if "fuel_statistics_published" in result:
-            context.add_output_metadata({"fuel_statistics_published": result["fuel_statistics_published"]})
+        metadata = _collection_output_metadata(result, "fuel")
+        context.add_output_metadata(metadata)
+        _record_collection_outcome(context, metadata["collection_outcome"])
         return result
 
 
@@ -711,12 +803,20 @@ def general_rail_timetable_collection_job() -> None:
 def prepare_reference_exports(context, upstream: Any = None, other: Any = None) -> dict[str, Any]:
     settings = _settings()
     if not getattr(settings, "transport_map_current_enabled", False):
-        return {"status": "disabled", "prepared": 0, "reused": 0, "kinds": []}
+        result = {"status": "disabled", "prepared": 0, "reused": 0, "kinds": []}
+        context.add_output_metadata({"status": "disabled", "collection_outcome": "deferred"})
+        _record_collection_outcome(context, "deferred")
+        return result
     with collection_owner(context.run_id, context.instance):
         result = asyncio.run(_run_with_session(settings, functools.partial(prepare_reference_export_bodies, settings=settings)))
     context.add_output_metadata({"status": result["status"], "prepared": result["prepared"], "reused": result["reused"]})
     if result["status"] == "not_ready":
-        raise Failure(description="완결된 reference source가 없어 본문을 준비하지 못했습니다.", allow_retries=False)
+        context.add_output_metadata({"collection_outcome": "deferred", "error_code": "REFERENCE_EXPORT_DEFERRED",
+                                     "previous_data_preserved": True})
+        context.log.warning("완결된 기준정보가 아직 없어 파생 본문 준비를 미룹니다. 마지막 정상 본문을 유지합니다.")
+    _record_collection_outcome(
+        context, _collection_output_metadata(result, "reference")["collection_outcome"],
+    )
     return result
 
 
@@ -801,14 +901,24 @@ def collect_vadahub_reference(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
         settings = _settings()
         result = asyncio.run(_run_with_session(settings, VadaHubCollectionService(settings).collect))
-        if result["status"] == "partial_success":
+        if result["status"] == "partial_success" and not result["counts"]:
             detail = (result.get("failure_details") or [{}])[0]
             raise Failure(description="일부 배편 기준자료 수집에 실패했습니다. 마지막 정상 자료를 유지합니다.",
                           metadata={"failed_datasets": ", ".join(result["failed_datasets"]),
                                     "failed_dataset_count": len(result["failed_datasets"]),
                                     "successful_dataset_count": len(result["counts"]),
                                     "successful_data_preserved": True, **detail}, allow_retries=False)
+        if result["status"] == "partial_success":
+            detail = (result.get("failure_details") or [{}])[0]
+            context.add_output_metadata({"status": result["status"], "collection_outcome": "partial",
+                                         "failed_dataset_count": len(result["failed_datasets"]),
+                                         "successful_dataset_count": len(result["counts"]),
+                                         "previous_data_preserved": True, **detail})
+            context.log.warning("배편 기준자료의 정상 원천은 유지했습니다. 미완료 데이터셋만 후속 수집 대상입니다.")
         context.log.info("VadaHub 배편 기준자료: %s", result)
+        _record_collection_outcome(
+            context, _collection_output_metadata(result, "reference")["collection_outcome"],
+        )
         return result
 
 

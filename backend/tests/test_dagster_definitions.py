@@ -14,7 +14,7 @@ from app.services.transport_collection import TransportCollectionService
 
 
 @pytest.mark.parametrize("provider_mode", ["sample", "disabled"])
-def test_real_unavailable_fuel_service_fails_dagster(tmp_path, monkeypatch, provider_mode):
+def test_real_unavailable_fuel_service_reports_deferred_without_false_ready(tmp_path, monkeypatch, provider_mode):
     from app.db.session import create_engine_and_session_factory, init_database
     from app.services.transport_collection import DisabledTransportProvider, FixtureTransportProvider
     from test_transport_collection import build_settings
@@ -42,9 +42,11 @@ def test_real_unavailable_fuel_service_fails_dagster(tmp_path, monkeypatch, prov
     result = dagster_definitions.fuel_collection_job.execute_in_process(raise_on_error=False)
     assert summaries[0]["status"] == "skipped"
     assert summaries[0]["fuel_ready"] is False
-    assert not result.success
-    failure = result.failure_data_for_node("collect_fuel_transport").user_failure_data
-    assert f"provider={provider_mode}" in failure.description
+    assert result.success
+    output = result.output_for_node("collect_fuel_transport")
+    assert output["collection_outcome"] == "deferred"
+    assert output["fuel_ready"] is False
+    assert f"provider={provider_mode}" in " ".join(output["errors"])
     assert not any(event.is_step_up_for_retry for event in result.all_events)
 
 

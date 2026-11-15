@@ -159,7 +159,7 @@ def test_ferry_reference_api_reads_saved_data_without_provider(client):
     assert items[1]["data"] is None
 
 
-def test_native_job_reports_failure_after_committing_healthy_sources(tmp_path, monkeypatch):
+def test_native_job_completes_with_warning_after_committing_healthy_sources(tmp_path, monkeypatch):
     from app.dagster import definitions as dagster_definitions
 
     async def prepare():
@@ -176,9 +176,19 @@ def test_native_job_reports_failure_after_committing_healthy_sources(tmp_path, m
     monkeypatch.setattr(dagster_definitions, "_settings", lambda: settings)
     monkeypatch.setattr(dagster_definitions, "VadaHubCollectionService", lambda _settings: service)
     result = dagster_definitions.vadahub_reference_collection_job.execute_in_process(raise_on_error=False)
-    assert not result.success
-    failure = result.failure_data_for_node("collect_vadahub_reference")
-    assert "일부 배편 기준자료" in failure.user_failure_data.description
+    assert result.success
+    output = result.output_for_node("collect_vadahub_reference")
+    assert output["status"] == "partial_success"
+    assert output["failed_datasets"] == ["passenger_routes"]
+    assert len(output["counts"]) == 3
+    metadata = next(event.step_output_data.metadata for event in result.all_events
+                    if event.event_type_value == "STEP_OUTPUT")
+    assert metadata["collection_outcome"].value == "partial"
+    assert metadata["successful_dataset_count"].value == 3
+    assert metadata["failed_dataset_count"].value == 1
+    assert metadata["error_code"].value == "VADAHUB_SOURCE_FAILED"
+    assert metadata["previous_data_preserved"].value is True
+    assert not any(event.is_step_up_for_retry for event in result.all_events)
 
     async def verify():
         engine, factory = create_engine_and_session_factory(settings.database_url)

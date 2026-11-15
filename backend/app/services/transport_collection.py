@@ -473,10 +473,7 @@ class TransportCollectionService:
                 pending_fuel_error = exc
         fuel_storage_only = pending_fuel is not None or pending_fuel_error is not None
         fuel_due = fuel_enabled and not fuel_checkpoint_busy and (fuel_storage_only or await self._fuel_is_due(session))
-        # 이미 성공 저장된 원천의 개수만 비교한다. 큰 raw 본문은 Python으로 가져오지 않는다.
-        highway_baselines = {
-            source: await self._highway_success_count(session, source) for source in highway_sources
-        }
+        highway_baselines: dict[str, int | None] = {}
         claimed_sources = []
         if highway_due:
             claimed_sources.extend(highway_sources)
@@ -562,6 +559,14 @@ class TransportCollectionService:
                         highway_result = await self.provider.collect_highway(sources=highway_sources)
                 except Exception as exc:
                     highway_result = exc
+                if isinstance(highway_result, HighwayPayload):
+                    # SDK가 전체 건수를 검산한 원천은 예전 JSON을 다시 읽거나 같은 API를
+                    # 재호출할 이유가 없다. 완결성 정보가 없는 legacy 응답만 재확인한다.
+                    for source in highway_sources:
+                        if source not in highway_result.complete_sources:
+                            highway_baselines[source] = await self._highway_success_count(session, source)
+                    if highway_baselines:
+                        await session.commit()  # 재확인 HTTP 동안 DB 연결을 잡지 않는다.
                 highway_result = await self._confirm_highway_payload(
                     highway_result, highway_sources, highway_baselines,
                 )
@@ -823,11 +828,12 @@ class TransportCollectionService:
             return payload
         fields = {TRAFFIC_SOURCE: "traffic", INCIDENT_SOURCE: "incidents"}
         suspicious = tuple(source for source in sources
-                           if isinstance(getattr(payload, fields[source]), KrexParseError)
+                           if source not in payload.complete_sources
+                           and (isinstance(getattr(payload, fields[source]), KrexParseError)
                            or (isinstance(getattr(payload, fields[source]), tuple)
                                and self._highway_result_suspicious(
-                                   getattr(payload, fields[source]), baselines[source],
-                               )))
+                                   getattr(payload, fields[source]), baselines.get(source),
+                               ))))
         if not suspicious:
             return payload
         # 재확인도 provider의 source 격리·기존 상한 안에서 한 번만 한다.
