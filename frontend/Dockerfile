@@ -1,4 +1,4 @@
-FROM node:22.23.1-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS dependencies
+FROM node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS dependencies
 WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json ./
 COPY frontend/vendor ./vendor
@@ -24,7 +24,7 @@ RUN npm run build
 # public/은 현재 tracked 파일이 없다. COPY가 없는 경로에 의존하지 않게 준비한다.
 RUN mkdir -p /app/public
 
-FROM node:22.23.1-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS runner
+FROM node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS runner
 RUN npm install --global npm@12.0.1
 WORKDIR /app
 ARG NEXT_PUBLIC_API_BASE_URL=""

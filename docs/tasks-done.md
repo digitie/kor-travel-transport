@@ -1,3 +1,7 @@
+## 2026-11-18 — Node 26.13.1 툴체인 전환
+
+- [x] **NODE26-TOOLCHAIN-20261118** — Common T-029(`0dec954`) 소비자 체크리스트대로 `.nvmrc`·두 프론트 engines/lock·CI·Node Dockerfile 2개·guard 호출 2곳을 Node 26.13.1/npm 12.0.1로 전환했다. 배포 없음, 다음 배포에서 두 웹 이미지 재빌드.
+
 ## 2026-11-15 — Dagster 콘솔·수집 회복 소스
 
 - **DAGSTER-CONSOLE-SOURCE-20261115** — 상세·안전 진단·현재 상태/권한 액션과 부분/유예 경고를 구현하고 집중 시험했다. 소스 CI·독립 검토·최종 머지는 이번 PR 원장이 정본이며 운영 수용은 별도 task다. [근거](reports/2026-11-15-dagster-admin-resilience.md).
