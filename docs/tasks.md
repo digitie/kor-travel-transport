@@ -1,6 +1,6 @@
 ## 2026-11-17 — 공통화 재조사 계획 포인터
 
-- [ ] **COMMON-PLAN-20261117 / P2** — kor-travel-common의 공통화 재조사 계획(`docs/plan/commonization-plan-2026-11-17.md`, 초안) 가운데 Transport가 실행하는 task를 추적한다. Common `T-434`(관리자 프론트의 로컬 경로 정규화 사본을 공통 export로 교체, 선행 없음), `T-482b`(job별 인프라 재시도 sensor 3개를 다중 job sensor 1개로, 선행 없음), `T-482a`(로컬 수집 결과 tag 함수를 공통 구현으로, Common `T-313` 뒤), `T-435`(관리자 공통 부품 묶음 채택, Common `T-221` 뒤). 범위·수용 기준·되돌리기는 Common `docs/tasks/`의 상세 파일이 정본이며 여기 복제하지 않는다. 시점은 Transport 유지 팀이 정한다.
+- [ ] **COMMON-PLAN-20261117 / P2** — kor-travel-common의 공통화 재조사 계획(`docs/plan/commonization-plan-2026-11-17.md`, 초안) 가운데 Transport가 실행하는 task를 추적한다. Common `T-434`(관리자 프론트 `lib/navigation.ts`의 판정 본체를 공통 `sanitizeLocalPath` 호출로 바꾸는 중복 제거, 선행 없음), `T-482b`(job별 인프라 재시도 sensor 3개를 다중 job sensor 1개로, 선행 없음. 합친 sensor는 tick당 RunRequest 하나), `T-482a`(로컬 수집 결과 tag 함수를 공통 구현으로, Common `T-313` 뒤), `T-435`(두 프론트의 `@kor-travel/ui` 0.3.0 재vendor·guard 호출 SHA 갱신과 관리자 부품 채택, Common `T-221` 뒤). 범위·수용 기준·되돌리기는 Common `docs/tasks/`의 상세 파일이 정본이며 여기 복제하지 않는다. 시점은 Transport 유지 팀이 정한다.
 
 ## 2026-11-15 — Dagster 운영 수용 후속
 
