@@ -1,3 +1,7 @@
+## 2026-11-17 — 읽기 성능 계획(세 서비스 공통)
+
+- [ ] **T-READ-PLAN-20261117** — Map 저장소의 [읽기 성능 계획](https://github.com/digitie/kor-travel-map/blob/main/docs/reports/2026-11-17-read-performance-plan.md) §8(단계 순 작업 목록)이 transport 쪽 요청 `T-READ-TRN-01`~`04`(요청 시간·SQL 문장 수 기록, `features/places`의 왕복 축소, 참조 export의 싼 조건부 응답, 주차 이력 캐시 재구성을 읽기 프로세스 밖으로)의 정본이다. PinVi는 교통을 Map `/v1/service/transport/*`(Map Valkey)로만 읽으므로 이 저장소의 읽기 소비자는 관리·주차 화면과 Map 적재(`/v1/service/exports/*`)다. 계획이 적은 transport 수치는 기존 보고서의 인용이고 다시 재지 않았다. 계획은 이 저장소의 기존 작업(`T-READ-MAX-01`~`03`, 2026-11-08 대량 유가 지도)을 정본으로 보고 그 위에 얹는다 — `T-READ-TRN-02`는 여러 종류를 함께 받는 요청으로 좁혔고 저장 데이터 API 1초 목표 backlog와 한 작업으로 합친다. 착수할 때 항목마다 이 원장에 개별 task로 옮긴다. Map PR이 머지되기 전에는 Map 브랜치 `docs/read-performance-plan-20261117`에서 읽는다.
+
 ## 2026-11-15 — Dagster 운영 수용 후속
 
 - [ ] **DAGSTER-CONSOLE-RUNTIME-20261115** — 별도 배포 담당이 머지 소스로 이미지 적용 뒤 상세·경고 표시와 권한/상태별 실제 액션을 수용한다. 모의 요청·읽기 전용 schema 검증을 실제 액션 성공으로 소급하지 않는다. 공식 터미널 첨부 부재와 원천별 신선도는 별도 확인한다.

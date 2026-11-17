@@ -1,3 +1,7 @@
+## 2026-11-17 — 읽기 성능 계획 포인터
+
+Map 저장소가 Map·weather·transport의 읽기 경로 검토와 작업 목록을 한 문서로 정리했고, transport 쪽 요청 네 건(`T-READ-TRN-01`~`04`)을 `docs/tasks.md`의 `T-READ-PLAN-20261117`로 가리킨다. 코드는 main `60095379`를 읽기만 했다. odroid에서는 2026-11-17 03:38~03:46Z에 읽기 전용으로 부하와 컨테이너 mount·프로세스만 확인했다 — CPU idle 0%(Dagster run 작업), backend는 uvicorn 1개 RSS 405 MB(한도 512 MB), PG 데이터가 있는 NVMe의 남은 공간 1.9 GB. 한 시점의 표본이며 transport endpoint는 호출하지 않았다. 제품 코드·설정·운영 변경0. `docs/resume.md`의 현재·다음 작업은 바꾸지 않았다. [계획](https://github.com/digitie/kor-travel-map/blob/main/docs/reports/2026-11-17-read-performance-plan.md).
+
 ## 2026-11-15 — 독립 검토의 통계 경고·예약 복구 보정
 
 전체 CI43675611381이 성공한 후보 `893a2694ebb0e7d6cbfcb4edf0993ec84c85a2c0`을 James·Popper가 독립 검토했다. P0/P1은 없고 James의 공통 시각·미해결 예약 두 건과 두 리뷰어가 확인한 유가 통계 게시 경고 누락을 수정했다. 원본 성공 상태를 유지하며 게시 지연만 경고한다. 실제 경계 WSL/Docker·원 모집단 보존을 확인했고 최종 정확 CI·두 delta 검토·머지는 [PR204](https://github.com/digitie/kor-travel-transport/pull/204)와 [보고서](reports/2026-11-15-dagster-admin-resilience.md)에 정산한다. 이미지·실제 수집/액션·환경·스키마 변경0이다.
