@@ -1,4 +1,4 @@
-FROM node:22.23.1-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS dependencies
+FROM node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS dependencies
 WORKDIR /app
 COPY packages/kor-travel-transport-admin/frontend/package.json \
      packages/kor-travel-transport-admin/frontend/package-lock.json ./
@@ -17,7 +17,7 @@ COPY packages/kor-travel-transport-admin/frontend ./
 RUN npm run check:dependencies
 RUN npm run build
 
-FROM node:22.23.1-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS runner
+FROM node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS runner
 RUN npm install --global npm@12.0.1
 WORKDIR /app
 ARG TRANSPORT_ADMIN_RELEASE_SHA=unknown

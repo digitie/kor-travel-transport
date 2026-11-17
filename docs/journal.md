@@ -1,3 +1,14 @@
+## 2026-11-18 — Node 26.13.1 툴체인 전환
+
+- 소유자 결정(2026-11-17)과 Common T-029 채택 커밋 `0dec9543c8c8730ce7b05837f2fbe6c31d4ede65`(Common PR65)에 맞춰
+  `.nvmrc`, 공개·관리자 두 프론트의 `engines.node`와 lock, CI `node-version`, Node Dockerfile 두 개를 26.13.1로 올렸다.
+- Dockerfile은 기존 Alpine 변형을 유지하고 공식 다중 아키텍처 index digest
+  `node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5`로 고정했다.
+  Node 26 번들 npm은 11.20.0이므로 각 stage의 npm 12.0.1 설치를 유지한다.
+- `ci.yml`·`common-frontend-policy.yml`의 Common guard 호출과 `common-ref`를 같은 채택 커밋으로 맞췄다.
+  lock은 정확 툴체인(`npm@12.0.1`/`node@26.13.1`) lock-only로 재생성했고 root engines 외 변화는 없다.
+- 배포는 하지 않았다. 다음 배포 때 두 웹 이미지가 새 base로 다시 빌드된다.
+
 ## 2026-11-18 — 읽기 관측·다중 지도·참조 304 후보
 
 ## 2026-11-18 — TRN03 precise revision·CI fake-engine 보정

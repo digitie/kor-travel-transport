@@ -107,8 +107,8 @@ test("npm start의 .bin/next가 없으면 거절", (t) => {
 const sha = "a".repeat(40);
 const goodEnv = { NODE_ENV: "production", HOME: "/home/node", NPM_CONFIG_CACHE: "/home/node/.npm",
   XDG_CACHE_HOME: "/home/node/.cache", TRANSPORT_ADMIN_RELEASE_SHA: sha };
-const goodIdentity = { uid: 1000, gid: 1000, node: "22.23.1", npm: "12.0.1" };
-const pkg = { engines: { node: "22.23.1", npm: "12.0.1" } };
+const goodIdentity = { uid: 1000, gid: 1000, node: "26.13.1", npm: "12.0.1" };
+const pkg = { engines: { node: "26.13.1", npm: "12.0.1" } };
 test("실제 관측 필드의 정상 profile 허용", () => {
   verifyIdentity(goodIdentity, goodEnv, pkg, sha, "transport-admin-web");
 });

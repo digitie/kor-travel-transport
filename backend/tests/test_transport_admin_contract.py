@@ -157,7 +157,7 @@ def test_transport_admin_builder_receives_public_dagster_origin() -> None:
     compose = yaml.safe_load((ROOT / "docker-compose.transport-admin.yml").read_text())
     assert "NEXT_PUBLIC_TRANSPORT_DAGSTER_URL" in compose["services"]["transport-admin-web"]["build"]["args"]
     dockerfile = (ROOT / "packages/kor-travel-transport-admin/frontend/Dockerfile").read_text()
-    builder = dockerfile.split("FROM dependencies AS builder", 1)[1].split("FROM node:22-alpine AS runner", 1)[0]
+    builder = dockerfile.split("FROM dependencies AS builder", 1)[1].split(" AS runner", 1)[0]
     assert "ARG NEXT_PUBLIC_TRANSPORT_DAGSTER_URL" in builder
     assert "ENV NEXT_PUBLIC_TRANSPORT_DAGSTER_URL=${NEXT_PUBLIC_TRANSPORT_DAGSTER_URL}" in builder
     assert builder.index("ENV NEXT_PUBLIC_TRANSPORT_DAGSTER_URL") < builder.index("RUN npm run build")
