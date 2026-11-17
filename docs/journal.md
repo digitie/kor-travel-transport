@@ -1,3 +1,13 @@
+## 2026-11-18 — 읽기 관측·다중 지도·참조 304 후보
+
+- Map PR1505 §8 T-READ-TRN-01~03: 안전한 느린 요청 로그와 Server-Timing, 정확한 총계/제한 투영/출처 UNION,
+  본문 조회 전 조건부 응답과 MVCC 가시성 지문 메모를 구현했다. 기존 mutable-input 무효화 회귀를 보존한다.
+- 합성 동일 DTO의 SQL26→6, CPU697→166ms, 응답966→254ms 및 800개 참조 warm304 42.5ms/페이지읽기0.
+- 넓은 PG135PASS/1FAIL의 key-share XID 원인을 고친 뒤 WSL/Docker 집중 각38PASS.
+  운영/전체CI 수용으로 소급하지 않는다. [근거·원실패·대기 작업](reports/2026-11-18-read-performance.md).
+- T-READ-TRN-04는 합성52만 행 재구성 간섭만 측정하고 운영 p95 채택 조건 전 구조 변경0.
+  부모 Weather 선행 순서를 유지하며 draft PR까지만 작성한다.
+
 ## 2026-11-17 — 공통화 재조사 계획 포인터
 
 kor-travel-common이 다섯 저장소를 다시 조사해 계획을 냈다(Common `docs/plan/commonization-plan-2026-11-17.md`, 적대 리뷰 2회 반영, Transport 조사 기준 `60095379`). Transport 몫은 Common `T-434`·`T-435`·`T-436`·`T-437`·`T-482a`·`T-482b`이며 `docs/tasks.md`에 포인터 한 항목과, 공통화와 별개인 보안 헤더 점검 항목 하나를 뒀다. 현재 상태와 다음 한 작업은 바뀌지 않는다. 문서 전용이고 코드·운영 변경은 0이다.

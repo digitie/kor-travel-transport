@@ -47,6 +47,8 @@ from kric import DataGoKrMaritimeClient, KricRateLimitError, parse_station_file_
 from krairport import get_airport_or_none
 
 from app.core.config import Settings, get_settings
+from app.core.read_timing import ReadTimingMiddleware
+from app.services.place_map_reads import place_queries, read_place_plans, place_sources
 from app.core.time_utils import align_to_interval, now_utc, serialize_utc, to_seoul
 from app.db.session import create_engine_and_session_factory, init_database
 from app.service_exports import build_service_export_router
@@ -739,6 +741,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if forwarded_proto == "https":
             response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         return response
+
+    app.add_middleware(ReadTimingMiddleware)
 
     def custom_openapi() -> dict:
         """Keep the committed schema aligned with the RFC 7807 error handlers."""
@@ -1578,8 +1582,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "public_parking_lot": PublicParkingLot,
                     "highway_incident": HighwayIncidentSnapshot,
                 }
-                for requested_kind in requested_kinds:
-                    available_sources.update((await session.scalars(select(source_models[requested_kind].source).distinct())).all())
+                available_sources = await place_sources(session, requested_kinds, source_models)
             fuel_prices_stale = False
             fuel_prices_last_refreshed_at = None
             if "fuel_station" in requested_kinds:
@@ -1595,9 +1598,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             return Response(content=result.model_dump_json(), media_type="application/json")
 
+        prefetched = None
+        if len(requested_kinds) > 1 and session.get_bind().dialect.name == "postgresql":
+            prefetched = await read_place_plans(session, place_queries(
+                requested_kinds, coordinate_conditions, include_unlocated,
+                min_longitude is not None, now_utc(), per_kind_limit,
+            ))
+
+        async def count_places(kind_name, statement):
+            return prefetched[kind_name][0] if prefetched is not None else int(await session.scalar(statement) or 0)
+
+        async def rows_places(kind_name, statement, *, entities=False):
+            if prefetched is not None:
+                return prefetched[kind_name][1]
+            result = await session.execute(statement)
+            return result.scalars().all() if entities else result.all()
+
         if "fuel_station" in requested_kinds:
             conditions = coordinate_conditions(FuelStation)
-            kind_totals["fuel_station"] = int(await session.scalar(select(func.count()).select_from(FuelStation).where(*conditions)) or 0)
+            kind_totals["fuel_station"] = await count_places("fuel_station", select(func.count()).select_from(FuelStation).where(*conditions))
             total += kind_totals["fuel_station"]
             station_query = (
                 select(
@@ -1621,7 +1640,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     if validated_count != fuel_items_count:
                         raise RuntimeError("유가 지도 JSON 항목 수가 조회 결과와 다릅니다.")
             else:
-                stations = (await session.execute(station_query)).all()
+                stations = await rows_places("fuel_station", station_query)
                 station_ids = [station.id for station in stations]
                 latest: dict[int, list[Any]] = {}
                 if station_ids:
@@ -1652,14 +1671,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         if "rail_station" in requested_kinds:
             conditions = coordinate_conditions(RailStationReference)
-            kind_totals["rail_station"] = int(await session.scalar(select(func.count()).select_from(RailStationReference).where(*conditions)) or 0)
+            kind_totals["rail_station"] = await count_places("rail_station", select(func.count()).select_from(RailStationReference).where(*conditions))
             total += kind_totals["rail_station"]
-            rows = (await session.execute(
-                select(RailStationReference).where(*conditions)
-                .order_by(RailStationReference.last_seen_at.desc(), RailStationReference.id.desc()).limit(per_kind_limit)
-            )).scalars().all()
+            rows = await rows_places("rail_station", select(RailStationReference).where(*conditions)
+                .order_by(RailStationReference.last_seen_at.desc(), RailStationReference.id.desc()).limit(per_kind_limit), entities=True)
             for station in rows:
-                items.append(TransportPlaceMapItem(
+                items.append(dict(
                     id=station.id, kind="rail_station", source=station.source, name=station.station_name or "이름 없는 역",
                     longitude=station.longitude, latitude=station.latitude, subtitle=station.rail_operator_name,
                     line_names=[station.operating_line_name] if station.operating_line_name else [],
@@ -1671,14 +1688,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             conditions = coordinate_conditions(FerryPort)
             if not include_unlocated or min_longitude is not None:
                 conditions.append(or_(FerryPort.location_source.is_(None), FerryPort.location_source != "data_go_kr_port_guideline"))
-            kind_totals["ferry_port"] = int(await session.scalar(select(func.count()).select_from(FerryPort).where(*conditions)) or 0)
+            kind_totals["ferry_port"] = await count_places("ferry_port", select(func.count()).select_from(FerryPort).where(*conditions))
             total += kind_totals["ferry_port"]
-            rows = (await session.execute(
-                select(FerryPort).where(*conditions)
-                .order_by(FerryPort.last_seen_at.desc(), FerryPort.id.desc()).limit(per_kind_limit)
-            )).scalars().all()
+            rows = await rows_places("ferry_port", select(FerryPort).where(*conditions)
+                .order_by(FerryPort.last_seen_at.desc(), FerryPort.id.desc()).limit(per_kind_limit), entities=True)
             for port in rows:
-                items.append(TransportPlaceMapItem(
+                items.append(dict(
                     id=port.id, kind="ferry_port", source=port.source, name=port.port_name or port.port_id,
                     provider_id=port.port_id,
                     longitude=None if port.location_source == "data_go_kr_port_guideline" else port.longitude,
@@ -1693,17 +1708,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ))
         if "public_parking_lot" in requested_kinds:
             conditions = coordinate_conditions(PublicParkingLot)
-            count = int(await session.scalar(select(func.count()).select_from(PublicParkingLot).where(*conditions)) or 0)
+            count = await count_places("public_parking_lot", select(func.count()).select_from(PublicParkingLot).where(*conditions))
             kind_totals["public_parking_lot"] = count
             total += count
-            rows = (await session.execute(select(
+            rows = await rows_places("public_parking_lot", select(
                 PublicParkingLot.id, PublicParkingLot.source, PublicParkingLot.provider_id,
                 PublicParkingLot.name, PublicParkingLot.longitude, PublicParkingLot.latitude,
                 PublicParkingLot.road_address, PublicParkingLot.land_address, PublicParkingLot.phone,
                 PublicParkingLot.capacity, PublicParkingLot.fee_info, PublicParkingLot.last_seen_at,
-            ).where(*conditions).order_by(PublicParkingLot.id).limit(per_kind_limit))).all()
+            ).where(*conditions).order_by(PublicParkingLot.id).limit(per_kind_limit))
             for row in rows:
-                items.append(TransportPlaceMapItem(
+                items.append(dict(
                     id=row.id, kind="public_parking_lot", source=row.source, provider_id=row.provider_id,
                     name=row.name, longitude=row.longitude, latitude=row.latitude,
                     subtitle=row.road_address or row.land_address, address=row.road_address or row.land_address,
@@ -1712,11 +1727,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ))
         if "rest_area" in requested_kinds:
             conditions = coordinate_conditions(RestAreaReference)
-            kind_totals["rest_area"] = int(await session.scalar(select(func.count()).select_from(RestAreaReference).where(*conditions)) or 0)
+            kind_totals["rest_area"] = await count_places("rest_area", select(func.count()).select_from(RestAreaReference).where(*conditions))
             total += kind_totals["rest_area"]
-            rows = (await session.scalars(select(RestAreaReference).where(*conditions).order_by(RestAreaReference.name, RestAreaReference.id).limit(per_kind_limit))).all()
+            rows = await rows_places("rest_area", select(RestAreaReference).where(*conditions).order_by(RestAreaReference.name, RestAreaReference.id).limit(per_kind_limit), entities=True)
             for row in rows:
-                items.append(TransportPlaceMapItem(id=row.id, kind="rest_area", source=row.source, name=row.name,
+                items.append(dict(id=row.id, kind="rest_area", source=row.source, name=row.name,
                     longitude=row.longitude, latitude=row.latitude, subtitle=row.direction,
                     line_names=[row.route_name] if row.route_name else [], phone=row.phone_number,
                     facilities=[label for field, label in (("has_gas_station", "주유소"), ("has_lpg_station", "LPG 충전"), ("has_ev_charger", "전기차 충전")) if getattr(row, field) is True],
@@ -1732,12 +1747,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ).where(HighwayIncidentSnapshot.collected_at.between(observed_until - timedelta(days=1), observed_until)).subquery()
             conditions = [ranked_incidents.c.rank == 1, *coordinate_conditions(HighwayIncidentSnapshot)]
             latest_incidents = select(HighwayIncidentSnapshot).join(ranked_incidents, HighwayIncidentSnapshot.id == ranked_incidents.c.id).where(*conditions)
-            kind_totals["highway_incident"] = int(await session.scalar(select(func.count()).select_from(latest_incidents.subquery())) or 0)
+            kind_totals["highway_incident"] = await count_places("highway_incident", select(func.count()).select_from(latest_incidents.subquery()))
             total += kind_totals["highway_incident"]
-            rows = (await session.scalars(latest_incidents.order_by(HighwayIncidentSnapshot.observed_at.desc(), HighwayIncidentSnapshot.id.desc()).limit(per_kind_limit))).all()
+            rows = await rows_places("highway_incident", latest_incidents.order_by(HighwayIncidentSnapshot.observed_at.desc(), HighwayIncidentSnapshot.id.desc()).limit(per_kind_limit), entities=True)
             for row in rows:
                 route = " · ".join(value for value in [row.route_no, row.route_name] if value)
-                items.append(TransportPlaceMapItem(
+                items.append(dict(
                     id=row.id, kind="highway_incident", source=row.source, provider_id=row.identity_key,
                     name=row.point_name or row.incident_type or "도로 돌발", longitude=row.longitude, latitude=row.latitude,
                     line_names=[route] if route else [],
@@ -1746,13 +1761,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ))
         if "bus_terminal" in requested_kinds:
             conditions = coordinate_conditions(BusTerminalReference)
-            kind_totals["bus_terminal"] = int(await session.scalar(select(func.count()).select_from(BusTerminalReference).where(*conditions)) or 0)
+            kind_totals["bus_terminal"] = await count_places("bus_terminal", select(func.count()).select_from(BusTerminalReference).where(*conditions))
             total += kind_totals["bus_terminal"]
-            rows = (await session.scalars(select(BusTerminalReference).where(*conditions)
+            rows = await rows_places("bus_terminal", select(BusTerminalReference).where(*conditions)
                 .order_by(BusTerminalReference.last_seen_at.desc(), BusTerminalReference.id.desc())
-                .limit(per_kind_limit))).all()
+                .limit(per_kind_limit), entities=True)
             for terminal in rows:
-                items.append(TransportPlaceMapItem(
+                items.append(dict(
                     id=terminal.id, kind="bus_terminal", source=terminal.source,
                     provider_id=terminal.terminal_id, name=terminal.terminal_name or terminal.terminal_id,
                     city_name=terminal.city_name,
@@ -1776,7 +1791,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     continue
                 if min_longitude is not None and coordinate and not (min_longitude <= coordinate.lon <= max_longitude and min_latitude <= coordinate.lat <= max_latitude):
                     continue
-                airport_items.append(TransportPlaceMapItem(id=airport.id, kind="airport", source=airport.source,
+                airport_items.append(dict(id=airport.id, kind="airport", source=airport.source,
                     provider_id=airport.code, name=airport.name_ko, longitude=coordinate.lon if coordinate else None,
                     latitude=coordinate.lat if coordinate else None, subtitle=airport.name_en,
                     location_source=metadata.source if metadata else None, updated_at=serialize_utc(airport.updated_at)))
@@ -1787,8 +1802,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         source_models = {"fuel_station": FuelStation, "rail_station": RailStationReference, "ferry_port": FerryPort, "bus_terminal": BusTerminalReference, "airport": Airport, "rest_area": RestAreaReference, "highway_incident": HighwayIncidentSnapshot, "public_parking_lot": PublicParkingLot}
         available_sources: set[str] = set()
         if include_sources:
-            for requested_kind in requested_kinds:
-                available_sources.update((await session.scalars(select(source_models[requested_kind].source).distinct())).all())
+            available_sources = await place_sources(session, requested_kinds, source_models)
         fuel_prices_stale = False
         fuel_prices_last_refreshed_at = None
         if "fuel_station" in requested_kinds:

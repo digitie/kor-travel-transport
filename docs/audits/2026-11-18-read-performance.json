@@ -1,0 +1,82 @@
+{
+  "fixture_rows_per_kind": 800,
+  "equivalent": true,
+  "samples": [
+    {
+      "variant": "baseline",
+      "wall_seconds": 0.9927413929999602,
+      "cpu_seconds": 0.7395829269999998,
+      "sql_count": 32,
+      "items": 4379,
+      "server_timing": "app;dur=984.760, sql;dur=768.527, sql_count;desc=\"26\", cpu;dur=736.236"
+    },
+    {
+      "variant": "candidate",
+      "wall_seconds": 0.26518074799969327,
+      "cpu_seconds": 0.18682117300000023,
+      "sql_count": 6,
+      "items": 4379,
+      "server_timing": "app;dur=258.516, sql;dur=90.966, sql_count;desc=\"6\", cpu;dur=184.331"
+    },
+    {
+      "variant": "baseline",
+      "wall_seconds": 1.1438080010002523,
+      "cpu_seconds": 0.7479630989999997,
+      "sql_count": 26,
+      "items": 4379,
+      "server_timing": "app;dur=1136.591, sql;dur=872.553, sql_count;desc=\"26\", cpu;dur=745.036"
+    },
+    {
+      "variant": "candidate",
+      "wall_seconds": 0.24207694100005028,
+      "cpu_seconds": 0.14506691899999957,
+      "sql_count": 6,
+      "items": 4379,
+      "server_timing": "app;dur=234.847, sql;dur=114.282, sql_count;desc=\"6\", cpu;dur=142.284"
+    },
+    {
+      "variant": "baseline",
+      "wall_seconds": 0.9402369149997867,
+      "cpu_seconds": 0.6552114609999995,
+      "sql_count": 26,
+      "items": 4379,
+      "server_timing": "app;dur=933.250, sql;dur=790.278, sql_count;desc=\"26\", cpu;dur=652.521"
+    },
+    {
+      "variant": "candidate",
+      "wall_seconds": 0.325674109999909,
+      "cpu_seconds": 0.24933020300000042,
+      "sql_count": 6,
+      "items": 4379,
+      "server_timing": "app;dur=318.891, sql;dur=90.933, sql_count;desc=\"6\", cpu;dur=247.026"
+    },
+    {
+      "variant": "baseline",
+      "wall_seconds": 0.865935287999946,
+      "cpu_seconds": 0.5618810509999994,
+      "sql_count": 26,
+      "items": 4379,
+      "server_timing": "app;dur=857.904, sql;dur=723.896, sql_count;desc=\"26\", cpu;dur=559.275"
+    },
+    {
+      "variant": "candidate",
+      "wall_seconds": 0.19711449399983394,
+      "cpu_seconds": 0.12365026099999987,
+      "sql_count": 6,
+      "items": 4379,
+      "server_timing": "app;dur=191.119, sql;dur=90.171, sql_count;desc=\"6\", cpu;dur=121.098"
+    }
+  ],
+  "medians": {
+    "baseline": {
+      "wall_seconds": 0.9664891539998735,
+      "cpu_seconds": 0.6973971939999997,
+      "sql_count": 26.0
+    },
+    "candidate": {
+      "wall_seconds": 0.2536288444998718,
+      "cpu_seconds": 0.1659440459999999,
+      "sql_count": 6.0
+    }
+  }
+}

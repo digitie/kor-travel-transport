@@ -23,6 +23,7 @@ DEFAULT_PATHS = (
     "/v1/transport/highways/traffic?days=7&limit=1000",
     "/v1/transport/highways/incidents?days=7&limit=1000",
     "/v1/transport/fuel/stations?days=7&limit=1000",
+    "/v1/transport/features/places?limit=5000",
     "/v1/transport/features/places?kind=fuel_station&limit=300",
     "/v1/transport/features/places?kind=fuel_station&limit=5000",
     "/v1/transport/features/places?kind=fuel_station&product_code=B027&limit=300",
@@ -56,13 +57,14 @@ def main() -> int:
         parser.error("samples와 threshold-seconds는 양수여야 합니다")
     paths = args.path or default_paths()
     failed = False
-    print("상태\t최대초\t중앙값초\t본문KB\t경로", flush=True)
+    print("상태\t최대초\t중앙값초\t본문KB\tServer-Timing\t경로", flush=True)
     for path in paths:
         if not path.startswith("/") or path.startswith("//"):
             parser.error("--path는 상대 API 경로여야 합니다")
         durations: list[float] = []
         body_size = 0
         status = 0
+        timing = "-"
         for _ in range(args.samples):
             request = Request(args.base_url.rstrip("/") + path, headers={"Accept": "application/json"})
             started = time.perf_counter()
@@ -70,6 +72,7 @@ def main() -> int:
                 with urlopen(request, timeout=30) as response:
                     body_size = len(response.read())
                     status = response.status
+                    timing = response.headers.get("Server-Timing", "-")
             except (HTTPError, URLError, TimeoutError) as exc:
                 print(f"오류\t-\t-\t-\t{path}: {exc}", flush=True)
                 failed = True
@@ -78,7 +81,7 @@ def main() -> int:
         if not durations:
             continue
         maximum = max(durations)
-        print(f"{status}\t{maximum:.3f}\t{statistics.median(durations):.3f}\t{body_size / 1024:.0f}\t{path}", flush=True)
+        print(f"{status}\t{maximum:.3f}\t{statistics.median(durations):.3f}\t{body_size / 1024:.0f}\t{timing}\t{path}", flush=True)
         failed |= status != 200 or maximum > args.threshold_seconds
     return int(failed and args.strict)
 

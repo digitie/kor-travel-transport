@@ -4,16 +4,38 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import OrderedDict
+from weakref import WeakKeyDictionary
 
-from kortravelcommon.reverse_address import reverse_address_tables
 from kortravelcommon.address_providers import VworldKakaoAddressResolver
-from sqlalchemy import DateTime, Float, Text, any_, bindparam, cast, func, literal, select, union_all
+from kortravelcommon.reverse_address import reverse_address_tables
+from sqlalchemy import (
+    DateTime,
+    Float,
+    Text,
+    any_,
+    bindparam,
+    cast,
+    func,
+    literal,
+    select,
+    text,
+    union_all,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, aggregate_order_by
 
 from app.models import (
-    Base, BusTerminalReference, FerryPort, KricStationCode, KricStationMappingRegistry,
-    ParkingCurrent, RailStationReference,
+    Base,
+    BusTerminalReference,
+    FerryPort,
+    KricStationCode,
+    KricStationMappingRegistry,
+    ParkingCurrent,
+    RailStationReference,
 )
+
+_REVISION_CACHE = WeakKeyDictionary()
+_MAX_REVISIONS = 64
 
 
 def _members(column, values):
@@ -45,6 +67,22 @@ async def reference_payload_revision(session, heads, kind: str, revision: str | 
     """DB 값·주소·저장 매핑을 모두 확인한다. 미지원/개발 환경은 기존 완전 구성 경로다."""
     if session.bind.dialect.name != "postgresql" or not revision or revision == "unknown":
         return None
+    # 같은 generation의 수동 수정·주소·mapping도 바뀌므로 완전한 MVCC 가시성도 키에 둔다.
+    # 자기 transaction에서 썼다면 항상 다시 계산한다.
+    visibility, own_xid, isolation = (await session.execute(text(
+        "SELECT pg_current_snapshot()::text, pg_current_xact_id_if_assigned()::text, "
+        "current_setting('transaction_isolation')"
+    ))).one()
+    can_memo = isolation in {"repeatable read", "serializable"} and own_xid is None and not (
+        session.new or session.dirty or session.deleted
+    )
+    cache = _REVISION_CACHE.setdefault(session.bind, OrderedDict())
+    head_key = json.dumps([[h.scope_key, h.generation, h.confirmed_at.isoformat(), h.member_ids, h.proof]
+                           for h in heads], sort_keys=True, separators=(",", ":"))
+    cache_key = (visibility, revision, kind, head_key)
+    if can_memo and cache_key in cache:
+        cache.move_to_end(cache_key)
+        return cache[cache_key]
     ids = sorted({member for head in heads for member in head.member_ids})
     options = {
         "rail-stations-v1": (RailStationReference.__table__, "rail_station", "id"),
@@ -78,4 +116,9 @@ async def reference_payload_revision(session, heads, kind: str, revision: str | 
     namespace = ["reference-input-v1", revision, kind,
                  [[head.scope_key, head.generation, head.confirmed_at.isoformat(), head.member_ids, head.proof] for head in heads],
                  [tuple(row) for row in rows]]
-    return hashlib.sha256(json.dumps(namespace, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    result = hashlib.sha256(json.dumps(namespace, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    if can_memo:
+        cache[cache_key] = result
+        while len(cache) > _MAX_REVISIONS:
+            cache.popitem(last=False)
+    return result

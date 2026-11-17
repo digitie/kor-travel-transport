@@ -1,0 +1,37 @@
+{
+  "scope": "local_synthetic_only",
+  "items": 800,
+  "samples": [
+    {
+      "wall_seconds": 0.04252081000004182,
+      "cpu_seconds": 0.021830349999999887,
+      "sql_count": 7,
+      "page_reads": 0
+    },
+    {
+      "wall_seconds": 0.043620640999961324,
+      "cpu_seconds": 0.020844662000000014,
+      "sql_count": 7,
+      "page_reads": 0
+    },
+    {
+      "wall_seconds": 0.0402417919999607,
+      "cpu_seconds": 0.01959963000000009,
+      "sql_count": 7,
+      "page_reads": 0
+    },
+    {
+      "wall_seconds": 0.039690564000011364,
+      "cpu_seconds": 0.019614441000000093,
+      "sql_count": 7,
+      "page_reads": 0
+    },
+    {
+      "wall_seconds": 0.04374011800018707,
+      "cpu_seconds": 0.023236181000000133,
+      "sql_count": 7,
+      "page_reads": 0
+    }
+  ],
+  "median_seconds": 0.04252081000004182
+}

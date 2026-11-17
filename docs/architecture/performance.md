@@ -226,3 +226,16 @@ Python 할당 peak 중앙값은 136,465→132,479 bytes다. WSL과 ARM은 별도
 이 ARM 결과도 SQLite RAM DB의 공항 helper만 측정했으며 외부 네트워크와 운영 DB에
 접근하지 않았다. 실제 운영 job 전체 CPU·메모리 사용량이나 idle 부하는 아직 증명하지
 않았다. live UI·독립 리뷰·배포는 별도 게이트다. Dagster daemon은 OFF를 유지한다.
+
+## 2026-11-18 다중 지도와 조건부 참조 읽기
+
+다중 종류 PostgreSQL 장소 조회는 정확한 총계와 제한 투영을 한 왕복에 받으며 출처도 한 UNION으로 읽는다.
+일반 요청의 SQL 수는 전체 종류·기본 출처 포함 6개다. `raw_item_json`은 필요한 시설/수동 revision 키만
+투영한다. 요청 관측은 query string 없는 느린 요청 로그와 Server-Timing을 사용한다.
+CPU는 프로세스 누적 CPU 차이이므로 동시 작업의 영향을 포함한다.
+
+참조 304는 불변 content digest·handle·만료·페이지·상태로 payload 읽기 전에 판정한다.
+입력 지문은 generation와 전체 MVCC 가시성이 모두 같을 때만 최대64개 재사용하며 자기 transaction 쓰기는
+항상 재계산한다. 다른 테이블의 commit도 보수적으로 무효화한다. 자세한 측정·미완 운영 수용은
+[보고서](../reports/2026-11-18-read-performance.md)를 따른다. 주차 재구성의 프로세스 이동은 운영 p95
+채택 판정이 남아 있으며 이 변경에 포함하지 않는다.
