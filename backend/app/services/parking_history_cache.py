@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import gzip
+import json
 import logging
 from bisect import bisect_left
 from collections import OrderedDict, defaultdict
@@ -13,6 +14,7 @@ from datetime import datetime, timedelta
 from time import monotonic
 from types import MappingProxyType
 from weakref import WeakValueDictionary
+from uuid import uuid4
 
 import brotli
 from pydantic_core import to_json
@@ -237,22 +239,41 @@ class ParkingHistoryReadCache:
     async def refresh_once(self) -> None:
         fingerprint = await self.source_fingerprint()
         if self.snapshot is None or self.last_fingerprint != fingerprint:
-            refreshed = await load_snapshot(self.session_factory)
-            # 자주 쓰는 30일 전체 결과를 게시 전에 압축한다. 요청 경로에서는
-            # 동일한 시작 행 번호 동안 이 바이트를 재사용한다.
-            cutoff = now_utc() - timedelta(days=30)
-            prepared: OrderedDict[tuple[int, str | None, int | None, str], bytes] = OrderedDict()
-            body = await asyncio.to_thread(refreshed.render, cutoff, None, None)
-            start = bisect_left(refreshed.times, cutoff)
-            for encoding in ("br", "gzip"):
-                prepared[(start, None, None, encoding)] = await asyncio.to_thread(compress_body, body, encoding)
-            # 준비 중 원본이 바뀌었다면 오래된 스냅샷에 새 확인 시각을 찍지 않는다.
-            if await self.source_fingerprint() != fingerprint:
-                logger.info("parking history cache source changed during preparation; retrying")
-                return
-            self.prepared_responses = prepared
-            self.snapshot = refreshed
-            logger.info("parking history cache refreshed rows=%s max_id=%s", len(refreshed.items), refreshed.max_snapshot_id)
+            rebuild_id = uuid4().hex
+            started = monotonic()
+            row_count = None
+            outcome = "failed"
+            logger.warning(json.dumps({"event": "parking_history_rebuild", "phase": "start",
+                "rebuild_id": rebuild_id, "at": now_utc().isoformat(), "duration_ms": 0,
+                "row_count": row_count}, separators=(",", ":")))
+            try:
+                refreshed = await load_snapshot(self.session_factory)
+                row_count = len(refreshed.items)
+                # 자주 쓰는 30일 전체 결과를 게시 전에 압축한다. 요청 경로에서는
+                # 동일한 시작 행 번호 동안 이 바이트를 재사용한다.
+                cutoff = now_utc() - timedelta(days=30)
+                prepared: OrderedDict[tuple[int, str | None, int | None, str], bytes] = OrderedDict()
+                body = await asyncio.to_thread(refreshed.render, cutoff, None, None)
+                start = bisect_left(refreshed.times, cutoff)
+                for encoding in ("br", "gzip"):
+                    prepared[(start, None, None, encoding)] = await asyncio.to_thread(compress_body, body, encoding)
+                # 준비 중 원본이 바뀌었다면 오래된 스냅샷에 새 확인 시각을 찍지 않는다.
+                if await self.source_fingerprint() != fingerprint:
+                    logger.info("parking history cache source changed during preparation; retrying")
+                    outcome = "source_changed"
+                    return
+                self.prepared_responses = prepared
+                self.snapshot = refreshed
+                logger.info("parking history cache refreshed rows=%s max_id=%s", len(refreshed.items), refreshed.max_snapshot_id)
+                outcome = "published"
+            except asyncio.CancelledError:
+                outcome = "cancelled"
+                raise
+            finally:
+                logger.warning(json.dumps({"event": "parking_history_rebuild", "phase": "finish",
+                    "rebuild_id": rebuild_id, "at": now_utc().isoformat(),
+                    "duration_ms": round((monotonic() - started) * 1000, 3),
+                    "row_count": row_count, "outcome": outcome}, separators=(",", ":")))
         self.last_fingerprint = fingerprint
         self.validated_at = monotonic()
         self.validated_at_utc = now_utc()

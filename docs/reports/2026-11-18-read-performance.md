@@ -111,3 +111,25 @@ loopback의 `/health`·`/v1/airports` GET만 0.5초 간격으로 호출한다. �
   이 guard 뒤 메모·자기 쓰기 delta는 WSL/Docker 각각 2 PASS.
 - 전체 CI·운영 300ms·운영 p95 재구성 판정·배포 후 관측은 부모 순차 작업의 미완 항목이다.
 - Map/N150·운영 DB·관리자 계정·기존 GDAL/BuildKit 캐시는 변경하지 않았다.
+
+## 후속 — 실제 재구성 구간 계측
+
+부모가 운영4681dfb에서 전달한 baseline은2026-11-17 22:05:11~22:06:11 UTC다.
+`/health`86건 p95 138.4ms, `/v1/airports`86건 p95 217.1ms, 모두200이었다.
+이때 재구성 시작 marker가 없어 재구성 중/밖 판정에는 사용하지 않는다.
+
+PR208 후속은 실제 rebuild가 필요한 경우에만 JSON 한 줄씩 `phase=start`와 `phase=finish`를 남긴다.
+공통 `event=parking_history_rebuild`, `rebuild_id`로 짝을 맞추며 `at`은 UTC aware ISO 시각,
+`duration_ms`는 monotonic 경과, `row_count`는 load 완료 뒤 확정한다(이전은null).
+종료 `outcome`은 `published`·`source_changed`·`failed`·`cancelled`다.
+무변경5초 폴링은 기록하지 않으며 본문·SQL·bind·지문·비밀값·예외 원문을 넣지 않는다.
+기본 로그 수준에서도 보이도록 warning을 사용한다. 프로세스 강제 종료라면 start만 남을 수 있으므로
+짝 없는 구간은 종료 시각을 추정해 정상 완료로 취급하지 않는다.
+
+관측 JSON의 `samples[].at`~`at+seconds`와 rebuild의 start~finish를 UTC로 대조한다.
+완전히 포함되는200표본과 전혀 겹치지 않는200표본의 p95를 구분하고,
+경계 표본·실패·timeout은 따로 집계한다. 스크립트의 전체 summary만으로 2배 조건을 판정하지 않는다.
+01~03 첫Transport배포 뒤 정상 재구성 구간을 관측해TRN04의 채택 여부를 결정한다.
+
+집중 검증은 기존 주차 캐시 회귀와 시작/끝 짝·성공/변경폐기/실패/취소·무변경 무로그·비밀 비포함을
+WSL/Docker에서 각각18 PASS / PostgreSQL전용1 SKIP로 확인했다. 전체 시험은 반복하지 않았다.

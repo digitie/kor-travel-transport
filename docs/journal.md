@@ -1,5 +1,14 @@
 ## 2026-11-18 — 읽기 관측·다중 지도·참조 304 후보
 
+## 2026-11-18 — 주차 재구성 시작/종료 관측 보완
+
+- 부모 운영4681 baseline의 health86/p95138.4ms·airports86/p95217.1ms는 모두200이나 시작 marker가 없어
+  TRN04판정으로 쓰지 않는다. rebuild만 UTC start/finish·monotonic duration·rowcount·짝ID·상태를 기록한다.
+- WSL/Docker 주차 캐시 집중각18PASS/PG전용1SKIP. 무변경무로그·변경폐기·실패·취소도 짝을 보존한다.
+- [표본 대조 방법](reports/2026-11-18-read-performance.md). 실제 운영 변경/전체시험반복0,
+  01~03배포 뒤 부모가 관측하고TRN04전환을 결정한다.
+
+
 - Map PR1505 §8 T-READ-TRN-01~03: 안전한 느린 요청 로그와 Server-Timing, 정확한 총계/제한 투영/출처 UNION,
   본문 조회 전 조건부 응답과 MVCC 가시성 지문 메모를 구현했다. 기존 mutable-input 무효화 회귀를 보존한다.
 - 합성 동일 DTO의 SQL26→6, CPU697→166ms, 응답966→254ms 및 800개 참조 warm304 42.5ms/페이지읽기0.
