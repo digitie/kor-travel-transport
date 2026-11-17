@@ -1,3 +1,12 @@
+## 2026-11-18 — TRN03 입력 revision과 CI 계측 경계 보정
+
+공용PG의무관commit으로MVCC메모가6회모두무효화된부모운영증거를반영했다.
+0043의입력별transactional epoch/revision과statement trigger로교체하고자기TX미메모·누락503을유지한다.
+실제PG에서다른DB commit뒤fingerprint0,head/source변경뒤1→0과기존주소/코드/registry회귀를확인했다.
+9dfea9b CI의fake sync_engine=None 4FAIL도실엔진계측을보존하는경계수정과집중6PASS로보정했다.
+다음은새HEAD exact CI와부모Weather선행뒤Transport43migration/01~03배포·rebuild계측관측이다.
+운영변경0,TRN04미연결초안은별도branch로유지한다. [정본보고서](reports/2026-11-18-read-performance.md).
+
 ## 2026-11-18 — Transport 읽기 관측·다중 지도·조건부 export
 
 Map PR1505의 T-READ-TRN-01~03을 별도 `codex/transport-read-performance-20261118`에서 구현했다.

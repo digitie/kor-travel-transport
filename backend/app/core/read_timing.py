@@ -19,14 +19,19 @@ _current: ContextVar[ReadTiming | None] = ContextVar("transport_read_timing", de
 
 
 def observe_engine(engine):
-    @event.listens_for(engine.sync_engine, "before_cursor_execute")
+    # 엔진 옵션만 검증하는 기존 test double에는 실제 동기 엔진이 없다.
+    sync_engine = engine.sync_engine
+    if sync_engine is None:
+        return
+
+    @event.listens_for(sync_engine, "before_cursor_execute")
     def before(conn, cursor, statement, parameters, context, executemany):
         timing = _current.get()
         if timing is not None:
             timing.statements += 1
             context._transport_timing = (timing, perf_counter())
 
-    @event.listens_for(engine.sync_engine, "after_cursor_execute")
+    @event.listens_for(sync_engine, "after_cursor_execute")
     def after(conn, cursor, statement, parameters, context, executemany):
         measurement = getattr(context, "_transport_timing", None)
         if measurement is not None:

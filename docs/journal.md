@@ -1,5 +1,17 @@
 ## 2026-11-18 — 읽기 관측·다중 지도·참조 304 후보
 
+## 2026-11-18 — TRN03 precise revision·CI fake-engine 보정
+
+- 공용 PG의 무관 commit 6회가 모두 MVCC 키를 바꾼 부모 증거를 반영해 입력별 epoch/revision으로 교체했다.
+  0043이 9행·7표·36 statement trigger를 추가하며 원본 transaction과 함께 commit/rollback된다.
+- 실제 다른 DB commit 뒤 fingerprint 0, head/source 변경 뒤 1→0, no-op/raw/주소 실패 metadata 제외,
+  수동 UPDATE·주소·codes·registry·signed-zero·자기 TX 미메모·누락503·삭제/TRUNCATE를 확인했다.
+- WSL/Docker PostgreSQL 집중 각각83 PASS. 이전 CI의 fake sync_engine=None 4FAIL은 실엔진 listener를
+  유지하는 경계 수정 뒤 실제 계수/안전로그와 함께 각각6 PASS. OpenAPI 일치·Ruff·문법·diff 정상이다.
+- 다른 DB commit을 섞은 합성304 5회는 fingerprint/페이지읽기0·중앙값42.5ms. 운영 수용으로 확대하지 않는다.
+  [최종 계약과 이력](reports/2026-11-18-read-performance.md). 운영/배포/Map/N150/캐시 변경0이다.
+
+
 ## 2026-11-18 — 주차 재구성 시작/종료 관측 보완
 
 - 부모 운영4681 baseline의 health86/p95138.4ms·airports86/p95217.1ms는 모두200이나 시작 marker가 없어

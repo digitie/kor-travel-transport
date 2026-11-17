@@ -170,13 +170,13 @@ def test_conditional_reference_does_not_read_or_validate_page(export_client, mon
                  params={"limit": 2}).status_code == 200
 
 
-def test_revision_memo_uses_complete_visibility_and_not_generation_only(export_client):
+def test_revision_memo_uses_precise_input_versions_and_not_generation_only(export_client):
     from sqlalchemy import event
     c = export_client
     _prepare(c)
     first = _get(c)
     assert first.status_code == 200, first.text
-    # 최초 handle 쓰기의 XID가 지난 뒤 한 번 새 가시성으로 예열한다.
+    # artifact 쓰기나 무관한 commit도 입력 revision을 바꾸지 않는다.
     assert _get(c).status_code == 200
     statements = []
     def seen(conn, cursor, statement, parameters, context, executemany):

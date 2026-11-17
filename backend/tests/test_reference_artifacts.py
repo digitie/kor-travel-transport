@@ -211,7 +211,8 @@ def test_additive_migration_preserves_legacy_snapshot_and_refuses_destructive_do
                 async with engine.begin() as connection:
                     await connection.run_sync(lambda c:_step(c,"downgrade","0041_public_parking_lots"))
         finally:
+            from app.db.session import ALEMBIC_HEAD
             async with engine.begin() as connection:
-                await connection.run_sync(lambda c:_step(c,"upgrade","0042_reference_export_artifacts"))
+                await connection.run_sync(lambda c:_step(c,"upgrade",ALEMBIC_HEAD))
             await engine.dispose()
     asyncio.run(run())

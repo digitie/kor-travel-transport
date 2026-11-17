@@ -4,6 +4,7 @@ from kortravelcommon.reverse_address import reverse_address_tables
 
 from datetime import date, datetime
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import (
     JSON,
@@ -1184,6 +1185,15 @@ class ServiceExportSnapshotItem(Base):
     )
     ordinal: Mapped[int] = mapped_column(Integer, primary_key=True)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE)
+
+
+class ReferenceExportInputRevision(Base):
+    """참조 export 입력의 transaction-local statement revision. 무관한 PG commit과 독립이다."""
+
+    __tablename__ = "reference_export_input_revisions"
+    component: Mapped[str] = mapped_column(String(40), primary_key=True)
+    epoch: Mapped[str] = mapped_column(String(36), nullable=False, default=lambda: str(uuid4()))
+    revision: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
 
 
 class ReferenceExportState(Base):

@@ -60,17 +60,39 @@ artifact/handle 일치·cursor 범위·만료·현재 상태를 확인한 뒤 **
 304를 반환한다. 상태 변경·다른 페이지·TTL epoch·새 집합은 무효화한다. 기존 소비자는 첫 요청에서
 새 ETag를 받고 이후 동일 규칙으로 조건부 요청할 수 있다. OpenAPI DTO는 바뀌지 않는다.
 
-입력 fingerprint는 engine별 최대 64개를 재사용한다. head generation만 키로 삼으면
-수동 수정·주소·매핑처럼 generation/시각이 그대로인 변경을 놓치므로 PostgreSQL의 **완전한 MVCC snapshot
-(xmin/xmax/진행 중 XID 목록)**과 head·release·kind도 키로 둔다. 자기 transaction에서 쓰기를 했거나
-ORM의 미반영 변경이 있으면 재사용하지 않는다. 다른 테이블의 쓰기도 보수적으로 무효화하므로
-지속 쓰기 중 fingerprint가 매 요청 다시 계산될 수 있다. generation당 한 번이라는 느슨한 캐시로
-정확성을 희생하지 않는다. 기존 미만료 handle은 FK가 보호하므로 재사용 때 불필요한 key-share 잠금과
-XID 발급을 생략한다. 새 handle은 기존 잠금·FK·CAS·GC 경로를 그대로 따른다.
+입력 fingerprint는 engine별 최대64개를 재사용한다. 최초 MVCC snapshot 키는 공용 PG의 무관한
+commit에도 무효화됐다. 부모 운영22:28UTC의6개조회가6개서로다른키였으므로 그 구현을 폐기했다.
+**현재 키는 head·release·kind와 실제 입력별 `(component, epoch, revision)`만 포함한다.**
 
-800개 합성 참조의 warm 304 5회 중앙값은 **42.5ms**, SQL 7개, 페이지 읽기 0회였다.
-[원시 표본](../audits/2026-11-18-reference-304-local.json).
-운영의 기존 4.02초 인용과 직접 비교한 수치가 아니며 운영 300ms 조건은 아직 미검증이다.
+Alembic `0043_reference_input_revisions`는9개 component행과7개실제입력표의36개statement trigger를
+추가한다.4종source,철도codes/registry,provider·target-prefix별주소3종을분리한다.
+INSERT/UPDATE/DELETE/TRUNCATE와원본변경이같은transaction에서commit/rollback된다.
+UPDATE는transition table의동일export투영값을비교해무변경UPDATE·미사용raw·주소checked_at/failures
+변경을제외한다.주소JSON은JSONB로비교하고좌표는float8send로-0/+0까지구분한다.
+TRUNCATE는보수적으로해당component를무효화한다.혼합UPSERT는INSERT/UPDATE별로증가할수있지만
+다음reader는완료된최종revision만읽는다.같은component의다른행변경은보수적으로재계산할수있다.
+
+자기transaction의XID가발급됐거나ORM미반영변경이있으면메모를사용/저장하지않는다.
+RR/serializable에서만재사용하며,입력revision행이누락되면503으로닫는다.
+MVCC·TTL fallback으로조건을완화하지않는다.epoch는migration재설치뒤counter숫자가재사용돼도
+이전메모키와충돌하지않게한다.새컬럼/provider변경이동결된trigger투영과어긋나면계약시험이실패한다.
+미만료handle은기존FK가보호하므로재사용시불필요한key-share잠금과XID발급을생략한다.
+
+현재pin Common c289b462의패키지에는범용PG입력revision유틸이없어Transport스키마소유migration으로
+구현했다. PostgreSQL의[statement trigger·transition table 규칙](https://www.postgresql.org/docs/18/sql-createtrigger.html)을
+따라event별AFTER trigger를분리하며full table scan대신현재statement의변경행만비교한다.
+
+800개합성참조에서매표본직전다른DB transaction을실제로commit한5회304는중앙값**42.5ms**,
+SQL7개·fingerprint계산0회·페이지읽기0회였다.
+[현재원시표본](../audits/2026-11-18-reference-304-precise-revision.json).
+export microbenchmark는관계없는주차재구성background task를명시적으로제외했다.
+이결과도운영ARM의300ms수용을뜻하지않는다.초기MVCC정적표본은이력으로만
+[보존](../audits/2026-11-18-reference-304-local.json)한다.
+
+실제PG시험은다른DB commit3회뒤fingerprint0,head변경/동일head의source변경뒤각1회·다음0,
+bulk statement한번증가·rollback복구·주소/매핑/코드/수동위치/signed-zero·자기TX미메모·
+삭제/TRUNCATE의오래된본문차단·revision누락503을확인했다.새DDL과실제트리거는로컬전용DB에서만
+적용했다.운영migration·이미지배포는부모가Weather다음순서로수행한다.
 
 ### T-READ-TRN-04 — 주차 캐시 재구성 채택 판정 대기
 
@@ -107,7 +129,7 @@ loopback의 `/health`·`/v1/airports` GET만 0.5초 간격으로 호출한다. �
   Docker는 기존 `python:3.13` 이미지와 이 작업의 잠금 의존성 venv를 read-only 재사용했다.
   새 제품 이미지 빌드나 GDAL 재컴파일을 뜻하지 않는다.
 - 후속 자기 transaction 쓰기·일반 유가 이력 ETag 회귀 44 PASS, OpenAPI 정본 일치.
-  전체 MVCC 메모는 RR/serializable에서만 사용하고 READ COMMITTED에서는 비활성이다.
+  입력 지문 메모는 RR/serializable에서만 사용하고 READ COMMITTED에서는 비활성이다.
   이 guard 뒤 메모·자기 쓰기 delta는 WSL/Docker 각각 2 PASS.
 - 전체 CI·운영 300ms·운영 p95 재구성 판정·배포 후 관측은 부모 순차 작업의 미완 항목이다.
 - Map/N150·운영 DB·관리자 계정·기존 GDAL/BuildKit 캐시는 변경하지 않았다.
@@ -133,3 +155,20 @@ PR208 후속은 실제 rebuild가 필요한 경우에만 JSON 한 줄씩 `phase=
 
 집중 검증은 기존 주차 캐시 회귀와 시작/끝 짝·성공/변경폐기/실패/취소·무변경 무로그·비밀 비포함을
 WSL/Docker에서 각각18 PASS / PostgreSQL전용1 SKIP로 확인했다. 전체 시험은 반복하지 않았다.
+
+## 후속 — CI 계측 test double 경계
+
+부모가전달한9dfea9b의공식CI44187315131은backend1988PASS/2SKIP/4FAIL이었다.
+4개모두`test_postgres_engines_set_server_statement_timeout`의`sync_engine=None`테스트더블에
+SQLAlchemy이벤트를등록한오류다.실제동기엔진이없는경계에서만계측등록을건너뛰고,
+실엔진의before/after listener는보존했다.그4개와실제SQL수/안전로그2개를집중6PASS로확인했다.
+새source의최종CI로이전전체결과를소급하지않는다.
+
+## 최종 입력 revision 집중 검증
+
+0043 적용 뒤 WSL PostgreSQL과 Docker PostgreSQL에서 각각 **83 PASS**다.
+실제 입력 변경·주소/코드/registry·버스/항구/주차 export·migration 왕복·lifespan guard를 포함한다.
+CI에서 실패한 fake-engine 4개와 실제 SQL 계수/안전 로그 2개도 WSL/Docker 각각 **6 PASS**로 확인했다.
+Ruff·문법·diff 검사와 OpenAPI 정본 일치를 확인했다. 전체 backend는 반복하지 않고 새 HEAD의 공식 CI로 확인한다.
+0043은 revision 표와 trigger만 추가하며 기존 원본·snapshot·artifact 본문을 갱신하지 않는다.
+운영에서 사용할 이미지의 Alembic head도 0043으로 올렸으므로 부모 배포 때 정식 migration을 함께 실행해야 한다.

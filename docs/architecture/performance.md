@@ -235,7 +235,9 @@ Python 할당 peak 중앙값은 136,465→132,479 bytes다. WSL과 ARM은 별도
 CPU는 프로세스 누적 CPU 차이이므로 동시 작업의 영향을 포함한다.
 
 참조 304는 불변 content digest·handle·만료·페이지·상태로 payload 읽기 전에 판정한다.
-입력 지문은 generation와 전체 MVCC 가시성이 모두 같을 때만 최대64개 재사용하며 자기 transaction 쓰기는
-항상 재계산한다. 다른 테이블의 commit도 보수적으로 무효화한다. 자세한 측정·미완 운영 수용은
-[보고서](../reports/2026-11-18-read-performance.md)를 따른다. 주차 재구성의 프로세스 이동은 운영 p95
-채택 판정이 남아 있으며 이 변경에 포함하지 않는다.
+입력 지문은 head와실제입력별transactional `(component,epoch,revision)`이같을때만최대64개재사용한다.
+공용PG의다른DB/다른표commit은무효화하지않는다.자기transaction쓰기때는항상재계산하고저장하지않는다.
+0043의9component/36statement trigger가원본과함께증가하며무변경투영은제외한다.
+revision구성누락은503이고MVCC/TTLfallback은없다.자세한측정·미완운영수용은
+[보고서](../reports/2026-11-18-read-performance.md)를따른다.주차재구성의프로세스이동은운영p95
+채택판정이남아있으며이변경에포함하지않는다.

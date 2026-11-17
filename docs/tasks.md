@@ -7,7 +7,7 @@
 
 - [ ] **T-READ-TRN-01** — 요청 시간·SQL 수/시간·프로세스 CPU와 안전한 route template 로그/Server-Timing 구현. draft 검증 중. [증거](reports/2026-11-18-read-performance.md).
 - [ ] **T-READ-TRN-02** — 다중 종류 조회 SQL 26→6·CPU 697→166ms와 본문 동등성 확인. 기존 저장 데이터 API 1초 backlog와 통합하며 운영 수용 대기.
-- [ ] **T-READ-TRN-03** — payload 조회 전 304와 MVCC 기반 입력 지문 재사용 구현. 합성 42.5ms/페이지 읽기0, 운영 300ms 검증 대기.
+- [ ] **T-READ-TRN-03** — payload 조회 전 304와 0043 입력별 transactional revision 구현. 무관 DB commit 뒤 fingerprint 0, head/source 변경 뒤 1→0. 합성 42.5ms·페이지 읽기 0. 새 exact CI와 운영 300ms 검증 대기.
 - [ ] **T-READ-TRN-04** — 합성 52만 행 재구성 간섭 측정. 운영 p95 2배 조건의 확인 전에는 구조를 변경하지 않는다. 부모의 bounded 관측·배포 순서 대기.
 
 ## 2026-11-17 — 읽기 성능 계획(세 서비스 공통)

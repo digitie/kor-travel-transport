@@ -410,3 +410,16 @@ fuel_region_summaries는 성공 수집 세대별 시도·시군구·유종의 �
 ## 0039 시간표 파서 버전
 
 요청 원장의 nullable `provider_revision`은 SDK의 실제 파서 버전을 보존한다. 기존 행은 NULL로 남긴다. 정상본은 24시간 재사용하고 같은 파서의 실패는 재조회하지 않는다. 파서가 수정됐을 때 이전 파서의 error만 한 번 다시 읽으며 인증·할당량 전역 보호는 유지한다. 원 실패 CollectionRun·RawApiResponse를 삭제하거나 정상으로 바꾸지 않는다. 새 원문 기록에도 파서 버전을 남긴다.
+
+## 참조 export 입력 revision (0043)
+
+`reference_export_input_revisions`는component(PK),epoch(UUID문자열),revision(bigint)의9행이다.
+epoch는migration설치별로새로발급하고revision은원본transaction의statement trigger가증가시킨다.
+원본삭제나보존정책을바꾸지않는다.7개입력표에9개component별INSERT/UPDATE/DELETE/TRUNCATE
+trigger36개를두며,UPDATE전후의export관련투영만비교한다.주소payload의JSON/JSONB와좌표float비트도
+원본fingerprint와동일하게비교한다.트리거가 붙은 표와 투영은0043에동결하고계약시험으로모델drift를막는다.
+
+reader는head/release/kind와component별epoch/revision을키로사용한다.
+관계없는PG commit은메모를무효화하지않고관련입력변경은다음RR에서즉시감지한다.
+revision행누락은503이다.카운터행의UPDATE잠금이생기므로원본collector/API의기존lock/statement상한을
+유지하며9행전체를단일전역counter로합치지않는다. [구현·시험·한계](../reports/2026-11-18-read-performance.md).
