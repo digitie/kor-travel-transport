@@ -1,3 +1,7 @@
+## 2026-11-17 — 공통화 재조사 계획 포인터
+
+kor-travel-common이 다섯 저장소를 다시 조사해 계획을 냈다(Common `docs/plan/commonization-plan-2026-11-17.md`, 적대 리뷰 2회 반영, Transport 조사 기준 `60095379`). Transport 몫은 Common `T-434`·`T-435`·`T-436`·`T-437`·`T-482a`·`T-482b`이며 `docs/tasks.md`에 포인터 한 항목과, 공통화와 별개인 보안 헤더 점검 항목 하나를 뒀다. 현재 상태와 다음 한 작업은 바뀌지 않는다. 문서 전용이고 코드·운영 변경은 0이다.
+
 ## 2026-11-15 — 독립 검토의 통계 경고·예약 복구 보정
 
 전체 CI43675611381이 성공한 후보 `893a2694ebb0e7d6cbfcb4edf0993ec84c85a2c0`을 James·Popper가 독립 검토했다. P0/P1은 없고 James의 공통 시각·미해결 예약 두 건과 두 리뷰어가 확인한 유가 통계 게시 경고 누락을 수정했다. 원본 성공 상태를 유지하며 게시 지연만 경고한다. 실제 경계 WSL/Docker·원 모집단 보존을 확인했고 최종 정확 CI·두 delta 검토·머지는 [PR204](https://github.com/digitie/kor-travel-transport/pull/204)와 [보고서](reports/2026-11-15-dagster-admin-resilience.md)에 정산한다. 이미지·실제 수집/액션·환경·스키마 변경0이다.
