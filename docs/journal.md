@@ -1,6 +1,9 @@
 ## 2026-11-17 — 공통화 재조사 계획 포인터
 
 kor-travel-common이 다섯 저장소를 다시 조사해 계획 초안을 냈다(Common `docs/plan/commonization-plan-2026-11-17.md`, Transport 조사 기준 `60095379`). Transport 몫은 Common `T-434`·`T-482b`·`T-482a`·`T-435`이며 `docs/tasks.md`에 포인터 한 항목만 뒀다. 현재 상태와 다음 한 작업은 바뀌지 않는다. 문서 전용이고 코드·운영 변경은 0이다. Common 계획은 독립 리뷰 전 초안이다.
+## 2026-11-17 — 읽기 성능 계획 포인터
+
+Map 저장소가 Map·weather·transport의 읽기 경로 검토와 작업 목록을 한 문서로 정리했고, transport 쪽 요청 네 건(`T-READ-TRN-01`~`04`)을 `docs/tasks.md`의 `T-READ-PLAN-20261117`로 가리킨다. 코드는 main `60095379`를 읽기만 했다. odroid에서는 2026-11-17 03:38~03:46Z에 읽기 전용으로 부하와 컨테이너 mount·프로세스만 확인했다 — CPU idle 0%(Dagster run 작업), backend는 uvicorn 1개 RSS 405 MB(한도 512 MB), PG 데이터가 있는 NVMe의 남은 공간 1.9 GB. 한 시점의 표본이며 transport endpoint는 호출하지 않았다. 제품 코드·설정·운영 변경0. `docs/resume.md`의 현재·다음 작업은 바꾸지 않았다. [계획](https://github.com/digitie/kor-travel-map/blob/main/docs/reports/2026-11-17-read-performance-plan.md).
 
 ## 2026-11-15 — 독립 검토의 통계 경고·예약 복구 보정
 
