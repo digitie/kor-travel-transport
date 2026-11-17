@@ -64,18 +64,20 @@ def _decode_cursor(value: str, key: bytes) -> dict:
 
 def _response(
     page: FuelPriceHistoryExportPage | FuelStationPriceHistoryResponse, request: Request, *, cursor_epoch: int | None,
-    cursor_revision: str | None,
+    cursor_revision: str | None, etag_override: str | None = None,
 ) -> Response:
     payload = page.model_dump(mode="json")
-    semantic = {**payload, "meta": {k: v for k, v in payload["meta"].items() if k != "generated_at"}}
-    # cursor는 같은 집합/페이지의 다른 발급시각이어도 같은 탐색을 제공한다.
-    semantic.pop("next_cursor")
-    # TTL보다 먼저 바뀌는 고정 bucket을 ETag에 넣어 304가 만료 cursor만
-    # 영구 재사용하게 만들지 않는다. 같은 bucket 안의 cursor는 모두 유효하다.
-    semantic["cursor_epoch"] = cursor_epoch
-    semantic["cursor_revision"] = cursor_revision
-    digest = hashlib.sha256(json.dumps(semantic, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-    etag = f'W/"{digest}"'
+    etag = etag_override
+    if etag is None:
+        semantic = {**payload, "meta": {k: v for k, v in payload["meta"].items() if k != "generated_at"}}
+        # cursor는 같은 집합/페이지의 다른 발급시각이어도 같은 탐색을 제공한다.
+        semantic.pop("next_cursor")
+        # TTL보다 먼저 바뀌는 고정 bucket을 ETag에 넣어 304가 만료 cursor만
+        # 영구 재사용하게 만들지 않는다. 같은 bucket 안의 cursor는 모두 유효하다.
+        semantic["cursor_epoch"] = cursor_epoch
+        semantic["cursor_revision"] = cursor_revision
+        digest = hashlib.sha256(json.dumps(semantic, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        etag = f'W/"{digest}"'
     headers = {"ETag": etag, "Vary": "Accept-Encoding", "Cache-Control": "private, no-cache"}
     candidates = request.headers.get("if-none-match", "").split(",")
     if any(tag.strip() == "*" or tag.strip().removeprefix("W/") == etag[2:] for tag in candidates):

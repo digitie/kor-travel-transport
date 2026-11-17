@@ -541,3 +541,48 @@ def test_matching_history_requests_share_compression_in_flight(monkeypatch) -> N
         assert json.loads(gzip.decompress(results[0][0]))["items"][0]["parking_lot_id"] == 1
         assert calls == 1
     asyncio.run(check())
+
+
+@pytest.mark.parametrize("outcome", ["published", "source_changed", "failed", "cancelled"])
+def test_rebuild_interval_logs_are_paired_safe_and_skip_unchanged(monkeypatch, caplog, outcome):
+    now = datetime(2026, 11, 18, tzinfo=UTC)
+    cache = history_cache.ParkingHistoryReadCache(None)
+    calls = 0
+    async def fingerprint():
+        nonlocal calls
+        calls += 1
+        return (2 if outcome == "source_changed" and calls > 1 else 1, 0, 0, 0)
+    async def load(_factory):
+        if outcome == "failed":
+            raise ValueError("secret-query-or-password")
+        if outcome == "cancelled":
+            raise asyncio.CancelledError()
+        return history_cache.ParkingHistorySnapshot.from_rows(now - timedelta(days=30), 1, [_row(now, 1)])
+    monkeypatch.setattr(cache, "source_fingerprint", fingerprint)
+    monkeypatch.setattr(history_cache, "load_snapshot", load)
+    monkeypatch.setattr(history_cache, "now_utc", lambda: now)
+    if outcome in {"failed", "cancelled"}:
+        with pytest.raises(ValueError if outcome == "failed" else asyncio.CancelledError):
+            asyncio.run(cache.refresh_once())
+    else:
+        asyncio.run(cache.refresh_once())
+    events = [json.loads(record.getMessage()) for record in caplog.records
+              if record.getMessage().startswith('{"event":"parking_history_rebuild"')]
+    assert len(events) == 2
+    start, finish = events
+    assert start["phase"] == "start" and finish["phase"] == "finish"
+    assert start["rebuild_id"] == finish["rebuild_id"]
+    assert len(start["rebuild_id"]) == 32
+    assert start["at"] == finish["at"] == now.isoformat()
+    assert start["row_count"] is None and start["duration_ms"] == 0
+    assert finish["row_count"] == (None if outcome in {"failed", "cancelled"} else 1)
+    assert finish["duration_ms"] >= 0 and finish["outcome"] == outcome
+    assert set(start) == {"event", "phase", "rebuild_id", "at", "duration_ms", "row_count"}
+    assert set(finish) == {*start, "outcome"}
+    assert "secret" not in caplog.text and "password" not in caplog.text
+    if outcome == "published":
+        caplog.clear()
+        asyncio.run(cache.refresh_once())
+        assert not caplog.records
+    else:
+        assert cache.snapshot is None and cache.validated_at == 0

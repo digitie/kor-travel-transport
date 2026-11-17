@@ -145,3 +145,71 @@ def test_rail_catalog_projection_preserves_linked_and_unlinked_places(export_cli
     response = c.get("/v1/transport/rail/stations")
     assert response.status_code == 200
     assert response.json()["items"] == result.model_dump(mode="json")["items"]
+
+
+def test_conditional_reference_does_not_read_or_validate_page(export_client, monkeypatch):
+    from sqlalchemy import event
+    c = export_client
+    _prepare(c)
+    first = _get(c)
+    assert first.status_code == 200, first.text
+    statements = []
+    def seen(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+    engine = c.app.state.engine.sync_engine
+    event.listen(engine, "before_cursor_execute", seen)
+    try:
+        same = c.get(PATH, headers={**HEADERS, "If-None-Match": first.headers["ETag"]}, params={"limit": 1})
+    finally:
+        event.remove(engine, "before_cursor_execute", seen)
+    assert same.status_code == 304, same.text
+    assert not any("reference_export_artifact_items" in sql or "service_export_snapshot_items" in sql
+                   for sql in statements)
+    # limit와 stale 상태는 digest가 같아도 다른 표현이다.
+    assert c.get(PATH, headers={**HEADERS, "If-None-Match": first.headers["ETag"]},
+                 params={"limit": 2}).status_code == 200
+
+
+def test_revision_memo_uses_precise_input_versions_and_not_generation_only(export_client):
+    from sqlalchemy import event
+    c = export_client
+    _prepare(c)
+    first = _get(c)
+    assert first.status_code == 200, first.text
+    # artifact 쓰기나 무관한 commit도 입력 revision을 바꾸지 않는다.
+    assert _get(c).status_code == 200
+    statements = []
+    def seen(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+    engine = c.app.state.engine.sync_engine
+    event.listen(engine, "before_cursor_execute", seen)
+    try:
+        same = c.get(PATH, headers={**HEADERS, "If-None-Match": first.headers["ETag"]}, params={"limit": 1})
+    finally:
+        event.remove(engine, "before_cursor_execute", seen)
+    assert same.status_code == 304, same.text
+    assert not any("string_agg" in sql for sql in statements)
+    async def change(s):
+        await s.execute(update(RailStationReference).values(station_name="generation 그대로인 새 역명"))
+    _run(c, change)
+    result = c.get(PATH, headers={**HEADERS, "If-None-Match": first.headers["ETag"]}, params={"limit": 1})
+    assert result.status_code == 200, result.text
+    assert result.json()["items"][0]["name"] == "generation 그대로인 새 역명"
+
+
+def test_revision_memo_bypasses_own_uncommitted_writes(export_client):
+    from app.services.reference_export_revision import reference_payload_revision
+    c = export_client
+    _prepare(c)
+    async def verify(s):
+        await export_references._snapshot_transaction(s)
+        spec = next(spec for spec in export_references.reference_specs(c.app.state.settings)
+                    if spec.kind == "rail-stations-v1")
+        heads = await export_references._reference_heads(s, spec)
+        first = await reference_payload_revision(s, heads, spec.kind, "test-own-writes")
+        await s.execute(update(RailStationReference).values(station_name="같은 transaction 첫 변경"))
+        second = await reference_payload_revision(s, heads, spec.kind, "test-own-writes")
+        await s.execute(update(RailStationReference).values(station_name="같은 transaction 둘째 변경"))
+        third = await reference_payload_revision(s, heads, spec.kind, "test-own-writes")
+        assert len({first, second, third}) == 3
+    _run(c, verify)

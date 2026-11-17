@@ -1,3 +1,34 @@
+## 2026-11-18 — 읽기 관측·다중 지도·참조 304 후보
+
+## 2026-11-18 — TRN03 precise revision·CI fake-engine 보정
+
+- 공용 PG의 무관 commit 6회가 모두 MVCC 키를 바꾼 부모 증거를 반영해 입력별 epoch/revision으로 교체했다.
+  0043이 9행·7표·36 statement trigger를 추가하며 원본 transaction과 함께 commit/rollback된다.
+- 실제 다른 DB commit 뒤 fingerprint 0, head/source 변경 뒤 1→0, no-op/raw/주소 실패 metadata 제외,
+  수동 UPDATE·주소·codes·registry·signed-zero·자기 TX 미메모·누락503·삭제/TRUNCATE를 확인했다.
+- WSL/Docker PostgreSQL 집중 각각83 PASS. 이전 CI의 fake sync_engine=None 4FAIL은 실엔진 listener를
+  유지하는 경계 수정 뒤 실제 계수/안전로그와 함께 각각6 PASS. OpenAPI 일치·Ruff·문법·diff 정상이다.
+- 다른 DB commit을 섞은 합성304 5회는 fingerprint/페이지읽기0·중앙값42.5ms. 운영 수용으로 확대하지 않는다.
+  [최종 계약과 이력](reports/2026-11-18-read-performance.md). 운영/배포/Map/N150/캐시 변경0이다.
+
+
+## 2026-11-18 — 주차 재구성 시작/종료 관측 보완
+
+- 부모 운영4681 baseline의 health86/p95138.4ms·airports86/p95217.1ms는 모두200이나 시작 marker가 없어
+  TRN04판정으로 쓰지 않는다. rebuild만 UTC start/finish·monotonic duration·rowcount·짝ID·상태를 기록한다.
+- WSL/Docker 주차 캐시 집중각18PASS/PG전용1SKIP. 무변경무로그·변경폐기·실패·취소도 짝을 보존한다.
+- [표본 대조 방법](reports/2026-11-18-read-performance.md). 실제 운영 변경/전체시험반복0,
+  01~03배포 뒤 부모가 관측하고TRN04전환을 결정한다.
+
+
+- Map PR1505 §8 T-READ-TRN-01~03: 안전한 느린 요청 로그와 Server-Timing, 정확한 총계/제한 투영/출처 UNION,
+  본문 조회 전 조건부 응답과 MVCC 가시성 지문 메모를 구현했다. 기존 mutable-input 무효화 회귀를 보존한다.
+- 합성 동일 DTO의 SQL26→6, CPU697→166ms, 응답966→254ms 및 800개 참조 warm304 42.5ms/페이지읽기0.
+- 넓은 PG135PASS/1FAIL의 key-share XID 원인을 고친 뒤 WSL/Docker 집중 각38PASS.
+  운영/전체CI 수용으로 소급하지 않는다. [근거·원실패·대기 작업](reports/2026-11-18-read-performance.md).
+- T-READ-TRN-04는 합성52만 행 재구성 간섭만 측정하고 운영 p95 채택 조건 전 구조 변경0.
+  부모 Weather 선행 순서를 유지하며 draft PR까지만 작성한다.
+
 ## 2026-11-17 — 공통화 재조사 계획 포인터
 
 kor-travel-common이 다섯 저장소를 다시 조사해 계획을 냈다(Common `docs/plan/commonization-plan-2026-11-17.md`, 적대 리뷰 2회 반영, Transport 조사 기준 `60095379`). Transport 몫은 Common `T-434`·`T-435`·`T-436`·`T-437`·`T-482a`·`T-482b`이며 `docs/tasks.md`에 포인터 한 항목과, 공통화와 별개인 보안 헤더 점검 항목 하나를 뒀다. 현재 상태와 다음 한 작업은 바뀌지 않는다. 문서 전용이고 코드·운영 변경은 0이다.

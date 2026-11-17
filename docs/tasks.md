@@ -3,6 +3,13 @@
 - [ ] **COMMON-PLAN-20261117 / P2** — kor-travel-common의 공통화 재조사 계획(`docs/plan/commonization-plan-2026-11-17.md`) 가운데 Transport가 실행하는 task를 추적한다. 선행 없음: Common `T-437`(`components/ui/*` 순수 재수출 shim 13개를 공통 경로 직접 import로, 릴리스 불필요), `T-434`(관리자 프론트 `lib/navigation.ts`의 판정 본체를 공통 `sanitizeLocalPath` 호출로 바꾸는 중복 제거. `%20`이 든 경로처럼 결과가 달라지는 입력이 있어 받아들일지 먼저 정한다), `T-482b`(job별 인프라 재시도 sensor 3개를 다중 job sensor 1개로. 합친 sensor는 tick당 RunRequest 하나, 급하지 않다). Common 작업 뒤: `T-436`(guard 호출 SHA를 Common이 지정한 채택 커밋으로, `T-024` 뒤), `T-435`(선택형 패키지 `@kor-travel/admin-kit` 채택, `T-221` 뒤), `T-482a`(로컬 수집 결과 tag 함수를 공통 구현으로, `T-313` 뒤, 급하지 않다). Common `T-025`(ui·tokens patch 릴리스) 전에 `T-436`이 병합되지 않으면 그날 ui·tokens를 재vendor해야 한다(Common은 릴리스 전에 이 팀의 확인을 받는다). `T-435`은 새 guard를 쓰고 있으면 첫 단계로 호출 SHA를 Common이 지정한 admin-kit 채택 커밋으로 올리고 ui·tokens를 재vendor한다. 범위·수용 기준·되돌리기는 Common `docs/tasks/`의 상세 파일이 정본이며 여기 복제하지 않는다. 시점은 Transport 유지 팀이 정한다.
 - [ ] **SECURITY-HEADERS-CHECK-20261117 / P2** — 공통화 항목은 아니다. 조사 중 백엔드 보안 헤더의 HSTS 발급 조건이 PinVi가 #344에서 정한 방식과 다르다는 것을 봤다. Transport 유지 팀이 점검한다(Common 계획 §3.2 K-25).
 
+## 2026-11-18 — 읽기 성능 구현·운영 수용
+
+- [ ] **T-READ-TRN-01** — 요청 시간·SQL 수/시간·프로세스 CPU와 안전한 route template 로그/Server-Timing 구현. draft 검증 중. [증거](reports/2026-11-18-read-performance.md).
+- [ ] **T-READ-TRN-02** — 다중 종류 조회 SQL 26→6·CPU 697→166ms와 본문 동등성 확인. 기존 저장 데이터 API 1초 backlog와 통합하며 운영 수용 대기.
+- [ ] **T-READ-TRN-03** — payload 조회 전 304와 0043 입력별 transactional revision 구현. 무관 DB commit 뒤 fingerprint 0, head/source 변경 뒤 1→0. 합성 42.5ms·페이지 읽기 0. 새 exact CI와 운영 300ms 검증 대기.
+- [ ] **T-READ-TRN-04** — 합성 52만 행 재구성 간섭 측정. 운영 p95 2배 조건의 확인 전에는 구조를 변경하지 않는다. 부모의 bounded 관측·배포 순서 대기.
+
 ## 2026-11-17 — 읽기 성능 계획(세 서비스 공통)
 
 - [ ] **T-READ-PLAN-20261117** — Map 저장소의 [읽기 성능 계획](https://github.com/digitie/kor-travel-map/blob/main/docs/reports/2026-11-17-read-performance-plan.md) §8(단계 순 작업 목록)이 transport 쪽 요청 `T-READ-TRN-01`~`04`(요청 시간·SQL 문장 수 기록, `features/places`의 왕복 축소, 참조 export의 싼 조건부 응답, 주차 이력 캐시 재구성을 읽기 프로세스 밖으로)의 정본이다. PinVi는 교통을 Map `/v1/service/transport/*`(Map Valkey)로만 읽으므로 이 저장소의 읽기 소비자는 관리·주차 화면과 Map 적재(`/v1/service/exports/*`)다. 계획이 적은 transport 수치는 기존 보고서의 인용이고 다시 재지 않았다. 계획은 이 저장소의 기존 작업(`T-READ-MAX-01`~`03`, 2026-11-08 대량 유가 지도)을 정본으로 보고 그 위에 얹는다 — `T-READ-TRN-02`는 여러 종류를 함께 받는 요청으로 좁혔고 저장 데이터 API 1초 목표 backlog와 한 작업으로 합친다. 착수할 때 항목마다 이 원장에 개별 task로 옮긴다. Map PR이 머지되기 전에는 Map 브랜치 `docs/read-performance-plan-20261117`에서 읽는다.

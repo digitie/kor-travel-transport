@@ -4,16 +4,38 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import OrderedDict
+from weakref import WeakKeyDictionary
 
-from kortravelcommon.reverse_address import reverse_address_tables
 from kortravelcommon.address_providers import VworldKakaoAddressResolver
-from sqlalchemy import DateTime, Float, Text, any_, bindparam, cast, func, literal, select, union_all
+from kortravelcommon.reverse_address import reverse_address_tables
+from sqlalchemy import (
+    DateTime,
+    Float,
+    Text,
+    any_,
+    bindparam,
+    cast,
+    func,
+    literal,
+    select,
+    union_all,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, aggregate_order_by
 
 from app.models import (
-    Base, BusTerminalReference, FerryPort, KricStationCode, KricStationMappingRegistry,
-    ParkingCurrent, RailStationReference,
+    Base,
+    BusTerminalReference,
+    FerryPort,
+    KricStationCode,
+    KricStationMappingRegistry,
+    ParkingCurrent,
+    RailStationReference,
+    ReferenceExportInputRevision,
 )
+
+_REVISION_CACHE = WeakKeyDictionary()
+_MAX_REVISIONS = 64
 
 
 def _members(column, values):
@@ -45,6 +67,36 @@ async def reference_payload_revision(session, heads, kind: str, revision: str | 
     """DB 값·주소·저장 매핑을 모두 확인한다. 미지원/개발 환경은 기존 완전 구성 경로다."""
     if session.bind.dialect.name != "postgresql" or not revision or revision == "unknown":
         return None
+    components = {
+        "bus-terminals-v1": ("bus_source", "address_bus_terminal"),
+        "ferry-ports-v1": ("ferry_source", "address_ferry_port"),
+        "rail-stations-v1": ("rail_source", "address_rail_station", "rail_codes", "rail_registry"),
+        "parking-current-v1": ("parking_source",),
+    }.get(kind)
+    if components is None:
+        return None
+    # 같은 RR에서 실제 입력별 transactional counter만 읽는다. 다른 DB/표의 commit은 키와 무관하다.
+    records = (await session.execute(select(
+        ReferenceExportInputRevision.component, ReferenceExportInputRevision.epoch, ReferenceExportInputRevision.revision,
+        func.pg_current_xact_id_if_assigned().cast(Text).label("own_xid"),
+        func.current_setting("transaction_isolation").label("isolation"),
+    ).where(ReferenceExportInputRevision.component.in_(components))
+      .order_by(ReferenceExportInputRevision.component))).all()
+    if len(records) != len(components):
+        from fastapi import HTTPException
+        raise HTTPException(503, "참조 입력 revision 구성이 완전하지 않습니다.")
+    own_xid, isolation = records[0].own_xid, records[0].isolation
+    input_versions = tuple((row.component, row.epoch, row.revision) for row in records)
+    can_memo = isolation in {"repeatable read", "serializable"} and own_xid is None and not (
+        session.new or session.dirty or session.deleted
+    )
+    cache = _REVISION_CACHE.setdefault(session.bind, OrderedDict())
+    head_key = json.dumps([[h.scope_key, h.generation, h.confirmed_at.isoformat(), h.member_ids, h.proof]
+                           for h in heads], sort_keys=True, separators=(",", ":"))
+    cache_key = (input_versions, revision, kind, head_key)
+    if can_memo and cache_key in cache:
+        cache.move_to_end(cache_key)
+        return cache[cache_key]
     ids = sorted({member for head in heads for member in head.member_ids})
     options = {
         "rail-stations-v1": (RailStationReference.__table__, "rail_station", "id"),
@@ -78,4 +130,9 @@ async def reference_payload_revision(session, heads, kind: str, revision: str | 
     namespace = ["reference-input-v1", revision, kind,
                  [[head.scope_key, head.generation, head.confirmed_at.isoformat(), head.member_ids, head.proof] for head in heads],
                  [tuple(row) for row in rows]]
-    return hashlib.sha256(json.dumps(namespace, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    result = hashlib.sha256(json.dumps(namespace, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    if can_memo:
+        cache[cache_key] = result
+        while len(cache) > _MAX_REVISIONS:
+            cache.popitem(last=False)
+    return result

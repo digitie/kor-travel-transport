@@ -223,16 +223,20 @@ async def _parking_payload_batches(session, heads):
 
 
 async def _artifact_snapshot(session, heads, spec, input_revision, started):
-    artifact, _ = await prepare_artifact(session, heads, spec, input_revision, started=started)
     now = now_utc()
     generation = cache_generation(input_revision, now)
     cached = await session.scalar(select(ServiceExportSnapshot).where(
         ServiceExportSnapshot.kind == spec.kind, ServiceExportSnapshot.scope_key == spec.scope,
         ServiceExportSnapshot.generation == generation, ServiceExportSnapshot.expires_at > now))
     if cached is not None:
-        if cached.artifact_id != artifact.id or cached.item_count != artifact.item_count or cached.content_digest != artifact.content_digest:
+        # 이미 존재하는 미만료 handle의 FK가 본문을 보호한다. 재사용 때 key-share 잠금을
+        # 다시 잡으면 read-only 요청도 XID를 발급해 MVCC 지문 재사용을 무효화한다.
+        artifact = await session.get(ReferenceExportArtifact, cached.artifact_id) if cached.artifact_id else None
+        if (artifact is None or artifact.input_revision != input_revision
+                or cached.item_count != artifact.item_count or cached.content_digest != artifact.content_digest):
             raise HTTPException(503, "handle과 reference 본문이 일치하지 않습니다.")
         return cached
+    artifact, _ = await prepare_artifact(session, heads, spec, input_revision, started=started)
     await expire_snapshots(session)
     table = ServiceExportSnapshot.__table__
     snapshot_id = str(uuid4())
@@ -339,7 +343,7 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
                 raise HTTPException(503, "터미널 export가 활성화되지 않았습니다.")
             for attempt in range(2):
                 try:
-                    page, revision = await read_page(session, limit, cursor)
+                    page, revision, etag = await read_page(session, limit, cursor, request)
                     break
                 except (SnapshotRace, DBAPIError) as exc:
                     await session.rollback()
@@ -348,9 +352,11 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
                         raise
                     if attempt or code == "55P03":
                         raise HTTPException(503, "snapshot 준비가 겹쳤습니다. 잠시 후 다시 요청하세요.") from exc
-            return _response(page, request, cursor_epoch=None, cursor_revision=revision)
+            if isinstance(page, Response):
+                return page
+            return _response(page, request, cursor_epoch=None, cursor_revision=revision, etag_override=etag)
 
-        async def read_page(session, limit, cursor):
+        async def read_page(session, limit, cursor, request):
             await _snapshot_transaction(session)
             heads = await _reference_heads(session, spec)
             after = 0
@@ -384,6 +390,17 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
                 model, identity = ReferenceExportArtifactItem, ReferenceExportArtifactItem.artifact_id == artifact.id
             else:
                 model, identity = ServiceExportSnapshotItem, ServiceExportSnapshotItem.snapshot_id == snapshot.id
+            # 불변 본문의 digest와 페이지/상태/만료 metadata만으로 조건부 응답을 판정한다.
+            semantic = ["reference-page-v2", spec.kind, spec.scope, snapshot.content_digest,
+                        snapshot.id, serialize_utc(snapshot.expires_at).isoformat(),
+                        serialize_utc(snapshot.source_collected_at).isoformat(), snapshot.item_count,
+                        after, limit, "stale" if stale else "ok"]
+            etag = 'W/"' + hashlib.sha256(json.dumps(semantic, separators=(",", ":")).encode()).hexdigest() + '"'
+            candidates = request.headers.get("if-none-match", "").split(",")
+            if any(tag.strip() == "*" or tag.strip().removeprefix("W/") == etag[2:] for tag in candidates):
+                await session.commit()
+                return Response(status_code=304, headers={"ETag": etag, "Vary": "Accept-Encoding",
+                                "Cache-Control": "private, no-cache"}), snapshot.content_digest, etag
             rows = list((await session.execute(select(model.ordinal, model.payload).where(
                 identity, model.ordinal > after,
             ).order_by(model.ordinal).limit(limit + 1))).all())
@@ -401,7 +418,7 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
             )
             revision = snapshot.content_digest
             await session.commit()
-            return page, revision
+            return page, revision, etag
 
         return endpoint
 

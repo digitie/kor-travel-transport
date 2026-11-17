@@ -1,0 +1,44 @@
+{
+  "scope": "local_synthetic_only",
+  "history_cache_background_disabled": true,
+  "unrelated_commits_per_sample": 1,
+  "items": 800,
+  "samples": [
+    {
+      "wall_seconds": 0.04121797300012986,
+      "cpu_seconds": 0.02016637099999996,
+      "sql_count": 7,
+      "page_reads": 0,
+      "fingerprint_calculations": 0
+    },
+    {
+      "wall_seconds": 0.04251460300019971,
+      "cpu_seconds": 0.020634699000000145,
+      "sql_count": 7,
+      "page_reads": 0,
+      "fingerprint_calculations": 0
+    },
+    {
+      "wall_seconds": 0.043144972999471065,
+      "cpu_seconds": 0.02222825999999989,
+      "sql_count": 7,
+      "page_reads": 0,
+      "fingerprint_calculations": 0
+    },
+    {
+      "wall_seconds": 0.04095270899961179,
+      "cpu_seconds": 0.020453081000000095,
+      "sql_count": 7,
+      "page_reads": 0,
+      "fingerprint_calculations": 0
+    },
+    {
+      "wall_seconds": 0.045659312000680075,
+      "cpu_seconds": 0.02306913899999996,
+      "sql_count": 7,
+      "page_reads": 0,
+      "fingerprint_calculations": 0
+    }
+  ],
+  "median_seconds": 0.04251460300019971
+}

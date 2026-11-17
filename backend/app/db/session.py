@@ -10,8 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import NullPool
 
 from app.models import Base
+from app.core.read_timing import observe_engine
 
-ALEMBIC_HEAD = "0042_reference_export_artifacts"
+ALEMBIC_HEAD = "0043_reference_input_revisions"
 
 #: 수집 엔진의 문장 상한(초). 이미 쓰던 asyncpg `command_timeout`(클라이언트 측)과 같은 값을 서버
 #: `statement_timeout`에도 둔다. 서버 측 실행 시간은 클라이언트 왕복보다 길 수 없으므로 지금 통과하는
@@ -74,6 +75,7 @@ def create_engine_and_session_factory(
             # 한 connection은 session advisory lease, 나머지는 게시 transaction이 사용한다.
             engine_options.update({"pool_size": 2 if collector else 5, "max_overflow": 0 if collector else 5})
     engine = create_async_engine(database_url, **engine_options)
+    observe_engine(engine)
 
     if database_url.startswith("sqlite"):
         @event.listens_for(engine.sync_engine, "connect")

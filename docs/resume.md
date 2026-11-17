@@ -1,3 +1,21 @@
+## 2026-11-18 — TRN03 입력 revision과 CI 계측 경계 보정
+
+공용PG의무관commit으로MVCC메모가6회모두무효화된부모운영증거를반영했다.
+0043의입력별transactional epoch/revision과statement trigger로교체하고자기TX미메모·누락503을유지한다.
+실제PG에서다른DB commit뒤fingerprint0,head/source변경뒤1→0과기존주소/코드/registry회귀를확인했다.
+9dfea9b CI의fake sync_engine=None 4FAIL도실엔진계측을보존하는경계수정과집중6PASS로보정했다.
+다음은새HEAD exact CI와부모Weather선행뒤Transport43migration/01~03배포·rebuild계측관측이다.
+운영변경0,TRN04미연결초안은별도branch로유지한다. [정본보고서](reports/2026-11-18-read-performance.md).
+
+## 2026-11-18 — Transport 읽기 관측·다중 지도·조건부 export
+
+Map PR1505의 T-READ-TRN-01~03을 별도 `codex/transport-read-performance-20261118`에서 구현했다.
+합성 전체 지도 SQL26→6·CPU697→166ms, 본문 동등, warm304 42.5ms/페이지읽기0이다.
+운영 성능과 혼동하지 않으며 [보고서](reports/2026-11-18-read-performance.md)에 표본·원실패·한계를 적었다.
+T-READ-TRN-04는 로컬 52만 행 간섭을 관측했지만 운영 p95 조건 전 구조를 바꾸지 않는다.
+다음 한 작업은 정확 CI와 부모의 운영 bounded 관측·Weather 뒤 Transport 병합/배포 순서 결정이다.
+운영·계정·DB 스키마·Map/N150·GDAL 캐시 변경0이다.
+
 ## 2026-11-17 — 공통화 재조사 계획 포인터
 
 kor-travel-common이 다섯 저장소를 다시 조사해 계획을 냈다(Common `docs/plan/commonization-plan-2026-11-17.md`, 적대 리뷰 2회 반영, Transport 조사 기준 `60095379`). Transport 몫은 Common `T-434`·`T-435`·`T-436`·`T-437`·`T-482a`·`T-482b`이며 `docs/tasks.md`에 포인터 한 항목과, 공통화와 별개인 보안 헤더 점검 항목 하나를 뒀다. 현재 상태와 다음 한 작업은 바뀌지 않는다. 문서 전용이고 코드·운영 변경은 0이다.
