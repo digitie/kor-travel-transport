@@ -1,3 +1,13 @@
+## 2026-11-19 — 혼합 장소 가격 투영 CPU 후속
+
+- defc의 혼합 지도에서 가격 Row 필드를 한 번 풀어 현재 요청 dict를 만들도록 바꿨다.
+  SQL6·정렬·B027/NULL/UTC·기존 전체 바이트 검증 캐시를 유지하며 TTL/DDL은 추가하지 않았다.
+- 로컬 동일 합성 fixture의 가격 단계 CPU 12.45→5.60ms,
+  HTTP CPU 69.03→61.43ms·본문 동일이다.
+  기존 관련77개+추가5개 PASS, OpenAPI 정본 PASS다. 전체 suite·운영 개선은 미입증이다.
+- [측정·회귀·한계](reports/2026-11-19-places-price-projection-cpu.md).
+  실제 places1초는 여전히 미달이며 CI·검토·새 정상 이미지/실측은 후속 단계다.
+
 ## 2026-11-19 — 호환 전이 의존성 정렬
 
 - MapLibre GL6.17의 geojson-vt를 호환 범위 안의 6.3.1로 고정하고 기존 Concierge와 registry SRI를 맞췄다. 직접 라이브러리 버전·Common 산출물·RN exact style-spec은 유지한다.

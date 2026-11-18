@@ -181,3 +181,54 @@ def test_bytes_reuse_preserves_coordinate_pair_normalization(longitude, latitude
     payload, _ = cache.read(to_json(items))
     assert json.loads(payload) == json.loads(expected.model_dump_json())["items"]
     assert cache.read(to_json(items))[0] is payload
+
+@pytest.mark.parametrize("products,expected_code,expected_price", [
+    ([("D047", None), ("C004", "1800.25"), ("B027", "1700.35")], "B027", 1700.35),
+    ([("D047", None), ("C004", "1800.25")], "C004", 1800.25),
+    ([("D047", "1800.25"), ("B027", None)], "B027", None),
+    ([("B027", "0.00")], "B027", 0),
+    ([], None, None),
+])
+def test_mixed_price_projection_keeps_order_null_fallback_and_utc(
+    client, products, expected_code, expected_price,
+):
+    from datetime import timedelta, timezone
+
+    timestamp = datetime(2026, 11, 19, 12, 34, 56, 123456, tzinfo=timezone(timedelta(hours=9)))
+
+    async def seed():
+        async with client.app.state.session_factory() as session:
+            station = FuelStation(
+                source="price-projection-fixture", identity_key="ordered-prices", name='검산 "주유소"',
+                longitude=127, latitude=37, query_level="sigungu", source_kinds=[],
+                sido_value="11", sido_name="서울", sigungu_value="110", sigungu_name="검산구",
+                first_seen_at=timestamp, last_seen_at=timestamp,
+            )
+            session.add(station)
+            await session.flush()
+            for code, value in products:
+                session.add(FuelPriceSnapshot(
+                    fuel_station_id=station.id, source=station.source, product_code=code,
+                    price=Decimal(value) if value is not None else None,
+                    provider_updated_at=timestamp if code == "B027" else None,
+                    observed_at=timestamp, collected_at=timestamp,
+                ))
+            await session.flush()
+            await upsert_latest_fuel_prices(session)
+            await session.commit()
+    asyncio.run(seed())
+    params = {"kinds": "fuel_station,rail_station", "source": "price-projection-fixture", "limit": 8}
+    first = _data(client.get("/v1/transport/features/places", params=params))
+    assert _data(client.get("/v1/transport/features/places", params=params)) == first
+    assert first["kind_totals"] == {"fuel_station": 1, "rail_station": 0}
+    assert first["total"] == 1 and first["truncated"] is False
+    item, = first["items"]
+    assert item["name"] == '검산 "주유소"'
+    assert item["latest_price"] == expected_price and item["price_product_code"] == expected_code
+    assert item["prices"] == [
+        {"product_code": code, "price": float(value) if value is not None else None,
+         "provider_updated_at": "2026-11-19T03:34:56.123456Z" if code == "B027" else None,
+         "observed_at": "2026-11-19T03:34:56.123456Z", "collected_at": "2026-11-19T03:34:56.123456Z"}
+        for code, value in sorted(products)
+    ]
+    assert item["updated_at"] == "2026-11-19T03:34:56.123456Z"

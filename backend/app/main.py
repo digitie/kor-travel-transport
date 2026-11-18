@@ -1651,19 +1651,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             FuelLatestPrice.observed_at, FuelLatestPrice.collected_at,
                         ).where(FuelLatestPrice.fuel_station_id.in_(station_ids))
                     )).all()
-                    for row in rows:
-                        latest.setdefault(row.fuel_station_id, []).append(row)
+                    # SQLAlchemy Row 필드 조회를 가격마다 반복하지 않고 한 번 풀어
+                    # 현재 요청의 응답 투영을 만든다. 가격 조회·정렬·검증 경계는 유지한다.
+                    for station_id, code, value, updated, observed, collected in rows:
+                        latest.setdefault(station_id, []).append(dict(
+                            product_code=code, price=value,
+                            provider_updated_at=serialize_utc(updated) if updated else None,
+                            observed_at=serialize_utc(observed), collected_at=serialize_utc(collected),
+                        ))
                 for station in stations:
-                    prices = sorted(latest.get(station.id, []), key=lambda row: row.product_code)
-                    price = next((row for row in prices if row.product_code == "B027"), prices[0] if prices else None)
+                    prices = sorted(latest.get(station.id, []), key=lambda row: row["product_code"])
+                    price = next((row for row in prices if row["product_code"] == "B027"), prices[0] if prices else None)
                     # 장소와 가격을 부모의 동일 중첩 validator에서 한 번만 구성한다.
                     items.append(dict(
                         id=station.id, kind="fuel_station", source=station.source, name=station.name,
                         longitude=station.longitude, latitude=station.latitude, subtitle=station.address,
-                        brand_name=station.brand_name, brand_code=station.brand_code, latest_price=float(price.price) if price and price.price is not None else None,
-                        price_product_code=price.product_code if price else None, address=station.address,
+                        brand_name=station.brand_name, brand_code=station.brand_code, latest_price=float(price["price"]) if price and price["price"] is not None else None,
+                        price_product_code=price["product_code"] if price else None, address=station.address,
                         # 부모 모델의 C validator가 가격까지 한 번에 검증한다. 유종별 Python 모델 생성은 반복하지 않는다.
-                        prices=[{"product_code": row.product_code, "price": row.price, "provider_updated_at": serialize_utc(row.provider_updated_at) if row.provider_updated_at else None, "observed_at": serialize_utc(row.observed_at), "collected_at": serialize_utc(row.collected_at)} for row in prices],
+                        prices=prices,
                         phone=station.phone,
                         facilities=[label for field, label in (("is_self", "셀프"), ("is_24h", "24시간"), ("has_carwash", "세차"), ("has_maintenance", "정비"), ("has_cvs", "편의점")) if getattr(station, field) is True],
                         updated_at=serialize_utc(station.last_seen_at),
