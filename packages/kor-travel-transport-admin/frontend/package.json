@@ -68,7 +68,8 @@
     "postcss": "8.5.32",
     "undici": "8.12.4",
     "lightningcss": "$lightningcss",
-    "@radix-ui/react-focus-scope": "$@radix-ui/react-focus-scope"
+    "@radix-ui/react-focus-scope": "$@radix-ui/react-focus-scope",
+    "@maplibre/geojson-vt": "6.3.1"
   },
   "packageManager": "npm@12.0.1",
   "engines": {
