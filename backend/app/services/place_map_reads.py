@@ -49,8 +49,12 @@ def place_queries(requested, coordinate_conditions, include_unlocated, has_bound
                 partition_by=(model.source, model.identity_key),
                 order_by=(model.observed_at.desc(), model.collected_at.desc(), model.id.desc()),
             ).label("rank")).where(model.collected_at.between(now - timedelta(days=1), now)).subquery()
-            statement = statement.join(ranked, model.id == ranked.c.id)
-            conditions.append(ranked.c.rank == 1)
+            # COUNT와 제한 페이지의 최신 ID 집합을 한 번 계산한다. MATERIALIZED는
+            # 작은 표본에서도 planner가 window를 PK별 nested loop 안에 반복하지 않게 한다.
+            latest_ids = select(ranked.c.id).where(ranked.c.rank == 1).cte(
+                "latest_place_incident_ids",
+            ).prefix_with("MATERIALIZED")
+            statement = statement.join(latest_ids, model.id == latest_ids.c.id)
         plans[kind] = (statement.where(*conditions), order, limit)
     return plans
 

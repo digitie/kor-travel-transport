@@ -225,17 +225,18 @@ async def _parking_payload_batches(session, heads):
 async def _artifact_snapshot(session, heads, spec, input_revision, started):
     now = now_utc()
     generation = cache_generation(input_revision, now)
-    cached = await session.scalar(select(ServiceExportSnapshot).where(
-        ServiceExportSnapshot.kind == spec.kind, ServiceExportSnapshot.scope_key == spec.scope,
-        ServiceExportSnapshot.generation == generation, ServiceExportSnapshot.expires_at > now))
-    if cached is not None:
-        # 이미 존재하는 미만료 handle의 FK가 본문을 보호한다. 재사용 때 key-share 잠금을
-        # 다시 잡으면 read-only 요청도 XID를 발급해 MVCC 지문 재사용을 무효화한다.
-        artifact = await session.get(ReferenceExportArtifact, cached.artifact_id) if cached.artifact_id else None
+    cached_pair = (await session.execute(select(ServiceExportSnapshot, ReferenceExportArtifact)
+        .outerjoin(ReferenceExportArtifact, ReferenceExportArtifact.id == ServiceExportSnapshot.artifact_id)
+        .where(ServiceExportSnapshot.kind == spec.kind, ServiceExportSnapshot.scope_key == spec.scope,
+               ServiceExportSnapshot.generation == generation, ServiceExportSnapshot.expires_at > now))).one_or_none()
+    if cached_pair is not None:
+        # 같은 RR의 handle/본문 metadata를 한 번 읽고 호출자까지 강한 참조를 유지한다.
+        # ORM identity map의 약한 참조만으로 두면 검증 뒤 같은 본문을 다시 SELECT한다.
+        cached, artifact = cached_pair
         if (artifact is None or artifact.input_revision != input_revision
                 or cached.item_count != artifact.item_count or cached.content_digest != artifact.content_digest):
             raise HTTPException(503, "handle과 reference 본문이 일치하지 않습니다.")
-        return cached
+        return cached, artifact
     artifact, _ = await prepare_artifact(session, heads, spec, input_revision, started=started)
     await expire_snapshots(session)
     table = ServiceExportSnapshot.__table__
@@ -248,7 +249,7 @@ async def _artifact_snapshot(session, heads, spec, input_revision, started):
     if admitted is None:
         raise SnapshotRace()
     await collect_unused_artifact(session)
-    return await session.get(ServiceExportSnapshot, snapshot_id)
+    return await session.get(ServiceExportSnapshot, snapshot_id), artifact
 
 
 async def _freeze_reference(session, heads, spec, *, payload_revision=None):
@@ -283,7 +284,7 @@ async def _freeze_reference(session, heads, spec, *, payload_revision=None):
         ServiceExportSnapshot.expires_at > now,
     ).order_by(ServiceExportSnapshot.created_at.desc()).limit(1))
     if cached:
-        return cached
+        return cached, None
     await expire_snapshots(session)
     table = ServiceExportSnapshot.__table__
     factory = pg_insert if session.bind.dialect.name == "postgresql" else sqlite_insert
@@ -307,7 +308,7 @@ async def _freeze_reference(session, heads, spec, *, payload_revision=None):
         await session.execute(insert(ServiceExportSnapshotItem), values)
     if ordinal != count:
         raise HTTPException(503, "터미널 snapshot의 완결 수량이 달라졌습니다.")
-    return snapshot
+    return snapshot, None
 
 
 def reference_specs(settings):
@@ -360,6 +361,7 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
             await _snapshot_transaction(session)
             heads = await _reference_heads(session, spec)
             after = 0
+            artifact = None
             if cursor:
                 value = _decode_cursor(cursor, key)
                 try:
@@ -378,11 +380,12 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
             else:
                 if not _valid_heads(heads, spec):
                     raise HTTPException(503, "기준정보 source의 완결 성공 집합이 없습니다.")
-                snapshot = await _freeze_reference(session, heads, spec, payload_revision=settings.release_sha)
+                snapshot, artifact = await _freeze_reference(session, heads, spec, payload_revision=settings.release_sha)
             stale = (not _valid_heads(heads, spec) or any(h.last_error is not None for h in heads)
                      or now_utc() - serialize_utc(snapshot.source_collected_at) > spec.max_age)
             if snapshot.artifact_id is not None:
-                artifact = await session.get(ReferenceExportArtifact, snapshot.artifact_id)
+                if artifact is None:
+                    artifact = await session.get(ReferenceExportArtifact, snapshot.artifact_id)
                 if (artifact is None or artifact.kind != spec.kind or artifact.scope_key != spec.scope
                         or artifact.item_count != snapshot.item_count or artifact.content_digest != snapshot.content_digest
                         or serialize_utc(artifact.source_collected_at) != serialize_utc(snapshot.source_collected_at)):
