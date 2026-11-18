@@ -1,3 +1,13 @@
+## 2026-11-18 — 돌발 전체 이력 출처의 index walk
+
+- 부모의 실제 cold 계획에서 출처 옵션 조회가 돌발 전체 이력을 순회하는 비용을 확인했다. PostgreSQL 돌발 분기만 기존 source 선두 index의 recursive CTE 탐색으로 바꿨고 과거 전체 출처·NULL·빈 표·Unicode·즉시 갱신 계약을 보존했다. DDL·TTL·다른 종류 변경은 없다.
+- 기존 로컬 이력355,935행의 source 조회는25.60→8.51ms·동일 출처 SHA, 돌발 index처리tuple355,935→1개+종료 탐색이다. 운영/HTTP 개선율과1초 달성은 미입증이며 [별도 SQL 후속 근거](reports/2026-11-18-places-runtime-followup.md)를 따른다.
+
+## 2026-11-18 — 장소 입력 일치 검증 재사용과 TRN03 비용 계수
+
+- 다중 장소도 기존 바이트 일치 검증 결과를 재사용한다. 합성 교대 중앙값 277.5→256.7ms·CPU 98.5→73.6ms·SQL6·데이터 SHA 동일이며 cold CPU 약10ms 증가는 남는다. 운영1초는 미입증이다.
+- 요청별 ContextVar에 페이지 구성·큰 지문 계산 계수만 추가했다. 작은 ETag hash는 제외하고 기존 신선도·JSON·손상 검증을 유지한다. [범위·시험·다음 수용](reports/2026-11-18-places-runtime-followup.md). 운영 실행과 TRN04 변경은 없다.
+
 ## 2026-11-18 — 실제 2146 places·참조 읽기 중복 비용 보정
 
 - 운영 분해에서 돌발만 650ms 상한에 걸렸고, 로컬 큰 이력에서 같은 최근 이력의 중복 window를 확인했다. 최신 ID 집합을 공유하고 참조 handle/artifact metadata를 한 번 읽어 warm304 SQL 7→5개로 줄였다. 기존 최신 행·DTO·cursor·손상 검증은 유지한다.

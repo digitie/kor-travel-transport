@@ -81,7 +81,25 @@ async def read_place_plans(session, plans):
     return result
 
 
+def _distinct_index_sources(source):
+    # source 선두 B-tree에서 중복 이력을 훑지 않고 다음 서로 다른 값으로 건너뛴다.
+    walk = select(source).where(source.is_not(None)).order_by(source).limit(1).cte(
+        "place_incident_sources", recursive=True,
+    )
+    following = select(source).where(source > walk.c.source).order_by(source).limit(1).correlate(walk)
+    walk = walk.union_all(select(following.scalar_subquery().label("source"))
+                         .select_from(walk).where(walk.c.source.is_not(None)))
+    values = select(walk.c.source).where(walk.c.source.is_not(None))
+    if source.nullable:
+        # NOT NULL인 현재 돌발 모델에는 추가 탐색이 없다. nullable 입력도 DISTINCT와 같다.
+        values = values.union_all(select(source).where(source.is_(None)).limit(1))
+    return values
+
+
 async def place_sources(session, requested, models):
-    queries = [select(models[kind].source) for kind in requested]
+    postgres = session.get_bind().dialect.name == "postgresql"
+    queries = [_distinct_index_sources(models[kind].__table__.c.source)
+               if postgres and kind == "highway_incident" else select(models[kind].source)
+               for kind in requested]
     union = union_all(*queries).subquery()
     return set((await session.scalars(select(union.c.source).distinct())).all())

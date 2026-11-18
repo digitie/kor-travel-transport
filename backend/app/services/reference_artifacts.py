@@ -13,6 +13,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy import func
 from sqlalchemy.exc import DBAPIError
 
+from app.core.read_timing import observe_fingerprint
 from app.core.time_utils import now_utc, serialize_utc
 from app.models import ReferenceExportArtifact, ReferenceExportArtifactHead, ReferenceExportArtifactItem, ServiceExportSnapshot
 from app.services.export_current import BATCH_SIZE, MAX_SNAPSHOT_BYTES, MAX_SNAPSHOT_ITEMS, SnapshotRace
@@ -74,6 +75,7 @@ async def prepare_artifact(session, heads, spec, input_revision, *, started=None
     if artifact is not None:
         await _pin_current(session, artifact)
         return artifact, False
+    observe_fingerprint()
     encoded = [];size = count = 0;digest = hashlib.sha256()
     async for batch in spec.payload_batches(session, heads):
         _budget(started)

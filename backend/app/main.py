@@ -152,7 +152,7 @@ from app.schemas import (
     WeekdayHourlyPattern,
 )
 from app.services.fuel_map import fuel_map_items_statement
-from app.services.fuel_map_validation import validated_fuel_map_items
+from app.services.fuel_map_validation import validated_fuel_map_items, validated_place_map_items
 from app.services.rail_catalog import metro_station_catalog
 from app.services.analytics import (
     build_special_day_patterns,
@@ -1391,8 +1391,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # 수천 개의 DOM marker를 만들지 않게 하는 API 경계이기도 하다.
         per_kind_limit = (limit + len(requested_kinds) - 1) // len(requested_kinds)
         items: list[TransportPlaceMapItem | dict[str, Any]] = []
-        fuel_items_json = None
-        fuel_items_count = 0
+        validated_items_json = None
+        validated_items_count = 0
         total = 0
         kind_totals: dict[str, int] = {}
 
@@ -1631,13 +1631,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             if requested_kinds == ("fuel_station",) and session.get_bind().dialect.name == "postgresql":
                 async with request.app.state.fuel_map_limiter:
-                    fuel_items_json, fuel_items_count = (await session.execute(
+                    validated_items_json, validated_items_count = (await session.execute(
                         fuel_map_items_statement(station_query),
                     )).one()
-                    fuel_items_json, validated_count = await to_thread.run_sync(
-                        validated_fuel_map_items, fuel_items_json,
+                    validated_items_json, validated_count = await to_thread.run_sync(
+                        validated_fuel_map_items, validated_items_json,
                     )
-                    if validated_count != fuel_items_count:
+                    if validated_count != validated_items_count:
                         raise RuntimeError("유가 지도 JSON 항목 수가 조회 결과와 다릅니다.")
             else:
                 stations = await rows_places("fuel_station", station_query)
@@ -1810,17 +1810,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             fuel_prices_last_refreshed_at = (
                 serialize_utc(read_model.last_success_at) if read_model and read_model.last_success_at else None
             )
+        if prefetched is not None:
+            # 현재 DB 행 전체로 만든 입력만 재사용한다. TTL 없이 가격·위치·원문 투영의
+            # 변경을 즉시 검증하며, 매 요청 바뀌는 metadata는 캐시에 넣지 않는다.
+            async with request.app.state.fuel_map_limiter:
+                validated_items_json, validated_items_count = await to_thread.run_sync(
+                    validated_place_map_items, to_json(visible_items),
+                )
+            if validated_items_count != len(visible_items):
+                raise RuntimeError("장소 지도 JSON 항목 수가 조회 결과와 다릅니다.")
         result = TransportPlaceMapResponse(
             generated_at=now_utc(), kind=selected_kind, total=total,
-            fuel_statistics=with_publication_status(fuel_statistics, fuel_prices_last_refreshed_at), truncated=total > (fuel_items_count if fuel_items_json is not None else len(visible_items)), kind_totals=kind_totals,
-            items=visible_items, available_sources=sorted(available_sources),
+            fuel_statistics=with_publication_status(fuel_statistics, fuel_prices_last_refreshed_at), truncated=total > (validated_items_count if validated_items_json is not None else len(visible_items)), kind_totals=kind_totals,
+            items=[] if validated_items_json is not None else visible_items, available_sources=sorted(available_sources),
             fuel_prices_stale=fuel_prices_stale, fuel_prices_last_refreshed_at=fuel_prices_last_refreshed_at,
         )
-        if fuel_items_json is not None:
+        if validated_items_json is not None:
             # 항목은 같은 DTO의 완료 검증을 원문 바이트 일치 때만 재사용한다.
             # 총수/신선도/통계 metadata는 매 요청 현재 DB 상태로 따로 검증한다.
             metadata_json = result.model_dump_json(exclude={"items"}).encode("utf-8")
-            return Response(content=metadata_json[:-1] + b',"items":' + fuel_items_json + b"}",
+            return Response(content=metadata_json[:-1] + b',"items":' + validated_items_json + b"}",
                             media_type="application/json")
         # 대량 지도 응답은 이미 검증된 Pydantic 모델을 FastAPI가 다시 순회하지 않게 한다.
         return Response(content=result.model_dump_json(), media_type="application/json")
