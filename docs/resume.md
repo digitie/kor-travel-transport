@@ -1,3 +1,17 @@
+## 2026-11-19 — 완전한 장소 입력 revision과 조기 bytes 재사용
+
+- 0045는10개 입력 표의 모든 statement 변경을 기존 counter 표의 표별 vector로 추적한다.
+  같은 RR·실제 trigger/관계·조회조건·provider·시간 경계를 확인한 뒤 기존 검증 완료 bytes를
+  DB payload/DTO 구성 전에 재사용하며 generated_at은 매번 새로 만든다.
+- 로컬4379개/2835863바이트에서 full SQL6/page_builds1 → warm SQL1/page_builds0,
+  warm5개 중앙38.98ms·CPU16.33ms·전체 본문 동등이다.
+  실제 운영1초 수용은 미입증이며 현재 defc 운영을 바꾸지 않았다.
+- 관련158개+lifespan8개 PASS(중복 없는166개), Alembic/OpenAPI PASS.
+  실제 mutation/시간/RR race/trigger 정의/DDL 원복·독립 writer를 검증했다.
+  [입력 감사·작업량·한계](reports/2026-11-19-places-price-projection-cpu.md)를 따른다.
+- 다음은 정확 PR217 CI와 부모/Banach delta 수용이다. efda root에 바인딩한 정상 캐시
+  빌드의 역할별 source 증거를 사용하며 운영 DDL/배포는 아직 실행하지 않았다.
+
 ## 2026-11-19 — 호환 lock 정렬 후보
 
 - MapLibre GL6.17의 geojson-vt를 호환 범위 안의 6.3.1로 고정하고 기존 Concierge와 registry SRI를 맞췄다. Common/RN exact pin은 유지하며 canonical guard 통과, 실제 빌드·운영 수용은 후속 PR CI/소유자 단계다.

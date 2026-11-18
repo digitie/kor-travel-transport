@@ -9,7 +9,7 @@ from sqlalchemy import event
 from starlette.responses import Response
 
 
-async def seed_places(session, count=3):
+async def seed_places(session, count=3, raw=None):
     from app.core.time_utils import now_utc
     from app.models import (
         BusTerminalReference,
@@ -23,7 +23,7 @@ async def seed_places(session, count=3):
     from app.public_parking_routes import SOURCE
     from sqlalchemy import insert
     now = now_utc()
-    raw = {"unused": "폐기할 원문" * 1500, "환승역 여부": " 가능 ",
+    raw = raw if raw is not None else {"unused": "폐기할 원문" * 1500, "환승역 여부": " 가능 ",
            "유실물 취급여부": "있음", "안전발판 유무": "없음",
            "스크린도어 설치유무": "있음", "승강장 연결여부": None,
            "_manual_location": {"revision": "검산-revision"}}

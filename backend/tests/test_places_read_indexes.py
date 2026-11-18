@@ -39,7 +39,7 @@ def _step(connection, schema, direction):
     config = Config()
     config.set_main_option("script_location", str(Path(__file__).parents[1] / "alembic"))
     script = ScriptDirectory.from_config(config)
-    assert script.get_current_head() == ALEMBIC_HEAD == NEW and len(NEW) <= 32
+    assert script.get_current_head() == ALEMBIC_HEAD and script.get_revision(NEW).revision == NEW and len(NEW) <= 32
     target = NEW if direction == "upgrade" else OLD
     planner = script._upgrade_revs if direction == "upgrade" else script._downgrade_revs
     with EnvironmentContext(config, script, fn=lambda revision, _: planner(target, revision),

@@ -88,7 +88,7 @@ T = TypeVar("T")
 
 
 async def fuel_read_model_freshness(
-    session: AsyncSession,
+    session: AsyncSession, *, at: datetime | None = None,
 ) -> tuple[bool, TransportCollectionState | None]:
     """최신 유가가 오래됐는지와 그 근거인 오피넷 수집 상태를 돌려준다.
 
@@ -106,7 +106,7 @@ async def fuel_read_model_freshness(
         state is None
         or state.last_success_at is None
         or state.last_error is not None
-        or now_utc() - serialize_utc(state.last_success_at) > FUEL_STALE_AFTER
+        or (at or now_utc()) - serialize_utc(state.last_success_at) > FUEL_STALE_AFTER
     )
     return stale, state
 
