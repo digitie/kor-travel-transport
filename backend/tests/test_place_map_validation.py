@@ -134,8 +134,9 @@ def test_cached_items_read_price_changes_and_independent_metadata_immediately(cl
     async def metadata_only():
         async with client.app.state.session_factory() as session:
             timestamp = now_utc()
+            # 동일 이름이면 새 ID가 뒤에 와서 collation과 무관하게 quota 밖에 남는다.
             session.add(RestAreaReference(
-                source="new-source", identity_key="extra-rest", name="힣",
+                source="new-source", identity_key="extra-rest", name="휴게소-0",
                 longitude=127, latitude=37, first_seen_at=timestamp, last_seen_at=timestamp,
                 raw_item_json={},
             ))
