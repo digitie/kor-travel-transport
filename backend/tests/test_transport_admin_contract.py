@@ -160,7 +160,13 @@ def test_transport_admin_builder_receives_public_dagster_origin() -> None:
     builder = dockerfile.split("FROM dependencies AS builder", 1)[1].split(" AS runner", 1)[0]
     assert "ARG NEXT_PUBLIC_TRANSPORT_DAGSTER_URL" in builder
     assert "ENV NEXT_PUBLIC_TRANSPORT_DAGSTER_URL=${NEXT_PUBLIC_TRANSPORT_DAGSTER_URL}" in builder
-    assert builder.index("ENV NEXT_PUBLIC_TRANSPORT_DAGSTER_URL") < builder.index("RUN npm run build")
+    instructions = re.sub(r"\\\r?\n", " ", builder)
+    build = re.search(
+        r"(?m)^[ \t]*RUN[ \t]+(?:--mount=\S+[ \t]+)*npm[ \t]+run[ \t]+build[ \t]*$",
+        instructions,
+    )
+    assert build is not None, "Next build RUN instruction is missing"
+    assert instructions.index("ENV NEXT_PUBLIC_TRANSPORT_DAGSTER_URL") < build.start()
 
 
 @pytest.mark.parametrize("public_origin", [None, "", "https://dagster-unit.example.invalid"])

@@ -1,3 +1,7 @@
+## 2026-11-18 — 공통 표 수정 산출물 채택 후속
+
+Common main `706aaa7821588dfca72f660c9161f56be2d0445f`의 UI0.2.2·tokens0.1.3(Geo toast0.1.2)을 vendor·원장·npm lock에 맞추고 canonical guard를 통과했다. 출처·검증 경계는 [최신 journal](journal.md)에 기록했다. catalog `5c1b3857e9af060d30ec776157760fb9e9c13ded`의 main 편입 확인, PR CI, 정상 캐시/native 이미지와 실제 화면 수용을 이어간다. Transport는 3c20ab35 최신 이미지 적용과 화면 검증을 완료했다. rail304 p95 120.999ms·요청별 payload build 0은 확인했으며 places 중앙값2633.468ms와 TRN04 INCONCLUSIVE는 후속 과제다. 내부 parking-ui의 Common exact version과 npm file 의존성 lock metadata도 함께 갱신했다.
+
 ## 2026-11-18 — 장소 읽기 정렬·covering index 후보
 
 - 기준3c20에서 주유소(last_seen_at DESC,id DESC)와 돌발 최근 후보의 covering index만 추가했다.

@@ -1,3 +1,5 @@
+> Common 패키지의 최신 정본·출처는 [COMMON-RELEASE.md](COMMON-RELEASE.md)를 따른다. 아래 내용은 이전 채택 시점의 출처 기록이다.
+
 # 공통 후보12 (Common 97f8ed98)
 
 현재 공통 후보12의 UI 0.2.1/tokens 0.1.2와 FocusScope
