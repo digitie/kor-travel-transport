@@ -30,7 +30,7 @@ revision 등 항목 입력이 바뀌면 다시 검증한다. 총계·출처·신
 | cold 검증·직렬화 CPU | 28.65ms | 38.36ms |
 
 cold 또는 항목 변경·LRU 퇴출 시 입력 JSON 생성으로 CPU가 약 10ms 늘었다.
-변경이 잦은 응답에는 이 비용이 반복될 수 있다. SQL 병목은 바꾸지 않았으며
+변경이 잦은 응답에는 이 비용이 반복될 수 있다. 위 DTO 변경 자체는 SQL 병목을 바꾸지 않았으며
 **운영 1초 목표 달성은 입증하지 못했다.** 소수 정밀도·전체 DTO 속성·UTC microseconds·
 좌표 쌍 정규화와 필터·순서·할당량·총계의 기존 응답 동등성을 집중 시험했다.
 
@@ -71,3 +71,36 @@ cold 또는 항목 변경·LRU 퇴출 시 입력 JSON 생성으로 CPU가 약 10
 - 로컬 실행 원문·교대 benchmark와 재현 스크립트는 저장소 밖
   `transport-places-runtime-followup-work/`에 둔다. 운영 1초 수용과 새 계수의 실제 관측,
   정확 PR CI·정상 빌드·적용은 부모 작업에서 정산한다.
+
+
+## 추가 SQL 후속 — 전체 이력 출처의 index walk
+
+부모의 별도 READ ONLY·문장 15초 상한 실제 계획에서 `available_sources`는
+9,383.6ms였고 돌발 이력의 `ix_highway_incidents_source_collected`를 전체 순회했다.
+표시값은 10개지만 해당 index scan은 2회 loop당 187,152행, shared read 26,075블록,
+약 8,307ms였다. 같은 진단의 장소 count/page는 3,551.8ms였으며 최신 돌발 순위는
+15,843행·289개 ID, 메모리 sort 1.6MiB·임시 파일 없음이었다. 이 cold 계획을 앞선
+HTTP의 SQL 1.38초와 비교해 개선율을 계산하지 않는다. 원문은 저장소 밖
+`transport-places-runtime-followup-work/production-plan-4584.json`에 있다.
+
+`place_sources()`의 PostgreSQL `highway_incident` 분기만 SQLAlchemy recursive CTE로
+바꿨다. 기존 source 선두 B-tree에서 `ORDER BY source LIMIT 1`로 시작하고
+`source > 이전 값`의 첫 행으로 이동한다. 최신 24시간 제한·캐시·TTL·DDL은 없다.
+다른 종류와 마지막 전체 DISTINCT는 기존 그대로다. 빈 표는 빈 집합이며, nullable
+column이면 NULL 옵션도 한 번 보존한다. 현재 돌발 source는 NOT NULL이므로 이
+추가 NULL 탐색은 실행하지 않는다. 과거에만 존재하는 출처·빈 문자열·Unicode·
+중복과 다음 요청의 새 출처를 이전 전체 DISTINCT 결과와 대조했다.
+
+기존 로컬 합성 이력 355,935행을 재사용한 교대 warm 4회씩의 source 조회 중앙값은
+25.60→8.51ms, 프로세스 CPU 1.40→1.77ms였다. 출처 6개의 SHA256은 양쪽 모두
+`6adae7127594bb04e808ba54a88fd011d7c6df5edd6ccc6513b07447ad37b491`다.
+별도 ANALYZE 실행은 33.29→7.90ms, 계획 전체 shared hit 1,274→684블록이었다.
+돌발 index의 처리 tuple은 355,935→1개와 마지막 빈 탐색으로 줄었고 해당 index의
+shared hit은 580→7블록이었다. 양쪽 shared read는 0으로 warm 로컬 표본이다.
+운영·HTTP 개선이나 1초 목표 달성을 뜻하지 않는다. 컴파일된 운영 검토용 SQL과
+원 계획·표본은 같은 작업 폴더의 `candidate-available-sources.sql`,
+`sources-benchmark.json`에 둔다. 운영 후보 EXPLAIN은 부모의 별도 범위다.
+
+출처 SQL 집중 검증은 신규 4개와 기존 다중 종류 동등성 6개·marker 계약 1개만
+실행해 WSL PostgreSQL 11개(21.06초), Docker PostgreSQL 11개(22.46초)가 통과했다.
+변경 source와 신규 시험의 Ruff·문법·diff 검사를 통과했다. 전체 시험은 반복하지 않았다.
