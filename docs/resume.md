@@ -1,3 +1,13 @@
+## 2026-11-18 — 장소 읽기 정렬·covering index 후보
+
+- 기준3c20에서 주유소(last_seen_at DESC,id DESC)와 돌발 최근 후보의 covering index만 추가했다.
+  ORM·0044 migration·기동 head를 맞추고 조회/DTO/cache/최근24시간 의미는 유지한다.
+- 실제 PG의9개 동등성+2개 잠금/원복 시험11개 PASS. 생성 중앙33.82ms·삭제30.98ms,
+  두 번째 index 잠금 실패 약2.05초에서 첫 index와 version도 원복했다. 일반 transactional DDL,
+  lock2초/각 statement120초이며 부모 SDK pause/drain 후 적용한다.
+- [원인·검증·한계](reports/2026-11-18-places-read-indexes.md). 운영 DDL/HTTP/빌드/배포는 하지 않았다.
+  관련 PG 집중84+lifespan8=92개 PASS·alembic upgrade/check PASS. 운영1초 수용은 미완이며 다음은 정확 CI와 부모의 두 독립 검토다.
+
 ## 2026-11-18 — 돌발 전체 이력 출처의 index walk
 
 - 부모의 실제 cold 계획에서 출처 옵션 조회가 돌발 전체 이력을 순회하는 비용을 확인했다. PostgreSQL 돌발 분기만 기존 source 선두 index의 recursive CTE 탐색으로 바꿨고 과거 전체 출처·NULL·빈 표·Unicode·즉시 갱신 계약을 보존했다. DDL·TTL·다른 종류 변경은 없다.
