@@ -1,0 +1,112 @@
+{
+  "scope": "local_synthetic_only_not_production_acceptance",
+  "source_baseline": "2146d8ef6023c2f59fd34e9c6f1f24b8663fcc23",
+  "fixture": {
+    "incident_history_rows": 355935,
+    "recent_history_rows_approximately": 103000,
+    "incident_identities": 206,
+    "places_returned": 2670,
+    "production_shape_limit": 5000,
+    "note": "종류별 운영 규모를 참고한 합성 표본; 같은 운영 데이터 사본이 아니다. 공항 등 기본 표본 수는 운영과 다르다."
+  },
+  "places": {
+    "baseline_median_wall_ms": 544.8446369991871,
+    "candidate_median_wall_ms": 391.5630390001752,
+    "baseline_median_cpu_ms": 142.65994400000005,
+    "candidate_median_cpu_ms": 148.54021799999995,
+    "baseline_median_union_ms": 351.81443100009346,
+    "candidate_median_union_ms": 237.0575929999177,
+    "baseline_plan_execution_ms": 378.022,
+    "candidate_plan_execution_ms": 197.558,
+    "data_sha256": "d18adf41c221d9f51bba61d46127bd1ff56119d07fcf89140dfb75989e051a13",
+    "same_data_sha256": true,
+    "baseline_plan_jit": null,
+    "candidate_plan_jit": null,
+    "sql_count": 6,
+    "cpu_improvement_proven": false
+  },
+  "warm_local_stage_cpu_ms": {
+    "dto_validation_cpu_ms": 12.40994899999981,
+    "serialization_cpu_ms": 10.682582999999912,
+    "sql_driver": 20.07402999999952,
+    "remaining": 65.14433700000087
+  },
+  "reference304": {
+    "baseline": {
+      "median_wall_ms": 43.31552700023167,
+      "sql_count": 7,
+      "page_reads": 0,
+      "fingerprint_calculations": 0
+    },
+    "candidate": {
+      "median_wall_ms": 40.61578099936014,
+      "sql_count": 5,
+      "page_reads": 0,
+      "fingerprint_calculations": 0
+    }
+  },
+  "production_read_only_operator_probe": {
+    "source": "2146d8ef6023c2f59fd34e9c6f1f24b8663fcc23",
+    "explain_only_total_cost": 5257.21,
+    "explain_only_jit_section": null,
+    "whole_union_timeout_ms": 6000,
+    "actual_whole_union_jit": "UNOBSERVABLE_TIMEOUT",
+    "operator_statement_timeout_ms": 650,
+    "probe_elapsed_seconds": 2.326201502699405,
+    "execution_ms": {
+      "bus_terminal": 14.875,
+      "ferry_port": 9.892,
+      "fuel_station": 90.398,
+      "public_parking_lot": 50.328,
+      "rail_station": 45.113,
+      "rest_area": 42.023
+    },
+    "highway_incident": "statement_timeout_57014",
+    "note": "시간 상한 때문에 운영 돌발의 정확한 총 실행시간·내부 CPU 비율은 확정하지 않았다. 행 본문·DSN·비밀값 출력 없음."
+  },
+  "TRN04": "INCONCLUSIVE_BASELINE_NOT_PROVEN_OUTSIDE_REBUILD; 범위 밖",
+  "validation": {
+    "wsl_postgresql": "70 passed in 111.56s",
+    "docker_postgresql": "70 passed in 127.49s",
+    "openapi": "unchanged",
+    "new_regressions": "baseline 2 failed; candidate 2 passed"
+  },
+  "same_fixture_fixed_cutoff": {
+    "scope": "LOCAL_SYNTHETIC_EXACT_SAME_FIXTURE_SAME_CUTOFF",
+    "as_of": "2026-11-18T06:15:05.146503+00:00",
+    "equivalent": true,
+    "digest": "014196a787836dadb65c3a67d61cafd24f4232984b219ff2d6d331a31917a1ca",
+    "medians": {
+      "baseline": {
+        "wall_ms": 466.28920999501133,
+        "cpu_ms": 82.34203600000001,
+        "driver_wall_ms": 389.54081300471444,
+        "driver_cpu_ms": 14.135843000000037
+      },
+      "candidate": {
+        "wall_ms": 266.3571149969357,
+        "cpu_ms": 48.68811800000006,
+        "driver_wall_ms": 225.29135299555492,
+        "driver_cpu_ms": 11.367820000000028
+      }
+    },
+    "plans": {
+      "baseline": {
+        "server_execution_ms": 350.728,
+        "planning_ms": 8.028,
+        "jit": null,
+        "history_ranking_nodes": 2,
+        "history_ranking_actual_loops": 2,
+        "history_scanned_rows": 204352.0
+      },
+      "candidate": {
+        "server_execution_ms": 193.173,
+        "planning_ms": 2.581,
+        "jit": null,
+        "history_ranking_nodes": 1,
+        "history_ranking_actual_loops": 1,
+        "history_scanned_rows": 102176.0
+      }
+    }
+  }
+}
