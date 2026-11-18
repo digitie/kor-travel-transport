@@ -1,6 +1,7 @@
 """실제 장소 JSON 전체가 같은 경우에만 완료한 지도 항목 검증·직렬화를 재사용한다.
 
-매 요청 DB 조회를 유지하므로 TTL/가격 반영 지연은 없다. digest가 같아도 원문 바이트를
+기본 경로는 매 요청 DB 조회를 유지한다. 완전한 transaction revision이 증명된
+장소 페이지도 같은 메모리 상한을 공유하며 business 시간 경계까지만 재사용한다. digest가 같아도 원문 바이트를
 대조한다. 변경된 가격·좌표·날짜·편의 정보는 반드시 같은 전체 DTO 검증을 다시 거친다.
 """
 
@@ -21,6 +22,8 @@ class ValidatedFuelMapItems:
     def __init__(self):
         self.entries = OrderedDict()
         self.bytes = 0
+        self.pages = OrderedDict()
+        self.page_bytes = 0
         self.lock = threading.Lock()
 
     def read(self, raw: str | bytes) -> tuple[bytes, int]:
@@ -45,10 +48,41 @@ class ValidatedFuelMapItems:
                     self.bytes -= len(previous[0]) + len(previous[1])
                 self.entries[key] = source, payload, count
                 self.bytes += size
-                while self.bytes > _MAX_BYTES or len(self.entries) > _MAX_ENTRIES:
-                    old = self.entries.popitem(last=False)[1]
-                    self.bytes -= len(old[0]) + len(old[1])
+                self._trim(prefer_pages=False)
         return payload, count
+
+    def _trim(self, *, prefer_pages):
+        while self.bytes + self.page_bytes > _MAX_BYTES or len(self.entries) + len(self.pages) > _MAX_ENTRIES:
+            if self.entries and (prefer_pages or not self.pages):
+                old = self.entries.popitem(last=False)[1]
+                self.bytes -= len(old[0]) + len(old[1])
+            else:
+                old = self.pages.popitem(last=False)[1]
+                self.page_bytes -= len(old[0])
+
+    def get_page(self, key, at):
+        with self.lock:
+            found = self.pages.get(key)
+            if found is None:
+                return None
+            body, since, until = found
+            if at < since or (until is not None and at >= until):
+                self.pages.pop(key)
+                self.page_bytes -= len(body)
+                return None
+            self.pages.move_to_end(key)
+            return body
+
+    def put_page(self, key, body, at, boundary):
+        if len(body) > _MAX_BYTES:
+            return
+        with self.lock:
+            previous = self.pages.pop(key, None)
+            if previous is not None:
+                self.page_bytes -= len(previous[0])
+            self.pages[key] = body, at, boundary
+            self.page_bytes += len(body)
+            self._trim(prefer_pages=True)
 
 
 _validated_items = ValidatedFuelMapItems()

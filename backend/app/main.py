@@ -152,6 +152,8 @@ from app.schemas import (
     WeekdayHourlyPattern,
 )
 from app.services.fuel_map import fuel_map_items_statement
+from app.services import place_map_cache
+from app.core.read_timing import observe_page_build
 from app.services.fuel_map_validation import validated_fuel_map_items, validated_place_map_items
 from app.services.rail_catalog import metro_station_catalog
 from app.services.analytics import (
@@ -1384,6 +1386,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if zoom is not None and min_longitude is None:
             raise HTTPException(status_code=422, detail="축척별 지도 조회에는 지도 범위가 필요합니다.")
         requested_kinds = tuple(sorted(selected_kinds)) if selected_kinds else (selected_kind,) if selected_kind else tuple(sorted(supported))
+        read_at = now_utc()
+        page_key = page_boundary = None
+        # 통계/클러스터는 각자의 기존 신선도 경로를 유지한다.
+        if not include_fuel_statistics and (zoom is None or zoom >= 12):
+            proof = await place_map_cache.snapshot(
+                session, read_at, resolved_settings.release_sha, "highway_incident" in requested_kinds,
+            )
+            if proof is not None:
+                stamp, page_boundary = proof
+                page_key = (stamp, place_map_cache.provider_key(get_airport_or_none),
+                    selected_kind, requested_kinds, limit, zoom, include_sources, include_unlocated,
+                    tuple(selected_sources), tuple(selected_products), query, bounds)
+                cached = place_map_cache.get(page_key, read_at)
+                if cached is not None:
+                    return Response(content=place_map_cache.response_bytes(cached, now_utc()),
+                                    media_type="application/json")
+        observe_page_build()
         fuel_statistics = []
         if include_fuel_statistics and "fuel_station" in requested_kinds and min_longitude is not None:
             fuel_statistics = await viewport_fuel_statistics(session, bounds, selected_sources, selected_products, query)
@@ -1602,7 +1621,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if len(requested_kinds) > 1 and session.get_bind().dialect.name == "postgresql":
             prefetched = await read_place_plans(session, place_queries(
                 requested_kinds, coordinate_conditions, include_unlocated,
-                min_longitude is not None, now_utc(), per_kind_limit,
+                min_longitude is not None, read_at, per_kind_limit,
             ))
 
         async def count_places(kind_name, statement):
@@ -1743,7 +1762,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     facilities=[label for field, label in (("has_gas_station", "주유소"), ("has_lpg_station", "LPG 충전"), ("has_ev_charger", "전기차 충전")) if getattr(row, field) is True],
                     updated_at=serialize_utc(row.last_seen_at)))
         if "highway_incident" in requested_kinds:
-            observed_until = now_utc()
+            observed_until = read_at
             ranked_incidents = select(
                 HighwayIncidentSnapshot.id.label("id"),
                 func.row_number().over(
@@ -1812,7 +1831,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         fuel_prices_stale = False
         fuel_prices_last_refreshed_at = None
         if "fuel_station" in requested_kinds:
-            fuel_prices_stale, read_model = await fuel_read_model_freshness(session)
+            fuel_prices_stale, read_model = await fuel_read_model_freshness(session, at=read_at)
             fuel_prices_last_refreshed_at = (
                 serialize_utc(read_model.last_success_at) if read_model and read_model.last_success_at else None
             )
@@ -1834,11 +1853,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if validated_items_json is not None:
             # 항목은 같은 DTO의 완료 검증을 원문 바이트 일치 때만 재사용한다.
             # 총수/신선도/통계 metadata는 매 요청 현재 DB 상태로 따로 검증한다.
-            metadata_json = result.model_dump_json(exclude={"items"}).encode("utf-8")
-            return Response(content=metadata_json[:-1] + b',"items":' + validated_items_json + b"}",
-                            media_type="application/json")
-        # 대량 지도 응답은 이미 검증된 Pydantic 모델을 FastAPI가 다시 순회하지 않게 한다.
-        return Response(content=result.model_dump_json(), media_type="application/json")
+            metadata_json = result.model_dump_json(exclude={"items", "generated_at"}).encode("utf-8")
+            body = metadata_json[:-1] + b',"items":' + validated_items_json + b"}"
+        else:
+            body = result.model_dump_json(exclude={"generated_at"}).encode("utf-8")
+        if page_key is not None:
+            place_map_cache.put(page_key, body, read_at, page_boundary,
+                                fuel_prices_last_refreshed_at, fuel_prices_stale)
+        return Response(content=place_map_cache.response_bytes(body, result.generated_at),
+                        media_type="application/json")
 
     @router.get("/transport/rail/departures", response_model=RailDepartureSummaryResponse)
     async def transport_rail_departures(

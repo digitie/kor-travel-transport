@@ -1,12 +1,16 @@
-## 2026-11-19 — 혼합 장소 가격 투영 CPU 후속
+## 2026-11-19 — 완전한 장소 입력 revision과 조기 bytes 재사용
 
-- defc의 혼합 지도에서 가격 Row 필드를 한 번 풀어 현재 요청 dict를 만들도록 바꿨다.
-  SQL6·정렬·B027/NULL/UTC·기존 전체 바이트 검증 캐시를 유지하며 TTL/DDL은 추가하지 않았다.
-- 로컬 동일 합성 fixture의 가격 단계 CPU 12.45→5.60ms,
-  HTTP CPU 69.03→61.43ms·본문 동일이다.
-  기존 관련77개+추가5개 PASS, OpenAPI 정본 PASS다. 전체 suite·운영 개선은 미입증이다.
-- [측정·회귀·한계](reports/2026-11-19-places-price-projection-cpu.md).
-  실제 places1초는 여전히 미달이며 CI·검토·새 정상 이미지/실측은 후속 단계다.
+- 0045는10개 입력 표의 모든 statement 변경을 기존 counter 표의 표별 vector로 추적한다.
+  같은 RR·실제 trigger/관계·조회조건·provider·시간 경계를 확인한 뒤 기존 검증 완료 bytes를
+  DB payload/DTO 구성 전에 재사용하며 generated_at은 매번 새로 만든다.
+- 로컬4379개/2835863바이트에서 full SQL6/page_builds1 → warm SQL1/page_builds0,
+  warm5개 중앙38.98ms·CPU16.33ms·전체 본문 동등이다.
+  실제 운영1초 수용은 미입증이며 현재 defc 운영을 바꾸지 않았다.
+- 관련158개+lifespan8개 PASS(중복 없는166개), Alembic/OpenAPI PASS.
+  실제 mutation/시간/RR race/trigger 정의/DDL 원복·독립 writer를 검증했다.
+  [입력 감사·작업량·한계](reports/2026-11-19-places-price-projection-cpu.md)를 따른다.
+- 다음은 정확 PR217 CI와 부모/Banach delta 수용이다. efda root에 바인딩한 정상 캐시
+  빌드의 역할별 source 증거를 사용하며 운영 DDL/배포는 아직 실행하지 않았다.
 
 ## 2026-11-19 — 호환 lock 정렬 후보
 
