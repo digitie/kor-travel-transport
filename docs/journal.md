@@ -6,6 +6,7 @@
 - Transport는 3c20ab35 최신 이미지 적용과 화면 검증을 완료했다. rail304 p95 120.999ms·요청별 payload build 0은 확인했으며 places 중앙값2633.468ms와 TRN04 INCONCLUSIVE는 후속 과제다. 내부 parking-ui의 Common exact version과 npm file 의존성 lock metadata도 함께 갱신했다.
 - npm 다운로드 캐시 `kor-travel-web-npm-v2`와 앱별 Next 캐시 mount를 정상 Dockerfile build RUN에 추가했다. `--prefer-offline`·engine-strict를 사용하고 설치 lifecycle을 실행한다. Geo의 실제 ARM 무네트워크509개 설치·495개 해시·전용 Next24개 검증은 완료됐고, 이 소비자 커밋의 실제 이미지/native 검증은 다음 단계다. 다른 앱의 빈 Next 캐시는 첫 빌드부터 자체 결과를 축적한다.
 - 실제 PR CI와 수동 정책 workflow의 common uses/common-ref를 함께 맞췄다. 최초 CI는 수동 workflow만 갱신된 상태에서 옛 정책으로 검사해 실패했으며, 전체 frontend guard 호출의 pin 일치를 확인했다.
+- 전체 CI에서 기존 Docker URL 순서 시험 1건이 캐시 mount의 다중행 RUN 표기를 찾지 못해 실패했다. 기존 시험을 논리 명령 기준으로 갱신하고 실제 cache RUN·기존 RUN 모두 통과, ENV를 build 뒤로 옮긴 변형과 주석만 있는 변형은 거부함을 직접 확인했다. 실제 기존 시험 본문을 실행한 근거이며 전체 pytest 재실행 결과로 집계하지 않는다.
 - 다음 검증: 정확한 PR CI, 정상 캐시 이미지 빌드·native 검사, SDK 배포, 실제 모바일/PC 표 너비·수평 스크롤·지도·인증 수용. 이번 소스 채택만으로 새 이미지 적용 완료를 표시하지 않는다.
 
 ## 2026-11-18 — 돌발 전체 이력 출처의 index walk
