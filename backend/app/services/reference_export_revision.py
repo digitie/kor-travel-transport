@@ -23,6 +23,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, aggregate_order_by
 
+from app.core.read_timing import observe_fingerprint
 from app.models import (
     Base,
     BusTerminalReference,
@@ -126,6 +127,7 @@ async def reference_payload_revision(session, heads, kind: str, revision: str | 
         registry = KricStationMappingRegistry.__table__
         parts.append(_part("registry", registry, [registry.c.id, registry.c.catalog_sha256,
                           registry.c.automatic_mappings_json, registry.c.manual_mappings_json], [registry.c.id == 1]))
+    observe_fingerprint()
     rows = (await session.execute(union_all(*parts))).all()
     namespace = ["reference-input-v1", revision, kind,
                  [[head.scope_key, head.generation, head.confirmed_at.isoformat(), head.member_ids, head.proof] for head in heads],

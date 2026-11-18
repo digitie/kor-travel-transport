@@ -22,6 +22,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.core.config import Settings
+from app.core.read_timing import observe_fingerprint, observe_page_build
 from app.core.time_utils import now_utc, serialize_utc
 from app.models import BusTerminalReference, FerryPort, RailStationReference, ParkingCurrent, ReferenceExportState, ReferenceExportArtifact, ReferenceExportArtifactItem, ServiceExportSnapshot, ServiceExportSnapshotItem
 from app.schemas import BusTerminalExportPage, FerryPortExportPage, RailStationExportPage, ParkingCurrentExportPage, ServiceExportMeta
@@ -257,6 +258,7 @@ async def _freeze_reference(session, heads, spec, *, payload_revision=None):
     input_revision = await reference_payload_revision(session, heads, spec.kind, payload_revision)
     if input_revision is not None:
         return await _artifact_snapshot(session, heads, spec, input_revision, started)
+    observe_fingerprint()
     size = count = 0
     digest = hashlib.sha256()
     # 기존 16MiB 상한 안의 canonical bytes만 보관한다. 신규 snapshot을 만들 때
@@ -404,6 +406,7 @@ def build_reference_export_router(settings: Settings, get_db: Callable[..., Asyn
                 await session.commit()
                 return Response(status_code=304, headers={"ETag": etag, "Vary": "Accept-Encoding",
                                 "Cache-Control": "private, no-cache"}), snapshot.content_digest, etag
+            observe_page_build()
             rows = list((await session.execute(select(model.ordinal, model.payload).where(
                 identity, model.ordinal > after,
             ).order_by(model.ordinal).limit(limit + 1))).all())

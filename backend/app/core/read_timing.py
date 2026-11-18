@@ -13,9 +13,23 @@ logger = logging.getLogger(__name__)
 class ReadTiming:
     statements: int = 0
     sql_seconds: float = 0
+    page_builds: int = 0
+    fingerprint_calculations: int = 0
 
 
 _current: ContextVar[ReadTiming | None] = ContextVar("transport_read_timing", default=None)
+
+
+def observe_page_build():
+    timing = _current.get()
+    if timing is not None:
+        timing.page_builds += 1
+
+
+def observe_fingerprint():
+    timing = _current.get()
+    if timing is not None:
+        timing.fingerprint_calculations += 1
 
 
 def observe_engine(engine):
@@ -58,7 +72,9 @@ class ReadTimingMiddleware:
                 value = (f'app;dur={(perf_counter()-started)*1000:.3f}, '
                          f'sql;dur={timing.sql_seconds*1000:.3f}, '
                          f'sql_count;desc="{timing.statements}", '
-                         f'cpu;dur={(process_time()-cpu_started)*1000:.3f}')
+                         f'cpu;dur={(process_time()-cpu_started)*1000:.3f}, '
+                         f'page_builds;desc="{timing.page_builds}", '
+                         f'fingerprint_calculations;desc="{timing.fingerprint_calculations}"')
                 message = {**message, "headers": [*message.get("headers", []),
                                                  (b"server-timing", value.encode("ascii"))]}
             await send(message)

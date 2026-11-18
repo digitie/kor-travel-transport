@@ -1,4 +1,4 @@
-"""실제 DB JSON 전체가 같은 경우에만 완료한 지도 항목 검증·직렬화를 재사용한다.
+"""실제 장소 JSON 전체가 같은 경우에만 완료한 지도 항목 검증·직렬화를 재사용한다.
 
 매 요청 DB 조회를 유지하므로 TTL/가격 반영 지연은 없다. digest가 같아도 원문 바이트를
 대조한다. 변경된 가격·좌표·날짜·편의 정보는 반드시 같은 전체 DTO 검증을 다시 거친다.
@@ -23,8 +23,8 @@ class ValidatedFuelMapItems:
         self.bytes = 0
         self.lock = threading.Lock()
 
-    def read(self, raw: str) -> tuple[bytes, int]:
-        source = raw.encode("utf-8")
+    def read(self, raw: str | bytes) -> tuple[bytes, int]:
+        source = raw.encode("utf-8") if isinstance(raw, str) else raw
         key = hashlib.sha256(source).digest(), len(source)
         with self.lock:
             found = self.entries.get(key)
@@ -55,4 +55,9 @@ _validated_items = ValidatedFuelMapItems()
 
 
 def validated_fuel_map_items(raw: str) -> tuple[bytes, int]:
+    return _validated_items.read(raw)
+
+
+def validated_place_map_items(raw: bytes) -> tuple[bytes, int]:
+    """현재 DB에서 조립한 다중 종류 항목도 같은 DTO·바이트 검산으로 재사용한다."""
     return _validated_items.read(raw)
