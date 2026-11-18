@@ -3,8 +3,9 @@ WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json ./
 COPY frontend/vendor ./vendor
 COPY frontend/.npmrc ./.npmrc
-RUN npm install --global npm@12.0.1 \
-    && npm ci --engine-strict --no-audit --no-fund
+RUN --mount=type=cache,id=kor-travel-web-npm-v2,target=/root/.npm,sharing=locked \
+    npm install --global npm@12.0.1 \
+    && npm ci --engine-strict --prefer-offline --no-audit --no-fund
 
 FROM dependencies AS builder
 WORKDIR /app
@@ -19,7 +20,8 @@ ENV BACKEND_INTERNAL_URL=http://localhost:8000
 COPY frontend /app
 
 RUN npm run check:dependencies
-RUN npm run build
+RUN --mount=type=cache,id=kor-travel-transport-public-next-v2,target=/app/.next/cache,sharing=locked \
+    npm run build
 
 # public/은 현재 tracked 파일이 없다. COPY가 없는 경로에 의존하지 않게 준비한다.
 RUN mkdir -p /app/public

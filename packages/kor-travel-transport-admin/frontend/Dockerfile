@@ -5,8 +5,9 @@ COPY packages/kor-travel-transport-admin/frontend/package.json \
 COPY packages/kor-travel-transport-admin/frontend/vendor ./vendor
 COPY packages/kor-travel-transport-admin/frontend/.npmrc ./.npmrc
 COPY frontend/src /frontend/src
-RUN npm install --global npm@12.0.1 \
-    && npm ci --engine-strict --ignore-scripts --no-audit --no-fund
+RUN --mount=type=cache,id=kor-travel-web-npm-v2,target=/root/.npm,sharing=locked \
+    npm install --global npm@12.0.1 \
+    && npm ci --engine-strict --prefer-offline --no-audit --no-fund
 
 FROM dependencies AS builder
 ARG NEXT_PUBLIC_TRANSPORT_DAGSTER_URL=https://dagster.digitie.mywire.org
@@ -15,7 +16,8 @@ ARG NEXT_PUBLIC_VWORLD_API_KEY
 ENV NEXT_PUBLIC_VWORLD_API_KEY=${NEXT_PUBLIC_VWORLD_API_KEY}
 COPY packages/kor-travel-transport-admin/frontend ./
 RUN npm run check:dependencies
-RUN npm run build
+RUN --mount=type=cache,id=kor-travel-transport-admin-next-v2,target=/app/.next/cache,sharing=locked \
+    npm run build
 
 FROM node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS runner
 RUN npm install --global npm@12.0.1
