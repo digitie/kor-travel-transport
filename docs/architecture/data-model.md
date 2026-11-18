@@ -423,3 +423,13 @@ reader는head/release/kind와component별epoch/revision을키로사용한다.
 관계없는PG commit은메모를무효화하지않고관련입력변경은다음RR에서즉시감지한다.
 revision행누락은503이다.카운터행의UPDATE잠금이생기므로원본collector/API의기존lock/statement상한을
 유지하며9행전체를단일전역counter로합치지않는다. [구현·시험·한계](../reports/2026-11-18-read-performance.md).
+
+## 장소 읽기 정렬·최근 돌발 covering index (0044_places_read_indexes,후보)
+
+fuel_stations의 (last_seen_at DESC,id DESC)는 최신 시각 동률의 ID 정렬까지 지원한다.
+highway_incident_snapshots의 collected_at INCLUDE(id,source,identity_key,observed_at)는
+최근24시간의 최신 winner 후보를 payload heap 없이 읽을 수 있게 한다. visibility map에 따라
+heap fetch가 필요할 수 있다. 기존 index와 source/identity별 최신 winner→위치 필터 순서는 유지한다.
+0044는 일반 transactional index2개만 생성/삭제하며 PG lock2초·각 statement120초를 적용한다.
+부모 SDK pause/drain 뒤 적용할 후보이며 운영 반영은 미실행이다.
+[실제 PG 동등성·원복·측정 한계](../reports/2026-11-18-places-read-indexes.md)를 따른다.
