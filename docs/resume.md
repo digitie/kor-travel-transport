@@ -2,6 +2,16 @@
 
 Common main `706aaa7821588dfca72f660c9161f56be2d0445f`의 UI0.2.2·tokens0.1.3(Geo toast0.1.2)을 vendor·원장·npm lock에 맞추고 canonical guard를 통과했다. 출처·검증 경계는 [최신 journal](journal.md)에 기록했다. catalog `5c1b3857e9af060d30ec776157760fb9e9c13ded`의 main 편입 확인, PR CI, 정상 캐시/native 이미지와 실제 화면 수용을 이어간다. Transport는 3c20ab35 최신 이미지 적용과 화면 검증을 완료했다. rail304 p95 120.999ms·요청별 payload build 0은 확인했으며 places 중앙값2633.468ms와 TRN04 INCONCLUSIVE는 후속 과제다. 내부 parking-ui의 Common exact version과 npm file 의존성 lock metadata도 함께 갱신했다.
 
+## 2026-11-18 — 장소 읽기 정렬·covering index 후보
+
+- 기준3c20에서 주유소(last_seen_at DESC,id DESC)와 돌발 최근 후보의 covering index만 추가했다.
+  ORM·0044 migration·기동 head를 맞추고 조회/DTO/cache/최근24시간 의미는 유지한다.
+- 실제 PG의9개 동등성+2개 잠금/원복 시험11개 PASS. 생성 중앙33.82ms·삭제30.98ms,
+  두 번째 index 잠금 실패 약2.05초에서 첫 index와 version도 원복했다. 일반 transactional DDL,
+  lock2초/각 statement120초이며 부모 SDK pause/drain 후 적용한다.
+- [원인·검증·한계](reports/2026-11-18-places-read-indexes.md). 운영 DDL/HTTP/빌드/배포는 하지 않았다.
+  관련 PG 집중84+lifespan8=92개 PASS·alembic upgrade/check PASS. 운영1초 수용은 미완이며 다음은 정확 CI와 부모의 두 독립 검토다.
+
 ## 2026-11-18 — 돌발 전체 이력 출처의 index walk
 
 - 부모의 실제 cold 계획에서 출처 옵션 조회가 돌발 전체 이력을 순회하는 비용을 확인했다. PostgreSQL 돌발 분기만 기존 source 선두 index의 recursive CTE 탐색으로 바꿨고 과거 전체 출처·NULL·빈 표·Unicode·즉시 갱신 계약을 보존했다. DDL·TTL·다른 종류 변경은 없다.
