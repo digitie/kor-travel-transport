@@ -4,7 +4,7 @@ COPY frontend/package.json frontend/package-lock.json ./
 COPY frontend/vendor ./vendor
 COPY frontend/.npmrc ./.npmrc
 RUN npm install --global npm@12.0.1 \
-    && npm ci --engine-strict
+    && npm ci --engine-strict --no-audit --no-fund
 
 FROM dependencies AS builder
 WORKDIR /app
