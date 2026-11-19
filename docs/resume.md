@@ -1,3 +1,7 @@
+## 2026-11-20 — Opinet 자동 조회 대기 수정 pin 후보
+
+실제 Opinet PR28 merge11f1a874를 backend 선언·lock에 고정했다. 기존 f58→d3b 전체 tree 동등 확인 뒤 작은 producer 수정만 소비한다. 앱 코드·UI·제한 정책은 그대로이며127패키지 metadata 중 이 Git SHA만 다르다. 새 모듈 바이트를 사용한 consumer13 PASS·offline lock 검사 PASS. 다음은 정확 consumer CI·부모 단일 pin 검토·머지와223 SDK terminal 뒤 정상 캐시/native/SDK 배포다. Weather274 실제 병합 시 우선하며 운영 수집 시간 개선은 아직 미측정이다.
+
 ## 2026-11-19 — 기준정보 artifact COPY 후속
 
 - 기준 df878에서 검증된 canonical 본문을 같은 AsyncSession의 asyncpg COPY로 저장한다.400행·16MiB·15초 예산·실패/취소 원자성·SQLSTATE 재시도를 유지하고 논리 COPY 요청 비용을 계측한다.
