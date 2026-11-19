@@ -85,8 +85,9 @@ test.each([
   );
   const h1 = html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g) ?? [];
   expect(h1).toHaveLength(1);
-  expect(h1[0]).toContain(`title="교통 - ${page}"`);
-  expect(h1[0].replace(/<[^>]+>/g, "")).toBe(`교통 - ${page}`);
+  const [heading = ""] = h1;
+  expect(heading).toContain(`title="교통 - ${page}"`);
+  expect(heading.replace(/<[^>]+>/g, "")).toBe(`교통 - ${page}`);
 });
 
 test("로그인 화면에는 관리 메뉴와 로그아웃이 없다", () => {

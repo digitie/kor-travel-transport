@@ -97,16 +97,18 @@ for (const [label, width, height] of VIEWPORTS) {
   test(`${label} ${width}px 버튼은 Tab 포커스에 2px outline 하나만, 쉬기·누르기에는 테두리가 굵어지지 않는다`, async ({ page, baseURL }) => {
     await page.setViewportSize({ width, height });
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await openIsolatedMenuPage(page, baseURL, "/fuel");
-    const targets: [string, Locator][] = [
-      ["상단 바 동작(유가 통계)", page.locator('[data-slot="admin-shell-actions"]').getByRole("link", { name: "유가 통계", exact: true })],
-      ["지도 보기 탭", page.getByRole("tab", { name: /지도/ }).first()],
+    // 로컬 Button/buttonVariants(옛 outline-solid 회귀 대상)와 셸 버튼을 함께 본다.
+    const targets: [string, string, (page: Page) => Locator][] = [
+      ["상단 바 동작(유가 통계)", "/fuel", (p) => p.locator('[data-slot="admin-shell-actions"]').getByRole("link", { name: /유가 통계/ })],
+      ["본문 Button(수집 상태)", "/collections", (p) => p.locator('main [data-slot="button"]:visible').first()],
       width >= 1024
-        ? ["rail 접기", page.getByRole("button", { name: "좌측 메뉴 접기", exact: true })]
-        : ["메뉴 열기", adminMenuButton(page)],
+        ? ["rail 접기", "/fuel", (p) => p.getByRole("button", { name: "좌측 메뉴 접기", exact: true })]
+        : ["메뉴 열기", "/fuel", (p) => adminMenuButton(p)],
     ];
-    if (width >= 1024) targets.push(["로그아웃", page.locator('[data-slot="admin-shell-rail"]').getByRole("button", { name: "로그아웃", exact: true })]);
-    for (const [name, target] of targets) {
+    if (width >= 1024) targets.push(["로그아웃", "/fuel", (p) => p.locator('[data-slot="admin-shell-rail"]').getByRole("button", { name: "로그아웃", exact: true })]);
+    for (const [name, path, find] of targets) {
+      await openIsolatedMenuPage(page, baseURL, path);
+      const target = find(page);
       await expect(target, name).toBeVisible();
       await page.mouse.move(0, height - 1);
       await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
