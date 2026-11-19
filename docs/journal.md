@@ -1,5 +1,26 @@
 ## 2026-11-20 — 버튼 테두리 굵어짐(FS-7.8)·유가 지역 카드 목록 삭제·셸 제목 잔여분
 
+## 2026-11-20 공개 유가 지도 통합 후보
+
+fuel.digitie.mywire.org는 Odroid12308, fuel-api.digitie.mywire.org는12307을 사용하는
+별도 fuel-web·fuel-api-gateway 쌍으로 구성한다. 기존 Transport DB·읽기 API12302와
+관리자 지도 컴포넌트를 재사용하고 DB·수집기·migration은 추가하지 않는다.
+TRANSPORT_UI_MODE=fuel은 첫 서버 렌더부터 제목·관리 메뉴를 제외하고 전체 화면
+지도와 내 위치·범위 유가·유종 필터·주유소 상세 및 저장 가격 이력을 제공한다.
+위치 권한 거절·시간 초과·서비스 범위 밖에서는 현재 지도 범위를 계속 표시한다.
+
+유가 단독 상세 경계는 실제 줌10이다. 다른 교통 종류는 기존12 경계를 유지하며
+희소한 유가 마커는 더 낮은 축척에서 개별 표시하되 같은 좌표의 선택 경로와 밀도
+제어를 보존한다. 공개 BFF와 nginx는 유가 읽기 경로만 허용하고 관리자 인증 정보나
+쓰기 요청을 전달하지 않는다. 의존 버전·lock·공통 UI/tokens 산출물은 바꾸지 않는다.
+
+소스 검증: backend 실제 PostgreSQL42건·실제 nginx39사례(상류 stub)·BFF8건 통과.
+UI lint·typecheck와 새 위치·클러스터 시험을 확인했으며, 공유 심볼릭 링크 캐시의
+기존 React 중복11실패는 원문을 보존하고 통합 후보의 깨끗한 locked 설치에서 검증한다.
+정확한 통합 CI·정상 이미지·ARM 검증·공식 적용·5폭 canvas·실제 tile decode 및
+외부 HAProxy 연결은 이후 증거로 확정한다. 아직 운영 배포 완료를 주장하지 않는다.
+
+
 - 공통 셸 채택(#220) 위의 잔여분이다. 버튼 테두리가 굵어지는 원인은 전역 `button` 규칙(globals.css `@layer base`의 `font: inherit`)이 아니라 로컬 `buttonInteractionClasses`의 `outline-solid`였다. tailwind-merge가 공통 recipe의 `outline-none`을 지운 채 `outline-style: solid`가 쉬는 상태에도 남아 기본 굵기(medium=3px) currentColor outline이 1px 테두리 위에 그려졌다. 포커스 때는 0.2.2의 `focus-visible:border-ring`까지 겹쳤다. 래퍼에서 outline·ring 조정을 지우고 공통 0.2.3의 outline 2px·offset 2px 하나만 남겼다. 공개 앱 달력 날짜 버튼의 덧댄 3px ring도 지웠다.
 - 유가 지도 "지역 카드 모두 보기 (n)" 토글과 목록을 지웠다. 공간이 모자라 접은 지역 카드도 마커 버튼은 탭 순서에 남고(접근 이름에 전 유종 가격) 키보드 포커스 때 카드와 원점에 같은 2px 링을 보인다.
 - 제목 형식 잔여분: 셸 첫 서버 렌더가 메뉴 라벨을 써서 hydration 뒤 "교통 - 홈"→"교통 - 운영 홈"처럼 제목이 바뀌고 설명이 늦게 나타나던 것을, 메뉴 href별 정본 `PAGE_HEADINGS`(admin-nav)를 셸과 각 페이지 `PageHeader`가 함께 쓰게 고쳤다. rail 브랜드의 앱 설명 문구(`kor-travel-transport admin`)는 `교통`으로 줄였다. 확장 지도에서 상단 바를 숨기는 규칙은 header가 main 밖으로 옮겨져 `html:has(...)`로 고쳤고, 정확 제목을 찾던 e2e 5곳은 `교통 - 페이지`로 맞췄다.

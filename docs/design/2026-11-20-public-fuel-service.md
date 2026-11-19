@@ -32,7 +32,10 @@ fuel_regions를 사용하며 별도 /regions API는 만들지 않는다.
 
 UI는 기존 admin frontend Dockerfile의 정상 빌드를 사용하되 실행 환경을
 TRANSPORT_UI_MODE=fuel, BACKEND_INTERNAL_URL=http://127.0.0.1:12307로 분리한다.
-공개 fullscreen 경로와 BFF는 같은 통합 변경의 frontend 구현이 담당한다.
+공개 경로 /public/fuel과 /api/public/fuel BFF를 같은 통합 변경에 구현한다.
+전용 실행의 루트는 공개 지도로 rewrite하며 관리자·로그인·범용 API 경로는 열지 않는다.
+BFF는 cookie·인증 정보 없이 고정된 유가 gateway만 호출하고 본문16MiB·30초 상한,
+ETag·304·실패 상태와 재시도 안내를 유지한다.
 기존 core/admin CURRENT와 일반 admin 인증은 별도로 유지한다.
 Manager·ingress 구현 및 실제 배포는 담당자가 통합된 정확한 source/image 증거를
 확인해 수행한다. gateway와 UI image는 검증된 정상 빌드 참조를 필수로 받는다.
