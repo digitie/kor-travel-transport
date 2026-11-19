@@ -44,3 +44,13 @@ test("잘못된 주유소 응답과 반복 cursor를 부분 성공으로 표시�
   get.mockResolvedValue({ ...historyFixture(), has_more: true, next_cursor: "same" });
   await expect(loadFuelStationHistory(1, "opinet_browser", new AbortController().signal)).rejects.toThrow("전체를 확인하지 못했습니다");
 });
+
+test("injected public reader preserves the complete frozen cursor walk without admin reads", async () => {
+  const admin = vi.spyOn(journey, "transportGet").mockRejectedValue(new Error("must not call admin"));
+  const load = vi.fn().mockResolvedValueOnce({ ...historyFixture(), has_more: true, next_cursor: "page2" }).mockResolvedValueOnce(historyFixture());
+  const result = await loadFuelStationHistory(1, "opinet_browser", new AbortController().signal, load);
+  expect(admin).not.toHaveBeenCalled();
+  expect(load).toHaveBeenCalledTimes(2);
+  expect(load.mock.calls[1][0]).toContain("cursor=page2");
+  expect(result.has_more).toBe(false);
+});

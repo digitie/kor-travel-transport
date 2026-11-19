@@ -947,3 +947,18 @@
 .map-workbench:has([data-slot="map-workspace"][data-expanded="true"]) { position: fixed; inset: 0; z-index: 40; block-size: 100dvh; padding: .25rem; background: var(--surface-page); }
 html:has([data-slot="map-workspace"][data-expanded="true"]) [data-slot="admin-shell-header"] { display: none; }
 html:has([data-slot="map-workspace"][data-expanded="true"]) { overflow: hidden; }
+
+/* Dedicated public fuel instance: map controls only, no admin shell or page chrome. */
+.public-fuel-surface { position: relative; height: 100dvh; min-height: 0; overflow: hidden; }
+.public-fuel-surface .map-workbench { height: 100%; min-height: 0; }
+.public-fuel-surface .transport-map-workspace { height: 100%; min-height: 0; }
+.public-fuel-location { position: absolute; left: max(12px, env(safe-area-inset-left)); bottom: max(36px, env(safe-area-inset-bottom)); z-index: 5; }
+.public-fuel-location button { min-height: 44px; }
+.public-fuel-location-status { max-width: min(18rem, calc(100vw - 24px)); margin-top: 4px; padding: 4px 8px; border-radius: var(--radius-control); background: var(--card); color: var(--text-primary); font-size: var(--text-xs); box-shadow: var(--shadow-elevated); }
+
+.public-fuel-surface .kt-map-workspace { position: absolute; inset: 0; display: block; }
+.public-fuel-surface .kt-map-workspace > .kt-map-filter-panel { position: absolute; top: max(12px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); width: min(28rem, calc(100% - 24px)); z-index: 8; }
+.public-fuel-surface .kt-map-workspace > [data-slot="tabs"] { position: absolute; inset: 0; display: block; }
+.public-fuel-surface .kt-map-view-header { position: absolute; top: calc(max(12px, env(safe-area-inset-top)) + 52px); left: max(12px, env(safe-area-inset-left)); z-index: 7; max-width: calc(100% - 24px); }
+.public-fuel-surface .kt-map-workspace > [data-slot="tabs"] > [data-slot="tabs-content"]:not([hidden]),
+.public-fuel-surface .kt-map-stage { position: absolute; inset: 0; height: 100%; border: 0; border-radius: 0; }

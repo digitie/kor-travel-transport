@@ -31,7 +31,7 @@ export function isFuelHistoryGap(a: FuelHistoryPoint, b: FuelHistoryPoint) {
 }
 
 /** 한 번 고정한 창의 모든 페이지를 읽는다. 변경된 revision의 다른 창을 섞지 않는다. */
-export async function loadFuelStationHistory(id: number, source: string, signal: AbortSignal): Promise<FuelStationHistory> {
+export async function loadFuelStationHistory(id: number, source: string, signal: AbortSignal, load: typeof transportGet = transportGet): Promise<FuelStationHistory> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       let cursor: string | null = null, first: FuelStationHistory | undefined;
@@ -40,7 +40,7 @@ export async function loadFuelStationHistory(id: number, source: string, signal:
         signal.throwIfAborted();
         const params = new URLSearchParams({ source, days: "30", limit: "1000" });
         if (cursor) params.set("cursor", cursor);
-        const page = await transportGet<FuelStationHistory>(`transport/fuel/stations/${id}/price-history?${params}`, signal);
+        const page = await load<FuelStationHistory>(`transport/fuel/stations/${id}/price-history?${params}`, signal);
         if (page.station_id !== id || page.source !== source || first && (page.window.from_at !== first.window.from_at || page.window.to_at !== first.window.to_at || page.source_revision !== first.source_revision)) throw new Error("주유소 가격 이력의 조회 기준이 일치하지 않습니다. 다시 조회해 주세요.");
         first ??= page;
         items.push(...page.items);
