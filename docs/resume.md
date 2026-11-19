@@ -1,3 +1,11 @@
+## 2026-11-20 — USED 백엔드 라이브러리 exact 정렬 후보
+
+Opinet PR224 검증 tree 위에서 실제 앱 의존성9축과 Common Python e289를 정렬한다.
+공유 Dagster/호스트 profile·GDAL·UI·데이터 계약은 유지한다. 실제PG migration/drift/OpenAPI와
+4,099행 Core stream의 최대ID/live 우선/전체 JSON 회귀는 PASS이며 기존 COPY/HTTP 집중 고유105개도 정산 PASS다(원 timeout 보존, 통과분 반복 없음).
+운영 rail cold1초는 여전히 미달이다. 다음은 최종 집중 결과·Common strict app guard·정확 CI와 두 좁은 검토를 정산하고 canonical merge 후 새 runtime 수용이다.
+[검증 범위](reports/2026-11-20-used-backend-stack.md).
+
 ## 2026-11-20 — Opinet 자동 조회 대기 수정 pin 후보
 
 실제 Opinet PR28 merge11f1a874를 backend 선언·lock에 고정했다. 기존 f58→d3b 전체 tree 동등 확인 뒤 작은 producer 수정만 소비한다. 앱 코드·UI·제한 정책은 그대로이며127패키지 metadata 중 이 Git SHA만 다르다. 새 모듈 바이트를 사용한 consumer13 PASS·offline lock 검사 PASS. 다음은 정확 consumer CI·부모 단일 pin 검토·머지와223 SDK terminal 뒤 정상 캐시/native/SDK 배포다. Weather274 실제 병합 시 우선하며 운영 수집 시간 개선은 아직 미측정이다.
