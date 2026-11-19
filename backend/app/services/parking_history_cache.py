@@ -208,7 +208,8 @@ async def load_snapshot(
             ranked.c.occupied_spaces, ranked.c.total_spaces, ranked.c.available_spaces,
         ).join(Airport, Airport.id == ranked.c.airport_id)
             .order_by(ranked.c.observed_at, ranked.c.parking_lot_id))
-        result = await session.stream(statement.execution_options(yield_per=HISTORY_FETCH_ROWS))
+        connection = await session.connection()
+        result = await connection.stream(statement.execution_options(yield_per=HISTORY_FETCH_ROWS))
         rows, codes = [], {}
         try:
             async for batch in result.partitions(HISTORY_FETCH_ROWS):
