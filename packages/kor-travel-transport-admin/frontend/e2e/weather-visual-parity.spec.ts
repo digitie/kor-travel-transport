@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { adminMenuButton, adminMenuScope } from "./admin-shell-fixture";
 
 const widths = [320, 375, 414, 768, 1440];
 const paths = ["/map", "/admin/dagster"] as const;
@@ -83,42 +84,47 @@ test.beforeEach(() => {
   test.skip(!process.env.E2E_TRANSPORT_UI_PASSWORD, "E2E_TRANSPORT_UI_PASSWORD가 필요합니다.");
 });
 
-// 셸은 map 공용 셸(lg 이상 16rem 세로 레일, 미만은 상단 메뉴 띠)이다. Weather 카드형 헤더 검사는 셸 교체로 대체됐다.
+// 셸은 공용 관리자 셸(@kor-travel/ui AdminShell)이다: lg 이상 16rem 세로 rail, 미만은 상단 바 메뉴 버튼으로 여는 좌측 drawer.
 for (const width of widths) {
   for (const pathname of paths) {
-    test(`map 셸 레일·헤더·본문 패리티 ${pathname} ${width}px`, async ({ page }, testInfo) => {
+    test(`관리자 셸 rail·상단 바·본문 패리티 ${pathname} ${width}px`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width, height: 1000 });
       const unexpected = await loginWithFixtures(page, pathname);
       const main = page.locator("main#main-content");
       const rail = page.locator('[data-slot="admin-shell-rail"]');
-      const nav = page.getByRole("navigation", { name: "주요 메뉴" });
       const header = page.locator('[data-slot="admin-shell-header"]');
-      const logout = page.getByRole("button", { name: "로그아웃", exact: true });
 
       await expect(header.locator("h1")).toBeVisible();
+      await expect(header.locator("h1")).toHaveText(/^교통 - /);
       await expectColor(page.locator("body"), "backgroundColor", "oklch(97.8% .003 250)");
-      await expectColor(rail, "backgroundColor", "oklch(99.2% .002 250)");
-      await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
-      await expect(nav.locator('[aria-current="page"]')).toHaveAttribute("href", pathname);
+      await expectColor(header, "backgroundColor", "oklch(99.2% .002 250)");
 
       const mainBox = await rectangle(main);
       const headerBox = await rectangle(header);
+      // 맨 위는 한 줄(약 48px) 상단 바다.
+      expect(headerBox.height).toBeLessThanOrEqual(56);
       const content = await rectangle(pathname === "/map" ? page.locator(".map-workbench") : page.getByRole("region", { name: "최근 Dagster 실행 표" }));
       expect(content.y).toBeGreaterThanOrEqual(headerBox.y + headerBox.height - 1);
       expect(content.x).toBeGreaterThanOrEqual(mainBox.x);
       expect(content.x + content.width).toBeLessThanOrEqual(mainBox.x + mainBox.width + 1);
 
-      const railBox = await rectangle(rail);
       if (width >= 1024) {
+        const railBox = await rectangle(rail);
+        await expectColor(rail, "backgroundColor", "oklch(99.2% .002 250)");
         expect(railBox.width).toBeCloseTo(256, 0);
         expect(mainBox.x).toBeCloseTo(railBox.x + railBox.width, 0);
       } else {
-        expect(railBox.width).toBeCloseTo(width, 0);
-        expect(mainBox.y).toBeGreaterThanOrEqual(railBox.y + railBox.height - 1);
-        await nav.locator("a").last().focus();
-        await expect(nav.locator("a").last()).toBeFocused();
+        await expect(rail).toBeHidden();
+        expect(mainBox.x).toBeCloseTo(0, 0);
       }
+      const scope = await adminMenuScope(page);
+      const nav = scope.getByRole("navigation", { name: "주요 메뉴" });
+      await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
+      await expect(nav.locator('[aria-current="page"]')).toHaveAttribute("href", pathname);
+      await nav.locator("a").last().focus();
+      await expect(nav.locator("a").last()).toBeFocused();
 
+      const logout = scope.getByRole("button", { name: "로그아웃", exact: true });
       await expect(logout).toBeVisible();
       await logout.focus();
       await expect(logout).toBeFocused();
@@ -128,12 +134,16 @@ for (const width of widths) {
       expect(logoutBox.x + logoutBox.width).toBeLessThanOrEqual(width);
       // trial 클릭으로 가림·pointer-events 회귀도 검사하되 세션은 유지한다.
       await logout.click({ trial: true });
+      if (width < 1024) {
+        await page.keyboard.press("Escape");
+        await expect(page.getByRole("dialog")).toHaveCount(0);
+      }
       expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
       expect(unexpected).toEqual([]);
       await page.mouse.move(0, 0);
       await page.evaluate(() => { (document.activeElement as HTMLElement | null)?.blur(); window.scrollTo(0, 0); });
       const screenshot = await page.screenshot({ path: testInfo.outputPath(`weather-${pathname.replaceAll("/", "-")}-${width}.png`), fullPage: true, animations: "disabled" });
-      await testInfo.attach("map 셸 시각 패리티", { body: screenshot, contentType: "image/png" });
+      await testInfo.attach("관리자 셸 시각 패리티", { body: screenshot, contentType: "image/png" });
     });
   }
 }
@@ -148,8 +158,10 @@ test.describe("터치 환경", () => {
     const controls = pathname === "/map"
       ? [page.getByLabel("장소 검색"), page.locator('[data-slot="combobox-chips"]').last(), page.getByRole("tablist", { name: "장소 보기" }).getByRole("tab").first()]
       : [page.getByRole("button", { name: "새로고침", exact: true })];
-    controls.push(page.getByRole("button", { name: "로그아웃", exact: true }));
     for (const control of controls) await expect.poll(async () => (await rectangle(control)).height).toBeGreaterThanOrEqual(44);
+    await expect.poll(async () => (await rectangle(adminMenuButton(page))).height).toBeGreaterThanOrEqual(44);
+    const logout = (await adminMenuScope(page)).getByRole("button", { name: "로그아웃", exact: true });
+    await expect.poll(async () => (await rectangle(logout)).height).toBeGreaterThanOrEqual(44);
 
     await page.evaluate(() => {
       for (const version of [1, 2]) sessionStorage.setItem(`kor-travel-transport-dashboard-v${version}`, "cached");
@@ -158,7 +170,7 @@ test.describe("터치 환경", () => {
       }), { once: true });
     });
     const request = page.waitForRequest((request) => new URL(request.url()).pathname === "/api/auth/logout");
-    await page.getByRole("button", { name: "로그아웃", exact: true }).click();
+    await logout.click();
     expect((await request).method()).toBe("POST");
     await expect(page).toHaveURL(/\/login/);
     await expect.poll(() => page.evaluate(() => [1, 2].map((version) => sessionStorage.getItem(`kor-travel-transport-dashboard-v${version}`)))).toEqual([null, null]);

@@ -88,8 +88,8 @@ export function OperationsHome() {
   const { loading, refresh, errors, activeProviders, providers, attention, activeRuns, dagster, runningSchedules, failedRuns, recentRuns, coverage } = useOperationsOverview();
   return <>
     <PageHeader title="운영 홈" description="운영 상태를 한 화면에서 확인합니다." actions={<>
-      <Button type="button" variant="outline" loading={loading} onClick={refresh}><RefreshCw aria-hidden="true" data-icon="inline-start" />새로고침</Button>
-      <a className={cn(buttonVariants({ variant: "outline" }))} href={dagsterLocationUrl()} rel="noreferrer" target="_blank"><ExternalLink aria-hidden="true" data-icon="inline-start" />Dagster</a>
+      <Button type="button" variant="outline" loading={loading} onClick={refresh}><RefreshCw aria-hidden="true" data-icon="inline-start" /><span className="sr-only sm:not-sr-only">새로고침</span></Button>
+      <a className={cn(buttonVariants({ variant: "outline" }))} href={dagsterLocationUrl()} rel="noreferrer" target="_blank"><ExternalLink aria-hidden="true" data-icon="inline-start" /><span className="sr-only sm:not-sr-only">Dagster</span></a>
     </>} />
     <OperationsSummary errors={errors} activeProviders={activeProviders} providers={providers} attention={attention} activeRuns={activeRuns} dagster={dagster} runningSchedules={runningSchedules} failedRuns={failedRuns} recentRuns={recentRuns} coverage={coverage} loading={loading} refresh={refresh} />
   </>;

@@ -16,6 +16,9 @@ import {
   WaypointsIcon,
 } from "lucide-react";
 
+/** 관리자 셸 상단 바의 영역 이름. 제목은 "교통 - 페이지" 형식이다. */
+export const ADMIN_AREA = "교통";
+
 /**
  * 작업 지향 nav 그룹 — nav·섹션 라벨·헤더 섹션 라벨의 단일 정본.
  * 그룹 헤더는 비링크이며 href는 존치하는 화면만 가리킨다. 라우트와 라벨은 Transport 기존 메뉴를 그대로 둔다.

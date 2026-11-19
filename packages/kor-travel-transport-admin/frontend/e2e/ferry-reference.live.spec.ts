@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { adminMenuScope } from "./admin-shell-fixture";
 
 for (const width of [375, 1440]) test(`실제 저장 배편 기준자료를 검색한다 ${width}px`, async ({ page }) => {
   test.skip(!process.env.E2E_TRANSPORT_UI_PASSWORD, "실제 로그인 비밀번호 환경변수가 필요합니다.");
@@ -34,6 +35,6 @@ for (const width of [375, 1440]) test(`실제 저장 배편 기준자료를 검�
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: `test-results/vadahub-ferry-${width}.png`, fullPage: true });
-  await page.getByRole("button", { name: "로그아웃", exact: true }).click();
+  await (await adminMenuScope(page)).getByRole("button", { name: "로그아웃", exact: true }).click();
   await expect(page).toHaveURL(/\/login/);
 });

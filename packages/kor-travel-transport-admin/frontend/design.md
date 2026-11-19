@@ -16,12 +16,13 @@ kor-travel-geo와 kor-travel-weather 화면은 기준이 아니다.
    `overlay`·`shadow-modal`은 text-primary 색조에 map의 alpha·고도만 옮긴다.
 2. 서체: Geist Mono는 `next/font/google`로 받지 않는다. 빌드가 네트워크를 요구하지 않도록
    Pretendard 스택(`@kor-travel/tokens/font.css`)만 쓰고 mono는 시스템 monospace로 떨어진다.
-3. 페이지 헤더: map은 AdminShell이 헤더를 그리지만 Transport는 루트 레이아웃이 셸을 감싸고
-   페이지가 `PageHeader`를 호출한다. 마크업·클래스는 map과 같고 `main` 안에 그려진다.
-   `description`은 예전 InfoButton처럼 HelpTip으로 연다.
+3. 페이지 헤더: 셸은 `@kor-travel/ui` 0.2.3의 공용 `AdminShell`이다(루트 레이아웃이 감싼다).
+   맨 위 한 줄(약 48px) 상단 바에 "교통 - 페이지" 제목만 두고, 페이지 설명은 같은 줄에 작게
+   말줄임한다(전체 문장은 title 속성). 페이지는 `PageHeader`(= `AdminPageTitle`)로 제목·설명·동작을
+   덮어쓴다. 첫 서버 렌더 제목은 메뉴 라벨이다. 모바일 상단 바 동작은 아이콘 버튼 1~2개다.
 4. 메뉴·브랜드: 그룹·라우트·라벨·아이콘은 Transport의 기존 메뉴를 그대로 쓴다.
-   워드마크는 `kor-travel-transport admin`, 접힘 축약형은 `ktt`, 접힘 저장 키는
-   `kor-travel-transport:sidebar-collapsed`다.
+   영역·브랜드 이름은 `교통`이고 앱 설명 문구(옛 `kor-travel-transport admin` 워드마크)는 두지 않는다.
+   접힘 저장 키는 `kor-travel-transport:sidebar-collapsed`이며 옛 값 `1`/`0`을 그대로 읽는다.
 
 남은 전환 상태: `app/globals.css`의 `legacy` 레이어에 Transport 전용 클래스가 남아 있다.
 도메인 화면 전환이 끝나면 쓰지 않는 규칙을 지운다.
@@ -31,8 +32,13 @@ kor-travel-geo와 kor-travel-weather 화면은 기준이 아니다.
 
 ## 공통 구조
 
-- 셸은 map과 같다. lg 이상에서 16rem 사이드 레일(접으면 4rem)이 고정되고, 접힘 상태는 저장되며, 로그아웃은 레일 하단에 있다.
-  lg 미만에서는 로그아웃이 아이콘 버튼으로 보이며 숨기지 않는다. 로그아웃은 POST `/api/auth/logout` 후 `/login`으로 이동한다.
+- 셸은 공용 `AdminShell`이다. lg 이상에서 16rem 좌측 rail(접으면 4rem)이 고정되고, 접힘 상태는 저장되며, 로그아웃은 rail 하단에 있다.
+  lg 미만에서는 상단 바의 메뉴 버튼이 좌측 drawer(최대 280px)를 열고, 메뉴와 로그아웃은 drawer 안에 있다.
+  링크로 이동하면 drawer를 닫고 본문으로 포커스를 옮긴다. 로그아웃은 POST `/api/auth/logout` 후 `/login`으로 이동한다.
+- 버튼 포커스는 공용 recipe의 outline 2px·offset 2px 하나다. 로컬 Button 래퍼는 outline·ring을 덧붙이지 않는다
+  (`outline-solid`가 쉬는 상태에도 3px 기본 outline을 그리던 회귀, FS-7.8).
+- 유가 지도의 지역 카드는 지도 마커로만 제공한다(별도 "지역 카드 모두 보기" 목록 없음). 공간이 모자라 접은 카드도
+  마커 버튼은 탭 순서에 남고(접근 이름에 전 유종 가격), 키보드 포커스를 받으면 카드를 다시 보인다.
 - 검색·필터 → 지도/목록 전환 → 선택 항목 상세 순서다. 상세는 지도·목록 옆에 분리된 aside로 둔다.
 - 모바일에서는 상세를 검색 바로 아래에 두고 목록보다 먼저 읽게 한다. 닫으면 장소 선택으로 포커스를 돌린다.
 - 간격·형태·포커스·모션은 map의 토큰과 규칙을 따른다. 장식 모션은 없고 reduced-motion을 따른다.

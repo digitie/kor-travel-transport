@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { adminMenuScope, adminTitle } from "./admin-shell-fixture";
 
 const password = process.env.E2E_TRANSPORT_UI_PASSWORD;
 const now = () => new Date().toISOString();
@@ -18,10 +19,10 @@ for (const width of [320, 375, 414, 768, 1440]) test(`운영 홈·노선 중심 
   test.setTimeout(90_000); test.skip(!password, "로그인 암호 필요");
   await page.setViewportSize({ width, height: 1000 });
   await login(page);
-  await expect(page.getByRole("heading", { name: "운영 홈", exact: true })).toBeVisible();
+  await expect(adminTitle(page, "운영 홈")).toBeVisible();
   await expect(page.getByTestId("home-stat-sources")).toContainText("1");
-  // map 공용 셸은 좁은 화면에서도 주요 메뉴를 접지 않고 사이드바 아래에 그대로 둔다.
-  if (width === 375) await expect(page.getByRole("navigation", { name: "주요 메뉴" }).getByRole("link", { name: "도시철도", exact: true })).toBeVisible();
+  // 공용 관리자 셸: 좁은 화면의 주요 메뉴는 상단 바 메뉴 버튼으로 여는 좌측 drawer 안에 있다.
+  if (width === 375) await expect((await adminMenuScope(page)).getByRole("navigation", { name: "주요 메뉴" }).getByRole("link", { name: "도시철도", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "통합", exact: true })).toHaveCount(0);
   await page.route("**/transport/features/places?**", (route) => route.fulfill({ json: { items: [metro] } }));
   await page.route("**/transport/rail/timetables?**", (route) => route.fulfill({ json: { generated_at: now(), basis: "calendar", day_code: "8", items: [{ place_id: metro.id, station_name: metro.name, line_name: "GTX-A", status: "stored", stale: false, collected_at: now(), next_departure: { departure_time: "140000", train_number: "A1", destination_name: "동탄" }, upcoming_departures: [{ departure_time: "140000", train_number: "A1", destination_name: "동탄" }, { departure_time: "141000", train_number: "A2", destination_name: "동탄" }], items: [{ departure_time: "140000", train_number: "A1", destination_name: "동탄" }] }] } }));

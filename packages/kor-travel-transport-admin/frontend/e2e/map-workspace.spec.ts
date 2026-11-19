@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { adminTitle } from "./admin-shell-fixture";
 
 const observedAt = "2026-10-25T01:00:00Z";
 const station = { id: 71, kind: "rail_station", source: "kric_public_file", name: "시험역", subtitle: "시험 운영기관", provider_id: "S1", line_names: ["시험선"], address: "시험 주소", phone: "031-000-0000", latitude: 37.3, longitude: 127.1, prices: [], facilities: ["엘리베이터"], updated_at: observedAt };
@@ -128,7 +129,7 @@ test.describe("터치 지도 접근", () => {
     await expand.click();
     const workspace = page.locator('[data-slot="map-workspace"]');
     await expect(workspace).toHaveAttribute("data-expanded", "true");
-    await expect(page.getByRole("heading", { name: "유가 지도", exact: true })).not.toBeVisible();
+    await expect(adminTitle(page, "유가 지도")).not.toBeVisible();
     const essentials = [summary.locator("header"), summary.locator("dl"), summary.getByRole("status"), page.locator(".map-feedback").getByRole("alert")];
     for (const node of essentials) expect(await clipping(node), await node.textContent() ?? "").toMatchObject({ fullyVisible: true });
     await page.getByRole("tab", { name: "목록", exact: true }).click();
@@ -155,7 +156,7 @@ test.describe("터치 지도 접근", () => {
     await page.getByRole("button", { name: "원래 화면으로", exact: true }).focus();
     await page.keyboard.press("Escape");
     await expect(workspace).toHaveAttribute("data-expanded", "false");
-    await expect(page.getByRole("heading", { name: "유가 지도", exact: true })).toBeVisible();
+    await expect(adminTitle(page, "유가 지도")).toBeVisible();
     await expect(expand).toBeFocused();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });

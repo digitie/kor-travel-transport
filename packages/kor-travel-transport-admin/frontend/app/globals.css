@@ -353,11 +353,6 @@
   --kt-shadow-elevated: var(--shadow-elevated);
   --kt-shadow-modal: var(--shadow-modal);
 }
-@media (min-width: 1024px) {
-  .map-common-menu[data-collapsed="true"] [data-slot="app-menu-group-label"],
-  .map-common-menu[data-collapsed="true"] [data-slot="app-menu-link"] > span:not([aria-hidden]) { display: none; }
-  .map-common-menu[data-collapsed="true"] [data-slot="app-menu-link"] { padding-inline: 0; justify-content: center; }
-}
 
 /* transport 도메인 잔여 CSS가 읽는 간격·글자·서체 별칭(색은 transport-palette.css). */
 :root {
@@ -703,16 +698,15 @@
 .fuel-map-stage .kt-map-stage-summary > * { pointer-events:auto; }
 .fuel-region-marker .fuel-region-label { translate:var(--region-offset-x, 0px) var(--region-offset-y, 0px); pointer-events:auto; }
 .fuel-region-marker[data-region-overflow="true"] .fuel-region-label { visibility:hidden; pointer-events:none; }
-.fuel-region-marker:focus-visible { outline:none; }
-.fuel-region-marker:focus-visible .fuel-region-label { outline:3px solid var(--color-focus); outline-offset:3px; }
+/* 공간이 모자라 접은 카드도 키보드 포커스를 받으면 다시 보인다(별도 목록 없음). 다른 카드 위로 올린다. */
+.fuel-region-marker[data-region-overflow="true"]:focus-visible .fuel-region-label { visibility:visible; }
+/* 마커 요소는 1px 원점이라 포커스 링은 카드 하나에만 그린다(단일 outline 레시피 2px·offset 2px). */
+.fuel-region-marker:focus-visible { z-index:6; outline:0; }
+.fuel-region-marker:focus-visible .fuel-region-label { outline:2px solid var(--kt-focus); outline-offset:2px; }
 .fuel-region-link, .fuel-region-origin { position:absolute; left:50%; top:50%; pointer-events:none; }
 .fuel-region-link { overflow:visible; color:var(--text-secondary); }
 .fuel-region-link line { stroke:currentColor; stroke-width:1; }
 .fuel-region-origin { width:var(--space-xs); height:var(--space-xs); border-radius:50%; background:var(--text-primary); translate:-50% -50%; }
-.fuel-region-access { position:absolute; left:var(--space-sm); right:var(--space-sm); bottom:var(--space-xl); z-index:5; width:fit-content; max-width:calc(100% - 2 * var(--space-sm)); display:grid; gap:var(--space-xs); }
-.fuel-region-access-list { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:var(--space-sm); max-height:min(50dvh, 24rem); overflow:auto; overscroll-behavior:contain; padding:var(--space-sm); border:1px solid var(--border); border-radius:var(--radius-panel); background:var(--card); box-shadow:var(--shadow-map); }
-.fuel-region-access-list > button { min-width:0; padding:0; text-align:start; background:transparent; border:0; border-radius:var(--radius-panel); }
-.fuel-region-access-list .fuel-region-label { white-space:normal; height:100%; }
 .rail-map-label { display: flex; align-items: center; gap: var(--space-xs); white-space: nowrap; }
 .rail-map-lines { display: flex; gap: var(--space-xs); }
 .rail-line-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 1.75rem; height: 1.75rem; padding-inline: var(--space-xs); border-radius: var(--radius-control); background: var(--rail-line-color); color: var(--brand-foreground); font-size: var(--text-xs); font-weight: 800; border: 1px solid var(--card); }
@@ -935,12 +929,12 @@
 .rail-journey .station-results, .bus-journey .station-results { max-height: 6rem; }
 }
 
-/* map 셸의 지도 작업면 크기. map 공용 작업면(kt-map-workspace)은 부모 높이를 채우므로 화면 높이 기준으로 준다.
-   main 셸은 본문 영역 높이를 고정해 이 값을 대신했다. */
-.map-workbench { block-size: max(28rem, calc(100dvh - 9rem)); }
-/* lg 미만: 작업면 위아래로 지도 밖 영역이 남게 해 터치 스크롤이 지도 이동에 갇히지 않게 한다. */
-@media (max-width: 1023px) { .map-workbench { block-size: max(22rem, calc(100dvh - 8rem)); } }
+/* 지도 작업면 크기. 공용 작업면(kt-map-workspace)은 부모 높이를 채우므로 화면 높이 기준으로 준다.
+   공용 셸 상단 바(3rem)와 본문 위아래 여백(3rem)을 뺀다. */
+.map-workbench { block-size: max(28rem, calc(100dvh - 6rem)); }
+/* lg 미만: 작업면 아래로 지도 밖 영역이 남게 해 터치 스크롤이 지도 이동에 갇히지 않게 한다. */
+@media (max-width: 1023px) { .map-workbench { block-size: max(22rem, calc(100dvh - 7rem)); } }
 /* 명시 확장: 작업면이 화면 전체를 쓰고 페이지 헤더를 숨긴다. Escape·원래 화면으로 버튼은 공용 작업면이 처리한다. */
 .map-workbench:has([data-slot="map-workspace"][data-expanded="true"]) { position: fixed; inset: 0; z-index: 40; block-size: 100dvh; padding: .25rem; background: var(--surface-page); }
-main:has([data-slot="map-workspace"][data-expanded="true"]) [data-slot="admin-shell-header"] { display: none; }
+html:has([data-slot="map-workspace"][data-expanded="true"]) [data-slot="admin-shell-header"] { display: none; }
 html:has([data-slot="map-workspace"][data-expanded="true"]) { overflow: hidden; }

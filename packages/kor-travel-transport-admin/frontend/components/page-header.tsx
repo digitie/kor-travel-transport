@@ -1,83 +1,22 @@
 "use client";
 // Hallmark · genre: editorial-utilitarian · macrostructure: Rail-Workbench · design-system: design.md · designed-as-app
 
-import { usePathname } from "next/navigation";
-import { Fragment, type ReactNode } from "react";
-
-import { getActiveAdminItem } from "@/components/admin-nav";
-import { HelpTip } from "@/components/help-tip";
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
-import { withOccurrenceKeys } from "@/lib/occurrence-key";
-
-export type AdminBreadcrumb = { label: string; href?: string };
+import { AdminPageTitle } from "@kor-travel/ui/admin-shell";
+import type { ReactNode } from "react";
 
 export type PageHeaderProps = {
+  /** 페이지 이름. 셸 상단 바에 "교통 - {title}"로 표시한다. */
   title: string;
-  /** 제목 옆 도움말(HelpTip) 본문. 예전 InfoButton 자리를 그대로 쓴다. */
+  /** 상단 바 제목 옆의 작은 설명. 좁은 폭에서는 말줄임하고 전체 문장은 title 속성으로 제공한다. */
   description?: ReactNode;
-  /** 명시 섹션 라벨. 생략하면 메뉴 정본에서 현재 경로의 섹션을 유도한다. breadcrumbs가 있으면 그쪽이 이긴다. */
-  section?: string;
-  breadcrumbs?: AdminBreadcrumb[];
-  /** h1 아래 한 줄 메타(상태·갱신 시각·건수). text-secondary 한 줄이며 구분자는 `·`. */
-  meta?: ReactNode;
-  /** 헤더 액션 슬롯 — primary ≤ 1 + secondary ≤ 2. */
+  /** 상단 바 오른쪽 동작. 모바일 폭에서는 아이콘 버튼 1~2개로 줄인다. */
   actions?: ReactNode;
 };
 
 /**
- * 페이지 헤더 — AdminShell의 header band와 같은 마크업·클래스다.
- * 레이아웃의 main 안에서 그려지므로 가로 여백은 main이 준다. 페이지 최상단에 한 번 둔다.
+ * 페이지 제목은 공용 관리자 셸의 한 줄 상단 바가 그린다(페이지 h1은 거기 하나뿐이다).
+ * AdminShell 안에서는 상단 바 내용을 덮어쓰고, 밖(단위 시험 등)에서는 같은 상단 바를 직접 그린다.
  */
-export function PageHeader({ title, description, section, breadcrumbs, meta, actions }: PageHeaderProps) {
-  const pathname = usePathname();
-  const sectionLabel = section ?? getActiveAdminItem(pathname)?.section;
-  const hasBreadcrumbs = Boolean(breadcrumbs && breadcrumbs.length > 0);
-
-  return (
-    <header className="mb-6 border-b border-border pb-4" data-slot="admin-shell-header">
-      <div className="flex min-w-0 flex-col gap-1">
-        {hasBreadcrumbs && breadcrumbs ? (
-          <Breadcrumb>
-            <BreadcrumbList className="text-xs">
-              {withOccurrenceKeys(breadcrumbs, (crumb) => JSON.stringify([crumb.href ?? null, crumb.label])).map(
-                ({ key, value: crumb }, index) => (
-                  <Fragment key={key}>
-                    {index > 0 ? <BreadcrumbSeparator /> : null}
-                    <BreadcrumbItem>
-                      {crumb.href ? (
-                        <BreadcrumbLink href={crumb.href}>{crumb.label}</BreadcrumbLink>
-                      ) : index === breadcrumbs.length - 1 ? (
-                        <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
-                      ) : (
-                        <span>{crumb.label}</span>
-                      )}
-                    </BreadcrumbItem>
-                  </Fragment>
-                ),
-              )}
-            </BreadcrumbList>
-          </Breadcrumb>
-        ) : sectionLabel ? (
-          <p className="text-2xs font-medium text-text-secondary">{sectionLabel}</p>
-        ) : null}
-        <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-6">
-          <div className="flex min-w-0 items-center gap-2">
-            <h1 className="text-xl leading-tight font-bold tracking-tight text-text-primary">{title}</h1>
-            {description ? <HelpTip label={title}>{description}</HelpTip> : null}
-          </div>
-          {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
-        </div>
-        {meta ? (
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-secondary">{meta}</div>
-        ) : null}
-      </div>
-    </header>
-  );
+export function PageHeader({ title, description, actions }: PageHeaderProps) {
+  return <AdminPageTitle title={title} description={description} actions={actions} />;
 }

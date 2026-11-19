@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { openIsolatedMenuPage, requireLoopbackOrigin } from "./mobile-navigation-fixture";
+import { adminTitle } from "./admin-shell-fixture";
 
 test.use({ javaScriptEnabled: false });
 
@@ -8,7 +9,7 @@ for (const width of [1280, 375]) {
     requireLoopbackOrigin(baseURL);
     await page.setViewportSize({ width, height: 900 });
     await openIsolatedMenuPage(page, baseURL, "/rail");
-    await expect(page.getByRole("heading", { name: "철도", exact: true })).toBeVisible();
+    await expect(adminTitle(page, "철도")).toBeVisible();
     const guide = page.getByRole("region", { name: "철도 역 지도", exact: true });
     await expect(guide).toBeAttached();
     const box = await guide.boundingBox();
