@@ -270,6 +270,10 @@ def test_cache_load_query_prefers_live_and_caps_snapshot_id() -> None:
         async def scalar(self, _statement):
             return 42
 
+        async def connection(self):
+            return Connection()
+
+    class Connection:
         async def stream(self, statement):
             compiled = str(statement.compile(dialect=postgresql.dialect()))
             assert "DISTINCT ON" in compiled
@@ -281,6 +285,60 @@ def test_cache_load_query_prefers_live_and_caps_snapshot_id() -> None:
     assert snapshot.max_snapshot_id == 42
     assert snapshot.items[0].parking_lot_id == 3
     assert closed == [True]
+
+
+
+def test_history_load_keeps_session_connection_and_closes_before_cpu(monkeypatch) -> None:
+    now = datetime(2026, 11, 19, tzinfo=UTC)
+    events = []
+    owner_thread = threading.get_ident()
+    original = history_cache.ParkingHistorySnapshot.from_rows
+
+    class Result:
+        async def partitions(self, size):
+            assert size == history_cache.HISTORY_FETCH_ROWS
+            yield [(now, 3, "GMP", 12, 100, 88)]
+
+        async def close(self):
+            events.append("cursor_closed")
+
+    class Connection:
+        async def stream(self, statement):
+            assert events == ["session_entered", "max_id", "session_connection"]
+            assert statement.get_execution_options()["yield_per"] == history_cache.HISTORY_FETCH_ROWS
+            return Result()
+
+    class Session:
+        async def __aenter__(self):
+            events.append("session_entered")
+            return self
+
+        async def __aexit__(self, *_args):
+            events.append("session_closed")
+
+        async def scalar(self, _statement):
+            events.append("max_id")
+            return 42
+
+        async def connection(self):
+            events.append("session_connection")
+            return Connection()
+
+        async def stream(self, _statement):
+            raise AssertionError("대량 행은 session의 같은 connection으로 읽어야 합니다")
+
+    def after_release(*args):
+        assert events == ["session_entered", "max_id", "session_connection", "cursor_closed", "session_closed"]
+        assert threading.get_ident() != owner_thread
+        return original(*args)
+
+    monkeypatch.setattr(history_cache.ParkingHistorySnapshot, "from_rows", after_release)
+    snapshot = asyncio.run(history_cache.load_snapshot(Session, earliest_observed_at=now))
+    assert snapshot.max_snapshot_id == 42
+    assert json.loads(snapshot.render(now, None, None))["items"] == [{
+        "airport_code": "GMP", "parking_lot_id": 3, "observed_at": "2026-11-19T00:00:00Z",
+        "occupied_spaces": 12, "total_spaces": 100, "available_spaces": 88,
+    }]
 
 
 def test_history_fetch_allows_other_api_work_before_last_batch() -> None:
@@ -311,6 +369,10 @@ def test_history_fetch_allows_other_api_work_before_last_batch() -> None:
             async def scalar(self, _statement):
                 return 42
 
+            async def connection(self):
+                return Connection()
+
+        class Connection:
             async def stream(self, _statement):
                 return Result()
 
@@ -360,6 +422,10 @@ def test_failed_or_cancelled_history_fetch_closes_cursor_without_partial_snapsho
             async def scalar(self, _statement):
                 return 42
 
+            async def connection(self):
+                return Connection()
+
+        class Connection:
             async def stream(self, _statement):
                 return Result()
 
