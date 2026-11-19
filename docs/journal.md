@@ -1,3 +1,10 @@
+## 2026-11-20 — 실제 사용하는 백엔드 공유 라이브러리 정렬 후보
+
+- SQLAlchemy/asyncpg/FastAPI/Pydantic(core·settings 포함)/Alembic/HTTPX/Uvicorn exact 축과 Common Python e289를127개 lock에 반영했다. Dagster/호스트 profile·unused psycopg3는 변경하지 않는다.
+- 실제PG migration/check·OpenAPI·새 다중 fetch 창4,099행 byte 계약 PASS, 기존 COPY/HTTP 고유105개 정산 PASS다(원 timeout 보존, 실패 새 시험/미완6개만 재검증). 최초 시험/NTFS cache 실패를 별도 보존했다.
+- 현재fa204 운영 SDK621·20복원·auth/map/5폭·6PNG는 수용했고 cold10.829초는 미해결이다. 이 의존성 후보의 build/SDK/성능 성공은 아직 주장하지 않는다.
+- 상세: [정렬과 검증 경계](reports/2026-11-20-used-backend-stack.md).
+
 ## 2026-11-20 — Opinet 자동 POST 중복 대기 수정 소비
 
 - 최신 canonical mainfa204 기준으로 `python-opinet-api[browser]`를 실제 producer PR28 merge `11f1a874937a93f931350571179911d1505dafb3`에 고정했다. 기존 f58과 producer 직전 main d3b의 전체 tree는 동일하며, 새 producer는 검증된 자동 POST의 없는 조회 버튼용 추가 대기만 제거한다. 실제 선택 throttle·수동 fallback·DOM/scope·오류/재시도/취소/체크포인트 계약은 유지한다.

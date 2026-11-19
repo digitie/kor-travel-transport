@@ -58,6 +58,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Checkout immutable Common Python application policy
+        uses: actions/checkout@v4
+        with:
+          repository: digitie/kor-travel-common
+          ref: b566840cb111fa8b1184498aa892b0fd5ce7e5c6
+          fetch-depth: 0
+          path: .common-python-policy
+          persist-credentials: false
+      - name: Check USED Python application versions
+        run: >-
+          python ../.common-python-policy/tools/check_versions.py .
+          --repo kor-travel-transport --strict-python-application
+          --json common-python-application-report.json
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --extra dev --locked
       - run: uv run alembic -c alembic.ini upgrade head
