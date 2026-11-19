@@ -1,3 +1,10 @@
+## 2026-11-20 — Opinet 자동 POST 중복 대기 수정 소비
+
+- 최신 canonical mainfa204 기준으로 `python-opinet-api[browser]`를 실제 producer PR28 merge `11f1a874937a93f931350571179911d1505dafb3`에 고정했다. 기존 f58과 producer 직전 main d3b의 전체 tree는 동일하며, 새 producer는 검증된 자동 POST의 없는 조회 버튼용 추가 대기만 제거한다. 실제 선택 throttle·수동 fallback·DOM/scope·오류/재시도/취소/체크포인트 계약은 유지한다.
+- uv lock을 갱신했고127개 패키지 metadata 중 Opinet Git SHA만 바뀜을 확인했다. 앱 Python·UI·Dockerfile·동시성·timeout은 변경하지 않았다.
+- 실제 새 library module SHA를 확인한 WSL/ext4 consumer 집중13건(기존 timeout/query 설정·무작위 대기·저장 재개·SQLSTATE·파일 오류·취소)이 통과했고 offline `uv lock --check`도 통과했다. producer의5개 정확 CI와 부모 단일 좁은 검토는 이미 통과했다. 이 consumer의 정확 CI/머지/새 정상 이미지/native/운영 수용은 후속이다.
+- 230지역·2탭의 완전 자동 재사용 가정에서 평균230초 대기 감소 모델일 뿐, 운영92분 전체 원인이나 실제 개선율을 주장하지 않는다. 현재223 SDK가 끝나기 전에는 재배포하지 않으며 Weather274 실제 병합·배포를 우선한다. 새 crawl·provider 동시성 변경은 없다.
+
 ## 2026-11-19 — 기준정보 본문 저장의 native COPY 후보
 
 - 같은 AsyncSession transaction에서 asyncpg 공개 COPY를400행씩 사용한다. JSON 재해석 없이 canonical 문자열을 전달하고 기존 bound/예산·원자성·40001/55P03 처리·다른 driver 경로를 유지한다.
