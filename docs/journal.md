@@ -1,3 +1,11 @@
+## 2026-11-19 — 관리자 공용 셸(@kor-travel/ui 0.2.3) 채택과 버튼 테두리 회귀 수정
+
+- Common main `0e2a3f5a`(PR70) 산출물 UI0.2.3·tokens0.1.4를 두 프론트(`frontend/`, admin)에 vendor하고 원장·lock(버전·resolved·integrity)과 `frontend/src` 정확 버전을 올렸다. 정책 catalog/common-ref는 `d644632e`(PR71)다. 공개 앱은 의존성만 갱신했다.
+- admin 자체 사이드바를 공용 `AdminShell`+`AppMenu`로 바꿨다. lg 미만은 상단 바 메뉴 버튼이 좌측 drawer를 열고, lg 이상 rail 접힘 키(`kor-travel-transport:sidebar-collapsed`, 옛 `1`/`0` 호환)는 유지한다. 맨 위 한 줄은 "교통 - 페이지" 제목만 두고 페이지 설명은 같은 줄에 작게 말줄임한다(`PageHeader`=`AdminPageTitle`). 옛 워드마크 `kor-travel-transport admin`은 없앴다.
+- 버튼 테두리 굵어짐 원인: 전역 `button` 규칙(globals.css의 `@layer base` `font: inherit`)이 아니라 로컬 `buttonInteractionClasses`의 `outline-solid`였다. tailwind-merge가 공통 `outline-none`을 지운 채 `outline-style: solid`가 쉬는 상태에도 남아 기본 굵기 3px currentColor outline이 1px 테두리 위에 그려졌고, 포커스 때는 `focus-visible:border-ring`과 2px outline이 겹쳤다. n150 Chromium 수정 전 computed style(PC1280·모바일390)에서 rail 접기·본문 Button이 rest/hover/active 모두 `solid 3px`, 수정 후 `none`·포커스 때만 2px/offset2를 확인했다(e2e `admin-shell-adoption.spec.ts`).
+- 유가 지도의 "지역 카드 모두 보기 (n)" 토글과 목록을 지웠다. 공간이 모자라 접은 지역 카드도 마커 버튼은 탭 순서에 남고(접근 이름에 전 유종 가격) 키보드 포커스 때 카드를 다시 보인다.
+- 운영 배포는 하지 않았다(odroid 배포는 Codex 몫).
+
 ## 2026-11-19 — 주차 이력 생성의 중복 시각 변환 제거
 
 - 운영 c43 철도역 GET(1000건)은4.30초였고, 같은5초 프로파일의 별도 백그라운드 스레드는 주차 이력 생성과 UTC 변환을 계속 수행했다. 이 표본을 최초 cold18.73초의 단독 원인으로 단정하지 않는다.

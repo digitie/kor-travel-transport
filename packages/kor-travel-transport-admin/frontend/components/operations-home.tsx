@@ -7,6 +7,7 @@ import type { ColumnDef } from "@kor-travel/ui/virtual-table";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { PAGE_HEADINGS } from "@/components/admin-nav";
 import { PageHeader } from "@/components/admin-shell";
 import { DetailList } from "@/components/detail-list";
 import { EmptyState } from "@/components/empty-state";
@@ -87,7 +88,7 @@ const TRAFFIC_LINKS = [
 export function OperationsHome() {
   const { loading, refresh, errors, activeProviders, providers, attention, activeRuns, dagster, runningSchedules, failedRuns, recentRuns, coverage } = useOperationsOverview();
   return <>
-    <PageHeader title="운영 홈" description="운영 상태를 한 화면에서 확인합니다." actions={<>
+    <PageHeader {...PAGE_HEADINGS["/"]} actions={<>
       <Button type="button" variant="outline" loading={loading} onClick={refresh}><RefreshCw aria-hidden="true" data-icon="inline-start" /><span className="sr-only sm:not-sr-only">새로고침</span></Button>
       <a className={cn(buttonVariants({ variant: "outline" }))} href={dagsterLocationUrl()} rel="noreferrer" target="_blank"><ExternalLink aria-hidden="true" data-icon="inline-start" /><span className="sr-only sm:not-sr-only">Dagster</span></a>
     </>} />

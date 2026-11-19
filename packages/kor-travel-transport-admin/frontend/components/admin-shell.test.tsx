@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, test, vi } from "vitest";
 import { AdminShell } from "./admin-shell";
 import { PageHeader } from "./page-header";
+import { NAV_GROUPS, PAGE_HEADINGS } from "./admin-nav";
 
 const navigation = vi.hoisted(() => ({ pathname: "/" }));
 vi.mock("next/navigation", () => ({ usePathname: () => navigation.pathname }));
@@ -73,10 +74,12 @@ test("셸은 공용 관리자 셸의 rail·상단 바·본문 landmark·건너�
 });
 
 test.each([
-  ["/", "홈"],
+  ["/", "운영 홈"],
   ["/fuel", "유가 지도"],
+  ["/highways", "고속도로"],
+  ["/rail/mapping", "지하철역 코드 매핑"],
   ["/rail/timetable", "시간표 조회"],
-])("%s 첫 서버 렌더의 맨 위 한 줄 제목은 '교통 - %s'다", (pathname, page) => {
+])("%s 첫 서버 렌더부터 맨 위 한 줄 제목은 '교통 - %s'이고 설명도 같은 줄에 있다", (pathname, page) => {
   navigation.pathname = pathname;
   const html = renderToStaticMarkup(
     <AdminShell>
@@ -88,6 +91,8 @@ test.each([
   const [heading = ""] = h1;
   expect(heading).toContain(`title="교통 - ${page}"`);
   expect(heading.replace(/<[^>]+>/g, "")).toBe(`교통 - ${page}`);
+  // hydration 뒤 PageHeader가 덮어써도 바뀌지 않도록 설명도 같은 정본에서 서버 렌더한다.
+  expect(html).toMatch(/data-slot="admin-shell-description"[^>]*>[^<]+<\/p>/);
 });
 
 test("로그인 화면에는 관리 메뉴와 로그아웃이 없다", () => {
@@ -112,4 +117,13 @@ test("셸 밖의 페이지 헤더는 한 줄 상단 바로 제목·작은 설명
   expect(html).toMatch(/<h1\b[^>]*>전달된 제목<\/h1>/);
   expect(html).toMatch(/<p\b[^>]*data-slot="admin-shell-description"[^>]*title="전달된 설명"[^>]*>전달된 설명<\/p>/);
   expect(html).toMatch(/<button[^>]*>동작<\/button>/);
+});
+
+test("모든 메뉴 항목은 페이지 제목·설명 정본을 가진다", () => {
+  const hrefs = NAV_GROUPS.flatMap((group) => group.items.map((item) => item.href));
+  expect(Object.keys(PAGE_HEADINGS).sort()).toEqual([...hrefs].sort());
+  for (const heading of Object.values(PAGE_HEADINGS)) {
+    expect(heading.title.trim()).not.toBe("");
+    expect(heading.description.trim()).not.toBe("");
+  }
 });

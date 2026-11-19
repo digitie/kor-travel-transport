@@ -1,3 +1,8 @@
+## 2026-11-19 — 관리자 공용 셸 채택(@kor-travel/ui 0.2.3)
+
+- admin 전 화면이 공용 `AdminShell`(모바일 좌측 drawer·"교통 - 페이지" 한 줄 제목)을 쓴다. 버튼 3px outline 회귀(로컬 `outline-solid`)를 고치고 유가 지도의 지역 카드 목록 토글을 지웠다. 근거는 [journal](journal.md) 같은 날짜 항목.
+- 다음 한 작업: 머지 후 Codex가 odroid에 admin·공개 web 이미지를 재배포하고 PC/모바일에서 drawer·제목·포커스 outline을 확인한다.
+
 ## 2026-11-19 — 주차 이력 CPU 경합 후속
 
 - 기준 운영은c43/PR217이다. 별도 주차 이력 생성 스레드의 반복 UTC 변환을 프로파일에서 확인하고 `from_rows`만 좁게 개선했다. 동일10만 SQLAlchemy Row 교대 측정 생성 CPU25.22%감소와 전체 바이트/필터/index 동등, 집중23PASS/PG전용1SKIP이다.

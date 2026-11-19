@@ -35,6 +35,7 @@ function goBack() {
  * 아래 접힘 영역의 mono 블록 하나(containment 1층).
  */
 export function AppErrorPanel({ error, reset, standalone = false }: AppErrorPanelProps) {
+  const ErrorHeading = standalone ? "h1" : "h2";
   const recoverable = useMemo(() => isLikelyRecoverableNextRuntimeError(error), [error]);
   const details = useMemo(() => errorRecoveryMessage(error), [error]);
 
@@ -85,9 +86,10 @@ export function AppErrorPanel({ error, reset, standalone = false }: AppErrorPane
       <div className="flex w-full max-w-2xl flex-col gap-4">
         {/* 분류 라벨 12px/500 — uppercase/tracking 없음(m3). */}
         <p className="text-2xs font-medium text-text-secondary">UI 런타임 오류</p>
-        <h1 className="text-xl leading-tight font-bold tracking-tight text-text-primary">
+        {/* 셸 안의 오류 화면은 상단 바가 페이지 h1을 가지므로 h2다. 셸 밖(global-error)만 h1. */}
+        <ErrorHeading className="text-xl leading-tight font-bold tracking-tight text-text-primary">
           페이지를 다시 불러오지 못했습니다
-        </h1>
+        </ErrorHeading>
         <p className="max-w-prose text-sm text-text-secondary">
           {recoverable
             ? "현재 탭의 화면 런타임 상태가 서버와 맞지 않아 새로고침이 필요합니다."

@@ -8,7 +8,7 @@ import { AppMenu } from "@kor-travel/ui/app-menu";
 import { usePathname } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 
-import { ADMIN_AREA, NAV_GROUPS, getActiveAdminItem } from "@/components/admin-nav";
+import { ADMIN_AREA, NAV_GROUPS, getActiveAdminItem, getAdminPageHeading } from "@/components/admin-nav";
 import { cn } from "@/lib/utils";
 
 // 기존 `@/components/admin-shell` 호출부가 PageHeader를 그대로 가져가도록 재수출한다.
@@ -44,11 +44,12 @@ function clearDashboardCache() {
 /**
  * 공용 관리자 셸(@kor-travel/ui AdminShell). lg 이상은 접을 수 있는 좌측 rail, 그 아래는 상단 바의
  * 메뉴 버튼으로 여는 좌측 drawer다. 맨 위 한 줄은 "교통 - 페이지" 제목과 작은 설명만 둔다.
- * 페이지는 PageHeader(=AdminPageTitle)로 제목·설명·동작을 덮어쓴다. 첫 서버 렌더는 메뉴 라벨을 쓴다.
+ * 페이지는 PageHeader(=AdminPageTitle)로 제목·설명·동작을 덮어쓴다. 첫 서버 렌더도 같은 PAGE_HEADINGS를 쓴다.
  */
 export function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const active = getActiveAdminItem(pathname);
+  const heading = getAdminPageHeading(pathname);
 
   // 로그아웃 요청 중 이전 페이지의 늦은 응답이 캐시를 다시 쓸 수 있다.
   // 로그인 문서가 열린 뒤에도 정리해 이전 문서의 비동기 작업과 경합하지 않는다.
@@ -61,7 +62,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
   return (
     <CommonAdminShell
       area={ADMIN_AREA}
-      title={active?.label}
+      title={heading?.title ?? active?.label}
+      description={heading?.description}
       brand={ADMIN_AREA}
       navigationKey={pathname ?? undefined}
       collapsedStorageKey={SIDEBAR_COLLAPSED_KEY}

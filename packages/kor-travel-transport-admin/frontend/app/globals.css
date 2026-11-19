@@ -703,6 +703,8 @@
 /* 마커 요소는 1px 원점이라 포커스 링은 카드 하나에만 그린다(단일 outline 레시피 2px·offset 2px). */
 .fuel-region-marker:focus-visible { z-index:6; outline:0; }
 .fuel-region-marker:focus-visible .fuel-region-label { outline:2px solid var(--kt-focus); outline-offset:2px; }
+/* 접힌 카드는 원점 자리에 다시 보이며 지도 가장자리에서 잘릴 수 있어, 원점 점에도 같은 링을 둬 포커스 위치를 잃지 않게 한다. */
+.fuel-region-marker[data-region-overflow="true"]:focus-visible .fuel-region-origin { outline:2px solid var(--kt-focus); outline-offset:2px; }
 .fuel-region-link, .fuel-region-origin { position:absolute; left:50%; top:50%; pointer-events:none; }
 .fuel-region-link { overflow:visible; color:var(--text-secondary); }
 .fuel-region-link line { stroke:currentColor; stroke-width:1; }
