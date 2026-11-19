@@ -26,7 +26,9 @@ it("only requests location after a click and moves to a valid result", async () 
   await act(async () => host.querySelector("button")!.click());
   await act(async () => get.mock.calls[0][0]({ coords: { longitude: 127, latitude: 37 } }));
   expect((state.props.layers as ReactElement<{ target: unknown }>).props.target).toMatchObject({ center: [127, 37], zoom: 14 });
-  expect(state.props.view).toBe("map");
+  expect(state.props.mapOnly).toBe(true);
+  expect(state.props.view).toBeUndefined();
+  expect(state.props.onViewChange).toBeUndefined();
   expect(host.textContent).toContain("내 위치 주변의 유가");
 });
 it("denial keeps the viewport and gives visible fallback feedback", async () => {

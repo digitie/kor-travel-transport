@@ -12,7 +12,6 @@ const loadFuel: typeof publicFuelGet = (path, signal) => publicFuelGet(path.repl
 
 export function PublicFuelMap() {
   const [location, setLocation] = useState<CameraTarget>();
-  const [view, setView] = useState<"map" | "list">("map");
   const [locating, setLocating] = useState(false);
   const [message, setMessage] = useState("현재 지도 범위의 유가를 표시합니다.");
   const request = useRef(0);
@@ -38,13 +37,12 @@ export function PublicFuelMap() {
       clearTimeout(timeout.current);
       request.current++;
       setLocating(false);
-      setView("map");
       setLocation({ center: [longitude, latitude], zoom: 14, id: `location:${id}` });
       setMessage("내 위치 주변의 유가를 표시합니다.");
     }, fallback, { enableHighAccuracy: false, timeout: 6000, maximumAge: 60_000 });
   }
   return <main className="public-fuel-surface" aria-label="주변 주유소 유가 지도">
-    <TransportMap mode="fuel" load={loadFuel} view={view} onViewChange={next => { setView(next); setLocation(undefined); }} layers={<CameraRequest target={location} />} />
+    <TransportMap mode="fuel" load={loadFuel} mapOnly layers={<CameraRequest target={location} />} />
     <div className="public-fuel-location">
       <Button type="button" variant="outline" onClick={locate} disabled={locating} aria-label="내 위치 주변 유가 보기"><LocateFixed aria-hidden="true" size={18} />{locating ? "위치 확인 중" : "내 위치"}</Button>
       <p className="public-fuel-location-status" role="status">{message}</p>
