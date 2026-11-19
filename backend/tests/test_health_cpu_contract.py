@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib.metadata
 import json
+import re
 import subprocess
 import sys
 import threading
@@ -12,6 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+import tomllib
 import yaml
 from test_dagster_healthcheck_contract import ROOT, _ComposeLoader
 
@@ -61,10 +63,22 @@ def test_stdlib_compile_uses_final_image_interpreter_after_installs():
 
 
 def test_installed_common_has_pinned_cli_modules():
+    declarations = tomllib.loads((BACKEND_ROOT / "pyproject.toml").read_text())["project"]["dependencies"]
+    common = [value for value in declarations if value.startswith("kor-travel-common")]
+    assert len(common) == 1
+    source = re.fullmatch(
+        r"kor-travel-common(?:\[[^]]+\])?\s*@\s*git\+"
+        r"(https://github\.com/digitie/kor-travel-common\.git)@([0-9a-f]{40})"
+        r"#subdirectory=packages/py/kor-travel-common",
+        common[0],
+    )
+    assert source is not None
+    expected_url, expected_commit = source.groups()
     metadata = importlib.metadata.distribution("kor-travel-common")
     direct = json.loads(metadata.read_text("direct_url.json") or "{}")
     if "vcs_info" in direct:
-        assert direct["vcs_info"]["commit_id"] == "c289b4624c8640eb918cc915803e72ae754e58fb"
+        assert direct["url"] == expected_url
+        assert direct["vcs_info"]["commit_id"] == expected_commit
     else:
         # 실제 no-index wheel은 file URL이며 Git VCS 설치였다고 위조하지 않는다.
         assert direct.get("url", "").startswith("file:") and "archive_info" in direct
@@ -76,7 +90,7 @@ def test_installed_common_has_pinned_cli_modules():
     for name, digest in expected.items():
         assert hashlib.sha256((package / name).read_bytes()).hexdigest() == digest
     for name in ("pyproject.toml", "uv.lock"):
-        assert "c289b4624c8640eb918cc915803e72ae754e58fb" in (BACKEND_ROOT / name).read_text()
+        assert expected_commit in (BACKEND_ROOT / name).read_text()
 
 
 
