@@ -57,7 +57,7 @@ def test_stdlib_compile_uses_final_image_interpreter_after_installs():
     dockerfile = (BACKEND_ROOT / "Dockerfile").read_text()
     step = "RUN python -I -m kortravelcommon.build_bytecode --stdlib"
     assert dockerfile.count(step) == 1
-    assert dockerfile.index('pip install --no-cache-dir -e ".[dev]"') < dockerfile.index(step)
+    assert dockerfile.index('python -m pip install -e ".[dev]"') < dockerfile.index(step)
     assert dockerfile.index("RUN playwright install --with-deps chromium") < dockerfile.index(step)
     assert dockerfile.index(step) < dockerfile.index('ENTRYPOINT ["/entrypoint.sh"]')
 

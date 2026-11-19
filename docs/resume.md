@@ -5,6 +5,10 @@
 
 ## 현재 후보 — 2026-11-20 fullshared Python
 
+## 2026-11-20 앱 pip cache 소스 준비
+
+두 앱 pip RUN의 cache disable만 해제하고 SOABI/glibc/GDAL별 locked cache를 사용한다. 버전·lock·GDAL/Playwright 설치·애플리케이션 코드는 바꾸지 않는다. focused shell/음성 제어와 기존 순서 검증을 완료했으며, 실제 캐시 hit/빌드·런타임 적용은 후속 영수증 전까지 미완료다. 진행 중 e908 및 검증된 후속 병합 소스 배포를 막지 않는다.
+
 4a801 기반에서 사용95 shared lock과 실제 설치본을 Common75 immutable8a0ec23에
 정렬했다. HTTPX2/HTTPCore2는2.16.2, Opinet11f·Dagster1.13.24·Python>=3.12·UI
 정본은 유지한다. VadaHub filelock4 허용은 SDK20/169f 후보로 먼저 검증했으며
