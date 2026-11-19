@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { PAGE_HEADINGS } from "@/components/admin-nav";
 import { PageHeader } from "@/components/admin-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -27,7 +28,7 @@ ${JSON.stringify(payload, null, 2)}`);
   }
 
   return <>
-    <PageHeader title="API 점검" description="이 화면은 저장 데이터 조회 경로만 테스트합니다. 수집·백업 API와 지도 상세의 별도 좌표 보정 경로는 여기에 노출하지 않습니다." />
+    <PageHeader {...PAGE_HEADINGS["/api-test"]} />
     <Card size="sm">
       <CardContent className="flex flex-wrap gap-2">
         {endpoints.map((endpoint) => <Button key={endpoint} onClick={() => inspect(endpoint)} type="button" variant="outline" size="sm">GET /v1/{endpoint}</Button>)}

@@ -59,7 +59,7 @@ test.each([[1120, 832], [351, 787]])("지역 카드 배치는 %sx%s에서 충돌
   else expect(placed).toHaveLength(cards.length);
 });
 
-test("좁은 지도의 지역 목록에서도 전5유종과 미제공을 읽고 원좌표로 지역별 확대한다", async () => {
+test("지역 카드는 별도 목록·토글 없이 지도 마커로만 전5유종과 미제공을 읽고 원좌표로 확대한다", async () => {
   Object.assign(mapState, { zoom: 7 });
   vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ items: [], total: 2, clustered: true, clusters: [], fuel_regions: [
     { region_key: "opinet:11", label: "서울특별시", product_code: "B027", average_price: 1700, station_count: 1, longitude: 127, latitude: 37.5 },
@@ -70,25 +70,21 @@ test("좁은 지도의 지역 목록에서도 전5유종과 미제공을 읽고 
     await act(async () => root.render(<TransportMap mode="fuel" />));
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
     expect(container.querySelector(".kt-map-count")?.textContent).toBe("2건 표시");
-    const toggle = [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "지역 카드 모두 보기 (2)")!;
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    await act(async () => toggle.click());
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    const list = container.querySelector<HTMLElement>('[aria-label="모든 지역 유가"]')!;
-    expect(list.tabIndex).toBe(0);
-    const buttons = [...list.querySelectorAll<HTMLButtonElement>("button")];
-    expect(buttons).toHaveLength(2);
-    for (const button of buttons) for (const label of ["휘발유", "경유", "고급유", "등유", "LPG", "미제공"]) expect(button.textContent).toContain(label);
-    const gyeonggi = buttons.find(button => button.textContent?.includes("경기도"))!;
+    // 삭제한 "지역 카드 모두 보기 (n)" 토글과 그 목록은 다시 생기지 않는다.
+    expect([...container.querySelectorAll("button")].some(button => button.textContent?.includes("지역 카드"))).toBe(false);
+    expect(container.querySelector('[aria-label="모든 지역 유가"]')).toBeNull();
+    expect(container.querySelector(".fuel-region-access")).toBeNull();
+    const markers = [...container.querySelectorAll<HTMLButtonElement>("button.fuel-region-marker")];
+    expect(markers).toHaveLength(2);
+    for (const marker of markers) for (const label of ["휘발유", "경유", "고급유", "등유", "LPG", "미제공"]) expect(marker.getAttribute("aria-label")).toContain(label);
+    const gyeonggi = markers.find(marker => marker.getAttribute("aria-label")?.startsWith("경기도"))!;
     gyeonggi.focus(); expect(document.activeElement).toBe(gyeonggi);
     await act(async () => gyeonggi.click());
     expect(JSON.parse(container.querySelector('[data-camera-request]')!.getAttribute("data-camera-request")!)).toMatchObject({ center: [127.5, 37.7], zoom: 8 });
-    await act(async () => toggle.click());
-    expect(container.querySelector('[aria-label="모든 지역 유가"]')).toBeNull();
   } finally { await act(async () => root.unmount()); container.remove(); }
 });
 
-test("공간 부족 목록을 사용자가 접으면 같은 화면의 DOM 갱신이 다시 열지 않는다", async () => {
+test("공간이 모자라 접은 지역 카드도 키보드 탭 순서와 접근 이름을 유지한다", async () => {
   Object.assign(mapState, { zoom: 7 });
   const bounds = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function(this: HTMLElement) {
     return this.classList.contains("map-primary") ? new DOMRect(0, 0, 351, 190)
@@ -104,12 +100,15 @@ test("공간 부족 목록을 사용자가 접으면 같은 화면의 DOM 갱신
   try {
     await act(async () => { root.render(<TransportMap mode="fuel" />); });
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
-    expect(container.querySelector('[aria-label="모든 지역 유가"]')).not.toBeNull();
-    const toggle = [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "지역 카드 접기")!;
-    await act(async () => toggle.click());
-    // 목록 제거가 실제 MutationObserver를 다시 깨운 뒤에도 명시적인 접기는 유지한다.
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    const markers = [...container.querySelectorAll<HTMLButtonElement>(".fuel-region-marker")];
+    const overflowed = markers.filter(marker => marker.dataset.regionOverflow === "true");
+    expect(overflowed.length).toBeGreaterThan(0);
+    for (const marker of overflowed) {
+      expect(marker.hasAttribute("aria-hidden")).toBe(false);
+      expect(marker.tabIndex).not.toBe(-1);
+      expect(marker.getAttribute("aria-label")).toContain("원/L");
+      marker.focus(); expect(document.activeElement).toBe(marker);
+    }
     expect(container.querySelector('[aria-label="모든 지역 유가"]')).toBeNull();
   } finally {
     await act(async () => root.unmount()); container.remove();

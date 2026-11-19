@@ -128,7 +128,7 @@ test.describe("터치 지도 접근", () => {
     await expand.click();
     const workspace = page.locator('[data-slot="map-workspace"]');
     await expect(workspace).toHaveAttribute("data-expanded", "true");
-    await expect(page.getByRole("heading", { name: "유가 지도", exact: true })).not.toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "교통 - 유가 지도", exact: true })).not.toBeVisible();
     const essentials = [summary.locator("header"), summary.locator("dl"), summary.getByRole("status"), page.locator(".map-feedback").getByRole("alert")];
     for (const node of essentials) expect(await clipping(node), await node.textContent() ?? "").toMatchObject({ fullyVisible: true });
     await page.getByRole("tab", { name: "목록", exact: true }).click();
@@ -155,7 +155,7 @@ test.describe("터치 지도 접근", () => {
     await page.getByRole("button", { name: "원래 화면으로", exact: true }).focus();
     await page.keyboard.press("Escape");
     await expect(workspace).toHaveAttribute("data-expanded", "false");
-    await expect(page.getByRole("heading", { name: "유가 지도", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "교통 - 유가 지도", exact: true })).toBeVisible();
     await expect(expand).toBeFocused();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });

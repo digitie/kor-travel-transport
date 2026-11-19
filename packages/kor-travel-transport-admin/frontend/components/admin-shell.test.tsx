@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, test, vi } from "vitest";
 import { AdminShell } from "./admin-shell";
 import { PageHeader } from "./page-header";
+import { NAV_GROUPS, PAGE_HEADINGS } from "./admin-nav";
 
 const navigation = vi.hoisted(() => ({ pathname: "/" }));
 vi.mock("next/navigation", () => ({ usePathname: () => navigation.pathname }));
@@ -109,4 +110,37 @@ test("페이지 헤더는 breadcrumbs가 있으면 섹션 라벨 대신 breadcru
   );
   expect(html).toContain('href="/rail"');
   expect(html).not.toContain(">기차</p>");
+});
+
+test.each([
+  ["/", "운영 홈"],
+  ["/fuel", "유가 지도"],
+  ["/highways", "고속도로"],
+  ["/rail/mapping", "지하철역 코드 매핑"],
+  ["/rail/timetable", "시간표 조회"],
+])("%s 첫 서버 렌더부터 맨 위 한 줄 제목은 '교통 - %s'이고 설명도 같은 줄에 있다", (pathname, page) => {
+  navigation.pathname = pathname;
+  const html = renderToStaticMarkup(
+    <AdminShell>
+      <p>본문</p>
+    </AdminShell>,
+  );
+  const h1 = html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g) ?? [];
+  expect(h1).toHaveLength(1);
+  const [heading = ""] = h1;
+  expect(heading).toContain(`title="교통 - ${page}"`);
+  expect(heading.replace(/<[^>]+>/g, "")).toBe(`교통 - ${page}`);
+  // hydration 뒤 PageHeader가 덮어써도 바뀌지 않도록 설명도 같은 정본에서 서버 렌더한다.
+  expect(html).toMatch(/data-slot="admin-shell-description"[^>]*>[^<]+<\/p>/);
+  // 앱 설명 문구(옛 워드마크)는 두지 않는다.
+  expect(html).not.toContain("kor-travel-transport admin");
+});
+
+test("모든 메뉴 항목은 페이지 제목·설명 정본을 가진다", () => {
+  const hrefs = NAV_GROUPS.flatMap((group) => group.items.map((item) => item.href));
+  expect(Object.keys(PAGE_HEADINGS).sort()).toEqual([...hrefs].sort());
+  for (const heading of Object.values(PAGE_HEADINGS)) {
+    expect(heading.title.trim()).not.toBe("");
+    expect(heading.description.trim()).not.toBe("");
+  }
 });

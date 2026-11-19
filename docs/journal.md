@@ -1,3 +1,10 @@
+## 2026-11-20 — 버튼 테두리 굵어짐(FS-7.8)·유가 지역 카드 목록 삭제·셸 제목 잔여분
+
+- 공통 셸 채택(#220) 위의 잔여분이다. 버튼 테두리가 굵어지는 원인은 전역 `button` 규칙(globals.css `@layer base`의 `font: inherit`)이 아니라 로컬 `buttonInteractionClasses`의 `outline-solid`였다. tailwind-merge가 공통 recipe의 `outline-none`을 지운 채 `outline-style: solid`가 쉬는 상태에도 남아 기본 굵기(medium=3px) currentColor outline이 1px 테두리 위에 그려졌다. 포커스 때는 0.2.2의 `focus-visible:border-ring`까지 겹쳤다. 래퍼에서 outline·ring 조정을 지우고 공통 0.2.3의 outline 2px·offset 2px 하나만 남겼다. 공개 앱 달력 날짜 버튼의 덧댄 3px ring도 지웠다.
+- 유가 지도 "지역 카드 모두 보기 (n)" 토글과 목록을 지웠다. 공간이 모자라 접은 지역 카드도 마커 버튼은 탭 순서에 남고(접근 이름에 전 유종 가격) 키보드 포커스 때 카드와 원점에 같은 2px 링을 보인다.
+- 제목 형식 잔여분: 셸 첫 서버 렌더가 메뉴 라벨을 써서 hydration 뒤 "교통 - 홈"→"교통 - 운영 홈"처럼 제목이 바뀌고 설명이 늦게 나타나던 것을, 메뉴 href별 정본 `PAGE_HEADINGS`(admin-nav)를 셸과 각 페이지 `PageHeader`가 함께 쓰게 고쳤다. rail 브랜드의 앱 설명 문구(`kor-travel-transport admin`)는 `교통`으로 줄였다. 확장 지도에서 상단 바를 숨기는 규칙은 header가 main 밖으로 옮겨져 `html:has(...)`로 고쳤고, 정확 제목을 찾던 e2e 5곳은 `교통 - 페이지`로 맞췄다.
+- n150 Chromium의 수정 전(main)·후 상태별 computed style과 스크린샷(PC1280·모바일390)은 PR 본문에 남긴다. 새 e2e `button-border-region-cards.spec.ts`. 운영 배포는 하지 않았다.
+
 ## 2026-11-20 — Transport fullshared Python 소비자 후보
 
 canonical4a801에서 실제 사용하는 shared lock 전체를 Common75의102개 catalog와

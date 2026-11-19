@@ -18,7 +18,7 @@ for (const width of [320, 375, 414, 768, 1440]) test(`운영 홈·노선 중심 
   test.setTimeout(90_000); test.skip(!password, "로그인 암호 필요");
   await page.setViewportSize({ width, height: 1000 });
   await login(page);
-  await expect(page.getByRole("heading", { name: "운영 홈", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "교통 - 운영 홈", exact: true })).toBeVisible();
   await expect(page.getByTestId("home-stat-sources")).toContainText("1");
   // map 공용 셸은 좁은 화면에서도 주요 메뉴를 접지 않고 사이드바 아래에 그대로 둔다.
   if (width === 375) await expect(page.getByRole("navigation", { name: "주요 메뉴" }).getByRole("link", { name: "도시철도", exact: true })).toBeVisible();
