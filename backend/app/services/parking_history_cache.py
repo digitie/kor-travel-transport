@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from time import monotonic, sleep
 from types import MappingProxyType
+from typing import NamedTuple
 from weakref import WeakValueDictionary
 from uuid import uuid4
 
@@ -31,6 +32,8 @@ MAX_UNCHECKED_SECONDS = 30
 MAX_PREPARED_RESPONSES = 8
 # 500k 행/rail 간섭 교대 측정으로 선택한 협력 단위다. TTL·폴링 주기와 독립이다.
 HISTORY_ENCODING_YIELD_ROWS = 400
+# DB 결과 변환이 API event loop를 한 번에 오래 점유하지 않게 한다.
+HISTORY_FETCH_ROWS = 2048
 
 
 class BoundedHistoryResponse(StreamingResponse):
@@ -167,6 +170,17 @@ def accepts_gzip(header: str) -> bool:
     return False
 
 
+class _HistorySourceRow(NamedTuple):
+    """드라이버의 무거운 Row 대신 변환 때까지 필요한 여섯 값만 보관한다."""
+
+    observed_at: datetime
+    parking_lot_id: int
+    code: str
+    occupied_spaces: int
+    total_spaces: int
+    available_spaces: int
+
+
 async def load_snapshot(
     session_factory: async_sessionmaker[AsyncSession],
     *,
@@ -189,11 +203,22 @@ async def load_snapshot(
                 case((func.left(ParkingSnapshot.source, 10) == "migration_", 1), else_=0),
                 ParkingSnapshot.collected_at.desc(), ParkingSnapshot.id.desc(),
             ).subquery("history_rows"))
-        rows = (await session.execute(select(
+        statement = (select(
             ranked.c.observed_at, ranked.c.parking_lot_id, Airport.code,
             ranked.c.occupied_spaces, ranked.c.total_spaces, ranked.c.available_spaces,
         ).join(Airport, Airport.id == ranked.c.airport_id)
-            .order_by(ranked.c.observed_at, ranked.c.parking_lot_id))).all()
+            .order_by(ranked.c.observed_at, ranked.c.parking_lot_id))
+        result = await session.stream(statement.execution_options(yield_per=HISTORY_FETCH_ROWS))
+        rows, codes = [], {}
+        try:
+            async for batch in result.partitions(HISTORY_FETCH_ROWS):
+                for observed, lot, code, occupied, total, available in batch:
+                    rows.append(_HistorySourceRow(
+                        observed, lot, codes.setdefault(code, code), occupied, total, available,
+                    ))
+                await asyncio.sleep(0)
+        finally:
+            await result.close()
     return await asyncio.to_thread(ParkingHistorySnapshot.from_rows, earliest, max_id, rows)
 
 
