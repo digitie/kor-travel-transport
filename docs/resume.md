@@ -1,3 +1,9 @@
+## 2026-11-19 — 주차 이력 DB 수신의 event loop 점유 축소 후보
+
+- PR220 mergeabbf 기준으로 load_snapshot만 공개 SQLAlchemy stream/2,048행 partitions를 사용한다. stdlib NamedTuple·이번 구성의 공항 코드 재사용으로 일반 streaming의 메모리 증가를 줄이고, 실패·취소 시 cursor/session을 닫아 부분 게시를 막는다. SQL·순서·필터·최대 ID·신선도/폴링 계약은 유지한다.
+- 로컬 관련21PASS·PG1SKIP. 격리 실제PG50만+중복1천 행의 최종 import 코드와 기준 함수는 두 SQLAlchemy shape·70.86MB 전체 본문이 같았다. 새 프로세스 한 쌍의 event loop 최대981→114ms·RSS498.0→475.4MiB이며 HTTP p95/운영 첫1초 완료를 뜻하지 않는다. [원인·검증·한계](reports/2026-11-19-history-fetch-yield.md).
+- 다음 한 작업은 두 집중 독립 리뷰·정확 CI 후 정상 캐시/native·SDK·실제 응답 수용이다. 현재220의 배포/기존 영수증은 보존한다.
+
 ## 2026-11-19 — 공통 관리자 셸 정본 채택 후속
 
 - 현재 수용 운영은 main5a28/SDK618/schema45·원20 복원이며 Common UI0.2.2/tokens0.1.3이다. rail 최초3237.456ms는1초 미달, 304 p95 89.557ms는300ms 통과다.

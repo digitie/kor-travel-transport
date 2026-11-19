@@ -251,6 +251,14 @@ def test_cache_does_not_publish_snapshot_changed_while_preparing(monkeypatch) ->
 
 def test_cache_load_query_prefers_live_and_caps_snapshot_id() -> None:
     now = datetime(2026, 10, 1, tzinfo=UTC)
+    closed = []
+
+    class Result:
+        async def partitions(self, _size):
+            yield [(now, 3, "GMP", 12, 100, 88)]
+
+        async def close(self):
+            closed.append(True)
 
     class FakeSession:
         async def __aenter__(self):
@@ -262,16 +270,112 @@ def test_cache_load_query_prefers_live_and_caps_snapshot_id() -> None:
         async def scalar(self, _statement):
             return 42
 
-        async def execute(self, statement):
+        async def stream(self, statement):
             compiled = str(statement.compile(dialect=postgresql.dialect()))
             assert "DISTINCT ON" in compiled
             assert "parking_snapshots.id <=" in compiled
             assert "left(parking_snapshots.source" in compiled
-            return SimpleNamespace(all=lambda: [_row(now, 3)])
+            return Result()
 
     snapshot = asyncio.run(history_cache.load_snapshot(FakeSession, earliest_observed_at=now - timedelta(days=1)))
     assert snapshot.max_snapshot_id == 42
     assert snapshot.items[0].parking_lot_id == 3
+    assert closed == [True]
+
+
+def test_history_fetch_allows_other_api_work_before_last_batch() -> None:
+    now = datetime(2026, 11, 19, tzinfo=UTC)
+
+    async def check():
+        started = asyncio.Event()
+        state = {"last_batch": False, "probe_before_last": False, "closed": False}
+
+        class Result:
+            async def partitions(self, _size):
+                started.set()
+                yield [(now, 1, "GMP", 12, 100, 88)]
+                yield [(now + timedelta(seconds=1), 2, "CJU", 20, 100, 80)]
+                state["last_batch"] = True
+                yield [(now + timedelta(seconds=2), 3, "GMP", 30, 100, 70)]
+
+            async def close(self):
+                state["closed"] = True
+
+        class Session:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return None
+
+            async def scalar(self, _statement):
+                return 42
+
+            async def stream(self, _statement):
+                return Result()
+
+        async def api_work():
+            await started.wait()
+            state["probe_before_last"] = not state["last_batch"]
+
+        other = asyncio.create_task(api_work())
+        snapshot = await history_cache.load_snapshot(Session, earliest_observed_at=now - timedelta(days=1))
+        await other
+        assert state["probe_before_last"] and state["closed"]
+        payload = json.loads(snapshot.render(now, None, None))
+        assert [(item["parking_lot_id"], item["occupied_spaces"], item["available_spaces"])
+                for item in payload["items"]] == [(1, 12, 88), (2, 20, 80), (3, 30, 70)]
+        assert [item.airport_code for item in snapshot.items] == ["GMP", "CJU", "GMP"]
+
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("cancel", [False, True])
+def test_failed_or_cancelled_history_fetch_closes_cursor_without_partial_snapshot(monkeypatch, cancel) -> None:
+    now = datetime(2026, 11, 19, tzinfo=UTC)
+
+    async def check():
+        waiting = asyncio.Event()
+        never = asyncio.Event()
+        closed = []
+
+        class Result:
+            async def partitions(self, _size):
+                yield [(now, 1, "GMP", 12, 100, 88)]
+                if cancel:
+                    waiting.set()
+                    await never.wait()
+                raise RuntimeError("fetch failed")
+
+            async def close(self):
+                closed.append("cursor")
+
+        class Session:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                closed.append("session")
+
+            async def scalar(self, _statement):
+                return 42
+
+            async def stream(self, _statement):
+                return Result()
+
+        def partial_not_allowed(*_args):
+            raise AssertionError("불완전한 DB 결과로 snapshot을 만들 수 없습니다")
+
+        monkeypatch.setattr(history_cache.ParkingHistorySnapshot, "from_rows", partial_not_allowed)
+        task = asyncio.create_task(history_cache.load_snapshot(Session, earliest_observed_at=now))
+        if cancel:
+            await asyncio.wait_for(waiting.wait(), timeout=1)
+            task.cancel()
+        with pytest.raises(asyncio.CancelledError if cancel else RuntimeError):
+            await task
+        assert closed == ["cursor", "session"]
+
+    asyncio.run(check())
 
 
 def test_postgres_history_route_uses_prepared_gzip_without_database_scan(monkeypatch, test_settings) -> None:
