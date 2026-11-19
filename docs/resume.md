@@ -1,3 +1,13 @@
+## 현재 후보 — 2026-11-20 fullshared Python
+
+4a801 기반에서 사용95 shared lock과 실제 설치본을 Common75 immutable8a0ec23에
+정렬했다. HTTPX2/HTTPCore2는2.16.2, Opinet11f·Dagster1.13.24·Python>=3.12·UI
+정본은 유지한다. VadaHub filelock4 허용은 SDK20/169f 후보로 먼저 검증했으며
+그 canonical merge와 소비자 exact CI/검토가 모두 필요하다. 실제PG 집중89 PASS
+(57.63초), strict191개/0fail·pip/lock/Alembic/OpenAPI PASS. F 환경 중단/-11은
+보존하고 같은 source/lock의 ext4 환경에서 검증했다. 운영/build/apply는 하지 않았다.
+다음 한 작업은 SDK20 편입·필요시 Common76 최종 policy ref와 소비자 exact CI 정산이다.
+
 ## 2026-11-20 — USED 백엔드 라이브러리 exact 정렬 후보
 
 Opinet PR224 검증 tree 위에서 실제 앱 의존성9축과 Common Python e289를 정렬한다.
