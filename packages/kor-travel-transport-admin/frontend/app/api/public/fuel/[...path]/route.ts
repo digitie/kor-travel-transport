@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { NextRequest, NextResponse } from "next/server";
 
 import { publicFuelUpstreamUrl } from "@/lib/public-fuel-proxy";
@@ -33,8 +34,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ pat
         chunks.push(value);
       }
     } finally { reader?.releaseLock(); }
-    const body = new Uint8Array(size); let offset = 0;
-    for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
+    const body = Buffer.concat(chunks, size);
     return new NextResponse(body, { status: response.status, headers: outputHeaders });
   } catch {
     return NextResponse.json({ detail: "유가 API에 연결하지 못했습니다." }, { status: 502, headers: NO_STORE });
