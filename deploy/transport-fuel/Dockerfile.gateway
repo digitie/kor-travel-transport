@@ -1,0 +1,11 @@
+FROM nginx:1.27-alpine
+
+# Python/DB/수집기 없이 이미 검증된 fuel reader 경로만 전달한다.
+ENV TRANSPORT_FUEL_API_PORT=12307
+COPY --chmod=0644 deploy/transport-fuel/api-gateway.conf.template /etc/nginx/templates/default.conf.template
+
+ARG RELEASE_SHA=unknown
+LABEL org.opencontainers.image.revision=$RELEASE_SHA
+LABEL org.opencontainers.image.source="https://github.com/digitie/kor-travel-transport"
+
+EXPOSE 12307
