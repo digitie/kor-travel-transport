@@ -1,3 +1,9 @@
+## 2026-11-19 — 기준정보 본문 저장의 native COPY 후보
+
+- 같은 AsyncSession transaction에서 asyncpg 공개 COPY를400행씩 사용한다. JSON 재해석 없이 canonical 문자열을 전달하고 기존 bound/예산·원자성·40001/55P03 처리·다른 driver 경로를 유지한다.
+- 실제PG 집중10PASS·최종 전체 handler 각3교대 쌍/본문·ETag·14guard 동일,1466 wall570→390ms·40001216→872ms.1466 CPU는1.9% 증가했고 운영1초 수용은 미입증이다. [범위·증거·한계](reports/2026-11-19-reference-artifact-copy.md).
+- Rawls A/Lovelace B는 최종4개 source/시험 SHA에 집중해 PASS했다. 기존 df878 image/일정은 유지하며 정확CI 후 정상캐시/native·SDK621·실제 응답으로 수용한다.
+
 ## 2026-11-19 — 주차 이력 DB 수신의 event loop 점유 축소 후보
 
 - PR220 mergeabbf 기준으로 load_snapshot만 공개 SQLAlchemy stream/2,048행 partitions를 사용한다. stdlib NamedTuple·이번 구성의 공항 코드 재사용으로 일반 streaming의 메모리 증가를 줄이고, 실패·취소 시 cursor/session을 닫아 부분 게시를 막는다. SQL·순서·필터·최대 ID·신선도/폴링 계약은 유지한다.

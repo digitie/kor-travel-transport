@@ -125,7 +125,12 @@ def test_bulk_uses_single_json_bind_per_batch_and_preserves_values(export_client
         assert [r.ordinal for r in rows] == list(range(1,403))
         assert [r.payload for r in rows] == values
     _run(c, store)
-    assert len(calls) == 2 and all(not r["executemany"] and r["parameters"] < 10 for r in calls)
+    if c.app.state.engine.dialect.driver == "asyncpg":
+        # native COPY는 SQLAlchemy cursor hook을 거치지 않는다. 실제 COPY 묶음과
+        # 실패·취소·rollback 계약은 test_reference_artifact_copy.py에서 검사한다.
+        assert calls == []
+    else:
+        assert len(calls) == 2 and all(not r["executemany"] and r["parameters"] < 10 for r in calls)
 
 
 def test_reader_key_share_makes_gc_skip_an_artifact_before_repin(export_client, monkeypatch):

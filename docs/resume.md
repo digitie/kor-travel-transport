@@ -1,3 +1,9 @@
+## 2026-11-19 — 기준정보 artifact COPY 후속
+
+- 기준 df878에서 검증된 canonical 본문을 같은 AsyncSession의 asyncpg COPY로 저장한다.400행·16MiB·15초 예산·실패/취소 원자성·SQLSTATE 재시도를 유지하고 논리 COPY 요청 비용을 계측한다.
+- 실제PG 집중10PASS, 최종 함수 각3교대 쌍의 본문/ETag·14guard 동일과 wall31.68%/28.29% 감소를 확인했다. 로컬 결과이며 운영1초·query count 감소 주장으로 쓰지 않는다. [기록](reports/2026-11-19-reference-artifact-copy.md).
+- 다음 한 작업은 정확 CI 후 캐시 정상 빌드/native·SDK621 적용과 실제 첫/조건부 응답 검증이다. CI 순서 감사는 마지막에 수행한다.
+
 ## 2026-11-19 — 주차 이력 DB 수신의 event loop 점유 축소 후보
 
 - PR220 mergeabbf 기준으로 load_snapshot만 공개 SQLAlchemy stream/2,048행 partitions를 사용한다. stdlib NamedTuple·이번 구성의 공항 코드 재사용으로 일반 streaming의 메모리 증가를 줄이고, 실패·취소 시 cursor/session을 닫아 부분 게시를 막는다. SQL·순서·필터·최대 ID·신선도/폴링 계약은 유지한다.

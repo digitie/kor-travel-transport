@@ -1,5 +1,6 @@
 """조회 관측: 본문/질의/매개변수 없이 route template와 비용만 기록한다."""
 import logging
+from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from time import perf_counter, process_time
@@ -30,6 +31,20 @@ def observe_fingerprint():
     timing = _current.get()
     if timing is not None:
         timing.fingerprint_calculations += 1
+
+
+
+@contextmanager
+def observe_native_statement():
+    """SQLAlchemy cursor hook 밖의 native COPY도 같은 요청 계수에 포함한다."""
+    timing = _current.get()
+    started = perf_counter()
+    if timing is not None:
+        timing.statements += 1
+    yield
+    # 기존 after_cursor_execute와 같이 성공한 문장의 왕복만 누적한다.
+    if timing is not None:
+        timing.sql_seconds += perf_counter() - started
 
 
 def observe_engine(engine):
