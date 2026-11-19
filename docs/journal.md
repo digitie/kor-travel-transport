@@ -1,3 +1,30 @@
+## 2026-11-20 — Transport fullshared Python 소비자 후보
+
+canonical4a801에서 실제 사용하는 shared lock 전체를 Common75의102개 catalog와
+대조해 사용95개를 정확 버전에 맞췄다. 미사용 package를 추가하지 않는다. HTTPX2와
+HTTPCore2는2.16.2, MCP는 기존2.3.0이며 신규49개 조사 목록 중 사용11개도
+primary metadata의 버전과 같다. Dagster1.13.24/PG0.29.24, 기존 Python>=3.12와
+Docker Python3.12, UI canonical pack/catalog/워크플로 순서는 유지한다. 기존 backend
+정책 checkout만 병합된 Common75의 검증 immutable8a0ec23으로 고정했다.
+
+Common Python67efe의 정본 package tree, KASI4259/VWorld3b174/KREX894의 canonical
+main을 사용하고 Opinet은 이미 최신11f1a874로 고정돼 있어 유지한다. VadaHub의
+filelock<4 상한이4.2.12를 실제 거절해 upstream PR20의169f339 후보를 소비한다.
+이 후보는 기존3.x를 유지하며<5만 허용하고 모든 SDK src 바이트를 유지한다. 같은
+storage21건은3.32.7/4.2.12 양쪽에서 PASS이며 새3건은 실제 다른 프로세스 lock의
+put/versions/recover timeout·원문/manifest 보존·해제 후 재개를 확인한다. SDK20의
+정확 CI·독립 검토·canonical main 편입 전에 이 소비자를 merge/배포하지 않는다.
+
+최종 설치본 CPython3.12.13에서 source/lock/installed strict CLI191개 판정/실패0,
+pip check·locked offline 확인·Alembic upgrade/check·OpenAPI PASS. 실제 격리PG의
+API·Opinet checkpoint/실패격리·stream 다중 fetch·artifact copy·KREX/VadaHub·Dagster
+recovery 집중89건 PASS(57.63초)다. 먼저 F 의존 환경의180초 중단/후속-11은 보존했고,
+같은 source/lock·주요 Python/SQLAlchemy native bytes의 ext4 의존 환경에서 확인했다.
+원래 실패의 FS/kernel 원인은 미확정이며 PASS로 바꾸어 쓰지 않는다. Python app/DTO/
+SQL/schema/수집 정책·release fingerprint와 frontend는 편집하지 않는다. 새 일반 Ruff/
+mypy gate는 만들지 않으며 기존 backend manifest/CI/testing에 해당 gate가 없다.
+정상 이미지/native/실제 수집·운영 UI·성능/SDK apply는 이번 source 검증에 포함하지 않는다.
+
 ## 2026-11-20 — 실제 사용하는 백엔드 공유 라이브러리 정렬 후보
 
 - SQLAlchemy/asyncpg/FastAPI/Pydantic(core·settings 포함)/Alembic/HTTPX/Uvicorn exact 축과 Common Python e289를127개 lock에 반영했다. Dagster/호스트 profile·unused psycopg3는 변경하지 않는다.
@@ -5546,3 +5573,6 @@ backend 두 스타일 파일은 source1 그대로다. 기존 Ruff 대상0/전체
 - 기존 mock 시험4PASS/DB시험2개 deselected이며 PostgreSQL/실제DDL은 실행하지 않았다. plugin 자동 로딩을 끈 좁은 실행의 asyncio_mode 설정 경고1개는 원문으로 보존했다. 정규화 AST는 두 스타일 변환과 import 순서를 제외하고 같고, migration downgrade 함수 AST·문자열 상수는 그대로다.
 - 기존 CodeGraph로 backend249파일/6537nodes/6221edges를 인덱싱했다. affected 결과0은 importlib 동적 로딩의 영향 부재 증명이 아니므로 해당 migration을 직접 읽는 mock4개와 AST 검산을 함께 사용했다. 새 회귀 시험을 추가하거나 기존 기대를 약화하지 않았다.
 - T-DOWNGRADE-GUARDS-20261113은 OPEN이며 0038/0039/0041/0042의 destructive downgrade 보호 완료로 바꾸지 않는다. 이 패치로 DB rollback/downgrade를 허용하지 않는다. 원2 독립 리뷰·정확한 새 SHA의 CI·머지가 남았으며 Transport 제품 이미지3종은 최종 검토·머지 SHA까지 HOLD다. 이미지/운영/Map/CI 순서 감사 실행0이다.
+
+
+2026-11-20 최종 contract cut: Common76 frozen694b814(tree8d5ced2)를 기존 정책 checkout에 연결하고, 포착된 동일 batch의 AWS SDK/core 두 lock 노드만1.44.6→1.44.7로 맞췄다. 그 밖의 package entry와 앱/테스트/UI 바이트는 이전02ce0da와 같다. 실제 ext4 설치의 strict source/installed profile과 pip check를 다시 확인했고, 앱89 PASS 증거는 상속하며 새 앱 시험이나 추가 PyPI 최신 추적은 하지 않았다. Common76·SDK20의 검토/정확 CI/canonical main 편입과 소비자 새 head CI를 확인하기 전 배포하지 않는다.
