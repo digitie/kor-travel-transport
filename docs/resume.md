@@ -1,3 +1,8 @@
+## 2026-11-19 — 버튼 테두리 회귀 수정과 유가 지역 카드 목록 삭제
+
+- 로컬 Button 래퍼의 `outline-solid`(쉬는 상태 3px outline) 제거, 유가 지도 지역 카드 목록 토글 삭제. 근거는 [journal](journal.md) 같은 날짜 항목.
+- 다음 한 작업: 머지 후 Codex가 odroid admin(과 달력이 바뀐 공개 web) 이미지를 재배포하고 PC/모바일 버튼 포커스·유가 지도 마커를 확인한다.
+
 ## 현재 후보 — 2026-11-20 fullshared Python
 
 4a801 기반에서 사용95 shared lock과 실제 설치본을 Common75 immutable8a0ec23에
