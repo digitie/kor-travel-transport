@@ -8,7 +8,7 @@ for (const width of [1280, 375]) {
     requireLoopbackOrigin(baseURL);
     await page.setViewportSize({ width, height: 900 });
     await openIsolatedMenuPage(page, baseURL, "/rail");
-    await expect(page.getByRole("heading", { name: "철도", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "교통 - 철도", exact: true })).toBeVisible();
     const guide = page.getByRole("region", { name: "철도 역 지도", exact: true });
     await expect(guide).toBeAttached();
     const box = await guide.boundingBox();

@@ -15,7 +15,7 @@ for (const width of [320, 375, 414, 768, 1440]) {
   for (const [path, title] of screens) test(`${path} ${width}px 내비게이션·레이아웃`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(path);
-    await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: `교통 - ${title}`, exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await expect(page.getByRole("button", { name: "로그아웃" })).toBeVisible();
     if (width === 320 || width === 1440) await page.screenshot({ path: `test-results/journey-${path.replaceAll("/", "-")}-${width}.png`, fullPage: true });

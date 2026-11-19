@@ -128,3 +128,22 @@ for (const [label, width, height] of VIEWPORTS) {
     await expect.poll(() => regionResponses, { timeout: 20_000 }).toBeGreaterThan(1);
   });
 }
+
+test.describe("스크립트 실행 전 첫 화면", () => {
+  test.use({ javaScriptEnabled: false });
+  for (const [label, width, height] of VIEWPORTS) {
+    test(`${label} ${width}px 맨 위 한 줄 제목은 첫 서버 렌더부터 '교통 - 페이지'이고 앱 설명 문구가 없다`, async ({ page, baseURL }) => {
+      await page.setViewportSize({ width, height });
+      for (const [path, name] of [["/", "운영 홈"], ["/fuel", "유가 지도"], ["/highways", "고속도로"], ["/rail/mapping", "지하철역 코드 매핑"]] as const) {
+        await openIsolatedMenuPage(page, baseURL, path);
+        const header = page.locator('[data-slot="admin-shell-header"]');
+        await expect(header.locator("h1")).toHaveText(`교통 - ${name}`);
+        await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+        const box = (await header.boundingBox())!;
+        expect(box.height).toBeLessThanOrEqual(56);
+        await expect(header.locator('[data-slot="admin-shell-description"]')).toHaveCount(1);
+        await expect(page.getByText(/kor-travel-transport/)).toHaveCount(0);
+      }
+    });
+  }
+});

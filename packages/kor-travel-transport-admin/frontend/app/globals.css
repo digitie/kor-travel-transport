@@ -938,5 +938,5 @@
 @media (max-width: 1023px) { .map-workbench { block-size: max(22rem, calc(100dvh - 8rem)); } }
 /* 명시 확장: 작업면이 화면 전체를 쓰고 페이지 헤더를 숨긴다. Escape·원래 화면으로 버튼은 공용 작업면이 처리한다. */
 .map-workbench:has([data-slot="map-workspace"][data-expanded="true"]) { position: fixed; inset: 0; z-index: 40; block-size: 100dvh; padding: .25rem; background: var(--surface-page); }
-main:has([data-slot="map-workspace"][data-expanded="true"]) [data-slot="admin-shell-header"] { display: none; }
+html:has([data-slot="map-workspace"][data-expanded="true"]) [data-slot="admin-shell-header"] { display: none; }
 html:has([data-slot="map-workspace"][data-expanded="true"]) { overflow: hidden; }
