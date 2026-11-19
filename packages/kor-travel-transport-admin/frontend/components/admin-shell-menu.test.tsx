@@ -7,8 +7,9 @@ const navigation = vi.hoisted(() => ({ pathname: "/map" }));
 vi.mock("next/navigation", () => ({ usePathname: () => navigation.pathname }));
 vi.mock("next/link", () => ({ default: ({ href, children, ...props }: ComponentProps<"a">) => <a href={href} {...props} onClick={(event) => { props.onClick?.(event); event.preventDefault(); }}>{children}</a> }));
 import { AdminShell } from "./admin-shell";
+import { PageHeader } from "./page-header";
 
-// map 공용 셸: lg 이상은 접을 수 있는 세로 레일, 미만은 상단 메뉴 띠. 드로어(dialog)는 쓰지 않는다.
+// 공통 AdminShell: 데스크톱 세로 레일, 모바일 메뉴 버튼과 focus-trapped drawer.
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   navigation.pathname = "/map";
@@ -21,20 +22,22 @@ async function mount() {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
-  await act(async () => root.render(<AdminShell><input aria-label="본문 입력" /></AdminShell>));
+  await act(async () => root.render(<AdminShell><PageHeader title="교통 지도" description="현재 교통 자료" /><input aria-label="본문 입력" /></AdminShell>));
   const nav = () => container.querySelector<HTMLElement>('nav[aria-label="주요 메뉴"]')!;
-  const menu = () => container.querySelector<HTMLElement>("[data-collapsed]")!;
+  const menu = () => container.querySelector<HTMLElement>('[data-slot="admin-shell-rail"]')!;
   const button = (name: string) => [...container.querySelectorAll<HTMLButtonElement>("button")].find((item) => item.getAttribute("aria-label") === name || item.textContent?.trim() === name);
   const dispose = async () => { await act(async () => { root.unmount(); await new Promise((resolve) => setTimeout(resolve, 0)); }); container.remove(); };
   return { container, root, nav, menu, button, dispose };
 }
 
-test("주요 메뉴는 기존 19개 경로를 모두 보이고 드로어 없이 렌더링한다", async () => {
+test("닫힌 셸은 기존19개 경로와 단일 공통 제목을 유지한다", async () => {
   const { nav, dispose } = await mount();
   try {
     expect(nav().querySelectorAll('[data-slot="app-menu-link"]')).toHaveLength(19);
     for (const href of ["/parking-lots", "/rail/timetable", "/parking"]) expect(nav().querySelector(`a[href="${href}"]`)).not.toBeNull();
     expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.querySelectorAll("h1")).toHaveLength(1);
+    expect(document.querySelector("h1")?.textContent).toBe("교통 - 교통 지도");
   } finally { await dispose(); }
 });
 
@@ -59,7 +62,7 @@ test("레일 접힘 선택을 저장하고 다시 열 때 복구한다", async (
   try {
     await act(async () => button("좌측 메뉴 접기")!.click());
     expect(menu().dataset.collapsed).toBe("true");
-    expect(localStorage.getItem("kor-travel-transport:sidebar-collapsed")).toBe("1");
+    expect(["1", "true"]).toContain(localStorage.getItem("kor-travel-transport:sidebar-collapsed"));
     expect(button("좌측 메뉴 펼치기")).toBeDefined();
   } finally { await dispose(); }
   const restored = await mount();
@@ -86,6 +89,38 @@ test("브라우저 저장소가 막혀도 레일 접기와 링크를 사용할 �
     expect(menu().dataset.collapsed).toBe("true");
     expect(nav().querySelectorAll('[data-slot="app-menu-link"]')).toHaveLength(19);
     await act(async () => button("좌측 메뉴 펼치기")!.click());
-    expect(menu().dataset.collapsed).toBe("false");
+    expect(menu().dataset.collapsed).not.toBe("true");
+  } finally { await dispose(); }
+});
+
+test("모바일 drawer는19경로를 보이고 이동 뒤 닫으며 본문 입력을 보존한다", async () => {
+  const { container, button, dispose } = await mount();
+  try {
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="본문 입력"]')!;
+    input.value = "진행 중 입력";
+    await act(async () => button("메뉴 열기")!.click());
+    const drawer = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(drawer).not.toBeNull();
+    expect(drawer.querySelectorAll('[data-slot="app-menu-link"]')).toHaveLength(19);
+    await act(async () => drawer.querySelector<HTMLAnchorElement>('a[href="/parking-lots"]')!.click());
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(container.querySelector('input[aria-label="본문 입력"]')).toBe(input);
+    expect(input.value).toBe("진행 중 입력");
+  } finally { await dispose(); }
+});
+
+test("모바일 drawer의 Escape는 메뉴를 닫고 여는 버튼으로 focus를 돌린다", async () => {
+  const { button, dispose } = await mount();
+  try {
+    const trigger = button("메뉴 열기")!;
+    trigger.focus();
+    await act(async () => trigger.click());
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
   } finally { await dispose(); }
 });

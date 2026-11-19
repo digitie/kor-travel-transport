@@ -1,3 +1,11 @@
+## 2026-11-19 — 공통 관리자 셸 0.2.3 정본 채택 후보
+
+- 기준은 실제 SDK618 배포·원20 복원·인증/지도/공개5폭 수용을 마친 main5a28이다. 219의 최초 rail200은3237.456ms로1초 미달, 304x5 p95는89.557ms로300ms 통과였다. 기존 이미지·캐시·영수증과 역사적 측정은 보존한다.
+- Common producer0e2a3f5의 main-push artifact14500111373에서 UI0.2.3/tokens0.1.4만 채택했다. 양쪽 vendor·package/lock·private parking-ui exact version·catalog 원장을 함께 정렬하고 두 workflow의 guard/common-ref를 d644632 전체 SHA로 고정했다. 다른 산출물과 backend는 변경하지 않는다.
+- 관리자는 공통 AdminShell을 사용한다. PC 저장형 접힘 레일과 모바일 drawer, 단일 “교통 - 페이지” 상단 제목·설명·액션을 연결한다. 기존19경로·breadcrumb/meta·POST 로그아웃·대시보드 캐시 삭제·본문 입력을 보존한다. 공개 화면의 공통 팩도 같은121개로 맞추며 사용하지 않는 toast는 추가하지 않는다.
+- WSL Node26.13.1/npm12.0.1의 lock-only와 양쪽 bundled/canonical dependency guard, 집중49개 시험, 공개/관리자 TypeScript와 변경 파일 lint를 통과했다. 전용 F 의존성 공간과 기존 캐시를 사용했다. 전체 npm ci·빌드·브라우저 수용은 CI/정상 이미지 후속이며 이 소스 채택을 운영 배포 완료로 표시하지 않는다.
+- 다음은 정확 CI와 독립 두 focused 검토다. 새 이미지의 자연 API 재시작 뒤 최초 rail 요청과 승인된5초49Hz nonblocking profiler를 한 번 함께 기록한다. cache 강제 삭제·추가 수집·현재 warm 요청은 하지 않으며 cold1초 달성은 실제 결과로만 판정한다.
+
 ## 2026-11-19 — 이력 변환의 협력 실행 간격400행
 
 - 실제 main3af 위에서 from_rows의 400행마다 sleep(0)을 호출한다. UTC 재사용과 모든 행/인덱스 구성은 유지한다.

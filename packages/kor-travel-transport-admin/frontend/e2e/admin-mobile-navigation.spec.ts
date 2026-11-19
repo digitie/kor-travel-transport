@@ -13,28 +13,38 @@ async function isolatedPage(page: Page, baseURL: string | undefined, path = "/fu
   await openIsolatedMenuPage(page, baseURL, path);
   await expect(page.locator("main")).toBeVisible();
 }
-// map 공용 셸: 1024px 미만은 상단 메뉴 띠(가로 스크롤), 이상은 접을 수 있는 세로 레일. 드로어(dialog)는 쓰지 않는다.
+// 공통 AdminShell: 1024px 미만은 focus-trapped drawer, 이상은 저장 가능한 세로 레일.
 const nav = (page: Page) => page.getByRole("navigation", { name: "주요 메뉴", exact: true });
 for (const width of [320, 375, 414, 768, 1023]) {
-  test("좁은 화면은 드로어 없이 상단 메뉴 띠로 19개 경로를 보인다 " + width + "px", async ({ page, baseURL }) => {
+  test("좁은 화면은 공통 drawer로19개 경로를 탐색한다 " + width + "px", async ({ page, baseURL }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ reducedMotion: "reduce" });
     await isolatedPage(page, baseURL);
-    await expect(nav(page).getByRole("link")).toHaveCount(19);
+    const trigger = page.getByRole("button", { name: "메뉴 열기", exact: true });
+    await expect(trigger).toBeVisible();
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "메뉴 열기", exact: true })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "로그아웃", exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
-    const current = nav(page).locator('[aria-current="page"]');
-    await expect(current).toHaveAttribute("href", "/fuel");
-    await expect(current).toBeInViewport();
-    const target = nav(page).getByRole("link", { name: "시간표 조회", exact: true });
+    await trigger.click();
+    const drawer = page.getByRole("dialog");
+    await expect(drawer).toBeVisible();
+    await expect(drawer.getByRole("link")).toHaveCount(20); // brand + 기존19메뉴
+    await expect(drawer.getByRole("button", { name: "로그아웃", exact: true })).toBeVisible();
+    const menu = drawer.getByRole("navigation", { name: "주요 메뉴", exact: true });
+    await expect(menu.getByRole("link")).toHaveCount(19);
+    await expect(menu.locator('[aria-current="page"]')).toHaveAttribute("href", "/fuel");
+    const target = menu.getByRole("link", { name: "시간표 조회", exact: true });
     await target.focus();
     await expect(target).toBeInViewport();
+    if (width === 375 || width === 768) await page.screenshot({ path: test.info().outputPath("common-drawer-" + width + ".png") });
     await target.click();
     await expect(page).toHaveURL(/\/rail\/timetable$/);
-    await expect(nav(page).locator('[aria-current="page"]')).toHaveAttribute("href", "/rail/timetable");
-    if (width === 375 || width === 768) await page.screenshot({ path: test.info().outputPath("map-shell-" + width + ".png") });
+    await expect(drawer).toHaveCount(0);
+    await expect(page.locator("main")).toBeFocused();
+    await trigger.click();
+    await expect(page.getByRole("dialog").locator('[aria-current="page"]')).toHaveAttribute("href", "/rail/timetable");
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(trigger).toBeFocused();
   });
 }
 test("PC 세로 레일 접힘은 저장되고 접힌 링크도 이름과 툴팁을 가진다", async ({ page, baseURL }) => {
@@ -49,7 +59,8 @@ test("PC 세로 레일 접힘은 저장되고 접힌 링크도 이름과 툴팁�
   await page.reload();
   await expect(rail).toHaveCSS("width", "64px");
   await page.setViewportSize({ width: 375, height: 900 });
-  await expect(nav(page).getByRole("link", { name: "유가 지도", exact: true }).getByText("유가 지도", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "메뉴 열기", exact: true }).click();
+  await expect(page.getByRole("dialog").getByRole("link", { name: "유가 지도", exact: true }).getByText("유가 지도", { exact: true })).toBeVisible();
   await page.setViewportSize({ width: 1280, height: 900 });
   await expect(rail).toHaveCSS("width", "64px");
   await page.getByRole("button", { name: "좌측 메뉴 펼치기", exact: true }).click();
