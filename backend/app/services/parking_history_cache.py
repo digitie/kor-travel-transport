@@ -11,7 +11,7 @@ from collections import OrderedDict, defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from time import monotonic
+from time import monotonic, sleep
 from types import MappingProxyType
 from weakref import WeakValueDictionary
 from uuid import uuid4
@@ -29,6 +29,8 @@ logger = logging.getLogger(__name__)
 POLL_SECONDS = 5
 MAX_UNCHECKED_SECONDS = 30
 MAX_PREPARED_RESPONSES = 8
+# 500k 행/rail 간섭 교대 측정으로 선택한 협력 단위다. TTL·폴링 주기와 독립이다.
+HISTORY_ENCODING_YIELD_ROWS = 400
 
 
 class BoundedHistoryResponse(StreamingResponse):
@@ -97,7 +99,7 @@ class ParkingHistorySnapshot:
     @classmethod
     def from_rows(cls, earliest_observed_at: datetime, max_snapshot_id: int, rows: list) -> ParkingHistorySnapshot:
         prepared = []
-        for row in rows:
+        for index, row in enumerate(rows, 1):
             # 인덱스와 JSON에 같은 UTC 값을 쓰고 대량 행의 중복 변환을 피한다.
             observed_at = serialize_utc(row.observed_at)
             airport_code, parking_lot_id = row.code, row.parking_lot_id
@@ -114,6 +116,9 @@ class ParkingHistorySnapshot:
                     "available_spaces": row.available_spaces,
                 }),
             ))
+            # 긴 변환 중에도 API thread가 GIL을 다시 얻을 기회를 작은 묶음마다 준다.
+            if index % HISTORY_ENCODING_YIELD_ROWS == 0:
+                sleep(0)
         items = tuple(prepared)
         del prepared
         airports: dict[str, list[CachedHistoryItem]] = defaultdict(list)
