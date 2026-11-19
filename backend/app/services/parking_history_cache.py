@@ -96,19 +96,26 @@ class ParkingHistorySnapshot:
 
     @classmethod
     def from_rows(cls, earliest_observed_at: datetime, max_snapshot_id: int, rows: list) -> ParkingHistorySnapshot:
-        items = tuple(CachedHistoryItem(
-            observed_at=serialize_utc(row.observed_at),
-            airport_code=row.code,
-            parking_lot_id=row.parking_lot_id,
-            encoded=to_json({
-                "airport_code": row.code,
-                "parking_lot_id": row.parking_lot_id,
-                "observed_at": serialize_utc(row.observed_at),
-                "occupied_spaces": row.occupied_spaces,
-                "total_spaces": row.total_spaces,
-                "available_spaces": row.available_spaces,
-            }),
-        ) for row in rows)
+        prepared = []
+        for row in rows:
+            # 인덱스와 JSON에 같은 UTC 값을 쓰고 대량 행의 중복 변환을 피한다.
+            observed_at = serialize_utc(row.observed_at)
+            airport_code, parking_lot_id = row.code, row.parking_lot_id
+            prepared.append(CachedHistoryItem(
+                observed_at=observed_at,
+                airport_code=airport_code,
+                parking_lot_id=parking_lot_id,
+                encoded=to_json({
+                    "airport_code": airport_code,
+                    "parking_lot_id": parking_lot_id,
+                    "observed_at": observed_at,
+                    "occupied_spaces": row.occupied_spaces,
+                    "total_spaces": row.total_spaces,
+                    "available_spaces": row.available_spaces,
+                }),
+            ))
+        items = tuple(prepared)
+        del prepared
         airports: dict[str, list[CachedHistoryItem]] = defaultdict(list)
         lots: dict[int, list[CachedHistoryItem]] = defaultdict(list)
         for item in items:
