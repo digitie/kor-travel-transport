@@ -1,5 +1,11 @@
 ## 2026-11-20 — Transport fullshared Python 소비자 후보
 
+## 2026-11-20 — 앱 pip wheel cache 범위 정렬
+
+- backend의 두 앱 설치 RUN만 기존 Geo649 방식의 locked cache로 전환한다. SOABI·glibc·실제 GDAL 버전으로 하위 경로를 분리하며 locked export/--no-deps/pip check를 유지한다.
+- GDAL·apt·Playwright·stdlib RUN과 base pin은 원문 그대로다. 기존 no-cache 명령의 shell RED 뒤 cache/env·4개 ABI 조합·8개 음성 제어·기존 컴파일 순서의 focused GREEN을 확인한다.
+- 이는 소스 준비다. 실제 warm-cache hit/시간 개선·새 이미지 적용은 아직 미측정이며 진행 중 e908 빌드와 무관하다.
+
 canonical4a801에서 실제 사용하는 shared lock 전체를 Common75의102개 catalog와
 대조해 사용95개를 정확 버전에 맞췄다. 미사용 package를 추가하지 않는다. HTTPX2와
 HTTPCore2는2.16.2, MCP는 기존2.3.0이며 신규49개 조사 목록 중 사용11개도
