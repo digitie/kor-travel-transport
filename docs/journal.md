@@ -5573,3 +5573,6 @@ backend 두 스타일 파일은 source1 그대로다. 기존 Ruff 대상0/전체
 - 기존 mock 시험4PASS/DB시험2개 deselected이며 PostgreSQL/실제DDL은 실행하지 않았다. plugin 자동 로딩을 끈 좁은 실행의 asyncio_mode 설정 경고1개는 원문으로 보존했다. 정규화 AST는 두 스타일 변환과 import 순서를 제외하고 같고, migration downgrade 함수 AST·문자열 상수는 그대로다.
 - 기존 CodeGraph로 backend249파일/6537nodes/6221edges를 인덱싱했다. affected 결과0은 importlib 동적 로딩의 영향 부재 증명이 아니므로 해당 migration을 직접 읽는 mock4개와 AST 검산을 함께 사용했다. 새 회귀 시험을 추가하거나 기존 기대를 약화하지 않았다.
 - T-DOWNGRADE-GUARDS-20261113은 OPEN이며 0038/0039/0041/0042의 destructive downgrade 보호 완료로 바꾸지 않는다. 이 패치로 DB rollback/downgrade를 허용하지 않는다. 원2 독립 리뷰·정확한 새 SHA의 CI·머지가 남았으며 Transport 제품 이미지3종은 최종 검토·머지 SHA까지 HOLD다. 이미지/운영/Map/CI 순서 감사 실행0이다.
+
+
+2026-11-20 최종 contract cut: Common76 frozen694b814(tree8d5ced2)를 기존 정책 checkout에 연결하고, 포착된 동일 batch의 AWS SDK/core 두 lock 노드만1.44.6→1.44.7로 맞췄다. 그 밖의 package entry와 앱/테스트/UI 바이트는 이전02ce0da와 같다. 실제 ext4 설치의 strict source/installed profile과 pip check를 다시 확인했고, 앱89 PASS 증거는 상속하며 새 앱 시험이나 추가 PyPI 최신 추적은 하지 않았다. Common76·SDK20의 검토/정확 CI/canonical main 편입과 소비자 새 head CI를 확인하기 전 배포하지 않는다.

@@ -2822,3 +2822,6 @@ backend 두 스타일 파일은 source1 그대로다. 기존 Ruff 대상0/전체
 실제 main b3c9942의 새 기능 계보를 보존한 별도 브랜치다. 대상 두 파일의 I001/SIM117/PIE807만 수정했고 SQL·migration guard·revision·제품/의존성/producer는 그대로다.
 대상 Ruff0건, 전체 backend468→465건(나머지 동일), mock4PASS/DB시험2개 deselected와 AST 동등성·CodeGraph backend249파일 검산을 정산했다. 전체 lint나 실제 두 세션 DDL 수용을 주장하지 않는다.
 다음 한 작업은 이 정확한 source의 원2 리뷰·Draft PR·CI·최종 main 머지다. T-DOWNGRADE-GUARDS-20261113 OPEN과 기존 운영 제한을 유지한다. Transport 제품3종은 새 실제 merged SHA/tree 확정 전 HOLD이며 Map·CI 순서 감사는 미실행이다.
+
+
+2026-11-20 최종 contract cut: Common76 frozen694b814(tree8d5ced2)를 기존 정책 checkout에 연결하고, 포착된 동일 batch의 AWS SDK/core 두 lock 노드만1.44.6→1.44.7로 맞췄다. 그 밖의 package entry와 앱/테스트/UI 바이트는 이전02ce0da와 같다. 실제 ext4 설치의 strict source/installed profile과 pip check를 다시 확인했고, 앱89 PASS 증거는 상속하며 새 앱 시험이나 추가 PyPI 최신 추적은 하지 않았다. Common76·SDK20의 검토/정확 CI/canonical main 편입과 소비자 새 head CI를 확인하기 전 배포하지 않는다.
