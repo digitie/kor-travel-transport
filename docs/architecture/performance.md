@@ -245,3 +245,41 @@ CPU는 프로세스 누적 CPU 차이이므로 동시 작업의 영향을 포함
 revision구성누락은503이고MVCC/TTLfallback은없다.자세한측정·미완운영수용은
 [보고서](../reports/2026-11-18-read-performance.md)를따른다.주차재구성의프로세스이동은운영p95
 채택판정이남아있으며이변경에포함하지않는다.
+
+## 주차 이력 변환 중 API 스레드 실행 기회 (2026-11-19)
+
+기존 이력 구성은 별도 thread에서 실행되지만, 긴 Python 행 변환이 GIL을 계속
+다투면 API의 응답 처리와 DB 결과 소비도 늦어진다. 실제 c43 rail 1,000건 GET
+4.297초 표본에서 별도 history 생성 thread가 같은 5초 표본 내내 관측됐다.
+이 표본으로 과거 최초 cold18.728초의 단독 원인을 확정하지 않는다.
+
+ParkingHistorySnapshot.from_rows는 UTC 값 재사용을 유지하면서
+HISTORY_ENCODING_YIELD_ROWS = 400행마다 time.sleep(0)으로 실행 기회를 돌려준다.
+400은 동일500k SQLAlchemy Row와 실제 합성 rail PG/ASGI 요청의 교대 비교에서
+선택한 값이다. 모든 행의 인코딩·순서·공항/주차장 인덱스를 끝까지 구성한다.
+TTL·폴링·신선도·원본 SQL·전체 인터프리터의 switch interval은 기존 계약을 따른다.
+
+| 로컬 median | 기준3af | yield400 |
+|---|---:|---:|
+| 최초 cadence 비교 rail | 700.22ms | 258.19ms |
+| 같은 비교 background thread CPU | 1916.62ms | 2055.64ms |
+| 같은 비교 background wall | 1977.75ms | 2191.98ms |
+| 이름 있는 상수를 사용한 최종 rail | 690.31ms | 281.07ms |
+| 최종 client SQL 시간 | 334.69ms | 126.47ms |
+| 최종 background thread CPU | 1888.49ms | 1994.02ms |
+| 최종 background wall | 1974.48ms | 2147.26ms |
+
+각 비교는 순차3쌍과 background 없는 control1회다. 최초 rail 감소63.13%의 비용은
+background CPU+7.25%/wall+10.83%였다. 최종 정확 코드 비교도 rail 59.28% 감소와
+background CPU+5.59%/wall+8.75%를 기록했다. 최종 control은
+167.52ms다. SQL18·page build1·fingerprint0과
+전체 HTTP bytes/ETag/cursor, artifact digest/count, history bytes/index가 같았다.
+
+고정 clock/handle UUID는 로컬 본문 동등성 시험의 입력이며 실제 monotonic 시간·PG·RR·
+검증 경로를 사용했다. HTTP process CPU/client SQL 시간에는 병행 작업의 비용도 섞이고,
+history CPU는 thread_time()으로 따로 측정했다. 두 history 구현 모두 GET 종료 때도
+동작 중이었다. 운영 API의 1초 목표 달성과 실환경 영향은 배포 후 별도로 검증해야 한다.
+
+집중 회귀는29PASS/실제PG 전용1SKIP이다. 변환 완료 전 bounded peer 실행,
+399/400/401/800행 경계, 같은 시각 순서·필터 및 UTC/naive/KST/+05:45/NY fold를
+포함한다. 전체 backend 반복 실행과 운영 목표 검증을 대신하지 않는다.
