@@ -1,3 +1,9 @@
+## 2026-11-19 — 공통 관리자 셸 정본 채택 후속
+
+- 현재 수용 운영은 main5a28/SDK618/schema45·원20 복원이며 Common UI0.2.2/tokens0.1.3이다. rail 최초3237.456ms는1초 미달, 304 p95 89.557ms는300ms 통과다.
+- 이 후보는 producer0e2의 정본 UI0.2.3/tokens0.1.4와 catalog/guardd644를 양쪽 UI에 맞춘다. 관리자 공통 세로 레일·모바일 drawer·단일 제목을 연결하며 기존19경로·입력·POST 로그아웃을 유지한다. 팩121개 검산은 후속 이미지 수용에 연결한다.
+- 다음 한 작업: 정확 CI/두 focused 검토 후 기존 캐시의 정상 빌드/native와 최신 SDK620 불변 wheel·실제 baseline에 바인딩한다. 현재219/SDK618 영수증은 수정하지 않는다. 이후 자연 재시작의 첫 rail200과5초 프로파일을 함께 관측하며 그 전 cold성능 완료를 주장하지 않는다. 자세한 출처·로컬 검증은 [journal](journal.md)과 각 vendor의 COMMON-RELEASE.md를 따른다.
+
 ## 2026-11-19 — 이력 생성 중 API 실행 기회 후속
 
 - 기준은 PR218이 병합된 main3af다. 이름 있는400행 단위로 sleep(0)을 호출하는 후보이며, TTL·폴링·원본 SQL은 유지한다.

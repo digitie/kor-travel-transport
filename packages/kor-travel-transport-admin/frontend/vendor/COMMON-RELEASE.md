@@ -1,5 +1,21 @@
 # Common 정본 산출물 채택
 
+## 2026-11-19 — 공통 관리자 셸 0.2.3 후보
+
+Pack source: 0e2a3f5aa16323df0d009360802661c9bc496dc6
+Catalog/policy: d644632ea9eaf2f6b6baa49305d65fae5bbc0bd4
+Publication: https://github.com/digitie/kor-travel-common/actions/runs/44459847805
+Artifact: 14500111373
+ZIP SHA256: 19881f2c3ed598ed7ec213c559be21ece2be77068bddee6de5bd249b6f8019e1
+
+- @kor-travel/ui 0.2.3 sha512-upv+JtiVcF+zg3C/KcZy9UQckx0n3vc0n4ANr3/elWM8PQ4srljxgTQmaBK4IxulEj8pd8gc7mnG3M67oFIQUQ==
+  - SHA256 aa19793165ae37b2214d210692e23235545e1464c4e0059f99d943411fa753d9 / 일반 파일 96개
+- @kor-travel/tokens 0.1.4 sha512-k6StI02tH/iRxKimczN0btU+MS9AvDZLlR/6Bn6xQHhZ5Mb79pkyIALd4RkoLT2GP3qlwR89YEgOaBiBxACDpA==
+  - SHA256 33d08d7b37c60d3e319da19608ce05137f6bf587dc8d42e3ce0dfb4b597a61fc / 일반 파일 25개
+
+중앙 main-push artifact의 실제 두 pack을 그대로 채택했다. 이 앱은 toast를 사용하지 않는다. UI96+tokens25=121개를 후속 정상 이미지/native 단계에서 검산한다. 현재 운영219의 Common119개 수용과 이번 소스 후보를 구분한다.
+
+## 이전 채택 이력
 Pack source: 706aaa7821588dfca72f660c9161f56be2d0445f
 Catalog/policy: 5c1b3857e9af060d30ec776157760fb9e9c13ded
 Publication: https://github.com/digitie/kor-travel-common/actions/runs/44313659808

@@ -30,14 +30,14 @@ afterEach(async()=>{await act(async()=>root.unmount());host.remove();vi.unstubAl
 async function page(path:string,params?:Record<string,string>){return path==="../app/parking-lots/page"?ParkingLotsPage():TimetablePage({searchParams:Promise.resolve(params??{})});}
 test("일반 주차장 주소는 공항 화면이 아니라 정적 기준정보와 검색·미완수집 안내를 연다",async()=>{
  const node=await page("../app/parking-lots/page");await act(async()=>root.render(node));
- expect(host.querySelector("h1")?.textContent).toBe("일반 주차장");expect(host.querySelector('form[aria-label="일반 주차장 검색"]')).not.toBeNull();
+ expect(host.querySelector("h1")?.textContent).toBe("교통 - 일반 주차장");expect(host.querySelector('form[aria-label="일반 주차장 검색"]')).not.toBeNull();
  expect(host.textContent).toContain("실시간 잔여면은 제공하지 않습니다");expect(host.textContent).toContain("완료된 주차장 기준정보가 아직 없습니다");
  expect(api.get.mock.calls.some(([path])=>String(path).startsWith("transport/parking-lots?"))).toBe(true);
  expect(api.get.mock.calls.some(([path])=>String(path).includes("parking/current"))).toBe(false);
 });
 test("metro station/view 딥링크는 공식 코드 저장표의 첫막을 곧바로 열고 전체표로 전환된다",async()=>{
  const node=await page("../app/rail/timetable/page",{mode:"metro",station:"17",view:"ends"});await act(async()=>root.render(node));
- expect(host.querySelector("h1")?.textContent).toBe("시간표 조회");expect(host.querySelector('[aria-label="시간표 종류"]')).not.toBeNull();
+ expect(host.querySelector("h1")?.textContent).toBe("교통 - 시간표 조회");expect(host.querySelector('[aria-label="시간표 종류"]')).not.toBeNull();
  expect(host.querySelector('[aria-label="저장표 첫차 막차"]')?.textContent).toContain("09:04 ~ 23:12");
  expect(api.get.mock.calls.some(([path])=>String(path)==="transport/rail/stations/17/timetable?")).toBe(true);
  await act(async()=>[...host.querySelectorAll("button")].find(node=>node.textContent==="전체 시간표")!.click());expect(host.querySelector('[aria-label="전체 예정 시간표"]')?.textContent).toContain("23:12");

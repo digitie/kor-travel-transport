@@ -62,7 +62,7 @@ test("셸은 사이드바 landmark·본문 landmark·건너뛰기 링크를 가�
     </AdminShell>,
   );
   expect(html).toContain('data-testid="admin-shell"');
-  expect(html).toContain('aria-label="관리자 사이드바"');
+  expect(html).toContain('data-slot="admin-shell-rail"');
   expect(html).toContain('id="main-content"');
   expect(html).toContain('href="#main-content"');
   expect(html).toContain("본문으로 건너뛰기");
@@ -81,17 +81,18 @@ test("로그인 화면에는 관리 메뉴와 로그아웃이 없다", () => {
   expect(html).not.toContain("<nav");
 });
 
-test("페이지 헤더는 섹션 라벨·제목·도움말·액션을 map 마크업으로 보여 준다", () => {
+test("페이지 제목은 공통 한 줄 상단 바와 설명·액션을 사용한다", () => {
   navigation.pathname = "/admin/dagster";
   const html = renderToStaticMarkup(
     <PageHeader title="전달된 제목" description="전달된 설명" actions={<button type="button">동작</button>} />,
   );
   expect(html).toContain('data-slot="admin-shell-header"');
-  expect(html).toContain(">운영 관리</p>");
-  expect(html).toContain("<h1 class=");
-  expect(html).toContain(">전달된 제목</h1>");
-  expect(html).toContain('aria-label="도움말: 전달된 제목"');
-  expect(html).not.toContain("전달된 설명");
+  expect(html).toContain('title="교통 - 전달된 제목"');
+  expect(html).toContain('data-slot="admin-shell-title"');
+  expect(html).toContain("전달된 제목");
+  expect(html).toContain('data-slot="admin-shell-description"');
+  expect(html).toContain("전달된 설명");
+  expect(html.match(/<h1\b/g)).toHaveLength(1);
   expect(html).toMatch(/<button[^>]*>동작<\/button>/);
 });
 

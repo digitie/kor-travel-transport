@@ -353,11 +353,6 @@
   --kt-shadow-elevated: var(--shadow-elevated);
   --kt-shadow-modal: var(--shadow-modal);
 }
-@media (min-width: 1024px) {
-  .map-common-menu[data-collapsed="true"] [data-slot="app-menu-group-label"],
-  .map-common-menu[data-collapsed="true"] [data-slot="app-menu-link"] > span:not([aria-hidden]) { display: none; }
-  .map-common-menu[data-collapsed="true"] [data-slot="app-menu-link"] { padding-inline: 0; justify-content: center; }
-}
 
 /* transport 도메인 잔여 CSS가 읽는 간격·글자·서체 별칭(색은 transport-palette.css). */
 :root {
