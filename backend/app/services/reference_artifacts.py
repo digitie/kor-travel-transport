@@ -6,17 +6,39 @@ import json
 from time import monotonic
 from uuid import uuid4
 
+from asyncpg import PostgresError
 from fastapi import HTTPException
-from sqlalchemy import Text, bindparam, cast, delete, exists, insert, literal, select, update
-from sqlalchemy.dialects.postgresql import JSONB, insert as pg_insert
+from sqlalchemy import (
+    Text,
+    bindparam,
+    cast,
+    delete,
+    exists,
+    func,
+    insert,
+    literal,
+    select,
+    update,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlalchemy import func
 from sqlalchemy.exc import DBAPIError
 
-from app.core.read_timing import observe_fingerprint
+from app.core.read_timing import observe_fingerprint, observe_native_statement
 from app.core.time_utils import now_utc, serialize_utc
-from app.models import ReferenceExportArtifact, ReferenceExportArtifactHead, ReferenceExportArtifactItem, ServiceExportSnapshot
-from app.services.export_current import BATCH_SIZE, MAX_SNAPSHOT_BYTES, MAX_SNAPSHOT_ITEMS, SnapshotRace
+from app.models import (
+    ReferenceExportArtifact,
+    ReferenceExportArtifactHead,
+    ReferenceExportArtifactItem,
+    ServiceExportSnapshot,
+)
+from app.services.export_current import (
+    BATCH_SIZE,
+    MAX_SNAPSHOT_BYTES,
+    MAX_SNAPSHOT_ITEMS,
+    SnapshotRace,
+)
 
 
 def _budget(started):
@@ -48,8 +70,26 @@ async def _store_items(session, artifact_id, encoded, started):
     for offset in range(0, len(encoded), BATCH_SIZE):
         _budget(started)
         bodies = encoded[offset:offset + BATCH_SIZE]
-        if session.bind.dialect.name == "postgresql":
-            # canonical JSON을 다시 loads/dumps하지 않고 한 bind의 JSON 배열로 전달한다.
+        if session.bind.dialect.name == "postgresql" and session.bind.dialect.driver == "asyncpg":
+            # 같은 SQLAlchemy transaction의 공개 driver API를 쓴다. JSONB codec에는
+            # 검산한 canonical JSON 문자열을 전달하며 다시 loads/dumps하지 않는다.
+            connection = await session.connection()
+            raw = await connection.get_raw_connection()
+            records = [(artifact_id, offset + i + 1, body.decode("utf-8"))
+                       for i, body in enumerate(bodies)]
+            try:
+                with observe_native_statement():
+                    status = await raw.driver_connection.copy_records_to_table(
+                        table.name, records=records, columns=("artifact_id", "ordinal", "payload"),
+                        schema_name=table.schema,
+                    )
+            except PostgresError as exc:
+                # 같은 reader의 40001/55P03 재시도와 rollback 경계를 유지한다.
+                raise DBAPIError(None, None, exc) from exc
+            if status != f"COPY {len(bodies)}":
+                raise HTTPException(503, "reference 본문 저장 수량이 일치하지 않습니다.")
+        elif session.bind.dialect.name == "postgresql":
+            # 다른 PostgreSQL driver는 기존 한 bind JSON 배열 경로를 유지한다.
             rows = func.jsonb_array_elements(cast(bindparam("bodies", type_=Text), JSONB)).table_valued(
                 "value", with_ordinality="ordinal").render_derived(name="reference_rows")
             stmt = insert(table).from_select(["artifact_id", "ordinal", "payload"],
