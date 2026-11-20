@@ -22,14 +22,23 @@ it("loads map and history through the public reader without admin path prefixes"
 });
 it("only requests location after a click and moves to a valid result", async () => {
   const get = vi.fn(); Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition: get } });
-  await render(); expect(get).not.toHaveBeenCalled();
-  await act(async () => host.querySelector("button")!.click());
+  await render();
+  expect(get).not.toHaveBeenCalled();
+  const button = host.querySelector("button")!;
+  expect(button.textContent).toBe("");
+  expect(button.getAttribute("aria-label")).toBe("내 위치 주변 유가 보기");
+  await act(async () => button.click());
+  expect(button.getAttribute("aria-busy")).toBe("true");
+  expect(button.textContent).toBe("");
+  await act(async () => button.click());
+  expect(get).toHaveBeenCalledTimes(1);
   await act(async () => get.mock.calls[0][0]({ coords: { longitude: 127, latitude: 37 } }));
+  expect(button.hasAttribute("aria-busy")).toBe(false);
   expect((state.props.layers as ReactElement<{ target: unknown }>).props.target).toMatchObject({ center: [127, 37], zoom: 14 });
   expect(state.props.mapOnly).toBe(true);
   expect(state.props.view).toBeUndefined();
   expect(state.props.onViewChange).toBeUndefined();
-  expect(host.textContent).toContain("내 위치 주변의 유가");
+  expect(host.textContent).toContain("현재 위치 주변의 유가");
 });
 it("denial keeps the viewport and gives visible fallback feedback", async () => {
   const get = vi.fn(); Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition: get } });
@@ -43,7 +52,7 @@ it("bounds an unresponsive location provider and ignores a late result", async (
   const get = vi.fn(); Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition: get } });
   await render(); await act(async () => host.querySelector("button")!.click());
   await act(async () => vi.advanceTimersByTime(6500));
-  expect(host.querySelector("button")!.disabled).toBe(false);
+  expect(host.querySelector("button")!.hasAttribute("aria-busy")).toBe(false);
   await act(async () => get.mock.calls[0][0]({ coords: { longitude: 127, latitude: 37 } }));
   expect((state.props.layers as ReactElement<{ target: unknown }>).props.target).toBeUndefined();
 });
