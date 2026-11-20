@@ -6,6 +6,8 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 KIND_QUERY_CASES = [
+    ("kinds=fuel_station", 422),
+    ("kind=fuel_station", 200),
     ("kind=rail_station", 200),
     ("kind=fuel_station&kind=rail_station", 200),
     ("%6bind=rail_station", 200),
