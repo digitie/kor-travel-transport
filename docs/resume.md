@@ -1,5 +1,10 @@
 ## 2026-11-20 — 버튼 테두리 회귀·유가 지역 카드 목록 삭제·셸 제목 잔여분
 
+## 2026-11-20 진행 — Fuel portal host 측정 오류 수정
+
+실제 live-upstream `b750` UI의 지역 카드 전이 예외를 앱 소유 hook의 작은 guard와 host/측정값 연결로 수정했다. 회귀 RED→GREEN 및 관련 13개 테스트·타입/lint·Doctor 0건을 확인했다. 다음 작업은 이 좁은 변경의 PR/CI 및 사용자 지정 한 번의 리뷰이며, 실제 새 UI normal/native/배포와 오류 없는 브라우저 확인은 이후 별도 증거가 필요하다. 기존 `b750` SDK 입력과 backend/core 배포는 유지한다.
+
+
 ## 2026-11-20 공개 유가 지도 통합 후보
 
 fuel.digitie.mywire.org는 Odroid12308, fuel-api.digitie.mywire.org는12307을 사용하는

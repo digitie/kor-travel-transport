@@ -1,5 +1,12 @@
 ## 2026-11-20 — 버튼 테두리 굵어짐(FS-7.8)·유가 지역 카드 목록 삭제·셸 제목 잔여분
 
+## 2026-11-20 — Fuel 지역 카드 portal 수명 전이 오류 수정
+
+- 실제 N150 live-upstream 브라우저의 `b750` 정적 chunk/stack을 앱 `useFuelRegionCards.position()`으로 대조했다. 지역 카드 host만 남고 portal label이 없는 확대 전이에서 `offsetWidth`를 읽어 예외가 발생했다.
+- label이 붙은 host만 측정하고 host와 측정값을 함께 보존하여 배치 인덱스가 섞이지 않게 했다. 기존 child-list MutationObserver가 label 부착·재부착 때 재배치하며, 선택·가격·클러스터·API 동작은 바꾸지 않았다.
+- 실제 예약된 hook의 host-before-label, label 제거/재부착 및 다른 준비된 카드 매핑을 재현한 테스트는 기존 코드 RED(`offsetWidth`) → 수정 코드 GREEN이다. 관련 13개 테스트, 타입 검사, 대상 lint, Doctor 0건을 확인했다. 새 이미지 빌드·배포는 아직 실행하지 않았고 진행 중인 canonical SDK 입력은 변경하지 않았다.
+
+
 ## 2026-11-20 공개 유가 지도 통합 후보
 
 fuel.digitie.mywire.org는 Odroid12308, fuel-api.digitie.mywire.org는12307을 사용하는
