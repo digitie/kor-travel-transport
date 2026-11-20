@@ -27,11 +27,13 @@ BUILD_RECIPES = {
     "frontend": ("frontend/Dockerfile", "runner", "RELEASE_SHA"),
     "transport-admin-web": ("packages/kor-travel-transport-admin/frontend/Dockerfile", "runner", "TRANSPORT_ADMIN_RELEASE_SHA"),
     "dagster-gateway": ("backend/Dockerfile.dagster-gateway", None, "RELEASE_SHA"),
+    "fuel-api-gateway": ("deploy/transport-fuel/Dockerfile.gateway", None, "RELEASE_SHA"),
 }
 BUILD_ROLE_IMAGE = {
     "backend": "backend", "dagster-code-server": "backend", "migrate": "backend",
     "frontend": "frontend", "transport-admin-web": "transport-admin-web",
     "dagster-gateway": "dagster-gateway",
+    "fuel-api-gateway": "fuel-api-gateway", "fuel-web": "transport-admin-web",
 }
 LEGACY_BUILD_ROLES = {"dagster-gateway"}
 BUILD_SOURCE = "https://github.com/digitie/kor-travel-transport.git"

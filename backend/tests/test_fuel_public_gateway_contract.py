@@ -5,6 +5,8 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
+if not (ROOT / "docker-compose.fuel.yml").is_file():
+    ROOT = Path("/app/compose-contract")
 KIND_QUERY_CASES = [
     ("kinds=fuel_station", 422),
     ("kind=fuel_station", 200),

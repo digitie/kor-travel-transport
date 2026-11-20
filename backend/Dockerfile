@@ -69,6 +69,8 @@ COPY docker-compose.db.yml docker-compose.live.yml /app/compose-contract/
 # Odroid code-server 포트 overlay 계약(test_transport_override_contract.py)도 같은 무비밀 계약 사본으로 둔다.
 COPY transport.override.yml /app/compose-contract/transport.override.yml
 COPY deploy/transport-admin /app/compose-contract/deploy/transport-admin
+COPY docker-compose.fuel.yml /app/compose-contract/docker-compose.fuel.yml
+COPY deploy/transport-fuel /app/compose-contract/deploy/transport-fuel
 COPY packages/kor-travel-transport-admin/frontend /app/compose-contract/packages/kor-travel-transport-admin/frontend
 
 COPY backend/entrypoint.sh /entrypoint.sh

@@ -52,3 +52,12 @@ fixture 입력을 사용한 compose config 해석도 통과했다.
 
 이 변경은 backend·gateway·compose 소유 파일만 커밋하며 frontend/BFF 소유 변경과
 하나의 통합 PR에서 검증한다. journal·resume 통합 기록은 통합 담당자가 함께 반영한다.
+
+## 명시적 정상 빌드 역할
+
+scripts/build-images.py는 명시한 fuel-api-gateway만 전용 Dockerfile로 빌드한다.
+fuel-web은 transport-admin-web artifact의 alias이므로 둘을 함께 요청해도 같은 정상
+admin 이미지 하나만 만든다. 공개 입력은 기존 admin의 VWorld·Dagster URL 그대로이며
+gateway는 공개 입력을 받지 않는다. gateway도 기존 image release 환경변수 검증을
+통과하도록 RELEASE_SHA를 보존한다. 기본 core 역할·legacy 집합·검증기는 바꾸지 않는다.
+실제 정상 image/source/native 증거는 통합 source가 확정된 뒤 생성해야 한다.
