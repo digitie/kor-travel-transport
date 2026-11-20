@@ -969,4 +969,5 @@ html:has([data-slot="map-workspace"][data-expanded="true"]) { overflow: hidden; 
 .public-fuel-surface .kt-map-filter-panel[data-expanded="false"] > .kt-map-filter-panel-body { display: none; }
 .public-fuel-surface .kt-map-filter-panel[data-expanded="true"] > .kt-map-filter-panel-body { margin-top: .5rem; max-height: 30dvh; overflow: auto; overscroll-behavior: contain; }
 .public-fuel-surface .kt-map-stage-overlays { top: calc(max(12px, env(safe-area-inset-top)) + 56px); }
-.public-fuel-surface .kt-map-workspace:has(> .kt-map-filter-panel[data-expanded="true"]) .kt-map-stage-overlays { visibility: hidden; }
+.public-fuel-surface .kt-map-stage { isolation: auto; }
+.public-fuel-surface .kt-map-stage-overlays { z-index: 9; }
