@@ -1,11 +1,35 @@
 """조회 밖에서 canonical 본문을 준비한다. provider 호출·source head 갱신은 하지 않는다."""
+import asyncio
+import logging
+
+from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 from app.core.time_utils import now_utc, serialize_utc
 from app.services.export_current import SnapshotRace, _snapshot_transaction
-from app.services.export_references import reference_specs, _reference_heads, _valid_heads
+from app.services.export_references import (
+    _reference_heads,
+    _valid_heads,
+    reference_specs,
+)
+from app.services.reference_artifacts import collect_unused_artifact, prepare_artifact
 from app.services.reference_export_revision import reference_payload_revision
-from app.services.reference_artifacts import prepare_artifact, collect_unused_artifact
+
+logger = logging.getLogger(__name__)
+
+
+async def warm_rail_reference_revision(session_factory, *, settings):
+    """HTTP 요청과 같은 워커의 철도 입력 지문을 한 번 읽는다."""
+    try:
+        spec = next(spec for spec in reference_specs(settings) if spec.kind == "rail-stations-v1")
+        async with asyncio.timeout(10), session_factory() as session:
+            await _snapshot_transaction(session)
+            await session.execute(text("SET TRANSACTION READ ONLY"))
+            heads = await _reference_heads(session, spec)
+            if _valid_heads(heads, spec):
+                await reference_payload_revision(session, heads, spec.kind, settings.release_sha)
+    except Exception as exc:  # noqa: BLE001 - 선택적 기동 작업의 실패가 종료를 방해하지 않는다.
+        logger.warning("rail reference warmup failed error_type=%s", type(exc).__name__)
 
 
 async def prepare_reference_exports_for_settings(settings):
