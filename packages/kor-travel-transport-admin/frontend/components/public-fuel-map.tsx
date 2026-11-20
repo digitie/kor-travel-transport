@@ -38,13 +38,15 @@ export function PublicFuelMap() {
       request.current++;
       setLocating(false);
       setLocation({ center: [longitude, latitude], zoom: 14, id: `location:${id}` });
-      setMessage("내 위치 주변의 유가를 표시합니다.");
+      setMessage("현재 위치 주변의 유가를 표시합니다.");
     }, fallback, { enableHighAccuracy: false, timeout: 6000, maximumAge: 60_000 });
   }
   return <main className="public-fuel-surface" aria-label="주변 주유소 유가 지도">
     <TransportMap mode="fuel" load={loadFuel} mapOnly layers={<CameraRequest target={location} />} />
     <div className="public-fuel-location">
-      <Button type="button" variant="outline" onClick={locate} disabled={locating} aria-label="내 위치 주변 유가 보기"><LocateFixed aria-hidden="true" size={18} />{locating ? "위치 확인 중" : "내 위치"}</Button>
+      <Button type="button" variant="outline" onClick={locate} loading={locating} aria-label="내 위치 주변 유가 보기">
+        <LocateFixed aria-hidden="true" size={18} />
+      </Button>
       <p className="public-fuel-location-status" role="status">{message}</p>
     </div>
   </main>;
