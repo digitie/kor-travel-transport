@@ -106,7 +106,7 @@ export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all
 const status = <MapQueryStatus feedback={feedback} failed={failed} setReload={setReload} basemap={basemap} view={view} mapUnavailableMessage={mapUnavailableMessage} />;
 const summary = <MapStatusSummary status={status} embedded={embedded} mode={mode} loaded={loaded} pending={pending} failed={failed} current={current} fuelDetailScopeExpanded={fuelDetailScopeExpanded} setFuelDetailScopeExpanded={setFuelDetailScopeExpanded} />;
 return <section className="map-workbench" aria-label={mode === "fuel" ? "유가 지도" : "교통 장소 지도"}>
-    <MapWorkspace expandable ref={workspace} className={embedded ? "embedded-map" : "transport-map-workspace"} onClickCapture={(event) => captureDetailOpener(event, detail, detailOpener)}>
+    <MapWorkspace expandable={!mapOnly} ref={workspace} className={embedded ? "embedded-map" : "transport-map-workspace"} onClickCapture={(event) => captureDetailOpener(event, detail, detailOpener)}>
     {toolbar || !embedded ? <MapSearchFilters filterSummary={filterSummary} query={query} selectedSources={selectedSources} products={products} kinds={kinds} allowedKinds={allowedKinds} filtersExpanded={filtersExpanded} setFiltersExpanded={setFiltersExpanded} filterTrigger={filterTrigger} toolbar={toolbar} mode={mode} setKinds={setKinds} setSelected={setSelected} controlId={controlId} queryInput={queryInput} setQuery={setQuery} setSelectedSources={setSelectedSources} sources={sources} setProducts={setProducts} /> : null}
     <Tabs value={view} onValueChange={(value) => { if (value === "map" || value === "list") { setView(value); setFiltersExpanded(false); } }} className="min-h-0">
     {!mapOnly ? <MapResultTabs mapViewport={mapViewport} view={view} listCount={listCount} listPlaces={listPlaces} items={items} listFeatureCount={listFeatureCount} mapFeatureCount={mapFeatureCount} serverClustered={serverClustered} serverTotal={serverTotal} visiblePoints={visiblePoints} pending={pending} partialListKinds={partialListKinds} perKindLimit={perKindLimit} searchQuery={searchQuery} /> : null}
@@ -146,6 +146,7 @@ function truncatedListKinds(embedded: boolean, view: "map" | "list", kinds: Plac
 
 const mapClusterDetailZoom = (mode: "all" | "transport" | "fuel") => mode === "fuel" ? 10 : 11;
 const fuelQueryDetailZoom = (mode: "all" | "transport" | "fuel") => mode === "fuel" ? 10 : 12;
+const mapKindParameter = (mode: "all" | "transport" | "fuel") => mode === "fuel" ? "kind" : "kinds";
 
 function onlyRailStations(items: Place[]) {
   return items.length > 0 && items.every(item => item.kind === "rail_station");
@@ -340,7 +341,7 @@ function useTransportMap({ places, selectedPlace, onSelectPlace, mode = "all", d
 
     if (view === "map" && selectedKinds.length) {
       const search = new URLSearchParams({
-        kinds: selectedKinds.join(","),
+        [mapKindParameter(mode)]: selectedKinds.join(","),
         limit: String(Math.min(900, perKindLimit * selectedKinds.length)),
         zoom: String(Math.floor(zoom)),
         ...viewport,

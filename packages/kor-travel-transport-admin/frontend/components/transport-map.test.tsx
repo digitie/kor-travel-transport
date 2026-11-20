@@ -183,6 +183,9 @@ test("지역은 유종 선택과 무관하게 함께 읽고 확대된 주유소�
     await act(async()=>root.render(<TransportMap mode="fuel"/>));
     await act(async()=>{const select=container.querySelector<HTMLSelectElement>('select[aria-label="전체 유종"]')!;select.value="D047";select.dispatchEvent(new Event("change",{bubbles:true}));});
     await act(async()=>{await new Promise(resolve=>setTimeout(resolve,50));});
+    // 공개 gateway가 마지막 kind를 강제하므로 실제 지도 요청도 단일 kind여야 한다.
+    expect(lastUrl().searchParams.get("kind")).toBe("fuel_station");
+    expect(lastUrl().searchParams.has("kinds")).toBe(false);
     expect(lastUrl().searchParams.has("product_codes")).toBe(false);
     expect(container.querySelector(".fuel-region-marker")?.textContent).toContain("1,700");
     expect(container.querySelector(".fuel-region-marker")?.textContent).toContain("1,600");
@@ -190,6 +193,8 @@ test("지역은 유종 선택과 무관하게 함께 읽고 확대된 주유소�
     await act(async()=>[...container.querySelectorAll("button")].find(button=>button.textContent==="지도 이동 모의")!.click());
     await act(async()=>{await new Promise(resolve=>setTimeout(resolve,450));});
     expect(lastUrl().searchParams.get("product_codes")).toBe("D047");
+    expect(lastUrl().searchParams.get("kind")).toBe("fuel_station");
+    expect(lastUrl().searchParams.has("kinds")).toBe(false);
   } finally {await act(async()=>root.unmount());container.remove();}
 });
 
