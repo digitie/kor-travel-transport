@@ -965,6 +965,7 @@ html:has([data-slot="map-workspace"][data-expanded="true"]) { overflow: hidden; 
 
 /* Public map overlays share a compact top strip; the canvas remains full viewport. */
 .public-fuel-surface .kt-map-workspace > .kt-map-filter-panel { width: min(28rem, calc(100% - 80px)); }
+.public-fuel-surface .kt-map-workspace > .kt-map-filter-panel[data-expanded="true"] { z-index: 10; }
 .public-fuel-surface .kt-map-filter-toggle { display: inline-flex; min-height: 44px; }
 .public-fuel-surface .kt-map-filter-panel[data-expanded="false"] > .kt-map-filter-panel-body { display: none; }
 .public-fuel-surface .kt-map-filter-panel[data-expanded="true"] > .kt-map-filter-panel-body { margin-top: .5rem; max-height: 30dvh; overflow: auto; overscroll-behavior: contain; }
