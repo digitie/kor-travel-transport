@@ -156,6 +156,7 @@ from app.services import place_map_cache
 from app.core.read_timing import observe_page_build
 from app.services.fuel_map_validation import validated_fuel_map_items, validated_place_map_items
 from app.services.rail_catalog import metro_station_catalog
+from app.services.reference_export_preparation import warm_rail_reference_revision
 from app.services.analytics import (
     build_special_day_patterns,
     build_threshold_insights,
@@ -600,12 +601,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         elif resolved_settings.enable_scheduler:
             logger.info("in-process scheduler disabled; Dagster owns collection execution")
 
+        rail_warmup_task = None
         try:
             async with AsyncExitStack() as stack:
                 if fuel_mcp_http is not None:
                     await stack.enter_async_context(fuel_mcp_http.router.lifespan_context(fuel_mcp_http))
+                if (engine.dialect.name == "postgresql" and resolved_settings.transport_map_current_enabled
+                        and resolved_settings.release_sha and resolved_settings.release_sha != "unknown"):
+                    rail_warmup_task = asyncio.create_task(
+                        warm_rail_reference_revision(session_factory, settings=resolved_settings)
+                    )
                 yield
         finally:
+            if rail_warmup_task is not None:
+                rail_warmup_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await rail_warmup_task
             history_cache_task = app.state.history_cache_task
             if history_cache_task is not None:
                 history_cache_task.cancel()
