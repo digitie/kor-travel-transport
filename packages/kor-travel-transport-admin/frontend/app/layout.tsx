@@ -19,7 +19,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
     <html lang="ko" className="font-sans">
       <body>
         <ConfirmDialogProvider>
-          <AdminShell>{children}</AdminShell>
+          {process.env.TRANSPORT_UI_MODE === "fuel" ? children : <AdminShell>{children}</AdminShell>}
         </ConfirmDialogProvider>
         <Toaster position="top-right" />
       </body>

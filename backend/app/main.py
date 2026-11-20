@@ -1343,7 +1343,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         kind: str | None = Query(default=None, description="fuel_station, rail_station, ferry_port, bus_terminal, airport, rest_area, highway_incident 중 하나. 돌발은 최근 24시간 최신 저장 관측"),
         kinds: str | None = Query(default=None, max_length=280, description="지도 종류를 쉼표로 구분해 한 요청으로 조회"),
         limit: int = Query(default=1000, ge=1, le=5000),
-        zoom: int | None = Query(default=None, ge=0, le=22, description="지도 축척. 0~11은 상세 행 대신 셀별 장소 수를 반환"),
+        zoom: int | None = Query(default=None, ge=0, le=22, description="실제 지도 축척. 주유소 단독은 0~9, 나머지는 0~11에서 지역·셀 요약을 반환"),
         include_sources: bool = Query(default=True, description="출처 필터 선택지를 포함. 반복 지도 조회에서는 false로 생략 가능"),
         include_fuel_statistics: bool = Query(default=False, description="현재 지도 범위 전체의 유종별 통계 포함"),
         include_unlocated: bool = Query(default=False, description="좌표 없는 기준정보도 검색 목록에 포함"),
@@ -1386,10 +1386,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if zoom is not None and min_longitude is None:
             raise HTTPException(status_code=422, detail="축척별 지도 조회에는 지도 범위가 필요합니다.")
         requested_kinds = tuple(sorted(selected_kinds)) if selected_kinds else (selected_kind,) if selected_kind else tuple(sorted(supported))
+        # 전용 유가 지도는 실제 10부터 가격을 공개한다. 혼합/다른 종류는 기존 경계다.
+        detail_zoom = 10 if requested_kinds == ("fuel_station",) else 12
         read_at = now_utc()
         page_key = page_boundary = None
         # 통계/클러스터는 각자의 기존 신선도 경로를 유지한다.
-        if not include_fuel_statistics and (zoom is None or zoom >= 12):
+        if not include_fuel_statistics and (zoom is None or zoom >= detail_zoom):
             proof = await place_map_cache.snapshot(
                 session, read_at, resolved_settings.release_sha, "highway_incident" in requested_kinds,
             )
@@ -1456,7 +1458,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # 낮은 축척에서는 marker별 설명·가격 payload를 싣지 않고 좌표 셀별 개수만 반환한다.
         # map admin처럼 bbox를 기준으로 조회하되, 한 종류마다 별도 API를 호출하지 않도록
         # 선택한 종류의 집계를 한 SQL union으로 묶는다.
-        if zoom is not None and zoom < 12 and min_longitude is not None:
+        if zoom is not None and zoom < detail_zoom and min_longitude is not None:
             # 지역 카드는 전체 지역 평균이다. 상호·주소·브랜드 검색은 실제 일치
             # 지점의 묶음을 남겨야 지역명과 다르더라도 검색·확대 경로가 유지된다.
             use_fuel_regions = not (query and query.strip())

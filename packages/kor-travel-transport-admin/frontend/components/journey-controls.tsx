@@ -4,7 +4,7 @@ import Link from "next/link";
 import { InfoButton } from "./info-button";
 import { Anchor, Bus, Fuel, Plane, TrainFront, Coffee, MapPin, ParkingCircle, TriangleAlert, X } from "lucide-react";
 import { useId } from "react";
-import { dateTime, hasCoordinates, hasFuelPrice, money, serviceTime, type FerryTimetable, type Place } from "@/lib/journey";
+import { dateTime, transportGet, hasCoordinates, hasFuelPrice, money, serviceTime, type FerryTimetable, type Place } from "@/lib/journey";
 import { collectionSourceLabel, fuelProductLabel, placeKindLabel } from "@/lib/transport-presentation";
 import { RailTimetables } from "./rail-timetables";
 import { Button } from "@/components/ui/button";
@@ -62,11 +62,11 @@ export function MultiSearch({ label, query, onQuery, options, selected, onSelect
   </section>;
 }
 
-export function PlaceDetails({ place, showRailTimetable = true, showHeading = true, onShowMap }: { place: Place; showRailTimetable?: boolean; showHeading?: boolean; onShowMap?: () => void }) {
+export function PlaceDetails({ place, showRailTimetable = true, showHeading = true, onShowMap, load }: { load?: typeof transportGet; place: Place; showRailTimetable?: boolean; showHeading?: boolean; onShowMap?: () => void }) {
   return <div className="place-details grid min-w-0 gap-3 text-sm">
     <PlaceHeading place={place} showHeading={showHeading} />
     <PlacePrices place={place} />
-    {place.kind === "fuel_station" ? <FuelStationPriceHistory key={`${place.source}:${place.id}`} place={place}><PlaceContact place={place} onShowMap={onShowMap} /><PlaceLocationEvidence place={place} /></FuelStationPriceHistory> : <PlaceContact place={place} onShowMap={onShowMap} />}
+    {place.kind === "fuel_station" ? <FuelStationPriceHistory key={`${place.source}:${place.id}`} place={place} load={load}><PlaceContact place={place} onShowMap={onShowMap} /><PlaceLocationEvidence place={place} /></FuelStationPriceHistory> : <PlaceContact place={place} onShowMap={onShowMap} />}
     {place.kind === "rail_station" && showRailTimetable ? <RailTimetables placeIds={[place.id]} /> : null}
     {place.kind !== "fuel_station" ? <PlaceLocationEvidence place={place} /> : null}
     {place.kind !== "fuel_station" ? <p className="text-xs text-text-secondary">출처 {collectionSourceLabel(place.source)} · 기준정보 반영 {dateTime(place.updated_at)}</p> : null}

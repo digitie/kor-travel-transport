@@ -31,6 +31,7 @@ ContractError = contract.ContractError
 PUBLIC_INPUTS = {
     "backend": set(),
     "dagster-gateway": set(),
+    "fuel-api-gateway": set(),
     "frontend": {"NEXT_PUBLIC_API_BASE_URL", "NEXT_PUBLIC_API_PORT"},
     "transport-admin-web": {
         "NEXT_PUBLIC_VWORLD_API_KEY",

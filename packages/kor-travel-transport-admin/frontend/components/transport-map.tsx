@@ -100,20 +100,20 @@ function OverlapList({ places, onSelect, listRef }: { places: Place[]; onSelect:
   </section>;
 }
 
-export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all", details, detailTitle, onCloseDetails, focusRevision = 0, layers, detailKey, mapFeatureCount = 0, listFeatureCount = 0, listCount, listContent, listPlaces = true, toolbar, feedback, filterSummary, view: controlledView, onViewChange }: { places?: Place[]; selectedPlace?: Place | null; onSelectPlace?: (place: Place) => void; mode?: "all" | "transport" | "fuel"; details?: ReactNode; detailTitle?: ReactNode; onCloseDetails?: () => void; focusRevision?: number; layers?: ReactNode; detailKey?: string; mapFeatureCount?: number; listFeatureCount?: number; listCount?: number; listContent?: ReactNode; listPlaces?: boolean; toolbar?: ReactNode; feedback?: ReactNode; filterSummary?: string; view?: "map" | "list"; onViewChange?: (view: "map" | "list") => void }) {
-  const { workspace, embedded, detail, detailOpener, query, selectedSources, products, kinds, allowedKinds, filtersExpanded, setFiltersExpanded, filterTrigger, setKinds, setSelected, controlId, queryInput, setQuery, setSelectedSources, sources, setProducts, view, setView, mapViewport, items, serverClustered, serverTotal, serverClusters, visiblePoints, pending, mapContainer, setMapUnavailableMessage, basemap, moved, camera, setClusterPlaces, setClusterCamera, zoom, setCameraRequest, groupedPoints, cluster, overlapOpener, setClusterAnchor, clusterList, selectPlace, selectedPoint, clusterPlaces, clusterAnchor, closeOverlap, current, loaded, mapDetail, listDetail, dismissEmbeddedDetail, closeDetail, setReload, focusFilters, failed, mapUnavailableMessage, fuelDetailScopeExpanded, setFuelDetailScopeExpanded, regionMarkers, railOnly, partialListKinds, perKindLimit, searchQuery } = useTransportMap({ places, selectedPlace, onSelectPlace, mode, details, detailTitle, onCloseDetails, focusRevision, layers, detailKey, mapFeatureCount, listFeatureCount, listCount, listContent, listPlaces, toolbar, feedback, filterSummary, view: controlledView, onViewChange });
-  const detailPanel = (panelView: "map" | "list") => (embedded ? details : current) ? <MapInspector panelView={panelView} embedded={embedded} details={details} mapDetail={mapDetail} listDetail={listDetail} detailTitle={detailTitle} current={current} dismissEmbeddedDetail={dismissEmbeddedDetail} closeDetail={closeDetail} loaded={loaded} setView={setView} setCameraRequest={setCameraRequest} setSelected={setSelected} setReload={setReload} focusFilters={focusFilters} /> : null;
+export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all", details, detailTitle, onCloseDetails, focusRevision = 0, layers, detailKey, mapFeatureCount = 0, listFeatureCount = 0, listCount, listContent, listPlaces = true, toolbar, feedback, filterSummary, view: controlledView, onViewChange, load = transportGet, mapOnly = false }: { places?: Place[]; selectedPlace?: Place | null; onSelectPlace?: (place: Place) => void; mode?: "all" | "transport" | "fuel"; details?: ReactNode; detailTitle?: ReactNode; onCloseDetails?: () => void; focusRevision?: number; layers?: ReactNode; detailKey?: string; mapFeatureCount?: number; listFeatureCount?: number; listCount?: number; listContent?: ReactNode; listPlaces?: boolean; toolbar?: ReactNode; feedback?: ReactNode; filterSummary?: string; view?: "map" | "list"; onViewChange?: (view: "map" | "list") => void; load?: typeof transportGet; mapOnly?: boolean }) {
+  const { workspace, embedded, detail, detailOpener, query, selectedSources, products, kinds, allowedKinds, filtersExpanded, setFiltersExpanded, filterTrigger, setKinds, setSelected, controlId, queryInput, setQuery, setSelectedSources, sources, setProducts, view, setView, mapViewport, items, serverClustered, serverTotal, serverClusters, visiblePoints, pending, mapContainer, setMapUnavailableMessage, basemap, moved, camera, setClusterPlaces, setClusterCamera, zoom, setCameraRequest, groupedPoints, cluster, overlapOpener, setClusterAnchor, clusterList, selectPlace, selectedPoint, clusterPlaces, clusterAnchor, closeOverlap, current, loaded, mapDetail, listDetail, dismissEmbeddedDetail, closeDetail, setReload, focusFilters, failed, mapUnavailableMessage, fuelDetailScopeExpanded, setFuelDetailScopeExpanded, regionMarkers, railOnly, partialListKinds, perKindLimit, searchQuery } = useTransportMap({ places, selectedPlace, onSelectPlace, mode, details, detailTitle, onCloseDetails, focusRevision, layers, detailKey, mapFeatureCount, listFeatureCount, listCount, listContent, listPlaces, toolbar, feedback, filterSummary, view: controlledView, onViewChange, load });
+  const detailPanel = (panelView: "map" | "list") => (embedded ? details : current) ? <MapInspector panelView={panelView} load={load} embedded={embedded} details={details} mapDetail={mapDetail} listDetail={listDetail} detailTitle={detailTitle} current={current} dismissEmbeddedDetail={dismissEmbeddedDetail} closeDetail={closeDetail} loaded={loaded} setView={setView} setCameraRequest={setCameraRequest} setSelected={setSelected} setReload={setReload} focusFilters={focusFilters} /> : null;
 const status = <MapQueryStatus feedback={feedback} failed={failed} setReload={setReload} basemap={basemap} view={view} mapUnavailableMessage={mapUnavailableMessage} />;
 const summary = <MapStatusSummary status={status} embedded={embedded} mode={mode} loaded={loaded} pending={pending} failed={failed} current={current} fuelDetailScopeExpanded={fuelDetailScopeExpanded} setFuelDetailScopeExpanded={setFuelDetailScopeExpanded} />;
 return <section className="map-workbench" aria-label={mode === "fuel" ? "유가 지도" : "교통 장소 지도"}>
-    <MapWorkspace expandable ref={workspace} className={embedded ? "embedded-map" : "transport-map-workspace"} onClickCapture={(event) => captureDetailOpener(event, detail, detailOpener)}>
+    <MapWorkspace expandable={!mapOnly} ref={workspace} className={embedded ? "embedded-map" : "transport-map-workspace"} onClickCapture={(event) => captureDetailOpener(event, detail, detailOpener)}>
     {toolbar || !embedded ? <MapSearchFilters filterSummary={filterSummary} query={query} selectedSources={selectedSources} products={products} kinds={kinds} allowedKinds={allowedKinds} filtersExpanded={filtersExpanded} setFiltersExpanded={setFiltersExpanded} filterTrigger={filterTrigger} toolbar={toolbar} mode={mode} setKinds={setKinds} setSelected={setSelected} controlId={controlId} queryInput={queryInput} setQuery={setQuery} setSelectedSources={setSelectedSources} sources={sources} setProducts={setProducts} /> : null}
     <Tabs value={view} onValueChange={(value) => { if (value === "map" || value === "list") { setView(value); setFiltersExpanded(false); } }} className="min-h-0">
-    <MapResultTabs mapViewport={mapViewport} view={view} listCount={listCount} listPlaces={listPlaces} items={items} listFeatureCount={listFeatureCount} mapFeatureCount={mapFeatureCount} serverClustered={serverClustered} serverTotal={serverTotal} visiblePoints={visiblePoints} pending={pending} partialListKinds={partialListKinds} perKindLimit={perKindLimit} searchQuery={searchQuery} />
-    <TabsContent className="min-h-0" value="map"><MapStage className={mode === "fuel" ? "fuel-map-stage" : undefined} summary={summary} detail={detailPanel("map")}><TransportMapCanvas mapContainer={mapContainer} mapViewport={mapViewport} setMapUnavailableMessage={setMapUnavailableMessage} basemap={basemap} moved={moved} camera={camera} layers={layers} serverClustered={serverClustered} serverClusters={serverClusters} setClusterPlaces={setClusterPlaces} setClusterCamera={setClusterCamera} zoom={zoom} setCameraRequest={setCameraRequest} groupedPoints={groupedPoints} cluster={cluster} products={products} overlapOpener={overlapOpener} setClusterAnchor={setClusterAnchor} clusterList={clusterList} selectPlace={selectPlace} selectedPoint={selectedPoint} clusterPlaces={clusterPlaces} clusterAnchor={clusterAnchor} closeOverlap={closeOverlap} regionMarkers={regionMarkers} railOnly={railOnly} />
+    {!mapOnly ? <MapResultTabs mapViewport={mapViewport} view={view} listCount={listCount} listPlaces={listPlaces} items={items} listFeatureCount={listFeatureCount} mapFeatureCount={mapFeatureCount} serverClustered={serverClustered} serverTotal={serverTotal} visiblePoints={visiblePoints} pending={pending} partialListKinds={partialListKinds} perKindLimit={perKindLimit} searchQuery={searchQuery} /> : null}
+    <TabsContent className="min-h-0" value="map"><MapStage className={mode === "fuel" ? "fuel-map-stage" : undefined} summary={summary} detail={detailPanel("map")}><TransportMapCanvas mapContainer={mapContainer} mapViewport={mapViewport} setMapUnavailableMessage={setMapUnavailableMessage} basemap={basemap} moved={moved} camera={camera} layers={layers} serverClustered={serverClustered} serverClusters={serverClusters} setClusterPlaces={setClusterPlaces} setClusterCamera={setClusterCamera} zoom={zoom} setCameraRequest={setCameraRequest} groupedPoints={groupedPoints} cluster={cluster} products={products} overlapOpener={overlapOpener} setClusterAnchor={setClusterAnchor} clusterList={clusterList} selectPlace={selectPlace} selectedPoint={selectedPoint} clusterPlaces={clusterPlaces} clusterAnchor={clusterAnchor} closeOverlap={closeOverlap} regionMarkers={regionMarkers} railOnly={railOnly} fuelOnly={mode === "fuel"} />
       </MapStage>
     </TabsContent>
-    <TabsContent className="min-h-0 data-[state=inactive]:hidden" value="list" forceMount><MapStage view="list" detail={view === "list" ? detailPanel("list") : null}><div className="map-primary"><MapPlaceRows status={status} listContent={listContent} listPlaces={listPlaces} items={items} current={current} selectPlace={selectPlace} /></div></MapStage></TabsContent>
+    {!mapOnly ? <TabsContent className="min-h-0 data-[state=inactive]:hidden" value="list" forceMount><MapStage view="list" detail={view === "list" ? detailPanel("list") : null}><div className="map-primary"><MapPlaceRows status={status} listContent={listContent} listPlaces={listPlaces} items={items} current={current} selectPlace={selectPlace} /></div></MapStage></TabsContent> : null}
     <MapFuelGuidance embedded={embedded} mode={mode} view={view} kinds={kinds} loaded={loaded} />
     </Tabs>
     </MapWorkspace>
@@ -144,12 +144,16 @@ function truncatedListKinds(embedded: boolean, view: "map" | "list", kinds: Plac
   return !embedded && view === "list" ? kinds.filter(kind => loaded[kind]?.truncated === true) : [];
 }
 
+const mapClusterDetailZoom = (mode: "all" | "transport" | "fuel") => mode === "fuel" ? 10 : 11;
+const fuelQueryDetailZoom = (mode: "all" | "transport" | "fuel") => mode === "fuel" ? 10 : 12;
+const mapKindParameter = (mode: "all" | "transport" | "fuel") => mode === "fuel" ? "kind" : "kinds";
+
 function onlyRailStations(items: Place[]) {
   return items.length > 0 && items.every(item => item.kind === "rail_station");
 }
 
 // 조회·선택·요청 수명은 이 도메인 훅이, 아래 컴포넌트는 표현을 소유한다.
-function useTransportMap({ places, selectedPlace, onSelectPlace, mode = "all", details, onCloseDetails, focusRevision = 0, detailKey, view: controlledView, onViewChange }: { places?: Place[]; selectedPlace?: Place | null; onSelectPlace?: (place: Place) => void; mode?: "all" | "transport" | "fuel"; details?: ReactNode; detailTitle?: ReactNode; onCloseDetails?: () => void; focusRevision?: number; layers?: ReactNode; detailKey?: string; mapFeatureCount?: number; listFeatureCount?: number; listCount?: number; listContent?: ReactNode; listPlaces?: boolean; toolbar?: ReactNode; feedback?: ReactNode; filterSummary?: string; view?: "map" | "list"; onViewChange?: (view: "map" | "list") => void }) {
+function useTransportMap({ places, selectedPlace, onSelectPlace, mode = "all", details, onCloseDetails, focusRevision = 0, detailKey, view: controlledView, onViewChange, load = transportGet }: { places?: Place[]; selectedPlace?: Place | null; onSelectPlace?: (place: Place) => void; mode?: "all" | "transport" | "fuel"; details?: ReactNode; detailTitle?: ReactNode; onCloseDetails?: () => void; focusRevision?: number; layers?: ReactNode; detailKey?: string; mapFeatureCount?: number; listFeatureCount?: number; listCount?: number; listContent?: ReactNode; listPlaces?: boolean; toolbar?: ReactNode; feedback?: ReactNode; filterSummary?: string; view?: "map" | "list"; onViewChange?: (view: "map" | "list") => void; load?: typeof transportGet }) {
   const controlId = useId();
   const embedded = places !== undefined;
   const allowedKinds = mode === "fuel" ? ["fuel_station"] as PlaceKind[] : mode === "transport" ? TRANSPORT_KINDS : KINDS;
@@ -214,7 +218,7 @@ function useTransportMap({ places, selectedPlace, onSelectPlace, mode = "all", d
   const visiblePoints = points.filter((point) =>
     point.lngLat[0] >= Number(viewport.min_longitude) && point.lngLat[0] <= Number(viewport.max_longitude)
     && point.lngLat[1] >= Number(viewport.min_latitude) && point.lngLat[1] <= Number(viewport.max_latitude));
-  const cluster = !serverClustered && clusterAtScale(zoom, (Number(viewport.min_latitude) + Number(viewport.max_latitude)) / 2, visiblePoints.length, mapSize.width, mapSize.height);
+  const cluster = !serverClustered && clusterAtScale(zoom, (Number(viewport.min_latitude) + Number(viewport.max_latitude)) / 2, visiblePoints.length, mapSize.width, mapSize.height, mapClusterDetailZoom(mode));
   const markerPoints = embedded ? points : visiblePoints;
   const railOnly = onlyRailStations(items);
   const groupedPoints = useMemo(() => current ? markerPoints.filter((point) => point.id !== keyOf(current)) : markerPoints, [markerPoints, current]);
@@ -337,7 +341,7 @@ function useTransportMap({ places, selectedPlace, onSelectPlace, mode = "all", d
 
     if (view === "map" && selectedKinds.length) {
       const search = new URLSearchParams({
-        kinds: selectedKinds.join(","),
+        [mapKindParameter(mode)]: selectedKinds.join(","),
         limit: String(Math.min(900, perKindLimit * selectedKinds.length)),
         zoom: String(Math.floor(zoom)),
         ...viewport,
@@ -346,7 +350,7 @@ function useTransportMap({ places, selectedPlace, onSelectPlace, mode = "all", d
       else search.set("include_sources", "false");
       if (sourcesKey) search.set("sources", sourcesKey);
       if (searchQuery.trim()) search.set("query", searchQuery.trim());
-      if (productsKey && selectedKinds.includes("fuel_station") && zoom >= 12) search.set("product_codes", productsKey);
+      if (productsKey && selectedKinds.includes("fuel_station") && zoom >= fuelQueryDetailZoom(mode)) search.set("product_codes", productsKey);
       if (mode === "fuel") search.set("include_fuel_statistics", "true");
       const cacheKey = search.toString();
       const cached = mapResponseCache.current.get(cacheKey);
@@ -357,7 +361,7 @@ function useTransportMap({ places, selectedPlace, onSelectPlace, mode = "all", d
         return () => controller.abort();
       }
       mapResponseCache.current.delete(cacheKey);
-      transportGet<PlaceResponse>(`transport/features/places?${search}`, controller.signal).then((payload) => {
+      load<PlaceResponse>(`transport/features/places?${search}`, controller.signal).then((payload) => {
         if (controller.signal.aborted) return;
         mapResponseCache.current.set(cacheKey, { expiresAt: Date.now() + MAP_CLUSTER_CACHE_TTL_MS, payload });
         while (mapResponseCache.current.size > MAP_CLUSTER_CACHE_MAX) {
@@ -383,7 +387,7 @@ function useTransportMap({ places, selectedPlace, onSelectPlace, mode = "all", d
       if (sourcesKey) search.set("sources", sourcesKey);
       if (searchQuery.trim()) search.set("query", searchQuery.trim());
       if (productsKey && kind === "fuel_station") search.set("product_codes", productsKey);
-      transportGet<PlaceResponse>(`transport/features/places?${search}`, controller.signal).then((payload) => {
+      load<PlaceResponse>(`transport/features/places?${search}`, controller.signal).then((payload) => {
         if (!controller.signal.aborted) {
           setLoaded((value) => ({ ...value, [kind]: payload }));
           setKnownSources((value) => [...new Set([...value, ...(payload.available_sources ?? payload.items.map((item) => item.source))])]);
@@ -392,7 +396,7 @@ function useTransportMap({ places, selectedPlace, onSelectPlace, mode = "all", d
         .finally(() => { if (!controller.signal.aborted) setPending((value) => value.filter((entry) => entry !== kind)); });
     });
     return () => controller.abort();
-  }, [embedded, kindsKey, perKindLimit, viewport, zoom, reload, sourcesKey, searchQuery, productsKey, view, mode, setFuelRegions]);
+  }, [embedded, kindsKey, perKindLimit, viewport, zoom, reload, sourcesKey, searchQuery, productsKey, view, mode, load, setFuelRegions]);
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
@@ -495,14 +499,14 @@ function initialMapCamera(embedded: boolean): { camera?: MapCamera; viewport: Vi
     viewport: { min_longitude: String(longitude - .015), max_longitude: String(longitude + .015), min_latitude: String(latitude - .015), max_latitude: String(latitude + .015) } };
 }
 
-function MapInspector({ panelView, embedded, details, mapDetail, listDetail, detailTitle, current, dismissEmbeddedDetail, closeDetail, loaded, setView, setCameraRequest, setSelected, setReload, focusFilters }: { panelView: "map" | "list"; details?: ReactNode; detailTitle?: ReactNode } & Pick<ReturnType<typeof useTransportMap>, "embedded" | "mapDetail" | "listDetail" | "current" | "dismissEmbeddedDetail" | "closeDetail" | "loaded" | "setView" | "setCameraRequest" | "setSelected" | "setReload" | "focusFilters">) {
+function MapInspector({ panelView, embedded, details, mapDetail, listDetail, detailTitle, current, dismissEmbeddedDetail, closeDetail, loaded, setView, setCameraRequest, setSelected, setReload, focusFilters, load }: { load: typeof transportGet; panelView: "map" | "list"; details?: ReactNode; detailTitle?: ReactNode } & Pick<ReturnType<typeof useTransportMap>, "embedded" | "mapDetail" | "listDetail" | "current" | "dismissEmbeddedDetail" | "closeDetail" | "loaded" | "setView" | "setCameraRequest" | "setSelected" | "setReload" | "focusFilters">) {
   if (embedded) return details ? <MapDetailOverlay ref={panelView === "map" ? mapDetail : listDetail} className="transport-map-detail" aria-label="선택 장소 상세" header={<h2>{detailTitle ?? current?.name ?? "선택 장소 상세"}</h2>} collapsible onDismiss={dismissEmbeddedDetail}>
     {details}
   </MapDetailOverlay> : null;
   if (!current) return null;
   return <MapDetailOverlay className={cn("transport-map-detail weather-inspector", current.kind === "fuel_station" && "fuel-inspector")} ref={panelView === "map" ? mapDetail : listDetail} aria-label="선택 장소 상세" header={<MapInspectorHeading current={current} />} collapsible={current.kind !== "fuel_station"} onDismiss={closeDetail}>
     {current.kind === "fuel_station" && loaded.fuel_station?.fuel_prices_stale ? <div className="inspector-section fuel-price-status"><FuelPriceStatus stale lastRefreshedAt={loaded.fuel_station.fuel_prices_last_refreshed_at} /></div> : null}
-    <PlaceInspector key={keyOf(current)} place={current} showHeader={false} onShowMap={() => { setView("map"); setCameraRequest((value) => value + 1); }} onClose={closeDetail} onSaved={(updated) => { setSelected(updated); setReload((value) => value + 1); }} onReload={() => { setSelected(null); setReload((value) => value + 1); focusFilters(); }} />
+    <PlaceInspector key={keyOf(current)} load={load} place={current} showHeader={false} onShowMap={() => { setView("map"); setCameraRequest((value) => value + 1); }} onClose={closeDetail} onSaved={(updated) => { setSelected(updated); setReload((value) => value + 1); }} onReload={() => { setSelected(null); setReload((value) => value + 1); focusFilters(); }} />
   </MapDetailOverlay>;
 }
 
@@ -519,7 +523,7 @@ function MapSearchFilters({ filterSummary, query, selectedSources, products, kin
 }
 
 
-function TransportMapCanvas({ mapContainer, mapViewport, setMapUnavailableMessage, basemap, moved, camera, layers, serverClustered, serverClusters, setClusterPlaces, setClusterCamera, zoom, setCameraRequest, groupedPoints, cluster, products, overlapOpener, setClusterAnchor, clusterList, selectPlace, selectedPoint, clusterPlaces, clusterAnchor, closeOverlap, regionMarkers, railOnly }: Pick<ReturnType<typeof useTransportMap>, "mapContainer" | "mapViewport" | "setMapUnavailableMessage" | "basemap" | "moved" | "camera" | "serverClustered" | "serverClusters" | "setClusterPlaces" | "setClusterCamera" | "zoom" | "setCameraRequest" | "groupedPoints" | "cluster" | "products" | "overlapOpener" | "setClusterAnchor" | "clusterList" | "selectPlace" | "selectedPoint" | "clusterPlaces" | "clusterAnchor" | "closeOverlap" | "regionMarkers" | "railOnly"> & Pick<NonNullable<Parameters<typeof TransportMap>[0]>, "layers">) {
+function TransportMapCanvas({ mapContainer, mapViewport, setMapUnavailableMessage, basemap, moved, camera, layers, serverClustered, serverClusters, setClusterPlaces, setClusterCamera, zoom, setCameraRequest, groupedPoints, cluster, products, overlapOpener, setClusterAnchor, clusterList, selectPlace, selectedPoint, clusterPlaces, clusterAnchor, closeOverlap, regionMarkers, railOnly, fuelOnly }: { fuelOnly: boolean } & Pick<ReturnType<typeof useTransportMap>, "mapContainer" | "mapViewport" | "setMapUnavailableMessage" | "basemap" | "moved" | "camera" | "serverClustered" | "serverClusters" | "setClusterPlaces" | "setClusterCamera" | "zoom" | "setCameraRequest" | "groupedPoints" | "cluster" | "products" | "overlapOpener" | "setClusterAnchor" | "clusterList" | "selectPlace" | "selectedPoint" | "clusterPlaces" | "clusterAnchor" | "closeOverlap" | "regionMarkers" | "railOnly"> & Pick<NonNullable<Parameters<typeof TransportMap>[0]>, "layers">) {
   return (<div className="map-primary" ref={mapContainer}><MountCamera camera={mapViewport ? { center: [mapViewport.longitude, mapViewport.latitude], zoom: mapViewport.zoom } : DEFAULT_CAMERA}>{(initialCamera) => <VWorldMapView apiKey={VWORLD_KEY} center={initialCamera.center} zoom={initialCamera.zoom} minZoom={5}
 
         className="transport-map-canvas" layerType="Base" navigation={false} geolocate={false} scale
@@ -531,16 +535,16 @@ function TransportMapCanvas({ mapContainer, mapViewport, setMapUnavailableMessag
         {layers}
         {serverClustered && regionMarkers.map(r => <MapMarkerButton key={r.region_key} lngLat={[r.longitude, r.latitude]} passThrough
           ariaLabel={`${r.label}, ${FUEL_PRODUCTS.map(code => { const price = r.prices.get(code); return `${fuelProductLabel(code)} ${price ? `${Math.round(price.average_price)}원/L, ${price.station_count}곳` : "미제공"}`; }).join(", ")}`}
-          interactionId={`region:${r.region_key}`} className="fuel-region-marker" onClick={() => { setClusterCamera({center:[r.longitude,r.latitude],zoom:Math.floor(zoom)<8?8:12});setCameraRequest(v=>v+1); }}>
+          interactionId={`region:${r.region_key}`} className="fuel-region-marker" onClick={() => { setClusterCamera({center:[r.longitude,r.latitude],zoom:Math.floor(zoom)<8?8:fuelOnly?10:12});setCameraRequest(v=>v+1); }}>
           <svg className="fuel-region-link" aria-hidden="true" width="1" height="1"><line x1="0" y1="0" x2="0" y2="0" /></svg>
           <span className="fuel-region-origin" aria-hidden="true" />
           <FuelRegionLabel label={r.label} prices={r.prices} />
         </MapMarkerButton>)}
         {serverClustered ? serverClusters.map(item => <MapMarkerButton key={`server-cluster:${item.longitude}:${item.latitude}`} lngLat={[item.longitude, item.latitude]} ariaLabel={`${item.count}개 장소 요약 묶음 확대`} interactionId={`server-cluster:${item.longitude.toFixed(6)},${item.latitude.toFixed(6)}`} className="map-cluster" zIndex={3} isCluster onClick={() => {
 
-          setClusterPlaces([]); setClusterCamera({ center: [item.longitude, item.latitude], zoom: Math.min(19, Math.max(12, Math.ceil(zoom) + 2)) });
+          setClusterPlaces([]); setClusterCamera({ center: [item.longitude, item.latitude], zoom: Math.min(19, Math.max(fuelOnly ? 10 : 12, Math.ceil(zoom) + 2)) });
           setCameraRequest((value) => value + 1);
-        }}><ClusterBubble count={item.count} label={CLUSTER_NUMBER_FORMATTER.format(item.count)} /></MapMarkerButton>) : <ClusterLayer points={groupedPoints} radius={railOnly ? 24 : cluster ? (products.length === 1 ? 80 : 110) : 60} maxZoom={railOnly ? 10 : 19}
+        }}><ClusterBubble count={item.count} label={CLUSTER_NUMBER_FORMATTER.format(item.count)} /></MapMarkerButton>) : <ClusterLayer points={groupedPoints} radius={railOnly ? 24 : cluster ? (products.length === 1 ? 80 : 110) : fuelOnly ? 0 : 60} maxZoom={railOnly ? 10 : 19}
           renderCluster={(group, count, index) => {
             const coordinates = group.geometry.coordinates;
             const id = group.properties.cluster_id;

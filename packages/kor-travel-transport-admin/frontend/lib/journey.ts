@@ -57,12 +57,12 @@ export function hasCoordinates<T extends Pick<Place, "longitude" | "latitude">>(
     && Math.abs(place.longitude) <= 180 && Math.abs(place.latitude) <= 90;
 }
 // 확대 수준과 현재 화면 면적당 장소 수로 묶음 반경을 선택한다.
-export function clusterAtScale(zoom: number, latitude: number, count = 0, width = 800, height = 540) {
+export function clusterAtScale(zoom: number, latitude: number, count = 0, width = 800, height = 540, detailZoom = 11) {
   // 광역 지도에서는 유지하고, 동네 수준에서도 화면 면적 대비 과밀하면 묶는다.
   // 작은 모바일 화면에서 데스크톱과 같은 수의 가격표가 한꺼번에 펼쳐지지 않는다.
   if (![zoom, latitude, count, width, height].every(Number.isFinite)) return true;
   const budget = Math.max(6, Math.min(60, Math.floor(width * height / 22_000)));
-  return zoom < 11 || count > budget;
+  return zoom < detailZoom || count > budget;
 }
 export class TransportError extends Error {
   constructor(message: string, public status: number, public retryAfter: number) { super(message); }

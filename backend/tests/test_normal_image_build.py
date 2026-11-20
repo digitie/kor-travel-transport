@@ -21,6 +21,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts" if (ROOT / "scripts").is_dir() else Path("/app/scripts")
+CONTRACT_ROOT = ROOT if (ROOT / "deploy/transport-fuel").is_dir() else Path("/app/compose-contract")
 
 
 @pytest.fixture
@@ -48,6 +49,8 @@ def source(tmp_path):
         "backend/Dockerfile": "FROM scratch\nCOPY backend /app\n",
         "backend/app.txt": "backend",
         "backend/Dockerfile.dagster-gateway": "FROM scratch\nCOPY backend/app.txt /app/app.txt\n",
+        "deploy/transport-fuel/Dockerfile.gateway": (CONTRACT_ROOT / "deploy/transport-fuel/Dockerfile.gateway").read_text(),
+        "deploy/transport-fuel/api-gateway.conf.template": (CONTRACT_ROOT / "deploy/transport-fuel/api-gateway.conf.template").read_text(),
         "packages/kor-travel-transport-admin/frontend/Dockerfile": "FROM scratch\nCOPY frontend/src /frontend/src\nCOPY packages/kor-travel-transport-admin/frontend /app\n",
         "packages/kor-travel-transport-admin/frontend/app.txt": "admin",
     }
@@ -393,6 +396,7 @@ def test_owned_dockerfile_coverage_and_role_profiles(builder):
             for parent in [
                 "backend",
                 "frontend",
+                "deploy/transport-fuel",
                 "packages/kor-travel-transport-admin/frontend",
             ]
             for p in (ROOT / parent).glob("Dockerfile*")
@@ -401,6 +405,7 @@ def test_owned_dockerfile_coverage_and_role_profiles(builder):
         paths = {name: ROOT / name for name in actual}
     else:
         paths = {
+            "deploy/transport-fuel/Dockerfile.gateway": Path("/app/compose-contract/deploy/transport-fuel/Dockerfile.gateway"),
             "backend/Dockerfile": Path("/app/Dockerfile"),
             "backend/Dockerfile.dagster-gateway": Path(
                 "/app/Dockerfile.dagster-gateway"
@@ -915,3 +920,110 @@ def test_buildx_inspects_unique_tag_and_receipts_actual_store_id(
     assert docker.inspections == [tag]
     assert command[:3] == ["docker", "buildx", "build"]
     assert "--load" in command and "--provenance=false" in command
+
+@pytest.mark.parametrize("output", ["docker", "oci"])
+@pytest.mark.parametrize("include_admin_alias", [False, True])
+def test_explicit_fuel_roles_build_only_gateway_and_deduplicated_admin(
+    builder, source, tmp_path, monkeypatch, output, include_admin_alias
+):
+    repo, git = source
+    requested = ["fuel-api-gateway", "fuel-web"]
+    if include_admin_alias:
+        requested.append("transport-admin-web")
+    cli = [
+        "--repo", str(repo), "--revision", git("rev-parse", "HEAD"),
+        "--expected-tree", git("rev-parse", "HEAD^{tree}"),
+        "--architecture", "arm64", "--output", output,
+        "--output-dir", str(tmp_path / "fuel-output"),
+        "--builder", "transport-persistent",
+        "--cache-from", "type=local,src=/cache/previous",
+    ]
+    for role in requested:
+        cli += ["--role", role]
+    a = builder.arguments(cli)
+    docker = FakeDocker(builder, monkeypatch)
+    seen_env = {}
+    original = builder.execute_build
+
+    def capture(command, env, *rest):
+        labels = [command[i + 1] for i, part in enumerate(command[:-1]) if part == "--label"]
+        role = next(value.split("=", 1)[1] for value in labels if value.startswith("io.kor-travel-transport.build-role="))
+        seen_env[role] = env.copy()
+        return original(command, env, *rest)
+
+    monkeypatch.setattr(builder, "execute_build", capture)
+    inputs = {
+        "NEXT_PUBLIC_VWORLD_API_KEY": "fixture-browser-key",
+        "NEXT_PUBLIC_TRANSPORT_DAGSTER_URL": "https://dagster.example.invalid",
+    }
+    receipt = builder.build(a, inputs)
+    assert set(receipt["images"]) == set(requested)
+    assert set(receipt["artifacts"]) == {"fuel-api-gateway", "transport-admin-web"}
+    assert len(docker.calls) == 2
+    gateway = receipt["artifacts"]["fuel-api-gateway"]
+    admin = receipt["artifacts"]["transport-admin-web"]
+    assert gateway["dockerfile"] == "deploy/transport-fuel/Dockerfile.gateway"
+    assert set(gateway["COPY"]["files"]) == {"deploy/transport-fuel/api-gateway.conf.template"}
+    assert gateway["COPY"]["files"]["deploy/transport-fuel/api-gateway.conf.template"] == hashlib.sha256(
+        (repo / "deploy/transport-fuel/api-gateway.conf.template").read_bytes()
+    ).hexdigest()
+    assert gateway["publicInputHashes"] == {}
+    assert admin["publicInputHashes"] == {k: builder.digest(v.encode()) for k, v in inputs.items()}
+    assert admin["dockerfile"] == builder.contract.BUILD_RECIPES["transport-admin-web"][0]
+    assert receipt["images"]["fuel-web"] == admin["imageID"]
+    if include_admin_alias:
+        assert receipt["images"]["transport-admin-web"] == receipt["images"]["fuel-web"]
+    assert receipt["release_sha"] == git("rev-parse", "HEAD")
+    assert receipt["tree"] == git("rev-parse", "HEAD^{tree}")
+    assert receipt["sourceManifestSHA256"] == builder.digest(
+        (a.output_dir / "source-manifest.json").read_bytes()
+    )
+    for role, artifact in receipt["artifacts"].items():
+        command = artifact["command"]
+        assert command[command.index("--builder") + 1] == "transport-persistent"
+        assert command[command.index("--cache-from") + 1] == "type=local,src=/cache/previous"
+        release = builder.contract.BUILD_RECIPES[role][2]
+        assert seen_env[role][release] == a.revision
+        assert "--build-arg" in command and release in command
+        assert artifact["roleProfile"] == "current-owned-build"
+        if role == "fuel-api-gateway":
+            assert not any(name in command for name in inputs)
+            assert "--target" not in command
+        else:
+            assert command[command.index("--target") + 1] == "runner"
+            assert all(seen_env[role][k] == v for k, v in inputs.items())
+        if output == "oci":
+            assert builder.oci_image(a.output_dir / (role + ".oci.tar"))["Id"] == artifact["imageID"]
+    assert builder.contract.ROLES == {"backend", "frontend", "dagster-code-server"}
+    assert builder.contract.LEGACY_BUILD_ROLES == {"dagster-gateway"}
+    assert not receipt["actualApplyAllowed"] and not receipt["deployReady"]
+
+
+@pytest.mark.parametrize("requested", ["fuel-api-gateway", "fuel-web"])
+@pytest.mark.parametrize("bad", ["missing-release", "wrong-role"])
+def test_fuel_build_still_rejects_unbound_actual_image(
+    builder, source, tmp_path, monkeypatch, requested, bad
+):
+    a = args(builder, source, tmp_path)
+    a.role = [requested]
+
+    def corrupt(image):
+        if bad == "missing-release":
+            image["Config"]["Env"] = []
+        else:
+            image["Config"]["Labels"]["io.kor-travel-transport.build-role"] = requested + "-wrong"
+
+    FakeDocker(builder, monkeypatch, corrupt)
+    with pytest.raises(builder.ContractError):
+        builder.build(a, {})
+    assert not (a.output_dir / "build-receipt.json").exists()
+
+
+def test_fuel_gateway_rejects_public_inputs_before_build(builder, source, tmp_path, monkeypatch):
+    a = args(builder, source, tmp_path)
+    a.role = ["fuel-api-gateway"]
+    docker = FakeDocker(builder, monkeypatch)
+    with pytest.raises(builder.ContractError, match="public build input"):
+        builder.build(a, {"NEXT_PUBLIC_VWORLD_API_KEY": "not-a-gateway-input"})
+    assert docker.calls == []
+    assert not a.output_dir.exists()
