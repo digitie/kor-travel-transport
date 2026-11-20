@@ -453,11 +453,13 @@ function useFuelRegionCards({ mapContainer, view, serverClustered, mapViewport, 
       const bounds = root.getBoundingClientRect();
       if (!bounds.width || !bounds.height) return;
       const hosts = [...root.querySelectorAll<HTMLElement>(".fuel-region-marker")];
-      const cards = hosts.map(host => {
-        const label = host.querySelector<HTMLElement>(".fuel-region-label")!;
+      const cards = hosts.flatMap(host => {
+        const label = host.querySelector<HTMLElement>(".fuel-region-label");
+        // Marker hosts can outlive their portal children; the child-list observer retries attachment.
+        if (!label) return [];
         const anchor = host.getBoundingClientRect();
-        return { left: anchor.left - bounds.left, top: anchor.top - bounds.top,
-          width: label.offsetWidth, height: label.offsetHeight };
+        return [{ host, left: anchor.left - bounds.left, top: anchor.top - bounds.top,
+          width: label.offsetWidth, height: label.offsetHeight }];
       });
       if (cards.some(card => !card.width || !card.height)) return;
       const controls = root.closest(".fuel-map-stage")?.querySelectorAll<HTMLElement>(".fuel-viewport-summary, .maplibregl-ctrl-top-right, .maplibregl-ctrl-bottom-right") ?? [];
@@ -467,7 +469,7 @@ function useFuelRegionCards({ mapContainer, view, serverClustered, mapViewport, 
       }).filter(rect => rect.width && rect.height);
       const offsets = layoutFuelRegionCards(cards, bounds.width, bounds.height, reserved);
       offsets.forEach((offset, index) => {
-        const host = hosts[index];
+        const host = cards[index].host;
         host.style.setProperty("--region-offset-x", `${offset.x}px`);
         host.style.setProperty("--region-offset-y", `${offset.y}px`);
         // 공간이 모자란 카드는 화면에서 접어 원점만 남긴다. 마커 버튼은 그대로 탭 순서에 두고(접근 이름에
