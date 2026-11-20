@@ -17,8 +17,13 @@ TRANSPORT_UI_MODE=fuel은 첫 서버 렌더부터 제목·관리 메뉴를 제�
 소스 검증: backend 실제 PostgreSQL42건·실제 nginx39사례(상류 stub)·BFF8건 통과.
 UI lint·typecheck와 새 위치·클러스터 시험을 확인했으며, 공유 심볼릭 링크 캐시의
 기존 React 중복11실패는 원문을 보존하고 통합 후보의 깨끗한 locked 설치에서 검증한다.
-정확한 통합 CI·정상 이미지·ARM 검증·공식 적용·5폭 canvas·실제 tile decode 및
-외부 HAProxy 연결은 이후 증거로 확정한다. 아직 운영 배포 완료를 주장하지 않는다.
+깨끗한 설치에서 관리자 전체690건(83파일)을 통과했고 React Doctor0이슈를 확인했다.
+실제 지도 query와 gateway의 종류 지정이 충돌하는 422를 재현해 fuel 단독을 kind로
+맞췄으며 수정 전 실패·수정 후 통과와 실제 PostgreSQL parser 추가2건을 확인했다.
+기존 Escape 시험은 포커스 복원의 비동기 완료를 기다리도록 고쳤다. 공개 지도는
+목록 전환·불필요한 전체 화면 전환을 제외하고 필터·요약·상세 닫기의 겹침을 조정했다.
+정확한 최종 CI·정상 이미지·ARM 검증·공식 적용·실제 tile decode 및 외부 HAProxy
+연결은 이후 증거로 확정한다. 아직 운영 배포 완료를 주장하지 않는다.
 
 
 - 공통 셸 채택(#220) 위의 잔여분이다. 버튼 테두리가 굵어지는 원인은 전역 `button` 규칙(globals.css `@layer base`의 `font: inherit`)이 아니라 로컬 `buttonInteractionClasses`의 `outline-solid`였다. tailwind-merge가 공통 recipe의 `outline-none`을 지운 채 `outline-style: solid`가 쉬는 상태에도 남아 기본 굵기(medium=3px) currentColor outline이 1px 테두리 위에 그려졌다. 포커스 때는 0.2.2의 `focus-visible:border-ring`까지 겹쳤다. 래퍼에서 outline·ring 조정을 지우고 공통 0.2.3의 outline 2px·offset 2px 하나만 남겼다. 공개 앱 달력 날짜 버튼의 덧댄 3px ring도 지웠다.

@@ -17,8 +17,13 @@ TRANSPORT_UI_MODE=fuel은 첫 서버 렌더부터 제목·관리 메뉴를 제�
 소스 검증: backend 실제 PostgreSQL42건·실제 nginx39사례(상류 stub)·BFF8건 통과.
 UI lint·typecheck와 새 위치·클러스터 시험을 확인했으며, 공유 심볼릭 링크 캐시의
 기존 React 중복11실패는 원문을 보존하고 통합 후보의 깨끗한 locked 설치에서 검증한다.
-정확한 통합 CI·정상 이미지·ARM 검증·공식 적용·5폭 canvas·실제 tile decode 및
-외부 HAProxy 연결은 이후 증거로 확정한다. 아직 운영 배포 완료를 주장하지 않는다.
+깨끗한 설치에서 관리자 전체690건(83파일)을 통과했고 React Doctor0이슈를 확인했다.
+실제 지도 query와 gateway의 종류 지정이 충돌하는 422를 재현해 fuel 단독을 kind로
+맞췄으며 수정 전 실패·수정 후 통과와 실제 PostgreSQL parser 추가2건을 확인했다.
+기존 Escape 시험은 포커스 복원의 비동기 완료를 기다리도록 고쳤다. 공개 지도는
+목록 전환·불필요한 전체 화면 전환을 제외하고 필터·요약·상세 닫기의 겹침을 조정했다.
+정확한 최종 CI·정상 이미지·ARM 검증·공식 적용·실제 tile decode 및 외부 HAProxy
+연결은 이후 증거로 확정한다. 아직 운영 배포 완료를 주장하지 않는다.
 
 
 - 로컬 Button 래퍼의 `outline-solid`(쉬는 상태 3px outline) 제거, 유가 지도 지역 카드 목록 토글 삭제, 셸 첫 렌더 제목·설명 정본(`PAGE_HEADINGS`)과 앱 설명 문구 제거. 근거는 [journal](journal.md) 같은 날짜 항목.
