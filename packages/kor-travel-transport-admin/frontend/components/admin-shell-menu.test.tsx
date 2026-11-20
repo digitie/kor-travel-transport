@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
+import { waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 const navigation = vi.hoisted(() => ({ pathname: "/map" }));
@@ -121,6 +122,6 @@ test("모바일 drawer의 Escape는 메뉴를 닫고 여는 버튼으로 focus�
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     expect(document.querySelector('[role="dialog"]')).toBeNull();
-    expect(document.activeElement).toBe(trigger);
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
   } finally { await dispose(); }
 });
