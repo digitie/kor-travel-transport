@@ -201,9 +201,10 @@ def test_copy_budget_is_checked_during_stream_and_after_copy(
     async def attempt(session):
         await _store(session, identity, _encoded())
 
-    with pytest.raises(HTTPException, match="") as error:
+    with pytest.raises(HTTPException) as error:
         _run(c, attempt)
     assert error.value.status_code == 503 and calls == 1
+    assert error.value.detail == "reference 본문 구성 시간 상한을 초과했습니다."
 
     async def verify(session):
         assert await session.get(Artifact, identity) is None
