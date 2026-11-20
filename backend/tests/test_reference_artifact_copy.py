@@ -1,4 +1,4 @@
-"""실제 asyncpg COPY의 묶음·원자성·취소·요청 계측 계약."""
+"""실제 asyncpg COPY의 스트리밍·원자성·취소·요청 계측 계약."""
 
 # ruff: noqa: F811
 import asyncio
@@ -62,7 +62,7 @@ def _require_copy(client):
     assert client.app.state.engine.dialect.driver == "asyncpg"
 
 
-def test_native_copy_preserves_bounded_rows_same_transaction_and_timing(
+def test_native_copy_streams_rows_in_order_in_one_transaction(
     export_client, monkeypatch
 ):
     c = export_client
@@ -73,7 +73,8 @@ def test_native_copy_preserves_bounded_rows_same_transaction_and_timing(
     identity = str(uuid4())
 
     async def track(connection, table, **kwargs):
-        records = kwargs["records"]
+        records = list(kwargs["records"])
+        kwargs["records"] = records
         assert connection.is_in_transaction()
         assert table == Item.__tablename__
         assert kwargs["columns"] == ("artifact_id", "ordinal", "payload")
@@ -90,7 +91,7 @@ def test_native_copy_preserves_bounded_rows_same_transaction_and_timing(
             await _store(session, identity, bodies)
         finally:
             read_timing._current.reset(token)
-        assert timing.statements == 3  # artifact INSERT 1 + native COPY 2
+        assert timing.statements == 2  # artifact INSERT 1 + native COPY 1
         assert timing.sql_seconds > 0
         rows = (
             await session.execute(
@@ -103,11 +104,11 @@ def test_native_copy_preserves_bounded_rows_same_transaction_and_timing(
         assert [r.payload for r in rows] == [json.loads(body) for body in bodies]
 
     _run(c, check)
-    assert calls == [(400, 1, 400), (2, 401, 402)]
+    assert calls == [(402, 1, 402)]
 
 
 @pytest.mark.parametrize("failure", ["exception", "cancel", "wrong_count", "duplicate"])
-def test_second_copy_failure_never_commits_partial_artifact(
+def test_streaming_copy_failure_never_commits_partial_artifact(
     export_client, monkeypatch, failure
 ):
     c = export_client
@@ -120,16 +121,22 @@ def test_second_copy_failure_never_commits_partial_artifact(
     async def fail(connection, table, **kwargs):
         nonlocal calls
         calls += 1
-        if calls == 2:
-            if failure == "exception":
-                raise RuntimeError("synthetic COPY failure")
-            if failure == "cancel":
-                raise asyncio.CancelledError()
-            if failure == "duplicate":
-                kwargs["records"] = [(identity, 1, bodies[0].decode())]
-            result = await original(connection, table, **kwargs)
-            return "COPY 0" if failure == "wrong_count" else result
-        return await original(connection, table, **kwargs)
+        records = kwargs["records"]
+
+        def interrupted():
+            for record in records:
+                if record[1] == 401:
+                    if failure == "exception":
+                        raise RuntimeError("synthetic COPY failure")
+                    if failure == "cancel":
+                        raise asyncio.CancelledError()
+                    if failure == "duplicate":
+                        record = (identity, 1, bodies[0].decode())
+                yield record
+
+        kwargs["records"] = interrupted()
+        result = await original(connection, table, **kwargs)
+        return "COPY 0" if failure == "wrong_count" else result
 
     monkeypatch.setattr(asyncpg.Connection, "copy_records_to_table", fail)
 
@@ -144,7 +151,7 @@ def test_second_copy_failure_never_commits_partial_artifact(
     }[failure]
     with pytest.raises(expected):
         _run(c, attempt)
-    assert calls == 2
+    assert calls == 1
 
     async def verify(session):
         assert (
@@ -160,7 +167,10 @@ def test_second_copy_failure_never_commits_partial_artifact(
     _run(c, verify)
 
 
-def test_copy_budget_is_checked_after_each_batch(export_client, monkeypatch):
+@pytest.mark.parametrize("expire_in_stream", [True, False])
+def test_copy_budget_is_checked_during_stream_and_after_copy(
+    export_client, monkeypatch, expire_in_stream
+):
     c = export_client
     _require_copy(c)
     original = asyncpg.Connection.copy_records_to_table
@@ -169,9 +179,20 @@ def test_copy_budget_is_checked_after_each_batch(export_client, monkeypatch):
 
     async def advance(connection, table, **kwargs):
         nonlocal calls
-        result = await original(connection, table, **kwargs)
         calls += 1
-        monkeypatch.setattr(artifacts, "monotonic", lambda: started + 16)
+        if expire_in_stream:
+            records = kwargs["records"]
+
+            def advance_during_rows():
+                for record in records:
+                    if record[1] == 400:
+                        monkeypatch.setattr(artifacts, "monotonic", lambda: started + 16)
+                    yield record
+
+            kwargs["records"] = advance_during_rows()
+        result = await original(connection, table, **kwargs)
+        if not expire_in_stream:
+            monkeypatch.setattr(artifacts, "monotonic", lambda: started + 16)
         return result
 
     monkeypatch.setattr(asyncpg.Connection, "copy_records_to_table", advance)
