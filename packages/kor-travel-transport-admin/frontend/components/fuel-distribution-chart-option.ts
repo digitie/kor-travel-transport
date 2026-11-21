@@ -55,7 +55,7 @@ export function distributionOption({ distribution, nationwide, productLabel, per
       { type: "value", min: 0, max: 100, show: false },
     ],
     yAxis: [
-      { type: "value", min: range.min, max: range.max, splitNumber: 4,
+      { type: "value", min: range.min, max: range.max, interval: range.interval,
         axisLabel: { color: muted, fontSize: 10, formatter: (value: number) => `${value.toLocaleString("ko-KR")}원` },
         splitLine: { lineStyle: { color: withAlpha(muted, .25) } } },
       { type: "value", min: 0, position: "right", minInterval: 1, splitLine: { show: false },

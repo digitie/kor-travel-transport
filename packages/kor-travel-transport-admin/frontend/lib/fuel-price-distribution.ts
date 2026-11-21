@@ -102,8 +102,11 @@ export function priceAxisRange(distribution: FuelSigunguDistribution, nationwide
     ...(pinned != null ? [pinned] : [])];
   const low = Math.min(...values), high = Math.max(...values);
   const span = Math.max(high - low, 20);
-  const step = span > 400 ? 100 : span > 100 ? 20 : 10;
-  return { min: Math.floor((low - span * .05) / step) * step, max: Math.ceil((high + span * .05) / step) * step };
+  // 눈금 4칸 안팎: 1·2·2.5·5×10^k원 간격, 최소·최대도 그 간격의 배수라 축 글자가 겹치지 않는다.
+  const raw = span * 1.1 / 4;
+  const magnitude = 10 ** Math.floor(Math.log10(raw));
+  const interval = Math.max(5, ([1, 2, 2.5, 5, 10].find(factor => factor * magnitude >= raw) ?? 10) * magnitude);
+  return { min: Math.floor((low - span * .05) / interval) * interval, max: Math.ceil((high + span * .05) / interval) * interval, interval };
 }
 
 /** 주유소 가격이 정렬 곡선에서 놓이는 가로 위치(%): 곡선 위 같은 가격 지점에 선형 보간한다. */
