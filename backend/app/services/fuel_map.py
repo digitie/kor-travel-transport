@@ -7,12 +7,12 @@
 from sqlalchemy import JSON, Text, case, cast, func, literal, select
 from sqlalchemy.dialects.postgresql import aggregate_order_by, array
 
-from app.models import FuelLatestPrice
+from app.services.fuel_refresh_prices import effective_fuel_prices
 
 
-def fuel_map_items_statement(station_query):
+def fuel_map_items_statement(station_query, at):
     stations = station_query.cte("selected_fuel_stations").prefix_with("MATERIALIZED")
-    p = FuelLatestPrice
+    p = effective_fuel_prices(select(stations.c.id), at).c
 
     def timestamp(column):
         return case(
@@ -53,7 +53,6 @@ def fuel_map_items_statement(station_query):
                 "ordered_codes"
             ),
         )
-        .where(p.fuel_station_id.in_(select(stations.c.id)))
         .group_by(p.fuel_station_id)
         .cte("selected_fuel_prices")
     )

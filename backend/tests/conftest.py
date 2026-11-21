@@ -37,7 +37,7 @@ def test_settings(tmp_path: Path) -> Settings:
                     text(
                         "TRUNCATE TABLE reference_export_artifact_heads, reference_export_artifact_items, reference_export_artifacts, public_parking_lots, fuel_region_summaries, kric_timetable_attempts, parking_archive_issues, parking_global_statistics_buckets, parking_latest_states, parking_statistics_buckets, ferry_reference_snapshots, general_rail_query_snapshots, parking_current, reference_export_states, service_export_snapshot_items, service_export_snapshots, highway_traffic_current, highway_traffic_current_states, reverse_address_entries, reverse_address_control, fuel_statistics_states, fuel_statistics_points, fuel_statistics_daily, bus_timetable_snapshots, rail_service_days, kric_timetable_snapshots, kric_station_codes, kric_station_mapping_registry, bus_terminal_references, ferry_timetable_snapshots, ferry_ship_type_references, ferry_terminal_references, "
                         "ferry_ports, rail_station_references, rest_area_references, rest_area_fuel_prices, "
-                        "fuel_latest_prices, fuel_price_snapshots, highway_incident_snapshots, "
+                        "fuel_refresh_prices, fuel_refresh_station_gates, fuel_refresh_budget, fuel_latest_prices, fuel_price_snapshots, highway_incident_snapshots, "
                         "highway_traffic_five_minute_statistics, highway_traffic_snapshots, "
                         "transport_collection_states, raw_api_responses, "
                         "parking_snapshots, parking_fee_rules, analytics_caches, collection_runs, "

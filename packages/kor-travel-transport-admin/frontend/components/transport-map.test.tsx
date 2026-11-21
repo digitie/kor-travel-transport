@@ -5,6 +5,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Place } from "@/lib/journey";
 
+const toastCalls = vi.hoisted(() => ({ success: vi.fn(), warning: vi.fn(), error: vi.fn(), info: vi.fn() }));
+vi.mock("sonner", () => ({ toast: toastCalls }));
+
 const mapState = vi.hoisted(() => ({ longitude: 128.53, latitude: 37.6, zoom: 12.5 }));
 vi.mock("maplibre-gl", () => ({ setWorkerUrl: vi.fn() }));
 vi.mock("vworld-map-web", async () => {
@@ -372,4 +375,55 @@ test("서로 가까운 두 묶음도 집계와 순서가 바뀔 때 각 DOM과 �
   expect(host.querySelectorAll(".map-cluster")).toHaveLength(2);
   expect(document.activeElement).toBe(first);
  }finally{await act(async()=>root.unmount());host.remove();}
+});
+
+test("공개 지도는 모든 축척에서 유종을 요청에 반영하고 단일 유종 마커에서 이름을 뺀다", async () => {
+  Object.assign(mapState, { zoom: 7 });
+  const region = { region_key: "opinet:11", label: "서울", product_code: "C004", average_price: 1300, station_count: 1, longitude: 127, latitude: 37.5 };
+  vi.mocked(fetch).mockImplementation(async () => Response.json({ items: [], total: 1, truncated: false, clustered: true, clusters: [], fuel_regions: [region] }));
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(<TransportMap mode="fuel" mapOnly publicFuel={{ products: ["C004"], onProductsChange: vi.fn() }} />));
+    expect(host.querySelector('[data-slot="map-filter-trigger"]')).toBeNull();
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes("product_codes=C004"))).toBe(true);
+    const marker = host.querySelector("button.fuel-region-marker");
+    expect(marker?.textContent).toContain("1,300");
+    expect(marker?.textContent).not.toContain("등유");
+    expect(marker?.getAttribute("aria-label")).toContain("등유");
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+test("보이는 주유소 9곳은 최신이어도 다시 갱신하고 가격을 적용하며 10곳이면 지도 버튼을 숨긴다", async () => {
+  Object.assign(mapState, { zoom: 12.5 });
+  toastCalls.success.mockClear();
+  let count = 9, nextPrice = 1300;
+  const products = ["C004"];
+  const stations = () => Array.from({ length: count }, (_, i): Place => ({
+    ...station, id: i + 70, kind: "fuel_station", source: "opinet_browser", name: `시험 ${i + 1} 주유소`,
+    longitude: 127 + i * .01, latitude: 37, line_names: [],
+    prices: [{ product_code: "C004", price: nextPrice, observed_at: "2026-11-21T00:00:00Z" }],
+  }));
+  const postRequests: unknown[] = [];
+  vi.mocked(fetch).mockImplementation(async (input, init) => {
+    if (String(input) === "/api/public/fuel/refresh") {
+      postRequests.push(JSON.parse(String(init?.body)));
+      nextPrice = 1450;
+      count = 10;
+      return Response.json({ results: Array.from({ length: 9 }, (_, i) => ({ station_id: i + 70, status: "updated" })) });
+    }
+    return Response.json({ items: stations(), total: count, truncated: false, fuel_prices_stale: false });
+  });
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const refreshButton = () => host.querySelector<HTMLButtonElement>('button[aria-label="지도 범위 유가 업데이트"]');
+  try {
+    await act(async () => root.render(<TransportMap mode="fuel" mapOnly publicFuel={{ products, onProductsChange: vi.fn(), refreshEnabled: true }} />));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 360)); });
+    expect(host.querySelector(".map-marker-price")?.textContent).toBe("1,300");
+    expect(refreshButton()).not.toBeNull();
+    await act(async () => refreshButton()!.click());
+    expect(postRequests).toEqual([{ viewport: { min_longitude: 124, min_latitude: 32, max_longitude: 132, max_latitude: 39, product_codes: products } }]);
+    expect(toastCalls.success).toHaveBeenCalledWith("유가 업데이트 완료");
+    expect(host.querySelector(".map-marker-price")?.textContent).toBe("1,450");
+    expect(refreshButton()).toBeNull();
+  } finally { await act(async () => root.unmount()); host.remove(); }
 });

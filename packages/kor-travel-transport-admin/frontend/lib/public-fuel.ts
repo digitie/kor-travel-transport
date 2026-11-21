@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { TransportError } from "./journey";
 
 /** 기존 지도 reader의 경로를 공개 유가 BFF의 한정된 연산으로 바꾼다. */
@@ -17,4 +18,39 @@ export async function publicFuelGet<T>(path: string, signal?: AbortSignal): Prom
       Number.isFinite(seconds) ? Math.max(0, seconds) : 0);
   }
   return response.json() as Promise<T>;
+}
+
+export type FuelRefreshBounds = {
+  min_longitude: number;
+  min_latitude: number;
+  max_longitude: number;
+  max_latitude: number;
+};
+
+export type FuelRefreshRequest = { station_id: number } | {
+  viewport: FuelRefreshBounds & { product_codes?: string[] };
+};
+
+const fuelRefreshResponse = z.object({
+  results: z.array(z.object({
+    station_id: z.number().int().positive(),
+    status: z.enum(["updated", "unchanged", "cooldown", "unsupported", "rate_limited", "error"]),
+  })).max(9),
+});
+
+export async function refreshPublicFuel(target: FuelRefreshRequest) {
+  const response = await fetch("/api/public/fuel/refresh", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(target),
+    cache: "no-store",
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    const detail = response.status === 429 ? "잠시 뒤 다시 시도해 주세요."
+      : response.status === 409 || response.status === 422 ? "지도 범위를 좁힌 뒤 다시 시도해 주세요."
+      : "유가를 업데이트하지 못했습니다.";
+    throw new TransportError(detail, response.status, 0);
+  }
+  return fuelRefreshResponse.parse(await response.json());
 }

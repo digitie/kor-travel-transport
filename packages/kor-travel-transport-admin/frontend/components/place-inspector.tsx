@@ -16,7 +16,7 @@ import { EmptyState } from "@/components/empty-state";
 import { dateTime, transportGet, type Place, type StoredFerry } from "@/lib/journey";
 import { useSeoulToday } from "@/lib/journey-hooks";
 import { collectionSourceLabel, placeKindLabel } from "@/lib/transport-presentation";
-import { FerryDepartures, PlaceDetails, PlaceIcon } from "./journey-controls";
+import { FerryDepartures, PlaceDetails, PlaceIcon, type PublicFuelPriceControls } from "./journey-controls";
 import { AirportDetails } from "./airport-details";
 import { PublicParkingDetails } from "./public-parking-details";
 
@@ -117,7 +117,7 @@ function ManualLocationEditor({ place, onSaved, onReload }: { place: Place; onSa
   </section>;
 }
 
-export function PlaceInspector({ place, onClose, onSaved, onReload, onShowMap, showHeader = true, load }: { load?: typeof transportGet; place: Place; onClose: () => void; onSaved?: (updated: Place) => void; onReload?: () => void; onShowMap?: () => void; showHeader?: boolean }) {
+export function PlaceInspector({ place, onClose, onSaved, onReload, onShowMap, showHeader = true, load, publicFuel }: { load?: typeof transportGet; publicFuel?: PublicFuelPriceControls; place: Place; onClose: () => void; onSaved?: (updated: Place) => void; onReload?: () => void; onShowMap?: () => void; showHeader?: boolean }) {
   return <>
     {showHeader ? <header className="flex items-start justify-between gap-3 border-b border-border pb-3">
       <div className="flex min-w-0 flex-col gap-1">
@@ -132,7 +132,7 @@ export function PlaceInspector({ place, onClose, onSaved, onReload, onShowMap, s
     </header> : null}
     {place.kind === "ferry_port" ? <PortDepartures key={place.id} place={place} /> : null}
     {place.kind === "airport" ? <AirportDetails key={place.id} place={place} /> : null}
-    {place.kind === "public_parking_lot" ? <PublicParkingDetails key={place.id} id={place.id} onShowMap={onShowMap} /> : <section className={SECTION} aria-label="장소 정보"><PlaceDetails place={place} load={load} showHeading={false} onShowMap={onShowMap} /></section>}
+    {place.kind === "public_parking_lot" ? <PublicParkingDetails key={place.id} id={place.id} onShowMap={onShowMap} /> : <section className={SECTION} aria-label="장소 정보"><PlaceDetails place={place} load={load} publicFuel={publicFuel} showHeading={false} onShowMap={onShowMap} /></section>}
     {((place.kind === "ferry_port" && place.source === "data_go_kr_maritime") ||
       (place.kind === "bus_terminal" && place.source === "data_go_kr_tago")) && place.provider_id && onSaved
       ? <ManualLocationEditor key={`${place.kind}:${place.id}`} place={place} onSaved={onSaved} onReload={onReload ?? onClose} /> : null}

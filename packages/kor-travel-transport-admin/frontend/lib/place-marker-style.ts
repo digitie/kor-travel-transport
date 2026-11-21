@@ -51,10 +51,13 @@ export function markerPrices(prices: readonly FuelPrice[] | null | undefined, pr
 }
 
 /** Map 가격 마커 라벨과 같은 형식(`휘 1,650` 한 줄에 한 유종). 표시할 가격이 없으면 null. */
-export function priceMarkerLabel(prices: readonly FuelPrice[] | null | undefined, products: readonly string[] = []): string | null {
+export function priceMarkerLabel(prices: readonly FuelPrice[] | null | undefined, products: readonly string[] = [], showProductName = true): string | null {
   const rows = markerPrices(prices, products);
   if (!rows.length) return null;
-  return rows.map((row) => `${SHORT_FUEL_LABELS[row.product_code] ?? fuelProductLabel(row.product_code)} ${PRICE_FORMATTER.format(row.price ?? 0)}`).join("\n");
+  return rows.map((row) => {
+    const price = PRICE_FORMATTER.format(row.price ?? 0);
+    return showProductName ? `${SHORT_FUEL_LABELS[row.product_code] ?? fuelProductLabel(row.product_code)} ${price}` : price;
+  }).join("\n");
 }
 
 /** 화면 낭독기용 가격 문구. 짧은 표기 대신 유종 이름을 쓴다. */

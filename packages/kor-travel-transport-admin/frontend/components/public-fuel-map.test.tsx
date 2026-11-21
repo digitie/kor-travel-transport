@@ -9,7 +9,7 @@ vi.mock("@/lib/public-fuel", () => ({ publicFuelGet: state.get }));
 import { PublicFuelMap } from "./public-fuel-map";
 let root: Root, host: HTMLDivElement;
 beforeEach(() => { vi.useFakeTimers(); vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); host = document.createElement("div"); document.body.append(host); root = createRoot(host); state.get.mockReset(); });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); localStorage.removeItem("transport.public-fuel.products"); vi.useRealTimers(); vi.unstubAllGlobals(); });
 async function render() { await act(async () => root.render(<PublicFuelMap />)); }
 it("loads map and history through the public reader without admin path prefixes", async () => {
   await render();
@@ -38,7 +38,7 @@ it("only requests location after a click and moves to a valid result", async () 
   expect(state.props.mapOnly).toBe(true);
   expect(state.props.view).toBeUndefined();
   expect(state.props.onViewChange).toBeUndefined();
-  expect(host.textContent).toContain("현재 위치 주변의 유가");
+  expect(host.querySelector('[role="status"]')).toBeNull();
 });
 it("denial keeps the viewport and gives visible fallback feedback", async () => {
   const get = vi.fn(); Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition: get } });
@@ -46,7 +46,7 @@ it("denial keeps the viewport and gives visible fallback feedback", async () => 
   await act(async () => get.mock.calls[0][1]({ code: 1 }));
   expect((state.props.layers as ReactElement<{ target: unknown }>).props.target).toBeUndefined();
   expect(host.querySelector('[role="status"]')?.className).not.toContain("sr-only");
-  expect(host.textContent).toContain("현재 지도 범위를 표시");
+  expect(host.textContent).toContain("위치를 확인하지 못했습니다.");
 });
 it("bounds an unresponsive location provider and ignores a late result", async () => {
   const get = vi.fn(); Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition: get } });
@@ -55,4 +55,19 @@ it("bounds an unresponsive location provider and ignores a late result", async (
   expect(host.querySelector("button")!.hasAttribute("aria-busy")).toBe(false);
   await act(async () => get.mock.calls[0][0]({ coords: { longitude: 127, latitude: 37 } }));
   expect((state.props.layers as ReactElement<{ target: unknown }>).props.target).toBeUndefined();
+});
+
+
+it("restores and saves the public product selection, including all products", async () => {
+  const key = "transport.public-fuel.products";
+  localStorage.setItem(key, JSON.stringify(["C004", "invalid", "C004"]));
+  await render();
+  const controls = () => state.props.publicFuel as { products: string[]; onProductsChange: (value: string[]) => void };
+  expect(controls().products).toEqual(["C004"]);
+  await act(async () => controls().onProductsChange(["B027", "D047"]));
+  expect(controls().products).toEqual(["B027", "D047"]);
+  expect(JSON.parse(localStorage.getItem(key)!)).toEqual(["B027", "D047"]);
+  await act(async () => controls().onProductsChange([]));
+  expect(controls().products).toEqual([]);
+  expect(JSON.parse(localStorage.getItem(key)!)).toEqual([]);
 });

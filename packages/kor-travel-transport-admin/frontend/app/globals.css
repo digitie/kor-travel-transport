@@ -957,18 +957,33 @@ html:has([data-slot="map-workspace"][data-expanded="true"]) { overflow: hidden; 
 .public-fuel-location-status { max-width: min(18rem, calc(100vw - 24px)); margin-top: 4px; padding: 4px 8px; border-radius: var(--radius-control); background: var(--card); color: var(--text-primary); font-size: var(--text-xs); box-shadow: var(--shadow-elevated); }
 
 .public-fuel-surface .kt-map-workspace { position: absolute; inset: 0; display: block; }
-.public-fuel-surface .kt-map-workspace > .kt-map-filter-panel { position: absolute; top: max(12px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); width: min(28rem, calc(100% - 24px)); z-index: 8; }
 .public-fuel-surface .kt-map-workspace > [data-slot="tabs"] { position: absolute; inset: 0; display: block; }
-.public-fuel-surface .kt-map-view-header { position: absolute; top: calc(max(12px, env(safe-area-inset-top)) + 52px); left: max(12px, env(safe-area-inset-left)); z-index: 7; max-width: calc(100% - 24px); }
 .public-fuel-surface .kt-map-workspace > [data-slot="tabs"] > [data-slot="tabs-content"]:not([hidden]),
 .public-fuel-surface .kt-map-stage { position: absolute; inset: 0; height: 100%; border: 0; border-radius: 0; }
 
-/* Public map overlays share a compact top strip; the canvas remains full viewport. */
-.public-fuel-surface .kt-map-workspace > .kt-map-filter-panel { width: min(28rem, calc(100% - 80px)); }
-.public-fuel-surface .kt-map-workspace > .kt-map-filter-panel[data-expanded="true"] { z-index: 10; }
-.public-fuel-surface .kt-map-filter-toggle { display: inline-flex; min-height: 44px; }
-.public-fuel-surface .kt-map-filter-panel[data-expanded="false"] > .kt-map-filter-panel-body { display: none; }
-.public-fuel-surface .kt-map-filter-panel[data-expanded="true"] > .kt-map-filter-panel-body { margin-top: .5rem; max-height: 30dvh; overflow: auto; overscroll-behavior: contain; }
-.public-fuel-surface .kt-map-stage-overlays { top: calc(max(12px, env(safe-area-inset-top)) + 56px); }
 .public-fuel-surface .kt-map-stage { isolation: auto; }
-.public-fuel-surface .kt-map-stage-overlays { z-index: 9; }
+.public-fuel-surface .kt-map-stage-overlays { top: max(12px, env(safe-area-inset-top)); z-index: 9; }
+.public-fuel-summary .public-fuel-summary-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.public-fuel-summary-header > h2 { grid-column: 1; grid-row: 1; }
+.public-fuel-summary-products { grid-column: 2; grid-row: 1; min-width: 0; }
+.public-fuel-summary-close { grid-column: 3; grid-row: 1; min-width: 44px; min-height: 44px; }
+.public-fuel-summary-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: .5rem; }
+.public-fuel-summary-stale { display: inline-flex; align-items: center; gap: .25rem; }
+.public-fuel-summary-refresh { min-height: 44px; }
+.public-fuel-summary-body { max-height: min(31dvh, 16rem); overflow-y: auto; overscroll-behavior: contain; }
+.public-fuel-summary-values { display: grid; gap: .35rem; }
+.public-fuel-summary-product + .public-fuel-summary-product { border-top: 1px solid var(--line); padding-top: .35rem; }
+.public-fuel-summary-product h3 { font-weight: 600; }
+
+.public-fuel-map-refresh {
+  position: absolute;
+  bottom: max(36px, env(safe-area-inset-bottom));
+  left: calc(max(12px, env(safe-area-inset-left)) + 52px);
+  z-index: 5;
+  min-width: 44px;
+  min-height: 44px;
+}
+.public-fuel-current-prices dd { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
