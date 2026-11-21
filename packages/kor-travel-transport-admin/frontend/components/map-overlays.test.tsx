@@ -42,7 +42,7 @@ vi.mock("maplibre-gl", () => {
   class FakeMarker {
     element: HTMLElement;
     constructor({ element }: { element?: HTMLElement }) { this.element = element ?? document.createElement("div"); this.element.classList.add("maplibregl-marker"); }
-    setLngLat() { return this; }
+    setLngLat(lngLat: unknown) { this.element.dataset.lngLat = JSON.stringify(lngLat); return this; }
     setOffset() { return this; }
     addTo() { document.body.append(this.element); return this; }
     getElement() { return this.element; }
@@ -66,7 +66,7 @@ vi.mock("maplibre-gl", () => {
 });
 
 import { VWorldMapView } from "vworld-map-web";
-import { CameraRequest, MapMarkerButton, MapUnavailable, OverlapPopup, useVWorldBasemapHealth, type CameraTarget } from "./map-overlays";
+import { CameraRequest, MapMarkerButton, MapUnavailable, OverlapPopup, UserLocationMarker, useVWorldBasemapHealth, type CameraTarget } from "./map-overlays";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -104,6 +104,30 @@ describe("지도 카메라 요청", () => {
     render(<CameraRequest target={camera("a")} />);
     expect(state.instances[0].easeTo).not.toHaveBeenCalled();
     expect(state.instances[0].jumpTo).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("내 위치 점", () => {
+  it("위치가 생기면 점 하나를 주유소 마커 위에 만들고, 이동하면 같은 점을 옮기며, 위치가 사라지거나 언마운트되면 지운다", () => {
+    render(<UserLocationMarker position={undefined} />);
+    emit("load");
+    expect(document.querySelectorAll(".user-location-marker")).toHaveLength(0);
+    render(<UserLocationMarker position={[128.7, 36.5]} />);
+    const dots = () => document.querySelectorAll<HTMLElement>(".user-location-marker");
+    expect(dots()).toHaveLength(1);
+    expect(dots()[0].getAttribute("aria-label")).toBe("내 위치");
+    expect(dots()[0].style.zIndex).toBe("6");
+    expect(dots()[0].dataset.lngLat).toBe("[128.7,36.5]");
+    render(<UserLocationMarker position={[128.71, 36.51]} />);
+    expect(dots()).toHaveLength(1);
+    expect(dots()[0].dataset.lngLat).toBe("[128.71,36.51]");
+    render(<UserLocationMarker position={undefined} />);
+    expect(dots()).toHaveLength(0);
+    render(<UserLocationMarker position={[128.7, 36.5]} />);
+    expect(dots()).toHaveLength(1);
+    act(() => root.unmount());
+    expect(dots()).toHaveLength(0);
+    root = createRoot(host);
   });
 });
 

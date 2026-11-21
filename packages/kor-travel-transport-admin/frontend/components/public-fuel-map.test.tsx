@@ -4,12 +4,16 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({ props: {} as Record<string, unknown>, get: vi.fn() }));
 vi.mock("./transport-map", () => ({ TransportMap: (props: Record<string, unknown>) => { state.props = props; return <div data-map="fuel" />; } }));
-vi.mock("@/components/map-overlays", () => ({ CameraRequest: () => null }));
+vi.mock("@/components/map-overlays", () => ({ CameraRequest: () => null, UserLocationMarker: () => null }));
 vi.mock("@/lib/public-fuel", () => ({ publicFuelGet: state.get }));
 import { PublicFuelMap } from "./public-fuel-map";
 let root: Root, host: HTMLDivElement;
 beforeEach(() => { vi.useFakeTimers(); vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); host = document.createElement("div"); document.body.append(host); root = createRoot(host); state.get.mockReset(); });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); localStorage.removeItem("transport.public-fuel.products"); vi.useRealTimers(); vi.unstubAllGlobals(); });
+// layers = <><CameraRequest target /><UserLocationMarker position /></>
+const layerProps = () => (state.props.layers as ReactElement<{ children: ReactElement<{ target?: unknown; position?: unknown }>[] }>).props.children.map(child => child.props);
+const cameraTarget = () => layerProps()[0].target;
+const userPosition = () => layerProps()[1].position;
 async function render() { await act(async () => root.render(<PublicFuelMap />)); }
 it("loads map and history through the public reader without admin path prefixes", async () => {
   await render();
@@ -34,7 +38,8 @@ it("only requests location after a click and moves to a valid result", async () 
   expect(get).toHaveBeenCalledTimes(1);
   await act(async () => get.mock.calls[0][0]({ coords: { longitude: 127, latitude: 37 } }));
   expect(button.hasAttribute("aria-busy")).toBe(false);
-  expect((state.props.layers as ReactElement<{ target: unknown }>).props.target).toMatchObject({ center: [127, 37], zoom: 14 });
+  expect(cameraTarget()).toMatchObject({ center: [127, 37], zoom: 14 });
+  expect(userPosition()).toEqual([127, 37]);
   expect(state.props.mapOnly).toBe(true);
   expect(state.props.view).toBeUndefined();
   expect(state.props.onViewChange).toBeUndefined();
@@ -44,7 +49,8 @@ it("denial keeps the viewport and gives visible fallback feedback", async () => 
   const get = vi.fn(); Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition: get } });
   await render(); await act(async () => host.querySelector("button")!.click());
   await act(async () => get.mock.calls[0][1]({ code: 1 }));
-  expect((state.props.layers as ReactElement<{ target: unknown }>).props.target).toBeUndefined();
+  expect(cameraTarget()).toBeUndefined();
+  expect(userPosition()).toBeUndefined();
   expect(host.querySelector('[role="status"]')?.className).not.toContain("sr-only");
   expect(host.textContent).toContain("위치를 확인하지 못했습니다.");
 });
@@ -54,7 +60,8 @@ it("bounds an unresponsive location provider and ignores a late result", async (
   await act(async () => vi.advanceTimersByTime(6500));
   expect(host.querySelector("button")!.hasAttribute("aria-busy")).toBe(false);
   await act(async () => get.mock.calls[0][0]({ coords: { longitude: 127, latitude: 37 } }));
-  expect((state.props.layers as ReactElement<{ target: unknown }>).props.target).toBeUndefined();
+  expect(cameraTarget()).toBeUndefined();
+  expect(userPosition()).toBeUndefined();
 });
 
 
@@ -70,4 +77,21 @@ it("restores and saves the public product selection, including all products", as
   await act(async () => controls().onProductsChange([]));
   expect(controls().products).toEqual([]);
   expect(JSON.parse(localStorage.getItem(key)!)).toEqual([]);
+});
+
+it("shows my location as a point and follows later position updates without moving the camera", async () => {
+  const get = vi.fn(); const watch = vi.fn(() => 7); const clear = vi.fn();
+  Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition: get, watchPosition: watch, clearWatch: clear } });
+  await render();
+  await act(async () => host.querySelector("button")!.click());
+  await act(async () => get.mock.calls[0][0]({ coords: { longitude: 128.7, latitude: 36.5 } }));
+  expect(userPosition()).toEqual([128.7, 36.5]);
+  expect(watch).toHaveBeenCalledTimes(1);
+  const camera = cameraTarget();
+  await act(async () => (watch.mock.calls[0] as unknown as [(position: { coords: { longitude: number; latitude: number } }) => void])[0]({ coords: { longitude: 128.71, latitude: 36.51 } }));
+  expect(userPosition()).toEqual([128.71, 36.51]);
+  expect(cameraTarget()).toBe(camera);
+  await act(async () => root.unmount());
+  expect(clear).toHaveBeenCalledWith(7);
+  root = createRoot(host);
 });

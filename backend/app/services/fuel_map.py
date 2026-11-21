@@ -9,6 +9,16 @@ from sqlalchemy.dialects.postgresql import aggregate_order_by, array
 
 from app.services.fuel_refresh_prices import effective_fuel_prices
 
+# 장소 응답 facilities(부대시설) 라벨. DB 투영과 Python 경로가 같은 순서·라벨을 쓴다.
+# 품질인증(is_kpetro)·전산보고(is_electronic)는 부대시설이 아니므로 typed nullable 필드로 따로 낸다.
+FUEL_FACILITY_LABELS = (
+    ("is_self", "셀프"),
+    ("is_24h", "24시간"),
+    ("has_carwash", "세차"),
+    ("has_maintenance", "정비"),
+    ("has_cvs", "편의점"),
+)
+
 
 def fuel_map_items_statement(station_query, at):
     stations = station_query.cte("selected_fuel_stations").prefix_with("MATERIALIZED")
@@ -68,13 +78,7 @@ def fuel_map_items_statement(station_query, at):
         array(
             [
                 case((s[field].is_(True), literal(label)), else_=None)
-                for field, label in [
-                    ("is_self", "셀프"),
-                    ("is_24h", "24시간"),
-                    ("has_carwash", "세차"),
-                    ("has_maintenance", "정비"),
-                    ("has_cvs", "편의점"),
-                ]
+                for field, label in FUEL_FACILITY_LABELS
             ]
         ),
         None,
@@ -110,6 +114,10 @@ def fuel_map_items_statement(station_query, at):
         s.phone,
         "facilities",
         facilities,
+        "is_kpetro",
+        s.is_kpetro,
+        "is_electronic",
+        s.is_electronic,
         "updated_at",
         timestamp(s.last_seen_at),
     )

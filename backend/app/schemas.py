@@ -395,6 +395,14 @@ class TransportPlaceMapItem(BaseModel):
     prices: list[FuelPriceItem] = Field(default_factory=list)
     phone: str | None = None
     facilities: list[str] = Field(default_factory=list)
+    is_kpetro: bool | None = Field(
+        default=None,
+        description="주유소 품질인증 표시(오피넷 KPETRO_YN). 주유소가 아니거나 원천에서 확인되지 않으면 null.",
+    )
+    is_electronic: bool | None = Field(
+        default=None,
+        description="주유소 거래상황 전산보고 표시(오피넷 KPETRO_DP_YN). 주유소가 아니거나 원천에서 확인되지 않으면 null.",
+    )
     station_type: str | None = None
     line_names: list[str] = Field(default_factory=list)
     address: str | None = None

@@ -20,7 +20,7 @@ RAIL_FACILITY_KEYS = ("환승역 여부", "유실물 취급여부", "안전발�
 
 def place_queries(requested, coordinate_conditions, include_unlocated, has_bounds, now, limit):
     specs = {
-        "fuel_station": (FuelStation, "id source name longitude latitude address brand_name brand_code phone is_self is_24h has_carwash has_maintenance has_cvs last_seen_at", (FuelStation.last_seen_at.desc(), FuelStation.id.desc())),
+        "fuel_station": (FuelStation, "id source name longitude latitude address brand_name brand_code phone is_self is_24h has_carwash has_maintenance has_cvs is_kpetro is_electronic last_seen_at", (FuelStation.last_seen_at.desc(), FuelStation.id.desc())),
         "rail_station": (RailStationReference, "id source station_name longitude latitude rail_operator_name operating_line_name station_phone_number station_type road_address lot_address last_seen_at", (RailStationReference.last_seen_at.desc(), RailStationReference.id.desc())),
         "ferry_port": (FerryPort, "id source port_id port_name longitude latitude location_source location_point_count last_seen_at", (FerryPort.last_seen_at.desc(), FerryPort.id.desc())),
         "bus_terminal": (BusTerminalReference, "id source terminal_id terminal_name city_name longitude latitude service_type location_source last_seen_at", (BusTerminalReference.last_seen_at.desc(), BusTerminalReference.id.desc())),

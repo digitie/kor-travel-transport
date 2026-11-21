@@ -51,6 +51,9 @@ def _seed(client):
                     has_carwash=False,
                     has_maintenance=True,
                     has_cvs=None,
+                    # 참·거짓·미확인(NULL)을 섞어 두 경로가 그대로 보존하는지 본다.
+                    is_kpetro=(True, False, None, True)[i],
+                    is_electronic=(None, True, False, True)[i],
                     first_seen_at=at,
                     last_seen_at=at,
                 )
@@ -113,6 +116,9 @@ def test_fuel_json_preserves_full_dto_order_null_prices_and_utc(client):
     assert by_id[ids[1]]["price_product_code"] == "A000"
     assert by_id[ids[1]]["latest_price"] == 1000
     assert by_id[ids[2]]["prices"] == []
+    assert [(by_id[i]["is_kpetro"], by_id[i]["is_electronic"]) for i in ids] == [
+        (True, None), (False, True), (None, False), (True, True),
+    ]
     assert by_id[ids[2]]["longitude"] is None and by_id[ids[2]]["latitude"] is None
     for row in actual["items"]:
         assert row["facilities"] == ["셀프", "정비"]
