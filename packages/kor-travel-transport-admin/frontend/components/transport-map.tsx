@@ -191,7 +191,7 @@ function usePublicFuelRefresh(enabled: boolean | undefined, setReload: ReturnTyp
       if (!successful.length) {
         if (results.some(({ status }) => status === "cooldown")) {
           setReload(value => value + 1);
-          toast.info("최근에 업데이트한 유가를 불러왔습니다.");
+          toast.info("최근 갱신 요청이 있었습니다. 잠시 뒤 다시 시도해 주세요.");
         } else if (results.some(({ status }) => status === "rate_limited")) {
           toast.info("잠시 뒤 유가 업데이트를 다시 시도해 주세요.");
         } else {

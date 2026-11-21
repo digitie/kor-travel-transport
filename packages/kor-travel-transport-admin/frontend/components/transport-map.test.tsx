@@ -407,6 +407,9 @@ test("보이는 주유소 9곳은 최신이어도 다시 갱신하고 가격을 
   vi.mocked(fetch).mockImplementation(async (input, init) => {
     if (String(input) === "/api/public/fuel/refresh") {
       postRequests.push(JSON.parse(String(init?.body)));
+      if (postRequests.length === 1) {
+        return Response.json({ results: Array.from({ length: 9 }, (_, i) => ({ station_id: i + 70, status: "cooldown" })) });
+      }
       nextPrice = 1450;
       count = 10;
       return Response.json({ results: Array.from({ length: 9 }, (_, i) => ({ station_id: i + 70, status: "updated" })) });
@@ -421,7 +424,13 @@ test("보이는 주유소 9곳은 최신이어도 다시 갱신하고 가격을 
     expect(host.querySelector(".map-marker-price")?.textContent).toBe("1,300");
     expect(refreshButton()).not.toBeNull();
     await act(async () => refreshButton()!.click());
-    expect(postRequests).toEqual([{ viewport: { min_longitude: 124, min_latitude: 32, max_longitude: 132, max_latitude: 39, product_codes: products } }]);
+    expect(toastCalls.info).toHaveBeenCalledWith("최근 갱신 요청이 있었습니다. 잠시 뒤 다시 시도해 주세요.");
+    expect(toastCalls.success).not.toHaveBeenCalled();
+    expect(host.querySelector(".map-marker-price")?.textContent).toBe("1,300");
+    await act(async () => refreshButton()!.click());
+    expect(postRequests).toEqual(Array.from({ length: 2 }, () => ({
+      viewport: { min_longitude: 124, min_latitude: 32, max_longitude: 132, max_latitude: 39, product_codes: products },
+    })));
     expect(toastCalls.success).toHaveBeenCalledWith("유가 업데이트 완료");
     expect(host.querySelector(".map-marker-price")?.textContent).toBe("1,450");
     expect(refreshButton()).toBeNull();
