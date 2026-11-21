@@ -47,6 +47,31 @@ it("지정한 내부 경로에 서버 전용 토큰과 JSON만 전달한다", as
   });
 });
 
+it("시 단위 브라우저 조회가 끝난 뒤 내부 정리까지 기다린다", async () => {
+  vi.useFakeTimers();
+  const timeout = vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), milliseconds);
+    return controller.signal;
+  });
+  try {
+    fetchUpstream.mockImplementation((_target, { signal }: { signal: AbortSignal }) =>
+      new Promise<Response>((resolve, reject) => {
+        const timer = setTimeout(() => resolve(Response.json({ results: [{ station_id: 12, status: "updated" }] })), 55_000);
+        signal.addEventListener("abort", () => {
+          clearTimeout(timer);
+          reject(signal.reason);
+        }, { once: true });
+      }));
+    const response = POST(post());
+    await vi.advanceTimersByTimeAsync(55_000);
+    expect((await response).status).toBe(200);
+  } finally {
+    timeout.mockRestore();
+    vi.useRealTimers();
+  }
+});
+
 it("다른 출처, 큰 본문과 설정하지 않은 기능은 업스트림을 호출하지 않는다", async () => {
   expect((await POST(post({ from: "https://other.example" }))).status).toBe(403);
   expect((await POST(post({ body: JSON.stringify({ value: "a".repeat(4097) }) }))).status).toBe(400);
