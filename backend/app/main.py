@@ -57,6 +57,8 @@ from app.ferry_reference_routes import build_ferry_reference_router
 from app.highway_map_routes import build_highway_map_router
 from app.services.fuel_price_history import build_fuel_price_history_router
 from app.services.fuel_price_distribution import build_fuel_price_distribution_router, viewport_sigungu
+from app.services.fuel_area_catalog import build_fuel_area_catalog_router
+from app.services.fuel_station_filters import FuelStationFilters, fuel_station_filter_params, resolve_price_ceiling
 from app.services.fuel_manual_refresh import build_fuel_manual_refresh_router
 from app.services.fuel_refresh_prices import effective_fuel_prices, fuel_viewport_conditions, has_visible_fuel_product
 from app.services.parking_history_cache import (
@@ -1367,6 +1369,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         min_latitude: float | None = Query(default=None, ge=-90, le=90),
         max_longitude: float | None = Query(default=None, ge=-180, le=180),
         max_latitude: float | None = Query(default=None, ge=-90, le=90),
+        station_filters: FuelStationFilters = Depends(fuel_station_filter_params),
         session: AsyncSession = Depends(get_db),
     ) -> TransportPlaceMapResponse:
         """저장된 장소만 지도 marker 계약으로 반환한다. provider 원문이나 비밀값은 노출하지 않는다."""
@@ -1397,6 +1400,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if zoom is not None and min_longitude is None:
             raise HTTPException(status_code=422, detail="축척별 지도 조회에는 지도 범위가 필요합니다.")
         requested_kinds = tuple(sorted(selected_kinds)) if selected_kinds else (selected_kind,) if selected_kind else tuple(sorted(supported))
+        if station_filters.active and requested_kinds != ("fuel_station",):
+            raise HTTPException(status_code=422, detail="주유소 필터는 주유소만 조회할 때 사용할 수 있습니다.")
+        station_filters = await resolve_price_ceiling(
+            session, station_filters, bounds if min_longitude is not None else None, selected_products)
         # 전용 유가 지도는 실제 10부터 가격을 공개한다. 혼합/다른 종류는 기존 경계다.
         detail_zoom = 10 if requested_kinds == ("fuel_station",) else 12
         read_at = now_utc()
@@ -1411,7 +1418,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 stamp, page_boundary = proof
                 page_key = (stamp, place_map_cache.provider_key(get_airport_or_none),
                     selected_kind, requested_kinds, limit, zoom, include_sources, include_unlocated,
-                    tuple(selected_sources), tuple(selected_products), query, bounds)
+                    tuple(selected_sources), tuple(selected_products), query, bounds, station_filters.key())
                 cached = place_map_cache.get(page_key, read_at)
                 if cached is not None:
                     return Response(content=place_map_cache.response_bytes(cached, now_utc()),
@@ -1419,13 +1426,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         observe_page_build()
         fuel_statistics = []
         if include_fuel_statistics and "fuel_station" in requested_kinds and min_longitude is not None:
-            fuel_statistics = await viewport_fuel_statistics(session, bounds, selected_sources, selected_products, query)
+            fuel_statistics = await viewport_fuel_statistics(session, bounds, selected_sources, selected_products, query,
+                                                             station_filters)
         sigungu_fields: dict[str, Any] = {}
         # 요청하지 않은 소비자(관리 지도 등)의 응답 바이트는 그대로 둔다.
         sigungu_exclude = set() if include_viewport_sigungu else {"fuel_viewport_sigungu", "fuel_viewport_sigungu_total"}
         if include_viewport_sigungu and "fuel_station" in requested_kinds and min_longitude is not None:
             visible_sigungu, visible_sigungu_total = await viewport_sigungu(
-                session, bounds, selected_sources, selected_products, query)
+                session, bounds, selected_sources, selected_products, query, filters=station_filters)
             sigungu_fields = {"fuel_viewport_sigungu": visible_sigungu, "fuel_viewport_sigungu_total": visible_sigungu_total}
         # 전체 지도는 한 종류가 limit을 모두 소모하지 않도록 균등하게 읽는다. 프런트가
         # 수천 개의 DOM marker를 만들지 않게 하는 API 경계이기도 하다.
@@ -1459,6 +1467,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 # 유종 행은 가격 미제공(NULL)도 저장된다. 과거 가격 존재가 아니라
                 # 상세 응답과 동일한 최신 행을 기준으로 실제 판매 가격을 확인한다.
                 conditions.append(has_visible_fuel_product(selected_products, read_at))
+            if model is FuelStation and station_filters.active:
+                # 공개 화면 필터: 통계·지역 카드·시군구 칩과 같은 조건(app/services/fuel_station_filters.py).
+                conditions.extend(station_filters.marker_conditions())
             if min_longitude is not None:
                 conditions.extend(fuel_viewport_conditions(bounds) if model is FuelStation else (
                     model.longitude >= min_longitude,
@@ -1477,7 +1488,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             use_fuel_regions = not (query and query.strip())
             fuel_regions = await regional_fuel_prices(
                 session, zoom=zoom, bounds=bounds, sources=selected_sources,
-                products=selected_products, query=query,
+                products=selected_products, query=query, filters=station_filters,
             ) if "fuel_station" in requested_kinds and use_fuel_regions else []
             grid_size = viewport_cluster_grid_size(
                 min_longitude=min_longitude,
@@ -3596,6 +3607,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(build_highway_map_router(), prefix="/v1")
     app.include_router(build_fuel_price_history_router(resolved_settings, get_db), prefix="/v1")
     app.include_router(build_fuel_price_distribution_router(get_db), prefix="/v1")
+    app.include_router(build_fuel_area_catalog_router(get_db), prefix="/v1")
     app.include_router(build_fuel_manual_refresh_router(resolved_settings, get_session_factory), prefix="/v1")
     # 내부 서비스 일괄 export(ADR-013) — 서비스 토큰과 접속한 쪽의 주소(peer, 기본 loopback)로 닫힌다.
     app.include_router(build_service_export_router(resolved_settings, get_db), prefix="/v1")

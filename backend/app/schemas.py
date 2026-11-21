@@ -573,10 +573,28 @@ class FuelPriceDistributionResponse(BaseModel):
     sido_name: str | None = None
     sigungu_name: str | None = None
     grade_rule: list[FuelGradeRule]
+    filters_applied: list[str] = Field(default_factory=list, description="적용한 공개 화면 필터(셀프·상표 등). 시군구·시도·전국 모두 같은 조건")
     sigungu: FuelSigunguPriceDistribution | None = None
     sido: FuelPriceScopeSummary | None = None
     nationwide: FuelPriceScopeSummary | None = None
     station: FuelStationPricePosition | None = None
+
+
+class FuelAreaSigungu(BaseModel):
+    sigungu_value: str
+    sigungu_name: str
+    station_count: int
+    bounds: list[float] = Field(description="[서, 남, 동, 북] 주유소 좌표 범위(20곳 이상은 2~98% 분위)")
+
+
+class FuelAreaSido(BaseModel):
+    sido_value: str
+    sido_name: str
+    sigungu: list[FuelAreaSigungu]
+
+
+class FuelAreaCatalogResponse(BaseModel):
+    items: list[FuelAreaSido]
 
 
 class TransportPlaceMapResponse(BaseModel):
