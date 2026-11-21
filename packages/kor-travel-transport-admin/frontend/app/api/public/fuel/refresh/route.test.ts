@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { POST } from "./route";
 import { proxy } from "@/proxy";
+import { refreshPublicFuel } from "@/lib/public-fuel";
 
 const origin = "https://fuel.example";
 const endpoint = `${origin}/api/public/fuel/refresh`;
@@ -63,11 +64,66 @@ it("시 단위 브라우저 조회가 끝난 뒤 내부 정리까지 기다린�
           reject(signal.reason);
         }, { once: true });
       }));
-    const response = POST(post());
-    await vi.advanceTimersByTimeAsync(55_000);
-    expect((await response).status).toBe(200);
+    const result = POST(post());
+    await vi.advanceTimersByTimeAsync(15_000);
+    const response = await result;
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-encoding")).toBe("identity");
+    expect(response.headers.get("cache-control")).toBe("no-store, no-transform");
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    expect(decoder.decode((await reader.read()).value)).toMatch(/^ +$/);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(decoder.decode((await reader.read()).value)).toMatch(/^ +$/);
+    await vi.advanceTimersByTimeAsync(30_000);
+    let body = "";
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      body += decoder.decode(chunk.value);
+    }
+    expect(JSON.parse(body)).toEqual({ results: [{ station_id: 12, status: "updated" }] });
   } finally {
     timeout.mockRestore();
+    vi.useRealTimers();
+  }
+});
+
+it("응답을 스트리밍하는 동안 연결이 닫히면 업스트림을 취소한다", async () => {
+  vi.useFakeTimers();
+  try {
+    let upstreamSignal: AbortSignal | undefined;
+    fetchUpstream.mockImplementation((_target, { signal }: { signal: AbortSignal }) => {
+      upstreamSignal = signal;
+      return new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+    });
+    const pending = POST(post());
+    await vi.advanceTimersByTimeAsync(15_000);
+    await (await pending).body?.cancel();
+    expect(upstreamSignal?.aborted).toBe(true);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("연결 유지 이후의 업스트림 오류를 화면에서 해석한다", async () => {
+  vi.useFakeTimers();
+  try {
+    fetchUpstream.mockImplementation(() =>
+      new Promise(resolve => setTimeout(() => resolve(Response.json({}, { status: 429 })), 31_000)));
+    const pending = POST(post());
+    await vi.advanceTimersByTimeAsync(15_000);
+    const response = await pending;
+    const body = response.text();
+    await vi.advanceTimersByTimeAsync(16_000);
+    expect(response.status).toBe(200);
+    const raw = await body;
+    expect(JSON.parse(raw)).toEqual({ error_status: 429 });
+    fetchUpstream.mockResolvedValue(new Response(raw));
+    await expect(refreshPublicFuel({ station_id: 12 })).rejects.toMatchObject({
+      status: 429, message: "잠시 뒤 다시 시도해 주세요.",
+    });
+  } finally {
     vi.useRealTimers();
   }
 });

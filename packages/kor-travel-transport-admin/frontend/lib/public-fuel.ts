@@ -46,11 +46,18 @@ export async function refreshPublicFuel(target: FuelRefreshRequest) {
     cache: "no-store",
     credentials: "omit",
   });
-  if (!response.ok) {
-    const detail = response.status === 429 ? "잠시 뒤 다시 시도해 주세요."
-      : response.status === 409 || response.status === 422 ? "지도 범위를 좁힌 뒤 다시 시도해 주세요."
-      : "유가를 업데이트하지 못했습니다.";
-    throw new TransportError(detail, response.status, 0);
-  }
-  return fuelRefreshResponse.parse(await response.json());
+  if (!response.ok) throw refreshError(response.status);
+  const payload: unknown = await response.json();
+  const streamedError = streamedRefreshError.safeParse(payload);
+  if (streamedError.success) throw refreshError(streamedError.data.error_status);
+  return fuelRefreshResponse.parse(payload);
+}
+
+const streamedRefreshError = z.object({ error_status: z.number().int().min(400).max(599) });
+
+function refreshError(status: number) {
+  const detail = status === 429 ? "잠시 뒤 다시 시도해 주세요."
+    : status === 409 || status === 422 ? "지도 범위를 좁힌 뒤 다시 시도해 주세요."
+    : "유가를 업데이트하지 못했습니다.";
+  return new TransportError(detail, status, 0);
 }
