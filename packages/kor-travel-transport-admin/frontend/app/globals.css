@@ -954,7 +954,9 @@ html:has([data-slot="map-workspace"][data-expanded="true"]) { overflow: hidden; 
 .public-fuel-surface .transport-map-workspace { height: 100%; min-height: 0; }
 .public-fuel-location { position: absolute; left: max(12px, env(safe-area-inset-left)); bottom: max(36px, env(safe-area-inset-bottom)); z-index: 5; }
 .public-fuel-location button { min-width: 44px; min-height: 44px; }
-.public-fuel-location-status { max-width: min(18rem, calc(100vw - 24px)); margin-top: 4px; padding: 4px 8px; border-radius: var(--radius-control); background: var(--card); color: var(--text-primary); font-size: var(--text-xs); box-shadow: var(--shadow-elevated); }
+.public-fuel-location-status { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; max-width: min(18rem, calc(100vw - 24px)); margin-top: 4px; padding: 4px 8px; border-radius: var(--radius-control); background: var(--card); color: var(--text-primary); font-size: var(--text-xs); box-shadow: var(--shadow-elevated); }
+.public-fuel-location-status > p { flex: 1 1 10rem; min-width: 0; }
+.public-fuel-location .public-fuel-location-retry { flex: none; white-space: nowrap; }
 
 .public-fuel-surface .kt-map-workspace { position: absolute; inset: 0; display: block; }
 .public-fuel-surface .kt-map-workspace > [data-slot="tabs"] { position: absolute; inset: 0; display: block; }
@@ -965,11 +967,10 @@ html:has([data-slot="map-workspace"][data-expanded="true"]) { overflow: hidden; 
 .public-fuel-surface .kt-map-stage-overlays { top: max(12px, env(safe-area-inset-top)); z-index: 9; }
 .public-fuel-summary .public-fuel-summary-header {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
 }
 .public-fuel-summary-header > h2 { grid-column: 1; grid-row: 1; }
 .public-fuel-summary-products { grid-column: 2; grid-row: 1; min-width: 0; }
-.public-fuel-summary-close { grid-column: 3; grid-row: 1; min-width: 44px; min-height: 44px; }
 .public-fuel-summary-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: .5rem; }
 .public-fuel-summary-stale { display: inline-flex; align-items: center; gap: .25rem; }
 .public-fuel-summary-refresh { min-height: 44px; }
@@ -988,28 +989,14 @@ html:has([data-slot="map-workspace"][data-expanded="true"]) { overflow: hidden; 
 }
 .public-fuel-current-prices dd { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
 
-/* 공개 유가: 범위 요약 머리 — 고정 이름의 토글 + 유종 선택 + 닫기를 한 줄 44px 높이에 맞춘다. 접으면 내용 폭만 쓴다. */
+/* 공개 유가: 범위 요약 머리 — 접지 않는 고정 제목 + 유종 선택을 한 줄 44px 높이에 맞춘다. */
 .public-fuel-summary { gap: 6px; padding: 6px; }
-.public-fuel-summary[data-expanded="false"] { width: fit-content; }
 .public-fuel-summary .public-fuel-summary-header { align-items: center; column-gap: 6px; row-gap: 6px; }
-.public-fuel-summary .public-fuel-summary-header > h2 { flex: none; }
-.public-fuel-summary .fuel-summary-toggle {
-  display: inline-flex; align-items: center; gap: 6px; width: auto; min-height: 44px; padding: 0 10px;
-  border: 0; border-radius: var(--radius-control); background: transparent; color: var(--text-primary);
-  font-size: var(--text-sm); font-weight: 600; white-space: nowrap;
+.public-fuel-summary .public-fuel-summary-title {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 6px;
+  color: var(--text-primary); font-size: var(--text-sm); font-weight: 600; white-space: nowrap;
 }
-@media (hover: hover) { .public-fuel-summary .fuel-summary-toggle:hover { background: var(--surface-subtle); } }
-.public-fuel-summary .fuel-summary-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.public-fuel-summary .fuel-summary-toggle > svg:first-child { color: var(--brand); }
-.public-fuel-summary .fuel-summary-chevron { color: var(--text-secondary); transition: transform var(--dur-short, 100ms) ease-out; }
-.public-fuel-summary .fuel-summary-toggle[aria-expanded="true"] .fuel-summary-chevron { transform: rotate(180deg); }
-.public-fuel-summary .public-fuel-summary-close { justify-self: end; }
-/* 접힌 상태는 토글 하나뿐이라 빈 열 간격이 남지 않게 한다. */
-.public-fuel-summary[data-expanded="false"] .public-fuel-summary-header { display: flex; }
-/* 좁은 화면(320px 등): 유종 선택을 둘째 줄 전체 폭으로 내려 토글·닫기와 다투지 않게 한다. */
-@media (max-width: 479px) {
-  .public-fuel-summary .public-fuel-summary-products { grid-column: 1 / -1; grid-row: 2; }
-}
+.public-fuel-summary .public-fuel-summary-title > svg { flex: none; color: var(--brand); }
 .public-fuel-summary .public-fuel-summary-body { padding-inline: 4px; }
 
 /* 주유소 상세의 30일 추이는 지도 위 패널에서 기존 높이의 절반만 쓴다. */

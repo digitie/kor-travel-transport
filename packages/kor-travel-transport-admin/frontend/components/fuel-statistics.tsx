@@ -2,10 +2,10 @@
 
 import { VirtualTable } from "@kor-travel/ui/virtual-table";
 
-import { ChevronDown, ClockAlert, MapPinned, X } from "lucide-react";
+import { ClockAlert, MapPinned } from "lucide-react";
 import Link from "next/link";
 import { InfoButton } from "./info-button";
-import { useEffect, useId, useRef, useState, type RefObject } from "react";
+import { useEffect, useId, useState } from "react";
 import { dateTime, transportGet } from "@/lib/journey";
 import { fuelProductLabel } from "@/lib/transport-presentation";
 import { fuelDrivingCosts } from "@/lib/driver-statistics";
@@ -147,29 +147,15 @@ const publicProductOptions = [
   ...FUEL_CHART_ORDER.map(value => ({ value, label: fuelProductLabel(value) })),
 ];
 
+// 공개 유가는 범위 요약을 접지 않는다. 유종 선택과 평균·최저가를 처음부터 늘 보인다(상세를 열어도 유지).
 function PublicFuelViewportSummary({
-  items, pending, failed, pricesStale, pricesLastRefreshedAt, detailOpen, detailExpanded,
-  onDetailExpandedChange, publicFuel,
+  items, pending, failed, pricesStale, pricesLastRefreshedAt, publicFuel,
 }: Omit<FuelViewportSummaryProps, "publicFuel"> & { publicFuel: NonNullable<FuelViewportSummaryProps["publicFuel"]> }) {
   const selectedProducts = new Set(publicFuel.products);
-  const [viewportExpanded, setViewportExpanded] = useState(true);
-  const [localDetailExpanded, setLocalDetailExpanded] = useState(false);
-  const expanded = detailOpen ? (detailExpanded ?? localDetailExpanded) : viewportExpanded;
-  const toggleRef = useRef<HTMLButtonElement>(null);
-  const bodyId = useId();
   const displayed = selectedProducts.size ? items.filter(item => selectedProducts.has(item.product_code)) : items;
-  function setExpanded(next: boolean) {
-    if (detailOpen) {
-      setLocalDetailExpanded(next);
-      onDetailExpandedChange?.(next);
-    } else {
-      setViewportExpanded(next);
-    }
-  }
-  return <section className="fuel-viewport-summary public-fuel-summary" data-expanded={expanded} aria-label="현재 지도 범위 유가 통계" aria-busy={pending}>
-    <PublicFuelSummaryHeader expanded={expanded} setExpanded={setExpanded} toggleRef={toggleRef} bodyId={bodyId}
-      pricesStale={pricesStale} pricesLastRefreshedAt={pricesLastRefreshedAt} controls={publicFuel} />
-    <div id={bodyId} className="fuel-summary-body public-fuel-summary-body" hidden={!expanded}>
+  return <section className="fuel-viewport-summary public-fuel-summary" aria-label="현재 지도 범위 유가 통계" aria-busy={pending}>
+    <PublicFuelSummaryHeader pricesStale={pricesStale} pricesLastRefreshedAt={pricesLastRefreshedAt} controls={publicFuel} />
+    <div className="fuel-summary-body public-fuel-summary-body">
       {pending ? <p role="status">통계 조회 중…</p> : failed ? <p role="alert">통계를 불러오지 못했습니다.</p> :
         <PublicFuelRangeValues items={displayed} />}
     </div>
@@ -177,30 +163,21 @@ function PublicFuelViewportSummary({
 }
 
 function PublicFuelSummaryHeader({
-  expanded, setExpanded, toggleRef, bodyId, pricesStale, pricesLastRefreshedAt, controls,
+  pricesStale, pricesLastRefreshedAt, controls,
 }: {
-  expanded: boolean; setExpanded: (next: boolean) => void; toggleRef: RefObject<HTMLButtonElement | null>;
-  bodyId: string; pricesStale?: boolean; pricesLastRefreshedAt?: string | null;
+  pricesStale?: boolean; pricesLastRefreshedAt?: string | null;
   controls: NonNullable<FuelViewportSummaryProps["publicFuel"]>;
 }) {
   const productId = useId();
   const { products, onProductsChange } = controls;
   return <header className="public-fuel-summary-header">
-    {/* 접고 펼쳐도 같은 이름·폭을 유지한다. 상태는 aria-expanded와 화살표 방향이 알려 준다. */}
-    <h2><button ref={toggleRef} type="button" className="fuel-summary-toggle" aria-expanded={expanded} aria-controls={bodyId}
-      onClick={() => setExpanded(!expanded)}>
-      <MapPinned aria-hidden="true" size={16} /><span>지도 범위</span><ChevronDown aria-hidden="true" size={16} className="fuel-summary-chevron" />
-    </button></h2>
-    {expanded ? <>
-      <div className="public-fuel-summary-products">
-        <label className="sr-only" htmlFor={productId}>표시 유종</label>
-        <FilterCombobox id={productId} compact options={publicProductOptions} value={products} placeholder="전체 유종"
-          onChange={values => onProductsChange(values.includes(ALL_PUBLIC_PRODUCTS) ? [] : values)} />
-      </div>
-      <PublicFuelSummaryActions stale={pricesStale} lastRefreshedAt={pricesLastRefreshedAt} controls={controls} />
-      <Button type="button" variant="ghost" size="icon-sm" className="public-fuel-summary-close" aria-label="범위 요약 닫기"
-        onClick={() => { setExpanded(false); toggleRef.current?.focus(); }}><X aria-hidden="true" /></Button>
-    </> : null}
+    <h2 className="public-fuel-summary-title"><MapPinned aria-hidden="true" size={16} /><span>지도 범위</span></h2>
+    <div className="public-fuel-summary-products">
+      <label className="sr-only" htmlFor={productId}>표시 유종</label>
+      <FilterCombobox id={productId} compact options={publicProductOptions} value={products} placeholder="전체 유종"
+        onChange={values => onProductsChange(values.includes(ALL_PUBLIC_PRODUCTS) ? [] : values)} />
+    </div>
+    <PublicFuelSummaryActions stale={pricesStale} lastRefreshedAt={pricesLastRefreshedAt} controls={controls} />
   </header>;
 }
 
