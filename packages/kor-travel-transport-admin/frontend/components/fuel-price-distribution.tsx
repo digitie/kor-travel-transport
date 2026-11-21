@@ -2,6 +2,7 @@
 
 import { lazy, Suspense, useEffect, useId, useState, type ReactNode } from "react";
 import { ChartColumn } from "lucide-react";
+import { VirtualTable } from "@kor-travel/ui/virtual-table";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { fuelProductLabel } from "@/lib/transport-presentation";
@@ -9,7 +10,8 @@ import { FUEL_CHART_ORDER } from "@/lib/fuel-chart-model";
 import {
   binLabel, distributionSummary, distributionTimestamp, gradeTone, histogramValues, loadFuelPriceDistribution,
   sigunguChipLabels, signedWon, won,
-  type FuelDistributionTarget, type FuelPriceComparison, type FuelPriceDistribution, type FuelViewportSigungu,
+  type FuelDistributionTarget, type FuelPriceComparison, type FuelPriceDistribution, type FuelPriceScope,
+  type FuelSigunguDistribution, type FuelViewportSigungu,
 } from "@/lib/fuel-price-distribution";
 
 // 공개 유가(TRANSPORT_UI_MODE=fuel) 전용. 관리 화면은 이 파일을 쓰지 않는다(publicFuel 조건에서만 렌더).
@@ -125,43 +127,53 @@ function FuelDistributionContent({ data, productLabel }: { data: FuelPriceDistri
   const pinned = station?.price ?? null;
   return <>
     {station && !station.sells_product ? <p className="fuel-distribution-notice" role="status">이 주유소는 {productLabel}를 팔지 않거나 이번 통계에 가격이 없습니다.</p> : null}
-    {!local.sufficient ? <p className="fuel-distribution-notice" role="status">
-      주유소가 {local.station_count}곳뿐이라 분포 그래프를 그리지 않습니다(최소 {data.minimum_sample}곳). 위 최저·평균·최고만 참고하세요.
-    </p> : <>
+    {local.sufficient ? <>
       <Suspense fallback={<div className="fuel-distribution-chart"><p role="status">차트 준비 중…</p></div>}>
         <Chart distribution={local} nationwide={data.nationwide} productLabel={productLabel} percent={percent} compare={compare}
           pinnedPrice={pinned} label={`${local.label} ${productLabel} 가격 분포 그래프. 아래 요약과 표에 같은 내용이 있습니다.`} />
       </Suspense>
-      <ul className="fuel-distribution-legend" aria-label="그래프 범례">
-        <li data-series="line">{productLabel} 값(낮은 가격부터)</li>
-        <li data-series="bar">값 분포({percent ? "%" : "개"})</li>
-        {pinned != null ? <li data-series="pin">이 주유소 {won(pinned)}</li> : null}
-        {compare && data.nationwide ? <>
-          <li data-series="national-min">전국 최저({won(data.nationwide.minimum_price)})</li>
-          <li data-series="national-avg">전국 평균({won(data.nationwide.average_price)})</li>
-          <li data-series="national-max">전국 최고({won(data.nationwide.maximum_price)})</li>
-        </> : null}
-      </ul>
+      <DistributionLegend productLabel={productLabel} percent={percent} pinned={pinned} national={compare ? data.nationwide : null} />
       <div className="fuel-distribution-toggles">
         <label><input type="checkbox" checked={percent} onChange={event => setPercent(event.target.checked)} /> 분포(%)</label>
         <label><input type="checkbox" checked={compare} disabled={!data.nationwide} onChange={event => setCompare(event.target.checked)} /> 전국 대비</label>
       </div>
-      <p className="fuel-distribution-summary">{distributionSummary(local, productLabel, percent)}{compare && data.nationwide
-        ? ` 전국 최저 ${won(data.nationwide.minimum_price)}, 평균 ${won(data.nationwide.average_price)}, 최고 ${won(data.nationwide.maximum_price)}.` : ""}</p>
-      <details className="fuel-distribution-table">
-        <summary>가격 구간 표</summary>
-        <table>
-          <caption className="sr-only">{local.label} {productLabel} 가격 구간별 주유소</caption>
-          <thead><tr><th scope="col">가격 구간</th><th scope="col">{percent ? "비율" : "주유소"}</th></tr></thead>
-          <tbody>{local.histogram.map((bin, index) => <tr key={bin.start}>
-            <th scope="row">{binLabel(bin.start)} {won(bin.end)} 미만</th>
-            <td>{percent ? `${histogramValues(local, true)[index]}%` : `${bin.count}개`}</td>
-          </tr>)}</tbody>
-        </table>
-      </details>
-    </>}
+      <p className="fuel-distribution-summary">{distributionSummary(local, productLabel, percent)}{nationalSentence(compare ? data.nationwide : null)}</p>
+      <DistributionTable distribution={local} productLabel={productLabel} percent={percent} />
+    </> : <p className="fuel-distribution-notice" role="status">
+      주유소가 {local.station_count}곳뿐이라 분포 그래프를 그리지 않습니다(최소 {data.minimum_sample}곳). 위 최저·평균·최고만 참고하세요.
+    </p>}
     {station?.comparisons.length ? <FuelGradeRow comparisons={station.comparisons} price={station.price!} productLabel={productLabel} sidoName={data.sido_name} /> : null}
   </>;
+}
+
+const nationalSentence = (national: FuelPriceScope | null) => national
+  ? ` 전국 최저 ${won(national.minimum_price)}, 평균 ${won(national.average_price)}, 최고 ${won(national.maximum_price)}.` : "";
+
+function DistributionLegend({ productLabel, percent, pinned, national }: {
+  productLabel: string; percent: boolean; pinned: number | null; national: FuelPriceScope | null;
+}) {
+  return <ul className="fuel-distribution-legend" aria-label="그래프 범례">
+    <li data-series="line">{productLabel} 값(낮은 가격부터)</li>
+    <li data-series="bar">값 분포({percent ? "%" : "개"})</li>
+    {pinned != null ? <li data-series="pin">이 주유소 {won(pinned)}</li> : null}
+    {national ? <>
+      <li data-series="national-min">전국 최저({won(national.minimum_price)})</li>
+      <li data-series="national-avg">전국 평균({won(national.average_price)})</li>
+      <li data-series="national-max">전국 최고({won(national.maximum_price)})</li>
+    </> : null}
+  </ul>;
+}
+
+function DistributionTable({ distribution, productLabel, percent }: { distribution: FuelSigunguDistribution; productLabel: string; percent: boolean }) {
+  const shares = histogramValues(distribution, true);
+  const rows = distribution.histogram.map((bin, index) => ({ ...bin, share: shares[index] }));
+  return <details className="fuel-distribution-table">
+    <summary>가격 구간 표</summary>
+    <VirtualTable ariaLabel={`${distribution.label} ${productLabel} 가격 구간별 주유소`} data={rows} getRowId={row => String(row.start)} virtualized={false} columns={[
+      { id: "range", header: "가격 구간", cell: ({ row: { original: row } }) => `${binLabel(row.start)} ${won(row.end)} 미만` },
+      { id: "value", header: percent ? "비율" : "주유소", cell: ({ row: { original: row } }) => percent ? `${row.share}%` : `${row.count}개` },
+    ]} />
+  </details>;
 }
 
 /** 등급 원: 주유소 가격, 시군구·시도·전국 등급과 평균 대비 차이. */
@@ -192,8 +204,10 @@ export function FuelGradeRow({ comparisons, price, productLabel, sidoName, actio
 export function FuelStationPricePosition({ stationId, productCodes, selectedProducts, load }: {
   stationId: number; productCodes: string[]; selectedProducts: string[]; load: Loader;
 }) {
-  const ordered = FUEL_CHART_ORDER.filter(code => productCodes.includes(code));
-  const initial = selectedProducts.find(code => ordered.includes(code)) ?? ordered[0];
+  const sold = new Set(productCodes);
+  const ordered = FUEL_CHART_ORDER.filter(code => sold.has(code));
+  const orderedSet = new Set(ordered);
+  const initial = selectedProducts.find(code => orderedSet.has(code)) ?? ordered[0];
   const [open, setOpen] = useState(false);
   const target: FuelDistributionTarget = { kind: "station", station_id: stationId };
   const { current, retry } = useDistribution(load, initial ? target : null, initial ?? "B027");

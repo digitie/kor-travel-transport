@@ -4,15 +4,14 @@ import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, expect, test, vi } from "vitest";
 import { FuelSigunguChips, FuelStationPricePosition } from "./fuel-price-distribution";
-import { distributionOption } from "./fuel-distribution-chart";
+import { distributionOption } from "./fuel-distribution-chart-option";
 import { FuelViewportSummary } from "./fuel-statistics";
 import { PlaceDetails } from "./journey-controls";
 import { sampleDistribution } from "@/lib/fuel-price-distribution.fixture";
 import type { Place } from "@/lib/journey";
 
 // 캔버스 ECharts 대신 받은 props를 그대로 보여 주는 대역(차트 옵션은 아래 distributionOption 테스트가 본다).
-vi.mock("./fuel-distribution-chart", async (original) => ({
-  ...(await original<typeof import("./fuel-distribution-chart")>()),
+vi.mock("./fuel-distribution-chart", () => ({
   default: (props: { percent: boolean; compare: boolean; pinnedPrice?: number | null; label: string }) =>
     <div data-testid="chart" role="img" aria-label={props.label} data-percent={String(props.percent)}
       data-compare={String(props.compare)} data-pinned={String(props.pinnedPrice ?? "")} />,
@@ -65,7 +64,7 @@ test("시군구 칩은 5곳과 +N을 보이고, 누르면 그 시군구 통계 �
   // 분포(%) 토글: 막대·표·요약이 백분율로 바뀐다.
   await act(async () => checkbox("분포(%)").click());
   expect(dialog.querySelector('[data-testid="chart"]')?.getAttribute("data-percent")).toBe("true");
-  expect(dialog.querySelector("tbody")?.textContent).toContain("48.3%");
+  expect(dialog.querySelector('[aria-label="옥천군 휘발유 가격 구간별 주유소"]')?.textContent).toContain("48.3%");
   // 전국 대비 토글: 전국 최저·평균·최고 범례와 요약이 붙는다.
   expect(dialog.textContent).not.toContain("전국 최저(1,765원)");
   await act(async () => checkbox("전국 대비").click());

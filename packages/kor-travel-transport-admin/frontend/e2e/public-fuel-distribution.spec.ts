@@ -104,7 +104,7 @@ for (const width of [320, 390, 1440]) {
     await percent.check();
     await expect(dialog.getByRole("list", { name: "그래프 범례" })).toContainText("값 분포(%)");
     await dialog.getByText("가격 구간 표").click();
-    await expect(dialog.locator("tbody")).toContainText("34.5%");
+    await expect(dialog.getByLabel("충북 옥천군 휘발유 가격 구간별 주유소")).toContainText("34.5%");
     // 전국 대비
     const compare = dialog.getByRole("checkbox", { name: "전국 대비" });
     await compare.check();
