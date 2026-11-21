@@ -229,17 +229,22 @@ export function FuelStationPricePosition({ stationId, productCodes, selectedProd
   const target: FuelDistributionTarget = { kind: "station", station_id: stationId };
   const { current, retry } = useDistribution(load, initial ? target : null, initial ?? "B027");
   if (!initial) return null;
-  const station = current?.data?.station;
-  const productLabel = fuelProductLabel(initial);
   return <section className="fuel-station-position" aria-label="주변 대비 가격" aria-busy={!current}>
-    {!current ? <p className="quiet" role="status">주변 대비 가격 확인 중…</p>
-      : current.unavailable ? <p className="quiet">이 주유소는 지역 가격 비교를 제공하지 않습니다.</p>
-      : current.error ? <div role="alert"><p>주변 대비 가격을 불러오지 못했습니다.</p><Button type="button" variant="outline" size="sm" onClick={retry}>다시 시도</Button></div>
-      : !station?.comparisons.length ? <p className="quiet">이번 통계에 이 주유소의 {productLabel} 가격이 없어 비교하지 않습니다.</p>
-      : <FuelGradeRow comparisons={station.comparisons} price={station.price!} productLabel={productLabel} sidoName={current.data?.sido_name}
-          action={<Button ref={opener} type="button" variant="outline" size="sm" className="fuel-grade-open" onClick={() => setOpen(true)}>
-            <ChartColumn aria-hidden="true" size={16} />{current.data?.sigungu_name ?? "지역"} 가격 분포
-          </Button>} />}
+    <StationPositionState current={current} retry={retry} productLabel={fuelProductLabel(initial)} onOpen={() => setOpen(true)} opener={opener} />
     <FuelDistributionDialog target={open ? target : null} onClose={() => setOpen(false)} initialProduct={initial} load={load} productChoices={ordered} returnFocus={opener} />
   </section>;
+}
+
+function StationPositionState({ current, retry, productLabel, onOpen, opener }: {
+  current?: LoadState; retry: () => void; productLabel: string; onOpen: () => void; opener: RefObject<HTMLButtonElement | null>;
+}) {
+  if (!current) return <p className="quiet" role="status">주변 대비 가격 확인 중…</p>;
+  if (current.unavailable) return <p className="quiet">이 주유소는 지역 가격 비교를 제공하지 않습니다.</p>;
+  if (current.error) return <div role="alert"><p>주변 대비 가격을 불러오지 못했습니다.</p><Button type="button" variant="outline" size="sm" onClick={retry}>다시 시도</Button></div>;
+  const station = current.data?.station;
+  if (!station?.comparisons.length || station.price == null) return <p className="quiet">이번 통계에 이 주유소의 {productLabel} 가격이 없어 비교하지 않습니다.</p>;
+  return <FuelGradeRow comparisons={station.comparisons} price={station.price} productLabel={productLabel} sidoName={current.data?.sido_name}
+    action={<Button ref={opener} type="button" variant="outline" size="sm" className="fuel-grade-open" onClick={onOpen}>
+      <ChartColumn aria-hidden="true" size={16} />{current.data?.sigungu_name ?? "지역"} 가격 분포
+    </Button>} />;
 }
