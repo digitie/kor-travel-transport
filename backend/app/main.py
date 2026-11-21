@@ -279,7 +279,7 @@ def _install_exception_log_redaction(settings: Settings) -> None:
     secrets_to_hide = tuple(
         secret
         for secret in (settings.data_go_kr_service_key, settings.kric_service_key, settings.kex_ex_api_key,
-                       settings.opinet_api_key, settings.fuel_refresh_internal_token)
+                       settings.fuel_refresh_internal_token)
         if secret
     )
     for name in _REDACTED_EXCEPTION_LOGGERS:
