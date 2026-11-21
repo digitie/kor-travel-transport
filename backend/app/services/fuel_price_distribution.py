@@ -14,7 +14,7 @@ from collections.abc import AsyncIterator, Callable, Sequence
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import Integer, and_, cast, func, or_, select
+from sqlalchemy import String, and_, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.time_utils import serialize_utc
@@ -93,11 +93,14 @@ def price_quantiles(sorted_prices: Sequence[float]) -> list[dict]:
     return points
 
 
-def _published_points(product_code: str | None = None):
-    p, state = FuelStatisticsPoint, FuelStatisticsState
-    statement = select(p).join(state, and_(p.source == state.source, p.generated_at == state.generated_at)).join(
-        FuelStation, FuelStation.id == cast(p.station_key, Integer),
-    ).where(p.source == OPINET, p.price > 0)
+def _published_points(generated_at, product_code: str | None = None):
+    """한 공개 세대(generated_at 고정)의 양수 가격 point와 주유소. 응답 안 여러 SELECT가 같은 세대를 읽는다.
+
+    조인은 주유소 id를 문자열로 바꿔 비교한다(고속도로 point의 문자 station_key를 숫자로 바꾸다 실패할 여지가 없다).
+    """
+    p = FuelStatisticsPoint
+    statement = select(p).join(FuelStation, p.station_key == cast(FuelStation.id, String)).where(
+        p.source == OPINET, p.generated_at == generated_at, p.price > 0)
     if product_code is not None:
         statement = statement.where(p.product_code == product_code)
     return statement
@@ -120,8 +123,8 @@ async def viewport_sigungu(session: AsyncSession, bounds: tuple[float, float, fl
     if cached and cached[0] > time.monotonic():
         _sigungu_cache.move_to_end(key)
         return cached[1]
-    p, s, state = FuelStatisticsPoint, FuelStation, FuelStatisticsState
-    conditions = [p.source == OPINET, p.price > 0,
+    p, s = FuelStatisticsPoint, FuelStation
+    conditions = [p.source == OPINET, p.generated_at == published.generated_at, p.price > 0,
                   p.longitude.between(bounds[0], bounds[2]), p.latitude.between(bounds[1], bounds[3])]
     if products:
         conditions.append(p.product_code.in_(products))
@@ -130,14 +133,12 @@ async def viewport_sigungu(session: AsyncSession, bounds: tuple[float, float, fl
                                 for column in (p.name, p.brand_name, p.address))))
     # 화면 안 주유소 id를 먼저 한 번씩만 뽑고(유종 행 중복 제거) 그다음 시군구로 묶는다.
     # 전국 화면(약 3.2만 가격 행)에서 가격 행 전체를 주유소와 조인해 count(distinct)하는 것보다 싸다.
-    visible = select(cast(p.station_key, Integer).label("station_id")).join(state, and_(
-        p.source == state.source, p.generated_at == state.generated_at,
-    )).where(*conditions).distinct().subquery()
+    visible = select(p.station_key).where(*conditions).distinct().subquery()
     station_count = func.count().label("station_count")
     grouped = select(
         s.sido_value, s.sido_name, s.sigungu_value, s.sigungu_name, station_count,
         func.count().over().label("region_total"),
-    ).select_from(visible).join(s, s.id == visible.c.station_id).where(
+    ).select_from(visible).join(s, cast(s.id, String) == visible.c.station_key).where(
         s.sido_value != "", s.sigungu_value != "",
     ).group_by(s.sido_value, s.sido_name, s.sigungu_value, s.sigungu_name).order_by(
         func.count().desc(), s.sido_value, s.sigungu_value,
@@ -182,6 +183,8 @@ async def price_distribution(session: AsyncSession, *, product_code: str, sido_v
         if station is None or station.source != OPINET:
             raise HTTPException(status_code=404, detail="오피넷 주유소만 지역 가격 비교를 제공합니다.")
         sido_value, sigungu_value = station.sido_value, station.sigungu_value
+        if not sido_value or not sigungu_value:
+            raise HTTPException(status_code=404, detail="지역 정보가 없는 주유소입니다.")
     if not sido_value or not sigungu_value:
         raise HTTPException(status_code=422, detail="시도·시군구 또는 주유소를 지정해 주세요.")
     collection = await session.scalar(select(TransportCollectionState).where(TransportCollectionState.source == OPINET))
@@ -198,7 +201,7 @@ async def price_distribution(session: AsyncSession, *, product_code: str, sido_v
     }
     if generated_at is None:
         return response
-    region_rows = (await session.execute(_published_points(product_code).with_only_columns(
+    region_rows = (await session.execute(_published_points(generated_at, product_code).with_only_columns(
         p.price, s.sido_name, s.sigungu_name,
     ).where(s.sido_value == sido_value, s.sigungu_value == sigungu_value).order_by(p.price))).all()
     prices = [float(row.price) for row in region_rows]
@@ -218,7 +221,7 @@ async def price_distribution(session: AsyncSession, *, product_code: str, sido_v
     station_price = None
     station_products: list[str] = []
     if station is not None:
-        station_rows = (await session.execute(_published_points().with_only_columns(p.product_code, p.price)
+        station_rows = (await session.execute(_published_points(generated_at).with_only_columns(p.product_code, p.price)
                                               .where(p.station_key == str(station.id)))).all()
         station_products = sorted(row.product_code for row in station_rows)
         station_price = next((float(row.price) for row in station_rows if row.product_code == product_code), None)
@@ -230,7 +233,7 @@ async def price_distribution(session: AsyncSession, *, product_code: str, sido_v
         columns += [func.count().filter(p.price < station_price), func.count().filter(p.price == station_price),
                     func.count().filter(and_(in_sido, p.price < station_price)),
                     func.count().filter(and_(in_sido, p.price == station_price))]
-    aggregate = (await session.execute(_published_points(product_code).with_only_columns(*columns))).one()
+    aggregate = (await session.execute(_published_points(generated_at, product_code).with_only_columns(*columns))).one()
     nationwide = _summary("nationwide", "전국", *aggregate[0:4])
     sido = _summary("sido", sido_label, *aggregate[4:8])
     response["nationwide"], response["sido"] = nationwide, sido

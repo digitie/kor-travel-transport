@@ -188,3 +188,28 @@ def test_viewport_sigungu_is_opt_in_and_counts_visible_stations(published):
     other_source = published.get("/v1/transport/features/places", params={
         **params, "include_viewport_sigungu": True, "source": "krex_rest_area_fuel"}).json()
     assert other_source["fuel_viewport_sigungu"] == []
+
+
+@pytest.mark.parametrize("zoom", [7, 12])
+def test_viewport_sigungu_off_keeps_existing_response(published, zoom):
+    """요청하지 않으면(관리 지도·page cache·클러스터 경로) 기존 응답과 같다. generated_at만 매 요청 다르다."""
+    params = {"kind": "fuel_station", "zoom": zoom,
+              "min_longitude": 126.985, "max_longitude": 127.035, "min_latitude": 37, "max_latitude": 38}
+    first = published.get("/v1/transport/features/places", params=params).json()
+    second = published.get("/v1/transport/features/places", params={**params, "include_viewport_sigungu": False}).json()
+    for body in (first, second):
+        body.pop("generated_at")
+        assert "fuel_viewport_sigungu" not in body and "fuel_viewport_sigungu_total" not in body
+    assert first == second
+
+
+def test_station_without_region_is_not_found(published):
+    from sqlalchemy import update
+
+    async def clear_region():
+        async with published.app.state.session_factory() as session:
+            await session.execute(update(FuelStation).where(FuelStation.id == 101).values(sigungu_value=""))
+            await session.commit()
+    asyncio.run(clear_region())
+    response = published.get("/v1/transport/fuel/price-distribution", params={"station_id": 101})
+    assert response.status_code == 404
