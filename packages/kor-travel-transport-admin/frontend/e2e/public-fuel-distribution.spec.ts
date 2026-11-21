@@ -131,16 +131,24 @@ test("390px 작은 시군구는 그래프 대신 안내 문구", async ({ page }
   await shot(page, "fuel-stats-small-sample-390.png", testInfo);
 });
 
-test("다크 모드에서도 대화상자 글자와 배경이 대비된다", async ({ page }, testInfo) => {
+// 소유자 지시(2026-11-22): 공개 유가 화면에는 테마 선택 기능이 없다. 앱은 지금처럼 한 가지(밝은) 색 구성을 유지하고,
+// OS가 어두운 모드여도 선택기·저장 키 없이 같은 화면을 그린다.
+test("공개 유가 화면에는 테마 선택기가 없고 OS 다크 모드에서도 대화상자가 읽힌다", async ({ page }, testInfo) => {
   await page.emulateMedia({ colorScheme: "dark" });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
+  await expect(summaryOf(page)).toBeVisible();
+  const themeControl = /테마|화면 모드|라이트|다크|light|dark|system/i;
+  for (const role of ["button", "radio", "switch", "combobox", "menuitemradio", "tab"] as const) {
+    await expect(page.getByRole(role, { name: themeControl })).toHaveCount(0);
+  }
+  expect(await page.evaluate(() => Object.keys(localStorage).filter(key => /theme/i.test(key)))).toEqual([]);
   await summaryOf(page).getByRole("button", { name: /^옥천군 휘발유 가격 통계/ }).click();
   const dialog = page.getByRole("dialog", { name: /옥천군/ });
   await expect(dialog.getByRole("img")).toBeVisible();
   const [text, background] = await dialog.evaluate(node => [getComputedStyle(node.querySelector("h2")!).color, getComputedStyle(node).backgroundColor]);
   expect(text).not.toBe(background);
-  await shot(page, "fuel-stats-dialog-dark-390.png", testInfo);
+  await shot(page, "fuel-stats-dialog-os-dark-390.png", testInfo);
 });
 
 test.describe("주유소 상세", () => {
