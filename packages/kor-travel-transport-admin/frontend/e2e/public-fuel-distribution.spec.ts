@@ -97,7 +97,8 @@ for (const width of [320, 390, 1440]) {
     // 그래프 위를 누르면 툴팁(가격 구간 + 개수 또는 가격 곡선 값)이 뜬다.
     const chartBox = (await chart.boundingBox())!;
     await page.mouse.click(chartBox.x + chartBox.width * .55, chartBox.y + chartBox.height - 34);
-    await expect(dialog.locator("div").filter({ hasText: /원~ \d+개|낮은 가격부터/ }).last()).toBeVisible();
+    // ECharts 툴팁은 차트 컨테이너 안에 붙는다(범례 문구와 섞이지 않게 차트 안만 본다).
+    await expect(dialog.locator(".fuel-distribution-chart div").filter({ hasText: /^(\d{1,3}(,\d{3})*원~ \d+개|낮은 가격부터 \d+% · [\d,]+원)$/ }).first()).toBeVisible();
     await shot(page, `fuel-stats-dialog-${width}.png`, testInfo);
     // 분포(%)
     const percent = dialog.getByRole("checkbox", { name: "분포(%)" });

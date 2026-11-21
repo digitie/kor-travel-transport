@@ -1,12 +1,13 @@
 "use client";
 
-import { lazy, Suspense, useEffect, useId, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 import { ChartColumn } from "lucide-react";
 import { VirtualTable } from "@kor-travel/ui/virtual-table";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { fuelProductLabel } from "@/lib/transport-presentation";
 import { FUEL_CHART_ORDER } from "@/lib/fuel-chart-model";
+import { TransportError } from "@/lib/journey";
 import {
   binLabel, distributionSummary, distributionTimestamp, gradeTone, histogramValues, loadFuelPriceDistribution,
   sigunguChipLabels, signedWon, won,
@@ -20,7 +21,8 @@ type Loader = <T>(path: string, signal?: AbortSignal) => Promise<T>;
 const VISIBLE_CHIPS = 5;
 const scopeShort: Record<string, string> = { nationwide: "전국" };
 
-type LoadState = { key: string; data?: FuelPriceDistribution; error?: boolean };
+// unavailable: 서버가 이 주유소·지역을 비교할 수 없다고 답했다(404·422). 재시도 대신 조용한 안내를 보인다.
+type LoadState = { key: string; data?: FuelPriceDistribution; error?: boolean; unavailable?: boolean };
 
 function useDistribution(load: Loader, target: FuelDistributionTarget | null, product: string) {
   const key = target ? `${JSON.stringify(target)}:${product}` : "";
@@ -31,7 +33,11 @@ function useDistribution(load: Loader, target: FuelDistributionTarget | null, pr
     const controller = new AbortController();
     loadFuelPriceDistribution(load, target, product, AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]))
       .then(data => { if (!controller.signal.aborted) setState({ key, data }); })
-      .catch(() => { if (!controller.signal.aborted) setState({ key, error: true }); });
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        const unavailable = error instanceof TransportError && (error.status === 404 || error.status === 422);
+        setState({ key, error: !unavailable, unavailable });
+      });
     return () => controller.abort();
     // key는 target·product의 값 표현이다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -46,6 +52,7 @@ export function FuelSigunguChips({ regions, total, product, load }: {
 }) {
   const [expanded, setExpanded] = useState(false);
   const [target, setTarget] = useState<FuelDistributionTarget | null>(null);
+  const opener = useRef<HTMLElement | null>(null);
   const listId = useId();
   if (!regions.length) return null;
   const labels = sigunguChipLabels(regions);
@@ -54,32 +61,35 @@ export function FuelSigunguChips({ regions, total, product, load }: {
   return <nav className="fuel-sigungu-chips" aria-label="지도에 보이는 시군구 가격 통계">
     <ul id={listId}>
       {shown.map((region, index) => <li key={`${region.sido_value}:${region.sigungu_value}`}>
-        <button type="button" className="fuel-sigungu-chip" onClick={() => setTarget({
-          kind: "region", sido_value: region.sido_value, sigungu_value: region.sigungu_value, label: labels[index],
-        })} aria-label={`${labels[index]} ${fuelProductLabel(product)} 가격 통계 · 지도 안 ${region.station_count}개 주유소`}>
+        <button type="button" className="fuel-sigungu-chip" onClick={event => {
+          opener.current = event.currentTarget;
+          setTarget({ kind: "region", sido_value: region.sido_value, sigungu_value: region.sigungu_value, label: labels[index] });
+        }} aria-label={`${labels[index]} ${fuelProductLabel(product)} 가격 통계 · 지도 안 ${region.station_count}개 주유소`}>
           <span>{labels[index]}</span><small aria-hidden="true">{region.station_count}</small>
         </button>
       </li>)}
-      {hidden > 0 && !expanded && regions.length > VISIBLE_CHIPS ? <li>
-        <button type="button" className="fuel-sigungu-chip fuel-sigungu-more" aria-expanded={false} aria-controls={listId}
-          aria-label={`시군구 ${hidden}곳 더 보기`} onClick={() => setExpanded(true)}>+{hidden}</button>
-      </li> : null}
-      {expanded && regions.length > VISIBLE_CHIPS ? <li>
-        <button type="button" className="fuel-sigungu-chip fuel-sigungu-more" aria-expanded aria-controls={listId}
-          onClick={() => setExpanded(false)}>접기</button>
+      {regions.length > VISIBLE_CHIPS ? <li>
+        {/* 펼치기·접기는 같은 버튼이라 눌러도 초점을 잃지 않는다. */}
+        <button type="button" className="fuel-sigungu-chip fuel-sigungu-more" aria-expanded={expanded} aria-controls={listId}
+          aria-label={expanded ? "시군구 목록 접기" : `시군구 ${hidden}곳 더 보기`} onClick={() => setExpanded(value => !value)}>
+          {expanded ? "접기" : `+${hidden}`}
+        </button>
       </li> : null}
     </ul>
     {expanded && total > regions.length ? <p className="fuel-sigungu-note">주유소가 많은 {regions.length}곳만 보입니다. 지도를 확대해 나머지 {total - regions.length}곳을 확인하세요.</p> : null}
-    <FuelDistributionDialog target={target} onClose={() => setTarget(null)} initialProduct={product} load={load} />
+    <FuelDistributionDialog target={target} onClose={() => setTarget(null)} initialProduct={product} load={load} returnFocus={opener} />
   </nav>;
 }
 
 /** 시군구·주유소 공용 대화상자. 주유소면 그 가격을 곡선 위에 핀으로 표시한다. */
-export function FuelDistributionDialog({ target, onClose, initialProduct, load, productChoices }: {
+export function FuelDistributionDialog({ target, onClose, initialProduct, load, productChoices, returnFocus }: {
   target: FuelDistributionTarget | null; onClose: () => void; initialProduct: string; load: Loader; productChoices?: string[];
+  /** 트리거 없이 여는 대화상자라 닫을 때 연 버튼으로 초점을 직접 돌려준다. */
+  returnFocus?: RefObject<HTMLElement | null>;
 }) {
   return <Dialog open={target !== null} onOpenChange={open => { if (!open) onClose(); }}>
-    {target ? <DialogContent className="fuel-distribution-dialog" showCloseButton={false}>
+    {target ? <DialogContent className="fuel-distribution-dialog" showCloseButton={false}
+      onCloseAutoFocus={event => { event.preventDefault(); returnFocus?.current?.focus(); }}>
       <FuelDistributionBody key={JSON.stringify(target)} target={target} initialProduct={initialProduct} load={load} productChoices={productChoices} />
       <DialogClose asChild><Button type="button" variant="outline" className="fuel-distribution-close">닫기</Button></DialogClose>
     </DialogContent> : null}
@@ -90,6 +100,9 @@ function FuelDistributionBody({ target, initialProduct, load, productChoices }: 
   target: FuelDistributionTarget; initialProduct: string; load: Loader; productChoices?: string[];
 }) {
   const [product, setProduct] = useState(initialProduct);
+  // 토글은 유종을 바꿔 다시 불러오는 동안에도 유지한다.
+  const [percent, setPercent] = useState(false);
+  const [compare, setCompare] = useState(false);
   const { current, retry } = useDistribution(load, target, product);
   const data = current?.data;
   const placeLabel = target.kind === "region" ? target.label : data?.sigungu_name ?? "주변";
@@ -112,14 +125,16 @@ function FuelDistributionBody({ target, initialProduct, load, productChoices }: 
       </select>
     </div> : null}
     {!current ? <p role="status">가격 분포 불러오는 중…</p>
+      : current.unavailable ? <p role="status">이 지역은 가격 분포를 제공하지 않습니다.</p>
       : current.error || !data ? <div role="alert"><p>가격 분포를 불러오지 못했습니다.</p><Button type="button" variant="outline" size="sm" onClick={retry}>다시 시도</Button></div>
-      : <FuelDistributionContent data={data} productLabel={productLabel} />}
+      : <FuelDistributionContent data={data} productLabel={productLabel} percent={percent} setPercent={setPercent} compare={compare} setCompare={setCompare} />}
   </div>;
 }
 
-function FuelDistributionContent({ data, productLabel }: { data: FuelPriceDistribution; productLabel: string }) {
-  const [percent, setPercent] = useState(false);
-  const [compare, setCompare] = useState(false);
+function FuelDistributionContent({ data, productLabel, percent, setPercent, compare, setCompare }: {
+  data: FuelPriceDistribution; productLabel: string;
+  percent: boolean; setPercent: (value: boolean) => void; compare: boolean; setCompare: (value: boolean) => void;
+}) {
   const local = data.sigungu;
   const station = data.station;
   if (!data.generated_at) return <p role="status">아직 공개된 유가 통계가 없습니다. 수집이 끝나면 표시됩니다.</p>;
@@ -166,11 +181,12 @@ function DistributionLegend({ productLabel, percent, pinned, national }: {
 
 function DistributionTable({ distribution, productLabel, percent }: { distribution: FuelSigunguDistribution; productLabel: string; percent: boolean }) {
   const shares = histogramValues(distribution, true);
-  const rows = distribution.histogram.map((bin, index) => ({ ...bin, share: shares[index] }));
+  const last = distribution.histogram.length - 1;
+  const rows = distribution.histogram.map((bin, index) => ({ ...bin, share: shares[index], last: index === last }));
   return <details className="fuel-distribution-table">
     <summary>가격 구간 표</summary>
     <VirtualTable ariaLabel={`${distribution.label} ${productLabel} 가격 구간별 주유소`} data={rows} getRowId={row => String(row.start)} virtualized={false} columns={[
-      { id: "range", header: "가격 구간", cell: ({ row: { original: row } }) => `${binLabel(row.start)} ${won(row.end)} 미만` },
+      { id: "range", header: "가격 구간", cell: ({ row: { original: row } }) => row.last ? `${binLabel(row.start)} ${won(distribution.maximum_price)} 이하` : `${binLabel(row.start)} ${won(row.end)} 미만` },
       { id: "value", header: percent ? "비율" : "주유소", cell: ({ row: { original: row } }) => percent ? `${row.share}%` : `${row.count}개` },
     ]} />
   </details>;
@@ -209,6 +225,7 @@ export function FuelStationPricePosition({ stationId, productCodes, selectedProd
   const orderedSet = new Set(ordered);
   const initial = selectedProducts.find(code => orderedSet.has(code)) ?? ordered[0];
   const [open, setOpen] = useState(false);
+  const opener = useRef<HTMLButtonElement>(null);
   const target: FuelDistributionTarget = { kind: "station", station_id: stationId };
   const { current, retry } = useDistribution(load, initial ? target : null, initial ?? "B027");
   if (!initial) return null;
@@ -216,12 +233,13 @@ export function FuelStationPricePosition({ stationId, productCodes, selectedProd
   const productLabel = fuelProductLabel(initial);
   return <section className="fuel-station-position" aria-label="주변 대비 가격" aria-busy={!current}>
     {!current ? <p className="quiet" role="status">주변 대비 가격 확인 중…</p>
+      : current.unavailable ? <p className="quiet">이 주유소는 지역 가격 비교를 제공하지 않습니다.</p>
       : current.error ? <div role="alert"><p>주변 대비 가격을 불러오지 못했습니다.</p><Button type="button" variant="outline" size="sm" onClick={retry}>다시 시도</Button></div>
       : !station?.comparisons.length ? <p className="quiet">이번 통계에 이 주유소의 {productLabel} 가격이 없어 비교하지 않습니다.</p>
       : <FuelGradeRow comparisons={station.comparisons} price={station.price!} productLabel={productLabel} sidoName={current.data?.sido_name}
-          action={<Button type="button" variant="outline" size="sm" className="fuel-grade-open" onClick={() => setOpen(true)}>
+          action={<Button ref={opener} type="button" variant="outline" size="sm" className="fuel-grade-open" onClick={() => setOpen(true)}>
             <ChartColumn aria-hidden="true" size={16} />{current.data?.sigungu_name ?? "지역"} 가격 분포
           </Button>} />}
-    <FuelDistributionDialog target={open ? target : null} onClose={() => setOpen(false)} initialProduct={initial} load={load} productChoices={ordered} />
+    <FuelDistributionDialog target={open ? target : null} onClose={() => setOpen(false)} initialProduct={initial} load={load} productChoices={ordered} returnFocus={opener} />
   </section>;
 }

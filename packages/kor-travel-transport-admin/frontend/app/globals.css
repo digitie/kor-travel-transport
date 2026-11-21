@@ -1079,9 +1079,11 @@ html:has([data-slot="map-workspace"][data-expanded="true"]) { overflow: hidden; 
 }
 .fuel-grade[data-tone="price"] .fuel-grade-circle { font-size: .95rem; color: var(--text-primary); }
 .fuel-grade-circle small {
-  position: absolute; right: -10px; bottom: -6px; padding: 1px 6px; border-radius: 9999px; background: var(--tone); color: var(--card);
-  font-size: 10px; font-weight: 650; white-space: nowrap; max-width: 5.5rem; overflow: hidden; text-overflow: ellipsis;
+  position: absolute; left: 50%; bottom: -8px; translate: -50% 0; padding: 1px 6px; border-radius: 9999px; background: var(--tone); color: var(--card);
+  font-size: 10px; font-weight: 650; white-space: nowrap; max-width: 64px; overflow: hidden; text-overflow: ellipsis;
 }
+/* 주황(warning) 바탕에는 밝은 글자 대비가 모자라 어두운 글자를 쓴다. */
+.fuel-grade:is([data-tone="price"], [data-tone="pricey"]) .fuel-grade-circle small { color: oklch(22% 0.02 60); }
 .fuel-grade[data-tone="none"] .fuel-grade-circle small { color: var(--text-primary); }
 .fuel-grade-caption { margin-top: 4px; color: var(--text-primary); font-size: var(--text-xs); font-weight: 600; }
 .fuel-grade-diff { color: var(--text-secondary); font-size: 11px; font-variant-numeric: tabular-nums; }

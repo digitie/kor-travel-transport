@@ -132,8 +132,13 @@ export function distributionSummary(distribution: FuelSigunguDistribution, produ
 const stampFormat = new Intl.DateTimeFormat("ko-KR", {
   timeZone: "Asia/Seoul", year: "numeric", month: "long", day: "numeric", weekday: "long", hour: "numeric",
 });
+const stampMinuteFormat = new Intl.DateTimeFormat("ko-KR", {
+  timeZone: "Asia/Seoul", year: "numeric", month: "long", day: "numeric", weekday: "long", hour: "numeric", minute: "numeric",
+});
+/** 통계 세대 시각(KST). 정각이면 "오전 7시", 아니면 "오전 7시 50분"까지 적는다. */
 export function distributionTimestamp(value: string | null) {
   if (!value) return null;
   const instant = new Date(value);
-  return Number.isFinite(instant.getTime()) ? `${stampFormat.format(instant)} 기준` : null;
+  if (!Number.isFinite(instant.getTime())) return null;
+  return `${(instant.getUTCMinutes() ? stampMinuteFormat : stampFormat).format(instant)} 기준`;
 }
