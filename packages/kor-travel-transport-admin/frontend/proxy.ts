@@ -12,8 +12,9 @@ export function proxy(request: NextRequest) {
       || pathname.startsWith("/_next/") || pathname.startsWith("/maplibre/")
       || pathname.startsWith("/fuel-brands/") || pathname === "/favicon.ico";
     if (!allowed) return new NextResponse(null, { status: 404 });
-    if (!["GET", "HEAD", ...(api ? ["OPTIONS"] : [])].includes(request.method)) {
-      return new NextResponse(null, { status: 405, headers: { Allow: api ? "GET, HEAD, OPTIONS" : "GET, HEAD" } });
+    const methods = pathname === "/api/public/fuel/refresh" ? ["POST", "OPTIONS"] : ["GET", "HEAD", ...(api ? ["OPTIONS"] : [])];
+    if (!methods.includes(request.method)) {
+      return new NextResponse(null, { status: 405, headers: { Allow: methods.join(", ") } });
     }
     if (pathname === "/") {
       const target = request.nextUrl.clone(); target.pathname = "/public/fuel";

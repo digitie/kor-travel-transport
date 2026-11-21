@@ -31,6 +31,10 @@ describe("Map 마커 매핑", () => {
 describe("가격 라벨", () => {
   it("Map과 같은 짧은 표기·순서로 한 줄에 한 유종을 쓰고 값 없는 행은 뺀다", () => expect(priceMarkerLabel(prices)).toBe("휘 1,650\n경 1,550\n고 1,900\n등유 1,300"));
   it("표시 유종 필터를 따른다", () => expect(priceMarkerLabel(prices, ["D047"])).toBe("경 1,550"));
+  it("공개 단일 유종 마커는 가격만 쓰고 낭독 이름을 유지한다", () => {
+    expect(priceMarkerLabel(prices, ["C004"], false)).toBe("1,300");
+    expect(priceSpeech(prices, ["C004"])).toBe("등유 1,300원");
+  });
   it("표시할 가격이 없으면 라벨을 만들지 않는다", () => {
     expect(priceMarkerLabel([])).toBeNull();
     expect(priceMarkerLabel(prices, ["K015"])).toBeNull();

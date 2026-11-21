@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { PublicFuelMap } from "@/components/public-fuel-map";
+import { publicFuelRefreshConfiguration } from "@/lib/public-fuel-proxy";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: { absolute: "주변 유가 지도" }, description: "현재 지도 범위와 내 위치 주변의 주유소 가격을 확인합니다." };
+export const metadata: Metadata = { title: { absolute: "주변 유가 지도" }, description: "주변 주유소 유가 지도" };
 export default function PublicFuelPage() {
   if (process.env.TRANSPORT_UI_MODE !== "fuel") notFound();
-  return <PublicFuelMap />;
+  return <PublicFuelMap refreshEnabled={Boolean(publicFuelRefreshConfiguration())} />;
 }

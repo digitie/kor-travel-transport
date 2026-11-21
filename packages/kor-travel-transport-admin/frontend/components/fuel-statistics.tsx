@@ -2,13 +2,15 @@
 
 import { VirtualTable } from "@kor-travel/ui/virtual-table";
 
+import { ClockAlert, X } from "lucide-react";
 import Link from "next/link";
 import { InfoButton } from "./info-button";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { dateTime, transportGet } from "@/lib/journey";
 import { fuelProductLabel } from "@/lib/transport-presentation";
 import { fuelDrivingCosts } from "@/lib/driver-statistics";
 import { FilterBar, FilterField } from "@/components/filter-bar";
+import { FilterCombobox } from "./filter-combobox";
 import { SectionCard } from "./section-card";
 import FuelPriceChart from "./fuel-price-chart-loader";
 import { FUEL_CHART_ORDER, fuelStationHref, type FuelChartStation } from "@/lib/fuel-chart-model";
@@ -107,7 +109,28 @@ export function FuelPriceStatus({ stale, lastRefreshedAt }: { stale: boolean; la
     : timestamp ? <p className="fuel-viewport-context">가격 갱신 {time}</p> : null;
 }
 
-export function FuelViewportSummary({ items, pending, failed = false, pricesStale = false, pricesLastRefreshedAt, detailOpen = false, detailExpanded, onDetailExpandedChange }: { items: FuelViewportStatistics[]; pending: boolean; failed?: boolean; pricesStale?: boolean; pricesLastRefreshedAt?: string | null; detailOpen?: boolean; detailExpanded?: boolean; onDetailExpandedChange?: (expanded: boolean) => void }) {
+type FuelViewportSummaryProps = {
+  items: FuelViewportStatistics[];
+  pending: boolean;
+  failed?: boolean;
+  pricesStale?: boolean;
+  pricesLastRefreshedAt?: string | null;
+  detailOpen?: boolean;
+  detailExpanded?: boolean;
+  onDetailExpandedChange?: (expanded: boolean) => void;
+  publicFuel?: {
+    products: string[];
+    onProductsChange: (products: string[]) => void;
+    onRefresh?: () => void;
+    refreshing?: boolean;
+  };
+};
+
+export function FuelViewportSummary({ publicFuel, ...props }: FuelViewportSummaryProps) {
+  return publicFuel ? <PublicFuelViewportSummary {...props} publicFuel={publicFuel} /> : <AdminFuelViewportSummary {...props} />;
+}
+
+function AdminFuelViewportSummary({ items, pending, failed = false, pricesStale = false, pricesLastRefreshedAt, detailOpen = false, detailExpanded, onDetailExpandedChange }: Omit<FuelViewportSummaryProps, "publicFuel">) {
   const { expanded, bodyId, setLocalDetailExpanded, detailScopeExpanded, selected, productId, setProduct } = useFuelViewportSummary({ items, pending, failed, pricesStale, pricesLastRefreshedAt, detailOpen, detailExpanded, onDetailExpandedChange });
   return <section className="fuel-viewport-summary" aria-label="현재 지도 범위 유가 통계" aria-busy={pending}>
     <header><h2>{detailOpen ? <button type="button" className="fuel-summary-toggle" aria-expanded={expanded} aria-controls={bodyId} onClick={() => { setLocalDetailExpanded(!detailScopeExpanded); onDetailExpandedChange?.(!detailScopeExpanded); }}>{expanded ? "범위 접기" : "현재 지도 범위"}</button> : "범위"}</h2>{expanded ? <small>원/L</small> : null}
@@ -116,6 +139,100 @@ export function FuelViewportSummary({ items, pending, failed = false, pricesStal
     </header>
     <FuelViewportValues bodyId={bodyId} expanded={expanded} pending={pending} failed={failed} detailOpen={detailOpen} pricesStale={pricesStale} pricesLastRefreshedAt={pricesLastRefreshedAt} selected={selected} />
   </section>;
+}
+
+const ALL_PUBLIC_PRODUCTS = "ALL";
+const publicProductOptions = [
+  { value: ALL_PUBLIC_PRODUCTS, label: "전체" },
+  ...FUEL_CHART_ORDER.map(value => ({ value, label: fuelProductLabel(value) })),
+];
+
+function PublicFuelViewportSummary({
+  items, pending, failed, pricesStale, pricesLastRefreshedAt, detailOpen, detailExpanded,
+  onDetailExpandedChange, publicFuel,
+}: Omit<FuelViewportSummaryProps, "publicFuel"> & { publicFuel: NonNullable<FuelViewportSummaryProps["publicFuel"]> }) {
+  const selectedProducts = new Set(publicFuel.products);
+  const [viewportExpanded, setViewportExpanded] = useState(true);
+  const [localDetailExpanded, setLocalDetailExpanded] = useState(false);
+  const expanded = detailOpen ? (detailExpanded ?? localDetailExpanded) : viewportExpanded;
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const bodyId = useId();
+  const displayed = selectedProducts.size ? items.filter(item => selectedProducts.has(item.product_code)) : items;
+  function setExpanded(next: boolean) {
+    if (detailOpen) {
+      setLocalDetailExpanded(next);
+      onDetailExpandedChange?.(next);
+    } else {
+      setViewportExpanded(next);
+    }
+  }
+  return <section className="fuel-viewport-summary public-fuel-summary" aria-label="현재 지도 범위 유가 통계" aria-busy={pending}>
+    <PublicFuelSummaryHeader expanded={expanded} setExpanded={setExpanded} toggleRef={toggleRef} bodyId={bodyId}
+      pricesStale={pricesStale} pricesLastRefreshedAt={pricesLastRefreshedAt} controls={publicFuel} />
+    <div id={bodyId} className="fuel-summary-body public-fuel-summary-body" hidden={!expanded}>
+      {pending ? <p role="status">통계 조회 중…</p> : failed ? <p role="alert">통계를 불러오지 못했습니다.</p> :
+        <PublicFuelRangeValues items={displayed} />}
+    </div>
+  </section>;
+}
+
+function PublicFuelSummaryHeader({
+  expanded, setExpanded, toggleRef, bodyId, pricesStale, pricesLastRefreshedAt, controls,
+}: {
+  expanded: boolean; setExpanded: (next: boolean) => void; toggleRef: RefObject<HTMLButtonElement | null>;
+  bodyId: string; pricesStale?: boolean; pricesLastRefreshedAt?: string | null;
+  controls: NonNullable<FuelViewportSummaryProps["publicFuel"]>;
+}) {
+  const productId = useId();
+  const { products, onProductsChange } = controls;
+  return <header className="public-fuel-summary-header">
+    <h2><button ref={toggleRef} type="button" className="fuel-summary-toggle" aria-expanded={expanded} aria-controls={bodyId}
+      onClick={() => setExpanded(!expanded)}>{expanded ? "범위" : "현재 지도 범위"}</button></h2>
+    {expanded ? <>
+      <div className="public-fuel-summary-products">
+        <label className="sr-only" htmlFor={productId}>표시 유종</label>
+        <FilterCombobox id={productId} compact options={publicProductOptions} value={products} placeholder="전체 유종"
+          onChange={values => onProductsChange(values.includes(ALL_PUBLIC_PRODUCTS) ? [] : values)} />
+      </div>
+      <PublicFuelSummaryActions stale={pricesStale} lastRefreshedAt={pricesLastRefreshedAt} controls={controls} />
+      <Button type="button" variant="ghost" size="icon-sm" className="public-fuel-summary-close" aria-label="범위 요약 닫기"
+        onClick={() => { setExpanded(false); toggleRef.current?.focus(); }}><X aria-hidden="true" /></Button>
+    </> : null}
+  </header>;
+}
+
+function PublicFuelSummaryActions({
+  stale, lastRefreshedAt, controls,
+}: { stale?: boolean; lastRefreshedAt?: string | null; controls: NonNullable<FuelViewportSummaryProps["publicFuel"]> }) {
+  const { onRefresh, refreshing } = controls;
+  const timestamp = priceTimestamp(lastRefreshedAt);
+  if (!stale && !onRefresh) return null;
+  return <div className="public-fuel-summary-actions">
+    {stale ? <span className="public-fuel-summary-stale" role="status" title={timestamp ?? undefined}>
+      <ClockAlert size={14} aria-hidden="true" />
+      <span>오래됨</span>
+      {timestamp ? <time className="sr-only" dateTime={lastRefreshedAt ?? undefined}> · 마지막 가격 갱신 {timestamp}</time> : null}
+    </span> : null}
+    {onRefresh ? <Button type="button" variant="outline" size="sm" className="public-fuel-summary-refresh"
+      loading={refreshing} onClick={onRefresh}>업데이트</Button> : null}
+  </div>;
+}
+
+function PublicFuelRangeValues({ items }: { items: FuelViewportStatistics[] }) {
+  if (!items.length) return <p>선택한 범위의 유가 통계가 없습니다.</p>;
+  return <div className="public-fuel-summary-values">
+    {items.map(item => {
+      const label = fuelProductLabel(item.product_code);
+      return <div key={item.product_code} className="public-fuel-summary-product">
+        <h3>{label} <small>{money(item.station_count)}개 주유소</small></h3>
+        <dl aria-label={label}>
+          <div><dt>평균</dt><dd>{money(item.average_price)}<small>원/L</small></dd></div>
+          <div><dt>최저</dt><dd>{money(item.minimum_price)}<small>원/L</small></dd></div>
+        </dl>
+      </div>;
+    })}
+    {items.some(item => item.update_pending) ? <p role="status">최신 수집 통계 반영 대기</p> : null}
+  </div>;
 }
 
 export function FuelPriceTrend({ rows }: { rows: History[] }) {

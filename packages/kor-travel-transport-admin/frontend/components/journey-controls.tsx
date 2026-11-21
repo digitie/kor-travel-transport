@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { InfoButton } from "./info-button";
-import { Anchor, Bus, Fuel, Plane, TrainFront, Coffee, MapPin, ParkingCircle, TriangleAlert, X } from "lucide-react";
+import { Anchor, Bus, ClockAlert, Fuel, Plane, TrainFront, Coffee, MapPin, ParkingCircle, TriangleAlert, X } from "lucide-react";
 import { useId } from "react";
-import { dateTime, transportGet, hasCoordinates, hasFuelPrice, money, serviceTime, type FerryTimetable, type Place } from "@/lib/journey";
+import { dateTime, transportGet, hasCoordinates, hasFuelPrice, money, serviceTime, type FerryTimetable, type FuelPrice, type Place } from "@/lib/journey";
 import { collectionSourceLabel, fuelProductLabel, placeKindLabel } from "@/lib/transport-presentation";
 import { RailTimetables } from "./rail-timetables";
 import { Button } from "@/components/ui/button";
@@ -62,10 +62,14 @@ export function MultiSearch({ label, query, onQuery, options, selected, onSelect
   </section>;
 }
 
-export function PlaceDetails({ place, showRailTimetable = true, showHeading = true, onShowMap, load }: { load?: typeof transportGet; place: Place; showRailTimetable?: boolean; showHeading?: boolean; onShowMap?: () => void }) {
+export type PublicFuelPriceControls = { onRefresh?: () => void; refreshing: boolean };
+
+export function PlaceDetails({ place, showRailTimetable = true, showHeading = true, onShowMap, load, publicFuel }: { load?: typeof transportGet; place: Place; showRailTimetable?: boolean; showHeading?: boolean; onShowMap?: () => void; publicFuel?: PublicFuelPriceControls }) {
   return <div className="place-details grid min-w-0 gap-3 text-sm">
     <PlaceHeading place={place} showHeading={showHeading} />
-    <PlacePrices place={place} />
+    {publicFuel && place.kind === "fuel_station"
+      ? <PublicFuelPlacePrices prices={place.prices?.filter(hasFuelPrice) ?? []} controls={publicFuel} />
+      : <PlacePrices place={place} />}
     {place.kind === "fuel_station" ? <FuelStationPriceHistory key={`${place.source}:${place.id}`} place={place} load={load}><PlaceContact place={place} onShowMap={onShowMap} /><PlaceLocationEvidence place={place} /></FuelStationPriceHistory> : <PlaceContact place={place} onShowMap={onShowMap} />}
     {place.kind === "rail_station" && showRailTimetable ? <RailTimetables placeIds={[place.id]} /> : null}
     {place.kind !== "fuel_station" ? <PlaceLocationEvidence place={place} /> : null}
@@ -80,6 +84,25 @@ function PlaceHeading({ place, showHeading }: Pick<Parameters<typeof PlaceDetail
     {place.line_names.length ? <div className="flex flex-wrap gap-2">{place.line_names.map((line) => <Badge variant="secondary" key={line}>{line}</Badge>)}</div> : null}
     {place.subtitle && place.kind !== "fuel_station" ? <p>{place.subtitle}</p> : null}
   </>;
+}
+
+function PublicFuelPlacePrices({ prices, controls }: { prices: FuelPrice[]; controls: PublicFuelPriceControls }) {
+  if (!prices.length) return <p className="text-xs text-text-secondary">등록된 유효 유가가 없습니다.</p>;
+  const firstStale = prices.findIndex(price => isOldFuelObservation(price.observed_at));
+  return <dl className="price-grid fuel-current-prices public-fuel-current-prices">
+    {prices.map((price, index) => <div key={price.product_code}>
+      <dt>{fuelProductLabel(price.product_code)}</dt>
+      <dd>
+        {money(price.price, "원/L")}
+        {isOldFuelObservation(price.observed_at) ? <span className="public-fuel-summary-stale" title={dateTime(price.observed_at)}>
+          <ClockAlert size={14} aria-hidden="true" />오래됨
+        </span> : null}
+        <time className="sr-only" dateTime={price.observed_at}>관측 {dateTime(price.observed_at)}</time>
+        {index === firstStale && controls.onRefresh ? <Button type="button" variant="outline" size="sm" loading={controls.refreshing}
+          className="public-fuel-summary-refresh" onClick={controls.onRefresh}>업데이트</Button> : null}
+      </dd>
+    </div>)}
+  </dl>;
 }
 
 function PlacePrices({ place }: { place: Place }) {

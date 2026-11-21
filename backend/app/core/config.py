@@ -75,6 +75,10 @@ class Settings(BaseSettings):
     transport_quota_backoff_seconds: int = Field(default=3600, ge=300)
     transport_route_nos_csv: str = ""
     transport_conzone_ids_csv: str = ""
+    # The OpenAPI allowance is explicitly provisioned for manual lookups only.
+    opinet_api_key: str | None = None
+    fuel_refresh_internal_token: str | None = None
+    fuel_refresh_daily_limit: int = Field(default=0, ge=0)
     opinet_browser_enabled: bool = True
     opinet_query_level: str = "sigungu"
     opinet_browser_channel: str | None = None

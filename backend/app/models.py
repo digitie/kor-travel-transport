@@ -465,6 +465,43 @@ class FuelLatestPrice(Base):
     collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class FuelRefreshPrice(Base):
+    """Short-lived OpenAPI price for map and station reads, outside the batch cohort."""
+
+    __tablename__ = "fuel_refresh_prices"
+    __table_args__ = (Index("ix_fuel_refresh_prices_expires_at", "expires_at"),)
+
+    fuel_station_id: Mapped[int] = mapped_column(
+        ForeignKey("fuel_stations.id", ondelete="CASCADE"), primary_key=True,
+    )
+    product_code: Mapped[str] = mapped_column(String(20), primary_key=True)
+    price: Mapped[float] = mapped_column(Numeric(10, 2))
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class FuelRefreshStationGate(Base):
+    __tablename__ = "fuel_refresh_station_gates"
+
+    fuel_station_id: Mapped[int] = mapped_column(
+        ForeignKey("fuel_stations.id", ondelete="CASCADE"), primary_key=True,
+    )
+    allowed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class FuelRefreshBudget(Base):
+    """One DB-wide lease and daily OpenAPI call counter shared by the API workers."""
+
+    __tablename__ = "fuel_refresh_budget"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    day: Mapped[date] = mapped_column(Date)
+    used: Mapped[int] = mapped_column(Integer)
+    lease_id: Mapped[str | None] = mapped_column(String(32))
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class FuelStatisticsState(Base):
     """준비가 끝난 통계의 공개 세대. 원본 저장과 별도로 전환한다."""
 

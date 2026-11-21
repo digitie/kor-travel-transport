@@ -8,3 +8,17 @@ export function publicFuelUpstreamUrl(path: string[], search: URLSearchParams): 
   target.search = search.toString();
   return target;
 }
+
+export function publicFuelRefreshConfiguration() {
+  const base = process.env.FUEL_REFRESH_INTERNAL_URL;
+  const token = process.env.FUEL_REFRESH_INTERNAL_TOKEN?.trim();
+  const origin = process.env.FUEL_REFRESH_PUBLIC_ORIGIN?.trim();
+  if (!base || !token || token.length < 32 || !origin) return null;
+  try {
+    const target = new URL("/v1/internal/fuel/refresh", base);
+    if (!["http:", "https:"].includes(target.protocol) || target.username || target.password) return null;
+    return { target, token, origin };
+  } catch {
+    return null;
+  }
+}

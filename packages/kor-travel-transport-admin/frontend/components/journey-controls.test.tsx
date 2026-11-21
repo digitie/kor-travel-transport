@@ -45,3 +45,26 @@ test("주유소 현재 가격은 이력 위에 있고 유효 가격·실관측 �
     expect(node.querySelector('[aria-label="휘발유 가격 기준 안내"]')).not.toBeNull();
   } finally { vi.useRealTimers(); }
 });
+
+test("공개 상세는 오래된 유가 옆에 업데이트를 한 번 제공한다", async () => {
+  const refresh = vi.fn();
+  const fresh = new Date().toISOString();
+  const place: Place = {
+    id: 4, kind: "fuel_station", source: "opinet_browser", name: "시험 주유소", line_names: [], updated_at: fresh,
+    longitude: 127, latitude: 37, facilities: [],
+    prices: [{ product_code: "C004", price: 1300, observed_at: "2020-01-01T00:00:00Z" },
+      { product_code: "D047", price: 1520, observed_at: fresh }],
+  };
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(<PlaceDetails place={place} publicFuel={{ onRefresh: refresh, refreshing: false }} />));
+    const rows = host.querySelectorAll(".public-fuel-current-prices dd");
+    expect(rows[0].textContent).toContain("오래됨");
+    expect(rows[1].textContent).not.toContain("오래됨");
+    const button = rows[0].querySelector("button");
+    expect(button?.textContent).toBe("업데이트");
+    expect(rows[1].querySelector("button")).toBeNull();
+    await act(async () => button!.click());
+    expect(refresh).toHaveBeenCalledTimes(1);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});

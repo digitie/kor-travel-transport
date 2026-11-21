@@ -56,6 +56,8 @@ from app.general_rail_routes import build_general_rail_router
 from app.ferry_reference_routes import build_ferry_reference_router
 from app.highway_map_routes import build_highway_map_router
 from app.services.fuel_price_history import build_fuel_price_history_router
+from app.services.fuel_manual_refresh import build_fuel_manual_refresh_router
+from app.services.fuel_refresh_prices import effective_fuel_prices, fuel_viewport_conditions, has_visible_fuel_product
 from app.services.parking_history_cache import (
     BoundedHistoryResponse, ParkingHistoryReadCache, encode_response, run_history_cpu,
 )
@@ -64,7 +66,6 @@ from app.models import (
     BusTerminalReference,
     BusTimetableSnapshot,
     CollectionRun,
-    FuelLatestPrice,
     FuelPriceSnapshot,
     FuelStation,
     FerryPort,
@@ -277,7 +278,8 @@ _REDACTED_EXCEPTION_LOGGERS = (__name__, "uvicorn.error")
 def _install_exception_log_redaction(settings: Settings) -> None:
     secrets_to_hide = tuple(
         secret
-        for secret in (settings.data_go_kr_service_key, settings.kric_service_key, settings.kex_ex_api_key)
+        for secret in (settings.data_go_kr_service_key, settings.kric_service_key, settings.kex_ex_api_key,
+                       settings.opinet_api_key, settings.fuel_refresh_internal_token)
         if secret
     )
     for name in _REDACTED_EXCEPTION_LOGGERS:
@@ -1240,7 +1242,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         limit: int = Query(default=200, ge=1, le=1000),
         session: AsyncSession = Depends(get_db),
     ) -> FuelStationResponse:
-        cutoff = now_utc() - timedelta(days=days)
+        read_at = now_utc()
+        cutoff = read_at - timedelta(days=days)
         # 응답 전용 행에 ORM identity/state를 만들지 않고 원문 JSON도 읽지 않는다.
         query = select(*(column for column in FuelStation.__table__.columns
                          if column.name != "raw_item_json")).where(FuelStation.last_seen_at >= cutoff)
@@ -1253,16 +1256,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         station_ids = [station.id for station in stations]
         price_rows = []
         if station_ids:
-            price_query = select(
-                FuelLatestPrice.fuel_station_id, FuelLatestPrice.product_code, FuelLatestPrice.price,
-                FuelLatestPrice.provider_updated_at, FuelLatestPrice.observed_at, FuelLatestPrice.collected_at,
-            ).where(
-                FuelLatestPrice.fuel_station_id.in_(station_ids),
-                FuelLatestPrice.collected_at >= cutoff,
-            )
+            prices = effective_fuel_prices(station_ids, read_at)
+            price_query = select(prices).where(prices.c.collected_at >= cutoff)
             if product_code:
-                price_query = price_query.where(FuelLatestPrice.product_code == product_code.strip())
-            price_query = price_query.order_by(FuelLatestPrice.fuel_station_id, FuelLatestPrice.product_code)
+                price_query = price_query.where(prices.c.product_code == product_code.strip())
+            price_query = price_query.order_by(prices.c.fuel_station_id, prices.c.product_code)
             price_rows = list((await session.execute(price_query)).all())
 
         prices_by_station: dict[int, list[dict[str, Any]]] = {}
@@ -1405,6 +1403,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not include_fuel_statistics and (zoom is None or zoom >= detail_zoom):
             proof = await place_map_cache.snapshot(
                 session, read_at, resolved_settings.release_sha, "highway_incident" in requested_kinds,
+                fuel="fuel_station" in requested_kinds,
             )
             if proof is not None:
                 stamp, page_boundary = proof
@@ -1450,15 +1449,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if model is FuelStation and selected_products:
                 # 유종 행은 가격 미제공(NULL)도 저장된다. 과거 가격 존재가 아니라
                 # 상세 응답과 동일한 최신 행을 기준으로 실제 판매 가격을 확인한다.
-                conditions.append(or_(*(
-                    select(FuelLatestPrice.price).where(
-                        FuelLatestPrice.fuel_station_id == FuelStation.id,
-                        FuelLatestPrice.product_code == code,
-                    ).correlate(FuelStation).scalar_subquery() > 0
-                    for code in selected_products
-                )))
+                conditions.append(has_visible_fuel_product(selected_products, read_at))
             if min_longitude is not None:
-                conditions.extend((
+                conditions.extend(fuel_viewport_conditions(bounds) if model is FuelStation else (
                     model.longitude >= min_longitude,
                     model.longitude <= max_longitude,
                     model.latitude >= min_latitude,
@@ -1664,7 +1657,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if requested_kinds == ("fuel_station",) and session.get_bind().dialect.name == "postgresql":
                 async with request.app.state.fuel_map_limiter:
                     validated_items_json, validated_items_count = (await session.execute(
-                        fuel_map_items_statement(station_query),
+                        fuel_map_items_statement(station_query, read_at),
                     )).one()
                     validated_items_json, validated_count = await to_thread.run_sync(
                         validated_fuel_map_items, validated_items_json,
@@ -1676,13 +1669,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 station_ids = [station.id for station in stations]
                 latest: dict[int, list[Any]] = {}
                 if station_ids:
-                    rows = (await session.execute(
-                        select(
-                            FuelLatestPrice.fuel_station_id, FuelLatestPrice.product_code,
-                            FuelLatestPrice.price, FuelLatestPrice.provider_updated_at,
-                            FuelLatestPrice.observed_at, FuelLatestPrice.collected_at,
-                        ).where(FuelLatestPrice.fuel_station_id.in_(station_ids))
-                    )).all()
+                    prices = effective_fuel_prices(station_ids, read_at)
+                    rows = (await session.execute(select(prices))).all()
                     # SQLAlchemy Row 필드 조회를 가격마다 반복하지 않고 한 번 풀어
                     # 현재 요청의 응답 투영을 만든다. 가격 조회·정렬·검증 경계는 유지한다.
                     for station_id, code, value, updated, observed, collected in rows:
@@ -3595,6 +3583,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(build_ferry_reference_router(get_db), prefix="/v1")
     app.include_router(build_highway_map_router(), prefix="/v1")
     app.include_router(build_fuel_price_history_router(resolved_settings, get_db), prefix="/v1")
+    app.include_router(build_fuel_manual_refresh_router(resolved_settings, get_session_factory), prefix="/v1")
     # 내부 서비스 일괄 export(ADR-013) — 서비스 토큰과 접속한 쪽의 주소(peer, 기본 loopback)로 닫힌다.
     app.include_router(build_service_export_router(resolved_settings, get_db), prefix="/v1")
 

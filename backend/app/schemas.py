@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from math import isfinite
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, StringConstraints, model_validator
 
 
 FuelSearchProductCode = Literal["B027", "B034", "D047", "C004", "K015"]
@@ -244,6 +244,51 @@ class HighwayIncidentResponse(BaseModel):
     days: int
     route_no: str | None = None
     items: list[HighwayIncidentItem]
+
+
+FuelRefreshProduct = Annotated[str, StringConstraints(pattern=r"^[A-Z0-9]{1,20}$")]
+FuelRefreshStationStatus = Literal["updated", "unchanged", "cooldown", "unsupported", "rate_limited", "error"]
+
+
+class FuelRefreshViewport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    min_longitude: FiniteFloat = Field(ge=-180, le=180)
+    min_latitude: FiniteFloat = Field(ge=-90, le=90)
+    max_longitude: FiniteFloat = Field(ge=-180, le=180)
+    max_latitude: FiniteFloat = Field(ge=-90, le=90)
+    product_codes: list[FuelRefreshProduct] = Field(default_factory=list, max_length=5)
+
+    @model_validator(mode="after")
+    def check_bounds(self):
+        if self.min_longitude >= self.max_longitude or self.min_latitude >= self.max_latitude:
+            raise ValueError("지도 범위의 최소 좌표는 최대 좌표보다 작아야 합니다.")
+        return self
+
+
+class FuelRefreshRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    station_id: int | None = Field(default=None, strict=True, gt=0, le=2_147_483_647)
+    viewport: FuelRefreshViewport | None = None
+
+    @model_validator(mode="after")
+    def check_target(self):
+        if (self.station_id is None) == (self.viewport is None):
+            raise ValueError("주유소 ID 또는 화면 범위 중 하나를 지정해야 합니다.")
+        return self
+
+
+class FuelRefreshResult(BaseModel):
+    station_id: int
+    status: FuelRefreshStationStatus
+    checked_at: datetime | None = None
+    reason: str | None = None
+
+
+class FuelRefreshResponse(BaseModel):
+    status: Literal["completed", "partial", "failed"]
+    results: list[FuelRefreshResult]
 
 
 class FuelPriceItem(BaseModel):

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { renderToStaticMarkup } from "react-dom/server";
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, test, vi } from "vitest";
 import { FuelPriceTrend, FuelStatisticsCard, FuelStatisticsPage, FuelViewportSummary, type FuelViewportStatistics } from "./fuel-statistics";
@@ -151,6 +151,86 @@ test("지도 통계 실패는 이전 응답의 가격이나 0원으로 표시하
   expect(html).toContain('role="alert"');
   expect(html).toContain("통계를 불러오지 못했습니다");
   expect(html).not.toContain("1,700");
+});
+
+test("공개 지도는 유종별 가격을 분리하고 같은 다중 선택 목록에서 전체를 복원한다", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const changed = vi.fn();
+  const items = [metrics, { ...metrics, product_code: "D047", average_price: 1550, minimum_price: 1450 }];
+  function Summary() {
+    const [products, setProducts] = useState<string[]>([]);
+    return <FuelViewportSummary items={items} pending={false}
+      publicFuel={{ products, onProductsChange: value => { changed(value); setProducts(value); } }} />;
+  }
+  const stats = (label: string) => container.querySelector(`dl[aria-label="${label}"]`);
+  const select = async (label: string) => {
+    const option = [...document.querySelectorAll<HTMLButtonElement>('[role="option"]')].find(node => node.textContent === label)!;
+    await act(async () => option.click());
+  };
+  try {
+    await act(async () => root.render(<Summary />));
+    const combo = container.querySelector<HTMLInputElement>('[role="combobox"]')!;
+    expect(combo.labels?.[0]?.textContent).toBe("표시 유종");
+    expect(combo.placeholder).toBe("전체 유종");
+    expect(stats("휘발유")?.textContent).toContain("1,700");
+    expect(stats("경유")?.textContent).toContain("1,550");
+    expect(container.textContent).not.toMatch(/가격 차이|표준편차|묶음 마커 개수|통계 기준은 공개/);
+    await act(async () => combo.click());
+    const list = document.querySelector('[role="listbox"]')!;
+    expect(list.getAttribute("aria-multiselectable")).toBe("true");
+    expect([...list.querySelectorAll('[role="option"]')].map(node => node.textContent))
+      .toEqual(expect.arrayContaining(["전체", "휘발유", "경유", "고급유", "등유", "LPG"]));
+    await select("휘발유");
+    expect(changed).toHaveBeenLastCalledWith(["B027"]);
+    expect(stats("경유")).toBeNull();
+    await select("경유");
+    expect(changed).toHaveBeenLastCalledWith(["B027", "D047"]);
+    expect(stats("휘발유")?.textContent).not.toContain("1,550");
+    expect(stats("경유")?.textContent).not.toContain("1,700");
+    await select("전체");
+    expect(changed).toHaveBeenLastCalledWith([]);
+    expect(combo.placeholder).toBe("전체 유종");
+    expect(container.querySelectorAll('[data-slot="combobox-chip"]')).toHaveLength(0);
+    expect(container.querySelectorAll("dl")).toHaveLength(2);
+  } finally { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); }
+});
+
+test("공개 범위 요약은 닫은 뒤 다시 열 수 있고 가격 갱신 상태와 요청을 제공한다", async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const onRefresh = vi.fn();
+  const props = { items: [metrics], pending: false, pricesStale: true, pricesLastRefreshedAt: "2026-10-20T03:10:00Z" };
+  const render = (refreshing = false) => root.render(<FuelViewportSummary {...props}
+    publicFuel={{ products: [], onProductsChange: vi.fn(), onRefresh, refreshing }} />);
+  try {
+    await act(async () => render());
+    const stale = container.querySelector(".public-fuel-summary-stale")!;
+    expect(stale.getAttribute("role")).toBe("status");
+    expect(stale.querySelector("time")?.dateTime).toBe(props.pricesLastRefreshedAt);
+    const toggle = container.querySelector<HTMLButtonElement>(".fuel-summary-toggle")!;
+    const close = container.querySelector<HTMLButtonElement>('[aria-label="범위 요약 닫기"]')!;
+    const body = document.getElementById(toggle.getAttribute("aria-controls")!)!;
+    expect(close.closest("header")).not.toBeNull();
+    await act(async () => close.click());
+    expect(body.hidden).toBe(true);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(toggle);
+    await act(async () => toggle.click());
+    expect(body.hidden).toBe(false);
+    const refresh = () => container.querySelector<HTMLButtonElement>(".public-fuel-summary-refresh")!;
+    await act(async () => refresh().click());
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    await act(async () => render(true));
+    expect(refresh().getAttribute("aria-busy")).toBe("true");
+    await act(async () => refresh().click());
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  } finally { await act(async () => root.unmount()); container.remove(); }
 });
 
 test("갱신 지연과 가격 읽기 모델 갱신 시각을 통계 세대 기준과 구분한다", async () => {

@@ -9,7 +9,7 @@ from sqlalchemy import text
 from app.services import fuel_map_validation
 
 TABLES = (
-    "fuel_stations", "fuel_latest_prices", "rail_station_references", "ferry_ports",
+    "fuel_stations", "fuel_latest_prices", "fuel_refresh_prices", "rail_station_references", "ferry_ports",
     "bus_terminal_references", "airports", "rest_area_references", "public_parking_lots",
     "highway_incident_snapshots", "transport_collection_states",
 )
@@ -45,12 +45,16 @@ SELECT r.versions, r.members,
             AND t.tgname IN ('kt_places_revision_insert','kt_places_revision_update',
                             'kt_places_revision_delete','kt_places_revision_truncate')
           ORDER BY t.tgrelid,t.tgname) AS trigger_ddl,
-    CASE WHEN :incidents THEN least(
-        (SELECT min(collected_at) FROM public.highway_incident_snapshots
-         WHERE collected_at > CAST(:at AS timestamptz)),
-        (SELECT min(collected_at) + interval '24 hours' FROM public.highway_incident_snapshots
-         WHERE collected_at >= CAST(:at AS timestamptz) - interval '24 hours')
-    ) END AS boundary
+    least(
+        CASE WHEN :incidents THEN least(
+            (SELECT min(collected_at) FROM public.highway_incident_snapshots
+             WHERE collected_at > CAST(:at AS timestamptz)),
+            (SELECT min(collected_at) + interval '24 hours' FROM public.highway_incident_snapshots
+             WHERE collected_at >= CAST(:at AS timestamptz) - interval '24 hours')
+        ) END,
+        CASE WHEN :fuel THEN (SELECT min(expires_at) FROM public.fuel_refresh_prices
+                              WHERE expires_at > CAST(:at AS timestamptz)) END
+    ) AS boundary
 FROM (
     SELECT jsonb_agg(jsonb_build_array(component, epoch, revision) ORDER BY component) AS versions,
            count(*) AS members
@@ -59,7 +63,7 @@ FROM (
 """)
 
 
-async def snapshot(session, at, release, incidents):
+async def snapshot(session, at, release, incidents, *, fuel=True):
     if session.get_bind().dialect.name != "postgresql" or not release or release == "unknown":
         return None
     if session.new or session.dirty or session.deleted:
@@ -67,7 +71,7 @@ async def snapshot(session, at, release, incidents):
     if not session.in_transaction():
         await session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
     row = (await session.execute(_STAMP, {"tables": list(TABLES), "components": ["places." + table for table in TABLES],
-                                            "at": at, "incidents": incidents})).one_or_none()
+                                            "at": at, "incidents": incidents, "fuel": fuel})).one_or_none()
     if row is None or row.members != len(TABLES):
         raise HTTPException(503, "장소 입력 revision 구성이 완전하지 않습니다.")
     if not row.trusted or row.replication != "origin" or row.own_xid is not None or row.isolation not in (

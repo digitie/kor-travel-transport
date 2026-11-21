@@ -46,7 +46,7 @@ def builds(response):
 
 
 def canonical(c, monkeypatch, path=PATH):
-    async def no_proof(*args):
+    async def no_proof(*args, **kwargs):
         return None
     with monkeypatch.context() as m:
         m.setattr(place_map_cache, "snapshot", no_proof)
@@ -293,9 +293,9 @@ def test_same_rr_racing_writer_cannot_publish_new_rows_under_old_vector(cached, 
     c, _ = cached
     original = place_map_cache.snapshot
     wrote = False
-    async def racing_snapshot(*args):
+    async def racing_snapshot(*args, **kwargs):
         nonlocal wrote
-        result = await original(*args)
+        result = await original(*args, **kwargs)
         if not wrote:
             wrote = True
             async def writer(s):
@@ -451,8 +451,8 @@ def migration_step(connection, target):
     config = Config()
     config.set_main_option("script_location", str(Path(__file__).parents[1] / "alembic"))
     script = ScriptDirectory.from_config(config)
-    assert script.get_current_head() == "0045_places_input_revision"
-    planner = script._upgrade_revs if target.startswith("0045") else script._downgrade_revs
+    assert script.get_current_head() == "0046_fuel_manual_refresh"
+    planner = script._downgrade_revs if target.startswith("0044") else script._upgrade_revs
     with EnvironmentContext(config, script, fn=lambda revision, _: planner(target, revision)) as context:
         context.configure(connection=connection, transactional_ddl=True, version_table_schema="public")
         context.run_migrations()
@@ -512,7 +512,7 @@ def test_actual_migration_up_down_and_lock_failure_rollback(cached, record_prope
         # 실패해도 다음 독립 fixture를 위해 본래 head를 실제 upgrade한다.
         async def restore():
             async with c.app.state.engine.begin() as conn:
-                await conn.run_sync(lambda sync: migration_step(sync, "0045_places_input_revision"))
+                await conn.run_sync(lambda sync: migration_step(sync, "0046_fuel_manual_refresh"))
         asyncio.run(restore())
     fresh = c.get(PATH)
     assert builds(fresh) == 1 and body(fresh) == first
@@ -571,7 +571,7 @@ def test_warm_limit5000_keeps_full_body_with_one_statement_and_no_assembly(
             assert len(statements) == 1 and "r.versions" in statements[0]
     finally:
         event.remove(engine, "before_cursor_execute", seen)
-    async def no_proof(*args):
+    async def no_proof(*args, **kwargs):
         return None
     with monkeypatch.context() as m:
         m.setattr(place_map_cache, "snapshot", no_proof)

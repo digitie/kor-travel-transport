@@ -10,10 +10,13 @@ function normalizeOrigin(value: string) {
   }
 }
 
-export function isAllowedOrigin(request: NextRequest) {
+export function isAllowedOrigin(
+  request: NextRequest,
+  configuredOrigins = process.env.TRANSPORT_UI_PUBLIC_ORIGINS ?? process.env.TRANSPORT_UI_PUBLIC_ORIGIN ?? "",
+) {
   const origin = normalizeOrigin(request.headers.get("origin") ?? "");
   if (!origin) return false;
-  const configured = (process.env.TRANSPORT_UI_PUBLIC_ORIGINS ?? process.env.TRANSPORT_UI_PUBLIC_ORIGIN ?? "")
+  const configured = configuredOrigins
     .split(",")
     .map((value) => normalizeOrigin(value.trim()))
     .filter((value): value is string => Boolean(value));
