@@ -60,6 +60,7 @@ def test_gateway_uses_fixed_fuel_alias_and_rejects_other_readers_and_credentials
     assert "if ($fuel_read_method = 0) { return 405; }" in text
     assert text.count("proxy_pass ") == 3
     assert "stations/[1-9][0-9]*/price-history" in text
+    assert "|price-distribution|" in text
     assert "regions" not in text and "/mcp" not in text and "/exports/" not in text
     assert "$arg_zoom" not in text and "zoom=" not in text
 

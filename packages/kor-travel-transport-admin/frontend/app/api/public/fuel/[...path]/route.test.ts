@@ -30,6 +30,16 @@ describe("공개 유가 BFF", () => {
     expect(result.headers.get("set-cookie")).toBeNull(); expect(result.headers.get("etag")).toBe('"fuel-etag"');
     expect(await result.json()).toEqual({ items: [] });
   });
+  it("시군구 가격 분포는 고정 경로로만 전달한다", async () => {
+    vi.stubEnv("TRANSPORT_UI_MODE", "fuel"); vi.stubEnv("BACKEND_INTERNAL_URL", "http://127.0.0.1:12307");
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    await GET(request("price-distribution?station_id=7&product_code=B027"), context("price-distribution"));
+    expect(String(fetchMock.mock.calls[0][0])).toBe("http://127.0.0.1:12307/v1/transport/fuel/price-distribution?station_id=7&product_code=B027");
+    for (const path of ["price-distribution/x", "price-distributions"]) {
+      expect((await GET(request(path), context(path))).status).toBe(404);
+    }
+  });
   it("304는 본문 없이, upstream 실패·재시도 안내는 원래 상태로 돌려준다", async () => {
     vi.stubEnv("TRANSPORT_UI_MODE", "fuel");
     const fetchMock = vi.fn().mockResolvedValueOnce(new Response(null, { status: 304, headers: { etag: '"fuel-etag"' } }))

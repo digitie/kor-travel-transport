@@ -56,6 +56,7 @@ from app.general_rail_routes import build_general_rail_router
 from app.ferry_reference_routes import build_ferry_reference_router
 from app.highway_map_routes import build_highway_map_router
 from app.services.fuel_price_history import build_fuel_price_history_router
+from app.services.fuel_price_distribution import build_fuel_price_distribution_router, viewport_sigungu
 from app.services.fuel_manual_refresh import build_fuel_manual_refresh_router
 from app.services.fuel_refresh_prices import effective_fuel_prices, fuel_viewport_conditions, has_visible_fuel_product
 from app.services.parking_history_cache import (
@@ -1355,6 +1356,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         zoom: int | None = Query(default=None, ge=0, le=22, description="실제 지도 축척. 주유소 단독은 0~9, 나머지는 0~11에서 지역·셀 요약을 반환"),
         include_sources: bool = Query(default=True, description="출처 필터 선택지를 포함. 반복 지도 조회에서는 false로 생략 가능"),
         include_fuel_statistics: bool = Query(default=False, description="현재 지도 범위 전체의 유종별 통계 포함"),
+        include_viewport_sigungu: bool = Query(default=False, description="현재 지도 범위 안 주유소의 시군구 목록 포함(공개 유가 화면 전용, 추가 필드)"),
         include_unlocated: bool = Query(default=False, description="좌표 없는 기준정보도 검색 목록에 포함"),
         source: str | None = Query(default=None, max_length=80),
         sources: str | None = Query(default=None, max_length=809, description="쉼표로 구분한 출처 최대 10개. source와 동시 지정 불가"),
@@ -1400,7 +1402,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         read_at = now_utc()
         page_key = page_boundary = None
         # 통계/클러스터는 각자의 기존 신선도 경로를 유지한다.
-        if not include_fuel_statistics and (zoom is None or zoom >= detail_zoom):
+        if not include_fuel_statistics and not include_viewport_sigungu and (zoom is None or zoom >= detail_zoom):
             proof = await place_map_cache.snapshot(
                 session, read_at, resolved_settings.release_sha, "highway_incident" in requested_kinds,
                 fuel="fuel_station" in requested_kinds,
@@ -1418,6 +1420,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         fuel_statistics = []
         if include_fuel_statistics and "fuel_station" in requested_kinds and min_longitude is not None:
             fuel_statistics = await viewport_fuel_statistics(session, bounds, selected_sources, selected_products, query)
+        sigungu_fields: dict[str, Any] = {}
+        # 요청하지 않은 소비자(관리 지도 등)의 응답 바이트는 그대로 둔다.
+        sigungu_exclude = set() if include_viewport_sigungu else {"fuel_viewport_sigungu", "fuel_viewport_sigungu_total"}
+        if include_viewport_sigungu and "fuel_station" in requested_kinds and min_longitude is not None:
+            visible_sigungu, visible_sigungu_total = await viewport_sigungu(
+                session, bounds, selected_sources, selected_products, query)
+            sigungu_fields = {"fuel_viewport_sigungu": visible_sigungu, "fuel_viewport_sigungu_total": visible_sigungu_total}
         # 전체 지도는 한 종류가 limit을 모두 소모하지 않도록 균등하게 읽는다. 프런트가
         # 수천 개의 DOM marker를 만들지 않게 하는 API 경계이기도 하다.
         per_kind_limit = (limit + len(requested_kinds) - 1) // len(requested_kinds)
@@ -1619,9 +1628,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 generated_at=now_utc(), kind=selected_kind, total=total, truncated=False,
                 fuel_regions=fuel_regions, fuel_statistics=with_publication_status(fuel_statistics, fuel_prices_last_refreshed_at), clustered=True, kind_totals=kind_totals, clusters=cluster_items, items=[],
                 available_sources=sorted(available_sources), fuel_prices_stale=fuel_prices_stale,
-                fuel_prices_last_refreshed_at=fuel_prices_last_refreshed_at,
+                fuel_prices_last_refreshed_at=fuel_prices_last_refreshed_at, **sigungu_fields,
             )
-            return Response(content=result.model_dump_json(), media_type="application/json")
+            return Response(content=result.model_dump_json(exclude=sigungu_exclude), media_type="application/json")
 
         prefetched = None
         if len(requested_kinds) > 1 and session.get_bind().dialect.name == "postgresql":
@@ -1852,14 +1861,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             fuel_statistics=with_publication_status(fuel_statistics, fuel_prices_last_refreshed_at), truncated=total > (validated_items_count if validated_items_json is not None else len(visible_items)), kind_totals=kind_totals,
             items=[] if validated_items_json is not None else visible_items, available_sources=sorted(available_sources),
             fuel_prices_stale=fuel_prices_stale, fuel_prices_last_refreshed_at=fuel_prices_last_refreshed_at,
+            **sigungu_fields,
         )
         if validated_items_json is not None:
             # 항목은 같은 DTO의 완료 검증을 원문 바이트 일치 때만 재사용한다.
             # 총수/신선도/통계 metadata는 매 요청 현재 DB 상태로 따로 검증한다.
-            metadata_json = result.model_dump_json(exclude={"items", "generated_at"}).encode("utf-8")
+            metadata_json = result.model_dump_json(exclude={"items", "generated_at", *sigungu_exclude}).encode("utf-8")
             body = metadata_json[:-1] + b',"items":' + validated_items_json + b"}"
         else:
-            body = result.model_dump_json(exclude={"generated_at"}).encode("utf-8")
+            body = result.model_dump_json(exclude={"generated_at", *sigungu_exclude}).encode("utf-8")
         if page_key is not None:
             place_map_cache.put(page_key, body, read_at, page_boundary,
                                 fuel_prices_last_refreshed_at, fuel_prices_stale)
@@ -3585,6 +3595,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(build_ferry_reference_router(get_db), prefix="/v1")
     app.include_router(build_highway_map_router(), prefix="/v1")
     app.include_router(build_fuel_price_history_router(resolved_settings, get_db), prefix="/v1")
+    app.include_router(build_fuel_price_distribution_router(get_db), prefix="/v1")
     app.include_router(build_fuel_manual_refresh_router(resolved_settings, get_session_factory), prefix="/v1")
     # 내부 서비스 일괄 export(ADR-013) — 서비스 토큰과 접속한 쪽의 주소(peer, 기본 loopback)로 닫힌다.
     app.include_router(build_service_export_router(resolved_settings, get_db), prefix="/v1")
