@@ -12,6 +12,7 @@ import { clusterAtScale, dateTime, hasCoordinates, hasFuelPrice, TransportError,
 import { collectionSourceLabel, fuelProductLabel, placeKindLabel } from "@/lib/transport-presentation";
 import { placeMarkerColor, placeMarkerStyle, priceMarkerLabel, priceSpeech } from "@/lib/place-marker-style";
 import { FuelPriceStatus, FuelViewportSummary, type FuelViewportStatistics } from "@/components/fuel-statistics";
+import type { FuelViewportSigungu } from "@/lib/fuel-price-distribution";
 import { MAP_FALLBACK_IMAGE } from "@/lib/map-fallback";
 import { cn } from "@/lib/utils";
 import { CameraRequest, ClusterBubble, MapMarkerButton, MapUnavailable, MarkerBadge, OverlapPopup, useVWorldBasemapHealth, ZoomButtons, type CameraTarget } from "./map-overlays";
@@ -47,7 +48,7 @@ type PublicFuelControls = {
 
 type PublicFuelSummary = NonNullable<Parameters<typeof FuelViewportSummary>[0]["publicFuel"]>;
 
-type PlaceResponse = { fuel_regions?: FuelRegion[]; fuel_statistics?: FuelViewportStatistics[]; items: Place[]; total: number; truncated: boolean; clustered?: boolean; kind_totals?: Partial<Record<PlaceKind, number>>; clusters?: MapCluster[]; available_sources?: string[]; fuel_prices_stale?: boolean; fuel_prices_last_refreshed_at?: string | null };
+type PlaceResponse = { fuel_regions?: FuelRegion[]; fuel_statistics?: FuelViewportStatistics[]; fuel_viewport_sigungu?: FuelViewportSigungu[]; fuel_viewport_sigungu_total?: number; items: Place[]; total: number; truncated: boolean; clustered?: boolean; kind_totals?: Partial<Record<PlaceKind, number>>; clusters?: MapCluster[]; available_sources?: string[]; fuel_prices_stale?: boolean; fuel_prices_last_refreshed_at?: string | null };
 const FUEL_PRODUCTS = ["B027", "D047", "B034", "C004", "K015"] as const;
 const KINDS: PlaceKind[] = ["fuel_station", "rail_station", "ferry_port", "bus_terminal", "airport", "rest_area", "highway_incident", "public_parking_lot"];
 const REFERENCE_LIST_KINDS = new Set<string>(["ferry_port", "bus_terminal", "public_parking_lot"]);
@@ -128,7 +129,7 @@ const publicActions = publicFuelActions({
   controls: publicFuel, bounds: refreshViewport, current, refreshing, refreshPrices,
   pricesStale: loaded.fuel_station?.fuel_prices_stale, clearSelection: () => setSelected(null),
 });
-const summary = <MapStatusSummary publicFuel={publicActions.summary} status={status} embedded={embedded} mode={mode} loaded={loaded} pending={pending} failed={failed} current={current} fuelDetailScopeExpanded={fuelDetailScopeExpanded} setFuelDetailScopeExpanded={setFuelDetailScopeExpanded} />;
+const summary = <MapStatusSummary load={load} publicFuel={publicActions.summary} status={status} embedded={embedded} mode={mode} loaded={loaded} pending={pending} failed={failed} current={current} fuelDetailScopeExpanded={fuelDetailScopeExpanded} setFuelDetailScopeExpanded={setFuelDetailScopeExpanded} />;
 return <section className="map-workbench" aria-label={mode === "fuel" ? "유가 지도" : "교통 장소 지도"}>
     <MapWorkspace expandable={!mapOnly} ref={workspace} className={embedded ? "embedded-map" : "transport-map-workspace"} onClickCapture={(event) => captureDetailOpener(event, detail, detailOpener)}>
     {!publicFuel && (toolbar || !embedded) ? <MapSearchFilters filterSummary={filterSummary} query={query} selectedSources={selectedSources} products={products} kinds={kinds} allowedKinds={allowedKinds} filtersExpanded={filtersExpanded} setFiltersExpanded={setFiltersExpanded} filterTrigger={filterTrigger} toolbar={toolbar} mode={mode} setKinds={setKinds} setSelected={setSelected} controlId={controlId} queryInput={queryInput} setQuery={setQuery} setSelectedSources={setSelectedSources} sources={sources} setProducts={setProducts} /> : null}
@@ -166,7 +167,7 @@ function publicFuelActions({
     onRefresh: pricesStale ? refreshViewport : undefined,
     refreshing,
   };
-  return { summary, detail: { onRefresh: refreshStation, refreshing }, refreshViewport };
+  return { summary, detail: { onRefresh: refreshStation, refreshing, products }, refreshViewport };
 }
 
 function PublicFuelMapRefresh({ onRefresh, refreshing }: { onRefresh?: () => void; refreshing: boolean }) {
@@ -215,10 +216,13 @@ function usePublicFuelRefresh(enabled: boolean | undefined, setReload: ReturnTyp
   return { refreshing, refreshPrices };
 }
 
-function MapStatusSummary({ status, embedded, mode, loaded, pending, failed, current, fuelDetailScopeExpanded, setFuelDetailScopeExpanded, publicFuel }: { status: ReactNode; mode: "all" | "transport" | "fuel"; publicFuel?: PublicFuelSummary } & Pick<ReturnType<typeof useTransportMap>, "embedded" | "loaded" | "pending" | "failed" | "current" | "fuelDetailScopeExpanded" | "setFuelDetailScopeExpanded">) {
+function MapStatusSummary({ status, embedded, mode, loaded, pending, failed, current, fuelDetailScopeExpanded, setFuelDetailScopeExpanded, publicFuel, load }: { status: ReactNode; mode: "all" | "transport" | "fuel"; publicFuel?: PublicFuelSummary; load: typeof transportGet } & Pick<ReturnType<typeof useTransportMap>, "embedded" | "loaded" | "pending" | "failed" | "current" | "fuelDetailScopeExpanded" | "setFuelDetailScopeExpanded">) {
   return <>
     <div className="map-feedback">{status}</div>
-    {!embedded && mode === "fuel" ? <FuelViewportSummary publicFuel={publicFuel} items={loaded.fuel_station?.fuel_statistics ?? []} pending={pending.length > 0} failed={failed.length > 0}
+    {!embedded && mode === "fuel" ? <FuelViewportSummary publicFuel={publicFuel ? {
+      ...publicFuel, load, sigungu: loaded.fuel_station?.fuel_viewport_sigungu ?? [],
+      sigunguTotal: loaded.fuel_station?.fuel_viewport_sigungu_total ?? 0,
+    } : undefined} items={loaded.fuel_station?.fuel_statistics ?? []} pending={pending.length > 0} failed={failed.length > 0}
       detailOpen={Boolean(current)} detailExpanded={fuelDetailScopeExpanded} onDetailExpandedChange={setFuelDetailScopeExpanded}
       pricesStale={loaded.fuel_station?.fuel_prices_stale} pricesLastRefreshedAt={loaded.fuel_station?.fuel_prices_last_refreshed_at} /> : null}
   </>;
@@ -276,6 +280,8 @@ function mapPlaceSearch({
     search.set("product_codes", products);
   }
   if (mode === "fuel") search.set("include_fuel_statistics", "true");
+  // 화면 안 시군구 칩은 공개 유가 화면에서만 요청한다(관리 지도 응답은 그대로).
+  if (publicFuel && kinds.includes("fuel_station")) search.set("include_viewport_sigungu", "true");
   return search;
 }
 
@@ -693,7 +699,7 @@ function initialMapCamera(embedded: boolean): { camera?: MapCamera; viewport: Vi
     viewport: { min_longitude: String(longitude - .015), max_longitude: String(longitude + .015), min_latitude: String(latitude - .015), max_latitude: String(latitude + .015) } };
 }
 
-function MapInspector({ panelView, embedded, details, mapDetail, listDetail, detailTitle, current, dismissEmbeddedDetail, closeDetail, loaded, setView, setCameraRequest, setSelected, setReload, focusFilters, load, publicFuel }: { publicFuel?: { onRefresh?: () => void; refreshing: boolean }; load: typeof transportGet; panelView: "map" | "list"; details?: ReactNode; detailTitle?: ReactNode } & Pick<ReturnType<typeof useTransportMap>, "embedded" | "mapDetail" | "listDetail" | "current" | "dismissEmbeddedDetail" | "closeDetail" | "loaded" | "setView" | "setCameraRequest" | "setSelected" | "setReload" | "focusFilters">) {
+function MapInspector({ panelView, embedded, details, mapDetail, listDetail, detailTitle, current, dismissEmbeddedDetail, closeDetail, loaded, setView, setCameraRequest, setSelected, setReload, focusFilters, load, publicFuel }: { publicFuel?: { onRefresh?: () => void; refreshing: boolean; products?: string[] }; load: typeof transportGet; panelView: "map" | "list"; details?: ReactNode; detailTitle?: ReactNode } & Pick<ReturnType<typeof useTransportMap>, "embedded" | "mapDetail" | "listDetail" | "current" | "dismissEmbeddedDetail" | "closeDetail" | "loaded" | "setView" | "setCameraRequest" | "setSelected" | "setReload" | "focusFilters">) {
   if (embedded) return details ? <MapDetailOverlay ref={panelView === "map" ? mapDetail : listDetail} className="transport-map-detail" aria-label="선택 장소 상세" header={<h2>{detailTitle ?? current?.name ?? "선택 장소 상세"}</h2>} collapsible onDismiss={dismissEmbeddedDetail}>
     {details}
   </MapDetailOverlay> : null;
