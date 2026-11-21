@@ -113,7 +113,7 @@ function streamRefresh(upstream: Promise<NextResponse>, abort: AbortController) 
       abort.abort();
     },
   }), { headers: {
-    ...NO_STORE,
+    "cache-control": "no-store, no-transform",
     "content-type": "application/json",
     "content-encoding": "identity",
     "x-accel-buffering": "no",

@@ -69,6 +69,7 @@ it("시 단위 브라우저 조회가 끝난 뒤 내부 정리까지 기다린�
     const response = await result;
     expect(response.status).toBe(200);
     expect(response.headers.get("content-encoding")).toBe("identity");
+    expect(response.headers.get("cache-control")).toBe("no-store, no-transform");
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
     expect(decoder.decode((await reader.read()).value)).toMatch(/^ +$/);
