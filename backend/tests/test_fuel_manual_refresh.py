@@ -1,13 +1,13 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from threading import Event
 from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
-from httpx import AsyncClient, MockTransport, Response
-from opinet import OpinetClient, OpinetError, OpinetRateLimitError
+from opinet import OpinetRateLimitError
 from sqlalchemy import func, select
 
 from app import main
@@ -34,39 +34,40 @@ def run(client, work):
 def provider(monkeypatch):
     calls, replies = [], {}
 
-    class FakeOpinet:
-        def __init__(self, *, api_key, timeout, max_retries, max_rps, session):
-            assert api_key == "fixture-key" and session.follow_redirects is False
-            assert (timeout, max_retries, max_rps) == (2, 0, 2)
+    class FakeCollector:
+        def __init__(self, *, browser_channel, timeout_ms, throttle):
+            assert browser_channel is None and timeout_ms == 8000
+            assert throttle.max_search_requests == 18
 
-        async def __aenter__(self):
-            return self
+        @asynccontextmanager
+        async def open_region_search(self):
+            async def search(region, kind):
+                assert region.sido_value == "서울특별시" and kind in {"station", "lpg"}
+                suffix = region.sigungu_value.removeprefix("시험구")
+                ids = ["U0", "U1", "UNRELATED"] if suffix == "_shared" else [f"U{suffix}"]
+                calls.append(f"U{suffix}" if kind == "station" else f"LPG:{suffix}")
+                rows = []
+                for station_id in ids:
+                    reply = replies.get(station_id, (1712, now_utc() - timedelta(minutes=1)))
+                    if callable(reply):
+                        reply = await reply()
+                    if isinstance(reply, Exception):
+                        raise reply
+                    price, observed = reply
+                    rows.append(SimpleNamespace(station_id=station_id, prices=[
+                        SimpleNamespace(product_code=SimpleNamespace(value="B027"), price=price, updated_at=observed),
+                    ]))
+                return tuple(rows)
+            yield search
 
-        async def __aexit__(self, *_):
-            pass
-
-        async def get_station_detail(self, station_id):
-            calls.append(station_id)
-            reply = replies.get(station_id, (1712, now_utc() - timedelta(minutes=1)))
-            if callable(reply):
-                reply = await reply()
-            if isinstance(reply, Exception):
-                raise reply
-            price, observed = reply
-            local = observed.astimezone(refresh.SEOUL)
-            return SimpleNamespace(uni_id=station_id, prices=[
-                SimpleNamespace(product_code=SimpleNamespace(value="B027"), price=price,
-                                trade_date=local.date(), trade_time=local.time()),
-            ])
-
-    monkeypatch.setattr(refresh, "OpinetClient", FakeOpinet)
+    monkeypatch.setattr(refresh, "OpinetBrowserCollector", FakeCollector)
     return calls, replies
 
 
 @pytest.fixture
 def api(test_settings, provider):
     def make(limit=10, *, peer="127.0.0.1", **overrides):
-        values = dict(opinet_api_key="fixture-key", fuel_refresh_internal_token=TOKEN,
+        values = dict(opinet_browser_enabled=True, fuel_refresh_internal_token=TOKEN,
                       fuel_refresh_daily_limit=limit, transport_admin_write_token="separate-test-secret",
                       release_sha="fixture-refresh")
         return TestClient(main.create_app(test_settings.model_copy(update={**values, **overrides})),
@@ -74,14 +75,15 @@ def api(test_settings, provider):
     return make
 
 
-def seed(client, count, at, *, unsupported=False, unpriced=()):
+def seed(client, count, at, *, unsupported=False, unpriced=(), shared_region=False, lpg=False):
     async def insert(session):
         ids = []
         for i in range(count):
             station = FuelStation(
                 source=OPINET_SOURCE, identity_key=f"station:U{i}", source_station_id=None if unsupported else f"U{i}",
-                name=f"주유소 {i}", query_level="sigungu", sido_value="11", sido_name="서울",
-                sigungu_value="110", sigungu_name="구", source_kinds=[],
+                name=f"주유소 {i}", query_level="sigungu", sido_value="서울특별시", sido_name="서울",
+                sigungu_value="시험구_shared" if shared_region else f"시험구{i}", sigungu_name="구",
+                source_kinds=["lpg"] if lpg else ["station"],
                 latitude=37.5, longitude=127.1 + i / 100, first_seen_at=at, last_seen_at=at,
             )
             session.add(station)
@@ -115,39 +117,44 @@ def map_get(client, **overrides):
 
 
 @pytest.mark.parametrize("overrides", [
-    {"opinet_api_key": None}, {"fuel_refresh_daily_limit": 0}, {"fuel_refresh_internal_token": "weak"},
+    {"opinet_browser_enabled": False}, {"fuel_refresh_daily_limit": 0}, {"fuel_refresh_internal_token": "weak"},
     {"transport_admin_write_token": TOKEN},
 ])
-def test_disabled_without_separate_token_key_and_positive_limit(api, provider, overrides):
+def test_disabled_without_browser_separate_token_and_positive_limit(api, provider, overrides):
     with api(**overrides) as client:
         post(client, {"station_id": 1}, 404)
     assert provider[0] == []
 
 
 
-async def test_pinned_sdk_reads_actual_detail_contract_without_network():
-    calls = []
+def test_browser_prices_require_provider_timestamp():
+    observed = datetime(2026, 11, 21, 6, 30, tzinfo=UTC)
+    stations = [SimpleNamespace(prices=[
+        SimpleNamespace(product_code=SimpleNamespace(value="B027"), price=1712, updated_at=observed),
+        SimpleNamespace(product_code=SimpleNamespace(value="D047"), price=1500, updated_at=None),
+        SimpleNamespace(product_code=SimpleNamespace(value="C004"), price=1400, updated_at=observed + timedelta(hours=2)),
+    ])]
+    assert refresh._observations(stations, observed + timedelta(minutes=30)) == {"B027": (observed, 1712)}
 
-    def serve(request):
-        calls.append(request)
-        if request.url.params["id"] == "redirect":
-            return Response(302, headers={"location": "https://opinet.invalid/unexpected"})
-        return Response(200, json={"RESULT": {"OIL": [{
-            "UNI_ID": "U0", "LPG_YN": "N", "SIGUNCD": "11110", "GIS_X_COOR": 310000,
-            "GIS_Y_COOR": 550000, "OIL_PRICE": [{
-                "PRODCD": "B027", "PRICE": "1712", "TRADE_DT": "20261121", "TRADE_TM": "153000",
-            }],
-        }]}})
 
-    async with AsyncClient(transport=MockTransport(serve), follow_redirects=False) as http:
-        async with OpinetClient(api_key="fixture-key", session=http, timeout=2, max_retries=0) as provider:
-            detail = await provider.get_station_detail("U0")
-            with pytest.raises(OpinetError):
-                await provider.get_station_detail("redirect")
-    assert [call.url.params["id"] for call in calls] == ["U0", "redirect"]
-    assert calls[0].url.path.endswith("/detailById.do") and calls[0].url.params["id"] == "U0"
-    checked = datetime(2026, 11, 21, 7, tzinfo=UTC)
-    assert refresh._observations(detail, "U0", checked) == {"B027": (checked - timedelta(minutes=30), 1712)}
+def test_two_stations_share_one_region_search_and_ignore_unrequested_rows(api, provider):
+    with api() as client:
+        ids = seed(client, 2, now_utc() - timedelta(hours=1), shared_region=True)
+        one = post(client, {"station_id": ids[0]})["results"]
+        assert [result["station_id"] for result in one] == ids[:1]
+        together = post(client, {"viewport": VIEWPORT})["results"]
+        assert [item["status"] for item in together] == ["cooldown", "updated"]
+        assert provider[0] == ["U_shared", "U_shared"]
+
+
+def test_lpg_stations_in_the_same_region_share_one_tab_search(api, provider):
+    with api() as client:
+        ids = seed(client, 2, now_utc() - timedelta(hours=1), shared_region=True, lpg=True)
+        results = post(client, {"viewport": VIEWPORT})["results"]
+        assert [item["station_id"] for item in results] == ids
+        assert [item["status"] for item in results] == ["updated", "updated"]
+        assert provider[0] == ["LPG:_shared"]
+
 
 def test_auth_and_exact_target_schema(api, provider):
     with api() as client:

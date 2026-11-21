@@ -1,7 +1,9 @@
-"""Private, bounded manual refresh of prices from the authorized Opinet OpenAPI."""
+"""오피넷 지역별 검색 화면을 사용하는 제한된 수동 가격 갱신."""
 import asyncio
 import hmac
-from datetime import UTC, datetime, timedelta
+from collections import defaultdict
+from contextlib import AsyncExitStack
+from datetime import timedelta
 from decimal import Decimal
 from ipaddress import ip_address
 from typing import Annotated, Literal
@@ -9,8 +11,9 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
-from httpx import AsyncClient
-from opinet import OpinetAuthError, OpinetClient, OpinetError, OpinetRateLimitError
+from opinet import OpinetAuthError, OpinetError, OpinetRateLimitError
+from opinet.experimental.browser import BrowserRegion, OpinetBrowserCollector, OpinetBrowserThrottle
+from playwright.async_api import Error as PlaywrightError
 from sqlalchemy import and_, case, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -34,10 +37,9 @@ PROVIDER_BACKOFF = timedelta(minutes=5)
 def build_fuel_manual_refresh_router(settings, get_session_factory):
     router = APIRouter()
     token = (settings.fuel_refresh_internal_token or "").strip()
-    key = (settings.opinet_api_key or "").strip()
     daily_limit = settings.fuel_refresh_daily_limit
     other_tokens = (settings.transport_admin_write_token, settings.transport_service_export_token)
-    enabled = bool(key and len(token) >= 32 and daily_limit and token not in (*other_tokens, key))
+    enabled = bool(settings.opinet_browser_enabled and len(token) >= 32 and daily_limit and token not in other_tokens)
 
     def require_private_access(request: Request, authorization: Annotated[str | None, Header()] = None):
         peer = request.client
@@ -67,7 +69,7 @@ def build_fuel_manual_refresh_router(settings, get_session_factory):
                     async with session.begin():
                         targets = await _targets(session, body)
                     for target in targets:
-                        if target.source != OPINET_SOURCE or not target.source_station_id:
+                        if target.source != OPINET_SOURCE or not (target.source_station_id and target.sido_value and target.sigungu_value):
                             results[target.id] = FuelRefreshResult(
                                 station_id=target.id, status="unsupported", reason="unsupported_station",
                             )
@@ -75,16 +77,7 @@ def build_fuel_manual_refresh_router(settings, get_session_factory):
                     if eligible:
                         claimed = await _claim_lease(session, lease)
                         if claimed:
-                            async with (
-                                AsyncClient(follow_redirects=False) as http,
-                                OpinetClient(api_key=key, timeout=2, max_retries=0, max_rps=2, session=http) as client,
-                            ):
-                                for target in eligible:
-                                    if backoff:
-                                        results[target.id] = _rate_limited(target.id, "provider_backoff")
-                                        continue
-                                    result, backoff = await _refresh_station(session, client, target, lease, daily_limit)
-                                    results[target.id] = result
+                            backoff = await _refresh_regions(session, settings, eligible, lease, daily_limit, results)
                         else:
                             for target in eligible:
                                 results[target.id] = _rate_limited(target.id, "refresh_busy")
@@ -117,7 +110,11 @@ def build_fuel_manual_refresh_router(settings, get_session_factory):
 
 
 async def _targets(session, request):
-    stmt = select(FuelStation.id, FuelStation.source, FuelStation.source_station_id)
+    stmt = select(
+        FuelStation.id, FuelStation.source, FuelStation.source_station_id,
+        FuelStation.sido_value, FuelStation.sido_name, FuelStation.sigungu_value, FuelStation.sigungu_name,
+        FuelStation.source_kinds, FuelStation.station_type,
+    )
     if request.station_id is not None:
         rows = (await session.execute(stmt.where(FuelStation.id == request.station_id))).all()
         if not rows:
@@ -182,50 +179,98 @@ def _rate_limited(station_id, reason):
     return FuelRefreshResult(station_id=station_id, status="rate_limited", reason=reason)
 
 
-async def _refresh_station(session, client, target, lease, daily_limit):
-    reservation = await _reserve_call(session, target.id, lease, daily_limit)
-    if reservation:
-        return reservation, False
-    try:
-        async with asyncio.timeout(3):
-            detail = await client.get_station_detail(target.source_station_id)
-    except OpinetRateLimitError:
-        return _rate_limited(target.id, "provider_rate_limited"), True
-    except OpinetAuthError:
-        return FuelRefreshResult(station_id=target.id, status="error", reason="provider_unavailable"), True
-    except (OpinetError, TimeoutError):
-        return FuelRefreshResult(station_id=target.id, status="error", reason="provider_unavailable"), False
-
-    checked_at = now_utc()
-    prices = _observations(detail, target.source_station_id, checked_at)
-    if not prices:
-        return FuelRefreshResult(station_id=target.id, status="error", reason="no_valid_observation"), False
-    try:
-        result = await _store_observations(session, target, prices, checked_at)
-    except SQLAlchemyError:
-        result = FuelRefreshResult(station_id=target.id, status="error", reason="storage_unavailable")
-    return result, False
+def _station_tabs(target):
+    kinds = set(target.source_kinds or ())
+    if target.station_type == "Y":
+        return {"lpg"}
+    if target.station_type == "C":
+        return {"station", "lpg"}
+    return kinds.intersection({"station", "lpg"}) or {"station"}
 
 
-def _observations(detail, provider_id, checked_at):
-    if detail.uni_id != provider_id:
-        return {}
+async def _refresh_regions(session, settings, eligible, lease, daily_limit, results):
+    groups = defaultdict(list)
+    for target in eligible:
+        key = target.sido_value, target.sigungu_value
+        groups[key].append(target)
+
+    backoff = False
+    async with AsyncExitStack() as browser:
+        search = None
+        for targets in groups.values():
+            if backoff:
+                for target in targets:
+                    results[target.id] = _rate_limited(target.id, "provider_backoff")
+                continue
+            reserved = []
+            for target in targets:
+                limited = await _reserve_call(session, target.id, lease, daily_limit)
+                if limited:
+                    results[target.id] = limited
+                else:
+                    reserved.append(target)
+            if not reserved:
+                continue
+            first = reserved[0]
+            region = BrowserRegion(first.sido_value, first.sido_name, first.sigungu_value, first.sigungu_name)
+            try:
+                if search is None:
+                    collector = OpinetBrowserCollector(
+                        browser_channel=settings.opinet_browser_channel or None,
+                        timeout_ms=min(settings.opinet_browser_timeout_ms, 8_000),
+                        throttle=OpinetBrowserThrottle(max_search_requests=MAX_STATIONS * 2),
+                    )
+                    search = await browser.enter_async_context(collector.open_region_search())
+                rows = {}
+                tabs = set().union(*(_station_tabs(target) for target in reserved))
+                for kind in ("station", "lpg"):
+                    if kind in tabs:
+                        rows[kind] = await search(region, kind)
+            except (OpinetError, PlaywrightError) as exc:
+                backoff = search is None or isinstance(exc, (OpinetRateLimitError, OpinetAuthError))
+                for target in reserved:
+                    results[target.id] = (
+                        _rate_limited(target.id, "provider_rate_limited") if isinstance(exc, OpinetRateLimitError)
+                        else FuelRefreshResult(station_id=target.id, status="error", reason="provider_unavailable")
+                    )
+                continue
+            checked_at = now_utc()
+            for target in reserved:
+                stations = [station for kind in _station_tabs(target) for station in rows[kind]
+                            if station.station_id == target.source_station_id]
+                prices = _observations(stations, checked_at)
+                if not prices:
+                    results[target.id] = FuelRefreshResult(
+                        station_id=target.id, status="error", reason="no_valid_observation",
+                    )
+                    continue
+                try:
+                    results[target.id] = await _store_observations(session, target, prices, checked_at)
+                except SQLAlchemyError:
+                    results[target.id] = FuelRefreshResult(
+                        station_id=target.id, status="error", reason="storage_unavailable",
+                    )
+    return backoff
+
+
+def _observations(stations, checked_at):
     observations = {}
-    for item in detail.prices:
-        if item.price is None or not 0 < item.price < 100_000_000:
-            continue
-        observed_at = datetime.combine(item.trade_date, item.trade_time, SEOUL).astimezone(UTC)
-        if observed_at > checked_at:
-            continue
-        code = item.product_code.value
-        price = Decimal(str(item.price)).quantize(Decimal("0.01"))
-        if not 0 < price < 100_000_000:
-            continue
-        previous = observations.get(code)
-        if previous is not None and previous[0] == observed_at and previous[1] != price:
-            return {}
-        if previous is None or observed_at > previous[0]:
-            observations[code] = (observed_at, price)
+    for station in stations:
+        for item in station.prices:
+            if item.price is None or not 0 < item.price < 100_000_000 or item.updated_at is None:
+                continue
+            observed_at = serialize_utc(item.updated_at)
+            if observed_at > checked_at:
+                continue
+            code = item.product_code.value
+            price = Decimal(str(item.price)).quantize(Decimal("0.01"))
+            if not 0 < price < 100_000_000:
+                continue
+            previous = observations.get(code)
+            if previous is not None and previous[0] == observed_at and previous[1] != price:
+                return {}
+            if previous is None or observed_at > previous[0]:
+                observations[code] = (observed_at, price)
     return observations
 
 
