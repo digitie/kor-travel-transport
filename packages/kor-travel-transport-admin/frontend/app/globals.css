@@ -1016,7 +1016,7 @@ html:has([data-slot="map-workspace"][data-expanded="true"]) { overflow: hidden; 
 .fuel-station-history .fuel-echarts { height: calc(var(--fuel-chart-height) / 2); }
 @media (max-width: 480px) { .fuel-station-history .fuel-echarts { height: calc(var(--fuel-chart-height-mobile) / 2); } }
 
-/* 주유소 인증(품질인증·믿음주유소): 마커는 로고 왼쪽 위 모서리(오른쪽은 가격 라벨)의 작은 원 아이콘, 상세는 아이콘+글자 배지.
+/* 주유소 인증(품질인증·전산보고): 마커는 로고 왼쪽 위 모서리(오른쪽은 가격 라벨)의 작은 원 아이콘, 상세는 아이콘+글자 배지.
    아이콘 모양과 색을 함께 달리하고, 내 위치(파란 점)와 겹치지 않게 파랑을 쓰지 않는다. */
 .fuel-marker-brand { position: relative; display: inline-flex; }
 .fuel-cert-marks { position: absolute; top: -8px; left: -8px; display: inline-flex; gap: 1px; pointer-events: none; }

@@ -10,7 +10,7 @@ import type { Place } from "@/lib/journey";
  */
 export const FUEL_CERTIFICATIONS = [
   { field: "is_kpetro", label: "품질인증", description: "오피넷에 품질인증 주유소로 표시된 곳입니다.", Icon: BadgeCheck, tone: "quality" },
-  { field: "is_electronic", label: "믿음주유소", description: "오피넷에 석유 거래상황 전산보고 주유소로 표시된 곳입니다.", Icon: ReceiptText, tone: "trust" },
+  { field: "is_electronic", label: "전산보고", description: "오피넷에 석유 거래상황 전산보고 주유소로 표시된 곳입니다.", Icon: ReceiptText, tone: "trust" },
 ] as const satisfies readonly { field: keyof Place; label: string; description: string; Icon: LucideIcon; tone: string }[];
 
 export function fuelCertifications(place: Pick<Place, "is_kpetro" | "is_electronic">) {

@@ -4,8 +4,8 @@ import { FuelCertificationBadges, FuelCertificationMarks } from "./fuel-certific
 import { fuelCertifications } from "@/lib/fuel-certification";
 
 test("true인 인증만 정해진 순서로 돌려주고 false·미확인(null)은 표시하지 않는다", () => {
-  expect(fuelCertifications({ is_kpetro: true, is_electronic: true }).map((item) => item.label)).toEqual(["품질인증", "믿음주유소"]);
-  expect(fuelCertifications({ is_kpetro: null, is_electronic: true }).map((item) => item.label)).toEqual(["믿음주유소"]);
+  expect(fuelCertifications({ is_kpetro: true, is_electronic: true }).map((item) => item.label)).toEqual(["품질인증", "전산보고"]);
+  expect(fuelCertifications({ is_kpetro: null, is_electronic: true }).map((item) => item.label)).toEqual(["전산보고"]);
   expect(fuelCertifications({ is_kpetro: false, is_electronic: null })).toEqual([]);
   expect(fuelCertifications({})).toEqual([]);
 });
