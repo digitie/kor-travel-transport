@@ -24,14 +24,14 @@ const scopeShort: Record<string, string> = { nationwide: "전국" };
 // unavailable: 서버가 이 주유소·지역을 비교할 수 없다고 답했다(404·422). 재시도 대신 조용한 안내를 보인다.
 type LoadState = { key: string; data?: FuelPriceDistribution; error?: boolean; unavailable?: boolean };
 
-function useDistribution(load: Loader, target: FuelDistributionTarget | null, product: string) {
-  const key = target ? `${JSON.stringify(target)}:${product}` : "";
+function useDistribution(load: Loader, target: FuelDistributionTarget | null, product: string, filterQuery = "") {
+  const key = target ? `${JSON.stringify(target)}:${product}:${filterQuery}` : "";
   const [state, setState] = useState<LoadState>();
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     if (!target) return;
     const controller = new AbortController();
-    loadFuelPriceDistribution(load, target, product, AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]))
+    loadFuelPriceDistribution(load, target, product, AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]), filterQuery)
       .then(data => { if (!controller.signal.aborted) setState({ key, data }); })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
@@ -47,8 +47,8 @@ function useDistribution(load: Loader, target: FuelDistributionTarget | null, pr
 }
 
 /** 범위 요약 안: 지금 지도에 보이는 시군구. 누르면 그 시군구의 가격 분포 대화상자를 연다. */
-export function FuelSigunguChips({ regions, total, product, load }: {
-  regions: FuelViewportSigungu[]; total: number; product: string; load: Loader;
+export function FuelSigunguChips({ regions, total, product, load, filterQuery }: {
+  regions: FuelViewportSigungu[]; total: number; product: string; load: Loader; filterQuery?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [target, setTarget] = useState<FuelDistributionTarget | null>(null);
@@ -77,33 +77,33 @@ export function FuelSigunguChips({ regions, total, product, load }: {
       </li> : null}
     </ul>
     {expanded && total > regions.length ? <p className="fuel-sigungu-note">주유소가 많은 {regions.length}곳만 보입니다. 지도를 확대해 나머지 {total - regions.length}곳을 확인하세요.</p> : null}
-    <FuelDistributionDialog target={target} onClose={() => setTarget(null)} initialProduct={product} load={load} returnFocus={opener} />
+    <FuelDistributionDialog target={target} onClose={() => setTarget(null)} initialProduct={product} load={load} returnFocus={opener} filterQuery={filterQuery} />
   </nav>;
 }
 
 /** 시군구·주유소 공용 대화상자. 주유소면 그 가격을 곡선 위에 핀으로 표시한다. */
-export function FuelDistributionDialog({ target, onClose, initialProduct, load, productChoices, returnFocus }: {
-  target: FuelDistributionTarget | null; onClose: () => void; initialProduct: string; load: Loader; productChoices?: string[];
+export function FuelDistributionDialog({ target, onClose, initialProduct, load, productChoices, returnFocus, filterQuery }: {
+  target: FuelDistributionTarget | null; onClose: () => void; initialProduct: string; load: Loader; productChoices?: string[]; filterQuery?: string;
   /** 트리거 없이 여는 대화상자라 닫을 때 연 버튼으로 초점을 직접 돌려준다. */
   returnFocus?: RefObject<HTMLElement | null>;
 }) {
   return <Dialog open={target !== null} onOpenChange={open => { if (!open) onClose(); }}>
     {target ? <DialogContent className="fuel-distribution-dialog" showCloseButton={false}
       onCloseAutoFocus={event => { event.preventDefault(); returnFocus?.current?.focus(); }}>
-      <FuelDistributionBody key={JSON.stringify(target)} target={target} initialProduct={initialProduct} load={load} productChoices={productChoices} />
+      <FuelDistributionBody key={JSON.stringify(target)} target={target} initialProduct={initialProduct} load={load} productChoices={productChoices} filterQuery={filterQuery} />
       <DialogClose asChild><Button type="button" variant="outline" className="fuel-distribution-close">닫기</Button></DialogClose>
     </DialogContent> : null}
   </Dialog>;
 }
 
-function FuelDistributionBody({ target, initialProduct, load, productChoices }: {
-  target: FuelDistributionTarget; initialProduct: string; load: Loader; productChoices?: string[];
+function FuelDistributionBody({ target, initialProduct, load, productChoices, filterQuery }: {
+  target: FuelDistributionTarget; initialProduct: string; load: Loader; productChoices?: string[]; filterQuery?: string;
 }) {
   const [product, setProduct] = useState(initialProduct);
   // 토글은 유종을 바꿔 다시 불러오는 동안에도 유지한다.
   const [percent, setPercent] = useState(false);
   const [compare, setCompare] = useState(false);
-  const { current, retry } = useDistribution(load, target, product);
+  const { current, retry } = useDistribution(load, target, product, filterQuery);
   const data = current?.data;
   const placeLabel = target.kind === "region" ? target.label : data?.sigungu_name ?? "주변";
   const productLabel = fuelProductLabel(product);
@@ -117,6 +117,7 @@ function FuelDistributionBody({ target, initialProduct, load, productChoices }: 
       {local ? <>최저 {won(local.minimum_price)}, 평균 {won(local.average_price)}, 최고 {won(local.maximum_price)}</> : "가격 분포"}
       {data?.generated_at ? <><br /><time dateTime={data.generated_at}>{distributionTimestamp(data.generated_at)}</time></> : null}
       {data?.update_pending ? <><br />최신 수집 반영 대기</> : null}
+      {data?.filters_applied.length ? <><br />필터 적용: {data.filters_applied.join(" · ")}</> : null}
     </DialogDescription>
     {choices.length > 1 ? <div className="fuel-distribution-product">
       <label htmlFor={productId}>유종</label>
@@ -217,8 +218,8 @@ export function FuelGradeRow({ comparisons, price, productLabel, sidoName, actio
 }
 
 /** 주유소 상세: 시군구·시도·전국 대비 등급과 지역 가격 분포(핀) 대화상자. */
-export function FuelStationPricePosition({ stationId, productCodes, selectedProducts, load }: {
-  stationId: number; productCodes: string[]; selectedProducts: string[]; load: Loader;
+export function FuelStationPricePosition({ stationId, productCodes, selectedProducts, load, filterQuery }: {
+  stationId: number; productCodes: string[]; selectedProducts: string[]; load: Loader; filterQuery?: string;
 }) {
   const sold = new Set(productCodes);
   const ordered = FUEL_CHART_ORDER.filter(code => sold.has(code));
@@ -227,11 +228,11 @@ export function FuelStationPricePosition({ stationId, productCodes, selectedProd
   const [open, setOpen] = useState(false);
   const opener = useRef<HTMLButtonElement>(null);
   const target: FuelDistributionTarget = { kind: "station", station_id: stationId };
-  const { current, retry } = useDistribution(load, initial ? target : null, initial ?? "B027");
+  const { current, retry } = useDistribution(load, initial ? target : null, initial ?? "B027", filterQuery);
   if (!initial) return null;
   return <section className="fuel-station-position" aria-label="주변 대비 가격" aria-busy={!current}>
     <StationPositionState current={current} retry={retry} productLabel={fuelProductLabel(initial)} onOpen={() => setOpen(true)} opener={opener} />
-    <FuelDistributionDialog target={open ? target : null} onClose={() => setOpen(false)} initialProduct={initial} load={load} productChoices={ordered} returnFocus={opener} />
+    <FuelDistributionDialog target={open ? target : null} onClose={() => setOpen(false)} initialProduct={initial} load={load} productChoices={ordered} returnFocus={opener} filterQuery={filterQuery} />
   </section>;
 }
 

@@ -160,6 +160,22 @@ export function CameraRequest({ target }: { target: CameraTarget | undefined }) 
   return null;
 }
 
+export type BoundsTarget = { bounds: [number, number, number, number]; id: string | number };
+
+/** 공개 유가 "지역 이동": [서, 남, 동, 북] 범위를 화면에 맞춘다(한 점뿐인 범위도 너무 확대하지 않게 상한 14). */
+export function FitBoundsRequest({ target }: { target: BoundsTarget | undefined }) {
+  const map = useMap();
+  const appliedRef = useRef<string | number | undefined>(undefined);
+  useEffect(() => {
+    if (map === null || target === undefined || appliedRef.current === target.id) return;
+    appliedRef.current = target.id;
+    const [west, south, east, north] = target.bounds;
+    const pad = .01;
+    map.fitBounds([[west - pad, south - pad], [east + pad, north + pad]], { padding: 32, maxZoom: Math.min(14, map.getMaxZoom()) });
+  }, [map, target]);
+  return null;
+}
+
 /** 내 위치 점. 상호작용 없는 MapLibre 마커라 지도 끌기·확대를 막지 않는다. */
 export function UserLocationMarker({ position }: { position: [number, number] | undefined }) {
   const map = useMap();

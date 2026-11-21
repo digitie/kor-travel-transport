@@ -64,7 +64,7 @@ export function MultiSearch({ label, query, onQuery, options, selected, onSelect
   </section>;
 }
 
-export type PublicFuelPriceControls = { onRefresh?: () => void; refreshing: boolean; products?: string[] };
+export type PublicFuelPriceControls = { onRefresh?: () => void; refreshing: boolean; products?: string[]; filterQuery?: string };
 
 export function PlaceDetails({ place, showRailTimetable = true, showHeading = true, onShowMap, load, publicFuel }: { load?: typeof transportGet; place: Place; showRailTimetable?: boolean; showHeading?: boolean; onShowMap?: () => void; publicFuel?: PublicFuelPriceControls }) {
   return <div className="place-details grid min-w-0 gap-3 text-sm">
@@ -72,7 +72,7 @@ export function PlaceDetails({ place, showRailTimetable = true, showHeading = tr
     {publicFuel && place.kind === "fuel_station"
       ? <><PublicFuelPlacePrices prices={place.prices?.filter(hasFuelPrice) ?? []} controls={publicFuel} />
         {place.source === "opinet_browser" && load ? <FuelStationPricePosition key={place.id} stationId={place.id} load={load}
-          productCodes={place.prices?.filter(hasFuelPrice).map(price => price.product_code) ?? []} selectedProducts={publicFuel.products ?? []} /> : null}</>
+          productCodes={place.prices?.filter(hasFuelPrice).map(price => price.product_code) ?? []} selectedProducts={publicFuel.products ?? []} filterQuery={publicFuel.filterQuery} /> : null}</>
       : <PlacePrices place={place} />}
     {place.kind === "fuel_station" ? <FuelStationPriceHistory key={`${place.source}:${place.id}`} place={place} load={load}><PlaceContact place={place} onShowMap={onShowMap} /><PlaceLocationEvidence place={place} /></FuelStationPriceHistory> : <PlaceContact place={place} onShowMap={onShowMap} />}
     {place.kind === "rail_station" && showRailTimetable ? <RailTimetables placeIds={[place.id]} /> : null}

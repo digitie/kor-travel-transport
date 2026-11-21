@@ -16,6 +16,7 @@ import FuelPriceChart from "./fuel-price-chart-loader";
 import { FUEL_CHART_ORDER, fuelStationHref, type FuelChartStation } from "@/lib/fuel-chart-model";
 import { StatStrip } from "./stat-strip";
 import { FuelSigunguChips } from "./fuel-price-distribution";
+import { PublicFuelTools } from "./public-fuel-controls";
 import type { FuelViewportSigungu } from "@/lib/fuel-price-distribution";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -128,6 +129,11 @@ type FuelViewportSummaryProps = {
     /** 공개 유가 전용: 지금 지도에 보이는 시군구와 그 통계를 읽는 공개 reader. */
     sigungu?: FuelViewportSigungu[];
     sigunguTotal?: number;
+    /** 공개 유가 서버 필터 query. 시군구 통계도 같은 조건으로 읽는다. */
+    filterQuery?: string;
+    filterCount?: number;
+    onOpenFilters?: () => void;
+    onOpenRegion?: (current?: { sido_value: string; sigungu_value: string }) => void;
     load?: <T>(path: string, signal?: AbortSignal) => Promise<T>;
   };
 };
@@ -161,8 +167,10 @@ function PublicFuelViewportSummary({
   const displayed = selectedProducts.size ? items.filter(item => selectedProducts.has(item.product_code)) : items;
   return <section className="fuel-viewport-summary public-fuel-summary" aria-label="현재 지도 범위 유가 통계" aria-busy={pending}>
     <PublicFuelSummaryHeader pricesStale={pricesStale} pricesLastRefreshedAt={pricesLastRefreshedAt} controls={publicFuel} />
+    {publicFuel.onOpenFilters && publicFuel.onOpenRegion ? <PublicFuelTools filterCount={publicFuel.filterCount ?? 0}
+      onOpenFilters={publicFuel.onOpenFilters} onOpenRegion={() => publicFuel.onOpenRegion?.(publicFuel.sigungu?.[0])} /> : null}
     {publicFuel.load && publicFuel.sigungu?.length ? <FuelSigunguChips regions={publicFuel.sigungu} total={publicFuel.sigunguTotal ?? publicFuel.sigungu.length}
-      product={FUEL_CHART_ORDER.find(code => selectedProducts.has(code)) ?? "B027"} load={publicFuel.load} /> : null}
+      product={FUEL_CHART_ORDER.find(code => selectedProducts.has(code)) ?? "B027"} load={publicFuel.load} filterQuery={publicFuel.filterQuery} /> : null}
     <div className="fuel-summary-body public-fuel-summary-body">
       {pending ? <p role="status">통계 조회 중…</p> : failed ? <p role="alert">통계를 불러오지 못했습니다.</p> :
         <PublicFuelRangeValues items={displayed} />}

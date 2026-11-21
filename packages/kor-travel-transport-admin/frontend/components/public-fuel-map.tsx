@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { LocateFixed } from "lucide-react";
-import { CameraRequest, UserLocationMarker, type CameraTarget } from "@/components/map-overlays";
+import { CameraRequest, FitBoundsRequest, UserLocationMarker, type BoundsTarget, type CameraTarget } from "@/components/map-overlays";
+import { FuelFilterDrawer, FuelRegionPicker, type FuelAreaChoice } from "@/components/public-fuel-controls";
 import { TransportMap } from "@/components/transport-map";
 import { Button } from "@/components/ui/button";
 import { publicFuelGet } from "@/lib/public-fuel";
@@ -10,12 +11,32 @@ import {
   LOCATE_MESSAGES, LOCATE_WATCHDOG_MS, RETRYABLE_LOCATE_FAILURES, isLocateFailure, requestUserPosition, type LocateFailure,
 } from "@/lib/locate-user";
 import { FUEL_PRODUCT_LABELS } from "@/lib/transport-presentation";
+import { activeFilterCount, parsePublicFuelFilters, publicFuelFilterQuery, type PublicFuelFilters } from "@/lib/public-fuel-filters";
 
 // Keep the shared map's existing paths and request cancellation; only its reader changes.
 const loadFuel: typeof publicFuelGet = (path, signal) => publicFuelGet(path.replace(/^transport\//, ""), signal);
 
 const PRODUCT_STORAGE_KEY = "transport.public-fuel.products";
 const PRODUCT_STORAGE_EVENT = "transport:public-fuel-products";
+const FILTER_STORAGE_KEY = "transport.public-fuel.filters";
+const FILTER_STORAGE_EVENT = "transport:public-fuel-filters";
+
+function subscribeToFilterPreferences(callback: () => void) {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === null || event.key === FILTER_STORAGE_KEY) callback();
+  };
+  window.addEventListener("storage", onStorage);
+  window.addEventListener(FILTER_STORAGE_EVENT, callback);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener(FILTER_STORAGE_EVENT, callback);
+  };
+}
+
+function getStoredFilters() {
+  try { return window.localStorage.getItem(FILTER_STORAGE_KEY); }
+  catch { return null; }
+}
 
 function subscribeToProductPreferences(callback: () => void) {
   const onStorage = (event: StorageEvent) => {
@@ -56,6 +77,15 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
   const [temporaryProducts, setTemporaryProducts] = useState<string[]>();
   const storedProducts = useSyncExternalStore(subscribeToProductPreferences, getStoredProducts, () => null);
   const products = useMemo(() => temporaryProducts ?? parseProductPreferences(storedProducts), [temporaryProducts, storedProducts]);
+  // 필터는 이 브라우저에 저장한다(저장이 막히면 이번 화면에서만 유지). 서버가 적용한다.
+  const [temporaryFilters, setTemporaryFilters] = useState<PublicFuelFilters>();
+  const storedFilters = useSyncExternalStore(subscribeToFilterPreferences, getStoredFilters, () => null);
+  const filters = useMemo(() => temporaryFilters ?? parsePublicFuelFilters(storedFilters), [temporaryFilters, storedFilters]);
+  const filterQuery = publicFuelFilterQuery(filters, products);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [regionCurrent, setRegionCurrent] = useState<FuelAreaChoice>();
+  const [regionOpen, setRegionOpen] = useState(false);
+  const [regionTarget, setRegionTarget] = useState<BoundsTarget>();
   const request = useRef(0);
   // 진행 중인 요청이 있으면 새 요청을 겹쳐 보내지 않는다(연타·키보드 반복).
   const inFlight = useRef(false);
@@ -66,6 +96,15 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
     if (watch.current !== undefined) navigator.geolocation?.clearWatch(watch.current);
     watch.current = undefined;
   }, []);
+  function onFiltersChange(value: PublicFuelFilters) {
+    try {
+      window.localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(value));
+      setTemporaryFilters(undefined);
+      window.dispatchEvent(new Event(FILTER_STORAGE_EVENT));
+    } catch {
+      setTemporaryFilters(value);
+    }
+  }
   function onProductsChange(value: string[]) {
     try {
       window.localStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(value));
@@ -135,7 +174,15 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
     }, (failure: unknown) => fail(id, isLocateFailure(failure) ? failure : "unavailable"));
   }
   return <main className="public-fuel-surface" aria-label="주변 주유소 유가 지도">
-    <TransportMap mode="fuel" load={loadFuel} mapOnly publicFuel={{ products, onProductsChange, refreshEnabled }} layers={<><CameraRequest target={location} /><UserLocationMarker position={userPosition} /></>} />
+    <TransportMap mode="fuel" load={loadFuel} mapOnly publicFuel={{
+      products, onProductsChange, refreshEnabled, filterQuery, filterCount: activeFilterCount(filters),
+      onOpenFilters: () => setFiltersOpen(true),
+      onOpenRegion: current => { setRegionCurrent(current); setRegionOpen(true); },
+    }} layers={<><CameraRequest target={location} /><FitBoundsRequest target={regionTarget} /><UserLocationMarker position={userPosition} /></>} />
+    <FuelRegionPicker open={regionOpen} onOpenChange={setRegionOpen} load={loadFuel} current={regionCurrent}
+      onConfirm={(bounds, label) => setRegionTarget({ bounds, id: `${label}:${Date.now()}` })} />
+    <FuelFilterDrawer open={filtersOpen} onOpenChange={setFiltersOpen} filters={filters} onFiltersChange={onFiltersChange}
+      products={products} onProductsChange={onProductsChange} />
     <div className="public-fuel-location">
       <Button type="button" variant="outline" onClick={locate} loading={locating} aria-label="내 위치 주변 유가 보기">
         <LocateFixed aria-hidden="true" size={18} />
