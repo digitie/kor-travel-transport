@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import math
+import time
+from collections import OrderedDict
 from collections.abc import AsyncIterator, Callable, Sequence
 from typing import Any
 
@@ -25,6 +27,7 @@ MINIMUM_SAMPLE = 3
 QUANTILE_PERCENTS = tuple(range(0, 101, 10))
 HISTOGRAM_TARGET_BINS = 10
 VIEWPORT_SIGUNGU_LIMIT = 40
+_sigungu_cache: OrderedDict[tuple, tuple[float, tuple[list[dict], int]]] = OrderedDict()
 
 # 등급 규칙(단일 정본). percentile은 "이 가격보다 싼 주유소 비율"의 중간 순위 백분위다:
 #   percentile = 100 × (더 싼 곳 수 + 0.5 × 같은 가격 곳 수) / 전체 곳 수
@@ -109,26 +112,46 @@ async def viewport_sigungu(session: AsyncSession, bounds: tuple[float, float, fl
     """
     if sources and OPINET not in sources:
         return [], 0
-    p, s = FuelStatisticsPoint, FuelStation
-    conditions = [s.sido_value != "", s.sigungu_value != "",
+    published = await session.get(FuelStatisticsState, OPINET)
+    if published is None:
+        return [], 0
+    key = (session.bind, serialize_utc(published.generated_at), bounds, tuple(sorted(products)), (query or "").strip(), limit)
+    cached = _sigungu_cache.get(key)
+    if cached and cached[0] > time.monotonic():
+        _sigungu_cache.move_to_end(key)
+        return cached[1]
+    p, s, state = FuelStatisticsPoint, FuelStation, FuelStatisticsState
+    conditions = [p.source == OPINET, p.price > 0,
                   p.longitude.between(bounds[0], bounds[2]), p.latitude.between(bounds[1], bounds[3])]
     if products:
         conditions.append(p.product_code.in_(products))
     if query and query.strip():
         conditions.append(or_(*(column.icontains(query.strip(), autoescape=True)
                                 for column in (p.name, p.brand_name, p.address))))
-    grouped = _published_points().with_only_columns(
-        s.sido_value, s.sido_name, s.sigungu_value, s.sigungu_name,
-        func.count(func.distinct(p.station_key)).label("station_count"),
+    # 화면 안 주유소 id를 먼저 한 번씩만 뽑고(유종 행 중복 제거) 그다음 시군구로 묶는다.
+    # 전국 화면(약 3.2만 가격 행)에서 가격 행 전체를 주유소와 조인해 count(distinct)하는 것보다 싸다.
+    visible = select(cast(p.station_key, Integer).label("station_id")).join(state, and_(
+        p.source == state.source, p.generated_at == state.generated_at,
+    )).where(*conditions).distinct().subquery()
+    station_count = func.count().label("station_count")
+    grouped = select(
+        s.sido_value, s.sido_name, s.sigungu_value, s.sigungu_name, station_count,
         func.count().over().label("region_total"),
-    ).where(*conditions).group_by(s.sido_value, s.sido_name, s.sigungu_value, s.sigungu_name).order_by(
-        func.count(func.distinct(p.station_key)).desc(), s.sido_value, s.sigungu_value,
+    ).select_from(visible).join(s, s.id == visible.c.station_id).where(
+        s.sido_value != "", s.sigungu_value != "",
+    ).group_by(s.sido_value, s.sido_name, s.sigungu_value, s.sigungu_name).order_by(
+        func.count().desc(), s.sido_value, s.sigungu_value,
     ).limit(limit)
     rows = (await session.execute(grouped)).mappings().all()
     total = int(rows[0]["region_total"]) if rows else 0
-    return [{"sido_value": row["sido_value"], "sido_name": row["sido_name"] or row["sido_value"],
-             "sigungu_value": row["sigungu_value"], "sigungu_name": row["sigungu_name"] or row["sigungu_value"],
-             "station_count": int(row["station_count"])} for row in rows], total
+    result = ([{"sido_value": row["sido_value"], "sido_name": row["sido_name"] or row["sido_value"],
+                "sigungu_value": row["sigungu_value"], "sigungu_name": row["sigungu_name"] or row["sigungu_value"],
+                "station_count": int(row["station_count"])} for row in rows], total)
+    # 같은 공개 세대·같은 화면의 반복 요청(재렌더·되돌아가기)만 10초 재사용한다. 세대가 바뀌면 키가 달라진다.
+    _sigungu_cache[key] = (time.monotonic() + 10, result)
+    while len(_sigungu_cache) > 64:
+        _sigungu_cache.popitem(last=False)
+    return result
 
 
 def _summary(scope: str, label: str, count: int, minimum: Any, average: Any, maximum: Any) -> dict | None:

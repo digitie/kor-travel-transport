@@ -19,6 +19,7 @@ from sqlalchemy import insert, text
 
 from app.db.session import create_engine_and_session_factory
 from app.models import FuelLatestPrice, FuelPriceSnapshot, FuelStation, TransportCollectionState
+from app.services import fuel_price_distribution as distribution_module
 from app.services.fuel_price_distribution import price_distribution, viewport_sigungu
 from app.services.fuel_statistics import OPINET, publish_fuel_statistics
 
@@ -87,10 +88,14 @@ async def main() -> None:
             session, product_code="B027", sido_value="05", sigungu_value="05010", station_id=None))
         await timed("station B027", args.repeat, lambda: price_distribution(
             session, product_code="B027", sido_value=None, sigungu_value=None, station_id=4255))
-        await timed("viewport national", args.repeat, lambda: viewport_sigungu(
+        # 10초 결과 캐시를 매번 비워 실제 SQL 비용을 잰다.
+        async def uncached(bounds, products):
+            distribution_module._sigungu_cache.clear()
+            return await viewport_sigungu(session, bounds, [], products, None)
+        await timed("viewport national", args.repeat, lambda: uncached((124.0, 33.0, 132.0, 39.0), []))
+        await timed("viewport city", args.repeat, lambda: uncached((126.9, 37.4, 127.1, 37.6), ["B027"]))
+        await timed("viewport national (cached)", args.repeat, lambda: viewport_sigungu(
             session, (124.0, 33.0, 132.0, 39.0), [], [], None))
-        await timed("viewport city", args.repeat, lambda: viewport_sigungu(
-            session, (126.9, 37.4, 127.1, 37.6), [], ["B027"], None))
         body = await price_distribution(session, product_code="B027", sido_value=None, sigungu_value=None, station_id=4255)
         print("station sample:", body["sigungu"]["station_count"], body["station"]["comparisons"][0]["grade"])
     await engine.dispose()
