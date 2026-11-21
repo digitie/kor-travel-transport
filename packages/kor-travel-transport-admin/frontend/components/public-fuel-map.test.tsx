@@ -36,6 +36,7 @@ it("only requests location after a click and moves to a valid result", async () 
   expect(button.textContent).toBe("");
   await act(async () => button.click());
   expect(get).toHaveBeenCalledTimes(1);
+  expect(get.mock.calls[0][2]).toMatchObject({ enableHighAccuracy: false, maximumAge: 60_000 });
   await act(async () => get.mock.calls[0][0]({ coords: { longitude: 127, latitude: 37 } }));
   expect(button.hasAttribute("aria-busy")).toBe(false);
   expect(cameraTarget()).toMatchObject({ center: [127, 37], zoom: 14 });
@@ -45,25 +46,110 @@ it("only requests location after a click and moves to a valid result", async () 
   expect(state.props.onViewChange).toBeUndefined();
   expect(host.querySelector('[role="status"]')).toBeNull();
 });
-it("denial keeps the viewport and gives visible fallback feedback", async () => {
-  const get = vi.fn(); Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition: get } });
+type Get = ReturnType<typeof vi.fn>;
+const succeed = (get: Get, call: number, longitude = 127, latitude = 37) => act(async () => (get.mock.calls[call] as [PositionCallback])[0]({ coords: { longitude, latitude } } as GeolocationPosition));
+const failWith = (get: Get, call: number, code: number) => act(async () => (get.mock.calls[call] as [PositionCallback, PositionErrorCallback])[1]({ code } as GeolocationPositionError));
+const status = () => host.querySelector('[role="status"]')?.textContent ?? "";
+const retry = () => [...host.querySelectorAll("button")].find(button => button.textContent === "다시 시도");
+function mockGeolocation(extra: Partial<Geolocation> = {}) {
+  const get = vi.fn();
+  Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition: get, ...extra } });
+  return get;
+}
+it("asks for a cached low-accuracy position first, then retries with high accuracy after a timeout", async () => {
+  const get = mockGeolocation();
   await render(); await act(async () => host.querySelector("button")!.click());
-  await act(async () => get.mock.calls[0][1]({ code: 1 }));
+  expect(get.mock.calls[0][2]).toEqual({ enableHighAccuracy: false, maximumAge: 60_000, timeout: 10_000 });
+  await failWith(get, 0, 3);
+  expect(get).toHaveBeenCalledTimes(2);
+  expect(get.mock.calls[1][2]).toMatchObject({ enableHighAccuracy: true, timeout: 15_000 });
+  expect(host.querySelector("button")!.getAttribute("aria-busy")).toBe("true");
+  await succeed(get, 1, 126.98, 37.57);
+  expect(cameraTarget()).toMatchObject({ center: [126.98, 37.57], zoom: 14 });
+  expect(userPosition()).toEqual([126.98, 37.57]);
+  expect(host.querySelector('[role="status"]')).toBeNull();
+});
+it("denial stops at once, keeps the viewport and explains how to allow location without a useless retry", async () => {
+  const get = mockGeolocation();
+  await render(); await act(async () => host.querySelector("button")!.click());
+  await failWith(get, 0, 1);
+  expect(get).toHaveBeenCalledTimes(1);
   expect(cameraTarget()).toBeUndefined();
   expect(userPosition()).toBeUndefined();
   expect(host.querySelector('[role="status"]')?.className).not.toContain("sr-only");
-  expect(host.textContent).toContain("위치를 확인하지 못했습니다.");
-});
-it("bounds an unresponsive location provider and ignores a late result", async () => {
-  const get = vi.fn(); Object.defineProperty(navigator, "geolocation", { configurable: true, value: { getCurrentPosition: get } });
-  await render(); await act(async () => host.querySelector("button")!.click());
-  await act(async () => vi.advanceTimersByTime(6500));
+  expect(status()).toContain("위치 권한이 거부되었습니다");
+  expect(retry()).toBeUndefined();
   expect(host.querySelector("button")!.hasAttribute("aria-busy")).toBe(false);
-  await act(async () => get.mock.calls[0][0]({ coords: { longitude: 127, latitude: 37 } }));
-  expect(cameraTarget()).toBeUndefined();
-  expect(userPosition()).toBeUndefined();
 });
-
+it.each([
+  { code: 2, message: "현재 위치를 확인할 수 없습니다" },
+  { code: 3, message: "위치 확인 시간이 초과되었습니다" },
+])("reports error $code after both attempts and retries from the status", async ({ code, message }) => {
+  const get = mockGeolocation();
+  await render(); await act(async () => host.querySelector("button")!.click());
+  await failWith(get, 0, code);
+  await failWith(get, 1, code);
+  expect(status()).toContain(message);
+  expect(host.querySelector("button")!.hasAttribute("aria-busy")).toBe(false);
+  await act(async () => retry()!.click());
+  expect(get).toHaveBeenCalledTimes(3);
+  expect(host.querySelector('[role="status"]')).toBeNull();
+  await succeed(get, 2);
+  expect(userPosition()).toEqual([127, 37]);
+});
+it("rejects a position outside Korea with its own message", async () => {
+  const get = mockGeolocation();
+  await render(); await act(async () => host.querySelector("button")!.click());
+  await succeed(get, 0, -122.4, 37.7);
+  expect(cameraTarget()).toBeUndefined();
+  expect(status()).toContain("국내 위치에서만");
+});
+it("explains unsupported and insecure contexts without calling the provider", async () => {
+  Object.defineProperty(navigator, "geolocation", { configurable: true, value: undefined });
+  await render(); await act(async () => host.querySelector("button")!.click());
+  expect(status()).toContain("이 브라우저에서는 위치를 사용할 수 없습니다");
+  const get = mockGeolocation();
+  vi.stubGlobal("isSecureContext", false);
+  await act(async () => host.querySelector("button")!.click());
+  expect(get).not.toHaveBeenCalled();
+  expect(status()).toContain("HTTPS");
+});
+it("bounds an unresponsive provider, still applies a late fix, and lets a new click supersede it", async () => {
+  const get = mockGeolocation();
+  await render(); await act(async () => host.querySelector("button")!.click());
+  // 권한 창을 보는 동안에는 단계 timeout이 돌지 않는다. 앱 쪽 안전 상한만 30초 뒤에 끝낸다.
+  await act(async () => vi.advanceTimersByTime(29_000));
+  expect(host.querySelector("button")!.getAttribute("aria-busy")).toBe("true");
+  await act(async () => vi.advanceTimersByTime(1_000));
+  expect(host.querySelector("button")!.hasAttribute("aria-busy")).toBe(false);
+  expect(status()).toContain("위치 확인 시간이 초과되었습니다");
+  await succeed(get, 0);
+  expect(cameraTarget()).toMatchObject({ center: [127, 37] });
+  expect(host.querySelector('[role="status"]')).toBeNull();
+  // 새 요청을 보내면 이전 요청의 늦은 응답은 무시한다.
+  await act(async () => host.querySelector("button")!.click());
+  const before = cameraTarget();
+  await act(async () => vi.advanceTimersByTime(30_000));
+  await act(async () => host.querySelector("button")!.click());
+  await succeed(get, 1, 128, 36);
+  expect(cameraTarget()).toBe(before);
+  await succeed(get, 2, 129, 35.5);
+  expect(cameraTarget()).toMatchObject({ center: [129, 35.5] });
+});
+it("keeps tracking through transient watch errors and stops only when permission is revoked", async () => {
+  const watch = vi.fn(() => 3); const clear = vi.fn();
+  const get = mockGeolocation({ watchPosition: watch, clearWatch: clear });
+  await render(); await act(async () => host.querySelector("button")!.click());
+  await succeed(get, 0);
+  const onWatchError = (watch.mock.calls[0] as unknown as [PositionCallback, PositionErrorCallback])[1];
+  await act(async () => onWatchError({ code: 2 } as GeolocationPositionError));
+  await act(async () => onWatchError({ code: 3 } as GeolocationPositionError));
+  expect(userPosition()).toEqual([127, 37]);
+  expect(clear).not.toHaveBeenCalled();
+  await act(async () => onWatchError({ code: 1 } as GeolocationPositionError));
+  expect(userPosition()).toBeUndefined();
+  expect(clear).toHaveBeenCalledWith(3);
+});
 
 it("restores and saves the public product selection, including all products", async () => {
   const key = "transport.public-fuel.products";
