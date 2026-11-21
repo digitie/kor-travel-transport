@@ -152,7 +152,7 @@ from app.schemas import (
     WeekdayBucket,
     WeekdayHourlyPattern,
 )
-from app.services.fuel_map import fuel_map_items_statement
+from app.services.fuel_map import FUEL_FACILITY_LABELS, fuel_map_items_statement
 from app.services import place_map_cache
 from app.core.read_timing import observe_page_build
 from app.services.fuel_map_validation import validated_fuel_map_items, validated_place_map_items
@@ -1650,6 +1650,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     FuelStation.brand_name, FuelStation.brand_code, FuelStation.phone, FuelStation.is_self,
                     FuelStation.is_24h, FuelStation.has_carwash,
                     FuelStation.has_maintenance, FuelStation.has_cvs,
+                    FuelStation.is_kpetro, FuelStation.is_electronic,
                     FuelStation.last_seen_at,
                 ).where(*conditions)
                 .order_by(FuelStation.last_seen_at.desc(), FuelStation.id.desc()).limit(per_kind_limit)
@@ -1691,7 +1692,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         # 부모 모델의 C validator가 가격까지 한 번에 검증한다. 유종별 Python 모델 생성은 반복하지 않는다.
                         prices=prices,
                         phone=station.phone,
-                        facilities=[label for field, label in (("is_self", "셀프"), ("is_24h", "24시간"), ("has_carwash", "세차"), ("has_maintenance", "정비"), ("has_cvs", "편의점")) if getattr(station, field) is True],
+                        facilities=[label for field, label in FUEL_FACILITY_LABELS if getattr(station, field) is True],
                         updated_at=serialize_utc(station.last_seen_at),
                     ))
 

@@ -15,7 +15,7 @@ export function FuelStationHistoryChart({ data, afterChart }: { data: FuelStatio
   const points = useMemo(() => series.flatMap(row => row.points).sort((a, b) => a.instant - b.instant || a.product_code.localeCompare(b.product_code)), [series]);
   const chartSeries = useMemo(() => series.map(row => ({ product: row.product, points: row.points.map(point => ({ time: point.observed_at, average: point.price })) })), [series]);
   return <>
-    {points.length ? <><FuelPriceChart showExtremes={false} label="주유소 최근 30일 유종별 가격 추이" window={data.window} series={chartSeries} />
+    {points.length ? <><FuelPriceChart compact showExtremes={false} label="주유소 최근 30일 유종별 가격 추이" window={data.window} series={chartSeries} />
       <div className="fuel-trend-latest-values sr-only">{series.map(row => <span key={row.product}>{fuelProductLabel(row.product)} <strong data-latest-product={row.product}>{row.points.at(-1)!.price.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}</strong>원/L <small>{historyTime(row.points.at(-1)!.observed_at)}</small></span>)}</div></> : <p className="quiet" role="status">최근 30일에 저장된 유효한 가격 관측이 없습니다.</p>}
     {afterChart}
     {points.length ? <details className="fuel-trend-table"><summary>관측값 표 · {points.length.toLocaleString("ko-KR")}건</summary><VirtualTable ariaLabel="주유소 30일 가격 관측값" data={[...points].reverse()} getRowId={point => `${point.product_code}:${point.instant}`} virtualized={false} columns={[

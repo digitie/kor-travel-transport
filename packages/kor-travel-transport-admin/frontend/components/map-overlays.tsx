@@ -160,6 +160,28 @@ export function CameraRequest({ target }: { target: CameraTarget | undefined }) 
   return null;
 }
 
+/** 내 위치 점. 상호작용 없는 MapLibre 마커라 지도 끌기·확대를 막지 않는다. */
+export function UserLocationMarker({ position }: { position: [number, number] | undefined }) {
+  const map = useMap();
+  const markerRef = useRef<maplibregl.Marker | null>(null);
+  const lng = position?.[0];
+  const lat = position?.[1];
+  useEffect(() => {
+    if (map === null || lng === undefined || lat === undefined) return;
+    if (!markerRef.current) {
+      const element = document.createElement("div");
+      element.className = "user-location-marker";
+      element.setAttribute("role", "img");
+      element.setAttribute("aria-label", "내 위치");
+      markerRef.current = new maplibregl.Marker({ element }).setLngLat([lng, lat]).addTo(map);
+    } else {
+      markerRef.current.setLngLat([lng, lat]);
+    }
+  }, [map, lng, lat]);
+  useEffect(() => () => { markerRef.current?.remove(); markerRef.current = null; }, [map]);
+  return null;
+}
+
 /** Map과 같은 확대/축소 버튼(나침반 없음, 오른쪽 위). 축척은 라이브러리 `scale`(150px·미터, 오른쪽 아래)을 쓴다. */
 export function ZoomButtons() {
   const map = useMap();

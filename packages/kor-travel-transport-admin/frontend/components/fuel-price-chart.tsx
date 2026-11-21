@@ -17,7 +17,7 @@ const amount = (value?: number | null) => value == null ? "미제공" : value.to
 const price = (value?: number | null) => value == null ? "미제공" : `${amount(value)}원/L`;
 type TooltipParam = { seriesId?: string; value?: unknown };
 
-export default function FuelPriceChart({ series, label, window, showExtremes = true }: { showExtremes?: boolean; series: FuelChartSeries[]; label: string; window?: { from_at: string; to_at: string } }) {
+export default function FuelPriceChart({ series, label, window, showExtremes = true, compact = false }: { showExtremes?: boolean; /** 낮은 차트: y축 눈금을 줄이고 여백을 좁힌다. */ compact?: boolean; series: FuelChartSeries[]; label: string; window?: { from_at: string; to_at: string } }) {
   const host = useRef<HTMLDivElement>(null);
   const [palette, setPalette] = useState<string[]>([]);
   const [active, setActive] = useState<number | null>(null);
@@ -73,12 +73,12 @@ export default function FuelPriceChart({ series, label, window, showExtremes = t
     return {
       animation: false,
       xAxis: { type: "time", splitNumber: 5, minInterval: 86400000, min: window ? fuelInstant(window.from_at) : undefined, max: window ? fuelInstant(window.to_at) : undefined, axisLabel: { color: palette[4], hideOverlap: true, formatter: (value: number) => fuelChartTime(value).slice(5, 10) } },
-      yAxis: { type: "value", scale: true, name: "원/L", axisLabel: { color: palette[4] }, nameTextStyle: { color: palette[4] } },
-      grid: { left: 52, right: 18, top: 28, bottom: 28 },
+      yAxis: { type: "value", scale: true, name: "원/L", splitNumber: compact ? 2 : undefined, axisLabel: { color: palette[4], hideOverlap: true }, nameTextStyle: { color: palette[4] } },
+      grid: { left: 52, right: 18, top: compact ? 22 : 28, bottom: compact ? 24 : 28 },
       tooltip: { backgroundColor: palette[tokens.length], borderColor: palette[tokens.length + 2], textStyle: { color: palette[tokens.length + 1] }, show: true, trigger: "axis", triggerOn: "mousemove|click", enterable: true, confine: true, formatter },
       series: charts,
     };
-  }, [series, palette, window, showExtremes]);
+  }, [series, palette, window, showExtremes, compact]);
   const selected = active === null ? null : times[Math.min(active, times.length - 1)];
   return <div ref={host} className="fuel-echarts-block">
     <div className="fuel-echarts" role="group" aria-label={label}>

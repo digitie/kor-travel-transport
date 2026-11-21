@@ -2,7 +2,7 @@
 
 import { VirtualTable } from "@kor-travel/ui/virtual-table";
 
-import { ClockAlert, X } from "lucide-react";
+import { ChevronDown, ClockAlert, MapPinned, X } from "lucide-react";
 import Link from "next/link";
 import { InfoButton } from "./info-button";
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
@@ -166,7 +166,7 @@ function PublicFuelViewportSummary({
       setViewportExpanded(next);
     }
   }
-  return <section className="fuel-viewport-summary public-fuel-summary" aria-label="현재 지도 범위 유가 통계" aria-busy={pending}>
+  return <section className="fuel-viewport-summary public-fuel-summary" data-expanded={expanded} aria-label="현재 지도 범위 유가 통계" aria-busy={pending}>
     <PublicFuelSummaryHeader expanded={expanded} setExpanded={setExpanded} toggleRef={toggleRef} bodyId={bodyId}
       pricesStale={pricesStale} pricesLastRefreshedAt={pricesLastRefreshedAt} controls={publicFuel} />
     <div id={bodyId} className="fuel-summary-body public-fuel-summary-body" hidden={!expanded}>
@@ -186,8 +186,11 @@ function PublicFuelSummaryHeader({
   const productId = useId();
   const { products, onProductsChange } = controls;
   return <header className="public-fuel-summary-header">
+    {/* 접고 펼쳐도 같은 이름·폭을 유지한다. 상태는 aria-expanded와 화살표 방향이 알려 준다. */}
     <h2><button ref={toggleRef} type="button" className="fuel-summary-toggle" aria-expanded={expanded} aria-controls={bodyId}
-      onClick={() => setExpanded(!expanded)}>{expanded ? "범위" : "현재 지도 범위"}</button></h2>
+      onClick={() => setExpanded(!expanded)}>
+      <MapPinned aria-hidden="true" size={16} /><span>지도 범위</span><ChevronDown aria-hidden="true" size={16} className="fuel-summary-chevron" />
+    </button></h2>
     {expanded ? <>
       <div className="public-fuel-summary-products">
         <label className="sr-only" htmlFor={productId}>표시 유종</label>

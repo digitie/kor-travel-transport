@@ -214,12 +214,16 @@ test("공개 범위 요약은 닫은 뒤 다시 열 수 있고 가격 갱신 상
     expect(stale.getAttribute("role")).toBe("status");
     expect(stale.querySelector("time")?.dateTime).toBe(props.pricesLastRefreshedAt);
     const toggle = container.querySelector<HTMLButtonElement>(".fuel-summary-toggle")!;
+    // 공개 토글은 접고 펼쳐도 같은 이름을 쓰고, 상태는 aria-expanded로만 바뀐다.
+    expect(toggle.textContent).toBe("지도 범위");
     const close = container.querySelector<HTMLButtonElement>('[aria-label="범위 요약 닫기"]')!;
     const body = document.getElementById(toggle.getAttribute("aria-controls")!)!;
     expect(close.closest("header")).not.toBeNull();
     await act(async () => close.click());
     expect(body.hidden).toBe(true);
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.textContent).toBe("지도 범위");
+    expect(container.querySelector(".public-fuel-summary")!.getAttribute("data-expanded")).toBe("false");
     expect(document.activeElement).toBe(toggle);
     await act(async () => toggle.click());
     expect(body.hidden).toBe(false);

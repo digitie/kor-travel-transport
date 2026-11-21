@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { LocateFixed } from "lucide-react";
-import { CameraRequest, type CameraTarget } from "@/components/map-overlays";
+import { CameraRequest, UserLocationMarker, type CameraTarget } from "@/components/map-overlays";
 import { TransportMap } from "@/components/transport-map";
 import { Button } from "@/components/ui/button";
 import { publicFuelGet } from "@/lib/public-fuel";
@@ -47,12 +47,19 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
   const [location, setLocation] = useState<CameraTarget>();
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState("");
+  // 한 번 위치를 찾은 뒤에는 위치가 바뀌는 대로 점만 옮긴다(카메라는 다시 옮기지 않는다).
+  const [userPosition, setUserPosition] = useState<[number, number]>();
+  const watch = useRef<number | undefined>(undefined);
   const [temporaryProducts, setTemporaryProducts] = useState<string[]>();
   const storedProducts = useSyncExternalStore(subscribeToProductPreferences, getStoredProducts, () => null);
   const products = useMemo(() => temporaryProducts ?? parseProductPreferences(storedProducts), [temporaryProducts, storedProducts]);
   const request = useRef(0);
   const timeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => { request.current++; clearTimeout(timeout.current); }, []);
+  useEffect(() => () => {
+    request.current++;
+    clearTimeout(timeout.current);
+    if (watch.current !== undefined) navigator.geolocation?.clearWatch(watch.current);
+  }, []);
   function onProductsChange(value: string[]) {
     try {
       window.localStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(value));
@@ -85,10 +92,17 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
       request.current++;
       setLocating(false);
       setLocation({ center: [longitude, latitude], zoom: 14, id: `location:${id}` });
+      setUserPosition([longitude, latitude]);
+      if (watch.current === undefined && typeof navigator.geolocation.watchPosition === "function") {
+        watch.current = navigator.geolocation.watchPosition(next => {
+          const { longitude: x, latitude: y } = next.coords;
+          if (Number.isFinite(x) && Number.isFinite(y)) setUserPosition([x, y]);
+        }, () => { /* 추적 실패는 마지막 위치 점을 유지한다. */ }, { enableHighAccuracy: false, maximumAge: 30_000 });
+      }
     }, fallback, { enableHighAccuracy: false, timeout: 6000, maximumAge: 60_000 });
   }
   return <main className="public-fuel-surface" aria-label="주변 주유소 유가 지도">
-    <TransportMap mode="fuel" load={loadFuel} mapOnly publicFuel={{ products, onProductsChange, refreshEnabled }} layers={<CameraRequest target={location} />} />
+    <TransportMap mode="fuel" load={loadFuel} mapOnly publicFuel={{ products, onProductsChange, refreshEnabled }} layers={<><CameraRequest target={location} /><UserLocationMarker position={userPosition} /></>} />
     <div className="public-fuel-location">
       <Button type="button" variant="outline" onClick={locate} loading={locating} aria-label="내 위치 주변 유가 보기">
         <LocateFixed aria-hidden="true" size={18} />

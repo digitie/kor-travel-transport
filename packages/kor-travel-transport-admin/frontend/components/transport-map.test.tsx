@@ -334,6 +334,17 @@ test("주유소 지도 마커와 목록 모두 실제 상표 코드의 로고와
 });
 
 
+test("품질인증·믿음주유소는 마커 아이콘과 접근 이름에 함께 나온다", async () => {
+  const fuel: Place = { ...station, id: 78, kind: "fuel_station", source: "opinet_browser", name: "인증 주유소", brand_code: "SOL", brand_name: "S-OIL", line_names: [], facilities: ["셀프", "품질인증", "믿음주유소"] };
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  try {
+    await act(async () => root.render(<TransportMap places={[fuel]} mode="fuel" />));
+    const marker = container.querySelector<HTMLButtonElement>('button[aria-label*="인증 주유소"]')!;
+    expect(marker.getAttribute("aria-label")).toContain("S-OIL 품질인증 믿음주유소");
+    expect(marker.querySelectorAll(".fuel-cert-mark")).toHaveLength(2);
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
 test("집계만 바뀐 같은 좌표 묶음은 DOM과 키보드 초점을 유지한다", async () => {
  let count=2;
  Object.assign(mapState,{zoom:7});

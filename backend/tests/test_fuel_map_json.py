@@ -51,6 +51,8 @@ def _seed(client):
                     has_carwash=False,
                     has_maintenance=True,
                     has_cvs=None,
+                    is_kpetro=True,
+                    is_electronic=True,
                     first_seen_at=at,
                     last_seen_at=at,
                 )
@@ -115,7 +117,7 @@ def test_fuel_json_preserves_full_dto_order_null_prices_and_utc(client):
     assert by_id[ids[2]]["prices"] == []
     assert by_id[ids[2]]["longitude"] is None and by_id[ids[2]]["latitude"] is None
     for row in actual["items"]:
-        assert row["facilities"] == ["셀프", "정비"]
+        assert row["facilities"] == ["셀프", "정비", "품질인증", "믿음주유소"]
         assert row["updated_at"] == "2026-11-07T18:04:05.123456Z"
         for price in row["prices"]:
             assert price["observed_at"] == price["collected_at"] == row["updated_at"]
