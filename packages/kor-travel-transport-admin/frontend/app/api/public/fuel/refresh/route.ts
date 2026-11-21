@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const fastResponse = await Promise.race([
     upstream,
-    new Promise<undefined>(resolve => { timer = setTimeout(resolve, FIRST_HEARTBEAT_MS); }),
+    new Promise<undefined>(resolve => { timer = setTimeout(() => resolve(undefined), FIRST_HEARTBEAT_MS); }),
   ]);
   clearTimeout(timer);
   return fastResponse ?? streamRefresh(upstream, controller);
