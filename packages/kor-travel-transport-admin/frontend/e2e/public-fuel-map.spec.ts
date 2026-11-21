@@ -19,10 +19,11 @@ test.beforeEach(async ({ page }) => {
 
 const summaryOf = (page: Page) => page.getByRole("region", { name: "현재 지도 범위 유가 통계" });
 const locateButton = (page: Page) => page.getByRole("button", { name: "내 위치 주변 유가 보기" });
+// 글자 줄 수를 Range의 줄 상자로 센다(높이·padding 추정 대신 실제 줄바꿈 여부).
 const singleLine = async (page: Page, selector: string) => page.locator(selector).evaluateAll(nodes => nodes.map(node => {
-  const style = getComputedStyle(node);
-  const line = Number.parseFloat(style.lineHeight) || Number.parseFloat(style.fontSize) * 1.5;
-  return node.getBoundingClientRect().height - Number.parseFloat(style.paddingTop) - Number.parseFloat(style.paddingBottom) < line * 1.9;
+  const range = document.createRange(); range.selectNodeContents(node);
+  const tops = new Set([...range.getClientRects()].filter(rect => rect.width > 0).map(rect => Math.round(rect.top + rect.height / 2)));
+  return [...tops].every(top => Math.abs(top - [...tops][0]) <= 4);
 }));
 
 for (const width of [320, 390, 1440]) {
@@ -40,10 +41,12 @@ for (const width of [320, 390, 1440]) {
     await expect(summary.locator('dl[aria-label="휘발유"]')).toContainText("평균");
     await expect(summary.locator('dl[aria-label="휘발유"]')).toContainText("1,700");
     await expect(summary.locator('dl[aria-label="경유"]')).toContainText("1,550");
-    const comboBox = (await combo.boundingBox())!;
-    expect(comboBox.height).toBeGreaterThanOrEqual(44);
+    // 제목과 유종 선택은 한 줄에 나란히 놓이고 서로 겹치지 않는다.
+    const comboBox = (await summary.locator(".public-fuel-summary-products").boundingBox())!;
     const titleBox = (await summary.getByRole("heading", { name: "지도 범위" }).boundingBox())!;
     expect(titleBox.height).toBeLessThanOrEqual(48);
+    expect(Math.abs((titleBox.y + titleBox.height / 2) - (comboBox.y + comboBox.height / 2))).toBeLessThanOrEqual(12);
+    expect(titleBox.x + titleBox.width).toBeLessThanOrEqual(comboBox.x);
     expect(await singleLine(page, ".public-fuel-summary-title")).toEqual([true]);
     const summaryBox = (await summary.boundingBox())!;
     expect(summaryBox.x).toBeGreaterThanOrEqual(0);
