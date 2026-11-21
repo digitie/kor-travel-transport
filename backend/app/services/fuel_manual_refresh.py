@@ -27,10 +27,11 @@ from app.services.transport_collection import OPINET_SOURCE
 
 SEOUL = ZoneInfo("Asia/Seoul")
 MAX_STATIONS = 9
-REQUEST_SECONDS = 24
+# Odroid의 시 단위 실측 조회는 브라우저 종료까지 약 52초가 걸렸다.
+REQUEST_SECONDS = 75
 OVERLAY_TTL = timedelta(hours=24)
 STATION_COOLDOWN = timedelta(minutes=5)
-LEASE_TTL = timedelta(seconds=35)
+LEASE_TTL = timedelta(seconds=REQUEST_SECONDS + 15)
 PROVIDER_BACKOFF = timedelta(minutes=5)
 
 

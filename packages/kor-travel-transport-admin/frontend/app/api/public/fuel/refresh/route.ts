@@ -5,6 +5,8 @@ import { publicFuelRefreshConfiguration } from "@/lib/public-fuel-proxy";
 
 const NO_STORE = { "cache-control": "no-store" };
 const MAX_REQUEST_BYTES = 4 * 1024;
+// 백엔드의 75초 조회 뒤 브라우저와 DB 정리를 기다린다.
+const UPSTREAM_TIMEOUT_MS = 90_000;
 
 async function readRefreshRequest(request: NextRequest) {
   const reader = request.body?.getReader();
@@ -45,7 +47,7 @@ export async function POST(request: NextRequest) {
       cache: "no-store",
       credentials: "omit",
       redirect: "error",
-      signal: AbortSignal.any([request.signal, AbortSignal.timeout(35_000)]),
+      signal: AbortSignal.any([request.signal, AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)]),
     });
     if (response.ok) return NextResponse.json(await response.json(), { headers: NO_STORE });
     if (response.status === 429) {
