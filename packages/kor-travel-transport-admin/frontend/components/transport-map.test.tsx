@@ -335,7 +335,7 @@ test("주유소 지도 마커와 목록 모두 실제 상표 코드의 로고와
 
 
 test("품질인증·믿음주유소는 마커 아이콘과 접근 이름에 함께 나온다", async () => {
-  const fuel: Place = { ...station, id: 78, kind: "fuel_station", source: "opinet_browser", name: "인증 주유소", brand_code: "SOL", brand_name: "S-OIL", line_names: [], facilities: ["셀프", "품질인증", "믿음주유소"] };
+  const fuel: Place = { ...station, id: 78, kind: "fuel_station", source: "opinet_browser", name: "인증 주유소", brand_code: "SOL", brand_name: "S-OIL", line_names: [], facilities: ["셀프"], is_kpetro: true, is_electronic: true };
   const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
   try {
     await act(async () => root.render(<TransportMap places={[fuel]} mode="fuel" />));

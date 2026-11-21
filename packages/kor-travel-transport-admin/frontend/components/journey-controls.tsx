@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { FuelCertificationBadges } from "./fuel-certification";
-import { fuelAmenities } from "@/lib/fuel-certification";
 import { InfoButton } from "./info-button";
 import { Anchor, Bus, ClockAlert, Fuel, Plane, TrainFront, Coffee, MapPin, ParkingCircle, TriangleAlert, X } from "lucide-react";
 import { useId } from "react";
@@ -83,7 +82,7 @@ function PlaceHeading({ place, showHeading }: Pick<Parameters<typeof PlaceDetail
   return <>
     {showHeading ? <><div className="flex items-center gap-2 text-xs font-medium text-brand"><PlaceIcon kind={place.kind} brandCode={place.brand_code} brandName={place.brand_name} /><span>{placeKindLabel(place.kind)}</span></div><h2 className="text-md leading-snug font-semibold text-text-primary">{place.name}</h2></> : null}
     {place.brand_name && (showHeading || place.kind !== "fuel_station") ? <p>{place.brand_name}</p> : null}
-    {place.kind === "fuel_station" ? <FuelCertificationBadges facilities={place.facilities} /> : null}
+    {place.kind === "fuel_station" ? <FuelCertificationBadges place={place} /> : null}
     {place.line_names.length ? <div className="flex flex-wrap gap-2">{place.line_names.map((line) => <Badge variant="secondary" key={line}>{line}</Badge>)}</div> : null}
     {place.subtitle && place.kind !== "fuel_station" ? <p>{place.subtitle}</p> : null}
   </>;
@@ -133,7 +132,7 @@ function PlaceContact({ place, onShowMap }: Pick<Parameters<typeof PlaceDetails>
     {place.phone ? <p>전화 <a className={INLINE_LINK} href={`tel:${place.phone.replace(/[^+\d]/g, "")}`}>{place.phone}</a></p> : null}
     {place.kind === "ferry_port" ? <p className="text-xs text-text-secondary">항구 코드 {place.provider_id ?? "미제공"}</p> : null}
     {place.kind === "bus_terminal" ? <p className="text-xs text-text-secondary">터미널 코드 {place.provider_id ?? "미제공"}</p> : null}
-    {fuelAmenities(place.facilities).length ? <p>편의시설 · {fuelAmenities(place.facilities).join(" · ")}</p> : null}
+    {place.facilities?.length ? <p>편의시설 · {place.facilities.join(" · ")}</p> : null}
   </>;
 }
 

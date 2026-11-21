@@ -167,12 +167,15 @@ export function UserLocationMarker({ position }: { position: [number, number] | 
   const lng = position?.[0];
   const lat = position?.[1];
   useEffect(() => {
-    if (map === null || lng === undefined || lat === undefined) return;
+    if (map === null) return;
+    if (lng === undefined || lat === undefined) { markerRef.current?.remove(); markerRef.current = null; return; }
     if (!markerRef.current) {
       const element = document.createElement("div");
       element.className = "user-location-marker";
       element.setAttribute("role", "img");
       element.setAttribute("aria-label", "내 위치");
+      // 주유소 마커(선택 4·묶음 3)보다 위에 그려 주유소 위에 서 있어도 가려지지 않게 한다.
+      element.style.zIndex = "6";
       markerRef.current = new maplibregl.Marker({ element }).setLngLat([lng, lat]).addTo(map);
     } else {
       markerRef.current.setLngLat([lng, lat]);

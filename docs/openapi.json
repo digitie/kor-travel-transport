@@ -9763,6 +9763,30 @@
             "title": "Id",
             "type": "integer"
           },
+          "is_electronic": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "주유소 거래상황 전산보고 표시(오피넷 KPETRO_DP_YN). 주유소가 아니거나 원천에서 확인되지 않으면 null.",
+            "title": "Is Electronic"
+          },
+          "is_kpetro": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "주유소 품질인증 표시(오피넷 KPETRO_YN). 주유소가 아니거나 원천에서 확인되지 않으면 null.",
+            "title": "Is Kpetro"
+          },
           "kind": {
             "enum": [
               "fuel_station",

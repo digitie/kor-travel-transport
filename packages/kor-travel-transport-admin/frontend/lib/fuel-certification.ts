@@ -1,21 +1,18 @@
-import { BadgeCheck, ShieldCheck, type LucideIcon } from "lucide-react";
+import { BadgeCheck, ReceiptText, type LucideIcon } from "lucide-react";
+import type { Place } from "@/lib/journey";
 
 /**
- * 주유소 인증 표시. backend `FUEL_FACILITY_LABELS`가 facilities에 넣는 라벨과 같아야 한다.
- * - 품질인증: 오피넷 KPETRO_YN, 한국석유관리원 품질인증프로그램 협약 주유소
- * - 믿음주유소: 오피넷 KPETRO_DP_YN, 석유 수급·거래 상황을 전산으로 보고하는 주유소
+ * 주유소 인증 표시. 장소 응답의 typed 필드(`is_kpetro`, `is_electronic`)가 true일 때만 보여 준다.
+ * false와 null(원천 미확인)은 표시하지 않으며, "인증 아님"이라고 단정하지 않는다.
+ * - 품질인증: 오피넷 KPETRO_YN 표시
+ * - 전산보고: 오피넷 KPETRO_DP_YN 표시(석유 거래상황 전산보고)
+ * 아이콘 모양과 색을 함께 달리해 색만으로 구분하지 않는다.
  */
-export const FUEL_CERTIFICATIONS: readonly { label: string; description: string; Icon: LucideIcon; tone: string }[] = [
-  { label: "품질인증", description: "한국석유관리원 품질인증 주유소", Icon: ShieldCheck, tone: "quality" },
-  { label: "믿음주유소", description: "석유 거래를 전산으로 보고하는 믿음주유소", Icon: BadgeCheck, tone: "trust" },
-];
-const CERTIFICATION_LABELS = new Set(FUEL_CERTIFICATIONS.map((item) => item.label));
+export const FUEL_CERTIFICATIONS = [
+  { field: "is_kpetro", label: "품질인증", description: "오피넷에 품질인증 주유소로 표시된 곳입니다.", Icon: BadgeCheck, tone: "quality" },
+  { field: "is_electronic", label: "믿음주유소", description: "오피넷에 석유 거래상황 전산보고 주유소로 표시된 곳입니다.", Icon: ReceiptText, tone: "trust" },
+] as const satisfies readonly { field: keyof Place; label: string; description: string; Icon: LucideIcon; tone: string }[];
 
-export function fuelCertifications(facilities: readonly string[] | undefined) {
-  return FUEL_CERTIFICATIONS.filter((item) => facilities?.includes(item.label));
-}
-
-/** 인증 라벨을 뺀 편의시설 목록. 인증은 배지로 따로 보여 준다. */
-export function fuelAmenities(facilities: readonly string[] | undefined) {
-  return (facilities ?? []).filter((label) => !CERTIFICATION_LABELS.has(label));
+export function fuelCertifications(place: Pick<Place, "is_kpetro" | "is_electronic">) {
+  return FUEL_CERTIFICATIONS.filter((item) => place[item.field] === true);
 }

@@ -1693,6 +1693,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         prices=prices,
                         phone=station.phone,
                         facilities=[label for field, label in FUEL_FACILITY_LABELS if getattr(station, field) is True],
+                        is_kpetro=station.is_kpetro, is_electronic=station.is_electronic,
                         updated_at=serialize_utc(station.last_seen_at),
                     ))
 

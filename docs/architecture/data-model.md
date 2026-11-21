@@ -233,6 +233,10 @@ SQLite dialect를 허용한다.
 
 - 최신 `python-opinet-api` Playwright collector의 지역, 주유소 식별자, 주소/좌표,
   브랜드, 셀프/24시간/품질인증/세차/정비/편의점/이벤트 플래그를 `fuel_stations`에 저장
+- 지도 장소 응답(`TransportPlaceMapItem`)의 `facilities`는 부대시설 라벨(셀프·24시간·세차·정비·편의점)만 담는다.
+  품질인증(`is_kpetro`, 오피넷 `KPETRO_YN`)과 거래상황 전산보고(`is_electronic`, `KPETRO_DP_YN`)는
+  같은 이름의 typed nullable 필드로 따로 낸다. null은 원천 미확인이며 "아님"으로 바꾸지 않는다.
+  유효기간·확인일은 원천이 주지 않으므로 화면은 "오피넷 표시 기준"으로만 안내한다.
 - 유종별 가격과 provider 갱신 시각은 `fuel_price_snapshots`에 저장
 - 최신 가격은 해당 원본 upsert의 RETURNING으로 받은 id와 값을 작은 묶음으로 반영한다.
   원본·최신 가격·소스 성공 상태를 같은 transaction에서 commit하며 전체 이력을 재검색하지 않는다.

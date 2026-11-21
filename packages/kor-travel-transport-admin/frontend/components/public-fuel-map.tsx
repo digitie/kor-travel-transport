@@ -59,6 +59,7 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
     request.current++;
     clearTimeout(timeout.current);
     if (watch.current !== undefined) navigator.geolocation?.clearWatch(watch.current);
+    watch.current = undefined;
   }, []);
   function onProductsChange(value: string[]) {
     try {
@@ -70,6 +71,13 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
     }
   }
 
+  const inKorea = (longitude: number, latitude: number) => Number.isFinite(longitude) && Number.isFinite(latitude)
+    && longitude >= 124 && longitude <= 132 && latitude >= 32 && latitude <= 39.5;
+  // 추적을 멈추면 점도 지운다. 오래된 위치를 현재 위치처럼 남기지 않는다.
+  function stopWatching() {
+    if (watch.current !== undefined) navigator.geolocation?.clearWatch(watch.current);
+    watch.current = undefined;
+  }
   function locate() {
     const id = ++request.current;
     clearTimeout(timeout.current);
@@ -82,12 +90,14 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
       clearTimeout(timeout.current);
       setLocating(false);
       setLocationError("위치를 확인하지 못했습니다.");
+      stopWatching();
+      setUserPosition(undefined);
     };
     timeout.current = setTimeout(fallback, 6500);
     navigator.geolocation.getCurrentPosition(position => {
       if (request.current !== id) return;
       const { longitude, latitude } = position.coords;
-      if (!Number.isFinite(longitude) || !Number.isFinite(latitude) || longitude < 124 || longitude > 132 || latitude < 32 || latitude > 39.5) { fallback(); return; }
+      if (!inKorea(longitude, latitude)) { fallback(); return; }
       clearTimeout(timeout.current);
       request.current++;
       setLocating(false);
@@ -96,8 +106,12 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
       if (watch.current === undefined && typeof navigator.geolocation.watchPosition === "function") {
         watch.current = navigator.geolocation.watchPosition(next => {
           const { longitude: x, latitude: y } = next.coords;
-          if (Number.isFinite(x) && Number.isFinite(y)) setUserPosition([x, y]);
-        }, () => { /* 추적 실패는 마지막 위치 점을 유지한다. */ }, { enableHighAccuracy: false, maximumAge: 30_000 });
+          if (inKorea(x, y)) setUserPosition([x, y]);
+        }, () => {
+          // 권한 철회·신호 끊김: 추적을 멈추고 점을 지운다. 다시 누르면 새로 찾는다.
+          stopWatching();
+          setUserPosition(undefined);
+        }, { enableHighAccuracy: false, maximumAge: 30_000 });
       }
     }, fallback, { enableHighAccuracy: false, timeout: 6000, maximumAge: 60_000 });
   }

@@ -87,13 +87,13 @@ function MapMarker({ point, onSelect, selected, products, showProductName = true
   const place = point.place;
   const { markerIcon, markerColor } = placeMarkerStyle(place.kind);
   const priceLabel = place.kind === "fuel_station" ? priceMarkerLabel(place.prices, products, showProductName) : null;
-  const title = [place.name, place.brand_name, place.kind === "rail_station" ? place.line_names.join("·") : null].filter(Boolean).join(" · ");
-  const ariaLabel = [placeKindLabel(place.kind), place.name, place.kind === "fuel_station" ? fuelBrand(place.brand_code, place.brand_name).name : null, ...(place.kind === "fuel_station" ? fuelCertifications(place.facilities).map((item) => item.label) : []), place.line_names.join(" · "), priceLabel ? priceSpeech(place.prices, products) : null, "상세 보기"].filter(Boolean).join(" ");
+  const title = [place.name, place.brand_name, ...(place.kind === "fuel_station" ? fuelCertifications(place).map((item) => item.label) : []), place.kind === "rail_station" ? place.line_names.join("·") : null].filter(Boolean).join(" · ");
+  const ariaLabel = [placeKindLabel(place.kind), place.name, place.kind === "fuel_station" ? fuelBrand(place.brand_code, place.brand_name).name : null, ...(place.kind === "fuel_station" ? fuelCertifications(place).map((item) => item.label) : []), place.line_names.join(" · "), priceLabel ? priceSpeech(place.prices, products) : null, "상세 보기"].filter(Boolean).join(" ");
   // 선택 마커는 묶음 원(z 3) 위(z 4)에 그리되 포인터는 통과시켜 같은 좌표의 묶음 원도 눌린다.
   return <MapMarkerButton lngLat={point.lngLat} interactionId={point.id} zIndex={selected ? 4 : undefined} passThrough={selected} pressed={selected}
     className={cn("transport-map-marker", place.kind, selected && "is-selected")}
     title={priceLabel ? `${title} ${priceLabel.replace(/\n/g, " ")}` : title} ariaLabel={ariaLabel} onClick={() => onSelect(place)}>
-    {place.kind === "fuel_station" ? <span className="fuel-marker-brand"><FuelBrandIcon code={place.brand_code} name={place.brand_name} className="fuel-brand-marker" /><FuelCertificationMarks facilities={place.facilities} /></span> : place.kind === "rail_station" ? <span className="rail-map-label"><span className="rail-map-lines">{railLines(place).map(line => <span key={line.name} className="rail-line-badge" style={{"--rail-line-color":line.color} as CSSProperties}>{line.label}</span>)}</span><span className="rail-map-name">{place.name}</span></span> : <MarkerBadge markerIcon={markerIcon} markerColor={markerColor} selected={selected} />}
+    {place.kind === "fuel_station" ? <span className="fuel-marker-brand"><FuelBrandIcon code={place.brand_code} name={place.brand_name} className="fuel-brand-marker" /><FuelCertificationMarks place={place} /></span> : place.kind === "rail_station" ? <span className="rail-map-label"><span className="rail-map-lines">{railLines(place).map(line => <span key={line.name} className="rail-line-badge" style={{"--rail-line-color":line.color} as CSSProperties}>{line.label}</span>)}</span><span className="rail-map-name">{place.name}</span></span> : <MarkerBadge markerIcon={markerIcon} markerColor={markerColor} selected={selected} />}
     {priceLabel ? <span className="map-marker-price" style={{ "--marker-color": placeMarkerColor(place.kind) } as CSSProperties}>{priceLabel}</span> : null}
   </MapMarkerButton>;
 }
@@ -798,8 +798,9 @@ function MapResultTabs({ mapViewport, view, listCount, listPlaces, items, listFe
 
 
 function MapInspectorHeading({ current }: { current: NonNullable<ReturnType<typeof useTransportMap>["current"]> }) {
-  // 브랜드는 로고 아이콘이 보여 준다(접근 이름은 로고 alt). 글자 브랜드명은 반복하지 않는다.
-  return current.kind === "fuel_station" ? <div className="fuel-detail-heading"><PlaceIcon kind={current.kind} brandCode={current.brand_code} brandName={current.brand_name} /><h2>{current.name}</h2></div> : <div><span className="place-title"><PlaceIcon kind={current.kind} brandCode={current.brand_code} brandName={current.brand_name} />{current.brand_name ?? placeKindLabel(current.kind)}</span><h2>{current.name}</h2></div>;
+  // 로고 이미지가 있으면 브랜드는 로고가 보여 준다(접근 이름은 로고 alt). 로고가 없는 상표(자가상표·미등록)만 글자로 남긴다.
+  const brand = current.kind === "fuel_station" ? fuelBrand(current.brand_code, current.brand_name) : null;
+  return current.kind === "fuel_station" ? <div className="fuel-detail-heading"><PlaceIcon kind={current.kind} brandCode={current.brand_code} brandName={current.brand_name} /><h2>{current.name}</h2>{brand && !brand.image && current.brand_name ? <small>{current.brand_name}</small> : null}</div> : <div><span className="place-title"><PlaceIcon kind={current.kind} brandCode={current.brand_code} brandName={current.brand_name} />{current.brand_name ?? placeKindLabel(current.kind)}</span><h2>{current.name}</h2></div>;
 }
 
 
