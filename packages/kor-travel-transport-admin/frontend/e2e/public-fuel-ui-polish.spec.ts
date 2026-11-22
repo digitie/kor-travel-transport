@@ -52,14 +52,13 @@ test("4a fuel-web은 /favicon.ico로 주유기 아이콘을 내고 페이지가 
   await page.goto("/");
   await expect(summaryOf(page)).toBeVisible();
   await expect(page.locator('link[rel="icon"]').first()).toHaveAttribute("href", /\/favicon\.ico/);
-  expect(await page.evaluate(async () => (await fetch("/favicon.ico")).status)).toBe(200);
+  // 페이지와 함께 나간 요청 중 /favicon.ico 404가 없다.
+  await page.waitForTimeout(500);
   expect(notFound).not.toContain("/favicon.ico");
-  // 아이콘 자체를 크게 보여 저장한다.
-  await page.setContent(`<body style="margin:0;background:#fff;display:flex;gap:24px;align-items:center;padding:24px">
-    <img src="${new URL("/favicon.ico", page.url()).href}" width="16" height="16"><img src="${new URL("/favicon.ico", page.url()).href}" width="32" height="32">
-    <img src="${new URL("/favicon.ico", page.url()).href}" width="48" height="48"><img src="${new URL("/favicon.ico", page.url()).href}" width="128" height="128" style="image-rendering:pixelated"></body>`);
-  await expect.poll(() => page.evaluate(() => [...document.images].every(image => image.complete && image.naturalWidth > 0))).toBe(true);
-  await page.setViewportSize({ width: 360, height: 200 });
+  // 아이콘 문서를 직접 열어 이미지로 해석되는지 보고 저장한다.
+  await page.setViewportSize({ width: 240, height: 160 });
+  await page.goto("/favicon.ico");
+  await expect.poll(() => page.evaluate(() => document.images[0]?.complete && document.images[0].naturalWidth)).toBeGreaterThanOrEqual(16);
   await shot(page, "ui-4a-favicon-after.png", testInfo);
 });
 
