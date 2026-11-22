@@ -83,6 +83,8 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
   const filters = useMemo(() => temporaryFilters ?? parsePublicFuelFilters(storedFilters), [temporaryFilters, storedFilters]);
   const filterQuery = publicFuelFilterQuery(filters, products);
   const [regionCurrent, setRegionCurrent] = useState<FuelAreaChoice>();
+  // 연 순간의 지도 중심. 지역 칩이 없을 때(places 실패·대기) 대화상자가 그 중심의 시군구를 미리 고른다.
+  const [regionCenter, setRegionCenter] = useState<[number, number]>();
   // 지역 이동에서 고른 시군구. 범위 요약의 지역 칩은 이것 하나만 보인다(새로고침하면 다시 화면 대표 시군구).
   const [selectedRegion, setSelectedRegion] = useState<FuelSelectedRegion>();
   const [regionOpen, setRegionOpen] = useState(false);
@@ -183,9 +185,11 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
     <TransportMap mode="fuel" load={loadFuel} mapOnly publicFuel={{
       products, onProductsChange, refreshEnabled, filterQuery, filters, onFiltersChange,
       selectedRegion, onClearRegion: () => setSelectedRegion(undefined),
-      onOpenRegion: (current, element) => { rememberOpener(element); setRegionCurrent(current); setRegionOpen(true); },
+      onOpenRegion: (current, element, center) => {
+        rememberOpener(element); setRegionCurrent(current); setRegionCenter(center); setRegionOpen(true);
+      },
     }} layers={<><CameraRequest target={location} /><UserLocationMarker position={userPosition} /><FitBoundsRequest target={regionTarget} /></>} />
-    <FuelRegionPicker open={regionOpen} onOpenChange={setRegionOpen} load={loadFuel} current={regionCurrent}
+    <FuelRegionPicker open={regionOpen} onOpenChange={setRegionOpen} load={loadFuel} current={regionCurrent} center={regionCenter}
       onConfirm={(bounds, region) => {
         setSelectedRegion(region);
         setRegionTarget({ bounds, id: `${region.label}:${Date.now()}` });

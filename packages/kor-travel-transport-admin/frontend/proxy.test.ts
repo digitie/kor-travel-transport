@@ -10,7 +10,7 @@ describe("공개 유가 전용 실행", () => {
   it("루트는 공개 지도로 rewrite하며 지도 자산과 BFF만 허용한다", () => {
     vi.stubEnv("TRANSPORT_UI_MODE", "fuel");
     expect(proxy(request("/?product=B027")).headers.get("x-middleware-rewrite")).toBe("https://fuel.digitie.mywire.org/public/fuel?product=B027");
-    for (const path of ["/public/fuel", "/api/public/fuel/places", "/_next/static/test.js", "/maplibre/maplibre-gl-worker.mjs", "/fuel-brands/sk.gif"]) {
+    for (const path of ["/public/fuel", "/api/public/fuel/places", "/_next/static/test.js", "/maplibre/maplibre-gl-worker.mjs", "/fuel-brands/sk.gif", "/favicon.ico"]) {
       expect(proxy(request(path)).headers.get("x-middleware-next")).toBe("1");
     }
   });

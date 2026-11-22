@@ -103,7 +103,7 @@ for (const width of [320, 390, 1440]) {
     await expect(summaryOf(page).locator(".fuel-sigungu-chips")).toHaveAttribute("aria-label", "지도 중심 지역 가격 통계");
     const opener = summaryOf(page).getByRole("button", { name: "지역 이동" });
     await opener.click();
-    const dialog = page.getByRole("dialog", { name: "이동하세요…" });
+    const dialog = page.getByRole("dialog", { name: "지역 이동" });
     await expect(dialog).toBeVisible();
     // 지금 보이는 지역(중심 영동군)이 선택된 채 열린다.
     await expect(dialog.getByRole("radio", { name: "충북" })).toBeChecked();
