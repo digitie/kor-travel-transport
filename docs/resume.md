@@ -1,10 +1,12 @@
-## 현재 상태 — 2026-11-22 공개 유가 시군구 가격 분포(PR1)·지역 선택/필터(PR2 예정)
+## 현재 상태 — 2026-11-22 공개 유가 가격 분포(PR243 머지)·지역 이동/필터(PR2)
 
-- PR1: 공개 유가 화면 전용 시군구 칩·가격 분포 대화상자·주유소 등급. backend 새 API `price-distribution`과 places
-  `include_viewport_sigungu`(opt-in), 공개 gateway/BFF 허용 경로 추가. migration 없음.
-- 배포(Codex 담당): backend API 이미지 + fuel-api-gateway(nginx 허용 경로) + fuel-web. transport-admin UI 이미지는 재배포 불필요.
-  순서는 API → gateway → fuel-web. 웹이 먼저 나가면 칩은 안 보이고(필드 없음) 주유소 상세의 비교만 "불러오지 못했습니다"로 뜬다.
-- 다음 한 작업: PR1 머지 뒤 그 위에 PR2(지역 이동 대화상자 + 서버측 필터 서랍: 셀프·24시·세차·경정비·편의점·품질인증·브랜드).
+- PR243(머지 fcd05a5): 공개 유가 화면 전용 시군구 칩·가격 분포 대화상자·주유소 등급. 새 API `price-distribution`, places
+  `include_viewport_sigungu`(opt-in). migration 없음.
+- PR2: "이동하세요…" 지역 이동(`area-catalog`)과 필터 서랍(셀프·24시·세차·경정비·편의점·품질인증·상표·지도 최저가 ~N원, 서버 적용).
+  직영·면세유·화물차 우대는 근거 필드가 없어 제외, 믿음·스마트·테마 선택은 소유자 지시로 제외.
+- 배포(Codex 담당): backend API + fuel-api-gateway(nginx 허용 경로 `price-distribution`, `area-catalog`) + fuel-web.
+  transport-admin UI 이미지는 재배포 불필요. 순서 API → gateway → fuel-web.
+- 다음 한 작업: Codex 배포 뒤 실제 fuel 화면에서 칩·대화상자·필터·지역 이동을 확인한다.
 
 ## 현재 상태 — 2026-11-21 공개 유가 지도 정리(PR239)
 
