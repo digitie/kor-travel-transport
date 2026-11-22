@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 from fastapi import HTTPException, Query
-from sqlalchemy import Integer, and_, case, cast, func, or_, select
+from sqlalchemy import DateTime, Integer, and_, case, cast, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import FuelStation, FuelStatisticsPoint, FuelStatisticsState
@@ -140,6 +140,16 @@ def point_station_id(point=FuelStatisticsPoint):
 
 def station_for_point(point=FuelStatisticsPoint, station=FuelStation):
     return station.id == point_station_id(point)
+
+
+def fixed_generation(generated_at):
+    """한 응답이 읽는 공개 세대 시각을 계획기에 값이 보이지 않는 매개변수(InitPlan)로 넘긴다.
+
+    `generated_at = '<새 세대>'` 상수는 통계(MCV)에 그 값이 있어야 바로 추정된다. 새 세대는 늘 마지막 ANALYZE보다 늦게
+    공개되므로 상수로 주면 "1행"으로 추정됐다. 값을 숨기면 계획기는 "세대 하나 = 전체 / 세대 수"로 추정하는데 세대마다
+    행 수가 거의 같아 실제와 맞는다(운영 2만 9천 vs 실제 3만). 읽는 세대는 상수와 똑같이 고정된다.
+    """
+    return select(literal(generated_at, DateTime(timezone=True))).scalar_subquery()
 
 
 def published_points_with_station():

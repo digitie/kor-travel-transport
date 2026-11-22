@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import bisect
 import math
 from dataclasses import dataclass, field, replace
@@ -23,7 +24,7 @@ from app.core.time_utils import serialize_utc
 from app.models import FuelStation, FuelStatisticsPoint, FuelStatisticsState, TransportCollectionState
 from app.schemas import FuelPriceDistributionResponse
 from app.services.fuel_station_filters import (
-    FuelStationFilters, fuel_station_filter_params, point_station_id, sido_display_name, station_for_point,
+    FuelStationFilters, fixed_generation, fuel_station_filter_params, point_station_id, sido_display_name, station_for_point,
 )
 
 OPINET = "opinet_browser"
@@ -35,9 +36,12 @@ VIEWPORT_SIGUNGU_LIMIT = 40
 _sigungu_cache: OrderedDict[tuple, tuple[float, tuple[list[dict], int]]] = OrderedDict()
 # 공개 세대·유종·필터별 전국 가격 색인. 세대는 공개 뒤 바뀌지 않는다(새 세대는 새 키). 주유소 행 조건(셀프·상표)이
 # 세대 안에서 바뀔 수 있어 TTL로 오래된 조건 결과를 버린다. 한 항목은 전국 한 유종 약 1.1만 가격이다.
+# 같은 공개 세대를 정정 재공개(rebuild_current, 드묾)하면 최대 TTL 동안 정정 전 가격을 줄 수 있다.
 PRICE_INDEX_SECONDS = 600
-PRICE_INDEX_SIZE = 8
+PRICE_INDEX_SIZE = 16
 _price_index_cache: OrderedDict[tuple, tuple[float, "_PriceIndex"]] = OrderedDict()
+# 새 세대 직후 같은 키의 동시 요청이 전국 SELECT를 여러 번 보내지 않게 키마다 한 번만 읽는다.
+_price_index_locks: dict[tuple, asyncio.Lock] = {}
 
 # 등급 규칙(단일 정본). percentile은 "이 가격보다 싼 주유소 비율"의 중간 순위 백분위다:
 #   percentile = 100 × (더 싼 곳 수 + 0.5 × 같은 가격 곳 수) / 전체 곳 수
@@ -110,7 +114,7 @@ def _published_points(generated_at, product_code: str | None = None, filters: Fu
     """
     p = FuelStatisticsPoint
     statement = select(p).join(FuelStation, station_for_point(p)).where(
-        p.source == OPINET, p.generated_at == generated_at, p.price > 0)
+        p.source == OPINET, p.generated_at == fixed_generation(generated_at), p.price > 0)
     if product_code is not None:
         statement = statement.where(p.product_code == product_code)
     if filters is not None and filters.active:
@@ -140,6 +144,20 @@ async def _price_index(session: AsyncSession, generated_at, product_code: str,
     if cached and cached[0] > time.monotonic():
         _price_index_cache.move_to_end(key)
         return cached[1]
+    lock = _price_index_locks.setdefault(key, asyncio.Lock())
+    try:
+        async with lock:
+            cached = _price_index_cache.get(key)
+            if cached and cached[0] > time.monotonic():
+                return cached[1]
+            return await _load_price_index(session, key, generated_at, product_code, filters)
+    finally:
+        if not lock.locked():
+            _price_index_locks.pop(key, None)
+
+
+async def _load_price_index(session: AsyncSession, key: tuple, generated_at, product_code: str,
+                            filters: FuelStationFilters | None) -> _PriceIndex:
     p, s = FuelStatisticsPoint, FuelStation
     rows = (await session.execute(_published_points(generated_at, product_code, filters).with_only_columns(
         s.sido_value, s.sigungu_value, s.sido_name, s.sigungu_name, p.price,
@@ -173,7 +191,7 @@ def viewport_sigungu_statement(generated_at, bounds: tuple[float, float, float, 
                                query: str | None, limit: int, filters: FuelStationFilters | None):
     """화면 안 주유소를 시군구로 묶는 문장. 회귀 시험이 이 문장의 실행 계획을 그대로 검사한다."""
     p, s = FuelStatisticsPoint, FuelStation
-    conditions = [p.source == OPINET, p.generated_at == generated_at, p.price > 0,
+    conditions = [p.source == OPINET, p.generated_at == fixed_generation(generated_at), p.price > 0,
                   p.longitude.between(bounds[0], bounds[2]), p.latitude.between(bounds[1], bounds[3])]
     if products:
         conditions.append(p.product_code.in_(products))

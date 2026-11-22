@@ -76,7 +76,7 @@ def test_area_catalog_chip_and_distribution_share_short_sido_names(mixed_names):
     # 원문 이름이 섞여도 한 시군구는 한 줄이다(예전에는 이름까지 묶어 "서울특별시 종로구"·"서울 종로구"로 갈렸다).
     rows = [(row["sido_name"], row["sigungu_name"], row["station_count"]) for row in body["fuel_viewport_sigungu"]]
     assert sorted(rows) == [("경기", "수원시", 3), ("서울", "종로구", 4)]
-    assert {region["label"] for region in body["fuel_regions"]} <= {"서울", "경기"}
+    assert body["fuel_regions"] and {region["label"] for region in body["fuel_regions"]} == {"서울", "경기"}
 
     by_region = client.get("/v1/transport/fuel/price-distribution",
                            params={"product_code": "B027", "sido_value": SEOUL, "sigungu_value": "S01"}).json()

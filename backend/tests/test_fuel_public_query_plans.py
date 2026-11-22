@@ -4,8 +4,10 @@
 point→주유소 조인이 `station_key = CAST(fuel_stations.id AS VARCHAR)`라 기본키를 못 써 중첩 루프 안쪽에서
 fuel_stations 전체를 point마다 다시 읽었다(places zoom 7 필터 504, 가격 분포 평균 13.8초).
 
-이 시험은 그 상태(지난 세대로 만든 통계 + ANALYZE 없이 공개된 새 세대)를 그대로 만든 뒤 실제 문장의 계획을 본다.
-검출기 자체가 살아 있는지도 확인한다: 예전 문자열 조인 문장은 같은 상태에서 반드시 걸려야 한다.
+이 시험은 그 상태(지난 세대로 만든 통계 + ANALYZE 없이 공개된 새 세대)를 그대로 만든 뒤 실제 문장의 계획을 본다:
+(1) 중첩 루프 안쪽에서 fuel_stations를 기본키 없이 다시 읽지 않는다, (2) 문자열 id 조인이 없다, (3) 새 세대 추정이
+통계와 무관하게 실제 행 수에 가깝다(`fixed_generation`). 검출기·전제가 살아 있는지도 확인한다: 예전 문장(문자열 조인·
+상수 세대)은 같은 상태에서 반드시 걸려야 한다.
 """
 from __future__ import annotations
 
@@ -18,8 +20,8 @@ from sqlalchemy import String, cast, func, insert, select, text
 
 from app.models import FuelLatestPrice, FuelPriceSnapshot, FuelStation, FuelStatisticsPoint, TransportCollectionState
 from app.services.fuel_price_distribution import _published_points, viewport_sigungu_statement
-from app.services.fuel_station_filters import FuelStationFilters, published_points_with_station
-from app.services.fuel_statistics import OPINET, publish_fuel_statistics
+from app.services.fuel_station_filters import FuelStationFilters, fixed_generation, published_points_with_station
+from app.services.fuel_statistics import HIGHWAY, OPINET, publish_fuel_statistics
 
 STATIONS = 3000
 OLD_GENERATIONS = 8
@@ -65,6 +67,10 @@ async def _seed_stale(session, stamp: datetime) -> datetime:
         "INSERT INTO fuel_statistics_points (source, station_key, product_code, generated_at, name, longitude, latitude, price) "
         "SELECT source, station_key, product_code, :now, name, longitude, latitude, price "
         "FROM fuel_statistics_points WHERE source = :s AND generated_at = :at"), {"now": current, "s": OPINET, "at": stamp})
+    # 같은 시각의 고속도로 휴게소 point(문자 키). 정수 조인의 CASE가 이 키를 정수로 바꾸려 하면 오류가 난다.
+    await session.execute(insert(FuelStatisticsPoint), [{
+        "source": HIGHWAY, "station_key": "A00001", "product_code": "B027", "generated_at": current, "name": "휴게소",
+        "longitude": 127.5, "latitude": 36.5, "price": 1700}])
     await session.execute(text("UPDATE fuel_statistics_states SET generated_at = :now WHERE source = :s"),
                           {"now": current, "s": OPINET})
     await session.commit()
@@ -119,9 +125,11 @@ def stale_generation(client):
             await session.execute(text("ALTER TABLE fuel_statistics_points RESET (autovacuum_enabled)"))
             await session.commit()
 
-    current = asyncio.run(setup())
-    yield client, current
-    asyncio.run(teardown())
+    try:
+        current = asyncio.run(setup())
+        yield client, current
+    finally:
+        asyncio.run(teardown())
 
 
 def test_stale_statistics_premise_and_legacy_shape_is_detected(stale_generation):
@@ -162,44 +170,44 @@ def test_filtered_public_statements_use_station_primary_key_under_stale_statisti
     asyncio.run(check())
 
 
-def test_publication_refreshes_generation_statistics(client):
-    """공개 경로는 새 세대를 통계에 넣는다: 새 세대 추정이 실제 행 수에 가깝다."""
-    if not _postgres(client):
-        pytest.skip("PostgreSQL 통계")
+def test_generation_estimate_does_not_depend_on_fresh_statistics(stale_generation):
+    """새 세대를 InitPlan 매개변수로 넘기면 낡은 통계에서도 추정이 실제 행 수에 가깝다(상수 세대는 1행 근처)."""
+    client, current = stale_generation
     p = FuelStatisticsPoint
 
     async def check():
         async with client.app.state.session_factory() as session:
-            await session.execute(text("ALTER TABLE fuel_statistics_points SET (autovacuum_enabled = false)"))
-            await session.commit()
-            try:
-                first = datetime(2026, 11, 21, 8, 0, tzinfo=timezone.utc)
-                await session.execute(insert(FuelStation), [{
-                    "id": index, "source": OPINET, "identity_key": str(index), "name": f"주유소{index}", "query_level": "sigungu",
-                    "source_kinds": [], "sido_value": "01", "sido_name": "서울", "sigungu_value": "0101", "sigungu_name": "종로구",
-                    "longitude": 127.0, "latitude": 37.5, "first_seen_at": first, "last_seen_at": first,
-                } for index in range(1, 801)])
-                await session.execute(insert(FuelPriceSnapshot), [{
-                    "fuel_station_id": index, "source": OPINET, "product_code": "B027", "price": 1600 + index % 50,
-                    "observed_at": first, "collected_at": first} for index in range(1, 801)])
-                await session.execute(text(
-                    "INSERT INTO fuel_latest_prices (fuel_station_id, product_code, snapshot_id, price, observed_at, collected_at) "
-                    "SELECT fuel_station_id, product_code, id, price, observed_at, collected_at FROM fuel_price_snapshots"))
-                session.add(TransportCollectionState(source=OPINET, last_success_at=first, updated_at=first))
-                await session.flush()
-                await publish_fuel_statistics(session, OPINET, first)
-                await session.commit()
-                # 자동 ANALYZE가 첫 세대만 본 상태(운영의 마지막 자동 ANALYZE)를 만든다.
-                await session.execute(text("ANALYZE fuel_statistics_points"))
-                await session.commit()
-                second = first + timedelta(hours=12)
-                await session.execute(FuelLatestPrice.__table__.update().values(collected_at=second))
-                await session.execute(TransportCollectionState.__table__.update().values(last_success_at=second))
-                await publish_fuel_statistics(session, OPINET, second)
-                await session.commit()
-                estimate = (await _plan(session, select(p.station_key).where(p.source == OPINET, p.generated_at == second)))["Plan Rows"]
-                assert estimate >= 400, estimate  # 실제 800행. 통계에 없으면 1행으로 추정한다.
-            finally:
-                await session.execute(text("ALTER TABLE fuel_statistics_points RESET (autovacuum_enabled)"))
-                await session.commit()
+            actual = await session.scalar(select(func.count()).select_from(p).where(p.source == OPINET, p.generated_at == current))
+            opaque = (await _plan(session, select(p.station_key).where(
+                p.source == OPINET, p.generated_at == fixed_generation(current))))
+            scan = next(node for node in _nodes(opaque) if node.get("Relation Name") == "fuel_statistics_points"
+                        and node.get("Parent Relationship") != "InitPlan")
+            assert actual / 3 <= scan["Plan Rows"] <= actual * 3, (scan["Plan Rows"], actual)
     asyncio.run(check())
+
+
+def test_public_statements_run_with_highway_points_in_the_same_generation(stale_generation):
+    """CASE 가드: 같은 세대 시각의 고속도로(문자 키) point가 있어도 정수 조인이 실패하지 않는다."""
+    client, current = stale_generation
+
+    async def check():
+        async with client.app.state.session_factory() as session:
+            rows = (await session.execute(viewport_sigungu_statement(current, (124, 33, 132, 39), [], None, 40, None))).all()
+            assert rows and sum(row.station_count for row in rows) >= 40
+            index_rows = (await session.execute(_published_points(current, "B027", FILTERS).with_only_columns(
+                FuelStatisticsPoint.price))).all()
+            assert index_rows
+    asyncio.run(check())
+
+
+def test_public_fuel_services_do_not_join_points_on_text_station_ids():
+    """모든 호출 지점(범위 통계 후보 CTE 포함)이 정수 조인 하나를 쓴다. 문자열 id 조인을 다시 들이면 실패한다."""
+    from pathlib import Path
+    services = Path(__file__).resolve().parents[1] / "app" / "services"
+    offenders = []
+    for path in sorted(services.glob("fuel_*.py")):
+        source = path.read_text(encoding="utf-8")
+        for needle in ("station_key == cast(", "cast(FuelStation.id, String) ==", "cast(s.id, String) =="):
+            if needle in source:
+                offenders.append(f"{path.name}: {needle}")
+    assert not offenders, offenders
