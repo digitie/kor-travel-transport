@@ -11,6 +11,8 @@ from dataclasses import dataclass, replace
 
 from fastapi import HTTPException, Query
 from sqlalchemy import DateTime, Integer, and_, case, cast, func, literal, or_, select
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.sql.functions import FunctionElement
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import FuelStation, FuelStatisticsPoint, FuelStatisticsState
@@ -142,6 +144,24 @@ def station_for_point(point=FuelStatisticsPoint, station=FuelStation):
     return station.id == point_station_id(point)
 
 
+class _OpaqueGeneration(FunctionElement):
+    """PostgreSQL에서는 `(SELECT CAST(<값> AS TIMESTAMPTZ))`(InitPlan), 다른 DB에서는 값 그대로."""
+    type = DateTime(timezone=True)
+    inherit_cache = True
+    name = "opaque_generation"
+
+
+@compiles(_OpaqueGeneration)
+def _compile_plain_generation(element, compiler, **kw):
+    return compiler.process(element.clauses, **kw)
+
+
+@compiles(_OpaqueGeneration, "postgresql")
+def _compile_opaque_generation(element, compiler, **kw):
+    # 값이 문자열 상수로 그려져도(literal_binds) timestamptz로 비교되게 형을 명시한다.
+    return f"(SELECT CAST({compiler.process(element.clauses, **kw)} AS TIMESTAMP WITH TIME ZONE))"
+
+
 def fixed_generation(generated_at):
     """한 응답이 읽는 공개 세대 시각을 계획기에 값이 보이지 않는 매개변수(InitPlan)로 넘긴다.
 
@@ -149,7 +169,7 @@ def fixed_generation(generated_at):
     공개되므로 상수로 주면 "1행"으로 추정됐다. 값을 숨기면 계획기는 "세대 하나 = 전체 / 세대 수"로 추정하는데 세대마다
     행 수가 거의 같아 실제와 맞는다(운영 2만 9천 vs 실제 3만). 읽는 세대는 상수와 똑같이 고정된다.
     """
-    return select(literal(generated_at, DateTime(timezone=True))).scalar_subquery()
+    return _OpaqueGeneration(literal(generated_at, DateTime(timezone=True)))
 
 
 def published_points_with_station():
