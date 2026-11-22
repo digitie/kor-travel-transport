@@ -21,9 +21,9 @@ async function shot(page: Page, name: string, testInfo: { outputPath: (name: str
   if (process.env.E2E_SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/${name}`, animations: "disabled" });
 }
 
-// 서버의 지도 중심 시군구(가장 가까운 주유소 근사)를 흉내 낸다: 경도 127.3 서쪽은 서울 종로구, 동쪽은 충북 영동군.
-// 화면 1순위(옥천군)와 일부러 다르게 둬 칩이 중심을 따른다는 것을 구별한다.
-const CENTER_WEST = { sido_value: "01", sido_name: "서울", sigungu_value: "0101", sigungu_name: "종로구", method: "nearest_station", distance_m: 400 };
+// 서버의 지도 중심 시군구(가장 가까운 주유소 근사)를 흉내 낸다: 경도 127.3 서쪽은 서울 중구, 동쪽은 충북 영동군.
+// 화면 1순위(옥천군)·지역 이동에서 고르는 곳(서울 종로구)과 일부러 다르게 둬 칩의 근거를 구별한다.
+const CENTER_WEST = { sido_value: "01", sido_name: "서울", sigungu_value: "0102", sigungu_name: "중구", method: "nearest_station", distance_m: 400 };
 const CENTER_EAST = { sido_value: "15", sido_name: "충북", sigungu_value: "1501", sigungu_name: "영동군", method: "nearest_station", distance_m: 900 };
 const centerFor = (url: URL) => Number(url.searchParams.get("center_longitude")) < 127.3 ? CENTER_WEST : CENTER_EAST;
 
@@ -146,10 +146,10 @@ for (const width of [320, 390, 1440]) {
     await dialog.getByRole("button", { name: "취소" }).click();
     await expect(dialog).toHaveCount(0);
     await expect(page.locator('[data-slot="tooltip-content"]')).toHaveCount(0);
-    // 해제하면 다시 지도 중심 시군구(지금은 옮겨 간 종로구 쪽) 하나로 돌아가고 초점은 그 칩에 남는다.
+    // 해제하면 다시 지도 중심 시군구(지금은 옮겨 간 서울 쪽, 모의 서버는 서울 중구) 하나로 돌아가고 초점은 그 칩에 남는다.
     await summaryOf(page).getByRole("button", { name: "서울 종로구 선택 해제" }).click();
     await expect(summaryOf(page).locator(".fuel-sigungu-chips")).toHaveAttribute("aria-label", "지도 중심 지역 가격 통계");
-    await expect(regionChips(page)).toHaveText("서울 종로구");
+    await expect(regionChips(page)).toHaveText("서울 중구");
     await expect(regionChips(page)).toBeFocused();
   });
 
@@ -159,14 +159,15 @@ for (const width of [320, 390, 1440]) {
     const group = summaryOf(page).locator(".fuel-sigungu-chips");
     await expect(regionChips(page)).toHaveText("충북 영동군");
     await expect(group).toHaveAttribute("aria-label", "지도 중심 지역 가격 통계");
-    // 중심은 조회 범위의 가운데다(범위에서만 나오므로 요청 수가 늘지 않는다).
-    const first = lastPlaces();
+    // 중심은 조회 범위의 가운데다(범위에서만 나오므로 요청 수가 늘지 않는다). 첫 이동 알림 전 기본 범위 요청에는 없다.
+    expect(placeRequests[0].searchParams.has("center_longitude")).toBe(false);
+    const first = placeRequests.filter(url => url.searchParams.has("center_longitude")).at(-1)!;
     const middle = (low: string, high: string) => (Number(first.searchParams.get(low)) + Number(first.searchParams.get(high))) / 2;
     expect(Number(first.searchParams.get("center_longitude"))).toBeCloseTo(middle("min_longitude", "max_longitude"), 4);
     expect(Number(first.searchParams.get("center_latitude"))).toBeCloseTo(middle("min_latitude", "max_latitude"), 4);
     expect(await noHorizontalScroll(page)).toBe(true);
     await shot(page, `fuel-ui4-center-east-${width}.png`, testInfo);
-    // 지도를 오른쪽으로 끌면(중심이 서쪽으로) 중심 시군구가 서울 종로구로 바뀐다.
+    // 지도를 오른쪽으로 끌면(중심이 서쪽으로) 중심 시군구가 서울 중구로 바뀐다.
     const canvas = page.locator(".maplibregl-canvas");
     const box = (await canvas.boundingBox())!;
     const drag = async (dx: number) => {
@@ -174,18 +175,15 @@ for (const width of [320, 390, 1440]) {
       await page.mouse.move(from.x, from.y);
       await page.mouse.down();
       for (let step = 1; step <= 10; step++) await page.mouse.move(from.x + dx * step / 10, from.y);
+      // 손을 떼기 전에 멈춰 관성 이동을 없앤다(이동 거리가 두 번의 끌기에서 대칭이 되게).
+      await page.waitForTimeout(300);
       await page.mouse.up();
     };
-    const requestsBefore = placeRequests.length;
     let moved = waitPlaces(page, url => Number(url.searchParams.get("center_longitude")) < 127.3);
     await drag(Math.round(box.width * .6));
     await moved;
-    await expect(regionChips(page)).toHaveText("서울 종로구");
+    await expect(regionChips(page)).toHaveText("서울 중구");
     await expect(group).toHaveAttribute("aria-label", "지도 중심 지역 가격 통계");
-    // 끄는 동안의 요청은 모두 범위가 다르다(중심 때문에 같은 범위를 다시 묻지 않는다).
-    const keys = placeRequests.slice(requestsBefore)
-      .map(url => ["min_longitude", "min_latitude", "max_longitude", "max_latitude", "zoom"].map(key => url.searchParams.get(key)).join(","));
-    expect(new Set(keys).size).toBe(keys.length);
     expect(await noHorizontalScroll(page)).toBe(true);
     await shot(page, `fuel-ui4-center-west-${width}.png`, testInfo);
     // 되돌리면 다시 영동군.

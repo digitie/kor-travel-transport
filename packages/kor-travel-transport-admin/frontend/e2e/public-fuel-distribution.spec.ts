@@ -208,14 +208,17 @@ test.describe("주유소 상세", () => {
         && new URL(request.url()).searchParams.get("product_codes") === "D047");
       await diesel.check();
       await reload;
-      await expect(detail).toHaveCount(0);
+      // 모달 팝오버가 바깥을 aria-hidden으로 가리므로 역할이 아니라 DOM으로 상세가 사라졌는지 본다.
+      const detailNode = page.locator(".transport-map-detail");
+      await expect(detailNode).toHaveCount(0);
       // 상세가 사라져도 초점은 방금 누른 체크박스(팝오버 안)에 있다.
       await expect(diesel).toBeFocused();
       await shot(page, `fuel-ui4-product-change-closes-detail-${width}.png`, testInfo);
       await page.keyboard.press("Escape");
       await expect(menu).toHaveCount(0);
       await expect(trigger).toBeFocused();
-      expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe("BODY");
+      await expect(detailNode).toHaveCount(0);
+      await expect(detail).toHaveCount(0);
       await expect(trigger).toHaveAccessibleName("유종·필터: 경유");
       // 다시 열면 새 유종으로 열린다(같은 마커를 다시 누를 수 있다).
       await marker.click();
@@ -224,9 +227,18 @@ test.describe("주유소 상세", () => {
       // 초기화(유종 전체로)도 같은 규칙: 상세가 닫히고 초점은 팝오버의 닫기 버튼으로 간다.
       await trigger.click();
       await menu.getByRole("button", { name: "초기화" }).click();
-      await expect(detail).toHaveCount(0);
+      await expect(detailNode).toHaveCount(0);
       await expect(menu.getByRole("button", { name: "닫기" })).toBeFocused();
       await menu.getByRole("button", { name: "닫기" }).click();
+      await expect(trigger).toBeFocused();
+      await expect(detailNode).toHaveCount(0);
+      // 주유소 조건(셀프 등)을 바꿔도 같은 규칙: 그 주유소가 지도에서 빠질 수 있어 상세를 닫는다.
+      await marker.click();
+      await expect(detailNode).toHaveCount(1);
+      await trigger.click();
+      await menu.getByRole("checkbox", { name: "'셀프주유' 만" }).check();
+      await expect(detailNode).toHaveCount(0);
+      await page.keyboard.press("Escape");
       await expect(trigger).toBeFocused();
       expect(await noHorizontalScroll(page)).toBe(true);
     });
