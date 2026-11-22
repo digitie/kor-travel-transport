@@ -47,6 +47,11 @@ export type FuelViewportSigungu = {
   sido_value: string; sido_name: string; sigungu_value: string; sigungu_name: string; station_count: number;
 };
 
+/** places `fuel_center_sigungu`: 지도 중심에서 가장 가까운 오피넷 주유소의 시군구(경계가 아닌 근사). 못 찾으면 null. */
+export type FuelCenterSigungu = {
+  sido_value: string; sido_name: string; sigungu_value: string; sigungu_name: string; method: string; distance_m: number;
+};
+
 export type FuelDistributionTarget =
   | { kind: "region"; sido_value: string; sigungu_value: string; label: string }
   | { kind: "station"; station_id: number };
@@ -72,28 +77,40 @@ export const signedWon = (value: number) => {
   return rounded === 0 ? "평균과 같음" : `${rounded > 0 ? "+" : "−"}${Math.abs(rounded).toLocaleString("ko-KR")}원`;
 };
 
-/** 범위 요약의 지역 칩 하나. station_count는 지금 화면 안 주유소 수(화면 밖이면 null). */
+/**
+ * 범위 요약의 지역 칩 하나. station_count는 지금 화면 안 주유소 수(화면 안 상위 목록에 없으면 null).
+ * basis: selected(지역 이동에서 고름) · center(지도 중심 시군구) · viewport(중심을 못 정해 화면에서 주유소가 가장 많은 곳).
+ */
 export type FuelRegionChip = {
   sido_value: string; sigungu_value: string; label: string; station_count: number | null; selected: boolean;
+  basis: "selected" | "center" | "viewport";
 };
 
 /**
  * 지역 목록은 고른 곳 하나만 보인다(소유자 지시 2026-11-22 "지역 목록은 선택한 곳만").
  * - 지역 이동에서 고른 시군구가 있으면 그것만(지도를 옮겨도 다른 곳을 고르거나 해제할 때까지 유지).
- * - 고르기 전에는 지금 화면에서 주유소가 가장 많은 시군구 1곳(서버 목록 1순위, 주유소 수 내림차순).
+ * - 고르기 전에는 지도 중심의 시군구(서버 `fuel_center_sigungu`, 가장 가까운 주유소 근사 — 소유자 지시 2026-11-22
+ *   "기본은 지도 중심 시군구"). 지도를 옮기면 따라 바뀐다.
+ * - 중심을 정하지 못하면(바다·반경 안 주유소 없음·옛 API) 예전처럼 화면에서 주유소가 가장 많은 시군구 1곳.
  */
 export function displayedRegion(
   selected: { sido_value: string; sigungu_value: string; label: string } | undefined,
   viewport: FuelViewportSigungu[],
+  center?: FuelCenterSigungu | null,
 ): FuelRegionChip | null {
+  const visibleCount = (sido: string, sigungu: string) =>
+    viewport.find(item => item.sido_value === sido && item.sigungu_value === sigungu)?.station_count ?? null;
   if (selected) {
-    const visible = viewport.find(item => item.sido_value === selected.sido_value && item.sigungu_value === selected.sigungu_value);
-    return { ...selected, station_count: visible?.station_count ?? null, selected: true };
+    return { ...selected, station_count: visibleCount(selected.sido_value, selected.sigungu_value), selected: true, basis: "selected" };
+  }
+  if (center) {
+    return { sido_value: center.sido_value, sigungu_value: center.sigungu_value, label: `${center.sido_name} ${center.sigungu_name}`,
+      station_count: visibleCount(center.sido_value, center.sigungu_value), selected: false, basis: "center" };
   }
   const top = viewport[0];
   if (!top) return null;
   return { sido_value: top.sido_value, sigungu_value: top.sigungu_value, label: `${top.sido_name} ${top.sigungu_name}`,
-    station_count: top.station_count, selected: false };
+    station_count: top.station_count, selected: false, basis: "viewport" };
 }
 
 /** 등급 색: 싼 쪽(A)은 brand, 중간(B)은 success, 비싼 쪽(C·D)은 warning/danger 토큰. */

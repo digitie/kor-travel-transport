@@ -12,7 +12,7 @@ import { clusterAtScale, dateTime, hasCoordinates, hasFuelPrice, TransportError,
 import { collectionSourceLabel, fuelProductLabel, placeKindLabel } from "@/lib/transport-presentation";
 import { placeMarkerColor, placeMarkerStyle, priceMarkerLabel, priceSpeech } from "@/lib/place-marker-style";
 import { FuelPriceStatus, FuelViewportSummary, type FuelViewportStatistics } from "@/components/fuel-statistics";
-import type { FuelViewportSigungu } from "@/lib/fuel-price-distribution";
+import type { FuelCenterSigungu, FuelViewportSigungu } from "@/lib/fuel-price-distribution";
 import { MAP_FALLBACK_IMAGE } from "@/lib/map-fallback";
 import { cn } from "@/lib/utils";
 import { CameraRequest, ClusterBubble, MapMarkerButton, MapUnavailable, MarkerBadge, OverlapPopup, useVWorldBasemapHealth, ZoomButtons, type CameraTarget } from "./map-overlays";
@@ -50,7 +50,7 @@ type PublicFuelControls = {
 
 type PublicFuelSummary = NonNullable<Parameters<typeof FuelViewportSummary>[0]["publicFuel"]>;
 
-type PlaceResponse = { fuel_regions?: FuelRegion[]; fuel_statistics?: FuelViewportStatistics[]; fuel_viewport_sigungu?: FuelViewportSigungu[]; fuel_viewport_sigungu_total?: number; items: Place[]; total: number; truncated: boolean; clustered?: boolean; kind_totals?: Partial<Record<PlaceKind, number>>; clusters?: MapCluster[]; available_sources?: string[]; fuel_prices_stale?: boolean; fuel_prices_last_refreshed_at?: string | null };
+type PlaceResponse = { fuel_regions?: FuelRegion[]; fuel_statistics?: FuelViewportStatistics[]; fuel_viewport_sigungu?: FuelViewportSigungu[]; fuel_viewport_sigungu_total?: number; fuel_center_sigungu?: FuelCenterSigungu | null; items: Place[]; total: number; truncated: boolean; clustered?: boolean; kind_totals?: Partial<Record<PlaceKind, number>>; clusters?: MapCluster[]; available_sources?: string[]; fuel_prices_stale?: boolean; fuel_prices_last_refreshed_at?: string | null };
 const FUEL_PRODUCTS = ["B027", "D047", "B034", "C004", "K015"] as const;
 const KINDS: PlaceKind[] = ["fuel_station", "rail_station", "ferry_port", "bus_terminal", "airport", "rest_area", "highway_incident", "public_parking_lot"];
 const REFERENCE_LIST_KINDS = new Set<string>(["ferry_port", "bus_terminal", "public_parking_lot"]);
@@ -230,7 +230,7 @@ function MapStatusSummary({ status, embedded, mode, loaded, pending, failed, cur
   return <>
     <div className="map-feedback">{status}</div>
     {!embedded && mode === "fuel" ? <FuelViewportSummary publicFuel={publicFuel ? {
-      ...publicFuel, load, sigungu: loaded.fuel_station?.fuel_viewport_sigungu ?? [],
+      ...publicFuel, load, sigungu: loaded.fuel_station?.fuel_viewport_sigungu ?? [], center: loaded.fuel_station?.fuel_center_sigungu,
     } : undefined} items={loaded.fuel_station?.fuel_statistics ?? []} pending={pending.length > 0} failed={failed.length > 0}
       detailOpen={Boolean(current)} detailExpanded={fuelDetailScopeExpanded} onDetailExpandedChange={setFuelDetailScopeExpanded}
       pricesStale={loaded.fuel_station?.fuel_prices_stale} pricesLastRefreshedAt={loaded.fuel_station?.fuel_prices_last_refreshed_at} /> : null}
@@ -290,10 +290,22 @@ function mapPlaceSearch({
   }
   if (mode === "fuel") search.set("include_fuel_statistics", "true");
   // 화면 안 시군구 칩은 공개 유가 화면에서만 요청한다(관리 지도 응답은 그대로).
-  if (publicFuel && kinds.includes("fuel_station")) search.set("include_viewport_sigungu", "true");
+  if (publicFuel && kinds.includes("fuel_station")) {
+    search.set("include_viewport_sigungu", "true");
+    // 지역 칩 기본값(지도 중심 시군구). 조회 범위(정밀도 격자로 바깥 반올림)의 가운데라 실제 중심과 반 칸 이내이고,
+    // 범위에서만 나오므로 지도를 옮겨도 요청 수·응답 캐시 키는 지금과 같다.
+    const center = viewportCenter(viewport);
+    search.set("center_longitude", center.longitude);
+    search.set("center_latitude", center.latitude);
+  }
   // 공개 유가 서버 필터: 마커·묶음·통계·지역 카드·시군구 칩이 같은 조건으로 계산된다.
   if (publicFuel && filterQuery) for (const [key, value] of new URLSearchParams(filterQuery)) search.set(key, value);
   return search;
+}
+
+function viewportCenter(viewport: Viewport) {
+  const middle = (low: string, high: string) => ((Number(low) + Number(high)) / 2).toFixed(5);
+  return { longitude: middle(viewport.min_longitude, viewport.max_longitude), latitude: middle(viewport.min_latitude, viewport.max_latitude) };
 }
 
 function filterTransportMapItems(items: Place[], sources: Set<string>, products: Set<string>, query: string) {

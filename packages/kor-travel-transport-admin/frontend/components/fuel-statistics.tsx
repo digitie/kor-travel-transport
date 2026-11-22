@@ -16,7 +16,7 @@ import { FUEL_CHART_ORDER, fuelStationHref, type FuelChartStation } from "@/lib/
 import { StatStrip } from "./stat-strip";
 import { FuelRegionStats } from "./fuel-price-distribution";
 import { PublicFuelFilterMenu, PublicFuelRegionButton, type FuelAreaChoice, type FuelSelectedRegion } from "./public-fuel-controls";
-import { displayedRegion, type FuelRegionChip, type FuelViewportSigungu } from "@/lib/fuel-price-distribution";
+import { displayedRegion, type FuelCenterSigungu, type FuelRegionChip, type FuelViewportSigungu } from "@/lib/fuel-price-distribution";
 import type { PublicFuelFilters } from "@/lib/public-fuel-filters";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -128,12 +128,14 @@ type FuelViewportSummaryProps = {
     refreshing?: boolean;
     /** 공개 유가 전용: 지금 지도에 보이는 시군구(주유소 수 내림차순)와 그 통계를 읽는 공개 reader. */
     sigungu?: FuelViewportSigungu[];
+    /** 공개 유가 전용: 지도 중심 시군구(가까운 주유소 근사). 고른 지역이 없을 때 칩 기본값, null·없음이면 sigungu 1순위. */
+    center?: FuelCenterSigungu | null;
     /** 공개 유가 서버 필터 query. 시군구 통계도 같은 조건으로 읽는다. */
     filterQuery?: string;
     /** 맨 위 유종·필터 선택에 함께 담는 주유소 필터(없으면 유종만 고른다). */
     filters?: PublicFuelFilters;
     onFiltersChange?: (filters: PublicFuelFilters) => void;
-    /** 지역 이동에서 고른 시군구. 지역 칩은 이것 하나만(고르기 전에는 화면 대표 시군구 하나) 보인다. */
+    /** 지역 이동에서 고른 시군구. 지역 칩은 이것 하나만(고르기 전에는 지도 중심 시군구 하나) 보인다. */
     selectedRegion?: FuelSelectedRegion;
     onClearRegion?: () => void;
     onOpenRegion?: (current?: FuelAreaChoice, opener?: HTMLElement | null) => void;
@@ -164,7 +166,7 @@ function PublicFuelViewportSummary({
   const regionButton = useRef<HTMLButtonElement>(null);
   const selectedProducts = new Set(publicFuel.products);
   const displayed = selectedProducts.size ? items.filter(item => selectedProducts.has(item.product_code)) : items;
-  const region = displayedRegion(publicFuel.selectedRegion, publicFuel.sigungu ?? []);
+  const region = displayedRegion(publicFuel.selectedRegion, publicFuel.sigungu ?? [], publicFuel.center);
   return <section className="fuel-viewport-summary public-fuel-summary" aria-label="현재 지도 범위 유가 통계" aria-busy={pending}>
     <PublicFuelSummaryHeader pricesStale={pricesStale} pricesLastRefreshedAt={pricesLastRefreshedAt} controls={publicFuel}
       region={region} regionButton={regionButton} />

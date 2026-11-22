@@ -18,18 +18,29 @@ describe("시군구 가격 분포 계약", () => {
     expect(load).toHaveBeenCalledWith("transport/fuel/price-distribution?product_code=B027&station_id=7", undefined);
   });
 
-  it("지역 칩은 고른 곳 하나만, 고르기 전에는 화면에서 주유소가 가장 많은 곳 하나", () => {
+  it("지역 칩은 고른 곳 하나만, 고르기 전에는 지도 중심 시군구, 중심을 모르면 주유소가 가장 많은 곳", () => {
     const viewport = [
       { sido_value: "15", sido_name: "충북", sigungu_value: "3", sigungu_name: "옥천군", station_count: 9 },
       { sido_value: "01", sido_name: "서울", sigungu_value: "1", sigungu_name: "중구", station_count: 3 },
     ];
-    expect(displayedRegion(undefined, viewport)).toEqual({ sido_value: "15", sigungu_value: "3", label: "충북 옥천군", station_count: 9, selected: false });
+    const center = { sido_value: "01", sido_name: "서울", sigungu_value: "1", sigungu_name: "중구", method: "nearest_station", distance_m: 120 };
+    // 중심 시군구가 1순위(옥천군)가 아니어도 중심을 보인다. 화면 안 목록에 있으면 그 주유소 수를 함께.
+    expect(displayedRegion(undefined, viewport, center))
+      .toEqual({ sido_value: "01", sigungu_value: "1", label: "서울 중구", station_count: 3, selected: false, basis: "center" });
+    expect(displayedRegion(undefined, viewport, { ...center, sido_value: "02", sido_name: "부산", sigungu_value: "9", sigungu_name: "동구" }))
+      .toEqual({ sido_value: "02", sigungu_value: "9", label: "부산 동구", station_count: null, selected: false, basis: "center" });
+    // 중심을 못 정했거나(null) 옛 API라 필드가 없으면(undefined) 예전 대체 경로.
+    for (const missing of [null, undefined]) {
+      expect(displayedRegion(undefined, viewport, missing))
+        .toEqual({ sido_value: "15", sigungu_value: "3", label: "충북 옥천군", station_count: 9, selected: false, basis: "viewport" });
+    }
     expect(displayedRegion(undefined, [])).toBeNull();
-    // 고른 곳이 화면 안이면 화면 안 주유소 수를, 화면 밖이면 수 없이 이름만.
-    expect(displayedRegion({ sido_value: "01", sigungu_value: "1", label: "서울 중구" }, viewport))
-      .toEqual({ sido_value: "01", sigungu_value: "1", label: "서울 중구", station_count: 3, selected: true });
+    expect(displayedRegion(undefined, [], center)?.label).toBe("서울 중구");
+    // 고른 곳이 있으면 중심보다 우선한다. 화면 안이면 화면 안 주유소 수를, 화면 밖이면 수 없이 이름만.
+    expect(displayedRegion({ sido_value: "15", sigungu_value: "3", label: "충북 옥천군" }, viewport, center))
+      .toEqual({ sido_value: "15", sigungu_value: "3", label: "충북 옥천군", station_count: 9, selected: true, basis: "selected" });
     expect(displayedRegion({ sido_value: "02", sigungu_value: "2", label: "부산 중구" }, viewport))
-      .toEqual({ sido_value: "02", sigungu_value: "2", label: "부산 중구", station_count: null, selected: true });
+      .toEqual({ sido_value: "02", sigungu_value: "2", label: "부산 중구", station_count: null, selected: true, basis: "selected" });
     expect(displayedRegion({ sido_value: "02", sigungu_value: "2", label: "부산 중구" }, [])?.label).toBe("부산 중구");
   });
 

@@ -512,6 +512,15 @@ class FuelViewportSigungu(BaseModel):
     station_count: int = Field(description="현재 지도 범위 안 공개 통계 세대 주유소 수(유종 필터 적용)")
 
 
+class FuelCenterSigungu(BaseModel):
+    sido_value: str
+    sido_name: str
+    sigungu_value: str
+    sigungu_name: str
+    method: str = Field(description="nearest_station: 중심에서 가장 가까운 오피넷 주유소의 시군구(경계 판정이 아닌 근사)")
+    distance_m: int = Field(description="중심과 그 주유소 사이 평면 근사 거리(m)")
+
+
 class FuelPriceHistogramBin(BaseModel):
     start: float = Field(description="구간 시작가(포함)")
     end: float = Field(description="구간 끝가(미포함, 마지막 구간은 최고가 포함)")
@@ -607,6 +616,7 @@ class TransportPlaceMapResponse(BaseModel):
     fuel_statistics: list[FuelViewportStatistics] = Field(default_factory=list)
     fuel_viewport_sigungu: list[FuelViewportSigungu] = Field(default_factory=list, description="include_viewport_sigungu=true일 때만 포함. 주유소 수 내림차순 최대 40곳")
     fuel_viewport_sigungu_total: int = Field(default=0, description="include_viewport_sigungu=true일 때만 포함. 화면 안 전체 시군구 수")
+    fuel_center_sigungu: FuelCenterSigungu | None = Field(default=None, description="center_longitude·center_latitude를 줄 때만 포함. 지도 중심에서 가장 가까운 오피넷 주유소의 시군구(근사). 반경 약 33 km 안에 주유소가 없으면 null")
     kind_totals: dict[str, int] = Field(default_factory=dict)
     clusters: list[TransportPlaceMapCluster] = Field(default_factory=list)
     fuel_prices_stale: bool = Field(default=False, description="확인된 최신 유가 읽기 모델 지연 여부. false는 직후 발생한 늦은 원본 커밋까지 보증하지 않습니다.")

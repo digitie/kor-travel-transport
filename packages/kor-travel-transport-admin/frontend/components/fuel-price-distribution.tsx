@@ -19,6 +19,9 @@ import {
 const Chart = lazy(() => import("./fuel-distribution-chart"));
 type Loader = <T>(path: string, signal?: AbortSignal) => Promise<T>;
 const scopeShort: Record<string, string> = { nationwide: "전국" };
+const REGION_GROUP_LABEL: Record<FuelRegionChip["basis"], string> = {
+  selected: "선택한 지역 가격 통계", center: "지도 중심 지역 가격 통계", viewport: "지도 대표 지역 가격 통계",
+};
 
 // unavailable: 서버가 이 주유소·지역을 비교할 수 없다고 답했다(404·422). 재시도 대신 조용한 안내를 보인다.
 type LoadState = { key: string; data?: FuelPriceDistribution; error?: boolean; unavailable?: boolean };
@@ -46,7 +49,7 @@ function useDistribution(load: Loader, target: FuelDistributionTarget | null, pr
 }
 
 /**
- * 범위 요약 안의 지역 칩 하나(고른 지역, 고르기 전에는 화면 대표 시군구 — lib `displayedRegion`).
+ * 범위 요약 안의 지역 칩 하나(고른 지역, 고르기 전에는 지도 중심 시군구, 중심을 모르면 화면 대표 시군구 — lib `displayedRegion`).
  * 누르면 그 시군구의 가격 분포 대화상자를 연다. 고른 지역은 해제 버튼으로 자동 표시로 되돌린다.
  */
 export function FuelRegionStats({ region, product, load, filterQuery, onClear, focusFallback }: {
@@ -59,7 +62,7 @@ export function FuelRegionStats({ region, product, load, filterQuery, onClear, f
   if (!region) return null;
   const productLabel = fuelProductLabel(product);
   const count = region.station_count;
-  return <div className="fuel-sigungu-chips" role="group" aria-label={region.selected ? "선택한 지역 가격 통계" : "지도 대표 지역 가격 통계"}>
+  return <div className="fuel-sigungu-chips" role="group" aria-label={REGION_GROUP_LABEL[region.basis]} data-basis={region.basis}>
     <ul>
       <li>
         <button ref={chip} type="button" className="fuel-sigungu-chip" data-selected={region.selected || undefined} onClick={() => setTarget({

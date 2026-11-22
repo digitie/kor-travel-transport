@@ -19,7 +19,9 @@ from sqlalchemy import insert, text
 
 from app.db.session import create_engine_and_session_factory
 from app.models import FuelLatestPrice, FuelPriceSnapshot, FuelStation, TransportCollectionState
+from app.services import fuel_center_sigungu as center_module
 from app.services import fuel_price_distribution as distribution_module
+from app.services.fuel_center_sigungu import center_sigungu
 from app.services.fuel_price_distribution import price_distribution, viewport_sigungu
 from app.services.fuel_statistics import OPINET, publish_fuel_statistics
 
@@ -96,6 +98,21 @@ async def main() -> None:
         await timed("viewport city", args.repeat, lambda: uncached((126.9, 37.4, 127.1, 37.6), ["B027"]))
         await timed("viewport national (cached)", args.repeat, lambda: viewport_sigungu(
             session, (124.0, 33.0, 132.0, 39.0), [], [], None))
+        # 지도 중심 시군구(가까운 주유소 근사). 매 호출 다른 중심·캐시 비움으로 실제 SQL 비용을 잰다.
+        rng = random.Random(7)
+
+        async def center(longitude, latitude):
+            center_module._cache.clear()
+            return await center_sigungu(session, longitude, latitude)
+        await timed("center land (random)", args.repeat, lambda: center(126.2 + rng.random() * 3.1, 34.2 + rng.random() * 3.6))
+        await timed("center sea (3 boxes, null)", args.repeat, lambda: center(124.5, 33.0))
+        await timed("center cached", args.repeat, lambda: center_sigungu(session, 127.0, 36.0))
+        plan = (await session.execute(text(
+            "EXPLAIN (ANALYZE, BUFFERS) SELECT sido_value, sigungu_value FROM fuel_stations WHERE source = 'opinet_browser' "
+            "AND sido_value <> '' AND sigungu_value <> '' AND longitude BETWEEN 126.97 AND 127.03 "
+            "AND latitude BETWEEN 37.48 AND 37.52 ORDER BY (longitude - 127.0) * (longitude - 127.0) "
+            "+ (latitude - 37.5) * (latitude - 37.5) LIMIT 1"))).scalars().all()
+        print("center plan:", " | ".join(line.strip() for line in plan))
         body = await price_distribution(session, product_code="B027", sido_value=None, sigungu_value=None, station_id=4255)
         print("station sample:", body["sigungu"]["station_count"], body["station"]["comparisons"][0]["grade"])
     await engine.dispose()

@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Request, type Route } from "@playwright/test";
 
-// 공개 유가(TRANSPORT_UI_MODE=fuel) 맨 위 줄(지역 아이콘 + 유종·필터 한 곳 선택, 필터 버튼·서랍 없음)과 고른 지역 칩 하나.
+// 공개 유가(TRANSPORT_UI_MODE=fuel) 맨 위 줄(지역 아이콘 + 유종·필터 한 곳 선택, 필터 버튼·서랍 없음)과 지역 칩 하나
+// (고른 지역, 고르기 전에는 지도 중심 시군구, 중심을 모르면 화면에서 주유소가 가장 많은 시군구).
 // 필터는 서버가 적용하므로 places 요청 query로 확인하고, 응답은 그 query를 흉내 낸 격리 응답이다.
 // 스크린샷은 E2E_SCREENSHOT_DIR이 있으면 그곳에도 저장한다.
 const generated = "2026-11-21T22:00:00Z";
@@ -20,6 +21,12 @@ async function shot(page: Page, name: string, testInfo: { outputPath: (name: str
   if (process.env.E2E_SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/${name}`, animations: "disabled" });
 }
 
+// 서버의 지도 중심 시군구(가장 가까운 주유소 근사)를 흉내 낸다: 경도 127.3 서쪽은 서울 종로구, 동쪽은 충북 영동군.
+// 화면 1순위(옥천군)와 일부러 다르게 둬 칩이 중심을 따른다는 것을 구별한다.
+const CENTER_WEST = { sido_value: "01", sido_name: "서울", sigungu_value: "0101", sigungu_name: "종로구", method: "nearest_station", distance_m: 400 };
+const CENTER_EAST = { sido_value: "15", sido_name: "충북", sigungu_value: "1501", sigungu_name: "영동군", method: "nearest_station", distance_m: 900 };
+const centerFor = (url: URL) => Number(url.searchParams.get("center_longitude")) < 127.3 ? CENTER_WEST : CENTER_EAST;
+
 const placeRequests: URL[] = [];
 test.beforeEach(async ({ page }) => {
   test.skip(process.env.E2E_PUBLIC_FUEL !== "true", "공개 유가(TRANSPORT_UI_MODE=fuel) 격리 UI 테스트");
@@ -36,6 +43,7 @@ test.beforeEach(async ({ page }) => {
       fuel_prices_stale: false, fuel_prices_last_refreshed_at: generated,
       fuel_viewport_sigungu: [{ sido_value: "15", sido_name: "충북", sigungu_value: "1502", sigungu_name: "옥천군", station_count: 12 - active }],
       fuel_viewport_sigungu_total: 1,
+      ...(url.searchParams.has("center_longitude") ? { fuel_center_sigungu: centerFor(url) } : {}),
     } });
   });
   await page.route("**/api/public/fuel/area-catalog", (route: Route) => route.fulfill({ json: catalog }));
@@ -89,17 +97,17 @@ for (const width of [320, 390, 1440]) {
   test(`${width}px 지역 이동: 아이콘 → 시/도 → 구/군/시 → 확인하면 지도가 옮겨지고 그 지역 하나만 보인다`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: width < 1000 ? 844 : 900 });
     await page.goto("/");
-    // 고르기 전에는 화면에서 주유소가 가장 많은 시군구(서버 목록 1순위) 하나만 보인다.
+    // 고르기 전에는 지도 중심 시군구(서버 fuel_center_sigungu) 하나만 보인다. 화면 1순위(옥천군)가 아니다.
     await expect(regionChips(page)).toHaveCount(1);
-    await expect(regionChips(page)).toHaveText(/충북 옥천군/);
-    await expect(summaryOf(page).locator(".fuel-sigungu-chips")).toHaveAttribute("aria-label", "지도 대표 지역 가격 통계");
+    await expect(regionChips(page)).toHaveText("충북 영동군");
+    await expect(summaryOf(page).locator(".fuel-sigungu-chips")).toHaveAttribute("aria-label", "지도 중심 지역 가격 통계");
     const opener = summaryOf(page).getByRole("button", { name: "지역 이동" });
     await opener.click();
     const dialog = page.getByRole("dialog", { name: "이동하세요…" });
     await expect(dialog).toBeVisible();
-    // 지금 보이는 지역(옥천군)이 선택된 채 열린다.
+    // 지금 보이는 지역(중심 영동군)이 선택된 채 열린다.
     await expect(dialog.getByRole("radio", { name: "충북" })).toBeChecked();
-    await expect(dialog.getByRole("radio", { name: "옥천군" })).toBeChecked();
+    await expect(dialog.getByRole("radio", { name: "영동군" })).toBeChecked();
     for (const option of await dialog.locator(".fuel-region-option").all()) expect((await option.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     const box = (await dialog.boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x + box.width).toBeLessThanOrEqual(width);
@@ -127,6 +135,7 @@ for (const width of [320, 390, 1440]) {
     await expect(regionChips(page)).toHaveCount(1);
     await expect(regionChips(page)).toHaveText("서울 종로구");
     await expect(summaryOf(page)).not.toContainText("옥천군");
+    await expect(summaryOf(page)).not.toContainText("영동군");
     await expect(summaryOf(page).locator(".fuel-sigungu-chips")).toHaveAttribute("aria-label", "선택한 지역 가격 통계");
     await expect(summaryOf(page).getByRole("button", { name: /^서울 종로구 휘발유 가격 통계/ })).toBeVisible();
     expect(await noHorizontalScroll(page)).toBe(true);
@@ -137,10 +146,73 @@ for (const width of [320, 390, 1440]) {
     await dialog.getByRole("button", { name: "취소" }).click();
     await expect(dialog).toHaveCount(0);
     await expect(page.locator('[data-slot="tooltip-content"]')).toHaveCount(0);
-    // 해제하면 다시 화면 대표 시군구 하나로 돌아가고 초점은 그 칩에 남는다.
+    // 해제하면 다시 지도 중심 시군구(지금은 옮겨 간 종로구 쪽) 하나로 돌아가고 초점은 그 칩에 남는다.
     await summaryOf(page).getByRole("button", { name: "서울 종로구 선택 해제" }).click();
-    await expect(regionChips(page)).toHaveText(/충북 옥천군/);
+    await expect(summaryOf(page).locator(".fuel-sigungu-chips")).toHaveAttribute("aria-label", "지도 중심 지역 가격 통계");
+    await expect(regionChips(page)).toHaveText("서울 종로구");
     await expect(regionChips(page)).toBeFocused();
+  });
+
+  test(`${width}px 지역 칩 기본값은 지도 중심 시군구이고 지도를 옮기면 따라간다`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: width < 1000 ? 844 : 900 });
+    await page.goto("/");
+    const group = summaryOf(page).locator(".fuel-sigungu-chips");
+    await expect(regionChips(page)).toHaveText("충북 영동군");
+    await expect(group).toHaveAttribute("aria-label", "지도 중심 지역 가격 통계");
+    // 중심은 조회 범위의 가운데다(범위에서만 나오므로 요청 수가 늘지 않는다).
+    const first = lastPlaces();
+    const middle = (low: string, high: string) => (Number(first.searchParams.get(low)) + Number(first.searchParams.get(high))) / 2;
+    expect(Number(first.searchParams.get("center_longitude"))).toBeCloseTo(middle("min_longitude", "max_longitude"), 4);
+    expect(Number(first.searchParams.get("center_latitude"))).toBeCloseTo(middle("min_latitude", "max_latitude"), 4);
+    expect(await noHorizontalScroll(page)).toBe(true);
+    await shot(page, `fuel-ui4-center-east-${width}.png`, testInfo);
+    // 지도를 오른쪽으로 끌면(중심이 서쪽으로) 중심 시군구가 서울 종로구로 바뀐다.
+    const canvas = page.locator(".maplibregl-canvas");
+    const box = (await canvas.boundingBox())!;
+    const drag = async (dx: number) => {
+      const from = { x: box.x + box.width / 2 - dx / 2, y: box.y + box.height * .75 };
+      await page.mouse.move(from.x, from.y);
+      await page.mouse.down();
+      for (let step = 1; step <= 10; step++) await page.mouse.move(from.x + dx * step / 10, from.y);
+      await page.mouse.up();
+    };
+    const requestsBefore = placeRequests.length;
+    let moved = waitPlaces(page, url => Number(url.searchParams.get("center_longitude")) < 127.3);
+    await drag(Math.round(box.width * .6));
+    await moved;
+    await expect(regionChips(page)).toHaveText("서울 종로구");
+    await expect(group).toHaveAttribute("aria-label", "지도 중심 지역 가격 통계");
+    // 끄는 동안의 요청은 모두 범위가 다르다(중심 때문에 같은 범위를 다시 묻지 않는다).
+    const keys = placeRequests.slice(requestsBefore)
+      .map(url => ["min_longitude", "min_latitude", "max_longitude", "max_latitude", "zoom"].map(key => url.searchParams.get(key)).join(","));
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(await noHorizontalScroll(page)).toBe(true);
+    await shot(page, `fuel-ui4-center-west-${width}.png`, testInfo);
+    // 되돌리면 다시 영동군.
+    moved = waitPlaces(page, url => Number(url.searchParams.get("center_longitude")) >= 127.3);
+    await drag(-Math.round(box.width * .6));
+    await moved;
+    await expect(regionChips(page)).toHaveText("충북 영동군");
+  });
+
+  test(`${width}px 중심을 정하지 못하면(null·옛 API) 화면에서 주유소가 가장 많은 시군구로 되돌아간다`, async ({ page }) => {
+    let center: "null" | "missing" = "null";
+    // 나중에 등록한 route가 먼저 처리된다.
+    await page.route("**/api/public/fuel/places?*", (route: Route) => route.fulfill({ json: {
+      items: [], total: 0, truncated: false, clustered: false, available_sources: [],
+      fuel_statistics: [{ ...metrics, product_code: "B027" }], fuel_prices_stale: false, fuel_prices_last_refreshed_at: generated,
+      fuel_viewport_sigungu: [{ sido_value: "15", sido_name: "충북", sigungu_value: "1502", sigungu_name: "옥천군", station_count: 12 }],
+      fuel_viewport_sigungu_total: 1, ...(center === "null" ? { fuel_center_sigungu: null } : {}),
+    } }));
+    await page.setViewportSize({ width, height: width < 1000 ? 844 : 900 });
+    await page.goto("/");
+    const group = summaryOf(page).locator(".fuel-sigungu-chips");
+    await expect(regionChips(page)).toHaveText(/충북 옥천군/);
+    await expect(group).toHaveAttribute("aria-label", "지도 대표 지역 가격 통계");
+    center = "missing";
+    await page.reload();
+    await expect(regionChips(page)).toHaveText(/충북 옥천군/);
+    await expect(group).toHaveAttribute("aria-label", "지도 대표 지역 가격 통계");
   });
 
   test(`${width}px 맨 위 유종·필터: 각 항목이 서버 query로 적용되고 저장된다`, async ({ page }, testInfo) => {

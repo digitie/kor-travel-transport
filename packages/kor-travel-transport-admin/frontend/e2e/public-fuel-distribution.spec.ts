@@ -45,6 +45,8 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/public/fuel/places?*", (route: Route) => {
     const url = new URL(route.request().url());
     expect(url.searchParams.get("include_viewport_sigungu")).toBe("true");
+    // 지도 중심 시군구도 함께 묻는다. 이 격리 응답은 그 필드를 주지 않는 옛 API를 흉내 내 칩이 대체 경로(화면 1순위)를 쓴다.
+    expect(url.searchParams.has("center_longitude") && url.searchParams.has("center_latitude")).toBe(true);
     const zoom = Number(url.searchParams.get("zoom"));
     return route.fulfill({ json: {
       items: zoom >= 10 ? [station] : [], total: zoom >= 10 ? 1 : 0, truncated: false, clustered: false, available_sources: [],
@@ -184,6 +186,49 @@ test.describe("주유소 상세", () => {
       await dialog.getByRole("checkbox", { name: "전국 대비" }).check();
       expect(await noHorizontalScroll(page)).toBe(true);
       await shot(page, `fuel-stats-station-dialog-${width}.png`, testInfo);
+    });
+
+    // 맨 위 유종을 바꾸면 열린 주유소 상세를 닫는다(새 유종으로 다시 그리지 않는다): 지도 마커·가격 라벨·통계가 모두
+    // 새 유종 기준으로 다시 조회되고, 그 주유소가 새 유종을 팔지 않으면 마커째 사라지기 때문이다. 초점은 유종·필터에 남는다.
+    test(`${width}px 맨 위 유종을 바꾸면 열린 주유소 상세가 닫히고 초점은 유종·필터에 남는다`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: width < 1000 ? 844 : 900 });
+      await page.goto("/");
+      await page.getByRole("button", { name: "내 위치 주변 유가 보기" }).click();
+      const marker = page.getByRole("button", { name: /옥천시험주유소.*상세 보기/ });
+      await expect(marker).toBeVisible({ timeout: 20_000 });
+      await marker.click();
+      const detail = page.getByRole("complementary", { name: "선택 장소 상세" });
+      await expect(detail).toBeVisible();
+      await expect(detail.getByRole("region", { name: "주변 대비 가격" })).toBeVisible();
+      const trigger = summaryOf(page).getByRole("button", { name: /^유종·필터/ });
+      await trigger.click();
+      const menu = page.getByRole("dialog", { name: "유종·필터" });
+      const diesel = menu.getByRole("checkbox", { name: "경유", exact: true });
+      const reload = page.waitForRequest(request => request.url().includes("/api/public/fuel/places?")
+        && new URL(request.url()).searchParams.get("product_codes") === "D047");
+      await diesel.check();
+      await reload;
+      await expect(detail).toHaveCount(0);
+      // 상세가 사라져도 초점은 방금 누른 체크박스(팝오버 안)에 있다.
+      await expect(diesel).toBeFocused();
+      await shot(page, `fuel-ui4-product-change-closes-detail-${width}.png`, testInfo);
+      await page.keyboard.press("Escape");
+      await expect(menu).toHaveCount(0);
+      await expect(trigger).toBeFocused();
+      expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe("BODY");
+      await expect(trigger).toHaveAccessibleName("유종·필터: 경유");
+      // 다시 열면 새 유종으로 열린다(같은 마커를 다시 누를 수 있다).
+      await marker.click();
+      await expect(detail).toBeVisible();
+      await expect(detail.getByRole("region", { name: "경유 가격 비교" })).toBeVisible();
+      // 초기화(유종 전체로)도 같은 규칙: 상세가 닫히고 초점은 팝오버의 닫기 버튼으로 간다.
+      await trigger.click();
+      await menu.getByRole("button", { name: "초기화" }).click();
+      await expect(detail).toHaveCount(0);
+      await expect(menu.getByRole("button", { name: "닫기" })).toBeFocused();
+      await menu.getByRole("button", { name: "닫기" }).click();
+      await expect(trigger).toBeFocused();
+      expect(await noHorizontalScroll(page)).toBe(true);
     });
   }
 });
