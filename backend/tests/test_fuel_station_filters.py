@@ -120,3 +120,25 @@ def test_area_catalog_lists_sido_sigungu_with_bounds(published):
     assert [row["sigungu_name"] for row in sigungu] == ["종로구", "중구"]
     assert sigungu[0]["station_count"] == 4
     assert sigungu[0]["bounds"] == [126.98, 37.5, 127.01, 37.5]
+
+
+def test_near_min_markers_use_the_price_the_marker_shows(published):
+    """상한은 공개 세대 최저가(1600)+50, 마커는 화면에 적히는 실효 가격(수동 새로고침 1700)으로 거른다."""
+    from datetime import timedelta
+    from app.models import FuelRefreshPrice
+
+    async def refresh():
+        async with published.app.state.session_factory() as session:
+            now = datetime.now(timezone.utc)
+            session.add(FuelRefreshPrice(fuel_station_id=202, product_code="B027", price=1700,
+                                         observed_at=now + timedelta(minutes=1), checked_at=now, expires_at=now + timedelta(hours=1)))
+            await session.commit()
+    asyncio.run(refresh())
+    body = places(published, near_min=50, product_codes="B027")
+    assert ids(body) == [201]
+    assert body["fuel_statistics"][0]["minimum_price"] == 1600
+
+
+def test_near_min_ceiling_follows_search_query(published):
+    body = places(published, near_min=20, product_codes="B027", query="필터203")
+    assert ids(body) == [203]

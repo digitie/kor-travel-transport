@@ -14,6 +14,7 @@ from sqlalchemy import String, and_, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import FuelStation, FuelStatisticsPoint, FuelStatisticsState
+from app.services.fuel_refresh_prices import has_fuel_price_at_most
 
 OPINET = "opinet_browser"
 # 화면 상표 묶음 → 저장 brand_code. 알뜰은 자영알뜰(RTE)을 함께 묶는다. ETC는 그 밖(미제공 포함) 전부다.
@@ -67,16 +68,15 @@ class FuelStationFilters:
             return []
         return [FuelStatisticsPoint.product_code == self.ceiling_product, FuelStatisticsPoint.price <= self.price_ceiling]
 
-    def marker_conditions(self) -> list:
-        """지도 장소(FuelStation) 조건: 행 조건 + 상한 안 가격이 공개 세대에 있는 주유소."""
+    def marker_conditions(self, at) -> list:
+        """지도 장소(FuelStation) 조건: 행 조건 + 마커가 보여 주는 실효 가격이 상한 이하인 주유소.
+
+        상한(화면 최저가 + N원)은 범위 요약의 "최저"와 같은 공개 세대에서 구하고, 마커는 화면에 적힌 가격으로 거른다.
+        그래서 "~N원" 안의 마커에는 늘 상한 이하 가격이 적힌다(새 수집 반영 대기 중에도).
+        """
         conditions = self.station_conditions()
         if self.price_ceiling is not None and self.ceiling_product is not None:
-            p, state = FuelStatisticsPoint, FuelStatisticsState
-            conditions.append(select(1).select_from(p).join(state, and_(
-                p.source == state.source, p.generated_at == state.generated_at,
-            )).where(p.source == OPINET, p.station_key == cast(FuelStation.id, String),
-                     p.product_code == self.ceiling_product, p.price > 0, p.price <= self.price_ceiling)
-                .correlate(FuelStation).exists())
+            conditions.append(has_fuel_price_at_most(self.ceiling_product, self.price_ceiling, at))
         return conditions
 
     def labels(self) -> list[str]:
@@ -121,17 +121,21 @@ def published_points_with_station():
 
 
 async def resolve_price_ceiling(session: AsyncSession, filters: FuelStationFilters,
-                                bounds: tuple[float, float, float, float] | None, products: list[str]) -> FuelStationFilters:
+                                bounds: tuple[float, float, float, float] | None, products: list[str],
+                                sources: list[str] | None = None, query: str | None = None) -> FuelStationFilters:
     """near_min을 현재 화면(다른 필터 적용) 공개 세대 최저가 + N원으로 푼다. 화면 최저가가 없으면 상한도 없다(빈 결과)."""
     if filters.near_min is None or bounds is None:
         return filters
     if len(products) != 1:
         raise HTTPException(status_code=422, detail="지도 최저가 필터는 유종 하나를 고른 뒤 사용할 수 있습니다.")
     p = FuelStatisticsPoint
-    minimum = await session.scalar(published_points_with_station().with_only_columns(func.min(p.price)).where(
-        p.product_code == products[0], p.longitude.between(bounds[0], bounds[2]), p.latitude.between(bounds[1], bounds[3]),
-        *filters.station_conditions(),
-    ))
+    conditions = [p.product_code == products[0], p.longitude.between(bounds[0], bounds[2]),
+                  p.latitude.between(bounds[1], bounds[3]), *filters.station_conditions()]
+    if query and query.strip():
+        # 마커·통계와 같은 검색 조건(상호·상표·주소)으로 화면 최저가를 구한다.
+        conditions.append(or_(*(column.icontains(query.strip(), autoescape=True) for column in (p.name, p.brand_name, p.address))))
+    minimum = None if sources and OPINET not in sources else await session.scalar(
+        published_points_with_station().with_only_columns(func.min(p.price)).where(*conditions))
     # 최저가가 없으면 음수 상한으로 빈 결과를 만든다(다른 범위의 가격으로 대신하지 않는다).
     ceiling = float(minimum) + filters.near_min if minimum is not None else -1.0
     return replace(filters, price_ceiling=ceiling, ceiling_product=products[0])

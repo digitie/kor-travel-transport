@@ -132,8 +132,8 @@ type FuelViewportSummaryProps = {
     /** 공개 유가 서버 필터 query. 시군구 통계도 같은 조건으로 읽는다. */
     filterQuery?: string;
     filterCount?: number;
-    onOpenFilters?: () => void;
-    onOpenRegion?: (current?: { sido_value: string; sigungu_value: string }) => void;
+    onOpenFilters?: (opener?: HTMLElement | null) => void;
+    onOpenRegion?: (current?: { sido_value: string; sigungu_value: string }, opener?: HTMLElement | null) => void;
     load?: <T>(path: string, signal?: AbortSignal) => Promise<T>;
   };
 };
@@ -168,7 +168,7 @@ function PublicFuelViewportSummary({
   return <section className="fuel-viewport-summary public-fuel-summary" aria-label="현재 지도 범위 유가 통계" aria-busy={pending}>
     <PublicFuelSummaryHeader pricesStale={pricesStale} pricesLastRefreshedAt={pricesLastRefreshedAt} controls={publicFuel} />
     {publicFuel.onOpenFilters && publicFuel.onOpenRegion ? <PublicFuelTools filterCount={publicFuel.filterCount ?? 0}
-      onOpenFilters={publicFuel.onOpenFilters} onOpenRegion={() => publicFuel.onOpenRegion?.(publicFuel.sigungu?.[0])} /> : null}
+      onOpenFilters={publicFuel.onOpenFilters} onOpenRegion={opener => publicFuel.onOpenRegion?.(publicFuel.sigungu?.[0], opener)} /> : null}
     {publicFuel.load && publicFuel.sigungu?.length ? <FuelSigunguChips regions={publicFuel.sigungu} total={publicFuel.sigunguTotal ?? publicFuel.sigungu.length}
       product={FUEL_CHART_ORDER.find(code => selectedProducts.has(code)) ?? "B027"} load={publicFuel.load} filterQuery={publicFuel.filterQuery} /> : null}
     <div className="fuel-summary-body public-fuel-summary-body">

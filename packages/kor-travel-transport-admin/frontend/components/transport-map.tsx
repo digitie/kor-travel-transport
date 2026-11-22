@@ -47,8 +47,8 @@ type PublicFuelControls = {
   /** 공개 유가 서버 필터 query(lib/public-fuel-filters.ts `publicFuelFilterQuery`). */
   filterQuery?: string;
   filterCount?: number;
-  onOpenFilters?: () => void;
-  onOpenRegion?: (current?: { sido_value: string; sigungu_value: string }) => void;
+  onOpenFilters?: (opener?: HTMLElement | null) => void;
+  onOpenRegion?: (current?: { sido_value: string; sigungu_value: string }, opener?: HTMLElement | null) => void;
 };
 
 type PublicFuelSummary = NonNullable<Parameters<typeof FuelViewportSummary>[0]["publicFuel"]>;

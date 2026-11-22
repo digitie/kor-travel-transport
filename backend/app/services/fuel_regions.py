@@ -43,7 +43,8 @@ async def _filtered_regional_fuel_prices(session: AsyncSession, *, zoom: int, bo
         return []
     p, s = FuelStatisticsPoint, FuelStation
     sigungu = zoom >= 8
-    keys = [s.sido_value, s.sido_name] + ([s.sigungu_value, s.sigungu_name] if sigungu else [])
+    keys = [s.sido_value] + ([s.sigungu_value] if sigungu else [])
+    names = [func.max(s.sido_name).label("sido_name")] + ([func.max(s.sigungu_name).label("sigungu_name")] if sigungu else [])
     located = and_(p.longitude.between(-180, 180), p.latitude.between(-90, 90))
     conditions = [s.sido_value != "", *filters.station_conditions(), *filters.point_conditions()]
     if sigungu:
@@ -51,7 +52,7 @@ async def _filtered_regional_fuel_prices(session: AsyncSession, *, zoom: int, bo
     if products:
         conditions.append(p.product_code.in_(products))
     grouped = published_points_with_station().with_only_columns(
-        *keys, p.product_code, func.count().label("station_count"), func.avg(p.price).label("average_price"),
+        *keys, *names, p.product_code, func.count().label("station_count"), func.avg(p.price).label("average_price"),
         func.avg(p.longitude).filter(located).label("longitude"), func.avg(p.latitude).filter(located).label("latitude"),
     ).where(*conditions).group_by(*keys, p.product_code).subquery()
     g = grouped.c

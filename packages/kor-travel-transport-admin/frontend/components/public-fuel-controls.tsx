@@ -24,10 +24,12 @@ const catalogSchema = z.object({ items: z.array(z.object({
 export type FuelAreaCatalog = z.infer<typeof catalogSchema>;
 export type FuelAreaChoice = { sido_value: string; sigungu_value: string };
 
-export function PublicFuelTools({ filterCount, onOpenRegion, onOpenFilters }: { filterCount: number; onOpenRegion: () => void; onOpenFilters: () => void }) {
+export function PublicFuelTools({ filterCount, onOpenRegion, onOpenFilters }: {
+  filterCount: number; onOpenRegion: (opener: HTMLElement) => void; onOpenFilters: (opener: HTMLElement) => void;
+}) {
   return <div className="public-fuel-tools" role="group" aria-label="지역 이동과 필터">
-    <Button type="button" variant="outline" onClick={onOpenRegion}><MapPinned aria-hidden="true" size={18} />지역</Button>
-    <Button type="button" variant="outline" onClick={onOpenFilters} aria-label={filterCount ? `필터 ${filterCount}개 적용 중` : "필터"}>
+    <Button type="button" variant="outline" onClick={event => onOpenRegion(event.currentTarget)}><MapPinned aria-hidden="true" size={18} />지역</Button>
+    <Button type="button" variant="outline" onClick={event => onOpenFilters(event.currentTarget)} aria-label={filterCount ? `필터 ${filterCount}개 적용 중` : "필터"}>
       <SlidersHorizontal aria-hidden="true" size={18} />필터{filterCount ? <span className="public-fuel-filter-count" aria-hidden="true">{filterCount}</span> : null}
     </Button>
   </div>;
@@ -97,7 +99,7 @@ function FuelRegionPickerBody({ load, current, onCancel, onConfirm }: {
     <div className="fuel-region-actions">
       <Button type="button" variant="ghost" onClick={onCancel}>취소</Button>
       <Button type="button" disabled={!sigunguRow} onClick={() => sigunguRow && label && onConfirm(sigunguRow.bounds, label)}
-        aria-label={label ? `${label} 지역으로 이동` : "구/군/시를 고르세요"}>{label ?? "구/군/시 선택"}</Button>
+        aria-label={label ? `${label} 지역으로 이동` : undefined}>{label ?? "구/군/시 선택"}</Button>
     </div>
   </div>;
 }
@@ -153,7 +155,7 @@ function FuelFilterForm({ filters, onFiltersChange, products, onProductsChange }
       <legend>주유소 조건</legend>
       {FLAG_FILTERS.map(flag => <label key={flag.key} className="fuel-filter-row">
         <span>{flag.label}</span>
-        <input type="checkbox" role="switch" checked={filters[flag.key]} aria-checked={filters[flag.key]}
+        <input type="checkbox" role="switch" checked={filters[flag.key]}
           onChange={event => onFiltersChange({ ...filters, [flag.key]: event.target.checked })} />
       </label>)}
     </fieldset>
@@ -162,8 +164,8 @@ function FuelFilterForm({ filters, onFiltersChange, products, onProductsChange }
       {BRAND_FILTERS.map(brand => {
         const relevant = brandRelevant(brand, products);
         return <label key={brand.key} className="fuel-filter-row fuel-filter-brand" data-disabled={!relevant || undefined}>
-          <FuelBrandIcon code={brand.icon === "ETC" ? null : brand.icon} name={brand.label} className="fuel-filter-brand-icon" />
-          <span>{brand.label}{!relevant ? <small> · 이 유종 없음</small> : null}</span>
+          <span aria-hidden="true" className="fuel-filter-brand-mark"><FuelBrandIcon code={brand.icon === "ETC" ? null : brand.icon} name={brand.label} className="fuel-filter-brand-icon" /></span>
+          <span>{brand.label}{!relevant ? <small> · 이 유종 없음(적용 안 함)</small> : null}</span>
           <input type="checkbox" checked={isBrandChecked(filters, brand.key)} disabled={!relevant}
             onChange={event => onFiltersChange(toggleBrand(filters, brand.key, event.target.checked))} />
         </label>;

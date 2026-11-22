@@ -65,7 +65,7 @@ for (const width of [320, 390, 1440]) {
     expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x + box.width).toBeLessThanOrEqual(width);
     await shot(page, `fuel-filters-region-picker-${width}.png`, testInfo);
     await dialog.getByRole("radio", { name: "서울" }).check();
-    await expect(dialog.getByRole("button", { name: "구/군/시를 고르세요" })).toBeDisabled();
+    await expect(dialog.getByRole("button", { name: "구/군/시 선택" })).toBeDisabled();
     await dialog.getByRole("radio", { name: "종로구" }).check();
     const moved = waitPlaces(page, url => {
       const [west, south, east, north] = ["min_longitude", "min_latitude", "max_longitude", "max_latitude"].map(key => Number(url.searchParams.get(key)));
@@ -107,7 +107,8 @@ for (const width of [320, 390, 1440]) {
     }
     // 휘발유에서 LPG 충전 전용 상표는 비활성
     await expect(drawer.getByRole("checkbox", { name: /SK가스/ })).toBeDisabled();
-    next = waitPlaces(page, url => (url.searchParams.get("brands") ?? "").split(",").length === 10 && !url.searchParams.get("brands")!.includes("ALT"));
+    // 휘발유에서는 LPG 전용 상표(SK가스·E1)를 보내지 않는다: 11 − 알뜰 − 2 = 8개.
+    next = waitPlaces(page, url => (url.searchParams.get("brands") ?? "").split(",").length === 8 && !url.searchParams.get("brands")!.includes("ALT"));
     await drawer.getByRole("checkbox", { name: /알뜰주유소/ }).uncheck();
     await next;
     await drawer.evaluate(node => { node.scrollTop = node.scrollHeight; });

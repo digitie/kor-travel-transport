@@ -59,7 +59,11 @@ async def fuel_area_catalog(session: AsyncSession) -> dict:
             "bounds": [round(west, 5), round(south, 5), round(east, 5), round(north, 5)],
         })
     result = {"items": [{"sido_value": value, "sido_name": names[value], "sigungu": items} for value, items in sorted(sido.items())]}
-    _cache[key] = (time.monotonic() + CACHE_SECONDS, result)
+    if result["items"]:
+        # 빈 목록(첫 수집 전)은 캐시하지 않는다. 엔진별 키가 쌓이지 않게 몇 개만 둔다.
+        while len(_cache) >= 4:
+            _cache.pop(next(iter(_cache)))
+        _cache[key] = (time.monotonic() + CACHE_SECONDS, result)
     return result
 
 

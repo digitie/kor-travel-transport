@@ -1403,7 +1403,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if station_filters.active and requested_kinds != ("fuel_station",):
             raise HTTPException(status_code=422, detail="주유소 필터는 주유소만 조회할 때 사용할 수 있습니다.")
         station_filters = await resolve_price_ceiling(
-            session, station_filters, bounds if min_longitude is not None else None, selected_products)
+            session, station_filters, bounds if min_longitude is not None else None, selected_products,
+            selected_sources, query)
         # 전용 유가 지도는 실제 10부터 가격을 공개한다. 혼합/다른 종류는 기존 경계다.
         detail_zoom = 10 if requested_kinds == ("fuel_station",) else 12
         read_at = now_utc()
@@ -1469,7 +1470,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 conditions.append(has_visible_fuel_product(selected_products, read_at))
             if model is FuelStation and station_filters.active:
                 # 공개 화면 필터: 통계·지역 카드·시군구 칩과 같은 조건(app/services/fuel_station_filters.py).
-                conditions.extend(station_filters.marker_conditions())
+                conditions.extend(station_filters.marker_conditions(read_at))
             if min_longitude is not None:
                 conditions.extend(fuel_viewport_conditions(bounds) if model is FuelStation else (
                     model.longitude >= min_longitude,
