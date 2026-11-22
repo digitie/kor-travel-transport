@@ -7,21 +7,24 @@
 """
 from __future__ import annotations
 
+import bisect
 import math
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 import time
 from collections import OrderedDict
 from collections.abc import AsyncIterator, Callable, Sequence
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import String, and_, cast, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.time_utils import serialize_utc
 from app.models import FuelStation, FuelStatisticsPoint, FuelStatisticsState, TransportCollectionState
 from app.schemas import FuelPriceDistributionResponse
-from app.services.fuel_station_filters import FuelStationFilters, fuel_station_filter_params
+from app.services.fuel_station_filters import (
+    FuelStationFilters, fuel_station_filter_params, point_station_id, sido_display_name, station_for_point,
+)
 
 OPINET = "opinet_browser"
 # 표본이 이보다 적으면 분포·등급을 만들지 않는다(1~2곳의 "최저/최고"는 비교가 아니다).
@@ -30,6 +33,11 @@ QUANTILE_PERCENTS = tuple(range(0, 101, 10))
 HISTOGRAM_TARGET_BINS = 10
 VIEWPORT_SIGUNGU_LIMIT = 40
 _sigungu_cache: OrderedDict[tuple, tuple[float, tuple[list[dict], int]]] = OrderedDict()
+# 공개 세대·유종·필터별 전국 가격 색인. 세대는 공개 뒤 바뀌지 않는다(새 세대는 새 키). 주유소 행 조건(셀프·상표)이
+# 세대 안에서 바뀔 수 있어 TTL로 오래된 조건 결과를 버린다. 한 항목은 전국 한 유종 약 1.1만 가격이다.
+PRICE_INDEX_SECONDS = 600
+PRICE_INDEX_SIZE = 8
+_price_index_cache: OrderedDict[tuple, tuple[float, "_PriceIndex"]] = OrderedDict()
 
 # 등급 규칙(단일 정본). percentile은 "이 가격보다 싼 주유소 비율"의 중간 순위 백분위다:
 #   percentile = 100 × (더 싼 곳 수 + 0.5 × 같은 가격 곳 수) / 전체 곳 수
@@ -98,16 +106,98 @@ def price_quantiles(sorted_prices: Sequence[float]) -> list[dict]:
 def _published_points(generated_at, product_code: str | None = None, filters: FuelStationFilters | None = None):
     """한 공개 세대(generated_at 고정)의 양수 가격 point와 주유소. 응답 안 여러 SELECT가 같은 세대를 읽는다.
 
-    조인은 주유소 id를 문자열로 바꿔 비교한다(고속도로 point의 문자 station_key를 숫자로 바꾸다 실패할 여지가 없다).
+    조인은 오피넷 point 키를 정수 주유소 id로 바꿔 기본키로 찾는다(`station_for_point`, 고속도로 point는 NULL이라 빠진다).
     """
     p = FuelStatisticsPoint
-    statement = select(p).join(FuelStation, p.station_key == cast(FuelStation.id, String)).where(
+    statement = select(p).join(FuelStation, station_for_point(p)).where(
         p.source == OPINET, p.generated_at == generated_at, p.price > 0)
     if product_code is not None:
         statement = statement.where(p.product_code == product_code)
     if filters is not None and filters.active:
         statement = statement.where(*filters.station_conditions(), *filters.point_conditions())
     return statement
+
+
+@dataclass
+class _PriceIndex:
+    """한 세대·유종·필터의 전국 가격(오름차순)을 시도·시군구로도 나눠 둔다. 분포·백분위는 이것만으로 계산한다."""
+    national: list[float] = field(default_factory=list)
+    sido: dict[str, list[float]] = field(default_factory=dict)
+    sigungu: dict[tuple[str, str], list[float]] = field(default_factory=dict)
+    names: dict[tuple[str, str], tuple[str, str]] = field(default_factory=dict)
+
+
+async def _price_index(session: AsyncSession, generated_at, product_code: str,
+                       filters: FuelStationFilters | None) -> _PriceIndex:
+    """전국 가격을 한 번 읽어(시도·시군구 코드와 함께) 세대·유종·필터별로 프로세스에 둔다.
+
+    예전에는 요청마다 시군구 가격 SELECT와 전국·시도 집계 SELECT를 따로 보냈고, 앞의 것이 새 세대의 "1행" 추정으로
+    중첩 루프에 빠져 운영에서 평균 13.8초였다(2026-11-23 pg_stat_statements). 지금은 한 SELECT(정수 조인)로 읽고
+    같은 세대의 다음 요청은 SQL 없이 답한다.
+    """
+    key = (session.bind, serialize_utc(generated_at), product_code, filters.key() if filters is not None else ())
+    cached = _price_index_cache.get(key)
+    if cached and cached[0] > time.monotonic():
+        _price_index_cache.move_to_end(key)
+        return cached[1]
+    p, s = FuelStatisticsPoint, FuelStation
+    rows = (await session.execute(_published_points(generated_at, product_code, filters).with_only_columns(
+        s.sido_value, s.sigungu_value, s.sido_name, s.sigungu_name, p.price,
+    ).order_by(p.price))).all()
+    index = _PriceIndex()
+    for row in rows:
+        price = float(row.price)
+        index.national.append(price)
+        index.sido.setdefault(row.sido_value, []).append(price)
+        region = (row.sido_value, row.sigungu_value)
+        index.sigungu.setdefault(region, []).append(price)
+        index.names.setdefault(region, (sido_display_name(row.sido_value, row.sido_name),
+                                        row.sigungu_name or row.sigungu_value))
+    _price_index_cache[key] = (time.monotonic() + PRICE_INDEX_SECONDS, index)
+    _price_index_cache.move_to_end(key)
+    while len(_price_index_cache) > PRICE_INDEX_SIZE:
+        _price_index_cache.popitem(last=False)
+    return index
+
+
+def _sorted_summary(scope: str, label: str, prices: list[float]) -> dict | None:
+    return _summary(scope, label, len(prices), prices[0], sum(prices) / len(prices), prices[-1]) if prices else None
+
+
+def _below_equal(prices: list[float], price: float) -> tuple[int, int]:
+    below = bisect.bisect_left(prices, price)
+    return below, bisect.bisect_right(prices, price) - below
+
+
+def viewport_sigungu_statement(generated_at, bounds: tuple[float, float, float, float], products: list[str],
+                               query: str | None, limit: int, filters: FuelStationFilters | None):
+    """화면 안 주유소를 시군구로 묶는 문장. 회귀 시험이 이 문장의 실행 계획을 그대로 검사한다."""
+    p, s = FuelStatisticsPoint, FuelStation
+    conditions = [p.source == OPINET, p.generated_at == generated_at, p.price > 0,
+                  p.longitude.between(bounds[0], bounds[2]), p.latitude.between(bounds[1], bounds[3])]
+    if products:
+        conditions.append(p.product_code.in_(products))
+    if query and query.strip():
+        conditions.append(or_(*(column.icontains(query.strip(), autoescape=True)
+                                for column in (p.name, p.brand_name, p.address))))
+    # 화면 안 주유소 id를 먼저 한 번씩만 뽑고(유종 행 중복 제거) 그다음 시군구로 묶는다.
+    # 전국 화면(약 3.2만 가격 행)에서 가격 행 전체를 주유소와 조인해 count(distinct)하는 것보다 싸다.
+    station_id = point_station_id(p).label("station_id")
+    visible = select(station_id).where(*conditions)
+    if filters is not None and filters.active:
+        # 공개 화면 필터(셀프·상표 등)는 주유소 행 조건, 화면 최저가 상한은 가격 조건이다.
+        visible = visible.join(s, station_for_point(p)).where(*filters.station_conditions(), *filters.point_conditions())
+    visible = visible.distinct().subquery()
+    # 이름은 묶음 키가 아니다. 같은 시군구라도 시도 이름이 행마다 달라(짧은/정식) 한 시군구가 두 줄로 나뉘었다.
+    return select(
+        s.sido_value, func.max(s.sido_name).label("sido_name"), s.sigungu_value,
+        func.max(s.sigungu_name).label("sigungu_name"), func.count().label("station_count"),
+        func.count().over().label("region_total"),
+    ).select_from(visible).join(s, s.id == visible.c.station_id).where(
+        s.sido_value != "", s.sigungu_value != "",
+    ).group_by(s.sido_value, s.sigungu_value).order_by(
+        func.count().desc(), s.sido_value, s.sigungu_value,
+    ).limit(limit)
 
 
 async def viewport_sigungu(session: AsyncSession, bounds: tuple[float, float, float, float],
@@ -128,34 +218,10 @@ async def viewport_sigungu(session: AsyncSession, bounds: tuple[float, float, fl
     if cached and cached[0] > time.monotonic():
         _sigungu_cache.move_to_end(key)
         return cached[1]
-    p, s = FuelStatisticsPoint, FuelStation
-    conditions = [p.source == OPINET, p.generated_at == published.generated_at, p.price > 0,
-                  p.longitude.between(bounds[0], bounds[2]), p.latitude.between(bounds[1], bounds[3])]
-    if products:
-        conditions.append(p.product_code.in_(products))
-    if query and query.strip():
-        conditions.append(or_(*(column.icontains(query.strip(), autoescape=True)
-                                for column in (p.name, p.brand_name, p.address))))
-    # 화면 안 주유소 id를 먼저 한 번씩만 뽑고(유종 행 중복 제거) 그다음 시군구로 묶는다.
-    # 전국 화면(약 3.2만 가격 행)에서 가격 행 전체를 주유소와 조인해 count(distinct)하는 것보다 싸다.
-    visible = select(p.station_key).where(*conditions)
-    if filters is not None and filters.active:
-        # 공개 화면 필터(셀프·상표 등)는 주유소 행 조건, 화면 최저가 상한은 가격 조건이다.
-        visible = visible.join(s, p.station_key == cast(s.id, String)).where(
-            *filters.station_conditions(), *filters.point_conditions())
-    visible = visible.distinct().subquery()
-    station_count = func.count().label("station_count")
-    grouped = select(
-        s.sido_value, s.sido_name, s.sigungu_value, s.sigungu_name, station_count,
-        func.count().over().label("region_total"),
-    ).select_from(visible).join(s, cast(s.id, String) == visible.c.station_key).where(
-        s.sido_value != "", s.sigungu_value != "",
-    ).group_by(s.sido_value, s.sido_name, s.sigungu_value, s.sigungu_name).order_by(
-        func.count().desc(), s.sido_value, s.sigungu_value,
-    ).limit(limit)
+    grouped = viewport_sigungu_statement(published.generated_at, bounds, products, query, limit, filters)
     rows = (await session.execute(grouped)).mappings().all()
     total = int(rows[0]["region_total"]) if rows else 0
-    result = ([{"sido_value": row["sido_value"], "sido_name": row["sido_name"] or row["sido_value"],
+    result = ([{"sido_value": row["sido_value"], "sido_name": sido_display_name(row["sido_value"], row["sido_name"]),
                 "sigungu_value": row["sigungu_value"], "sigungu_name": row["sigungu_name"] or row["sigungu_value"],
                 "station_count": int(row["station_count"])} for row in rows], total)
     # 같은 공개 세대·같은 화면의 반복 요청(재렌더·되돌아가기)만 10초 재사용한다. 세대가 바뀌면 키가 달라진다.
@@ -215,41 +281,37 @@ async def price_distribution(session: AsyncSession, *, product_code: str, sido_v
     }
     if generated_at is None:
         return response
-    region_rows = (await session.execute(_published_points(generated_at, product_code, filters).with_only_columns(
-        p.price, s.sido_name, s.sigungu_name,
-    ).where(s.sido_value == sido_value, s.sigungu_value == sigungu_value).order_by(p.price))).all()
-    prices = [float(row.price) for row in region_rows]
-    if region_rows:
-        response["sido_name"] = response["sido_name"] or region_rows[0].sido_name
-        response["sigungu_name"] = response["sigungu_name"] or region_rows[0].sigungu_name
+    index = await _price_index(session, generated_at, product_code, filters)
+    prices = index.sigungu.get((sido_value, sigungu_value), [])
+    names = index.names.get((sido_value, sigungu_value))
+    if station is not None:
+        response["sido_name"] = sido_display_name(sido_value, station.sido_name)
+    elif names is not None:
+        response["sido_name"], response["sigungu_name"] = names
     if response["sido_name"] is None or response["sigungu_name"] is None:
-        names = (await session.execute(select(s.sido_name, s.sigungu_name).where(
+        row = (await session.execute(select(s.sido_name, s.sigungu_name).where(
             s.source == OPINET, s.sido_value == sido_value, s.sigungu_value == sigungu_value,
         ).limit(1))).first()
-        if names is None:
+        if row is None:
             raise HTTPException(status_code=404, detail="해당 시군구의 주유소가 없습니다.")
-        response["sido_name"] = response["sido_name"] or names.sido_name
-        response["sigungu_name"] = response["sigungu_name"] or names.sigungu_name
+        response["sido_name"] = response["sido_name"] or sido_display_name(sido_value, row.sido_name)
+        response["sigungu_name"] = response["sigungu_name"] or row.sigungu_name
     sido_label = response["sido_name"] or sido_value
     sigungu_label = response["sigungu_name"] or sigungu_value
     station_price = None
     station_products: list[str] = []
     if station is not None:
-        station_rows = (await session.execute(_published_points(generated_at).with_only_columns(p.product_code, p.price)
-                                              .where(p.station_key == str(station.id)))).all()
-        station_products = sorted(row.product_code for row in station_rows)
-        station_price = next((float(row.price) for row in station_rows if row.product_code == product_code), None)
-    in_sido = s.sido_value == sido_value
-    columns = [func.count(), func.min(p.price), func.avg(p.price), func.max(p.price),
-               func.count().filter(in_sido), func.min(p.price).filter(in_sido),
-               func.avg(p.price).filter(in_sido), func.max(p.price).filter(in_sido)]
-    if station_price is not None:
-        columns += [func.count().filter(p.price < station_price), func.count().filter(p.price == station_price),
-                    func.count().filter(and_(in_sido, p.price < station_price)),
-                    func.count().filter(and_(in_sido, p.price == station_price))]
-    aggregate = (await session.execute(_published_points(generated_at, product_code, filters).with_only_columns(*columns))).one()
-    nationwide = _summary("nationwide", "전국", *aggregate[0:4])
-    sido = _summary("sido", sido_label, *aggregate[4:8])
+        # 기본키 앞부분(source, station_key)으로 이 주유소의 point만 읽고 세대는 여기서 고른다. 세대 조건을 SQL에 넣으면
+        # 통계에 없는 새 세대를 "1행"으로 추정해 세대 색인으로 3만 행을 훑는 계획이 나왔다.
+        station_rows = (await session.execute(select(p.product_code, p.price, p.generated_at).where(
+            p.source == OPINET, p.station_key == str(station.id), p.price > 0,
+        ))).all()
+        current = [row for row in station_rows if serialize_utc(row.generated_at) == serialize_utc(generated_at)]
+        station_products = sorted(row.product_code for row in current)
+        station_price = next((float(row.price) for row in current if row.product_code == product_code), None)
+    nationwide = _sorted_summary("nationwide", "전국", index.national)
+    sido_prices = index.sido.get(sido_value, [])
+    sido = _sorted_summary("sido", sido_label, sido_prices)
     response["nationwide"], response["sido"] = nationwide, sido
     if prices:
         width, bins = price_histogram(prices)
@@ -266,8 +328,8 @@ async def price_distribution(session: AsyncSession, *, product_code: str, sido_v
                     "scope", "label", "station_count", "minimum_price", "average_price", "maximum_price")},
                     station_price, sum(1 for price in prices if price < station_price),
                     sum(1 for price in prices if price == station_price)))
-            comparisons.append(_comparison(sido, station_price, aggregate[10], aggregate[11]))
-            comparisons.append(_comparison(nationwide, station_price, aggregate[8], aggregate[9]))
+            comparisons.append(_comparison(sido, station_price, *_below_equal(sido_prices, station_price)))
+            comparisons.append(_comparison(nationwide, station_price, *_below_equal(index.national, station_price)))
         response["station"] = {"station_id": station.id, "name": station.name, "price": station_price,
                                "sells_product": station_price is not None, "products": station_products,
                                "comparisons": [row for row in comparisons if row is not None]}

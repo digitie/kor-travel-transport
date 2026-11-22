@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import FuelStation
 from app.schemas import FuelAreaCatalogResponse
-from app.services.fuel_station_filters import OPINET
+from app.services.fuel_station_filters import OPINET, sido_display_name
 
 CACHE_SECONDS = 600
 TRIM_FROM = 20
@@ -44,7 +44,8 @@ async def fuel_area_catalog(session: AsyncSession) -> dict:
     groups: dict[tuple[str, str], dict] = {}
     names: dict[str, str] = {}
     for row in rows:
-        names.setdefault(row.sido_value, row.sido_name or row.sido_value)
+        # 오피넷 원문의 시도 이름은 행마다 짧은/정식이 섞여 있다(첫 행에 따라 달라졌다). 화면 이름 하나로 쓴다.
+        names.setdefault(row.sido_value, sido_display_name(row.sido_value, row.sido_name))
         group = groups.setdefault((row.sido_value, row.sigungu_value), {
             "sigungu_value": row.sigungu_value, "sigungu_name": row.sigungu_name or row.sigungu_value, "lons": [], "lats": [],
         })

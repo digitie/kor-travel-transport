@@ -19,6 +19,7 @@ from app.models import (
     FuelStatisticsState, FuelRegionSummary, RestAreaFuelPrice, TransportCollectionState,
 )
 from app.services.flight_status import sanitize_upstream_error
+from app.services.fuel_station_filters import sido_display_name, station_for_point
 
 if TYPE_CHECKING:
     from app.services.fuel_station_filters import FuelStationFilters
@@ -162,11 +163,13 @@ async def publish_fuel_statistics(session: AsyncSession, source: str, collected_
                      "longitude": row.longitude, "latitude": row.latitude,
                      "product_code": row.product_code, "price": float(row.price)}
             scopes = [("nationwide", "all", "전국")]
+            # 같은 시도라도 오피넷 원문 이름이 행마다 다르다(짧은/정식). 지역 카드·이력 이름은 화면 이름 하나로 쓴다.
+            sido_label = sido_display_name(row.sido_value, row.sido_name)
             if row.sido_value:
-                scopes.append(("sido", _key(row.sido_value), row.sido_name or "시도 미제공"))
+                scopes.append(("sido", _key(row.sido_value), sido_label or "시도 미제공"))
             if row.sido_value and row.sigungu_value:
                 scopes.append(("sigungu", _key(row.sido_value, row.sigungu_value),
-                               f"{row.sido_name or row.sido_value} {row.sigungu_name or row.sigungu_value}".strip()))
+                               f"{sido_label} {row.sigungu_name or row.sigungu_value}".strip()))
             for scope, key, label in scopes[1:]:
                 region = regions.setdefault((scope, key, row.product_code), {
                     "region_key": ":".join([source, row.sido_value] + ([row.sigungu_value] if scope == "sigungu" else [])),
@@ -201,6 +204,12 @@ async def publish_fuel_statistics(session: AsyncSession, source: str, collected_
         raise ValueError("지원하지 않는 유가 원천입니다.")
     if pending:
         await session.execute(insert(FuelStatisticsPoint), pending)
+    if session.bind.dialect.name == "postgresql":
+        # 새 세대는 늘 마지막 자동 ANALYZE보다 늦다(운영: 세대당 3만 행, 표 1.5M 행이라 자동 ANALYZE는 몇 세대에 한 번).
+        # 통계에 없는 generated_at을 계획기가 "1행"으로 추정해 공개 화면 조회가 중첩 루프로 무너졌다(2026-11-23 places 504).
+        # 공개 전에 이 표만 표본 통계를 다시 만든다(같은 트랜잭션의 새 행도 표본에 들어간다). 잠금은 SHARE UPDATE
+        # EXCLUSIVE라 읽기·쓰기를 막지 않고, 공개 잠금을 잡기 전이라 다른 원천의 공개를 기다리게 하지 않는다.
+        await session.execute(text("ANALYZE fuel_statistics_points"))
     rows = [{"source": source, "scope": scope, "scope_key": key, "product_code": product,
              "day": day, "generated_at": stamp, "label": group.label, "metrics_json": group.metrics()}
             for (scope, key, product), group in groups.items()]
@@ -429,7 +438,7 @@ async def viewport_fuel_statistics(session: AsyncSession, bounds: tuple[float, f
     ))
     if filters is not None and filters.active:
         # 공개 화면 필터(셀프·상표 등)는 주유소 행 조건이다. 같은 조건을 지도 마커와 공유한다.
-        candidates = candidates.join(FuelStation, p.station_key == cast(FuelStation.id, String))
+        candidates = candidates.join(FuelStation, station_for_point(p))
         conditions.extend([*filters.station_conditions(), *filters.point_conditions()])
     candidates = candidates.where(*conditions).cte("fuel_candidates")
     c = candidates.c

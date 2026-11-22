@@ -3,7 +3,21 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import FuelRegionSummary, FuelStation, FuelStatisticsPoint, FuelStatisticsState
-from app.services.fuel_station_filters import OPINET, FuelStationFilters, published_points_with_station
+from app.services.fuel_station_filters import (
+    OPINET, SIDO_DISPLAY_NAMES, FuelStationFilters, published_points_with_station, sido_display_name,
+)
+
+
+def display_region_label(scope: str, region_key: str, label: str) -> str:
+    """지역 카드 이름의 시도 부분을 화면 이름(짧은 이름)으로 맞춘다. 지난 세대의 저장 이름은 첫 행의 원문 이름이었다."""
+    parts = region_key.split(":")
+    short = SIDO_DISPLAY_NAMES.get(parts[1]) if len(parts) > 1 else None
+    if not short:
+        return label
+    if scope == "sido":
+        return short
+    _, _, rest = label.partition(" ")
+    return f"{short} {rest}" if rest else label
 
 
 async def regional_fuel_prices(session: AsyncSession, *, zoom: int, bounds: tuple,
@@ -26,7 +40,7 @@ async def regional_fuel_prices(session: AsyncSession, *, zoom: int, bounds: tupl
     rows = (await session.scalars(select(region).join(state, and_(
         region.source == state.source, region.generated_at == state.generated_at,
     )).where(*conditions).order_by(region.region_key, region.product_code))).all()
-    return [{"scope": row.scope, "region_key": row.region_key, "label": row.label,
+    return [{"scope": row.scope, "region_key": row.region_key, "label": display_region_label(row.scope, row.region_key, row.label),
              "source": row.source, "product_code": row.product_code,
              "longitude": row.longitude, "latitude": row.latitude,
              "average_price": row.average_price, "station_count": row.station_count} for row in rows]
@@ -60,7 +74,8 @@ async def _filtered_regional_fuel_prices(session: AsyncSession, *, zoom: int, bo
     rows = (await session.execute(statement.order_by(g.sido_value, *( [g.sigungu_value] if sigungu else []), g.product_code))).mappings().all()
     result = []
     for row in rows:
-        label = f"{row['sido_name'] or row['sido_value']} {row['sigungu_name'] or row['sigungu_value']}".strip() if sigungu             else row["sido_name"] or row["sido_value"]
+        sido_label = sido_display_name(row["sido_value"], row["sido_name"])
+        label = f"{sido_label} {row['sigungu_name'] or row['sigungu_value']}".strip() if sigungu else sido_label
         if query and query.strip() and query.strip().casefold() not in label.casefold():
             continue
         region_key = ":".join([OPINET, row["sido_value"]] + ([row["sigungu_value"]] if sigungu else []))
