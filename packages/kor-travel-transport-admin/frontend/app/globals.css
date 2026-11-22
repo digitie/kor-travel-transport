@@ -1119,11 +1119,8 @@ html:has([data-slot="map-workspace"][data-expanded="true"]) { overflow: hidden; 
 .fuel-region-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .fuel-region-actions > button { min-height: 44px; }
 
-.fuel-filter-drawer {
-  position: fixed; inset: 0 0 0 auto; translate: none; transform: none; left: auto; top: 0; width: min(24rem, 88vw); max-width: none;
-  height: 100dvh; max-height: 100dvh; border-radius: 0; padding: 16px 12px max(16px, env(safe-area-inset-bottom)); overflow-y: auto;
-  display: flex; flex-direction: column; gap: 8px;
-}
+/* 위치·크기는 DialogContent의 tailwind 유틸리티(top-0 right-0 translate-0 h-dvh …)가 정한다. */
+.fuel-filter-drawer { padding: 16px 12px max(16px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 8px; }
 .fuel-filter-drawer h2 { font-size: var(--text-md); font-weight: 650; }
 .fuel-filter-form { display: grid; gap: 4px; }
 .fuel-filter-section { margin: 0; padding: 6px 0; border: 0; border-bottom: 1px solid var(--line); }

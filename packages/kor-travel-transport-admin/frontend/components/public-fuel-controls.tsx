@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, type RefObject } from "react";
 import { MapPinned, SlidersHorizontal } from "lucide-react";
 import { z } from "zod";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
@@ -34,12 +34,15 @@ export function PublicFuelTools({ filterCount, onOpenRegion, onOpenFilters }: { 
 }
 
 /** "이동하세요…": 시/도 → 구/군/시를 고르고 확인하면 그 시군구 주유소 범위로 지도를 옮긴다. */
-export function FuelRegionPicker({ open, onOpenChange, load, current, onConfirm }: {
+export function FuelRegionPicker({ open, onOpenChange, load, current, onConfirm, returnFocus }: {
   open: boolean; onOpenChange: (open: boolean) => void; load: Loader; current?: FuelAreaChoice;
   onConfirm: (bounds: [number, number, number, number], label: string) => void;
+  /** 트리거 없이 여는 대화상자라 닫을 때 연 버튼으로 초점을 직접 돌려준다. */
+  returnFocus?: RefObject<HTMLElement | null>;
 }) {
   return <Dialog open={open} onOpenChange={onOpenChange}>
-    {open ? <DialogContent className="fuel-region-picker" showCloseButton={false}>
+    {open ? <DialogContent className="fuel-region-picker" showCloseButton={false}
+      onCloseAutoFocus={event => { event.preventDefault(); returnFocus?.current?.focus(); }}>
       <FuelRegionPickerBody load={load} current={current} onCancel={() => onOpenChange(false)}
         onConfirm={(bounds, label) => { onConfirm(bounds, label); onOpenChange(false); }} />
     </DialogContent> : null}
@@ -100,13 +103,17 @@ function FuelRegionPickerBody({ load, current, onCancel, onConfirm }: {
 }
 
 /** 필터 서랍(오른쪽). 바꾸면 바로 적용되고 브라우저에 저장된다. */
-export function FuelFilterDrawer({ open, onOpenChange, filters, onFiltersChange, products, onProductsChange }: {
+export function FuelFilterDrawer({ open, onOpenChange, filters, onFiltersChange, products, onProductsChange, returnFocus }: {
   open: boolean; onOpenChange: (open: boolean) => void;
   filters: PublicFuelFilters; onFiltersChange: (filters: PublicFuelFilters) => void;
   products: string[]; onProductsChange: (products: string[]) => void;
+  returnFocus?: RefObject<HTMLElement | null>;
 }) {
+  // 공통 대화상자의 가운데 정렬(left/top 50%·-50% 이동)을 tailwind-merge가 지우도록 같은 유틸리티로 덮어 오른쪽 서랍으로 둔다.
   return <Dialog open={open} onOpenChange={onOpenChange}>
-    {open ? <DialogContent className="fuel-filter-drawer" showCloseButton={false}>
+    {open ? <DialogContent showCloseButton={false}
+      className="fuel-filter-drawer top-0 right-0 left-auto translate-x-0 translate-y-0 h-dvh max-h-dvh w-[min(24rem,88vw)] max-w-none sm:max-w-none rounded-none data-open:zoom-in-100 data-closed:zoom-out-100"
+      onCloseAutoFocus={event => { event.preventDefault(); returnFocus?.current?.focus(); }}>
       <DialogTitle>필터</DialogTitle>
       <DialogDescription className="sr-only">유종·지도 최저가·주유소 조건·상표를 고르면 지도와 통계에 바로 적용됩니다.</DialogDescription>
       <FuelFilterForm filters={filters} onFiltersChange={onFiltersChange} products={products} onProductsChange={onProductsChange} />

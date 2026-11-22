@@ -113,23 +113,32 @@ function FuelDistributionBody({ target, initialProduct, load, productChoices, fi
   const productId = useId();
   return <div className="fuel-distribution-body" aria-busy={!current}>
     <DialogTitle className="fuel-distribution-title">{title}</DialogTitle>
-    <DialogDescription className="fuel-distribution-subtitle">
-      {local ? <>최저 {won(local.minimum_price)}, 평균 {won(local.average_price)}, 최고 {won(local.maximum_price)}</> : "가격 분포"}
-      {data?.generated_at ? <><br /><time dateTime={data.generated_at}>{distributionTimestamp(data.generated_at)}</time></> : null}
-      {data?.update_pending ? <><br />최신 수집 반영 대기</> : null}
-      {data?.filters_applied.length ? <><br />필터 적용: {data.filters_applied.join(" · ")}</> : null}
-    </DialogDescription>
+    <DistributionSubtitle data={data} />
     {choices.length > 1 ? <div className="fuel-distribution-product">
       <label htmlFor={productId}>유종</label>
       <select id={productId} value={product} onChange={event => setProduct(event.target.value)}>
         {choices.map(code => <option key={code} value={code}>{fuelProductLabel(code)}</option>)}
       </select>
     </div> : null}
-    {!current ? <p role="status">가격 분포 불러오는 중…</p>
-      : current.unavailable ? <p role="status">이 지역은 가격 분포를 제공하지 않습니다.</p>
-      : current.error || !data ? <div role="alert"><p>가격 분포를 불러오지 못했습니다.</p><Button type="button" variant="outline" size="sm" onClick={retry}>다시 시도</Button></div>
-      : <FuelDistributionContent data={data} productLabel={productLabel} percent={percent} setPercent={setPercent} compare={compare} setCompare={setCompare} />}
+    {current?.data ? <FuelDistributionContent data={current.data} productLabel={productLabel} percent={percent} setPercent={setPercent} compare={compare} setCompare={setCompare} />
+      : <DistributionLoadState current={current} retry={retry} />}
   </div>;
+}
+
+function DistributionSubtitle({ data }: { data?: FuelPriceDistribution }) {
+  const local = data?.sigungu;
+  return <DialogDescription className="fuel-distribution-subtitle">
+    {local ? <>최저 {won(local.minimum_price)}, 평균 {won(local.average_price)}, 최고 {won(local.maximum_price)}</> : "가격 분포"}
+    {data?.generated_at ? <><br /><time dateTime={data.generated_at}>{distributionTimestamp(data.generated_at)}</time></> : null}
+    {data?.update_pending ? <><br />최신 수집 반영 대기</> : null}
+    {data?.filters_applied.length ? <><br />필터 적용: {data.filters_applied.join(" · ")}</> : null}
+  </DialogDescription>;
+}
+
+function DistributionLoadState({ current, retry }: { current?: LoadState; retry: () => void }) {
+  if (!current) return <p role="status">가격 분포 불러오는 중…</p>;
+  if (current.unavailable) return <p role="status">이 지역은 가격 분포를 제공하지 않습니다.</p>;
+  return <div role="alert"><p>가격 분포를 불러오지 못했습니다.</p><Button type="button" variant="outline" size="sm" onClick={retry}>다시 시도</Button></div>;
 }
 
 function FuelDistributionContent({ data, productLabel, percent, setPercent, compare, setCompare }: {

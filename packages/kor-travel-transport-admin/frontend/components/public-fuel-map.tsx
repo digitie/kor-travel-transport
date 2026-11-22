@@ -86,6 +86,9 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
   const [regionCurrent, setRegionCurrent] = useState<FuelAreaChoice>();
   const [regionOpen, setRegionOpen] = useState(false);
   const [regionTarget, setRegionTarget] = useState<BoundsTarget>();
+  // 지역·필터 버튼은 요약 안에 있어 대화상자 트리거가 아니다. 연 버튼을 기억해 닫을 때 초점을 돌려준다.
+  const opener = useRef<HTMLElement | null>(null);
+  const rememberOpener = () => { opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; };
   const request = useRef(0);
   // 진행 중인 요청이 있으면 새 요청을 겹쳐 보내지 않는다(연타·키보드 반복).
   const inFlight = useRef(false);
@@ -176,13 +179,13 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
   return <main className="public-fuel-surface" aria-label="주변 주유소 유가 지도">
     <TransportMap mode="fuel" load={loadFuel} mapOnly publicFuel={{
       products, onProductsChange, refreshEnabled, filterQuery, filterCount: activeFilterCount(filters),
-      onOpenFilters: () => setFiltersOpen(true),
-      onOpenRegion: current => { setRegionCurrent(current); setRegionOpen(true); },
-    }} layers={<><CameraRequest target={location} /><FitBoundsRequest target={regionTarget} /><UserLocationMarker position={userPosition} /></>} />
+      onOpenFilters: () => { rememberOpener(); setFiltersOpen(true); },
+      onOpenRegion: current => { rememberOpener(); setRegionCurrent(current); setRegionOpen(true); },
+    }} layers={<><CameraRequest target={location} /><UserLocationMarker position={userPosition} /><FitBoundsRequest target={regionTarget} /></>} />
     <FuelRegionPicker open={regionOpen} onOpenChange={setRegionOpen} load={loadFuel} current={regionCurrent}
-      onConfirm={(bounds, label) => setRegionTarget({ bounds, id: `${label}:${Date.now()}` })} />
+      onConfirm={(bounds, label) => setRegionTarget({ bounds, id: `${label}:${Date.now()}` })} returnFocus={opener} />
     <FuelFilterDrawer open={filtersOpen} onOpenChange={setFiltersOpen} filters={filters} onFiltersChange={onFiltersChange}
-      products={products} onProductsChange={onProductsChange} />
+      products={products} onProductsChange={onProductsChange} returnFocus={opener} />
     <div className="public-fuel-location">
       <Button type="button" variant="outline" onClick={locate} loading={locating} aria-label="내 위치 주변 유가 보기">
         <LocateFixed aria-hidden="true" size={18} />
