@@ -146,6 +146,32 @@ async def describe(session) -> None:
         "most_common_vals::text::text[]) FROM pg_stats WHERE tablename = 'fuel_statistics_points' AND attname = 'generated_at'"),
         {"s": OPINET})
     print(f"current generation in pg_stats MCV: {mcv}")
+    # 예전 코드가 보내던 문장(문자열 조인)의 계획. 코드 판과 무관하게 같은 SQL을 본다(운영 EXPLAIN과 비교용).
+    generation = await session.scalar(text("SELECT generated_at FROM fuel_statistics_states WHERE source = :s"), {"s": OPINET})
+    legacy = {
+        "legacy viewport_sigungu filtered": (
+            "SELECT s.sido_value, s.sigungu_value, count(*) FROM (SELECT DISTINCT p.station_key FROM fuel_statistics_points p "
+            "JOIN fuel_stations s2 ON p.station_key = CAST(s2.id AS VARCHAR) WHERE p.source = 'opinet_browser' "
+            "AND p.generated_at = :g AND p.price > 0 AND p.longitude BETWEEN 126.9 AND 128.7 AND p.latitude BETWEEN 34.5 AND 37.9 "
+            "AND p.product_code IN ('B027','D047') AND s2.is_self IS true AND (s2.brand_code IN ('ALT','RTO','RTE','GSC','HDO',"
+            "'NCO','NHO','RTX','SKE') OR s2.brand_code IS NULL OR s2.brand_code NOT IN ('SKE','GSC','HDO','SOL','RTO','RTE',"
+            "'NHO','RTX','NCO','SKG','E1G'))) v JOIN fuel_stations s ON CAST(s.id AS VARCHAR) = v.station_key "
+            "GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 40"),
+        "legacy distribution sigungu rows": (
+            "SELECT p.price, s.sido_name FROM fuel_statistics_points p JOIN fuel_stations s ON p.station_key = "
+            "CAST(s.id AS VARCHAR) WHERE p.source = 'opinet_browser' AND p.generated_at = :g AND p.price > 0 "
+            "AND p.product_code = 'B027' AND s.sido_value = '경기도' AND s.sigungu_value = '경기도:03' ORDER BY p.price"),
+    }
+    await session.execute(text("SET statement_timeout = '60s'"))
+    for name, sql in legacy.items():
+        started = time.perf_counter()
+        try:
+            plan = (await session.execute(text(f"EXPLAIN (ANALYZE, COSTS ON) {sql}"), {"g": generation})).scalars().all()
+            print(f"plan {name} ({(time.perf_counter() - started) * 1000:.0f}ms):\n  " + "\n  ".join(plan))
+        except Exception as exc:  # 60초 제한에 걸리면 그것이 결과다.
+            await session.rollback()
+            print(f"plan {name}: {type(exc).__name__} after {(time.perf_counter() - started):.1f}s")
+    await session.execute(text("RESET statement_timeout"))
 
 
 def clear_process_caches() -> None:
