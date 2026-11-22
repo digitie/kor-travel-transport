@@ -162,6 +162,21 @@ async def describe(session) -> None:
             "CAST(s.id AS VARCHAR) WHERE p.source = 'opinet_browser' AND p.generated_at = :g AND p.price > 0 "
             "AND p.product_code = 'B027' AND s.sido_value = '경기도' AND s.sigungu_value = '경기도:03' ORDER BY p.price"),
     }
+    try:  # 수정 뒤 코드: 실제 문장을 컴파일해 같은 방식으로 본다(예전 코드에는 이 함수들이 없다).
+        from app.services import fuel_price_distribution as distribution
+        from app.services.fuel_station_filters import FuelStationFilters
+        from app.models import FuelStation as Station, FuelStatisticsPoint as Point
+        filters = FuelStationFilters(brands=("ALT", "ETC", "GSC", "HDO", "NCO", "NHO", "RTX", "SKE"), self_only=True)
+        current = {
+            "new viewport_sigungu filtered": distribution.viewport_sigungu_statement(
+                generation, BBOX, ["B027", "D047"], None, 40, filters),
+            "new distribution price index": distribution._published_points(generation, "B027", None).with_only_columns(
+                Station.sido_value, Station.sigungu_value, Point.price).order_by(Point.price),
+        }
+        for name, statement in current.items():
+            legacy[name] = str(statement.compile(dialect=session.bind.dialect, compile_kwargs={"literal_binds": True}))
+    except Exception as exc:  # noqa: BLE001 - 예전 코드(함수 없음)나 컴파일 실패는 계획만 생략한다.
+        print(f"new statement plans skipped: {type(exc).__name__}: {exc}"[:200])
     await session.execute(text("SET statement_timeout = '60s'"))
     for name, sql in legacy.items():
         started = time.perf_counter()
