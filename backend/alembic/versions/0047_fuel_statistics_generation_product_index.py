@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0047_fuel_points_generation_product"
+revision = "0047_fuel_points_gen_product"
 down_revision = "0046_fuel_manual_refresh"
 branch_labels = None
 depends_on = None

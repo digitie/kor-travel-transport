@@ -451,7 +451,7 @@ def migration_step(connection, target):
     config = Config()
     config.set_main_option("script_location", str(Path(__file__).parents[1] / "alembic"))
     script = ScriptDirectory.from_config(config)
-    assert script.get_current_head() == "0047_fuel_points_generation_product"
+    assert script.get_current_head() == "0047_fuel_points_gen_product"
     planner = script._downgrade_revs if target.startswith("0044") else script._upgrade_revs
     with EnvironmentContext(config, script, fn=lambda revision, _: planner(target, revision)) as context:
         context.configure(connection=connection, transactional_ddl=True, version_table_schema="public")
@@ -512,7 +512,7 @@ def test_actual_migration_up_down_and_lock_failure_rollback(cached, record_prope
         # 실패해도 다음 독립 fixture를 위해 본래 head를 실제 upgrade한다.
         async def restore():
             async with c.app.state.engine.begin() as conn:
-                await conn.run_sync(lambda sync: migration_step(sync, "0047_fuel_points_generation_product"))
+                await conn.run_sync(lambda sync: migration_step(sync, "0047_fuel_points_gen_product"))
         asyncio.run(restore())
     fresh = c.get(PATH)
     assert builds(fresh) == 1 and body(fresh) == first
