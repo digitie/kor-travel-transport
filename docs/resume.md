@@ -1,3 +1,11 @@
+## 현재 상태 — 2026-11-22 공개 유가 시군구 가격 분포(PR1)·지역 선택/필터(PR2 예정)
+
+- PR1: 공개 유가 화면 전용 시군구 칩·가격 분포 대화상자·주유소 등급. backend 새 API `price-distribution`과 places
+  `include_viewport_sigungu`(opt-in), 공개 gateway/BFF 허용 경로 추가. migration 없음.
+- 배포(Codex 담당): backend API 이미지 + fuel-api-gateway(nginx 허용 경로) + fuel-web. transport-admin UI 이미지는 재배포 불필요.
+  순서는 API → gateway → fuel-web. 웹이 먼저 나가면 칩은 안 보이고(필드 없음) 주유소 상세의 비교만 "불러오지 못했습니다"로 뜬다.
+- 다음 한 작업: PR1 머지 뒤 그 위에 PR2(지역 이동 대화상자 + 서버측 필터 서랍: 셀프·24시·세차·경정비·편의점·품질인증·브랜드).
+
 ## 현재 상태 — 2026-11-21 공개 유가 지도 정리(PR239)
 
 - 범위 토글·상세 차트 절반·내 위치 점·품질인증/전산보고 표시를 PR239에서 진행한다. 인증은 지도 응답 typed 필드

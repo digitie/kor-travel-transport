@@ -504,6 +504,81 @@ class FuelRegionSummary(BaseModel):
     station_count: int
 
 
+class FuelViewportSigungu(BaseModel):
+    sido_value: str
+    sido_name: str
+    sigungu_value: str
+    sigungu_name: str
+    station_count: int = Field(description="현재 지도 범위 안 공개 통계 세대 주유소 수(유종 필터 적용)")
+
+
+class FuelPriceHistogramBin(BaseModel):
+    start: float = Field(description="구간 시작가(포함)")
+    end: float = Field(description="구간 끝가(미포함, 마지막 구간은 최고가 포함)")
+    count: int
+
+
+class FuelPriceQuantile(BaseModel):
+    percent: int = Field(description="0~100. 낮은 가격부터 정렬한 위치")
+    price: float
+
+
+class FuelPriceScopeSummary(BaseModel):
+    scope: str = Field(description="sigungu, sido, nationwide")
+    label: str
+    station_count: int
+    minimum_price: float
+    average_price: float
+    maximum_price: float
+
+
+class FuelSigunguPriceDistribution(FuelPriceScopeSummary):
+    sufficient: bool = Field(description="station_count가 minimum_sample 이상인지. false면 분포 그래프를 그리지 않는다")
+    bin_width: float
+    histogram: list[FuelPriceHistogramBin]
+    quantiles: list[FuelPriceQuantile]
+
+
+class FuelPriceComparison(FuelPriceScopeSummary):
+    price: float
+    difference: float = Field(description="주유소 가격 - 범위 평균(원)")
+    percentile: float = Field(description="100×(더 싼 곳 + 0.5×같은 가격 곳)/전체. 낮을수록 싸다")
+    grade: str | None = None
+    grade_label: str | None = None
+    sufficient: bool
+
+
+class FuelStationPricePosition(BaseModel):
+    station_id: int
+    name: str
+    price: float | None = Field(default=None, description="공개 통계 세대의 이 유종 가격. 팔지 않거나 이번 세대에 없으면 null")
+    sells_product: bool
+    products: list[str] = Field(default_factory=list, description="공개 통계 세대에 가격이 있는 유종")
+    comparisons: list[FuelPriceComparison] = Field(default_factory=list)
+
+
+class FuelGradeRule(BaseModel):
+    grade: str
+    label: str
+    percentile_below: float | None = Field(default=None, description="이 백분위 미만이면 해당 등급. null은 나머지 전부")
+
+
+class FuelPriceDistributionResponse(BaseModel):
+    product_code: str
+    generated_at: datetime | None = None
+    update_pending: bool = False
+    minimum_sample: int
+    sido_value: str
+    sigungu_value: str
+    sido_name: str | None = None
+    sigungu_name: str | None = None
+    grade_rule: list[FuelGradeRule]
+    sigungu: FuelSigunguPriceDistribution | None = None
+    sido: FuelPriceScopeSummary | None = None
+    nationwide: FuelPriceScopeSummary | None = None
+    station: FuelStationPricePosition | None = None
+
+
 class TransportPlaceMapResponse(BaseModel):
     fuel_regions: list[FuelRegionSummary] = Field(default_factory=list)
     generated_at: datetime
@@ -512,6 +587,8 @@ class TransportPlaceMapResponse(BaseModel):
     truncated: bool = False
     clustered: bool = False
     fuel_statistics: list[FuelViewportStatistics] = Field(default_factory=list)
+    fuel_viewport_sigungu: list[FuelViewportSigungu] = Field(default_factory=list, description="include_viewport_sigungu=true일 때만 포함. 주유소 수 내림차순 최대 40곳")
+    fuel_viewport_sigungu_total: int = Field(default=0, description="include_viewport_sigungu=true일 때만 포함. 화면 안 전체 시군구 수")
     kind_totals: dict[str, int] = Field(default_factory=dict)
     clusters: list[TransportPlaceMapCluster] = Field(default_factory=list)
     fuel_prices_stale: bool = Field(default=False, description="확인된 최신 유가 읽기 모델 지연 여부. false는 직후 발생한 늦은 원본 커밋까지 보증하지 않습니다.")

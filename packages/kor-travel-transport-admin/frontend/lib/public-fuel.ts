@@ -6,7 +6,7 @@ export async function publicFuelGet<T>(path: string, signal?: AbortSignal): Prom
   const [pathname, query] = path.split("?", 2);
   const operation = pathname === "features/places" ? "places"
     : pathname.startsWith("fuel/") ? pathname.slice(5) : pathname;
-  if (!/^(places|stations|statistics|health|stations\/[1-9][0-9]*\/price-history)$/.test(operation)) {
+  if (!/^(places|stations|statistics|price-distribution|health|stations\/[1-9][0-9]*\/price-history)$/.test(operation)) {
     throw new TransportError("허용되지 않은 유가 조회입니다.", 404, 0);
   }
   const response = await fetch(`/api/public/fuel/${operation}${query ? `?${query}` : ""}`, {

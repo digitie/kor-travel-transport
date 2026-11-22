@@ -33,3 +33,36 @@
 `GET /v1/transport/fuel/stations/{id}/price-history?source=opinet_browser&days=30`은 최대 720시간의 실제 저장 가격을 읽는다. API 기본값 7일은 기존 소비자와 호환하고 상한만 30일로 넓혔다. 브라우저는 30일을 명시하며 같은 창과 revision의 모든 cursor 페이지를 읽는다. revision 충돌 재시작·실패·미지원 원천을 성공이나 빈 정상 이력으로 바꾸지 않는다. 없는 날짜/유종을 생성하지 않고 원본·과거 집계를 재작성하거나 provider를 재호출하지 않는다.
 
 현재 저장 가격은 제목 없이 한 줄로 표시하고 바로 아래에 30일 차트를 둔다. 폭이 좁으면 가격 행 안에서만 가로로 이동할 수 있다. 각 가격의 i 안내에 관측 시각과 7일 이전 관측 경고를 보존하며, 연락처·위치 근거 다음 마지막에 관측값 표를 둔다. 키보드 날짜 선택은 native Button으로 제공한다. 세부 검증과 현재 한계는 [30일 차트 구현 원장](reports/2026-11-13-fuel30-evilcharts.md)을 따른다.
+
+## 시군구 가격 분포·주유소 상대 위치 (공개 유가 화면 전용, 2026-11-22)
+
+공개 유가(`TRANSPORT_UI_MODE=fuel`, fuel-web) 화면에만 붙인다. 관리(transport) UI는 바뀌지 않는다
+(`publicFuel` 조건에서만 렌더하고 `fuel-price-distribution.test.tsx`가 관리 화면 미노출을 확인한다).
+
+- **화면 안 시군구**: `GET /v1/transport/features/places?...&include_viewport_sigungu=true`(공개 gateway의
+  `/v1/transport/fuel/places`가 그대로 전달)는 `fuel_viewport_sigungu`(주유소 수 내림차순 최대 40곳)와
+  `fuel_viewport_sigungu_total`을 더한다. 행정 경계가 아니라 **지금 화면 안에 실제로 있는 공개 세대 주유소**를
+  시군구로 묶는다(지도 통계와 같은 모집단·같은 유종/검색/출처 필터). 경계 폴리곤 교차보다 싸고, 사용자가 보는
+  주유소와 칩이 어긋나지 않는다. 요청하지 않은 소비자(관리 지도)의 응답에는 두 필드가 없다.
+  범위 요약은 5곳 칩 + `+N`(더 보기 시 최대 40곳, 그 밖은 확대 안내)을 보인다.
+- **분포 API**: `GET /v1/transport/fuel/price-distribution?product_code=B027&sido_value=..&sigungu_value=..`
+  또는 `&station_id=..`(그 주유소의 시군구 사용). 공개 세대(`fuel_statistics_points`+`fuel_statistics_states`)만 읽는다.
+  응답: 시군구 `station_count·minimum/average/maximum_price`, `histogram`(1·2·5×10^k원 폭, 약 10구간, [start,end)),
+  `quantiles`(0·10·…·100% 선형 보간 = `percentile_cont`), 시도·전국 최저/평균/최고, `generated_at`, `update_pending`,
+  `minimum_sample`(3), `grade_rule`, 그리고 주유소면 `station.comparisons`(시군구·시도·전국별 가격 차이·백분위·등급).
+  유종을 팔지 않거나 이번 세대에 가격이 없으면 `station.price=null`, `comparisons=[]`이다.
+  시군구 표본이 3곳 미만이면 `sufficient=false` — 화면은 그래프 대신 안내 문구를 보이고 그 범위의 등급은 null이다.
+- **등급 규칙(정본: `backend/app/services/fuel_price_distribution.py` `GRADE_RULE`)**:
+  `percentile = 100 × (더 싼 곳 + 0.5 × 같은 가격 곳) / 전체`(중간 순위, 0에 가까울수록 쌈, 자기 자신 포함).
+  `<10` A+ 제일싸요 · `<25` A 저렴해요 · `<40` B+ 조금 싸요 · `<60` B 평범해요 · `<75` C+ 조금 비싸요 ·
+  `<90` C 비싸요 · 그 밖 D 제일 비싸요. 차이는 `가격 − 범위 평균`(원).
+- **화면**: 대화상자 제목 "{시군구} {N}개 {유종} 값 통계", 부제 최저·평균·최고와 통계 세대 시각(KST).
+  주황 선 = 낮은 가격부터 정렬한 가격 곡선(가로 0~100%), 회색 막대 = 가격 구간별 주유소 수(오른쪽 축).
+  `분포(%)`는 막대를 백분율로, `전국 대비`는 전국 최저(파랑)·평균(초록)·최고(빨강) 점선을 더하고 가격축을 넓힌다.
+  주유소 상세는 가격·시군구·시도·전국 등급 원과 평균 대비 차이를 보이고, 버튼으로 같은 그래프에 핀을 꽂아 연다.
+  화면 읽기용 요약 문장과 "가격 구간 표"가 그래프와 같은 내용을 준다. 차트(ECharts bar+line)는 대화상자에서만 지연 적재한다.
+- **사전집계를 두지 않은 이유(측정)**: n150 전용 PostgreSQL 18에 합성 오피넷 11,500곳·가격 32,200행 한 세대를 공개하고
+  30회 잰 값(`backend/tests/benchmarks/fuel_price_distribution.py`): 시군구 분포 median 16ms/p95 22ms, 주유소 분포+세 범위 백분위
+  27/33ms, 화면 안 시군구 — 도시 화면 5/7ms, 전국 화면 65/90ms(같은 세대·같은 화면 10초 재사용 시 0.5ms). 전국 화면 목록은 처음
+  가격 행 전체를 주유소와 조인해 182ms였고, 화면 안 주유소 id를 먼저 한 번씩 뽑는 형태로 바꿔 줄였다. 이 정도면 새 사전집계 테이블과
+  갱신 배선의 정합성 비용이 이득보다 크다. 응답의 모든 SELECT는 처음 읽은 공개 세대(`generated_at`)에 고정해 발행과 겹쳐도 세대가 섞이지 않는다.

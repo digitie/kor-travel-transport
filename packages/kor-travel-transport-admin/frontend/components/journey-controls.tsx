@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/empty-state";
 import { FuelBrandIcon } from "./fuel-brand-icon";
 import { FuelStationPriceHistory } from "./fuel-station-history";
+import { FuelStationPricePosition } from "./fuel-price-distribution";
 
 // 장소 상세 안의 본문 링크(지도 보기·전화·공식 안내). 색에만 기대지 않도록 밑줄을 함께 쓴다.
 const INLINE_LINK = "inline-flex items-center gap-1 text-left text-brand underline underline-offset-4";
@@ -63,13 +64,15 @@ export function MultiSearch({ label, query, onQuery, options, selected, onSelect
   </section>;
 }
 
-export type PublicFuelPriceControls = { onRefresh?: () => void; refreshing: boolean };
+export type PublicFuelPriceControls = { onRefresh?: () => void; refreshing: boolean; products?: string[] };
 
 export function PlaceDetails({ place, showRailTimetable = true, showHeading = true, onShowMap, load, publicFuel }: { load?: typeof transportGet; place: Place; showRailTimetable?: boolean; showHeading?: boolean; onShowMap?: () => void; publicFuel?: PublicFuelPriceControls }) {
   return <div className="place-details grid min-w-0 gap-3 text-sm">
     <PlaceHeading place={place} showHeading={showHeading} />
     {publicFuel && place.kind === "fuel_station"
-      ? <PublicFuelPlacePrices prices={place.prices?.filter(hasFuelPrice) ?? []} controls={publicFuel} />
+      ? <><PublicFuelPlacePrices prices={place.prices?.filter(hasFuelPrice) ?? []} controls={publicFuel} />
+        {place.source === "opinet_browser" && load ? <FuelStationPricePosition key={place.id} stationId={place.id} load={load}
+          productCodes={place.prices?.filter(hasFuelPrice).map(price => price.product_code) ?? []} selectedProducts={publicFuel.products ?? []} /> : null}</>
       : <PlacePrices place={place} />}
     {place.kind === "fuel_station" ? <FuelStationPriceHistory key={`${place.source}:${place.id}`} place={place} load={load}><PlaceContact place={place} onShowMap={onShowMap} /><PlaceLocationEvidence place={place} /></FuelStationPriceHistory> : <PlaceContact place={place} onShowMap={onShowMap} />}
     {place.kind === "rail_station" && showRailTimetable ? <RailTimetables placeIds={[place.id]} /> : null}
