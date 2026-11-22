@@ -39,14 +39,17 @@ async function shot(page: Page, name: string, testInfo: { outputPath: (name: str
   if (process.env.E2E_SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/${name}`, animations: "disabled" });
 }
 
+const centerRequests: boolean[] = [];
 test.beforeEach(async ({ page }) => {
+  centerRequests.length = 0;
   test.skip(process.env.E2E_PUBLIC_FUEL !== "true", "공개 유가(TRANSPORT_UI_MODE=fuel) 격리 UI 테스트");
   await page.route((url) => /^https?:$/.test(url.protocol) && !["127.0.0.1", "localhost"].includes(url.hostname), (route) => route.abort());
   await page.route("**/api/public/fuel/places?*", (route: Route) => {
     const url = new URL(route.request().url());
     expect(url.searchParams.get("include_viewport_sigungu")).toBe("true");
-    // 지도 중심 시군구도 함께 묻는다. 이 격리 응답은 그 필드를 주지 않는 옛 API를 흉내 내 칩이 대체 경로(화면 1순위)를 쓴다.
-    expect(url.searchParams.has("center_longitude") && url.searchParams.has("center_latitude")).toBe(true);
+    // 지도 중심 시군구도 묻는다(첫 이동 알림 전 기본 범위 요청은 제외). 이 격리 응답은 그 필드를 주지 않는 옛 API를 흉내 내
+    // 칩이 대체 경로(화면 1순위)를 쓴다. route 처리기 안의 expect는 요청을 멈추게 하므로 기록만 하고 테스트에서 확인한다.
+    centerRequests.push(url.searchParams.has("center_longitude") && url.searchParams.has("center_latitude"));
     const zoom = Number(url.searchParams.get("zoom"));
     return route.fulfill({ json: {
       items: zoom >= 10 ? [station] : [], total: zoom >= 10 ? 1 : 0, truncated: false, clustered: false, available_sources: [],
@@ -79,6 +82,7 @@ for (const width of [320, 390, 1440]) {
     await expect(chips.getByRole("button", { name: /더 보기/ })).toHaveCount(0);
     for (const other of ["보은군", "영동군", "금산군", "중구", "청주시"]) await expect(chips).not.toContainText(other);
     const chip = chips.getByRole("button", { name: /^충북 옥천군 휘발유 가격 통계 · 지도 안 29개 주유소$/ });
+    expect(centerRequests.some(Boolean)).toBe(true);
     expect((await chip.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     expect(await noHorizontalScroll(page)).toBe(true);
     await shot(page, `fuel-stats-chips-${width}.png`, testInfo);

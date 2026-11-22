@@ -108,6 +108,8 @@ for (const width of [320, 390, 1440]) {
     // 지금 보이는 지역(중심 영동군)이 선택된 채 열린다.
     await expect(dialog.getByRole("radio", { name: "충북" })).toBeChecked();
     await expect(dialog.getByRole("radio", { name: "영동군" })).toBeChecked();
+    // 열림 확대 애니메이션(scale)이 끝난 뒤에 잰다.
+    await dialog.evaluate(node => Promise.all(node.getAnimations({ subtree: true }).map(animation => animation.finished)));
     for (const option of await dialog.locator(".fuel-region-option").all()) expect((await option.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     const box = (await dialog.boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(0); expect(box.x + box.width).toBeLessThanOrEqual(width);
@@ -179,18 +181,18 @@ for (const width of [320, 390, 1440]) {
       await page.waitForTimeout(300);
       await page.mouse.up();
     };
-    let moved = waitPlaces(page, url => Number(url.searchParams.get("center_longitude")) < 127.3);
+    const moved = waitPlaces(page, url => Number(url.searchParams.get("center_longitude")) < 127.3);
     await drag(Math.round(box.width * .6));
     await moved;
     await expect(regionChips(page)).toHaveText("서울 중구");
     await expect(group).toHaveAttribute("aria-label", "지도 중심 지역 가격 통계");
     expect(await noHorizontalScroll(page)).toBe(true);
     await shot(page, `fuel-ui4-center-west-${width}.png`, testInfo);
-    // 되돌리면 다시 영동군.
-    moved = waitPlaces(page, url => Number(url.searchParams.get("center_longitude")) >= 127.3);
+    // 되돌리면 다시 영동군. 처음과 같은 조회 범위라 화면의 응답 캐시를 써서 새 요청 없이 바뀐다(중심이 캐시 키를 늘리지 않는다).
+    const before = placeRequests.length;
     await drag(-Math.round(box.width * .6));
-    await moved;
     await expect(regionChips(page)).toHaveText("충북 영동군");
+    expect(placeRequests.slice(before).every(url => Number(url.searchParams.get("center_longitude")) >= 127.3)).toBe(true);
   });
 
   test(`${width}px 중심을 정하지 못하면(null·옛 API) 화면에서 주유소가 가장 많은 시군구로 되돌아간다`, async ({ page }) => {
