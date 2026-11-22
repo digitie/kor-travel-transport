@@ -129,6 +129,23 @@ def test_station_position_per_scope(published):
     assert cheapest[-1]["grade"] == "A+" and cheapest[-1]["percentile"] == 5
 
 
+def test_station_product_grades_cover_every_sold_product_in_its_sigungu(published):
+    """유종마다 같은 시군구 안 등급(추가 필드). 요청 유종이 먼저이고 그 값은 시군구 비교와 같다."""
+    body = published.get("/v1/transport/fuel/price-distribution",
+                         params={"station_id": 104, "product_code": "D047"}).json()
+    grades = body["station"]["product_grades"]
+    assert [row["product_code"] for row in grades] == ["D047", "B027"]
+    diesel, gasoline = grades
+    assert (diesel["price"], diesel["station_count"], diesel["percentile"]) == (1550, 3, 50)  # (1 + 0.5) / 3
+    assert (diesel["grade"], diesel["grade_label"]) == ("B", "평범해요")
+    assert diesel["scope"] == "sigungu" and diesel["percentile"] == body["station"]["comparisons"][0]["percentile"]
+    assert (gasoline["price"], gasoline["percentile"], gasoline["grade"], gasoline["grade_label"]) == (1700, 60, "C+", "조금 비싸요")
+    # 팔지 않는 유종을 요청해도 파는 유종의 등급은 준다.
+    other = published.get("/v1/transport/fuel/price-distribution",
+                          params={"station_id": 102, "product_code": "D047"}).json()["station"]
+    assert [row["product_code"] for row in other["product_grades"]] == ["B027"]
+
+
 def test_station_without_product_and_small_sigungu(published):
     body = published.get("/v1/transport/fuel/price-distribution",
                          params={"station_id": 102, "product_code": "D047"}).json()
