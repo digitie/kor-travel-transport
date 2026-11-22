@@ -1040,7 +1040,7 @@ html:has([data-slot="map-workspace"][data-expanded="true"]) { overflow: hidden; 
 .fuel-sigungu-chips .fuel-sigungu-chip { max-width: 100%; }
 .fuel-sigungu-chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .fuel-sigungu-chip[data-selected] { border-color: var(--brand); color: var(--brand); }
-.fuel-sigungu-clear { justify-content: center; width: 44px; padding: 0; color: var(--text-secondary); }
+.fuel-sigungu-chip.fuel-sigungu-clear { justify-content: center; width: 44px; padding: 0; color: var(--text-secondary); }
 .fuel-sigungu-chip {
   display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 10px; border: 1px solid var(--control-line);
   border-radius: 9999px; background: var(--card); color: var(--text-primary); font-size: var(--text-xs); font-weight: 600; white-space: nowrap; cursor: pointer;
@@ -1135,7 +1135,7 @@ html:has([data-slot="map-workspace"][data-expanded="true"]) { overflow: hidden; 
 .fuel-filter-form { display: grid; gap: 4px; }
 .fuel-filter-actions {
   position: sticky; bottom: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
-  padding: 8px 0 max(8px, env(safe-area-inset-bottom)); background: var(--popover, var(--card));
+  padding: 8px 0; background: var(--popover, var(--card));
 }
 .fuel-filter-actions > button { min-height: 44px; }
 .fuel-filter-section { margin: 0; padding: 6px 0; border: 0; border-bottom: 1px solid var(--line); }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState, type Ref, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type Ref, type RefObject } from "react";
 import { ChevronDown, MapPinned, SlidersHorizontal } from "lucide-react";
 import { z } from "zod";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
@@ -103,10 +103,16 @@ function FuelRegionPickerBody({ load, current, onCancel, onConfirm }: {
 
 /** 맨 위 줄의 지역 이동 아이콘 버튼. 글자 대신 접근성 이름과 툴팁으로 "지역 이동"을 알린다. */
 export function PublicFuelRegionButton({ onOpen, buttonRef }: { onOpen: (opener: HTMLElement) => void; buttonRef?: Ref<HTMLButtonElement> }) {
+  // 대화상자를 닫거나 지역을 해제해 초점이 코드로 돌아올 때는 툴팁을 열지 않는다(아래 지역 칩을 가린다).
+  // 포인터를 올렸을 때와 키보드로 옮겨 온 초점(:focus-visible)에서만 연다.
+  const [tip, setTip] = useState(false);
+  const hovered = useRef(false);
+  const allow = (target: EventTarget | null) => hovered.current || (target instanceof HTMLElement && target.matches(":focus-visible"));
   return <TooltipProvider delayDuration={300}>
-    <Tooltip>
+    <Tooltip open={tip} onOpenChange={next => setTip(next && allow(document.activeElement))}>
       <TooltipTrigger asChild>
         <Button ref={buttonRef} type="button" variant="outline" size="icon" className="public-fuel-region-button" aria-label="지역 이동"
+          onPointerEnter={() => { hovered.current = true; }} onPointerLeave={() => { hovered.current = false; }}
           onClick={event => onOpen(event.currentTarget)}><MapPinned aria-hidden="true" size={18} /></Button>
       </TooltipTrigger>
       <TooltipContent side="bottom" className="pointer-events-none">지역 이동</TooltipContent>
@@ -152,13 +158,15 @@ function FuelFilterForm({ filters, onFiltersChange, products, onProductsChange, 
   const selected = new Set(products);
   const toggleProduct = (code: string, checked: boolean) =>
     onProductsChange(FUEL_CHART_ORDER.filter(value => value === code ? checked : selected.has(value)));
+  const close = useRef<HTMLButtonElement>(null);
   const dirty = products.length > 0 || (onFiltersChange ? activeFilterCount(filters) > 0 || filters.brands.length > 0 : false);
   return <div className="fuel-filter-form">
     <fieldset className="fuel-filter-section">
       <legend>유종</legend>
       <label className="fuel-filter-row">
         <span>전체 유종</span>
-        <input type="checkbox" checked={!products.length} disabled={!products.length} onChange={() => onProductsChange([])} />
+        {/* 이미 전체면 눌러도 그대로다(비활성으로 바꾸면 누른 순간 초점이 팝오버 밖으로 빠진다). */}
+        <input type="checkbox" checked={!products.length} onChange={() => { if (products.length) onProductsChange([]); }} />
       </label>
       {PRODUCT_CHOICES.map(({ code, label }) => <label key={code} className="fuel-filter-row">
         <span>{label}</span>
@@ -168,8 +176,8 @@ function FuelFilterForm({ filters, onFiltersChange, products, onProductsChange, 
     {onFiltersChange ? <FuelStationFilterSections filters={filters} onFiltersChange={onFiltersChange} products={products} /> : null}
     <div className="fuel-filter-actions">
       <Button type="button" variant="outline" disabled={!dirty}
-        onClick={() => { onProductsChange([]); onFiltersChange?.(DEFAULT_PUBLIC_FUEL_FILTERS); }}>초기화</Button>
-      <Button type="button" onClick={onClose}>닫기</Button>
+        onClick={() => { onProductsChange([]); onFiltersChange?.(DEFAULT_PUBLIC_FUEL_FILTERS); close.current?.focus(); }}>초기화</Button>
+      <Button ref={close} type="button" onClick={onClose}>닫기</Button>
     </div>
   </div>;
 }
@@ -212,7 +220,7 @@ function FuelStationFilterSections({ filters, onFiltersChange, products }: {
       })}
       <label className="fuel-filter-row">
         <span>브랜드 전체 선택</span>
-        <input type="checkbox" checked={allBrands} disabled={allBrands} onChange={() => onFiltersChange({ ...filters, brands: [] })} />
+        <input type="checkbox" checked={allBrands} onChange={() => { if (!allBrands) onFiltersChange({ ...filters, brands: [] }); }} />
       </label>
     </fieldset>
   </>;

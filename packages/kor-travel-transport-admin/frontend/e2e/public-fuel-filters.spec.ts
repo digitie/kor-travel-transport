@@ -120,6 +120,9 @@ for (const width of [320, 390, 1440]) {
     await expect(dialog).toHaveCount(0);
     const request = new URL((await moved).url());
     expect(Number(request.searchParams.get("zoom"))).toBeGreaterThanOrEqual(10);
+    // 마우스로 닫아 초점이 아이콘으로 돌아와도 툴팁이 열려 아래 지역 칩을 가리지 않는다.
+    await expect(opener).toBeFocused();
+    await expect(page.locator('[data-slot="tooltip-content"]')).toHaveCount(0);
     // 서버가 화면 안 시군구로 옥천군을 돌려줘도, 고른 지역(서울 종로구) 하나만 보인다.
     await expect(regionChips(page)).toHaveCount(1);
     await expect(regionChips(page)).toHaveText("서울 종로구");
@@ -131,8 +134,9 @@ for (const width of [320, 390, 1440]) {
     // 다시 열면 고른 지역이 선택돼 있다.
     await opener.click();
     await expect(dialog.getByRole("radio", { name: "종로구" })).toBeChecked();
-    await page.keyboard.press("Escape");
+    await dialog.getByRole("button", { name: "취소" }).click();
     await expect(dialog).toHaveCount(0);
+    await expect(page.locator('[data-slot="tooltip-content"]')).toHaveCount(0);
     // 해제하면 다시 화면 대표 시군구 하나로 돌아가고 초점은 그 칩에 남는다.
     await summaryOf(page).getByRole("button", { name: "서울 종로구 선택 해제" }).click();
     await expect(regionChips(page)).toHaveText(/충북 옥천군/);
