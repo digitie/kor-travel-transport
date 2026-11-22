@@ -167,34 +167,32 @@ test("공개 지도는 유종별 가격을 분리하고 같은 다중 선택 목
       publicFuel={{ products, onProductsChange: value => { changed(value); setProducts(value); } }} />;
   }
   const stats = (label: string) => container.querySelector(`dl[aria-label="${label}"]`);
-  const select = async (label: string) => {
-    const option = [...document.querySelectorAll<HTMLButtonElement>('[role="option"]')].find(node => node.textContent === label)!;
-    await act(async () => option.click());
+  const check = async (label: string) => {
+    const input = [...document.querySelectorAll('[role="dialog"] label')].find(node => node.textContent === label)!.querySelector("input")!;
+    await act(async () => input.click());
   };
   try {
     await act(async () => root.render(<Summary />));
-    const combo = container.querySelector<HTMLInputElement>('[role="combobox"]')!;
-    expect(combo.labels?.[0]?.textContent).toBe("표시 유종");
-    expect(combo.placeholder).toBe("전체 유종");
+    const trigger = container.querySelector<HTMLButtonElement>(".public-fuel-filter-trigger")!;
+    expect(trigger.getAttribute("aria-label")).toBe("유종·필터: 전체 유종");
     expect(stats("휘발유")?.textContent).toContain("1,700");
     expect(stats("경유")?.textContent).toContain("1,550");
     expect(container.textContent).not.toMatch(/가격 차이|표준편차|묶음 마커 개수|통계 기준은 공개/);
-    await act(async () => combo.click());
-    const list = document.querySelector('[role="listbox"]')!;
-    expect(list.getAttribute("aria-multiselectable")).toBe("true");
-    expect([...list.querySelectorAll('[role="option"]')].map(node => node.textContent))
-      .toEqual(expect.arrayContaining(["전체", "휘발유", "경유", "고급유", "등유", "LPG"]));
-    await select("휘발유");
+    await act(async () => trigger.click());
+    const menu = document.querySelector('[role="dialog"]')!;
+    expect([...menu.querySelectorAll('fieldset:first-of-type label')].map(node => node.textContent))
+      .toEqual(["전체 유종", "휘발유", "경유", "고급유", "LPG", "등유"]);
+    await check("휘발유");
     expect(changed).toHaveBeenLastCalledWith(["B027"]);
     expect(stats("경유")).toBeNull();
-    await select("경유");
+    await check("경유");
     expect(changed).toHaveBeenLastCalledWith(["B027", "D047"]);
+    expect(trigger.getAttribute("aria-label")).toBe("유종·필터: 휘발유, 경유");
     expect(stats("휘발유")?.textContent).not.toContain("1,550");
     expect(stats("경유")?.textContent).not.toContain("1,700");
-    await select("전체");
+    await check("전체 유종");
     expect(changed).toHaveBeenLastCalledWith([]);
-    expect(combo.placeholder).toBe("전체 유종");
-    expect(container.querySelectorAll('[data-slot="combobox-chip"]')).toHaveLength(0);
+    expect(trigger.getAttribute("aria-label")).toBe("유종·필터: 전체 유종");
     expect(container.querySelectorAll("dl")).toHaveLength(2);
   } finally { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); }
 });
@@ -217,17 +215,20 @@ test("공개 범위 요약은 접지 않고 유종 선택·평균가·가격 갱
     // 접기 토글·닫기 버튼이 없고 제목은 일반 제목이다.
     expect(container.querySelector(".fuel-summary-toggle")).toBeNull();
     expect(container.querySelector('[aria-label="범위 요약 닫기"]')).toBeNull();
-    expect(container.querySelector("[aria-expanded]:not([role=combobox])")).toBeNull();
-    expect(container.querySelector("h2")?.textContent).toBe("지도 범위");
+    // 펼침 상태를 가진 것은 유종·필터 팝오버 트리거 하나뿐이다(요약 자체는 접히지 않는다).
+    expect([...container.querySelectorAll("[aria-expanded]")].map(node => node.className)).toEqual(["public-fuel-filter-trigger"]);
+    // "지도 범위" 제목 글씨는 없다.
+    expect(container.querySelector("h2")).toBeNull();
+    expect(container.textContent).not.toContain("지도 범위");
     const body = () => container.querySelector<HTMLElement>(".public-fuel-summary-body")!;
     expect(body().hidden).toBe(false);
-    expect(container.querySelector('[role="combobox"]')).not.toBeNull();
+    expect(container.querySelector(".public-fuel-filter-trigger")).not.toBeNull();
     expect(container.querySelector('dl[aria-label="휘발유"]')?.textContent).toContain("평균");
     expect(container.querySelector('dl[aria-label="휘발유"]')?.textContent).toContain("1,700");
     // 주유소 상세를 열어도 범위 요약을 접지 않는다.
     await act(async () => render(false, true));
     expect(body().hidden).toBe(false);
-    expect(container.querySelector('[role="combobox"]')).not.toBeNull();
+    expect(container.querySelector(".public-fuel-filter-trigger")).not.toBeNull();
     expect(body().textContent).toContain("1,700");
     const refresh = () => container.querySelector<HTMLButtonElement>(".public-fuel-summary-refresh")!;
     await act(async () => refresh().click());

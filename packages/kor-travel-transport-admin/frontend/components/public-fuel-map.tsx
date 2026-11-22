@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { LocateFixed } from "lucide-react";
 import { CameraRequest, FitBoundsRequest, UserLocationMarker, type BoundsTarget, type CameraTarget } from "@/components/map-overlays";
-import { FuelFilterDrawer, FuelRegionPicker, type FuelAreaChoice } from "@/components/public-fuel-controls";
+import { FuelRegionPicker, type FuelAreaChoice, type FuelSelectedRegion } from "@/components/public-fuel-controls";
 import { TransportMap } from "@/components/transport-map";
 import { Button } from "@/components/ui/button";
 import { publicFuelGet } from "@/lib/public-fuel";
@@ -11,7 +11,7 @@ import {
   LOCATE_MESSAGES, LOCATE_WATCHDOG_MS, RETRYABLE_LOCATE_FAILURES, isLocateFailure, requestUserPosition, type LocateFailure,
 } from "@/lib/locate-user";
 import { FUEL_PRODUCT_LABELS } from "@/lib/transport-presentation";
-import { activeFilterCount, parsePublicFuelFilters, publicFuelFilterQuery, type PublicFuelFilters } from "@/lib/public-fuel-filters";
+import { parsePublicFuelFilters, publicFuelFilterQuery, type PublicFuelFilters } from "@/lib/public-fuel-filters";
 
 // Keep the shared map's existing paths and request cancellation; only its reader changes.
 const loadFuel: typeof publicFuelGet = (path, signal) => publicFuelGet(path.replace(/^transport\//, ""), signal);
@@ -82,11 +82,12 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
   const storedFilters = useSyncExternalStore(subscribeToFilterPreferences, getStoredFilters, () => null);
   const filters = useMemo(() => temporaryFilters ?? parsePublicFuelFilters(storedFilters), [temporaryFilters, storedFilters]);
   const filterQuery = publicFuelFilterQuery(filters, products);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [regionCurrent, setRegionCurrent] = useState<FuelAreaChoice>();
+  // 지역 이동에서 고른 시군구. 범위 요약의 지역 칩은 이것 하나만 보인다(새로고침하면 다시 화면 대표 시군구).
+  const [selectedRegion, setSelectedRegion] = useState<FuelSelectedRegion>();
   const [regionOpen, setRegionOpen] = useState(false);
   const [regionTarget, setRegionTarget] = useState<BoundsTarget>();
-  // 지역·필터 버튼은 요약 안에 있어 대화상자 트리거가 아니다. 연 버튼을 기억해 닫을 때 초점을 돌려준다.
+  // 지역 버튼은 요약 안에 있어 대화상자 트리거가 아니다. 연 버튼을 기억해 닫을 때 초점을 돌려준다.
   const opener = useRef<HTMLElement | null>(null);
   const rememberOpener = (element?: HTMLElement | null) => {
     opener.current = element ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
@@ -180,14 +181,15 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
   }
   return <main className="public-fuel-surface" aria-label="주변 주유소 유가 지도">
     <TransportMap mode="fuel" load={loadFuel} mapOnly publicFuel={{
-      products, onProductsChange, refreshEnabled, filterQuery, filterCount: activeFilterCount(filters, products),
-      onOpenFilters: element => { rememberOpener(element); setFiltersOpen(true); },
+      products, onProductsChange, refreshEnabled, filterQuery, filters, onFiltersChange,
+      selectedRegion, onClearRegion: () => setSelectedRegion(undefined),
       onOpenRegion: (current, element) => { rememberOpener(element); setRegionCurrent(current); setRegionOpen(true); },
     }} layers={<><CameraRequest target={location} /><UserLocationMarker position={userPosition} /><FitBoundsRequest target={regionTarget} /></>} />
     <FuelRegionPicker open={regionOpen} onOpenChange={setRegionOpen} load={loadFuel} current={regionCurrent}
-      onConfirm={(bounds, label) => setRegionTarget({ bounds, id: `${label}:${Date.now()}` })} returnFocus={opener} />
-    <FuelFilterDrawer open={filtersOpen} onOpenChange={setFiltersOpen} filters={filters} onFiltersChange={onFiltersChange}
-      products={products} onProductsChange={onProductsChange} returnFocus={opener} />
+      onConfirm={(bounds, region) => {
+        setSelectedRegion(region);
+        setRegionTarget({ bounds, id: `${region.label}:${Date.now()}` });
+      }} returnFocus={opener} />
     <div className="public-fuel-location">
       <Button type="button" variant="outline" onClick={locate} loading={locating} aria-label="내 위치 주변 유가 보기">
         <LocateFixed aria-hidden="true" size={18} />

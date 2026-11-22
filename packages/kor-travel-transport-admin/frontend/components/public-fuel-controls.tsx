@@ -1,20 +1,23 @@
 "use client";
 
-import { useEffect, useId, useState, type RefObject } from "react";
-import { MapPinned, SlidersHorizontal } from "lucide-react";
+import { useEffect, useId, useState, type Ref, type RefObject } from "react";
+import { ChevronDown, MapPinned, SlidersHorizontal } from "lucide-react";
 import { z } from "zod";
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { Button } from "./ui/button";
 import { FuelBrandIcon } from "./fuel-brand-icon";
+import { FUEL_CHART_ORDER } from "@/lib/fuel-chart-model";
 import { fuelProductLabel } from "@/lib/transport-presentation";
 import {
   activeFilterCount, BRAND_FILTERS, brandRelevant, DEFAULT_PUBLIC_FUEL_FILTERS, FLAG_FILTERS, isBrandChecked,
   NEAR_MIN_STEPS, toggleBrand, type PublicFuelFilters,
 } from "@/lib/public-fuel-filters";
 
-// 공개 유가(TRANSPORT_UI_MODE=fuel) 전용: 지역 이동 대화상자와 필터 서랍. 관리 화면은 이 파일을 쓰지 않는다.
+// 공개 유가(TRANSPORT_UI_MODE=fuel) 전용: 맨 위 지역 아이콘 버튼·"이동하세요…" 대화상자, 유종·필터 한 곳 선택.
+// 관리 화면은 이 파일을 쓰지 않는다.
 type Loader = <T>(path: string, signal?: AbortSignal) => Promise<T>;
-const PRODUCT_CHOICES = [["", "전체 유종"], ["B034", "고급휘발유"], ["B027", "휘발유"], ["D047", "경유"], ["C004", "실내등유"], ["K015", "LPG"]] as const;
 
 const catalogSchema = z.object({ items: z.array(z.object({
   sido_value: z.string(), sido_name: z.string(),
@@ -23,22 +26,14 @@ const catalogSchema = z.object({ items: z.array(z.object({
 })) });
 export type FuelAreaCatalog = z.infer<typeof catalogSchema>;
 export type FuelAreaChoice = { sido_value: string; sigungu_value: string };
-
-export function PublicFuelTools({ filterCount, onOpenRegion, onOpenFilters }: {
-  filterCount: number; onOpenRegion: (opener: HTMLElement) => void; onOpenFilters: (opener: HTMLElement) => void;
-}) {
-  return <div className="public-fuel-tools" role="group" aria-label="지역 이동과 필터">
-    <Button type="button" variant="outline" onClick={event => onOpenRegion(event.currentTarget)}><MapPinned aria-hidden="true" size={18} />지역</Button>
-    <Button type="button" variant="outline" onClick={event => onOpenFilters(event.currentTarget)} aria-label={filterCount ? `필터 ${filterCount}개 적용 중` : "필터"}>
-      <SlidersHorizontal aria-hidden="true" size={18} />필터{filterCount ? <span className="public-fuel-filter-count" aria-hidden="true">{filterCount}</span> : null}
-    </Button>
-  </div>;
-}
+/** 지역 이동에서 고른 시군구. label은 "시도 시군구". */
+export type FuelSelectedRegion = FuelAreaChoice & { label: string };
+type ConfirmRegion = (bounds: [number, number, number, number], region: FuelSelectedRegion) => void;
 
 /** "이동하세요…": 시/도 → 구/군/시를 고르고 확인하면 그 시군구 주유소 범위로 지도를 옮긴다. */
 export function FuelRegionPicker({ open, onOpenChange, load, current, onConfirm, returnFocus }: {
   open: boolean; onOpenChange: (open: boolean) => void; load: Loader; current?: FuelAreaChoice;
-  onConfirm: (bounds: [number, number, number, number], label: string) => void;
+  onConfirm: ConfirmRegion;
   /** 트리거 없이 여는 대화상자라 닫을 때 연 버튼으로 초점을 직접 돌려준다. */
   returnFocus?: RefObject<HTMLElement | null>;
 }) {
@@ -46,13 +41,13 @@ export function FuelRegionPicker({ open, onOpenChange, load, current, onConfirm,
     {open ? <DialogContent className="fuel-region-picker" showCloseButton={false}
       onCloseAutoFocus={event => { event.preventDefault(); returnFocus?.current?.focus(); }}>
       <FuelRegionPickerBody load={load} current={current} onCancel={() => onOpenChange(false)}
-        onConfirm={(bounds, label) => { onConfirm(bounds, label); onOpenChange(false); }} />
+        onConfirm={(bounds, region) => { onConfirm(bounds, region); onOpenChange(false); }} />
     </DialogContent> : null}
   </Dialog>;
 }
 
 function FuelRegionPickerBody({ load, current, onCancel, onConfirm }: {
-  load: Loader; current?: FuelAreaChoice; onCancel: () => void; onConfirm: (bounds: [number, number, number, number], label: string) => void;
+  load: Loader; current?: FuelAreaChoice; onCancel: () => void; onConfirm: ConfirmRegion;
 }) {
   const [state, setState] = useState<{ catalog?: FuelAreaCatalog; error?: boolean }>();
   const [retry, setRetry] = useState(0);
@@ -98,48 +93,93 @@ function FuelRegionPickerBody({ load, current, onCancel, onConfirm }: {
       </div>}
     <div className="fuel-region-actions">
       <Button type="button" variant="ghost" onClick={onCancel}>취소</Button>
-      <Button type="button" disabled={!sigunguRow} onClick={() => sigunguRow && label && onConfirm(sigunguRow.bounds, label)}
+      <Button type="button" disabled={!sigunguRow} onClick={() => sidoRow && sigunguRow && label && onConfirm(sigunguRow.bounds,
+        { sido_value: sidoRow.sido_value, sigungu_value: sigunguRow.sigungu_value, label })}
         aria-label={label ? `${label} 지역으로 이동` : undefined}>{label ?? "구/군/시 선택"}</Button>
     </div>
   </div>;
 }
 
-/** 필터 서랍(오른쪽). 바꾸면 바로 적용되고 브라우저에 저장된다. */
-export function FuelFilterDrawer({ open, onOpenChange, filters, onFiltersChange, products, onProductsChange, returnFocus }: {
-  open: boolean; onOpenChange: (open: boolean) => void;
-  filters: PublicFuelFilters; onFiltersChange: (filters: PublicFuelFilters) => void;
-  products: string[]; onProductsChange: (products: string[]) => void;
-  returnFocus?: RefObject<HTMLElement | null>;
-}) {
-  // 공통 대화상자의 가운데 정렬(left/top 50%·-50% 이동)을 tailwind-merge가 지우도록 같은 유틸리티로 덮어 오른쪽 서랍으로 둔다.
-  return <Dialog open={open} onOpenChange={onOpenChange}>
-    {open ? <DialogContent showCloseButton={false}
-      className="fuel-filter-drawer top-0 right-0 left-auto translate-x-0 translate-y-0 h-dvh max-h-dvh w-[min(24rem,88vw)] max-w-none sm:max-w-none rounded-none data-open:zoom-in-100 data-closed:zoom-out-100"
-      onCloseAutoFocus={event => { event.preventDefault(); returnFocus?.current?.focus(); }}>
-      <DialogTitle>필터</DialogTitle>
-      <DialogDescription className="sr-only">유종·지도 최저가·주유소 조건·상표를 고르면 지도와 통계에 바로 적용됩니다.</DialogDescription>
-      <FuelFilterForm filters={filters} onFiltersChange={onFiltersChange} products={products} onProductsChange={onProductsChange} />
-      <DialogClose asChild><Button type="button" variant="outline" className="fuel-filter-close">닫기</Button></DialogClose>
-    </DialogContent> : null}
-  </Dialog>;
+
+/** 맨 위 줄의 지역 이동 아이콘 버튼. 글자 대신 접근성 이름과 툴팁으로 "지역 이동"을 알린다. */
+export function PublicFuelRegionButton({ onOpen, buttonRef }: { onOpen: (opener: HTMLElement) => void; buttonRef?: Ref<HTMLButtonElement> }) {
+  return <TooltipProvider delayDuration={300}>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button ref={buttonRef} type="button" variant="outline" size="icon" className="public-fuel-region-button" aria-label="지역 이동"
+          onClick={event => onOpen(event.currentTarget)}><MapPinned aria-hidden="true" size={18} /></Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="pointer-events-none">지역 이동</TooltipContent>
+    </Tooltip>
+  </TooltipProvider>;
 }
 
-function FuelFilterForm({ filters, onFiltersChange, products, onProductsChange }: {
-  filters: PublicFuelFilters; onFiltersChange: (filters: PublicFuelFilters) => void;
+const PRODUCT_CHOICES = FUEL_CHART_ORDER.map(code => ({ code, label: fuelProductLabel(code) }));
+
+/**
+ * 맨 위 유종·필터 다중 선택. 예전 필터 버튼·서랍의 내용(유종, 지도 최저가, 주유소 조건·품질인증, 상표, 초기화)을
+ * 한 팝오버의 묶음으로 담는다. 바꾸면 바로 서버 조건에 적용되고 이 브라우저에 저장된다(저장은 부모가 맡는다).
+ * 닫으면 Radix가 이 트리거로 초점을 돌려준다.
+ */
+export function PublicFuelFilterMenu({ products, onProductsChange, filters = DEFAULT_PUBLIC_FUEL_FILTERS, onFiltersChange }: {
   products: string[]; onProductsChange: (products: string[]) => void;
+  filters?: PublicFuelFilters; onFiltersChange?: (filters: PublicFuelFilters) => void;
 }) {
-  const productValue = products.length === 1 ? products[0] : products.length ? null : "";
-  const nearId = useId();
-  const allBrands = !filters.brands.length;
+  const [open, setOpen] = useState(false);
+  const count = onFiltersChange ? activeFilterCount(filters, products) : 0;
+  const productText = products.length ? products.map(fuelProductLabel).join(", ") : "전체 유종";
+  return <Popover open={open} onOpenChange={setOpen} modal>
+    <PopoverTrigger asChild>
+      <button type="button" className="public-fuel-filter-trigger"
+        aria-label={`유종·필터: ${productText}${count ? `, 조건 ${count}개 적용 중` : ""}`}>
+        <SlidersHorizontal aria-hidden="true" size={16} className="public-fuel-filter-trigger-icon" />
+        <span className="public-fuel-filter-trigger-value" aria-hidden="true">{productText}</span>
+        {count ? <span className="public-fuel-filter-count" aria-hidden="true">{count}</span> : null}
+        <ChevronDown aria-hidden="true" size={16} className="public-fuel-filter-trigger-chevron" />
+      </button>
+    </PopoverTrigger>
+    <PopoverContent align="start" collisionPadding={8} aria-label="유종·필터" className="public-fuel-filter-menu">
+      <FuelFilterForm products={products} onProductsChange={onProductsChange} filters={filters} onFiltersChange={onFiltersChange}
+        onClose={() => setOpen(false)} />
+    </PopoverContent>
+  </Popover>;
+}
+
+function FuelFilterForm({ filters, onFiltersChange, products, onProductsChange, onClose }: {
+  filters: PublicFuelFilters; onFiltersChange?: (filters: PublicFuelFilters) => void;
+  products: string[]; onProductsChange: (products: string[]) => void; onClose: () => void;
+}) {
+  const selected = new Set(products);
+  const toggleProduct = (code: string, checked: boolean) =>
+    onProductsChange(FUEL_CHART_ORDER.filter(value => value === code ? checked : selected.has(value)));
+  const dirty = products.length > 0 || (onFiltersChange ? activeFilterCount(filters) > 0 || filters.brands.length > 0 : false);
   return <div className="fuel-filter-form">
     <fieldset className="fuel-filter-section">
       <legend>유종</legend>
-      {products.length > 1 ? <p className="fuel-filter-hint">여러 유종을 고른 상태입니다({products.map(fuelProductLabel).join(", ")}). 하나를 고르면 바뀝니다.</p> : null}
-      {PRODUCT_CHOICES.map(([value, label]) => <label key={value || "all"} className="fuel-filter-row">
+      <label className="fuel-filter-row">
+        <span>전체 유종</span>
+        <input type="checkbox" checked={!products.length} disabled={!products.length} onChange={() => onProductsChange([])} />
+      </label>
+      {PRODUCT_CHOICES.map(({ code, label }) => <label key={code} className="fuel-filter-row">
         <span>{label}</span>
-        <input type="radio" name="fuel-filter-product" checked={productValue === value} onChange={() => onProductsChange(value ? [value] : [])} />
+        <input type="checkbox" checked={selected.has(code)} onChange={event => toggleProduct(code, event.target.checked)} />
       </label>)}
     </fieldset>
+    {onFiltersChange ? <FuelStationFilterSections filters={filters} onFiltersChange={onFiltersChange} products={products} /> : null}
+    <div className="fuel-filter-actions">
+      <Button type="button" variant="outline" disabled={!dirty}
+        onClick={() => { onProductsChange([]); onFiltersChange?.(DEFAULT_PUBLIC_FUEL_FILTERS); }}>초기화</Button>
+      <Button type="button" onClick={onClose}>닫기</Button>
+    </div>
+  </div>;
+}
+
+function FuelStationFilterSections({ filters, onFiltersChange, products }: {
+  filters: PublicFuelFilters; onFiltersChange: (filters: PublicFuelFilters) => void; products: string[];
+}) {
+  const nearId = useId();
+  const allBrands = !filters.brands.length;
+  return <>
     <div className="fuel-filter-section">
       <label className="fuel-filter-row" htmlFor={nearId}>
         <span>지도 최저가</span>
@@ -155,7 +195,7 @@ function FuelFilterForm({ filters, onFiltersChange, products, onProductsChange }
       <legend>주유소 조건</legend>
       {FLAG_FILTERS.map(flag => <label key={flag.key} className="fuel-filter-row">
         <span>{flag.label}</span>
-        <input type="checkbox" role="switch" checked={filters[flag.key]}
+        <input type="checkbox" checked={filters[flag.key]}
           onChange={event => onFiltersChange({ ...filters, [flag.key]: event.target.checked })} />
       </label>)}
     </fieldset>
@@ -175,7 +215,5 @@ function FuelFilterForm({ filters, onFiltersChange, products, onProductsChange }
         <input type="checkbox" checked={allBrands} disabled={allBrands} onChange={() => onFiltersChange({ ...filters, brands: [] })} />
       </label>
     </fieldset>
-    <Button type="button" variant="outline" className="fuel-filter-reset" disabled={!activeFilterCount(filters) && !filters.brands.length}
-      onClick={() => onFiltersChange(DEFAULT_PUBLIC_FUEL_FILTERS)}>필터 초기화</Button>
-  </div>;
+  </>;
 }

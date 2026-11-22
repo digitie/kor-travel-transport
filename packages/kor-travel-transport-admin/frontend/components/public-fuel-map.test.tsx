@@ -2,14 +2,15 @@
 import { act, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-const state = vi.hoisted(() => ({ props: {} as Record<string, unknown>, get: vi.fn() }));
+const state = vi.hoisted(() => ({ props: {} as Record<string, unknown>, picker: {} as Record<string, unknown>, get: vi.fn() }));
 vi.mock("./transport-map", () => ({ TransportMap: (props: Record<string, unknown>) => { state.props = props; return <div data-map="fuel" />; } }));
 vi.mock("@/components/map-overlays", () => ({ CameraRequest: () => null, FitBoundsRequest: () => null, UserLocationMarker: () => null }));
 vi.mock("@/lib/public-fuel", () => ({ publicFuelGet: state.get }));
+vi.mock("@/components/public-fuel-controls", () => ({ FuelRegionPicker: (props: Record<string, unknown>) => { state.picker = props; return null; } }));
 import { PublicFuelMap } from "./public-fuel-map";
 let root: Root, host: HTMLDivElement;
 beforeEach(() => { vi.useFakeTimers(); vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); host = document.createElement("div"); document.body.append(host); root = createRoot(host); state.get.mockReset(); });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); localStorage.removeItem("transport.public-fuel.products"); vi.useRealTimers(); vi.unstubAllGlobals(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); localStorage.removeItem("transport.public-fuel.products"); localStorage.removeItem("transport.public-fuel.filters"); vi.useRealTimers(); vi.unstubAllGlobals(); });
 // layers = <><CameraRequest target /><UserLocationMarker position /><FitBoundsRequest target /></>
 const layerProps = () => (state.props.layers as ReactElement<{ children: ReactElement<{ target?: unknown; position?: unknown }>[] }>).props.children.map(child => child.props);
 const cameraTarget = () => layerProps()[0].target;
@@ -180,4 +181,36 @@ it("shows my location as a point and follows later position updates without movi
   await act(async () => root.unmount());
   expect(clear).toHaveBeenCalledWith(7);
   root = createRoot(host);
+});
+
+it("saves filters and passes them with the products to the single top selector; no separate filter drawer", async () => {
+  await render();
+  type Controls = { filters: { self_only: boolean; brands: string[] }; filterQuery: string; onFiltersChange: (value: unknown) => void; onOpenFilters?: unknown };
+  const controls = () => state.props.publicFuel as Controls;
+  expect(controls().onOpenFilters).toBeUndefined();
+  expect(controls().filterQuery).toBe("");
+  await act(async () => controls().onFiltersChange({ ...controls().filters, self_only: true, brands: ["SKE"] }));
+  expect(controls().filters.self_only).toBe(true);
+  expect(controls().filterQuery).toBe("brands=SKE&self_only=true");
+  expect(JSON.parse(localStorage.getItem("transport.public-fuel.filters")!)).toMatchObject({ self_only: true, brands: ["SKE"] });
+  // 다시 열어도(새로 mount) 저장한 필터를 읽는다.
+  await act(async () => root.unmount()); root = createRoot(host);
+  await render();
+  expect(controls().filterQuery).toBe("brands=SKE&self_only=true");
+});
+
+it("keeps only the region chosen in the region picker and clears it on request", async () => {
+  await render();
+  type Controls = { selectedRegion?: unknown; onClearRegion: () => void; onOpenRegion: (current?: unknown, opener?: HTMLElement | null) => void };
+  const controls = () => state.props.publicFuel as Controls;
+  expect(controls().selectedRegion).toBeUndefined();
+  await act(async () => controls().onOpenRegion({ sido_value: "15", sigungu_value: "1502" }, null));
+  expect(state.picker.open).toBe(true);
+  expect(state.picker.current).toEqual({ sido_value: "15", sigungu_value: "1502" });
+  const region = { sido_value: "01", sigungu_value: "0101", label: "서울 종로구" };
+  await act(async () => (state.picker.onConfirm as (bounds: number[], value: unknown) => void)([126.9, 37.5, 127, 37.6], region));
+  expect(controls().selectedRegion).toEqual(region);
+  expect(layerProps()[2].target).toMatchObject({ bounds: [126.9, 37.5, 127, 37.6] });
+  await act(async () => controls().onClearRegion());
+  expect(controls().selectedRegion).toBeUndefined();
 });

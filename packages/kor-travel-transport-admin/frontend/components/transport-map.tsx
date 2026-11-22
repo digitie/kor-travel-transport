@@ -46,10 +46,7 @@ type PublicFuelControls = {
   refreshEnabled?: boolean;
   /** 공개 유가 서버 필터 query(lib/public-fuel-filters.ts `publicFuelFilterQuery`). */
   filterQuery?: string;
-  filterCount?: number;
-  onOpenFilters?: (opener?: HTMLElement | null) => void;
-  onOpenRegion?: (current?: { sido_value: string; sigungu_value: string }, opener?: HTMLElement | null) => void;
-};
+} & Pick<PublicFuelSummary, "filters" | "onFiltersChange" | "selectedRegion" | "onClearRegion" | "onOpenRegion">;
 
 type PublicFuelSummary = NonNullable<Parameters<typeof FuelViewportSummary>[0]["publicFuel"]>;
 
@@ -174,8 +171,10 @@ function publicFuelActions({
     onRefresh: pricesStale ? refreshViewport : undefined,
     refreshing,
     filterQuery: controls.filterQuery,
-    filterCount: controls.filterCount,
-    onOpenFilters: controls.onOpenFilters,
+    filters: controls.filters,
+    onFiltersChange: controls.onFiltersChange,
+    selectedRegion: controls.selectedRegion,
+    onClearRegion: controls.onClearRegion,
     onOpenRegion: controls.onOpenRegion,
   };
   return { summary, detail: { onRefresh: refreshStation, refreshing, products, filterQuery: controls.filterQuery }, refreshViewport };
@@ -232,7 +231,6 @@ function MapStatusSummary({ status, embedded, mode, loaded, pending, failed, cur
     <div className="map-feedback">{status}</div>
     {!embedded && mode === "fuel" ? <FuelViewportSummary publicFuel={publicFuel ? {
       ...publicFuel, load, sigungu: loaded.fuel_station?.fuel_viewport_sigungu ?? [],
-      sigunguTotal: loaded.fuel_station?.fuel_viewport_sigungu_total ?? 0,
     } : undefined} items={loaded.fuel_station?.fuel_statistics ?? []} pending={pending.length > 0} failed={failed.length > 0}
       detailOpen={Boolean(current)} detailExpanded={fuelDetailScopeExpanded} onDetailExpandedChange={setFuelDetailScopeExpanded}
       pricesStale={loaded.fuel_station?.fuel_prices_stale} pricesLastRefreshedAt={loaded.fuel_station?.fuel_prices_last_refreshed_at} /> : null}

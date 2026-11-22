@@ -27,35 +27,39 @@ const singleLine = async (page: Page, selector: string) => page.locator(selector
 }));
 
 for (const width of [320, 390, 1440]) {
-  test(`${width}px 범위 요약은 접지 않고 유종 선택과 평균 유가를 바로 보인다`, async ({ page }, testInfo) => {
+  test(`${width}px 범위 요약은 접지 않고 맨 위 지역 아이콘·유종·필터와 평균 유가를 바로 보인다`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: width < 1000 ? 844 : 900 });
     await page.goto("/");
     const summary = summaryOf(page);
     await expect(summary).toBeVisible();
-    // 펼치기·닫기 없이 처음부터 유종 선택과 평균가가 보인다.
+    // 펼치기·닫기 없이 처음부터 유종·필터 선택과 평균가가 보인다. 펼침 상태를 가진 것은 유종·필터 팝오버 트리거뿐이다.
     await expect(summary.getByRole("button", { name: "범위 요약 닫기" })).toHaveCount(0);
-    await expect(summary.locator("[aria-expanded]:not([role=combobox])")).toHaveCount(0);
-    const combo = summary.getByRole("combobox", { name: "표시 유종" });
+    await expect(summary.locator("[aria-expanded]:not(.public-fuel-filter-trigger)")).toHaveCount(0);
+    const combo = summary.getByRole("button", { name: /^유종·필터/ });
     await expect(combo).toBeVisible();
+    // 따로 있던 필터 버튼과 "지도 범위" 글씨는 없다.
+    await expect(page.getByRole("button", { name: /^필터/ })).toHaveCount(0);
+    await expect(summary).not.toContainText("지도 범위");
     await expect(summary.getByRole("definition").first()).toBeVisible();
     await expect(summary.locator('dl[aria-label="휘발유"]')).toContainText("평균");
     await expect(summary.locator('dl[aria-label="휘발유"]')).toContainText("1,700");
     await expect(summary.locator('dl[aria-label="경유"]')).toContainText("1,550");
-    // 제목과 유종 선택은 한 줄에 나란히 놓이고 서로 겹치지 않는다.
+    // 지역 아이콘과 유종·필터는 맨 위 한 줄에 나란히 놓이고 서로 겹치지 않는다.
     const comboBox = (await summary.locator(".public-fuel-summary-products").boundingBox())!;
-    const titleBox = (await summary.getByRole("heading", { name: "지도 범위" }).boundingBox())!;
-    expect(titleBox.height).toBeLessThanOrEqual(48);
-    expect(Math.abs((titleBox.y + titleBox.height / 2) - (comboBox.y + comboBox.height / 2))).toBeLessThanOrEqual(12);
-    expect(titleBox.x + titleBox.width).toBeLessThanOrEqual(comboBox.x);
-    expect(await singleLine(page, ".public-fuel-summary-title")).toEqual([true]);
+    const regionBox = (await summary.getByRole("button", { name: "지역 이동" }).boundingBox())!;
+    expect(regionBox.height).toBeLessThanOrEqual(48);
+    expect(Math.abs((regionBox.y + regionBox.height / 2) - (comboBox.y + comboBox.height / 2))).toBeLessThanOrEqual(12);
+    expect(regionBox.x + regionBox.width).toBeLessThanOrEqual(comboBox.x);
+    expect(await singleLine(page, ".public-fuel-filter-trigger-value")).toEqual([true]);
     const summaryBox = (await summary.boundingBox())!;
     expect(summaryBox.x).toBeGreaterThanOrEqual(0);
     expect(summaryBox.x + summaryBox.width).toBeLessThanOrEqual(width);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     // 유종을 고르면 그 유종의 평균가만 남는다.
     await combo.click();
-    await page.getByRole("option", { name: "경유", exact: true }).click();
+    await page.getByRole("dialog", { name: "유종·필터" }).getByRole("checkbox", { name: "경유", exact: true }).check();
     await page.keyboard.press("Escape");
+    await expect(combo).toHaveAccessibleName("유종·필터: 경유");
     await expect(summary.locator('dl[aria-label="휘발유"]')).toHaveCount(0);
     await expect(summary.locator('dl[aria-label="경유"]')).toContainText("1,550");
     await page.screenshot({ path: testInfo.outputPath(`public-fuel-summary-${width}.png`), animations: "disabled" });
