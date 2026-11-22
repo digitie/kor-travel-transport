@@ -262,6 +262,13 @@ const fuelQueryDetailZoom = (mode: "all" | "transport" | "fuel") => mode === "fu
 // 공개 유가 지역 카드의 단위: 서버는 zoom 8 미만이면 시/도, 그 위로는 시군구 카드를 내고, 상세 zoom부터는 카드가 없다.
 const publicFuelRegionBucket = (zoom: number) => Math.floor(zoom) < 8 ? "sido" : Math.floor(zoom) < fuelQueryDetailZoom("fuel") ? "sigungu" : "detail";
 const NO_FUEL_REGIONS: FuelRegion[] = [];
+// 공개 유가: 지역 이동(fitBounds)·확대처럼 카드 단위(시/도 ↔ 시군구 ↔ 상세)가 바뀌면 새 응답이 올 때까지 옛 단위의 카드를
+// 그리지 않는다. 남겨 두면 새 화면 밖에 있는 옛 카드가 화면 가장자리로 밀려 몰린다. 관리 화면은 받은 그대로다.
+function currentFuelRegions(loaded: { rows: FuelRegion[]; zoom?: number }, isPublicFuel: boolean, live: MapViewportReadout | null, settledZoom: number) {
+  if (!isPublicFuel || loaded.zoom === undefined) return loaded.rows;
+  const liveZoom = live ? live.zoom : settledZoom;
+  return publicFuelRegionBucket(liveZoom) === publicFuelRegionBucket(loaded.zoom) ? loaded.rows : NO_FUEL_REGIONS;
+}
 const mapKindParameter = (mode: "all" | "transport" | "fuel") => mode === "fuel" ? "kind" : "kinds";
 
 function partitionMapPayload(payload: PlaceResponse, kinds: string[], publicFuel: boolean) {
@@ -398,15 +405,11 @@ function useTransportMap({ places, selectedPlace, onSelectPlace, mode = "all", d
   const clusterPlaces = overlap.scope === overlapScope ? overlap.places : [];
   const setClusterPlaces = (places: Place[]) => setOverlap({ scope: overlapScope, places });
   const perKindLimit = Math.min(300, Math.floor(900 / Math.max(1, kinds.length)));
-  const { loaded, knownSources, fuelRegions, fuelRegionZoom, serverClusters, serverClustered, serverTotal, loadedMapScope, pending, failed } = useTransportMapResults({
+  const { loaded, knownSources, fuelRegions, serverClusters, serverClustered, serverTotal, loadedMapScope, pending, failed } = useTransportMapResults({
     embedded, kindsKey, perKindLimit, viewport, zoom, reload, sourcesKey, searchQuery, productsKey, filterQuery, view, mode, isPublicFuel, load,
   });
-  // 공개 유가: 지역 이동(fitBounds)·확대처럼 카드 단위(시/도 ↔ 시군구 ↔ 상세)가 바뀌면 새 응답이 올 때까지 옛 단위의 카드를
-  // 그리지 않는다. 남겨 두면 새 화면 밖에 있는 옛 카드가 화면 가장자리로 밀려 몰린다. 관리 화면은 그대로다.
-  const staleRegionScope = isPublicFuel && fuelRegionZoom !== undefined
-    && publicFuelRegionBucket(mapViewport?.zoom ?? zoom) !== publicFuelRegionBucket(fuelRegionZoom);
   const regionMarkers = useFuelRegionCards({
-    fuelRegions: staleRegionScope ? NO_FUEL_REGIONS : fuelRegions, mapContainer, view, serverClustered, mapViewport, mapSize,
+    fuelRegions: currentFuelRegions(fuelRegions, isPublicFuel, mapViewport, zoom), mapContainer, view, serverClustered, mapViewport, mapSize,
     hideOffscreen: isPublicFuel,
   });
   const partialListKinds = truncatedListKinds(embedded, view, kinds, loaded);
@@ -585,9 +588,8 @@ function useTransportMapResults({
   const lastReload = useRef(reload);
   const mapFilterSignature = useRef("");
   const knownSourcesReady = useRef(false);
-  const [fuelRegions, setFuelRegions] = useState<FuelRegion[]>([]);
-  // fuelRegions를 받은 요청의 zoom(공개 유가가 카드 단위가 바뀌었는지 판단한다).
-  const [fuelRegionZoom, setFuelRegionZoom] = useState<number>();
+  // 지역 카드와 그것을 받은 요청의 zoom(공개 유가가 카드 단위가 바뀌었는지 판단한다).
+  const [fuelRegions, setFuelRegions] = useState<{ rows: FuelRegion[]; zoom?: number }>({ rows: [] });
 
   useEffect(() => {
     if (embedded) return;
@@ -609,8 +611,7 @@ function useTransportMapResults({
     const applyPayload = (payload: PlaceResponse) => {
       setLoaded(partitionMapPayload(payload, selectedKinds, isPublicFuel));
       if (isPublicFuel) setLoadedMapScope(fuelMapScope(viewport, zoom, filterQuery ? `${productsKey}|${filterQuery}` : productsKey));
-      setFuelRegions(payload.fuel_regions ?? []);
-      setFuelRegionZoom(zoom);
+      setFuelRegions({ rows: payload.fuel_regions ?? [], zoom });
       setServerClusters(payload.clusters ?? []);
       setServerClustered(payload.clustered ?? false);
       setServerTotal(payload.total);
@@ -670,7 +671,7 @@ function useTransportMapResults({
     return () => controller.abort();
   }, [embedded, kindsKey, perKindLimit, viewport, zoom, reload, sourcesKey, searchQuery, productsKey, filterQuery, view, mode, isPublicFuel, load]);
 
-  return { loaded, knownSources, fuelRegions, fuelRegionZoom, serverClusters, serverClustered, serverTotal, loadedMapScope, pending, failed };
+  return { loaded, knownSources, fuelRegions, serverClusters, serverClustered, serverTotal, loadedMapScope, pending, failed };
 }
 
 // 유가 지역 카드의 배치·넘침·접기 수명은 장소 조회와 겹친 장소 선택에서 분리한다.
@@ -710,7 +711,8 @@ function useFuelRegionCards({ fuelRegions, mapContainer, view, serverClustered, 
         host.style.setProperty("--region-offset-y", "0px");
         host.dataset.regionOverflow = "true";
       }
-      const cards = hosts.filter(host => !offscreen.includes(host)).flatMap(host => {
+      const hidden = new Set(offscreen);
+      const cards = hosts.filter(host => !hidden.has(host)).flatMap(host => {
         const label = host.querySelector<HTMLElement>(".fuel-region-label");
         // Marker hosts can outlive their portal children; the child-list observer retries attachment.
         if (!label) return [];
