@@ -39,12 +39,17 @@ async function shot(page: Page, name: string, testInfo: { outputPath: (name: str
   if (process.env.E2E_SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/${name}`, animations: "disabled" });
 }
 
+const centerRequests: boolean[] = [];
 test.beforeEach(async ({ page }) => {
+  centerRequests.length = 0;
   test.skip(process.env.E2E_PUBLIC_FUEL !== "true", "공개 유가(TRANSPORT_UI_MODE=fuel) 격리 UI 테스트");
   await page.route((url) => /^https?:$/.test(url.protocol) && !["127.0.0.1", "localhost"].includes(url.hostname), (route) => route.abort());
   await page.route("**/api/public/fuel/places?*", (route: Route) => {
     const url = new URL(route.request().url());
     expect(url.searchParams.get("include_viewport_sigungu")).toBe("true");
+    // 지도 중심 시군구도 묻는다(첫 이동 알림 전 기본 범위 요청은 제외). 이 격리 응답은 그 필드를 주지 않는 옛 API를 흉내 내
+    // 칩이 대체 경로(화면 1순위)를 쓴다. route 처리기 안의 expect는 요청을 멈추게 하므로 기록만 하고 테스트에서 확인한다.
+    centerRequests.push(url.searchParams.has("center_longitude") && url.searchParams.has("center_latitude"));
     const zoom = Number(url.searchParams.get("zoom"));
     return route.fulfill({ json: {
       items: zoom >= 10 ? [station] : [], total: zoom >= 10 ? 1 : 0, truncated: false, clustered: false, available_sources: [],
@@ -77,6 +82,7 @@ for (const width of [320, 390, 1440]) {
     await expect(chips.getByRole("button", { name: /더 보기/ })).toHaveCount(0);
     for (const other of ["보은군", "영동군", "금산군", "중구", "청주시"]) await expect(chips).not.toContainText(other);
     const chip = chips.getByRole("button", { name: /^충북 옥천군 휘발유 가격 통계 · 지도 안 29개 주유소$/ });
+    expect(centerRequests.some(Boolean)).toBe(true);
     expect((await chip.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     expect(await noHorizontalScroll(page)).toBe(true);
     await shot(page, `fuel-stats-chips-${width}.png`, testInfo);
@@ -184,6 +190,61 @@ test.describe("주유소 상세", () => {
       await dialog.getByRole("checkbox", { name: "전국 대비" }).check();
       expect(await noHorizontalScroll(page)).toBe(true);
       await shot(page, `fuel-stats-station-dialog-${width}.png`, testInfo);
+    });
+
+    // 맨 위 유종을 바꾸면 열린 주유소 상세를 닫는다(새 유종으로 다시 그리지 않는다): 지도 마커·가격 라벨·통계가 모두
+    // 새 유종 기준으로 다시 조회되고, 그 주유소가 새 유종을 팔지 않으면 마커째 사라지기 때문이다. 초점은 유종·필터에 남는다.
+    test(`${width}px 맨 위 유종을 바꾸면 열린 주유소 상세가 닫히고 초점은 유종·필터에 남는다`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: width < 1000 ? 844 : 900 });
+      await page.goto("/");
+      await page.getByRole("button", { name: "내 위치 주변 유가 보기" }).click();
+      const marker = page.getByRole("button", { name: /옥천시험주유소.*상세 보기/ });
+      await expect(marker).toBeVisible({ timeout: 20_000 });
+      await marker.click();
+      const detail = page.getByRole("complementary", { name: "선택 장소 상세" });
+      await expect(detail).toBeVisible();
+      await expect(detail.getByRole("region", { name: "주변 대비 가격" })).toBeVisible();
+      const trigger = summaryOf(page).getByRole("button", { name: /^유종·필터/ });
+      await trigger.click();
+      const menu = page.getByRole("dialog", { name: "유종·필터" });
+      const diesel = menu.getByRole("checkbox", { name: "경유", exact: true });
+      const reload = page.waitForRequest(request => request.url().includes("/api/public/fuel/places?")
+        && new URL(request.url()).searchParams.get("product_codes") === "D047");
+      await diesel.check();
+      await reload;
+      // 모달 팝오버가 바깥을 aria-hidden으로 가리므로 역할이 아니라 DOM으로 상세가 사라졌는지 본다.
+      const detailNode = page.locator(".transport-map-detail");
+      await expect(detailNode).toHaveCount(0);
+      // 상세가 사라져도 초점은 방금 누른 체크박스(팝오버 안)에 있다.
+      await expect(diesel).toBeFocused();
+      await shot(page, `fuel-ui4-product-change-closes-detail-${width}.png`, testInfo);
+      await page.keyboard.press("Escape");
+      await expect(menu).toHaveCount(0);
+      await expect(trigger).toBeFocused();
+      await expect(detailNode).toHaveCount(0);
+      await expect(detail).toHaveCount(0);
+      await expect(trigger).toHaveAccessibleName("유종·필터: 경유");
+      // 다시 열면 새 유종으로 열린다(같은 마커를 다시 누를 수 있다).
+      await marker.click();
+      await expect(detail).toBeVisible();
+      await expect(detail.getByRole("region", { name: "경유 가격 비교" })).toBeVisible();
+      // 초기화(유종 전체로)도 같은 규칙: 상세가 닫히고 초점은 팝오버의 닫기 버튼으로 간다.
+      await trigger.click();
+      await menu.getByRole("button", { name: "초기화" }).click();
+      await expect(detailNode).toHaveCount(0);
+      await expect(menu.getByRole("button", { name: "닫기" })).toBeFocused();
+      await menu.getByRole("button", { name: "닫기" }).click();
+      await expect(trigger).toBeFocused();
+      await expect(detailNode).toHaveCount(0);
+      // 주유소 조건(셀프 등)을 바꿔도 같은 규칙: 그 주유소가 지도에서 빠질 수 있어 상세를 닫는다.
+      await marker.click();
+      await expect(detailNode).toHaveCount(1);
+      await trigger.click();
+      await menu.getByRole("checkbox", { name: "'셀프주유' 만" }).check();
+      await expect(detailNode).toHaveCount(0);
+      await page.keyboard.press("Escape");
+      await expect(trigger).toBeFocused();
+      expect(await noHorizontalScroll(page)).toBe(true);
     });
   }
 });

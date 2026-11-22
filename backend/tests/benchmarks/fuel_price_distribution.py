@@ -19,7 +19,9 @@ from sqlalchemy import insert, text
 
 from app.db.session import create_engine_and_session_factory
 from app.models import FuelLatestPrice, FuelPriceSnapshot, FuelStation, TransportCollectionState
+from app.services import fuel_center_sigungu as center_module
 from app.services import fuel_price_distribution as distribution_module
+from app.services.fuel_center_sigungu import center_sigungu, nearest_statement
 from app.services.fuel_price_distribution import price_distribution, viewport_sigungu
 from app.services.fuel_statistics import OPINET, publish_fuel_statistics
 
@@ -96,6 +98,21 @@ async def main() -> None:
         await timed("viewport city", args.repeat, lambda: uncached((126.9, 37.4, 127.1, 37.6), ["B027"]))
         await timed("viewport national (cached)", args.repeat, lambda: viewport_sigungu(
             session, (124.0, 33.0, 132.0, 39.0), [], [], None))
+        # 지도 중심 시군구(가까운 주유소 근사). 매 호출 다른 중심·캐시 비움으로 실제 SQL 비용을 잰다.
+        rng = random.Random(7)
+
+        async def center(longitude, latitude):
+            center_module._cache.clear()
+            return await center_sigungu(session, longitude, latitude)
+        await timed("center land (random)", args.repeat, lambda: center(126.2 + rng.random() * 3.1, 34.2 + rng.random() * 3.6))
+        await timed("center sea (3 boxes, null)", args.repeat, lambda: center(124.5, 33.0))
+        await timed("center cached", args.repeat, lambda: center_sigungu(session, 127.0, 36.0))
+        # 실제 문장(바인드 값을 넣어 컴파일)의 계획. 첫 상자(반경 0.02°)와 마지막 상자(0.3°).
+        for radius in (0.02, 0.3):
+            compiled = nearest_statement(127.0, 36.0, radius).compile(
+                dialect=session.bind.dialect, compile_kwargs={"literal_binds": True})
+            plan = (await session.execute(text(f"EXPLAIN (ANALYZE, BUFFERS) {compiled}"))).scalars().all()
+            print(f"center plan r={radius}:", " | ".join(line.strip() for line in plan))
         body = await price_distribution(session, product_code="B027", sido_value=None, sigungu_value=None, station_id=4255)
         print("station sample:", body["sigungu"]["station_count"], body["station"]["comparisons"][0]["grade"])
     await engine.dispose()

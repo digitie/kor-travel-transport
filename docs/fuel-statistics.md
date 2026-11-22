@@ -46,8 +46,8 @@
   주유소와 칩이 어긋나지 않는다. 요청하지 않은 소비자(관리 지도)의 응답에는 두 필드가 없다.
   범위 요약은 이 목록 전체가 아니라 **지역 칩 하나**만 보인다(2026-11-22 소유자 지시 "지역 목록은 선택한 곳만"):
   지역 이동에서 고른 시군구가 있으면 그것(지도를 옮겨도 다른 곳을 고르거나 해제할 때까지 유지, 화면 밖이면 주유소 수 없이 이름만),
-  고르기 전에는 화면 안에서 주유소가 가장 많은 시군구 1곳(서버 목록 1순위). 지도 중심 판정은 응답에 좌표·경계가 없어
-  추가 API가 필요하므로 하지 않았다(정본 `lib/fuel-price-distribution.ts` `displayedRegion`).
+  고르기 전에는 **지도 중심 시군구**(아래 "지도 중심 시군구"), 중심을 정하지 못하면 화면 안에서 주유소가 가장 많은
+  시군구 1곳(서버 목록 1순위)(정본 `lib/fuel-price-distribution.ts` `displayedRegion`).
 - **분포 API**: `GET /v1/transport/fuel/price-distribution?product_code=B027&sido_value=..&sigungu_value=..`
   또는 `&station_id=..`(그 주유소의 시군구 사용). 공개 세대(`fuel_statistics_points`+`fuel_statistics_states`)만 읽는다.
   응답: 시군구 `station_count·minimum/average/maximum_price`, `histogram`(1·2·5×10^k원 폭, 약 10구간, [start,end)),
@@ -69,6 +69,29 @@
   27/33ms, 화면 안 시군구 — 도시 화면 5/7ms, 전국 화면 65/90ms(같은 세대·같은 화면 10초 재사용 시 0.5ms). 전국 화면 목록은 처음
   가격 행 전체를 주유소와 조인해 182ms였고, 화면 안 주유소 id를 먼저 한 번씩 뽑는 형태로 바꿔 줄였다. 이 정도면 새 사전집계 테이블과
   갱신 배선의 정합성 비용이 이득보다 크다. 응답의 모든 SELECT는 처음 읽은 공개 세대(`generated_at`)에 고정해 발행과 겹쳐도 세대가 섞이지 않는다.
+
+## 지도 중심 시군구 (공개 유가 화면 전용, 2026-11-22)
+
+- 소유자 지시: 지역 칩의 기본값은 "화면에서 주유소가 가장 많은 시군구"가 아니라 **지도 중심의 시군구**.
+- **API(추가 전용)**: places에 `center_longitude`·`center_latitude`(둘 다 주거나 둘 다 생략, 하나만이면 422)를 주면
+  `fuel_center_sigungu: {sido_value, sido_name, sigungu_value, sigungu_name, method:"nearest_station", distance_m} | null`을 더한다.
+  주지 않은 소비자(관리 지도 등)의 응답에는 필드가 없다(바이트 불변, `test_fuel_center_sigungu.py`). 공개 gateway·BFF는
+  places query를 그대로 넘기므로 **새 공개 경로·gateway 변경 없음**. migration 없음.
+- **판정 = 근사**: 저장소에 시군구 경계가 없고, 주소 provider(VWorld·Kakao, `fuel_search_location`)는 외부 호출이라 지도를 옮길 때마다
+  부르는 공개 경로에 쓰지 않는다. 그래서 **중심에서 가장 가까운 오피넷 주유소의 시군구**를 쓴다(모집단 = "지역 이동" 목록과 같은
+  오피넷 주유소, 유종·필터와 무관). 시군구 경계 근처에서는 이웃 시군구가 나올 수 있다. 반경 약 33 km 안에 주유소가 없으면(바다)
+  `null`이고 화면은 예전 규칙(주유소가 가장 많은 시군구)으로 되돌아간다. 옛 API(필드 없음)도 같은 대체 경로라 배포 순서에 안전하다.
+- **검색**: 공간 인덱스(PostGIS·KNN)가 없어 `ix_fuel_stations_map_coordinates`(longitude, latitude) B-tree로 중심 주변 상자
+  (위도 반경 0.02° → 0.08° → 0.3°, 경도 폭은 ÷cos 위도)를 읽고 평면 거리순 1곳을 고른다. 상자에 내접한 원 안의 결과만 받아
+  "상자 밖이 더 가깝다"를 배제한다(정본 `backend/app/services/fuel_center_sigungu.py`). 같은 10 m 격자 중심은 60초 재사용.
+- **화면**: 중심은 조회 범위(정밀도 격자로 바깥 반올림한 범위)의 가운데라 실제 중심과 반 칸 이내이고, 범위에서만 나오므로
+  요청 수·응답 캐시 키가 늘지 않는다. 지도가 첫 이동을 알리기 전 기본 범위(124~132, 32~39)는 카메라 중심과 대칭이 아니라
+  묻지 않는다. 칩 그룹 이름은 근거를 알린다: "지도 중심 지역 가격 통계" / 대체 경로 "지도 대표 지역 가격 통계" / 고른 곳 "선택한 지역 가격 통계".
+- **측정(n150, PostgreSQL 18 tmpfs, 합성 오피넷 11,500곳, 30회, 매 호출 캐시 비움)**:
+무작위 육지 중심 median 1.3 ms · p95 2.6 ms · max 3.7 ms, 바다(상자 3개 모두 비어 null) median 3.5 ms · p95 3.6 ms,
+  같은 격자 재요청(캐시) 0.0 ms. 계획은 두 상자 모두 `Bitmap Index Scan on ix_fuel_stations_map_coordinates`
+  (반경 0.02° 실행 0.23 ms·버퍼 5, 0.3° 실행 1.18 ms·후보 374행 top-N). 같은 실행의 기존 경로 비교: 화면 안 시군구(전국) median 63.6 ms,
+  시군구 분포 16.2 ms — 중심 판정은 places 응답 시간에 한 자릿수 ms만 더한다. (`tests/benchmarks/fuel_price_distribution.py`)
 
 ## 지역 이동·주유소 필터 (공개 유가 화면 전용, 2026-11-22)
 

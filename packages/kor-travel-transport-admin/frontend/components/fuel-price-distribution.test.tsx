@@ -43,7 +43,7 @@ const settle = () => act(async () => { for (let i = 0; i < 5; i++) await Promise
 const button = (name: string) => [...document.querySelectorAll("button")].find(node => (node.getAttribute("aria-label") ?? node.textContent ?? "").includes(name))!;
 const checkbox = (name: string) => [...document.querySelectorAll("label")].find(node => node.textContent?.includes(name))!.querySelector("input")!;
 
-const okcheon = { sido_value: "15", sigungu_value: "1500", label: "옥천군", station_count: 29, selected: false };
+const okcheon = { sido_value: "15", sigungu_value: "1500", label: "옥천군", station_count: 29, selected: false, basis: "viewport" as const };
 
 test("지역 칩은 하나만 보이고, 누르면 그 시군구 통계 대화상자를 연다", async () => {
   const load = vi.fn().mockResolvedValue(sampleDistribution);
@@ -78,12 +78,22 @@ test("지역 칩은 하나만 보이고, 누르면 그 시군구 통계 대화�
   expect(load).toHaveBeenLastCalledWith("transport/fuel/price-distribution?product_code=D047&sido_value=15&sigungu_value=1500", expect.anything());
 });
 
+test("지도 중심 시군구 칩은 그룹 이름으로 근거를 알리고 해제 버튼이 없다", async () => {
+  const load = vi.fn().mockResolvedValue(sampleDistribution);
+  const container = await mount(<FuelRegionStats region={{ ...okcheon, basis: "center", station_count: null }} product="B027" load={load} onClear={vi.fn()} />);
+  expect(container.querySelector('[role="group"]')?.getAttribute("aria-label")).toBe("지도 중심 지역 가격 통계");
+  expect(container.querySelector(".fuel-sigungu-clear")).toBeNull();
+  // 화면 안 상위 목록에 없는 중심 시군구는 주유소 수 없이 이름만.
+  expect(button("옥천군 휘발유 가격 통계").getAttribute("aria-label")).toBe("옥천군 휘발유 가격 통계");
+  expect(container.querySelector(".fuel-sigungu-chip small")).toBeNull();
+});
+
 test("고른 지역은 칩 하나와 해제 버튼, 화면 밖이면 주유소 수 없이 이름만, 해제하면 초점을 남는 칩으로", async () => {
   const load = vi.fn().mockResolvedValue(sampleDistribution);
   const onClear = vi.fn();
   const fallback = { current: document.createElement("button") };
   document.body.append(fallback.current);
-  const selected = { sido_value: "26", sigungu_value: "2601", label: "부산 중구", station_count: null, selected: true };
+  const selected = { sido_value: "26", sigungu_value: "2601", label: "부산 중구", station_count: null, selected: true, basis: "selected" as const };
   const container = await mount(<FuelRegionStats region={selected} product="D047" load={load} onClear={onClear} focusFallback={fallback} />);
   expect(container.querySelector('[role="group"]')?.getAttribute("aria-label")).toBe("선택한 지역 가격 통계");
   expect(container.querySelectorAll(".fuel-sigungu-chip:not(.fuel-sigungu-clear)")).toHaveLength(1);

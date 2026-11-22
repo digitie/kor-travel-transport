@@ -57,6 +57,7 @@ from app.ferry_reference_routes import build_ferry_reference_router
 from app.highway_map_routes import build_highway_map_router
 from app.services.fuel_price_history import build_fuel_price_history_router
 from app.services.fuel_price_distribution import build_fuel_price_distribution_router, viewport_sigungu
+from app.services.fuel_center_sigungu import center_sigungu
 from app.services.fuel_area_catalog import build_fuel_area_catalog_router
 from app.services.fuel_station_filters import FuelStationFilters, fuel_station_filter_params, resolve_price_ceiling
 from app.services.fuel_manual_refresh import build_fuel_manual_refresh_router
@@ -1360,6 +1361,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         include_fuel_statistics: bool = Query(default=False, description="현재 지도 범위 전체의 유종별 통계 포함"),
         include_viewport_sigungu: bool = Query(default=False, description="현재 지도 범위 안 주유소의 시군구 목록 포함(공개 유가 화면 전용, 추가 필드)"),
         include_unlocated: bool = Query(default=False, description="좌표 없는 기준정보도 검색 목록에 포함"),
+        center_longitude: float | None = Query(default=None, ge=-180, le=180, description="지도 중심 경도. center_latitude와 함께 주면 fuel_center_sigungu 포함(공개 유가 화면 전용, 추가 필드)"),
+        center_latitude: float | None = Query(default=None, ge=-90, le=90, description="지도 중심 위도. center_longitude와 함께 지정"),
         source: str | None = Query(default=None, max_length=80),
         sources: str | None = Query(default=None, max_length=809, description="쉼표로 구분한 출처 최대 10개. source와 동시 지정 불가"),
         query: str | None = Query(default=None, max_length=100),
@@ -1399,6 +1402,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail="지도 범위의 최소 좌표는 최대 좌표보다 작아야 합니다.")
         if zoom is not None and min_longitude is None:
             raise HTTPException(status_code=422, detail="축척별 지도 조회에는 지도 범위가 필요합니다.")
+        if (center_longitude is None) != (center_latitude is None):
+            raise HTTPException(status_code=422, detail="지도 중심은 경도와 위도를 함께 지정해야 합니다.")
+        include_center = center_longitude is not None
         requested_kinds = tuple(sorted(selected_kinds)) if selected_kinds else (selected_kind,) if selected_kind else tuple(sorted(supported))
         if station_filters.active and requested_kinds != ("fuel_station",):
             raise HTTPException(status_code=422, detail="주유소 필터는 주유소만 조회할 때 사용할 수 있습니다.")
@@ -1410,7 +1416,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         read_at = now_utc()
         page_key = page_boundary = None
         # 통계/클러스터는 각자의 기존 신선도 경로를 유지한다.
-        if not include_fuel_statistics and not include_viewport_sigungu and (zoom is None or zoom >= detail_zoom):
+        if not include_fuel_statistics and not include_viewport_sigungu and not include_center and (zoom is None or zoom >= detail_zoom):
             proof = await place_map_cache.snapshot(
                 session, read_at, resolved_settings.release_sha, "highway_incident" in requested_kinds,
                 fuel="fuel_station" in requested_kinds,
@@ -1436,6 +1442,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             visible_sigungu, visible_sigungu_total = await viewport_sigungu(
                 session, bounds, selected_sources, selected_products, query, filters=station_filters)
             sigungu_fields = {"fuel_viewport_sigungu": visible_sigungu, "fuel_viewport_sigungu_total": visible_sigungu_total}
+        # 지도 중심 시군구(가까운 주유소 근사)도 요청한 공개 유가 화면에만 싣는다.
+        if not include_center or "fuel_station" not in requested_kinds:
+            sigungu_exclude.add("fuel_center_sigungu")
+        else:
+            sigungu_fields["fuel_center_sigungu"] = await center_sigungu(session, center_longitude, center_latitude)
         # 전체 지도는 한 종류가 limit을 모두 소모하지 않도록 균등하게 읽는다. 프런트가
         # 수천 개의 DOM marker를 만들지 않게 하는 API 경계이기도 하다.
         per_kind_limit = (limit + len(requested_kinds) - 1) // len(requested_kinds)

@@ -1,3 +1,11 @@
+## 현재 상태 — 2026-11-22 공개 유가 지역 칩 = 지도 중심 시군구(PR4)
+
+- PR243~245 머지 뒤 소유자 후속: 지역 칩 기본값을 지도 중심 시군구(가장 가까운 오피넷 주유소 근사, places opt-in
+  `center_longitude/center_latitude` → `fuel_center_sigungu`)로, 유종·필터를 바꾸면 열린 주유소 상세를 닫는다.
+  backend 추가 전용(migration·새 공개 경로·gateway 변경 없음), transport-admin 불변.
+- 배포(Codex 담당): backend API → fuel-web. gateway는 PR244 템플릿이면 충분(이번 변경 없음). 옛 API에서도 fuel-web은 대체 경로로 동작.
+- 다음 한 작업: Codex 배포 뒤 실제 fuel 화면 320/390/1440에서 지도를 옮기며 칩이 중심 시군구를 따르는지 확인한다.
+
 ## 현재 상태 — 2026-11-22 공개 유가 맨 위 유종·필터 한 곳(PR3)
 
 - PR243·PR244 머지 뒤 소유자 후속 요청: 필터 버튼·서랍 제거 → 맨 위 유종·필터 팝오버 하나, "지도 범위" 글씨 제거, 지역 버튼은

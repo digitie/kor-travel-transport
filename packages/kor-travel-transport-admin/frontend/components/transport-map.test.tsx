@@ -198,6 +198,10 @@ test("지역은 유종 선택과 무관하게 함께 읽고 확대된 주유소�
     expect(lastUrl().searchParams.get("product_codes")).toBe("D047");
     expect(lastUrl().searchParams.get("kind")).toBe("fuel_station");
     expect(lastUrl().searchParams.has("kinds")).toBe(false);
+    // 관리 유가 지도는 공개 화면 전용 시군구 목록·지도 중심 시군구를 묻지 않는다(응답 바이트 불변).
+    for (const url of vi.mocked(fetch).mock.calls.map(([value]) => new URL(String(value), "http://test"))) {
+      for (const key of ["include_viewport_sigungu", "center_longitude", "center_latitude"]) expect(url.searchParams.has(key)).toBe(false);
+    }
   } finally {await act(async()=>root.unmount());container.remove();}
 });
 
@@ -397,6 +401,20 @@ test("공개 지도는 모든 축척에서 유종을 요청에 반영하고 단�
     await act(async () => root.render(<TransportMap mode="fuel" mapOnly publicFuel={{ products: ["C004"], onProductsChange: vi.fn() }} />));
     expect(host.querySelector('[data-slot="map-filter-trigger"]')).toBeNull();
     expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes("product_codes=C004"))).toBe(true);
+    // 첫 이동 알림 전의 기본 범위는 실제 중심과 대칭이 아니라 중심을 묻지 않는다.
+    const placesUrls = () => vi.mocked(fetch).mock.calls.map(([url]) => new URL(String(url), "http://test")).filter(url => url.pathname.includes("places"));
+    expect(placesUrls()[0].searchParams.has("center_longitude")).toBe(false);
+    // 지도가 범위를 알리면 지도 중심 시군구를 조회 범위(양자화된 범위)의 가운데로 묻는다.
+    Object.assign(mapState, { zoom: 9.2 });
+    await act(async () => [...host.querySelectorAll("button")].find(button => button.textContent === "지도 이동 모의")!.click());
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 450)); });
+    const placesUrl = placesUrls().at(-1)!;
+    expect(placesUrl.searchParams.get("min_longitude")).toBe("124.00");
+    expect(placesUrl.searchParams.get("center_longitude")).toBe("128.00000");
+    expect(placesUrl.searchParams.get("center_latitude")).toBe("35.50000");
+    const middle = (low: string, high: string) => (Number(placesUrl.searchParams.get(low)) + Number(placesUrl.searchParams.get(high))) / 2;
+    expect(Number(placesUrl.searchParams.get("center_longitude"))).toBeCloseTo(middle("min_longitude", "max_longitude"), 4);
+    expect(Number(placesUrl.searchParams.get("center_latitude"))).toBeCloseTo(middle("min_latitude", "max_latitude"), 4);
     const marker = host.querySelector("button.fuel-region-marker");
     expect(marker?.textContent).toContain("1,300");
     expect(marker?.textContent).not.toContain("등유");
