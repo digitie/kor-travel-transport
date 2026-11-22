@@ -55,11 +55,20 @@ export function isBrandChecked(filters: PublicFuelFilters, key: string) {
   return !filters.brands.length || filters.brands.includes(key);
 }
 
-/** 상표 하나를 켜고 끈다. 모두 켜지면 빈 배열(전체)로, 모두 꺼지는 것은 막는다(빈 결과 대신 마지막 하나를 유지). */
-export function toggleBrand(filters: PublicFuelFilters, key: string, checked: boolean): PublicFuelFilters {
+/** 지금 유종에 실제로 적용되는(서버에 보내는) 상표. 빈 배열은 상표 조건 없음(전체)이다. */
+export function sentBrands(filters: PublicFuelFilters, products: string[] = []) {
+  return filters.brands.filter(key => {
+    const brand = BRAND_FILTERS.find(item => item.key === key);
+    return brand ? brandRelevant(brand, products) : false;
+  });
+}
+
+/** 상표 하나를 켜고 끈다. 모두 켜지면 빈 배열(전체)로. 지금 유종에 적용되는 상표가 하나도 남지 않게 끄는 것은 막는다
+ * (그러면 상표 조건이 사라져 오히려 전체가 보이므로). */
+export function toggleBrand(filters: PublicFuelFilters, key: string, checked: boolean, products: string[] = []): PublicFuelFilters {
   const current = new Set(filters.brands.length ? filters.brands : ALL_BRAND_KEYS);
   if (checked) current.add(key); else current.delete(key);
-  if (!current.size) return filters;
+  if (!BRAND_FILTERS.some(brand => current.has(brand.key) && brandRelevant(brand, products))) return filters;
   const brands = ALL_BRAND_KEYS.filter(value => current.has(value));
   return { ...filters, brands: brands.length === ALL_BRAND_KEYS.length ? [] : brands };
 }
@@ -67,18 +76,16 @@ export function toggleBrand(filters: PublicFuelFilters, key: string, checked: bo
 /** 실제로 서버에 보내는 필터 수. 지도 최저가는 유종 하나일 때만 센다(그 밖에는 보내지 않는다). */
 export function activeFilterCount(filters: PublicFuelFilters, products?: string[]) {
   const near = filters.near_min != null && (products === undefined || products.length === 1);
-  return FLAG_FILTERS.filter(flag => filters[flag.key]).length + (filters.brands.length ? 1 : 0) + (near ? 1 : 0);
+  const brands = products === undefined ? filters.brands.length > 0 : sentBrands(filters, products).length > 0;
+  return FLAG_FILTERS.filter(flag => filters[flag.key]).length + (brands ? 1 : 0) + (near ? 1 : 0);
 }
 
 /** 서버 query. near_min은 유종 하나일 때만 보낸다(서버는 그 밖을 422로 거절한다). */
 export function publicFuelFilterQuery(filters: PublicFuelFilters, products: string[]) {
   const search = new URLSearchParams();
-  // 고른 유종과 무관한 상표(LPG 전용 상표를 휘발유에서)는 보내지 않는다. 남는 상표가 없으면 상표 조건을 두지 않는다.
-  const brands = filters.brands.filter(key => {
-    const brand = BRAND_FILTERS.find(item => item.key === key);
-    return brand ? brandRelevant(brand, products) : false;
-  });
-  if (filters.brands.length && brands.length) search.set("brands", brands.join(","));
+  // 고른 유종과 무관한 상표(LPG 전용 상표를 휘발유에서)는 보내지 않는다.
+  const brands = sentBrands(filters, products);
+  if (brands.length) search.set("brands", brands.join(","));
   for (const flag of FLAG_FILTERS) if (filters[flag.key]) search.set(flag.key, "true");
   if (filters.near_min != null && products.length === 1) search.set("near_min", String(filters.near_min));
   return search.toString();

@@ -143,7 +143,7 @@ function FuelFilterForm({ filters, onFiltersChange, products, onProductsChange }
     <div className="fuel-filter-section">
       <label className="fuel-filter-row" htmlFor={nearId}>
         <span>지도 최저가</span>
-        <select id={nearId} value={filters.near_min ?? ""} disabled={products.length !== 1}
+        <select id={nearId} value={products.length === 1 ? filters.near_min ?? "" : ""} disabled={products.length !== 1}
           onChange={event => onFiltersChange({ ...filters, near_min: event.target.value ? Number(event.target.value) : null })}>
           <option value="">전체</option>
           {NEAR_MIN_STEPS.map(step => <option key={step} value={step}>~{step}원</option>)}
@@ -160,14 +160,14 @@ function FuelFilterForm({ filters, onFiltersChange, products, onProductsChange }
       </label>)}
     </fieldset>
     <fieldset className="fuel-filter-section">
-      <legend>상표</legend>
+      <legend>브랜드</legend>
       {BRAND_FILTERS.map(brand => {
         const relevant = brandRelevant(brand, products);
         return <label key={brand.key} className="fuel-filter-row fuel-filter-brand" data-disabled={!relevant || undefined}>
           <span aria-hidden="true" className="fuel-filter-brand-mark"><FuelBrandIcon code={brand.icon === "ETC" ? null : brand.icon} name={brand.label} className="fuel-filter-brand-icon" /></span>
           <span>{brand.label}{!relevant ? <small> · 이 유종 없음(적용 안 함)</small> : null}</span>
           <input type="checkbox" checked={isBrandChecked(filters, brand.key)} disabled={!relevant}
-            onChange={event => onFiltersChange(toggleBrand(filters, brand.key, event.target.checked))} />
+            onChange={event => onFiltersChange(toggleBrand(filters, brand.key, event.target.checked, products))} />
         </label>;
       })}
       <label className="fuel-filter-row">
@@ -175,7 +175,7 @@ function FuelFilterForm({ filters, onFiltersChange, products, onProductsChange }
         <input type="checkbox" checked={allBrands} disabled={allBrands} onChange={() => onFiltersChange({ ...filters, brands: [] })} />
       </label>
     </fieldset>
-    <Button type="button" variant="outline" className="fuel-filter-reset" disabled={!activeFilterCount(filters)}
+    <Button type="button" variant="outline" className="fuel-filter-reset" disabled={!activeFilterCount(filters) && !filters.brands.length}
       onClick={() => onFiltersChange(DEFAULT_PUBLIC_FUEL_FILTERS)}>필터 초기화</Button>
   </div>;
 }

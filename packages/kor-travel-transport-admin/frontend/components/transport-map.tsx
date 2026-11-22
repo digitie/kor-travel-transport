@@ -160,7 +160,9 @@ function publicFuelActions({
 }) {
   if (!controls) return {};
   const { products, refreshEnabled } = controls;
-  const refreshViewport = refreshEnabled && bounds ? () => {
+  // 필터를 켠 화면의 일괄 업데이트는 서버가 필터 없이 화면 안 전체 주유소 수로 판단해 거절할 수 있어 제공하지 않는다
+  // (주유소 상세의 개별 업데이트는 그대로).
+  const refreshViewport = refreshEnabled && bounds && !controls.filterQuery ? () => {
     void refreshPrices({ viewport: { ...bounds, product_codes: products } });
   } : undefined;
   const refreshStation = refreshEnabled && current?.kind === "fuel_station" ? () => {
