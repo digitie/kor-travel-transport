@@ -103,6 +103,12 @@ def _rescanned_station_scans(plan: dict) -> list[str]:
     return found
 
 
+def _pkey_skip_scans(plan: dict) -> list[str]:
+    """세대 point를 기본키(source, station_key, …)로 훑는 곳. station_key 조건 없이 고르면 PG18 skip scan이다(운영 9.2초)."""
+    return [f"{node['Node Type']} {node.get('Index Name')} {node.get('Index Cond')}" for node in _nodes(plan)
+            if node.get("Index Name") == "fuel_statistics_points_pkey" and "station_key" not in str(node.get("Index Cond", ""))]
+
+
 def _text_join(plan: dict) -> list[str]:
     return [str(node.get(key)) for node in _nodes(plan) for key in ("Join Filter", "Hash Cond", "Merge Cond", "Index Cond")
             if "character varying" in str(node.get(key, "")) and "id" in str(node.get(key, ""))]
@@ -160,12 +166,19 @@ def test_filtered_public_statements_use_station_primary_key_under_stale_statisti
                 "viewport_sigungu": viewport_sigungu_statement(current, BOUNDS, ["B027", "D047"], None, 40, None),
                 "distribution price index": _published_points(current, "B027", FILTERS).with_only_columns(
                     FuelStation.sido_value, FuelStation.sigungu_value, FuelStatisticsPoint.price),
+                # 범위 통계 후보 CTE(fuel_statistics.viewport_fuel_statistics)와 같은 모양: state 조인 + 화면 + 유종 + 필터.
+                "viewport statistics candidates": published_points_with_station().with_only_columns(
+                    FuelStatisticsPoint.product_code, FuelStatisticsPoint.price).where(
+                    FuelStatisticsPoint.longitude.between(BOUNDS[0], BOUNDS[2]),
+                    FuelStatisticsPoint.latitude.between(BOUNDS[1], BOUNDS[3]),
+                    FuelStatisticsPoint.product_code.in_(["B027", "D047"]), *FILTERS.station_conditions()),
                 "regional filtered": published_points_with_station().with_only_columns(
                     FuelStation.sido_value, func.count()).where(*FILTERS.station_conditions()).group_by(FuelStation.sido_value),
             }
             for name, statement in statements.items():
                 plan = await _plan(session, statement)
                 assert not _rescanned_station_scans(plan), (name, json.dumps(plan)[:2000])
+                assert not _pkey_skip_scans(plan), (name, _pkey_skip_scans(plan))
                 assert not _text_join(plan), (name, _text_join(plan))
     asyncio.run(check())
 

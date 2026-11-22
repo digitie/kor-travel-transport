@@ -12,7 +12,7 @@ from sqlalchemy.pool import NullPool
 from app.models import Base
 from app.core.read_timing import observe_engine
 
-ALEMBIC_HEAD = "0046_fuel_manual_refresh"
+ALEMBIC_HEAD = "0047_fuel_points_generation_product"
 
 #: 수집 엔진의 문장 상한(초). 이미 쓰던 asyncpg `command_timeout`(클라이언트 측)과 같은 값을 서버
 #: `statement_timeout`에도 둔다. 서버 측 실행 시간은 클라이언트 왕복보다 길 수 없으므로 지금 통과하는
