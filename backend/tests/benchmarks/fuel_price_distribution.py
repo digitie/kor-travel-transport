@@ -21,7 +21,7 @@ from app.db.session import create_engine_and_session_factory
 from app.models import FuelLatestPrice, FuelPriceSnapshot, FuelStation, TransportCollectionState
 from app.services import fuel_center_sigungu as center_module
 from app.services import fuel_price_distribution as distribution_module
-from app.services.fuel_center_sigungu import center_sigungu
+from app.services.fuel_center_sigungu import center_sigungu, nearest_statement
 from app.services.fuel_price_distribution import price_distribution, viewport_sigungu
 from app.services.fuel_statistics import OPINET, publish_fuel_statistics
 
@@ -107,12 +107,12 @@ async def main() -> None:
         await timed("center land (random)", args.repeat, lambda: center(126.2 + rng.random() * 3.1, 34.2 + rng.random() * 3.6))
         await timed("center sea (3 boxes, null)", args.repeat, lambda: center(124.5, 33.0))
         await timed("center cached", args.repeat, lambda: center_sigungu(session, 127.0, 36.0))
-        plan = (await session.execute(text(
-            "EXPLAIN (ANALYZE, BUFFERS) SELECT sido_value, sigungu_value FROM fuel_stations WHERE source = 'opinet_browser' "
-            "AND sido_value <> '' AND sigungu_value <> '' AND longitude BETWEEN 126.97 AND 127.03 "
-            "AND latitude BETWEEN 37.48 AND 37.52 ORDER BY (longitude - 127.0) * (longitude - 127.0) "
-            "+ (latitude - 37.5) * (latitude - 37.5) LIMIT 1"))).scalars().all()
-        print("center plan:", " | ".join(line.strip() for line in plan))
+        # 실제 문장(바인드 값을 넣어 컴파일)의 계획. 첫 상자(반경 0.02°)와 마지막 상자(0.3°).
+        for radius in (0.02, 0.3):
+            compiled = nearest_statement(127.0, 36.0, radius).compile(
+                dialect=session.bind.dialect, compile_kwargs={"literal_binds": True})
+            plan = (await session.execute(text(f"EXPLAIN (ANALYZE, BUFFERS) {compiled}"))).scalars().all()
+            print(f"center plan r={radius}:", " | ".join(line.strip() for line in plan))
         body = await price_distribution(session, product_code="B027", sido_value=None, sigungu_value=None, station_id=4255)
         print("station sample:", body["sigungu"]["station_count"], body["station"]["comparisons"][0]["grade"])
     await engine.dispose()

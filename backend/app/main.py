@@ -1443,9 +1443,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 session, bounds, selected_sources, selected_products, query, filters=station_filters)
             sigungu_fields = {"fuel_viewport_sigungu": visible_sigungu, "fuel_viewport_sigungu_total": visible_sigungu_total}
         # 지도 중심 시군구(가까운 주유소 근사)도 요청한 공개 유가 화면에만 싣는다.
-        if not include_center:
+        if not include_center or "fuel_station" not in requested_kinds:
             sigungu_exclude.add("fuel_center_sigungu")
-        elif "fuel_station" in requested_kinds:
+        else:
             sigungu_fields["fuel_center_sigungu"] = await center_sigungu(session, center_longitude, center_latitude)
         # 전체 지도는 한 종류가 limit을 모두 소모하지 않도록 균등하게 읽는다. 프런트가
         # 수천 개의 DOM marker를 만들지 않게 하는 API 경계이기도 하다.

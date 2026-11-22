@@ -47,22 +47,31 @@ async def center_sigungu(session: AsyncSession, longitude: float, latitude: floa
     return result
 
 
-async def _nearest(session: AsyncSession, longitude: float, latitude: float) -> dict | None:
+def nearest_statement(longitude: float, latitude: float, radius: float):
+    """반경 radius(위도 도) 상자 안에서 거리순 1곳. 벤치마크의 EXPLAIN도 이 문장을 그대로 쓴다."""
     s = FuelStation
     # 경도 1도의 길이는 위도에 따라 줄어든다. 위도 단위로 맞춘 평면 거리(한 시군구 규모에서 충분)를 쓴다.
-    scale = max(math.cos(math.radians(latitude)), 0.2)
+    scale = _scale(latitude)
     dx = (s.longitude - longitude) * scale
     dy = s.latitude - latitude
     distance2 = (dx * dx + dy * dy).label("distance2")
+    half_width = radius / scale
+    return select(
+        s.sido_value, s.sido_name, s.sigungu_value, s.sigungu_name, distance2,
+    ).where(
+        s.source == OPINET, s.sido_value != "", s.sigungu_value != "",
+        s.longitude.between(max(124.0, longitude - half_width), min(132.0, longitude + half_width)),
+        s.latitude.between(max(32.0, latitude - radius), min(39.5, latitude + radius)),
+    ).order_by(distance2, s.id).limit(1)
+
+
+def _scale(latitude: float) -> float:
+    return max(math.cos(math.radians(latitude)), 0.2)
+
+
+async def _nearest(session: AsyncSession, longitude: float, latitude: float) -> dict | None:
     for radius in SEARCH_RADII:
-        half_width = radius / scale
-        row = (await session.execute(select(
-            s.sido_value, s.sido_name, s.sigungu_value, s.sigungu_name, distance2,
-        ).where(
-            s.source == OPINET, s.sido_value != "", s.sigungu_value != "",
-            s.longitude.between(max(124.0, longitude - half_width), min(132.0, longitude + half_width)),
-            s.latitude.between(max(32.0, latitude - radius), min(39.5, latitude + radius)),
-        ).order_by(distance2, s.id).limit(1))).first()
+        row = (await session.execute(nearest_statement(longitude, latitude, radius))).first()
         if row is None:
             continue
         distance = math.sqrt(float(row.distance2))
