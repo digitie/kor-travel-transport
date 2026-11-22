@@ -55,7 +55,7 @@ server {
         proxy_pass http://127.0.0.1:12302/v1/transport/features/places?$args&kind=fuel_station;
     }
 
-    location ~ ^/v1/transport/fuel/(stations|statistics|price-distribution|stations/[1-9][0-9]*/price-history)$ {
+    location ~ ^/v1/transport/fuel/(stations|statistics|price-distribution|area-catalog|stations/[1-9][0-9]*/price-history)$ {
         if ($fuel_preflight = 2) { return 403; }
         if ($fuel_preflight = 1) { return 204; }
         proxy_pass http://127.0.0.1:12302;

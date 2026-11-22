@@ -4,13 +4,13 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({ props: {} as Record<string, unknown>, get: vi.fn() }));
 vi.mock("./transport-map", () => ({ TransportMap: (props: Record<string, unknown>) => { state.props = props; return <div data-map="fuel" />; } }));
-vi.mock("@/components/map-overlays", () => ({ CameraRequest: () => null, UserLocationMarker: () => null }));
+vi.mock("@/components/map-overlays", () => ({ CameraRequest: () => null, FitBoundsRequest: () => null, UserLocationMarker: () => null }));
 vi.mock("@/lib/public-fuel", () => ({ publicFuelGet: state.get }));
 import { PublicFuelMap } from "./public-fuel-map";
 let root: Root, host: HTMLDivElement;
 beforeEach(() => { vi.useFakeTimers(); vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); host = document.createElement("div"); document.body.append(host); root = createRoot(host); state.get.mockReset(); });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); localStorage.removeItem("transport.public-fuel.products"); vi.useRealTimers(); vi.unstubAllGlobals(); });
-// layers = <><CameraRequest target /><UserLocationMarker position /></>
+// layers = <><CameraRequest target /><UserLocationMarker position /><FitBoundsRequest target /></>
 const layerProps = () => (state.props.layers as ReactElement<{ children: ReactElement<{ target?: unknown; position?: unknown }>[] }>).props.children.map(child => child.props);
 const cameraTarget = () => layerProps()[0].target;
 const userPosition = () => layerProps()[1].position;

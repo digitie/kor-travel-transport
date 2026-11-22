@@ -6,6 +6,7 @@ import logging
 import math
 import time
 from collections import OrderedDict
+from typing import TYPE_CHECKING
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -18,6 +19,9 @@ from app.models import (
     FuelStatisticsState, FuelRegionSummary, RestAreaFuelPrice, TransportCollectionState,
 )
 from app.services.flight_status import sanitize_upstream_error
+
+if TYPE_CHECKING:
+    from app.services.fuel_station_filters import FuelStationFilters
 
 OPINET = "opinet_browser"
 HIGHWAY = "krex_rest_area_fuel"
@@ -399,12 +403,14 @@ def with_publication_status(items: list[dict], last_success_at: datetime | None)
 
 
 async def viewport_fuel_statistics(session: AsyncSession, bounds: tuple[float, float, float, float],
-                                   sources: list[str], products: list[str], query: str | None) -> list[dict]:
+                                   sources: list[str], products: list[str], query: str | None,
+                                   filters: "FuelStationFilters | None" = None) -> list[dict]:
     """현재 화면 전체를 한 SQL로 집계한다. marker limit/cluster/원본 이력과 무관하다."""
     state = await session.get(FuelStatisticsState, OPINET)
     if state is None or (sources and OPINET not in sources):
         return []
-    key = (session.bind, serialize_utc(state.generated_at), bounds, tuple(sorted(products)), (query or "").strip())
+    key = (session.bind, serialize_utc(state.generated_at), bounds, tuple(sorted(products)), (query or "").strip(),
+           filters.key() if filters is not None else ())
     cached = _viewport_cache.get(key)
     if cached and cached[0] > time.monotonic():
         _viewport_cache.move_to_end(key)
@@ -420,7 +426,12 @@ async def viewport_fuel_statistics(session: AsyncSession, bounds: tuple[float, f
     # 가격·코드만 물질화해 큰 문자열 정렬과 전체 행 row_number를 피한다.
     candidates = select(p.product_code, p.price, p.station_key).join(FuelStatisticsState, and_(
         p.source == FuelStatisticsState.source, p.generated_at == FuelStatisticsState.generated_at,
-    )).where(*conditions).cte("fuel_candidates")
+    ))
+    if filters is not None and filters.active:
+        # 공개 화면 필터(셀프·상표 등)는 주유소 행 조건이다. 같은 조건을 지도 마커와 공유한다.
+        candidates = candidates.join(FuelStation, p.station_key == cast(FuelStation.id, String))
+        conditions.extend([*filters.station_conditions(), *filters.point_conditions()])
+    candidates = candidates.where(*conditions).cte("fuel_candidates")
     c = candidates.c
     aggregates = select(
         c.product_code, func.count().label("count"), func.avg(c.price).label("average"),

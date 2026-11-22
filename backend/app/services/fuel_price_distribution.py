@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 import time
 from collections import OrderedDict
 from collections.abc import AsyncIterator, Callable, Sequence
@@ -20,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.time_utils import serialize_utc
 from app.models import FuelStation, FuelStatisticsPoint, FuelStatisticsState, TransportCollectionState
 from app.schemas import FuelPriceDistributionResponse
+from app.services.fuel_station_filters import FuelStationFilters, fuel_station_filter_params
 
 OPINET = "opinet_browser"
 # 표본이 이보다 적으면 분포·등급을 만들지 않는다(1~2곳의 "최저/최고"는 비교가 아니다).
@@ -93,7 +95,7 @@ def price_quantiles(sorted_prices: Sequence[float]) -> list[dict]:
     return points
 
 
-def _published_points(generated_at, product_code: str | None = None):
+def _published_points(generated_at, product_code: str | None = None, filters: FuelStationFilters | None = None):
     """한 공개 세대(generated_at 고정)의 양수 가격 point와 주유소. 응답 안 여러 SELECT가 같은 세대를 읽는다.
 
     조인은 주유소 id를 문자열로 바꿔 비교한다(고속도로 point의 문자 station_key를 숫자로 바꾸다 실패할 여지가 없다).
@@ -103,12 +105,14 @@ def _published_points(generated_at, product_code: str | None = None):
         p.source == OPINET, p.generated_at == generated_at, p.price > 0)
     if product_code is not None:
         statement = statement.where(p.product_code == product_code)
+    if filters is not None and filters.active:
+        statement = statement.where(*filters.station_conditions(), *filters.point_conditions())
     return statement
 
 
 async def viewport_sigungu(session: AsyncSession, bounds: tuple[float, float, float, float],
                            sources: list[str], products: list[str], query: str | None,
-                           limit: int = VIEWPORT_SIGUNGU_LIMIT) -> tuple[list[dict], int]:
+                           limit: int = VIEWPORT_SIGUNGU_LIMIT, filters: FuelStationFilters | None = None) -> tuple[list[dict], int]:
     """현재 화면 안 공개 세대 주유소를 시군구로 묶어 주유소가 많은 순으로 돌려준다.
 
     경계 폴리곤이 아니라 화면에 실제로 보이는 주유소 기준이다(지도 통계와 같은 모집단).
@@ -118,7 +122,8 @@ async def viewport_sigungu(session: AsyncSession, bounds: tuple[float, float, fl
     published = await session.get(FuelStatisticsState, OPINET)
     if published is None:
         return [], 0
-    key = (session.bind, serialize_utc(published.generated_at), bounds, tuple(sorted(products)), (query or "").strip(), limit)
+    key = (session.bind, serialize_utc(published.generated_at), bounds, tuple(sorted(products)), (query or "").strip(), limit,
+           filters.key() if filters is not None else ())
     cached = _sigungu_cache.get(key)
     if cached and cached[0] > time.monotonic():
         _sigungu_cache.move_to_end(key)
@@ -133,7 +138,12 @@ async def viewport_sigungu(session: AsyncSession, bounds: tuple[float, float, fl
                                 for column in (p.name, p.brand_name, p.address))))
     # 화면 안 주유소 id를 먼저 한 번씩만 뽑고(유종 행 중복 제거) 그다음 시군구로 묶는다.
     # 전국 화면(약 3.2만 가격 행)에서 가격 행 전체를 주유소와 조인해 count(distinct)하는 것보다 싸다.
-    visible = select(p.station_key).where(*conditions).distinct().subquery()
+    visible = select(p.station_key).where(*conditions)
+    if filters is not None and filters.active:
+        # 공개 화면 필터(셀프·상표 등)는 주유소 행 조건, 화면 최저가 상한은 가격 조건이다.
+        visible = visible.join(s, p.station_key == cast(s.id, String)).where(
+            *filters.station_conditions(), *filters.point_conditions())
+    visible = visible.distinct().subquery()
     station_count = func.count().label("station_count")
     grouped = select(
         s.sido_value, s.sido_name, s.sigungu_value, s.sigungu_name, station_count,
@@ -174,7 +184,10 @@ def _comparison(summary: dict | None, price: float, below: int, equal: int) -> d
 
 
 async def price_distribution(session: AsyncSession, *, product_code: str, sido_value: str | None,
-                             sigungu_value: str | None, station_id: int | None) -> dict:
+                             sigungu_value: str | None, station_id: int | None,
+                             filters: FuelStationFilters | None = None) -> dict:
+    # 화면 최저가 상한(near_min)은 화면이 있는 조회에만 뜻이 있다. 분포에는 주유소 행 조건만 적용한다.
+    filters = replace(filters, near_min=None, price_ceiling=None, ceiling_product=None) if filters else None
     p, s = FuelStatisticsPoint, FuelStation
     state = await session.get(FuelStatisticsState, OPINET)
     station = None
@@ -198,10 +211,11 @@ async def price_distribution(session: AsyncSession, *, product_code: str, sido_v
         "grade_rule": [{"grade": grade, "label": label, "percentile_below": None if math.isinf(upper) else upper}
                        for upper, grade, label in GRADE_RULE],
         "sigungu": None, "sido": None, "nationwide": None, "station": None,
+        "filters_applied": filters.labels() if filters else [],
     }
     if generated_at is None:
         return response
-    region_rows = (await session.execute(_published_points(generated_at, product_code).with_only_columns(
+    region_rows = (await session.execute(_published_points(generated_at, product_code, filters).with_only_columns(
         p.price, s.sido_name, s.sigungu_name,
     ).where(s.sido_value == sido_value, s.sigungu_value == sigungu_value).order_by(p.price))).all()
     prices = [float(row.price) for row in region_rows]
@@ -233,7 +247,7 @@ async def price_distribution(session: AsyncSession, *, product_code: str, sido_v
         columns += [func.count().filter(p.price < station_price), func.count().filter(p.price == station_price),
                     func.count().filter(and_(in_sido, p.price < station_price)),
                     func.count().filter(and_(in_sido, p.price == station_price))]
-    aggregate = (await session.execute(_published_points(generated_at, product_code).with_only_columns(*columns))).one()
+    aggregate = (await session.execute(_published_points(generated_at, product_code, filters).with_only_columns(*columns))).one()
     nationwide = _summary("nationwide", "전국", *aggregate[0:4])
     sido = _summary("sido", sido_label, *aggregate[4:8])
     response["nationwide"], response["sido"] = nationwide, sido
@@ -271,6 +285,7 @@ def build_fuel_price_distribution_router(get_db: Callable[..., AsyncIterator[Asy
         sigungu_value: str | None = Query(default=None, min_length=1, max_length=80, description="오피넷 시군구 코드"),
         station_id: int | None = Query(default=None, gt=0, le=2_147_483_647,
                                        description="지정하면 그 주유소의 시군구를 쓰고 시군구·시도·전국 대비 위치를 함께 반환"),
+        filters: FuelStationFilters = Depends(fuel_station_filter_params),
         session: AsyncSession = Depends(get_db),
     ) -> dict:
         """공개된 최신 유가 통계 세대의 시군구 가격 분포(구간·정렬 분위)와 시도·전국 최저/평균/최고.
@@ -284,6 +299,6 @@ def build_fuel_price_distribution_router(get_db: Callable[..., AsyncIterator[Asy
         return await price_distribution(session, product_code=product_code.strip(),
                                         sido_value=sido_value.strip() if sido_value else None,
                                         sigungu_value=sigungu_value.strip() if sigungu_value else None,
-                                        station_id=station_id)
+                                        station_id=station_id, filters=filters)
 
     return router

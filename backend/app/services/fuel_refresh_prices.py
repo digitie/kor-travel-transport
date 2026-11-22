@@ -49,6 +49,19 @@ def has_visible_fuel_product(product_codes, at):
     return or_(published, manual)
 
 
+def has_fuel_price_at_most(product_code, ceiling, at):
+    """지도 마커가 보여 주는 실효 가격(공개 최신가, 유효한 수동 새로고침이 있으면 그 값)이 상한 이하인 주유소."""
+    overlay, active = _active_overlay(at)
+    manual = select(1).where(
+        overlay.c.fuel_station_id == FuelStation.id, overlay.c.product_code == product_code, *active,
+    ).correlate(FuelStation)
+    published = select(1).where(
+        FuelLatestPrice.fuel_station_id == FuelStation.id, FuelLatestPrice.product_code == product_code,
+        FuelLatestPrice.price > 0, FuelLatestPrice.price <= ceiling, ~manual.exists(),
+    ).correlate(FuelStation).exists()
+    return or_(published, manual.where(overlay.c.price <= ceiling).exists())
+
+
 def fuel_viewport_conditions(bounds):
     min_lon, min_lat, max_lon, max_lat = bounds
     return FuelStation.longitude.between(min_lon, max_lon), FuelStation.latitude.between(min_lat, max_lat)

@@ -20,6 +20,7 @@ export const fuelPriceDistributionSchema = z.object({
   sido_name: z.string().nullable(),
   sigungu_name: z.string().nullable(),
   grade_rule: z.array(z.object({ grade: z.string(), label: z.string(), percentile_below: z.number().nullable() })),
+  filters_applied: z.array(z.string()).default([]),
   sigungu: scopeSummary.extend({
     sufficient: z.boolean(), bin_width: z.number(),
     histogram: z.array(z.object({ start: z.number(), end: z.number(), count: z.number().int().nonnegative() })),
@@ -52,15 +53,17 @@ export type FuelDistributionTarget =
 
 type Loader = <T>(path: string, signal?: AbortSignal) => Promise<T>;
 
-export function fuelDistributionPath(target: FuelDistributionTarget, productCode: string) {
+export function fuelDistributionPath(target: FuelDistributionTarget, productCode: string, filterQuery = "") {
   const search = new URLSearchParams({ product_code: productCode });
+  // 공개 화면 필터(셀프·상표 등)를 시군구·시도·전국에 같이 적용한다. 화면 최저가 상한은 서버가 분포에서 뺀다.
+  for (const [key, value] of new URLSearchParams(filterQuery)) search.set(key, value);
   if (target.kind === "station") search.set("station_id", String(target.station_id));
   else { search.set("sido_value", target.sido_value); search.set("sigungu_value", target.sigungu_value); }
   return `transport/fuel/price-distribution?${search}`;
 }
 
-export async function loadFuelPriceDistribution(load: Loader, target: FuelDistributionTarget, productCode: string, signal?: AbortSignal) {
-  return fuelPriceDistributionSchema.parse(await load<unknown>(fuelDistributionPath(target, productCode), signal));
+export async function loadFuelPriceDistribution(load: Loader, target: FuelDistributionTarget, productCode: string, signal?: AbortSignal, filterQuery = "") {
+  return fuelPriceDistributionSchema.parse(await load<unknown>(fuelDistributionPath(target, productCode, filterQuery), signal));
 }
 
 export const won = (value: number) => `${Math.round(value).toLocaleString("ko-KR")}원`;
