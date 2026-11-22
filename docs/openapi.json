@@ -3462,6 +3462,46 @@
         "title": "FuelAreaSigungu",
         "type": "object"
       },
+      "FuelCenterSigungu": {
+        "properties": {
+          "distance_m": {
+            "description": "중심과 그 주유소 사이 평면 근사 거리(m)",
+            "title": "Distance M",
+            "type": "integer"
+          },
+          "method": {
+            "description": "nearest_station: 중심에서 가장 가까운 오피넷 주유소의 시군구(경계 판정이 아닌 근사)",
+            "title": "Method",
+            "type": "string"
+          },
+          "sido_name": {
+            "title": "Sido Name",
+            "type": "string"
+          },
+          "sido_value": {
+            "title": "Sido Value",
+            "type": "string"
+          },
+          "sigungu_name": {
+            "title": "Sigungu Name",
+            "type": "string"
+          },
+          "sigungu_value": {
+            "title": "Sigungu Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sido_value",
+          "sido_name",
+          "sigungu_value",
+          "sigungu_name",
+          "method",
+          "distance_m"
+        ],
+        "title": "FuelCenterSigungu",
+        "type": "object"
+      },
       "FuelCheapestStation": {
         "properties": {
           "address": {
@@ -10548,6 +10588,17 @@
             "title": "Clusters",
             "type": "array"
           },
+          "fuel_center_sigungu": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FuelCenterSigungu"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "center_longitude·center_latitude를 줄 때만 포함. 지도 중심에서 가장 가까운 오피넷 주유소의 시군구(근사). 반경 약 33 km 안에 주유소가 없으면 null"
+          },
           "fuel_prices_last_refreshed_at": {
             "anyOf": [
               {
@@ -14678,6 +14729,46 @@
               "description": "좌표 없는 기준정보도 검색 목록에 포함",
               "title": "Include Unlocated",
               "type": "boolean"
+            }
+          },
+          {
+            "description": "지도 중심 경도. center_latitude와 함께 주면 fuel_center_sigungu 포함(공개 유가 화면 전용, 추가 필드)",
+            "in": "query",
+            "name": "center_longitude",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 180,
+                  "minimum": -180,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "지도 중심 경도. center_latitude와 함께 주면 fuel_center_sigungu 포함(공개 유가 화면 전용, 추가 필드)",
+              "title": "Center Longitude"
+            }
+          },
+          {
+            "description": "지도 중심 위도. center_longitude와 함께 지정",
+            "in": "query",
+            "name": "center_latitude",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 90,
+                  "minimum": -90,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "지도 중심 위도. center_longitude와 함께 지정",
+              "title": "Center Latitude"
             }
           },
           {
