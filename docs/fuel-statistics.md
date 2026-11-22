@@ -89,11 +89,17 @@
 - `point_station_id`/`station_for_point`(`fuel_station_filters.py`): 오피넷 point 키를 `CASE WHEN source='opinet_browser'
   THEN station_key::integer END`로 정수화해 `fuel_stations.id`와 조인. 추정이 틀려도 안쪽이 기본키 조회라 비용이 point 수에
   비례한다. CASE가 원천을 먼저 보므로 고속도로 point(문자 키)는 정수 변환을 시도하지 않는다(오피넷 키는 `str(id)`로만 저장).
-  운영 낡은 통계 그대로의 EXPLAIN ANALYZE(2026-11-23): 필터 켠 화면 안 시군구 0.90초(예전 평균 4.4초·504), 분포 전국 가격 0.54초.
+  운영 낡은 통계 그대로의 EXPLAIN ANALYZE(2026-11-23, 상수 세대·정수 조인): 필터 켠 화면 안 시군구 0.90초(예전 평균 4.4초·504),
+  분포 전국 가격 0.54초. 같은 운영에서 세대를 InitPlan으로 넘기면 추정은 맞지만(4,505 vs 실제 5,532) 0047 없이는 기본키 skip scan
+  (9.2초)과 차가운 fuel_stations Seq Scan(0.79초)을 골랐다 — 그래서 InitPlan과 0047을 함께 둔다.
 - `fixed_generation`: 한 응답이 읽는 세대 시각을 상수 대신 값이 보이지 않는 InitPlan 매개변수로 넘긴다. 계획기는
   "세대 하나 = 전체 / 세대 수"로 추정하고 세대마다 행 수가 거의 같아 실제와 맞는다(통계 신선도와 무관). 읽는 세대는 상수와 똑같이
   고정된다. 공개 시 ANALYZE는 넣지 않았다(적대 리뷰: 공개 트랜잭션 안 ANALYZE는 SHARE UPDATE EXCLUSIVE를 commit까지 쥐어 수집기
   `lock_timeout=5s`와 부딪칠 수 있고 ARM에서 비싸다).
+- 인덱스 0047 `ix_fuel_statistics_points_generation_product (source, generated_at, product_code)`(CREATE INDEX CONCURRENTLY):
+  추정이 맞으면 계획기가 유종 조건 때문에 PostgreSQL 18 skip scan으로 기본키(source, station_key, product_code, generated_at)를
+  골랐다. 운영 EXPLAIN ANALYZE에서 전국 B027 가격 읽기가 9.2초였다(기존 세대 인덱스에는 유종이 없다). 범위 통계 후보 CTE의
+  운영 최대 104초(pg_stat_statements)도 같은 부류로 본다.
 - 가격 분포: 세대·유종·필터별 전국 가격을 한 SELECT로 읽어 시도·시군구로 나눈 정렬 색인을 프로세스에 둔다(10분, 8개). 분포·백분위·
   등급은 이 색인과 이분 탐색으로 계산한다(정의는 그대로: 중간 순위 백분위, `percentile_cont` 분위). 주유소 가격은 기본키 앞부분
   `(source, station_key)`로 읽고 세대는 코드에서 고른다.
