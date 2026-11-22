@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, expect, test, vi } from "vitest";
-import { FuelSigunguChips, FuelStationPricePosition } from "./fuel-price-distribution";
+import { FuelRegionStats, FuelStationPricePosition } from "./fuel-price-distribution";
 import { distributionOption } from "./fuel-distribution-chart-option";
 import { FuelViewportSummary } from "./fuel-statistics";
 import { PlaceDetails } from "./journey-controls";
@@ -43,15 +43,16 @@ const settle = () => act(async () => { for (let i = 0; i < 5; i++) await Promise
 const button = (name: string) => [...document.querySelectorAll("button")].find(node => (node.getAttribute("aria-label") ?? node.textContent ?? "").includes(name))!;
 const checkbox = (name: string) => [...document.querySelectorAll("label")].find(node => node.textContent?.includes(name))!.querySelector("input")!;
 
-test("시군구 칩은 5곳과 +N을 보이고, 누르면 그 시군구 통계 대화상자를 연다", async () => {
+const okcheon = { sido_value: "15", sigungu_value: "1500", label: "옥천군", station_count: 29, selected: false };
+
+test("지역 칩은 하나만 보이고, 누르면 그 시군구 통계 대화상자를 연다", async () => {
   const load = vi.fn().mockResolvedValue(sampleDistribution);
-  const container = await mount(<FuelSigunguChips regions={regions} total={12} product="B027" load={load} />);
-  expect(container.querySelector("nav")?.getAttribute("aria-label")).toBe("지도에 보이는 시군구 가격 통계");
-  expect(container.querySelectorAll(".fuel-sigungu-chip:not(.fuel-sigungu-more)")).toHaveLength(5);
-  expect(button("시군구 7곳 더 보기").textContent).toBe("+7");
-  await act(async () => button("시군구 7곳 더 보기").click());
-  expect(container.querySelectorAll(".fuel-sigungu-chip:not(.fuel-sigungu-more)")).toHaveLength(8);
-  expect(container.textContent).toContain("나머지 4곳");
+  const container = await mount(<FuelRegionStats region={okcheon} product="B027" load={load} />);
+  expect(container.querySelector('[role="group"]')?.getAttribute("aria-label")).toBe("지도 대표 지역 가격 통계");
+  expect(container.querySelectorAll(".fuel-sigungu-chip")).toHaveLength(1);
+  // 자동으로 보이는 지역은 해제할 것이 없다.
+  expect(container.querySelector(".fuel-sigungu-clear")).toBeNull();
+  expect(button("옥천군 휘발유 가격 통계").getAttribute("aria-label")).toBe("옥천군 휘발유 가격 통계 · 지도 안 29개 주유소");
   await act(async () => button("옥천군 휘발유 가격 통계").click());
   await settle();
   expect(load).toHaveBeenCalledWith("transport/fuel/price-distribution?product_code=B027&sido_value=15&sigungu_value=1500", expect.anything());
@@ -77,11 +78,29 @@ test("시군구 칩은 5곳과 +N을 보이고, 누르면 그 시군구 통계 �
   expect(load).toHaveBeenLastCalledWith("transport/fuel/price-distribution?product_code=D047&sido_value=15&sigungu_value=1500", expect.anything());
 });
 
+test("고른 지역은 칩 하나와 해제 버튼, 화면 밖이면 주유소 수 없이 이름만, 해제하면 초점을 남는 칩으로", async () => {
+  const load = vi.fn().mockResolvedValue(sampleDistribution);
+  const onClear = vi.fn();
+  const fallback = { current: document.createElement("button") };
+  document.body.append(fallback.current);
+  const selected = { sido_value: "26", sigungu_value: "2601", label: "부산 중구", station_count: null, selected: true };
+  const container = await mount(<FuelRegionStats region={selected} product="D047" load={load} onClear={onClear} focusFallback={fallback} />);
+  expect(container.querySelector('[role="group"]')?.getAttribute("aria-label")).toBe("선택한 지역 가격 통계");
+  expect(container.querySelectorAll(".fuel-sigungu-chip:not(.fuel-sigungu-clear)")).toHaveLength(1);
+  expect(button("부산 중구 경유 가격 통계").getAttribute("aria-label")).toBe("부산 중구 경유 가격 통계");
+  expect(container.querySelector(".fuel-sigungu-chip small")).toBeNull();
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { callback(0); return 0; });
+  await act(async () => button("부산 중구 선택 해제").click());
+  expect(onClear).toHaveBeenCalledTimes(1);
+  // 부모가 아직 다시 그리지 않았으면 칩이 남아 있으므로 칩으로 초점이 간다.
+  expect(document.activeElement).toBe(button("부산 중구 경유 가격 통계"));
+  vi.unstubAllGlobals();
+});
+
 test("표본이 3곳 미만이면 그래프 대신 안내 문구, 해당 유종이 없으면 없음 안내", async () => {
   const small = { ...sampleDistribution, sigungu: { ...sampleDistribution.sigungu, station_count: 2, sufficient: false } };
   const load = vi.fn().mockResolvedValueOnce(small).mockResolvedValueOnce({ ...sampleDistribution, sigungu: null });
-  await mount(<FuelSigunguChips regions={regions.slice(0, 2)} total={2} product="B027" load={load} />);
-  expect(document.querySelector(".fuel-sigungu-more")).toBeNull();
+  await mount(<FuelRegionStats region={okcheon} product="B027" load={load} />);
   await act(async () => button("옥천군 휘발유 가격 통계").click());
   await settle();
   const dialog = document.querySelector('[role="dialog"]')!;
@@ -161,7 +180,7 @@ test("관리(transport) 화면에는 시군구 칩·주변 대비 가격이 나�
   expect(load).not.toHaveBeenCalled();
   // 공개 유가 화면에서만 칩과 비교가 나온다.
   const publicSummary = renderToStaticMarkup(<FuelViewportSummary items={items} pending={false}
-    publicFuel={{ products: [], onProductsChange: () => {}, sigungu: regions.slice(0, 1), sigunguTotal: 1, load }} />);
+    publicFuel={{ products: [], onProductsChange: () => {}, sigungu: regions.slice(0, 1), load }} />);
   expect(publicSummary).toContain("fuel-sigungu-chips");
   expect(renderToStaticMarkup(<PlaceDetails place={place} load={load} publicFuel={{ refreshing: false }} />)).toContain("주변 대비 가격");
 });

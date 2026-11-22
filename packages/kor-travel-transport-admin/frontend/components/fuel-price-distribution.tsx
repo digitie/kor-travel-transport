@@ -1,7 +1,7 @@
 "use client";
 
 import { lazy, Suspense, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
-import { ChartColumn } from "lucide-react";
+import { ChartColumn, X } from "lucide-react";
 import { VirtualTable } from "@kor-travel/ui/virtual-table";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
@@ -10,15 +10,14 @@ import { FUEL_CHART_ORDER } from "@/lib/fuel-chart-model";
 import { TransportError } from "@/lib/journey";
 import {
   binLabel, distributionSummary, distributionTimestamp, gradeTone, histogramValues, loadFuelPriceDistribution,
-  sigunguChipLabels, signedWon, won,
+  signedWon, won,
   type FuelDistributionTarget, type FuelPriceComparison, type FuelPriceDistribution, type FuelPriceScope,
-  type FuelSigunguDistribution, type FuelViewportSigungu,
+  type FuelRegionChip, type FuelSigunguDistribution,
 } from "@/lib/fuel-price-distribution";
 
 // 공개 유가(TRANSPORT_UI_MODE=fuel) 전용. 관리 화면은 이 파일을 쓰지 않는다(publicFuel 조건에서만 렌더).
 const Chart = lazy(() => import("./fuel-distribution-chart"));
 type Loader = <T>(path: string, signal?: AbortSignal) => Promise<T>;
-const VISIBLE_CHIPS = 5;
 const scopeShort: Record<string, string> = { nationwide: "전국" };
 
 // unavailable: 서버가 이 주유소·지역을 비교할 수 없다고 답했다(404·422). 재시도 대신 조용한 안내를 보인다.
@@ -46,39 +45,40 @@ function useDistribution(load: Loader, target: FuelDistributionTarget | null, pr
   return { current, retry: () => setRetry(value => value + 1) };
 }
 
-/** 범위 요약 안: 지금 지도에 보이는 시군구. 누르면 그 시군구의 가격 분포 대화상자를 연다. */
-export function FuelSigunguChips({ regions, total, product, load, filterQuery }: {
-  regions: FuelViewportSigungu[]; total: number; product: string; load: Loader; filterQuery?: string;
+/**
+ * 범위 요약 안의 지역 칩 하나(고른 지역, 고르기 전에는 화면 대표 시군구 — lib `displayedRegion`).
+ * 누르면 그 시군구의 가격 분포 대화상자를 연다. 고른 지역은 해제 버튼으로 자동 표시로 되돌린다.
+ */
+export function FuelRegionStats({ region, product, load, filterQuery, onClear, focusFallback }: {
+  region: FuelRegionChip | null; product: string; load: Loader; filterQuery?: string; onClear?: () => void;
+  /** 해제 뒤 보일 지역이 없어 칩이 사라지면 초점을 둘 곳(지역 이동 버튼). */
+  focusFallback?: RefObject<HTMLElement | null>;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const [target, setTarget] = useState<FuelDistributionTarget | null>(null);
-  const opener = useRef<HTMLElement | null>(null);
-  const listId = useId();
-  if (!regions.length) return null;
-  const labels = sigunguChipLabels(regions);
-  const shown = expanded ? regions : regions.slice(0, VISIBLE_CHIPS);
-  const hidden = Math.max(0, total - shown.length);
-  return <nav className="fuel-sigungu-chips" aria-label="지도에 보이는 시군구 가격 통계">
-    <ul id={listId}>
-      {shown.map((region, index) => <li key={`${region.sido_value}:${region.sigungu_value}`}>
-        <button type="button" className="fuel-sigungu-chip" onClick={event => {
-          opener.current = event.currentTarget;
-          setTarget({ kind: "region", sido_value: region.sido_value, sigungu_value: region.sigungu_value, label: labels[index] });
-        }} aria-label={`${labels[index]} ${fuelProductLabel(product)} 가격 통계 · 지도 안 ${region.station_count}개 주유소`}>
-          <span>{labels[index]}</span><small aria-hidden="true">{region.station_count}</small>
+  const chip = useRef<HTMLButtonElement | null>(null);
+  if (!region) return null;
+  const productLabel = fuelProductLabel(product);
+  const count = region.station_count;
+  return <div className="fuel-sigungu-chips" role="group" aria-label={region.selected ? "선택한 지역 가격 통계" : "지도 대표 지역 가격 통계"}>
+    <ul>
+      <li>
+        <button ref={chip} type="button" className="fuel-sigungu-chip" data-selected={region.selected || undefined} onClick={() => setTarget({
+          kind: "region", sido_value: region.sido_value, sigungu_value: region.sigungu_value, label: region.label,
+        })} aria-label={`${region.label} ${productLabel} 가격 통계${count != null ? ` · 지도 안 ${count}개 주유소` : ""}`}>
+          <span>{region.label}</span>{count != null ? <small aria-hidden="true">{count}</small> : null}
         </button>
-      </li>)}
-      {regions.length > VISIBLE_CHIPS ? <li>
-        {/* 펼치기·접기는 같은 버튼이라 눌러도 초점을 잃지 않는다. */}
-        <button type="button" className="fuel-sigungu-chip fuel-sigungu-more" aria-expanded={expanded} aria-controls={listId}
-          aria-label={expanded ? "시군구 목록 접기" : `시군구 ${hidden}곳 더 보기`} onClick={() => setExpanded(value => !value)}>
-          {expanded ? "접기" : `+${hidden}`}
-        </button>
+      </li>
+      {region.selected && onClear ? <li>
+        {/* 해제하면 이 버튼이 사라지므로 남는 지역 칩으로 초점을 옮긴다. */}
+        <button type="button" className="fuel-sigungu-chip fuel-sigungu-clear" aria-label={`${region.label} 선택 해제`}
+          onClick={() => {
+            onClear();
+            requestAnimationFrame(() => (chip.current?.isConnected ? chip.current : focusFallback?.current)?.focus());
+          }}><X aria-hidden="true" size={16} /></button>
       </li> : null}
     </ul>
-    {expanded && total > regions.length ? <p className="fuel-sigungu-note">주유소가 많은 {regions.length}곳만 보입니다. 지도를 확대해 나머지 {total - regions.length}곳을 확인하세요.</p> : null}
-    <FuelDistributionDialog target={target} onClose={() => setTarget(null)} initialProduct={product} load={load} returnFocus={opener} filterQuery={filterQuery} />
-  </nav>;
+    <FuelDistributionDialog target={target} onClose={() => setTarget(null)} initialProduct={product} load={load} returnFocus={chip} filterQuery={filterQuery} />
+  </div>;
 }
 
 /** 시군구·주유소 공용 대화상자. 주유소면 그 가격을 곡선 위에 핀으로 표시한다. */

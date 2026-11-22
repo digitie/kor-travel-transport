@@ -2,22 +2,22 @@
 
 import { VirtualTable } from "@kor-travel/ui/virtual-table";
 
-import { ClockAlert, MapPinned } from "lucide-react";
+import { ClockAlert } from "lucide-react";
 import Link from "next/link";
 import { InfoButton } from "./info-button";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { dateTime, transportGet } from "@/lib/journey";
 import { fuelProductLabel } from "@/lib/transport-presentation";
 import { fuelDrivingCosts } from "@/lib/driver-statistics";
 import { FilterBar, FilterField } from "@/components/filter-bar";
-import { FilterCombobox } from "./filter-combobox";
 import { SectionCard } from "./section-card";
 import FuelPriceChart from "./fuel-price-chart-loader";
 import { FUEL_CHART_ORDER, fuelStationHref, type FuelChartStation } from "@/lib/fuel-chart-model";
 import { StatStrip } from "./stat-strip";
-import { FuelSigunguChips } from "./fuel-price-distribution";
-import { PublicFuelTools } from "./public-fuel-controls";
-import type { FuelViewportSigungu } from "@/lib/fuel-price-distribution";
+import { FuelRegionStats } from "./fuel-price-distribution";
+import { PublicFuelFilterMenu, PublicFuelRegionButton, type FuelAreaChoice, type FuelSelectedRegion } from "./public-fuel-controls";
+import { displayedRegion, type FuelRegionChip, type FuelViewportSigungu } from "@/lib/fuel-price-distribution";
+import type { PublicFuelFilters } from "@/lib/public-fuel-filters";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
@@ -126,14 +126,17 @@ type FuelViewportSummaryProps = {
     onProductsChange: (products: string[]) => void;
     onRefresh?: () => void;
     refreshing?: boolean;
-    /** 공개 유가 전용: 지금 지도에 보이는 시군구와 그 통계를 읽는 공개 reader. */
+    /** 공개 유가 전용: 지금 지도에 보이는 시군구(주유소 수 내림차순)와 그 통계를 읽는 공개 reader. */
     sigungu?: FuelViewportSigungu[];
-    sigunguTotal?: number;
     /** 공개 유가 서버 필터 query. 시군구 통계도 같은 조건으로 읽는다. */
     filterQuery?: string;
-    filterCount?: number;
-    onOpenFilters?: (opener?: HTMLElement | null) => void;
-    onOpenRegion?: (current?: { sido_value: string; sigungu_value: string }, opener?: HTMLElement | null) => void;
+    /** 맨 위 유종·필터 선택에 함께 담는 주유소 필터(없으면 유종만 고른다). */
+    filters?: PublicFuelFilters;
+    onFiltersChange?: (filters: PublicFuelFilters) => void;
+    /** 지역 이동에서 고른 시군구. 지역 칩은 이것 하나만(고르기 전에는 화면 대표 시군구 하나) 보인다. */
+    selectedRegion?: FuelSelectedRegion;
+    onClearRegion?: () => void;
+    onOpenRegion?: (current?: FuelAreaChoice, opener?: HTMLElement | null) => void;
     load?: <T>(path: string, signal?: AbortSignal) => Promise<T>;
   };
 };
@@ -153,24 +156,20 @@ function AdminFuelViewportSummary({ items, pending, failed = false, pricesStale 
   </section>;
 }
 
-const ALL_PUBLIC_PRODUCTS = "ALL";
-const publicProductOptions = [
-  { value: ALL_PUBLIC_PRODUCTS, label: "전체" },
-  ...FUEL_CHART_ORDER.map(value => ({ value, label: fuelProductLabel(value) })),
-];
-
-// 공개 유가는 범위 요약을 접지 않는다. 유종 선택과 평균·최저가를 처음부터 늘 보인다(상세를 열어도 유지).
+// 공개 유가는 범위 요약을 접지 않는다. 맨 위 줄은 지역 이동 아이콘과 유종·필터 선택(제목 글자 없음 — 소유자 지시
+// 2026-11-22 "'지도 범위' 글씨 제거"; 영역 이름은 aria-label로 남는다), 그 아래 고른 지역 칩 하나와 평균·최저가.
 function PublicFuelViewportSummary({
   items, pending, failed, pricesStale, pricesLastRefreshedAt, publicFuel,
 }: Omit<FuelViewportSummaryProps, "publicFuel"> & { publicFuel: NonNullable<FuelViewportSummaryProps["publicFuel"]> }) {
+  const regionButton = useRef<HTMLButtonElement>(null);
   const selectedProducts = new Set(publicFuel.products);
   const displayed = selectedProducts.size ? items.filter(item => selectedProducts.has(item.product_code)) : items;
+  const region = displayedRegion(publicFuel.selectedRegion, publicFuel.sigungu ?? []);
   return <section className="fuel-viewport-summary public-fuel-summary" aria-label="현재 지도 범위 유가 통계" aria-busy={pending}>
-    <PublicFuelSummaryHeader pricesStale={pricesStale} pricesLastRefreshedAt={pricesLastRefreshedAt} controls={publicFuel} />
-    {publicFuel.onOpenFilters && publicFuel.onOpenRegion ? <PublicFuelTools filterCount={publicFuel.filterCount ?? 0}
-      onOpenFilters={publicFuel.onOpenFilters} onOpenRegion={opener => publicFuel.onOpenRegion?.(publicFuel.sigungu?.[0], opener)} /> : null}
-    {publicFuel.load && publicFuel.sigungu?.length ? <FuelSigunguChips regions={publicFuel.sigungu} total={publicFuel.sigunguTotal ?? publicFuel.sigungu.length}
-      product={FUEL_CHART_ORDER.find(code => selectedProducts.has(code)) ?? "B027"} load={publicFuel.load} filterQuery={publicFuel.filterQuery} /> : null}
+    <PublicFuelSummaryHeader pricesStale={pricesStale} pricesLastRefreshedAt={pricesLastRefreshedAt} controls={publicFuel}
+      region={region} regionButton={regionButton} />
+    {publicFuel.load ? <FuelRegionStats region={region} product={FUEL_CHART_ORDER.find(code => selectedProducts.has(code)) ?? "B027"}
+      load={publicFuel.load} filterQuery={publicFuel.filterQuery} onClear={publicFuel.onClearRegion} focusFallback={regionButton} /> : null}
     <div className="fuel-summary-body public-fuel-summary-body">
       {pending ? <p role="status">통계 조회 중…</p> : failed ? <p role="alert">통계를 불러오지 못했습니다.</p> :
         <PublicFuelRangeValues items={displayed} />}
@@ -179,19 +178,17 @@ function PublicFuelViewportSummary({
 }
 
 function PublicFuelSummaryHeader({
-  pricesStale, pricesLastRefreshedAt, controls,
+  pricesStale, pricesLastRefreshedAt, controls, region, regionButton,
 }: {
   pricesStale?: boolean; pricesLastRefreshedAt?: string | null;
   controls: NonNullable<FuelViewportSummaryProps["publicFuel"]>;
+  region: FuelRegionChip | null; regionButton: RefObject<HTMLButtonElement | null>;
 }) {
-  const productId = useId();
-  const { products, onProductsChange } = controls;
+  const { products, onProductsChange, filters, onFiltersChange, onOpenRegion } = controls;
   return <header className="public-fuel-summary-header">
-    <h2 className="public-fuel-summary-title"><MapPinned aria-hidden="true" size={16} /><span>지도 범위</span></h2>
+    {onOpenRegion ? <PublicFuelRegionButton buttonRef={regionButton} onOpen={opener => onOpenRegion(region ?? undefined, opener)} /> : null}
     <div className="public-fuel-summary-products">
-      <label className="sr-only" htmlFor={productId}>표시 유종</label>
-      <FilterCombobox id={productId} compact options={publicProductOptions} value={products} placeholder="전체 유종"
-        onChange={values => onProductsChange(values.includes(ALL_PUBLIC_PRODUCTS) ? [] : values)} />
+      <PublicFuelFilterMenu products={products} onProductsChange={onProductsChange} filters={filters} onFiltersChange={onFiltersChange} />
     </div>
     <PublicFuelSummaryActions stale={pricesStale} lastRefreshedAt={pricesLastRefreshedAt} controls={controls} />
   </header>;

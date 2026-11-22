@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, expect, test, vi } from "vitest";
-import { FuelFilterDrawer, FuelRegionPicker } from "./public-fuel-controls";
+import { FuelRegionPicker, PublicFuelFilterMenu } from "./public-fuel-controls";
 import { FuelViewportSummary } from "./fuel-statistics";
 import { DEFAULT_PUBLIC_FUEL_FILTERS } from "@/lib/public-fuel-filters";
 
@@ -44,7 +44,7 @@ test("지역 이동: 현재 시군구가 체크되고, 시/도→구/군/시를 
   expect(button("구/군/시 선택").disabled).toBe(true);
   await act(async () => labelInput("종로구").click());
   await act(async () => button("서울 종로구").click());
-  expect(onConfirm).toHaveBeenCalledWith([126.9, 37.5, 127.0, 37.6], "서울 종로구");
+  expect(onConfirm).toHaveBeenCalledWith([126.9, 37.5, 127.0, 37.6], { sido_value: "01", sigungu_value: "0101", label: "서울 종로구" });
   expect(onOpenChange).toHaveBeenCalledWith(false);
 });
 
@@ -58,26 +58,40 @@ test("지역 목록을 못 읽으면 다시 시도", async () => {
   expect(labelInput("서울").checked).toBe(true);
 });
 
-test("필터 서랍: 유종·최저가·조건·상표·전체 선택·초기화가 값을 바꾼다", async () => {
+test("맨 위 유종·필터 선택: 유종(여럿)·최저가·조건·품질인증·상표·전체 선택·초기화가 한 팝오버에서 값을 바꾼다", async () => {
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   const onFiltersChange = vi.fn(); const onProductsChange = vi.fn();
   const view = (filters = DEFAULT_PUBLIC_FUEL_FILTERS, products: string[] = []) =>
-    <FuelFilterDrawer open onOpenChange={() => {}} filters={filters} onFiltersChange={onFiltersChange} products={products} onProductsChange={onProductsChange} />;
-  const { rerender } = await mount(view());
-  const dialog = document.querySelector('[role="dialog"]')!;
-  expect(dialog.querySelector("h2")?.textContent).toBe("필터");
+    <PublicFuelFilterMenu filters={filters} onFiltersChange={onFiltersChange} products={products} onProductsChange={onProductsChange} />;
+  const { container, rerender } = await mount(view());
+  const trigger = container.querySelector<HTMLButtonElement>(".public-fuel-filter-trigger")!;
+  expect(trigger.getAttribute("aria-label")).toBe("유종·필터: 전체 유종");
+  expect(trigger.textContent).toContain("전체 유종");
+  // 필터 버튼·서랍은 따로 없다.
+  expect(document.querySelector(".public-fuel-tools, .fuel-filter-drawer")).toBeNull();
+  await act(async () => trigger.click());
+  const menu = document.querySelector('[role="dialog"]')!;
+  expect(menu.getAttribute("aria-label")).toBe("유종·필터");
+  expect([...menu.querySelectorAll("legend")].map(node => node.textContent)).toEqual(["유종", "주유소 조건", "브랜드"]);
   // 유종 전체에서는 최저가 범위를 쓸 수 없다.
   expect(labelInput("지도 최저가").disabled).toBe(true);
-  expect(dialog.textContent).toContain("유종을 하나 고르면 사용할 수 있습니다.");
+  expect(menu.textContent).toContain("유종을 하나 고르면 사용할 수 있습니다.");
+  expect(labelInput("전체 유종").checked).toBe(true);
   await act(async () => labelInput("경유").click());
   expect(onProductsChange).toHaveBeenLastCalledWith(["D047"]);
+  // 여러 유종을 함께 고를 수 있다(지도 표시 순서로 정렬).
+  await rerender(view(DEFAULT_PUBLIC_FUEL_FILTERS, ["D047"]));
+  await act(async () => labelInput("휘발유").click());
+  expect(onProductsChange).toHaveBeenLastCalledWith(["B027", "D047"]);
   await rerender(view(DEFAULT_PUBLIC_FUEL_FILTERS, ["B027"]));
+  expect(trigger.getAttribute("aria-label")).toBe("유종·필터: 휘발유");
   const near = labelInput("지도 최저가") as unknown as HTMLSelectElement;
   expect(near.disabled).toBe(false);
   await act(async () => { near.value = "70"; near.dispatchEvent(new Event("change", { bubbles: true })); });
   expect(onFiltersChange).toHaveBeenLastCalledWith({ ...DEFAULT_PUBLIC_FUEL_FILTERS, near_min: 70 });
   for (const [label, key] of [["'24시' 만", "open_24h"], ["'셀프주유' 만", "self_only"], ["'자동세차' 만", "carwash"], ["'경정비' 만", "maintenance"], ["'편의점' 만", "cvs"], ["'품질인증주유소' 만", "kpetro"]] as const) {
     const input = labelInput(label);
-    expect(input.getAttribute("role")).toBe("switch");
+    expect(input.type).toBe("checkbox");
     await act(async () => input.click());
     expect(onFiltersChange).toHaveBeenLastCalledWith({ ...DEFAULT_PUBLIC_FUEL_FILTERS, [key]: true });
   }
@@ -86,21 +100,36 @@ test("필터 서랍: 유종·최저가·조건·상표·전체 선택·초기화
   expect(labelInput("E1").disabled).toBe(true);
   await act(async () => labelInput("알뜰주유소").click());
   expect(onFiltersChange.mock.lastCall![0].brands).not.toContain("ALT");
-  expect(dialog.textContent).not.toMatch(/믿음|직영|스마트|면세유|화물차|테마|LIGHT|DARK/);
-  const narrowed = { ...DEFAULT_PUBLIC_FUEL_FILTERS, brands: ["SKE"], self_only: true };
+  expect(menu.textContent).not.toMatch(/믿음|직영|스마트|면세유|화물차|테마|LIGHT|DARK/);
+  const narrowed = { ...DEFAULT_PUBLIC_FUEL_FILTERS, brands: ["SKE"], self_only: true, near_min: 70 };
   await rerender(view(narrowed, ["B027"]));
+  // 트리거는 실제로 서버에 보내는 조건 수(셀프·상표·최저가 = 3)를 알린다.
+  expect(trigger.getAttribute("aria-label")).toBe("유종·필터: 휘발유, 조건 3개 적용 중");
+  expect(trigger.querySelector(".public-fuel-filter-count")?.textContent).toBe("3");
   expect(labelInput("브랜드 전체 선택").checked).toBe(false);
   await act(async () => labelInput("브랜드 전체 선택").click());
   expect(onFiltersChange).toHaveBeenLastCalledWith({ ...narrowed, brands: [] });
-  await act(async () => button("필터 초기화").click());
+  // 초기화는 유종과 필터를 함께 처음으로 돌린다.
+  await act(async () => button("초기화").click());
   expect(onFiltersChange).toHaveBeenLastCalledWith(DEFAULT_PUBLIC_FUEL_FILTERS);
+  expect(onProductsChange).toHaveBeenLastCalledWith([]);
+  await act(async () => button("닫기").click());
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  vi.unstubAllGlobals();
 });
 
-test("관리 화면 범위 요약에는 지역·필터 버튼이 없다", () => {
+test("관리 화면 범위 요약에는 지역·유종·필터 선택이 없고, 공개 요약은 맨 위에 지역 아이콘과 유종·필터 하나만 둔다", () => {
   const items = [{ product_code: "B027", station_count: 3, average_price: 1700, minimum_price: 1600, maximum_price: 1800, price_spread: 200,
     standard_deviation: 10, saving_50l: 5000, cheapest_station_count: 1, cheapest_station: null, generated_at: "2026-11-21T22:00:00Z" }];
-  expect(renderToStaticMarkup(<FuelViewportSummary items={items} pending={false} />)).not.toContain("public-fuel-tools");
-  expect(renderToStaticMarkup(<FuelViewportSummary items={items} pending={false}
-    publicFuel={{ products: [], onProductsChange: () => {}, onOpenFilters: () => {}, onOpenRegion: () => {}, filterCount: 2 }} />))
-    .toContain("필터 2개 적용 중");
+  const admin = renderToStaticMarkup(<FuelViewportSummary items={items} pending={false} />);
+  for (const name of ["public-fuel-filter-trigger", "public-fuel-region-button", "fuel-sigungu-chips", "public-fuel-tools"]) expect(admin).not.toContain(name);
+  const markup = renderToStaticMarkup(<FuelViewportSummary items={items} pending={false}
+    publicFuel={{ products: [], onProductsChange: () => {}, filters: { ...DEFAULT_PUBLIC_FUEL_FILTERS, cvs: true }, onFiltersChange: () => {}, onOpenRegion: () => {} }} />);
+  expect(markup).toContain('aria-label="유종·필터: 전체 유종, 조건 1개 적용 중"');
+  expect(markup).toContain('aria-label="지역 이동"');
+  // "지도 범위" 글씨는 화면에 없다(영역 이름은 aria-label에만).
+  expect(markup.replace(/aria-label="[^"]*"/g, "")).not.toContain("지도 범위");
+  expect(markup).not.toContain("<h2");
+  // 지역 아이콘이 유종·필터보다 앞(맨 위 줄 첫 칸)에 온다.
+  expect(markup.indexOf("public-fuel-region-button")).toBeLessThan(markup.indexOf("public-fuel-filter-trigger"));
 });

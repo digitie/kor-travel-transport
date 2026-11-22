@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 
-// 공개 유가(TRANSPORT_UI_MODE=fuel) 시군구 가격 분포: 범위 요약의 시군구 칩 → 대화상자(토글), 주유소 상세 등급·핀.
+// 공개 유가(TRANSPORT_UI_MODE=fuel) 시군구 가격 분포: 범위 요약의 지역 칩(고른 곳 하나, 고르기 전에는 화면 대표 시군구 하나)
+// → 대화상자(토글), 주유소 상세 등급·핀.
 // 유가 BFF는 page.route가 대신하고 외부 지도 타일은 막는다. 스크린샷은 E2E_SCREENSHOT_DIR이 있으면 그곳에도 저장한다.
 const generated = "2026-11-21T22:00:00Z";
 const SEOUL = { latitude: 37.5665, longitude: 126.978 };
@@ -66,25 +67,21 @@ const summaryOf = (page: Page) => page.getByRole("region", { name: "현재 지�
 const noHorizontalScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
 
 for (const width of [320, 390, 1440]) {
-  test(`${width}px 시군구 칩 → 통계 대화상자 · 분포(%) · 전국 대비`, async ({ page }, testInfo) => {
+  test(`${width}px 지역 칩 하나 → 통계 대화상자 · 분포(%) · 전국 대비`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: width < 1000 ? 844 : 900 });
     await page.goto("/");
-    const chips = summaryOf(page).getByRole("navigation", { name: "지도에 보이는 시군구 가격 통계" });
+    const chips = summaryOf(page).getByRole("group", { name: "지도 대표 지역 가격 통계" });
     await expect(chips).toBeVisible();
-    await expect(chips.locator(".fuel-sigungu-chip:not(.fuel-sigungu-more)")).toHaveCount(5);
-    // 이름이 같은 시군구(중구)는 둘 다 시도를 붙여 구분한다.
-    const more = chips.getByRole("button", { name: "시군구 9곳 더 보기" });
-    await expect(more).toHaveText("+9");
-    for (const chip of await chips.getByRole("button").all()) expect((await chip.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    // 화면에 시군구 8곳(전체 14곳)이 있어도 칩은 주유소가 가장 많은 첫 곳 하나뿐이고 더 보기(+N)도 없다.
+    await expect(chips.getByRole("button")).toHaveCount(1);
+    await expect(chips.getByRole("button", { name: /더 보기/ })).toHaveCount(0);
+    for (const other of ["보은군", "영동군", "금산군", "중구", "청주시"]) await expect(chips).not.toContainText(other);
+    const chip = chips.getByRole("button", { name: /^충북 옥천군 휘발유 가격 통계 · 지도 안 29개 주유소$/ });
+    expect((await chip.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     expect(await noHorizontalScroll(page)).toBe(true);
     await shot(page, `fuel-stats-chips-${width}.png`, testInfo);
-    await more.click();
-    await expect(chips.locator(".fuel-sigungu-chip:not(.fuel-sigungu-more)")).toHaveCount(8);
-    await expect(chips.getByRole("button", { name: /대전 중구/ })).toBeVisible();
-    await expect(chips.getByRole("button", { name: /서울 중구/ })).toBeVisible();
-    await expect(chips).toContainText("나머지 6곳");
-    await chips.getByRole("button", { name: /^옥천군 휘발유 가격 통계/ }).click();
-    const dialog = page.getByRole("dialog", { name: "옥천군 29개 휘발유 값 통계" });
+    await chip.click();
+    const dialog = page.getByRole("dialog", { name: "충북 옥천군 29개 휘발유 값 통계" });
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText("최저 1,819원, 평균 1,883원, 최고 1,998원");
     await expect(dialog.locator("time")).toContainText("2026년 11월 22일 일요일 오전 7시 기준");
@@ -117,15 +114,21 @@ for (const width of [320, 390, 1440]) {
     // 키보드: Escape로 닫으면 칩으로 초점이 돌아온다.
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
-    await expect(chips.getByRole("button", { name: /^옥천군 휘발유 가격 통계/ })).toBeFocused();
+    await expect(chip).toBeFocused();
     expect(await noHorizontalScroll(page)).toBe(true);
   });
 }
 
 test("390px 작은 시군구는 그래프 대신 안내 문구", async ({ page }, testInfo) => {
+  // 이 화면에서는 보은군(표본 2곳)이 주유소 수 1순위라 칩으로 보인다. 나중에 등록한 route가 먼저 처리된다.
+  await page.route("**/api/public/fuel/places?*", (route: Route) => route.fulfill({ json: {
+    items: [], total: 0, truncated: false, clustered: false, available_sources: [],
+    fuel_statistics: [{ ...metrics, product_code: "B027" }], fuel_prices_stale: false, fuel_prices_last_refreshed_at: generated,
+    fuel_viewport_sigungu: [regions[1], regions[0]], fuel_viewport_sigungu_total: 2,
+  } }));
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await summaryOf(page).getByRole("button", { name: /^보은군 휘발유 가격 통계/ }).click();
+  await summaryOf(page).getByRole("button", { name: /^충북 보은군 휘발유 가격 통계/ }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("주유소가 2곳뿐이라 분포 그래프를 그리지 않습니다");
   await expect(dialog.getByRole("img")).toHaveCount(0);
@@ -144,7 +147,7 @@ test("공개 유가 화면에는 테마 선택기가 없고 OS 다크 모드에�
     await expect(page.getByRole(role, { name: themeControl })).toHaveCount(0);
   }
   expect(await page.evaluate(() => Object.keys(localStorage).filter(key => /theme/i.test(key)))).toEqual([]);
-  await summaryOf(page).getByRole("button", { name: /^옥천군 휘발유 가격 통계/ }).click();
+  await summaryOf(page).getByRole("button", { name: /^충북 옥천군 휘발유 가격 통계/ }).click();
   const dialog = page.getByRole("dialog", { name: /옥천군/ });
   await expect(dialog.getByRole("img")).toBeVisible();
   const [text, background] = await dialog.evaluate(node => [getComputedStyle(node.querySelector("h2")!).color, getComputedStyle(node).backgroundColor]);

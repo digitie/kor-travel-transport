@@ -72,11 +72,28 @@ export const signedWon = (value: number) => {
   return rounded === 0 ? "평균과 같음" : `${rounded > 0 ? "+" : "−"}${Math.abs(rounded).toLocaleString("ko-KR")}원`;
 };
 
-/** 시군구 칩 이름: 같은 이름의 시군구(예: 중구)가 여러 시도에 보이면 시도를 붙인다. */
-export function sigunguChipLabels(items: FuelViewportSigungu[]) {
-  const counts = new Map<string, number>();
-  for (const item of items) counts.set(item.sigungu_name, (counts.get(item.sigungu_name) ?? 0) + 1);
-  return items.map(item => (counts.get(item.sigungu_name) ?? 0) > 1 ? `${item.sido_name} ${item.sigungu_name}` : item.sigungu_name);
+/** 범위 요약의 지역 칩 하나. station_count는 지금 화면 안 주유소 수(화면 밖이면 null). */
+export type FuelRegionChip = {
+  sido_value: string; sigungu_value: string; label: string; station_count: number | null; selected: boolean;
+};
+
+/**
+ * 지역 목록은 고른 곳 하나만 보인다(소유자 지시 2026-11-22 "지역 목록은 선택한 곳만").
+ * - 지역 이동에서 고른 시군구가 있으면 그것만(지도를 옮겨도 다른 곳을 고르거나 해제할 때까지 유지).
+ * - 고르기 전에는 지금 화면에서 주유소가 가장 많은 시군구 1곳(서버 목록 1순위, 주유소 수 내림차순).
+ */
+export function displayedRegion(
+  selected: { sido_value: string; sigungu_value: string; label: string } | undefined,
+  viewport: FuelViewportSigungu[],
+): FuelRegionChip | null {
+  if (selected) {
+    const visible = viewport.find(item => item.sido_value === selected.sido_value && item.sigungu_value === selected.sigungu_value);
+    return { ...selected, station_count: visible?.station_count ?? null, selected: true };
+  }
+  const top = viewport[0];
+  if (!top) return null;
+  return { sido_value: top.sido_value, sigungu_value: top.sigungu_value, label: `${top.sido_name} ${top.sigungu_name}`,
+    station_count: top.station_count, selected: false };
 }
 
 /** 등급 색: 싼 쪽(A)은 brand, 중간(B)은 success, 비싼 쪽(C·D)은 warning/danger 토큰. */
