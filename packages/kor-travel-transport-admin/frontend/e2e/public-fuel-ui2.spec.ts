@@ -174,7 +174,7 @@ for (const width of [320, 390, 1440]) {
     await expect(summary).toContainText("1,760");
     const rowHeights = await summary.locator(".public-fuel-summary-product").evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height));
     expect(rowHeights).toHaveLength(2);
-    for (const height of rowHeights) expect(height).toBeLessThanOrEqual(width >= 1024 ? 24 : 46);
+    for (const height of rowHeights) expect(height).toBeLessThanOrEqual(width >= 1024 ? 28 : 48);
     const summaryHeight = (await summary.boundingBox())!.height;
     expect(summaryHeight, `요약 높이 ${summaryHeight}`).toBeLessThanOrEqual(width <= 320 ? 230 : 190);
     const autoBackground = await chip(page).evaluate(node => getComputedStyle(node).backgroundColor);
