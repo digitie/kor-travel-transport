@@ -283,6 +283,9 @@ test("390px 필터를 켠 동안 오래된 가격 아이콘은 비활성이고 �
   await expect(button).toHaveAttribute("aria-disabled", "true");
   const expected = process.env.E2E_FUEL_REFRESH === "true" ? "필터를 켠 동안은 지도 범위 업데이트를 할 수 없습니다" : "이 화면에서는 유가 업데이트를 쓸 수 없습니다";
   await expect(button).toHaveAccessibleName(new RegExp(`가격 오래됨 · 업데이트할 수 없음: ${expected}`));
+  // 조회가 끝나 요약 높이가 바뀌는 동안(요약 영역 스크롤)에는 Radix가 툴팁을 닫는다. 값이 그려진 뒤에 누른다.
+  await expect(summaryOf(page)).toContainText("1,760");
+  await page.waitForTimeout(500);
   await button.click({ force: true });
   await expect(page.getByRole("tooltip")).toContainText(expected);
   await expect(page.getByRole("tooltip")).toContainText("마지막 가격 갱신");
