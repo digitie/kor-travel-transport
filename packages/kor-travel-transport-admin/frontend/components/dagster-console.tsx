@@ -233,7 +233,7 @@ function RunToolbar({detail,loading,action,confirmCancel,onToggleCancel,onRefres
     <h4 className="font-semibold">실행·단계 진행</h4>
     <Button size="sm" type="button" variant="outline" loading={loading} onClick={onRefresh}>상세 새로고침</Button>
     {detail?.canCancel?<Button size="sm" type="button" variant="outline" disabled={action.busy} aria-expanded={confirmCancel} onClick={onToggleCancel}>실행 취소</Button>:null}
-    {detail?.canRetry?<Button size="sm" type="button" variant="outline" loading={action.busy} disabled={action.unresolved} disabledReason="이전 실행 요청의 상태를 먼저 확인하세요." onClick={()=>void action.perform({action:"retry",runId})}>같은 작업 다시 실행</Button>:null}
+    {detail?.canRetry?<Button size="sm" type="button" variant="outline" loading={action.busy} disabled={action.unresolved} disabledReason="이전 실행 요청의 상태를 먼저 확인하세요." aria-describedby={`retry-note-${runId}`} onClick={()=>void action.perform({action:"retry",runId})}>재시도</Button>:null}
   </div>;
 }
 
@@ -250,6 +250,8 @@ function RunMetrics({detail}:{detail:ConsoleRunDetail}) {
     <dt className="text-text-secondary">실행 시간</dt><dd>{elapsed(detail.startTime,detail.endTime)}</dd>
     <dt className="text-text-secondary">단계</dt><dd>완료 {detail.stepsSucceeded??"미확인"} · 실패 {detail.stepsFailed??"미확인"} · 자료 게시 {detail.materializations??"미확인"}</dd>
     <dt className="text-text-secondary">최근 확인</dt><dd>{date(Date.parse(detail.checkedAt)/1000)}</dd>
+    {detail.retryOf?<><dt className="text-text-secondary">재시도 원본</dt><dd><a className="break-all font-mono text-brand underline-offset-4 hover:underline" href={dagsterRunUrl(detail.retryOf)} rel="noreferrer" target="_blank">{detail.retryOf} ↗</a></dd></>:null}
+    {detail.requestedBy?<><dt className="text-text-secondary">관리자 요청</dt><dd>{detail.requestedBy} · {date(detail.creationTime)}</dd></>:null}
   </dl>;
 }
 
@@ -296,7 +298,7 @@ export function DagsterRunInspector({runId,jobLabel}:{runId:string;jobLabel:JobL
       <RunWarnings events={detail.events}/>
       <RunSteps detail={detail} jobLabel={jobLabel}/>
       <RunEvents detail={detail} loading={loading} onNextPage={()=>load(true)} jobLabel={jobLabel}/>
-      <p className="text-xs text-text-secondary">같은 작업 다시 실행은 현재 기본 설정으로 새 실행을 만들며, 실패 단계만 재실행하는 기능은 아닙니다.</p>
+      <p className="text-xs text-text-secondary" id={`retry-note-${runId}`}>재시도는 실패·취소된 실행과 같은 작업을 현재 기본 설정으로 새로 실행하고 요청자·원본 실행을 기록합니다. 수집 작업은 단일 단계라 실패 단계부터 다시 하는 것과 같습니다. 유가 수집은 직전 시도가 실패였을 때만 정기 예약을 앞당겨 저장된 진행분에서 이어 합니다.</p>
     </>:loading?<p role="status" className="text-xs text-text-secondary">실행 상세 확인 중…</p>:null}
   </section>;
 }

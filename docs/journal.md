@@ -1,3 +1,14 @@
+## 2026-11-23 — 관리자 Dagster 콘솔 "재시도" 감사 기록(FUEL-RETRY-20261123 UI)
+
+- 이미 있던 "같은 작업 다시 실행"(실패·취소 run의 같은 job을 기본 설정으로 새로 launch, `kortravel/admin-retry-of`, 멱등 요청 ID,
+  세션·origin 검사)을 "재시도"로 이름을 바꾸고 감사 기록을 더했다. 수집 job은 단일 op라 실패 단계부터 다시 하는 것과 같다.
+- 감사: launch·retry run에 `kortravel/admin-actor`(검증된 세션 사용자) 태그(요청 시각은 run 생성 시각; 멱등 복구가 같은 launch 본문을 다시 보내야 해서 시각 태그는 두지 않는다), 모든 변경 요청(실행·재시도·
+  취소·예약 시작/중지)에 컨테이너 stdout JSON 한 줄(`transport_admin_dagster_action`: 요청자·action·대상·요청 ID·결과 상태). 쿠키·
+  Dagster 원문은 싣지 않는다. 실행 상세에 "재시도 원본"(링크)·"관리자 요청"(요청자·생성 시각)을 형식 검증 뒤에만 보인다.
+- 실패 진단에 `OPINET_BROWSER_RESOURCE_POLICY`와 op metadata `auto_retry`(자동 재시도 여부)를 더했다. 유가 재시도가 8시간 예약에
+  막히지 않는 것은 백엔드 PR(같은 task)이 맡는다.
+- e2e `dagster-retry.spec.ts`(390·1440px, BFF 응답 고정).
+
 ## 2026-11-23 — 유가 수집 실패 원인과 자동 재시도(FUEL-RETRY-20261123)
 
 - 운영 읽기 전용 조사(odroid Dagster run 기록·compute log·`transport_collection_states`·PostgreSQL 로그·`pg_stat_activity` 표본):

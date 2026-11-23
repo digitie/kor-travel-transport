@@ -10,7 +10,11 @@ export type ConsoleRunDetail = {
   canCancel: boolean; canRetry: boolean; steps: ConsoleStep[]; events: ConsoleEvent[];
   stepsSucceeded: number | null; stepsFailed: number | null; materializations: number | null;
   cursor: string | null; hasMore: boolean; stepsTruncated: boolean; checkedAt: string;
+  /** 관리자 재시도로 만든 실행이면 원래 실행 ID, 관리자 요청이면 요청자(감사 태그). 요청 시각은 creationTime이다. */
+  retryOf?: string | null; requestedBy?: string | null;
 };
+/** 감사 태그에 싣는 요청자. 세션 사용자 이름만 쓰고 형식을 벗어나면 싣지 않는다. */
+export type ConsoleAudit = { actor: string | null };
 export type ConsoleAction = "launch" | "retry" | "cancel" | "startSchedule" | "stopSchedule" | "startSensor" | "stopSensor";
 export type ConsoleActionRequest = { operation: "action"; action: ConsoleAction; requestId: string; name?: string; runId?: string };
 export type ConsoleRequest = { operation: "catalog" } | { operation: "detail"; runId: string; cursor?: string | null; includeEvents?: boolean } | { operation: "requestStatus"; requestId: string } | ConsoleActionRequest;

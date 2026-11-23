@@ -133,6 +133,24 @@ describe("관리자 변경 요청",()=>{
     expect(variables.executionParams).toMatchObject({runConfigData:{},executionMetadata:{tags:expect.arrayContaining([{key:"kortravel/admin-retry-of",value:id}])}});
     expect(JSON.stringify(f.graphql.mock.calls)).not.toContain("runConfigYaml");
   });
+  it("재시도는 요청자 감사 태그를 달고 형식을 벗어난 요청자는 싣지 않는다",async()=>{
+    for(const [actor,expected] of [["admin","admin"],["bad actor\n<script>",null],[null,null]] as const){
+      const f=fixture();f.setRun(run("FAILURE"));
+      expect(await handleConsoleRequest({operation:"action",action:"retry",runId:id,requestId},f.graphql,{actor})).toMatchObject({state:"accepted"});
+      const [,variables]=f.graphql.mock.calls.find(([query])=>query.includes("mutation AdminDagsterLaunch"))!;
+      const tags=(variables.executionParams as {executionMetadata:{tags:{key:string;value:string}[]}}).executionMetadata.tags;
+      expect(tags.find(item=>item.key==="kortravel/admin-actor")?.value??null).toBe(expected);
+      expect(tags).toEqual(expect.arrayContaining([{key:"kortravel/admin-retry-of",value:id}]));
+    }
+  });
+  it("실행 상세는 재시도 원본·요청자를 검증된 형식만 노출한다",()=>{
+    const tagged=(tags:{key:string;value:string}[])=>sanitizeConsoleRun({...run("QUEUED"),tags});
+    expect(tagged([{key:"kortravel/admin-retry-of",value:other.toUpperCase()},{key:"kortravel/admin-actor",value:"admin"}]))
+      .toMatchObject({retryOf:other,requestedBy:"admin"});
+    expect(tagged([{key:"kortravel/admin-retry-of",value:"../foreign"},{key:"kortravel/admin-actor",value:"<b>x</b>"}]))
+      .toMatchObject({retryOf:null,requestedBy:null});
+    expect(sanitizeConsoleRun(run("FAILURE"))).toMatchObject({retryOf:null,requestedBy:null});
+  });
   it("스케줄·센서 식별자는 서버가 읽은 자기 repository 값만 쓴다",async()=>{
     const f=fixture();expect(await handleConsoleRequest({operation:"action",action:"startSchedule",name:"fixture_schedule",requestId},f.graphql)).toMatchObject({state:"accepted"});
     expect(f.graphql.mock.calls.at(-1)![1]).toEqual({selector:{repositoryLocationName:DAGSTER_LOCATION_NAME,repositoryName:"__repository__",scheduleName:"fixture_schedule"}});
