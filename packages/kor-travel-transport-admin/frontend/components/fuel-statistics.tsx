@@ -236,41 +236,54 @@ const PRICE_STATE_TEXT: Record<PublicPriceState, { name: string; reason?: string
   unknown: { name: "가격 상태 확인 못 함", reason: "가격 상태를 확인하지 못했습니다" },
 };
 
+/** 가격 아이콘의 모양·이름·툴팁(순수 함수). 신선도를 모를 때(checking·unknown)는 회색 "최신"·비활성 모양을 쓰지 않는다
+ * (조정자 지시 2026-11-23): 조회 중은 도는 아이콘(aria-busy), 실패는 물음표, 둘 다 aria-disabled 없이 누르면 이유 툴팁만 연다. */
+function priceButtonView(state: PublicPriceState, canRefresh: boolean, blocked: PublicFuelRefreshBlock | undefined,
+  refreshing: boolean, lastRefreshedAt?: string | null) {
+  const stale = state === "stale";
+  const unknownState = state === "checking" || state === "unknown";
+  const enabled = stale && canRefresh;
+  const time = `마지막 가격 갱신 ${priceTimestamp(lastRefreshedAt) ?? "시각 미확인"}`;
+  const reason = PRICE_STATE_TEXT[state].reason ?? REFRESH_BLOCK_REASON[blocked ?? "disabled"];
+  const icons = { stale: ClockAlert, fresh: Clock, checking: LoaderCircle, unknown: CircleHelp } as const;
+  return {
+    stale, enabled, Icon: icons[state],
+    label: enabled ? "가격 오래됨 · 지도 범위 유가 업데이트" : `${PRICE_STATE_TEXT[state].name} · 업데이트할 수 없음: ${reason}`,
+    tipText: enabled ? `가격이 오래됐습니다. 눌러 지도에 보이는 주유소 가격을 업데이트합니다. ${time}` : `${reason}. ${time}`,
+    ariaDisabled: (!enabled && !unknownState) || refreshing,
+    // 업데이트 진행 중(loading)의 aria-busy를 덮어쓰지 않는다.
+    busy: state === "checking" || refreshing,
+    iconClass: state === "checking" ? "public-fuel-price-spin" : undefined,
+  };
+}
+
 function PublicFuelPriceButton({ state, lastRefreshedAt, onRefresh, refreshing = false, blocked }: {
   state: PublicPriceState; lastRefreshedAt?: string | null; onRefresh?: () => void; refreshing?: boolean; blocked?: PublicFuelRefreshBlock;
 }) {
   const [tip, setTip] = useState(false);
-  const stale = state === "stale";
-  const time = `마지막 가격 갱신 ${priceTimestamp(lastRefreshedAt) ?? "시각 미확인"}`;
-  const enabled = stale && Boolean(onRefresh);
-  const reason = PRICE_STATE_TEXT[state].reason ?? REFRESH_BLOCK_REASON[blocked ?? "disabled"];
-  const label = enabled ? "가격 오래됨 · 지도 범위 유가 업데이트" : `${PRICE_STATE_TEXT[state].name} · 업데이트할 수 없음: ${reason}`;
-  const tipText = enabled ? `가격이 오래됐습니다. 눌러 지도에 보이는 주유소 가격을 업데이트합니다. ${time}` : `${reason}. ${time}`;
-  // 신선도를 모를 때(첫 조회 중·실패·필터 변경 직후)는 회색 "최신" 시계·비활성 모양을 쓰지 않는다(조정자 지시 2026-11-23):
-  // 조회 중은 도는 아이콘(aria-busy), 실패는 물음표. 둘 다 비활성처럼 흐리지 않고, 누르면 이유 툴팁만 연다.
-  const unknownState = state === "checking" || state === "unknown";
-  const Icon = stale ? ClockAlert : state === "checking" ? LoaderCircle : state === "unknown" ? CircleHelp : Clock;
+  const view = priceButtonView(state, Boolean(onRefresh), blocked, refreshing, lastRefreshedAt);
+  const { Icon, enabled } = view;
   return <>
   <TooltipProvider delayDuration={300}>
     <Tooltip open={tip} onOpenChange={setTip}>
       <TooltipTrigger asChild>
-        <Button type="button" variant="outline" size="icon" className="public-fuel-price-button" data-stale={stale || undefined} data-state-kind={state}
-          aria-label={label} aria-disabled={(!enabled && !unknownState) || refreshing || undefined} loading={refreshing}
-          aria-busy={state === "checking" || undefined}
+        <Button type="button" variant="outline" size="icon" className="public-fuel-price-button" data-stale={view.stale || undefined} data-state-kind={state}
+          aria-label={view.label} aria-disabled={view.ariaDisabled || undefined} loading={refreshing}
+          aria-busy={view.busy || undefined}
           onClick={event => {
             if (enabled) { onRefresh?.(); return; }
             // Radix 툴팁은 트리거를 누르면 닫는다. 누를 수 없는 단추에서는 그 기본 동작을 막고 이유 툴팁을 연다(터치·키보드).
             event.preventDefault();
             setTip(true);
           }}>
-          <Icon aria-hidden="true" size={18} className={state === "checking" ? "public-fuel-price-spin" : undefined} />
+          <Icon aria-hidden="true" size={18} className={view.iconClass} />
         </Button>
       </TooltipTrigger>
-      <TooltipContent side="bottom" className="public-fuel-price-tip">{tipText}</TooltipContent>
+      <TooltipContent side="bottom" className="public-fuel-price-tip">{view.tipText}</TooltipContent>
     </Tooltip>
   </TooltipProvider>
   {/* 예전 "오래됨"(role=status)처럼 가격이 오래되면 화면 읽기 프로그램에 알린다. 늘 붙여 두고 글자만 바꾼다. */}
-  <span className="sr-only public-fuel-price-status" role="status">{stale ? "가격이 오래됐습니다" : ""}</span>
+  <span className="sr-only public-fuel-price-status" role="status">{view.stale ? "가격이 오래됐습니다" : ""}</span>
   </>;
 }
 
