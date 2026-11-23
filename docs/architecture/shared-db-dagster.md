@@ -221,7 +221,9 @@ Basic Auth, 공개 host `https://dagster.digitie.mywire.org`)와 공용 instance
   profile로 직접 띄우지 않는다 — 공용 daemon이 같은 schedule을 이미 쏜다(이중 발화).
 - 공용 instance의 상한은 Manager `config/dagster-shared/dagster.yaml`이 갖는다 — 이 location 3(옛
   `max_concurrent_runs`), `kortraveltransport/run_group` 넷 각 1(옛 값). 실행 상한은 job tag
-  `dagster/max_runtime=14400`(옛 instance의 4시간, `backend/app/dagster/definitions.py`)이다. 이 저장소의
+  `dagster/max_runtime`이다 — 기본 14400(옛 instance의 4시간), 5분 job은 주기 비례(공항 1800·고속도로 1200), 기준정보
+  본문 준비 180(`JOB_MAX_RUNTIME_SECONDS`, `backend/app/dagster/definitions.py`). `dagster/priority`는 공항·고속도로 10,
+  유가·휴게소 유가·본문 준비 5, 나머지 0(공용 큐 전체에서 비교되는 값이라 음수는 두지 않는다). 이 저장소의
   `backend/dagster_home/dagster.yaml`은 legacy-dagster(되돌리기)만 쓴다.
 - schedule의 상태는 코드에 선언한다 — 10개 모두 `default_status=RUNNING`(2026-10-02 옛 instance의 RUNNING 집합과
   같다). 이력은 새로 시작한다(D1). 옛 metadata DB `kor_travel_transport_dagster`는 30일 보존한다(지금 지우지 않는다).

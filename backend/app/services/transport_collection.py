@@ -74,6 +74,12 @@ FUEL_FETCH_TIMEOUT_SECONDS = 12_600
 #: 8시간 tick마다다(KST 00·08·16시, 하루 3 tick). tick 없이 예정 시각까지 자는 in-process scheduler는 이 폭을
 #: 되돌려 기다린다(`next_collection_delay`) — 그렇지 않으면 7시간 45분마다 돈다.
 FUEL_NEXT_DUE_START_SLACK = timedelta(minutes=15)
+#: 정기 tick이 띄운 고속도로 run의 성공 뒤 다음 예정 = 그 run의 **tick 시각**(`dagster/scheduled_execution_time`) + 주기 −
+#: 이 여유. 5분 schedule의 run은 tick보다 큐·기동 지연만큼 늦게 시작하고 그 지연은 run마다 달라서, 시작 + 5분을 쓰면 다음 run의
+#: 지연이 조금만 짧아도 "아직 이르다"로 건너뛰었다(운영 14일 498건 `skipped`, 실효 주기 약 9분 — 감사 §2.5 P1 #11). tick 시각은
+#: 흔들리지 않으므로 여유는 시계 오차만 덮으면 된다. 다음 정기 실행은 여전히 다음 tick이라 호출 빈도는 늘지 않는다. tick이 없는
+#: 실행(수동·in-process scheduler·관리자 재시도)은 예전대로 시작 + 주기다.
+HIGHWAY_TICK_SLACK = timedelta(seconds=30)
 #: 유가 스냅샷 upsert 한 문장에 싣는 행 수. bind 파라미터 상한(PostgreSQL·SQLite 32,767)과 수집 엔진의
 #: 문장당 `command_timeout`(60초) 안에 들도록 정한다. 주유소 41열 x 500 = 20,500개, 유가 9열 x 2,000 = 18,000개.
 FUEL_STATION_UPSERT_BATCH = 500
@@ -362,6 +368,8 @@ class TransportCollectionService:
         self.settings = settings
         self.provider = provider or build_transport_provider(settings)
         self.operation_locks = {"highway": asyncio.Lock(), "fuel": asyncio.Lock()}
+        #: 진행 중인 `collect`의 정기 tick 시각(`collect(scheduled_at=…)`). None이면 시작 기준 예약.
+        self._scheduled_at: datetime | None = None
 
     @property
     def client_mode(self) -> str:
@@ -385,8 +393,11 @@ class TransportCollectionService:
         *,
         scope: CollectionScope = "all",
         retry_failed_fuel: bool = False,
+        scheduled_at: datetime | None = None,
     ) -> dict[str, Any]:
         """`retry_failed_fuel`은 직전 유가 시도가 **실패**로 끝났을 때만 그 시도의 예약을 앞당긴다.
+
+        `scheduled_at`은 정기 schedule tick 시각이다. 고속도로 성공의 다음 예정을 그 tick 기준으로 잡는다(`HIGHWAY_TICK_SLACK`).
 
         Dagster의 일시 오류 재시도(op RetryPolicy)와 관리자 "재시도"(`kortravel/admin-retry-of`)가 쓴다.
         직전 시도가 성공했거나 아직 시작 전이면 아무것도 바꾸지 않는다(정기 예약·호출 예산 유지).
@@ -403,6 +414,7 @@ class TransportCollectionService:
             normalized_trigger = (
                 trigger if trigger.startswith(TRANSPORT_TRIGGER_PREFIX) else f"{TRANSPORT_TRIGGER_PREFIX}{trigger}"
             )
+            self._scheduled_at = serialize_utc(scheduled_at) if scheduled_at is not None else None
             return await self._collect_unlocked(session, normalized_trigger, scope, retry_failed_fuel=retry_failed_fuel)
 
     @staticmethod
@@ -1459,9 +1471,7 @@ class TransportCollectionService:
         state = await self._get_or_create_state(session, source)
         if not keep_success_at or state.last_success_at is None:
             state.last_success_at = completed_at
-        state.next_due_at = serialize_utc(state.last_started_at or completed_at) + timedelta(
-            seconds=self.settings.transport_collect_interval_seconds
-        )
+        state.next_due_at = self._highway_next_due(state.last_started_at or completed_at)
         state.last_error = None
         state.updated_at = now_utc()
         await session.flush()
@@ -1476,6 +1486,8 @@ class TransportCollectionService:
     ) -> None:
         state = await self._get_or_create_state(session, source)
         delay = delay_seconds or self.settings.transport_collect_interval_seconds
+        # 실패는 실패 시각부터 잰다(성공의 tick 기준과 다르다). 실패 뒤 다음 tick 하나를 건너뛰는 것이 결정적 오류·장애의
+        # 재호출을 늦추는 자연스러운 유예다.
         state.next_due_at = now_utc() + timedelta(seconds=delay)
         state.last_error = message
         state.updated_at = now_utc()
@@ -1483,6 +1495,13 @@ class TransportCollectionService:
 
     async def _get_or_create_state(self, session: AsyncSession, source: str) -> TransportCollectionState:
         return await get_or_create_state(session, source)
+
+    def _highway_next_due(self, started_at: datetime) -> datetime:
+        """고속도로 성공 뒤 다음 예정: 정기 tick이 띄운 실행이면 tick + 주기 − 시계 여유, 아니면 시작 + 주기."""
+        interval = timedelta(seconds=self.settings.transport_collect_interval_seconds)
+        if self._scheduled_at is not None:
+            return self._scheduled_at + interval - HIGHWAY_TICK_SLACK
+        return serialize_utc(started_at) + interval
 
     async def next_collection_delay(self, session: AsyncSession, scope: CollectionScope) -> float:
         """고정 tick과 DB 예정 시각의 미세한 차이 때문에 한 주기를 건너뛰지 않는다."""

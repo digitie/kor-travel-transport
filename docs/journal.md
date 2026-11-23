@@ -1,3 +1,31 @@
+## 2026-11-24 — 5분 job 실행 상한·큐 우선순위·고속도로 next_due 여유(DAGSTER-RUNTIME-PRIORITY-20261124)
+
+- 감사(Map `docs/reports/2026-11-23-collection-failure-audit.md` §2.5 P1 #9·#11, §2.6 #9, §4 #12·#13):
+  - 5분 job(공항·고속도로)에 4시간(`14,400`초) 상한이 붙어 있었다. coalescing schedule은 같은 job이 QUEUED·STARTED인 동안 tick을
+    버리므로, 걸린 run 하나가 최대 48 tick을 막는다.
+  - `dagster/priority`가 없어 공용 run 큐가 찰 때 실시간 현황과 하루 한 번 backfill이 같은 순서로 섰다.
+  - 고속도로 `next_due_at` = 시작 + 300초에 여유가 없어, 다음 run의 기동 지연이 조금만 짧아도 "아직 이르다"로 건너뛰었다
+    (odroid 14일 498 run `skipped`, 실효 주기 약 9분).
+- 변경:
+  - `JOB_MAX_RUNTIME_SECONDS`: 공항 1,800초(6주기 — 같은 run의 본문 준비 step까지 나눠 쓰고, 느리지만 끝나는 상류를 끊지 않게),
+    고속도로 1,200초(4주기 — 조회·재확인 각 2x120초, 저장, claim 예약 1,140초를 덮음), 기준정보 본문 준비 180초(기존).
+    나머지는 4시간 유지(유가 브라우저 3.5시간, 4시간 이상 주기, 이어 하기 backfill).
+  - op 안의 cancellation deadline은 run **시작**부터 잰 실제 run 태그(`dagster/max_runtime`)의 남은 시간 − 60초다
+    (`_run_deadline_seconds`; 못 읽으면 step 기준). step이 둘인 공항 run과 기동이 늦은 step도 run monitoring보다 먼저 끝나 실패를
+    직접 기록한다. 인프라 재시도 sensor 정책도 job과 같은 상한을 쓴다(common sensor가 재시도 run 태그를 정책으로 덮으므로).
+  - `JOB_PRIORITIES`(`dagster/priority`): 공항·고속도로 10, 유가·휴게소 유가·기준정보 본문 준비 5, 나머지 0. 공용 instance 큐 전체에서
+    비교되는 값이라 음수는 두지 않았다(transport backfill이 다른 테넌트 뒤로 굶지 않게). Manager 문서에는 아직 테넌트 priority
+    합의가 없다 — 소유자 확인 사항.
+  - 고속도로 성공의 다음 예정: 정기 tick이 띄운 run은 **tick 시각**(`dagster/scheduled_execution_time`) + 300초 − 30초. 기동 지연이
+    흔들려도 다음 tick run은 늘 예정 뒤라 건너뛰지 않는다. tick이 없는 실행(수동·in-process·관리자 재시도)은 예전대로 시작 + 300초.
+    실패는 예전대로 실패 시각 + 300초(다음 tick 하나를 건너뛰는 자연 유예 — 결정적 오류의 재호출을 늘리지 않는다).
+- 적대 리뷰(Popper·James) 반영: 공항 상한 900→1,800초와 run 시작 기준 deadline(P1 두 건), 90초 여유 대신 tick 기준(실패 경로는
+  되돌림 — 라이브 e2e `next_due_at > now` 규칙 보존, 관리 화면에 지나간 예정 시각이 덜 보임), 음수 priority 제거, 문서 갱신
+  (shared-db-dagster·dagster-recovery·architecture). 남긴 것(P2): 5분 job이 매번 상한에서 끊기면 정체 경보 대신 run FAILURE로만
+  보인다(recovery docstring), op deadline 초과의 TimeoutError가 관리 화면에서 "요청 시간 초과"로 분류된다(이전부터).
+- 시험: `tests/test_job_runtime_priority.py`(상한 범위·최악 경로, 우선순위, 재시도 sensor, run 시작 기준 deadline·fallback,
+  tick 태그 읽기, tick 기준 예약·tick 없는 예약·실패 예약), `tests/test_dagster_cadence.py` 태그 갱신.
+
 ## 2026-11-24 — 상태 행 쓰기의 전역 직렬화 제거(COLLECTION-STATE-LOCK-20261124)
 
 - 감사(Map `docs/reports/2026-11-23-collection-failure-audit.md` §2.5 P0 #2, §4 #5)와 부모 재분류: odroid 14일

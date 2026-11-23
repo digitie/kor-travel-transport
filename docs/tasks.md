@@ -1,7 +1,11 @@
 ## 2026-11-24 — 수집 실패 감사 후속
 
+- [ ] **DAGSTER-RUNTIME-PRIORITY-20261124 / P1** — 5분 job 실행 상한 주기 비례(공항 1,800·고속도로 1,200초, run 시작 기준 deadline),
+  `dagster/priority`(실시간 10·유가 5·나머지 0), 고속도로 성공 예약을 tick 시각 기준으로. **남은 것**: 배포 뒤 odroid에서 고속도로 `skipped` run 수(이전 14일 498)와 실효 주기(이전 약 9분)를
+  다시 재고, 공항·고속도로 run이 새 상한에 걸려 끊기는 일이 없는지(`max_runtime` 실패) 1주 확인. [journal](journal.md) 2026-11-24.
+
 - [ ] **COLLECTION-STATE-LOCK-20261124 / P0** — 0045 문장 trigger가 만든 상태 행 쓰기의 전역 직렬화를 0048로 제거(상태 표는
-  캐시가 내용 digest로 본다). **남은 것**: 배포(entrypoint가 0048 적용) 뒤 odroid PostgreSQL 로그·Dagster에서
+  캐시가 내용 digest로 본다). **남은 것**: 배포(migrate one-shot이 0048 적용) 뒤 odroid PostgreSQL 로그·Dagster에서
   `UPDATE transport_collection_states`와 `kt_places_revision` 문맥의 lock timeout이 0건인지 1주 확인. [journal](journal.md) 2026-11-24.
 
 - [ ] **PARKING-ARCHIVE-SCHEDULE-20261124 / 소유자 결정** — `parking_statistics_archive_job` schedule 없음은 첫 단계 범위(의도)로 확인하고

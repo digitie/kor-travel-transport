@@ -5,12 +5,12 @@ Weather PR #72의 개선과 common PR #24·#25 Python 코어를 채택한다.
 
 ## 구조와 호출 보호
 
-각 job은 4시간 실행 상한, step 동시성 1을 유지한다. common의 project/job 태그와
+각 job은 job tag `dagster/max_runtime` 실행 상한(기본 4시간, 공항 30분·고속도로 20분·본문 준비 3분), step 동시성 1을 유지한다. common의 project/job 태그와
 coalescing schedule은 같은 location의 pending/active 실행이 있으면 새 예약을 합친다.
 collector pool은 2 connections와 overflow 0으로 제한한다. 한 connection은 기존 session
 advisory lease, 다른 하나는 부분 게시 transaction에 필요하다. DB 접속 10초, 문장 60초
 (asyncpg `command_timeout` 클라이언트 측 + 서버 `statement_timeout` 60초, 2026-10-21부터 둘 다),
-lock 5초와 async action 14340초 제한을 적용한다. provider public cancellation 계약을 사용한다.
+lock 5초와 async action 제한(run 시작부터 잰 실행 상한 − 60초, `_run_deadline_seconds`)을 적용한다. provider public cancellation 계약을 사용한다.
 API 엔진은 서버 `statement_timeout` 120초만 둔다(클라이언트 timeout 없음). 근거와 값은
 `backend/app/db/session.py` 상수 주석이 정본이다.
 
@@ -81,7 +81,7 @@ KST 매시1·6·11…56분에, phase3은 고속도로를3·8·13…58분에 예�
 각각 하루288회이며 자정·월말·연말·윤일을 넘어 간격300초를 유지한다.
 두 예약의 시작을2분 벌리는 변경이며, 실제 run 실행 시간이 길면 서로 겹칠 수 있다.
 
-동일 job active/pending coalescing, project/job/run_group 태그, 4시간 실행 상한,
+동일 job active/pending coalescing, project/job/run_group 태그, 실행 상한(2026-11-24부터 공항 30분·고속도로 20분),
 step 동시성1, resources, provider 호출·유예·일일 예산은 그대로다.
 다른 schedule·sensor의 실행 주기나 공용 coordinator 한도를 변경하지 않는다.
 

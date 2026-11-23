@@ -13,6 +13,8 @@ from app.dagster.definitions import definitions
 
 KST = ZoneInfo("Asia/Seoul")
 JOBS = [("airport", 1, "parking"), ("highway", 3, "highway")]
+#: 5분 job의 실행 상한(주기 비례)과 큐 우선순위.
+RUNTIMES = {"airport": "1800", "highway": "1200"}
 
 
 def ticks(cron, start, days):
@@ -60,9 +62,10 @@ def test_staggering_preserves_execution_and_resource_contract(domain, phase, gro
     assert job.tags == {
         "kortravelcommon/project": "transport",
         "kortravelcommon/job": f"transport/{name}",
-        "dagster/max_runtime": "14400",
+        "dagster/max_runtime": RUNTIMES[domain],
         "dagster/max_retries": "1",
         "dagster/retry_on_asset_or_op_failure": "false",
+        "dagster/priority": "10",
         "kortraveltransport/run_group": group,
         "dagster/code_location": "kor-travel-transport",
     }

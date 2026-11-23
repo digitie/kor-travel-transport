@@ -233,7 +233,9 @@ async def stale_five_minute_triggers(
     """마지막 시작이 `COLLECTION_STALE_AFTER`보다 오래된 5분 수집 trigger와 경과 분.
 
     행이 하나도 없는 trigger(새 DB)는 판단하지 않는다. 실행 중·실패·건너뜀도 '시작'으로 센다.
-    실행이 4시간 상한까지 매달려 coalescing이 새 실행을 막는 경우도 정체로 잡힌다.
+    실행이 상한까지 매달려 coalescing이 새 실행을 막는 경우도 정체로 잡힌다. 다만 5분 job의 상한이 20~30분이 된 뒤에는
+    매번 상한에서 끊기는 run이 정체 경보(마지막 시작 20분 + 연속 900초)까지 가지 않을 수 있다 — 그 경우는 run FAILURE
+    (max_runtime 초과)로 보인다.
     """
     now = now or now_utc()
     stale: list[tuple[str, int]] = []
