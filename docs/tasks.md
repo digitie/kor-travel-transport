@@ -1,5 +1,9 @@
 ## 2026-11-24 — 수집 실패 감사 후속
 
+- [ ] **COLLECTION-STATE-LOCK-20261124 / P0** — 0045 문장 trigger가 만든 상태 행 쓰기의 전역 직렬화를 0048로 제거(상태 표는
+  캐시가 내용 digest로 본다). **남은 것**: 배포(entrypoint가 0048 적용) 뒤 odroid PostgreSQL 로그·Dagster에서
+  `UPDATE transport_collection_states` lock timeout이 0건인지 1주 확인. [journal](journal.md) 2026-11-24.
+
 - [ ] **PARKING-ARCHIVE-SCHEDULE-20261124 / 소유자 결정** — `parking_statistics_archive_job` schedule 없음은 첫 단계 범위(의도)로 확인하고
   사유를 [parking-retention](architecture/parking-retention.md) "자동 실행 보류"에 남겼다. **남은 것(소유자)**: reader 전환과 함께 자동
   적재(정리 없이)를 켤지·주기·`blocked` 경보 경로, 그리고 원본 정리 자동화 여부.

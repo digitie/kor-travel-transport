@@ -1,3 +1,10 @@
+## 현재 상태 — 2026-11-24 상태 행 쓰기의 전역 직렬화 제거(COLLECTION-STATE-LOCK-20261124)
+
+- backend + migration 0048(trigger 4개 DROP·component 행 DELETE, `lock_timeout` 2초). API·UI 계약 변경 없음.
+- 배포(Codex 담당): backend 이미지(API·Dagster code-server 공용). API entrypoint가 `alembic upgrade head`로 0048을 적용한다.
+  롤백은 `alembic downgrade 0047_fuel_points_gen_product` 후 이전 이미지.
+- 다음 한 작업: 배포 뒤 상태 UPDATE lock timeout 0건, 공개 장소(places) 응답·캐시 재사용이 그대로인지 확인한다.
+
 ## 현재 상태 — 2026-11-24 KAC 429 backoff·유가 통계 정리 가시화(COLLECTION-AUDIT-20261123 §2.5 P2)
 
 - krairport 핀 `9ea20ef`(429·5xx backoff + jitter, Retry-After 존중), KAC quota 예약에 Retry-After 반영, 정리 결과 metadata·경고·관리자 안내.

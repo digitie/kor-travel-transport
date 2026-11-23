@@ -8,14 +8,21 @@ from sqlalchemy import text
 
 from app.services import fuel_map_validation
 
+# 문장 trigger(0045)가 revision 카운터를 올리는 입력 표.
 TABLES = (
     "fuel_stations", "fuel_latest_prices", "fuel_refresh_prices", "rail_station_references", "ferry_ports",
     "bus_terminal_references", "airports", "rest_area_references", "public_parking_lots",
-    "highway_incident_snapshots", "transport_collection_states",
+    "highway_incident_snapshots",
 )
+# 수집 상태 표는 trigger 대신 같은 snapshot 안의 내용 digest로 본다(0048). 모든 수집기가 claim·성공·실패마다 쓰는 표라
+# 카운터 행 하나를 갱신하는 trigger가 서로 다른 수집기의 상태 쓰기를 commit까지 줄 세웠다(운영 lock_timeout 38건).
+# 수십 행이라 digest 계산은 싸고, 같은 REPEATABLE READ snapshot에서 읽으므로 payload와 어긋나지 않는다.
+STATE_TABLE = "transport_collection_states"
 # 작은 catalog/counter 조회 하나다. 실제 payload/원본 JSON/가격 조회는 포함하지 않는다.
 _STAMP = text("""
 SELECT r.versions, r.members,
+    (SELECT md5(coalesce(string_agg(row_to_json(s)::text, '|' ORDER BY s.source), ''))
+     FROM public.transport_collection_states s) AS states_digest,
     pg_current_xact_id_if_assigned()::text AS own_xid,
     current_setting('transaction_isolation') AS isolation,
     current_setting('session_replication_role') AS replication,
@@ -78,7 +85,8 @@ async def snapshot(session, at, release, incidents, *, fuel=True):
         "repeatable read", "serializable",
     ):
         return None
-    return (ref(session.bind), tuple(row.relations), tuple(row.trigger_ddl), release, tuple(tuple(v) for v in row.versions)), row.boundary
+    return (ref(session.bind), tuple(row.relations), tuple(row.trigger_ddl), release, tuple(tuple(v) for v in row.versions),
+            (STATE_TABLE, row.states_digest)), row.boundary
 
 
 def provider_key(lookup):
