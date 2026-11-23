@@ -384,7 +384,14 @@ class TransportCollectionService:
         trigger: str = "transport_scheduler",
         *,
         scope: CollectionScope = "all",
+        retry_failed_fuel: bool = False,
     ) -> dict[str, Any]:
+        """`retry_failed_fuel`은 직전 유가 시도가 **실패**로 끝났을 때만 그 시도의 예약을 앞당긴다.
+
+        Dagster의 일시 오류 재시도(op RetryPolicy)와 관리자 "재시도"(`kortravel/admin-retry-of`)가 쓴다.
+        직전 시도가 성공했거나 아직 시작 전이면 아무것도 바꾸지 않는다(정기 예약·호출 예산 유지).
+        브라우저 수집은 체크포인트에서 이어 하므로 재시도는 남은 지역만 요청한다.
+        """
         if scope not in ("all", "highway", "fuel"):
             raise ValueError("알 수 없는 교통정보 수집 범위")
         groups = ("highway", "fuel") if scope == "all" else (scope,)
@@ -396,7 +403,7 @@ class TransportCollectionService:
             normalized_trigger = (
                 trigger if trigger.startswith(TRANSPORT_TRIGGER_PREFIX) else f"{TRANSPORT_TRIGGER_PREFIX}{trigger}"
             )
-            return await self._collect_unlocked(session, normalized_trigger, scope)
+            return await self._collect_unlocked(session, normalized_trigger, scope, retry_failed_fuel=retry_failed_fuel)
 
     @staticmethod
     async def _acquire_database_lock(session: AsyncSession, group: str) -> None:
@@ -409,7 +416,7 @@ class TransportCollectionService:
             )
 
     async def _collect_unlocked(
-        self, session: AsyncSession, trigger: str, scope: CollectionScope
+        self, session: AsyncSession, trigger: str, scope: CollectionScope, *, retry_failed_fuel: bool = False,
     ) -> dict[str, Any]:
         started_at = now_utc()
         run = CollectionRun(
@@ -472,7 +479,15 @@ class TransportCollectionService:
                 # 로컬 체크포인트의 잠금·손상·파일 오류도 원장과 source 상태에 남긴다.
                 pending_fuel_error = exc
         fuel_storage_only = pending_fuel is not None or pending_fuel_error is not None
-        fuel_due = fuel_enabled and not fuel_checkpoint_busy and (fuel_storage_only or await self._fuel_is_due(session))
+        # 실패한 시도의 재시도는 정기 예약을 앞당겨 실행하되 예약 자체(다음 정기 tick)는 옮기지 않는다.
+        # 옮기면 재시도 시각 + 8시간이 다음 정기 tick을 지나쳐 한 주기를 건너뛴다.
+        fuel_retry = False
+        if fuel_enabled and not fuel_checkpoint_busy and not fuel_storage_only:
+            regular_due = await self._fuel_is_due(session)
+            fuel_retry = not regular_due and retry_failed_fuel and await self._fuel_last_attempt_failed(session)
+        else:
+            regular_due = False
+        fuel_due = fuel_enabled and not fuel_checkpoint_busy and (fuel_storage_only or regular_due or fuel_retry)
         highway_baselines: dict[str, int | None] = {}
         claimed_sources = []
         if highway_due:
@@ -509,6 +524,10 @@ class TransportCollectionService:
             )
             # 완료 checkpoint를 다른 실행이 먼저 저장해도 같은 정규 예약을 보존한다.
             # in-process는 이 tick 여유를 되돌려 실제 최소 수집 간격을 지킨다.
+            if source == OPINET_SOURCE and fuel_retry and state.next_due_at is not None:
+                # 재시도는 원래 정기 예약(다음 tick)을 그대로 둔다. 미래 시각이므로 다른 실행은 여전히 건너뛴다.
+                fuel_claim_after = fuel_state_version(state)
+                continue
             state.next_due_at = serialize_utc(state.last_started_at) + reservation
             if source == OPINET_SOURCE:
                 state.next_due_at -= FUEL_NEXT_DUE_START_SLACK
@@ -608,6 +627,14 @@ class TransportCollectionService:
                         count = await store(session, run_id, items) if items is not None else 0
                         if source == TRAFFIC_SOURCE and items is not None:
                             await self._refresh_recent_traffic_statistics(session, items)
+                        if items is not None:
+                            # 상태 행 UPDATE는 문장 trigger(`kt_places_revision`)로 places revision 행을 commit까지
+                            # 잠근다. 소통 저장(수천 행·수 분)보다 먼저 두면 그동안 다른 수집기의 상태 갱신이
+                            # lock_timeout(5초)으로 실패한다(2026-11 운영: 유가·휴게소 유가 claim 실패의 원인).
+                            # 저장을 모두 끝낸 뒤 commit 직전에 표시한다.
+                            await self._mark_source_success(
+                                session, source, now_utc(), keep_success_at=source == INCIDENT_SOURCE,
+                            )
                         await session.commit()
                     except Exception as exc:
                         # 해당 소스만 되돌린다. 앞선 소스의 데이터·성공 상태는 이미 확정됐다.
@@ -640,12 +667,12 @@ class TransportCollectionService:
                             logger.info("fuel checkpoint already committed or superseded run_id=%s; no data rewritten", run_id)
                             break
                         snapshot = await self._collect_fuel(session, run_id, errors, fuel_result,
-                                                            preserve_due=fuel_storage_only)
+                                                            preserve_due=fuel_storage_only or fuel_retry)
                         if snapshot is not None:
                             fuel_station_count, fuel_price_count = await self._store_fuel_snapshot(
                                 session, run_id, snapshot,
                             )
-                            await self._mark_fuel_success(session, snapshot.collected_at, preserve_due=fuel_storage_only)
+                            await self._mark_fuel_success(session, snapshot.collected_at, preserve_due=fuel_storage_only or fuel_retry)
                         await session.commit()
                         checkpoint_to_ack = snapshot
                         break
@@ -668,7 +695,7 @@ class TransportCollectionService:
                             del errors[error_mark:]
                             await session.commit()
                             break
-                        await self._collect_fuel(session, run_id, errors, exc, preserve_due=fuel_storage_only)
+                        await self._collect_fuel(session, run_id, errors, exc, preserve_due=fuel_storage_only or fuel_retry)
                         await session.commit()
                         snapshot = None
                         fuel_station_count = fuel_price_count = 0
@@ -897,7 +924,7 @@ class TransportCollectionService:
                 "scope_key": self._highway_scope_key(source), "item_count": len(result),
             }},
         )
-        await self._mark_source_success(session, source, now_utc())
+        # 성공 표시는 호출자가 저장을 끝낸 뒤 commit 직전에 한다(places revision 행 잠금 시간 최소화).
         return result
 
     async def _collect_fuel(
@@ -1366,6 +1393,11 @@ class TransportCollectionService:
         next_due_at = self._effective_fuel_due_at(state)
         return next_due_at is None or now_utc() >= next_due_at
 
+    async def _fuel_last_attempt_failed(self, session: AsyncSession) -> bool:
+        return _fuel_last_attempt_failed(await session.scalar(
+            select(TransportCollectionState).where(TransportCollectionState.source == OPINET_SOURCE)
+        ))
+
     def _effective_fuel_due_at(self, state: TransportCollectionState | None) -> datetime | None:
         """수집 진입과 대기는 같은 예정 시각을 사용한다. 성공 예약의 tick 여유만 되돌린다."""
         if state is None or state.next_due_at is None:
@@ -1418,9 +1450,13 @@ class TransportCollectionService:
         session: AsyncSession,
         source: str,
         completed_at: datetime,
+        *,
+        keep_success_at: bool = False,
     ) -> None:
+        """`keep_success_at`은 저장 단계가 이미 맞춘 성공 시각(돌발: 관측 `collected_at`, ADR-013)을 보존한다."""
         state = await self._get_or_create_state(session, source)
-        state.last_success_at = completed_at
+        if not keep_success_at or state.last_success_at is None:
+            state.last_success_at = completed_at
         state.next_due_at = serialize_utc(state.last_started_at or completed_at) + timedelta(
             seconds=self.settings.transport_collect_interval_seconds
         )
@@ -1789,6 +1825,18 @@ def _plain_json(value: Any) -> Any:
     if isinstance(value, Decimal):
         return str(value)
     return getattr(value, "value", value)
+
+
+def _fuel_last_attempt_failed(state: TransportCollectionState | None) -> bool:
+    """마지막 유가 시도가 실패로 끝났는가(재시도가 예약을 앞당겨도 되는 유일한 경우).
+
+    claim은 `last_started_at`만 바꾸고 성공은 `last_error=None`과 `last_success_at`을 함께 쓴다. 그래서 오류가 남아
+    있고 마지막 성공이 마지막 시작보다 앞서면 마지막 시도는 실패다. 진행 중인 수집은 checkpoint 작성자 잠금과
+    Dagster의 같은 job 단일 실행이 따로 막는다.
+    """
+    if state is None or state.last_error is None or state.last_started_at is None:
+        return False
+    return state.last_success_at is None or serialize_utc(state.last_success_at) < serialize_utc(state.last_started_at)
 
 
 def _is_transient_database_error(error: BaseException) -> bool:

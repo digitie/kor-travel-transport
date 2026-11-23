@@ -1,5 +1,11 @@
 ## 2026-11-23 — 공개 유가 places 504 후속
 
+- [ ] **FUEL-RETRY-20261123 / P1** — 유가 수집 실패(11-11~23 정기 run 36건 중 15건)의 두 원인 수정과 자동 재시도. 오피넷 CDP
+  `Invalid InterceptionId`는 python-opinet-api에서 고치고 핀을 올렸고, 상태 claim `lock_timeout`은 고속도로 성공 표시를 commit 직전으로
+  옮겼다. 유가·휴게소 유가 op에 일시 오류 한정 RetryPolicy, 관리자 재시도 태그는 실패 직후에만 예약을 앞당긴다. **남은 것**: 배포 뒤
+  운영에서 (1) 유가 run이 `resource policy failed` 없이 끝나는지(남으면 실패 문장의 `reason=`), (2) PostgreSQL 로그의
+  `reference_export_input_revisions` lock timeout이 사라지는지, (3) 재시도 run이 체크포인트에서 이어 하는지 수용. [journal](journal.md) 2026-11-23.
+
 - [ ] **FUEL-PRUNE-BACKLOG-20261123 / P2** — `prune_fuel_statistics`(15초·2,000행 배치)가 오피넷 세대 생성(세대당 약 3만 행)을 못 따라가
   운영 `fuel_statistics_points`에 지난 세대 54개(1.56M 행, 461 MB)가 남았다(2026-11-23 읽기 전용 측정). 원인: 키 2,000개를 다시 보내는
   `(4열) IN ((...), ...)` DELETE의 계획만 3.2초(ARM)라 첫 배치가 15초 예산을 거의 다 써 수집마다 1배치만 지웠다(pg_stat_statements:

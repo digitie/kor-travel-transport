@@ -1,3 +1,29 @@
+## 2026-11-23 — 유가 수집 실패 원인과 자동 재시도(FUEL-RETRY-20261123)
+
+- 운영 읽기 전용 조사(odroid Dagster run 기록·compute log·`transport_collection_states`·PostgreSQL 로그·`pg_stat_activity` 표본):
+  유가 정기 run 11-11 07:00~11-23 07:00 36건 중 15건 실패(취소 1). 원인은 둘이다.
+  - **13건 — 오피넷 브라우저 `resource policy failed command=Fetch.failRequest cause=Error`.** 모두 LPG 탭 수집 중(지역 검색
+    문서 이동이 반복되는 구간)에 났고 python-opinet-api #29(11-20) 뒤에도 계속됐다(11-21 23:02 재개 run은 LPG 탭 18초 만에 실패).
+    cause가 session 분리(`TargetClosedError`)가 아닌 protocol `Error`이고, 실제 Chromium에서 문서 이동이 만든 오류가 정확히 이
+    형태(`Invalid InterceptionId`)다. 이미 폐기돼 전송되지 않은 이미지 요청의 차단 실패를 전국 수집 실패로 센 것이다.
+    수정은 라이브러리(python-opinet-api)에서 했고 이 PR은 그 커밋으로 핀을 올린다. 실패 문장에 `reason=`이 붙어 다음 실패는 사유를 바로 본다.
+  - **유가 1건(11-23 07:03)·휴게소 유가 4건(11-22 03:58·12:01, 11-23 04:06·07:27) — 상태 claim의 `lock_timeout`(55P03).**
+    `transport_collection_states`의 문장 trigger(`kt_places_revision`, 0045)가 모든 상태 UPDATE에서 `reference_export_input_revisions`의
+    한 행(`places.transport_collection_states`)을 commit까지 잠근다. 고속도로 저장 transaction이 성공 표시(상태 UPDATE)를 먼저 하고
+    소통 수천 행·현재 상태를 쓰는 동안 그 행을 쥔다 — 11-23 09:58 표본에서 175초 이상. 그동안 다른 수집기의 상태 UPDATE는 5초 뒤
+    실패한다(PostgreSQL 로그: 11-17~23 해당 행 lock timeout 36건, 그중 claim이 30건).
+- 수정: 고속도로 성공 표시를 저장·통계 갱신 뒤 commit 직전으로 옮겼다(돌발은 저장 단계의 `collected_at`을 보존, ADR-013).
+  trigger·places revision 계약은 바꾸지 않았다.
+- 자동 재시도(같은 run 안의 Dagster step 재시도): 유가 op `RetryPolicy(max_retries=1, delay=300, 지수 backoff, ±jitter)`,
+  휴게소 유가 op `RetryPolicy(max_retries=2, delay=60, …)`. 재시도는 `AUTO_RETRY_ERROR_CODES`(브라우저 시간 초과·resource policy·DB 일시
+  오류)와 op 밖으로 나온 DB 일시 오류(SQLSTATE 57014·55P03·40001·40P01·연결 무효화)만 한다. 쿼터·차단·인증·파싱·전체 시간 초과는
+  하지 않는다. run 상한(4시간)까지 2시간 이상 남았을 때만 한다. 다른 op는 바뀌지 않았다.
+- 재시도의 예약 규칙: `collect(retry_failed_fuel=True)`는 직전 유가 시도가 **실패**였을 때만 정기 예약을 앞당기고, 예약 자체(다음
+  8시간 tick)는 옮기지 않는다(성공·실패 표시도 `preserve_due`). 직전이 성공이면 그대로 건너뛴다. 브라우저는 체크포인트에서 남은 지역만 요청한다.
+  관리자 콘솔 "재시도"가 다는 `kortravel/admin-retry-of` 태그도 같은 경로를 쓴다 — 그동안은 재시도 run이 8시간 예약에 막혀 건너뜀으로 끝났다.
+- 공유 문제(관찰만): 같은 시간대 odroid load 20 안팎, 공용 PG checkpoint write 450~810초, weather export 정리 질의 statement timeout 하루
+  270~950건. weather 수집 정체(11-22 08:4xZ~)는 이 저장소 범위 밖이다.
+
 ## 2026-11-23 — 공항주차장 통계 화면·API 속도(PARKING-STATS-SPEED-20261123)
 
 - 운영 읽기 전용 측정: 공개 `dashboard/analytics` ICN 504(10초)·6.4초, GMP 2~5초, 특수일 패턴 ICN 5.8초. 원인은 특수일 패턴의 무캐시

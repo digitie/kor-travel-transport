@@ -98,6 +98,9 @@ def test_transport_failure_is_visible_after_commit_without_retry(monkeypatch, sc
     monkeypatch.setattr(dagster_definitions, "_secret_forms", lambda: ["secret-provider-detail"])
     monkeypatch.setattr(dagster_definitions, "TransportCollectionService", FakeService)
     monkeypatch.setattr(dagster_definitions, "_run_with_session", committed_run)
+    # 유가 op의 브라우저 시간 초과는 자동 재시도 대상이다(`test_fuel_retry_dagster.py`). 여기서는 재시도 예산을
+    # 닫아 "실패가 commit 뒤에 보인다"만 본다(정의의 RetryPolicy 지연 5분을 시험에서 기다리지 않는다).
+    monkeypatch.setattr(dagster_definitions, "_retry_budget_left", lambda context: False)
     job = getattr(dagster_definitions, f"{scope}_collection_job")
     result = job.execute_in_process(raise_on_error=False)
     assert lifecycle == ["committed", "closed"]
