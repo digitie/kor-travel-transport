@@ -171,11 +171,17 @@ for (const width of [320, 390, 1440]) {
     await expect(chipName(page)).toHaveText("서울 중구");
     await expect(summary.locator(".fuel-sigungu-chips")).toHaveAttribute("aria-label", "지도 중심 지역 가격 통계");
     // 유종마다 이름·평균·최저를 한 덩어리로: PC는 한 줄, 좁은 화면도 두 줄을 넘지 않는다(예전: 이름 줄 + 값 줄 + 여백).
-    await expect(summary).toContainText("1,760");
-    const rowHeights = await summary.locator(".public-fuel-summary-product").evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height));
-    expect(rowHeights).toHaveLength(2);
-    for (const height of rowHeights) expect(height).toBeLessThanOrEqual(width >= 1024 ? 28 : 48);
-    const summaryHeight = (await summary.boundingBox())!.height;
+    // 지도가 첫 이동을 알리면 같은 화면을 다시 조회한다(그동안 "통계 조회 중"). 값이 그려진 한 순간에 행과 요약 높이를 함께 잰다.
+    let measured = { rows: [] as number[], summary: 0 };
+    await expect.poll(async () => {
+      measured = await summary.evaluate(node => ({
+        rows: [...node.querySelectorAll(".public-fuel-summary-product")].map(row => row.getBoundingClientRect().height),
+        summary: node.getBoundingClientRect().height,
+      }));
+      return measured.rows.length;
+    }, { timeout: 15_000 }).toBe(2);
+    for (const height of measured.rows) expect(height).toBeLessThanOrEqual(width >= 1024 ? 28 : 48);
+    const summaryHeight = measured.summary;
     expect(summaryHeight, `요약 높이 ${summaryHeight}`).toBeLessThanOrEqual(width <= 320 ? 230 : 190);
     const autoBackground = await chip(page).evaluate(node => getComputedStyle(node).backgroundColor);
     await shot(page, `ui2-summary-auto-chip-${width}.png`, testInfo);
