@@ -2,7 +2,7 @@
 
 import { VirtualTable } from "@kor-travel/ui/virtual-table";
 
-import { Clock, ClockAlert } from "lucide-react";
+import { CircleHelp, Clock, ClockAlert, LoaderCircle } from "lucide-react";
 import Link from "next/link";
 import { InfoButton } from "./info-button";
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
@@ -246,20 +246,24 @@ function PublicFuelPriceButton({ state, lastRefreshedAt, onRefresh, refreshing =
   const reason = PRICE_STATE_TEXT[state].reason ?? REFRESH_BLOCK_REASON[blocked ?? "disabled"];
   const label = enabled ? "가격 오래됨 · 지도 범위 유가 업데이트" : `${PRICE_STATE_TEXT[state].name} · 업데이트할 수 없음: ${reason}`;
   const tipText = enabled ? `가격이 오래됐습니다. 눌러 지도에 보이는 주유소 가격을 업데이트합니다. ${time}` : `${reason}. ${time}`;
-  const Icon = stale ? ClockAlert : Clock;
+  // 신선도를 모를 때(첫 조회 중·실패·필터 변경 직후)는 회색 "최신" 시계·비활성 모양을 쓰지 않는다(조정자 지시 2026-11-23):
+  // 조회 중은 도는 아이콘(aria-busy), 실패는 물음표. 둘 다 비활성처럼 흐리지 않고, 누르면 이유 툴팁만 연다.
+  const unknownState = state === "checking" || state === "unknown";
+  const Icon = stale ? ClockAlert : state === "checking" ? LoaderCircle : state === "unknown" ? CircleHelp : Clock;
   return <>
   <TooltipProvider delayDuration={300}>
     <Tooltip open={tip} onOpenChange={setTip}>
       <TooltipTrigger asChild>
         <Button type="button" variant="outline" size="icon" className="public-fuel-price-button" data-stale={stale || undefined} data-state-kind={state}
-          aria-label={label} aria-disabled={!enabled || refreshing || undefined} loading={refreshing}
+          aria-label={label} aria-disabled={(!enabled && !unknownState) || refreshing || undefined} loading={refreshing}
+          aria-busy={state === "checking" || undefined}
           onClick={event => {
             if (enabled) { onRefresh?.(); return; }
             // Radix 툴팁은 트리거를 누르면 닫는다. 누를 수 없는 단추에서는 그 기본 동작을 막고 이유 툴팁을 연다(터치·키보드).
             event.preventDefault();
             setTip(true);
           }}>
-          <Icon aria-hidden="true" size={18} />
+          <Icon aria-hidden="true" size={18} className={state === "checking" ? "public-fuel-price-spin" : undefined} />
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom" className="public-fuel-price-tip">{tipText}</TooltipContent>

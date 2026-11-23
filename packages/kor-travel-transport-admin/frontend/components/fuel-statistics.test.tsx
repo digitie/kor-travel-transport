@@ -291,6 +291,11 @@ test.each([
   expect(button.getAttribute("data-state-kind")).toBe(kind);
   expect(button.hasAttribute("data-stale")).toBe(false);
   expect(html).not.toContain("가격 최신");
+  // 비활성 모양이 아니다: aria-disabled 없음(아이콘 흐림·not-allowed 없음), 회색 시계 대신 도는 아이콘·물음표.
+  expect(button.getAttribute("aria-disabled")).toBeNull();
+  expect(button.getAttribute("aria-busy")).toBe(pending ? "true" : null);
+  expect(button.querySelector("svg")?.getAttribute("class")).toMatch(pending ? /lucide-loader/ : /lucide-circle-(help|question)/);
+  expect(button.querySelector("svg")?.getAttribute("class")).not.toMatch(/lucide-clock(\s|$)/);
 });
 
 test("가격 아이콘: 마지막으로 받은 신선도(priceFreshness)를 재조회 중에도 유지하고, 오래되면 status로 알린다", () => {

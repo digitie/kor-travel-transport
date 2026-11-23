@@ -298,24 +298,40 @@ test("390px 필터를 켠 동안 오래된 가격 아이콘은 비활성이고 �
   await shot(page, "ui2-price-stale-filters-390.png", testInfo);
 });
 
-for (const state of ["failed", "pending"] as const) {
-  test(`390px 가격 상태를 아직 모르면(places ${state === "failed" ? "실패" : "대기"}) 가격 아이콘은 '최신'이라 하지 않는다`, async ({ page }, testInfo) => {
+for (const width of [320, 390, 1440] as const) for (const state of ["failed", "pending"] as const) {
+  test(`${width}px 가격 상태를 아직 모르면(places ${state === "failed" ? "실패" : "대기"}) 가격 아이콘은 회색 '최신'·비활성 모양이 아니다`, async ({ page }, testInfo) => {
     await mockFuel(page);
     // 나중에 등록한 route가 먼저 처리된다.
     await page.route("**/api/public/fuel/places?*", (route: Route) => state === "failed"
       ? route.fulfill({ status: 503, json: { detail: "unavailable" } })
       : new Promise<void>(() => { /* 응답하지 않는다(대기) */ }));
-    await page.setViewportSize(at(390));
+    await page.setViewportSize(at(width));
     await page.goto(STATION_VIEW);
     const button = priceButton(page);
     const expected = state === "failed"
       ? "가격 상태 확인 못 함 · 업데이트할 수 없음: 가격 상태를 확인하지 못했습니다"
       : "가격 상태 확인 중 · 업데이트할 수 없음: 가격 상태를 확인하는 중입니다";
     await expect(button).toHaveAccessibleName(expected);
-    await expect(button).toHaveAttribute("aria-disabled", "true");
-    await expect(button).not.toHaveAttribute("data-stale");
+    await expect(button).not.toHaveAccessibleName(/가격 최신/);
     await expect(button).toHaveAttribute("data-state-kind", state === "failed" ? "unknown" : "checking");
-    await shot(page, `ui2-price-${state === "failed" ? "unknown" : "checking"}-390.png`, testInfo);
+    // 비활성 모양(aria-disabled → 아이콘 55% 흐림, not-allowed 커서)과 회색 시계를 쓰지 않는다.
+    await expect(button).not.toHaveAttribute("aria-disabled", "true");
+    await expect(button).not.toHaveAttribute("data-stale");
+    const icon = button.locator("svg").first();
+    await expect(icon).toHaveClass(state === "failed" ? /lucide-circle-question-mark|lucide-circle-help/ : /lucide-loader-circle|lucide-loader/);
+    await expect(icon).not.toHaveClass(/lucide-clock(\s|$)/);
+    const look = await button.evaluate(node => ({
+      cursor: getComputedStyle(node).cursor,
+      opacity: Number(getComputedStyle(node.querySelector("svg")!).opacity),
+      busy: node.getAttribute("aria-busy"),
+    }));
+    expect(look.cursor).toBe(state === "failed" ? "help" : "progress");
+    expect(look.opacity).toBe(1);
+    expect(look.busy).toBe(state === "pending" ? "true" : null);
+    // 누르면 이유 툴팁만 연다(업데이트 요청 없음).
+    await button.click();
+    await expect(page.getByRole("tooltip")).toContainText(state === "failed" ? "확인하지 못했습니다" : "확인하는 중입니다");
+    await shot(page, `ui2-price-${state === "failed" ? "unknown" : "checking"}-${width}.png`, testInfo);
   });
 }
 
