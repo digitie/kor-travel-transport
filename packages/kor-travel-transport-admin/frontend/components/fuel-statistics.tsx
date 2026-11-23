@@ -2,7 +2,7 @@
 
 import { VirtualTable } from "@kor-travel/ui/virtual-table";
 
-import { ClockAlert } from "lucide-react";
+import { Clock, ClockAlert } from "lucide-react";
 import Link from "next/link";
 import { InfoButton } from "./info-button";
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
@@ -20,6 +20,7 @@ import { displayedRegion, type FuelCenterSigungu, type FuelRegionChip, type Fuel
 import type { PublicFuelFilters } from "@/lib/public-fuel-filters";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
 export type FuelMetrics = {
   cheapest_stations?: (FuelChartStation & { station_key: string; price: number })[]; ranking_complete?: boolean;
@@ -126,6 +127,8 @@ type FuelViewportSummaryProps = {
     onProductsChange: (products: string[]) => void;
     onRefresh?: () => void;
     refreshing?: boolean;
+    /** 지도 범위 업데이트를 지금 쓸 수 없는 이유(가격이 오래됐는데 onRefresh가 없을 때 버튼 툴팁·접근 이름에 쓴다). */
+    refreshBlocked?: PublicFuelRefreshBlock;
     /** 공개 유가 전용: 지금 지도에 보이는 시군구(주유소 수 내림차순)와 그 통계를 읽는 공개 reader. */
     sigungu?: FuelViewportSigungu[];
     /** 공개 유가 전용: 지도 중심 시군구(가까운 주유소 근사). 고른 지역이 없을 때 칩 기본값, null·없음이면 sigungu 1순위. */
@@ -192,25 +195,48 @@ function PublicFuelSummaryHeader({
     <div className="public-fuel-summary-products">
       <PublicFuelFilterMenu products={products} onProductsChange={onProductsChange} filters={filters} onFiltersChange={onFiltersChange} />
     </div>
-    <PublicFuelSummaryActions stale={pricesStale} lastRefreshedAt={pricesLastRefreshedAt} controls={controls} />
+    <PublicFuelPriceButton stale={Boolean(pricesStale)} lastRefreshedAt={pricesLastRefreshedAt} onRefresh={controls.onRefresh}
+      refreshing={controls.refreshing} blocked={controls.refreshBlocked} />
   </header>;
 }
 
-function PublicFuelSummaryActions({
-  stale, lastRefreshedAt, controls,
-}: { stale?: boolean; lastRefreshedAt?: string | null; controls: NonNullable<FuelViewportSummaryProps["publicFuel"]> }) {
-  const { onRefresh, refreshing } = controls;
-  const timestamp = priceTimestamp(lastRefreshedAt);
-  if (!stale && !onRefresh) return null;
-  return <div className="public-fuel-summary-actions">
-    {stale ? <span className="public-fuel-summary-stale" role="status" title={timestamp ?? undefined}>
-      <ClockAlert size={14} aria-hidden="true" />
-      <span>오래됨</span>
-      {timestamp ? <time className="sr-only" dateTime={lastRefreshedAt ?? undefined}> · 마지막 가격 갱신 {timestamp}</time> : null}
-    </span> : null}
-    {onRefresh ? <Button type="button" variant="outline" size="sm" className="public-fuel-summary-refresh"
-      loading={refreshing} onClick={onRefresh}>업데이트</Button> : null}
-  </div>;
+/** 지도 범위 업데이트를 못 쓰는 이유. disabled: 이 실행에 업데이트가 꺼져 있음, filters: 필터 사용 중, range: 보이는 주유소가 1~9곳이 아님. */
+export type PublicFuelRefreshBlock = "disabled" | "filters" | "range";
+const REFRESH_BLOCK_REASON: Record<PublicFuelRefreshBlock, string> = {
+  disabled: "이 화면에서는 유가 업데이트를 쓸 수 없습니다",
+  filters: "필터를 켠 동안은 지도 범위 업데이트를 할 수 없습니다. 필터를 끄거나 주유소 상세에서 업데이트하세요",
+  range: "지도에 보이는 주유소가 1~9곳일 때만 업데이트할 수 있습니다. 지도를 확대하세요",
+};
+
+/**
+ * 공개 유가 맨 위 줄의 가격 상태·업데이트 단추 하나(소유자 지시 2026-11-23: "오래됨"과 "업데이트"를 아이콘 하나로).
+ * - 가격이 오래됨: 빨간 시계(!) 아이콘. 업데이트할 수 있으면 눌러 지도 범위 가격을 업데이트한다.
+ * - 최신이거나 지금 업데이트할 수 없으면 회색(최신)·빨간(오래됨) 아이콘의 비활성 단추. 포커스는 받는다(aria-disabled) —
+ *   키보드·스크린리더 사용자도 이유를 듣고, 툴팁(터치는 누르면 열림)에 이유와 마지막 가격 갱신 시각을 보인다.
+ */
+function PublicFuelPriceButton({ stale, lastRefreshedAt, onRefresh, refreshing = false, blocked }: {
+  stale: boolean; lastRefreshedAt?: string | null; onRefresh?: () => void; refreshing?: boolean; blocked?: PublicFuelRefreshBlock;
+}) {
+  const [tip, setTip] = useState(false);
+  const time = `마지막 가격 갱신 ${priceTimestamp(lastRefreshedAt) ?? "시각 미확인"}`;
+  const enabled = stale && Boolean(onRefresh);
+  const reason = !stale ? "가격이 최신이라 업데이트할 필요가 없습니다"
+    : REFRESH_BLOCK_REASON[blocked ?? "disabled"];
+  const label = enabled ? "가격 오래됨 · 지도 범위 유가 업데이트" : `${stale ? "가격 오래됨" : "가격 최신"} · 업데이트할 수 없음: ${reason}`;
+  const tipText = enabled ? `가격이 오래됐습니다. 눌러 지도에 보이는 주유소 가격을 업데이트합니다. ${time}` : `${reason}. ${time}`;
+  const Icon = stale ? ClockAlert : Clock;
+  return <TooltipProvider delayDuration={300}>
+    <Tooltip open={tip} onOpenChange={setTip}>
+      <TooltipTrigger asChild>
+        <Button type="button" variant="outline" size="icon" className="public-fuel-price-button" data-stale={stale || undefined}
+          aria-label={label} aria-disabled={!enabled || refreshing || undefined} loading={refreshing}
+          onClick={() => { if (enabled) onRefresh?.(); else setTip(true); }}>
+          <Icon aria-hidden="true" size={18} />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="public-fuel-price-tip">{tipText}</TooltipContent>
+    </Tooltip>
+  </TooltipProvider>;
 }
 
 function PublicFuelRangeValues({ items }: { items: FuelViewportStatistics[] }) {

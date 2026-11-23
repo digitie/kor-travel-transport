@@ -193,7 +193,7 @@ export function PublicFuelMap({ refreshEnabled = false }: { refreshEnabled?: boo
       onConfirm={(bounds, region) => {
         setSelectedRegion(region);
         setRegionTarget({ bounds, id: `${region.label}:${Date.now()}` });
-      }} returnFocus={opener} />
+      }} onRelease={selectedRegion ? () => setSelectedRegion(undefined) : undefined} returnFocus={opener} />
     <div className="public-fuel-location">
       <Button type="button" variant="outline" onClick={locate} loading={locating} aria-label="내 위치 주변 유가 보기">
         <LocateFixed aria-hidden="true" size={18} />

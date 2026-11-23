@@ -194,3 +194,63 @@ test("관리(transport) 화면에는 시군구 칩·주변 대비 가격이 나�
   expect(publicSummary).toContain("fuel-sigungu-chips");
   expect(renderToStaticMarkup(<PlaceDetails place={place} load={load} publicFuel={{ refreshing: false }} />)).toContain("주변 대비 가격");
 });
+
+test("고른 지역(파란 칩)의 통계 대화상자에는 '해제'가 있어 누르면 선택을 풀고 닫힌다. 자동 칩에는 없다", async () => {
+  const load = vi.fn().mockResolvedValue(sampleDistribution);
+  const onClear = vi.fn();
+  const selected = { sido_value: "26", sigungu_value: "2601", label: "부산 중구", station_count: 3, selected: true, basis: "selected" as const };
+  const container = await mount(<FuelRegionStats region={selected} product="B027" load={load} onClear={onClear} />);
+  const chip = container.querySelector<HTMLButtonElement>(".fuel-sigungu-chip:not(.fuel-sigungu-clear)")!;
+  expect(chip.dataset.basis).toBe("selected");
+  expect(chip.hasAttribute("data-selected")).toBe(true);
+  await act(async () => chip.click());
+  await settle();
+  const release = document.querySelector<HTMLButtonElement>('[role="dialog"] .fuel-distribution-release')!;
+  expect(release.textContent).toBe("해제");
+  await act(async () => release.click());
+  expect(onClear).toHaveBeenCalledTimes(1);
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  await cleanup?.(); cleanup = undefined;
+  // 자동(지도 중심) 칩: 파란 칩이 아니고 대화상자에 해제가 없다.
+  const auto = await mount(<FuelRegionStats region={{ ...okcheon, basis: "center" }} product="B027" load={load} onClear={onClear} />);
+  const autoChip = auto.querySelector<HTMLButtonElement>(".fuel-sigungu-chip")!;
+  expect(autoChip.dataset.basis).toBe("center");
+  expect(autoChip.hasAttribute("data-selected")).toBe(false);
+  await act(async () => autoChip.click());
+  await settle();
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+  expect(document.querySelector(".fuel-distribution-release")).toBeNull();
+});
+
+const grades = [
+  { product_code: "B027", scope: "sigungu", label: "옥천군", station_count: 29, minimum_price: 1819, average_price: 1883, maximum_price: 1998, price: 1819, difference: -64, percentile: 1.7, grade: "A+", grade_label: "제일싸요", sufficient: true },
+  { product_code: "D047", scope: "sigungu", label: "옥천군", station_count: 28, minimum_price: 1600, average_price: 1680, maximum_price: 1800, price: 1720, difference: 40, percentile: 72, grade: "C+", grade_label: "조금 비싸요", sufficient: true },
+  { product_code: "K015", scope: "sigungu", label: "옥천군", station_count: 2, minimum_price: 1000, average_price: 1050, maximum_price: 1100, price: 1100, difference: 50, percentile: 75, grade: null, grade_label: null, sufficient: false },
+];
+
+test("주유소 상세: 여러 유종을 팔면 유종마다 가격 옆에 시군구 등급 안내, 한 번의 요청(product_grades)", async () => {
+  const load = vi.fn().mockResolvedValue({ ...sampleDistribution, station: { ...station, products: ["B027", "D047", "K015"], product_grades: grades } });
+  const place = { id: 7, kind: "fuel_station", source: "opinet_browser", name: "옥천주유소", longitude: 127.6, latitude: 36.3,
+    prices: [{ product_code: "B027", price: 1819, observed_at: new Date().toISOString() }, { product_code: "D047", price: 1720, observed_at: new Date().toISOString() },
+      { product_code: "K015", price: 1100, observed_at: new Date().toISOString() }], line_names: [], facilities: [], updated_at: "2026-11-21T22:00:00Z" } as unknown as Place;
+  await mount(<PlaceDetails place={place} load={load} publicFuel={{ refreshing: false, products: [] }} showHeading={false} />);
+  await settle();
+  // 유종별 등급 때문에 요청을 늘리지 않는다(가격 분포 한 번 — 주유소 이력은 따로).
+  expect(load.mock.calls.filter(([path]) => String(path).includes("price-distribution"))).toHaveLength(1);
+  const rows = [...document.querySelectorAll(".public-fuel-current-prices > div")].map(row => [
+    row.querySelector("dt")!.textContent, row.querySelector(".fuel-product-grade [aria-hidden]")?.textContent ?? null]);
+  expect(rows).toEqual([["휘발유", "A+ 제일싸요"], ["경유", "C+ 조금 비싸요"], ["LPG", "비교 부족"]]);
+  expect(document.querySelector('.fuel-product-grade[data-tone="pricey"] .sr-only')?.textContent).toBe("경유 옥천군 28곳 중 C+ 조금 비싸요, 평균 대비 +40원");
+  // 선택 유종(첫 유종)의 시군구·시도·전국 상세 등급 원은 그대로다.
+  expect(document.querySelectorAll(".fuel-grade-row .fuel-grade[data-scope]")).toHaveLength(3);
+});
+
+test("옛 API(product_grades 없음)도 읽고, 한 유종만 파는 주유소에는 유종별 안내를 덧붙이지 않는다", async () => {
+  const load = vi.fn().mockResolvedValue({ ...sampleDistribution, station });
+  const place = { id: 7, kind: "fuel_station", source: "opinet_browser", name: "옥천주유소", longitude: 127.6, latitude: 36.3,
+    prices: [{ product_code: "B027", price: 1819, observed_at: new Date().toISOString() }], line_names: [], facilities: [], updated_at: "2026-11-21T22:00:00Z" } as unknown as Place;
+  await mount(<PlaceDetails place={place} load={load} publicFuel={{ refreshing: false, products: [] }} showHeading={false} />);
+  await settle();
+  expect(document.querySelector(".fuel-product-grade")).toBeNull();
+  expect(document.querySelectorAll(".fuel-grade-row .fuel-grade[data-scope]")).toHaveLength(3);
+});

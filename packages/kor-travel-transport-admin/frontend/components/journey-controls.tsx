@@ -17,7 +17,8 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/empty-state";
 import { FuelBrandIcon } from "./fuel-brand-icon";
 import { FuelStationPriceHistory } from "./fuel-station-history";
-import { FuelStationPricePosition } from "./fuel-price-distribution";
+import { FuelProductGradeBadge, FuelStationPricePosition } from "./fuel-price-distribution";
+import type { FuelProductGrade } from "@/lib/fuel-price-distribution";
 
 // 장소 상세 안의 본문 링크(지도 보기·전화·공식 안내). 색에만 기대지 않도록 밑줄을 함께 쓴다.
 const INLINE_LINK = "inline-flex items-center gap-1 text-left text-brand underline underline-offset-4";
@@ -70,9 +71,12 @@ export function PlaceDetails({ place, showRailTimetable = true, showHeading = tr
   return <div className="place-details grid min-w-0 gap-3 text-sm">
     <PlaceHeading place={place} showHeading={showHeading} />
     {publicFuel && place.kind === "fuel_station"
-      ? <><PublicFuelPlacePrices prices={place.prices?.filter(hasFuelPrice) ?? []} controls={publicFuel} />
-        {place.source === "opinet_browser" && load ? <FuelStationPricePosition key={place.id} stationId={place.id} load={load}
-          productCodes={place.prices?.filter(hasFuelPrice).map(price => price.product_code) ?? []} selectedProducts={publicFuel.products ?? []} filterQuery={publicFuel.filterQuery} /> : null}</>
+      ? place.source === "opinet_browser" && load
+        // 유종별 시군구 등급은 주변 대비 가격과 같은 한 번의 요청(product_grades)에서 온다.
+        ? <FuelStationPricePosition key={place.id} stationId={place.id} load={load}
+          productCodes={place.prices?.filter(hasFuelPrice).map(price => price.product_code) ?? []} selectedProducts={publicFuel.products ?? []} filterQuery={publicFuel.filterQuery}
+          renderPrices={grades => <PublicFuelPlacePrices prices={place.prices?.filter(hasFuelPrice) ?? []} controls={publicFuel} grades={grades} />} />
+        : <PublicFuelPlacePrices prices={place.prices?.filter(hasFuelPrice) ?? []} controls={publicFuel} />
       : <PlacePrices place={place} />}
     {place.kind === "fuel_station" ? <FuelStationPriceHistory key={`${place.source}:${place.id}`} place={place} load={load}><PlaceContact place={place} onShowMap={onShowMap} /><PlaceLocationEvidence place={place} /></FuelStationPriceHistory> : <PlaceContact place={place} onShowMap={onShowMap} />}
     {place.kind === "rail_station" && showRailTimetable ? <RailTimetables placeIds={[place.id]} /> : null}
@@ -91,7 +95,7 @@ function PlaceHeading({ place, showHeading }: Pick<Parameters<typeof PlaceDetail
   </>;
 }
 
-function PublicFuelPlacePrices({ prices, controls }: { prices: FuelPrice[]; controls: PublicFuelPriceControls }) {
+function PublicFuelPlacePrices({ prices, controls, grades }: { prices: FuelPrice[]; controls: PublicFuelPriceControls; grades?: ReadonlyMap<string, FuelProductGrade> }) {
   if (!prices.length) return <p className="text-xs text-text-secondary">등록된 유효 유가가 없습니다.</p>;
   const firstStale = prices.findIndex(price => isOldFuelObservation(price.observed_at));
   return <dl className="price-grid fuel-current-prices public-fuel-current-prices">
@@ -99,6 +103,8 @@ function PublicFuelPlacePrices({ prices, controls }: { prices: FuelPrice[]; cont
       <dt>{fuelProductLabel(price.product_code)}</dt>
       <dd>
         {money(price.price, "원/L")}
+        {/* 여러 유종을 팔면 유종마다 시군구 안 등급 안내("A 저렴해요"). 한 유종이면 아래 등급 원이 같은 내용을 보인다. */}
+        {prices.length > 1 && grades?.get(price.product_code) ? <FuelProductGradeBadge grade={grades.get(price.product_code)!} /> : null}
         {isOldFuelObservation(price.observed_at) ? <span className="public-fuel-summary-stale" title={dateTime(price.observed_at)}>
           <ClockAlert size={14} aria-hidden="true" />오래됨
         </span> : null}

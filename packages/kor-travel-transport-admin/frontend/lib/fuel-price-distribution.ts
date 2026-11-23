@@ -10,6 +10,11 @@ const scopeSummary = z.object({
   minimum_price: z.number(), average_price: z.number(), maximum_price: z.number(),
 });
 
+const comparison = scopeSummary.extend({
+  price: z.number(), difference: z.number(), percentile: z.number(),
+  grade: z.string().nullable(), grade_label: z.string().nullable(), sufficient: z.boolean(),
+});
+
 export const fuelPriceDistributionSchema = z.object({
   product_code: z.string(),
   generated_at: z.string().nullable(),
@@ -31,10 +36,9 @@ export const fuelPriceDistributionSchema = z.object({
   station: z.object({
     station_id: z.number().int(), name: z.string(), price: z.number().nullable(), sells_product: z.boolean(),
     products: z.array(z.string()),
-    comparisons: z.array(scopeSummary.extend({
-      price: z.number(), difference: z.number(), percentile: z.number(),
-      grade: z.string().nullable(), grade_label: z.string().nullable(), sufficient: z.boolean(),
-    })),
+    comparisons: z.array(comparison),
+    // 파는 유종마다 같은 시군구(같은 필터) 안 위치·등급(요청 유종 먼저). 옛 API에는 없어 빈 목록으로 읽는다.
+    product_grades: z.array(comparison.extend({ product_code: z.string() })).default([]),
   }).nullable(),
 });
 
@@ -42,6 +46,7 @@ export type FuelPriceDistribution = z.infer<typeof fuelPriceDistributionSchema>;
 export type FuelSigunguDistribution = NonNullable<FuelPriceDistribution["sigungu"]>;
 export type FuelPriceScope = NonNullable<FuelPriceDistribution["nationwide"]>;
 export type FuelPriceComparison = NonNullable<FuelPriceDistribution["station"]>["comparisons"][number];
+export type FuelProductGrade = NonNullable<FuelPriceDistribution["station"]>["product_grades"][number];
 
 export type FuelViewportSigungu = {
   sido_value: string; sido_name: string; sigungu_value: string; sigungu_name: string; station_count: number;

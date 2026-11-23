@@ -65,6 +65,24 @@ test("지역 칩이 없으면(places 실패·대기) 첫 시/도(서울)가 아�
   expect(button("구/군/시 선택").disabled).toBe(true);
 });
 
+test("지역 이동 '해제'는 사용자가 고른 지역이 있을 때만 확인 버튼 옆에 있고, 누르면 선택을 풀고 닫힌다", async () => {
+  const load = vi.fn().mockResolvedValue(catalog);
+  const onRelease = vi.fn(); const onOpenChange = vi.fn(); const onConfirm = vi.fn();
+  const view = (release?: () => void) => <FuelRegionPicker open onOpenChange={onOpenChange} load={load} current={{ sido_value: "01", sigungu_value: "0101" }}
+    onConfirm={onConfirm} onRelease={release} />;
+  const { rerender } = await mount(view());
+  await settle();
+  expect(document.querySelector(".fuel-region-release")).toBeNull();
+  await rerender(view(onRelease));
+  const actions = [...document.querySelectorAll(".fuel-region-actions > button")].map(node => node.textContent);
+  // 취소 · 해제 · (확인 = 고른 지역 이름) 순서로 확인 버튼 바로 옆이다.
+  expect(actions).toEqual(["취소", "해제", "서울 종로구"]);
+  await act(async () => button("해제").click());
+  expect(onRelease).toHaveBeenCalledTimes(1);
+  expect(onOpenChange).toHaveBeenCalledWith(false);
+  expect(onConfirm).not.toHaveBeenCalled();
+});
+
 test("지역 칩이 있으면 지도 중심보다 칩을 먼저 고른다", async () => {
   const load = vi.fn().mockResolvedValue(catalog);
   await mount(<FuelRegionPicker open onOpenChange={() => {}} load={load} current={{ sido_value: "01", sigungu_value: "0101" }} center={[127.7, 36.25]} onConfirm={() => {}} />);

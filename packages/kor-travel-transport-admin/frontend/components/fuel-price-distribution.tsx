@@ -12,7 +12,7 @@ import {
   binLabel, distributionSummary, distributionTimestamp, gradeTone, histogramValues, loadFuelPriceDistribution,
   signedWon, won,
   type FuelDistributionTarget, type FuelPriceComparison, type FuelPriceDistribution, type FuelPriceScope,
-  type FuelRegionChip, type FuelSigunguDistribution,
+  type FuelProductGrade, type FuelRegionChip, type FuelSigunguDistribution,
 } from "@/lib/fuel-price-distribution";
 
 // 공개 유가(TRANSPORT_UI_MODE=fuel) 전용. 관리 화면은 이 파일을 쓰지 않는다(publicFuel 조건에서만 렌더).
@@ -65,7 +65,8 @@ export function FuelRegionStats({ region, product, load, filterQuery, onClear, f
   return <div className="fuel-sigungu-chips" role="group" aria-label={REGION_GROUP_LABEL[region.basis]} data-basis={region.basis}>
     <ul>
       <li>
-        <button ref={chip} type="button" className="fuel-sigungu-chip" data-selected={region.selected || undefined} onClick={() => setTarget({
+        {/* 사용자가 고른 지역(basis selected)은 파란 칩으로 자동(지도 중심) 칩과 구별한다. */}
+        <button ref={chip} type="button" className="fuel-sigungu-chip" data-selected={region.selected || undefined} data-basis={region.basis} onClick={() => setTarget({
           kind: "region", sido_value: region.sido_value, sigungu_value: region.sigungu_value, label: region.label,
         })} aria-label={`${region.label} ${productLabel} 가격 통계${count != null ? ` · 지도 안 ${count}개 주유소` : ""}`}>
           <span>{region.label}</span>{count != null ? <small aria-hidden="true">{count}</small> : null}
@@ -80,21 +81,28 @@ export function FuelRegionStats({ region, product, load, filterQuery, onClear, f
           }}><X aria-hidden="true" size={16} /></button>
       </li> : null}
     </ul>
-    <FuelDistributionDialog target={target} onClose={() => setTarget(null)} initialProduct={product} load={load} returnFocus={chip} filterQuery={filterQuery} />
+    <FuelDistributionDialog target={target} onClose={() => setTarget(null)} initialProduct={product} load={load} returnFocus={chip} filterQuery={filterQuery}
+      onRelease={region.selected && onClear ? () => { onClear(); setTarget(null); } : undefined} />
   </div>;
 }
 
 /** 시군구·주유소 공용 대화상자. 주유소면 그 가격을 곡선 위에 핀으로 표시한다. */
-export function FuelDistributionDialog({ target, onClose, initialProduct, load, productChoices, returnFocus, filterQuery }: {
+export function FuelDistributionDialog({ target, onClose, initialProduct, load, productChoices, returnFocus, filterQuery, onRelease }: {
   target: FuelDistributionTarget | null; onClose: () => void; initialProduct: string; load: Loader; productChoices?: string[]; filterQuery?: string;
   /** 트리거 없이 여는 대화상자라 닫을 때 연 버튼으로 초점을 직접 돌려준다. */
   returnFocus?: RefObject<HTMLElement | null>;
+  /** 사용자가 고른 지역의 통계일 때만: "해제"로 선택을 풀고 자동(지도 중심) 지역으로 돌아간다. */
+  onRelease?: () => void;
 }) {
   return <Dialog open={target !== null} onOpenChange={open => { if (!open) onClose(); }}>
     {target ? <DialogContent className="fuel-distribution-dialog" showCloseButton={false}
       onCloseAutoFocus={event => { event.preventDefault(); returnFocus?.current?.focus(); }}>
       <FuelDistributionBody key={JSON.stringify(target)} target={target} initialProduct={initialProduct} load={load} productChoices={productChoices} filterQuery={filterQuery} />
-      <DialogClose asChild><Button type="button" variant="outline" className="fuel-distribution-close">닫기</Button></DialogClose>
+      <div className="fuel-distribution-actions">
+        {onRelease ? <Button type="button" variant="ghost" className="fuel-distribution-release" onClick={onRelease}
+          aria-label="지역 선택 해제하고 지도 중심 지역으로">해제</Button> : null}
+        <DialogClose asChild><Button type="button" variant="outline" className="fuel-distribution-close">닫기</Button></DialogClose>
+      </div>
     </DialogContent> : null}
   </Dialog>;
 }
@@ -229,9 +237,23 @@ export function FuelGradeRow({ comparisons, price, productLabel, sidoName, actio
   </section>;
 }
 
-/** 주유소 상세: 시군구·시도·전국 대비 등급과 지역 가격 분포(핀) 대화상자. */
-export function FuelStationPricePosition({ stationId, productCodes, selectedProducts, load, filterQuery }: {
+/** 유종별 시군구 등급 안내 한 줄("A 저렴해요"). 표본이 모자라면 등급 대신 "비교 부족". */
+export function FuelProductGradeBadge({ grade }: { grade: FuelProductGrade }) {
+  const productLabel = fuelProductLabel(grade.product_code);
+  const verdict = grade.grade ? `${grade.grade} ${grade.grade_label}` : "비교 부족";
+  return <span className="fuel-product-grade" data-tone={gradeTone(grade.grade)}>
+    <span aria-hidden="true">{verdict}</span>
+    <span className="sr-only">{productLabel} {grade.label} {grade.station_count}곳 중 {verdict}{grade.grade ? `, 평균 대비 ${signedWon(grade.difference)}` : ""}</span>
+  </span>;
+}
+
+/**
+ * 주유소 상세: 시군구·시도·전국 대비 등급과 지역 가격 분포(핀) 대화상자.
+ * renderPrices가 있으면 같은 응답(한 번의 요청)의 `product_grades`로 유종별 가격 줄에 시군구 등급 안내를 붙여 위에 그린다.
+ */
+export function FuelStationPricePosition({ stationId, productCodes, selectedProducts, load, filterQuery, renderPrices }: {
   stationId: number; productCodes: string[]; selectedProducts: string[]; load: Loader; filterQuery?: string;
+  renderPrices?: (grades: ReadonlyMap<string, FuelProductGrade>) => ReactNode;
 }) {
   const sold = new Set(productCodes);
   const ordered = FUEL_CHART_ORDER.filter(code => sold.has(code));
@@ -241,11 +263,15 @@ export function FuelStationPricePosition({ stationId, productCodes, selectedProd
   const opener = useRef<HTMLButtonElement>(null);
   const target: FuelDistributionTarget = { kind: "station", station_id: stationId };
   const { current, retry } = useDistribution(load, initial ? target : null, initial ?? "B027", filterQuery);
-  if (!initial) return null;
-  return <section className="fuel-station-position" aria-label="주변 대비 가격" aria-busy={!current}>
-    <StationPositionState current={current} retry={retry} productLabel={fuelProductLabel(initial)} onOpen={() => setOpen(true)} opener={opener} />
-    <FuelDistributionDialog target={open ? target : null} onClose={() => setOpen(false)} initialProduct={initial} load={load} productChoices={ordered} returnFocus={opener} filterQuery={filterQuery} />
-  </section>;
+  const grades = new Map((current?.data?.station?.product_grades ?? []).map(grade => [grade.product_code, grade]));
+  if (!initial) return renderPrices?.(grades) ?? null;
+  return <>
+    {renderPrices?.(grades)}
+    <section className="fuel-station-position" aria-label="주변 대비 가격" aria-busy={!current}>
+      <StationPositionState current={current} retry={retry} productLabel={fuelProductLabel(initial)} onOpen={() => setOpen(true)} opener={opener} />
+      <FuelDistributionDialog target={open ? target : null} onClose={() => setOpen(false)} initialProduct={initial} load={load} productChoices={ordered} returnFocus={opener} filterQuery={filterQuery} />
+    </section>
+  </>;
 }
 
 function StationPositionState({ current, retry, productLabel, onOpen, opener }: {

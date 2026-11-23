@@ -2,7 +2,6 @@
 
 import { vworldApiKey } from "@/lib/vworld-presentation";
 
-import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { refreshPublicFuel, type FuelRefreshBounds, type FuelRefreshRequest } from "@/lib/public-fuel";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type RefObject, type ReactNode, type MouseEvent as ReactMouseEvent } from "react";
@@ -142,7 +141,6 @@ return <section className="map-workbench" aria-label={mode === "fuel" ? "유가 
     <Tabs value={view} onValueChange={(value) => { if (value === "map" || value === "list") { setView(value); setFiltersExpanded(false); } }} className="min-h-0">
     {!mapOnly ? <MapResultTabs mapViewport={mapViewport} view={view} listCount={listCount} listPlaces={listPlaces} items={items} listFeatureCount={listFeatureCount} mapFeatureCount={mapFeatureCount} serverClustered={serverClustered} serverTotal={serverTotal} visiblePoints={visiblePoints} pending={pending} partialListKinds={partialListKinds} perKindLimit={perKindLimit} searchQuery={searchQuery} /> : null}
     <TabsContent className="min-h-0" value="map"><MapStage className={mode === "fuel" ? "fuel-map-stage" : undefined} summary={summary} detail={detailPanel("map")}><TransportMapCanvas mapContainer={mapContainer} mapViewport={mapViewport} setMapUnavailableMessage={setMapUnavailableMessage} basemap={basemap} moved={moved} camera={camera} layers={layers} serverClustered={serverClustered} serverClusters={serverClusters} setClusterPlaces={setClusterPlaces} setClusterCamera={setClusterCamera} zoom={zoom} setCameraRequest={setCameraRequest} groupedPoints={groupedPoints} cluster={cluster} products={products} overlapOpener={overlapOpener} setClusterAnchor={setClusterAnchor} clusterList={clusterList} selectPlace={selectPlace} selectedPoint={selectedPoint} clusterPlaces={clusterPlaces} clusterAnchor={clusterAnchor} closeOverlap={closeOverlap} regionMarkers={regionMarkers} railOnly={railOnly} fuelOnly={mode === "fuel"} publicFuel={Boolean(publicFuel)} />
-        <PublicFuelMapRefresh onRefresh={publicActions.refreshViewport} refreshing={refreshing} />
       </MapStage>
     </TabsContent>
     {!mapOnly ? <TabsContent className="min-h-0 data-[state=inactive]:hidden" value="list" forceMount><MapStage view="list" detail={view === "list" ? detailPanel("list") : null}><div className="map-primary"><MapPlaceRows status={status} listContent={listContent} listPlaces={listPlaces} items={items} current={current} selectPlace={selectPlace} /></div></MapStage></TabsContent> : null}
@@ -174,6 +172,7 @@ function publicFuelActions({
     onProductsChange: values => { clearSelection(); controls.onProductsChange(values); },
     onRefresh: pricesStale ? refreshViewport : undefined,
     refreshing,
+    refreshBlocked: !refreshEnabled ? "disabled" : controls.filterQuery ? "filters" : !bounds ? "range" : undefined,
     filterQuery: controls.filterQuery,
     filters: controls.filters,
     // 필터도 유종과 같은 규칙이다: 조건이 바뀌면 그 주유소가 지도에서 빠질 수 있어 열린 상세를 닫는다.
@@ -182,13 +181,7 @@ function publicFuelActions({
     onClearRegion: controls.onClearRegion,
     onOpenRegion: controls.onOpenRegion ? (region, opener) => controls.onOpenRegion?.(region, opener, mapCenter) : undefined,
   };
-  return { summary, detail: { onRefresh: refreshStation, refreshing, products, filterQuery: controls.filterQuery }, refreshViewport };
-}
-
-function PublicFuelMapRefresh({ onRefresh, refreshing }: { onRefresh?: () => void; refreshing: boolean }) {
-  if (!onRefresh) return null;
-  return <Button type="button" variant="outline" className="public-fuel-map-refresh"
-    aria-label="지도 범위 유가 업데이트" onClick={onRefresh} loading={refreshing}><RefreshCw size={18} aria-hidden="true" /></Button>;
+  return { summary, detail: { onRefresh: refreshStation, refreshing, products, filterQuery: controls.filterQuery } };
 }
 
 function usePublicFuelRefresh(enabled: boolean | undefined, setReload: ReturnType<typeof useTransportMap>["setReload"]) {

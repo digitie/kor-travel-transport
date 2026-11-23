@@ -35,11 +35,13 @@ type ConfirmRegion = (bounds: [number, number, number, number], region: FuelSele
  * "지역 이동": 시/도 → 구/군/시를 고르고 확인하면 그 시군구 주유소 범위로 지도를 옮긴다.
  * 처음에는 지역 칩(current)을, 칩이 없으면 지금 지도 중심(center)이 속한 시군구를 고른 채 연다.
  */
-export function FuelRegionPicker({ open, onOpenChange, load, current, center, onConfirm, returnFocus }: {
+export function FuelRegionPicker({ open, onOpenChange, load, current, center, onConfirm, onRelease, returnFocus }: {
   open: boolean; onOpenChange: (open: boolean) => void; load: Loader; current?: FuelAreaChoice;
   /** 지금 지도 중심 [경도, 위도]. 지역 칩이 없을 때 미리 고를 시군구를 찾는 데 쓴다. */
   center?: readonly [number, number];
   onConfirm: ConfirmRegion;
+  /** 사용자가 고른 지역이 있을 때만: "해제"로 선택을 풀고 자동(지도 중심) 지역으로 돌아간다. */
+  onRelease?: () => void;
   /** 트리거 없이 여는 대화상자라 닫을 때 연 버튼으로 초점을 직접 돌려준다. */
   returnFocus?: RefObject<HTMLElement | null>;
 }) {
@@ -47,13 +49,15 @@ export function FuelRegionPicker({ open, onOpenChange, load, current, center, on
     {open ? <DialogContent className="fuel-region-picker" showCloseButton={false}
       onCloseAutoFocus={event => { event.preventDefault(); returnFocus?.current?.focus(); }}>
       <FuelRegionPickerBody load={load} current={current} center={center} onCancel={() => onOpenChange(false)}
+        onRelease={onRelease ? () => { onRelease(); onOpenChange(false); } : undefined}
         onConfirm={(bounds, region) => { onConfirm(bounds, region); onOpenChange(false); }} />
     </DialogContent> : null}
   </Dialog>;
 }
 
-function FuelRegionPickerBody({ load, current, center, onCancel, onConfirm }: {
+function FuelRegionPickerBody({ load, current, center, onCancel, onConfirm, onRelease }: {
   load: Loader; current?: FuelAreaChoice; center?: readonly [number, number]; onCancel: () => void; onConfirm: ConfirmRegion;
+  onRelease?: () => void;
 }) {
   const [state, setState] = useState<{ catalog?: FuelAreaCatalog; error?: boolean }>();
   const [retry, setRetry] = useState(0);
@@ -108,6 +112,8 @@ function FuelRegionPickerBody({ load, current, center, onCancel, onConfirm }: {
       </div>}
     <div className="fuel-region-actions">
       <Button type="button" variant="ghost" onClick={onCancel}>취소</Button>
+      {onRelease ? <Button type="button" variant="outline" className="fuel-region-release" onClick={onRelease}
+        aria-label="지역 선택 해제하고 지도 중심 지역으로">해제</Button> : null}
       <Button type="button" disabled={!sigunguRow} onClick={() => sidoRow && sigunguRow && label && onConfirm(sigunguRow.bounds,
         { sido_value: sidoRow.sido_value, sigungu_value: sigunguRow.sigungu_value, label })}
         aria-label={label ? `${label} 지역으로 이동` : undefined}>{label ?? "구/군/시 선택"}</Button>
