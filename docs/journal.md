@@ -1,3 +1,14 @@
+## 2026-11-23 — 회수 sensor 예산 시험을 가짜 시계로(플레이크 제거)
+
+- `test_recovery_sensor_stall.py::test_slow_but_working_db_stops_gracefully_inside_budget`가 #248 CI(4a0df3e)에서 실패했다. 정상 종료
+  (`stall:null`) 대신 `RecoveryMetadataUnavailable`: 줄인 metadata 상한 0.4초(실제 thread join) 안에 ephemeral Dagster instance의
+  `get_run_by_id` thread가 끝나지 못했다(CI 부하). 시험 대상은 느린 DB의 예산 판정인데 실제 시간 상한 두 개(metadata 0.4초, 경과 3초)에 걸려 있었다.
+- 수정(시험만): common `reconciliation_sensor`의 예산 시계(`kortravelcommon.dagster.monotonic`)와 느린 DB 대역의 지연을 같은 가짜 시계로
+  돌린다. 운영 비율 그대로 예산 30·단계 8·정리 10 가짜 초, 실제 시간이 드는 metadata thread 상한은 20초. 단언은 가짜 시계로 정확해져
+  "단계+정리 여유에 닿을 때까지 진행하고 정리 여유에는 들어가지 않았다"(작업 12~20 가짜 초)까지 본다.
+- n150 반복(2코어 제한 + 바쁜 루프 2개): 고친 시험 40/40 통과. 옆의 실제 시간 시험 `test_hung_statement_and_dispose_end_before_budget_as_timeout_not_deadline`은
+  두 시험을 함께 돌린 반복에서 40회 중 2회 실패했지만(수정 전·후 같음) 단독 반복은 40/40이다. 이번 범위에서는 바꾸지 않았다.
+- 운영 코드 변경 없음.
 ## 2026-11-23 — 유가 통계 이전 세대 정리가 수집을 따라잡게(FUEL-PRUNE-BACKLOG-20261123)
 
 - 운영 읽기 전용 측정: 오피넷 53세대 1.56M 행. 정리 DELETE의 `(4열) IN` 2,000개 튜플 계획만 3.2초라 15초 예산에 1배치(2,000행)만

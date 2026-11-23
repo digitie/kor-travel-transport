@@ -169,33 +169,51 @@ async def test_metadata_failure_keeps_position_before_failed_row_and_recovers_no
         await engine.dispose()
 
 
+class VirtualClock:
+    """common sensor 예산(`kortravelcommon.dagster.monotonic`)과 느린 DB 대역이 함께 쓰는 가짜 시계."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
 class _SlowDb:
     """느린 DB 대역. 모든 문장(신선도 조회·page 조회·UPDATE·COMMIT)과 dispose가 `delay`초 걸린다.
 
-    `hang_on`번째 문장부터는 `hang`초 멈춘다(디스크 대기·잠금 대기 모사).
+    `hang_on`번째 문장부터는 `hang`초 멈춘다(디스크 대기·잠금 대기 모사). `clock`을 주면 실제로 자지 않고
+    가짜 시계만 그만큼 앞당긴다(예산 판정이 CI 부하와 무관해진다).
     """
 
-    def __init__(self, delay: float, *, hang_on: int | None = None, hang: float = 30.0, dispose: float = 0.0):
+    def __init__(self, delay: float, *, hang_on: int | None = None, hang: float = 30.0, dispose: float = 0.0,
+                 clock: VirtualClock | None = None):
         self.delay, self.hang_on, self.hang, self.dispose_delay = delay, hang_on, hang, dispose
+        self.clock = clock
         self.statements = 0
         self.next_id = 0
         self.disposed = False
 
-    async def _wait(self) -> None:
+    async def _sleep(self, seconds: float) -> None:
         import asyncio
 
+        if self.clock is None:
+            await asyncio.sleep(seconds)
+        else:
+            self.clock.now += seconds
+            await asyncio.sleep(0)
+
+    async def _wait(self) -> None:
         self.statements += 1
         hanging = self.hang_on is not None and self.statements >= self.hang_on
-        await asyncio.sleep(self.hang if hanging else self.delay)
+        await self._sleep(self.hang if hanging else self.delay)
 
     def engine(self):
         db = self
 
         class Engine:
             async def dispose(self):
-                import asyncio
-
-                await asyncio.sleep(db.dispose_delay)
+                await db._sleep(db.dispose_delay)
                 db.disposed = True
 
         return Engine()
@@ -234,10 +252,14 @@ class _SlowDb:
 
 @pytest.fixture
 def budget_sensor(monkeypatch):
-    """실제 `_reconcile_tick`을 common `reconciliation_sensor`의 짧은 예산(3초)으로 돌린다."""
+    """실제 `_reconcile_tick`을 common `reconciliation_sensor`의 짧은 예산(기본 3초)으로 돌린다.
+
+    `clock`을 주면 common의 예산 시계를 그 가짜 시계로 바꾸고 경과 시간도 그 시계로 잰다.
+    """
     import time as real_time
 
     from dagster import DagsterInstance, build_sensor_context
+    from kortravelcommon import dagster as common_dagster
     from kortravelcommon.dagster import reconciliation_sensor
 
     # 운영 상수(예산 45, 단계 25, 정리 5, metadata 10)를 같은 비율로 줄인다.
@@ -246,28 +268,46 @@ def budget_sensor(monkeypatch):
     monkeypatch.setattr(recovery, "CLEANUP_RESERVE_SECONDS", 1.0)
     monkeypatch.setattr(dagster_definitions, "_settings", lambda: SimpleNamespace(database_url="x"))
     monkeypatch.setattr(dagster_definitions, "_RECOVERY_POSITION", ScanPosition())
-    sensor = reconciliation_sensor(
-        name="transport_worker_recovery_budget_test", reconcile=dagster_definitions._reconcile_tick,
-        required_resource_keys=set(), budget_seconds=3, on_stall=lambda *_: None,
-    )
 
-    def run(db: _SlowDb):
+    def run(db: _SlowDb, *, budget: float = 3, clock: VirtualClock | None = None):
+        if clock is not None:
+            monkeypatch.setattr(common_dagster, "monotonic", clock)
+        sensor = reconciliation_sensor(
+            name="transport_worker_recovery_budget_test", reconcile=dagster_definitions._reconcile_tick,
+            required_resource_keys=set(), budget_seconds=budget, on_stall=lambda *_: None,
+        )
         monkeypatch.setattr(dagster_definitions, "create_engine_and_session_factory",
                             lambda *_a, **_k: (db.engine(), db.factory()))
+        measure = clock if clock is not None else real_time.monotonic
         with DagsterInstance.ephemeral() as instance:
-            started = real_time.monotonic()
+            started = measure()
             result = sensor(build_sensor_context(instance=instance))
-            return result, real_time.monotonic() - started
+            return result, measure() - started
 
     return run
 
 
-def test_slow_but_working_db_stops_gracefully_inside_budget(budget_sensor):
-    db = _SlowDb(0.15, dispose=0.3)
-    result, elapsed = budget_sensor(db)
-    assert result.cursor == "stall:null"  # 예산 초과·timeout이 아니라 정상 종료
-    assert elapsed < 3
+def test_slow_but_working_db_stops_gracefully_inside_budget(budget_sensor, monkeypatch):
+    """느리지만 살아 있는 DB에서는 예산 여유(단계·정리)를 남기고 스스로 멈춰 위치를 저장한다.
+
+    예전에는 실제 0.15초 sleep과 metadata 0.4초 thread 상한으로 쟀다. CI 부하로 ephemeral instance의
+    `get_run_by_id` thread가 0.4초를 넘기면 정상 종료 대신 RecoveryMetadataUnavailable이 됐다(#248 CI,
+    4a0df3e). 여기서는 예산 시계와 DB 지연을 같은 가짜 시계로 돌린다. 운영 비율(예산 45·단계 25·정리 5)을
+    따르는 가짜 시간 단위라 실제로는 자지 않고, 실제 시간이 걸리는 것(metadata thread·tick 전체 상한)은
+    가짜 예산보다 훨씬 넉넉한 실제 상한만 남는다.
+    """
+    clock = VirtualClock()
+    monkeypatch.setattr(recovery, "METADATA_TIMEOUT_SECONDS", 20.0)  # 실제 thread 대기 상한(가짜 시계 무관)
+    monkeypatch.setattr(recovery, "STEP_RESERVE_SECONDS", 8.0)
+    monkeypatch.setattr(recovery, "CLEANUP_RESERVE_SECONDS", 10.0)
+    db = _SlowDb(1.5, dispose=3.0, clock=clock)
+    result, elapsed = budget_sensor(db, budget=30, clock=clock)
+    assert result.cursor == "stall:null", result  # 예산 초과·timeout이 아니라 정상 종료
     assert db.disposed
+    # dispose(3)를 뺀 작업 시간: 남은 예산이 단계+정리 여유(8+10)에 닿을 때까지 진행했고(일찍 포기하지 않음)
+    # 정리 여유(10)에는 들어가지 않았다(예산 30 안에서 dispose까지 끝남).
+    work = elapsed - 3.0
+    assert 30 - 10 - 8 <= work <= 30 - 10, elapsed
     position = dagster_definitions._RECOVERY_POSITION.get()
     assert 0 < position <= db.next_id  # 끝(빈 page)까지 가지 않고 위치를 남겼다(다음 tick이 이어 본다)
 
