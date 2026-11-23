@@ -49,6 +49,17 @@ async function shot(page: Page, name: string, testInfo: { outputPath: (name: str
 const summaryOf = (page: Page) => page.getByRole("region", { name: "현재 지도 범위 유가 통계" });
 const priceButton = (page: Page) => summaryOf(page).locator(".public-fuel-price-button");
 const chip = (page: Page) => summaryOf(page).locator(".fuel-sigungu-chips .fuel-sigungu-chip:not(.fuel-sigungu-clear)");
+// 칩 안에는 지역 이름과 주유소 수(small)가 있다. 이름만 본다.
+const chipName = (page: Page) => chip(page).locator("> span");
+// 색 토큰(--danger·--text-secondary·--brand)이 지금 화면에서 계산되는 값. 계산 색은 lab()처럼 형식이 바뀔 수 있어 같은 방식으로 계산해 비교한다.
+const tokenColor = (page: Page, token: string) => page.evaluate(name => {
+  const probe = document.createElement("span");
+  probe.style.color = `var(${name})`;
+  document.querySelector(".public-fuel-summary")!.append(probe);
+  const value = getComputedStyle(probe).color;
+  probe.remove();
+  return value;
+}, token);
 const noHorizontalScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
 const isDistribution = (request: Request) => new URL(request.url()).pathname.endsWith("/api/public/fuel/price-distribution");
 
@@ -102,9 +113,8 @@ for (const width of [320, 390, 1440]) {
     const button = priceButton(page);
     await expect(button).toHaveCount(1);
     await expect(button).toHaveAttribute("data-stale", "true");
-    const color = await button.evaluate(node => getComputedStyle(node).color);
-    const [red, green] = color.match(/[\d.]+/g)!.map(Number);
-    expect(red, `빨간 아이콘 ${color}`).toBeGreaterThan(green + 60);
+    // 빨간(--danger) 아이콘.
+    expect(await button.evaluate(node => getComputedStyle(node).color)).toBe(await tokenColor(page, "--danger"));
     // 유종·필터와 같은 줄 오른쪽에 붙어 있다.
     const [buttonBox, filterBox, summaryBox] = [(await button.boundingBox())!, (await summary.locator(".public-fuel-filter-trigger").boundingBox())!, (await summary.boundingBox())!];
     expect(Math.abs((buttonBox.y + buttonBox.height / 2) - (filterBox.y + filterBox.height / 2))).toBeLessThanOrEqual(2);
@@ -135,9 +145,8 @@ for (const width of [320, 390, 1440]) {
     await expect(button).toHaveAttribute("aria-disabled", "true");
     await expect(button).not.toHaveAttribute("data-stale");
     await expect(button).toHaveAccessibleName("가격 최신 · 업데이트할 수 없음: 가격이 최신이라 업데이트할 필요가 없습니다");
-    const color = await button.evaluate(node => getComputedStyle(node).color);
-    const [red, green, blue] = color.match(/[\d.]+/g)!.map(Number);
-    expect(Math.max(red, green, blue) - Math.min(red, green, blue), `회색 ${color}`).toBeLessThanOrEqual(40);
+    // 회색(--text-secondary) 아이콘.
+    expect(await button.evaluate(node => getComputedStyle(node).color)).toBe(await tokenColor(page, "--text-secondary"));
     // 키보드로 닿는다(native disabled가 아님). 포커스하면 툴팁에 이유와 마지막 가격 갱신 시각.
     await button.focus();
     await expect(button).toBeFocused();
@@ -146,8 +155,8 @@ for (const width of [320, 390, 1440]) {
     await expect(page.getByRole("tooltip")).toContainText("마지막 가격 갱신 26.11.22 07:00 KST");
     expect(refreshes).toHaveLength(0);
     await shot(page, `ui2-price-fresh-tip-${width}.png`, testInfo);
-    // 마우스로 눌러도 업데이트하지 않는다.
-    await button.click();
+    // 마우스로 눌러도 업데이트하지 않는다(aria-disabled라 Playwright 활성 검사를 건너뛰고 누른다).
+    await button.click({ force: true });
     expect(refreshes).toHaveLength(0);
   });
 
@@ -156,7 +165,7 @@ for (const width of [320, 390, 1440]) {
     await page.setViewportSize(at(width));
     await page.goto(STATION_VIEW);
     const summary = summaryOf(page);
-    await expect(chip(page)).toHaveText("서울 중구");
+    await expect(chipName(page)).toHaveText("서울 중구");
     await expect(summary.locator(".fuel-sigungu-chips")).toHaveAttribute("aria-label", "지도 중심 지역 가격 통계");
     // 유종마다 한 줄(이름·평균·최저). 320px에서도 두 줄을 넘지 않는다.
     for (const row of await summary.locator(".public-fuel-summary-product").all()) {
@@ -175,15 +184,14 @@ for (const width of [320, 390, 1440]) {
     await picker.getByRole("button", { name: "서울 종로구 지역으로 이동" }).click();
     await expect(picker).toHaveCount(0);
     // 고른 지역 칩은 파랑(채움·테두리)으로 자동 칩과 다르다.
-    await expect(chip(page)).toHaveText("서울 종로구");
+    await expect(chipName(page)).toHaveText("서울 종로구");
     await expect(chip(page)).toHaveAttribute("data-basis", "selected");
     const [selectedBackground, selectedColor, selectedBorder] = await chip(page).evaluate(node => {
       const style = getComputedStyle(node);
       return [style.backgroundColor, style.color, style.borderTopColor];
     });
     expect(selectedBackground).not.toBe(autoBackground);
-    const [red, , blue] = selectedColor.match(/[\d.]+/g)!.map(Number);
-    expect(blue, `파란 글자 ${selectedColor}`).toBeGreaterThan(red + 40);
+    expect(selectedColor).toBe(await tokenColor(page, "--brand"));
     expect(selectedBorder).toBe(selectedColor);
     await shot(page, `ui2-summary-selected-chip-${width}.png`, testInfo);
     // 통계 대화상자의 해제: 선택을 풀고 닫힌다(자동 지도 중심 칩으로).
@@ -194,13 +202,13 @@ for (const width of [320, 390, 1440]) {
     await shot(page, `ui2-stats-dialog-release-${width}.png`, testInfo);
     await release.click();
     await expect(stats).toHaveCount(0);
-    await expect(chip(page)).toHaveText("서울 중구");
+    await expect(chipName(page)).toHaveText("서울 중구");
     await expect(summary.locator(".fuel-sigungu-chips")).toHaveAttribute("aria-label", "지도 중심 지역 가격 통계");
     // 지역 이동 대화상자의 해제: 고른 지역이 있을 때만 확인 버튼 바로 옆.
     await opener.click();
     await picker.getByRole("radio", { name: "종로구" }).check();
     await picker.getByRole("button", { name: "서울 종로구 지역으로 이동" }).click();
-    await expect(chip(page)).toHaveText("서울 종로구");
+    await expect(chipName(page)).toHaveText("서울 종로구");
     await opener.click();
     const pickerRelease = picker.getByRole("button", { name: /해제/ });
     await expect(pickerRelease).toBeVisible();
@@ -212,7 +220,7 @@ for (const width of [320, 390, 1440]) {
     await shot(page, `ui2-picker-release-${width}.png`, testInfo);
     await pickerRelease.click();
     await expect(picker).toHaveCount(0);
-    await expect(chip(page)).toHaveText("서울 중구");
+    await expect(chipName(page)).toHaveText("서울 중구");
     await expect(chip(page)).toHaveAttribute("data-basis", "center");
     expect(await noHorizontalScroll(page)).toBe(true);
   });
@@ -265,7 +273,7 @@ test("390px 필터를 켠 동안 오래된 가격 아이콘은 비활성이고 �
   await expect(button).toHaveAttribute("aria-disabled", "true");
   const expected = process.env.E2E_FUEL_REFRESH === "true" ? "필터를 켠 동안은 지도 범위 업데이트를 할 수 없습니다" : "이 화면에서는 유가 업데이트를 쓸 수 없습니다";
   await expect(button).toHaveAccessibleName(new RegExp(`가격 오래됨 · 업데이트할 수 없음: ${expected}`));
-  await button.click();
+  await button.click({ force: true });
   await expect(page.getByRole("tooltip")).toContainText(expected);
   await expect(page.getByRole("tooltip")).toContainText("마지막 가격 갱신");
   expect(refreshes).toHaveLength(0);

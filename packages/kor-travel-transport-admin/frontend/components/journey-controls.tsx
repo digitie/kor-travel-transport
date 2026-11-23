@@ -98,13 +98,14 @@ function PlaceHeading({ place, showHeading }: Pick<Parameters<typeof PlaceDetail
 function PublicFuelPlacePrices({ prices, controls, grades }: { prices: FuelPrice[]; controls: PublicFuelPriceControls; grades?: ReadonlyMap<string, FuelProductGrade> }) {
   if (!prices.length) return <p className="text-xs text-text-secondary">등록된 유효 유가가 없습니다.</p>;
   const firstStale = prices.findIndex(price => isOldFuelObservation(price.observed_at));
-  return <dl className="price-grid fuel-current-prices public-fuel-current-prices">
+  const graded = prices.length > 1 && prices.some(price => grades?.has(price.product_code));
+  return <dl className="price-grid fuel-current-prices public-fuel-current-prices" data-graded={graded || undefined}>
     {prices.map((price, index) => <div key={price.product_code}>
       <dt>{fuelProductLabel(price.product_code)}</dt>
       <dd>
         {money(price.price, "원/L")}
         {/* 여러 유종을 팔면 유종마다 시군구 안 등급 안내("A 저렴해요"). 한 유종이면 아래 등급 원이 같은 내용을 보인다. */}
-        {prices.length > 1 && grades?.get(price.product_code) ? <FuelProductGradeBadge grade={grades.get(price.product_code)!} /> : null}
+        {graded && grades?.get(price.product_code) ? <FuelProductGradeBadge grade={grades.get(price.product_code)!} /> : null}
         {isOldFuelObservation(price.observed_at) ? <span className="public-fuel-summary-stale" title={dateTime(price.observed_at)}>
           <ClockAlert size={14} aria-hidden="true" />오래됨
         </span> : null}
