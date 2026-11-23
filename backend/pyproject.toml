@@ -28,7 +28,7 @@ dependencies = [
   "python-krits-api @ git+https://github.com/digitie/python-krits-api@417e3d5dc1a897f770e9c832eb39d8ff9c40e92a",
   "python-kric-api @ git+https://github.com/digitie/python-kric-api@c006c8be64edfa4dc73cc3dd087c92cdeb9fba84",
   "python-krex-api @ git+https://github.com/digitie/python-krex-api@894ea64faed3a9a0ba9ba11b2a59dc5a0b5e5634",
-  "python-opinet-api[browser] @ git+https://github.com/digitie/python-opinet-api@f2a4d489a3fefd4bce830358f78d3a676a75c0d0",
+  "python-opinet-api[browser] @ git+https://github.com/digitie/python-opinet-api@f7b7c3f994ac6e44e6af5f10d66d2e8fc4883d95",
   "python-vworld-api @ git+https://github.com/digitie/python-vworld-api@3b174abea1a1e734c60a9c2522b2844474a1ec71",
   "python-vadahub-api @ git+https://github.com/digitie/python-vadahub-api@169f339ff32f8138977962ab0cbb52cdb1bec7e5",
   "python-multipart>=0.0.32,<1.0",

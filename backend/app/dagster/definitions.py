@@ -17,9 +17,11 @@ from urllib.parse import quote, unquote
 from .address_refresh import address_refresh_job, address_refresh_sensor
 
 from dagster import (
-    DagsterExecutionInterruptedError, DefaultScheduleStatus, Definitions, Failure, Field, multiprocess_executor, job, op,
+    Backoff, DagsterExecutionInterruptedError, DefaultScheduleStatus, Definitions, Failure, Field, Jitter, RetryPolicy,
+    multiprocess_executor, job, op,
 )
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import DBAPIError
 from kortravelcommon.deadline import call_with_deadline
 from kortravelcommon.dagster import RecoveryPolicy, coalescing_schedule, infrastructure_retry_sensor, reconciliation_sensor
 from kortravelcommon.scheduling import staggered_cron
@@ -48,13 +50,30 @@ from app.services.vadahub_collection import VadaHubCollectionService
 from app.services.rest_area_collection import RestAreaCollectionService
 from app.services.public_parking_collection import PublicParkingCollectionService
 from app.services.reference_export_preparation import prepare_reference_exports as prepare_reference_export_bodies
-from app.services.transport_collection import CollectionScope, TransportCollectionService
+from app.services.transport_collection import (
+    CollectionScope, TransportCollectionService, _is_transient_database_error,
+)
 
 #: 실행 상한(초). 공용 Dagster instance의 전역 상한(6시간, Manager `config/dagster-shared/dagster.yaml`)은
 #: 다른 테넌트의 값이라, 옛 전용 instance의 상한(4시간)을 job마다 tag로 단다. run monitoring이 이 tag를 읽어
 #: 넘긴 run을 실패로 끝낸다. 유가 Playwright 수집의 상한(`FUEL_FETCH_TIMEOUT_SECONDS`, 3.5시간)과 저장 여유가
 #: 이 안(`- 60`초)에 들어야 한다.
 MAX_RUNTIME_SECONDS = 14400
+
+#: 관리자 "재시도"(admin console `retry`)가 새 run에 다는 태그. 값은 재시도한 원래 run ID다.
+ADMIN_RETRY_TAG = "kortravel/admin-retry-of"
+#: 유가 op의 일시 오류 자동 재시도(같은 run 안의 step 재시도). provider 차단·쿼터·인증·파싱 오류는 재시도하지 않는다
+#: (`AUTO_RETRY_ERROR_CODES`만). 오피넷 브라우저 수집은 체크포인트에서 남은 지역만 이어 하고, 재시도는 정기 예약을
+#: 옮기지 않는다(`TransportCollectionService.collect(retry_failed_fuel=True)`).
+FUEL_RETRY_POLICY = RetryPolicy(max_retries=1, delay=300, backoff=Backoff.EXPONENTIAL, jitter=Jitter.PLUS_MINUS)
+#: 휴게소 유가(KREX 1회 호출)는 상태 claim의 DB 잠금 경합만 재시도한다. 4시간 주기라 몇 분 뒤 재시도가 이득이다.
+REST_AREA_FUEL_RETRY_POLICY = RetryPolicy(max_retries=2, delay=60, backoff=Backoff.EXPONENTIAL, jitter=Jitter.PLUS_MINUS)
+#: 재시도는 같은 run 안에서 돈다. run 상한(`MAX_RUNTIME_SECONDS`)까지 남은 시간이 이보다 적으면 재시도하지 않는다
+#: (유가 브라우저 재개는 남은 지역만이라도 수십 분이 걸리고, 상한에 걸려 run monitoring이 끊으면 저장도 못 한다).
+MIN_RETRY_BUDGET_SECONDS = 2 * 60 * 60
+#: 자동 재시도 대상 오류 코드(`_collection_failure_metadata`). 결과 metadata의 `retryable`(사람이 나중에 다시 해도
+#: 되는가)과 다르다 — 쿼터(`PROVIDER_RATE_LIMIT`)·전체 시간 초과(`COLLECTION_TIMEOUT`)는 자동으로 반복하지 않는다.
+AUTO_RETRY_ERROR_CODES = frozenset({"OPINET_BROWSER_TIMEOUT", "OPINET_BROWSER_RESOURCE_POLICY", "DATABASE_RETRYABLE"})
 
 
 def _record_collection_outcome(context, outcome: str) -> None:
@@ -139,7 +158,7 @@ def _error_chain(error: BaseException) -> list[BaseException]:
     return chain
 
 
-def _redacted_failure(error: BaseException) -> Failure:
+def _redacted_failure(error: BaseException, *, allow_retries: bool = False) -> Failure:
     """예외 종류·가린 문장·안전한 코드 위치만 담은 Failure. 가린 전체 traceback은 stderr로 보낸다.
 
     stderr는 run 컨테이너의 compute log(로컬 파일)로 가고 공용 event log에는 들어가지 않는다.
@@ -149,7 +168,7 @@ def _redacted_failure(error: BaseException) -> Failure:
     description = f"{error_type}: {_sanitize_op_error(error, forms)}"
     if len(description) > MAX_FAILURE_DESCRIPTION_CHARS:
         description = description[: MAX_FAILURE_DESCRIPTION_CHARS - 3] + "..."
-    metadata: dict[str, str] = {"error_type": error_type}
+    metadata: dict[str, Any] = {"error_type": error_type}
     try:
         chain = _error_chain(error)
         frames = traceback.extract_tb(error.__traceback__)
@@ -169,19 +188,49 @@ def _redacted_failure(error: BaseException) -> Failure:
               file=sys.stderr, flush=True)
     except Exception:  # noqa: BLE001 — 진단 보강의 실패가 원문을 사슬에 매달면 안 된다.
         pass
-    return Failure(description=description, metadata=metadata, allow_retries=False)
+    if allow_retries:
+        metadata["auto_retry"] = True
+    return Failure(description=description, metadata=metadata, allow_retries=allow_retries)
 
 
-def _redact_op_errors(fn: Callable[..., Any]) -> Callable[..., Any]:
+def _is_transient_failure(error: BaseException) -> bool:
+    """op 경계까지 올라온 예외가 같은 run 안에서 잠시 뒤 다시 해도 되는 DB 일시 오류인가.
+
+    운영(2026-11-21~23)의 유가·휴게소 유가 실패 다섯 건이 상태 claim의 `lock_timeout`(SQLSTATE 55P03)이었다.
+    claim transaction은 provider 호출 전에 rollback되므로 재시도가 외부 요청을 반복하지 않는다.
+    """
+    # 내장 TimeoutError·ConnectionError는 run 전체 시간 초과(`_run_with_session`)나 provider 전송 오류일 수도 있어
+    # 여기서는 SQLAlchemy가 번역한 DB 오류(lock_timeout·statement_timeout·직렬화·교착·연결 무효화)만 본다.
+    return any(isinstance(item, DBAPIError) and _is_transient_database_error(item) for item in _error_chain(error))
+
+
+def _retry_budget_left(context: Any) -> bool:
+    """같은 run 안의 재시도가 run 상한 전에 끝날 시간이 남았는가. 확인할 수 없으면 재시도하지 않는다."""
+    try:
+        record = context.instance.get_run_record_by_id(context.run_id)
+        started = record.start_time if record is not None else None
+        if started is None:
+            return False
+        delay = FUEL_RETRY_POLICY.delay or 0
+        return MAX_RUNTIME_SECONDS - (time.time() - started) - 2 * delay >= MIN_RETRY_BUDGET_SECONDS
+    except Exception:  # noqa: BLE001 — 재시도 판단의 실패는 재시도하지 않는 쪽으로 닫는다.
+        return False
+
+
+def _redact_op_errors(fn: Callable[..., Any] | None = None, *, retry_transient: bool = False) -> Any:
     """op에서 빠져나가는 예외를 가린 `Failure`로 바꾼다.
 
     공용 Dagster event log(`dagster_shared`)는 모든 테넌트 UI가 읽는다. Dagster는 step 실패의 `str(exc)`·
     traceback·`__cause__`/`__context__` 사슬을 그대로 직렬화하는데, code-server는 `app.main`의 logging
     filter를 import하지 않는다. 그래서 op 경계에서 예외 종류·가린 문장·코드 위치만 남기고 사슬은 끊는다.
     의도된 `Failure`(고정 문구·메타데이터)와 중단 신호(`_PASSTHROUGH_ERRORS`)는 그대로 둔다.
-    step 실패는 원래부터 재시도하지 않으므로(op RetryPolicy 없음, `retry_on_asset_or_op_failure=false`,
-    infra 재시도 sensor는 STEP_FAILURE가 있으면 건너뜀) `allow_retries=False`는 의미를 바꾸지 않는다.
+    기본은 `allow_retries=False`다. `retry_transient=True`로 감싼 op(유가·휴게소 유가, op `RetryPolicy` 보유)만
+    DB 일시 오류(`_is_transient_failure`)이고 run 상한까지 시간이 남았을 때 step 재시도를 허용한다. 그 밖의
+    op에는 RetryPolicy가 없고 run 재시도는 `retry_on_asset_or_op_failure=false`라 의미가 바뀌지 않는다.
     """
+
+    if fn is None:
+        return functools.partial(_redact_op_errors, retry_transient=retry_transient)
 
     @functools.wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -190,8 +239,14 @@ def _redact_op_errors(fn: Callable[..., Any]) -> Callable[..., Any]:
         except (Failure, *_PASSTHROUGH_ERRORS):
             raise
         except BaseException as exc:  # noqa: BLE001 — 경계에서 모든 원문을 가린다.
+            retry = False
+            if retry_transient:
+                try:
+                    retry = _is_transient_failure(exc) and bool(args) and _retry_budget_left(args[0])
+                except Exception:  # noqa: BLE001
+                    retry = False
             try:
-                failure = _redacted_failure(exc)
+                failure = _redacted_failure(exc, allow_retries=retry)
             except Exception:  # noqa: BLE001
                 failure = Failure(description=f"{_type_name(exc)}: <unavailable>",
                                   metadata={"error_type": _type_name(exc)}, allow_retries=False)
@@ -283,12 +338,15 @@ def collect_airport_parking(context) -> dict[str, Any]:
         return result
 
 
-async def _collect_transport_in_one_loop(settings: Settings, scope: CollectionScope) -> dict[str, Any]:
+async def _collect_transport_in_one_loop(
+    settings: Settings, scope: CollectionScope, *, retry_failed_fuel: bool = False,
+) -> dict[str, Any]:
     """HTTP client의 생성·수집·종료를 하나의 event loop에서 끝낸다."""
     service = TransportCollectionService(settings)
+    extra = {"retry_failed_fuel": True} if retry_failed_fuel else {}
     try:
         # highway의 trigger(`dagster_highway`)는 회수 sensor의 신선도 판정이 본다(`recovery.HIGHWAY_TRIGGER`).
-        return await _run_with_session(settings, service.collect, trigger=f"dagster_{scope}", scope=scope)
+        return await _run_with_session(settings, service.collect, trigger=f"dagster_{scope}", scope=scope, **extra)
     finally:
         await asyncio.wait_for(service.close(), timeout=10)
 
@@ -333,6 +391,14 @@ def _collection_failure_metadata(result: dict[str, Any], scope: str) -> dict[str
         code, stage, hint = "TRAFFIC_FLOW_COUNT", "provider_parse", "CHECK_RESPONSE_CONTRACT"
     elif "Opinet browser action failed" in messages and "TimeoutError" in messages:
         code, stage, hint, retryable = "OPINET_BROWSER_TIMEOUT", "provider_fetch", "RETRY_AFTER_BACKOFF", True
+    elif "Opinet browser resource policy failed" in messages:
+        # 시각 자원 차단(CDP Fetch)의 일시 실패. 체크포인트에서 이어 하므로 재시도는 남은 지역만 요청한다.
+        code, stage, hint, retryable = "OPINET_BROWSER_RESOURCE_POLICY", "provider_fetch", "RETRY_AFTER_BACKOFF", True
+    elif any(marker in messages for marker in (
+        "due to lock timeout", "due to statement timeout", "deadlock detected",
+        "could not serialize access", "ConnectionDoesNotExistError", "connection was closed",
+    )):
+        code, stage, hint, retryable = "DATABASE_RETRYABLE", "storage", "RETRY_AFTER_BACKOFF", True
     elif re.search(r"\bEXCEEDED_LIMIT\b", messages) or any(
         word in messages.lower() for word in ("quota", "rate limit", "too many requests")
     ):
@@ -410,8 +476,10 @@ def _collection_output_metadata(result: dict[str, Any], scope: str) -> dict[str,
     return metadata
 
 
-def _collect_transport(scope: CollectionScope) -> dict[str, Any]:
-    result = asyncio.run(_collect_transport_in_one_loop(_settings(), scope))
+def _collect_transport(
+    scope: CollectionScope, *, retry_failed_fuel: bool = False, retry_budget: Callable[[], bool] | None = None,
+) -> dict[str, Any]:
+    result = asyncio.run(_collect_transport_in_one_loop(_settings(), scope, retry_failed_fuel=retry_failed_fuel))
     # 성공분·실패 상태를 커밋하고 provider를 닫은 뒤 Dagster에도 실패를 전달한다.
     # 원인은 가린 한 줄로 설명에 싣는다(다음 진단이 DB를 보지 않아도 되게). 기존 호출 유예를 자동 재시도로
     # 우회하지 않는다.
@@ -424,10 +492,16 @@ def _collect_transport(scope: CollectionScope) -> dict[str, Any]:
                        "저장된 성공분과 호출 유예는 유지합니다.")
         if len(description) > MAX_FAILURE_DESCRIPTION_CHARS:
             description = description[: MAX_FAILURE_DESCRIPTION_CHARS - 3] + "..."
+        metadata = _collection_failure_metadata(result, scope)
+        # 쿼터·차단·인증·파싱 오류는 자동 반복하지 않는다. 일시 오류만 op RetryPolicy가 같은 run에서 다시 한다.
+        # 남은 run 시간은 실패한 시점(브라우저 수집 1~2시간 뒤)에 잰다.
+        auto_retry = (retry_budget is not None and metadata["error_code"] in AUTO_RETRY_ERROR_CODES
+                      and retry_budget())
+        metadata["auto_retry"] = auto_retry
         raise Failure(
             description=description,
-            metadata=_collection_failure_metadata(result, scope),
-            allow_retries=False,
+            metadata=metadata,
+            allow_retries=auto_retry,
         )
     if result.get("status") == "partial_success":
         result["collection_outcome"] = "partial"
@@ -506,11 +580,25 @@ def _forward_progress_logs(context: Any, names: tuple[str, ...] = FUEL_PROGRESS_
         context.log.setLevel(previous_context_level)
 
 
-@op
-@_redact_op_errors
+def _fuel_retry_requested(context: Any) -> bool:
+    """이 시도가 실패한 유가 수집의 재시도인가(op 자동 재시도 또는 관리자 "재시도" run)."""
+    if int(getattr(context, "retry_number", 0) or 0) > 0:
+        return True
+    try:
+        return bool((context.run.tags or {}).get(ADMIN_RETRY_TAG))
+    except Exception:  # noqa: BLE001 — 태그를 못 읽으면 정기 실행으로 본다(예약을 앞당기지 않는 쪽).
+        return False
+
+
+@op(retry_policy=FUEL_RETRY_POLICY)
+@_redact_op_errors(retry_transient=True)
 def collect_fuel_transport(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance), _forward_progress_logs(context):
-        result = _collect_transport("fuel")
+        retry = _fuel_retry_requested(context)
+        if retry:
+            context.log.warning("유가 수집 재시도: 직전 시도가 실패였을 때만 정기 예약을 앞당겨 체크포인트에서 이어 합니다.")
+        result = _collect_transport("fuel", retry_failed_fuel=retry,
+                                    retry_budget=functools.partial(_retry_budget_left, context))
         context.add_output_metadata({key: value for key, value in result.items()
                                      if key in {"status", "collection_run_id", "fuel_station_count", "fuel_price_count",
                                                 "fuel_ready", "next_fuel_due_at", "last_fuel_success_at", "skip_reason",
@@ -765,8 +853,8 @@ def public_parking_reference_job() -> None:
     collect_public_parking_reference()
 
 
-@op
-@_redact_op_errors
+@op(retry_policy=REST_AREA_FUEL_RETRY_POLICY)
+@_redact_op_errors(retry_transient=True)
 def collect_rest_area_fuel_prices(context) -> dict[str, Any]:
     # 통계 발행이 미뤄지면(포화된 ARM의 command_timeout 등) 원인을 event log와 output metadata에서 보이게 한다.
     with collection_owner(context.run_id, context.instance), _forward_progress_logs(context, FUEL_STATISTICS_LOGGERS):
