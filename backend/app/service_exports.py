@@ -212,7 +212,8 @@ def build_service_export_router(
         """마지막 성공 돌발 수집의 활성 사건 전체(페이지 없음).
 
         수집이 실패했거나 30분 넘게 성공하지 못했으면 503이다 — 오래된 집합을 주면 소비자가
-        사라진 사건을 해소로 오판한다. 빈 목록은 "현재 돌발 없음"이라는 확인된 사실이다.
+        사라진 사건을 해소로 오판한다. 전국 활성 돌발 0건은 상류 이상으로 보고 수집이 성공으로 받지 않으므로
+        빈 목록 대신 503이 된다(INCIDENT-EMPTY-SET-20261124).
         """
         await _begin_snapshot(session)
         state = await _state(session, INCIDENT_SOURCE)
@@ -245,6 +246,10 @@ def build_service_export_router(
             collected_at=serialize_utc(row.collected_at),
             raw=(row.raw_item_json or {}).get("raw") if isinstance(row.raw_item_json, dict) else None,
         ) for row in rows]
+        if not items:
+            # 수집이 0건을 성공으로 받지 않지만(INCIDENT-EMPTY-SET-20261124), 배포 직전의 옛 "0건 성공" 상태나 다른 경로가
+            # 행 없이 성공 시각만 올린 경우에도 빈 집합을 전량 해소로 내보내지 않는다.
+            raise HTTPException(status_code=503, detail="고속도로 돌발 활성 집합이 비었습니다(상류 이상으로 보고 내지 않습니다).")
         return HighwayIncidentActiveSet(
             generated_at=now_utc(), collection=_collection(INCIDENT_SOURCE, state, False),
             collected_at=collected_at, items=items,

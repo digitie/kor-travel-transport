@@ -13331,7 +13331,7 @@
     },
     "/v1/service/exports/highway-incidents/active": {
       "get": {
-        "description": "마지막 성공 돌발 수집의 활성 사건 전체(페이지 없음).\n\n수집이 실패했거나 30분 넘게 성공하지 못했으면 503이다 — 오래된 집합을 주면 소비자가\n사라진 사건을 해소로 오판한다. 빈 목록은 \"현재 돌발 없음\"이라는 확인된 사실이다.",
+        "description": "마지막 성공 돌발 수집의 활성 사건 전체(페이지 없음).\n\n수집이 실패했거나 30분 넘게 성공하지 못했으면 503이다 — 오래된 집합을 주면 소비자가\n사라진 사건을 해소로 오판한다. 전국 활성 돌발 0건은 상류 이상으로 보고 수집이 성공으로 받지 않으므로\n빈 목록 대신 503이 된다(INCIDENT-EMPTY-SET-20261124).",
         "operationId": "export_active_highway_incidents_v1_service_exports_highway_incidents_active_get",
         "responses": {
           "200": {

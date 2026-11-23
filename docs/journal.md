@@ -1,3 +1,24 @@
+## 2026-11-24 — 고속도로 돌발 0건 집합을 성공으로 게시하지 않음(INCIDENT-EMPTY-SET-20261124)
+
+- Map n150 14일 재분류: `/v1/service/exports/highway-incidents/active`가 **0건 집합을 200으로 37회** 냈다(직전 최대 167~351건;
+  11-10 03:03, 11-11 09:23, 11-15~11-23 다수, 11-23만 13회). Map은 이를 전국 돌발 전량 해소로 읽는다.
+- 경로(코드 확인): KREX 실시간 문자정보(`/openapi/burstInfo/realTimeSms`)는 `count`와 목록을 주고 SDK는 `count=0`·빈 목록을
+  "완결 스냅샷"으로 통과시킨다(`complete_sources`). `_confirm_highway_payload`는 완결 증거가 있는 원천의 빈 결과를 재확인 없이
+  받아 `_store_incidents`가 행 없이 `last_success_at`만 올렸고, export는 `collected_at >= last_success_at`인 행(0개)을 정상 집합으로
+  냈다. 완결 증거가 없는 빈 응답은 이미 재확인·거부했다(0건 교체 거부 33회가 그쪽).
+- 수정: 돌발은 완결 증거가 있어도 직전 성공 건수(baseline)를 읽고, 0건이거나 4배 넘게 줄면 의심 결과로 보고 한 번 다시
+  조회한다(적대 리뷰 P1: 0건 뒤 재조회 1건이 그대로 성공하던 구멍). 다시 받아도 비면(완결 증거 두 번이어도)
+  실패로 기록한다 — 마지막 성공 집합과 `last_success_at`은 그대로, `last_error`가 남아 export는 503(not-ready)이다. 소통(traffic)과
+  0건이 아닌 급감은 두 완결 응답이 같은 건수일 때만 받는다. 0건 실패는 문구
+  `empty incident set after one re-fetch`로 따로 남겨 빈도를 셀 수 있다. 남긴 것(P2): 진짜 0건이 오면 빠져나갈 길이 없다(전국 scope라
+  가능성 낮음), 0건이 이어지면 5분마다 2회 호출, Map 쪽 문서·`allow_empty_below_baseline` 경로 정리는 Map 후속. 옛 시험의 "완결 0건은 전량 해소" 계약은 운영 근거로 뒤집었다.
+- 시험: `tests/test_transport_collection.py`(완결 0건 두 번 → 실패, 완결 0건 뒤 재조회 1건 → 성공),
+  `tests/test_service_exports.py`(106건 뒤 완결 0건 → 503·마지막 성공 유지·다음 정상 수집으로 회복, 2건 → 1건 → 0건 → 503).
+- 같은 export의 `TransportExportNotCurrent` 83회(11-09~23): export는 돌발 원천의 `last_error`가 있거나 마지막 성공이 30분을 넘으면
+  503이다. 돌발 수집 실패(KREX 5xx·시간 초과·DNS 등)는 다음 성공(5~10분 뒤)까지 503이 되고, 고속도로 실효 주기 약 9분(기동 지연으로
+  한 tick 건너뜀 — DAGSTER-RUNTIME-PRIORITY-20261124가 고친다)과 장기 정지(11-13 daemon 무음 2시간, 11-17 PG PANIC, 11-20 location 정지
+  1시간)가 30분 창을 넘긴다. 이번 수정 뒤에는 0건 응답도 not-ready 쪽으로 옮겨 간다(0건 200 → 503).
+
 ## 2026-11-24 — 좌표 보강 일부 실패를 부분 성공으로(BUS-REF-PARTIAL-20261124)
 
 - 수집 실패 감사(2026-11-23, Map 저장소 `docs/reports/2026-11-23-collection-failure-audit.md` §2.2·§4 #12)의

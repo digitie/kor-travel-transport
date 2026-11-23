@@ -800,7 +800,8 @@ PR에 수록, 머지 예정)다. Manager ADR-58 본문은 절차를 그 런북�
       `kor-travel-transport-raw` 목록 조회가 odroid 키로 200(KRIC XLSX 업로드 경로).
 - [ ] **같은 시각 run이 두 호스트에 0건**(n150 code-server stop 시각 ~ odroid 첫 tick 사이 n150 `collection_runs` 증가 0).
 - [ ] 5분 스냅샷(공항·고속도로) 첫 run SUCCESS; 돌발 export `/v1/service/exports/highway-incidents/active`가 n150에서 200
-      (토큰 + peer `.14`).
+      (토큰 + peer `.14`). 503이면 돌발 수집의 `last_error`를 본다 — `empty incident set after one re-fetch`는 상류 0건 거부라
+      배포 결함이 아니다(다음 정상 수집에서 200).
 - [ ] HAProxy 4 host 전부 200(`.13` backend) — n150 stop **전**.
 - [ ] n150 backend·frontend 컨테이너 `Exited` 상태에서 Map transport export 1 run 성공 + odroid access log peer `192.168.1.14`.
 - [ ] NTP(odroid): Manager §9.5 NTP 행 PASS 기록(재부팅 2회 뒤 `ConditionTimestamp` 비어 있지 않음 ∧ synchronized yes) — 수동

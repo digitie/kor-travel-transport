@@ -532,9 +532,12 @@ def test_active_incident_set_reflects_only_the_last_successful_collection(export
     assert [item["point_name"] for item in second["items"]] == ["서울IC"]
     assert second["collected_at"] > first["collected_at"]
 
+    # 전국 활성 돌발 0건은 상류 이상이다(운영 0건 집합 37회) — 성공으로 받지 않고 export는 503(not-ready)이다.
     provider.incidents = []
-    _run(export_client, collect)
-    assert export_client.get(path, headers=HEADERS).json()["items"] == []
+    assert _run(export_client, collect)["status"] == "failed"
+    assert export_client.get(path, headers=HEADERS).status_code == 503
+    provider.incidents = [_incident(1, "서울IC")]
+    assert _run(export_client, collect)["status"] == "success"
 
     assert export_client.get(path, headers=HEADERS).json()["collection"]["last_attempt_failed"] is False
     # 돌발 활성 집합은 "지금"의 집합이라 참조 데이터와 달리 실패 즉시 503이다.
@@ -543,6 +546,15 @@ def test_active_incident_set_reflects_only_the_last_successful_collection(export
     _run(export_client, lambda session: _set_state(
         session, INCIDENT_SOURCE, last_error=None, last_success_at=now_utc() - timedelta(hours=1)))
     assert export_client.get(path, headers=HEADERS).status_code == 503
+
+
+def test_active_incident_export_never_serves_an_empty_set_even_after_a_recorded_success(export_client) -> None:
+    """배포 직전의 옛 "0건 성공" 상태(성공 시각만 있고 행 없음)도 빈 집합 200이 아니라 503이다."""
+    path = "/v1/service/exports/highway-incidents/active"
+    _run(export_client, lambda session: _set_state(
+        session, INCIDENT_SOURCE, last_error=None, last_success_at=now_utc(), next_due_at=None))
+    response = export_client.get(path, headers=HEADERS)
+    assert response.status_code == 503
 
 
 def test_airport_export_covers_every_active_bundled_airport(export_client: TestClient) -> None:
@@ -565,7 +577,9 @@ def test_rest_area_jobs_are_scheduled_and_running() -> None:
         assert schedule.default_status.name == "RUNNING"
 
 
-def test_unconfirmed_empty_cannot_close_106_incidents_but_confirmed_empty_can(export_client):
+def test_empty_incident_set_never_closes_106_incidents_even_with_complete_evidence(export_client):
+    """INCIDENT-EMPTY-SET-20261124: KREX가 `count=0`·빈 목록을 정상 응답으로 준 수집을 성공으로 받아 export가 0건 집합을
+    37회 냈다(직전 167~351건). 완결 증거가 있는 0건도 다시 조회하고, 그래도 비면 실패로 남겨 마지막 성공 집합을 유지한다."""
     path = "/v1/service/exports/highway-incidents/active"
     service = export_client.app.state.transport_collection_service
     provider = IncidentProvider()
@@ -591,9 +605,13 @@ def test_unconfirmed_empty_cannot_close_106_incidents_but_confirmed_empty_can(ex
         return serialize_utc(state.last_success_at)
     assert _run(export_client, last_success).isoformat().replace("+00:00", "Z") == first["collected_at"]
     provider.complete = True
+    assert _run(export_client, collect)["status"] == "failed"
+    assert export_client.get(path, headers=HEADERS).status_code == 503
+    assert _run(export_client, last_success).isoformat().replace("+00:00", "Z") == first["collected_at"]
+    provider.incidents = [_incident(index, f"사건{index}") for index in range(3)]
     assert _run(export_client, collect)["status"] == "success"
     recovered = export_client.get(path, headers=HEADERS)
-    assert recovered.status_code == 200 and recovered.json()["items"] == []
+    assert recovered.status_code == 200 and len(recovered.json()["items"]) == 3
 
 
 @pytest.mark.parametrize("kind,path", [

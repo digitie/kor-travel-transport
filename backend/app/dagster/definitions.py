@@ -453,7 +453,10 @@ def _collection_failure_metadata(result: dict[str, Any], scope: str) -> dict[str
     errors = result.get("errors")
     messages = " ".join(item for item in errors if isinstance(item, str)) if isinstance(errors, (list, tuple)) else ""
     code, stage, hint, retryable = "COLLECTION_FAILED", "collection", "CHECK_RUN_DETAIL", False
-    if "traffic flow response contains invalid records" in messages:
+    if "empty incident set after one re-fetch" in messages:
+        # 상류(KREX 실시간 문자정보)가 돌발 0건을 두 번 돌려줬다. 마지막 정상 집합을 유지한다(INCIDENT-EMPTY-SET-20261124).
+        code, stage, hint = "INCIDENT_EMPTY_SET", "provider_parse", "CHECK_RESPONSE_CONTRACT"
+    elif "traffic flow response contains invalid records" in messages:
         code, stage, hint = "TRAFFIC_FLOW_INVALID_RECORDS", "provider_parse", "CHECK_RESPONSE_CONTRACT"
     elif "traffic flow count must match" in messages or "incomplete total_count" in messages:
         code, stage, hint = "TRAFFIC_FLOW_COUNT", "provider_parse", "CHECK_RESPONSE_CONTRACT"

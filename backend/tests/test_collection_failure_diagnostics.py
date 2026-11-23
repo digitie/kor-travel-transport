@@ -94,3 +94,13 @@ def test_vadahub_partial_exposes_selected_source_and_preserved_success(monkeypat
         assert meta["successful_dataset_count"].value == 0
         assert meta["successful_data_preserved"].value is True
         assert caught.value.allow_retries is False
+
+
+def test_empty_incident_set_has_its_own_code():
+    """INCIDENT-EMPTY-SET-20261124: 상류 돌발 0건 거부를 KREX 5xx·DNS 같은 일반 실패와 구분한다."""
+    detail = _collection_failure_metadata({
+        "collection_run_id": 21, "status": "partial_success", "traffic_snapshot_count": 4000,
+        "errors": ["krex_traffic_incident: empty incident set after one re-fetch (complete=True); keeping last successful set"],
+    }, "highway")
+    assert detail["error_code"] == "INCIDENT_EMPTY_SET"
+    assert detail["successful_data_preserved"] is True

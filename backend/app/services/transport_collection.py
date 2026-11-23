@@ -596,7 +596,8 @@ class TransportCollectionService:
                     # SDK가 전체 건수를 검산한 원천은 예전 JSON을 다시 읽거나 같은 API를
                     # 재호출할 이유가 없다. 완결성 정보가 없는 legacy 응답만 재확인한다.
                     for source in highway_sources:
-                        if source not in highway_result.complete_sources:
+                        # 돌발은 완결 증거가 있어도 직전 성공 건수와 비교한다(0건·급감은 상류 이상, INCIDENT-EMPTY-SET-20261124).
+                        if source not in highway_result.complete_sources or source == INCIDENT_SOURCE:
                             highway_baselines[source] = await self._highway_success_count(session, source)
                     if highway_baselines:
                         await session.commit()  # 재확인 HTTP 동안 DB 연결을 잡지 않는다.
@@ -861,6 +862,16 @@ class TransportCollectionService:
     def _highway_result_suspicious(result: tuple, baseline: int | None) -> bool:
         return not result or (baseline is not None and len(result) * HIGHWAY_ABNORMAL_DROP_FACTOR < baseline)
 
+    @staticmethod
+    def _empty_incident_set(source: str, result: Any) -> bool:
+        """전국 돌발·공사 활성 집합의 0건은 상류 이상이다 — 완결 증거(total_count=0)가 있어도 성공으로 받지 않는다.
+
+        2026-11 운영: KREX 실시간 문자정보가 `count=0`·빈 목록을 정상 응답으로 돌려준 수집이 성공으로 기록돼
+        `/v1/service/exports/highway-incidents/active`가 0건 집합을 37회 냈다(직전 167~351건). 소비자(Map)는 그것을
+        전량 해소로 읽는다. 한 번 다시 조회하고, 그래도 비면 실패로 남겨 마지막 성공 집합을 유지하고 export는 503이다.
+        """
+        return source == INCIDENT_SOURCE and isinstance(result, tuple) and not result
+
     async def _confirm_highway_payload(
         self, payload: HighwayPayload | Exception, sources: tuple[str, ...],
         baselines: dict[str, int | None],
@@ -869,12 +880,16 @@ class TransportCollectionService:
             return payload
         fields = {TRAFFIC_SOURCE: "traffic", INCIDENT_SOURCE: "incidents"}
         suspicious = tuple(source for source in sources
-                           if source not in payload.complete_sources
-                           and (isinstance(getattr(payload, fields[source]), KrexParseError)
-                           or (isinstance(getattr(payload, fields[source]), tuple)
+                           if self._empty_incident_set(source, getattr(payload, fields[source]))
+                           or (source == INCIDENT_SOURCE and isinstance(getattr(payload, fields[source]), tuple)
                                and self._highway_result_suspicious(
-                                   getattr(payload, fields[source]), baselines.get(source),
-                               ))))
+                                   getattr(payload, fields[source]), baselines.get(source)))
+                           or (source not in payload.complete_sources
+                               and (isinstance(getattr(payload, fields[source]), KrexParseError)
+                                    or (isinstance(getattr(payload, fields[source]), tuple)
+                                        and self._highway_result_suspicious(
+                                            getattr(payload, fields[source]), baselines.get(source),
+                                        )))))
         if not suspicious:
             return payload
         # 재확인도 provider의 source 격리·기존 상한 안에서 한 번만 한다.
@@ -891,13 +906,20 @@ class TransportCollectionService:
             first = getattr(payload, field)
             result = retried if isinstance(retried, Exception) else getattr(retried, field)
             if isinstance(result, tuple):
-                recovered = not self._highway_result_suspicious(result, baselines[source])
+                recovered = not self._highway_result_suspicious(result, baselines.get(source))
                 # 빈200의 반복만으로 완결로 인정하지 않는다. 두 응답 모두 명시한 total_count를
                 # 전체 페이지와 대조했고 같은 개수일 때만 정상 소멸/급감을 수용한다.
                 confirmed = (isinstance(first, tuple) and not isinstance(retried, Exception)
                              and source in payload.complete_sources
-                             and source in retried.complete_sources and len(first) == len(result))
-                if not recovered and not confirmed:
+                             and source in retried.complete_sources and len(first) == len(result)
+                             and not self._empty_incident_set(source, result))
+                if self._empty_incident_set(source, result):
+                    # 완결 증거가 두 번 있어도 받지 않는다. 문구를 따로 두어 빈도를 셀 수 있게 한다.
+                    result = ValueError(
+                        f"{source}: empty incident set after one re-fetch (complete={source in payload.complete_sources}); "
+                        "keeping last successful set"
+                    )
+                elif not recovered and not confirmed:
                     result = ValueError(
                         f"{source}: unconfirmed empty or reduced response; keeping last successful set"
                     )
