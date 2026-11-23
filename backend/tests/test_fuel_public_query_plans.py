@@ -179,6 +179,9 @@ def test_filtered_public_statements_use_station_primary_key_under_stale_statisti
                 plan = await _plan(session, statement)
                 assert not _rescanned_station_scans(plan), (name, json.dumps(plan)[:2000])
                 assert not _pkey_skip_scans(plan), (name, _pkey_skip_scans(plan))
+                if name.startswith(("viewport_sigungu", "distribution")):
+                    # 세대 시각이 계획기에 보이지 않는 InitPlan이어야 낡은 통계에서도 추정이 맞다(상수로 되돌리면 실패).
+                    assert any(node.get("Parent Relationship") == "InitPlan" for node in _nodes(plan)), name
                 assert not _text_join(plan), (name, _text_join(plan))
     asyncio.run(check())
 
