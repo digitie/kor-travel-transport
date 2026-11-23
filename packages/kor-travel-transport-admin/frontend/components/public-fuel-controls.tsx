@@ -14,8 +14,9 @@ import {
   activeFilterCount, BRAND_FILTERS, brandRelevant, DEFAULT_PUBLIC_FUEL_FILTERS, FLAG_FILTERS, isBrandChecked,
   NEAR_MIN_STEPS, toggleBrand, type PublicFuelFilters,
 } from "@/lib/public-fuel-filters";
+import { fuelRegionDefault } from "@/lib/public-fuel-region";
 
-// 공개 유가(TRANSPORT_UI_MODE=fuel) 전용: 맨 위 지역 아이콘 버튼·"이동하세요…" 대화상자, 유종·필터 한 곳 선택.
+// 공개 유가(TRANSPORT_UI_MODE=fuel) 전용: 맨 위 지역 아이콘 버튼·"지역 이동" 대화상자, 유종·필터 한 곳 선택.
 // 관리 화면은 이 파일을 쓰지 않는다.
 type Loader = <T>(path: string, signal?: AbortSignal) => Promise<T>;
 
@@ -30,29 +31,38 @@ export type FuelAreaChoice = { sido_value: string; sigungu_value: string };
 export type FuelSelectedRegion = FuelAreaChoice & { label: string };
 type ConfirmRegion = (bounds: [number, number, number, number], region: FuelSelectedRegion) => void;
 
-/** "이동하세요…": 시/도 → 구/군/시를 고르고 확인하면 그 시군구 주유소 범위로 지도를 옮긴다. */
-export function FuelRegionPicker({ open, onOpenChange, load, current, onConfirm, returnFocus }: {
+/**
+ * "지역 이동": 시/도 → 구/군/시를 고르고 확인하면 그 시군구 주유소 범위로 지도를 옮긴다.
+ * 처음에는 지역 칩(current)을, 칩이 없으면 지금 지도 중심(center)이 속한 시군구를 고른 채 연다.
+ */
+export function FuelRegionPicker({ open, onOpenChange, load, current, center, onConfirm, onRelease, returnFocus }: {
   open: boolean; onOpenChange: (open: boolean) => void; load: Loader; current?: FuelAreaChoice;
+  /** 지금 지도 중심 [경도, 위도]. 지역 칩이 없을 때 미리 고를 시군구를 찾는 데 쓴다. */
+  center?: readonly [number, number];
   onConfirm: ConfirmRegion;
+  /** 사용자가 고른 지역이 있을 때만: "해제"로 선택을 풀고 자동(지도 중심) 지역으로 돌아간다. */
+  onRelease?: () => void;
   /** 트리거 없이 여는 대화상자라 닫을 때 연 버튼으로 초점을 직접 돌려준다. */
   returnFocus?: RefObject<HTMLElement | null>;
 }) {
   return <Dialog open={open} onOpenChange={onOpenChange}>
     {open ? <DialogContent className="fuel-region-picker" showCloseButton={false}
       onCloseAutoFocus={event => { event.preventDefault(); returnFocus?.current?.focus(); }}>
-      <FuelRegionPickerBody load={load} current={current} onCancel={() => onOpenChange(false)}
+      <FuelRegionPickerBody load={load} current={current} center={center} onCancel={() => onOpenChange(false)}
+        onRelease={onRelease ? () => { onRelease(); onOpenChange(false); } : undefined}
         onConfirm={(bounds, region) => { onConfirm(bounds, region); onOpenChange(false); }} />
     </DialogContent> : null}
   </Dialog>;
 }
 
-function FuelRegionPickerBody({ load, current, onCancel, onConfirm }: {
-  load: Loader; current?: FuelAreaChoice; onCancel: () => void; onConfirm: ConfirmRegion;
+function FuelRegionPickerBody({ load, current, center, onCancel, onConfirm, onRelease }: {
+  load: Loader; current?: FuelAreaChoice; center?: readonly [number, number]; onCancel: () => void; onConfirm: ConfirmRegion;
+  onRelease?: () => void;
 }) {
   const [state, setState] = useState<{ catalog?: FuelAreaCatalog; error?: boolean }>();
   const [retry, setRetry] = useState(0);
-  const [sido, setSido] = useState(current?.sido_value);
-  const [sigungu, setSigungu] = useState(current?.sigungu_value);
+  // 사용자가 고르기 전(undefined)에는 목록이 온 뒤 지역 칩 → 지도 중심 순으로 정한 기본값을 쓴다.
+  const [picked, setPicked] = useState<{ sido?: string; sigungu?: string }>();
   useEffect(() => {
     const controller = new AbortController();
     load<unknown>("transport/fuel/area-catalog", controller.signal)
@@ -61,21 +71,30 @@ function FuelRegionPickerBody({ load, current, onCancel, onConfirm }: {
     return () => controller.abort();
   }, [load, retry]);
   const catalog = state?.catalog;
+  const initial = picked ? undefined : fuelRegionDefault(catalog, current, center);
+  const sido = picked ? picked.sido : initial?.sido_value;
+  const sigungu = picked ? picked.sigungu : initial?.sigungu_value;
   const sidoRow = catalog?.items.find(row => row.sido_value === sido) ?? catalog?.items[0];
   const sigunguRow = sidoRow?.sigungu.find(row => row.sigungu_value === sigungu);
   const label = sidoRow && sigunguRow ? `${sidoRow.sido_name} ${sigunguRow.sigungu_name}` : null;
+  // 목록이 온 직후 미리 고른 시/도·구/군/시가 각 열에서 보이도록 스크롤한다(긴 목록의 아래쪽 지역).
+  const columns = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    columns.current?.querySelectorAll<HTMLInputElement>("input:checked")
+      .forEach(input => input.closest("label")?.scrollIntoView?.({ block: "nearest" }));
+  }, [catalog]);
   return <div className="fuel-region-picker-body" aria-busy={!state}>
-    <DialogTitle>이동하세요…</DialogTitle>
+    <DialogTitle>지역 이동</DialogTitle>
     <DialogDescription className="sr-only">시/도와 구/군/시를 고르면 그 지역 주유소가 보이도록 지도를 옮깁니다.</DialogDescription>
     {!state ? <p role="status">지역 목록 불러오는 중…</p>
       : state.error || !catalog ? <div role="alert"><p>지역 목록을 불러오지 못했습니다.</p><Button type="button" variant="outline" size="sm" onClick={() => setRetry(value => value + 1)}>다시 시도</Button></div>
-      : <div className="fuel-region-columns">
+      : <div ref={columns} className="fuel-region-columns">
         <fieldset>
           <legend>시/도</legend>
           <div className="fuel-region-options">
             {catalog.items.map(row => <label key={row.sido_value} className="fuel-region-option">
               <input type="radio" name="fuel-region-sido" value={row.sido_value} checked={row.sido_value === sidoRow?.sido_value}
-                onChange={() => { setSido(row.sido_value); setSigungu(undefined); }} />
+                onChange={() => setPicked({ sido: row.sido_value })} />
               <span>{row.sido_name}</span>
             </label>)}
           </div>
@@ -85,7 +104,7 @@ function FuelRegionPickerBody({ load, current, onCancel, onConfirm }: {
           <div className="fuel-region-options">
             {sidoRow?.sigungu.map(row => <label key={row.sigungu_value} className="fuel-region-option">
               <input type="radio" name="fuel-region-sigungu" value={row.sigungu_value} checked={row.sigungu_value === sigungu}
-                onChange={() => setSigungu(row.sigungu_value)} />
+                onChange={() => setPicked({ sido: sidoRow?.sido_value, sigungu: row.sigungu_value })} />
               <span>{row.sigungu_name}</span>
             </label>)}
           </div>
@@ -93,6 +112,8 @@ function FuelRegionPickerBody({ load, current, onCancel, onConfirm }: {
       </div>}
     <div className="fuel-region-actions">
       <Button type="button" variant="ghost" onClick={onCancel}>취소</Button>
+      {onRelease ? <Button type="button" variant="outline" className="fuel-region-release" onClick={onRelease}
+        aria-label="지역 선택 해제하고 지도 중심 지역으로">해제</Button> : null}
       <Button type="button" disabled={!sigunguRow} onClick={() => sidoRow && sigunguRow && label && onConfirm(sigunguRow.bounds,
         { sido_value: sidoRow.sido_value, sigungu_value: sigunguRow.sigungu_value, label })}
         aria-label={label ? `${label} 지역으로 이동` : undefined}>{label ?? "구/군/시 선택"}</Button>
@@ -212,7 +233,7 @@ function FuelStationFilterSections({ filters, onFiltersChange, products }: {
       {BRAND_FILTERS.map(brand => {
         const relevant = brandRelevant(brand, products);
         return <label key={brand.key} className="fuel-filter-row fuel-filter-brand" data-disabled={!relevant || undefined}>
-          <span aria-hidden="true" className="fuel-filter-brand-mark"><FuelBrandIcon code={brand.icon === "ETC" ? null : brand.icon} name={brand.label} className="fuel-filter-brand-icon" /></span>
+          <span aria-hidden="true" className="fuel-filter-brand-mark"><FuelBrandIcon decorative code={brand.icon === "ETC" ? null : brand.icon} name={brand.label} className="fuel-filter-brand-icon" /></span>
           <span>{brand.label}{!relevant ? <small> · 이 유종 없음(적용 안 함)</small> : null}</span>
           <input type="checkbox" checked={isBrandChecked(filters, brand.key)} disabled={!relevant}
             onChange={event => onFiltersChange(toggleBrand(filters, brand.key, event.target.checked, products))} />

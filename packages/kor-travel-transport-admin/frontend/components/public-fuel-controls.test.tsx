@@ -36,7 +36,8 @@ test("지역 이동: 현재 시군구가 체크되고, 시/도→구/군/시를 
   await settle();
   expect(load).toHaveBeenCalledWith("transport/fuel/area-catalog", expect.anything());
   const dialog = document.querySelector('[role="dialog"]')!;
-  expect(dialog.querySelector("h2")?.textContent).toBe("이동하세요…");
+  expect(dialog.querySelector("h2")?.textContent).toBe("지역 이동");
+  expect(dialog.textContent).not.toContain("이동하세요");
   expect(labelInput("충북").checked).toBe(true);
   expect(labelInput("옥천군").checked).toBe(true);
   expect(button("충북 옥천군")).toBeTruthy();
@@ -46,6 +47,48 @@ test("지역 이동: 현재 시군구가 체크되고, 시/도→구/군/시를 
   await act(async () => button("서울 종로구").click());
   expect(onConfirm).toHaveBeenCalledWith([126.9, 37.5, 127.0, 37.6], { sido_value: "01", sigungu_value: "0101", label: "서울 종로구" });
   expect(onOpenChange).toHaveBeenCalledWith(false);
+});
+
+test("지역 칩이 없으면(places 실패·대기) 첫 시/도(서울)가 아니라 지금 지도 중심의 시/도·구/군/시를 고른 채 연다", async () => {
+  const load = vi.fn().mockResolvedValue(catalog);
+  // 127.7, 36.25는 영동군(127.6~128.0, 36.0~36.3)과 옥천군(127.5~127.8, 36.2~36.4) 범위에 모두 들고, 옥천군 범위가 더 작다.
+  await mount(<FuelRegionPicker open onOpenChange={() => {}} load={load} center={[127.7, 36.25]} onConfirm={() => {}} />);
+  await settle();
+  expect(labelInput("서울").checked).toBe(false);
+  expect(labelInput("충북").checked).toBe(true);
+  expect(labelInput("옥천군").checked).toBe(true);
+  expect(button("충북 옥천군").disabled).toBe(false);
+  // 고른 뒤에는 사용자의 선택을 따른다.
+  await act(async () => labelInput("영동군").click());
+  expect(labelInput("영동군").checked).toBe(true);
+  await act(async () => labelInput("서울").click());
+  expect(button("구/군/시 선택").disabled).toBe(true);
+});
+
+test("지역 이동 '해제'는 사용자가 고른 지역이 있을 때만 확인 버튼 옆에 있고, 누르면 선택을 풀고 닫힌다", async () => {
+  const load = vi.fn().mockResolvedValue(catalog);
+  const onRelease = vi.fn(); const onOpenChange = vi.fn(); const onConfirm = vi.fn();
+  const view = (release?: () => void) => <FuelRegionPicker open onOpenChange={onOpenChange} load={load} current={{ sido_value: "01", sigungu_value: "0101" }}
+    onConfirm={onConfirm} onRelease={release} />;
+  const { rerender } = await mount(view());
+  await settle();
+  expect(document.querySelector(".fuel-region-release")).toBeNull();
+  await rerender(view(onRelease));
+  const actions = [...document.querySelectorAll(".fuel-region-actions > button")].map(node => node.textContent);
+  // 취소 · 해제 · (확인 = 고른 지역 이름) 순서로 확인 버튼 바로 옆이다.
+  expect(actions).toEqual(["취소", "해제", "서울 종로구"]);
+  await act(async () => button("해제").click());
+  expect(onRelease).toHaveBeenCalledTimes(1);
+  expect(onOpenChange).toHaveBeenCalledWith(false);
+  expect(onConfirm).not.toHaveBeenCalled();
+});
+
+test("지역 칩이 있으면 지도 중심보다 칩을 먼저 고른다", async () => {
+  const load = vi.fn().mockResolvedValue(catalog);
+  await mount(<FuelRegionPicker open onOpenChange={() => {}} load={load} current={{ sido_value: "01", sigungu_value: "0101" }} center={[127.7, 36.25]} onConfirm={() => {}} />);
+  await settle();
+  expect(labelInput("서울").checked).toBe(true);
+  expect(labelInput("종로구").checked).toBe(true);
 });
 
 test("지역 목록을 못 읽으면 다시 시도", async () => {
@@ -101,6 +144,14 @@ test("맨 위 유종·필터 선택: 유종(여럿)·최저가·조건·품질�
   await act(async () => labelInput("알뜰주유소").click());
   expect(onFiltersChange.mock.lastCall![0].brands).not.toContain("ALT");
   expect(menu.textContent).not.toMatch(/믿음|직영|스마트|면세유|화물차|테마|LIGHT|DARK/);
+  // 로고가 없는 "기타" 행도 이름 글자는 한 번만이다(아이콘이 sr-only 이름·title로 다시 싣지 않는다).
+  const etc = labelInput("기타").closest("label")!;
+  expect(etc.textContent).toBe("기타");
+  expect(etc.querySelector("[title], .sr-only")).toBeNull();
+  for (const row of menu.querySelectorAll<HTMLLabelElement>(".fuel-filter-brand")) {
+    const name = row.querySelector(".fuel-filter-brand-mark + span")!.textContent!.split(" · ")[0];
+    expect(row.textContent!.split(name).length - 1).toBe(1);
+  }
   const narrowed = { ...DEFAULT_PUBLIC_FUEL_FILTERS, brands: ["SKE"], self_only: true, near_min: 70 };
   await rerender(view(narrowed, ["B027"]));
   // 트리거는 실제로 서버에 보내는 조건 수(셀프·상표·최저가 = 3)를 알린다.

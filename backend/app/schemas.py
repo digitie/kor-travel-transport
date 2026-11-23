@@ -557,6 +557,10 @@ class FuelPriceComparison(FuelPriceScopeSummary):
     sufficient: bool
 
 
+class FuelProductGrade(FuelPriceComparison):
+    product_code: str
+
+
 class FuelStationPricePosition(BaseModel):
     station_id: int
     name: str
@@ -564,6 +568,9 @@ class FuelStationPricePosition(BaseModel):
     sells_product: bool
     products: list[str] = Field(default_factory=list, description="공개 통계 세대에 가격이 있는 유종")
     comparisons: list[FuelPriceComparison] = Field(default_factory=list)
+    product_grades: list[FuelProductGrade] = Field(
+        default_factory=list,
+        description="이 주유소가 파는 유종마다 같은 시군구(같은 필터) 안의 위치와 등급. 요청 유종도 포함. 한 SQL로 계산(추가 필드)")
 
 
 class FuelGradeRule(BaseModel):

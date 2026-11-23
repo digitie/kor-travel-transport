@@ -209,9 +209,14 @@ test("공개 범위 요약은 접지 않고 유종 선택·평균가·가격 갱
     publicFuel={{ products: [], onProductsChange: vi.fn(), onRefresh, refreshing }} />);
   try {
     await act(async () => render());
-    const stale = container.querySelector(".public-fuel-summary-stale")!;
-    expect(stale.getAttribute("role")).toBe("status");
-    expect(stale.querySelector("time")?.dateTime).toBe(props.pricesLastRefreshedAt);
+    // "오래됨"·"업데이트"는 유종·필터 옆 아이콘 하나다(소유자 지시 2026-11-23).
+    expect(container.querySelector(".public-fuel-summary-stale, .public-fuel-summary-refresh, .public-fuel-summary-actions")).toBeNull();
+    const priceButton = container.querySelector<HTMLButtonElement>(".public-fuel-price-button")!;
+    expect(priceButton.getAttribute("aria-label")).toBe("가격 오래됨 · 지도 범위 유가 업데이트");
+    expect(priceButton.hasAttribute("data-stale")).toBe(true);
+    expect(priceButton.getAttribute("aria-disabled")).toBeNull();
+    // 유종·필터 바로 다음(같은 머리줄)에 놓인다.
+    expect(container.querySelector(".public-fuel-summary-products")?.nextElementSibling).toBe(priceButton);
     // 접기 토글·닫기 버튼이 없고 제목은 일반 제목이다.
     expect(container.querySelector(".fuel-summary-toggle")).toBeNull();
     expect(container.querySelector('[aria-label="범위 요약 닫기"]')).toBeNull();
@@ -230,13 +235,47 @@ test("공개 범위 요약은 접지 않고 유종 선택·평균가·가격 갱
     expect(body().hidden).toBe(false);
     expect(container.querySelector(".public-fuel-filter-trigger")).not.toBeNull();
     expect(body().textContent).toContain("1,700");
-    const refresh = () => container.querySelector<HTMLButtonElement>(".public-fuel-summary-refresh")!;
+    const refresh = () => container.querySelector<HTMLButtonElement>(".public-fuel-price-button")!;
     await act(async () => refresh().click());
     expect(onRefresh).toHaveBeenCalledTimes(1);
     await act(async () => render(true));
     expect(refresh().getAttribute("aria-busy")).toBe("true");
     await act(async () => refresh().click());
     expect(onRefresh).toHaveBeenCalledTimes(1);
+  } finally { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); }
+});
+
+test.each([
+  { stale: false, blocked: undefined, label: "가격 최신 · 업데이트할 수 없음: 가격이 최신이라 업데이트할 필요가 없습니다" },
+  { stale: true, blocked: "filters" as const, label: "가격 오래됨 · 업데이트할 수 없음: 필터를 켠 동안은 지도 범위 업데이트를 할 수 없습니다. 필터를 끄거나 주유소 상세에서 업데이트하세요" },
+  { stale: true, blocked: "range" as const, label: "가격 오래됨 · 업데이트할 수 없음: 지도에 보이는 주유소가 1~9곳일 때만 업데이트할 수 있습니다. 지도를 확대하세요" },
+  { stale: true, blocked: "disabled" as const, label: "가격 오래됨 · 업데이트할 수 없음: 이 화면에서는 유가 업데이트를 쓸 수 없습니다" },
+])("가격 아이콘: 누를 수 없을 때(stale=$stale, $blocked)는 포커스 가능한 비활성 단추로 이유와 갱신 시각을 알린다", async ({ stale, blocked, label }) => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const onRefresh = vi.fn();
+  try {
+    await act(async () => root.render(<FuelViewportSummary items={[metrics]} pending={false} pricesStale={stale} pricesLastRefreshedAt="2026-10-20T03:10:00Z"
+      publicFuel={{ products: [], onProductsChange: vi.fn(), onRefresh: undefined, refreshBlocked: blocked }} />));
+    const button = container.querySelector<HTMLButtonElement>(".public-fuel-price-button")!;
+    expect(button.getAttribute("aria-label")).toBe(label);
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+    // native disabled가 아니라 포커스를 받는다.
+    expect(button.disabled).toBe(false);
+    button.focus();
+    expect(document.activeElement).toBe(button);
+    expect(button.hasAttribute("data-stale")).toBe(stale);
+    expect(button.querySelector("svg")?.getAttribute("class")).toContain("lucide-clock");
+    expect(button.querySelector("svg")?.getAttribute("class")?.includes("clock-alert")).toBe(stale);
+    // 누르면(터치) 이유 툴팁을 연다. 업데이트는 하지 않는다. 툴팁에는 마지막 가격 갱신 시각이 있다.
+    await act(async () => button.click());
+    expect(onRefresh).not.toHaveBeenCalled();
+    const tip = [...document.querySelectorAll('[role="tooltip"]')].map(node => node.textContent).join(" ");
+    expect(tip).toContain("마지막 가격 갱신 26.10.20 12:10 KST");
+    expect(tip).toContain(label.split(": ")[1]);
   } finally { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); }
 });
 

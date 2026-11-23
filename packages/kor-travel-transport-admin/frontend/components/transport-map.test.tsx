@@ -142,7 +142,7 @@ test("교통 지도는 일반 주차장 필터를 요청하고 좌표 없는 주
 });
 
 beforeEach(() => {
-  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true, ResizeObserver: class { observe() {} disconnect() {} } });
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true, ResizeObserver: class { observe() {} unobserve() {} disconnect() {} } });
   vi.stubGlobal("fetch", vi.fn());
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
   Object.assign(mapState, { longitude: 128.53, latitude: 37.6, zoom: 12.5 });
@@ -422,10 +422,11 @@ test("공개 지도는 모든 축척에서 유종을 요청에 반영하고 단�
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
-test("보이는 주유소 9곳은 최신이어도 다시 갱신하고 가격을 적용하며 10곳이면 지도 버튼을 숨긴다", async () => {
+test("가격 아이콘 하나: 오래된 가격은 보이는 주유소 9곳이면 갱신·적용하고 10곳이면 이유와 함께 비활성", async () => {
   Object.assign(mapState, { zoom: 12.5 });
   toastCalls.success.mockClear();
   let count = 9, nextPrice = 1300;
+  const stale = true;
   const products = ["C004"];
   const stations = () => Array.from({ length: count }, (_, i): Place => ({
     ...station, id: i + 70, kind: "fuel_station", source: "opinet_browser", name: `시험 ${i + 1} 주유소`,
@@ -443,15 +444,17 @@ test("보이는 주유소 9곳은 최신이어도 다시 갱신하고 가격을 
       count = 10;
       return Response.json({ results: Array.from({ length: 9 }, (_, i) => ({ station_id: i + 70, status: "updated" })) });
     }
-    return Response.json({ items: stations(), total: count, truncated: false, fuel_prices_stale: false });
+    return Response.json({ items: stations(), total: count, truncated: false, fuel_prices_stale: stale, fuel_prices_last_refreshed_at: "2026-11-21T00:00:00Z" });
   });
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
-  const refreshButton = () => host.querySelector<HTMLButtonElement>('button[aria-label="지도 범위 유가 업데이트"]');
+  const refreshButton = () => host.querySelector<HTMLButtonElement>(".public-fuel-price-button");
   try {
     await act(async () => root.render(<TransportMap mode="fuel" mapOnly publicFuel={{ products, onProductsChange: vi.fn(), refreshEnabled: true }} />));
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 360)); });
     expect(host.querySelector(".map-marker-price")?.textContent).toBe("1,300");
-    expect(refreshButton()).not.toBeNull();
+    // 지도 위 따로 있던 업데이트 단추는 없다(범위 요약의 가격 아이콘 하나).
+    expect(host.querySelector('.public-fuel-map-refresh, button[aria-label="지도 범위 유가 업데이트"]')).toBeNull();
+    expect(refreshButton()?.getAttribute("aria-label")).toBe("가격 오래됨 · 지도 범위 유가 업데이트");
     await act(async () => refreshButton()!.click());
     expect(toastCalls.info).toHaveBeenCalledWith("최근 갱신 요청이 있었습니다. 잠시 뒤 다시 시도해 주세요.");
     expect(toastCalls.success).not.toHaveBeenCalled();
@@ -462,6 +465,10 @@ test("보이는 주유소 9곳은 최신이어도 다시 갱신하고 가격을 
     })));
     expect(toastCalls.success).toHaveBeenCalledWith("유가 업데이트 완료");
     expect(host.querySelector(".map-marker-price")?.textContent).toBe("1,450");
-    expect(refreshButton()).toBeNull();
+    // 10곳이면 서버 한도(9곳)를 넘어 누를 수 없고 이유를 알린다.
+    expect(refreshButton()?.getAttribute("aria-disabled")).toBe("true");
+    expect(refreshButton()?.getAttribute("aria-label")).toContain("지도에 보이는 주유소가 1~9곳일 때만");
+    await act(async () => refreshButton()!.click());
+    expect(postRequests).toHaveLength(2);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
