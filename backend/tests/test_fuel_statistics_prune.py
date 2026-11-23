@@ -56,8 +56,11 @@ def test_backlog_is_pruned_in_bounded_statements_and_keeps_public_generation(tes
                 await _seed_generations(session, stats.HIGHWAY, base, 2)
             async with factory() as session:
                 with caplog.at_level(logging.INFO, logger=stats.logger.name):
-                    deleted = await stats.cleanup_fuel_statistics(session, stats.OPINET, batch_rows=10)
-                assert deleted == 5 * ROWS_PER_GENERATION
+                    cleanup = await stats.cleanup_fuel_statistics(session, stats.OPINET, batch_rows=10)
+                assert cleanup.deleted == 5 * ROWS_PER_GENERATION
+                assert cleanup.outcome == "done"
+                assert cleanup.metadata() == {"fuel_statistics_cleanup": "done",
+                                              "fuel_statistics_pruned_rows": 5 * ROWS_PER_GENERATION}
                 # 25행 세대 5개를 10행씩: 배치가 이어지고 마지막 짧은 배치(5행)에서 멈춘다.
                 assert len(delete_parameters) == 13
                 # 매개변수 수가 지우는 행 수(10)에 비례하지 않는다: 원천·한도 정도만 묶는다.
@@ -69,7 +72,7 @@ def test_backlog_is_pruned_in_bounded_statements_and_keeps_public_generation(tes
                 assert "deleted=125" in caplog.text
                 # 지울 것이 없으면 한 문장으로 끝난다.
                 delete_parameters.clear()
-                assert await stats.cleanup_fuel_statistics(session, stats.OPINET, batch_rows=10) == 0
+                assert (await stats.cleanup_fuel_statistics(session, stats.OPINET, batch_rows=10)).deleted == 0
                 assert len(delete_parameters) == 1
         finally:
             event.remove(engine.sync_engine, "before_cursor_execute", capture)
@@ -77,7 +80,7 @@ def test_backlog_is_pruned_in_bounded_statements_and_keeps_public_generation(tes
     asyncio.run(exercise())
 
 
-def test_budget_is_checked_between_batches_and_oldest_generations_go_first(test_settings):
+def test_budget_is_checked_between_batches_and_oldest_generations_go_first(test_settings, caplog):
     async def exercise():
         engine, factory = create_engine_and_session_factory(test_settings.database_url)
         base = datetime(2026, 10, 24, tzinfo=timezone.utc)
@@ -87,14 +90,18 @@ def test_budget_is_checked_between_batches_and_oldest_generations_go_first(test_
             async with factory() as session:
                 stamps = await _seed_generations(session, stats.OPINET, base, 4)
             async with factory() as session:
-                deleted = await stats.cleanup_fuel_statistics(
-                    session, stats.OPINET, budget_seconds=1.0, batch_rows=ROWS_PER_GENERATION,
-                    clock=lambda: next(ticks),
-                )
-                assert deleted == 2 * ROWS_PER_GENERATION
+                with caplog.at_level(logging.WARNING, logger=stats.logger.name):
+                    cleanup = await stats.cleanup_fuel_statistics(
+                        session, stats.OPINET, budget_seconds=1.0, batch_rows=ROWS_PER_GENERATION,
+                        clock=lambda: next(ticks),
+                    )
+                assert cleanup.deleted == 2 * ROWS_PER_GENERATION
+                # 예산 소진은 남은 세대가 있다는 뜻이다. 조용히 끝내지 않고 결과·경고로 남긴다.
+                assert cleanup.outcome == "budget_exhausted"
+                assert "budget exhausted" in caplog.text
                 # 예산이 끝나면 남은 세대는 다음 수집이 이어서 지운다. 가장 오래된 두 세대가 먼저 사라진다.
                 assert set(await _counts(session, stats.OPINET)) == {stamps[2], stamps[3]}
-                assert await stats.cleanup_fuel_statistics(session, stats.OPINET) == ROWS_PER_GENERATION
+                assert (await stats.cleanup_fuel_statistics(session, stats.OPINET)).deleted == ROWS_PER_GENERATION
                 assert set(await _counts(session, stats.OPINET)) == {stamps[3]}
         finally:
             await engine.dispose()

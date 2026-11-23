@@ -458,6 +458,12 @@ def _collection_output_metadata(result: dict[str, Any], scope: str) -> dict[str,
     for key in ("fuel_ready", "fuel_statistics_published", "cache_refresh_failed"):
         if type(result.get(key)) is bool:
             metadata[key] = result[key]
+    # 이전 통계 세대 정리(원천 성공과 분리). 실패·예산 소진도 결과 종류와 행 수로 보이게 한다.
+    if result.get("fuel_statistics_cleanup") in {"done", "budget_exhausted", "failed"}:
+        metadata["fuel_statistics_cleanup"] = result["fuel_statistics_cleanup"]
+        pruned = result.get("fuel_statistics_pruned_rows")
+        if type(pruned) is int and 0 <= pruned <= 1_000_000_000:
+            metadata["fuel_statistics_pruned_rows"] = pruned
     if outcome == "partial" and result.get("errors"):
         detail = result
         if "collection_run_id" not in result and "run_id" in result:

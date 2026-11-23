@@ -6,7 +6,8 @@ import logging
 import math
 import time
 from collections import OrderedDict
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Literal
 from collections.abc import Callable
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -304,32 +305,59 @@ async def prune_fuel_statistics(session: AsyncSession, source: str, *, batch_row
     return result.rowcount or 0
 
 
+@dataclass(frozen=True, slots=True)
+class FuelStatisticsCleanup:
+    """수집 한 번의 이전 세대 정리 결과. 원천 성공과 분리하되 결과는 op metadata·로그로 보이게 한다.
+
+    - ``done``: 지울 이전 세대가 더 없다.
+    - ``budget_exhausted``: 예산이 끝나 이전 세대가 남았다. 다음 수집이 이어서 지운다(정상 따라잡기).
+    - ``failed``: 정리 문장이 실패했다(``cause``는 가린 한 줄). 지운 배치는 이미 commit됐다.
+    """
+
+    deleted: int
+    outcome: Literal["done", "budget_exhausted", "failed"]
+    cause: str | None = None
+
+    def metadata(self) -> dict[str, Any]:
+        """수집 결과 dict에 싣는 값(원문·SQL 없이 결과 종류와 행 수만)."""
+        return {"fuel_statistics_cleanup": self.outcome, "fuel_statistics_pruned_rows": self.deleted}
+
+
 async def cleanup_fuel_statistics(
     session: AsyncSession, source: str, *, budget_seconds: float = PRUNE_BUDGET_SECONDS,
     batch_rows: int = PRUNE_BATCH_ROWS, clock: Callable[[], float] = time.monotonic,
-) -> int:
-    """공개 잠금 없이 짧은 정리 트랜잭션을 반복하고 지운 행 수를 돌려준다. 실패는 수집 성공과 분리한다.
+) -> FuelStatisticsCleanup:
+    """공개 잠금 없이 짧은 정리 트랜잭션을 반복한다. 실패는 수집 성공과 분리하되 결과로 돌려준다.
 
     예산은 배치 사이에서만 본다(한 배치는 짧은 한 문장). 세대 하나(약 3만 행)보다 수집 한 번의
-    정리량이 훨씬 커서 쌓인 세대도 몇 번의 수집 안에 따라잡는다.
+    정리량이 훨씬 커서 쌓인 세대도 몇 번의 수집 안에 따라잡는다. 실패·예산 소진은 경고로 남긴다 —
+    유가 op들이 이 logger를 Dagster event log로 넘긴다(`definitions.FUEL_STATISTICS_LOGGERS`).
     """
     deadline = clock() + budget_seconds
     deleted = 0
+    drained = False
     try:
         while clock() < deadline:
             count = await prune_fuel_statistics(session, source, batch_rows=batch_rows)
             await session.commit()
             deleted += count
             if count < batch_rows:
+                drained = True
                 break
     except Exception as exc:
         await session.rollback()
-        logger.warning("fuel statistics cleanup deferred source=%s error=%s deleted=%s",
-                       source, type(exc).__name__, deleted)
-        return deleted
+        cause = _deferred_cause(exc)
+        logger.warning("fuel statistics cleanup failed source=%s deleted=%s cause=%s; "
+                       "previous generations remain until the next collection", source, deleted, cause)
+        return FuelStatisticsCleanup(deleted, "failed", cause)
+    if not drained:
+        logger.warning("fuel statistics cleanup budget exhausted source=%s deleted=%s budget=%ss; "
+                       "previous generations remain and the next collection continues", source, deleted,
+                       budget_seconds)
+        return FuelStatisticsCleanup(deleted, "budget_exhausted")
     if deleted:
         logger.info("fuel statistics cleanup source=%s deleted=%s", source, deleted)
-    return deleted
+    return FuelStatisticsCleanup(deleted, "done")
 
 
 async def _legacy_global_rankings(session: AsyncSession, source: str, scope: str,

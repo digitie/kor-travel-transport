@@ -1344,7 +1344,7 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=7.1,<8.0" },
     { name = "python-datagokr-api", git = "https://github.com/digitie/python-datagokr-api?rev=18864a3aa3314bcd4cbefb6fabcd589c5847f750" },
     { name = "python-kasi-api", git = "https://github.com/digitie/python-kasi-api?rev=4259e574468435355be79d3fe85b394249ab1989" },
-    { name = "python-krairport-api", git = "https://github.com/digitie/python-krairport-api?rev=b146b6ac85169c069bbe0119e3892a6006f7abcb" },
+    { name = "python-krairport-api", git = "https://github.com/digitie/python-krairport-api?rev=9ea20ef40455320e4933d01aef21079c1a63ba81" },
     { name = "python-krex-api", git = "https://github.com/digitie/python-krex-api?rev=894ea64faed3a9a0ba9ba11b2a59dc5a0b5e5634" },
     { name = "python-kric-api", git = "https://github.com/digitie/python-kric-api?rev=c006c8be64edfa4dc73cc3dd087c92cdeb9fba84" },
     { name = "python-krits-api", git = "https://github.com/digitie/python-krits-api?rev=417e3d5dc1a897f770e9c832eb39d8ff9c40e92a" },
@@ -2280,7 +2280,7 @@ dependencies = [
 [[package]]
 name = "python-krairport-api"
 version = "0.1.0"
-source = { git = "https://github.com/digitie/python-krairport-api?rev=b146b6ac85169c069bbe0119e3892a6006f7abcb#b146b6ac85169c069bbe0119e3892a6006f7abcb" }
+source = { git = "https://github.com/digitie/python-krairport-api?rev=9ea20ef40455320e4933d01aef21079c1a63ba81#9ea20ef40455320e4933d01aef21079c1a63ba81" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },

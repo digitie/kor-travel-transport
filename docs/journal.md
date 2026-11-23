@@ -1,3 +1,19 @@
+## 2026-11-24 — KAC 429 backoff·Retry-After와 유가 통계 정리 결과 가시화(COLLECTION-AUDIT-20261123 §2.5 P2)
+
+- 근거: 수집 실패 감사(2026-11-23, kor-travel-map `docs/reports/2026-11-23-collection-failure-audit.md`) §2.5 P2
+  "krairport 429 즉시 재시도", "prune 실패 비가시".
+- krairport 429: python-krairport-api #15(`9ea20ef`)가 429·5xx·네트워크 재시도를 즉시 재호출에서 지수 backoff + jitter로 바꾸고,
+  `Retry-After`(초·HTTP-date)를 존중하며 30초를 넘는 요구는 기다리지 않고 `KrairportRateLimitError.retry_after`로 돌려준다. 이 PR은 그
+  커밋으로 핀을 올린다. 수집기(`CollectionService`): SDK가 이미 기다리고 포기한 KAC 429를 같은 수집에서 곧바로 한 번 더 부르지 않고,
+  `retry_after`가 있으면 KAC quota 예약을 `시작 + max(설정 backoff(quota 표지일 때만), Retry-After)`로 정한다. Retry-After 없는 HTTP 429는
+  예전처럼 예약을 만들지 않는다.
+- 유가 통계 정리: `cleanup_fuel_statistics`가 지운 행 수만 돌려주고 실패는 예외 종류 한 줄로 삼켰다(호출자는 반환값을 버렸다).
+  이제 `FuelStatisticsCleanup(deleted, outcome=done|budget_exhausted|failed, cause)`를 돌려주고, 실패·예산 소진은 가린 한 줄 경고로
+  남긴다(유가 op가 이 logger를 Dagster event log로 넘긴다). 오피넷·휴게소 유가 결과와 op metadata에 `fuel_statistics_cleanup`·
+  `fuel_statistics_pruned_rows`가 실리고, 관리자 실행 상세가 실패는 경고 안내, 예산 소진은 경고 없는 안내로 보인다. 정리는 여전히
+  원천 성공과 분리한다(수집 결과 종류·run 성공은 바뀌지 않는다). #251의 배치 삭제·60초 예산은 그대로다.
+- 남은 것: 정리는 여전히 저장이 성공한 수집 뒤에만 돈다(유가 수집이 연속 실패하면 정리도 멈춘다) — 이번 범위 밖.
+
 ## 2026-11-24 — 주차 통계 archive job의 schedule 부재는 의도(PARKING-ARCHIVE-SCHEDULE-20261124)
 
 - 수집 실패 감사(2026-11-23 §2.2)의 "parking_statistics_archive_job: 코드에 있으나 40일간 실행 0" 항목. odroid Dagster GraphQL 읽기 전용

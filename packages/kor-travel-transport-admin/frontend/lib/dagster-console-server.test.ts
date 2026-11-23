@@ -254,3 +254,19 @@ describe("유가 요약 통계 게시 결과",()=>{
   expect(values).toHaveLength(1);expect(values[0].detail).toContain(warning);expect(JSON.stringify(values)).not.toContain("private.invalid");expect(JSON.stringify(values)).not.toContain("private-canary");
  });
 });
+
+describe("이전 유가 통계 정리 결과",()=>{
+ const output=(metadataEntries:unknown[])=>sanitizeConsoleEvents([{__typename:"ExecutionStepOutputEvent",timestamp:"1780000000000",metadataEntries}])[0];
+ it("정리 실패는 경고와 고정 안내로 보이고 원천 성공을 실패로 바꾸지 않는다",()=>{
+  const result=output([{label:"status",text:"success"},{label:"fuel_statistics_cleanup",text:"failed"},{label:"fuel_statistics_pruned_rows",intValue:5000}]);
+  expect(result.warning).toBe(true);expect(result.detail).toContain("이전 유가 통계 정리 실패");expect(result.detail).toContain("자료 수집 완료");expect(result.counts.fuel_statistics_pruned_rows).toBe(5000);
+ });
+ it("예산 소진은 안내만 하고 경고로 올리지 않는다",()=>{
+  const result=output([{label:"status",text:"success"},{label:"fuel_statistics_cleanup",text:"budget_exhausted"},{label:"fuel_statistics_pruned_rows",intValue:120000}]);
+  expect(result.warning).toBe(false);expect(result.detail).toContain("남은 세대는 다음 수집에서 이어 정리");expect(result.counts.fuel_statistics_pruned_rows).toBe(120000);
+ });
+ it.each([["done"],["private-canary"],[""]])("%s 값은 안내를 만들지 않는다",value=>{
+  const result=output([{label:"status",text:"success"},{label:"fuel_statistics_cleanup",text:value}]);
+  expect(result.warning).toBe(false);expect(result.detail??"").not.toContain("정리");expect(JSON.stringify(result)).not.toContain("private-canary");
+ });
+});
