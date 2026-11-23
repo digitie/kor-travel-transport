@@ -2,7 +2,7 @@
 
 ## 2026-11-23 — 공통 UI 0.2.6
 
-Common main CI의 [pack 산출물](https://github.com/digitie/kor-travel-common/actions/runs/45141922245/artifacts/14803131043)에서 UI 0.2.6과 tokens 0.1.7을 가져왔다. pack 출처는 `05d7f91a4151a69d72b8bf1dc0007291c6ab2a61`, 카탈로그와 정책은 `309b881f8fd6d657b448f43b6fc61939fde742c2`로 고정한다. 두 tarball의 SHA256과 SHA512 SRI를 Common 정본과 대조했다.
+Common main CI의 [pack 산출물](https://github.com/digitie/kor-travel-common/actions/runs/45141922011/artifacts/14803131043)에서 UI 0.2.6과 tokens 0.1.7을 가져왔다. pack 출처는 `05d7f91a4151a69d72b8bf1dc0007291c6ab2a61`, 카탈로그와 정책은 `309b881f8fd6d657b448f43b6fc61939fde742c2`로 고정한다. 두 tarball의 SHA256과 SHA512 SRI를 Common 정본과 대조했다.
 
 ## 2026-11-23 — 공통 UI 0.2.5
 
