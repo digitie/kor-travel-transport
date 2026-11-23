@@ -350,8 +350,35 @@ async def price_distribution(session: AsyncSession, *, product_code: str, sido_v
             comparisons.append(_comparison(nationwide, station_price, *_below_equal(index.national, station_price)))
         response["station"] = {"station_id": station.id, "name": station.name, "price": station_price,
                                "sells_product": station_price is not None, "products": station_products,
-                               "comparisons": [row for row in comparisons if row is not None]}
+                               "comparisons": [row for row in comparisons if row is not None],
+                               "product_grades": await _product_grades(
+                                   session, generated_at, station, current, product_code, prices, sigungu_label, filters)}
     return response
+
+
+async def _product_grades(session: AsyncSession, generated_at, station: FuelStation, current_rows, product_code: str,
+                          selected_prices: list[float], label: str, filters: FuelStationFilters | None) -> list[dict]:
+    """주유소가 파는 유종마다 같은 시군구 안 위치(등급). 요청 유종은 이미 읽은 시군구 가격을 쓰고, 나머지 유종은
+    시군구 하나로 좁힌 SELECT 한 번으로 함께 읽는다(유종 수만큼 전국 읽기를 늘리지 않는다)."""
+    own = {row.product_code: float(row.price) for row in current_rows}
+    others = sorted(code for code in own if code != product_code)
+    by_product: dict[str, list[float]] = {product_code: selected_prices} if product_code in own else {}
+    if others:
+        p, s = FuelStatisticsPoint, FuelStation
+        rows = (await session.execute(_published_points(generated_at, None, filters).with_only_columns(
+            p.product_code, p.price,
+        ).where(p.product_code.in_(others), s.sido_value == station.sido_value,
+                s.sigungu_value == station.sigungu_value))).all()
+        for row in rows:
+            by_product.setdefault(row.product_code, []).append(float(row.price))
+    grades = []
+    for code in sorted(own, key=lambda value: (value != product_code, value)):
+        prices = sorted(by_product.get(code, []))
+        summary = _sorted_summary("sigungu", label, prices)
+        comparison = _comparison(summary, own[code], *_below_equal(prices, own[code])) if summary else None
+        if comparison is not None:
+            grades.append({**comparison, "product_code": code})
+    return grades
 
 
 def build_fuel_price_distribution_router(get_db: Callable[..., AsyncIterator[AsyncSession]]) -> APIRouter:
