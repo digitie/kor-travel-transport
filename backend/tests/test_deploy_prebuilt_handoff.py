@@ -247,16 +247,17 @@ def test_old_or_incomplete_receipt_never_falls_back(guard, tmp_path, change):
 
 def test_official_build_branch_skips_build_for_strict_handoff(tmp_path):
     text = _REMOTE.read_text()
-    start = text.index('if [[ "${DEPLOY_MODE}" == "deploy-prebuilt" ]]; then', text.index('compose config --format json'))
+    start = text.index('if [[ "${DEPLOY_MODE}" == "deploy-prebuilt" ]]; then', text.index('\ninstall_transport_override\n'))
     branch = text[start:text.index('\nfi\n', start) + 4]
     log = tmp_path / "build-calls"
     script = ('set -euo pipefail\nDEPLOY_MODE=deploy-prebuilt\nREMOTE_APP_DIR="$APP"\n'
               + 'strict_prebuilt_gate() { echo gate >> "$CALLS"; echo "{}"; }\n'
-              + 'compose() { echo "$*" >> "$CALLS"; }\n' + branch)
+              + 'compose() { echo "$*" >> "$CALLS"; }\n'
+              + 'verify_legacy_compose() { "$@" config --format json; }\n' + branch)
     result = subprocess.run(["bash", "-c", script], env={**os.environ, "CALLS": str(log), "APP": str(tmp_path)},
                             capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
-    assert log.read_text().splitlines() == ["gate", "config -q"]
+    assert log.read_text().splitlines() == ["gate", "config --format json"]
 
 
 @pytest.mark.parametrize("change", [None, "env", "label", "image", "tag", "project"])
@@ -289,20 +290,26 @@ def test_official_strict_branch_has_no_build_wait_fallback_or_child_rollback(tmp
     text = _REMOTE.read_text()
     assert '"deploy-prebuilt"' in text
     branch = text[text.index('# BEGIN replacement gate'):text.index('# END replacement gate')]
-    for busy in (False, True):
-        log = tmp_path / ("busy" if busy else "empty")
+    for busy, mounted in [(False, False), (True, False), (False, True)]:
+        log = tmp_path / f"strict-{busy}-{mounted}"
         script = ('set -euo pipefail\nDEPLOY_MODE=deploy-prebuilt\n'
             + 'strict_prebuilt_gate() { echo probe >> "$CALLS"; ' + ('return 2; ' if busy else '') + '}\n'
             + 'compose() { printf "%s\\n" "$*" >> "$CALLS"; }\n'
             + 'capture_previous_code_server_image() { echo capture >> "$CALLS"; }\n'
             + 'verify_manager_instance_config() { return 0; }\n'
+            + 'verify_legacy_compose() { echo mount-check >> "$CALLS"; ' + ('return 2; ' if mounted else '') + '}\n'
             + 'in_flight_runs() { echo unexpected >> "$CALLS"; return 2; }\n'
             + 'sleep() { echo unexpected-sleep >> "$CALLS"; exit 77; }\n'
             + branch)
         result = subprocess.run(["bash", "-c", script], env={**os.environ, "CALLS": str(log)}, capture_output=True, text=True)
         calls = log.read_text().splitlines()
-        assert result.returncode == (2 if busy else 0), result.stderr
-        assert calls == (["probe"] if busy else ["probe", "up -d --no-build --pull never --no-deps backend frontend dagster-code-server"])
+        assert result.returncode == (2 if busy or mounted else 0), result.stderr
+        expected = ["mount-check"]
+        if not mounted:
+            expected.append("probe")
+        if not busy and not mounted:
+            expected.append("up -d --no-build --pull never --no-deps backend frontend dagster-code-server")
+        assert calls == expected
 
 
 @pytest.mark.parametrize("change", [None, "admin-id", "gateway-id", "release", "missing-release", "architecture", "missing-input"])

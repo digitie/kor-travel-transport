@@ -156,9 +156,10 @@ def test_shared_plane_deploy_drains_this_location_without_stopping_the_shared_da
     assert "14004" not in text
 
 
-def test_failed_code_server_release_rolls_back_to_the_previous_verified_image(tmp_path: Path) -> None:
+@pytest.mark.parametrize("mounted", [False, True])
+def test_failed_code_server_release_rolls_back_only_when_mountless(tmp_path: Path, mounted: bool) -> None:
     text = _REMOTE.read_text(encoding="utf-8")
-    rollback = _function(text, "rollback_dagster_code_server")
+    rollback = _function(text, "rollback_compose") + _function(text, "rollback_dagster_code_server")
     runtime_env = tmp_path / ".env.prod"
     runtime_env.write_text(
         "RELEASE_SHA=" + _SHA + "\nBACKEND_RUNTIME_IMAGE=candidate-image\nPUBLIC_API_PORT=12302\n",
@@ -187,6 +188,7 @@ def test_failed_code_server_release_rolls_back_to_the_previous_verified_image(tm
         + "TRANSPORT_OVERRIDE_FILE=/opt/kor-travel-odroid/transport/transport.override.yml\n"
         + "KOR_TRAVEL_DAGSTER_SHARED_INSTANCE_CONFIG=/example/manager-owned.yaml\n"
         + "verify_manager_instance_config() { return 0; }\n"
+        + f"verify_legacy_compose() {{ [[ $1 == rollback_compose ]] && return {2 if mounted else 0}; }}\n"
         + "wait_code_server_health() { echo healthy; }\n"
         + "wait_location_loaded() { echo RepositoryLocation; }\n"
         + "rollback_dagster_code_server\n"
@@ -205,6 +207,10 @@ def test_failed_code_server_release_rolls_back_to_the_previous_verified_image(tm
         },
     )
 
+    if mounted:
+        assert result.returncode == 2, result.stderr
+        assert not docker_log.exists()
+        return
     assert result.returncode == 0, result.stderr
     args, release_sha, runtime_image = json.loads(docker_log.read_text(encoding="utf-8"))
     assert args[-5:] == ["up", "-d", "--no-deps", "--no-build", "dagster-code-server"]
@@ -221,6 +227,7 @@ def test_release_replacement_is_guarded_by_rollback_capture_and_exit_recovery() 
     text = _REMOTE.read_text(encoding="utf-8")
     cleanup = _function(text, "cleanup_remote")
     capture = text.index("capture_previous_code_server_image\n")
+    assert text[:capture].endswith("verify_legacy_compose compose || exit 2\n")
     replacement_started = text.index("DEPLOYMENT_REPLACEMENT_STARTED=true\n", capture)
     up = text.index("\ncompose up -d --no-build\n", replacement_started)
     verified = text.index("DEPLOYMENT_VERIFIED=true\n", up)
@@ -304,6 +311,7 @@ def test_verification_failure_rolls_back_only_a_schema_unchanged_code_server_sta
         + f"wait_code_server_health() {{ return {0 if code_server_healthy else 1}; }}\n"
         + "wait_location_loaded() { :; }\nin_flight_runs() { :; }\nin_flight_workers() { :; }\n"
         + "capture_previous_code_server_image() { :; }\nverify_manager_instance_config() { :; }\n"
+        + "verify_legacy_compose() { :; }\n"
         + "compose() { :; }\nsleep() { :; }\ncurl() { return 22; }\n"
         + f"RUNTIME_ENV_FILE={str(tmp_path / '.env.prod.runtime')!r}\n"
         + "ROLLBACK_RUNTIME_ENV_FILE=''\nTRANSPORT_OVERRIDE_TMP=''\n"

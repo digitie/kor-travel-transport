@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 BACKEND = Path(__file__).resolve().parents[1]
@@ -77,8 +79,9 @@ def test_production_deployment_stages_installs_and_renders_the_override_before_b
     assert 'TRANSPORT_OVERRIDE_FILE="${TRANSPORT_OVERRIDE_DIR}/transport.override.yml"' in remote
     assert "sudo -n install -o root -g root -m 0644" in remote
     assert "sudo -n mv -fT" in remote
-    assert remote.index("install_transport_override\n") < remote.index("compose config --format json")
-    assert remote.index("compose config --format json") < remote.index("\ncompose build\n")
+    preflight = remote.index('TRANSPORT_OVERRIDE_FILE="${TRANSPORT_OVERRIDE_SOURCE}" verify_legacy_compose compose')
+    assert preflight < remote.index("\ninstall_transport_override\n") < remote.index("\ncompose build\n")
+    assert preflight < remote.index('strict_prebuilt_gate --overlay >') < remote.index('\nif [[ "${DEPLOY_MODE}" == "prepare-shared-dagster-cutover" ]]; then')
 
 
 def test_rendered_compose_guard_accepts_only_port_12306_for_command_and_healthcheck() -> None:
@@ -134,3 +137,61 @@ def test_odroid_overlay_adds_one_external_nocopy_state_mount_only_to_code_server
     assert any(mount.endswith(":/app/dagster_home/dagster.yaml:ro") for mount in mounts)
     for filename in ("docker-compose.yml", "docker-compose.shared.yml", "docker-compose.transport-admin.yml"):
         assert volume not in (ROOT / filename).read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("candidate_mount", "current", "allowed"),
+    [
+        (True, "unreachable", False),
+        (False, "mounted", False),
+        (False, "inspect-error", False),
+        (False, "list-error", False),
+        (False, "mountless", True),
+        (False, "absent", True),
+    ],
+)
+def test_legacy_guard_refuses_managed_transitions(tmp_path, candidate_mount, current, allowed):
+    service = _load(ROOT / "transport.override.yml")["services"]["dagster-code-server"]
+    if not candidate_mount:
+        service.pop("volumes")
+    docker = tmp_path / "docker"
+    docker.write_text(
+        """#!/bin/sh
+printf '%s\\n' "$*" >> "$CALLS"
+case "$2" in
+  ls)
+    case "$CURRENT" in
+      list-error|unreachable) exit 1 ;;
+      absent) exit 0 ;;
+      *) echo container-id ;;
+    esac ;;
+  inspect)
+    case "$CURRENT" in
+      mounted) echo '[{"Name":"kor-travel-transport-dagster-state","Destination":"/opt/dagster/state"}]' ;;
+      mountless) echo '[{"Destination":"/app/collector-state"}]' ;;
+      *) exit 1 ;;
+    esac ;;
+  *) exit 1 ;;
+esac
+""",
+        encoding="utf-8",
+    )
+    docker.chmod(0o755)
+    calls = tmp_path / "calls"
+    result = subprocess.run(
+        [sys.executable, str(SCRIPTS / "verify-transport-override.py"), "--legacy-replacement"],
+        input=json.dumps({"services": {"dagster-code-server": service}}),
+        env={**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}", "CURRENT": current, "CALLS": str(calls)},
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == (0 if allowed else 2), result.stderr
+    if not allowed:
+        assert "ktdctl service-release apply-core-candidate transport" in result.stderr
+        assert "state.seed on first attachment" in result.stderr
+    if candidate_mount:
+        assert not calls.exists()
+    else:
+        observed_calls = calls.read_text().splitlines()
+        assert observed_calls[0].startswith("container ls -aq")
+        assert "label=com.docker.compose.project=kor-travel-transport" in observed_calls[0]
+        assert "label=com.docker.compose.service=dagster-code-server" in observed_calls[0]

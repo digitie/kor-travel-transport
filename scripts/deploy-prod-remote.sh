@@ -209,6 +209,10 @@ compose() {
   docker compose --project-name "${COMPOSE_PROJECT_NAME}" --env-file "${RUNTIME_ENV_FILE}" -f docker-compose.yml -f docker-compose.shared.yml -f "${TRANSPORT_OVERRIDE_FILE}" "${extra[@]}" "$@"
 }
 
+verify_legacy_compose() {
+  "$@" config --format json | python3 "${SCRIPT_DIR}/verify-transport-override.py" --legacy-replacement
+}
+
 strict_prebuilt_gate() {
   python3 "${SCRIPT_DIR}/verify-prebuilt-handoff.py" \
     --receipt "${prebuilt_handoff_file}" --sha256 "${prebuilt_handoff_sha256}" \
@@ -216,10 +220,6 @@ strict_prebuilt_gate() {
 }
 
 install_transport_override() {
-  if [[ ! -f "${TRANSPORT_OVERRIDE_SOURCE}" || -L "${TRANSPORT_OVERRIDE_SOURCE}" ]]; then
-    echo "Refusing production deployment: staged release is missing a regular transport.override.yml." >&2
-    return 2
-  fi
   if [[ ! -d "${TRANSPORT_OVERRIDE_DIR}" || -L "${TRANSPORT_OVERRIDE_DIR}" ]] \
     || ! sudo -n test -d "${TRANSPORT_OVERRIDE_DIR}" \
     || sudo -n test -L "${TRANSPORT_OVERRIDE_FILE}"; then
@@ -271,14 +271,19 @@ source "${SCRIPT_DIR}/manager-release-pointer.sh"
 if [[ "${DEPLOY_MODE}" != "prepare-shared-dagster-cutover" ]]; then
   require_release_pointer_in_sync || exit 2
 fi
+# Check the staged model before publishing the overlay. The prepare mode hands off to
+# the old shared-plane cutover, so it is also limited to a mountless code server.
+if [[ ! -f "${TRANSPORT_OVERRIDE_SOURCE}" || -L "${TRANSPORT_OVERRIDE_SOURCE}" ]]; then
+  echo "Refusing production deployment: staged release is missing a regular transport.override.yml." >&2
+  exit 2
+fi
+TRANSPORT_OVERRIDE_FILE="${TRANSPORT_OVERRIDE_SOURCE}" verify_legacy_compose compose || exit 2
 install_transport_override
-compose config -q
-compose config --format json | python3 ./scripts/verify-transport-override.py
 # 이미지를 만드는 동안에는 기존 수집기를 계속 운영한다.
 if [[ "${DEPLOY_MODE}" == "deploy-prebuilt" ]]; then
   PREBUILT_COMPOSE_FILE="$(mktemp "${REMOTE_APP_DIR}/.prebuilt-compose.XXXXXX.json")"
   strict_prebuilt_gate --overlay > "${PREBUILT_COMPOSE_FILE}"
-  compose config -q
+  verify_legacy_compose compose || exit 2
 else
 compose build
 fi
@@ -406,6 +411,13 @@ print(r)' "${previous_id}")" || return 2
     return 2
   }
 }
+rollback_compose() {
+  env -u RELEASE_SHA -u BACKEND_RUNTIME_IMAGE docker compose \
+    --project-name "${COMPOSE_PROJECT_NAME}" \
+    --env-file "${ROLLBACK_RUNTIME_ENV_FILE}" \
+    -f docker-compose.yml -f docker-compose.shared.yml -f "${TRANSPORT_OVERRIDE_FILE}" "$@"
+}
+
 rollback_dagster_code_server() {
   verify_manager_instance_config || return 2
   if [[ ! "${PREVIOUS_CODE_SERVER_TAG}" =~ ^[0-9a-f]{12}$ ]] \
@@ -422,12 +434,9 @@ rollback_dagster_code_server() {
       "${KOR_TRAVEL_DAGSTER_SHARED_INSTANCE_CONFIG}" >> "${ROLLBACK_RUNTIME_ENV_FILE}" || return 1
     chmod 600 "${ROLLBACK_RUNTIME_ENV_FILE}" || return 1
   fi
+  verify_legacy_compose rollback_compose || return 2
   echo "Dagster code-server 배포 실패 — ${PREVIOUS_CODE_SERVER_IMAGE}로 복구를 시도한다." >&2
-  if ! env -u RELEASE_SHA -u BACKEND_RUNTIME_IMAGE docker compose \
-    --project-name "${COMPOSE_PROJECT_NAME}" \
-    --env-file "${ROLLBACK_RUNTIME_ENV_FILE}" \
-    -f docker-compose.yml -f docker-compose.shared.yml -f "${TRANSPORT_OVERRIDE_FILE}" \
-    up -d --no-deps --no-build dagster-code-server; then
+  if ! rollback_compose up -d --no-deps --no-build dagster-code-server; then
     echo "이전 Dagster code-server 컨테이너 복구 명령이 실패했다." >&2
     return 1
   fi
@@ -464,6 +473,7 @@ if [[ "${DEPLOY_MODE}" == "deploy-prebuilt" ]]; then
   verify_manager_instance_config || exit 2
   # 모든 준비 뒤 최신 state·run5·worker·STOPPED를 재검산한다. busy는 대기 없이 실패한다.
   # 이 probe와 Compose launch 사이에는 원자적 fence가 없다.
+  verify_legacy_compose compose || exit 2
   strict_prebuilt_gate
   DEPLOYMENT_REPLACEMENT_STARTED=true
   compose up -d --no-build --pull never --no-deps backend frontend dagster-code-server
@@ -487,6 +497,7 @@ if [[ "${SCHEMA_AT_RELEASE_HEAD_BEFORE_REPLACEMENT}" == true ]]; then
 else
   CODE_SERVER_ROLLBACK_BLOCKER="이 release의 migration이 운영 스키마를 바꿨다"
 fi
+verify_legacy_compose compose || exit 2
 capture_previous_code_server_image
 verify_manager_instance_config || exit 2
 DEPLOYMENT_REPLACEMENT_STARTED=true
