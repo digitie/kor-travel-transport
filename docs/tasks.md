@@ -7,6 +7,11 @@
   수집당 60초 예산, 일회 따라잡기 `scripts/prune-fuel-statistics.py`. **남은 것**: 배포 뒤 운영에서 세대 수가 1(공개 세대)로 줄어드는지
   수용. [유가 통계](fuel-statistics.md) "이전 세대 정리".
 
+- [ ] **ADMIN-EXPANDED-ANCHOR-20261123 / P2** — 관리 지도 명시 확장 중 필터의 시간표·비교 anchor(`/rail`·`/rail/metro`·`/bus/express`·
+  `/ferry`)를 누르면 대상이 고정 작업면 뒤에 깔리고 스크롤되지 않는다(`html{overflow:hidden}`, 공용 셸 #220 이후 main 스크롤 없음).
+  e2e `map-workspace.spec.ts` "확장 지도에서도 시간표·비교와 native anchor 왕복" 4건이 이것으로 실패한다. anchor가 확장을 접을지,
+  확장 안에서 보일지 정한 뒤 고친다. text200 확장 1건은 n150 VWorld 자리표시자 키의 타일 오류 경보 때문(환경)이다.
+
 ## 2026-11-17 — 공통화 재조사 계획 포인터
 
 - [ ] **COMMON-PLAN-20261117 / P2** — kor-travel-common의 공통화 재조사 계획(`docs/plan/commonization-plan-2026-11-17.md`) 가운데 Transport가 실행하는 task를 추적한다. 선행 없음: Common `T-437`(`components/ui/*` 순수 재수출 shim 13개를 공통 경로 직접 import로, 릴리스 불필요), `T-434`(관리자 프론트 `lib/navigation.ts`의 판정 본체를 공통 `sanitizeLocalPath` 호출로 바꾸는 중복 제거. `%20`이 든 경로처럼 결과가 달라지는 입력이 있어 받아들일지 먼저 정한다), `T-482b`(job별 인프라 재시도 sensor 3개를 다중 job sensor 1개로. 합친 sensor는 tick당 RunRequest 하나, 급하지 않다). Common 작업 뒤: `T-436`(guard 호출 SHA를 Common이 지정한 채택 커밋으로, `T-024` 뒤), `T-435`(선택형 패키지 `@kor-travel/admin-kit` 채택, `T-221` 뒤), `T-482a`(로컬 수집 결과 tag 함수를 공통 구현으로, `T-313` 뒤, 급하지 않다). Common `T-025`(ui·tokens patch 릴리스) 전에 `T-436`이 병합되지 않으면 그날 ui·tokens를 재vendor해야 한다(Common은 릴리스 전에 이 팀의 확인을 받는다). `T-435`은 새 guard를 쓰고 있으면 첫 단계로 호출 SHA를 Common이 지정한 admin-kit 채택 커밋으로 올리고 ui·tokens를 재vendor한다. 범위·수용 기준·되돌리기는 Common `docs/tasks/`의 상세 파일이 정본이며 여기 복제하지 않는다. 시점은 Transport 유지 팀이 정한다.
