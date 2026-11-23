@@ -1,3 +1,10 @@
+## 현재 상태 — 2026-11-24 5분 job 실행 상한·우선순위·고속도로 tick 기준 예약(DAGSTER-RUNTIME-PRIORITY-20261124)
+
+- backend만(Dagster job 태그·op deadline·고속도로 예약 계산). migration·UI 없음. 공개 `/transport/providers`·`collector-status`의
+  고속도로 `next_due_at`은 정기 run 성공 뒤 tick + 270초로 보인다(예전 시작 + 300초).
+- 배포(Codex 담당): backend 이미지(API·Dagster code-server 공용). code-server 재기동 뒤 job 태그가 바뀐다.
+- 다음 한 작업: 배포 뒤 고속도로 `skipped` run 비율·실효 주기, 공항·고속도로 `max_runtime` 실패 유무를 확인한다.
+
 ## 현재 상태 — 2026-11-24 상태 행 쓰기의 전역 직렬화 제거(COLLECTION-STATE-LOCK-20261124)
 
 - backend + migration 0048(상태 표 trigger 4개 DROP, `lock_timeout` 2초; component 행은 남김). API·UI 계약 변경 없음.

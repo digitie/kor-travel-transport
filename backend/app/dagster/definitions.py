@@ -11,6 +11,7 @@ import sys
 import time
 import traceback
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from typing import Any
 from urllib.parse import quote, unquote
 
@@ -28,7 +29,7 @@ from kortravelcommon.scheduling import staggered_cron
 
 from app.dagster import recovery
 from app.dagster.recovery import (
-    AIRPORT_TRIGGER, OWNER, RECOVERY_BUDGET_SECONDS, CollectionLeaseLost, ScanPosition,
+    AIRPORT_TRIGGER, OWNER, OWNER_LEASE, RECOVERY_BUDGET_SECONDS, CollectionLeaseLost, ScanPosition,
     collection_owner, ensure_collection_owner_active, format_stall_alert, owned_session_factory,
     run_recovery_tick,
 )
@@ -59,6 +60,33 @@ from app.services.transport_collection import (
 #: 넘긴 run을 실패로 끝낸다. 유가 Playwright 수집의 상한(`FUEL_FETCH_TIMEOUT_SECONDS`, 3.5시간)과 저장 여유가
 #: 이 안(`- 60`초)에 들어야 한다.
 MAX_RUNTIME_SECONDS = 14400
+#: 주기가 짧은 job의 실행 상한(초). coalescing schedule은 같은 job이 QUEUED·STARTED인 동안 tick을 버리므로,
+#: 5분 job에 4시간 상한을 두면 걸린 run 하나가 최대 4시간(48 tick) 수집을 막는다(2026-11-23 수집 감사 §2.5 P1 #9).
+#: 주기의 몇 배로 정하되 정상 최악 경로를 덮는다.
+#: - 공항(5분): KAC·IIAC 전체 집합(원천별 재확인 1회, 최대 20쪽, 요청 15초·SDK 재시도)·일일 요금·파생 분석 캐시에 이어
+#:   같은 run의 기준정보 본문 준비 step까지 한 상한을 나눠 쓴다. 느리지만 끝나는 상류(예전 15~20분)를 끊지 않게 6주기 = 1,800초.
+#: - 고속도로(5분): 최초 조회 2x120초 + 빈/급감 재확인 2x120초 + 저장(운영 표본 175초+)과 claim 예약(1,140초). 4주기 = 1,200초.
+#: op 안의 cancellation deadline은 run **시작** 기준 남은 예산으로 잰다(`_run_deadline_seconds`) — step이 여럿이거나 step 기동이
+#: 늦어도 run monitoring보다 먼저 끝나 실패를 직접 기록한다.
+#: - 기준정보 파생 본문 준비: 180초(기존 값).
+#: 그 밖의 job은 주기가 4시간 이상이거나(유가 브라우저 수집 3.5시간 포함) 이어 하기 backfill이라 `MAX_RUNTIME_SECONDS`를 둔다.
+JOB_MAX_RUNTIME_SECONDS = {
+    "airport_collection_job": 1800,
+    "highway_collection_job": 1200,
+    "reference_export_prepare_job": 180,
+}
+#: `dagster/priority`(클수록 큐에서 먼저 시작). 공용 run 큐(odroid `max_concurrent_runs` 5, location 상한)가 찰 때 사용자에게
+#: 바로 보이는 실시간 현황(공항 주차·고속도로 소통)을 먼저 띄운다. 이 태그는 공용 instance 전체의 큐 순서라 다른 테넌트(기본 0)와도
+#: 비교된다 — 음수는 두지 않아 transport의 backfill이 다른 테넌트 뒤로 굶지 않게 하고, 나머지는 기본 0이다.
+JOB_PRIORITIES = {
+    "airport_collection_job": 10,
+    "highway_collection_job": 10,
+    "fuel_collection_job": 5,
+    "rest_area_fuel_price_collection_job": 5,
+    "reference_export_prepare_job": 5,
+}
+#: 인프라 재시도(프로세스·launcher 장애)를 허용하는 멱등 job.
+IDEMPOTENT_JOBS = frozenset({"airport_collection_job", "highway_collection_job", "rest_area_reference_collection_job"})
 
 #: 관리자 "재시도"(admin console `retry`)가 새 run에 다는 태그. 값은 재시도한 원래 run ID다.
 ADMIN_RETRY_TAG = "kortravel/admin-retry-of"
@@ -258,18 +286,53 @@ def _redact_op_errors(fn: Callable[..., Any] | None = None, *, retry_transient: 
     return wrapper
 
 
-def _job_tags(run_group: str, job_name: str) -> dict[str, str]:
+def job_max_runtime_seconds(job_name: str) -> int:
+    return JOB_MAX_RUNTIME_SECONDS.get(job_name, MAX_RUNTIME_SECONDS)
+
+
+def _recovery_policy(job_name: str) -> RecoveryPolicy:
     # provider 호출 실패는 자동 반복하지 않는다. 안전한 관측/기준 upsert만 인프라 재시도한다.
-    idempotent = job_name in {"airport_collection_job", "highway_collection_job", "rest_area_reference_collection_job"}
-    tags = RecoveryPolicy(MAX_RUNTIME_SECONDS, idempotent=idempotent,
-                          infrastructure_retries=1 if idempotent else 0).tags(
-                              project="transport", job_name=job_name)
-    return {**tags, "kortraveltransport/run_group": run_group,
-            "dagster/code_location": "kor-travel-transport"}
+    idempotent = job_name in IDEMPOTENT_JOBS
+    return RecoveryPolicy(job_max_runtime_seconds(job_name), idempotent=idempotent,
+                          infrastructure_retries=1 if idempotent else 0)
+
+
+def _job_tags(run_group: str, job_name: str) -> dict[str, str]:
+    tags = _recovery_policy(job_name).tags(project="transport", job_name=job_name)
+    return {**tags, "dagster/priority": str(JOB_PRIORITIES.get(job_name, 0)),
+            "kortraveltransport/run_group": run_group, "dagster/code_location": "kor-travel-transport"}
+
+
+#: op deadline이 run monitoring보다 먼저 끝내는 여유(초)와 최소 예산.
+RUN_DEADLINE_MARGIN_SECONDS = 60
+MIN_RUN_DEADLINE_SECONDS = 30
+
+
+def _run_deadline_seconds(max_runtime_seconds: int) -> float:
+    """이 op 안의 cancellation deadline: run 시작부터 잰 실행 상한까지 남은 시간 − 여유.
+
+    run monitoring(`dagster/max_runtime`)은 run 시작부터 잰다. step이 여럿이거나(공항: 수집 → 기준정보 본문 준비) step 기동이
+    늦으면 step 시작부터 잰 deadline은 monitoring보다 늦어 run이 밖에서 끊긴다. 실제 run의 태그·시작 시각을 읽고, 못 읽으면
+    (Dagster 밖 호출·metadata 장애) step 시작부터 잰다.
+    """
+    lease = OWNER_LEASE.get()
+    fallback = float(max_runtime_seconds - RUN_DEADLINE_MARGIN_SECONDS)
+    if lease is None or lease.instance is None:
+        return fallback
+    try:
+        record = call_with_deadline(lambda: lease.instance.get_run_record_by_id(lease.run_id), timeout_seconds=10)
+        if record is None or record.start_time is None:
+            return fallback
+        limit = int((record.dagster_run.tags or {}).get("dagster/max_runtime", max_runtime_seconds))
+        remaining = limit - (time.time() - record.start_time) - RUN_DEADLINE_MARGIN_SECONDS
+        return max(float(MIN_RUN_DEADLINE_SECONDS), min(remaining, fallback))
+    except Exception:  # noqa: BLE001 — 예산 계산의 실패가 수집을 막지 않는다.
+        return fallback
 
 
 async def _run_with_session(
-    settings: Settings, action: Callable[..., Awaitable[dict[str, Any]]], *args: Any, **kwargs: Any
+    settings: Settings, action: Callable[..., Awaitable[dict[str, Any]]], *args: Any,
+    max_runtime_seconds: int = MAX_RUNTIME_SECONDS, **kwargs: Any,
 ) -> dict[str, Any]:
     ensure_collection_owner_active()
     engine, session_factory = create_engine_and_session_factory(settings.database_url, collector=True)
@@ -278,8 +341,9 @@ async def _run_with_session(
     try:
         async with session_factory() as session:
             try:
-                # async provider는 cancellation 계약을 사용한다. native monitoring보다 먼저 끝낸다.
-                async with asyncio.timeout(MAX_RUNTIME_SECONDS - 60):
+                # async provider는 cancellation 계약을 사용한다. native monitoring(run의 `dagster/max_runtime`)보다
+                # 먼저 끝내 실패 상태를 직접 기록한다.
+                async with asyncio.timeout(_run_deadline_seconds(max_runtime_seconds)):
                     result = await action(session, *args, **kwargs)
                     await session.commit()
                     return result
@@ -340,12 +404,16 @@ def collect_airport_parking(context) -> dict[str, Any]:
 
 async def _collect_transport_in_one_loop(
     settings: Settings, scope: CollectionScope, *, retry_failed_fuel: bool = False,
+    scheduled_at: datetime | None = None,
 ) -> dict[str, Any]:
     """HTTP client의 생성·수집·종료를 하나의 event loop에서 끝낸다."""
     service = TransportCollectionService(settings)
-    extra = {"retry_failed_fuel": True} if retry_failed_fuel else {}
+    extra: dict[str, Any] = {"retry_failed_fuel": True} if retry_failed_fuel else {}
+    if scheduled_at is not None:
+        extra["scheduled_at"] = scheduled_at
     try:
         # highway의 trigger(`dagster_highway`)는 회수 sensor의 신선도 판정이 본다(`recovery.HIGHWAY_TRIGGER`).
+        # deadline은 run의 실제 `dagster/max_runtime` 태그와 시작 시각으로 잰다(`_run_deadline_seconds`).
         return await _run_with_session(settings, service.collect, trigger=f"dagster_{scope}", scope=scope, **extra)
     finally:
         await asyncio.wait_for(service.close(), timeout=10)
@@ -482,10 +550,25 @@ def _collection_output_metadata(result: dict[str, Any], scope: str) -> dict[str,
     return metadata
 
 
+def _scheduled_execution_time(context: Any) -> datetime | None:
+    """정기 schedule tick이 띄운 run의 tick 시각(`dagster/scheduled_execution_time`). 수동·재시도 run은 None."""
+    try:
+        value = (context.run.tags or {}).get("dagster/scheduled_execution_time")
+        if not value:
+            return None
+        parsed = datetime.fromisoformat(value)
+        return parsed if parsed.tzinfo is not None else None
+    except Exception:  # noqa: BLE001 — 읽지 못하면 시작 기준(예전 동작)이다.
+        return None
+
+
 def _collect_transport(
     scope: CollectionScope, *, retry_failed_fuel: bool = False, retry_budget: Callable[[], bool] | None = None,
+    scheduled_at: datetime | None = None,
 ) -> dict[str, Any]:
-    result = asyncio.run(_collect_transport_in_one_loop(_settings(), scope, retry_failed_fuel=retry_failed_fuel))
+    result = asyncio.run(_collect_transport_in_one_loop(
+        _settings(), scope, retry_failed_fuel=retry_failed_fuel, scheduled_at=scheduled_at,
+    ))
     # 성공분·실패 상태를 커밋하고 provider를 닫은 뒤 Dagster에도 실패를 전달한다.
     # 원인은 가린 한 줄로 설명에 싣는다(다음 진단이 DB를 보지 않아도 되게). 기존 호출 유예를 자동 재시도로
     # 우회하지 않는다.
@@ -520,7 +603,7 @@ def _collect_transport(
 @_redact_op_errors
 def collect_highway_transport(context) -> dict[str, Any]:
     with collection_owner(context.run_id, context.instance):
-        result = _collect_transport("highway")
+        result = _collect_transport("highway", scheduled_at=_scheduled_execution_time(context))
         metadata = _collection_output_metadata(result, "highway")
         context.add_output_metadata(metadata)
         _record_collection_outcome(context, metadata["collection_outcome"])
@@ -914,7 +997,7 @@ def prepare_reference_exports(context, upstream: Any = None, other: Any = None) 
     return result
 
 
-@job(tags={**_job_tags("reference", "reference_export_prepare_job"), "dagster/max_runtime": "180"}, executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
+@job(tags=_job_tags("reference", "reference_export_prepare_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
 def reference_export_prepare_job() -> None:
     prepare_reference_exports()
 
@@ -1136,7 +1219,8 @@ definitions = Definitions(
         infrastructure_retry_sensor(
             name=f"transport_infra_retry_{retry_job.name}",
             project="transport", location_name="kor-travel-transport", job=retry_job,
-            policy=RecoveryPolicy(MAX_RUNTIME_SECONDS, idempotent=True, infrastructure_retries=1),
+            # 재시도 run의 태그는 이 정책이 덮는다(common `infrastructure_retry_sensor`). job과 같은 상한을 쓴다.
+            policy=_recovery_policy(retry_job.name),
         )
         for retry_job in (airport_collection_job, highway_collection_job, rest_area_reference_collection_job)
     ]],
