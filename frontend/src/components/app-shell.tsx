@@ -9,7 +9,8 @@ import {
   LayoutDashboard,
   RefreshCw,
 } from "lucide-react";
-import type { ComponentType } from "react";
+import { useId, type ComponentType } from "react";
+import { MapFilterBar, MapFilterField } from "@kor-travel/ui/map-controls";
 
 import { Button } from "@/components/ui/button";
 import { useDashboard } from "@/lib/dashboard-context";
@@ -41,20 +42,20 @@ function isActivePath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+// 상단 바·탭·버튼은 transport 관리자(@kor-travel/ui AdminShell 상단 바, TabsList line 변형)와 같은 모양이다.
 const desktopTabClass = (active: boolean) =>
-  `inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-sm border-b-2 px-3 text-sm font-semibold transition-colors ${
-    active
-      ? "border-foreground text-foreground"
-      : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
+  `relative inline-flex shrink-0 items-center gap-1.5 px-2 text-sm font-medium transition-colors after:absolute after:inset-x-1 after:bottom-0 after:h-0.5 after:bg-foreground ${
+    active ? "text-foreground after:opacity-100" : "text-muted-foreground after:opacity-0 hover:text-foreground"
   }`;
 
 const tabbarLinkClass = (active: boolean) =>
-  `flex min-h-14 flex-col items-center justify-center gap-1 px-1 text-xs font-semibold ${
-    active ? "text-foreground" : "text-muted-foreground"
+  `flex min-h-14 flex-col items-center justify-center gap-1 px-1 text-2xs font-medium ${
+    active ? "text-brand" : "text-muted-foreground"
   }`;
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const fieldId = useId();
   const {
     airports,
     selectedAirportCode,
@@ -66,71 +67,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   } = useDashboard();
 
   return (
-    <div className="parking-radar flex min-h-dvh flex-col">
-      <header className="border-b border-border bg-background">
-        <div className="page-shell">
-          <div className="page-header">
-            <h1>공항 주차 현황</h1>
-          </div>
+    <div className="parking-radar parking-public flex min-h-dvh flex-col">
+      <header className="border-b border-border bg-card">
+        <div className="page-shell flex min-h-12 items-center gap-2">
+          <h1 className="m-0 min-w-0 shrink truncate text-md font-semibold">공항 주차 현황</h1>
 
-          <div className="control-band">
-            <label className="field">
-              {/* 데스크톱은 레이블을 보여주고, 모바일은 한 줄(선택 2개 + 버튼) 폭을
-                  확보하려고 sr-only로 시각적으로만 숨긴다 - select 자체의 aria-label로
-                  접근성은 그대로 유지된다. */}
-              <span className="sr-only lg:not-sr-only">공항 선택</span>
-              <select
-                aria-label="공항 선택"
-                className="input"
-                value={selectedAirportCode}
-                onChange={(event) => onAirportChange(event.target.value)}
-              >
-                {airports.map((airport) => (
-                  <option key={airport.code} value={airport.code}>
-                    {airport.name_ko}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span className="sr-only lg:not-sr-only">세부 주차장</span>
-              <select
-                aria-label="세부 주차장"
-                className="input"
-                value={selectedParkingLotId ?? "all"}
-                onChange={(event) =>
-                  onParkingLotChange(event.target.value === "all" ? null : Number(event.target.value))
-                }
-              >
-                <option value="all">전체 주차장</option>
-                {selectedAirportLots.map((parkingLot) => (
-                  <option key={parkingLot.id} value={parkingLot.id}>
-                    {parkingLot.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {/* action-stack로 감싸지 않는다 - 그 클래스는 860px 폭 이하에서 2열 그리드
-                규칙을 갖고 있어서(원래 지금은 없어진 수동 수집 버튼+힌트 쌍용), 자식이
-                버튼 하나뿐인 여기서 재사용하면 빈 두 번째 칸이 실제
-                폭을 차지해(381-1023px에서 측정: 44px가 아니라 98px) 모바일 한 줄
-                레이아웃에서 select 두 개의 폭을 그만큼 빼앗는다(hostile review에서
-                발견). 버튼을 control-band의 그리드 자식으로 직접 두면 `.button.secondary`
-                자체의 `align-self: end`만으로 정렬이 충분하다. */}
-            <Button
-              aria-label="새로고침"
-              className="button secondary refresh-button"
-              variant="secondary"
-              type="button"
-              onClick={onRefresh}
-            >
-              <RefreshCw className="size-4" aria-hidden="true" />
-              <span className="hidden lg:inline">새로고침</span>
-            </Button>
-          </div>
-
-          {/* 데스크톱: 상단 탭 전부 인라인 노출. 모바일에서는 하단 탭바가 대신하므로 숨긴다. */}
-          <nav className="hidden gap-1 pb-3 lg:flex" aria-label="주요 메뉴">
+          {/* 데스크톱: 제목 옆 line 탭. 모바일에서는 하단 탭바가 대신하므로 숨긴다. */}
+          <nav className="ml-4 hidden self-stretch lg:flex" aria-label="주요 메뉴">
             {NAV_ITEMS.map((item) => {
               const active = isActivePath(pathname, item.href);
               const Icon = item.icon;
@@ -147,14 +90,62 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               );
             })}
           </nav>
+
+          {/* 관리자 상단 바 actions와 같은 자리. 모바일은 아이콘만 남겨 한 줄을 지킨다. */}
+          <Button
+            aria-label="새로고침"
+            className="public-refresh ml-auto"
+            variant="outline"
+            size="lg"
+            type="button"
+            onClick={onRefresh}
+          >
+            <RefreshCw data-icon="inline-start" aria-hidden="true" />
+            <span className="hidden sm:inline">새로고침</span>
+          </Button>
         </div>
       </header>
+
+      {/* 관리자 /parking과 같은 공용 필터 바. 레이블은 모든 폭에서 보인다. */}
+      <div className="page-shell">
+        <MapFilterBar className="public-filter-bar" role="group" aria-label="조회 범위">
+          <MapFilterField label="공항 선택" htmlFor={`${fieldId}-airport`}>
+            <select
+              id={`${fieldId}-airport`}
+              value={selectedAirportCode}
+              onChange={(event) => onAirportChange(event.target.value)}
+            >
+              {airports.map((airport) => (
+                <option key={airport.code} value={airport.code}>
+                  {airport.name_ko}
+                </option>
+              ))}
+            </select>
+          </MapFilterField>
+          <MapFilterField label="세부 주차장" htmlFor={`${fieldId}-lot`} className="public-lot-field">
+            <select
+              id={`${fieldId}-lot`}
+              value={selectedParkingLotId ?? "all"}
+              onChange={(event) =>
+                onParkingLotChange(event.target.value === "all" ? null : Number(event.target.value))
+              }
+            >
+              <option value="all">전체 주차장</option>
+              {selectedAirportLots.map((parkingLot) => (
+                <option key={parkingLot.id} value={parkingLot.id}>
+                  {parkingLot.name}
+                </option>
+              ))}
+            </select>
+          </MapFilterField>
+        </MapFilterBar>
+      </div>
 
       <main className="flex-1 pb-20 lg:pb-0">{children}</main>
 
       {/* 모바일 하단 탭바 — 조회 화면 4개. 데스크톱(lg)에서는 상단 탭이 대신한다. */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card lg:hidden"
         aria-label="하단 메뉴"
       >
         <ul className="m-0 grid list-none grid-cols-4 p-0 pb-[env(safe-area-inset-bottom)]">

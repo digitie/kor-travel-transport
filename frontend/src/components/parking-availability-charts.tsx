@@ -27,7 +27,7 @@ export function ParkingAvailabilityCharts({ items }: { items: ParkingChartLot[] 
         const counts = parkingCounts(lot);
         const age = checkedAt === 0 ? null : checkedAt - Date.parse(lot.observed_at);
         return <li key={lot.parking_lot_id}><strong>{lots.length > 1 ? `${index + 1}. ${lot.parking_lot_name}` : "잔여 / 전체"}</strong>
-          <span>{counts ? `${counts.available.toLocaleString()} / ${counts.total.toLocaleString()}면 · 사용 ${counts.occupied.toLocaleString()}면` : "주차면 수치 확인 필요"}</span>
+          <span>{counts ? <><span className="parking-pie-count">{`${counts.available.toLocaleString()} / ${counts.total.toLocaleString()}면`}</span>{" "}<span className="parking-pie-used">{`· 사용 ${counts.occupied.toLocaleString()}면`}</span></> : "주차면 수치 확인 필요"}</span>
           <small>{age === null ? "관측 시각 확인 중 · " : !Number.isFinite(age) || age < 0 ? "관측 시각 확인 필요" : age > 15 * 60_000 ? "갱신 지연 · " : ""}{Number.isFinite(Date.parse(lot.observed_at)) ? new Date(lot.observed_at).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }) : ""}</small>
         </li>;
       })}</ul>

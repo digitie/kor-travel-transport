@@ -1,3 +1,8 @@
+## 현재 상태 — 2026-11-23 공개 parking-radar 비율·관리자 look
+
+- 공개 앱(`frontend/`)만 바뀐다: 토큰·셸·현황 배치. backend·gateway·transport-admin 코드 불변(공유 `parking.css`는 쓰지 않던 규칙만 삭제).
+- 배포(Codex 담당): 공개 parking 웹 이미지(`frontend/Dockerfile`)만.
+- 다음 한 작업: 배포 뒤 실제 화면 320/390/1440에서 도넛 카드·요약·필터 한 줄을 확인한다.
 ## 현재 상태 — 2026-11-23 공항주차장 통계 속도(PARKING-STATS-SPEED-20261123)
 
 - 특수일 패턴 DB 집계, 대시보드 묶음 miss 1회 읽기 + 프로세스 memo, compact 행·시계열 루프 정리. 응답 동일(n150 A/B 31종).

@@ -1,69 +1,100 @@
-/* Hallmark stamp: parking-radar / operational workbench / 2026-08-22 */
+/* parking-radar 공개 앱 전역 스타일. 형태·글자 크기·shadcn 별칭은 transport 관리자
+ * (packages/kor-travel-transport-admin/frontend/app/globals.css)와 같게 둔다. 색 값은 ./tokens.css만 가진다. */
 @import "pretendard/dist/web/variable/pretendardvariable.css";
 @import "tailwindcss";
 @import "@kor-travel/tokens/theme.css";
 @import "@kor-travel/tokens/radix.css";
+@import "@kor-travel/ui/map-controls.css";
 @import "./tokens.css";
 @import "../parking.css";
+@import "./parking-public.css";
 @import "tw-animate-css";
 @source "../../node_modules/@kor-travel/ui/dist";
 
 /* dark: 클래스 토글 없음 — 이 앱은 prefers-color-scheme만 사용한다(next-themes 미도입).
- * shadcn init이 기본으로 넣는 `.dark` 클래스 variant는 여기서 쓰지 않는다 — Tailwind v4
- * 기본값(media query 기반 dark:)을 그대로 둔다. */
+ * Tailwind v4 기본값(media query 기반 dark:)을 그대로 둔다. */
 
 :root {
   color-scheme: light;
-  --bg: var(--color-canvas);
-  --surface: color-mix(in oklab, var(--color-surface) 92%, transparent);
-  --surface-strong: var(--color-surface-raised);
-  --ink: var(--color-ink);
-  --muted: var(--color-surface);
-  --line: var(--color-line);
-  --accent: var(--color-accent-soft);
-  --accent-strong: var(--color-accent-strong);
-  --accent-soft: var(--color-accent-soft);
-  --button-bg: var(--color-button-bg);
-  --button-ink: var(--color-button-ink);
-  --teal: var(--color-teal);
-  --red: var(--color-red);
-  --yellow: var(--color-yellow);
-  --shadow: var(--shadow-card);
+  /* parking.css(관리자와 공유)가 읽는 이름. 관리자는 `.parking-admin`에서 같은 이름을 같은 값으로 둔다. */
+  --bg: var(--surface-page);
+  --surface: var(--card);
+  --surface-strong: var(--card);
+  --ink: var(--text-primary);
+  --line: var(--surface-muted);
+  --accent-strong: var(--brand);
+  --accent-soft: var(--surface-subtle);
+  --button-bg: var(--brand);
+  --button-ink: var(--brand-foreground);
+  --teal: var(--success);
+  --red: var(--destructive);
+  --yellow: var(--warning);
+  --shadow: none;
   --radius: var(--radius-control);
-  --input-bg: var(--color-input);
-  --input-border: var(--color-line);
-  --grid-line: var(--color-grid);
-  --sticky-bg: var(--color-sticky);
-  --sticky-shadow: color-mix(in oklab, var(--color-canvas) 88%, transparent);
+  --input-bg: var(--card);
+  --input-border: var(--control-line);
+  --grid-line: var(--surface-muted);
+  --sticky-bg: var(--surface-subtle);
+  --sticky-shadow: var(--surface-page);
   --font-ui: var(--font-sans);
-  /* shadcn 시맨틱 변수 — 전부 위 tokens.css 파생 값으로 배선한다(shadcn 기본 회색 팔레트
-   * 대신). var(--color-*)를 참조하므로 tokens.css의 다크모드 재정의를 그대로 상속받아
-   * 아래 dark media query에서 다시 선언할 필요가 없다(--muted/--accent 제외 — 의미가
-   * 달라 별도 처리). 단, --primary/--primary-foreground가 참조하는
-   * --color-button-bg/--color-button-ink는 tokens.css의 dark media query에 재정의가
-   * 없어 다크모드에서도 라이트 값 그대로 고정된다 — 이는 tokens.css의 기존 설계(버튼
-   * 색은 테마 불문 고정)를 그대로 반영한 것이지 이 배선의 버그가 아니다. */
-  --background: var(--color-canvas);
-  --foreground: var(--color-ink);
-  --card: var(--color-surface-raised);
-  --card-foreground: var(--color-ink);
-  --popover: var(--color-surface-raised);
-  --popover-foreground: var(--color-ink);
-  --primary: var(--color-button-bg);
-  --primary-foreground: var(--color-button-ink);
-  --secondary: var(--color-ink);
-  --secondary-foreground: var(--color-canvas);
-  --muted-foreground: var(--color-muted);
-  --accent-foreground: var(--color-ink);
-  --destructive: var(--color-red);
-  --border: var(--color-line);
-  --input: var(--color-input);
-  --ring: var(--color-accent);
-  --chart-1: var(--color-teal);
-  --chart-2: var(--color-accent);
-  --chart-3: var(--color-yellow);
-  --chart-4: var(--color-red);
-  --chart-5: var(--color-muted);
+
+  /* shadcn 별칭 → 관리자 어휘(관리자 globals.css :root와 같은 대응) */
+  --background: var(--surface-page);
+  --foreground: var(--text-primary);
+  --card-foreground: var(--text-primary);
+  --popover: var(--card);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--brand);
+  --primary-foreground: var(--brand-foreground);
+  --secondary: var(--surface-subtle);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--surface-subtle);
+  --muted-foreground: var(--text-secondary);
+  --accent: var(--brand-tint);
+  --accent-foreground: var(--brand);
+  --border: var(--surface-muted);
+  --input: var(--control-line);
+  --ring: var(--focus);
+  --destructive-foreground: var(--brand-foreground);
+  --chart-1: var(--brand);
+  --chart-2: var(--text-secondary);
+  --chart-3: var(--control-line);
+  --chart-4: var(--text-tertiary);
+  --chart-5: var(--text-primary);
+
+  /* 공용 @kor-travel/ui 컴포넌트(kt-map-filter 등)를 같은 색에 연결한다(관리자와 같은 대응). */
+  --kt-surface-page: var(--surface-page);
+  --kt-surface-subtle: var(--surface-subtle);
+  --kt-surface-muted: var(--surface-muted);
+  --kt-surface-card: var(--card);
+  --kt-text-primary: var(--text-primary);
+  --kt-text-secondary: var(--text-secondary);
+  --kt-text-tertiary: var(--text-tertiary);
+  --kt-text-strong: var(--text-primary);
+  --kt-icon: var(--text-tertiary);
+  --kt-border: var(--surface-muted);
+  --kt-control-line: var(--control-line);
+  --kt-radius-control: var(--radius-control);
+  --kt-radius-panel: var(--radius-panel);
+  --kt-brand: var(--brand);
+  --kt-brand-hover: var(--brand-hover);
+  --kt-brand-tint: var(--brand-tint);
+  --kt-brand-foreground: var(--brand-foreground);
+  --kt-focus: var(--focus);
+  --kt-success: var(--success);
+  --kt-success-tint: var(--success-tint);
+  --kt-warning: var(--warning);
+  --kt-warning-tint: var(--warning-tint);
+  --kt-info: var(--brand);
+  --kt-info-tint: var(--brand-tint);
+  --kt-destructive: var(--destructive);
+  --kt-destructive-tint: var(--destructive-tint);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+  }
 }
 
 * {
@@ -85,191 +116,6 @@ body {
   background: transparent;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --bg: var(--color-canvas);
-    --surface: color-mix(in oklab, var(--color-surface) 92%, transparent);
-    --surface-strong: var(--color-surface-raised);
-    --ink: var(--color-ink);
-    --line: var(--color-line);
-    --accent-strong: var(--color-accent-strong);
-    --accent-soft: var(--color-accent-soft);
-    --button-bg: var(--color-button-bg);
-    --button-ink: var(--color-button-ink);
-    --teal: var(--color-teal);
-    --red: var(--color-red);
-    --yellow: var(--color-yellow);
-    --shadow: var(--shadow-card);
-    --input-bg: var(--color-input);
-    --input-border: var(--color-line);
-    --grid-line: var(--color-grid);
-    --sticky-bg: var(--color-sticky);
-    --sticky-shadow: color-mix(in oklab, var(--color-canvas) 95%, transparent);
-  }
-}
-
-.backup-panel {
-  margin-top: var(--space-6);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-card);
-  background: var(--surface);
-  box-shadow: var(--shadow);
-}
-
-.backup-panel-trigger {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding: var(--space-4) var(--space-5);
-  border: 0;
-  border-radius: inherit;
-  background: transparent;
-  color: var(--ink);
-  text-align: left;
-  cursor: pointer;
-}
-
-.backup-panel-trigger > span:first-child {
-  display: grid;
-  gap: var(--space-1);
-}
-
-.backup-panel-trigger strong {
-  font-size: 0.95rem;
-}
-
-.backup-panel-trigger small,
-.backup-panel-note,
-.backup-panel-empty,
-.backup-list small {
-  color: var(--muted-foreground);
-  font-size: 0.78rem;
-}
-
-.backup-panel-warning {
-  margin: 0;
-  padding: 0 var(--space-5) var(--space-3);
-  color: var(--red);
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
-.backup-panel-body {
-  display: grid;
-  gap: var(--space-3);
-  padding: 0 var(--space-5) var(--space-5);
-}
-
-.backup-panel-note,
-.backup-panel-message,
-.backup-panel-error,
-.backup-panel-empty {
-  margin: 0;
-}
-
-.backup-panel-message {
-  color: var(--teal);
-  font-size: 0.84rem;
-}
-
-.backup-panel-error {
-  color: var(--red);
-  font-size: 0.84rem;
-}
-
-.backup-panel-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.backup-panel-actions .button {
-  min-height: 40px;
-}
-
-.backup-upload-label {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.backup-upload-label:focus-within {
-  outline: 2px solid var(--accent-strong);
-  outline-offset: 2px;
-  box-shadow: var(--shadow-focus);
-}
-
-.backup-upload-label input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
-
-.backup-list {
-  display: grid;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.backup-list li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-}
-
-.backup-list li > span {
-  display: grid;
-  min-width: 0;
-  gap: var(--space-1);
-}
-
-.backup-list strong {
-  overflow: hidden;
-  font-family: var(--font-mono);
-  font-size: 0.76rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.text-button {
-  flex: 0 0 auto;
-  border: 0;
-  background: transparent;
-  color: var(--accent-strong, var(--color-accent));
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.text-button:disabled {
-  cursor: wait;
-  opacity: 0.6;
-}
-
-@media (max-width: 560px) {
-  .backup-panel-trigger,
-  .backup-panel-body {
-    padding-left: var(--space-3);
-    padding-right: var(--space-3);
-  }
-
-  .backup-list li {
-    align-items: start;
-    flex-direction: column;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -283,14 +129,6 @@ body {
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: var(--font-sans);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -314,28 +152,54 @@ body {
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
-}
+  --color-brand: var(--brand);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-surface-page: var(--surface-page);
+  --color-surface-subtle: var(--surface-subtle);
 
-/* `.dark` 클래스 기반 오버라이드는 두지 않는다 — 이 앱은 클래스 토글이 없고
- * prefers-color-scheme만 쓴다. 위 `:root`의 shadcn 변수들은 전부 var(--color-*)를
- * 참조하므로 tokens.css의 다크모드 재정의를 그대로 상속받아 자동으로 다크 대응된다. */
+  /* 반경은 두 개뿐이다(관리자 design.md §Spacing과 같은 대응). */
+  --radius-xs: var(--radius-control);
+  --radius-sm: var(--radius-control);
+  --radius-md: var(--radius-control);
+  --radius-lg: var(--radius-panel);
+  --radius-xl: var(--radius-panel);
+  --radius-2xl: var(--radius-panel);
+  --radius-3xl: var(--radius-panel);
+  --radius-4xl: var(--radius-panel);
+
+  /* 관리자와 같은 7단 글자 크기 — 12 / 13.5 / 15 / 17 / 20 / 24 / 30 px */
+  --text-2xs: 0.75rem;
+  --text-2xs--line-height: 1.5;
+  --text-xs: 0.84375rem;
+  --text-xs--line-height: 1.5;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.5;
+  --text-base: 0.9375rem;
+  --text-base--line-height: 1.5;
+  --text-md: 1.0625rem;
+  --text-md--line-height: 1.4;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.3;
+  --text-xl: 1.5rem;
+  --text-xl--line-height: 1.25;
+  --text-2xl: 1.875rem;
+  --text-2xl--line-height: 1.2;
+}
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-sm text-foreground antialiased;
   }
   html {
     @apply font-sans;
+  }
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
   }
 }
 

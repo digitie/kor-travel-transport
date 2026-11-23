@@ -1,3 +1,17 @@
+## 2026-11-23 — 공개 parking-radar 비율·관리자 look 정렬
+
+- 소유자 요청("좀 더 비율좋게", transport admin과 같은 look). 대상은 공개 앱 `frontend/`(이름 parking-radar) 전체 셸과 현황 화면.
+  지도는 없고 "레이더/게이지"는 주차장별 잔여 도넛(`ParkingPie`)이다.
+- 이전 결함(n150 고정 응답 스크린샷 320/390/768/1440): 모바일 도넛이 카드 폭 전체(240px 원)라 주차장 4곳만으로 현황이 2,800px,
+  요약 세 칸이 2열에 놓여 한 칸이 비었고, 카드마다 18~42px 퍼지는 그림자·16px 반경·베이지/주황 팔레트가 관리자와 달랐다.
+- 변경: 색·형태 토큰을 관리자 값(transport-palette.css, 반경 6/8px, 컨트롤 36px, 그림자 없음, 7단 글자 크기)으로, 머리는 관리자
+  상단 바 모양(한 줄 제목 + line 탭 + outline 새로고침), 필터는 관리자 /parking과 같은 `@kor-travel/ui/map-controls` 필터 바.
+  배치는 `src/app/parking-public.css`(`.parking-public`)가 갖는다 — 관리자 `.parking-admin`과 대칭이라 관리자 화면은 바뀌지 않는다.
+  도넛 카드는 도넛 6rem + 수치 옆 배치, 요약은 390px 이상 합계 한 줄 + 둘 반씩, 320px 한 열. 모바일 터치 표적 44px.
+- 공유 `parking.css`에서는 더 쓰지 않는 `.control-band`·`.refresh-button` 규칙만 지웠다(관리자는 쓰지 않음). 다크 프로필은 유지
+  (common tokens 다크 값, 브랜드는 관리자 파랑 계열).
+- 시험: `tests/parking-public-palette.test.ts`(공개 토큰 = 관리자 팔레트), `e2e/parking-layout.spec.ts`(320/390/1440 넘침·44px·
+  비율, `E2E_PARKING_LAYOUT=true` 로컬 미리보기에서만).
 ## 2026-11-23 — 관리자 Dagster 콘솔 "재시도" 감사 기록(FUEL-RETRY-20261123 UI)
 
 - 이미 있던 "같은 작업 다시 실행"(실패·취소 run의 같은 job을 기본 설정으로 새로 launch, `kortravel/admin-retry-of`, 멱등 요청 ID,
