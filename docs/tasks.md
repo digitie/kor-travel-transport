@@ -1,3 +1,9 @@
+## 2026-11-24 — 수집 실패 감사 후속
+
+- [ ] **PARKING-ARCHIVE-SCHEDULE-20261124 / 소유자 결정** — `parking_statistics_archive_job` schedule 없음은 첫 단계 범위(의도)로 확인하고
+  사유를 [parking-retention](architecture/parking-retention.md) "자동 실행 보류"에 남겼다. **남은 것(소유자)**: reader 전환과 함께 자동
+  적재(정리 없이)를 켤지·주기·`blocked` 경보 경로, 그리고 원본 정리 자동화 여부.
+
 ## 2026-11-23 — 공개 유가 places 504 후속
 
 - [ ] **FUEL-RETRY-20261123 / P1** — 유가 수집 실패(11-11~23 정기 run 36건 중 15건)의 두 원인 수정과 자동 재시도. 오피넷 CDP

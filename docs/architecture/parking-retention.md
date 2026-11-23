@@ -68,6 +68,23 @@ metadata는 이 scalar 필드만 허용하며 원문이나 provider 비밀값을
 
 `parking_statistics_archive_job`은 provider 호출 없는 수동 Dagster job이다. 자동 schedule은 아직 없다. 공항 수집과 같은 PostgreSQL transaction advisory lock을 즉시 시도하고 경합 시 `busy`/변경0을 반환한다. 48시간보다 오래된 **완결 버킷**만 후보로 잡고, 한 실행은 최대 하루 범위·기본 144개 공항 버킷으로 제한한다. `observed_at`이 오래돼도 최근 48시간에 `collected_at`이 들어온 표본이 있으면 그 버킷은 보류한다. 현재 상태/최신값을 억지로 변경하지 않는다.
 
+### 자동 실행 보류 (2026-11-24 확인)
+
+수집 실패 감사(2026-11-23, Map 저장소 `docs/reports/2026-11-23-collection-failure-audit.md` §2.2)가
+"`parking_statistics_archive_job`이 코드에 있으나 40일간 실행 0"을 지적했다. 이는 누락이 아니라 이 문서의 첫 단계 범위다.
+schedule을 추가하지 않은 근거:
+
+- 첫 단계는 영구 통계 저장·검산·**수동** backfill까지다(이 문서 머리말). 자동 schedule·원본 삭제·운영 backfill은 하지 않는다.
+- 영구 통계를 읽는 화면·API가 아직 없다(후속 수용 목록 1~3). 지금 자동 적재해도 사용자에게 보이는 결과가 없고,
+  원본은 48시간 정리가 막혀 있어(`prune_parking_raw`는 항상 예외) 아무것도 잃지 않는다. 원본이 남아 있는 동안은 나중에
+  수동 backfill로 같은 통계를 만들 수 있다.
+- 자동 실행을 켜면 `blocked`(검산 보류) 실행이 매 tick 실패 run으로 쌓일 수 있는데, 그 보류 상태를 운영자가 보고 푸는 절차
+  (후속 수용 목록 4)가 아직 없다.
+
+자동 실행(적재만, 정리 없이)을 켜는 시점은 reader 전환(후속 수용 목록 1~3)과 함께 소유자가 정한다. 켤 때는
+`default_status`와 주기(예: 시간당 1회, 한 실행 하루·144 버킷 상한), `blocked` 실행의 경보 경로를 같은 PR에서 정한다.
+원본 정리(prune)를 자동으로 켜는 결정은 그와 별개의 소유자 결정이다.
+
 신규 행 탐색은 append-only 수집의 `max_snapshot_id`와 UTC `date_bin`의 PK 등가 조회를 사용한다. **이 탐색은 전체 과거 검산이 아니다.** 새 id가 없으면 `no_new_rows`/`coverage_status=not_audited`를 반환하고 전체 coverage 완료나 삭제 가능 상태로 표시하지 않는다. 같은 id의 값·JSON 수정이나 원본 누락은 이 탐색으로 발견하지 못한다. 실제 선택된 하루 범위에서 만난 기존 버킷만 원본 지문·행 수·통계를 다시 계산해, 다르면 `ParkingArchiveConflict`로 전체 transaction을 rollback한다. 신규 버킷 발행은 `batch_complete`/`coverage_status=partial`이며 전체 수용이 아니다. 삭제 전에는 후보 버킷마다 `verify_bucket`로 원본 전체·직전 상태를 다시 검산해야 한다.
 
 같은 과거 관측을 원본 삭제 후 재수신하면 unique 원본 행이 다시 생길 수 있다. 남은 행으로 기존 통계를 재생성하거나 append하면 손실·이중 가산이므로 자동 교체를 거부한다. 첫 단계의 검증에는 재수신·같은 id 변조·원본 삭제를 전용 테스트 DB에서 모사하며, `no_new_rows`가 검산 완료를 뜻하지 않는지도 확인한다. 후속 정리는 immutable sealed bucket과 운영 보류 상태를 존중해야 한다.
