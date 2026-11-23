@@ -261,11 +261,15 @@ function PublicFuelPriceButton({ state, lastRefreshedAt, onRefresh, refreshing =
   state: PublicPriceState; lastRefreshedAt?: string | null; onRefresh?: () => void; refreshing?: boolean; blocked?: PublicFuelRefreshBlock;
 }) {
   const [tip, setTip] = useState(false);
+  // 눌러서 연 이유 툴팁은 고정한다(toggletip): 지도·요약 재조회의 스크롤·재렌더가 Radix 툴팁을 곧바로 닫아
+  // 눌러도 이유가 안 보이는 경우가 있었다(n150 e2e 10회 중 4회). Escape·바깥 누름·다시 누름으로만 닫는다.
+  const pinned = useRef(false);
+  const closePinned = () => { pinned.current = false; setTip(false); };
   const view = priceButtonView(state, Boolean(onRefresh), blocked, refreshing, lastRefreshedAt);
   const { Icon, enabled } = view;
   return <>
   <TooltipProvider delayDuration={300}>
-    <Tooltip open={tip} onOpenChange={setTip}>
+    <Tooltip open={tip} onOpenChange={next => { if (next || !pinned.current) setTip(next); }}>
       <TooltipTrigger asChild>
         <Button type="button" variant="outline" size="icon" className="public-fuel-price-button" data-stale={view.stale || undefined} data-state-kind={state}
           aria-label={view.label} aria-disabled={view.ariaDisabled || undefined} loading={refreshing}
@@ -274,12 +278,15 @@ function PublicFuelPriceButton({ state, lastRefreshedAt, onRefresh, refreshing =
             if (enabled) { onRefresh?.(); return; }
             // Radix 툴팁은 트리거를 누르면 닫는다. 누를 수 없는 단추에서는 그 기본 동작을 막고 이유 툴팁을 연다(터치·키보드).
             event.preventDefault();
+            if (pinned.current) { closePinned(); return; }
+            pinned.current = true;
             setTip(true);
           }}>
           <Icon aria-hidden="true" size={18} className={view.iconClass} />
         </Button>
       </TooltipTrigger>
-      <TooltipContent side="bottom" className="public-fuel-price-tip">{view.tipText}</TooltipContent>
+      <TooltipContent side="bottom" className="public-fuel-price-tip"
+        onEscapeKeyDown={closePinned} onPointerDownOutside={closePinned}>{view.tipText}</TooltipContent>
     </Tooltip>
   </TooltipProvider>
   {/* 예전 "오래됨"(role=status)처럼 가격이 오래되면 화면 읽기 프로그램에 알린다. 늘 붙여 두고 글자만 바꾼다. */}

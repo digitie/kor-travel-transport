@@ -295,7 +295,13 @@ test("390px 필터를 켠 동안 오래된 가격 아이콘은 비활성이고 �
   await expect(page.getByRole("tooltip")).toContainText(expected);
   await expect(page.getByRole("tooltip")).toContainText("마지막 가격 갱신");
   expect(refreshes).toHaveLength(0);
+  // 눌러서 연 이유 툴팁은 고정된다: 요약·지도 쪽 스크롤(재조회 중 흔함)로 닫히지 않고, Escape로 닫힌다.
+  await summaryOf(page).evaluate(node => node.dispatchEvent(new Event("scroll", { bubbles: true })));
+  await page.evaluate(() => window.dispatchEvent(new Event("scroll")));
+  await expect(page.getByRole("tooltip")).toContainText(expected);
   await shot(page, "ui2-price-stale-filters-390.png", testInfo);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
 });
 
 for (const width of [320, 390, 1440] as const) for (const state of ["failed", "pending"] as const) {
