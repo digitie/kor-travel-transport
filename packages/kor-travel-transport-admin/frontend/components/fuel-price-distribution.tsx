@@ -82,7 +82,11 @@ export function FuelRegionStats({ region, product, load, filterQuery, onClear, f
       </li> : null}
     </ul>
     <FuelDistributionDialog target={target} onClose={() => setTarget(null)} initialProduct={product} load={load} returnFocus={chip} filterQuery={filterQuery}
-      onRelease={region.selected && onClear ? () => { onClear(); setTarget(null); } : undefined} />
+      onRelease={region.selected && onClear ? () => {
+        onClear(); setTarget(null);
+        // 해제 뒤 보일 자동 지역이 없으면 칩·대화상자가 함께 사라진다. X 버튼과 같이 지역 이동 버튼으로 초점을 옮긴다.
+        requestAnimationFrame(() => { if (!chip.current?.isConnected) focusFallback?.current?.focus(); });
+      } : undefined} />
   </div>;
 }
 
@@ -100,7 +104,7 @@ export function FuelDistributionDialog({ target, onClose, initialProduct, load, 
       <FuelDistributionBody key={JSON.stringify(target)} target={target} initialProduct={initialProduct} load={load} productChoices={productChoices} filterQuery={filterQuery} />
       <div className="fuel-distribution-actions">
         {onRelease ? <Button type="button" variant="ghost" className="fuel-distribution-release" onClick={onRelease}
-          aria-label="지역 선택 해제하고 지도 중심 지역으로">해제</Button> : null}
+          aria-label="해제 — 지도 중심 지역으로">해제</Button> : null}
         <DialogClose asChild><Button type="button" variant="outline" className="fuel-distribution-close">닫기</Button></DialogClose>
       </div>
     </DialogContent> : null}

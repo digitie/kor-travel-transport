@@ -17,7 +17,7 @@ from collections.abc import AsyncIterator, Callable, Sequence
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, or_, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.time_utils import serialize_utc
@@ -356,6 +356,21 @@ async def price_distribution(session: AsyncSession, *, product_code: str, sido_v
     return response
 
 
+def product_grades_statement(generated_at, sido_value: str, sigungu_value: str, products: list[str],
+                             filters: FuelStationFilters | None):
+    """한 시군구의 여러 유종 가격. 회귀 시험이 이 문장의 계획을 검사한다.
+
+    point 쪽도 이 시군구 주유소 키로 좁혀 기본키 앞부분(source, station_key, product_code)으로 찾는다.
+    주유소 쪽 조건만 두면 다른 유종의 전국 point를 읽은 뒤 조인했다(적대 리뷰).
+    """
+    p, s = FuelStatisticsPoint, FuelStation
+    local_keys = select(cast(s.id, String)).where(
+        s.source == OPINET, s.sido_value == sido_value, s.sigungu_value == sigungu_value)
+    return _published_points(generated_at, None, filters).with_only_columns(p.product_code, p.price).where(
+        p.product_code.in_(products), p.station_key.in_(local_keys),
+        s.sido_value == sido_value, s.sigungu_value == sigungu_value)
+
+
 async def _product_grades(session: AsyncSession, generated_at, station: FuelStation, current_rows, product_code: str,
                           selected_prices: list[float], label: str, filters: FuelStationFilters | None) -> list[dict]:
     """주유소가 파는 유종마다 같은 시군구 안 위치(등급). 요청 유종은 이미 읽은 시군구 가격을 쓰고, 나머지 유종은
@@ -364,11 +379,8 @@ async def _product_grades(session: AsyncSession, generated_at, station: FuelStat
     others = sorted(code for code in own if code != product_code)
     by_product: dict[str, list[float]] = {product_code: selected_prices} if product_code in own else {}
     if others:
-        p, s = FuelStatisticsPoint, FuelStation
-        rows = (await session.execute(_published_points(generated_at, None, filters).with_only_columns(
-            p.product_code, p.price,
-        ).where(p.product_code.in_(others), s.sido_value == station.sido_value,
-                s.sigungu_value == station.sigungu_value))).all()
+        rows = (await session.execute(product_grades_statement(
+            generated_at, station.sido_value, station.sigungu_value, others, filters))).all()
         for row in rows:
             by_product.setdefault(row.product_code, []).append(float(row.price))
     grades = []

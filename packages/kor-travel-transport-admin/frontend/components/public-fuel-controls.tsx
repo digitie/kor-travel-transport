@@ -113,7 +113,7 @@ function FuelRegionPickerBody({ load, current, center, onCancel, onConfirm, onRe
     <div className="fuel-region-actions">
       <Button type="button" variant="ghost" onClick={onCancel}>취소</Button>
       {onRelease ? <Button type="button" variant="outline" className="fuel-region-release" onClick={onRelease}
-        aria-label="지역 선택 해제하고 지도 중심 지역으로">해제</Button> : null}
+        aria-label="해제 — 지도 중심 지역으로">해제</Button> : null}
       <Button type="button" disabled={!sigunguRow} onClick={() => sidoRow && sigunguRow && label && onConfirm(sigunguRow.bounds,
         { sido_value: sidoRow.sido_value, sigungu_value: sigunguRow.sigungu_value, label })}
         aria-label={label ? `${label} 지역으로 이동` : undefined}>{label ?? "구/군/시 선택"}</Button>

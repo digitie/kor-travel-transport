@@ -279,6 +279,36 @@ test.each([
   } finally { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); }
 });
 
+test.each([
+  { pending: true, failed: false, name: "가격 상태 확인 중 · 업데이트할 수 없음: 가격 상태를 확인하는 중입니다", kind: "checking" },
+  { pending: false, failed: true, name: "가격 상태 확인 못 함 · 업데이트할 수 없음: 가격 상태를 확인하지 못했습니다", kind: "unknown" },
+])("가격 아이콘: 신선도를 아직 모르면(pending=$pending, failed=$failed) '최신'이라 하지 않는다", ({ pending, failed, name, kind }) => {
+  const html = renderToStaticMarkup(<FuelViewportSummary items={[]} pending={pending} failed={failed}
+    publicFuel={{ products: [], onProductsChange: () => {}, refreshBlocked: pending ? "loading" : "failed" }} />);
+  const container = document.createElement("div"); container.innerHTML = html;
+  const button = container.querySelector(".public-fuel-price-button")!;
+  expect(button.getAttribute("aria-label")).toBe(name);
+  expect(button.getAttribute("data-state-kind")).toBe(kind);
+  expect(button.hasAttribute("data-stale")).toBe(false);
+  expect(html).not.toContain("가격 최신");
+  // 비활성 모양이 아니다: aria-disabled 없음(아이콘 흐림·not-allowed 없음), 회색 시계 대신 도는 아이콘·물음표.
+  expect(button.getAttribute("aria-disabled")).toBeNull();
+  expect(button.getAttribute("aria-busy")).toBe(pending ? "true" : null);
+  expect(button.querySelector("svg")?.getAttribute("class")).toMatch(pending ? /lucide-loader/ : /lucide-circle-(help|question)/);
+  expect(button.querySelector("svg")?.getAttribute("class")).not.toMatch(/lucide-clock(\s|$)/);
+});
+
+test("가격 아이콘: 마지막으로 받은 신선도(priceFreshness)를 재조회 중에도 유지하고, 오래되면 status로 알린다", () => {
+  const html = renderToStaticMarkup(<FuelViewportSummary items={[]} pending
+    publicFuel={{ products: [], onProductsChange: () => {}, priceFreshness: { stale: true, lastRefreshedAt: "2026-10-20T03:10:00Z" }, refreshBlocked: "loading" }} />);
+  const container = document.createElement("div"); container.innerHTML = html;
+  const button = container.querySelector(".public-fuel-price-button")!;
+  expect(button.getAttribute("data-stale")).toBe("true");
+  expect(button.getAttribute("aria-label")).toBe("가격 오래됨 · 업데이트할 수 없음: 지도 범위 가격을 불러오는 중입니다. 잠시 뒤 다시 누르세요");
+  expect(container.querySelector(".public-fuel-price-status")?.getAttribute("role")).toBe("status");
+  expect(container.querySelector(".public-fuel-price-status")?.textContent).toBe("가격이 오래됐습니다");
+});
+
 test("갱신 지연과 가격 읽기 모델 갱신 시각을 통계 세대 기준과 구분한다", async () => {
   await withSummaryInfo({ items: [metrics], pending: false, pricesStale: true, pricesLastRefreshedAt: "2026-10-20T03:10:00Z" }, (summary, popup) => {
     expect(summary.querySelector(".error")?.textContent).toContain("갱신 지연 26.10.20 12:10 KST");

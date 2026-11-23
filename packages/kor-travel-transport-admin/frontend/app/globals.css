@@ -979,6 +979,12 @@ html:has([data-slot="map-workspace"][data-expanded="true"]) { overflow: hidden; 
 .public-fuel-price-button { width: 44px; min-width: 44px; height: 44px; color: var(--text-secondary); }
 .public-fuel-price-button[data-stale] { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--control-line)); }
 .public-fuel-price-button[aria-disabled="true"] { cursor: not-allowed; }
+/* 신선도를 모를 때: 비활성처럼 흐리지 않는 중립 모양(조회 중은 도는 아이콘, 실패는 물음표). */
+.public-fuel-price-button[data-state-kind="checking"] { cursor: progress; color: var(--text-primary); }
+.public-fuel-price-button[data-state-kind="unknown"] { cursor: help; color: var(--text-primary); }
+.public-fuel-price-spin { animation: public-fuel-price-spin 1s linear infinite; }
+@keyframes public-fuel-price-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .public-fuel-price-spin { animation: none; } }
 .public-fuel-price-tip { max-width: min(18rem, calc(100vw - 24px)); }
 .public-fuel-summary-body { max-height: min(31dvh, 16rem); overflow-y: auto; overscroll-behavior: contain; }
 /* 장소 정보(평균·최저)는 유종마다 한 줄: 이름·주유소 수 | 평균 | 최저(세로 높이를 줄인다). */

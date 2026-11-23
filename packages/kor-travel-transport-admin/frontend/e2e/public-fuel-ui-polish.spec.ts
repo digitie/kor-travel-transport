@@ -52,8 +52,8 @@ test("4a fuel-web은 /favicon.ico로 주유기 아이콘을 내고 페이지가 
   await page.goto("/");
   await expect(summaryOf(page)).toBeVisible();
   await expect(page.locator('link[rel="icon"]').first()).toHaveAttribute("href", /\/favicon\.ico/);
-  // 페이지와 함께 나간 요청 중 /favicon.ico 404가 없다.
-  await page.waitForTimeout(500);
+  // 페이지와 함께 나간 요청 중 /favicon.ico 404가 없다(문서 load까지).
+  await page.waitForLoadState("load");
   expect(notFound).not.toContain("/favicon.ico");
   // 받은 바이트가 브라우저에서 이미지로 해석되는지 16·32·48·128px로 그려 보고 저장한다
   // (headless Chromium은 image/x-icon 주소로 직접 이동하면 내려받기로 처리해 중단한다).
@@ -128,7 +128,7 @@ test("4d 필터 브랜드의 '기타'(로고 없음)는 이름이 한 번만 나
     const name = (await row.locator(".fuel-filter-brand-mark + span").innerText()).split(" · ")[0].trim();
     expect((await row.evaluate(node => node.textContent ?? "")).split(name).length - 1, name).toBe(1);
   }
-  await page.waitForTimeout(200);
+  await menu.evaluate(node => Promise.all(node.getAnimations({ subtree: true }).map(animation => animation.finished)));
   await menu.screenshot({ path: testInfo.outputPath("ui-4d-etc-row-after.png") });
   if (process.env.E2E_SCREENSHOT_DIR) await menu.screenshot({ path: `${process.env.E2E_SCREENSHOT_DIR}/ui-4d-etc-row-after.png` });
 });
@@ -140,7 +140,9 @@ test("4e 지역 이동 직후 새 응답 전에는 이전 zoom의 시/도 카드
     const zoom = zoomOf(route.request());
     if (zoom < 8) return route.fulfill({ json: fuelPayload({ clustered: true, clusters: [], fuel_regions: sidoCards, total: 60 }) });
     await held;
-    return route.fulfill({ json: fuelPayload() });
+    // 새 화면(상세 zoom)의 응답: 화면 안 시군구 카드 하나.
+    return route.fulfill({ json: fuelPayload({ clustered: true, clusters: [], total: 20, fuel_regions: [{ scope: "sigungu", region_key: "opinet:11:종로구",
+      label: "서울 종로구", product_code: "B027", average_price: 1690, station_count: 20, longitude: 126.985, latitude: 37.585 }] }) });
   });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
@@ -170,6 +172,9 @@ test("4e 지역 이동 직후 새 응답 전에는 이전 zoom의 시/도 카드
   expect(reappeared).toBe(false);
   await shot(page, "ui-4e-region-move-1-pending-after.png", testInfo);
   release();
-  await expect(markers).toHaveCount(0);
+  // 새 응답의 카드는 그대로 나타난다(지운 것은 옛 단위의 카드뿐).
+  await expect(markers).toHaveCount(1);
+  await expect(markers.locator(".fuel-region-label")).toContainText("서울 종로구");
+  await expect(markers.locator(".fuel-region-label")).toBeVisible();
   await shot(page, "ui-4e-region-move-2-settled-after.png", testInfo);
 });

@@ -154,8 +154,9 @@ for (const width of [320, 390, 1440]) {
     await expect(page.getByRole("tooltip")).toContainText("가격이 최신이라 업데이트할 필요가 없습니다");
     await expect(page.getByRole("tooltip")).toContainText("마지막 가격 갱신 26.11.22 07:00 KST");
     expect(refreshes).toHaveLength(0);
-    // 툴팁은 열린 채 화면에 보인다(누른 뒤 바로 닫히지 않는다).
-    await page.waitForTimeout(400);
+    // 툴팁은 열린 채 화면에 보인다(누른 뒤 바로 닫히지 않는다: 두 프레임 뒤에도 보인다).
+    await expect(page.locator('[data-slot="tooltip-content"]')).toBeVisible();
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await expect(page.locator('[data-slot="tooltip-content"]')).toBeVisible();
     await shot(page, `ui2-price-fresh-tip-${width}.png`, testInfo);
     // 마우스로 눌러도 업데이트하지 않는다(aria-disabled라 Playwright 활성 검사를 건너뛰고 누른다).
@@ -223,9 +224,13 @@ for (const width of [320, 390, 1440]) {
     const pickerRelease = picker.getByRole("button", { name: /해제/ });
     await expect(pickerRelease).toBeVisible();
     const confirm = picker.getByRole("button", { name: "서울 종로구 지역으로 이동" });
-    const [releaseBox, confirmBox] = [(await pickerRelease.boundingBox())!, (await confirm.boundingBox())!];
+    // 확인 버튼 바로 앞(같은 묶음, DOM 순서로 이웃)이고 화면에서도 확인 버튼 옆(같은 줄 왼쪽, 또는 줄이 바뀌면 바로 위 줄 끝)이다.
     expect(await picker.locator(".fuel-region-actions > button").evaluateAll(nodes => nodes.map(node => node.textContent))).toEqual(["취소", "해제", "서울 종로구"]);
-    if (Math.abs(releaseBox.y - confirmBox.y) <= 2) expect(confirmBox.x - (releaseBox.x + releaseBox.width)).toBeLessThanOrEqual(12);
+    expect(await pickerRelease.evaluate(node => node.nextElementSibling?.textContent)).toBe("서울 종로구");
+    const [releaseBox, confirmBox] = [(await pickerRelease.boundingBox())!, (await confirm.boundingBox())!];
+    const sameRow = Math.abs(releaseBox.y - confirmBox.y) <= 2;
+    expect(sameRow ? confirmBox.x - (releaseBox.x + releaseBox.width) : confirmBox.y - (releaseBox.y + releaseBox.height)).toBeLessThanOrEqual(12);
+    expect(sameRow ? releaseBox.x < confirmBox.x : releaseBox.y < confirmBox.y).toBe(true);
     await picker.evaluate(node => Promise.all(node.getAnimations({ subtree: true }).map(animation => animation.finished)));
     await shot(page, `ui2-picker-release-${width}.png`, testInfo);
     await pickerRelease.click();
@@ -283,12 +288,92 @@ test("390px 필터를 켠 동안 오래된 가격 아이콘은 비활성이고 �
   await expect(button).toHaveAttribute("aria-disabled", "true");
   const expected = process.env.E2E_FUEL_REFRESH === "true" ? "필터를 켠 동안은 지도 범위 업데이트를 할 수 없습니다" : "이 화면에서는 유가 업데이트를 쓸 수 없습니다";
   await expect(button).toHaveAccessibleName(new RegExp(`가격 오래됨 · 업데이트할 수 없음: ${expected}`));
-  // 조회가 끝나 요약 높이가 바뀌는 동안(요약 영역 스크롤)에는 Radix가 툴팁을 닫는다. 값이 그려진 뒤에 누른다.
+  // 조회가 끝나 요약 높이가 바뀌는 동안(요약 영역 스크롤)에는 Radix가 툴팁을 닫는다. 조회가 끝나 값이 그려진 뒤에 누른다.
+  await expect(summaryOf(page)).toHaveAttribute("aria-busy", "false");
   await expect(summaryOf(page)).toContainText("1,760");
-  await page.waitForTimeout(500);
-  await button.click({ force: true });
-  await expect(page.getByRole("tooltip")).toContainText(expected);
+  await expect(summaryOf(page).getByRole("group", { name: "지도 중심 지역 가격 통계" })).toBeVisible();
+  // aria-disabled 단추라 force 클릭(좌표)이다. 머리 줄이 자리를 잡는 순간에 누르면 빗나갈 수 있어, 툴팁이 없을 때만 다시 누른다
+  // (열린 툴팁은 고정이라 다시 누르면 닫힌다).
+  await expect(async () => {
+    if (!(await page.getByRole("tooltip").isVisible())) await button.click({ force: true });
+    await expect(page.getByRole("tooltip")).toContainText(expected, { timeout: 1500 });
+  }).toPass({ timeout: 10_000 });
   await expect(page.getByRole("tooltip")).toContainText("마지막 가격 갱신");
   expect(refreshes).toHaveLength(0);
+  // 눌러서 연 이유 툴팁은 고정된다: 요약·지도 쪽 스크롤(재조회 중 흔함)로 닫히지 않고, Escape로 닫힌다.
+  await summaryOf(page).evaluate(node => node.dispatchEvent(new Event("scroll", { bubbles: true })));
+  await page.evaluate(() => window.dispatchEvent(new Event("scroll")));
+  await expect(page.getByRole("tooltip")).toContainText(expected);
   await shot(page, "ui2-price-stale-filters-390.png", testInfo);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+});
+
+for (const width of [320, 390, 1440] as const) for (const state of ["failed", "pending"] as const) {
+  test(`${width}px 가격 상태를 아직 모르면(places ${state === "failed" ? "실패" : "대기"}) 가격 아이콘은 회색 '최신'·비활성 모양이 아니다`, async ({ page }, testInfo) => {
+    await mockFuel(page);
+    // 나중에 등록한 route가 먼저 처리된다.
+    await page.route("**/api/public/fuel/places?*", (route: Route) => state === "failed"
+      ? route.fulfill({ status: 503, json: { detail: "unavailable" } })
+      : new Promise<void>(() => { /* 응답하지 않는다(대기) */ }));
+    await page.setViewportSize(at(width));
+    await page.goto(STATION_VIEW);
+    const button = priceButton(page);
+    const expected = state === "failed"
+      ? "가격 상태 확인 못 함 · 업데이트할 수 없음: 가격 상태를 확인하지 못했습니다"
+      : "가격 상태 확인 중 · 업데이트할 수 없음: 가격 상태를 확인하는 중입니다";
+    await expect(button).toHaveAccessibleName(expected);
+    await expect(button).not.toHaveAccessibleName(/가격 최신/);
+    await expect(button).toHaveAttribute("data-state-kind", state === "failed" ? "unknown" : "checking");
+    // 비활성 모양(aria-disabled → 아이콘 55% 흐림, not-allowed 커서)과 회색 시계를 쓰지 않는다.
+    await expect(button).not.toHaveAttribute("aria-disabled", "true");
+    await expect(button).not.toHaveAttribute("data-stale");
+    const icon = button.locator("svg").first();
+    await expect(icon).toHaveClass(state === "failed" ? /lucide-circle-question-mark|lucide-circle-help/ : /lucide-loader-circle|lucide-loader/);
+    await expect(icon).not.toHaveClass(/lucide-clock(\s|$)/);
+    const look = await button.evaluate(node => ({
+      cursor: getComputedStyle(node).cursor,
+      opacity: Number(getComputedStyle(node.querySelector("svg")!).opacity),
+      busy: node.getAttribute("aria-busy"),
+    }));
+    expect(look.cursor).toBe(state === "failed" ? "help" : "progress");
+    expect(look.opacity).toBe(1);
+    expect(look.busy).toBe(state === "pending" ? "true" : null);
+    // 누르면 이유 툴팁만 연다(업데이트 요청 없음).
+    await button.click();
+    await expect(page.getByRole("tooltip")).toContainText(state === "failed" ? "확인하지 못했습니다" : "확인하는 중입니다");
+    await shot(page, `ui2-price-${state === "failed" ? "unknown" : "checking"}-${width}.png`, testInfo);
+  });
+}
+
+test("390px 오래된 가격에서 유종을 바꿔 재조회하는 동안에도 아이콘은 빨강(오래됨)을 유지하고 이유는 '불러오는 중'", async ({ page }) => {
+  await mockFuel(page, { stale: true, stations: true });
+  await page.setViewportSize(at(390));
+  await page.goto(STATION_VIEW);
+  const button = priceButton(page);
+  await expect(button).toHaveAttribute("data-stale", "true");
+  await expect(page.locator(".public-fuel-price-status")).toHaveText("가격이 오래됐습니다");
+  // 경유로 바꾼 재조회는 응답을 붙잡아 둔다.
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/api/public/fuel/places?*", async (route: Route) => {
+    if (new URL(route.request().url()).searchParams.get("product_codes") !== "D047") return route.fallback();
+    await held;
+    return route.fallback();
+  });
+  const states: (string | null)[] = [];
+  await page.exposeFunction("recordPriceState", (value: string | null) => { states.push(value); });
+  await button.evaluate(node => new MutationObserver(() => (window as unknown as { recordPriceState: (value: string | null) => void })
+    .recordPriceState(node.getAttribute("data-state-kind"))).observe(node, { attributes: true, attributeFilter: ["data-state-kind"] }));
+  await summaryOf(page).getByRole("button", { name: /^유종·필터/ }).click();
+  await page.getByRole("dialog", { name: "유종·필터" }).getByRole("checkbox", { name: "경유", exact: true }).check();
+  await page.keyboard.press("Escape");
+  await expect(summaryOf(page)).toHaveAttribute("aria-busy", "true");
+  await expect(button).toHaveAttribute("data-stale", "true");
+  await expect(button).toHaveAccessibleName(process.env.E2E_FUEL_REFRESH === "true" ? /지도 범위 가격을 불러오는 중입니다/ : /이 화면에서는 유가 업데이트를 쓸 수 없습니다/);
+  release();
+  await expect(summaryOf(page)).toHaveAttribute("aria-busy", "false");
+  await expect(button).toHaveAttribute("data-stale", "true");
+  // 재조회 동안 한 번도 회색(최신)·확인 중으로 바뀌지 않았다.
+  expect(states.filter(value => value !== "stale")).toEqual([]);
 });
