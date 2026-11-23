@@ -45,10 +45,16 @@ for (const width of [320, 390, 1440]) {
     await expect(summary.locator('dl[aria-label="휘발유"]')).toContainText("1,700");
     await expect(summary.locator('dl[aria-label="경유"]')).toContainText("1,550");
     // 지역 아이콘과 유종·필터는 맨 위 한 줄에 나란히 놓이고 서로 겹치지 않는다.
+    // 첫 응답 뒤 지역 칩·가격 아이콘이 자리를 잡는 동안 머리 줄이 잠깐 다시 배치된다. 자리 잡은 배치를 잰다
+    // (n150 repeat-each=10에서 측정 시점에 따라 34px 어긋남이 한 번 잡혔다).
+    await expect.poll(async () => {
+      const combo = (await summary.locator(".public-fuel-summary-products").boundingBox())!;
+      const region = (await summary.getByRole("button", { name: "지역 이동" }).boundingBox())!;
+      return Math.abs((region.y + region.height / 2) - (combo.y + combo.height / 2));
+    }).toBeLessThanOrEqual(12);
     const comboBox = (await summary.locator(".public-fuel-summary-products").boundingBox())!;
     const regionBox = (await summary.getByRole("button", { name: "지역 이동" }).boundingBox())!;
     expect(regionBox.height).toBeLessThanOrEqual(48);
-    expect(Math.abs((regionBox.y + regionBox.height / 2) - (comboBox.y + comboBox.height / 2))).toBeLessThanOrEqual(12);
     expect(regionBox.x + regionBox.width).toBeLessThanOrEqual(comboBox.x);
     expect(await singleLine(page, ".public-fuel-filter-trigger-value")).toEqual([true]);
     const summaryBox = (await summary.boundingBox())!;

@@ -291,8 +291,13 @@ test("390px 필터를 켠 동안 오래된 가격 아이콘은 비활성이고 �
   // 조회가 끝나 요약 높이가 바뀌는 동안(요약 영역 스크롤)에는 Radix가 툴팁을 닫는다. 조회가 끝나 값이 그려진 뒤에 누른다.
   await expect(summaryOf(page)).toHaveAttribute("aria-busy", "false");
   await expect(summaryOf(page)).toContainText("1,760");
-  await button.click({ force: true });
-  await expect(page.getByRole("tooltip")).toContainText(expected);
+  await expect(summaryOf(page).getByRole("group", { name: "지도 중심 지역 가격 통계" })).toBeVisible();
+  // aria-disabled 단추라 force 클릭(좌표)이다. 머리 줄이 자리를 잡는 순간에 누르면 빗나갈 수 있어, 툴팁이 없을 때만 다시 누른다
+  // (열린 툴팁은 고정이라 다시 누르면 닫힌다).
+  await expect(async () => {
+    if (!(await page.getByRole("tooltip").isVisible())) await button.click({ force: true });
+    await expect(page.getByRole("tooltip")).toContainText(expected, { timeout: 1500 });
+  }).toPass({ timeout: 10_000 });
   await expect(page.getByRole("tooltip")).toContainText("마지막 가격 갱신");
   expect(refreshes).toHaveLength(0);
   // 눌러서 연 이유 툴팁은 고정된다: 요약·지도 쪽 스크롤(재조회 중 흔함)로 닫히지 않고, Escape로 닫힌다.
