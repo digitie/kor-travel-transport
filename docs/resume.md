@@ -1,3 +1,11 @@
+## 현재 상태 — 2026-11-23 공개 유가 places 504·가격 분포 지연 수정(PR #247)
+
+- 운영 읽기 전용 점검 결함 1·2·3: 새 공개 세대 1행 추정 + 문자열 id 조인 → 정수 기본키 조인, InitPlan 세대(`fixed_generation`),
+  0047 `(source, generated_at, product_code)` 인덱스(CONCURRENTLY), 분포 세대 가격 색인. 시도 화면 이름 통일.
+- 배포(Codex 담당): backend(entrypoint가 0047 적용, 인덱스 빌드 동안 기동 대기) → fuel-web(UI PR). gateway·transport-admin 불변.
+  롤백은 `alembic downgrade 0046_fuel_manual_refresh` 후 이전 이미지.
+- 다음 한 작업: 배포 뒤 504였던 URL을 3회 다시 재고(각 ~1초 이내), UI PR(결함 4 + 소유자 추가 요청) 머지.
+
 ## 현재 상태 — 2026-11-22 공개 유가 지역 칩 = 지도 중심 시군구(PR4)
 
 - PR243~245 머지 뒤 소유자 후속: 지역 칩 기본값을 지도 중심 시군구(가장 가까운 오피넷 주유소 근사, places opt-in
