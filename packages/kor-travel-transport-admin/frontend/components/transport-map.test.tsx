@@ -142,7 +142,7 @@ test("교통 지도는 일반 주차장 필터를 요청하고 좌표 없는 주
 });
 
 beforeEach(() => {
-  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true, ResizeObserver: class { observe() {} disconnect() {} } });
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true, ResizeObserver: class { observe() {} unobserve() {} disconnect() {} } });
   vi.stubGlobal("fetch", vi.fn());
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
   Object.assign(mapState, { longitude: 128.53, latitude: 37.6, zoom: 12.5 });

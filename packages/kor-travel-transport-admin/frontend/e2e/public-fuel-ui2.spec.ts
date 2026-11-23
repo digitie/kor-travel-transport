@@ -182,7 +182,7 @@ for (const width of [320, 390, 1440]) {
       return [style.backgroundColor, style.color, style.borderTopColor];
     });
     expect(selectedBackground).not.toBe(autoBackground);
-    const [red, green, blue] = selectedColor.match(/[\d.]+/g)!.map(Number);
+    const [red, , blue] = selectedColor.match(/[\d.]+/g)!.map(Number);
     expect(blue, `파란 글자 ${selectedColor}`).toBeGreaterThan(red + 40);
     expect(selectedBorder).toBe(selectedColor);
     await shot(page, `ui2-summary-selected-chip-${width}.png`, testInfo);
