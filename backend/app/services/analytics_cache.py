@@ -2,17 +2,18 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, NamedTuple
 
-from sqlalchemy import case, func, select, text
+from sqlalchemy import BigInteger, Date, Integer, Text, case, cast, extract, func, literal, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.time_utils import ensure_tz, now_utc, serialize_utc
 from app.models import Airport, AnalyticsCache, ParkingLot, ParkingSnapshot
 from app.services.analytics import (
+    SpecialDayHourAggregate,
     build_threshold_insights,
     build_time_series,
     build_weekday_hour_patterns,
@@ -66,9 +67,25 @@ def _ranked_snapshot_values(conditions: list[Any], *, with_references: bool = Fa
     return query.where(*conditions).subquery()
 
 
+class CompactSnapshot(NamedTuple):
+    """분석 계산에 필요한 관측 값만 담는 읽기 전용 행.
+
+    행마다 `Row._mapping`·`SimpleNamespace(**...)`를 만들면 공항 21일치(수만 행)에서
+    그 변환이 분석 계산보다 비쌌다. 위치 기반 생성으로 같은 속성 이름·값을 유지한다.
+    """
+
+    id: int
+    airport_id: int
+    parking_lot_id: int
+    observed_at: datetime
+    occupied_spaces: int
+    total_spaces: int
+    available_spaces: int
+
+
 async def load_compact_analytics_snapshots(
     session: AsyncSession, conditions: list[Any],
-) -> list[ParkingSnapshot]:
+) -> list[CompactSnapshot]:
     """원본 JSON·ORM 객체 없이 동일 소스 우선순위의 계산용 값만 읽는다."""
     ranked = _ranked_snapshot_values(conditions)
     rows = (await session.execute(select(
@@ -77,21 +94,82 @@ async def load_compact_analytics_snapshots(
     ).where(ranked.c.rank == 1).order_by(
         ranked.c.observed_at, ranked.c.parking_lot_id, ranked.c.id,
     ))).all()
-    return [SimpleNamespace(**row._mapping) for row in rows]
+    make = CompactSnapshot._make
+    return [make(row) for row in rows]
+
+
+async def aggregate_special_day_hours(
+    session: AsyncSession, conditions: list[Any], tz_name: str,
+) -> dict[tuple[date, int], SpecialDayHourAggregate]:
+    """특수일 패턴의 시각별 표본을 PostgreSQL에서 요약한다.
+
+    `special_day_hour_aggregates`와 같은 순서로 계산한다: 같은 소스 우선순위 중복 제거 →
+    같은 관측 시각의 주차장 합계 → 현지 날짜·시별 개수/합/최소/최대. 원본 관측 수만큼의 행을
+    API로 옮기지 않고 날짜×24행 이하만 받는다.
+    """
+    ranked = _ranked_snapshot_values(conditions)
+    totals = select(
+        ranked.c.observed_at,
+        func.sum(ranked.c.available_spaces).label("total"),
+    ).where(ranked.c.rank == 1).group_by(ranked.c.observed_at).subquery()
+    # timestamptz를 설정 시간대의 현지 시각으로 바꾼다(`AT TIME ZONE`). 날짜·시는 안쪽에서
+    # 한 번만 계산하고 바깥은 그 열로 묶는다.
+    local_observed_at = func.timezone(cast(literal(tz_name), Text), totals.c.observed_at)
+    local = select(
+        cast(local_observed_at, Date).label("local_date"),
+        cast(extract("hour", local_observed_at), Integer).label("local_hour"),
+        totals.c.total,
+    ).subquery()
+    rows = (await session.execute(select(
+        local.c.local_date, local.c.local_hour,
+        func.count().label("observations"),
+        cast(func.sum(local.c.total), BigInteger).label("total"),
+        cast(func.min(local.c.total), BigInteger).label("minimum"),
+        cast(func.max(local.c.total), BigInteger).label("maximum"),
+    ).group_by(local.c.local_date, local.c.local_hour))).all()
+    return {
+        (row.local_date, row.local_hour): SpecialDayHourAggregate(
+            int(row.observations), int(row.total), int(row.minimum), int(row.maximum),
+        )
+        for row in rows
+    }
 
 
 async def load_compact_analytics_rows(
     session: AsyncSession, conditions: list[Any],
 ) -> list[tuple[ParkingSnapshot, ParkingLot, Airport]]:
     ranked = _ranked_snapshot_values(conditions, with_references=True)
-    rows = (await session.execute(select(ranked).where(ranked.c.rank == 1).order_by(
+    rows = (await session.execute(select(
+        ranked.c.id, ranked.c.airport_id, ranked.c.parking_lot_id, ranked.c.observed_at,
+        ranked.c.occupied_spaces, ranked.c.total_spaces, ranked.c.available_spaces,
+        ranked.c.parking_lot_name, ranked.c.airport_code, ranked.c.airport_name,
+    ).where(ranked.c.rank == 1).order_by(
         ranked.c.observed_at, ranked.c.parking_lot_id, ranked.c.id,
     ))).all()
-    return [(
-        SimpleNamespace(**row._mapping),
-        SimpleNamespace(id=row.parking_lot_id, name=row.parking_lot_name),
-        SimpleNamespace(code=row.airport_code, name_ko=row.airport_name),
-    ) for row in rows]
+    return compact_rows_with_references(
+        (CompactSnapshot._make(row[:7]), row[7], row[8], row[9]) for row in rows
+    )
+
+
+def compact_rows_with_references(
+    values: Iterable[tuple[CompactSnapshot, str, str, str]],
+) -> list[tuple[CompactSnapshot, SimpleNamespace, SimpleNamespace]]:
+    """(관측, 주차장 이름, 공항 코드, 공항 이름)을 임계치 계산의 (관측, 주차장, 공항) 행으로 바꾼다.
+
+    같은 주차장·공항은 같은 참조 객체를 공유한다(계산은 속성만 읽는다).
+    """
+    lots: dict[tuple[int, str], SimpleNamespace] = {}
+    airports: dict[tuple[str, str], SimpleNamespace] = {}
+    result = []
+    for snapshot, lot_name, airport_code, airport_name in values:
+        lot = lots.get((snapshot.parking_lot_id, lot_name))
+        if lot is None:
+            lot = lots[(snapshot.parking_lot_id, lot_name)] = SimpleNamespace(id=snapshot.parking_lot_id, name=lot_name)
+        airport = airports.get((airport_code, airport_name))
+        if airport is None:
+            airport = airports[(airport_code, airport_name)] = SimpleNamespace(code=airport_code, name_ko=airport_name)
+        result.append((snapshot, lot, airport))
+    return result
 
 
 def build_analytics_scope_key(airport_code: str | None, parking_lot_id: int | None) -> str:
@@ -146,6 +224,41 @@ async def load_cached_analytics(
         )
     )
     return cached.payload_json if cached else None
+
+
+async def snapshot_source_fingerprint(session: AsyncSession) -> tuple[int, ...]:
+    """원본 관측 테이블의 commit 순서 지문(보이는 최대 id).
+
+    수집기는 `collected_at`을 행 삽입 시각으로 찍고 실행 끝에 commit한다. 그 사이에 계산한 결과는
+    `collected_at > 생성 시각` 검사로 무효화되지 않는다. 관측은 삽입 전용이고 수집기는 advisory lease로
+    하나만 돌므로, commit 전 행의 id는 계산 때 보이던 최대 id보다 크고 commit 뒤 최대 id가 바뀐다.
+    PostgreSQL 누적 통계(n_tup_ins)는 반영이 지연될 수 있어 쓰지 않는다.
+    """
+    return (int(await session.scalar(select(func.max(ParkingSnapshot.id))) or 0),)
+
+
+async def analytics_generation_is_fresh(
+    session: AsyncSession,
+    *,
+    airport_code: str | None,
+    parking_lot_id: int | None,
+    generated_at: datetime,
+) -> bool:
+    """`load_cached_analytics`와 같은 재사용 조건을 프로세스 안 계산 결과에 적용한다.
+
+    생성(원본 첫 조회 전 시각) 뒤 10분 안이고, 그 뒤에 적재된 같은 범위 관측이 없어야 한다.
+    """
+    checked_at = now_utc()
+    if not checked_at - MAX_ANALYTICS_CACHE_AGE <= generated_at <= checked_at:
+        return False
+    newer_snapshots = select(ParkingSnapshot.id).where(ParkingSnapshot.collected_at > generated_at)
+    if airport_code:
+        newer_snapshots = newer_snapshots.where(ParkingSnapshot.airport_id == (
+            select(Airport.id).where(Airport.code == airport_code.upper()).scalar_subquery()
+        ))
+    if parking_lot_id is not None:
+        newer_snapshots = newer_snapshots.where(ParkingSnapshot.parking_lot_id == parking_lot_id)
+    return not await session.scalar(select(newer_snapshots.exists()))
 
 
 async def store_cached_analytics(

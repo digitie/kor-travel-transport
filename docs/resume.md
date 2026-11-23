@@ -1,3 +1,10 @@
+## 현재 상태 — 2026-11-23 공항주차장 통계 속도(PARKING-STATS-SPEED-20261123)
+
+- 특수일 패턴 DB 집계, 대시보드 묶음 miss 1회 읽기 + 프로세스 memo, compact 행·시계열 루프 정리. 응답 동일(n150 A/B 31종).
+  migration·gateway·UI 변경 없음 — backend 이미지만.
+- 배포(Codex 담당): backend만 재배포. 다음 한 작업: 배포 뒤 공개 `dashboard/analytics`(ICN·GMP)와 `holiday-patterns`를 다시 잰다
+  ([보고서](reports/2026-11-23-airport-parking-statistics-speed.md)).
+
 ## 현재 상태 — 2026-11-23 공개 유가 places 504·가격 분포 지연 수정(PR #247)
 
 - 운영 읽기 전용 점검 결함 1·2·3: 새 공개 세대 1행 추정 + 문자열 id 조인 → 정수 기본키 조인, InitPlan 세대(`fixed_generation`),

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from statistics import mean, median
+from typing import NamedTuple
 from zoneinfo import ZoneInfo
 
 from app.core.time_utils import align_to_interval, ensure_tz, now_utc
@@ -161,7 +163,7 @@ def build_weekday_hour_patterns(
             hourly_buckets.append(
                 {
                     "hour": hour,
-                    "average_available_spaces": round(mean(hour_values), 2) if hour_values else None,
+                    "average_available_spaces": round(_mean(hour_values), 2) if hour_values else None,
                     "min_available_spaces": min(hour_values) if hour_values else None,
                     "max_available_spaces": max(hour_values) if hour_values else None,
                     "observations": len(hour_values),
@@ -172,7 +174,7 @@ def build_weekday_hour_patterns(
             {
                 "weekday": weekday,
                 "weekday_name": WEEKDAY_LABELS[weekday],
-                "average_available_spaces": round(mean(weekday_values), 2),
+                "average_available_spaces": round(_mean(weekday_values), 2),
                 "min_available_spaces": min(weekday_values),
                 "max_available_spaces": max(weekday_values),
                 "observations": len(weekday_values),
@@ -236,27 +238,43 @@ def build_time_series(
         for bucket in buckets
     ]
 
+    # bucket은 증가 순서다. 최신 관측 뒤의 bucket(미래 구간)은 끝쪽 연속 구간이라 앞부분만 채운다.
+    bucket_times = [ensure_tz(bucket, "UTC") for bucket in buckets]
+    filled_bucket_count = bisect_right(bucket_times, latest_observed_at)
+    max_carry = timedelta(minutes=interval_minutes)
+    available_sums = [0] * bucket_count
+    occupied_sums = [0] * bucket_count
+    total_sums = [0] * bucket_count
+    observation_counts = [0] * bucket_count
+
     for lot_snapshots in snapshots_by_lot.values():
+        observed_times = [ensure_tz(snapshot.observed_at, "UTC") for snapshot in lot_snapshots]
+        snapshot_count = len(observed_times)
+        if not snapshot_count:
+            continue
+        # 각 bucket의 값은 그 시각 이전(포함) 마지막 관측이다. 첫 관측 전 bucket에는 값이 없다.
         snapshot_index = 0
-        current: ParkingSnapshot | None = None
-        for item in items:
-            bucket_at = item["bucket_at"]
-            if ensure_tz(bucket_at, "UTC") > latest_observed_at:
-                continue
-            while snapshot_index < len(lot_snapshots) and ensure_tz(lot_snapshots[snapshot_index].observed_at, "UTC") <= bucket_at:
-                current = lot_snapshots[snapshot_index]
+        for bucket_index in range(bisect_left(bucket_times, observed_times[0], 0, filled_bucket_count),
+                                  filled_bucket_count):
+            bucket_at = bucket_times[bucket_index]
+            while snapshot_index < snapshot_count and observed_times[snapshot_index] <= bucket_at:
                 snapshot_index += 1
-
-            if current is None:
-                continue
             # 관측 공백 뒤의 과거 값을 현재 버킷에 계속 이월하지 않는다.
-            if bucket_at - ensure_tz(current.observed_at, "UTC") > timedelta(minutes=interval_minutes):
+            if bucket_at - observed_times[snapshot_index - 1] > max_carry:
                 continue
+            current = lot_snapshots[snapshot_index - 1]
+            available_sums[bucket_index] += current.available_spaces
+            occupied_sums[bucket_index] += current.occupied_spaces
+            total_sums[bucket_index] += current.total_spaces
+            observation_counts[bucket_index] += 1
 
-            item["available_spaces"] += current.available_spaces
-            item["occupied_spaces"] += current.occupied_spaces
-            item["total_spaces"] += current.total_spaces
-            item["lot_observations"] += 1
+    for item, available, occupied, total, observations in zip(
+        items, available_sums, occupied_sums, total_sums, observation_counts,
+    ):
+        item["available_spaces"] = available
+        item["occupied_spaces"] = occupied
+        item["total_spaces"] = total
+        item["lot_observations"] = observations
 
     # Stamping the exact latest per-lot reading into the final bucket only makes sense
     # when that bucket genuinely represents "now" (the relative-days path) - for an
@@ -297,15 +315,42 @@ def build_holiday_patterns(
     )
 
 
-def build_special_day_patterns(
+class SpecialDayHourAggregate(NamedTuple):
+    """한 특수일·현지 시(hour)의 '같은 관측 시각 합계' 표본 요약.
+
+    `count`는 서로 다른 관측 시각 수, `total`·`minimum`·`maximum`은 그 시각별 합계의
+    합·최솟값·최댓값이다. PostgreSQL 집계와 Python 계산이 같은 값을 만든다.
+    """
+
+    count: int
+    total: int
+    minimum: int
+    maximum: int
+
+
+def _integer_mean(total: int, count: int) -> int | float:
+    """`statistics.mean`과 같은 값·타입: 정수 표본의 평균이 정수면 int, 아니면 올바르게 반올림한 float.
+
+    `statistics.mean`은 정수 합을 분수로 나눈 뒤 float로 바꾼다. Python의 정수 나눗셈(`/`)도 같은
+    유리수를 올바르게 반올림하므로 값이 같고, 분수 연산 비용만 없다.
+    """
+    return total // count if total % count == 0 else total / count
+
+
+def _mean(values: list[int]) -> int | float:
+    if all(type(value) is int for value in values):
+        return _integer_mean(sum(values), len(values))
+    return mean(values)
+
+
+def special_day_hour_aggregates(
     snapshots: list[ParkingSnapshot],
     special_days: list[tuple[date, str, str]],
     tz_name: str = "Asia/Seoul",
-) -> list[dict[str, int | float | str | None | list[dict[str, int | float | None]]]]:
+) -> dict[tuple[date, int], SpecialDayHourAggregate]:
     tz = ZoneInfo(tz_name)
-    special_day_names = {local_date: name for local_date, name, _day_type in special_days}
-    special_day_types = {local_date: day_type for local_date, _name, day_type in special_days}
-    hourly_totals: dict[date, dict[int, dict[datetime, int]]] = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+    special_day_names = {local_date for local_date, _name, _day_type in special_days}
+    hourly_totals: dict[tuple[date, int], dict[datetime, int]] = defaultdict(lambda: defaultdict(int))
 
     for snapshot in snapshots:
         observed_at_utc = ensure_tz(snapshot.observed_at, "UTC")
@@ -313,23 +358,41 @@ def build_special_day_patterns(
         local_date = local_observed_at.date()
         if local_date not in special_day_names:
             continue
-        hourly_totals[local_date][local_observed_at.hour][observed_at_utc] += snapshot.available_spaces
+        hourly_totals[(local_date, local_observed_at.hour)][observed_at_utc] += snapshot.available_spaces
 
+    return {
+        key: SpecialDayHourAggregate(len(totals), sum(totals.values()), min(totals.values()), max(totals.values()))
+        for key, totals in hourly_totals.items()
+    }
+
+
+def build_special_day_patterns_from_aggregates(
+    aggregates: dict[tuple[date, int], SpecialDayHourAggregate],
+    special_days: list[tuple[date, str, str]],
+) -> list[dict[str, int | float | str | None | list[dict[str, int | float | None]]]]:
+    special_day_types = {local_date: day_type for local_date, _name, day_type in special_days}
     patterns = []
     for local_date, name, day_type in sorted(special_days, key=lambda item: item[0], reverse=True):
         hourly_buckets = []
-        date_values: list[int] = []
+        date_count = date_total = 0
+        date_min: int | None = None
+        date_max: int | None = None
 
         for hour in range(24):
-            hour_values = list(hourly_totals.get(local_date, {}).get(hour, {}).values())
-            date_values.extend(hour_values)
+            aggregate = aggregates.get((local_date, hour))
+            if aggregate is not None and aggregate.count:
+                date_count += aggregate.count
+                date_total += aggregate.total
+                date_min = aggregate.minimum if date_min is None else min(date_min, aggregate.minimum)
+                date_max = aggregate.maximum if date_max is None else max(date_max, aggregate.maximum)
             hourly_buckets.append(
                 {
                     "hour": hour,
-                    "average_available_spaces": round(mean(hour_values), 2) if hour_values else None,
-                    "min_available_spaces": min(hour_values) if hour_values else None,
-                    "max_available_spaces": max(hour_values) if hour_values else None,
-                    "observations": len(hour_values),
+                    "average_available_spaces": round(_integer_mean(aggregate.total, aggregate.count), 2)
+                    if aggregate and aggregate.count else None,
+                    "min_available_spaces": aggregate.minimum if aggregate and aggregate.count else None,
+                    "max_available_spaces": aggregate.maximum if aggregate and aggregate.count else None,
+                    "observations": aggregate.count if aggregate else 0,
                 }
             )
 
@@ -340,15 +403,26 @@ def build_special_day_patterns(
                 "day_type": special_day_types.get(local_date, day_type),
                 "weekday": local_date.weekday(),
                 "weekday_name": WEEKDAY_LABELS[local_date.weekday()],
-                "average_available_spaces": round(mean(date_values), 2) if date_values else None,
-                "min_available_spaces": min(date_values) if date_values else None,
-                "max_available_spaces": max(date_values) if date_values else None,
-                "observations": len(date_values),
+                "average_available_spaces": round(_integer_mean(date_total, date_count), 2) if date_count else None,
+                "min_available_spaces": date_min,
+                "max_available_spaces": date_max,
+                "observations": date_count,
                 "hourly_buckets": hourly_buckets,
             }
         )
 
     return patterns
+
+
+def build_special_day_patterns(
+    snapshots: list[ParkingSnapshot],
+    special_days: list[tuple[date, str, str]],
+    tz_name: str = "Asia/Seoul",
+) -> list[dict[str, int | float | str | None | list[dict[str, int | float | None]]]]:
+    return build_special_day_patterns_from_aggregates(
+        special_day_hour_aggregates(snapshots, special_days, tz_name=tz_name),
+        special_days,
+    )
 
 
 def detect_threshold_events(

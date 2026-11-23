@@ -185,8 +185,10 @@ def test_compact_projection_preserves_literal_source_priority_and_output_order(a
             actual = await cache.load_compact_analytics_snapshots(session, [])
             assert [(s.id, s.parking_lot_id, ensure_tz(s.observed_at, "UTC"), s.available_spaces) for s in actual] == [
                 (s.id, s.parking_lot_id, ensure_tz(s.observed_at, "UTC"), s.available_spaces) for s in expected]
-            assert all(set(vars(s)) == {"id", "airport_id", "parking_lot_id", "observed_at",
-                                      "occupied_spaces", "total_spaces", "available_spaces"} for s in actual)
+            # 원문 JSON·출처 등 계산 밖 열을 싣지 않는 고정 7필드 행이다.
+            assert all(type(s) is cache.CompactSnapshot for s in actual)
+            assert set(cache.CompactSnapshot._fields) == {"id", "airport_id", "parking_lot_id", "observed_at",
+                                                         "occupied_spaces", "total_spaces", "available_spaces"}
             for minute, available in [(31, 70), (32, 20), (33, 60), (34, 10)]:
                 at = NOW-timedelta(minutes=minute)
                 assert all(s.available_spaces == available for s in actual if ensure_tz(s.observed_at, "UTC") == at)
@@ -336,3 +338,251 @@ def test_refresh_loads_existing_cache_once_without_rewriting_equal_payloads(anal
         event.remove(engine, "before_cursor_execute", capture)
     assert len(statements) == 1
     assert not payload_updates
+
+
+def _strip_generated(value):
+    if isinstance(value, dict):
+        return {key: _strip_generated(item) for key, item in value.items() if key != "generated_at"}
+    if isinstance(value, list):
+        return [_strip_generated(item) for item in value]
+    return value
+
+
+def _capture_source_reads(client):
+    """관측 값을 읽는 SELECT(원본 중복 제거 행 또는 DB 집계)를 모은다."""
+    statements = []
+
+    def capture(_connection, _cursor, statement, _parameters, _context, _executemany):
+        normalized = statement.lower()
+        if normalized.lstrip().startswith("select") and "parking_snapshots.available_spaces" in normalized:
+            statements.append(normalized)
+
+    return statements, capture
+
+
+@pytest.mark.parametrize("lot_scope", [False, True])
+def test_cold_dashboard_reads_source_once_and_matches_single_routes(analytics_app, lot_scope):
+    client, _, _, lot_ids = analytics_app
+    params = {"airport_code": "GMP"}
+    if lot_scope:
+        params["parking_lot_id"] = lot_ids[1]
+    statements, capture = _capture_source_reads(client)
+    engine = client.app.state.engine.sync_engine
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        bundle = client.get("/v1/dashboard/analytics", params=params)
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+    assert bundle.status_code == 200
+    # 네 기본 분석은 한 번의 원본 읽기를 공유하고, 특수일 패턴만 따로 읽는다(이전: 4+1회).
+    assert len(statements) == 2
+    assert sum(" or " in sql for sql in statements) == 1  # 특수일 날짜 구간 조건
+
+    payload = bundle.json()
+    single = {
+        "threshold_events": client.get("/v1/parking/analytics/threshold-events", params=params).json(),
+        "threshold_insights": client.get("/v1/parking/analytics/threshold-insights", params=params).json(),
+        "weekday_hour_patterns": client.get("/v1/parking/analytics/by-weekday-hour", params=params).json(),
+        "time_series": client.get("/v1/parking/analytics/timeseries", params=params).json(),
+    }
+    for key, expected in single.items():
+        assert _strip_generated(payload[key]) == _strip_generated(expected), key
+    assert payload["threshold_events"] and payload["time_series"]["items"]
+
+
+def test_dashboard_source_memo_follows_cache_freshness_contract(analytics_app, monkeypatch):
+    client, _, airport_ids, lot_ids = analytics_app
+    # 시드의 migration 행은 NOW+1h에 적재됐다. 그 뒤 시각에서 재사용 조건을 확인한다.
+    clock = {"now": NOW + timedelta(hours=2)}
+    monkeypatch.setattr(cache, "now_utc", lambda: clock["now"])
+    monkeypatch.setattr("app.main.now_utc", lambda: clock["now"])
+    monkeypatch.setattr("app.services.analytics.now_utc", lambda: clock["now"])
+    statements, capture = _capture_source_reads(client)
+    engine = client.app.state.engine.sync_engine
+    params = {"airport_code": "GMP"}
+
+    def bundle_reads():
+        statements.clear()
+        event.listen(engine, "before_cursor_execute", capture)
+        try:
+            response = client.get("/v1/dashboard/analytics", params=params)
+        finally:
+            event.remove(engine, "before_cursor_execute", capture)
+        assert response.status_code == 200
+        # 특수일 패턴 읽기를 빼고 네 기본 분석의 원본 읽기만 센다.
+        return response.json(), len([sql for sql in statements if " or " not in sql])
+
+    first, reads = bundle_reads()
+    assert reads == 1
+    again, reads = bundle_reads()
+    assert reads == 0
+    assert again == first
+
+    # 새 commit은 범위와 무관하게 원본 지문을 바꿔 다시 계산하게 한다(수집은 모든 공항을 함께 적재한다).
+    async def add_observation(airport_id, lot_id, available):
+        async with client.app.state.session_factory() as session:
+            session.add(ParkingSnapshot(
+                airport_id=airport_id, parking_lot_id=lot_id, source="live",
+                observed_at=clock["now"] - timedelta(minutes=1), collected_at=clock["now"] + timedelta(seconds=1),
+                available_spaces=available, occupied_spaces=100 - available, total_spaces=100,
+                raw_item_json={},
+            ))
+            await session.commit()
+
+    asyncio.run(add_observation(airport_ids[1], lot_ids[4], 33))
+    clock["now"] += timedelta(seconds=2)
+    _, reads = bundle_reads()
+    assert reads == 1
+    _, reads = bundle_reads()
+    assert reads == 0
+
+    # 같은 범위에 생성 뒤 적재된 관측은 다시 계산하게 한다.
+    asyncio.run(add_observation(airport_ids[0], lot_ids[0], 37))
+    clock["now"] += timedelta(seconds=2)
+    refreshed, reads = bundle_reads()
+    assert reads == 1
+    assert refreshed["time_series"]["items"][-1]["available_spaces"] != first["time_series"]["items"][-1]["available_spaces"]
+
+    # 생성 10분이 지나면 새 적재가 없어도 다시 계산한다.
+    _, reads = bundle_reads()
+    assert reads == 0
+    clock["now"] += cache.MAX_ANALYTICS_CACHE_AGE + timedelta(seconds=1)
+    _, reads = bundle_reads()
+    assert reads == 1
+
+
+def test_postgres_special_day_patterns_aggregate_in_database(analytics_app, monkeypatch):
+    client, settings, _, _ = analytics_app
+    if not settings.database_url.startswith("postgresql"):
+        pytest.skip("PostgreSQL 집계 경로")
+    selected_dates = [date(2026, 10, 25), date(2026, 10, 26)]
+
+    async def holidays(_start, _end):
+        return HolidayLookupResult(source="sample", status="success", error_message=None,
+                                   items=[HolidayItem(day, "검증 공휴일") for day in selected_dates])
+
+    monkeypatch.setattr(client.app.state.holiday_service, "get_holidays", holidays)
+    statements, capture = _capture_source_reads(client)
+    engine = client.app.state.engine.sync_engine
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        response = client.get("/v1/parking/analytics/holiday-patterns", params={"airport_code": "GMP", "limit": 2})
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+    assert response.status_code == 200
+    # 관측 행을 API로 옮기지 않고 DB가 (현지 날짜, 시)별 개수·합·최소·최대만 돌려준다.
+    assert len(statements) == 1
+    sql = statements[0]
+    assert "timezone(" in sql and "count(*)" in sql and "group by" in sql
+    assert "raw_item_json" not in sql
+
+
+def test_dashboard_source_memo_for_lot_outside_airport_tracks_the_lot(analytics_app, monkeypatch):
+    """주차장이 다른 공항 소속이어도 원본은 그 주차장을 읽으므로 그 주차장의 새 적재로 무효화한다."""
+    client, _, airport_ids, lot_ids = analytics_app
+    clock = {"now": NOW + timedelta(hours=2)}
+    monkeypatch.setattr(cache, "now_utc", lambda: clock["now"])
+    monkeypatch.setattr("app.main.now_utc", lambda: clock["now"])
+    monkeypatch.setattr("app.services.analytics.now_utc", lambda: clock["now"])
+    statements, capture = _capture_source_reads(client)
+    engine = client.app.state.engine.sync_engine
+    params = {"airport_code": "PUS", "parking_lot_id": lot_ids[0]}  # GMP 주차장
+
+    def source_reads():
+        statements.clear()
+        event.listen(engine, "before_cursor_execute", capture)
+        try:
+            assert client.get("/v1/dashboard/analytics", params=params).status_code == 200
+        finally:
+            event.remove(engine, "before_cursor_execute", capture)
+        return len([sql for sql in statements if " or " not in sql])
+
+    assert source_reads() == 1
+    assert source_reads() == 0
+
+    async def add_observation():
+        async with client.app.state.session_factory() as session:
+            session.add(ParkingSnapshot(
+                airport_id=airport_ids[0], parking_lot_id=lot_ids[0], source="live",
+                observed_at=clock["now"] - timedelta(minutes=1), collected_at=clock["now"] + timedelta(seconds=1),
+                available_spaces=41, occupied_spaces=59, total_spaces=100, raw_item_json={},
+            ))
+            await session.commit()
+
+    asyncio.run(add_observation())
+    clock["now"] += timedelta(seconds=2)
+    assert source_reads() == 1
+
+
+def test_postgres_dashboard_source_memo_sees_rows_stamped_before_a_late_commit(analytics_app, monkeypatch):
+    """수집기는 삽입 때 collected_at을 찍고 나중에 commit한다. 그 사이 계산한 memo도 commit 뒤 무효다."""
+    client, settings, airport_ids, lot_ids = analytics_app
+    if not settings.database_url.startswith("postgresql"):
+        pytest.skip("동시 transaction 가시성은 PostgreSQL에서 검증")
+    clock = {"now": NOW + timedelta(hours=2)}
+    monkeypatch.setattr(cache, "now_utc", lambda: clock["now"])
+    monkeypatch.setattr("app.main.now_utc", lambda: clock["now"])
+    monkeypatch.setattr("app.services.analytics.now_utc", lambda: clock["now"])
+    statements, capture = _capture_source_reads(client)
+    engine = client.app.state.engine.sync_engine
+    params = {"airport_code": "GMP"}
+
+    def source_reads():
+        statements.clear()
+        event.listen(engine, "before_cursor_execute", capture)
+        try:
+            response = client.get("/v1/dashboard/analytics", params=params)
+        finally:
+            event.remove(engine, "before_cursor_execute", capture)
+        assert response.status_code == 200
+        return response.json(), len([sql for sql in statements if " or " not in sql])
+
+    async def scenario():
+        async with client.app.state.session_factory() as writer:
+            writer.add(ParkingSnapshot(
+                airport_id=airport_ids[0], parking_lot_id=lot_ids[0], source="live",
+                observed_at=clock["now"] - timedelta(minutes=1), collected_at=clock["now"],
+                available_spaces=43, occupied_spaces=57, total_spaces=100, raw_item_json={},
+            ))
+            await writer.flush()  # 삽입했지만 아직 commit 전
+            clock["now"] += timedelta(seconds=5)
+            before, reads = await asyncio.to_thread(source_reads)
+            assert reads == 1
+            assert before["time_series"]["items"][-1]["available_spaces"] != 43
+            await writer.commit()
+        clock["now"] += timedelta(seconds=5)
+        after, reads = await asyncio.to_thread(source_reads)
+        assert reads == 1
+        assert after["time_series"]["items"][-1]["available_spaces"] == 43
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("lot_scope", [False, True])
+def test_postgres_special_day_aggregate_values_match_python(analytics_app, lot_scope):
+    client, settings, airport_ids, lot_ids = analytics_app
+    if not settings.database_url.startswith("postgresql"):
+        pytest.skip("PostgreSQL 집계 경로")
+    from app.services.analytics import special_day_hour_aggregates
+    days = [date(2026, 10, 25), date(2026, 10, 26), date(2026, 10, 27), date(2026, 10, 20)]
+    special_days = [(day, "", "") for day in days]
+    tz = "Asia/Seoul"
+
+    async def check():
+        async with client.app.state.session_factory() as session:
+            from zoneinfo import ZoneInfo
+            ranges = []
+            for day in days:
+                start = datetime.combine(day, datetime.min.time(), tzinfo=ZoneInfo(tz)).astimezone(timezone.utc)
+                ranges.append((ParkingSnapshot.observed_at >= start) & (ParkingSnapshot.observed_at < start + timedelta(days=1)))
+            from sqlalchemy import or_
+            conditions = [or_(*ranges)]
+            conditions.append(ParkingSnapshot.parking_lot_id == lot_ids[0] if lot_scope
+                              else ParkingSnapshot.airport_id == airport_ids[0])
+            actual = await cache.aggregate_special_day_hours(session, conditions, tz)
+            originals = (await session.scalars(select(ParkingSnapshot).where(*conditions))).all()
+            expected = special_day_hour_aggregates(deduplicate_snapshots(originals), special_days, tz_name=tz)
+            assert actual == expected
+            assert actual and all(type(value) is int for aggregate in actual.values() for value in aggregate)
+
+    asyncio.run(check())
