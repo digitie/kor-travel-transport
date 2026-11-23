@@ -1,5 +1,9 @@
 # Common 정본 산출물 채택
 
+## 2026-11-23 — 공통 UI 0.2.5
+
+Common main CI의 [pack 산출물](https://github.com/digitie/kor-travel-common/actions/runs/45095095455/artifacts/14782962353)에서 UI 0.2.5와 tokens 0.1.6을 가져왔다. pack 출처는 `fe141143cc8ba75e8fd0b6134e1c9e518e294fa2`, 카탈로그와 정책은 `ade7b3eb50c0197caad4a1c98fcb97cffbc2a8a4`로 고정한다. 두 tarball의 SHA256과 SHA512 SRI를 Common 카탈로그와 대조했다.
+
 ## 2026-11-19 — 공통 관리자 셸 0.2.3 후보
 
 Pack source: 0e2a3f5aa16323df0d009360802661c9bc496dc6
