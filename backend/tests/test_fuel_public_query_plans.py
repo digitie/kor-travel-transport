@@ -19,7 +19,7 @@ import pytest
 from sqlalchemy import String, cast, func, insert, select, text
 
 from app.models import FuelLatestPrice, FuelPriceSnapshot, FuelStation, FuelStatisticsPoint, TransportCollectionState
-from app.services.fuel_price_distribution import _published_points, viewport_sigungu_statement
+from app.services.fuel_price_distribution import _published_points, product_grades_statement, viewport_sigungu_statement
 from app.services.fuel_station_filters import FuelStationFilters, fixed_generation, published_points_with_station
 from app.services.fuel_statistics import HIGHWAY, OPINET, publish_fuel_statistics
 
@@ -213,6 +213,25 @@ def test_public_statements_run_with_highway_points_in_the_same_generation(stale_
             index_rows = (await session.execute(_published_points(current, "B027", FILTERS).with_only_columns(
                 FuelStatisticsPoint.price))).all()
             assert index_rows
+    asyncio.run(check())
+
+
+def test_product_grades_statement_reads_one_sigungu_not_the_nation(stale_generation):
+    """유종별 등급 SELECT는 시군구 주유소 키로 point를 좁힌다(전국 다른 유종 point를 읽지 않는다)."""
+    client, current = stale_generation
+
+    async def check():
+        async with client.app.state.session_factory() as session:
+            statement = product_grades_statement(current, "시도1", "시군구1", ["B027", "D047"], FILTERS)
+            compiled = statement.compile(dialect=session.bind.dialect, compile_kwargs={"literal_binds": True})
+            rows = (await session.execute(text(f"EXPLAIN (ANALYZE, FORMAT JSON) {compiled}"))).scalar_one()
+            plan = (json.loads(rows) if isinstance(rows, str) else rows)[0]["Plan"]
+            scanned = sum(node.get("Actual Rows", 0) * node.get("Actual Loops", 1) for node in _nodes(plan)
+                          if node.get("Relation Name") == "fuel_statistics_points")
+            # 시드: 3,000곳 × 2유종 × 세대 9개. 시도1·시군구1은 8곳이다. 전국을 읽으면 현재 세대만 6,000행이다.
+            # (시군구 키 IN은 의도한 문자 키 비교라 _text_join 검사는 하지 않는다.)
+            assert scanned < 1000, (scanned, json.dumps(plan)[:2000])
+            assert not _rescanned_station_scans(plan)
     asyncio.run(check())
 
 
