@@ -1869,20 +1869,97 @@ def test_highway_retry_source_timeout_does_not_discard_recovered_peer(tmp_path, 
     asyncio.run(run())
 
 
-def test_highway_malformed_empty_parse_error_is_reconfirmed_once(tmp_path):
+def test_highway_deterministic_parse_error_is_not_reconfirmed(tmp_path):
+    """응답 계약 위반(KrexParseError)은 같은 응답을 다시 받아도 같다 — 재호출하지 않고 원천 실패로 판정한다."""
     from krex import KrexParseError
 
     async def run():
         provider = FakeTransportProvider()
         original = await provider.collect_highway()
-        original = replace(original, incidents=tuple(
-            original.incidents[0].model_copy(update={"series_no": index}) for index in range(106)))
         provider.collect_highway = AsyncMock(return_value=original)
         service = TransportCollectionService(build_settings(tmp_path), provider)
+        error = KrexParseError("missing complete envelope")
         result = await service._confirm_highway_payload(
-            replace(original, incidents=KrexParseError("missing complete envelope")),
-            (INCIDENT_SOURCE,), {INCIDENT_SOURCE: 106},
+            replace(original, incidents=error), (INCIDENT_SOURCE,), {INCIDENT_SOURCE: 106},
         )
-        assert result.incidents == original.incidents
-        provider.collect_highway.assert_awaited_once_with(sources=(INCIDENT_SOURCE,))
+        assert result.incidents is error
+        provider.collect_highway.assert_not_awaited()
     asyncio.run(run())
+
+
+def _partial_flow_provider(tmp_path, *, received: int, invalid: int):
+    from krex import KrexPartialParseError
+
+    async def build():
+        base = (await FakeTransportProvider().collect_highway()).traffic[0]
+        items = tuple(base.model_copy(update={"vds_id": f"{index:06d}"}) for index in range(received - invalid))
+        provider = LiveTransportProvider(build_settings(tmp_path))
+        await provider.krex.aclose()
+        error = KrexPartialParseError(
+            f"traffic flow response contains invalid records (received_rows={received}, "
+            f"parsed_rows={received - invalid}, invalid_rows={invalid})",
+            code="TRAFFIC_FLOW_INVALID_RECORDS", items=items, received_rows=received,
+        )
+        provider.krex = SimpleNamespace(traffic=SimpleNamespace(
+            flow_all=AsyncMock(side_effect=error),
+            incident=AsyncMock(return_value=SimpleNamespace(items=(), total_count=0)),
+        ), aclose=AsyncMock())
+        return provider, items
+    return build
+
+
+def test_traffic_invalid_rows_within_ratio_are_isolated(tmp_path):
+    async def run():
+        provider, items = await _partial_flow_provider(tmp_path, received=40, invalid=2)()
+        payload = await provider.collect_highway(sources=(TRAFFIC_SOURCE,))
+        assert payload.traffic == items
+        assert TRAFFIC_SOURCE in payload.complete_sources
+        assert payload.isolated == ((TRAFFIC_SOURCE, 40, 2),)
+        # 완결 응답으로 받아들였으므로 빈/급감 재확인도 하지 않는다(재호출 없음).
+        service = TransportCollectionService(build_settings(tmp_path), provider)
+        confirmed = await service._confirm_highway_payload(payload, (TRAFFIC_SOURCE,), {TRAFFIC_SOURCE: 40})
+        assert confirmed.traffic == items
+        provider.krex.traffic.flow_all.assert_awaited_once_with()
+        await provider.aclose()
+    asyncio.run(run())
+
+
+def test_traffic_invalid_rows_over_ratio_stay_a_source_failure(tmp_path):
+    from krex import KrexPartialParseError
+
+    async def run():
+        provider, _items = await _partial_flow_provider(tmp_path, received=40, invalid=3)()
+        payload = await provider.collect_highway(sources=(TRAFFIC_SOURCE,))
+        assert isinstance(payload.traffic, KrexPartialParseError)
+        assert payload.isolated == () and payload.complete_sources == ()
+        service = TransportCollectionService(build_settings(tmp_path), provider)
+        confirmed = await service._confirm_highway_payload(payload, (TRAFFIC_SOURCE,), {TRAFFIC_SOURCE: 40})
+        assert confirmed.traffic is payload.traffic
+        provider.krex.traffic.flow_all.assert_awaited_once_with()
+        await provider.aclose()
+    asyncio.run(run())
+
+
+def test_highway_isolated_rows_make_a_partial_success_run(client):
+    service = client.app.state.transport_collection_service
+    provider = FakeTransportProvider()
+    provider.enabled_sources = (TRAFFIC_SOURCE,)
+    service.provider = provider
+
+    async def run():
+        original = await FakeTransportProvider().collect_highway()
+        provider.collect_highway = AsyncMock(return_value=HighwayPayload(
+            traffic=original.traffic, incidents=None, complete_sources=(TRAFFIC_SOURCE,),
+            isolated=((TRAFFIC_SOURCE, 21, 1),),
+        ))
+        async with client.app.state.session_factory() as session:
+            result = await service.collect(session, scope="highway")
+            assert result["status"] == "partial_success", result
+            assert result["traffic_snapshot_count"] == 1 and result["isolated_rows"] == 1
+            assert result["errors"] == [
+                "krex_traffic_flow: isolated invalid rows (received_rows=21, parsed_rows=20, invalid_rows=1)"]
+            state = await session.scalar(select(TransportCollectionState).where(
+                TransportCollectionState.source == TRAFFIC_SOURCE))
+            assert state.last_success_at is not None and state.last_error is None
+        provider.collect_highway.assert_awaited_once()
+    client.portal.call(run)

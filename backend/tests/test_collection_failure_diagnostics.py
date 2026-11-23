@@ -104,3 +104,32 @@ def test_empty_incident_set_has_its_own_code():
     }, "highway")
     assert detail["error_code"] == "INCIDENT_EMPTY_SET"
     assert detail["successful_data_preserved"] is True
+
+
+def test_isolated_rows_are_a_partial_outcome_with_counts_not_a_failure():
+    from app.dagster.definitions import _collection_output_metadata
+    message = "krex_traffic_flow: isolated invalid rows (received_rows=8251, parsed_rows=8249, invalid_rows=2)"
+    result = {"collection_run_id": 21, "status": "partial_success", "raw_response_count": 1,
+              "traffic_snapshot_count": 8249, "isolated_rows": 2, "errors": [message]}
+    detail = _collection_output_metadata({**result, "collection_outcome": "partial"}, "highway")
+    assert detail["collection_outcome"] == "partial"
+    assert detail["error_code"] == "INVALID_ROWS_ISOLATED" and detail["retryable"] is False
+    assert detail["isolated_rows"] == 2
+    assert (detail["received_rows"], detail["parsed_rows"], detail["invalid_rows"]) == (8251, 8249, 2)
+    # 다른 원천의 실제 실패가 섞이면 그 실패 코드가 우선한다.
+    mixed = _collection_failure_metadata({**result, "errors": [message, "traffic flow count must match the complete list"]},
+                                         "highway")
+    assert mixed["error_code"] == "TRAFFIC_FLOW_COUNT"
+
+
+def test_isolated_rows_do_not_fail_the_highway_op(monkeypatch):
+    result = {"collection_run_id": 22, "status": "partial_success", "raw_response_count": 1,
+              "traffic_snapshot_count": 10, "isolated_rows": 1,
+              "errors": ["krex_traffic_flow: isolated invalid rows (received_rows=11, parsed_rows=10, invalid_rows=1)"]}
+
+    async def fake(*_args, **_kwargs):
+        return dict(result)
+    monkeypatch.setattr(definitions, "_collect_transport_in_one_loop", fake)
+    monkeypatch.setattr(definitions, "_settings", lambda: SimpleNamespace())
+    collected = definitions._collect_transport("highway")
+    assert collected["collection_outcome"] == "partial"

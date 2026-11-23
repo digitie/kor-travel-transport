@@ -77,6 +77,14 @@ describe("실행 상세·자료 경고",()=>{
     expect(events[1]).toMatchObject({title:"KMA 처리 진행",counts:{fetch_ms:12,published_values:200}});
     expect(JSON.stringify(events)).not.toContain(secret);
   });
+  it("격리 행이 있는 부분 성공은 고정 사유와 격리 행 수를 보여 준다",()=>{
+    const events=sanitizeConsoleEvents([{__typename:"ExecutionStepOutputEvent",timestamp:"1780000000000",stepKey:"collect_highway_transport",metadataEntries:[
+      {label:"status",text:"partial_success"},{label:"collection_outcome",text:"partial"},{label:"error_code",text:"INVALID_ROWS_ISOLATED"},
+      {label:"isolated_rows",intValue:2},{label:"received_rows",intValue:8251},{label:"invalid_rows",intValue:2},{label:"traffic_snapshot_count",intValue:8249},
+    ]}]);
+    expect(events[0]).toMatchObject({warning:true,counts:{isolated_rows:2,received_rows:8251,invalid_rows:2,traffic_snapshot_count:8249}});
+    expect(events[0].detail).toContain("INVALID_ROWS_ISOLATED");expect(events[0].detail).toContain("격리");expect(events[0].detail).not.toContain("UNKNOWN_FAILURE");
+  });
   it("실패 원인도 고정 코드만 남기고 임의 로그는 전달하지 않는다",()=>{
     const secret="fixture-private-message";
     const result=sanitizeConsoleEvents([{__typename:"ExecutionStepFailureEvent",message:secret,error:{className:"RuntimeError",message:`${secret} https://private.invalid`},failureMetadata:{metadataEntries:[{label:"error_code",text:"PROVIDER_AUTH"}]}},{__typename:"LogMessageEvent",message:secret}]);

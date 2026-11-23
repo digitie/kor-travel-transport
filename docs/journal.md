@@ -1,3 +1,23 @@
+## 2026-11-24 — 고속도로·공항 수집의 무효 행 격리와 부분 성공(COLLECTION-PARTIAL-20261124)
+
+- 배경(수집 실패 감사 2026-11-23 §2.3·§2.5 P1 #4, P2): odroid 14일 실패 중 공항 835건(IIAC 관측시각 표기)·고속도로 830건
+  (`traffic flow response contains invalid records`)이 원천 일부 행 때문에 run 전체를 FAILURE로 올렸다. 읽기 전용 확인: 고속도로
+  무효 행 실패 raw 11-09~15 840건(옛 메시지라 건수 없음), 0405 정상 집합 약 8,251행. IIAC 실패는 그 원천의 **모든** 행이 `.000` 표기
+  였다(krairport #14가 고침) — 격리로는 못 받는 계약 결함이라 비율 상한에 걸려 지금처럼 실패한다.
+- python-krex-api #20: 0405 일부 행 파싱 실패는 그대로 `KrexParseError`(`TRAFFIC_FLOW_INVALID_RECORDS`)지만 하위 클래스
+  `KrexPartialParseError`가 유효 행·수신/파싱/불량 건수를 싣는다(기본 계약 불변). 이 저장소는 핀을 `6646be5`로 올린다.
+- 고속도로: 무효 행이 5%(`HIGHWAY_MAX_INVALID_RATIO`) 이하이면 유효 행만 저장하고 원천은 성공, run은 부분 성공
+  (`isolated_rows`, 오류 문장에 `received_rows/parsed_rows/invalid_rows`, Dagster `error_code=INVALID_ROWS_ISOLATED`). 넘으면 지금처럼 원천 실패.
+  `_confirm_highway_payload`는 `KrexParseError`(무효 행·건수 불일치·목록 누락)를 더 이상 재호출하지 않는다 — 같은 응답은 같다. 빈/급감 재확인은 유지.
+- 공항: `validate_parking_payload`가 행 단위로 검증한다. 무효 행(필수 필드 결측·SDK 정본 시각/수치 거부·기존 parser 미해석·용량 0·미매핑 공항·미래 시각)이
+  20%(`PARKING_MAX_INVALID_RATIO`) 이하이면 그 행만 current에서 빼고 승격, run은 부분 성공. 집합 결함(완결 증거·건수·identity 중복·유효 행 0)은 지금처럼 거부.
+  이력은 기존 관대한 parser를 행 단위로 적용(한 행 예외가 같은 원천의 이력을 지우지 않는다).
+- 완결 집합 계약(ADR-013): current에서 빠진 주차장·구간은 소비자(Map)가 삭제로 읽는다. 무효 행의 identity는 알 수 없으므로 **직전 세대에 있었는데
+  이번에 빠진 수가 격리 수 이하일 때만**, 관측이 1시간(`*_CARRY_FORWARD_MAX_AGE`) 안인 직전 current 행을 값·관측시각 그대로 새 세대에 넣는다.
+  빠진 수가 더 많으면 실제 소멸이 섞인 것이라 넘기지 않는다(지금 동작). 계속 무효인 행은 1시간 뒤 빠진다.
+- 관리자 Dagster 콘솔: `INVALID_ROWS_ISOLATED` 고정 사유와 "격리 행" 건수 표시(vitest + e2e `dagster-isolated-rows.spec.ts`).
+- 범위 밖(부모 작업): `transport_collection_states` lock 재시도, max_runtime·priority, highway next_due 여유.
+
 ## 2026-11-24 — #262·#260 사후 적대 리뷰 P1 수정(POSTMERGE-REVIEW-20261124)
 
 - #262(KAC 429 Retry-After)와 #260(좌표 보강 부분 성공)은 머지 전 적대 리뷰 없이 머지됐다. 사후 리뷰(Popper·James 렌즈) P1 4건 중 3건을 고친다.

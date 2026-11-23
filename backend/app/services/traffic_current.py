@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 from sqlalchemy import and_, case, or_, select, tuple_
@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.time_utils import serialize_utc
 from app.models import (
     CollectionRun,
     HighwayTrafficCurrent,
@@ -40,8 +41,15 @@ async def update_traffic_current(
     collection_run_id: int,
     pairs: set[tuple[str, datetime]],
     confirmed_at: datetime,
+    carry_forward_limit: int = 0,
+    carry_forward_max_age: timedelta | None = None,
 ) -> bool:
     """호출자는 provider 완결 guard를 통과한 한 source 저장 transaction을 전달한다.
+
+    `carry_forward_limit`은 이번 완결 응답에서 SDK가 격리한 무효 행 수다. 무효 행의 identity는 알 수 없으므로
+    직전 세대에 있었는데 이번 집합에 없는 구간이 그 수 이하일 때만, 관측이 `carry_forward_max_age` 안인 구간을
+    새 세대로 넘긴다(값·관측시각은 그대로). 빠진 구간이 무효 행 수보다 많으면 실제 소멸이 섞인 것이라 넘기지
+    않는다 — 완결 집합 교체(지금 동작)와 같다.
 
     현재 표는 작은 typed DTO 열도 보존한다. 옛 worker가 mutable history의 같은 PK를
     정정하더라도 승인된 current 값은 별도 성공 원장 없이 바뀌지 않는다.
@@ -91,6 +99,7 @@ async def update_traffic_current(
     # 이후의 정상 수집을 영구적으로 막거나 늦은 옛 run을 새 집합으로 승인하지 않는다.
     if collection_run_id < state["attempt_order"]:
         return False
+    previous_generation = state["generation"]
     # 같은 identity가 여러 관측을 포함해도 한 문장이 같은 PK를 두 번 갱신하지 않는다.
     latest: dict[str, datetime] = {}
     for identity, observed_at in pairs:
@@ -161,6 +170,13 @@ async def update_traffic_current(
                 },
             )
         )
+    carried = 0
+    if carry_forward_limit > 0 and carry_forward_max_age is not None and previous_generation != generation:
+        carried = await _carry_forward_missing(
+            session, source=source, scope_key=scope_key, previous_generation=previous_generation,
+            generation=generation, present=set(latest), limit=carry_forward_limit,
+            observed_after=confirmed_at - carry_forward_max_age,
+        )
     await session.execute(
         states.update()
         .where(
@@ -172,7 +188,36 @@ async def update_traffic_current(
             attempt_started_at=run.started_at,
             attempt_order=collection_run_id,
             confirmed_at=confirmed_at,
-            member_count=len(keys),
+            member_count=len(keys) + carried,
         )
     )
     return True
+
+
+async def _carry_forward_missing(
+    session: AsyncSession, *, source: str, scope_key: str, previous_generation: str, generation: str,
+    present: set[str], limit: int, observed_after: datetime,
+) -> int:
+    """직전 세대에서 빠진 구간이 `limit` 이하면 최근 관측만 새 세대로 넘긴다. 넘긴 수를 돌려준다."""
+    table = HighwayTrafficCurrent.__table__
+    previous = (await session.execute(
+        select(table.c.identity_key, table.c.observed_at).where(
+            table.c.source == source, table.c.scope_key == scope_key,
+            table.c.generation == previous_generation,
+        )
+    )).all()
+    missing = [row for row in previous if row.identity_key not in present]
+    if not missing or len(missing) > limit:
+        return 0
+    cutoff = serialize_utc(observed_after)
+    keep = [row.identity_key for row in missing if serialize_utc(row.observed_at) >= cutoff]
+    if keep:
+        await session.execute(
+            table.update()
+            .where(
+                table.c.source == source, table.c.scope_key == scope_key,
+                table.c.generation == previous_generation, table.c.identity_key.in_(keep),
+            )
+            .values(generation=generation)
+        )
+    return len(keep)

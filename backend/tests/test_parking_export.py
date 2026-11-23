@@ -29,6 +29,8 @@ class Fixture(FixturePublicDataClient):
     timestamp_variant = None
     kac_row_variant = None
     last_kac_body = None
+    # KAC에서 망가뜨릴 행 수. 1행(10%)은 격리 대상, 3행(30%)은 원천 전체 거부(PARKING_MAX_INVALID_RATIO 20%).
+    bad_rows = 1
 
     def __init__(self):
         self.moment = now_utc() + timedelta(hours=9)
@@ -44,13 +46,14 @@ class Fixture(FixturePublicDataClient):
         for row in rows:
             row["parkingGetdate"] = now.strftime("%Y-%m-%d")
             row["parkingGettime"] = now.strftime("%H:%M:%S")
-        if self.bad_source == "kac_parking":
-            rows[0]["parkingIstay" if self.bad_kind == "count" else "parkingGetdate"] = "upstream error"
-        # 기존 이력 parser는 견디지만 Map current 엄격 검증은 거절하는 원천 행.
-        if self.kac_row_variant == "zero_capacity":
-            rows[0]["parkingFullSpace"] = "0"
-        elif self.kac_row_variant == "unmapped_airport":
-            rows[0]["aprKor"], rows[0]["aprEng"] = "미매핑공항", "UNMAPPED AIRPORT"
+        for bad in rows[:self.bad_rows]:
+            if self.bad_source == "kac_parking":
+                bad["parkingIstay" if self.bad_kind == "count" else "parkingGetdate"] = "upstream error"
+            # 기존 이력 parser는 견디지만 Map current 엄격 검증은 거절하는 원천 행.
+            if self.kac_row_variant == "zero_capacity":
+                bad["parkingFullSpace"] = "0"
+            elif self.kac_row_variant == "unmapped_airport":
+                bad["aprKor"], bad["aprEng"] = "미매핑공항", "UNMAPPED AIRPORT"
         if self.subset is not None:
             rows = rows[:self.subset]
         if self.empty_kac:
@@ -225,6 +228,7 @@ def test_bad_source_values_retry_then_preserve_head_and_failed_raw(export_client
         return head.generation
     before = _run(c, head_generation)
     client.bad_source, client.bad_kind = source, kind
+    client.bad_rows = 3  # 인천 2행 중 1행(50%)·KAC 10행 중 3행(30%) 모두 격리 상한을 넘는다.
     result = _run(c, lambda s: collector.collect(s))
     assert result["status"] == "partial_success"
     assert _run(c, head_generation) == before
@@ -302,6 +306,7 @@ def test_strict_current_rejection_still_stores_flag_off_history(export_client, v
     before = _run(c, head_generation)
     client.moment += timedelta(minutes=10)
     client.kac_row_variant = variant
+    client.bad_rows = 3  # 격리 상한(20%)을 넘겨 원천 전체 거부 경로를 본다.
     result = _run(c, lambda s: collector.collect(s))
     assert result["status"] == "partial_success", result
     assert client.calls == 3  # 엄격 거절 재시도만 있고 이력용 추가 호출은 없다.
@@ -327,6 +332,7 @@ def test_history_only_store_failure_does_not_abort_failure_marking(export_client
     assert _run(c, lambda s: collector.collect(s))["status"] == "success"
     client.moment += timedelta(minutes=10)
     client.kac_row_variant = "zero_capacity"
+    client.bad_rows = 3
     original = collector._store_observations
     async def failing_history_only(session, run_id, rows, *, lot_ids=None):
         if lot_ids is None:
@@ -342,3 +348,68 @@ def test_history_only_store_failure_does_not_abort_failure_marking(export_client
             ParkingSnapshot.source == "kac_parking"))
         return head.last_error, stored
     assert _run(c, state) == ("source_failed", 0)
+
+
+@pytest.mark.parametrize("variant", ["timestamp", "zero_capacity", "unmapped_airport"])
+def test_single_bad_row_is_isolated_and_membership_is_preserved(export_client, variant):
+    """KAC 한 행(10%)의 결함은 그 행만 격리한다. 정상 행은 승격하고 빠진 주차장은 직전 current 그대로 유지한다."""
+    c = export_client
+    settings = c.app.state.settings
+    client = Fixture()
+    client.moment -= timedelta(minutes=10)
+    collector = service(c, client)
+    assert _run(c, lambda s: collector.collect(s))["status"] == "success"
+    async def head(s):
+        state = await s.get(ReferenceExportState, (KIND, parking_scope(settings, "kac_parking")))
+        return state.generation, state.last_error, sorted(state.member_ids)
+    before_generation, _, before_members = _run(c, head)
+    client.moment += timedelta(minutes=10)
+    if variant == "timestamp":
+        client.bad_source, client.bad_kind = "kac_parking", "timestamp"
+    else:
+        client.kac_row_variant = variant
+    result = _run(c, lambda s: collector.collect(s))
+    assert result["status"] == "partial_success", result
+    assert result["isolated_rows"] == 1
+    assert client.calls == 2  # 결정적 행 결함은 재호출하지 않는다.
+    assert any("isolated invalid rows (received_rows=10, parsed_rows=9, invalid_rows=1)" in item
+               for item in result["errors"])
+    generation, last_error, members = _run(c, head)
+    assert generation != before_generation and last_error is None
+    assert members == before_members  # 격리된 주차장도 membership에서 빠지지 않는다.
+    page = c.get(PATH, headers=HEADERS)
+    assert page.status_code == 200 and page.json()["total_count"] == 12
+    assert page.json()["meta"]["source_status"] == "ok"
+    async def history(s):
+        return await s.scalar(select(func.count()).select_from(ParkingSnapshot).where(
+            ParkingSnapshot.collection_run_id == result["collection_run_id"],
+            ParkingSnapshot.source == "kac_parking"))
+    # 이력은 기존 관대한 parser가 받는 행을 행 단위로 남긴다(용량 0·깨진 시각 행도 그 parser 결과대로, 미매핑 공항은 빠진다).
+    assert _run(c, history) == (9 if variant == "unmapped_airport" else 10)
+
+
+def test_isolated_row_is_not_carried_when_previous_value_is_old(export_client):
+    """직전 current가 유지 상한(1시간)보다 오래됐으면 격리된 주차장을 오래된 값으로 남기지 않는다."""
+    c = export_client
+    client = Fixture()
+    client.moment -= timedelta(hours=2)
+    collector = service(c, client)
+    assert _run(c, lambda s: collector.collect(s))["status"] == "success"
+    client.moment += timedelta(hours=2)
+    client.bad_source, client.bad_kind = "kac_parking", "timestamp"
+    result = _run(c, lambda s: collector.collect(s))
+    assert result["status"] == "partial_success" and result["isolated_rows"] == 1
+    assert c.get(PATH, headers=HEADERS).json()["total_count"] == 11
+
+
+def test_isolation_does_not_hide_real_disappearance(export_client):
+    """빠진 주차장이 격리 행 수보다 많으면 실제 소멸이 섞인 것이라 직전 값을 넘기지 않는다."""
+    c = export_client
+    client = Fixture()
+    collector = service(c, client)
+    assert _run(c, lambda s: collector.collect(s))["status"] == "success"
+    client.subset = 9  # 1개 소멸
+    client.bad_source, client.bad_kind = "kac_parking", "timestamp"  # + 1개 격리 → 빠진 2개 > 격리 1개
+    result = _run(c, lambda s: collector.collect(s))
+    assert result["status"] == "partial_success" and result["isolated_rows"] == 1
+    assert c.get(PATH, headers=HEADERS).json()["total_count"] == 10

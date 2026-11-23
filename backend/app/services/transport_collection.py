@@ -20,7 +20,9 @@ from itertools import islice
 from pathlib import Path
 from typing import Any, Literal, Protocol, TypeVar
 
-from krex import Incident, KrexClient, KrexParseError, KrexQuotaExceededError, TrafficFlow
+from krex import (
+    Incident, KrexClient, KrexParseError, KrexPartialParseError, KrexQuotaExceededError, TrafficFlow,
+)
 from opinet import OpinetCheckpointBusyError
 from opinet.experimental import (
     BrowserStation,
@@ -62,6 +64,15 @@ TRANSPORT_TRIGGER_PREFIX = "transport_"
 HIGHWAY_FETCH_TIMEOUT_SECONDS = 120
 # 직전 동일 scope 성공 집합의 25% 미만은 완결 증거를 재확인한다.
 HIGHWAY_ABNORMAL_DROP_FACTOR = 4
+#: 실시간 소통(0405) 응답에서 격리하고 유효 행만 저장할 수 있는 무효 행의 최대 비율.
+#: 무효 행은 제공기관의 행 단위 계약 위반(예: 2026-11-09~15 방향 코드 결측)이고 같은 응답을 다시 받아도
+#: 같다(재호출하지 않는다). 전국 약 8,251행(2026-11-24 운영) 중 몇 행 때문에 나머지 전체를 버리면 5분 소통이
+#: 통째로 끊긴다(odroid 14일 830 run 실패). 반대로 큰 비율은 응답 계약 자체가 바뀐 신호라 일부만 공개하지
+#: 않고 실패로 둔다. 5%(약 410행)는 행 단위 결함과 계약 변경을 가르는 보수적인 경계다.
+HIGHWAY_MAX_INVALID_RATIO = 0.05
+#: 무효 행으로 이번 집합에서 빠진 직전 current 구간을 유지하는 최대 관측 나이. 한 주기의 행 결함으로 지도
+#: 구간이 깜박이지 않게 하되, 계속 무효인 구간을 오래된 값으로 남기지 않는다(관측시각은 원래 값 그대로다).
+CURRENT_CARRY_FORWARD_MAX_AGE = timedelta(hours=1)
 #: 유가 브라우저 수집(Playwright로 오피넷 화면 조회)의 상한. odroid(ARM, CPU 포화)에서 성공한 수집이
 #: 5,946~6,371초 걸리고 옛 상한 7,200초 근처에서 시간 초과가 반복돼(2026-10-23 소유자 결정) 3.5시간으로
 #: 올린다. 저장·정리 여유를 두고 job 전체 상한(`definitions.MAX_RUNTIME_SECONDS - 60` = 14,340초)과
@@ -201,6 +212,8 @@ class HighwayPayload:
     incidents: tuple[Incident, ...] | Exception | None
     # 완결된 total_count와 실제 페이지 수가 일치한 source만 넣는다.
     complete_sources: tuple[str, ...] = ()
+    # 무효 행을 격리하고 유효 행만 받은 source: (source, received_rows, invalid_rows).
+    isolated: tuple[tuple[str, int, int], ...] = ()
 
 
 class TransportProvider(Protocol):
@@ -293,6 +306,7 @@ class LiveTransportProvider:
             )
 
         complete_sources: set[str] = set()
+        isolated: list[tuple[str, int, int]] = []
 
         async def fetch(source: str):
             if source not in sources:
@@ -301,16 +315,27 @@ class LiveTransportProvider:
                 async with asyncio.timeout(HIGHWAY_FETCH_TIMEOUT_SECONDS):
                     if source == TRAFFIC_SOURCE:
                         # 0405는 서버 페이지/필터가 없다. 전체 응답 한 번만 읽는다.
-                        page = await self.krex.traffic.flow_all()
-                        total_count = getattr(page, "total_count", None)
-                        if total_count is not None and total_count != len(page.items):
-                            raise KrexParseError("traffic.flow returned an incomplete total_count")
-                        raw = getattr(page, "raw", None)
-                        if (isinstance(raw, Mapping) and ("count" in raw or "totalCount" in raw)
-                                and getattr(page, "total_count", None) == len(page.items)):
+                        try:
+                            page = await self.krex.traffic.flow_all()
+                        except KrexPartialParseError as exc:
+                            # SDK가 완결 목록(count 일치)을 확인한 뒤 일부 행만 거부했다. 비율 안이면 유효 행만
+                            # 쓰고 건수를 남긴다(부분 성공). 넘으면 지금처럼 원천 실패다.
+                            if not highway_invalid_rows_acceptable(exc.received_rows, exc.invalid_rows):
+                                raise
+                            isolated.append((source, exc.received_rows, exc.invalid_rows))
                             complete_sources.add(source)
+                            items = exc.items
+                        else:
+                            total_count = getattr(page, "total_count", None)
+                            if total_count is not None and total_count != len(page.items):
+                                raise KrexParseError("traffic.flow returned an incomplete total_count")
+                            raw = getattr(page, "raw", None)
+                            if (isinstance(raw, Mapping) and ("count" in raw or "totalCount" in raw)
+                                    and getattr(page, "total_count", None) == len(page.items)):
+                                complete_sources.add(source)
+                            items = page.items
                         return tuple(
-                            item for item in page.items
+                            item for item in items
                             if (not route_nos or item.route_no in route_nos)
                             and (not conzone_ids or item.conzone_id in conzone_ids)
                         )
@@ -326,7 +351,8 @@ class LiveTransportProvider:
         # 한 소스의 timeout/quota가 이미 조회한 다른 소스를 버리지 않는다.
         traffic, incidents = await asyncio.gather(fetch(TRAFFIC_SOURCE), fetch(INCIDENT_SOURCE))
         return HighwayPayload(traffic=traffic, incidents=incidents,
-                              complete_sources=tuple(sorted(complete_sources)))
+                              complete_sources=tuple(sorted(complete_sources)),
+                              isolated=() if isinstance(traffic, Exception) else tuple(isolated))
 
     async def collect_fuel(self) -> OpinetBrowserSnapshot | None:
         if self.opinet is None:
@@ -347,6 +373,17 @@ class LiveTransportProvider:
 
     async def aclose(self) -> None:
         await self.krex.aclose()
+
+
+def highway_invalid_rows_acceptable(received_rows: int, invalid_rows: int) -> bool:
+    """무효 행을 격리하고 나머지를 저장해도 되는가(`HIGHWAY_MAX_INVALID_RATIO`)."""
+    return 0 < invalid_rows < received_rows and invalid_rows <= received_rows * HIGHWAY_MAX_INVALID_RATIO
+
+
+def isolated_rows_message(source: str, received_rows: int, invalid_rows: int) -> str:
+    """격리 기록 한 줄. 행 값은 싣지 않고 건수만 싣는다(Dagster metadata가 건수를 읽는다)."""
+    return (f"{source}: isolated invalid rows (received_rows={received_rows}, "
+            f"parsed_rows={received_rows - invalid_rows}, invalid_rows={invalid_rows})")
 
 
 def build_transport_provider(settings: Settings) -> TransportProvider:
@@ -452,6 +489,7 @@ class TransportCollectionService:
         # 이번 실행의 이전 통계 세대 정리 결과(None=정리 시도 없음). 실패·예산 소진을 metadata로 보이게 한다.
         fuel_statistics_cleanup: dict[str, Any] | None = None
         collected_source = False
+        isolated_row_count = 0
 
         if not self.enabled:
             run.status = "skipped"
@@ -637,9 +675,12 @@ class TransportCollectionService:
                     if source not in highway_sources:
                         continue
                     result = highway_result if isinstance(highway_result, Exception) else getattr(highway_result, field, None)
+                    isolation = next((entry for entry in getattr(highway_result, "isolated", ())
+                                      if entry[0] == source), None)
+                    store_options = {"carry_forward_limit": isolation[2]} if isolation is not None else {}
                     try:
                         items = await self._collect_highway_source(session, run_id, errors, source, result)
-                        count = await store(session, run_id, items) if items is not None else 0
+                        count = await store(session, run_id, items, **store_options) if items is not None else 0
                         if source == TRAFFIC_SOURCE and items is not None:
                             await self._refresh_recent_traffic_statistics(session, items)
                         if items is not None:
@@ -658,6 +699,10 @@ class TransportCollectionService:
                         items = None
                     persisted_sources.add(source)
                     if items is not None:
+                        if isolation is not None:
+                            # 원천은 성공(유효 행 저장)이고 실행은 부분 성공이다. 건수만 남긴다.
+                            errors.append(isolated_rows_message(*isolation))
+                            isolated_row_count += isolation[2]
                         collected_source = True
                         raw_count += 1
                         if source == TRAFFIC_SOURCE:
@@ -805,6 +850,8 @@ class TransportCollectionService:
             fuel_price_count=fuel_price_count,
             errors=errors,
         )
+        if isolated_row_count:
+            summary["isolated_rows"] = isolated_row_count
         if scope == "fuel":
             state = (await session.scalar(select(TransportCollectionState).where(
                 TransportCollectionState.source == OPINET_SOURCE).execution_options(populate_existing=True))
@@ -879,17 +926,18 @@ class TransportCollectionService:
         if isinstance(payload, Exception):
             return payload
         fields = {TRAFFIC_SOURCE: "traffic", INCIDENT_SOURCE: "incidents"}
+        # 응답 계약 위반(`KrexParseError`: 무효 행·건수 불일치·목록 누락)은 같은 응답을 다시 받아도 같다.
+        # 재호출하지 않고 바로 원천 실패로 판정한다. 재확인은 빈/급감 집합만 한다.
         suspicious = tuple(source for source in sources
                            if self._empty_incident_set(source, getattr(payload, fields[source]))
                            or (source == INCIDENT_SOURCE and isinstance(getattr(payload, fields[source]), tuple)
                                and self._highway_result_suspicious(
                                    getattr(payload, fields[source]), baselines.get(source)))
                            or (source not in payload.complete_sources
-                               and (isinstance(getattr(payload, fields[source]), KrexParseError)
-                                    or (isinstance(getattr(payload, fields[source]), tuple)
-                                        and self._highway_result_suspicious(
-                                            getattr(payload, fields[source]), baselines.get(source),
-                                        )))))
+                               and isinstance(getattr(payload, fields[source]), tuple)
+                               and self._highway_result_suspicious(
+                                   getattr(payload, fields[source]), baselines.get(source),
+                               )))
         if not suspicious:
             return payload
         # 재확인도 provider의 source 격리·기존 상한 안에서 한 번만 한다.
@@ -1062,7 +1110,10 @@ class TransportCollectionService:
         session: AsyncSession,
         collection_run_id: int,
         items: tuple[TrafficFlow, ...],
+        *,
+        carry_forward_limit: int = 0,
     ) -> int:
+        """`carry_forward_limit`은 이번 응답에서 격리한 무효 행 수다(`traffic_current` 유지 상한)."""
         stored = 0
         collected_at = now_utc()
         seen_keys: set[tuple[str, datetime]] = set()
@@ -1138,6 +1189,7 @@ class TransportCollectionService:
             await update_traffic_current(
                 session, source=TRAFFIC_SOURCE, scope_key=self._highway_scope_key(TRAFFIC_SOURCE),
                 collection_run_id=collection_run_id, pairs=seen_keys, confirmed_at=collected_at,
+                carry_forward_limit=carry_forward_limit, carry_forward_max_age=CURRENT_CARRY_FORWARD_MAX_AGE,
             )
         return stored
 

@@ -398,6 +398,8 @@ class CollectionService:
         #: 이번 실행에서 KAC가 429(`KrairportRateLimitError`)를 돌려줬는가. Retry-After가 없어도 같은 실행의 다른 KAC 호출
         #: (요금 공항별 호출)을 이어 가지 않는다 — SDK가 이미 backoff·Retry-After로 기다렸다 포기한 호출이다.
         self._kac_rate_limited = False
+        # 마지막 수집에서 격리한 무효 원천 행 수(Dagster metadata용). `_collect_unlocked`가 매번 0으로 시작한다.
+        self.isolated_rows = 0
 
     @property
     def client_mode(self) -> str:
@@ -558,6 +560,7 @@ class CollectionService:
     async def _collect_unlocked(self, session: AsyncSession, trigger: str = "manual") -> dict[str, Any]:
         self._kac_retry_after = None
         self._kac_rate_limited = False
+        self.isolated_rows = 0
         rate_limit_state = await self.get_upstream_rate_limit_state(session)
         can_collect_incheon = self.settings.enable_incheon_collection or self.settings.enable_incheon_fee_collection
         if rate_limit_state.is_blocked:
@@ -710,7 +713,7 @@ class CollectionService:
             len(errors),
         )
 
-        return {
+        result = {
             "collection_run_id": run.id,
             "status": run.status,
             "client_mode": self.client_mode,
@@ -719,6 +722,9 @@ class CollectionService:
             "fee_rule_count": fee_rule_count,
             "errors": errors,
         }
+        if self.isolated_rows:
+            result["isolated_rows"] = self.isolated_rows
+        return result
 
     async def _store_rate_limit_skip(
         self,
@@ -963,10 +969,11 @@ class CollectionService:
                 response = None
                 try:
                     response = await fetch()
-                    history_rows, rows = validate_parking_payload(self.settings, source, response)
+                    payload = validate_parking_payload(self.settings, source, response)
+                    history_rows, rows = payload.history_rows, payload.current_rows
                     if not rows or len(rows) * 4 < previous[source]:
                         raise ValueError("주차장 빈/급감 집합은 재확인이 필요합니다")
-                    fetched.append((source, response, history_rows, rows))
+                    fetched.append((source, response, history_rows, rows, payload))
                     rejected.pop(source, None)
                     break
                 except Exception as exc:
@@ -987,7 +994,7 @@ class CollectionService:
                         endpoint=response.endpoint, request_params_json=redact_request_params(response.request_params),
                         status_code=response.status_code, body_text=response.body_text,
                         received_at=now_utc(), parse_status="failed", parse_error=error))
-        for source, response, history_rows, rows in fetched:
+        for source, response, history_rows, rows, payload in fetched:
             async def already_fetched(value=response):
                 return value
             stored = await self._safe_fetch(session, run, already_fetched, errors)
@@ -998,7 +1005,13 @@ class CollectionService:
             lot_ids = {}
             snapshot_count += await self._store_observations(session, run_id, history_rows, lot_ids=lot_ids)
             await store_parking_current(session, self.settings, source=source, run_id=run_id,
-                                        observations=rows, proof=response.completion, lot_ids=lot_ids)
+                                        observations=rows, proof=response.completion, lot_ids=lot_ids,
+                                        carry_forward_limit=payload.invalid_rows)
+            if payload.invalid_rows:
+                # 원천은 승격(정상 행)했고 실행은 부분 성공이다. 행 값 없이 건수만 남긴다.
+                from app.services.transport_collection import isolated_rows_message
+                errors.append(isolated_rows_message(source, payload.received_rows, payload.invalid_rows))
+                self.isolated_rows += payload.invalid_rows
         for source, response in rejected.items():
             # 엄격 검증·급감 guard는 current 승격에만 건다. 용량0·미매핑 공항 한 행 때문에 그 원천의 이번 이력을
             # 통째로 잃지 않게 플래그 OFF 경로와 같은 parser·인자로 이력만 저장한다(KAC는 현재값만 주므로

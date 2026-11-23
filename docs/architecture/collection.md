@@ -95,6 +95,10 @@ cutover 동안 HTTP read-only source로 유지하며 Docker를 조작하지 않�
   collector 실행 시각을 사용한다. 유가 API의 기간 필터와 최신 판정은 실제 응답을 받은
   `collected_at`을 기준으로 하므로 provider 갱신 시각이 오래되어도 최신 수집 결과를
   숨기지 않는다.
+- 원천 일부 행의 결함(2026-11-24): 고속도로 소통(0405)의 무효 행이 5% 이하, 공항 주차 원천의 무효 행이 20% 이하이면
+  그 행만 격리하고 나머지를 저장한다. run은 부분 성공(`isolated_rows`, `INVALID_ROWS_ISOLATED`)이고 비율을 넘으면
+  원천 실패다. 응답 계약 위반(`KrexParseError`)은 같은 응답이라 재호출하지 않는다. current는 완결 집합이라, 빠진
+  구간·주차장 수가 격리 수 이하일 때만 1시간 안 관측의 직전 current 행을 값·관측시각 그대로 유지한다.
 - 돌발은 provider 발생시각이 아니라 수집시각을 `observed_at`으로 사용한다. 같은
   `series_no`의 처리상태 변경을 새 스냅샷으로 보존하기 위해서다.
 - Playwright 수집기는 공개 화면 자동화가 공식 API가 아니라는 위험이 있으므로, 화면
