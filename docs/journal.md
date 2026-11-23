@@ -1,3 +1,11 @@
+## 2026-11-23 — 공항주차장 통계 화면·API 속도(PARKING-STATS-SPEED-20261123)
+
+- 운영 읽기 전용 측정: 공개 `dashboard/analytics` ICN 504(10초)·6.4초, GMP 2~5초, 특수일 패턴 ICN 5.8초. 원인은 특수일 패턴의 무캐시
+  원본 계산, DB 분석 캐시가 수집 직후 갱신(약 5분) 동안 무효라 묶음이 네 번 원본을 따로 읽는 것, 행 변환 비용.
+- 수정(결과 동일, 스키마·API 변경 없음): 특수일 패턴 PostgreSQL 집계, 묶음 miss는 21일 원본 1회 + DB 캐시와 같은 조건의 프로세스 memo,
+  compact 행 NamedTuple, 시계열·요일 평균 루프 정리. n150 A/B 응답 31종 동일, ICN 묶음 hit 0.64→0.13초·miss 4.8→1.6초.
+- 상세·후속: [보고서](reports/2026-11-23-airport-parking-statistics-speed.md).
+
 ## 2026-11-23 — 관리 e2e main 실패 18건 진단(n150)
 
 - n150 격리 하네스(Next prod 빌드 + Playwright chromium, 백엔드 없음, E2E_MAP_WORKSPACE·E2E_FUEL_STATISTICS)로 main(ac70bdf)
