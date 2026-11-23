@@ -310,7 +310,8 @@ def test_slow_fuel_does_not_hold_highway_operation_lock(tmp_path: Path) -> None:
         fuel_started = asyncio.Event()
         release_fuel = asyncio.Event()
 
-        async def collect_unlocked(session, trigger, scope):
+        async def collect_unlocked(session, trigger, scope, **_options):
+            # 실제 `_collect_unlocked`는 keyword 옵션(`retry_failed_fuel`)도 받는다(FUEL-RETRY-20261123).
             if scope == "fuel":
                 fuel_started.set()
                 await release_fuel.wait()
