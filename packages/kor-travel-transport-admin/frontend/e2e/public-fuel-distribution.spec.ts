@@ -82,7 +82,7 @@ for (const width of [320, 390, 1440]) {
     await expect(chips.getByRole("button", { name: /더 보기/ })).toHaveCount(0);
     for (const other of ["보은군", "영동군", "금산군", "중구", "청주시"]) await expect(chips).not.toContainText(other);
     const chip = chips.getByRole("button", { name: /^충북 옥천군 휘발유 가격 통계 · 지도 안 29개 주유소$/ });
-    expect(centerRequests.some(Boolean)).toBe(true);
+    await expect.poll(() => centerRequests.some(Boolean)).toBe(true);
     expect((await chip.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     expect(await noHorizontalScroll(page)).toBe(true);
     await shot(page, `fuel-stats-chips-${width}.png`, testInfo);
