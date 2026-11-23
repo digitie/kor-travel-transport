@@ -1,5 +1,9 @@
 ## 2026-11-24 — 수집 실패 감사 후속
 
+- [ ] **BUS-REF-PARTIAL-20261124 / P1** — 좌표 보강(VWorld·카카오)의 일부 호출 실패를 부분 성공으로, VWorld 수집이 실패 대상 하나에
+  멈추지 않게, 실패 대상 지수 대기, 철도 주소 첫 줄 검색(감사 2026-11-23 §2.2 bus_reference). **남은 것**: 배포 뒤 운영에서
+  bus_reference run SUCCESS·export 준비 실행, 철도역 1096 영수증 성공 수용. [journal](journal.md) 2026-11-24.
+
 - [ ] **DAGSTER-RUNTIME-PRIORITY-20261124 / P1** — 5분 job 실행 상한 주기 비례(공항 1,800·고속도로 1,200초, run 시작 기준 deadline),
   `dagster/priority`(실시간 10·유가 5·나머지 0), 고속도로 성공 예약을 tick 시각 기준으로. **남은 것**: 배포 뒤 odroid에서 고속도로 `skipped` run 수(이전 14일 498)와 실효 주기(이전 약 9분)를
   다시 재고, 공항·고속도로 run이 새 상한에 걸려 끊기는 일이 없는지(`max_runtime` 실패) 1주 확인. [journal](journal.md) 2026-11-24.

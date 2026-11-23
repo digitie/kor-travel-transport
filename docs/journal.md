@@ -1,3 +1,26 @@
+## 2026-11-24 — 좌표 보강 일부 실패를 부분 성공으로(BUS-REF-PARTIAL-20261124)
+
+- 수집 실패 감사(2026-11-23, Map 저장소 `docs/reports/2026-11-23-collection-failure-audit.md` §2.2·§4 #12)의
+  "bus_reference: VWorld 보강 실패가 run 실패" 항목. odroid 읽기 전용 조회(Dagster GraphQL·`raw_api_responses` SELECT):
+  bus_reference 최근 20 run 중 실패 7건 가운데 5건, place_location 실패 5건, maritime 실패 1건이 모두
+  `enrich_new_reference_locations`/`collect_place_locations`의 `vworld_provider_failed=1`(호출 1건 중 1건)이었다. 원인은 한 곳 —
+  철도역 1096의 주소 칸 `서울시 강서구 방화동 886 \n서해선 김포공항역 역무실`(줄바꿈 뒤 안내 문구)을 그대로 보내 VWorld가 매일
+  `VworldServerError`를 냈고, 비네트워크 실패 하나에 수집 루프가 `break`해 뒤 대상도 막았다. 실패 TTL 1일이라 매일 03:30 bus job이
+  먼저 이 대상을 만나 실패하고, 그 뒤 export 준비(`prepare_reference_exports`)까지 건너뛰었다. 나머지 2건은 TAGO 급감 재확인(별개, 정상 거부).
+- 변경
+  - `rail_address_query`는 주소 칸의 첫 줄만(공백 정리) 검색어로 쓴다. 입력 서명은 원문 그대로다.
+  - VWorld 좌표 수집: 대상 하나의 실패는 그 대상만 실패로 남기고 다음 대상으로 간다. 인증·쿼터는 첫 실패, 그 밖은 연속 3건
+    (`MAX_CONSECUTIVE_PROVIDER_FAILURES`)에 멈추고 `provider_blocked=1`. 실패 대상의 재호출은 연속 실패 n번째 뒤 2^(n-1)일(최대 30일).
+    카카오도 같은 연속 실패 상한·`provider_blocked`(401/403/429)를 쓴다.
+  - Dagster 판정(`_place_collection_error`): 실패는 예외로 끝난 수집, `provider_blocked`, 실패 3건 이상이면서 호출의 50% 이상,
+    설명 없는 부분 성공. 그 밖의 호출 실패는 부분 성공 — run SUCCESS, `kortravel/collection-outcome=partial`, metadata
+    `collection_outcome=partial`·`partial_parts`·`*_provider_calls/failed/blocked`, 경고 로그. bus/maritime 보강 op와 독립
+    place_location/kakao job이 같은 규칙을 쓴다. 항구 기항지 조회 실패(`_reference_error`)는 바꾸지 않았다.
+- 관리자 화면: Dagster 콘솔은 이미 partial 태그를 "자료 확인 필요 실행 · 부분 완료"로 보인다(표시 코드 불변). 해당 실행이 실패 목록에서
+  부분 완료 목록으로 옮겨 가는 것을 e2e 고정 응답으로 확인한다.
+- 검증: 관련 backend 시험 160건(WSL, PG18) 통과. 관리자 e2e `dagster-partial-outcome.spec.ts`+`dagster-retry.spec.ts` 5건을 n150(gate-slot,
+  node 26.13.1 빌드·chromium)에서 통과. 적대 리뷰 서브에이전트는 포크 작업 제약으로 돌리지 못해 James/Popper 두 렌즈의 자기 검토로 대신했다.
+
 ## 2026-11-24 — 5분 job 실행 상한·큐 우선순위·고속도로 next_due 여유(DAGSTER-RUNTIME-PRIORITY-20261124)
 
 - 감사(Map `docs/reports/2026-11-23-collection-failure-audit.md` §2.5 P1 #9·#11, §2.6 #9, §4 #12·#13):

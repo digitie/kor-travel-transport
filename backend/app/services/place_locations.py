@@ -11,8 +11,8 @@ from typing import Any
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from vworld import (VworldClient, VworldNetworkError, VworldNoDataError, parse_search_response,
-                    process_search_response, parse_geocode_response)
+from vworld import (VworldAuthError, VworldClient, VworldNoDataError, VworldRateLimitError,
+                    parse_search_response, process_search_response, parse_geocode_response)
 
 from app.services.place_targets import iter_missing_place_targets, matching_place_names
 from app.services.rail_locations import choose_rail_address, rail_address_query, rail_address_signature
@@ -23,6 +23,22 @@ from app.models import BusTerminalReference, CollectionRun, FerryPort, RawApiRes
 
 LOCATION_SOURCE = "vworld_place"
 TRIGGER = "dagster_place_locations"
+#: 대상 하나의 호출 실패(서버 오류·응답 형식·네트워크)는 그 대상만 실패로 남기고 다음 대상으로 넘어간다.
+#: 연속으로 이만큼 실패하면 제공기관 전체 장애로 보고 이번 실행을 멈춘다(`provider_blocked=1`). 인증·쿼터
+#: 오류는 첫 번째에 멈춘다. 예전에는 네트워크가 아닌 실패 하나에 바로 멈춰, 매일 같은 오류를 내는 대상 하나가
+#: 그 뒤 대상 전부를 막고 job을 매일 실패시켰다(운영 2026-11: 주소 칸에 줄바꿈이 섞인 철도역 1곳).
+MAX_CONSECUTIVE_PROVIDER_FAILURES = 3
+#: 실패한 대상의 재호출 간격. 연속 실패 n번째 뒤 2^(n-1)일, 최대 30일(성공 영수증의 재확인 주기와 같다).
+#: 결정적으로 실패하는 대상이 매일 호출 1회·부분 완료 1회를 만들지 않게 한다.
+FAILED_TARGET_MAX_BACKOFF_DAYS = 30
+#: 연속 실패 수를 셀 때 보는 최근 영수증 수(2^5=32일이 30일 상한을 넘으므로 그 이상은 볼 필요가 없다).
+FAILED_TARGET_HISTORY = 6
+
+
+def failed_target_backoff(consecutive_failures: int) -> timedelta:
+    """연속 실패 횟수에 따른 다음 호출까지의 대기(1→1일, 2→2일, 3→4일 …, 최대 30일)."""
+    exponent = min(max(consecutive_failures, 1) - 1, FAILED_TARGET_HISTORY - 1)
+    return timedelta(days=min(FAILED_TARGET_MAX_BACKOFF_DAYS, 2 ** exponent))
 
 
 def _province(value: str) -> str:
@@ -142,12 +158,30 @@ class PlaceLocationCollectionService:
                     if not released:
                         raise RuntimeError("VWorld place collection advisory lock was not released")
 
+    @staticmethod
+    async def _retry_after(session: AsyncSession, endpoint: str, previous: RawApiResponse) -> timedelta:
+        """직전 영수증 상태별 재호출 간격. 성공 30일, 실패는 연속 실패 수에 따라 늘리고, 그 밖(incomplete 등)은 1일."""
+        if previous.parse_status == "success":
+            return timedelta(days=30)
+        if previous.parse_status != "failed":
+            return timedelta(days=1)
+        recent = (await session.scalars(select(RawApiResponse.parse_status).where(
+            RawApiResponse.source == LOCATION_SOURCE, RawApiResponse.endpoint == endpoint,
+        ).order_by(RawApiResponse.received_at.desc(), RawApiResponse.id.desc()).limit(FAILED_TARGET_HISTORY))).all()
+        streak = 0
+        for status in recent:
+            if status != "failed":
+                break
+            streak += 1
+        return failed_target_backoff(streak)
+
     async def _collect_unlocked(self, session: AsyncSession, *, kinds=None) -> dict[str, Any]:
         run = CollectionRun(started_at=now_utc(), status="running", trigger=TRIGGER)
         session.add(run)
         await session.commit()
         summary = {"provider_calls": 0, "bus_locations": 0, "port_locations": 0, "rail_locations": 0, "unmatched": 0,
-                   "deferred": 0, "provider_failed": 0}
+                   "deferred": 0, "provider_failed": 0, "provider_blocked": 0}
+        consecutive_failures = 0
         try:
             async with self.client_factory(
                 api_key=self.settings.vworld_api_key, timeout=self.settings.api_timeout_seconds,
@@ -192,9 +226,7 @@ class PlaceLocationCollectionService:
                                 and (kind != "rail" or (previous.request_params_json or {}).get("input_signature") == input_signature)
                                 and (previous.request_params_json or {}).get("city_name") == (
                                     row.city_name if kind == "bus" else None)
-                                and now - received < timedelta(
-                            days=30 if previous.parse_status == "success" else 1
-                        )):
+                                and now - received < await self._retry_after(session, endpoint, previous)):
                             continue
                     if session.bind is not None and session.bind.dialect.name == "postgresql":
                         await session.execute(text("SELECT pg_advisory_xact_lock(420053)"))
@@ -251,6 +283,7 @@ class PlaceLocationCollectionService:
                                 else:
                                     summary["deferred"] += 1
                             await session.commit()
+                            consecutive_failures = 0
                             await asyncio.sleep(self.settings.place_location_request_interval_seconds)
                             continue
                         try:
@@ -291,6 +324,7 @@ class PlaceLocationCollectionService:
                                 row.raw_item_json = {**(row.raw_item_json or {}), "_vworld_place": selected}
                                 summary["bus_locations" if kind == "bus" else "port_locations"] += 1
                         await session.commit()
+                        consecutive_failures = 0
                     except Exception as exc:
                         await session.rollback()
                         stored = await session.get(RawApiResponse, receipt.id)
@@ -300,10 +334,15 @@ class PlaceLocationCollectionService:
                         await session.commit()
                         summary["deferred"] += 1
                         summary["provider_failed"] += 1
-                        if isinstance(exc, VworldNetworkError):
-                            await asyncio.sleep(2)
-                            continue
-                        break
+                        consecutive_failures += 1
+                        # 인증·쿼터는 키 전체의 문제라 바로 멈춘다. 그 밖의 실패는 대상 하나의 문제일 수 있어
+                        # 다음 대상으로 넘어가되, 연속 실패가 이어지면 제공기관 장애로 보고 멈춘다.
+                        if (isinstance(exc, (VworldAuthError, VworldRateLimitError))
+                                or consecutive_failures >= MAX_CONSECUTIVE_PROVIDER_FAILURES):
+                            summary["provider_blocked"] = 1
+                            break
+                        await asyncio.sleep(2)
+                        continue
                     await asyncio.sleep(self.settings.place_location_request_interval_seconds)
             run.status = "partial_success" if summary["deferred"] else "success"
             run.finished_at = now_utc()

@@ -18,7 +18,7 @@ from app.services.place_targets import iter_missing_place_targets, matching_plac
 from app.core.config import Settings
 from app.core.time_utils import now_utc
 from app.models import BusTerminalReference, CollectionRun, FerryPort, RawApiResponse
-from app.services.place_locations import _province
+from app.services.place_locations import MAX_CONSECUTIVE_PROVIDER_FAILURES, _province
 
 
 SOURCE = "kakao_place"
@@ -101,7 +101,8 @@ class KakaoPlaceCollectionService:
         session.add(run)
         await session.commit()
         summary = {"provider_calls": 0, "bus_locations": 0, "port_locations": 0,
-                   "unmatched": 0, "incomplete": 0, "deferred": 0, "provider_failed": 0}
+                   "unmatched": 0, "incomplete": 0, "deferred": 0, "provider_failed": 0, "provider_blocked": 0}
+        consecutive_failures = 0
         try:
             key_fingerprint = hashlib.sha256(self.settings.kakao_rest_api_key.encode()).hexdigest()
             budget_time = now_utc()
@@ -222,10 +223,16 @@ class KakaoPlaceCollectionService:
                         await session.commit()
                         summary["deferred"] += 1
                         summary["provider_failed"] += 1
-                        if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (401, 403, 429):
+                        consecutive_failures += 1
+                        # 인증·한도(401/403/429)는 키 전체의 문제라 바로 멈춘다. 그 밖은 다음 대상으로 넘어가되
+                        # 연속 실패가 이어지면 제공기관 장애로 보고 멈춘다(VWorld와 같은 규칙).
+                        if ((isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (401, 403, 429))
+                                or consecutive_failures >= MAX_CONSECUTIVE_PROVIDER_FAILURES):
+                            summary["provider_blocked"] = 1
                             break
                         await asyncio.sleep(2)
                         continue
+                    consecutive_failures = 0
                     await asyncio.sleep(self.settings.kakao_place_request_interval_seconds)
             run.status = "partial_success" if summary["deferred"] else "success"
             run.finished_at = now_utc()

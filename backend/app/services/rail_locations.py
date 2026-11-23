@@ -11,9 +11,18 @@ _PARCEL = re.compile(r"(?:^|\s)([가-힣0-9]+(?:읍|면|동|리|가))\s+(산\s*)
 
 
 def rail_address_query(row):
-    for address in (row.road_address, row.lot_address):
-        if not address:
+    """원천 상세 주소의 첫 줄만 VWorld 주소 검색어로 쓴다.
+
+    KRIC 원천 주소 칸에 줄바꿈 뒤 안내 문구가 붙은 행이 있다(운영 2026-11: `...방화동 886 
+서해선 김포공항역
+    역무실`). 그대로 보내면 VWorld가 매번 서버 오류를 내 그 역이 매일 같은 실패를 반복했다. 줄바꿈 뒤는 주소가
+    아니므로 버리고 공백을 하나로 모은다. 입력 서명(`rail_address_signature`)은 원문 그대로라 바뀌지 않는다.
+    """
+    for raw_address in (row.road_address, row.lot_address):
+        lines = [line for line in (raw_address or "").splitlines() if line.strip()]
+        if not lines:
             continue
+        address = " ".join(lines[0].split())
         if _ROAD.search(address):
             return address, "road"
         if _PARCEL.search(address):

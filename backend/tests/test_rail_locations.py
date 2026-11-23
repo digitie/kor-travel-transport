@@ -169,3 +169,13 @@ def test_existing_job_accepts_rail_only_without_changing_schedules(monkeypatch):
     result = d.place_location_collection_job.execute_in_process(op_selection=["collect_place_locations"],
         run_config={"ops": {"collect_place_locations": {"config": {"rail_only": True}}}})
     assert result.success and scopes == [{"rail"}]
+
+
+def test_rail_address_query_uses_first_address_line_only():
+    """운영(2026-11): 주소 칸의 줄바꿈 뒤 안내 문구까지 보내 VWorld가 매일 서버 오류를 냈다."""
+    raw = "서울시 강서구 방화동 886 \n서해선 김포공항역 역무실"
+    assert rail_address_query(SimpleNamespace(road_address=None, lot_address=raw)) == (
+        "서울시 강서구 방화동 886", "parcel")
+    assert rail_address_query(SimpleNamespace(road_address="\n  " + ADDRESS + "  \n", lot_address=None)) == (
+        ADDRESS, "road")
+    assert rail_address_query(SimpleNamespace(road_address="\n", lot_address=None)) is None
