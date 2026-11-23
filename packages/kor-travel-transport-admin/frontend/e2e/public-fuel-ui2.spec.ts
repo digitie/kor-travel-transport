@@ -154,6 +154,9 @@ for (const width of [320, 390, 1440]) {
     await expect(page.getByRole("tooltip")).toContainText("가격이 최신이라 업데이트할 필요가 없습니다");
     await expect(page.getByRole("tooltip")).toContainText("마지막 가격 갱신 26.11.22 07:00 KST");
     expect(refreshes).toHaveLength(0);
+    // 툴팁은 열린 채 화면에 보인다(누른 뒤 바로 닫히지 않는다).
+    await page.waitForTimeout(400);
+    await expect(page.locator('[data-slot="tooltip-content"]')).toBeVisible();
     await shot(page, `ui2-price-fresh-tip-${width}.png`, testInfo);
     // 마우스로 눌러도 업데이트하지 않는다(aria-disabled라 Playwright 활성 검사를 건너뛰고 누른다).
     await button.click({ force: true });

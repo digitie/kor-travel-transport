@@ -230,7 +230,12 @@ function PublicFuelPriceButton({ stale, lastRefreshedAt, onRefresh, refreshing =
       <TooltipTrigger asChild>
         <Button type="button" variant="outline" size="icon" className="public-fuel-price-button" data-stale={stale || undefined}
           aria-label={label} aria-disabled={!enabled || refreshing || undefined} loading={refreshing}
-          onClick={() => { if (enabled) onRefresh?.(); else setTip(true); }}>
+          onClick={event => {
+            if (enabled) { onRefresh?.(); return; }
+            // Radix 툴팁은 트리거를 누르면 닫는다. 누를 수 없는 단추에서는 그 기본 동작을 막고 이유 툴팁을 연다(터치·키보드).
+            event.preventDefault();
+            setTip(true);
+          }}>
           <Icon aria-hidden="true" size={18} />
         </Button>
       </TooltipTrigger>
