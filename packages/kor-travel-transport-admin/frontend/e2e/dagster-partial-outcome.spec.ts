@@ -52,7 +52,10 @@ for (const width of [390, 1440]) test(`좌표 보강 일부 실패 실행은 실
   await expect(warning).toBeVisible();
   await warning.click();
   const inspector = page.getByRole("region", { name: "실행 진행 상세" });
-  await expect(inspector).toContainText("고속·시외버스 터미널");
+  // 실패가 아닌 완료 실행이고, 좌표 보강 뒤의 export 준비 단계까지 돌았다.
+  await expect(inspector).toContainText("실행 완료");
+  await expect(inspector).toContainText("완료 3 · 실패 0");
+  await expect(inspector).toContainText("prepare_reference_exports · 실행 완료");
   // 성공한 실행이므로 재시도 버튼은 없다(실패·취소 실행만).
   await expect(inspector.getByRole("button", { name: "재시도", exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
