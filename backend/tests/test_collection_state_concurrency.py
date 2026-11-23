@@ -53,15 +53,18 @@ def test_other_collectors_state_write_does_not_wait_for_an_open_state_transactio
                 triggers = await check.scalar(text(
                     "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'public.transport_collection_states'::regclass "
                     "AND tgname LIKE 'kt_places_revision_%'"))
+                # 옛 이미지가 배포 중 503을 내지 않게 component 행은 남긴다(아무도 올리지 않는다).
                 component = await check.scalar(text(
                     "SELECT count(*) FROM reference_export_input_revisions "
                     "WHERE component = 'places.transport_collection_states'"))
                 others = await check.scalar(text(
-                    "SELECT count(*) FROM pg_trigger WHERE tgname LIKE 'kt_places_revision_%'"))
+                    "SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid "
+                    "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "WHERE n.nspname = 'public' AND t.tgname LIKE 'kt_places_revision_%'"))
         finally:
             await engine.dispose()
         return triggers, component, others
 
     triggers, component, others = asyncio.run(run())
-    assert (triggers, component) == (0, 0)
+    assert (triggers, component) == (0, 1)
     assert others == 40  # 나머지 10개 입력 표의 INSERT·UPDATE·DELETE·TRUNCATE trigger는 그대로다.

@@ -1,8 +1,10 @@
 ## 현재 상태 — 2026-11-24 상태 행 쓰기의 전역 직렬화 제거(COLLECTION-STATE-LOCK-20261124)
 
-- backend + migration 0048(trigger 4개 DROP·component 행 DELETE, `lock_timeout` 2초). API·UI 계약 변경 없음.
-- 배포(Codex 담당): backend 이미지(API·Dagster code-server 공용). API entrypoint가 `alembic upgrade head`로 0048을 적용한다.
-  롤백은 `alembic downgrade 0047_fuel_points_gen_product` 후 이전 이미지.
+- backend + migration 0048(상태 표 trigger 4개 DROP, `lock_timeout` 2초; component 행은 남김). API·UI 계약 변경 없음.
+- 배포(Codex 담당): backend 이미지(API·Dagster code-server 공용). 운영은 `migrate` one-shot이 0048을 적용한다(backend는
+  `RUN_DB_MIGRATIONS=false`). `DROP TRIGGER`가 AccessExclusive 잠금이라 Dagster drain 뒤 적용하고, 55P03이면 다시 돌린다(부분 적용 없음).
+  옛 이미지는 0048 DB에서도 캐시만 끄고 정답을 낸다. 롤백은 **새 이미지로** `alembic downgrade 0047_fuel_points_gen_product`(drain 뒤)
+  후 이전 이미지 — 옛 이미지에는 0048 스크립트가 없다.
 - 다음 한 작업: 배포 뒤 상태 UPDATE lock timeout 0건, 공개 장소(places) 응답·캐시 재사용이 그대로인지 확인한다.
 
 ## 현재 상태 — 2026-11-24 KAC 429 backoff·유가 통계 정리 가시화(COLLECTION-AUDIT-20261123 §2.5 P2)

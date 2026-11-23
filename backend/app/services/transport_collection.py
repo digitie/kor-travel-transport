@@ -630,10 +630,9 @@ class TransportCollectionService:
                         if source == TRAFFIC_SOURCE and items is not None:
                             await self._refresh_recent_traffic_statistics(session, items)
                         if items is not None:
-                            # 상태 행 UPDATE는 문장 trigger(`kt_places_revision`)로 places revision 행을 commit까지
-                            # 잠근다. 소통 저장(수천 행·수 분)보다 먼저 두면 그동안 다른 수집기의 상태 갱신이
-                            # lock_timeout(5초)으로 실패한다(2026-11 운영: 유가·휴게소 유가 claim 실패의 원인).
-                            # 저장을 모두 끝낸 뒤 commit 직전에 표시한다.
+                            # 성공 표시는 저장을 모두 끝낸 뒤 commit 직전에 한다(상태 행 잠금을 짧게 쥔다). 2026-11 운영의
+                            # 상태 쓰기 lock_timeout은 0045 문장 trigger가 모든 수집기의 상태 쓰기를 한 revision 행에 줄
+                            # 세운 탓이었고 0048이 상태 표에서 그 trigger를 뺐다.
                             await self._mark_source_success(
                                 session, source, now_utc(), keep_success_at=source == INCIDENT_SOURCE,
                             )
@@ -927,7 +926,7 @@ class TransportCollectionService:
                 "scope_key": self._highway_scope_key(source), "item_count": len(result),
             }},
         )
-        # 성공 표시는 호출자가 저장을 끝낸 뒤 commit 직전에 한다(places revision 행 잠금 시간 최소화).
+        # 성공 표시는 호출자가 저장을 끝낸 뒤 commit 직전에 한다(상태 행 잠금 시간 최소화).
         return result
 
     async def _collect_fuel(

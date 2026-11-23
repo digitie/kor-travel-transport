@@ -428,6 +428,15 @@ reader는head/release/kind와component별epoch/revision을키로사용한다.
 revision행누락은503이다.카운터행의UPDATE잠금이생기므로원본collector/API의기존lock/statement상한을
 유지하며9행전체를단일전역counter로합치지않는다. [구현·시험·한계](../reports/2026-11-18-read-performance.md).
 
+## 수집 상태 표의 장소 revision (0048)
+
+0045는 장소 입력 표마다 문장 trigger `kt_places_revision`을 달아 `reference_export_input_revisions`의 표별 행을 쓰기 문장마다
+올린다. 그 행 잠금은 commit까지 남아 같은 표의 writer를 한 행에 줄 세운다. `transport_collection_states`는 모든 수집기가
+claim·성공·실패마다 쓰는 표라 서로 다른 수집기의 상태 쓰기가 직렬화됐다(운영 lock_timeout 38건). 0048은 이 표의 trigger 4개를
+지우고, `place_map_cache`는 이 표만 같은 REPEATABLE READ snapshot 안의 내용 digest(`sha256(string_agg(row_to_json))`)를 캐시 키에
+넣는다. `places.transport_collection_states` component 행은 옛 이미지 호환을 위해 남긴 죽은 행이다(downgrade는 epoch를 바꾸고
+trigger를 되살린다). 다른 입력 표는 0045 그대로다.
+
 ## 장소 읽기 정렬·최근 돌발 covering index (0044_places_read_indexes,후보)
 
 fuel_stations의 (last_seen_at DESC,id DESC)는 최신 시각 동률의 ID 정렬까지 지원한다.

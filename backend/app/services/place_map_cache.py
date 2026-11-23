@@ -21,7 +21,7 @@ STATE_TABLE = "transport_collection_states"
 # 작은 catalog/counter 조회 하나다. 실제 payload/원본 JSON/가격 조회는 포함하지 않는다.
 _STAMP = text("""
 SELECT r.versions, r.members,
-    (SELECT md5(coalesce(string_agg(row_to_json(s)::text, '|' ORDER BY s.source), ''))
+    (SELECT encode(sha256(convert_to(coalesce(string_agg(row_to_json(s)::text, '|' ORDER BY s.source), ''), 'UTF8')), 'hex')
      FROM public.transport_collection_states s) AS states_digest,
     pg_current_xact_id_if_assigned()::text AS own_xid,
     current_setting('transaction_isolation') AS isolation,

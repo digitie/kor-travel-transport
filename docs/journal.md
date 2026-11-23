@@ -8,14 +8,14 @@
   이 표는 모든 수집기가 claim·성공·실패마다 쓰므로, 0045 전에는 자기 source 행만 잠그던 상태 쓰기가 수집기 전체에서 한 행에
   줄을 섰다. 상태를 쓴 뒤 저장을 이어 가는 transaction(고속도로 175초+, #258이 순서를 고침)이 있으면 다른 수집기의 상태
   UPDATE가 5초 뒤 실패했다. 024c808(0044 인덱스)은 잠금 경합을 만들지 않는다.
-- 수정(0048 `states_revision_digest`): `transport_collection_states`의 trigger 4개와 component 행을 지운다. 장소 캐시
-  (`place_map_cache`)는 이 표만 revision 카운터 대신 같은 REPEATABLE READ snapshot 안에서 표 내용 digest
-  (`md5(string_agg(row_to_json(s) ORDER BY source))`, 수십 행)를 읽어 캐시 키에 넣는다 — 어떤 상태 변화도 캐시를 무효화하는
+- 수정(0048 `states_revision_digest`): `transport_collection_states`의 trigger 4개를 지운다(component 행은 배포 중 옛 이미지가
+  503을 내지 않게 남긴 죽은 행 — 적대 리뷰 P1). 장소 캐시(`place_map_cache`)는 이 표만 revision 카운터 대신 같은 REPEATABLE READ
+  snapshot 안에서 표 내용 digest(`sha256(string_agg(row_to_json(s) ORDER BY source))`, 수십 행)를 읽어 캐시 키에 넣는다 — 어떤 상태 변화도 캐시를 무효화하는
   의미는 같고, 다른 표의 trigger·카운터는 그대로다. 이제 서로 다른 source의 상태 쓰기는 서로 기다리지 않는다.
 - 재시도로 덮지 않았다. 처음 만든 SKIP LOCKED 재시도·보유자 로그 안(PR #261 첫 커밋)은 원인 확인 뒤 버렸다 — 직렬화 지점 자체가
   없어지면 같은 source 행의 쓰기만 남고 그것은 job별 단일 실행이라 경합 상대가 없다. 유가·휴게소 유가 op의 DB 일시 오류 재시도(#258)는 그대로다.
 - 시험: `tests/test_collection_state_concurrency.py`(열린 상태 transaction이 있어도 다른 source 상태 UPDATE·INSERT가 200ms
-  lock_timeout 안에 끝남, trigger 0·component 0·다른 표 trigger 40), `tests/test_places_revision_cache.py`(상태 표 INSERT·UPDATE·DELETE·
+  lock_timeout 안에 끝남, trigger 0·component 행 유지·다른 표 trigger 40), `tests/test_places_revision_cache.py`(상태 표 INSERT·UPDATE·DELETE·
   TRUNCATE가 여전히 캐시를 다시 만들게 함 — 기존 parametrize, migration 왕복은 head까지).
 
 ## 2026-11-24 — KAC 429 backoff·Retry-After와 유가 통계 정리 결과 가시화(COLLECTION-AUDIT-20261123 §2.5 P2)
