@@ -1,3 +1,11 @@
+## 2026-11-24 — 주차 통계 archive job의 schedule 부재는 의도(PARKING-ARCHIVE-SCHEDULE-20261124)
+
+- 수집 실패 감사(2026-11-23 §2.2)의 "parking_statistics_archive_job: 코드에 있으나 40일간 실행 0" 항목. odroid Dagster GraphQL 읽기 전용
+  조회로 run 0건을 확인했다. 의도 확인: `docs/architecture/parking-retention.md` 머리말("첫 단계는 … 수동 backfill만. 자동 schedule …
+  수행하지 않는다")·op 주석("reader 전환 전 자동 schedule/삭제는 없다")·tasks T-PARK-RET-CURRENT("prune OFF·운영 삭제/스케줄 변경0").
+- 결정: schedule을 추가하지 않는다. 근거(영구 통계 reader 없음, 원본 정리 차단으로 손실 없음, `blocked` 보류를 처리할 운영 절차 없음)를
+  parking-retention.md "자동 실행 보류" 절에 남겼다. 자동 적재를 켜는 시점·원본 정리 자동화는 소유자 결정이다. 코드 변경 없음.
+
 ## 2026-11-23 — 공개 parking-radar 비율·관리자 look 정렬
 
 - 소유자 요청("좀 더 비율좋게", transport admin과 같은 look). 대상은 공개 앱 `frontend/`(이름 parking-radar) 전체 셸과 현황 화면.
