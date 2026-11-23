@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
-import { DAGSTER_LOCATION_NAME, DAGSTER_REPOSITORY_NAME, DAGSTER_LOCATION_TAG_KEY,
+import { ADMIN_ACTOR_TAG, ADMIN_RETRY_OF_TAG, DAGSTER_LOCATION_NAME, DAGSTER_REPOSITORY_NAME, DAGSTER_LOCATION_TAG_KEY,
   CONSOLE_CATALOG_QUERY, CONSOLE_RUN_QUERY, BASIC_RUN_QUERY, CONSOLE_EVENTS_QUERY, FIND_REQUEST, ACTIVE_JOB, LAUNCH, CANCEL, START_SCHEDULE, STOP_SCHEDULE, START_SENSOR, STOP_SENSOR
 } from "./dagster-scope";
 export { CONSOLE_CATALOG_QUERY, CONSOLE_RUN_QUERY, CONSOLE_EVENTS_QUERY } from "./dagster-scope";
 import { failureDiagnostic, gridFailureCounts } from "./dagster-failure-diagnostics";
-import { CONSOLE_ACTIVE, CONSOLE_COUNT_LABELS, type ConsoleActionRequest, type ConsoleActionResult, type ConsoleCatalog, type ConsoleEvent, type ConsoleRequest, type ConsoleRunDetail } from "./dagster-console-model";
+import { CONSOLE_ACTIVE, CONSOLE_COUNT_LABELS, type ConsoleActionRequest, type ConsoleActionResult, type ConsoleAudit, type ConsoleCatalog, type ConsoleEvent, type ConsoleRequest, type ConsoleRunDetail } from "./dagster-console-model";
 
 type Row = Record<string, unknown>;
 type Graphql = (query: string, variables: Record<string, unknown>) => Promise<Row>;
@@ -13,6 +13,9 @@ const list = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
 const string = (value: unknown) => typeof value === "string" ? value : "";
 const identifier = (value: unknown) => typeof value === "string" && /^[A-Za-z0-9_][A-Za-z0-9_.\[\]-]{0,199}$/.test(value) ? value : null;
 const uuid = (value: unknown) => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+/** 감사 태그의 요청자: 세션 사용자 이름(영문·숫자·._@- 64자)만 싣는다. */
+export const auditActor = (value: unknown) => typeof value === "string" && /^[A-Za-z0-9._@-]{1,64}$/.test(value) ? value : null;
+const runTag = (value: Row, key: string) => { const found = list(value.tags).map(row).find(item => item.key === key); return found ? string(found.value) : null; };
 const number = (value: unknown): number | null => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1e12 ? value : null;
 // Run/단계는 초, native MessageEvent.timestamp는 밀리초다. 건수 상한과 섞지 않는다.
 const clock = (value: unknown, unit: "seconds" | "milliseconds" = "seconds"): number | null => {
@@ -37,6 +40,13 @@ const launchRejections:Record<string,string> = {
   InvalidOutputError:"실행 출력이 현재 작업 정의와 맞지 않습니다. 제어 상태를 새로 확인하세요.",
   InvalidSubsetError:"실행 대상이 현재 작업 정의와 맞지 않습니다. 제어 상태를 새로 확인하세요.",
 };
+
+/** 관리자 실행·재시도의 감사 태그(요청자). 요청 시각은 run 생성 시각이 갖는다. 같은 요청의 복구가 같은 launch
+ *  본문을 다시 보내야 하므로(멱등 요청) 시각처럼 매번 달라지는 값은 태그에 넣지 않는다. */
+function auditTags(audit: ConsoleAudit) {
+  const actor = auditActor(audit.actor);
+  return actor ? [{ key: ADMIN_ACTOR_TAG, value: actor }] : [];
+}
 
 export class ConsoleServiceError extends Error { constructor(readonly status: number) { super("Dagster console request failed"); } }
 
@@ -131,10 +141,12 @@ export function sanitizeConsoleRun(value: Row, eventData?: Row): ConsoleRunDetai
     steps: keys.slice(0,1000).map(key => { const item = stepStats.find(entry => entry.stepKey === key) ?? {}; return { key, status: item.status == null ? "NOT_STARTED" : status(item.status), startTime: clock(item.startTime), endTime: clock(item.endTime), attempts: list(item.attempts).length }; }),
     events: sanitizeConsoleEvents(connection.events), stepsSucceeded: number(stats.stepsSucceeded), stepsFailed: number(stats.stepsFailed), materializations: number(stats.materializations),
     cursor: typeof connection.cursor === "string" && connection.cursor.length <= 512 ? connection.cursor : null, hasMore: connection.hasMore === true, stepsTruncated: keys.length > 1000, checkedAt: new Date().toISOString(),
+    retryOf: uuid(runTag(value, ADMIN_RETRY_OF_TAG)) ? runTag(value, ADMIN_RETRY_OF_TAG)!.toLowerCase() : null,
+    requestedBy: auditActor(runTag(value, ADMIN_ACTOR_TAG)),
   };
 }
 
-export async function handleConsoleRequest(input: ConsoleRequest, graphql: Graphql): Promise<ConsoleCatalog | ConsoleRunDetail | ConsoleActionResult> {
+export async function handleConsoleRequest(input: ConsoleRequest, graphql: Graphql, audit: ConsoleAudit = { actor: null }): Promise<ConsoleCatalog | ConsoleRunDetail | ConsoleActionResult> {
   async function catalogRaw(requireRepository = true) {
     const data = await graphql(CONSOLE_CATALOG_QUERY, { selector }); const repository = row(data.repositoryOrError);
     if (requireRepository && repository.__typename !== "Repository") throw new ConsoleServiceError(502);
@@ -188,7 +200,7 @@ export async function handleConsoleRequest(input: ConsoleRequest, graphql: Graph
     if (active) return preserveOrReject("blocked","같은 작업이 이미 대기 또는 실행 중입니다. 기존 실행에서 진행 상황을 확인하세요.",uuid(active.runId)?{runId:string(active.runId)}:{});
     const nativeId=consoleRequestId(input.requestId);
     try {
-      const result=row((await graphql(LAUNCH,{ requestId:nativeId, executionParams:{ selector:{...selector,pipelineName:job}, runConfigData:{}, executionMetadata:{ tags:[{key:".dagster/repository",value:`${DAGSTER_REPOSITORY_NAME}@${DAGSTER_LOCATION_NAME}`},{key:"dagster/code_location",value:DAGSTER_LOCATION_NAME},{key:"kortravel/admin-request",value:nativeId},...(input.action==="retry"?[{key:"kortravel/admin-retry-of",value:input.runId!}]:[])] } } })).result);
+      const result=row((await graphql(LAUNCH,{ requestId:nativeId, executionParams:{ selector:{...selector,pipelineName:job}, runConfigData:{}, executionMetadata:{ tags:[{key:".dagster/repository",value:`${DAGSTER_REPOSITORY_NAME}@${DAGSTER_LOCATION_NAME}`},{key:"dagster/code_location",value:DAGSTER_LOCATION_NAME},{key:"kortravel/admin-request",value:nativeId},...(input.action==="retry"?[{key:ADMIN_RETRY_OF_TAG,value:input.runId!}]:[]),...auditTags(audit)] } } })).result);
       const run=row(result.run);
       if (result.__typename !== "IdempotentLaunchRunSuccess") {
         const rejection=launchRejections[string(result.__typename)];

@@ -47,6 +47,16 @@ describe("수집 실패 상세의 서버 정제", () => {
     expect(failureDiagnostic({ message: "ALERT_PROVIDER_RATE_LIMIT" })).toContain("한도 종류와 복구 정책");
     expect(failureDiagnostic({ message: "Opinet browser action failed: cause=TimeoutError" })).toContain("OPINET_BROWSER_TIMEOUT");
   });
+  it("오피넷 시각 자원 차단 실패와 자동 재시도 여부를 구분한다", () => {
+    const result = failureDiagnostic({ message: "교통정보 수집에 실패했습니다(status=failed): Opinet browser resource policy failed command=Fetch.failRequest cause=Error reason=unclassified" });
+    expect(result).toContain("오류 코드: OPINET_BROWSER_RESOURCE_POLICY");
+    expect(result).not.toContain("Fetch.failRequest");
+    const metadata = (auto: boolean) => failureDiagnostic({ failureMetadata: { metadataEntries: [
+      { label: "error_code", text: "DATABASE_RETRYABLE" }, { label: "auto_retry", boolValue: auto }] } });
+    expect(metadata(true)).toContain("자동 재시도: 예");
+    expect(metadata(false)).toContain("자동 재시도: 아니오 · 필요하면 재시도 버튼");
+    expect(metadata(true)).toContain("DB 잠금 경합");
+  });
   it("URL·키·SQL·HTML·임의 metadata를 응답에 그대로 전달하지 않는다", () => {
     const secret = "fixture-unlabelled-private-key";
     const result = sanitizeFailureResponse({ errors: undefined, data: { runsOrError: { __typename: "Runs", results: [{ eventConnection: {

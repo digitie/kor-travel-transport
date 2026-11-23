@@ -44,15 +44,21 @@ export async function createSessionValue(user: string) {
 }
 
 export async function verifySessionValue(value: string | undefined) {
-  if (!value || !loginIsConfigured()) return false;
+  return (await verifiedSessionUser(value)) !== null;
+}
+
+/** 서명·만료를 검증한 세션의 사용자 이름. 감사 기록(요청자)에만 쓰며 검증 실패는 null이다. */
+export async function verifiedSessionUser(value: string | undefined): Promise<string | null> {
+  if (!value || !loginIsConfigured()) return null;
   const [encodedPayload, encodedSignature, ...extra] = value.split(".");
-  if (!encodedPayload || !encodedSignature || extra.length) return false;
+  if (!encodedPayload || !encodedSignature || extra.length) return null;
   try {
     const valid = await crypto.subtle.verify("HMAC", await signingKey(sessionSecret()), base64UrlDecode(encodedSignature), encoder.encode(encodedPayload));
-    if (!valid) return false;
+    if (!valid) return null;
     const payload = JSON.parse(decoder.decode(base64UrlDecode(encodedPayload))) as SessionPayload;
-    return payload.user === adminUsername() && Number.isFinite(payload.exp) && payload.exp > Math.floor(Date.now() / 1000);
+    const current = payload.user === adminUsername() && Number.isFinite(payload.exp) && payload.exp > Math.floor(Date.now() / 1000);
+    return current ? payload.user : null;
   } catch {
-    return false;
+    return null;
   }
 }

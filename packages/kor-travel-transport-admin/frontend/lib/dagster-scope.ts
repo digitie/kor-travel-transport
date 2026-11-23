@@ -139,7 +139,10 @@ export const ADDRESS_REFRESH_LAUNCH_MUTATION = 'mutation LaunchAddressRefresh($r
 /** 관리자 콘솔의 고정 GraphQL 문서. selector와 소유 run 필터는 서버가 채운다. */
 export const METADATA = 'metadataEntries { __typename label ... on TextMetadataEntry { text } ... on IntMetadataEntry { intValue } ... on FloatMetadataEntry { floatValue } ... on BoolMetadataEntry { boolValue } ... on JsonMetadataEntry { jsonString } }';
 export const ERROR = 'error { className message cause { className message cause { className message cause { className message } } } }';
-export const RUN_FIELDS = 'runId jobName status creationTime startTime endTime canTerminate hasTerminatePermission hasReExecutePermission';
+export const RUN_FIELDS = 'runId jobName status creationTime startTime endTime canTerminate hasTerminatePermission hasReExecutePermission tags { key value }';
+/** 관리자 실행·재시도의 감사 태그. 값은 run 태그로 Dagster에 남고 콘솔 상세에서 다시 보인다. */
+export const ADMIN_RETRY_OF_TAG = "kortravel/admin-retry-of";
+export const ADMIN_ACTOR_TAG = "kortravel/admin-actor";
 export const CONSOLE_CATALOG_QUERY = `query AdminDagsterCatalog($selector: RepositorySelector!) {
   repositoryOrError(repositorySelector: $selector) { __typename ... on Repository {
     jobs { name hasLaunchExecutionPermission }

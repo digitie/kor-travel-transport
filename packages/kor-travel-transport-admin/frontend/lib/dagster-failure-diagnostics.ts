@@ -50,6 +50,7 @@ const reasons: Record<string, [string, string]> = {
   DATABASE_RETRYABLE: ["DB 잠금 경합 또는 일시적인 저장 시간 초과가 발생했습니다.", "저장 재시도 결과와 DB 대기를 확인하세요. 외부 자료를 중복 수집하지 않습니다."],
   PARTIAL_SOURCE_FAILURE: ["일부 원천 또는 데이터셋 수집에 실패했습니다.", "성공 저장분과 마지막 정상 자료를 유지합니다. 실패한 원천의 후속 실행을 확인하세요."],
   OPINET_BROWSER_TIMEOUT: ["오피넷 브라우저의 지역·유종 조회가 제한 시간을 넘었습니다.", "저장한 정상 결과와 호출 보호를 유지합니다. 다음 정기 재시도 결과를 확인하세요."],
+  OPINET_BROWSER_RESOURCE_POLICY: ["오피넷 브라우저의 이미지·글꼴 차단 명령이 실패했습니다.", "저장한 정상 결과와 진행분을 유지합니다. 자동 재시도 또는 재시도가 남은 지역부터 이어 합니다."],
   COLLECTION_TIMEOUT: ["수집 실행이 허용된 시간 예산을 넘었습니다.", "실패 단계와 처리 건수를 확인하세요. 호출 보호 간격을 지켜 재시도합니다."],
   COLLECTION_FAILED: ["수집을 완료하지 못했습니다.", "실패 단계와 성공 저장 건수를 확인하세요. 성공 저장분은 유지합니다."],
   VADAHUB_SCHEMA_CHANGED: ["배편 기준자료의 공식 파일 형식이 기존 규격과 달라졌습니다.", "실패한 데이터셋의 파일 규격을 확인해야 합니다. 마지막 정상 자료는 보존합니다."],
@@ -82,7 +83,7 @@ function metadata(raw: unknown): ObjectValue {
   for (const value of entries.slice(0, 64)) {
     const entry = object(value), label = text(entry.label);
     const number = entry.intValue ?? entry.floatValue;
-    if ((label === "retryable" || label === "successful_data_preserved") && typeof entry.boolValue === "boolean") result[label] = entry.boolValue;
+    if ((label === "retryable" || label === "successful_data_preserved" || label === "auto_retry") && typeof entry.boolValue === "boolean") result[label] = entry.boolValue;
     else if (Object.hasOwn(values, label) && Object.hasOwn(values[label], text(entry.text))) result[label] = entry.text;
     else if (label === "error_type" && classNames.has(text(entry.text))) result[label] = entry.text;
     else if (Object.hasOwn(numbers, label) && typeof number === "number" && Number.isFinite(number) && number >= 0 && number <= 1_000_000_000) result[label] = number;
@@ -103,6 +104,7 @@ function codeFor(message: string, data: ObjectValue): string {
   if (/quota|rate.limit|429/i.test(message)) return "PROVIDER_RATE_LIMIT";
   if (/AuthError|인증.*거절|등록되지 않은 서비스키/.test(message)) return "PROVIDER_AUTH";
   if (/deadlock detected|LockNotAvailable|lock timeout|statement timeout/.test(message)) return "DATABASE_RETRYABLE";
+  if (/Opinet browser resource policy failed/.test(message)) return "OPINET_BROWSER_RESOURCE_POLICY";
   if (/Opinet.*TimeoutError|Opinet.*timeout/i.test(message)) return "OPINET_BROWSER_TIMEOUT";
   if (/TimeoutError|timed out|시간.*초과/.test(message)) return "REQUEST_TIMEOUT";
   if (/partial_success|일부.*수집.*실패|모든 dataset 수집이 실패/.test(message)) return "PARTIAL_SOURCE_FAILURE";
@@ -124,6 +126,7 @@ export function failureDiagnostic(raw: unknown): string {
   if (data.error_type && !classes.includes(text(data.error_type))) lines.push(`원천 오류 유형: ${data.error_type}`);
   for (const [key, mapping] of Object.entries(values)) if (data[key]) lines.push(`${({ dataset: "실패 데이터셋", scope: "수집 범위", status: "저장 결과", recovery_hint: "복구 정책", rate_limit_scope: "호출 한도 종류" } as Record<string, string>)[key]}: ${mapping[text(data[key])]}`);
   if (typeof data.retryable === "boolean") lines.push(`재시도 가능: ${data.retryable ? "예 · 호출 보호 후 정기 실행" : "아니오 · 복구 정책 확인"}`);
+  if (typeof data.auto_retry === "boolean") lines.push(`자동 재시도: ${data.auto_retry ? "예 · 같은 실행에서 잠시 뒤 다시 시도" : "아니오 · 필요하면 재시도 버튼으로 다시 실행"}`);
   if (typeof data.successful_data_preserved === "boolean") lines.push(`성공 저장분 보존: ${data.successful_data_preserved ? "예" : "확인 필요"}`);
   if (data.metadata_field) lines.push(`검사 필드: ${data.metadata_field} · 응답 형식: ${data.metadata_type ?? "미제공"}`);
   for (const [key, label] of Object.entries(numbers)) if (data[key] !== undefined) lines.push(`${label}: ${data[key]}`);
