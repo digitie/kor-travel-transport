@@ -125,13 +125,13 @@ function OverlapList({ places, onSelect, listRef }: { places: Place[]; onSelect:
 }
 
 export function TransportMap({ places, selectedPlace, onSelectPlace, mode = "all", details, detailTitle, onCloseDetails, focusRevision = 0, layers, detailKey, mapFeatureCount = 0, listFeatureCount = 0, listCount, listContent, listPlaces = true, toolbar, feedback, filterSummary, view: controlledView, onViewChange, load = transportGet, mapOnly = false, publicFuel }: { places?: Place[]; selectedPlace?: Place | null; onSelectPlace?: (place: Place) => void; mode?: "all" | "transport" | "fuel"; details?: ReactNode; detailTitle?: ReactNode; onCloseDetails?: () => void; focusRevision?: number; layers?: ReactNode; detailKey?: string; mapFeatureCount?: number; listFeatureCount?: number; listCount?: number; listContent?: ReactNode; listPlaces?: boolean; toolbar?: ReactNode; feedback?: ReactNode; filterSummary?: string; view?: "map" | "list"; onViewChange?: (view: "map" | "list") => void; load?: typeof transportGet; mapOnly?: boolean; publicFuel?: PublicFuelControls }) {
-  const { workspace, embedded, detail, detailOpener, query, selectedSources, products, kinds, allowedKinds, filtersExpanded, setFiltersExpanded, filterTrigger, setKinds, setSelected, controlId, queryInput, setQuery, setSelectedSources, sources, setProducts, view, setView, mapViewport, items, serverClustered, serverTotal, serverClusters, visiblePoints, pending, mapContainer, setMapUnavailableMessage, basemap, moved, camera, setClusterPlaces, setClusterCamera, zoom, setCameraRequest, groupedPoints, cluster, overlapOpener, setClusterAnchor, clusterList, selectPlace, selectedPoint, clusterPlaces, clusterAnchor, closeOverlap, current, loaded, mapDetail, listDetail, dismissEmbeddedDetail, closeDetail, setReload, focusFilters, failed, mapUnavailableMessage, fuelDetailScopeExpanded, setFuelDetailScopeExpanded, regionMarkers, railOnly, partialListKinds, perKindLimit, searchQuery, refreshViewport } = useTransportMap({ places, selectedPlace, onSelectPlace, mode, details, detailTitle, onCloseDetails, focusRevision, layers, detailKey, mapFeatureCount, listFeatureCount, listCount, listContent, listPlaces, toolbar, feedback, filterSummary, view: controlledView, onViewChange, load, fuelProducts: publicFuel?.products, fuelFilterQuery: publicFuel?.filterQuery });
+  const { workspace, embedded, detail, detailOpener, query, selectedSources, products, kinds, allowedKinds, filtersExpanded, setFiltersExpanded, filterTrigger, setKinds, setSelected, controlId, queryInput, setQuery, setSelectedSources, sources, setProducts, view, setView, mapViewport, items, serverClustered, serverTotal, serverClusters, visiblePoints, pending, mapContainer, setMapUnavailableMessage, basemap, moved, camera, setClusterPlaces, setClusterCamera, zoom, setCameraRequest, groupedPoints, cluster, overlapOpener, setClusterAnchor, clusterList, selectPlace, selectedPoint, clusterPlaces, clusterAnchor, closeOverlap, current, loaded, mapDetail, listDetail, dismissEmbeddedDetail, closeDetail, setReload, focusFilters, failed, mapUnavailableMessage, fuelDetailScopeExpanded, setFuelDetailScopeExpanded, regionMarkers, railOnly, partialListKinds, perKindLimit, searchQuery, refreshViewport, fuelFreshness } = useTransportMap({ places, selectedPlace, onSelectPlace, mode, details, detailTitle, onCloseDetails, focusRevision, layers, detailKey, mapFeatureCount, listFeatureCount, listCount, listContent, listPlaces, toolbar, feedback, filterSummary, view: controlledView, onViewChange, load, fuelProducts: publicFuel?.products, fuelFilterQuery: publicFuel?.filterQuery });
   const detailPanel = (panelView: "map" | "list") => (embedded ? details : current) ? <MapInspector panelView={panelView} load={load} embedded={embedded} details={details} mapDetail={mapDetail} listDetail={listDetail} detailTitle={detailTitle} current={current} dismissEmbeddedDetail={dismissEmbeddedDetail} closeDetail={closeDetail} loaded={loaded} setView={setView} setCameraRequest={setCameraRequest} setSelected={setSelected} setReload={setReload} focusFilters={focusFilters} publicFuel={publicActions.detail} /> : null;
 const status = <MapQueryStatus feedback={feedback} failed={failed} setReload={setReload} basemap={basemap} view={view} mapUnavailableMessage={mapUnavailableMessage} />;
 const {refreshing, refreshPrices} = usePublicFuelRefresh(publicFuel?.refreshEnabled, setReload);
 const publicActions = publicFuelActions({
   controls: publicFuel, bounds: refreshViewport, current, refreshing, refreshPrices,
-  pricesStale: loaded.fuel_station?.fuel_prices_stale, clearSelection: () => setSelected(null),
+  freshness: fuelFreshness, loading: pending.length > 0, failed: failed.length > 0, clearSelection: () => setSelected(null),
   mapCenter: mapViewport ? [mapViewport.longitude, mapViewport.latitude] : DEFAULT_CAMERA.center,
 });
 const summary = <MapStatusSummary load={load} publicFuel={publicActions.summary} status={status} embedded={embedded} mode={mode} loaded={loaded} pending={pending} failed={failed} current={current} fuelDetailScopeExpanded={fuelDetailScopeExpanded} setFuelDetailScopeExpanded={setFuelDetailScopeExpanded} />;
@@ -150,12 +150,21 @@ return <section className="map-workbench" aria-label={mode === "fuel" ? "유가 
   </section>;
 }
 
+/** 지도 범위 업데이트를 지금 못 쓰는 이유(가격 아이콘 툴팁). 범위가 정해지지 않은 까닭이 조회 중·실패면 그것을 먼저 말한다. */
+function viewportRefreshBlock(enabled: boolean | undefined, filterQuery: string | undefined, bounds: FuelRefreshBounds | undefined, loading: boolean, failed: boolean) {
+  if (!enabled) return "disabled" as const;
+  if (filterQuery) return "filters" as const;
+  if (bounds) return undefined;
+  return failed ? "failed" as const : loading ? "loading" as const : "range" as const;
+}
+
 function publicFuelActions({
-  controls, bounds, current, refreshing, refreshPrices, pricesStale, clearSelection, mapCenter,
+  controls, bounds, current, refreshing, refreshPrices, freshness, loading, failed, clearSelection, mapCenter,
 }: {
   controls?: PublicFuelControls; bounds?: FuelRefreshBounds; current?: Place | null;
   refreshing: boolean; refreshPrices: (target: FuelRefreshRequest) => Promise<void>;
-  pricesStale?: boolean; clearSelection: () => void; mapCenter: [number, number];
+  freshness?: { stale: boolean; lastRefreshedAt?: string | null }; loading: boolean; failed: boolean;
+  clearSelection: () => void; mapCenter: [number, number];
 }) {
   if (!controls) return {};
   const { products, refreshEnabled } = controls;
@@ -170,9 +179,10 @@ function publicFuelActions({
   const summary: PublicFuelSummary = {
     products,
     onProductsChange: values => { clearSelection(); controls.onProductsChange(values); },
-    onRefresh: pricesStale ? refreshViewport : undefined,
+    onRefresh: freshness?.stale ? refreshViewport : undefined,
     refreshing,
-    refreshBlocked: !refreshEnabled ? "disabled" : controls.filterQuery ? "filters" : !bounds ? "range" : undefined,
+    priceFreshness: freshness,
+    refreshBlocked: viewportRefreshBlock(refreshEnabled, controls.filterQuery, bounds, loading, failed),
     filterQuery: controls.filterQuery,
     filters: controls.filters,
     // 필터도 유종과 같은 규칙이다: 조건이 바뀌면 그 주유소가 지도에서 빠질 수 있어 열린 상세를 닫는다.
@@ -398,7 +408,7 @@ function useTransportMap({ places, selectedPlace, onSelectPlace, mode = "all", d
   const clusterPlaces = overlap.scope === overlapScope ? overlap.places : [];
   const setClusterPlaces = (places: Place[]) => setOverlap({ scope: overlapScope, places });
   const perKindLimit = Math.min(300, Math.floor(900 / Math.max(1, kinds.length)));
-  const { loaded, knownSources, fuelRegions, serverClusters, serverClustered, serverTotal, loadedMapScope, pending, failed } = useTransportMapResults({
+  const { loaded, knownSources, fuelRegions, fuelFreshness, serverClusters, serverClustered, serverTotal, loadedMapScope, pending, failed } = useTransportMapResults({
     embedded, kindsKey, perKindLimit, viewport, zoom, reload, sourcesKey, searchQuery, productsKey, filterQuery, view, mode, isPublicFuel, load,
   });
   const regionMarkers = useFuelRegionCards({
@@ -465,7 +475,7 @@ function useTransportMap({ places, selectedPlace, onSelectPlace, mode = "all", d
   [current, clusterCamera, cameraRequest, focusRevision]); // eslint-disable-line react-hooks/exhaustive-deps
   const focusFilters = () => { if (queryInput.current?.getClientRects().length) queryInput.current.focus({ preventScroll: true }); else focusMapControl(); };
   const closeDetail = () => { setSelected(null); requestAnimationFrame(() => { if (canRestoreFocus(detailOpener.current)) detailOpener.current.focus({ preventScroll: true }); else focusFilters(); }); };
-  return { workspace, embedded, detail, detailOpener, query, selectedSources, products, kinds, allowedKinds, filtersExpanded, setFiltersExpanded, filterTrigger, setKinds, setSelected, controlId, queryInput, setQuery, setSelectedSources, sources, setProducts, view, setView, mapViewport, items, serverClustered, serverTotal, serverClusters, visiblePoints, pending, mapContainer, setMapUnavailableMessage, basemap, moved, camera, setClusterPlaces, setClusterCamera, zoom, setCameraRequest, groupedPoints, cluster, overlapOpener, setClusterAnchor, clusterList, selectPlace, selectedPoint, clusterPlaces, clusterAnchor, closeOverlap, current, loaded, mapDetail, listDetail, dismissEmbeddedDetail, closeDetail, setReload, focusFilters, failed, mapUnavailableMessage, fuelDetailScopeExpanded, setFuelDetailScopeExpanded, regionMarkers, railOnly, partialListKinds, perKindLimit, searchQuery, refreshViewport };
+  return { workspace, embedded, detail, detailOpener, query, selectedSources, products, kinds, allowedKinds, filtersExpanded, setFiltersExpanded, filterTrigger, setKinds, setSelected, controlId, queryInput, setQuery, setSelectedSources, sources, setProducts, view, setView, mapViewport, items, serverClustered, serverTotal, serverClusters, visiblePoints, pending, mapContainer, setMapUnavailableMessage, basemap, moved, camera, setClusterPlaces, setClusterCamera, zoom, setCameraRequest, groupedPoints, cluster, overlapOpener, setClusterAnchor, clusterList, selectPlace, selectedPoint, clusterPlaces, clusterAnchor, closeOverlap, current, loaded, mapDetail, listDetail, dismissEmbeddedDetail, closeDetail, setReload, focusFilters, failed, mapUnavailableMessage, fuelDetailScopeExpanded, setFuelDetailScopeExpanded, regionMarkers, railOnly, partialListKinds, perKindLimit, searchQuery, refreshViewport, fuelFreshness };
 }
 
 function useMapDetailFocus({
@@ -581,6 +591,9 @@ function useTransportMapResults({
   const lastReload = useRef(reload);
   const mapFilterSignature = useRef("");
   const knownSourcesReady = useRef(false);
+  // 공개 유가: 가격 읽기 모델의 신선도(전역 값). 필터·유종을 바꿔 결과를 비워도(재조회 중) 마지막으로 받은 값을 유지해
+  // 가격 아이콘이 빨강→회색→빨강으로 깜빡이지 않게 한다.
+  const [fuelFreshness, setFuelFreshness] = useState<{ stale: boolean; lastRefreshedAt?: string | null }>();
   // 지역 카드와 그것을 받은 요청의 zoom(공개 유가가 카드 단위가 바뀌었는지 판단한다).
   const [fuelRegions, setFuelRegions] = useState<{ rows: FuelRegion[]; zoom?: number }>({ rows: [] });
 
@@ -605,6 +618,9 @@ function useTransportMapResults({
       setLoaded(partitionMapPayload(payload, selectedKinds, isPublicFuel));
       if (isPublicFuel) setLoadedMapScope(fuelMapScope(viewport, zoom, filterQuery ? `${productsKey}|${filterQuery}` : productsKey));
       setFuelRegions({ rows: payload.fuel_regions ?? [], zoom });
+      if (isPublicFuel && typeof payload.fuel_prices_stale === "boolean") {
+        setFuelFreshness({ stale: payload.fuel_prices_stale, lastRefreshedAt: payload.fuel_prices_last_refreshed_at });
+      }
       setServerClusters(payload.clusters ?? []);
       setServerClustered(payload.clustered ?? false);
       setServerTotal(payload.total);
@@ -664,7 +680,7 @@ function useTransportMapResults({
     return () => controller.abort();
   }, [embedded, kindsKey, perKindLimit, viewport, zoom, reload, sourcesKey, searchQuery, productsKey, filterQuery, view, mode, isPublicFuel, load]);
 
-  return { loaded, knownSources, fuelRegions, serverClusters, serverClustered, serverTotal, loadedMapScope, pending, failed };
+  return { loaded, knownSources, fuelRegions, fuelFreshness, serverClusters, serverClustered, serverTotal, loadedMapScope, pending, failed };
 }
 
 // 유가 지역 카드의 배치·넘침·접기 수명은 장소 조회와 겹친 장소 선택에서 분리한다.
@@ -699,12 +715,18 @@ function useFuelRegionCards({ fuelRegions, mapContainer, view, serverClustered, 
         const anchor = host.getBoundingClientRect();
         return anchor.left < bounds.left || anchor.left > bounds.right || anchor.top < bounds.top || anchor.top > bounds.bottom;
       }) : [];
+      const hidden = new Set(offscreen);
+      // 원점이 지도 밖인 카드(이전 화면의 응답)는 접고 탭 순서·접근성 트리에서도 뺀다(inert). 초점을 받으면 지도 밖에 라벨이 그려진다.
+      if (hideOffscreen) for (const host of hosts) {
+        const away = hidden.has(host);
+        host.inert = away;
+        if (away) host.dataset.regionOffscreen = "true"; else delete host.dataset.regionOffscreen;
+      }
       for (const host of offscreen) {
         host.style.setProperty("--region-offset-x", "0px");
         host.style.setProperty("--region-offset-y", "0px");
         host.dataset.regionOverflow = "true";
       }
-      const hidden = new Set(offscreen);
       const cards = hosts.filter(host => !hidden.has(host)).flatMap(host => {
         const label = host.querySelector<HTMLElement>(".fuel-region-label");
         // Marker hosts can outlive their portal children; the child-list observer retries attachment.

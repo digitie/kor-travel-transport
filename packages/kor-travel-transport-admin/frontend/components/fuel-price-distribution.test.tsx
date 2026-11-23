@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, expect, test, vi } from "vitest";
@@ -253,4 +253,25 @@ test("옛 API(product_grades 없음)도 읽고, 한 유종만 파는 주유소�
   await settle();
   expect(document.querySelector(".fuel-product-grade")).toBeNull();
   expect(document.querySelectorAll(".fuel-grade-row .fuel-grade[data-scope]")).toHaveLength(3);
+});
+
+test("통계 대화상자 '해제' 뒤 보일 자동 지역이 없어 칩이 사라지면 초점은 지역 이동 버튼(focusFallback)으로", async () => {
+  const load = vi.fn().mockResolvedValue(sampleDistribution);
+  const fallback = { current: document.createElement("button") };
+  document.body.append(fallback.current);
+  const selected = { sido_value: "26", sigungu_value: "2601", label: "부산 중구", station_count: 3, selected: true, basis: "selected" as const };
+  function Harness() {
+    const [region, setRegion] = useState<typeof selected | null>(selected);
+    return <FuelRegionStats region={region} product="B027" load={load} onClear={() => setRegion(null)} focusFallback={fallback} />;
+  }
+  const container = await mount(<Harness />);
+  await act(async () => container.querySelector<HTMLButtonElement>(".fuel-sigungu-chip")!.click());
+  await settle();
+  const release = document.querySelector<HTMLButtonElement>(".fuel-distribution-release")!;
+  expect(release.getAttribute("aria-label")).toBe("해제 — 지도 중심 지역으로");
+  await act(async () => release.click());
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });
+  expect(container.querySelector(".fuel-sigungu-chip")).toBeNull();
+  expect(document.activeElement).toBe(fallback.current);
+  fallback.current.remove();
 });
