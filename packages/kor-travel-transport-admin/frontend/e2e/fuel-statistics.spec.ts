@@ -1,9 +1,13 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 async function openFilters(page: Page) {
   const trigger = page.locator('[data-slot="map-filter-trigger"]');
   if (await trigger.isVisible() && await trigger.getAttribute("aria-expanded") === "false") await trigger.click();
 }
+
+// 상세에는 가격 이력 조회 상태("가격 이력 불러오는 중…", role=status)도 함께 있다. 이력 요청은 이 격리 서버에서 끝나는
+// 시점이 일정하지 않아 둘 다 보이는 순간이 있다(strict mode 위반·375px 간헐 실패). 가격 갱신 상태만 고른다.
+const priceStatus = (detail: Locator) => detail.getByRole("status").filter({ hasText: "갱신" });
 
 const metrics = { station_count: 12000, average_price: 1700, minimum_price: 1600, maximum_price: 1800,
   price_spread: 200, standard_deviation: 45, saving_50l: 5000, cheapest_station_count: 1,
@@ -121,11 +125,14 @@ for (const width of [375, 1440]) test(`${width}px 가격 갱신 지연은 요약
     await expect(page.locator(".map-guidance")).toHaveCount(0);
     for (const theme of ["light", "dark"]) {
       await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
-      const priceBounds = await summary.locator("dl").boundingBox();
-      const warningBounds = await stale.boundingBox();
-      expect(warningBounds!.y).toBeGreaterThanOrEqual(priceBounds!.y + priceBounds!.height);
-      expect(warningBounds!.y - priceBounds!.y - priceBounds!.height).toBeLessThan(10);
-      expect(warningBounds!.y + warningBounds!.height).toBeLessThanOrEqual(width === 375 ? 812 : 900);
+      // 테마를 바꾸면 요약이 잠깐 다시 그려져(숨김) boundingBox가 null인 순간이 있다(375px 간헐). 배치가 맞을 때까지 다시 잰다.
+      await expect.poll(async () => {
+        const priceBounds = await summary.locator("dl").boundingBox();
+        const warningBounds = await stale.boundingBox();
+        if (!priceBounds || !warningBounds) return null;
+        const gap = warningBounds.y - priceBounds.y - priceBounds.height;
+        return { belowPrices: gap >= 0, nearPrices: gap < 10, insideViewport: warningBounds.y + warningBounds.height <= (width === 375 ? 812 : 900) };
+      }).toEqual({ belowPrices: true, nearPrices: true, insideViewport: true });
       await page.screenshot({ path: `test-results/compact-fuel-${testInfo.project.name}-stale-${width}-${theme}.png`, fullPage: false, animations: "disabled" });
     }
     await summary.getByRole("button", { name: "지도 범위 유가 통계 안내" }).click();
@@ -137,9 +144,9 @@ for (const width of [375, 1440]) test(`${width}px 가격 갱신 지연은 요약
     await expect(page.locator(".map-guidance")).toContainText("유가 갱신 지연");
     await page.locator(".map-place-list").getByRole("button", { name: /지연 시험주유소/ }).click();
     const detail = page.getByRole("complementary", { name: "선택 장소 상세" });
-    await expect(detail.getByRole("status")).toHaveText("갱신 지연 26.10.20 12:10 KST");
+    await expect(priceStatus(detail)).toHaveText("갱신 지연 26.10.20 12:10 KST");
     await page.getByRole("tab", { name: "지도", exact: true }).click();
-    await expect(detail.getByRole("status")).toContainText("갱신 지연");
+    await expect(priceStatus(detail)).toContainText("갱신 지연");
     await openFilters(page);
     await page.getByLabel("장소 검색", { exact: true }).fill("pending");
     await requested;
@@ -178,8 +185,9 @@ for (const width of [375, 1440]) test(`${width}px 가격 있는 장소와 빈 �
   await expect(summary.locator("dl")).toHaveCount(0);
   for (const theme of ["light", "dark"]) {
     await page.evaluate((dark) => document.documentElement.classList.toggle("dark", dark), theme === "dark");
-    const warningBounds = (await stale.boundingBox())!;
-    expect(warningBounds.y + warningBounds.height).toBeLessThanOrEqual(width === 375 ? 812 : 900);
+    // 테마를 바꾸면 요약이 잠깐 다시 그려져(숨김) boundingBox가 null인 순간이 있다(375px 간헐). 다시 보일 때까지 잰다.
+    await expect.poll(async () => { const bounds = await stale.boundingBox(); return bounds ? bounds.y + bounds.height : null; })
+      .toBeLessThanOrEqual(width === 375 ? 812 : 900);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/compact-fuel-${testInfo.project.name}-empty-stale-${width}-${theme}.png`, fullPage: false, animations: "disabled" });
   }
@@ -193,10 +201,10 @@ for (const width of [375, 1440]) test(`${width}px 가격 있는 장소와 빈 �
   await page.locator(".map-place-list").getByRole("button", { name: /통계 대기 시험주유소/ }).click();
   const detail = page.getByRole("complementary", { name: "선택 장소 상세" });
   await expect(detail).toContainText("1,705원/L");
-  await expect(detail.getByRole("status")).toContainText("갱신 지연");
+  await expect(priceStatus(detail)).toContainText("갱신 지연");
   await page.getByRole("tab", { name: "지도", exact: true }).click();
   await expect(summary.locator("dl")).not.toBeVisible();
-  await expect(detail.getByRole("status")).toContainText("갱신 지연");
+  await expect(priceStatus(detail)).toContainText("갱신 지연");
   await openFilters(page);
   await page.getByLabel("장소 검색", { exact: true }).fill("unknown");
   await expect(stale).toHaveText("갱신 지연 시각 미확인");
@@ -255,7 +263,12 @@ test.describe("터치 지도 범위 요약", () => {
     const select = page.getByLabel("지도 통계 유종");
     await expect(select).toBeVisible();
     expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
-    const selectBox = (await select.boundingBox())!, titleBox = (await summary.getByRole("heading").boundingBox())!, infoBox = (await summary.getByRole("button", { name: "지도 범위 유가 통계 안내" }).boundingBox())!;
+    // 첫 지도 이동 뒤 재조회로 요약이 잠깐 다시 그려져 boundingBox가 null인 순간이 있다(부하 시 375px 간헐). 셋 다 잡힐 때까지 다시 잰다.
+    const measure = async () => ({ selectBox: await select.boundingBox(), titleBox: await summary.getByRole("heading").boundingBox(),
+      infoBox: await summary.getByRole("button", { name: "지도 범위 유가 통계 안내" }).boundingBox() });
+    await expect.poll(async () => Object.values(await measure()).every(Boolean)).toBe(true);
+    const boxes = await measure();
+    const selectBox = boxes.selectBox!, titleBox = boxes.titleBox!, infoBox = boxes.infoBox!;
     expect(selectBox.height).toBeGreaterThanOrEqual(44);
     expect(infoBox.width).toBeGreaterThanOrEqual(44); expect(infoBox.height).toBeGreaterThanOrEqual(44);
     expect(titleBox.x + titleBox.width).toBeLessThanOrEqual(selectBox.x);
@@ -342,14 +355,14 @@ test("추이 범주와 비교표는 지연 응답 중에도 키보드 포커스�
   await requested!;
   await expect(category).toBeFocused();
   gate = null; release();
-  await expect(page.getByRole("article", { name: "둘째 · 휘발유" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "최근 30일 평균 유가 · 둘째" })).toBeVisible();
   await expect(category).toBeFocused();
   hold();
-  const row = page.getByRole("button", { name: "첫째", exact: true });
+  const row = page.getByRole("button", { name: "첫째 · 휘발유", exact: true });
   await row.click();
   await requested!;
   await expect(row).toBeFocused();
   gate = null; release();
-  await expect(page.getByRole("article", { name: "첫째 · 휘발유" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "최근 30일 평균 유가 · 첫째" })).toBeVisible();
   await expect(row).toBeFocused();
 });

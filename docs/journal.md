@@ -1,3 +1,18 @@
+## 2026-11-23 — 관리 e2e main 실패 18건 진단(n150)
+
+- n150 격리 하네스(Next prod 빌드 + Playwright chromium, 백엔드 없음, E2E_MAP_WORKSPACE·E2E_FUEL_STATISTICS)로 main(ac70bdf)
+  map-workspace·fuel-statistics·button-border-region-cards 79건 중 **18건 실패** 재현.
+- **실제 결함(수정)**: (1) 공용 셸 0.2.3(#220) 채택 뒤 `.map-workbench` 높이가 옛 셸 기준 `100dvh - 9rem`이라 1440×900에서 지도
+  아래 72px이 비었다 → `6rem`(상단 줄 3rem + 본문 위아래 1.5rem). (2) 유가 통계 비교표 범주 버튼을 누르면 응답을 기다리는 동안 초점을
+  잃었다 — 열 정의를 렌더마다 새로 만들어 표가 셀을 다시 마운트했다 → `useMemo`.
+- **낡은 시험(수정)**: 상세의 가격 이력 role=status와 겹친 strict 위반(:100 ×2, 알려진 :163 375px 간헐의 한 원인), 테마 전환 뒤
+  재조회로 boundingBox가 null이던 375px 간헐(:163의 다른 원인), 통계 페이지 범주 article 제거(11-13) 뒤 단언, 도시철도
+  `rail/stations` fixture(11-12), 상세 닫은 뒤 초점이 지도 canvas로 가는 기존 순서, embedded 작업면 1px 테두리(작업면 아래를 잰다).
+- **남김**: 확장 지도에서 시간표·비교 anchor 왕복 4건은 실제 결함으로 보인다 — 확장 중 `html{overflow:hidden}` + 고정 작업면이라
+  anchor 대상이 작업면 뒤에 깔리고 아무것도 스크롤되지 않는다(elementFromPoint가 작업면). 확장 중 anchor가 작업면을 접을지 등
+  동작을 정해야 해서 고치지 않았다(시험은 그대로 실패). text200 확장 1건은 환경: n150 하네스는 VWorld 키가 자리표시자라 타일 오류
+  경보 두 줄이 요약을 밀어낸다.
+
 ## 2026-11-23 — 회수 sensor 예산 시험을 가짜 시계로(플레이크 제거)
 
 - `test_recovery_sensor_stall.py::test_slow_but_working_db_stops_gracefully_inside_budget`가 #248 CI(4a0df3e)에서 실패했다. 정상 종료

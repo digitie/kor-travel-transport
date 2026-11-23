@@ -15,7 +15,9 @@ async function fixture(page: Page) {
       const kind = url.searchParams.get("kind");
       const items = kind === "airport" ? [airport] : kind === "rail_station" ? [station] : kind === "ferry_port" ? ports : kind === "fuel_station" || url.searchParams.get("kinds") === "fuel_station" ? [fuel] : kind ? [] : [station, airport, ports[0]];
       body = { items, total: items.length, truncated: false, fuel_statistics: [metrics], fuel_prices_stale: true, fuel_prices_last_refreshed_at: observedAt };
-    } else if (url.pathname.endsWith("/rail/general/guide")) body = { fetched_at: observedAt, stale: false, kind: "ktx", category_code: "A", total: 1, categories: [{ code: "A", name: "시험노선" }], items: [{ provider_id: "S1", station_name: station.name, address: station.address, phone: station.phone, latitude: station.latitude, longitude: station.longitude }] };
+    // 도시철도는 2026-11-12(e5f9685)부터 역 목록을 `rail/stations`에서 읽는다.
+    } else if (url.pathname.endsWith("/rail/stations")) body = { items: [station] };
+    else if (url.pathname.endsWith("/rail/general/guide")) body = { fetched_at: observedAt, stale: false, kind: "ktx", category_code: "A", total: 1, categories: [{ code: "A", name: "시험노선" }], items: [{ provider_id: "S1", station_name: station.name, address: station.address, phone: station.phone, latitude: station.latitude, longitude: station.longitude }] };
     else if (url.pathname.endsWith("/rail/general/catalog")) body = { fetched_at: observedAt, cities: [{ code: "11", name: "서울" }], train_classes: [{ code: "0A", name: "KTX" }] };
     else if (url.pathname.endsWith("/bus/terminals")) body = { items: [{ id: 1, terminal_id: "T1", terminal_name: "시험터미널", city_name: "시험도시", latitude: 37.3, longitude: 127.1, updated_at: observedAt }], next_offset: null };
     else if (url.pathname.endsWith("/highways/roads")) body = { items: [{ road_id: "001", name: "시험도로", road_number: "1" }], stale: false, fetched_at: observedAt };
@@ -63,7 +65,9 @@ for (const width of [320, 375, 1440]) for (const path of routes) test(`${path} $
   await testInfo.attach("작업면 치수", { body: JSON.stringify({ path, width, height, stage: bounds }), contentType: "application/json" });
   expect(bounds.height).toBeGreaterThan(180);
   if (width === 375) expect(bounds.y).toBeLessThanOrEqual(240);
-  if (width === 1440) expect(height - bounds.y - bounds.height).toBeLessThanOrEqual(24);
+  // 남은 높이는 작업면(테두리 포함) 아래를 잰다. 여정 화면의 embedded 작업면은 자기 1px 테두리 안에 stage가 있다.
+  const workspaceBounds = (await page.locator('[data-slot="map-workspace"]:visible').boundingBox())!;
+  if (width === 1440) expect(height - workspaceBounds.y - workspaceBounds.height).toBeLessThanOrEqual(24);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   if (width < 640) await expect(page.locator('[data-slot="map-filter-trigger"]')).toHaveAttribute("aria-expanded", "false");
   if (path === "/fuel") {
@@ -138,8 +142,10 @@ test.describe("터치 지도 접근", () => {
     await expect(summary.locator("dl")).not.toBeVisible();
     for (const node of [summary.getByRole("button", { name: "현재 지도 범위", exact: true }), page.locator(".map-feedback").getByRole("alert"), page.getByRole("button", { name: "상세 닫기", exact: true })]) expect(await clipping(node), await node.textContent() ?? "").toMatchObject({ fullyVisible: true });
     const detail = page.getByRole("complementary", { name: "선택 장소 상세" });
-    await expect(detail.getByRole("status")).toContainText("26.10.25 10:00 KST");
-    expect(await clipping(detail.getByRole("status"))).toMatchObject({ fullyVisible: true });
+    // 가격 이력 조회 상태(role=status)와 함께 있을 수 있어 가격 갱신 상태만 고른다.
+    const priceStatus = detail.getByRole("status").filter({ hasText: "갱신" });
+    await expect(priceStatus).toContainText("26.10.25 10:00 KST");
+    expect(await clipping(priceStatus)).toMatchObject({ fullyVisible: true });
     const price = detail.locator(".price-grid dd");
     await price.scrollIntoViewIfNeeded();
     expect(await clipping(price)).toMatchObject({ fullyVisible: true });
@@ -198,7 +204,9 @@ test("공항 선택으로 연 상세를 모바일에서 닫으면 숨은 select 
   await expect(select).not.toBeVisible();
   await page.keyboard.press("Escape");
   await expect(detail).toHaveCount(0);
-  await expect(trigger).toBeFocused();
+  // 닫은 뒤 초점 순서(focusMapControl): 지도 canvas(WebGL로 지도가 뜬 경우) → 보이는 필터 버튼. 숨은 select로는 가지 않는다.
+  await expect(page.locator('.maplibregl-canvas:focus, [data-slot="map-filter-trigger"]:focus')).toHaveCount(1);
+  await expect(select).not.toBeFocused();
 });
 
 test("출처 팝업을 연 채 모바일로 바꾸면 숨은 필터에 팝업과 초점을 남기지 않는다", async ({ page }) => {
@@ -237,7 +245,8 @@ for (const [path, hash] of [["/rail", "#general-rail-timetable"], ["/rail/metro"
   const target = page.locator(hash);
   await expect(target).toBeInViewport();
   expect(await page.evaluate(() => location.hash)).toBe(hash);
-  expect(await page.locator("main").evaluate((node) => node.scrollTop)).toBeGreaterThan(100);
+  // 공용 관리자 셸(0.2.3+)에서는 main이 아니라 그 바깥이 스크롤된다. 대상의 조상 전체가 실제로 스크롤됐는지 본다.
+  expect(await target.evaluate((node) => { let total = 0; for (let parent = node.parentElement; parent; parent = parent.parentElement) total += parent.scrollTop; return total; })).toBeGreaterThan(100);
   expect((await stage.boundingBox())!.height).toBeCloseTo(height, 1);
   await target.getByRole("link", { name: "지도 작업면으로", exact: true }).click();
   await expect(stage).toBeInViewport();

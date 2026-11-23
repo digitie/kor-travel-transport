@@ -1,11 +1,11 @@
 "use client";
 
-import { VirtualTable } from "@kor-travel/ui/virtual-table";
+import { VirtualTable, type ColumnDef } from "@kor-travel/ui/virtual-table";
 
 import { CircleHelp, Clock, ClockAlert, LoaderCircle } from "lucide-react";
 import Link from "next/link";
 import { InfoButton } from "./info-button";
-import { useEffect, useId, useRef, useState, type RefObject } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type RefObject } from "react";
 import { dateTime, transportGet } from "@/lib/journey";
 import { fuelProductLabel } from "@/lib/transport-presentation";
 import { fuelDrivingCosts } from "@/lib/driver-statistics";
@@ -447,13 +447,15 @@ function FuelHistoryContext({ selected, comparisonRows }: Pick<ReturnType<typeof
 
 
 function FuelCategoryTable({ shownData, setScopeKey }: Pick<ReturnType<typeof useFuelStatistics>, "setScopeKey"> & { shownData: Statistics }) {
-  return (<VirtualTable ariaLabel="조회 결과" data={shownData.items} getRowId={(row) => `${row.scope_key}:${row.product_code ?? "B027"}`} virtualized={false} columns={[{ id: 'column0', header: '범주', cell: ({ row: { original: row } }) => <><Button type="button" variant="link" size="sm" className="h-auto p-0" onClick={() => setScopeKey(row.scope_key)}>{row.label} · {fuelProductLabel(row.product_code ?? "B027")}</Button></> },
+  // 열 정의를 렌더마다 새로 만들면 표가 셀(범주 버튼)을 다시 마운트해, 범주를 누른 뒤 응답을 기다리는 동안 초점을 잃는다.
+  const columns = useMemo<ColumnDef<Group, unknown>[]>(() => [{ id: 'column0', header: '범주', cell: ({ row: { original: row } }) => <><Button type="button" variant="link" size="sm" className="h-auto p-0" onClick={() => setScopeKey(row.scope_key)}>{row.label} · {fuelProductLabel(row.product_code ?? "B027")}</Button></> },
 { id: 'column1', header: '주유소', cell: ({ row: { original: row } }) => <>{row.station_count}</> },
 { id: 'column2', header: '평균', cell: ({ row: { original: row } }) => <>{money(row.average_price)}</> },
 { id: 'column3', header: '최저', cell: ({ row: { original: row } }) => <>{money(row.minimum_price)}</> },
 { id: 'column4', header: '최저가 주유소', cell: ({ row: { original: row } }) => <StationAddress station={row.cheapest_station} /> },
 { id: 'column5', header: '가격 차이', cell: ({ row: { original: row } }) => <>{money(row.price_spread)}</> },
-{ id: 'column6', header: '50L 절감(원)', cell: ({ row: { original: row } }) => <>{money(row.saving_50l)}</> }]} />);
+{ id: 'column6', header: '50L 절감(원)', cell: ({ row: { original: row } }) => <>{money(row.saving_50l)}</> }], [setScopeKey]);
+  return (<VirtualTable ariaLabel="조회 결과" data={shownData.items} getRowId={(row) => `${row.scope_key}:${row.product_code ?? "B027"}`} virtualized={false} columns={columns} />);
 }
 
 function FuelPriceComparison({ metrics, history }: Pick<Parameters<typeof FuelStatisticsCard>[0], "metrics" | "history">) {
