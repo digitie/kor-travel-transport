@@ -97,6 +97,9 @@ function safeMetadata(entries: unknown) {
       notes.push(outcomes[string(item.text)]); warning ||= !["success", "collected"].includes(string(item.text));
     }
     if (key === "fuel_statistics_published" && item.boolValue === false && !notExecuted) { notes.push("원본 보존 · 유가 통계 게시 대기"); warning = true; }
+    // 이전 통계 세대 정리는 원천 성공과 분리된다. 실패는 경고로, 예산 소진(따라잡는 중)은 안내로만 보인다.
+    if (key === "fuel_statistics_cleanup" && item.text === "failed") { notes.push("원본 보존 · 이전 유가 통계 정리 실패 · 다음 수집에서 다시 정리"); warning = true; }
+    if (key === "fuel_statistics_cleanup" && item.text === "budget_exhausted") notes.push("이전 유가 통계 정리 진행 중 · 남은 세대는 다음 수집에서 이어 정리");
     if (key === "cache_refresh_failed" && item.boolValue === true) { notes.push("읽기 캐시 갱신 지연 · 저장 자료는 유지"); warning = true; }
     if (["successful_data_preserved", "previous_data_preserved"].includes(key) && item.boolValue === true) notes.push("정상 저장분 보존");
     if (key === "deferred_reason" && item.text === "collector_busy") notes.push("같은 수집이 이미 진행 중입니다.");

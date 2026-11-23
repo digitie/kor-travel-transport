@@ -34,10 +34,11 @@ async def prune(source: str | None, budget_seconds: float, batch_rows: int) -> N
         for name in [source] if source else [OPINET, HIGHWAY]:
             async with factory() as session:
                 before = await _generations(session, name)
-                deleted = await cleanup_fuel_statistics(session, name, budget_seconds=budget_seconds,
+                cleanup = await cleanup_fuel_statistics(session, name, budget_seconds=budget_seconds,
                                                         batch_rows=batch_rows)
                 after = await _generations(session, name)
-                print(f"{name}: 세대 {before[0]}→{after[0]}, 행 {before[1]}→{after[1]} (삭제 {deleted})")
+                print(f"{name}: 세대 {before[0]}→{after[0]}, 행 {before[1]}→{after[1]} "
+                      f"(삭제 {cleanup.deleted}, 결과 {cleanup.outcome})")
     finally:
         await engine.dispose()
 

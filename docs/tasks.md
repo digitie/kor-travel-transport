@@ -6,6 +6,10 @@
 
 ## 2026-11-23 — 공개 유가 places 504 후속
 
+- [ ] **COLLECTION-AUDIT-20261123 §2.5 P2(krairport 429·prune 가시화)** — 배포 뒤 수용: (1) KAC 429가 나면 quota 상태
+  `airport_kac_quota.last_error`가 `HTTP 429: Retry-After Ns`이고 그 시각 전에는 KAC를 부르지 않는지, (2) 유가·휴게소 유가 run 결과
+  metadata에 `fuel_statistics_cleanup`·`fuel_statistics_pruned_rows`가 실리는지, 실패 시 관리자 실행 상세의 경고 안내. [journal](journal.md) 2026-11-24.
+
 - [ ] **FUEL-RETRY-20261123 / P1** — 유가 수집 실패(11-11~23 정기 run 36건 중 15건)의 두 원인 수정과 자동 재시도. 오피넷 CDP
   `Invalid InterceptionId`는 python-opinet-api에서 고치고 핀을 올렸고, 상태 claim `lock_timeout`은 고속도로 성공 표시를 commit 직전으로
   옮겼다. 유가·휴게소 유가 op에 일시 오류 한정 RetryPolicy, 관리자 재시도 태그는 실패 직후에만 예약을 앞당긴다. **남은 것**: 배포 뒤

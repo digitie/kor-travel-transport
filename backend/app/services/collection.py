@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -10,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from xml.etree import ElementTree
 
-from krairport import KrairportClient
+from krairport import KrairportClient, KrairportRateLimitError
 from krairport.models import ParkingFee
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
@@ -371,6 +372,20 @@ def compute_upstream_rate_limit_retry_at(reference_at: datetime, backoff_seconds
     return serialize_utc(reference_at) + timedelta(seconds=max(backoff_seconds, 0))
 
 
+def rate_limit_retry_after(error: BaseException) -> int | None:
+    """krairport가 HTTP `Retry-After`로 받은 대기(초, 올림). 다른 오류·미제공·비정상 값은 None.
+
+    SDK는 짧은 대기(기본 30초 이하)는 스스로 기다려 재시도하고, 더 긴 요구는 기다리지 않고 이 값과 함께
+    `KrairportRateLimitError`를 올린다(python-krairport-api #15). 수집기는 이 값을 KAC quota 예약에 쓴다.
+    """
+    if not isinstance(error, KrairportRateLimitError):
+        return None
+    value = getattr(error, "retry_after", None)
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+        return None
+    return min(math.ceil(value), 7 * 24 * 3600)
+
+
 class CollectionService:
     def __init__(self, settings: Settings, client: PublicDataClient | None = None) -> None:
         self.settings = settings
@@ -378,6 +393,8 @@ class CollectionService:
         # The deployment runs one backend process. Serialize scheduler/manual
         # collection so a cooldown check cannot launch two upstream writes.
         self.operation_lock = asyncio.Lock()
+        # 이번 수집에서 KAC가 HTTP Retry-After로 요구한 가장 긴 대기(초). `operation_lock` 안에서만 쓴다.
+        self._kac_retry_after: int | None = None
 
     @property
     def client_mode(self) -> str:
@@ -446,10 +463,18 @@ class CollectionService:
                 last_error=self._redact(normalize_upstream_rate_limit_error(state.error_message)), updated_at=now_utc(),
             ))
 
+    def _note_kac_retry_after(self, error: BaseException) -> None:
+        hint = rate_limit_retry_after(error)
+        if hint is not None:
+            self._kac_retry_after = max(hint, self._kac_retry_after or 0)
+
     async def _record_quota_outcome(self, session, *, started_at, was_blocked, messages):
         if self.client_mode != "live" or was_blocked:
             return
         error = next((item for item in messages if is_upstream_rate_limit_error(item)), None)
+        # HTTP 429의 Retry-After는 일일 quota 표지가 없어도 그 시간만큼은 KAC를 다시 부르지 않는다.
+        # quota 표지가 있으면 설정 backoff와 Retry-After 중 긴 쪽을 쓴다.
+        retry_after = self._kac_retry_after
         row = await session.scalar(select(TransportCollectionState).where(
             TransportCollectionState.source == KAC_QUOTA_SOURCE,
         ).with_for_update())
@@ -458,7 +483,7 @@ class CollectionService:
                 return
             if row.next_due_at is not None and serialize_utc(row.next_due_at) > started_at:
                 return  # 이미 유효한 원래 quota deadline을 실제 중복 실패도 연장하지 않는다.
-        if error is None:
+        if error is None and retry_after is None:
             if row is None:
                 row = TransportCollectionState(source=KAC_QUOTA_SOURCE)
                 session.add(row)
@@ -472,8 +497,10 @@ class CollectionService:
             row = TransportCollectionState(source=KAC_QUOTA_SOURCE)
             session.add(row)
         row.last_started_at = started_at
-        row.next_due_at = compute_upstream_rate_limit_retry_at(started_at, self.settings.upstream_rate_limit_backoff_seconds)
-        row.last_error = self._redact(normalize_upstream_rate_limit_error(error))
+        backoff = self.settings.upstream_rate_limit_backoff_seconds if error is not None else 0
+        row.next_due_at = compute_upstream_rate_limit_retry_at(started_at, max(backoff, retry_after or 0))
+        row.last_error = (self._redact(normalize_upstream_rate_limit_error(error)) if error is not None
+                          else f"kac_parking HTTP 429: Retry-After {retry_after}s")
         row.updated_at = now_utc()
 
     async def collect(self, session: AsyncSession, trigger: str = "manual") -> dict[str, Any]:
@@ -524,6 +551,7 @@ class CollectionService:
                         raise RuntimeError("airport collection advisory lock was not released by its owner connection")
 
     async def _collect_unlocked(self, session: AsyncSession, trigger: str = "manual") -> dict[str, Any]:
+        self._kac_retry_after = None
         rate_limit_state = await self.get_upstream_rate_limit_state(session)
         can_collect_incheon = self.settings.enable_incheon_collection or self.settings.enable_incheon_fee_collection
         if rate_limit_state.is_blocked:
@@ -760,6 +788,8 @@ class CollectionService:
         try:
             response = await fetcher()
         except Exception as exc:
+            if kac_fee_airport_code is not None or fetcher == self.client.fetch_kac_parking:
+                self._note_kac_retry_after(exc)
             if kac_fee_airport_code is not None:
                 # SDK 예외에는 인증 query/응답 본문이 들어갈 수 있다. 차단 표지만 보존한다.
                 detail = UPSTREAM_RATE_LIMIT_MARKER if is_upstream_rate_limit_error(str(exc)) else type(exc).__name__
@@ -935,10 +965,13 @@ class CollectionService:
                     break
                 except Exception as exc:
                     last_error = self._redact(str(exc))
+                    if source == "kac_parking" and response is None:
+                        self._note_kac_retry_after(exc)
                     if response is not None:
                         failed_responses.append((response, last_error))
                         rejected[source] = response
-                    if attempt or is_upstream_rate_limit_error(last_error):
+                    # SDK가 이미 backoff·Retry-After로 재시도한 429를 곧바로 한 번 더 부르지 않는다.
+                    if attempt or is_upstream_rate_limit_error(last_error) or isinstance(exc, KrairportRateLimitError):
                         failures.append((source, last_error))
                         break
         raw_count = snapshot_count = 0

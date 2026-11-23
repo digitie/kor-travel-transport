@@ -142,7 +142,7 @@ class RestAreaCollectionService:
                 # 발행 실패는 원천 성공을 취소하지 않는다. 결과에만 남겨 op metadata로 보이게 한다.
                 summary["fuel_statistics_published"] = await try_publish_fuel_statistics(session, source, collected_at)
                 await session.commit()
-                await cleanup_fuel_statistics(session, source)
+                summary.update((await cleanup_fuel_statistics(session, source)).metadata())
             stored_run = await session.get(CollectionRun, run_id)
             stored_run.status = "success"
             stored_run.finished_at = now_utc()

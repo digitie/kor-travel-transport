@@ -437,6 +437,8 @@ class TransportCollectionService:
         fuel_price_count = 0
         # 이번 실행이 유가 통계를 새로 발행했는가(None=발행 시도 없음). op metadata로 실패를 보이게 한다.
         fuel_statistics_published: bool | None = None
+        # 이번 실행의 이전 통계 세대 정리 결과(None=정리 시도 없음). 실패·예산 소진을 metadata로 보이게 한다.
+        fuel_statistics_cleanup: dict[str, Any] | None = None
         collected_source = False
 
         if not self.enabled:
@@ -721,7 +723,7 @@ class TransportCollectionService:
                         session, OPINET_SOURCE, snapshot.collected_at,
                     )
                     await session.commit()
-                    await cleanup_fuel_statistics(session, OPINET_SOURCE)
+                    fuel_statistics_cleanup = (await cleanup_fuel_statistics(session, OPINET_SOURCE)).metadata()
                     collected_source = True
                     raw_count += 1
             # rollback은 ORM 객체를 만료시키므로 async get으로 명시적으로 다시 읽는다.
@@ -801,6 +803,7 @@ class TransportCollectionService:
                 "next_fuel_due_at": serialize_utc(state.next_due_at).isoformat() if state and state.next_due_at else None,
                 "last_fuel_success_at": serialize_utc(state.last_success_at).isoformat() if state and state.last_success_at else None,
                 "fuel_statistics_published": fuel_statistics_published,
+                **(fuel_statistics_cleanup or {}),
             })
             if not fuel_enabled:
                 summary["errors"] = [f"OpiNet browser collection is unavailable (provider={self.client_mode})."]

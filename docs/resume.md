@@ -1,3 +1,10 @@
+## 현재 상태 — 2026-11-24 KAC 429 backoff·유가 통계 정리 가시화(COLLECTION-AUDIT-20261123 §2.5 P2)
+
+- krairport 핀 `9ea20ef`(429·5xx backoff + jitter, Retry-After 존중), KAC quota 예약에 Retry-After 반영, 정리 결과 metadata·경고·관리자 안내.
+  migration·OpenAPI·gateway 변경 없음.
+- 배포(Codex 담당): backend(API·Dagster code-server 같은 이미지)와 transport-admin.
+- 다음 한 작업: 배포 뒤 유가 run metadata의 `fuel_statistics_cleanup` 값과 관리자 실행 상세 안내를 확인한다.
+
 ## 현재 상태 — 2026-11-23 공개 parking-radar 비율·관리자 look
 
 - 공개 앱(`frontend/`)만 바뀐다: 토큰·셸·현황 배치. backend·gateway·transport-admin 코드 불변(공유 `parking.css`는 쓰지 않던 규칙만 삭제).
