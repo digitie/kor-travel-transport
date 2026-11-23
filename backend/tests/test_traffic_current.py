@@ -422,6 +422,7 @@ def test_isolated_rows_carry_previous_members_within_limit_and_age(test_settings
             await service._store_traffic(session, run_id, flows[:1], carry_forward_limit=1)
             await session.commit()
             state = await _state(session, service)
+            await session.refresh(state)  # 같은 session의 identity map이 직전 세대 값을 들고 있다.
             assert state.member_count == 1
 
     _execute(test_settings, check)
