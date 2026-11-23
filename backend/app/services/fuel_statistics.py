@@ -7,6 +7,7 @@ import math
 import time
 from collections import OrderedDict
 from typing import TYPE_CHECKING
+from collections.abc import Callable
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -273,37 +274,62 @@ async def try_publish_fuel_statistics(session: AsyncSession, source: str, collec
     return True
 
 
-async def prune_fuel_statistics(session: AsyncSession, source: str) -> int:
-    """이전 공개 세대만 최대 2,000행씩 정리한다. 준비 중이거나 최신인 세대는 보존한다."""
+#: 한 정리 문장이 지우는 최대 행 수. 세대 하나는 약 3만 행이다(2026-11-23 운영).
+PRUNE_BATCH_ROWS = 5_000
+#: 수집 한 번이 정리에 쓰는 시간(초). 배치는 따로 commit되므로 ingest를 붙잡지 않는다.
+PRUNE_BUDGET_SECONDS = 60.0
+
+
+async def prune_fuel_statistics(session: AsyncSession, source: str, *, batch_rows: int = PRUNE_BATCH_ROWS) -> int:
+    """이전 공개 세대를 오래된 것부터 최대 ``batch_rows``행 지운다. 준비 중이거나 최신인 세대는 보존한다.
+
+    후보 선택과 삭제를 한 문장으로 둔다. 예전에는 키 2,000개를 읽어 `(키 4열) IN ((...), ...)` 8,000개
+    매개변수로 다시 보냈는데, 운영 ARM에서 그 문장의 계획만 3.2초였고(행 튜플 IN이 기본키 탐색 2,000개의
+    BitmapOr가 된다) 컴파일·prepare까지 더해 첫 배치가 15초 예산을 다 써 수집마다 2,000행만 지웠다.
+    하위 질의 IN은 세대 색인 순서 읽기 + 기본키 중첩 루프로 계획되고 계획 시간은 행 수와 무관하다.
+    """
     p = FuelStatisticsPoint
     stamp = select(FuelStatisticsState.generated_at).where(FuelStatisticsState.source == source).scalar_subquery()
     # 공개 전환과 별도 트랜잭션이다. 취소/실패하면 다음 수집이 이어서 정리한다.
     candidates = select(p.source, p.station_key, p.product_code, p.generated_at).where(
         p.source == source, p.generated_at < stamp,
-    ).limit(2_000)
+    ).order_by(p.generated_at).limit(batch_rows)
     if session.bind.dialect.name == "postgresql":
+        # 동시 정리끼리 같은 행을 기다리지 않는다. 공개 세대 쓰기와는 행이 겹치지 않는다.
         candidates = candidates.with_for_update(skip_locked=True)
-    keys = list((await session.execute(candidates)).all())
-    if not keys:
-        return 0
-    await session.execute(delete(p).where(
-        tuple_(p.source, p.station_key, p.product_code, p.generated_at).in_(keys),
-    ))
-    return len(keys)
+    result = await session.execute(
+        delete(p).where(tuple_(p.source, p.station_key, p.product_code, p.generated_at).in_(candidates))
+        .execution_options(synchronize_session=False),
+    )
+    return result.rowcount or 0
 
 
-async def cleanup_fuel_statistics(session: AsyncSession, source: str) -> None:
-    """공개 잠금 없이 짧은 정리 트랜잭션을 반복한다. 실패는 수집 성공과 분리한다."""
-    deadline = time.monotonic() + 15
+async def cleanup_fuel_statistics(
+    session: AsyncSession, source: str, *, budget_seconds: float = PRUNE_BUDGET_SECONDS,
+    batch_rows: int = PRUNE_BATCH_ROWS, clock: Callable[[], float] = time.monotonic,
+) -> int:
+    """공개 잠금 없이 짧은 정리 트랜잭션을 반복하고 지운 행 수를 돌려준다. 실패는 수집 성공과 분리한다.
+
+    예산은 배치 사이에서만 본다(한 배치는 짧은 한 문장). 세대 하나(약 3만 행)보다 수집 한 번의
+    정리량이 훨씬 커서 쌓인 세대도 몇 번의 수집 안에 따라잡는다.
+    """
+    deadline = clock() + budget_seconds
+    deleted = 0
     try:
-        while time.monotonic() < deadline:
-            count = await prune_fuel_statistics(session, source)
+        while clock() < deadline:
+            count = await prune_fuel_statistics(session, source, batch_rows=batch_rows)
             await session.commit()
-            if count < 2_000:
-                return
+            deleted += count
+            if count < batch_rows:
+                break
     except Exception as exc:
         await session.rollback()
-        logger.warning("fuel statistics cleanup deferred source=%s error=%s", source, type(exc).__name__)
+        logger.warning("fuel statistics cleanup deferred source=%s error=%s deleted=%s",
+                       source, type(exc).__name__, deleted)
+        return deleted
+    if deleted:
+        logger.info("fuel statistics cleanup source=%s deleted=%s", source, deleted)
+    return deleted
 
 
 async def _legacy_global_rankings(session: AsyncSession, source: str, scope: str,

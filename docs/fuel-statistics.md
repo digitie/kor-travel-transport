@@ -174,3 +174,25 @@
   믿음·스마트·'직영·믿음·스마트' 묶음(소유자 지시로 구분하지 않음). 테마(LIGHT/DARK/SYSTEM)는 소유자 지시로 두지 않는다.
 - 상표 아이콘은 이미 저장소에 있는 오피넷 원본 아이콘(`public/fuel-brands/README.md` 출처)만 쓴다. LPG 충전 전용 상표(SK가스·E1)는
   LPG가 아닌 유종을 고르면 비활성이다. 필터는 브라우저 `localStorage`(`transport.public-fuel.filters`)에 저장한다.
+
+## 이전 세대 정리 (2026-11-23, FUEL-PRUNE-BACKLOG-20261123)
+
+**증상(운영 odroid, 읽기 전용)**: `fuel_statistics_points` 오피넷 53세대(1,558,120행)·고속도로 1세대, 461 MB. 가장 오래된 세대(10-24)만
+일부(20,198행) 지워진 상태였고 표의 누적 삭제는 28,512행, 자동 VACUUM 기록 없음.
+
+**원인**: 정리는 수집 뒤 `cleanup_fuel_statistics`(15초 예산)가 `prune_fuel_statistics`를 반복했다. 한 배치는 키 2,000개를 SELECT한 뒤
+`(source, station_key, product_code, generated_at) IN ((...) × 2,000)`(매개변수 8,000개) DELETE로 다시 보냈다. 이 문장의 계획만 운영에서
+3.2초였고(행 튜플 IN이 기본키 탐색 2,000개의 BitmapOr가 된다. `pg_stat_statements`는 계획 시간을 세지 않아 실행 평균 0.5초로만 보였다)
+SQLAlchemy 컴파일·asyncpg prepare까지 더해 첫 배치가 예산을 다 썼다. 11-17 통계 초기화 뒤 오피넷 정리 SELECT·DELETE가 수집마다 정확히
+1회(각 2,000행)였다 — 세대 하나 약 3만 행을 수집마다 2,000행으로 따라갈 수 없다.
+
+**수정**: 후보 선택과 삭제를 한 문장(`DELETE … WHERE (키) IN (SELECT … ORDER BY generated_at LIMIT 5000 FOR UPDATE SKIP LOCKED)`)으로.
+운영 EXPLAIN: 계획 88 ms(예전 3,217 ms), 세대 색인 순서 읽기 + 기본키 중첩 루프, 후보 5,000행 읽기 0.27초. 매개변수는 행 수와 무관하게
+원천·한도 몇 개다. 배치마다 commit하므로 잠금은 짧고, 공개 세대·준비 중 세대(공개 시각 이후)는 후보가 아니어서 수집 쓰기와 행이 겹치지
+않는다. 수집 한 번의 정리 예산은 60초(배치 사이에서만 확인, 한 배치는 수집 엔진 `statement_timeout` 60초보다 훨씬 짧다). 0047 인덱스는
+정리에 필요 없다(기존 `(source, generated_at)` 색인이 순서를 준다).
+
+**따라잡기**: 자동 정리만으로도 수집 몇 번 안에 줄어든다. 즉시 줄이려면 backend 컨테이너에서
+`python scripts/prune-fuel-statistics.py --source opinet_browser --budget-seconds 1800`(배치·commit 동일, 수집과 동시 실행 가능, 전후 세대·행
+수 출력). 지운 공간은 자동 VACUUM 뒤 재사용되며 파일 크기는 줄지 않는다(VACUUM FULL은 표 잠금이라 하지 않는다).
+
