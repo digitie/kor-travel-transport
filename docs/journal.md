@@ -1,3 +1,19 @@
+## 2026-11-23 — 공개 유가 places 504·가격 분포 지연 수정, 시도 이름 통일(공개 유가 화면 전용)
+
+- 운영 읽기 전용 점검(release 90fe4500): zoom 7 places에 유종 여럿+상표+셀프+`include_viewport_sigungu`가 30초 504(3/3),
+  가격 분포 주유소 기준 7.5~10초. 원인은 두 가지가 겹친 것 — (1) 새 공개 세대가 늘 마지막 자동 ANALYZE보다 늦어 계획기가 그
+  세대를 1행으로 추정(실제 1.2만 행), (2) point→주유소 조인이 `CAST(id AS VARCHAR)`라 기본키를 못 써 중첩 루프 안쪽에서
+  fuel_stations 전체를 point마다 다시 읽음. 상세·측정은 [유가 통계](fuel-statistics.md) "공개 세대 조인과 통계".
+- 수정: 정수 기본키 조인(CASE로 원천 확인), 세대 시각을 InitPlan 매개변수로(`fixed_generation`, 통계와 무관한 추정),
+  가격 분포는 세대 가격 색인(프로세스 캐시·single-flight), 주유소 가격은 기본키 앞부분으로. 공개 시 ANALYZE는 적대 리뷰(잠금·비용)로 넣지 않았다. 시도 화면 이름은 짧은 이름 하나(`SIDO_DISPLAY_NAMES`)로, 화면 안 시군구는 코드로 묶는다.
+- API 스키마·OpenAPI·gateway·관리 화면 변경 없음. **migration 0047**(`(source, generated_at, product_code)` 인덱스, CREATE INDEX
+  CONCURRENTLY): 추정이 맞으면 계획기가 PG18 기본키 skip scan을 골라 운영 9.2초였다. backend는 head가 정확히 맞아야 뜨므로 이전 이미지로
+  롤백하려면 먼저 `alembic downgrade 0046_fuel_manual_refresh`. 값은 바뀐다: 시도 이름이 짧은 이름 하나로(지역 카드·이력 label 포함,
+  지난 세대 저장 label은 읽을 때 맞춘다). 필터 켠 지역 카드에서 "경기도" 같은 정식 이름 검색은 더 맞지 않는다.
+- 남긴 것(후속): 기존 `ix_fuel_statistics_points_generation`은 0047과 앞부분이 겹친다(정리 후보). 캐시에서 밀린 `fuel_stations`(57 MB)
+  Seq Scan은 첫 요청을 느리게 할 수 있다(공개 시 주유소 속성을 point에 동결하는 안).
+- 관찰(이번 범위 밖, 후속 task): `prune_fuel_statistics`(15초·2,000행 배치)가 수집 속도를 못 따라가 지난 세대 54개(1.56M 행)가 남아 있다.
+
 ## 2026-11-22 — 공개 유가 지역 칩 기본값 = 지도 중심 시군구, 유종·필터 변경 시 상세 닫힘(공개 유가 화면 전용)
 
 - 소유자 요청: 지역 칩 기본값을 "주유소가 가장 많은 시군구"에서 **지도 중심 시군구**로. 유종을 바꾸면 열린 주유소 상세를 닫거나 새로 고침.

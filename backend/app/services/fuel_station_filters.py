@@ -10,13 +10,23 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 from fastapi import HTTPException, Query
-from sqlalchemy import String, and_, cast, func, or_, select
+from sqlalchemy import DateTime, Integer, and_, case, cast, func, literal, or_, select
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.sql.functions import FunctionElement
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import FuelStation, FuelStatisticsPoint, FuelStatisticsState
 from app.services.fuel_refresh_prices import has_fuel_price_at_most
 
 OPINET = "opinet_browser"
+# 오피넷 시도 코드(정식 이름) → 화면 이름. 오피넷 원문의 시도 이름은 대부분 짧은 이름이지만 몇 행은 정식 이름이라
+# 목록·칩·대화상자 제목이 행마다 달라졌다(2026-11-23 운영: 서울 454행 "서울" + 5행 "서울특별시"). 응답은 이 이름 하나로 쓴다.
+SIDO_DISPLAY_NAMES = {
+    "서울특별시": "서울", "부산광역시": "부산", "대구광역시": "대구", "인천광역시": "인천", "광주광역시": "광주",
+    "대전광역시": "대전", "울산광역시": "울산", "세종특별자치시": "세종", "경기도": "경기", "강원도": "강원",
+    "강원특별자치도": "강원", "충청북도": "충북", "충청남도": "충남", "전라북도": "전북", "전북특별자치도": "전북",
+    "전라남도": "전남", "전남광주통합특별시": "전남광주", "경상북도": "경북", "경상남도": "경남", "제주특별자치도": "제주",
+}
 # 화면 상표 묶음 → 저장 brand_code. 알뜰은 자영알뜰(RTE)을 함께 묶는다. ETC는 그 밖(미제공 포함) 전부다.
 BRAND_GROUPS: dict[str, tuple[str, ...]] = {
     "SKE": ("SKE",), "GSC": ("GSC",), "HDO": ("HDO",), "SOL": ("SOL",), "ALT": ("RTO", "RTE"),
@@ -113,10 +123,59 @@ def fuel_station_filter_params(
                               maintenance=maintenance, cvs=cvs, kpetro=kpetro, near_min=near_min)
 
 
+def sido_display_name(sido_value: str | None, sido_name: str | None) -> str:
+    """시도의 화면 이름(짧은 이름). 모르는 코드는 원문 이름(없으면 코드)을 그대로 쓴다."""
+    return SIDO_DISPLAY_NAMES.get(sido_value or "") or sido_name or sido_value or ""
+
+
+def point_station_id(point=FuelStatisticsPoint):
+    """오피넷 point의 station_key(= str(FuelStation.id))를 정수 id로 바꾼다. 다른 원천(고속도로 휴게소 코드)은 NULL이다.
+
+    예전 조인 `station_key = CAST(fuel_stations.id AS VARCHAR)`는 주유소 쪽을 식으로 감싸 기본키를 못 썼다. 새 공개 세대는
+    늘 마지막 ANALYZE보다 늦게 생겨 계획기가 그 세대를 "1행"으로 추정하고(운영 실제 1.2만 행) 중첩 루프 안쪽에서
+    fuel_stations 전체를 point마다 다시 읽었다(places 504·가격 분포 수 초, docs/fuel-statistics.md "공개 세대 조인").
+    정수 조인은 추정이 틀려도 안쪽이 기본키 조회라 비용이 point 수에 비례한다. CASE가 원천을 먼저 확인하므로
+    숫자가 아닌 키를 정수로 바꾸다 실패하지 않는다(오피넷 키는 저장 시 str(id)로만 만든다).
+    """
+    return case((point.source == OPINET, cast(point.station_key, Integer)), else_=None)
+
+
+def station_for_point(point=FuelStatisticsPoint, station=FuelStation):
+    return station.id == point_station_id(point)
+
+
+class _OpaqueGeneration(FunctionElement):
+    """PostgreSQL에서는 `(SELECT CAST(<값> AS TIMESTAMPTZ))`(InitPlan), 다른 DB에서는 값 그대로."""
+    type = DateTime(timezone=True)
+    inherit_cache = True
+    name = "opaque_generation"
+
+
+@compiles(_OpaqueGeneration)
+def _compile_plain_generation(element, compiler, **kw):
+    return compiler.process(element.clauses, **kw)
+
+
+@compiles(_OpaqueGeneration, "postgresql")
+def _compile_opaque_generation(element, compiler, **kw):
+    # 값이 문자열 상수로 그려져도(literal_binds) timestamptz로 비교되게 형을 명시한다.
+    return f"(SELECT CAST({compiler.process(element.clauses, **kw)} AS TIMESTAMP WITH TIME ZONE))"
+
+
+def fixed_generation(generated_at):
+    """한 응답이 읽는 공개 세대 시각을 계획기에 값이 보이지 않는 매개변수(InitPlan)로 넘긴다.
+
+    `generated_at = '<새 세대>'` 상수는 통계(MCV)에 그 값이 있어야 바로 추정된다. 새 세대는 늘 마지막 ANALYZE보다 늦게
+    공개되므로 상수로 주면 "1행"으로 추정됐다. 값을 숨기면 계획기는 "세대 하나 = 전체 / 세대 수"로 추정하는데 세대마다
+    행 수가 거의 같아 실제와 맞는다(운영 2만 9천 vs 실제 3만). 읽는 세대는 상수와 똑같이 고정된다.
+    """
+    return _OpaqueGeneration(literal(generated_at, DateTime(timezone=True)))
+
+
 def published_points_with_station():
     p, state = FuelStatisticsPoint, FuelStatisticsState
     return select(p).join(state, and_(p.source == state.source, p.generated_at == state.generated_at)).join(
-        FuelStation, p.station_key == cast(FuelStation.id, String),
+        FuelStation, station_for_point(p),
     ).where(p.source == OPINET, p.price > 0)
 
 

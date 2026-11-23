@@ -70,6 +70,49 @@
   가격 행 전체를 주유소와 조인해 182ms였고, 화면 안 주유소 id를 먼저 한 번씩 뽑는 형태로 바꿔 줄였다. 이 정도면 새 사전집계 테이블과
   갱신 배선의 정합성 비용이 이득보다 크다. 응답의 모든 SELECT는 처음 읽은 공개 세대(`generated_at`)에 고정해 발행과 겹쳐도 세대가 섞이지 않는다.
 
+## 공개 세대 조인과 통계 (2026-11-23, places 504·가격 분포 수 초)
+
+**증상(운영 odroid, release 90fe4500)**: 공개 유가 zoom 7 places에 유종 여럿 + 상표 + 셀프와 `include_viewport_sigungu=true`
+(모바일 첫 화면)를 주면 30초 gateway 504(3/3). 가격 분포는 주유소 기준 7.5~10초, 시군구 기준 0.4~7.9초.
+합성 데이터(한 세대·ANALYZE 직후)에서는 16~27ms라 재현되지 않았다.
+
+**원인(읽기 전용 EXPLAIN·pg_stat_statements)**:
+1. `fuel_statistics_points`는 1.56M 행·54세대(세대당 약 3만 행)이고 마지막 자동 ANALYZE(11-20)가 공개 세대(11-22)보다 앞섰다.
+   `generated_at`의 MCV 52개가 표 전체를 덮어 **통계에 없는 새 세대는 "1행"으로 추정**된다(실제 11,671행). 새 세대는 늘
+   공개 직후가 가장 많이 읽히므로 이 상태가 구조적으로 반복된다(자동 ANALYZE 문턱 10% = 약 5세대).
+2. point→주유소 조인이 `station_key = CAST(fuel_stations.id AS VARCHAR)`라 주유소 기본키를 못 쓴다. 1행 추정 때문에 계획기가
+   중첩 루프를 고르면 안쪽이 **point마다 fuel_stations 전체 Seq Scan**(1.2만 행×1.2만 행)이 된다.
+   pg_stat_statements: 분포 시군구 SELECT 평균 13.8초(최대 34초, 39회), 필터 켠 화면 안 시군구 평균 4.4초(최대 10.6초),
+   필터 없는 같은 문장도 평균 3.0초. 504 URL은 이 시군구 문장에서 막혔다(`include_viewport_sigungu=false`면 1~2초).
+
+**수정**:
+- `point_station_id`/`station_for_point`(`fuel_station_filters.py`): 오피넷 point 키를 `CASE WHEN source='opinet_browser'
+  THEN station_key::integer END`로 정수화해 `fuel_stations.id`와 조인. 추정이 틀려도 안쪽이 기본키 조회라 비용이 point 수에
+  비례한다. CASE가 원천을 먼저 보므로 고속도로 point(문자 키)는 정수 변환을 시도하지 않는다(오피넷 키는 `str(id)`로만 저장).
+  운영 낡은 통계 그대로의 EXPLAIN ANALYZE(2026-11-23, 상수 세대·정수 조인): 필터 켠 화면 안 시군구 0.90초(예전 평균 4.4초·504),
+  분포 전국 가격 0.54초. 같은 운영에서 세대를 InitPlan으로 넘기면 추정은 맞지만(4,505 vs 실제 5,532) 0047 없이는 기본키 skip scan
+  (9.2초)과 차가운 fuel_stations Seq Scan(0.79초)을 골랐다 — 그래서 InitPlan과 0047을 함께 둔다.
+- `fixed_generation`: 한 응답이 읽는 세대 시각을 상수 대신 값이 보이지 않는 InitPlan 매개변수로 넘긴다. 계획기는
+  "세대 하나 = 전체 / 세대 수"로 추정하고 세대마다 행 수가 거의 같아 실제와 맞는다(통계 신선도와 무관). 읽는 세대는 상수와 똑같이
+  고정된다. 공개 시 ANALYZE는 넣지 않았다(적대 리뷰: 공개 트랜잭션 안 ANALYZE는 SHARE UPDATE EXCLUSIVE를 commit까지 쥐어 수집기
+  `lock_timeout=5s`와 부딪칠 수 있고 ARM에서 비싸다).
+- 인덱스 0047 `ix_fuel_statistics_points_generation_product (source, generated_at, product_code)`(CREATE INDEX CONCURRENTLY):
+  추정이 맞으면 계획기가 유종 조건 때문에 PostgreSQL 18 skip scan으로 기본키(source, station_key, product_code, generated_at)를
+  골랐다. 운영 EXPLAIN ANALYZE에서 전국 B027 가격 읽기가 9.2초였다(기존 세대 인덱스에는 유종이 없다). 범위 통계 후보 CTE의
+  운영 최대 104초(pg_stat_statements)도 같은 부류로 본다.
+- 가격 분포: 세대·유종·필터별 전국 가격을 한 SELECT로 읽어 시도·시군구로 나눈 정렬 색인을 프로세스에 둔다(10분, 16개, 키별 single-flight). 분포·백분위·
+  등급은 이 색인과 이분 탐색으로 계산한다(정의는 그대로: 중간 순위 백분위, `percentile_cont` 분위). 주유소 가격은 기본키 앞부분
+  `(source, station_key)`로 읽고 세대는 코드에서 고른다.
+- 시도 화면 이름 통일: 오피넷 원문 시도 이름이 같은 코드 안에서 짧은/정식으로 섞여 있다(서울특별시 코드 454행 "서울" + 5행 "서울특별시").
+  `SIDO_DISPLAY_NAMES`(정식→짧은 이름) 하나로 지역 이동 목록·지도 중심·화면 안 시군구·분포 제목·지역 카드를 맞추고, 화면 안 시군구는
+  이름이 아니라 코드로 묶는다(이름까지 묶어 한 시군구가 두 줄로 갈리던 것).
+
+**회귀**: `tests/test_fuel_public_query_plans.py`가 낡은 통계 상태(지난 세대로 ANALYZE → ANALYZE 없이 새 세대 공개)를 만들고 실제
+문장의 계획에 "중첩 루프 안쪽 fuel_stations 전체 읽기"와 "문자열 id 조인"이 없음, 고정 세대 추정이 실제 행 수의 1/3~3배임을 본다.
+같은 상태에서 예전 문자열 조인 문장은 반드시 걸리는지(검출기 생존)와 추정 전제(상수 세대 추정 ≪ 실제)도 함께 확인한다. 같은 세대
+시각의 고속도로(문자 키) point와 함께 실제로 실행하고, 모든 `fuel_*` 서비스에 문자열 id 조인이 없음을 소스에서 확인한다.
+벤치: `backend/tests/benchmarks/fuel_public_places.py`(운영 모양: 1.19만 곳·53+1세대·낡은 통계, HTTP 경로 그대로).
+
 ## 지도 중심 시군구 (공개 유가 화면 전용, 2026-11-22)
 
 - 소유자 지시: 지역 칩의 기본값은 "화면에서 주유소가 가장 많은 시군구"가 아니라 **지도 중심의 시군구**.

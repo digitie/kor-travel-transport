@@ -1,3 +1,10 @@
+## 2026-11-23 — 공개 유가 places 504 후속
+
+- [ ] **FUEL-PRUNE-BACKLOG-20261123 / P2** — `prune_fuel_statistics`(15초·2,000행 배치)가 오피넷 세대 생성(세대당 약 3만 행)을 못 따라가
+  운영 `fuel_statistics_points`에 지난 세대 54개(1.56M 행, 461 MB)가 남았다(2026-11-23 읽기 전용 측정). 공개 화면 조회는 이번 수정으로
+  세대 수와 무관하게 선형이지만 표·인덱스 크기와 자동 ANALYZE 간격이 계속 커진다. 정리 속도(배치·세대 단위 삭제)를 고치고 운영에서
+  세대 수가 줄어드는지 수용한다. [유가 통계](fuel-statistics.md) "공개 세대 조인과 통계".
+
 ## 2026-11-17 — 공통화 재조사 계획 포인터
 
 - [ ] **COMMON-PLAN-20261117 / P2** — kor-travel-common의 공통화 재조사 계획(`docs/plan/commonization-plan-2026-11-17.md`) 가운데 Transport가 실행하는 task를 추적한다. 선행 없음: Common `T-437`(`components/ui/*` 순수 재수출 shim 13개를 공통 경로 직접 import로, 릴리스 불필요), `T-434`(관리자 프론트 `lib/navigation.ts`의 판정 본체를 공통 `sanitizeLocalPath` 호출로 바꾸는 중복 제거. `%20`이 든 경로처럼 결과가 달라지는 입력이 있어 받아들일지 먼저 정한다), `T-482b`(job별 인프라 재시도 sensor 3개를 다중 job sensor 1개로. 합친 sensor는 tick당 RunRequest 하나, 급하지 않다). Common 작업 뒤: `T-436`(guard 호출 SHA를 Common이 지정한 채택 커밋으로, `T-024` 뒤), `T-435`(선택형 패키지 `@kor-travel/admin-kit` 채택, `T-221` 뒤), `T-482a`(로컬 수집 결과 tag 함수를 공통 구현으로, `T-313` 뒤, 급하지 않다). Common `T-025`(ui·tokens patch 릴리스) 전에 `T-436`이 병합되지 않으면 그날 ui·tokens를 재vendor해야 한다(Common은 릴리스 전에 이 팀의 확인을 받는다). `T-435`은 새 guard를 쓰고 있으면 첫 단계로 호출 SHA를 Common이 지정한 admin-kit 채택 커밋으로 올리고 ui·tokens를 재vendor한다. 범위·수용 기준·되돌리기는 Common `docs/tasks/`의 상세 파일이 정본이며 여기 복제하지 않는다. 시점은 Transport 유지 팀이 정한다.

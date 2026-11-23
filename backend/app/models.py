@@ -518,6 +518,8 @@ class FuelStatisticsPoint(Base):
     __table_args__ = (
         Index("ix_fuel_statistics_points_bbox", "longitude", "latitude"),
         Index("ix_fuel_statistics_points_generation", "source", "generated_at"),
+        # 공개 화면은 늘 한 세대 + 유종을 읽는다. 없으면 추정이 맞을 때 기본키 skip scan을 골랐다(0047, 운영 9.2초).
+        Index("ix_fuel_statistics_points_generation_product", "source", "generated_at", "product_code"),
     )
     source: Mapped[str] = mapped_column(String(40), primary_key=True)
     station_key: Mapped[str] = mapped_column(String(80), primary_key=True)

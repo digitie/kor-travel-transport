@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import FuelStation
-from app.services.fuel_station_filters import OPINET
+from app.services.fuel_station_filters import OPINET, sido_display_name
 
 # 위도 기준 반경(도). 약 2.2 km → 9 km → 33 km. 대부분 첫 상자에서 끝난다.
 SEARCH_RADII = (0.02, 0.08, 0.3)
@@ -77,7 +77,7 @@ async def _nearest(session: AsyncSession, longitude: float, latitude: float) -> 
         distance = math.sqrt(float(row.distance2))
         # 상자에 내접한 원 밖의 결과는 상자 밖 주유소가 더 가까울 수 있어 다음(더 큰) 상자로 넘긴다.
         if distance <= radius:
-            return {"sido_value": row.sido_value, "sido_name": row.sido_name or row.sido_value,
+            return {"sido_value": row.sido_value, "sido_name": sido_display_name(row.sido_value, row.sido_name),
                     "sigungu_value": row.sigungu_value, "sigungu_name": row.sigungu_name or row.sigungu_value,
                     "method": "nearest_station", "distance_m": round(distance * METERS_PER_DEGREE)}
     return None
