@@ -118,3 +118,16 @@ services:
         - -c
         - *dagster-code-server-probe
         - "12306"
+
+    # Odroid 전용 상태 볼륨. 공용 instance bind와 Opinet 체크포인트는 base에서 그대로 상속한다.
+    volumes:
+      - type: volume
+        source: kor-travel-transport-dagster-state
+        target: /opt/dagster/state
+        volume:
+          nocopy: true
+
+volumes:
+  kor-travel-transport-dagster-state:
+    name: kor-travel-transport-dagster-state
+    external: true

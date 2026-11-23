@@ -214,8 +214,9 @@ Basic Auth, 공개 host `https://dagster.digitie.mywire.org`)와 공용 instance
 - code-server는 공용 instance URL(`KOR_TRAVEL_DAGSTER_SHARED_PG_URL`, `postgresql+psycopg2://…/dagster_shared`)을
   받고 옛 metadata DSN은 받지 않는다. `$DAGSTER_HOME/dagster.yaml`은 Manager의 공용 instance 정의
   (`/opt/kor-travel-docker-manager/config/dagster-shared/dagster.yaml`, `KOR_TRAVEL_DAGSTER_SHARED_INSTANCE_CONFIG`로
-  바꿀 수 있다)로 읽기 전용으로 덮는다. 공용 instance의 로컬 쓰기(`/opt/dagster/state`)는 이 컨테이너 안에서
-  풀린다(root라 쓸 수 있다). compute log는 오늘처럼 code-server 컨테이너의 로컬 파일이다(D5).
+  바꿀 수 있다)로 읽기 전용으로 덮는다. compute log와 artifacts는 code-server의 `/opt/dagster/state` 아래에
+  저장한다. Odroid는 이 경로에 Transport 전용 외부 볼륨을 붙이며, compute log 보존 절차는
+  [배포 런북](../runbooks/deployment.md#odroid-transport-dagster-compute-로그-보존)을 따른다.
 - 옛 `dagster-webserver`·`dagster-daemon`·`dagster-gateway`와 옛 metadata DB의 `dagster-migrate`는
   `profiles: [legacy-dagster]`다. 활성 서비스는 그것에 기대지 않고 그 포트(14003·14004)를 부르지 않는다. 그
   profile로 직접 띄우지 않는다 — 공용 daemon이 같은 schedule을 이미 쏜다(이중 발화).

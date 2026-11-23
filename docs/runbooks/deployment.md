@@ -152,6 +152,61 @@ receipt의 세 image ID·전체 release·운영 schema·원본 CS CID·복사 �
 [ARM 관리자 번들 수용](../audits/2026-10-19-admin-bundle-acceptance.md)을 따른다.
 ADR accepted 여부는 별도 증거 정산 후 표시한다.
 
+## Odroid Transport Dagster compute 로그 보존
+
+Odroid의 `transport.override.yml`은 `dagster-code-server`에만 기존 Docker local 볼륨
+`kor-travel-transport-dagster-state`를 `/opt/dagster/state`에 `nocopy: true`로 붙인다.
+Compose 소스 빌드와 prebuilt 배포는 같은 overlay를 사용한다. Manager standalone은 같은 컨테이너
+이름 `kor-travel-transport-dagster-code-server-1`과 동일한 볼륨 계약을 사용해야 한다. 볼륨의
+프로비저닝·검증·최초 이관은 운영자와 Manager가 담당한다. 원래의 공용 `dagster.yaml` 읽기 전용
+bind와 `/app/collector-state`의 Opinet 볼륨도 함께 유지한다. 복구 때는 이전 이미지에서도 같은
+상태 볼륨을 붙인다.
+
+보존 명령은 공용 PostgreSQL의 Dagster run 기록과 `LOGS_CAPTURED` 이벤트를 읽고, 코드 위치
+origin과 두 소유권 태그가 일치하는 Transport run만 대상으로 한다. UTC 종료 시각이 현재보다
+168시간 넘게 이전인 SUCCESS·FAILURE·CANCELED run의 이벤트에 등록된 로컬 로그 키만 확인한다.
+최근 1시간 안에 mtime 또는 ctime이 바뀐 키는 보류된다. 초기 복사 뒤 ctime이 갱신된 파일도 이
+유예가 적용된다. run에 `kortraveltransport/compute-log-retention-hold` 태그가 있는 동안은 값과
+관계없이 보존한다. 외부·미확인 키, 심볼릭 링크와 하드 링크는 건너뛴다. 삭제 범위는 각 키의
+stdout·stderr·부분 파일과 완료 표식이다. 디렉터리·Dagster 이력·로컬 artifacts·Opinet 체크포인트는
+보존한다.
+
+운영자가 Manager의 볼륨 검증과 최초 이관 뒤 대상 컨테이너에서 확인한다. 수동 apply도
+아래의 배포 lease를 획득한 상태에서 실행한다.
+
+```sh
+docker exec kor-travel-transport-dagster-code-server-1 /opt/venv/bin/python -m app.dagster.compute_log_retention --dry-run
+docker exec kor-travel-transport-dagster-code-server-1 /opt/venv/bin/python -m app.dagster.compute_log_retention --apply
+```
+
+### 호스트 유지보수 명령 계약
+
+프로젝트별 구현은 코드 서버 내부에서 실행하며 인수 없이 호출하거나 `--dry-run`을 전달하면
+삭제 없이 집계한다. `--apply`를 명시해야 삭제한다. 정상 종료는 0, 실행 실패는 1, 인수 오류는
+2다. 유효한 인수로 실행하면 stdout에 JSON 한 줄을 내고 진단은 stderr로 보낸다. Manager는
+종료 코드 0과 JSON의 `ok: true`를 함께 확인할 수 있다. 오류가 발생하면 이미 삭제한 파일 수를
+같은 응답에 포함한다. 다시 실행할 때는 남은 파일의 적격성을 다시 검사한다.
+
+- `schema_version`은 `1`이고 `mode`는 `dry-run` 또는 `apply`다.
+- `runs_seen`은 확인한 UUID 형식의 run 항목 수다. `eligible_keys`, `eligible_files`, `eligible_bytes`는
+  조건을 통과한 키 수, 파일 수, 파일 크기 합이다. `removed_files`, `removed_bytes`는 실제 삭제한 파일의
+  수와 크기 합이다. dry-run의 삭제 수와 크기는 0이다.
+- `skipped_runs`, `skipped_keys`, `skipped_entries`는 각각 run·로그 키·파일 시스템 항목을 이유별로
+  집계한다. 누락된 이유의 개수는 0이다. 검사 후 파일이 바뀐 경우 후보 수와 실제 삭제 수가 다를 수 있다.
+
+### 하루 한 번 실행하는 host 유지보수
+
+최초 dry-run과 apply 검증 후 Manager의 호스트 유지보수에서 하루에 한 번 호출한다.
+타이머는 호출 시점에 고정된 이름으로 실행 중인 컨테이너를 찾으므로 일반 core 재생성 때
+다시 설치할 필요가 없다. Dagster 스케줄 및 legacy 복원 카탈로그에는 추가하지 않는다.
+
+호스트 runner는 apply 전 기존 Transport 배포 lease
+`/mnt/media/kor-travel/build/transport/.kor-travel-transport-deploy.lock`를 획득해 명령이 끝날 때까지
+유지한다. lease가 사용 중이면 다음 실행 기회로 미룬다. prebuilt 검증은 상태 디렉터리 전체의
+fingerprint를 검사하므로 이 lease는 handoff 동안 prune 실행을 막는다. 컨테이너 내부에서는
+compute-log 디렉터리의 배타 잠금이 동시 sweep을 막는다. 동시 sweep은 파일을 삭제하기 전에
+실패하고 JSON의 `ok`에 `false`를 반환한다.
+
 ## 과거 n150 운영 절차
 
 1. n150에 `/home/digitie/apps/kor-travel-transport/.env.server14`를 만들고

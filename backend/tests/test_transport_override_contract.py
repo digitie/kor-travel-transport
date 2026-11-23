@@ -115,3 +115,22 @@ def test_rendered_compose_guard_accepts_only_port_12306_for_command_and_healthch
         [sys.executable, str(verifier)], input=json.dumps(duplicate_port), capture_output=True, text=True, check=False
     )
     assert rejected_duplicate.returncode == 2
+
+
+def test_odroid_overlay_adds_one_external_nocopy_state_mount_only_to_code_server() -> None:
+    overlay = _load(ROOT / "transport.override.yml")
+    base = _load(ROOT / "docker-compose.shared.yml")
+    volume = "kor-travel-transport-dagster-state"
+    assert overlay["volumes"] == {volume: {"name": volume, "external": True}}
+    assert {
+        name: service["volumes"] for name, service in overlay["services"].items() if "volumes" in service
+    } == {
+        "dagster-code-server": [
+            {"type": "volume", "source": volume, "target": "/opt/dagster/state", "volume": {"nocopy": True}}
+        ]
+    }
+    mounts = base["services"]["dagster-code-server"]["volumes"]
+    assert "opinet-checkpoints:/app/collector-state" in mounts
+    assert any(mount.endswith(":/app/dagster_home/dagster.yaml:ro") for mount in mounts)
+    for filename in ("docker-compose.yml", "docker-compose.shared.yml", "docker-compose.transport-admin.yml"):
+        assert volume not in (ROOT / filename).read_text(encoding="utf-8")
