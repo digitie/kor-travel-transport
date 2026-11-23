@@ -55,10 +55,14 @@ test("4a fuel-web은 /favicon.ico로 주유기 아이콘을 내고 페이지가 
   // 페이지와 함께 나간 요청 중 /favicon.ico 404가 없다.
   await page.waitForTimeout(500);
   expect(notFound).not.toContain("/favicon.ico");
-  // 아이콘 문서를 직접 열어 이미지로 해석되는지 보고 저장한다.
-  await page.setViewportSize({ width: 240, height: 160 });
-  await page.goto("/favicon.ico");
-  await expect.poll(() => page.evaluate(() => document.images[0]?.complete && document.images[0].naturalWidth)).toBeGreaterThanOrEqual(16);
+  // 받은 바이트가 브라우저에서 이미지로 해석되는지 16·32·48·128px로 그려 보고 저장한다
+  // (headless Chromium은 image/x-icon 주소로 직접 이동하면 내려받기로 처리해 중단한다).
+  const source = `data:image/x-icon;base64,${body.toString("base64")}`;
+  await page.setViewportSize({ width: 360, height: 180 });
+  await page.goto("about:blank");
+  await page.setContent(`<body style="margin:0;padding:24px;display:flex;gap:24px;align-items:center;background:#fff">${
+    [16, 32, 48, 128].map(size => `<img src="${source}" width="${size}" height="${size}">`).join("")}</body>`);
+  await expect.poll(() => page.evaluate(() => [...document.images].every(image => image.complete && image.naturalWidth >= 16))).toBe(true);
   await shot(page, "ui-4a-favicon-after.png", testInfo);
 });
 
