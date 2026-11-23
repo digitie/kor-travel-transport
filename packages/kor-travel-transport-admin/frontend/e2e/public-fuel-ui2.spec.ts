@@ -167,10 +167,11 @@ for (const width of [320, 390, 1440]) {
     const summary = summaryOf(page);
     await expect(chipName(page)).toHaveText("서울 중구");
     await expect(summary.locator(".fuel-sigungu-chips")).toHaveAttribute("aria-label", "지도 중심 지역 가격 통계");
-    // 유종마다 한 줄(이름·평균·최저). 320px에서도 두 줄을 넘지 않는다.
-    for (const row of await summary.locator(".public-fuel-summary-product").all()) {
-      expect((await row.boundingBox())!.height).toBeLessThanOrEqual(width <= 320 ? 46 : 24);
-    }
+    // 유종마다 이름·평균·최저를 한 덩어리로: PC는 한 줄, 좁은 화면도 두 줄을 넘지 않는다(예전: 이름 줄 + 값 줄 + 여백).
+    await expect(summary).toContainText("1,760");
+    const rowHeights = await summary.locator(".public-fuel-summary-product").evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height));
+    expect(rowHeights).toHaveLength(2);
+    for (const height of rowHeights) expect(height).toBeLessThanOrEqual(width >= 1024 ? 24 : 46);
     const summaryHeight = (await summary.boundingBox())!.height;
     expect(summaryHeight, `요약 높이 ${summaryHeight}`).toBeLessThanOrEqual(width <= 320 ? 230 : 190);
     const autoBackground = await chip(page).evaluate(node => getComputedStyle(node).backgroundColor);

@@ -986,7 +986,8 @@ html:has([data-slot="map-workspace"][data-expanded="true"]) { overflow: hidden; 
 .public-fuel-summary-product { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; row-gap: 0; }
 .public-fuel-summary-product + .public-fuel-summary-product { border-top: 1px solid var(--line); padding-top: 2px; }
 .public-fuel-summary-product h3 { flex: 0 1 auto; min-width: 0; font-weight: 600; }
-.public-fuel-summary .public-fuel-summary-product dl { flex: 1 1 10rem; gap: 0 8px; }
+.public-fuel-summary .public-fuel-summary-product dl { display: flex; flex: 1 1 auto; flex-wrap: wrap; gap: 0 8px; }
+.public-fuel-summary .public-fuel-summary-product dl > div { flex-wrap: nowrap; }
 .public-fuel-current-prices dd { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
 
 /* 공개 유가: 범위 요약 맨 위 줄 — 지역 이동 아이콘(44px) + 유종·필터 선택(남은 폭)을 한 줄 44px 높이에 맞춘다. 제목 글자는 없다. */
