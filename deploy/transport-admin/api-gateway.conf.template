@@ -73,6 +73,8 @@ server {
         proxy_set_header Host 127.0.0.1;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        # 공개 listener 표지(클라이언트 값을 덮어쓴다). backend 장소 지도는 이 요청을 공개 몫으로 센다.
+        proxy_set_header X-Transport-Listener public;
         proxy_connect_timeout 5s;
         proxy_read_timeout 30s;
     }
@@ -87,6 +89,8 @@ server {
         proxy_set_header Host 127.0.0.1;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        # 공개 listener 표지(클라이언트 값을 덮어쓴다). backend 장소 지도는 이 요청을 공개 몫으로 센다.
+        proxy_set_header X-Transport-Listener public;
         proxy_connect_timeout 5s;
         proxy_read_timeout 30s;
     }

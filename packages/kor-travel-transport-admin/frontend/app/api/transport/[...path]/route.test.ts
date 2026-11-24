@@ -20,6 +20,26 @@ describe("GET /api/transport/[...path]", () => {
     const response = await GET(request, { params: Promise.resolve({ path: ["transport", "highways", "traffic"] }) });
     expect(response.status).toBe(429); expect(response.headers.get("retry-after")).toBe("30"); expect(String(fetchMock.mock.calls[0][0])).toContain("/v1/transport/highways/traffic?route_no=1&route_no=10");
   });
+  it("장소 지도 조회에만 쓰기 토큰이 아닌 파생 증명을 붙이고, 짧은 토큰이면 아무것도 보내지 않는다", async () => {
+    const token = "t".repeat(40);
+    vi.stubEnv("TRANSPORT_ADMIN_WRITE_TOKEN", token);
+    const fetchMock = vi.fn().mockImplementation(async () => new Response("{}", { status: 200, headers: { "content-type": "application/json" } })); vi.stubGlobal("fetch", fetchMock);
+    const places = await GET(await protectedRequest("transport/features/places?kinds=rail_station"), { params: Promise.resolve({ path: ["transport", "features", "places"] }) });
+    await GET(await protectedRequest("transport/highways/traffic"), { params: Promise.resolve({ path: ["transport", "highways", "traffic"] }) });
+    const sent = fetchMock.mock.calls.map(call => new Headers((call[1] as RequestInit).headers));
+    // backend admin_lane_proof와 같은 HMAC-SHA256(token, "places-admin-lane").
+    const { createHmac } = await import("node:crypto");
+    expect(sent[0].get("x-transport-places-lane")).toBe(createHmac("sha256", token).update("places-admin-lane").digest("hex"));
+    expect(sent[1].get("x-transport-places-lane")).toBeNull();
+    // 쓰기 토큰 자체는 어느 요청에도 실리지 않고, 응답에도 없다.
+    for (const headers of sent) { expect(headers.get("x-transport-admin-token")).toBeNull(); expect([...headers.values()].join(" ")).not.toContain(token); }
+    expect([...places.headers.values()].join(" ")).not.toContain(createHmac("sha256", token).update("places-admin-lane").digest("hex"));
+    for (const short of ["", "s".repeat(31)]) {
+      vi.stubEnv("TRANSPORT_ADMIN_WRITE_TOKEN", short);
+      await GET(await protectedRequest("transport/features/places?kinds=rail_station"), { params: Promise.resolve({ path: ["transport", "features", "places"] }) });
+      expect(new Headers((fetchMock.mock.calls.at(-1)![1] as RequestInit).headers).has("x-transport-places-lane")).toBe(false);
+    }
+  });
   it("브라우저가 취소한 지도 조회는 upstream fetch도 끊고, 상한 timer는 그대로 둔다", async () => {
     let upstreamSignal: AbortSignal | undefined;
     const fetchMock = vi.fn((_target: URL, init: RequestInit) => {

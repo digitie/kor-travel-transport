@@ -1,16 +1,29 @@
+import { createHmac } from "node:crypto";
+
 import { NextRequest, NextResponse } from "next/server";
 
 import { hasAdminSession } from "@/lib/auth";
 import { isAllowedOrigin } from "@/lib/origin";
 import { fetchNoStore, transportUpstreamUrl } from "@/lib/upstream";
 
+/** backend `admin_lane_proof`와 같은 값: HMAC-SHA256(TRANSPORT_ADMIN_WRITE_TOKEN, "places-admin-lane") hex.
+ * 토큰이 32자 미만이면(다른 관리 경로와 같은 조건) 아무것도 보내지 않는다. */
+function placesAdminLaneProof(): string | null {
+  const token = process.env.TRANSPORT_ADMIN_WRITE_TOKEN ?? "";
+  if (Buffer.byteLength(token, "utf8") < 32) return null;
+  return createHmac("sha256", token).update("places-admin-lane").digest("hex");
+}
+
 export async function GET(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   if (!(await hasAdminSession(request))) return NextResponse.json({ detail: "로그인이 필요합니다." }, { status: 401 });
   const { path } = await context.params; const target = transportUpstreamUrl(path, request.nextUrl.searchParams);
   if (!target) return NextResponse.json({ detail: "허용되지 않은 transport API 경로입니다." }, { status: 404 });
+  // 장소 지도는 backend 입장 제한이 관리 화면 몫(공개 요청과 따로 센다)으로 세도록 관리 줄 증명을 붙인다.
+  // 쓰기 토큰(백업 복원까지 할 수 있다) 자체는 보내지 않고 그것에서 파생한 HMAC만 보낸다. 다른 읽기 경로에는 붙이지 않는다.
+  const laneProof = path.join("/") === "transport/features/places" ? placesAdminLaneProof() : null;
   try {
     // 브라우저가 이전 지도 조회를 취소하면(request.signal) upstream 요청·본문 스트림도 함께 끊는다. 30초 상한은 그대로다.
-    const response = await fetchNoStore(target, { headers: { accept: request.headers.get("accept") ?? "application/json", "x-request-id": request.headers.get("x-request-id") ?? "" }, signal: request.signal });
+    const response = await fetchNoStore(target, { headers: { accept: request.headers.get("accept") ?? "application/json", "x-request-id": request.headers.get("x-request-id") ?? "", ...(laneProof ? { "x-transport-places-lane": laneProof } : {}) }, signal: request.signal });
     const retryAfter = response.headers.get("retry-after");
     return new NextResponse(response.body, { status: response.status, headers: { "cache-control": "no-store, private", "content-type": response.headers.get("content-type") ?? "application/json", "retry-after": retryAfter ?? "", "x-request-id": response.headers.get("x-request-id") ?? "" } });
   } catch { return NextResponse.json({ detail: "transport API에 연결하지 못했습니다." }, { status: 502, headers: { "cache-control": "no-store, private" } }); }

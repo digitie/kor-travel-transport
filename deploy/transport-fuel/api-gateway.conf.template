@@ -61,6 +61,8 @@ server {
     proxy_set_header Cookie "";
     proxy_set_header X-Forwarded-For "";
     proxy_set_header X-Forwarded-Proto $scheme;
+    # 공개 listener 표지(클라이언트 값을 덮어쓴다). backend 장소 지도는 이 요청을 공개 몫으로 센다.
+    proxy_set_header X-Transport-Listener public;
     proxy_http_version 1.1;
     # HEAD도 기존 GET reader를 사용하며 nginx가 응답 body를 생략한다.
     proxy_method GET;

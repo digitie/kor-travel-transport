@@ -610,6 +610,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             max_running=resolved_settings.places_max_running,
             max_waiting=resolved_settings.places_max_waiting,
             deadline_seconds=resolved_settings.places_deadline_seconds,
+            # 공개 listener가 관리 화면을 굶기지 않게 관리 몫을 남긴다(관리 판정: 관리자 토큰 + gateway 표지 없음).
+            # 동시 1건 설정이면 남길 몫이 없다(설정 검증이 그 밖의 reserved >= max_running을 거절한다).
+            admin_reserved=resolved_settings.places_admin_reserved_running if resolved_settings.places_max_running > 1 else 0,
+            admin_max_waiting=resolved_settings.places_admin_max_waiting,
+            admin_token=resolved_settings.transport_admin_write_token,
+        )
+        gate = app.state.place_map_gate
+        # 실제로 적용된 몫을 남긴다. 관리 줄이 꺼져 있으면(토큰 없음·32자 미만) 남겨 둔 몫도 0이다.
+        logger.info(
+            "places_admission_configured max_running=%s public_max_running=%s admin_reserved=%s admin_lane=%s "
+            "max_waiting=%s admin_max_waiting=%s deadline_s=%s",
+            gate.max_running, gate.max_running - gate.admin_reserved, gate.admin_reserved,
+            "enabled" if gate.admin_lane_enabled else "disabled", gate.max_waiting, gate.admin_max_waiting,
+            gate.deadline_seconds,
         )
         app.state.scheduler_task = None
         app.state.transport_scheduler_task = None

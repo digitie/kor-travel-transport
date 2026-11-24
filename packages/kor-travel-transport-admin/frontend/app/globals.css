@@ -555,6 +555,9 @@
 .map-workbench .map-place-list { block-size: 100%; min-block-size: 0; max-height: none; overflow: auto; }
 .map-place-list .station-results { max-height: none; overflow: visible; }
 .map-feedback:empty { display: none; }
+/* 조회 실패: 알림 문구(role=alert)와 다시 조회 버튼을 한 줄에 둔다(버튼은 알림 밖). */
+.map-failure { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.map-failure > p { margin: 0; }
 .map-feedback p { margin: 0; }
 .map-feedback { display: grid; gap: .25rem; }
 .map-feedback:not(:empty) { padding: 6px 8px; border-radius: var(--radius-control); background: var(--panel); }

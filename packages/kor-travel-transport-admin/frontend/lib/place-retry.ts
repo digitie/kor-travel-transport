@@ -31,15 +31,17 @@ function waitUnlessAborted(ms: number, signal: AbortSignal) {
   });
 }
 
+/** `onRetryWait`는 자동 재조회를 기다리기 시작할 때 한 번 불린다(지도 단위 "다시 조회 중…" 표시용). */
 export async function loadWithTransientRetry<T>(
   load: <R>(path: string, signal?: AbortSignal) => Promise<R>, path: string, signal: AbortSignal,
-  random: () => number = Math.random,
+  random: () => number = Math.random, onRetryWait?: (delayMs: number) => void,
 ): Promise<T> {
   try {
     return await load<T>(path, signal);
   } catch (reason) {
     const delay = signal.aborted ? null : transientRetryDelay(reason, random);
     if (delay === null) throw reason;
+    onRetryWait?.(delay);
     await waitUnlessAborted(delay, signal);
     return load<T>(path, signal);
   }

@@ -72,6 +72,38 @@ for (const width of [320, 390, 1440]) {
   });
 }
 
+for (const width of [375, 1440]) {
+  test(`${width}px 자동 재조회 대기는 범위 요약 줄에서 알리고 요약을 밀거나 자르지 않는다`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: width < 1000 ? 812 : 900 });
+    const seen = new Map<string, number>();
+    // 같은 조건의 첫 응답만 혼잡(429, Retry-After 2초). 화면은 한 번 자동으로 다시 묻는다.
+    await page.route("**/api/public/fuel/places?*", async (route) => {
+      const url = route.request().url(); const count = (seen.get(url) ?? 0) + 1; seen.set(url, count);
+      if (count === 1) return route.fulfill({ status: 429, headers: { "retry-after": "2", "content-type": "application/problem+json" },
+        json: { detail: "장소 지도 조회가 혼잡합니다. 잠시 후 다시 시도하세요." } });
+      return route.fallback();
+    });
+    await page.goto("/");
+    const summary = summaryOf(page);
+    const status = summary.locator(".public-fuel-summary-body").getByRole("status");
+    await expect(status).toHaveText("다시 조회 중…");
+    const waiting = (await summary.boundingBox())!;
+    expect(waiting.x).toBeGreaterThanOrEqual(0);
+    expect(waiting.x + waiting.width).toBeLessThanOrEqual(width);
+    expect(await singleLine(page, ".public-fuel-summary-body [role=status]")).toEqual([true]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    // 격리 환경의 지도 타일·SDK 안내 알림은 세지 않는다. 재조회 대기 중에는 조회 실패 알림이 없다.
+    await expect(page.getByRole("alert").filter({ hasText: "조회 실패" })).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath(`public-fuel-retrying-${width}.png`), animations: "disabled" });
+    // 재조회가 성공하면 같은 자리(요약 위치 그대로)에 평균가가 들어온다. 표시는 새 요소가 아니라 화면을 밀지 않는다.
+    await expect(summary.locator('dl[aria-label="휘발유"]')).toContainText("1,700", { timeout: 8000 });
+    const settled = (await summary.boundingBox())!;
+    expect(Math.abs(settled.y - waiting.y)).toBeLessThanOrEqual(1);
+    await expect(summary).not.toContainText("다시 조회 중");
+    await expect(page.getByRole("alert").filter({ hasText: "조회 실패" })).toHaveCount(0);
+  });
+}
+
 test.describe("내 위치 · 권한 허용", () => {
   test.use({ permissions: ["geolocation"], geolocation: SEOUL });
   test("390px 권한 허용 시 바로 위치를 찾고 오류 문구를 남기지 않는다", async ({ page }) => {

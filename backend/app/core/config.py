@@ -122,6 +122,10 @@ class Settings(BaseSettings):
     places_max_running: int = Field(default=4, ge=1, le=8)
     places_max_waiting: int = Field(default=8, ge=0, le=64)
     places_deadline_seconds: float = Field(default=25, gt=0, le=25)
+    # 관리 화면(BFF → :12302, 관리자 토큰) 몫. 공개 listener(:12301·:12307)는 동시 계산
+    # `places_max_running - places_admin_reserved_running`건까지만 쓰고, 대기열은 줄마다 따로 센다.
+    places_admin_reserved_running: int = Field(default=1, ge=0, le=7)
+    places_admin_max_waiting: int = Field(default=4, ge=0, le=64)
     rustfs_endpoint_url: str | None = None
     rustfs_bucket: str = "kor-travel-transport-raw"
     rustfs_access_key_id: str | None = None
@@ -168,6 +172,12 @@ class Settings(BaseSettings):
                 "FERRY_TIMETABLE_COLLECTION_MAX_PROVIDER_CALLS must fit within the "
                 "3.5-hour ferry collection runtime budget including API_TIMEOUT_SECONDS "
                 "and FERRY_TIMETABLE_COLLECTION_INTERVAL_SECONDS"
+            )
+        if self.places_max_running > 1 and self.places_admin_reserved_running >= self.places_max_running:
+            # 공개 요청이 한 건도 못 도는 설정은 조용히 줄이지 않고 기동에서 거절한다.
+            raise ValueError(
+                "PLACES_ADMIN_RESERVED_RUNNING must be smaller than PLACES_MAX_RUNNING "
+                "(public places requests need at least one running slot)"
             )
         try:
             self.service_export_allowed_client_networks  # noqa: B018 - 기동 때 CIDR을 검증한다.

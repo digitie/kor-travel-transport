@@ -301,3 +301,12 @@ python scripts/reconcile-traffic-statistics.py --start 2026-11-20T00:00 --end 20
 `--chunk-hours`를 줄인다(5분의 배수, 최대 6). 입력 오류는 종료 코드 2다. 가장 오래된 원본보다 앞 구간과 원본이 하나도
 없는 bucket의 통계는 지우지 않는다(원본이 지워진 기간의 통계를 지우지 않게). `--include-before-oldest-raw`는 그 구간의 통계 행을 지우므로 원본이
 그 기간에 처음부터 없었던 것이 확실할 때만 쓴다.
+
+## 지도(`/map`·`/fuel`·공개 유가)에 "조회 실패 · 혼잡"·"시간이 초과"가 보일 때
+
+`/v1/transport/features/places`의 입장 제한(429)·25초 시한(504)이다. 관리 화면과 공개 listener는 몫을 따로 쓴다
+(관리 BFF가 쓰기 토큰에서 파생한 증명을 붙인다 — `TRANSPORT_ADMIN_WRITE_TOKEN`이 비었거나 32자 미만이면 관리 화면도
+공개 몫을 쓰고, 기동 로그 `places_admission_configured`가 `admin_lane=disabled`다).
+읽기 전용 확인 절차와 판단 기준은 [성능 기준](../architecture/performance.md)의 "25초 시한과 앞단 30초 여유"·
+"관리·공개 몫 나누기" 절을 따른다. 값 조정은 `PLACES_MAX_RUNNING`·`PLACES_MAX_WAITING`·
+`PLACES_ADMIN_RESERVED_RUNNING`·`PLACES_ADMIN_MAX_WAITING`·`PLACES_DEADLINE_SECONDS`로 하고 배포 절차를 따른다.

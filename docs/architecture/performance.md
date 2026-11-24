@@ -501,6 +501,89 @@ T1의 55P03·57014·요청 상한 503은 이 경로가 직접 낸다(`Retry-Afte
 `places_admission_rejected`·`places_deadline_exceeded`·`places_client_disconnected` 로그로 남는다. 운영 적용 뒤
 이 로그와 Server-Timing으로 값을 다시 판단한다.
 
+### 관리·공개 몫 나누기 (2026-11-24 PR #273 후속)
+
+공개 요청과 관리 화면이 gate 하나를 나눠 쓰면 익명 공개 요청이 관리 `/map`을 굶길 수 있었다. 이제 `PlaceMapGate`는
+요청을 `admin`·`public` 두 줄로 나눈다.
+
+- **관리 판정의 진짜 문은 파생 증명이다.** 관리 BFF(`app/api/transport/[...path]/route.ts`)는 places GET에만
+  `x-transport-places-lane: HMAC-SHA256(TRANSPORT_ADMIN_WRITE_TOKEN, "places-admin-lane")`(hex)을 붙여 loopback
+  backend(:12302)로 보낸다. 쓰기 토큰(백업 복원까지 할 수 있다) 자체는 지도 조회 경로에 싣지 않는다. 토큰이 32자
+  미만이면 BFF는 아무것도 보내지 않는다(다른 관리 경로와 같은 조건). backend는 같은 값을 계산해 상수 시간으로
+  비교한다. 증명은 새 env 없이 쓰기 토큰에서 만든다.
+- **함께 요구하는 조건**(공개로 내리기만 한다): ASGI peer가 loopback이고, `Forwarded`·`X-Forwarded-For` header가
+  없고(gateway를 거치지 않은 직접 호출 — `fuel_manual_refresh.py`의 private access와 같은 방식), `x-transport-listener`
+  표지가 없어야 한다. 공개 transport gateway(:12301 → `X-Forwarded-For` 추가), 공개 fuel gateway(:12307), 공개
+  parking-radar BFF(:12303 `frontend/src/app/api/backend/[...path]/route.ts`)는 모두 `x-transport-listener: public`을
+  덮어쓴다(nginx `proxy_set_header`, BFF는 허용한 header만 새로 만든다). 이 표지·forwarded header는 공개로
+  내리기만 하므로 클라이언트가 꾸며도 얻는 것이 없다. 증명 없이 :12302를 직접 부르는 요청도 공개다.
+- **몫**: 동시 계산 전체 `PLACES_MAX_RUNNING`(4) 가운데 공개는 `PLACES_MAX_RUNNING - PLACES_ADMIN_RESERVED_RUNNING`
+  (기본 3)건까지 쓴다. 관리는 공개가 기다리지 않으면 `PLACES_MAX_RUNNING - 1`(3)건까지, **공개가 기다리는 동안에는
+  `PLACES_ADMIN_RESERVED_RUNNING`(1)건까지만 새로 시작한다.** 그래서 어느 쪽이 몰려도 다른 쪽은 최소 한 슬롯으로
+  나아간다(관리 목록 8건 폭주에도 기다리는 공개 요청이 관리 두 물결을 기다려 시한을 넘기지 않는다 —
+  `test_admin_burst_does_not_starve_waiting_public_requests_past_the_deadline`). 대기열은 줄마다 따로 센다 — 공개
+  `PLACES_MAX_WAITING`(8), 관리 `PLACES_ADMIN_MAX_WAITING`(4). 슬롯이 비면 위 상한 안에서 관리 대기 요청을 먼저
+  깨운다(줄 안에서는 도착 순). 대기 중 합치기는 줄 안에서만 한다.
+- **설정 경계**: `PLACES_ADMIN_RESERVED_RUNNING >= PLACES_MAX_RUNNING`(동시 2건 이상일 때)은 조용히 줄이지 않고
+  설정 검증이 기동을 거절한다. 동시 1건 설정이면 몫을 남기지 않고 관리·공개가 한 슬롯을 나눈다. 토큰을 설정하지
+  않았거나 32자 미만이면 관리 줄이 없고 남겨 둔 몫도 0이다(공개가 4건 모두 쓴다). 기동 때
+  `places_admission_configured max_running=… public_max_running=… admin_reserved=… admin_lane=enabled|disabled …`
+  한 줄로 실제 적용된 값을 남긴다.
+- **배포 순서**: backend가 먼저 새 판정으로 올라가고 관리 웹(transport-admin-web)이 아직 옛 이미지면 관리 화면은 증명을
+  보내지 않아 공개 몫을 쓰고, 남겨 둔 1슬롯은 그동안 쉰다(공개는 3건). 관리 웹을 backend와 같은 배포(또는 바로 뒤)에
+  올린다. 관리 웹만 먼저 올라가면 옛 backend가 모르는 header라 무시한다(지금과 같다).
+- **로그**: `places_admission_rejected`·`places_deadline_exceeded`·`places_client_disconnected`에 `lane=`이 붙는다.
+  거절 경고 간격(10초)은 줄마다 잰다 — 공개 거절이 쏟아져도 관리 거절 한 줄은 바로 남는다.
+- **공개 쪽 클라이언트별 공정성은 하지 않았다.** nginx `limit_conn`을 IP별로 두려면 진짜 클라이언트 IP가 필요한데,
+  공개 gateway 앞에는 HAProxy(OPNsense)가 있어 `$remote_addr`가 모든 클라이언트에 같고, fuel gateway는
+  `X-Forwarded-For`를 비운다. `real_ip`로 HAProxy의 XFF를 믿으려면 HAProxy 주소·XFF 설정을 운영에서 확인해야 해서
+  이 변경에 넣지 않았다. 그 확인 없이 `$remote_addr` 기준으로 걸면 모든 공개 사용자를 연결 몇 개로 묶는다.
+  공개 줄 안의 공정성은 지금 대기열 상한(8)과 대기 중 동일 요청 합치기가 맡는다.
+
+### 25초 시한과 앞단 30초 여유
+
+관리 BFF(`lib/upstream.ts` 30초)와 공개 gateway(`proxy_read_timeout 30s`)보다 backend 504가 먼저 나가야 화면이
+backend 안내(`Retry-After: 10`)를 받는다. 여유를 깨뜨릴 수 있는 것과 처리:
+
+- **thread 검증**: 멈출 수 없지만 `run_in_thread_holding`이 thread 완료를 `asyncio.shield`로 기다리므로 시한 취소는
+  thread를 기다리지 않는다. 504는 시한에 바로 나가고 thread는 limiter 토큰을 쥔 채 끝까지 돈 뒤 반납한다
+  (`tests/test_places_lanes_and_deadline.py`: 시한 0.05초 전에 시작한 thread가 시한을 넘겨 돌아도 504가 시한 +
+  0.35초 안에 나온다).
+- **시한·끊김 뒤 rollback**: 서버가 응답하지 않으면 끝없이 기다릴 수 있었다. 이제 시한 경로와 끊김(499) 경로 모두
+  `TIMEOUT_CLEANUP_GRACE_SECONDS`(2초) 상한을 두고, 시한 경로는 넘기면 `places_timeout_cleanup_slow`를 남기고 504를
+  낸다. 최악은 25 + 2 = 27초다. 문장 도중 취소된 연결은 SQLAlchemy가 무효화해 풀에 되돌리지 않는다(실제 풀 1개
+  PostgreSQL 시험: 시한·끊김·rollback 상한 세 경로 모두 무효화 1회, 다음 요청은 새 연결로 성공, `checkedout() == 0`).
+- **event loop 위 동기 작업**: 시한 취소는 loop가 돌아야 실행된다. places 본문의 `to_json`·pydantic 직렬화와 다른
+  요청의 동기 작업은 그만큼 504를 늦춘다. 이 몫은 측정으로만 확인할 수 있어 아래 로그를 둔다.
+- `places_deadline_exceeded`의 `elapsed_ms`는 **handler 진입**(입장 장식자가 시한을 정한 순간)부터 504를 정한
+  순간(rollback 포함)까지다. 미들웨어·의존성 해석·응답 직렬화·앞단까지의 시간은 빠지므로 `proxy_margin_ms`(30초까지
+  남은 여유)는 **가장 좋은 경우**의 값이다. 끝단 전체 시간은 응답의 `Server-Timing: app;dur=`와
+  `slow_request ... status=504 duration_ms=`(미들웨어 기준)로 본다.
+
+**운영 확인(읽기 전용, Odroid)** — 배포·재기동 없이 로그만 읽는다(`docs/runbooks/remote-command-safety.md`):
+
+```bash
+# 최근 하루 시한 초과의 lane·경과·여유(handler 진입 기준, 가장 좋은 경우). 여유가 2000 아래면 시한·상한을 다시 본다.
+docker logs --since 24h kor-travel-transport-backend-1 2>&1 \
+  | grep places_deadline_exceeded \
+  | sed -E 's/.*lane=([a-z]+).*elapsed_ms=([0-9]+) proxy_margin_ms=(-?[0-9]+).*/\1 \2 \3/' \
+  | sort -k2 -n | tail -5
+# 미들웨어 기준 places 504 응답 시간(앞단 30초에 가까우면 gateway가 먼저 502/504를 냈을 수 있다)
+docker logs --since 24h kor-travel-transport-backend-1 2>&1 \
+  | grep -E 'slow_request route=/v1/transport/features/places status=504' \
+  | grep -oE 'duration_ms=[0-9.]+' | sort -t= -k2 -n | tail -5
+# rollback 상한을 넘긴 횟수와 줄별 거절 수, 기동 때 적용된 몫
+docker logs --since 24h kor-travel-transport-backend-1 2>&1 | grep -c places_timeout_cleanup_slow
+docker logs --since 24h kor-travel-transport-backend-1 2>&1 | grep places_admission_rejected \
+  | grep -oE 'lane=[a-z]+' | sort | uniq -c
+docker logs kor-travel-transport-backend-1 2>&1 | grep places_admission_configured | tail -1
+```
+
+판단: `elapsed_ms`가 25,000 근처(± 수백 ms)이고 504 `duration_ms`도 그 근처이며 `places_timeout_cleanup_slow`가 0이면
+여유(약 5초)가 지켜진다. `duration_ms`가 27,000을 넘거나 gateway access log에 places 504/502가 backend 기록 없이
+보이면 loop 정체를 의심하고 `PLACES_DEADLINE_SECONDS`를 낮춘다. `admin_lane=disabled`이면 운영
+`TRANSPORT_ADMIN_WRITE_TOKEN`(32자 이상)을 확인한다.
+
 ## API 기동 warmup(2026-11-24)
 
 감사 RT-06·RT-13·G2-09·G3-10. 기동 warmup은 `app/services/startup_warmup.py` 한 task로 순서를 둔다. lifespan은

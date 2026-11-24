@@ -18,13 +18,31 @@
   일반 endpoint를 연결 끊김으로 취소하지 않으므로, `StreamingResponse`처럼 `receive()`로 `http.disconnect`를
   기다리다가 오면 대기열 자리나 계산을 취소한다. 합류한 다른 요청이 결과를 기다리는 리더는 그들을 위해
   계산을 이어 가되, 합류한 요청까지 모두 떠나면 그때 취소한다.
+- 호출자별 몫(2026-11-24 후속): 공개 요청과 관리 화면(BFF → :12302)이 슬롯 하나를 나눠 쓰면 익명 공개 요청이
+  관리 `/map`을 굶길 수 있다. 그래서 요청을 `admin`·`public` 두 줄로 나눈다.
+  - 공개는 동시 계산 `max_running - admin_reserved`건까지 쓴다(관리 몫을 남긴다).
+  - 관리는 공개가 기다리지 않을 때 `max_running - 1`건까지, 공개가 기다리면 `admin_reserved`건까지만 새로 시작한다.
+    그래서 관리 요청이 몰려도 공개 요청은 늘 한 슬롯 이상으로 나아간다(관리도 공개를 굶기지 않는다).
+  - 대기열은 줄마다 따로 센다(`max_waiting`·`admin_max_waiting`). 슬롯이 비면 위 상한 안에서 관리 대기 요청을
+    먼저 깨운다.
+  - **관리 판정**: 진짜 문은 관리자 토큰에서 파생한 값이다. 관리 BFF는 쓰기 토큰 자체가 아니라
+    `HMAC-SHA256(TRANSPORT_ADMIN_WRITE_TOKEN, "places-admin-lane")`(hex)을 `x-transport-places-lane`으로 보내고,
+    backend가 같은 값을 계산해 상수 시간으로 비교한다(쓰기 토큰은 지도 조회 경로에 실리지 않는다). 여기에 더해
+    loopback peer, `Forwarded`·`X-Forwarded-For` 없음(gateway를 거치지 않은 직접 호출), 공개 gateway·공개 BFF가
+    덮어쓰는 `x-transport-listener` 표지 없음을 함께 요구한다. 표지·forwarded header는 공개로 내리기만 한다.
+    토큰이 없거나 32자 미만인 배포는 관리 줄이 없다(관리 화면도 공개 몫을 쓴다).
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+import hashlib
+import hmac
 import math
-from collections.abc import Awaitable, Callable, Hashable
+import secrets
+from collections import deque
+from collections.abc import Awaitable, Callable, Hashable, Mapping
+from ipaddress import ip_address
 from contextlib import suppress
 from functools import wraps
 from typing import Any, TypeVar
@@ -54,6 +72,32 @@ TIMEOUT_RETRY_AFTER_SECONDS = 10
 CLIENT_CLOSED_STATUS = 499
 #: 입장 거절 경고 로그의 최소 간격(초). 혼잡할 때 거절마다 한 줄씩 쓰지 않고 그 사이 건수를 함께 남긴다.
 REJECT_LOG_INTERVAL_SECONDS = 10.0
+#: 관리 화면 몫으로 남겨 두는 동시 계산 수 기본값(`PLACES_ADMIN_RESERVED_RUNNING`). 공개 요청은 나머지만 쓴다.
+PLACES_ADMIN_RESERVED_RUNNING = 1
+#: 관리 화면 요청의 대기열 길이 기본값(`PLACES_ADMIN_MAX_WAITING`). 공개 대기열과 따로 센다.
+PLACES_ADMIN_MAX_WAITING = 4
+#: 시한 초과 뒤 rollback에 쓰는 최대 시간(초). 시한(기본 25초) + 이 값이 BFF·gateway 30초 안에 들어야 한다.
+#: 넘기면 rollback을 기다리지 않고 504를 낸다(연결은 session 종료가 마저 정리한다).
+TIMEOUT_CLEANUP_GRACE_SECONDS = 2.0
+#: 앞단(관리 BFF `fetchNoStore`·공개 gateway `proxy_read_timeout`)의 시한(초). 시한 초과 로그의 여유 계산용.
+UPSTREAM_PROXY_TIMEOUT_SECONDS = 30.0
+
+ADMIN = "admin"
+PUBLIC = "public"
+#: 공개 gateway·공개 BFF가 덮어쓰는 표지. 값과 관계없이 있으면 공개 요청이다.
+LISTENER_HEADER = "x-transport-listener"
+#: 관리 BFF가 보내는 관리 줄 증명(쓰기 토큰에서 파생한 HMAC hex).
+ADMIN_LANE_HEADER = "x-transport-places-lane"
+ADMIN_LANE_CONTEXT = b"places-admin-lane"
+_FORWARDED_HEADERS = ("forwarded", "x-forwarded-for")
+
+
+def admin_lane_proof(token: str | None) -> bytes | None:
+    """관리 BFF와 backend가 같은 방식으로 만드는 관리 줄 증명. 토큰이 32자 미만이면 None(관리 줄 없음)."""
+    raw = (token or "").encode("utf-8")
+    if len(raw) < 32:
+        return None
+    return hmac.new(raw, ADMIN_LANE_CONTEXT, hashlib.sha256).hexdigest().encode("ascii")
 
 # 리더가 결과 없이 끝나면(연결 끊김·종료·계산 시작 전 시한 초과) 합류한 요청은 처음부터 다시 판단한다.
 _RESTART = object()
@@ -91,23 +135,114 @@ class PlaceMapGate:
     """event loop 하나(앱 lifespan)에 속한 입장 제한기. 모든 상태 변경은 같은 loop에서 await 없이 일어난다."""
 
     def __init__(self, *, max_running: int = PLACES_MAX_RUNNING, max_waiting: int = PLACES_MAX_WAITING,
-                 deadline_seconds: float = PLACES_DEADLINE_SECONDS) -> None:
-        if max_running < 1 or max_waiting < 0 or not deadline_seconds > 0 or not math.isfinite(deadline_seconds):
+                 deadline_seconds: float = PLACES_DEADLINE_SECONDS, admin_reserved: int = 0,
+                 admin_max_waiting: int = PLACES_ADMIN_MAX_WAITING, admin_token: str | None = None) -> None:
+        if (max_running < 1 or max_waiting < 0 or admin_max_waiting < 0 or not 0 <= admin_reserved < max_running
+                or not deadline_seconds > 0 or not math.isfinite(deadline_seconds)):
             raise ValueError("장소 지도 입장 제한 값이 올바르지 않습니다.")
         self.max_running = max_running
         self.max_waiting = max_waiting
         self.deadline_seconds = deadline_seconds
-        self._slots = asyncio.Semaphore(max_running)
-        self.running = 0
-        self.waiting = 0
+        self.admin_max_waiting = admin_max_waiting
+        # 관리 판정용 증명. 토큰이 32자 미만이면 관리 줄을 쓰지 않는다(관리 경로 guard와 같은 조건).
+        self._admin_proof = admin_lane_proof(admin_token)
+        # 관리 요청을 알아볼 수 없으면 남겨 둔 몫은 아무도 쓰지 못한다. 그때는 공개 요청에 모두 준다.
+        self.admin_reserved = admin_reserved if self._admin_proof is not None else 0
+        # 관리 요청이 몰려도 공개가 나아갈 최소 슬롯(동시 1건 설정이면 둘이 한 슬롯을 나눈다).
+        self.public_minimum = 1 if max_running >= 2 else 0
+        self._lane_running = {ADMIN: 0, PUBLIC: 0}
+        self._lane_waiting = {ADMIN: 0, PUBLIC: 0}
+        # 슬롯을 기다리는 (줄, future). 슬롯이 비면 관리 줄을 먼저, 줄 안에서는 도착 순으로 깨운다.
+        self._queue: deque[tuple[str, asyncio.Future]] = deque()
         # 아직 슬롯을 기다리는 리더의 결과. 실행을 시작하면 바로 뺀다(새 합류 차단).
         self.pending: dict[Hashable, _Flight] = {}
         # 대기열에 줄을 섰던 리더 task → 그 결과를 기다리는 요청 수(연결 끊김 취소 판단용).
         self._leading: dict[asyncio.Task, _Flight] = {}
         # 운영 판단용 누계(프로세스 단위). 거절·시한·끊김은 로그도 남긴다.
         self.stats = {"coalesced": 0, "rejected": 0, "timed_out": 0, "abandoned": 0}
-        self._last_reject_log: float | None = None
-        self._rejects_since_log = 0
+        self._last_reject_log: dict[str, float] = {}
+        self._rejects_since_log = {ADMIN: 0, PUBLIC: 0}
+
+    @property
+    def running(self) -> int:
+        return self._lane_running[ADMIN] + self._lane_running[PUBLIC]
+
+    @property
+    def waiting(self) -> int:
+        return self._lane_waiting[ADMIN] + self._lane_waiting[PUBLIC]
+
+    def lane_running(self, lane: str) -> int:
+        return self._lane_running[lane]
+
+    def lane_waiting(self, lane: str) -> int:
+        return self._lane_waiting[lane]
+
+    @property
+    def admin_lane_enabled(self) -> bool:
+        return self._admin_proof is not None
+
+    def lane_for(self, headers: Mapping[str, str] | None, peer_host: str | None = None) -> str:
+        """요청으로 줄을 고른다. 관리 증명이 맞고, loopback peer에서 forwarded header·공개 표지 없이 온 요청만 관리다."""
+        if headers is None or self._admin_proof is None or headers.get(LISTENER_HEADER) is not None:
+            return PUBLIC
+        if any(headers.get(name) is not None for name in _FORWARDED_HEADERS):
+            return PUBLIC
+        try:
+            loopback = peer_host is not None and ip_address(peer_host).is_loopback
+        except ValueError:
+            loopback = False
+        if not loopback:
+            return PUBLIC
+        provided = headers.get(ADMIN_LANE_HEADER, "").encode("utf-8")
+        return ADMIN if secrets.compare_digest(self._admin_proof, provided) else PUBLIC
+
+    def _public_waiting(self) -> bool:
+        return any(lane == PUBLIC and not future.done() for lane, future in self._queue)
+
+    def _has_room(self, lane: str) -> bool:
+        if self.running >= self.max_running:
+            return False
+        if lane == PUBLIC:
+            return self._lane_running[PUBLIC] < self.max_running - self.admin_reserved
+        # 관리는 공개 최소 몫을 남긴다. 공개가 기다리는 동안에는 남겨 둔 몫까지만 새로 시작한다.
+        cap = self.max_running - self.public_minimum
+        if self._public_waiting():
+            cap = min(cap, max(self.admin_reserved, 1))
+        return self._lane_running[ADMIN] < cap
+
+    async def _acquire(self, lane: str) -> None:
+        if self._has_room(lane):
+            self._lane_running[lane] += 1
+            return
+        entry = (lane, asyncio.get_running_loop().create_future())
+        self._queue.append(entry)
+        try:
+            await entry[1]
+        except BaseException:
+            if entry[1].done() and not entry[1].cancelled():
+                # 슬롯을 받은 직후 취소됐다. 받은 슬롯을 돌려준다.
+                self._release(lane)
+            else:
+                with suppress(ValueError):
+                    self._queue.remove(entry)
+            raise
+
+    def _release(self, lane: str) -> None:
+        self._lane_running[lane] -= 1
+        # 빈 슬롯은 (관리 상한 안에서) 관리 대기 요청에 먼저 준다. 줄 안에서는 도착 순서다.
+        for wanted in (ADMIN, PUBLIC):
+            for entry in list(self._queue):
+                lane_of, future = entry
+                if lane_of != wanted:
+                    continue
+                if future.done():
+                    self._queue.remove(entry)
+                    continue
+                if not self._has_room(lane_of):
+                    break
+                self._queue.remove(entry)
+                self._lane_running[lane_of] += 1
+                future.set_result(None)
 
     def abandon(self, task: asyncio.Task) -> bool:
         """리더 `task`의 클라이언트가 떠났다. 지금 취소해도 되면 True.
@@ -123,10 +258,16 @@ class PlaceMapGate:
 
     async def run(self, key: Hashable | None, compute: Callable[[], Awaitable[Any]], *,
                   deadline: float | None = None,
-                  on_timeout: Callable[[], Awaitable[None]] | None = None) -> Any:
+                  on_timeout: Callable[[], Awaitable[None]] | None = None, lane: str = PUBLIC) -> Any:
+        if lane not in (ADMIN, PUBLIC):
+            raise ValueError(f"알 수 없는 장소 지도 줄: {lane}")
         loop = asyncio.get_running_loop()
         if deadline is None:
             deadline = loop.time() + self.deadline_seconds
+        arrived = deadline - self.deadline_seconds
+        # 줄이 다르면 합치지 않는다. 공개 리더에 합류한 관리 요청이 공개 대기열 순서를 기다리지 않게 한다.
+        if key is not None and lane == ADMIN:
+            key = (ADMIN, key)
         while key is not None and (joined := self.pending.get(key)) is not None:
             self.stats["coalesced"] += 1
             joined.followers += 1
@@ -134,7 +275,7 @@ class PlaceMapGate:
                 async with asyncio.timeout_at(deadline):
                     shared = await asyncio.shield(joined.future)
             except TimeoutError as exc:
-                self._timed_out("follower")
+                self._timed_out("follower", lane, loop.time() - arrived)
                 raise timeout_error(queued=not joined.started) from exc
             finally:
                 joined.followers -= 1
@@ -148,8 +289,9 @@ class PlaceMapGate:
                 raise value
             return _copy(value)
 
-        if self._slots.locked() and self.waiting >= self.max_waiting:
-            self._rejected(loop)
+        waiting_limit = self.admin_max_waiting if lane == ADMIN else self.max_waiting
+        if not self._has_room(lane) and self._lane_waiting[lane] >= waiting_limit:
+            self._rejected(loop, lane)
             raise busy_error()
 
         task = asyncio.current_task()
@@ -158,29 +300,27 @@ class PlaceMapGate:
         scope = asyncio.timeout_at(deadline)
         try:
             async with scope:
-                if self._slots.locked():
+                if not self._has_room(lane):
                     flight = _Flight(loop.create_future(), task)
                     if task is not None:
                         self._leading[task] = flight
                     if key is not None:
                         self.pending[key] = flight
-                    self.waiting += 1
+                    self._lane_waiting[lane] += 1
                     try:
-                        await self._slots.acquire()
+                        await self._acquire(lane)
                     finally:
-                        self.waiting -= 1
+                        self._lane_waiting[lane] -= 1
                         # 읽기를 시작한 계산에는 새 요청을 합류시키지 않는다(모듈 설명 참고).
                         if key is not None and self.pending.get(key) is flight:
                             del self.pending[key]
                     flight.started = True
                 else:
-                    await self._slots.acquire()
-                self.running += 1
+                    await self._acquire(lane)
                 try:
                     result = await compute()
                 finally:
-                    self.running -= 1
-                    self._slots.release()
+                    self._release(lane)
         except TimeoutError as exc:
             if not scope.expired():
                 # 계산 자체가 낸 TimeoutError(우리 시한이 아님)는 일반 오류로 전한다.
@@ -189,10 +329,14 @@ class PlaceMapGate:
             started = flight is None or flight.started
             if on_timeout is not None:
                 try:
-                    await on_timeout()
+                    # rollback이 멈춰도(서버 무응답 등) 504가 앞단 30초 안에 나가도록 기다림에 상한을 둔다.
+                    async with asyncio.timeout(TIMEOUT_CLEANUP_GRACE_SECONDS):
+                        await on_timeout()
+                except TimeoutError:
+                    logger.warning("places_timeout_cleanup_slow grace_s=%s", TIMEOUT_CLEANUP_GRACE_SECONDS)
                 except Exception:  # 응답은 504로 정한다. 연결 정리는 session 종료가 마저 한다.
                     logger.warning("places_timeout_cleanup_failed", exc_info=True)
-            self._timed_out("leader" if started else "queued")
+            self._timed_out("leader" if started else "queued", lane, loop.time() - arrived)
             error = timeout_error(queued=not started)
             if started:
                 # 계산이 시한을 넘겼다. 같은 계산을 기다린 요청에게도 같은 결과다.
@@ -214,20 +358,29 @@ class PlaceMapGate:
                 if not flight.future.done():
                     flight.future.set_result(outcome)
 
-    def _rejected(self, loop: asyncio.AbstractEventLoop) -> None:
+    def _rejected(self, loop: asyncio.AbstractEventLoop, lane: str) -> None:
         self.stats["rejected"] += 1
-        self._rejects_since_log += 1
+        self._rejects_since_log[lane] += 1
         now = loop.time()
-        if self._last_reject_log is None or now - self._last_reject_log >= REJECT_LOG_INTERVAL_SECONDS:
-            logger.warning("places_admission_rejected running=%s waiting=%s rejected_since_last_log=%s total=%s",
-                           self.running, self.waiting, self._rejects_since_log, self.stats["rejected"])
-            self._last_reject_log = now
-            self._rejects_since_log = 0
+        last = self._last_reject_log.get(lane)
+        if last is None or now - last >= REJECT_LOG_INTERVAL_SECONDS:
+            # 간격은 줄마다 잰다. 공개 거절이 쏟아져도 관리 거절 한 줄은 바로 남는다.
+            logger.warning("places_admission_rejected lane=%s running=%s waiting=%s lane_running=%s "
+                           "lane_waiting=%s rejected_since_last_log=%s total=%s", lane, self.running, self.waiting,
+                           self._lane_running[lane], self._lane_waiting[lane], self._rejects_since_log[lane],
+                           self.stats["rejected"])
+            self._last_reject_log[lane] = now
+            self._rejects_since_log[lane] = 0
 
-    def _timed_out(self, role: str) -> None:
+    def _timed_out(self, role: str, lane: str, elapsed: float) -> None:
+        """시한 초과 기록. `elapsed_ms`는 handler 진입(입장 장식자가 시한을 정한 순간)부터 504를 정한 순간(rollback 뒤)
+        까지다. 미들웨어·의존성 해석·응답 직렬화·앞단 연결 시간은 빠지므로 `proxy_margin_ms`(30초까지 남은 여유)는
+        **가장 좋은 경우**의 값이다. 끝단 전체 시간은 `slow_request ... duration_ms`·`Server-Timing app;dur`로 본다."""
         self.stats["timed_out"] += 1
-        logger.warning("places_deadline_exceeded role=%s running=%s waiting=%s deadline_s=%s",
-                       role, self.running, self.waiting, self.deadline_seconds)
+        elapsed_ms = elapsed * 1000
+        logger.warning("places_deadline_exceeded role=%s lane=%s running=%s waiting=%s deadline_s=%s "
+                       "elapsed_ms=%.0f proxy_margin_ms=%.0f", role, lane, self.running, self.waiting,
+                       self.deadline_seconds, elapsed_ms, UPSTREAM_PROXY_TIMEOUT_SECONDS * 1000 - elapsed_ms)
 
 
 def _copy(value: Any) -> Any:
@@ -331,6 +484,8 @@ def place_map_admission(handler):
         deadline = loop.time() + gate.deadline_seconds
         # task를 만들기 전에 필요한 값을 모두 읽는다. 둘째 task 생성이 실패해 첫 task가 남는 일이 없게 한다.
         receive, key = request.receive, request_key(arguments)
+        client = getattr(request, "client", None)
+        lane = gate.lane_for(getattr(request, "headers", None), getattr(client, "host", None))
 
         async def compute():
             limit_statement_time(session, deadline, loop)
@@ -342,12 +497,14 @@ def place_map_admission(handler):
 
         async def abandoned() -> Response:
             gate.stats["abandoned"] += 1
-            logger.info("places_client_disconnected running=%s waiting=%s", gate.running, gate.waiting)
+            logger.info("places_client_disconnected lane=%s running=%s waiting=%s", lane, gate.running, gate.waiting)
+            # 끊김 뒤 rollback도 상한을 둔다. 넘기면 연결 정리는 session 종료(get_db)가 마저 한다.
             with suppress(Exception):
-                await rollback()
+                async with asyncio.timeout(TIMEOUT_CLEANUP_GRACE_SECONDS):
+                    await rollback()
             return Response(status_code=CLIENT_CLOSED_STATUS)
 
-        work = asyncio.ensure_future(gate.run(key, compute, deadline=deadline, on_timeout=rollback))
+        work = asyncio.ensure_future(gate.run(key, compute, deadline=deadline, on_timeout=rollback, lane=lane))
         gone = asyncio.ensure_future(client_disconnected(receive))
         try:
             await asyncio.wait((work, gone), return_when=asyncio.FIRST_COMPLETED)
