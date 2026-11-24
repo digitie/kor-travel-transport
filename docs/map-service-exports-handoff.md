@@ -104,22 +104,29 @@ transport 앱이 `/v1/service/exports/*`에서 내는 모든 503(T1·T2·T3·T4�
   유지하되 **run은 실패로 끝낸다**. 11월 주유소 export 503 16.6시간 동안 빨간 run이 유일한 신호였다. run을 초록
   "건너뜀"으로 끝내는 것은 서비스 세대 나이가 Valkey `max_age`를 넘으면 경보를 내는 장치가 **함께** 있을 때만
   받아들일 수 있다. 이 처리를 구현한 Map 쪽 관문은 **Map #1549**(503 code 분류·HTTP 층 재시도)다. Map #1542는 같은
-  자리에서 transport 503을 초록 `skipped=upstream_not_ready`로 건너뛰는 다른 의미라, #1549 없이 #1542만 들어가면
-  이 표의 처리와 어긋난다.
-- **Map이 지금 이 code를 다루는 방식(#1549 기준)**: not-current 네 code는 다시 묻지 않고 run 실패, `EXPORT_BUSY`·
-  `EXPORT_PREPARE_TIMEOUT`·`TRANSIENT_DB`는 같은 요청을 HTTP 층에서 4회까지(대기 `max(5·10·20초, Retry-After)`,
-  한 번 60초 상한) 다시 묻고 다 쓰면 step 재시도·run 실패다. `EXPORT_DISABLED`·`EXPORT_SOURCE_INCONSISTENT`·
-  `EXPORT_TOO_LARGE`·`EXPORT_QUERY_TIMEOUT`은 #1549의 분류 표에 없어 **모르는 code**로 다뤄진다 — 예전과 같이 step
-  재시도(`retryable=True`)다. 앞의 셋은 재시도해도 풀리지 않는 쪽, `EXPORT_QUERY_TIMEOUT`은 짧게 다시 묻는 쪽이므로 Map에
-  분류를 더하는 것이 후속이다.
+  자리에서 재시도 가능한 실패를 모두(재시도를 다 쓴 `EXPORT_BUSY`·`TRANSIENT_DB`·`EXPORT_PREPARE_TIMEOUT`과 code 있는
+  not-current 503까지) 초록 `skipped=upstream_not_ready`로 바꾸고 원천 나이가 아니라 적재 나이로만 실패시킨다 —
+  #1549가 함께 있어도 #1542가 그대로 머지되면 이 표의 처리와 어긋난다(주유소 max_age 48시간이라 11월 16.6시간 503은
+  전부 초록이었을 것이다).
+- **Map이 지금 이 code를 다루는 방식(#1549, 커밋 806139de5 이후)**: not-current 네 code는 다시 묻지 않고 run 실패,
+  `EXPORT_BUSY`·`EXPORT_PREPARE_TIMEOUT`·`TRANSIENT_DB`는 같은 요청을 HTTP 층에서 4회까지(대기
+  `max(5·10·20초, Retry-After)`, 한 번 60초 상한) 다시 묻고 다 쓰면 step 재시도·run 실패다. `EXPORT_DISABLED`·
+  `EXPORT_TOO_LARGE`는 재시도 없는 종결 실패다. `EXPORT_SOURCE_INCONSISTENT`는 **step 재시도**(T3 asset에서 60·180·420초)다
+  — 생산자 권장("다음 tick", 다음 수집·준비가 고친다)과 다르다. 같은 run 안의 재시도로는 대개 풀리지 않으므로
+  재시도를 다 쓴 뒤 빨간 run으로 끝나는 것은 같고, 그 사이 요청만 몇 번 늘어난다.
+- **`EXPORT_QUERY_TIMEOUT`(11번째 code, T4 전용)**: T4 가격 이력 export에서만 나온다. Map의 code 시험은 나머지
+  10개를 다룬다. 소비자는 일시 상태로 다룬다 — Map API 프록시는 이 503을 `upstream_unavailable`로 내린다
+  (`meta`가 없는 T4 503과 같다). 상태 적재 job은 T4를 읽지 않는다.
 - **하위 호환**: `code`가 없거나 모르는 값이거나 공통 사전의 기본값(예: `SERVICE_UNAVAILABLE`)이면 예전과 같이
   "503 = 현재 집합을 낼 수 없음"으로 다룬다. 200 본문·`collection`·`meta`·cursor 의미는 바뀌지 않는다. T4의
   기계 판독 503 `meta.source_status=failed`도 그대로이고 `code=EXPORT_NO_HISTORY`가 더해질 뿐이다. T4의 일시 DB
   불가·handler 상한 503에는 `meta`가 없다(OpenAPI `ServiceExportProblemDetails.meta`는 선택).
 - **상태 코드 변경 두 가지(가산 아님)와 배포 보류**: export 경로의 일시 DB 불가와 T2/T3 snapshot 안의 statement
   timeout(57014)은 예전에는 원인 불명 500이었고 이제 503(`TRANSIENT_DB`, `EXPORT_PREPARE_TIMEOUT`)이다. 공개·관리
-  경로와 그 밖의 DB 오류는 예전처럼 500이다. **이 변경은 Map #1549가 운영에 배포된 뒤에만 운영에 배포한다**
-  ([배포 런북](runbooks/deployment.md)의 보류 항목). #1549 없이 #1542만 있으면 두 code가 초록 건너뜀으로 숨는다.
+  경로와 그 밖의 DB 오류는 예전처럼 500이다. **이 변경은 Map #1549가 운영에 배포됐고, Map #1542가 머지됐다면 그
+  머지가 code 있는 not-current 503과 재시도를 다 쓴 busy·일시 DB 불가·준비 timeout을 빨간 실패로 남길 때(또는 소유자가
+  max_age·적재 나이 경보와 함께 초록 건너뜀을 명시적으로 받아들일 때)에만 운영에 배포한다**
+  ([배포 런북](runbooks/deployment.md)의 보류 항목). #1549가 Map 이미지에 있는 것만으로는 부족하다.
 - **55P03·40P01 재시도와 응답 시간**: T2/T3 첫 고정의 admission 대기 lock_timeout(55P03)·교착(40P01)은 생산자
   안에서 남은 예산이 `대기 + 2초 + 여유 3초` 이상일 때만 0.3~1초 뒤 한 번 더 시도한다. 두 시도는 첫 시도부터 잰
   15초 예산 하나를 나눠 쓴다. 보장하는 것은 **T2/T3/T4 응답이 handler 상한 25초 안에 200이거나 code 있는 503**이라는

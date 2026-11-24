@@ -176,9 +176,11 @@ stale 기준(24시간 → 27.5시간), export 경로의 두 가지 500 → 503, 
   Map ADR-106의 "24시간" 서술은 Map 쪽 후속 정정 대상이다.
 - **배포 순서(강한 보류)**: `code`·`Retry-After`·`ProblemDetails.code` 선언은 순수 가산이다. 반면 export 경로의
   500→503 두 가지(`TRANSIENT_DB`, `EXPORT_PREPARE_TIMEOUT`)는 상태 코드 변경이라 **Map #1549(503 code 분류)가
-  운영에 배포된 뒤에만** 이 변경을 운영에 배포한다([배포 런북](../runbooks/deployment.md)의 보류 항목). #1549 없이
-  Map #1542(transport 503을 초록 `skipped=upstream_not_ready`로 건너뜀)만 들어가면 일시 DB 불가·준비 timeout이
-  초록 건너뜀으로 숨는다.
+  운영에 배포됐고, Map #1542(재시도 가능한 실패를 초록 `skipped=upstream_not_ready`로 바꿈)가 머지됐다면 그 머지가 code
+  있는 not-current 503과 재시도를 다 쓴 busy·일시 DB 불가·준비 timeout을 빨간 실패로 남길 때**(또는 소유자가
+  max_age·적재 나이 경보와 함께 초록 건너뜀을 명시적으로 받아들일 때)에만 이 변경을 운영에 배포한다
+  ([배포 런북](../runbooks/deployment.md)의 보류 항목). 작성된 #1542는 적재 나이로만 실패시켜 11월 주유소 503 16.6시간을
+  전부 초록으로 숨겼을 것이다(주유소 max_age 48시간).
 ### 근거
 
 - 공개 marker API를 넓히는 대신 별도 표면을 둔 것은 둘의 계약이 다르기 때문이다. marker는 limit·
