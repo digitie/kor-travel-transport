@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import date, datetime, timedelta
@@ -8,8 +9,6 @@ from typing import Any, NamedTuple
 
 from sqlalchemy import BigInteger, Date, Integer, Text, case, cast, extract, func, literal, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-
-import logging
 
 from app.core.config import Settings
 from app.core.time_utils import ensure_tz, now_utc, serialize_utc
@@ -35,8 +34,8 @@ DEFAULT_THRESHOLD_EVENTS_DAYS = 14
 DEFAULT_THRESHOLD_EVENTS_LIMIT = 20
 DEFAULT_THRESHOLD_INSIGHTS_DAYS = 21
 DEFAULT_THRESHOLD_INSIGHTS_INTERVAL_MINUTES = 10
-# 5분 수집 두 주기를 넘긴 파생 결과는 원본으로 다시 계산한다.
 logger = logging.getLogger(__name__)
+# 5분 수집 두 주기를 넘긴 파생 결과는 원본으로 다시 계산한다.
 MAX_ANALYTICS_CACHE_AGE = timedelta(minutes=10)
 #: 대시보드 묶음은 엄격한 재사용 조건(생성 10분 이내·그 뒤 같은 범위 새 적재 없음)을 못 채워도 직전 사전집계를 낸다 —
 #: 수집 직후 갱신 전에 요청이 원본 계산(운영 ICN 25~30초, 같은 프로세스의 다른 공항 요청까지 막음)으로 떨어지지 않게 한다.
