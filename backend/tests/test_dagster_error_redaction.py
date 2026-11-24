@@ -513,6 +513,43 @@ def test_fuel_op_forwards_progress_logs_to_the_event_log_redacted(monkeypatch, l
     assert [(item.level, list(item.handlers)) for item in (browser_logger, service_logger)] == before
 
 
+def test_highway_op_forwards_traffic_store_lines_and_deferred_reconcile_redacted(monkeypatch):
+    """고속도로 op는 소통 저장 단계 시간 한 줄과 통계 재대조 지연 경고를 가린 뒤 event log로 넘기고(WLH-06),
+    재대조 지연은 partial·원인 코드 metadata로 보인다. 끝나면 logger 상태는 원래대로다."""
+    import logging
+
+    service_logger = logging.getLogger("app.services.transport_collection")
+    before = (service_logger.level, list(service_logger.handlers), service_logger.propagate)
+
+    async def run_with_store_lines(*_args: Any, **_kwargs: Any):
+        service_logger.info("highway traffic source committed run_id=1 inserted=8000 history=4.200s")
+        service_logger.warning("highway traffic statistics reconcile deferred reason=statement_timeout cause=%s",
+                               f"https://x/?serviceKey={URL_ONLY_KEY}")
+        logging.getLogger("unrelated.library").info("must not be forwarded")
+        return {"status": "success", "collection_run_id": 1, "traffic_snapshot_count": 1,
+                "traffic_statistics_refreshed": False, "traffic_statistics_deferred_reason": "statement_timeout",
+                "traffic_history_seconds": 4.2}
+
+    _patch_services(monkeypatch)
+    monkeypatch.setattr(dagster_definitions, "_run_with_session", run_with_store_lines)
+    with DagsterInstance.local_temp(overrides={"python_logs": {"python_log_level": "WARNING"}}) as instance:
+        result = dagster_definitions.highway_collection_job.execute_in_process(raise_on_error=False, instance=instance)
+        assert result.success is True
+        texts = [entry.user_message for entry in instance.all_logs(result.run_id) if entry.dagster_event is None]
+        outputs = [event for event in result.all_events if event.event_type == DagsterEventType.STEP_OUTPUT]
+    joined = "\n".join(texts)
+    assert "[app.services.transport_collection] highway traffic source committed run_id=1 inserted=8000" in joined
+    assert "highway traffic statistics reconcile deferred reason=statement_timeout" in joined
+    assert "재대조가 미뤄졌습니다(reason=statement_timeout)" in joined
+    assert "must not be forwarded" not in joined
+    _assert_no_secret(texts)
+    metadata = {key: value.value for key, value in outputs[0].step_output_data.metadata.items()}
+    assert metadata["collection_outcome"] == "partial" and metadata["error_code"] == "DERIVED_CACHE_DEFERRED"
+    assert metadata["traffic_statistics_deferred_reason"] == "statement_timeout"
+    assert metadata["traffic_history_seconds"] == 4.2
+    assert (service_logger.level, list(service_logger.handlers), service_logger.propagate) == before
+
+
 @pytest.mark.parametrize(("job_name", "result"), [
     ("fuel_collection_job", {"status": "success", "collection_run_id": 1, "fuel_statistics_published": False}),
     ("rest_area_fuel_price_collection_job", {"status": "success", "run_id": 1, "fuel_statistics_published": False}),

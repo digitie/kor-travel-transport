@@ -29,6 +29,12 @@ export const CONSOLE_COUNT_LABELS: Record<string, string> = {
   fuel_station_count: "주유소 저장", fuel_price_count: "가격 저장", fuel_statistics_pruned_rows: "정리한 이전 통계 행", snapshot_count: "관측 저장", error_count: "오류",
   received_rows: "수신 행", parsed_rows: "해석 행", invalid_rows: "불량 행", isolated_rows: "격리 행", failed_dataset_count: "실패 원천", successful_dataset_count: "성공 원천",
   failed_grids: "미완료 격자", deferred_grids: "재개 대기 격자", failed_requests: "실패 요청", completed_sources: "완료 원천", failed_sources: "미완료 원천",
+  // 고속도로 소통 저장 단계 계측(WLH-06). 시간은 초 단위다.
+  traffic_inserted_rows: "소통 새 관측", traffic_changed_rows: "소통 값 정정", traffic_unchanged_rows: "소통 반복 관측(확인만)",
+  traffic_touched_buckets: "원천 안 재집계 5분 구간", traffic_out_of_window_buckets: "그중 최근 2시간 밖 구간",
+  highway_fetch_seconds: "고속도로 조회(초)", traffic_raw_response_seconds: "소통 응답 원본 저장(초)", traffic_history_seconds: "소통 이력 저장(초)",
+  traffic_current_upsert_seconds: "소통 현재값 승격(초)", traffic_touched_statistics_seconds: "원천 안 5분 통계(초)", traffic_commit_seconds: "소통 원천 확정(초)",
+  traffic_statistics_seconds: "소통 통계 재대조(초)",
 };
 export const CONSOLE_ACTIVE = new Set(["NOT_STARTED", "QUEUED", "STARTING", "STARTED", "CANCELING"]);
 export const CONSOLE_STATUS_LABELS: Record<string, string> = {

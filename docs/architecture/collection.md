@@ -71,7 +71,11 @@ ADR-013 개정 — 한 번 다시 조회해도 비면 실패, 마지막 성공 �
 
 운영 odroid에서 소통 source 저장 transaction(원본 + current + 최근 2시간 5분 통계 재구축 + 상태)이 175초를 넘겨
 5분 주기의 대부분 동안 xid를 열어 두었다(vacuum horizon 고정, 한 문장이 수집 statement timeout을 넘으면 8,300행
-source 전체 rollback). 단계별 계측도 없었다. 이제 경계는 다음과 같다.
+source 전체 rollback). 단계별 계측은 없었다. 아래 변경은 통계 재구축을 원천 transaction 밖으로 빼고 단계별 시간을
+남기지만 **175초 문제를 해결했다고 보지 않는다(WLH-06 열림)**. 로컬 측정(6시간 이력 약 60만 행, 응답 8,300행)에서
+원천 transaction의 대부분은 `current_upsert`(15~17초)와 `history`(5초 안팎)였고, 이 변경으로 원천 밖으로 나간 몫은 약
+2.4초(멈춘 구간 과거 bucket 재집계 약 2.0초 + 최근 창 재구축 약 0.4초)였다. 운영 배분은 배포 뒤 아래 단계별 시간으로
+확인한다.
 
 1. **원천 transaction**(한 번의 commit): 응답 원본(`raw_api_responses`), 관측 이력(`highway_traffic_snapshots`),
    current 승격, **이번 저장이 바꾼 bucket의 5분 통계**, 성공 표시(`last_success_at`·`next_due_at`·`last_error=NULL`).
@@ -81,22 +85,53 @@ source 전체 rollback). 단계별 계측도 없었다. 이제 경계는 다음�
 2. **재대조 transaction**(원천 commit 뒤, 돌발까지 확정한 다음): 최근 2시간 창 전체를 원본에서 다시 만든다(같은 범위
    DELETE + 원본 `INSERT … SELECT`). 멱등이라 몇 번을 다시 해도 결과가 같고, 창 안의 어긋남(이전 실패·수동 수정 등)을
    원본 재계산과 같게 되돌린다. 원천 상태 행은 이 결과로 바꾸지 않는다 — `last_success_at`은 원천 commit 시각의 성공이다.
-3. **재대조 실패**(문장 시간 초과·잠금 대기·연결 오류)는 원본·current·바뀐 bucket 통계·성공 상태를 되돌리지 않는다.
-   run 원장(`collection_runs.status`)은 원천 결과대로 두고(유가 통계 발행 지연과 같은 규칙), Dagster 결과에
-   `traffic_statistics_refreshed=false`·`collection_outcome=partial`·원천 오류가 없으면 `error_code=DERIVED_CACHE_DEFERRED`와
-   경고 한 줄을 남긴다(run 태그 `kortravel/collection-outcome=partial`). 다음 실행의 같은 단계가 창을 다시 만든다. 원천
-   commit 뒤 재대조 도중 실행이 끊겨도(취소·프로세스 종료) 이미 확정한 원본과 그 bucket 통계는 맞다. 이때 run 원장은
-   예전처럼 `failed`(`collection cancelled`)로 닫고 원천 상태는 덮지 않는다.
-4. **반복 관측**: KREX는 센서가 멈춘 구간의 같은 관측(같은 `identity_key`·`observed_at`)을 매 주기 그대로 돌려준다. 값과
-   원본 JSON이 모두 같으면 `collected_at`·`collection_run_id`만 한 문장으로 갱신하고 원본 JSON·값 열은 다시 쓰지 않는다.
-   그 bucket도 다시 만들지 않는다(예전에는 응답에 섞인 2시간 창 밖의 과거 bucket을 매 실행 같은 결과로 재집계했다). 값이
-   바뀐 정정은 예전처럼 원본 JSON까지 갱신하고, 통계 입력값이 바뀌었으면 그 bucket을 원천 transaction에서 다시 만든다.
+   자기 치유 범위는 최근 2시간뿐이다. 그보다 오래된 bucket의 어긋남은 그 bucket을 다시 바꾸는 원천 저장(과거 관측
+   정정)이나 수동 재구축으로만 고쳐진다. 각 원천 commit이 자기 bucket을 함께 맞추므로, 재대조가 계속 실패해도 정상
+   저장분의 통계가 원본보다 뒤처지지는 않는다.
+3. **통계 잠금**: 성공 표시가 재대조보다 먼저 commit되므로 다음(수동·관리자) 고속도로 실행이 앞 실행의 재대조와 겹칠 수
+   있다. 두 transaction이 같은 bucket을 DELETE + INSERT하면 `uq_highway_traffic_five_minute_statistics` 위반으로 한쪽
+   원천 전체가 rollback될 수 있으므로 통계 쓰기는 transaction advisory lock(`TRAFFIC_STATISTICS_ADVISORY_LOCK_KEY`
+   420042)으로 직렬화한다. 원천 transaction은 bucket을 쓰기 직전에 이 잠금을 기다려 잡는다(이 대기만 수집 기본
+   `lock_timeout` 5초 대신 55초, commit까지 짧게 보유). 재대조는 `pg_try_advisory_xact_lock`으로 잡고, 다른
+   transaction이 쥐고 있으면 기다리지 않고 `busy`로 미룬다. Dagster의 job별 동시 실행 1과 in-process 잠금이 정기 실행을
+   이미 직렬화하므로 이 잠금은 그 밖의 겹침(수동·관리자 실행, 다른 프로세스)을 위한 것이다.
+4. **재대조 실패·지연**(문장 시간 초과·잠금 대기·연결 오류·`busy`)은 원본·current·바뀐 bucket 통계·성공 상태를
+   되돌리지 않는다. run 원장(`collection_runs.status`)은 원천 결과대로 두고(유가 통계 발행 지연과 같은 규칙), Dagster
+   결과에 `traffic_statistics_refreshed=false`, 원인 코드 `traffic_statistics_deferred_reason`(`statement_timeout`·
+   `lock_timeout`·`deadlock`·`serialization`·`unique_violation`·`connection`·`client_timeout`·`busy`·`database`·
+   `sqlstate_<등급>`·`other`), `collection_outcome=partial`, 원천 오류가 없으면 `error_code=DERIVED_CACHE_DEFERRED`,
+   op 경고 한 줄을 남긴다(run 태그 `kortravel/collection-outcome=partial`). 관리 콘솔은 error_code와 별도로 "원본·통계
+   보존 · 소통 5분 통계 최근 2시간 재대조 대기 (다음 수집이 자동 복구)"와 원인을 보인다. 다음 실행의 같은 단계가 창을
+   다시 만든다. 대응: 한두 번은 조치가 필요 없다. 1시간(정기 12회) 넘게 연속되면 원인 코드와
+   `traffic_statistics_seconds`를 보고 DB 부하·잠금 경합(`lock_timeout`·`busy`)을 확인한다. 2시간 넘게 이어지면 그 사이
+   창의 어긋남은 정기 재대조 범위를 벗어나므로(2번) 원인을 고친 뒤 그 구간을 수동으로 다시 만든다. 자동 경보 기준은 아직
+   없다.
+5. **끊김의 run 원장**: 원천 commit 뒤 재대조 도중 실행이 끊겨도 이미 확정한 원본과 그 bucket 통계는 맞다.
+   취소(asyncio 취소·op 시간 예산)는 run 원장을 예전처럼 `failed`(`collection cancelled`)로 닫고 원천 상태는 덮지 않는다.
+   SIGKILL·OOM처럼 프로세스가 바로 죽으면 원장은 `running`으로 남고, worker 회수 sensor가 Dagster 실행 종료·소유권
+   유실을 확인한 뒤 `failed`로 닫는다(`reconcile_collection_runs`). 두 경우 모두 원천 상태(`last_success_at`)는 그대로다.
+6. **반복 관측**: KREX는 센서가 멈춘 구간의 같은 관측(같은 `identity_key`·`observed_at`)을 매 주기 그대로 돌려준다. 값과
+   원본 JSON이 모두 같으면 `collected_at`·`collection_run_id`만 batch(400행)당 한 문장(`id IN (…)`)으로 갱신하고 그
+   bucket을 다시 만들지 않는다. 예전 코드도 SQLAlchemy가 바뀌지 않은 열을 SET에서 빼므로 원본 JSON을 다시 쓰지는
+   않았다 — 차이는 행별 UPDATE(executemany)가 한 문장이 된 것과, 응답에 섞인 2시간 창 밖의 과거 bucket을 매 실행 같은
+   결과로 재집계하던 일을 없앤 것이다. 값이 바뀐 정정은 예전처럼 원본 JSON까지 갱신하고, 통계 입력값이 바뀌었으면 그
+   bucket을 원천 transaction에서 다시 만든다. `collection_run_id`는 색인 열이라 반복 관측의 갱신도 HOT가 아닌 새 tuple을
+   만든다(아래 후속).
 
-단계별 시간과 행 분류는 run 요약과 Dagster output metadata에 싣는다: `highway_fetch_seconds`,
-`traffic_{raw_response,history,current_upsert,touched_statistics,commit,statistics}_seconds`,
+단계별 시간과 행 분류는 run 요약, Dagster output metadata, 실패 metadata(원천 저장이 rollback된 실행 포함)에 싣는다:
+`highway_fetch_seconds`, `traffic_{raw_response,history,current_upsert,touched_statistics,commit,statistics}_seconds`,
 `traffic_{inserted,changed,unchanged}_rows`, `traffic_touched_buckets`(원천 transaction에서 다시 만든 bucket),
-`traffic_corrected_buckets`(그중 최근 창보다 오래된 정정 bucket), `traffic_statistics_refreshed`. 같은 값은 수집기 로그
-`highway traffic store run_id=…` 한 줄에도 남는다.
+`traffic_out_of_window_buckets`(그중 최근 2시간 창보다 오래된 bucket — 과거 관측의 값 정정과 처음 보는 오래된 관측,
+예: 센서가 멈춘 구간의 관측이 처음 들어온 실행), `traffic_source_committed`, 실패 시 `traffic_failed_step`·
+`traffic_store_failure_reason`(위 원인 코드), `traffic_statistics_refreshed`·`traffic_statistics_deferred_reason`.
+수집기 로그는 원천 commit 직후 `highway traffic source committed run_id=…`(재대조 전에 남는다), rollback이면
+`highway traffic source rolled back … reason=… failed_step=…`, 취소면 `highway traffic source cancelled …`, 재대조 뒤
+`highway traffic statistics reconcile …`를 한 줄씩 남긴다. 고속도로 op는 이 logger를 가린 뒤 Dagster event log로 넘긴다.
+
+후속(이 변경 범위 밖): `current_upsert`(`services/traffic_current.py`) 축소, 재대조의 매 실행 DELETE + INSERT(바뀌지 않은
+bucket도 다시 씀)를 차이 기반 upsert로 바꾸거나 실제 어긋남이 있을 때만 partial로 알리기, 반복 관측의
+`collection_run_id` 갱신 생략(현재 이 열을 읽는 앱 코드는 없지만 "마지막으로 확인한 실행" 의미가 문서 계약이고, 표가
+INSERT 위주라 기본 fillfactor에서 HOT 이득도 불확실하다), 연속 재대조 지연 경보.
 
 ### 공급자 관측 지연 주의
 

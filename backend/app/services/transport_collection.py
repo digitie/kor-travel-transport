@@ -60,6 +60,13 @@ KREX_PAGE_SIZE = 1000
 KREX_MAX_PAGES = 100
 KREX_MAX_FILTER_VALUES = 20
 TRANSPORT_COLLECTION_ADVISORY_LOCK_KEY = 420040
+#: 소통 5분 통계 쓰기(원천 transaction의 bucket 재구축·commit 뒤 창 재대조)를 직렬화하는 transaction advisory lock.
+#: 성공 표시가 창 재대조보다 먼저 commit되므로 다음(수동·관리자) 고속도로 실행이 앞 실행의 재대조와 겹칠 수 있다. 같은
+#: bucket을 두 transaction이 DELETE + INSERT하면 `uq_highway_traffic_five_minute_statistics` 위반으로 한쪽이 실패한다.
+TRAFFIC_STATISTICS_ADVISORY_LOCK_KEY = 420042
+#: 원천 transaction이 위 잠금을 기다리는 상한. 수집 엔진 기본 `lock_timeout`(5초)보다 길게 두어 앞 실행의 창 재대조
+#: (최대 문장 시간)를 기다리게 한다. 수집 `statement_timeout`(60초)보다 짧아 원인이 잠금 대기로 보인다.
+TRAFFIC_STATISTICS_LOCK_WAIT = "55s"
 TRANSPORT_TRIGGER_PREFIX = "transport_"
 HIGHWAY_FETCH_TIMEOUT_SECONDS = 120
 # 직전 동일 scope 성공 집합의 25% 미만은 완결 증거를 재확인한다.
@@ -239,9 +246,14 @@ TRAFFIC_STORE_STEPS = (
     "raw_response",        # 응답 원본(`raw_api_responses`) 저장
     "history",             # 관측 이력(`highway_traffic_snapshots`) INSERT·정정 UPDATE·반복 확인 UPDATE
     "current_upsert",      # `highway_traffic_current` 승격
-    "touched_statistics",  # 원천 transaction 안: 이번 저장이 바꾼 bucket의 5분 통계
+    "touched_statistics",  # 원천 transaction 안: 이번 저장이 바꾼 bucket의 5분 통계(통계 잠금 대기 포함)
     "commit",              # 성공 표시 + 원천 commit
     "statistics",          # commit 뒤 별도 transaction: 최근 창 재대조
+)
+#: 저장·재대조 실패 원인 코드(`_database_failure_reason`). SQLSTATE 등급은 `sqlstate_<2자리>`로 남긴다.
+DATABASE_FAILURE_REASONS = (
+    "statement_timeout", "lock_timeout", "deadlock", "serialization", "unique_violation", "connection",
+    "client_timeout", "cancelled", "busy", "database", "other",
 )
 
 
@@ -249,8 +261,9 @@ TRAFFIC_STORE_STEPS = (
 class TrafficStoreReport:
     """소통 source 저장 한 번의 행 분류와 단계별 시간(초). run 요약·Dagster metadata·로그에 싣는다(WLH-06).
 
-    `rebuild_from`은 저장 전에 한 번 정한 최근 창의 시작이다. 집계·로그에서 원천 transaction의 정정 bucket(창 밖)과
-    commit 뒤 재대조 창이 같은 경계를 쓰게 한다.
+    `rebuild_from`은 저장 전에 한 번 정한 최근 창의 시작이다. 집계·로그에서 원천 transaction의 창 밖 bucket과
+    commit 뒤 재대조 창이 같은 경계를 쓰게 한다. 단계는 `begin`으로 열고 다음 `begin`·`end`가 닫는다. 실패하면
+    `fail`이 진행 중이던 단계의 시간까지 남긴다(시간 초과·취소로 끝난 실행도 어디서 시간을 썼는지 보이게).
     """
 
     rebuild_from: datetime
@@ -259,15 +272,44 @@ class TrafficStoreReport:
     unchanged: int = 0
     #: 새로 넣었거나 통계 입력값이 바뀐 관측의 5분 bucket 시작. 값이 같은 반복 관측은 넣지 않는다.
     affected_buckets: set[datetime] = field(default_factory=set)
-    #: 원천 transaction에서 다시 만든 bucket 수와 그중 최근 창보다 오래된(정정) bucket 수.
+    #: 원천 transaction에서 다시 만든 bucket 수와 그중 최근 창보다 오래된 bucket 수(과거 관측의 값 정정과 처음 보는
+    #: 오래된 관측 — 예: 센서가 멈춘 구간의 관측이 처음 들어온 실행).
     touched_buckets: int = 0
-    corrected_buckets: int = 0
+    out_of_window_buckets: int = 0
     seconds: dict[str, float] = field(default_factory=dict)
-    #: commit 뒤 최근 창 재대조 결과. None은 시도하지 않음(PostgreSQL 아님)이다.
+    current_step: str | None = None
+    step_started: float = 0.0
+    #: 원천 transaction 결과. None은 아직 저장 전, False는 rollback·취소다.
+    source_committed: bool | None = None
+    failed_step: str | None = None
+    failure_reason: str | None = None
+    #: commit 뒤 최근 창 재대조 결과. None은 시도하지 않음(원천 미확정·PostgreSQL 아님)이다.
     statistics_refreshed: bool | None = None
+    statistics_deferred_reason: str | None = None
 
-    def add_seconds(self, step: str, started: float) -> None:
-        self.seconds[step] = self.seconds.get(step, 0.0) + (time.monotonic() - started)
+    def begin(self, step: str) -> None:
+        self.end()
+        self.current_step, self.step_started = step, time.monotonic()
+
+    def end(self) -> None:
+        if self.current_step is not None:
+            self.seconds[self.current_step] = (
+                self.seconds.get(self.current_step, 0.0) + time.monotonic() - self.step_started
+            )
+            self.current_step = None
+
+    def fail(self, error: BaseException) -> None:
+        self.failed_step = self.current_step
+        self.end()
+        self.source_committed = False
+        self.failure_reason = _database_failure_reason(error)
+
+    def describe(self, fetch_seconds: float | None) -> str:
+        """로그 한 줄의 공통 부분(행 분류·bucket·단계별 시간). 원문·SQL·키는 넣지 않는다."""
+        steps = " ".join(f"{step}={self.seconds[step]:.3f}s" for step in TRAFFIC_STORE_STEPS if step in self.seconds)
+        return (f"inserted={self.inserted} changed={self.changed} unchanged={self.unchanged} "
+                f"touched_buckets={self.touched_buckets} out_of_window_buckets={self.out_of_window_buckets} "
+                f"fetch={fetch_seconds or 0.0:.3f}s {steps}")
 
     def summary(self) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -275,13 +317,43 @@ class TrafficStoreReport:
             "traffic_changed_rows": self.changed,
             "traffic_unchanged_rows": self.unchanged,
             "traffic_touched_buckets": self.touched_buckets,
-            "traffic_corrected_buckets": self.corrected_buckets,
+            "traffic_out_of_window_buckets": self.out_of_window_buckets,
             **{f"traffic_{step}_seconds": round(self.seconds[step], 3)
                for step in TRAFFIC_STORE_STEPS if step in self.seconds},
         }
+        if self.source_committed is not None:
+            result["traffic_source_committed"] = self.source_committed
+        if self.failed_step is not None:
+            result["traffic_failed_step"] = self.failed_step
+        if self.failure_reason is not None:
+            result["traffic_store_failure_reason"] = self.failure_reason
         if self.statistics_refreshed is not None:
             result["traffic_statistics_refreshed"] = self.statistics_refreshed
+        if self.statistics_deferred_reason is not None:
+            result["traffic_statistics_deferred_reason"] = self.statistics_deferred_reason
         return result
+
+
+def _database_failure_reason(error: BaseException) -> str:
+    """저장·재대조 실패의 고정 원인 코드. 예외 원문은 넣지 않는다(`DATABASE_FAILURE_REASONS`, `sqlstate_<등급>`)."""
+    if isinstance(error, asyncio.CancelledError):
+        return "cancelled"
+    if isinstance(error, DBAPIError):
+        sqlstate = str(getattr(error.orig, "sqlstate", None) or "")
+        known = {"57014": "statement_timeout", "55P03": "lock_timeout", "40P01": "deadlock",
+                 "40001": "serialization", "23505": "unique_violation"}
+        if sqlstate in known:
+            return known[sqlstate]
+        if error.connection_invalidated or sqlstate.startswith(("08", "57P")):
+            return "connection"
+        if re.fullmatch(r"[0-9A-Z]{5}", sqlstate):
+            return f"sqlstate_{sqlstate[:2]}"
+        return "database"
+    if isinstance(error, TimeoutError):
+        return "client_timeout"
+    if isinstance(error, (ConnectionError, OSError)):
+        return "connection"
+    return "other"
 
 
 def _five_minute_bucket(value: datetime) -> datetime:
@@ -790,13 +862,14 @@ class TransportCollectionService:
                 )
 
             if highway_due:
-                for source, field, store in (
+                for source, payload_field, store in (
                     (TRAFFIC_SOURCE, "traffic", self._store_traffic),
                     (INCIDENT_SOURCE, "incidents", self._store_incidents),
                 ):
                     if source not in highway_sources:
                         continue
-                    result = highway_result if isinstance(highway_result, Exception) else getattr(highway_result, field, None)
+                    result = (highway_result if isinstance(highway_result, Exception)
+                              else getattr(highway_result, payload_field, None))
                     isolation = next((entry for entry in getattr(highway_result, "isolated", ())
                                       if entry[0] == source), None)
                     store_options: dict[str, Any] = (
@@ -804,21 +877,22 @@ class TransportCollectionService:
                     )
                     report = None
                     if source == TRAFFIC_SOURCE:
-                        # 최근 창의 시작은 저장 전에 한 번 정한다(정정 bucket 분류와 commit 뒤 재대조가 같은 경계).
+                        # 최근 창의 시작은 저장 전에 한 번 정한다(창 밖 bucket 분류와 commit 뒤 재대조가 같은 경계).
                         report = TrafficStoreReport(rebuild_from=_traffic_statistics_window_start(now_utc()))
                         store_options["report"] = report
+                    items = None
                     try:
-                        raw_started = time.monotonic()
-                        items = await self._collect_highway_source(session, run_id, errors, source, result)
                         if report is not None:
-                            report.add_seconds("raw_response", raw_started)
+                            report.begin("raw_response")
+                        items = await self._collect_highway_source(session, run_id, errors, source, result)
                         count = await store(session, run_id, items, **store_options) if items is not None else 0
                         if report is not None and items is not None:
                             # 이번 저장이 바꾼 bucket(새 관측·통계 입력값 정정)의 5분 통계는 원본과 함께 확정한다 —
                             # 성공 표시가 보이는 시점에 그 원본의 통계도 보인다. 최근 두 시간 창 전체의 재대조는
                             # commit 뒤 별도 transaction이다(WLH-06).
                             await self._rebuild_touched_traffic_buckets(session, report)
-                        commit_started = time.monotonic()
+                        if report is not None:
+                            report.begin("commit")
                         if items is not None:
                             # 성공 표시는 저장을 모두 끝낸 뒤 commit 직전에 한다(상태 행 잠금을 짧게 쥔다). 2026-11 운영의
                             # 상태 쓰기 lock_timeout은 0045 문장 trigger가 모든 수집기의 상태 쓰기를 한 revision 행에 줄
@@ -827,10 +901,30 @@ class TransportCollectionService:
                                 session, source, now_utc(), keep_success_at=source == INCIDENT_SOURCE,
                             )
                         await session.commit()
-                        if report is not None and items is not None:
-                            report.add_seconds("commit", commit_started)
-                            traffic_report = report
+                        if report is not None:
+                            report.end()
+                            if items is not None:
+                                report.source_committed = True
+                                traffic_report = report
+                                # 원천 단계 시간은 commit 직후 바로 남긴다(뒤의 재대조가 끊겨도 보이게).
+                                logger.info("highway traffic source committed run_id=%s %s",
+                                            run_id, report.describe(highway_fetch_seconds))
+                    except asyncio.CancelledError as exc:
+                        if report is not None and report.source_committed is None:
+                            report.fail(exc)
+                            logger.warning("highway traffic source cancelled run_id=%s failed_step=%s %s",
+                                           run_id, report.failed_step, report.describe(highway_fetch_seconds))
+                        raise
                     except Exception as exc:
+                        if report is not None:
+                            # 문장 시간 초과 등으로 rollback된 저장도 어느 단계에서 얼마를 썼는지 run 요약에 남긴다.
+                            report.fail(exc)
+                            traffic_report = report
+                            logger.warning(
+                                "highway traffic source rolled back run_id=%s reason=%s failed_step=%s %s",
+                                run_id, report.failure_reason, report.failed_step,
+                                report.describe(highway_fetch_seconds),
+                            )
                         # 해당 소스만 되돌린다. 앞선 소스의 데이터·성공 상태는 이미 확정됐다.
                         await session.rollback()
                         await self._collect_highway_source(session, run_id, errors, source, exc)
@@ -848,24 +942,23 @@ class TransportCollectionService:
                             traffic_count += count
                         else:
                             incident_count += count
-                if traffic_report is not None:
+                if traffic_report is not None and traffic_report.source_committed:
                     # 소통·돌발 원천을 모두 확정한 뒤에 한다 — 재대조가 돌발 저장을 늦추지 않는다. 원천 상태
                     # (`last_success_at`·`next_due_at`)는 이미 commit됐고 이 단계의 결과로 바꾸지 않는다.
-                    statistics_started = time.monotonic()
-                    traffic_report.statistics_refreshed = await self._refresh_recent_traffic_statistics(
+                    traffic_report.begin("statistics")
+                    refreshed, deferred_reason = await self._refresh_recent_traffic_statistics(
                         session, traffic_report.rebuild_from,
                     )
-                    if traffic_report.statistics_refreshed is not None:
-                        traffic_report.add_seconds("statistics", statistics_started)
-                    logger.info(
-                        "highway traffic store run_id=%s inserted=%s changed=%s unchanged=%s touched_buckets=%s "
-                        "corrected_buckets=%s statistics_refreshed=%s fetch=%.3fs %s",
-                        run_id, traffic_report.inserted, traffic_report.changed, traffic_report.unchanged,
-                        traffic_report.touched_buckets, traffic_report.corrected_buckets,
-                        traffic_report.statistics_refreshed, highway_fetch_seconds or 0.0,
-                        " ".join(f"{step}={traffic_report.seconds[step]:.3f}s"
-                                 for step in TRAFFIC_STORE_STEPS if step in traffic_report.seconds),
-                    )
+                    traffic_report.end()
+                    if refreshed is None:
+                        traffic_report.seconds.pop("statistics", None)
+                    else:
+                        traffic_report.statistics_refreshed = refreshed
+                        traffic_report.statistics_deferred_reason = deferred_reason
+                        logger.info(
+                            "highway traffic statistics reconcile run_id=%s refreshed=%s reason=%s seconds=%.3f",
+                            run_id, refreshed, deferred_reason or "-", traffic_report.seconds["statistics"],
+                        )
 
             if fuel_due:
                 store_started = time.monotonic()
@@ -1300,11 +1393,11 @@ class TransportCollectionService:
 
         `report`에는 행 분류(새 관측·값 정정·값이 같은 반복 관측), 통계를 다시 만들 bucket, 단계별 시간을 쌓는다.
         """
-        history_started = time.monotonic()
         stored = 0
         collected_at = now_utc()
         if report is None:
             report = TrafficStoreReport(rebuild_from=_traffic_statistics_window_start(collected_at))
+        report.begin("history")
         seen_keys: set[tuple[str, datetime]] = set()
         for chunk in _chunked(items, TRAFFIC_SNAPSHOT_BATCH):
             batch: list[tuple[TrafficFlow, str | None, datetime, str]] = []
@@ -1387,17 +1480,17 @@ class TransportCollectionService:
             existing_by_key.clear()
         await session.flush()
         report.inserted += stored
-        report.add_seconds("history", history_started)
+        report.end()
         if self.settings.transport_map_current_enabled:
             from app.services.traffic_current import update_traffic_current
 
-            current_started = time.monotonic()
+            report.begin("current_upsert")
             await update_traffic_current(
                 session, source=TRAFFIC_SOURCE, scope_key=self._highway_scope_key(TRAFFIC_SOURCE),
                 collection_run_id=collection_run_id, pairs=seen_keys, confirmed_at=collected_at,
                 carry_forward_limit=carry_forward_limit, carry_forward_max_age=CURRENT_CARRY_FORWARD_MAX_AGE,
             )
-            report.add_seconds("current_upsert", current_started)
+            report.end()
         return stored
 
     async def _rebuild_touched_traffic_buckets(self, session: AsyncSession, report: TrafficStoreReport) -> None:
@@ -1407,12 +1500,18 @@ class TransportCollectionService:
         반복 관측(센서가 멈춘 구간이 매 주기 돌려주는 오래된 관측)은 넣지 않는다 — 예전에는 응답 전체로 과거 bucket을
         모아 매 실행 결과가 같은 재집계를 반복했다. 이 bucket은 원본과 같은 transaction에서 commit되므로, commit 뒤
         재대조가 실패하거나 프로세스가 그 사이에 끝나도 이번 원본의 통계는 이미 맞다. 이어진 bucket은 한 범위로 묶는다.
+
+        bucket을 쓰기 전에 통계 잠금(`TRAFFIC_STATISTICS_ADVISORY_LOCK_KEY`)을 기다려 잡는다. 앞 실행의 창 재대조가
+        아직 돌고 있으면 그 commit까지 기다리고(상한 `TRAFFIC_STATISTICS_LOCK_WAIT`), 같은 bucket의 unique 충돌로 원천
+        전체가 rollback되지 않게 한다. 잠금은 이 transaction의 commit까지(성공 표시 포함) 짧게만 쥔다.
         """
         bind = session.get_bind()
         if bind.dialect.name != "postgresql":
             return
-        started = time.monotonic()
+        report.begin("touched_statistics")
         buckets = sorted(report.affected_buckets)
+        if buckets:
+            await self._wait_for_traffic_statistics_lock(session)
         step = timedelta(minutes=5)
         ranges: list[list[datetime]] = []
         for bucket_start in buckets:
@@ -1423,37 +1522,58 @@ class TransportCollectionService:
         for range_start, range_end in ranges:
             await self._rebuild_traffic_statistics_range(session, range_start, range_end)
         report.touched_buckets = len(buckets)
-        report.corrected_buckets = sum(1 for bucket in buckets if bucket < report.rebuild_from)
-        report.add_seconds("touched_statistics", started)
+        report.out_of_window_buckets = sum(1 for bucket in buckets if bucket < report.rebuild_from)
+        report.end()
+
+    @staticmethod
+    async def _wait_for_traffic_statistics_lock(session: AsyncSession) -> None:
+        """원천 transaction이 통계 잠금을 기다려 잡는다. 이 대기만 수집 기본 `lock_timeout`보다 길게 둔다."""
+        previous = await session.scalar(text("SELECT current_setting('lock_timeout')"))
+        await session.execute(text("SELECT set_config('lock_timeout', :wait, true)"),
+                              {"wait": TRAFFIC_STATISTICS_LOCK_WAIT})
+        await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": TRAFFIC_STATISTICS_ADVISORY_LOCK_KEY})
+        await session.execute(text("SELECT set_config('lock_timeout', :previous, true)"), {"previous": previous})
 
     async def _refresh_recent_traffic_statistics(
         self,
         session: AsyncSession,
         rebuild_from: datetime,
-    ) -> bool | None:
+    ) -> tuple[bool | None, str | None]:
         """원천 commit 뒤 별도 transaction으로 최근 창 전체의 5분 통계를 원본에서 다시 만든다(WLH-06 재대조).
 
         이번 원본이 바꾼 bucket은 이미 원천 transaction에서 맞췄다(`_rebuild_touched_traffic_buckets`). 이 단계는 최근
         두 시간이 원본의 재계산과 같다는 예전 보장을 유지하는 멱등 재대조다(같은 범위 DELETE + 원본 INSERT…SELECT —
         몇 번을 다시 해도 결과가 같다). 그래서 실패(문장 시간 초과·잠금 대기 등)는 이미 확정한 원본·current·성공 상태를
-        되돌리지 않고 False와 한 줄 경고로 남기며, 다음 실행의 같은 단계가 그 창을 다시 만든다. 원천 상태 행은 이 결과로
-        바꾸지 않는다. PostgreSQL이 아니면(5분 집계 표를 쓰지 않는다) None이다.
+        되돌리지 않고 (False, 원인 코드)와 한 줄 경고로 남기며, 다음 실행의 같은 단계가 그 창을 다시 만든다. 원천 상태
+        행은 이 결과로 바꾸지 않는다. 다른 transaction이 통계 잠금을 쥐고 있으면 기다리지 않고 (False, "busy")로
+        미룬다. PostgreSQL이 아니면(5분 집계 표를 쓰지 않는다) (None, None)이다.
         """
         bind = session.get_bind()
         if bind.dialect.name != "postgresql":
-            return None
+            return None, None
         try:
+            locked = await session.scalar(text("SELECT pg_try_advisory_xact_lock(:key)"),
+                                          {"key": TRAFFIC_STATISTICS_ADVISORY_LOCK_KEY})
+            if not locked:
+                await session.rollback()
+                logger.warning(
+                    "highway traffic statistics reconcile deferred reason=busy rebuild_from=%s; another transaction "
+                    "holds the statistics lock and the next collection rebuilds the recent window",
+                    rebuild_from.isoformat(),
+                )
+                return False, "busy"
             await self._rebuild_traffic_statistics_range(session, rebuild_from)
             await session.commit()
         except Exception as exc:
             await session.rollback()
+            reason = _database_failure_reason(exc)
             logger.warning(
-                "highway traffic statistics reconcile deferred rebuild_from=%s cause=%s; stored traffic, its touched "
-                "buckets and source state are kept and the next collection rebuilds the recent window",
-                rebuild_from.isoformat(), _safe_error(exc, self.settings)[:300],
+                "highway traffic statistics reconcile deferred reason=%s rebuild_from=%s cause=%s; stored traffic, "
+                "its touched buckets and source state are kept and the next collection rebuilds the recent window",
+                reason, rebuild_from.isoformat(), _safe_error(exc, self.settings)[:300],
             )
-            return False
-        return True
+            return False, reason
+        return True, None
 
     @staticmethod
     async def _rebuild_traffic_statistics_range(
