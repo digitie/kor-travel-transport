@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ParkingPatternCellDetails, ParkingPatternHeatmap } from "../parking-pattern-heatmap";
 import { DailyFlightOverlayChart } from "../daily-flight-overlay-chart";
 import { Alert } from "../ui/alert";
@@ -28,8 +28,15 @@ import {
 export function AnalyticsView({ active = true }: { active?: boolean }) {
   const { selectedAirport, selectedAirportCode, selectedParkingLotId, selectedParkingLotName, holidaySummary } = useDashboard();
   const data = useAnalyticsData(6_000, active);
-  const { loading, error, flightStatus, timeSeries, analyticsGeneratedAt, analyticsReceivedAt } = data;
-  const basis = analyticsBasis(analyticsGeneratedAt, analyticsReceivedAt);
+  const { loading, error, flightStatus, timeSeries, analyticsGeneratedAt, analyticsAgeSeconds, analyticsReceivedAt } = data;
+  // 재조회가 실패하거나 탭이 숨어 있어도 기준 시각의 나이는 흐른다(1분마다 다시 판정).
+  // 첫 값 0은 '받은 시각'으로 대신한다(렌더 중 Date.now를 부르지 않는다).
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const basis = analyticsBasis(analyticsGeneratedAt, analyticsAgeSeconds, analyticsReceivedAt, Math.max(now, analyticsReceivedAt ?? 0));
   const scopeLabel = historyLabel(selectedParkingLotName, selectedAirport?.name_ko);
   const [selectedTab, setSelectedTab] = useState("weekday");
   const [dailyVisitedScope, setDailyVisitedScope] = useState<string | null>(null);
@@ -45,12 +52,12 @@ export function AnalyticsView({ active = true }: { active?: boolean }) {
 
   return (
     <div className="page-shell">
-      <header className="page-header">
+      <header className="page-header analytics-page-header">
         <h2>분석</h2>
         {basis ? (
           <p className="stamp analytics-basis" data-testid="analytics-basis" data-tone={basis.late ? "warning" : "neutral"}>
-            기준 시각 {basis.time}
-            {basis.late ? <span> · {basis.lateMinutes}분 전 집계(갱신 지연)</span> : null}
+            <span>분석 기준 <time dateTime={basis.dateTime}>{basis.label}</time></span>
+            {basis.late ? <span> · {basis.ageMinutes}분 전 집계</span> : null}
           </p>
         ) : null}
       </header>

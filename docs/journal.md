@@ -3,11 +3,13 @@
 - #271 이후 대시보드 묶음은 사전집계 갱신을 기다리는 동안(최대 40분, 원천 장애 시 최대 2시간) 직전 사전집계를 낸다. 화면에는 그 생성 시각이
   없어 늦은 통계를 알아볼 수 없었다(#271 받아들인 P2).
 - backend: `DashboardAnalyticsResponse.analytics_generated_at`(선택, UTC) — 낸 네 기간 분석(임계 이벤트·임계 요약·요일 시간대·시계열) 중 가장 오래된
-  생성 시각. 사전집계면 `analytics_caches.generated_at`, 원본 계산이면 계산 시각. `load_cached_analytics(generated=...)`가 낸 사전집계의 시각을 모은다.
-- 공개 웹(parking-radar `/analytics`): 제목 아래 "기준 시각 HH:MM"(KST). 받은 시각보다 20분 이상 늦으면 경고 톤(`data-tone="warning"`) +
-  "N분 전 집계(갱신 지연)". 정상 경로에서도 수집·갱신 시간 때문에 10~15분 늦을 수 있어 20분을 기준으로 했다. 필드가 없는 이전 backend 응답에서는 줄을 만들지 않는다.
-- 시험: backend `test_dashboard_reports_the_analytics_basis_time`(사전집계·유예·원본 계산 세 경로), vitest `analytics-view.test.tsx`(정상·지연 톤, 필드 없음),
-  e2e `analytics-basis-time.spec.ts`(320·390·1440px, 고정 응답, `E2E_PARKING_LAYOUT=true` 로컬 미리보기).
+  생성 시각(사전집계면 `analytics_caches.generated_at`, 원본 계산이면 원본을 읽기 전 시각 = memo 기준). `analytics_age_seconds` — 서버 시계로 잰 나이.
+- 공개 웹(parking-radar `/analytics`): 제목 곁에 "분석 기준 MM.DD HH:MM KST"(현황 화면의 "데이터 기준 시각"과 같은 형식, `<time>`). 나이가 30분 이상이면
+  경고 톤 + "N분 전 집계". 나이는 서버 값 + 응답 뒤 흐른 시간(1분마다 다시 판정)이라 브라우저 시계가 틀리거나 재조회가 실패해도 맞다.
+  수집(4~9분) + 갱신(운영 ARM 약 5분)이 한 job이라 평소에도 약 20분까지 늦을 수 있어 30분을 기준으로 했다(첫 안 20분은 리뷰에서 거짓 경고로 지적).
+  좁은 화면에서는 제목 아래로 줄바꿈한다. 필드가 없는 이전 backend 응답에서는 줄을 만들지 않는다.
+- 시험: backend `test_dashboard_reports_the_analytics_basis_time`(사전집계·유예·원본 계산 세 경로와 서버 나이), vitest `analytics-view.test.tsx`
+  (정상·지연 톤, 브라우저 시계 어긋남, 필드 없음), e2e `analytics-basis-time.spec.ts`(320·390·1440px, 고정 응답, `E2E_PARKING_LAYOUT=true`).
 
 ## 2026-11-24 — 수집 직후 대시보드 통계 504 수정(DASHBOARD-STATS-OFFLOAD-20261124)
 

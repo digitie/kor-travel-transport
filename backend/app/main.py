@@ -332,6 +332,8 @@ class DashboardSourceMetrics:
     threshold_insights: ThresholdInsightsResponse
     weekday_hour_patterns: list[WeekdayHourlyPattern]
     time_series: ParkingTimeSeriesResponse
+    #: 원본을 읽기 전 시각(memo 재사용 기준과 같다). 화면의 "분석 기준 시각"에 쓴다.
+    generated_at: datetime | None = None
 
 
 def cached_transport_statistics(handler):
@@ -3440,8 +3442,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # 화면의 "기준 시각": 낸 네 분석 중 가장 오래된 생성 시각. 사전집계를 유예로 내면 수집보다 늦을 수 있다
         # (갱신 실패 시 최대 `DASHBOARD_REFRESH_GRACE`, 새 적재가 없으면 `DASHBOARD_STALE_CACHE_MAX_AGE`).
         if computed is not None:
-            generated.append(serialize_utc(computed.time_series.generated_at))
+            generated.append(serialize_utc(computed.generated_at or computed.time_series.generated_at))
         analytics_generated_at = min(generated) if generated else None
+        # 화면이 늦음을 서버 시계로 판정하게 나이를 함께 낸다(브라우저 시계가 틀려도 판정이 뒤집히지 않는다).
+        analytics_age_seconds = (
+            max(0, int((now_utc() - analytics_generated_at).total_seconds())) if analytics_generated_at else None
+        )
 
         return DashboardAnalyticsResponse(
             threshold_events=events,
@@ -3456,6 +3462,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             time_series=series,
             analytics_generated_at=analytics_generated_at,
+            analytics_age_seconds=analytics_age_seconds,
         )
 
     # 단일 uvicorn 프로세스의 대시보드 원본 계산 결과. DB 캐시와 같은 재사용 조건(생성 10분 이내,
@@ -3543,6 +3550,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 airport_code, parking_lot_id, DEFAULT_TIMESERIES_DAYS,
                 DEFAULT_TIMESERIES_INTERVAL_MINUTES, DEFAULT_TIMESERIES_FUTURE_HOURS,
             ),
+            generated_at=now,
         ))
 
     async def _reference_maps(session: AsyncSession) -> tuple[dict[int, str], dict[int, Any]]:

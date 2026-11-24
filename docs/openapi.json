@@ -911,6 +911,19 @@
       "DashboardAnalyticsResponse": {
         "description": "Cached, lazy-loaded analytics returned in one network round trip.",
         "properties": {
+          "analytics_age_seconds": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "응답 시각 기준 `analytics_generated_at`의 나이(초, 서버 시계). 화면의 늦음 판정에 쓴다.",
+            "title": "Analytics Age Seconds"
+          },
           "analytics_generated_at": {
             "anyOf": [
               {

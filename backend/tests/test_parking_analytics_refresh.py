@@ -371,7 +371,10 @@ def test_dashboard_reports_the_analytics_basis_time(test_settings, monkeypatch):
             body = response.json()
             value = body["analytics_generated_at"]
             assert value is not None and value.endswith("Z")
-            return datetime.fromisoformat(value.replace("Z", "+00:00")), response.headers["x-analytics-source"]
+            when = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            # 서버 시계로 잰 나이를 함께 낸다(화면이 브라우저 시계에 기대지 않게).
+            assert abs(body["analytics_age_seconds"] - (now_utc() - when).total_seconds()) <= 5
+            return when, response.headers["x-analytics-source"]
 
         async def caches():
             async with client.app.state.session_factory() as session:

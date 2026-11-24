@@ -59,6 +59,7 @@ export async function installParkingFixture(page: Page, options: ParkingFixtureO
     holiday_patterns: { generated_at: observedAt, airport_code: airport, parking_lot_id: lot, source: "fixture", status: "success", error_message: null, items: [{ local_date: "2026-10-09", name: "한글날", weekday: 4, weekday_name: "금", hourly_buckets: hourly }] },
     time_series: series(airport, lot),
     analytics_generated_at: analyticsGeneratedAt,
+    analytics_age_seconds: analyticsGeneratedAt ? Math.max(0, Math.floor((Date.now() - Date.parse(analyticsGeneratedAt)) / 1000)) : null,
   });
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
