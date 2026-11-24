@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import date, datetime, timedelta
@@ -33,8 +34,19 @@ DEFAULT_THRESHOLD_EVENTS_DAYS = 14
 DEFAULT_THRESHOLD_EVENTS_LIMIT = 20
 DEFAULT_THRESHOLD_INSIGHTS_DAYS = 21
 DEFAULT_THRESHOLD_INSIGHTS_INTERVAL_MINUTES = 10
+logger = logging.getLogger(__name__)
 # 5분 수집 두 주기를 넘긴 파생 결과는 원본으로 다시 계산한다.
 MAX_ANALYTICS_CACHE_AGE = timedelta(minutes=10)
+#: 대시보드 묶음은 엄격한 재사용 조건(생성 10분 이내·그 뒤 같은 범위 새 적재 없음)을 못 채워도 직전 사전집계를 낸다 —
+#: 수집 직후 갱신 전에 요청이 원본 계산(운영 ICN 25~30초, 같은 프로세스의 다른 공항 요청까지 막음)으로 떨어지지 않게 한다.
+#: 공항 수집은 행을 넣을 때 `collected_at`을 찍고 실행 끝(보통 4~9분, 상한 `JOB_MAX_RUNTIME_SECONDS` 30분)에 commit하고,
+#: 그 직후 같은 job이 기본 범위 사전집계를 다시 만든다(운영 ARM 약 5분, 2026-11-23 보고).
+#: - 사전집계 뒤의 새 적재가 모두 `DASHBOARD_REFRESH_GRACE` 안이면 갱신 대기로 본다(수집 상한 30분 + 갱신 시간을 덮는다).
+#:   그보다 오래된 새 적재가 있으면 갱신이 실패·중단된 것이라 원본에서 계산한다.
+#: - 새 적재가 없으면(원천 장애로 적재 0건 등) 사전집계가 그대로 맞으므로 `DASHBOARD_STALE_CACHE_MAX_AGE`까지 낸다
+#:   (기간 경계·시계열 미래 구간이 생성 시각 기준이라 상한을 둔다).
+DASHBOARD_REFRESH_GRACE = timedelta(minutes=40)
+DASHBOARD_STALE_CACHE_MAX_AGE = timedelta(hours=2)
 
 
 def _ranked_snapshot_values(conditions: list[Any], *, with_references: bool = False):
@@ -198,7 +210,14 @@ async def load_cached_analytics(
     interval_minutes: int = 0,
     limit: int = 0,
     future_hours: int = 0,
+    refresh_grace: bool = False,
+    served: set[str] | None = None,
 ) -> Any | None:
+    """재사용 조건을 채운 캐시 payload.
+
+    `refresh_grace`면 엄격한 조건을 못 채울 때도 갱신 대기 중인 직전 사전집계를 낸다(`DASHBOARD_REFRESH_GRACE`).
+    `served`를 주면 유예로 낸 경우 `"grace"`를 넣는다(운영 측정용 경로 표시).
+    """
     checked_at = now_utc()
     newer_snapshots = select(1).select_from(ParkingSnapshot).where(
         ParkingSnapshot.collected_at > AnalyticsCache.generated_at,
@@ -223,6 +242,24 @@ async def load_cached_analytics(
             ~newer_snapshots.correlate(AnalyticsCache).exists(),
         )
     )
+    if cached is None and refresh_grace:
+        # 갱신 유예보다 오래된 새 적재가 있으면 갱신이 실패·중단된 것이다 — 직전 사전집계를 내지 않는다.
+        overdue_snapshots = newer_snapshots.where(ParkingSnapshot.collected_at <= checked_at - DASHBOARD_REFRESH_GRACE)
+        cached = await session.scalar(
+            select(AnalyticsCache).where(
+                AnalyticsCache.metric == metric,
+                AnalyticsCache.scope_key == build_analytics_scope_key(airport_code, parking_lot_id),
+                AnalyticsCache.days == days,
+                AnalyticsCache.interval_minutes == interval_minutes,
+                AnalyticsCache.limit == limit,
+                AnalyticsCache.future_hours == future_hours,
+                AnalyticsCache.generated_at >= checked_at - DASHBOARD_STALE_CACHE_MAX_AGE,
+                AnalyticsCache.generated_at <= checked_at,
+                ~overdue_snapshots.correlate(AnalyticsCache).exists(),
+            )
+        )
+        if cached is not None and served is not None:
+            served.add("grace")
     return cached.payload_json if cached else None
 
 
@@ -330,6 +367,8 @@ async def refresh_default_analytics_cache(
             "SELECT pg_try_advisory_xact_lock(hashtext('kor_travel_transport:airport_collection'))"
         ))
         if not acquired:
+            # 대시보드 갱신 유예(`DASHBOARD_REFRESH_GRACE`)가 이 갱신에 기댄다. 건너뛴 사실을 남긴다.
+            logger.warning("default analytics cache refresh skipped: airport collection lock is busy")
             return 0
     generated_at = now_utc()
     codes = [code.upper() for code in (airport_codes or settings.supported_airport_codes)]

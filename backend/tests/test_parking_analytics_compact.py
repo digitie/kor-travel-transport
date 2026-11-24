@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import event, select
 
-from app.core.time_utils import ensure_tz
+from app.core.time_utils import ensure_tz, to_seoul
 from app.main import create_app
 from app.models import Airport, AnalyticsCache, ParkingLot, ParkingSnapshot
 from app.services import analytics_cache as cache
@@ -586,3 +586,66 @@ def test_postgres_special_day_aggregate_values_match_python(analytics_app, lot_s
             assert actual and all(type(value) is int for aggregate in actual.values() for value in aggregate)
 
     asyncio.run(check())
+
+
+def test_cold_dashboard_computes_off_the_event_loop_thread(analytics_app, monkeypatch):
+    """운영 2026-11-24: ICN 원본 계산(25~30초)이 event loop를 막아 같은 프로세스의 다른 공항 요청까지 504였다.
+
+    원본 읽기 뒤 계산은 thread에서 한다 — 계산 함수가 event loop thread가 아닌 곳에서 불린다.
+    """
+    import threading
+
+    import app.main as main_module
+
+    client, _, _, _ = analytics_app
+    loop_threads = []
+    compute_threads = []
+    original = main_module.compact_rows_with_references
+
+    async def loop_marker():
+        loop_threads.append(threading.get_ident())
+
+    def recording(rows):
+        compute_threads.append(threading.get_ident())
+        return original(rows)
+
+    monkeypatch.setattr(main_module, "compact_rows_with_references", recording)
+    client.portal.call(loop_marker)
+    response = client.get("/v1/dashboard/analytics", params={"airport_code": "GMP"})
+    assert response.status_code == 200
+    assert response.headers["x-analytics-source"] == "source"
+    assert compute_threads and loop_threads
+    assert loop_threads[0] not in compute_threads
+
+
+def test_special_day_aggregate_is_reused_briefly_unless_today_is_included(analytics_app, monkeypatch):
+    client, _, _, _ = analytics_app
+    past_dates = [date(2026, 10, 25), date(2026, 10, 26)]
+    selected = list(past_dates)
+
+    async def holidays(_start, _end):
+        return HolidayLookupResult(source="sample", status="success", error_message=None,
+                                   items=[HolidayItem(day, "검증 공휴일") for day in selected])
+
+    monkeypatch.setattr(client.app.state.holiday_service, "get_holidays", holidays)
+    statements, capture = _capture_source_reads(client)
+    engine = client.app.state.engine.sync_engine
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        params = {"airport_code": "GMP", "limit": 2}
+        first = client.get("/v1/parking/analytics/holiday-patterns", params=params)
+        reads = len(statements)
+        second = client.get("/v1/parking/analytics/holiday-patterns", params=params)
+        assert reads >= 1 and len(statements) == reads  # 지난 특수일만이면 짧게 재사용한다.
+        assert _strip_generated(first.json()) == _strip_generated(second.json())
+        # 오늘(현지)이 특수일이면 오늘분만 매번 집계하고 지난 날짜분은 보관한 것을 쓴다(주말·공휴일 사전 리뷰 P1).
+        selected[:] = [to_seoul(NOW).date()]
+        client.get("/v1/parking/analytics/holiday-patterns", params=params)
+        reads = len(statements)
+        client.get("/v1/parking/analytics/holiday-patterns", params=params)
+        assert len(statements) - reads == 1
+        today_sql = statements[-1]
+        client.get("/v1/parking/analytics/holiday-patterns", params=params)
+        assert len(statements) - reads == 2 and statements[-1] == today_sql
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
