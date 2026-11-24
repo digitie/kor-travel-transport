@@ -47,3 +47,27 @@
     검사하는 게이트를 추가할지는 별도 task로 검토한다.
   - DTO/라우트가 바뀌면 `scripts/export_openapi.py`를 재실행하고 `docs/openapi.json`을
     같은 커밋에 포함한다.
+
+### 사실 갱신 2026-11-24 — problem+json 확장 멤버 `code`
+
+- **배경**: kor-travel-common 표준 `docs/standards/openapi.md` M3는 모든 4xx/5xx problem 본문에 확장
+  멤버 `code`(UPPER_SNAKE)·`request_id`·`errors[]`를 두는 것을 생태계 표준으로 정했다(Transport는 Common
+  task T-482, additive). 같은 날 Map 호출 감사(G1-F3·MC-01)는 `/v1/service/exports/*` 503이 사유를 한국어
+  `detail` 문장으로만 실어 소비자가 수 시간짜리 stale과 수 초짜리 경합을 가르지 못한다고 지적했다.
+- **결정(이번 범위)**: RFC 7807 본문(`type`/`title`/`status`/`detail`/`instance`)과 한국어 `detail`은 그대로
+  두고, 기계 판독 사유가 있는 응답에만 가산 확장 멤버 `code`(UPPER_SNAKE 문자열, 패턴 `^[A-Z][A-Z0-9_]*$`)를
+  싣는다. 사유가 "잠시 뒤 다시"인 503은 HTTP `Retry-After: <정수 초>`를 함께 준다. 구현은
+  `backend/app/core/problems.py`(`CodedHTTPException`, `problem_body`)이고 공용 `HTTPException` handler는
+  `code`가 있을 때만 본문에 더한다 — `code`가 없는 응답은 키 집합까지 예전과 같다.
+  `docs/openapi.json`의 `ProblemDetails`에 선택(optional) 속성 `code`를 선언하고, 내부 export 경로의 503에
+  `Retry-After` 헤더를 선언한다. 지금 `code`를 내는 곳은 `/v1/service/exports/*` 503뿐이다(코드 사전과
+  의미는 [ADR-013 개정 2026-11-24](013-internal-service-exports-for-map.md)과
+  [Map 인계 문서](../map-service-exports-handoff.md)).
+- **소비자 규칙**: `code`가 없거나, 모르는 값이거나, 공통 사전의 기본값(예: `SERVICE_UNAVAILABLE`)이면 예전과
+  같은 뜻(상태 코드만의 의미)으로 다룬다. 새 code를 더하는 것은 additive이고 있는 code의 뜻을 바꾸는 것은
+  계약 변경이다.
+- **충돌 없음**: parking-radar 웹의 Next.js 프록시는 이미 소문자 `code`(`backend_busy`·`backend_timeout`·
+  `backend_unavailable`, `frontend/src/lib/full-history-proxy.ts`)를 낸다. 그 경로는 프록시가 만든 본문이고
+  backend `code`와 값 공간(소문자 vs UPPER_SNAKE)이 겹치지 않으므로 이번 변경에서 건드리지 않는다.
+- **남은 것(T-482)**: 모든 4xx/5xx의 기본 `code`(공통 S7.1 사전), `request_id`, `errors[]{field,message}`,
+  `HTTPValidationError` 제거, `default` 응답 선언은 Common T-482에서 따로 정렬한다.

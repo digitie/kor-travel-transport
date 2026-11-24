@@ -57,7 +57,11 @@ GC/admission 이후 항목 partition 경계에서15초 경과를 검사한다. �
   이미 commit된 삭제와 겹친 RR 직렬화 실패(40001)는 기존처럼 새 RR로 한 번 재시도한다.
 - **남는 위험**: 같은 종류·scope를 동시에 처음 고정하면 UNIQUE admission에서 뒤 요청이 앞 transaction의
   commit을 기다린다(물질화가 2초를 넘으면 55P03→503). 이 경로는 바꾸지 않았다. Map reader는 503을 기존처럼
-  유한 재시도한다.
+  유한 재시도한다. **2026-11-24 갱신**: 55P03·40P01은 첫 시도부터 잰 15초 예산 하나를 나눠 쓰며, 남은 예산이
+  `대기 + lock_timeout 2초 + 여유 3초` 이상일 때만 0.3~1초 뒤 새 RR로 한 번 더 시도한다(재시도의 statement_timeout은
+  남은 예산 이하). 그래도 막히거나 예산이 모자라면 503 `EXPORT_BUSY`(Retry-After 10)다. 첫 시도 snapshot 안의
+  57014는 503 `EXPORT_PREPARE_TIMEOUT`이다. 요청 전체는 handler 상한 25초가 끊는다
+  ([503 사유 code](map-service-exports-handoff.md#503-사유-code와-retry-after-2026-11-24)).
 
 ## 검증 정산과 운영 잔여
 

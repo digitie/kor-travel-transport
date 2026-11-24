@@ -39,8 +39,9 @@ Map은 marker API가 아니라 `/v1/service/exports/*`를 읽는다. 토큰(`X-K
 loopback Host가 모두 맞아야 하고 아니면 404다. `fuel-stations`·`rest-areas`·`rest-area-fuel-prices`는
 `{items, next_cursor, has_more, collection}` 페이지, `highway-incidents/active`는 마지막 성공 수집의 활성
 사건 전체(수집 실패·30분 정체면 503), `airports`는 krairport 번들의 운영 공항 전체다. 참조 데이터 셋은
-마지막 성공이 stale 기준(24시간·3일·12시간) 안이면 그 뒤 시도가 실패해도 마지막 성공 집합을 200으로 내고
-`collection.last_attempt_failed=true`로 알린다(2026-10-23 개정). 기계 정본은
+마지막 성공이 stale 기준(주유소 27.5시간(2026-11-24 전 24시간)·3일·12시간) 안이면 그 뒤 시도가 실패해도 마지막 성공 집합을 200으로 내고
+`collection.last_attempt_failed=true`로 알린다(2026-10-23 개정). 503은 가산 `code`·`Retry-After`로 사유를 가른다
+([503 사유 code](../map-service-exports-handoff.md#503-사유-code와-retry-after-2026-11-24), 2026-11-24). 기계 정본은
 `docs/openapi.json`(CI `--check`). 아래 "단계별 API"의 `/notices`·`/prices` 계획은 이 export가 대체한다.
 
 ## 단계별 API

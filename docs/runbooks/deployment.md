@@ -106,6 +106,17 @@ Compose에 명시적으로 추가한다. 렌더된 command와 healthcheck가 모
 소비자 export는 GET과 기존 승인 IP/CIDR에 한정하고 빈 설정은 모두 거부한다.
 기존 env 보호 exclude를 지우거나 HAProxy를 직접 수정하지 않는다. 공용 daemon RUNNING을 유지한다. DB 조회·worker 확인에 상한을 두고, 배포 시간 초과로 하위 작업의 종료가 불명확하면 pause를 유지한 채 별도 정산한다. 종료를 증명하기 전에 자동 rollback과 정방향 배포를 겹치지 않는다.
 
+### 배포 보류: export 503 상태 코드 변경(2026-11-24, PR #277)
+
+PR #277(export 503 `code`·`Retry-After`)부터의 transport 릴리스는 **Map #1549(transport 503 code 분류·HTTP 층
+재시도)가 운영에 배포된 뒤에만** Odroid에 배포한다. 이 릴리스는 export 경로의 두 가지 500을 503으로 바꾼다 —
+일시 DB 불가(`TRANSIENT_DB`)와 T2/T3 snapshot statement timeout(`EXPORT_PREPARE_TIMEOUT`). Map이 #1549 없이 #1542
+(transport 503을 초록 `skipped=upstream_not_ready`로 건너뜀)만 가진 상태면 이 둘이 초록 건너뜀으로 숨어 DB 장애가
+보이지 않는다. 배포 전에 Map 운영 이미지에 #1549가 들어 있는지 확인하고, 아니면 이 릴리스와 그 뒤 릴리스를 보류한다.
+`code`·`Retry-After`만 보면 순수 가산이지만 이 보류는 위 상태 코드 변경 때문이다
+([ADR-013 개정 2026-11-24](../adr/013-internal-service-exports-for-map.md),
+[Map 인계 문서](../map-service-exports-handoff.md#503-사유-code와-retry-after-2026-11-24)).
+
 ### Manager current release 표식(2026-10-28, Manager #568·ADR-60)
 
 현재 실행 이미지의 정본은 Manager의 `/srv/ktdm-releases/current/transport` 표식이다(Manager
