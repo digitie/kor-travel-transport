@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { FilterCombobox } from "./filter-combobox";
 import { railLines } from "@/lib/rail-line-style";
 import { layoutFuelRegionCards } from "@/lib/fuel-region-layout";
+import { loadWithTransientRetry } from "@/lib/place-retry";
 
 type MapPoint = { id: string; lngLat: [number, number]; place: Place };
 type Viewport = { min_longitude: string; min_latitude: string; max_longitude: string; max_latitude: string };
@@ -643,7 +644,8 @@ function useTransportMapResults({
         return () => controller.abort();
       }
       mapResponseCache.current.delete(cacheKey);
-      load<PlaceResponse>(`transport/features/places?${search}`, controller.signal).then((payload) => {
+      // 일시적 혼잡(429·503·504, Retry-After 5초 이하)은 같은 조건으로 한 번 자동 재조회한다. 기다리는 동안 이전 결과는 그대로 둔다.
+      loadWithTransientRetry<PlaceResponse>(load, `transport/features/places?${search}`, controller.signal).then((payload) => {
         if (controller.signal.aborted) return;
         mapResponseCache.current.set(cacheKey, { expiresAt: Date.now() + MAP_CLUSTER_CACHE_TTL_MS, payload });
         while (mapResponseCache.current.size > MAP_CLUSTER_CACHE_MAX) {
@@ -669,7 +671,7 @@ function useTransportMapResults({
       if (sourcesKey) search.set("sources", sourcesKey);
       if (searchQuery.trim()) search.set("query", searchQuery.trim());
       if (productsKey && kind === "fuel_station") search.set("product_codes", productsKey);
-      load<PlaceResponse>(`transport/features/places?${search}`, controller.signal).then((payload) => {
+      loadWithTransientRetry<PlaceResponse>(load, `transport/features/places?${search}`, controller.signal).then((payload) => {
         if (!controller.signal.aborted) {
           setLoaded((value) => ({ ...value, [kind]: payload }));
           setKnownSources((value) => [...new Set([...value, ...(payload.available_sources ?? payload.items.map((item) => item.source))])]);

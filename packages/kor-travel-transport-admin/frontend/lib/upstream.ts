@@ -16,10 +16,13 @@ export function transportUpstreamUrl(path: string[], search: URLSearchParams) {
   return target;
 }
 
+/** 상한 시간은 응답 헤더까지만 적용한다(본문은 그대로 스트리밍). 호출자가 준 `init.signal`(브라우저 요청의
+ * `request.signal`)은 본문까지 전체 수명 동안 함께 걸어, 브라우저가 조회를 취소하면 upstream 연결도 끊는다. */
 export async function fetchNoStore(target: URL, init: RequestInit = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), transportTimeoutMs(target));
-  try { return await fetch(target, { ...init, cache: "no-store", signal: controller.signal }); }
+  const signal = init.signal ? AbortSignal.any([init.signal, controller.signal]) : controller.signal;
+  try { return await fetch(target, { ...init, cache: "no-store", signal }); }
   finally { clearTimeout(timeout); }
 }
 

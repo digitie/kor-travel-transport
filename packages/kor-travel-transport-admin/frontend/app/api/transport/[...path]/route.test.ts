@@ -20,6 +20,48 @@ describe("GET /api/transport/[...path]", () => {
     const response = await GET(request, { params: Promise.resolve({ path: ["transport", "highways", "traffic"] }) });
     expect(response.status).toBe(429); expect(response.headers.get("retry-after")).toBe("30"); expect(String(fetchMock.mock.calls[0][0])).toContain("/v1/transport/highways/traffic?route_no=1&route_no=10");
   });
+  it("브라우저가 취소한 지도 조회는 upstream fetch도 끊고, 상한 timer는 그대로 둔다", async () => {
+    let upstreamSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn((_target: URL, init: RequestInit) => {
+      upstreamSignal = init.signal ?? undefined;
+      return new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const browser = new AbortController();
+    const session = await protectedRequest("transport/features/places?kinds=rail_station&limit=300");
+    const request = new NextRequest(session.url, { headers: session.headers, signal: browser.signal });
+    const pending = GET(request, { params: Promise.resolve({ path: ["transport", "features", "places"] }) });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(upstreamSignal?.aborted).toBe(false);
+    browser.abort();
+    expect(upstreamSignal?.aborted).toBe(true);
+    // 끊긴 브라우저에는 보낼 곳이 없지만 handler는 예외 없이 끝난다(502 JSON).
+    expect((await pending).status).toBe(502);
+  });
+  it("upstream이 헤더를 30초 안에 주지 않으면 브라우저 취소 없이도 끊는다", async () => {
+    // vi.waitFor는 가짜 timer를 앞으로 돌리므로 쓰지 않는다. setTimeout만 가짜로 두고 setImmediate로 기다린다.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      let upstreamSignal: AbortSignal | undefined;
+      const fetchMock = vi.fn((_target: URL, init: RequestInit) => {
+        upstreamSignal = init.signal ?? undefined;
+        return new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+        });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const pending = GET(await protectedRequest("transport/features/places?kinds=rail_station"), { params: Promise.resolve({ path: ["transport", "features", "places"] }) });
+      for (let turn = 0; turn < 1000 && !fetchMock.mock.calls.length; turn += 1) await new Promise(resolve => setImmediate(resolve));
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(upstreamSignal?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(upstreamSignal?.aborted).toBe(true);
+      expect((await pending).status).toBe(502);
+    } finally { vi.useRealTimers(); }
+  });
   it.each(["dashboard/bootstrap", "dashboard/analytics", "admin/collector-status", "parking/analytics/timeseries"])("주차장 읽기 %s도 인증이 필요하다", async (path) => {
     const fetchMock = vi.fn().mockResolvedValue(new Response("{}")); vi.stubGlobal("fetch", fetchMock);
     const context = { params: Promise.resolve({ path: path.split("/") }) };

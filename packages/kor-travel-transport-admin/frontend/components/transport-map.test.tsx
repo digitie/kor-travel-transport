@@ -472,3 +472,41 @@ test("가격 아이콘 하나: 오래된 가격은 보이는 주유소 9곳이�
     expect(postRequests).toHaveLength(2);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
+
+test("일시 혼잡(429, Retry-After 1초)은 같은 조건으로 한 번만 다시 묻고 실패 안내 없이 결과를 그린다", async () => {
+  const seen = new Map<string, number>();
+  vi.mocked(fetch).mockImplementation(async input => {
+    const url = String(input);
+    const count = (seen.get(url) ?? 0) + 1; seen.set(url, count);
+    if (count === 1) return new Response(JSON.stringify({ detail: "장소 지도 조회가 혼잡합니다. 잠시 후 다시 시도하세요." }), { status: 429, headers: { "retry-after": "1", "content-type": "application/problem+json" } });
+    return new Response(JSON.stringify({ items: [station], total: 1, truncated: false }));
+  });
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  const alerts = () => [...container.querySelectorAll('[role="alert"]')].map(node => node.textContent ?? "").join("|");
+  try {
+    await act(async () => root.render(<TransportMap mode="transport" />));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 400)); });
+    // 재조회를 기다리는 동안 실패 안내를 띄우지 않고 조회 중으로 둔다.
+    expect(alerts()).not.toContain("조회 실패");
+    expect(container.querySelector(".kt-map-count")?.textContent).toBe("조회 중…");
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 1500)); });
+    expect(alerts()).not.toContain("조회 실패");
+    expect(container.querySelector(".transport-map-marker.rail_station")).not.toBeNull();
+    const places = [...seen.entries()].filter(([url]) => url.includes("transport/features/places"));
+    // 첫 기본 범위 요청은 실제 화면 범위로 바뀌며 취소돼 다시 묻지 않는다. 실제 범위 요청만 정확히 두 번이다.
+    expect(places.map(([, count]) => count).sort()).toEqual([1, 2]);
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
+test("시한 초과(504, Retry-After 10초)는 자동으로 되풀이하지 않고 기존 실패 안내를 보인다", async () => {
+  vi.mocked(fetch).mockImplementation(async () => new Response(JSON.stringify({ detail: "장소 지도 조회 시간이 초과되었습니다." }), { status: 504, headers: { "retry-after": "10", "content-type": "application/problem+json" } }));
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  try {
+    await act(async () => root.render(<TransportMap mode="transport" />));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 400)); });
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("조회 실패");
+    const urls = vi.mocked(fetch).mock.calls.map(call => String(call[0])).filter(url => url.includes("transport/features/places"));
+    expect(urls.length).toBeGreaterThan(0);
+    expect(new Set(urls).size).toBe(urls.length);
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
