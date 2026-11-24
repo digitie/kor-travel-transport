@@ -1,4 +1,11 @@
-"""PostgreSQL 전체 주차 이력의 재생성 가능한 읽기 캐시."""
+"""PostgreSQL 전체 주차 이력의 재생성 가능한 읽기 캐시.
+
+원본(`parking_snapshots`)은 삽입 전용이다. 그래서 처음(기동)과 드문 예외에만 30일 전체를 다시 만들고,
+수집마다는 직전 읽기의 최대 id 이후 새 행이 닿은 (관측 시각, 주차장) 키만 다시 골라 끼워 넣는다(증분).
+기간(30일) 밖 앞부분은 갱신 때마다 잘라 낸다. 증분 결과는 같은 시점의 전체 재생성과 bytes 단위로 같다.
+항목은 범위마다 UTC 하루 단위 불변 조각으로 나눠 두고, 바뀐 날짜 조각만 새로 만든다. gzip 본문은 조각마다 보관한
+deflate를 이어 붙여 만든다(갱신 뒤 다시 압축하는 것은 바뀐 날짜와 첫 날짜뿐).
+"""
 
 from __future__ import annotations
 
@@ -6,20 +13,23 @@ import asyncio
 import gzip
 import json
 import logging
+import struct
+import zlib
 from bisect import bisect_left
 from collections import OrderedDict, defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from time import monotonic, sleep
 from types import MappingProxyType
 from typing import NamedTuple
 from weakref import WeakValueDictionary
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import brotli
 from pydantic_core import to_json
-from sqlalchemy import case, func, select, text
+from sqlalchemy import case, func, select, text, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.responses import StreamingResponse
 
@@ -34,6 +44,16 @@ MAX_PREPARED_RESPONSES = 8
 HISTORY_ENCODING_YIELD_ROWS = 400
 # DB 결과 변환이 API event loop를 한 번에 오래 점유하지 않게 한다.
 HISTORY_FETCH_ROWS = 2048
+#: 증분 갱신 한 번이 다룰 (관측 시각, 주차장) 키 상한. 넘으면(대량 이관·복원) 전체 재생성으로 간다.
+INCREMENTAL_MAX_KEYS = 50_000
+#: 증분의 안전망. 마지막 전체 재생성이 이보다 오래되면 이용이 적은 새벽(KST)에 한 번 전체 재생성한다.
+FULL_REBUILD_MAX_AGE = timedelta(hours=20)
+FULL_REBUILD_LOCAL_HOURS = range(3, 5)
+#: 캐시가 보관하는 기간. 전체 이력 요청(최대 30일) + 여유. 여유가 없으면 갱신 직전에 시각을 정하고 전송 슬롯을
+#: 기다리던 30일 요청이, 갱신으로 앞부분이 잘린 snapshot(`cutoff < earliest`)을 못 쓰고 직접 SQL로 떨어진다.
+HISTORY_WINDOW = timedelta(days=30)
+HISTORY_WINDOW_MARGIN = timedelta(minutes=15)
+_KST = ZoneInfo("Asia/Seoul")
 
 
 class BoundedHistoryResponse(StreamingResponse):
@@ -81,78 +101,351 @@ class CachedHistoryItem:
     encoded: bytes
 
 
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+_DAY = timedelta(days=1)
+_GZIP_HEADER = b"\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff"  # mtime 0, 최대 압축, OS 미상(gzip.compress와 같은 꼴)
+_DEFLATE_FINAL = b"\x03\x00"  # 빈 마지막 고정 Huffman 블록
+_BODY_PREFIX = b'{"items":['
+_BODY_SUFFIX = b'],"next_cursor":null}'
+#: 날짜 조각 gzip 수준. 조각은 한 번 압축해 보관하므로 크기를 우선해 9다(합성 55만 행 30일: 9는 2.0MB, 6은 2.5MB).
+#: 요청마다 새로 압축하는 첫 날짜(부분)·머리말·꼬리는 6이다. 압축을 푼 본문은 수준과 무관하게 같다.
+HISTORY_GZIP_SEGMENT_LEVEL = 9
+HISTORY_GZIP_HEAD_LEVEL = 6
+
+
+def _day_of(value: datetime) -> int:
+    return (value - _EPOCH) // _DAY
+
+
+def _day_start(day: int) -> datetime:
+    return _EPOCH + day * _DAY
+
+
+# --- gzip 조각 이어 붙이기 -------------------------------------------------------------
+# 날짜 조각마다 독립 deflate 스트림(Z_FULL_FLUSH로 바이트 정렬, 마지막 블록 아님)을 만들어 두고, 요청 때 gzip 머리말 +
+# 조각들 + 빈 마지막 블록 + CRC32·길이 꼬리로 한 member의 정상 gzip을 조립한다. 조각은 서로를 참조하지 않으므로
+# 이어 붙인 스트림은 표준 inflate로 그대로 풀린다. CRC32는 zlib의 crc32_combine(GF(2) 곱)으로 조각 CRC를 합친다.
+_CRC_POLY = 0xEDB88320
+
+
+def _multmodp(a: int, b: int) -> int:
+    m, p = 1 << 31, 0
+    while True:
+        if a & m:
+            p ^= b
+            if (a & (m - 1)) == 0:
+                return p
+        m >>= 1
+        b = (b >> 1) ^ _CRC_POLY if b & 1 else b >> 1
+
+
+def _x2n_table() -> tuple[int, ...]:
+    table, p = [], 1 << 30  # x^1
+    for _ in range(32):
+        table.append(p)
+        p = _multmodp(p, p)
+    return tuple(table)
+
+
+_X2N = _x2n_table()
+
+
+def crc32_combine(crc1: int, crc2: int, len2: int) -> int:
+    """`zlib.crc32(a + b) == crc32_combine(zlib.crc32(a), zlib.crc32(b), len(b))`(zlib 1.2.12 알고리즘)."""
+    p, k, n = 1 << 31, 3, len2
+    while n:
+        if n & 1:
+            p = _multmodp(_X2N[k & 31], p)
+        n >>= 1
+        k += 1
+    return _multmodp(p, crc1) ^ crc2
+
+
+class DeflatedSegment(NamedTuple):
+    data: bytes
+    crc: int
+    length: int
+
+
+def deflate_segment(raw: bytes, level: int = HISTORY_GZIP_SEGMENT_LEVEL) -> DeflatedSegment:
+    compressor = zlib.compressobj(level, zlib.DEFLATED, -15)
+    return DeflatedSegment(compressor.compress(raw) + compressor.flush(zlib.Z_FULL_FLUSH), zlib.crc32(raw), len(raw))
+
+
+def assemble_gzip(segments: list[DeflatedSegment]) -> bytes:
+    crc = length = 0
+    for segment in segments:
+        crc = crc32_combine(crc, segment.crc, segment.length)
+        length += segment.length
+    return b"".join((_GZIP_HEADER, *(segment.data for segment in segments), _DEFLATE_FINAL,
+                     struct.pack("<II", crc, length & 0xFFFFFFFF)))
+
+
+class HistoryChunk:
+    """한 범위의 UTC 하루치 항목(불변). 앞에 쉼표를 붙인 본문 조각의 deflate는 처음 쓸 때 한 번 만들어 둔다.
+
+    증분 갱신은 바뀐 날짜의 조각만 새로 만들고 나머지 조각 객체는 그대로 넘긴다. 그래서 압축 조각도 그대로 재사용된다.
+    """
+
+    __slots__ = ("day", "items", "times", "_deflated")
+
+    def __init__(self, day: int, items: tuple[CachedHistoryItem, ...], times: tuple[datetime, ...]) -> None:
+        self.day, self.items, self.times = day, items, times
+        self._deflated: DeflatedSegment | None = None
+
+    def deflated(self) -> DeflatedSegment:
+        segment = self._deflated
+        if segment is None:
+            segment = deflate_segment(b"," + b",".join(item.encoded for item in self.items))
+            self._deflated = segment
+        return segment
+
+
+def _chunks(items, times) -> tuple[HistoryChunk, ...]:
+    """정렬된 항목을 UTC 날짜 경계로 나눈다(경계는 bisect로 찾는다)."""
+    chunks, pos, size = [], 0, len(items)
+    while pos < size:
+        day = _day_of(times[pos])
+        end = bisect_left(times, _day_start(day + 1), pos)
+        chunks.append(HistoryChunk(day, tuple(items[pos:end]), tuple(times[pos:end])))
+        pos = end
+    return tuple(chunks)
+
+
 @dataclass(frozen=True, slots=True)
 class HistoryScopeIndex:
-    items: tuple[CachedHistoryItem, ...]
-    times: tuple[datetime, ...]
+    """한 범위(전체·공항·주차장)의 오래된 순서 항목. 날짜 조각의 나열이다."""
+
+    chunks: tuple[HistoryChunk, ...]
+    days: tuple[int, ...]
+    offsets: tuple[int, ...]  # 조각마다 범위 안 시작 순번
+    size: int
+
+    @classmethod
+    def of(cls, chunks: tuple[HistoryChunk, ...]) -> HistoryScopeIndex:
+        offsets, total = [], 0
+        for chunk in chunks:
+            offsets.append(total)
+            total += len(chunk.items)
+        return cls(chunks, tuple(chunk.day for chunk in chunks), tuple(offsets), total)
+
+    @property
+    def items(self) -> tuple[CachedHistoryItem, ...]:
+        return tuple(item for chunk in self.chunks for item in chunk.items)
+
+    @property
+    def times(self) -> tuple[datetime, ...]:
+        return tuple(value for chunk in self.chunks for value in chunk.times)
+
+    def locate(self, cutoff: datetime) -> tuple[int, int]:
+        """(조각 번호, 조각 안 순번): `cutoff` 이상인 첫 항목."""
+        index = bisect_left(self.days, _day_of(cutoff))
+        if index < len(self.chunks) and self.days[index] == _day_of(cutoff):
+            within = bisect_left(self.chunks[index].times, cutoff)
+            if within < len(self.chunks[index].items):
+                return index, within
+            return index + 1, 0
+        return index, 0
+
+    def start_index(self, cutoff: datetime) -> int:
+        index, within = self.locate(cutoff)
+        return self.size if index >= len(self.chunks) else self.offsets[index] + within
+
+    def splice(
+        self, earliest: datetime, changed_days: frozenset[int],
+        changed_keys: frozenset[tuple[datetime, int]], winners: list[CachedHistoryItem],
+    ) -> HistoryScopeIndex:
+        """증분 반영: 기간 밖 앞 조각을 버리고(첫 조각은 잘라 새로 만든다), 바뀐 키가 있는 날짜의 조각만 다시 만든다.
+        나머지 조각 객체(와 압축 조각)는 그대로 재사용한다. 늦게 들어온 옛 관측 하나가 그 뒤 날짜를 모두 다시 만들지 않는다."""
+        chunks = list(self.chunks)
+        first_day = _day_of(earliest)
+        keep_from = bisect_left(self.days, first_day)
+        chunks = chunks[keep_from:]
+        if chunks and chunks[0].day == first_day:
+            head = chunks[0]
+            trim = bisect_left(head.times, earliest)
+            if trim:
+                chunks[0] = HistoryChunk(head.day, head.items[trim:], head.times[trim:])
+                if not chunks[0].items:
+                    chunks.pop(0)
+        if changed_days:
+            added: dict[int, list[CachedHistoryItem]] = defaultdict(list)
+            for item in winners:
+                added[_day_of(item.observed_at)].append(item)
+            rebuilt = []
+            for chunk in chunks:
+                if chunk.day in changed_days:
+                    kept = [item for item in chunk.items if _history_key(item) not in changed_keys]
+                    extra = added.pop(chunk.day, [])
+                    # 이 범위의 키가 바뀌지 않았으면(다른 공항·주차장의 새 행) 조각을 그대로 둔다(압축 조각 재사용).
+                    if extra or len(kept) != len(chunk.items):
+                        kept.extend(extra)
+                        kept.sort(key=_history_key)
+                        if kept:
+                            rebuilt.append(HistoryChunk(chunk.day, tuple(kept), tuple(item.observed_at for item in kept)))
+                        continue
+                rebuilt.append(chunk)
+            for day, extra in added.items():  # 이 범위에 아직 없던 날짜
+                extra.sort(key=_history_key)
+                rebuilt.append(HistoryChunk(day, tuple(extra), tuple(item.observed_at for item in extra)))
+            rebuilt.sort(key=lambda chunk: chunk.day)
+            chunks = rebuilt
+        if len(chunks) == len(self.chunks) and all(new is old for new, old in zip(chunks, self.chunks, strict=True)):
+            return self
+        return HistoryScopeIndex.of(tuple(chunks))
 
 
-_EMPTY_SCOPE = HistoryScopeIndex((), ())
+_EMPTY_SCOPE = HistoryScopeIndex((), (), (), 0)
+
+
+def _cached_item(row) -> CachedHistoryItem:
+    # 인덱스와 JSON에 같은 UTC 값을 쓰고 대량 행의 중복 변환을 피한다.
+    # 전체 재생성과 증분이 이 한 함수로 인코딩하므로 같은 행은 같은 bytes가 된다.
+    observed_at = serialize_utc(row.observed_at)
+    airport_code, parking_lot_id = row.code, row.parking_lot_id
+    return CachedHistoryItem(
+        observed_at=observed_at,
+        airport_code=airport_code,
+        parking_lot_id=parking_lot_id,
+        encoded=to_json({
+            "airport_code": airport_code,
+            "parking_lot_id": parking_lot_id,
+            "observed_at": observed_at,
+            "occupied_spaces": row.occupied_spaces,
+            "total_spaces": row.total_spaces,
+            "available_spaces": row.available_spaces,
+        }),
+    )
+
+
+def _encode_rows(rows) -> list[CachedHistoryItem]:
+    prepared = []
+    for index, row in enumerate(rows, 1):
+        prepared.append(_cached_item(row))
+        # 긴 변환 중에도 API thread가 GIL을 다시 얻을 기회를 작은 묶음마다 준다.
+        if index % HISTORY_ENCODING_YIELD_ROWS == 0:
+            sleep(0)
+    return prepared
+
+
+def _history_key(item: CachedHistoryItem) -> tuple[datetime, int]:
+    # 원본 SQL의 `ORDER BY observed_at, parking_lot_id`와 같은 전순서다(DISTINCT ON 키라 중복이 없다).
+    return item.observed_at, item.parking_lot_id
 
 
 @dataclass(frozen=True, slots=True)
 class ParkingHistorySnapshot:
     earliest_observed_at: datetime
     max_snapshot_id: int
-    items: tuple[CachedHistoryItem, ...]
-    times: tuple[datetime, ...]
+    everything: HistoryScopeIndex
     airport_indexes: Mapping[str, HistoryScopeIndex]
     lot_indexes: Mapping[int, HistoryScopeIndex]
+    #: 같은 읽기 시점의 원본 전체 `count(*)`(= `id <= max_snapshot_id` 행 수, 기간과 무관).
+    #: 다음 증분에서 `id <= max_snapshot_id` 행 수가 그대로여야 늦게 commit된 낮은 id·삭제가 없다고 본다.
+    #: None이면 증분하지 않고 전체 재생성한다.
+    source_row_count: int | None = None
+    #: 마지막 전체 재생성의 읽기 시각(UTC). 증분은 물려받는다.
+    full_built_at: datetime | None = None
+
+    @property
+    def items(self) -> tuple[CachedHistoryItem, ...]:
+        return self.everything.items
+
+    @property
+    def times(self) -> tuple[datetime, ...]:
+        return self.everything.times
+
+    @property
+    def size(self) -> int:
+        return self.everything.size
 
     @classmethod
-    def from_rows(cls, earliest_observed_at: datetime, max_snapshot_id: int, rows: list) -> ParkingHistorySnapshot:
-        prepared = []
-        for index, row in enumerate(rows, 1):
-            # 인덱스와 JSON에 같은 UTC 값을 쓰고 대량 행의 중복 변환을 피한다.
-            observed_at = serialize_utc(row.observed_at)
-            airport_code, parking_lot_id = row.code, row.parking_lot_id
-            prepared.append(CachedHistoryItem(
-                observed_at=observed_at,
-                airport_code=airport_code,
-                parking_lot_id=parking_lot_id,
-                encoded=to_json({
-                    "airport_code": airport_code,
-                    "parking_lot_id": parking_lot_id,
-                    "observed_at": observed_at,
-                    "occupied_spaces": row.occupied_spaces,
-                    "total_spaces": row.total_spaces,
-                    "available_spaces": row.available_spaces,
-                }),
-            ))
-            # 긴 변환 중에도 API thread가 GIL을 다시 얻을 기회를 작은 묶음마다 준다.
-            if index % HISTORY_ENCODING_YIELD_ROWS == 0:
-                sleep(0)
-        items = tuple(prepared)
-        del prepared
+    def from_rows(
+        cls, earliest_observed_at: datetime, max_snapshot_id: int, rows: list,
+        source_row_count: int | None = None, full_built_at: datetime | None = None,
+    ) -> ParkingHistorySnapshot:
+        items = _encode_rows(rows)
         airports: dict[str, list[CachedHistoryItem]] = defaultdict(list)
         lots: dict[int, list[CachedHistoryItem]] = defaultdict(list)
         for item in items:
             airports[item.airport_code].append(item)
             lots[item.parking_lot_id].append(item)
         # 같은 인코딩 객체의 참조만 분할한다. 원본 순서·동일 시각 순서를 그대로 유지한다.
-        def indexes(groups):
-            return MappingProxyType({key: HistoryScopeIndex(tuple(group), tuple(item.observed_at for item in group))
-                                     for key, group in groups.items()})
-        return cls(earliest_observed_at, max_snapshot_id, items, tuple(item.observed_at for item in items),
-                   indexes(airports), indexes(lots))
+        def scope(group):
+            return HistoryScopeIndex.of(_chunks(group, [item.observed_at for item in group]))
+        return cls(earliest_observed_at, max_snapshot_id, scope(items),
+                   MappingProxyType({key: scope(group) for key, group in airports.items()}),
+                   MappingProxyType({key: scope(group) for key, group in lots.items()}),
+                   source_row_count, full_built_at)
+
+    def with_changes(
+        self, earliest_observed_at: datetime, max_snapshot_id: int, source_row_count: int,
+        changed_keys: frozenset[tuple[datetime, int]], rows: list,
+    ) -> ParkingHistorySnapshot:
+        """새 적재분만 반영한 다음 snapshot. 같은 읽기 시점의 전체 재생성과 결과가 같다.
+
+        `changed_keys`는 새 행이 닿은 (UTC 관측 시각, 주차장) 키이고, `rows`는 그 키마다 전체 재생성과 같은
+        규칙(DISTINCT ON, live 우선, 최신 수집·id)으로 고른 행이다. 그 키의 기존 항목을 고른 행으로 바꾸고,
+        `earliest_observed_at`보다 이른 앞부분을 버린다. 바뀐 날짜 조각만 새로 만들고, 나머지 조각(인코딩 bytes·
+        압축 조각 포함)은 그대로 재사용한다.
+        """
+        earliest = max(earliest_observed_at, self.earliest_observed_at)
+        winners = sorted((item for item in _encode_rows(rows) if item.observed_at >= earliest), key=_history_key)
+        keys = frozenset(key for key in changed_keys if key[0] >= earliest)
+        changed_days = frozenset(_day_of(key[0]) for key in keys)
+
+        def scopes(existing: Mapping, key_of) -> Mapping:
+            grouped: dict = defaultdict(list)
+            for item in winners:
+                grouped[key_of(item)].append(item)
+            result = {}
+            for scope_key in (*existing, *(key for key in grouped if key not in existing)):
+                spliced = existing.get(scope_key, _EMPTY_SCOPE).splice(
+                    earliest, changed_days, keys, grouped.get(scope_key, []))
+                if spliced.size:
+                    result[scope_key] = spliced
+            return MappingProxyType(result)
+
+        return ParkingHistorySnapshot(
+            earliest, max_snapshot_id, self.everything.splice(earliest, changed_days, keys, winners),
+            scopes(self.airport_indexes, lambda item: item.airport_code),
+            scopes(self.lot_indexes, lambda item: item.parking_lot_id),
+            source_row_count, self.full_built_at,
+        )
 
     def scope_index(self, airport_code: str | None, parking_lot_id: int | None) -> HistoryScopeIndex:
         if parking_lot_id:
             return self.lot_indexes.get(parking_lot_id, _EMPTY_SCOPE)
         if airport_code:
             return self.airport_indexes.get(airport_code, _EMPTY_SCOPE)
-        return HistoryScopeIndex(self.items, self.times)
+        return self.everything
 
     def start_index(self, cutoff: datetime, airport_code: str | None, parking_lot_id: int | None) -> int:
-        return bisect_left(self.scope_index(airport_code, parking_lot_id).times, cutoff)
+        return self.scope_index(airport_code, parking_lot_id).start_index(cutoff)
 
     def render(self, cutoff: datetime, airport_code: str | None, parking_lot_id: int | None) -> bytes:
         scope = self.scope_index(airport_code, parking_lot_id)
-        start = bisect_left(scope.times, cutoff)
+        index, within = scope.locate(cutoff)
         # 타 공항 전체 순회 없이 선택된 범위의 항목만 읽는다.
-        payload = b",".join(item.encoded for item in scope.items[start:])
-        return b'{"items":[' + payload + b'],"next_cursor":null}'
+        chunks = scope.chunks[index:]
+        parts = [b",".join([item.encoded for item in (chunk.items[within:] if position == 0 else chunk.items)])
+                 for position, chunk in enumerate(chunks)]
+        return _BODY_PREFIX + b",".join(parts) + _BODY_SUFFIX
 
+    def render_gzip(self, cutoff: datetime, airport_code: str | None, parking_lot_id: int | None) -> bytes:
+        """`gzip.decompress(render_gzip(...)) == render(...)`. 첫 날짜(부분)와 머리·꼬리만 새로 압축하고,
+        나머지 날짜는 조각에 보관한 압축을 이어 붙인다. 30일 전체도 갱신 뒤 첫 요청에 하루치만 압축한다."""
+        scope = self.scope_index(airport_code, parking_lot_id)
+        index, within = scope.locate(cutoff)
+        chunks = scope.chunks[index:]
+        if not chunks:
+            return assemble_gzip([deflate_segment(_BODY_PREFIX + _BODY_SUFFIX, HISTORY_GZIP_HEAD_LEVEL)])
+        head = chunks[0]
+        segments = [deflate_segment(_BODY_PREFIX + b",".join(item.encoded for item in head.items[within:]),
+                                    HISTORY_GZIP_HEAD_LEVEL)]
+        segments.extend(chunk.deflated() for chunk in chunks[1:])
+        segments.append(deflate_segment(_BODY_SUFFIX, HISTORY_GZIP_HEAD_LEVEL))
+        return assemble_gzip(segments)
 
 
 def accepts_gzip(header: str) -> bool:
@@ -181,46 +474,136 @@ class _HistorySourceRow(NamedTuple):
     available_spaces: int
 
 
+def history_rows_statement(*conditions):
+    """관측 시각·주차장마다 live 우선, 최신 수집 행 하나를 오래된 순서로 고르는 SQL.
+
+    전체 재생성과 증분이 같은 문장을 쓴다(증분은 바뀐 키로만 좁힌다). 그래서 고르는 규칙이 하나다.
+    """
+    ranked = (select(
+        ParkingSnapshot.observed_at.label("observed_at"),
+        ParkingSnapshot.parking_lot_id.label("parking_lot_id"),
+        ParkingSnapshot.airport_id.label("airport_id"),
+        ParkingSnapshot.occupied_spaces.label("occupied_spaces"),
+        ParkingSnapshot.total_spaces.label("total_spaces"),
+        ParkingSnapshot.available_spaces.label("available_spaces"),
+    ).where(*conditions)
+        .distinct(ParkingSnapshot.observed_at, ParkingSnapshot.parking_lot_id)
+        .order_by(
+            ParkingSnapshot.observed_at, ParkingSnapshot.parking_lot_id,
+            case((func.left(ParkingSnapshot.source, 10) == "migration_", 1), else_=0),
+            ParkingSnapshot.collected_at.desc(), ParkingSnapshot.id.desc(),
+        ).subquery("history_rows"))
+    return (select(
+        ranked.c.observed_at, ranked.c.parking_lot_id, Airport.code,
+        ranked.c.occupied_spaces, ranked.c.total_spaces, ranked.c.available_spaces,
+    ).join(Airport, Airport.id == ranked.c.airport_id)
+        .order_by(ranked.c.observed_at, ranked.c.parking_lot_id))
+
+
+# 한 읽기 transaction 안의 모든 문장이 같은 시점을 본다. 최대 id·행 수·본문이 서로 어긋나지 않는다.
+_CONSISTENT_READ = {"isolation_level": "REPEATABLE READ"}
+
+
+async def _stream_history_rows(session: AsyncSession, statement) -> list[_HistorySourceRow]:
+    connection = await session.connection()
+    result = await connection.stream(statement.execution_options(yield_per=HISTORY_FETCH_ROWS))
+    rows, codes = [], {}
+    try:
+        async for batch in result.partitions(HISTORY_FETCH_ROWS):
+            for observed, lot, code, occupied, total, available in batch:
+                rows.append(_HistorySourceRow(
+                    observed, lot, codes.setdefault(code, code), occupied, total, available,
+                ))
+            await asyncio.sleep(0)
+    finally:
+        await result.close()
+    return rows
+
+
 async def load_snapshot(
     session_factory: async_sessionmaker[AsyncSession],
     *,
     earliest_observed_at: datetime | None = None,
 ) -> ParkingHistorySnapshot:
-    earliest = earliest_observed_at or now_utc() - timedelta(days=30)
+    built_at = now_utc()
+    earliest = earliest_observed_at or built_at - HISTORY_WINDOW - HISTORY_WINDOW_MARGIN
     async with session_factory() as session:
-        max_id = await session.scalar(select(func.max(ParkingSnapshot.id))) or 0
-        ranked = (select(
-            ParkingSnapshot.observed_at.label("observed_at"),
-            ParkingSnapshot.parking_lot_id.label("parking_lot_id"),
-            ParkingSnapshot.airport_id.label("airport_id"),
-            ParkingSnapshot.occupied_spaces.label("occupied_spaces"),
-            ParkingSnapshot.total_spaces.label("total_spaces"),
-            ParkingSnapshot.available_spaces.label("available_spaces"),
-        ).where(ParkingSnapshot.observed_at >= earliest, ParkingSnapshot.id <= max_id)
-            .distinct(ParkingSnapshot.observed_at, ParkingSnapshot.parking_lot_id)
-            .order_by(
-                ParkingSnapshot.observed_at, ParkingSnapshot.parking_lot_id,
-                case((func.left(ParkingSnapshot.source, 10) == "migration_", 1), else_=0),
-                ParkingSnapshot.collected_at.desc(), ParkingSnapshot.id.desc(),
-            ).subquery("history_rows"))
-        statement = (select(
-            ranked.c.observed_at, ranked.c.parking_lot_id, Airport.code,
-            ranked.c.occupied_spaces, ranked.c.total_spaces, ranked.c.available_spaces,
-        ).join(Airport, Airport.id == ranked.c.airport_id)
-            .order_by(ranked.c.observed_at, ranked.c.parking_lot_id))
-        connection = await session.connection()
-        result = await connection.stream(statement.execution_options(yield_per=HISTORY_FETCH_ROWS))
-        rows, codes = [], {}
-        try:
-            async for batch in result.partitions(HISTORY_FETCH_ROWS):
-                for observed, lot, code, occupied, total, available in batch:
-                    rows.append(_HistorySourceRow(
-                        observed, lot, codes.setdefault(code, code), occupied, total, available,
-                    ))
-                await asyncio.sleep(0)
-        finally:
-            await result.close()
-    return await asyncio.to_thread(ParkingHistorySnapshot.from_rows, earliest, max_id, rows)
+        await session.connection(execution_options=_CONSISTENT_READ)
+        max_id, row_count = (await session.execute(select(
+            func.coalesce(func.max(ParkingSnapshot.id), 0), func.count(),
+        ).select_from(ParkingSnapshot))).one()
+        rows = await _stream_history_rows(session, history_rows_statement(
+            ParkingSnapshot.observed_at >= earliest, ParkingSnapshot.id <= max_id,
+        ))
+    return await asyncio.to_thread(
+        ParkingHistorySnapshot.from_rows, earliest, int(max_id), rows, int(row_count), built_at,
+    )
+
+
+class IncrementalUnavailable(Exception):
+    """증분으로 맞출 수 없는 원본 변화(늦은 commit·삭제·대량 적재). 전체 재생성으로 간다."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+async def load_changes(
+    session_factory: async_sessionmaker[AsyncSession],
+    base: ParkingHistorySnapshot,
+    *,
+    earliest_observed_at: datetime | None = None,
+    timings: dict[str, float] | None = None,
+) -> tuple[ParkingHistorySnapshot, int]:
+    """`base` 이후 새로 commit된 행만 읽어 다음 snapshot을 만든다. (snapshot, 바뀐 키 수)를 돌려준다.
+
+    정확성 조건(하나라도 어긋나면 `IncrementalUnavailable`):
+    - `id <= base.max_snapshot_id` 행 수가 `base.source_row_count`와 같다. 시퀀스는 commit 순서가 아니므로
+      직전 읽기 때 진행 중이던 transaction이 낮은 id로 늦게 commit하면 이 수가 늘고, 삭제면 준다.
+    - 새 행이 닿은 키 수가 `INCREMENTAL_MAX_KEYS` 이하다.
+    갱신(update)은 호출자가 `pg_stat` 지문으로 걸러 전체 재생성한다(운영 코드에는 이 쓰기 경로가 없다).
+    """
+    if base.source_row_count is None:
+        raise IncrementalUnavailable("no_row_count")
+    earliest = earliest_observed_at or now_utc() - HISTORY_WINDOW - HISTORY_WINDOW_MARGIN
+    watermark = base.max_snapshot_id
+    timings = timings if timings is not None else {}
+    started = monotonic()
+    async with session_factory() as session:
+        await session.connection(execution_options=_CONSISTENT_READ)
+        max_id, unchanged_count, row_count = (await session.execute(select(
+            func.coalesce(func.max(ParkingSnapshot.id), 0),
+            func.count().filter(ParkingSnapshot.id <= watermark),
+            func.count(),
+        ).select_from(ParkingSnapshot))).one()
+        timings["count_ms"] = round((monotonic() - started) * 1000, 1)
+        if int(max_id) < watermark or int(unchanged_count) != base.source_row_count:
+            raise IncrementalUnavailable("late_commit_or_delete")
+        keys: frozenset[tuple[datetime, int]] = frozenset()
+        rows: list[_HistorySourceRow] = []
+        if int(max_id) > watermark:
+            touched = select(ParkingSnapshot.parking_lot_id, ParkingSnapshot.observed_at).where(
+                ParkingSnapshot.id > watermark, ParkingSnapshot.id <= max_id,
+                ParkingSnapshot.observed_at >= earliest,
+            ).distinct()
+            touched_rows = (await session.execute(touched.limit(INCREMENTAL_MAX_KEYS + 1))).all()
+            if len(touched_rows) > INCREMENTAL_MAX_KEYS:
+                raise IncrementalUnavailable("too_many_changes")
+            keys = frozenset((serialize_utc(observed), lot) for lot, observed in touched_rows)
+            if keys:
+                # 바뀐 키의 옛 행·새 행을 모두 다시 보고 전체 재생성과 같은 규칙으로 하나를 고른다
+                # (같은 관측의 다른 source, 이관 행 우선순위, 늦게 들어온 옛 관측 모두 같은 결과).
+                rows = await _stream_history_rows(session, history_rows_statement(
+                    ParkingSnapshot.id <= max_id,
+                    tuple_(ParkingSnapshot.parking_lot_id, ParkingSnapshot.observed_at).in_(touched),
+                ))
+    timings["changes_ms"] = round((monotonic() - started) * 1000, 1)
+    splice_started = monotonic()
+    snapshot = await asyncio.to_thread(
+        base.with_changes, earliest, int(max_id), int(row_count), keys, rows,
+    )
+    timings["splice_ms"] = round((monotonic() - splice_started) * 1000, 1)
+    return snapshot, len(keys)
 
 
 class ParkingHistoryReadCache:
@@ -234,6 +617,8 @@ class ParkingHistoryReadCache:
         self.validated_at_utc: datetime | None = None
         self.last_fingerprint: tuple[int, int, int, int] | None = None
         self.prepared_responses: OrderedDict[tuple[int, str | None, int | None, str], bytes] = OrderedDict()
+        #: 연속 증분 오류 수(경보용, finish 로그 `incremental_errors`). 증분이 한 번 성공하면 0.
+        self.incremental_errors = 0
         # 같은 불변 snapshot/범위만 합친다. 대기자가 사라지면 lock도 남기지 않는다.
         self.preparation_locks: WeakValueDictionary[tuple, asyncio.Lock] = WeakValueDictionary()
 
@@ -241,14 +626,19 @@ class ParkingHistoryReadCache:
         self, snapshot: ParkingHistorySnapshot, cutoff: datetime,
         airport_code: str | None, parking_lot_id: int | None, accept_encoding: str,
     ) -> tuple[bytes, dict[str, str]]:
-        encoding = response_encoding(accept_encoding)
+        encoding = cached_response_encoding(accept_encoding)
         key = (snapshot.start_index(cutoff, airport_code, parking_lot_id), airport_code, parking_lot_id, encoding)
         async def prepare():
             if encoding != "identity" and snapshot is self.snapshot and key in self.prepared_responses:
                 self.prepared_responses.move_to_end(key)
                 return self.prepared_responses[key], response_headers(encoding)
-            body = await run_history_cpu(snapshot.render, cutoff, airport_code, parking_lot_id)
-            prepared, headers = await run_history_cpu(encode_response, body, accept_encoding)
+            if encoding == "gzip":
+                # 날짜 조각 압축을 이어 붙인다(바뀐 날짜만 새로 압축). 본문 전체를 다시 압축하지 않는다.
+                prepared = await run_history_cpu(snapshot.render_gzip, cutoff, airport_code, parking_lot_id)
+                headers = response_headers(encoding)
+            else:
+                body = await run_history_cpu(snapshot.render, cutoff, airport_code, parking_lot_id)
+                prepared, headers = await run_history_cpu(encode_response, body, accept_encoding)
             if encoding != "identity" and snapshot is self.snapshot:
                 self.prepared_responses[key] = prepared
                 self.prepared_responses.move_to_end(key)
@@ -274,35 +664,81 @@ class ParkingHistoryReadCache:
             ))).one()
         return current_max_id, *(int(value) for value in counters)
 
+    def refresh_mode(self, fingerprint: tuple[int, int, int, int]) -> tuple[str, str]:
+        """(mode, reason). mode는 `incremental` 또는 `full`이다."""
+        snapshot, last = self.snapshot, self.last_fingerprint
+        if snapshot is None or last is None:
+            return "full", "cold"
+        if snapshot.source_row_count is None:
+            return "full", "no_row_count"
+        if fingerprint[2:] != last[2:]:
+            # update·delete 통계가 움직였다. 삽입 전용 가정이 깨졌으니 처음부터 다시 만든다.
+            return "full", "update_or_delete"
+        if fingerprint[0] < snapshot.max_snapshot_id:
+            return "full", "max_id_decreased"
+        built_at = snapshot.full_built_at
+        now = now_utc()
+        if (built_at is not None and now - built_at >= FULL_REBUILD_MAX_AGE
+                and now.astimezone(_KST).hour in FULL_REBUILD_LOCAL_HOURS):
+            return "full", "periodic"
+        return "incremental", "new_rows"
+
+    async def prepare_full_window(
+        self, snapshot: ParkingHistorySnapshot,
+    ) -> OrderedDict[tuple[int, str | None, int | None, str], bytes]:
+        # 자주 쓰는 30일 전체 gzip 본문을 게시 전에 만든다(#270 공개 전체 이력 경로가 그대로 넘긴다).
+        # 날짜 조각 압축을 재사용하므로 증분 뒤에는 바뀐 날짜와 첫 날짜(부분)만 새로 압축한다(zlib은 GIL을 놓는다).
+        # 요청 경로에서는 동일한 시작 행 번호 동안 이 바이트를 재사용한다.
+        cutoff = now_utc() - timedelta(days=30)
+        prepared: OrderedDict[tuple[int, str | None, int | None, str], bytes] = OrderedDict()
+        start = snapshot.start_index(cutoff, None, None)
+        prepared[(start, None, None, "gzip")] = await asyncio.to_thread(snapshot.render_gzip, cutoff, None, None)
+        return prepared
+
     async def refresh_once(self) -> None:
         fingerprint = await self.source_fingerprint()
         if self.snapshot is None or self.last_fingerprint != fingerprint:
+            # 수집마다는 새 행만 끼워 넣는다(증분, 수 초). 처음·삽입 전용이 깨진 드문 경우만 전체 재생성.
+            mode, reason = self.refresh_mode(fingerprint)
             rebuild_id = uuid4().hex
             started = monotonic()
-            row_count = None
+            row_count = changed_keys = None
+            phases: dict[str, float] = {}
             outcome = "failed"
             logger.warning(json.dumps({"event": "parking_history_rebuild", "phase": "start",
                 "rebuild_id": rebuild_id, "at": now_utc().isoformat(), "duration_ms": 0,
-                "row_count": row_count}, separators=(",", ":")))
+                "row_count": row_count, "mode": mode, "reason": reason}, separators=(",", ":")))
             try:
-                refreshed = await load_snapshot(self.session_factory)
-                row_count = len(refreshed.items)
-                # 자주 쓰는 30일 전체 결과를 게시 전에 압축한다. 요청 경로에서는
-                # 동일한 시작 행 번호 동안 이 바이트를 재사용한다.
-                cutoff = now_utc() - timedelta(days=30)
-                prepared: OrderedDict[tuple[int, str | None, int | None, str], bytes] = OrderedDict()
-                body = await asyncio.to_thread(refreshed.render, cutoff, None, None)
-                start = bisect_left(refreshed.times, cutoff)
-                for encoding in ("br", "gzip"):
-                    prepared[(start, None, None, encoding)] = await asyncio.to_thread(compress_body, body, encoding)
+                refreshed = None
+                if mode == "incremental":
+                    try:
+                        refreshed, changed_keys = await load_changes(self.session_factory, self.snapshot, timings=phases)
+                    except IncrementalUnavailable as exc:
+                        mode, reason = "full", exc.reason
+                    except Exception as exc:  # noqa: BLE001 — 증분 고장으로 캐시가 다음 새벽까지 꺼지지 않게 전체로 회복한다.
+                        self.incremental_errors += 1
+                        logger.exception("parking history incremental refresh failed (consecutive=%s); rebuilding in full",
+                                         self.incremental_errors)
+                        mode, reason = "full", f"incremental_error:{type(exc).__name__}"
+                if refreshed is None:
+                    load_started = monotonic()
+                    refreshed = await load_snapshot(self.session_factory)
+                    phases["full_load_ms"] = round((monotonic() - load_started) * 1000, 1)
+                row_count = refreshed.size
+                if mode == "incremental":
+                    self.incremental_errors = 0
+                gzip_started = monotonic()
+                prepared = await self.prepare_full_window(refreshed)
+                phases["gzip_ms"] = round((monotonic() - gzip_started) * 1000, 1)
                 # 준비 중 원본이 바뀌었다면 오래된 스냅샷에 새 확인 시각을 찍지 않는다.
+                # 증분이면 다음 확인(POLL_SECONDS 뒤)이 같은 기준에서 다시 증분하므로 비용이 작다.
                 if await self.source_fingerprint() != fingerprint:
                     logger.info("parking history cache source changed during preparation; retrying")
                     outcome = "source_changed"
                     return
                 self.prepared_responses = prepared
                 self.snapshot = refreshed
-                logger.info("parking history cache refreshed rows=%s max_id=%s", len(refreshed.items), refreshed.max_snapshot_id)
+                logger.info("parking history cache refreshed rows=%s max_id=%s", refreshed.size, refreshed.max_snapshot_id)
                 outcome = "published"
             except asyncio.CancelledError:
                 outcome = "cancelled"
@@ -311,7 +747,9 @@ class ParkingHistoryReadCache:
                 logger.warning(json.dumps({"event": "parking_history_rebuild", "phase": "finish",
                     "rebuild_id": rebuild_id, "at": now_utc().isoformat(),
                     "duration_ms": round((monotonic() - started) * 1000, 3),
-                    "row_count": row_count, "outcome": outcome}, separators=(",", ":")))
+                    "row_count": row_count, "outcome": outcome, "mode": mode, "reason": reason,
+                    "changed_keys": changed_keys, "phases_ms": phases,
+                    "incremental_errors": self.incremental_errors}, separators=(",", ":")))
         self.last_fingerprint = fingerprint
         self.validated_at = monotonic()
         self.validated_at_utc = now_utc()
@@ -353,6 +791,17 @@ def response_encoding(accept_encoding: str) -> str:
     if accepts_gzip(accept_encoding):
         return "gzip"
     return "identity"
+
+
+def cached_response_encoding(accept_encoding: str) -> str:
+    """캐시 적중 응답의 인코딩. gzip을 받으면 gzip이다(날짜 조각 압축을 재사용해 갱신마다 본문 전체를 압축하지 않는다).
+
+    br은 매번 본문 전체를 압축해야 해서(운영 ARM 수 초) gzip을 받지 않는 클라이언트에만 쓴다. 공개 전체 이력(#270)은
+    브라우저의 `br, gzip`을 그대로 넘기므로 gzip 본문(약 2배 크기)을 받고 브라우저가 푼다.
+    """
+    if accepts_gzip(accept_encoding):
+        return "gzip"
+    return response_encoding(accept_encoding)
 
 
 def response_headers(encoding: str) -> dict[str, str]:

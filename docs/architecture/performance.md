@@ -165,9 +165,36 @@ covering index를 concurrent로 만들고 해당 테이블의 auto-analyze 임�
 공개 웹 프록시는 이 머리말을 넘기지 않으므로 backend에 직접 요청해 본다). 원본 계산은 DB 읽기 뒤 계산을 thread에서 한다
 (순수 Python이라 GIL을 쥐지만 event loop를 계산 내내 막지는 않는다). 특수일 시각별 집계는 지난 날짜분을 5분 보관하고 오늘(현지
 주말·공휴일)분만 매번 집계해 합친다(DASHBOARD-STATS-OFFLOAD-20261124).
-30일 주차 이력 캐시 재생성(수집마다 운영 ARM 77~98초)은 API 프로세스 안 thread에 그대로 있다. 자식 프로세스로 옮기는 안을 시험했으나
-74만 행을 넘기고 받는 pickling 때문에 재생성이 7초 → 17~20초(x86 1 CPU)로 늘어 수집 주기마다 `source_changed`로 게시하지 못했고,
-다른 요청 p95도 나빠져 버렸다. 증분 재생성(삽입 전용 원본의 `max_id` 이후만 덧붙이기)이 후속이다.
+30일 주차 이력 캐시(`/v1/parking/history` 전체 응답용, `parking_history_cache.py`)는 수집마다 30일 전체를 다시 만들지 않는다
+(PARKING-HISTORY-INCREMENTAL-20261124). 예전에는 수집마다 55만 행을 다시 읽고 인코딩했다(운영 ARM 77~98초, GIL을 쥐는 순수 Python이라 같은 프로세스의
+다른 공항 요청이 함께 느려졌다). 자식 프로세스로 옮기는 안은 pickling 때문에 더 느려 버렸다.
+
+- **증분**: 원본은 삽입 전용이다. 직전 읽기의 최대 id(`W`) 이후 새 행이 닿은 (관측 시각, 주차장) 키만 찾고, 그 키들의 옛 행·새 행을
+  전체 재생성과 같은 SQL(`history_rows_statement`, DISTINCT ON·live 우선·최신 수집)로 다시 골라 정렬된 꼬리에 끼워 넣는다. 같은 관측의 다른 source,
+  늦게 들어온 옛 관측, 이관 행 우선순위가 전체 재생성과 같은 결과가 된다. 바뀌지 않은 항목은 인코딩 bytes 객체를 그대로 재사용한다(참조 복사).
+  30일 창 밖 앞부분은 갱신마다 잘라 낸다.
+- **정확성 조건**: 읽기는 REPEATABLE READ 한 transaction(최대 id·행 수·본문이 같은 시점). 시퀀스는 commit 순서가 아니므로, 직전 읽기 때
+  진행 중이던 transaction이 낮은 id로 늦게 commit하면 `count(*) WHERE id <= W`가 저장값과 달라진다 → 전체 재생성. 삭제도 같은 검사로,
+  update·delete는 `pg_stat` 지문으로 잡는다(운영 코드에 이 쓰기 경로는 없다). 새 키가 5만 개를 넘으면(대량 이관·복원) 전체 재생성.
+  안전망으로 마지막 전체 재생성이 20시간을 넘으면 새벽(KST 03~04시)에 한 번 전체 재생성한다.
+- **날짜 조각**: 범위(전체·공항·주차장)마다 항목을 UTC 하루 단위 조각(불변)으로 나눠 둔다. 증분은 바뀐 키가 있는 날짜의 조각과 기간
+  경계의 첫 조각만 새로 만들고 나머지 조각 객체를 그대로 넘긴다(전체 튜플 복사 없음, 55만 항목 기준 0.3초 → 10~20ms).
+- **보관 기간**: 30일 + 15분 여유. 여유가 없으면 갱신 직전에 시각을 정하고 전송 슬롯을 기다리던 30일 요청이 앞부분이 잘린 snapshot을
+  못 쓰고 직접 SQL로 떨어진다.
+- **고장 회복**: 증분이 `IncrementalUnavailable`이 아닌 오류(DB·코드)로 실패해도 같은 갱신에서 전체 재생성으로 회복한다
+  (`reason=incremental_error:<예외 이름>`, traceback 로그, 연속 횟수 `incremental_errors` — 0이 아니면 증분이 고장 난 채 매 수집 전체 재생성 중이다).
+- **gzip 조각 이어 붙이기**(#270 경로와 일관): 조각마다 독립 deflate(Z_FULL_FLUSH, 수준 9 — 요청마다 새로 만드는 첫 날짜 부분은 6)를 처음 쓸 때 만들어 조각에 보관하고, 요청 때
+  gzip 머리말 + 첫 날짜(부분)·나머지 조각 + 빈 마지막 블록 + CRC32(`crc32_combine`)·길이로 한 member의 정상 gzip을 조립한다. 갱신 뒤에는
+  바뀐 날짜와 첫 날짜만 새로 압축한다(예전 갱신마다 85MB br 6 + gzip 9 약 7초 → 0.1초 안팎, x86). 크기는 본문 전체를 같은 수준으로
+  압축한 것과 같다. 기동·전체 재생성 뒤에는 범위별 첫 gzip 요청이 그 범위의 모든 날짜를 압축한다(30일 전체 본문은 게시 전에 만든다).
+  캐시 적중 응답은 클라이언트가 gzip을 받으면 gzip이다(br은 매번 전체 압축이 필요해 gzip을 받지 않는 클라이언트에만). 그래서 공개 전체 이력
+  (`br, gzip`)은 br 약 1.2MB 대신 gzip 약 2.0MB(합성 55만 행)를 받는다 — 갱신 비용과 바꾼 선택이다. 30일 전체 gzip 본문은 게시 전에 만들어 둔다.
+- 로그 `event=parking_history_rebuild`에 `mode`(`incremental`·`full`)·`reason`(`new_rows`·`cold`·`late_commit_or_delete`·`update_or_delete`·
+  `too_many_changes`·`periodic`·`incremental_error:*` 등)·`changed_keys`·`phases_ms`(`count_ms`·`changes_ms`·`splice_ms`·`full_load_ms`·`gzip_ms`)가 붙는다.
+- 남은 한계: 늦은 commit 감지용 `count(*)`는 기간이 아니라 표 전체를 센다(원본 정리가 막혀 표가 계속 커진다 — `count_ms`로 본다).
+  update·delete 감지는 `pg_stat` 통계(`track_counts` 켜짐 전제)에 기대며 반영 지연 동안은 직전 값을 낼 수 있다. 공항 코드 변경은
+  다음 전체 재생성(새벽 안전망)까지 반영되지 않는다. 원본 정리(`parking-retention.md`)를 켜면 정리마다 전체 재생성이 돈다.
+- 측정은 journal 2026-11-24 PARKING-HISTORY-INCREMENTAL 항목과 PR 본문 표.
 
 ## PostgreSQL 인덱스
 
