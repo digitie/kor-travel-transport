@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, NamedTuple
@@ -47,6 +48,12 @@ MAX_ANALYTICS_CACHE_AGE = timedelta(minutes=10)
 #:   (기간 경계·시계열 미래 구간이 생성 시각 기준이라 상한을 둔다).
 DASHBOARD_REFRESH_GRACE = timedelta(minutes=40)
 DASHBOARD_STALE_CACHE_MAX_AGE = timedelta(hours=2)
+#: 사전집계에 아직 반영되지 않은 가장 오래된 적재가 이보다 오래되면 갱신이 밀린 것으로 보고 경보한다
+#: (ANALYTICS-REFRESH-ALERT-20261124). 정상 경로는 공항 job이 수집 commit 직후 갱신하므로 갱신이 끝나면 미반영 적재가 없다.
+#: `DASHBOARD_REFRESH_GRACE`(40분)에 닿기 전에 알리려는 값이다(run 길이에 따라 갱신 1~4회 연속 실패에서 넘는다).
+ANALYTICS_REFRESH_WARN_AFTER = timedelta(minutes=15)
+#: 경보 상태(`AnalyticsRefreshHealth.status`).
+ANALYTICS_REFRESH_ALERT_STATUSES = frozenset({"delayed", "stale", "missing"})
 
 
 def _ranked_snapshot_values(conditions: list[Any], *, with_references: bool = False):
@@ -359,11 +366,105 @@ async def store_cached_analytics(
     cached.updated_at = generated_at
 
 
+@dataclass(frozen=True, slots=True)
+class AnalyticsRefreshHealth:
+    """기본 범위 사전집계(대시보드 묶음)의 갱신 상태. DB 상태만으로 판정해 어느 프로세스에서 봐도 같다.
+
+    - `ok`: 미반영 적재가 없거나 `ANALYTICS_REFRESH_WARN_AFTER` 안이다.
+    - `delayed`: 미반영 적재가 경보 기준을 넘었다(갱신 실패·lock 경합 건너뜀이 이어짐). 대시보드는 아직 직전 사전집계를 낸다.
+      미반영 적재의 `collected_at`은 수집 run 초반에 찍히므로, 느린 run(10분 이상)에서는 갱신 한 번 실패로도, 빠른 run(4~5분)에서는
+      3~4번 연속 실패에서 이 상태가 된다.
+    - `stale`: 대시보드가 이미 원본 계산(운영 ICN 25~30초)으로 떨어진 상태 — 미반영 적재가 `DASHBOARD_REFRESH_GRACE`를 넘었거나,
+      사전집계 자체가 `DASHBOARD_STALE_CACHE_MAX_AGE`보다 오래됐다(새 적재가 없어도 공항 job은 정상 tick마다 갱신하므로 갱신이 멈춘 것이다).
+    - `missing`: 관측은 있는데 기본 사전집계가 없고, 가장 오래된 관측이 경보 기준을 넘었다.
+    - `empty`: 관측이 아직 없다.
+    """
+
+    status: str
+    checked_at: datetime
+    generated_at: datetime | None
+    pending_since: datetime | None
+
+    @property
+    def alerting(self) -> bool:
+        return self.status in ANALYTICS_REFRESH_ALERT_STATUSES
+
+    @property
+    def pending_seconds(self) -> int | None:
+        if self.pending_since is None:
+            return None
+        return max(0, int((self.checked_at - self.pending_since).total_seconds()))
+
+    @property
+    def generated_age_seconds(self) -> int | None:
+        if self.generated_at is None:
+            return None
+        return max(0, int((self.checked_at - self.generated_at).total_seconds()))
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "checked_at": self.checked_at.isoformat(),
+            "generated_at": self.generated_at.isoformat() if self.generated_at else None,
+            "pending_since": self.pending_since.isoformat() if self.pending_since else None,
+            "pending_seconds": self.pending_seconds,
+            "generated_age_seconds": self.generated_age_seconds,
+        }
+
+
+async def analytics_refresh_health(
+    session: AsyncSession, settings: Settings, *, now: datetime | None = None,
+) -> AnalyticsRefreshHealth:
+    """공항 기본 시계열 사전집계 중 가장 오래된 생성 시각과, 그 뒤 적재된 가장 오래된 관측의 수집 시각으로 판정한다.
+
+    대시보드 유예(`load_cached_analytics(refresh_grace=True)`)와 같은 술어(`collected_at > generated_at`)를 쓴다.
+    """
+    checked_at = serialize_utc(now or now_utc())
+    if not await session.scalar(select(select(ParkingSnapshot.id).exists())):
+        return AnalyticsRefreshHealth("empty", checked_at, None, None)
+    # 갱신은 Airport 행이 있는 공항만 만든다. 설정에만 있는 코드의 옛 사전집계가 최솟값을 붙잡지 않게 실제 공항으로 좁힌다.
+    codes = (await session.scalars(select(Airport.code).where(
+        Airport.code.in_(settings.supported_airport_codes)))).all()
+    scope_keys = [build_analytics_scope_key(code, None) for code in codes]
+    generated_at = await session.scalar(select(func.min(AnalyticsCache.generated_at)).where(
+        AnalyticsCache.metric == METRIC_TIMESERIES,
+        AnalyticsCache.scope_key.in_(scope_keys),
+        AnalyticsCache.days == DEFAULT_TIMESERIES_DAYS,
+        AnalyticsCache.interval_minutes == DEFAULT_TIMESERIES_INTERVAL_MINUTES,
+        AnalyticsCache.future_hours == DEFAULT_TIMESERIES_FUTURE_HOURS,
+    ))
+    if generated_at is None:
+        # 첫 갱신이 아직 안 끝났을 수 있다(배포·초기 적재 직후). 가장 오래된 관측이 경보 기준을 넘겨야 `missing`이다.
+        oldest = await session.scalar(select(func.min(ParkingSnapshot.collected_at)))
+        pending = serialize_utc(oldest) if oldest is not None else None
+        status = "missing" if pending is None or checked_at - pending >= ANALYTICS_REFRESH_WARN_AFTER else "ok"
+        return AnalyticsRefreshHealth(status, checked_at, None, pending)
+    generated_at = serialize_utc(generated_at)
+    pending = await session.scalar(
+        select(func.min(ParkingSnapshot.collected_at)).where(ParkingSnapshot.collected_at > generated_at)
+    )
+    pending_since = serialize_utc(pending) if pending is not None else None
+    if checked_at - generated_at > DASHBOARD_STALE_CACHE_MAX_AGE:
+        status = "stale"
+    elif pending_since is None:
+        status = "ok"
+    elif checked_at - pending_since >= DASHBOARD_REFRESH_GRACE:
+        status = "stale"
+    elif checked_at - pending_since >= ANALYTICS_REFRESH_WARN_AFTER:
+        status = "delayed"
+    else:
+        status = "ok"
+    return AnalyticsRefreshHealth(status, checked_at, generated_at, pending_since)
+
+
 async def refresh_default_analytics_cache(
     session: AsyncSession,
     settings: Settings,
     airport_codes: Iterable[str] | None = None,
+    *,
+    outcome: dict[str, Any] | None = None,
 ) -> int:
+    """기본 범위 사전집계를 다시 만든다. `outcome`을 주면 lock 경합으로 건너뛴 사실을 `skipped`에 남긴다."""
     if session.bind is not None and session.bind.dialect.name == "postgresql":
         # CollectionService의 기존 전용 session lease와 같은 key다. 원본의 지연 commit과
         # 다른 refresh가 조회 중간에 끼지 않게 하며, 경합 시 직접 조회 fallback을 유지한다.
@@ -373,6 +474,8 @@ async def refresh_default_analytics_cache(
         if not acquired:
             # 대시보드 갱신 유예(`DASHBOARD_REFRESH_GRACE`)가 이 갱신에 기댄다. 건너뛴 사실을 남긴다.
             logger.warning("default analytics cache refresh skipped: airport collection lock is busy")
+            if outcome is not None:
+                outcome["skipped"] = "lock_busy"
             return 0
     generated_at = now_utc()
     codes = [code.upper() for code in (airport_codes or settings.supported_airport_codes)]

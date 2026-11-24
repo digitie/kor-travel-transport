@@ -1,4 +1,5 @@
 """수집 작업 전체의 읽기 전용 운영 목록. 설정과 실행 성공을 구분한다."""
+import logging
 from datetime import timedelta
 
 from sqlalchemy import func, select
@@ -7,8 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.core.time_utils import now_utc, serialize_utc, to_seoul
 from app.models import CollectionRun, FerryPort, FerryTimetableSnapshot, KricStationCode, KricTimetableSnapshot, TransportCollectionState
-from app.schemas import KricCoverage, ProviderCollectionStatus, ProviderStatusResponse
+from app.schemas import AnalyticsRefreshStatus, KricCoverage, ProviderCollectionStatus, ProviderStatusResponse
+from app.services.analytics_cache import ANALYTICS_REFRESH_WARN_AFTER, DASHBOARD_REFRESH_GRACE, analytics_refresh_health
 from app.services.transport_collection import LOST_FUEL_ATTEMPT_ERROR, parse_isolated_rows
+
+logger = logging.getLogger(__name__)
 
 
 async def provider_status(session: AsyncSession, settings: Settings) -> ProviderStatusResponse:
@@ -101,4 +105,17 @@ async def provider_status(session: AsyncSession, settings: Settings) -> Provider
     ).join(KricStationCode, KricStationCode.id == KricTimetableSnapshot.station_id).where(KricStationCode.active.is_(True)))).one()
     coverage = KricCoverage(station_count=stations, linked_station_count=linked, expected_snapshots=stations * 3,
         stored_snapshots=count, fresh_snapshots=fresh, oldest_collected_at=serialize_utc(oldest) if oldest else None)
-    return ProviderStatusResponse(generated_at=now_utc(), items=items, ferry_window_start=today, ferry_window_end=end - timedelta(days=1), ferry_expected_snapshots=ports * settings.ferry_timetable_storage_days, ferry_stored_snapshots=stored, kric_coverage=coverage)
+    try:
+        health = await analytics_refresh_health(session, settings)
+    except Exception:  # noqa: BLE001 — 부가 판정 실패로 수집 상태 목록 전체를 500으로 만들지 않는다.
+        logger.warning("airport analytics refresh health check failed", exc_info=True)
+        await session.rollback()
+        health = None
+    analytics = None if health is None else AnalyticsRefreshStatus(
+        status=health.status, alerting=health.alerting, generated_at=health.generated_at,
+        pending_since=health.pending_since, pending_seconds=health.pending_seconds,
+        generated_age_seconds=health.generated_age_seconds,
+        warn_after_seconds=int(ANALYTICS_REFRESH_WARN_AFTER.total_seconds()),
+        fallback_after_seconds=int(DASHBOARD_REFRESH_GRACE.total_seconds()),
+    )
+    return ProviderStatusResponse(generated_at=now_utc(), items=items, ferry_window_start=today, ferry_window_end=end - timedelta(days=1), ferry_expected_snapshots=ports * settings.ferry_timetable_storage_days, ferry_stored_snapshots=stored, kric_coverage=coverage, airport_analytics_cache=analytics)

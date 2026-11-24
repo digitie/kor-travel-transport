@@ -156,7 +156,9 @@ covering index를 concurrent로 만들고 해당 테이블의 auto-analyze 임�
 분석 섹션은 viewport 근처에 들어올 때만 요청한다. 데이터베이스 기반 5개 분석을 `GET /v1/dashboard/analytics`로 묶고, 외부 API가 느려도 주차 분석을 막지 않도록 비행편은 별도 요청과 6초 client timeout을 유지한다. 기본 기간의 시계열·요일·임계치 결과는 `analytics_caches`를 사용한다.
 
 공항 수집 job은 수집 commit 직후 기본 범위 사전집계를 다시 만든다(미리 데우기, `refresh_default_analytics_cache`; 수집 lock 경합으로
-건너뛰면 경고 로그). 대시보드 묶음(`/v1/dashboard/analytics`)은 엄격한 재사용 조건(생성 10분 이내·그 뒤 같은 범위 새 적재 없음)을
+건너뛰면 경고 로그). 같은 op가 사전집계에 반영되지 않은 가장 오래된 적재가 15분을 넘으면(또는 사전집계 2시간 초과) run 태그
+`kortravel/analytics-refresh`·결과 metadata·한 줄 JSON 로그로 알린다(run은 SUCCESS). 관리 화면 홈 운영 상태와 `/v1/transport/providers`의
+`airport_analytics_cache`에도 같은 판정이 보인다(ANALYTICS-REFRESH-ALERT-20261124). 대시보드 묶음(`/v1/dashboard/analytics`)은 엄격한 재사용 조건(생성 10분 이내·그 뒤 같은 범위 새 적재 없음)을
 못 채워도 직전 사전집계를 낸다: 사전집계 뒤의 새 적재가 모두 `DASHBOARD_REFRESH_GRACE`(40분 — 수집 상한 30분 + 갱신) 안이면 갱신 대기로,
 새 적재가 없으면 그대로 맞는 값으로 본다. 사전집계는 `DASHBOARD_STALE_CACHE_MAX_AGE`(2시간)를 넘으면 쓰지 않고, 유예보다 오래된 새 적재가
 있으면(갱신 실패·중단) 원본에서 계산한다. 그래서 수집 직후 몇 분은 시계열 마지막 점·임계 이벤트가 현재값 카드보다 한 수집 주기 늦을 수 있다

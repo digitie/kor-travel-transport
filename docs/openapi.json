@@ -134,6 +134,92 @@
         "title": "AirportSummary",
         "type": "object"
       },
+      "AnalyticsRefreshStatus": {
+        "description": "공항 기본 통계 사전집계(대시보드 묶음)의 갱신 상태. `app.services.analytics_cache.AnalyticsRefreshHealth`.",
+        "properties": {
+          "alerting": {
+            "title": "Alerting",
+            "type": "boolean"
+          },
+          "fallback_after_seconds": {
+            "title": "Fallback After Seconds",
+            "type": "integer"
+          },
+          "generated_age_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "가장 오래된 기본 사전집계의 나이(초)",
+            "title": "Generated Age Seconds"
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "공항 기본 시계열 사전집계 중 가장 오래된 생성 시각",
+            "title": "Generated At"
+          },
+          "pending_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pending Seconds"
+          },
+          "pending_since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "사전집계에 아직 반영되지 않은 가장 오래된 적재의 수집 시각",
+            "title": "Pending Since"
+          },
+          "status": {
+            "description": "ok 정상 · delayed 갱신 지연(미반영 적재 15분 이상, 경보) · stale 대시보드가 원본 계산으로 떨어짐(미반영 적재 40분 이상 또는 사전집계 2시간 초과, 경보) · missing 사전집계 없음(경보) · empty 관측 없음",
+            "enum": [
+              "ok",
+              "empty",
+              "delayed",
+              "stale",
+              "missing"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "warn_after_seconds": {
+            "title": "Warn After Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status",
+          "alerting",
+          "warn_after_seconds",
+          "fallback_after_seconds"
+        ],
+        "title": "AnalyticsRefreshStatus",
+        "type": "object"
+      },
       "BackupFile": {
         "properties": {
           "created_at": {
@@ -8471,6 +8557,16 @@
       },
       "ProviderStatusResponse": {
         "properties": {
+          "airport_analytics_cache": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalyticsRefreshStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "ferry_expected_snapshots": {
             "title": "Ferry Expected Snapshots",
             "type": "integer"

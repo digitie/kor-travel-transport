@@ -1052,6 +1052,24 @@ class KricCoverage(BaseModel):
     oldest_collected_at: datetime | None = None
 
 
+class AnalyticsRefreshStatus(BaseModel):
+    """공항 기본 통계 사전집계(대시보드 묶음)의 갱신 상태. `app.services.analytics_cache.AnalyticsRefreshHealth`."""
+
+    status: Literal["ok", "empty", "delayed", "stale", "missing"] = Field(
+        description=(
+            "ok 정상 · delayed 갱신 지연(미반영 적재 15분 이상, 경보) · stale 대시보드가 원본 계산으로 떨어짐(미반영 적재 40분 이상 또는 "
+            "사전집계 2시간 초과, 경보) · missing 사전집계 없음(경보) · empty 관측 없음"
+        ),
+    )
+    alerting: bool
+    generated_at: datetime | None = Field(default=None, description="공항 기본 시계열 사전집계 중 가장 오래된 생성 시각")
+    pending_since: datetime | None = Field(default=None, description="사전집계에 아직 반영되지 않은 가장 오래된 적재의 수집 시각")
+    pending_seconds: int | None = None
+    generated_age_seconds: int | None = Field(default=None, description="가장 오래된 기본 사전집계의 나이(초)")
+    warn_after_seconds: int
+    fallback_after_seconds: int
+
+
 class ProviderStatusResponse(BaseModel):
     generated_at: datetime
     items: list[ProviderCollectionStatus]
@@ -1060,6 +1078,7 @@ class ProviderStatusResponse(BaseModel):
     ferry_expected_snapshots: int
     ferry_stored_snapshots: int
     kric_coverage: KricCoverage | None = None
+    airport_analytics_cache: AnalyticsRefreshStatus | None = None
 
 
 class TransportCollectionRunStatus(BaseModel):

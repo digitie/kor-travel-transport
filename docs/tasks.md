@@ -10,7 +10,9 @@
   `parking_history_rebuild` `mode=incremental` 시간과 수집 직후 ICN·GMP p95·504 운영 측정. 공개 전체 이력이 br 대신 gzip(약 1.7배 크기)인 것 소유자 확인.
   [journal](journal.md) 2026-11-24.
 - [ ] **ANALYTICS-REFRESH-ALERT-20261124 / P2** — 공항 job의 사전집계 갱신이 연속 실패(`cache_refresh_failed`)하거나 lock 경합으로 건너뛰면(경고 로그) 경보.
-  40분을 넘기면 대시보드가 다시 원본 계산(운영 25~30초)으로 떨어진다.
+  40분을 넘기면 대시보드가 다시 원본 계산(운영 25~30초)으로 떨어진다. 코드 머지됨(미반영 적재 15분 → 공항 run 태그·metadata·로그, 관리 화면 홈 경보,
+  providers `airport_analytics_cache.alerting`; run은 SUCCESS). **남은 것**: 배포 뒤 확인, Manager 경보 규칙(태그 또는 providers 필드를 읽기)은
+  소유자·Manager 후속. [journal](journal.md) 2026-11-24.
 - [ ] **HISTORY-DOUBLE-GZIP-20261124 / P1** — 전체 이력 프록시 이중 gzip 수정(pages API가 backend 압축 본문을 그대로 넘김). **남은 것**: frontend 배포 뒤
   운영에서 `curl -H 'Accept-Encoding: br, gzip' .../api/backend/v1/parking/history?days=30`이 한 겹 압축(PARKING-HISTORY-INCREMENTAL 뒤로는 `content-encoding: gzip`, br 2.7MB의 약 1.7배 추정)이고,
   `E2E_BASE_URL=<공개 URL> npx playwright test e2e/full-history-encoding.spec.ts e2e/live-dashboard.spec.ts`가 통과(전체 이력 3초 포함)하는지 확인.
