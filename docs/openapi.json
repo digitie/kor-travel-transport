@@ -15037,11 +15037,13 @@
             }
           },
           {
+            "description": "반환할 최대 개수(backend 기본 1000, 최대 5000). 공개 gateway(transport-api 12301, fuel-api 12307)는 900을 넘지 않게 고정한다: 생략하면 900, 900 초과 정수는 900으로 낮추고(truncated로 확인), 1~900 정수가 아니면 gateway가 422로 거절한다.",
             "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
               "default": 1000,
+              "description": "반환할 최대 개수(backend 기본 1000, 최대 5000). 공개 gateway(transport-api 12301, fuel-api 12307)는 900을 넘지 않게 고정한다: 생략하면 900, 900 초과 정수는 900으로 낮추고(truncated로 확인), 1~900 정수가 아니면 gateway가 422로 거절한다.",
               "maximum": 5000,
               "minimum": 1,
               "title": "Limit",

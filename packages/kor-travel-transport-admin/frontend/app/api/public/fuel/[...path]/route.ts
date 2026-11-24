@@ -12,7 +12,8 @@ export async function GET(request: NextRequest, context: { params: Promise<{ pat
   try {
     const target = publicFuelUpstreamUrl(path, request.nextUrl.searchParams);
     if (!target) return new NextResponse(null, { status: 404 });
-    const headers = new Headers({ accept: "application/json" });
+    // 같은 호스트 loopback gateway에서 압축했다가 여기서 다시 푸는 CPU를 쓰지 않는다(gateway gzip은 외부 직접 호출용).
+    const headers = new Headers({ accept: "application/json", "accept-encoding": "identity" });
     const etag = request.headers.get("if-none-match");
     if (etag) headers.set("if-none-match", etag);
     const response = await fetch(target, { method: "GET", headers, cache: "no-store", credentials: "omit",

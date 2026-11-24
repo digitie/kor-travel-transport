@@ -1,12 +1,75 @@
+# 이 파일은 공식 nginx 이미지의 http 문맥(conf.d)에 들어간다. 소요 시간 access log 형식이다.
+# 요청 줄($request)·query($args) 대신 클라이언트가 보낸 경로(디코드 전, query 제외)만 남겨 export
+# cursor·query 값을 로그에 싣지 않는다. 경로 안의 공개 식별자(station_key, 주차장 id 등)는 남는다.
+# nginx 1.21.1+는 요청 줄의 공백을 거절하므로 디코드 전 경로에는 공백이 없다(필드 위치가 고정된다).
+# rt=gateway 전체, uct=upstream 연결, uht=upstream 첫 응답 header, urt=upstream 응답 끝까지(초).
+# 읽는 법: docs/runbooks/request-timing-logs.md
+map $request_uri $transport_log_path {
+    default "-";
+    ~^([^?]*) $1;
+}
+log_format transport_timing '$time_iso8601 $remote_addr "$request_method $transport_log_path" $status $body_bytes_sent '
+                            'rt=$request_time uct=$upstream_connect_time uht=$upstream_header_time '
+                            'urt=$upstream_response_time ust=$upstream_status';
+
+# 공개 장소 조회 한 번의 개수 상한. 관리 지도 최대 900(transport-map.tsx)과 공개 유가 300을 넘지 않는다.
+# 관리 UI 목록 검색(최대 5000)은 관리 BFF가 backend 12302를 직접 부르므로 이 listener를 지나지 않는다.
+# $arg_limit은 첫 값(이름 대소문자 무시, 디코드 없음)이고 Starlette는 마지막 값을 쓰므로, 판정한 값을
+# upstream query 끝에 다시 붙여 backend가 실제로 쓰는 값을 고정한다(반복·인코딩 이름 우회 차단).
+# 생략=900(backend 기본 1000이 상한을 넘으므로), 1~900=그대로, 900 초과 정수=900으로 낮춤,
+# 그 밖(0·부호·앞자리 0·인코딩·문자)=422 problem+json(backend의 같은 종류 검증 오류와 같은 상태·형식).
+map $arg_limit $transport_places_limit {
+    default "";
+    "" 900;
+    ~^([1-9][0-9]?|[1-8][0-9][0-9]|900)$ $arg_limit;
+    ~^[1-9][0-9]*$ 900;
+}
+
+# export 동시 처리 상한(아래 limit_conn). 소비자가 하나라 주소별이 아니라 listener 전체를 한 key로 센다.
+map $server_port $transport_export_slot {
+    default export;
+}
+limit_conn_zone $transport_export_slot zone=transport_export:1m;
+# export 거절 응답의 instance. JSON에 그대로 넣어도 안전한 문자로만 된 경로만 쓴다.
+map $uri $transport_export_instance {
+    default "/v1/service/exports/";
+    ~^/v1/service/exports/[A-Za-z0-9._:/-]+$ $uri;
+}
+
 server {
     listen 0.0.0.0:${TRANSPORT_PUBLIC_API_PORT};
     server_name _;
+    # http 문맥 기본 형식(main, query 포함)을 대체한다. 공식 이미지는 stdout을 docker 로그로 모은다.
+    access_log /dev/stdout transport_timing;
 
     location = /health {
+        # Docker healthcheck(45초)가 반복 호출한다. 상태는 healthcheck로 보고 access log는 남기지 않는다.
+        access_log off;
         proxy_pass http://127.0.0.1:12302;
         proxy_http_version 1.1;
+        # 내부 계측(app·sql·pool·cpu)은 익명 호출자에게 보내지 않는다. export만 그대로 둔다.
+        proxy_hide_header Server-Timing;
         # backend TrustedHostMiddleware에는 public transport hostname을 추가하지
         # 않는다. 내부 loopback host로 고정해 기존 backend 설정을 보존한다.
+        proxy_set_header Host 127.0.0.1;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 30s;
+    }
+
+    # 공개 장소 조회는 limit 상한을 고정한다(위 map). 정확 일치 location이 아래 정규식의
+    # features/places보다 먼저 선택된다. 다른 query·kind/kinds·bbox·zoom은 그대로 전달한다.
+    location = /v1/transport/features/places {
+        limit_except GET { deny all; }
+        default_type application/problem+json;
+        # ADR-005 problem+json 다섯 항목. backend가 같은 종류의 query 검증 오류에 쓰는 422와 맞춘다.
+        if ($transport_places_limit = "") {
+            return 422 '{"type":"about:blank","title":"Unprocessable Entity","status":422,"detail":"limit은 1 이상 900 이하의 정수여야 합니다(공개 gateway 상한 900).","instance":"/v1/transport/features/places"}';
+        }
+        proxy_pass http://127.0.0.1:12302/v1/transport/features/places?$args&limit=$transport_places_limit;
+        proxy_http_version 1.1;
+        proxy_hide_header Server-Timing;
         proxy_set_header Host 127.0.0.1;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -20,6 +83,7 @@ server {
         limit_except GET { deny all; }
         proxy_pass http://127.0.0.1:12302;
         proxy_http_version 1.1;
+        proxy_hide_header Server-Timing;
         proxy_set_header Host 127.0.0.1;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -32,6 +96,7 @@ server {
         limit_except GET { deny all; }
         proxy_pass http://127.0.0.1:12302;
         proxy_http_version 1.1;
+        proxy_hide_header Server-Timing;
         proxy_set_header Host 127.0.0.1;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -51,6 +116,26 @@ server {
         proxy_set_header X-Forwarded-For "";
         proxy_connect_timeout 5s;
         proxy_read_timeout 120s;
+        # T1 페이지(주유소 500행 약 1.2MB 비압축)는 기본 버퍼(8×4k)를 넘어 컨테이너 쓰기 계층의
+        # proxy_temp 파일로 내려간다. 요청당 최대 2MiB 메모리 버퍼로 받아 backend 연결을 빨리 돌려준다.
+        # (backend는 gzip을 받는 요청에 T1을 gzip으로 보내므로 Map 페이지는 이보다 작다. 크기는 평문 기준이다.)
+        # 그보다 큰 본문(대형 참조 snapshot)은 임시 파일 없이 소비자가 읽는 속도로 흘리며, 그동안
+        # backend 연결과 요청을 잡고 있다(소비자가 send_timeout 60초 동안 읽지 않으면 끊긴다).
+        proxy_buffers 64 32k;
+        proxy_max_temp_file_size 0;
+        # 64MiB gateway(공개 API·MCP와 공유)에서 export 버퍼 합을 6×2MiB=12MiB 이하로 묶는다.
+        # Map은 dataset 페이지를 순차 조회하므로 평소 동시 수는 이보다 작다. 넘으면 503 + Retry-After와
+        # export 503 사유 code EXPORT_BUSY(docs/map-service-exports-handoff.md)로 같은 요청의 짧은 재시도를 알린다.
+        limit_conn transport_export 6;
+        limit_conn_status 503;
+        error_page 503 = @transport_export_busy;
+    }
+
+    # limit_conn 거절만 받는다(proxy_intercept_errors가 꺼져 있어 backend 503은 그대로 전달된다).
+    location @transport_export_busy {
+        default_type application/problem+json;
+        add_header Retry-After 10 always;
+        return 503 '{"type":"about:blank","title":"Service Unavailable","status":503,"detail":"export 동시 요청 상한(6)을 넘었습니다. Retry-After 뒤 다시 요청하세요.","instance":"$transport_export_instance","code":"EXPORT_BUSY"}';
     }
 
     # 같은 API의 MCP. 별도 소비자 CIDR로 raw export의 허용 범위를 넓히지 않는다.
@@ -63,6 +148,7 @@ server {
         proxy_set_header Connection "";
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-For "";
+        proxy_hide_header Server-Timing;
         proxy_buffering off;
         proxy_cache off;
         proxy_request_buffering off;

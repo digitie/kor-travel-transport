@@ -136,6 +136,9 @@ class Settings(BaseSettings):
     cors_origins_csv: str = "http://localhost:3000"
     trusted_hosts_csv: str = "localhost,127.0.0.1,testserver,backend"
     enable_api_docs: bool = True
+    # 이 시간(ms) 이상 걸린 요청은 경로와 무관하게 `slow_request` 한 줄을 남긴다(0이면 모든 요청).
+    # `/v1/service/exports/*`는 이 값과 무관하게 항상 남긴다(docs/runbooks/request-timing-logs.md).
+    slow_request_threshold_ms: int = Field(default=1000, ge=0)
     api_prefix: str = ""
     use_sample_client_when_no_key: bool = True
     backup_dir: str = "/app/backups"

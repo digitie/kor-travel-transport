@@ -813,7 +813,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         return response
 
-    app.add_middleware(ReadTimingMiddleware)
+    app.add_middleware(ReadTimingMiddleware, slow_threshold_ms=resolved_settings.slow_request_threshold_ms)
 
     def custom_openapi() -> dict:
         """Keep the committed schema aligned with the RFC 7807 error handlers."""
@@ -1452,7 +1452,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         kind: str | None = Query(default=None, description="fuel_station, rail_station, ferry_port, bus_terminal, airport, rest_area, highway_incident 중 하나. 돌발은 최근 24시간 최신 저장 관측"),
         kinds: str | None = Query(default=None, max_length=280, description="지도 종류를 쉼표로 구분해 한 요청으로 조회"),
-        limit: int = Query(default=1000, ge=1, le=5000),
+        limit: int = Query(default=1000, ge=1, le=5000, description=(
+            "반환할 최대 개수(backend 기본 1000, 최대 5000). 공개 gateway(transport-api 12301, fuel-api 12307)는 "
+            "900을 넘지 않게 고정한다: 생략하면 900, 900 초과 정수는 900으로 낮추고(truncated로 확인), "
+            "1~900 정수가 아니면 gateway가 422로 거절한다."
+        )),
         zoom: int | None = Query(default=None, ge=0, le=22, description="실제 지도 축척. 주유소 단독은 0~9, 나머지는 0~11에서 지역·셀 요약을 반환"),
         include_sources: bool = Query(default=True, description="출처 필터 선택지를 포함. 반복 지도 조회에서는 false로 생략 가능"),
         include_fuel_statistics: bool = Query(default=False, description="현재 지도 범위 전체의 유종별 통계 포함"),

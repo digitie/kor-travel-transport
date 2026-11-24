@@ -47,7 +47,10 @@ def default_paths() -> tuple[str, ...]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", default="http://127.0.0.1:12302")
+    # 기본 경로의 places limit=5000은 backend 직접(12302)에서만 그대로다. 공개 gateway(12301·12307)는
+    # 900으로 낮춰 결과가 조용히 작아지므로 이 도구는 gateway를 가리키지 않는다.
+    parser.add_argument("--base-url", default="http://127.0.0.1:12302",
+                        help="backend 직접 origin. 공개 gateway(12301·12307)는 places limit을 900으로 낮춘다")
     parser.add_argument("--samples", type=int, default=3)
     parser.add_argument("--threshold-seconds", type=float, default=1.0)
     parser.add_argument("--path", action="append", help="기본 목록 대신 검사할 경로. 반복 가능")
