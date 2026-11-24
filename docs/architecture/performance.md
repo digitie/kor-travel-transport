@@ -331,6 +331,9 @@ Python 할당 peak 중앙값은 136,465→132,479 bytes다. WSL과 ARM은 별도
 일반 요청의 SQL 수는 전체 종류·기본 출처 포함 6개다. `raw_item_json`은 필요한 시설/수동 revision 키만
 투영한다. 요청 관측은 query string 없는 느린 요청 로그와 Server-Timing을 사용한다.
 CPU는 프로세스 누적 CPU 차이이므로 동시 작업의 영향을 포함한다.
+2026-11-24부터 이벤트 루프 thread CPU(`loop_cpu`)·풀 대기(`pool`)를 함께 남기고, 임계는
+`SLOW_REQUEST_THRESHOLD_MS`(기본 1000)이며 `/v1/service/exports/*`는 모두 기록한다. gateway access log도
+소요 시간을 남긴다. 필드와 지연 분해 순서는 [요청 소요 시간 로그 읽기](../runbooks/request-timing-logs.md)를 따른다.
 
 참조 304는 불변 content digest·handle·만료·페이지·상태로 payload 읽기 전에 판정한다.
 입력 지문은 head와실제입력별transactional `(component,epoch,revision)`이같을때만최대64개재사용한다.

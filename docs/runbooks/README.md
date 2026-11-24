@@ -5,6 +5,7 @@
 - `testing.md` — WSL/Docker/브라우저 검증
 - `remote-command-safety.md` — 원격 명령 안전성
 - `troubleshooting.md` — 운영 장애 대응
+- `request-timing-logs.md` — gateway access log·backend 요청 로그·Server-Timing으로 지연 분해
 - `agent-failure-patterns.md` — 반복되는 실수와 회피 규칙
 - `branch-protection.md` — GitHub `main` 브랜치 보호 설정
 - `cross-repo-audit-checklist.md` — 복수 GitHub remote 정합성 점검
