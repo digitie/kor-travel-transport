@@ -29,9 +29,9 @@ from kortravelcommon.scheduling import staggered_cron
 
 from app.dagster import recovery
 from app.dagster.recovery import (
-    AIRPORT_TRIGGER, OWNER, OWNER_LEASE, RECOVERY_BUDGET_SECONDS, CollectionLeaseLost, ScanPosition,
-    collection_owner, ensure_collection_owner_active, format_stall_alert, owned_session_factory,
-    run_recovery_tick,
+    AIRPORT_TRIGGER, OWNER, OWNER_LEASE, RECOVERY_BUDGET_SECONDS, CollectionLeaseLost, FuelFreshnessAlerts,
+    FuelFreshnessReport, ScanPosition, collection_owner, ensure_collection_owner_active, format_stall_alert,
+    owned_session_factory, run_recovery_tick,
 )
 
 from app.core.config import Settings, get_settings
@@ -1202,7 +1202,9 @@ def _stopped_schedules(instance) -> set[str]:
     return {name for name, seen in statuses.items() if seen == {InstigatorStatus.STOPPED}}
 
 
-async def _reconcile_workers(instance, remaining, paused: list[str] | None = None) -> int:
+async def _reconcile_workers(
+    instance, remaining, paused: list[str] | None = None, fuel_report: FuelFreshnessReport | None = None,
+) -> int:
     def work_remaining() -> float:
         return remaining() - recovery.CLEANUP_RESERVE_SECONDS
 
@@ -1227,7 +1229,7 @@ async def _reconcile_workers(instance, remaining, paused: list[str] | None = Non
         async with asyncio.timeout(max(0.0, work_remaining())):
             return await run_recovery_tick(
                 factory, instance, position=_RECOVERY_POSITION, remaining=work_remaining,
-                collection_scheduled=collection_scheduled, paused=paused,
+                collection_scheduled=collection_scheduled, paused=paused, fuel_report=fuel_report,
             )
     finally:
         # dispose도 정리 시간 안에서 끝낸다. 넘으면 연결 정리를 포기한다(프로세스가 GC로 닫는다).
@@ -1240,7 +1242,13 @@ def _reconcile_tick(context, remaining) -> int:
     # 때만 쓴다(common 계약).
     instance = context.instance
     paused: list[str] = []
-    recovered = asyncio.run(_reconcile_workers(instance, remaining, paused))
+    fuel_report = FuelFreshnessReport()
+    try:
+        recovered = asyncio.run(_reconcile_workers(instance, remaining, paused, fuel_report))
+    finally:
+        # 정체(예외)로 끝난 tick에서도 이미 판정한 유가 신선도는 남긴다.
+        if remaining() > 0:
+            _report_fuel_freshness(context, fuel_report)
     if paused and remaining() > 0:
         # 점검으로 멈춘 schedule은 정체가 아니다. traceback 없이 한 줄만 남긴다.
         context.log.warning("5분 수집 schedule이 STOPPED라 신선도 판정에서 제외합니다: " + ", ".join(sorted(paused)))
@@ -1258,6 +1266,24 @@ def _alert_stall(context, clock) -> None:
     line = format_stall_alert(clock, now=time.time())
     context.log.error(line)
     _STALL_LOGGER.error(line)
+
+
+#: 유가 신선도 경보의 마지막 단계·시각. sensor cursor는 정체 시계가 소유하므로 code-server 프로세스에 둔다.
+_FUEL_FRESHNESS_ALERTS = FuelFreshnessAlerts()
+
+
+def _report_fuel_freshness(context, report: FuelFreshnessReport) -> None:
+    """유가 시도 소실·신선도 경보(G1-F5·G1-F6). `_alert_stall`과 같이 고정 event 이름 한 줄을 두 곳에 남긴다.
+
+    경고·위험은 정체가 아니라 정체 시계를 건드리지 않는다. 경보를 남기는 일이 회수 tick을 실패시키지 않게 한다.
+    """
+    try:
+        for level, line in _FUEL_FRESHNESS_ALERTS.lines(report, now=time.time()):
+            (context.log.error if level >= logging.ERROR else context.log.warning)(line)
+            _STALL_LOGGER.log(level, line)
+    except Exception:  # noqa: BLE001
+        with contextlib.suppress(Exception):
+            _STALL_LOGGER.warning("transport_fuel_freshness.report_failed")
 
 
 worker_recovery = reconciliation_sensor(

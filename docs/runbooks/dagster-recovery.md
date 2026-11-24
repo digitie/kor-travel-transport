@@ -66,6 +66,62 @@ metadata 장애는 회수 사유가 아니다. legacy NULL owner 행은 자동 �
   (`docker-compose.shared.yml`·`transport.override.yml`의 `x-dagster-code-server-probe`).
   재시작 뒤 수집이 돌아오지 않으면 이 sensor가 20분+900초 뒤 경보한다.
 
+## 유가 시도 소실 기록과 유가 신선도 경보 (2026-11-24 감사 G1-F5·G1-F6)
+
+2026-11-23 08:17Z~11-24 00:17Z T1 주유소 export(`/v1/service/exports/fuel-stations`)가 약 16.6시간 503이었는데
+경보가 없었다. 위 정체 경보는 5분 수집만 보기 때문이다. 또 유가 run이 op 밖에서 죽으면(code-server 재기동·worker
+소실·SIGKILL) `_mark_fuel_failure`가 불리지 않아 직전 성공의 `last_error=None`이 남았다. 그러면 관리자 "재시도"
+(`kortravel/admin-retry-of`, `retry_failed_fuel=True`)도 "직전 시도 성공"으로 보고 호출 유예로 건너뛰어, 한 주기(8시간)를
+잃었다. 둘 다 `transport_worker_recovery` tick 안에서 처리한다. 새 run·schedule을 만들지 않고 오피넷도 부르지 않는다.
+
+- **유가 시도 소실 기록**(`recovery.record_lost_fuel_attempt`): 오피넷 상태 행의 claim(`last_started_at`)에 결과가 없고
+  (`last_error` 없음, `last_success_at < last_started_at`), 그 claim의 주인 실행 — claim 직전 15분 안에 시작한 마지막
+  Dagster 유가 실행(`transport_dagster_fuel`) — 이 `failed`이며, 그 뒤의 유가 실행(체크포인트 저장 재개 포함)이 하나도
+  running이 아니면 `last_error`에 `실행 소실: …(회수 sensor 기록).`을 남긴다. `last_success_at`·`next_due_at`은 그대로다.
+  읽은 claim 그대로일 때만 갱신(CAS)하므로 그 사이의 새 claim·성공·실패를 덮지 않는다. 실행이 죽으면 회수가 먼저 run 행을
+  `failed`로 닫고(Dagster terminal 즉시, 기록 없는 run은 5시간 grace), 그다음 tick에 기록한다. 실패 기록 commit 자체가
+  실패한 실행(run 행은 `failed`, 상태 행에 오류 없음)도 같은 규칙으로 잡는다. 효과는 실패 1회와 같다. 관리자 재시도가
+  예약을 옮기지 않고 체크포인트에서 이어 하고, 서비스 export의 `collection.last_attempt_failed`, 공개 유가 stale 표시,
+  T4 `source_status`가 실패를 본다. 주인이 정상 종료(`success`·`skipped`·`partial_success`)했으면 판단하지 않는다.
+- **유가 신선도 단계**(`recovery.evaluate_fuel_freshness`): 오피넷(`opinet_browser`)과 휴게소 유가(`krex_rest_area_fuel`)
+  상태 행의 마지막 성공 나이로 정한다. 성공 이력이 없으면 판단하지 않는다.
+
+  | 단계 | 조건 | 오피넷 | 휴게소 유가 |
+  |---|---|---|---|
+  | `warning` | 나이 > 2주기 **이고** 마지막 시도 실패 | 16시간 | 8시간 |
+  | `critical` | 나이 > export stale 기준(`REFERENCE_STALE_AFTER`)의 80% | 19.2시간 | 9.6시간 |
+
+  유가는 연속 2회 실패(16시간)가 "다음 실패면 export 503"의 선행 신호다. 위험은 실패 여부와 무관해 수집이 멈춰도 잡는다.
+  위험 기준은 `REFERENCE_STALE_AFTER`를 그대로 따라가므로 export 기준을 바꾸면 같이 바뀐다. 주기(8시간·4시간)는 schedule
+  cron과 테스트로 묶었다.
+- **경보 줄**: `_alert_stall`과 같이 고정 event 이름 한 줄을 Dagster sensor tick 로그와 code-server stderr(logger
+  `app.dagster.recovery`)에 남긴다. 단계가 바뀌면 바로, 같은 단계는 3600초마다 다시 남긴다. 기억은 code-server 프로세스
+  안에 있어 재시작하면 현재 단계를 한 번 더 남긴다. 정체가 아니라서 정체 시계(`stall:` cursor)를 건드리지 않는다. 점검
+  자체가 실패해도(10초 상한) 회수·정체 판정은 계속하고 `check_failed` 한 줄만 남긴다. 점검이 실패했거나 시작하지
+  못한 tick(예산 부족, 앞 단계 DB 장애)은 단계 기억을 바꾸지 않는다 — 회복으로 보지 않는다. 형식(검색 기준):
+
+  ```text
+  transport_fuel_freshness.warning source=<원천> age_seconds=<n> last_success_at=<UTC ISO> last_attempt_failed=<true|false> warning_after_seconds=<n> critical_after_seconds=<n>
+  transport_fuel_freshness.critical source=<원천> …(같은 필드, error 수준)
+  transport_fuel_freshness.recovered source=<원천> age_seconds=<n> last_success_at=<UTC ISO> previous=<warning|critical>
+  transport_fuel_freshness.lost_attempt source=opinet_browser collection_run_id=<id> last_started_at=<UTC ISO>
+  transport_fuel_freshness.check_failed error=<형식이름[:SQLSTATE]>
+  ```
+
+  대응: `warning`이면 마지막 실패의 원인(Dagster run의 `error_code`)을 확인하고, 일시 오류면 관리자 "재시도"를 쓴다.
+  `critical`이면 export 503까지 남은 시간이 기준의 20%(오피넷 약 4.8시간) 이하다. `lost_attempt`는 실행이 결과 없이
+  끝났다는 뜻이므로 code-server·run worker 재시작 이력을 본다.
+- **하지 않는 것**: 경보에 따른 자동 추가 유가 run은 만들지 않는다. 오피넷 호출 정책(ADR-013 하루 3회·8시간 tick,
+  provider 호출 유예)은 소유자 결정이다. 경보 채널(Manager·운영 알림, Dagster plane 밖)도 아직 붙이지 않았다 — 지금은 위
+  로그 줄이 유일한 신호다. 휴게소 유가 run의 소실은 기록하지 않는다. 휴게소 유가는 실패 여부로 다음 실행을 막지 않기
+  때문이다(4시간마다 정기 실행, 예약 없음).
+- **제안(소유자 결정 대기) — 신선도 보호 재시도**(감사 G1-F4 (b)): 마지막 시도가 실패했고 마지막 성공 나이가 16시간
+  이상이며 진행 중인 유가 run이 없으면, 이 sensor가 다음 tick 전에 체크포인트 재개 run(`retry_failed_fuel=True`, 예약
+  보존)을 한 번만 띄운다. 연속 2회 실패 뒤 세 번째 정기 시도까지 기다리는 동안 생기는 503 틈을 줄인다. 다만 하루 3회
+  상한을 넘는 오피넷 브라우저 세션이 생길 수 있어 ADR-013 개정과 소유자 승인 없이는 구현하지 않는다. 구현한다면
+  `lost_attempt`와 `warning` 판정을 그대로 조건으로 쓰고, 같은 claim에는 한 번만 띄우며(claim 시각을 run 태그로),
+  관리자 재시도와 같은 `kortravel/admin-retry-of` 경로를 쓴다.
+
 공항 일부 실패도 성공분을 commit한 뒤 Dagster FAILURE로 표시한다. 자동 인프라 재시도
 1회는 공항·고속도로·휴게소 기준정보만 허용한다. provider 실패·KRIC 마지막 시도 48시간·
 버스 성공 72시간·철도 성공 48시간·과금/유가 receipt 보호는 그대로 유지한다.
