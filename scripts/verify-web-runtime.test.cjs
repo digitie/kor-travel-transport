@@ -22,6 +22,8 @@ function fixture(t) {
     ".next/required-server-files.json": "{}",
     ".next/server/app-paths-manifest.json": JSON.stringify({ "/page": "app/page.js" }),
     ".next/server/app/page.js": "module.exports = {};",
+    ".next/server/pages-manifest.json": JSON.stringify({ "/api/full-history": "pages/api/full-history.js" }),
+    ".next/server/pages/api/full-history.js": "module.exports = {};",
     "node_modules/next/package.json": JSON.stringify({ name: "next", version: "16.4.6" }),
     "node_modules/next/dist/bin/next.js": "fixture-not-a-server",
     "node_modules/typescript/package.json": JSON.stringify({ main: "index.js" }),
@@ -123,3 +125,12 @@ for (const [name, identity, env] of [
     assert.throws(() => verifyIdentity(identity, env, pkg, sha, "transport-admin-web"));
   });
 }
+
+test("공개 웹은 전체 이력 pages API 산출물이 있어야 한다", (t) => {
+  const root = fixture(t);
+  assert.equal(inspectFiles(root, "frontend").compiledRoutes, 1);
+  fs.unlinkSync(path.join(root, ".next/server/pages/api/full-history.js"));
+  assert.throws(() => inspectFiles(root, "frontend"));
+  fs.writeFileSync(path.join(root, ".next/server/pages-manifest.json"), "{}");
+  assert.throws(() => inspectFiles(root, "frontend"), /RUNTIME_FULL_HISTORY_ROUTE/);
+});

@@ -1,3 +1,25 @@
+## 2026-11-24 — 전체 이력 응답 이중 gzip 수정(HISTORY-DOUBLE-GZIP-20261124)
+
+- 운영 배포 검증(odroid): `GET /api/backend/v1/parking/history?days=30`(limit 없음)을 `Accept-Encoding: gzip`으로 받으면 gzip이 두 겹이었다.
+- 원인(재현: Next 16.4.6 `next start` + gzip을 내는 가짜 backend): `proxyFullHistory`가 backend 압축 스트림과 `content-encoding`을 함께 넘겼지만,
+  Next는 route handler 응답의 `content-encoding`·`content-length`·`transfer-encoding`을 버린다(`send-response` FORBIDDEN_HEADERS). 머리말 없는
+  압축 바이트를 Next 서버 압축(`compress` 기본값, gzip)이 한 번 더 감쌌다. br을 받는 브라우저도 br 위에 gzip이 덧씌워진 본문을 받았다.
+  `Cache-Control: no-transform`은 next.config `headers()`의 같은 머리말이 먼저 박혀 route 값이 버려져 쓸 수 없었다.
+- 수정: 무제한 이력은 next.config `rewrites`(beforeFiles, `limit` 없음)로 pages API `src/pages/api/full-history.ts`가 맡는다. pages API는 Node 응답에
+  머리말을 직접 써 backend의 미리 만든 br·gzip 본문과 `content-encoding`·`content-length`를 그대로 넘기고, Next 서버 압축은 이미 인코딩된 응답을 건너뛴다
+  (Next 16.4.6 재현으로 확인 — 정적 pages 경로가 App Router catch-all보다 먼저 잡히고 머리말이 보존된다). 같은 Node 수준 구현을 `src/lib/full-history-proxy.ts`로
+  옮겨 App Router fallback(rewrite를 비껴 온 요청)과 공유한다 — fallback은 identity를 받아 스트림으로 넘기고, 압축 본문이 오면 풀고, 모르는 인코딩이면 502.
+  pages 디렉터리가 생기면 `usePathname` 타입이 nullable이 되어 앱 셸에 `?? "/"`를 넣었다.
+- 처음 안(전부 identity로 받고 Next가 gzip)은 적대 리뷰(운영 렌즈) P1로 버렸다: 공개 경로가 미리 만든 br 2.7MB 대신 요청마다 75MB 렌더 + Next gzip(약 5~6MB)이 되어
+  2026-10-01에 3초 목표 때문에 도입한 사전 압축을 되돌린다.
+- 시험: vitest `full-history-pages-route.test.ts`(br·gzip·identity 그대로 통과, `limit`·POST 404, 연결 실패 502 problem+json, rewrite 설정) +
+  `backend-proxy-route.test.ts`(fallback). e2e `full-history-encoding.spec.ts`(gzip·br 한 겹, 압축 없음 퇴행 검출, 브라우저 fetch JSON — 운영에서 돌릴 수 있게
+  비압축 요청은 하지 않는다). 로컬 재현(Next 16.4.6 `next start` + gzip 가짜 backend): 수정 전 빌드 e2e 3건 실패, 수정 빌드 3건 통과. 겹 수 2 → 1.
+- 재리뷰(2인, P0·P1 없음) P2 반영: `?limit=`(빈 값)은 rewrite `missing`을 통과하므로 pages API가 404 대신 backend 응답(422)을 그대로 넘긴다.
+  `verify-web-runtime.cjs`가 공개 웹 이미지의 pages 산출물(`/api/full-history`)을 확인한다. App Router fallback은 "도달 불가 방어"로 주석.
+  e2e는 첫 관측이 25일보다 오래됐는지(질의 유실 퇴행)도 본다. 404 화면은 수정 전과 같다(상태 404, 같은 제목).
+  받아들인 P2: HEAD도 backend GET을 열고 바로 끊는다(PR 전보다 짧게 점유), rewrite 대소문자 무시로 대문자 경로도 200, `/api/full-history` 직접 호출은
+  같은 데이터의 별칭, 헤더 대기 상한은 번들별.
 ## 2026-11-24 — #263 사후 리뷰 후속: 격리 상태 표시·일시적 파싱 오류 재조회·주차 넘김 식별자 기준(ISOLATION-FOLLOWUP-20261124)
 
 - #263(무효 행 격리·부분 성공)은 머지 전 적대 리뷰 없이 머지됐다. 사후 리뷰의 P1 1건과 P2 2건을 고친다.

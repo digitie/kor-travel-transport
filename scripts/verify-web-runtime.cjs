@@ -71,6 +71,13 @@ function inspectFiles(root, role) {
     check(typeof entry === "string" && !entry.split("/").includes(".."), "RUNTIME_ROUTE_PATH");
     file(root, ".next/server/" + entry);
   }
+  if (role === "frontend") {
+    // 30일 전체 이력은 next.config rewrite → pages API가 맡는다. 산출물이 빠지면 공개 전체 이력이 404가 된다.
+    const pages = json(root, ".next/server/pages-manifest.json");
+    const entry = pages["/api/full-history"];
+    check(typeof entry === "string" && !entry.split("/").includes(".."), "RUNTIME_FULL_HISTORY_ROUTE");
+    file(root, ".next/server/" + entry);
+  }
   // 이번 변경은 설치 profile을 prune하지 않는다. 이 검사는 최소 의존성 집합의 증명은 아니다.
   request.resolve("typescript");
   const workers = {};

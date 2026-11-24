@@ -54,7 +54,8 @@ const tabbarLinkClass = (active: boolean) =>
   }`;
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
+  // pages API(`src/pages/api/full-history.ts`)가 있으면 usePathname 타입이 nullable이 된다. App Router 화면에서는 항상 값이 있다.
+  const pathname = usePathname() ?? "/";
   const fieldId = useId();
   const {
     airports,
