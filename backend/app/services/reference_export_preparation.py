@@ -46,8 +46,10 @@ GC_BUDGET_SECONDS = 10
 #: 상대가 같은 본문을 만들고 있고, 다음 준비·첫 페이지가 그 본문을 재사용한다.
 CONTENTION_SQLSTATES = frozenset({"40001", "55P03"})
 CONTENTION_RETRY_DELAY_SECONDS = (0.3, 1.0)
-#: 기동 warmup 대상. Map(kor-travel-map)이 읽는 T3는 철도역·여객선 터미널뿐이다(bus-terminals·parking/current는 소비자 없음).
-STARTUP_WARM_KINDS = ("rail-stations-v1", "ferry-ports-v1")
+#: Map(kor-travel-map)이 읽는 T3는 철도역·여객선 터미널뿐이다(bus-terminals·parking/current는 소비자 없음).
+#: 기동 warmup과 배포 직후 준비의 대상이다. 나머지 종류는 5분 공항 수집의 준비가 맡는다.
+MAP_EXPORT_KINDS = ("rail-stations-v1", "ferry-ports-v1")
+STARTUP_WARM_KINDS = MAP_EXPORT_KINDS
 STARTUP_WARM_TIMEOUT_SECONDS = 10
 
 

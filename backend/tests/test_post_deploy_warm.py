@@ -145,8 +145,9 @@ def test_prepare_module_prints_one_summary_line(monkeypatch, capsys, result, exi
     from app.core import config
     from app.services import reference_export_preparation as prep
 
-    async def fake_prepare(settings):
+    async def fake_prepare(settings, *, kinds):
         assert settings is _SETTINGS
+        assert kinds == ("rail-stations-v1", "ferry-ports-v1")  # Map이 읽는 종류만
         return result
 
     monkeypatch.setattr(config, "get_settings", lambda: _SETTINGS)
@@ -167,7 +168,7 @@ def test_prepare_module_skips_when_its_release_differs_from_the_api(monkeypatch,
     from app.core import config
     from app.services import reference_export_preparation as prep
 
-    async def must_not_run(_settings):
+    async def must_not_run(_settings, **_kwargs):
         raise AssertionError("release가 다르면 준비하지 않는다")
 
     monkeypatch.setattr(config, "get_settings", lambda: SimpleNamespace(release_sha=local_release))
@@ -189,10 +190,10 @@ def test_prepare_module_timeout_and_error_are_warnings_without_messages(monkeypa
     from app.core import config
     from app.services import reference_export_preparation as prep
 
-    async def timed_out(_settings):
+    async def timed_out(_settings, **_kwargs):
         raise TimeoutError  # asyncio.wait_for 상한 초과와 같은 예외
 
-    async def leaky(_settings):
+    async def leaky(_settings, **_kwargs):
         raise RuntimeError("postgresql://user:password@127.0.0.1/db")
 
     monkeypatch.setattr(config, "get_settings", lambda: _SETTINGS)

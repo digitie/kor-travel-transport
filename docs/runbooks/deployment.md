@@ -248,8 +248,9 @@ exit 0이고 문제는 stderr `post-deploy-warm: WARN ...` 줄로만 남긴다(�
    다르거나(code-server만 롤백, `RELEASE_SHA` 없이 기동 등) API 값을 읽지 못하면 준비를 건너뛰고 경고한다 — API가
    읽지 않을 revision의 본문을 만들고 head를 되돌리게 되기 때문이다. 같으면 code-server 안에서
    `python -I -B -m app.deploy.prepare_references --timeout-seconds 300 --expect-release-sha <API 값>`을 실행한다.
-   모듈이 자기 설정의 release_sha를 다시 대조하고(다르면 exit 4), 같은 `prepare_reference_exports`를 Dagster run 없이
-   직접 부른다(공용 run 큐·`reference` run_group 대기를 피한다). stdout은 종류별 결과 JSON 한 줄(kind·status·
+   모듈이 자기 설정의 release_sha를 다시 대조하고(다르면 exit 4), Map이 읽는 rail·ferry 본문만 같은
+   `prepare_reference_exports`로 Dagster run 없이 직접 준비한다(공용 run 큐·`reference` run_group 대기를 피한다.
+   bus·parking/current는 5분 공항 수집의 준비가 맡는다). stdout은 종류별 결과 JSON 한 줄(kind·status·
    duration_ms·error_type·sqlstate)이며 DSN·토큰은 없다. run_group 상한·수집 owner 밖에서 돌므로 5분 공항 수집의
    준비와 같은 본문을 두고 겹칠 수 있다. 겹친 종류는 잠금 대기(55P03)·직렬화 실패(40001)·admission 경합을 한 번
    다시 본 뒤 `busy`로 끝나며, 배포 쪽도 공항 run 쪽도 실패·부분 완료로 세지 않는다.

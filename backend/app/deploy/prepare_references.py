@@ -9,6 +9,8 @@ Dagster run을 새로 띄우지 않고(공용 run 큐·'reference' run_group 대
 
 - 준비 전에 이 컨테이너의 release_sha(입력 revision에 들어가는 값)가 서빙 중인 API의 값과 같은지 본다. 다르면
   API가 읽지 않을 revision의 본문을 만들고 head를 옛 값으로 되돌리게 되므로 준비하지 않는다(종료 코드 4).
+- Map이 읽는 철도역·여객선 본문만 준비한다(bus·parking/current는 소비자가 없고 5분 공항 수집의 준비가 맡는다).
+  준비 뒤 제한 정리(만료 handle → 미사용 본문)도 한다.
 - Dagster run 밖이라 run_group 상한·수집 owner가 없다. 5분 공항 수집의 준비와 같은 본문을 두고 겹칠 수 있지만,
   겹친 종류는 `busy`(실패 아님)로 끝나고 어느 쪽도 실패하지 않는다(`prepare_reference_exports`).
 
@@ -59,6 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     # 무거운 앱 모듈은 인수 검증 뒤에만 읽는다.
     from app.core.config import get_settings
     from app.services.reference_export_preparation import (
+        MAP_EXPORT_KINDS,
         prepare_reference_exports_for_settings,
     )
 
@@ -72,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_RELEASE_MISMATCH
     try:
         result = asyncio.run(asyncio.wait_for(
-            prepare_reference_exports_for_settings(settings), timeout=args.timeout_seconds,
+            prepare_reference_exports_for_settings(settings, kinds=MAP_EXPORT_KINDS), timeout=args.timeout_seconds,
         ))
     except TimeoutError:
         summary: dict = {"status": "timeout"}
