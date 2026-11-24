@@ -395,6 +395,9 @@ class CollectionService:
         self.operation_lock = asyncio.Lock()
         # 이번 수집에서 KAC가 HTTP Retry-After로 요구한 가장 긴 대기(초). `operation_lock` 안에서만 쓴다.
         self._kac_retry_after: int | None = None
+        #: 이번 실행에서 KAC가 429(`KrairportRateLimitError`)를 돌려줬는가. Retry-After가 없어도 같은 실행의 다른 KAC 호출
+        #: (요금 공항별 호출)을 이어 가지 않는다 — SDK가 이미 backoff·Retry-After로 기다렸다 포기한 호출이다.
+        self._kac_rate_limited = False
 
     @property
     def client_mode(self) -> str:
@@ -464,6 +467,8 @@ class CollectionService:
             ))
 
     def _note_kac_retry_after(self, error: BaseException) -> None:
+        if isinstance(error, KrairportRateLimitError):
+            self._kac_rate_limited = True
         hint = rate_limit_retry_after(error)
         if hint is not None:
             self._kac_retry_after = max(hint, self._kac_retry_after or 0)
@@ -552,6 +557,7 @@ class CollectionService:
 
     async def _collect_unlocked(self, session: AsyncSession, trigger: str = "manual") -> dict[str, Any]:
         self._kac_retry_after = None
+        self._kac_rate_limited = False
         rate_limit_state = await self.get_upstream_rate_limit_state(session)
         can_collect_incheon = self.settings.enable_incheon_collection or self.settings.enable_incheon_fee_collection
         if rate_limit_state.is_blocked:
@@ -602,7 +608,7 @@ class CollectionService:
                         parsed = parse_incheon_parking(response.body_text)
                         snapshot_count += await self._store_observations(session, run.id, parsed)
 
-            if (self.settings.enable_fee_collection and not rate_limit_state.is_blocked
+            if (self.settings.enable_fee_collection and not rate_limit_state.is_blocked and not self._kac_rate_limited
                     and not any(is_upstream_rate_limit_error(message) for message in errors)):
                 for airport_code in self.settings.supported_airport_codes:
                     if airport_code == "ICN":
@@ -617,7 +623,7 @@ class CollectionService:
                         kac_fee_airport_code=airport_code,
                     )
                     if response is None:
-                        if any(is_upstream_rate_limit_error(message) for message in errors):
+                        if self._kac_rate_limited or any(is_upstream_rate_limit_error(message) for message in errors):
                             break
                         continue
                     raw_count += 1

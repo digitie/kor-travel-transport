@@ -538,3 +538,52 @@ def test_repeated_failures_back_off_exponentially(tmp_path: Path, monkeypatch, f
     assert failed_target_backoff(1) == timedelta(days=1)
     assert failed_target_backoff(3) == timedelta(days=4)
     assert failed_target_backoff(50) == timedelta(days=30)
+
+
+@pytest.mark.parametrize("error,age_hours,called", [
+    ("VworldAuthError", 23, True),           # 키 문제는 대상 대기에 세지 않는다 — 다음 정기 실행(약 1일 - 여유)에 다시 본다
+    ("VworldRateLimitError", 23, True),
+    ("VworldServerError", 23, False),        # 대상 자신의 실패 2회 연속(아래 과거 실패 포함) → 2일 대기
+    ("VworldServerError", 47, True),         # 2일 대기 - 2시간 여유: 하루씩 밀리지 않는다
+])
+def test_key_wide_and_outage_failures_do_not_grow_the_target_backoff(tmp_path: Path, monkeypatch, error, age_hours, called):
+    """사후 리뷰 P1: 인증·쿼터로 남은 실패는 그 대상의 지수 대기에 세지 않는다(키 교체 뒤 하루 이상 막히지 않게)."""
+    from datetime import timedelta
+
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("app.services.place_locations.asyncio.sleep", no_sleep)
+    FakeVworld.calls = []
+    settings = _settings(tmp_path, "keywide.sqlite3")
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> None:
+        await init_database(engine)
+        now = now_utc()
+        async with factory() as session:
+            session.add(FerryPort(source="data_go_kr_maritime", port_id="P1", port_name="대천",
+                first_seen_at=now, last_seen_at=now, raw_item_json={}))
+            params = {"query": "대천항", "name": "대천", "city_name": None}
+            session.add(RawApiResponse(source="vworld_place", endpoint="vworld:port:P1", request_params_json=params,
+                status_code=0, body_text="null", received_at=now - timedelta(days=3),
+                parse_status="failed", parse_error="VworldServerError"))
+            session.add(RawApiResponse(source="vworld_place", endpoint="vworld:port:P1", request_params_json=params,
+                status_code=0, body_text="null", received_at=now - timedelta(hours=age_hours),
+                parse_status="failed", parse_error=error))
+            await session.commit()
+            result = await PlaceLocationCollectionService(settings, client_factory=FakeVworld).collect(session)
+            assert result["provider_calls"] == (1 if called else 0)
+            assert result["backoff_skipped"] == (0 if called else 1)
+        await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_neutral_key_failures_neither_count_nor_break_the_streak():
+    """own → 키 문제 → own은 연속 2회다(중립 항목은 세지도 끊지도 않는다)."""
+    from app.services.place_locations import _target_failure
+
+    assert _target_failure("failed", "VworldServerError") is True
+    assert _target_failure("failed", "VworldAuthError") is None
+    assert _target_failure("success", None) is False

@@ -739,7 +739,7 @@ def _place_metadata(result: dict[str, Any]) -> dict[str, Any]:
     return {key: result.get(key, default) for key, default in (
         ("run_id", ""), ("status", ""), ("provider_calls", 0), ("deferred", 0), ("provider_failed", 0),
         ("provider_blocked", 0), ("incomplete", 0), ("unmatched", 0), ("bus_locations", 0), ("port_locations", 0),
-        ("rail_locations", 0))}
+        ("rail_locations", 0), ("backoff_skipped", 0))}
 
 
 def _finish_place_collection(context, result: dict[str, Any], provider: str) -> dict[str, Any]:

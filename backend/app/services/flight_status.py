@@ -21,6 +21,11 @@ KAC_FLIGHT_GATEWAY_ENDPOINT = "https://apis.data.go.kr/B551178/flight-status"
 INCHEON_FLIGHT_ARRIVALS_ENDPOINT = "http://apis.data.go.kr/B551177/StatusOfPassengerFlightsDeOdp/getPassengerArrivalsDeOdp"
 INCHEON_FLIGHT_DEPARTURES_ENDPOINT = "http://apis.data.go.kr/B551177/StatusOfPassengerFlightsDeOdp/getPassengerDeparturesDeOdp"
 SUCCESS_RESULT_CODES = {"00", "0"}
+#: 공개 요청 경로의 SDK 재시도: 한 번(짧은 backoff)만, Retry-After는 3초까지만 기다린다(python-krairport-api #15).
+PUBLIC_REQUEST_RETRIES = 1
+PUBLIC_REQUEST_MAX_RETRY_AFTER_SECONDS = 3.0
+#: Retry-After가 있는 rate_limited 응답의 최소 캐시(초) — 방문자마다 다시 부르지 않게.
+RATE_LIMITED_MIN_CACHE_SECONDS = 30
 SERVICE_KEY_PATTERN = re.compile(r"(serviceKey=)[^&'\"\s]+", re.IGNORECASE)
 
 SAMPLE_FLIGHT_ITEMS: dict[str, list[dict[str, str]]] = {
@@ -209,10 +214,13 @@ class KrairportFlightStatusClient(FlightStatusClient):
             "lang": "K",
             "inqtimechcd": "E",
         }
+        # 공개 HTTP 요청 안의 동기 조회다. SDK(#15)의 backoff·Retry-After 대기(호출당 최대 약 90초)를 그대로 두면 요청
+        # 하나가 수 분 걸린다. 한 번만 짧게 다시 하고 긴 Retry-After는 기다리지 않는다(예외로 올려 기존 오류 응답).
         async with KrairportClient(
             kac_service_key=self.settings.data_go_kr_service_key,
             iiac_service_key=self.settings.data_go_kr_service_key,
             timeout=self.settings.api_timeout_seconds,
+            retries=PUBLIC_REQUEST_RETRIES, max_retry_after=PUBLIC_REQUEST_MAX_RETRY_AFTER_SECONDS,
         ) as client:
             departures = await client.iiac_raw_items(
                 "StatusOfPassengerFlightsDeOdp", "getPassengerDeparturesDeOdp", base_params
@@ -245,6 +253,7 @@ class FlightStatusService:
             return cached[1]
 
         payload = await self._fetch_status(airport_code, local_date)
+        retry_after = payload.pop("_retry_after_seconds", None)
         status = payload.get("status")
         if status == "rate_limited":
             # Flight status is fetched on-demand per page view (no scheduler,
@@ -253,6 +262,10 @@ class FlightStatusService:
             # window would re-trigger another upstream call and keep
             # renewing it.
             backoff_seconds = self.settings.upstream_rate_limit_backoff_seconds
+            if retry_after is not None:
+                # 공개 요청은 짧은 Retry-After도 기다리지 않는다(`PUBLIC_REQUEST_MAX_RETRY_AFTER_SECONDS`). 몇 초짜리 TPS
+                # 제한 하나로 화면을 1시간 rate_limited로 두지 않게, 공급자가 요구한 시간만큼만(최소 30초) 캐시한다.
+                backoff_seconds = min(backoff_seconds, max(int(retry_after) + 1, RATE_LIMITED_MIN_CACHE_SECONDS))
             expires_at = current_time + timedelta(seconds=max(backoff_seconds, 0))
             self._cache[cache_key] = (expires_at, payload)
         elif status != "upstream_error":
@@ -337,8 +350,11 @@ class FlightStatusService:
             # which is never cached and would let every page view re-trigger
             # another rate-limited upstream call.
             status = "rate_limited" if isinstance(exc, KrairportRateLimitError) else "upstream_error"
+            hint = getattr(exc, "retry_after", None) if isinstance(exc, KrairportRateLimitError) else None
             return {
                 **base_payload,
+                # 내부 전용(응답 전에 get_status가 뺀다): 공급자가 요구한 대기만큼만 rate_limited를 캐시한다.
+                "_retry_after_seconds": hint if isinstance(hint, (int, float)) and hint == hint and hint > 0 else None,
                 "status": status,
                 "error_message": _build_flight_api_error_message(
                     exc,

@@ -1,3 +1,21 @@
+## 2026-11-24 — #262·#260 사후 적대 리뷰 P1 수정(POSTMERGE-REVIEW-20261124)
+
+- #262(KAC 429 Retry-After)와 #260(좌표 보강 부분 성공)은 머지 전 적대 리뷰 없이 머지됐다. 사후 리뷰(Popper·James 렌즈) P1 4건 중 3건을 고친다.
+- #262 P1-1: 같은 실행에서 KAC 429를 받은 뒤에도 요금 공항별 호출(최대 13곳, 호출마다 SDK가 Retry-After를 최대 3번 기다림)을 이어 갔다.
+  `_kac_rate_limited`(이번 실행에서 KAC `KrairportRateLimitError`를 받았는가)로 주차 429 뒤에는 요금 루프에 들어가지 않고, 요금 429면 남은
+  공항을 멈춘다(Retry-After가 없어도).
+- #262 P1-2: 공개 인천 운항현황 조회(공개 HTTP 요청 안)가 SDK 기본 재시도로 429마다 최대 약 90초를 기다릴 수 있었다. 이 경로만
+  `retries=1`, `max_retry_after=3초`. 대신 Retry-After가 있는 rate_limited는 그 시간만큼만(최소 30초, 최대 설정 backoff) 캐시한다
+  (재리뷰 P1: 몇 초짜리 429 하나로 화면이 1시간 rate_limited가 되지 않게).
+- #260 P1-4: 인증·쿼터·연속 장애로 남은 VWorld 실패가 그 순간 부른 대상의 지수 대기(1→2→4…30일)에 들어가 키 교체 뒤에도 하루 넘게
+  막혔다. 키 전체 문제(`VworldAuthError`·`VworldRateLimitError`)는 대상 대기에 세지 않는다. 연속 장애로 멈춘 실행의 실패는 계속 센다
+  (재리뷰 P1: 매일 같은 오류를 내는 대상이 셋 이상이면 장애와 구분되지 않아, 세지 않으면 지수 대기가 무력해지고 job이 매일 실패한다). 일 단위 대기에 2시간 여유(매일 조금 이른 실행이 하루씩 더 밀리던 경계). 대기로 건너뛴 대상 수 `backoff_skipped`를 op metadata에.
+- 남긴 것(소유자 결정): #260 P1-3 — 평소 하루 호출이 1~2건이라 VWorld 전면 장애가 "실패 3건 이상 + 50%" 조건에 닿지 않아 run은 SUCCESS
+  partial로 남는다. 한 대상의 결정적 실패와 제공기관 장애를 호출 1~2건으로는 구분할 수 없어 임계를 바꾸지 않았다. #262 P2(취소 시
+  quota 예약 미기록, Retry-After 7일 상한 등)는 후속.
+- 시험: `tests/test_airport_retry_after.py`(주차 429 뒤 요금 0회, 첫 요금 429 뒤 남은 공항 0회, 공개 조회 상한), `tests/test_place_locations.py`
+  (키 전체 실패는 대기에 세지 않음, 2시간 여유, 중립 항목 streak).
+
 ## 2026-11-24 — 고속도로 돌발 0건 집합을 성공으로 게시하지 않음(INCIDENT-EMPTY-SET-20261124)
 
 - Map n150 14일 재분류: `/v1/service/exports/highway-incidents/active`가 **0건 집합을 200으로 37회** 냈다(직전 최대 167~351건;

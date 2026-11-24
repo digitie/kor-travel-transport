@@ -1,3 +1,9 @@
+## 현재 상태 — 2026-11-24 #262·#260 사후 리뷰 P1 수정(POSTMERGE-REVIEW-20261124)
+
+- backend만. migration·UI 없음.
+- 배포(Codex 담당): backend 이미지(API·Dagster code-server 공용).
+- 다음 한 작업: 배포 뒤 KAC 429가 나면 같은 실행의 요금 호출이 없는지, VWorld 키 문제 뒤 다음 날 대상이 다시 호출되는지 확인.
+
 ## 현재 상태 — 2026-11-24 고속도로 돌발 0건 집합 거부(INCIDENT-EMPTY-SET-20261124)
 
 - backend만(수집 판정). migration·UI 없음. export 계약: 돌발 0건은 이제 200 빈 목록 대신 503(not-ready)이다.
