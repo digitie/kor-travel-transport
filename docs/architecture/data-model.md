@@ -258,8 +258,8 @@ SQLite dialect를 허용한다.
   구분해 확인하는 기준 테이블
 - 원천이 아닌 원장 행 두 개를 같은 표에 둔다(수집 상태 API의 `sources`에서는 뺀다): 공항 KAC 할당량(`airport_kac_quota`),
   소통 5분 통계 장기 복구 진행 위치(`krex_traffic_statistics_repair` — `next_due_at` = 다음 재대조 구간의 끝, NULL이면
-  진행 중인 한 바퀴 없음, `last_started_at`·`last_success_at` = 한 바퀴 시작·완료, `last_error` = 마지막 구간 실패 원인
-  코드). 자세히는 [수집 문서](collection.md#고속도로-소통-저장-transaction과-5분-통계2026-11-24-wlh-06) 7번.
+  진행 중인 한 바퀴 없음, `last_started_at`·`last_success_at` = 한 바퀴 시작·완료, `last_error` = 연속 구간 실패 원인
+  코드와 횟수 `<원인>;failures=<n>`, `updated_at` = 마지막 실패 시각). 자세히는 [수집 문서](collection.md#고속도로-소통-저장-transaction과-5분-통계2026-11-24-wlh-06) 7번.
 
 ### `rail_station_references`
 
