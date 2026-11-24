@@ -142,6 +142,7 @@ stale 기준(24시간 → 27.5시간), export 경로의 두 가지 500 → 503, 
   가장 안쪽 미들웨어(`app/core/export_guard.py`)가 한다 — **공개·관리 경로와 그 stream은 예전 그대로**(500, 같은
   예외 종류)다. 관리 유가 화면은 가격 이력 경로의 어떤 503이든 "수집 이력 없음"으로 보여 주기 때문이다
   (`fuel-station-history.tsx`). 그 밖의 DB 오류는 export에서도 500이다.
+- **T4 가격 이력 문장 상한(#274)**: export 503에 `code=EXPORT_QUERY_TIMEOUT`(Retry-After 5)을 싣는다. native 504는 그대로다.
 - **T2/T3 snapshot 안의 statement timeout(상태 코드 변경)**: `SET LOCAL statement_timeout`(10초, 재시도는 남은
   예산 이하)에 걸린 57014는 500 대신 503 `EXPORT_PREPARE_TIMEOUT`(Retry-After 60)이고 재시도하지 않는다.
 - **55P03·40P01 한 번 재시도(정책 변경)**: 예전에는 admission 대기 lock_timeout(55P03)이 곧바로 503이었다

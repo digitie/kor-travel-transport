@@ -94,6 +94,7 @@ transport 앱이 `/v1/service/exports/*`에서 내는 모든 503(T1·T2·T3·T4�
 | `EXPORT_EMPTY_SET` | 상태는 현재인데 낼 집합이 0건이다 — 돌발의 옛 "0건 성공" 같은 **안전망 분기**, T3 완결 head의 membership 0건 | 300(돌발·5분 주기), 3600(그 밖 T3) | highway-incidents/active, T3 | 위와 같다 |
 | `EXPORT_BUSY` | snapshot admission 경합(55P03·40P01을 한 번 새 RR로 재시도한 뒤에도, 반복된 40001·SnapshotRace, 경합 뒤 재시도가 예산을 다 씀) | 10 | T2/T3 | 같은 요청(같은 cursor)을 Retry-After 뒤 짧게 유한 재시도 |
 | `EXPORT_PREPARE_TIMEOUT` | 요청 경로 본문 구성 15초 예산 초과, snapshot 안의 statement timeout(57014), 본문 구성 중 handler 상한 25초 초과 | 60 | T2/T3 | 위와 같다 |
+| `EXPORT_QUERY_TIMEOUT` | T4 가격 이력 문장 상한(기본 3초, 57014)을 넘었다. 이 503에는 `meta`가 없다 | 5 | T4 가격 이력 | 같은 조회를 곧바로 반복하지 않고 Retry-After 뒤 유한 재시도 |
 | `TRANSIENT_DB` | pool checkout timeout·DB 접속 실패/timeout·PG 기동 중(57P03)·관리자 종료(57P01/57P02)·접속 수 초과(53300)·연결 예외(class 08, 08P01 제외)·끊긴 연결, 본문 구성 밖의 handler 상한 25초 초과(T2/T3/T4) | 15 | 모든 export | 위와 같다 |
 | `EXPORT_DISABLED` | `TRANSPORT_MAP_CURRENT_ENABLED=false`라 T2/T3 export가 꺼져 있거나, 그 기준정보의 source가 하나도 설정되지 않았다 | 3600 | T2/T3 | 재시도해도 같다 — 운영 설정 문제로 경보 |
 | `EXPORT_SOURCE_INCONSISTENT` | 승인 head·membership·본문·handle이 맞지 않거나 필수 이름·코드가 비었다 | 300 | T2/T3 | 다음 tick(다음 수집·준비가 고친다), 반복되면 경보 |
@@ -108,8 +109,9 @@ transport 앱이 `/v1/service/exports/*`에서 내는 모든 503(T1·T2·T3·T4�
 - **Map이 지금 이 code를 다루는 방식(#1549 기준)**: not-current 네 code는 다시 묻지 않고 run 실패, `EXPORT_BUSY`·
   `EXPORT_PREPARE_TIMEOUT`·`TRANSIENT_DB`는 같은 요청을 HTTP 층에서 4회까지(대기 `max(5·10·20초, Retry-After)`,
   한 번 60초 상한) 다시 묻고 다 쓰면 step 재시도·run 실패다. `EXPORT_DISABLED`·`EXPORT_SOURCE_INCONSISTENT`·
-  `EXPORT_TOO_LARGE`는 #1549의 분류 표에 없어 **모르는 code**로 다뤄진다 — 예전과 같이 step 재시도(`retryable=True`)다.
-  셋 다 재시도해도 풀리지 않는 쪽이므로 Map에 분류를 더하는 것이 후속이다.
+  `EXPORT_TOO_LARGE`·`EXPORT_QUERY_TIMEOUT`은 #1549의 분류 표에 없어 **모르는 code**로 다뤄진다 — 예전과 같이 step
+  재시도(`retryable=True`)다. 앞의 셋은 재시도해도 풀리지 않는 쪽, `EXPORT_QUERY_TIMEOUT`은 짧게 다시 묻는 쪽이므로 Map에
+  분류를 더하는 것이 후속이다.
 - **하위 호환**: `code`가 없거나 모르는 값이거나 공통 사전의 기본값(예: `SERVICE_UNAVAILABLE`)이면 예전과 같이
   "503 = 현재 집합을 낼 수 없음"으로 다룬다. 200 본문·`collection`·`meta`·cursor 의미는 바뀌지 않는다. T4의
   기계 판독 503 `meta.source_status=failed`도 그대로이고 `code=EXPORT_NO_HISTORY`가 더해질 뿐이다. T4의 일시 DB
