@@ -705,6 +705,8 @@ def test_postgres_connection_terminated_mid_query_is_transient_503(export_client
                             terminated.append(await session.scalar(text("SELECT pg_terminate_backend(:pid)"),
                                                                    {"pid": pid}))
                             return
+                        # pg_stat_activity는 transaction 안에서 처음 읽은 순간으로 고정된다 — 매번 transaction을 끝낸다.
+                        await session.rollback()
                         await asyncio.sleep(0.05)
             finally:
                 await engine.dispose()
