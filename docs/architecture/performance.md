@@ -109,7 +109,12 @@ DB 자체 JSON 집계는 45초로 더 느려 채택하지 않는다. 목표 충�
 확인은 내용을 다시 스캔하지 않는다. 운영 표본의 캐시된 52만 행 JSON 연결은
 약 0.25초였다. 기존 gzip 수준 1은 약 5.4MB, 품질 6 Brotli는 약 2.7MB다.
 압축률 수치는 배포 전 동일 표본 분석이며 HTTP 3초 달성을 뜻하지 않는다.
-공개 웹 프록시의 무제한 이력은 압축 원본 스트림으로 전달하고, 일반 JSON
+공개 웹 프록시의 무제한 이력(`limit` 없음)은 next.config `rewrites`(beforeFiles)로 pages API
+`src/pages/api/full-history.ts`가 맡아 backend 압축 본문(미리 만든 Brotli·gzip)과 `content-encoding`·`content-length`를
+그대로 스트림으로 넘긴다. Next 서버 압축은 이미 인코딩된 응답을 건너뛴다. App Router route handler는 응답의
+`content-encoding`·`content-length`를 버리고(Next 16.4 send-response) 다시 압축하므로, 거기서 압축 본문을 넘기면
+이중 gzip이 됐다(2026-11-24 운영 검증, HISTORY-DOUBLE-GZIP-20261124). rewrite를 비껴 App Router에 온 무제한 이력은
+fallback으로 identity를 받아 스트림으로 넘기고 Next가 한 번 압축한다(압축 본문이 오면 풀고, 모르는 인코딩이면 502). 일반 JSON
 프록시에서는 자동 압축 해제 후 잘못된 `Content-Length`를 버린다. 캐시 응답의
 캐시 적중·실패 시 직접 조회 모두 직렬화부터 실제 전송 완료까지 최대 2건만
 동시 실행해 대용량 본문의 메모리

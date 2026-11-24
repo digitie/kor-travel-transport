@@ -1,3 +1,9 @@
+## 현재 상태 — 2026-11-24 전체 이력 프록시 이중 gzip 수정(HISTORY-DOUBLE-GZIP-20261124)
+
+- 공개 웹(parking-radar frontend)만. backend·migration 없음.
+- 배포(Codex 담당): frontend(공개 웹) 이미지.
+- 무제한 이력은 next.config rewrite → pages API(`src/pages/api/full-history.ts`)가 backend 압축 본문을 그대로 넘긴다. App Router는 fallback.
+- 다음 한 작업: 배포 뒤 공개 URL에서 `days=30` 전체 이력이 br/gzip 한 겹인지, e2e `full-history-encoding.spec.ts`·`live-dashboard.spec.ts` 통과를 확인한다.
 ## 현재 상태 — 2026-11-24 #263 사후 리뷰 후속(ISOLATION-FOLLOWUP-20261124)
 
 - backend(상태 판정·재조회·주차 넘김) + transport-admin(상태 문구). migration 없음. OpenAPI에 `ProviderCollectionStatus.isolated_rows`(선택) 추가.

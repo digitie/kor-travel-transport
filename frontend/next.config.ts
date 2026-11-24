@@ -18,6 +18,19 @@ const nextConfig: NextConfig = {
   // 저장소는 루트의 CLAUDE.md/AGENTS.md만 AI agent entry로 둔다(drift 회피 정책,
   // CLAUDE.md §1). Next.js 16이 자동 생성하는 frontend/AGENTS.md·CLAUDE.md는 끈다.
   agentRules: false,
+  async rewrites() {
+    return {
+      // 30일 전체 이력(limit 없음)은 pages API가 backend 압축 본문(br·gzip)을 그대로 넘긴다. App Router route handler는
+      // 응답의 content-encoding을 버려 이중 gzip이 됐다(2026-11-24). 그 밖의 이력 요청은 App Router 프록시가 맡는다.
+      beforeFiles: [
+        {
+          source: "/api/backend/v1/parking/history",
+          missing: [{ type: "query" as const, key: "limit" }],
+          destination: "/api/full-history",
+        },
+      ],
+    };
+  },
   async headers() {
     return [
       {

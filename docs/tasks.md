@@ -1,5 +1,8 @@
 ## 2026-11-24 — 수집 실패 감사 후속
 
+- [ ] **HISTORY-DOUBLE-GZIP-20261124 / P1** — 전체 이력 프록시 이중 gzip 수정(pages API가 backend 압축 본문을 그대로 넘김). **남은 것**: frontend 배포 뒤
+  운영에서 `curl -H 'Accept-Encoding: br, gzip' .../api/backend/v1/parking/history?days=30`이 `content-encoding: br` 한 겹(약 2.7MB)이고,
+  `E2E_BASE_URL=<공개 URL> npx playwright test e2e/full-history-encoding.spec.ts e2e/live-dashboard.spec.ts`가 통과(전체 이력 3초 포함)하는지 확인.
 - [ ] **ISOLATION-FOLLOWUP-20261124 / P1** — #263 사후 리뷰 후속(격리 상태 표시 일관화, 일시적 파싱 오류 재조회, 주차 넘김 식별자 기준).
   **남은 것**: 배포 뒤 관리 화면에서 격리만 있는 공항·고속도로가 "부분 성공(격리 N건)"으로 보이는지, 같은 주차장이 계속 격리되는지 확인.
   [journal](journal.md) 2026-11-24.

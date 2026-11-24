@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { createServer } from "node:http";
-import { brotliCompressSync, brotliDecompressSync, constants, gunzipSync, gzipSync } from "node:zlib";
+import { brotliCompressSync, constants, gzipSync } from "node:zlib";
 
 describe("backend proxy route", () => {
   beforeEach(() => {
@@ -56,24 +56,26 @@ describe("backend proxy route", () => {
   });
 
   test.each([
-    { clientEncoding: "gzip", forwarded: "gzip", responseEncoding: "gzip" },
-    { clientEncoding: "br", forwarded: "br", responseEncoding: "br" },
-    { clientEncoding: "br, gzip;q=0", forwarded: "br", responseEncoding: "br" },
-    { clientEncoding: "br, gzip", forwarded: "br, gzip", responseEncoding: "br" },
-  ])("streams $clientEncoding full history without the JSON buffer limit", async ({ clientEncoding, forwarded, responseEncoding }) => {
+    { clientEncoding: "gzip", responseEncoding: "identity" },
+    { clientEncoding: "br, gzip", responseEncoding: "identity" },
+    // backend가 identity 요청을 무시하고 압축해 보내도 풀어서 넘긴다(머리말 없는 압축 바이트를 내보내지 않는다).
+    { clientEncoding: "gzip", responseEncoding: "gzip" },
+    { clientEncoding: "br", responseEncoding: "br" },
+  ])("streams $clientEncoding full history as uncompressed JSON (backend $responseEncoding)", async ({ clientEncoding, responseEncoding }) => {
+    // Next는 route handler 응답의 content-encoding을 버리고 서버 압축을 다시 건다 — 압축 본문을 넘기면 이중 gzip이 된다.
     const uncompressed = JSON.stringify({ items: ["x".repeat(17 * 1024 * 1024)], next_cursor: null });
-    const compressed = responseEncoding === "br" ? brotliCompressSync(uncompressed, {
+    const payloadFromBackend = responseEncoding === "br" ? brotliCompressSync(uncompressed, {
       params: { [constants.BROTLI_PARAM_QUALITY]: 4 },
-    }) : gzipSync(uncompressed);
+    }) : responseEncoding === "gzip" ? gzipSync(uncompressed) : Buffer.from(uncompressed);
     let forwardedEncoding: string | undefined;
     const server = createServer((upstreamRequest, response) => {
       forwardedEncoding = upstreamRequest.headers["accept-encoding"];
       response.writeHead(200, {
         "content-type": "application/json",
-        "content-encoding": responseEncoding,
-        "content-length": compressed.length,
+        ...(responseEncoding === "identity" ? {} : { "content-encoding": responseEncoding }),
+        "content-length": payloadFromBackend.length,
       });
-      response.end(compressed);
+      response.end(payloadFromBackend);
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     try {
@@ -87,11 +89,29 @@ describe("backend proxy route", () => {
       const response = await GET(request, { params: Promise.resolve({ path: ["v1", "parking", "history"] }) });
 
       expect(response.status).toBe(200);
-      expect(forwardedEncoding).toBe(forwarded);
-      expect(response.headers.get("content-encoding")).toBe(responseEncoding);
-      expect(response.headers.get("content-length")).toBe(String(compressed.length));
-      const payload = Buffer.from(await response.arrayBuffer());
-      expect((responseEncoding === "br" ? brotliDecompressSync(payload) : gunzipSync(payload)).toString()).toBe(uncompressed);
+      expect(forwardedEncoding).toBe("identity");
+      expect(response.headers.has("content-encoding")).toBe(false);
+      expect(response.headers.has("content-length")).toBe(false);
+      expect(Buffer.from(await response.arrayBuffer()).toString()).toBe(uncompressed);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+
+  test("rejects a full-history body in an unknown encoding instead of forwarding mislabeled bytes", async () => {
+    const server = createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "application/json", "content-encoding": "zstd" });
+      response.end("not-json");
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("missing test server port");
+      vi.stubEnv("BACKEND_INTERNAL_URL", `http://127.0.0.1:${address.port}`);
+      const { GET } = await import("@/app/api/backend/[...path]/route");
+      const request = new NextRequest("https://pr.digitie.mywire.org/api/backend/v1/parking/history?days=30");
+      const response = await GET(request, { params: Promise.resolve({ path: ["v1", "parking", "history"] }) });
+      expect(response.status).toBe(502);
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     }
