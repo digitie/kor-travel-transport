@@ -1,7 +1,11 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 // #263 후속: 무효 원천 행만 격리한 부분 성공은 운영 상태 목록에서 공항·고속도로 모두 "부분 성공(격리 N건)"이다.
 // 실패 배지(destructive)나 "수집 실패" 안내로 보이지 않는다. provider 응답은 route로 고정한다.
+// 펼친 행 본문에 같은 공동 작업의 다른 원천 이름이 보일 수 있어, 행은 summary의 원천 이름으로만 고른다.
+const providerRow = (page: Page, name: string) =>
+  page.locator("details.provider-row").filter({ has: page.locator("summary", { hasText: name }) });
+
 const item = (source: string, name: string, job: string, status: string, isolated: number | null, jobIsolated: number) => ({
   source, name, job_name: job, job_status: "partial_success", enabled: true, mode: "scheduled", status,
   interval_seconds: 300, last_started_at: "2026-11-24T09:25:00Z", last_success_at: "2026-11-24T09:26:00Z",
@@ -30,9 +34,9 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
       return route.fulfill({ json: { items: [] } });
     });
     await page.goto("/collections");
-    const airport = page.locator("details.provider-row").filter({ hasText: "한국공항공사 주차" });
-    const highway = page.locator("details.provider-row").filter({ hasText: "고속도로 소통" });
-    const incident = page.locator("details.provider-row").filter({ hasText: "고속도로 돌발" });
+    const airport = providerRow(page, "한국공항공사 주차");
+    const highway = providerRow(page, "고속도로 소통");
+    const incident = providerRow(page, "고속도로 돌발");
     await expect(airport.locator("summary")).toContainText("공동 작업 부분 성공(격리 1건)");
     await expect(highway.locator("summary")).toContainText("부분 성공(격리 3건)");
     // 격리 배지는 실패(destructive)가 아니라 경고 톤이다.
