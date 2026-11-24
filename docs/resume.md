@@ -1,3 +1,13 @@
+## 현재 상태 — 2026-11-24 주차 통계 보관 적재 주 1회 정기 실행(PARKING-ARCHIVE-WEEKLY-20261124)
+
+- Dagster code-server(새 schedule `parking_statistics_archive_job_schedule`, run group `parking_archive`) + backend 수집 서비스
+  (Dagster 공항 수집의 lease 90초 대기). migration·UI·OpenAPI 없음. 정리·원본 삭제 자동화 없음.
+- 배포(Codex 담당): transport backend 이미지(Dagster code-server). odroid 공용 instance에서 새 schedule은 `default_status=RUNNING`으로
+  올라온다(instigator를 따로 켤 필요 없음). Manager 공용 `dagster.yaml`에 `parking_archive` run group 상한을 넣을지는 선택(coalescing·
+  lease로 겹침은 이미 막힌다).
+- 다음 한 작업: 배포 뒤 첫 월요일 05:10 run의 `stop_reason`·`batches`·`max_batch_seconds`·`oldest_pending_at`, 같은 시간 공항 run이
+  늦어지거나 `skipped`(lease)가 없는지 확인. 늘 `slow_batch`면 배치 상한을 줄이거나 다시 정한다.
+
 ## 현재 상태 — 2026-11-24 공항 통계 사전집계 갱신 지연 경보(ANALYTICS-REFRESH-ALERT-20261124)
 
 - backend(판정·providers 필드, OpenAPI 추가) + Dagster code-server(공항 수집 op가 판정·태그) + transport-admin(홈 경보·운영 상태 행). migration 없음.

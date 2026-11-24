@@ -50,5 +50,5 @@ async def test_combined_outcome_preserves_separate_domains(monkeypatch, airport_
     for key in ["global_selection_start_at", "global_selected_buckets", "global_verified_buckets", "global_buckets"]:
         assert result[key] == global_result[key]
     assert result["latest_seeded"] == 4 and result["pruned_snapshots"] == 0
-    airport_action.assert_awaited_once_with(session, checked_at=NOW)
+    airport_action.assert_awaited_once_with(session, checked_at=NOW, max_buckets=144)
     global_action.assert_awaited_once_with(session, checked_at=NOW)

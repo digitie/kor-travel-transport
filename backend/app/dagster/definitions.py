@@ -26,7 +26,9 @@ from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
 from kortravelcommon.deadline import call_with_deadline
-from kortravelcommon.dagster import RecoveryPolicy, coalescing_schedule, infrastructure_retry_sensor, reconciliation_sensor
+from kortravelcommon.dagster import (
+    RecoveryPolicy, coalescing_schedule, has_active_run, infrastructure_retry_sensor, reconciliation_sensor,
+)
 from kortravelcommon.scheduling import staggered_cron
 
 from app.dagster import recovery
@@ -75,10 +77,13 @@ MAX_RUNTIME_SECONDS = 14400
 #: 늦어도 run monitoring보다 먼저 끝나 실패를 직접 기록한다.
 #: - 기준정보 파생 본문 준비: 180초(기존 값).
 #: 그 밖의 job은 주기가 4시간 이상이거나(유가 브라우저 수집 3.5시간 포함) 이어 하기 backfill이라 `MAX_RUNTIME_SECONDS`를 둔다.
+#: - 주차 통계 보관(주 1회 정기 실행): 새 배치는 `PARKING_ARCHIVE_TIME_BUDGET_SECONDS`(30분) 안에서만 시작하고, 배치 하나와
+#:   공항 수집 양보 대기를 더해 45분 = 2,700초.
 JOB_MAX_RUNTIME_SECONDS = {
     "airport_collection_job": 1800,
     "highway_collection_job": 1200,
     "reference_export_prepare_job": 180,
+    "parking_statistics_archive_job": 2700,
 }
 #: `dagster/priority`(클수록 큐에서 먼저 시작). 공용 run 큐(odroid `max_concurrent_runs` 5, location 상한)가 찰 때 사용자에게
 #: 바로 보이는 실시간 현황(공항 주차·고속도로 소통)을 먼저 띄운다. 이 태그는 공용 instance 전체의 큐 순서라 다른 테넌트(기본 0)와도
@@ -89,6 +94,8 @@ JOB_PRIORITIES = {
     "fuel_collection_job": 5,
     "rest_area_fuel_price_collection_job": 5,
     "reference_export_prepare_job": 5,
+    # 주차 통계 보관은 provider 호출 없는 DB 작업이다. 실시간 수집 뒤로(기본값 0을 명시).
+    "parking_statistics_archive_job": 0,
 }
 #: 인프라 재시도(프로세스·launcher 장애)를 허용하는 멱등 job.
 IDEMPOTENT_JOBS = frozenset({"airport_collection_job", "highway_collection_job", "rest_area_reference_collection_job"})
@@ -366,8 +373,15 @@ def _settings() -> Settings:
     return settings
 
 
+#: 공항 수집이 DB lease를 다른 보유자(주차 통계 보관 배치)가 쥐고 있을 때 기다리는 상한(초). 보관 배치는
+#: `PARKING_ARCHIVE_SLOW_BATCH_SECONDS`를 넘으면 더 시작하지 않으므로 보통 그 안에 풀린다. 넘으면 지금처럼 이번 주기를 건너뛴다.
+AIRPORT_LEASE_WAIT_SECONDS = 90
+
+
 async def _collect_airport_with_analytics(session, *, settings: Settings, trigger: str) -> dict[str, Any]:
-    result = await CollectionService(settings).collect(session, trigger=trigger)
+    result = await CollectionService(settings).collect(
+        session, trigger=trigger, lease_wait_seconds=AIRPORT_LEASE_WAIT_SECONDS,
+    )
     if result.get("snapshot_count", 0) > 0 or result.get("status") == "success":
         try:
             # collect는 성공분과 실행 상태를 이미 commit했다. 파생 결과 실패로 원본을 되돌리지 않는다.
@@ -1179,42 +1193,165 @@ def airport_collection_job() -> None:
     prepare_reference_exports(collect_airport_parking())
 
 
-@op
-@_redact_op_errors
-def archive_airport_parking_statistics(context) -> dict[str, Any]:
-    # 원본 수집/provider와 별개인 DB 전용 작업. reader 전환 전 자동 schedule/삭제는 없다.
-    result = asyncio.run(_run_with_session(_settings(), archive_parking_with_coverage))
-    fields = {"status", "coverage_status", "archived_buckets", "deferred_buckets", "pruned_snapshots",
-              "checked_at", "raw_cutoff_at", "complete_before", "max_buckets",
-              "selection_start_at", "selection_end_exclusive", "selected_observed_min_at", "selected_observed_max_at",
-              "selected_snapshots", "selected_buckets", "verified_buckets", "verification_scope",
-              "verified_min_bucket_at", "verified_max_bucket_at", "archived_min_bucket_at", "archived_max_bucket_at",
-              "verification_domain", "airport_status", "airport_coverage_status", "global_status", "global_coverage_status",
-              "latest_seeded", "oldest_pending_at", "deferred_count_scope", "blocked_scope", "blocked_reason", "blocked_bucket_at",
-              "global_buckets", "global_max_buckets", "global_deferred_buckets", "global_deferred_count_scope", "global_oldest_pending_at",
-              "global_selection_start_at", "global_selection_end_exclusive", "global_selected_observed_min_at", "global_selected_observed_max_at",
-              "global_selected_snapshots", "global_selected_buckets", "global_verified_buckets", "global_verification_scope",
-              "global_verified_min_bucket_at", "global_verified_max_bucket_at", "global_archived_min_bucket_at", "global_archived_max_bucket_at"}
-    context.add_output_metadata({key: value for key, value in result.items() if key in fields})
+#: 주차 통계 보관 적재의 정기 실행(소유자 결정 2026-11-24: **적재만** 주 1회 자동, 정리·원본 삭제는 수동 유지 —
+#: `prune_parking_raw`는 계속 항상 거부). 매주 월요일 05:10 KST: 유가 브라우저 수집(00:00 시작, 최대 3.5시간)과 새벽
+#: 기준정보 job(02:30~04:45)이 끝난 뒤, 06:00 KRIC 시간표 전이다. 공항 하루 수집은 2,016 버킷(공항 14곳 x 10분 144)이라
+#: 수동 기본값(배치 1개·144 버킷)으로는 한 주 분량을 따라가지 못한다. 정기 실행은 배치 하나에 하루 범위를 끝내고
+#: (`max_buckets=2016`) 시간 예산 안에서 배치를 이어 한다(`PARKING_ARCHIVE_SCHEDULED_CONFIG`).
+PARKING_ARCHIVE_SCHEDULE_CRON = "10 5 * * 1"
+#: 수동 실행 기본값(예전 동작 그대로: 배치 1개, 공항 버킷 144, busy면 바로 끝냄).
+PARKING_ARCHIVE_DEFAULT_BUCKETS = 144
+PARKING_ARCHIVE_SCHEDULED_CONFIG = {"max_batches": 100, "max_buckets": 2016, "busy_retries": 30}
+#: 이 시간이 지나면 새 배치를 시작하지 않는다(run 상한 `JOB_MAX_RUNTIME_SECONDS` 2,700초 안).
+PARKING_ARCHIVE_TIME_BUDGET_SECONDS = 1800
+#: 배치 하나가 이보다 오래 걸리면 더 시작하지 않는다. 배치는 공항 수집과 같은 DB lease를 쥐므로 공항 수집의 lease 대기
+#: (`AIRPORT_LEASE_WAIT_SECONDS`)보다 충분히 짧아야 5분 수집 한 주기를 잃지 않는다.
+PARKING_ARCHIVE_SLOW_BATCH_SECONDS = 45
+#: lease 경합(`busy`) 뒤 다시 시도하는 간격, 공항 수집 run이 대기·진행 중일 때 다시 보는 간격(초).
+PARKING_ARCHIVE_BUSY_WAIT_SECONDS = 10
+PARKING_ARCHIVE_YIELD_POLL_SECONDS = 5
+#: 결과 metadata에 싣는 서비스 결과 필드(마지막 배치 기준). 원문·비밀값은 없다.
+PARKING_ARCHIVE_METADATA_FIELDS = frozenset({
+    "status", "coverage_status", "archived_buckets", "deferred_buckets", "pruned_snapshots",
+    "checked_at", "raw_cutoff_at", "complete_before", "max_buckets",
+    "selection_start_at", "selection_end_exclusive", "selected_observed_min_at", "selected_observed_max_at",
+    "selected_snapshots", "selected_buckets", "verified_buckets", "verification_scope",
+    "verified_min_bucket_at", "verified_max_bucket_at", "archived_min_bucket_at", "archived_max_bucket_at",
+    "verification_domain", "airport_status", "airport_coverage_status", "global_status", "global_coverage_status",
+    "latest_seeded", "oldest_pending_at", "deferred_count_scope", "blocked_scope", "blocked_reason", "blocked_bucket_at",
+    "global_buckets", "global_max_buckets", "global_deferred_buckets", "global_deferred_count_scope", "global_oldest_pending_at",
+    "global_selection_start_at", "global_selection_end_exclusive", "global_selected_observed_min_at",
+    "global_selected_observed_max_at", "global_selected_snapshots", "global_selected_buckets", "global_verified_buckets",
+    "global_verification_scope", "global_verified_min_bucket_at", "global_verified_max_bucket_at",
+    "global_archived_min_bucket_at", "global_archived_max_bucket_at",
+})
+
+
+def _archive_clock() -> float:
+    """정기 보관의 시간 예산·배치 시간 측정(시험이 바꿔 낀다)."""
+    return time.monotonic()
+
+
+def _archive_sleep(seconds: float) -> None:
+    """정기 보관의 대기(시험이 바꿔 낀다)."""
+    time.sleep(seconds)
+
+
+def _airport_collection_active(context) -> bool:
+    """공항 수집 run이 대기·진행 중인가. 정기 보관은 그동안 배치를 시작하지 않는다.
+
+    같은 DB lease를 쓰므로 겹치면 한쪽이 기다리거나 건너뛴다. 공항 run 안의 수집 뒤 사전집계 갱신도 같은 lease를
+    try-lock으로 잡아, 보관 배치와 겹치면 그 주기의 갱신을 건너뛴다. 확인에 실패하면 진행 중으로 본다(양보 쪽).
+    """
+    try:
+        return has_active_run(context.instance, job_name=airport_collection_job.name, project="transport",
+                              location_name="kor-travel-transport")
+    except Exception:  # noqa: BLE001 — 확인 실패로 보관을 실패시키지 않고 양보한다(시간 예산이 끝을 낸다).
+        return True
+
+
+def _log_archive_batch(context, result: dict[str, Any], batch_seconds: float) -> None:
     context.log.info(
         "주차 통계 결과: status=%s coverage_status=%s selected_snapshots=%s verified_buckets=%s "
         "archived_buckets=%s deferred_buckets=%s pruned_snapshots=%s raw_cutoff_at=%s selection=[%s,%s) "
-        "global_status=%s global_verified_buckets=%s global_buckets=%s global_deferred_buckets=%s blocked_reason=%s",
+        "global_status=%s global_verified_buckets=%s global_buckets=%s global_deferred_buckets=%s blocked_reason=%s "
+        "batch_seconds=%.1f",
         result.get("status"), result.get("coverage_status"), result.get("selected_snapshots", 0),
         result.get("verified_buckets", 0), result.get("archived_buckets", 0), result.get("deferred_buckets", 0),
         result.get("pruned_snapshots", 0), result.get("raw_cutoff_at"),
         result.get("selection_start_at"), result.get("selection_end_exclusive"),
         result.get("global_status"), result.get("global_verified_buckets", 0), result.get("global_buckets", 0),
-        result.get("global_deferred_buckets", 0), result.get("blocked_reason"),
+        result.get("global_deferred_buckets", 0), result.get("blocked_reason"), batch_seconds,
     )
-    if result["status"] == "blocked":
-        # 보류 상태 commit 뒤 job은 실패시킨다. 녹색 실행으로 coverage 성공을 위장하지 않는다.
-        raise Failure(description="주차 영구 통계 검산이 보류되었습니다. parking_archive_issues를 확인하세요.",
-                      metadata={key: value for key, value in result.items() if key in fields})
-    return result
 
 
-@job(tags=_job_tags("parking", "parking_statistics_archive_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
+@op(config_schema={
+    "max_batches": Field(int, default_value=1, is_required=False,
+                         description="이어 할 배치 수 상한(1~500). 기본 1 = 예전 수동 동작."),
+    "max_buckets": Field(int, default_value=PARKING_ARCHIVE_DEFAULT_BUCKETS, is_required=False,
+                         description="배치 하나의 공항 통계 버킷 상한(1~2016, 2016 = 하루 범위 전체)."),
+    "busy_retries": Field(int, default_value=0, is_required=False,
+                          description="DB lease 경합(busy) 뒤 다시 시도하는 횟수(0~100)."),
+})
+@_redact_op_errors
+def archive_airport_parking_statistics(context) -> dict[str, Any]:
+    # 원본 수집/provider와 별개인 DB 전용 작업. 적재·검산만 하고 원본 정리(삭제)는 없다.
+    config = context.op_config
+    max_batches, max_buckets, busy_retries = config["max_batches"], config["max_buckets"], config["busy_retries"]
+    if not (1 <= max_batches <= 500 and 1 <= max_buckets <= 2016 and 0 <= busy_retries <= 100):
+        raise Failure(description="주차 통계 보관 설정이 범위를 벗어났습니다"
+                                  "(max_batches 1~500, max_buckets 1~2016, busy_retries 0~100).",
+                      allow_retries=False)
+    settings = _settings()
+    started = _archive_clock()
+    totals: dict[str, Any] = {"batches": 0, "total_archived_buckets": 0, "total_global_buckets": 0,
+                              "busy_retries_used": 0, "max_batch_seconds": 0.0, "stop_reason": ""}
+    result: dict[str, Any] = {}
+
+    def out_of_time() -> bool:
+        return _archive_clock() - started >= PARKING_ARCHIVE_TIME_BUDGET_SECONDS
+
+    while True:
+        # 공항 수집 run이 대기·진행 중이면 배치를 시작하지 않는다(수동 실행도 — 보관 job은 공항 수집과 다른 run group이라
+        # Dagster가 둘을 더는 직렬화하지 않는다).
+        while _airport_collection_active(context) and not out_of_time():
+            _archive_sleep(PARKING_ARCHIVE_YIELD_POLL_SECONDS)
+        if out_of_time():
+            totals["stop_reason"] = "time_budget"
+            break
+        batch_started = _archive_clock()
+        result = asyncio.run(_run_with_session(
+            settings, archive_parking_with_coverage, max_buckets=max_buckets,
+            max_runtime_seconds=job_max_runtime_seconds("parking_statistics_archive_job"),
+        ))
+        batch_seconds = _archive_clock() - batch_started
+        totals["max_batch_seconds"] = round(max(totals["max_batch_seconds"], batch_seconds), 3)
+        _log_archive_batch(context, result, batch_seconds)
+        status = result["status"]
+        if status == "blocked":
+            totals["stop_reason"] = "blocked"
+            # 보류 상태 commit 뒤 job은 실패시킨다. 녹색 실행으로 coverage 성공을 위장하지 않는다.
+            raise Failure(description="주차 영구 통계 검산이 보류되었습니다. parking_archive_issues를 확인하세요.",
+                          metadata={**{key: value for key, value in result.items()
+                                       if key in PARKING_ARCHIVE_METADATA_FIELDS}, **totals})
+        if status == "busy":
+            # 다른 보유자(공항 수집·수동 보관)가 lease를 쥐고 있다. 변경 0으로 돌아왔다.
+            if totals["busy_retries_used"] < busy_retries and not out_of_time():
+                totals["busy_retries_used"] += 1
+                _archive_sleep(PARKING_ARCHIVE_BUSY_WAIT_SECONDS)
+                continue
+            totals["stop_reason"] = "busy"
+            break
+        totals["batches"] += 1
+        totals["total_archived_buckets"] += int(result.get("archived_buckets", 0) or 0)
+        totals["total_global_buckets"] += int(result.get("global_buckets", 0) or 0)
+        if status != "batch_complete":
+            # no_new_rows(새 원본 없음)·deferred(남은 가장 오래된 버킷이 아직 늦은 수신 보류) — 더 돌려도 진척이 없다.
+            totals["stop_reason"] = status
+            break
+        if totals["batches"] >= max_batches:
+            totals["stop_reason"] = "max_batches"
+            break
+        if batch_seconds > PARKING_ARCHIVE_SLOW_BATCH_SECONDS:
+            totals["stop_reason"] = "slow_batch"
+            break
+        if out_of_time():
+            totals["stop_reason"] = "time_budget"
+            break
+    context.add_output_metadata({**{key: value for key, value in result.items()
+                                    if key in PARKING_ARCHIVE_METADATA_FIELDS}, **totals})
+    if max_batches > 1 and totals["stop_reason"] in {"max_batches", "slow_batch", "time_budget", "busy"}:
+        # 실패는 아니다(적재한 배치는 commit했다). 남은 보관분은 다음 정기 실행이나 수동 실행이 이어 한다.
+        context.log.warning(
+            f"주차 통계 보관을 {totals['stop_reason']}로 멈췄습니다(배치 {totals['batches']}개, 공항 버킷 "
+            f"{totals['total_archived_buckets']}·전국 {totals['total_global_buckets']}, 가장 긴 배치 "
+            f"{totals['max_batch_seconds']}초). 남은 가장 오래된 보관 대상: {result.get('oldest_pending_at')}.")
+    return {**result, **totals}
+
+
+# 공항 수집(run group `parking`, 상한 1)과 다른 run group이다 — 같은 group이면 정기 보관 run(최대 45분) 동안 5분 공항 수집이
+# Dagster 대기열에 묶인다. DB 직렬화는 같은 advisory lease가 맡고, 보관은 공항 run이 대기·진행 중이면 배치를 시작하지 않는다.
+@job(tags=_job_tags("parking_archive", "parking_statistics_archive_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))
 def parking_statistics_archive_job() -> None:
     archive_airport_parking_statistics()
 
@@ -1482,6 +1619,12 @@ definitions = Definitions(
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=airport_collection_job, cron_schedule=staggered_cron(interval_minutes=5, phase_minutes=1), execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=highway_collection_job, cron_schedule=staggered_cron(interval_minutes=5, phase_minutes=3), execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=fuel_collection_job, cron_schedule="0 */8 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
+        # 주차 통계 보관 적재만 주 1회(정리·원본 삭제는 수동). 설정·시각 근거는 `PARKING_ARCHIVE_*` 주석.
+        coalescing_schedule(project="transport", location_name="kor-travel-transport", job=parking_statistics_archive_job,
+                            cron_schedule=PARKING_ARCHIVE_SCHEDULE_CRON, execution_timezone="Asia/Seoul",
+                            default_status=DefaultScheduleStatus.RUNNING,
+                            run_config={"ops": {"archive_airport_parking_statistics": {
+                                "config": dict(PARKING_ARCHIVE_SCHEDULED_CONFIG)}}}),
         # 매일 due를 평가하되 service가 마지막 성공 뒤 48시간 전에는 provider를 호출하지 않는다.
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=rail_reference_collection_job, cron_schedule="0 3 * * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),
         coalescing_schedule(project="transport", location_name="kor-travel-transport", job=maritime_reference_collection_job, cron_schedule="0 3 */3 * *", execution_timezone="Asia/Seoul", default_status=DefaultScheduleStatus.RUNNING),

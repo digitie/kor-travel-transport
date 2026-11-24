@@ -60,6 +60,10 @@ run_coordinator:
       - key: kortraveltransport/run_group
         value: reference
         limit: 1
+      # 주차 통계 보관(주 1회 정기 + 수동). 공항 수집(`parking`)과 따로 돈다 — DB 직렬화는 advisory lease가 맡는다.
+      - key: kortraveltransport/run_group
+        value: parking_archive
+        limit: 1
 
 retention:
   schedule:

@@ -44,8 +44,9 @@ def test_successful_job_persists_business_outcome_and_scope(monkeypatch, status,
                "global_selection_start_at": None, "global_selection_end_exclusive": None,
                "global_verification_scope": "none", "latest_seeded": 2}
 
-    async def fake_run(_settings, action):
+    async def fake_run(_settings, action, **kwargs):
         assert action is module.archive_parking_with_coverage
+        assert kwargs["max_buckets"] == 144  # 수동 기본값은 예전 그대로다
         return payload
 
     monkeypatch.setattr(module, "_settings", lambda: None)
@@ -71,8 +72,9 @@ def test_blocked_job_persists_failure_scope_without_exposing_unlisted_payload(mo
                "global_verified_buckets": 2, "global_status": "blocked",
                "global_coverage_status": "conflict", "raw_payload": "공개 금지"}
 
-    async def fake_run(_settings, action):
+    async def fake_run(_settings, action, **kwargs):
         assert action is module.archive_parking_with_coverage
+        assert kwargs["max_buckets"] == 144  # 수동 기본값은 예전 그대로다
         return payload
 
     monkeypatch.setattr(module, "_settings", lambda: None)
@@ -99,11 +101,11 @@ def test_real_database_job_success_records_no_audit_outcome(tmp_path, test_setti
         return url
     database_url = asyncio.run(prepare())
 
-    async def real_run(_settings, action):
+    async def real_run(_settings, action, *, max_buckets, max_runtime_seconds):
         engine, factory = create_engine_and_session_factory(database_url)
         try:
             async with factory() as session:
-                result = await action(session, checked_at=NOW)
+                result = await action(session, checked_at=NOW, max_buckets=max_buckets)
                 await session.commit()
                 return result
         finally:

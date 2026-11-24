@@ -1,3 +1,20 @@
+## 2026-11-24 — 주차 통계 보관 적재 주 1회 정기 실행(PARKING-ARCHIVE-WEEKLY-20261124)
+
+- 소유자 결정(2026-11-24): `parking_statistics_archive_job`(#259 문서 `parking-retention.md`)은 **보관 적재만** 주 1회 자동, 정리·원본
+  삭제는 수동 유지(`prune_parking_raw` 계속 거부). 감사(Map `docs/reports/2026-11-23-collection-failure-audit.md` §2.2 "40일간 실행 0") 후속.
+- schedule: 매주 월 05:10 KST, `coalescing_schedule`, `default_status=RUNNING`, `dagster/priority` 0, `dagster/max_runtime` 2,700초.
+  유가(00:00, 최대 3.5시간)·새벽 기준정보(02:30~04:45) 뒤, 06:00 KRIC 전.
+- 배치: 하루 공항 수집 2,016 버킷(14곳 x 144)인데 한 실행이 144 버킷이라 주 1회 한 배치로는 한 주의 1/14도 못 한다. op에 설정
+  (`max_batches`·`max_buckets`·`busy_retries`)을 두고 정기 run_config는 100·2016·30. 수동 기본값(1·144·0)은 예전 그대로.
+  `archive_parking_with_coverage(max_buckets=)`로 공항 상한을 넘긴다(1~2016). 새 배치는 30분 안에서만, 배치 하나가 45초를 넘으면 멈춤.
+- 공항 수집 보호: 보관 job을 run group `parking` → `parking_archive`로 옮겼다(같은 group 상한 1이면 보관 run 동안 5분 공항 수집이 대기열에
+  묶인다). 정기 실행은 공항 run이 대기·진행 중이면 배치를 시작하지 않고(`has_active_run`), 공항 수집은 lease를 쥔 보관 배치를 최대 90초
+  기다린다(`CollectionService.collect(lease_wait_seconds=)`, Dagster 경로만. HTTP 수동 수집은 예전처럼 즉시 건너뜀).
+- 결과: 마지막 배치 metadata + 합계(`batches`·`total_archived_buckets`·`total_global_buckets`·`busy_retries_used`·`max_batch_seconds`·
+  `stop_reason`). 따라잡지 못하고 멈추면 경고 로그(남은 `oldest_pending_at`), run은 성공. `blocked`는 실패(주 1회).
+- 시험: `test_parking_archive_schedule.py`(달력·run_config·태그·group, 배치 이음·멈춤 사유 7종·양보·busy 재시도·시간 예산·설정 범위,
+  lease 대기·상한·Dagster 경로 전달, 정리 계속 거부), `test_parking_archive_observability.py`(수동 기본 144 전달).
+
 ## 2026-11-24 — 공항 통계 사전집계 갱신 지연 경보(ANALYTICS-REFRESH-ALERT-20261124)
 
 - #271 이후 대시보드 묶음은 사전집계 갱신을 기다리는 동안 직전 사전집계를 내고, 사전집계 뒤의 새 적재가 40분(`DASHBOARD_REFRESH_GRACE`)을 넘기거나
