@@ -1,4 +1,5 @@
 """Common pin 변경이 Transport의 실제 retry sensor 대상·예산을 보존하는지 확인한다."""
+import kortravelcommon.dagster as common_dagster
 import pytest
 from dagster import DagsterEvent, DagsterEventType, DagsterInstance, DagsterRunStatus, build_sensor_context
 from dagster._core.events import JobFailureData, RunFailureReason, StepFailureData
@@ -22,7 +23,9 @@ def origin(name):
     "airport_collection_job", "highway_collection_job", "rest_area_reference_collection_job",
 ])
 @pytest.mark.parametrize("case", ["crash", "provider", "mixed", "missing"])
-def test_transport_retry_requires_proven_child_crash_and_keeps_one_retry(name, case):
+def test_transport_retry_requires_proven_child_crash_and_keeps_one_retry(name, case, monkeypatch):
+    # common은 방금 기록된 실패 event를 settle(기본 120초) 뒤에 판정한다. 시험은 바로 판정한다.
+    monkeypatch.setattr(common_dagster, "FAILURE_SETTLE_SECONDS", 0)
     job = definitions.get_job_def(name)
     sensor = definitions.get_sensor_def("transport_infra_retry_" + name)
     with DagsterInstance.local_temp() as instance:
@@ -80,6 +83,7 @@ def test_transport_retry_resumes_step_history_and_rejects_a_late_provider_failur
     sensor = definitions.get_sensor_def("transport_infra_retry_" + name)
     clock = [0.0]
     monkeypatch.setattr(common, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(common, "FAILURE_SETTLE_SECONDS", 0)
     with DagsterInstance.local_temp() as instance:
         run = instance.create_run_for_job(
             job, status=DagsterRunStatus.FAILURE, tags=job.tags, remote_job_origin=origin(name),
