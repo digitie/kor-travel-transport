@@ -8331,6 +8331,28 @@
             ],
             "title": "Interval Seconds"
           },
+          "isolated_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isolated Rows"
+          },
+          "job_isolated_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Isolated Rows"
+          },
           "job_name": {
             "anyOf": [
               {

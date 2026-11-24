@@ -277,3 +277,50 @@ def test_place_sources_survive_response_limit_and_empty_bounds(client):
     airport = client.get("/v1/transport/features/places?kind=airport&query=GMP")
     assert airport.status_code == 200
     assert any(row["provider_id"] == "GMP" for row in airport.json()["items"])
+
+
+@pytest.mark.parametrize("extra_error,airport_failed", [(None, False), ("kac_fee GMP: KrairportRateLimitError", True)])
+def test_provider_status_shows_isolation_only_runs_as_partial_success(client, extra_error, airport_failed):
+    """#263 후속: 무효 원천 행만 격리한 부분 성공은 공항·고속도로 모두 "부분 성공(격리 N건)"이다.
+
+    격리가 늘 남는 행 하나 때문에 공동 job의 공항 원천이 계속 `collection_failed`로 보이지 않게 하고, 고속도로는
+    원천 상태가 성공이어도 최근 실행의 격리 건수를 보인다. 격리 말고 다른 오류가 섞이면 공항은 지금처럼 실패다.
+    """
+    from app.services.transport_collection import isolated_rows_message
+
+    airport_lines = [isolated_rows_message("kac_parking", 25, 1)] + ([extra_error] if extra_error else [])
+
+    async def seed():
+        now = now_utc()
+        async with client.app.state.session_factory() as session:
+            session.add(CollectionRun(trigger="dagster_airport", status="partial_success", started_at=now, finished_at=now,
+                                      error_message="\n".join(airport_lines)))
+            session.add(CollectionRun(trigger="transport_dagster_highway", status="partial_success", started_at=now,
+                                      finished_at=now, error_message=isolated_rows_message("krex_traffic_flow", 8251, 3)))
+            session.add(TransportCollectionState(source="krex_traffic_flow", last_started_at=now, last_success_at=now, updated_at=now))
+            session.add(TransportCollectionState(source="krex_traffic_incident", last_started_at=now, last_success_at=now, updated_at=now))
+            await session.commit()
+    asyncio.run(seed())
+    settings = client.app.state.settings
+    settings.data_go_kr_service_key = "test-key"
+    settings.kex_ex_api_key = "test-key"
+    settings.transport_collection_enabled = True
+    settings.enable_incheon_collection = True
+    rows = {row["source"]: row for row in client.get("/v1/transport/providers").json()["items"]}
+    if airport_failed:
+        # 격리 말고 다른 오류(요금 429)가 섞이면 지금처럼 실패 표시다(상태는 job 상태 그대로, 오류 코드).
+        assert rows["kac_parking"]["status"] == "shared_job_partial_success"
+        assert rows["kac_parking"]["error_code"] == "collection_failed" and rows["kac_parking"]["isolated_rows"] is None
+        assert rows["kac_parking"]["job_isolated_rows"] is None and rows["kac_parking"]["last_success_at"] is None
+    else:
+        assert rows["kac_parking"]["status"] == "shared_job_partial_success"
+        assert rows["kac_parking"]["error_code"] is None and rows["kac_parking"]["isolated_rows"] == 1
+        assert rows["kac_parking"]["job_isolated_rows"] == 1
+        # 격리만 있는 실행은 정상 행을 저장했으므로 공동 job의 최근 성공 시각도 그 실행으로 앞선다.
+        assert rows["kac_parking"]["last_success_at"] is not None
+        assert rows["incheon_parking"]["status"] == "shared_job_success"
+        assert rows["incheon_parking"]["isolated_rows"] is None
+    assert rows["krex_traffic_flow"]["status"] == "partial_success"
+    assert rows["krex_traffic_flow"]["isolated_rows"] == 3 and rows["krex_traffic_flow"]["error_code"] is None
+    assert rows["krex_traffic_incident"]["job_isolated_rows"] == 3
+    assert rows["krex_traffic_incident"]["status"] == "success" and rows["krex_traffic_incident"]["isolated_rows"] is None

@@ -8,6 +8,7 @@ from app.core.config import Settings
 from app.core.time_utils import now_utc, serialize_utc, to_seoul
 from app.models import CollectionRun, FerryPort, FerryTimetableSnapshot, KricStationCode, KricTimetableSnapshot, TransportCollectionState
 from app.schemas import KricCoverage, ProviderCollectionStatus, ProviderStatusResponse
+from app.services.transport_collection import parse_isolated_rows
 
 
 async def provider_status(session: AsyncSession, settings: Settings) -> ProviderStatusResponse:
@@ -45,9 +46,22 @@ async def provider_status(session: AsyncSession, settings: Settings) -> Provider
         run, state = by_trigger.get(trigger), states.get(source)
         last_success = state.last_success_at if state else successes.get(trigger)
         last_started = state.last_started_at if state else run.started_at if run else None
-        failed = bool(state.last_error) if state else bool(run and run.status in {"failed", "failure", "partial", "partial_success"})
+        # 무효 원천 행만 격리한 부분 성공은 실패가 아니다(유효 행은 저장·승격). 격리가 늘 남는 행 하나 때문에
+        # 공동 job의 원천이 계속 실패로 보이지 않게, 격리 기록 말고 다른 오류가 없을 때만 실패에서 뺀다.
+        isolated, other_errors = parse_isolated_rows(run.error_message if run else None)
+        isolated_only = bool(run and run.status == "partial_success" and isolated and not other_errors)
+        if isolated_only and not state and run.finished_at is not None:
+            # 격리만 있는 실행은 정상 행을 저장·승격했다. 공동 job의 최근 성공 시각이 멈춰 신선도 신호가 사라지지 않게 한다.
+            last_success = max(filter(None, (last_success, run.finished_at)), key=serialize_utc)
+        own_isolated = isolated.get(source) if run and run.status == "partial_success" else None
+        failed = bool(state.last_error) if state else bool(
+            run and run.status in {"failed", "failure", "partial", "partial_success"} and not isolated_only)
         source_status = "failed" if failed else "success" if state and state.last_success_at else "not_collected"
         status = "disabled" if not enabled else source_status if state else run.status if run else "not_collected"
+        if enabled and not failed and own_isolated:
+            status = "partial_success"
+        elif enabled and not state and isolated_only:
+            status = "success"  # 같은 job의 다른 원천만 행을 격리했다
         next_due = state.next_due_at if state else None
         if source == "general_rail_timetable" and last_started:
             next_due = serialize_utc(last_started) + timedelta(hours=24)
@@ -66,7 +80,9 @@ async def provider_status(session: AsyncSession, settings: Settings) -> Provider
             status=status, interval_seconds=interval, last_started_at=serialize_utc(last_started) if last_started else None,
             last_success_at=serialize_utc(last_success) if last_success else None,
             next_due_at=serialize_utc(next_due) if next_due else None,
-            error_code="collection_failed" if failed else None))
+            error_code="collection_failed" if failed else None,
+            isolated_rows=own_isolated if enabled and not failed and own_isolated else None,
+            job_isolated_rows=sum(isolated.values()) if isolated_only else None))
     for source, name, enabled in [("flights", "공항 출도착", keyed and settings.enable_flight_status_markers), ("bus_timetable", "TAGO 버스 시간표", keyed), ("general_rail", "TAGO 일반철도 시간표", keyed)]:
         items.append(ProviderCollectionStatus(source=source, name=name, mode="on_demand", enabled=enabled, status="on_demand" if enabled else "disabled"))
     for source, name in [("seoulgokr", "서울 교통정보")]:

@@ -1,3 +1,9 @@
+## 현재 상태 — 2026-11-24 #263 사후 리뷰 후속(ISOLATION-FOLLOWUP-20261124)
+
+- backend(상태 판정·재조회·주차 넘김) + transport-admin(상태 문구). migration 없음. OpenAPI에 `ProviderCollectionStatus.isolated_rows`(선택) 추가.
+- 배포(Codex 담당): backend 이미지와 transport-admin 이미지.
+- 다음 한 작업: 배포 뒤 `/collections`에서 격리 상태 문구와 공개 collector-status의 `rows_isolated` 확인.
+
 ## 현재 상태 — 2026-11-24 고속도로·공항 무효 행 격리(COLLECTION-PARTIAL-20261124)
 
 - 고속도로 0405 무효 행 5% 이하·공항 원천 무효 행 20% 이하는 그 행만 격리하고 저장, run은 부분 성공(`INVALID_ROWS_ISOLATED`).

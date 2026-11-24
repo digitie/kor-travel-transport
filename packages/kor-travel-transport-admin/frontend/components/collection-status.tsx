@@ -16,10 +16,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { dateTime, transportGet } from "@/lib/journey";
 import { getDagsterOverview, JOB_LABELS, runStalled, scheduleDescription, statusLabel, type DagsterOverview } from "@/lib/dagster";
+import { isolatedRows, jobStatusLabel, providerStatusLabel } from "@/lib/provider-status";
 import { dagsterLocationUrl, dagsterRunUrl, dagsterJobRunsUrl } from "@/lib/dagster-scope";
 import { cn } from "@/lib/utils";
 
-type Provider = { source: string; job_status?: string | null; name: string; job_name: string | null; enabled: boolean; mode: string; status: string; interval_seconds: number | null; last_started_at: string | null; last_success_at: string | null; next_due_at: string | null; error_code: string | null };
+type Provider = { source: string; job_status?: string | null; name: string; job_name: string | null; enabled: boolean; mode: string; status: string; interval_seconds: number | null; last_started_at: string | null; last_success_at: string | null; next_due_at: string | null; error_code: string | null; isolated_rows?: number | null; job_isolated_rows?: number | null };
 type Providers = { generated_at: string; items: Provider[]; ferry_window_start: string; ferry_window_end: string; ferry_expected_snapshots: number; ferry_stored_snapshots: number; kric_coverage?: { station_count: number; linked_station_count: number; expected_snapshots: number; stored_snapshots: number; fresh_snapshots: number; oldest_collected_at: string | null } };
 
 function jobRunHref(jobName: string, dagster: DagsterOverview | null) {
@@ -139,18 +140,19 @@ function ProviderCollectionRows({ providers, query, dagster }: Pick<ReturnType<t
       {providers?.items.filter((item) => [item.name, item.source, item.job_name].join(" ").toLowerCase().includes(query.toLowerCase())).map((item) => <details className="provider-row" key={item.source}>
         <summary className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
           <strong className="font-medium text-text-primary">{item.name}</strong>
-          <StatusBadge label={statusLabel(item.status)} status={item.status} tone={item.error_code ? "destructive" : undefined} />
+          <StatusBadge label={providerStatusLabel(item, statusLabel)} status={item.status} tone={item.error_code ? "destructive" : isolatedRows(item) ? "warning" : undefined} />
           <span className="text-xs text-text-secondary">{item.mode === "scheduled" ? "정기 수집" : item.mode === "on_demand" ? "명시 요청만" : "통합 필요"}</span>
         </summary>
         <div className="mt-3 flex flex-col gap-3">
           <DetailList columns={2} items={[
-            { label: "공동 작업 상태", value: item.job_status ? statusLabel(item.job_status) : "이력 없음" },
+            { label: "공동 작업 상태", value: jobStatusLabel(item, statusLabel) },
             { label: "최근 시작", value: dateTime(item.last_started_at) },
             { label: item.status.startsWith("shared_job_") ? "공동 작업 최근 성공" : "최근 성공", value: dateTime(item.last_success_at) },
             { label: item.source === "kric_timetable" ? "호출 보호 종료" : "다음 실행 예약", value: item.next_due_at ? dateTime(item.next_due_at) : item.mode === "scheduled" ? "하단 Dagster 스케줄 확인" : "정기 수집 없음" },
             { label: "설정 주기", value: intervalLabel(item.interval_seconds) },
           ]} />
           <p className="text-xs text-text-secondary">{item.job_name ? <a className="text-brand underline-offset-4 hover:underline" href={jobRunHref(item.job_name, dagster)} rel="noreferrer" target="_blank">{JOB_LABELS[item.job_name] ?? item.job_name} · 실행 확인 ↗</a> : "연결된 정기 수집 작업 없음"} · {item.enabled ? "수집/조회 설정 활성" : "설정 비활성 또는 미연결"}</p>
+          {isolatedRows(item) ? <p className="text-xs text-text-secondary">최근 수집에서 원천 응답의 무효 행 {isolatedRows(item)?.toLocaleString("ko-KR")}건을 격리하고 나머지는 저장했습니다. 같은 행이 계속 격리되면 원천 응답 계약을 확인해 주세요.</p> : null}
           {item.source === "kric_timetable" ? <p className="text-xs text-text-secondary">보호 종료는 실행 예약이 아닙니다. 활성화된 Dagster 스케줄이 매시간 수집 가능 여부를 확인합니다.</p> : null}
           {item.error_code ? <p className="text-xs text-destructive">{item.source === "fuel_latest_prices" ? item.error_code === "read_model_refresh_pending" ? "유가 원본이 최신 가격 읽기 모델보다 새롭습니다. 다음 고속도로 수집에서 갱신합니다." : "유가 원본은 저장됐지만 최신 가격 읽기 모델 갱신이 지연됩니다. 상단 경고와 다음 재시도 시각을 확인해 주세요." : "수집 실패 · Dagster 실행 로그에서 원인을 확인해 주세요."}</p> : null}
         </div>

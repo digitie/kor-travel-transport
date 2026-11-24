@@ -380,6 +380,43 @@ def highway_invalid_rows_acceptable(received_rows: int, invalid_rows: int) -> bo
     return 0 < invalid_rows < received_rows and invalid_rows <= received_rows * HIGHWAY_MAX_INVALID_RATIO
 
 
+_ISOLATED_LINE = re.compile(
+    r"^(?P<source>[a-z0-9_]+): isolated invalid rows \(received_rows=\d+, parsed_rows=\d+, invalid_rows=(?P<invalid>\d+)\)$"
+)
+
+
+def parse_isolated_rows(message: str | None) -> tuple[dict[str, int], bool]:
+    """실행 오류 문장에서 원천별 격리 행 수와 "격리 말고 다른 오류가 있는가"를 읽는다.
+
+    수집 서비스는 격리 기록(`isolated_rows_message`)을 다른 오류와 같은 `CollectionRun.error_message`에 줄 단위로
+    남긴다. 운영 상태 화면은 격리만 있는 부분 성공을 실패와 구분해 "부분 성공(격리 N건)"으로 보인다.
+    """
+    isolated: dict[str, int] = {}
+    other = False
+    for line in (message or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        match = _ISOLATED_LINE.match(line)
+        if match is None:
+            other = True
+            continue
+        isolated[match["source"]] = isolated.get(match["source"], 0) + int(match["invalid"])
+    return isolated, other
+
+
+#: 재조회해도 같은 SDK 파싱 오류의 문장 앞머리(`_transient_parse_error`).
+DETERMINISTIC_PARSE_PREFIXES = ("failed to parse response record",)
+
+
+def _public_error_marker(message: str | None) -> str | None:
+    """공개 collector-status의 안정된 오류 표지. 격리만 있는 부분 성공은 `rows_isolated`다."""
+    if not message:
+        return None
+    isolated, other = parse_isolated_rows(message)
+    return "rows_isolated" if isolated and not other else "collection_failed"
+
+
 def isolated_rows_message(source: str, received_rows: int, invalid_rows: int) -> str:
     """격리 기록 한 줄. 행 값은 싣지 않고 건수만 싣는다(Dagster metadata가 건수를 읽는다)."""
     return (f"{source}: isolated invalid rows (received_rows={received_rows}, "
@@ -910,6 +947,16 @@ class TransportCollectionService:
         return not result or (baseline is not None and len(result) * HIGHWAY_ABNORMAL_DROP_FACTOR < baseline)
 
     @staticmethod
+    def _transient_parse_error(result: Any) -> bool:
+        """다시 조회할 만한 파싱 오류인가.
+
+        행 단위 결정적 실패(`KrexPartialParseError`)와 모든 행의 해석 실패(SDK `failed to parse response record` — 행
+        스키마가 바뀐 결정적 원인)는 아니다. 잘린 JSON·게이트웨이 본문·목록/건수 누락 같은 나머지는 한 번 다시 본다.
+        """
+        return (isinstance(result, KrexParseError) and not isinstance(result, KrexPartialParseError)
+                and not str(result).startswith(DETERMINISTIC_PARSE_PREFIXES))
+
+    @staticmethod
     def _empty_incident_set(source: str, result: Any) -> bool:
         """전국 돌발·공사 활성 집합의 0건은 상류 이상이다 — 완결 증거(total_count=0)가 있어도 성공으로 받지 않는다.
 
@@ -926,10 +973,12 @@ class TransportCollectionService:
         if isinstance(payload, Exception):
             return payload
         fields = {TRAFFIC_SOURCE: "traffic", INCIDENT_SOURCE: "incidents"}
-        # 응답 계약 위반(`KrexParseError`: 무효 행·건수 불일치·목록 누락)은 같은 응답을 다시 받아도 같다.
-        # 재호출하지 않고 바로 원천 실패로 판정한다. 재확인은 빈/급감 집합만 한다.
+        # 행 단위 계약 위반(`KrexPartialParseError`: SDK가 완결 목록을 확인한 뒤 일부 행을 거부)은 같은 응답을 다시
+        # 받아도 같다 — 재호출하지 않는다. 그 밖의 `KrexParseError`(잘린 JSON·HTML 게이트웨이 본문·목록/건수 누락)는
+        # 큰 응답(0405 약 8,251행)의 일시적 전송 문제일 수 있어 빈/급감 집합처럼 한 번 다시 조회한다.
         suspicious = tuple(source for source in sources
-                           if self._empty_incident_set(source, getattr(payload, fields[source]))
+                           if self._transient_parse_error(getattr(payload, fields[source]))
+                           or self._empty_incident_set(source, getattr(payload, fields[source]))
                            or (source == INCIDENT_SOURCE and isinstance(getattr(payload, fields[source]), tuple)
                                and self._highway_result_suspicious(
                                    getattr(payload, fields[source]), baselines.get(source)))
@@ -949,10 +998,19 @@ class TransportCollectionService:
         except Exception as exc:
             retried = exc
         updates: dict[str, Any] = {}
+        isolated = [entry for entry in payload.isolated if entry[0] not in suspicious]
         for source in suspicious:
             field = fields[source]
             first = getattr(payload, field)
             result = retried if isinstance(retried, Exception) else getattr(retried, field)
+            if (isinstance(result, Exception) and isinstance(first, Exception)
+                    and not isinstance(result, KrexQuotaExceededError)):
+                # 재조회도 실패하면 첫 파싱 오류를 근거로 남긴다(재조회의 시간 초과 등이 원인을 덮지 않게).
+                # 쿼터 초과는 호출 유예를 걸어야 하므로 그대로 둔다.
+                result = first
+            if not isinstance(retried, Exception):
+                # 재조회 응답에서 무효 행을 격리했으면 그 기록을 이어받는다(첫 응답의 격리 기록은 버린다).
+                isolated.extend(entry for entry in retried.isolated if entry[0] == source)
             if isinstance(result, tuple):
                 recovered = not self._highway_result_suspicious(result, baselines.get(source))
                 # 빈200의 반복만으로 완결로 인정하지 않는다. 두 응답 모두 명시한 total_count를
@@ -972,7 +1030,7 @@ class TransportCollectionService:
                         f"{source}: unconfirmed empty or reduced response; keeping last successful set"
                     )
             updates[field] = result
-        return replace(payload, **updates)
+        return replace(payload, **updates, isolated=tuple(isolated))
 
     async def _collect_highway_source(
         self,
@@ -1622,7 +1680,7 @@ class TransportCollectionService:
                 "status": run.status,
                 "trigger": run.trigger,
                 # The public endpoint deliberately exposes only a stable error marker.
-                "error": "collection_failed" if run.error_message else None,
+                "error": _public_error_marker(run.error_message),
             }
 
         running_condition = (

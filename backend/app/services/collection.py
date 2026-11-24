@@ -1006,7 +1006,7 @@ class CollectionService:
             snapshot_count += await self._store_observations(session, run_id, history_rows, lot_ids=lot_ids)
             await store_parking_current(session, self.settings, source=source, run_id=run_id,
                                         observations=rows, proof=response.completion, lot_ids=lot_ids,
-                                        carry_forward_limit=payload.invalid_rows)
+                                        carry_identities=payload.carry_identities)
             if payload.invalid_rows:
                 # 원천은 승격(정상 행)했고 실행은 부분 성공이다. 행 값 없이 건수만 남긴다.
                 from app.services.transport_collection import isolated_rows_message
