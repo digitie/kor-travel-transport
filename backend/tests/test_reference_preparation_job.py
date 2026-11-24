@@ -233,3 +233,20 @@ def test_all_kinds_ready_is_plain_success(monkeypatch):
     assert run.success and tag is None and warnings == []
     metadata = _step_metadata(run, "STEP_OUTPUT")
     assert metadata["reused"].value == 4 and "error_code" not in metadata
+
+
+def _located_tail_job(location):
+    @job(name="located_tail_job", tags={"dagster/code_location": location})
+    def located_tail_job() -> None:
+        d.prepare_reference_exports(_collected_upstream())
+    return located_tail_job
+
+
+def test_busy_streak_counts_only_runs_of_the_same_code_location(monkeypatch):
+    """공용 instance의 다른 테넌트 run(같은 job 이름)은 연속 busy로 세지 않는다."""
+    other, ours = _located_tail_job("other-tenant"), _located_tail_job("kor-travel-transport")
+    with DagsterInstance.ephemeral() as instance:
+        for _ in range(2):
+            _run_prepare_job(monkeypatch, _BUSY, other, instance=instance)
+        results = [_run_prepare_job(monkeypatch, _BUSY, ours, instance=instance)[1] for _ in range(3)]
+    assert results == ["deferred", "deferred", "partial"]

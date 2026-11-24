@@ -1216,9 +1216,12 @@ def _persistent_busy_kinds(context, busy_kinds: list[str]) -> set[str]:
     try:
         from dagster import DagsterRunStatus, RunsFilter
 
+        # 공용 instance에는 다른 테넌트의 run도 있다. 이 run의 code location 태그가 있으면 같은 location으로 한정한다.
+        location = (getattr(context.run, "tags", None) or {}).get("dagster/code_location")
         runs = call_with_deadline(lambda: context.instance.get_runs(
             filters=RunsFilter(job_name=context.job_name,
-                               statuses=[DagsterRunStatus.SUCCESS, DagsterRunStatus.FAILURE]),
+                               statuses=[DagsterRunStatus.SUCCESS, DagsterRunStatus.FAILURE],
+                               tags={"dagster/code_location": location} if location else None),
             limit=previous,
         ), timeout_seconds=10)
     except Exception:  # noqa: BLE001 — 연속 판정을 못 하면 올리지 않는다(이번 결과는 그대로 busy).
