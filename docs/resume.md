@@ -1,3 +1,10 @@
+## 현재 상태 — 2026-11-24 30일 주차 이력 캐시 증분 갱신(PARKING-HISTORY-INCREMENTAL-20261124)
+
+- backend만(API 프로세스 안 이력 캐시). migration·UI·OpenAPI 없음.
+- 배포(Codex 담당): backend 이미지(API).
+- 다음 한 작업: 배포 뒤 odroid API 로그에서 `event=parking_history_rebuild`의 `mode=incremental`·`outcome=published`·`duration_ms`(수 초 이하 기대)와
+  `reason`이 `cold`(기동)·`periodic`(새벽) 말고 `late_commit_or_delete`가 잦지 않은지 본다. 수집 직후 ICN·GMP `/v1/dashboard/analytics` p95·504를 다시 잰다.
+
 ## 현재 상태 — 2026-11-24 공개 분석 화면 기준 시각(ANALYTICS-BASIS-TIME-20261124)
 
 - backend(`DashboardAnalyticsResponse.analytics_generated_at`·`analytics_age_seconds` 선택 필드, OpenAPI 추가) + 공개 웹(`/analytics` 제목 곁 분석 기준 시각). migration 없음.

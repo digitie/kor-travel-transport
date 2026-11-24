@@ -69,8 +69,8 @@ def test_postgres_core_stream_keeps_batches_max_id_live_priority_and_body(client
                 released.append(not self.inner.in_transaction())
                 return result
 
-            async def scalar(self, statement):
-                result = await self.inner.scalar(statement)
+            async def execute(self, statement):
+                result = await self.inner.execute(statement)
                 # max ID를 읽은 뒤 들어온 행은 이 읽기 집합에 섞이지 않는다.
                 async with factory() as writer:
                     writer.add(ParkingSnapshot(
@@ -82,8 +82,8 @@ def test_postgres_core_stream_keeps_batches_max_id_live_priority_and_body(client
                     await writer.commit()
                 return result
 
-            async def connection(self):
-                return await self.inner.connection()
+            async def connection(self, **kwargs):
+                return await self.inner.connection(**kwargs)
 
         event.listen(engine.sync_engine, "before_cursor_execute", record)
         try:

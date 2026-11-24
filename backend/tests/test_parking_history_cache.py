@@ -105,7 +105,8 @@ def test_prepared_history_reuses_same_start_row_and_rebuilds_on_filter_change(mo
     monkeypatch.setattr(history_cache, "compress_body", count_compress)
 
     async def check():
-        first, _ = await cache.response_body(snapshot, now - timedelta(hours=2), None, None, "br, gzip")
+        # br만 받는 클라이언트는 본문 전체를 압축한다(gzip을 받으면 날짜 조각 gzip — 아래 시험).
+        first, _ = await cache.response_body(snapshot, now - timedelta(hours=2), None, None, "br")
         second, _ = await cache.response_body(snapshot, now - timedelta(hours=2, seconds=1), None, None, "br")
         assert first == second
         assert calls == 1
@@ -233,15 +234,15 @@ def test_cache_does_not_publish_snapshot_changed_while_preparing(monkeypatch) ->
             now - timedelta(days=30), current_id, [_row(now, 1)],
         )
 
-    original_compress = history_cache.compress_body
+    original_deflate = history_cache.deflate_segment
 
-    def change_during_compression(body, encoding):
+    def change_during_compression(raw):
         nonlocal current_id
         current_id = 11
-        return original_compress(body, encoding)
+        return original_deflate(raw)
 
     monkeypatch.setattr(history_cache, "load_snapshot", fake_load)
-    monkeypatch.setattr(history_cache, "compress_body", change_during_compression)
+    monkeypatch.setattr(history_cache, "deflate_segment", change_during_compression)
     cache = history_cache.ParkingHistoryReadCache(FakeSession)
     asyncio.run(cache.refresh_once())
     assert cache.snapshot is None
@@ -267,10 +268,10 @@ def test_cache_load_query_prefers_live_and_caps_snapshot_id() -> None:
         async def __aexit__(self, *_args):
             return None
 
-        async def scalar(self, _statement):
-            return 42
+        async def execute(self, _statement):
+            return SimpleNamespace(one=lambda: (42, 1))
 
-        async def connection(self):
+        async def connection(self, **_kwargs):
             return Connection()
 
     class Connection:
@@ -304,7 +305,8 @@ def test_history_load_keeps_session_connection_and_closes_before_cpu(monkeypatch
 
     class Connection:
         async def stream(self, statement):
-            assert events == ["session_entered", "max_id", "session_connection"]
+            # 같은 시점 읽기(REPEATABLE READ)를 먼저 잡고, 최대 id·행 수를 같은 transaction에서 읽는다.
+            assert events == ["session_entered", "consistent_read", "max_id", "session_connection"]
             assert statement.get_execution_options()["yield_per"] == history_cache.HISTORY_FETCH_ROWS
             return Result()
 
@@ -316,11 +318,15 @@ def test_history_load_keeps_session_connection_and_closes_before_cpu(monkeypatch
         async def __aexit__(self, *_args):
             events.append("session_closed")
 
-        async def scalar(self, _statement):
+        async def execute(self, _statement):
             events.append("max_id")
-            return 42
+            return SimpleNamespace(one=lambda: (42, 1))
 
-        async def connection(self):
+        async def connection(self, **kwargs):
+            if kwargs:
+                assert kwargs == {"execution_options": {"isolation_level": "REPEATABLE READ"}}
+                events.append("consistent_read")
+                return Connection()
             events.append("session_connection")
             return Connection()
 
@@ -328,7 +334,8 @@ def test_history_load_keeps_session_connection_and_closes_before_cpu(monkeypatch
             raise AssertionError("대량 행은 session의 같은 connection으로 읽어야 합니다")
 
     def after_release(*args):
-        assert events == ["session_entered", "max_id", "session_connection", "cursor_closed", "session_closed"]
+        assert events == ["session_entered", "consistent_read", "max_id", "session_connection",
+                          "cursor_closed", "session_closed"]
         assert threading.get_ident() != owner_thread
         return original(*args)
 
@@ -366,10 +373,10 @@ def test_history_fetch_allows_other_api_work_before_last_batch() -> None:
             async def __aexit__(self, *_args):
                 return None
 
-            async def scalar(self, _statement):
-                return 42
+            async def execute(self, _statement):
+                return SimpleNamespace(one=lambda: (42, 1))
 
-            async def connection(self):
+            async def connection(self, **_kwargs):
                 return Connection()
 
         class Connection:
@@ -419,10 +426,10 @@ def test_failed_or_cancelled_history_fetch_closes_cursor_without_partial_snapsho
             async def __aexit__(self, *_args):
                 closed.append("session")
 
-            async def scalar(self, _statement):
-                return 42
+            async def execute(self, _statement):
+                return SimpleNamespace(one=lambda: (42, 1))
 
-            async def connection(self):
+            async def connection(self, **_kwargs):
                 return Connection()
 
         class Connection:
@@ -653,12 +660,12 @@ def test_filtered_history_cache_key_ignores_other_airport_cutoff_changes(monkeyp
     cache = history_cache.ParkingHistoryReadCache(None)
     cache.snapshot = snapshot
     calls = 0
-    original = history_cache.compress_body
-    def counted(body, encoding):
+    original = history_cache.ParkingHistorySnapshot.render_gzip
+    def counted(self, *args):
         nonlocal calls
         calls += 1
-        return original(body, encoding)
-    monkeypatch.setattr(history_cache, "compress_body", counted)
+        return original(self, *args)
+    monkeypatch.setattr(history_cache.ParkingHistorySnapshot, "render_gzip", counted)
     async def check():
         first, _ = await cache.response_body(snapshot, now - timedelta(hours=2, minutes=30), "GMP", None, "gzip")
         second, _ = await cache.response_body(snapshot, now - timedelta(hours=1, minutes=30), "GMP", None, "gzip")
@@ -695,15 +702,15 @@ def test_matching_history_requests_share_compression_in_flight(monkeypatch) -> N
     cache = history_cache.ParkingHistoryReadCache(None)
     cache.snapshot = snapshot
     calls = 0
-    original = history_cache.compress_body
-    def counted(body, encoding):
+    original = history_cache.ParkingHistorySnapshot.render_gzip
+    def counted(self, *args):
         nonlocal calls
         calls += 1
-        return original(body, encoding)
+        return original(self, *args)
     async def yielding_cpu(fn, *args):
         await asyncio.sleep(0)
         return fn(*args)
-    monkeypatch.setattr(history_cache, "compress_body", counted)
+    monkeypatch.setattr(history_cache.ParkingHistorySnapshot, "render_gzip", counted)
     monkeypatch.setattr(history_cache, "run_history_cpu", yielding_cpu)
     async def check():
         results = await asyncio.gather(*(cache.response_body(snapshot, now, "GMP", None, "gzip") for _ in range(2)))
@@ -745,10 +752,11 @@ def test_rebuild_interval_logs_are_paired_safe_and_skip_unchanged(monkeypatch, c
     assert len(start["rebuild_id"]) == 32
     assert start["at"] == finish["at"] == now.isoformat()
     assert start["row_count"] is None and start["duration_ms"] == 0
+    assert start["mode"] == finish["mode"] == "full" and start["reason"] == "cold"
     assert finish["row_count"] == (None if outcome in {"failed", "cancelled"} else 1)
     assert finish["duration_ms"] >= 0 and finish["outcome"] == outcome
-    assert set(start) == {"event", "phase", "rebuild_id", "at", "duration_ms", "row_count"}
-    assert set(finish) == {*start, "outcome"}
+    assert set(start) == {"event", "phase", "rebuild_id", "at", "duration_ms", "row_count", "mode", "reason"}
+    assert set(finish) == {*start, "outcome", "changed_keys"}
     assert "secret" not in caplog.text and "password" not in caplog.text
     if outcome == "published":
         caplog.clear()
