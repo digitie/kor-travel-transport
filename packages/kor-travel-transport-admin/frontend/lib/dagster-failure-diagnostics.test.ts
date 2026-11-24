@@ -160,3 +160,47 @@ describe("소통 저장·통계 재대조 진단(WLH-06)",()=>{
   expect(unsafe).toContain("소통 원천 저장: 되돌림 · 마지막 정상 자료 유지");expect(unsafe).not.toContain("private-canary");
  });
 });
+
+describe("전량 실패(ALL_SOURCES_FAILED) 진단(2026-11-24 소유자 결정)", () => {
+  it("공항 주차 원천이 모두 실패한 run을 미등록 오류가 아닌 고정 사유·원천 수로 보인다", () => {
+    const text = failureDiagnostic({ __typename: "ExecutionStepFailureEvent", stepKey: "collect_airport_parking",
+      message: "주차 원천 2곳이 모두 실패했습니다(ALL_SOURCES_FAILED).",
+      failureMetadata: { metadataEntries: [
+        { label: "error_code", text: "ALL_SOURCES_FAILED" }, { label: "stage", text: "provider_fetch" },
+        { label: "status", text: "failed" }, { label: "recovery_hint", text: "CHECK_RUN_DETAIL" },
+        { label: "successful_data_preserved", boolValue: true },
+        { label: "parking_sources_total", intValue: 2 }, { label: "parking_sources_failed", intValue: 2 },
+        { label: "snapshot_count", intValue: 24 }, { label: "collection_run_status", text: "partial_success" },
+        { label: "retryable", boolValue: false }, { label: "source_error_code", text: "PROVIDER_RATE_LIMIT" },
+      ] } });
+    expect(text).toContain("오류 코드: ALL_SOURCES_FAILED");
+    expect(text).not.toContain("UNKNOWN_FAILURE");
+    expect(text).toContain("실패 단계: 제공기관 요청");
+    expect(text).toContain("원천 전부, 또는 한 제공기관의 호출 전부가 실패했습니다");
+    expect(text).toContain("저장 결과: 실패");
+    expect(text).not.toContain("일부 실패");
+    expect(text).toContain("시도한 주차 원천 수: 2");
+    expect(text).toContain("실패한 주차 원천 수: 2");
+    expect(text).not.toContain("partial_success");
+    expect(text).toContain("재시도 가능: 아니오");
+    expect(text).toContain("원인 분류: PROVIDER_RATE_LIMIT · 제공기관 호출 한도에 도달했습니다.");
+  });
+  it("원인 분류는 등록된 코드만 싣는다", () => {
+    const text = failureDiagnostic({ failureMetadata: { metadataEntries: [
+      { label: "error_code", text: "ALL_SOURCES_FAILED" }, { label: "source_error_code", text: "private-canary" },
+    ] } });
+    expect(text).not.toContain("원인 분류");
+    expect(text).not.toContain("private-canary");
+  });
+  it("좌표 보강 호출 전량 실패는 제공기관별 호출 수를 보이고 메시지 속 코드로도 분류한다", () => {
+    const text = failureDiagnostic({ stepKey: "enrich_new_reference_locations", failureMetadata: { metadataEntries: [
+      { label: "error_code", text: "ALL_SOURCES_FAILED" }, { label: "vworld_provider_calls", intValue: 1 },
+      { label: "vworld_provider_failed", intValue: 1 }, { label: "kakao_provider_calls", intValue: 0 },
+    ] } });
+    expect(text).toContain("실패 단계: 기준정보 좌표 보강");
+    expect(text).toContain("VWorld 호출 수: 1");
+    expect(text).toContain("VWorld 실패 호출 수: 1");
+    expect(text).toContain("카카오 호출 수: 0");
+    expect(failureDiagnostic({ message: "주차 원천 1곳이 모두 실패했습니다(ALL_SOURCES_FAILED)." })).toContain("오류 코드: ALL_SOURCES_FAILED");
+  });
+});

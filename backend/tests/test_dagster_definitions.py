@@ -152,6 +152,48 @@ def test_airport_failure_reports_collection_run_id(monkeypatch, status):
     assert failure.metadata["status"].value == status
 
 
+@pytest.mark.parametrize("total,failed,expect_success", [
+    (2, 2, False),  # 주차 원천 전부 실패 — 요금 갱신·이력 전용 저장(진척)이 있어도 실패다
+    (1, 1, False),  # 원천 하나뿐인 구성도 같다
+    (2, 1, True),   # 한 원천만 실패한 부분 성공은 그대로 SUCCESS + partial
+    (0, 0, True),   # 주차 원천이 없는 구성(요금만)은 이 판정 밖이다
+])
+def test_airport_all_parking_sources_failed_is_failure_despite_progress(monkeypatch, total, failed, expect_success):
+    """소유자 결정(2026-11-24): 제공기관 전면 장애(대상 전부 실패)는 건수와 무관하게 실패다.
+
+    거절된 원천도 이력은 남기고(`snapshot_count>0`) 요금 갱신이 같은 실행에 들 수 있어 진척만으로는 부분 성공으로
+    보였다. 주차 현재값은 갱신되지 않았으므로 run을 실패로 올린다.
+    """
+
+    async def committed_run(settings, action, **kwargs):
+        return {"collection_run_id": 513, "status": "partial_success", "client_mode": "live",
+                "raw_response_count": 1, "snapshot_count": 24, "fee_rule_count": 3,
+                "errors": ["kac_parking: 주차장 원천 무효 행 비율이 상한을 넘었습니다"],
+                "parking_sources_total": total, "parking_sources_failed": failed}
+
+    monkeypatch.setattr(dagster_definitions, "_settings", lambda: None)
+    monkeypatch.setattr(dagster_definitions, "CollectionService", lambda _settings: SimpleNamespace(collect=None))
+    monkeypatch.setattr(dagster_definitions, "_run_with_session", committed_run)
+    result = dagster_definitions.airport_collection_job.execute_in_process(raise_on_error=False)
+    assert result.success is expect_success
+    assert not any(event.is_step_up_for_retry for event in result.all_events)
+    if not expect_success:
+        failure = result.failure_data_for_node("collect_airport_parking").user_failure_data
+        assert failure.description.startswith(f"주차 원천 {total}곳이 모두 실패했습니다")
+        assert failure.metadata["run_id"].value == 513
+        assert failure.metadata["parking_sources_failed"].value == failed
+
+
+@pytest.mark.parametrize("result", [
+    {"status": "success", "parking_sources_total": 2, "parking_sources_failed": 2},  # 판정은 실패 상태에서만
+    {"status": "partial_success"},  # 옛 결과(필드 없음)는 기존 판정 그대로
+    {"status": "partial_success", "parking_sources_total": "2", "parking_sources_failed": 2},
+    {"status": "partial_success", "parking_sources_total": True, "parking_sources_failed": True},
+])
+def test_all_parking_sources_failed_needs_typed_counts(result):
+    assert not dagster_definitions._all_parking_sources_failed(result)
+
+
 @pytest.mark.parametrize("status", ["success", "skipped", "partial_success"])
 def test_ferry_partial_result_is_a_dagster_failure_without_retry(monkeypatch, status):
     committed = []
@@ -238,8 +280,8 @@ def test_place_job_deferral_only_ends_success_with_metadata(monkeypatch, provide
 
 @pytest.mark.parametrize("provider", ["vworld", "kakao"])
 @pytest.mark.parametrize("result", [
-    # 운영(2026-11 odroid) 실패 11건의 모양: 결정적으로 실패하는 대상 1곳(호출 1건 중 1건 실패)
-    {"status": "partial_success", "run_id": 15, "provider_calls": 1, "deferred": 1, "provider_failed": 1,
+    # 결정적으로 실패하는 대상 1곳 + 성공한 호출(호출 2건 중 1건 실패)
+    {"status": "partial_success", "run_id": 15, "provider_calls": 2, "deferred": 1, "provider_failed": 1,
      "provider_blocked": 0},
     {"status": "partial_success", "run_id": 15, "provider_calls": 4, "deferred": 2, "provider_failed": 1},
     {"status": "success", "run_id": 16, "provider_calls": 4, "deferred": 0, "provider_failed": 1},
@@ -267,6 +309,13 @@ def test_place_job_isolated_provider_failures_are_partial_success(monkeypatch, p
     # 인증·쿼터·연속 실패로 이번 실행을 멈췄다
     {"status": "partial_success", "run_id": 17, "provider_calls": 1, "deferred": 1, "provider_failed": 1,
      "provider_blocked": 1},
+    # 호출 전량 실패(제공기관 전면 장애)는 건수와 무관하게 실패다(소유자 결정 2026-11-24). 운영 하루 호출 1~2건의
+    # 모양: 예전 판정은 1/1을 부분 성공으로 두어 VWorld·카카오가 완전히 죽어도 녹색 부분 완료로만 남았다.
+    {"status": "partial_success", "run_id": 17, "provider_calls": 1, "deferred": 1, "provider_failed": 1,
+     "provider_blocked": 0},
+    {"status": "partial_success", "run_id": 17, "provider_calls": 2, "deferred": 2, "provider_failed": 2},
+    # 호출 수를 남기지 않은 결과도 실패 건수가 곧 호출 수다
+    {"status": "success", "run_id": 17, "deferred": 0, "provider_failed": 1},
     # 실패 3건 이상이면서 호출의 절반 이상
     {"status": "partial_success", "run_id": 17, "provider_calls": 6, "deferred": 3, "provider_failed": 3},
     {"status": "partial_success", "run_id": 17, "provider_calls": 3, "deferred": 3, "provider_failed": 3},
@@ -504,6 +553,9 @@ def test_reference_enrichment_deferral_only_is_success_with_metadata(monkeypatch
     {"status": "partial_success", "run_id": 7, "provider_calls": 1, "deferred": 1, "provider_failed": 1,
      "provider_blocked": 1},
     {"status": "partial_success", "run_id": 7, "provider_calls": 4, "deferred": 3, "provider_failed": 3},
+    # 호출 전량 실패(1/1): 제공기관 전면 장애와 구분할 수 없어 실패다(소유자 결정 2026-11-24)
+    {"status": "partial_success", "run_id": 7, "provider_calls": 1, "deferred": 1, "provider_failed": 1,
+     "provider_blocked": 0},
 ])
 def test_reference_enrichment_provider_errors_still_fail(monkeypatch, provider, partial):
     ok = {"status": "success", "run_id": 8, "deferred": 0, "provider_failed": 0}
@@ -517,13 +569,14 @@ def test_reference_enrichment_provider_errors_still_fail(monkeypatch, provider, 
 
 @pytest.mark.parametrize("provider", ["vworld", "kakao"])
 def test_reference_enrichment_isolated_failure_is_partial_and_prepares_exports(monkeypatch, provider):
-    """운영(2026-11 odroid) bus_reference 실패의 모양: 기준정보는 저장됐고 좌표 호출 1건(1/1)만 실패했다.
+    """기준정보는 저장됐고 좌표 호출 일부(2건 중 1건)만 실패했다 — 다른 호출은 성공했으니 제공기관 장애가 아니다.
 
-    예전에는 run FAILURE였고 뒤의 export 준비(prepare_reference_exports)까지 건너뛰었다.
+    운영(2026-11 odroid) 실패는 호출 1건 중 1건(전량 실패)이었고, 그 모양은 이제 다시 실패다(소유자 결정 2026-11-24,
+    `test_reference_enrichment_provider_errors_still_fail`). 다른 호출이 성공한 날의 대상 실패만 부분 성공으로 export 준비를 잇는다.
     """
     from dagster import DagsterInstance
 
-    partial = {"status": "partial_success", "run_id": 7, "provider_calls": 1, "deferred": 1, "provider_failed": 1,
+    partial = {"status": "partial_success", "run_id": 7, "provider_calls": 2, "deferred": 1, "provider_failed": 1,
                "provider_blocked": 0}
     ok = {"status": "success", "run_id": 8, "provider_calls": 2, "deferred": 0, "provider_failed": 0}
     vworld, kakao = (partial, ok) if provider == "vworld" else (ok, partial)
@@ -549,7 +602,7 @@ def test_reference_enrichment_isolated_failure_is_partial_and_prepares_exports(m
     assert metadata["collection_outcome"].value == "partial"
     assert metadata["partial_parts"].value == provider
     assert metadata[f"{provider}_provider_failed"].value == 1
-    assert metadata[f"{provider}_provider_calls"].value == 1
+    assert metadata[f"{provider}_provider_calls"].value == 2
     assert any("1건의 호출이 실패했습니다" in line for line in warnings)
     assert result.output_for_node("prepare_reference_exports")["status"] == "disabled"
 
@@ -645,3 +698,94 @@ def test_transport_provider_lifecycle_stays_in_one_event_loop(monkeypatch) -> No
     assert result == {"status": "success"}
     assert len(loop_ids) == 2
     assert loop_ids[0] == loop_ids[1]
+
+
+@pytest.mark.parametrize("provider", ["vworld", "kakao"])
+def test_place_job_all_calls_failed_is_coded_and_reported_as_failed(monkeypatch, provider):
+    """호출 전량 실패는 관리 콘솔이 읽는 고정 코드와 `status=failed`로 남는다(수집 결과 상태는 따로)."""
+    _job, op_name, _service = _PLACE_JOBS[provider]
+    run, _warnings = _run_place_job(monkeypatch, provider, {
+        "status": "partial_success", "run_id": 21, "provider_calls": 1, "deferred": 1, "provider_failed": 1})
+    assert not run.success
+    metadata = run.failure_data_for_node(op_name).user_failure_data.metadata
+    assert metadata["error_code"].value == "ALL_SOURCES_FAILED"
+    assert metadata["status"].value == "failed"
+    assert metadata["collection_run_status"].value == "partial_success"
+    # 그 밖의 실패 사유(인증·쿼터로 멈춤)에는 이 코드를 달지 않는다.
+    run, _warnings = _run_place_job(monkeypatch, provider, {
+        "status": "partial_success", "run_id": 22, "provider_calls": 1, "deferred": 1, "provider_failed": 1,
+        "provider_blocked": 1})
+    metadata = run.failure_data_for_node(op_name).user_failure_data.metadata
+    assert "error_code" not in metadata and metadata["status"].value == "partial_success"
+
+
+def _airport_run(monkeypatch, result: dict):
+    async def committed_run(settings, action, **kwargs):
+        return dict(result)
+
+    monkeypatch.setattr(dagster_definitions, "_settings", lambda: None)
+    monkeypatch.setattr(dagster_definitions, "CollectionService", lambda _settings: SimpleNamespace(collect=None))
+    monkeypatch.setattr(dagster_definitions, "_run_with_session", committed_run)
+    return dagster_definitions.airport_collection_job.execute_in_process(raise_on_error=False)
+
+
+@pytest.mark.parametrize("status,progress,errors,source_code", [
+    # 저장분도 없는 전면 장애(가장 흔한 모양): 예전 첫 분기 "일부 수집이 실패"가 아니라 같은 고정 코드다
+    ("failed", 0, ["kac_parking API error 99: EXCEEDED_LIMIT", "incheon_parking: ConnectError"], "PROVIDER_RATE_LIMIT"),
+    # 거절 원천의 이력만 남은 전부 실패
+    ("partial_success", 24, ["kac_parking: 주차장 원천 무효 행 비율이 상한을 넘었습니다"], None),
+])
+def test_airport_all_sources_failed_metadata_contract(monkeypatch, status, progress, errors, source_code):
+    """관리 콘솔이 읽는 계약: 고정 코드·run 판정(status=failed)·DB 상태·원래 원인 분류·원천 수. 재시도 가능으로 보이지 않는다."""
+    run = _airport_run(monkeypatch, {
+        "collection_run_id": 77, "status": status, "client_mode": "live", "raw_response_count": 0,
+        "snapshot_count": progress, "fee_rule_count": 0, "errors": errors,
+        "parking_sources_total": 2, "parking_sources_failed": 2})
+    assert not run.success
+    failure = run.failure_data_for_node("collect_airport_parking").user_failure_data
+    metadata = {key: value.value for key, value in failure.metadata.items()}
+    assert failure.description.startswith("주차 원천 2곳이 모두 실패했습니다(ALL_SOURCES_FAILED)")
+    assert metadata["error_code"] == "ALL_SOURCES_FAILED"
+    assert metadata["status"] == "failed" and metadata["collection_run_status"] == status
+    assert metadata["retryable"] is False and "collection_outcome" not in metadata
+    assert (metadata["parking_sources_total"], metadata["parking_sources_failed"]) == (2, 2)
+    assert metadata.get("source_error_code") == source_code
+
+
+def test_airport_success_metadata_carries_parking_source_counts(monkeypatch):
+    run = _airport_run(monkeypatch, {
+        "collection_run_id": 78, "status": "success", "client_mode": "live", "raw_response_count": 2,
+        "snapshot_count": 30, "fee_rule_count": 0, "errors": [],
+        "parking_sources_total": 2, "parking_sources_failed": 0})
+    assert run.success
+    metadata = _output_metadata(run, "collect_airport_parking")
+    assert metadata["parking_sources_total"].value == 2 and metadata["parking_sources_failed"].value == 0
+
+
+@pytest.mark.parametrize("reference,vworld,coded", [
+    ({"status": "success", "run_id": 40},
+     {"status": "partial_success", "run_id": 7, "provider_calls": 1, "deferred": 1, "provider_failed": 1}, True),
+    # 기준정보(기항지) 실패가 섞이면 전량 실패 코드만으로 설명할 수 없다
+    ({"status": "partial_success", "run_id": 40, "port_location_failed_calls": 1},
+     {"status": "partial_success", "run_id": 7, "provider_calls": 1, "deferred": 1, "provider_failed": 1}, False),
+    # 인증·쿼터로 멈춤(blocked)은 다른 사유다
+    ({"status": "success", "run_id": 40},
+     {"status": "partial_success", "run_id": 7, "provider_calls": 1, "deferred": 1, "provider_failed": 1,
+      "provider_blocked": 1}, False),
+])
+def test_reference_enrichment_all_calls_failed_code(monkeypatch, reference, vworld, coded):
+    kakao = {"status": "success", "run_id": 8, "provider_calls": 2, "deferred": 0, "provider_failed": 0}
+
+    async def fake_run(_settings, action, *_args, **_kwargs):
+        return {"reference": reference, "vworld": vworld, "kakao": kakao}[action]
+
+    monkeypatch.setattr(dagster_definitions, "_settings", lambda: None)
+    monkeypatch.setattr(dagster_definitions, "BusReferenceCollectionService", lambda _: SimpleNamespace(collect="reference"))
+    monkeypatch.setattr(dagster_definitions, "PlaceLocationCollectionService", lambda _: SimpleNamespace(collect="vworld"))
+    monkeypatch.setattr(dagster_definitions, "KakaoPlaceCollectionService", lambda _: SimpleNamespace(collect="kakao"))
+    monkeypatch.setattr(dagster_definitions, "_run_with_session", fake_run)
+    run = dagster_definitions.bus_reference_collection_job.execute_in_process(raise_on_error=False)
+    assert not run.success
+    metadata = run.failure_data_for_node("enrich_new_reference_locations").user_failure_data.metadata
+    assert (metadata.get("error_code") is not None
+            and metadata["error_code"].value == "ALL_SOURCES_FAILED") is coded

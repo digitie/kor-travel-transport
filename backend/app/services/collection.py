@@ -581,12 +581,24 @@ class CollectionService:
         raw_count = 0
         snapshot_count = 0
         fee_rule_count = 0
+        # 주차 원천(KAC·인천) 중 이번 실행에서 시도한 수와 성공(Map 경로는 current 승격, 플래그 OFF 경로는 응답 수신)한 수.
+        # 요금·거절 원천의 이력 전용 저장은 진척으로 세지 않는다 — 원천이 전부 실패한 실행을 부분 성공으로 덮지 않게 Dagster가
+        # 본다. 이미 걸린 KAC 호출 한도(마감 시각이 있는 유예)로 부르지 않은 KAC는 시도에서 뺀다 — 한도 유예는 장애가
+        # 아니다(한도만 있고 다른 원천이 없으면 예전처럼 유예다). 이번 실행에서 새로 받은 429는 실패로 센다.
+        kac_deferred = int(rate_limit_state.is_blocked)
+        parking_sources_total = 0
+        parking_sources_ok = 0
 
         try:
             if self.settings.transport_map_current_enabled:
+                from app.services.parking_exports import parking_sources
+                configured = parking_sources(self.settings)
+                parking_sources_total = len(configured) - (kac_deferred if "kac_parking" in configured else 0)
                 raw_count, snapshot_count = await self._collect_map_parking(session, run.id, rate_limit_state, errors)
+                parking_sources_ok = raw_count
                 run = await session.get(CollectionRun, owner_run_id)
             else:
+                parking_sources_total = 1 - kac_deferred + int(bool(self.settings.enable_incheon_collection))
                 if rate_limit_state.is_blocked:
                     errors.append(
                         normalize_upstream_rate_limit_error(rate_limit_state.error_message)
@@ -596,6 +608,7 @@ class CollectionService:
                     response = await self._safe_fetch(session, run, self.client.fetch_kac_parking, errors)
                     if response is not None:
                         raw_count += 1
+                        parking_sources_ok += 1
                         parsed = parse_kac_parking(
                             response.body_text,
                             allowed_airport_codes=self.settings.supported_airport_codes,
@@ -608,6 +621,7 @@ class CollectionService:
                         pass
                     else:
                         raw_count += 1
+                        parking_sources_ok += 1
                         parsed = parse_incheon_parking(response.body_text)
                         snapshot_count += await self._store_observations(session, run.id, parsed)
 
@@ -721,6 +735,8 @@ class CollectionService:
             "snapshot_count": snapshot_count,
             "fee_rule_count": fee_rule_count,
             "errors": errors,
+            "parking_sources_total": parking_sources_total,
+            "parking_sources_failed": max(parking_sources_total - parking_sources_ok, 0),
         }
         if self.isolated_rows:
             result["isolated_rows"] = self.isolated_rows

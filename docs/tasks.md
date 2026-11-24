@@ -24,7 +24,8 @@
   코드 머지됨. **남은 것**: Codex 배포 뒤 운영 수용(격리 건수 metadata, 실패율). [journal](journal.md) 2026-11-24.
 
 - [ ] **POSTMERGE-REVIEW-20261124 / P1** — #262·#260 사후 리뷰 P1 수정(KAC 429 뒤 요금 호출 중단, 공개 인천 조회 대기 상한, 키 전체·장애
-  실패를 대상 지수 대기에서 제외). **남은 것(소유자)**: 좌표 보강의 제공기관 전면 장애를 FAILURE로 올릴 기준(#260 P1-3).
+  실패를 대상 지수 대기에서 제외). #260 P1-3은 소유자 결정(2026-11-24: 호출 전량 실패 = 건수와 무관하게 FAILURE)으로
+  ALL-FAILED-IS-FAILURE-20261124에서 반영.
   [journal](journal.md) 2026-11-24.
 
 - [ ] **INCIDENT-EMPTY-SET-20261124 / P0** — 돌발 0건(완결 증거 포함)을 성공으로 받지 않고 export는 503. **남은 것**: 배포 뒤
@@ -33,7 +34,8 @@
 
 - [ ] **BUS-REF-PARTIAL-20261124 / P1** — 좌표 보강(VWorld·카카오)의 일부 호출 실패를 부분 성공으로, VWorld 수집이 실패 대상 하나에
   멈추지 않게, 실패 대상 지수 대기, 철도 주소 첫 줄 검색(감사 2026-11-23 §2.2 bus_reference). **남은 것**: 배포 뒤 운영에서
-  bus_reference run SUCCESS·export 준비 실행, 철도역 1096 영수증 성공 수용. [journal](journal.md) 2026-11-24.
+  bus_reference run SUCCESS·export 준비 실행, 철도역 1096 영수증 성공 수용. (2026-11-24부터 그날 호출이 그 대상 하나뿐이고 실패하면
+  run은 FAILURE다 — ALL-FAILED-IS-FAILURE-20261124.) [journal](journal.md) 2026-11-24.
 
 - [ ] **DAGSTER-RUNTIME-PRIORITY-20261124 / P1** — 5분 job 실행 상한 주기 비례(공항 1,800·고속도로 1,200초, run 시작 기준 deadline),
   `dagster/priority`(실시간 10·유가 5·나머지 0), 고속도로 성공 예약을 tick 시각 기준으로. **남은 것**: 배포 뒤 odroid에서 고속도로 `skipped` run 수(이전 14일 498)와 실효 주기(이전 약 9분)를

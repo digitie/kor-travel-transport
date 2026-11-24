@@ -408,6 +408,35 @@ async def _collect_airport_with_analytics(session, *, settings: Settings, trigge
     return result
 
 
+#: 이번 실행에서 시도한 원천(공항 주차) 또는 호출(좌표 보강)이 모두 실패한 run 실패의 고정 오류 코드. 관리자 콘솔이 같은 코드로
+#: 원인·대응 문구를 보인다(`lib/dagster-failure-diagnostics.ts`). 부분 실패 기준(건수·비율)과 무관하다(소유자 결정 2026-11-24).
+ALL_SOURCES_FAILED = "ALL_SOURCES_FAILED"
+
+
+def _all_parking_sources_failed(result: dict[str, Any]) -> bool:
+    """이번 실행에서 시도한 주차 원천이 하나 이상이고 그 전부가 실패했는가(`CollectionService` 결과 계약)."""
+    total, failed = result.get("parking_sources_total"), result.get("parking_sources_failed")
+    return (result.get("status") in {"failed", "partial_success"} and type(total) is int and type(failed) is int
+            and 0 < total <= failed)
+
+
+def _all_parking_sources_description(result: dict[str, Any]) -> str:
+    return (f"주차 원천 {result['parking_sources_total']}곳이 모두 실패했습니다(ALL_SOURCES_FAILED). 저장한 요금·이력은 "
+            "유지했고 주차 현재값은 직전 성공 세대를 유지합니다.")
+
+
+def _all_parking_sources_metadata(result: dict[str, Any], source_code: Any) -> dict[str, Any]:
+    """주차 원천 전량 실패 run의 고정 metadata. `status`는 run 판정(실패)이고, DB 실행 상태(이력이 남으면 `partial_success`)는
+    `collection_run_status`, 원래 원인 분류(쿼터·응답 규격 등)는 `source_error_code`로 따로 싣는다."""
+    return {"run_id": result["collection_run_id"], "status": "failed", "retryable": False,
+            "collection_run_status": str(result.get("status")), "error_code": ALL_SOURCES_FAILED,
+            "stage": "provider_fetch", "recovery_hint": "CHECK_RUN_DETAIL", "successful_data_preserved": True,
+            "parking_sources_total": result["parking_sources_total"],
+            "parking_sources_failed": result["parking_sources_failed"],
+            **({"source_error_code": source_code}
+               if isinstance(source_code, str) and source_code not in {ALL_SOURCES_FAILED, "COLLECTION_FAILED"} else {})}
+
+
 #: 사전집계 갱신 판정 질의의 상한. 서버 쪽 문장 상한(ms)과 클라이언트 안전망(초). 공용 PG가 멈춰도 공항 수집 run을 붙잡지 않는다.
 ANALYTICS_HEALTH_STATEMENT_TIMEOUT_MS = 5000
 ANALYTICS_HEALTH_TIMEOUT_SECONDS = 15
@@ -443,6 +472,12 @@ def collect_airport_parking(context) -> dict[str, Any]:
         if result.get("status") == "failed" or (
             result.get("status") == "partial_success" and not _has_collection_progress(result)
         ):
+            if _all_parking_sources_failed(result):
+                # 저장분도 없는 전면 장애(가장 흔한 모양)도 같은 고정 코드·원천 수로 보인다.
+                source_code = _collection_failure_metadata(result, "airport").get("error_code")
+                raise Failure(description=_all_parking_sources_description(result),
+                              metadata={**_all_parking_sources_metadata(result, source_code), **cache_metadata},
+                              allow_retries=False)
             raise Failure(description="공항 수집의 성공분은 저장했지만 일부 수집이 실패했습니다.",
                           metadata={"run_id": result["collection_run_id"], "status": result["status"], **cache_metadata},
                           allow_retries=False)
@@ -477,6 +512,17 @@ def collect_airport_parking(context) -> dict[str, Any]:
             metadata["analytics_refresh_check_error"] = result["analytics_refresh_check_error"]
             context.log.warning(f"공항 통계 사전집계 갱신 판정을 하지 못했습니다({result['analytics_refresh_check_error']}). "
                                 "수집 결과는 그대로입니다.")
+        if _all_parking_sources_failed(result):
+            # 주차 원천(KAC·인천)이 하나도 성공하지 못했다(제공기관 전면 장애 또는 응답 계약 변경). 요금 갱신이나 거절
+            # 원천의 이력 전용 저장이 있어도 주차 현재값은 갱신되지 않았으므로 부분 성공이 아니라 실패다(소유자 결정
+            # 2026-11-24: 전량 실패는 건수와 무관하게 실패). 행 격리 상한(20%)·직전 값 유지(1시간)는 그대로다.
+            # 사전집계 경보(태그·로그)를 남긴 뒤에 올린다. 원인 분류(쿼터·응답 규격 등)는 `source_error_code`로 둔다.
+            source_code = metadata.get("error_code")
+            raise Failure(description=_all_parking_sources_description(result),
+                          metadata={**{key: value for key, value in metadata.items()
+                                       if key not in {"retryable", "collection_outcome", "auto_retry"}},
+                                    **cache_metadata, **_all_parking_sources_metadata(result, source_code)},
+                          allow_retries=False)
         context.add_output_metadata(metadata)
         _record_collection_outcome(context, metadata["collection_outcome"])
         return result
@@ -648,7 +694,7 @@ def _collection_output_metadata(result: dict[str, Any], scope: str) -> dict[str,
     }
     for key in ("collection_run_id", "raw_response_count", "snapshot_count", "fee_rule_count",
                 "traffic_snapshot_count", "incident_snapshot_count", "fuel_station_count", "fuel_price_count",
-                "isolated_rows"):
+                "isolated_rows", "parking_sources_total", "parking_sources_failed"):
         value = result.get(key)
         if type(value) is int and 0 <= value <= 1_000_000_000:
             metadata[key] = value
@@ -845,15 +891,31 @@ def collect_fuel_transport(context) -> dict[str, Any]:
 
 
 #: 장소 좌표 보강(VWorld·카카오)의 호출 실패를 run 실패로 올리는 기준. 좌표 보강은 기준정보 저장 뒤의 부가 단계이고
-#: 실패한 대상은 영수증 TTL(VWorld는 연속 실패에 따라 1~30일)이 지나면 다시 호출되므로, 대상 몇 곳의 실패는
+#: 실패한 대상은 영수증 TTL(VWorld·카카오 모두 연속 실패에 따라 1~30일)이 지나면 다시 호출되므로, 대상 몇 곳의 실패는
 #: 부분 성공(run SUCCESS + `kortravel/collection-outcome=partial` + 실패 건수 metadata·경고)으로 둔다.
 #: 실패로 남기는 것: (1) 수집 자체가 예외로 끝남(`status=failed`), (2) 인증·쿼터·연속 실패로 이번 실행을 멈춤
-#: (`provider_blocked`), (3) 실패가 `PLACE_FAILURE_MIN_FAILED_CALLS`건 이상이면서 호출의
-#: `PLACE_FAILURE_MAX_RATIO` 이상, (4) 유예로도 호출 실패로도 설명되지 않는 `partial_success`.
+#: (`provider_blocked`), (3) **이번 실행의 호출이 전부 실패**(제공기관 전면 장애 — 건수와 무관), (4) 실패가
+#: `PLACE_FAILURE_MIN_FAILED_CALLS`건 이상이면서 호출의 `PLACE_FAILURE_MAX_RATIO` 이상, (5) 유예로도 호출 실패로도
+#: 설명되지 않는 `partial_success`.
 #: 운영(2026-11-04~23 odroid): bus_reference·place_location 실패 11건이 전부 같은 철도역 주소 1곳의 VWorld 서버
-#: 오류(호출 1건 중 1건 실패)였고, 그 실패가 좌표 보강 뒤의 export 준비까지 건너뛰게 했다.
+#: 오류(호출 1건 중 1건 실패)였고, 그 실패가 좌표 보강 뒤의 export 준비까지 건너뛰게 했다(검색어는 #260에서 고쳤다).
+#: (3)은 소유자 결정(2026-11-24): 하루 호출이 1~2건뿐이라 (4)만으로는 제공기관이 완전히 죽어도 매일 녹색 부분 완료로만
+#: 남는다. 호출이 전부 실패한 실행은 대상 몇 곳의 결함과 구분할 수 없으므로 실패로 올린다 — 같은 대상 하나가 계속
+#: 실패하면 영수증 대기(연속 실패 n번째 뒤 2^(n-1)일, 최대 30일) 간격으로 실패 run이 보인다.
 PLACE_FAILURE_MIN_FAILED_CALLS = 3
 PLACE_FAILURE_MAX_RATIO = 0.5
+
+
+def _place_call_counts(result: dict[str, Any]) -> tuple[int, int]:
+    """(실패 호출 수, 호출 수). 호출 수가 없거나 실패보다 작으면 실패 수를 호출 수로 본다."""
+    failed = int(result.get("provider_failed", 0) or 0)
+    return failed, max(int(result.get("provider_calls", 0) or 0), failed)
+
+
+def _place_all_calls_failed(result: dict[str, Any]) -> bool:
+    """이번 실행의 호출이 하나 이상이고 하나도 성공하지 않았는가(제공기관 전면 장애와 구분할 수 없는 실행)."""
+    failed, calls = _place_call_counts(result)
+    return bool(failed) and failed >= calls
 
 
 def _place_collection_error(result: dict[str, Any]) -> bool:
@@ -861,8 +923,10 @@ def _place_collection_error(result: dict[str, Any]) -> bool:
     status = result.get("status")
     if status == "failed" or result.get("provider_blocked", 0):
         return True
-    failed = int(result.get("provider_failed", 0) or 0)
-    calls = max(int(result.get("provider_calls", 0) or 0), failed)
+    failed, calls = _place_call_counts(result)
+    if _place_all_calls_failed(result):
+        # 이번 실행의 호출이 하나도 성공하지 않았다(제공기관 전면 장애). 호출 수와 무관하게 실패다.
+        return True
     if failed >= PLACE_FAILURE_MIN_FAILED_CALLS and failed >= PLACE_FAILURE_MAX_RATIO * calls:
         return True
     return status == "partial_success" and not result.get("deferred", 0) and not failed
@@ -880,6 +944,15 @@ def _place_metadata(result: dict[str, Any]) -> dict[str, Any]:
         ("rail_locations", 0), ("backoff_skipped", 0))}
 
 
+def _place_failure_code(*results: dict[str, Any]) -> dict[str, Any]:
+    """좌표 실패가 '호출 전량 실패'뿐이면 고정 오류 코드를 단다(그 밖의 실패 사유는 예전처럼 코드 없이 둔다)."""
+    if results and all(_place_all_calls_failed(result) and result.get("status") != "failed"
+                       and not result.get("provider_blocked", 0) for result in results):
+        return {"error_code": ALL_SOURCES_FAILED, "stage": "provider_fetch", "recovery_hint": "CHECK_RUN_DETAIL",
+                "successful_data_preserved": True}
+    return {}
+
+
 def _finish_place_collection(context, result: dict[str, Any], provider: str) -> dict[str, Any]:
     """독립 장소 좌표 job의 끝맺음. bus_reference의 좌표 보강과 같은 규칙(`_place_collection_error`)이다."""
     metadata = _place_metadata(result)
@@ -889,7 +962,10 @@ def _finish_place_collection(context, result: dict[str, Any], provider: str) -> 
                                   f"provider_calls={metadata['provider_calls']}, "
                                   f"provider_blocked={metadata['provider_blocked']}, status={metadata['status']}). "
                                   "성공분은 저장했고 유예분은 다음 정기 수집에서 다시 봅니다.",
-                      metadata=metadata, allow_retries=False)
+                      metadata={**metadata, **_place_failure_code(result),
+                                **({"status": "failed", "collection_run_status": str(metadata["status"])}
+                                   if _place_failure_code(result) else {})},
+                      allow_retries=False)
     if _place_collection_partial(result):
         metadata["collection_outcome"] = "partial"
         context.log.warning(f"{provider} 장소 위치 조회에서 {metadata['provider_failed']}건의 호출이 실패했습니다"
@@ -1037,11 +1113,14 @@ def enrich_new_reference_locations(context, reference_result: dict[str, Any]) ->
                              f"{name}_provider_calls": result.get("provider_calls", 0),
                              f"{name}_provider_failed": result.get("provider_failed", 0),
                              f"{name}_provider_blocked": result.get("provider_blocked", 0)})
-        # 실제 오류만 실패로 올린다(`_place_collection_error`: 예외로 끝난 수집, 인증·쿼터·연속 실패로 멈춤, 실패가
-        # 많고 비율도 높은 호출, 설명 없는 부분 성공 / `_reference_error`: 이번 실행의 기항지 위치 조회 실패).
+        # 실제 오류만 실패로 올린다(`_place_collection_error`: 예외로 끝난 수집, 인증·쿼터·연속 실패로 멈춤, 호출 전량
+        # 실패, 실패가 많고 비율도 높은 호출, 설명 없는 부분 성공 / `_reference_error`: 이번 실행의 기항지 위치 조회 실패).
         # 유예(일일 호출 예산, 429 유예, 검색 결과가 페이지 상한을 넘어 확정할 수 없는 `incomplete`, 항구 기항지
-        # 조회의 실패 TTL·예산)와 대상 몇 곳의 좌표 호출 실패는 기준정보를 저장한 정상 결과다 — 같은 대상이 매일
-        # 실패해 job이 매일 FAILURE가 되면 진짜 장애가 묻히고, 뒤의 export 준비까지 건너뛴다. 부분 실패는
+        # 조회의 실패 TTL·예산)와 (다른 호출이 성공한 날의) 대상 몇 곳의 좌표 호출 실패는 기준정보를 저장한 정상 결과다 —
+        # 같은 대상이 매일 실패해 job이 매일 FAILURE가 되면 진짜 장애가 묻힌다. 결정적으로 실패하는 대상은 영수증 대기
+        # (VWorld·카카오 모두 연속 실패 n번째 뒤 2^(n-1)일, 최대 30일)로 호출 자체를 줄인다. 그래도 그 대상 하나만 호출한
+        # 날은 호출 전량 실패라 FAILURE이고, 이때 뒤의 export 준비(`prepare_reference_exports`)는 건너뛴다 — 공항 job이
+        # 5분마다 같은 준비를 하므로 지연은 짧다(소유자 결정 2026-11-24가 받아들인 비용). 부분 실패는
         # `collection_outcome=partial` 태그·metadata·경고로 남긴다.
         failed = [name for name, failed in (
             ("reference", _reference_error(reference_result)),
@@ -1051,10 +1130,14 @@ def enrich_new_reference_locations(context, reference_result: dict[str, Any]) ->
         if failed:
             raise Failure(description=(
                 f"제공기관 호출 실패가 있습니다({', '.join(failed)}): 예외로 끝난 수집, 인증·쿼터·연속 실패로 멈춤, "
+                "호출 전량 실패(건수 무관), "
                 f"호출 실패 {PLACE_FAILURE_MIN_FAILED_CALLS}건 이상·{int(PLACE_FAILURE_MAX_RATIO * 100)}% 이상, "
-                "또는 이번 실행의 기항지 위치 조회 실패(reference_failed_calls>0). 유예나 대상 몇 곳의 실패만 있는 날은 "
-                "실패가 아닙니다. 기준정보와 좌표 보강의 성공분은 저장했습니다."),
-                metadata={**metadata, "failed_parts": ",".join(failed)}, allow_retries=False)
+                "또는 이번 실행의 기항지 위치 조회 실패(reference_failed_calls>0). 유예만 있거나, 다른 호출이 성공한 날 대상 "
+                "몇 곳만 실패한 것은 실패가 아닙니다. 기준정보와 좌표 보강의 성공분은 저장했습니다."),
+                metadata={**metadata, "failed_parts": ",".join(failed),
+                          **(_place_failure_code(*({"vworld": vworld, "kakao": kakao}[name] for name in failed))
+                             if "reference" not in failed else {})},
+                allow_retries=False)
         partial = [name for name, result in (("vworld", vworld), ("kakao", kakao)) if _place_collection_partial(result)]
         if partial:
             metadata["collection_outcome"] = "partial"
