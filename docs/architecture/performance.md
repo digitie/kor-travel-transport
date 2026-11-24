@@ -339,7 +339,8 @@ thread로 옮겨도 GIL을 오래 쥐는 단일 호출은 event loop를 그대�
   JSONB를 fetch 중(loop)에 풀며, 합성 500행에서 약 16ms였다. jsonb text 출력은 asyncpg가 받는 문자열과 같은
   정규형이라 풀린 값도 같다.
 - pydantic-core `dump_json`은 직렬화 동안 GIL을 놓지 않는다(합성 500행 1.7MB 약 19~30ms). 봉투와 item 25개
-  묶음을 따로 직렬화해 이어 붙여 한 번에 쥐는 시간을 약 5ms 이하로 줄였다. 전체 직렬화 시간은 비슷했다.
+  묶음을 따로 직렬화해 한 번의 `b"".join`으로 이어 붙여 한 번에 쥐는 시간을 약 5ms 이하로 줄였다. 전체 직렬화
+  시간은 비슷했고 최대 메모리는 본문의 약 2배다. 봉투의 `"items":[]`가 정확히 한 번이 아니면 한 번에 직렬화한다.
 
 본문 바이트는 FastAPI 기본 경로(`TypeAdapter(response_model).dump_json(by_alias=True)`)와 같다.
 `tests/test_service_exports_render.py`가 바뀌기 전 핸들러를 그대로 옮긴 legacy router와 5종·여러 limit의
@@ -347,10 +348,19 @@ thread로 옮겨도 GIL을 오래 쥐는 단일 호출은 event loop를 그대�
 
 - gzip: `Accept-Encoding`이 gzip을 허용하고(q=0은 거절) 본문이 512B 이상이면 level 1로 압축하고
   `Vary: Accept-Encoding`을 둔다(T4 가격 이력과 같은 규칙, 감사 T1-06). Map httpx는 기본으로 gzip을 받는다.
-- snapshot: `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY` + `SET LOCAL statement_timeout='20s'`,
-  `lock_timeout='3s'`. Map read timeout 30초보다 짧아 Map이 포기한 페이지를 서버가 끝까지 만들지 않고,
-  migration DDL의 AccessExclusive 대기 뒤에 줄 서지 않는다(감사 RT-04). 연결이 pool로 돌아가면 격리 수준·
-  READ ONLY·`SET LOCAL`은 모두 원래 값이다(PostgreSQL 전용 시험).
+- snapshot: `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY` + transaction 범위
+  `statement_timeout='20s'`·`lock_timeout='3s'`(`set_config(..., true)` 한 왕복). 문장 상한은 문장마다라
+  주유소 페이지(문장 4개)는 이것만으로 최악 80초가 될 수 있다. 그래서 handler 전체(DB 단계 + 본문 구성 slot
+  대기·구성)에 `asyncio.timeout(25초)`를 따로 둬 Map read timeout 30초 안에 응답이나 503이 닿게 한다(감사 RT-04).
+  이미 시작한 본문 구성 thread는 끊지 못해 그 경우 구성이 끝난 뒤 503이 된다. migration DDL의 AccessExclusive
+  대기 뒤에는 3초까지만 줄 선다. 연결이 pool로 돌아가면 격리 수준·READ ONLY·transaction 범위 설정은 모두
+  원래 값이다 — 정상 반납, begin과 end 사이의 HTTP 오류, deadline 취소, 57014 뒤 모두 연결 1개짜리 pool에서
+  쓰기로 확인한다(PostgreSQL 전용 시험).
+- 503: 잠금 대기(55P03)와 본문 구성 slot(`CapacityLimiter(2)`) 대기 5초 초과는 503 `Retry-After: 10`,
+  문장 상한(57014)과 요청 전체 상한은 503 `Retry-After: 60`이다. 그 밖의 DB 오류와 이 deadline이 아닌
+  `TimeoutError`는 예전처럼 올린다. slot을 얻었을 때 소비자가 이미 끊었으면 본문을 만들지 않는다(499).
+- rollback 실패: 행을 다 읽은 뒤 `_end_snapshot`의 rollback이 연결 오류로 실패하면 연결을 버리고(`invalidate`)
+  페이지는 그대로 낸다.
 - `/airports`는 요청마다 `KrairportClient`(httpx 클라이언트 2개)를 만들지 않고 공개 `list_airports(active=True)`를
   쓴다(T1-08, ADR-004의 공개 API 사용).
 - cursor가 int4 PK 범위(0..2^31-1) 밖이면 DB bind 오류(500) 대신 422다(T1-09).
@@ -361,5 +371,5 @@ thread로 옮겨도 GIL을 오래 쥐는 단일 호출은 event loop를 그대�
 31~46ms였다. 본문은 1,741,856B이고 gzip level 1이면 122,5xxB였다(합성 원본이 반복적이라 실데이터 압축률은
 더 낮을 것이다). 운영 ARM 수치는 배포 후 Server-Timing으로 따로 확인해야 한다.
 
-statement timeout(57014)·일시 DB 오류를 503 코드로 바꾸는 것은 export 실패 계약 작업의 몫이다. 현재는 이 경로에서도
-일반 500이다.
+T1의 55P03·57014·요청 상한 503은 이 경로가 직접 낸다(`Retry-After`만). 503 사유 `code`와 일시 DB 불가(pool·접속)
+503은 export 실패 계약 작업의 몫이다. 계약은 [ADR-013 개정 2026-11-24 (T1 전송)](../adr/013-internal-service-exports-for-map.md)이다.

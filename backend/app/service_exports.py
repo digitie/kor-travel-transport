@@ -25,20 +25,24 @@ worker thread에서 만든다 — 단일 uvicorn event loop를 막지 않고, sn
 
 from __future__ import annotations
 
+import asyncio
 import gzip
 import ipaddress
 import json
+import logging
 import secrets
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from datetime import datetime, timedelta
-from functools import cache, partial
+from functools import cache, partial, wraps
 from typing import Any
 
 from anyio import CapacityLimiter, to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from kortravelcommon.pg_errors import pg_error_info
 from krairport import list_airports
 from pydantic import BaseModel, TypeAdapter
-from sqlalchemy import Text, cast, false, func, select, text
+from sqlalchemy import Text, cast, false, func, select
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -98,11 +102,24 @@ REFERENCE_STALE_AFTER = {
 MAX_PAGE_SIZE = 1000
 #: keyset cursor는 int4 PK다. 범위 밖 값은 bind 단계에서 DataError(일반 500)가 되므로 422로 막는다(감사 T1-09).
 MAX_CURSOR = 2**31 - 1
-#: snapshot 문장 상한. Map read timeout(30초)보다 짧게 둬, Map이 포기한 페이지를 서버가 끝까지 만들며
-#: 연결을 쥐지 않게 한다(감사 RT-04, T1 timeout 예산). 페이지 SQL은 PK·보조 인덱스 조회라 평소 수십 ms다.
+#: snapshot **문장 하나**의 서버 상한. 페이지 SQL은 PK·보조 인덱스 조회라 평소 수십 ms다. 한 요청은 문장이 최대
+#: 4개라 이 값만으로는 요청 전체가 Map read timeout(30초) 안에 끝난다고 보장하지 못한다 — 요청 전체는
+#: `REQUEST_DEADLINE_SECONDS`가 묶는다(감사 RT-04, T1 timeout 예산). 넘으면 57014 → 503(`Retry-After` 60).
 SNAPSHOT_STATEMENT_TIMEOUT = "20s"
-#: AccessExclusive를 기다리는 DDL(migration) 뒤에 줄 서서 statement_timeout까지 막히지 않게 한다.
+#: AccessExclusive를 기다리는 DDL(migration) 뒤에 줄 서서 막히지 않게 한다. 넘으면 55P03 → 503(`Retry-After` 10).
 SNAPSHOT_LOCK_TIMEOUT = "3s"
+#: T1 요청 전체(DB 단계 + 본문 구성 대기·구성) 상한(초). Map read timeout 30초 안에 응답(또는 503)이 닿게 5초를
+#: 남긴다. 넘으면 503(`Retry-After` 60). 이미 시작한 본문 구성 thread는 끊지 못해, 그 경우 구성이 끝난 뒤 503이 된다
+#: (500행 페이지 구성은 로컬 수십~수백 ms다).
+REQUEST_DEADLINE_SECONDS = 25
+#: 본문 구성 slot(`RENDER_CONCURRENCY`) 대기 상한(초). 넘으면 503(`Retry-After` 10).
+RENDER_QUEUE_TIMEOUT_SECONDS = 5
+#: T1 snapshot 경합·상한 초과 503의 `Retry-After`(초). export 실패 계약(ADR-013 개정 2026-11-24)의 `EXPORT_BUSY`·
+#: `EXPORT_PREPARE_TIMEOUT`과 같은 값이다.
+BUSY_RETRY_AFTER_SECONDS = 10
+TIMEOUT_RETRY_AFTER_SECONDS = 60
+LOCK_NOT_AVAILABLE = "55P03"
+QUERY_CANCELED = "57014"
 #: 본문 구성(DTO·JSON·gzip)을 동시에 돌리는 worker thread 수 상한(감사 T1-03). 공개 유가 지도
 #: `fuel_map_limiter`와 같은 2다 — 단일 프로세스의 GIL·CPU를 export가 독점하지 않게 한다.
 RENDER_CONCURRENCY = 2
@@ -111,6 +128,8 @@ GZIP_MIN_BYTES = 512
 #: 한 번의 `dump_json`으로 직렬화하는 item 수. 이 단위로 GIL을 놓아 event loop가 끼어들 틈을 둔다(로컬 500행
 #: 주유소 페이지에서 묶음당 약 5ms 이하, 전체 직렬화 시간은 한 번에 할 때와 비슷했다).
 DUMP_GROUP = 25
+
+logger = logging.getLogger(__name__)
 
 
 def _raw_text(column: Any) -> Any:
@@ -174,6 +193,7 @@ def build_service_export_router(
     render_limiter = CapacityLimiter(RENDER_CONCURRENCY)
 
     @router.get("/fuel-stations", response_model=FuelStationExportPage)
+    @_bounded
     async def export_fuel_stations(
         request: Request,
         cursor: str | None = Query(default=None, max_length=20),
@@ -201,11 +221,12 @@ def build_service_export_router(
             ).order_by(FuelLatestPrice.fuel_station_id, FuelLatestPrice.product_code))).all()
         addresses = await fetch_admin_address_rows(session, "fuel_station", page)
         await _end_snapshot(session)
-        return await _render(request, render_limiter, partial(
+        return await _render(request, session, render_limiter, partial(
             _fuel_station_page, collection, page, has_more, prices, addresses,
         ))
 
     @router.get("/rest-areas", response_model=RestAreaExportPage)
+    @_bounded
     async def export_rest_areas(
         request: Request,
         cursor: str | None = Query(default=None, max_length=20),
@@ -225,11 +246,12 @@ def build_service_export_router(
         page, has_more = rows[:limit], len(rows) > limit
         addresses = await fetch_admin_address_rows(session, "rest_area", page)
         await _end_snapshot(session)
-        return await _render(request, render_limiter, partial(
+        return await _render(request, session, render_limiter, partial(
             _rest_area_page, collection, page, has_more, addresses,
         ))
 
     @router.get("/rest-area-fuel-prices", response_model=RestAreaFuelPriceExportPage)
+    @_bounded
     async def export_rest_area_fuel_prices(
         request: Request,
         cursor: str | None = Query(default=None, max_length=20),
@@ -248,9 +270,12 @@ def build_service_export_router(
         rows = list((await session.execute(_current_set(query, RestAreaFuelPrice.last_seen_at, state))).all())
         page, has_more = rows[:limit], len(rows) > limit
         await _end_snapshot(session)
-        return await _render(request, render_limiter, partial(_rest_area_fuel_page, collection, page, has_more))
+        return await _render(request, session, render_limiter, partial(
+            _rest_area_fuel_page, collection, page, has_more,
+        ))
 
     @router.get("/highway-incidents/active", response_model=HighwayIncidentActiveSet)
+    @_bounded
     async def export_active_highway_incidents(
         request: Request, session: AsyncSession = Depends(get_db),
     ) -> Response:
@@ -287,9 +312,10 @@ def build_service_export_router(
             # 수집이 0건을 성공으로 받지 않지만(INCIDENT-EMPTY-SET-20261124), 배포 직전의 옛 "0건 성공" 상태나 다른 경로가
             # 행 없이 성공 시각만 올린 경우에도 빈 집합을 전량 해소로 내보내지 않는다.
             raise HTTPException(status_code=503, detail="고속도로 돌발 활성 집합이 비었습니다(상류 이상으로 보고 내지 않습니다).")
-        return await _render(request, render_limiter, partial(_incident_set, collection, collected_at, rows))
+        return await _render(request, session, render_limiter, partial(_incident_set, collection, collected_at, rows))
 
     @router.get("/airports", response_model=AirportExportResponse)
+    @_bounded
     async def export_airports(request: Request, session: AsyncSession = Depends(get_db)) -> Response:
         """운영 중인 국내 공항 전체(krairport 번들 메타데이터, 주차 수집 여부와 무관)."""
         await _begin_snapshot(session)
@@ -297,7 +323,7 @@ def build_service_export_router(
             select(Airport.code).join(ParkingLot, ParkingLot.airport_id == Airport.id).distinct()
         )).all())
         await _end_snapshot(session)
-        return await _render(request, render_limiter, partial(_airport_page, with_parking))
+        return await _render(request, session, render_limiter, partial(_airport_page, with_parking))
 
     router.include_router(build_current_export_router(settings, get_db))
     router.include_router(build_reference_export_router(settings, get_db))
@@ -328,28 +354,82 @@ def _client_allowed(request: Request, settings: Settings) -> bool:
     return any(address in network for network in settings.service_export_allowed_client_networks)
 
 
+def _busy() -> HTTPException:
+    """snapshot 잠금 대기(55P03)·본문 구성 slot 대기 초과. 수 초 안에 풀린다."""
+    return HTTPException(
+        status_code=503, detail="내보내기가 잠시 혼잡합니다. 잠시 후 다시 요청하세요.",
+        headers={"Retry-After": str(BUSY_RETRY_AFTER_SECONDS)},
+    )
+
+
+def _timed_out() -> HTTPException:
+    """snapshot 문장 상한(57014)·요청 전체 상한 초과."""
+    return HTTPException(
+        status_code=503, detail="내보내기 응답 준비 시간이 초과되었습니다. 잠시 후 다시 요청하세요.",
+        headers={"Retry-After": str(TIMEOUT_RETRY_AFTER_SECONDS)},
+    )
+
+
+def _bounded(handler: Callable[..., Awaitable[Response]]) -> Callable[..., Awaitable[Response]]:
+    """T1 handler 전체에 `REQUEST_DEADLINE_SECONDS`를 두고, snapshot 상한 초과를 원인 불명 500 대신 503으로 낸다.
+
+    - 요청 전체 상한 초과 → 503 `Retry-After` 60. 진행 중인 SQL은 취소되고 연결은 `get_db`가 닫는다.
+    - 55P03(`lock_timeout`, 예: migration의 AccessExclusive 대기) → 503 `Retry-After` 10.
+    - 57014(`statement_timeout`) → 503 `Retry-After` 60.
+    그 밖의 오류(이 deadline이 아닌 `TimeoutError` 포함)는 예전 그대로 올린다.
+    """
+    @wraps(handler)
+    async def bounded(*args: Any, **kwargs: Any) -> Response:
+        deadline = asyncio.timeout(REQUEST_DEADLINE_SECONDS)
+        try:
+            async with deadline:
+                return await handler(*args, **kwargs)
+        except TimeoutError as exc:
+            if not deadline.expired():
+                raise
+            raise _timed_out() from exc
+        except DBAPIError as exc:
+            info = pg_error_info(exc)
+            if info is not None and info.sqlstate == LOCK_NOT_AVAILABLE:
+                raise _busy() from exc
+            if info is not None and info.sqlstate == QUERY_CANCELED:
+                raise _timed_out() from exc
+            raise
+    return bounded
+
+
 async def _end_snapshot(session: AsyncSession) -> None:
     """마지막 SQL 뒤 읽기 snapshot을 닫아 pool 연결을 돌려준다(감사 T1-04·RT-08, T4 `price_history`와 같다).
 
     읽기 전용이라 rollback이다. rollback은 세션의 ORM 객체(`state`)를 만료시키므로 이 뒤에는 ORM 속성을
     읽지 않는다 — 만료된 속성을 읽으면 async lazy load가 `MissingGreenlet`을 낸다. 데이터 행은 Core `Row`,
     상태는 미리 만든 `ExportCollectionState`·datetime으로 넘긴다.
+
+    행은 이미 모두 읽었으므로 rollback이 연결 오류로 실패해도 페이지는 낸다. 그 연결은 pool로 돌리지 않고
+    버린다(`invalidate`).
     """
-    await session.rollback()
+    try:
+        await session.rollback()
+    except (DBAPIError, OSError) as exc:
+        logger.warning("T1 export snapshot rollback failed; invalidating connection: %s", type(exc).__name__)
+        await session.invalidate()
 
 
 async def _begin_snapshot(session: AsyncSession) -> None:
     """상태 행과 데이터 행을 한 snapshot에서 읽도록 트랜잭션을 REPEATABLE READ READ ONLY로 연다.
 
     첫 문장 전에 불러야 한다. 연결이 pool로 돌아갈 때 SQLAlchemy가 격리 수준과 READ ONLY를 되돌리고,
-    `SET LOCAL` 상한은 transaction과 함께 사라진다(감사 RT-04 — T2/T3 `_snapshot_transaction`과 같은 방식).
+    transaction 범위 설정(`set_config(..., true)` = `SET LOCAL`)은 transaction과 함께 사라진다(감사 RT-04).
+    두 상한은 한 왕복으로 건다 — 이 SELECT가 RR snapshot을 잡지만 상태·데이터 행은 그 뒤 같은 snapshot에서 읽는다.
     """
     if session.bind.dialect.name == "postgresql":
         await session.connection(execution_options={
             "isolation_level": "REPEATABLE READ", "postgresql_readonly": True,
         })
-        await session.execute(text(f"SET LOCAL statement_timeout = '{SNAPSHOT_STATEMENT_TIMEOUT}'"))
-        await session.execute(text(f"SET LOCAL lock_timeout = '{SNAPSHOT_LOCK_TIMEOUT}'"))
+        await session.execute(select(
+            func.set_config("statement_timeout", SNAPSHOT_STATEMENT_TIMEOUT, True),
+            func.set_config("lock_timeout", SNAPSHOT_LOCK_TIMEOUT, True),
+        ))
 
 
 def _require_current(collection: ExportCollectionState) -> ExportCollectionState:
@@ -408,15 +488,34 @@ def _reference_collection(source: str, state: TransportCollectionState | None) -
     return _collection(source, state, stale, failed=False)
 
 
-async def _render(request: Request, limiter: CapacityLimiter, build: Callable[[], BaseModel]) -> Response:
+async def _render(
+    request: Request, session: AsyncSession, limiter: CapacityLimiter, build: Callable[[], BaseModel],
+) -> Response:
     """`build`(DTO 구성)·JSON 직렬화·gzip을 전용 limiter 아래 worker thread에서 한다(감사 T1-03·T1-06).
 
     호출 전에 `_end_snapshot`으로 연결을 반납해 둔다 — `build`는 세션을 쓰지 않는다. `response_model`은
     OpenAPI 문서에 그대로 남고, 본문은 FastAPI 기본 경로(`TypeAdapter.dump_json(by_alias=True)`)와 같은 바이트다.
-    gzip은 요청이 받을 때만 level 1이다(Map httpx 기본 `Accept-Encoding: gzip, deflate`).
+    gzip은 요청이 받을 때만 level 1이다(Map httpx 기본 `Accept-Encoding: gzip, deflate`). slot 대기는
+    `RENDER_QUEUE_TIMEOUT_SECONDS`까지이고, slot을 얻었을 때 소비자가 이미 끊었으면 구성하지 않는다.
     """
+    if session.in_transaction():
+        raise RuntimeError("T1 export 본문은 읽기 transaction을 닫은 뒤 구성한다")
     compress = accepts_gzip(request.headers.get("accept-encoding", ""))
-    body, compressed = await to_thread.run_sync(_encode, build, compress, limiter=limiter)
+    queue = asyncio.timeout(RENDER_QUEUE_TIMEOUT_SECONDS)
+    try:
+        async with queue:
+            await limiter.acquire()
+    except TimeoutError as exc:
+        if not queue.expired():
+            raise
+        raise _busy() from exc
+    try:
+        if await request.is_disconnected():
+            # 응답을 받을 쪽이 없다. slot과 CPU를 쓰지 않는다(nginx 관례의 499, 본문 없음).
+            return Response(status_code=499)
+        body, compressed = await to_thread.run_sync(_encode, build, compress)
+    finally:
+        limiter.release()
     headers = {"Vary": "Accept-Encoding"}
     if compressed:
         headers["Content-Encoding"] = "gzip"
@@ -434,19 +533,29 @@ def _dump(page: BaseModel) -> bytes:
     """`TypeAdapter(type(page)).dump_json(page, by_alias=True)`와 같은 바이트를 item 묶음 단위로 만든다.
 
     pydantic-core는 `dump_json` 동안 GIL을 놓지 않는다. 500행(약 1.7MB)을 한 번에 직렬화하면 그동안 worker
-    thread가 event loop를 멈추므로, 봉투(`items=[]`)와 item 묶음(`DUMP_GROUP`개)을 따로 직렬화해 이어 붙인다.
-    JSON 문자열 안의 `"`는 언제나 escape되므로 봉투에서 따옴표 그대로의 `"items":[]`는 key 하나뿐이다.
+    thread가 event loop를 멈추므로, 봉투(`items=[]`)와 item 묶음(`DUMP_GROUP`개)을 따로 직렬화해 한 번의 join으로
+    잇는다. JSON 문자열 안의 `"`는 언제나 escape되므로 봉투에서 따옴표 그대로의 `"items":[]`는 key 하나뿐이다.
+    그래도 정확히 한 번이 아니면 한 번에 직렬화한다.
     """
+    adapter = _adapter(type(page))
     items = getattr(page, "items", None)
     if not items:
-        return _adapter(type(page)).dump_json(page, by_alias=True)
-    envelope = _adapter(type(page)).dump_json(page.model_copy(update={"items": []}), by_alias=True)
+        return adapter.dump_json(page, by_alias=True)
+    envelope = adapter.dump_json(page.model_copy(update={"items": []}), by_alias=True)
+    head, marker, tail = envelope.partition(_ITEMS_MARKER)
+    if not marker or _ITEMS_MARKER in tail:
+        return adapter.dump_json(page, by_alias=True)
     group = _list_adapter(type(items[0]))
-    body = b",".join(
-        group.dump_json(items[start:start + DUMP_GROUP], by_alias=True)[1:-1]
-        for start in range(0, len(items), DUMP_GROUP)
-    )
-    return envelope.replace(b'"items":[]', b'"items":[' + body + b"]", 1)
+    parts = [head, b'"items":[']
+    for start in range(0, len(items), DUMP_GROUP):
+        if start:
+            parts.append(b",")
+        parts.append(group.dump_json(items[start:start + DUMP_GROUP], by_alias=True)[1:-1])
+    parts += [b"]", tail]
+    return b"".join(parts)
+
+
+_ITEMS_MARKER = b'"items":[]'
 
 
 @cache

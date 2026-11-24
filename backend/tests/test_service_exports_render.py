@@ -21,7 +21,9 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.testclient import TestClient
 from pydantic import TypeAdapter
 from krairport import KrairportClient
+from kortravelcommon.pg_errors import pg_error_info
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.service_exports as se
@@ -522,36 +524,266 @@ def test_airport_export_does_not_build_a_provider_client(
     assert {"ICN", "GMP"} <= {item["code"] for item in payload["items"]}
 
 
-def test_snapshot_is_read_only_with_bounded_timeouts_and_resets_on_return(test_settings: Settings) -> None:
-    """감사 RT-04 — PostgreSQL에서 RR READ ONLY + statement 20s·lock 3s이고, pool로 돌아간 연결에는 남지 않는다."""
+class _PgError(Exception):
+    """asyncpg 예외처럼 `sqlstate`만 가진 원인 예외."""
+
+    def __init__(self, sqlstate: str) -> None:
+        super().__init__(sqlstate)
+        self.sqlstate = sqlstate
+
+
+STATE_PATHS = ("/fuel-stations", "/rest-areas", "/rest-area-fuel-prices", "/highway-incidents/active")
+
+
+@pytest.mark.parametrize("path", STATE_PATHS)
+@pytest.mark.parametrize("sqlstate,retry_after", [("55P03", "10"), ("57014", "60")])
+def test_snapshot_lock_and_statement_timeouts_are_503_with_retry_after(
+    render_client: TestClient, monkeypatch: pytest.MonkeyPatch, path: str, sqlstate: str, retry_after: str,
+) -> None:
+    """lock_timeout(55P03)·statement_timeout(57014)은 원인 불명 500이 아니라 503 + Retry-After다(리뷰 P2-1)."""
+    async def failing_state(session, source):
+        raise DBAPIError("SELECT ...", {}, _PgError(sqlstate))
+
+    monkeypatch.setattr(se, "_state", failing_state)
+    response = render_client.get(f"/v1/service/exports{path}", headers=HEADERS)
+    assert response.status_code == 503, response.text
+    assert response.headers["retry-after"] == retry_after
+    assert "SELECT" not in response.text
+
+
+def test_other_database_errors_are_not_rewritten(render_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def failing_state(session, source):
+        raise DBAPIError("SELECT ...", {}, _PgError("42P01"))
+
+    monkeypatch.setattr(se, "_state", failing_state)
+    with pytest.raises(DBAPIError):
+        render_client.get("/v1/service/exports/fuel-stations", headers=HEADERS)
+
+
+def test_request_deadline_is_503_but_other_timeouts_are_not(
+    render_client: TestClient, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """요청 전체 상한(리뷰 P2-2): DB 단계가 상한을 넘으면 503 + Retry-After 60. deadline이 아닌 TimeoutError는 그대로."""
+    async def slow_state(session, source):
+        await asyncio.sleep(5)
+
+    monkeypatch.setattr(se, "REQUEST_DEADLINE_SECONDS", 0.2)
+    monkeypatch.setattr(se, "_state", slow_state)
+    response = render_client.get("/v1/service/exports/fuel-stations", headers=HEADERS)
+    assert response.status_code == 503 and response.headers["retry-after"] == "60"
+
+    async def own_timeout(session, source):
+        raise TimeoutError("not the request deadline")
+
+    monkeypatch.setattr(se, "REQUEST_DEADLINE_SECONDS", 25)
+    monkeypatch.setattr(se, "_state", own_timeout)
+    with pytest.raises(TimeoutError, match="not the request deadline"):
+        render_client.get("/v1/service/exports/fuel-stations", headers=HEADERS)
+
+
+def test_empty_incident_set_stays_503_after_the_snapshot_is_released(render_client: TestClient) -> None:
+    """빈 돌발 집합 503은 반납 뒤에도 그대로다 — 병합 때 옛 `items` 이름이 돌아오면 NameError(500)로 깨진다."""
+    _run(render_client, lambda session: _set_state(
+        session, INCIDENT_SOURCE, last_error=None, last_success_at=render_client.fixed_now, next_due_at=None))
+    response = render_client.get("/v1/service/exports/highway-incidents/active", headers=HEADERS)
+    assert response.status_code == 503 and "비었습니다" in response.text
+
+
+class _Session:
+    def __init__(self, in_transaction: bool = False) -> None:
+        self._in_transaction = in_transaction
+
+    def in_transaction(self) -> bool:
+        return self._in_transaction
+
+
+def _request(messages: list[dict[str, Any]] | None = None) -> Request:
+    queue = list(messages or [])
+
+    async def receive() -> dict[str, Any]:
+        if queue:
+            return queue.pop(0)
+        await asyncio.sleep(3600)
+        return {}
+
+    return Request({"type": "http", "method": "GET", "path": "/", "headers": [(b"accept-encoding", b"gzip")],
+                    "query_string": b""}, receive)
+
+
+def _airport_build() -> ExportAirport:
+    return ExportAirport(code="X", name_english="x", has_parking_data=False)
+
+
+def test_render_queue_wait_is_bounded_and_disconnects_skip_the_build(monkeypatch: pytest.MonkeyPatch) -> None:
+    """본문 구성 slot 대기는 상한(→ 503 Retry-After 10)이 있고, 끊긴 요청은 구성하지 않는다(리뷰 P2-3)."""
+    from anyio import CapacityLimiter
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(se, "RENDER_QUEUE_TIMEOUT_SECONDS", 0.1)
+    built: list[bool] = []
+
+    def build() -> ExportAirport:
+        built.append(True)
+        return _airport_build()
+
+    async def scenario() -> None:
+        limiter = CapacityLimiter(1)
+        holder = object()
+        await limiter.acquire_on_behalf_of(holder)
+        with pytest.raises(HTTPException) as busy:
+            await se._render(_request(), _Session(), limiter, build)
+        assert busy.value.status_code == 503 and busy.value.headers == {"Retry-After": "10"}
+        limiter.release_on_behalf_of(holder)
+        gone = await se._render(_request([{"type": "http.disconnect"}]), _Session(), limiter, build)
+        assert gone.status_code == 499 and not built and limiter.borrowed_tokens == 0
+        ok = await se._render(_request(), _Session(), limiter, build)
+        assert ok.status_code == 200 and built == [True] and limiter.borrowed_tokens == 0
+        with pytest.raises(RuntimeError):
+            await se._render(_request(), _Session(in_transaction=True), limiter, build)
+
+    asyncio.run(scenario())
+
+
+def test_page_is_served_when_the_final_rollback_fails(
+    render_client: TestClient, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """행을 다 읽은 뒤 rollback이 연결 오류로 실패해도 페이지는 같은 바이트로 나가고 연결은 버린다."""
+    _run(render_client, lambda session: _seed_all(session, render_client.fixed_now))
+    legacy = _pages(render_client, "/legacy", "/fuel-stations", 2, HEADERS)
+    invalidated: list[bool] = []
+    real_invalidate = AsyncSession.invalidate
+
+    async def broken_rollback(self):
+        raise DBAPIError("ROLLBACK", {}, ConnectionResetError("connection reset"))
+
+    async def tracking_invalidate(self):
+        invalidated.append(True)
+        await real_invalidate(self)
+
+    monkeypatch.setattr(AsyncSession, "rollback", broken_rollback)
+    monkeypatch.setattr(AsyncSession, "invalidate", tracking_invalidate)
+    assert _pages(render_client, "/v1/service/exports", "/fuel-stations", 2, HEADERS) == legacy
+    assert invalidated and len(invalidated) == len(legacy)
+
+
+def _pg_only(test_settings: Settings) -> None:
     if not test_settings.database_url.startswith("postgresql"):
         pytest.skip("PostgreSQL 전용 — CI는 TEST_DATABASE_URL로 실행한다")
 
+
+def test_snapshot_is_read_only_with_bounded_timeouts_and_resets_on_return(test_settings: Settings) -> None:
+    """감사 RT-04 — PostgreSQL에서 RR READ ONLY + statement 20s·lock 3s이고, pool로 돌아간 연결에는 남지 않는다.
+
+    정상 반납뿐 아니라 begin과 end 사이에서 HTTP 오류(503/422)가 나거나, deadline 취소·57014로 끝난 뒤에도
+    같은 pool 연결(연결 1개짜리 pool, NullPool 아님)에서 쓰기가 READ ONLY에 걸리지 않는다(리뷰 P3).
+    """
+    _pg_only(test_settings)
+    from fastapi import HTTPException
+
     async def scenario() -> None:
-        # 테스트 기본 NullPool과 달리 연결 재사용을 보려고 연결 1개짜리 pool을 따로 만든다.
         engine = create_async_engine(test_settings.database_url, pool_size=1, max_overflow=0)
         factory = async_sessionmaker(engine, expire_on_commit=False)
         settings_sql = text(
             "SELECT current_setting('transaction_isolation'), current_setting('transaction_read_only'), "
             "current_setting('statement_timeout'), current_setting('lock_timeout'), pg_backend_pid()"
         )
-        try:
+
+        async def writable_defaults() -> tuple[Any, ...]:
             async with factory() as session:
-                default = (await session.execute(settings_sql)).one()
+                row = (await session.execute(settings_sql)).one()
+                await session.execute(text("CREATE TEMP TABLE IF NOT EXISTS t1_render_probe (id int)"))
+                await session.execute(text("INSERT INTO t1_render_probe VALUES (1)"))
+                await session.rollback()
+                return tuple(row)
+
+        try:
+            default = await writable_defaults()
             async with factory() as session:
                 await se._begin_snapshot(session)
                 inside = (await session.execute(settings_sql)).one()
                 await se._end_snapshot(session)
                 assert not session.in_transaction()
-            async with factory() as session:
-                after = (await session.execute(settings_sql)).one()
-                # 같은 연결에서 쓰기 transaction이 READ ONLY에 걸리지 않는다.
-                await session.execute(text("CREATE TEMP TABLE t1_render_probe (id int)"))
-                await session.rollback()
+            after = await writable_defaults()
+            assert tuple(inside[:4]) == ("repeatable read", "on", "20s", "3s")
+            assert after[4] == inside[4] == default[4]
+            assert after[:4] == default[:4] and after[1] == "off"
+
+            # begin과 end 사이에서 HTTP 오류로 빠져나간 경우(get_db가 닫는다).
+            with pytest.raises(HTTPException):
+                async with factory() as session:
+                    await se._begin_snapshot(session)
+                    await session.execute(text("SELECT 1"))
+                    raise HTTPException(status_code=422)
+            assert await writable_defaults() == default
+
+            # 요청 deadline이 SQL 도중에 취소한 경우 — 연결은 깨끗하게 돌아오거나 교체된다.
+            with pytest.raises(TimeoutError):
+                async with factory() as session:
+                    await se._begin_snapshot(session)
+                    async with asyncio.timeout(0.3):
+                        await session.execute(text("SELECT pg_sleep(5)"))
+            assert (await writable_defaults())[:4] == default[:4]
+
+            # statement_timeout(57014)으로 transaction이 중단된 경우.
+            with pytest.raises(DBAPIError) as canceled:
+                async with factory() as session:
+                    await se._begin_snapshot(session)
+                    await session.execute(text("SET LOCAL statement_timeout = '50ms'"))
+                    await session.execute(text("SELECT pg_sleep(1)"))
+            assert pg_error_info(canceled.value).sqlstate == "57014"
+            assert (await writable_defaults())[:4] == default[:4]
         finally:
             await engine.dispose()
-        assert tuple(inside[:4]) == ("repeatable read", "on", "20s", "3s")
-        assert after[4] == inside[4] == default[4]
-        assert tuple(after[:4]) == tuple(default[:4]) and after[1] == "off"
 
     asyncio.run(scenario())
+
+
+def test_lock_timeout_and_statement_timeout_on_postgres_are_503(
+    render_client: TestClient, test_settings: Settings, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """실제 PostgreSQL: migration처럼 AccessExclusive를 쥔 동안 55P03 → 503(10초), 문장 상한 → 503(60초)."""
+    _pg_only(test_settings)
+    import asyncpg
+
+    _run(render_client, lambda session: _seed_all(session, render_client.fixed_now))
+    dsn = test_settings.database_url.replace("postgresql+asyncpg://", "postgresql://")
+    locked, release = threading.Event(), threading.Event()
+
+    def hold_lock() -> None:
+        async def run() -> None:
+            connection = await asyncpg.connect(dsn)
+            try:
+                transaction = connection.transaction()
+                await transaction.start()
+                await connection.execute("LOCK TABLE fuel_stations IN ACCESS EXCLUSIVE MODE")
+                locked.set()
+                while not release.is_set():
+                    await asyncio.sleep(0.05)
+                await transaction.rollback()
+            finally:
+                await connection.close()
+        asyncio.run(run())
+
+    holder = threading.Thread(target=hold_lock)
+    holder.start()
+    try:
+        assert locked.wait(30)
+        response = render_client.get("/v1/service/exports/fuel-stations", headers=HEADERS)
+    finally:
+        release.set()
+        holder.join(30)
+    assert response.status_code == 503 and response.headers["retry-after"] == "10"
+
+    real_state = se._state
+
+    async def slow_state(session, source):
+        await session.execute(text("SELECT pg_sleep(1)"))
+        return await real_state(session, source)
+
+    monkeypatch.setattr(se, "SNAPSHOT_STATEMENT_TIMEOUT", "100ms")
+    monkeypatch.setattr(se, "_state", slow_state)
+    response = render_client.get("/v1/service/exports/fuel-stations", headers=HEADERS)
+    assert response.status_code == 503 and response.headers["retry-after"] == "60"
+    monkeypatch.setattr(se, "_state", real_state)
+    monkeypatch.setattr(se, "SNAPSHOT_STATEMENT_TIMEOUT", "20s")
+    assert render_client.get("/v1/service/exports/fuel-stations", headers=HEADERS).status_code == 200
