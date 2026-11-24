@@ -1266,8 +1266,8 @@ wheels = [
 
 [[package]]
 name = "kor-travel-common"
-version = "0.1.0.dev0"
-source = { git = "https://github.com/digitie/kor-travel-common.git?subdirectory=packages%2Fpy%2Fkor-travel-common&rev=67efe2e546ecef41e54a866bf4862d608ace343d#67efe2e546ecef41e54a866bf4862d608ace343d" }
+version = "0.1.0.dev1"
+source = { git = "https://github.com/digitie/kor-travel-common.git?subdirectory=packages%2Fpy%2Fkor-travel-common&rev=ec5e16888fd3de069762f34c3cd06fe867e06688#ec5e16888fd3de069762f34c3cd06fe867e06688" }
 
 [package.optional-dependencies]
 dagster = [
@@ -1333,7 +1333,7 @@ requires-dist = [
     { name = "dagster-webserver", specifier = "==1.13.24" },
     { name = "fastapi", specifier = "==0.165.0" },
     { name = "httpx", specifier = "==0.28.1" },
-    { name = "kor-travel-common", extras = ["dagster", "reverse-address"], git = "https://github.com/digitie/kor-travel-common.git?subdirectory=packages%2Fpy%2Fkor-travel-common&rev=67efe2e546ecef41e54a866bf4862d608ace343d" },
+    { name = "kor-travel-common", extras = ["dagster", "reverse-address"], git = "https://github.com/digitie/kor-travel-common.git?subdirectory=packages%2Fpy%2Fkor-travel-common&rev=ec5e16888fd3de069762f34c3cd06fe867e06688" },
     { name = "mcp", specifier = "==2.3.0" },
     { name = "psycopg2-binary", specifier = ">=2.9,<3.0" },
     { name = "pydantic", specifier = "==2.14.4" },
@@ -1345,7 +1345,7 @@ requires-dist = [
     { name = "python-datagokr-api", git = "https://github.com/digitie/python-datagokr-api?rev=18864a3aa3314bcd4cbefb6fabcd589c5847f750" },
     { name = "python-kasi-api", git = "https://github.com/digitie/python-kasi-api?rev=4259e574468435355be79d3fe85b394249ab1989" },
     { name = "python-krairport-api", git = "https://github.com/digitie/python-krairport-api?rev=9ea20ef40455320e4933d01aef21079c1a63ba81" },
-    { name = "python-krex-api", git = "https://github.com/digitie/python-krex-api?rev=894ea64faed3a9a0ba9ba11b2a59dc5a0b5e5634" },
+    { name = "python-krex-api", git = "https://github.com/digitie/python-krex-api?rev=6646be516bcb5f2f206044186066baae2f5b63c6" },
     { name = "python-kric-api", git = "https://github.com/digitie/python-kric-api?rev=c006c8be64edfa4dc73cc3dd087c92cdeb9fba84" },
     { name = "python-krits-api", git = "https://github.com/digitie/python-krits-api?rev=417e3d5dc1a897f770e9c832eb39d8ff9c40e92a" },
     { name = "python-multipart", specifier = ">=0.0.32,<1.0" },
@@ -2290,7 +2290,7 @@ dependencies = [
 [[package]]
 name = "python-krex-api"
 version = "0.1.0"
-source = { git = "https://github.com/digitie/python-krex-api?rev=894ea64faed3a9a0ba9ba11b2a59dc5a0b5e5634#894ea64faed3a9a0ba9ba11b2a59dc5a0b5e5634" }
+source = { git = "https://github.com/digitie/python-krex-api?rev=6646be516bcb5f2f206044186066baae2f5b63c6#6646be516bcb5f2f206044186066baae2f5b63c6" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
