@@ -364,6 +364,33 @@ T1·T4는 운영 실측이 0건이고, 1초 미만 요청은 로그에 남지 �
 
 ## 8. 이번에 병렬로 진행하는 개선 PR
 
+### 8.0 결과(2026-11-24 정산)
+
+모든 Transport PR은 적대적 리뷰(James·Popper) 지적을 재현·수정한 뒤 CI green head를 `--match-head-commit`으로 머지했다.
+n150 live E2E와 운영 배포는 하지 않았다(배포는 Codex/소유자 담당).
+
+| 키 | PR | 머지 | 비고 |
+| --- | --- | --- | --- |
+| 문서 | #272 | 1b1d64d | 이 보고서 |
+| A export-contract | #277 | 67eac73 | 코드 11종(`EXPORT_QUERY_TIMEOUT` 포함). **500→503 변경은 운영 배포 보류**(아래) |
+| B t1-export-perf | #279 | 949cf2d | 25초 전체 deadline, 55P03/57014 → 503 |
+| C reference-prewarm | #276 | a2e37bf | 배포 직후 warm은 `scripts/post-deploy-warm.sh`를 운영자가 실행 |
+| D places-admission | #273 | c17cb95 | 429/504, UI 1회 재시도 |
+| D′ places 후속 | #289 | 3506d38 | 관리·공개 몫 분리(HMAC 파생값), 시한 기록, 알림 통합 |
+| E gateway-observability | #280 | 4102b1a | 공개 places `limit` 900 상한(422), export `limit_conn 6` |
+| F highway-store-txn | #278 | 74567e9 | 통계 재대조를 원천 commit 뒤로 |
+| F′ 통계 diff·장기 복구 | #285 | 81b17df | diff upsert, 7일 drift 자기 치유, 수동 도구 |
+| G history-rebuild-cost | #281 | 51f3cde | #284(증분 갱신) 위로 축소: 계측·fallback 상한 |
+| H fuel-freshness | #275 | f5d8b68 | 실행 소실 기록·신선도 경보 |
+| I t4-history | #274 | 410f0de | `identity_key` 조회, 3초 문장 상한 |
+| J map-consumer | Map #1549 | — | 소유자 결정 "나이 기준 혼합"으로 Map #1542에 흡수(Map 세션 담당) |
+
+**#277 배포 보류**: export 경로의 500→503 변경은 Map이 "나이 기준 혼합" 정책(#1542에 #1549 흡수 + 후속 4항목)을 운영에서 돌린 뒤에만 배포한다.
+Map 세션이 해당 Map 회전 완료를 알리면 보류를 푼다(`docs/runbooks/deployment.md`, handoff, ADR-013).
+
+### 8.1 진행 계획(작성 당시)
+
+
 각 PR은 독립 worktree에서 구현한 뒤 다음 순서를 거친다.
 
 1. Draft PR을 열고 CI를 통과시킨다.
