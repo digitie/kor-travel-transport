@@ -1,7 +1,8 @@
 ## 2026-11-24 — 수집 실패 감사 후속
 
 - [ ] **DASHBOARD-STATS-OFFLOAD-20261124 / P1** — 수집 직후 대시보드 통계 504(갱신 유예 사전집계·계산 thread·특수일 보관). **남은 것**: backend 배포 뒤
-  odroid에서 ICN·GMP·소형 공항 `/v1/dashboard/analytics`를 15~30초 간격으로 수집 주기 3회 이상 호출해 p95·504와 `X-Analytics-Source`를 Dagster 갱신 시각과
+  odroid에서 ICN·GMP·소형 공항 `/v1/dashboard/analytics`를 15~30초 간격으로 수집 주기 3회 이상 호출해 p95·504와 `X-Analytics-Source`(backend 직접 요청에서만
+  보인다 — 공개 프록시는 넘기지 않는다)를 Dagster 갱신 시각과
   대조(평일·주말 각 1회). 로컬 0.25 CPU 벤치는 운영(ICN 25~30초)보다 약 3배 관대하므로 운영 측정 전에는 목표 달성을 선언하지 않는다.
   남은 P2: 화면에 사전집계 시각 표시, 단독 timeseries route의 계산 thread화, `X-Analytics-Source`의 memo 구분.
 - [ ] **PARKING-HISTORY-INCREMENTAL-20261124 / P1** — 30일 주차 이력 읽기 캐시 재생성(수집마다 운영 ARM 77~98초, 로컬 0.25 CPU 22~37초)을 증분화한다

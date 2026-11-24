@@ -150,10 +150,12 @@ def test_cache_failure_keeps_committed_source_and_zero_snapshot_tick_repairs_it(
         assert response.status_code == 200
         # 새 적재가 갱신 유예 안이면 갱신 대기로 보고 직전 사전집계를 낸다(원본 계산으로 떨어지지 않는다).
         assert response.json()["time_series"]["items"][-1]["available_spaces"] == 80
+        assert response.headers["x-analytics-source"] == "cache-grace"
         # 갱신이 실패한 채 유예가 지나면 원본에서 계산한다 — 실패한 갱신이 오래된 값을 계속 내게 하지 않는다.
         asyncio.run(_age_pending_refresh_past_grace(client))
         response = client.get("/v1/dashboard/analytics", params={"airport_code": "GMP"})
         assert response.json()["time_series"]["items"][-1]["available_spaces"] == 5
+        assert response.headers["x-analytics-source"] == "source"
 
         async def verify_raw_commit_and_cache_rollback():
             async with client.app.state.session_factory() as session:
@@ -171,7 +173,9 @@ def test_cache_failure_keeps_committed_source_and_zero_snapshot_tick_repairs_it(
         assert repaired.success
         assert repaired.output_for_node("collect_airport_parking")["snapshot_count"] == 0
         assert repaired.output_for_node("collect_airport_parking")["analytics_cache_count"] == 8
-        assert client.get("/v1/dashboard/analytics", params={"airport_code": "GMP"}).json()["time_series"]["items"][-1]["available_spaces"] == 5
+        repaired_bundle = client.get("/v1/dashboard/analytics", params={"airport_code": "GMP"})
+        assert repaired_bundle.json()["time_series"]["items"][-1]["available_spaces"] == 5
+        assert repaired_bundle.headers["x-analytics-source"] == "cache"
 
 
 async def _age_pending_refresh_past_grace(client) -> None:

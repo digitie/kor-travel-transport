@@ -19,12 +19,12 @@ from collections import OrderedDict
 from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack, asynccontextmanager
 from contextlib import suppress
-from time import monotonic
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from functools import wraps
 from http import HTTPStatus
 from math import isfinite
+from time import monotonic
 from types import SimpleNamespace
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
@@ -3007,7 +3007,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         aggregates: dict[tuple[date, int], SpecialDayHourAggregate] = {}
         if special_days:
             local_dates = [local_date for local_date, _name, _day_type in special_days]
-            aggregates = await _aggregate_special_day_hours(session, airport_code, parking_lot_id, local_dates)
+            aggregates = await _aggregate_special_day_hours(session, airport_code, parking_lot_id, local_dates, today)
 
         return HolidayPatternResponse(
             generated_at=now_utc(),
@@ -3401,30 +3401,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # 각 분석이 원본을 따로 읽지 않고 `_dashboard_source_metrics`가 한 번 읽어 계산한다.
         # 수집 직후(사전집계 갱신 전)에도 원본 계산으로 떨어지지 않게 갱신 대기 중인 직전 사전집계를 생성 시각과 함께
         # 낸다(`DASHBOARD_REFRESH_GRACE`). 사전집계는 공항 수집 job이 수집 commit 직후 다시 만든다(미리 데우기).
+        served: set[str] = set()
         cached_events = await load_cached_analytics(
             session, metric=METRIC_THRESHOLD_EVENTS, airport_code=airport_code, parking_lot_id=parking_lot_id,
-            days=DEFAULT_THRESHOLD_EVENTS_DAYS, limit=DEFAULT_THRESHOLD_EVENTS_LIMIT, refresh_grace=True,
+            days=DEFAULT_THRESHOLD_EVENTS_DAYS, limit=DEFAULT_THRESHOLD_EVENTS_LIMIT, refresh_grace=True, served=served,
         )
         cached_insights = await load_cached_analytics(
             session, metric=METRIC_THRESHOLD_INSIGHTS, airport_code=airport_code, parking_lot_id=parking_lot_id,
             days=DEFAULT_THRESHOLD_INSIGHTS_DAYS, interval_minutes=DEFAULT_THRESHOLD_INSIGHTS_INTERVAL_MINUTES,
-            refresh_grace=True,
+            refresh_grace=True, served=served,
         )
         cached_weekday = await load_cached_analytics(
             session, metric=METRIC_WEEKDAY_HOUR, airport_code=airport_code, parking_lot_id=parking_lot_id,
-            days=DEFAULT_WEEKDAY_HOUR_DAYS, refresh_grace=True,
+            days=DEFAULT_WEEKDAY_HOUR_DAYS, refresh_grace=True, served=served,
         )
         cached_series = await load_cached_analytics(
             session, metric=METRIC_TIMESERIES, airport_code=airport_code, parking_lot_id=parking_lot_id,
             days=DEFAULT_TIMESERIES_DAYS, interval_minutes=DEFAULT_TIMESERIES_INTERVAL_MINUTES,
-            future_hours=DEFAULT_TIMESERIES_FUTURE_HOURS, refresh_grace=True,
+            future_hours=DEFAULT_TIMESERIES_FUTURE_HOURS, refresh_grace=True, served=served,
         )
         computed: DashboardSourceMetrics | None = None
         if None in (cached_events, cached_insights, cached_weekday, cached_series):
             computed = await _dashboard_source_metrics(session, airport_code, parking_lot_id)
         # 운영 측정에서 경로를 구분한다(사전집계·원본 계산/memo·섞임). 값 계약은 바뀌지 않는다.
         response.headers["X-Analytics-Source"] = (
-            "cache" if computed is None
+            ("cache-grace" if "grace" in served else "cache") if computed is None
             else "source" if all(item is None for item in (cached_events, cached_insights, cached_weekday, cached_series))
             else "mixed")
         events = ([ThresholdEvent(**event) for event in cached_events]
@@ -3746,8 +3747,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         airport_code: str | None,
         parking_lot_id: int | None,
         local_dates: list[date],
+        today: date,
     ) -> dict[tuple[date, int], SpecialDayHourAggregate]:
-        today = to_seoul(now_utc()).date()
+        # `today`는 호출자(holiday_patterns)가 특수일 목록을 만든 날짜다 — 따로 재면 자정 경계에서 어제가 지난 날짜로 보관될 수 있다.
         past_dates = [local_date for local_date in local_dates if local_date != today]
         result: dict[tuple[date, int], SpecialDayHourAggregate] = {}
         if past_dates:
