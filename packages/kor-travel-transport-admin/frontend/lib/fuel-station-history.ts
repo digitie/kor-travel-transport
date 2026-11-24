@@ -3,7 +3,9 @@ import { transportGet, TransportError, hasFuelPrice, seoulDate, type FuelPrice }
 export type FuelHistoryWindow = { from_at: string; to_at: string; mode: "rolling"; timezone: "Asia/Seoul" };
 export type FuelStationHistory = {
   station_id: number; source: string; provider_id: string | null; brand_code: string | null; brand_name: string | null;
-  window: FuelHistoryWindow; items: (FuelPrice & { collected_at?: string | null })[]; latest: FuelPrice[];
+  window: FuelHistoryWindow; items: (FuelPrice & { collected_at?: string | null })[];
+  /** 화면은 `include_latest=false`로 부르므로 항상 빈 배열이다. 현재 가격은 상세의 가격 행을 쓴다. */
+  latest: never[];
   meta: { generated_at: string; source_collected_at: string | null; source_status: string | null; item_count: number };
   source_last_success_at: string | null; source_revision: string | null; has_more: boolean; next_cursor: string | null;
 };
@@ -38,7 +40,8 @@ export async function loadFuelStationHistory(id: number, source: string, signal:
       const items: FuelStationHistory["items"] = [], seen = new Set<string>();
       do {
         signal.throwIfAborted();
-        const params = new URLSearchParams({ source, days: "30", limit: "1000" });
+        // 차트·표는 `items`만 쓴다. 현재 가격은 상세의 가격 행이 이미 보여 주므로 `latest` 조회를 생략한다.
+        const params = new URLSearchParams({ source, days: "30", limit: "1000", include_latest: "false" });
         if (cursor) params.set("cursor", cursor);
         const page = await load<FuelStationHistory>(`transport/fuel/stations/${id}/price-history?${params}`, signal);
         if (page.station_id !== id || page.source !== source || first && (page.window.from_at !== first.window.from_at || page.window.to_at !== first.window.to_at || page.source_revision !== first.source_revision)) throw new Error("주유소 가격 이력의 조회 기준이 일치하지 않습니다. 다시 조회해 주세요.");

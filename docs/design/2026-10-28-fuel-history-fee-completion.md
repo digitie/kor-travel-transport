@@ -37,6 +37,7 @@ PG18 앱 내부 백업 복구가 완료됐다는 뜻이 아니다. Weather의 �
 | `product` | 선택 유종 코드. 없으면 여러 유종 |
 | `limit` | 기본 1000, 최대 5000 |
 | `cursor` | 응답의 `next_cursor`를 그대로 사용. 최초 창·필터·수집 revision 고정 |
+| `include_latest` | 기본 true. false면 `latest` 조회를 생략하고 빈 배열을 낸다(2026-11-24, 화면은 false) |
 
 응답은 `window`, `items`, `latest`, `brand_code`, `brand_name`, `source_last_success_at`,
 `source_revision`, `has_more`, `next_cursor`, `meta`를 제공한다. 시각은 UTC이고 화면은 한국 시각이다.
@@ -47,6 +48,9 @@ PG18 앱 내부 백업 복구가 완료됐다는 뜻이 아니다. Weather의 �
 다른 창의 페이지를 섞지 않는다. 선택한 주유소가 바뀌면 이전 요청을 취소한다.
 잘못된 입력은 422, 없는 주유소는 404, 이력을 저장하지 않는 원천은 501,
 성공한 수집이 없으면 503이다. 빈 관측 배열을 수집 성공이나 0원으로 바꾸지 않는다.
+2026-11-24부터 이력 transaction의 DB 문장 상한(기본 3초) 초과는 504 + `Retry-After`이고, 화면은 이를
+수집 이력 부재가 아니라 '제시간에 끝나지 않음'으로 안내한다. `include_latest=true`에서 저장 유종 수가
+상한(64)을 넘으면 503이다.
 
 기존 서비스 export의 제한된 DB 조회·커서를 재사용하되 인증 경계를 유지한다. 공개 ID 경로를
 추가하기 위해 export의 token·peer 제한을 해제하지 않는다. 관리자 BFF와 공개 gateway에는

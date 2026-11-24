@@ -10,7 +10,6 @@ afterEach(() => vi.restoreAllMocks());
 
 test("실제 168시간 안의 양수만 시간순으로 표시하고 유종별 최신값을 구한다", () => {
   const data = historyFixture();
-  data.latest = [price("2026-10-20T03:00:00Z", 1900)];
   data.items = [price("2026-10-28T02:00:00Z", 1705), price("2026-10-21T03:00:00Z", 1700), price("2026-10-20T02:00:00Z", 900), price("2026-10-29T02:00:00Z", 2000), price("2026-10-27T02:00:00Z", 0), price("2026-10-27T02:00:00Z", null), price("invalid", 1800), price("2026-10-28T02:00:00Z", 1550, "D047")];
   const series = fuelHistorySeries(data);
   expect(series.map((row) => row.points.map((point) => point.price))).toEqual([[1700, 1705], [1550]]);
@@ -30,6 +29,8 @@ test("cursor 전량 조회는 고정 창과 source revision을 유지한다", as
   const data = await loadFuelStationHistory(1, "opinet_browser", new AbortController().signal);
   expect(data.items).toHaveLength(2); expect(get.mock.calls[1][0]).toContain("cursor=opaque");
   expect(get.mock.calls[0][0]).toContain("transport/fuel/stations/1/price-history?source=opinet_browser&days=30&limit=1000");
+  // 화면은 `latest`를 쓰지 않으므로 모든 페이지에서 현재 가격 조회를 생략한다.
+  for (const [path] of get.mock.calls) expect(new URLSearchParams(String(path).split("?")[1]).get("include_latest")).toBe("false");
 });
 test("revision 409는 한 번 새 창으로 시작하고 이전 페이지를 혼합하지 않는다", async () => {
   const first = { ...historyFixture(), items: [price("2026-10-28T02:00:00Z", 9999)], has_more: true, next_cursor: "old" };

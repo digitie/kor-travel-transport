@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import AsyncIterator, Callable
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from sqlalchemy import select
@@ -11,10 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.time_utils import serialize_utc
-from app.models import FuelLatestPrice, FuelPriceSnapshot, FuelStation
+from app.models import FuelLatestPrice, FuelPriceSnapshot
 from app.schemas import FuelPriceHistoryWindow, FuelPriceItem, FuelStationPriceHistoryResponse
 from app.services.export_price_history import (
-    CURSOR_TTL, MAX_HISTORY_LIMIT, PriceHistoryUnavailable, _response, read_price_history_page,
+    CURSOR_TTL, MAX_HISTORY_LIMIT, PriceHistoryUnavailable, _response, history_statement_deadline,
+    read_price_history_page,
 )
 from app.services.transport_collection import OPINET_SOURCE
 
@@ -31,6 +32,28 @@ def _price_item(row) -> FuelPriceItem:
     )
 
 
+async def _latest_prices(
+    session: AsyncSession, station_id: int, product: str | None, to_at: datetime,
+) -> list[FuelLatestPrice]:
+    """창 끝 이전의 유종별 최신 저장 가격. snapshot의 주유소·원천·유종 연결을 검증한다."""
+    query = select(FuelLatestPrice).join(
+        FuelPriceSnapshot, FuelPriceSnapshot.id == FuelLatestPrice.snapshot_id,
+    ).where(
+        FuelLatestPrice.fuel_station_id == station_id,
+        FuelPriceSnapshot.fuel_station_id == station_id,
+        FuelPriceSnapshot.source == OPINET_SOURCE,
+        FuelPriceSnapshot.product_code == FuelLatestPrice.product_code,
+        FuelLatestPrice.observed_at <= to_at,
+        FuelLatestPrice.collected_at <= to_at,
+    )
+    if product is not None:
+        query = query.where(FuelLatestPrice.product_code == product)
+    latest = list((await session.scalars(query.order_by(FuelLatestPrice.product_code).limit(MAX_LATEST_PRODUCTS + 1))).all())
+    if len(latest) > MAX_LATEST_PRODUCTS:
+        raise HTTPException(503, "저장 유종 수가 조회 상한을 넘어 가격 이력을 제공할 수 없습니다.")
+    return latest
+
+
 def build_fuel_price_history_router(
     settings: Settings, get_db: Callable[..., AsyncIterator[AsyncSession]],
 ) -> APIRouter:
@@ -39,11 +62,12 @@ def build_fuel_price_history_router(
     cursor_key = hashlib.sha256(
         ("native-fuel-history:" + (settings.transport_service_export_token or "")).encode(),
     ).digest()
+    statement_timeout_ms = settings.fuel_price_history_statement_timeout_ms
 
     @router.get(
         "/transport/fuel/stations/{station_id}/price-history",
         response_model=FuelStationPriceHistoryResponse,
-        responses={404: {}, 409: {}, 501: {}, 503: {}},
+        responses={404: {}, 409: {}, 501: {}, 503: {}, 504: {}},
     )
     async def station_price_history(
         request: Request,
@@ -53,6 +77,10 @@ def build_fuel_price_history_router(
         product: str | None = Query(default=None, min_length=1, max_length=20),
         limit: int = Query(default=1000, ge=1, le=MAX_HISTORY_LIMIT),
         cursor: str | None = Query(default=None, min_length=1, max_length=4096),
+        include_latest: bool = Query(
+            default=True,
+            description="false면 별도 현재 가격(`latest`) 조회를 생략하고 빈 배열을 낸다. `items`만 쓰는 차트용.",
+        ),
         session: AsyncSession = Depends(get_db),
     ) -> Response:
         """최근 rolling 최대720시간의 유종별 실제 관측과 별도 현재 가격.
@@ -60,35 +88,24 @@ def build_fuel_price_history_router(
         Feature fuel_station의 양수 id/source를 함께 사용한다. 휴게소 현재 가격에는
         저장 이력이 없으므로501이며, 보간·provider 호출·raw 응답 노출은 하지 않는다.
         cursor는15분 동안 창을 고정하고 수집 revision이 바뀌면409로 재시작한다.
+        `include_latest=false`면 `latest`는 빈 배열이다(현재 가격이 없다는 뜻이 아니다).
+        DB 문장이 서버 상한(기본3초)을 넘으면504 problem과 `Retry-After`를 낸다. 503은 성공한 수집 이력이
+        없을 때와, `include_latest=true`에서 저장 유종 수가 조회 상한(64)을 넘을 때다.
         """
         if source != OPINET_SOURCE:
             raise HTTPException(501, "이 원천의 주유소 가격 이력은 저장하지 않아 지원하지 않습니다.")
         try:
-            read = await read_price_history_page(
-                request, str(station_id), product, None, None, limit, cursor, session, cursor_key,
-                native_station_id=station_id, default_days=days, max_window=timedelta(days=days),
-                cursor_scope=f"native:{station_id}:{source}:{days}",
-            )
+            # 화면은 503을 '성공한 수집 이력 없음'으로 안내한다. 일시적인 조회 지연은 504로 구분한다.
+            async with history_statement_deadline(session, request, status_code=504):
+                read = await read_price_history_page(
+                    request, str(station_id), product, None, None, limit, cursor, session, cursor_key,
+                    statement_timeout_ms=statement_timeout_ms, native_station_id=station_id, default_days=days, max_window=timedelta(days=days),
+                    cursor_scope=f"native:{station_id}:{source}:{days}",
+                )
+                latest = await _latest_prices(session, read.station_id, product, read.to_at) if include_latest else []
         except PriceHistoryUnavailable as exc:
             return exc.response
-        station = (await session.execute(select(
-            FuelStation.source, FuelStation.source_station_id, FuelStation.brand_code, FuelStation.brand_name,
-        ).where(FuelStation.id == read.station_id))).one()
-        query = select(FuelLatestPrice).join(
-            FuelPriceSnapshot, FuelPriceSnapshot.id == FuelLatestPrice.snapshot_id,
-        ).where(
-            FuelLatestPrice.fuel_station_id == read.station_id,
-            FuelPriceSnapshot.fuel_station_id == read.station_id,
-            FuelPriceSnapshot.source == OPINET_SOURCE,
-            FuelPriceSnapshot.product_code == FuelLatestPrice.product_code,
-            FuelLatestPrice.observed_at <= read.to_at,
-            FuelLatestPrice.collected_at <= read.to_at,
-        )
-        if product is not None:
-            query = query.where(FuelLatestPrice.product_code == product)
-        latest = (await session.scalars(query.order_by(FuelLatestPrice.product_code).limit(MAX_LATEST_PRODUCTS + 1))).all()
-        if len(latest) > MAX_LATEST_PRODUCTS:
-            raise HTTPException(503, "저장 유종 수가 조회 상한을 넘어 가격 이력을 제공할 수 없습니다.")
+        station = read.station
         result = FuelStationPriceHistoryResponse(
             meta=read.page.meta, station_id=read.station_id, source=station.source,
             provider_id=station.source_station_id, brand_code=station.brand_code, brand_name=station.brand_name,

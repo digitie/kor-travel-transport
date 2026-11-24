@@ -6,6 +6,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { FuelStationHistoryChart, FuelStationPriceHistory } from "./fuel-station-history";
 import { FuelBrandIcon } from "./fuel-brand-icon";
 import * as history from "@/lib/fuel-station-history";
+import { TransportError } from "@/lib/journey";
 
 vi.mock("./fuel-price-chart-loader", async () => ({ default: (await import("./fuel-price-chart")).default }));
 vi.mock("./evilcharts/charts/echarts-line-chart", () => ({ EChartsLineChart: () => <div data-official-chart="true" /> }));
@@ -14,7 +15,7 @@ const fixture = (station_id = 1): history.FuelStationHistory => ({ station_id, s
   window: { from_at: "2026-10-21T03:00:00Z", to_at: "2026-10-28T03:00:00Z", timezone: "Asia/Seoul", mode: "rolling" },
   items: [], latest: [], meta: { generated_at: "2026-10-28T03:00:00Z", source_collected_at: null, source_status: "success", item_count: 0 }, source_last_success_at: null, source_revision: "r1", has_more: false, next_cursor: null });
 const price = (observed_at: string, value: number | null, product_code = "B027") => ({ observed_at, price: value, product_code });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 test("유종별 마지막 실제 가격과 전체 관측 표를 표시하고 빈 날짜를 연결하지 않는다", () => {
@@ -68,6 +69,42 @@ test("지원하지 않는 출처는 요청하지 않고 오류는 재조회할 �
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("이력 조회 실패");
     await act(async () => container.querySelector<HTMLButtonElement>('[role="alert"] button')!.click());
     expect(load).toHaveBeenCalledTimes(2);
+  } finally { await act(async () => root.unmount()); }
+});
+test("504 조회 시간 상한 초과는 Retry-After 동안 재조회를 막고, 503은 수집 이력 부재로 안내한다", async () => {
+  vi.useFakeTimers();
+  const load = vi.spyOn(history, "loadFuelStationHistory")
+    .mockRejectedValueOnce(new TransportError("가격 이력 조회가 제시간에 끝나지 않았습니다. 잠시 후 다시 조회하세요.", 504, 3))
+    .mockRejectedValueOnce(new TransportError("성공한 유가 수집 이력이 없습니다.", 503, 0));
+  const container = document.createElement("div"), root = createRoot(container);
+  document.body.append(container);
+  const alert = () => container.querySelector('[role="alert"]');
+  const button = () => container.querySelector<HTMLButtonElement>('[role="alert"] button')!;
+  try {
+    await act(async () => root.render(<FuelStationPriceHistory place={{ id: 1, source: "opinet_browser" }} />));
+    expect(alert()?.textContent).toContain("가격 이력 조회가 제시간에 끝나지 않았습니다. 잠시 후 다시 조회해 주세요.");
+    expect(alert()?.textContent).not.toContain("수집 이력이 없어");
+    expect(button().disabled).toBe(true); expect(button().textContent).toBe("가격 이력 다시 조회 (3초 후)");
+    await act(async () => { vi.advanceTimersByTime(1000); });
+    expect(button().textContent).toBe("가격 이력 다시 조회 (2초 후)");
+    // 1초씩 센다(초마다 다시 그린 뒤 다음 타이머를 건다).
+    for (let second = 0; second < 2; second++) await act(async () => { vi.advanceTimersByTime(1000); });
+    expect(button().disabled).toBe(false); expect(button().textContent).toBe("가격 이력 다시 조회");
+    await act(async () => button().click());
+    // 오류 영역이 다시 그려져도 초점은 구역 제목에 남는다.
+    expect(document.activeElement?.textContent).toBe("최근 30일 유가");
+    expect(alert()?.textContent).toContain("성공한 가격 수집 이력이 없어");
+    expect(button().disabled).toBe(false);
+    expect(load).toHaveBeenCalledTimes(2);
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
+test("브라우저 30초 상한(TimeoutError)도 조회 지연으로 안내하고 바로 다시 조회할 수 있다", async () => {
+  vi.spyOn(history, "loadFuelStationHistory").mockRejectedValueOnce(new DOMException("signal timed out", "TimeoutError"));
+  const container = document.createElement("div"), root = createRoot(container);
+  try {
+    await act(async () => root.render(<FuelStationPriceHistory place={{ id: 1, source: "opinet_browser" }} />));
+    expect(container.querySelector('[role="alert"] p')?.textContent).toBe("가격 이력 조회가 제시간에 끝나지 않았습니다. 잠시 후 다시 조회해 주세요.");
+    expect(container.querySelector<HTMLButtonElement>('[role="alert"] button')!.disabled).toBe(false);
   } finally { await act(async () => root.unmount()); }
 });
 test("로고 읽기 실패 시 상표 접근 이름을 보존하고 일반 아이콘으로 돌아간다", async () => {
