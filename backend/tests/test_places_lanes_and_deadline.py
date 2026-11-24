@@ -449,8 +449,11 @@ def test_public_gateways_overwrite_the_listener_marker_for_places():
     deploy = Path(__file__).resolve().parents[2] / "deploy"
     marker = "proxy_set_header X-Transport-Listener public;"
     admin = (deploy / "transport-admin" / "api-gateway.conf.template").read_text(encoding="utf-8")
-    places_location = next(block for block in admin.split("location ") if "features/places" in block.split("{")[0])
-    assert marker in places_location
+    # 정확 일치 location(공개 limit 상한)과 정규식 location 모두 — 어느 쪽이 고르든 표지가 붙는다.
+    places_locations = [block for block in admin.split("location ")[1:] if "features/places" in block.split("{")[0]]
+    assert len(places_locations) >= 2
+    for block in places_locations:
+        assert marker in block
     fuel = (deploy / "transport-fuel" / "api-gateway.conf.template").read_text(encoding="utf-8")
     server_level = fuel.split("location ")[0]
     # server 단계 proxy_set_header는 자체 proxy_set_header가 없는 location에 그대로 이어진다.
