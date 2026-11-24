@@ -19,7 +19,7 @@ async function openAnalytics(page: Page, width: number, generatedAt: string | nu
 }
 
 for (const width of [320, 390, 1440]) {
-  test(`${width}px: 기준 시각을 제목 아래 한 줄로 보이고, 늦으면 경고 톤`, async ({ page }) => {
+  test(`${width}px: 기준 시각을 제목 곁에 한 줄로 보이고, 늦으면 경고 톤`, async ({ page }) => {
     const fresh = new Date(Date.now() - 4 * 60_000).toISOString();
     await openAnalytics(page, width, fresh);
     const stamp = page.getByTestId("analytics-basis");
@@ -28,9 +28,10 @@ for (const width of [320, 390, 1440]) {
     const heading = await page.getByRole("heading", { name: "분석", level: 2 }).boundingBox();
     const box = await stamp.boundingBox();
     expect(heading && box).toBeTruthy();
-    // 제목 아래에 놓이고 한 줄이다.
-    expect(box!.y).toBeGreaterThanOrEqual(heading!.y + heading!.height - 1);
+    // 제목 옆(같은 기준선) 또는 아래에 놓이고 한 줄이며 화면 안에 있다.
+    expect(box!.x >= heading!.x + heading!.width - 1 || box!.y >= heading!.y + heading!.height - 1).toBe(true);
     expect(box!.height).toBeLessThanOrEqual(24);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(width);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 
     const late = new Date(Date.now() - 50 * 60_000).toISOString();
