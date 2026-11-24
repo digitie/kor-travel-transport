@@ -643,3 +643,78 @@ test("공개 유가 지도(publicFuelGet)도 혼잡을 한 번 다시 묻고, �
     expect(alerts(host)).toContain("지도 범위를 좁히거나");
   });
 });
+
+// 유가 화면: 한 번의 조회 실패는 한 알림(role=alert)으로만 읽힌다. 범위 통계 칸은 글만 보인다.
+const visibleAlerts = (host: HTMLElement) => [...host.querySelectorAll('[role="alert"]')]
+  .filter(node => !node.closest('[hidden], [data-state="inactive"]')).map(node => node.textContent ?? "");
+
+test.each([["관리 /fuel", false], ["공개 유가 지도", true]])("%s 조회 실패는 범위 통계를 담은 알림 하나로만 알린다", async (_name, isPublic) => {
+  vi.mocked(fetch).mockImplementation(async input => String(input).includes("places") ? problem(504, TIMEOUT, "10") : Response.json({}));
+  Object.assign(mapState, { zoom: 12 });
+  const loadFuel: typeof publicFuelGet = (path, signal) => publicFuelGet(path.replace(/^transport\//, ""), signal);
+  await withMapClock(async (host, root) => {
+    await act(async () => root.render(isPublic
+      ? <TransportMap mode="fuel" mapOnly load={loadFuel} publicFuel={{ products: ["B027"], onProductsChange: vi.fn() }} />
+      : <TransportMap mode="fuel" />));
+    await tick(300);
+    await tick(100);
+    const shown = visibleAlerts(host);
+    expect(shown).toHaveLength(1);
+    expect(shown[0]).toContain("주유소 조회 실패(범위 통계 포함)");
+    expect(shown[0]).toContain("지도 범위를 좁히거나");
+    const summary = host.querySelector('[aria-label="현재 지도 범위 유가 통계"]')!;
+    expect(summary.textContent).toContain("통계를 불러오지 못했습니다");
+    expect(summary.querySelector('[role="alert"]')).toBeNull();
+  });
+});
+
+test("교통 지도 실패 안내에는 범위 통계 문구를 붙이지 않는다", async () => {
+  vi.mocked(fetch).mockImplementation(async () => problem(504, TIMEOUT, "10"));
+  await withMapClock(async (host, root) => {
+    await act(async () => root.render(<TransportMap mode="transport" />));
+    await tick(400);
+    expect(visibleAlerts(host).join("|")).toContain("조회 실패");
+    expect(visibleAlerts(host).join("|")).not.toContain("범위 통계");
+  });
+});
+
+test.each([["공개 유가 지도", true], ["관리 /fuel", false]])("%s는 자동 재조회를 기다리는 동안 지도 위에 '다시 조회 중…'을 알린다", async (_name, isPublic) => {
+  vi.mocked(fetch).mockImplementation(async input => {
+    const url = String(input);
+    if (!url.includes("places")) return Response.json({});
+    // 첫 기본 범위 요청은 바로 성공시키고, 실제 범위 요청의 첫 응답만 혼잡으로 둔다.
+    return url !== placesCalls()[0] && countOf(url) === 1 ? problem(429, BUSY, "2") : Response.json({ items: [], total: 0, truncated: false });
+  });
+  Object.assign(mapState, { zoom: 12 });
+  const loadFuel: typeof publicFuelGet = (path, signal) => publicFuelGet(path.replace(/^transport\//, ""), signal);
+  await withMapClock(async (host, root) => {
+    await act(async () => root.render(isPublic
+      ? <TransportMap mode="fuel" mapOnly load={loadFuel} publicFuel={{ products: ["B027"], onProductsChange: vi.fn() }} />
+      : <TransportMap mode="fuel" />));
+    const indicator = () => host.querySelector<HTMLElement>(".map-retry-status");
+    // 알림 영역은 처음부터 있고 비어 있다(글이 들어올 때 읽히도록).
+    expect(indicator()?.getAttribute("role")).toBe("status");
+    expect(indicator()?.textContent).toBe("");
+    await tick(300);
+    expect(indicator()?.textContent).toBe("다시 조회 중…");
+    expect(visibleAlerts(host)).toHaveLength(0);
+    await tick(2100);
+    expect(indicator()?.textContent).toBe("");
+    expect(visibleAlerts(host)).toHaveLength(0);
+  });
+});
+
+test("재조회 뒤에도 실패하면 '다시 조회 중…'을 지우고 실패 알림 하나만 남긴다", async () => {
+  vi.mocked(fetch).mockImplementation(async input => String(input).includes("places") ? problem(429, BUSY, "1") : Response.json({}));
+  Object.assign(mapState, { zoom: 12 });
+  const loadFuel: typeof publicFuelGet = (path, signal) => publicFuelGet(path.replace(/^transport\//, ""), signal);
+  await withMapClock(async (host, root) => {
+    await act(async () => root.render(<TransportMap mode="fuel" mapOnly load={loadFuel} publicFuel={{ products: ["B027"], onProductsChange: vi.fn() }} />));
+    await tick(300);
+    expect(host.querySelector(".map-retry-status")?.textContent).toBe("다시 조회 중…");
+    await tick(1200);
+    expect(host.querySelector(".map-retry-status")?.textContent).toBe("");
+    expect(visibleAlerts(host)).toHaveLength(1);
+    expect(visibleAlerts(host)[0]).toContain("혼잡합니다");
+  });
+});
