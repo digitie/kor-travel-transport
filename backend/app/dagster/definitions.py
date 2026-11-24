@@ -419,6 +419,8 @@ async def _collect_transport_in_one_loop(
         await asyncio.wait_for(service.close(), timeout=10)
 
 
+#: 수집 서비스가 무효 원천 행을 격리하고 나머지를 저장했을 때의 오류 문장 표지(`isolated_rows_message`).
+ISOLATED_ROWS_MARKER = "isolated invalid rows"
 #: Failure 설명에 담는 오류 하나의 상한. 차단 페이지 HTML 같은 긴 문장은 잘라 둔다.
 MAX_FAILURE_CAUSE_CHARS = 300
 _HTML_TAG = re.compile(r"<(?!redacted>)[^<>]{1,200}>")
@@ -478,13 +480,19 @@ def _collection_failure_metadata(result: dict[str, Any], scope: str) -> dict[str
         code, stage = "PROVIDER_AUTH", "provider_fetch"
     elif "TimeoutError" in messages:
         code, stage, hint, retryable = "COLLECTION_TIMEOUT", "collection", "RETRY_AFTER_BACKOFF", True
+    elif isinstance(errors, (list, tuple)) and errors and all(
+        isinstance(item, str) and ISOLATED_ROWS_MARKER in item for item in errors
+    ):
+        # 원천은 성공(유효 행 저장)했고 일부 원천 행만 격리했다. 같은 응답의 재시도는 의미가 없다.
+        code, stage, hint = "INVALID_ROWS_ISOLATED", "provider_parse", "CHECK_RESPONSE_CONTRACT"
     metadata: dict[str, Any] = {
         "error_code": code, "stage": stage, "scope": scope, "recovery_hint": hint,
         "retryable": retryable, "status": result["status"], "run_id": result["collection_run_id"],
         "error_count": len(errors) if isinstance(errors, (list, tuple)) else 0,
         "successful_data_preserved": True,
     }
-    for key in ("raw_response_count", "traffic_snapshot_count", "incident_snapshot_count", "fuel_station_count", "fuel_price_count"):
+    for key in ("raw_response_count", "traffic_snapshot_count", "incident_snapshot_count", "fuel_station_count",
+                "fuel_price_count", "isolated_rows"):
         value = result.get(key)
         if type(value) is int and 0 <= value <= 10_000_000:
             metadata[key] = value
@@ -522,7 +530,8 @@ def _collection_output_metadata(result: dict[str, Any], scope: str) -> dict[str,
         "status": status, "collection_outcome": outcome, "previous_data_preserved": True,
     }
     for key in ("collection_run_id", "raw_response_count", "snapshot_count", "fee_rule_count",
-                "traffic_snapshot_count", "incident_snapshot_count", "fuel_station_count", "fuel_price_count"):
+                "traffic_snapshot_count", "incident_snapshot_count", "fuel_station_count", "fuel_price_count",
+                "isolated_rows"):
         value = result.get(key)
         if type(value) is int and 0 <= value <= 1_000_000_000:
             metadata[key] = value

@@ -392,3 +392,57 @@ def test_history_retention_preserves_typed_members_and_stable_tie_order(test_set
             assert current.snapshot_order == current.snapshot_id
 
     _execute(test_settings, check)
+
+
+def _kst_text(at):
+    # FakeTransportProvider와 달리 KST 벽시계로 적어 provider 해석(Asia/Seoul) 뒤 실제 나이가 맞게 한다.
+    return (at + timedelta(hours=9)).strftime("%Y%m%d%H%M%S")
+
+
+def test_isolated_rows_carry_previous_members_within_limit_and_age(test_settings):
+    """무효 행 수 이하로 빠진 직전 구간만 값 그대로 새 세대에 남긴다. 더 많이 빠지면 실제 소멸로 본다."""
+    test_settings.transport_map_current_enabled = True
+
+    async def check(factory, _engine):
+        service = TransportCollectionService(test_settings, FakeTransportProvider())
+        flow = replace(await _flow(), updated_at=_kst_text(now_utc() - timedelta(minutes=5)))
+        flows = tuple(replace(flow, vds_id=f"v{index}") for index in range(3))
+        async with factory() as session:
+            run_id = await _run(session)
+            assert await service._store_traffic(session, run_id, flows) == 3
+            await session.commit()
+            run_id = await _run(session)
+            await service._store_traffic(session, run_id, flows[:2], carry_forward_limit=1)
+            await session.commit()
+            state = await _state(session, service)
+            members = (await session.scalars(select(HighwayTrafficCurrent.identity_key).where(
+                HighwayTrafficCurrent.generation == state.generation))).all()
+            assert state.member_count == 3 and len(members) == 3
+            run_id = await _run(session)
+            await service._store_traffic(session, run_id, flows[:1], carry_forward_limit=1)
+            await session.commit()
+            state = await _state(session, service)
+            await session.refresh(state)  # 같은 session의 identity map이 직전 세대 값을 들고 있다.
+            assert state.member_count == 1
+
+    _execute(test_settings, check)
+
+
+def test_isolated_rows_do_not_carry_stale_members(test_settings):
+    test_settings.transport_map_current_enabled = True
+
+    async def check(factory, _engine):
+        service = TransportCollectionService(test_settings, FakeTransportProvider())
+        flow = await _flow()
+        fresh = replace(flow, vds_id="fresh", updated_at=_kst_text(now_utc() - timedelta(minutes=5)))
+        old = replace(flow, vds_id="old", updated_at=_kst_text(now_utc() - timedelta(hours=2)))
+        async with factory() as session:
+            run_id = await _run(session)
+            await service._store_traffic(session, run_id, (fresh, old))
+            await session.commit()
+            run_id = await _run(session)
+            await service._store_traffic(session, run_id, (fresh,), carry_forward_limit=1)
+            await session.commit()
+            assert (await _state(session, service)).member_count == 1
+
+    _execute(test_settings, check)

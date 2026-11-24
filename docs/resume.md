@@ -1,3 +1,11 @@
+## 현재 상태 — 2026-11-24 고속도로·공항 무효 행 격리(COLLECTION-PARTIAL-20261124)
+
+- 고속도로 0405 무효 행 5% 이하·공항 원천 무효 행 20% 이하는 그 행만 격리하고 저장, run은 부분 성공(`INVALID_ROWS_ISOLATED`).
+  결정적 파싱 오류는 재호출하지 않는다. 격리로 빠진 직전 current 행은 1시간 안 관측만 유지. krex 핀 `6646be5`(PR #20).
+- 배포(Codex 담당): backend(API) 이미지 + Dagster code-server 이미지(같은 backend 소스), transport-admin(콘솔 사유·라벨). migration 없음.
+- 다음 한 작업: 배포 뒤 odroid에서 고속도로·공항 run의 `isolated_rows`·`INVALID_ROWS_ISOLATED`가 나오면 원천 행 결함을 확인하고,
+  비율 상한에 걸린 실패(`TRAFFIC_FLOW_INVALID_RECORDS`/"무효 행 비율")가 다시 늘지 않는지 본다.
+
 ## 현재 상태 — 2026-11-24 #262·#260 사후 리뷰 P1 수정(POSTMERGE-REVIEW-20261124)
 
 - backend만. migration·UI 없음.

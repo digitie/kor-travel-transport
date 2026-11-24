@@ -27,7 +27,7 @@ export const CONSOLE_COUNT_LABELS: Record<string, string> = {
   published_values: "저장 값", values_loaded: "저장 값", completed_grids: "완료 격자", grids_fetched: "조회 격자", requests_fetched: "조회 요청",
   raw_response_count: "저장 원문", fee_rule_count: "요금 규칙", collection_run_id: "수집 실행 ID", traffic_snapshot_count: "소통 저장", incident_snapshot_count: "돌발 저장",
   fuel_station_count: "주유소 저장", fuel_price_count: "가격 저장", fuel_statistics_pruned_rows: "정리한 이전 통계 행", snapshot_count: "관측 저장", error_count: "오류",
-  received_rows: "수신 행", parsed_rows: "해석 행", invalid_rows: "불량 행", failed_dataset_count: "실패 원천", successful_dataset_count: "성공 원천",
+  received_rows: "수신 행", parsed_rows: "해석 행", invalid_rows: "불량 행", isolated_rows: "격리 행", failed_dataset_count: "실패 원천", successful_dataset_count: "성공 원천",
   failed_grids: "미완료 격자", deferred_grids: "재개 대기 격자", failed_requests: "실패 요청", completed_sources: "완료 원천", failed_sources: "미완료 원천",
 };
 export const CONSOLE_ACTIVE = new Set(["NOT_STARTED", "QUEUED", "STARTING", "STARTED", "CANCELING"]);
