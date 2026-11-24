@@ -68,7 +68,7 @@ from app.services.fuel_station_filters import FuelStationFilters, fuel_station_f
 from app.services.fuel_manual_refresh import build_fuel_manual_refresh_router
 from app.services.fuel_refresh_prices import effective_fuel_prices, fuel_viewport_conditions, has_visible_fuel_product
 from app.services.parking_history_cache import (
-    BoundedHistoryResponse, ParkingHistoryReadCache, encode_response, run_history_cpu,
+    BoundedHistoryResponse, ParkingHistoryReadCache, direct_fallback_is_heavy, render_direct_history,
 )
 from app.models import (
     Airport,
@@ -2752,60 +2752,49 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 delivery_semaphore = history_read_cache.delivery_semaphore if history_read_cache else None
                 if delivery_semaphore is not None:
                     await delivery_semaphore.acquire()
+                abandoned = False
                 try:
+                    accept_encoding = request.headers.get("accept-encoding", "")
                     # 대기 중 캐시가 교체·만료될 수 있으므로 슬롯 획득 뒤에 다시 판정한다.
                     cached = history_read_cache.usable_snapshot(cutoff) if history_read_cache else None
+                    if cached is None:
+                        # 긴 공항·전체 범위의 직접 SQL은 프로세스에서 한 번에 하나만 실행한다. 기다리는
+                        # 동안 캐시가 게시·재확인되면 바로 그 캐시로 응답한다. 주차장 하나·짧은 기간은
+                        # 기존처럼 전송 슬롯 안에서 바로 돈다.
+                        serial = history_read_cache is not None and direct_fallback_is_heavy(parking_lot_id, days)
+                        if serial:
+                            cached = await history_read_cache.acquire_direct_fallback(cutoff)
+                        if cached is None:
+                            try:
+                                # 기다리는 동안 떠난 요청(프록시 헤더 대기 한도·닫힌 탭)은 전체 조회를 하지 않는다.
+                                if serial and await request.is_disconnected():
+                                    abandoned = True
+                                else:
+                                    # 기존 전체·오래된 순서 계약을 단일 DISTINCT ON으로 보존한다.
+                                    body, headers = await render_direct_history(
+                                        session, *conditions, accept_encoding=accept_encoding,
+                                    )
+                                    headers["X-Parking-History-Cache"] = "miss"
+                            finally:
+                                if serial:
+                                    history_read_cache.release_direct_fallback()
                     if cached is not None:
                         checked_at = history_read_cache.validated_at_utc
                         body, headers = await history_read_cache.response_body(
-                            cached, cutoff, normalized_airport_code, parking_lot_id,
-                            request.headers.get("accept-encoding", ""),
+                            cached, cutoff, normalized_airport_code, parking_lot_id, accept_encoding,
                         )
                         headers["X-Parking-History-Cache"] = "hit"
                         if checked_at is not None:
                             headers["X-Parking-History-Checked-At"] = serialize_utc(checked_at).isoformat()
-                    else:
-                        # 기존 전체·오래된 순서 계약을 단일 DISTINCT ON으로 보존한다.
-                        history_rows = (select(
-                            ParkingSnapshot.observed_at.label("observed_at"),
-                            ParkingSnapshot.parking_lot_id.label("parking_lot_id"),
-                            ParkingSnapshot.airport_id.label("airport_id"),
-                            ParkingSnapshot.occupied_spaces.label("occupied_spaces"),
-                            ParkingSnapshot.total_spaces.label("total_spaces"),
-                            ParkingSnapshot.available_spaces.label("available_spaces"),
-                        ).where(*conditions)
-                            .distinct(ParkingSnapshot.observed_at, ParkingSnapshot.parking_lot_id)
-                            .order_by(
-                                ParkingSnapshot.observed_at, ParkingSnapshot.parking_lot_id,
-                                case((func.left(ParkingSnapshot.source, 10) == "migration_", 1), else_=0),
-                                ParkingSnapshot.collected_at.desc(), ParkingSnapshot.id.desc(),
-                            ).subquery("history_rows"))
-                        rows = (await session.execute(select(
-                            history_rows.c.observed_at, history_rows.c.parking_lot_id, Airport.code,
-                            history_rows.c.occupied_spaces, history_rows.c.total_spaces,
-                            history_rows.c.available_spaces,
-                        ).join(Airport, Airport.id == history_rows.c.airport_id)
-                            .order_by(history_rows.c.observed_at, history_rows.c.parking_lot_id))).all()
-
-                        def serialize_rows() -> bytes:
-                            return to_json({"items": [
-                                {"airport_code": row.code, "parking_lot_id": row.parking_lot_id,
-                                 "observed_at": serialize_utc(row.observed_at),
-                                 "occupied_spaces": row.occupied_spaces,
-                                 "total_spaces": row.total_spaces,
-                                 "available_spaces": row.available_spaces}
-                                for row in rows
-                            ], "next_cursor": None})
-
-                        body = await run_history_cpu(serialize_rows)
-                        body, headers = await run_history_cpu(
-                            encode_response, body, request.headers.get("accept-encoding", "")
-                        )
-                        headers["X-Parking-History-Cache"] = "miss"
                 except BaseException:
                     if delivery_semaphore is not None:
                         delivery_semaphore.release()
                     raise
+                if abandoned:
+                    if delivery_semaphore is not None:
+                        delivery_semaphore.release()
+                    # 받을 클라이언트가 없다. 접근 로그에서 구분되게 nginx 관례의 499를 쓴다.
+                    return Response(status_code=499)
                 if delivery_semaphore is not None:
                     return BoundedHistoryResponse(
                         content=body, headers=headers, media_type="application/json",

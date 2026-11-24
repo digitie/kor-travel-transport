@@ -35,6 +35,9 @@ function rawGet(path: string, acceptEncoding: string): Promise<{ status: number;
   });
 }
 
+// 무제한 이력(limit 없음) 요청은 모두 이 파일에 둔다. playwright는 fullyParallel: false라 한 파일의 시험은
+// 한 worker에서 차례로 돈다. 배포 직후·재생성 중 캐시를 쓸 수 없으면 backend가 긴 범위 직접 조회를 프로세스당
+// 한 번에 하나만 하므로, 다른 파일(worker)에서 동시에 보내면 서로 줄을 서 시간 한도를 넘길 수 있다.
 test.describe("30일 전체 이력 응답 압축", () => {
   test.setTimeout(180_000);
 
@@ -74,5 +77,52 @@ test.describe("30일 전체 이력 응답 압축", () => {
       }
     }, HISTORY_PATH);
     expect(result).toEqual({ status: 200, isArray: true, head: "" });
+  });
+});
+
+test.describe("30일 전체 이력 스트리밍 프록시", () => {
+  test("reads the complete 30-day history through the public streaming proxy", async ({ request }) => {
+    test.setTimeout(120_000);
+    const started = Date.now();
+    const response = await request.get("/api/backend/v1/parking/history?days=30", { timeout: 90_000 });
+    expect(response.status()).toBe(200);
+    const payload = await response.json();
+    test.info().annotations.push({ type: "full-history-body-ms", description: String(Date.now() - started) });
+    expect(payload.next_cursor).toBeNull();
+    expect(payload.items.length).toBeGreaterThan(0);
+    expect(Date.parse(payload.items[0].observed_at)).toBeLessThanOrEqual(
+      Date.parse(payload.items.at(-1).observed_at),
+    );
+  });
+
+  test("reads the complete 30-day history in a browser within 3 seconds", async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const result = await page.evaluate(async () => {
+      const started = performance.now();
+      const response = await fetch("/api/backend/v1/parking/history?days=30", { cache: "no-store" });
+      const bytes = await response.arrayBuffer();
+      const bodyMs = performance.now() - started;
+      const payload = JSON.parse(new TextDecoder().decode(bytes)) as {
+        items: { observed_at: string }[];
+        next_cursor: string | null;
+      };
+      return {
+        status: response.status,
+        bodyMs,
+        bytes: bytes.byteLength,
+        count: payload.items.length,
+        nextCursor: payload.next_cursor,
+        first: payload.items[0]?.observed_at,
+        last: payload.items.at(-1)?.observed_at,
+      };
+    });
+    test.info().annotations.push({ type: "browser-full-history-body-ms", description: String(Math.round(result.bodyMs)) });
+    expect(result.status).toBe(200);
+    expect(result.bodyMs).toBeLessThanOrEqual(3000);
+    expect(result.bytes).toBeGreaterThan(0);
+    expect(result.count).toBeGreaterThan(0);
+    expect(result.nextCursor).toBeNull();
+    expect(Date.parse(result.first ?? "")).toBeLessThanOrEqual(Date.parse(result.last ?? ""));
   });
 });
