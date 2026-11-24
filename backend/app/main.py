@@ -58,6 +58,7 @@ from app.general_rail_routes import build_general_rail_router
 from app.ferry_reference_routes import build_ferry_reference_router
 from app.highway_map_routes import build_highway_map_router
 from app.services.fuel_price_history import build_fuel_price_history_router
+from app.services.export_price_history import document_history_retry_after
 from app.services.fuel_price_distribution import build_fuel_price_distribution_router, viewport_sigungu
 from app.services.fuel_center_sigungu import center_sigungu
 from app.services.fuel_area_catalog import build_fuel_area_catalog_router
@@ -845,8 +846,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
         components["ServiceExportProblemDetails"] = {
             "allOf": [{"$ref": "#/components/schemas/ProblemDetails"}, {
-                "type": "object", "required": ["meta"], "properties": {
-                    "meta": {"$ref": "#/components/schemas/ServiceExportMeta"},
+                # 가격 이력 503의 meta는 성공한 수집 이력이 없을 때만 있다. DB 문장 시간 상한 초과 503에는 없다.
+                "type": "object", "properties": {
+                    "meta": {"allOf": [{"$ref": "#/components/schemas/ServiceExportMeta"}], "description": (
+                        "성공한 유가 수집 이력이 없어 낸 503에만 있다(source_status=failed, item_count=0). "
+                        "DB 문장 시간 상한 초과로 끝난 503에는 없고 Retry-After 헤더가 있다."
+                    )},
                 },
             }],
         }
@@ -870,6 +875,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             }
                         },
                     }
+        document_history_retry_after(schema)
         app.openapi_schema = schema
         return schema
 

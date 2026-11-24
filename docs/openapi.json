@@ -9962,12 +9962,14 @@
           {
             "properties": {
               "meta": {
-                "$ref": "#/components/schemas/ServiceExportMeta"
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ServiceExportMeta"
+                  }
+                ],
+                "description": "성공한 유가 수집 이력이 없어 낸 503에만 있다(source_status=failed, item_count=0). DB 문장 시간 상한 초과로 끝난 503에는 없고 Retry-After 헤더가 있다."
               }
             },
-            "required": [
-              "meta"
-            ],
             "type": "object"
           }
         ]
@@ -13169,7 +13171,7 @@
     },
     "/v1/service/exports/fuel-stations/{station_key}/price-history": {
       "get": {
-        "description": "주유소 자연키의 유종별 과거 가격. 기본 최근30일·최대366일·한 페이지5000건이다.\n\ncursor는15분 동안 창·필터·성공 수집 revision을 고정한다. 수집 revision이 바뀌면409로\n처음부터 다시 읽는다. 휴게소 가격 이력 표는 만들지 않으며 별도 경로는501이다.\nDB 문장이5초 상한을 넘으면503 problem과 `Retry-After`를 낸다.",
+        "description": "주유소 자연키의 유종별 과거 가격. 기본 최근30일·최대366일·한 페이지5000건이다.\n\ncursor는15분 동안 창·필터·성공 수집 revision을 고정한다. 수집 revision이 바뀌면409로\n처음부터 다시 읽는다. 휴게소 가격 이력 표는 만들지 않으며 별도 경로는501이다.\nDB 문장이 서버 상한(기본3초)을 넘으면 meta 없는503 problem과 `Retry-After`를 낸다.",
         "operationId": "price_history_v1_service_exports_fuel_stations__station_key__price_history_get",
         "parameters": [
           {
@@ -13342,7 +13344,16 @@
                 }
               }
             },
-            "description": "애플리케이션 오류"
+            "description": "애플리케이션 오류",
+            "headers": {
+              "Retry-After": {
+                "description": "DB 문장 시간 상한 초과로 끝난 응답에서 다시 요청하기 전 기다릴 초.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Price History",
@@ -15604,7 +15615,7 @@
     },
     "/v1/transport/fuel/stations/{station_id}/price-history": {
       "get": {
-        "description": "최근 rolling 최대720시간의 유종별 실제 관측과 별도 현재 가격.\n\nFeature fuel_station의 양수 id/source를 함께 사용한다. 휴게소 현재 가격에는\n저장 이력이 없으므로501이며, 보간·provider 호출·raw 응답 노출은 하지 않는다.\ncursor는15분 동안 창을 고정하고 수집 revision이 바뀌면409로 재시작한다.\n`include_latest=false`면 `latest`는 빈 배열이다(현재 가격이 없다는 뜻이 아니다).\nDB 문장이5초 상한을 넘으면504 problem과 `Retry-After`를 낸다. 503은 성공한 수집 이력이 없을 때다.",
+        "description": "최근 rolling 최대720시간의 유종별 실제 관측과 별도 현재 가격.\n\nFeature fuel_station의 양수 id/source를 함께 사용한다. 휴게소 현재 가격에는\n저장 이력이 없으므로501이며, 보간·provider 호출·raw 응답 노출은 하지 않는다.\ncursor는15분 동안 창을 고정하고 수집 revision이 바뀌면409로 재시작한다.\n`include_latest=false`면 `latest`는 빈 배열이다(현재 가격이 없다는 뜻이 아니다).\nDB 문장이 서버 상한(기본3초)을 넘으면504 problem과 `Retry-After`를 낸다. 503은 성공한 수집 이력이\n없을 때와, `include_latest=true`에서 저장 유종 수가 조회 상한(64)을 넘을 때다.",
         "operationId": "station_price_history_v1_transport_fuel_stations__station_id__price_history_get",
         "parameters": [
           {
@@ -15781,7 +15792,16 @@
                 }
               }
             },
-            "description": "애플리케이션 오류"
+            "description": "애플리케이션 오류",
+            "headers": {
+              "Retry-After": {
+                "description": "DB 문장 시간 상한 초과로 끝난 응답에서 다시 요청하기 전 기다릴 초.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "summary": "Station Price History"

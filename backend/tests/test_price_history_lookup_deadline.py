@@ -5,32 +5,39 @@
 - export 자연키는 수집기 identity_key(`uq_fuel_station_identity`)로 찾는다. 옛 `source_station_id` 조건과 같은
   행을 고르는지 실제 수집 저장 경로(`_store_fuel_snapshot`)로 만든 fixture에서 고정한다.
 - native 응답은 주유소를 한 번만 읽고, `include_latest=false`면 현재 가격 조회를 생략한다.
-- statement_timeout(57014)은 500이 아니라 export 503·native 504 + Retry-After problem이다. native가 503을 쓰지 않는
-  것은 화면이 503을 '성공한 수집 이력 없음'으로 안내하기 때문이다. PostgreSQL에서는 실제 lock 대기로 재현한다.
+- 이력 transaction은 `SET LOCAL statement_timeout`(설정, 기본 3초)을 건다. 주목적은 소비자가 이미 포기한 조회가
+  공용 DB 연결을 오래 잡지 않게 하는 것이다. Map은 자기 read timeout이 이 상한보다 길 때만 503을 본다.
+- 57014는 500이 아니라 export 503(meta 없음)·native 504 + Retry-After problem이고 경고 로그를 남긴다. native가
+  503을 쓰지 않는 것은 화면이 503을 '성공한 수집 이력 없음'으로 안내하기 때문이다. PostgreSQL에서는 실제 lock
+  대기로 재현하고, 풀 연결에 상한이 남지 않는지(다음 checkout) 확인한다.
 """
 from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
+from contextlib import contextmanager
 from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from opinet import ProductCode
 from sqlalchemy import event, insert, select, text
 from sqlalchemy.exc import DBAPIError
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from app.core.config import Settings
 from app.core.time_utils import now_utc
 from app.main import create_app
 from app.models import CollectionRun, FuelStation
 from app.services import export_price_history, fuel_price_history
 from app.services.export_price_history import (
-    HISTORY_TIMEOUT_DETAIL, HISTORY_TIMEOUT_RETRY_AFTER_SECONDS, opinet_station_identity, read_price_history_page,
-    station_lookup_statement,
+    HISTORY_TIMEOUT_DETAIL, HISTORY_TIMEOUT_RETRY_AFTER_SECONDS, history_statement_deadline, opinet_station_identity,
+    read_price_history_page, station_lookup_statement,
 )
 from app.services.transport_collection import OPINET_SOURCE
 from test_fuel_store_bulk import make_snapshot, make_station, price
@@ -41,8 +48,27 @@ NATIVE = "/v1/transport/fuel/stations/{id}/price-history"
 STATION_KEYS = ("A0000001", "0123")  # 선행0 자연키도 그대로 보존한다.
 
 
+DEFAULT_TIMEOUT_MS = Settings.model_fields["fuel_price_history_statement_timeout_ms"].default
+EXPORT_PATH = "/v1/service/exports/fuel-stations/{station_key}/price-history"
+NATIVE_PATH = "/v1/transport/fuel/stations/{station_id}/price-history"
+
+
 @pytest.fixture
 def history_client(test_settings):
+    with _history_client(test_settings) as client:
+        yield client
+
+
+@pytest.fixture
+def short_timeout_client(test_settings):
+    """lock 대기를 빨리 끊도록 문장 상한을 300ms로 둔 앱."""
+    test_settings.fuel_price_history_statement_timeout_ms = 300
+    with _history_client(test_settings) as client:
+        yield client
+
+
+@contextmanager
+def _history_client(test_settings):
     test_settings.transport_service_export_token = TOKEN
     test_settings.trusted_hosts_csv = "testserver,127.0.0.1"
     with TestClient(create_app(test_settings), client=("127.0.0.1", 50123)) as client:
@@ -178,17 +204,27 @@ def _assert_timeout_problem(response, status: int) -> None:
     assert body["status"] == status and body["detail"] == HISTORY_TIMEOUT_DETAIL
     # native 화면의 503 문구('성공한 수집 이력 없음')와 겹치지 않는다.
     assert "수집 이력" not in body["detail"]
+    # meta(source_status=failed)는 '성공한 수집 이력 없음' 503에만 있다. Map은 meta 없는 503을 upstream_unavailable로 본다.
+    assert "meta" not in body
     # 예외 원문(SQL·접속 정보)은 응답에 싣지 않는다.
     assert "SELECT" not in response.text and "statement timeout" not in response.text
 
 
-def test_statement_timeout_is_export_503_and_native_504_with_retry_after(history_client, monkeypatch):
+def test_statement_timeout_is_export_503_and_native_504_with_retry_after(history_client, monkeypatch, caplog):
     async def canceled_read(*args, **kwargs):
         raise _db_error(_QueryCanceled("canceling statement due to statement timeout"))
 
     monkeypatch.setattr(export_price_history, "read_price_history_page", canceled_read)
-    # Map은 T4 503을 upstream_unavailable로 강등한다.
-    _assert_timeout_problem(history_client.get(EXPORT.format(key="A0000001"), headers=HEADERS), 503)
+    # Map은 meta 없는 T4 503을 upstream_unavailable로 강등한다.
+    with caplog.at_level(logging.WARNING, logger=export_price_history.__name__):
+        _assert_timeout_problem(history_client.get(EXPORT.format(key="A0000001"), headers=HEADERS), 503)
+    # 운영자 취소(pg_cancel_backend)도 57014라 변환 사실을 SQLSTATE·경로와 함께 남긴다. 예외 원문은 남기지 않는다.
+    logged = [record.getMessage() for record in caplog.records if record.name == export_price_history.__name__]
+    assert logged == [
+        "price history query canceled mapped to status=503 sqlstate=57014 "
+        "path=/v1/service/exports/fuel-stations/A0000001/price-history"
+    ]
+    assert "statement timeout" not in caplog.text
 
     # native는 현재 가격 조회까지 같은 상한 처리 안에 있다.
     async def canceled_latest(*args, **kwargs):
@@ -218,6 +254,21 @@ def _require_postgres(client) -> None:
         pytest.skip("PostgreSQL 전용: 실제 statement_timeout·실행 계획")
 
 
+def test_openapi_documents_timeout_problem_without_meta_and_retry_after(history_client):
+    """export 503 schema는 meta를 요구하지 않고(시간 상한 503에는 없다), export 503·native 504에 Retry-After가 있다."""
+    schema = history_client.app.openapi()
+    problem = schema["components"]["schemas"]["ServiceExportProblemDetails"]["allOf"][1]
+    assert "required" not in problem and "meta" in problem["properties"]
+    for path, status in ((EXPORT_PATH, "503"), (NATIVE_PATH, "504")):
+        response = schema["paths"][path]["get"]["responses"][status]
+        assert response["headers"]["Retry-After"]["schema"]["type"] == "integer", path
+
+
+def test_statement_timeout_setting_default_is_below_map_budget():
+    """기본 3초: Map T4 read timeout(5초)보다 짧다. 더 낮은 Map 예산에서는 Map이 먼저 끊고 서버는 연결만 일찍 반환한다."""
+    assert DEFAULT_TIMEOUT_MS == 3_000
+
+
 def test_postgres_history_transaction_sets_local_timeout_without_xid(history_client):
     """문장 상한은 transaction 범위(`SET LOCAL`)이고, 이력 조회는 XID를 받지 않는 읽기 전용 transaction이다."""
     _require_postgres(history_client)
@@ -230,7 +281,7 @@ def test_postgres_history_transaction_sets_local_timeout_without_xid(history_cli
     async def read(session):
         read = await read_price_history_page(
             SimpleNamespace(url=SimpleNamespace(path="/test")), "A0000001", None, None, None, 1000, None,
-            session, b"k" * 32,
+            session, b"k" * 32, statement_timeout_ms=DEFAULT_TIMEOUT_MS,
         )
         assert read.station.source_station_id == "A0000001" and read.rows
         timeout = await session.scalar(text("SHOW statement_timeout"))
@@ -244,9 +295,72 @@ def test_postgres_history_transaction_sets_local_timeout_without_xid(history_cli
         timeout, xid, isolation = _run(history_client, read)
     finally:
         event.remove(engine, "before_cursor_execute", capture)
-    assert timeout == "5s" and xid is None and isolation == "repeatable read"
+    assert timeout == "3s" and xid is None and isolation == "repeatable read"
     sets = [s for s in statements if "statement_timeout" in s and s.lstrip().upper().startswith("SET")]
-    assert sets == ["SET LOCAL statement_timeout = 5000"]
+    assert sets == ["SET LOCAL statement_timeout = 3000"]
+
+
+def test_postgres_set_local_timeout_does_not_leak_to_next_pooled_checkout(history_client):
+    """pool_size=1 풀에서 성공 뒤와 57014 뒤 모두, 다음 checkout(같은 물리 연결)은 원래 statement_timeout이다."""
+    _require_postgres(history_client)
+    request = SimpleNamespace(url=SimpleNamespace(path="/v1/service/exports/fuel-stations/A0000001/price-history"))
+
+    async def scenario():
+        engine = create_async_engine(os.environ["TEST_DATABASE_URL"], pool_size=1, max_overflow=0)
+        locker = create_async_engine(os.environ["TEST_DATABASE_URL"], poolclass=NullPool)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+
+        async def checkout():
+            async with factory() as session:
+                row = (await session.execute(text(
+                    "SELECT current_setting('statement_timeout'), current_setting('transaction_isolation'), "
+                    "pg_backend_pid()",
+                ))).one()
+                await session.rollback()
+                return tuple(row)
+
+        async def history(session, timeout_ms):
+            return await read_price_history_page(
+                request, "A0000001", None, None, None, 1000, None, session, b"k" * 32, statement_timeout_ms=timeout_ms,
+            )
+
+        try:
+            baseline = await checkout()
+            assert baseline[0] != "1234ms" and baseline[1] == "read committed"
+            async with factory() as session:
+                assert (await history(session, 1234)).rows
+                assert await session.scalar(text("SHOW statement_timeout")) == "1234ms"
+                # 경로는 rollback으로 끝내지만 commit해도 남지 않아야 한다. rollback은 일반 SET도 되돌리므로
+                # commit으로 SET LOCAL 범위(transaction 한정)를 검출한다.
+                await session.commit()
+            after_success = await checkout()
+
+            holder = await locker.connect()
+            try:
+                await holder.begin()
+                await holder.execute(text("LOCK TABLE fuel_stations IN ACCESS EXCLUSIVE MODE"))
+                async with factory() as session:
+                    with pytest.raises(HTTPException) as caught:
+                        async with history_statement_deadline(session, request):
+                            await history(session, 200)
+                    assert caught.value.status_code == 503
+            finally:
+                await holder.rollback()
+                await holder.close()
+            after_timeout = await checkout()
+            return baseline, after_success, after_timeout
+        finally:
+            await engine.dispose()
+            await locker.dispose()
+
+    loop = asyncio.new_event_loop()
+    try:
+        baseline, after_success, after_timeout = loop.run_until_complete(scenario())
+    finally:
+        loop.close()
+    # 같은 backend pid = 같은 물리 연결이 무효화되지 않고 재사용됐다. 상한·격리 수준은 원래 값이다.
+    assert after_success == baseline
+    assert after_timeout == baseline
 
 
 def test_postgres_export_station_lookup_uses_identity_unique_index(history_client):
@@ -283,11 +397,11 @@ def test_postgres_export_station_lookup_uses_identity_unique_index(history_clien
 
 @pytest.mark.parametrize(("route", "status"), [("export", 503), ("native", 504)])
 def test_postgres_lock_wait_past_statement_timeout_is_problem_and_connection_recovers(
-    history_client, monkeypatch, route, status,
+    short_timeout_client, route, status,
 ):
     """fuel_stations에 ACCESS EXCLUSIVE(예: 잠금을 오래 잡는 DDL)가 걸리면 기본 120초가 아니라 이력 상한에서 끝낸다."""
+    history_client = short_timeout_client
     _require_postgres(history_client)
-    monkeypatch.setattr(export_price_history, "HISTORY_STATEMENT_TIMEOUT_MS", 300)
     path = EXPORT.format(key="A0000001") if route == "export" else NATIVE.format(id=_station_ids(history_client)["A0000001"])
     kwargs = {"headers": HEADERS} if route == "export" else {"params": {"source": OPINET_SOURCE}}
 

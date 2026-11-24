@@ -7,6 +7,7 @@ import gzip
 import hashlib
 import hmac
 import json
+import logging
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -26,19 +27,43 @@ from app.schemas import ExportPriceHistoryItem, FuelPriceHistoryExportPage, Fuel
 from app.services.parking_history_cache import accepts_gzip
 from app.services.transport_collection import FUEL_STALE_AFTER, OPINET_SOURCE
 
+logger = logging.getLogger(__name__)
+
 MAX_HISTORY_LIMIT = 5000
 MAX_HISTORY_WINDOW = timedelta(days=366)
 CURSOR_TTL = timedelta(minutes=15)
-#: 이력 조회 transaction의 문장별 서버 상한(밀리초). Map T4 예산(PinVi→Map 5초)과 같다. 소비자가 이미
-#: 포기한 조회가 API 엔진 기본 상한(120초)까지 공용 DB 연결을 잡지 않게 한다. `SET LOCAL`이라
-#: transaction이 끝나면(rollback) 연결의 기본값으로 돌아간다. 문장마다 적용되며 요청 전체 deadline은 아니다.
-HISTORY_STATEMENT_TIMEOUT_MS = 5_000
+# 이력 조회 transaction의 문장별 서버 상한(밀리초)은 `Settings.fuel_price_history_statement_timeout_ms`다
+# (기본 3초). 주목적은 소비자가 이미 포기한 조회가 API 엔진 기본 상한(120초)까지 공용 DB 연결을 잡지 않게
+# 하는 것이다. Map T4 read timeout(5초, 감사는 더 낮추기를 권고)이 이 상한보다 길 때만 Map이 503을 본다.
+# `SET LOCAL`이라 transaction이 끝나면 연결의 기본값으로 돌아간다. 문장마다 적용되며 연결 풀 대기를 포함한
+# 요청 전체 deadline은 아니다.
+
 #: 상한 초과 응답의 `Retry-After`(초). 같은 조회를 곧바로 반복해 같은 부하를 다시 만들지 않게 한다.
 HISTORY_TIMEOUT_RETRY_AFTER_SECONDS = 5
-#: 상한 초과 응답 본문. export(503)와 native(504)가 같은 문장을 쓴다.
-HISTORY_TIMEOUT_DETAIL = "가격 이력 조회가 시간 상한을 넘었습니다. 잠시 후 다시 조회하세요."
-#: PostgreSQL `query_canceled` — statement_timeout 초과(또는 관리자 취소)다.
+#: 상한 초과 응답 본문. export(503)와 native(504)가 같은 문장을 쓴다. 운영자 취소(pg_cancel_backend)도 같은
+#: SQLSTATE 57014라 본문은 원인을 단정하지 않는다. 구분은 경고 로그(SQLSTATE·경로)로 한다.
+HISTORY_TIMEOUT_DETAIL = "가격 이력 조회가 제시간에 끝나지 않았습니다. 잠시 후 다시 조회하세요."
+#: PostgreSQL `query_canceled` — statement_timeout 초과 또는 운영자 취소다.
 _QUERY_CANCELED = "57014"
+#: OpenAPI에 `Retry-After`를 문서화할 가격 이력 상한 초과 응답(경로, method, status).
+_HISTORY_TIMEOUT_RESPONSES = (
+    ("/v1/service/exports/fuel-stations/{station_key}/price-history", "get", "503"),
+    ("/v1/transport/fuel/stations/{station_id}/price-history", "get", "504"),
+)
+
+
+def document_history_retry_after(schema: dict[str, Any]) -> None:
+    """OpenAPI에서 가격 이력 상한 초과 응답(export 503·native 504)의 `Retry-After` 헤더를 문서화한다.
+
+    다른 계약이 이미 같은 헤더를 문서화했으면 덮어쓰지 않는다.
+    """
+    for path, method, status in _HISTORY_TIMEOUT_RESPONSES:
+        response = schema.get("paths", {}).get(path, {}).get(method, {}).get("responses", {}).get(status)
+        if response is not None:
+            response.setdefault("headers", {}).setdefault("Retry-After", {
+                "schema": {"type": "integer", "minimum": 1},
+                "description": "DB 문장 시간 상한 초과로 끝난 응답에서 다시 요청하기 전 기다릴 초.",
+            })
 
 
 def opinet_station_identity(station_key: str) -> str:
@@ -148,18 +173,24 @@ class PriceHistoryUnavailable(Exception):
 
 
 @asynccontextmanager
-async def history_statement_deadline(session: AsyncSession, *, status_code: int = 503) -> AsyncIterator[None]:
-    """이력 transaction의 statement_timeout 초과(57014)를 500이 아닌 `status_code` + Retry-After problem으로 바꾼다.
+async def history_statement_deadline(
+    session: AsyncSession, request: Request, *, status_code: int = 503,
+) -> AsyncIterator[None]:
+    """이력 transaction의 57014(statement_timeout 초과·운영자 취소)를 500이 아닌 `status_code` + Retry-After로 바꾼다.
 
-    T4 export는 503이다(Map이 503을 upstream_unavailable로 강등한다). native 지도 상세 경로는 504다.
+    T4 export는 503이다(Map은 meta 없는 503을 upstream_unavailable로 강등한다). native 지도 상세 경로는 504다.
     화면이 503을 '성공한 수집 이력 없음'으로 안내하므로, 일시적인 조회 지연을 그 문구와 섞지 않는다.
     다른 DB 오류는 그대로 올린다. 실패한 transaction은 바로 rollback해 연결을 반환한다.
     """
     try:
         yield
     except DBAPIError as exc:
-        if getattr(exc.orig, "sqlstate", None) != _QUERY_CANCELED:
+        sqlstate = getattr(exc.orig, "sqlstate", None)
+        if sqlstate != _QUERY_CANCELED:
             raise
+        # SQL·접속 정보가 담길 수 있는 예외 원문은 남기지 않는다.
+        logger.warning("price history query canceled mapped to status=%s sqlstate=%s path=%s",
+                       status_code, sqlstate, request.url.path)
         await session.rollback()
         raise HTTPException(
             status_code, HISTORY_TIMEOUT_DETAIL,
@@ -170,18 +201,18 @@ async def history_statement_deadline(session: AsyncSession, *, status_code: int 
 async def read_price_history_page(
     request: Request, station_key: str, product: str | None,
     from_at: datetime | None, to_at: datetime | None, limit: int, cursor: str | None,
-    session: AsyncSession, cursor_key: bytes, *, native_station_id: int | None = None,
+    session: AsyncSession, cursor_key: bytes, *, statement_timeout_ms: int, native_station_id: int | None = None,
     default_days: int = 30, max_window: timedelta = MAX_HISTORY_WINDOW,
     cursor_scope: str | None = None,
 ) -> PriceHistoryRead:
     """한 주유소의 bounded DB 이력. 호출자가 같은 snapshot의 후속 조회와 rollback을 소유한다.
 
-    PostgreSQL에서는 transaction에 `HISTORY_STATEMENT_TIMEOUT_MS` 문장 상한을 건다. 호출자는
+    PostgreSQL에서는 transaction에 `statement_timeout_ms` 문장 상한을 건다. 호출자는
     `history_statement_deadline` 안에서 불러 상한 초과를 export 503·native 504 problem으로 바꾼다.
     """
     if session.bind.dialect.name == "postgresql":
         await session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
-        await session.execute(text(f"SET LOCAL statement_timeout = {int(HISTORY_STATEMENT_TIMEOUT_MS)}"))
+        await session.execute(text(f"SET LOCAL statement_timeout = {int(statement_timeout_ms)}"))
     station = (await session.execute(station_lookup_statement(station_key, native_station_id))).one_or_none()
     if station is None:
         raise HTTPException(404, "주유소 자연키를 찾을 수 없습니다." if native_station_id is None else "저장된 주유소를 찾을 수 없습니다.")
@@ -272,6 +303,7 @@ def build_price_history_router(
     # 상위 service router의 기존 token/peer Depends를 그대로 상속한다.
     router = APIRouter()
     cursor_key = hashlib.sha256((settings.transport_service_export_token or "").encode()).digest()
+    statement_timeout_ms = settings.fuel_price_history_statement_timeout_ms
 
     @router.get("/fuel-stations/{station_key}/price-history", response_model=FuelPriceHistoryExportPage,
                 responses={200: {"headers": {
@@ -292,12 +324,13 @@ def build_price_history_router(
 
         cursor는15분 동안 창·필터·성공 수집 revision을 고정한다. 수집 revision이 바뀌면409로
         처음부터 다시 읽는다. 휴게소 가격 이력 표는 만들지 않으며 별도 경로는501이다.
-        DB 문장이5초 상한을 넘으면503 problem과 `Retry-After`를 낸다.
+        DB 문장이 서버 상한(기본3초)을 넘으면 meta 없는503 problem과 `Retry-After`를 낸다.
         """
         try:
-            async with history_statement_deadline(session):
+            async with history_statement_deadline(session, request):
                 read = await read_price_history_page(
                     request, station_key, product, from_at, to_at, limit, cursor, session, cursor_key,
+                    statement_timeout_ms=statement_timeout_ms,
                 )
         except PriceHistoryUnavailable as exc:
             return exc.response

@@ -62,6 +62,7 @@ def build_fuel_price_history_router(
     cursor_key = hashlib.sha256(
         ("native-fuel-history:" + (settings.transport_service_export_token or "")).encode(),
     ).digest()
+    statement_timeout_ms = settings.fuel_price_history_statement_timeout_ms
 
     @router.get(
         "/transport/fuel/stations/{station_id}/price-history",
@@ -88,16 +89,17 @@ def build_fuel_price_history_router(
         저장 이력이 없으므로501이며, 보간·provider 호출·raw 응답 노출은 하지 않는다.
         cursor는15분 동안 창을 고정하고 수집 revision이 바뀌면409로 재시작한다.
         `include_latest=false`면 `latest`는 빈 배열이다(현재 가격이 없다는 뜻이 아니다).
-        DB 문장이5초 상한을 넘으면504 problem과 `Retry-After`를 낸다. 503은 성공한 수집 이력이 없을 때다.
+        DB 문장이 서버 상한(기본3초)을 넘으면504 problem과 `Retry-After`를 낸다. 503은 성공한 수집 이력이
+        없을 때와, `include_latest=true`에서 저장 유종 수가 조회 상한(64)을 넘을 때다.
         """
         if source != OPINET_SOURCE:
             raise HTTPException(501, "이 원천의 주유소 가격 이력은 저장하지 않아 지원하지 않습니다.")
         try:
             # 화면은 503을 '성공한 수집 이력 없음'으로 안내한다. 일시적인 조회 지연은 504로 구분한다.
-            async with history_statement_deadline(session, status_code=504):
+            async with history_statement_deadline(session, request, status_code=504):
                 read = await read_price_history_page(
                     request, str(station_id), product, None, None, limit, cursor, session, cursor_key,
-                    native_station_id=station_id, default_days=days, max_window=timedelta(days=days),
+                    statement_timeout_ms=statement_timeout_ms, native_station_id=station_id, default_days=days, max_window=timedelta(days=days),
                     cursor_scope=f"native:{station_id}:{source}:{days}",
                 )
                 latest = await _latest_prices(session, read.station_id, product, read.to_at) if include_latest else []

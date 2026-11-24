@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     transport_conzone_ids_csv: str = ""
     fuel_refresh_internal_token: str | None = None
     fuel_refresh_daily_limit: int = Field(default=0, ge=0)
+    # 가격 이력(T4 export·지도 상세 native) transaction의 SET LOCAL statement_timeout(밀리초). 넘으면 연결을 바로
+    # 반환하고 export 503·native 504 + Retry-After로 끝낸다. Map T4 read timeout보다 짧아야 Map이 그 503을 본다.
+    fuel_price_history_statement_timeout_ms: int = Field(default=3_000, ge=100, le=30_000)
     opinet_browser_enabled: bool = True
     opinet_query_level: str = "sigungu"
     opinet_browser_channel: str | None = None
