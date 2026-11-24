@@ -155,6 +155,13 @@ covering index를 concurrent로 만들고 해당 테이블의 auto-analyze 임�
 
 분석 섹션은 viewport 근처에 들어올 때만 요청한다. 데이터베이스 기반 5개 분석을 `GET /v1/dashboard/analytics`로 묶고, 외부 API가 느려도 주차 분석을 막지 않도록 비행편은 별도 요청과 6초 client timeout을 유지한다. 기본 기간의 시계열·요일·임계치 결과는 `analytics_caches`를 사용한다.
 
+공항 수집 job은 수집 commit 직후 기본 범위 사전집계를 다시 만든다(미리 데우기, `refresh_default_analytics_cache`). 대시보드 묶음은
+엄격한 재사용 조건(생성 10분 이내·그 뒤 같은 범위 새 적재 없음)을 못 채워도 **갱신 대기 중**이면 직전 사전집계를 그 생성 시각과 함께 낸다:
+사전집계 생성 뒤 새 적재가 모두 `DASHBOARD_REFRESH_GRACE`(20분) 안이고 사전집계가 `DASHBOARD_STALE_CACHE_MAX_AGE`(30분) 안일 때.
+그보다 오래된 새 적재가 있으면(갱신 실패·중단) 원본에서 계산한다 — 실패한 갱신이 오래된 값을 계속 내지 않는다. 단독 분석 route
+(`/v1/parking/analytics/*`)는 지금처럼 엄격한 조건만 쓴다. 원본 계산은 DB 읽기 뒤 계산을 thread에서 해 event loop를 계산 내내 막지 않는다.
+특수일 패턴의 시각별 집계는 지난 특수일만이면 5분 보관하고, 오늘(현지)이 특수일이면 매번 집계한다(DASHBOARD-STATS-OFFLOAD-20261124).
+
 ## PostgreSQL 인덱스
 
 - `parking_snapshots (airport_id, parking_lot_id, observed_at DESC, id DESC)` — 주차장별 최신 관측

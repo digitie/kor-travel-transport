@@ -13,7 +13,9 @@ from app.core.time_utils import now_utc, serialize_utc, to_seoul
 from app.dagster import definitions as dagster_definitions
 from app.main import create_app
 from app.models import AnalyticsCache, CollectionRun, ParkingSnapshot
-from app.services.analytics_cache import MAX_ANALYTICS_CACHE_AGE, load_cached_analytics, refresh_default_analytics_cache
+from app.services.analytics_cache import (
+    DASHBOARD_REFRESH_GRACE, MAX_ANALYTICS_CACHE_AGE, load_cached_analytics, refresh_default_analytics_cache,
+)
 from app.services.collection import CollectionService, FixturePublicDataClient
 
 
@@ -146,6 +148,11 @@ def test_cache_failure_keeps_committed_source_and_zero_snapshot_tick_repairs_it(
         assert "secret-refresh-key" not in str(output.metadata)
         response = client.get("/v1/dashboard/analytics", params={"airport_code": "GMP"})
         assert response.status_code == 200
+        # 새 적재가 갱신 유예 안이면 갱신 대기로 보고 직전 사전집계를 낸다(원본 계산으로 떨어지지 않는다).
+        assert response.json()["time_series"]["items"][-1]["available_spaces"] == 80
+        # 갱신이 실패한 채 유예가 지나면 원본에서 계산한다 — 실패한 갱신이 오래된 값을 계속 내게 하지 않는다.
+        asyncio.run(_age_pending_refresh_past_grace(client))
+        response = client.get("/v1/dashboard/analytics", params={"airport_code": "GMP"})
         assert response.json()["time_series"]["items"][-1]["available_spaces"] == 5
 
         async def verify_raw_commit_and_cache_rollback():
@@ -165,6 +172,20 @@ def test_cache_failure_keeps_committed_source_and_zero_snapshot_tick_repairs_it(
         assert repaired.output_for_node("collect_airport_parking")["snapshot_count"] == 0
         assert repaired.output_for_node("collect_airport_parking")["analytics_cache_count"] == 8
         assert client.get("/v1/dashboard/analytics", params={"airport_code": "GMP"}).json()["time_series"]["items"][-1]["available_spaces"] == 5
+
+
+async def _age_pending_refresh_past_grace(client) -> None:
+    """사전집계 생성 뒤 새 적재가 갱신 유예보다 오래된 상태로 시각을 옮긴다(사전집계는 최대 나이 안)."""
+    async with client.app.state.session_factory() as session:
+        caches = (await session.scalars(select(AnalyticsCache))).all()
+        generated_at = min(row.generated_at for row in caches)
+        now = now_utc()
+        for snapshot in (await session.scalars(select(ParkingSnapshot))).all():
+            pending = serialize_utc(snapshot.collected_at) > serialize_utc(generated_at)
+            snapshot.collected_at = now - DASHBOARD_REFRESH_GRACE - timedelta(minutes=1 if pending else 3)
+        for row in caches:
+            row.generated_at = now - DASHBOARD_REFRESH_GRACE - timedelta(minutes=2)
+        await session.commit()
 
 
 _CACHE_PARAMETERS = {
@@ -208,6 +229,10 @@ def test_all_default_cache_reads_reject_old_or_changed_source(test_settings, mon
         assert bundle.status_code == 200
         assert bundle.json()["time_series"]["items"][-1]["available_spaces"] == 80
         if cache_state == "late_observation":
+            # 늦은 관측이 갱신 유예 안이면 직전 사전집계, 유예가 지나도 갱신이 없으면 원본 계산이다.
+            assert min(row["min_available_spaces"] for row in bundle.json()["weekday_hour_patterns"]) == 80
+            asyncio.run(_age_pending_refresh_past_grace(client))
+            bundle = client.get("/v1/dashboard/analytics", params={"airport_code": "GMP"})
             assert min(row["min_available_spaces"] for row in bundle.json()["weekday_hour_patterns"]) == 5
 
 
@@ -286,3 +311,45 @@ def test_postgres_delayed_source_commit_and_concurrent_refresh_share_existing_le
 
         asyncio.run(check())
         assert client.get("/v1/dashboard/analytics", params={"airport_code": "GMP"}).json()["time_series"]["items"][-1]["available_spaces"] == 5
+
+
+def test_refresh_grace_serves_only_a_pending_refresh_within_the_max_age(test_settings, monkeypatch):
+    """대시보드 갱신 유예: 갱신 대기 중인 직전 사전집계만 낸다 — 너무 오래됐거나 갱신이 실패한 뒤에는 내지 않는다."""
+    from app.services.analytics_cache import DASHBOARD_STALE_CACHE_MAX_AGE
+
+    app, _settings, _provider = parking_app(test_settings, monkeypatch)
+    params = _CACHE_PARAMETERS["timeseries"]
+    with TestClient(app) as client:
+        assert dagster_definitions.airport_collection_job.execute_in_process(raise_on_error=False).success
+
+        async def check():
+            async with client.app.state.session_factory() as session:
+                caches = (await session.scalars(select(AnalyticsCache))).all()
+                snapshot = await session.scalar(select(ParkingSnapshot))
+
+                async def load(**options):
+                    return await load_cached_analytics(session, metric="timeseries", airport_code="GMP",
+                                                       parking_lot_id=None, **params, **options)
+
+                async def move(generated_ago, collected_ago):
+                    now = now_utc()
+                    for row in caches:
+                        row.generated_at = now - generated_ago
+                    snapshot.collected_at = now - collected_ago
+                    await session.commit()
+
+                # 새 적재 없음, 엄격한 10분은 지났지만 최대 나이 안 → 유예로만 낸다.
+                await move(MAX_ANALYTICS_CACHE_AGE + timedelta(minutes=5), MAX_ANALYTICS_CACHE_AGE + timedelta(minutes=6))
+                assert await load() is None
+                assert await load(refresh_grace=True) is not None
+                # 최대 나이를 넘으면 유예로도 내지 않는다.
+                await move(DASHBOARD_STALE_CACHE_MAX_AGE + timedelta(seconds=1), DASHBOARD_STALE_CACHE_MAX_AGE + timedelta(minutes=1))
+                assert await load(refresh_grace=True) is None
+                # 사전집계 뒤 새 적재가 유예 안이면 갱신 대기 → 직전 사전집계.
+                await move(DASHBOARD_REFRESH_GRACE - timedelta(minutes=5), timedelta(minutes=1))
+                assert await load(refresh_grace=True) is not None
+                # 사전집계 뒤 새 적재가 유예보다 오래됐으면 갱신이 실패·중단된 것 → 내지 않는다.
+                await move(DASHBOARD_REFRESH_GRACE + timedelta(minutes=5), DASHBOARD_REFRESH_GRACE + timedelta(minutes=1))
+                assert await load(refresh_grace=True) is None
+
+        asyncio.run(check())
