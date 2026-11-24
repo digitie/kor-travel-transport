@@ -118,3 +118,70 @@ test("지금 이후만은 UTC/KST 정상 DTO의 이후 편을 유지하고 해�
   await act(async () => checkbox.click());
   expect(rows()).toHaveLength(1); expect(rows()[0]).toContain("FUTURE");
 });
+
+
+// 공항 목록은 장소 지도 입장 제한(backend 429·504)을 받을 수 있다. 전체 새로고침 없이 회복해야 한다.
+const catalogAirport = { id: 1, kind: "airport", provider_id: "GMP", source: "fixture", name: "김포", latitude: null, longitude: null, prices: [], line_names: [], facilities: [], updated_at: "2026-11-11T00:00:00Z" };
+const problemJson = (status: number, detail: string, retryAfter: string) => new Response(JSON.stringify({ detail }), { status, headers: { "retry-after": retryAfter } });
+const catalogCalls = () => fetchMock.mock.calls.filter(([url]) => String(url).includes("features/places")).length;
+async function withCatalogClock(run: () => Promise<void>) {
+  vi.useRealTimers();
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] }); vi.setSystemTime(new Date("2026-11-11T14:59:00Z"));
+  const random = vi.spyOn(Math, "random").mockReturnValue(0);
+  try { await run(); } finally { random.mockRestore(); }
+}
+const advance = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+function catalogResponses(failures: Response[]) {
+  fetchMock.mockImplementation(async (url: string) => {
+    if (url.includes("features/places")) return failures.shift() ?? json({ items: [catalogAirport] });
+    if (url.includes("flights/status")) return json({ status: "success", items: [], error_message: null });
+    return json({ items: [], generated_at: "2026-11-11T00:00:00Z" });
+  });
+}
+
+test("공항 목록의 일시 혼잡(429)은 Retry-After 뒤 한 번 자동으로 다시 묻고 실패를 보이지 않는다", async () => {
+  await withCatalogClock(async () => {
+    catalogResponses([problemJson(429, "장소 지도 조회가 혼잡합니다. 잠시 후 다시 시도하세요.", "1")]);
+    await act(async () => root.render(<FlightJourney />));
+    expect(catalogCalls()).toBe(1);
+    expect(host.textContent).not.toContain("공항 목록을 불러오지 못했습니다");
+    await advance(1000);
+    expect(catalogCalls()).toBe(2);
+    expect(host.textContent).not.toContain("공항 목록을 불러오지 못했습니다");
+    expect(host.querySelector<HTMLSelectElement>("select")?.selectedOptions[0]?.textContent).toBe("김포");
+  });
+});
+
+test("공항 목록이 시한 초과(504)로 실패하면 서버 안내를 보이고 Retry-After 뒤 버튼으로 다시 조회한다", async () => {
+  await withCatalogClock(async () => {
+    catalogResponses([problemJson(504, "장소 지도 조회 시간이 초과되었습니다. 지도 범위를 좁히거나 잠시 후 다시 시도하세요.", "10")]);
+    await act(async () => root.render(<FlightJourney />));
+    await advance(2000);
+    // Retry-After 10초는 자동으로 되풀이하지 않는다.
+    expect(catalogCalls()).toBe(1);
+    expect(host.textContent).toContain("공항 목록을 불러오지 못했습니다. 장소 지도 조회 시간이 초과되었습니다.");
+    const retry = () => [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.includes("다시 조회") && button.closest('[data-slot="alert"], [role="alert"]'));
+    expect(retry()?.disabled).toBe(true);
+    // 기존 "주차·항공편 새로고침"도 Retry-After 전에는 공항 목록을 다시 묻지 않는다.
+    await click("주차·항공편 새로고침");
+    expect(catalogCalls()).toBe(1);
+    await advance(8000);
+    expect(retry()?.disabled).toBe(false);
+    await act(async () => retry()!.click());
+    expect(catalogCalls()).toBe(2);
+    expect(host.textContent).not.toContain("공항 목록을 불러오지 못했습니다");
+    expect(host.querySelector<HTMLSelectElement>("select")?.selectedOptions[0]?.textContent).toBe("김포");
+  });
+});
+
+test("공항 목록 실패 뒤 기존 새로고침 버튼도 공항 목록을 다시 묻는다", async () => {
+  await withCatalogClock(async () => {
+    catalogResponses([json({ detail: "server error" }, 500)]);
+    await act(async () => root.render(<FlightJourney />));
+    expect(host.textContent).toContain("공항 목록을 불러오지 못했습니다.");
+    await click("주차·항공편 새로고침");
+    await advance(0);
+    expect(catalogCalls()).toBe(2);
+    expect(host.textContent).not.toContain("공항 목록을 불러오지 못했습니다");
+  });
+});

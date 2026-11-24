@@ -9,7 +9,8 @@ export async function GET(request: NextRequest, context: { params: Promise<{ pat
   const { path } = await context.params; const target = transportUpstreamUrl(path, request.nextUrl.searchParams);
   if (!target) return NextResponse.json({ detail: "허용되지 않은 transport API 경로입니다." }, { status: 404 });
   try {
-    const response = await fetchNoStore(target, { headers: { accept: request.headers.get("accept") ?? "application/json", "x-request-id": request.headers.get("x-request-id") ?? "" } });
+    // 브라우저가 이전 지도 조회를 취소하면(request.signal) upstream 요청·본문 스트림도 함께 끊는다. 30초 상한은 그대로다.
+    const response = await fetchNoStore(target, { headers: { accept: request.headers.get("accept") ?? "application/json", "x-request-id": request.headers.get("x-request-id") ?? "" }, signal: request.signal });
     const retryAfter = response.headers.get("retry-after");
     return new NextResponse(response.body, { status: response.status, headers: { "cache-control": "no-store, private", "content-type": response.headers.get("content-type") ?? "application/json", "retry-after": retryAfter ?? "", "x-request-id": response.headers.get("x-request-id") ?? "" } });
   } catch { return NextResponse.json({ detail: "transport API에 연결하지 못했습니다." }, { status: 502, headers: { "cache-control": "no-store, private" } }); }

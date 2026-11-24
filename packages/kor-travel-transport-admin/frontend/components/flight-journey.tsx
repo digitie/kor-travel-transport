@@ -8,6 +8,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { MapFilterBar, MapFilterField } from "@kor-travel/ui/map-controls";
 import { dateTime, transportGet, type Place } from "@/lib/journey";
 import { useSeoulToday } from "@/lib/journey-hooks";
+import { loadWithTransientRetry, retryNotice, useRetryReady, type RetryNotice } from "@/lib/place-retry";
 import { FilterBar, FilterField } from "@/components/filter-bar";
 import { EmptyState } from "@/components/empty-state";
 import { StatStrip } from "./stat-strip";
@@ -27,14 +28,17 @@ type Outlook = { generated_at: string; weekday: number; hour: number; items: { p
 type Resource<T> = { key: string; data?: T; error?: string };
 const plannedClock = () => new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 16);
 export function FlightJourney() {
-  const { mapOpener, setView, setMapInspected, selected, setMapOpen, airport, parkingLot, errors, freshParking, parkingState, key, unavailable, flights, clock, parking, id, select, direction, setDirection, filter, setFilter, futureOnly, setFutureOnly, rows, flightState, arrival, setArrival, outlook, outlookState, outlookKey, mapOpen, items, mapInspected, view, closeMap, catalogError, setReload } = useFlightJourney();
-  const airportControls = <MapFilterBar><MapFilterField label="공항" htmlFor={`${id}-airport`}><select id={`${id}-airport`} value={selected?.id ?? ""} onChange={(event) => { const place = items.find((item) => item.id === Number(event.target.value)); if (place) select(place); }}>{!selected ? <option value="">공항 선택</option> : null}{items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></MapFilterField><Button type="button" variant="outline" onClick={() => setReload((value) => value + 1)}>주차·항공편 새로고침</Button></MapFilterBar>;
+  const { mapOpener, setView, setMapInspected, selected, setMapOpen, airport, parkingLot, errors, freshParking, parkingState, key, unavailable, flights, clock, parking, id, select, direction, setDirection, filter, setFilter, futureOnly, setFutureOnly, rows, flightState, arrival, setArrival, outlook, outlookState, outlookKey, mapOpen, items, mapInspected, view, closeMap, catalogError, setReload, retryCatalog, catalogRetryReady } = useFlightJourney();
+  const airportControls = <MapFilterBar><MapFilterField label="공항" htmlFor={`${id}-airport`}><select id={`${id}-airport`} value={selected?.id ?? ""} onChange={(event) => { const place = items.find((item) => item.id === Number(event.target.value)); if (place) select(place); }}>{!selected ? <option value="">공항 선택</option> : null}{items.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></MapFilterField><Button type="button" variant="outline" onClick={() => { setReload((value) => value + 1); if (catalogError && catalogRetryReady) retryCatalog(); }}>주차·항공편 새로고침</Button></MapFilterBar>;
+  // 공항 목록 실패는 전체 새로고침 없이 다시 조회할 수 있다. 혼잡 안내의 Retry-After가 지나기 전에는 막는다.
+  const catalogFeedback = catalogError ? <Alert variant="destructive" key={catalogError}><AlertDescription>{catalogError} <Button type="button" variant="outline" disabled={!catalogRetryReady} onClick={retryCatalog}>{catalogRetryReady ? "공항 목록 다시 조회" : "잠시 후 다시 조회"}</Button></AlertDescription></Alert> : null;
 if (mapOpen) return <section className="journey-workbench flight-journey map-route">
-    <FlightMapWorkspace items={items} mapInspected={mapInspected} selected={selected} select={select} setMapInspected={setMapInspected} view={view} setView={setView} airportControls={airportControls} closeMap={closeMap} catalogError={catalogError} freshParking={freshParking} />
+    <FlightMapWorkspace items={items} mapInspected={mapInspected} selected={selected} select={select} setMapInspected={setMapInspected} view={view} setView={setView} airportControls={airportControls} closeMap={closeMap} catalogFeedback={catalogFeedback} freshParking={freshParking} />
   </section>;
 return <section className="journey-workbench flight-journey flex flex-col gap-6">
     <nav className="journey-shortcuts flex flex-wrap items-center gap-x-4 gap-y-2" aria-label="공항 화면 바로가기"><Button ref={mapOpener} type="button" variant="outline" onClick={() => { setView("map"); setMapInspected(Boolean(selected)); setMapOpen(true); }}>공항 지도</Button><a className={inlineLink} href="#airport-flights">이후 항공편</a><a className={inlineLink} href="#parking-pattern">주차 패턴</a>{airport ? <a className={inlineLink} href={`/parking?${new URLSearchParams({ airport, ...(parkingLot ? { lot: parkingLot } : {}) })}`}>공항 주차장 전체 보기</a> : null}</nav>
     {airportControls}
+    {catalogFeedback}
     {errors.map((error) => <Alert variant="destructive" key={error}><AlertDescription>{error}</AlertDescription></Alert>)}
     <FlightParkingNow selected={selected} freshParking={freshParking} parkingState={parkingState} resourceKey={key} airport={airport} unavailable={unavailable} flights={flights} clock={clock} parking={parking} />
     <div id="airport-flights" className="journey-map-target scroll-mt-6"><AirportDepartures id={id} direction={direction} setDirection={setDirection} filter={filter} setFilter={setFilter} futureOnly={futureOnly} setFutureOnly={setFutureOnly} flights={flights} rows={rows} flightState={flightState} resourceKey={key} airport={airport} unavailable={unavailable} /></div>
@@ -55,6 +59,8 @@ function useFlightJourney() {
   const mapOpener = useRef<HTMLButtonElement | null>(null);
   const [catalogError, setCatalogError] = useState("");
   const [catalogLoaded, setCatalogLoaded] = useState(false);
+  const [catalogReload, setCatalogReload] = useState(0);
+  const [catalogNotice, setCatalogNotice] = useState<RetryNotice | null>(null);
   const [flightState, setFlights] = useState<Resource<Flights>>({ key: "" });
   const [parkingState, setParking] = useState<Resource<Parking[]>>({ key: "" });
   const [outlookState, setOutlook] = useState<Resource<Outlook>>({ key: "" });
@@ -74,16 +80,25 @@ function useFlightJourney() {
   }, []);
   useEffect(() => {
     const controller = new AbortController();
-    transportGet<{ items: Place[] }>("transport/features/places?kind=airport&include_unlocated=true", controller.signal).then((data) => {
+    // 장소 지도 입장 제한의 일시 혼잡(429)은 한 번 자동으로 다시 묻는다(lib/place-retry.ts).
+    loadWithTransientRetry<{ items: Place[] }>(transportGet, "transport/features/places?kind=airport&include_unlocated=true", controller.signal).then((data) => {
       if (controller.signal.aborted) return;
+      setCatalogError(""); setCatalogNotice(null);
       setItems(data.items); setCatalogLoaded(true);
       let preferred = new URLSearchParams(window.location.search).get("airport");
       setParkingLot(new URLSearchParams(window.location.search).get("lot"));
       try { preferred ??= window.localStorage.getItem("transport-last-airport"); } catch { /* 저장소 접근은 선택 사항이다. */ }
       setSelected(data.items.find((item) => item.provider_id === preferred) ?? data.items.find((item) => item.provider_id === "GMP") ?? data.items[0] ?? null);
-    }).catch(() => { if (!controller.signal.aborted) { setCatalogLoaded(true); setCatalogError("공항 목록을 불러오지 못했습니다."); } });
+    }).catch((reason: unknown) => {
+      if (controller.signal.aborted) return;
+      const notice = retryNotice(reason);
+      setCatalogLoaded(true); setCatalogNotice(notice);
+      setCatalogError(notice ? `공항 목록을 불러오지 못했습니다. ${notice.message}` : "공항 목록을 불러오지 못했습니다.");
+    });
     return () => controller.abort();
-  }, []);
+  }, [catalogReload]);
+  const catalogRetryReady = useRetryReady(catalogError ? catalogNotice?.retryAt : undefined);
+  const retryCatalog = () => { setCatalogError(""); setCatalogNotice(null); setCatalogLoaded(false); setCatalogReload((value) => value + 1); };
   useEffect(() => {
     if (!airport) return;
     const controller = new AbortController();
@@ -112,9 +127,9 @@ function useFlightJourney() {
   const outlook = outlookState.key === outlookKey ? outlookState.data : undefined;
   const rows = flights?.items.filter((row) => (!direction || row.direction === direction) && (!futureOnly || flightMoment(row) >= clock) && [row.flight_number, row.airline, row.origin_airport, row.destination_airport].join(" ").toLocaleLowerCase().includes(filter.toLocaleLowerCase())).sort((a, b) => flightMoment(a) - flightMoment(b));
   const freshParking = parking?.filter((row) => clock - Date.parse(row.observed_at) >= 0 && clock - Date.parse(row.observed_at) <= 15 * 60_000);
-  const errors = [catalogError, parkingState.key === key ? parkingState.error : null, flightState.key === key ? flightState.error : null, outlookState.key === outlookKey ? outlookState.error : null].filter(Boolean);
+  const errors = [parkingState.key === key ? parkingState.error : null, flightState.key === key ? flightState.error : null, outlookState.key === outlookKey ? outlookState.error : null].filter(Boolean);
   const closeMap = () => { setMapOpen(false); requestAnimationFrame(() => mapOpener.current?.focus({ preventScroll: true })); };
-  return { mapOpener, setView, setMapInspected, selected, setMapOpen, airport, parkingLot, errors, freshParking, parkingState, key, unavailable, flights, clock, parking, id, select, direction, setDirection, filter, setFilter, futureOnly, setFutureOnly, rows, flightState, arrival, setArrival, outlook, outlookState, outlookKey, mapOpen, items, mapInspected, view, closeMap, catalogError, setReload };
+  return { mapOpener, setView, setMapInspected, selected, setMapOpen, airport, parkingLot, errors, freshParking, parkingState, key, unavailable, flights, clock, parking, id, select, direction, setDirection, filter, setFilter, futureOnly, setFutureOnly, rows, flightState, arrival, setArrival, outlook, outlookState, outlookKey, mapOpen, items, mapInspected, view, closeMap, catalogError, setReload, retryCatalog, catalogRetryReady };
 }
 
 
@@ -148,10 +163,10 @@ function AirportParkingPatterns({ arrival, setArrival, outlook, outlookState, ou
 }
 
 
-function FlightMapWorkspace({ items, mapInspected, selected, select, setMapInspected, view, setView, airportControls, closeMap, catalogError, freshParking }: { airportControls: import("react").ReactNode } & Pick<ReturnType<typeof useFlightJourney>, "items" | "mapInspected" | "selected" | "select" | "setMapInspected" | "view" | "setView" | "closeMap" | "catalogError" | "freshParking">) {
+function FlightMapWorkspace({ items, mapInspected, selected, select, setMapInspected, view, setView, airportControls, closeMap, catalogFeedback, freshParking }: { airportControls: import("react").ReactNode; catalogFeedback: import("react").ReactNode } & Pick<ReturnType<typeof useFlightJourney>, "items" | "mapInspected" | "selected" | "select" | "setMapInspected" | "view" | "setView" | "closeMap" | "freshParking">) {
   return (<div id="airport-map" className="journey-map-target map-route-primary"><TransportMap places={items} selectedPlace={mapInspected ? selected : null} onSelectPlace={(place) => { select(place); setMapInspected(true); }} onCloseDetails={() => setMapInspected(false)} view={view} onViewChange={setView}
       filterSummary={selected?.name ?? "공항 선택"} toolbar={<>{airportControls}<Button type="button" variant="outline" onClick={closeMap}>주차·항공편 보기</Button></>}
-      feedback={catalogError ? <Alert variant="destructive"><AlertDescription>{catalogError}</AlertDescription></Alert> : null}
+      feedback={catalogFeedback}
       details={mapInspected && selected ? <><PlaceDetails place={selected} showHeading={false} onShowMap={() => setView("map")} />{freshParking?.length ? <p className="text-sm">최근 15분 관측 잔여 {freshParking.reduce((sum, row) => sum + row.available_spaces, 0).toLocaleString()}면</p> : null}<Button type="button" variant="outline" onClick={closeMap}>주차·이후 항공편 확인</Button></> : undefined} /></div>);
 }
 

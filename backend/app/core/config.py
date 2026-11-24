@@ -114,6 +114,11 @@ class Settings(BaseSettings):
     transport_statistics_cache_seconds: int = Field(default=60, ge=0, le=3600)
     transport_statistics_max_concurrent_misses: int = Field(default=2, ge=1, le=8)
     transport_statistics_timeout_seconds: float = Field(default=20, gt=0, le=25)
+    # 장소 지도(`/v1/transport/features/places`) 입장 제한(app/services/place_map_admission.py).
+    # 동시 계산은 API 풀(5+5)의 다른 경로 몫을 남기고, 시한은 BFF·공개 gateway의 30초보다 짧아야 한다.
+    places_max_running: int = Field(default=4, ge=1, le=8)
+    places_max_waiting: int = Field(default=8, ge=0, le=64)
+    places_deadline_seconds: float = Field(default=25, gt=0, le=25)
     rustfs_endpoint_url: str | None = None
     rustfs_bucket: str = "kor-travel-transport-raw"
     rustfs_access_key_id: str | None = None

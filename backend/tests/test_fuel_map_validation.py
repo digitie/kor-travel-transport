@@ -96,3 +96,30 @@ def test_fuel_item_cache_does_not_hold_lru_lock_while_validating(monkeypatch):
 
     monkeypatch.setattr(module, "_ITEMS", CheckedAdapter())
     assert cache.read(_raw())[1] == 1
+
+
+def test_validated_items_and_revision_pages_never_evict_each_other():
+    """공개 유가 검증 항목이 아무리 많아도 관리 /map의 revision 증명 페이지를 밀어내지 않는다(그 반대도)."""
+    from datetime import UTC, datetime, timedelta
+
+    cache = module.ValidatedFuelMapItems()
+    now = datetime(2026, 11, 24, tzinfo=UTC)
+    cache.put_page("admin-map", b'{"items":[]}', now, now + timedelta(minutes=5))
+    for price in range(1000, 1000 + module._MAX_ENTRIES * 3):
+        cache.read(_raw(price))
+    assert cache.get_page("admin-map", now) == b'{"items":[]}'
+    assert len(cache.entries) == module._MAX_ENTRIES
+    for index in range(module._MAX_PAGE_ENTRIES * 2):
+        cache.put_page(("page", index), b"{}", now, None)
+    assert len(cache.entries) == module._MAX_ENTRIES and len(cache.pages) == module._MAX_PAGE_ENTRIES
+    assert cache.get_page("admin-map", now) is None  # 페이지는 페이지끼리만 LRU로 밀린다.
+
+
+def test_validated_items_over_their_budget_are_returned_but_not_stored(monkeypatch):
+    raw = _raw()
+    monkeypatch.setattr(module, "_MAX_BYTES", len(raw.encode()))  # 원문만 들어가고 원문+결과는 넘친다.
+    cache = module.ValidatedFuelMapItems()
+    cache.read(_raw(1800))
+    payload, count = cache.read(raw)
+    assert count == 1 and json.loads(payload)[0]["prices"][0]["price"] == 1700
+    assert not cache.entries and cache.bytes == 0

@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Place } from "@/lib/journey";
+import { publicFuelGet } from "@/lib/public-fuel";
 
 const toastCalls = vi.hoisted(() => ({ success: vi.fn(), warning: vi.fn(), error: vi.fn(), info: vi.fn() }));
 vi.mock("sonner", () => ({ toast: toastCalls }));
@@ -471,4 +472,174 @@ test("가격 아이콘 하나: 오래된 가격은 보이는 주유소 9곳이�
     await act(async () => refreshButton()!.click());
     expect(postRequests).toHaveLength(2);
   } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+// 장소 지도 입장 제한(backend 429·504)과 한 번 자동 재조회(lib/place-retry.ts). 가짜 timer로 Retry-After 경계를 잰다.
+const placesCalls = () => vi.mocked(fetch).mock.calls.map(call => String(call[0])).filter(url => url.includes("places"));
+const countOf = (url: string) => placesCalls().filter(entry => entry === url).length;
+const problem = (status: number, detail: string | null, retryAfter: string | null) => new Response(detail === null ? null : JSON.stringify({ detail }), {
+  status, headers: { "content-type": "application/problem+json", ...(retryAfter === null ? {} : { "retry-after": retryAfter }) },
+});
+const BUSY = "장소 지도 조회가 혼잡합니다. 잠시 후 다시 시도하세요.";
+const TIMEOUT = "장소 지도 조회 시간이 초과되었습니다. 지도 범위를 좁히거나 잠시 후 다시 시도하세요.";
+const tick = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+
+async function withMapClock(run: (host: HTMLDivElement, root: ReturnType<typeof createRoot>, unmount: () => Promise<void>) => Promise<void>) {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+  // 재조회 jitter를 0으로 고정해 Retry-After 경계를 정확히 잰다.
+  const random = vi.spyOn(Math, "random").mockReturnValue(0);
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  let mounted = true;
+  const unmount = async () => { if (mounted) { mounted = false; await act(async () => root.unmount()); } };
+  try {
+    await run(host, root, unmount);
+  } finally {
+    await unmount(); host.remove(); random.mockRestore(); vi.useRealTimers();
+  }
+}
+const alerts = (host: HTMLElement) => [...host.querySelectorAll('[role="alert"]')].map(node => node.textContent ?? "").join("|");
+const retryButton = (host: HTMLElement) => [...host.querySelectorAll<HTMLButtonElement>('[role="alert"] button')].find(button => button.textContent?.includes("다시 조회"));
+
+test("일시 혼잡(429, Retry-After 1초)은 Retry-After 뒤 같은 조건으로 한 번만 다시 묻고 실패 안내 없이 결과를 그린다", async () => {
+  vi.mocked(fetch).mockImplementation(async input => countOf(String(input)) === 1
+    ? problem(429, BUSY, "1") : Response.json({ items: [station], total: 1, truncated: false }));
+  await withMapClock(async (host, root) => {
+    await act(async () => root.render(<TransportMap mode="transport" />));
+    const initial = placesCalls()[0];
+    await tick(300); // 지도 범위 알림(250ms 지연) → 실제 범위 요청이 429를 받는다.
+    const real = placesCalls().at(-1)!;
+    expect(real).not.toBe(initial);
+    expect(countOf(real)).toBe(1);
+    // 재조회를 기다리는 동안 실패 안내 없이 조회 중으로 둔다.
+    expect(alerts(host)).not.toContain("조회 실패");
+    expect(host.querySelector(".kt-map-count")?.textContent).toBe("조회 중…");
+    await tick(900);
+    expect(countOf(real)).toBe(1); // Retry-After(1초)가 지나기 전에는 다시 묻지 않는다.
+    await tick(200);
+    expect(countOf(real)).toBe(2);
+    expect(alerts(host)).not.toContain("조회 실패");
+    expect(host.querySelector(".transport-map-marker.rail_station")).not.toBeNull();
+    // 첫 기본 범위 요청은 실제 범위로 바뀌며 취소돼 다시 묻지 않는다.
+    expect(countOf(initial)).toBe(1);
+  });
+});
+
+test("backend 시한 초과(504, Retry-After 10초)는 되풀이하지 않고 서버 안내와 함께 10초 뒤에만 다시 조회를 허락한다", async () => {
+  vi.mocked(fetch).mockImplementation(async () => problem(504, TIMEOUT, "10"));
+  await withMapClock(async (host, root) => {
+    await act(async () => root.render(<TransportMap mode="transport" />));
+    await tick(300);
+    await tick(5000);
+    const urls = placesCalls();
+    expect(new Set(urls).size).toBe(urls.length);
+    expect(alerts(host)).toContain("조회 실패");
+    expect(alerts(host)).toContain("지도 범위를 좁히거나");
+    expect(retryButton(host)?.disabled).toBe(true);
+    expect(retryButton(host)?.textContent).toBe("잠시 후 다시 조회");
+    await tick(5500);
+    expect(retryButton(host)?.disabled).toBe(false);
+    expect(retryButton(host)?.textContent).toBe("다시 조회");
+    const before = placesCalls().length;
+    await act(async () => retryButton(host)!.click());
+    expect(placesCalls().length).toBe(before + 1);
+  });
+});
+
+test("Retry-After 없는 504(gateway 시한)는 자동으로 다시 묻지 않는다", async () => {
+  vi.mocked(fetch).mockImplementation(async () => problem(504, null, null));
+  await withMapClock(async (host, root) => {
+    await act(async () => root.render(<TransportMap mode="transport" />));
+    await tick(300);
+    await tick(10_000);
+    const urls = placesCalls();
+    expect(urls.length).toBe(2);
+    expect(new Set(urls).size).toBe(2);
+    expect(alerts(host)).toContain("조회 실패");
+    expect(retryButton(host)?.disabled).toBe(false);
+  });
+});
+
+test("재조회를 기다리는 동안 지도 범위가 바뀌면 이전 범위는 다시 묻지 않고 새 범위만 묻는다", async () => {
+  vi.mocked(fetch).mockImplementation(async input => countOf(String(input)) === 1
+    ? problem(429, BUSY, "2") : Response.json({ items: [station], total: 1, truncated: false }));
+  await withMapClock(async (host, root) => {
+    await act(async () => root.render(<TransportMap mode="transport" />));
+    await tick(300);
+    const first = placesCalls().at(-1)!;
+    Object.assign(mapState, { zoom: 14 });
+    await act(async () => [...host.querySelectorAll("button")].find(button => button.textContent === "지도 이동 모의")!.click());
+    await tick(300);
+    const second = placesCalls().at(-1)!;
+    expect(second).not.toBe(first);
+    await tick(5000);
+    expect(countOf(first)).toBe(1);
+    expect(countOf(second)).toBe(2);
+    expect(alerts(host)).not.toContain("조회 실패");
+  });
+});
+
+test("재조회를 기다리는 동안 화면을 떠나면 더 묻지 않는다", async () => {
+  vi.mocked(fetch).mockImplementation(async () => problem(429, BUSY, "2"));
+  await withMapClock(async (_host, root, unmount) => {
+    await act(async () => root.render(<TransportMap mode="transport" />));
+    await tick(300);
+    const before = placesCalls().length;
+    await unmount();
+    await tick(10_000);
+    expect(placesCalls().length).toBe(before);
+  });
+});
+
+test("목록 보기의 종류별 조회도 일시 혼잡을 한 번 다시 묻는다", async () => {
+  vi.mocked(fetch).mockImplementation(async input => {
+    const url = new URL(String(input), "http://test");
+    if (url.searchParams.get("kind") === "rail_station") {
+      return countOf(String(input)) === 1 ? problem(429, BUSY, "1") : Response.json({ items: [station], total: 1, truncated: false });
+    }
+    return Response.json({ items: [], total: 0, truncated: false });
+  });
+  await withMapClock(async (host, root) => {
+    await act(async () => root.render(<TransportMap mode="transport" />));
+    await tick(300);
+    await act(async () => [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(button => button.textContent?.includes("목록"))!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })));
+    await tick(2000);
+    const rail = placesCalls().filter(url => new URL(url, "http://test").searchParams.get("kind") === "rail_station");
+    expect(rail.length).toBe(2);
+    expect(new Set(rail).size).toBe(1);
+    expect(alerts(host)).not.toContain("조회 실패");
+    expect(host.querySelector(".place-row")?.textContent).toContain(station.name);
+  });
+});
+
+test("공개 유가 지도(publicFuelGet)도 혼잡을 한 번 다시 묻고, 시한 초과는 backend 안내를 보인다", async () => {
+  const region = { region_key: "opinet:11", label: "서울", product_code: "B027", average_price: 1700, station_count: 1, longitude: 127, latitude: 37.5 };
+  let mode: "busy" | "timeout" = "busy";
+  vi.mocked(fetch).mockImplementation(async input => {
+    const url = String(input);
+    if (!url.startsWith("/api/public/fuel/places")) return Response.json({});
+    if (mode === "timeout") return problem(504, TIMEOUT, "10");
+    return countOf(url) === 1 ? problem(429, BUSY, "1")
+      : Response.json({ items: [], total: 1, truncated: false, clustered: true, clusters: [], fuel_regions: [region] });
+  });
+  Object.assign(mapState, { zoom: 7 });
+  // 공개 화면(components/public-fuel-map.tsx)처럼 공유 지도의 관리 경로 앞부분만 떼고 공개 reader로 묻는다.
+  const loadFuel: typeof publicFuelGet = (path, signal) => publicFuelGet(path.replace(/^transport\//, ""), signal);
+  await withMapClock(async (host, root) => {
+    await act(async () => root.render(<TransportMap mode="fuel" mapOnly load={loadFuel} publicFuel={{ products: ["B027"], onProductsChange: vi.fn() }} />));
+    await tick(300);
+    const real = placesCalls().at(-1)!;
+    expect(real.startsWith("/api/public/fuel/places")).toBe(true);
+    await tick(1600);
+    expect(countOf(real)).toBe(2);
+    expect(alerts(host)).not.toContain("조회 실패");
+    expect(host.querySelector("button.fuel-region-marker")?.textContent).toContain("1,700");
+    mode = "timeout";
+    Object.assign(mapState, { zoom: 8.5 });
+    await act(async () => [...host.querySelectorAll("button")].find(button => button.textContent === "지도 이동 모의")!.click());
+    await tick(300);
+    await tick(3000);
+    const timedOut = placesCalls().at(-1)!;
+    expect(countOf(timedOut)).toBe(1);
+    expect(alerts(host)).toContain("지도 범위를 좁히거나");
+  });
 });

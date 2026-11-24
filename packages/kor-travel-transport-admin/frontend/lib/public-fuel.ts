@@ -14,8 +14,11 @@ export async function publicFuelGet<T>(path: string, signal?: AbortSignal): Prom
   });
   if (!response.ok) {
     const seconds = Number(response.headers.get("retry-after") ?? "0");
-    throw new TransportError("유가 정보를 불러오지 못했습니다. 다시 확인해 주세요.", response.status,
-      Number.isFinite(seconds) ? Math.max(0, seconds) : 0);
+    // backend가 준 한국어 안내(혼잡·시한 초과)는 그대로 보여 준다. 그 밖의 본문은 내부 표현일 수 있어 쓰지 않는다.
+    const body = await response.json().catch(() => null) as { detail?: unknown } | null;
+    const message = typeof body?.detail === "string" && /[가-힣]/.test(body.detail)
+      ? body.detail : "유가 정보를 불러오지 못했습니다. 다시 확인해 주세요.";
+    throw new TransportError(message, response.status, Number.isFinite(seconds) ? Math.max(0, seconds) : 0);
   }
   return response.json() as Promise<T>;
 }

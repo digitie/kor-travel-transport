@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useSeoulToday } from "@/lib/journey-hooks";
+import { loadWithTransientRetry, retryNotice, useRetryReady, type RetryNotice } from "@/lib/place-retry";
 import { dateTime, hasCoordinates, seoulDate, transportGet, type Place, type StoredFerry } from "@/lib/journey";
 import { FerryDepartures, MultiSearch, PlaceDetails } from "./journey-controls";
 import { RailTimetables } from "./rail-timetables";
@@ -19,14 +20,14 @@ const TransportMap = dynamic(() => import("./transport-map").then((module) => mo
 import { effectiveFerryServiceDate, referenceDescription } from "@/lib/reference-places";
 
 export function TransportReferenceList({ kind, children }: { kind: "rail_station" | "ferry_port"; children?: ReactNode }) {
-  const { mapItems, activePlace, view, setView, focusRevision, inspect, selectedIds, keyOf, setSelectedIds, displayName, setActivePlace, effectiveDate, selected, rail, today, setServiceDate, line, setLine, lines, loading, setReload, message, error, filtered, items, query, setQuery, toggle, routeQuery, setRouteQuery, stored } = useTransportReferenceList({ kind, children });
+  const { mapItems, activePlace, view, setView, focusRevision, inspect, selectedIds, keyOf, setSelectedIds, displayName, setActivePlace, effectiveDate, selected, rail, today, setServiceDate, line, setLine, lines, loading, reloadReady, setReload, message, error, filtered, items, query, setQuery, toggle, routeQuery, setRouteQuery, stored } = useTransportReferenceList({ kind, children });
   return <section className="journey-workbench map-route">
     <div id="ferry-map" className="map-route-primary" tabIndex={-1}><TransportMap places={mapItems} selectedPlace={activePlace} view={view} onViewChange={setView} focusRevision={focusRevision}
       onSelectPlace={(place) => { inspect(place); if (!selectedIds.includes(keyOf(place)) && selectedIds.length < 5) setSelectedIds((current) => [...current, keyOf(place)]); }}
       detailTitle={activePlace ? displayName(activePlace) : undefined}
       onCloseDetails={() => setActivePlace(null)} details={activePlace ? <PlaceDetails place={activePlace} showHeading={false} onShowMap={() => setView("map")} /> : undefined}
       filterSummary={`${effectiveDate} · ${selected.length}/5곳 선택`}
-      toolbar={<ReferenceFilters rail={rail} today={today} effectiveDate={effectiveDate} setServiceDate={setServiceDate} line={line} setLine={setLine} lines={lines} loading={loading} setReload={setReload} setView={setView} />}
+      toolbar={<ReferenceFilters rail={rail} today={today} effectiveDate={effectiveDate} setServiceDate={setServiceDate} line={line} setLine={setLine} lines={lines} loading={loading} reloadReady={reloadReady} setReload={setReload} setView={setView} />}
       feedback={<>{message ? <p className="text-xs text-text-secondary" role="status">{message}</p> : null}{error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}</>}
       listPlaces={false} listCount={Math.min(filtered.length, 60)} listContent={<>
       <p className="text-xs text-text-secondary">저장된 {rail ? "역" : "항구"} {items.length.toLocaleString("ko-KR")}곳 · 지도 좌표 {items.filter(hasCoordinates).length}곳</p>
@@ -51,6 +52,8 @@ function useTransportReferenceList({ kind }: { kind: "rail_station" | "ferry_por
   const [message, setMessage] = useState("저장된 기준정보를 읽는 중입니다…");
   const [error, setError] = useState("");
   const [reload, setReload] = useState(0);
+  // 기준정보 목록 조회 실패의 서버 안내·재조회 허락 시각(장소 지도 입장 제한의 429·504).
+  const [catalogNotice, setCatalogNotice] = useState<RetryNotice | null>(null);
   const [serviceDate, setServiceDate] = useState(seoulDate);
   const [stored, setStored] = useState<StoredFerry | null>(null);
   const [loading, setLoading] = useState(false);
@@ -62,18 +65,26 @@ function useTransportReferenceList({ kind }: { kind: "rail_station" | "ferry_por
   const effectiveDate = effectiveFerryServiceDate(serviceDate, today);
   useEffect(() => {
     const controller = new AbortController();
-    transportGet<{ items: Place[] }>(`transport/features/places?kind=${kind}&include_unlocated=true&limit=5000`, controller.signal).then((payload) => {
+    // 장소 지도 입장 제한의 일시 혼잡(429)은 한 번 자동으로 다시 묻는다(lib/place-retry.ts).
+    loadWithTransientRetry<{ items: Place[] }>(transportGet, `transport/features/places?kind=${kind}&include_unlocated=true&limit=5000`, controller.signal).then((payload) => {
       if (controller.signal.aborted) return;
-      setError(""); setItems(payload.items); setMessage(payload.items.length ? "" : "아직 저장된 기준정보가 없습니다.");
+      setError(""); setCatalogNotice(null); setItems(payload.items); setMessage(payload.items.length ? "" : "아직 저장된 기준정보가 없습니다.");
       const port = new URLSearchParams(window.location.search).get("port");
       if (!restoredPort.current && port) {
         if (payload.items.some((item) => item.provider_id === port)) setSelectedIds([port]);
         else setError("링크의 항구 코드를 저장된 항구에서 찾을 수 없습니다. 항구를 다시 검색해 주세요.");
       }
       restoredPort.current = true;
-    }).catch(() => { if (!controller.signal.aborted) { setMessage(""); setError("기준정보를 불러오지 못했습니다. 다시 조회해 주세요."); } });
+    }).catch((reason: unknown) => {
+      if (controller.signal.aborted) return;
+      const notice = retryNotice(reason);
+      setMessage(""); setCatalogNotice(notice);
+      setError(notice ? `기준정보를 불러오지 못했습니다. ${notice.message}` : "기준정보를 불러오지 못했습니다. 다시 조회해 주세요.");
+    });
     return () => controller.abort();
   }, [kind, reload]);
+  // "저장 정보 새로고침"은 기준정보 조회의 Retry-After가 지나기 전에는 누를 수 없다.
+  const reloadReady = useRetryReady(catalogNotice?.retryAt);
 
   const keyOf = (place: Place) => rail ? String(place.id) : place.provider_id ?? String(place.id);
   const selectedKeys = new Set(selectedIds);
@@ -112,14 +123,14 @@ function useTransportReferenceList({ kind }: { kind: "rail_station" | "ferry_por
   function inspect(place: Place) { setActivePlace(place); setFocusRevision((value) => value + 1); }
   const mapItems = (selected.length ? selected : filtered).filter(hasCoordinates);
 
-  return { mapItems, activePlace, view, setView, focusRevision, inspect, selectedIds, keyOf, setSelectedIds, displayName, setActivePlace, effectiveDate, selected, rail, today, setServiceDate, line, setLine, lines, loading, setReload, message, error, filtered, items, query, setQuery, toggle, routeQuery, setRouteQuery, stored };
+  return { mapItems, activePlace, view, setView, focusRevision, inspect, selectedIds, keyOf, setSelectedIds, displayName, setActivePlace, effectiveDate, selected, rail, today, setServiceDate, line, setLine, lines, loading, reloadReady, setReload, message, error, filtered, items, query, setQuery, toggle, routeQuery, setRouteQuery, stored };
 }
 
 
-function ReferenceFilters({ rail, today, effectiveDate, setServiceDate, line, setLine, lines, loading, setReload, setView }: Pick<ReturnType<typeof useTransportReferenceList>, "rail" | "today" | "effectiveDate" | "setServiceDate" | "line" | "setLine" | "lines" | "loading" | "setReload" | "setView">) {
+function ReferenceFilters({ rail, today, effectiveDate, setServiceDate, line, setLine, lines, loading, reloadReady, setReload, setView }: Pick<ReturnType<typeof useTransportReferenceList>, "rail" | "today" | "effectiveDate" | "setServiceDate" | "line" | "setLine" | "lines" | "loading" | "reloadReady" | "setReload" | "setView">) {
   return (<MapFilterBar>
       {!rail ? <MapFilterField label="운항일" htmlFor="ferry-service-date"><input id="ferry-service-date" type="date" min={today} max={seoulDate(9)} value={effectiveDate} onChange={(event) => { if (event.target.value) setServiceDate(event.target.value); }} /></MapFilterField> : <MapFilterField label="노선"><select value={line} onChange={(event) => setLine(event.target.value)}><option value="">모든 노선</option>{lines.map((name) => <option key={name}>{name}</option>)}</select></MapFilterField>}
-      <Button type="button" variant="outline" disabled={loading} onClick={() => setReload((value) => value + 1)}>저장 정보 새로고침</Button>
+      <Button type="button" variant="outline" disabled={loading || !reloadReady} onClick={() => setReload((value) => value + 1)}>{reloadReady ? "저장 정보 새로고침" : "잠시 후 새로고침"}</Button>
       <Button type="button" variant="outline" onClick={() => setView("list")}>항구 검색·선택</Button><a className="inline-link" href="#ferry-comparison">운항편 비교</a>
       </MapFilterBar>);
 }

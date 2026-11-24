@@ -23,7 +23,7 @@ server {
     add_header Access-Control-Allow-Origin $fuel_cors_origin always;
     add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS" always;
     add_header Access-Control-Allow-Headers "Accept, If-None-Match, Content-Type" always;
-    add_header Access-Control-Expose-Headers "ETag" always;
+    add_header Access-Control-Expose-Headers "ETag, Retry-After" always;
     add_header Vary "Origin" always;
     proxy_hide_header Access-Control-Allow-Origin;
     proxy_hide_header Access-Control-Allow-Credentials;

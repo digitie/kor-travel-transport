@@ -1,6 +1,7 @@
 """완전한 입력 vector와 RR/시간 경계가 증명한 장소 페이지 재사용."""
 import asyncio
 import json
+import re
 from datetime import timedelta
 from decimal import Decimal
 
@@ -46,6 +47,15 @@ def builds(response):
     return int(response.headers["server-timing"].split('page_builds;desc="')[1].split('"')[0])
 
 
+# 장소 지도 transaction은 시작 직후 남은 시한으로 서버 문장 상한을 둔다(place_map_admission.limit_statement_time).
+STATEMENT_LIMIT = re.compile(r"SET LOCAL statement_timeout = '([1-9][0-9]*)ms'")
+
+
+def statement_limit(statement: str) -> bool:
+    found = STATEMENT_LIMIT.fullmatch(statement)
+    return found is not None and int(found.group(1)) <= 25_000
+
+
 def canonical(c, monkeypatch, path=PATH):
     async def no_proof(*args, **kwargs):
         return None
@@ -86,8 +96,8 @@ def test_warm_page_precedes_payload_reads_and_preserves_generated_at(cached, mon
         event.remove(engine, "before_cursor_execute", seen)
     assert body(warm) == expected == canonical(c, monkeypatch)
     assert warm.json()["generated_at"] != first.json()["generated_at"]
-    assert builds(warm) == 0 and len(statements) == 1
-    assert "r.versions" in statements[0] and "json_agg(" not in statements[0]
+    assert builds(warm) == 0 and len(statements) == 2 and statement_limit(statements[0])
+    assert "r.versions" in statements[1] and "json_agg(" not in statements[1]
 
 
 @pytest.mark.parametrize("model", MODELS, ids=lambda m: m.__tablename__)
@@ -398,11 +408,13 @@ def test_engine_identity_and_shadow_schema_cannot_reuse_public_proof(cached):
         run(c, drop)
 
 
-def test_page_and_input_caches_share_bounded_capacity_and_copy_safe_bytes(monkeypatch):
+def test_page_and_input_caches_keep_separate_bounded_capacity_and_copy_safe_bytes(monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
     from datetime import UTC, datetime
     monkeypatch.setattr(validation, "_MAX_BYTES", 2048)
     monkeypatch.setattr(validation, "_MAX_ENTRIES", 3)
+    monkeypatch.setattr(validation, "_MAX_PAGE_BYTES", 2048)
+    monkeypatch.setattr(validation, "_MAX_PAGE_ENTRIES", 3)
     cache = validation.ValidatedFuelMapItems()
     now = datetime(2026, 11, 19, tzinfo=UTC)
     def worker(i):
@@ -415,8 +427,8 @@ def test_page_and_input_caches_share_bounded_capacity_and_copy_safe_bytes(monkey
         assert found is None or isinstance(found, bytes)
     with ThreadPoolExecutor(max_workers=4) as pool:
         list(pool.map(worker, range(40)))
-    assert cache.bytes + cache.page_bytes <= 2048
-    assert len(cache.entries) + len(cache.pages) <= 3
+    assert 0 < cache.bytes <= 2048 and 0 < cache.page_bytes <= 2048
+    assert 0 < len(cache.entries) <= 3 and 0 < len(cache.pages) <= 3
     cache.put_page("boundary", b"{}", now, now + timedelta(seconds=1))
     assert cache.get_page("boundary", now) == b"{}"
     assert cache.get_page("boundary", now - timedelta(microseconds=1)) is None
@@ -569,7 +581,8 @@ def test_warm_limit5000_keeps_full_body_with_one_statement_and_no_assembly(
             cpu.append((time.process_time() - cpu_start) * 1000)
             work["warm"].append(result.headers["server-timing"])
             assert body(result) == expected and builds(result) == 0
-            assert len(statements) == 1 and "r.versions" in statements[0]
+            assert statement_limit(statements[0])
+            assert len(statements) == 2 and "r.versions" in statements[1]
     finally:
         event.remove(engine, "before_cursor_execute", seen)
     async def no_proof(*args, **kwargs):
