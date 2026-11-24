@@ -66,6 +66,105 @@ metadata 장애는 회수 사유가 아니다. legacy NULL owner 행은 자동 �
   (`docker-compose.shared.yml`·`transport.override.yml`의 `x-dagster-code-server-probe`).
   재시작 뒤 수집이 돌아오지 않으면 이 sensor가 20분+900초 뒤 경보한다.
 
+## 유가 시도 소실 기록과 유가 신선도 경보 (2026-11-24 감사 G1-F5·G1-F6)
+
+2026-11-23 08:17Z~11-24 00:17Z T1 주유소 export(`/v1/service/exports/fuel-stations`)가 약 16.6시간 503이었는데
+경보가 없었다. 위 정체 경보는 5분 수집만 보기 때문이다. 또 유가 run이 op 밖에서 죽으면(code-server·run worker 재시작,
+SIGKILL, 배포 `--no-drain`) `_mark_fuel_failure`가 불리지 않아 직전 성공의 `last_error=None`이 남았다. 그러면 관리자
+"재시도"(`kortravel/admin-retry-of`, `retry_failed_fuel=True`)도 "직전 시도 성공"으로 보고 호출 유예로 건너뛰어, 한
+주기(8시간)를 잃었다. 둘 다 `transport_worker_recovery` tick 안에서, **회수 뒤에** 처리한다. 새 run·schedule을 만들지
+않고 오피넷도 부르지 않는다.
+
+- **유가 시도 소실 기록**(`recovery.record_lost_fuel_attempt`, 판정 규칙은 서비스의 `lost_fuel_claim_owner`):
+  - 조건: 오피넷 상태 행의 claim(`last_started_at`)에 결과가 없다(`last_error` 없음, `last_success_at < last_started_at`).
+    그 claim의 주인 실행 — claim 직전 15분 안에 시작한 마지막 Dagster 유가 실행(`transport_dagster_fuel`) — 이 `failed`다.
+    진행 중(running, 24시간 안에 시작)인 Dagster 유가 실행이 하나도 없다.
+  - 기록: `last_error`에 고정 문장 `실행 소실: …(회수 sensor 기록).`을 남긴다. `last_success_at`·`next_due_at`은 그대로다.
+  - 경합: PostgreSQL에서는 유가 수집기의 advisory lock(`420040 + 1`)을 `pg_try_advisory_xact_lock`으로 먼저 잡는다.
+    수집기가 claim·저장 중이라 못 잡으면 그 tick은 건너뛴다(기다리지 않음). 갱신은 읽은 claim 그대로이고 결과가 여전히
+    없으며 진행 중인 유가 실행이 없을 때만 한다(CAS + `NOT EXISTS`, `lock_timeout=1s`). 그래서 그 사이의 새 claim·성공·
+    실패를 덮지 않는다. 늦게 도착한 실패 처리는 원래 오류 문장으로 이 값을 덮는다.
+  - 시점: 회수가 그 tick에 run 행을 `failed`로 닫으면(Dagster run terminal이면 즉시, Dagster 기록이 없으면 5시간 grace)
+    같은 tick에서 바로 기록한다. 실패 기록 commit 자체가 실패한 실행(run 행은 `failed`, 상태 행에 오류 없음)도 같은
+    규칙으로 잡는다. 주인이 정상 종료(`success`·`skipped`·`partial_success`)했으면 판단하지 않는다.
+  - 효과는 실패 1회와 같다. T1 export는 200 그대로이고 `collection.last_attempt_failed=true`만 바뀐다(503 사유가 아니다).
+    T4 `source_status=stale`, 공개 상태 `fuel_prices_stale=true`·`last_error=collection_failed`(고정 코드)가 된다. 관리
+    화면 수집 상태는 `error_code=collection_lost`와 "실행 소실" 문구로 원인 미상 실패와 구분한다. 관리 화면의 Dagster 실패
+    진단은 run monitoring의 작업자 소실 메시지를 `RUN_WORKER_LOST`로 분류해 재시도 안내를 준다.
+- **관리자 재시도**: 재시도 경로(`collect(retry_failed_fuel=True)`)도 같은 규칙(`lost_fuel_claim_owner`, 자기 실행 제외)으로
+  소실을 직접 본다. 그래서 sensor가 기록하기 전이라도 회수가 run 행을 닫은 뒤라면 재시도가 예약을 옮기지 않고
+  체크포인트에서 이어 한다. **남은 창**: Dagster run은 끝났지만 회수가 아직 run 행을 닫지 않았으면(다음 sensor tick
+  전, 약 1분. Dagster 기록이 없는 run은 5시간 grace 동안) 서비스는 그 실행이 살아 있는지 알 수 없어 재시도를 여전히
+  호출 유예로 건너뛴다. 이때는 1분 뒤 다시 재시도하거나, Dagster 기록이 없는 run이면 다음 정기 tick을 기다린다.
+  재시도가 다시 소실되면 상태 문장은 직전 실패 문장 그대로다(실패로는 보이고 재시도도 된다).
+- **유가 신선도 단계**(`recovery.evaluate_fuel_freshness`): 오피넷(`opinet_browser`)과 휴게소 유가(`krex_rest_area_fuel`)
+  상태 행의 마지막 성공 나이로 정한다. 성공 이력이 없으면 판단하지 않는다(export가 이미 503이다).
+
+  | 단계 | 조건 | 오피넷 | 휴게소 유가 |
+  |---|---|---|---|
+  | `warning` | 나이 > 2주기 **이고** 마지막으로 **끝난** 시도가 실패 | 16시간 | 8시간 |
+  | `critical` | 나이 > export stale 기준(`REFERENCE_STALE_AFTER`)의 80% | 기준 × 0.8(24시간이면 19.2시간) | 9.6시간 |
+  | `expired` | 나이 > export stale 기준 — **export가 지금 503** | 기준(24시간이면 24시간) | 12시간 |
+
+  "마지막으로 끝난 시도가 실패": claim은 이전 오류를 지우지 않으므로 오류가 남아 있어도 그 원천의 정기 실행이 진행 중
+  (running)이면 실패로 세지 않는다. 그래서 실패 **1회** 뒤 다음 정기 실행이 수집 중인 동안에는 경고하지 않는다. 다음
+  실행이 큐에서 오래 기다려 시작 전이면 직전 실패가 그대로 "마지막 시도"다 — 그 사이 나이가 2주기를 넘으면 경고한다.
+  유가는 연속 2회 실패(16시간)가 "다음 실패면 export 503"의 선행 신호다. 위험·만료는 실패 여부와 무관해 수집이 멈춰도
+  잡는다. 위험·만료 기준은 `REFERENCE_STALE_AFTER`를 그대로 따라가므로 export 기준을 바꾸면 같이 바뀐다. 주기(8시간·
+  4시간)는 schedule cron과 테스트로 묶었다.
+- **경보에서 빼는 원천**(`paused`): provider가 설정에서 꺼졌거나(오피넷 `transport_collection_enabled`·`opinet_browser_enabled`,
+  휴게소 유가 `rest_area_collection_enabled`·`KEX_EX_API_KEY` — 관리 화면 `enabled`와 같은 조건) 그 schedule
+  (`fuel_collection_job_schedule`·`rest_area_fuel_price_collection_job_schedule`)이 STOPPED면 경보하지 않고 sensor 로그에
+  "유가 신선도 경보에서 제외" 한 줄만 남긴다. schedule 상태 확인은 경고 이상일 때만 하고, 확인이 실패하거나 예산이 없으면
+  경보 쪽(감시 중)으로 본다.
+- **경보 줄**: `_alert_stall`과 같이 고정 event 이름 한 줄을 Dagster sensor tick 로그와 code-server stderr(logger
+  `app.dagster.recovery`)에 남긴다. 정체가 아니라서 정체 시계(`stall:` cursor)를 건드리지 않는다. 형식(검색 기준):
+
+  ```text
+  transport_fuel_freshness.warning source=<원천> age_seconds=<n> last_success_at=<UTC ISO> cause=<lost|failed|running|none> last_attempt_failed=<true|false> warning_after_seconds=<n> critical_after_seconds=<n> expired_after_seconds=<n>
+  transport_fuel_freshness.critical source=<원천> …(같은 필드, error 수준)
+  transport_fuel_freshness.expired source=<원천> …(같은 필드, error 수준 — export 503 중)
+  transport_fuel_freshness.recovered source=<원천> age_seconds=<n> last_success_at=<UTC ISO> previous=<warning|critical|expired>
+  transport_fuel_freshness.lost_attempt source=opinet_browser collection_run_id=<id|none> orchestrator_run_id=<Dagster run ID|none> last_started_at=<UTC ISO>
+  transport_fuel_freshness.check_failed step=<lost_attempt|levels> error=<형식이름[:SQLSTATE]>
+  transport_fuel_freshness.report_failed
+  ```
+
+  - `cause`: `lost`(실행 소실), `failed`(실패 기록), `running`(정기 실행 진행 중), `none`(실패 기록도 진행 중인 실행도
+    없음 — 수집이 돌지 않는다. schedule·daemon을 본다).
+  - 반복: 단계가 바뀌면 바로, 같은 단계는 3600초마다 다시 남긴다. `lost_attempt`는 claim마다 한 번이다. 줄은 이번 tick의
+    기록 여부가 아니라 상태 행(`실행 소실` + 주인 failed + 진행 중 없음)에서 만들므로, 기록한 tick에 예산이 모자라 못 남긴
+    줄도 다음 tick에 남긴다.
+  - 기억: 경보 기억은 code-server 프로세스 안에 있고, 줄을 두 곳에 다 남긴 **뒤에** 반영한다. 로그 기록이 실패하면
+    `report_failed` 한 줄을 남기고 그 줄은 다음 tick에 다시 만든다. 재시작하면 기억이 비어 현재 비정상 단계·소실을 한
+    번 더 남긴다. 재시작 사이에 회복했으면 `recovered` 줄은 없다 — 그 원천의 경보 줄이 3600초보다 오래 없으면 정상이다.
+  - 점검 실패: 소실 기록과 단계 판정은 따로 끊고(각 10초) 따로 실패한다. 소실 기록이 실패해도 위험·만료 판정은 한다.
+    실패한 단계는 `check_failed step=…` 한 줄만 남기고 회수·정체 판정은 계속한다. 판정을 하지 못한 tick(실패·예산 부족·
+    앞 단계 DB 장애)은 단계 기억을 바꾸지 않는다 — 회복으로 보지 않는다.
+  - 예산: 유가 점검은 회수 **뒤에** 돈다. 회수는 단계 여유(25초)가 남을 때까지 먼저 쓰고, 유가 점검은 남은 예산이 판정
+    상한(10초)을 넘을 때만, 소실 기록은 두 상한의 합(20초)을 넘을 때만 한다(판정 우선). 그래서 회수가 굶지 않는다. 회수
+    backlog가 예산을 다 쓰는 tick에는 유가 점검을 건너뛴다(기억은 그대로, 다음 tick에 본다). 정상 운영에서 유가 점검은
+    문장 3~7개(밀리초)다. 회수가 metadata 장애로 실패해도 유가 점검은 하고 그 예외를 다시 올린다.
+
+  대응: `warning`이면 마지막 실패의 원인(Dagster run의 `error_code`)을 확인하고, 일시 오류면 관리자 "재시도"를 쓴다.
+  `critical`이면 export 503까지 남은 시간이 기준의 20% 이하다(오피넷 24시간 기준이면 4.8시간). `expired`면 export가 이미
+  503이다(Map은 자기 `max_age` 안에서 직전 세대를 계속 낸다). `lost_attempt`·`cause=lost`는 실행이 결과 없이 끝났다는
+  뜻이므로 code-server·run worker 재시작·배포 이력을 보고 관리자 "재시도"로 같은 회차를 이어 한다.
+- **휴게소 유가 run의 소실**(기록하지 않음): 휴게소 유가는 실패 여부로 다음 실행을 막지 않는다(4시간마다 정기 실행, 예약
+  없음). 그래서 run이 op 밖에서 죽어도 다음 tick이 그대로 다시 한다. 그 사이 결과는 이렇다. 상태 행은 직전 성공
+  (`last_error=None`)이라 관리 화면은 성공 배지인데 Dagster run은 실패다. T1 `rest-area-fuel-prices`의
+  `last_attempt_failed`는 false다. 실패 기록이 없으므로 `warning`(실패 조건)은 뜨지 않고, 소실이 이어져 성공 나이가
+  9.6시간·12시간을 넘으면 `critical`·`expired`(`cause=none`)로만 잡힌다.
+- **하지 않는 것**: 경보에 따른 자동 추가 유가 run은 만들지 않는다. 오피넷 호출 정책(ADR-013 하루 3회·8시간 tick,
+  provider 호출 유예)은 소유자 결정이다. 경보 채널(Manager·운영 알림, Dagster plane 밖)도 아직 붙이지 않았다 — 지금은 위
+  로그 줄이 유일한 신호다.
+- **제안(소유자 결정 대기) — 신선도 보호 재시도**(감사 G1-F4 (b)): 마지막 시도가 실패했고 마지막 성공 나이가 16시간
+  이상이며 진행 중인 유가 run이 없으면, 이 sensor가 다음 tick 전에 체크포인트 재개 run(`retry_failed_fuel=True`, 예약
+  보존)을 한 번만 띄운다. 연속 2회 실패 뒤 세 번째 정기 시도까지 기다리는 동안 생기는 503 틈을 줄인다. 다만 하루 3회
+  상한을 넘는 오피넷 브라우저 세션이 생길 수 있어 ADR-013 개정과 소유자 승인 없이는 구현하지 않는다. 구현한다면
+  `lost_attempt`와 `warning` 판정을 그대로 조건으로 쓰고, 같은 claim에는 한 번만 띄우며(claim 시각을 run 태그로),
+  관리자 재시도와 같은 `kortravel/admin-retry-of` 경로를 쓴다.
+
 공항 일부 실패도 성공분을 commit한 뒤 Dagster FAILURE로 표시한다. 자동 인프라 재시도
 1회는 공항·고속도로·휴게소 기준정보만 허용한다. provider 실패·KRIC 마지막 시도 48시간·
 버스 성공 72시간·철도 성공 48시간·과금/유가 receipt 보호는 그대로 유지한다.

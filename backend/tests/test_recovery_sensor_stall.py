@@ -230,7 +230,12 @@ class _SlowDb:
 
             async def scalar(self, _statement):
                 await db._wait()
-                # 5분 수집 행 없음 → 신선도 판정 생략
+                # 5분 수집 행 없음 → 신선도 판정 생략. 오피넷 상태 행 없음 → 유가 시도 소실 판정 생략
+
+            async def scalars(self, _statement):
+                await db._wait()
+                # 유가 상태 행 없음 → 유가 신선도 판정 생략
+                return SimpleNamespace(all=lambda: [])
 
             async def execute(self, statement):
                 await db._wait()
@@ -370,6 +375,8 @@ def sensor_env(monkeypatch, test_settings):
     monkeypatch.setattr(dagster_definitions, "format_stall_alert", recording_format)
     monkeypatch.setattr(dagster_definitions, "_settings", lambda: test_settings)
     monkeypatch.setattr(dagster_definitions, "_RECOVERY_POSITION", ScanPosition())
+    # 유가 신선도 경보의 마지막 단계 기억(프로세스 전역)을 테스트마다 비운다.
+    monkeypatch.setattr(dagster_definitions, "_FUEL_FRESHNESS_ALERTS", recovery.FuelFreshnessAlerts())
 
     instance_cm = DagsterInstance.local_temp()
     instance = instance_cm.__enter__()

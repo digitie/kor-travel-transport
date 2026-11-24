@@ -75,6 +75,16 @@ describe("수집 실패 상세의 서버 정제", () => {
     expect(serialized).toContain('"diagnostic":true');
     expect(serialized).not.toContain("요청 페이지");
   });
+  it.each([
+    "Detected run worker status RunWorkerStatus.NOT_FOUND. Marking run 0f1e2d as failed.",
+    "This run has been marked as failed from outside the execution context.",
+  ])("작업자가 결과 없이 사라진 실행은 미등록 오류가 아니라 실행 소실로 안내한다: %s", (message) => {
+    const result = failureDiagnostic({ message, stepKey: "collect_fuel_transport" });
+    expect(result).toContain("오류 코드: RUN_WORKER_LOST");
+    expect(result).toContain("재시도하면 같은 회차를 저장된 진행분에서 이어 합니다");
+    expect(result).not.toContain("UNKNOWN_FAILURE");
+    expect(result).not.toContain("0f1e2d");
+  });
   it("새 오류는 고정된 미등록 안내를 주고 위조한 class·stage는 숨긴다", () => {
     const result = failureDiagnostic({ message: "unknown-secret", stepKey: "constructor", error: { className: "unknown-secret" }, failureMetadata: { metadataEntries: [{ label: "error_code", text: "__proto__" }] } });
     expect(result).toContain("UNKNOWN_FAILURE");

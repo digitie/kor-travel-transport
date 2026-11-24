@@ -56,6 +56,7 @@ const reasons: Record<string, [string, string]> = {
   COLLECTION_FAILED: ["수집을 완료하지 못했습니다.", "실패 단계와 성공 저장 건수를 확인하세요. 성공 저장분은 유지합니다."],
   VADAHUB_SCHEMA_CHANGED: ["배편 기준자료의 공식 파일 형식이 기존 규격과 달라졌습니다.", "실패한 데이터셋의 파일 규격을 확인해야 합니다. 마지막 정상 자료는 보존합니다."],
   VADAHUB_SOURCE_FAILED: ["배편 기준자료의 일부 원천을 읽지 못했습니다.", "실패한 데이터셋을 확인하고 호출 보호 이후 후속 실행을 확인하세요."],
+  RUN_WORKER_LOST: ["실행 작업자(프로세스)가 결과를 남기지 못하고 사라졌습니다. 작업자 재시작·강제 종료·배포 중단에서 생깁니다.", "마지막 정상 자료는 그대로입니다. 유가 수집은 회수 sensor가 실행 소실로 기록하며, 재시도하면 같은 회차를 저장된 진행분에서 이어 합니다. 다른 작업은 다음 정기 실행을 확인하세요."],
   UNKNOWN_FAILURE: ["등록되지 않은 실행 오류입니다. 원문은 보안상 이 화면에 전달하지 않습니다.", "실행 ID로 Dagster 원본을 확인하세요. 확인 전 무제한 재시도하지 않습니다."],
 };
 const stages: Record<string, string> = { run_start: "실행 시작", page_request: "원천 페이지 요청", page_validation: "페이지 완결성 검사", publication: "자료 게시", fetch: "원천 요청", normalize: "자료 정규화", publish: "DB 게시", storage: "DB 저장", provider_parse: "제공기관 응답 해석", provider_fetch: "제공기관 요청", collection: "수집 실행", validation: "원천 자료 규격 검사" };
@@ -99,6 +100,8 @@ function codeFor(message: string, data: ObjectValue): string {
   if (typeof data.error_code === "string") return data.error_code;
   const known = Object.keys(reasons).find(code => code !== "UNKNOWN_FAILURE" && new RegExp(`\\b${code}\\b`).test(message));
   if (known) return known;
+  // Dagster run monitoring·외부 실패 표시: 작업자가 결과 없이 사라진 실행(op 예외가 아니다).
+  if (/Detected run worker status|marked as failed from outside the execution context/.test(message)) return "RUN_WORKER_LOST";
   if (/traffic flow response contains invalid records/.test(message)) return "TRAFFIC_FLOW_INVALID_RECORDS";
   if (/traffic flow count must match|incomplete total_count/.test(message)) return "TRAFFIC_FLOW_COUNT";
   if (/backlog.*24시간|24시간.*backlog/.test(message)) return "RETENTION_BACKLOG";

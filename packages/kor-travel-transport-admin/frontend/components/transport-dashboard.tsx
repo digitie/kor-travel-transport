@@ -61,7 +61,10 @@ export function TransportDashboard() {
     </TabsList>
     {statisticsError ? <StatisticsRetryNotice statistics={statistics} statisticsError={statisticsError} statisticsLoading={statisticsLoading} statisticsRetry={statisticsRetry} setStatisticsLoading={setStatisticsLoading} setStatisticsRetry={setStatisticsRetry} /> : null}
     {statusError ? <Alert variant="destructive" className="grid-cols-1"><AlertDescription>수집 상태 갱신 실패: {statusError}</AlertDescription></Alert> : null}
-    {(status.fuel_prices_stale || Boolean(fuelReadModel?.last_error || fuelReadModel?.next_due_at)) ? <Alert variant="destructive" className="grid-cols-1">
+    {status.fuel_prices_stale ? <Alert variant="destructive" className="grid-cols-1">
+      <AlertTitle>유가 수집 지연</AlertTitle>
+      <AlertDescription>마지막 유가 수집 시도가 실패했거나 끝나지 않았고, 또는 마지막 성공이 오래됐습니다. 주유소 가격은 마지막으로 성공한 수집 값입니다. <Link href="/collections">수집 상태 확인 →</Link></AlertDescription>
+    </Alert> : Boolean(fuelReadModel?.last_error || fuelReadModel?.next_due_at) ? <Alert variant="destructive" className="grid-cols-1">
       <AlertTitle>주유소별 최신 가격 반영 지연</AlertTitle>
       <AlertDescription>저장된 유가 원본과 주유소별 가격 지도가 다를 수 있습니다. <Link href="/collections">수집 상태 확인 →</Link></AlertDescription>
     </Alert> : null}

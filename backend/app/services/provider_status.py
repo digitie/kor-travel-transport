@@ -8,7 +8,7 @@ from app.core.config import Settings
 from app.core.time_utils import now_utc, serialize_utc, to_seoul
 from app.models import CollectionRun, FerryPort, FerryTimetableSnapshot, KricStationCode, KricTimetableSnapshot, TransportCollectionState
 from app.schemas import KricCoverage, ProviderCollectionStatus, ProviderStatusResponse
-from app.services.transport_collection import parse_isolated_rows
+from app.services.transport_collection import LOST_FUEL_ATTEMPT_ERROR, parse_isolated_rows
 
 
 async def provider_status(session: AsyncSession, settings: Settings) -> ProviderStatusResponse:
@@ -80,7 +80,9 @@ async def provider_status(session: AsyncSession, settings: Settings) -> Provider
             status=status, interval_seconds=interval, last_started_at=serialize_utc(last_started) if last_started else None,
             last_success_at=serialize_utc(last_success) if last_success else None,
             next_due_at=serialize_utc(next_due) if next_due else None,
-            error_code="collection_failed" if failed else None,
+            # 실행 소실(작업자 재시작·강제 종료로 결과 없이 끝남)은 실패와 구분한다 — 관리자 재시도로 이어 할 수 있다.
+            error_code=("collection_lost" if state and state.last_error == LOST_FUEL_ATTEMPT_ERROR
+                        else "collection_failed" if failed else None),
             isolated_rows=own_isolated if enabled and not failed and own_isolated else None,
             job_isolated_rows=sum(isolated.values()) if isolated_only else None))
     for source, name, enabled in [("flights", "공항 출도착", keyed and settings.enable_flight_status_markers), ("bus_timetable", "TAGO 버스 시간표", keyed), ("general_rail", "TAGO 일반철도 시간표", keyed)]:
