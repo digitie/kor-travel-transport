@@ -176,8 +176,9 @@ transaction의 한 문장). PG 시험(`tests/test_traffic_statistics_reconcile.p
 로컬 측정(`tests/benchmarks/traffic_statistics_reconcile.py --hours 6 --segments 8300 --repeat 7`, 개발 PC의 WSL Docker
 PostgreSQL 18, 6시간 이력 597,600행, 2시간 창 통계 1,920행, 중앙값; 참고용): 예전 DELETE + INSERT 415 ms·쓴 tuple
 3,840(삭제 1,920 + 추가 1,920)·WAL 785 KiB, 차이 기반 어긋남 없음 404 ms·쓴 tuple 0·WAL 0.2 KiB, 어긋난 25행 407 ms·수정
-25·WAL 3.4 KiB. 시간은 원본 집계가 지배해 비슷하고, 줄어드는 것은 쓰기다 — 5분마다 도는 창 재대조 기준 하루 약 110만
-dead tuple·약 220 MiB WAL이 0에 가까워진다. 장기 복구 구간(2시간)도 같은 문장이라 한 구간의 비용은 이 측정과 같다.
+25·WAL 3.4 KiB. 시간은 원본 집계가 지배해 비슷하고, 줄어드는 것은 쓰기다 — 이 측정 규모(노선·방향 그룹 80개)로 5분마다
+돌리면 하루 약 110만 dead tuple·약 220 MiB WAL이 0에 가까워진다(운영 그룹 수에 비례). 장기 복구 구간(2시간)도 같은
+문장이라 한 구간의 비용은 이 측정과 같다.
 
 #### 계측
 
