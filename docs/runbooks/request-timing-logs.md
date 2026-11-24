@@ -112,5 +112,8 @@ export_request route=/v1/service/exports/rail-stations method=GET status=200 sta
   그대로 흘린다. 기존 설정에서 보이던 `an upstream response is buffered to a temporary file` 경고가 없어야 한다.
 - 공개 유가 gateway는 JSON을 gzip level 1(1KiB 이상, `gzip_proxied any`, `Vary: Accept-Encoding`)로 압축한다.
   backend가 이미 gzip으로 준 가격 이력은 다시 압축하지 않는다. 압축 효과는 access log `gz`로 본다.
+  이 압축은 `fuel-api` 직접 호출용이다. 공개 UI BFF(`/api/public/fuel/*`)는 같은 호스트 loopback으로
+  `Accept-Encoding: identity`를 보내 압축·해제 CPU를 쓰지 않는다(이 hop의 `gz`는 `-`). 브라우저↔Next 구간의
+  압축 여부는 Next 실행 설정이 정하며 이 변경 범위 밖이다.
 - IP별 `limit_req`·`limit_conn`은 두지 않는다. 공개 유가 사용자는 모바일 통신사 NAT 뒤에서 같은 주소를 공유하므로
   주소별 제한은 정상 사용자를 막는다. 무거운 요청은 위 `limit` 상한과 backend places 검증의 `CapacityLimiter(2)`(`fuel_map_limiter`)로 묶는다.

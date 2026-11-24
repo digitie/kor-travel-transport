@@ -25,7 +25,7 @@ describe("공개 유가 BFF", () => {
     const result = await GET(request("places?product_codes=B027&product_codes=D047&zoom=10"), context("places"));
     const [target, init] = fetchMock.mock.calls[0];
     expect(String(target)).toBe("http://127.0.0.1:12307/v1/transport/fuel/places?product_codes=B027&product_codes=D047&zoom=10");
-    expect([...init.headers]).toEqual([["accept", "application/json"], ["if-none-match", '"fuel-etag"']]);
+    expect([...init.headers]).toEqual([["accept", "application/json"], ["accept-encoding", "identity"], ["if-none-match", '"fuel-etag"']]);
     expect(init.credentials).toBe("omit"); expect(init.redirect).toBe("error");
     expect(result.headers.get("set-cookie")).toBeNull(); expect(result.headers.get("etag")).toBe('"fuel-etag"');
     expect(await result.json()).toEqual({ items: [] });
