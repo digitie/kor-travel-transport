@@ -73,6 +73,9 @@ class Settings(BaseSettings):
     transport_map_current_enabled: bool = False
     transport_collect_interval_seconds: int = Field(default=300, ge=300)
     transport_quota_backoff_seconds: int = Field(default=3600, ge=300)
+    # 소통 5분 통계 장기 어긋남 복구의 지평(시간). 최근 2시간 창보다 오래된 이 기간을 하루 한 바퀴씩 과거로 걸어가며 원본과
+    # 차이 기반으로 재대조한다(가장 오래된 원본보다 앞은 하지 않는다). 0이면 끈다. 최대 90일.
+    transport_traffic_statistics_repair_horizon_hours: int = Field(default=168, ge=0, le=2160)
     transport_route_nos_csv: str = ""
     transport_conzone_ids_csv: str = ""
     fuel_refresh_internal_token: str | None = None

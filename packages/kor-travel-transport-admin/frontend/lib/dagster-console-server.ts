@@ -3,7 +3,7 @@ import { ADMIN_ACTOR_TAG, ADMIN_RETRY_OF_TAG, DAGSTER_LOCATION_NAME, DAGSTER_REP
   CONSOLE_CATALOG_QUERY, CONSOLE_RUN_QUERY, BASIC_RUN_QUERY, CONSOLE_EVENTS_QUERY, FIND_REQUEST, ACTIVE_JOB, LAUNCH, CANCEL, START_SCHEDULE, STOP_SCHEDULE, START_SENSOR, STOP_SENSOR
 } from "./dagster-scope";
 export { CONSOLE_CATALOG_QUERY, CONSOLE_RUN_QUERY, CONSOLE_EVENTS_QUERY } from "./dagster-scope";
-import { TRAFFIC_STATISTICS_DEFERRED_NOTE, TRAFFIC_STEP_LABELS, failureDiagnostic, gridFailureCounts, trafficReasonLabel } from "./dagster-failure-diagnostics";
+import { TRAFFIC_STATISTICS_DEFERRED_NOTE, TRAFFIC_STEP_LABELS, failureDiagnostic, gridFailureCounts, trafficReasonLabel, trafficStatisticsNotes } from "./dagster-failure-diagnostics";
 import { CONSOLE_ACTIVE, CONSOLE_COUNT_LABELS, type ConsoleActionRequest, type ConsoleActionResult, type ConsoleAudit, type ConsoleCatalog, type ConsoleEvent, type ConsoleRequest, type ConsoleRunDetail } from "./dagster-console-model";
 
 type Row = Record<string, unknown>;
@@ -114,6 +114,8 @@ function safeMetadata(entries: unknown) {
     if (key === "error_code" && typeof item.text === "string") diagnostic = true;
   }
   for(const [code,count] of Object.entries(gridFailureCounts(entries))){counts[`grid_failure_${code}`]=count;warning ||= count>0;}
+  // 소통 5분 통계 어긋남·장기 복구 결과(어긋남·복구 실패는 경고, 수집 결과는 바꾸지 않는다).
+  const traffic = trafficStatisticsNotes(metadata); notes.push(...traffic.notes); warning ||= traffic.warning;
   return { counts, notes: [...new Set(notes)], warning, diagnostic };
 }
 const eventTitles: Record<string,string> = { RunStartEvent: "실행 시작", RunStartingEvent: "실행 준비", RunEnqueuedEvent: "대기열 등록", RunDequeuedEvent: "대기열에서 선택", RunSuccessEvent: "실행 완료", RunCanceledEvent: "실행 취소", RunCancelingEvent: "취소 처리", ExecutionStepStartEvent: "단계 시작", ExecutionStepSuccessEvent: "단계 완료", ExecutionStepSkippedEvent: "단계 건너뜀", ExecutionStepRestartEvent: "단계 재시작", ExecutionStepUpForRetryEvent: "단계 재시도 대기", ExecutionStepOutputEvent: "처리 결과", HandledOutputEvent: "결과 저장", MaterializationEvent: "자료 게시", EngineEvent: "실행기 상태" };

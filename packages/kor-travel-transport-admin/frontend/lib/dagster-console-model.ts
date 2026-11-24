@@ -35,6 +35,15 @@ export const CONSOLE_COUNT_LABELS: Record<string, string> = {
   highway_fetch_seconds: "고속도로 조회(초)", traffic_raw_response_seconds: "소통 응답 원본 저장(초)", traffic_history_seconds: "소통 이력 저장(초)",
   traffic_current_upsert_seconds: "소통 현재값 승격(초)", traffic_touched_statistics_seconds: "원천 안 5분 통계(초)", traffic_commit_seconds: "소통 원천 확정(초)",
   traffic_statistics_seconds: "소통 통계 재대조(초)",
+  // 5분 통계 차이 기반 재대조: 바꾼 행은 곧 어긋남이다. 장기 복구는 최근 2시간보다 오래된 구간을 하루 한 바퀴 돈다.
+  traffic_touched_statistics_rows: "원천 안 통계 행 쓰기",
+  traffic_statistics_inserted_rows: "재대조 추가 행(어긋남)", traffic_statistics_updated_rows: "재대조 수정 행(어긋남)",
+  traffic_statistics_deleted_rows: "재대조 삭제 행(어긋남)", traffic_statistics_unchanged_rows: "재대조 그대로 둔 행",
+  traffic_statistics_drift_rows: "최근 2시간 통계 어긋남",
+  traffic_statistics_repair_chunks: "장기 복구 구간", traffic_statistics_repair_inserted_rows: "장기 복구 추가 행",
+  traffic_statistics_repair_updated_rows: "장기 복구 수정 행", traffic_statistics_repair_deleted_rows: "장기 복구 삭제 행",
+  traffic_statistics_repair_unchanged_rows: "장기 복구 그대로 둔 행", traffic_statistics_repair_drift_rows: "장기 복구 어긋남",
+  traffic_statistics_repair_busy_skips: "장기 복구 잠금 양보", traffic_statistics_repair_seconds: "장기 통계 복구(초)",
 };
 export const CONSOLE_ACTIVE = new Set(["NOT_STARTED", "QUEUED", "STARTING", "STARTED", "CANCELING"]);
 export const CONSOLE_STATUS_LABELS: Record<string, string> = {

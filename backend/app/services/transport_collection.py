@@ -48,6 +48,21 @@ from app.models import (
     TransportCollectionState,
 )
 from app.services.collection import KAC_QUOTA_SOURCE
+from app.services.traffic_statistics import (
+    DATABASE_FAILURE_REASONS,  # noqa: F401 — 호환 재수출(definitions·시험이 이 모듈에서 읽는다)
+    TRAFFIC_STATISTICS_ADVISORY_LOCK_KEY,  # noqa: F401 — 호환 재수출
+    TRAFFIC_STATISTICS_LOCK_WAIT,  # noqa: F401 — 호환 재수출
+    TRAFFIC_STATISTICS_REPAIR_SKIP_AFTER,
+    TRAFFIC_STATISTICS_REPAIR_STATE,
+    ReconcileResult,
+    RepairOutcome,
+    database_failure_reason as _database_failure_reason,
+    five_minute_bucket as _five_minute_bucket,
+    reconcile_traffic_statistics,
+    repair_traffic_statistics,
+    try_lock_traffic_statistics,
+    wait_for_traffic_statistics_lock,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,13 +75,8 @@ KREX_PAGE_SIZE = 1000
 KREX_MAX_PAGES = 100
 KREX_MAX_FILTER_VALUES = 20
 TRANSPORT_COLLECTION_ADVISORY_LOCK_KEY = 420040
-#: 소통 5분 통계 쓰기(원천 transaction의 bucket 재구축·commit 뒤 창 재대조)를 직렬화하는 transaction advisory lock.
-#: 성공 표시가 창 재대조보다 먼저 commit되므로 다음(수동·관리자) 고속도로 실행이 앞 실행의 재대조와 겹칠 수 있다. 같은
-#: bucket을 두 transaction이 DELETE + INSERT하면 `uq_highway_traffic_five_minute_statistics` 위반으로 한쪽이 실패한다.
-TRAFFIC_STATISTICS_ADVISORY_LOCK_KEY = 420042
-#: 원천 transaction이 위 잠금을 기다리는 상한. 수집 엔진 기본 `lock_timeout`(5초)보다 길게 두어 앞 실행의 창 재대조
-#: (최대 문장 시간)를 기다리게 한다. 수집 `statement_timeout`(60초)보다 짧아 원인이 잠금 대기로 보인다.
-TRAFFIC_STATISTICS_LOCK_WAIT = "55s"
+# 소통 5분 통계 잠금(`TRAFFIC_STATISTICS_ADVISORY_LOCK_KEY` 420042)·대기 상한·재대조 구현은 `services/traffic_statistics.py`에
+# 있다(원천 안 bucket·창 재대조·장기 복구·수동 재대조가 함께 쓴다). 이 모듈의 이름은 호환을 위해 그대로 내보낸다.
 TRANSPORT_TRIGGER_PREFIX = "transport_"
 HIGHWAY_FETCH_TIMEOUT_SECONDS = 120
 # 직전 동일 scope 성공 집합의 25% 미만은 완결 증거를 재확인한다.
@@ -104,10 +114,11 @@ FUEL_STATION_UPSERT_BATCH = 500
 FUEL_PRICE_UPSERT_BATCH = 2_000
 #: 기존 소통 관측 조회와 ORM flush의 일시 보유량을 제한한다. pair 400개는 SQLite 999 bind 안에도 든다.
 TRAFFIC_SNAPSHOT_BATCH = 400
-#: 소통 5분 통계의 최근 창. 원천 commit 뒤 별도 transaction이 매 실행 이 창 전체를 원본에서 다시 만든다(WLH-06,
-#: 재대조). 원천 transaction은 이번 저장이 바꾼 bucket만 다시 만든다 — 원본과 그 통계는 함께 commit된다.
+#: 소통 5분 통계의 최근 창. 원천 commit 뒤 별도 transaction이 매 실행 이 창 전체를 원본 정본과 차이 기반으로 재대조한다
+#: (WLH-06). 원천 transaction은 이번 저장이 바꾼 bucket만 맞춘다 — 원본과 그 통계는 함께 commit된다. 이 창보다 오래된 구간은
+#: 장기 복구(`repair_traffic_statistics`)가 하루 한 바퀴씩 과거로 걸어가며 재대조한다.
 TRAFFIC_STATISTICS_RECENT_WINDOW = timedelta(hours=2)
-#: 5분 통계 집계(`_rebuild_traffic_statistics_range`)의 입력 열. 기존 관측에서 이 값이 바뀌면 그 bucket을 다시 만든다.
+#: 5분 통계 집계(`reconcile_traffic_statistics`)의 입력 열. 기존 관측에서 이 값이 바뀌면 그 bucket을 다시 만든다.
 TRAFFIC_STATISTICS_INPUT_FIELDS = ("route_no", "direction", "speed", "free_flow_speed")
 #: 유가 스냅샷 저장 시도 횟수. 일시적 DB 오류(`_is_transient_database_error`)에만 한 번 더 저장한다.
 FUEL_STORE_ATTEMPTS = 2
@@ -248,13 +259,11 @@ TRAFFIC_STORE_STEPS = (
     "current_upsert",      # `highway_traffic_current` 승격
     "touched_statistics",  # 원천 transaction 안: 이번 저장이 바꾼 bucket의 5분 통계(통계 잠금 대기 포함)
     "commit",              # 성공 표시 + 원천 commit
-    "statistics",          # commit 뒤 별도 transaction: 최근 창 재대조
+    "statistics",          # commit 뒤 별도 transaction: 최근 창 차이 기반 재대조
 )
-#: 저장·재대조 실패 원인 코드(`_database_failure_reason`). SQLSTATE 등급은 `sqlstate_<2자리>`로 남긴다.
-DATABASE_FAILURE_REASONS = (
-    "statement_timeout", "lock_timeout", "deadlock", "serialization", "unique_violation", "connection",
-    "client_timeout", "cancelled", "busy", "database", "other",
-)
+#: 최근 창 재대조가 어긋남을 찾았다는 경고의 임계(바꾼 행 수). 원천 transaction이 자기 bucket을 함께 맞추므로 정상 실행의
+#: 창 재대조는 0행을 바꾼다. 0보다 크면 이전 실패·수동 수정·버그로 통계가 원본과 달랐다는 뜻이다(실패가 아닌 경고 신호).
+TRAFFIC_STATISTICS_DRIFT_WARNING_ROWS = 1
 
 
 @dataclass(slots=True)
@@ -283,9 +292,15 @@ class TrafficStoreReport:
     source_committed: bool | None = None
     failed_step: str | None = None
     failure_reason: str | None = None
+    #: 원천 transaction 안에서 바뀐 bucket의 통계를 맞추며 실제로 쓴 통계 행(추가·수정·삭제) 수.
+    touched_statistics_rows: int = 0
     #: commit 뒤 최근 창 재대조 결과. None은 시도하지 않음(원천 미확정·PostgreSQL 아님)이다.
     statistics_refreshed: bool | None = None
     statistics_deferred_reason: str | None = None
+    #: 최근 창 재대조가 바꾼·그대로 둔 행 수. 원천이 자기 bucket을 이미 맞췄으므로 바꾼 행은 곧 어긋남이다.
+    statistics_result: ReconcileResult | None = None
+    #: 최근 창보다 오래된 구간의 장기 어긋남 복구 결과(`repair_traffic_statistics`). None은 시도하지 않음.
+    repair: RepairOutcome | None = None
 
     def begin(self, step: str) -> None:
         self.end()
@@ -331,35 +346,20 @@ class TrafficStoreReport:
             result["traffic_statistics_refreshed"] = self.statistics_refreshed
         if self.statistics_deferred_reason is not None:
             result["traffic_statistics_deferred_reason"] = self.statistics_deferred_reason
+        if self.source_committed:
+            result["traffic_touched_statistics_rows"] = self.touched_statistics_rows
+        if self.statistics_result is not None:
+            window = self.statistics_result
+            result.update({
+                "traffic_statistics_inserted_rows": window.inserted,
+                "traffic_statistics_updated_rows": window.updated,
+                "traffic_statistics_deleted_rows": window.deleted,
+                "traffic_statistics_unchanged_rows": window.unchanged,
+                "traffic_statistics_drift_rows": window.changed,
+            })
+        if self.repair is not None:
+            result.update(self.repair.summary())
         return result
-
-
-def _database_failure_reason(error: BaseException) -> str:
-    """저장·재대조 실패의 고정 원인 코드. 예외 원문은 넣지 않는다(`DATABASE_FAILURE_REASONS`, `sqlstate_<등급>`)."""
-    if isinstance(error, asyncio.CancelledError):
-        return "cancelled"
-    if isinstance(error, DBAPIError):
-        sqlstate = str(getattr(error.orig, "sqlstate", None) or "")
-        known = {"57014": "statement_timeout", "55P03": "lock_timeout", "40P01": "deadlock",
-                 "40001": "serialization", "23505": "unique_violation"}
-        if sqlstate in known:
-            return known[sqlstate]
-        if error.connection_invalidated or sqlstate.startswith(("08", "57P")):
-            return "connection"
-        if re.fullmatch(r"[0-9A-Z]{5}", sqlstate):
-            return f"sqlstate_{sqlstate[:2]}"
-        return "database"
-    if isinstance(error, TimeoutError):
-        return "client_timeout"
-    if isinstance(error, (ConnectionError, OSError)):
-        return "connection"
-    return "other"
-
-
-def _five_minute_bucket(value: datetime) -> datetime:
-    """PostgreSQL `date_bin('5 minutes', …, '2000-01-01 00:00+00')`과 같은 UTC 5분 bucket 시작."""
-    value = serialize_utc(value).replace(second=0, microsecond=0)
-    return value - timedelta(minutes=value.minute % 5)
 
 
 def _traffic_statistics_window_start(current: datetime) -> datetime:
@@ -946,7 +946,7 @@ class TransportCollectionService:
                     # 소통·돌발 원천을 모두 확정한 뒤에 한다 — 재대조가 돌발 저장을 늦추지 않는다. 원천 상태
                     # (`last_success_at`·`next_due_at`)는 이미 commit됐고 이 단계의 결과로 바꾸지 않는다.
                     traffic_report.begin("statistics")
-                    refreshed, deferred_reason = await self._refresh_recent_traffic_statistics(
+                    refreshed, deferred_reason, window = await self._refresh_recent_traffic_statistics(
                         session, traffic_report.rebuild_from,
                     )
                     traffic_report.end()
@@ -955,9 +955,37 @@ class TransportCollectionService:
                     else:
                         traffic_report.statistics_refreshed = refreshed
                         traffic_report.statistics_deferred_reason = deferred_reason
+                        traffic_report.statistics_result = window
+                        counts = (f"inserted={window.inserted} updated={window.updated} deleted={window.deleted} "
+                                  f"unchanged={window.unchanged}" if window is not None else "inserted=- updated=- "
+                                  "deleted=- unchanged=-")
                         logger.info(
-                            "highway traffic statistics reconcile run_id=%s refreshed=%s reason=%s seconds=%.3f",
-                            run_id, refreshed, deferred_reason or "-", traffic_report.seconds["statistics"],
+                            "highway traffic statistics reconcile run_id=%s refreshed=%s reason=%s %s seconds=%.3f",
+                            run_id, refreshed, deferred_reason or "-", counts, traffic_report.seconds["statistics"],
+                        )
+                        if window is not None and window.changed >= TRAFFIC_STATISTICS_DRIFT_WARNING_ROWS:
+                            # 원천 transaction이 자기 bucket을 함께 맞추므로 정상이면 0이다. 고쳤으니 실패는 아니다.
+                            logger.warning(
+                                "highway traffic statistics drift repaired run_id=%s window_from=%s inserted=%s "
+                                "updated=%s deleted=%s; statistics differed from the stored observations",
+                                run_id, traffic_report.rebuild_from.isoformat(), window.inserted, window.updated,
+                                window.deleted,
+                            )
+                    # 최근 창보다 오래된 구간의 장기 어긋남 복구 한 조각(낮은 우선순위, 예산·try-lock).
+                    repair = await self._repair_old_traffic_statistics(session, traffic_report, started_at)
+                    if repair is not None:
+                        traffic_report.repair = repair
+                        log = logger.warning if repair.status == "failed" or repair.totals.changed else logger.info
+                        log(
+                            "highway traffic statistics repair run_id=%s status=%s reason=%s chunks=%s range=%s..%s "
+                            "inserted=%s updated=%s deleted=%s unchanged=%s cursor=%s sweep_complete=%s "
+                            "budget_exhausted=%s busy_skips=%s seconds=%.3f",
+                            run_id, repair.status, repair.reason or "-", repair.chunks,
+                            repair.range_start.isoformat() if repair.range_start else "-",
+                            repair.range_end.isoformat() if repair.range_end else "-",
+                            repair.totals.inserted, repair.totals.updated, repair.totals.deleted,
+                            repair.totals.unchanged, repair.cursor.isoformat() if repair.cursor else "-",
+                            repair.sweep_complete, repair.budget_exhausted, repair.busy_skips, repair.seconds,
                         )
 
             if fuel_due:
@@ -1494,16 +1522,17 @@ class TransportCollectionService:
         return stored
 
     async def _rebuild_touched_traffic_buckets(self, session: AsyncSession, report: TrafficStoreReport) -> None:
-        """원천 transaction 안: 이번 저장이 바꾼 bucket의 5분 통계만 좁게 다시 만든다(WLH-06).
+        """원천 transaction 안: 이번 저장이 바꾼 bucket의 5분 통계만 좁게 맞춘다(WLH-06).
 
         대상은 새로 넣은 관측과 통계 입력값(`TRAFFIC_STATISTICS_INPUT_FIELDS`)이 바뀐 관측의 bucket이다. 값이 같은
         반복 관측(센서가 멈춘 구간이 매 주기 돌려주는 오래된 관측)은 넣지 않는다 — 예전에는 응답 전체로 과거 bucket을
         모아 매 실행 결과가 같은 재집계를 반복했다. 이 bucket은 원본과 같은 transaction에서 commit되므로, commit 뒤
         재대조가 실패하거나 프로세스가 그 사이에 끝나도 이번 원본의 통계는 이미 맞다. 이어진 bucket은 한 범위로 묶는다.
+        창 재대조·장기 복구와 같은 차이 기반 재대조(`reconcile_traffic_statistics`)라 바뀌지 않은 그룹은 쓰지 않는다.
 
-        bucket을 쓰기 전에 통계 잠금(`TRAFFIC_STATISTICS_ADVISORY_LOCK_KEY`)을 기다려 잡는다. 앞 실행의 창 재대조가
-        아직 돌고 있으면 그 commit까지 기다리고(상한 `TRAFFIC_STATISTICS_LOCK_WAIT`), 같은 bucket의 unique 충돌로 원천
-        전체가 rollback되지 않게 한다. 잠금은 이 transaction의 commit까지(성공 표시 포함) 짧게만 쥔다.
+        bucket을 쓰기 전에 통계 잠금(`TRAFFIC_STATISTICS_ADVISORY_LOCK_KEY`)을 기다려 잡는다. 앞 실행의 창 재대조나 장기
+        복구 구간이 아직 돌고 있으면 그 commit까지 기다리고(상한 `TRAFFIC_STATISTICS_LOCK_WAIT`), 같은 bucket의 unique
+        충돌로 원천 전체가 rollback되지 않게 한다. 잠금은 이 transaction의 commit까지(성공 표시 포함) 짧게만 쥔다.
         """
         bind = session.get_bind()
         if bind.dialect.name != "postgresql":
@@ -1520,7 +1549,8 @@ class TransportCollectionService:
             else:
                 ranges.append([bucket_start, bucket_start + step])
         for range_start, range_end in ranges:
-            await self._rebuild_traffic_statistics_range(session, range_start, range_end)
+            result = await self._rebuild_traffic_statistics_range(session, range_start, range_end)
+            report.touched_statistics_rows += result.changed
         report.touched_buckets = len(buckets)
         report.out_of_window_buckets = sum(1 for bucket in buckets if bucket < report.rebuild_from)
         report.end()
@@ -1528,89 +1558,86 @@ class TransportCollectionService:
     @staticmethod
     async def _wait_for_traffic_statistics_lock(session: AsyncSession) -> None:
         """원천 transaction이 통계 잠금을 기다려 잡는다. 이 대기만 수집 기본 `lock_timeout`보다 길게 둔다."""
-        previous = await session.scalar(text("SELECT current_setting('lock_timeout')"))
-        await session.execute(text("SELECT set_config('lock_timeout', :wait, true)"),
-                              {"wait": TRAFFIC_STATISTICS_LOCK_WAIT})
-        await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": TRAFFIC_STATISTICS_ADVISORY_LOCK_KEY})
-        await session.execute(text("SELECT set_config('lock_timeout', :previous, true)"), {"previous": previous})
+        await wait_for_traffic_statistics_lock(session)
 
     async def _refresh_recent_traffic_statistics(
         self,
         session: AsyncSession,
         rebuild_from: datetime,
-    ) -> tuple[bool | None, str | None]:
-        """원천 commit 뒤 별도 transaction으로 최근 창 전체의 5분 통계를 원본에서 다시 만든다(WLH-06 재대조).
+    ) -> tuple[bool | None, str | None, ReconcileResult | None]:
+        """원천 commit 뒤 별도 transaction으로 최근 창의 5분 통계를 원본 정본과 차이 기반으로 재대조한다(WLH-06).
 
         이번 원본이 바꾼 bucket은 이미 원천 transaction에서 맞췄다(`_rebuild_touched_traffic_buckets`). 이 단계는 최근
-        두 시간이 원본의 재계산과 같다는 예전 보장을 유지하는 멱등 재대조다(같은 범위 DELETE + 원본 INSERT…SELECT —
-        몇 번을 다시 해도 결과가 같다). 그래서 실패(문장 시간 초과·잠금 대기 등)는 이미 확정한 원본·current·성공 상태를
-        되돌리지 않고 (False, 원인 코드)와 한 줄 경고로 남기며, 다음 실행의 같은 단계가 그 창을 다시 만든다. 원천 상태
-        행은 이 결과로 바꾸지 않는다. 다른 transaction이 통계 잠금을 쥐고 있으면 기다리지 않고 (False, "busy")로
-        미룬다. PostgreSQL이 아니면(5분 집계 표를 쓰지 않는다) (None, None)이다.
+        두 시간이 원본의 재계산과 같다는 보장을 유지하는 멱등 재대조다 — 정본에 없는 행만 넣고, 값이 다른 행만 고치고,
+        정본에 없는 통계 행만 지운다. 그래서 어긋남이 없으면 0행을 바꾸고(바뀌지 않은 행은 다시 쓰지 않는다), 바꾼 행 수가
+        곧 어긋남이다(경고 신호, 실패 아님). 실패(문장 시간 초과·잠금 대기 등)는 이미 확정한 원본·current·성공 상태를
+        되돌리지 않고 (False, 원인 코드, None)과 한 줄 경고로 남기며, 다음 실행의 같은 단계가 그 창을 다시 맞춘다. 원천 상태
+        행은 이 결과로 바꾸지 않는다. 다른 transaction이 통계 잠금을 쥐고 있으면 기다리지 않고 (False, "busy", None)으로
+        미룬다. PostgreSQL이 아니면(5분 집계 표를 쓰지 않는다) (None, None, None)이다.
         """
         bind = session.get_bind()
         if bind.dialect.name != "postgresql":
-            return None, None
+            return None, None, None
         try:
-            locked = await session.scalar(text("SELECT pg_try_advisory_xact_lock(:key)"),
-                                          {"key": TRAFFIC_STATISTICS_ADVISORY_LOCK_KEY})
-            if not locked:
+            if not await try_lock_traffic_statistics(session):
                 await session.rollback()
                 logger.warning(
                     "highway traffic statistics reconcile deferred reason=busy rebuild_from=%s; another transaction "
-                    "holds the statistics lock and the next collection rebuilds the recent window",
+                    "holds the statistics lock and the next collection reconciles the recent window",
                     rebuild_from.isoformat(),
                 )
-                return False, "busy"
-            await self._rebuild_traffic_statistics_range(session, rebuild_from)
+                return False, "busy", None
+            # 낮은 우선순위의 독립 transaction이다. 병렬 집계를 끄고(A55 코어를 더 쓰지 않고 합 순서도 매번 같게) 맞춘다.
+            await session.execute(text("SELECT set_config('max_parallel_workers_per_gather', '0', true)"))
+            result = await self._rebuild_traffic_statistics_range(session, rebuild_from)
             await session.commit()
         except Exception as exc:
             await session.rollback()
             reason = _database_failure_reason(exc)
             logger.warning(
                 "highway traffic statistics reconcile deferred reason=%s rebuild_from=%s cause=%s; stored traffic, "
-                "its touched buckets and source state are kept and the next collection rebuilds the recent window",
+                "its touched buckets and source state are kept and the next collection reconciles the recent window",
                 reason, rebuild_from.isoformat(), _safe_error(exc, self.settings)[:300],
             )
-            return False, reason
-        return True, None
+            return False, reason, None
+        return True, None, result
 
     @staticmethod
     async def _rebuild_traffic_statistics_range(
         session: AsyncSession,
         rebuild_from: datetime,
         rebuild_until: datetime | None = None,
-    ) -> None:
-        params = {"rebuild_from": rebuild_from, "rebuild_until": rebuild_until}
-        source_filter = "observed_at >= :rebuild_from"
-        bucket_filter = "bucket_start >= :rebuild_from"
-        if rebuild_until is not None:
-            source_filter += " AND observed_at < :rebuild_until"
-            bucket_filter += " AND bucket_start < :rebuild_until"
-        await session.execute(
-            text("DELETE FROM highway_traffic_five_minute_statistics WHERE " + bucket_filter),
-            params,
-        )
-        await session.execute(
-            text(
-                """
-                INSERT INTO highway_traffic_five_minute_statistics (
-                    bucket_start, route_no_key, direction_key, observations,
-                    speed_observations, speed_sum, minimum_speed, maximum_speed,
-                    free_flow_speed_observations, free_flow_speed_sum, latest_observed_at
-                )
-                SELECT
-                    date_bin(INTERVAL '5 minutes', observed_at, TIMESTAMPTZ '2000-01-01 00:00:00+00'),
-                    COALESCE(route_no, ''), COALESCE(direction, ''), COUNT(*),
-                    COUNT(speed), SUM(speed), MIN(speed), MAX(speed),
-                    COUNT(free_flow_speed), SUM(free_flow_speed), MAX(observed_at)
-                FROM highway_traffic_snapshots
-                WHERE """ + source_filter + """
-                GROUP BY 1, 2, 3
-                """
-            ),
-            params,
-        )
+    ) -> ReconcileResult:
+        """`[rebuild_from, rebuild_until)`의 5분 통계를 원본 정본과 같게 맞춘다(차이 기반, `reconcile_traffic_statistics`)."""
+        return await reconcile_traffic_statistics(session, rebuild_from, rebuild_until)
+
+    async def _repair_old_traffic_statistics(
+        self,
+        session: AsyncSession,
+        report: TrafficStoreReport,
+        run_started_at: datetime,
+    ) -> RepairOutcome | None:
+        """최근 창보다 오래된 구간의 장기 어긋남 복구 한 조각(고속도로 실행 끝, 최근 창 재대조 뒤).
+
+        정기 고속도로 실행은 job별 동시 실행 1·run group(highway) 상한 1로 직렬화되므로, 같은 실행 안의 이 조각은 다른
+        통계 쓰기와 겹치지 않는다(겹치면 try-lock으로 양보). 낮은 우선순위라 최근 창 재대조가 실패·지연한 실행(DB 부하
+        신호)이나 이미 오래 걸린 실행(`TRAFFIC_STATISTICS_REPAIR_SKIP_AFTER`)에서는 건너뛴다. 실패·양보는 원천·통계 결과를
+        바꾸지 않고 다음 실행이 같은 구간부터 이어 한다. 지평이 0이거나 PostgreSQL이 아니면 None이다.
+        """
+        horizon_hours = self.settings.transport_traffic_statistics_repair_horizon_hours
+        if horizon_hours <= 0 or session.get_bind().dialect.name != "postgresql":
+            return None
+        if report.statistics_refreshed is not True:
+            return RepairOutcome(status="deferred", reason="window_deferred")
+        if now_utc() - serialize_utc(run_started_at) >= TRAFFIC_STATISTICS_REPAIR_SKIP_AFTER:
+            return RepairOutcome(status="deferred", reason="run_budget")
+        try:
+            return await repair_traffic_statistics(
+                session, window_start=report.rebuild_from, horizon=timedelta(hours=horizon_hours),
+            )
+        except Exception as exc:  # noqa: BLE001 — 구간 밖의 예기치 못한 오류도 수집 결과를 바꾸지 않는다.
+            await session.rollback()
+            return RepairOutcome(status="failed", reason=_database_failure_reason(exc))
 
     async def _store_incidents(
         self,
@@ -2018,8 +2045,8 @@ class TransportCollectionService:
                     "next_due_at": item.next_due_at,
                     "last_error": item.last_error,
                 }
-                # 공항 KAC 할당량 원장은 같은 표에 두지만 교통 원천이 아니다(공항 collector-status가 소유).
-                for item in states if item.source != KAC_QUOTA_SOURCE
+                # 공항 KAC 할당량 원장과 소통 통계 장기 복구 진행 원장은 같은 표에 두지만 교통 원천이 아니다.
+                for item in states if item.source not in {KAC_QUOTA_SOURCE, TRAFFIC_STATISTICS_REPAIR_STATE}
             ],
         }
 

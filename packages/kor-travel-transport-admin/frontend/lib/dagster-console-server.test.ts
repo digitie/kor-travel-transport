@@ -310,3 +310,34 @@ describe("소통 5분 통계 재대조 지연(WLH-06)",()=>{
   expect(result.warning).toBe(true);expect(result.detail).toContain("소통 원천 저장 되돌림");expect(result.detail).toContain("관측 이력 저장");expect(result.detail).toContain("SQLSTATE 등급 22");expect(result.counts.traffic_history_seconds).toBe(59.9);
  });
 });
+
+describe("소통 5분 통계 어긋남·장기 복구(차이 기반 재대조)",()=>{
+ const output=(metadataEntries:unknown[])=>sanitizeConsoleEvents([{__typename:"ExecutionStepOutputEvent",timestamp:"1780000000000",stepKey:"collect_highway_transport",metadataEntries}])[0];
+ const success=[{label:"status",text:"success"},{label:"collection_outcome",text:"success"},{label:"traffic_statistics_refreshed",boolValue:true}];
+ it("최근 2시간 어긋남은 경고 안내·행 수이고 결과는 성공 그대로다",()=>{
+  const result=output([...success,{label:"traffic_statistics_drift_rows",intValue:3},{label:"traffic_statistics_updated_rows",intValue:2},{label:"traffic_statistics_unchanged_rows",intValue:2870}]);
+  expect(result.warning).toBe(true);expect(result.detail).toContain("소통 5분 통계 어긋남 3행 바로잡음");expect(result.detail).toContain("자료 수집 완료");
+  expect(result.detail).not.toContain("재대조 대기");expect(result.counts).toMatchObject({traffic_statistics_drift_rows:3,traffic_statistics_updated_rows:2,traffic_statistics_unchanged_rows:2870});
+ });
+ it("어긋남 0과 장기 복구 확인은 경고가 아니다",()=>{
+  const result=output([...success,{label:"traffic_statistics_drift_rows",intValue:0},{label:"traffic_statistics_repair_status",text:"repaired"},{label:"traffic_statistics_repair_drift_rows",intValue:0},{label:"traffic_statistics_repair_range_start",text:"2026-11-20T00:00:00Z"},{label:"traffic_statistics_repair_range_end",text:"2026-11-20T04:00:00Z"},{label:"traffic_statistics_repair_seconds",floatValue:1.5}]);
+  expect(result.warning).toBe(false);expect(result.detail).toContain("장기 복구 확인 (11.20 09:00~11.20 13:00 KST) · 어긋남 없음");expect(result.detail).not.toContain("어긋남 0행");
+  expect(result.counts.traffic_statistics_repair_seconds).toBe(1.5);
+ });
+ it("장기 복구가 바로잡은 행과 실패는 경고, 양보·건너뜀·예산 소진·한 바퀴 완료는 안내다",()=>{
+  const fixed=output([...success,{label:"traffic_statistics_repair_status",text:"repaired"},{label:"traffic_statistics_repair_drift_rows",intValue:7},{label:"traffic_statistics_repair_range_start",text:"2026-11-19T22:00:00Z"},{label:"traffic_statistics_repair_range_end",text:"2026-11-20T00:00:00Z"},{label:"traffic_statistics_repair_sweep_complete",boolValue:true},{label:"traffic_statistics_repair_budget_exhausted",boolValue:true}]);
+  expect(fixed.warning).toBe(true);expect(fixed.detail).toContain("원본과 다른 7행 바로잡음 (11.20 07:00~11.20 09:00 KST)");expect(fixed.detail).toContain("한 바퀴 완료");expect(fixed.detail).toContain("실행 예산 소진");
+  const failed=output([...success,{label:"traffic_statistics_repair_status",text:"failed"},{label:"traffic_statistics_repair_reason",text:"statement_timeout"}]);
+  expect(failed.warning).toBe(true);expect(failed.detail).toContain("장기 복구 실패 · 원인 DB 문장 시간 초과 · 다음 수집이 같은 구간부터 다시");
+  for(const [status,reason,note] of [["busy","","장기 복구 양보"],["deferred","run_budget","이번 수집이 이미 오래 걸림"],["deferred","window_deferred","최근 2시간 재대조가 지연됨"]]){
+   const result=output([...success,{label:"traffic_statistics_repair_status",text:status},{label:"traffic_statistics_repair_reason",text:reason}]);
+   expect(result.warning).toBe(false);expect(result.detail).toContain(note);
+  }
+ });
+ it("허용되지 않은 상태·사유·시각 형식은 싣지 않는다",()=>{
+  const result=output([...success,{label:"traffic_statistics_repair_status",text:"failed"},{label:"traffic_statistics_repair_reason",text:"private-canary"},{label:"traffic_statistics_repair_range_start",text:"private-canary"},{label:"traffic_statistics_repair_range_end",text:"2026-11-20T00:00:00Z"},{label:"traffic_statistics_drift_rows",floatValue:2.5}]);
+  expect(JSON.stringify(result)).not.toContain("private-canary");expect(result.detail).toContain("장기 복구 실패 · 다음 수집이");expect(result.detail).not.toContain("KST");expect(result.detail).not.toContain("어긋남 2.5");
+  const unknown=output([...success,{label:"traffic_statistics_repair_status",text:"exploded"},{label:"traffic_statistics_repair_reason",text:"constructor"}]);
+  expect(unknown.warning).toBe(false);expect(unknown.detail??"").not.toContain("장기 복구");
+ });
+});
