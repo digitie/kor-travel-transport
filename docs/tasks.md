@@ -1,5 +1,9 @@
 ## 2026-11-24 — 수집 실패 감사 후속
 
+- [ ] **POSTMERGE-REVIEW-20261124 / P1** — #262·#260 사후 리뷰 P1 수정(KAC 429 뒤 요금 호출 중단, 공개 인천 조회 대기 상한, 키 전체·장애
+  실패를 대상 지수 대기에서 제외). **남은 것(소유자)**: 좌표 보강의 제공기관 전면 장애를 FAILURE로 올릴 기준(#260 P1-3).
+  [journal](journal.md) 2026-11-24.
+
 - [ ] **INCIDENT-EMPTY-SET-20261124 / P0** — 돌발 0건(완결 증거 포함)을 성공으로 받지 않고 export는 503. **남은 것**: 배포 뒤
   Map `transport_state_highway_incidents`에서 0건 집합 교체가 사라졌는지, 0건 응답이 얼마나 자주 오는지(`empty incident set after one re-fetch` 실패 수)
   확인 — 잦으면 KREX 측 원인(python-krex-api)으로 넘긴다. [journal](journal.md) 2026-11-24.

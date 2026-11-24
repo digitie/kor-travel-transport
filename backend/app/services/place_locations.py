@@ -35,6 +35,23 @@ FAILED_TARGET_MAX_BACKOFF_DAYS = 30
 FAILED_TARGET_HISTORY = 6
 
 
+#: 대상 하나의 잘못이 아니라 키 전체의 문제로 남긴 실패(인증·쿼터). 대상별 지수 대기에 세지 않는다. 연속 실패로 멈춘
+#: 실행의 실패는 센다 — 매일 같은 오류를 내는 대상이 셋 이상이면 장애와 구분할 수 없고, 세지 않으면 지수 대기가 무력해진다.
+KEY_WIDE_FAILURES = frozenset({"VworldAuthError", "VworldRateLimitError"})
+#: 하루 한 번 schedule은 매일 같은 시각보다 조금 이르거나 늦게 돈다. 대기(N일)를 정확히 N×24시간으로 비교하면 하루씩 더
+#: 밀리므로 이만큼 여유를 둔다.
+FAILED_TARGET_BACKOFF_SLACK = timedelta(hours=2)
+
+
+def _target_failure(status: str | None, error: str | None) -> bool | None:
+    """대상 자신의 실패면 True, 키 전체 문제(세지 않음)면 None, 실패가 아니면 False."""
+    if status != "failed":
+        return False
+    if error in KEY_WIDE_FAILURES:
+        return None
+    return True
+
+
 def failed_target_backoff(consecutive_failures: int) -> timedelta:
     """연속 실패 횟수에 따른 다음 호출까지의 대기(1→1일, 2→2일, 3→4일 …, 최대 30일)."""
     exponent = min(max(consecutive_failures, 1) - 1, FAILED_TARGET_HISTORY - 1)
@@ -165,22 +182,29 @@ class PlaceLocationCollectionService:
             return timedelta(days=30)
         if previous.parse_status != "failed":
             return timedelta(days=1)
-        recent = (await session.scalars(select(RawApiResponse.parse_status).where(
+        if _target_failure(previous.parse_status, previous.parse_error) is None:
+            # 키 교체·제공기관 회복 뒤 바로 다시 부른다(다음 정기 실행).
+            return timedelta(days=1) - FAILED_TARGET_BACKOFF_SLACK
+        recent = (await session.execute(select(RawApiResponse.parse_status, RawApiResponse.parse_error).where(
             RawApiResponse.source == LOCATION_SOURCE, RawApiResponse.endpoint == endpoint,
-        ).order_by(RawApiResponse.received_at.desc(), RawApiResponse.id.desc()).limit(FAILED_TARGET_HISTORY))).all()
+        ).order_by(RawApiResponse.received_at.desc(), RawApiResponse.id.desc())
+            .limit(2 * FAILED_TARGET_HISTORY))).all()
         streak = 0
-        for status in recent:
-            if status != "failed":
+        for status, error in recent:
+            own = _target_failure(status, error)
+            if own is None:
+                continue  # 키 전체 문제는 세지도 끊지도 않는다.
+            if not own:
                 break
             streak += 1
-        return failed_target_backoff(streak)
+        return failed_target_backoff(streak) - FAILED_TARGET_BACKOFF_SLACK
 
     async def _collect_unlocked(self, session: AsyncSession, *, kinds=None) -> dict[str, Any]:
         run = CollectionRun(started_at=now_utc(), status="running", trigger=TRIGGER)
         session.add(run)
         await session.commit()
         summary = {"provider_calls": 0, "bus_locations": 0, "port_locations": 0, "rail_locations": 0, "unmatched": 0,
-                   "deferred": 0, "provider_failed": 0, "provider_blocked": 0}
+                   "deferred": 0, "provider_failed": 0, "provider_blocked": 0, "backoff_skipped": 0}
         consecutive_failures = 0
         try:
             async with self.client_factory(
@@ -227,6 +251,8 @@ class PlaceLocationCollectionService:
                                 and (previous.request_params_json or {}).get("city_name") == (
                                     row.city_name if kind == "bus" else None)
                                 and now - received < await self._retry_after(session, endpoint, previous)):
+                            if previous.parse_status == "failed":
+                                summary["backoff_skipped"] += 1  # 실패 대상 지수 대기로 이번에 부르지 않음
                             continue
                     if session.bind is not None and session.bind.dialect.name == "postgresql":
                         await session.execute(text("SELECT pg_advisory_xact_lock(420053)"))

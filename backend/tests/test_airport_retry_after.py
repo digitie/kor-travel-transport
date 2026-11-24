@@ -110,3 +110,77 @@ def test_plain_429_without_retry_after_keeps_old_behaviour(export_client, monkey
 ])
 def test_retry_after_hint_is_bounded(error, expected):
     assert rate_limit_retry_after(error) == expected
+
+
+class FeeCountingFixture(RetryAfterFixture):
+    fee_calls: list[str]
+    fee_limited = False
+
+    async def fetch_kac_fee(self, airport_code: str):
+        self.fee_calls.append(airport_code)
+        if self.fee_limited:
+            raise KrairportRateLimitError("HTTP 429: too many requests", retry_after=None)
+        return await super().fetch_kac_fee(airport_code)
+
+
+@pytest.mark.parametrize("map_mode", [False, True])
+def test_parking_429_stops_the_fee_calls_of_the_same_run(export_client, map_mode):
+    """사후 리뷰 P1: 주차 429(Retry-After 없음)를 받은 실행이 요금 공항별 호출을 이어 가지 않는다."""
+    c = export_client
+    client = FeeCountingFixture()
+    client.fee_calls = []
+    client.retry_after = None
+    collector = service(c, client)
+    collector.settings.transport_map_current_enabled = map_mode
+    collector.settings.enable_fee_collection = True
+    _run(c, lambda s: collector.collect(s))
+    assert client.calls == 1 and client.fee_calls == []
+
+
+def test_first_fee_429_stops_the_remaining_fee_airports(export_client):
+    c = export_client
+    client = FeeCountingFixture()
+    client.fee_calls = []
+    client.limited = False
+    client.fee_limited = True
+    collector = service(c, client)
+    collector.settings.enable_fee_collection = True
+    _run(c, lambda s: collector.collect(s))
+    assert len(client.fee_calls) == 1  # 남은 공항(최대 13곳)을 같은 실행에서 부르지 않는다
+
+
+def test_public_incheon_flight_lookup_does_not_wait_minutes_on_429(monkeypatch):
+    """공개 인천 조회는 SDK 재시도를 짧게 쓰고, 짧은 Retry-After의 rate_limited는 그 시간만큼만 캐시한다."""
+    import asyncio
+    from datetime import date
+
+    from app.core.config import Settings
+    from app.services import flight_status
+
+    seen: dict = {}
+
+    class Client:
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return None
+
+        async def iiac_raw_items(self, *args, **kwargs):
+            raise KrairportRateLimitError("HTTP 429", retry_after=7)
+
+    monkeypatch.setattr(flight_status, "KrairportClient", Client)
+    settings = Settings(data_go_kr_service_key="k", use_sample_client_when_no_key=False,
+                        upstream_rate_limit_backoff_seconds=3600)
+    service = flight_status.FlightStatusService(settings)
+    origin = now_utc()
+    monkeypatch.setattr(flight_status, "now_utc", lambda: origin)
+    payload = asyncio.run(service.get_status("ICN", date.today()))
+    assert payload["status"] == "rate_limited" and "_retry_after_seconds" not in payload
+    assert seen["retries"] == flight_status.PUBLIC_REQUEST_RETRIES <= 1
+    assert seen["max_retry_after"] == flight_status.PUBLIC_REQUEST_MAX_RETRY_AFTER_SECONDS <= 5
+    expires_at, _ = next(iter(service._cache.values()))
+    assert expires_at == origin + timedelta(seconds=flight_status.RATE_LIMITED_MIN_CACHE_SECONDS)
