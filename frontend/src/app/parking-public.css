@@ -231,6 +231,25 @@
   font-size: var(--text-2xs);
 }
 
+/* 기간 분석 기준 시각. 좁은 화면에서는 제목 아래로 내려가고, 조각 안에서는 줄바꿈하지 않는다. 늦으면 경고 톤. */
+.parking-public main .analytics-page-header {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+.parking-public .analytics-basis span {
+  white-space: nowrap;
+}
+
+.parking-public .analytics-basis[data-tone="warning"] {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--color-tone-warning-ink);
+  background: var(--color-tone-warning-bg);
+  font-weight: 600;
+}
+
 /* ── 분석·과거조회·요금 패널 ── */
 .parking-public .action-stack {
   margin-bottom: 12px;

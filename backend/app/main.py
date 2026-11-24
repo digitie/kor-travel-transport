@@ -333,6 +333,8 @@ class DashboardSourceMetrics:
     threshold_insights: ThresholdInsightsResponse
     weekday_hour_patterns: list[WeekdayHourlyPattern]
     time_series: ParkingTimeSeriesResponse
+    #: 원본을 읽기 전 시각(memo 재사용 기준과 같다). 화면의 "분석 기준 시각"에 쓴다.
+    generated_at: datetime
 
 
 def cached_transport_statistics(handler):
@@ -3408,23 +3410,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # 수집 직후(사전집계 갱신 전)에도 원본 계산으로 떨어지지 않게 갱신 대기 중인 직전 사전집계를 생성 시각과 함께
         # 낸다(`DASHBOARD_REFRESH_GRACE`). 사전집계는 공항 수집 job이 수집 commit 직후 다시 만든다(미리 데우기).
         served: set[str] = set()
+        generated: list[datetime] = []
         cached_events = await load_cached_analytics(
             session, metric=METRIC_THRESHOLD_EVENTS, airport_code=airport_code, parking_lot_id=parking_lot_id,
-            days=DEFAULT_THRESHOLD_EVENTS_DAYS, limit=DEFAULT_THRESHOLD_EVENTS_LIMIT, refresh_grace=True, served=served,
+            days=DEFAULT_THRESHOLD_EVENTS_DAYS, limit=DEFAULT_THRESHOLD_EVENTS_LIMIT, refresh_grace=True, served=served, generated=generated,
         )
         cached_insights = await load_cached_analytics(
             session, metric=METRIC_THRESHOLD_INSIGHTS, airport_code=airport_code, parking_lot_id=parking_lot_id,
             days=DEFAULT_THRESHOLD_INSIGHTS_DAYS, interval_minutes=DEFAULT_THRESHOLD_INSIGHTS_INTERVAL_MINUTES,
-            refresh_grace=True, served=served,
+            refresh_grace=True, served=served, generated=generated,
         )
         cached_weekday = await load_cached_analytics(
             session, metric=METRIC_WEEKDAY_HOUR, airport_code=airport_code, parking_lot_id=parking_lot_id,
-            days=DEFAULT_WEEKDAY_HOUR_DAYS, refresh_grace=True, served=served,
+            days=DEFAULT_WEEKDAY_HOUR_DAYS, refresh_grace=True, served=served, generated=generated,
         )
         cached_series = await load_cached_analytics(
             session, metric=METRIC_TIMESERIES, airport_code=airport_code, parking_lot_id=parking_lot_id,
             days=DEFAULT_TIMESERIES_DAYS, interval_minutes=DEFAULT_TIMESERIES_INTERVAL_MINUTES,
-            future_hours=DEFAULT_TIMESERIES_FUTURE_HOURS, refresh_grace=True, served=served,
+            future_hours=DEFAULT_TIMESERIES_FUTURE_HOURS, refresh_grace=True, served=served, generated=generated,
         )
         computed: DashboardSourceMetrics | None = None
         if None in (cached_events, cached_insights, cached_weekday, cached_series):
@@ -3442,6 +3445,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                    if cached_weekday is not None else computed.weekday_hour_patterns)
         series = (ParkingTimeSeriesResponse(**cached_series)
                   if cached_series is not None else computed.time_series)
+        # 화면의 "기준 시각": 낸 네 분석 중 가장 오래된 생성 시각. 사전집계를 유예로 내면 수집보다 늦을 수 있다
+        # (갱신 실패 시 최대 `DASHBOARD_REFRESH_GRACE`, 새 적재가 없으면 `DASHBOARD_STALE_CACHE_MAX_AGE`).
+        if computed is not None:
+            generated.append(serialize_utc(computed.generated_at))
+        analytics_generated_at = min(generated) if generated else None
+        # 화면이 늦음을 서버 시계로 판정하게 나이를 함께 낸다(브라우저 시계가 틀려도 판정이 뒤집히지 않는다).
+        analytics_age_seconds = (
+            max(0, int((now_utc() - analytics_generated_at).total_seconds())) if analytics_generated_at else None
+        )
 
         return DashboardAnalyticsResponse(
             threshold_events=events,
@@ -3455,6 +3467,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 holiday_service,
             ),
             time_series=series,
+            analytics_generated_at=analytics_generated_at,
+            analytics_age_seconds=analytics_age_seconds,
         )
 
     # 단일 uvicorn 프로세스의 대시보드 원본 계산 결과. DB 캐시와 같은 재사용 조건(생성 10분 이내,
@@ -3542,6 +3556,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 airport_code, parking_lot_id, DEFAULT_TIMESERIES_DAYS,
                 DEFAULT_TIMESERIES_INTERVAL_MINUTES, DEFAULT_TIMESERIES_FUTURE_HOURS,
             ),
+            generated_at=now,
         ))
 
     async def _reference_maps(session: AsyncSession) -> tuple[dict[int, str], dict[int, Any]]:

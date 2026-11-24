@@ -180,6 +180,66 @@ describe("AnalyticsView", () => {
     apiClient.getDashboardAnalytics.mockResolvedValue(dashboardAnalyticsPayload);
   });
 
+  test("기간 분석의 기준 시각(KST)을 보이고, 서버가 잰 나이가 30분 이상이면 경고 톤으로 알린다", async () => {
+    const now = Date.parse("2026-11-24T05:30:00Z");
+    const spy = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      apiClient.getDashboardAnalytics.mockResolvedValue({
+        ...dashboardAnalyticsPayload, analytics_generated_at: "2026-11-24T05:10:00Z", analytics_age_seconds: 20 * 60,
+      });
+      const { unmount } = renderAnalytics();
+      const fresh = await screen.findByTestId("analytics-basis");
+      // 평소(수집 + 갱신)에도 20분까지는 늦을 수 있어 경고하지 않는다.
+      expect(fresh).toHaveTextContent("분석 기준 11.24 14:10 KST");
+      expect(fresh).toHaveAttribute("data-tone", "neutral");
+      expect(fresh.querySelector("time")).toHaveAttribute("datetime", "2026-11-24T05:10:00.000Z");
+      unmount();
+
+      apiClient.getDashboardAnalytics.mockResolvedValue({
+        ...dashboardAnalyticsPayload, analytics_generated_at: "2026-11-24T04:45:00Z", analytics_age_seconds: 45 * 60,
+      });
+      renderAnalytics();
+      const late = await screen.findByTestId("analytics-basis");
+      expect(late).toHaveTextContent("분석 기준 11.24 13:45 KST · 45분 전 집계");
+      expect(late).toHaveAttribute("data-tone", "warning");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("늦음은 서버가 잰 나이로 판정한다 — 브라우저 시계가 틀려도 뒤집히지 않는다", async () => {
+    // 브라우저 시계가 1시간 빠르지만 서버 기준으로는 5분 전 값이다.
+    const spy = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-24T06:25:00Z"));
+    try {
+      apiClient.getDashboardAnalytics.mockResolvedValue({
+        ...dashboardAnalyticsPayload, analytics_generated_at: "2026-11-24T05:20:00Z", analytics_age_seconds: 300,
+      });
+      renderAnalytics();
+      expect(await screen.findByTestId("analytics-basis")).toHaveAttribute("data-tone", "neutral");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("서버 나이가 없는 응답은 받은 시각 기준으로 대신 판정한다", async () => {
+    const spy = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-24T05:30:00Z"));
+    try {
+      apiClient.getDashboardAnalytics.mockResolvedValue({ ...dashboardAnalyticsPayload, analytics_generated_at: "2026-11-24T04:50:00Z" });
+      renderAnalytics();
+      const late = await screen.findByTestId("analytics-basis");
+      expect(late).toHaveTextContent("40분 전 집계");
+      expect(late).toHaveAttribute("data-tone", "warning");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("기준 시각이 없는 이전 backend 응답에서는 표시하지 않는다", async () => {
+    renderAnalytics();
+    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+    expect(screen.queryByTestId("analytics-basis")).not.toBeInTheDocument();
+  });
+
   test("일별 엔진은 첫 탭 방문 때 열고 다시 숨겨도 날짜 선택을 유지한다", async () => {
     apiClient.getDashboardAnalytics.mockResolvedValue({ ...dashboardAnalyticsPayload, time_series: {
       ...timeSeriesPayload, items: [{ bucket_at: "2026-11-03T08:00:00Z", available_spaces: 0, occupied_spaces: 100, total_spaces: 100, lot_observations: 1 }],

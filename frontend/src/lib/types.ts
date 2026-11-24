@@ -274,4 +274,8 @@ export type DashboardAnalyticsResponse = {
   weekday_hour_patterns: WeekdayHourlyPattern[];
   holiday_patterns: HolidayPatternResponse;
   time_series: ParkingTimeSeriesResponse;
+  /** 기간 분석의 기준 시각(UTC). 사전집계 갱신을 기다리거나 갱신이 실패하면 현재값보다 늦을 수 있다. */
+  analytics_generated_at?: string | null;
+  /** 응답 시각 기준 `analytics_generated_at`의 나이(초, 서버 시계). */
+  analytics_age_seconds?: number | null;
 };

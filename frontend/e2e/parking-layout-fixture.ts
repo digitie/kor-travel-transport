@@ -31,8 +31,14 @@ function statusLevel(available: number, total: number) {
   return ratio < 0.1 ? "critical" : ratio < 0.25 ? "warning" : ratio < 0.5 ? "busy" : "stable";
 }
 
-export async function installParkingFixture(page: Page) {
+export type ParkingFixtureOptions = {
+  /** `/dashboard/analytics`의 기간 분석 기준 시각. 주지 않으면 관측 시각과 같다. */
+  analyticsGeneratedAt?: string | null;
+};
+
+export async function installParkingFixture(page: Page, options: ParkingFixtureOptions = {}) {
   const observedAt = new Date(Date.now() - 2 * 60_000).toISOString();
+  const analyticsGeneratedAt = options.analyticsGeneratedAt === undefined ? observedAt : options.analyticsGeneratedAt;
   const airports = PARKING_FIXTURE_AIRPORTS.map((airport) => ({
     code: airport.code, name_ko: airport.name, name_en: airport.code, source: "kac",
     parking_lots: airport.lots.map((lot) => ({ id: lot.id, source_lot_id: `${airport.code}-${lot.id}`, legacy_source_lot_id: null, name: lot.name, terminal: lot.terminal, category: "short", is_active: true })),
@@ -52,6 +58,8 @@ export async function installParkingFixture(page: Page) {
     weekday_hour_patterns: ["월", "화", "수", "목", "금", "토", "일"].map((weekday_name, weekday) => ({ weekday, weekday_name, hourly_buckets: hourly })),
     holiday_patterns: { generated_at: observedAt, airport_code: airport, parking_lot_id: lot, source: "fixture", status: "success", error_message: null, items: [{ local_date: "2026-10-09", name: "한글날", weekday: 4, weekday_name: "금", hourly_buckets: hourly }] },
     time_series: series(airport, lot),
+    analytics_generated_at: analyticsGeneratedAt,
+    analytics_age_seconds: analyticsGeneratedAt ? Math.max(0, Math.floor((Date.now() - Date.parse(analyticsGeneratedAt)) / 1000)) : null,
   });
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());

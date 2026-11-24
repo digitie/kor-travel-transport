@@ -22,6 +22,10 @@ type AnalyticsState = {
   holidayPatterns: HolidayPatternResponse | null;
   timeSeries: ParkingTimeSeriesResponse | null;
   flightStatus: FlightStatusResponse | null;
+  /** 기간 분석의 기준 시각, 서버가 잰 나이, 응답을 받은 시각. 화면은 서버 나이 + 받은 뒤 흐른 시간으로 늦음을 판정한다. */
+  analyticsGeneratedAt: string | null;
+  analyticsAgeSeconds: number | null;
+  analyticsReceivedAt: number | null;
 };
 
 const INITIAL_STATE: AnalyticsState = {
@@ -34,6 +38,9 @@ const INITIAL_STATE: AnalyticsState = {
   holidayPatterns: null,
   timeSeries: null,
   flightStatus: null,
+  analyticsGeneratedAt: null,
+  analyticsAgeSeconds: null,
+  analyticsReceivedAt: null,
 };
 
 const FLIGHT_FINAL_TIMEOUT_MS = 30_000;
@@ -76,7 +83,7 @@ function withTimeout<T>(
 /**
  * Fetches the dashboard analytics bundle (threshold/weekday/holiday/timeseries) plus flight
  * status for the currently-selected airport/lot. Only mounted by routes that need it
- * (/analytics, /history) - this replaces the old IntersectionObserver-gated lazy load with
+ * (/analytics) - this replaces the old IntersectionObserver-gated lazy load with
  * route-mount-gated loading, and re-fetches whenever `dataVersion` bumps (a background poll
  * found new data) even if the airport/lot selection itself hasn't changed.
  */
@@ -172,6 +179,9 @@ export function useAnalyticsData(flightStatusTimeoutMs = 6_000, enabled = true):
           weekdayHourlyPatterns: analytics.weekday_hour_patterns,
           holidayPatterns: analytics.holiday_patterns,
           timeSeries: analytics.time_series,
+          analyticsGeneratedAt: analytics.analytics_generated_at ?? null,
+          analyticsAgeSeconds: analytics.analytics_age_seconds ?? null,
+          analyticsReceivedAt: Date.now(),
           // 분석이 더 늦게 끝나도 그동안 도착한 실제 항공편을 안내값으로 덮지 않는다.
           flightStatus: finalFlights ?? flights,
         });
