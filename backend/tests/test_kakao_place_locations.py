@@ -277,3 +277,55 @@ def test_kakao_auth_recovery_can_retry_without_waiting_a_day(tmp_path: Path, mon
     finally:
         FakeKakaoClient.status_code = 200
     assert FakeKakaoClient.calls == ["대천항", "대천항"]
+
+
+@pytest.mark.parametrize("failures,age_hours,expect_call", [
+    (1, 23, True),    # 연속 실패 1번: 1일(여유 2시간 뺌) 뒤 다시 부른다(예전과 같은 하루 주기)
+    (2, 23, False),   # 연속 실패 2번: 2일 대기
+    (2, 47, True),
+    (3, 93, False),   # 연속 실패 3번: 4일 대기(여유 2시간 뺀 94시간)
+    (3, 95, True),
+])
+def test_kakao_failed_target_waits_exponentially_like_vworld(tmp_path: Path, monkeypatch, failures, age_hours,
+                                                             expect_call) -> None:
+    """결정적으로 실패하는 대상 하나가 매일 호출·매일 job FAILURE를 만들지 않는다(호출 전량 실패 = run 실패, 2026-11-24).
+
+    예전 카카오 실패 영수증은 1일 고정이었다. 키 전체 문제(401/403/429)는 세지도 끊지도 않는다.
+    """
+    from datetime import timedelta
+
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("app.services.kakao_place_locations.asyncio.sleep", no_sleep)
+    FakeKakaoClient.calls = []
+    settings = Settings(database_url=f"sqlite+aiosqlite:///{tmp_path / 'backoff.sqlite3'}",
+                        seed_sample_data=False, kakao_place_collection_enabled=True,
+                        kakao_rest_api_key="test-key")
+    engine, factory = create_engine_and_session_factory(settings.database_url)
+
+    async def run() -> dict:
+        await init_database(engine)
+        now = now_utc()
+        async with factory() as session:
+            session.add(FerryPort(source="data_go_kr_maritime", port_id="P1", port_name="대천",
+                first_seen_at=now, last_seen_at=now, raw_item_json={}))
+            params = {"query": "대천항", "name": "대천", "city_name": None}
+            latest = now - timedelta(hours=age_hours)
+            for index in range(failures):
+                session.add(RawApiResponse(source="kakao_place", endpoint="kakao:port:P1", request_params_json=params,
+                    status_code=500, body_text="null", received_at=latest - timedelta(days=index * 2, minutes=index),
+                    parse_status="failed", parse_error="HTTPStatusError"))
+            # 키 전체 문제(인증)는 연속 실패를 끊지 않는다.
+            session.add(RawApiResponse(source="kakao_place", endpoint="kakao:port:P1", request_params_json=params,
+                status_code=401, body_text="null", received_at=latest - timedelta(minutes=30),
+                parse_status="failed", parse_error="HTTPStatusError"))
+            await session.commit()
+            result = await KakaoPlaceCollectionService(settings, client_factory=FakeKakaoClient).collect(session)
+        await engine.dispose()
+        return result
+
+    result = asyncio.run(run())
+    assert FakeKakaoClient.calls == (["대천항"] if expect_call else [])
+    assert result["provider_calls"] == int(expect_call)
+    assert result["backoff_skipped"] == int(not expect_call)

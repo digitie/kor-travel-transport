@@ -65,6 +65,7 @@ const reasons: Record<string, [string, string]> = {
   PROVIDER_RATE_LIMIT: ["제공기관 호출 한도에 도달했습니다.", "한도 종류와 복구 정책을 확인하세요. 초당 한도는 호출 보호 후, 일일 한도는 초기화 이후에 다시 수집합니다."],
   REQUEST_TIMEOUT: ["제공기관 요청이 제한 시간 안에 끝나지 않았습니다.", "다음 정기 실행에서 재시도합니다. 반복되면 제공기관 응답과 네트워크를 확인하세요."],
   DATABASE_RETRYABLE: ["DB 잠금 경합 또는 일시적인 저장 시간 초과가 발생했습니다.", "저장 재시도 결과와 DB 대기를 확인하세요. 외부 자료를 중복 수집하지 않습니다."],
+  ALL_SOURCES_FAILED: ["이번 실행에서 시도한 제공기관 원천 전부, 또는 한 제공기관의 호출 전부가 실패했습니다. 제공기관 전면 장애나 응답 규격 변경과 구분할 수 없어 부분 실패 기준(건수·비율)과 무관하게 실패로 남깁니다.", "제공기관 상태·인증·응답 규격과 DB 대기(잠금·시간 초과)를 확인하세요. 저장한 이력·기준정보와 마지막 정상 자료는 유지합니다. 다음 정기 실행 결과를 확인하세요."],
   PARTIAL_SOURCE_FAILURE: ["일부 원천 또는 데이터셋 수집에 실패했습니다.", "성공 저장분과 마지막 정상 자료를 유지합니다. 실패한 원천의 후속 실행을 확인하세요."],
   OPINET_BROWSER_TIMEOUT: ["오피넷 브라우저의 지역·유종 조회가 제한 시간을 넘었습니다.", "저장한 정상 결과와 호출 보호를 유지합니다. 다음 정기 재시도 결과를 확인하세요."],
   OPINET_BROWSER_RESOURCE_POLICY: ["오피넷 브라우저의 이미지·글꼴 차단 명령이 실패했습니다.", "저장한 정상 결과와 진행분을 유지합니다. 자동 재시도 또는 재시도가 남은 지역부터 이어 합니다."],
@@ -76,7 +77,7 @@ const reasons: Record<string, [string, string]> = {
   UNKNOWN_FAILURE: ["등록되지 않은 실행 오류입니다. 원문은 보안상 이 화면에 전달하지 않습니다.", "실행 ID로 Dagster 원본을 확인하세요. 확인 전 무제한 재시도하지 않습니다."],
 };
 const stages: Record<string, string> = { run_start: "실행 시작", page_request: "원천 페이지 요청", page_validation: "페이지 완결성 검사", publication: "자료 게시", fetch: "원천 요청", normalize: "자료 정규화", publish: "DB 게시", storage: "DB 저장", provider_parse: "제공기관 응답 해석", provider_fetch: "제공기관 요청", collection: "수집 실행", validation: "원천 자료 규격 검사" };
-const steps: Record<string, string> = { kma_regional_alert_events_sync: "지역별 기상특보 수집", collect_highway_transport: "고속도로 소통·돌발 수집", collect_fuel_transport: "주유소·유가 수집", collect_vadahub_reference: "배편 기준자료 수집", weather_short_forecast_retention: "단기예보 정리", prepare_reference_exports: "기준정보 export 본문 준비", refresh_addresses: "주소 갱신" };
+const steps: Record<string, string> = { collect_airport_parking: "공항 주차 수집", enrich_new_reference_locations: "기준정보 좌표 보강", collect_place_locations: "VWorld 장소 좌표 조회", collect_kakao_place_locations: "카카오 장소 좌표 조회", kma_regional_alert_events_sync: "지역별 기상특보 수집", collect_highway_transport: "고속도로 소통·돌발 수집", collect_fuel_transport: "주유소·유가 수집", collect_vadahub_reference: "배편 기준자료 수집", weather_short_forecast_retention: "단기예보 정리", prepare_reference_exports: "기준정보 export 본문 준비", refresh_addresses: "주소 갱신" };
 /** 기준정보 export 본문 종류(고정 식별자)와 종류 목록 metadata. 목록에 없는 값이 하나라도 있으면 표시하지 않는다. */
 const referenceKinds: Record<string, string> = { "rail-stations-v1": "철도역", "ferry-ports-v1": "여객선 터미널", "bus-terminals-v1": "버스터미널", "parking-current-v1": "공항 주차 현재값" };
 const referenceKindLabels: Record<string, string> = { failed_kinds: "준비 실패 종류", deferred_kinds: "준비 이월 종류", busy_kinds: "다른 준비와 겹친 종류" };
@@ -87,7 +88,7 @@ function referenceKindList(value: unknown): string | null {
   return names.every(name => name !== null) ? names.join(", ") : null;
 }
 const trafficDeferredReason: [string, string] = ["고속도로 소통 원본과 이번 원본의 5분 통계는 저장했지만 최근 2시간 통계 재대조가 미뤄졌습니다.", "원본·성공 상태·이번 원본의 통계는 유지합니다. 다음 정기 수집이 최근 2시간을 다시 만듭니다. 여러 번 연속되면 지연 원인과 소통 통계 재대조 시간을 확인하세요."];
-const numbers: Record<string, string> = { planned_grids: "계획 격자 수", failed_grids: "미완료 격자 수", deferred_grids: "재개 대기 격자 수", requested_page: "요청 페이지", returned_page: "반환 페이지", page_size: "페이지 크기", total_count: "전체 행 수", expected_rows: "예상 행 수", returned_rows: "반환 행 수", requests_fetched: "요청 횟수", http_status: "HTTP 상태", received_rows: "수신 행 수", parsed_rows: "파싱 행 수", invalid_rows: "불량 행 수", fetch_ms: "요청 소요(ms)", normalize_ms: "정규화 소요(ms)", publish_ms: "게시 소요(ms)", published_values: "저장 값 수", completed_grids: "완료 격자 수", run_id: "저장 실행 ID", error_count: "오류 수", raw_response_count: "저장 원문 수", traffic_snapshot_count: "소통 저장 수", incident_snapshot_count: "돌발 저장 수", fuel_station_count: "주유소 저장 수", fuel_price_count: "가격 저장 수", failed_dataset_count: "실패 데이터셋 수", successful_dataset_count: "성공 데이터셋 수", traffic_history_seconds: "소통 이력 저장(초)", traffic_current_upsert_seconds: "소통 현재값 승격(초)", traffic_touched_statistics_seconds: "원천 안 5분 통계(초)", traffic_statistics_seconds: "소통 통계 재대조(초)", traffic_unchanged_rows: "소통 반복 관측(확인만)", traffic_touched_buckets: "원천 안 재집계 5분 구간" };
+const numbers: Record<string, string> = { planned_grids: "계획 격자 수", failed_grids: "미완료 격자 수", deferred_grids: "재개 대기 격자 수", requested_page: "요청 페이지", returned_page: "반환 페이지", page_size: "페이지 크기", total_count: "전체 행 수", expected_rows: "예상 행 수", returned_rows: "반환 행 수", requests_fetched: "요청 횟수", http_status: "HTTP 상태", received_rows: "수신 행 수", parsed_rows: "파싱 행 수", invalid_rows: "불량 행 수", fetch_ms: "요청 소요(ms)", normalize_ms: "정규화 소요(ms)", publish_ms: "게시 소요(ms)", published_values: "저장 값 수", completed_grids: "완료 격자 수", run_id: "저장 실행 ID", error_count: "오류 수", raw_response_count: "저장 원문 수", traffic_snapshot_count: "소통 저장 수", incident_snapshot_count: "돌발 저장 수", fuel_station_count: "주유소 저장 수", fuel_price_count: "가격 저장 수", failed_dataset_count: "실패 데이터셋 수", successful_dataset_count: "성공 데이터셋 수", traffic_history_seconds: "소통 이력 저장(초)", traffic_current_upsert_seconds: "소통 현재값 승격(초)", traffic_touched_statistics_seconds: "원천 안 5분 통계(초)", traffic_statistics_seconds: "소통 통계 재대조(초)", traffic_unchanged_rows: "소통 반복 관측(확인만)", traffic_touched_buckets: "원천 안 재집계 5분 구간", parking_sources_total: "시도한 주차 원천 수", parking_sources_failed: "실패한 주차 원천 수", provider_calls: "제공기관 호출 수", provider_failed: "실패한 호출 수", vworld_provider_calls: "VWorld 호출 수", vworld_provider_failed: "VWorld 실패 호출 수", kakao_provider_calls: "카카오 호출 수", kakao_provider_failed: "카카오 실패 호출 수" };
 const fieldNames = new Set(["totalCount", "pageNo", "numOfRows"]);
 const fieldTypes = new Set(["null", "boolean", "integer", "number", "string", "object", "array"]);
 const classNames = new Set(["Failure", "AlertCollectionError", "KrexParseError", "TimeoutError", "RuntimeError", "ValueError", "KeyError", "TypeError", "OperationalError", "IntegrityError", "DagsterExecutionStepExecutionError", "SchemaError", "ValidationError"]);
@@ -118,6 +119,7 @@ function metadata(raw: unknown): ObjectValue {
     else if (label === "error_type" && classNames.has(text(entry.text))) result[label] = entry.text;
     else if (Object.hasOwn(numbers, label) && typeof number === "number" && Number.isFinite(number) && number >= 0 && number <= 1_000_000_000) result[label] = number;
     else if (label === "error_code" && Object.hasOwn(reasons, text(entry.text))) result[label] = entry.text;
+    else if (label === "source_error_code" && Object.hasOwn(reasons, text(entry.text)) && text(entry.text) !== "UNKNOWN_FAILURE") result[label] = entry.text;
     else if (label === "stage" && Object.hasOwn(stages, text(entry.text))) result[label] = entry.text;
     else if (label === "metadata_field" && fieldNames.has(text(entry.text))) result[label] = entry.text;
     else if (label === "metadata_type" && fieldTypes.has(text(entry.text))) result[label] = entry.text;
@@ -158,6 +160,7 @@ export function failureDiagnostic(raw: unknown): string {
   const lines = [`오류 코드: ${code}`, `실패 단계: ${(Object.hasOwn(stages, text(data.stage)) ? stages[text(data.stage)] : Object.hasOwn(steps, text(event.stepKey)) ? steps[text(event.stepKey)] : "작업 실행")}`, `원인: ${reason}`, `대응: ${retry}`];
   const classes = [...new Set(chain.map(item => text(item.className)).filter(name => classNames.has(name)))];
   if (classes.length) lines.push(`오류 유형: ${classes.join(" → ")}`);
+  if (data.source_error_code && data.source_error_code !== code) lines.push(`원인 분류: ${data.source_error_code} · ${reasons[text(data.source_error_code)][0]}`);
   if (data.error_type && !classes.includes(text(data.error_type))) lines.push(`원천 오류 유형: ${data.error_type}`);
   for (const [key, mapping] of Object.entries(values)) if (data[key]) lines.push(`${({ dataset: "실패 데이터셋", scope: "수집 범위", status: "저장 결과", recovery_hint: "복구 정책", rate_limit_scope: "호출 한도 종류" } as Record<string, string>)[key]}: ${mapping[text(data[key])]}`);
   if (typeof data.retryable === "boolean") lines.push(`재시도 가능: ${data.retryable ? "예 · 호출 보호 후 정기 실행" : "아니오 · 복구 정책 확인"}`);

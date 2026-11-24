@@ -1,3 +1,25 @@
+## 2026-11-24 — 전량 실패는 부분 성공이 아니다(ALL-FAILED-IS-FAILURE-20261124)
+
+- 소유자 결정(2026-11-24): 부분 성공 기준값(고속도로 격리 5%, 공항 주차 격리 20%, 좌표 보강 '3건 이상이면서 50% 이상', 격리 주차장 직전 값
+  유지 1시간)은 유지하고, **제공기관 전면 장애(대상 전부 실패)는 건수와 무관하게 실패**를 더한다. 감사(Map
+  `docs/reports/2026-11-23-collection-failure-audit.md` §4 #13)와 #260 P1-3 후속.
+- 좌표 보강(`_place_collection_error`): 이번 실행의 호출이 전부 실패하면(`provider_failed >= provider_calls`, 1/1 포함) run 실패,
+  `error_code=ALL_SOURCES_FAILED`. 하루 호출이 1~2건이라 예전에는 VWorld·카카오가 완전히 죽어도 녹색 부분 완료로만 남았다.
+- 카카오 실패 영수증의 재호출을 VWorld처럼 지수 대기(연속 실패 n번째 뒤 2^(n-1)일, 최대 30일, 401/403/429는 세지 않음)로 바꿨다.
+  예전 1일 고정이면 결정적으로 실패하는 대상 하나가 새 규칙에서 매일 FAILURE를 냈다(적대 리뷰 P1). `backoff_skipped`도 싣는다.
+- 공항 주차: 수집 결과에 `parking_sources_total`·`parking_sources_failed`(Map 경로 current 승격, 플래그 OFF 응답 수신 기준, 이미 걸린 KAC
+  한도로 부르지 않은 KAC는 시도에서 뺌)를 싣고 성공·부분 성공 metadata에도 남긴다. 전부 실패면 사전집계 경보 처리 뒤 Failure
+  (`ALL_SOURCES_FAILED`, `status=failed`, DB 상태는 `collection_run_status`, 원래 분류는 `source_error_code`). 예전에는 거절 원천의
+  이력 전용 저장(`snapshot_count>0`)이나 요금 갱신이 `_has_collection_progress`를 통과시켜 SUCCESS + partial이었다.
+- 관리자 콘솔: `ALL_SOURCES_FAILED` 고정 원인·대응, 시도·실패 원천 수와 VWorld·카카오 호출 수, 공항·좌표 단계 이름(이전에는 "등록되지 않은
+  실행 오류"). vitest + e2e `dagster-all-sources-failed.spec.ts`(390·1440).
+- 고속도로는 이미 보장됨을 확인(소통·돌발 모두 실패 → `status=failed`, 무효 행 전부 → 격리 거부). 문서 `architecture/collection.md`.
+- 받아들인 비용·한계: 결정적 실패 대상 하나만 부른 날은 버스·항구 job FAILURE + export 준비 건너뜀(공항 job이 5분마다 준비), 호출 0건인
+  날은 장애를 알 수 없어 녹색, DB 오류도 호출 실패로 센다(예전부터).
+- 시험: `test_dagster_definitions.py`(1/1·2/2·호출 수 없는 실패 → 실패, 2건 중 1건 → 부분 성공, 공항 전 원천 실패 → 실패·한 원천 실패 → partial,
+  필드 형식 검사), `test_parking_export.py`(Map·플래그 OFF 경로 원천 수, 한도 유예 KAC 제외, 거절 원천의 이력 진척),
+  `test_kakao_place_locations.py`(지수 대기·키 전체 실패 제외).
+
 ## 2026-11-24 — 주차 통계 보관 적재 주 1회 정기 실행(PARKING-ARCHIVE-WEEKLY-20261124)
 
 - 소유자 결정(2026-11-24): `parking_statistics_archive_job`(#259 문서 `parking-retention.md`)은 **보관 적재만** 주 1회 자동, 정리·원본

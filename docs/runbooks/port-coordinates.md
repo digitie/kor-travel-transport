@@ -156,7 +156,9 @@ RustFS 저장으로 확대한다. 현재 PR은 이 파일의 연결 완료를 �
 통과하지 못하도록 한다. 좌표가 없는 공식 행만 검색하며 지도 조회는 제공기관을 호출하지
 않는다. 한 제공기관의 부분 성공도 다른 제공기관의 보강을 막지 않는다. Dagster 판정
 (`_place_collection_error`, 독립 VWorld·카카오 job도 같다): 예외로 끝난 수집, `provider_blocked`(인증·한도·연속 실패로
-중단), 호출 실패 3건 이상이면서 호출의 50% 이상, 유예로 설명되지 않는 부분 성공은 run 실패다. 그 밖의 호출 실패는
+중단), **이번 실행의 호출 전량 실패**(제공기관 전면 장애 — 건수와 무관, 1건 중 1건도 실패), 호출 실패 3건 이상이면서
+호출의 50% 이상, 유예로 설명되지 않는 부분 성공은 run 실패다. 실패한 대상의 재호출은 VWorld·카카오 모두 연속 실패 n번째 뒤
+2^(n-1)일(최대 30일, 인증·한도 실패는 세지 않음)이다. 그 밖의 호출 실패는
 부분 성공 — run SUCCESS, `kortravel/collection-outcome=partial` 태그, metadata `collection_outcome=partial`·
 `partial_parts`·`*_provider_calls/failed/blocked`, 경고 로그이며 뒤의 export 준비도 계속 돈다. 관리자 Dagster 콘솔은
 이 실행을 "자료 확인 필요 실행 · 부분 완료"로 보인다. 항구 기항지 조회 실패(`reference_failed_calls>0`)는 계속 실패다.

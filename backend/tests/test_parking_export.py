@@ -430,3 +430,94 @@ def test_unparsable_incheon_row_is_still_carried_by_its_lot_identity(export_clie
     assert reported_capacity_is_zero({"parkingFullSpace": "0"}, kac=True)
     assert not reported_capacity_is_zero({"parkingFullSpace": "-"}, kac=True)
     assert not reported_capacity_is_zero({"parkingarea": "N/A"}, kac=False)
+
+
+@pytest.mark.parametrize("broken,expected_failed", [
+    (set(), 0),
+    ({"incheon_parking"}, 1),
+    ({"kac_parking", "incheon_parking"}, 2),
+])
+def test_result_counts_failed_parking_sources_apart_from_history_progress(export_client, broken, expected_failed):
+    """주차 원천이 전부 실패한 실행을 Dagster가 부분 성공과 가르도록 시도·실패 원천 수를 결과에 싣는다.
+
+    KAC는 격리 상한을 넘는 응답(거절 원천의 이력 전용 저장은 남는다 — `snapshot_count>0`), 인천은 호출 예외로
+    실패시킨다. 이력 저장·요금은 원천 성공으로 세지 않는다(소유자 결정 2026-11-24: 전량 실패는 실패).
+    """
+    class Broken(Fixture):
+        async def fetch_incheon_parking(self):
+            if "incheon_parking" in broken:
+                raise RuntimeError("fixture incheon outage")
+            return await super().fetch_incheon_parking()
+
+    c = export_client
+    client = Broken()
+    client.moment -= timedelta(minutes=10)
+    collector = service(c, client)
+    if "kac_parking" in broken:
+        client.kac_row_variant, client.bad_rows = "zero_capacity", 3  # 격리 상한(20%)을 넘겨 원천 전체 거부
+    result = _run(c, lambda s: collector.collect(s))
+    assert result["parking_sources_total"] == 2
+    assert result["parking_sources_failed"] == expected_failed
+    assert result["status"] == ("partial_success" if broken else "success"), result
+    if "kac_parking" in broken:
+        # 거절된 KAC 원천도 이력은 남는다 — 이 진척 때문에 예전 판정은 전량 실패를 부분 성공으로 보았다.
+        assert result["snapshot_count"] > 0
+
+
+def test_legacy_path_counts_parking_sources_by_response(export_client):
+    """플래그 OFF 경로(`transport_map_current_enabled=False`)도 시도·실패 원천 수를 싣는다(성공 = 응답 수신)."""
+    class Broken(Fixture):
+        broken: set[str] = set()
+
+        async def fetch_kac_parking(self):
+            if "kac_parking" in self.broken:
+                raise RuntimeError("fixture kac outage")
+            return await super().fetch_kac_parking()
+
+        async def fetch_incheon_parking(self):
+            if "incheon_parking" in self.broken:
+                raise RuntimeError("fixture incheon outage")
+            return await super().fetch_incheon_parking()
+
+    c = export_client
+    client = Broken()
+    collector = service(c, client)
+    collector.settings.transport_map_current_enabled = False
+    try:
+        for broken, failed in ((set(), 0), ({"incheon_parking"}, 1), ({"kac_parking", "incheon_parking"}, 2)):
+            client.broken = broken
+            client.moment += timedelta(minutes=10)
+            result = _run(c, lambda s: collector.collect(s))
+            assert (result["parking_sources_total"], result["parking_sources_failed"]) == (2, failed), result
+    finally:
+        collector.settings.transport_map_current_enabled = True
+
+
+def test_quota_deferred_kac_is_not_an_attempted_source(export_client):
+    """이미 걸린 KAC 호출 한도(마감 시각이 있는 유예)로 부르지 않은 KAC는 시도에서 뺀다 — 한도 유예는 장애가 아니다.
+    남은 원천(인천)이 실패하면 그것만으로 전량 실패다."""
+    from app.services.collection import KrairportPublicDataClient, UPSTREAM_RATE_LIMIT_MARKER
+
+    class LiveFixture(Fixture, KrairportPublicDataClient):
+        fail_incheon = False
+
+        async def fetch_incheon_parking(self):
+            if self.fail_incheon:
+                raise RuntimeError("fixture incheon outage")
+            return await super().fetch_incheon_parking()
+
+    c = export_client
+    client = LiveFixture()
+    collector = service(c, client)
+
+    async def previous_failure(s):
+        now = now_utc()
+        s.add(CollectionRun(started_at=now, finished_at=now, status="partial_success", trigger="fixture",
+                            error_message=f"kac_parking API error 99: {UPSTREAM_RATE_LIMIT_MARKER}"))
+    _run(c, previous_failure)
+    result = _run(c, lambda s: collector.collect(s))
+    assert client.calls == 0
+    assert (result["parking_sources_total"], result["parking_sources_failed"]) == (1, 0), result
+    client.fail_incheon = True
+    result = _run(c, lambda s: collector.collect(s))
+    assert (result["parking_sources_total"], result["parking_sources_failed"]) == (1, 1), result

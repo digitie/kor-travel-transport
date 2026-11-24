@@ -18,10 +18,34 @@ from app.services.place_targets import iter_missing_place_targets, matching_plac
 from app.core.config import Settings
 from app.core.time_utils import now_utc
 from app.models import BusTerminalReference, CollectionRun, FerryPort, RawApiResponse
-from app.services.place_locations import MAX_CONSECUTIVE_PROVIDER_FAILURES, _province
+from app.services.place_locations import (
+    FAILED_TARGET_BACKOFF_SLACK, FAILED_TARGET_HISTORY, MAX_CONSECUTIVE_PROVIDER_FAILURES, _province,
+    failed_target_backoff,
+)
 
 
 SOURCE = "kakao_place"
+#: 키 전체의 문제(인증·한도)로 남은 실패. 대상별 지수 대기에 세지 않는다(VWorld `KEY_WIDE_FAILURES`와 같은 뜻).
+KEY_WIDE_STATUS_CODES = frozenset({401, 403, 429})
+
+
+async def _failed_target_wait(session: AsyncSession, endpoint: str) -> timedelta:
+    """실패 영수증 뒤 재호출 간격. 연속 실패 n번째 뒤 2^(n-1)일(최대 30일) — VWorld(`failed_target_backoff`)와 같다.
+
+    예전에는 1일 고정이라, 결정적으로 실패하는 대상 하나가 매일 호출 1회를 만들었다. 호출 전량 실패를 run 실패로
+    올린 뒤(2026-11-24)에는 그 대상 하나가 매일 job FAILURE가 되므로 VWorld처럼 간격을 늘린다.
+    """
+    recent = (await session.execute(select(RawApiResponse.parse_status, RawApiResponse.status_code).where(
+        RawApiResponse.source == SOURCE, RawApiResponse.endpoint == endpoint,
+    ).order_by(RawApiResponse.received_at.desc(), RawApiResponse.id.desc()).limit(2 * FAILED_TARGET_HISTORY))).all()
+    streak = 0
+    for status, code in recent:
+        if status == "failed" and code in KEY_WIDE_STATUS_CODES:
+            continue  # 키 전체 문제는 세지도 끊지도 않는다.
+        if status != "failed":
+            break
+        streak += 1
+    return failed_target_backoff(streak) - FAILED_TARGET_BACKOFF_SLACK
 TRIGGER = "dagster_kakao_place_locations"
 URL = "https://dapi.kakao.com/v2/local/search/keyword.json"
 
@@ -101,7 +125,8 @@ class KakaoPlaceCollectionService:
         session.add(run)
         await session.commit()
         summary = {"provider_calls": 0, "bus_locations": 0, "port_locations": 0,
-                   "unmatched": 0, "incomplete": 0, "deferred": 0, "provider_failed": 0, "provider_blocked": 0}
+                   "unmatched": 0, "incomplete": 0, "deferred": 0, "provider_failed": 0, "provider_blocked": 0,
+                   "backoff_skipped": 0}
         consecutive_failures = 0
         try:
             key_fingerprint = hashlib.sha256(self.settings.kakao_rest_api_key.encode()).hexdigest()
@@ -161,9 +186,17 @@ class KakaoPlaceCollectionService:
                                 not (previous.status_code == 429 and
                                      params.get("key_fingerprint") != key_fingerprint) and
                                 params.get("query") == query and params.get("name") == name and
-                                params.get("city_name") == (row.city_name if kind == "bus" else None) and
-                                now - received < timedelta(days=30 if previous.parse_status == "success" else 1)):
-                            continue
+                                params.get("city_name") == (row.city_name if kind == "bus" else None)):
+                            if previous.parse_status == "success":
+                                wait = timedelta(days=30)
+                            elif previous.parse_status == "failed" and previous.status_code not in KEY_WIDE_STATUS_CODES:
+                                wait = await _failed_target_wait(session, endpoint)
+                            else:
+                                wait = timedelta(days=1)
+                            if now - received < wait:
+                                if previous.parse_status == "failed":
+                                    summary["backoff_skipped"] += 1  # 실패 대상 대기로 이번에 부르지 않음
+                                continue
                     # session-level lease가 같은 collector의 동시 실행을 배제한다.
                     if (day_calls >= self.settings.kakao_place_max_calls_per_day or
                             month_calls >= self.settings.kakao_place_max_calls_per_month):

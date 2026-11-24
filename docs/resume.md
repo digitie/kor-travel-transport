@@ -1,3 +1,12 @@
+## 현재 상태 — 2026-11-24 전량 실패는 부분 성공이 아니다(ALL-FAILED-IS-FAILURE-20261124)
+
+- Dagster code-server 판정(좌표 보강·공항 주차) + backend 수집 서비스(원천 수, 카카오 실패 지수 대기) + transport-admin(진단 문구).
+  migration·OpenAPI 없음(API 응답 모델 불변).
+- 배포(Codex 담당): transport backend 이미지(Dagster code-server·API 같은 소스)와 transport-admin 이미지. 순서 무관(관리 화면은 새 코드가
+  없으면 예전 문구일 뿐이다).
+- 다음 한 작업: 배포 뒤 bus_reference·place_location·kakao run이 호출 전량 실패일 때만 FAILURE인지, 공항 run metadata의
+  `parking_sources_failed`가 평소 0인지, 실패 run 상세가 `ALL_SOURCES_FAILED`로 보이는지 확인.
+
 ## 현재 상태 — 2026-11-24 주차 통계 보관 적재 주 1회 정기 실행(PARKING-ARCHIVE-WEEKLY-20261124)
 
 - Dagster code-server만(새 schedule `parking_statistics_archive_job_schedule`, 보관 op 배치 이음). migration·UI·OpenAPI·공항 수집 코드
