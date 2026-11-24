@@ -8,9 +8,12 @@ export async function GET(request: NextRequest, context: { params: Promise<{ pat
   if (!(await hasAdminSession(request))) return NextResponse.json({ detail: "로그인이 필요합니다." }, { status: 401 });
   const { path } = await context.params; const target = transportUpstreamUrl(path, request.nextUrl.searchParams);
   if (!target) return NextResponse.json({ detail: "허용되지 않은 transport API 경로입니다." }, { status: 404 });
+  // 장소 지도는 backend 입장 제한이 관리 화면 몫(공개 listener와 따로 센다)으로 세도록 관리자 토큰을 붙인다.
+  // 토큰은 loopback backend로만 가고 응답·브라우저로는 돌아가지 않는다. 다른 읽기 경로에는 붙이지 않는다.
+  const adminToken = path.join("/") === "transport/features/places" ? process.env.TRANSPORT_ADMIN_WRITE_TOKEN ?? "" : "";
   try {
     // 브라우저가 이전 지도 조회를 취소하면(request.signal) upstream 요청·본문 스트림도 함께 끊는다. 30초 상한은 그대로다.
-    const response = await fetchNoStore(target, { headers: { accept: request.headers.get("accept") ?? "application/json", "x-request-id": request.headers.get("x-request-id") ?? "" }, signal: request.signal });
+    const response = await fetchNoStore(target, { headers: { accept: request.headers.get("accept") ?? "application/json", "x-request-id": request.headers.get("x-request-id") ?? "", ...(adminToken ? { "x-transport-admin-token": adminToken } : {}) }, signal: request.signal });
     const retryAfter = response.headers.get("retry-after");
     return new NextResponse(response.body, { status: response.status, headers: { "cache-control": "no-store, private", "content-type": response.headers.get("content-type") ?? "application/json", "retry-after": retryAfter ?? "", "x-request-id": response.headers.get("x-request-id") ?? "" } });
   } catch { return NextResponse.json({ detail: "transport API에 연결하지 못했습니다." }, { status: 502, headers: { "cache-control": "no-store, private" } }); }

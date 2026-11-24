@@ -20,6 +20,19 @@ describe("GET /api/transport/[...path]", () => {
     const response = await GET(request, { params: Promise.resolve({ path: ["transport", "highways", "traffic"] }) });
     expect(response.status).toBe(429); expect(response.headers.get("retry-after")).toBe("30"); expect(String(fetchMock.mock.calls[0][0])).toContain("/v1/transport/highways/traffic?route_no=1&route_no=10");
   });
+  it("장소 지도 조회에만 관리자 토큰을 붙여 backend가 관리 화면 몫으로 센다", async () => {
+    vi.stubEnv("TRANSPORT_ADMIN_WRITE_TOKEN", "t".repeat(40));
+    const fetchMock = vi.fn().mockImplementation(async () => new Response("{}", { status: 200, headers: { "content-type": "application/json" } })); vi.stubGlobal("fetch", fetchMock);
+    const places = await GET(await protectedRequest("transport/features/places?kinds=rail_station"), { params: Promise.resolve({ path: ["transport", "features", "places"] }) });
+    await GET(await protectedRequest("transport/highways/traffic"), { params: Promise.resolve({ path: ["transport", "highways", "traffic"] }) });
+    const sent = fetchMock.mock.calls.map(call => new Headers((call[1] as RequestInit).headers).get("x-transport-admin-token"));
+    expect(sent).toEqual(["t".repeat(40), null]);
+    // 응답에는 토큰이 실리지 않는다.
+    expect([...places.headers.values()].join(" ")).not.toContain("t".repeat(40));
+    vi.stubEnv("TRANSPORT_ADMIN_WRITE_TOKEN", "");
+    await GET(await protectedRequest("transport/features/places?kinds=rail_station"), { params: Promise.resolve({ path: ["transport", "features", "places"] }) });
+    expect(new Headers((fetchMock.mock.calls[2][1] as RequestInit).headers).has("x-transport-admin-token")).toBe(false);
+  });
   it("브라우저가 취소한 지도 조회는 upstream fetch도 끊고, 상한 timer는 그대로 둔다", async () => {
     let upstreamSignal: AbortSignal | undefined;
     const fetchMock = vi.fn((_target: URL, init: RequestInit) => {

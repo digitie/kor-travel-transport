@@ -122,6 +122,10 @@ class Settings(BaseSettings):
     places_max_running: int = Field(default=4, ge=1, le=8)
     places_max_waiting: int = Field(default=8, ge=0, le=64)
     places_deadline_seconds: float = Field(default=25, gt=0, le=25)
+    # 관리 화면(BFF → :12302, 관리자 토큰) 몫. 공개 listener(:12301·:12307)는 동시 계산
+    # `places_max_running - places_admin_reserved_running`건까지만 쓰고, 대기열은 줄마다 따로 센다.
+    places_admin_reserved_running: int = Field(default=1, ge=0, le=7)
+    places_admin_max_waiting: int = Field(default=4, ge=0, le=64)
     rustfs_endpoint_url: str | None = None
     rustfs_bucket: str = "kor-travel-transport-raw"
     rustfs_access_key_id: str | None = None

@@ -610,6 +610,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             max_running=resolved_settings.places_max_running,
             max_waiting=resolved_settings.places_max_waiting,
             deadline_seconds=resolved_settings.places_deadline_seconds,
+            # 공개 listener가 관리 화면을 굶기지 않게 관리 몫을 남긴다(관리 판정: 관리자 토큰 + gateway 표지 없음).
+            admin_reserved=min(resolved_settings.places_admin_reserved_running,
+                               resolved_settings.places_max_running - 1),
+            admin_max_waiting=resolved_settings.places_admin_max_waiting,
+            admin_token=resolved_settings.transport_admin_write_token,
         )
         app.state.scheduler_task = None
         app.state.transport_scheduler_task = None
