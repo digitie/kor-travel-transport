@@ -54,6 +54,9 @@ from app.services.rail_maritime_collection import RailMaritimeCollectionService
 from app.services.vadahub_collection import VadaHubCollectionService
 from app.services.rest_area_collection import REST_AREA_FUEL_SOURCE, RestAreaCollectionService
 from app.services.public_parking_collection import PublicParkingCollectionService
+from app.services.reference_export_preparation import (
+    BUSY_ESCALATION_STREAK, COLLECTION_TAIL_PREPARE_BUDGET_SECONDS, PREPARE_TOTAL_BUDGET_SECONDS,
+)
 from app.services.reference_export_preparation import prepare_reference_exports as prepare_reference_export_bodies
 from app.services.transport_collection import (
     DATABASE_FAILURE_REASONS, OPINET_SOURCE, TRAFFIC_STORE_STEPS, CollectionScope, TransportCollectionService,
@@ -1156,17 +1159,136 @@ def prepare_reference_exports(context, upstream: Any = None, other: Any = None) 
         context.add_output_metadata({"status": "disabled", "collection_outcome": "deferred"})
         _record_collection_outcome(context, "deferred")
         return result
+    dedicated = context.job_name == REFERENCE_EXPORT_PREPARE_JOB
     with collection_owner(context.run_id, context.instance):
-        result = asyncio.run(_run_with_session(settings, functools.partial(prepare_reference_export_bodies, settings=settings)))
-    context.add_output_metadata({"status": result["status"], "prepared": result["prepared"], "reused": result["reused"]})
-    if result["status"] == "not_ready":
-        context.add_output_metadata({"collection_outcome": "deferred", "error_code": "REFERENCE_EXPORT_DEFERRED",
-                                     "previous_data_preserved": True})
-        context.log.warning("완결된 기준정보가 아직 없어 파생 본문 준비를 미룹니다. 마지막 정상 본문을 유지합니다.")
-    _record_collection_outcome(
-        context, _collection_output_metadata(result, "reference")["collection_outcome"],
-    )
+        # 전체 예산 하나를 모든 종류·경합 재시도·정리가 나눠 쓴다. run deadline(`_run_with_session`의 cancellation)보다
+        # 먼저 끝나야 종류별 결과가 남는다. 수집 job 꼬리는 5분 주기를 막지 않게 더 짧게 둔다.
+        cap = PREPARE_TOTAL_BUDGET_SECONDS if dedicated else COLLECTION_TAIL_PREPARE_BUDGET_SECONDS
+        budget = max(0.0, min(float(cap), _run_deadline_seconds(MAX_RUNTIME_SECONDS) - PREPARE_DEADLINE_RESERVE_SECONDS))
+        result = asyncio.run(_run_with_session(settings, functools.partial(
+            prepare_reference_export_bodies, settings=settings, total_budget_seconds=budget)))
+    report_reference_prepare(context, result, dedicated=dedicated)
     return result
+
+
+#: 준비 예산을 run deadline보다 이만큼 먼저 끝낸다(정리 commit·세션 정리 여유).
+PREPARE_DEADLINE_RESERVE_SECONDS = 10
+#: 준비 자체가 목적인 전용 job. 이 job에서만 "한 종류도 준비하지 못함"이 run 실패다.
+REFERENCE_EXPORT_PREPARE_JOB = "reference_export_prepare_job"
+#: 이번 run에서 busy였던 종류(쉼표 구분). 다음 run이 연속 busy를 세는 데 쓴다.
+REFERENCE_BUSY_TAG = "kortravel/reference-export-busy"
+#: 준비 결과 중 공용 event log에 남겨도 되는 종류별 필드(값은 코드 상수·숫자·예외 종류·SQLSTATE뿐이다).
+_REFERENCE_PREPARE_KIND_FIELDS = ("kind", "status", "duration_ms", "item_count", "source_status",
+                                  "error_type", "sqlstate", "reason")
+
+
+def _reference_prepare_metadata(result: dict[str, Any]) -> dict[str, Any]:
+    # 최상위 `status`는 쓰지 않는다. 관리 콘솔은 `status: failed`를 "저장 결과: 실패"로 읽는데, 수집 job 꼬리의 준비
+    # 실패는 수집 실패가 아니다. 준비 결과는 `reference_status`로 따로 둔다.
+    metadata: dict[str, Any] = {"reference_status": str(result.get("status", "unknown"))}
+    for key in ("prepared", "reused", "busy", "deferred", "failed"):
+        metadata[key] = int(result.get(key) or 0)
+    rows = result.get("kinds") or []
+    kinds = [{key: row[key] for key in _REFERENCE_PREPARE_KIND_FIELDS if key in row} for row in rows]
+    if kinds:
+        metadata["kinds"] = kinds
+    for status in ("failed", "busy", "deferred"):
+        names = [row["kind"] for row in rows if row.get("status") == status]
+        if names:
+            metadata[f"{status}_kinds"] = ",".join(names)
+    gc = result.get("gc")
+    if isinstance(gc, dict):
+        for key in ("expired_handles", "unused_artifacts", "duration_ms"):
+            if type(gc.get(key)) is int:
+                metadata[f"gc_{key}"] = gc[key]
+        if gc.get("busy") is True:
+            metadata["gc_busy"] = True
+        if gc.get("skipped") == "budget":
+            metadata["gc_skipped"] = "budget"
+        if isinstance(gc.get("error"), dict):
+            metadata["gc_error_type"] = str(gc["error"].get("error_type", "unknown"))
+    return metadata
+
+
+def _persistent_busy_kinds(context, busy_kinds: list[str]) -> set[str]:
+    """이번 run과 같은 job의 직전 완료 run들에서도 계속 busy였던 종류(연속 `BUSY_ESCALATION_STREAK`회)."""
+    previous = BUSY_ESCALATION_STREAK - 1
+    try:
+        from dagster import DagsterRunStatus, RunsFilter
+
+        # 공용 instance에는 다른 테넌트의 run도 있다. 이 run의 code location 태그가 있으면 같은 location으로 한정한다.
+        location = (getattr(context.run, "tags", None) or {}).get("dagster/code_location")
+        runs = call_with_deadline(lambda: context.instance.get_runs(
+            filters=RunsFilter(job_name=context.job_name,
+                               statuses=[DagsterRunStatus.SUCCESS, DagsterRunStatus.FAILURE],
+                               tags={"dagster/code_location": location} if location else None),
+            limit=previous,
+        ), timeout_seconds=10)
+    except Exception:  # noqa: BLE001 — 연속 판정을 못 하면 올리지 않는다(이번 결과는 그대로 busy).
+        return set()
+    if len(runs) < previous:
+        return set()
+    persistent = set(busy_kinds)
+    for run in runs:
+        persistent &= set(((run.tags or {}).get(REFERENCE_BUSY_TAG) or "").split(","))
+    return persistent
+
+
+def report_reference_prepare(context, result: dict[str, Any], *, dedicated: bool) -> dict[str, Any]:
+    """준비 결과를 Dagster metadata·run 태그·경고로 남긴다(수집 job 꼬리, 전용 job, 주소 갱신 뒤 공통).
+
+    - 일부 실패: 부분 완료(`REFERENCE_EXPORT_PARTIAL`). 전부 실패: 전용 job은 run 실패, 그 밖은 부분 완료
+      (`REFERENCE_EXPORT_FAILED`) — 수집은 이미 commit됐고 첫 export 요청이 본문을 직접 구성한다.
+    - 예산 소진(`deferred` 종류)·원천 미완결(`not_ready`): 이월(`REFERENCE_EXPORT_DEFERRED`).
+    - 경합(`busy`): 이월(`REFERENCE_EXPORT_BUSY`). 같은 종류가 연속 `BUSY_ESCALATION_STREAK`회면 실패로 올린다.
+    `context`가 없으면(Dagster 밖) 로그만 남긴다.
+    """
+    from app.services.reference_export_preparation import escalate_persistent_busy
+
+    log = context.log if context is not None else logging.getLogger(__name__)
+    busy_kinds = [row["kind"] for row in result.get("kinds") or [] if row.get("status") == "busy"]
+    if busy_kinds and context is not None:
+        persistent = _persistent_busy_kinds(context, busy_kinds)
+        if persistent:
+            escalate_persistent_busy(result, persistent)
+            log.warning(f"기준정보 파생 본문({', '.join(sorted(persistent))})이 연속 {BUSY_ESCALATION_STREAK}회 경합으로 "
+                        "준비되지 않았습니다. 잠금을 쥔 세션(idle in transaction 등)을 확인하세요.")
+    metadata = _reference_prepare_metadata(result)
+    status = result.get("status")
+    failed = metadata.get("failed_kinds", "").replace(",", ", ")
+    if status == "failed" and dedicated:
+        raise Failure(description="기준정보 파생 본문을 한 종류도 준비하지 못했습니다. 마지막 정상 본문은 유지되고, "
+                                  "첫 조회가 같은 본문을 직접 구성합니다.",
+                      metadata={**metadata, "error_code": "REFERENCE_EXPORT_FAILED", "previous_data_preserved": True},
+                      allow_retries=False)
+    outcome = error_code = None
+    if status in {"partial_success", "failed"}:
+        outcome, error_code = "partial", ("REFERENCE_EXPORT_PARTIAL" if status == "partial_success" else "REFERENCE_EXPORT_FAILED")
+        log.warning(f"기준정보 파생 본문({failed})을 준비하지 못했습니다. 수집 결과와 마지막 정상 본문은 유지되고, "
+                    "실패한 종류는 다음 준비나 첫 export 요청이 다시 구성합니다.")
+    elif status == "not_ready":
+        outcome, error_code = "deferred", "REFERENCE_EXPORT_DEFERRED"
+        log.warning("완결된 기준정보가 아직 없어 파생 본문 준비를 미룹니다. 마지막 정상 본문을 유지합니다.")
+    elif metadata.get("deferred_kinds"):
+        outcome, error_code = "deferred", "REFERENCE_EXPORT_DEFERRED"
+        log.warning(f"기준정보 파생 본문({metadata['deferred_kinds'].replace(',', ', ')})은 준비 시간 예산을 다 써 "
+                    "다음 준비로 미뤘습니다.")
+    elif metadata.get("busy_kinds"):
+        outcome, error_code = "deferred", "REFERENCE_EXPORT_BUSY"
+        log.warning(f"기준정보 파생 본문({metadata['busy_kinds'].replace(',', ', ')})은 다른 준비가 만드는 중이라 "
+                    "이번에는 건너뜁니다.")
+    if outcome is not None:
+        metadata.update({"collection_outcome": outcome, "error_code": error_code, "previous_data_preserved": True})
+    if context is None:
+        return metadata
+    context.add_output_metadata(metadata)
+    if outcome is not None:
+        _record_collection_outcome(context, outcome)
+    if metadata.get("busy_kinds"):
+        with contextlib.suppress(Exception):
+            call_with_deadline(lambda: context.instance.add_run_tags(
+                context.run_id, {REFERENCE_BUSY_TAG: metadata["busy_kinds"]}), timeout_seconds=10)
+    return metadata
 
 
 @job(tags=_job_tags("reference", "reference_export_prepare_job"), executor_def=multiprocess_executor.configured({"max_concurrent": 1}))

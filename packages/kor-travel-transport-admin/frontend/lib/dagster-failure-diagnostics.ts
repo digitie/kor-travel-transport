@@ -40,6 +40,9 @@ const reasons: Record<string, [string, string]> = {
   COLLECTION_DEFERRED: ["현재 수집이 진행 중이거나 수집 주기에 따라 이번 실행을 이월했습니다.", "기존 실행과 다음 수집 시각을 확인하세요. 기존 정상 자료는 유지합니다."],
   DERIVED_CACHE_DEFERRED: ["관측 자료는 저장했지만 파생 자료(조회 캐시 또는 통계) 갱신이 지연됐습니다.", "저장 자료는 유지합니다. 다음 갱신 결과를 확인하세요."],
   REFERENCE_EXPORT_DEFERRED: ["기준자료의 파생 읽기 본문 준비가 지연됐습니다.", "마지막 정상 읽기 본문을 유지합니다. 다음 준비 실행을 확인하세요."],
+  REFERENCE_EXPORT_PARTIAL: ["수집 자료는 저장했고, 일부 기준정보 export 본문(Map 읽기용) 준비만 실패했습니다.", "수집 자료와 마지막 정상 본문은 그대로입니다. 실패한 종류는 다음 준비나 첫 export 요청이 본문을 다시 구성합니다. 같은 종류가 반복해서 실패하면 오류 유형을 확인하세요."],
+  REFERENCE_EXPORT_FAILED: ["기준정보 export 본문(Map 읽기용)을 한 종류도 준비하지 못했습니다.", "수집 자료와 마지막 정상 본문은 그대로이고, 첫 export 요청이 본문을 직접 구성합니다. 반복되면 DB 상태와 오류 유형을 확인하세요."],
+  REFERENCE_EXPORT_BUSY: ["다른 준비가 같은 기준정보 export 본문을 만드는 중이라 이번 준비를 건너뛰었습니다.", "실패가 아닙니다. 다음 준비가 그 본문을 재사용합니다. 같은 종류가 연속 3회 겹치면 실패로 올려 표시하니 그때는 잠금을 쥔 DB 세션을 확인하세요."],
   ALERT_PAGE_METADATA: ["특보 응답의 페이지 번호·크기·전체 행 수가 완결성 조건과 다릅니다.", "페이지 진단값과 제공기관 응답 규격을 확인하세요. 잘못된 결과는 게시하지 않았습니다."],
   ALERT_PAGE_ROWS: ["특보 페이지의 선언된 행 수와 실제 행 수가 다릅니다.", "원천 응답을 확인하세요. 마지막 정상 자료를 유지합니다."],
   ALERT_PAGE_TOTAL_CHANGED: ["특보 페이지 조회 중 전체 행 수가 바뀌었습니다.", "다음 정기 수집에서 다시 확인합니다. 이번 불완전 결과는 게시하지 않았습니다."],
@@ -73,7 +76,16 @@ const reasons: Record<string, [string, string]> = {
   UNKNOWN_FAILURE: ["등록되지 않은 실행 오류입니다. 원문은 보안상 이 화면에 전달하지 않습니다.", "실행 ID로 Dagster 원본을 확인하세요. 확인 전 무제한 재시도하지 않습니다."],
 };
 const stages: Record<string, string> = { run_start: "실행 시작", page_request: "원천 페이지 요청", page_validation: "페이지 완결성 검사", publication: "자료 게시", fetch: "원천 요청", normalize: "자료 정규화", publish: "DB 게시", storage: "DB 저장", provider_parse: "제공기관 응답 해석", provider_fetch: "제공기관 요청", collection: "수집 실행", validation: "원천 자료 규격 검사" };
-const steps: Record<string, string> = { kma_regional_alert_events_sync: "지역별 기상특보 수집", collect_highway_transport: "고속도로 소통·돌발 수집", collect_fuel_transport: "주유소·유가 수집", collect_vadahub_reference: "배편 기준자료 수집", weather_short_forecast_retention: "단기예보 정리" };
+const steps: Record<string, string> = { kma_regional_alert_events_sync: "지역별 기상특보 수집", collect_highway_transport: "고속도로 소통·돌발 수집", collect_fuel_transport: "주유소·유가 수집", collect_vadahub_reference: "배편 기준자료 수집", weather_short_forecast_retention: "단기예보 정리", prepare_reference_exports: "기준정보 export 본문 준비", refresh_addresses: "주소 갱신" };
+/** 기준정보 export 본문 종류(고정 식별자)와 종류 목록 metadata. 목록에 없는 값이 하나라도 있으면 표시하지 않는다. */
+const referenceKinds: Record<string, string> = { "rail-stations-v1": "철도역", "ferry-ports-v1": "여객선 터미널", "bus-terminals-v1": "버스터미널", "parking-current-v1": "공항 주차 현재값" };
+const referenceKindLabels: Record<string, string> = { failed_kinds: "준비 실패 종류", deferred_kinds: "준비 이월 종류", busy_kinds: "다른 준비와 겹친 종류" };
+function referenceKindList(value: unknown): string | null {
+  const raw = text(value);
+  if (!/^[a-z0-9-]{1,40}(,[a-z0-9-]{1,40}){0,7}$/.test(raw)) return null;
+  const names = raw.split(",").map(kind => Object.hasOwn(referenceKinds, kind) ? referenceKinds[kind] : null);
+  return names.every(name => name !== null) ? names.join(", ") : null;
+}
 const trafficDeferredReason: [string, string] = ["고속도로 소통 원본과 이번 원본의 5분 통계는 저장했지만 최근 2시간 통계 재대조가 미뤄졌습니다.", "원본·성공 상태·이번 원본의 통계는 유지합니다. 다음 정기 수집이 최근 2시간을 다시 만듭니다. 여러 번 연속되면 지연 원인과 소통 통계 재대조 시간을 확인하세요."];
 const numbers: Record<string, string> = { planned_grids: "계획 격자 수", failed_grids: "미완료 격자 수", deferred_grids: "재개 대기 격자 수", requested_page: "요청 페이지", returned_page: "반환 페이지", page_size: "페이지 크기", total_count: "전체 행 수", expected_rows: "예상 행 수", returned_rows: "반환 행 수", requests_fetched: "요청 횟수", http_status: "HTTP 상태", received_rows: "수신 행 수", parsed_rows: "파싱 행 수", invalid_rows: "불량 행 수", fetch_ms: "요청 소요(ms)", normalize_ms: "정규화 소요(ms)", publish_ms: "게시 소요(ms)", published_values: "저장 값 수", completed_grids: "완료 격자 수", run_id: "저장 실행 ID", error_count: "오류 수", raw_response_count: "저장 원문 수", traffic_snapshot_count: "소통 저장 수", incident_snapshot_count: "돌발 저장 수", fuel_station_count: "주유소 저장 수", fuel_price_count: "가격 저장 수", failed_dataset_count: "실패 데이터셋 수", successful_dataset_count: "성공 데이터셋 수", traffic_history_seconds: "소통 이력 저장(초)", traffic_current_upsert_seconds: "소통 현재값 승격(초)", traffic_touched_statistics_seconds: "원천 안 5분 통계(초)", traffic_statistics_seconds: "소통 통계 재대조(초)", traffic_unchanged_rows: "소통 반복 관측(확인만)", traffic_touched_buckets: "원천 안 재집계 5분 구간" };
 const fieldNames = new Set(["totalCount", "pageNo", "numOfRows"]);
@@ -109,6 +121,7 @@ function metadata(raw: unknown): ObjectValue {
     else if (label === "stage" && Object.hasOwn(stages, text(entry.text))) result[label] = entry.text;
     else if (label === "metadata_field" && fieldNames.has(text(entry.text))) result[label] = entry.text;
     else if (label === "metadata_type" && fieldTypes.has(text(entry.text))) result[label] = entry.text;
+    else if (Object.hasOwn(referenceKindLabels, label) && referenceKindList(entry.text) !== null) result[label] = referenceKindList(entry.text);
   }
   return result;
 }
@@ -153,6 +166,7 @@ export function failureDiagnostic(raw: unknown): string {
   if (data.metadata_field) lines.push(`검사 필드: ${data.metadata_field} · 응답 형식: ${data.metadata_type ?? "미제공"}`);
   if (data.traffic_statistics_refreshed === false) lines.push(`소통 5분 통계 재대조: 대기${data.traffic_statistics_deferred_reason ? ` · 원인 ${trafficReasonLabel(data.traffic_statistics_deferred_reason)}` : ""} · 다음 수집이 자동 복구`);
   if (data.traffic_source_committed === false) lines.push(`소통 원천 저장: 되돌림${data.traffic_failed_step ? ` · 단계 ${TRAFFIC_STEP_LABELS[text(data.traffic_failed_step)]}` : ""}${data.traffic_store_failure_reason ? ` · 원인 ${trafficReasonLabel(data.traffic_store_failure_reason)}` : ""} · 마지막 정상 자료 유지`);
+  for (const [key, label] of Object.entries(referenceKindLabels)) if (typeof data[key] === "string") lines.push(`${label}: ${data[key]}`);
   for (const [key, label] of Object.entries(numbers)) if (data[key] !== undefined) lines.push(`${label}: ${data[key]}`);
   for(const [code,count] of Object.entries(gridFailureCounts(object(event.failureMetadata).metadataEntries))) lines.push(`격자 원인 · ${GRID_FAILURE_LABELS[code]}: ${count}`);
   return lines.join("\n");

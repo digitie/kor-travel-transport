@@ -24,3 +24,11 @@
   [수치·실패 이력·남는 비용](../reports/2026-11-10-reference-artifact-improvement.md)을 구분한다.
 - **후속**: 전체 CI backend 결과를 정산한다. 조건부304·입력 해시·미준비 구성 비용은 남는다.
   모든 writer를 포괄하는 revision을 입증하기 전에는 입력 해시를 단순 timestamp로 대체하지 않는다.
+- **사실 갱신(2026-11-24, 결정 불변)**: 준비 경로를 보강했다 — 종류별 격리(Map이 읽는 철도역·여객선 먼저, 한
+  종류 실패가 다른 종류와 수집 run을 막지 않음), 경합은 `busy`(연속 3회면 실패로 올림), 준비 전체에 예산 하나(전용
+  job·배포 직후 120초, 수집 job 꼬리 60초, 남은 종류는 `deferred`), 오프라인 문장·잠금 상한(60초·5초, HTTP는
+  15·10·2초 그대로), 준비 뒤 제한 정리(만료 handle → 미사용 본문, 50개·10초), HTTP 경로 정리의 savepoint 격리,
+  배포가 끝난 뒤 운영자가 부르는 code-server 안 직접 준비(API와 code-server의 `RELEASE_SHA`가 같을 때만).
+  입력 revision의 `release_sha`는 그대로이며 code fingerprint로의 교체는 후속이다.
+  [성능 문서](../architecture/performance.md#기준정보-본문-오프라인-준비의-격리상한정리2026-11-24)·
+  [배포 런북](../runbooks/deployment.md#배포-직후-best-effort-warm기준정보-본문-준비loopback-export-확인-2026-11-24).

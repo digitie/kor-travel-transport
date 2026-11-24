@@ -380,6 +380,9 @@ history CPU는 thread_time()으로 따로 측정했다. 두 history 구현 모�
 
 ## 철도 내보내기 기동 시 입력 지문 준비
 
+> 2026-11-24부터 기동 warm은 철도역·여객선 두 종류와 풀 채우기·이력 캐시 지연 시작을 함께 한다 —
+> 아래 [API 기동 warmup](#api-기동-warmup2026-11-24)을 따른다. 이 절은 철도 한 종류였던 때의 설계와 측정 기록이다.
+
 PostgreSQL API에서 Map current가 활성화되고 배포 revision이 설정돼 있으면,
 워커가 기동할 때 철도 입력 지문을 한 번 읽는다. 같은 session factory와
 repeatable-read 조회를 사용하므로 첫 페이지가 기존 워커 캐시를 재사용할 수 있다.
@@ -494,3 +497,61 @@ T1의 55P03·57014·요청 상한 503은 이 경로가 직접 낸다(`Retry-Afte
 입장 제한 값은 운영 동시성 측정 없이 풀 크기(5+5)와 다른 경로 몫을 기준으로 정한 초기값이다. 거절·시한·끊김은
 `places_admission_rejected`·`places_deadline_exceeded`·`places_client_disconnected` 로그로 남는다. 운영 적용 뒤
 이 로그와 Server-Timing으로 값을 다시 판단한다.
+
+## API 기동 warmup(2026-11-24)
+
+감사 RT-06·RT-13·G2-09·G3-10. 기동 warmup은 `app/services/startup_warmup.py` 한 task로 순서를 둔다. lifespan은
+yield 전에 task만 만들고 아무것도 기다리지 않는다(포트 개방을 늦추지 않는다).
+
+1. 풀 채우기 — `pool_size` 중 비어 있는 만큼 **동시에** checkout해 `SELECT 1`을 하고, 모두 checkout(또는 실패)할
+   때까지 쥔 뒤 함께 돌려준다. 하나씩 열고 바로 돌려주면 같은 연결을 재사용해 풀에 하나만 남는다. 3초 상한, 실패는
+   무시한다. 이미 요청이 연결을 쓰고 있으면(기동 직후 burst) 아무것도 하지 않는다. 쥐는 시간은 보통 수십 ms이고,
+   그동안 들어온 요청은 overflow 연결(`max_overflow` 5)을 쓴다. 시험 DB 모드 엔진(NullPool)에서는 no-op이다.
+2. 입력 지문 memo — Map이 읽는 T3인 철도역 → 여객선 터미널을 하나씩(종류별 10초, 읽기 전용 RR).
+   bus-terminals·parking/current는 Map 소비자가 없어 데우지 않는다.
+3. 위 둘이 끝나면 주차 이력 캐시 첫 구성을 시작한다(이력 구성 CPU가 첫 export와 겹치지 않게). 지연은 보통 수 초,
+   최악 약 23초(풀 3초 + 지문 10초×2)이고 안전 상한은 30초다. 그 사이 `/parking/history`는 캐시 없이 직접 SQL
+   (무거운 대체 경로)로 응답한다.
+
+끝나면 `{"event": "startup_warmup", "pool_prefilled": n, "kinds": [{kind, status, duration_ms}], ...}` 한 줄을
+**WARNING**으로 남긴다(성공도 남겨 'warm 실패'와 'warm 전 도착'을 가른다). API는 app logger에 handler·level을 두지
+않고(uvicorn은 자기 logger만 설정) Python 기본 lastResort가 WARNING 이상만 내므로, INFO로는 운영 로그에 남지 않는다.
+배포 직후 본문 자체의 준비와 서빙 프로세스의 loopback warm은
+[배포 런북](../runbooks/deployment.md#배포-직후-best-effort-warm기준정보-본문-준비loopback-export-확인-2026-11-24)을 따른다.
+
+## 기준정보 본문 오프라인 준비의 격리·상한·정리(2026-11-24)
+
+`prepare_reference_exports`(수집 job 꼬리의 op, 전용 준비 job, 주소 갱신 뒤, 배포 직후)는 HTTP 첫 페이지의 대체
+경로다 — 준비가 없거나 실패해도 첫 페이지가 같은 입력으로 같은 본문을 만든다. 그래서(감사 T23-04·T23-05·T23-12·
+WLH-04):
+
+- **종류별 격리와 순서** — Map이 읽는 철도역·여객선을 먼저, 이어 버스·주차 순으로 한다. 한 종류의 실패
+  (membership 불일치·상한 초과·DB 오류)가 다른 종류의 준비를 막지 않는다. 결과는 종류별
+  `{kind, status, duration_ms, item_count, error_type, sqlstate, reason}`이다.
+- **전체 예산 하나** — 모든 종류·경합 재시도·정리가 예산 하나를 나눠 쓴다(종류·재시도마다 새로 시작하지 않는다).
+  전용 job·배포 직후·주소 갱신 뒤는 120초, 수집 job 꼬리(5분 공항 수집 등)는 60초다 — 꼬리가 길면 run이 STARTED로
+  남아 coalescing schedule이 주차 tick을 버린다. 호출자는 run deadline(전용 job은 180−60초)보다 10초 먼저 끝나게
+  더 줄인다. 남은 예산이 5초 미만이면 그 종류는 시작하지 않고 `deferred`, 예산 끝에서 난 구성 상한·statement
+  timeout도 `deferred`다. 문장·잠금 상한(60초·5초)도 남은 예산보다 길지 않게 줄인다. HTTP 첫 페이지는 그대로
+  15초·10초·2초다(Map 응답 시간).
+- **경합은 실패가 아니다** — 같은 본문을 다른 준비(배포 직후 준비·다른 수집 job)나 첫 HTTP 페이지가 만들고 있으면
+  잠금 대기(55P03)·교착(40P01)·RR 직렬화 실패(40001)·admission/head CAS 경합(SnapshotRace)이 난다. 0.3~1초 뒤 새
+  transaction으로 한 번 다시 보고(대개 그사이 끝난 본문을 재사용한다), 그래도 겹치면 그 종류는 `busy`다. busy는
+  실패·부분 완료가 아니라 이월(`REFERENCE_EXPORT_BUSY`)로 남기고 run 태그 `kortravel/reference-export-busy`에 종류를
+  적는다. 같은 job에서 같은 종류가 **연속 3회** busy면(5분 공항 수집이면 약 15분) 버려진 잠금(idle in transaction 세션
+  등)을 의심해 실패로 올린다.
+- **결과 표시** — Dagster metadata는 `reference_status`(최상위 `status`는 쓰지 않는다 — 관리 콘솔이 "저장 결과: 실패"로
+  읽는다)와 `failed_kinds`·`busy_kinds`·`deferred_kinds`, 수, `error_code`를 남긴다. 일부 실패는 부분 완료
+  (`REFERENCE_EXPORT_PARTIAL`), 전부 실패는 전용 `reference_export_prepare_job`에서만 run 실패이고 수집 job 꼬리·주소
+  갱신 뒤에서는 부분 완료(`REFERENCE_EXPORT_FAILED`)다 — 수집은 이미 commit됐고 첫 export 요청이 본문을 직접
+  구성한다. 예산 소진·원천 미완결은 이월(`REFERENCE_EXPORT_DEFERRED`). 관리 콘솔은 이 코드들과 종류 이름을 고정 문구로
+  보인다. 회수된 실행(`CollectionLeaseLost`)·run 상한·취소는 그대로 step을 끝낸다.
+- **제한 정리** — 준비 뒤 남은 예산 안에서 만료 handle을 먼저(그 handle이 붙든 옛 본문을 풀어 준다), 이어 미사용
+  본문을 묶음마다 commit하며 최대 50개·10초까지 지운다. 정리 실패·경합은 준비 결과를 바꾸지 않는다(`gc_error_type`·
+  `gc_busy`·`gc_skipped` metadata).
+- **요청 경로 정리는 읽기를 실패시키지 않는다** — HTTP 첫 페이지의 GC(`expire_snapshots`·`collect_unused_artifact`)는
+  savepoint 안에서 돈다(`export_current.gc_quietly`). 요청이 RR snapshot을 잡은 뒤 준비의 대량 정리가 같은 만료
+  handle을 지우고 commit하면 `FOR UPDATE`가 40001을 내는데, 그 정리만 되돌리고 읽기·handle 발급을 잇는다.
+
+관리자 좌표 보정·KRIC 매핑 저장 뒤 영향 종류를 API 프로세스에서 즉시 준비하는 것은 하지 않는다. 본문 구성은 CPU
+작업이라 API event loop를 수 초 막고, 5분 공항 수집의 준비 step이 다음 주기에 같은 본문을 만든다.

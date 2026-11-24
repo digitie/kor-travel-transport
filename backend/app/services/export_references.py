@@ -32,7 +32,7 @@ from app.services.general_rail_reference import KRIC_GENERAL_SOURCE, KRIC_GENERA
 from app.services.rail_station_mapping import persisted_mapping_context, persisted_station_links
 from app.services.parking_exports import parking_scope, parking_sources
 from app.services.export_addresses import export_admin_addresses
-from app.services.export_current import BATCH_SIZE, MAX_SNAPSHOT_BYTES, MAX_SNAPSHOT_ITEMS, SnapshotRace, budget_exceeded, build_started, cache_generation, _snapshot_transaction, expire_snapshots, read_snapshot_with_retry, snapshot_expires_at
+from app.services.export_current import BATCH_SIZE, MAX_SNAPSHOT_BYTES, MAX_SNAPSHOT_ITEMS, SnapshotRace, budget_exceeded, build_started, cache_generation, _snapshot_transaction, expire_snapshots, gc_quietly, read_snapshot_with_retry, snapshot_expires_at
 from app.services.export_price_history import _decode_cursor, _encode_cursor, _response
 from app.services.reference_export_revision import reference_payload_revision
 from app.services.reference_artifacts import prepare_artifact, collect_unused_artifact
@@ -270,7 +270,7 @@ async def _artifact_snapshot(session, heads, spec, input_revision, started):
             raise unavailable(ProblemCode.EXPORT_SOURCE_INCONSISTENT, "handle과 reference 본문이 일치하지 않습니다.")
         return cached, artifact
     artifact, _ = await prepare_artifact(session, heads, spec, input_revision, started=started)
-    await expire_snapshots(session)
+    await gc_quietly(session, expire_snapshots)
     table = ServiceExportSnapshot.__table__
     snapshot_id = str(uuid4())
     admitted = await session.scalar(pg_insert(table).values(
@@ -280,7 +280,7 @@ async def _artifact_snapshot(session, heads, spec, input_revision, started):
     ).on_conflict_do_nothing(index_elements=["kind", "scope_key", "generation"]).returning(table.c.id))
     if admitted is None:
         raise SnapshotRace()
-    await collect_unused_artifact(session)
+    await gc_quietly(session, collect_unused_artifact)
     return await session.get(ServiceExportSnapshot, snapshot_id), artifact
 
 
@@ -319,7 +319,7 @@ async def _freeze_reference(session, heads, spec, *, payload_revision=None):
     ).order_by(ServiceExportSnapshot.created_at.desc()).limit(1))
     if cached:
         return cached, None
-    await expire_snapshots(session)
+    await gc_quietly(session, expire_snapshots)
     table = ServiceExportSnapshot.__table__
     factory = pg_insert if session.bind.dialect.name == "postgresql" else sqlite_insert
     snapshot_id = str(uuid4())

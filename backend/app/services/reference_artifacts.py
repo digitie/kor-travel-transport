@@ -42,9 +42,11 @@ from app.services.export_current import (
 )
 
 
-def _budget(started):
+def _budget(started, limit=None):
     # 요청 경로의 `started`는 첫 시도의 시작이다(`export_current.build_started`, 재시도와 예산 공유).
-    if budget_exceeded(started):
+    # 오프라인 준비만 `limit`(그 준비 전체 예산의 끝까지 남은 초)을 넘긴다.
+    exceeded = budget_exceeded(started) if limit is None else monotonic() - started > limit
+    if exceeded:
         raise unavailable(ProblemCode.EXPORT_PREPARE_TIMEOUT, "reference 본문 구성 시간 상한을 초과했습니다.")
 
 
@@ -67,10 +69,10 @@ async def _pin_current(session, artifact):
         session.expire(head)
 
 
-async def _store_items(session, artifact_id, encoded, started):
+async def _store_items(session, artifact_id, encoded, started, *, budget_seconds=None):
     table = ReferenceExportArtifactItem.__table__
     for offset in range(0, len(encoded), BATCH_SIZE):
-        _budget(started)
+        _budget(started, budget_seconds)
         bodies = encoded[offset:offset + BATCH_SIZE]
         if session.bind.dialect.name == "postgresql" and session.bind.dialect.driver == "asyncpg":
             # 같은 SQLAlchemy transaction의 공개 driver API를 쓴다. JSONB codec에는
@@ -108,10 +110,11 @@ async def _store_items(session, artifact_id, encoded, started):
         else:
             await session.execute(insert(table), [{"artifact_id": artifact_id, "ordinal": offset + i + 1,
                 "payload": json.loads(body)} for i, body in enumerate(bodies)])
-        _budget(started)
+        _budget(started, budget_seconds)
 
 
-async def prepare_artifact(session, heads, spec, input_revision, *, started=None):
+async def prepare_artifact(session, heads, spec, input_revision, *, started=None, budget_seconds=None):
+    """`budget_seconds`가 None이면 요청 경로 예산(`export_current.BUILD_BUDGET_SECONDS`, 재시도와 공유)이다."""
     started = monotonic() if started is None else started
     q = select(ReferenceExportArtifact).where(
         ReferenceExportArtifact.kind == spec.kind, ReferenceExportArtifact.scope_key == spec.scope,
@@ -126,7 +129,7 @@ async def prepare_artifact(session, heads, spec, input_revision, *, started=None
     observe_fingerprint()
     encoded = [];size = count = 0;digest = hashlib.sha256()
     async for batch in spec.payload_batches(session, heads):
-        _budget(started)
+        _budget(started, budget_seconds)
         for item in batch:
             body = json.dumps(item, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
             size += len(body);count += 1
@@ -144,7 +147,7 @@ async def prepare_artifact(session, heads, spec, input_revision, *, started=None
         .on_conflict_do_nothing(index_elements=["kind", "scope_key", "input_revision"]).returning(table.c.id))
     if admitted is None:
         raise SnapshotRace()
-    await _store_items(session, artifact_id, encoded, started)
+    await _store_items(session, artifact_id, encoded, started, budget_seconds=budget_seconds)
     artifact = await session.get(ReferenceExportArtifact, artifact_id)
     await _pin_current(session, artifact)
     return artifact, True
