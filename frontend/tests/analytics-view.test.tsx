@@ -221,6 +221,19 @@ describe("AnalyticsView", () => {
     }
   });
 
+  test("서버 나이가 없는 응답은 받은 시각 기준으로 대신 판정한다", async () => {
+    const spy = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-11-24T05:30:00Z"));
+    try {
+      apiClient.getDashboardAnalytics.mockResolvedValue({ ...dashboardAnalyticsPayload, analytics_generated_at: "2026-11-24T04:50:00Z" });
+      renderAnalytics();
+      const late = await screen.findByTestId("analytics-basis");
+      expect(late).toHaveTextContent("40분 전 집계");
+      expect(late).toHaveAttribute("data-tone", "warning");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   test("기준 시각이 없는 이전 backend 응답에서는 표시하지 않는다", async () => {
     renderAnalytics();
     await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());

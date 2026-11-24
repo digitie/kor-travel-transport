@@ -33,8 +33,17 @@ export function AnalyticsView({ active = true }: { active?: boolean }) {
   // 첫 값 0은 '받은 시각'으로 대신한다(렌더 중 Date.now를 부르지 않는다).
   const [now, setNow] = useState(0);
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
-    return () => window.clearInterval(timer);
+    const tick = () => setNow(Date.now());
+    const timer = window.setInterval(tick, 60_000);
+    // 숨은 탭의 타이머는 멈추거나 묶인다(모바일 Safari·Chrome 절전). 다시 보이면 바로 다시 판정한다.
+    const onVisible = () => { if (document.visibilityState !== "hidden") tick(); };
+    window.addEventListener("focus", tick);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", tick);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
   const basis = analyticsBasis(analyticsGeneratedAt, analyticsAgeSeconds, analyticsReceivedAt, Math.max(now, analyticsReceivedAt ?? 0));
   const scopeLabel = historyLabel(selectedParkingLotName, selectedAirport?.name_ko);

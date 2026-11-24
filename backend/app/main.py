@@ -333,7 +333,7 @@ class DashboardSourceMetrics:
     weekday_hour_patterns: list[WeekdayHourlyPattern]
     time_series: ParkingTimeSeriesResponse
     #: 원본을 읽기 전 시각(memo 재사용 기준과 같다). 화면의 "분석 기준 시각"에 쓴다.
-    generated_at: datetime | None = None
+    generated_at: datetime
 
 
 def cached_transport_statistics(handler):
@@ -3442,7 +3442,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # 화면의 "기준 시각": 낸 네 분석 중 가장 오래된 생성 시각. 사전집계를 유예로 내면 수집보다 늦을 수 있다
         # (갱신 실패 시 최대 `DASHBOARD_REFRESH_GRACE`, 새 적재가 없으면 `DASHBOARD_STALE_CACHE_MAX_AGE`).
         if computed is not None:
-            generated.append(serialize_utc(computed.generated_at or computed.time_series.generated_at))
+            generated.append(serialize_utc(computed.generated_at))
         analytics_generated_at = min(generated) if generated else None
         # 화면이 늦음을 서버 시계로 판정하게 나이를 함께 낸다(브라우저 시계가 틀려도 판정이 뒤집히지 않는다).
         analytics_age_seconds = (

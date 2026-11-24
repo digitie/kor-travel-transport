@@ -22,7 +22,7 @@ type AnalyticsState = {
   holidayPatterns: HolidayPatternResponse | null;
   timeSeries: ParkingTimeSeriesResponse | null;
   flightStatus: FlightStatusResponse | null;
-  /** 기간 분석의 기준 시각과 응답을 받은 시각(늦음 판정은 받은 시각 기준이라 렌더마다 바뀌지 않는다). */
+  /** 기간 분석의 기준 시각, 서버가 잰 나이, 응답을 받은 시각. 화면은 서버 나이 + 받은 뒤 흐른 시간으로 늦음을 판정한다. */
   analyticsGeneratedAt: string | null;
   analyticsAgeSeconds: number | null;
   analyticsReceivedAt: number | null;

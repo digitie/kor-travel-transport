@@ -31,8 +31,10 @@ for (const width of [320, 390, 1440]) {
     const heading = await page.getByRole("heading", { name: "분석", level: 2 }).boundingBox();
     const box = await stamp.boundingBox();
     expect(heading && box).toBeTruthy();
-    // 제목 옆(같은 기준선) 또는 아래(좁은 화면은 줄바꿈)에 놓이고, 한 줄이며 화면 안에 있다.
+    // 페이지 머리말 안에서 제목 옆(같은 기준선) 또는 바로 아래(좁은 화면은 줄바꿈)에 놓이고, 한 줄이며 화면 안에 있다.
+    await expect(page.locator("header.page-header [data-testid=analytics-basis]")).toHaveCount(1);
     expect(box!.x >= heading!.x + heading!.width - 1 || box!.y >= heading!.y + heading!.height - 1).toBe(true);
+    expect(box!.y - (heading!.y + heading!.height)).toBeLessThanOrEqual(8);
     expect(box!.height).toBeLessThanOrEqual(24);
     expect(box!.x + box!.width).toBeLessThanOrEqual(width);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
@@ -52,6 +54,12 @@ for (const width of [320, 390, 1440]) {
       return { color: style.color, background: style.backgroundColor };
     });
     expect(colors.background).not.toBe("rgba(0, 0, 0, 0)");
+    // 다크 모드에서도 경고 배경이 남는다(토큰의 다크 정의).
+    await page.emulateMedia({ colorScheme: "dark" });
+    const darkBackground = await stamp.evaluate((node) => getComputedStyle(node).backgroundColor);
+    expect(darkBackground).not.toBe("rgba(0, 0, 0, 0)");
+    expect(darkBackground).not.toBe(colors.background);
+    await page.emulateMedia({ colorScheme: "light" });
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 
     // 기준 시각이 없는(이전 backend) 응답에서는 줄을 만들지 않는다.
