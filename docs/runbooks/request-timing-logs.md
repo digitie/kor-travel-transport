@@ -85,8 +85,8 @@ export_request route=/v1/service/exports/rail-stations method=GET status=200 sta
 | `duration_ms` | middleware 안 전체 시간(응답 전송 포함) |
 | `sql_count`, `sql_ms` | 이 요청이 실행한 문장 수와 DB 왕복 합 |
 | `cpu_ms` | **프로세스 전체** CPU 차이(`process_time`). 같은 시간에 돈 주차 이력 재구성 thread·다른 요청의 CPU가 섞인다. 예전 로그와 비교하려고 그대로 둔다 |
-| `loop_cpu_ms` | 이벤트 루프 thread의 CPU 차이(`thread_time`). 다른 thread 작업은 빠지지만 같은 루프에서 번갈아 돈 다른 coroutine의 CPU는 포함한다. 핸들러가 `asyncio.to_thread`로 넘긴 작업(공개 places 검증 등)도 빠진다 |
-| `page_builds` | 응답 페이지 DTO를 새로 만든 횟수. 0이면 캐시·304 |
+| `loop_cpu_ms` | 이벤트 루프 thread의 CPU 차이(`thread_time`). 다른 thread 작업은 빠지지만 같은 루프에서 번갈아 돈 다른 coroutine의 CPU는 포함한다. 핸들러가 worker thread로 넘긴 자기 작업도 빠진다: 공개 places 검증(`fuel_map_limiter`), T1 export 본문 구성(DTO·JSON·gzip, `RENDER_CONCURRENCY` 2) |
+| `page_builds` | places 페이지 캐시·참조 export(T2·T3)에서 응답 페이지를 새로 만든 횟수. 0이면 캐시·304. T1 export(주유소·휴게소·돌발·공항)는 세지 않으므로 항상 0이다 |
 | `fingerprint_calculations` | 참조 export 입력 지문 계산 횟수. 0=메모 적중, 1 이상=지문 재계산(배포 직후·입력 변경) |
 | `pool_ms` | DB 풀에서 연결을 받기까지 걸린 시간 합(대기열 대기 + 새 연결 + pre-ping). SQL 시간 밖이다 |
 | `pool_checkouts` | 이 요청의 연결 checkout 수 |
@@ -102,19 +102,23 @@ export_request route=/v1/service/exports/rail-stations method=GET status=200 sta
 2. `sql_ms`가 크다 → DB. 같은 route의 EXPLAIN으로 내려간다.
 3. `duration_ms − sql_ms − pool_ms`가 크고 `loop_cpu_ms`가 그 대부분 → 이벤트 루프의 Python CPU(직렬화·DTO 구성).
    `inflight_start`가 1이면 이 요청 자신의 비용으로 읽는다.
-4. 3의 차이가 큰데 `loop_cpu_ms`는 작고 `cpu_ms`가 크다 → 다른 thread(이력 재구성 등)가 CPU·GIL을 쓰는 동안 기다렸다.
+4. 3의 차이가 큰데 `loop_cpu_ms`는 작고 `cpu_ms`가 크다 → worker thread 작업이다. T1 export와 공개 places는 먼저
+   자기 본문 구성·검증 thread(위 `loop_cpu_ms` 설명)로 읽고, 구성 slot 대기(T1 최대 5초)도 `duration_ms`에 들어간다.
+   그 밖의 경로이거나 `inflight_start`가 크면 다른 thread(이력 재구성 등)가 CPU·GIL을 쓰는 동안 기다린 것이다.
 5. 참조 export에서 `fingerprint_calculations`·`page_builds`가 0이 아니고 1초 이상 → cold(배포 직후 artifact 재구성).
 
 계측이 어느 요청에 붙는지(context 귀속):
 
-- 계수는 요청마다 만든 `ReadTiming`을 `contextvars`로 들고 다닌다. 요청 처리 중 만든 task
-  (`asyncio.create_task`·`to_thread`·single-flight leader 작업)는 만들 때의 context를 복사하므로, 그 task의 SQL·풀
+- 계수는 요청마다 만든 `ReadTiming`을 `contextvars`로 들고 다닌다. 요청 처리 중 만든 task·thread
+  (`asyncio.create_task`·`asyncio.to_thread`·anyio `to_thread.run_sync`·single-flight leader 작업)는 만들 때의
+  context를 복사하므로, 그 task의 SQL·풀
   대기·page build는 **그 task를 만든 요청**에 더해진다. 같은 계산을 기다리기만 한 follower 요청에는 더해지지 않는다
   (follower는 `duration_ms`만 길고 `sql_ms`는 작다).
 - task가 만든 요청보다 오래 돌면, 요청 로그 한 줄이 이미 나간 뒤의 계수는 어디에도 남지 않는다.
 - 요청 밖 작업(기동 warm, Dagster, 이력 재구성 thread)은 요청 계수에 들어가지 않고 `cpu_ms`(프로세스 전체)에만 섞인다.
 
-한계: 503의 원인(현재 집합 없음·예산 초과·lock)은 상태 코드로만 남고 사유 코드는 아직 없다. 오래 걸린 503은
+한계: 503의 원인(현재 집합 없음·예산 초과·lock·T1 구성 slot·요청 상한)은 이 로그에 상태 코드로만 남고 사유 코드는 없다
+(T1 503의 `Retry-After` 10/60과 응답 본문으로 구분한다, ADR-013 개정 2026-11-24). 오래 걸린 503은
 `duration_ms`로만 구분한다. 일일 로그 양은 export 하루 약 800줄(Map T1 매시 약 32~33건 기준)과 임계 이상 요청 수다.
 
 ## Server-Timing 응답 header
@@ -143,7 +147,8 @@ location(Map)과 backend 직접(loopback 12302, 관리 BFF·측정 스크립트)
     잰다. gateway를 가리키면 900으로 낮춰져 결과가 조용히 작아진다(observe는 12301·12307에 대형 지도 표본을
     요청하면 거절한다).
 - export location(12301)은 `proxy_buffers 64 32k`(요청당 최대 2MiB)와 `proxy_max_temp_file_size 0`이다.
-  - 주유소 500행 페이지(약 1.2MB 비압축)는 메모리 버퍼에 다 들어가 backend 연결을 바로 돌려준다.
+  - 주유소 500행 페이지(약 1.2MB 비압축)는 메모리 버퍼에 다 들어가 backend 연결을 바로 돌려준다. backend는
+    gzip을 받는 요청(Map httpx 기본)에 T1을 gzip으로 보내므로(ADR-013 개정 2026-11-24) 실제 페이지는 더 작다.
     컨테이너 쓰기 계층의 `proxy_temp` 파일에 쓰지 않으므로 기존 `an upstream response is buffered to a temporary file`
     경고가 없어야 한다.
   - 버퍼보다 큰 본문(대형 참조 snapshot)은 소비자가 읽는 속도로 흘리며, 그동안 backend 연결과 요청을 잡고 있다.

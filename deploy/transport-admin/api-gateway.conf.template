@@ -118,6 +118,7 @@ server {
         proxy_read_timeout 120s;
         # T1 페이지(주유소 500행 약 1.2MB 비압축)는 기본 버퍼(8×4k)를 넘어 컨테이너 쓰기 계층의
         # proxy_temp 파일로 내려간다. 요청당 최대 2MiB 메모리 버퍼로 받아 backend 연결을 빨리 돌려준다.
+        # (backend는 gzip을 받는 요청에 T1을 gzip으로 보내므로 Map 페이지는 이보다 작다. 크기는 평문 기준이다.)
         # 그보다 큰 본문(대형 참조 snapshot)은 임시 파일 없이 소비자가 읽는 속도로 흘리며, 그동안
         # backend 연결과 요청을 잡고 있다(소비자가 send_timeout 60초 동안 읽지 않으면 끊긴다).
         proxy_buffers 64 32k;
