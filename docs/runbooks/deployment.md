@@ -60,7 +60,8 @@ rollback을 판단할 때도 같은 두 조건을 따른다. 회귀는 `backend/
 
 ## T-TRN-01 source 배포 계약(2026-10-17)
 
-현재 source의 entry는 scripts/deploy-prod.sh --host <IPv4>, scripts/deploy-prod-remote.sh --host <IPv4>, scripts/deploy-transport-admin-prod.sh --host <IPv4>다. env 정본은 .env.prod와 .env.prod.example이며 app dir·project·실행 사용자는 유지한다. 구 env의 실제 개명·배포를 이 PR이 자동 수행하지 않는다. 구 .env.server14와 .env.server14.legacy/.env.server14.shared-dagster-cutover 세 파일은 정확한 exclude로 보존하며 root의 별도 확인 없이 정리하지 않는다.
+아래 entry는 state mount가 없는 legacy core와 관리자 배포에 적용한다. Odroid core의 현재 경로는
+[Manager v2 배포](#odroid-transport-dagster-compute-로그-보존)를 따른다. source의 entry는 scripts/deploy-prod.sh --host <IPv4>, scripts/deploy-prod-remote.sh --host <IPv4>, scripts/deploy-transport-admin-prod.sh --host <IPv4>다. env 정본은 .env.prod와 .env.prod.example이며 app dir·project·실행 사용자는 유지한다. 구 env의 실제 개명·배포를 이 PR이 자동 수행하지 않는다. 구 .env.server14와 .env.server14.legacy/.env.server14.shared-dagster-cutover 세 파일은 정확한 exclude로 보존하며 root의 별도 확인 없이 정리하지 않는다.
 
 주소는 필수 인자다. 원격 IPv4에 주소가 있고, sudo -n ktdctl targets validate --json의 targets.transport.host가 가리키는 hosts.<key>.addr와 같으며 호출자가 env를 읽을 수 있어야 한다. Manager PR530 설치 전 hosts 필드가 없거나 sudo/registry 조회가 실패하면 복사·Docker 변경 전에 exit2다. 코드에 허용 주소표나 호스트 기본값을 두지 않는다. 운영 UI도 transport 키를 사용한다.
 
@@ -132,14 +133,14 @@ Manager 런북을 따른다.
 
 ### 사전 빌드와 공식 staging의 metadata
 
-외부 controller가 일정 중지 전에 빌드를 끝낸 뒤 공식 자식을 호출할 때에는
-`deploy-prebuilt` 계약을 사용할 수 있다. backend 자식은 checksum으로 고정한 새
+state mount가 없는 legacy core에서 외부 controller가 일정 중지 전에 빌드를 끝낸 뒤 공식
+자식을 호출할 때에는 `deploy-prebuilt` 계약을 사용할 수 있다. backend 자식은 checksum으로 고정한 새
 receipt의 세 image ID·전체 release·운영 schema·원본 CS CID·복사 뒤 state fingerprint와
 소유 일정 STOPPED·run 다섯 상태·실제 worker를 재검산하고 busy면 대기 없이 거절한다.
 관리자 자식은 별도로 두 image ID와 baked 관리자 release를 검산한다. 둘 다 빌드·pull·
 마이그레이션을 기동하지 않는다. strict 자식의 자동 CS rollback은 없으며 실제 종료와
 새 probe 뒤 부모만 복구를 결정한다. 교체 전에 state가 바뀌어 거절됐으면 과거 복사본을
-현재 state 위에 복원하지 않는다. 기존 일반/prepare 배포는 그대로다.
+현재 state 위에 복원하지 않는다.
 [정확 입력·receipt 권한·부모 책임·남은 launch 경합](../design/2026-10-27-prebuilt-deploy-handoff.md)을
 먼저 따른다. 이 경로의 추가를 운영 배포나 원자적 launch fence 수용으로 간주하지 않는다.
 
@@ -151,6 +152,68 @@ receipt의 세 image ID·전체 release·운영 schema·원본 CS CID·복사 �
 [운영 계약 검증](../reviews/2026-10-19-track2-runtime-contract.md)와
 [ARM 관리자 번들 수용](../audits/2026-10-19-admin-bundle-acceptance.md)을 따른다.
 ADR accepted 여부는 별도 증거 정산 후 표시한다.
+
+## Odroid Transport Dagster compute 로그 보존
+
+Odroid의 `transport.override.yml`은 `dagster-code-server`에만 기존 Docker local 볼륨
+`kor-travel-transport-dagster-state`를 `/opt/dagster/state`에 `nocopy: true`로 붙인다.
+Odroid core는 Manager의 `ktdctl service-release apply-core-candidate transport`를 사용한다.
+운영자가 Manager 등록 경로의 overlay를 승인한 소스와 맞추고 볼륨을 준비한다. 최초 연결에는
+전체 이관을 증명하는 Manager v2 receipt의 `state.seed`를 포함한다. 이후 배포는 현재 code-server의 CID와 고정 볼륨 증거를 담은 v2 receipt를 사용하며
+`state.seed`를 생략한다. 각 전환 전에 `--dry-run`으로 증거를 확인하고 승인된 적용은
+`--confirm`으로 실행한다. 원래의 공용 `dagster.yaml` 읽기 전용 bind와
+`/app/collector-state`의 Opinet 볼륨도 함께 유지한다.
+
+`deploy-prod-remote.sh`의 기존 source·v1 prebuilt·공용 plane 전환 준비는 후보 또는 현재
+code-server에 Dagster state mount가 있으면 중단한다. 자동 rollback도 동일한 검사 뒤에만
+실행한다. 현재 code-server가 이미 볼륨을 사용하면 overlay가 빠진 후보도 거절한다. 소스 staging
+(`DEPLOY_STAGE_ONLY=true`)과 [이미지 빌드 전용 경로](../design/2026-11-13-normal-image-build.md)는
+사용할 수 있다. mounted core의 복구는 Manager 절차로 같은 상태 볼륨을 유지한다.
+
+보존 명령은 공용 PostgreSQL의 Dagster run 기록과 `LOGS_CAPTURED` 이벤트를 읽고, 코드 위치
+origin과 두 소유권 태그가 일치하는 Transport run만 대상으로 한다. UTC 종료 시각이 현재보다
+168시간 넘게 이전인 SUCCESS·FAILURE·CANCELED run의 이벤트에 등록된 로컬 로그 키만 확인한다.
+최근 1시간 안에 mtime 또는 ctime이 바뀐 키는 보류된다. 초기 복사 뒤 ctime이 갱신된 파일도 이
+유예가 적용된다. run에 `kortraveltransport/compute-log-retention-hold` 태그가 있는 동안은 값과
+관계없이 보존한다. 외부·미확인 키, 심볼릭 링크와 하드 링크는 건너뛴다. 삭제 범위는 각 키의
+stdout·stderr·부분 파일과 완료 표식이다. 디렉터리·Dagster 이력·로컬 artifacts·Opinet 체크포인트는
+보존한다.
+
+운영자가 Manager의 볼륨 검증과 최초 이관 뒤 대상 컨테이너에서 확인한다. 수동 apply도
+아래의 배포 lease를 획득한 상태에서 실행한다.
+
+```sh
+docker exec kor-travel-transport-dagster-code-server-1 /opt/venv/bin/python -m app.dagster.compute_log_retention --dry-run
+docker exec kor-travel-transport-dagster-code-server-1 /opt/venv/bin/python -m app.dagster.compute_log_retention --apply
+```
+
+### 호스트 유지보수 명령 계약
+
+프로젝트별 구현은 코드 서버 내부에서 실행하며 인수 없이 호출하거나 `--dry-run`을 전달하면
+삭제 없이 집계한다. `--apply`를 명시해야 삭제한다. 정상 종료는 0, 실행 실패는 1, 인수 오류는
+2다. 유효한 인수로 실행하면 stdout에 JSON 한 줄을 내고 진단은 stderr로 보낸다. Manager는
+종료 코드 0과 JSON의 `ok: true`를 함께 확인할 수 있다. 오류가 발생하면 이미 삭제한 파일 수를
+같은 응답에 포함한다. 다시 실행할 때는 남은 파일의 적격성을 다시 검사한다.
+
+- `schema_version`은 `1`이고 `mode`는 `dry-run` 또는 `apply`다.
+- `runs_seen`은 확인한 UUID 형식의 run 항목 수다. `eligible_keys`, `eligible_files`, `eligible_bytes`는
+  조건을 통과한 키 수, 파일 수, 파일 크기 합이다. `removed_files`, `removed_bytes`는 실제 삭제한 파일의
+  수와 크기 합이다. dry-run의 삭제 수와 크기는 0이다.
+- `skipped_runs`, `skipped_keys`, `skipped_entries`는 각각 run·로그 키·파일 시스템 항목을 이유별로
+  집계한다. 누락된 이유의 개수는 0이다. 검사 후 파일이 바뀐 경우 후보 수와 실제 삭제 수가 다를 수 있다.
+
+### 하루 한 번 실행하는 host 유지보수
+
+최초 dry-run과 apply 검증 후 Manager의 호스트 유지보수에서 하루에 한 번 호출한다.
+타이머는 호출 시점에 고정된 이름으로 실행 중인 컨테이너를 찾으므로 일반 core 재생성 때
+다시 설치할 필요가 없다. Dagster 스케줄 및 legacy 복원 카탈로그에는 추가하지 않는다.
+
+호스트 runner는 apply 전 기존 Transport 배포 lease
+`/mnt/media/kor-travel/build/transport/.kor-travel-transport-deploy.lock`를 획득해 명령이 끝날 때까지
+유지한다. lease가 사용 중이면 다음 실행 기회로 미룬다. 이 lease는 첫 이관 검증과 이후
+Manager 교체 과정 동안 prune 실행을 막는다. 컨테이너 내부에서는
+compute-log 디렉터리의 배타 잠금이 동시 sweep을 막는다. 동시 sweep은 파일을 삭제하기 전에
+실패하고 JSON의 `ok`에 `false`를 반환한다.
 
 ## 과거 n150 운영 절차
 
