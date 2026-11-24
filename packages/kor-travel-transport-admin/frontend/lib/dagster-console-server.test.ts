@@ -85,6 +85,15 @@ describe("실행 상세·자료 경고",()=>{
     expect(events[0]).toMatchObject({warning:true,counts:{isolated_rows:2,received_rows:8251,invalid_rows:2,traffic_snapshot_count:8249}});
     expect(events[0].detail).toContain("INVALID_ROWS_ISOLATED");expect(events[0].detail).toContain("격리");expect(events[0].detail).not.toContain("UNKNOWN_FAILURE");
   });
+  it("수집 run 꼬리의 기준정보 본문 준비 부분 완료는 미등록 오류·저장 실패로 보이지 않는다",()=>{
+    const events=sanitizeConsoleEvents([{__typename:"ExecutionStepOutputEvent",timestamp:"1780000000000",stepKey:"prepare_reference_exports",metadataEntries:[
+      {label:"reference_status",text:"failed"},{label:"collection_outcome",text:"partial"},{label:"error_code",text:"REFERENCE_EXPORT_FAILED"},
+      {label:"previous_data_preserved",boolValue:true},{label:"failed_kinds",text:"rail-stations-v1,ferry-ports-v1"},
+    ]}]);
+    expect(events[0].detail).toContain("REFERENCE_EXPORT_FAILED");expect(events[0].detail).toContain("기준정보 export 본문 준비");
+    expect(events[0].detail).toContain("준비 실패 종류: 철도역, 여객선 터미널");expect(events[0].detail).toContain("일부 자료 미완료 · 정상 자료 유지");
+    expect(events[0].detail).not.toContain("UNKNOWN_FAILURE");expect(events[0].detail).not.toContain("저장 결과: 실패");expect(events[0].detail).not.toContain("자료 수집 실패");
+  });
   it("실패 원인도 고정 코드만 남기고 임의 로그는 전달하지 않는다",()=>{
     const secret="fixture-private-message";
     const result=sanitizeConsoleEvents([{__typename:"ExecutionStepFailureEvent",message:secret,error:{className:"RuntimeError",message:`${secret} https://private.invalid`},failureMetadata:{metadataEntries:[{label:"error_code",text:"PROVIDER_AUTH"}]}},{__typename:"LogMessageEvent",message:secret}]);

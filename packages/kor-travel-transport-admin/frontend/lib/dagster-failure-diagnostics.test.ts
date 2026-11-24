@@ -119,7 +119,16 @@ describe("한도·부분 완료 복구 정책",()=>{
   const daily=message("daily",false,"WAIT_QUOTA_RESET"),burst=message("per_second",true,"RETRY_AFTER_BACKOFF");
   expect(daily).toContain("일일");expect(daily).toContain("아니오 · 복구 정책 확인");expect(daily).toContain("일일 한도 초기화 이후");expect(burst).toContain("초당");expect(burst).toContain("예 · 호출 보호 후");
  });
- it.each(["COLLECTION_DEFERRED","DERIVED_CACHE_DEFERRED","REFERENCE_EXPORT_DEFERRED"])("%s는 고정 복구 원인을 설명한다",code=>{const text=failureDiagnostic({failureMetadata:{metadataEntries:[{label:"error_code",text:code}]}});expect(text).toContain(code);expect(text).not.toContain("UNKNOWN_FAILURE");});
+ it.each(["COLLECTION_DEFERRED","DERIVED_CACHE_DEFERRED","REFERENCE_EXPORT_DEFERRED","REFERENCE_EXPORT_PARTIAL","REFERENCE_EXPORT_FAILED","REFERENCE_EXPORT_BUSY"])("%s는 고정 복구 원인을 설명한다",code=>{const text=failureDiagnostic({failureMetadata:{metadataEntries:[{label:"error_code",text:code}]}});expect(text).toContain(code);expect(text).not.toContain("UNKNOWN_FAILURE");expect(text).not.toContain("무제한 재시도");});
+ it("기준정보 본문 준비는 단계 이름·실패 종류를 보이고 수집 자료가 그대로임을 말한다",()=>{
+  const text=failureDiagnostic({stepKey:"prepare_reference_exports",failureMetadata:{metadataEntries:[{label:"error_code",text:"REFERENCE_EXPORT_PARTIAL"},{label:"reference_status",text:"partial_success"},{label:"failed_kinds",text:"ferry-ports-v1,bus-terminals-v1"},{label:"deferred_kinds",text:"parking-current-v1"}]}});
+  expect(text).toContain("기준정보 export 본문 준비");expect(text).toContain("준비 실패 종류: 여객선 터미널, 버스터미널");expect(text).toContain("준비 이월 종류: 공항 주차 현재값");
+  expect(text).toContain("수집 자료");expect(text).toContain("첫 export 요청");expect(text).not.toContain("저장 결과");
+ });
+ it.each(["rail-stations-v1,private-canary","rail-stations-v1;drop","",`${"rail-stations-v1,".repeat(8)}rail-stations-v1`])("고정 종류가 아닌 목록 %s는 표시하지 않는다",value=>{
+  const text=failureDiagnostic({failureMetadata:{metadataEntries:[{label:"error_code",text:"REFERENCE_EXPORT_FAILED"},{label:"failed_kinds",text:value}]}});
+  expect(text).not.toContain("준비 실패 종류");expect(text).not.toContain("private-canary");
+ });
 });
 
 it("개요에서 임의 태그·원문 오류를 숨기고 경고와 실행 예산만 유지한다",()=>{

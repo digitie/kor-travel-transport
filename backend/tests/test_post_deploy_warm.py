@@ -44,12 +44,14 @@ def test_smoke_routes_exist_in_the_application(test_settings):
 
 class _Handler(BaseHTTPRequestHandler):
     statuses: ClassVar[dict[str, int]] = {}
+    bodies: ClassVar[dict[str, bytes]] = {}
     seen: ClassVar[list[tuple[str, str | None]]] = []
 
     def do_GET(self):
         type(self).seen.append((self.path, self.headers.get(export_smoke.TOKEN_HEADER)))
-        status = type(self).statuses.get(self.path.split("?", 1)[0], 200)
-        body = b'{"items":[]}'
+        path = self.path.split("?", 1)[0]
+        status = type(self).statuses.get(path, 200)
+        body = type(self).bodies.get(path, b'{"items":[]}')
         self.send_response(status)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -61,7 +63,7 @@ class _Handler(BaseHTTPRequestHandler):
 
 @pytest.fixture
 def server():
-    _Handler.statuses, _Handler.seen = {}, []
+    _Handler.statuses, _Handler.bodies, _Handler.seen = {}, {}, []
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
@@ -90,21 +92,45 @@ def test_smoke_calls_map_routes_with_the_env_token_and_prints_no_secret(server, 
     ]
     assert all(token == TOKEN for _, token in _Handler.seen)
     lines = out.out.strip().splitlines()
-    assert len(lines) == 7
+    assert len(lines) == 8
     assert lines[0].startswith("GET /v1/service/exports/fuel-stations 200 ") and lines[0].endswith("ms")
+    assert lines[-1] == "export smoke summary: ok=7 not_found=0 unreachable=0 t3_failed=0 t1_unavailable=0"
     assert TOKEN not in out.out + out.err
 
 
 def test_smoke_reports_config_mismatch_and_other_failures(server, monkeypatch, capsys):
     _Handler.statuses = {"/v1/service/exports/rail-stations": 503}
-    assert _smoke(server, monkeypatch, capsys)[0] == export_smoke.EXIT_WARN
+    assert _smoke(server, monkeypatch, capsys)[0] == export_smoke.EXIT_T3_FAILED
     _Handler.statuses = {"/v1/service/exports/rail-stations": 503, "/v1/service/exports/airports": 404}
     assert _smoke(server, monkeypatch, capsys)[0] == export_smoke.EXIT_CONFIG
 
 
+def test_smoke_separates_unavailable_t1_sources_by_problem_code(server, monkeypatch, capsys):
+    """T1 원천이 최신이 아니거나 비활성이라 503인 것은 배포 문제가 아니다 — problem code를 붙여 따로 센다."""
+    _Handler.statuses = {"/v1/service/exports/highway-incidents/active": 503, "/v1/service/exports/fuel-stations": 503}
+    _Handler.bodies = {
+        "/v1/service/exports/highway-incidents/active": b'{"type":"about:blank","status":503,"code":"EXPORT_EMPTY_SET",'
+                                                        b'"detail":"private-canary"}',
+        "/v1/service/exports/fuel-stations": b"<html>not json private-canary</html>",
+    }
+    code, out = _smoke(server, monkeypatch, capsys)
+    assert code == export_smoke.EXIT_T1_UNAVAILABLE == 5
+    lines = out.out.strip().splitlines()
+    assert any(line.startswith("GET /v1/service/exports/highway-incidents/active 503 EXPORT_EMPTY_SET ") for line in lines)
+    assert any(line.startswith("GET /v1/service/exports/fuel-stations 503 ") and "EXPORT" not in line for line in lines)
+    assert lines[-1].endswith("t3_failed=0 t1_unavailable=2")
+    assert "private-canary" not in out.out  # problem detail·본문은 출력하지 않는다
+
+
 def test_smoke_skips_without_token_and_skips_t3_when_map_current_is_off(server, monkeypatch, capsys):
     code, out = _smoke(server, monkeypatch, capsys, token=None)
-    assert code == 0 and _Handler.seen == [] and "skipped" in out.out
+    # 건너뜀은 통과가 아니다(자기 종료 코드, wrapper가 경고한다).
+    assert code == export_smoke.EXIT_SKIPPED == 4 and _Handler.seen == [] and "skipped" in out.out
+    short = "s" * (export_smoke.MIN_TOKEN_LENGTH - 1)
+    code, out = _smoke(server, monkeypatch, capsys, token=short)
+    # 설정은 됐지만 짧아서 export가 닫혀 있다 — "설정 안 됨"과 구분해 설정 불일치로 본다.
+    assert code == export_smoke.EXIT_CONFIG and _Handler.seen == [] and "shorter than 32" in out.out
+    assert short not in out.out
     code, out = _smoke(server, monkeypatch, capsys, map_current="false")
     assert code == 0
     assert [path for path, _ in _Handler.seen] == [export_smoke.PREFIX + path for path in export_smoke.T1_ROUTES]
@@ -117,10 +143,11 @@ def test_smoke_connection_failure_is_a_warning(monkeypatch, capsys):
         port = probe.getsockname()[1]
     monkeypatch.setenv(export_smoke.TOKEN_ENV, TOKEN)
     monkeypatch.setenv("TRANSPORT_MAP_CURRENT_ENABLED", "false")
-    assert export_smoke.main(["--port", str(port), "--timeout-seconds", "2"]) == export_smoke.EXIT_WARN
-    # Linux는 즉시 거절, Windows는 SYN 재시도로 시간 초과가 된다. 어느 쪽이든 경고(1)다.
+    assert export_smoke.main(["--port", str(port), "--timeout-seconds", "2"]) == export_smoke.EXIT_T3_FAILED
+    # Linux는 즉시 거절, Windows는 SYN 재시도로 시간 초과가 된다. 어느 쪽이든 도달 불가(1)다(T1 원천 문제와 다르다).
     out = capsys.readouterr().out
     assert "ConnectionRefusedError" in out or " timeout " in out
+    assert "unreachable=5" in out
 
 
 RELEASE = "0123456789abcdef0123456789abcdef01234567"
@@ -131,11 +158,18 @@ _SETTINGS = SimpleNamespace(release_sha=RELEASE)
     ({"status": "success", "prepared": 1, "reused": 3, "busy": 0, "failed": 0, "kinds": [
         {"kind": "rail-stations-v1", "status": "prepared", "duration_ms": 4000, "artifact_id": "secret-ish-id"},
     ], "gc": {"expired_handles": 1, "unused_artifacts": 1, "duration_ms": 9}}, 0),
-    # 5분 공항 수집의 준비와 겹친 종류(busy)는 실패가 아니다.
+    # 5분 공항 수집의 준비와 겹친 종류(busy)는 실패가 아니지만 다 준비된 것도 아니다(5 = 미완료 경고).
     ({"status": "success", "prepared": 0, "reused": 3, "busy": 1, "failed": 0, "kinds": [
         {"kind": "rail-stations-v1", "status": "busy", "duration_ms": 5012, "error_type": "DBAPIError",
          "sqlstate": "55P03"},
-    ], "gc": {"expired_handles": 0, "unused_artifacts": 0, "duration_ms": 3, "busy": True}}, 0),
+    ], "gc": {"expired_handles": 0, "unused_artifacts": 0, "duration_ms": 3, "busy": True}}, 5),
+    # 원천 미완결·예산 소진도 성공처럼 보이지 않게 미완료(5)다.
+    ({"status": "not_ready", "prepared": 0, "reused": 0, "busy": 0, "deferred": 0, "failed": 0, "kinds": [
+        {"kind": "rail-stations-v1", "status": "source_unavailable", "duration_ms": 9},
+    ]}, 5),
+    ({"status": "deferred", "prepared": 0, "reused": 0, "busy": 0, "deferred": 1, "failed": 0, "kinds": [
+        {"kind": "ferry-ports-v1", "status": "deferred", "duration_ms": 0},
+    ]}, 5),
     ({"status": "partial_success", "prepared": 0, "reused": 3, "busy": 0, "failed": 1, "kinds": [
         {"kind": "ferry-ports-v1", "status": "failed", "duration_ms": 9, "error_type": "HTTPException"},
     ]}, 1),
@@ -145,9 +179,10 @@ def test_prepare_module_prints_one_summary_line(monkeypatch, capsys, result, exi
     from app.core import config
     from app.services import reference_export_preparation as prep
 
-    async def fake_prepare(settings, *, kinds):
+    async def fake_prepare(settings, *, kinds, total_budget_seconds):
         assert settings is _SETTINGS
         assert kinds == ("rail-stations-v1", "ferry-ports-v1")  # Map이 읽는 종류만
+        assert total_budget_seconds == 20  # 바깥 상한(30초)보다 10초 먼저 끝낸다
         return result
 
     monkeypatch.setattr(config, "get_settings", lambda: _SETTINGS)
@@ -184,6 +219,8 @@ def test_prepare_module_requires_a_plain_release_argument():
         prepare_references.main(["--timeout-seconds", "30"])
     with pytest.raises(SystemExit):
         prepare_references.main(["--expect-release-sha", "abc; rm -rf /"])
+    with pytest.raises(SystemExit):
+        prepare_references.main(["--timeout-seconds", "29", "--expect-release-sha", RELEASE])
 
 
 def test_prepare_module_timeout_and_error_are_warnings_without_messages(monkeypatch, capsys):
@@ -198,7 +235,7 @@ def test_prepare_module_timeout_and_error_are_warnings_without_messages(monkeypa
 
     monkeypatch.setattr(config, "get_settings", lambda: _SETTINGS)
     monkeypatch.setattr(prep, "prepare_reference_exports_for_settings", timed_out)
-    args = ["--timeout-seconds", "10", "--expect-release-sha", RELEASE]
+    args = ["--timeout-seconds", "30", "--expect-release-sha", RELEASE]
     assert prepare_references.main(args) == 1
     assert json.loads(capsys.readouterr().out)["status"] == "timeout"
     monkeypatch.setattr(prep, "prepare_reference_exports_for_settings", leaky)
@@ -267,7 +304,7 @@ def test_wrapper_runs_prepare_in_code_server_then_smoke_in_backend(tmp_path: Pat
     assert result.returncode == 0, result.stderr
     execs = [call for call in calls if call[0] == "exec"]
     assert execs[0][:2] == ["exec", "kor-travel-transport-dagster-code-server-1"]
-    assert execs[0][2:] == ["python", "-I", "-B", "-m", "app.deploy.prepare_references", "--timeout-seconds", "300",
+    assert execs[0][2:] == ["python", "-I", "-B", "-m", "app.deploy.prepare_references", "--timeout-seconds", "180",
                             "--expect-release-sha", RELEASE]
     # 준비 전에 API health와 code-server의 RELEASE_SHA를 먼저 본다.
     first_exec = calls.index(execs[0])
@@ -281,9 +318,12 @@ def test_wrapper_runs_prepare_in_code_server_then_smoke_in_backend(tmp_path: Pat
 
 
 @pytest.mark.parametrize(("env", "warning"), [
-    ({"FAKE_SMOKE_EXIT": "3"}, "404 while a service export token is configured"),
-    ({"FAKE_SMOKE_EXIT": "1"}, "some routes did not return 2xx"),
+    ({"FAKE_SMOKE_EXIT": "3"}, "configuration mismatch"),
+    ({"FAKE_SMOKE_EXIT": "1"}, "a Map T3 first page was not 2xx"),
+    ({"FAKE_SMOKE_EXIT": "4"}, "export smoke skipped"),
+    ({"FAKE_SMOKE_EXIT": "5"}, "some T1 exports are not available"),
     ({"FAKE_PREPARE_EXIT": "1"}, "reference prepare did not fully succeed"),
+    ({"FAKE_PREPARE_EXIT": "5"}, "reference prepare incomplete"),
     ({"FAKE_PREPARE_EXIT": "4"}, "settings release_sha differs from the API"),
     ({"FAKE_STOPPED": "kor-travel-transport-dagster-code-server-1"}, "reference prepare skipped"),
 ])
@@ -309,13 +349,23 @@ def test_wrapper_skips_prepare_unless_code_server_and_api_releases_match(tmp_pat
     assert any("app.deploy.export_smoke" in call for call in execs)
 
 
-def test_legacy_deploy_warms_only_after_verification_and_current_publish():
-    text = (_SCRIPTS / "deploy-prod-remote.sh").read_text(encoding="utf-8")
-    verified = text.index("\nDEPLOYMENT_VERIFIED=true\n")
-    publish = text.index('publish_release_pointer "${migrate_image_id}"')
-    warm = text.index('bash "${SCRIPT_DIR}/post-deploy-warm.sh"')
-    assert verified < publish < warm
-    line = text[warm:text.index("\n", warm)]
-    assert line.endswith("|| true")
-    assert 'grep -Fq "\\"release_sha\\":\\"${CANDIDATE_SHA}\\""' in text[:verified]
-    assert text.index("wait_location_loaded\n") < verified
+def test_deploy_scripts_do_not_warm_inside_the_deploy_lock():
+    """warm은 배포 lock이 풀리고 소유 일정이 복원된 뒤 운영자가 부른다(lock 안에서 돌면 주차 수집 공백이 는다)."""
+    for name in ("deploy-prod-remote.sh", "deploy-prod.sh"):
+        path = _SCRIPTS / name
+        if path.is_file():
+            assert "post-deploy-warm" not in path.read_text(encoding="utf-8"), name
+
+
+@pytest.mark.parametrize("args", [
+    ["--project"], ["--api-port", "12302", "--request-timeout"],  # 값이 없는 flag(예전에는 무한 반복)
+    ["--request-timeout", "0"], ["--request-timeout", "121"], ["--prepare-timeout", "29"],
+    ["--prepare-timeout", "1801"], ["--api-port", "0"], ["--api-port", "65536"], ["--project", "Bad Name"],
+    ["--unknown", "x"],
+])
+def test_wrapper_rejects_bad_arguments_quickly(tmp_path: Path, args):
+    if sys.platform == "win32":
+        pytest.skip("POSIX bash wrapper 실행 검증(운영 Odroid·CI Linux)")
+    result = subprocess.run(["bash", str(_SCRIPTS / "post-deploy-warm.sh"), *args], capture_output=True, text=True,
+                            timeout=10, check=False, env={"PATH": "/usr/bin:/bin"})
+    assert result.returncode == 2 and "Usage" in result.stderr

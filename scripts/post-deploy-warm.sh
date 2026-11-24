@@ -1,43 +1,54 @@
 #!/usr/bin/env bash
-# 배포 직후 best-effort warm(감사 WLH-03·MC-07·RT-03·RT-11). 배포 성패를 바꾸지 않는다 — 항상 exit 0이고,
-# 문제는 stderr의 `WARN` 줄로만 남긴다.
+# 배포 직후 best-effort warm(감사 WLH-03·MC-07·RT-03·RT-11). 배포 성패를 바꾸지 않는다 — 인수 오류(exit 2)를 빼면
+# 항상 exit 0이고, 문제는 stderr의 `WARN` 줄로만 남긴다.
 #
-# 언제 부르나: backend /health의 release_sha가 후보와 같고 공용 Dagster가 location을 다시 실은 뒤.
-#   - Odroid 정본인 Manager v2(`ktdctl service-release apply-core-candidate transport ... --confirm`)로 배포했다면
-#     그 명령이 성공한 뒤 운영자가 Odroid에서 승인된 source clone의 이 스크립트를 부른다(Manager 쪽 자동 호출은 후속).
-#   - legacy `deploy-prod-remote.sh`는 current 발행 뒤 스스로 부른다.
+# 언제 부르나: 배포 명령이 **끝난 뒤**(배포 lock이 풀리고 소유 일정·sensor가 복원된 뒤) 운영자가 Odroid에서 부른다.
+#   배포 스크립트 안(lock·일정 STOPPED 동안)에서 부르지 않는다 — 준비·smoke가 길어지면 주차 수집 공백이 그만큼 늘어난다.
+#   - Odroid 정본인 Manager v2(`ktdctl service-release apply-core-candidate transport ... --confirm`)가 성공하고 location이
+#     다시 실린 뒤, 배포한 이미지와 같은 revision의 승인된 source clone에서 부른다(Manager 쪽 자동 호출은 후속).
+#   - 확인 절차·결과 해석은 docs/runbooks/deployment.md "배포 직후 best-effort warm".
 #
 # 하는 일:
-#   (a) 새 code-server 컨테이너 안에서 기준정보 본문(ADR-016 artifact)을 준비한다. 입력 revision에 release_sha가
-#       들어가 배포마다 본문이 모두 무효가 되므로, 다음 공항 수집을 기다리지 않고 미리 만든다. 먼저 code-server의
-#       RELEASE_SHA가 서빙 중인 API /health의 release_sha와 같은지 본다 — 다르면(code-server만 롤백, RELEASE_SHA 없이
-#       기동 등) API가 읽지 않을 revision을 만들고 head를 되돌리게 되므로 건너뛴다. Dagster run 밖에서 돌므로 5분 공항
-#       수집의 준비와 겹칠 수 있다. 겹친 종류는 `busy`로 끝나고 어느 쪽도 실패하지 않는다.
+#   (a) 새 code-server 컨테이너 안에서 Map이 읽는 기준정보 본문(ADR-016 artifact, 철도역·여객선)을 준비한다. 입력
+#       revision에 release_sha가 들어가 배포마다 본문이 모두 무효가 되므로, 다음 공항 수집을 기다리지 않고 미리 만든다.
+#       먼저 code-server의 RELEASE_SHA가 서빙 중인 API /health의 release_sha와 같은지 본다 — 다르면(code-server만 롤백,
+#       RELEASE_SHA 없이 기동, compose build처럼 이미지에 RELEASE_SHA가 없는 경우 등) API가 읽지 않을 revision을 만들고
+#       head를 되돌리게 되므로 건너뛴다. Dagster run 밖에서 돌므로 5분 공항 수집의 준비와 겹칠 수 있다. 겹친 종류는
+#       `busy`로 끝나고 어느 쪽도 실패하지 않는다.
 #   (b) 서빙 중인 backend 컨테이너 안에서 loopback으로 Map export(T1 limit=1, 철도역·여객선 첫 페이지)를 한 번씩
-#       부른다. 토큰은 컨테이너 env에서만 읽고(argv·출력 없음) 경로·상태·지연만 출력한다. 토큰이 설정됐는데
-#       404면 설정 불일치(토큰·허용 peer·라우터)로 경고한다.
+#       부른다. 토큰은 컨테이너 env에서만 읽고(argv·출력 없음) 경로·상태·problem code·지연만 출력한다.
 #
 # 사용: scripts/post-deploy-warm.sh [--project kor-travel-transport] [--api-port 12302]
-#                                   [--prepare-timeout 300] [--request-timeout 20]
+#                                   [--prepare-timeout 180] [--request-timeout 20]
 set -uo pipefail
+
+usage() {
+  echo "Usage: $0 [--project NAME] [--api-port PORT] [--prepare-timeout 30-1800] [--request-timeout 1-120]" >&2
+  exit 2
+}
 
 project="kor-travel-transport"
 api_port="12302"
-prepare_timeout="300"
+prepare_timeout="180"
 request_timeout="20"
 while [[ "$#" -gt 0 ]]; do
+  [[ "$#" -ge 2 ]] || usage
   case "$1" in
-    --project) project="${2:-}"; shift 2 ;;
-    --api-port) api_port="${2:-}"; shift 2 ;;
-    --prepare-timeout) prepare_timeout="${2:-}"; shift 2 ;;
-    --request-timeout) request_timeout="${2:-}"; shift 2 ;;
-    *) echo "Usage: $0 [--project NAME] [--api-port PORT] [--prepare-timeout SECONDS] [--request-timeout SECONDS]" >&2; exit 2 ;;
+    --project) project="$2" ;;
+    --api-port) api_port="$2" ;;
+    --prepare-timeout) prepare_timeout="$2" ;;
+    --request-timeout) request_timeout="$2" ;;
+    *) usage ;;
   esac
+  shift 2
 done
+# 컨테이너 안 모듈과 같은 범위로 검사한다(prepare_references 30~1800초, export_smoke 1~120초).
 if [[ ! "${project}" =~ ^[a-z0-9][a-z0-9_-]*$ || ! "${api_port}" =~ ^[0-9]{1,5}$
-      || ! "${prepare_timeout}" =~ ^[0-9]{2,4}$ || ! "${request_timeout}" =~ ^[0-9]{1,3}$ ]]; then
+      || ! "${prepare_timeout}" =~ ^[0-9]{1,4}$ || ! "${request_timeout}" =~ ^[0-9]{1,3}$ ]] \
+   || (( 10#${api_port} < 1 || 10#${api_port} > 65535 || 10#${prepare_timeout} < 30 || 10#${prepare_timeout} > 1800
+         || 10#${request_timeout} < 1 || 10#${request_timeout} > 120 )); then
   echo "post-deploy-warm: invalid arguments" >&2
-  exit 2
+  usage
 fi
 
 code_server="${project}-dagster-code-server-1"
@@ -70,10 +81,12 @@ else
     docker exec "${code_server}" python -I -B -m app.deploy.prepare_references \
       --timeout-seconds "${prepare_timeout}" --expect-release-sha "${api_release}")"
   prepare_status=$?
+  elapsed="$((SECONDS - started))s"
   case "${prepare_status}" in
-    0) log "reference prepare ($((SECONDS - started))s): ${prepare_output}" ;;
+    0) log "reference prepare (${elapsed}): ${prepare_output}" ;;
     4) warn "reference prepare skipped: code-server settings release_sha differs from the API (${prepare_output:-no output})" ;;
-    *) warn "reference prepare did not fully succeed (exit ${prepare_status}, $((SECONDS - started))s): ${prepare_output:-no output}" ;;
+    5) warn "reference prepare incomplete (${elapsed}): not every Map reference body is ready yet (not_ready/busy/deferred); the next airport-job prepare or the first Map page builds it: ${prepare_output:-no output}" ;;
+    *) warn "reference prepare did not fully succeed (exit ${prepare_status}, ${elapsed}): ${prepare_output:-no output}" ;;
   esac
 fi
 
@@ -85,8 +98,11 @@ if running "${backend}"; then
   smoke_status=$?
   case "${smoke_status}" in
     0) log "export smoke passed" ;;
-    3) warn "export smoke: 404 while a service export token is configured — check the token, SERVICE_EXPORT_ALLOWED_CLIENTS_CSV and router settings" ;;
-    *) warn "export smoke: some routes did not return 2xx (exit ${smoke_status}); the next Map call may rebuild in-request" ;;
+    3) warn "export smoke: configuration mismatch (404 with a configured token, or a token shorter than 32 characters) — check TRANSPORT_SERVICE_EXPORT_TOKEN, SERVICE_EXPORT_ALLOWED_CLIENTS_CSV and router settings" ;;
+    4) warn "export smoke skipped: no service export token in the backend container (exports are intentionally closed)" ;;
+    5) warn "export smoke: some T1 exports are not available (see the problem code per route: source not current or disabled) — not a deploy failure" ;;
+    1) warn "export smoke: a Map T3 first page was not 2xx, or a route timed out/was unreachable; the next Map call may rebuild in-request or get 503" ;;
+    *) warn "export smoke did not complete (exit ${smoke_status})" ;;
   esac
 else
   warn "${backend} is not running; export smoke skipped"

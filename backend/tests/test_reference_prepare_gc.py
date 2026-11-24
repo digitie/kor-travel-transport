@@ -108,6 +108,51 @@ def test_preparing_the_same_body_as_another_builder_is_busy_then_reused(export_c
             await engine.dispose()
 
     busy, reused = asyncio.run(scenario())
-    assert busy["status"] == "success" and (busy["busy"], busy["failed"]) == (1, 0)
+    assert busy["status"] == "deferred" and (busy["busy"], busy["failed"]) == (1, 0)  # 경합은 실패가 아니다
     assert busy["kinds"][0]["status"] == "busy" and busy["kinds"][0]["sqlstate"] == "55P03"
     assert reused["kinds"][0]["status"] == "reused" and reused["status"] == "success"
+
+
+def test_request_path_gc_never_fails_a_read_after_a_concurrent_bulk_gc(export_client, monkeypatch):
+    """요청이 RR snapshot을 잡은 뒤 준비의 대량 정리가 같은 만료 handle을 지우고 commit하면, 요청 경로의
+    `expire_snapshots`(FOR UPDATE)는 40001을 낸다. 요청 경로 정리는 savepoint 안에서 그 경합만 버리고 읽기를 잇는다."""
+    import asyncio
+
+    import pytest
+    from sqlalchemy.exc import DBAPIError
+
+    from app.db.session import create_engine_and_session_factory
+    from app.services.export_current import _snapshot_transaction, gc_quietly
+
+    c = export_client;_prepare(c);moment = now_utc()
+    assert _get(c).status_code == 200  # 만료될 handle 하나
+    monkeypatch.setattr(export_current, "now_utc", lambda: moment + timedelta(days=2))
+    settings = c.app.state.settings
+
+    async def scenario(quiet):
+        engine, factory = create_engine_and_session_factory(settings.database_url, collector=True)
+        try:
+            async with factory() as reader, factory() as bulk:
+                await _snapshot_transaction(reader)
+                assert await reader.scalar(select(func.count()).select_from(Snapshot)) >= 1  # RR snapshot 확정
+                await _snapshot_transaction(bulk)
+                assert await export_current.expire_snapshots(bulk, limit=2) >= 1
+                await bulk.commit()
+                if not quiet:
+                    with pytest.raises(DBAPIError) as caught:
+                        await export_current.expire_snapshots(reader)
+                    await reader.rollback()
+                    return getattr(caught.value.orig, "sqlstate", None)
+                deleted = await gc_quietly(reader, export_current.expire_snapshots)
+                # 같은 transaction이 계속 쓸 수 있다(읽기·handle 발급).
+                still = await reader.scalar(select(func.count()).select_from(Artifact))
+                await reader.commit()
+                return deleted, still
+        finally:
+            await engine.dispose()
+
+    assert asyncio.run(scenario(False)) == "40001"  # 재현: 감싸지 않으면 읽기 transaction이 실패한다
+    assert _get(c).status_code == 200  # 다음 epoch handle
+    monkeypatch.setattr(export_current, "now_utc", lambda: moment + timedelta(days=4))
+    deleted, still = asyncio.run(scenario(True))
+    assert deleted == 0 and still >= 1

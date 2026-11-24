@@ -241,37 +241,92 @@ compute-log 디렉터리의 배타 잠금이 동시 sweep을 막는다. 동시 s
 본문이 모두 무효가 된다. 5분 공항 수집의 준비 step은 code-server 냉기동·다음 tick·공항 수집 뒤에야 돌므로, 그
 사이의 첫 Map 호출이 요청 안에서 전체를 구성한다(감사 WLH-03·MC-07·RT-03). 배포 검증도 `/health`와
 `release_sha`만 보므로 export 토큰·허용 peer·Map current 플래그 불일치는 Map 실패로만 드러난다(RT-11).
-[`scripts/post-deploy-warm.sh`](../../scripts/post-deploy-warm.sh)가 두 가지를 best-effort로 한다. 결과와 상관없이
-exit 0이고 문제는 stderr `post-deploy-warm: WARN ...` 줄로만 남긴다(배포 rollback·실패 판정에 쓰지 않는다).
+[`scripts/post-deploy-warm.sh`](../../scripts/post-deploy-warm.sh)가 두 가지를 best-effort로 한다. 인수 오류(exit 2)를
+빼면 결과와 상관없이 exit 0이고, 문제는 stderr `post-deploy-warm: WARN ...` 줄로만 남긴다(배포 rollback·실패
+판정에 쓰지 않는다).
+
+### 언제·어디서 부르나
+
+배포 명령이 **끝난 뒤** — 배포 lock이 풀리고 소유 일정·sensor가 복원된 뒤 — 운영자가 Odroid에서 부른다. 배포
+스크립트 안(lock·일정 STOPPED 동안)에서는 부르지 않는다. 준비(최대 약 3분)·smoke(최대 약 4분)가 그만큼 주차 수집
+공백을 늘리기 때문이다. 그래서 legacy `deploy-prod-remote.sh`도 자동으로 부르지 않는다. 이 스크립트는 state mount가
+있는 현재 Odroid core를 거절하므로 운영에서는 어차피 쓰이지 않는다.
+
+**Odroid 정본(Manager v2)**:
+
+1. `ktdctl service-release apply-core-candidate transport ... --confirm`이 성공으로 끝났는지 본다(실패·중단이면
+   warm하지 않는다).
+2. location이 다시 실렸는지 본다: `docker inspect -f '{{.State.Health.Status}}' kor-travel-transport-dagster-code-server-1`이
+   `healthy`이고, 공용 Dagster UI(또는 관리 콘솔 작업 카탈로그)에서 `kor-travel-transport` location이 오류 없이
+   로드돼 있어야 한다.
+3. 배포한 이미지와 **같은 revision**의 승인된 source clone(`apply-core-candidate --source-clone`에 넘긴 디렉터리)에서
+   실행한다. `git -C <clone> rev-parse HEAD`가 `curl -fsS http://127.0.0.1:12302/health`의 `release_sha`와 같은지 먼저
+   본다(스크립트 자체도 API와 code-server의 release를 대조한다).
+
+   ```sh
+   cd <승인된 source clone>
+   bash scripts/post-deploy-warm.sh --project kor-travel-transport --api-port 12302
+   ```
+
+Manager가 이 단계를 자동으로 부르는 것은 후속이다.
+
+### 하는 일
 
 1. **본문 준비** — 먼저 backend `/health`의 `release_sha`와 code-server 컨테이너 env의 `RELEASE_SHA`를 비교한다.
    다르거나(code-server만 롤백, `RELEASE_SHA` 없이 기동 등) API 값을 읽지 못하면 준비를 건너뛰고 경고한다 — API가
-   읽지 않을 revision의 본문을 만들고 head를 되돌리게 되기 때문이다. 같으면 code-server 안에서
-   `python -I -B -m app.deploy.prepare_references --timeout-seconds 300 --expect-release-sha <API 값>`을 실행한다.
+   읽지 않을 revision의 본문을 만들고 head를 되돌리게 되기 때문이다. `compose build`(legacy `deploy-prod-remote.sh`
+   일반 모드)는 backend 이미지에 build arg로 `RELEASE_SHA`를 넣지 않는다. 그래서 code-server(이미지 ENV를 그대로 쓴다)는
+   `unknown`이고 이 단계는 항상 건너뛴다. 그 모드에서는 Dagster 준비 op도 `unsupported_revision`이다. Odroid의
+   prebuilt·Manager v2 이미지는 build 때 release를 넣는다. 같으면 code-server 안에서
+   `python -I -B -m app.deploy.prepare_references --timeout-seconds 180 --expect-release-sha <API 값>`을 실행한다.
    모듈이 자기 설정의 release_sha를 다시 대조하고(다르면 exit 4), Map이 읽는 rail·ferry 본문만 같은
-   `prepare_reference_exports`로 Dagster run 없이 직접 준비한다(공용 run 큐·`reference` run_group 대기를 피한다.
-   bus·parking/current는 5분 공항 수집의 준비가 맡는다). stdout은 종류별 결과 JSON 한 줄(kind·status·
-   duration_ms·error_type·sqlstate)이며 DSN·토큰은 없다. run_group 상한·수집 owner 밖에서 돌므로 5분 공항 수집의
-   준비와 같은 본문을 두고 겹칠 수 있다. 겹친 종류는 잠금 대기(55P03)·직렬화 실패(40001)·admission 경합을 한 번
-   다시 본 뒤 `busy`로 끝나며, 배포 쪽도 공항 run 쪽도 실패·부분 완료로 세지 않는다.
-2. **loopback smoke+warm** — backend 컨테이너 안에서 `python -I -B -m app.deploy.export_smoke --port <API 포트>`(`-B`: 런타임처럼 pyc를 쓰지 않는다)가
-   T1 다섯 종(`limit=1`)과 `TRANSPORT_MAP_CURRENT_ENABLED`일 때 rail·ferry 첫 페이지를 한 번씩 부른다. 토큰은 컨테이너
-   env(`TRANSPORT_SERVICE_EXPORT_TOKEN`)에서만 읽고 argv·출력에 넣지 않는다. 출력은 `GET <경로> <상태> <지연>ms`뿐이다.
-   서빙 중인 uvicorn 프로세스의 지문 memo·커넥션을 데우는 유일한 경로다. 토큰이 설정됐는데 404면 exit 3(토큰·
-   `SERVICE_EXPORT_ALLOWED_CLIENTS_CSV`·라우터 설정 불일치 경고), 503·시간 초과는 exit 1(경고)이다. 토큰이 없으면
-   export가 의도적으로 닫힌 것이라 건너뛴다.
+   `prepare_reference_exports`로 Dagster run 없이 직접 준비한다. 공용 run 큐·`reference` run_group 대기를 피하고,
+   bus·parking/current는 5분 공항 수집의 준비가 맡는다. 전체 예산은 120초이고 준비 뒤 제한 정리도 한다. stdout은 종류별
+   결과 JSON 한 줄(kind·status·duration_ms·error_type·sqlstate)이며 DSN·토큰은 없다.
+2. **loopback smoke+warm** — backend 컨테이너 안에서 `python -I -B -m app.deploy.export_smoke --port <API 포트>`가
+   T1 다섯 종(`limit=1`)과 `TRANSPORT_MAP_CURRENT_ENABLED`일 때 rail·ferry 첫 페이지를 한 번씩 부른다. `-B`는 런타임처럼
+   pyc를 쓰지 않게 한다. 운영 backend는 host network로 `PUBLIC_API_PORT`에서 들으므로 컨테이너 안 127.0.0.1:<그 포트>가
+   서빙 프로세스다. bridge network compose라면 `--api-port 8000`을 넘긴다. 토큰은 컨테이너 env
+   (`TRANSPORT_SERVICE_EXPORT_TOKEN`)에서만 읽고 argv·출력에 넣지 않는다. 출력은 경로·상태·(2xx가 아니면) problem
+   `code`·지연과 마지막 요약 한 줄이다. 서빙 중인 uvicorn 프로세스의 지문 memo·커넥션을 데우는 유일한 경로다.
 
-호출 위치:
+### 결과 읽기
 
-- **Odroid 정본(Manager v2)**: `ktdctl service-release apply-core-candidate transport ... --confirm`이 성공하고
-  location이 다시 실린 뒤 운영자가 승인된 source clone에서 실행한다. Manager 쪽 자동 호출은 후속이다.
+준비 JSON의 종류별 `status`:
 
-  ```sh
-  bash scripts/post-deploy-warm.sh --project kor-travel-transport --api-port 12302
-  ```
+| status | 뜻 | 대응 |
+| --- | --- | --- |
+| `prepared` | 새 revision 본문을 만들었다 | 없음 |
+| `reused` | 같은 revision 본문이 이미 있었다 | 없음 |
+| `busy` | 다른 준비(5분 공항 수집 등)가 같은 본문을 만드는 중이다 | 없음. 상대가 끝내면 재사용된다. 공항 run에서 같은 종류가 연속 3회면 실패로 올라온다 — 그때는 `pg_stat_activity`에서 오래된 `idle in transaction` 세션을 확인한다 |
+| `deferred` | 전체 예산(120초)을 다 써 시작하지 못했거나 예산 끝에서 멈췄다 | 다음 공항 수집 준비가 만든다. 반복되면 DB·CPU 부하를 본다 |
+| `failed` | 준비 실패(`error_type`·`sqlstate`·`reason`) | 다음 준비나 첫 Map 페이지가 다시 구성한다. 같은 종류가 반복되면 `reason`(membership 불일치·크기 상한)과 원천을 확인 |
+| `source_unavailable` | 원천이 아직 완결되지 않았다(head 없음·실패) | 해당 기준정보 수집 job 결과를 본다 |
+| `unsupported_revision` | release_sha가 없어 입력 revision을 만들 수 없다 | code-server `RELEASE_SHA` 설정 확인 |
 
-- **legacy `deploy-prod-remote.sh`**: health·`release_sha` 확인과 Manager current 발행이 끝난 뒤 스스로 부른다
-  (`|| true`). 발행이 실패(exit 3)하면 부르지 않는다.
+전체 `status`와 종료 코드(모듈 → wrapper):
+
+| status | exit | wrapper 표시 | 뜻 |
+| --- | --- | --- | --- |
+| `success`(busy·deferred 없음) | 0 | `reference prepare (Ns): {...}` | rail·ferry 본문이 준비됐다 |
+| `disabled` | 0 | 같음 | `TRANSPORT_MAP_CURRENT_ENABLED`가 꺼져 있다(할 일 없음) |
+| `success`(busy·deferred 있음)·`deferred`·`not_ready` | 5 | `WARN reference prepare incomplete` | 고장은 아니지만 본문이 다 준비되지 않았다 — 성공으로 보지 않는다. 다음 공항 수집 준비나 첫 Map 페이지가 만든다 |
+| `partial_success`·`failed` | 1 | `WARN reference prepare did not fully succeed` | 종류별 `error_type`·`reason`을 본다 |
+| `timeout`·`error` | 1 | 같음 | 모듈이 상한 안에 못 끝났거나 실행 오류(`error_type`) — code-server 상태·DB 연결 확인 |
+| `release_mismatch` | 4 | `WARN reference prepare skipped: ... release_sha differs` | code-server와 API의 release가 다르다 — 배포 상태 확인(준비하지 않았다) |
+
+smoke 종료 코드: 0 = 모두 2xx. 3 = 설정 불일치(토큰이 있는데 404, 또는 토큰이 32자 미만이라 export가 닫힘 — 토큰·
+`SERVICE_EXPORT_ALLOWED_CLIENTS_CSV`·라우터 확인). 1 = rail·ferry 첫 페이지가 2xx가 아니거나 시간 초과·연결 실패(다음 Map
+호출이 요청 안 구성·503을 볼 수 있다. 연결 실패면 포트·기동 상태 확인). 5 = T1 일부가 2xx가 아니다. 줄마다 붙은
+problem `code`(예: `EXPORT_SOURCE_NOT_CURRENT`·`EXPORT_EMPTY_SET`)로 원천 신선도·비활성을 가르며, 배포 문제가 아니다.
+4 = 토큰이 없어 건너뜀(export가 의도적으로 닫혀 있다 — 통과가 아니다).
+
+### 배포 직후 Map이 볼 수 있는 것
+
+준비가 rail·ferry 본문을 만드는 동안 같은 revision의 Map 첫 페이지가 들어오면, 요청은 2초 잠금 상한(HTTP)에서
+admission 행을 기다리다 일시적인 503(`snapshot 준비가 겹쳤습니다`)을 받을 수 있다. Map은 step 재시도(60초 뒤)에서
+준비된 본문을 재사용한다. Map T3 호출은 주 1회(월 04:30·04:40 KST)라 이 창과 겹치는 일은 드물다. 겹칠 수 있는
+시각에는 배포 직후 warm을 미룬다.
 
 ## 과거 n150 운영 절차
 

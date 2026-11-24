@@ -185,3 +185,19 @@ def test_shutdown_cancellation_does_not_start_history_cache():
 
     assert asyncio.run(scenario()) is True
     assert started == []
+
+
+def test_prefill_skips_when_requests_already_hold_connections_and_tops_up_idle_ones():
+    """기동 직후 요청이 연결을 쓰고 있으면 채우기가 남은 슬롯을 붙잡지 않는다. 이미 풀에 있는 연결만큼은 덜 연다."""
+    busy = _engine(5)
+    busy.pool.checkedout = lambda: 1
+    busy.pool.checkedin = lambda: 0
+    assert asyncio.run(startup_warmup.prefill_pool(busy)) == 0 and busy.state["opened"] == 0
+    partly = _engine(5)
+    partly.pool.checkedout = lambda: 0
+    partly.pool.checkedin = lambda: 2
+    assert asyncio.run(startup_warmup.prefill_pool(partly)) == 3 and partly.state["max_active"] == 3
+    full = _engine(5)
+    full.pool.checkedout = lambda: 0
+    full.pool.checkedin = lambda: 5
+    assert asyncio.run(startup_warmup.prefill_pool(full)) == 0

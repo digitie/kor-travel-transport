@@ -202,6 +202,26 @@ async def _snapshot_transaction(
             await session.execute(text(f"SET LOCAL statement_timeout = '{_timeout_literal(statement_ms)}'"))
 
 
+#: 요청 경로 GC가 다른 정리(오프라인 준비의 대량 정리 등)와 겹칠 때의 신호.
+_GC_CONTENTION_SQLSTATES = frozenset({"40001", "40P01", "55P03"})
+
+
+async def gc_quietly(session: AsyncSession, action: Callable, *args, **kwargs) -> int:
+    """요청 경로의 부가 정리(`expire_snapshots`·`collect_unused_artifact`)를 savepoint 안에서 한다.
+
+    RR snapshot을 잡은 뒤 다른 transaction(준비의 대량 정리 등)이 같은 victim을 지우고 commit했으면 `FOR UPDATE`가
+    40001을 낸다. 정리는 읽기를 실패시키면 안 되므로 경합(40001·40P01·55P03)이면 그 정리만 savepoint까지 되돌리고
+    0을 돌려준다. 같은 transaction의 읽기·handle 발급은 그대로 이어 간다.
+    """
+    try:
+        async with session.begin_nested():
+            return await action(session, *args, **kwargs)
+    except DBAPIError as exc:
+        if getattr(exc.orig, "sqlstate", None) in _GC_CONTENTION_SQLSTATES:
+            return 0
+        raise
+
+
 async def expire_snapshots(session: AsyncSession, *, limit: int = 1) -> int:
     """호출자 transaction의 만료 snapshot만 제한 삭제한다. 페이지 reader는 RR MVCC로 보호된다.
 
@@ -240,7 +260,7 @@ async def _freeze_traffic(
         return cached
     if not 0 <= head.member_count <= MAX_SNAPSHOT_ITEMS:
         raise unavailable(ProblemCode.EXPORT_TOO_LARGE, "확인된 교통 집합의 크기가 export 상한을 벗어났습니다.")
-    await expire_snapshots(session)
+    await gc_quietly(session, expire_snapshots)
     snapshot_id = str(uuid4())
     table = ServiceExportSnapshot.__table__
     factory = pg_insert if session.bind.dialect.name == "postgresql" else sqlite_insert

@@ -67,7 +67,8 @@ def test_one_failing_kind_does_not_stop_the_others(monkeypatch):
     monkeypatch.setattr(prep, "_prepare_kind", prepare_kind)
     session = FakeSession()
     result = asyncio.run(prep.prepare_reference_exports(session, settings=_settings(), collect_garbage=False))
-    assert seen == list(KINDS)  # 실패 뒤 종류도 계속 준비한다.
+    # 실패 뒤 종류도 계속 준비한다. Map이 읽는 철도역·여객선을 먼저 한다.
+    assert seen == ["rail-stations-v1", "ferry-ports-v1", "bus-terminals-v1", "parking-current-v1"]
     assert result["status"] == "partial_success"
     assert (result["prepared"], result["reused"], result["failed"]) == (0, 1, 2)
     by_kind = {row["kind"]: row for row in result["kinds"]}
@@ -87,8 +88,10 @@ def test_one_failing_kind_does_not_stop_the_others(monkeypatch):
     (("source_unavailable",) * 4, "not_ready"),
     (("failed", "source_unavailable", "source_unavailable", "unsupported_revision"), "failed"),
     (("failed", "prepared", "failed", "failed"), "partial_success"),
-    # 경합(busy)은 실패가 아니다: 다른 준비가 같은 본문을 만들고 있다.
-    (("busy", "busy", "source_unavailable", "busy"), "success"),
+    # 경합(busy)·예산 소진(deferred)은 실패가 아니다: 준비한 종류가 있으면 success, 없으면 deferred.
+    (("reused", "busy", "source_unavailable", "deferred"), "success"),
+    (("busy", "busy", "source_unavailable", "busy"), "deferred"),
+    (("deferred", "source_unavailable", "source_unavailable", "unsupported_revision"), "deferred"),
     (("busy", "failed", "source_unavailable", "source_unavailable"), "partial_success"),
 ])
 def test_overall_status_fails_only_when_nothing_could_be_prepared(monkeypatch, statuses, expected):
@@ -103,7 +106,8 @@ def test_overall_status_fails_only_when_nothing_could_be_prepared(monkeypatch, s
     monkeypatch.setattr(prep, "_prepare_kind", prepare_kind)
     result = asyncio.run(prep.prepare_reference_exports(FakeSession(), settings=_settings(), collect_garbage=False))
     assert result["status"] == expected
-    assert (result["busy"], result["failed"]) == (statuses.count("busy"), statuses.count("failed"))
+    assert (result["busy"], result["deferred"], result["failed"]) == (
+        statuses.count("busy"), statuses.count("deferred"), statuses.count("failed"))
 
 
 @pytest.mark.parametrize("error", [CollectionLeaseLost("revoked"), asyncio.CancelledError()])
@@ -146,8 +150,8 @@ def test_offline_preparation_uses_its_own_budget_and_timeouts(monkeypatch):
     async def revision(*_args):
         return "r" * 64
 
-    async def prepare_artifact(session, heads, spec, revision, *, budget_seconds):
-        budgets.append(budget_seconds)
+    async def prepare_artifact(session, heads, spec, revision, *, started, budget_seconds):
+        budgets.append(started + budget_seconds)
         return SimpleNamespace(id="artifact", item_count=3), True
 
     monkeypatch.setattr(prep, "_snapshot_transaction", snapshot_transaction)
@@ -156,13 +160,15 @@ def test_offline_preparation_uses_its_own_budget_and_timeouts(monkeypatch):
     monkeypatch.setattr(prep, "reference_payload_revision", revision)
     monkeypatch.setattr(prep, "prepare_artifact", prepare_artifact)
     spec = SimpleNamespace(kind="rail-stations-v1", max_age=timedelta(days=6))
+    deadline = monotonic() + prep.PREPARE_TOTAL_BUDGET_SECONDS
     result = asyncio.run(prep._prepare_kind(
-        FakeSession(), spec, settings=_settings(), budget_seconds=prep.PREPARE_BUILD_BUDGET_SECONDS,
+        FakeSession(), spec, settings=_settings(), deadline=deadline,
         lock_timeout_ms=prep.PREPARE_LOCK_TIMEOUT_MS, statement_timeout_ms=prep.PREPARE_STATEMENT_TIMEOUT_MS,
     ))
     assert result == {"status": "prepared", "artifact_id": "artifact", "item_count": 3, "source_status": "ok"}
     assert transactions == [{"lock_timeout_ms": 5_000, "statement_timeout_ms": 60_000}]
-    assert budgets == [120]
+    # 구성 상한의 끝은 전체 예산의 끝(deadline)이다.
+    assert budgets == [pytest.approx(deadline)]
 
 
 def test_snapshot_transaction_keeps_http_literals_and_accepts_offline_values():
@@ -182,7 +188,7 @@ def test_build_budget_defaults_to_http_and_accepts_the_offline_limit(monkeypatch
     monkeypatch.setattr(reference_artifacts, "monotonic", lambda: started + 16)
     with pytest.raises(HTTPException):
         reference_artifacts._budget(started)
-    reference_artifacts._budget(started, prep.PREPARE_BUILD_BUDGET_SECONDS)
+    reference_artifacts._budget(started, prep.PREPARE_TOTAL_BUDGET_SECONDS)
 
 
 def test_bounded_gc_expires_handles_first_then_unused_artifacts(monkeypatch):
@@ -191,7 +197,8 @@ def test_bounded_gc_expires_handles_first_then_unused_artifacts(monkeypatch):
     artifacts = [1, 1]
 
     async def snapshot_transaction(session, **kwargs):
-        assert kwargs == {"lock_timeout_ms": 5_000, "statement_timeout_ms": 60_000}
+        # 정리 예산(10초) 안에서 끝나도록 문장 상한도 줄인다.
+        assert kwargs["lock_timeout_ms"] == 5_000 and 5_000 <= kwargs["statement_timeout_ms"] <= 10_000
 
     async def expire(session, *, limit):
         order.append(("handles", limit))
@@ -257,12 +264,12 @@ def test_preparation_runs_bounded_gc_after_all_kinds(monkeypatch):
     monkeypatch.setattr(prep, "_prepare_kind", prepare_kind)
     monkeypatch.setattr(prep, "collect_reference_garbage", gc)
     result = asyncio.run(prep.prepare_reference_exports(FakeSession(), settings=_settings()))
-    assert calls == [*KINDS, "gc"]
+    assert calls == ["rail-stations-v1", "ferry-ports-v1", "bus-terminals-v1", "parking-current-v1", "gc"]
     assert result["gc"]["unused_artifacts"] == 1
 
 
 
-def _contended_kind(monkeypatch, errors):
+def _contended_kind(monkeypatch, errors, deadline_in=120):
     """`_prepare_kind`의 본문 준비(`prepare_artifact`)가 차례로 `errors`를 던지게 한다. None이면 재사용."""
     attempts = []
 
@@ -275,7 +282,7 @@ def _contended_kind(monkeypatch, errors):
     async def revision(*_args):
         return "r" * 64
 
-    async def prepare_artifact(session, heads, spec, revision, *, budget_seconds):
+    async def prepare_artifact(session, heads, spec, revision, *, started, budget_seconds):
         error = errors[len(attempts)]
         attempts.append(error)
         if error is not None:
@@ -294,13 +301,13 @@ def _contended_kind(monkeypatch, errors):
     session = FakeSession()
     result = asyncio.run(prep._prepare_kind(
         session, SimpleNamespace(kind="rail-stations-v1", max_age=timedelta(days=6)), settings=_settings(),
-        budget_seconds=120, lock_timeout_ms=5_000, statement_timeout_ms=60_000,
+        deadline=monotonic() + deadline_in, lock_timeout_ms=5_000, statement_timeout_ms=60_000,
     ))
     return result, attempts, session
 
 
 @pytest.mark.parametrize("error", [
-    export_current.SnapshotRace(), _db_error("55P03"), _db_error("40001"),
+    export_current.SnapshotRace(), _db_error("55P03"), _db_error("40001"), _db_error("40P01"),
 ])
 def test_contention_retries_once_then_reuses_the_other_builders_body(monkeypatch, error):
     """배포 직후 준비와 5분 공항 수집의 준비가 같은 본문을 두고 겹치면 한 번 다시 보고 대개 재사용한다."""
@@ -313,6 +320,7 @@ def test_contention_retries_once_then_reuses_the_other_builders_body(monkeypatch
     (export_current.SnapshotRace(), {"error_type": "SnapshotRace", "reason": "다른 준비·조회와 겹쳤습니다."}),
     (_db_error("55P03"), {"error_type": "DBAPIError", "sqlstate": "55P03"}),
     (_db_error("40001"), {"error_type": "DBAPIError", "sqlstate": "40001"}),
+    (_db_error("40P01"), {"error_type": "DBAPIError", "sqlstate": "40P01"}),
 ])
 def test_repeated_contention_is_busy_not_a_failure(monkeypatch, error, fields):
     """두 번째 경합도 예외로 올리지 않는다(예전에는 이 예외가 5분 공항 run step을 실패시켰다)."""
@@ -351,3 +359,88 @@ def test_gc_contention_stops_quietly(monkeypatch):
     monkeypatch.setattr(prep, "expire_snapshots", expire)
     result = asyncio.run(prep.collect_reference_garbage(FakeSession()))
     assert result["busy"] is True and "error" not in result
+
+
+def test_contention_without_budget_for_a_retry_is_busy_immediately(monkeypatch):
+    """경합 재시도도 전체 예산 안에서만 한다(종류마다 예산을 새로 시작하지 않는다)."""
+    result, attempts, _session = _contended_kind(monkeypatch, [_db_error("55P03"), None],
+                                                 deadline_in=prep.MIN_KIND_BUDGET_SECONDS + 0.2)
+    assert result["status"] == "busy" and len(attempts) == 1
+
+
+def test_total_budget_is_shared_and_later_kinds_are_deferred_not_cancelled(monkeypatch):
+    """예산을 다 쓰면 남은 종류는 시작하지 않고 deferred로 남긴다(step이 metadata 없이 끊기지 않는다)."""
+    _specs(monkeypatch)
+    clock = {"now": 1_000.0}
+    monkeypatch.setattr(prep, "monotonic", lambda: clock["now"])
+    seen = []
+
+    async def prepare_kind(session, spec, *, deadline, **kwargs):
+        seen.append((spec.kind, round(deadline - clock["now"])))
+        clock["now"] += 40  # 종류 하나가 40초 걸린다
+        return {"status": "reused"}
+
+    monkeypatch.setattr(prep, "_prepare_kind", prepare_kind)
+    result = asyncio.run(prep.prepare_reference_exports(
+        FakeSession(), settings=_settings(), total_budget_seconds=60,
+    ))
+    # 철도역(남은 60초) → 여객선(남은 20초) → 버스·주차는 남은 예산이 없어 시작하지 않는다.
+    assert seen == [("rail-stations-v1", 60), ("ferry-ports-v1", 20)]
+    by_kind = {row["kind"]: row for row in result["kinds"]}
+    assert by_kind["bus-terminals-v1"]["status"] == by_kind["parking-current-v1"]["status"] == "deferred"
+    assert by_kind["bus-terminals-v1"]["reason"] == prep.BUDGET_REASON
+    assert result["status"] == "success" and (result["reused"], result["deferred"]) == (2, 2)
+    assert result["gc"] == {"expired_handles": 0, "unused_artifacts": 0, "duration_ms": 0, "skipped": "budget"}
+
+
+@pytest.mark.parametrize("error", [
+    HTTPException(503, "reference 본문 구성 시간 상한을 초과했습니다."), _db_error("57014"),
+])
+def test_timeout_at_the_end_of_the_budget_is_deferred_but_early_timeout_fails(monkeypatch, error):
+    _specs(monkeypatch)
+    clock = {"now": 1_000.0}
+    monkeypatch.setattr(prep, "monotonic", lambda: clock["now"])
+
+    async def prepare_kind(session, spec, *, deadline, **kwargs):
+        if spec.kind == "rail-stations-v1":
+            clock["now"] = deadline  # 구성이 예산 끝까지 갔다
+            raise error
+        return {"status": "reused"}
+
+    monkeypatch.setattr(prep, "_prepare_kind", prepare_kind)
+    late = asyncio.run(prep.prepare_reference_exports(FakeSession(), settings=_settings(), collect_garbage=False,
+                                                      total_budget_seconds=30))
+    rail = next(row for row in late["kinds"] if row["kind"] == "rail-stations-v1")
+    assert rail["status"] == "deferred" and late["failed"] == 0 and late["status"] == "deferred"
+
+    clock["now"] = 1_000.0
+
+    async def early(session, spec, *, deadline, **kwargs):
+        if spec.kind == "rail-stations-v1":
+            raise error  # 예산이 넉넉한데 난 상한 초과는 실패다
+        return {"status": "reused"}
+
+    monkeypatch.setattr(prep, "_prepare_kind", early)
+    result = asyncio.run(prep.prepare_reference_exports(FakeSession(), settings=_settings(), collect_garbage=False))
+    rail = next(row for row in result["kinds"] if row["kind"] == "rail-stations-v1")
+    assert rail["status"] == "failed" and result["status"] == "partial_success"
+
+
+def test_attempt_timeouts_never_exceed_the_remaining_budget(monkeypatch):
+    monkeypatch.setattr(prep, "monotonic", lambda: 100.0)
+    assert prep._attempt_timeouts(130.0, 5_000, 60_000) == (5_000, 30_000)
+    assert prep._attempt_timeouts(102.5, 5_000, 60_000) == (2_500, 2_500)
+    assert prep._attempt_timeouts(99.0, 5_000, 60_000) == (1_000, 1_000)  # 최소 1초
+
+
+def test_persistent_busy_is_escalated_to_failed():
+    summary = prep._summarize({"kinds": [
+        {"kind": "rail-stations-v1", "status": "busy", "sqlstate": "55P03"},
+        {"kind": "ferry-ports-v1", "status": "busy", "sqlstate": "55P03"},
+        {"kind": "bus-terminals-v1", "status": "reused"},
+    ]})
+    assert summary["status"] == "success" and summary["busy"] == 2
+    prep.escalate_persistent_busy(summary, {"rail-stations-v1"})
+    rail = summary["kinds"][0]
+    assert rail["status"] == "failed" and "연속 3회" in rail["reason"]
+    assert (summary["busy"], summary["failed"], summary["status"]) == (1, 1, "partial_success")

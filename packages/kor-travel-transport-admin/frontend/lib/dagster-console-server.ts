@@ -132,7 +132,7 @@ export function sanitizeConsoleEvents(value: unknown): ConsoleEvent[] {
         if (match) metadata.counts[key] = Number(match[1]);
       }
     } else if (!title) continue;
-    if (!failure && metadata.diagnostic) detail = failureDiagnostic({ failureMetadata: { metadataEntries: event.metadataEntries } });
+    if (!failure && metadata.diagnostic) detail = failureDiagnostic({ stepKey: event.stepKey, failureMetadata: { metadataEntries: event.metadataEntries } });
     const notes = metadata.notes.join("\n");
     if (notes) detail = detail ? `${notes}\n${detail}` : notes;
     result.push({ kind, time: clock(event.timestamp,"milliseconds"), step: identifier(event.stepKey), title, detail, warning: failure || metadata.warning || metadata.diagnostic, counts: metadata.counts });
