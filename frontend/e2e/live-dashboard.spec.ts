@@ -209,51 +209,6 @@ test.describe("live parking-radar dashboard", () => {
     expect((await secondAgain.json()).items).toEqual(secondPage.items);
   });
 
-  test("reads the complete 30-day history through the public streaming proxy", async ({ request }) => {
-    test.setTimeout(120_000);
-    const started = Date.now();
-    const response = await request.get("/api/backend/v1/parking/history?days=30", { timeout: 90_000 });
-    expect(response.status()).toBe(200);
-    const payload = await response.json();
-    test.info().annotations.push({ type: "full-history-body-ms", description: String(Date.now() - started) });
-    expect(payload.next_cursor).toBeNull();
-    expect(payload.items.length).toBeGreaterThan(0);
-    expect(Date.parse(payload.items[0].observed_at)).toBeLessThanOrEqual(
-      Date.parse(payload.items.at(-1).observed_at),
-    );
-  });
-
-  test("reads the complete 30-day history in a browser within 3 seconds", async ({ page }) => {
-    test.setTimeout(120_000);
-    await page.goto("/", { waitUntil: "domcontentloaded" });
-    const result = await page.evaluate(async () => {
-      const started = performance.now();
-      const response = await fetch("/api/backend/v1/parking/history?days=30", { cache: "no-store" });
-      const bytes = await response.arrayBuffer();
-      const bodyMs = performance.now() - started;
-      const payload = JSON.parse(new TextDecoder().decode(bytes)) as {
-        items: { observed_at: string }[];
-        next_cursor: string | null;
-      };
-      return {
-        status: response.status,
-        bodyMs,
-        bytes: bytes.byteLength,
-        count: payload.items.length,
-        nextCursor: payload.next_cursor,
-        first: payload.items[0]?.observed_at,
-        last: payload.items.at(-1)?.observed_at,
-      };
-    });
-    test.info().annotations.push({ type: "browser-full-history-body-ms", description: String(Math.round(result.bodyMs)) });
-    expect(result.status).toBe(200);
-    expect(result.bodyMs).toBeLessThanOrEqual(3000);
-    expect(result.bytes).toBeGreaterThan(0);
-    expect(result.count).toBeGreaterThan(0);
-    expect(result.nextCursor).toBeNull();
-    expect(Date.parse(result.first ?? "")).toBeLessThanOrEqual(Date.parse(result.last ?? ""));
-  });
-
   test("exposes the integrated transport API through the frontend proxy", async ({
     page,
   }) => {

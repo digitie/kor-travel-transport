@@ -970,18 +970,33 @@ def test_parking_history_postgres_legacy_uses_single_pass_distinct_query(client)
     route = next(route for route in included.original_router.routes
                  if route.path == "/parking/history")
 
+    streamed = []
+
+    class EmptyResult:
+        async def partitions(self, _size):
+            return
+            yield
+
+        async def close(self):
+            return None
+
     class FakeSession:
         bind = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
 
-        async def execute(self, statement):
+        async def connection(self):
+            return SimpleNamespace(stream=self.stream)
+
+        async def stream(self, statement):
             compiled = str(statement.compile(dialect=postgresql.dialect()))
             assert "DISTINCT ON" in compiled
             assert "LATERAL" not in compiled
-            return SimpleNamespace(all=lambda: [])
+            streamed.append(statement)
+            return EmptyResult()
 
     response = asyncio.run(route.endpoint(SimpleNamespace(headers={}), None, None, 30, None, None, FakeSession()))
     assert response.status_code == 200
     assert response.body == b'{"items":[],"next_cursor":null}'
+    assert len(streamed) == 1
 
 
 def test_current_and_analytics(client) -> None:

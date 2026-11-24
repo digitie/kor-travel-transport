@@ -521,11 +521,23 @@ def test_postgres_history_cache_miss_holds_slot_until_response_sent(monkeypatch,
         def usable_snapshot(self, _cutoff):
             return None
 
+    class Result:
+        async def partitions(self, _size):
+            return
+            yield
+
+        async def close(self):
+            return None
+
     class FakeSession:
         bind = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
 
-        async def execute(self, _statement):
-            return SimpleNamespace(all=lambda: [])
+        # 직접 조회는 같은 connection의 stream을 2048행씩 받는다(render_direct_history).
+        async def connection(self, **_kwargs):
+            return SimpleNamespace(stream=self.stream)
+
+        async def stream(self, _statement):
+            return Result()
 
     cache = FakeCache()
     fake_engine = SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
@@ -755,8 +767,14 @@ def test_rebuild_interval_logs_are_paired_safe_and_skip_unchanged(monkeypatch, c
     assert start["mode"] == finish["mode"] == "full" and start["reason"] == "cold"
     assert finish["row_count"] == (None if outcome in {"failed", "cancelled"} else 1)
     assert finish["duration_ms"] >= 0 and finish["outcome"] == outcome
-    assert set(start) == {"event", "phase", "rebuild_id", "at", "duration_ms", "row_count", "mode", "reason"}
-    assert set(finish) == {*start, "outcome", "changed_keys", "phases_ms", "incremental_errors"}
+    assert set(start) == {"event", "phase", "rebuild_id", "at", "duration_ms", "row_count", "mode", "reason",
+                          "peak_rss_kib"}
+    assert set(finish) == {*start, "outcome", "changed_keys", "phases_ms", "incremental_errors",
+                           "worker_cpu_ms", "process_cpu_ms"}
+    for event in (start, finish):
+        assert event["peak_rss_kib"] is None or (type(event["peak_rss_kib"]) is int and event["peak_rss_kib"] > 0)
+    assert finish["worker_cpu_ms"] >= 0 and finish["process_cpu_ms"] >= 0
+    assert cache.rebuild_active is False
     assert "secret" not in caplog.text and "password" not in caplog.text
     if outcome == "published":
         caplog.clear()

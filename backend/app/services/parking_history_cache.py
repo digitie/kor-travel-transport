@@ -14,13 +14,17 @@ import gzip
 import json
 import logging
 import struct
+import sys
+import threading
 import zlib
 from bisect import bisect_left
 from collections import OrderedDict, defaultdict
 from collections.abc import Mapping
+from contextlib import suppress
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from time import monotonic, sleep
+from time import monotonic, process_time, sleep, thread_time
 from types import MappingProxyType
 from typing import NamedTuple
 from weakref import WeakValueDictionary
@@ -35,6 +39,11 @@ from starlette.responses import StreamingResponse
 
 from app.core.time_utils import now_utc, serialize_utc
 from app.models import Airport, ParkingSnapshot
+
+try:  # POSIX 전용이다. Windows 개발 환경에서는 최대 RSS를 null로 기록한다.
+    import resource
+except ImportError:  # pragma: no cover - 운영(Linux)에는 항상 있다.
+    resource = None
 
 logger = logging.getLogger(__name__)
 POLL_SECONDS = 5
@@ -54,6 +63,19 @@ FULL_REBUILD_LOCAL_HOURS = range(3, 5)
 HISTORY_WINDOW = timedelta(days=30)
 HISTORY_WINDOW_MARGIN = timedelta(minutes=15)
 _KST = ZoneInfo("Asia/Seoul")
+# 캐시를 쓸 수 없을 때 직접 조회를 한 번에 하나로 묶는 범위. 주차장 하나는 30일이어도 약
+# 8,640행이라 묶지 않는다. 공항·전체 범위도 7일 이하(기본 3일, 전체 7일 약 12만 행)는 기존처럼
+# 전송 슬롯 안에서 바로 돈다. 그보다 긴 공항·전체 범위(전체 30일 약 52만 행·75MB)만 묶는다.
+DIRECT_FALLBACK_SERIAL_MIN_DAYS = 8
+# 차례를 기다리는 요청이 깨움 신호를 놓쳐도 다시 확인하는 간격(초).
+DIRECT_FALLBACK_RECHECK_SECONDS = 1.0
+# 직접 조회 응답을 요청마다 압축하는 수준(캐시의 요청 시 압축 부분과 같다).
+DIRECT_FALLBACK_BROTLI_QUALITY = 6
+
+
+def direct_fallback_is_heavy(parking_lot_id: int | None, days: int) -> bool:
+    """직접 조회를 프로세스당 한 번에 하나로 묶을 범위인지(`DIRECT_FALLBACK_SERIAL_MIN_DAYS` 참고)."""
+    return not parking_lot_id and days >= DIRECT_FALLBACK_SERIAL_MIN_DAYS
 
 
 class BoundedHistoryResponse(StreamingResponse):
@@ -73,6 +95,48 @@ class BoundedHistoryResponse(StreamingResponse):
             await super().__call__(scope, receive, send)
         finally:
             self.delivery_semaphore.release()
+
+
+class WorkerCpuMeter:
+    """갱신 worker thread 안에서 잰 thread CPU 합계.
+
+    `thread_time()`은 호출한 thread의 CPU만 센다. 그래서 같은 프로세스의 요청 처리와
+    섞이지 않는다. event loop 위의 DB 행 수신은 여기에 들어가지 않는다.
+    """
+
+    def __init__(self) -> None:
+        self.seconds = 0.0
+        self._lock = threading.Lock()
+
+    def call(self, fn, *args):
+        started = thread_time()
+        try:
+            return fn(*args)
+        finally:
+            elapsed = thread_time() - started
+            with self._lock:
+                self.seconds += elapsed
+
+
+#: 진행 중인 갱신의 CPU 계측기. `refresh_once`가 정하고 적재·조각·압축 thread 호출(`_run_worker`)이 읽는다.
+#: 함수 인자로 넘기지 않아 `load_snapshot`·`load_changes`의 호출 모양이 그대로다.
+_WORKER_CPU: ContextVar[WorkerCpuMeter | None] = ContextVar("parking_history_worker_cpu", default=None)
+
+
+async def _run_worker(fn, *args):
+    meter = _WORKER_CPU.get()
+    if meter is None:
+        return await asyncio.to_thread(fn, *args)
+    return await asyncio.to_thread(meter.call, fn, *args)
+
+
+def peak_rss_kib() -> int | None:
+    """프로세스 시작 이후 최대 RSS(KiB). 갱신 전후 값이 다르면 그 갱신이 최고점을 올린 것이다."""
+    if resource is None:
+        return None
+    value = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    # Linux는 KiB, macOS는 byte 단위다.
+    return value // 1024 if sys.platform == "darwin" else int(value)
 
 
 async def run_history_cpu(fn, *args):
@@ -535,9 +599,89 @@ async def load_snapshot(
         rows = await _stream_history_rows(session, history_rows_statement(
             ParkingSnapshot.observed_at >= earliest, ParkingSnapshot.id <= max_id,
         ))
-    return await asyncio.to_thread(
+    return await _run_worker(
         ParkingHistorySnapshot.from_rows, earliest, int(max_id), rows, int(row_count), built_at,
     )
+
+
+def _encode_history_batch(batch) -> bytes:
+    # 캐시 항목 JSON(`_cached_item`)과 같은 키 순서·UTC 직렬화다.
+    return b",".join(to_json({
+        "airport_code": code,
+        "parking_lot_id": lot,
+        "observed_at": serialize_utc(observed),
+        "occupied_spaces": occupied,
+        "total_spaces": total,
+        "available_spaces": available,
+    }) for observed, lot, code, occupied, total, available in batch)
+
+
+class _StreamingBodyEncoder:
+    """직접 조회 본문을 조각마다 바로 압축한다.
+
+    br/gzip 요청은 75MB 비압축 본문을 한 번도 메모리에 모으지 않고 압축본(수 MB)만 보유한다.
+    압축 bytes는 한 번에 압축한 값과 다를 수 있지만 압축을 푼 본문은 같다. 조각은 한 번에
+    하나씩 순서대로 넣는다(동시 호출 없음).
+    """
+
+    def __init__(self, encoding: str) -> None:
+        self.parts: list[bytes] = []
+        if encoding == "br":
+            compressor = brotli.Compressor(quality=DIRECT_FALLBACK_BROTLI_QUALITY)
+            self._process, self._finish = compressor.process, compressor.finish
+        elif encoding == "gzip":
+            compressor = zlib.compressobj(HISTORY_GZIP_HEAD_LEVEL, zlib.DEFLATED, 16 + zlib.MAX_WBITS)
+            self._process, self._finish = compressor.compress, compressor.flush
+        else:
+            self._process, self._finish = None, None
+
+    def write(self, data: bytes) -> None:
+        output = data if self._process is None else self._process(data)
+        if output:
+            self.parts.append(output)
+
+    def finish(self) -> bytes:
+        if self._finish is not None:
+            self.parts.append(self._finish())
+        body = b"".join(self.parts)
+        self.parts = []
+        return body
+
+
+async def render_direct_history(
+    session: AsyncSession, *conditions, accept_encoding: str = "",
+) -> tuple[bytes, dict[str, str]]:
+    """캐시를 쓸 수 없을 때 DB에서 전체·오래된 순서 본문을 직접 만든다.
+
+    2048행씩 받아 바로 행 JSON으로 바꾸고 압축한다. 52만 행의 Row·dict 목록을 만들지 않고,
+    br/gzip 요청은 비압축 본문도 모으지 않는다(identity는 행 조각과 최종 본문 한 벌). 압축을
+    푼 bytes는 기존 전체 `to_json` 직렬화·캐시 본문과 같다.
+    """
+    encoding = response_encoding(accept_encoding)
+    encoder = _StreamingBodyEncoder(encoding)
+
+    def write_batch(batch, first: bool) -> None:
+        if not first:
+            encoder.write(b",")
+        encoder.write(_encode_history_batch(batch))
+
+    connection = await session.connection()
+    result = await connection.stream(
+        history_rows_statement(*conditions).execution_options(yield_per=HISTORY_FETCH_ROWS)
+    )
+    encoder.write(_BODY_PREFIX)
+    first = True
+    try:
+        async for batch in result.partitions(HISTORY_FETCH_ROWS):
+            if batch:
+                # 행 변환과 수신은 둘 다 GIL을 쥐는 Python 작업이라 겹쳐도 빨라지지 않는다(측정).
+                # 묶음마다 순서대로 처리하고, 취소돼도 실행 중인 thread가 끝난 뒤에 돌아간다.
+                await run_history_cpu(write_batch, batch, first)
+                first = False
+    finally:
+        await result.close()
+    encoder.write(_BODY_SUFFIX)
+    return await run_history_cpu(encoder.finish), response_headers(encoding)
 
 
 class IncrementalUnavailable(Exception):
@@ -599,7 +743,7 @@ async def load_changes(
                 ))
     timings["changes_ms"] = round((monotonic() - started) * 1000, 1)
     splice_started = monotonic()
-    snapshot = await asyncio.to_thread(
+    snapshot = await _run_worker(
         base.with_changes, earliest, int(max_id), int(row_count), keys, rows,
     )
     timings["splice_ms"] = round((monotonic() - splice_started) * 1000, 1)
@@ -612,6 +756,14 @@ class ParkingHistoryReadCache:
         # 응답 전송이 끝날 때까지 점유한다. 압축하지 않은 전체 이력 요청도
         # 요청 수만큼 75MB 본문을 동시에 보유하지 않게 한다.
         self.delivery_semaphore = asyncio.Semaphore(2)
+        # 캐시를 쓸 수 없을 때(기동 직후·전체 재생성이 30초를 넘는 구간) 긴 범위를 직접 SQL로
+        # 만드는 작업은 한 번에 하나만 한다. 전체 재생성 peak와 직접 조회 여러 개가 겹치지 않게 한다.
+        # `acquire_direct_fallback`/`release_direct_fallback`으로만 쓴다.
+        self.direct_fallback_lock = asyncio.Lock()
+        # 캐시 확인·직접 조회 종료 때 교체하며 set한다. 차례를 기다리는 요청을 깨운다.
+        self._state_changed = asyncio.Event()
+        # 진행 중인 갱신의 시작 monotonic 시각. 없으면 None이다.
+        self.rebuild_started_at: float | None = None
         self.snapshot: ParkingHistorySnapshot | None = None
         self.validated_at = 0.0
         self.validated_at_utc: datetime | None = None
@@ -621,6 +773,11 @@ class ParkingHistoryReadCache:
         self.incremental_errors = 0
         # 같은 불변 snapshot/범위만 합친다. 대기자가 사라지면 lock도 남기지 않는다.
         self.preparation_locks: WeakValueDictionary[tuple, asyncio.Lock] = WeakValueDictionary()
+
+    @property
+    def rebuild_active(self) -> bool:
+        """갱신(증분·전체)이 진행 중인지. 다른 작업이 무거운 일을 미룰 때 읽는다."""
+        return self.rebuild_started_at is not None
 
     async def response_body(
         self, snapshot: ParkingHistorySnapshot, cutoff: datetime,
@@ -692,7 +849,7 @@ class ParkingHistoryReadCache:
         cutoff = now_utc() - timedelta(days=30)
         prepared: OrderedDict[tuple[int, str | None, int | None, str], bytes] = OrderedDict()
         start = snapshot.start_index(cutoff, None, None)
-        prepared[(start, None, None, "gzip")] = await asyncio.to_thread(snapshot.render_gzip, cutoff, None, None)
+        prepared[(start, None, None, "gzip")] = await _run_worker(snapshot.render_gzip, cutoff, None, None)
         return prepared
 
     async def refresh_once(self) -> None:
@@ -705,9 +862,14 @@ class ParkingHistoryReadCache:
             row_count = changed_keys = None
             phases: dict[str, float] = {}
             outcome = "failed"
+            process_started = process_time()
+            worker_cpu = WorkerCpuMeter()
+            meter_token = _WORKER_CPU.set(worker_cpu)
+            self.rebuild_started_at = started
             logger.warning(json.dumps({"event": "parking_history_rebuild", "phase": "start",
                 "rebuild_id": rebuild_id, "at": now_utc().isoformat(), "duration_ms": 0,
-                "row_count": row_count, "mode": mode, "reason": reason}, separators=(",", ":")))
+                "row_count": row_count, "mode": mode, "reason": reason,
+                "peak_rss_kib": peak_rss_kib()}, separators=(",", ":")))
             try:
                 refreshed = None
                 if mode == "incremental":
@@ -744,15 +906,23 @@ class ParkingHistoryReadCache:
                 outcome = "cancelled"
                 raise
             finally:
+                _WORKER_CPU.reset(meter_token)
+                self.rebuild_started_at = None
                 logger.warning(json.dumps({"event": "parking_history_rebuild", "phase": "finish",
                     "rebuild_id": rebuild_id, "at": now_utc().isoformat(),
                     "duration_ms": round((monotonic() - started) * 1000, 3),
                     "row_count": row_count, "outcome": outcome, "mode": mode, "reason": reason,
                     "changed_keys": changed_keys, "phases_ms": phases,
-                    "incremental_errors": self.incremental_errors}, separators=(",", ":")))
+                    "incremental_errors": self.incremental_errors,
+                    "peak_rss_kib": peak_rss_kib(),
+                    "worker_cpu_ms": round(worker_cpu.seconds * 1000, 3),
+                    "process_cpu_ms": round((process_time() - process_started) * 1000, 3)},
+                    separators=(",", ":")))
         self.last_fingerprint = fingerprint
         self.validated_at = monotonic()
         self.validated_at_utc = now_utc()
+        # 직접 조회 차례를 기다리던 요청이 새로 확인된 캐시로 바로 응답하게 깨운다.
+        self._notify_state_changed()
 
     def usable_snapshot(self, cutoff: datetime) -> ParkingHistorySnapshot | None:
         snapshot = self.snapshot
@@ -760,6 +930,33 @@ class ParkingHistoryReadCache:
                 or monotonic() - self.validated_at > MAX_UNCHECKED_SECONDS):
             return None
         return snapshot
+
+    def _notify_state_changed(self) -> None:
+        event, self._state_changed = self._state_changed, asyncio.Event()
+        event.set()
+
+    async def acquire_direct_fallback(self, cutoff: datetime) -> ParkingHistorySnapshot | None:
+        """긴 범위 직접 조회의 차례를 기다린다.
+
+        기다리는 동안 캐시를 쓸 수 있게 되면(새 snapshot 게시·무변경 재확인) 잠금 없이 그
+        snapshot을 돌려준다. None이면 호출자가 차례를 얻었으므로 끝나면
+        `release_direct_fallback`을 불러야 한다. 기다림은 앞선 직접 조회 1건이 끝날 때까지다.
+        """
+        while True:
+            cached = self.usable_snapshot(cutoff)
+            if cached is not None:
+                return cached
+            if not self.direct_fallback_lock.locked():
+                # 잠금이 비어 있으면 대기 없이 바로 얻는다(사이에 다른 코루틴이 끼지 않는다).
+                await self.direct_fallback_lock.acquire()
+                return None
+            changed = self._state_changed
+            with suppress(TimeoutError):
+                await asyncio.wait_for(changed.wait(), DIRECT_FALLBACK_RECHECK_SECONDS)
+
+    def release_direct_fallback(self) -> None:
+        self.direct_fallback_lock.release()
+        self._notify_state_changed()
 
     async def run(self) -> None:
         while True:
