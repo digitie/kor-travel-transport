@@ -50,6 +50,8 @@ from krairport import get_airport_or_none
 
 from app.core.config import Settings, get_settings
 from app.core.read_timing import ReadTimingMiddleware
+from app.core.export_guard import ExportTransientDbMiddleware
+from app.core.problems import SERVICE_EXPORT_PATH_PREFIX, CodedHTTPException, problem_body
 from app.services.place_map_reads import place_queries, read_place_plans, place_sources
 from app.core.time_utils import align_to_interval, ensure_tz, now_utc, serialize_utc, to_seoul
 from app.db.session import create_engine_and_session_factory, init_database
@@ -695,15 +697,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # RFC 7807 (ADR-005): every error response uses the same shape,
         # regardless of which route raised it. `detail` is kept so existing
         # clients reading `payload.detail` (frontend/src/lib/api.ts) still work.
+        # `code`는 CodedHTTPException에만 있는 가산 확장이다(ADR-013 개정 2026-11-24). 없으면 본문이 예전과 같다.
+        code = exc.code if isinstance(exc, CodedHTTPException) else None
+        if code is not None:
+            # 503 사유가 응답 detail에만 있고 로그에는 status만 남던 문제(감사 T23-10).
+            logger.warning("problem response status=%s code=%s path=%s detail=%s",
+                           exc.status_code, code, request.url.path, exc.detail)
         return JSONResponse(
             status_code=exc.status_code,
-            content={
-                "type": "about:blank",
-                "title": HTTPStatus(exc.status_code).phrase,
-                "status": exc.status_code,
-                "detail": exc.detail,
-                "instance": request.url.path,
-            },
+            content=problem_body(status=exc.status_code, title=HTTPStatus(exc.status_code).phrase,
+                                 detail=exc.detail, instance=request.url.path, code=code),
             headers=exc.headers,
             media_type="application/problem+json",
         )
@@ -745,6 +748,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             media_type="application/problem+json",
         )
 
+    # 가장 먼저 등록해 가장 안쪽(라우팅 바로 바깥)에 둔다. export 경로에서만 응답 시작 전 일시 DB 오류를
+    # 503 TRANSIENT_DB로 바꾸고, 다른 경로는 손대지 않는다(ADR-013 개정 2026-11-24, app/core/export_guard.py).
+    app.add_middleware(ExportTransientDbMiddleware)
     if resolved_settings.trusted_hosts:
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=resolved_settings.trusted_hosts)
     app.add_middleware(
@@ -826,6 +832,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     ],
                 },
                 "instance": {"type": "string"},
+                "code": {
+                    "type": "string",
+                    "pattern": "^[A-Z][A-Z0-9_]*$",
+                    "description": (
+                        "가산 확장: 기계 판독 사유(UPPER_SNAKE, ADR-005·ADR-013 개정 2026-11-24). 없거나 모르는 값이면 "
+                        "예전과 같은 뜻으로 다룬다. /v1/service/exports/* 503은 EXPORT_SOURCE_NOT_CURRENT·"
+                        "EXPORT_NO_HISTORY·EXPORT_INCIDENTS_NOT_CURRENT·EXPORT_EMPTY_SET·EXPORT_BUSY·"
+                        "EXPORT_PREPARE_TIMEOUT·EXPORT_QUERY_TIMEOUT·EXPORT_DISABLED·EXPORT_SOURCE_INCONSISTENT·EXPORT_TOO_LARGE·"
+                        "TRANSIENT_DB이며 Retry-After(초) 헤더를 함께 준다."
+                    ),
+                },
             },
         }
         # 장소 지도 입장 제한(app/services/place_map_admission.py)의 응답 설명. 둘 다 Retry-After를 준다.
@@ -864,15 +881,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ("/v1/service/exports/rest-areas", "get"): (404, 503),
             ("/v1/service/exports/rest-area-fuel-prices", "get"): (404, 503),
             ("/v1/service/exports/highway-incidents/active", "get"): (404, 503),
-            ("/v1/service/exports/airports", "get"): (404,),
+            # 일시 DB 불가(pool·접속·PG 기동 중)는 export 경로에서 503 TRANSIENT_DB다(ADR-013 개정 2026-11-24).
+            ("/v1/service/exports/airports", "get"): (404, 503),
+            ("/v1/service/exports/parking-lots", "get"): (404, 503),
         }
         components["ServiceExportProblemDetails"] = {
             "allOf": [{"$ref": "#/components/schemas/ProblemDetails"}, {
-                # 가격 이력 503의 meta는 성공한 수집 이력이 없을 때만 있다. DB 문장 시간 상한 초과 503에는 없다.
+                # 가격 이력 503의 meta는 성공한 수집 이력이 없을 때만 있다. DB 문장 시간 상한 초과·일시 DB 불가
+                # (TRANSIENT_DB)·handler 상한 초과 503에는 없다(ADR-013 개정 2026-11-24). 어느 쪽이든 code와 Retry-After가 있다.
                 "type": "object", "properties": {
                     "meta": {"allOf": [{"$ref": "#/components/schemas/ServiceExportMeta"}], "description": (
-                        "성공한 유가 수집 이력이 없어 낸 503에만 있다(source_status=failed, item_count=0). "
-                        "DB 문장 시간 상한 초과로 끝난 503에는 없고 Retry-After 헤더가 있다."
+                        "성공한 유가 수집 이력이 없어 낸 503(code=EXPORT_NO_HISTORY)에만 있다(source_status=failed, "
+                        "item_count=0). DB 문장 시간 상한 초과(code=EXPORT_QUERY_TIMEOUT)·일시 DB 불가(code=TRANSIENT_DB)·"
+                        "handler 상한 초과로 끝난 503에는 없고 Retry-After 헤더가 있다."
                     )},
                 },
             }],
@@ -889,8 +910,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         path == "/v1/service/exports/fuel-stations/{station_key}/price-history"
                         and code == "503"
                     ) else "ProblemDetails"
+                    export_unavailable = code == "503" and path.startswith(SERVICE_EXPORT_PATH_PREFIX)
                     operation["responses"][code] = {
-                        "description": "요청 검증 오류" if code == "422" else "애플리케이션 오류",
+                        "description": "요청 검증 오류" if code == "422" else (
+                            "현재 집합을 낼 수 없거나 잠시 준비할 수 없음. 선택 확장 code와 Retry-After를 본다"
+                            if export_unavailable else "애플리케이션 오류"),
                         "content": {
                             "application/problem+json": {
                                 "schema": {"$ref": f"#/components/schemas/{problem_schema}"}
@@ -900,6 +924,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     if (path, method, code) in retry_after_errors:
                         operation["responses"][code]["description"] = retry_after_errors[(path, method, code)]
                         operation["responses"][code]["headers"] = {"Retry-After": retry_after_header}
+                    if export_unavailable:
+                        operation["responses"][code]["headers"] = {"Retry-After": {
+                            "schema": {"type": "integer", "minimum": 1},
+                            "description": "다시 요청하기 전 기다릴 초. 본문 code가 있을 때 함께 준다.",
+                        }}
         document_history_retry_after(schema)
         app.openapi_schema = schema
         return schema

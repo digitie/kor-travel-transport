@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
-from collections.abc import AsyncIterator, Callable
+import random
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextvars import ContextVar
 from datetime import UTC, datetime, timedelta
 from time import monotonic
+from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -17,6 +21,14 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from app.core.config import Settings
+from app.core.export_guard import ExportDeadlineRoute, mark_building
+from app.core.problems import (
+    FAST_SOURCE_RETRY_AFTER_SECONDS,
+    CodedHTTPException,
+    ProblemCode,
+    database_sqlstate,
+    unavailable,
+)
 from app.core.time_utils import now_utc, serialize_utc
 from app.models import (
     HighwayTrafficCurrent, HighwayTrafficCurrentState, ServiceExportSnapshot,
@@ -36,6 +48,109 @@ KIND = "highway-traffic-current-v1"
 
 class SnapshotRace(Exception):
     """별도 reader가 같은 generation/TTL epoch를 먼저 확정했다. 새 RR로 한 번 재시도한다."""
+
+
+#: snapshot 문장이 `SET LOCAL statement_timeout`에 걸린 SQLSTATE(query_canceled).
+QUERY_CANCELED = "57014"
+#: admission의 unique 대기·행 잠금이 `SET LOCAL lock_timeout`(2초)에 걸린 SQLSTATE(lock_not_available).
+LOCK_NOT_AVAILABLE = "55P03"
+#: 같은 입력의 두 builder가 서로의 잠금을 기다린 교착(deadlock_detected). 55P03과 같이 잠시 뒤 한 번 다시 시도한다.
+DEADLOCK_DETECTED = "40P01"
+#: 잠시 기다렸다 새 RR로 다시 시도하는 경합 SQLSTATE. 40001(이미 commit된 경쟁)은 곧바로 다시 시도한다.
+CONTENTION_SQLSTATES = frozenset({LOCK_NOT_AVAILABLE, DEADLOCK_DETECTED})
+RETRY_SQLSTATES = CONTENTION_SQLSTATES | {"40001"}
+#: 55P03·40P01 뒤 새 RR로 다시 시도하기 전 대기(초, 균등 분포). 앞 builder의 COPY·commit이 끝나기를 기다린다.
+LOCK_RETRY_DELAY_SECONDS = (0.3, 1.0)
+#: 요청 경로 snapshot·본문 구성의 전체 예산(초). **첫 시도 시작**부터 재고 재시도도 같은 예산을 나눠 쓴다.
+#: 시도마다 예산을 새로 주면 최악 (지문 + 15초 + admission 2초) x 2 = 약 36초로 Map read timeout(30초)을 넘는다.
+BUILD_BUDGET_SECONDS = 15
+#: snapshot transaction의 `SET LOCAL` 상한(초). 요청 경로의 statement_timeout은 남은 예산보다 길게 두지 않는다.
+SNAPSHOT_STATEMENT_TIMEOUT_SECONDS = 10
+SNAPSHOT_LOCK_TIMEOUT_SECONDS = 2
+#: 경합 재시도를 시작할 최소 남은 예산 = 대기 + admission lock_timeout + 이 여유(초). 모자라면 곧바로 EXPORT_BUSY다.
+RETRY_MARGIN_SECONDS = 3
+BUSY_DETAIL = "snapshot 준비가 겹쳤습니다. 잠시 후 다시 요청하세요."
+STATEMENT_TIMEOUT_DETAIL = "snapshot 준비 시간 상한을 초과했습니다."
+_build_started: ContextVar[float | None] = ContextVar("transport_export_build_started", default=None)
+
+
+def build_started() -> float:
+    """요청 경로(`read_snapshot_with_retry` 안)면 첫 시도의 시작 시각, 그 밖(Dagster 준비 op 등)이면 지금.
+
+    본문 구성이 시작됐다는 표시도 남긴다(handler 상한 초과를 EXPORT_PREPARE_TIMEOUT으로 가른다).
+    """
+    mark_building()
+    started = _build_started.get()
+    return monotonic() if started is None else started
+
+
+def budget_exceeded(started: float) -> bool:
+    return monotonic() - started > BUILD_BUDGET_SECONDS
+
+
+def _remaining_budget() -> float | None:
+    started = _build_started.get()
+    return None if started is None else BUILD_BUDGET_SECONDS - (monotonic() - started)
+
+
+def snapshot_statement_timeout_ms() -> int:
+    """snapshot transaction의 statement_timeout(밀리초). 요청 경로의 재시도는 남은 예산을 넘기지 않는다."""
+    remaining = _remaining_budget()
+    seconds = SNAPSHOT_STATEMENT_TIMEOUT_SECONDS if remaining is None else min(
+        SNAPSHOT_STATEMENT_TIMEOUT_SECONDS, max(remaining, 1.0))
+    return int(seconds * 1000)
+
+
+async def read_snapshot_with_retry(session: AsyncSession, read: Callable[[], Awaitable[Any]]) -> Any:
+    """T2/T3 첫 고정·페이지 읽기를 새 REPEATABLE READ로 최대 두 번 시도한다(감사 T23-01·T23-10).
+
+    - 이미 commit된 경쟁(40001)·handle/head 경합(`SnapshotRace`)은 곧바로 새 RR로 한 번 더 시도한다(기존 정책).
+    - admission 대기 lock_timeout(55P03)·교착(40P01)은 같은 입력을 다른 builder가 먼저 구성하는 중이라는 뜻이다.
+      예전에는 55P03이 곧바로 503이었다(2026-11-19 artifact COPY 보고서의 "55P03 즉시 503"). 그때는 503에 사유가
+      없었고, 요청 안에서 다시 시도하면 시도마다 예산을 새로 받아 Map read timeout을 넘길 수 있었다. 이제 두
+      시도가 예산 하나를 나눠 쓰고, 남은 예산이 `대기 + lock_timeout(2초) + 여유(3초)` 이상일 때만 0.3~1초 뒤 새
+      RR로 한 번 더 시도해 앞 builder가 commit한 본문을 재사용한다. 모자라면 예전처럼 곧바로 503 `EXPORT_BUSY`다.
+      advisory lock single-flight는 RR snapshot이 잡힌 뒤에 얻게 돼 상대의 commit을 보지 못하므로 쓰지 않는다.
+    - 두 번째 시도의 statement_timeout은 남은 예산을 넘지 않는다(`snapshot_statement_timeout_ms`). 경합 뒤 재시도가
+      예산·statement timeout에 걸리면 원인은 경합이므로 `EXPORT_PREPARE_TIMEOUT`이 아니라 `EXPORT_BUSY`다.
+    - 두 번째도 경합이면 503 `EXPORT_BUSY`다.
+    - 첫 시도 안의 statement timeout(57014)은 원인 불명 500이 아니라 503 `EXPORT_PREPARE_TIMEOUT`이다.
+    그 밖의 DB 오류는 그대로 올린다(export 경로의 일시 DB 불가는 `ExportTransientDbMiddleware`가 503 TRANSIENT_DB로
+    바꾼다). 요청 전체의 상한은 handler 상한(`ExportDeadlineRoute`, 25초)이다 — 재시도의 pool checkout 대기는
+    이 예산이 아니라 그 상한이 덮는다.
+    """
+    started = monotonic()
+    token = _build_started.set(started)
+    try:
+        retried = False
+        for attempt in range(2):
+            try:
+                return await read()
+            except CodedHTTPException as exc:
+                if retried and exc.code == ProblemCode.EXPORT_PREPARE_TIMEOUT:
+                    raise unavailable(ProblemCode.EXPORT_BUSY, BUSY_DETAIL) from exc
+                raise
+            except (SnapshotRace, DBAPIError) as exc:
+                await session.rollback()
+                code = database_sqlstate(exc) if isinstance(exc, DBAPIError) else None
+                if code == QUERY_CANCELED:
+                    raise unavailable(ProblemCode.EXPORT_BUSY if retried else ProblemCode.EXPORT_PREPARE_TIMEOUT,
+                                      BUSY_DETAIL if retried else STATEMENT_TIMEOUT_DETAIL) from exc
+                if isinstance(exc, DBAPIError) and code not in RETRY_SQLSTATES:
+                    raise
+                if attempt:
+                    raise unavailable(ProblemCode.EXPORT_BUSY, BUSY_DETAIL) from exc
+                delay = random.uniform(*LOCK_RETRY_DELAY_SECONDS) if code in CONTENTION_SQLSTATES else 0.0
+                remaining = BUILD_BUDGET_SECONDS - (monotonic() - started)
+                if remaining < delay + SNAPSHOT_LOCK_TIMEOUT_SECONDS + RETRY_MARGIN_SECONDS:
+                    raise unavailable(ProblemCode.EXPORT_BUSY, BUSY_DETAIL) from exc
+                retried = True
+                if delay:
+                    # rollback으로 pool 연결을 돌려준 뒤에 기다린다.
+                    await asyncio.sleep(delay)
+        raise AssertionError("unreachable")
+    finally:
+        _build_started.reset(token)
 
 
 def _cache_epoch(now: datetime) -> int:
@@ -66,8 +181,8 @@ _FIELDS = (
 async def _snapshot_transaction(session: AsyncSession) -> None:
     if session.bind.dialect.name == "postgresql":
         await session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
-        await session.execute(text("SET LOCAL lock_timeout = '2s'"))
-        await session.execute(text("SET LOCAL statement_timeout = '10s'"))
+        await session.execute(text(f"SET LOCAL lock_timeout = '{SNAPSHOT_LOCK_TIMEOUT_SECONDS}s'"))
+        await session.execute(text(f"SET LOCAL statement_timeout = {snapshot_statement_timeout_ms()}"))
 
 
 async def expire_snapshots(session: AsyncSession, *, limit: int = 1) -> int:
@@ -107,7 +222,7 @@ async def _freeze_traffic(
     if cached:
         return cached
     if not 0 <= head.member_count <= MAX_SNAPSHOT_ITEMS:
-        raise HTTPException(503, "확인된 교통 집합의 크기가 export 상한을 벗어났습니다.")
+        raise unavailable(ProblemCode.EXPORT_TOO_LARGE, "확인된 교통 집합의 크기가 export 상한을 벗어났습니다.")
     await expire_snapshots(session)
     snapshot_id = str(uuid4())
     table = ServiceExportSnapshot.__table__
@@ -120,7 +235,7 @@ async def _freeze_traffic(
     if admitted is None:
         raise SnapshotRace()
     snapshot = await session.get(ServiceExportSnapshot, snapshot_id)
-    started = monotonic()
+    started = build_started()
     count = size = 0
     digest = hashlib.sha256()
     query = select(*(getattr(HighwayTrafficCurrent, field) for field in _FIELDS)).where(
@@ -131,8 +246,8 @@ async def _freeze_traffic(
     stream = await session.stream(query.execution_options(yield_per=BATCH_SIZE))
     try:
         async for partition in stream.mappings().partitions(BATCH_SIZE):
-            if monotonic() - started > 15:
-                raise HTTPException(503, "snapshot 준비 시간 상한을 초과했습니다.")
+            if budget_exceeded(started):
+                raise unavailable(ProblemCode.EXPORT_PREPARE_TIMEOUT, STATEMENT_TIMEOUT_DETAIL)
             items = []
             for row in partition:
                 payload = dict(row)
@@ -142,14 +257,14 @@ async def _freeze_traffic(
                 count += 1
                 size += len(body)
                 if count > MAX_SNAPSHOT_ITEMS or size > MAX_SNAPSHOT_BYTES:
-                    raise HTTPException(503, "교통 snapshot 크기 상한을 초과했습니다.")
+                    raise unavailable(ProblemCode.EXPORT_TOO_LARGE, "교통 snapshot 크기 상한을 초과했습니다.")
                 digest.update(body + b"\n")
                 items.append({"snapshot_id": snapshot_id, "ordinal": count, "payload": payload})
             await session.execute(insert(ServiceExportSnapshotItem), items)
     finally:
         await stream.close()
     if count != head.member_count:
-        raise HTTPException(503, "교통 성공 집합의 membership이 일치하지 않습니다.")
+        raise unavailable(ProblemCode.EXPORT_SOURCE_INCONSISTENT, "교통 성공 집합의 membership이 일치하지 않습니다.")
     snapshot.content_digest = digest.hexdigest()
     await session.flush()
     return snapshot
@@ -158,7 +273,7 @@ async def _freeze_traffic(
 def build_current_export_router(
     settings: Settings, get_db: Callable[..., AsyncIterator[AsyncSession]],
 ) -> APIRouter:
-    router = APIRouter()
+    router = APIRouter(route_class=ExportDeadlineRoute)
     key = hashlib.sha256((settings.transport_service_export_token or "").encode()).digest()
 
     @router.get("/highway-traffic/current", response_model=HighwayTrafficCurrentExportPage,
@@ -171,18 +286,8 @@ def build_current_export_router(
     ) -> Response:
         """완결 성공 current만 고정한다. 페이지 사이 재수집에도 최초 DTO는 만료까지 유지된다."""
         if not settings.transport_map_current_enabled:
-            raise HTTPException(503, "교통 current export가 활성화되지 않았습니다.")
-        for attempt in range(2):
-            try:
-                page, revision = await read_page(session, limit, cursor)
-                break
-            except (SnapshotRace, DBAPIError) as exc:
-                await session.rollback()
-                code = getattr(getattr(exc, "orig", None), "sqlstate", None)
-                if isinstance(exc, DBAPIError) and code not in {"40001", "55P03"}:
-                    raise
-                if attempt or code == "55P03":
-                    raise HTTPException(503, "snapshot 준비가 겹쳤습니다. 잠시 후 다시 요청하세요.") from exc
+            raise unavailable(ProblemCode.EXPORT_DISABLED, "교통 current export가 활성화되지 않았습니다.")
+        page, revision = await read_snapshot_with_retry(session, lambda: read_page(session, limit, cursor))
         return _response(page, request, cursor_epoch=None, cursor_revision=revision)
 
     async def read_page(session, limit, cursor):
@@ -190,7 +295,8 @@ def build_current_export_router(
         scope = highway_scope_key(settings, TRAFFIC_SOURCE)
         head = await session.get(HighwayTrafficCurrentState, (TRAFFIC_SOURCE, scope))
         if head is None:
-            raise HTTPException(503, "확인된 교통 current 성공 집합이 없습니다.")
+            raise unavailable(ProblemCode.EXPORT_NO_HISTORY, "확인된 교통 current 성공 집합이 없습니다.",
+                              retry_after=FAST_SOURCE_RETRY_AFTER_SECONDS)
         after = 0
         if cursor:
             value = _decode_cursor(cursor, key)
@@ -222,7 +328,7 @@ def build_current_export_router(
         ).order_by(ServiceExportSnapshotItem.ordinal).limit(limit + 1))).all())
         expected = min(limit + 1, snapshot.item_count - after)
         if len(rows) != expected or any(row.ordinal != after + i + 1 for i, row in enumerate(rows)):
-            raise HTTPException(503, "snapshot 항목의 순서·개수가 일치하지 않습니다.")
+            raise unavailable(ProblemCode.EXPORT_SOURCE_INCONSISTENT, "snapshot 항목의 순서·개수가 일치하지 않습니다.")
         items, has_more = [row.payload for row in rows[:limit]], len(rows) > limit
         next_cursor = _encode_cursor({
             "v": 1, "kind": KIND, "scope": scope, "snapshot": snapshot.id,

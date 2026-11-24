@@ -84,8 +84,8 @@ async def reference_payload_revision(session, heads, kind: str, revision: str | 
     ).where(ReferenceExportInputRevision.component.in_(components))
       .order_by(ReferenceExportInputRevision.component))).all()
     if len(records) != len(components):
-        from fastapi import HTTPException
-        raise HTTPException(503, "참조 입력 revision 구성이 완전하지 않습니다.")
+        from app.core.problems import ProblemCode, unavailable
+        raise unavailable(ProblemCode.EXPORT_SOURCE_INCONSISTENT, "참조 입력 revision 구성이 완전하지 않습니다.")
     own_xid, isolation = records[0].own_xid, records[0].isolation
     input_versions = tuple((row.component, row.epoch, row.revision) for row in records)
     can_memo = isolation in {"repeatable read", "serializable"} and own_xid is None and not (

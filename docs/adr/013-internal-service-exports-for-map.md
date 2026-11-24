@@ -7,6 +7,9 @@
   "`docs/openapi.json` 최신 여부 CI 게이트"를 이 범위에서 처음 정한다.
 - **개정 2026-10-23**(소유자 결정): 참조 데이터 export는 마지막 수집의 실패가 아니라 마지막
   **성공**의 나이로 판정한다(결정 3). 아래 "개정 2026-10-23" 절 참고.
+- **개정 2026-11-24**(정책 변경 포함): export 503에 가산 `code`·`Retry-After`, export 경로의 일시 DB 불가·snapshot
+  statement timeout은 500 대신 503, T2/T3 55P03 한 번 재시도, **유가 export stale 기준 24시간 → 27.5시간**.
+  아래 "개정 2026-11-24 — 503 사유 code" 절 참고.
 
 ### 컨텍스트
 
@@ -39,7 +42,7 @@ provider 원본을 숨기며, 돌발은 "최근 24시간"이라 "지금 활성�
 3. **현재 집합 의미와 신선도 계약(모든 dataset 공통)**: 200 응답의 `items`는 "마지막 성공 수집의 현재
    집합"이다 — 소비자는 거기 없는 행을 사라진 것으로 다뤄도 된다. 그래서 그 전제가 서지 않으면 200을
    주지 않는다: 근거 수집의 **이력이 없거나(`last_success_at` 없음), 마지막 성공이 stale 기준을
-   넘었으면 503**이다(주유소 24시간, 휴게소 3일, 휴게소 유가 12시간). 참조 데이터는 마지막 성공이 기준
+   넘었으면 503**이다(주유소 24시간 — 2026-11-24부터 27.5시간, 아래 개정 —, 휴게소 3일, 휴게소 유가 12시간). 참조 데이터는 마지막 성공이 기준
    안이면 **그 뒤의 시도가 실패했어도** 마지막 성공 수집의 집합을 200으로 낸다 — 실패한 시도는 저장
    transaction을 되돌려 그 집합을 바꾸지 않기 때문이다(2026-10-23 개정). 돌발 활성 집합은 "지금"의
    집합이라 마지막 수집이 **실패했거나** 30분을 넘으면 503이다. 수집이 꺼진
@@ -89,11 +92,13 @@ provider 원본을 숨기며, 돌발은 "최근 24시간"이라 "지금 활성�
   8시간 정각마다라, 수집이 1~2시간 걸리는 동안 다음 tick을 늘 건너뛰어 실제 주기가 16시간이었다. 그러면
   성공 뒤 첫 시도의 실패만으로 다음 시도가 24시간 유예를 넘겼다. 소유자 결정으로 다음 예정을 수집
   **시작** + 8시간(tick마다 다른 시작 지연을 덮도록 15분 당김, `FUEL_NEXT_DUE_START_SLACK`)으로 바꿔 8시간
-  tick마다 돈다. 실패 경로(실패 시각 + 8시간)는 그대로다. 그래서 성공 → 다음 tick 실패 → 그다음 tick은
-  예약으로 건너뜀 → 세 번째 tick(마지막 성공 tick에서 24시간 뒤)이 다시 돌고, 그때 마지막 성공은 아직
-  유예 안이다(`test_eight_hourly_ticks_keep_one_failure_inside_the_export_grace`). 남는 틈은 두 가지다.
-  (1) 유예는 첫 성공의 **완료** 시각 + 24시간에 끝나므로, 세 번째 시도가 첫 성공보다 오래 걸리면 그 차이만큼
-  (최대 약 2시간) 503이 난다. (2) 실패가 연달아 두 번 이상이면 예전처럼 503이 된다.
+  tick마다 돈다. **2026-11-24 정정**: 이 절의 처음 문장은 "실패 경로(실패 시각 + 8시간)는 그대로다"였지만, 실패
+  경로도 claim 때 확정한 **시작** 기준 예약을 보존한다(`_mark_fuel_failure`, `transport_collection.py`). 그래서
+  실패한 tick 뒤의 tick도 건너뛰지 않고 8시간마다 돈다(`test_eight_hourly_ticks_keep_one_failure_inside_the_export_grace`).
+  남는 틈은 두 가지였다. (1) 유예는 첫 성공의 **완료** 시각 + 24시간에 끝나므로, 세 번째 시도가 첫 성공보다
+  오래 걸리면 그 차이만큼(최대 약 2시간) 503이 났다 — 2026-11-24 개정으로 유예를 27.5시간으로 늘려 닫았다(아래).
+  (2) 연속 실패 — 27.5시간 유예와 시작 기준 8시간 tick에서는 **연속 두 번 실패까지 200**이고(세 번째 tick이 시작 +
+  24시간에 시작해 상한 3.5시간 안에 끝나면 유예 안), **세 번째 연속 실패부터 503**이다.
   하루 3회 상한은 Dagster에서는 8시간 tick(KST 00·08·16시)으로 지킨다. 다만 15분 당김 때문에 tick의 시작
   지연이 줄어드는 날에는 **연속 24시간 창**에 네 번째 시작이 최대 45분 안쪽으로 들어올 수 있다
   (00:45→08:30→16:15→다음 00:00). tick 없는 in-process scheduler는 성공 예약에만 당긴 폭을
@@ -107,6 +112,75 @@ KREX 실시간 문자정보가 `count=0`·빈 목록을 정상 응답으로 돌�
 비교하고, 0건은 한 번 다시 조회해도 비면 실패로 기록해 마지막 성공 집합을 유지한다(export 503). 0건이 아닌 급감은 두 완결
 응답이 같은 건수일 때만 받는다. 위 결정의 "빈 목록은 현재 돌발 없음" 해석은 이 개정으로 바뀐다(INCIDENT-EMPTY-SET-20261124).
 
+### 개정 2026-11-24 — 503 사유 `code`·`Retry-After`, 일시 DB 불가 503, 유가 export 유예(정책 변경 포함)
+
+Map 호출 감사(G1-F3·MC-01·T23-01·T23-10·RT-12·T1-07·RT-02·RT-04·WLH-09·G1-F4(a))의 생산자 쪽 변경이다. 결정 3의
+현재 집합 의미와 돌발 정책(30분·실패 즉시 503·0건 정책)은 바꾸지 않는다. **바뀌는 정책은 세 가지다**: 유가 export
+stale 기준(24시간 → 27.5시간), export 경로의 두 가지 500 → 503, T2/T3 55P03의 즉시 503 → 한 번 재시도.
+
+- **503 사유 code**: transport 앱이 `/v1/service/exports/*`에서 내는 모든 503 problem 본문에 가산 확장 `code`
+  (UPPER_SNAKE)를 싣고 HTTP `Retry-After: <정수 초>`를 함께 준다(형식은 [ADR-005 사실 갱신](005-versioned-rest-api-contract.md)).
+  `type`/`title`/`status`/`detail`/`instance`와 한국어 `detail` 문장은 그대로다. 코드 사전·Retry-After·소비자
+  처리는 [Map 인계 문서](../map-service-exports-handoff.md)의 "503 사유 code와 Retry-After" 절이 정본이다.
+  `code`의 뜻이 계약이고 **`Retry-After` 값은 힌트**다(운영 중 바뀔 수 있고, 소비자가 정기 polling을 멈출 근거가 아니다).
+  앞단 프록시가 만든 503은 이 계약 밖이다.
+- **돌발 0건의 code**: #265(INCIDENT-EMPTY-SET) 뒤 0건 수집은 실패로 기록된다(`last_error`). 그래서 운영의
+  0건은 `last_error` 분기로 **`EXPORT_INCIDENTS_NOT_CURRENT`**가 된다. `EXPORT_EMPTY_SET`은 상태가 현재(실패 없음,
+  30분 안)인데 활성 행이 0건인 안전망 분기, 그리고 T3 기준정보의 완결 head membership이 0건인 경우에만 나온다.
+- **T1 stale Retry-After(힌트)**: `EXPORT_SOURCE_NOT_CURRENT`는 수집 상태로 계산해 [60, 3600]초로 자른다 —
+  진행 중인 수집(마지막 시작 > 마지막 성공, 그 뒤 실패 기록 없음)은 `시작 + 예상 수행 시간 − now`(넘겼으면 300),
+  다음 예정이 미래면 `next_due_at − now + 예상 수행 시간`, 예정이 없거나 지났으면 1800. 예상 수행 시간은 유가 2시간,
+  휴게소·휴게소 유가 10분, 공공 주차장 30분이다. 휴게소 계열은 성공 때 `next_due_at`을 비우므로(`rest_area_collection.py`)
+  진행 중이 아니면 1800이다. 유가 claim은 `next_due_at`을 시작 + 7시간 45분으로 옮기므로 예정 시각만 쓰면 이미 도는 복구
+  run을 몇 시간 넘겨 짚었다. 이력 없음(`EXPORT_NO_HISTORY`)은 5분 주기 집합(교통 current·주차장 current·돌발)이면
+  300, 그 밖은 3600이다.
+- **일시 DB 불가 503(상태 코드 변경)**: export 경로에서 pool checkout timeout(`sqlalchemy.exc.TimeoutError`)·접속
+  실패/접속 timeout·PG 기동 중(57P03)·관리자 종료(57P01/57P02)·접속 수 초과(53300)·연결 예외(class 08, 단
+  08P01 protocol_violation 제외)·끊긴 연결은 원인 불명 500 대신 503 `TRANSIENT_DB`(Retry-After 15)다. DNS 해석
+  실패·TLS 오류는 설정 문제라 예전처럼 500이다. 원문(SQL·DSN·driver 문장)은 응답에 싣지 않고, 로그에는 예외 종류·원인
+  종류/errno·SQLSTATE만 남긴다(처음 한 번과 그 뒤 60초마다 ERROR, 그 사이 WARNING). 판정은 export 경로에만 거는
+  가장 안쪽 미들웨어(`app/core/export_guard.py`)가 한다 — **공개·관리 경로와 그 stream은 예전 그대로**(500, 같은
+  예외 종류)다. 관리 유가 화면은 가격 이력 경로의 어떤 503이든 "수집 이력 없음"으로 보여 주기 때문이다
+  (`fuel-station-history.tsx`). 그 밖의 DB 오류는 export에서도 500이다.
+- **T4 가격 이력 문장 상한(#274)**: export 503에 `code=EXPORT_QUERY_TIMEOUT`(Retry-After 5)을 싣는다. native 504는 그대로다.
+- **T2/T3 snapshot 안의 statement timeout(상태 코드 변경)**: `SET LOCAL statement_timeout`(10초, 재시도는 남은
+  예산 이하)에 걸린 57014는 500 대신 503 `EXPORT_PREPARE_TIMEOUT`(Retry-After 60)이고 재시도하지 않는다.
+- **55P03·40P01 한 번 재시도(정책 변경)**: 예전에는 admission 대기 lock_timeout(55P03)이 곧바로 503이었다
+  (2026-11-19 artifact COPY 보고서에 적은 의도된 정책). 그때는 503에 사유가 없어 Map이 수 분 뒤 step 재시도로만
+  다뤘고, 요청 안에서 다시 시도하면 시도마다 15초 예산을 새로 받아 Map read timeout(30초)을 넘길 수 있었다.
+  이제 두 시도가 **첫 시도 시작부터 잰 15초 예산 하나**를 나눠 쓰고, 남은 예산이 `대기(0.3~1초) + lock_timeout(2초)
+  + 여유(3초)` 이상일 때만 새 REPEATABLE READ로 한 번 더 시도해 앞 builder가 commit한 본문을 재사용한다. 재시도의
+  statement_timeout은 남은 예산을 넘지 않는다. 예산이 모자라거나, 두 번째도 막히거나, 경합 뒤 재시도가 예산·
+  statement timeout에 걸리면 503 `EXPORT_BUSY`(Retry-After 10)다. 교착(40P01)도 같다. RR 안의 advisory lock
+  single-flight는 snapshot이 잡힌 뒤에 lock을 얻어 상대의 commit을 보지 못하므로 쓰지 않는다.
+- **handler 전체 상한(보장 범위)**: 15초 예산은 본문 구성 몫이고 재시도의 pool checkout 대기(최대 10초)는 덮지
+  않는다. 요청 전체는 **T2/T3/T4 handler 상한 25초**(`ExportDeadlineRoute`)가 끊는다 — 넘으면 본문 구성 중이면
+  `EXPORT_PREPARE_TIMEOUT`, 그 밖(pool·pre-ping·멈춘 PG)이면 `TRANSIENT_DB`다. 그래서 보장하는 것은 "T2/T3/T4
+  응답이 25초 안에 200이거나 code 있는 503"이고, 25초가 Map read timeout(30초)보다 작다. T1 handler의 상한(25초)·
+  55P03·57014 503은 T1 전송 개정(#279, 아래 "개정 2026-11-24 (T1 전송)")이 두며 각각 `EXPORT_PREPARE_TIMEOUT`·
+  `EXPORT_BUSY`·`EXPORT_PREPARE_TIMEOUT` code를 싣는다. 연결이 반쯤 끊겨 cleanup(rollback)까지 멈추는 경우는 이 상한이 덮지 못한다
+  (API 엔진에 클라이언트 `command_timeout` 없음).
+- **API DB 엔진**: asyncpg 새 접속 상한 10초(기본 60초 > Map read 30초), pool checkout 상한 10초(기본 30초),
+  `application_name`(`kor-travel-transport-api`/`kor-travel-transport-collector`)을 둔다. **pool checkout 상한은
+  엔진 전체라 공개·관리 경로에도 적용된다** — 예전에 10~30초 기다려 성공하던 요청이 이제 10초에 500으로 끝난다.
+  장소 지도 입장 제한(MUI-02, #273, 머지됨)이 장소 지도 몰림을 줄이지만, #273 없이 이 변경만 배포된 이미지에서는 장소
+  지도 몰림이 pool을 채워 이 500이 늘 수 있다. 서버
+  `lock_timeout`은 API 엔진에 두지 않는다 — 관리자 KRIC 매핑 저장은 기준 역 수집과 같은 advisory lock을, 관리자
+  좌표 보정은 수집의 행 잠금을 의도적으로 기다린다. 짧은 대기가 맞는 경로는 이미 `SET LOCAL lock_timeout`을 둔다.
+  `idle_in_transaction_session_timeout`·`transaction_timeout`은 어느 엔진에도 두지 않는다 — 공항·버스 기준정보·
+  일반철도·KRIC 시간표의 세션 advisory lease 연결은 `pg_try_advisory_lock` 뒤 commit하지 않아 run 내내
+  idle in transaction이다(`backend/app/db/session.py` 주석).
+- **유가 export 유예(정책 변경, 소비자에게 보임)**: `REFERENCE_STALE_AFTER[opinet] = FUEL_STALE_AFTER(24시간) +
+  FUEL_FETCH_TIMEOUT_SECONDS(3.5시간)` = 27.5시간. 위 "남는 틈 (1)"을 닫는다. 공개 화면의 유가 신선도
+  (`FUEL_STALE_AFTER` 24시간)는 그대로이고, 27.5시간은 Map Valkey 데이터셋 max_age(48시간)보다 작다. 소비자에게는
+  "마지막 성공 뒤 24~27.5시간 구간의 주유소 집합이 503 대신 200(`collection.last_attempt_failed=true`)"으로 보인다.
+  Map ADR-106의 "24시간" 서술은 Map 쪽 후속 정정 대상이다.
+- **배포 순서(강한 보류)**: `code`·`Retry-After`·`ProblemDetails.code` 선언은 순수 가산이다. 반면 export 경로의
+  500→503 두 가지(`TRANSIENT_DB`, `EXPORT_PREPARE_TIMEOUT`)는 상태 코드 변경이라, **소유자가 정한 "나이 기준 혼합"
+  정책(직전 세대 유지, not-current는 다시 묻지 않음, 서비스 중인 세대의 원천 나이가 데이터셋별 경고 기준 안이면 초록·넘으면
+  빨강)을 가진 Map #1549가 운영에 배포됐고 Map #1542를 맞출 때도 같은 규칙을 유지할 때에만** 이 변경을 운영에 배포한다
+  ([배포 런북](../runbooks/deployment.md)의 보류 항목). 작성된 #1542는 재시도 가능한 실패를 초록 건너뜀으로 바꾸고 적재
+  나이로만 실패시켜 11월 주유소 503 16.6시간을 전부 초록으로 숨겼을 것이다(주유소 max_age 48시간).
 ### 근거
 
 - 공개 marker API를 넓히는 대신 별도 표면을 둔 것은 둘의 계약이 다르기 때문이다. marker는 limit·
