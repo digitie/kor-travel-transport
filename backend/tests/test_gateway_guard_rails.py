@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+from app.core.problems import RETRY_AFTER_SECONDS, ProblemCode
+
 BACKEND = Path(__file__).resolve().parents[1]
 # 저장소 checkout은 repo root, backend 회귀 이미지는 /app/compose-contract에 deploy/가 있다.
 ROOT = BACKEND.parent if (BACKEND.parent / "deploy").is_dir() else BACKEND / "compose-contract"
@@ -147,12 +149,14 @@ def test_export_location_never_buffers_large_pages_to_temp_files_and_bounds_tota
     assert "limit_conn_status 503;" in block
     assert "error_page 503 = @transport_export_busy;" in block
     # 거절은 Retry-After가 있는 problem+json이다. instance는 JSON에 안전한 문자만 허용한 map 값이다.
+    # export 503 사유 code 계약(ProblemCode)의 EXPORT_BUSY와 그 Retry-After 힌트를 쓴다.
     busy = _block(text, "    location @transport_export_busy")
-    assert "add_header Retry-After 5 always;" in busy
+    assert f"add_header Retry-After {RETRY_AFTER_SECONDS[ProblemCode.EXPORT_BUSY]} always;" in busy
     assert "default_type application/problem+json;" in busy
     problem = json.loads(re.search(r"return 503 '([^']*)';", busy).group(1).replace(
         "$transport_export_instance", "/v1/service/exports/airports"))
-    assert set(problem) == {"type", "title", "status", "detail", "instance"} and problem["status"] == 503
+    assert set(problem) == {"type", "title", "status", "detail", "instance", "code"} and problem["status"] == 503
+    assert problem["code"] == ProblemCode.EXPORT_BUSY
     instance_map = text.split("map $uri $transport_export_instance {", 1)[1].split("\n}", 1)[0]
     pattern = re.search(r"~(\S+) \$uri;", instance_map).group(1)
     assert re.match(pattern, "/v1/service/exports/fuel-stations/opinet:A0001/price-history")

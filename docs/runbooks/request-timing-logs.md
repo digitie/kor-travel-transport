@@ -154,7 +154,8 @@ location(Map)과 backend 직접(loopback 12302, 관리 BFF·측정 스크립트)
   - 버퍼보다 큰 본문(대형 참조 snapshot)은 소비자가 읽는 속도로 흘리며, 그동안 backend 연결과 요청을 잡고 있다.
     소비자가 `send_timeout`(기본 60초) 동안 읽지 않으면 nginx가 끊는다.
   - `limit_conn transport_export 6`으로 동시 export를 6개로 묶어 버퍼 합을 12MiB 이하로 둔다(64MiB gateway를 공개
-    API·MCP와 공유). 넘으면 gateway가 `503` + `Retry-After: 5` problem+json으로 거절한다(`uct=-`). Map은 dataset
+    API·MCP와 공유). 넘으면 gateway가 `503` + `Retry-After: 10` problem+json(export 503 사유 `code`=`EXPORT_BUSY`,
+    [handoff](../map-service-exports-handoff.md))으로 거절한다(`uct=-`). Map은 dataset
     페이지를 순차 조회하므로 평소에는 닿지 않는다.
 - 공개 유가 gateway는 JSON을 gzip level 1(1KiB 이상, `gzip_proxied any`, `Vary: Accept-Encoding`)로 압축한다(MUI-11).
   - backend가 이미 gzip으로 준 가격 이력은 다시 압축하지 않는다. 압축 효과는 access log `gz`로 본다.

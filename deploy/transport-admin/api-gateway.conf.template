@@ -124,7 +124,8 @@ server {
         proxy_buffers 64 32k;
         proxy_max_temp_file_size 0;
         # 64MiB gateway(공개 API·MCP와 공유)에서 export 버퍼 합을 6×2MiB=12MiB 이하로 묶는다.
-        # Map은 dataset 페이지를 순차 조회하므로 평소 동시 수는 이보다 작다. 넘으면 503 + Retry-After.
+        # Map은 dataset 페이지를 순차 조회하므로 평소 동시 수는 이보다 작다. 넘으면 503 + Retry-After와
+        # export 503 사유 code EXPORT_BUSY(docs/map-service-exports-handoff.md)로 같은 요청의 짧은 재시도를 알린다.
         limit_conn transport_export 6;
         limit_conn_status 503;
         error_page 503 = @transport_export_busy;
@@ -133,8 +134,8 @@ server {
     # limit_conn 거절만 받는다(proxy_intercept_errors가 꺼져 있어 backend 503은 그대로 전달된다).
     location @transport_export_busy {
         default_type application/problem+json;
-        add_header Retry-After 5 always;
-        return 503 '{"type":"about:blank","title":"Service Unavailable","status":503,"detail":"export 동시 요청 상한(6)을 넘었습니다. Retry-After 뒤 다시 요청하세요.","instance":"$transport_export_instance"}';
+        add_header Retry-After 10 always;
+        return 503 '{"type":"about:blank","title":"Service Unavailable","status":503,"detail":"export 동시 요청 상한(6)을 넘었습니다. Retry-After 뒤 다시 요청하세요.","instance":"$transport_export_instance","code":"EXPORT_BUSY"}';
     }
 
     # 같은 API의 MCP. 별도 소비자 CIDR로 raw export의 허용 범위를 넓히지 않는다.
