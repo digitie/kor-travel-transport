@@ -45,7 +45,8 @@ function useFuelStationHistory({ place, load }: { load: typeof transportGet; pla
     loadFuelStationHistory(place.id, place.source, AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]), load)
       .then((data) => { if (!controller.signal.aborted) setState({ key, data }); })
       .catch((error: unknown) => {
-        if (!controller.signal.aborted) setState({ key, error: error instanceof TransportError && error.status === 503 ? "성공한 가격 수집 이력이 없어 추이를 조회할 수 없습니다." : error instanceof Error && /[가-힣]/.test(error.message) ? error.message : "가격 이력을 불러오지 못했습니다. 다시 조회해 주세요." });
+        // backend는 DB 조회 시간 상한 초과를 504로, 성공한 수집 이력 부재를 503으로 구분한다.
+        if (!controller.signal.aborted) setState({ key, error: error instanceof TransportError && error.status === 504 ? "가격 이력 조회가 지연되고 있습니다. 잠시 후 다시 조회해 주세요." : error instanceof TransportError && error.status === 503 ? "성공한 가격 수집 이력이 없어 추이를 조회할 수 없습니다." : error instanceof Error && /[가-힣]/.test(error.message) ? error.message : "가격 이력을 불러오지 못했습니다. 다시 조회해 주세요." });
       });
     return () => controller.abort();
   }, [key, place.id, place.source, supported, load]);

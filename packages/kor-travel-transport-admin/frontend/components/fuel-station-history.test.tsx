@@ -6,6 +6,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { FuelStationHistoryChart, FuelStationPriceHistory } from "./fuel-station-history";
 import { FuelBrandIcon } from "./fuel-brand-icon";
 import * as history from "@/lib/fuel-station-history";
+import { TransportError } from "@/lib/journey";
 
 vi.mock("./fuel-price-chart-loader", async () => ({ default: (await import("./fuel-price-chart")).default }));
 vi.mock("./evilcharts/charts/echarts-line-chart", () => ({ EChartsLineChart: () => <div data-official-chart="true" /> }));
@@ -67,6 +68,20 @@ test("지원하지 않는 출처는 요청하지 않고 오류는 재조회할 �
     await act(async () => root.render(<FuelStationPriceHistory place={{ id: 1, source: "opinet_browser" }} />));
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("이력 조회 실패");
     await act(async () => container.querySelector<HTMLButtonElement>('[role="alert"] button')!.click());
+    expect(load).toHaveBeenCalledTimes(2);
+  } finally { await act(async () => root.unmount()); }
+});
+test("504 조회 시간 상한 초과는 재조회 가능한 지연으로, 503은 수집 이력 부재로 안내한다", async () => {
+  const load = vi.spyOn(history, "loadFuelStationHistory")
+    .mockRejectedValueOnce(new TransportError("가격 이력 조회가 시간 상한을 넘었습니다. 잠시 후 다시 조회하세요.", 504, 5))
+    .mockRejectedValueOnce(new TransportError("성공한 유가 수집 이력이 없습니다.", 503, 0));
+  const container = document.createElement("div"), root = createRoot(container);
+  try {
+    await act(async () => root.render(<FuelStationPriceHistory place={{ id: 1, source: "opinet_browser" }} />));
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("가격 이력 조회가 지연되고 있습니다");
+    expect(container.querySelector('[role="alert"]')?.textContent).not.toContain("수집 이력이 없어");
+    await act(async () => container.querySelector<HTMLButtonElement>('[role="alert"] button')!.click());
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain("성공한 가격 수집 이력이 없어");
     expect(load).toHaveBeenCalledTimes(2);
   } finally { await act(async () => root.unmount()); }
 });
