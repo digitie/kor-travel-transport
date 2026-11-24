@@ -324,9 +324,9 @@ problem `code`(예: `EXPORT_SOURCE_NOT_CURRENT`·`EXPORT_EMPTY_SET`)로 원천 �
 ### 배포 직후 Map이 볼 수 있는 것
 
 준비가 rail·ferry 본문을 만드는 동안 같은 revision의 Map 첫 페이지가 들어오면, 요청은 2초 잠금 상한(HTTP)에서
-admission 행을 기다리다 일시적인 503(`snapshot 준비가 겹쳤습니다`)을 받을 수 있다. Map은 step 재시도(60초 뒤)에서
-준비된 본문을 재사용한다. Map T3 호출은 주 1회(월 04:30·04:40 KST)라 이 창과 겹치는 일은 드물다. 겹칠 수 있는
-시각에는 배포 직후 warm을 미룬다.
+admission 행을 기다린다. 한 번 더 시도한 뒤에도 겹치면 503 `EXPORT_BUSY`(`Retry-After: 10`, export 실패 계약)를
+받을 수 있다. Map은 재시도에서 준비된 본문을 재사용한다. Map T3 호출은 주 1회(월 04:30·04:40 KST)라 이 창과
+겹치는 일은 드물다. 겹칠 수 있는 시각에는 배포 직후 warm을 미룬다.
 
 ## 과거 n150 운영 절차
 

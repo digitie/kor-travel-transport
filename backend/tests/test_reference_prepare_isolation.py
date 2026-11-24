@@ -175,7 +175,8 @@ def test_snapshot_transaction_keeps_http_literals_and_accepts_offline_values():
     http, offline = FakeSession(), FakeSession()
     asyncio.run(export_current._snapshot_transaction(http))
     asyncio.run(export_current._snapshot_transaction(offline, lock_timeout_ms=5_000, statement_timeout_ms=60_000))
-    assert http.statements == ["SET LOCAL lock_timeout = '2s'", "SET LOCAL statement_timeout = '10s'"]
+    # 요청 경로는 export 실패 계약(#277)의 문장 그대로다(문장 상한은 남은 요청 예산 이하).
+    assert http.statements == ["SET LOCAL lock_timeout = '2s'", "SET LOCAL statement_timeout = 10000"]
     assert offline.statements == ["SET LOCAL lock_timeout = '5s'", "SET LOCAL statement_timeout = '60s'"]
     with pytest.raises(ValueError):
         asyncio.run(export_current._snapshot_transaction(FakeSession(), lock_timeout_ms="1s; SELECT 1"))
@@ -186,9 +187,13 @@ def test_snapshot_transaction_keeps_http_literals_and_accepts_offline_values():
 def test_build_budget_defaults_to_http_and_accepts_the_offline_limit(monkeypatch):
     started = monotonic()
     monkeypatch.setattr(reference_artifacts, "monotonic", lambda: started + 16)
-    with pytest.raises(HTTPException):
+    monkeypatch.setattr(export_current, "monotonic", lambda: started + 16)
+    with pytest.raises(HTTPException) as caught:
         reference_artifacts._budget(started)
+    assert caught.value.status_code == 503 and caught.value.code == "EXPORT_PREPARE_TIMEOUT"
     reference_artifacts._budget(started, prep.PREPARE_TOTAL_BUDGET_SECONDS)
+    with pytest.raises(HTTPException):
+        reference_artifacts._budget(started, 15)
 
 
 def test_bounded_gc_expires_handles_first_then_unused_artifacts(monkeypatch):
