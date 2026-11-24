@@ -1,3 +1,20 @@
+## 2026-11-24 — 수집 직후 대시보드 통계 504 수정(DASHBOARD-STATS-OFFLOAD-20261124)
+
+- 운영 배포 검증(odroid 8e9c6d07): 수집 직후 ICN `/v1/dashboard/analytics` 첫 요청이 backend 25.7~30.6초 → 프록시 10초 상한 504(2분 간격 25회 중 7회),
+  같은 프로세스의 GMP 요청도 504. 30일 이력 캐시 재생성(77~98초)이 겹쳤다.
+- 원인: 사전집계(`analytics_caches`)는 생성 10분 이내·그 뒤 같은 범위 새 적재 없음일 때만 쓰는데, 수집 commit 뒤 Dagster의 사전집계 갱신이 끝날 때까지
+  (운영 ARM 약 5분) 모든 요청이 원본 계산(순수 Python, event loop 위)으로 떨어졌다.
+- 수정: 대시보드 묶음만 갱신 유예(`refresh_grace`) — 사전집계 뒤의 새 적재가 모두 40분 안(수집 상한 30분 + 갱신)이거나 새 적재가 없으면, 2시간 안의
+  직전 사전집계를 낸다. 유예보다 오래된 새 적재가 있으면(갱신 실패) 원본 계산. 원본 계산은 DB 읽기 뒤 계산을 thread로. 특수일 시각별 집계는 지난 날짜분 5분 보관,
+  오늘(주말·공휴일)분만 매번 집계. `X-Analytics-Source` 머리말(cache·source·mixed). 갱신이 수집 lock 경합으로 건너뛰면 경고 로그.
+- 버린 안: 30일 이력 재생성을 자식 프로세스(spawn)로 — 74만 행 pickling으로 재생성 7초 → 17~20초(x86 1 CPU), 수집 주기마다 `source_changed`로 게시 실패,
+  다른 요청 p95도 나빠졌다. 이력 재생성은 thread 그대로, 증분 재생성이 후속.
+- 측정(로컬 합성 운영 규모, 전용 throwaway PostgreSQL 18 2 CPU, 앱 CPU 제한): 15공항·64주차장·40일·5분 = 737,280행(30일 약 55만), 사이클마다 주차장별 관측
+  1행 적재(수집 commit 흉내) 직후 ICN 묶음 1회 + 12초 동안 0.5초 간격 GMP 묶음·`/parking/current`, 이어서 Dagster와 같은 사전집계 갱신. 결과는 PR #271 본문 표.
+- 적대 리뷰 2인(정확성: P0·P1 없음, 운영: P1 3건) 반영: 측정 추가, 주말·공휴일에 특수일 보관이 꺼지던 문제(오늘분만 매번), 유예 판정 여유(20→40분, 새 적재 없으면
+  2시간까지), 경로 머리말·건너뛴 갱신 경고, 죽은 `_with_references` 제거. 받아들인 P2: 화면에 사전집계 시각 표시 없음, 공항별 commit 아님, 단독 timeseries route는
+  엄격 조건 그대로, 원본 행 변환(`CompactSnapshot`)은 event loop에서.
+
 ## 2026-11-24 — 전체 이력 응답 이중 gzip 수정(HISTORY-DOUBLE-GZIP-20261124)
 
 - 운영 배포 검증(odroid): `GET /api/backend/v1/parking/history?days=30`(limit 없음)을 `Accept-Encoding: gzip`으로 받으면 gzip이 두 겹이었다.

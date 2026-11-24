@@ -1,5 +1,8 @@
 ## 2026-11-24 — 수집 실패 감사 후속
 
+- [ ] **DASHBOARD-STATS-OFFLOAD-20261124 / P1** — 수집 직후 대시보드 통계 504(갱신 유예 사전집계·계산 thread·특수일 보관). **남은 것**: backend 배포 뒤
+  odroid에서 ICN·GMP·소형 공항 `/v1/dashboard/analytics`를 15~30초 간격으로 수집 주기 3회 이상 호출해 p95·504와 `X-Analytics-Source`를 Dagster 갱신 시각과
+  대조(평일·주말 각 1회). 후속: 30일 이력 캐시 증분 재생성(`max_id` 이후만), 화면에 사전집계 시각 표시, 단독 timeseries route의 계산 thread화.
 - [ ] **HISTORY-DOUBLE-GZIP-20261124 / P1** — 전체 이력 프록시 이중 gzip 수정(pages API가 backend 압축 본문을 그대로 넘김). **남은 것**: frontend 배포 뒤
   운영에서 `curl -H 'Accept-Encoding: br, gzip' .../api/backend/v1/parking/history?days=30`이 `content-encoding: br` 한 겹(약 2.7MB)이고,
   `E2E_BASE_URL=<공개 URL> npx playwright test e2e/full-history-encoding.spec.ts e2e/live-dashboard.spec.ts`가 통과(전체 이력 3초 포함)하는지 확인.

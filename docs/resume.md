@@ -1,3 +1,9 @@
+## 현재 상태 — 2026-11-24 수집 직후 대시보드 통계 504 수정(DASHBOARD-STATS-OFFLOAD-20261124)
+
+- backend만. migration·UI 없음.
+- 배포(Codex 담당): backend 이미지(API). Dagster code-server는 같은 소스지만 이 변경과 무관(갱신 건너뜀 경고 로그만).
+- 다음 한 작업: 배포 뒤 odroid에서 수집 주기 3회 이상 ICN·GMP 대시보드 p95·504와 `X-Analytics-Source`를 잰다.
+
 ## 현재 상태 — 2026-11-24 전체 이력 프록시 이중 gzip 수정(HISTORY-DOUBLE-GZIP-20261124)
 
 - 공개 웹(parking-radar frontend)만. backend·migration 없음.

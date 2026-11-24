@@ -155,12 +155,18 @@ covering index를 concurrent로 만들고 해당 테이블의 auto-analyze 임�
 
 분석 섹션은 viewport 근처에 들어올 때만 요청한다. 데이터베이스 기반 5개 분석을 `GET /v1/dashboard/analytics`로 묶고, 외부 API가 느려도 주차 분석을 막지 않도록 비행편은 별도 요청과 6초 client timeout을 유지한다. 기본 기간의 시계열·요일·임계치 결과는 `analytics_caches`를 사용한다.
 
-공항 수집 job은 수집 commit 직후 기본 범위 사전집계를 다시 만든다(미리 데우기, `refresh_default_analytics_cache`). 대시보드 묶음은
-엄격한 재사용 조건(생성 10분 이내·그 뒤 같은 범위 새 적재 없음)을 못 채워도 **갱신 대기 중**이면 직전 사전집계를 그 생성 시각과 함께 낸다:
-사전집계 생성 뒤 새 적재가 모두 `DASHBOARD_REFRESH_GRACE`(20분) 안이고 사전집계가 `DASHBOARD_STALE_CACHE_MAX_AGE`(30분) 안일 때.
-그보다 오래된 새 적재가 있으면(갱신 실패·중단) 원본에서 계산한다 — 실패한 갱신이 오래된 값을 계속 내지 않는다. 단독 분석 route
-(`/v1/parking/analytics/*`)는 지금처럼 엄격한 조건만 쓴다. 원본 계산은 DB 읽기 뒤 계산을 thread에서 해 event loop를 계산 내내 막지 않는다.
-특수일 패턴의 시각별 집계는 지난 특수일만이면 5분 보관하고, 오늘(현지)이 특수일이면 매번 집계한다(DASHBOARD-STATS-OFFLOAD-20261124).
+공항 수집 job은 수집 commit 직후 기본 범위 사전집계를 다시 만든다(미리 데우기, `refresh_default_analytics_cache`; 수집 lock 경합으로
+건너뛰면 경고 로그). 대시보드 묶음(`/v1/dashboard/analytics`)은 엄격한 재사용 조건(생성 10분 이내·그 뒤 같은 범위 새 적재 없음)을
+못 채워도 직전 사전집계를 낸다: 사전집계 뒤의 새 적재가 모두 `DASHBOARD_REFRESH_GRACE`(40분 — 수집 상한 30분 + 갱신) 안이면 갱신 대기로,
+새 적재가 없으면 그대로 맞는 값으로 본다. 사전집계는 `DASHBOARD_STALE_CACHE_MAX_AGE`(2시간)를 넘으면 쓰지 않고, 유예보다 오래된 새 적재가
+있으면(갱신 실패·중단) 원본에서 계산한다. 그래서 수집 직후 몇 분은 시계열 마지막 점·임계 이벤트가 현재값 카드보다 한 수집 주기 늦을 수 있다
+(`generated_at`은 시계열·임계 요약 payload에만 있고 화면에는 아직 표시하지 않는다). 단독 분석 route(`/v1/parking/analytics/*`)는 엄격한
+조건만 쓴다. 응답 머리말 `X-Analytics-Source`가 경로를 알린다(`cache`·`source`·`mixed`). 원본 계산은 DB 읽기 뒤 계산을 thread에서 한다
+(순수 Python이라 GIL을 쥐지만 event loop를 계산 내내 막지는 않는다). 특수일 시각별 집계는 지난 날짜분을 5분 보관하고 오늘(현지
+주말·공휴일)분만 매번 집계해 합친다(DASHBOARD-STATS-OFFLOAD-20261124).
+30일 주차 이력 캐시 재생성(수집마다 운영 ARM 77~98초)은 API 프로세스 안 thread에 그대로 있다. 자식 프로세스로 옮기는 안을 시험했으나
+74만 행을 넘기고 받는 pickling 때문에 재생성이 7초 → 17~20초(x86 1 CPU)로 늘어 수집 주기마다 `source_changed`로 게시하지 못했고,
+다른 요청 p95도 나빠져 버렸다. 증분 재생성(삽입 전용 원본의 `max_id` 이후만 덧붙이기)이 후속이다.
 
 ## PostgreSQL 인덱스
 

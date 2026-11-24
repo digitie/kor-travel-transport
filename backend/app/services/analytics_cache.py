@@ -9,6 +9,8 @@ from typing import Any, NamedTuple
 from sqlalchemy import BigInteger, Date, Integer, Text, case, cast, extract, func, literal, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import logging
+
 from app.core.config import Settings
 from app.core.time_utils import ensure_tz, now_utc, serialize_utc
 from app.models import Airport, AnalyticsCache, ParkingLot, ParkingSnapshot
@@ -34,15 +36,18 @@ DEFAULT_THRESHOLD_EVENTS_LIMIT = 20
 DEFAULT_THRESHOLD_INSIGHTS_DAYS = 21
 DEFAULT_THRESHOLD_INSIGHTS_INTERVAL_MINUTES = 10
 # 5분 수집 두 주기를 넘긴 파생 결과는 원본으로 다시 계산한다.
+logger = logging.getLogger(__name__)
 MAX_ANALYTICS_CACHE_AGE = timedelta(minutes=10)
-#: 대시보드 묶음은 엄격한 재사용 조건(생성 10분 이내·그 뒤 같은 범위 새 적재 없음)을 못 채워도, 갱신이 진행 중인 것으로 볼
-#: 수 있으면 직전 사전집계를 생성 시각(`generated_at`)과 함께 낸다. 공항 수집은 행을 넣을 때 `collected_at`을 찍고 실행 끝(4~9분 뒤)에
-#: commit하며, 그 뒤 기본 범위 사전집계 갱신(`refresh_default_analytics_cache`)이 운영 ARM에서 약 5분 걸린다(2026-11-23 보고).
-#: 그 사이 요청이 원본 계산(운영 ICN 25~30초, 같은 프로세스의 다른 공항 요청까지 막음)으로 떨어지지 않게 한다.
-#: - 새 적재가 모두 `DASHBOARD_REFRESH_GRACE` 안이면 갱신 대기로 본다. 그보다 오래된 새 적재가 있으면(갱신 실패·중단) 원본에서 계산한다.
-#: - 사전집계 자체가 `DASHBOARD_STALE_CACHE_MAX_AGE`보다 오래되면 쓰지 않는다.
-DASHBOARD_REFRESH_GRACE = timedelta(minutes=20)
-DASHBOARD_STALE_CACHE_MAX_AGE = timedelta(minutes=30)
+#: 대시보드 묶음은 엄격한 재사용 조건(생성 10분 이내·그 뒤 같은 범위 새 적재 없음)을 못 채워도 직전 사전집계를 낸다 —
+#: 수집 직후 갱신 전에 요청이 원본 계산(운영 ICN 25~30초, 같은 프로세스의 다른 공항 요청까지 막음)으로 떨어지지 않게 한다.
+#: 공항 수집은 행을 넣을 때 `collected_at`을 찍고 실행 끝(보통 4~9분, 상한 `JOB_MAX_RUNTIME_SECONDS` 30분)에 commit하고,
+#: 그 직후 같은 job이 기본 범위 사전집계를 다시 만든다(운영 ARM 약 5분, 2026-11-23 보고).
+#: - 사전집계 뒤의 새 적재가 모두 `DASHBOARD_REFRESH_GRACE` 안이면 갱신 대기로 본다(수집 상한 30분 + 갱신 시간을 덮는다).
+#:   그보다 오래된 새 적재가 있으면 갱신이 실패·중단된 것이라 원본에서 계산한다.
+#: - 새 적재가 없으면(원천 장애로 적재 0건 등) 사전집계가 그대로 맞으므로 `DASHBOARD_STALE_CACHE_MAX_AGE`까지 낸다
+#:   (기간 경계·시계열 미래 구간이 생성 시각 기준이라 상한을 둔다).
+DASHBOARD_REFRESH_GRACE = timedelta(minutes=40)
+DASHBOARD_STALE_CACHE_MAX_AGE = timedelta(hours=2)
 
 
 def _ranked_snapshot_values(conditions: list[Any], *, with_references: bool = False):
@@ -359,6 +364,8 @@ async def refresh_default_analytics_cache(
             "SELECT pg_try_advisory_xact_lock(hashtext('kor_travel_transport:airport_collection'))"
         ))
         if not acquired:
+            # 대시보드 갱신 유예(`DASHBOARD_REFRESH_GRACE`)가 이 갱신에 기댄다. 건너뛴 사실을 남긴다.
+            logger.warning("default analytics cache refresh skipped: airport collection lock is busy")
             return 0
     generated_at = now_utc()
     codes = [code.upper() for code in (airport_codes or settings.supported_airport_codes)]

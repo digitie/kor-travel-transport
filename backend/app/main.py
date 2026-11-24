@@ -16,10 +16,10 @@ import logging
 import secrets
 import traceback
 from collections import OrderedDict
-from time import monotonic
 from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack, asynccontextmanager
 from contextlib import suppress
+from time import monotonic
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from functools import wraps
@@ -3389,6 +3389,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @router.get("/dashboard/analytics", response_model=DashboardAnalyticsResponse)
     async def dashboard_analytics(
+        response: Response,
         airport_code: str = Query(..., min_length=3, max_length=3),
         parking_lot_id: int | None = Query(default=None),
         session: AsyncSession = Depends(get_db),
@@ -3421,6 +3422,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         computed: DashboardSourceMetrics | None = None
         if None in (cached_events, cached_insights, cached_weekday, cached_series):
             computed = await _dashboard_source_metrics(session, airport_code, parking_lot_id)
+        # 운영 측정에서 경로를 구분한다(사전집계·원본 계산/memo·섞임). 값 계약은 바뀌지 않는다.
+        response.headers["X-Analytics-Source"] = (
+            "cache" if computed is None
+            else "source" if all(item is None for item in (cached_events, cached_insights, cached_weekday, cached_series))
+            else "mixed")
         events = ([ThresholdEvent(**event) for event in cached_events]
                   if cached_events is not None else computed.threshold_events)
         insights = (ThresholdInsightsResponse(**cached_insights)
@@ -3555,18 +3561,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> list[ParkingSnapshot]:
         cutoff = now_utc() - timedelta(days=days, minutes=buffer_minutes)
         return await _load_snapshots_since(session, airport_code, parking_lot_id, cutoff)
-
-    async def _with_references(session: AsyncSession, snapshots: list[Any]) -> list[tuple[Any, Any, Any]]:
-        """`_load_snapshot_rows`의 주차장·공항 내부 결합과 같은 (관측, 주차장, 공항) 행."""
-        lot_names = dict((await session.execute(select(ParkingLot.id, ParkingLot.name))).tuples().all())
-        airports = {row.id: row for row in (await session.execute(
-            select(Airport.id, Airport.code, Airport.name_ko))).all()}
-        return compact_rows_with_references(
-            (snapshot, lot_names[snapshot.parking_lot_id], airports[snapshot.airport_id].code,
-             airports[snapshot.airport_id].name_ko)
-            for snapshot in snapshots
-            if snapshot.parking_lot_id in lot_names and snapshot.airport_id in airports
-        )
 
     async def _load_snapshots_since(
         session: AsyncSession,
@@ -3742,8 +3736,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             conditions.append(ParkingSnapshot.airport_id == airport.id)
         return await _load_compact_timeseries_snapshots(session, conditions)
 
-    # 특수일 패턴의 시각별 요약은 지난 특수일만이면 거의 바뀌지 않는다. 대시보드 60초 재조회·여러 이용자가 같은
-    # 집계(운영 ARM ICN 수 초)를 반복하지 않게 짧게 보관한다. 오늘(현지)이 들어 있으면 값이 계속 바뀌므로 보관하지 않는다.
+    # 지난 특수일의 시각별 요약은 거의 바뀌지 않는다. 대시보드 60초 재조회·여러 이용자가 같은 집계(운영 ARM ICN 수 초)를
+    # 반복하지 않게 지난 날짜분만 짧게 보관하고, 오늘(현지, 주말·공휴일)은 매번 집계해 합친다.
     special_day_memo: OrderedDict[tuple[str | None, int | None, tuple[date, ...]], tuple[float, dict]] = OrderedDict()
     SPECIAL_DAY_MEMO_SECONDS = 300
 
@@ -3753,18 +3747,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         parking_lot_id: int | None,
         local_dates: list[date],
     ) -> dict[tuple[date, int], SpecialDayHourAggregate]:
-        if to_seoul(now_utc()).date() in local_dates:
-            return await _aggregate_special_day_hours_uncached(session, airport_code, parking_lot_id, local_dates)
-        key = (airport_code.upper() if airport_code else None, parking_lot_id, tuple(local_dates))
-        cached = special_day_memo.get(key)
-        if cached is not None and monotonic() - cached[0] < SPECIAL_DAY_MEMO_SECONDS:
-            special_day_memo.move_to_end(key)
-            return cached[1]
-        result = await _aggregate_special_day_hours_uncached(session, airport_code, parking_lot_id, local_dates)
-        special_day_memo[key] = (monotonic(), result)
-        special_day_memo.move_to_end(key)
-        while len(special_day_memo) > MAX_DASHBOARD_SOURCE_MEMO_ENTRIES:
-            special_day_memo.popitem(last=False)
+        today = to_seoul(now_utc()).date()
+        past_dates = [local_date for local_date in local_dates if local_date != today]
+        result: dict[tuple[date, int], SpecialDayHourAggregate] = {}
+        if past_dates:
+            key = (airport_code.upper() if airport_code else None, parking_lot_id, tuple(past_dates))
+            cached = special_day_memo.get(key)
+            if cached is not None and monotonic() - cached[0] < SPECIAL_DAY_MEMO_SECONDS:
+                special_day_memo.move_to_end(key)
+                past = cached[1]
+            else:
+                past = await _aggregate_special_day_hours_uncached(session, airport_code, parking_lot_id, past_dates)
+                special_day_memo[key] = (monotonic(), past)
+                special_day_memo.move_to_end(key)
+                while len(special_day_memo) > MAX_DASHBOARD_SOURCE_MEMO_ENTRIES:
+                    special_day_memo.popitem(last=False)
+            result.update(past)
+        if today in local_dates:
+            # (날짜, 시) 키라 지난 날짜분과 겹치지 않는다.
+            result.update(await _aggregate_special_day_hours_uncached(session, airport_code, parking_lot_id, [today]))
         return result
 
     async def _aggregate_special_day_hours_uncached(

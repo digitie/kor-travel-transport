@@ -613,6 +613,7 @@ def test_cold_dashboard_computes_off_the_event_loop_thread(analytics_app, monkey
     client.portal.call(loop_marker)
     response = client.get("/v1/dashboard/analytics", params={"airport_code": "GMP"})
     assert response.status_code == 200
+    assert response.headers["x-analytics-source"] == "source"
     assert compute_threads and loop_threads
     assert loop_threads[0] not in compute_threads
 
@@ -637,11 +638,14 @@ def test_special_day_aggregate_is_reused_briefly_unless_today_is_included(analyt
         second = client.get("/v1/parking/analytics/holiday-patterns", params=params)
         assert reads >= 1 and len(statements) == reads  # 지난 특수일만이면 짧게 재사용한다.
         assert _strip_generated(first.json()) == _strip_generated(second.json())
-        # 오늘(현지)이 특수일이면 값이 계속 바뀌므로 매번 집계한다.
+        # 오늘(현지)이 특수일이면 오늘분만 매번 집계하고 지난 날짜분은 보관한 것을 쓴다(주말·공휴일 사전 리뷰 P1).
         selected[:] = [to_seoul(NOW).date()]
         client.get("/v1/parking/analytics/holiday-patterns", params=params)
         reads = len(statements)
         client.get("/v1/parking/analytics/holiday-patterns", params=params)
-        assert len(statements) > reads
+        assert len(statements) - reads == 1
+        today_sql = statements[-1]
+        client.get("/v1/parking/analytics/holiday-patterns", params=params)
+        assert len(statements) - reads == 2 and statements[-1] == today_sql
     finally:
         event.remove(engine, "before_cursor_execute", capture)
