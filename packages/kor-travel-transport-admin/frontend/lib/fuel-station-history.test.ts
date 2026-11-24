@@ -10,7 +10,6 @@ afterEach(() => vi.restoreAllMocks());
 
 test("실제 168시간 안의 양수만 시간순으로 표시하고 유종별 최신값을 구한다", () => {
   const data = historyFixture();
-  data.latest = [price("2026-10-20T03:00:00Z", 1900)];
   data.items = [price("2026-10-28T02:00:00Z", 1705), price("2026-10-21T03:00:00Z", 1700), price("2026-10-20T02:00:00Z", 900), price("2026-10-29T02:00:00Z", 2000), price("2026-10-27T02:00:00Z", 0), price("2026-10-27T02:00:00Z", null), price("invalid", 1800), price("2026-10-28T02:00:00Z", 1550, "D047")];
   const series = fuelHistorySeries(data);
   expect(series.map((row) => row.points.map((point) => point.price))).toEqual([[1700, 1705], [1550]]);

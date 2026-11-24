@@ -3,7 +3,9 @@ import { transportGet, TransportError, hasFuelPrice, seoulDate, type FuelPrice }
 export type FuelHistoryWindow = { from_at: string; to_at: string; mode: "rolling"; timezone: "Asia/Seoul" };
 export type FuelStationHistory = {
   station_id: number; source: string; provider_id: string | null; brand_code: string | null; brand_name: string | null;
-  window: FuelHistoryWindow; items: (FuelPrice & { collected_at?: string | null })[]; latest: FuelPrice[];
+  window: FuelHistoryWindow; items: (FuelPrice & { collected_at?: string | null })[];
+  /** 화면은 `include_latest=false`로 부르므로 항상 빈 배열이다. 현재 가격은 상세의 가격 행을 쓴다. */
+  latest: never[];
   meta: { generated_at: string; source_collected_at: string | null; source_status: string | null; item_count: number };
   source_last_success_at: string | null; source_revision: string | null; has_more: boolean; next_cursor: string | null;
 };
