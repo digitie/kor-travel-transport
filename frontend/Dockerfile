@@ -1,4 +1,14 @@
-FROM node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS dependencies
+FROM node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS target-dependencies
+WORKDIR /app
+COPY frontend/package.json frontend/package-lock.json ./
+COPY frontend/vendor ./vendor
+COPY frontend/.npmrc ./.npmrc
+RUN --mount=type=cache,id=kor-travel-web-npm-v2,target=/root/.npm,sharing=locked \
+    npm install --global npm@12.0.1 \
+    && npm ci --engine-strict --prefer-offline --no-audit --no-fund
+
+# Next.js 빌드는 builder CPU에서 실행하고 런타임 모듈은 타깃 CPU에서 설치한다.
+FROM --platform=$BUILDPLATFORM node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS dependencies
 WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json ./
 COPY frontend/vendor ./vendor
@@ -8,6 +18,7 @@ RUN --mount=type=cache,id=kor-travel-web-npm-v2,target=/root/.npm,sharing=locked
     && npm ci --engine-strict --prefer-offline --no-audit --no-fund
 
 FROM dependencies AS builder
+ARG BUILDARCH
 WORKDIR /app
 
 ARG NEXT_PUBLIC_API_BASE_URL=""
@@ -20,7 +31,7 @@ ENV BACKEND_INTERNAL_URL=http://localhost:8000
 COPY frontend /app
 
 RUN npm run check:dependencies
-RUN --mount=type=cache,id=kor-travel-transport-public-next-v2,target=/app/.next/cache,sharing=locked \
+RUN --mount=type=cache,id=kor-travel-transport-public-next-v2-${BUILDARCH},target=/app/.next/cache,sharing=locked \
     npm run build
 
 # public/은 현재 tracked 파일이 없다. COPY가 없는 경로에 의존하지 않게 준비한다.
@@ -43,7 +54,7 @@ ENV NODE_ENV=production \
     RELEASE_SHA=${RELEASE_SHA}
 # Next config(.ts) 로더와 Compose의 직접 next start/npm start 계약을 유지한다.
 COPY --from=builder /app/package.json /app/package-lock.json /app/.npmrc ./
-COPY --from=builder /app/node_modules ./node_modules
+COPY --from=target-dependencies /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/next.config.ts /app/tsconfig.json ./
