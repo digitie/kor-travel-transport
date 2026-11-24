@@ -1,3 +1,9 @@
+## 현재 상태 — 2026-11-24 공개 분석 화면 기준 시각(ANALYTICS-BASIS-TIME-20261124)
+
+- backend(`DashboardAnalyticsResponse.analytics_generated_at` 선택 필드, OpenAPI 추가) + 공개 웹(`/analytics` 제목 아래 기준 시각). migration 없음.
+- 배포(Codex 담당): backend 이미지(API)와 공개 웹(parking-radar frontend) 이미지. 웹만 먼저 나가면 줄이 안 보일 뿐 깨지지 않는다.
+- 다음 한 작업: 배포 뒤 공개 `/analytics`에서 "기준 시각 HH:MM"이 보이고, 수집 직후에도 20분 미만이면 경고 톤이 아닌지 확인한다.
+
 ## 현재 상태 — 2026-11-24 수집 직후 대시보드 통계 504 수정(DASHBOARD-STATS-OFFLOAD-20261124)
 
 - backend만. migration·UI 없음.

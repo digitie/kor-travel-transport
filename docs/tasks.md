@@ -4,7 +4,7 @@
   odroid에서 ICN·GMP·소형 공항 `/v1/dashboard/analytics`를 15~30초 간격으로 수집 주기 3회 이상 호출해 p95·504와 `X-Analytics-Source`(backend 직접 요청에서만
   보인다 — 공개 프록시는 넘기지 않는다)를 Dagster 갱신 시각과
   대조(평일·주말 각 1회). 로컬 0.25 CPU 벤치는 운영(ICN 25~30초)보다 약 3배 관대하므로 운영 측정 전에는 목표 달성을 선언하지 않는다.
-  남은 P2: 화면에 사전집계 시각 표시, 단독 timeseries route의 계산 thread화, `X-Analytics-Source`의 memo 구분.
+  남은 P2: 단독 timeseries route의 계산 thread화, `X-Analytics-Source`의 memo 구분. (화면의 사전집계 시각 표시는 ANALYTICS-BASIS-TIME-20261124로 반영.)
 - [ ] **PARKING-HISTORY-INCREMENTAL-20261124 / P1** — 30일 주차 이력 읽기 캐시 재생성(수집마다 운영 ARM 77~98초, 로컬 0.25 CPU 22~37초)을 증분화한다
   (삽입 전용 원본의 `max_id` 이후만 인코딩·덧붙이기, 기간 밖 행은 주기적 전체 재생성으로 정리, 사전 압축 비용 재검토). 측정상 수집 직후 다른 공항 요청
   지연(로컬 0.25 CPU p95 3.0초)의 주원인이고 소유자 목표("캐시 재빌드를 요청 경로에서 분리")의 남은 부분이다. 자식 프로세스 안은 pickling으로 더 느려

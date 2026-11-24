@@ -180,6 +180,34 @@ describe("AnalyticsView", () => {
     apiClient.getDashboardAnalytics.mockResolvedValue(dashboardAnalyticsPayload);
   });
 
+  test("기간 분석의 기준 시각(KST)을 보이고, 20분 넘게 늦으면 경고 톤으로 지연을 알린다", async () => {
+    const now = Date.parse("2026-11-24T05:30:00Z");
+    const spy = vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      apiClient.getDashboardAnalytics.mockResolvedValue({ ...dashboardAnalyticsPayload, analytics_generated_at: "2026-11-24T05:22:00Z" });
+      const { unmount } = renderAnalytics();
+      const fresh = await screen.findByTestId("analytics-basis");
+      expect(fresh).toHaveTextContent("기준 시각 14:22");
+      expect(fresh).toHaveAttribute("data-tone", "neutral");
+      expect(fresh).not.toHaveTextContent("갱신 지연");
+      unmount();
+
+      apiClient.getDashboardAnalytics.mockResolvedValue({ ...dashboardAnalyticsPayload, analytics_generated_at: "2026-11-24T04:45:00Z" });
+      renderAnalytics();
+      const late = await screen.findByTestId("analytics-basis");
+      expect(late).toHaveTextContent("기준 시각 13:45 · 45분 전 집계(갱신 지연)");
+      expect(late).toHaveAttribute("data-tone", "warning");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("기준 시각이 없는 이전 backend 응답에서는 표시하지 않는다", async () => {
+    renderAnalytics();
+    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+    expect(screen.queryByTestId("analytics-basis")).not.toBeInTheDocument();
+  });
+
   test("일별 엔진은 첫 탭 방문 때 열고 다시 숨겨도 날짜 선택을 유지한다", async () => {
     apiClient.getDashboardAnalytics.mockResolvedValue({ ...dashboardAnalyticsPayload, time_series: {
       ...timeSeriesPayload, items: [{ bucket_at: "2026-11-03T08:00:00Z", available_spaces: 0, occupied_spaces: 100, total_spaces: 100, lot_observations: 1 }],

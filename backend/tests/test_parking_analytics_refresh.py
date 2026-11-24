@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -357,3 +357,62 @@ def test_refresh_grace_serves_only_a_pending_refresh_within_the_max_age(test_set
                 assert await load(refresh_grace=True) is None
 
         asyncio.run(check())
+
+
+def test_dashboard_reports_the_analytics_basis_time(test_settings, monkeypatch):
+    """대시보드 묶음은 낸 분석의 기준 시각(가장 오래된 생성 시각)을 함께 낸다 — 유예로 낸 늦은 사전집계도 보인다."""
+    app, _settings, provider = parking_app(test_settings, monkeypatch)
+    with TestClient(app) as client:
+        assert dagster_definitions.airport_collection_job.execute_in_process(raise_on_error=False).success
+
+        def basis():
+            response = client.get("/v1/dashboard/analytics", params={"airport_code": "GMP"})
+            assert response.status_code == 200
+            body = response.json()
+            value = body["analytics_generated_at"]
+            assert value is not None and value.endswith("Z")
+            return datetime.fromisoformat(value.replace("Z", "+00:00")), response.headers["x-analytics-source"]
+
+        async def caches():
+            async with client.app.state.session_factory() as session:
+                return {serialize_utc(row.generated_at) for row in (await session.scalars(select(AnalyticsCache))).all()}
+
+        # 갱신 직후: 사전집계 생성 시각 그대로.
+        generated = asyncio.run(caches())
+        assert len(generated) == 1
+        when, source = basis()
+        assert source == "cache" and when == next(iter(generated))
+
+        async def age_caches(delta):
+            async with client.app.state.session_factory() as session:
+                for row in (await session.scalars(select(AnalyticsCache))).all():
+                    row.generated_at = row.generated_at - delta
+                await session.commit()
+
+        # 새 적재 뒤 갱신 대기(유예): 늦은 사전집계를 내고 그 시각을 그대로 알린다.
+        asyncio.run(age_caches(timedelta(minutes=25)))
+        provider.observed_at += timedelta(minutes=5)
+        asyncio.run(_collect_without_refresh(client, provider))
+        when, source = basis()
+        assert source == "cache-grace"
+        assert now_utc() - when >= timedelta(minutes=25)
+
+        # 유예를 넘긴 갱신 실패: 원본 계산 → 기준 시각은 계산 시각(지금).
+        asyncio.run(age_caches(DASHBOARD_REFRESH_GRACE))
+        async def age_snapshots():
+            async with client.app.state.session_factory() as session:
+                for row in (await session.scalars(select(ParkingSnapshot))).all():
+                    row.collected_at = row.collected_at - DASHBOARD_REFRESH_GRACE - timedelta(minutes=1)
+                await session.commit()
+        asyncio.run(age_snapshots())
+        before = now_utc()
+        when, source = basis()
+        assert source == "source"
+        assert before - timedelta(seconds=5) <= when <= now_utc()
+
+
+async def _collect_without_refresh(client, provider) -> None:
+    service = CollectionService(client.app.state.settings, client=provider)
+    async with client.app.state.session_factory() as session:
+        await service.collect(session, trigger="test")
+        await session.commit()

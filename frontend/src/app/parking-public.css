@@ -231,6 +231,16 @@
   font-size: var(--text-2xs);
 }
 
+/* 기간 분석 기준 시각. 늦으면(사전집계 갱신 지연) 경고 톤. */
+.parking-public .analytics-basis[data-tone="warning"] {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--color-tone-warning-ink);
+  background: var(--color-tone-warning-bg);
+  font-weight: 600;
+}
+
 /* ── 분석·과거조회·요금 패널 ── */
 .parking-public .action-stack {
   margin-bottom: 12px;

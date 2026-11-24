@@ -22,6 +22,9 @@ type AnalyticsState = {
   holidayPatterns: HolidayPatternResponse | null;
   timeSeries: ParkingTimeSeriesResponse | null;
   flightStatus: FlightStatusResponse | null;
+  /** 기간 분석의 기준 시각과 응답을 받은 시각(늦음 판정은 받은 시각 기준이라 렌더마다 바뀌지 않는다). */
+  analyticsGeneratedAt: string | null;
+  analyticsReceivedAt: number | null;
 };
 
 const INITIAL_STATE: AnalyticsState = {
@@ -34,6 +37,8 @@ const INITIAL_STATE: AnalyticsState = {
   holidayPatterns: null,
   timeSeries: null,
   flightStatus: null,
+  analyticsGeneratedAt: null,
+  analyticsReceivedAt: null,
 };
 
 const FLIGHT_FINAL_TIMEOUT_MS = 30_000;
@@ -172,6 +177,8 @@ export function useAnalyticsData(flightStatusTimeoutMs = 6_000, enabled = true):
           weekdayHourlyPatterns: analytics.weekday_hour_patterns,
           holidayPatterns: analytics.holiday_patterns,
           timeSeries: analytics.time_series,
+          analyticsGeneratedAt: analytics.analytics_generated_at ?? null,
+          analyticsReceivedAt: Date.now(),
           // 분석이 더 늦게 끝나도 그동안 도착한 실제 항공편을 안내값으로 덮지 않는다.
           flightStatus: finalFlights ?? flights,
         });

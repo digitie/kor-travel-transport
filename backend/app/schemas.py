@@ -1453,6 +1453,13 @@ class DashboardAnalyticsResponse(BaseModel):
     weekday_hour_patterns: list[WeekdayHourlyPattern]
     holiday_patterns: HolidayPatternResponse
     time_series: ParkingTimeSeriesResponse
+    analytics_generated_at: datetime | None = Field(
+        default=None,
+        description=(
+            "기간 분석(임계 이벤트·임계 요약·요일 시간대·시계열)의 기준 시각(UTC). 낸 값 중 가장 오래된 생성 시각이다. "
+            "공항 수집 직후 사전집계 갱신을 기다리는 동안이나 갱신이 실패하면 현재값보다 늦을 수 있다."
+        ),
+    )
 
 
 # --- 내부 서비스 export (ADR-013) -------------------------------------------------

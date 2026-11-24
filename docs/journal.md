@@ -1,3 +1,14 @@
+## 2026-11-24 — 공개 분석 화면에 기간 분석 기준 시각 표시(ANALYTICS-BASIS-TIME-20261124)
+
+- #271 이후 대시보드 묶음은 사전집계 갱신을 기다리는 동안(최대 40분, 원천 장애 시 최대 2시간) 직전 사전집계를 낸다. 화면에는 그 생성 시각이
+  없어 늦은 통계를 알아볼 수 없었다(#271 받아들인 P2).
+- backend: `DashboardAnalyticsResponse.analytics_generated_at`(선택, UTC) — 낸 네 기간 분석(임계 이벤트·임계 요약·요일 시간대·시계열) 중 가장 오래된
+  생성 시각. 사전집계면 `analytics_caches.generated_at`, 원본 계산이면 계산 시각. `load_cached_analytics(generated=...)`가 낸 사전집계의 시각을 모은다.
+- 공개 웹(parking-radar `/analytics`): 제목 아래 "기준 시각 HH:MM"(KST). 받은 시각보다 20분 이상 늦으면 경고 톤(`data-tone="warning"`) +
+  "N분 전 집계(갱신 지연)". 정상 경로에서도 수집·갱신 시간 때문에 10~15분 늦을 수 있어 20분을 기준으로 했다. 필드가 없는 이전 backend 응답에서는 줄을 만들지 않는다.
+- 시험: backend `test_dashboard_reports_the_analytics_basis_time`(사전집계·유예·원본 계산 세 경로), vitest `analytics-view.test.tsx`(정상·지연 톤, 필드 없음),
+  e2e `analytics-basis-time.spec.ts`(320·390·1440px, 고정 응답, `E2E_PARKING_LAYOUT=true` 로컬 미리보기).
+
 ## 2026-11-24 — 수집 직후 대시보드 통계 504 수정(DASHBOARD-STATS-OFFLOAD-20261124)
 
 - 운영 배포 검증(odroid 8e9c6d07): 수집 직후 ICN `/v1/dashboard/analytics` 첫 요청이 backend 25.7~30.6초 → 프록시 10초 상한 504(2분 간격 25회 중 7회),

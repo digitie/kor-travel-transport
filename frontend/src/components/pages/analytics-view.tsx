@@ -8,6 +8,7 @@ import { VirtualTable } from "@kor-travel/ui/virtual-table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { useAnalyticsData } from "../../hooks/use-analytics-data";
 import { useDashboard } from "../../lib/dashboard-context";
+import { analyticsBasis } from "../../lib/analytics-basis";
 import { formatDateTime, formatMinutesOfDay, formatNumber } from "../../lib/format";
 import {
   HOURS,
@@ -27,7 +28,8 @@ import {
 export function AnalyticsView({ active = true }: { active?: boolean }) {
   const { selectedAirport, selectedAirportCode, selectedParkingLotId, selectedParkingLotName, holidaySummary } = useDashboard();
   const data = useAnalyticsData(6_000, active);
-  const { loading, error, flightStatus, timeSeries } = data;
+  const { loading, error, flightStatus, timeSeries, analyticsGeneratedAt, analyticsReceivedAt } = data;
+  const basis = analyticsBasis(analyticsGeneratedAt, analyticsReceivedAt);
   const scopeLabel = historyLabel(selectedParkingLotName, selectedAirport?.name_ko);
   const [selectedTab, setSelectedTab] = useState("weekday");
   const [dailyVisitedScope, setDailyVisitedScope] = useState<string | null>(null);
@@ -45,6 +47,12 @@ export function AnalyticsView({ active = true }: { active?: boolean }) {
     <div className="page-shell">
       <header className="page-header">
         <h2>분석</h2>
+        {basis ? (
+          <p className="stamp analytics-basis" data-testid="analytics-basis" data-tone={basis.late ? "warning" : "neutral"}>
+            기준 시각 {basis.time}
+            {basis.late ? <span> · {basis.lateMinutes}분 전 집계(갱신 지연)</span> : null}
+          </p>
+        ) : null}
       </header>
 
       {error ? (

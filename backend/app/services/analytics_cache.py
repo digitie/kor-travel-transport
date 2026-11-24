@@ -212,11 +212,13 @@ async def load_cached_analytics(
     future_hours: int = 0,
     refresh_grace: bool = False,
     served: set[str] | None = None,
+    generated: list[datetime] | None = None,
 ) -> Any | None:
     """재사용 조건을 채운 캐시 payload.
 
     `refresh_grace`면 엄격한 조건을 못 채울 때도 갱신 대기 중인 직전 사전집계를 낸다(`DASHBOARD_REFRESH_GRACE`).
     `served`를 주면 유예로 낸 경우 `"grace"`를 넣는다(운영 측정용 경로 표시).
+    `generated`를 주면 낸 사전집계의 생성 시각을 덧붙인다(화면의 "기준 시각").
     """
     checked_at = now_utc()
     newer_snapshots = select(1).select_from(ParkingSnapshot).where(
@@ -260,6 +262,8 @@ async def load_cached_analytics(
         )
         if cached is not None and served is not None:
             served.add("grace")
+    if cached is not None and generated is not None:
+        generated.append(serialize_utc(cached.generated_at))
     return cached.payload_json if cached else None
 
 
