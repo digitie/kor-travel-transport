@@ -62,6 +62,7 @@ from app.services.transport_collection import (
     DATABASE_FAILURE_REASONS, OPINET_SOURCE, TRAFFIC_STORE_STEPS, CollectionScope, TransportCollectionService,
     _is_transient_database_error,
 )
+from app.services.traffic_statistics import REPAIR_DEFER_REASONS, REPAIR_STATUSES
 
 #: 실행 상한(초). 공용 Dagster instance의 전역 상한(6시간, Manager `config/dagster-shared/dagster.yaml`)은
 #: 다른 테넌트의 값이라, 옛 전용 instance의 상한(4시간)을 job마다 tag로 단다. run monitoring이 이 tag를 읽어
@@ -642,14 +643,36 @@ def _has_collection_progress(result: dict[str, Any]) -> bool:
 
 
 #: 고속도로 소통 저장 계측 metadata 키(`TrafficStoreReport.summary`·`highway_fetch_seconds`, WLH-06).
+#: 5분 통계: 원천 안 bucket이 쓴 행, 최근 창 재대조의 추가·수정·삭제(= 어긋남)·그대로 둔 행, 장기 복구 조각의 구간·행·시간.
 TRAFFIC_STORE_COUNT_KEYS = (
     "traffic_inserted_rows", "traffic_changed_rows", "traffic_unchanged_rows", "traffic_touched_buckets",
-    "traffic_out_of_window_buckets",
+    "traffic_out_of_window_buckets", "traffic_touched_statistics_rows",
+    "traffic_statistics_inserted_rows", "traffic_statistics_updated_rows", "traffic_statistics_deleted_rows",
+    "traffic_statistics_unchanged_rows", "traffic_statistics_drift_rows",
+    "traffic_statistics_repair_chunks", "traffic_statistics_repair_inserted_rows",
+    "traffic_statistics_repair_updated_rows", "traffic_statistics_repair_deleted_rows",
+    "traffic_statistics_repair_unchanged_rows", "traffic_statistics_repair_drift_rows",
+    "traffic_statistics_repair_busy_skips",
 )
 TRAFFIC_STORE_SECONDS_KEYS = (
     "highway_fetch_seconds", *(f"traffic_{step}_seconds" for step in TRAFFIC_STORE_STEPS),
+    "traffic_statistics_repair_seconds",
 )
 TRAFFIC_STORE_REASON_KEYS = ("traffic_store_failure_reason", "traffic_statistics_deferred_reason")
+TRAFFIC_STORE_BOOL_KEYS = (
+    "traffic_source_committed", "traffic_statistics_refreshed", "traffic_statistics_repair_sweep_complete",
+    "traffic_statistics_repair_budget_exhausted",
+)
+#: 장기 복구 구간 경계(UTC, 초 단위 `Z`). 형식이 맞는 값만 싣는다.
+TRAFFIC_REPAIR_TIME_KEYS = (
+    "traffic_statistics_repair_range_start", "traffic_statistics_repair_range_end",
+    "traffic_statistics_repair_cursor", "traffic_statistics_repair_horizon_start",
+)
+_UTC_SECOND = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")
+
+
+def _database_reason(value: Any) -> bool:
+    return isinstance(value, str) and (value in DATABASE_FAILURE_REASONS or re.fullmatch(r"sqlstate_[0-9A-Z]{2}", value))
 
 
 def _traffic_store_metadata(result: dict[str, Any]) -> dict[str, Any]:
@@ -663,14 +686,22 @@ def _traffic_store_metadata(result: dict[str, Any]) -> dict[str, Any]:
         value = result.get(key)
         if type(value) is float and 0 <= value <= 86_400:
             metadata[key] = value
-    for key in ("traffic_source_committed", "traffic_statistics_refreshed"):
+    for key in TRAFFIC_STORE_BOOL_KEYS:
         if type(result.get(key)) is bool:
             metadata[key] = result[key]
     if result.get("traffic_failed_step") in TRAFFIC_STORE_STEPS:
         metadata["traffic_failed_step"] = result["traffic_failed_step"]
     for key in TRAFFIC_STORE_REASON_KEYS:
+        if _database_reason(result.get(key)):
+            metadata[key] = result[key]
+    if result.get("traffic_statistics_repair_status") in REPAIR_STATUSES:
+        metadata["traffic_statistics_repair_status"] = result["traffic_statistics_repair_status"]
+    repair_reason = result.get("traffic_statistics_repair_reason")
+    if repair_reason in REPAIR_DEFER_REASONS or _database_reason(repair_reason):
+        metadata["traffic_statistics_repair_reason"] = repair_reason
+    for key in TRAFFIC_REPAIR_TIME_KEYS:
         value = result.get(key)
-        if isinstance(value, str) and (value in DATABASE_FAILURE_REASONS or re.fullmatch(r"sqlstate_[0-9A-Z]{2}", value)):
+        if isinstance(value, str) and _UTC_SECOND.fullmatch(value):
             metadata[key] = value
     return metadata
 
@@ -795,8 +826,33 @@ def collect_highway_transport(context) -> dict[str, Any]:
             reason = metadata.get("traffic_statistics_deferred_reason", "unknown")
             context.log.warning(f"고속도로 소통 5분 통계의 최근 두 시간 재대조가 미뤄졌습니다(reason={reason}). "
                                 "원본·current·이번 원본의 bucket 통계·성공 상태는 저장했고 다음 정기 수집이 최근 두 "
-                                "시간을 다시 만듭니다.")
+                                "시간을 다시 맞춥니다.")
+        _warn_traffic_statistics_drift(context, metadata)
         return result
+
+
+def _warn_traffic_statistics_drift(context: Any, metadata: dict[str, Any]) -> None:
+    """5분 통계 어긋남(재대조가 바꾼 행)과 장기 복구 실패를 경고 한 줄로 남긴다. 수집 결과(outcome)는 바꾸지 않는다.
+
+    원천 transaction이 자기 bucket을 함께 맞추므로 정상이면 어긋남은 0이다. 재대조가 이미 고쳤으므로 실패가 아니다.
+    """
+    drift = metadata.get("traffic_statistics_drift_rows", 0)
+    if drift:
+        context.log.warning(
+            f"고속도로 소통 5분 통계 최근 두 시간이 원본과 달라 {drift}행을 바로잡았습니다(추가 "
+            f"{metadata.get('traffic_statistics_inserted_rows', 0)}·수정 {metadata.get('traffic_statistics_updated_rows', 0)}·"
+            f"삭제 {metadata.get('traffic_statistics_deleted_rows', 0)}). 반복되면 수집 실패 이력과 수동 수정 여부를 확인하세요.")
+    repair_drift = metadata.get("traffic_statistics_repair_drift_rows", 0)
+    if repair_drift:
+        context.log.warning(
+            f"고속도로 소통 5분 통계 장기 복구가 {metadata.get('traffic_statistics_repair_range_start', '?')}~"
+            f"{metadata.get('traffic_statistics_repair_range_end', '?')}(UTC)에서 원본과 다른 {repair_drift}행을 "
+            "바로잡았습니다.")
+    if metadata.get("traffic_statistics_repair_status") == "failed":
+        context.log.warning(
+            "고속도로 소통 5분 통계 장기 복구 구간이 실패했습니다"
+            f"(reason={metadata.get('traffic_statistics_repair_reason', 'unknown')}). 수집 결과는 그대로이고 다음 "
+            "정기 수집이 같은 위치부터 더 좁은 구간으로 다시 합니다(세 번 연속 실패하면 한 시간씩 쉽니다).")
 
 
 #: 유가 op 동안 Dagster event log로 넘기는 logger. 오피넷 수집기의 단계별 진행(지역 탐색, 탭별 시도 진행,

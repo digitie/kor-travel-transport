@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { failureDiagnostic, gridFailureCounts, sanitizeDagsterOverview, sanitizeFailureResponse } from "./dagster-failure-diagnostics";
+import { failureDiagnostic, gridFailureCounts, sanitizeDagsterOverview, sanitizeFailureResponse, trafficRepairTime, trafficStatisticsNotes } from "./dagster-failure-diagnostics";
 
 const event = {
   __typename: "ExecutionStepFailureEvent", stepKey: "kma_regional_alert_events_sync", message: "step failed",
@@ -203,4 +203,18 @@ describe("전량 실패(ALL_SOURCES_FAILED) 진단(2026-11-24 소유자 결정)"
     expect(text).toContain("카카오 호출 수: 0");
     expect(failureDiagnostic({ message: "주차 원천 1곳이 모두 실패했습니다(ALL_SOURCES_FAILED)." })).toContain("오류 코드: ALL_SOURCES_FAILED");
   });
+});
+
+describe("소통 5분 통계 장기 복구 안내",()=>{
+ it("UTC 초 단위 시각만 KST로 바꾼다(날짜 넘김 포함)",()=>{
+  expect(trafficRepairTime("2026-11-20T15:05:00Z")).toBe("11.21 00:05");expect(trafficRepairTime("2026-12-31T16:00:00Z")).toBe("01.01 01:00");
+  for(const value of ["2026-11-20T15:05:00+00:00","2026-11-20 15:05:00Z","2026-13-40T99:00:00Z",1780000000,null]) expect(trafficRepairTime(value)).toBeNull();
+ });
+ it("어긋남이 없고 복구 결과가 없으면 안내도 경고도 없다",()=>{
+  expect(trafficStatisticsNotes([{label:"traffic_statistics_drift_rows",intValue:0},{label:"traffic_statistics_repair_status",text:"idle"}])).toEqual({notes:[],warning:false});
+ });
+ it("실패 metadata의 숫자 진단에도 어긋남 행 수를 싣는다",()=>{
+  const text=failureDiagnostic({failureMetadata:{metadataEntries:[{label:"error_code",text:"COLLECTION_FAILED"},{label:"traffic_statistics_drift_rows",intValue:4},{label:"traffic_statistics_repair_drift_rows",intValue:2}]}});
+  expect(text).toContain("최근 2시간 통계 어긋남 행: 4");expect(text).toContain("장기 복구 어긋남 행: 2");
+ });
 });

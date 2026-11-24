@@ -16,6 +16,44 @@ export function trafficReasonLabel(value: unknown): string | null {
 }
 /** 소통 5분 통계 재대조 지연 안내(원본·이번 원본의 통계는 보존, 다음 수집이 자동 복구). */
 export const TRAFFIC_STATISTICS_DEFERRED_NOTE = "원본·통계 보존 · 소통 5분 통계 최근 2시간 재대조 대기 (다음 수집이 자동 복구)";
+/** 장기 복구를 이번 실행에서 건너뛴 사유(backend `REPAIR_DEFER_REASONS`). */
+export const TRAFFIC_REPAIR_DEFER_LABELS: Record<string, string> = { run_budget: "이번 수집이 이미 오래 걸림", window_deferred: "최근 2시간 재대조가 지연됨", failure_backoff: "구간이 연속 실패해 한 시간 쉬는 중" };
+const UTC_SECOND = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+/** backend가 싣는 UTC 초 단위 시각(`…Z`)을 KST `MM.DD HH:mm`으로 바꾼다(실행 환경 ICU와 무관). 형식이 다르면 null. */
+export function trafficRepairTime(value: unknown): string | null {
+  if (typeof value !== "string" || !UTC_SECOND.test(value)) return null;
+  const time = Date.parse(value);
+  if (!Number.isFinite(time)) return null;
+  const kst = new Date(time + 9 * 3_600_000), pad = (part: number) => String(part).padStart(2, "0");
+  return `${pad(kst.getUTCMonth() + 1)}.${pad(kst.getUTCDate())} ${pad(kst.getUTCHours())}:${pad(kst.getUTCMinutes())}`;
+}
+/**
+ * 소통 5분 통계의 어긋남(최근 2시간 재대조·장기 복구가 바로잡은 행)과 장기 복구 결과의 고정 안내.
+ * 어긋남과 복구 실패는 경고(실패 아님 — 이미 바로잡았거나 다음 수집이 같은 구간부터 다시 한다), 나머지는 안내다.
+ * 허용된 상태·사유·형식의 값만 읽는다.
+ */
+export function trafficStatisticsNotes(entries: readonly ObjectValue[]): { notes: string[]; warning: boolean } {
+  const values: ObjectValue = {};
+  for (const entry of entries) {
+    const label = text(entry.label);
+    if (label.startsWith("traffic_statistics_")) values[label] = entry.intValue ?? entry.floatValue ?? entry.boolValue ?? entry.text;
+  }
+  const rows = (key: string) => { const value = values[key]; return typeof value === "number" && Number.isInteger(value) && value > 0 && value <= 1e9 ? value : 0; };
+  const notes: string[] = [];
+  const drift = rows("traffic_statistics_drift_rows"), repairDrift = rows("traffic_statistics_repair_drift_rows");
+  if (drift) notes.push(`소통 5분 통계 어긋남 ${drift}행 바로잡음 · 최근 2시간 재대조 (반복되면 수집 실패 이력·수동 수정 확인)`);
+  const start = trafficRepairTime(values.traffic_statistics_repair_range_start), end = trafficRepairTime(values.traffic_statistics_repair_range_end);
+  const range = start && end ? ` (${start}~${end} KST)` : "";
+  const status = text(values.traffic_statistics_repair_status), reason = text(values.traffic_statistics_repair_reason);
+  if (status === "repaired") notes.push(repairDrift ? `소통 5분 통계 장기 복구: 원본과 다른 ${repairDrift}행 바로잡음${range}` : `소통 5분 통계 장기 복구 확인${range} · 어긋남 없음`);
+  if (status === "busy") notes.push("소통 5분 통계 장기 복구 양보 · 다른 통계 갱신 중 (다음 수집이 이어서)");
+  if (status === "deferred") notes.push(`소통 5분 통계 장기 복구 건너뜀${Object.hasOwn(TRAFFIC_REPAIR_DEFER_LABELS, reason) ? ` · ${TRAFFIC_REPAIR_DEFER_LABELS[reason]}` : ""} (다음 수집이 이어서)`);
+  const failure = trafficReasonLabel(reason);
+  if (status === "failed") notes.push(`소통 5분 통계 장기 복구 실패${failure ? ` · 원인 ${failure}` : ""} · 다음 수집이 같은 구간부터 다시`);
+  if (values.traffic_statistics_repair_sweep_complete === true) notes.push("소통 5분 통계 장기 복구 한 바퀴 완료");
+  if (values.traffic_statistics_repair_budget_exhausted === true) notes.push("소통 5분 통계 장기 복구 실행 예산 소진 · 다음 수집이 이어서");
+  return { notes, warning: drift > 0 || repairDrift > 0 || status === "failed" };
+}
 
 export const GRID_FAILURE_LABELS:Record<string,string>={PROVIDER_NETWORK:"제공기관 연결 실패",PROVIDER_SERVER:"제공기관 서버 오류",PROVIDER_PARSE:"제공기관 응답 해석 실패",PROVIDER_NO_DATA:"제공기관 자료 없음",DB_LOCK_CONTENTION:"DB 잠금 경합"};
 
@@ -88,7 +126,7 @@ function referenceKindList(value: unknown): string | null {
   return names.every(name => name !== null) ? names.join(", ") : null;
 }
 const trafficDeferredReason: [string, string] = ["고속도로 소통 원본과 이번 원본의 5분 통계는 저장했지만 최근 2시간 통계 재대조가 미뤄졌습니다.", "원본·성공 상태·이번 원본의 통계는 유지합니다. 다음 정기 수집이 최근 2시간을 다시 만듭니다. 여러 번 연속되면 지연 원인과 소통 통계 재대조 시간을 확인하세요."];
-const numbers: Record<string, string> = { planned_grids: "계획 격자 수", failed_grids: "미완료 격자 수", deferred_grids: "재개 대기 격자 수", requested_page: "요청 페이지", returned_page: "반환 페이지", page_size: "페이지 크기", total_count: "전체 행 수", expected_rows: "예상 행 수", returned_rows: "반환 행 수", requests_fetched: "요청 횟수", http_status: "HTTP 상태", received_rows: "수신 행 수", parsed_rows: "파싱 행 수", invalid_rows: "불량 행 수", fetch_ms: "요청 소요(ms)", normalize_ms: "정규화 소요(ms)", publish_ms: "게시 소요(ms)", published_values: "저장 값 수", completed_grids: "완료 격자 수", run_id: "저장 실행 ID", error_count: "오류 수", raw_response_count: "저장 원문 수", traffic_snapshot_count: "소통 저장 수", incident_snapshot_count: "돌발 저장 수", fuel_station_count: "주유소 저장 수", fuel_price_count: "가격 저장 수", failed_dataset_count: "실패 데이터셋 수", successful_dataset_count: "성공 데이터셋 수", traffic_history_seconds: "소통 이력 저장(초)", traffic_current_upsert_seconds: "소통 현재값 승격(초)", traffic_touched_statistics_seconds: "원천 안 5분 통계(초)", traffic_statistics_seconds: "소통 통계 재대조(초)", traffic_unchanged_rows: "소통 반복 관측(확인만)", traffic_touched_buckets: "원천 안 재집계 5분 구간", parking_sources_total: "시도한 주차 원천 수", parking_sources_failed: "실패한 주차 원천 수", provider_calls: "제공기관 호출 수", provider_failed: "실패한 호출 수", vworld_provider_calls: "VWorld 호출 수", vworld_provider_failed: "VWorld 실패 호출 수", kakao_provider_calls: "카카오 호출 수", kakao_provider_failed: "카카오 실패 호출 수" };
+const numbers: Record<string, string> = { planned_grids: "계획 격자 수", failed_grids: "미완료 격자 수", deferred_grids: "재개 대기 격자 수", requested_page: "요청 페이지", returned_page: "반환 페이지", page_size: "페이지 크기", total_count: "전체 행 수", expected_rows: "예상 행 수", returned_rows: "반환 행 수", requests_fetched: "요청 횟수", http_status: "HTTP 상태", received_rows: "수신 행 수", parsed_rows: "파싱 행 수", invalid_rows: "불량 행 수", fetch_ms: "요청 소요(ms)", normalize_ms: "정규화 소요(ms)", publish_ms: "게시 소요(ms)", published_values: "저장 값 수", completed_grids: "완료 격자 수", run_id: "저장 실행 ID", error_count: "오류 수", raw_response_count: "저장 원문 수", traffic_snapshot_count: "소통 저장 수", incident_snapshot_count: "돌발 저장 수", fuel_station_count: "주유소 저장 수", fuel_price_count: "가격 저장 수", failed_dataset_count: "실패 데이터셋 수", successful_dataset_count: "성공 데이터셋 수", traffic_history_seconds: "소통 이력 저장(초)", traffic_current_upsert_seconds: "소통 현재값 승격(초)", traffic_touched_statistics_seconds: "원천 안 5분 통계(초)", traffic_statistics_seconds: "소통 통계 재대조(초)", traffic_unchanged_rows: "소통 반복 관측(확인만)", traffic_touched_buckets: "원천 안 재집계 5분 구간", parking_sources_total: "시도한 주차 원천 수", parking_sources_failed: "실패한 주차 원천 수", provider_calls: "제공기관 호출 수", provider_failed: "실패한 호출 수", vworld_provider_calls: "VWorld 호출 수", vworld_provider_failed: "VWorld 실패 호출 수", kakao_provider_calls: "카카오 호출 수", kakao_provider_failed: "카카오 실패 호출 수", traffic_statistics_drift_rows: "최근 2시간 통계 어긋남 행", traffic_statistics_repair_drift_rows: "장기 복구 어긋남 행" };
 const fieldNames = new Set(["totalCount", "pageNo", "numOfRows"]);
 const fieldTypes = new Set(["null", "boolean", "integer", "number", "string", "object", "array"]);
 const classNames = new Set(["Failure", "AlertCollectionError", "KrexParseError", "TimeoutError", "RuntimeError", "ValueError", "KeyError", "TypeError", "OperationalError", "IntegrityError", "DagsterExecutionStepExecutionError", "SchemaError", "ValidationError"]);

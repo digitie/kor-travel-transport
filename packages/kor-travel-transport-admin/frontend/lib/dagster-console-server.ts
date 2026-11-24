@@ -3,7 +3,7 @@ import { ADMIN_ACTOR_TAG, ADMIN_RETRY_OF_TAG, DAGSTER_LOCATION_NAME, DAGSTER_REP
   CONSOLE_CATALOG_QUERY, CONSOLE_RUN_QUERY, BASIC_RUN_QUERY, CONSOLE_EVENTS_QUERY, FIND_REQUEST, ACTIVE_JOB, LAUNCH, CANCEL, START_SCHEDULE, STOP_SCHEDULE, START_SENSOR, STOP_SENSOR
 } from "./dagster-scope";
 export { CONSOLE_CATALOG_QUERY, CONSOLE_RUN_QUERY, CONSOLE_EVENTS_QUERY } from "./dagster-scope";
-import { TRAFFIC_STATISTICS_DEFERRED_NOTE, TRAFFIC_STEP_LABELS, failureDiagnostic, gridFailureCounts, trafficReasonLabel } from "./dagster-failure-diagnostics";
+import { TRAFFIC_STATISTICS_DEFERRED_NOTE, TRAFFIC_STEP_LABELS, failureDiagnostic, gridFailureCounts, trafficReasonLabel, trafficStatisticsNotes } from "./dagster-failure-diagnostics";
 import { CONSOLE_ACTIVE, CONSOLE_COUNT_LABELS, type ConsoleActionRequest, type ConsoleActionResult, type ConsoleAudit, type ConsoleCatalog, type ConsoleEvent, type ConsoleRequest, type ConsoleRunDetail } from "./dagster-console-model";
 
 type Row = Record<string, unknown>;
@@ -86,13 +86,15 @@ function requiredRun(data: Row, runId: string) {
 }
 function effectiveState(value: Row, state: Row) { return string(state.status) === "DECLARED_IN_CODE" ? string(value.defaultStatus) : string(state.status); }
 const outcomes: Record<string,string> = { success: "자료 수집 완료", partial: "일부 자료 미완료 · 정상 자료 유지", partial_success: "일부 자료 미완료 · 정상 자료 유지", deferred: "다음 수집으로 이월 · 정상 자료 유지", failed: "자료 수집 실패 · 마지막 정상 자료 유지", disabled: "수집 비활성 · 이번 수집 미실행", skipped: "이번 수집 건너뜀", not_ready: "원천 설정 또는 수집 주기로 대기", no_data: "원천 자료 미제공", collected: "자료 수집 완료", collected_with_warnings: "자료 저장 완료 · 후속 처리 경고", cache_refresh_failed: "자료 저장 완료 · 읽기 캐시 갱신 지연", source_unavailable: "원천 응답 지연 · 정상 자료 유지" };
+const ZERO_HIDDEN_COUNT = /^traffic_statistics_(?:inserted|updated|deleted|unchanged|drift|repair_[a-z_]+)_rows$|^traffic_statistics_repair_(?:chunks|busy_skips)$/;
 function safeMetadata(entries: unknown) {
   const counts: Record<string,number> = {}, notes: string[] = []; let warning = false, diagnostic = false;
   const metadata=list(entries).slice(0,64).map(row);
   const notExecuted=metadata.some(item=>item.label==="status"&&["skipped","disabled","not_ready"].includes(string(item.text))||item.label==="skipped"&&item.boolValue===true);
   for (const item of metadata) {
     const key = string(item.label), value = item.intValue ?? item.floatValue;
-    if (Object.hasOwn(CONSOLE_COUNT_LABELS, key) && number(value) !== null) counts[key] = value as number;
+    // 5분 통계 재대조·장기 복구의 행 수는 0이면 싣지 않는다 — 정상 실행마다 "어긋남 0"이 쌓여 실제 어긋남이 묻히지 않게.
+    if (Object.hasOwn(CONSOLE_COUNT_LABELS, key) && number(value) !== null && !(value === 0 && ZERO_HIDDEN_COUNT.test(key))) counts[key] = value as number;
     if ((key === "status" || key === "collection_outcome") && Object.hasOwn(outcomes, string(item.text))) {
       notes.push(outcomes[string(item.text)]); warning ||= !["success", "collected"].includes(string(item.text));
     }
@@ -114,6 +116,8 @@ function safeMetadata(entries: unknown) {
     if (key === "error_code" && typeof item.text === "string") diagnostic = true;
   }
   for(const [code,count] of Object.entries(gridFailureCounts(entries))){counts[`grid_failure_${code}`]=count;warning ||= count>0;}
+  // 소통 5분 통계 어긋남·장기 복구 결과(어긋남·복구 실패는 경고, 수집 결과는 바꾸지 않는다).
+  const traffic = trafficStatisticsNotes(metadata); notes.push(...traffic.notes); warning ||= traffic.warning;
   return { counts, notes: [...new Set(notes)], warning, diagnostic };
 }
 const eventTitles: Record<string,string> = { RunStartEvent: "실행 시작", RunStartingEvent: "실행 준비", RunEnqueuedEvent: "대기열 등록", RunDequeuedEvent: "대기열에서 선택", RunSuccessEvent: "실행 완료", RunCanceledEvent: "실행 취소", RunCancelingEvent: "취소 처리", ExecutionStepStartEvent: "단계 시작", ExecutionStepSuccessEvent: "단계 완료", ExecutionStepSkippedEvent: "단계 건너뜀", ExecutionStepRestartEvent: "단계 재시작", ExecutionStepUpForRetryEvent: "단계 재시도 대기", ExecutionStepOutputEvent: "처리 결과", HandledOutputEvent: "결과 저장", MaterializationEvent: "자료 게시", EngineEvent: "실행기 상태" };
