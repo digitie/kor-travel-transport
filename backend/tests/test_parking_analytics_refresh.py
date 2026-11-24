@@ -14,7 +14,8 @@ from app.dagster import definitions as dagster_definitions
 from app.main import create_app
 from app.models import AnalyticsCache, CollectionRun, ParkingSnapshot
 from app.services.analytics_cache import (
-    DASHBOARD_REFRESH_GRACE, MAX_ANALYTICS_CACHE_AGE, load_cached_analytics, refresh_default_analytics_cache,
+    ANALYTICS_REFRESH_WARN_AFTER, DASHBOARD_REFRESH_GRACE, DASHBOARD_STALE_CACHE_MAX_AGE, MAX_ANALYTICS_CACHE_AGE,
+    analytics_refresh_health, load_cached_analytics, refresh_default_analytics_cache,
 )
 from app.services.collection import CollectionService, FixturePublicDataClient
 
@@ -126,7 +127,7 @@ def test_cache_failure_keeps_committed_source_and_zero_snapshot_tick_repairs_it(
     with TestClient(app) as client:
         assert dagster_definitions.airport_collection_job.execute_in_process(raise_on_error=False).success
 
-        async def broken_cache_refresh(session, _settings):
+        async def broken_cache_refresh(session, _settings, **_options):
             cached = await session.scalar(select(AnalyticsCache).where(AnalyticsCache.metric == "timeseries"))
             cached.payload_json = {"invalid": "rolled back"}
             await session.flush()
@@ -419,3 +420,210 @@ async def _collect_without_refresh(client, provider) -> None:
     async with client.app.state.session_factory() as session:
         await service.collect(session, trigger="test")
         await session.commit()
+
+def test_analytics_refresh_health_follows_the_dashboard_grace_rules(test_settings, monkeypatch):
+    """ANALYTICS-REFRESH-ALERT: 미반영 적재 나이로 정상·지연(경보)·원본 계산(경보)·새 적재 없음을 가른다."""
+    app, settings, _provider = parking_app(test_settings, monkeypatch)
+    with TestClient(app) as client:
+        async def empty():
+            async with client.app.state.session_factory() as session:
+                return await analytics_refresh_health(session, settings)
+
+        assert asyncio.run(empty()).status == "empty"
+        assert dagster_definitions.airport_collection_job.execute_in_process(raise_on_error=False).success
+
+        async def check():
+            async with client.app.state.session_factory() as session:
+                caches = (await session.scalars(select(AnalyticsCache))).all()
+                snapshot = await session.scalar(select(ParkingSnapshot))
+
+                async def at(generated_ago, collected_ago):
+                    now = now_utc()
+                    for row in caches:
+                        row.generated_at = now - generated_ago
+                    snapshot.collected_at = now - collected_ago
+                    await session.commit()
+                    return await analytics_refresh_health(session, settings, now=now)
+
+                health = await at(timedelta(minutes=1), timedelta(minutes=2))
+                assert (health.status, health.alerting, health.pending_since) == ("ok", False, None)
+                health = await at(timedelta(minutes=30), timedelta(minutes=10))
+                assert (health.status, health.alerting) == ("ok", False)
+                assert health.pending_seconds == 600
+                health = await at(timedelta(minutes=30), ANALYTICS_REFRESH_WARN_AFTER)
+                assert (health.status, health.alerting) == ("delayed", True)
+                health = await at(timedelta(minutes=50), DASHBOARD_REFRESH_GRACE)
+                assert (health.status, health.alerting) == ("stale", True)
+                # 새 적재가 없어도 사전집계가 2시간을 넘기면 대시보드는 원본 계산이다(공항 job은 정상 tick마다 갱신한다).
+                health = await at(DASHBOARD_STALE_CACHE_MAX_AGE + timedelta(minutes=1), timedelta(hours=3))
+                assert (health.status, health.alerting, health.pending_since) == ("stale", True, None)
+                assert health.generated_age_seconds == int((DASHBOARD_STALE_CACHE_MAX_AGE + timedelta(minutes=1)).total_seconds())
+                assert health.as_dict()["generated_at"].endswith("+00:00")
+                for row in caches:
+                    await session.delete(row)
+                await session.commit()
+                # 첫 갱신 전(관측이 아직 경보 기준 안)은 경보가 아니다.
+                snapshot.collected_at = now_utc() - timedelta(minutes=3)
+                await session.commit()
+                health = await analytics_refresh_health(session, settings)
+                assert (health.status, health.alerting) == ("ok", False)
+                snapshot.collected_at = now_utc() - ANALYTICS_REFRESH_WARN_AFTER
+                await session.commit()
+                health = await analytics_refresh_health(session, settings)
+                assert (health.status, health.alerting) == ("missing", True)
+
+        asyncio.run(check())
+
+
+def test_airport_run_stays_success_and_is_tagged_when_refresh_falls_behind(test_settings, monkeypatch):
+    """갱신 실패가 이어져 미반영 적재가 15분을 넘으면 run은 SUCCESS 그대로 두고 태그·metadata·로그로 알린다.
+
+    수집은 성공했다 — 파생 캐시 상태로 run을 FAILURE로 만들지 않는다(감사 2026-11-23 §2.5의 부분 성공 FAILURE 소음).
+    """
+    from dagster import DagsterInstance
+
+    app, _settings, provider = parking_app(test_settings, monkeypatch)
+    with TestClient(app) as client, DagsterInstance.ephemeral() as instance:
+        def run():
+            result = dagster_definitions.airport_collection_job.execute_in_process(raise_on_error=False, instance=instance)
+            output = next(event.step_output_data for event in result.all_events
+                          if event.event_type_value == "STEP_OUTPUT" and event.step_key == "collect_airport_parking")
+            return result, output.metadata, instance.get_run_by_id(result.run_id).tags
+
+        healthy, metadata, tags = run()
+        assert healthy.success
+        assert metadata["analytics_refresh_status"].value == "ok"
+        assert "kortravel/analytics-refresh" not in tags
+
+        async def broken_cache_refresh(_session, _settings, **_options):
+            raise RuntimeError("refresh down")
+
+        monkeypatch.setattr(dagster_definitions, "refresh_default_analytics_cache", broken_cache_refresh)
+        provider.observed_at += timedelta(minutes=5)
+        first_failure, metadata, tags = run()
+        # 한 번의 실패(미반영 적재가 방금 것)는 경보가 아니다.
+        assert first_failure.success and metadata["analytics_refresh_status"].value == "ok"
+        assert "kortravel/analytics-refresh" not in tags
+
+        async def age_pending(minutes):
+            async with client.app.state.session_factory() as session:
+                caches = (await session.scalars(select(AnalyticsCache))).all()
+                generated_at = min(serialize_utc(row.generated_at) for row in caches)
+                for snapshot in (await session.scalars(select(ParkingSnapshot))).all():
+                    if serialize_utc(snapshot.collected_at) > generated_at:
+                        snapshot.collected_at = now_utc() - timedelta(minutes=minutes)
+                for row in caches:
+                    row.generated_at = now_utc() - timedelta(minutes=minutes + 1)
+                await session.commit()
+
+        asyncio.run(age_pending(16))
+        provider.observed_at += timedelta(minutes=5)
+        behind, metadata, tags = run()
+        assert behind.success
+        assert behind.output_for_node("collect_airport_parking")["snapshot_count"] == 1
+        assert metadata["analytics_refresh_status"].value == "delayed"
+        assert metadata["analytics_pending_seconds"].value >= 16 * 60
+        assert metadata["collection_outcome"].value == "partial"
+        assert metadata["error_code"].value == "DERIVED_CACHE_DEFERRED"
+        assert tags["kortravel/analytics-refresh"] == "delayed"
+        alert = [entry.user_message for entry in instance.all_logs(behind.run_id)
+                 if "analytics_refresh_alert" in (entry.user_message or "")]
+        assert alert and '"status":"delayed"' in alert[0] and "refresh down" not in alert[0]
+
+        # 갱신이 돌아오면 다음 run에서 바로 풀린다(새 run에는 태그가 없다).
+        monkeypatch.setattr(dagster_definitions, "refresh_default_analytics_cache", refresh_default_analytics_cache)
+        recovered, metadata, tags = run()
+        assert recovered.success and metadata["analytics_refresh_status"].value == "ok"
+        assert "kortravel/analytics-refresh" not in tags
+
+
+def test_airport_run_survives_a_failing_health_check(test_settings, monkeypatch):
+    """판정 질의가 실패해도 수집 결과와 run 상태를 바꾸지 않는다."""
+    app, _settings, _provider = parking_app(test_settings, monkeypatch)
+
+    async def broken_health(*_args, **_kwargs):
+        raise RuntimeError("health down")
+
+    monkeypatch.setattr(dagster_definitions, "analytics_refresh_health", broken_health)
+    with TestClient(app):
+        result = dagster_definitions.airport_collection_job.execute_in_process(raise_on_error=False)
+        assert result.success
+        summary = result.output_for_node("collect_airport_parking")
+        assert summary["analytics_refresh_check_error"] == "RuntimeError" and "analytics_refresh" not in summary
+        assert summary["snapshot_count"] == 1
+
+
+def test_lock_busy_refresh_is_reported_as_skipped(test_settings, monkeypatch):
+    app, settings, _provider = parking_app(test_settings, monkeypatch)
+    with TestClient(app) as client:
+        if client.app.state.engine.dialect.name != "postgresql":
+            pytest.skip("advisory lock 경합은 PostgreSQL에서만")
+
+        async def check():
+            factory = client.app.state.session_factory
+            async with factory() as holder, factory() as session:
+                assert await holder.scalar(text(
+                    "SELECT pg_try_advisory_xact_lock(hashtext('kor_travel_transport:airport_collection'))"
+                ))
+                outcome = {}
+                assert await refresh_default_analytics_cache(session, settings, outcome=outcome) == 0
+                assert outcome == {"skipped": "lock_busy"}
+                await holder.rollback()
+
+        asyncio.run(check())
+
+
+def test_provider_status_exposes_analytics_refresh_health(test_settings, monkeypatch):
+    app, _settings, _provider = parking_app(test_settings, monkeypatch)
+    with TestClient(app) as client:
+        assert dagster_definitions.airport_collection_job.execute_in_process(raise_on_error=False).success
+        body = client.get("/v1/transport/providers").json()["airport_analytics_cache"]
+        assert body["status"] == "ok" and body["alerting"] is False
+        assert body["generated_at"] and body["pending_since"] is None
+        assert body["generated_age_seconds"] >= 0
+        assert (body["warn_after_seconds"], body["fallback_after_seconds"]) == (900, 2400)
+
+        async def broken_health(*_args, **_kwargs):
+            raise RuntimeError("health down")
+
+        from app.services import provider_status
+        monkeypatch.setattr(provider_status, "analytics_refresh_health", broken_health)
+        # 부가 판정 실패로 수집 상태 목록 전체가 500이 되지 않는다.
+        response = client.get("/v1/transport/providers")
+        assert response.status_code == 200 and response.json()["airport_analytics_cache"] is None
+
+
+def test_slow_health_check_times_out_without_touching_the_collection(test_settings, monkeypatch):
+    """판정이 상한을 넘겨도 수집 run은 SUCCESS이고, 판정 실패가 metadata에 남는다."""
+    app, _settings, _provider = parking_app(test_settings, monkeypatch)
+
+    async def slow_health(*_args, **_kwargs):
+        await asyncio.sleep(5)
+
+    monkeypatch.setattr(dagster_definitions, "ANALYTICS_HEALTH_TIMEOUT_SECONDS", 0.2)
+    monkeypatch.setattr(dagster_definitions, "analytics_refresh_health", slow_health)
+    with TestClient(app):
+        result = dagster_definitions.airport_collection_job.execute_in_process(raise_on_error=False)
+        assert result.success
+        assert result.output_for_node("collect_airport_parking")["snapshot_count"] == 1
+        output = next(event.step_output_data for event in result.all_events
+                      if event.event_type_value == "STEP_OUTPUT" and event.step_key == "collect_airport_parking")
+        assert output.metadata["analytics_refresh_check_error"].value == "TimeoutError"
+        assert "analytics_refresh_status" not in output.metadata
+
+
+def test_lock_busy_skip_reaches_run_metadata(test_settings, monkeypatch):
+    app, _settings, _provider = parking_app(test_settings, monkeypatch)
+
+    async def skipped_refresh(_session, _settings, *, outcome=None, **_options):
+        outcome["skipped"] = "lock_busy"
+        return 0
+
+    monkeypatch.setattr(dagster_definitions, "refresh_default_analytics_cache", skipped_refresh)
+    with TestClient(app):
+        result = dagster_definitions.airport_collection_job.execute_in_process(raise_on_error=False)
+        assert result.success
+        output = next(event.step_output_data for event in result.all_events
+                      if event.event_type_value == "STEP_OUTPUT" and event.step_key == "collect_airport_parking")
+        assert output.metadata["cache_refresh_skipped"].value is True
+        assert result.output_for_node("collect_airport_parking")["analytics_cache_skipped"] == "lock_busy"

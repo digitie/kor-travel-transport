@@ -1,3 +1,11 @@
+## 현재 상태 — 2026-11-24 공항 통계 사전집계 갱신 지연 경보(ANALYTICS-REFRESH-ALERT-20261124)
+
+- backend(판정·providers 필드, OpenAPI 추가) + Dagster code-server(공항 수집 op가 판정·태그) + transport-admin(홈 경보·운영 상태 행). migration 없음.
+- 배포(Codex 담당): backend(API)·Dagster code-server 이미지(같은 backend 소스)와 transport-admin 이미지. 순서 무관(필드는 선택).
+- 다음 한 작업: 배포 뒤 공항 run 결과 metadata에 `analytics_refresh_status=ok`가 붙는지, 관리 화면 홈 운영 상태에 "공항 통계 사전집계 정상"이
+  보이는지 확인한다. Manager 경보 규칙(run 태그 `kortravel/analytics-refresh` 또는 providers `alerting`)은 소유자·Manager 후속.
+- 위험: 그 규칙 전에는 밀려도 자동 알림이 없다(관리 화면 홈을 열어야 보이고, Dagster 로그·metadata에만 남는다).
+
 ## 현재 상태 — 2026-11-24 30일 주차 이력 캐시 증분 갱신(PARKING-HISTORY-INCREMENTAL-20261124)
 
 - backend만(API 프로세스 안 이력 캐시). migration·UI·OpenAPI 없음.

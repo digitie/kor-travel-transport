@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import functools
+import json
 import logging
 import re
 import sys
@@ -21,6 +22,7 @@ from dagster import (
     Backoff, DagsterExecutionInterruptedError, DefaultScheduleStatus, Definitions, Failure, Field, Jitter, RetryPolicy,
     multiprocess_executor, job, op,
 )
+from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
 from kortravelcommon.deadline import call_with_deadline
@@ -37,7 +39,9 @@ from app.dagster.recovery import (
 from app.core.config import Settings, get_settings
 from app.db.session import create_engine_and_session_factory
 from app.services.collection import CollectionService
-from app.services.analytics_cache import refresh_default_analytics_cache
+from app.services.analytics_cache import (
+    ANALYTICS_REFRESH_ALERT_STATUSES, analytics_refresh_health, refresh_default_analytics_cache,
+)
 from app.services.parking_global_archive import archive_parking_with_coverage
 from app.services.flight_status import sanitize_upstream_error
 from app.services.bus_collection import BusReferenceCollectionService
@@ -368,12 +372,53 @@ async def _collect_airport_with_analytics(session, *, settings: Settings, trigge
         try:
             # collect는 성공분과 실행 상태를 이미 commit했다. 파생 결과 실패로 원본을 되돌리지 않는다.
             # 중복 관측뿐인 정상 tick도 이전 실패·재시작으로 놓친 cache를 복구한다.
-            result["analytics_cache_count"] = await refresh_default_analytics_cache(session, settings)
+            refresh_outcome: dict[str, Any] = {}
+            result["analytics_cache_count"] = await refresh_default_analytics_cache(
+                session, settings, outcome=refresh_outcome,
+            )
             await session.commit()
+            if refresh_outcome.get("skipped"):
+                # lock 경합으로 건너뛰었다. 실패는 아니지만 이어지면 대시보드가 원본 계산으로 떨어진다(아래 판정이 본다).
+                result["analytics_cache_skipped"] = refresh_outcome["skipped"]
         except Exception as exc:
             await session.rollback()
             result["analytics_cache_error"] = _redacted_causes([_sanitize_op_error(exc, _secret_forms())])
+    # 사전집계가 밀렸는지(ANALYTICS-REFRESH-ALERT-20261124). 수집·갱신은 이미 commit/rollback했다. 판정은 인덱스 질의 셋이고,
+    # 실패하거나 늦어도 수집 결과를 바꾸지 않는다. 서버 쪽 statement_timeout으로 질의를 끊고(연결을 망가뜨리지 않는다),
+    # 클라이언트 timeout은 그 뒤의 안전망이다. 정리(rollback)의 오류·지연도 삼킨다.
+    try:
+        async with asyncio.timeout(ANALYTICS_HEALTH_TIMEOUT_SECONDS):
+            if session.bind is not None and session.bind.dialect.name == "postgresql":
+                await session.execute(text(f"SET LOCAL statement_timeout = {ANALYTICS_HEALTH_STATEMENT_TIMEOUT_MS}"))
+            result["analytics_refresh"] = (await analytics_refresh_health(session, settings)).as_dict()
+            await session.commit()  # SET LOCAL을 이 판정 transaction에서 끝낸다.
+    except Exception as exc:  # noqa: BLE001 — 부가 판정 실패로 수집을 실패시키지 않는다.
+        result["analytics_refresh_check_error"] = type(exc).__name__
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(session.rollback(), timeout=5)
     return result
+
+
+#: 사전집계 갱신 판정 질의의 상한. 서버 쪽 문장 상한(ms)과 클라이언트 안전망(초). 공용 PG가 멈춰도 공항 수집 run을 붙잡지 않는다.
+ANALYTICS_HEALTH_STATEMENT_TIMEOUT_MS = 5000
+ANALYTICS_HEALTH_TIMEOUT_SECONDS = 15
+#: 사전집계가 밀렸을 때 공항 run에 다는 태그. 값은 `delayed`·`stale`·`missing`. run 상태(SUCCESS)는 바꾸지 않는다 —
+#: 수집은 성공했으므로(감사 2026-11-23 §2.5: 부분 성공을 FAILURE로 올린 소음). Manager가 이 태그나
+#: `/v1/transport/providers`의 `airport_analytics_cache.alerting`을 읽는 규칙은 아직 없다(Manager 후속, tasks.md
+#: ANALYTICS-REFRESH-ALERT-20261124). 그때까지는 관리 화면 홈·Dagster 로그·결과 metadata로만 보인다.
+ANALYTICS_REFRESH_TAG = "kortravel/analytics-refresh"
+
+
+def _record_analytics_refresh(context, status: str) -> None:
+    """자기 run에 사전집계 지연 태그를 단다. 부가 기록 장애로 수집을 실패시키지 않는다."""
+    try:
+        instance = getattr(context, "instance", None)
+        run_id = getattr(context, "run_id", None)
+        if instance is not None and run_id:
+            instance.add_run_tags(run_id, {ANALYTICS_REFRESH_TAG: status})
+    except Exception:
+        with contextlib.suppress(Exception):
+            context.log.warning("ANALYTICS_REFRESH_TAG_DEFERRED")
 
 
 @op
@@ -398,6 +443,31 @@ def collect_airport_parking(context) -> dict[str, Any]:
         if cache_failed:
             result["cache_refresh_failed"] = True
         metadata = _collection_output_metadata(result, "airport")
+        health = result.get("analytics_refresh")
+        if isinstance(health, dict):
+            metadata["analytics_refresh_status"] = health["status"]
+            if health.get("pending_seconds") is not None:
+                metadata["analytics_pending_seconds"] = health["pending_seconds"]
+            if health["status"] in ANALYTICS_REFRESH_ALERT_STATUSES:
+                # 수집 성공 run만 partial로 올린다. 미뤄진(deferred)·이미 partial인 run의 결과·오류 코드는 그대로 두고
+                # 원인은 태그로만 보인다.
+                if metadata["collection_outcome"] == "success":
+                    metadata["collection_outcome"] = "partial"
+                    metadata["error_code"] = "DERIVED_CACHE_DEFERRED"
+                # 운영 로그에서 바로 찾도록 한 줄 JSON(비밀·본문 없음).
+                context.log.error(json.dumps({
+                    "event": "analytics_refresh_alert", "status": health["status"],
+                    "generated_at": health["generated_at"], "pending_since": health["pending_since"],
+                    "pending_seconds": health["pending_seconds"], "cache_refresh_failed": cache_failed,
+                    "cache_refresh_skipped": result.get("analytics_cache_skipped") is not None,
+                }, separators=(",", ":")))
+                _record_analytics_refresh(context, health["status"])
+        if result.get("analytics_cache_skipped") is not None:
+            metadata["cache_refresh_skipped"] = True
+        if result.get("analytics_refresh_check_error"):
+            metadata["analytics_refresh_check_error"] = result["analytics_refresh_check_error"]
+            context.log.warning(f"공항 통계 사전집계 갱신 판정을 하지 못했습니다({result['analytics_refresh_check_error']}). "
+                                "수집 결과는 그대로입니다.")
         context.add_output_metadata(metadata)
         _record_collection_outcome(context, metadata["collection_outcome"])
         return result

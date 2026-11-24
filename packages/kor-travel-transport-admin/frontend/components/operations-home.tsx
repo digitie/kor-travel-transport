@@ -22,6 +22,7 @@ import { DataTable } from "@/components/ui/data-table";
 import { getDagsterOverview, JOB_LABELS, statusLabel, type DagsterOverview } from "@/lib/dagster";
 import { dagsterLocationUrl, dagsterRunUrl, dagsterJobRunsUrl } from "@/lib/dagster-scope";
 import { needsProviderAttention } from "@/lib/provider-status";
+import { analyticsRefreshView, type AnalyticsRefreshStatus } from "@/lib/analytics-refresh";
 import { dateTime, transportGet } from "@/lib/journey";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +33,7 @@ type Provider = {
 type ProviderOverview = {
   generated_at: string; items: Provider[];
   kric_coverage?: { station_count: number; linked_station_count: number; expected_snapshots: number; stored_snapshots: number; fresh_snapshots: number } | null;
+  airport_analytics_cache?: AnalyticsRefreshStatus | null;
 };
 type DagsterRun = DagsterOverview["runs"][number];
 
@@ -166,6 +168,7 @@ function OperationsSummary({ errors, activeProviders, providers, attention, acti
           <Button size="sm" type="button" variant="outline" loading={loading} onClick={refresh}>다시 시도</Button>
         </AlertActions>
       </Alert> : null}
+      <AnalyticsRefreshAlert providers={providers} />
       <OperationsMetrics activeProviders={activeProviders} providers={providers} attention={attention} activeRuns={activeRuns} dagster={dagster} runningSchedules={runningSchedules} failedRuns={failedRuns} recentRuns={recentRuns} coverage={coverage} />
       <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="min-w-0 space-y-6">
@@ -232,11 +235,42 @@ function ProviderAttention({ attention, providers, loading }: Pick<SummaryProps,
 }
 
 
+// 날짜까지(MM.DD HH:MM) — 갱신이 오래 멈췄으면 시각만으로는 오늘처럼 읽힌다.
+function analyticsClock(iso: string | null) {
+  return iso && Number.isFinite(Date.parse(iso))
+    ? new Date(iso).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })
+    : "확인되지 않음";
+}
+
+// 공항 통계 사전집계 갱신이 밀리면(갱신 실패·lock 경합 건너뜀이 이어짐) 운영 요약 맨 위에 알린다.
+// 같은 판정으로 공항 수집 run에 `kortravel/analytics-refresh` 태그와 결과 metadata가 붙는다(run은 SUCCESS).
+function AnalyticsRefreshAlert({ providers }: Pick<SummaryProps, "providers">) {
+  const view = analyticsRefreshView(providers?.airport_analytics_cache, analyticsClock);
+  if (!view?.alerting) return null;
+  return (<Alert data-testid="analytics-refresh-alert" variant={view.tone === "destructive" ? "destructive" : "default"}>
+      <AlertTitle>공항 통계 사전집계 {view.label}</AlertTitle>
+      <AlertDescription>
+        <p>{view.detail}</p>
+        <p>공항 수집 실행의 사전집계 갱신 결과(갱신 오류·lock 경합 건너뜀)를 확인하세요.</p>
+      </AlertDescription>
+      <AlertActions>
+        <a className={cn(buttonVariants({ variant: "outline", size: "sm" }))} href={dagsterJobRunsUrl("airport_collection_job")} rel="noreferrer" target="_blank">
+          <ExternalLink aria-hidden="true" data-icon="inline-start" />공항 수집 실행
+        </a>
+      </AlertActions>
+    </Alert>);
+}
+
 function OperationsHealth({ providers, loading, dagster, coverage }: Pick<SummaryProps, "providers" | "loading" | "dagster" | "coverage">) {
+  const analytics = analyticsRefreshView(providers?.airport_analytics_cache, analyticsClock);
   return (<SectionCard title="운영 상태">
             <DetailList columns={1} layout="inline" items={[
               { label: "저장 API", value: providers ? "응답 정상" : loading ? "확인 중" : "확인 실패" },
               { label: "Dagster", value: dagster ? "응답 정상" : loading ? "확인 중" : "확인 실패" },
+              { label: "공항 통계 사전집계", value: analytics ? <span className="flex flex-col items-start gap-1" data-testid="analytics-refresh-status">
+                <StatusBadge label={analytics.label} status={providers?.airport_analytics_cache?.status} tone={analytics.tone} />
+                <span className="text-xs text-text-secondary">{analytics.detail}</span>
+              </span> : null },
               { label: "시간표 역 연결", value: coverage ? `${coverage.linked_station_count.toLocaleString()} / ${coverage.station_count.toLocaleString()}역` : null },
               { label: "수집 상태 확인", value: dateTime(providers?.generated_at) },
             ]} />

@@ -1,3 +1,23 @@
+## 2026-11-24 — 공항 통계 사전집계 갱신 지연 경보(ANALYTICS-REFRESH-ALERT-20261124)
+
+- #271 이후 대시보드 묶음은 사전집계 갱신을 기다리는 동안 직전 사전집계를 내고, 사전집계 뒤의 새 적재가 40분(`DASHBOARD_REFRESH_GRACE`)을 넘기거나
+  사전집계가 2시간을 넘기면 원본 계산(운영 ICN 25~30초, 504 위험)으로 떨어진다. 갱신 실패(`cache_refresh_failed`)·lock 경합 건너뜀(경고 로그뿐)이
+  이어져도 알리는 곳이 없었다.
+- 판정 하나(`analytics_refresh_health`, DB 상태만, 인덱스 질의 셋): 실제 공항의 기본 시계열 사전집계 중 가장 오래된 생성 시각과 그 뒤 적재된 가장 오래된
+  관측의 나이. 15분(`ANALYTICS_REFRESH_WARN_AFTER`) 이상 `delayed`, 40분 이상 또는 사전집계 2시간 초과 `stale`, 관측은 15분 넘게 있는데 사전집계 없음
+  `missing` — 셋이 경보. 대시보드 유예와 같은 술어(`collected_at > generated_at`). 미반영 적재의 `collected_at`이 run 초반에 찍히므로 느린 run은
+  갱신 한 번 실패로도, 빠른 run은 3~4번 연속 실패에서 `delayed`가 된다.
+- 알리는 곳:
+  - 공항 수집 op가 갱신 뒤 같은 session으로 판정한다(15초 상한, 실패해도 수집 결과 그대로). 결과 metadata `analytics_refresh_status`·
+    `analytics_pending_seconds`, 경보면 run 태그 `kortravel/analytics-refresh=<상태>` + `collection_outcome=partial`·`DERIVED_CACHE_DEFERRED` +
+    한 줄 JSON 로그 `event=analytics_refresh_alert`. lock 경합 건너뜀은 `cache_refresh_skipped`.
+  - run은 SUCCESS 그대로 — 처음 안(별도 점검 step을 Failure)은 적대 리뷰(운영) P1로 버렸다: 수집 성공 run을 FAILURE로 올리는 감사 §2.5 소음의 재발,
+    Manager 경보가 원인(error_code)을 구분하지 못함, `schedule_no_success` critical 오발, step 프로세스 하루 288회 추가.
+  - `/v1/transport/providers`에 `airport_analytics_cache`(선택 필드, `alerting` 포함, 판정 실패 시 null) → 관리 화면 홈 운영 상태 행·경보.
+- Manager가 실제로 울리려면 Manager 쪽 규칙(run 태그 또는 providers `alerting`을 읽는)이 필요하다(소유자·Manager 후속).
+- 시험: backend `test_parking_analytics_refresh.py`(상태 판정, 갱신 실패가 이어질 때 run SUCCESS + 태그·metadata·로그와 회복, 판정 실패 내성,
+  lock 경합 건너뜀 기록, providers 필드·판정 실패 시 null), admin vitest `lib/analytics-refresh.test.ts`, admin e2e `analytics-refresh-alert.spec.ts`(390·1440px).
+
 ## 2026-11-24 — 30일 주차 이력 캐시 증분 갱신(PARKING-HISTORY-INCREMENTAL-20261124)
 
 - 문제: `/v1/parking/history` 전체 응답용 30일 캐시를 수집마다 전량 재생성했다(55만 행 읽기·인코딩 + 85MB 본문 br·gzip, 운영 ARM 77~98초, 로컬
