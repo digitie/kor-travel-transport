@@ -87,7 +87,8 @@ test("504 조회 시간 상한 초과는 Retry-After 동안 재조회를 막고,
     expect(button().disabled).toBe(true); expect(button().textContent).toBe("가격 이력 다시 조회 (3초 후)");
     await act(async () => { vi.advanceTimersByTime(1000); });
     expect(button().textContent).toBe("가격 이력 다시 조회 (2초 후)");
-    await act(async () => { vi.advanceTimersByTime(2000); });
+    // 1초씩 센다(초마다 다시 그린 뒤 다음 타이머를 건다).
+    for (let second = 0; second < 2; second++) await act(async () => { vi.advanceTimersByTime(1000); });
     expect(button().disabled).toBe(false); expect(button().textContent).toBe("가격 이력 다시 조회");
     await act(async () => button().click());
     // 오류 영역이 다시 그려져도 초점은 구역 제목에 남는다.

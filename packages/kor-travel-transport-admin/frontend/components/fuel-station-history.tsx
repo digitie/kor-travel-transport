@@ -28,13 +28,31 @@ export function FuelStationHistoryChart({ data, afterChart }: { data: FuelStatio
 export function FuelStationPriceHistory({ place, children, load = transportGet }: { load?: typeof transportGet; place: Pick<Place, "id" | "source">; children?: ReactNode }) {
   const { supported, current, setReload, key } = useFuelStationHistory({ place, load });
   const heading = useRef<HTMLHeadingElement>(null);
-  const retryIn = useRetryCountdown(current?.error ? key : "", current?.retryAfter ?? 0);
   // 다시 조회하면 오류 영역(버튼 포함)이 '불러오는 중'으로 바뀐다. 초점을 잃지 않게 구역 제목으로 옮긴다.
   const retry = () => { setReload(value => value + 1); heading.current?.focus(); };
   return <section className="fuel-station-history" aria-label="최근 30일 주유소 가격" aria-busy={supported && !current}>
     <div className="fuel-history-heading"><h3 ref={heading} tabIndex={-1}>최근 30일 유가</h3><InfoButton label="주유소 가격 추이">최근 720시간의 저장 관측만 표시합니다. 한국 날짜 기준으로 관측이 전혀 없는 날은 선을 끊고 보간하지 않습니다. 현재 가격과 마지막 실제 관측 가격의 시각은 다를 수 있습니다.{current?.data ? <><p>조회 범위 {historyTime(current.data.window.from_at)} → {historyTime(current.data.window.to_at)} · 한국 시각</p><p>출처 최근 수집 성공 {current.data.source_last_success_at ? historyTime(current.data.source_last_success_at) : "확인되지 않음"}</p></> : null}</InfoButton></div>
-    {!supported ? <><p className="quiet">이 출처는 개별 주유소의 저장 가격 추이를 제공하지 않습니다.</p>{children}</> : !current ? <><p className="quiet" role="status">가격 이력 불러오는 중…</p>{children}</> : current.error ? <><div role="alert"><p>{current.error}</p><Button type="button" variant="outline" size="sm" disabled={retryIn > 0} onClick={retry}>가격 이력 다시 조회{retryIn > 0 ? ` (${retryIn}초 후)` : ""}</Button></div>{children}</> : current.data ? <FuelStationHistoryChart key={key} data={current.data} afterChart={children} /> : children}
+    <FuelStationHistoryBody supported={supported} current={current} dataKey={key} onRetry={retry}>{children}</FuelStationHistoryBody>
   </section>;
+}
+
+function FuelStationHistoryBody({ supported, current, dataKey, onRetry, children }: { supported: boolean; current?: FuelStationHistoryState; dataKey: string; onRetry: () => void; children?: ReactNode }) {
+  if (!supported) return <><p className="quiet">이 출처는 개별 주유소의 저장 가격 추이를 제공하지 않습니다.</p>{children}</>;
+  if (!current) return <><p className="quiet" role="status">가격 이력 불러오는 중…</p>{children}</>;
+  // 오류마다(key) 대기 시간을 처음부터 센다.
+  if (current.error) return <><HistoryRetryAlert key={dataKey} message={current.error} retryAfter={current.retryAfter ?? 0} onRetry={onRetry} />{children}</>;
+  return current.data ? <FuelStationHistoryChart key={dataKey} data={current.data} afterChart={children} /> : <>{children}</>;
+}
+
+/** 서버 `Retry-After`초 동안 다시 조회를 막고 남은 초를 보인다. */
+function HistoryRetryAlert({ message, retryAfter, onRetry }: { message: string; retryAfter: number; onRetry: () => void }) {
+  const [retryIn, setRetryIn] = useState(retryAfter);
+  useEffect(() => {
+    if (retryIn <= 0) return;
+    const timer = setTimeout(() => setRetryIn(value => Math.max(0, value - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [retryIn]);
+  return <div role="alert"><p>{message}</p><Button type="button" variant="outline" size="sm" disabled={retryIn > 0} onClick={onRetry}>가격 이력 다시 조회{retryIn > 0 ? ` (${retryIn}초 후)` : ""}</Button></div>;
 }
 
 /** 서버 `Retry-After`를 존중하되 화면에서 오래 막지 않는다. */
@@ -48,24 +66,13 @@ function historyErrorMessage(error: unknown) {
   return error instanceof Error && /[가-힣]/.test(error.message) ? error.message : "가격 이력을 불러오지 못했습니다. 다시 조회해 주세요.";
 }
 
-/** `key`의 오류가 보인 뒤 `seconds`초 동안 남은 초를 센다. 새 오류(새 key)면 처음부터 다시 센다. */
-function useRetryCountdown(key: string, seconds: number) {
-  const [tick, setTick] = useState<{ key: string; left: number }>();
-  useEffect(() => {
-    if (!key || seconds <= 0) return;
-    let left = seconds;
-    const timer = setInterval(() => { left -= 1; setTick({ key, left }); if (left <= 0) clearInterval(timer); }, 1000);
-    return () => clearInterval(timer);
-  }, [key, seconds]);
-  if (!key || seconds <= 0) return 0;
-  return tick?.key === key ? Math.max(0, tick.left) : seconds;
-}
+type FuelStationHistoryState = { key: string; data?: FuelStationHistory; error?: string; retryAfter?: number };
 
 // 조회·선택·요청 수명은 이 도메인 훅이, 아래 컴포넌트는 표현을 소유한다.
 function useFuelStationHistory({ place, load }: { load: typeof transportGet; place: Pick<Place, "id" | "source"> }) {
   const [reload, setReload] = useState(0);
   const key = `${place.source}/${place.id}/${reload}`;
-  const [state, setState] = useState<{ key: string; data?: FuelStationHistory; error?: string; retryAfter?: number }>();
+  const [state, setState] = useState<FuelStationHistoryState>();
   const supported = place.id > 0 && place.source === "opinet_browser";
   useEffect(() => {
     if (!supported) return;
