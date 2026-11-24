@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from starlette.responses import Response
+from starlette.routing import Mount
 
 from app.core import read_timing
 from app.core.config import Settings
@@ -95,8 +96,52 @@ async def test_status_distinguishes_unstarted_response_from_unhandled_error(capl
 
     with caplog.at_level(logging.INFO, logger=read_timing.__name__), pytest.raises(error):
         await _call(read_timing.ReadTimingMiddleware(endpoint), {"path": "/v1/service/exports/airports"})
-    assert _fields(caplog)[1]["status"] == status
+    fields = _fields(caplog)[1]
+    assert fields["status"] == status
+    assert fields["error"] == error.__name__
     assert read_timing._current.get() is None and read_timing._inflight == 0
+
+
+async def test_error_after_response_start_is_not_logged_as_plain_success(caplog):
+    async def endpoint(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"{", "more_body": True})
+        raise RuntimeError("SECRET-DSN")
+
+    with caplog.at_level(logging.INFO, logger=read_timing.__name__), pytest.raises(RuntimeError):
+        await _call(read_timing.ReadTimingMiddleware(endpoint), {"path": "/v1/service/exports/fuel-stations"})
+    fields = _fields(caplog)[1]
+    assert fields["status"] == "200" and fields["error"] == "RuntimeError"
+    # 예외 메시지는 남기지 않는다.
+    assert "SECRET" not in caplog.text
+
+
+async def test_successful_request_logs_error_none(caplog):
+    async def endpoint(scope, receive, send):
+        await Response("ok")(scope, receive, send)
+
+    with caplog.at_level(logging.INFO, logger=read_timing.__name__):
+        await _call(read_timing.ReadTimingMiddleware(endpoint), {"path": "/v1/service/exports/airports"})
+    assert _fields(caplog)[1]["error"] == "none"
+
+
+@pytest.mark.parametrize(("route", "label"), [
+    (None, "unmatched"),
+    (_route("/v1/transport/features/places"), "/v1/transport/features/places"),
+    # app.mount("/", 공개 유가 MCP)의 Mount.path는 ""다. 빈 route= 대신 fallback mount로 남긴다.
+    (Mount("/", app=Response("x")), "/*"),
+    (Mount("/tools", app=Response("x")), "/tools/*"),
+])
+async def test_route_label_is_never_empty(caplog, route, label):
+    async def endpoint(scope, receive, send):
+        if route is not None:
+            scope["route"] = route
+        await Response("nf", status_code=404)(scope, receive, send)
+
+    with caplog.at_level(logging.INFO, logger=read_timing.__name__):
+        await _call(read_timing.ReadTimingMiddleware(endpoint, slow_threshold_ms=0), {"path": "/random/SECRET-ID"})
+    assert _fields(caplog)[1]["route"] == label
+    assert "SECRET" not in caplog.text
 
 
 async def test_server_timing_keeps_existing_fields_first_and_adds_pool_and_loop_cpu():

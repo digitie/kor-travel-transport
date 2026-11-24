@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from time import perf_counter, process_time, thread_time
 
 from sqlalchemy import event
+from starlette.routing import Mount
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +136,21 @@ def _utc_millis(value: datetime) -> str:
     return value.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+def _route_label(scope) -> str:
+    """로그의 route. 실제 경로 값(ID·query)은 쓰지 않는다.
+
+    `app.mount("/", 공개 유가 MCP)`처럼 경로가 빈 마지막 fallback mount는 `/*`로, router가 고르지 못한
+    요청(404·TrustedHost 거절 등)은 `unmatched`로 남긴다.
+    """
+    route = scope.get("route")
+    path = getattr(route, "path", None)
+    if path:
+        return f"{path}/*" if isinstance(route, Mount) else path
+    if isinstance(route, Mount):
+        return "/*"
+    return "unmatched"
+
+
 class ReadTimingMiddleware:
     def __init__(self, app, slow_threshold_ms: float = DEFAULT_SLOW_REQUEST_THRESHOLD_MS):
         if slow_threshold_ms < 0:
@@ -157,6 +173,8 @@ class ReadTimingMiddleware:
         started, cpu_started, loop_cpu_started = perf_counter(), process_time(), thread_time()
         # http.response.start 없이 끝나면(취소·연결 끊김) none으로 남긴다.
         status: int | str = "none"
+        # 응답을 시작한 뒤(본문 전송 중) 난 예외는 status가 이미 200이므로 예외 class로 구분한다.
+        error = "none"
 
         async def timed_send(message):
             nonlocal status
@@ -177,9 +195,11 @@ class ReadTimingMiddleware:
 
         try:
             await self.app(scope, receive, timed_send)
-        except Exception:
-            # 응답 시작 전 예외는 바깥 ServerErrorMiddleware가 500으로 응답한다.
-            if status == "none":
+        except BaseException as exc:
+            # 취소(CancelledError)도 class를 남긴다. 예외 메시지는 SQL·접속정보를 담을 수 있어 쓰지 않는다.
+            error = type(exc).__name__
+            # 응답 시작 전 일반 예외는 바깥 ServerErrorMiddleware가 500으로 응답한다.
+            if status == "none" and isinstance(exc, Exception):
                 status = 500
             raise
         finally:
@@ -187,19 +207,19 @@ class ReadTimingMiddleware:
             duration = (perf_counter()-started)*1000
             slow = duration >= self.slow_threshold_ms
             if slow or scope.get("path", "").startswith(ALWAYS_LOGGED_PATH_PREFIXES):
-                route = getattr(scope.get("route"), "path", "unmatched")
+                route = _route_label(scope)
                 # 운영 uvicorn은 app logger에 handler를 두지 않아 WARNING 미만은 버려지고(logging.lastResort),
                 # 시각도 붙지 않는다. 주차 이력 재구성 로그와 같이 WARNING으로 남기고 시작 시각을 start에 싣는다.
                 logger.warning(
                     "%s route=%s method=%s status=%s start=%s duration_ms=%.3f sql_count=%s sql_ms=%.3f "
                     "cpu_ms=%.3f loop_cpu_ms=%.3f page_builds=%s fingerprint_calculations=%s pool_ms=%.3f "
-                    "pool_checkouts=%s pool_connects=%s pool_checkedout=%s inflight_start=%s inflight_end=%s",
+                    "pool_checkouts=%s pool_connects=%s pool_checkedout=%s inflight_start=%s inflight_end=%s error=%s",
                     "slow_request" if slow else "export_request", route, scope.get("method", "-"), status,
                     _utc_millis(started_at), duration, timing.statements, timing.sql_seconds*1000,
                     (process_time()-cpu_started)*1000, (thread_time()-loop_cpu_started)*1000,
                     timing.page_builds, timing.fingerprint_calculations, timing.pool_wait_seconds*1000,
                     timing.pool_checkouts, timing.pool_connects,
                     "none" if timing.pool_checkedout is None else timing.pool_checkedout,
-                    inflight_start, _inflight,
+                    inflight_start, _inflight, error,
                 )
             _current.reset(token)
