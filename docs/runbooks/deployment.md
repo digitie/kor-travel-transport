@@ -112,12 +112,13 @@ PR #277(export 503 `code`·`Retry-After`)부터의 transport 릴리스는 아래
 이 릴리스는 export 경로의 두 가지 500을 503으로 바꾼다 — 일시 DB 불가(`TRANSIENT_DB`)와 T2/T3 snapshot statement
 timeout(`EXPORT_PREPARE_TIMEOUT`). Map이 이 503을 초록 건너뜀으로 다루면 DB 장애가 보이지 않는다.
 
-배포 조건은 둘 다다. (1) **Map #1549(transport 503 code 분류·HTTP 층 재시도)가 Map 운영에 배포됐다.** (2) **Map
-#1542(상태 적재 job 상류 신호 통일)가 머지됐다면, 그 머지가 code 있는 not-current 503과 재시도를 다 쓴 `EXPORT_BUSY`·
-`TRANSIENT_DB`·`EXPORT_PREPARE_TIMEOUT`을 빨간 실패로 남긴다** — 또는 소유자가 초록 건너뜀을 받아들이고 서비스 세대
-나이(max_age)·적재 나이 경보를 함께 둔다고 명시적으로 결정했다. #1549가 이미지에 들어 있는 것만으로는 부족하다:
-작성된 #1542는 재시도 가능한 실패를 모두(재시도를 다 쓴 busy·일시 DB 불가와 code 있는 not-current 503까지) 초록
-`skipped=upstream_not_ready`로 바꾸고 원천 나이가 아니라 적재 나이로만 실패시킨다. 그 상태라면 11월 주유소 export
+배포 조건은 둘 다다. (1) **Map #1549(transport 503 code 분류·HTTP 층 재시도)가 소유자가 정한 "나이 기준 혼합" 정책과
+함께 Map 운영에 배포됐다** — code 있는 not-current 503과 재시도를 다 쓴 `EXPORT_BUSY`·`TRANSIENT_DB`·
+`EXPORT_PREPARE_TIMEOUT`에서 직전 세대를 유지하고, 서비스 중인 세대의 **원천 나이**가 데이터셋별 경고 기준(예: 주유소
+16시간, 휴게소 유가 8시간, 돌발 20분, 하루 주기 집합 2일, 모두 max_age보다 작음) 안이면 초록, 넘으면 빨강(step 재시도
+없음). (2) **Map #1542(상태 적재 job 상류 신호 통일)를 맞출 때 같은 규칙을 유지한다.** #1549가 이미지에 들어 있는 것만으로는
+부족하다: 작성된 #1542는 재시도 가능한 실패를 모두(재시도를 다 쓴 busy·일시 DB 불가와 code 있는 not-current 503까지)
+초록 `skipped=upstream_not_ready`로 바꾸고 원천 나이가 아니라 적재 나이로만 실패시킨다. 그 상태라면 11월 주유소 export
 503 16.6시간은 전부 초록이었다(주유소 max_age 48시간).
 
 배포 전에 Map 운영 이미지와 #1542의 머지 상태를 확인하고, 조건이 서지 않으면 이 릴리스와 그 뒤 릴리스를 보류한다.
